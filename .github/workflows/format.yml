@@ -1,0 +1,89 @@
+name: Check/Format PR
+
+on:
+  pull_request:
+    branches: [ main ]
+
+concurrency:
+  group: format-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  format:
+    name: Format PR
+    if: github.event.pull_request.head.repo.full_name == github.repository
+    runs-on: ubuntu-22.04
+    steps:
+      - name: Setup Go 1.x
+        uses: actions/setup-go@v3
+        with:
+          go-version: ^1.20
+      - uses: actions/checkout@v3
+        with:
+          token: ${{ secrets.REPO_ACCESS_TOKEN || secrets.GITHUB_TOKEN }}
+          ref: ${{ github.head_ref }}
+      - name: Install goimports
+        run: |
+          go mod download golang.org/x/tools
+          go install golang.org/x/tools/cmd/goimports
+      - name: Format repo
+        run: |
+          ./format_repo.sh
+        env:
+          BRANCH_NAME: ${{ github.head_ref }}
+          CHANGE_TARGET: ${{ github.base_ref }}
+      - name: Changes detected
+        id: detect-changes
+        run: |
+          changes=$(git status --porcelain)
+          if [ ! -z "$changes" ]; then
+             echo "has-changes=true" >> $GITHUB_OUTPUT
+          fi
+      - uses: EndBug/add-and-commit@v9.1.1
+        if: ${{ steps.detect-changes.outputs.has-changes == 'true' }}
+        with:
+          message: "[ga-format-pr] Run ./format_repo.sh to fix formatting"
+          add: "."
+          cwd: "."
+  verify:
+    needs: format
+    name: Verify format
+    runs-on: ubuntu-22.04
+    steps:
+      - name: Setup Go 1.x
+        uses: actions/setup-go@v3
+        with:
+          go-version: ^1.20
+        id: go
+      - uses: actions/checkout@v3
+        with:
+          ref: ${{ github.head_ref }}
+      - name: Check all
+        id: check_format
+        run: |
+          ./check_repo.sh
+        env:
+          BRANCH_NAME: ${{ github.head_ref }}
+          CHANGE_TARGET: ${{ github.base_ref }}
+  alt-verify:
+    if: github.event.pull_request.head.repo.full_name != github.repository
+    name: Verify format
+    runs-on: ubuntu-22.04
+    steps:
+      - name: Setup Go 1.x
+        uses: actions/setup-go@v3
+        with:
+          go-version: ^1.20
+        id: go
+      - uses: actions/checkout@v3
+      - name: Check all
+        id: check_format
+        run: |
+          ./check_repo.sh
+          code=$(echo $?)
+          if [ "$code" != 0 ]; then
+            echo "Please run ./format_repo.sh to fix this pull request's formatting"
+          fi
+        env:
+          BRANCH_NAME: ${{ github.head_ref }}
+          CHANGE_TARGET: ${{ github.base_ref }}
