@@ -1,13 +1,66 @@
+// Copyright 2023 Dolthub, Inc.
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//     http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
+
 package messages
 
 // AuthenticationOk tells the client that authentication was successful.
 type AuthenticationOk struct{}
 
-// Bytes returns AuthenticationOk as a byte slice, ready to be returned to the client.
-func (aok AuthenticationOk) Bytes() []byte {
-	return []byte{
-		'R',        // Message Type
-		0, 0, 0, 8, // Message Length
-		0, 0, 0, 0, // Padding
+func init() {
+	initializeDefaultMessage(AuthenticationOk{})
+	addMessageHeader(AuthenticationOk{})
+}
+
+var authenticationOkDefault = Message{
+	Name: "AuthenticationOk",
+	Fields: []*Field{
+		{
+			Name: "Header",
+			Type: Byte1,
+			Tags: Header,
+			Data: int32('R'),
+		},
+		{
+			Name: "MessageLength",
+			Type: Int32,
+			Tags: MessageLengthInclusive,
+			Data: int32(8),
+		},
+		{
+			Name: "Padding",
+			Type: Int32,
+			Data: int32(0),
+		},
+	},
+}
+
+var _ MessageType = AuthenticationOk{}
+
+// encode implements the interface MessageType.
+func (m AuthenticationOk) encode() (Message, error) {
+	return m.defaultMessage().Copy(), nil
+}
+
+// decode implements the interface MessageType.
+func (m AuthenticationOk) decode(s Message) (MessageType, error) {
+	if err := s.MatchesStructure(*m.defaultMessage()); err != nil {
+		return nil, err
 	}
+	return AuthenticationOk{}, nil
+}
+
+// defaultMessage implements the interface MessageType.
+func (m AuthenticationOk) defaultMessage() *Message {
+	return &authenticationOkDefault
 }

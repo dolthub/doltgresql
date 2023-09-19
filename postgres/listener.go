@@ -113,37 +113,37 @@ func (l *Listener) HandleConnection(conn net.Conn) {
 		return
 	}
 
-	if _, err = conn.Write(messages.AuthenticationOk{}.Bytes()); err != nil {
+	if err = messages.Send(conn, messages.AuthenticationOk{}); err != nil {
 		fmt.Println(err)
 		return
 	}
 
-	if _, err = conn.Write(messages.ParameterStatus{
+	if err = messages.Send(conn, messages.ParameterStatus{
 		Name:  "server_version",
 		Value: "15.0",
-	}.Bytes()); err != nil {
+	}); err != nil {
 		fmt.Println(err)
 		return
 	}
-	if _, err = conn.Write(messages.ParameterStatus{
+	if err = messages.Send(conn, messages.ParameterStatus{
 		Name:  "client_encoding",
 		Value: "UTF8",
-	}.Bytes()); err != nil {
+	}); err != nil {
 		fmt.Println(err)
 		return
 	}
 
-	if _, err = conn.Write(messages.BackendKeyData{
+	if err = messages.Send(conn, messages.BackendKeyData{
 		ProcessID: 1,
 		SecretKey: 0,
-	}.Bytes()); err != nil {
+	}); err != nil {
 		fmt.Println(err)
 		return
 	}
 
-	if _, err = conn.Write(messages.ReadyForQuery{
+	if err = messages.Send(conn, messages.ReadyForQuery{
 		Indicator: messages.ReadyForQueryTransactionIndicator_Idle,
-	}.Bytes()); err != nil {
+	}); err != nil {
 		fmt.Println(err)
 		return
 	}
@@ -162,62 +162,65 @@ func (l *Listener) HandleConnection(conn net.Conn) {
 			return
 		}
 
-		if messages.ReadTerminate(buf) {
-			return
-		}
-		query, ok := messages.ReadQuery(buf)
-		if !ok {
-			fmt.Println("unknown message, terminating connection")
-			return
-		}
-		commandCompleteTag, err := messages.QueryToCommandCompleteTag(query)
+		message, ok, err := messages.Receive(buf)
 		if err != nil {
 			fmt.Println(err.Error())
 			return
+		} else if !ok {
+			fmt.Println("unknown message format, terminating connection")
+			return
 		}
 
-		var rowTotal int32
-		if err = l.cfg.Handler.ComQuery(mysqlConn, query, func(res *sqltypes.Result, more bool) error {
-			rowDescription, err := messages.NewRowDescription(res.Fields)
-			if err != nil {
-				return err
-			}
-			if _, err = conn.Write(rowDescription.Bytes()); err != nil {
-				return err
-			}
+		switch message := message.(type) {
+		case messages.Terminate:
+			return
+		case messages.Query:
+			l.query(conn, mysqlConn, message.String)
+		}
+	}
+}
 
-			for _, row := range res.Rows {
-				if _, err = conn.Write(messages.NewDataRow(row).Bytes()); err != nil {
-					return err
-				}
-			}
+func (l *Listener) query(conn net.Conn, mysqlConn *mysql.Conn, query string) {
+	commandComplete := messages.CommandComplete{
+		Query: query,
+		Rows:  0,
+	}
 
-			if commandCompleteTag == messages.CommandCompleteTag_INSERT ||
-				commandCompleteTag == messages.CommandCompleteTag_UPDATE ||
-				commandCompleteTag == messages.CommandCompleteTag_DELETE {
-				rowTotal = int32(res.RowsAffected)
-			} else {
-				rowTotal += int32(len(res.Rows))
-			}
-			return nil
+	if err := l.cfg.Handler.ComQuery(mysqlConn, query, func(res *sqltypes.Result, more bool) error {
+		if err := messages.Send(conn, messages.RowDescription{
+			Fields: res.Fields,
 		}); err != nil {
-			fmt.Println(err.Error())
-			return
+			return err
 		}
 
-		if _, err = conn.Write(messages.CommandComplete{
-			Tag:  commandCompleteTag,
-			Rows: rowTotal,
-		}.Bytes()); err != nil {
-			fmt.Println(err)
-			return
+		for _, row := range res.Rows {
+			if err := messages.Send(conn, messages.DataRow{
+				Values: row,
+			}); err != nil {
+				return err
+			}
 		}
 
-		if _, err = conn.Write(messages.ReadyForQuery{
-			Indicator: messages.ReadyForQueryTransactionIndicator_Idle,
-		}.Bytes()); err != nil {
-			fmt.Println(err)
-			return
+		if commandComplete.IsIUD() {
+			commandComplete.Rows = int32(res.RowsAffected)
+		} else {
+			commandComplete.Rows += int32(len(res.Rows))
 		}
+		return nil
+	}); err != nil {
+		fmt.Println(err.Error())
+		return
+	}
+
+	if err := messages.Send(conn, commandComplete); err != nil {
+		fmt.Println(err)
+		return
+	}
+
+	if err := messages.Send(conn, messages.ReadyForQuery{
+		Indicator: messages.ReadyForQueryTransactionIndicator_Idle,
+	}); err != nil {
+		fmt.Println(err)
+		return
 	}
 }

@@ -1,76 +1,113 @@
+// Copyright 2023 Dolthub, Inc.
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//     http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
+
 package messages
 
 import (
-	"bytes"
 	"fmt"
 	"strconv"
 	"strings"
 )
 
-// CommandCompleteTag indicates which SQL command was completed.
-type CommandCompleteTag byte
-
-const (
-	CommandCompleteTag_INSERT CommandCompleteTag = iota
-	CommandCompleteTag_DELETE
-	CommandCompleteTag_UPDATE
-	CommandCompleteTag_MERGE
-	CommandCompleteTag_SELECT
-	CommandCompleteTag_MOVE
-	CommandCompleteTag_FETCH
-	CommandCompleteTag_COPY
-)
+func init() {
+	initializeDefaultMessage(CommandComplete{})
+	addMessageHeader(CommandComplete{})
+}
 
 // CommandComplete tells the client that the command has completed.
 type CommandComplete struct {
-	Tag  CommandCompleteTag
-	Rows int32
+	Query string
+	Rows  int32
 }
 
-// Bytes returns CommandComplete as a byte slice, ready to be returned to the client.
-func (cc CommandComplete) Bytes() []byte {
-	buf := bytes.Buffer{}
-	buf.WriteByte('C')          // Message Type
-	WriteNumber(&buf, int32(0)) // Message length, will be corrected later
-	switch cc.Tag {
-	case CommandCompleteTag_INSERT:
-		buf.WriteString("INSERT 0 ")
-	case CommandCompleteTag_DELETE:
-		buf.WriteString("DELETE ")
-	case CommandCompleteTag_UPDATE:
-		buf.WriteString("UPDATE ")
-	case CommandCompleteTag_MERGE:
-		buf.WriteString("MERGE ")
-	case CommandCompleteTag_SELECT:
-		buf.WriteString("SELECT ")
-	case CommandCompleteTag_MOVE:
-		buf.WriteString("MOVE ")
-	case CommandCompleteTag_FETCH:
-		buf.WriteString("FETCH ")
-	case CommandCompleteTag_COPY:
-		buf.WriteString("COPY ")
-	}
-	buf.WriteString(strconv.Itoa(int(cc.Rows)))
-	buf.WriteByte(0) // Trailing NULL character, denoting the end of the string
-	return WriteLength(buf.Bytes())
+var commandCompleteDefault = Message{
+	Name: "CommandComplete",
+	Fields: []*Field{
+		{
+			Name: "Header",
+			Type: Byte1,
+			Tags: Header,
+			Data: int32('C'),
+		},
+		{
+			Name: "MessageLength",
+			Type: Int32,
+			Tags: MessageLengthInclusive,
+			Data: int32(0),
+		},
+		{
+			Name: "CommandTag",
+			Type: String,
+			Data: "",
+		},
+	},
 }
 
-// QueryToCommandCompleteTag returns the appropriate command tag for the given query.
-func QueryToCommandCompleteTag(query string) (CommandCompleteTag, error) {
-	query = strings.TrimSpace(strings.ToLower(query))
-	if strings.HasPrefix(query, "select") {
-		return CommandCompleteTag_SELECT, nil
-	} else if strings.HasPrefix(query, "insert") {
-		return CommandCompleteTag_INSERT, nil
-	} else if strings.HasPrefix(query, "update") {
-		return CommandCompleteTag_UPDATE, nil
-	} else if strings.HasPrefix(query, "delete") {
-		return CommandCompleteTag_DELETE, nil
-	} else if strings.HasPrefix(query, "create") {
-		return CommandCompleteTag_SELECT, nil
-	} else if strings.HasPrefix(query, "call") {
-		return CommandCompleteTag_SELECT, nil
+var _ MessageType = CommandComplete{}
+
+// IsIUD returns whether the query is either an INSERT, UPDATE, or DELETE query.
+func (m CommandComplete) IsIUD() bool {
+	query := strings.TrimSpace(strings.ToLower(m.Query))
+	if strings.HasPrefix(query, "insert") ||
+		strings.HasPrefix(query, "update") ||
+		strings.HasPrefix(query, "delete") {
+		return true
 	} else {
-		return 0, fmt.Errorf("unsupported query for now")
+		return false
 	}
+}
+
+// encode implements the interface MessageType.
+func (m CommandComplete) encode() (Message, error) {
+	outputMessage := m.defaultMessage().Copy()
+	query := strings.TrimSpace(strings.ToLower(m.Query))
+	if strings.HasPrefix(query, "select") {
+		outputMessage.Field("CommandTag").MustWrite(fmt.Sprintf("SELECT %d", m.Rows))
+	} else if strings.HasPrefix(query, "insert") {
+		outputMessage.Field("CommandTag").MustWrite(fmt.Sprintf("INSERT 0 %d", m.Rows))
+	} else if strings.HasPrefix(query, "update") {
+		outputMessage.Field("CommandTag").MustWrite(fmt.Sprintf("UPDATE %d", m.Rows))
+	} else if strings.HasPrefix(query, "delete") {
+		outputMessage.Field("CommandTag").MustWrite(fmt.Sprintf("DELETE %d", m.Rows))
+	} else if strings.HasPrefix(query, "create") {
+		outputMessage.Field("CommandTag").MustWrite(fmt.Sprintf("SELECT %d", m.Rows))
+	} else if strings.HasPrefix(query, "call") {
+		outputMessage.Field("CommandTag").MustWrite(fmt.Sprintf("SELECT %d", m.Rows))
+	} else {
+		return Message{}, fmt.Errorf("unsupported query for now")
+	}
+	return outputMessage, nil
+}
+
+// decode implements the interface MessageType.
+func (m CommandComplete) decode(s Message) (MessageType, error) {
+	if err := s.MatchesStructure(*m.defaultMessage()); err != nil {
+		return nil, err
+	}
+	query := strings.TrimSpace(s.Field("CommandTag").MustGet().(string))
+	tokens := strings.Split(query, " ")
+	rows, err := strconv.Atoi(tokens[len(tokens)-1])
+	if err != nil {
+		return nil, err
+	}
+	return CommandComplete{
+		Query: query,
+		Rows:  int32(rows),
+	}, nil
+}
+
+// defaultMessage implements the interface MessageType.
+func (m CommandComplete) defaultMessage() *Message {
+	return &commandCompleteDefault
 }

@@ -1,103 +1,104 @@
+// Copyright 2023 Dolthub, Inc.
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//     http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
+
 package messages
 
 import (
-	"bytes"
-	"fmt"
-	"strconv"
-	"time"
-
 	"github.com/dolthub/vitess/go/sqltypes"
-
-	"github.com/shopspring/decimal"
 )
+
+func init() {
+	initializeDefaultMessage(DataRow{})
+	addMessageHeader(DataRow{})
+}
 
 // DataRow represents a row of data.
 type DataRow struct {
-	Values []DataRowValue
+	Values []sqltypes.Value
 }
 
-// DataRowValue represents a column's value in a DataRow.
-type DataRowValue struct {
-	Value any
+var dataRowDefault = Message{
+	Name: "DataRow",
+	Fields: []*Field{
+		{
+			Name: "Header",
+			Type: Byte1,
+			Tags: Header,
+			Data: int32('D'),
+		},
+		{
+			Name: "MessageLength",
+			Type: Int32,
+			Tags: MessageLengthInclusive,
+			Data: int32(0),
+		},
+		{
+			Name: "Columns",
+			Type: Int16,
+			Data: int32(0),
+			Children: [][]*Field{
+				{
+					{
+						Name: "ColumnLength",
+						Type: Int32,
+						Tags: ByteCount,
+						Data: int32(0),
+					},
+					{
+						Name: "ColumnData",
+						Type: ByteN,
+						Data: []byte{},
+					},
+				},
+			},
+		},
+	},
 }
 
-// NewDataRow creates a new DataRow from the given rows.
-func NewDataRow(row []sqltypes.Value) DataRow {
-	values := make([]DataRowValue, len(row))
-	for i, value := range row {
-		values[i] = DataRowValue{value.ToString()}
+var _ MessageType = DataRow{}
+
+// encode implements the interface MessageType.
+func (m DataRow) encode() (Message, error) {
+	outputMessage := m.defaultMessage().Copy()
+	outputMessage.Field("Columns").MustWrite(len(m.Values))
+	for i := 0; i < len(m.Values); i++ {
+		if m.Values[i].IsNull() {
+			outputMessage.Field("Columns").Child("ColumnLength", i).MustWrite(-1)
+		} else {
+			value := []byte(m.Values[i].ToString())
+			outputMessage.Field("Columns").Child("ColumnLength", i).MustWrite(len(value))
+			outputMessage.Field("Columns").Child("ColumnData", i).MustWrite(value)
+		}
+	}
+	return outputMessage, nil
+}
+
+// decode implements the interface MessageType.
+func (m DataRow) decode(s Message) (MessageType, error) {
+	if err := s.MatchesStructure(*m.defaultMessage()); err != nil {
+		return nil, err
+	}
+	columnCount := int(s.Field("Columns").MustGet().(int32))
+	for i := 0; i < columnCount; i++ {
+		//TODO: decode the message in here
 	}
 	return DataRow{
-		Values: values,
-	}
+		Values: nil,
+	}, nil
 }
 
-// Bytes returns DataRow as a byte slice, ready to be returned to the client.
-func (dr DataRow) Bytes() []byte {
-	buf := bytes.Buffer{}
-	buf.WriteByte('D')          // Message Type
-	WriteNumber(&buf, int32(0)) // Message length, will be corrected later
-	WriteNumber(&buf, int16(len(dr.Values)))
-	for _, drv := range dr.Values {
-		drv.Bytes(&buf)
-	}
-	return WriteLength(buf.Bytes())
-}
-
-// Bytes writes the value into the given buffer.
-func (drv DataRowValue) Bytes(buf *bytes.Buffer) {
-	var dataBytes []byte
-	switch val := drv.Value.(type) {
-	case int:
-		dataBytes = []byte(strconv.FormatInt(int64(val), 10))
-	case int8:
-		dataBytes = []byte(strconv.FormatInt(int64(val), 10))
-	case int16:
-		dataBytes = []byte(strconv.FormatInt(int64(val), 10))
-	case int32:
-		dataBytes = []byte(strconv.FormatInt(int64(val), 10))
-	case int64:
-		dataBytes = []byte(strconv.FormatInt(val, 10))
-	case uint:
-		dataBytes = []byte(strconv.FormatUint(uint64(val), 10))
-	case uint8:
-		dataBytes = []byte(strconv.FormatUint(uint64(val), 10))
-	case uint16:
-		dataBytes = []byte(strconv.FormatUint(uint64(val), 10))
-	case uint32:
-		dataBytes = []byte(strconv.FormatUint(uint64(val), 10))
-	case uint64:
-		dataBytes = []byte(strconv.FormatUint(val, 10))
-	case float32:
-		dataBytes = []byte(strconv.FormatFloat(float64(val), 'g', -1, 32))
-	case float64:
-		dataBytes = []byte(strconv.FormatFloat(val, 'g', -1, 64))
-	case decimal.NullDecimal:
-		if !val.Valid {
-			WriteNumber(buf, int32(-1))
-			return
-		}
-		dataBytes = []byte(val.Decimal.String())
-	case decimal.Decimal:
-		dataBytes = []byte(val.String())
-	case []byte:
-		dataBytes = val
-	case string:
-		dataBytes = []byte(val)
-	case bool:
-		if val {
-			dataBytes = []byte("true")
-		} else {
-			dataBytes = []byte("false")
-		}
-	case time.Time:
-		dataBytes = []byte(val.Format(time.RFC3339))
-	case nil:
-		WriteNumber(buf, int32(-1))
-		return
-	default:
-		panic(fmt.Errorf("unknown DataRow value type: %T", val))
-	}
-	WriteNumber(buf, int32(len(dataBytes))) // This length only covers the value's size
-	buf.Write(dataBytes)
+// defaultMessage implements the interface MessageType.
+func (m DataRow) defaultMessage() *Message {
+	return &dataRowDefault
 }
