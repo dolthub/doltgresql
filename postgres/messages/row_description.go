@@ -99,7 +99,6 @@ var _ MessageType = RowDescription{}
 // encode implements the interface MessageType.
 func (m RowDescription) encode() (Message, error) {
 	outputMessage := m.defaultMessage().Copy()
-	outputMessage.Field("Fields").MustWrite(len(m.Fields))
 	for i := 0; i < len(m.Fields); i++ {
 		field := m.Fields[i]
 		dataTypeObjectID, err := VitessFieldToDataTypeObjectID(field)

@@ -38,7 +38,7 @@ var authenticationOkDefault = Message{
 			Data: int32(8),
 		},
 		{
-			Name: "Padding",
+			Name: "Status",
 			Type: Int32,
 			Data: int32(0),
 		},

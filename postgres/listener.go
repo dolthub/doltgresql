@@ -107,7 +107,7 @@ func (l *Listener) HandleConnection(conn net.Conn) {
 		}
 		return
 	}
-	startupMessage, err := messages.ReadStartupMessage(buf)
+	startupMessage, err := messages.ReceiveInto(buf, messages.StartupMessage{})
 	if err != nil {
 		fmt.Println(err)
 		return

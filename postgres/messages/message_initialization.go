@@ -19,6 +19,9 @@ import "fmt"
 // allMessageHeaders contains any message headers that should be read within the main read loop of a connection.
 var allMessageHeaders = make(map[byte]MessageType)
 
+// allMessageNames contains the names of all messages, as they should all be unique.
+var allMessageNames = make(map[string]struct{})
+
 // addMessageHeader adds the given MessageType's header. This also ensures that each header is unique. This should be
 // called in an init() function.
 func addMessageHeader(message MessageType) {
@@ -42,13 +45,18 @@ func initializeDefaultMessage(messageType MessageType) {
 	if message.info != nil {
 		panic(fmt.Errorf("Message has already been initialized.\nMessage:\n\n%s", message.String()))
 	}
+	if _, ok := allMessageNames[message.Name]; ok {
+		panic(fmt.Errorf("Message has already been initialized with the same name.\nName: %s", message.Name))
+	}
+	allMessageNames[message.Name] = struct{}{}
 	message.info = &messageInfo{make(map[string]messageFieldInfo), message}
 	message.isDefault = true
 
 	allFieldNames := make(map[string]struct{}) // Verify that all field names are unique
 	headerFound := false                       // Only one header may exist in the message
 	messageLengthFound := false                // Only one message length may exist in the message
-	endingByteNFound := false
+	endingByteNFound := false                  // If a ByteN has been found that does not have a preceding ByteCount
+	repeatedFoundHeight := 0                   // The depth that a Repeated type has been found
 	type FieldTraversal struct {
 		Index  int
 		Fields []*Field
@@ -66,6 +74,11 @@ func initializeDefaultMessage(messageType MessageType) {
 		// field, and we're now looking at a field after it.
 		if endingByteNFound {
 			panic(fmt.Errorf("ByteN found that was not preceded by a field with the ByteCount tag.\nMessage:\n\n%s", message.String()))
+		}
+		// If the stack is larger than Repeated's height, then we're probably in Repeated's children.
+		// Otherwise, there are more non-child fields after the Repeated type.
+		if ftStack.Len() <= repeatedFoundHeight {
+			panic(fmt.Errorf("Repeated is not on the last field at its level\nMessage:\n\n%s", message.String()))
 		}
 		// Grab the field.
 		field := ftStack.Peek().Fields[ftStack.Peek().Index]
@@ -117,7 +130,7 @@ func initializeDefaultMessage(messageType MessageType) {
 		}
 		// Verify the type for each default value
 		switch field.Type {
-		case Byte1, Int8, Int16, Int32:
+		case Byte1, Int8, Int16, Int32, Repeated:
 			if _, ok := field.Data.(int32); !ok {
 				panic(fmt.Errorf("Integer field types must set their Data to an int32 value.\nField: %s\nMessage:\n\n%s", field.Name, message.String()))
 			}
@@ -136,7 +149,7 @@ func initializeDefaultMessage(messageType MessageType) {
 		if len(field.Children) > 0 {
 			count := int32(0)
 			switch field.Type {
-			case Byte1, Int8, Int16, Int32:
+			case Byte1, Int8, Int16, Int32, Repeated:
 				count = field.Data.(int32)
 			default:
 				panic(fmt.Errorf("Only integer types may have children, as they determine the count.\nField: %s\nMessage:\n\n%s", field.Name, message.String()))
@@ -149,6 +162,13 @@ func initializeDefaultMessage(messageType MessageType) {
 			if len(field.Children) > 1 {
 				panic(fmt.Errorf("Only a single child may be declared in the default message.\nField: %s\nMessage:\n\n%s", field.Name, message.String()))
 			}
+		}
+		// Repeated may only be on a single field. Children of a Repeated field cannot also have Repeated children.
+		if field.Type == Repeated {
+			if repeatedFoundHeight != 0 {
+				panic(fmt.Errorf("Multiple Repeated types declared.\nField: %s\nMessage:\n\n%s", field.Name, message.String()))
+			}
+			repeatedFoundHeight = ftStack.Len()
 		}
 
 		// Write the field info into our message

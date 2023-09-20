@@ -17,6 +17,7 @@ package messages
 import (
 	"bytes"
 	"encoding/binary"
+	"errors"
 	"net"
 )
 
@@ -30,11 +31,22 @@ func Receive(buffer []byte) (MessageType, bool, error) {
 	if !ok {
 		return nil, false, nil
 	}
+	outMessage, err := ReceiveInto(buffer, message)
+	return outMessage, true, err
+}
+
+// ReceiveInto writes the contents of the buffer into the given MessageType.
+func ReceiveInto[T MessageType](buffer []byte, message T) (out T, err error) {
 	defaultMessage := message.defaultMessage()
 	fields := defaultMessage.Copy().Fields
-	decode(buffer, [][]*Field{fields}, 1)
-	outMessage, err := message.decode(Message{defaultMessage.Name, fields, defaultMessage.info, false})
-	return outMessage, true, err
+	if err = decode(&decodeBuffer{buffer}, [][]*Field{fields}, 1); err != nil {
+		return out, err
+	}
+	decodedMessage, err := message.decode(Message{defaultMessage.Name, fields, defaultMessage.info, false})
+	if err != nil {
+		return out, err
+	}
+	return decodedMessage.(T), nil
 }
 
 // Send sends the given message over the connection.
@@ -51,59 +63,116 @@ func Send(conn net.Conn, message MessageType) error {
 	return err
 }
 
+// decodeBuffer just provides an easy way to reference the same buffer, so that decode can modify its length.
+type decodeBuffer struct {
+	data []byte
+}
+
 // decode writes the contents of the buffer into the given fields. The iteration count determines how many times the
 // fields will be looped over.
-func decode(buffer []byte, fields [][]*Field, iterations int32) {
+func decode(buffer *decodeBuffer, fields [][]*Field, iterations int32) error {
 	for iteration := int32(0); iteration < iterations; iteration++ {
-		for _, field := range fields[iteration] {
-			if len(buffer) == 0 {
-				panic("buffer too small")
+		for i, field := range fields[iteration] {
+			if len(buffer.data) == 0 {
+				return errors.New("buffer too small")
 			}
 			switch field.Type {
 			case Byte1, Int8:
-				field.Data = int32(buffer[0])
-				buffer = buffer[1:]
+				field.Data = int32(buffer.data[0])
+				buffer.data = buffer.data[1:]
 			case ByteN:
-				data := make([]byte, len(buffer))
-				copy(data, buffer)
-				field.Data = data
-				buffer = nil
+				if i > 0 && fields[iteration][i-1].Tags&ByteCount > 0 {
+					byteCount := fields[iteration][i-1].Data.(int32)
+					data := make([]byte, byteCount)
+					copy(data, buffer.data)
+					field.Data = data
+					buffer.data = buffer.data[byteCount:]
+				} else {
+					data := make([]byte, len(buffer.data))
+					copy(data, buffer.data)
+					field.Data = data
+					buffer.data = nil
+				}
 			case Int16:
-				field.Data = int32(binary.BigEndian.Uint16(buffer))
-				buffer = buffer[2:]
+				field.Data = int32(binary.BigEndian.Uint16(buffer.data))
+				buffer.data = buffer.data[2:]
 			case Int32:
-				field.Data = int32(binary.BigEndian.Uint32(buffer))
-				buffer = buffer[4:]
+				field.Data = int32(binary.BigEndian.Uint32(buffer.data))
+				buffer.data = buffer.data[4:]
 			case String:
 				found := false
-				for bufferIdx := range buffer {
-					if buffer[bufferIdx] == 0 {
-						field.Data = string(buffer[:bufferIdx])
-						buffer = buffer[bufferIdx:]
+				for bufferIdx := range buffer.data {
+					if buffer.data[bufferIdx] == 0 {
+						field.Data = string(buffer.data[:bufferIdx])
+						buffer.data = buffer.data[bufferIdx:]
 						if field.Tags&ExcludeTerminator == 0 {
-							buffer = buffer[1:]
+							buffer.data = buffer.data[1:]
 						}
 						found = true
 						break
 					}
 				}
 				if !found {
-					panic("terminating zero not found for string")
+					return errors.New("terminating zero not found for string")
+				}
+			case Repeated:
+				// Track if we've decoded at least once, so that we only update the count if we've decoded something
+				decodedAtLeastOnce := false
+				originalChildren := field.Copy().Children[0]
+				for i := 1; len(buffer.data) > 1; i++ {
+					field.extend(i, originalChildren)
+					if err := decode(buffer, field.Children[len(field.Children)-1:], 1); err != nil {
+						return err
+					}
+					decodedAtLeastOnce = true
+				}
+				// Some messages append a NULL byte at the end of the sequence, so we should handle that.
+				// If we have a single Byte1/Int8 child, then we assume that this isn't a NULL byte, but a valid value.
+				if len(buffer.data) == 1 && buffer.data[0] == 0 {
+					if len(originalChildren) == 1 && (originalChildren[0].Type == Byte1 || originalChildren[0].Type == Int8) {
+						field.extend(len(field.Children)+1, originalChildren)
+						if err := decode(buffer, field.Children[len(field.Children)-1:], 1); err != nil {
+							return err
+						}
+						decodedAtLeastOnce = true
+					} else {
+						buffer.data = buffer.data[1:]
+					}
+				}
+				if decodedAtLeastOnce {
+					field.Data = int32(len(field.Children))
 				}
 			default:
 				panic("message type has not been defined")
 			}
 
-			if len(field.Children) > 0 {
+			if field.Tags&MessageLengthInclusive > 0 {
+				messageLength := field.Data.(int32)
+				switch field.Type {
+				case Byte1, Int8:
+					messageLength -= 1
+				case Int16:
+					messageLength -= 2
+				case Int32:
+					messageLength -= 4
+				}
+				buffer.data = buffer.data[:messageLength]
+			} else if field.Tags&MessageLengthExclusive > 0 {
+				buffer.data = buffer.data[:field.Data.(int32)]
+			}
+			if len(field.Children) > 0 && field.Type != Repeated {
 				count, ok := field.Data.(int32)
 				if !ok {
-					panic("non-integer is being used as a count")
+					return errors.New("non-integer is being used as a count")
 				}
 				field.extend(int(count), field.Children[0])
-				decode(buffer, field.Children, count)
+				if err := decode(buffer, field.Children, count); err != nil {
+					return err
+				}
 			}
 		}
 	}
+	return nil
 }
 
 // encode transforms the message into a byte slice, which may be sent to a connection.
@@ -117,7 +186,7 @@ func encode(ms Message) ([]byte, error) {
 	for i, field := range ms.Fields {
 		if field.Tags&(MessageLengthInclusive|MessageLengthExclusive) > 0 {
 			typeLength := int32(0)
-			// Exclusive lengths must take their own type size into account
+			// Exclusive lengths must take their own type size into account and exclude them from the overall length
 			if field.Tags&MessageLengthExclusive > 0 {
 				switch field.Type {
 				case Byte1, Int8:
@@ -172,6 +241,8 @@ func encode(ms Message) ([]byte, error) {
 			if !found {
 				panic("terminating zero not found for string")
 			}
+		case Repeated:
+			byteOffset = int32(len(data)) // Last field, so we can set it to the remaining data
 		default:
 			panic("message type has not been defined")
 		}
@@ -200,6 +271,8 @@ func encodeLoop(buffer *bytes.Buffer, fields [][]*Field, iterations int32) {
 				if field.Tags&ExcludeTerminator == 0 {
 					buffer.WriteByte(0)
 				}
+			case Repeated:
+				// We don't write anything for repeated fields, since they repeat their children until the end
 			default:
 				panic("message type has not been defined")
 			}

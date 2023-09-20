@@ -14,53 +14,93 @@
 
 package messages
 
-import (
-	"encoding/binary"
-	"fmt"
-)
+func init() {
+	initializeDefaultMessage(StartupMessage{})
+}
 
 // StartupMessage is returned by the client upon connecting to the server, providing details about the client.
 type StartupMessage struct {
-	ProtocolMajorVersion int16
-	ProtocolMinorVersion int16
+	ProtocolMajorVersion int
+	ProtocolMinorVersion int
 	Parameters           map[string]string
 }
 
-// ReadStartupMessage returns the StartupMessage from the buffer.
-func ReadStartupMessage(buf []byte) (StartupMessage, error) {
-	if len(buf) < 4 {
-		return StartupMessage{}, fmt.Errorf("invalid StartupMessage")
+var startupMessageDefault = Message{
+	Name: "StartupMessage",
+	Fields: []*Field{
+		{
+			Name: "MessageLength",
+			Type: Int32,
+			Tags: MessageLengthInclusive,
+			Data: int32(0),
+		},
+		{ // The docs specify a single Int32 field, but the upper and lower bits are different values, so this just splits them
+			Name: "ProtocolMajorVersion",
+			Type: Int16,
+			Data: int32(0),
+		},
+		{
+			Name: "ProtocolMinorVersion",
+			Type: Int16,
+			Data: int32(0),
+		},
+		{
+			Name: "Parameters",
+			Type: Repeated,
+			Data: int32(0),
+			Children: [][]*Field{
+				{
+					{
+						Name: "ParameterName",
+						Type: String,
+						Data: "",
+					},
+					{
+						Name: "ParameterValue",
+						Type: String,
+						Data: "",
+					},
+				},
+			},
+		},
+	},
+}
+
+var _ MessageType = StartupMessage{}
+
+// encode implements the interface MessageType.
+func (m StartupMessage) encode() (Message, error) {
+	outputMessage := m.defaultMessage().Copy()
+	outputMessage.Field("ProtocolMajorVersion").MustWrite(m.ProtocolMajorVersion)
+	outputMessage.Field("ProtocolMinorVersion").MustWrite(m.ProtocolMinorVersion)
+	index := 0
+	for name, value := range m.Parameters {
+		outputMessage.Field("Parameters").Child("ParameterName", index).MustWrite(name)
+		outputMessage.Field("Parameters").Child("ParameterValue", index).MustWrite(value)
+		index++
 	}
-	messageLength := int32(binary.BigEndian.Uint32(buf))
-	protocolMajorVersion := int16(binary.BigEndian.Uint16(buf[4:]))
-	protocolMinorVersion := int16(binary.BigEndian.Uint16(buf[6:]))
-	// Set the buffer to the stated length and skip the length and version
-	buf = buf[8:messageLength]
+	return outputMessage, nil
+}
+
+// decode implements the interface MessageType.
+func (m StartupMessage) decode(s Message) (MessageType, error) {
+	if err := s.MatchesStructure(*m.defaultMessage()); err != nil {
+		return nil, err
+	}
 	parameters := make(map[string]string)
-	for len(buf) > 0 {
-		var name string
-		var value string
-		for i, b := range buf {
-			if b == 0 {
-				name = string(buf[:i])
-				buf = buf[i+1:]
-				break
-			}
-		}
-		for i, b := range buf {
-			if b == 0 {
-				value = string(buf[:i])
-				buf = buf[i+1:]
-				break
-			}
-		}
-		if len(name) > 0 && len(value) > 0 {
-			parameters[name] = value
-		}
+	count := int(s.Field("Parameters").MustGet().(int32))
+	for i := 0; i < count; i++ {
+		parameters[s.Field("Parameters").Child("ParameterName", i).MustGet().(string)] =
+			s.Field("Parameters").Child("ParameterValue", i).MustGet().(string)
 	}
 	return StartupMessage{
-		ProtocolMajorVersion: protocolMajorVersion,
-		ProtocolMinorVersion: protocolMinorVersion,
+		ProtocolMajorVersion: int(s.Field("ProtocolMajorVersion").MustGet().(int32)),
+		ProtocolMinorVersion: int(s.Field("ProtocolMinorVersion").MustGet().(int32)),
 		Parameters:           parameters,
 	}, nil
+}
+
+// defaultMessage implements the interface MessageType.
+func (m StartupMessage) defaultMessage() *Message {
+	return &startupMessageDefault
 }

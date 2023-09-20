@@ -71,7 +71,6 @@ var _ MessageType = DataRow{}
 // encode implements the interface MessageType.
 func (m DataRow) encode() (Message, error) {
 	outputMessage := m.defaultMessage().Copy()
-	outputMessage.Field("Columns").MustWrite(len(m.Values))
 	for i := 0; i < len(m.Values); i++ {
 		if m.Values[i].IsNull() {
 			outputMessage.Field("Columns").Child("ColumnLength", i).MustWrite(-1)

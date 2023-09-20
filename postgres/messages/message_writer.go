@@ -67,7 +67,8 @@ func (mw MessageWriter) Write(value any) error {
 			return fmt.Errorf(`In the message "%s", the field "%s"" is not a child of the field "%s"`,
 				mw.message.Name, fq[0].name, field.Name)
 		}
-		field.extend(fq[0].position+1, defaultField.Children[0]) // extend takes the length, so add 1 to the position
+		field.extend(fq[0].position+1, defaultField.Children[0]) // extend() takes the length, so add 1 to the position
+		field.Data = int32(len(field.Children))                  // All types that have children are integer types
 		field = field.Children[fq[0].position][fieldInfo.RelativeIndex]
 		defaultField = defaultField.Children[0][fieldInfo.RelativeIndex]
 		// Remove the child from the queue
@@ -75,7 +76,7 @@ func (mw MessageWriter) Write(value any) error {
 	}
 
 	switch field.Type {
-	case Byte1, Int8, Int16, Int32:
+	case Byte1, Int8, Int16, Int32, Repeated:
 		switch value := value.(type) {
 		case int:
 			field.Data = int32(value)

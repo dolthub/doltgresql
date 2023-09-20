@@ -18,12 +18,13 @@ package messages
 type FieldType byte
 
 const (
-	Byte1  FieldType = iota // Byte1 is a single unsigned byte.
-	ByteN                   // ByteN is a variable number of bytes. Allowed on the last field, or when a ByteCount-tagged field precedes it.
-	Int8                    // Int8 is a single signed byte.
-	Int16                   // Int16 are two bytes.
-	Int32                   // Int32 are four bytes.
-	String                  // String is a variable-length type, generally punctuated by a NULL terminator.
+	Byte1    FieldType = iota // Byte1 is a single unsigned byte.
+	ByteN                     // ByteN is a variable number of bytes. Allowed on the last field, or when a ByteCount-tagged field precedes it.
+	Int8                      // Int8 is a single signed byte.
+	Int16                     // Int16 are two bytes.
+	Int32                     // Int32 are four bytes.
+	String                    // String is a variable-length type, generally punctuated by a NULL terminator.
+	Repeated                  // Repeated is a parent type that states its children will be repeated until the end of the message.
 
 	Byte4 = Int32 //TODO: verify that this is correct, only used on one type
 )
