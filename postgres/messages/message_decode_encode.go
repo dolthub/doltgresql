@@ -18,6 +18,7 @@ import (
 	"bytes"
 	"encoding/binary"
 	"errors"
+	"fmt"
 	"net"
 )
 
@@ -83,6 +84,11 @@ func decode(buffer *decodeBuffer, fields [][]*Field, iterations int32) error {
 			case ByteN:
 				if i > 0 && fields[iteration][i-1].Tags&ByteCount > 0 {
 					byteCount := fields[iteration][i-1].Data.(int32)
+					// -1 is a valid value for byte counts, which is used to signal a NULL value.
+					// We don't need to care about the assumption, so we can just treat it equivalent to zero.
+					if byteCount == -1 {
+						byteCount = 0
+					}
 					data := make([]byte, byteCount)
 					copy(data, buffer.data)
 					field.Data = data
@@ -119,25 +125,22 @@ func decode(buffer *decodeBuffer, fields [][]*Field, iterations int32) error {
 				// Track if we've decoded at least once, so that we only update the count if we've decoded something
 				decodedAtLeastOnce := false
 				originalChildren := field.Copy().Children[0]
-				for i := 1; len(buffer.data) > 1; i++ {
+				for i := 1; len(buffer.data) > 0; i++ {
+					// If there is only a single byte left, then it may be the terminator, so we check.
+					// Otherwise, we'll assume that we should pass it to the child.
+					if len(buffer.data) == 1 && field.Tags&RepeatedTerminator > 0 {
+						if buffer.data[0] == 0 {
+							buffer.data = buffer.data[1:]
+							break
+						} else {
+							return fmt.Errorf("Expected terminator after Repeated type, found invalid byte: %d", buffer.data[0])
+						}
+					}
 					field.extend(i, originalChildren)
 					if err := decode(buffer, field.Children[len(field.Children)-1:], 1); err != nil {
 						return err
 					}
 					decodedAtLeastOnce = true
-				}
-				// Some messages append a NULL byte at the end of the sequence, so we should handle that.
-				// If we have a single Byte1/Int8 child, then we assume that this isn't a NULL byte, but a valid value.
-				if len(buffer.data) == 1 && buffer.data[0] == 0 {
-					if len(originalChildren) == 1 && (originalChildren[0].Type == Byte1 || originalChildren[0].Type == Int8) {
-						field.extend(len(field.Children)+1, originalChildren)
-						if err := decode(buffer, field.Children[len(field.Children)-1:], 1); err != nil {
-							return err
-						}
-						decodedAtLeastOnce = true
-					} else {
-						buffer.data = buffer.data[1:]
-					}
 				}
 				if decodedAtLeastOnce {
 					field.Data = int32(len(field.Children))
@@ -165,9 +168,13 @@ func decode(buffer *decodeBuffer, fields [][]*Field, iterations int32) error {
 				if !ok {
 					return errors.New("non-integer is being used as a count")
 				}
-				field.extend(int(count), field.Children[0])
-				if err := decode(buffer, field.Children, count); err != nil {
-					return err
+				// Counts may be negative numbers, which have a special meaning depending on the message.
+				// In all such cases, they'll never have children, so we can just check for cases where it's > 0.
+				if count > 0 {
+					field.extend(int(count), field.Children[0])
+					if err := decode(buffer, field.Children, count); err != nil {
+						return err
+					}
 				}
 			}
 		}
@@ -179,6 +186,9 @@ func decode(buffer *decodeBuffer, fields [][]*Field, iterations int32) error {
 func encode(ms Message) ([]byte, error) {
 	buffer := bytes.Buffer{}
 	encodeLoop(&buffer, [][]*Field{ms.Fields}, 1)
+	if ms.info.appendNullByte {
+		buffer.WriteByte(0)
+	}
 	data := buffer.Bytes()
 
 	// Find and write the message length

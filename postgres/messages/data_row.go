@@ -20,7 +20,6 @@ import (
 
 func init() {
 	initializeDefaultMessage(DataRow{})
-	addMessageHeader(DataRow{})
 }
 
 // DataRow represents a row of data.

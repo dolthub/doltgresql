@@ -16,7 +16,6 @@ package messages
 
 func init() {
 	initializeDefaultMessage(ReadyForQuery{})
-	addMessageHeader(ReadyForQuery{})
 }
 
 // ReadyForQueryTransactionIndicator indicates the state of the transaction related to the query.

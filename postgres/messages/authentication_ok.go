@@ -19,7 +19,6 @@ type AuthenticationOk struct{}
 
 func init() {
 	initializeDefaultMessage(AuthenticationOk{})
-	addMessageHeader(AuthenticationOk{})
 }
 
 var authenticationOkDefault = Message{

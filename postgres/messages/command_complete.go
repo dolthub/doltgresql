@@ -22,7 +22,6 @@ import (
 
 func init() {
 	initializeDefaultMessage(CommandComplete{})
-	addMessageHeader(CommandComplete{})
 }
 
 // CommandComplete tells the client that the command has completed.

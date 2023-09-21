@@ -16,7 +16,6 @@ package messages
 
 func init() {
 	initializeDefaultMessage(ParameterStatus{})
-	addMessageHeader(ParameterStatus{})
 }
 
 // ParameterStatus reports various parameters to the client.

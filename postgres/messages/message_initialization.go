@@ -22,6 +22,9 @@ var allMessageHeaders = make(map[byte]MessageType)
 // allMessageNames contains the names of all messages, as they should all be unique.
 var allMessageNames = make(map[string]struct{})
 
+// allMessageDefaults contains all of the default message pointers, to make sure that they're not accidentally being reused.
+var allMessageDefaults = make(map[*Message]struct{})
+
 // addMessageHeader adds the given MessageType's header. This also ensures that each header is unique. This should be
 // called in an init() function.
 func addMessageHeader(message MessageType) {
@@ -42,6 +45,10 @@ func addMessageHeader(message MessageType) {
 // the message is correct. This should be called in an init() function.
 func initializeDefaultMessage(messageType MessageType) {
 	message := messageType.defaultMessage()
+	if _, ok := allMessageDefaults[message]; ok {
+		panic(fmt.Errorf("Message default was used in another message.\nMessage:\n\n%s", message.String()))
+	}
+	allMessageDefaults[message] = struct{}{}
 	if message.info != nil {
 		panic(fmt.Errorf("Message has already been initialized.\nMessage:\n\n%s", message.String()))
 	}
@@ -49,7 +56,7 @@ func initializeDefaultMessage(messageType MessageType) {
 		panic(fmt.Errorf("Message has already been initialized with the same name.\nName: %s", message.Name))
 	}
 	allMessageNames[message.Name] = struct{}{}
-	message.info = &messageInfo{make(map[string]messageFieldInfo), message}
+	message.info = &messageInfo{make(map[string]messageFieldInfo), false, message}
 	message.isDefault = true
 
 	allFieldNames := make(map[string]struct{}) // Verify that all field names are unique
@@ -169,6 +176,13 @@ func initializeDefaultMessage(messageType MessageType) {
 				panic(fmt.Errorf("Multiple Repeated types declared.\nField: %s\nMessage:\n\n%s", field.Name, message.String()))
 			}
 			repeatedFoundHeight = ftStack.Len()
+		}
+		// RepeatedTerminator is only allowed on Repeated types, and therefore follows all of its restrictions automatically.
+		if field.Tags&RepeatedTerminator > 0 {
+			if field.Type != Repeated {
+				panic(fmt.Errorf("RepeatedTerminator may only be used on a Repeated type.\nMessage:\n\n%s", message.String()))
+			}
+			message.info.appendNullByte = true
 		}
 
 		// Write the field info into our message

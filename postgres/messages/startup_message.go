@@ -47,6 +47,7 @@ var startupMessageDefault = Message{
 		{
 			Name: "Parameters",
 			Type: Repeated,
+			Tags: RepeatedTerminator,
 			Data: int32(0),
 			Children: [][]*Field{
 				{

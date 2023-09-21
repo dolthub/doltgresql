@@ -38,6 +38,7 @@ const (
 	MessageLengthExclusive                       // MessageLengthExclusive is the length of the message, excluding the count's size.
 	ExcludeTerminator                            // ExcludeTerminator excludes the terminator for String types.
 	ByteCount                                    // ByteCount signals that the following ByteN non-child field uses this field for its count.
+	RepeatedTerminator                           // RepeatedTerminator states that the Repeated type always ends with a NULL terminator.
 )
 
 // Field is a field within the PostgreSQL message.

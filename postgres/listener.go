@@ -93,9 +93,9 @@ func (l *Listener) HandleConnection(conn net.Conn) {
 		return
 	}
 
-	if _, err = conn.Write(messages.SSLResponse{
+	if err = messages.Send(conn, messages.SSLResponse{
 		SupportsSSL: false,
-	}.Bytes()); err != nil {
+	}); err != nil {
 		fmt.Println(err)
 		return
 	}

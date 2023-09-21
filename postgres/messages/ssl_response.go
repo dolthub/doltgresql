@@ -14,16 +14,61 @@
 
 package messages
 
+import "fmt"
+
+func init() {
+	initializeDefaultMessage(SSLResponse{})
+}
+
 // SSLResponse tells the client whether SSL is supported.
 type SSLResponse struct {
 	SupportsSSL bool
 }
 
-// Bytes returns SSLResponse as a byte slice, ready to be returned to the client.
-func (sslr SSLResponse) Bytes() []byte {
-	if sslr.SupportsSSL {
-		return []byte{'Y'}
+var sslResponseDefault = Message{
+	Name: "SSLResponse",
+	Fields: []*Field{
+		{
+			Name: "Supported",
+			Type: Byte1,
+			Data: int32(0),
+		},
+	},
+}
+
+var _ MessageType = SSLResponse{}
+
+// encode implements the interface MessageType.
+func (m SSLResponse) encode() (Message, error) {
+	outputMessage := m.defaultMessage().Copy()
+	if m.SupportsSSL {
+		outputMessage.Field("Supported").MustWrite('Y')
 	} else {
-		return []byte{'N'}
+		outputMessage.Field("Supported").MustWrite('N')
 	}
+	return outputMessage, nil
+}
+
+// decode implements the interface MessageType.
+func (m SSLResponse) decode(s Message) (MessageType, error) {
+	if err := s.MatchesStructure(*m.defaultMessage()); err != nil {
+		return nil, err
+	}
+	var supported bool
+	supportedInt := s.Field("Supported").MustGet().(int32)
+	if supportedInt == 'Y' {
+		supported = true
+	} else if supportedInt == 'N' {
+		supported = false
+	} else {
+		return nil, fmt.Errorf("Unexpected supported value in SSLResponse message: %d", supportedInt)
+	}
+	return SSLResponse{
+		SupportsSSL: supported,
+	}, nil
+}
+
+// defaultMessage implements the interface MessageType.
+func (m SSLResponse) defaultMessage() *Message {
+	return &sslResponseDefault
 }

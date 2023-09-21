@@ -50,6 +50,7 @@ type messageFieldInfo struct {
 // messageInfo contains all of the information that a message should keep track of. Used internally by messages.
 type messageInfo struct {
 	fieldInfo      map[string]messageFieldInfo
+	appendNullByte bool
 	defaultMessage *Message
 }
 

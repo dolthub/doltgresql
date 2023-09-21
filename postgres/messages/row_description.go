@@ -24,7 +24,6 @@ import (
 
 func init() {
 	initializeDefaultMessage(RowDescription{})
-	addMessageHeader(RowDescription{})
 }
 
 // RowDescription represents a RowDescription message intended for the client.
