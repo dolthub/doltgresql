@@ -22,40 +22,40 @@ func init() {
 // BindComplete represents a PostgreSQL message.
 type BindComplete struct{}
 
-var bindCompleteDefault = Message{
+var bindCompleteDefault = MessageFormat{
 	Name: "BindComplete",
-	Fields: []*Field{
+	Fields: FieldGroup{
 		{
-			Name: "Header",
-			Type: Byte1,
-			Tags: Header,
-			Data: int32('2'),
+			Name:  "Header",
+			Type:  Byte1,
+			Flags: Header,
+			Data:  int32('2'),
 		},
 		{
-			Name: "MessageLength",
-			Type: Int32,
-			Tags: MessageLengthInclusive,
-			Data: int32(4),
+			Name:  "MessageLength",
+			Type:  Int32,
+			Flags: MessageLengthInclusive,
+			Data:  int32(4),
 		},
 	},
 }
 
-var _ MessageType = BindComplete{}
+var _ Message = BindComplete{}
 
-// encode implements the interface MessageType.
-func (m BindComplete) encode() (Message, error) {
+// encode implements the interface Message.
+func (m BindComplete) encode() (MessageFormat, error) {
 	return m.defaultMessage().Copy(), nil
 }
 
-// decode implements the interface MessageType.
-func (m BindComplete) decode(s Message) (MessageType, error) {
+// decode implements the interface Message.
+func (m BindComplete) decode(s MessageFormat) (Message, error) {
 	if err := s.MatchesStructure(*m.defaultMessage()); err != nil {
 		return nil, err
 	}
 	return BindComplete{}, nil
 }
 
-// defaultMessage implements the interface MessageType.
-func (m BindComplete) defaultMessage() *Message {
+// defaultMessage implements the interface Message.
+func (m BindComplete) defaultMessage() *MessageFormat {
 	return &bindCompleteDefault
 }

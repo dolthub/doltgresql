@@ -21,20 +21,20 @@ func init() {
 // AuthenticationGSS represents a PostgreSQL message.
 type AuthenticationGSS struct{}
 
-var authenticationGSSDefault = Message{
+var authenticationGSSDefault = MessageFormat{
 	Name: "AuthenticationGSS",
-	Fields: []*Field{
+	Fields: FieldGroup{
 		{
-			Name: "Header",
-			Type: Byte1,
-			Tags: Header,
-			Data: int32('R'),
+			Name:  "Header",
+			Type:  Byte1,
+			Flags: Header,
+			Data:  int32('R'),
 		},
 		{
-			Name: "MessageLength",
-			Type: Int32,
-			Tags: MessageLengthInclusive,
-			Data: int32(8),
+			Name:  "MessageLength",
+			Type:  Int32,
+			Flags: MessageLengthInclusive,
+			Data:  int32(8),
 		},
 		{
 			Name: "Status",
@@ -44,22 +44,22 @@ var authenticationGSSDefault = Message{
 	},
 }
 
-var _ MessageType = AuthenticationGSS{}
+var _ Message = AuthenticationGSS{}
 
-// encode implements the interface MessageType.
-func (m AuthenticationGSS) encode() (Message, error) {
+// encode implements the interface Message.
+func (m AuthenticationGSS) encode() (MessageFormat, error) {
 	return m.defaultMessage().Copy(), nil
 }
 
-// decode implements the interface MessageType.
-func (m AuthenticationGSS) decode(s Message) (MessageType, error) {
+// decode implements the interface Message.
+func (m AuthenticationGSS) decode(s MessageFormat) (Message, error) {
 	if err := s.MatchesStructure(*m.defaultMessage()); err != nil {
 		return nil, err
 	}
 	return AuthenticationGSS{}, nil
 }
 
-// defaultMessage implements the interface MessageType.
-func (m AuthenticationGSS) defaultMessage() *Message {
+// defaultMessage implements the interface Message.
+func (m AuthenticationGSS) defaultMessage() *MessageFormat {
 	return &authenticationGSSDefault
 }

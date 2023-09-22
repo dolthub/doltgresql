@@ -27,32 +27,32 @@ type DataRow struct {
 	Values []sqltypes.Value
 }
 
-var dataRowDefault = Message{
+var dataRowDefault = MessageFormat{
 	Name: "DataRow",
-	Fields: []*Field{
+	Fields: FieldGroup{
 		{
-			Name: "Header",
-			Type: Byte1,
-			Tags: Header,
-			Data: int32('D'),
+			Name:  "Header",
+			Type:  Byte1,
+			Flags: Header,
+			Data:  int32('D'),
 		},
 		{
-			Name: "MessageLength",
-			Type: Int32,
-			Tags: MessageLengthInclusive,
-			Data: int32(0),
+			Name:  "MessageLength",
+			Type:  Int32,
+			Flags: MessageLengthInclusive,
+			Data:  int32(0),
 		},
 		{
 			Name: "Columns",
 			Type: Int16,
 			Data: int32(0),
-			Children: [][]*Field{
+			Children: []FieldGroup{
 				{
 					{
-						Name: "ColumnLength",
-						Type: Int32,
-						Tags: ByteCount,
-						Data: int32(0),
+						Name:  "ColumnLength",
+						Type:  Int32,
+						Flags: ByteCount,
+						Data:  int32(0),
 					},
 					{
 						Name: "ColumnData",
@@ -65,10 +65,10 @@ var dataRowDefault = Message{
 	},
 }
 
-var _ MessageType = DataRow{}
+var _ Message = DataRow{}
 
-// encode implements the interface MessageType.
-func (m DataRow) encode() (Message, error) {
+// encode implements the interface Message.
+func (m DataRow) encode() (MessageFormat, error) {
 	outputMessage := m.defaultMessage().Copy()
 	for i := 0; i < len(m.Values); i++ {
 		if m.Values[i].IsNull() {
@@ -82,8 +82,8 @@ func (m DataRow) encode() (Message, error) {
 	return outputMessage, nil
 }
 
-// decode implements the interface MessageType.
-func (m DataRow) decode(s Message) (MessageType, error) {
+// decode implements the interface Message.
+func (m DataRow) decode(s MessageFormat) (Message, error) {
 	if err := s.MatchesStructure(*m.defaultMessage()); err != nil {
 		return nil, err
 	}
@@ -96,7 +96,7 @@ func (m DataRow) decode(s Message) (MessageType, error) {
 	}, nil
 }
 
-// defaultMessage implements the interface MessageType.
-func (m DataRow) defaultMessage() *Message {
+// defaultMessage implements the interface Message.
+func (m DataRow) defaultMessage() *MessageFormat {
 	return &dataRowDefault
 }

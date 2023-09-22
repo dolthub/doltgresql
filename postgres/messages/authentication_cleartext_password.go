@@ -21,20 +21,20 @@ func init() {
 // AuthenticationCleartextPassword represents a PostgreSQL message.
 type AuthenticationCleartextPassword struct{}
 
-var authenticationCleartextPasswordDefault = Message{
+var authenticationCleartextPasswordDefault = MessageFormat{
 	Name: "AuthenticationCleartextPassword",
-	Fields: []*Field{
+	Fields: FieldGroup{
 		{
-			Name: "Header",
-			Type: Byte1,
-			Tags: Header,
-			Data: int32('R'),
+			Name:  "Header",
+			Type:  Byte1,
+			Flags: Header,
+			Data:  int32('R'),
 		},
 		{
-			Name: "MessageLength",
-			Type: Int32,
-			Tags: MessageLengthInclusive,
-			Data: int32(8),
+			Name:  "MessageLength",
+			Type:  Int32,
+			Flags: MessageLengthInclusive,
+			Data:  int32(8),
 		},
 		{
 			Name: "Status",
@@ -44,22 +44,22 @@ var authenticationCleartextPasswordDefault = Message{
 	},
 }
 
-var _ MessageType = AuthenticationCleartextPassword{}
+var _ Message = AuthenticationCleartextPassword{}
 
-// encode implements the interface MessageType.
-func (m AuthenticationCleartextPassword) encode() (Message, error) {
+// encode implements the interface Message.
+func (m AuthenticationCleartextPassword) encode() (MessageFormat, error) {
 	return m.defaultMessage().Copy(), nil
 }
 
-// decode implements the interface MessageType.
-func (m AuthenticationCleartextPassword) decode(s Message) (MessageType, error) {
+// decode implements the interface Message.
+func (m AuthenticationCleartextPassword) decode(s MessageFormat) (Message, error) {
 	if err := s.MatchesStructure(*m.defaultMessage()); err != nil {
 		return nil, err
 	}
 	return AuthenticationCleartextPassword{}, nil
 }
 
-// defaultMessage implements the interface MessageType.
-func (m AuthenticationCleartextPassword) defaultMessage() *Message {
+// defaultMessage implements the interface Message.
+func (m AuthenticationCleartextPassword) defaultMessage() *MessageFormat {
 	return &authenticationCleartextPasswordDefault
 }

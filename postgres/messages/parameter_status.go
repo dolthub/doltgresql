@@ -24,20 +24,20 @@ type ParameterStatus struct {
 	Value string
 }
 
-var parameterStatusDefault = Message{
+var parameterStatusDefault = MessageFormat{
 	Name: "ParameterStatus",
-	Fields: []*Field{
+	Fields: FieldGroup{
 		{
-			Name: "Header",
-			Type: Byte1,
-			Tags: Header,
-			Data: int32('S'),
+			Name:  "Header",
+			Type:  Byte1,
+			Flags: Header,
+			Data:  int32('S'),
 		},
 		{
-			Name: "MessageLength",
-			Type: Int32,
-			Tags: MessageLengthInclusive,
-			Data: int32(0),
+			Name:  "MessageLength",
+			Type:  Int32,
+			Flags: MessageLengthInclusive,
+			Data:  int32(0),
 		},
 		{
 			Name: "Name",
@@ -52,18 +52,18 @@ var parameterStatusDefault = Message{
 	},
 }
 
-var _ MessageType = ParameterStatus{}
+var _ Message = ParameterStatus{}
 
-// encode implements the interface MessageType.
-func (m ParameterStatus) encode() (Message, error) {
+// encode implements the interface Message.
+func (m ParameterStatus) encode() (MessageFormat, error) {
 	outputMessage := m.defaultMessage().Copy()
 	outputMessage.Field("Name").MustWrite(m.Name)
 	outputMessage.Field("Value").MustWrite(m.Value)
 	return outputMessage, nil
 }
 
-// decode implements the interface MessageType.
-func (m ParameterStatus) decode(s Message) (MessageType, error) {
+// decode implements the interface Message.
+func (m ParameterStatus) decode(s MessageFormat) (Message, error) {
 	if err := s.MatchesStructure(*m.defaultMessage()); err != nil {
 		return nil, err
 	}
@@ -73,7 +73,7 @@ func (m ParameterStatus) decode(s Message) (MessageType, error) {
 	}, nil
 }
 
-// defaultMessage implements the interface MessageType.
-func (m ParameterStatus) defaultMessage() *Message {
+// defaultMessage implements the interface Message.
+func (m ParameterStatus) defaultMessage() *MessageFormat {
 	return &parameterStatusDefault
 }

@@ -29,34 +29,37 @@ const (
 	Byte4 = Int32 //TODO: verify that this is correct, only used on one type
 )
 
-// FieldTags are special attributes that may be assigned to fields.
-type FieldTags int32
+// FieldFlags are special attributes that may be assigned to fields.
+type FieldFlags int32
 
 const (
-	Header                 FieldTags = 1 << iota // Header is the header of the message.
-	MessageLengthInclusive                       // MessageLengthInclusive is the length of the message, including the count's size.
-	MessageLengthExclusive                       // MessageLengthExclusive is the length of the message, excluding the count's size.
-	ExcludeTerminator                            // ExcludeTerminator excludes the terminator for String types.
-	ByteCount                                    // ByteCount signals that the following ByteN non-child field uses this field for its count.
-	RepeatedTerminator                           // RepeatedTerminator states that the Repeated type always ends with a NULL terminator.
+	Header                 FieldFlags = 1 << iota // Header is the header of the message.
+	MessageLengthInclusive                        // MessageLengthInclusive is the length of the message, including the count's size.
+	MessageLengthExclusive                        // MessageLengthExclusive is the length of the message, excluding the count's size.
+	ExcludeTerminator                             // ExcludeTerminator excludes the terminator for String types.
+	ByteCount                                     // ByteCount signals that the following ByteN non-child field uses this field for its count.
+	RepeatedTerminator                            // RepeatedTerminator states that the Repeated type always ends with a NULL terminator.
 )
+
+// FieldGroup is a slice of fields. Mainly used for organization, as []FieldGroup looks better than []FieldGroup.
+type FieldGroup []*Field
 
 // Field is a field within the PostgreSQL message.
 type Field struct {
 	Name     string
 	Type     FieldType
-	Tags     FieldTags
+	Flags    FieldFlags
 	Data     any // Data may ONLY be one of the following: int32, string, []byte. Nil is not allowed.
-	Children [][]*Field
+	Children []FieldGroup
 }
 
 // Copy returns a copy of this field, which is free to modify.
 func (f *Field) Copy() *Field {
 	fieldCopy := *f
 	if len(f.Children) > 0 {
-		newChildren := make([][]*Field, len(f.Children))
+		newChildren := make([]FieldGroup, len(f.Children))
 		for groupIndex, fieldGroup := range f.Children {
-			newFields := make([]*Field, len(fieldGroup))
+			newFields := make(FieldGroup, len(fieldGroup))
 			for fieldIndex, field := range fieldGroup {
 				newFields[fieldIndex] = field.Copy()
 			}
@@ -70,9 +73,9 @@ func (f *Field) Copy() *Field {
 // extend lengthens the children to the new length, using the given default children to fill each newly-created entry.
 // All new entries will be copied from the default, therefore they're free to modify. This modifies the calling Field
 // in-place.
-func (f *Field) extend(newLength int, defaultChildren []*Field) {
+func (f *Field) extend(newLength int, defaultChildren FieldGroup) {
 	for currentIndex := len(f.Children); currentIndex < newLength; currentIndex++ {
-		newFields := make([]*Field, len(defaultChildren))
+		newFields := make(FieldGroup, len(defaultChildren))
 		for i, field := range defaultChildren {
 			newFields[i] = field.Copy()
 		}

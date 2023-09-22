@@ -23,20 +23,20 @@ type AuthenticationSASL struct {
 	Mechanisms []string
 }
 
-var authenticationSASLDefault = Message{
+var authenticationSASLDefault = MessageFormat{
 	Name: "AuthenticationSASL",
-	Fields: []*Field{
+	Fields: FieldGroup{
 		{
-			Name: "Header",
-			Type: Byte1,
-			Tags: Header,
-			Data: int32('R'),
+			Name:  "Header",
+			Type:  Byte1,
+			Flags: Header,
+			Data:  int32('R'),
 		},
 		{
-			Name: "MessageLength",
-			Type: Int32,
-			Tags: MessageLengthInclusive,
-			Data: int32(0),
+			Name:  "MessageLength",
+			Type:  Int32,
+			Flags: MessageLengthInclusive,
+			Data:  int32(0),
 		},
 		{
 			Name: "Status",
@@ -44,11 +44,11 @@ var authenticationSASLDefault = Message{
 			Data: int32(10),
 		},
 		{
-			Name: "Mechanisms",
-			Type: Repeated,
-			Tags: RepeatedTerminator,
-			Data: int32(0),
-			Children: [][]*Field{
+			Name:  "Mechanisms",
+			Type:  Repeated,
+			Flags: RepeatedTerminator,
+			Data:  int32(0),
+			Children: []FieldGroup{
 				{
 					{
 						Name: "Mechanism",
@@ -61,10 +61,10 @@ var authenticationSASLDefault = Message{
 	},
 }
 
-var _ MessageType = AuthenticationSASL{}
+var _ Message = AuthenticationSASL{}
 
-// encode implements the interface MessageType.
-func (m AuthenticationSASL) encode() (Message, error) {
+// encode implements the interface Message.
+func (m AuthenticationSASL) encode() (MessageFormat, error) {
 	outputMessage := m.defaultMessage().Copy()
 	for i, mechanism := range m.Mechanisms {
 		outputMessage.Field("Mechanisms").Child("Mechanism", i).MustWrite(mechanism)
@@ -72,8 +72,8 @@ func (m AuthenticationSASL) encode() (Message, error) {
 	return outputMessage, nil
 }
 
-// decode implements the interface MessageType.
-func (m AuthenticationSASL) decode(s Message) (MessageType, error) {
+// decode implements the interface Message.
+func (m AuthenticationSASL) decode(s MessageFormat) (Message, error) {
 	if err := s.MatchesStructure(*m.defaultMessage()); err != nil {
 		return nil, err
 	}
@@ -87,7 +87,7 @@ func (m AuthenticationSASL) decode(s Message) (MessageType, error) {
 	}, nil
 }
 
-// defaultMessage implements the interface MessageType.
-func (m AuthenticationSASL) defaultMessage() *Message {
+// defaultMessage implements the interface Message.
+func (m AuthenticationSASL) defaultMessage() *MessageFormat {
 	return &authenticationSASLDefault
 }

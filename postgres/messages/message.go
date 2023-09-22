@@ -19,25 +19,25 @@ import (
 	"strings"
 )
 
-// Message is a message as defined by PostgreSQL.
+// MessageFormat is the format of a message as defined by PostgreSQL. Contains the description and values.
 // https://www.postgresql.org/docs/15/protocol-message-formats.html
-type Message struct {
+type MessageFormat struct {
 	Name      string
-	Fields    []*Field
+	Fields    FieldGroup
 	info      *messageInfo
 	isDefault bool
 }
 
-// MessageType is a type that represents a PostgreSQL message.
-type MessageType interface {
-	// encode returns a new Message containing any modified data contained within the object. This should NOT be
+// Message is a type that represents a PostgreSQL message.
+type Message interface {
+	// encode returns a new MessageFormat containing any modified data contained within the object. This should NOT be
 	// the default message.
-	encode() (Message, error)
-	// decode returns a new MessageType that represents the given Message. You should never return the default
+	encode() (MessageFormat, error)
+	// decode returns a new Message that represents the given MessageFormat. You should never return the default
 	// message, even if the message never varies from the default. Always make a copy, and then modify that copy.
-	decode(s Message) (MessageType, error)
+	decode(s MessageFormat) (Message, error)
 	// defaultMessage returns the default, unmodified message for this type.
-	defaultMessage() *Message
+	defaultMessage() *MessageFormat
 }
 
 // messageFieldInfo contains information on a specific field within a messageInfo.
@@ -51,20 +51,20 @@ type messageFieldInfo struct {
 type messageInfo struct {
 	fieldInfo      map[string]messageFieldInfo
 	appendNullByte bool
-	defaultMessage *Message
+	defaultMessage *MessageFormat
 }
 
-// Copy returns a copy of the Message, which is free to modify.
-func (m Message) Copy() Message {
-	newFields := make([]*Field, len(m.Fields))
+// Copy returns a copy of the MessageFormat, which is free to modify.
+func (m MessageFormat) Copy() MessageFormat {
+	newFields := make(FieldGroup, len(m.Fields))
 	for i, field := range m.Fields {
 		newFields[i] = field.Copy()
 	}
-	return Message{m.Name, newFields, m.info, false}
+	return MessageFormat{m.Name, newFields, m.info, false}
 }
 
-// String returns a printable version of the Message.
-func (m Message) String() string {
+// String returns a printable version of the MessageFormat.
+func (m MessageFormat) String() string {
 	buffer := strings.Builder{}
 	buffer.WriteString(fmt.Sprintf("%s: {\n", m.Name))
 	buffer.WriteString("\n") //TODO: print this
@@ -72,15 +72,15 @@ func (m Message) String() string {
 	return buffer.String()
 }
 
-// MatchesStructure returns an error if the given Message has a different structure than the calling Message.
-func (m Message) MatchesStructure(otherMessage Message) error {
+// MatchesStructure returns an error if the given MessageFormat has a different structure than the calling MessageFormat.
+func (m MessageFormat) MatchesStructure(otherMessage MessageFormat) error {
 	//TODO: check this
 	return nil
 }
 
-// Field returns a MessageWriter for the calling Message, which makes it easier (and safer) to update the field whose
+// Field returns a MessageWriter for the calling MessageFormat, which makes it easier (and safer) to update the field whose
 // name was given.
-func (m Message) Field(name string) MessageWriter {
+func (m MessageFormat) Field(name string) MessageWriter {
 	return MessageWriter{
 		message:    m,
 		fieldQueue: []messageWriterChildPosition{{name, 0}},

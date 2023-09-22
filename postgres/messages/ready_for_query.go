@@ -32,20 +32,20 @@ type ReadyForQuery struct {
 	Indicator ReadyForQueryTransactionIndicator
 }
 
-var readyForQueryDefault = Message{
+var readyForQueryDefault = MessageFormat{
 	Name: "ReadyForQuery",
-	Fields: []*Field{
+	Fields: FieldGroup{
 		{
-			Name: "Header",
-			Type: Byte1,
-			Tags: Header,
-			Data: int32('Z'),
+			Name:  "Header",
+			Type:  Byte1,
+			Flags: Header,
+			Data:  int32('Z'),
 		},
 		{
-			Name: "MessageLength",
-			Type: Int32,
-			Tags: MessageLengthInclusive,
-			Data: int32(5),
+			Name:  "MessageLength",
+			Type:  Int32,
+			Flags: MessageLengthInclusive,
+			Data:  int32(5),
 		},
 		{
 			Name: "TransactionIndicator",
@@ -55,17 +55,17 @@ var readyForQueryDefault = Message{
 	},
 }
 
-var _ MessageType = ReadyForQuery{}
+var _ Message = ReadyForQuery{}
 
-// encode implements the interface MessageType.
-func (m ReadyForQuery) encode() (Message, error) {
+// encode implements the interface Message.
+func (m ReadyForQuery) encode() (MessageFormat, error) {
 	outputMessage := m.defaultMessage().Copy()
 	outputMessage.Field("TransactionIndicator").MustWrite(byte(m.Indicator))
 	return outputMessage, nil
 }
 
-// decode implements the interface MessageType.
-func (m ReadyForQuery) decode(s Message) (MessageType, error) {
+// decode implements the interface Message.
+func (m ReadyForQuery) decode(s MessageFormat) (Message, error) {
 	if err := s.MatchesStructure(*m.defaultMessage()); err != nil {
 		return nil, err
 	}
@@ -74,7 +74,7 @@ func (m ReadyForQuery) decode(s Message) (MessageType, error) {
 	}, nil
 }
 
-// defaultMessage implements the interface MessageType.
-func (m ReadyForQuery) defaultMessage() *Message {
+// defaultMessage implements the interface Message.
+func (m ReadyForQuery) defaultMessage() *MessageFormat {
 	return &readyForQueryDefault
 }

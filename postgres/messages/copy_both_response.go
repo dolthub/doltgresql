@@ -26,20 +26,20 @@ type CopyBothResponse struct {
 	FormatCodes []int32
 }
 
-var copyBothResponseDefault = Message{
+var copyBothResponseDefault = MessageFormat{
 	Name: "CopyBothResponse",
-	Fields: []*Field{
+	Fields: FieldGroup{
 		{
-			Name: "Header",
-			Type: Byte1,
-			Tags: Header,
-			Data: int32('W'),
+			Name:  "Header",
+			Type:  Byte1,
+			Flags: Header,
+			Data:  int32('W'),
 		},
 		{
-			Name: "MessageLength",
-			Type: Int32,
-			Tags: MessageLengthInclusive,
-			Data: int32(0),
+			Name:  "MessageLength",
+			Type:  Int32,
+			Flags: MessageLengthInclusive,
+			Data:  int32(0),
 		},
 		{
 			Name: "ResponseType",
@@ -50,7 +50,7 @@ var copyBothResponseDefault = Message{
 			Name: "Columns",
 			Type: Int16,
 			Data: int32(0),
-			Children: [][]*Field{
+			Children: []FieldGroup{
 				{
 					{
 						Name: "FormatCode",
@@ -63,10 +63,10 @@ var copyBothResponseDefault = Message{
 	},
 }
 
-var _ MessageType = CopyBothResponse{}
+var _ Message = CopyBothResponse{}
 
-// encode implements the interface MessageType.
-func (m CopyBothResponse) encode() (Message, error) {
+// encode implements the interface Message.
+func (m CopyBothResponse) encode() (MessageFormat, error) {
 	outputMessage := m.defaultMessage().Copy()
 	if m.IsTextual {
 		outputMessage.Field("ResponseType").MustWrite(0)
@@ -79,8 +79,8 @@ func (m CopyBothResponse) encode() (Message, error) {
 	return outputMessage, nil
 }
 
-// decode implements the interface MessageType.
-func (m CopyBothResponse) decode(s Message) (MessageType, error) {
+// decode implements the interface Message.
+func (m CopyBothResponse) decode(s MessageFormat) (Message, error) {
 	if err := s.MatchesStructure(*m.defaultMessage()); err != nil {
 		return nil, err
 	}
@@ -104,7 +104,7 @@ func (m CopyBothResponse) decode(s Message) (MessageType, error) {
 	}, nil
 }
 
-// defaultMessage implements the interface MessageType.
-func (m CopyBothResponse) defaultMessage() *Message {
+// defaultMessage implements the interface Message.
+func (m CopyBothResponse) defaultMessage() *MessageFormat {
 	return &copyBothResponseDefault
 }

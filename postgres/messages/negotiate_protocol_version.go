@@ -24,20 +24,20 @@ type NegotiateProtocolVersion struct {
 	UnrecognizedOptions []string
 }
 
-var negotiateProtocolVersionDefault = Message{
+var negotiateProtocolVersionDefault = MessageFormat{
 	Name: "NegotiateProtocolVersion",
-	Fields: []*Field{
+	Fields: FieldGroup{
 		{
-			Name: "Header",
-			Type: Byte1,
-			Tags: Header,
-			Data: int32('v'),
+			Name:  "Header",
+			Type:  Byte1,
+			Flags: Header,
+			Data:  int32('v'),
 		},
 		{
-			Name: "MessageLength",
-			Type: Int32,
-			Tags: MessageLengthInclusive,
-			Data: int32(0),
+			Name:  "MessageLength",
+			Type:  Int32,
+			Flags: MessageLengthInclusive,
+			Data:  int32(0),
 		},
 		{
 			Name: "NewestMinorProtocol",
@@ -48,7 +48,7 @@ var negotiateProtocolVersionDefault = Message{
 			Name: "UnrecognizedOptions",
 			Type: Int32,
 			Data: int32(0),
-			Children: [][]*Field{
+			Children: []FieldGroup{
 				{
 					{
 						Name: "UnrecognizedOption",
@@ -61,10 +61,10 @@ var negotiateProtocolVersionDefault = Message{
 	},
 }
 
-var _ MessageType = NegotiateProtocolVersion{}
+var _ Message = NegotiateProtocolVersion{}
 
-// encode implements the interface MessageType.
-func (m NegotiateProtocolVersion) encode() (Message, error) {
+// encode implements the interface Message.
+func (m NegotiateProtocolVersion) encode() (MessageFormat, error) {
 	outputMessage := m.defaultMessage().Copy()
 	outputMessage.Field("NewestMinorProtocol").MustWrite(m.NewestMinorProtocol)
 	for i, option := range m.UnrecognizedOptions {
@@ -73,8 +73,8 @@ func (m NegotiateProtocolVersion) encode() (Message, error) {
 	return outputMessage, nil
 }
 
-// decode implements the interface MessageType.
-func (m NegotiateProtocolVersion) decode(s Message) (MessageType, error) {
+// decode implements the interface Message.
+func (m NegotiateProtocolVersion) decode(s MessageFormat) (Message, error) {
 	if err := s.MatchesStructure(*m.defaultMessage()); err != nil {
 		return nil, err
 	}
@@ -89,7 +89,7 @@ func (m NegotiateProtocolVersion) decode(s Message) (MessageType, error) {
 	}, nil
 }
 
-// defaultMessage implements the interface MessageType.
-func (m NegotiateProtocolVersion) defaultMessage() *Message {
+// defaultMessage implements the interface Message.
+func (m NegotiateProtocolVersion) defaultMessage() *MessageFormat {
 	return &negotiateProtocolVersionDefault
 }

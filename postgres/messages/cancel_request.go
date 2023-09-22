@@ -24,14 +24,14 @@ type CancelRequest struct {
 	SecretKey int32
 }
 
-var cancelRequestDefault = Message{
+var cancelRequestDefault = MessageFormat{
 	Name: "CancelRequest",
-	Fields: []*Field{
+	Fields: FieldGroup{
 		{
-			Name: "MessageLength",
-			Type: Int32,
-			Tags: MessageLengthInclusive,
-			Data: int32(0),
+			Name:  "MessageLength",
+			Type:  Int32,
+			Flags: MessageLengthInclusive,
+			Data:  int32(0),
 		},
 		{
 			Name: "RequestCode",
@@ -51,18 +51,18 @@ var cancelRequestDefault = Message{
 	},
 }
 
-var _ MessageType = CancelRequest{}
+var _ Message = CancelRequest{}
 
-// encode implements the interface MessageType.
-func (m CancelRequest) encode() (Message, error) {
+// encode implements the interface Message.
+func (m CancelRequest) encode() (MessageFormat, error) {
 	outputMessage := m.defaultMessage().Copy()
 	outputMessage.Field("ProcessID").MustWrite(m.ProcessID)
 	outputMessage.Field("SecretKey").MustWrite(m.SecretKey)
 	return outputMessage, nil
 }
 
-// decode implements the interface MessageType.
-func (m CancelRequest) decode(s Message) (MessageType, error) {
+// decode implements the interface Message.
+func (m CancelRequest) decode(s MessageFormat) (Message, error) {
 	if err := s.MatchesStructure(*m.defaultMessage()); err != nil {
 		return nil, err
 	}
@@ -72,7 +72,7 @@ func (m CancelRequest) decode(s Message) (MessageType, error) {
 	}, nil
 }
 
-// defaultMessage implements the interface MessageType.
-func (m CancelRequest) defaultMessage() *Message {
+// defaultMessage implements the interface Message.
+func (m CancelRequest) defaultMessage() *MessageFormat {
 	return &cancelRequestDefault
 }

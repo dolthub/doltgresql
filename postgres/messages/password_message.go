@@ -23,20 +23,20 @@ type PasswordMessage struct {
 	Password string
 }
 
-var passwordMessageDefault = Message{
+var passwordMessageDefault = MessageFormat{
 	Name: "PasswordMessage",
-	Fields: []*Field{
+	Fields: FieldGroup{
 		{
-			Name: "Header",
-			Type: Byte1,
-			Tags: Header,
-			Data: int32('p'),
+			Name:  "Header",
+			Type:  Byte1,
+			Flags: Header,
+			Data:  int32('p'),
 		},
 		{
-			Name: "MessageLength",
-			Type: Int32,
-			Tags: MessageLengthInclusive,
-			Data: int32(0),
+			Name:  "MessageLength",
+			Type:  Int32,
+			Flags: MessageLengthInclusive,
+			Data:  int32(0),
 		},
 		{
 			Name: "Password",
@@ -46,17 +46,17 @@ var passwordMessageDefault = Message{
 	},
 }
 
-var _ MessageType = PasswordMessage{}
+var _ Message = PasswordMessage{}
 
-// encode implements the interface MessageType.
-func (m PasswordMessage) encode() (Message, error) {
+// encode implements the interface Message.
+func (m PasswordMessage) encode() (MessageFormat, error) {
 	outputMessage := m.defaultMessage().Copy()
 	outputMessage.Field("Password").MustWrite(m.Password)
 	return outputMessage, nil
 }
 
-// decode implements the interface MessageType.
-func (m PasswordMessage) decode(s Message) (MessageType, error) {
+// decode implements the interface Message.
+func (m PasswordMessage) decode(s MessageFormat) (Message, error) {
 	if err := s.MatchesStructure(*m.defaultMessage()); err != nil {
 		return nil, err
 	}
@@ -65,7 +65,7 @@ func (m PasswordMessage) decode(s Message) (MessageType, error) {
 	}, nil
 }
 
-// defaultMessage implements the interface MessageType.
-func (m PasswordMessage) defaultMessage() *Message {
+// defaultMessage implements the interface Message.
+func (m PasswordMessage) defaultMessage() *MessageFormat {
 	return &passwordMessageDefault
 }

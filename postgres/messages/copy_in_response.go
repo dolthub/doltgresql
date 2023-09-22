@@ -26,20 +26,20 @@ type CopyInResponse struct {
 	FormatCodes []int32
 }
 
-var copyInResponseDefault = Message{
+var copyInResponseDefault = MessageFormat{
 	Name: "CopyInResponse",
-	Fields: []*Field{
+	Fields: FieldGroup{
 		{
-			Name: "Header",
-			Type: Byte1,
-			Tags: Header,
-			Data: int32('G'),
+			Name:  "Header",
+			Type:  Byte1,
+			Flags: Header,
+			Data:  int32('G'),
 		},
 		{
-			Name: "MessageLength",
-			Type: Int32,
-			Tags: MessageLengthInclusive,
-			Data: int32(0),
+			Name:  "MessageLength",
+			Type:  Int32,
+			Flags: MessageLengthInclusive,
+			Data:  int32(0),
 		},
 		{
 			Name: "ResponseType",
@@ -50,7 +50,7 @@ var copyInResponseDefault = Message{
 			Name: "Columns",
 			Type: Int16,
 			Data: int32(0),
-			Children: [][]*Field{
+			Children: []FieldGroup{
 				{
 					{
 						Name: "FormatCode",
@@ -63,10 +63,10 @@ var copyInResponseDefault = Message{
 	},
 }
 
-var _ MessageType = CopyInResponse{}
+var _ Message = CopyInResponse{}
 
-// encode implements the interface MessageType.
-func (m CopyInResponse) encode() (Message, error) {
+// encode implements the interface Message.
+func (m CopyInResponse) encode() (MessageFormat, error) {
 	outputMessage := m.defaultMessage().Copy()
 	if m.IsTextual {
 		outputMessage.Field("ResponseType").MustWrite(0)
@@ -79,8 +79,8 @@ func (m CopyInResponse) encode() (Message, error) {
 	return outputMessage, nil
 }
 
-// decode implements the interface MessageType.
-func (m CopyInResponse) decode(s Message) (MessageType, error) {
+// decode implements the interface Message.
+func (m CopyInResponse) decode(s MessageFormat) (Message, error) {
 	if err := s.MatchesStructure(*m.defaultMessage()); err != nil {
 		return nil, err
 	}
@@ -104,7 +104,7 @@ func (m CopyInResponse) decode(s Message) (MessageType, error) {
 	}, nil
 }
 
-// defaultMessage implements the interface MessageType.
-func (m CopyInResponse) defaultMessage() *Message {
+// defaultMessage implements the interface Message.
+func (m CopyInResponse) defaultMessage() *MessageFormat {
 	return &copyInResponseDefault
 }

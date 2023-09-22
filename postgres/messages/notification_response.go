@@ -25,20 +25,20 @@ type NotificationResponse struct {
 	Payload   string
 }
 
-var notificationResponseDefault = Message{
+var notificationResponseDefault = MessageFormat{
 	Name: "NotificationResponse",
-	Fields: []*Field{
+	Fields: FieldGroup{
 		{
-			Name: "Header",
-			Type: Byte1,
-			Tags: Header,
-			Data: int32('A'),
+			Name:  "Header",
+			Type:  Byte1,
+			Flags: Header,
+			Data:  int32('A'),
 		},
 		{
-			Name: "MessageLength",
-			Type: Int32,
-			Tags: MessageLengthInclusive,
-			Data: int32(0),
+			Name:  "MessageLength",
+			Type:  Int32,
+			Flags: MessageLengthInclusive,
+			Data:  int32(0),
 		},
 		{
 			Name: "ProcessID",
@@ -58,10 +58,10 @@ var notificationResponseDefault = Message{
 	},
 }
 
-var _ MessageType = NotificationResponse{}
+var _ Message = NotificationResponse{}
 
-// encode implements the interface MessageType.
-func (m NotificationResponse) encode() (Message, error) {
+// encode implements the interface Message.
+func (m NotificationResponse) encode() (MessageFormat, error) {
 	outputMessage := m.defaultMessage().Copy()
 	outputMessage.Field("ProcessID").MustWrite(m.ProcessID)
 	outputMessage.Field("Channel").MustWrite(m.Channel)
@@ -69,8 +69,8 @@ func (m NotificationResponse) encode() (Message, error) {
 	return outputMessage, nil
 }
 
-// decode implements the interface MessageType.
-func (m NotificationResponse) decode(s Message) (MessageType, error) {
+// decode implements the interface Message.
+func (m NotificationResponse) decode(s MessageFormat) (Message, error) {
 	if err := s.MatchesStructure(*m.defaultMessage()); err != nil {
 		return nil, err
 	}
@@ -81,7 +81,7 @@ func (m NotificationResponse) decode(s Message) (MessageType, error) {
 	}, nil
 }
 
-// defaultMessage implements the interface MessageType.
-func (m NotificationResponse) defaultMessage() *Message {
+// defaultMessage implements the interface Message.
+func (m NotificationResponse) defaultMessage() *MessageFormat {
 	return &notificationResponseDefault
 }

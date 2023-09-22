@@ -21,20 +21,20 @@ func init() {
 // AuthenticationSSPI represents a PostgreSQL message.
 type AuthenticationSSPI struct{}
 
-var authenticationSSPIDefault = Message{
+var authenticationSSPIDefault = MessageFormat{
 	Name: "AuthenticationSSPI",
-	Fields: []*Field{
+	Fields: FieldGroup{
 		{
-			Name: "Header",
-			Type: Byte1,
-			Tags: Header,
-			Data: int32('R'),
+			Name:  "Header",
+			Type:  Byte1,
+			Flags: Header,
+			Data:  int32('R'),
 		},
 		{
-			Name: "MessageLength",
-			Type: Int32,
-			Tags: MessageLengthInclusive,
-			Data: int32(8),
+			Name:  "MessageLength",
+			Type:  Int32,
+			Flags: MessageLengthInclusive,
+			Data:  int32(8),
 		},
 		{
 			Name: "Status",
@@ -44,22 +44,22 @@ var authenticationSSPIDefault = Message{
 	},
 }
 
-var _ MessageType = AuthenticationSSPI{}
+var _ Message = AuthenticationSSPI{}
 
-// encode implements the interface MessageType.
-func (m AuthenticationSSPI) encode() (Message, error) {
+// encode implements the interface Message.
+func (m AuthenticationSSPI) encode() (MessageFormat, error) {
 	return m.defaultMessage().Copy(), nil
 }
 
-// decode implements the interface MessageType.
-func (m AuthenticationSSPI) decode(s Message) (MessageType, error) {
+// decode implements the interface Message.
+func (m AuthenticationSSPI) decode(s MessageFormat) (Message, error) {
 	if err := s.MatchesStructure(*m.defaultMessage()); err != nil {
 		return nil, err
 	}
 	return AuthenticationSSPI{}, nil
 }
 
-// defaultMessage implements the interface MessageType.
-func (m AuthenticationSSPI) defaultMessage() *Message {
+// defaultMessage implements the interface Message.
+func (m AuthenticationSSPI) defaultMessage() *MessageFormat {
 	return &authenticationSSPIDefault
 }

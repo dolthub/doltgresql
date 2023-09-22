@@ -30,20 +30,20 @@ type CommandComplete struct {
 	Rows  int32
 }
 
-var commandCompleteDefault = Message{
+var commandCompleteDefault = MessageFormat{
 	Name: "CommandComplete",
-	Fields: []*Field{
+	Fields: FieldGroup{
 		{
-			Name: "Header",
-			Type: Byte1,
-			Tags: Header,
-			Data: int32('C'),
+			Name:  "Header",
+			Type:  Byte1,
+			Flags: Header,
+			Data:  int32('C'),
 		},
 		{
-			Name: "MessageLength",
-			Type: Int32,
-			Tags: MessageLengthInclusive,
-			Data: int32(0),
+			Name:  "MessageLength",
+			Type:  Int32,
+			Flags: MessageLengthInclusive,
+			Data:  int32(0),
 		},
 		{
 			Name: "CommandTag",
@@ -53,7 +53,7 @@ var commandCompleteDefault = Message{
 	},
 }
 
-var _ MessageType = CommandComplete{}
+var _ Message = CommandComplete{}
 
 // IsIUD returns whether the query is either an INSERT, UPDATE, or DELETE query.
 func (m CommandComplete) IsIUD() bool {
@@ -67,8 +67,8 @@ func (m CommandComplete) IsIUD() bool {
 	}
 }
 
-// encode implements the interface MessageType.
-func (m CommandComplete) encode() (Message, error) {
+// encode implements the interface Message.
+func (m CommandComplete) encode() (MessageFormat, error) {
 	outputMessage := m.defaultMessage().Copy()
 	query := strings.TrimSpace(strings.ToLower(m.Query))
 	if strings.HasPrefix(query, "select") {
@@ -84,13 +84,13 @@ func (m CommandComplete) encode() (Message, error) {
 	} else if strings.HasPrefix(query, "call") {
 		outputMessage.Field("CommandTag").MustWrite(fmt.Sprintf("SELECT %d", m.Rows))
 	} else {
-		return Message{}, fmt.Errorf("unsupported query for now")
+		return MessageFormat{}, fmt.Errorf("unsupported query for now")
 	}
 	return outputMessage, nil
 }
 
-// decode implements the interface MessageType.
-func (m CommandComplete) decode(s Message) (MessageType, error) {
+// decode implements the interface Message.
+func (m CommandComplete) decode(s MessageFormat) (Message, error) {
 	if err := s.MatchesStructure(*m.defaultMessage()); err != nil {
 		return nil, err
 	}
@@ -106,7 +106,7 @@ func (m CommandComplete) decode(s Message) (MessageType, error) {
 	}, nil
 }
 
-// defaultMessage implements the interface MessageType.
-func (m CommandComplete) defaultMessage() *Message {
+// defaultMessage implements the interface Message.
+func (m CommandComplete) defaultMessage() *MessageFormat {
 	return &commandCompleteDefault
 }

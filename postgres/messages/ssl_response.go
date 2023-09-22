@@ -25,9 +25,9 @@ type SSLResponse struct {
 	SupportsSSL bool
 }
 
-var sslResponseDefault = Message{
+var sslResponseDefault = MessageFormat{
 	Name: "SSLResponse",
-	Fields: []*Field{
+	Fields: FieldGroup{
 		{
 			Name: "Supported",
 			Type: Byte1,
@@ -36,10 +36,10 @@ var sslResponseDefault = Message{
 	},
 }
 
-var _ MessageType = SSLResponse{}
+var _ Message = SSLResponse{}
 
-// encode implements the interface MessageType.
-func (m SSLResponse) encode() (Message, error) {
+// encode implements the interface Message.
+func (m SSLResponse) encode() (MessageFormat, error) {
 	outputMessage := m.defaultMessage().Copy()
 	if m.SupportsSSL {
 		outputMessage.Field("Supported").MustWrite('Y')
@@ -49,8 +49,8 @@ func (m SSLResponse) encode() (Message, error) {
 	return outputMessage, nil
 }
 
-// decode implements the interface MessageType.
-func (m SSLResponse) decode(s Message) (MessageType, error) {
+// decode implements the interface Message.
+func (m SSLResponse) decode(s MessageFormat) (Message, error) {
 	if err := s.MatchesStructure(*m.defaultMessage()); err != nil {
 		return nil, err
 	}
@@ -68,7 +68,7 @@ func (m SSLResponse) decode(s Message) (MessageType, error) {
 	}, nil
 }
 
-// defaultMessage implements the interface MessageType.
-func (m SSLResponse) defaultMessage() *Message {
+// defaultMessage implements the interface Message.
+func (m SSLResponse) defaultMessage() *MessageFormat {
 	return &sslResponseDefault
 }

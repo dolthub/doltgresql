@@ -23,20 +23,20 @@ type AuthenticationMD5Password struct {
 	Salt int32
 }
 
-var authenticationMD5PasswordDefault = Message{
+var authenticationMD5PasswordDefault = MessageFormat{
 	Name: "AuthenticationMD5Password",
-	Fields: []*Field{
+	Fields: FieldGroup{
 		{
-			Name: "Header",
-			Type: Byte1,
-			Tags: Header,
-			Data: int32('R'),
+			Name:  "Header",
+			Type:  Byte1,
+			Flags: Header,
+			Data:  int32('R'),
 		},
 		{
-			Name: "MessageLength",
-			Type: Int32,
-			Tags: MessageLengthInclusive,
-			Data: int32(12),
+			Name:  "MessageLength",
+			Type:  Int32,
+			Flags: MessageLengthInclusive,
+			Data:  int32(12),
 		},
 		{
 			Name: "Status",
@@ -51,17 +51,17 @@ var authenticationMD5PasswordDefault = Message{
 	},
 }
 
-var _ MessageType = AuthenticationMD5Password{}
+var _ Message = AuthenticationMD5Password{}
 
-// encode implements the interface MessageType.
-func (m AuthenticationMD5Password) encode() (Message, error) {
+// encode implements the interface Message.
+func (m AuthenticationMD5Password) encode() (MessageFormat, error) {
 	outputMessage := m.defaultMessage().Copy()
 	outputMessage.Field("Salt").MustWrite(m.Salt)
 	return outputMessage, nil
 }
 
-// decode implements the interface MessageType.
-func (m AuthenticationMD5Password) decode(s Message) (MessageType, error) {
+// decode implements the interface Message.
+func (m AuthenticationMD5Password) decode(s MessageFormat) (Message, error) {
 	if err := s.MatchesStructure(*m.defaultMessage()); err != nil {
 		return nil, err
 	}
@@ -70,7 +70,7 @@ func (m AuthenticationMD5Password) decode(s Message) (MessageType, error) {
 	}, nil
 }
 
-// defaultMessage implements the interface MessageType.
-func (m AuthenticationMD5Password) defaultMessage() *Message {
+// defaultMessage implements the interface Message.
+func (m AuthenticationMD5Password) defaultMessage() *MessageFormat {
 	return &authenticationMD5PasswordDefault
 }

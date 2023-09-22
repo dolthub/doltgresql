@@ -25,20 +25,20 @@ type BackendKeyData struct {
 	SecretKey int32
 }
 
-var backendKeyDataDefault = Message{
+var backendKeyDataDefault = MessageFormat{
 	Name: "BackendKeyData",
-	Fields: []*Field{
+	Fields: FieldGroup{
 		{
-			Name: "Header",
-			Type: Byte1,
-			Tags: Header,
-			Data: int32('K'),
+			Name:  "Header",
+			Type:  Byte1,
+			Flags: Header,
+			Data:  int32('K'),
 		},
 		{
-			Name: "MessageLength",
-			Type: Int32,
-			Tags: MessageLengthInclusive,
-			Data: int32(12),
+			Name:  "MessageLength",
+			Type:  Int32,
+			Flags: MessageLengthInclusive,
+			Data:  int32(12),
 		},
 		{
 			Name: "ProcessID",
@@ -53,18 +53,18 @@ var backendKeyDataDefault = Message{
 	},
 }
 
-var _ MessageType = BackendKeyData{}
+var _ Message = BackendKeyData{}
 
-// encode implements the interface MessageType.
-func (m BackendKeyData) encode() (Message, error) {
+// encode implements the interface Message.
+func (m BackendKeyData) encode() (MessageFormat, error) {
 	outputMessage := m.defaultMessage().Copy()
 	outputMessage.Field("ProcessID").MustWrite(m.ProcessID)
 	outputMessage.Field("SecretKey").MustWrite(m.SecretKey)
 	return outputMessage, nil
 }
 
-// decode implements the interface MessageType.
-func (m BackendKeyData) decode(s Message) (MessageType, error) {
+// decode implements the interface Message.
+func (m BackendKeyData) decode(s MessageFormat) (Message, error) {
 	if err := s.MatchesStructure(*m.defaultMessage()); err != nil {
 		return nil, err
 	}
@@ -74,7 +74,7 @@ func (m BackendKeyData) decode(s Message) (MessageType, error) {
 	}, nil
 }
 
-// defaultMessage implements the interface MessageType.
-func (m BackendKeyData) defaultMessage() *Message {
+// defaultMessage implements the interface Message.
+func (m BackendKeyData) defaultMessage() *MessageFormat {
 	return &backendKeyDataDefault
 }

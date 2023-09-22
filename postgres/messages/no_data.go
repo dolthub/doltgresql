@@ -21,40 +21,40 @@ func init() {
 // NoData represents a PostgreSQL message.
 type NoData struct{}
 
-var noDataDefault = Message{
+var noDataDefault = MessageFormat{
 	Name: "NoData",
-	Fields: []*Field{
+	Fields: FieldGroup{
 		{
-			Name: "Header",
-			Type: Byte1,
-			Tags: Header,
-			Data: int32('n'),
+			Name:  "Header",
+			Type:  Byte1,
+			Flags: Header,
+			Data:  int32('n'),
 		},
 		{
-			Name: "MessageLength",
-			Type: Int32,
-			Tags: MessageLengthInclusive,
-			Data: int32(4),
+			Name:  "MessageLength",
+			Type:  Int32,
+			Flags: MessageLengthInclusive,
+			Data:  int32(4),
 		},
 	},
 }
 
-var _ MessageType = NoData{}
+var _ Message = NoData{}
 
-// encode implements the interface MessageType.
-func (m NoData) encode() (Message, error) {
+// encode implements the interface Message.
+func (m NoData) encode() (MessageFormat, error) {
 	return m.defaultMessage().Copy(), nil
 }
 
-// decode implements the interface MessageType.
-func (m NoData) decode(s Message) (MessageType, error) {
+// decode implements the interface Message.
+func (m NoData) decode(s MessageFormat) (Message, error) {
 	if err := s.MatchesStructure(*m.defaultMessage()); err != nil {
 		return nil, err
 	}
 	return NoData{}, nil
 }
 
-// defaultMessage implements the interface MessageType.
-func (m NoData) defaultMessage() *Message {
+// defaultMessage implements the interface Message.
+func (m NoData) defaultMessage() *MessageFormat {
 	return &noDataDefault
 }

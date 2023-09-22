@@ -21,14 +21,14 @@ func init() {
 // SSLRequest represents a PostgreSQL message.
 type SSLRequest struct{}
 
-var sslRequestDefault = Message{
+var sslRequestDefault = MessageFormat{
 	Name: "SSLRequest",
-	Fields: []*Field{
+	Fields: FieldGroup{
 		{
-			Name: "MessageLength",
-			Type: Int32,
-			Tags: MessageLengthInclusive,
-			Data: int32(8),
+			Name:  "MessageLength",
+			Type:  Int32,
+			Flags: MessageLengthInclusive,
+			Data:  int32(8),
 		},
 		{
 			Name: "RequestCode",
@@ -38,22 +38,22 @@ var sslRequestDefault = Message{
 	},
 }
 
-var _ MessageType = SSLRequest{}
+var _ Message = SSLRequest{}
 
-// encode implements the interface MessageType.
-func (m SSLRequest) encode() (Message, error) {
+// encode implements the interface Message.
+func (m SSLRequest) encode() (MessageFormat, error) {
 	return m.defaultMessage().Copy(), nil
 }
 
-// decode implements the interface MessageType.
-func (m SSLRequest) decode(s Message) (MessageType, error) {
+// decode implements the interface Message.
+func (m SSLRequest) decode(s MessageFormat) (Message, error) {
 	if err := s.MatchesStructure(*m.defaultMessage()); err != nil {
 		return nil, err
 	}
 	return SSLRequest{}, nil
 }
 
-// defaultMessage implements the interface MessageType.
-func (m SSLRequest) defaultMessage() *Message {
+// defaultMessage implements the interface Message.
+func (m SSLRequest) defaultMessage() *MessageFormat {
 	return &sslRequestDefault
 }

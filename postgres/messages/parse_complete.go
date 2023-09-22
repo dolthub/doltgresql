@@ -21,40 +21,40 @@ func init() {
 // ParseComplete represents a PostgreSQL message.
 type ParseComplete struct{}
 
-var parseCompleteDefault = Message{
+var parseCompleteDefault = MessageFormat{
 	Name: "ParseComplete",
-	Fields: []*Field{
+	Fields: FieldGroup{
 		{
-			Name: "Header",
-			Type: Byte1,
-			Tags: Header,
-			Data: int32('1'),
+			Name:  "Header",
+			Type:  Byte1,
+			Flags: Header,
+			Data:  int32('1'),
 		},
 		{
-			Name: "MessageLength",
-			Type: Int32,
-			Tags: MessageLengthInclusive,
-			Data: int32(4),
+			Name:  "MessageLength",
+			Type:  Int32,
+			Flags: MessageLengthInclusive,
+			Data:  int32(4),
 		},
 	},
 }
 
-var _ MessageType = ParseComplete{}
+var _ Message = ParseComplete{}
 
-// encode implements the interface MessageType.
-func (m ParseComplete) encode() (Message, error) {
+// encode implements the interface Message.
+func (m ParseComplete) encode() (MessageFormat, error) {
 	return m.defaultMessage().Copy(), nil
 }
 
-// decode implements the interface MessageType.
-func (m ParseComplete) decode(s Message) (MessageType, error) {
+// decode implements the interface Message.
+func (m ParseComplete) decode(s MessageFormat) (Message, error) {
 	if err := s.MatchesStructure(*m.defaultMessage()); err != nil {
 		return nil, err
 	}
 	return ParseComplete{}, nil
 }
 
-// defaultMessage implements the interface MessageType.
-func (m ParseComplete) defaultMessage() *Message {
+// defaultMessage implements the interface Message.
+func (m ParseComplete) defaultMessage() *MessageFormat {
 	return &parseCompleteDefault
 }

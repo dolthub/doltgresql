@@ -21,14 +21,14 @@ func init() {
 // GSSENCRequest represents a PostgreSQL message.
 type GSSENCRequest struct{}
 
-var gSSENCRequestDefault = Message{
+var gSSENCRequestDefault = MessageFormat{
 	Name: "GSSENCRequest",
-	Fields: []*Field{
+	Fields: FieldGroup{
 		{
-			Name: "MessageLength",
-			Type: Int32,
-			Tags: MessageLengthInclusive,
-			Data: int32(8),
+			Name:  "MessageLength",
+			Type:  Int32,
+			Flags: MessageLengthInclusive,
+			Data:  int32(8),
 		},
 		{
 			Name: "RequestCode",
@@ -38,22 +38,22 @@ var gSSENCRequestDefault = Message{
 	},
 }
 
-var _ MessageType = GSSENCRequest{}
+var _ Message = GSSENCRequest{}
 
-// encode implements the interface MessageType.
-func (m GSSENCRequest) encode() (Message, error) {
+// encode implements the interface Message.
+func (m GSSENCRequest) encode() (MessageFormat, error) {
 	return m.defaultMessage().Copy(), nil
 }
 
-// decode implements the interface MessageType.
-func (m GSSENCRequest) decode(s Message) (MessageType, error) {
+// decode implements the interface Message.
+func (m GSSENCRequest) decode(s MessageFormat) (Message, error) {
 	if err := s.MatchesStructure(*m.defaultMessage()); err != nil {
 		return nil, err
 	}
 	return GSSENCRequest{}, nil
 }
 
-// defaultMessage implements the interface MessageType.
-func (m GSSENCRequest) defaultMessage() *Message {
+// defaultMessage implements the interface Message.
+func (m GSSENCRequest) defaultMessage() *MessageFormat {
 	return &gSSENCRequestDefault
 }

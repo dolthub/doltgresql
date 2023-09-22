@@ -25,14 +25,14 @@ type StartupMessage struct {
 	Parameters           map[string]string
 }
 
-var startupMessageDefault = Message{
+var startupMessageDefault = MessageFormat{
 	Name: "StartupMessage",
-	Fields: []*Field{
+	Fields: FieldGroup{
 		{
-			Name: "MessageLength",
-			Type: Int32,
-			Tags: MessageLengthInclusive,
-			Data: int32(0),
+			Name:  "MessageLength",
+			Type:  Int32,
+			Flags: MessageLengthInclusive,
+			Data:  int32(0),
 		},
 		{ // The docs specify a single Int32 field, but the upper and lower bits are different values, so this just splits them
 			Name: "ProtocolMajorVersion",
@@ -45,11 +45,11 @@ var startupMessageDefault = Message{
 			Data: int32(0),
 		},
 		{
-			Name: "Parameters",
-			Type: Repeated,
-			Tags: RepeatedTerminator,
-			Data: int32(0),
-			Children: [][]*Field{
+			Name:  "Parameters",
+			Type:  Repeated,
+			Flags: RepeatedTerminator,
+			Data:  int32(0),
+			Children: []FieldGroup{
 				{
 					{
 						Name: "ParameterName",
@@ -67,10 +67,10 @@ var startupMessageDefault = Message{
 	},
 }
 
-var _ MessageType = StartupMessage{}
+var _ Message = StartupMessage{}
 
-// encode implements the interface MessageType.
-func (m StartupMessage) encode() (Message, error) {
+// encode implements the interface Message.
+func (m StartupMessage) encode() (MessageFormat, error) {
 	outputMessage := m.defaultMessage().Copy()
 	outputMessage.Field("ProtocolMajorVersion").MustWrite(m.ProtocolMajorVersion)
 	outputMessage.Field("ProtocolMinorVersion").MustWrite(m.ProtocolMinorVersion)
@@ -83,8 +83,8 @@ func (m StartupMessage) encode() (Message, error) {
 	return outputMessage, nil
 }
 
-// decode implements the interface MessageType.
-func (m StartupMessage) decode(s Message) (MessageType, error) {
+// decode implements the interface Message.
+func (m StartupMessage) decode(s MessageFormat) (Message, error) {
 	if err := s.MatchesStructure(*m.defaultMessage()); err != nil {
 		return nil, err
 	}
@@ -101,7 +101,7 @@ func (m StartupMessage) decode(s Message) (MessageType, error) {
 	}, nil
 }
 
-// defaultMessage implements the interface MessageType.
-func (m StartupMessage) defaultMessage() *Message {
+// defaultMessage implements the interface Message.
+func (m StartupMessage) defaultMessage() *MessageFormat {
 	return &startupMessageDefault
 }

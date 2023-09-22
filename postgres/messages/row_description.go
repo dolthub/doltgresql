@@ -31,26 +31,26 @@ type RowDescription struct {
 	Fields []*query.Field
 }
 
-var rowDescriptionDefault = Message{
+var rowDescriptionDefault = MessageFormat{
 	Name: "RowDescription",
-	Fields: []*Field{
+	Fields: FieldGroup{
 		{
-			Name: "Header",
-			Type: Byte1,
-			Tags: Header,
-			Data: int32('T'),
+			Name:  "Header",
+			Type:  Byte1,
+			Flags: Header,
+			Data:  int32('T'),
 		},
 		{
-			Name: "MessageLength",
-			Type: Int32,
-			Tags: MessageLengthInclusive,
-			Data: int32(0),
+			Name:  "MessageLength",
+			Type:  Int32,
+			Flags: MessageLengthInclusive,
+			Data:  int32(0),
 		},
 		{
 			Name: "Fields",
 			Type: Int16,
 			Data: int32(0),
-			Children: [][]*Field{
+			Children: []FieldGroup{
 				{
 					{
 						Name: "ColumnName",
@@ -93,24 +93,24 @@ var rowDescriptionDefault = Message{
 	},
 }
 
-var _ MessageType = RowDescription{}
+var _ Message = RowDescription{}
 
-// encode implements the interface MessageType.
-func (m RowDescription) encode() (Message, error) {
+// encode implements the interface Message.
+func (m RowDescription) encode() (MessageFormat, error) {
 	outputMessage := m.defaultMessage().Copy()
 	for i := 0; i < len(m.Fields); i++ {
 		field := m.Fields[i]
 		dataTypeObjectID, err := VitessFieldToDataTypeObjectID(field)
 		if err != nil {
-			return Message{}, err
+			return MessageFormat{}, err
 		}
 		dataTypeSize, err := VitessFieldToDataTypeSize(field)
 		if err != nil {
-			return Message{}, err
+			return MessageFormat{}, err
 		}
 		dataTypeModifier, err := VitessFieldToDataTypeModifier(field)
 		if err != nil {
-			return Message{}, err
+			return MessageFormat{}, err
 		}
 		outputMessage.Field("Fields").Child("ColumnName", i).MustWrite(field.Name)
 		outputMessage.Field("Fields").Child("DataTypeObjectID", i).MustWrite(dataTypeObjectID)
@@ -120,8 +120,8 @@ func (m RowDescription) encode() (Message, error) {
 	return outputMessage, nil
 }
 
-// decode implements the interface MessageType.
-func (m RowDescription) decode(s Message) (MessageType, error) {
+// decode implements the interface Message.
+func (m RowDescription) decode(s MessageFormat) (Message, error) {
 	if err := s.MatchesStructure(*m.defaultMessage()); err != nil {
 		return nil, err
 	}
@@ -134,8 +134,8 @@ func (m RowDescription) decode(s Message) (MessageType, error) {
 	}, nil
 }
 
-// defaultMessage implements the interface MessageType.
-func (m RowDescription) defaultMessage() *Message {
+// defaultMessage implements the interface Message.
+func (m RowDescription) defaultMessage() *MessageFormat {
 	return &rowDescriptionDefault
 }
 

@@ -21,20 +21,20 @@ func init() {
 // AuthenticationSCMCredential represents a PostgreSQL message.
 type AuthenticationSCMCredential struct{}
 
-var authenticationSCMCredentialDefault = Message{
+var authenticationSCMCredentialDefault = MessageFormat{
 	Name: "AuthenticationSCMCredential",
-	Fields: []*Field{
+	Fields: FieldGroup{
 		{
-			Name: "Header",
-			Type: Byte1,
-			Tags: Header,
-			Data: int32('R'),
+			Name:  "Header",
+			Type:  Byte1,
+			Flags: Header,
+			Data:  int32('R'),
 		},
 		{
-			Name: "MessageLength",
-			Type: Int32,
-			Tags: MessageLengthInclusive,
-			Data: int32(8),
+			Name:  "MessageLength",
+			Type:  Int32,
+			Flags: MessageLengthInclusive,
+			Data:  int32(8),
 		},
 		{
 			Name: "Status",
@@ -44,22 +44,22 @@ var authenticationSCMCredentialDefault = Message{
 	},
 }
 
-var _ MessageType = AuthenticationSCMCredential{}
+var _ Message = AuthenticationSCMCredential{}
 
-// encode implements the interface MessageType.
-func (m AuthenticationSCMCredential) encode() (Message, error) {
+// encode implements the interface Message.
+func (m AuthenticationSCMCredential) encode() (MessageFormat, error) {
 	return m.defaultMessage().Copy(), nil
 }
 
-// decode implements the interface MessageType.
-func (m AuthenticationSCMCredential) decode(s Message) (MessageType, error) {
+// decode implements the interface Message.
+func (m AuthenticationSCMCredential) decode(s MessageFormat) (Message, error) {
 	if err := s.MatchesStructure(*m.defaultMessage()); err != nil {
 		return nil, err
 	}
 	return AuthenticationSCMCredential{}, nil
 }
 
-// defaultMessage implements the interface MessageType.
-func (m AuthenticationSCMCredential) defaultMessage() *Message {
+// defaultMessage implements the interface Message.
+func (m AuthenticationSCMCredential) defaultMessage() *MessageFormat {
 	return &authenticationSCMCredentialDefault
 }

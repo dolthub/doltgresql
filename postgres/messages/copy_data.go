@@ -24,20 +24,20 @@ type CopyData struct {
 	Data []byte
 }
 
-var copyDataDefault = Message{
+var copyDataDefault = MessageFormat{
 	Name: "CopyData",
-	Fields: []*Field{
+	Fields: FieldGroup{
 		{
-			Name: "Header",
-			Type: Byte1,
-			Tags: Header,
-			Data: int32('d'),
+			Name:  "Header",
+			Type:  Byte1,
+			Flags: Header,
+			Data:  int32('d'),
 		},
 		{
-			Name: "MessageLength",
-			Type: Int32,
-			Tags: MessageLengthInclusive,
-			Data: int32(0),
+			Name:  "MessageLength",
+			Type:  Int32,
+			Flags: MessageLengthInclusive,
+			Data:  int32(0),
 		},
 		{
 			Name: "Data",
@@ -47,17 +47,17 @@ var copyDataDefault = Message{
 	},
 }
 
-var _ MessageType = CopyData{}
+var _ Message = CopyData{}
 
-// encode implements the interface MessageType.
-func (m CopyData) encode() (Message, error) {
+// encode implements the interface Message.
+func (m CopyData) encode() (MessageFormat, error) {
 	outputMessage := m.defaultMessage().Copy()
 	outputMessage.Field("Data").MustWrite(m.Data)
 	return outputMessage, nil
 }
 
-// decode implements the interface MessageType.
-func (m CopyData) decode(s Message) (MessageType, error) {
+// decode implements the interface Message.
+func (m CopyData) decode(s MessageFormat) (Message, error) {
 	if err := s.MatchesStructure(*m.defaultMessage()); err != nil {
 		return nil, err
 	}
@@ -66,7 +66,7 @@ func (m CopyData) decode(s Message) (MessageType, error) {
 	}, nil
 }
 
-// defaultMessage implements the interface MessageType.
-func (m CopyData) defaultMessage() *Message {
+// defaultMessage implements the interface Message.
+func (m CopyData) defaultMessage() *MessageFormat {
 	return &copyDataDefault
 }

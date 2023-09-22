@@ -33,20 +33,20 @@ type FunctionCallArgument struct {
 	IsNull bool
 }
 
-var functionCallDefault = Message{
+var functionCallDefault = MessageFormat{
 	Name: "FunctionCall",
-	Fields: []*Field{
+	Fields: FieldGroup{
 		{
-			Name: "Header",
-			Type: Byte1,
-			Tags: Header,
-			Data: int32('F'),
+			Name:  "Header",
+			Type:  Byte1,
+			Flags: Header,
+			Data:  int32('F'),
 		},
 		{
-			Name: "MessageLength",
-			Type: Int32,
-			Tags: MessageLengthInclusive,
-			Data: int32(0),
+			Name:  "MessageLength",
+			Type:  Int32,
+			Flags: MessageLengthInclusive,
+			Data:  int32(0),
 		},
 		{
 			Name: "ObjectID",
@@ -57,7 +57,7 @@ var functionCallDefault = Message{
 			Name: "ArgumentFormatCodes",
 			Type: Int16,
 			Data: int32(0),
-			Children: [][]*Field{
+			Children: []FieldGroup{
 				{
 					{
 						Name: "ArgumentFormatCode",
@@ -71,13 +71,13 @@ var functionCallDefault = Message{
 			Name: "Arguments",
 			Type: Int16,
 			Data: int32(0),
-			Children: [][]*Field{
+			Children: []FieldGroup{
 				{
 					{
-						Name: "ArgumentLength",
-						Type: Int32,
-						Tags: ByteCount,
-						Data: int32(0),
+						Name:  "ArgumentLength",
+						Type:  Int32,
+						Flags: ByteCount,
+						Data:  int32(0),
 					},
 					{
 						Name: "ArgumentValue",
@@ -95,10 +95,10 @@ var functionCallDefault = Message{
 	},
 }
 
-var _ MessageType = FunctionCall{}
+var _ Message = FunctionCall{}
 
-// encode implements the interface MessageType.
-func (m FunctionCall) encode() (Message, error) {
+// encode implements the interface Message.
+func (m FunctionCall) encode() (MessageFormat, error) {
 	outputMessage := m.defaultMessage().Copy()
 	outputMessage.Field("ObjectID").MustWrite(m.ObjectID)
 	for i, formatCode := range m.ArgumentFormatCodes {
@@ -116,8 +116,8 @@ func (m FunctionCall) encode() (Message, error) {
 	return outputMessage, nil
 }
 
-// decode implements the interface MessageType.
-func (m FunctionCall) decode(s Message) (MessageType, error) {
+// decode implements the interface Message.
+func (m FunctionCall) decode(s MessageFormat) (Message, error) {
 	if err := s.MatchesStructure(*m.defaultMessage()); err != nil {
 		return nil, err
 	}
@@ -153,7 +153,7 @@ func (m FunctionCall) decode(s Message) (MessageType, error) {
 	}, nil
 }
 
-// defaultMessage implements the interface MessageType.
-func (m FunctionCall) defaultMessage() *Message {
+// defaultMessage implements the interface Message.
+func (m FunctionCall) defaultMessage() *MessageFormat {
 	return &functionCallDefault
 }

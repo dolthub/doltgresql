@@ -24,20 +24,20 @@ type CopyFail struct {
 	ErrorMessage string
 }
 
-var copyFailDefault = Message{
+var copyFailDefault = MessageFormat{
 	Name: "CopyFail",
-	Fields: []*Field{
+	Fields: FieldGroup{
 		{
-			Name: "Header",
-			Type: Byte1,
-			Tags: Header,
-			Data: int32('f'),
+			Name:  "Header",
+			Type:  Byte1,
+			Flags: Header,
+			Data:  int32('f'),
 		},
 		{
-			Name: "MessageLength",
-			Type: Int32,
-			Tags: MessageLengthInclusive,
-			Data: int32(0),
+			Name:  "MessageLength",
+			Type:  Int32,
+			Flags: MessageLengthInclusive,
+			Data:  int32(0),
 		},
 		{
 			Name: "ErrorMessage",
@@ -47,17 +47,17 @@ var copyFailDefault = Message{
 	},
 }
 
-var _ MessageType = CopyFail{}
+var _ Message = CopyFail{}
 
-// encode implements the interface MessageType.
-func (m CopyFail) encode() (Message, error) {
+// encode implements the interface Message.
+func (m CopyFail) encode() (MessageFormat, error) {
 	outputMessage := m.defaultMessage().Copy()
 	outputMessage.Field("ErrorMessage").MustWrite(m.ErrorMessage)
 	return outputMessage, nil
 }
 
-// decode implements the interface MessageType.
-func (m CopyFail) decode(s Message) (MessageType, error) {
+// decode implements the interface Message.
+func (m CopyFail) decode(s MessageFormat) (Message, error) {
 	if err := s.MatchesStructure(*m.defaultMessage()); err != nil {
 		return nil, err
 	}
@@ -66,7 +66,7 @@ func (m CopyFail) decode(s Message) (MessageType, error) {
 	}, nil
 }
 
-// defaultMessage implements the interface MessageType.
-func (m CopyFail) defaultMessage() *Message {
+// defaultMessage implements the interface Message.
+func (m CopyFail) defaultMessage() *MessageFormat {
 	return &copyFailDefault
 }

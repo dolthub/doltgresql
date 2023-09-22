@@ -22,40 +22,40 @@ func init() {
 // Terminate tells the server to close the connection.
 type Terminate struct{}
 
-var terminateDefault = Message{
+var terminateDefault = MessageFormat{
 	Name: "Terminate",
-	Fields: []*Field{
+	Fields: FieldGroup{
 		{
-			Name: "Header",
-			Type: Byte1,
-			Tags: Header,
-			Data: int32('X'),
+			Name:  "Header",
+			Type:  Byte1,
+			Flags: Header,
+			Data:  int32('X'),
 		},
 		{
-			Name: "MessageLength",
-			Type: Int32,
-			Tags: MessageLengthInclusive,
-			Data: int32(0),
+			Name:  "MessageLength",
+			Type:  Int32,
+			Flags: MessageLengthInclusive,
+			Data:  int32(0),
 		},
 	},
 }
 
-var _ MessageType = Terminate{}
+var _ Message = Terminate{}
 
-// encode implements the interface MessageType.
-func (m Terminate) encode() (Message, error) {
+// encode implements the interface Message.
+func (m Terminate) encode() (MessageFormat, error) {
 	return terminateDefault.Copy(), nil
 }
 
-// decode implements the interface MessageType.
-func (m Terminate) decode(s Message) (MessageType, error) {
+// decode implements the interface Message.
+func (m Terminate) decode(s MessageFormat) (Message, error) {
 	if err := s.MatchesStructure(*m.defaultMessage()); err != nil {
 		return nil, err
 	}
 	return Terminate{}, nil
 }
 
-// defaultMessage implements the interface MessageType.
-func (m Terminate) defaultMessage() *Message {
+// defaultMessage implements the interface Message.
+func (m Terminate) defaultMessage() *MessageFormat {
 	return &terminateDefault
 }

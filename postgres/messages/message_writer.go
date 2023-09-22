@@ -16,9 +16,9 @@ package messages
 
 import "fmt"
 
-// MessageWriter is used to easily (and safely) interact with the contents of a Message.
+// MessageWriter is used to easily (and safely) interact with the contents of a MessageFormat.
 type MessageWriter struct {
-	message    Message
+	message    MessageFormat
 	fieldQueue []messageWriterChildPosition
 }
 

@@ -34,20 +34,20 @@ type BindParameterValue struct {
 	IsNull bool
 }
 
-var bindDefault = Message{
+var bindDefault = MessageFormat{
 	Name: "Bind",
-	Fields: []*Field{
+	Fields: FieldGroup{
 		{
-			Name: "Header",
-			Type: Byte1,
-			Tags: Header,
-			Data: int32('B'),
+			Name:  "Header",
+			Type:  Byte1,
+			Flags: Header,
+			Data:  int32('B'),
 		},
 		{
-			Name: "MessageLength",
-			Type: Int32,
-			Tags: MessageLengthInclusive,
-			Data: int32(0),
+			Name:  "MessageLength",
+			Type:  Int32,
+			Flags: MessageLengthInclusive,
+			Data:  int32(0),
 		},
 		{
 			Name: "DestinationPortal",
@@ -63,7 +63,7 @@ var bindDefault = Message{
 			Name: "ParameterFormatCodes",
 			Type: Int16,
 			Data: int32(0),
-			Children: [][]*Field{
+			Children: []FieldGroup{
 				{
 					{
 						Name: "ParameterFormatCode",
@@ -77,13 +77,13 @@ var bindDefault = Message{
 			Name: "ParameterValues",
 			Type: Int16,
 			Data: int32(0),
-			Children: [][]*Field{
+			Children: []FieldGroup{
 				{
 					{
-						Name: "ParameterLength",
-						Type: Int32,
-						Tags: ByteCount,
-						Data: int32(0),
+						Name:  "ParameterLength",
+						Type:  Int32,
+						Flags: ByteCount,
+						Data:  int32(0),
 					},
 					{
 						Name: "ParameterValue",
@@ -97,7 +97,7 @@ var bindDefault = Message{
 			Name: "ResultFormatCodes",
 			Type: Int16,
 			Data: int32(0),
-			Children: [][]*Field{
+			Children: []FieldGroup{
 				{
 					{
 						Name: "ResultFormatCode",
@@ -110,10 +110,10 @@ var bindDefault = Message{
 	},
 }
 
-var _ MessageType = Bind{}
+var _ Message = Bind{}
 
-// encode implements the interface MessageType.
-func (m Bind) encode() (Message, error) {
+// encode implements the interface Message.
+func (m Bind) encode() (MessageFormat, error) {
 	outputMessage := m.defaultMessage().Copy()
 	outputMessage.Field("DestinationPortal").MustWrite(m.DestinationPortal)
 	outputMessage.Field("SourcePreparedStatement").MustWrite(m.SourcePreparedStatement)
@@ -134,8 +134,8 @@ func (m Bind) encode() (Message, error) {
 	return outputMessage, nil
 }
 
-// decode implements the interface MessageType.
-func (m Bind) decode(s Message) (MessageType, error) {
+// decode implements the interface Message.
+func (m Bind) decode(s MessageFormat) (Message, error) {
 	if err := s.MatchesStructure(*m.defaultMessage()); err != nil {
 		return nil, err
 	}
@@ -178,7 +178,7 @@ func (m Bind) decode(s Message) (MessageType, error) {
 	}, nil
 }
 
-// defaultMessage implements the interface MessageType.
-func (m Bind) defaultMessage() *Message {
+// defaultMessage implements the interface Message.
+func (m Bind) defaultMessage() *MessageFormat {
 	return &bindDefault
 }

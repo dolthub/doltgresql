@@ -22,40 +22,40 @@ func init() {
 // Flush represents a PostgreSQL message.
 type Flush struct{}
 
-var flushDefault = Message{
+var flushDefault = MessageFormat{
 	Name: "Flush",
-	Fields: []*Field{
+	Fields: FieldGroup{
 		{
-			Name: "Header",
-			Type: Byte1,
-			Tags: Header,
-			Data: int32('H'),
+			Name:  "Header",
+			Type:  Byte1,
+			Flags: Header,
+			Data:  int32('H'),
 		},
 		{
-			Name: "MessageLength",
-			Type: Int32,
-			Tags: MessageLengthInclusive,
-			Data: int32(0),
+			Name:  "MessageLength",
+			Type:  Int32,
+			Flags: MessageLengthInclusive,
+			Data:  int32(0),
 		},
 	},
 }
 
-var _ MessageType = Flush{}
+var _ Message = Flush{}
 
-// encode implements the interface MessageType.
-func (m Flush) encode() (Message, error) {
+// encode implements the interface Message.
+func (m Flush) encode() (MessageFormat, error) {
 	return m.defaultMessage().Copy(), nil
 }
 
-// decode implements the interface MessageType.
-func (m Flush) decode(s Message) (MessageType, error) {
+// decode implements the interface Message.
+func (m Flush) decode(s MessageFormat) (Message, error) {
 	if err := s.MatchesStructure(*m.defaultMessage()); err != nil {
 		return nil, err
 	}
 	return Flush{}, nil
 }
 
-// defaultMessage implements the interface MessageType.
-func (m Flush) defaultMessage() *Message {
+// defaultMessage implements the interface Message.
+func (m Flush) defaultMessage() *MessageFormat {
 	return &flushDefault
 }

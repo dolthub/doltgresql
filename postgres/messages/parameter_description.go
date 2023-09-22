@@ -23,26 +23,26 @@ type ParameterDescription struct {
 	ObjectIDs []int32
 }
 
-var parameterDescriptionDefault = Message{
+var parameterDescriptionDefault = MessageFormat{
 	Name: "ParameterDescription",
-	Fields: []*Field{
+	Fields: FieldGroup{
 		{
-			Name: "Header",
-			Type: Byte1,
-			Tags: Header,
-			Data: int32('t'),
+			Name:  "Header",
+			Type:  Byte1,
+			Flags: Header,
+			Data:  int32('t'),
 		},
 		{
-			Name: "MessageLength",
-			Type: Int32,
-			Tags: MessageLengthInclusive,
-			Data: int32(0),
+			Name:  "MessageLength",
+			Type:  Int32,
+			Flags: MessageLengthInclusive,
+			Data:  int32(0),
 		},
 		{
 			Name: "Parameters",
 			Type: Int16,
 			Data: int32(0),
-			Children: [][]*Field{
+			Children: []FieldGroup{
 				{
 					{
 						Name: "ObjectID",
@@ -55,10 +55,10 @@ var parameterDescriptionDefault = Message{
 	},
 }
 
-var _ MessageType = ParameterDescription{}
+var _ Message = ParameterDescription{}
 
-// encode implements the interface MessageType.
-func (m ParameterDescription) encode() (Message, error) {
+// encode implements the interface Message.
+func (m ParameterDescription) encode() (MessageFormat, error) {
 	outputMessage := m.defaultMessage().Copy()
 	for i, objectID := range m.ObjectIDs {
 		outputMessage.Field("Parameters").Child("ObjectID", i).MustWrite(objectID)
@@ -66,8 +66,8 @@ func (m ParameterDescription) encode() (Message, error) {
 	return outputMessage, nil
 }
 
-// decode implements the interface MessageType.
-func (m ParameterDescription) decode(s Message) (MessageType, error) {
+// decode implements the interface Message.
+func (m ParameterDescription) decode(s MessageFormat) (Message, error) {
 	if err := s.MatchesStructure(*m.defaultMessage()); err != nil {
 		return nil, err
 	}
@@ -81,7 +81,7 @@ func (m ParameterDescription) decode(s Message) (MessageType, error) {
 	}, nil
 }
 
-// defaultMessage implements the interface MessageType.
-func (m ParameterDescription) defaultMessage() *Message {
+// defaultMessage implements the interface Message.
+func (m ParameterDescription) defaultMessage() *MessageFormat {
 	return &parameterDescriptionDefault
 }

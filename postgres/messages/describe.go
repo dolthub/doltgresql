@@ -27,20 +27,20 @@ type Describe struct {
 	Target     string
 }
 
-var describeDefault = Message{
+var describeDefault = MessageFormat{
 	Name: "Describe",
-	Fields: []*Field{
+	Fields: FieldGroup{
 		{
-			Name: "Header",
-			Type: Byte1,
-			Tags: Header,
-			Data: int32('D'),
+			Name:  "Header",
+			Type:  Byte1,
+			Flags: Header,
+			Data:  int32('D'),
 		},
 		{
-			Name: "MessageLength",
-			Type: Int32,
-			Tags: MessageLengthInclusive,
-			Data: int32(0),
+			Name:  "MessageLength",
+			Type:  Int32,
+			Flags: MessageLengthInclusive,
+			Data:  int32(0),
 		},
 		{
 			Name: "DescribingTarget",
@@ -55,10 +55,10 @@ var describeDefault = Message{
 	},
 }
 
-var _ MessageType = Describe{}
+var _ Message = Describe{}
 
-// encode implements the interface MessageType.
-func (m Describe) encode() (Message, error) {
+// encode implements the interface Message.
+func (m Describe) encode() (MessageFormat, error) {
 	outputMessage := m.defaultMessage().Copy()
 	if m.IsPrepared {
 		outputMessage.Field("DescribingTarget").MustWrite('S')
@@ -69,8 +69,8 @@ func (m Describe) encode() (Message, error) {
 	return outputMessage, nil
 }
 
-// decode implements the interface MessageType.
-func (m Describe) decode(s Message) (MessageType, error) {
+// decode implements the interface Message.
+func (m Describe) decode(s MessageFormat) (Message, error) {
 	if err := s.MatchesStructure(*m.defaultMessage()); err != nil {
 		return nil, err
 	}
@@ -89,7 +89,7 @@ func (m Describe) decode(s Message) (MessageType, error) {
 	}, nil
 }
 
-// defaultMessage implements the interface MessageType.
-func (m Describe) defaultMessage() *Message {
+// defaultMessage implements the interface Message.
+func (m Describe) defaultMessage() *MessageFormat {
 	return &describeDefault
 }

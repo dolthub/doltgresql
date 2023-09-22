@@ -22,40 +22,40 @@ func init() {
 // CopyDone represents a PostgreSQL message.
 type CopyDone struct{}
 
-var copyDoneDefault = Message{
+var copyDoneDefault = MessageFormat{
 	Name: "CopyDone",
-	Fields: []*Field{
+	Fields: FieldGroup{
 		{
-			Name: "Header",
-			Type: Byte1,
-			Tags: Header,
-			Data: int32('c'),
+			Name:  "Header",
+			Type:  Byte1,
+			Flags: Header,
+			Data:  int32('c'),
 		},
 		{
-			Name: "MessageLength",
-			Type: Int32,
-			Tags: MessageLengthInclusive,
-			Data: int32(4),
+			Name:  "MessageLength",
+			Type:  Int32,
+			Flags: MessageLengthInclusive,
+			Data:  int32(4),
 		},
 	},
 }
 
-var _ MessageType = CopyDone{}
+var _ Message = CopyDone{}
 
-// encode implements the interface MessageType.
-func (m CopyDone) encode() (Message, error) {
+// encode implements the interface Message.
+func (m CopyDone) encode() (MessageFormat, error) {
 	return m.defaultMessage().Copy(), nil
 }
 
-// decode implements the interface MessageType.
-func (m CopyDone) decode(s Message) (MessageType, error) {
+// decode implements the interface Message.
+func (m CopyDone) decode(s MessageFormat) (Message, error) {
 	if err := s.MatchesStructure(*m.defaultMessage()); err != nil {
 		return nil, err
 	}
 	return CopyDone{}, nil
 }
 
-// defaultMessage implements the interface MessageType.
-func (m CopyDone) defaultMessage() *Message {
+// defaultMessage implements the interface Message.
+func (m CopyDone) defaultMessage() *MessageFormat {
 	return &copyDoneDefault
 }

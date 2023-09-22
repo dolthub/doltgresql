@@ -25,20 +25,20 @@ type Execute struct {
 	RowMax int32
 }
 
-var executeDefault = Message{
+var executeDefault = MessageFormat{
 	Name: "Execute",
-	Fields: []*Field{
+	Fields: FieldGroup{
 		{
-			Name: "Header",
-			Type: Byte1,
-			Tags: Header,
-			Data: int32('E'),
+			Name:  "Header",
+			Type:  Byte1,
+			Flags: Header,
+			Data:  int32('E'),
 		},
 		{
-			Name: "MessageLength",
-			Type: Int32,
-			Tags: MessageLengthInclusive,
-			Data: int32(0),
+			Name:  "MessageLength",
+			Type:  Int32,
+			Flags: MessageLengthInclusive,
+			Data:  int32(0),
 		},
 		{
 			Name: "Portal",
@@ -53,18 +53,18 @@ var executeDefault = Message{
 	},
 }
 
-var _ MessageType = Execute{}
+var _ Message = Execute{}
 
-// encode implements the interface MessageType.
-func (m Execute) encode() (Message, error) {
+// encode implements the interface Message.
+func (m Execute) encode() (MessageFormat, error) {
 	outputMessage := m.defaultMessage().Copy()
 	outputMessage.Field("Portal").MustWrite(m.Portal)
 	outputMessage.Field("RowMax").MustWrite(m.RowMax)
 	return outputMessage, nil
 }
 
-// decode implements the interface MessageType.
-func (m Execute) decode(s Message) (MessageType, error) {
+// decode implements the interface Message.
+func (m Execute) decode(s MessageFormat) (Message, error) {
 	if err := s.MatchesStructure(*m.defaultMessage()); err != nil {
 		return nil, err
 	}
@@ -74,7 +74,7 @@ func (m Execute) decode(s Message) (MessageType, error) {
 	}, nil
 }
 
-// defaultMessage implements the interface MessageType.
-func (m Execute) defaultMessage() *Message {
+// defaultMessage implements the interface Message.
+func (m Execute) defaultMessage() *MessageFormat {
 	return &executeDefault
 }

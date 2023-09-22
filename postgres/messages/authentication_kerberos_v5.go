@@ -21,20 +21,20 @@ func init() {
 // AuthenticationKerberosV5 represents a PostgreSQL message.
 type AuthenticationKerberosV5 struct{}
 
-var authenticationKerberosV5Default = Message{
+var authenticationKerberosV5Default = MessageFormat{
 	Name: "AuthenticationKerberosV5",
-	Fields: []*Field{
+	Fields: FieldGroup{
 		{
-			Name: "Header",
-			Type: Byte1,
-			Tags: Header,
-			Data: int32('R'),
+			Name:  "Header",
+			Type:  Byte1,
+			Flags: Header,
+			Data:  int32('R'),
 		},
 		{
-			Name: "MessageLength",
-			Type: Int32,
-			Tags: MessageLengthInclusive,
-			Data: int32(8),
+			Name:  "MessageLength",
+			Type:  Int32,
+			Flags: MessageLengthInclusive,
+			Data:  int32(8),
 		},
 		{
 			Name: "Status",
@@ -44,22 +44,22 @@ var authenticationKerberosV5Default = Message{
 	},
 }
 
-var _ MessageType = AuthenticationKerberosV5{}
+var _ Message = AuthenticationKerberosV5{}
 
-// encode implements the interface MessageType.
-func (m AuthenticationKerberosV5) encode() (Message, error) {
+// encode implements the interface Message.
+func (m AuthenticationKerberosV5) encode() (MessageFormat, error) {
 	return m.defaultMessage().Copy(), nil
 }
 
-// decode implements the interface MessageType.
-func (m AuthenticationKerberosV5) decode(s Message) (MessageType, error) {
+// decode implements the interface Message.
+func (m AuthenticationKerberosV5) decode(s MessageFormat) (Message, error) {
 	if err := s.MatchesStructure(*m.defaultMessage()); err != nil {
 		return nil, err
 	}
 	return AuthenticationKerberosV5{}, nil
 }
 
-// defaultMessage implements the interface MessageType.
-func (m AuthenticationKerberosV5) defaultMessage() *Message {
+// defaultMessage implements the interface Message.
+func (m AuthenticationKerberosV5) defaultMessage() *MessageFormat {
 	return &authenticationKerberosV5Default
 }

@@ -22,40 +22,40 @@ func init() {
 // Sync represents a PostgreSQL message.
 type Sync struct{}
 
-var syncDefault = Message{
+var syncDefault = MessageFormat{
 	Name: "Sync",
-	Fields: []*Field{
+	Fields: FieldGroup{
 		{
-			Name: "Header",
-			Type: Byte1,
-			Tags: Header,
-			Data: int32('S'),
+			Name:  "Header",
+			Type:  Byte1,
+			Flags: Header,
+			Data:  int32('S'),
 		},
 		{
-			Name: "MessageLength",
-			Type: Int32,
-			Tags: MessageLengthInclusive,
-			Data: int32(4),
+			Name:  "MessageLength",
+			Type:  Int32,
+			Flags: MessageLengthInclusive,
+			Data:  int32(4),
 		},
 	},
 }
 
-var _ MessageType = Sync{}
+var _ Message = Sync{}
 
-// encode implements the interface MessageType.
-func (m Sync) encode() (Message, error) {
+// encode implements the interface Message.
+func (m Sync) encode() (MessageFormat, error) {
 	return m.defaultMessage().Copy(), nil
 }
 
-// decode implements the interface MessageType.
-func (m Sync) decode(s Message) (MessageType, error) {
+// decode implements the interface Message.
+func (m Sync) decode(s MessageFormat) (Message, error) {
 	if err := s.MatchesStructure(*m.defaultMessage()); err != nil {
 		return nil, err
 	}
 	return Sync{}, nil
 }
 
-// defaultMessage implements the interface MessageType.
-func (m Sync) defaultMessage() *Message {
+// defaultMessage implements the interface Message.
+func (m Sync) defaultMessage() *MessageFormat {
 	return &syncDefault
 }

@@ -26,20 +26,20 @@ type Parse struct {
 	ParameterObjectIDs []int32
 }
 
-var parseDefault = Message{
+var parseDefault = MessageFormat{
 	Name: "Parse",
-	Fields: []*Field{
+	Fields: FieldGroup{
 		{
-			Name: "Header",
-			Type: Byte1,
-			Tags: Header,
-			Data: int32('P'),
+			Name:  "Header",
+			Type:  Byte1,
+			Flags: Header,
+			Data:  int32('P'),
 		},
 		{
-			Name: "MessageLength",
-			Type: Int32,
-			Tags: MessageLengthInclusive,
-			Data: int32(0),
+			Name:  "MessageLength",
+			Type:  Int32,
+			Flags: MessageLengthInclusive,
+			Data:  int32(0),
 		},
 		{
 			Name: "PreparedStatement",
@@ -55,7 +55,7 @@ var parseDefault = Message{
 			Name: "Parameters",
 			Type: Int16,
 			Data: int32(0),
-			Children: [][]*Field{
+			Children: []FieldGroup{
 				{
 					{
 						Name: "ObjectID",
@@ -68,10 +68,10 @@ var parseDefault = Message{
 	},
 }
 
-var _ MessageType = Parse{}
+var _ Message = Parse{}
 
-// encode implements the interface MessageType.
-func (m Parse) encode() (Message, error) {
+// encode implements the interface Message.
+func (m Parse) encode() (MessageFormat, error) {
 	outputMessage := m.defaultMessage().Copy()
 	outputMessage.Field("PreparedStatement").MustWrite(m.PreparedStatement)
 	outputMessage.Field("Query").MustWrite(m.Query)
@@ -81,8 +81,8 @@ func (m Parse) encode() (Message, error) {
 	return outputMessage, nil
 }
 
-// decode implements the interface MessageType.
-func (m Parse) decode(s Message) (MessageType, error) {
+// decode implements the interface Message.
+func (m Parse) decode(s MessageFormat) (Message, error) {
 	if err := s.MatchesStructure(*m.defaultMessage()); err != nil {
 		return nil, err
 	}
@@ -98,7 +98,7 @@ func (m Parse) decode(s Message) (MessageType, error) {
 	}, nil
 }
 
-// defaultMessage implements the interface MessageType.
-func (m Parse) defaultMessage() *Message {
+// defaultMessage implements the interface Message.
+func (m Parse) defaultMessage() *MessageFormat {
 	return &parseDefault
 }

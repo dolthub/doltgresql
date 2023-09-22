@@ -24,20 +24,20 @@ type Query struct {
 	String string
 }
 
-var queryDefault = Message{
+var queryDefault = MessageFormat{
 	Name: "Query",
-	Fields: []*Field{
+	Fields: FieldGroup{
 		{
-			Name: "Header",
-			Type: Byte1,
-			Tags: Header,
-			Data: int32('Q'),
+			Name:  "Header",
+			Type:  Byte1,
+			Flags: Header,
+			Data:  int32('Q'),
 		},
 		{
-			Name: "MessageLength",
-			Type: Int32,
-			Tags: MessageLengthInclusive,
-			Data: int32(0),
+			Name:  "MessageLength",
+			Type:  Int32,
+			Flags: MessageLengthInclusive,
+			Data:  int32(0),
 		},
 		{
 			Name: "String",
@@ -47,17 +47,17 @@ var queryDefault = Message{
 	},
 }
 
-var _ MessageType = Query{}
+var _ Message = Query{}
 
-// encode implements the interface MessageType.
-func (m Query) encode() (Message, error) {
+// encode implements the interface Message.
+func (m Query) encode() (MessageFormat, error) {
 	outputMessage := m.defaultMessage().Copy()
 	outputMessage.Field("String").MustWrite(m.String)
 	return outputMessage, nil
 }
 
-// decode implements the interface MessageType.
-func (m Query) decode(s Message) (MessageType, error) {
+// decode implements the interface Message.
+func (m Query) decode(s MessageFormat) (Message, error) {
 	if err := s.MatchesStructure(*m.defaultMessage()); err != nil {
 		return nil, err
 	}
@@ -66,7 +66,7 @@ func (m Query) decode(s Message) (MessageType, error) {
 	}, nil
 }
 
-// defaultMessage implements the interface MessageType.
-func (m Query) defaultMessage() *Message {
+// defaultMessage implements the interface Message.
+func (m Query) defaultMessage() *MessageFormat {
 	return &queryDefault
 }

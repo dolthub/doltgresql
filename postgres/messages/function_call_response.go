@@ -24,26 +24,26 @@ type FunctionCallResponse struct {
 	ResultValue  []byte
 }
 
-var functionCallResponseDefault = Message{
+var functionCallResponseDefault = MessageFormat{
 	Name: "FunctionCallResponse",
-	Fields: []*Field{
+	Fields: FieldGroup{
 		{
-			Name: "Header",
-			Type: Byte1,
-			Tags: Header,
-			Data: int32('V'),
+			Name:  "Header",
+			Type:  Byte1,
+			Flags: Header,
+			Data:  int32('V'),
 		},
 		{
-			Name: "MessageLength",
-			Type: Int32,
-			Tags: MessageLengthInclusive,
-			Data: int32(0),
+			Name:  "MessageLength",
+			Type:  Int32,
+			Flags: MessageLengthInclusive,
+			Data:  int32(0),
 		},
 		{
-			Name: "ResultLength",
-			Type: Int32,
-			Tags: ByteCount,
-			Data: int32(0),
+			Name:  "ResultLength",
+			Type:  Int32,
+			Flags: ByteCount,
+			Data:  int32(0),
 		},
 		{
 			Name: "ResultValue",
@@ -53,10 +53,10 @@ var functionCallResponseDefault = Message{
 	},
 }
 
-var _ MessageType = FunctionCallResponse{}
+var _ Message = FunctionCallResponse{}
 
-// encode implements the interface MessageType.
-func (m FunctionCallResponse) encode() (Message, error) {
+// encode implements the interface Message.
+func (m FunctionCallResponse) encode() (MessageFormat, error) {
 	outputMessage := m.defaultMessage().Copy()
 	if m.IsResultNull {
 		outputMessage.Field("ResultLength").MustWrite(-1)
@@ -70,8 +70,8 @@ func (m FunctionCallResponse) encode() (Message, error) {
 	return outputMessage, nil
 }
 
-// decode implements the interface MessageType.
-func (m FunctionCallResponse) decode(s Message) (MessageType, error) {
+// decode implements the interface Message.
+func (m FunctionCallResponse) decode(s MessageFormat) (Message, error) {
 	if err := s.MatchesStructure(*m.defaultMessage()); err != nil {
 		return nil, err
 	}
@@ -82,7 +82,7 @@ func (m FunctionCallResponse) decode(s Message) (MessageType, error) {
 	}, nil
 }
 
-// defaultMessage implements the interface MessageType.
-func (m FunctionCallResponse) defaultMessage() *Message {
+// defaultMessage implements the interface Message.
+func (m FunctionCallResponse) defaultMessage() *MessageFormat {
 	return &functionCallResponseDefault
 }

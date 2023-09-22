@@ -24,20 +24,20 @@ type SASLInitialResponse struct {
 	Response []byte
 }
 
-var sASLInitialResponseDefault = Message{
+var sASLInitialResponseDefault = MessageFormat{
 	Name: "SASLInitialResponse",
-	Fields: []*Field{
+	Fields: FieldGroup{
 		{
-			Name: "Header",
-			Type: Byte1,
-			Tags: Header,
-			Data: int32('p'),
+			Name:  "Header",
+			Type:  Byte1,
+			Flags: Header,
+			Data:  int32('p'),
 		},
 		{
-			Name: "MessageLength",
-			Type: Int32,
-			Tags: MessageLengthInclusive,
-			Data: int32(0),
+			Name:  "MessageLength",
+			Type:  Int32,
+			Flags: MessageLengthInclusive,
+			Data:  int32(0),
 		},
 		{
 			Name: "Name",
@@ -45,10 +45,10 @@ var sASLInitialResponseDefault = Message{
 			Data: "",
 		},
 		{
-			Name: "ResponseLength",
-			Type: Int32,
-			Tags: ByteCount,
-			Data: int32(-1),
+			Name:  "ResponseLength",
+			Type:  Int32,
+			Flags: ByteCount,
+			Data:  int32(-1),
 		},
 		{
 			Name: "ResponseData",
@@ -58,10 +58,10 @@ var sASLInitialResponseDefault = Message{
 	},
 }
 
-var _ MessageType = SASLInitialResponse{}
+var _ Message = SASLInitialResponse{}
 
-// encode implements the interface MessageType.
-func (m SASLInitialResponse) encode() (Message, error) {
+// encode implements the interface Message.
+func (m SASLInitialResponse) encode() (MessageFormat, error) {
 	outputMessage := m.defaultMessage().Copy()
 	outputMessage.Field("Name").MustWrite(m.Name)
 	if len(m.Response) > 0 {
@@ -71,8 +71,8 @@ func (m SASLInitialResponse) encode() (Message, error) {
 	return outputMessage, nil
 }
 
-// decode implements the interface MessageType.
-func (m SASLInitialResponse) decode(s Message) (MessageType, error) {
+// decode implements the interface Message.
+func (m SASLInitialResponse) decode(s MessageFormat) (Message, error) {
 	if err := s.MatchesStructure(*m.defaultMessage()); err != nil {
 		return nil, err
 	}
@@ -86,7 +86,7 @@ func (m SASLInitialResponse) decode(s Message) (MessageType, error) {
 	}, nil
 }
 
-// defaultMessage implements the interface MessageType.
-func (m SASLInitialResponse) defaultMessage() *Message {
+// defaultMessage implements the interface Message.
+func (m SASLInitialResponse) defaultMessage() *MessageFormat {
 	return &sASLInitialResponseDefault
 }

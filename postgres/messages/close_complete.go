@@ -22,40 +22,40 @@ func init() {
 // CloseComplete represents a PostgreSQL message.
 type CloseComplete struct{}
 
-var closeCompleteDefault = Message{
+var closeCompleteDefault = MessageFormat{
 	Name: "CloseComplete",
-	Fields: []*Field{
+	Fields: FieldGroup{
 		{
-			Name: "Header",
-			Type: Byte1,
-			Tags: Header,
-			Data: int32('3'),
+			Name:  "Header",
+			Type:  Byte1,
+			Flags: Header,
+			Data:  int32('3'),
 		},
 		{
-			Name: "MessageLength",
-			Type: Int32,
-			Tags: MessageLengthInclusive,
-			Data: int32(4),
+			Name:  "MessageLength",
+			Type:  Int32,
+			Flags: MessageLengthInclusive,
+			Data:  int32(4),
 		},
 	},
 }
 
-var _ MessageType = CloseComplete{}
+var _ Message = CloseComplete{}
 
-// encode implements the interface MessageType.
-func (m CloseComplete) encode() (Message, error) {
+// encode implements the interface Message.
+func (m CloseComplete) encode() (MessageFormat, error) {
 	return m.defaultMessage().Copy(), nil
 }
 
-// decode implements the interface MessageType.
-func (m CloseComplete) decode(s Message) (MessageType, error) {
+// decode implements the interface Message.
+func (m CloseComplete) decode(s MessageFormat) (Message, error) {
 	if err := s.MatchesStructure(*m.defaultMessage()); err != nil {
 		return nil, err
 	}
 	return CloseComplete{}, nil
 }
 
-// defaultMessage implements the interface MessageType.
-func (m CloseComplete) defaultMessage() *Message {
+// defaultMessage implements the interface Message.
+func (m CloseComplete) defaultMessage() *MessageFormat {
 	return &closeCompleteDefault
 }

@@ -23,20 +23,20 @@ type AuthenticationSASLContinue struct {
 	Data []byte
 }
 
-var authenticationSASLContinueDefault = Message{
+var authenticationSASLContinueDefault = MessageFormat{
 	Name: "AuthenticationSASLContinue",
-	Fields: []*Field{
+	Fields: FieldGroup{
 		{
-			Name: "Header",
-			Type: Byte1,
-			Tags: Header,
-			Data: int32('R'),
+			Name:  "Header",
+			Type:  Byte1,
+			Flags: Header,
+			Data:  int32('R'),
 		},
 		{
-			Name: "MessageLength",
-			Type: Int32,
-			Tags: MessageLengthInclusive,
-			Data: int32(0),
+			Name:  "MessageLength",
+			Type:  Int32,
+			Flags: MessageLengthInclusive,
+			Data:  int32(0),
 		},
 		{
 			Name: "Status",
@@ -51,17 +51,17 @@ var authenticationSASLContinueDefault = Message{
 	},
 }
 
-var _ MessageType = AuthenticationSASLContinue{}
+var _ Message = AuthenticationSASLContinue{}
 
-// encode implements the interface MessageType.
-func (m AuthenticationSASLContinue) encode() (Message, error) {
+// encode implements the interface Message.
+func (m AuthenticationSASLContinue) encode() (MessageFormat, error) {
 	outputMessage := m.defaultMessage().Copy()
 	outputMessage.Field("SASLData").MustWrite(m.Data)
 	return outputMessage, nil
 }
 
-// decode implements the interface MessageType.
-func (m AuthenticationSASLContinue) decode(s Message) (MessageType, error) {
+// decode implements the interface Message.
+func (m AuthenticationSASLContinue) decode(s MessageFormat) (Message, error) {
 	if err := s.MatchesStructure(*m.defaultMessage()); err != nil {
 		return nil, err
 	}
@@ -70,7 +70,7 @@ func (m AuthenticationSASLContinue) decode(s Message) (MessageType, error) {
 	}, nil
 }
 
-// defaultMessage implements the interface MessageType.
-func (m AuthenticationSASLContinue) defaultMessage() *Message {
+// defaultMessage implements the interface Message.
+func (m AuthenticationSASLContinue) defaultMessage() *MessageFormat {
 	return &authenticationSASLContinueDefault
 }

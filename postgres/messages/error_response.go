@@ -29,27 +29,27 @@ type ErrorResponseField struct {
 	Value string
 }
 
-var errorResponseDefault = Message{
+var errorResponseDefault = MessageFormat{
 	Name: "ErrorResponse",
-	Fields: []*Field{
+	Fields: FieldGroup{
 		{
-			Name: "Header",
-			Type: Byte1,
-			Tags: Header,
-			Data: int32('E'),
+			Name:  "Header",
+			Type:  Byte1,
+			Flags: Header,
+			Data:  int32('E'),
 		},
 		{
-			Name: "MessageLength",
-			Type: Int32,
-			Tags: MessageLengthInclusive,
-			Data: int32(0),
+			Name:  "MessageLength",
+			Type:  Int32,
+			Flags: MessageLengthInclusive,
+			Data:  int32(0),
 		},
 		{
-			Name: "Fields",
-			Type: Repeated,
-			Tags: RepeatedTerminator,
-			Data: int32(0),
-			Children: [][]*Field{
+			Name:  "Fields",
+			Type:  Repeated,
+			Flags: RepeatedTerminator,
+			Data:  int32(0),
+			Children: []FieldGroup{
 				{
 					{
 						Name: "Code",
@@ -67,10 +67,10 @@ var errorResponseDefault = Message{
 	},
 }
 
-var _ MessageType = ErrorResponse{}
+var _ Message = ErrorResponse{}
 
-// encode implements the interface MessageType.
-func (m ErrorResponse) encode() (Message, error) {
+// encode implements the interface Message.
+func (m ErrorResponse) encode() (MessageFormat, error) {
 	outputMessage := m.defaultMessage().Copy()
 	for i, field := range m.Fields {
 		outputMessage.Field("Fields").Child("Code", i).MustWrite(field.Code)
@@ -79,8 +79,8 @@ func (m ErrorResponse) encode() (Message, error) {
 	return outputMessage, nil
 }
 
-// decode implements the interface MessageType.
-func (m ErrorResponse) decode(s Message) (MessageType, error) {
+// decode implements the interface Message.
+func (m ErrorResponse) decode(s MessageFormat) (Message, error) {
 	if err := s.MatchesStructure(*m.defaultMessage()); err != nil {
 		return nil, err
 	}
@@ -97,7 +97,7 @@ func (m ErrorResponse) decode(s Message) (MessageType, error) {
 	}, nil
 }
 
-// defaultMessage implements the interface MessageType.
-func (m ErrorResponse) defaultMessage() *Message {
+// defaultMessage implements the interface Message.
+func (m ErrorResponse) defaultMessage() *MessageFormat {
 	return &errorResponseDefault
 }

@@ -24,40 +24,40 @@ type PortalSuspended struct {
 	String  string
 }
 
-var portalSuspendedDefault = Message{
+var portalSuspendedDefault = MessageFormat{
 	Name: "PortalSuspended",
-	Fields: []*Field{
+	Fields: FieldGroup{
 		{
-			Name: "Header",
-			Type: Byte1,
-			Tags: Header,
-			Data: int32('s'),
+			Name:  "Header",
+			Type:  Byte1,
+			Flags: Header,
+			Data:  int32('s'),
 		},
 		{
-			Name: "MessageLength",
-			Type: Int32,
-			Tags: MessageLengthInclusive,
-			Data: int32(4),
+			Name:  "MessageLength",
+			Type:  Int32,
+			Flags: MessageLengthInclusive,
+			Data:  int32(4),
 		},
 	},
 }
 
-var _ MessageType = PortalSuspended{}
+var _ Message = PortalSuspended{}
 
-// encode implements the interface MessageType.
-func (m PortalSuspended) encode() (Message, error) {
+// encode implements the interface Message.
+func (m PortalSuspended) encode() (MessageFormat, error) {
 	return m.defaultMessage().Copy(), nil
 }
 
-// decode implements the interface MessageType.
-func (m PortalSuspended) decode(s Message) (MessageType, error) {
+// decode implements the interface Message.
+func (m PortalSuspended) decode(s MessageFormat) (Message, error) {
 	if err := s.MatchesStructure(*m.defaultMessage()); err != nil {
 		return nil, err
 	}
 	return PortalSuspended{}, nil
 }
 
-// defaultMessage implements the interface MessageType.
-func (m PortalSuspended) defaultMessage() *Message {
+// defaultMessage implements the interface Message.
+func (m PortalSuspended) defaultMessage() *MessageFormat {
 	return &portalSuspendedDefault
 }

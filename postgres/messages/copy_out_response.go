@@ -26,20 +26,20 @@ type CopyOutResponse struct {
 	FormatCodes []int32
 }
 
-var copyOutResponseDefault = Message{
+var copyOutResponseDefault = MessageFormat{
 	Name: "CopyOutResponse",
-	Fields: []*Field{
+	Fields: FieldGroup{
 		{
-			Name: "Header",
-			Type: Byte1,
-			Tags: Header,
-			Data: int32('H'),
+			Name:  "Header",
+			Type:  Byte1,
+			Flags: Header,
+			Data:  int32('H'),
 		},
 		{
-			Name: "MessageLength",
-			Type: Int32,
-			Tags: MessageLengthInclusive,
-			Data: int32(0),
+			Name:  "MessageLength",
+			Type:  Int32,
+			Flags: MessageLengthInclusive,
+			Data:  int32(0),
 		},
 		{
 			Name: "ResponseType",
@@ -50,7 +50,7 @@ var copyOutResponseDefault = Message{
 			Name: "Columns",
 			Type: Int16,
 			Data: int32(0),
-			Children: [][]*Field{
+			Children: []FieldGroup{
 				{
 					{
 						Name: "FormatCode",
@@ -63,10 +63,10 @@ var copyOutResponseDefault = Message{
 	},
 }
 
-var _ MessageType = CopyOutResponse{}
+var _ Message = CopyOutResponse{}
 
-// encode implements the interface MessageType.
-func (m CopyOutResponse) encode() (Message, error) {
+// encode implements the interface Message.
+func (m CopyOutResponse) encode() (MessageFormat, error) {
 	outputMessage := m.defaultMessage().Copy()
 	if m.IsTextual {
 		outputMessage.Field("ResponseType").MustWrite(0)
@@ -79,8 +79,8 @@ func (m CopyOutResponse) encode() (Message, error) {
 	return outputMessage, nil
 }
 
-// decode implements the interface MessageType.
-func (m CopyOutResponse) decode(s Message) (MessageType, error) {
+// decode implements the interface Message.
+func (m CopyOutResponse) decode(s MessageFormat) (Message, error) {
 	if err := s.MatchesStructure(*m.defaultMessage()); err != nil {
 		return nil, err
 	}
@@ -104,7 +104,7 @@ func (m CopyOutResponse) decode(s Message) (MessageType, error) {
 	}, nil
 }
 
-// defaultMessage implements the interface MessageType.
-func (m CopyOutResponse) defaultMessage() *Message {
+// defaultMessage implements the interface Message.
+func (m CopyOutResponse) defaultMessage() *MessageFormat {
 	return &copyOutResponseDefault
 }

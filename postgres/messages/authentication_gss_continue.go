@@ -23,20 +23,20 @@ type AuthenticationGSSContinue struct {
 	Data []byte
 }
 
-var authenticationGSSContinueDefault = Message{
+var authenticationGSSContinueDefault = MessageFormat{
 	Name: "AuthenticationGSSContinue",
-	Fields: []*Field{
+	Fields: FieldGroup{
 		{
-			Name: "Header",
-			Type: Byte1,
-			Tags: Header,
-			Data: int32('R'),
+			Name:  "Header",
+			Type:  Byte1,
+			Flags: Header,
+			Data:  int32('R'),
 		},
 		{
-			Name: "MessageLength",
-			Type: Int32,
-			Tags: MessageLengthInclusive,
-			Data: int32(0),
+			Name:  "MessageLength",
+			Type:  Int32,
+			Flags: MessageLengthInclusive,
+			Data:  int32(0),
 		},
 		{
 			Name: "Status",
@@ -51,17 +51,17 @@ var authenticationGSSContinueDefault = Message{
 	},
 }
 
-var _ MessageType = AuthenticationGSSContinue{}
+var _ Message = AuthenticationGSSContinue{}
 
-// encode implements the interface MessageType.
-func (m AuthenticationGSSContinue) encode() (Message, error) {
+// encode implements the interface Message.
+func (m AuthenticationGSSContinue) encode() (MessageFormat, error) {
 	outputMessage := m.defaultMessage().Copy()
 	outputMessage.Field("AuthenticationData").MustWrite(m.Data)
 	return outputMessage, nil
 }
 
-// decode implements the interface MessageType.
-func (m AuthenticationGSSContinue) decode(s Message) (MessageType, error) {
+// decode implements the interface Message.
+func (m AuthenticationGSSContinue) decode(s MessageFormat) (Message, error) {
 	if err := s.MatchesStructure(*m.defaultMessage()); err != nil {
 		return nil, err
 	}
@@ -70,7 +70,7 @@ func (m AuthenticationGSSContinue) decode(s Message) (MessageType, error) {
 	}, nil
 }
 
-// defaultMessage implements the interface MessageType.
-func (m AuthenticationGSSContinue) defaultMessage() *Message {
+// defaultMessage implements the interface Message.
+func (m AuthenticationGSSContinue) defaultMessage() *MessageFormat {
 	return &authenticationGSSContinueDefault
 }

@@ -27,20 +27,20 @@ type Close struct {
 	Target                   string // Target is the name of whatever we are closing.
 }
 
-var closeDefault = Message{
+var closeDefault = MessageFormat{
 	Name: "Close",
-	Fields: []*Field{
+	Fields: FieldGroup{
 		{
-			Name: "Header",
-			Type: Byte1,
-			Tags: Header,
-			Data: int32('C'),
+			Name:  "Header",
+			Type:  Byte1,
+			Flags: Header,
+			Data:  int32('C'),
 		},
 		{
-			Name: "MessageLength",
-			Type: Int32,
-			Tags: MessageLengthInclusive,
-			Data: int32(0),
+			Name:  "MessageLength",
+			Type:  Int32,
+			Flags: MessageLengthInclusive,
+			Data:  int32(0),
 		},
 		{
 			Name: "ClosingTarget",
@@ -55,10 +55,10 @@ var closeDefault = Message{
 	},
 }
 
-var _ MessageType = Close{}
+var _ Message = Close{}
 
-// encode implements the interface MessageType.
-func (m Close) encode() (Message, error) {
+// encode implements the interface Message.
+func (m Close) encode() (MessageFormat, error) {
 	outputMessage := m.defaultMessage().Copy()
 	if m.ClosingPreparedStatement {
 		outputMessage.Field("ClosingTarget").MustWrite('S')
@@ -69,8 +69,8 @@ func (m Close) encode() (Message, error) {
 	return outputMessage, nil
 }
 
-// decode implements the interface MessageType.
-func (m Close) decode(s Message) (MessageType, error) {
+// decode implements the interface Message.
+func (m Close) decode(s MessageFormat) (Message, error) {
 	if err := s.MatchesStructure(*m.defaultMessage()); err != nil {
 		return nil, err
 	}
@@ -89,7 +89,7 @@ func (m Close) decode(s Message) (MessageType, error) {
 	}, nil
 }
 
-// defaultMessage implements the interface MessageType.
-func (m Close) defaultMessage() *Message {
+// defaultMessage implements the interface Message.
+func (m Close) defaultMessage() *MessageFormat {
 	return &closeDefault
 }

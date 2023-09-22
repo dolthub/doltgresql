@@ -23,20 +23,20 @@ type GSSResponse struct {
 	Data []byte
 }
 
-var gSSResponseDefault = Message{
+var gSSResponseDefault = MessageFormat{
 	Name: "GSSResponse",
-	Fields: []*Field{
+	Fields: FieldGroup{
 		{
-			Name: "Header",
-			Type: Byte1,
-			Tags: Header,
-			Data: int32('p'),
+			Name:  "Header",
+			Type:  Byte1,
+			Flags: Header,
+			Data:  int32('p'),
 		},
 		{
-			Name: "MessageLength",
-			Type: Int32,
-			Tags: MessageLengthInclusive,
-			Data: int32(0),
+			Name:  "MessageLength",
+			Type:  Int32,
+			Flags: MessageLengthInclusive,
+			Data:  int32(0),
 		},
 		{
 			Name: "Data",
@@ -46,17 +46,17 @@ var gSSResponseDefault = Message{
 	},
 }
 
-var _ MessageType = GSSResponse{}
+var _ Message = GSSResponse{}
 
-// encode implements the interface MessageType.
-func (m GSSResponse) encode() (Message, error) {
+// encode implements the interface Message.
+func (m GSSResponse) encode() (MessageFormat, error) {
 	outputMessage := m.defaultMessage().Copy()
 	outputMessage.Field("Data").MustWrite(m.Data)
 	return outputMessage, nil
 }
 
-// decode implements the interface MessageType.
-func (m GSSResponse) decode(s Message) (MessageType, error) {
+// decode implements the interface Message.
+func (m GSSResponse) decode(s MessageFormat) (Message, error) {
 	if err := s.MatchesStructure(*m.defaultMessage()); err != nil {
 		return nil, err
 	}
@@ -65,7 +65,7 @@ func (m GSSResponse) decode(s Message) (MessageType, error) {
 	}, nil
 }
 
-// defaultMessage implements the interface MessageType.
-func (m GSSResponse) defaultMessage() *Message {
+// defaultMessage implements the interface Message.
+func (m GSSResponse) defaultMessage() *MessageFormat {
 	return &gSSResponseDefault
 }
