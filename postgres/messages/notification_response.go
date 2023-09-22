@@ -15,23 +15,24 @@
 package messages
 
 func init() {
-	initializeDefaultMessage(ParameterStatus{})
+	initializeDefaultMessage(NotificationResponse{})
 }
 
-// ParameterStatus reports various parameters to the client.
-type ParameterStatus struct {
-	Name  string
-	Value string
+// NotificationResponse represents a PostgreSQL message.
+type NotificationResponse struct {
+	ProcessID int32
+	Channel   string
+	Payload   string
 }
 
-var parameterStatusDefault = MessageFormat{
-	Name: "ParameterStatus",
+var notificationResponseDefault = MessageFormat{
+	Name: "NotificationResponse",
 	Fields: FieldGroup{
 		{
 			Name:  "Header",
 			Type:  Byte1,
 			Flags: Header,
-			Data:  int32('S'),
+			Data:  int32('A'),
 		},
 		{
 			Name:  "MessageLength",
@@ -40,40 +41,47 @@ var parameterStatusDefault = MessageFormat{
 			Data:  int32(0),
 		},
 		{
-			Name: "Name",
+			Name: "ProcessID",
+			Type: Int32,
+			Data: int32(0),
+		},
+		{
+			Name: "Channel",
 			Type: String,
 			Data: "",
 		},
 		{
-			Name: "Value",
+			Name: "Payload",
 			Type: String,
 			Data: "",
 		},
 	},
 }
 
-var _ Message = ParameterStatus{}
+var _ Message = NotificationResponse{}
 
 // encode implements the interface Message.
-func (m ParameterStatus) encode() (MessageFormat, error) {
+func (m NotificationResponse) encode() (MessageFormat, error) {
 	outputMessage := m.defaultMessage().Copy()
-	outputMessage.Field("Name").MustWrite(m.Name)
-	outputMessage.Field("Value").MustWrite(m.Value)
+	outputMessage.Field("ProcessID").MustWrite(m.ProcessID)
+	outputMessage.Field("Channel").MustWrite(m.Channel)
+	outputMessage.Field("Payload").MustWrite(m.Payload)
 	return outputMessage, nil
 }
 
 // decode implements the interface Message.
-func (m ParameterStatus) decode(s MessageFormat) (Message, error) {
+func (m NotificationResponse) decode(s MessageFormat) (Message, error) {
 	if err := s.MatchesStructure(*m.defaultMessage()); err != nil {
 		return nil, err
 	}
-	return ParameterStatus{
-		Name:  s.Field("Name").MustGet().(string),
-		Value: s.Field("Value").MustGet().(string),
+	return NotificationResponse{
+		ProcessID: s.Field("ProcessID").MustGet().(int32),
+		Channel:   s.Field("Channel").MustGet().(string),
+		Payload:   s.Field("Payload").MustGet().(string),
 	}, nil
 }
 
 // defaultMessage implements the interface Message.
-func (m ParameterStatus) defaultMessage() *MessageFormat {
-	return &parameterStatusDefault
+func (m NotificationResponse) defaultMessage() *MessageFormat {
+	return &notificationResponseDefault
 }

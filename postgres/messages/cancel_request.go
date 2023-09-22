@@ -15,24 +15,18 @@
 package messages
 
 func init() {
-	initializeDefaultMessage(ParameterStatus{})
+	initializeDefaultMessage(CancelRequest{})
 }
 
-// ParameterStatus reports various parameters to the client.
-type ParameterStatus struct {
-	Name  string
-	Value string
+// CancelRequest represents a PostgreSQL message.
+type CancelRequest struct {
+	ProcessID int32
+	SecretKey int32
 }
 
-var parameterStatusDefault = MessageFormat{
-	Name: "ParameterStatus",
+var cancelRequestDefault = MessageFormat{
+	Name: "CancelRequest",
 	Fields: FieldGroup{
-		{
-			Name:  "Header",
-			Type:  Byte1,
-			Flags: Header,
-			Data:  int32('S'),
-		},
 		{
 			Name:  "MessageLength",
 			Type:  Int32,
@@ -40,40 +34,45 @@ var parameterStatusDefault = MessageFormat{
 			Data:  int32(0),
 		},
 		{
-			Name: "Name",
-			Type: String,
-			Data: "",
+			Name: "RequestCode",
+			Type: Int32,
+			Data: int32(80877102),
 		},
 		{
-			Name: "Value",
-			Type: String,
-			Data: "",
+			Name: "ProcessID",
+			Type: Int32,
+			Data: int32(0),
+		},
+		{
+			Name: "SecretKey",
+			Type: Int32,
+			Data: int32(0),
 		},
 	},
 }
 
-var _ Message = ParameterStatus{}
+var _ Message = CancelRequest{}
 
 // encode implements the interface Message.
-func (m ParameterStatus) encode() (MessageFormat, error) {
+func (m CancelRequest) encode() (MessageFormat, error) {
 	outputMessage := m.defaultMessage().Copy()
-	outputMessage.Field("Name").MustWrite(m.Name)
-	outputMessage.Field("Value").MustWrite(m.Value)
+	outputMessage.Field("ProcessID").MustWrite(m.ProcessID)
+	outputMessage.Field("SecretKey").MustWrite(m.SecretKey)
 	return outputMessage, nil
 }
 
 // decode implements the interface Message.
-func (m ParameterStatus) decode(s MessageFormat) (Message, error) {
+func (m CancelRequest) decode(s MessageFormat) (Message, error) {
 	if err := s.MatchesStructure(*m.defaultMessage()); err != nil {
 		return nil, err
 	}
-	return ParameterStatus{
-		Name:  s.Field("Name").MustGet().(string),
-		Value: s.Field("Value").MustGet().(string),
+	return CancelRequest{
+		ProcessID: s.Field("ProcessID").MustGet().(int32),
+		SecretKey: s.Field("SecretKey").MustGet().(int32),
 	}, nil
 }
 
 // defaultMessage implements the interface Message.
-func (m ParameterStatus) defaultMessage() *MessageFormat {
-	return &parameterStatusDefault
+func (m CancelRequest) defaultMessage() *MessageFormat {
+	return &cancelRequestDefault
 }

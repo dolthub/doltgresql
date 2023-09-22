@@ -15,17 +15,15 @@
 package messages
 
 func init() {
-	initializeDefaultMessage(ParameterStatus{})
+	initializeDefaultMessage(Sync{})
+	addMessageHeader(Sync{})
 }
 
-// ParameterStatus reports various parameters to the client.
-type ParameterStatus struct {
-	Name  string
-	Value string
-}
+// Sync represents a PostgreSQL message.
+type Sync struct{}
 
-var parameterStatusDefault = MessageFormat{
-	Name: "ParameterStatus",
+var syncDefault = MessageFormat{
+	Name: "Sync",
 	Fields: FieldGroup{
 		{
 			Name:  "Header",
@@ -37,43 +35,27 @@ var parameterStatusDefault = MessageFormat{
 			Name:  "MessageLength",
 			Type:  Int32,
 			Flags: MessageLengthInclusive,
-			Data:  int32(0),
-		},
-		{
-			Name: "Name",
-			Type: String,
-			Data: "",
-		},
-		{
-			Name: "Value",
-			Type: String,
-			Data: "",
+			Data:  int32(4),
 		},
 	},
 }
 
-var _ Message = ParameterStatus{}
+var _ Message = Sync{}
 
 // encode implements the interface Message.
-func (m ParameterStatus) encode() (MessageFormat, error) {
-	outputMessage := m.defaultMessage().Copy()
-	outputMessage.Field("Name").MustWrite(m.Name)
-	outputMessage.Field("Value").MustWrite(m.Value)
-	return outputMessage, nil
+func (m Sync) encode() (MessageFormat, error) {
+	return m.defaultMessage().Copy(), nil
 }
 
 // decode implements the interface Message.
-func (m ParameterStatus) decode(s MessageFormat) (Message, error) {
+func (m Sync) decode(s MessageFormat) (Message, error) {
 	if err := s.MatchesStructure(*m.defaultMessage()); err != nil {
 		return nil, err
 	}
-	return ParameterStatus{
-		Name:  s.Field("Name").MustGet().(string),
-		Value: s.Field("Value").MustGet().(string),
-	}, nil
+	return Sync{}, nil
 }
 
 // defaultMessage implements the interface Message.
-func (m ParameterStatus) defaultMessage() *MessageFormat {
-	return &parameterStatusDefault
+func (m Sync) defaultMessage() *MessageFormat {
+	return &syncDefault
 }

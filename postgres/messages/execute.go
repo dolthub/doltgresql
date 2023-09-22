@@ -15,23 +15,24 @@
 package messages
 
 func init() {
-	initializeDefaultMessage(ParameterStatus{})
+	initializeDefaultMessage(Execute{})
+	addMessageHeader(Execute{})
 }
 
-// ParameterStatus reports various parameters to the client.
-type ParameterStatus struct {
-	Name  string
-	Value string
+// Execute represents a PostgreSQL message.
+type Execute struct {
+	Portal string
+	RowMax int32
 }
 
-var parameterStatusDefault = MessageFormat{
-	Name: "ParameterStatus",
+var executeDefault = MessageFormat{
+	Name: "Execute",
 	Fields: FieldGroup{
 		{
 			Name:  "Header",
 			Type:  Byte1,
 			Flags: Header,
-			Data:  int32('S'),
+			Data:  int32('E'),
 		},
 		{
 			Name:  "MessageLength",
@@ -40,40 +41,40 @@ var parameterStatusDefault = MessageFormat{
 			Data:  int32(0),
 		},
 		{
-			Name: "Name",
+			Name: "Portal",
 			Type: String,
 			Data: "",
 		},
 		{
-			Name: "Value",
-			Type: String,
-			Data: "",
+			Name: "RowMax",
+			Type: Int32,
+			Data: int32(0),
 		},
 	},
 }
 
-var _ Message = ParameterStatus{}
+var _ Message = Execute{}
 
 // encode implements the interface Message.
-func (m ParameterStatus) encode() (MessageFormat, error) {
+func (m Execute) encode() (MessageFormat, error) {
 	outputMessage := m.defaultMessage().Copy()
-	outputMessage.Field("Name").MustWrite(m.Name)
-	outputMessage.Field("Value").MustWrite(m.Value)
+	outputMessage.Field("Portal").MustWrite(m.Portal)
+	outputMessage.Field("RowMax").MustWrite(m.RowMax)
 	return outputMessage, nil
 }
 
 // decode implements the interface Message.
-func (m ParameterStatus) decode(s MessageFormat) (Message, error) {
+func (m Execute) decode(s MessageFormat) (Message, error) {
 	if err := s.MatchesStructure(*m.defaultMessage()); err != nil {
 		return nil, err
 	}
-	return ParameterStatus{
-		Name:  s.Field("Name").MustGet().(string),
-		Value: s.Field("Value").MustGet().(string),
+	return Execute{
+		Portal: s.Field("Portal").MustGet().(string),
+		RowMax: s.Field("RowMax").MustGet().(int32),
 	}, nil
 }
 
 // defaultMessage implements the interface Message.
-func (m ParameterStatus) defaultMessage() *MessageFormat {
-	return &parameterStatusDefault
+func (m Execute) defaultMessage() *MessageFormat {
+	return &executeDefault
 }

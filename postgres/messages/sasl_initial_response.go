@@ -15,23 +15,23 @@
 package messages
 
 func init() {
-	initializeDefaultMessage(ParameterStatus{})
+	initializeDefaultMessage(SASLInitialResponse{})
 }
 
-// ParameterStatus reports various parameters to the client.
-type ParameterStatus struct {
-	Name  string
-	Value string
+// SASLInitialResponse represents a PostgreSQL message.
+type SASLInitialResponse struct {
+	Name     string
+	Response []byte
 }
 
-var parameterStatusDefault = MessageFormat{
-	Name: "ParameterStatus",
+var sASLInitialResponseDefault = MessageFormat{
+	Name: "SASLInitialResponse",
 	Fields: FieldGroup{
 		{
 			Name:  "Header",
 			Type:  Byte1,
 			Flags: Header,
-			Data:  int32('S'),
+			Data:  int32('p'),
 		},
 		{
 			Name:  "MessageLength",
@@ -45,35 +45,48 @@ var parameterStatusDefault = MessageFormat{
 			Data: "",
 		},
 		{
-			Name: "Value",
+			Name:  "ResponseLength",
+			Type:  Int32,
+			Flags: ByteCount,
+			Data:  int32(-1),
+		},
+		{
+			Name: "ResponseData",
 			Type: String,
 			Data: "",
 		},
 	},
 }
 
-var _ Message = ParameterStatus{}
+var _ Message = SASLInitialResponse{}
 
 // encode implements the interface Message.
-func (m ParameterStatus) encode() (MessageFormat, error) {
+func (m SASLInitialResponse) encode() (MessageFormat, error) {
 	outputMessage := m.defaultMessage().Copy()
 	outputMessage.Field("Name").MustWrite(m.Name)
-	outputMessage.Field("Value").MustWrite(m.Value)
+	if len(m.Response) > 0 {
+		outputMessage.Field("ResponseLength").MustWrite(len(m.Response))
+		outputMessage.Field("ResponseData").MustWrite(m.Response)
+	}
 	return outputMessage, nil
 }
 
 // decode implements the interface Message.
-func (m ParameterStatus) decode(s MessageFormat) (Message, error) {
+func (m SASLInitialResponse) decode(s MessageFormat) (Message, error) {
 	if err := s.MatchesStructure(*m.defaultMessage()); err != nil {
 		return nil, err
 	}
-	return ParameterStatus{
-		Name:  s.Field("Name").MustGet().(string),
-		Value: s.Field("Value").MustGet().(string),
+	var responseData []byte
+	if s.Field("ResponseLength").MustGet().(int32) > 0 {
+		responseData = s.Field("ResponseData").MustGet().([]byte)
+	}
+	return SASLInitialResponse{
+		Name:     s.Field("Name").MustGet().(string),
+		Response: responseData,
 	}, nil
 }
 
 // defaultMessage implements the interface Message.
-func (m ParameterStatus) defaultMessage() *MessageFormat {
-	return &parameterStatusDefault
+func (m SASLInitialResponse) defaultMessage() *MessageFormat {
+	return &sASLInitialResponseDefault
 }

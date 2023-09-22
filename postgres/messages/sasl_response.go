@@ -15,23 +15,22 @@
 package messages
 
 func init() {
-	initializeDefaultMessage(ParameterStatus{})
+	initializeDefaultMessage(SASLResponse{})
 }
 
-// ParameterStatus reports various parameters to the client.
-type ParameterStatus struct {
-	Name  string
-	Value string
+// SASLResponse represents a PostgreSQL message.
+type SASLResponse struct {
+	Data []byte
 }
 
-var parameterStatusDefault = MessageFormat{
-	Name: "ParameterStatus",
+var sASLResponseDefault = MessageFormat{
+	Name: "SASLResponse",
 	Fields: FieldGroup{
 		{
 			Name:  "Header",
 			Type:  Byte1,
 			Flags: Header,
-			Data:  int32('S'),
+			Data:  int32('p'),
 		},
 		{
 			Name:  "MessageLength",
@@ -40,40 +39,33 @@ var parameterStatusDefault = MessageFormat{
 			Data:  int32(0),
 		},
 		{
-			Name: "Name",
-			Type: String,
-			Data: "",
-		},
-		{
-			Name: "Value",
-			Type: String,
-			Data: "",
+			Name: "Data",
+			Type: ByteN,
+			Data: []byte{},
 		},
 	},
 }
 
-var _ Message = ParameterStatus{}
+var _ Message = SASLResponse{}
 
 // encode implements the interface Message.
-func (m ParameterStatus) encode() (MessageFormat, error) {
+func (m SASLResponse) encode() (MessageFormat, error) {
 	outputMessage := m.defaultMessage().Copy()
-	outputMessage.Field("Name").MustWrite(m.Name)
-	outputMessage.Field("Value").MustWrite(m.Value)
+	outputMessage.Field("Data").MustWrite(m.Data)
 	return outputMessage, nil
 }
 
 // decode implements the interface Message.
-func (m ParameterStatus) decode(s MessageFormat) (Message, error) {
+func (m SASLResponse) decode(s MessageFormat) (Message, error) {
 	if err := s.MatchesStructure(*m.defaultMessage()); err != nil {
 		return nil, err
 	}
-	return ParameterStatus{
-		Name:  s.Field("Name").MustGet().(string),
-		Value: s.Field("Value").MustGet().(string),
+	return SASLResponse{
+		Data: s.Field("Data").MustGet().([]byte),
 	}, nil
 }
 
 // defaultMessage implements the interface Message.
-func (m ParameterStatus) defaultMessage() *MessageFormat {
-	return &parameterStatusDefault
+func (m SASLResponse) defaultMessage() *MessageFormat {
+	return &sASLResponseDefault
 }

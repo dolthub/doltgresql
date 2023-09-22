@@ -15,65 +15,47 @@
 package messages
 
 func init() {
-	initializeDefaultMessage(ParameterStatus{})
+	initializeDefaultMessage(CloseComplete{})
+	addMessageHeader(CloseComplete{})
 }
 
-// ParameterStatus reports various parameters to the client.
-type ParameterStatus struct {
-	Name  string
-	Value string
-}
+// CloseComplete represents a PostgreSQL message.
+type CloseComplete struct{}
 
-var parameterStatusDefault = MessageFormat{
-	Name: "ParameterStatus",
+var closeCompleteDefault = MessageFormat{
+	Name: "CloseComplete",
 	Fields: FieldGroup{
 		{
 			Name:  "Header",
 			Type:  Byte1,
 			Flags: Header,
-			Data:  int32('S'),
+			Data:  int32('3'),
 		},
 		{
 			Name:  "MessageLength",
 			Type:  Int32,
 			Flags: MessageLengthInclusive,
-			Data:  int32(0),
-		},
-		{
-			Name: "Name",
-			Type: String,
-			Data: "",
-		},
-		{
-			Name: "Value",
-			Type: String,
-			Data: "",
+			Data:  int32(4),
 		},
 	},
 }
 
-var _ Message = ParameterStatus{}
+var _ Message = CloseComplete{}
 
 // encode implements the interface Message.
-func (m ParameterStatus) encode() (MessageFormat, error) {
-	outputMessage := m.defaultMessage().Copy()
-	outputMessage.Field("Name").MustWrite(m.Name)
-	outputMessage.Field("Value").MustWrite(m.Value)
-	return outputMessage, nil
+func (m CloseComplete) encode() (MessageFormat, error) {
+	return m.defaultMessage().Copy(), nil
 }
 
 // decode implements the interface Message.
-func (m ParameterStatus) decode(s MessageFormat) (Message, error) {
+func (m CloseComplete) decode(s MessageFormat) (Message, error) {
 	if err := s.MatchesStructure(*m.defaultMessage()); err != nil {
 		return nil, err
 	}
-	return ParameterStatus{
-		Name:  s.Field("Name").MustGet().(string),
-		Value: s.Field("Value").MustGet().(string),
-	}, nil
+	return CloseComplete{}, nil
 }
 
 // defaultMessage implements the interface Message.
-func (m ParameterStatus) defaultMessage() *MessageFormat {
-	return &parameterStatusDefault
+func (m CloseComplete) defaultMessage() *MessageFormat {
+	return &closeCompleteDefault
 }

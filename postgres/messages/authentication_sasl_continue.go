@@ -15,23 +15,22 @@
 package messages
 
 func init() {
-	initializeDefaultMessage(ParameterStatus{})
+	initializeDefaultMessage(AuthenticationSASLContinue{})
 }
 
-// ParameterStatus reports various parameters to the client.
-type ParameterStatus struct {
-	Name  string
-	Value string
+// AuthenticationSASLContinue represents a PostgreSQL message.
+type AuthenticationSASLContinue struct {
+	Data []byte
 }
 
-var parameterStatusDefault = MessageFormat{
-	Name: "ParameterStatus",
+var authenticationSASLContinueDefault = MessageFormat{
+	Name: "AuthenticationSASLContinue",
 	Fields: FieldGroup{
 		{
 			Name:  "Header",
 			Type:  Byte1,
 			Flags: Header,
-			Data:  int32('S'),
+			Data:  int32('R'),
 		},
 		{
 			Name:  "MessageLength",
@@ -40,40 +39,38 @@ var parameterStatusDefault = MessageFormat{
 			Data:  int32(0),
 		},
 		{
-			Name: "Name",
-			Type: String,
-			Data: "",
+			Name: "Status",
+			Type: Int32,
+			Data: int32(11),
 		},
 		{
-			Name: "Value",
-			Type: String,
-			Data: "",
+			Name: "SASLData",
+			Type: ByteN,
+			Data: []byte{},
 		},
 	},
 }
 
-var _ Message = ParameterStatus{}
+var _ Message = AuthenticationSASLContinue{}
 
 // encode implements the interface Message.
-func (m ParameterStatus) encode() (MessageFormat, error) {
+func (m AuthenticationSASLContinue) encode() (MessageFormat, error) {
 	outputMessage := m.defaultMessage().Copy()
-	outputMessage.Field("Name").MustWrite(m.Name)
-	outputMessage.Field("Value").MustWrite(m.Value)
+	outputMessage.Field("SASLData").MustWrite(m.Data)
 	return outputMessage, nil
 }
 
 // decode implements the interface Message.
-func (m ParameterStatus) decode(s MessageFormat) (Message, error) {
+func (m AuthenticationSASLContinue) decode(s MessageFormat) (Message, error) {
 	if err := s.MatchesStructure(*m.defaultMessage()); err != nil {
 		return nil, err
 	}
-	return ParameterStatus{
-		Name:  s.Field("Name").MustGet().(string),
-		Value: s.Field("Value").MustGet().(string),
+	return AuthenticationSASLContinue{
+		Data: s.Field("SASLData").MustGet().([]byte),
 	}, nil
 }
 
 // defaultMessage implements the interface Message.
-func (m ParameterStatus) defaultMessage() *MessageFormat {
-	return &parameterStatusDefault
+func (m AuthenticationSASLContinue) defaultMessage() *MessageFormat {
+	return &authenticationSASLContinueDefault
 }

@@ -15,23 +15,23 @@
 package messages
 
 func init() {
-	initializeDefaultMessage(ParameterStatus{})
+	initializeDefaultMessage(CopyFail{})
+	addMessageHeader(CopyFail{})
 }
 
-// ParameterStatus reports various parameters to the client.
-type ParameterStatus struct {
-	Name  string
-	Value string
+// CopyFail represents a PostgreSQL message.
+type CopyFail struct {
+	ErrorMessage string
 }
 
-var parameterStatusDefault = MessageFormat{
-	Name: "ParameterStatus",
+var copyFailDefault = MessageFormat{
+	Name: "CopyFail",
 	Fields: FieldGroup{
 		{
 			Name:  "Header",
 			Type:  Byte1,
 			Flags: Header,
-			Data:  int32('S'),
+			Data:  int32('f'),
 		},
 		{
 			Name:  "MessageLength",
@@ -40,40 +40,33 @@ var parameterStatusDefault = MessageFormat{
 			Data:  int32(0),
 		},
 		{
-			Name: "Name",
-			Type: String,
-			Data: "",
-		},
-		{
-			Name: "Value",
+			Name: "ErrorMessage",
 			Type: String,
 			Data: "",
 		},
 	},
 }
 
-var _ Message = ParameterStatus{}
+var _ Message = CopyFail{}
 
 // encode implements the interface Message.
-func (m ParameterStatus) encode() (MessageFormat, error) {
+func (m CopyFail) encode() (MessageFormat, error) {
 	outputMessage := m.defaultMessage().Copy()
-	outputMessage.Field("Name").MustWrite(m.Name)
-	outputMessage.Field("Value").MustWrite(m.Value)
+	outputMessage.Field("ErrorMessage").MustWrite(m.ErrorMessage)
 	return outputMessage, nil
 }
 
 // decode implements the interface Message.
-func (m ParameterStatus) decode(s MessageFormat) (Message, error) {
+func (m CopyFail) decode(s MessageFormat) (Message, error) {
 	if err := s.MatchesStructure(*m.defaultMessage()); err != nil {
 		return nil, err
 	}
-	return ParameterStatus{
-		Name:  s.Field("Name").MustGet().(string),
-		Value: s.Field("Value").MustGet().(string),
+	return CopyFail{
+		ErrorMessage: s.Field("ErrorMessage").MustGet().(string),
 	}, nil
 }
 
 // defaultMessage implements the interface Message.
-func (m ParameterStatus) defaultMessage() *MessageFormat {
-	return &parameterStatusDefault
+func (m CopyFail) defaultMessage() *MessageFormat {
+	return &copyFailDefault
 }

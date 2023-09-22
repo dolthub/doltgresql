@@ -15,23 +15,22 @@
 package messages
 
 func init() {
-	initializeDefaultMessage(ParameterStatus{})
+	initializeDefaultMessage(PasswordMessage{})
 }
 
-// ParameterStatus reports various parameters to the client.
-type ParameterStatus struct {
-	Name  string
-	Value string
+// PasswordMessage represents a PostgreSQL message.
+type PasswordMessage struct {
+	Password string
 }
 
-var parameterStatusDefault = MessageFormat{
-	Name: "ParameterStatus",
+var passwordMessageDefault = MessageFormat{
+	Name: "PasswordMessage",
 	Fields: FieldGroup{
 		{
 			Name:  "Header",
 			Type:  Byte1,
 			Flags: Header,
-			Data:  int32('S'),
+			Data:  int32('p'),
 		},
 		{
 			Name:  "MessageLength",
@@ -40,40 +39,33 @@ var parameterStatusDefault = MessageFormat{
 			Data:  int32(0),
 		},
 		{
-			Name: "Name",
-			Type: String,
-			Data: "",
-		},
-		{
-			Name: "Value",
+			Name: "Password",
 			Type: String,
 			Data: "",
 		},
 	},
 }
 
-var _ Message = ParameterStatus{}
+var _ Message = PasswordMessage{}
 
 // encode implements the interface Message.
-func (m ParameterStatus) encode() (MessageFormat, error) {
+func (m PasswordMessage) encode() (MessageFormat, error) {
 	outputMessage := m.defaultMessage().Copy()
-	outputMessage.Field("Name").MustWrite(m.Name)
-	outputMessage.Field("Value").MustWrite(m.Value)
+	outputMessage.Field("Password").MustWrite(m.Password)
 	return outputMessage, nil
 }
 
 // decode implements the interface Message.
-func (m ParameterStatus) decode(s MessageFormat) (Message, error) {
+func (m PasswordMessage) decode(s MessageFormat) (Message, error) {
 	if err := s.MatchesStructure(*m.defaultMessage()); err != nil {
 		return nil, err
 	}
-	return ParameterStatus{
-		Name:  s.Field("Name").MustGet().(string),
-		Value: s.Field("Value").MustGet().(string),
+	return PasswordMessage{
+		Password: s.Field("Password").MustGet().(string),
 	}, nil
 }
 
 // defaultMessage implements the interface Message.
-func (m ParameterStatus) defaultMessage() *MessageFormat {
-	return &parameterStatusDefault
+func (m PasswordMessage) defaultMessage() *MessageFormat {
+	return &passwordMessageDefault
 }

@@ -15,65 +15,47 @@
 package messages
 
 func init() {
-	initializeDefaultMessage(ParameterStatus{})
+	initializeDefaultMessage(BindComplete{})
+	addMessageHeader(BindComplete{})
 }
 
-// ParameterStatus reports various parameters to the client.
-type ParameterStatus struct {
-	Name  string
-	Value string
-}
+// BindComplete represents a PostgreSQL message.
+type BindComplete struct{}
 
-var parameterStatusDefault = MessageFormat{
-	Name: "ParameterStatus",
+var bindCompleteDefault = MessageFormat{
+	Name: "BindComplete",
 	Fields: FieldGroup{
 		{
 			Name:  "Header",
 			Type:  Byte1,
 			Flags: Header,
-			Data:  int32('S'),
+			Data:  int32('2'),
 		},
 		{
 			Name:  "MessageLength",
 			Type:  Int32,
 			Flags: MessageLengthInclusive,
-			Data:  int32(0),
-		},
-		{
-			Name: "Name",
-			Type: String,
-			Data: "",
-		},
-		{
-			Name: "Value",
-			Type: String,
-			Data: "",
+			Data:  int32(4),
 		},
 	},
 }
 
-var _ Message = ParameterStatus{}
+var _ Message = BindComplete{}
 
 // encode implements the interface Message.
-func (m ParameterStatus) encode() (MessageFormat, error) {
-	outputMessage := m.defaultMessage().Copy()
-	outputMessage.Field("Name").MustWrite(m.Name)
-	outputMessage.Field("Value").MustWrite(m.Value)
-	return outputMessage, nil
+func (m BindComplete) encode() (MessageFormat, error) {
+	return m.defaultMessage().Copy(), nil
 }
 
 // decode implements the interface Message.
-func (m ParameterStatus) decode(s MessageFormat) (Message, error) {
+func (m BindComplete) decode(s MessageFormat) (Message, error) {
 	if err := s.MatchesStructure(*m.defaultMessage()); err != nil {
 		return nil, err
 	}
-	return ParameterStatus{
-		Name:  s.Field("Name").MustGet().(string),
-		Value: s.Field("Value").MustGet().(string),
-	}, nil
+	return BindComplete{}, nil
 }
 
 // defaultMessage implements the interface Message.
-func (m ParameterStatus) defaultMessage() *MessageFormat {
-	return &parameterStatusDefault
+func (m BindComplete) defaultMessage() *MessageFormat {
+	return &bindCompleteDefault
 }

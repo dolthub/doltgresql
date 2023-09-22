@@ -15,65 +15,62 @@
 package messages
 
 func init() {
-	initializeDefaultMessage(ParameterStatus{})
+	initializeDefaultMessage(AuthenticationMD5Password{})
 }
 
-// ParameterStatus reports various parameters to the client.
-type ParameterStatus struct {
-	Name  string
-	Value string
+// AuthenticationMD5Password represents a PostgreSQL message.
+type AuthenticationMD5Password struct {
+	Salt int32
 }
 
-var parameterStatusDefault = MessageFormat{
-	Name: "ParameterStatus",
+var authenticationMD5PasswordDefault = MessageFormat{
+	Name: "AuthenticationMD5Password",
 	Fields: FieldGroup{
 		{
 			Name:  "Header",
 			Type:  Byte1,
 			Flags: Header,
-			Data:  int32('S'),
+			Data:  int32('R'),
 		},
 		{
 			Name:  "MessageLength",
 			Type:  Int32,
 			Flags: MessageLengthInclusive,
-			Data:  int32(0),
+			Data:  int32(12),
 		},
 		{
-			Name: "Name",
-			Type: String,
-			Data: "",
+			Name: "Status",
+			Type: Int32,
+			Data: int32(5),
 		},
 		{
-			Name: "Value",
-			Type: String,
-			Data: "",
+			Name: "Salt",
+			Type: Byte4,
+			Data: int32(0),
 		},
 	},
 }
 
-var _ Message = ParameterStatus{}
+var _ Message = AuthenticationMD5Password{}
 
 // encode implements the interface Message.
-func (m ParameterStatus) encode() (MessageFormat, error) {
+func (m AuthenticationMD5Password) encode() (MessageFormat, error) {
 	outputMessage := m.defaultMessage().Copy()
-	outputMessage.Field("Name").MustWrite(m.Name)
-	outputMessage.Field("Value").MustWrite(m.Value)
+	outputMessage.Field("Salt").MustWrite(m.Salt)
 	return outputMessage, nil
 }
 
 // decode implements the interface Message.
-func (m ParameterStatus) decode(s MessageFormat) (Message, error) {
+func (m AuthenticationMD5Password) decode(s MessageFormat) (Message, error) {
 	if err := s.MatchesStructure(*m.defaultMessage()); err != nil {
 		return nil, err
 	}
-	return ParameterStatus{
-		Name:  s.Field("Name").MustGet().(string),
-		Value: s.Field("Value").MustGet().(string),
+	return AuthenticationMD5Password{
+		Salt: s.Field("Salt").MustGet().(int32),
 	}, nil
 }
 
 // defaultMessage implements the interface Message.
-func (m ParameterStatus) defaultMessage() *MessageFormat {
-	return &parameterStatusDefault
+func (m AuthenticationMD5Password) defaultMessage() *MessageFormat {
+	return &authenticationMD5PasswordDefault
 }

@@ -15,23 +15,23 @@
 package messages
 
 func init() {
-	initializeDefaultMessage(ParameterStatus{})
+	initializeDefaultMessage(CopyData{})
+	addMessageHeader(CopyData{})
 }
 
-// ParameterStatus reports various parameters to the client.
-type ParameterStatus struct {
-	Name  string
-	Value string
+// CopyData represents a PostgreSQL message.
+type CopyData struct {
+	Data []byte
 }
 
-var parameterStatusDefault = MessageFormat{
-	Name: "ParameterStatus",
+var copyDataDefault = MessageFormat{
+	Name: "CopyData",
 	Fields: FieldGroup{
 		{
 			Name:  "Header",
 			Type:  Byte1,
 			Flags: Header,
-			Data:  int32('S'),
+			Data:  int32('d'),
 		},
 		{
 			Name:  "MessageLength",
@@ -40,40 +40,33 @@ var parameterStatusDefault = MessageFormat{
 			Data:  int32(0),
 		},
 		{
-			Name: "Name",
-			Type: String,
-			Data: "",
-		},
-		{
-			Name: "Value",
-			Type: String,
-			Data: "",
+			Name: "Data",
+			Type: ByteN,
+			Data: []byte{},
 		},
 	},
 }
 
-var _ Message = ParameterStatus{}
+var _ Message = CopyData{}
 
 // encode implements the interface Message.
-func (m ParameterStatus) encode() (MessageFormat, error) {
+func (m CopyData) encode() (MessageFormat, error) {
 	outputMessage := m.defaultMessage().Copy()
-	outputMessage.Field("Name").MustWrite(m.Name)
-	outputMessage.Field("Value").MustWrite(m.Value)
+	outputMessage.Field("Data").MustWrite(m.Data)
 	return outputMessage, nil
 }
 
 // decode implements the interface Message.
-func (m ParameterStatus) decode(s MessageFormat) (Message, error) {
+func (m CopyData) decode(s MessageFormat) (Message, error) {
 	if err := s.MatchesStructure(*m.defaultMessage()); err != nil {
 		return nil, err
 	}
-	return ParameterStatus{
-		Name:  s.Field("Name").MustGet().(string),
-		Value: s.Field("Value").MustGet().(string),
+	return CopyData{
+		Data: s.Field("Data").MustGet().([]byte),
 	}, nil
 }
 
 // defaultMessage implements the interface Message.
-func (m ParameterStatus) defaultMessage() *MessageFormat {
-	return &parameterStatusDefault
+func (m CopyData) defaultMessage() *MessageFormat {
+	return &copyDataDefault
 }

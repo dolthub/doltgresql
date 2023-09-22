@@ -15,23 +15,22 @@
 package messages
 
 func init() {
-	initializeDefaultMessage(ParameterStatus{})
+	initializeDefaultMessage(ParameterDescription{})
 }
 
-// ParameterStatus reports various parameters to the client.
-type ParameterStatus struct {
-	Name  string
-	Value string
+// ParameterDescription represents a PostgreSQL message.
+type ParameterDescription struct {
+	ObjectIDs []int32
 }
 
-var parameterStatusDefault = MessageFormat{
-	Name: "ParameterStatus",
+var parameterDescriptionDefault = MessageFormat{
+	Name: "ParameterDescription",
 	Fields: FieldGroup{
 		{
 			Name:  "Header",
 			Type:  Byte1,
 			Flags: Header,
-			Data:  int32('S'),
+			Data:  int32('t'),
 		},
 		{
 			Name:  "MessageLength",
@@ -40,40 +39,49 @@ var parameterStatusDefault = MessageFormat{
 			Data:  int32(0),
 		},
 		{
-			Name: "Name",
-			Type: String,
-			Data: "",
-		},
-		{
-			Name: "Value",
-			Type: String,
-			Data: "",
+			Name: "Parameters",
+			Type: Int16,
+			Data: int32(0),
+			Children: []FieldGroup{
+				{
+					{
+						Name: "ObjectID",
+						Type: Int32,
+						Data: int32(0),
+					},
+				},
+			},
 		},
 	},
 }
 
-var _ Message = ParameterStatus{}
+var _ Message = ParameterDescription{}
 
 // encode implements the interface Message.
-func (m ParameterStatus) encode() (MessageFormat, error) {
+func (m ParameterDescription) encode() (MessageFormat, error) {
 	outputMessage := m.defaultMessage().Copy()
-	outputMessage.Field("Name").MustWrite(m.Name)
-	outputMessage.Field("Value").MustWrite(m.Value)
+	for i, objectID := range m.ObjectIDs {
+		outputMessage.Field("Parameters").Child("ObjectID", i).MustWrite(objectID)
+	}
 	return outputMessage, nil
 }
 
 // decode implements the interface Message.
-func (m ParameterStatus) decode(s MessageFormat) (Message, error) {
+func (m ParameterDescription) decode(s MessageFormat) (Message, error) {
 	if err := s.MatchesStructure(*m.defaultMessage()); err != nil {
 		return nil, err
 	}
-	return ParameterStatus{
-		Name:  s.Field("Name").MustGet().(string),
-		Value: s.Field("Value").MustGet().(string),
+	count := int(s.Field("Parameters").MustGet().(int32))
+	objectIDs := make([]int32, count)
+	for i := 0; i < count; i++ {
+		objectIDs[i] = s.Field("Parameters").Child("ObjectID", i).MustGet().(int32)
+	}
+	return ParameterDescription{
+		ObjectIDs: objectIDs,
 	}, nil
 }
 
 // defaultMessage implements the interface Message.
-func (m ParameterStatus) defaultMessage() *MessageFormat {
-	return &parameterStatusDefault
+func (m ParameterDescription) defaultMessage() *MessageFormat {
+	return &parameterDescriptionDefault
 }

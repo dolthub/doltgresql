@@ -20,12 +20,8 @@ import (
 	"encoding/binary"
 	"fmt"
 	"math/rand"
-	"net/http"
 	_ "net/http/pprof"
 	"os"
-	"os/exec"
-	"strconv"
-	"time"
 
 	"github.com/dolthub/dolt/go/cmd/dolt/cli"
 	"github.com/dolthub/dolt/go/cmd/dolt/commands"
@@ -35,7 +31,6 @@ import (
 	"github.com/dolthub/dolt/go/libraries/doltcore/env"
 	"github.com/dolthub/dolt/go/libraries/doltcore/sqle/dfunctions"
 	"github.com/dolthub/dolt/go/libraries/doltcore/sqle/dsess"
-	"github.com/dolthub/dolt/go/libraries/events"
 	"github.com/dolthub/dolt/go/libraries/utils/argparser"
 	"github.com/dolthub/dolt/go/libraries/utils/config"
 	"github.com/dolthub/dolt/go/libraries/utils/filesys"
@@ -44,13 +39,7 @@ import (
 	"github.com/dolthub/go-mysql-server/server"
 	"github.com/dolthub/go-mysql-server/sql"
 	"github.com/fatih/color"
-	"github.com/pkg/profile"
 	"github.com/tidwall/gjson"
-	"go.opentelemetry.io/otel"
-	"go.opentelemetry.io/otel/exporters/jaeger"
-	"go.opentelemetry.io/otel/sdk/resource"
-	tracesdk "go.opentelemetry.io/otel/sdk/trace"
-	semconv "go.opentelemetry.io/otel/semconv/v1.10.0"
 
 	"github.com/dolthub/doltgresql/postgres"
 )
@@ -66,44 +55,26 @@ var doltCommand = cli.NewSubCommandHandler("doltgresql", "it's git for data", []
 	sqlserver.SqlServerCmd{VersionStr: Version},
 })
 var globalArgParser = cli.CreateGlobalArgParser("doltgresql")
-var globalDocs = cli.CommandDocsForCommandString("doltgresql", doc, globalArgParser)
-
-var globalSpecialMsg = `
-Dolt subcommands are in transition to using the flags listed below as global flags.
-Not all subcommands use these flags. If your command accepts these flags without error, then they are supported.
-`
 
 func init() {
 	server.DefaultProtocolListenerFunc = postgres.NewListenerWithConfig
-	sqlserver.DoltgreSQLDisableUsers = true
+	sqlserver.ExternalDisableUsers = true
 	dfunctions.VersionString = Version
 }
 
-const pprofServerFlag = "--pprof-server"
 const chdirFlag = "--chdir"
-const jaegerFlag = "--jaeger"
-const profFlag = "--prof"
-const csMetricsFlag = "--csmetrics"
 const stdInFlag = "--stdin"
 const stdOutFlag = "--stdout"
 const stdErrFlag = "--stderr"
 const stdOutAndErrFlag = "--out-and-err"
 const ignoreLocksFlag = "--ignore-lock-file"
-const verboseEngineSetupFlag = "--verbose-engine-setup"
-
-const cpuProf = "cpu"
-const memProf = "mem"
-const blockingProf = "blocking"
-const traceProf = "trace"
-
-const featureVersionFlag = "--feature-version"
 
 func main() {
-	os.Exit(runMain())
+	os.Exit(RunMain(os.Args[1:]))
 }
 
-func runMain() int {
-	args := os.Args[1:]
+func RunMain(args []string) int {
+	ctx := context.Background()
 	// Inject the "sql-server" command
 	args = append([]string{"sql-server"}, args...)
 	// Enforce a default port of 5432
@@ -113,102 +84,15 @@ func runMain() int {
 		}
 	}
 
-	start := time.Now()
-
-	if len(args) == 0 {
-		doltCommand.PrintUsage("dolt")
-		return 1
-	}
-
 	if os.Getenv("DOLT_VERBOSE_ASSERT_TABLE_FILES_CLOSED") == "" {
 		nbs.TableIndexGCFinalizerWithStackTrace = false
 	}
 
-	csMetrics := false
 	ignoreLockFile := false
-	verboseEngineSetup := false
 	if len(args) > 0 {
 		var doneDebugFlags bool
 		for !doneDebugFlags && len(args) > 0 {
 			switch args[0] {
-			case profFlag:
-				switch args[1] {
-				case cpuProf:
-					cli.Println("cpu profiling enabled.")
-					defer profile.Start(profile.CPUProfile, profile.NoShutdownHook).Stop()
-				case memProf:
-					cli.Println("mem profiling enabled.")
-					defer profile.Start(profile.MemProfile, profile.NoShutdownHook).Stop()
-				case blockingProf:
-					cli.Println("block profiling enabled")
-					defer profile.Start(profile.BlockProfile, profile.NoShutdownHook).Stop()
-				case traceProf:
-					cli.Println("trace profiling enabled")
-					defer profile.Start(profile.TraceProfile, profile.NoShutdownHook).Stop()
-				default:
-					panic("Unexpected prof flag: " + args[1])
-				}
-				args = args[2:]
-
-			case pprofServerFlag:
-				// serve the pprof endpoints setup in the init function run when "net/http/pprof" is imported
-				go func() {
-					cyanStar := color.CyanString("*")
-					cli.Println(cyanStar, "Starting pprof server on port 6060.")
-					cli.Println(cyanStar, "Go to", color.CyanString("http://localhost:6060/debug/pprof"), "in a browser to see supported endpoints.")
-					cli.Println(cyanStar)
-					cli.Println(cyanStar, "Known endpoints are:")
-					cli.Println(cyanStar, "  /allocs: A sampling of all past memory allocations")
-					cli.Println(cyanStar, "  /block: Stack traces that led to blocking on synchronization primitives")
-					cli.Println(cyanStar, "  /cmdline: The command line invocation of the current program")
-					cli.Println(cyanStar, "  /goroutine: Stack traces of all current goroutines")
-					cli.Println(cyanStar, "  /heap: A sampling of memory allocations of live objects. You can specify the gc GET parameter to run GC before taking the heap sample.")
-					cli.Println(cyanStar, "  /mutex: Stack traces of holders of contended mutexes")
-					cli.Println(cyanStar, "  /profile: CPU profile. You can specify the duration in the seconds GET parameter. After you get the profile file, use the go tool pprof command to investigate the profile.")
-					cli.Println(cyanStar, "  /threadcreate: Stack traces that led to the creation of new OS threads")
-					cli.Println(cyanStar, "  /trace: A trace of execution of the current program. You can specify the duration in the seconds GET parameter. After you get the trace file, use the go tool trace command to investigate the trace.")
-					cli.Println()
-
-					err := http.ListenAndServe("0.0.0.0:6060", nil)
-
-					if err != nil {
-						cli.Println(color.YellowString("pprof server exited with error: %v", err))
-					}
-				}()
-				args = args[1:]
-
-			// Enable a global jaeger tracer for this run of Dolt,
-			// emitting traces to a collector running at
-			// localhost:14268. To visualize these traces, run:
-			// docker run -d --name jaeger \
-			//    -e COLLECTOR_ZIPKIN_HTTP_PORT=9411 \
-			//    -p 5775:5775/udp \
-			//    -p 6831:6831/udp \
-			//    -p 6832:6832/udp \
-			//    -p 5778:5778 \
-			//    -p 16686:16686 \
-			//    -p 14268:14268 \
-			//    -p 14250:14250 \
-			//    -p 9411:9411 \
-			//    jaegertracing/all-in-one:1.21
-			// and browse to http://localhost:16686
-			case jaegerFlag:
-				cli.Println("running with jaeger tracing reporting to localhost")
-				exp, err := jaeger.New(jaeger.WithCollectorEndpoint(jaeger.WithEndpoint("http://localhost:14268/api/traces")))
-				if err != nil {
-					cli.Println(color.YellowString("could not create jaeger collector: %v", err))
-				} else {
-					tp := tracesdk.NewTracerProvider(
-						tracesdk.WithBatcher(exp),
-						tracesdk.WithResource(resource.NewWithAttributes(
-							semconv.SchemaURL,
-							semconv.ServiceNameKey.String("dolt"),
-						)),
-					)
-					otel.SetTracerProvider(tp)
-					defer tp.Shutdown(context.Background())
-					args = args[1:]
-				}
 			// Currently goland doesn't support running with a different working directory when using go modules.
 			// This is a hack that allows a different working directory to be set after the application starts using
 			// chdir=<DIR>.  The syntax is not flexible and must match exactly this.
@@ -259,33 +143,10 @@ func runMain() int {
 				color.NoColor = true
 				args = args[2:]
 
-			case csMetricsFlag:
-				csMetrics = true
-				args = args[1:]
-
 			case ignoreLocksFlag:
 				ignoreLockFile = true
 				args = args[1:]
 
-			case featureVersionFlag:
-				var err error
-				if len(args) == 0 {
-					err = fmt.Errorf("missing argument for the --feature-version flag")
-				} else {
-					if featureVersion, err := strconv.Atoi(args[1]); err == nil {
-						doltdb.DoltFeatureVersion = doltdb.FeatureVersion(featureVersion)
-					}
-				}
-				if err != nil {
-					cli.PrintErrln(err.Error())
-					return 1
-				}
-
-				args = args[2:]
-
-			case verboseEngineSetupFlag:
-				verboseEngineSetup = true
-				args = args[1:]
 			default:
 				doneDebugFlags = true
 			}
@@ -299,23 +160,10 @@ func runMain() int {
 
 	warnIfMaxFilesTooLow()
 
-	ctx := context.Background()
-	if ok, exit := interceptSendMetrics(ctx, args); ok {
-		return exit
-	}
-
-	_, usage := cli.HelpAndUsagePrinters(globalDocs)
-
 	var fs filesys.Filesys
 	fs = filesys.LocalFS
 	dEnv := env.Load(ctx, env.GetCurrentUserHomeDir, fs, doltdb.LocalDirDoltDB, Version)
 	dEnv.IgnoreLockFile = ignoreLockFile
-
-	root, err := env.GetCurrentUserHomeDir()
-	if err != nil {
-		cli.PrintErrln(color.RedString("Failed to load the HOME directory: %v", err))
-		return 1
-	}
 
 	globalConfig, ok := dEnv.Config.GetConfig(env.GlobalConfig)
 	if !ok {
@@ -325,10 +173,8 @@ func runMain() int {
 
 	apr, remainingArgs, subcommandName, err := parseGlobalArgsAndSubCommandName(globalConfig, args)
 	if err == argparser.ErrHelp {
+		//TODO: display some help message
 		doltCommand.PrintUsage("dolt")
-		cli.Println(globalSpecialMsg)
-		usage()
-
 		return 0
 	} else if err != nil {
 		cli.PrintErrln(color.RedString("Failure to parse arguments: %v", err))
@@ -354,35 +200,7 @@ func runMain() int {
 		return 1
 	}
 
-	emitter := events.NewFileEmitter(root, dbfactory.DoltDir)
-
-	defer func() {
-		ces := events.GlobalCollector.Close()
-		// events.WriterEmitter{cli.CliOut}.LogEvents(Version, ces)
-
-		metricsDisabled := dEnv.Config.GetStringOrDefault(env.MetricsDisabled, "false")
-
-		disabled, err := strconv.ParseBool(metricsDisabled)
-		if err != nil {
-			// log.Print(err)
-			return
-		}
-
-		if disabled {
-			return
-		}
-
-		// write events
-		_ = emitter.LogEvents(Version, ces)
-
-		// flush events
-		if err := processEventsDir(args, dEnv); err != nil {
-			// log.Print(err)
-		}
-	}()
-
 	err = reconfigIfTempFileMoveFails(dEnv)
-
 	if err != nil {
 		cli.PrintErrln(color.RedString("Failed to setup the temporary directory. %v`", err))
 		return 1
@@ -443,7 +261,7 @@ func runMain() int {
 			return 1
 		}
 
-		lateBind, err := buildLateBinder(ctx, cwdFS, dEnv, mrEnv, creds, apr, subcommandName, verboseEngineSetup)
+		lateBind, err := buildLateBinder(ctx, cwdFS, dEnv, mrEnv, creds, apr, subcommandName, false)
 
 		if err != nil {
 			cli.PrintErrln(color.RedString("%v", err))
@@ -469,12 +287,6 @@ func runMain() int {
 		if res == 0 {
 			res = 1
 		}
-	}
-
-	if csMetrics && dEnv.DoltDB != nil {
-		metricsSummary := dEnv.DoltDB.CSMetricsSummary()
-		cli.Println("Command took", time.Since(start).Seconds())
-		cli.PrintErrln(metricsSummary)
 	}
 
 	return res
@@ -571,17 +383,6 @@ func buildLateBinder(ctx context.Context, cwdFS filesys.Filesys, rootEnv *env.Do
 	return commands.BuildSqlEngineQueryist(ctx, cwdFS, mrEnv, creds, apr)
 }
 
-// doc is currently used only when a `initCliContext` command is specified. This will include all commands in time,
-// otherwise you only see these docs if you specify a nonsense argument before the `sql` subcommand.
-var doc = cli.CommandDocumentationContent{
-	ShortDesc: "Dolt is git for data",
-	LongDesc:  `Dolt comprises of multiple subcommands that allow users to import, export, update, and manipulate data with SQL.`,
-
-	Synopsis: []string{
-		"<--data-dir=<path>> subcommand <subcommand arguments>",
-	},
-}
-
 func seedGlobalRand() {
 	bs := make([]byte, 8)
 	_, err := crand.Read(bs)
@@ -589,42 +390,6 @@ func seedGlobalRand() {
 		panic("failed to initial rand " + err.Error())
 	}
 	rand.Seed(int64(binary.LittleEndian.Uint64(bs)))
-}
-
-// processEventsDir runs the dolt send-metrics command in a new process
-func processEventsDir(args []string, dEnv *env.DoltEnv) error {
-	if len(args) > 0 {
-		ignoreCommands := map[string]struct{}{
-			commands.SendMetricsCommand: {},
-			"init":                      {},
-			"config":                    {},
-		}
-
-		_, ok := ignoreCommands[args[0]]
-
-		if ok {
-			return nil
-		}
-
-		cmd := exec.Command("dolt", commands.SendMetricsCommand)
-
-		if err := cmd.Start(); err != nil {
-			// log.Print(err)
-			return err
-		}
-
-		return nil
-	}
-
-	return nil
-}
-
-func interceptSendMetrics(ctx context.Context, args []string) (bool, int) {
-	if len(args) < 1 || args[0] != commands.SendMetricsCommand {
-		return false, 0
-	}
-	dEnv := env.LoadWithoutDB(ctx, env.GetCurrentUserHomeDir, filesys.LocalFS, Version)
-	return true, doltCommand.Exec(ctx, "dolt", args, dEnv, nil)
 }
 
 // parseGlobalArgsAndSubCommandName parses the global arguments, including a profile if given or a default profile if exists. Also returns the subcommand name.

@@ -14,22 +14,16 @@
 
 package messages
 
-// AuthenticationOk tells the client that authentication was successful.
-type AuthenticationOk struct{}
-
 func init() {
-	initializeDefaultMessage(AuthenticationOk{})
+	initializeDefaultMessage(SSLRequest{})
 }
 
-var authenticationOkDefault = MessageFormat{
-	Name: "AuthenticationOk",
+// SSLRequest represents a PostgreSQL message.
+type SSLRequest struct{}
+
+var sslRequestDefault = MessageFormat{
+	Name: "SSLRequest",
 	Fields: FieldGroup{
-		{
-			Name:  "Header",
-			Type:  Byte1,
-			Flags: Header,
-			Data:  int32('R'),
-		},
 		{
 			Name:  "MessageLength",
 			Type:  Int32,
@@ -37,29 +31,29 @@ var authenticationOkDefault = MessageFormat{
 			Data:  int32(8),
 		},
 		{
-			Name: "Status",
+			Name: "RequestCode",
 			Type: Int32,
-			Data: int32(0),
+			Data: int32(80877103),
 		},
 	},
 }
 
-var _ Message = AuthenticationOk{}
+var _ Message = SSLRequest{}
 
 // encode implements the interface Message.
-func (m AuthenticationOk) encode() (MessageFormat, error) {
+func (m SSLRequest) encode() (MessageFormat, error) {
 	return m.defaultMessage().Copy(), nil
 }
 
 // decode implements the interface Message.
-func (m AuthenticationOk) decode(s MessageFormat) (Message, error) {
+func (m SSLRequest) decode(s MessageFormat) (Message, error) {
 	if err := s.MatchesStructure(*m.defaultMessage()); err != nil {
 		return nil, err
 	}
-	return AuthenticationOk{}, nil
+	return SSLRequest{}, nil
 }
 
 // defaultMessage implements the interface Message.
-func (m AuthenticationOk) defaultMessage() *MessageFormat {
-	return &authenticationOkDefault
+func (m SSLRequest) defaultMessage() *MessageFormat {
+	return &sslRequestDefault
 }

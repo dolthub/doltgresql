@@ -14,27 +14,23 @@
 
 package messages
 
-import (
-	"github.com/dolthub/vitess/go/sqltypes"
-)
-
 func init() {
-	initializeDefaultMessage(DataRow{})
+	initializeDefaultMessage(AuthenticationSASL{})
 }
 
-// DataRow represents a row of data.
-type DataRow struct {
-	Values []sqltypes.Value
+// AuthenticationSASL represents a PostgreSQL message.
+type AuthenticationSASL struct {
+	Mechanisms []string
 }
 
-var dataRowDefault = MessageFormat{
-	Name: "DataRow",
+var authenticationSASLDefault = MessageFormat{
+	Name: "AuthenticationSASL",
 	Fields: FieldGroup{
 		{
 			Name:  "Header",
 			Type:  Byte1,
 			Flags: Header,
-			Data:  int32('D'),
+			Data:  int32('R'),
 		},
 		{
 			Name:  "MessageLength",
@@ -43,21 +39,21 @@ var dataRowDefault = MessageFormat{
 			Data:  int32(0),
 		},
 		{
-			Name: "Columns",
-			Type: Int16,
-			Data: int32(0),
+			Name: "Status",
+			Type: Int32,
+			Data: int32(10),
+		},
+		{
+			Name:  "Mechanisms",
+			Type:  Repeated,
+			Flags: RepeatedTerminator,
+			Data:  int32(0),
 			Children: []FieldGroup{
 				{
 					{
-						Name:  "ColumnLength",
-						Type:  Int32,
-						Flags: ByteCount,
-						Data:  int32(0),
-					},
-					{
-						Name: "ColumnData",
-						Type: ByteN,
-						Data: []byte{},
+						Name: "Mechanism",
+						Type: String,
+						Data: "",
 					},
 				},
 			},
@@ -65,38 +61,33 @@ var dataRowDefault = MessageFormat{
 	},
 }
 
-var _ Message = DataRow{}
+var _ Message = AuthenticationSASL{}
 
 // encode implements the interface Message.
-func (m DataRow) encode() (MessageFormat, error) {
+func (m AuthenticationSASL) encode() (MessageFormat, error) {
 	outputMessage := m.defaultMessage().Copy()
-	for i := 0; i < len(m.Values); i++ {
-		if m.Values[i].IsNull() {
-			outputMessage.Field("Columns").Child("ColumnLength", i).MustWrite(-1)
-		} else {
-			value := []byte(m.Values[i].ToString())
-			outputMessage.Field("Columns").Child("ColumnLength", i).MustWrite(len(value))
-			outputMessage.Field("Columns").Child("ColumnData", i).MustWrite(value)
-		}
+	for i, mechanism := range m.Mechanisms {
+		outputMessage.Field("Mechanisms").Child("Mechanism", i).MustWrite(mechanism)
 	}
 	return outputMessage, nil
 }
 
 // decode implements the interface Message.
-func (m DataRow) decode(s MessageFormat) (Message, error) {
+func (m AuthenticationSASL) decode(s MessageFormat) (Message, error) {
 	if err := s.MatchesStructure(*m.defaultMessage()); err != nil {
 		return nil, err
 	}
-	columnCount := int(s.Field("Columns").MustGet().(int32))
-	for i := 0; i < columnCount; i++ {
-		//TODO: decode the message in here
+	count := int(s.Field("Mechanisms").MustGet().(int32))
+	mechanisms := make([]string, count)
+	for i := 0; i < count; i++ {
+		mechanisms[i] = s.Field("Mechanisms").Child("Mechanism", i).MustGet().(string)
 	}
-	return DataRow{
-		Values: nil,
+	return AuthenticationSASL{
+		Mechanisms: mechanisms,
 	}, nil
 }
 
 // defaultMessage implements the interface Message.
-func (m DataRow) defaultMessage() *MessageFormat {
-	return &dataRowDefault
+func (m AuthenticationSASL) defaultMessage() *MessageFormat {
+	return &authenticationSASLDefault
 }

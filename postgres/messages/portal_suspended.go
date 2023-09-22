@@ -15,65 +15,49 @@
 package messages
 
 func init() {
-	initializeDefaultMessage(ParameterStatus{})
+	initializeDefaultMessage(PortalSuspended{})
 }
 
-// ParameterStatus reports various parameters to the client.
-type ParameterStatus struct {
-	Name  string
-	Value string
+// PortalSuspended represents a PostgreSQL message.
+type PortalSuspended struct {
+	Integer int32
+	String  string
 }
 
-var parameterStatusDefault = MessageFormat{
-	Name: "ParameterStatus",
+var portalSuspendedDefault = MessageFormat{
+	Name: "PortalSuspended",
 	Fields: FieldGroup{
 		{
 			Name:  "Header",
 			Type:  Byte1,
 			Flags: Header,
-			Data:  int32('S'),
+			Data:  int32('s'),
 		},
 		{
 			Name:  "MessageLength",
 			Type:  Int32,
 			Flags: MessageLengthInclusive,
-			Data:  int32(0),
-		},
-		{
-			Name: "Name",
-			Type: String,
-			Data: "",
-		},
-		{
-			Name: "Value",
-			Type: String,
-			Data: "",
+			Data:  int32(4),
 		},
 	},
 }
 
-var _ Message = ParameterStatus{}
+var _ Message = PortalSuspended{}
 
 // encode implements the interface Message.
-func (m ParameterStatus) encode() (MessageFormat, error) {
-	outputMessage := m.defaultMessage().Copy()
-	outputMessage.Field("Name").MustWrite(m.Name)
-	outputMessage.Field("Value").MustWrite(m.Value)
-	return outputMessage, nil
+func (m PortalSuspended) encode() (MessageFormat, error) {
+	return m.defaultMessage().Copy(), nil
 }
 
 // decode implements the interface Message.
-func (m ParameterStatus) decode(s MessageFormat) (Message, error) {
+func (m PortalSuspended) decode(s MessageFormat) (Message, error) {
 	if err := s.MatchesStructure(*m.defaultMessage()); err != nil {
 		return nil, err
 	}
-	return ParameterStatus{
-		Name:  s.Field("Name").MustGet().(string),
-		Value: s.Field("Value").MustGet().(string),
-	}, nil
+	return PortalSuspended{}, nil
 }
 
 // defaultMessage implements the interface Message.
-func (m ParameterStatus) defaultMessage() *MessageFormat {
-	return &parameterStatusDefault
+func (m PortalSuspended) defaultMessage() *MessageFormat {
+	return &portalSuspendedDefault
 }

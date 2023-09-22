@@ -15,23 +15,23 @@
 package messages
 
 func init() {
-	initializeDefaultMessage(ParameterStatus{})
+	initializeDefaultMessage(FunctionCallResponse{})
 }
 
-// ParameterStatus reports various parameters to the client.
-type ParameterStatus struct {
-	Name  string
-	Value string
+// FunctionCallResponse represents a PostgreSQL message.
+type FunctionCallResponse struct {
+	IsResultNull bool
+	ResultValue  []byte
 }
 
-var parameterStatusDefault = MessageFormat{
-	Name: "ParameterStatus",
+var functionCallResponseDefault = MessageFormat{
+	Name: "FunctionCallResponse",
 	Fields: FieldGroup{
 		{
 			Name:  "Header",
 			Type:  Byte1,
 			Flags: Header,
-			Data:  int32('S'),
+			Data:  int32('V'),
 		},
 		{
 			Name:  "MessageLength",
@@ -40,40 +40,49 @@ var parameterStatusDefault = MessageFormat{
 			Data:  int32(0),
 		},
 		{
-			Name: "Name",
-			Type: String,
-			Data: "",
+			Name:  "ResultLength",
+			Type:  Int32,
+			Flags: ByteCount,
+			Data:  int32(0),
 		},
 		{
-			Name: "Value",
-			Type: String,
-			Data: "",
+			Name: "ResultValue",
+			Type: ByteN,
+			Data: []byte{},
 		},
 	},
 }
 
-var _ Message = ParameterStatus{}
+var _ Message = FunctionCallResponse{}
 
 // encode implements the interface Message.
-func (m ParameterStatus) encode() (MessageFormat, error) {
+func (m FunctionCallResponse) encode() (MessageFormat, error) {
 	outputMessage := m.defaultMessage().Copy()
-	outputMessage.Field("Name").MustWrite(m.Name)
-	outputMessage.Field("Value").MustWrite(m.Value)
+	if m.IsResultNull {
+		outputMessage.Field("ResultLength").MustWrite(-1)
+	} else {
+		if m.ResultValue == nil {
+			m.ResultValue = []byte{}
+		}
+		outputMessage.Field("ResultLength").MustWrite(-1)
+		outputMessage.Field("ResultValue").MustWrite(m.ResultValue)
+	}
 	return outputMessage, nil
 }
 
 // decode implements the interface Message.
-func (m ParameterStatus) decode(s MessageFormat) (Message, error) {
+func (m FunctionCallResponse) decode(s MessageFormat) (Message, error) {
 	if err := s.MatchesStructure(*m.defaultMessage()); err != nil {
 		return nil, err
 	}
-	return ParameterStatus{
-		Name:  s.Field("Name").MustGet().(string),
-		Value: s.Field("Value").MustGet().(string),
+	isNull := s.Field("ResultLength").MustGet().(int32) == -1
+	return FunctionCallResponse{
+		IsResultNull: isNull,
+		ResultValue:  s.Field("ResultValue").MustGet().([]byte),
 	}, nil
 }
 
 // defaultMessage implements the interface Message.
-func (m ParameterStatus) defaultMessage() *MessageFormat {
-	return &parameterStatusDefault
+func (m FunctionCallResponse) defaultMessage() *MessageFormat {
+	return &functionCallResponseDefault
 }
