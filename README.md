@@ -1,4 +1,4 @@
-# DoltgreSQL is Git for Data!
+# DoltgreSQL is Dolt for Postgres!
 
 DoltgreSQL is a SQL database that you can fork, clone, branch, merge, push
 and pull just like a Git repository.
