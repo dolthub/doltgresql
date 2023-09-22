@@ -14,9 +14,11 @@
 
 package messages
 
+import "github.com/dolthub/doltgresql/postgres/connection"
+
 func init() {
-	initializeDefaultMessage(Query{})
-	addMessageHeader(Query{})
+	connection.InitializeDefaultMessage(Query{})
+	connection.AddMessageHeader(Query{})
 }
 
 // Query contains a query given by the client.
@@ -24,41 +26,41 @@ type Query struct {
 	String string
 }
 
-var queryDefault = MessageFormat{
+var queryDefault = connection.MessageFormat{
 	Name: "Query",
-	Fields: FieldGroup{
+	Fields: connection.FieldGroup{
 		{
 			Name:  "Header",
-			Type:  Byte1,
-			Flags: Header,
+			Type:  connection.Byte1,
+			Flags: connection.Header,
 			Data:  int32('Q'),
 		},
 		{
 			Name:  "MessageLength",
-			Type:  Int32,
-			Flags: MessageLengthInclusive,
+			Type:  connection.Int32,
+			Flags: connection.MessageLengthInclusive,
 			Data:  int32(0),
 		},
 		{
 			Name: "String",
-			Type: String,
+			Type: connection.String,
 			Data: "",
 		},
 	},
 }
 
-var _ Message = Query{}
+var _ connection.Message = Query{}
 
-// encode implements the interface Message.
-func (m Query) encode() (MessageFormat, error) {
-	outputMessage := m.defaultMessage().Copy()
+// Encode implements the interface connection.Message.
+func (m Query) Encode() (connection.MessageFormat, error) {
+	outputMessage := m.DefaultMessage().Copy()
 	outputMessage.Field("String").MustWrite(m.String)
 	return outputMessage, nil
 }
 
-// decode implements the interface Message.
-func (m Query) decode(s MessageFormat) (Message, error) {
-	if err := s.MatchesStructure(*m.defaultMessage()); err != nil {
+// Decode implements the interface connection.Message.
+func (m Query) Decode(s connection.MessageFormat) (connection.Message, error) {
+	if err := s.MatchesStructure(*m.DefaultMessage()); err != nil {
 		return nil, err
 	}
 	return Query{
@@ -66,7 +68,7 @@ func (m Query) decode(s MessageFormat) (Message, error) {
 	}, nil
 }
 
-// defaultMessage implements the interface Message.
-func (m Query) defaultMessage() *MessageFormat {
+// DefaultMessage implements the interface connection.Message.
+func (m Query) DefaultMessage() *connection.MessageFormat {
 	return &queryDefault
 }

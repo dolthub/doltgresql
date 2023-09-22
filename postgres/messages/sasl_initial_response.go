@@ -14,8 +14,10 @@
 
 package messages
 
+import "github.com/dolthub/doltgresql/postgres/connection"
+
 func init() {
-	initializeDefaultMessage(SASLInitialResponse{})
+	connection.InitializeDefaultMessage(SASLInitialResponse{})
 }
 
 // SASLInitialResponse represents a PostgreSQL message.
@@ -24,45 +26,45 @@ type SASLInitialResponse struct {
 	Response []byte
 }
 
-var sASLInitialResponseDefault = MessageFormat{
+var sASLInitialResponseDefault = connection.MessageFormat{
 	Name: "SASLInitialResponse",
-	Fields: FieldGroup{
+	Fields: connection.FieldGroup{
 		{
 			Name:  "Header",
-			Type:  Byte1,
-			Flags: Header,
+			Type:  connection.Byte1,
+			Flags: connection.Header,
 			Data:  int32('p'),
 		},
 		{
 			Name:  "MessageLength",
-			Type:  Int32,
-			Flags: MessageLengthInclusive,
+			Type:  connection.Int32,
+			Flags: connection.MessageLengthInclusive,
 			Data:  int32(0),
 		},
 		{
 			Name: "Name",
-			Type: String,
+			Type: connection.String,
 			Data: "",
 		},
 		{
 			Name:  "ResponseLength",
-			Type:  Int32,
-			Flags: ByteCount,
+			Type:  connection.Int32,
+			Flags: connection.ByteCount,
 			Data:  int32(-1),
 		},
 		{
 			Name: "ResponseData",
-			Type: String,
+			Type: connection.String,
 			Data: "",
 		},
 	},
 }
 
-var _ Message = SASLInitialResponse{}
+var _ connection.Message = SASLInitialResponse{}
 
-// encode implements the interface Message.
-func (m SASLInitialResponse) encode() (MessageFormat, error) {
-	outputMessage := m.defaultMessage().Copy()
+// Encode implements the interface connection.Message.
+func (m SASLInitialResponse) Encode() (connection.MessageFormat, error) {
+	outputMessage := m.DefaultMessage().Copy()
 	outputMessage.Field("Name").MustWrite(m.Name)
 	if len(m.Response) > 0 {
 		outputMessage.Field("ResponseLength").MustWrite(len(m.Response))
@@ -71,9 +73,9 @@ func (m SASLInitialResponse) encode() (MessageFormat, error) {
 	return outputMessage, nil
 }
 
-// decode implements the interface Message.
-func (m SASLInitialResponse) decode(s MessageFormat) (Message, error) {
-	if err := s.MatchesStructure(*m.defaultMessage()); err != nil {
+// Decode implements the interface connection.Message.
+func (m SASLInitialResponse) Decode(s connection.MessageFormat) (connection.Message, error) {
+	if err := s.MatchesStructure(*m.DefaultMessage()); err != nil {
 		return nil, err
 	}
 	var responseData []byte
@@ -86,7 +88,7 @@ func (m SASLInitialResponse) decode(s MessageFormat) (Message, error) {
 	}, nil
 }
 
-// defaultMessage implements the interface Message.
-func (m SASLInitialResponse) defaultMessage() *MessageFormat {
+// DefaultMessage implements the interface connection.Message.
+func (m SASLInitialResponse) DefaultMessage() *connection.MessageFormat {
 	return &sASLInitialResponseDefault
 }

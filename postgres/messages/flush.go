@@ -14,48 +14,50 @@
 
 package messages
 
+import "github.com/dolthub/doltgresql/postgres/connection"
+
 func init() {
-	initializeDefaultMessage(Flush{})
-	addMessageHeader(Flush{})
+	connection.InitializeDefaultMessage(Flush{})
+	connection.AddMessageHeader(Flush{})
 }
 
 // Flush represents a PostgreSQL message.
 type Flush struct{}
 
-var flushDefault = MessageFormat{
+var flushDefault = connection.MessageFormat{
 	Name: "Flush",
-	Fields: FieldGroup{
+	Fields: connection.FieldGroup{
 		{
 			Name:  "Header",
-			Type:  Byte1,
-			Flags: Header,
+			Type:  connection.Byte1,
+			Flags: connection.Header,
 			Data:  int32('H'),
 		},
 		{
 			Name:  "MessageLength",
-			Type:  Int32,
-			Flags: MessageLengthInclusive,
+			Type:  connection.Int32,
+			Flags: connection.MessageLengthInclusive,
 			Data:  int32(0),
 		},
 	},
 }
 
-var _ Message = Flush{}
+var _ connection.Message = Flush{}
 
-// encode implements the interface Message.
-func (m Flush) encode() (MessageFormat, error) {
-	return m.defaultMessage().Copy(), nil
+// Encode implements the interface connection.Message.
+func (m Flush) Encode() (connection.MessageFormat, error) {
+	return m.DefaultMessage().Copy(), nil
 }
 
-// decode implements the interface Message.
-func (m Flush) decode(s MessageFormat) (Message, error) {
-	if err := s.MatchesStructure(*m.defaultMessage()); err != nil {
+// Decode implements the interface connection.Message.
+func (m Flush) Decode(s connection.MessageFormat) (connection.Message, error) {
+	if err := s.MatchesStructure(*m.DefaultMessage()); err != nil {
 		return nil, err
 	}
 	return Flush{}, nil
 }
 
-// defaultMessage implements the interface Message.
-func (m Flush) defaultMessage() *MessageFormat {
+// DefaultMessage implements the interface connection.Message.
+func (m Flush) DefaultMessage() *connection.MessageFormat {
 	return &flushDefault
 }

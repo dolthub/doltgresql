@@ -14,8 +14,10 @@
 
 package messages
 
+import "github.com/dolthub/doltgresql/postgres/connection"
+
 func init() {
-	initializeDefaultMessage(PasswordMessage{})
+	connection.InitializeDefaultMessage(PasswordMessage{})
 }
 
 // PasswordMessage represents a PostgreSQL message.
@@ -23,41 +25,41 @@ type PasswordMessage struct {
 	Password string
 }
 
-var passwordMessageDefault = MessageFormat{
+var passwordMessageDefault = connection.MessageFormat{
 	Name: "PasswordMessage",
-	Fields: FieldGroup{
+	Fields: connection.FieldGroup{
 		{
 			Name:  "Header",
-			Type:  Byte1,
-			Flags: Header,
+			Type:  connection.Byte1,
+			Flags: connection.Header,
 			Data:  int32('p'),
 		},
 		{
 			Name:  "MessageLength",
-			Type:  Int32,
-			Flags: MessageLengthInclusive,
+			Type:  connection.Int32,
+			Flags: connection.MessageLengthInclusive,
 			Data:  int32(0),
 		},
 		{
 			Name: "Password",
-			Type: String,
+			Type: connection.String,
 			Data: "",
 		},
 	},
 }
 
-var _ Message = PasswordMessage{}
+var _ connection.Message = PasswordMessage{}
 
-// encode implements the interface Message.
-func (m PasswordMessage) encode() (MessageFormat, error) {
-	outputMessage := m.defaultMessage().Copy()
+// Encode implements the interface connection.Message.
+func (m PasswordMessage) Encode() (connection.MessageFormat, error) {
+	outputMessage := m.DefaultMessage().Copy()
 	outputMessage.Field("Password").MustWrite(m.Password)
 	return outputMessage, nil
 }
 
-// decode implements the interface Message.
-func (m PasswordMessage) decode(s MessageFormat) (Message, error) {
-	if err := s.MatchesStructure(*m.defaultMessage()); err != nil {
+// Decode implements the interface connection.Message.
+func (m PasswordMessage) Decode(s connection.MessageFormat) (connection.Message, error) {
+	if err := s.MatchesStructure(*m.DefaultMessage()); err != nil {
 		return nil, err
 	}
 	return PasswordMessage{
@@ -65,7 +67,7 @@ func (m PasswordMessage) decode(s MessageFormat) (Message, error) {
 	}, nil
 }
 
-// defaultMessage implements the interface Message.
-func (m PasswordMessage) defaultMessage() *MessageFormat {
+// DefaultMessage implements the interface connection.Message.
+func (m PasswordMessage) DefaultMessage() *connection.MessageFormat {
 	return &passwordMessageDefault
 }

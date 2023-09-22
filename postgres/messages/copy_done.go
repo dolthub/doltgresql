@@ -14,48 +14,50 @@
 
 package messages
 
+import "github.com/dolthub/doltgresql/postgres/connection"
+
 func init() {
-	initializeDefaultMessage(CopyDone{})
-	addMessageHeader(CopyDone{})
+	connection.InitializeDefaultMessage(CopyDone{})
+	connection.AddMessageHeader(CopyDone{})
 }
 
 // CopyDone represents a PostgreSQL message.
 type CopyDone struct{}
 
-var copyDoneDefault = MessageFormat{
+var copyDoneDefault = connection.MessageFormat{
 	Name: "CopyDone",
-	Fields: FieldGroup{
+	Fields: connection.FieldGroup{
 		{
 			Name:  "Header",
-			Type:  Byte1,
-			Flags: Header,
+			Type:  connection.Byte1,
+			Flags: connection.Header,
 			Data:  int32('c'),
 		},
 		{
 			Name:  "MessageLength",
-			Type:  Int32,
-			Flags: MessageLengthInclusive,
+			Type:  connection.Int32,
+			Flags: connection.MessageLengthInclusive,
 			Data:  int32(4),
 		},
 	},
 }
 
-var _ Message = CopyDone{}
+var _ connection.Message = CopyDone{}
 
-// encode implements the interface Message.
-func (m CopyDone) encode() (MessageFormat, error) {
-	return m.defaultMessage().Copy(), nil
+// Encode implements the interface connection.Message.
+func (m CopyDone) Encode() (connection.MessageFormat, error) {
+	return m.DefaultMessage().Copy(), nil
 }
 
-// decode implements the interface Message.
-func (m CopyDone) decode(s MessageFormat) (Message, error) {
-	if err := s.MatchesStructure(*m.defaultMessage()); err != nil {
+// Decode implements the interface connection.Message.
+func (m CopyDone) Decode(s connection.MessageFormat) (connection.Message, error) {
+	if err := s.MatchesStructure(*m.DefaultMessage()); err != nil {
 		return nil, err
 	}
 	return CopyDone{}, nil
 }
 
-// defaultMessage implements the interface Message.
-func (m CopyDone) defaultMessage() *MessageFormat {
+// DefaultMessage implements the interface connection.Message.
+func (m CopyDone) DefaultMessage() *connection.MessageFormat {
 	return &copyDoneDefault
 }

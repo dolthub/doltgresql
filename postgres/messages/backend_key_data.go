@@ -14,9 +14,11 @@
 
 package messages
 
+import "github.com/dolthub/doltgresql/postgres/connection"
+
 func init() {
-	initializeDefaultMessage(BackendKeyData{})
-	addMessageHeader(BackendKeyData{})
+	connection.InitializeDefaultMessage(BackendKeyData{})
+	connection.AddMessageHeader(BackendKeyData{})
 }
 
 // BackendKeyData provides the client with information about the server.
@@ -25,47 +27,47 @@ type BackendKeyData struct {
 	SecretKey int32
 }
 
-var backendKeyDataDefault = MessageFormat{
+var backendKeyDataDefault = connection.MessageFormat{
 	Name: "BackendKeyData",
-	Fields: FieldGroup{
+	Fields: connection.FieldGroup{
 		{
 			Name:  "Header",
-			Type:  Byte1,
-			Flags: Header,
+			Type:  connection.Byte1,
+			Flags: connection.Header,
 			Data:  int32('K'),
 		},
 		{
 			Name:  "MessageLength",
-			Type:  Int32,
-			Flags: MessageLengthInclusive,
+			Type:  connection.Int32,
+			Flags: connection.MessageLengthInclusive,
 			Data:  int32(12),
 		},
 		{
 			Name: "ProcessID",
-			Type: Int32,
+			Type: connection.Int32,
 			Data: int32(0),
 		},
 		{
 			Name: "SecretKey",
-			Type: Int32,
+			Type: connection.Int32,
 			Data: int32(0),
 		},
 	},
 }
 
-var _ Message = BackendKeyData{}
+var _ connection.Message = BackendKeyData{}
 
-// encode implements the interface Message.
-func (m BackendKeyData) encode() (MessageFormat, error) {
-	outputMessage := m.defaultMessage().Copy()
+// Encode implements the interface connection.Message.
+func (m BackendKeyData) Encode() (connection.MessageFormat, error) {
+	outputMessage := m.DefaultMessage().Copy()
 	outputMessage.Field("ProcessID").MustWrite(m.ProcessID)
 	outputMessage.Field("SecretKey").MustWrite(m.SecretKey)
 	return outputMessage, nil
 }
 
-// decode implements the interface Message.
-func (m BackendKeyData) decode(s MessageFormat) (Message, error) {
-	if err := s.MatchesStructure(*m.defaultMessage()); err != nil {
+// Decode implements the interface connection.Message.
+func (m BackendKeyData) Decode(s connection.MessageFormat) (connection.Message, error) {
+	if err := s.MatchesStructure(*m.DefaultMessage()); err != nil {
 		return nil, err
 	}
 	return BackendKeyData{
@@ -74,7 +76,7 @@ func (m BackendKeyData) decode(s MessageFormat) (Message, error) {
 	}, nil
 }
 
-// defaultMessage implements the interface Message.
-func (m BackendKeyData) defaultMessage() *MessageFormat {
+// DefaultMessage implements the interface connection.Message.
+func (m BackendKeyData) DefaultMessage() *connection.MessageFormat {
 	return &backendKeyDataDefault
 }

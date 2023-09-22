@@ -18,10 +18,12 @@ import (
 	"fmt"
 	"strconv"
 	"strings"
+
+	"github.com/dolthub/doltgresql/postgres/connection"
 )
 
 func init() {
-	initializeDefaultMessage(CommandComplete{})
+	connection.InitializeDefaultMessage(CommandComplete{})
 }
 
 // CommandComplete tells the client that the command has completed.
@@ -30,30 +32,30 @@ type CommandComplete struct {
 	Rows  int32
 }
 
-var commandCompleteDefault = MessageFormat{
+var commandCompleteDefault = connection.MessageFormat{
 	Name: "CommandComplete",
-	Fields: FieldGroup{
+	Fields: connection.FieldGroup{
 		{
 			Name:  "Header",
-			Type:  Byte1,
-			Flags: Header,
+			Type:  connection.Byte1,
+			Flags: connection.Header,
 			Data:  int32('C'),
 		},
 		{
 			Name:  "MessageLength",
-			Type:  Int32,
-			Flags: MessageLengthInclusive,
+			Type:  connection.Int32,
+			Flags: connection.MessageLengthInclusive,
 			Data:  int32(0),
 		},
 		{
 			Name: "CommandTag",
-			Type: String,
+			Type: connection.String,
 			Data: "",
 		},
 	},
 }
 
-var _ Message = CommandComplete{}
+var _ connection.Message = CommandComplete{}
 
 // IsIUD returns whether the query is either an INSERT, UPDATE, or DELETE query.
 func (m CommandComplete) IsIUD() bool {
@@ -67,9 +69,9 @@ func (m CommandComplete) IsIUD() bool {
 	}
 }
 
-// encode implements the interface Message.
-func (m CommandComplete) encode() (MessageFormat, error) {
-	outputMessage := m.defaultMessage().Copy()
+// Encode implements the interface connection.Message.
+func (m CommandComplete) Encode() (connection.MessageFormat, error) {
+	outputMessage := m.DefaultMessage().Copy()
 	query := strings.TrimSpace(strings.ToLower(m.Query))
 	if strings.HasPrefix(query, "select") {
 		outputMessage.Field("CommandTag").MustWrite(fmt.Sprintf("SELECT %d", m.Rows))
@@ -84,14 +86,14 @@ func (m CommandComplete) encode() (MessageFormat, error) {
 	} else if strings.HasPrefix(query, "call") {
 		outputMessage.Field("CommandTag").MustWrite(fmt.Sprintf("SELECT %d", m.Rows))
 	} else {
-		return MessageFormat{}, fmt.Errorf("unsupported query for now")
+		return connection.MessageFormat{}, fmt.Errorf("unsupported query for now")
 	}
 	return outputMessage, nil
 }
 
-// decode implements the interface Message.
-func (m CommandComplete) decode(s MessageFormat) (Message, error) {
-	if err := s.MatchesStructure(*m.defaultMessage()); err != nil {
+// Decode implements the interface connection.Message.
+func (m CommandComplete) Decode(s connection.MessageFormat) (connection.Message, error) {
+	if err := s.MatchesStructure(*m.DefaultMessage()); err != nil {
 		return nil, err
 	}
 	query := strings.TrimSpace(s.Field("CommandTag").MustGet().(string))
@@ -106,7 +108,7 @@ func (m CommandComplete) decode(s MessageFormat) (Message, error) {
 	}, nil
 }
 
-// defaultMessage implements the interface Message.
-func (m CommandComplete) defaultMessage() *MessageFormat {
+// DefaultMessage implements the interface connection.Message.
+func (m CommandComplete) DefaultMessage() *connection.MessageFormat {
 	return &commandCompleteDefault
 }

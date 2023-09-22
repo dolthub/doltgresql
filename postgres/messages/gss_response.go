@@ -14,8 +14,10 @@
 
 package messages
 
+import "github.com/dolthub/doltgresql/postgres/connection"
+
 func init() {
-	initializeDefaultMessage(GSSResponse{})
+	connection.InitializeDefaultMessage(GSSResponse{})
 }
 
 // GSSResponse represents a PostgreSQL message.
@@ -23,41 +25,41 @@ type GSSResponse struct {
 	Data []byte
 }
 
-var gSSResponseDefault = MessageFormat{
+var gSSResponseDefault = connection.MessageFormat{
 	Name: "GSSResponse",
-	Fields: FieldGroup{
+	Fields: connection.FieldGroup{
 		{
 			Name:  "Header",
-			Type:  Byte1,
-			Flags: Header,
+			Type:  connection.Byte1,
+			Flags: connection.Header,
 			Data:  int32('p'),
 		},
 		{
 			Name:  "MessageLength",
-			Type:  Int32,
-			Flags: MessageLengthInclusive,
+			Type:  connection.Int32,
+			Flags: connection.MessageLengthInclusive,
 			Data:  int32(0),
 		},
 		{
 			Name: "Data",
-			Type: ByteN,
+			Type: connection.ByteN,
 			Data: []byte{},
 		},
 	},
 }
 
-var _ Message = GSSResponse{}
+var _ connection.Message = GSSResponse{}
 
-// encode implements the interface Message.
-func (m GSSResponse) encode() (MessageFormat, error) {
-	outputMessage := m.defaultMessage().Copy()
+// Encode implements the interface connection.Message.
+func (m GSSResponse) Encode() (connection.MessageFormat, error) {
+	outputMessage := m.DefaultMessage().Copy()
 	outputMessage.Field("Data").MustWrite(m.Data)
 	return outputMessage, nil
 }
 
-// decode implements the interface Message.
-func (m GSSResponse) decode(s MessageFormat) (Message, error) {
-	if err := s.MatchesStructure(*m.defaultMessage()); err != nil {
+// Decode implements the interface connection.Message.
+func (m GSSResponse) Decode(s connection.MessageFormat) (connection.Message, error) {
+	if err := s.MatchesStructure(*m.DefaultMessage()); err != nil {
 		return nil, err
 	}
 	return GSSResponse{
@@ -65,7 +67,7 @@ func (m GSSResponse) decode(s MessageFormat) (Message, error) {
 	}, nil
 }
 
-// defaultMessage implements the interface Message.
-func (m GSSResponse) defaultMessage() *MessageFormat {
+// DefaultMessage implements the interface connection.Message.
+func (m GSSResponse) DefaultMessage() *connection.MessageFormat {
 	return &gSSResponseDefault
 }

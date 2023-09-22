@@ -14,10 +14,14 @@
 
 package messages
 
-import "fmt"
+import (
+	"fmt"
+
+	"github.com/dolthub/doltgresql/postgres/connection"
+)
 
 func init() {
-	initializeDefaultMessage(SSLResponse{})
+	connection.InitializeDefaultMessage(SSLResponse{})
 }
 
 // SSLResponse tells the client whether SSL is supported.
@@ -25,22 +29,22 @@ type SSLResponse struct {
 	SupportsSSL bool
 }
 
-var sslResponseDefault = MessageFormat{
+var sslResponseDefault = connection.MessageFormat{
 	Name: "SSLResponse",
-	Fields: FieldGroup{
+	Fields: connection.FieldGroup{
 		{
 			Name: "Supported",
-			Type: Byte1,
+			Type: connection.Byte1,
 			Data: int32(0),
 		},
 	},
 }
 
-var _ Message = SSLResponse{}
+var _ connection.Message = SSLResponse{}
 
-// encode implements the interface Message.
-func (m SSLResponse) encode() (MessageFormat, error) {
-	outputMessage := m.defaultMessage().Copy()
+// Encode implements the interface connection.Message.
+func (m SSLResponse) Encode() (connection.MessageFormat, error) {
+	outputMessage := m.DefaultMessage().Copy()
 	if m.SupportsSSL {
 		outputMessage.Field("Supported").MustWrite('Y')
 	} else {
@@ -49,9 +53,9 @@ func (m SSLResponse) encode() (MessageFormat, error) {
 	return outputMessage, nil
 }
 
-// decode implements the interface Message.
-func (m SSLResponse) decode(s MessageFormat) (Message, error) {
-	if err := s.MatchesStructure(*m.defaultMessage()); err != nil {
+// Decode implements the interface connection.Message.
+func (m SSLResponse) Decode(s connection.MessageFormat) (connection.Message, error) {
+	if err := s.MatchesStructure(*m.DefaultMessage()); err != nil {
 		return nil, err
 	}
 	var supported bool
@@ -68,7 +72,7 @@ func (m SSLResponse) decode(s MessageFormat) (Message, error) {
 	}, nil
 }
 
-// defaultMessage implements the interface Message.
-func (m SSLResponse) defaultMessage() *MessageFormat {
+// DefaultMessage implements the interface connection.Message.
+func (m SSLResponse) DefaultMessage() *connection.MessageFormat {
 	return &sslResponseDefault
 }

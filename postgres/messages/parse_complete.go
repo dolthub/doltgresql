@@ -14,47 +14,49 @@
 
 package messages
 
+import "github.com/dolthub/doltgresql/postgres/connection"
+
 func init() {
-	initializeDefaultMessage(ParseComplete{})
+	connection.InitializeDefaultMessage(ParseComplete{})
 }
 
 // ParseComplete represents a PostgreSQL message.
 type ParseComplete struct{}
 
-var parseCompleteDefault = MessageFormat{
+var parseCompleteDefault = connection.MessageFormat{
 	Name: "ParseComplete",
-	Fields: FieldGroup{
+	Fields: connection.FieldGroup{
 		{
 			Name:  "Header",
-			Type:  Byte1,
-			Flags: Header,
+			Type:  connection.Byte1,
+			Flags: connection.Header,
 			Data:  int32('1'),
 		},
 		{
 			Name:  "MessageLength",
-			Type:  Int32,
-			Flags: MessageLengthInclusive,
+			Type:  connection.Int32,
+			Flags: connection.MessageLengthInclusive,
 			Data:  int32(4),
 		},
 	},
 }
 
-var _ Message = ParseComplete{}
+var _ connection.Message = ParseComplete{}
 
-// encode implements the interface Message.
-func (m ParseComplete) encode() (MessageFormat, error) {
-	return m.defaultMessage().Copy(), nil
+// Encode implements the interface connection.Message.
+func (m ParseComplete) Encode() (connection.MessageFormat, error) {
+	return m.DefaultMessage().Copy(), nil
 }
 
-// decode implements the interface Message.
-func (m ParseComplete) decode(s MessageFormat) (Message, error) {
-	if err := s.MatchesStructure(*m.defaultMessage()); err != nil {
+// Decode implements the interface connection.Message.
+func (m ParseComplete) Decode(s connection.MessageFormat) (connection.Message, error) {
+	if err := s.MatchesStructure(*m.DefaultMessage()); err != nil {
 		return nil, err
 	}
 	return ParseComplete{}, nil
 }
 
-// defaultMessage implements the interface Message.
-func (m ParseComplete) defaultMessage() *MessageFormat {
+// DefaultMessage implements the interface connection.Message.
+func (m ParseComplete) DefaultMessage() *connection.MessageFormat {
 	return &parseCompleteDefault
 }

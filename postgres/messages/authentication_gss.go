@@ -14,52 +14,54 @@
 
 package messages
 
+import "github.com/dolthub/doltgresql/postgres/connection"
+
 func init() {
-	initializeDefaultMessage(AuthenticationGSS{})
+	connection.InitializeDefaultMessage(AuthenticationGSS{})
 }
 
 // AuthenticationGSS represents a PostgreSQL message.
 type AuthenticationGSS struct{}
 
-var authenticationGSSDefault = MessageFormat{
+var authenticationGSSDefault = connection.MessageFormat{
 	Name: "AuthenticationGSS",
-	Fields: FieldGroup{
+	Fields: connection.FieldGroup{
 		{
 			Name:  "Header",
-			Type:  Byte1,
-			Flags: Header,
+			Type:  connection.Byte1,
+			Flags: connection.Header,
 			Data:  int32('R'),
 		},
 		{
 			Name:  "MessageLength",
-			Type:  Int32,
-			Flags: MessageLengthInclusive,
+			Type:  connection.Int32,
+			Flags: connection.MessageLengthInclusive,
 			Data:  int32(8),
 		},
 		{
 			Name: "Status",
-			Type: Int32,
+			Type: connection.Int32,
 			Data: int32(7),
 		},
 	},
 }
 
-var _ Message = AuthenticationGSS{}
+var _ connection.Message = AuthenticationGSS{}
 
-// encode implements the interface Message.
-func (m AuthenticationGSS) encode() (MessageFormat, error) {
-	return m.defaultMessage().Copy(), nil
+// Encode implements the interface connection.Message.
+func (m AuthenticationGSS) Encode() (connection.MessageFormat, error) {
+	return m.DefaultMessage().Copy(), nil
 }
 
-// decode implements the interface Message.
-func (m AuthenticationGSS) decode(s MessageFormat) (Message, error) {
-	if err := s.MatchesStructure(*m.defaultMessage()); err != nil {
+// Decode implements the interface connection.Message.
+func (m AuthenticationGSS) Decode(s connection.MessageFormat) (connection.Message, error) {
+	if err := s.MatchesStructure(*m.DefaultMessage()); err != nil {
 		return nil, err
 	}
 	return AuthenticationGSS{}, nil
 }
 
-// defaultMessage implements the interface Message.
-func (m AuthenticationGSS) defaultMessage() *MessageFormat {
+// DefaultMessage implements the interface connection.Message.
+func (m AuthenticationGSS) DefaultMessage() *connection.MessageFormat {
 	return &authenticationGSSDefault
 }

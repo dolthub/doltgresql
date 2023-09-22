@@ -14,52 +14,54 @@
 
 package messages
 
+import "github.com/dolthub/doltgresql/postgres/connection"
+
 func init() {
-	initializeDefaultMessage(AuthenticationKerberosV5{})
+	connection.InitializeDefaultMessage(AuthenticationKerberosV5{})
 }
 
 // AuthenticationKerberosV5 represents a PostgreSQL message.
 type AuthenticationKerberosV5 struct{}
 
-var authenticationKerberosV5Default = MessageFormat{
+var authenticationKerberosV5Default = connection.MessageFormat{
 	Name: "AuthenticationKerberosV5",
-	Fields: FieldGroup{
+	Fields: connection.FieldGroup{
 		{
 			Name:  "Header",
-			Type:  Byte1,
-			Flags: Header,
+			Type:  connection.Byte1,
+			Flags: connection.Header,
 			Data:  int32('R'),
 		},
 		{
 			Name:  "MessageLength",
-			Type:  Int32,
-			Flags: MessageLengthInclusive,
+			Type:  connection.Int32,
+			Flags: connection.MessageLengthInclusive,
 			Data:  int32(8),
 		},
 		{
 			Name: "Status",
-			Type: Int32,
+			Type: connection.Int32,
 			Data: int32(2),
 		},
 	},
 }
 
-var _ Message = AuthenticationKerberosV5{}
+var _ connection.Message = AuthenticationKerberosV5{}
 
-// encode implements the interface Message.
-func (m AuthenticationKerberosV5) encode() (MessageFormat, error) {
-	return m.defaultMessage().Copy(), nil
+// Encode implements the interface connection.Message.
+func (m AuthenticationKerberosV5) Encode() (connection.MessageFormat, error) {
+	return m.DefaultMessage().Copy(), nil
 }
 
-// decode implements the interface Message.
-func (m AuthenticationKerberosV5) decode(s MessageFormat) (Message, error) {
-	if err := s.MatchesStructure(*m.defaultMessage()); err != nil {
+// Decode implements the interface connection.Message.
+func (m AuthenticationKerberosV5) Decode(s connection.MessageFormat) (connection.Message, error) {
+	if err := s.MatchesStructure(*m.DefaultMessage()); err != nil {
 		return nil, err
 	}
 	return AuthenticationKerberosV5{}, nil
 }
 
-// defaultMessage implements the interface Message.
-func (m AuthenticationKerberosV5) defaultMessage() *MessageFormat {
+// DefaultMessage implements the interface connection.Message.
+func (m AuthenticationKerberosV5) DefaultMessage() *connection.MessageFormat {
 	return &authenticationKerberosV5Default
 }

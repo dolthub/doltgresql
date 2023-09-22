@@ -14,8 +14,10 @@
 
 package messages
 
+import "github.com/dolthub/doltgresql/postgres/connection"
+
 func init() {
-	initializeDefaultMessage(ReadyForQuery{})
+	connection.InitializeDefaultMessage(ReadyForQuery{})
 }
 
 // ReadyForQueryTransactionIndicator indicates the state of the transaction related to the query.
@@ -32,41 +34,41 @@ type ReadyForQuery struct {
 	Indicator ReadyForQueryTransactionIndicator
 }
 
-var readyForQueryDefault = MessageFormat{
+var readyForQueryDefault = connection.MessageFormat{
 	Name: "ReadyForQuery",
-	Fields: FieldGroup{
+	Fields: connection.FieldGroup{
 		{
 			Name:  "Header",
-			Type:  Byte1,
-			Flags: Header,
+			Type:  connection.Byte1,
+			Flags: connection.Header,
 			Data:  int32('Z'),
 		},
 		{
 			Name:  "MessageLength",
-			Type:  Int32,
-			Flags: MessageLengthInclusive,
+			Type:  connection.Int32,
+			Flags: connection.MessageLengthInclusive,
 			Data:  int32(5),
 		},
 		{
 			Name: "TransactionIndicator",
-			Type: Byte1,
+			Type: connection.Byte1,
 			Data: int32(0),
 		},
 	},
 }
 
-var _ Message = ReadyForQuery{}
+var _ connection.Message = ReadyForQuery{}
 
-// encode implements the interface Message.
-func (m ReadyForQuery) encode() (MessageFormat, error) {
-	outputMessage := m.defaultMessage().Copy()
+// Encode implements the interface connection.Message.
+func (m ReadyForQuery) Encode() (connection.MessageFormat, error) {
+	outputMessage := m.DefaultMessage().Copy()
 	outputMessage.Field("TransactionIndicator").MustWrite(byte(m.Indicator))
 	return outputMessage, nil
 }
 
-// decode implements the interface Message.
-func (m ReadyForQuery) decode(s MessageFormat) (Message, error) {
-	if err := s.MatchesStructure(*m.defaultMessage()); err != nil {
+// Decode implements the interface connection.Message.
+func (m ReadyForQuery) Decode(s connection.MessageFormat) (connection.Message, error) {
+	if err := s.MatchesStructure(*m.DefaultMessage()); err != nil {
 		return nil, err
 	}
 	return ReadyForQuery{
@@ -74,7 +76,7 @@ func (m ReadyForQuery) decode(s MessageFormat) (Message, error) {
 	}, nil
 }
 
-// defaultMessage implements the interface Message.
-func (m ReadyForQuery) defaultMessage() *MessageFormat {
+// DefaultMessage implements the interface connection.Message.
+func (m ReadyForQuery) DefaultMessage() *connection.MessageFormat {
 	return &readyForQueryDefault
 }

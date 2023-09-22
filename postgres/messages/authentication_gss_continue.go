@@ -14,8 +14,10 @@
 
 package messages
 
+import "github.com/dolthub/doltgresql/postgres/connection"
+
 func init() {
-	initializeDefaultMessage(AuthenticationGSSContinue{})
+	connection.InitializeDefaultMessage(AuthenticationGSSContinue{})
 }
 
 // AuthenticationGSSContinue represents a PostgreSQL message.
@@ -23,46 +25,46 @@ type AuthenticationGSSContinue struct {
 	Data []byte
 }
 
-var authenticationGSSContinueDefault = MessageFormat{
+var authenticationGSSContinueDefault = connection.MessageFormat{
 	Name: "AuthenticationGSSContinue",
-	Fields: FieldGroup{
+	Fields: connection.FieldGroup{
 		{
 			Name:  "Header",
-			Type:  Byte1,
-			Flags: Header,
+			Type:  connection.Byte1,
+			Flags: connection.Header,
 			Data:  int32('R'),
 		},
 		{
 			Name:  "MessageLength",
-			Type:  Int32,
-			Flags: MessageLengthInclusive,
+			Type:  connection.Int32,
+			Flags: connection.MessageLengthInclusive,
 			Data:  int32(0),
 		},
 		{
 			Name: "Status",
-			Type: Int32,
+			Type: connection.Int32,
 			Data: int32(8),
 		},
 		{
 			Name: "AuthenticationData",
-			Type: ByteN,
+			Type: connection.ByteN,
 			Data: []byte{},
 		},
 	},
 }
 
-var _ Message = AuthenticationGSSContinue{}
+var _ connection.Message = AuthenticationGSSContinue{}
 
-// encode implements the interface Message.
-func (m AuthenticationGSSContinue) encode() (MessageFormat, error) {
-	outputMessage := m.defaultMessage().Copy()
+// Encode implements the interface connection.Message.
+func (m AuthenticationGSSContinue) Encode() (connection.MessageFormat, error) {
+	outputMessage := m.DefaultMessage().Copy()
 	outputMessage.Field("AuthenticationData").MustWrite(m.Data)
 	return outputMessage, nil
 }
 
-// decode implements the interface Message.
-func (m AuthenticationGSSContinue) decode(s MessageFormat) (Message, error) {
-	if err := s.MatchesStructure(*m.defaultMessage()); err != nil {
+// Decode implements the interface connection.Message.
+func (m AuthenticationGSSContinue) Decode(s connection.MessageFormat) (connection.Message, error) {
+	if err := s.MatchesStructure(*m.DefaultMessage()); err != nil {
 		return nil, err
 	}
 	return AuthenticationGSSContinue{
@@ -70,7 +72,7 @@ func (m AuthenticationGSSContinue) decode(s MessageFormat) (Message, error) {
 	}, nil
 }
 
-// defaultMessage implements the interface Message.
-func (m AuthenticationGSSContinue) defaultMessage() *MessageFormat {
+// DefaultMessage implements the interface connection.Message.
+func (m AuthenticationGSSContinue) DefaultMessage() *connection.MessageFormat {
 	return &authenticationGSSContinueDefault
 }

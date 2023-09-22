@@ -14,9 +14,11 @@
 
 package messages
 
+import "github.com/dolthub/doltgresql/postgres/connection"
+
 func init() {
-	initializeDefaultMessage(Execute{})
-	addMessageHeader(Execute{})
+	connection.InitializeDefaultMessage(Execute{})
+	connection.AddMessageHeader(Execute{})
 }
 
 // Execute represents a PostgreSQL message.
@@ -25,47 +27,47 @@ type Execute struct {
 	RowMax int32
 }
 
-var executeDefault = MessageFormat{
+var executeDefault = connection.MessageFormat{
 	Name: "Execute",
-	Fields: FieldGroup{
+	Fields: connection.FieldGroup{
 		{
 			Name:  "Header",
-			Type:  Byte1,
-			Flags: Header,
+			Type:  connection.Byte1,
+			Flags: connection.Header,
 			Data:  int32('E'),
 		},
 		{
 			Name:  "MessageLength",
-			Type:  Int32,
-			Flags: MessageLengthInclusive,
+			Type:  connection.Int32,
+			Flags: connection.MessageLengthInclusive,
 			Data:  int32(0),
 		},
 		{
 			Name: "Portal",
-			Type: String,
+			Type: connection.String,
 			Data: "",
 		},
 		{
 			Name: "RowMax",
-			Type: Int32,
+			Type: connection.Int32,
 			Data: int32(0),
 		},
 	},
 }
 
-var _ Message = Execute{}
+var _ connection.Message = Execute{}
 
-// encode implements the interface Message.
-func (m Execute) encode() (MessageFormat, error) {
-	outputMessage := m.defaultMessage().Copy()
+// Encode implements the interface connection.Message.
+func (m Execute) Encode() (connection.MessageFormat, error) {
+	outputMessage := m.DefaultMessage().Copy()
 	outputMessage.Field("Portal").MustWrite(m.Portal)
 	outputMessage.Field("RowMax").MustWrite(m.RowMax)
 	return outputMessage, nil
 }
 
-// decode implements the interface Message.
-func (m Execute) decode(s MessageFormat) (Message, error) {
-	if err := s.MatchesStructure(*m.defaultMessage()); err != nil {
+// Decode implements the interface connection.Message.
+func (m Execute) Decode(s connection.MessageFormat) (connection.Message, error) {
+	if err := s.MatchesStructure(*m.DefaultMessage()); err != nil {
 		return nil, err
 	}
 	return Execute{
@@ -74,7 +76,7 @@ func (m Execute) decode(s MessageFormat) (Message, error) {
 	}, nil
 }
 
-// defaultMessage implements the interface Message.
-func (m Execute) defaultMessage() *MessageFormat {
+// DefaultMessage implements the interface connection.Message.
+func (m Execute) DefaultMessage() *connection.MessageFormat {
 	return &executeDefault
 }

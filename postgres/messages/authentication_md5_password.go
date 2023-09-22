@@ -14,8 +14,10 @@
 
 package messages
 
+import "github.com/dolthub/doltgresql/postgres/connection"
+
 func init() {
-	initializeDefaultMessage(AuthenticationMD5Password{})
+	connection.InitializeDefaultMessage(AuthenticationMD5Password{})
 }
 
 // AuthenticationMD5Password represents a PostgreSQL message.
@@ -23,46 +25,46 @@ type AuthenticationMD5Password struct {
 	Salt int32
 }
 
-var authenticationMD5PasswordDefault = MessageFormat{
+var authenticationMD5PasswordDefault = connection.MessageFormat{
 	Name: "AuthenticationMD5Password",
-	Fields: FieldGroup{
+	Fields: connection.FieldGroup{
 		{
 			Name:  "Header",
-			Type:  Byte1,
-			Flags: Header,
+			Type:  connection.Byte1,
+			Flags: connection.Header,
 			Data:  int32('R'),
 		},
 		{
 			Name:  "MessageLength",
-			Type:  Int32,
-			Flags: MessageLengthInclusive,
+			Type:  connection.Int32,
+			Flags: connection.MessageLengthInclusive,
 			Data:  int32(12),
 		},
 		{
 			Name: "Status",
-			Type: Int32,
+			Type: connection.Int32,
 			Data: int32(5),
 		},
 		{
 			Name: "Salt",
-			Type: Byte4,
+			Type: connection.Byte4,
 			Data: int32(0),
 		},
 	},
 }
 
-var _ Message = AuthenticationMD5Password{}
+var _ connection.Message = AuthenticationMD5Password{}
 
-// encode implements the interface Message.
-func (m AuthenticationMD5Password) encode() (MessageFormat, error) {
-	outputMessage := m.defaultMessage().Copy()
+// Encode implements the interface connection.Message.
+func (m AuthenticationMD5Password) Encode() (connection.MessageFormat, error) {
+	outputMessage := m.DefaultMessage().Copy()
 	outputMessage.Field("Salt").MustWrite(m.Salt)
 	return outputMessage, nil
 }
 
-// decode implements the interface Message.
-func (m AuthenticationMD5Password) decode(s MessageFormat) (Message, error) {
-	if err := s.MatchesStructure(*m.defaultMessage()); err != nil {
+// Decode implements the interface connection.Message.
+func (m AuthenticationMD5Password) Decode(s connection.MessageFormat) (connection.Message, error) {
+	if err := s.MatchesStructure(*m.DefaultMessage()); err != nil {
 		return nil, err
 	}
 	return AuthenticationMD5Password{
@@ -70,7 +72,7 @@ func (m AuthenticationMD5Password) decode(s MessageFormat) (Message, error) {
 	}, nil
 }
 
-// defaultMessage implements the interface Message.
-func (m AuthenticationMD5Password) defaultMessage() *MessageFormat {
+// DefaultMessage implements the interface connection.Message.
+func (m AuthenticationMD5Password) DefaultMessage() *connection.MessageFormat {
 	return &authenticationMD5PasswordDefault
 }

@@ -14,8 +14,10 @@
 
 package messages
 
+import "github.com/dolthub/doltgresql/postgres/connection"
+
 func init() {
-	initializeDefaultMessage(NegotiateProtocolVersion{})
+	connection.InitializeDefaultMessage(NegotiateProtocolVersion{})
 }
 
 // NegotiateProtocolVersion represents a PostgreSQL message.
@@ -24,35 +26,35 @@ type NegotiateProtocolVersion struct {
 	UnrecognizedOptions []string
 }
 
-var negotiateProtocolVersionDefault = MessageFormat{
+var negotiateProtocolVersionDefault = connection.MessageFormat{
 	Name: "NegotiateProtocolVersion",
-	Fields: FieldGroup{
+	Fields: connection.FieldGroup{
 		{
 			Name:  "Header",
-			Type:  Byte1,
-			Flags: Header,
+			Type:  connection.Byte1,
+			Flags: connection.Header,
 			Data:  int32('v'),
 		},
 		{
 			Name:  "MessageLength",
-			Type:  Int32,
-			Flags: MessageLengthInclusive,
+			Type:  connection.Int32,
+			Flags: connection.MessageLengthInclusive,
 			Data:  int32(0),
 		},
 		{
 			Name: "NewestMinorProtocol",
-			Type: Int32,
+			Type: connection.Int32,
 			Data: int32(0),
 		},
 		{
 			Name: "UnrecognizedOptions",
-			Type: Int32,
+			Type: connection.Int32,
 			Data: int32(0),
-			Children: []FieldGroup{
+			Children: []connection.FieldGroup{
 				{
 					{
 						Name: "UnrecognizedOption",
-						Type: String,
+						Type: connection.String,
 						Data: "",
 					},
 				},
@@ -61,11 +63,11 @@ var negotiateProtocolVersionDefault = MessageFormat{
 	},
 }
 
-var _ Message = NegotiateProtocolVersion{}
+var _ connection.Message = NegotiateProtocolVersion{}
 
-// encode implements the interface Message.
-func (m NegotiateProtocolVersion) encode() (MessageFormat, error) {
-	outputMessage := m.defaultMessage().Copy()
+// Encode implements the interface connection.Message.
+func (m NegotiateProtocolVersion) Encode() (connection.MessageFormat, error) {
+	outputMessage := m.DefaultMessage().Copy()
 	outputMessage.Field("NewestMinorProtocol").MustWrite(m.NewestMinorProtocol)
 	for i, option := range m.UnrecognizedOptions {
 		outputMessage.Field("UnrecognizedOptions").Child("UnrecognizedOption", i).MustWrite(option)
@@ -73,9 +75,9 @@ func (m NegotiateProtocolVersion) encode() (MessageFormat, error) {
 	return outputMessage, nil
 }
 
-// decode implements the interface Message.
-func (m NegotiateProtocolVersion) decode(s MessageFormat) (Message, error) {
-	if err := s.MatchesStructure(*m.defaultMessage()); err != nil {
+// Decode implements the interface connection.Message.
+func (m NegotiateProtocolVersion) Decode(s connection.MessageFormat) (connection.Message, error) {
+	if err := s.MatchesStructure(*m.DefaultMessage()); err != nil {
 		return nil, err
 	}
 	count := int(s.Field("UnrecognizedOptions").MustGet().(int32))
@@ -89,7 +91,7 @@ func (m NegotiateProtocolVersion) decode(s MessageFormat) (Message, error) {
 	}, nil
 }
 
-// defaultMessage implements the interface Message.
-func (m NegotiateProtocolVersion) defaultMessage() *MessageFormat {
+// DefaultMessage implements the interface connection.Message.
+func (m NegotiateProtocolVersion) DefaultMessage() *connection.MessageFormat {
 	return &negotiateProtocolVersionDefault
 }

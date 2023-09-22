@@ -14,9 +14,11 @@
 
 package messages
 
+import "github.com/dolthub/doltgresql/postgres/connection"
+
 func init() {
-	initializeDefaultMessage(CopyFail{})
-	addMessageHeader(CopyFail{})
+	connection.InitializeDefaultMessage(CopyFail{})
+	connection.AddMessageHeader(CopyFail{})
 }
 
 // CopyFail represents a PostgreSQL message.
@@ -24,41 +26,41 @@ type CopyFail struct {
 	ErrorMessage string
 }
 
-var copyFailDefault = MessageFormat{
+var copyFailDefault = connection.MessageFormat{
 	Name: "CopyFail",
-	Fields: FieldGroup{
+	Fields: connection.FieldGroup{
 		{
 			Name:  "Header",
-			Type:  Byte1,
-			Flags: Header,
+			Type:  connection.Byte1,
+			Flags: connection.Header,
 			Data:  int32('f'),
 		},
 		{
 			Name:  "MessageLength",
-			Type:  Int32,
-			Flags: MessageLengthInclusive,
+			Type:  connection.Int32,
+			Flags: connection.MessageLengthInclusive,
 			Data:  int32(0),
 		},
 		{
 			Name: "ErrorMessage",
-			Type: String,
+			Type: connection.String,
 			Data: "",
 		},
 	},
 }
 
-var _ Message = CopyFail{}
+var _ connection.Message = CopyFail{}
 
-// encode implements the interface Message.
-func (m CopyFail) encode() (MessageFormat, error) {
-	outputMessage := m.defaultMessage().Copy()
+// Encode implements the interface connection.Message.
+func (m CopyFail) Encode() (connection.MessageFormat, error) {
+	outputMessage := m.DefaultMessage().Copy()
 	outputMessage.Field("ErrorMessage").MustWrite(m.ErrorMessage)
 	return outputMessage, nil
 }
 
-// decode implements the interface Message.
-func (m CopyFail) decode(s MessageFormat) (Message, error) {
-	if err := s.MatchesStructure(*m.defaultMessage()); err != nil {
+// Decode implements the interface connection.Message.
+func (m CopyFail) Decode(s connection.MessageFormat) (connection.Message, error) {
+	if err := s.MatchesStructure(*m.DefaultMessage()); err != nil {
 		return nil, err
 	}
 	return CopyFail{
@@ -66,7 +68,7 @@ func (m CopyFail) decode(s MessageFormat) (Message, error) {
 	}, nil
 }
 
-// defaultMessage implements the interface Message.
-func (m CopyFail) defaultMessage() *MessageFormat {
+// DefaultMessage implements the interface connection.Message.
+func (m CopyFail) DefaultMessage() *connection.MessageFormat {
 	return &copyFailDefault
 }

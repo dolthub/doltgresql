@@ -14,9 +14,11 @@
 
 package messages
 
+import "github.com/dolthub/doltgresql/postgres/connection"
+
 func init() {
-	initializeDefaultMessage(Bind{})
-	addMessageHeader(Bind{})
+	connection.InitializeDefaultMessage(Bind{})
+	connection.AddMessageHeader(Bind{})
 }
 
 // Bind represents a PostgreSQL message.
@@ -34,40 +36,40 @@ type BindParameterValue struct {
 	IsNull bool
 }
 
-var bindDefault = MessageFormat{
+var bindDefault = connection.MessageFormat{
 	Name: "Bind",
-	Fields: FieldGroup{
+	Fields: connection.FieldGroup{
 		{
 			Name:  "Header",
-			Type:  Byte1,
-			Flags: Header,
+			Type:  connection.Byte1,
+			Flags: connection.Header,
 			Data:  int32('B'),
 		},
 		{
 			Name:  "MessageLength",
-			Type:  Int32,
-			Flags: MessageLengthInclusive,
+			Type:  connection.Int32,
+			Flags: connection.MessageLengthInclusive,
 			Data:  int32(0),
 		},
 		{
 			Name: "DestinationPortal",
-			Type: String,
+			Type: connection.String,
 			Data: "",
 		},
 		{
 			Name: "SourcePreparedStatement",
-			Type: String,
+			Type: connection.String,
 			Data: "",
 		},
 		{
 			Name: "ParameterFormatCodes",
-			Type: Int16,
+			Type: connection.Int16,
 			Data: int32(0),
-			Children: []FieldGroup{
+			Children: []connection.FieldGroup{
 				{
 					{
 						Name: "ParameterFormatCode",
-						Type: Int16,
+						Type: connection.Int16,
 						Data: int32(0),
 					},
 				},
@@ -75,19 +77,19 @@ var bindDefault = MessageFormat{
 		},
 		{
 			Name: "ParameterValues",
-			Type: Int16,
+			Type: connection.Int16,
 			Data: int32(0),
-			Children: []FieldGroup{
+			Children: []connection.FieldGroup{
 				{
 					{
 						Name:  "ParameterLength",
-						Type:  Int32,
-						Flags: ByteCount,
+						Type:  connection.Int32,
+						Flags: connection.ByteCount,
 						Data:  int32(0),
 					},
 					{
 						Name: "ParameterValue",
-						Type: ByteN,
+						Type: connection.ByteN,
 						Data: []byte{},
 					},
 				},
@@ -95,13 +97,13 @@ var bindDefault = MessageFormat{
 		},
 		{
 			Name: "ResultFormatCodes",
-			Type: Int16,
+			Type: connection.Int16,
 			Data: int32(0),
-			Children: []FieldGroup{
+			Children: []connection.FieldGroup{
 				{
 					{
 						Name: "ResultFormatCode",
-						Type: Int16,
+						Type: connection.Int16,
 						Data: int32(0),
 					},
 				},
@@ -110,11 +112,11 @@ var bindDefault = MessageFormat{
 	},
 }
 
-var _ Message = Bind{}
+var _ connection.Message = Bind{}
 
-// encode implements the interface Message.
-func (m Bind) encode() (MessageFormat, error) {
-	outputMessage := m.defaultMessage().Copy()
+// Encode implements the interface connection.Message.
+func (m Bind) Encode() (connection.MessageFormat, error) {
+	outputMessage := m.DefaultMessage().Copy()
 	outputMessage.Field("DestinationPortal").MustWrite(m.DestinationPortal)
 	outputMessage.Field("SourcePreparedStatement").MustWrite(m.SourcePreparedStatement)
 	for i, pFormatCode := range m.ParameterFormatCodes {
@@ -134,9 +136,9 @@ func (m Bind) encode() (MessageFormat, error) {
 	return outputMessage, nil
 }
 
-// decode implements the interface Message.
-func (m Bind) decode(s MessageFormat) (Message, error) {
-	if err := s.MatchesStructure(*m.defaultMessage()); err != nil {
+// Decode implements the interface connection.Message.
+func (m Bind) Decode(s connection.MessageFormat) (connection.Message, error) {
+	if err := s.MatchesStructure(*m.DefaultMessage()); err != nil {
 		return nil, err
 	}
 
@@ -178,7 +180,7 @@ func (m Bind) decode(s MessageFormat) (Message, error) {
 	}, nil
 }
 
-// defaultMessage implements the interface Message.
-func (m Bind) defaultMessage() *MessageFormat {
+// DefaultMessage implements the interface connection.Message.
+func (m Bind) DefaultMessage() *connection.MessageFormat {
 	return &bindDefault
 }

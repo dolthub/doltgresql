@@ -14,48 +14,50 @@
 
 package messages
 
+import "github.com/dolthub/doltgresql/postgres/connection"
+
 func init() {
-	initializeDefaultMessage(EmptyQueryResponse{})
-	addMessageHeader(EmptyQueryResponse{})
+	connection.InitializeDefaultMessage(EmptyQueryResponse{})
+	connection.AddMessageHeader(EmptyQueryResponse{})
 }
 
 // EmptyQueryResponse represents a PostgreSQL message.
 type EmptyQueryResponse struct{}
 
-var emptyQueryResponseDefault = MessageFormat{
+var emptyQueryResponseDefault = connection.MessageFormat{
 	Name: "EmptyQueryResponse",
-	Fields: FieldGroup{
+	Fields: connection.FieldGroup{
 		{
 			Name:  "Header",
-			Type:  Byte1,
-			Flags: Header,
+			Type:  connection.Byte1,
+			Flags: connection.Header,
 			Data:  int32('I'),
 		},
 		{
 			Name:  "MessageLength",
-			Type:  Int32,
-			Flags: MessageLengthInclusive,
+			Type:  connection.Int32,
+			Flags: connection.MessageLengthInclusive,
 			Data:  int32(4),
 		},
 	},
 }
 
-var _ Message = EmptyQueryResponse{}
+var _ connection.Message = EmptyQueryResponse{}
 
-// encode implements the interface Message.
-func (m EmptyQueryResponse) encode() (MessageFormat, error) {
-	return m.defaultMessage().Copy(), nil
+// Encode implements the interface connection.Message.
+func (m EmptyQueryResponse) Encode() (connection.MessageFormat, error) {
+	return m.DefaultMessage().Copy(), nil
 }
 
-// decode implements the interface Message.
-func (m EmptyQueryResponse) decode(s MessageFormat) (Message, error) {
-	if err := s.MatchesStructure(*m.defaultMessage()); err != nil {
+// Decode implements the interface connection.Message.
+func (m EmptyQueryResponse) Decode(s connection.MessageFormat) (connection.Message, error) {
+	if err := s.MatchesStructure(*m.DefaultMessage()); err != nil {
 		return nil, err
 	}
 	return EmptyQueryResponse{}, nil
 }
 
-// defaultMessage implements the interface Message.
-func (m EmptyQueryResponse) defaultMessage() *MessageFormat {
+// DefaultMessage implements the interface connection.Message.
+func (m EmptyQueryResponse) DefaultMessage() *connection.MessageFormat {
 	return &emptyQueryResponseDefault
 }

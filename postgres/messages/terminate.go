@@ -14,48 +14,50 @@
 
 package messages
 
+import "github.com/dolthub/doltgresql/postgres/connection"
+
 func init() {
-	initializeDefaultMessage(Terminate{})
-	addMessageHeader(Terminate{})
+	connection.InitializeDefaultMessage(Terminate{})
+	connection.AddMessageHeader(Terminate{})
 }
 
 // Terminate tells the server to close the connection.
 type Terminate struct{}
 
-var terminateDefault = MessageFormat{
+var terminateDefault = connection.MessageFormat{
 	Name: "Terminate",
-	Fields: FieldGroup{
+	Fields: connection.FieldGroup{
 		{
 			Name:  "Header",
-			Type:  Byte1,
-			Flags: Header,
+			Type:  connection.Byte1,
+			Flags: connection.Header,
 			Data:  int32('X'),
 		},
 		{
 			Name:  "MessageLength",
-			Type:  Int32,
-			Flags: MessageLengthInclusive,
+			Type:  connection.Int32,
+			Flags: connection.MessageLengthInclusive,
 			Data:  int32(0),
 		},
 	},
 }
 
-var _ Message = Terminate{}
+var _ connection.Message = Terminate{}
 
-// encode implements the interface Message.
-func (m Terminate) encode() (MessageFormat, error) {
+// Encode implements the interface connection.Message.
+func (m Terminate) Encode() (connection.MessageFormat, error) {
 	return terminateDefault.Copy(), nil
 }
 
-// decode implements the interface Message.
-func (m Terminate) decode(s MessageFormat) (Message, error) {
-	if err := s.MatchesStructure(*m.defaultMessage()); err != nil {
+// Decode implements the interface connection.Message.
+func (m Terminate) Decode(s connection.MessageFormat) (connection.Message, error) {
+	if err := s.MatchesStructure(*m.DefaultMessage()); err != nil {
 		return nil, err
 	}
 	return Terminate{}, nil
 }
 
-// defaultMessage implements the interface Message.
-func (m Terminate) defaultMessage() *MessageFormat {
+// DefaultMessage implements the interface connection.Message.
+func (m Terminate) DefaultMessage() *connection.MessageFormat {
 	return &terminateDefault
 }

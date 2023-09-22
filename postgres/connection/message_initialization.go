@@ -12,9 +12,13 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-package messages
+package connection
 
-import "fmt"
+import (
+	"fmt"
+
+	"github.com/dolthub/doltgresql/utils"
+)
 
 // allMessageHeaders contains any message headers that should be read within the main read loop of a connection.
 var allMessageHeaders = make(map[byte]Message)
@@ -25,26 +29,26 @@ var allMessageNames = make(map[string]struct{})
 // allMessageDefaults contains all of the default message pointers, to make sure that they're not accidentally being reused.
 var allMessageDefaults = make(map[*MessageFormat]struct{})
 
-// addMessageHeader adds the given Message's header. This also ensures that each header is unique. This should be
+// AddMessageHeader adds the given Message's header. This also ensures that each header is unique. This should be
 // called in an init() function.
-func addMessageHeader(message Message) {
-	for _, field := range message.defaultMessage().Fields {
+func AddMessageHeader(message Message) {
+	for _, field := range message.DefaultMessage().Fields {
 		if field.Flags&Header != 0 {
 			header := byte(field.Data.(int32))
 			if _, ok := allMessageHeaders[header]; ok {
-				panic(fmt.Errorf("Header already taken.\nMessageFormat:\n\n%s", message.defaultMessage().String()))
+				panic(fmt.Errorf("Header already taken.\nMessageFormat:\n\n%s", message.DefaultMessage().String()))
 			}
 			allMessageHeaders[header] = message
 			return
 		}
 	}
-	panic(fmt.Errorf("Header does not exist.\nMessageFormat:\n\n%s", message.defaultMessage().String()))
+	panic(fmt.Errorf("Header does not exist.\nMessageFormat:\n\n%s", message.DefaultMessage().String()))
 }
 
-// initializeDefaultMessage creates the internal structure of the default message, while ensuring that the structure of
+// InitializeDefaultMessage creates the internal structure of the default message, while ensuring that the structure of
 // the message is correct. This should be called in an init() function.
-func initializeDefaultMessage(messageType Message) {
-	message := messageType.defaultMessage()
+func InitializeDefaultMessage(messageType Message) {
+	message := messageType.DefaultMessage()
 	if _, ok := allMessageDefaults[message]; ok {
 		panic(fmt.Errorf("MessageFormat default was used in another message.\nMessageFormat:\n\n%s", message.String()))
 	}
@@ -69,7 +73,7 @@ func initializeDefaultMessage(messageType Message) {
 		Fields FieldGroup
 	}
 
-	ftStack := NewStack[FieldTraversal]()
+	ftStack := utils.NewStack[FieldTraversal]()
 	ftStack.Push(FieldTraversal{0, message.Fields})
 	for !ftStack.Empty() {
 		// If we're at the end of the loop for this stacked entry, then we pop it and move to the next

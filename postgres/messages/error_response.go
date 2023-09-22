@@ -14,8 +14,10 @@
 
 package messages
 
+import "github.com/dolthub/doltgresql/postgres/connection"
+
 func init() {
-	initializeDefaultMessage(ErrorResponse{})
+	connection.InitializeDefaultMessage(ErrorResponse{})
 }
 
 // ErrorResponse represents a PostgreSQL message.
@@ -29,36 +31,36 @@ type ErrorResponseField struct {
 	Value string
 }
 
-var errorResponseDefault = MessageFormat{
+var errorResponseDefault = connection.MessageFormat{
 	Name: "ErrorResponse",
-	Fields: FieldGroup{
+	Fields: connection.FieldGroup{
 		{
 			Name:  "Header",
-			Type:  Byte1,
-			Flags: Header,
+			Type:  connection.Byte1,
+			Flags: connection.Header,
 			Data:  int32('E'),
 		},
 		{
 			Name:  "MessageLength",
-			Type:  Int32,
-			Flags: MessageLengthInclusive,
+			Type:  connection.Int32,
+			Flags: connection.MessageLengthInclusive,
 			Data:  int32(0),
 		},
 		{
 			Name:  "Fields",
-			Type:  Repeated,
-			Flags: RepeatedTerminator,
+			Type:  connection.Repeated,
+			Flags: connection.RepeatedTerminator,
 			Data:  int32(0),
-			Children: []FieldGroup{
+			Children: []connection.FieldGroup{
 				{
 					{
 						Name: "Code",
-						Type: Byte1,
+						Type: connection.Byte1,
 						Data: int32(0),
 					},
 					{
 						Name: "Value",
-						Type: String,
+						Type: connection.String,
 						Data: "",
 					},
 				},
@@ -67,11 +69,11 @@ var errorResponseDefault = MessageFormat{
 	},
 }
 
-var _ Message = ErrorResponse{}
+var _ connection.Message = ErrorResponse{}
 
-// encode implements the interface Message.
-func (m ErrorResponse) encode() (MessageFormat, error) {
-	outputMessage := m.defaultMessage().Copy()
+// Encode implements the interface connection.Message.
+func (m ErrorResponse) Encode() (connection.MessageFormat, error) {
+	outputMessage := m.DefaultMessage().Copy()
 	for i, field := range m.Fields {
 		outputMessage.Field("Fields").Child("Code", i).MustWrite(field.Code)
 		outputMessage.Field("Fields").Child("Value", i).MustWrite(field.Value)
@@ -79,9 +81,9 @@ func (m ErrorResponse) encode() (MessageFormat, error) {
 	return outputMessage, nil
 }
 
-// decode implements the interface Message.
-func (m ErrorResponse) decode(s MessageFormat) (Message, error) {
-	if err := s.MatchesStructure(*m.defaultMessage()); err != nil {
+// Decode implements the interface connection.Message.
+func (m ErrorResponse) Decode(s connection.MessageFormat) (connection.Message, error) {
+	if err := s.MatchesStructure(*m.DefaultMessage()); err != nil {
 		return nil, err
 	}
 	count := int(s.Field("Fields").MustGet().(int32))
@@ -97,7 +99,7 @@ func (m ErrorResponse) decode(s MessageFormat) (Message, error) {
 	}, nil
 }
 
-// defaultMessage implements the interface Message.
-func (m ErrorResponse) defaultMessage() *MessageFormat {
+// DefaultMessage implements the interface connection.Message.
+func (m ErrorResponse) DefaultMessage() *connection.MessageFormat {
 	return &errorResponseDefault
 }

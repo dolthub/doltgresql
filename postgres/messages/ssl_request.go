@@ -14,46 +14,48 @@
 
 package messages
 
+import "github.com/dolthub/doltgresql/postgres/connection"
+
 func init() {
-	initializeDefaultMessage(SSLRequest{})
+	connection.InitializeDefaultMessage(SSLRequest{})
 }
 
 // SSLRequest represents a PostgreSQL message.
 type SSLRequest struct{}
 
-var sslRequestDefault = MessageFormat{
+var sslRequestDefault = connection.MessageFormat{
 	Name: "SSLRequest",
-	Fields: FieldGroup{
+	Fields: connection.FieldGroup{
 		{
 			Name:  "MessageLength",
-			Type:  Int32,
-			Flags: MessageLengthInclusive,
+			Type:  connection.Int32,
+			Flags: connection.MessageLengthInclusive,
 			Data:  int32(8),
 		},
 		{
 			Name: "RequestCode",
-			Type: Int32,
+			Type: connection.Int32,
 			Data: int32(80877103),
 		},
 	},
 }
 
-var _ Message = SSLRequest{}
+var _ connection.Message = SSLRequest{}
 
-// encode implements the interface Message.
-func (m SSLRequest) encode() (MessageFormat, error) {
-	return m.defaultMessage().Copy(), nil
+// Encode implements the interface connection.Message.
+func (m SSLRequest) Encode() (connection.MessageFormat, error) {
+	return m.DefaultMessage().Copy(), nil
 }
 
-// decode implements the interface Message.
-func (m SSLRequest) decode(s MessageFormat) (Message, error) {
-	if err := s.MatchesStructure(*m.defaultMessage()); err != nil {
+// Decode implements the interface connection.Message.
+func (m SSLRequest) Decode(s connection.MessageFormat) (connection.Message, error) {
+	if err := s.MatchesStructure(*m.DefaultMessage()); err != nil {
 		return nil, err
 	}
 	return SSLRequest{}, nil
 }
 
-// defaultMessage implements the interface Message.
-func (m SSLRequest) defaultMessage() *MessageFormat {
+// DefaultMessage implements the interface connection.Message.
+func (m SSLRequest) DefaultMessage() *connection.MessageFormat {
 	return &sslRequestDefault
 }

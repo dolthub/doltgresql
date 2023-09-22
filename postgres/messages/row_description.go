@@ -18,12 +18,13 @@ import (
 	"fmt"
 
 	"github.com/dolthub/go-mysql-server/sql"
-
 	"github.com/dolthub/vitess/go/vt/proto/query"
+
+	"github.com/dolthub/doltgresql/postgres/connection"
 )
 
 func init() {
-	initializeDefaultMessage(RowDescription{})
+	connection.InitializeDefaultMessage(RowDescription{})
 }
 
 // RowDescription represents a RowDescription message intended for the client.
@@ -31,60 +32,60 @@ type RowDescription struct {
 	Fields []*query.Field
 }
 
-var rowDescriptionDefault = MessageFormat{
+var rowDescriptionDefault = connection.MessageFormat{
 	Name: "RowDescription",
-	Fields: FieldGroup{
+	Fields: connection.FieldGroup{
 		{
 			Name:  "Header",
-			Type:  Byte1,
-			Flags: Header,
+			Type:  connection.Byte1,
+			Flags: connection.Header,
 			Data:  int32('T'),
 		},
 		{
 			Name:  "MessageLength",
-			Type:  Int32,
-			Flags: MessageLengthInclusive,
+			Type:  connection.Int32,
+			Flags: connection.MessageLengthInclusive,
 			Data:  int32(0),
 		},
 		{
 			Name: "Fields",
-			Type: Int16,
+			Type: connection.Int16,
 			Data: int32(0),
-			Children: []FieldGroup{
+			Children: []connection.FieldGroup{
 				{
 					{
 						Name: "ColumnName",
-						Type: String,
+						Type: connection.String,
 						Data: "",
 					},
 					{
 						Name: "TableObjectID",
-						Type: Int32,
+						Type: connection.Int32,
 						Data: int32(0),
 					},
 					{
 						Name: "ColumnAttributeNumber",
-						Type: Int16,
+						Type: connection.Int16,
 						Data: int32(0),
 					},
 					{
 						Name: "DataTypeObjectID",
-						Type: Int32,
+						Type: connection.Int32,
 						Data: int32(0),
 					},
 					{
 						Name: "DataTypeSize",
-						Type: Int16,
+						Type: connection.Int16,
 						Data: int32(0),
 					},
 					{
 						Name: "DataTypeModifier",
-						Type: Int32,
+						Type: connection.Int32,
 						Data: int32(0),
 					},
 					{
 						Name: "FormatCode",
-						Type: Int16,
+						Type: connection.Int16,
 						Data: int32(0),
 					},
 				},
@@ -93,24 +94,24 @@ var rowDescriptionDefault = MessageFormat{
 	},
 }
 
-var _ Message = RowDescription{}
+var _ connection.Message = RowDescription{}
 
-// encode implements the interface Message.
-func (m RowDescription) encode() (MessageFormat, error) {
-	outputMessage := m.defaultMessage().Copy()
+// Encode implements the interface connection.Message.
+func (m RowDescription) Encode() (connection.MessageFormat, error) {
+	outputMessage := m.DefaultMessage().Copy()
 	for i := 0; i < len(m.Fields); i++ {
 		field := m.Fields[i]
 		dataTypeObjectID, err := VitessFieldToDataTypeObjectID(field)
 		if err != nil {
-			return MessageFormat{}, err
+			return connection.MessageFormat{}, err
 		}
 		dataTypeSize, err := VitessFieldToDataTypeSize(field)
 		if err != nil {
-			return MessageFormat{}, err
+			return connection.MessageFormat{}, err
 		}
 		dataTypeModifier, err := VitessFieldToDataTypeModifier(field)
 		if err != nil {
-			return MessageFormat{}, err
+			return connection.MessageFormat{}, err
 		}
 		outputMessage.Field("Fields").Child("ColumnName", i).MustWrite(field.Name)
 		outputMessage.Field("Fields").Child("DataTypeObjectID", i).MustWrite(dataTypeObjectID)
@@ -120,22 +121,16 @@ func (m RowDescription) encode() (MessageFormat, error) {
 	return outputMessage, nil
 }
 
-// decode implements the interface Message.
-func (m RowDescription) decode(s MessageFormat) (Message, error) {
-	if err := s.MatchesStructure(*m.defaultMessage()); err != nil {
+// Decode implements the interface connection.Message.
+func (m RowDescription) Decode(s connection.MessageFormat) (connection.Message, error) {
+	if err := s.MatchesStructure(*m.DefaultMessage()); err != nil {
 		return nil, err
 	}
-	fieldCount := int(s.Field("Fields").MustGet().(int32))
-	for i := 0; i < fieldCount; i++ {
-		//TODO: decode the message in here
-	}
-	return RowDescription{
-		Fields: nil,
-	}, nil
+	return nil, fmt.Errorf("RowDescription messages do not support decoding, as they're only sent from the server.")
 }
 
-// defaultMessage implements the interface Message.
-func (m RowDescription) defaultMessage() *MessageFormat {
+// DefaultMessage implements the interface connection.Message.
+func (m RowDescription) DefaultMessage() *connection.MessageFormat {
 	return &rowDescriptionDefault
 }
 

@@ -14,9 +14,11 @@
 
 package messages
 
+import "github.com/dolthub/doltgresql/postgres/connection"
+
 func init() {
-	initializeDefaultMessage(FunctionCall{})
-	addMessageHeader(FunctionCall{})
+	connection.InitializeDefaultMessage(FunctionCall{})
+	connection.AddMessageHeader(FunctionCall{})
 }
 
 // FunctionCall represents a PostgreSQL message.
@@ -33,35 +35,35 @@ type FunctionCallArgument struct {
 	IsNull bool
 }
 
-var functionCallDefault = MessageFormat{
+var functionCallDefault = connection.MessageFormat{
 	Name: "FunctionCall",
-	Fields: FieldGroup{
+	Fields: connection.FieldGroup{
 		{
 			Name:  "Header",
-			Type:  Byte1,
-			Flags: Header,
+			Type:  connection.Byte1,
+			Flags: connection.Header,
 			Data:  int32('F'),
 		},
 		{
 			Name:  "MessageLength",
-			Type:  Int32,
-			Flags: MessageLengthInclusive,
+			Type:  connection.Int32,
+			Flags: connection.MessageLengthInclusive,
 			Data:  int32(0),
 		},
 		{
 			Name: "ObjectID",
-			Type: Int32,
+			Type: connection.Int32,
 			Data: int32(0),
 		},
 		{
 			Name: "ArgumentFormatCodes",
-			Type: Int16,
+			Type: connection.Int16,
 			Data: int32(0),
-			Children: []FieldGroup{
+			Children: []connection.FieldGroup{
 				{
 					{
 						Name: "ArgumentFormatCode",
-						Type: Int16,
+						Type: connection.Int16,
 						Data: int32(0),
 					},
 				},
@@ -69,19 +71,19 @@ var functionCallDefault = MessageFormat{
 		},
 		{
 			Name: "Arguments",
-			Type: Int16,
+			Type: connection.Int16,
 			Data: int32(0),
-			Children: []FieldGroup{
+			Children: []connection.FieldGroup{
 				{
 					{
 						Name:  "ArgumentLength",
-						Type:  Int32,
-						Flags: ByteCount,
+						Type:  connection.Int32,
+						Flags: connection.ByteCount,
 						Data:  int32(0),
 					},
 					{
 						Name: "ArgumentValue",
-						Type: ByteN,
+						Type: connection.ByteN,
 						Data: []byte{},
 					},
 				},
@@ -89,17 +91,17 @@ var functionCallDefault = MessageFormat{
 		},
 		{
 			Name: "ResultFormatCode",
-			Type: Int16,
+			Type: connection.Int16,
 			Data: int32(0),
 		},
 	},
 }
 
-var _ Message = FunctionCall{}
+var _ connection.Message = FunctionCall{}
 
-// encode implements the interface Message.
-func (m FunctionCall) encode() (MessageFormat, error) {
-	outputMessage := m.defaultMessage().Copy()
+// Encode implements the interface connection.Message.
+func (m FunctionCall) Encode() (connection.MessageFormat, error) {
+	outputMessage := m.DefaultMessage().Copy()
 	outputMessage.Field("ObjectID").MustWrite(m.ObjectID)
 	for i, formatCode := range m.ArgumentFormatCodes {
 		outputMessage.Field("ArgumentFormatCodes").Child("ArgumentFormatCode", i).MustWrite(formatCode)
@@ -116,9 +118,9 @@ func (m FunctionCall) encode() (MessageFormat, error) {
 	return outputMessage, nil
 }
 
-// decode implements the interface Message.
-func (m FunctionCall) decode(s MessageFormat) (Message, error) {
-	if err := s.MatchesStructure(*m.defaultMessage()); err != nil {
+// Decode implements the interface connection.Message.
+func (m FunctionCall) Decode(s connection.MessageFormat) (connection.Message, error) {
+	if err := s.MatchesStructure(*m.DefaultMessage()); err != nil {
 		return nil, err
 	}
 
@@ -153,7 +155,7 @@ func (m FunctionCall) decode(s MessageFormat) (Message, error) {
 	}, nil
 }
 
-// defaultMessage implements the interface Message.
-func (m FunctionCall) defaultMessage() *MessageFormat {
+// DefaultMessage implements the interface connection.Message.
+func (m FunctionCall) DefaultMessage() *connection.MessageFormat {
 	return &functionCallDefault
 }

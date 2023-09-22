@@ -14,52 +14,54 @@
 
 package messages
 
+import "github.com/dolthub/doltgresql/postgres/connection"
+
 func init() {
-	initializeDefaultMessage(AuthenticationCleartextPassword{})
+	connection.InitializeDefaultMessage(AuthenticationCleartextPassword{})
 }
 
 // AuthenticationCleartextPassword represents a PostgreSQL message.
 type AuthenticationCleartextPassword struct{}
 
-var authenticationCleartextPasswordDefault = MessageFormat{
+var authenticationCleartextPasswordDefault = connection.MessageFormat{
 	Name: "AuthenticationCleartextPassword",
-	Fields: FieldGroup{
+	Fields: connection.FieldGroup{
 		{
 			Name:  "Header",
-			Type:  Byte1,
-			Flags: Header,
+			Type:  connection.Byte1,
+			Flags: connection.Header,
 			Data:  int32('R'),
 		},
 		{
 			Name:  "MessageLength",
-			Type:  Int32,
-			Flags: MessageLengthInclusive,
+			Type:  connection.Int32,
+			Flags: connection.MessageLengthInclusive,
 			Data:  int32(8),
 		},
 		{
 			Name: "Status",
-			Type: Int32,
+			Type: connection.Int32,
 			Data: int32(3),
 		},
 	},
 }
 
-var _ Message = AuthenticationCleartextPassword{}
+var _ connection.Message = AuthenticationCleartextPassword{}
 
-// encode implements the interface Message.
-func (m AuthenticationCleartextPassword) encode() (MessageFormat, error) {
-	return m.defaultMessage().Copy(), nil
+// Encode implements the interface connection.Message.
+func (m AuthenticationCleartextPassword) Encode() (connection.MessageFormat, error) {
+	return m.DefaultMessage().Copy(), nil
 }
 
-// decode implements the interface Message.
-func (m AuthenticationCleartextPassword) decode(s MessageFormat) (Message, error) {
-	if err := s.MatchesStructure(*m.defaultMessage()); err != nil {
+// Decode implements the interface connection.Message.
+func (m AuthenticationCleartextPassword) Decode(s connection.MessageFormat) (connection.Message, error) {
+	if err := s.MatchesStructure(*m.DefaultMessage()); err != nil {
 		return nil, err
 	}
 	return AuthenticationCleartextPassword{}, nil
 }
 
-// defaultMessage implements the interface Message.
-func (m AuthenticationCleartextPassword) defaultMessage() *MessageFormat {
+// DefaultMessage implements the interface connection.Message.
+func (m AuthenticationCleartextPassword) DefaultMessage() *connection.MessageFormat {
 	return &authenticationCleartextPasswordDefault
 }

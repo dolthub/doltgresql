@@ -14,10 +14,14 @@
 
 package messages
 
-import "fmt"
+import (
+	"fmt"
+
+	"github.com/dolthub/doltgresql/postgres/connection"
+)
 
 func init() {
-	initializeDefaultMessage(CopyOutResponse{})
+	connection.InitializeDefaultMessage(CopyOutResponse{})
 }
 
 // CopyOutResponse represents a PostgreSQL message.
@@ -26,35 +30,35 @@ type CopyOutResponse struct {
 	FormatCodes []int32
 }
 
-var copyOutResponseDefault = MessageFormat{
+var copyOutResponseDefault = connection.MessageFormat{
 	Name: "CopyOutResponse",
-	Fields: FieldGroup{
+	Fields: connection.FieldGroup{
 		{
 			Name:  "Header",
-			Type:  Byte1,
-			Flags: Header,
+			Type:  connection.Byte1,
+			Flags: connection.Header,
 			Data:  int32('H'),
 		},
 		{
 			Name:  "MessageLength",
-			Type:  Int32,
-			Flags: MessageLengthInclusive,
+			Type:  connection.Int32,
+			Flags: connection.MessageLengthInclusive,
 			Data:  int32(0),
 		},
 		{
 			Name: "ResponseType",
-			Type: Int8,
+			Type: connection.Int8,
 			Data: int32(0),
 		},
 		{
 			Name: "Columns",
-			Type: Int16,
+			Type: connection.Int16,
 			Data: int32(0),
-			Children: []FieldGroup{
+			Children: []connection.FieldGroup{
 				{
 					{
 						Name: "FormatCode",
-						Type: Int16,
+						Type: connection.Int16,
 						Data: int32(0),
 					},
 				},
@@ -63,11 +67,11 @@ var copyOutResponseDefault = MessageFormat{
 	},
 }
 
-var _ Message = CopyOutResponse{}
+var _ connection.Message = CopyOutResponse{}
 
-// encode implements the interface Message.
-func (m CopyOutResponse) encode() (MessageFormat, error) {
-	outputMessage := m.defaultMessage().Copy()
+// Encode implements the interface connection.Message.
+func (m CopyOutResponse) Encode() (connection.MessageFormat, error) {
+	outputMessage := m.DefaultMessage().Copy()
 	if m.IsTextual {
 		outputMessage.Field("ResponseType").MustWrite(0)
 	} else {
@@ -79,9 +83,9 @@ func (m CopyOutResponse) encode() (MessageFormat, error) {
 	return outputMessage, nil
 }
 
-// decode implements the interface Message.
-func (m CopyOutResponse) decode(s MessageFormat) (Message, error) {
-	if err := s.MatchesStructure(*m.defaultMessage()); err != nil {
+// Decode implements the interface connection.Message.
+func (m CopyOutResponse) Decode(s connection.MessageFormat) (connection.Message, error) {
+	if err := s.MatchesStructure(*m.DefaultMessage()); err != nil {
 		return nil, err
 	}
 	var isTextual bool
@@ -104,7 +108,7 @@ func (m CopyOutResponse) decode(s MessageFormat) (Message, error) {
 	}, nil
 }
 
-// defaultMessage implements the interface Message.
-func (m CopyOutResponse) defaultMessage() *MessageFormat {
+// DefaultMessage implements the interface connection.Message.
+func (m CopyOutResponse) DefaultMessage() *connection.MessageFormat {
 	return &copyOutResponseDefault
 }

@@ -14,48 +14,50 @@
 
 package messages
 
+import "github.com/dolthub/doltgresql/postgres/connection"
+
 func init() {
-	initializeDefaultMessage(Sync{})
-	addMessageHeader(Sync{})
+	connection.InitializeDefaultMessage(Sync{})
+	connection.AddMessageHeader(Sync{})
 }
 
 // Sync represents a PostgreSQL message.
 type Sync struct{}
 
-var syncDefault = MessageFormat{
+var syncDefault = connection.MessageFormat{
 	Name: "Sync",
-	Fields: FieldGroup{
+	Fields: connection.FieldGroup{
 		{
 			Name:  "Header",
-			Type:  Byte1,
-			Flags: Header,
+			Type:  connection.Byte1,
+			Flags: connection.Header,
 			Data:  int32('S'),
 		},
 		{
 			Name:  "MessageLength",
-			Type:  Int32,
-			Flags: MessageLengthInclusive,
+			Type:  connection.Int32,
+			Flags: connection.MessageLengthInclusive,
 			Data:  int32(4),
 		},
 	},
 }
 
-var _ Message = Sync{}
+var _ connection.Message = Sync{}
 
-// encode implements the interface Message.
-func (m Sync) encode() (MessageFormat, error) {
-	return m.defaultMessage().Copy(), nil
+// Encode implements the interface connection.Message.
+func (m Sync) Encode() (connection.MessageFormat, error) {
+	return m.DefaultMessage().Copy(), nil
 }
 
-// decode implements the interface Message.
-func (m Sync) decode(s MessageFormat) (Message, error) {
-	if err := s.MatchesStructure(*m.defaultMessage()); err != nil {
+// Decode implements the interface connection.Message.
+func (m Sync) Decode(s connection.MessageFormat) (connection.Message, error) {
+	if err := s.MatchesStructure(*m.DefaultMessage()); err != nil {
 		return nil, err
 	}
 	return Sync{}, nil
 }
 
-// defaultMessage implements the interface Message.
-func (m Sync) defaultMessage() *MessageFormat {
+// DefaultMessage implements the interface connection.Message.
+func (m Sync) DefaultMessage() *connection.MessageFormat {
 	return &syncDefault
 }
