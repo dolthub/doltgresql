@@ -14,8 +14,10 @@
 
 package messages
 
+import "github.com/dolthub/doltgresql/postgres/connection"
+
 func init() {
-	initializeDefaultMessage(SASLResponse{})
+	connection.InitializeDefaultMessage(SASLResponse{})
 }
 
 // SASLResponse represents a PostgreSQL message.
@@ -23,41 +25,41 @@ type SASLResponse struct {
 	Data []byte
 }
 
-var sASLResponseDefault = MessageFormat{
+var sASLResponseDefault = connection.MessageFormat{
 	Name: "SASLResponse",
-	Fields: FieldGroup{
+	Fields: connection.FieldGroup{
 		{
 			Name:  "Header",
-			Type:  Byte1,
-			Flags: Header,
+			Type:  connection.Byte1,
+			Flags: connection.Header,
 			Data:  int32('p'),
 		},
 		{
 			Name:  "MessageLength",
-			Type:  Int32,
-			Flags: MessageLengthInclusive,
+			Type:  connection.Int32,
+			Flags: connection.MessageLengthInclusive,
 			Data:  int32(0),
 		},
 		{
 			Name: "Data",
-			Type: ByteN,
+			Type: connection.ByteN,
 			Data: []byte{},
 		},
 	},
 }
 
-var _ Message = SASLResponse{}
+var _ connection.Message = SASLResponse{}
 
-// encode implements the interface Message.
-func (m SASLResponse) encode() (MessageFormat, error) {
-	outputMessage := m.defaultMessage().Copy()
+// Encode implements the interface connection.Message.
+func (m SASLResponse) Encode() (connection.MessageFormat, error) {
+	outputMessage := m.DefaultMessage().Copy()
 	outputMessage.Field("Data").MustWrite(m.Data)
 	return outputMessage, nil
 }
 
-// decode implements the interface Message.
-func (m SASLResponse) decode(s MessageFormat) (Message, error) {
-	if err := s.MatchesStructure(*m.defaultMessage()); err != nil {
+// Decode implements the interface connection.Message.
+func (m SASLResponse) Decode(s connection.MessageFormat) (connection.Message, error) {
+	if err := s.MatchesStructure(*m.DefaultMessage()); err != nil {
 		return nil, err
 	}
 	return SASLResponse{
@@ -65,7 +67,7 @@ func (m SASLResponse) decode(s MessageFormat) (Message, error) {
 	}, nil
 }
 
-// defaultMessage implements the interface Message.
-func (m SASLResponse) defaultMessage() *MessageFormat {
+// DefaultMessage implements the interface connection.Message.
+func (m SASLResponse) DefaultMessage() *connection.MessageFormat {
 	return &sASLResponseDefault
 }

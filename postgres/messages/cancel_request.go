@@ -14,8 +14,10 @@
 
 package messages
 
+import "github.com/dolthub/doltgresql/postgres/connection"
+
 func init() {
-	initializeDefaultMessage(CancelRequest{})
+	connection.InitializeDefaultMessage(CancelRequest{})
 }
 
 // CancelRequest represents a PostgreSQL message.
@@ -24,46 +26,46 @@ type CancelRequest struct {
 	SecretKey int32
 }
 
-var cancelRequestDefault = MessageFormat{
+var cancelRequestDefault = connection.MessageFormat{
 	Name: "CancelRequest",
-	Fields: FieldGroup{
+	Fields: connection.FieldGroup{
 		{
 			Name:  "MessageLength",
-			Type:  Int32,
-			Flags: MessageLengthInclusive,
+			Type:  connection.Int32,
+			Flags: connection.MessageLengthInclusive,
 			Data:  int32(0),
 		},
 		{
 			Name: "RequestCode",
-			Type: Int32,
+			Type: connection.Int32,
 			Data: int32(80877102),
 		},
 		{
 			Name: "ProcessID",
-			Type: Int32,
+			Type: connection.Int32,
 			Data: int32(0),
 		},
 		{
 			Name: "SecretKey",
-			Type: Int32,
+			Type: connection.Int32,
 			Data: int32(0),
 		},
 	},
 }
 
-var _ Message = CancelRequest{}
+var _ connection.Message = CancelRequest{}
 
-// encode implements the interface Message.
-func (m CancelRequest) encode() (MessageFormat, error) {
-	outputMessage := m.defaultMessage().Copy()
+// Encode implements the interface connection.Message.
+func (m CancelRequest) Encode() (connection.MessageFormat, error) {
+	outputMessage := m.DefaultMessage().Copy()
 	outputMessage.Field("ProcessID").MustWrite(m.ProcessID)
 	outputMessage.Field("SecretKey").MustWrite(m.SecretKey)
 	return outputMessage, nil
 }
 
-// decode implements the interface Message.
-func (m CancelRequest) decode(s MessageFormat) (Message, error) {
-	if err := s.MatchesStructure(*m.defaultMessage()); err != nil {
+// Decode implements the interface connection.Message.
+func (m CancelRequest) Decode(s connection.MessageFormat) (connection.Message, error) {
+	if err := s.MatchesStructure(*m.DefaultMessage()); err != nil {
 		return nil, err
 	}
 	return CancelRequest{
@@ -72,7 +74,7 @@ func (m CancelRequest) decode(s MessageFormat) (Message, error) {
 	}, nil
 }
 
-// defaultMessage implements the interface Message.
-func (m CancelRequest) defaultMessage() *MessageFormat {
+// DefaultMessage implements the interface connection.Message.
+func (m CancelRequest) DefaultMessage() *connection.MessageFormat {
 	return &cancelRequestDefault
 }

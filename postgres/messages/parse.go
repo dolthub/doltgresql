@@ -14,9 +14,11 @@
 
 package messages
 
+import "github.com/dolthub/doltgresql/postgres/connection"
+
 func init() {
-	initializeDefaultMessage(Parse{})
-	addMessageHeader(Parse{})
+	connection.InitializeDefaultMessage(Parse{})
+	connection.AddMessageHeader(Parse{})
 }
 
 // Parse represents a PostgreSQL message.
@@ -26,40 +28,40 @@ type Parse struct {
 	ParameterObjectIDs []int32
 }
 
-var parseDefault = MessageFormat{
+var parseDefault = connection.MessageFormat{
 	Name: "Parse",
-	Fields: FieldGroup{
+	Fields: connection.FieldGroup{
 		{
 			Name:  "Header",
-			Type:  Byte1,
-			Flags: Header,
+			Type:  connection.Byte1,
+			Flags: connection.Header,
 			Data:  int32('P'),
 		},
 		{
 			Name:  "MessageLength",
-			Type:  Int32,
-			Flags: MessageLengthInclusive,
+			Type:  connection.Int32,
+			Flags: connection.MessageLengthInclusive,
 			Data:  int32(0),
 		},
 		{
 			Name: "PreparedStatement",
-			Type: String,
+			Type: connection.String,
 			Data: "",
 		},
 		{
 			Name: "Query",
-			Type: String,
+			Type: connection.String,
 			Data: "",
 		},
 		{
 			Name: "Parameters",
-			Type: Int16,
+			Type: connection.Int16,
 			Data: int32(0),
-			Children: []FieldGroup{
+			Children: []connection.FieldGroup{
 				{
 					{
 						Name: "ObjectID",
-						Type: Int32,
+						Type: connection.Int32,
 						Data: int32(0),
 					},
 				},
@@ -68,11 +70,11 @@ var parseDefault = MessageFormat{
 	},
 }
 
-var _ Message = Parse{}
+var _ connection.Message = Parse{}
 
-// encode implements the interface Message.
-func (m Parse) encode() (MessageFormat, error) {
-	outputMessage := m.defaultMessage().Copy()
+// Encode implements the interface connection.Message.
+func (m Parse) Encode() (connection.MessageFormat, error) {
+	outputMessage := m.DefaultMessage().Copy()
 	outputMessage.Field("PreparedStatement").MustWrite(m.PreparedStatement)
 	outputMessage.Field("Query").MustWrite(m.Query)
 	for i, objectID := range m.ParameterObjectIDs {
@@ -81,9 +83,9 @@ func (m Parse) encode() (MessageFormat, error) {
 	return outputMessage, nil
 }
 
-// decode implements the interface Message.
-func (m Parse) decode(s MessageFormat) (Message, error) {
-	if err := s.MatchesStructure(*m.defaultMessage()); err != nil {
+// Decode implements the interface connection.Message.
+func (m Parse) Decode(s connection.MessageFormat) (connection.Message, error) {
+	if err := s.MatchesStructure(*m.DefaultMessage()); err != nil {
 		return nil, err
 	}
 	count := int(s.Field("Parameters").MustGet().(int32))
@@ -98,7 +100,7 @@ func (m Parse) decode(s MessageFormat) (Message, error) {
 	}, nil
 }
 
-// defaultMessage implements the interface Message.
-func (m Parse) defaultMessage() *MessageFormat {
+// DefaultMessage implements the interface connection.Message.
+func (m Parse) DefaultMessage() *connection.MessageFormat {
 	return &parseDefault
 }

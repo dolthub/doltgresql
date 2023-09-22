@@ -14,8 +14,10 @@
 
 package messages
 
+import "github.com/dolthub/doltgresql/postgres/connection"
+
 func init() {
-	initializeDefaultMessage(FunctionCallResponse{})
+	connection.InitializeDefaultMessage(FunctionCallResponse{})
 }
 
 // FunctionCallResponse represents a PostgreSQL message.
@@ -24,40 +26,40 @@ type FunctionCallResponse struct {
 	ResultValue  []byte
 }
 
-var functionCallResponseDefault = MessageFormat{
+var functionCallResponseDefault = connection.MessageFormat{
 	Name: "FunctionCallResponse",
-	Fields: FieldGroup{
+	Fields: connection.FieldGroup{
 		{
 			Name:  "Header",
-			Type:  Byte1,
-			Flags: Header,
+			Type:  connection.Byte1,
+			Flags: connection.Header,
 			Data:  int32('V'),
 		},
 		{
 			Name:  "MessageLength",
-			Type:  Int32,
-			Flags: MessageLengthInclusive,
+			Type:  connection.Int32,
+			Flags: connection.MessageLengthInclusive,
 			Data:  int32(0),
 		},
 		{
 			Name:  "ResultLength",
-			Type:  Int32,
-			Flags: ByteCount,
+			Type:  connection.Int32,
+			Flags: connection.ByteCount,
 			Data:  int32(0),
 		},
 		{
 			Name: "ResultValue",
-			Type: ByteN,
+			Type: connection.ByteN,
 			Data: []byte{},
 		},
 	},
 }
 
-var _ Message = FunctionCallResponse{}
+var _ connection.Message = FunctionCallResponse{}
 
-// encode implements the interface Message.
-func (m FunctionCallResponse) encode() (MessageFormat, error) {
-	outputMessage := m.defaultMessage().Copy()
+// Encode implements the interface connection.Message.
+func (m FunctionCallResponse) Encode() (connection.MessageFormat, error) {
+	outputMessage := m.DefaultMessage().Copy()
 	if m.IsResultNull {
 		outputMessage.Field("ResultLength").MustWrite(-1)
 	} else {
@@ -70,9 +72,9 @@ func (m FunctionCallResponse) encode() (MessageFormat, error) {
 	return outputMessage, nil
 }
 
-// decode implements the interface Message.
-func (m FunctionCallResponse) decode(s MessageFormat) (Message, error) {
-	if err := s.MatchesStructure(*m.defaultMessage()); err != nil {
+// Decode implements the interface connection.Message.
+func (m FunctionCallResponse) Decode(s connection.MessageFormat) (connection.Message, error) {
+	if err := s.MatchesStructure(*m.DefaultMessage()); err != nil {
 		return nil, err
 	}
 	isNull := s.Field("ResultLength").MustGet().(int32) == -1
@@ -82,7 +84,7 @@ func (m FunctionCallResponse) decode(s MessageFormat) (Message, error) {
 	}, nil
 }
 
-// defaultMessage implements the interface Message.
-func (m FunctionCallResponse) defaultMessage() *MessageFormat {
+// DefaultMessage implements the interface connection.Message.
+func (m FunctionCallResponse) DefaultMessage() *connection.MessageFormat {
 	return &functionCallResponseDefault
 }

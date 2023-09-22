@@ -14,9 +14,11 @@
 
 package messages
 
+import "github.com/dolthub/doltgresql/postgres/connection"
+
 func init() {
-	initializeDefaultMessage(CopyData{})
-	addMessageHeader(CopyData{})
+	connection.InitializeDefaultMessage(CopyData{})
+	connection.AddMessageHeader(CopyData{})
 }
 
 // CopyData represents a PostgreSQL message.
@@ -24,41 +26,41 @@ type CopyData struct {
 	Data []byte
 }
 
-var copyDataDefault = MessageFormat{
+var copyDataDefault = connection.MessageFormat{
 	Name: "CopyData",
-	Fields: FieldGroup{
+	Fields: connection.FieldGroup{
 		{
 			Name:  "Header",
-			Type:  Byte1,
-			Flags: Header,
+			Type:  connection.Byte1,
+			Flags: connection.Header,
 			Data:  int32('d'),
 		},
 		{
 			Name:  "MessageLength",
-			Type:  Int32,
-			Flags: MessageLengthInclusive,
+			Type:  connection.Int32,
+			Flags: connection.MessageLengthInclusive,
 			Data:  int32(0),
 		},
 		{
 			Name: "Data",
-			Type: ByteN,
+			Type: connection.ByteN,
 			Data: []byte{},
 		},
 	},
 }
 
-var _ Message = CopyData{}
+var _ connection.Message = CopyData{}
 
-// encode implements the interface Message.
-func (m CopyData) encode() (MessageFormat, error) {
-	outputMessage := m.defaultMessage().Copy()
+// Encode implements the interface connection.Message.
+func (m CopyData) Encode() (connection.MessageFormat, error) {
+	outputMessage := m.DefaultMessage().Copy()
 	outputMessage.Field("Data").MustWrite(m.Data)
 	return outputMessage, nil
 }
 
-// decode implements the interface Message.
-func (m CopyData) decode(s MessageFormat) (Message, error) {
-	if err := s.MatchesStructure(*m.defaultMessage()); err != nil {
+// Decode implements the interface connection.Message.
+func (m CopyData) Decode(s connection.MessageFormat) (connection.Message, error) {
+	if err := s.MatchesStructure(*m.DefaultMessage()); err != nil {
 		return nil, err
 	}
 	return CopyData{
@@ -66,7 +68,7 @@ func (m CopyData) decode(s MessageFormat) (Message, error) {
 	}, nil
 }
 
-// defaultMessage implements the interface Message.
-func (m CopyData) defaultMessage() *MessageFormat {
+// DefaultMessage implements the interface connection.Message.
+func (m CopyData) DefaultMessage() *connection.MessageFormat {
 	return &copyDataDefault
 }

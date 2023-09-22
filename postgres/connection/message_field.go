@@ -12,7 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-package messages
+package connection
 
 // FieldType is the type of the field as defined by PostgreSQL.
 type FieldType byte

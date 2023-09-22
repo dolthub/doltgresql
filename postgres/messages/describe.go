@@ -14,11 +14,15 @@
 
 package messages
 
-import "fmt"
+import (
+	"fmt"
+
+	"github.com/dolthub/doltgresql/postgres/connection"
+)
 
 func init() {
-	initializeDefaultMessage(Describe{})
-	addMessageHeader(Describe{})
+	connection.InitializeDefaultMessage(Describe{})
+	connection.AddMessageHeader(Describe{})
 }
 
 // Describe represents a PostgreSQL message.
@@ -27,39 +31,39 @@ type Describe struct {
 	Target     string
 }
 
-var describeDefault = MessageFormat{
+var describeDefault = connection.MessageFormat{
 	Name: "Describe",
-	Fields: FieldGroup{
+	Fields: connection.FieldGroup{
 		{
 			Name:  "Header",
-			Type:  Byte1,
-			Flags: Header,
+			Type:  connection.Byte1,
+			Flags: connection.Header,
 			Data:  int32('D'),
 		},
 		{
 			Name:  "MessageLength",
-			Type:  Int32,
-			Flags: MessageLengthInclusive,
+			Type:  connection.Int32,
+			Flags: connection.MessageLengthInclusive,
 			Data:  int32(0),
 		},
 		{
 			Name: "DescribingTarget",
-			Type: Byte1,
+			Type: connection.Byte1,
 			Data: int32(0),
 		},
 		{
 			Name: "TargetName",
-			Type: String,
+			Type: connection.String,
 			Data: "",
 		},
 	},
 }
 
-var _ Message = Describe{}
+var _ connection.Message = Describe{}
 
-// encode implements the interface Message.
-func (m Describe) encode() (MessageFormat, error) {
-	outputMessage := m.defaultMessage().Copy()
+// Encode implements the interface connection.Message.
+func (m Describe) Encode() (connection.MessageFormat, error) {
+	outputMessage := m.DefaultMessage().Copy()
 	if m.IsPrepared {
 		outputMessage.Field("DescribingTarget").MustWrite('S')
 	} else {
@@ -69,9 +73,9 @@ func (m Describe) encode() (MessageFormat, error) {
 	return outputMessage, nil
 }
 
-// decode implements the interface Message.
-func (m Describe) decode(s MessageFormat) (Message, error) {
-	if err := s.MatchesStructure(*m.defaultMessage()); err != nil {
+// Decode implements the interface connection.Message.
+func (m Describe) Decode(s connection.MessageFormat) (connection.Message, error) {
+	if err := s.MatchesStructure(*m.DefaultMessage()); err != nil {
 		return nil, err
 	}
 	describingTarget := s.Field("DescribingTarget").MustGet().(int32)
@@ -89,7 +93,7 @@ func (m Describe) decode(s MessageFormat) (Message, error) {
 	}, nil
 }
 
-// defaultMessage implements the interface Message.
-func (m Describe) defaultMessage() *MessageFormat {
+// DefaultMessage implements the interface connection.Message.
+func (m Describe) DefaultMessage() *connection.MessageFormat {
 	return &describeDefault
 }

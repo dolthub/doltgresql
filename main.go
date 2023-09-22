@@ -57,7 +57,7 @@ var doltCommand = cli.NewSubCommandHandler("doltgresql", "it's git for data", []
 var globalArgParser = cli.CreateGlobalArgParser("doltgresql")
 
 func init() {
-	server.DefaultProtocolListenerFunc = postgres.NewListenerWithConfig
+	server.DefaultProtocolListenerFunc = postgres.NewListener
 	sqlserver.ExternalDisableUsers = true
 	dfunctions.VersionString = Version
 }

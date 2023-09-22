@@ -24,12 +24,13 @@ import (
 	"github.com/dolthub/vitess/go/mysql"
 	"github.com/dolthub/vitess/go/sqltypes"
 
+	"github.com/dolthub/doltgresql/postgres/connection"
 	"github.com/dolthub/doltgresql/postgres/messages"
 )
 
 var connectionIDCounter uint32
 
-// TODO: doc
+// Listener listens for connections to process PostgreSQL requests into Dolt requests.
 type Listener struct {
 	listener net.Listener
 	cfg      mysql.ListenerConfig
@@ -37,15 +38,15 @@ type Listener struct {
 
 var _ server.ProtocolListener = (*Listener)(nil)
 
-// TODO: doc
-func NewListenerWithConfig(listenerCfg mysql.ListenerConfig) (server.ProtocolListener, error) {
+// NewListener creates a new Listener.
+func NewListener(listenerCfg mysql.ListenerConfig) (server.ProtocolListener, error) {
 	return &Listener{
 		listener: listenerCfg.Listener,
 		cfg:      listenerCfg,
 	}, nil
 }
 
-// TODO: doc
+// Accept handles incoming connections.
 func (l *Listener) Accept() {
 	for {
 		conn, err := l.listener.Accept()
@@ -58,12 +59,12 @@ func (l *Listener) Accept() {
 	}
 }
 
-// TODO: doc
+// Close stops the handling of incoming connections.
 func (l *Listener) Close() {
 	_ = l.listener.Close()
 }
 
-// TODO: doc
+// Addr returns the address that the listener is listening on.
 func (l *Listener) Addr() net.Addr {
 	return l.listener.Addr()
 }
@@ -93,7 +94,7 @@ func (l *Listener) HandleConnection(conn net.Conn) {
 		return
 	}
 
-	if err = messages.Send(conn, messages.SSLResponse{
+	if err = connection.Send(conn, messages.SSLResponse{
 		SupportsSSL: false,
 	}); err != nil {
 		fmt.Println(err)
@@ -107,25 +108,25 @@ func (l *Listener) HandleConnection(conn net.Conn) {
 		}
 		return
 	}
-	startupMessage, err := messages.ReceiveInto(buf, messages.StartupMessage{})
+	startupMessage, err := connection.ReceiveInto(buf, messages.StartupMessage{})
 	if err != nil {
 		fmt.Println(err)
 		return
 	}
 
-	if err = messages.Send(conn, messages.AuthenticationOk{}); err != nil {
+	if err = connection.Send(conn, messages.AuthenticationOk{}); err != nil {
 		fmt.Println(err)
 		return
 	}
 
-	if err = messages.Send(conn, messages.ParameterStatus{
+	if err = connection.Send(conn, messages.ParameterStatus{
 		Name:  "server_version",
 		Value: "15.0",
 	}); err != nil {
 		fmt.Println(err)
 		return
 	}
-	if err = messages.Send(conn, messages.ParameterStatus{
+	if err = connection.Send(conn, messages.ParameterStatus{
 		Name:  "client_encoding",
 		Value: "UTF8",
 	}); err != nil {
@@ -133,7 +134,7 @@ func (l *Listener) HandleConnection(conn net.Conn) {
 		return
 	}
 
-	if err = messages.Send(conn, messages.BackendKeyData{
+	if err = connection.Send(conn, messages.BackendKeyData{
 		ProcessID: 1,
 		SecretKey: 0,
 	}); err != nil {
@@ -141,7 +142,7 @@ func (l *Listener) HandleConnection(conn net.Conn) {
 		return
 	}
 
-	if err = messages.Send(conn, messages.ReadyForQuery{
+	if err = connection.Send(conn, messages.ReadyForQuery{
 		Indicator: messages.ReadyForQueryTransactionIndicator_Idle,
 	}); err != nil {
 		fmt.Println(err)
@@ -162,7 +163,7 @@ func (l *Listener) HandleConnection(conn net.Conn) {
 			return
 		}
 
-		message, ok, err := messages.Receive(buf)
+		message, ok, err := connection.Receive(buf)
 		if err != nil {
 			fmt.Println(err.Error())
 			return
@@ -187,14 +188,14 @@ func (l *Listener) query(conn net.Conn, mysqlConn *mysql.Conn, query string) {
 	}
 
 	if err := l.cfg.Handler.ComQuery(mysqlConn, query, func(res *sqltypes.Result, more bool) error {
-		if err := messages.Send(conn, messages.RowDescription{
+		if err := connection.Send(conn, messages.RowDescription{
 			Fields: res.Fields,
 		}); err != nil {
 			return err
 		}
 
 		for _, row := range res.Rows {
-			if err := messages.Send(conn, messages.DataRow{
+			if err := connection.Send(conn, messages.DataRow{
 				Values: row,
 			}); err != nil {
 				return err
@@ -212,12 +213,12 @@ func (l *Listener) query(conn net.Conn, mysqlConn *mysql.Conn, query string) {
 		return
 	}
 
-	if err := messages.Send(conn, commandComplete); err != nil {
+	if err := connection.Send(conn, commandComplete); err != nil {
 		fmt.Println(err)
 		return
 	}
 
-	if err := messages.Send(conn, messages.ReadyForQuery{
+	if err := connection.Send(conn, messages.ReadyForQuery{
 		Indicator: messages.ReadyForQueryTransactionIndicator_Idle,
 	}); err != nil {
 		fmt.Println(err)

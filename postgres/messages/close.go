@@ -14,11 +14,15 @@
 
 package messages
 
-import "fmt"
+import (
+	"fmt"
+
+	"github.com/dolthub/doltgresql/postgres/connection"
+)
 
 func init() {
-	initializeDefaultMessage(Close{})
-	addMessageHeader(Close{})
+	connection.InitializeDefaultMessage(Close{})
+	connection.AddMessageHeader(Close{})
 }
 
 // Close represents a PostgreSQL message.
@@ -27,39 +31,39 @@ type Close struct {
 	Target                   string // Target is the name of whatever we are closing.
 }
 
-var closeDefault = MessageFormat{
+var closeDefault = connection.MessageFormat{
 	Name: "Close",
-	Fields: FieldGroup{
+	Fields: connection.FieldGroup{
 		{
 			Name:  "Header",
-			Type:  Byte1,
-			Flags: Header,
+			Type:  connection.Byte1,
+			Flags: connection.Header,
 			Data:  int32('C'),
 		},
 		{
 			Name:  "MessageLength",
-			Type:  Int32,
-			Flags: MessageLengthInclusive,
+			Type:  connection.Int32,
+			Flags: connection.MessageLengthInclusive,
 			Data:  int32(0),
 		},
 		{
 			Name: "ClosingTarget",
-			Type: Byte1,
+			Type: connection.Byte1,
 			Data: int32(0),
 		},
 		{
 			Name: "TargetName",
-			Type: String,
+			Type: connection.String,
 			Data: "",
 		},
 	},
 }
 
-var _ Message = Close{}
+var _ connection.Message = Close{}
 
-// encode implements the interface Message.
-func (m Close) encode() (MessageFormat, error) {
-	outputMessage := m.defaultMessage().Copy()
+// Encode implements the interface connection.Message.
+func (m Close) Encode() (connection.MessageFormat, error) {
+	outputMessage := m.DefaultMessage().Copy()
 	if m.ClosingPreparedStatement {
 		outputMessage.Field("ClosingTarget").MustWrite('S')
 	} else {
@@ -69,9 +73,9 @@ func (m Close) encode() (MessageFormat, error) {
 	return outputMessage, nil
 }
 
-// decode implements the interface Message.
-func (m Close) decode(s MessageFormat) (Message, error) {
-	if err := s.MatchesStructure(*m.defaultMessage()); err != nil {
+// Decode implements the interface connection.Message.
+func (m Close) Decode(s connection.MessageFormat) (connection.Message, error) {
+	if err := s.MatchesStructure(*m.DefaultMessage()); err != nil {
 		return nil, err
 	}
 	closingTarget := s.Field("ClosingTarget").MustGet().(int32)
@@ -89,7 +93,7 @@ func (m Close) decode(s MessageFormat) (Message, error) {
 	}, nil
 }
 
-// defaultMessage implements the interface Message.
-func (m Close) defaultMessage() *MessageFormat {
+// DefaultMessage implements the interface connection.Message.
+func (m Close) DefaultMessage() *connection.MessageFormat {
 	return &closeDefault
 }

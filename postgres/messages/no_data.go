@@ -14,47 +14,49 @@
 
 package messages
 
+import "github.com/dolthub/doltgresql/postgres/connection"
+
 func init() {
-	initializeDefaultMessage(NoData{})
+	connection.InitializeDefaultMessage(NoData{})
 }
 
 // NoData represents a PostgreSQL message.
 type NoData struct{}
 
-var noDataDefault = MessageFormat{
+var noDataDefault = connection.MessageFormat{
 	Name: "NoData",
-	Fields: FieldGroup{
+	Fields: connection.FieldGroup{
 		{
 			Name:  "Header",
-			Type:  Byte1,
-			Flags: Header,
+			Type:  connection.Byte1,
+			Flags: connection.Header,
 			Data:  int32('n'),
 		},
 		{
 			Name:  "MessageLength",
-			Type:  Int32,
-			Flags: MessageLengthInclusive,
+			Type:  connection.Int32,
+			Flags: connection.MessageLengthInclusive,
 			Data:  int32(4),
 		},
 	},
 }
 
-var _ Message = NoData{}
+var _ connection.Message = NoData{}
 
-// encode implements the interface Message.
-func (m NoData) encode() (MessageFormat, error) {
-	return m.defaultMessage().Copy(), nil
+// Encode implements the interface connection.Message.
+func (m NoData) Encode() (connection.MessageFormat, error) {
+	return m.DefaultMessage().Copy(), nil
 }
 
-// decode implements the interface Message.
-func (m NoData) decode(s MessageFormat) (Message, error) {
-	if err := s.MatchesStructure(*m.defaultMessage()); err != nil {
+// Decode implements the interface connection.Message.
+func (m NoData) Decode(s connection.MessageFormat) (connection.Message, error) {
+	if err := s.MatchesStructure(*m.DefaultMessage()); err != nil {
 		return nil, err
 	}
 	return NoData{}, nil
 }
 
-// defaultMessage implements the interface Message.
-func (m NoData) defaultMessage() *MessageFormat {
+// DefaultMessage implements the interface connection.Message.
+func (m NoData) DefaultMessage() *connection.MessageFormat {
 	return &noDataDefault
 }

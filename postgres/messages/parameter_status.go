@@ -14,8 +14,10 @@
 
 package messages
 
+import "github.com/dolthub/doltgresql/postgres/connection"
+
 func init() {
-	initializeDefaultMessage(ParameterStatus{})
+	connection.InitializeDefaultMessage(ParameterStatus{})
 }
 
 // ParameterStatus reports various parameters to the client.
@@ -24,47 +26,47 @@ type ParameterStatus struct {
 	Value string
 }
 
-var parameterStatusDefault = MessageFormat{
+var parameterStatusDefault = connection.MessageFormat{
 	Name: "ParameterStatus",
-	Fields: FieldGroup{
+	Fields: connection.FieldGroup{
 		{
 			Name:  "Header",
-			Type:  Byte1,
-			Flags: Header,
+			Type:  connection.Byte1,
+			Flags: connection.Header,
 			Data:  int32('S'),
 		},
 		{
 			Name:  "MessageLength",
-			Type:  Int32,
-			Flags: MessageLengthInclusive,
+			Type:  connection.Int32,
+			Flags: connection.MessageLengthInclusive,
 			Data:  int32(0),
 		},
 		{
 			Name: "Name",
-			Type: String,
+			Type: connection.String,
 			Data: "",
 		},
 		{
 			Name: "Value",
-			Type: String,
+			Type: connection.String,
 			Data: "",
 		},
 	},
 }
 
-var _ Message = ParameterStatus{}
+var _ connection.Message = ParameterStatus{}
 
-// encode implements the interface Message.
-func (m ParameterStatus) encode() (MessageFormat, error) {
-	outputMessage := m.defaultMessage().Copy()
+// Encode implements the interface connection.Message.
+func (m ParameterStatus) Encode() (connection.MessageFormat, error) {
+	outputMessage := m.DefaultMessage().Copy()
 	outputMessage.Field("Name").MustWrite(m.Name)
 	outputMessage.Field("Value").MustWrite(m.Value)
 	return outputMessage, nil
 }
 
-// decode implements the interface Message.
-func (m ParameterStatus) decode(s MessageFormat) (Message, error) {
-	if err := s.MatchesStructure(*m.defaultMessage()); err != nil {
+// Decode implements the interface connection.Message.
+func (m ParameterStatus) Decode(s connection.MessageFormat) (connection.Message, error) {
+	if err := s.MatchesStructure(*m.DefaultMessage()); err != nil {
 		return nil, err
 	}
 	return ParameterStatus{
@@ -73,7 +75,7 @@ func (m ParameterStatus) decode(s MessageFormat) (Message, error) {
 	}, nil
 }
 
-// defaultMessage implements the interface Message.
-func (m ParameterStatus) defaultMessage() *MessageFormat {
+// DefaultMessage implements the interface connection.Message.
+func (m ParameterStatus) DefaultMessage() *connection.MessageFormat {
 	return &parameterStatusDefault
 }

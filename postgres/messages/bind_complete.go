@@ -14,48 +14,50 @@
 
 package messages
 
+import "github.com/dolthub/doltgresql/postgres/connection"
+
 func init() {
-	initializeDefaultMessage(BindComplete{})
-	addMessageHeader(BindComplete{})
+	connection.InitializeDefaultMessage(BindComplete{})
+	connection.AddMessageHeader(BindComplete{})
 }
 
 // BindComplete represents a PostgreSQL message.
 type BindComplete struct{}
 
-var bindCompleteDefault = MessageFormat{
+var bindCompleteDefault = connection.MessageFormat{
 	Name: "BindComplete",
-	Fields: FieldGroup{
+	Fields: connection.FieldGroup{
 		{
 			Name:  "Header",
-			Type:  Byte1,
-			Flags: Header,
+			Type:  connection.Byte1,
+			Flags: connection.Header,
 			Data:  int32('2'),
 		},
 		{
 			Name:  "MessageLength",
-			Type:  Int32,
-			Flags: MessageLengthInclusive,
+			Type:  connection.Int32,
+			Flags: connection.MessageLengthInclusive,
 			Data:  int32(4),
 		},
 	},
 }
 
-var _ Message = BindComplete{}
+var _ connection.Message = BindComplete{}
 
-// encode implements the interface Message.
-func (m BindComplete) encode() (MessageFormat, error) {
-	return m.defaultMessage().Copy(), nil
+// Encode implements the interface connection.Message.
+func (m BindComplete) Encode() (connection.MessageFormat, error) {
+	return m.DefaultMessage().Copy(), nil
 }
 
-// decode implements the interface Message.
-func (m BindComplete) decode(s MessageFormat) (Message, error) {
-	if err := s.MatchesStructure(*m.defaultMessage()); err != nil {
+// Decode implements the interface connection.Message.
+func (m BindComplete) Decode(s connection.MessageFormat) (connection.Message, error) {
+	if err := s.MatchesStructure(*m.DefaultMessage()); err != nil {
 		return nil, err
 	}
 	return BindComplete{}, nil
 }
 
-// defaultMessage implements the interface Message.
-func (m BindComplete) defaultMessage() *MessageFormat {
+// DefaultMessage implements the interface connection.Message.
+func (m BindComplete) DefaultMessage() *connection.MessageFormat {
 	return &bindCompleteDefault
 }

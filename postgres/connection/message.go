@@ -12,7 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-package messages
+package connection
 
 import (
 	"fmt"
@@ -30,14 +30,14 @@ type MessageFormat struct {
 
 // Message is a type that represents a PostgreSQL message.
 type Message interface {
-	// encode returns a new MessageFormat containing any modified data contained within the object. This should NOT be
+	// Encode returns a new MessageFormat containing any modified data contained within the object. This should NOT be
 	// the default message.
-	encode() (MessageFormat, error)
-	// decode returns a new Message that represents the given MessageFormat. You should never return the default
+	Encode() (MessageFormat, error)
+	// Decode returns a new Message that represents the given MessageFormat. You should never return the default
 	// message, even if the message never varies from the default. Always make a copy, and then modify that copy.
-	decode(s MessageFormat) (Message, error)
-	// defaultMessage returns the default, unmodified message for this type.
-	defaultMessage() *MessageFormat
+	Decode(s MessageFormat) (Message, error)
+	// DefaultMessage returns the default, unmodified message for this type.
+	DefaultMessage() *MessageFormat
 }
 
 // messageFieldInfo contains information on a specific field within a messageInfo.

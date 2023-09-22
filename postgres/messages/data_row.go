@@ -15,11 +15,15 @@
 package messages
 
 import (
+	"fmt"
+
 	"github.com/dolthub/vitess/go/sqltypes"
+
+	"github.com/dolthub/doltgresql/postgres/connection"
 )
 
 func init() {
-	initializeDefaultMessage(DataRow{})
+	connection.InitializeDefaultMessage(DataRow{})
 }
 
 // DataRow represents a row of data.
@@ -27,36 +31,36 @@ type DataRow struct {
 	Values []sqltypes.Value
 }
 
-var dataRowDefault = MessageFormat{
+var dataRowDefault = connection.MessageFormat{
 	Name: "DataRow",
-	Fields: FieldGroup{
+	Fields: connection.FieldGroup{
 		{
 			Name:  "Header",
-			Type:  Byte1,
-			Flags: Header,
+			Type:  connection.Byte1,
+			Flags: connection.Header,
 			Data:  int32('D'),
 		},
 		{
 			Name:  "MessageLength",
-			Type:  Int32,
-			Flags: MessageLengthInclusive,
+			Type:  connection.Int32,
+			Flags: connection.MessageLengthInclusive,
 			Data:  int32(0),
 		},
 		{
 			Name: "Columns",
-			Type: Int16,
+			Type: connection.Int16,
 			Data: int32(0),
-			Children: []FieldGroup{
+			Children: []connection.FieldGroup{
 				{
 					{
 						Name:  "ColumnLength",
-						Type:  Int32,
-						Flags: ByteCount,
+						Type:  connection.Int32,
+						Flags: connection.ByteCount,
 						Data:  int32(0),
 					},
 					{
 						Name: "ColumnData",
-						Type: ByteN,
+						Type: connection.ByteN,
 						Data: []byte{},
 					},
 				},
@@ -65,11 +69,11 @@ var dataRowDefault = MessageFormat{
 	},
 }
 
-var _ Message = DataRow{}
+var _ connection.Message = DataRow{}
 
-// encode implements the interface Message.
-func (m DataRow) encode() (MessageFormat, error) {
-	outputMessage := m.defaultMessage().Copy()
+// Encode implements the interface connection.Message.
+func (m DataRow) Encode() (connection.MessageFormat, error) {
+	outputMessage := m.DefaultMessage().Copy()
 	for i := 0; i < len(m.Values); i++ {
 		if m.Values[i].IsNull() {
 			outputMessage.Field("Columns").Child("ColumnLength", i).MustWrite(-1)
@@ -82,21 +86,15 @@ func (m DataRow) encode() (MessageFormat, error) {
 	return outputMessage, nil
 }
 
-// decode implements the interface Message.
-func (m DataRow) decode(s MessageFormat) (Message, error) {
-	if err := s.MatchesStructure(*m.defaultMessage()); err != nil {
+// Decode implements the interface connection.Message.
+func (m DataRow) Decode(s connection.MessageFormat) (connection.Message, error) {
+	if err := s.MatchesStructure(*m.DefaultMessage()); err != nil {
 		return nil, err
 	}
-	columnCount := int(s.Field("Columns").MustGet().(int32))
-	for i := 0; i < columnCount; i++ {
-		//TODO: decode the message in here
-	}
-	return DataRow{
-		Values: nil,
-	}, nil
+	return nil, fmt.Errorf("DataRow messages do not support decoding, as they're only sent from the server.")
 }
 
-// defaultMessage implements the interface Message.
-func (m DataRow) defaultMessage() *MessageFormat {
+// DefaultMessage implements the interface connection.Message.
+func (m DataRow) DefaultMessage() *connection.MessageFormat {
 	return &dataRowDefault
 }

@@ -14,8 +14,10 @@
 
 package messages
 
+import "github.com/dolthub/doltgresql/postgres/connection"
+
 func init() {
-	initializeDefaultMessage(NotificationResponse{})
+	connection.InitializeDefaultMessage(NotificationResponse{})
 }
 
 // NotificationResponse represents a PostgreSQL message.
@@ -25,53 +27,53 @@ type NotificationResponse struct {
 	Payload   string
 }
 
-var notificationResponseDefault = MessageFormat{
+var notificationResponseDefault = connection.MessageFormat{
 	Name: "NotificationResponse",
-	Fields: FieldGroup{
+	Fields: connection.FieldGroup{
 		{
 			Name:  "Header",
-			Type:  Byte1,
-			Flags: Header,
+			Type:  connection.Byte1,
+			Flags: connection.Header,
 			Data:  int32('A'),
 		},
 		{
 			Name:  "MessageLength",
-			Type:  Int32,
-			Flags: MessageLengthInclusive,
+			Type:  connection.Int32,
+			Flags: connection.MessageLengthInclusive,
 			Data:  int32(0),
 		},
 		{
 			Name: "ProcessID",
-			Type: Int32,
+			Type: connection.Int32,
 			Data: int32(0),
 		},
 		{
 			Name: "Channel",
-			Type: String,
+			Type: connection.String,
 			Data: "",
 		},
 		{
 			Name: "Payload",
-			Type: String,
+			Type: connection.String,
 			Data: "",
 		},
 	},
 }
 
-var _ Message = NotificationResponse{}
+var _ connection.Message = NotificationResponse{}
 
-// encode implements the interface Message.
-func (m NotificationResponse) encode() (MessageFormat, error) {
-	outputMessage := m.defaultMessage().Copy()
+// Encode implements the interface connection.Message.
+func (m NotificationResponse) Encode() (connection.MessageFormat, error) {
+	outputMessage := m.DefaultMessage().Copy()
 	outputMessage.Field("ProcessID").MustWrite(m.ProcessID)
 	outputMessage.Field("Channel").MustWrite(m.Channel)
 	outputMessage.Field("Payload").MustWrite(m.Payload)
 	return outputMessage, nil
 }
 
-// decode implements the interface Message.
-func (m NotificationResponse) decode(s MessageFormat) (Message, error) {
-	if err := s.MatchesStructure(*m.defaultMessage()); err != nil {
+// Decode implements the interface connection.Message.
+func (m NotificationResponse) Decode(s connection.MessageFormat) (connection.Message, error) {
+	if err := s.MatchesStructure(*m.DefaultMessage()); err != nil {
 		return nil, err
 	}
 	return NotificationResponse{
@@ -81,7 +83,7 @@ func (m NotificationResponse) decode(s MessageFormat) (Message, error) {
 	}, nil
 }
 
-// defaultMessage implements the interface Message.
-func (m NotificationResponse) defaultMessage() *MessageFormat {
+// DefaultMessage implements the interface connection.Message.
+func (m NotificationResponse) DefaultMessage() *connection.MessageFormat {
 	return &notificationResponseDefault
 }

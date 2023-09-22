@@ -14,8 +14,10 @@
 
 package messages
 
+import "github.com/dolthub/doltgresql/postgres/connection"
+
 func init() {
-	initializeDefaultMessage(AuthenticationSASLContinue{})
+	connection.InitializeDefaultMessage(AuthenticationSASLContinue{})
 }
 
 // AuthenticationSASLContinue represents a PostgreSQL message.
@@ -23,46 +25,46 @@ type AuthenticationSASLContinue struct {
 	Data []byte
 }
 
-var authenticationSASLContinueDefault = MessageFormat{
+var authenticationSASLContinueDefault = connection.MessageFormat{
 	Name: "AuthenticationSASLContinue",
-	Fields: FieldGroup{
+	Fields: connection.FieldGroup{
 		{
 			Name:  "Header",
-			Type:  Byte1,
-			Flags: Header,
+			Type:  connection.Byte1,
+			Flags: connection.Header,
 			Data:  int32('R'),
 		},
 		{
 			Name:  "MessageLength",
-			Type:  Int32,
-			Flags: MessageLengthInclusive,
+			Type:  connection.Int32,
+			Flags: connection.MessageLengthInclusive,
 			Data:  int32(0),
 		},
 		{
 			Name: "Status",
-			Type: Int32,
+			Type: connection.Int32,
 			Data: int32(11),
 		},
 		{
 			Name: "SASLData",
-			Type: ByteN,
+			Type: connection.ByteN,
 			Data: []byte{},
 		},
 	},
 }
 
-var _ Message = AuthenticationSASLContinue{}
+var _ connection.Message = AuthenticationSASLContinue{}
 
-// encode implements the interface Message.
-func (m AuthenticationSASLContinue) encode() (MessageFormat, error) {
-	outputMessage := m.defaultMessage().Copy()
+// Encode implements the interface connection.Message.
+func (m AuthenticationSASLContinue) Encode() (connection.MessageFormat, error) {
+	outputMessage := m.DefaultMessage().Copy()
 	outputMessage.Field("SASLData").MustWrite(m.Data)
 	return outputMessage, nil
 }
 
-// decode implements the interface Message.
-func (m AuthenticationSASLContinue) decode(s MessageFormat) (Message, error) {
-	if err := s.MatchesStructure(*m.defaultMessage()); err != nil {
+// Decode implements the interface connection.Message.
+func (m AuthenticationSASLContinue) Decode(s connection.MessageFormat) (connection.Message, error) {
+	if err := s.MatchesStructure(*m.DefaultMessage()); err != nil {
 		return nil, err
 	}
 	return AuthenticationSASLContinue{
@@ -70,7 +72,7 @@ func (m AuthenticationSASLContinue) decode(s MessageFormat) (Message, error) {
 	}, nil
 }
 
-// defaultMessage implements the interface Message.
-func (m AuthenticationSASLContinue) defaultMessage() *MessageFormat {
+// DefaultMessage implements the interface connection.Message.
+func (m AuthenticationSASLContinue) DefaultMessage() *connection.MessageFormat {
 	return &authenticationSASLContinueDefault
 }

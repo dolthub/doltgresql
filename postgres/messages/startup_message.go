@@ -14,8 +14,10 @@
 
 package messages
 
+import "github.com/dolthub/doltgresql/postgres/connection"
+
 func init() {
-	initializeDefaultMessage(StartupMessage{})
+	connection.InitializeDefaultMessage(StartupMessage{})
 }
 
 // StartupMessage is returned by the client upon connecting to the server, providing details about the client.
@@ -25,40 +27,40 @@ type StartupMessage struct {
 	Parameters           map[string]string
 }
 
-var startupMessageDefault = MessageFormat{
+var startupMessageDefault = connection.MessageFormat{
 	Name: "StartupMessage",
-	Fields: FieldGroup{
+	Fields: connection.FieldGroup{
 		{
 			Name:  "MessageLength",
-			Type:  Int32,
-			Flags: MessageLengthInclusive,
+			Type:  connection.Int32,
+			Flags: connection.MessageLengthInclusive,
 			Data:  int32(0),
 		},
 		{ // The docs specify a single Int32 field, but the upper and lower bits are different values, so this just splits them
 			Name: "ProtocolMajorVersion",
-			Type: Int16,
+			Type: connection.Int16,
 			Data: int32(0),
 		},
 		{
 			Name: "ProtocolMinorVersion",
-			Type: Int16,
+			Type: connection.Int16,
 			Data: int32(0),
 		},
 		{
 			Name:  "Parameters",
-			Type:  Repeated,
-			Flags: RepeatedTerminator,
+			Type:  connection.Repeated,
+			Flags: connection.RepeatedTerminator,
 			Data:  int32(0),
-			Children: []FieldGroup{
+			Children: []connection.FieldGroup{
 				{
 					{
 						Name: "ParameterName",
-						Type: String,
+						Type: connection.String,
 						Data: "",
 					},
 					{
 						Name: "ParameterValue",
-						Type: String,
+						Type: connection.String,
 						Data: "",
 					},
 				},
@@ -67,11 +69,11 @@ var startupMessageDefault = MessageFormat{
 	},
 }
 
-var _ Message = StartupMessage{}
+var _ connection.Message = StartupMessage{}
 
-// encode implements the interface Message.
-func (m StartupMessage) encode() (MessageFormat, error) {
-	outputMessage := m.defaultMessage().Copy()
+// Encode implements the interface connection.Message.
+func (m StartupMessage) Encode() (connection.MessageFormat, error) {
+	outputMessage := m.DefaultMessage().Copy()
 	outputMessage.Field("ProtocolMajorVersion").MustWrite(m.ProtocolMajorVersion)
 	outputMessage.Field("ProtocolMinorVersion").MustWrite(m.ProtocolMinorVersion)
 	index := 0
@@ -83,9 +85,9 @@ func (m StartupMessage) encode() (MessageFormat, error) {
 	return outputMessage, nil
 }
 
-// decode implements the interface Message.
-func (m StartupMessage) decode(s MessageFormat) (Message, error) {
-	if err := s.MatchesStructure(*m.defaultMessage()); err != nil {
+// Decode implements the interface connection.Message.
+func (m StartupMessage) Decode(s connection.MessageFormat) (connection.Message, error) {
+	if err := s.MatchesStructure(*m.DefaultMessage()); err != nil {
 		return nil, err
 	}
 	parameters := make(map[string]string)
@@ -101,7 +103,7 @@ func (m StartupMessage) decode(s MessageFormat) (Message, error) {
 	}, nil
 }
 
-// defaultMessage implements the interface Message.
-func (m StartupMessage) defaultMessage() *MessageFormat {
+// DefaultMessage implements the interface connection.Message.
+func (m StartupMessage) DefaultMessage() *connection.MessageFormat {
 	return &startupMessageDefault
 }
