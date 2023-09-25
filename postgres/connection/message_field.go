@@ -39,6 +39,7 @@ const (
 	ExcludeTerminator                             // ExcludeTerminator excludes the terminator for String types.
 	ByteCount                                     // ByteCount signals that the following ByteN non-child field uses this field for its count.
 	RepeatedTerminator                            // RepeatedTerminator states that the Repeated type always ends with a NULL terminator.
+	StaticData                                    // StaticData states that the data that has been set as the default cannot be changed.
 )
 
 // FieldGroup is a slice of fields. Mainly used for organization, as []FieldGroup looks better than []FieldGroup.

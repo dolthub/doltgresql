@@ -23,7 +23,7 @@ func init() {
 
 // Parse represents a PostgreSQL message.
 type Parse struct {
-	PreparedStatement  string
+	Name               string
 	Query              string
 	ParameterObjectIDs []int32
 }
@@ -44,7 +44,7 @@ var parseDefault = connection.MessageFormat{
 			Data:  int32(0),
 		},
 		{
-			Name: "PreparedStatement",
+			Name: "Name",
 			Type: connection.String,
 			Data: "",
 		},
@@ -75,7 +75,7 @@ var _ connection.Message = Parse{}
 // Encode implements the interface connection.Message.
 func (m Parse) Encode() (connection.MessageFormat, error) {
 	outputMessage := m.DefaultMessage().Copy()
-	outputMessage.Field("PreparedStatement").MustWrite(m.PreparedStatement)
+	outputMessage.Field("Name").MustWrite(m.Name)
 	outputMessage.Field("Query").MustWrite(m.Query)
 	for i, objectID := range m.ParameterObjectIDs {
 		outputMessage.Field("Parameters").Child("ObjectID", i).MustWrite(objectID)
@@ -94,7 +94,7 @@ func (m Parse) Decode(s connection.MessageFormat) (connection.Message, error) {
 		objectIDs[i] = s.Field("Parameters").Child("ObjectID", i).MustGet().(int32)
 	}
 	return Parse{
-		PreparedStatement:  s.Field("PreparedStatement").MustGet().(string),
+		Name:               s.Field("Name").MustGet().(string),
 		Query:              s.Field("Query").MustGet().(string),
 		ParameterObjectIDs: objectIDs,
 	}, nil

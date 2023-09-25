@@ -26,6 +26,9 @@ var allMessageHeaders = make(map[byte]Message)
 // allMessageNames contains the names of all messages, as they should all be unique.
 var allMessageNames = make(map[string]struct{})
 
+// allMessages contains all message types.
+var allMessages []Message
+
 // allMessageDefaults contains all of the default message pointers, to make sure that they're not accidentally being reused.
 var allMessageDefaults = make(map[*MessageFormat]struct{})
 
@@ -47,21 +50,22 @@ func AddMessageHeader(message Message) {
 
 // InitializeDefaultMessage creates the internal structure of the default message, while ensuring that the structure of
 // the message is correct. This should be called in an init() function.
-func InitializeDefaultMessage(messageType Message) {
-	message := messageType.DefaultMessage()
-	if _, ok := allMessageDefaults[message]; ok {
-		panic(fmt.Errorf("MessageFormat default was used in another message.\nMessageFormat:\n\n%s", message.String()))
+func InitializeDefaultMessage(message Message) {
+	messageFormat := message.DefaultMessage()
+	if _, ok := allMessageDefaults[messageFormat]; ok {
+		panic(fmt.Errorf("MessageFormat default was used in another message.\nMessageFormat:\n\n%s", messageFormat.String()))
 	}
-	allMessageDefaults[message] = struct{}{}
-	if message.info != nil {
-		panic(fmt.Errorf("Message has already been initialized.\nMessage:\n\n%s", message.String()))
+	allMessageDefaults[messageFormat] = struct{}{}
+	if messageFormat.info != nil {
+		panic(fmt.Errorf("Message has already been initialized.\nMessage:\n\n%s", messageFormat.String()))
 	}
-	if _, ok := allMessageNames[message.Name]; ok {
-		panic(fmt.Errorf("Message has already been initialized with the same name.\nName: %s", message.Name))
+	if _, ok := allMessageNames[messageFormat.Name]; ok {
+		panic(fmt.Errorf("Message has already been initialized with the same name.\nName: %s", messageFormat.Name))
 	}
-	allMessageNames[message.Name] = struct{}{}
-	message.info = &messageInfo{make(map[string]messageFieldInfo), false, message}
-	message.isDefault = true
+	allMessageNames[messageFormat.Name] = struct{}{}
+	allMessages = append(allMessages, message)
+	messageFormat.info = &messageInfo{make(map[string]messageFieldInfo), false, messageFormat}
+	messageFormat.isDefault = true
 
 	allFieldNames := make(map[string]struct{}) // Verify that all field names are unique
 	headerFound := false                       // Only one header may exist in the message
@@ -74,7 +78,7 @@ func InitializeDefaultMessage(messageType Message) {
 	}
 
 	ftStack := utils.NewStack[FieldTraversal]()
-	ftStack.Push(FieldTraversal{0, message.Fields})
+	ftStack.Push(FieldTraversal{0, messageFormat.Fields})
 	for !ftStack.Empty() {
 		// If we're at the end of the loop for this stacked entry, then we pop it and move to the next
 		if ftStack.Peek().Index >= len(ftStack.Peek().Fields) {
@@ -84,30 +88,33 @@ func InitializeDefaultMessage(messageType Message) {
 		// Check if we've found a ByteN that is not preceded by a ByteCount-tagged field, as it should be the last
 		// field, and we're now looking at a field after it.
 		if endingByteNFound {
-			panic(fmt.Errorf("ByteN found that was not preceded by a field with the ByteCount tag.\nMessageFormat:\n\n%s", message.String()))
+			panic(fmt.Errorf("ByteN found that was not preceded by a field with the ByteCount tag.\nMessageFormat:\n\n%s", messageFormat.String()))
 		}
 		// If the stack is larger than Repeated's height, then we're probably in Repeated's children.
 		// Otherwise, there are more non-child fields after the Repeated type.
 		if ftStack.Len() <= repeatedFoundHeight {
-			panic(fmt.Errorf("Repeated is not on the last field at its level\nMessageFormat:\n\n%s", message.String()))
+			panic(fmt.Errorf("Repeated is not on the last field at its level\nMessageFormat:\n\n%s", messageFormat.String()))
 		}
 		// Grab the field.
 		field := ftStack.Peek().Fields[ftStack.Peek().Index]
 		// Verify uniqueness and correctness of tags (if any)
 		if field.Flags&Header != 0 {
 			if headerFound {
-				panic(fmt.Errorf("Multiple headers in message.\nMessageFormat:\n\n%s", message.String()))
+				panic(fmt.Errorf("Multiple headers in message.\nMessageFormat:\n\n%s", messageFormat.String()))
 			}
 			headerFound = true
 		}
 		if field.Flags&(MessageLengthInclusive|MessageLengthExclusive) != 0 {
 			if messageLengthFound {
-				panic(fmt.Errorf("Multiple message lengths in message.\nMessageFormat:\n\n%s", message.String()))
+				panic(fmt.Errorf("Multiple message lengths in message.\nMessageFormat:\n\n%s", messageFormat.String()))
+			}
+			if field.Flags&StaticData != 0 {
+				panic(fmt.Errorf("Message lengths cannot declare the StaticData flag.\nMessageFormat:\n\n%s", messageFormat.String()))
 			}
 			switch field.Type {
 			case Byte1, Int8, Int16, Int32:
 			default:
-				panic(fmt.Errorf("Message length tags are only allowed on integer types.\nField: %s\nMessage:\n\n%s", field.Name, message.String()))
+				panic(fmt.Errorf("Message length tags are only allowed on integer types.\nField: %s\nMessage:\n\n%s", field.Name, messageFormat.String()))
 			}
 			messageLengthFound = true
 		}
@@ -115,18 +122,18 @@ func InitializeDefaultMessage(messageType Message) {
 			switch field.Type {
 			case Byte1, Int8, Int16, Int32:
 			default:
-				panic(fmt.Errorf("ByteCount tag is only allowed on integer types.\nField: %s\nMessageFormat:\n\n%s", field.Name, message.String()))
+				panic(fmt.Errorf("ByteCount tag is only allowed on integer types.\nField: %s\nMessageFormat:\n\n%s", field.Name, messageFormat.String()))
 			}
 		}
 		if field.Flags&ExcludeTerminator != 0 && field.Type != String {
-			panic(fmt.Errorf("ExcludeTerminator tag is only allowed on String fields.\nField: %s\nMessageFormat:\n\n%s", field.Name, message.String()))
+			panic(fmt.Errorf("ExcludeTerminator tag is only allowed on String fields.\nField: %s\nMessageFormat:\n\n%s", field.Name, messageFormat.String()))
 		}
 		// Verify uniqueness of names (case-sensitive for maximum flexibility)
 		if len(field.Name) == 0 {
-			panic(fmt.Errorf("All fields must have a name.\nMessageFormat:\n\n%s", message.String()))
+			panic(fmt.Errorf("All fields must have a name.\nMessageFormat:\n\n%s", messageFormat.String()))
 		}
 		if _, ok := allFieldNames[field.Name]; ok {
-			panic(fmt.Errorf("Multiple fields with the same name.\nMessageFormat:\n\n%s", message.String()))
+			panic(fmt.Errorf("Multiple fields with the same name.\nMessageFormat:\n\n%s", messageFormat.String()))
 		}
 		allFieldNames[field.Name] = struct{}{}
 		// Verify that ByteN is the last field, or is preceded by a field with the ByteCount tag
@@ -143,15 +150,15 @@ func InitializeDefaultMessage(messageType Message) {
 		switch field.Type {
 		case Byte1, Int8, Int16, Int32, Repeated:
 			if _, ok := field.Data.(int32); !ok {
-				panic(fmt.Errorf("Integer field types must set their Data to an int32 value.\nField: %s\nMessageFormat:\n\n%s", field.Name, message.String()))
+				panic(fmt.Errorf("Integer field types must set their Data to an int32 value.\nField: %s\nMessageFormat:\n\n%s", field.Name, messageFormat.String()))
 			}
 		case ByteN:
 			if _, ok := field.Data.([]byte); !ok {
-				panic(fmt.Errorf("ByteN fields must set their Data to a []byte value.\nField: %s\nMessageFormat:\n\n%s", field.Name, message.String()))
+				panic(fmt.Errorf("ByteN fields must set their Data to a []byte value.\nField: %s\nMessageFormat:\n\n%s", field.Name, messageFormat.String()))
 			}
 		case String:
 			if _, ok := field.Data.(string); !ok {
-				panic(fmt.Errorf("String fields must set their Data to a string value.\nField: %s\nMessageFormat:\n\n%s", field.Name, message.String()))
+				panic(fmt.Errorf("String fields must set their Data to a string value.\nField: %s\nMessageFormat:\n\n%s", field.Name, messageFormat.String()))
 			}
 		default:
 			panic("message type has not been defined")
@@ -163,30 +170,30 @@ func InitializeDefaultMessage(messageType Message) {
 			case Byte1, Int8, Int16, Int32, Repeated:
 				count = field.Data.(int32)
 			default:
-				panic(fmt.Errorf("Only integer types may have children, as they determine the count.\nField: %s\nMessageFormat:\n\n%s", field.Name, message.String()))
+				panic(fmt.Errorf("Only integer types may have children, as they determine the count.\nField: %s\nMessageFormat:\n\n%s", field.Name, messageFormat.String()))
 			}
 			// A value of zero means that the child is only used as a prototype. A value of one means that the child is
 			// actually used as a default value. We do not allow declaring children with multiple default values.
 			if count != 0 && count != 1 {
-				panic(fmt.Errorf("Only integer types may have children, as they determine the count.\nField: %s\nMessageFormat:\n\n%s", field.Name, message.String()))
+				panic(fmt.Errorf("Only integer types may have children, as they determine the count.\nField: %s\nMessageFormat:\n\n%s", field.Name, messageFormat.String()))
 			}
 			if len(field.Children) > 1 {
-				panic(fmt.Errorf("Only a single child may be declared in the default message.\nField: %s\nMessageFormat:\n\n%s", field.Name, message.String()))
+				panic(fmt.Errorf("Only a single child may be declared in the default message.\nField: %s\nMessageFormat:\n\n%s", field.Name, messageFormat.String()))
 			}
 		}
 		// Repeated may only be on a single field. Children of a Repeated field cannot also have Repeated children.
 		if field.Type == Repeated {
 			if repeatedFoundHeight != 0 {
-				panic(fmt.Errorf("Multiple Repeated types declared.\nField: %s\nMessageFormat:\n\n%s", field.Name, message.String()))
+				panic(fmt.Errorf("Multiple Repeated types declared.\nField: %s\nMessageFormat:\n\n%s", field.Name, messageFormat.String()))
 			}
 			repeatedFoundHeight = ftStack.Len()
 		}
 		// RepeatedTerminator is only allowed on Repeated types, and therefore follows all of its restrictions automatically.
 		if field.Flags&RepeatedTerminator != 0 {
 			if field.Type != Repeated {
-				panic(fmt.Errorf("RepeatedTerminator may only be used on a Repeated type.\nMessageFormat:\n\n%s", message.String()))
+				panic(fmt.Errorf("RepeatedTerminator may only be used on a Repeated type.\nMessageFormat:\n\n%s", messageFormat.String()))
 			}
-			message.info.appendNullByte = true
+			messageFormat.info.appendNullByte = true
 		}
 
 		// Write the field info into our message
@@ -194,7 +201,7 @@ func InitializeDefaultMessage(messageType Message) {
 		if ftStack.Len() > 1 {
 			parentName = ftStack.PeekDepth(1).Fields[ftStack.PeekDepth(1).Index-1].Name
 		}
-		message.info.fieldInfo[field.Name] = messageFieldInfo{
+		messageFormat.info.fieldInfo[field.Name] = messageFieldInfo{
 			RelativeIndex: ftStack.Peek().Index,
 			Parent:        parentName,
 			UsesByteCount: usesByteCount,

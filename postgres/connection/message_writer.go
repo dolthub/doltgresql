@@ -75,6 +75,9 @@ func (mw MessageWriter) Write(value any) error {
 		fq = fq[1:]
 	}
 
+	if field.Flags&StaticData != 0 {
+		return fmt.Errorf(`Cannot write to the field "%s" in message "%s" as it has the StaticData flag`, field.Name, mw.message.Name)
+	}
 	switch field.Type {
 	case Byte1, Int8, Int16, Int32, Repeated:
 		switch value := value.(type) {

@@ -33,9 +33,10 @@ var sslRequestDefault = connection.MessageFormat{
 			Data:  int32(8),
 		},
 		{
-			Name: "RequestCode",
-			Type: connection.Int32,
-			Data: int32(80877103),
+			Name:  "RequestCode",
+			Type:  connection.Int32,
+			Flags: connection.StaticData,
+			Data:  int32(80877103),
 		},
 	},
 }

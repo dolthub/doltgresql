@@ -41,9 +41,10 @@ var authenticationSASLContinueDefault = connection.MessageFormat{
 			Data:  int32(0),
 		},
 		{
-			Name: "Status",
-			Type: connection.Int32,
-			Data: int32(11),
+			Name:  "Status",
+			Type:  connection.Int32,
+			Flags: connection.StaticData,
+			Data:  int32(11),
 		},
 		{
 			Name: "SASLData",

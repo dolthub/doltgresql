@@ -41,9 +41,10 @@ var authenticationMD5PasswordDefault = connection.MessageFormat{
 			Data:  int32(12),
 		},
 		{
-			Name: "Status",
-			Type: connection.Int32,
-			Data: int32(5),
+			Name:  "Status",
+			Type:  connection.Int32,
+			Flags: connection.StaticData,
+			Data:  int32(5),
 		},
 		{
 			Name: "Salt",

@@ -70,10 +70,18 @@ const stdOutAndErrFlag = "--out-and-err"
 const ignoreLocksFlag = "--ignore-lock-file"
 
 func main() {
-	os.Exit(RunMain(os.Args[1:]))
+	os.Exit(RunMainOnDisk(os.Args[1:]))
 }
 
-func RunMain(args []string) int {
+func RunMainOnDisk(args []string) int {
+	return runMain(args, filesys.LocalFS)
+}
+
+func RunMainInMemory(args []string) int {
+	return runMain(args, filesys.EmptyInMemFS(""))
+}
+
+func runMain(args []string, fs filesys.Filesys) int {
 	ctx := context.Background()
 	// Inject the "sql-server" command
 	args = append([]string{"sql-server"}, args...)
@@ -160,8 +168,6 @@ func RunMain(args []string) int {
 
 	warnIfMaxFilesTooLow()
 
-	var fs filesys.Filesys
-	fs = filesys.LocalFS
 	dEnv := env.Load(ctx, env.GetCurrentUserHomeDir, fs, doltdb.LocalDirDoltDB, Version)
 	dEnv.IgnoreLockFile = ignoreLockFile
 

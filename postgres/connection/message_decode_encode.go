@@ -23,7 +23,55 @@ import (
 
 // decodeBuffer just provides an easy way to reference the same buffer, so that decode can modify its length.
 type decodeBuffer struct {
-	data []byte
+	data  []byte
+	next  []byte
+	reset []byte
+}
+
+// advance moves the buffer forward by the given amount.
+func (db *decodeBuffer) advance(n int32) {
+	db.data = db.data[n:]
+	db.next = db.next[n:]
+}
+
+// setDataLength sets the length of the data buffer to the given amount.
+func (db *decodeBuffer) setDataLength(n int32) {
+	if n > int32(len(db.data)) {
+		n = int32(len(db.data))
+	} else if n < 0 {
+		n = 0
+	}
+	db.data = db.data[:n]
+}
+
+// swapData swaps the current data buffer with the next buffer, while updating the reset buffer.
+func (db *decodeBuffer) swapData() {
+	db.data = db.next
+	db.reset = db.next
+}
+
+// swapData swaps the current data and next buffers with the reset buffer.
+func (db *decodeBuffer) resetData() {
+	db.data = db.reset
+	db.next = db.reset
+}
+
+// copy returns a copy of this decodeBuffer.
+func (db *decodeBuffer) copy() *decodeBuffer {
+	return &decodeBuffer{
+		data:  db.data,
+		next:  db.next,
+		reset: db.reset,
+	}
+}
+
+// newDecodeBuffer returns a new *decodeBuffer.
+func newDecodeBuffer(buffer []byte) *decodeBuffer {
+	return &decodeBuffer{
+		data:  buffer,
+		next:  buffer,
+		reset: buffer,
+	}
 }
 
 // decode writes the contents of the buffer into the given fields. The iteration count determines how many times the
@@ -36,8 +84,12 @@ func decode(buffer *decodeBuffer, fields []FieldGroup, iterations int32) error {
 			}
 			switch field.Type {
 			case Byte1, Int8:
-				field.Data = int32(buffer.data[0])
-				buffer.data = buffer.data[1:]
+				data := int32(buffer.data[0])
+				if field.Flags&StaticData != 0 && field.Data.(int32) != data {
+					return errors.New("static data differs from the buffer data")
+				}
+				field.Data = data
+				buffer.advance(1)
 			case ByteN:
 				if i > 0 && fields[iteration][i-1].Flags&ByteCount != 0 {
 					byteCount := fields[iteration][i-1].Data.(int32)
@@ -48,28 +100,46 @@ func decode(buffer *decodeBuffer, fields []FieldGroup, iterations int32) error {
 					}
 					data := make([]byte, byteCount)
 					copy(data, buffer.data)
+					if field.Flags&StaticData != 0 && bytes.Compare(field.Data.([]byte), data) != 0 {
+						return errors.New("static data differs from the buffer data")
+					}
 					field.Data = data
-					buffer.data = buffer.data[byteCount:]
+					buffer.advance(byteCount)
 				} else {
 					data := make([]byte, len(buffer.data))
 					copy(data, buffer.data)
+					if field.Flags&StaticData != 0 && bytes.Compare(field.Data.([]byte), data) != 0 {
+						return errors.New("static data differs from the buffer data")
+					}
 					field.Data = data
-					buffer.data = nil
+					buffer.advance(int32(len(buffer.data)))
 				}
 			case Int16:
-				field.Data = int32(binary.BigEndian.Uint16(buffer.data))
-				buffer.data = buffer.data[2:]
+				data := int32(binary.BigEndian.Uint16(buffer.data))
+				if field.Flags&StaticData != 0 && field.Data.(int32) != data {
+					return errors.New("static data differs from the buffer data")
+				}
+				field.Data = data
+				buffer.advance(2)
 			case Int32:
-				field.Data = int32(binary.BigEndian.Uint32(buffer.data))
-				buffer.data = buffer.data[4:]
+				data := int32(binary.BigEndian.Uint32(buffer.data))
+				if field.Flags&StaticData != 0 && field.Data.(int32) != data {
+					return errors.New("static data differs from the buffer data")
+				}
+				field.Data = data
+				buffer.advance(4)
 			case String:
 				found := false
 				for bufferIdx := range buffer.data {
 					if buffer.data[bufferIdx] == 0 {
-						field.Data = string(buffer.data[:bufferIdx])
-						buffer.data = buffer.data[bufferIdx:]
+						data := string(buffer.data[:bufferIdx])
+						if field.Flags&StaticData != 0 && field.Data.(string) != data {
+							return errors.New("static data differs from the buffer data")
+						}
+						field.Data = data
+						buffer.advance(int32(bufferIdx))
 						if field.Flags&ExcludeTerminator == 0 {
-							buffer.data = buffer.data[1:]
+							buffer.advance(1)
 						}
 						found = true
 						break
@@ -87,7 +157,7 @@ func decode(buffer *decodeBuffer, fields []FieldGroup, iterations int32) error {
 					// Otherwise, we'll assume that we should pass it to the child.
 					if len(buffer.data) == 1 && field.Flags&RepeatedTerminator != 0 {
 						if buffer.data[0] == 0 {
-							buffer.data = buffer.data[1:]
+							buffer.advance(1)
 							break
 						} else {
 							return fmt.Errorf("Expected terminator after Repeated type, found invalid byte: %d", buffer.data[0])
@@ -116,9 +186,16 @@ func decode(buffer *decodeBuffer, fields []FieldGroup, iterations int32) error {
 				case Int32:
 					messageLength -= 4
 				}
-				buffer.data = buffer.data[:messageLength]
+				if messageLength > int32(len(buffer.data)) {
+					return errors.New("message length is greater than the buffer size")
+				}
+				buffer.setDataLength(messageLength)
 			} else if field.Flags&MessageLengthExclusive != 0 {
-				buffer.data = buffer.data[:field.Data.(int32)]
+				messageLength := field.Data.(int32)
+				if messageLength > int32(len(buffer.data)) {
+					return errors.New("message length is greater than the buffer size")
+				}
+				buffer.setDataLength(messageLength)
 			}
 			if len(field.Children) > 0 && field.Type != Repeated {
 				count, ok := field.Data.(int32)
