@@ -26,11 +26,11 @@ import (
 
 func TestBasicConnection(t *testing.T) {
 	port := getEmptyPort(t)
-	go RunMainInMemory([]string{fmt.Sprintf("--port=%d", port)})
+	go RunMainInMemory([]string{fmt.Sprintf("--port=%d", port), "--host=127.0.0.1"})
 
 	ctx := context.Background()
 	t.Run("Create Database", func(t *testing.T) {
-		conn, err := pgx.Connect(ctx, fmt.Sprintf("postgres://postgres:password@localhost:%d/", port))
+		conn, err := pgx.Connect(ctx, fmt.Sprintf("postgres://postgres:password@127.0.0.1:%d/", port))
 		require.NoError(t, err)
 		defer conn.Close(ctx)
 
