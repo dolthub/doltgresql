@@ -252,6 +252,7 @@ InitialMessageLoop:
 	}
 }
 
+// execute handles running the given query. This will post the RowDescription, DataRow, and CommandComplete messages.
 func (l *Listener) execute(conn net.Conn, mysqlConn *mysql.Conn, query string) error {
 	commandComplete := messages.CommandComplete{
 		Query: query,
@@ -290,6 +291,7 @@ func (l *Listener) execute(conn net.Conn, mysqlConn *mysql.Conn, query string) e
 	return nil
 }
 
+// describe handles the description of the given query. This will post the ParameterDescription and RowDescription messages.
 func (l *Listener) describe(conn net.Conn, mysqlConn *mysql.Conn, message messages.Describe, statement string) error {
 	//TODO: fully support prepared statements
 	if err := connection.Send(conn, messages.ParameterDescription{

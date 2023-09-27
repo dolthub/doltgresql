@@ -20,6 +20,8 @@ import (
 	"net"
 	"testing"
 
+	"github.com/stretchr/testify/assert"
+
 	"github.com/jackc/pgx/v5"
 	"github.com/stretchr/testify/require"
 )
@@ -66,13 +68,7 @@ func TestBasicConnection(t *testing.T) {
 			{int64(1), "hey1", "heythere2", "hellofellow3"},
 			{int64(2), "hey44", "heythere55", "hellofellow66"},
 		}
-		i := int(0)
-		for ; rows.Next(); i++ {
-			row, err := rows.Values()
-			require.NoError(t, err)
-			require.ElementsMatch(t, expected[i], row)
-		}
-		require.Equal(t, int(2), i)
+		assert.Equal(t, expected, rowsToSlice(t, rows))
 	})
 }
 
@@ -82,4 +78,14 @@ func getEmptyPort(t *testing.T) int {
 	port := listener.Addr().(*net.TCPAddr).Port
 	require.NoError(t, listener.Close())
 	return port
+}
+
+func rowsToSlice(t *testing.T, rows pgx.Rows) [][]interface{} {
+	var slice [][]interface{}
+	for rows.Next() {
+		row, err := rows.Values()
+		require.NoError(t, err)
+		slice = append(slice, row)
+	}
+	return slice
 }

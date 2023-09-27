@@ -22,6 +22,7 @@ import (
 	"github.com/dolthub/doltgresql/utils"
 )
 
+//TODO: determine how to handle messages that are larger than the buffer
 const bufferSize = 2048
 
 // connBuffers maintains a pool of buffers, reusable between connections.
@@ -57,7 +58,7 @@ func Receive(conn net.Conn) ([]Message, error) {
 			return nil, err
 		}
 		outMessages = append(outMessages, outMessage)
-		db.swapData()
+		db.next()
 	}
 	return outMessages, nil
 }
@@ -90,6 +91,12 @@ func ReceiveIntoAny(conn net.Conn, messages ...Message) ([]Message, error) {
 	}
 	db := newDecodeBuffer(buffer)
 
+	// This dual loop is used to process the given messages from the buffer.
+	// For each step of the buffer, we try decoding each message given. If that message properly decodes, then we
+	// finalize the changes on the buffer, and check the next message. As the first message has priority, we always
+	// start the loop over the first message. If any message does not properly parse, then the buffer is reset to the
+	// beginning of that specific loop. With this setup, the only way we will reach the break is once none of the
+	// messages parse.
 	var outMessages []Message
 OuterLoop:
 	for {
@@ -97,10 +104,10 @@ OuterLoop:
 			outMessage, err := receiveFromBuffer(db, message)
 			if err == nil {
 				outMessages = append(outMessages, outMessage)
-				db.swapData()
+				db.next()
 				continue OuterLoop
 			} else {
-				db.resetData()
+				db.reset()
 			}
 		}
 		// If we've reached this point, then we've attempted to match all of the given messages.
@@ -162,7 +169,7 @@ TopLevelLoop:
 			outMessage, err := receiveFromBuffer(db, message)
 			if err == nil {
 				messages = append(messages, outMessage)
-				db.swapData()
+				db.next()
 				stack.Push(stackInfo{0, db.copy()})
 			}
 		}

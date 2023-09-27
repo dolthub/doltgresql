@@ -21,17 +21,18 @@ import (
 	"fmt"
 )
 
-// decodeBuffer just provides an easy way to reference the same buffer, so that decode can modify its length.
+// decodeBuffer provides a way to track how much of a buffer has been used, which is useful when decoding a message,
+// determining the next buffer point after the current message, and resetting the buffer in the event of an error.
 type decodeBuffer struct {
-	data  []byte
-	next  []byte
-	reset []byte
+	data        []byte
+	nextBuffer  []byte
+	resetBuffer []byte
 }
 
 // advance moves the buffer forward by the given amount.
 func (db *decodeBuffer) advance(n int32) {
 	db.data = db.data[n:]
-	db.next = db.next[n:]
+	db.nextBuffer = db.nextBuffer[n:]
 }
 
 // setDataLength sets the length of the data buffer to the given amount.
@@ -44,33 +45,33 @@ func (db *decodeBuffer) setDataLength(n int32) {
 	db.data = db.data[:n]
 }
 
-// swapData swaps the current data buffer with the next buffer, while updating the reset buffer.
-func (db *decodeBuffer) swapData() {
-	db.data = db.next
-	db.reset = db.next
+// next replaces the current data buffer with the nextBuffer buffer, while updating the resetBuffer buffer.
+func (db *decodeBuffer) next() {
+	db.data = db.nextBuffer
+	db.resetBuffer = db.nextBuffer
 }
 
-// swapData swaps the current data and next buffers with the reset buffer.
-func (db *decodeBuffer) resetData() {
-	db.data = db.reset
-	db.next = db.reset
+// reset replaces the current data and nextBuffer buffers with the resetBuffer buffer.
+func (db *decodeBuffer) reset() {
+	db.data = db.resetBuffer
+	db.nextBuffer = db.resetBuffer
 }
 
 // copy returns a copy of this decodeBuffer.
 func (db *decodeBuffer) copy() *decodeBuffer {
 	return &decodeBuffer{
-		data:  db.data,
-		next:  db.next,
-		reset: db.reset,
+		data:        db.data,
+		nextBuffer:  db.nextBuffer,
+		resetBuffer: db.resetBuffer,
 	}
 }
 
 // newDecodeBuffer returns a new *decodeBuffer.
 func newDecodeBuffer(buffer []byte) *decodeBuffer {
 	return &decodeBuffer{
-		data:  buffer,
-		next:  buffer,
-		reset: buffer,
+		data:        buffer,
+		nextBuffer:  buffer,
+		resetBuffer: buffer,
 	}
 }
 
