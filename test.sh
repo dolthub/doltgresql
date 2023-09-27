@@ -1,0 +1,1 @@
+PGPORT=5432 PGUSER=postgres PGPASSWORD=password ./pg_regress --inputdir=. --bindir=. --dlpath=. --max-concurrent-tests=20 --schedule=./parallel_schedule --max-connections=1
