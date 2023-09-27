@@ -1,3 +1,16 @@
+-- When we have to sort the entire table, incremental sort will
+-- be slower than plain sort, so it should not be used.
+explain (costs off)
+select * from (select * from tenk1 order by four) t order by four, ten;
+            QUERY PLAN             
+-----------------------------------
+ Sort
+   Sort Key: tenk1.four, tenk1.ten
+   ->  Sort
+         Sort Key: tenk1.four
+         ->  Seq Scan on tenk1
+(5 rows)
+
 -- When there is a LIMIT clause, incremental sort is beneficial because
 -- it only has to sort some of the groups, and not the entire table.
 explain (costs off)
@@ -1484,16 +1497,15 @@ explain (costs off) select * from t union select * from t order by 1,3;
 -- Full sort, not just incremental sort can be pushed below a gather merge path
 -- by generate_useful_gather_paths.
 explain (costs off) select distinct a,b from t;
-                   QUERY PLAN                   
-------------------------------------------------
+                QUERY PLAN                
+------------------------------------------
  Unique
    ->  Gather Merge
          Workers Planned: 2
-         ->  Unique
-               ->  Sort
-                     Sort Key: a, b
-                     ->  Parallel Seq Scan on t
-(7 rows)
+         ->  Sort
+               Sort Key: a, b
+               ->  Parallel Seq Scan on t
+(6 rows)
 
 drop table t;
 -- Sort pushdown can't go below where expressions are part of the rel target.
@@ -1659,37 +1671,4 @@ order by 1, 2;
                ->  Parallel Index Scan using tenk1_unique1 on tenk1
                ->  Function Scan on generate_series
 (7 rows)
-
-reset enable_hashagg;
-reset enable_seqscan;
-reset enable_incremental_sort;
-reset parallel_tuple_cost;
-reset parallel_setup_cost;
-reset min_parallel_table_scan_size;
-reset min_parallel_index_scan_size;
--- Ensure incremental sorts work for amcanorderbyop type indexes
-create table point_table (a point, b int);
-create index point_table_a_idx on point_table using gist(a);
--- Ensure we get an incremental sort plan for both of the following queries
-explain (costs off) select a, b, a <-> point(5, 5) dist from point_table order by dist, b limit 1;
-                          QUERY PLAN                           
----------------------------------------------------------------
- Limit
-   ->  Incremental Sort
-         Sort Key: ((a <-> '(5,5)'::point)), b
-         Presorted Key: ((a <-> '(5,5)'::point))
-         ->  Index Scan using point_table_a_idx on point_table
-               Order By: (a <-> '(5,5)'::point)
-(6 rows)
-
-explain (costs off) select a, b, a <-> point(5, 5) dist from point_table order by dist, b desc limit 1;
-                          QUERY PLAN                           
----------------------------------------------------------------
- Limit
-   ->  Incremental Sort
-         Sort Key: ((a <-> '(5,5)'::point)), b DESC
-         Presorted Key: ((a <-> '(5,5)'::point))
-         ->  Index Scan using point_table_a_idx on point_table
-               Order By: (a <-> '(5,5)'::point)
-(6 rows)
 

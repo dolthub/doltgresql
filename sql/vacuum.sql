@@ -232,70 +232,11 @@ ANALYZE vactst;
 COMMIT;
 
 -- PROCESS_TOAST option
-CREATE TABLE vac_option_tab (a INT, t TEXT);
-INSERT INTO vac_option_tab SELECT a, 't' || a FROM generate_series(1, 10) AS a;
-ALTER TABLE vac_option_tab ALTER COLUMN t SET STORAGE EXTERNAL;
--- Check the number of vacuums done on table vac_option_tab and on its
--- toast relation, to check that PROCESS_TOAST and PROCESS_MAIN work on
--- what they should.
-CREATE VIEW vac_option_tab_counts AS
-  SELECT CASE WHEN c.relname IS NULL
-    THEN 'main' ELSE 'toast' END as rel,
-  s.vacuum_count
-  FROM pg_stat_all_tables s
-  LEFT JOIN pg_class c ON s.relid = c.reltoastrelid
-  WHERE c.relname = 'vac_option_tab' OR s.relname = 'vac_option_tab'
-  ORDER BY rel;
-VACUUM (PROCESS_TOAST TRUE) vac_option_tab;
-SELECT * FROM vac_option_tab_counts;
-VACUUM (PROCESS_TOAST FALSE) vac_option_tab;
-SELECT * FROM vac_option_tab_counts;
-VACUUM (PROCESS_TOAST FALSE, FULL) vac_option_tab; -- error
+ALTER TABLE vactst ADD COLUMN t TEXT;
+ALTER TABLE vactst ALTER COLUMN t SET STORAGE EXTERNAL;
+VACUUM (PROCESS_TOAST FALSE) vactst;
+VACUUM (PROCESS_TOAST FALSE, FULL) vactst;
 
--- PROCESS_MAIN option
--- Only the toast table is processed.
-VACUUM (PROCESS_MAIN FALSE) vac_option_tab;
-SELECT * FROM vac_option_tab_counts;
--- Nothing is processed.
-VACUUM (PROCESS_MAIN FALSE, PROCESS_TOAST FALSE) vac_option_tab;
-SELECT * FROM vac_option_tab_counts;
--- Check if the filenodes nodes have been updated as wanted after FULL.
-SELECT relfilenode AS main_filenode FROM pg_class
-  WHERE relname = 'vac_option_tab' \gset
-SELECT t.relfilenode AS toast_filenode FROM pg_class c, pg_class t
-  WHERE c.reltoastrelid = t.oid AND c.relname = 'vac_option_tab' \gset
--- Only the toast relation is processed.
-VACUUM (PROCESS_MAIN FALSE, FULL) vac_option_tab;
-SELECT relfilenode = :main_filenode AS is_same_main_filenode
-  FROM pg_class WHERE relname = 'vac_option_tab';
-SELECT t.relfilenode = :toast_filenode AS is_same_toast_filenode
-  FROM pg_class c, pg_class t
-  WHERE c.reltoastrelid = t.oid AND c.relname = 'vac_option_tab';
-
--- BUFFER_USAGE_LIMIT option
-VACUUM (BUFFER_USAGE_LIMIT '512 kB') vac_option_tab;
-ANALYZE (BUFFER_USAGE_LIMIT '512 kB') vac_option_tab;
--- try disabling the buffer usage limit
-VACUUM (BUFFER_USAGE_LIMIT 0) vac_option_tab;
-ANALYZE (BUFFER_USAGE_LIMIT 0) vac_option_tab;
--- value exceeds max size error
-VACUUM (BUFFER_USAGE_LIMIT 16777220) vac_option_tab;
--- value is less than min size error
-VACUUM (BUFFER_USAGE_LIMIT 120) vac_option_tab;
--- integer overflow error
-VACUUM (BUFFER_USAGE_LIMIT 10000000000) vac_option_tab;
--- incompatible with VACUUM FULL error
-VACUUM (BUFFER_USAGE_LIMIT '512 kB', FULL) vac_option_tab;
-
--- SKIP_DATABASE_STATS option
-VACUUM (SKIP_DATABASE_STATS) vactst;
-
--- ONLY_DATABASE_STATS option
-VACUUM (ONLY_DATABASE_STATS);
-VACUUM (ONLY_DATABASE_STATS) vactst;  -- error
-
-DROP VIEW vac_option_tab_counts;
-DROP TABLE vac_option_tab;
 DROP TABLE vaccluster;
 DROP TABLE vactst;
 DROP TABLE vacparted;

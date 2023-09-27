@@ -34,12 +34,6 @@ INSERT INTO FLOAT8_TBL(f1) VALUES ('5.   0');
 INSERT INTO FLOAT8_TBL(f1) VALUES ('    - 3');
 INSERT INTO FLOAT8_TBL(f1) VALUES ('123           5');
 
--- Also try it with non-error-throwing API
-SELECT pg_input_is_valid('34.5', 'float8');
-SELECT pg_input_is_valid('xyz', 'float8');
-SELECT pg_input_is_valid('1e4000', 'float8');
-SELECT * FROM pg_input_error_info('1e4000', 'float8');
-
 -- special inputs
 SELECT 'NaN'::float8;
 SELECT 'nan'::float8;
@@ -228,20 +222,6 @@ SELECT acosh(float8 'nan');
 SELECT atanh(float8 'infinity');
 SELECT atanh(float8 '-infinity');
 SELECT atanh(float8 'nan');
-
--- error functions
--- we run these with extra_float_digits = -1, to get consistently rounded
--- results on all platforms.
-SET extra_float_digits = -1;
-SELECT x,
-       erf(x),
-       erfc(x)
-FROM (VALUES (float8 '-infinity'),
-      (-28), (-6), (-3.4), (-2.1), (-1.1), (-0.45),
-      (-1.2e-9), (-2.3e-13), (-1.2e-17), (0),
-      (1.2e-17), (2.3e-13), (1.2e-9),
-      (0.45), (1.1), (2.1), (3.4), (6), (28),
-      (float8 'infinity'), (float8 'nan')) AS t(x);
 
 RESET extra_float_digits;
 

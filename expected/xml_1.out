@@ -22,22 +22,6 @@ SELECT * FROM xmltest;
 ----+------
 (0 rows)
 
--- test non-throwing API, too
-SELECT pg_input_is_valid('<value>one</value>', 'xml');
-ERROR:  unsupported XML feature
-DETAIL:  This functionality requires the server to be built with libxml support.
-SELECT pg_input_is_valid('<value>one</', 'xml');
-ERROR:  unsupported XML feature
-DETAIL:  This functionality requires the server to be built with libxml support.
-SELECT message FROM pg_input_error_info('<value>one</', 'xml');
-ERROR:  unsupported XML feature
-DETAIL:  This functionality requires the server to be built with libxml support.
-SELECT pg_input_is_valid('<?xml version="1.0" standalone="y"?><foo/>', 'xml');
-ERROR:  unsupported XML feature
-DETAIL:  This functionality requires the server to be built with libxml support.
-SELECT message FROM pg_input_error_info('<?xml version="1.0" standalone="y"?><foo/>', 'xml');
-ERROR:  unsupported XML feature
-DETAIL:  This functionality requires the server to be built with libxml support.
 SELECT xmlcomment('test');
 ERROR:  unsupported XML feature
 DETAIL:  This functionality requires the server to be built with libxml support.
@@ -307,140 +291,6 @@ DETAIL:  This functionality requires the server to be built with libxml support.
 SELECT xmlserialize(document 'bad' as text);
 ERROR:  unsupported XML feature
 LINE 1: SELECT xmlserialize(document 'bad' as text);
-                                     ^
-DETAIL:  This functionality requires the server to be built with libxml support.
--- indent
-SELECT xmlserialize(DOCUMENT '<foo><bar><val x="y">42</val></bar></foo>' AS text INDENT);
-ERROR:  unsupported XML feature
-LINE 1: SELECT xmlserialize(DOCUMENT '<foo><bar><val x="y">42</val><...
-                                     ^
-DETAIL:  This functionality requires the server to be built with libxml support.
-SELECT xmlserialize(CONTENT  '<foo><bar><val x="y">42</val></bar></foo>' AS text INDENT);
-ERROR:  unsupported XML feature
-LINE 1: SELECT xmlserialize(CONTENT  '<foo><bar><val x="y">42</val><...
-                                     ^
-DETAIL:  This functionality requires the server to be built with libxml support.
--- no indent
-SELECT xmlserialize(DOCUMENT '<foo><bar><val x="y">42</val></bar></foo>' AS text NO INDENT);
-ERROR:  unsupported XML feature
-LINE 1: SELECT xmlserialize(DOCUMENT '<foo><bar><val x="y">42</val><...
-                                     ^
-DETAIL:  This functionality requires the server to be built with libxml support.
-SELECT xmlserialize(CONTENT  '<foo><bar><val x="y">42</val></bar></foo>' AS text NO INDENT);
-ERROR:  unsupported XML feature
-LINE 1: SELECT xmlserialize(CONTENT  '<foo><bar><val x="y">42</val><...
-                                     ^
-DETAIL:  This functionality requires the server to be built with libxml support.
--- indent non singly-rooted xml
-SELECT xmlserialize(DOCUMENT '<foo>73</foo><bar><val x="y">42</val></bar>' AS text INDENT);
-ERROR:  unsupported XML feature
-LINE 1: SELECT xmlserialize(DOCUMENT '<foo>73</foo><bar><val x="y">4...
-                                     ^
-DETAIL:  This functionality requires the server to be built with libxml support.
-SELECT xmlserialize(CONTENT  '<foo>73</foo><bar><val x="y">42</val></bar>' AS text INDENT);
-ERROR:  unsupported XML feature
-LINE 1: SELECT xmlserialize(CONTENT  '<foo>73</foo><bar><val x="y">4...
-                                     ^
-DETAIL:  This functionality requires the server to be built with libxml support.
--- indent non singly-rooted xml with mixed contents
-SELECT xmlserialize(DOCUMENT 'text node<foo>73</foo>text node<bar><val x="y">42</val></bar>' AS text INDENT);
-ERROR:  unsupported XML feature
-LINE 1: SELECT xmlserialize(DOCUMENT 'text node<foo>73</foo>text nod...
-                                     ^
-DETAIL:  This functionality requires the server to be built with libxml support.
-SELECT xmlserialize(CONTENT  'text node<foo>73</foo>text node<bar><val x="y">42</val></bar>' AS text INDENT);
-ERROR:  unsupported XML feature
-LINE 1: SELECT xmlserialize(CONTENT  'text node<foo>73</foo>text nod...
-                                     ^
-DETAIL:  This functionality requires the server to be built with libxml support.
--- indent singly-rooted xml with mixed contents
-SELECT xmlserialize(DOCUMENT '<foo><bar><val x="y">42</val><val x="y">text node<val>73</val></val></bar></foo>' AS text INDENT);
-ERROR:  unsupported XML feature
-LINE 1: SELECT xmlserialize(DOCUMENT '<foo><bar><val x="y">42</val><...
-                                     ^
-DETAIL:  This functionality requires the server to be built with libxml support.
-SELECT xmlserialize(CONTENT  '<foo><bar><val x="y">42</val><val x="y">text node<val>73</val></val></bar></foo>' AS text INDENT);
-ERROR:  unsupported XML feature
-LINE 1: SELECT xmlserialize(CONTENT  '<foo><bar><val x="y">42</val><...
-                                     ^
-DETAIL:  This functionality requires the server to be built with libxml support.
--- indent empty string
-SELECT xmlserialize(DOCUMENT '' AS text INDENT);
-ERROR:  unsupported XML feature
-LINE 1: SELECT xmlserialize(DOCUMENT '' AS text INDENT);
-                                     ^
-DETAIL:  This functionality requires the server to be built with libxml support.
-SELECT xmlserialize(CONTENT  '' AS text INDENT);
-ERROR:  unsupported XML feature
-LINE 1: SELECT xmlserialize(CONTENT  '' AS text INDENT);
-                                     ^
-DETAIL:  This functionality requires the server to be built with libxml support.
--- whitespaces
-SELECT xmlserialize(DOCUMENT '  ' AS text INDENT);
-ERROR:  unsupported XML feature
-LINE 1: SELECT xmlserialize(DOCUMENT '  ' AS text INDENT);
-                                     ^
-DETAIL:  This functionality requires the server to be built with libxml support.
-SELECT xmlserialize(CONTENT  '  ' AS text INDENT);
-ERROR:  unsupported XML feature
-LINE 1: SELECT xmlserialize(CONTENT  '  ' AS text INDENT);
-                                     ^
-DETAIL:  This functionality requires the server to be built with libxml support.
--- indent null
-SELECT xmlserialize(DOCUMENT NULL AS text INDENT);
- xmlserialize 
---------------
- 
-(1 row)
-
-SELECT xmlserialize(CONTENT  NULL AS text INDENT);
- xmlserialize 
---------------
- 
-(1 row)
-
--- indent with XML declaration
-SELECT xmlserialize(DOCUMENT '<?xml version="1.0" encoding="UTF-8"?><foo><bar><val>73</val></bar></foo>' AS text INDENT);
-ERROR:  unsupported XML feature
-LINE 1: SELECT xmlserialize(DOCUMENT '<?xml version="1.0" encoding="...
-                                     ^
-DETAIL:  This functionality requires the server to be built with libxml support.
-SELECT xmlserialize(CONTENT  '<?xml version="1.0" encoding="UTF-8"?><foo><bar><val>73</val></bar></foo>' AS text INDENT);
-ERROR:  unsupported XML feature
-LINE 1: SELECT xmlserialize(CONTENT  '<?xml version="1.0" encoding="...
-                                     ^
-DETAIL:  This functionality requires the server to be built with libxml support.
--- indent containing DOCTYPE declaration
-SELECT xmlserialize(DOCUMENT '<!DOCTYPE a><a/>' AS text INDENT);
-ERROR:  unsupported XML feature
-LINE 1: SELECT xmlserialize(DOCUMENT '<!DOCTYPE a><a/>' AS text INDE...
-                                     ^
-DETAIL:  This functionality requires the server to be built with libxml support.
-SELECT xmlserialize(CONTENT  '<!DOCTYPE a><a/>' AS text INDENT);
-ERROR:  unsupported XML feature
-LINE 1: SELECT xmlserialize(CONTENT  '<!DOCTYPE a><a/>' AS text INDE...
-                                     ^
-DETAIL:  This functionality requires the server to be built with libxml support.
--- indent xml with empty element
-SELECT xmlserialize(DOCUMENT '<foo><bar></bar></foo>' AS text INDENT);
-ERROR:  unsupported XML feature
-LINE 1: SELECT xmlserialize(DOCUMENT '<foo><bar></bar></foo>' AS tex...
-                                     ^
-DETAIL:  This functionality requires the server to be built with libxml support.
-SELECT xmlserialize(CONTENT  '<foo><bar></bar></foo>' AS text INDENT);
-ERROR:  unsupported XML feature
-LINE 1: SELECT xmlserialize(CONTENT  '<foo><bar></bar></foo>' AS tex...
-                                     ^
-DETAIL:  This functionality requires the server to be built with libxml support.
--- 'no indent' = not using 'no indent'
-SELECT xmlserialize(DOCUMENT '<foo><bar><val x="y">42</val></bar></foo>' AS text) = xmlserialize(DOCUMENT '<foo><bar><val x="y">42</val></bar></foo>' AS text NO INDENT);
-ERROR:  unsupported XML feature
-LINE 1: SELECT xmlserialize(DOCUMENT '<foo><bar><val x="y">42</val><...
-                                     ^
-DETAIL:  This functionality requires the server to be built with libxml support.
-SELECT xmlserialize(CONTENT  '<foo><bar><val x="y">42</val></bar></foo>' AS text) = xmlserialize(CONTENT '<foo><bar><val x="y">42</val></bar></foo>' AS text NO INDENT);
-ERROR:  unsupported XML feature
-LINE 1: SELECT xmlserialize(CONTENT  '<foo><bar><val x="y">42</val><...
                                      ^
 DETAIL:  This functionality requires the server to be built with libxml support.
 SELECT xml '<foo>bar</foo>' IS DOCUMENT;
@@ -1393,7 +1243,7 @@ LINE 1: SELECT * FROM XMLTABLE('*' PASSING '<a>a</a>' COLUMNS a xml ...
                                            ^
 DETAIL:  This functionality requires the server to be built with libxml support.
 \x
-SELECT * FROM XMLTABLE('*' PASSING '<e>pre<!--c1--><?pi arg?><![CDATA[&ent1]]><n2>&amp;deep</n2>post</e>' COLUMNS x xml PATH '/e/n2', y xml PATH '/');
+SELECT * FROM XMLTABLE('*' PASSING '<e>pre<!--c1--><?pi arg?><![CDATA[&ent1]]><n2>&amp;deep</n2>post</e>' COLUMNS x xml PATH 'node()', y xml PATH '/');
 ERROR:  unsupported XML feature
 LINE 1: SELECT * FROM XMLTABLE('*' PASSING '<e>pre<!--c1--><?pi arg?...
                                            ^

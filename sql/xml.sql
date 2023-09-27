@@ -9,13 +9,6 @@ INSERT INTO xmltest VALUES (3, '<wrong');
 
 SELECT * FROM xmltest;
 
--- test non-throwing API, too
-SELECT pg_input_is_valid('<value>one</value>', 'xml');
-SELECT pg_input_is_valid('<value>one</', 'xml');
-SELECT message FROM pg_input_error_info('<value>one</', 'xml');
-SELECT pg_input_is_valid('<?xml version="1.0" standalone="y"?><foo/>', 'xml');
-SELECT message FROM pg_input_error_info('<?xml version="1.0" standalone="y"?><foo/>', 'xml');
-
 
 SELECT xmlcomment('test');
 SELECT xmlcomment('-test');
@@ -132,42 +125,6 @@ SELECT xmlserialize(content data as character varying(20)) FROM xmltest;
 SELECT xmlserialize(content 'good' as char(10));
 SELECT xmlserialize(document 'bad' as text);
 
--- indent
-SELECT xmlserialize(DOCUMENT '<foo><bar><val x="y">42</val></bar></foo>' AS text INDENT);
-SELECT xmlserialize(CONTENT  '<foo><bar><val x="y">42</val></bar></foo>' AS text INDENT);
--- no indent
-SELECT xmlserialize(DOCUMENT '<foo><bar><val x="y">42</val></bar></foo>' AS text NO INDENT);
-SELECT xmlserialize(CONTENT  '<foo><bar><val x="y">42</val></bar></foo>' AS text NO INDENT);
--- indent non singly-rooted xml
-SELECT xmlserialize(DOCUMENT '<foo>73</foo><bar><val x="y">42</val></bar>' AS text INDENT);
-SELECT xmlserialize(CONTENT  '<foo>73</foo><bar><val x="y">42</val></bar>' AS text INDENT);
--- indent non singly-rooted xml with mixed contents
-SELECT xmlserialize(DOCUMENT 'text node<foo>73</foo>text node<bar><val x="y">42</val></bar>' AS text INDENT);
-SELECT xmlserialize(CONTENT  'text node<foo>73</foo>text node<bar><val x="y">42</val></bar>' AS text INDENT);
--- indent singly-rooted xml with mixed contents
-SELECT xmlserialize(DOCUMENT '<foo><bar><val x="y">42</val><val x="y">text node<val>73</val></val></bar></foo>' AS text INDENT);
-SELECT xmlserialize(CONTENT  '<foo><bar><val x="y">42</val><val x="y">text node<val>73</val></val></bar></foo>' AS text INDENT);
--- indent empty string
-SELECT xmlserialize(DOCUMENT '' AS text INDENT);
-SELECT xmlserialize(CONTENT  '' AS text INDENT);
--- whitespaces
-SELECT xmlserialize(DOCUMENT '  ' AS text INDENT);
-SELECT xmlserialize(CONTENT  '  ' AS text INDENT);
--- indent null
-SELECT xmlserialize(DOCUMENT NULL AS text INDENT);
-SELECT xmlserialize(CONTENT  NULL AS text INDENT);
--- indent with XML declaration
-SELECT xmlserialize(DOCUMENT '<?xml version="1.0" encoding="UTF-8"?><foo><bar><val>73</val></bar></foo>' AS text INDENT);
-SELECT xmlserialize(CONTENT  '<?xml version="1.0" encoding="UTF-8"?><foo><bar><val>73</val></bar></foo>' AS text INDENT);
--- indent containing DOCTYPE declaration
-SELECT xmlserialize(DOCUMENT '<!DOCTYPE a><a/>' AS text INDENT);
-SELECT xmlserialize(CONTENT  '<!DOCTYPE a><a/>' AS text INDENT);
--- indent xml with empty element
-SELECT xmlserialize(DOCUMENT '<foo><bar></bar></foo>' AS text INDENT);
-SELECT xmlserialize(CONTENT  '<foo><bar></bar></foo>' AS text INDENT);
--- 'no indent' = not using 'no indent'
-SELECT xmlserialize(DOCUMENT '<foo><bar><val x="y">42</val></bar></foo>' AS text) = xmlserialize(DOCUMENT '<foo><bar><val x="y">42</val></bar></foo>' AS text NO INDENT);
-SELECT xmlserialize(CONTENT  '<foo><bar><val x="y">42</val></bar></foo>' AS text) = xmlserialize(CONTENT '<foo><bar><val x="y">42</val></bar></foo>' AS text NO INDENT);
 
 SELECT xml '<foo>bar</foo>' IS DOCUMENT;
 SELECT xml '<foo>bar</foo><bar>foo</bar>' IS DOCUMENT;
@@ -656,7 +613,7 @@ SELECT xmltable.* FROM xmltest2, LATERAL xmltable(('/d/r/' || lower(_path) || 'c
 -- XPath result can be boolean or number too
 SELECT * FROM XMLTABLE('*' PASSING '<a>a</a>' COLUMNS a xml PATH '.', b text PATH '.', c text PATH '"hi"', d boolean PATH '. = "a"', e integer PATH 'string-length(.)');
 \x
-SELECT * FROM XMLTABLE('*' PASSING '<e>pre<!--c1--><?pi arg?><![CDATA[&ent1]]><n2>&amp;deep</n2>post</e>' COLUMNS x xml PATH '/e/n2', y xml PATH '/');
+SELECT * FROM XMLTABLE('*' PASSING '<e>pre<!--c1--><?pi arg?><![CDATA[&ent1]]><n2>&amp;deep</n2>post</e>' COLUMNS x xml PATH 'node()', y xml PATH '/');
 \x
 
 SELECT * FROM XMLTABLE('.' PASSING XMLELEMENT(NAME a) columns a varchar(20) PATH '"<foo/>"', b xml PATH '"<foo/>"');

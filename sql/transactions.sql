@@ -35,24 +35,6 @@ SELECT oid FROM pg_class WHERE relname = 'disappear';
 -- should have members again
 SELECT * FROM xacttest;
 
--- Test that transaction characteristics cannot be reset.
-BEGIN TRANSACTION ISOLATION LEVEL SERIALIZABLE;
-SELECT COUNT(*) FROM xacttest;
-RESET transaction_isolation; -- error
-END;
-
-BEGIN TRANSACTION READ ONLY;
-SELECT COUNT(*) FROM xacttest;
-RESET transaction_read_only; -- error
-END;
-
-BEGIN TRANSACTION DEFERRABLE;
-SELECT COUNT(*) FROM xacttest;
-RESET transaction_deferrable; -- error
-END;
-
-CREATE FUNCTION errfunc() RETURNS int LANGUAGE SQL AS 'SELECT 1'
-SET transaction_read_only = on; -- error
 
 -- Read-only tests
 
@@ -489,17 +471,6 @@ SHOW transaction_read_only;
 SHOW transaction_deferrable;
 COMMIT;
 
-START TRANSACTION ISOLATION LEVEL READ COMMITTED, READ WRITE, DEFERRABLE;
-SHOW transaction_isolation;
-SHOW transaction_read_only;
-SHOW transaction_deferrable;
-SAVEPOINT x;
-COMMIT AND CHAIN;  -- TBLOCK_SUBCOMMIT
-SHOW transaction_isolation;
-SHOW transaction_read_only;
-SHOW transaction_deferrable;
-COMMIT;
-
 -- different mix of options just for fun
 START TRANSACTION ISOLATION LEVEL SERIALIZABLE, READ WRITE, NOT DEFERRABLE;
 SHOW transaction_isolation;
@@ -624,15 +595,6 @@ SELECT * FROM trans_abc ORDER BY 1;
 
 DROP TABLE trans_abc;
 
--- TRANSACTION SNAPSHOT
--- Incorrect identifier.
-BEGIN TRANSACTION ISOLATION LEVEL REPEATABLE READ;
-SET TRANSACTION SNAPSHOT 'Incorrect Identifier';
-ROLLBACK;
--- Correct identifier, missing file.
-BEGIN TRANSACTION ISOLATION LEVEL REPEATABLE READ;
-SET TRANSACTION SNAPSHOT 'FFF-FFF-F';
-ROLLBACK;
 
 -- Test for successful cleanup of an aborted transaction at session exit.
 -- THIS MUST BE THE LAST TEST IN THIS FILE.

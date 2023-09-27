@@ -42,19 +42,6 @@ LINE 1: SELECT '"\v"'::json;
                ^
 DETAIL:  Escape sequence "\v" is invalid.
 CONTEXT:  JSON data, line 1: "\v...
--- Check fast path for longer strings (at least 16 bytes long)
-SELECT ('"'||repeat('.', 12)||'abc"')::json; -- OK
-       json        
--------------------
- "............abc"
-(1 row)
-
-SELECT ('"'||repeat('.', 12)||'abc\n"')::json; -- OK, legal escapes
-        json         
----------------------
- "............abc\n"
-(1 row)
-
 -- see json_encoding test for input with unicode escapes
 -- Numbers.
 SELECT '1'::json;				-- OK
@@ -320,25 +307,6 @@ LINE 1: SELECT '{
 DETAIL:  Expected JSON value, but found "}".
 CONTEXT:  JSON data, line 4: ...yveryveryveryveryveryveryveryverylongfieldname":}
 -- ERROR missing value for last field
--- test non-error-throwing input
-select pg_input_is_valid('{"a":true}', 'json');
- pg_input_is_valid 
--------------------
- t
-(1 row)
-
-select pg_input_is_valid('{"a":true', 'json');
- pg_input_is_valid 
--------------------
- f
-(1 row)
-
-select * from pg_input_error_info('{"a":true', 'json');
-              message               |                detail                | hint | sql_error_code 
-------------------------------------+--------------------------------------+------+----------------
- invalid input syntax for type json | The input string ended unexpectedly. |      | 22P02
-(1 row)
-
 --constructors
 -- array_to_json
 SELECT array_to_json(array(select 1 as a));
@@ -2119,7 +2087,8 @@ SELECT json_build_object('a', 'b', 'c'); -- error
 ERROR:  argument list must have even number of elements
 HINT:  The arguments of json_build_object() must consist of alternating keys and values.
 SELECT json_build_object(NULL, 'a'); -- error, key cannot be NULL
-ERROR:  null value not allowed for object key
+ERROR:  argument 1 cannot be null
+HINT:  Object keys should be text.
 SELECT json_build_object('a', NULL); -- ok
  json_build_object 
 -------------------
@@ -2148,7 +2117,8 @@ SELECT json_build_object(VARIADIC ARRAY['a', NULL]::text[]); -- ok
 (1 row)
 
 SELECT json_build_object(VARIADIC ARRAY[NULL, 'a']::text[]); -- error, key cannot be NULL
-ERROR:  null value not allowed for object key
+ERROR:  argument 1 cannot be null
+HINT:  Object keys should be text.
 SELECT json_build_object(VARIADIC '{1,2,3,4}'::text[]); -- ok
    json_build_object    
 ------------------------
@@ -2189,7 +2159,8 @@ SELECT json_build_object(1,2);
 
 -- keys must be scalar and not null
 SELECT json_build_object(null,2);
-ERROR:  null value not allowed for object key
+ERROR:  argument 1 cannot be null
+HINT:  Object keys should be text.
 SELECT json_build_object(r,2) FROM (SELECT 1 AS a, 2 AS b) r;
 ERROR:  key value must be scalar, not array, composite, or json
 SELECT json_build_object(json '{"a":1,"b":2}', 3);
@@ -2215,7 +2186,7 @@ SELECT json_object_agg(name, type) FROM foo;
 
 INSERT INTO foo VALUES (999999, NULL, 'bar');
 SELECT json_object_agg(name, type) FROM foo;
-ERROR:  null value not allowed for object key
+ERROR:  field name must not be null
 -- json_object
 -- empty object, one dimension
 SELECT json_object('{}');

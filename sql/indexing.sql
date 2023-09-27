@@ -483,27 +483,8 @@ create table idxpart (a int, b int primary key) partition by range (b, a);
 create table idxpart (a int, b int, c text, primary key  (a, b, c)) partition by range (b, c, a);
 drop table idxpart;
 
--- OK to add an exclusion constraint if partitioning by its equal column
-create table idxpart (a int4range, exclude USING GIST (a with = )) partition by range (a);
-drop table idxpart;
--- OK more than one equal column
-create table idxpart (a int4range, b int4range, exclude USING GIST (a with =, b with =)) partition by range (a, b);
-drop table idxpart;
--- OK with more than one equal column: constraint is a proper superset of partition key
-create table idxpart (a int4range, b int4range, exclude USING GIST (a with =, b with =)) partition by range (a);
-drop table idxpart;
--- Not OK more than one equal column: partition keys are a proper superset of constraint
-create table idxpart (a int4range, b int4range, exclude USING GIST (a with = )) partition by range (a, b);
--- Not OK with just -|-
-create table idxpart (a int4range, exclude USING GIST (a with -|- )) partition by range (a);
--- OK with equals and &&, and equals is the partition key
-create table idxpart (a int4range, b int4range, exclude USING GIST (a with =, b with &&)) partition by range (a);
-drop table idxpart;
--- Not OK with equals and &&, and equals is not the partition key
-create table idxpart (a int4range, b int4range, c int4range, exclude USING GIST (b with =, c with &&)) partition by range (a);
--- OK more than one equal column and a && column
-create table idxpart (a int4range, b int4range, c int4range, exclude USING GIST (a with =, b with =, c with &&)) partition by range (a, b);
-drop table idxpart;
+-- not other types of index-based constraints
+create table idxpart (a int, exclude (a with = )) partition by range (a);
 
 -- no expressions in partition key for PK/UNIQUE
 create table idxpart (a int primary key, b int) partition by range ((b + a));
@@ -525,37 +506,9 @@ alter table idxpart add unique (b, a);		-- this works
 \d idxpart
 drop table idxpart;
 
--- Exclusion constraints can be added if partitioning by their equal column
-create table idxpart (a int4range, b int4range) partition by range (a);
-alter table idxpart add exclude USING GIST (a with =);
-drop table idxpart;
--- OK more than one equal column
-create table idxpart (a int4range, b int4range) partition by range (a, b);
-alter table idxpart add exclude USING GIST (a with =, b with =);
-drop table idxpart;
--- OK with more than one equal column: constraint is a proper superset of partition key
-create table idxpart (a int4range, b int4range) partition by range (a);
-alter table idxpart add exclude USING GIST (a with =, b with =);
-drop table idxpart;
--- Not OK more than one equal column: partition keys are a proper superset of constraint
-create table idxpart (a int4range, b int4range) partition by range (a, b);
-alter table idxpart add exclude USING GIST (a with =);
-drop table idxpart;
--- Not OK with just -|-
-create table idxpart (a int4range, b int4range) partition by range (a, b);
-alter table idxpart add exclude USING GIST (a with -|-);
-drop table idxpart;
--- OK with equals and &&, and equals is the partition key
-create table idxpart (a int4range, b int4range) partition by range (a);
-alter table idxpart add exclude USING GIST (a with =, b with &&);
-drop table idxpart;
--- Not OK with equals and &&, and equals is not the partition key
-create table idxpart (a int4range, b int4range, c int4range) partition by range (a);
-alter table idxpart add exclude USING GIST (b with =, c with &&);
-drop table idxpart;
--- OK more than one equal column and a && column
-create table idxpart (a int4range, b int4range, c int4range) partition by range (a, b);
-alter table idxpart add exclude USING GIST (a with =, b with =, c with &&);
+-- Exclusion constraints cannot be added
+create table idxpart (a int, b int) partition by range (a);
+alter table idxpart add exclude (a with =);
 drop table idxpart;
 
 -- When (sub)partitions are created, they also contain the constraint
@@ -569,7 +522,7 @@ create table idxpart3 (b int not null, a int not null);
 alter table idxpart attach partition idxpart3 for values from (20, 20) to (30, 30);
 select conname, contype, conrelid::regclass, conindid::regclass, conkey
   from pg_constraint where conrelid::regclass::text like 'idxpart%'
-  order by conrelid::regclass::text, conname;
+  order by conname;
 drop table idxpart;
 
 -- Verify that multi-layer partitioning honors the requirement that all
@@ -667,11 +620,9 @@ create table idxpart (a int) partition by range (a);
 create table idxpart0 (like idxpart);
 alter table idxpart0 add unique (a);
 alter table idxpart attach partition idxpart0 default;
-alter table only idxpart add primary key (a);  -- works, but idxpart0.a is nullable
-\d idxpart0
-alter index idxpart_pkey attach partition idxpart0_a_key; -- fails, lacks NOT NULL
+alter table only idxpart add primary key (a);  -- fail, no NOT NULL constraint
 alter table idxpart0 alter column a set not null;
-alter index idxpart_pkey attach partition idxpart0_a_key;
+alter table only idxpart add primary key (a);  -- now it works
 alter table idxpart0 alter column a drop not null;  -- fail, pkey needs it
 drop table idxpart;
 

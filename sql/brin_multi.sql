@@ -30,7 +30,7 @@ INSERT INTO brintest_multi SELECT
 	(four + 1.0)/(hundred+1),
 	odd::float8 / (tenthous + 1),
 	format('%s:00:%s:00:%s:00', to_hex(odd), to_hex(even), to_hex(hundred))::macaddr,
-	substr(fipshash(unique1::text), 1, 16)::macaddr8,
+	substr(md5(unique1::text), 1, 16)::macaddr8,
 	inet '10.2.3.4/24' + tenthous,
 	cidr '10.2.3/24' + tenthous,
 	date '1995-08-15' + tenthous,
@@ -183,7 +183,7 @@ INSERT INTO brinopers_multi VALUES
 	('macaddr8col', 'macaddr8',
 	 '{>, >=, =, <=, <}',
 	 '{b1:d1:0e:7b:af:a4:42:12, d9:35:91:bd:f7:86:0e:1e, 72:8f:20:6c:2a:01:bf:57, 23:e8:46:63:86:07:ad:cb, 13:16:8e:6a:2e:6c:84:b4}',
-	 '{31, 17, 1, 11, 4}'),
+	 '{33, 15, 1, 13, 6}'),
 	('inetcol', 'inet',
 	 '{=, <, <=, >, >=}',
 	 '{10.2.14.231/24, 255.255.255.255, 255.255.255.255, 0.0.0.0, 0.0.0.0}',
@@ -334,7 +334,7 @@ INSERT INTO brintest_multi SELECT
 	(four + 1.0)/(hundred+1),
 	odd::float8 / (tenthous + 1),
 	format('%s:00:%s:00:%s:00', to_hex(odd), to_hex(even), to_hex(hundred))::macaddr,
-	substr(fipshash(unique1::text), 1, 16)::macaddr8,
+	substr(md5(unique1::text), 1, 16)::macaddr8,
 	inet '10.2.3.4' + tenthous,
 	cidr '10.2.3/24' + tenthous,
 	date '1995-08-15' + tenthous,
@@ -421,168 +421,3 @@ VACUUM ANALYZE brin_test_multi;
 EXPLAIN (COSTS OFF) SELECT * FROM brin_test_multi WHERE a = 1;
 -- Ensure brin index is not used when values are not correlated
 EXPLAIN (COSTS OFF) SELECT * FROM brin_test_multi WHERE b = 1;
-
-
--- do some inequality tests
-CREATE TABLE brin_test_multi_1 (a INT, b BIGINT) WITH (fillfactor=10);
-INSERT INTO brin_test_multi_1
-SELECT i/5 + mod(911 * i + 483, 25),
-       i/10 + mod(751 * i + 221, 41)
-  FROM generate_series(1,1000) s(i);
-
-CREATE INDEX brin_test_multi_1_idx_1 ON brin_test_multi_1 USING brin (a int4_minmax_multi_ops) WITH (pages_per_range=5);
-CREATE INDEX brin_test_multi_1_idx_2 ON brin_test_multi_1 USING brin (b int8_minmax_multi_ops) WITH (pages_per_range=5);
-
-SET enable_seqscan=off;
-
--- int: less than
-SELECT COUNT(*) FROM brin_test_multi_1 WHERE a < 37;
-
-SELECT COUNT(*) FROM brin_test_multi_1 WHERE a < 113;
-
-SELECT COUNT(*) FROM brin_test_multi_1 WHERE a <= 177;
-
-SELECT COUNT(*) FROM brin_test_multi_1 WHERE a <= 25;
-
--- int: greater than
-SELECT COUNT(*) FROM brin_test_multi_1 WHERE a > 120;
-
-SELECT COUNT(*) FROM brin_test_multi_1 WHERE a >= 180;
-
-SELECT COUNT(*) FROM brin_test_multi_1 WHERE a > 71;
-
-SELECT COUNT(*) FROM brin_test_multi_1 WHERE a >= 63;
-
--- int: equals
-SELECT COUNT(*) FROM brin_test_multi_1 WHERE a = 207;
-
-SELECT COUNT(*) FROM brin_test_multi_1 WHERE a = 177;
-
--- bigint: less than
-SELECT COUNT(*) FROM brin_test_multi_1 WHERE b < 73;
-
-SELECT COUNT(*) FROM brin_test_multi_1 WHERE b <= 47;
-
-SELECT COUNT(*) FROM brin_test_multi_1 WHERE b < 199;
-
-SELECT COUNT(*) FROM brin_test_multi_1 WHERE b <= 150;
-
--- bigint: greater than
-SELECT COUNT(*) FROM brin_test_multi_1 WHERE b > 93;
-
-SELECT COUNT(*) FROM brin_test_multi_1 WHERE b > 37;
-
-SELECT COUNT(*) FROM brin_test_multi_1 WHERE b >= 215;
-
-SELECT COUNT(*) FROM brin_test_multi_1 WHERE b > 201;
-
--- bigint: equals
-SELECT COUNT(*) FROM brin_test_multi_1 WHERE b = 88;
-
-SELECT COUNT(*) FROM brin_test_multi_1 WHERE b = 103;
-
--- now do the same, but insert the rows with the indexes already created
--- so that we don't use the "build callback" and instead use the regular
--- approach of adding rows into existing ranges
-TRUNCATE brin_test_multi_1;
-
-INSERT INTO brin_test_multi_1
-SELECT i/5 + mod(911 * i + 483, 25),
-       i/10 + mod(751 * i + 221, 41)
-  FROM generate_series(1,1000) s(i);
-
--- int: less than
-SELECT COUNT(*) FROM brin_test_multi_1 WHERE a < 37;
-
-SELECT COUNT(*) FROM brin_test_multi_1 WHERE a < 113;
-
-SELECT COUNT(*) FROM brin_test_multi_1 WHERE a <= 177;
-
-SELECT COUNT(*) FROM brin_test_multi_1 WHERE a <= 25;
-
--- int: greater than
-SELECT COUNT(*) FROM brin_test_multi_1 WHERE a > 120;
-
-SELECT COUNT(*) FROM brin_test_multi_1 WHERE a >= 180;
-
-SELECT COUNT(*) FROM brin_test_multi_1 WHERE a > 71;
-
-SELECT COUNT(*) FROM brin_test_multi_1 WHERE a >= 63;
-
--- int: equals
-SELECT COUNT(*) FROM brin_test_multi_1 WHERE a = 207;
-
-SELECT COUNT(*) FROM brin_test_multi_1 WHERE a = 177;
-
--- bigint: less than
-SELECT COUNT(*) FROM brin_test_multi_1 WHERE b < 73;
-
-SELECT COUNT(*) FROM brin_test_multi_1 WHERE b <= 47;
-
-SELECT COUNT(*) FROM brin_test_multi_1 WHERE b < 199;
-
-SELECT COUNT(*) FROM brin_test_multi_1 WHERE b <= 150;
-
--- bigint: greater than
-SELECT COUNT(*) FROM brin_test_multi_1 WHERE b > 93;
-
-SELECT COUNT(*) FROM brin_test_multi_1 WHERE b > 37;
-
-SELECT COUNT(*) FROM brin_test_multi_1 WHERE b >= 215;
-
-SELECT COUNT(*) FROM brin_test_multi_1 WHERE b > 201;
-
--- bigint: equals
-SELECT COUNT(*) FROM brin_test_multi_1 WHERE b = 88;
-
-SELECT COUNT(*) FROM brin_test_multi_1 WHERE b = 103;
-
-
-DROP TABLE brin_test_multi_1;
-RESET enable_seqscan;
-
-
--- do some inequality tests for varlena data types
-CREATE TABLE brin_test_multi_2 (a UUID) WITH (fillfactor=10);
-INSERT INTO brin_test_multi_2
-SELECT v::uuid FROM (SELECT row_number() OVER (ORDER BY v) c, v FROM (SELECT md5((i/13)::text) AS v FROM generate_series(1,1000) s(i)) foo) bar ORDER BY c + 25 * random();
-
-CREATE INDEX brin_test_multi_2_idx ON brin_test_multi_2 USING brin (a uuid_minmax_multi_ops) WITH (pages_per_range=5);
-
-SET enable_seqscan=off;
-
-SELECT COUNT(*) FROM brin_test_multi_2 WHERE a < '33e75ff0-9dd6-01bb-e69f-351039152189';
-
-SELECT COUNT(*) FROM brin_test_multi_2 WHERE a > '33e75ff0-9dd6-01bb-e69f-351039152189';
-
-SELECT COUNT(*) FROM brin_test_multi_2 WHERE a <= 'f457c545-a9de-d88f-18ec-ee47145a72c0';
-
-SELECT COUNT(*) FROM brin_test_multi_2 WHERE a >= 'c51ce410-c124-a10e-0db5-e4b97fc2af39';
-
-SELECT COUNT(*) FROM brin_test_multi_2 WHERE a = 'cfcd2084-95d5-65ef-66e7-dff9f98764da';
-
-SELECT COUNT(*) FROM brin_test_multi_2 WHERE a = 'aab32389-22bc-c25a-6f60-6eb525ffdc56';
-
-
--- now do the same, but insert the rows with the indexes already created
--- so that we don't use the "build callback" and instead use the regular
--- approach of adding rows into existing ranges
-
-TRUNCATE brin_test_multi_2;
-INSERT INTO brin_test_multi_2
-SELECT v::uuid FROM (SELECT row_number() OVER (ORDER BY v) c, v FROM (SELECT md5((i/13)::text) AS v FROM generate_series(1,1000) s(i)) foo) bar ORDER BY c + 25 * random();
-
-SELECT COUNT(*) FROM brin_test_multi_2 WHERE a < '33e75ff0-9dd6-01bb-e69f-351039152189';
-
-SELECT COUNT(*) FROM brin_test_multi_2 WHERE a > '33e75ff0-9dd6-01bb-e69f-351039152189';
-
-SELECT COUNT(*) FROM brin_test_multi_2 WHERE a <= 'f457c545-a9de-d88f-18ec-ee47145a72c0';
-
-SELECT COUNT(*) FROM brin_test_multi_2 WHERE a >= 'c51ce410-c124-a10e-0db5-e4b97fc2af39';
-
-SELECT COUNT(*) FROM brin_test_multi_2 WHERE a = 'cfcd2084-95d5-65ef-66e7-dff9f98764da';
-
-SELECT COUNT(*) FROM brin_test_multi_2 WHERE a = 'aab32389-22bc-c25a-6f60-6eb525ffdc56';
-
-DROP TABLE brin_test_multi_2;
-RESET enable_seqscan;

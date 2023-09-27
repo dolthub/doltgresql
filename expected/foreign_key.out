@@ -2036,19 +2036,13 @@ ORDER BY co.contype, cr.relname, co.conname, p.conname;
  part33_self_fk | parted_self_fk_id_abc_fkey | f       | t            | parted_self_fk_id_abc_fkey | t            | parted_self_fk
  part3_self_fk  | parted_self_fk_id_abc_fkey | f       | t            | parted_self_fk_id_abc_fkey | t            | parted_self_fk
  parted_self_fk | parted_self_fk_id_abc_fkey | f       | t            |                            |              | parted_self_fk
- part1_self_fk  | part1_self_fk_id_not_null  | n       | t            |                            |              | 
- part2_self_fk  | parted_self_fk_id_not_null | n       | t            |                            |              | 
- part32_self_fk | part3_self_fk_id_not_null  | n       | t            |                            |              | 
- part33_self_fk | part33_self_fk_id_not_null | n       | t            |                            |              | 
- part3_self_fk  | part3_self_fk_id_not_null  | n       | t            |                            |              | 
- parted_self_fk | parted_self_fk_id_not_null | n       | t            |                            |              | 
  part1_self_fk  | part1_self_fk_pkey         | p       | t            | parted_self_fk_pkey        | t            | 
  part2_self_fk  | part2_self_fk_pkey         | p       | t            | parted_self_fk_pkey        | t            | 
  part32_self_fk | part32_self_fk_pkey        | p       | t            | part3_self_fk_pkey         | t            | 
  part33_self_fk | part33_self_fk_pkey        | p       | t            | part3_self_fk_pkey         | t            | 
  part3_self_fk  | part3_self_fk_pkey         | p       | t            | parted_self_fk_pkey        | t            | 
  parted_self_fk | parted_self_fk_pkey        | p       | t            |                            |              | 
-(18 rows)
+(12 rows)
 
 -- detach and re-attach multiple times just to ensure everything is kosher
 ALTER TABLE parted_self_fk DETACH PARTITION part2_self_fk;
@@ -2071,19 +2065,13 @@ ORDER BY co.contype, cr.relname, co.conname, p.conname;
  part33_self_fk | parted_self_fk_id_abc_fkey | f       | t            | parted_self_fk_id_abc_fkey | t            | parted_self_fk
  part3_self_fk  | parted_self_fk_id_abc_fkey | f       | t            | parted_self_fk_id_abc_fkey | t            | parted_self_fk
  parted_self_fk | parted_self_fk_id_abc_fkey | f       | t            |                            |              | parted_self_fk
- part1_self_fk  | part1_self_fk_id_not_null  | n       | t            |                            |              | 
- part2_self_fk  | parted_self_fk_id_not_null | n       | t            |                            |              | 
- part32_self_fk | part3_self_fk_id_not_null  | n       | t            |                            |              | 
- part33_self_fk | part33_self_fk_id_not_null | n       | t            |                            |              | 
- part3_self_fk  | part3_self_fk_id_not_null  | n       | t            |                            |              | 
- parted_self_fk | parted_self_fk_id_not_null | n       | t            |                            |              | 
  part1_self_fk  | part1_self_fk_pkey         | p       | t            | parted_self_fk_pkey        | t            | 
  part2_self_fk  | part2_self_fk_pkey         | p       | t            | parted_self_fk_pkey        | t            | 
  part32_self_fk | part32_self_fk_pkey        | p       | t            | part3_self_fk_pkey         | t            | 
  part33_self_fk | part33_self_fk_pkey        | p       | t            | part3_self_fk_pkey         | t            | 
  part3_self_fk  | part3_self_fk_pkey         | p       | t            | parted_self_fk_pkey        | t            | 
  parted_self_fk | parted_self_fk_pkey        | p       | t            |                            |              | 
-(18 rows)
+(12 rows)
 
 -- Leave this table around, for pg_upgrade/pg_dump tests
 -- Test creating a constraint at the parent that already exists in partitions.
@@ -2510,7 +2498,7 @@ ALTER TABLE ref22 ALTER CONSTRAINT ref_f1_f2_fkey
   DEFERRABLE INITIALLY IMMEDIATE;	-- fails
 ERROR:  cannot alter constraint "ref_f1_f2_fkey" on relation "ref22"
 DETAIL:  Constraint "ref_f1_f2_fkey" is derived from constraint "ref_f1_f2_fkey" of relation "ref".
-HINT:  You may alter the constraint it derives from instead.
+HINT:  You may alter the constraint it derives from, instead.
 ALTER TABLE ref ALTER CONSTRAINT ref_f1_f2_fkey
   DEFERRABLE INITIALLY DEFERRED;
 BEGIN;
@@ -2534,7 +2522,7 @@ DELETE FROM pt;
 DELETE FROM ref;
 ABORT;
 DROP TABLE pt, ref;
--- Multi-level partitioning at referenced end
+-- Multi-level partitioning at at referenced end
 CREATE TABLE pt(f1 int, f2 int, f3 int, PRIMARY KEY(f1,f2))
   PARTITION BY LIST(f1);
 CREATE TABLE pt1_2 PARTITION OF pt FOR VALUES IN (1, 2) PARTITION BY LIST (f1);
@@ -2546,7 +2534,7 @@ ALTER TABLE ref ALTER CONSTRAINT ref_f1_f2_fkey1
   DEFERRABLE INITIALLY DEFERRED;	-- fails
 ERROR:  cannot alter constraint "ref_f1_f2_fkey1" on relation "ref"
 DETAIL:  Constraint "ref_f1_f2_fkey1" is derived from constraint "ref_f1_f2_fkey" of relation "ref".
-HINT:  You may alter the constraint it derives from instead.
+HINT:  You may alter the constraint it derives from, instead.
 ALTER TABLE ref ALTER CONSTRAINT ref_f1_f2_fkey
   DEFERRABLE INITIALLY DEFERRED;
 INSERT INTO pt VALUES(1,2,3);

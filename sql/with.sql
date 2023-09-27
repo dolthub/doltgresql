@@ -1230,7 +1230,7 @@ INSERT INTO bug6051 SELECT * FROM t1;
 SELECT * FROM bug6051;
 SELECT * FROM bug6051_2;
 
--- check INSERT ... SELECT rule actions are disallowed on commands
+-- check INSERT...SELECT rule actions are disallowed on commands
 -- that have modifyingCTEs
 CREATE OR REPLACE RULE bug6051_ins AS ON INSERT TO bug6051 DO INSTEAD
  INSERT INTO bug6051_2
@@ -1246,7 +1246,7 @@ CREATE TEMP TABLE bug6051_3 AS
 CREATE RULE bug6051_3_ins AS ON INSERT TO bug6051_3 DO INSTEAD
   SELECT i FROM bug6051_2;
 
-BEGIN; SET LOCAL debug_parallel_query = on;
+BEGIN; SET LOCAL force_parallel_mode = on;
 
 WITH t1 AS ( DELETE FROM bug6051_3 RETURNING * )
   INSERT INTO bug6051_3 SELECT * FROM t1;

@@ -164,9 +164,10 @@ SELECT c, sum(a) FROM pagg_tab WHERE c = 'x' GROUP BY c;
            QUERY PLAN           
 --------------------------------
  GroupAggregate
+   Group Key: c
    ->  Result
          One-Time Filter: false
-(3 rows)
+(4 rows)
 
 SELECT c, sum(a) FROM pagg_tab WHERE c = 'x' GROUP BY c;
  c | sum 
@@ -366,17 +367,17 @@ SELECT c, sum(b order by a) FROM pagg_tab GROUP BY c ORDER BY 1, 2;
          ->  GroupAggregate
                Group Key: pagg_tab.c
                ->  Sort
-                     Sort Key: pagg_tab.c, pagg_tab.a
+                     Sort Key: pagg_tab.c
                      ->  Seq Scan on pagg_tab_p1 pagg_tab
          ->  GroupAggregate
                Group Key: pagg_tab_1.c
                ->  Sort
-                     Sort Key: pagg_tab_1.c, pagg_tab_1.a
+                     Sort Key: pagg_tab_1.c
                      ->  Seq Scan on pagg_tab_p2 pagg_tab_1
          ->  GroupAggregate
                Group Key: pagg_tab_2.c
                ->  Sort
-                     Sort Key: pagg_tab_2.c, pagg_tab_2.a
+                     Sort Key: pagg_tab_2.c
                      ->  Seq Scan on pagg_tab_p3 pagg_tab_2
 (18 rows)
 
@@ -804,10 +805,10 @@ SELECT a.x, b.y, count(*) FROM (SELECT * FROM pagg_tab1 WHERE x < 20) a FULL JOI
 -- Empty join relation because of empty outer side, no partitionwise agg plan
 EXPLAIN (COSTS OFF)
 SELECT a.x, a.y, count(*) FROM (SELECT * FROM pagg_tab1 WHERE x = 1 AND x = 2) a LEFT JOIN pagg_tab2 b ON a.x = b.y GROUP BY a.x, a.y ORDER BY 1, 2;
-              QUERY PLAN              
---------------------------------------
+              QUERY PLAN               
+---------------------------------------
  GroupAggregate
-   Group Key: pagg_tab1.y
+   Group Key: pagg_tab1.x, pagg_tab1.y
    ->  Sort
          Sort Key: pagg_tab1.y
          ->  Result
@@ -959,13 +960,13 @@ SELECT a, sum(b), array_agg(distinct c), count(*) FROM pagg_tab_ml GROUP BY a HA
                      Group Key: pagg_tab_ml.a
                      Filter: (avg(pagg_tab_ml.b) < '3'::numeric)
                      ->  Sort
-                           Sort Key: pagg_tab_ml.a, pagg_tab_ml.c
+                           Sort Key: pagg_tab_ml.a
                            ->  Seq Scan on pagg_tab_ml_p1 pagg_tab_ml
                ->  GroupAggregate
                      Group Key: pagg_tab_ml_5.a
                      Filter: (avg(pagg_tab_ml_5.b) < '3'::numeric)
                      ->  Sort
-                           Sort Key: pagg_tab_ml_5.a, pagg_tab_ml_5.c
+                           Sort Key: pagg_tab_ml_5.a
                            ->  Append
                                  ->  Seq Scan on pagg_tab_ml_p3_s1 pagg_tab_ml_5
                                  ->  Seq Scan on pagg_tab_ml_p3_s2 pagg_tab_ml_6
@@ -973,7 +974,7 @@ SELECT a, sum(b), array_agg(distinct c), count(*) FROM pagg_tab_ml GROUP BY a HA
                      Group Key: pagg_tab_ml_2.a
                      Filter: (avg(pagg_tab_ml_2.b) < '3'::numeric)
                      ->  Sort
-                           Sort Key: pagg_tab_ml_2.a, pagg_tab_ml_2.c
+                           Sort Key: pagg_tab_ml_2.a
                            ->  Append
                                  ->  Seq Scan on pagg_tab_ml_p2_s1 pagg_tab_ml_2
                                  ->  Seq Scan on pagg_tab_ml_p2_s2 pagg_tab_ml_3
@@ -1005,13 +1006,13 @@ SELECT a, sum(b), array_agg(distinct c), count(*) FROM pagg_tab_ml GROUP BY a HA
                Group Key: pagg_tab_ml.a
                Filter: (avg(pagg_tab_ml.b) < '3'::numeric)
                ->  Sort
-                     Sort Key: pagg_tab_ml.a, pagg_tab_ml.c
+                     Sort Key: pagg_tab_ml.a
                      ->  Seq Scan on pagg_tab_ml_p1 pagg_tab_ml
          ->  GroupAggregate
                Group Key: pagg_tab_ml_5.a
                Filter: (avg(pagg_tab_ml_5.b) < '3'::numeric)
                ->  Sort
-                     Sort Key: pagg_tab_ml_5.a, pagg_tab_ml_5.c
+                     Sort Key: pagg_tab_ml_5.a
                      ->  Append
                            ->  Seq Scan on pagg_tab_ml_p3_s1 pagg_tab_ml_5
                            ->  Seq Scan on pagg_tab_ml_p3_s2 pagg_tab_ml_6
@@ -1019,7 +1020,7 @@ SELECT a, sum(b), array_agg(distinct c), count(*) FROM pagg_tab_ml GROUP BY a HA
                Group Key: pagg_tab_ml_2.a
                Filter: (avg(pagg_tab_ml_2.b) < '3'::numeric)
                ->  Sort
-                     Sort Key: pagg_tab_ml_2.a, pagg_tab_ml_2.c
+                     Sort Key: pagg_tab_ml_2.a
                      ->  Append
                            ->  Seq Scan on pagg_tab_ml_p2_s1 pagg_tab_ml_2
                            ->  Seq Scan on pagg_tab_ml_p2_s2 pagg_tab_ml_3

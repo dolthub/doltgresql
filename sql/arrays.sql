@@ -113,12 +113,6 @@ SELECT a FROM arrtest WHERE a[2] IS NULL;
 DELETE FROM arrtest WHERE a[2] IS NULL AND b IS NULL;
 SELECT a,b,c FROM arrtest;
 
--- test non-error-throwing API
-SELECT pg_input_is_valid('{1,2,3}', 'integer[]');
-SELECT pg_input_is_valid('{1,2', 'integer[]');
-SELECT pg_input_is_valid('{1,zed}', 'integer[]');
-SELECT * FROM pg_input_error_info('{1,zed}', 'integer[]');
-
 -- test mixed slice/scalar subscripting
 select '{{1,2,3},{4,5,6},{7,8,9}}'::int[];
 select ('{{1,2,3},{4,5,6},{7,8,9}}'::int[])[1:2][2];
@@ -677,12 +671,12 @@ insert into src
 create type textandtext as (c1 text, c2 text);
 create temp table dest (f1 textandtext[]);
 insert into dest select array[row(f1,f1)::textandtext] from src;
-select length(fipshash((f1[1]).c2)) from dest;
+select length(md5((f1[1]).c2)) from dest;
 delete from src;
-select length(fipshash((f1[1]).c2)) from dest;
+select length(md5((f1[1]).c2)) from dest;
 truncate table src;
 drop table src;
-select length(fipshash((f1[1]).c2)) from dest;
+select length(md5((f1[1]).c2)) from dest;
 drop table dest;
 drop type textandtext;
 
@@ -761,17 +755,3 @@ FROM
 SELECT trim_array(ARRAY[1, 2, 3], -1); -- fail
 SELECT trim_array(ARRAY[1, 2, 3], 10); -- fail
 SELECT trim_array(ARRAY[]::int[], 1); -- fail
-
--- array_shuffle
-SELECT array_shuffle('{1,2,3,4,5,6}'::int[]) <@ '{1,2,3,4,5,6}';
-SELECT array_shuffle('{1,2,3,4,5,6}'::int[]) @> '{1,2,3,4,5,6}';
-SELECT array_dims(array_shuffle('[-1:2][2:3]={{1,2},{3,NULL},{5,6},{7,8}}'::int[]));
-SELECT array_dims(array_shuffle('{{{1,2},{3,NULL}},{{5,6},{7,8}},{{9,10},{11,12}}}'::int[]));
-
--- array_sample
-SELECT array_sample('{1,2,3,4,5,6}'::int[], 3) <@ '{1,2,3,4,5,6}';
-SELECT array_length(array_sample('{1,2,3,4,5,6}'::int[], 3), 1);
-SELECT array_dims(array_sample('[-1:2][2:3]={{1,2},{3,NULL},{5,6},{7,8}}'::int[], 3));
-SELECT array_dims(array_sample('{{{1,2},{3,NULL}},{{5,6},{7,8}},{{9,10},{11,12}}}'::int[], 2));
-SELECT array_sample('{1,2,3,4,5,6}'::int[], -1); -- fail
-SELECT array_sample('{1,2,3,4,5,6}'::int[], 7); --fail

@@ -197,9 +197,9 @@ SELECT typname FROM pg_type WHERE oid = 'attmp_array[]'::regtype;
 (1 row)
 
 SELECT typname FROM pg_type WHERE oid = '_attmp_array[]'::regtype;
-     typname     
------------------
- __attmp_array_1
+    typname     
+----------------
+ ___attmp_array
 (1 row)
 
 DROP TABLE _attmp_array;
@@ -1118,30 +1118,10 @@ ERROR:  relation "non_existent" does not exist
 -- test checking for null values and primary key
 create table atacc1 (test int not null);
 alter table atacc1 add constraint "atacc1_pkey" primary key (test);
-\d atacc1
-               Table "public.atacc1"
- Column |  Type   | Collation | Nullable | Default 
---------+---------+-----------+----------+---------
- test   | integer |           | not null | 
-Indexes:
-    "atacc1_pkey" PRIMARY KEY, btree (test)
-
 alter table atacc1 alter column test drop not null;
-\d atacc1
-               Table "public.atacc1"
- Column |  Type   | Collation | Nullable | Default 
---------+---------+-----------+----------+---------
- test   | integer |           | not null | 
-Indexes:
-    "atacc1_pkey" PRIMARY KEY, btree (test)
-
+ERROR:  column "test" is in a primary key
 alter table atacc1 drop constraint "atacc1_pkey";
-\d atacc1
-               Table "public.atacc1"
- Column |  Type   | Collation | Nullable | Default 
---------+---------+-----------+----------+---------
- test   | integer |           |          | 
-
+alter table atacc1 alter column test drop not null;
 insert into atacc1 values (null);
 alter table atacc1 alter test set not null;
 ERROR:  column "test" of relation "atacc1" contains null values
@@ -1214,6 +1194,20 @@ alter table only parent alter a set not null;
 ERROR:  column "a" of relation "parent" contains null values
 alter table child alter a set not null;
 ERROR:  column "a" of relation "child" contains null values
+delete from parent;
+alter table only parent alter a set not null;
+insert into parent values (NULL);
+ERROR:  null value in column "a" of relation "parent" violates not-null constraint
+DETAIL:  Failing row contains (null).
+alter table child alter a set not null;
+insert into child (a, b) values (NULL, 'foo');
+ERROR:  null value in column "a" of relation "child" violates not-null constraint
+DETAIL:  Failing row contains (null, foo).
+delete from child;
+alter table child alter a set not null;
+insert into child (a, b) values (NULL, 'foo');
+ERROR:  null value in column "a" of relation "child" violates not-null constraint
+DETAIL:  Failing row contains (null, foo).
 drop table child;
 drop table parent;
 -- test setting and removing default values
@@ -2250,7 +2244,7 @@ alter table recur1 add column f2 int;
 alter table recur1 alter column f2 type recur2; -- fails
 ERROR:  composite type recur1 cannot be made a member of itself
 -- SET STORAGE may need to add a TOAST table
-create table test_storage (a text, c text storage plain);
+create table test_storage (a text);
 select reltoastrelid <> 0 as has_toast_table
   from pg_class where oid = 'test_storage'::regclass;
  has_toast_table 
@@ -2268,7 +2262,7 @@ select reltoastrelid <> 0 as has_toast_table
  f
 (1 row)
 
-alter table test_storage alter a set storage default; -- re-add TOAST table
+alter table test_storage alter a set storage extended; -- re-add TOAST table
 select reltoastrelid <> 0 as has_toast_table
   from pg_class where oid = 'test_storage'::regclass;
  has_toast_table 
@@ -2276,9 +2270,6 @@ select reltoastrelid <> 0 as has_toast_table
  t
 (1 row)
 
--- check STORAGE correctness
-create table test_storage_failed (a text, b int storage extended);
-ERROR:  column data type integer can only have storage PLAIN
 -- test that SET STORAGE propagates to index correctly
 create index test_storage_idx on test_storage (b, a);
 alter table test_storage alter column a set storage external;
@@ -2287,7 +2278,6 @@ alter table test_storage alter column a set storage external;
  Column |  Type   | Collation | Nullable |      Default      | Storage  | Stats target | Description 
 --------+---------+-----------+----------+-------------------+----------+--------------+-------------
  a      | text    |           |          |                   | external |              | 
- c      | text    |           |          |                   | plain    |              | 
  b      | integer |           |          | random()::integer | plain    |              | 
 Indexes:
     "test_storage_idx" btree (b, a)
@@ -2499,8 +2489,8 @@ create view at_view_2 as select *, to_json(v1) as j from at_view_1 v1;
  id     | integer |           |          |         | plain    | 
  stuff  | text    |           |          |         | extended | 
 View definition:
- SELECT id,
-    stuff
+ SELECT bt.id,
+    bt.stuff
    FROM at_base_table bt;
 
 \d+ at_view_2
@@ -2511,8 +2501,8 @@ View definition:
  stuff  | text    |           |          |         | extended | 
  j      | json    |           |          |         | extended | 
 View definition:
- SELECT id,
-    stuff,
+ SELECT v1.id,
+    v1.stuff,
     to_json(v1.*) AS j
    FROM at_view_1 v1;
 
@@ -2538,8 +2528,8 @@ create or replace view at_view_1 as select *, 2+2 as more from at_base_table bt;
  stuff  | text    |           |          |         | extended | 
  more   | integer |           |          |         | plain    | 
 View definition:
- SELECT id,
-    stuff,
+ SELECT bt.id,
+    bt.stuff,
     2 + 2 AS more
    FROM at_base_table bt;
 
@@ -2551,8 +2541,8 @@ View definition:
  stuff  | text    |           |          |         | extended | 
  j      | json    |           |          |         | extended | 
 View definition:
- SELECT id,
-    stuff,
+ SELECT v1.id,
+    v1.stuff,
     to_json(v1.*) AS j
    FROM at_view_1 v1;
 
@@ -3840,34 +3830,16 @@ Referenced by:
     TABLE "ataddindex" CONSTRAINT "ataddindex_ref_id_fkey" FOREIGN KEY (ref_id) REFERENCES ataddindex(id)
 
 DROP TABLE ataddindex;
-CREATE TABLE atnotnull1 ();
-ALTER TABLE atnotnull1
-  ADD COLUMN a INT,
-  ALTER a SET NOT NULL;
-ALTER TABLE atnotnull1
-  ADD COLUMN b INT,
-  ADD NOT NULL b;
-ALTER TABLE atnotnull1
-  ADD COLUMN c INT,
-  ADD PRIMARY KEY (c);
-\d+ atnotnull1
-                                Table "public.atnotnull1"
- Column |  Type   | Collation | Nullable | Default | Storage | Stats target | Description 
---------+---------+-----------+----------+---------+---------+--------------+-------------
- a      | integer |           | not null |         | plain   |              | 
- b      | integer |           | not null |         | plain   |              | 
- c      | integer |           | not null |         | plain   |              | 
-Indexes:
-    "atnotnull1_pkey" PRIMARY KEY, btree (c)
-Not-null constraints:
-    "atnotnull1_a_not_null" NOT NULL "a"
-    "atnotnull1_b_not_null" NOT NULL "b"
-
--- cannot drop column that is part of the partition key
+-- unsupported constraint types for partitioned tables
 CREATE TABLE partitioned (
 	a int,
 	b int
 ) PARTITION BY RANGE (a, (a+b+1));
+ALTER TABLE partitioned ADD EXCLUDE USING gist (a WITH &&);
+ERROR:  exclusion constraints are not supported on partitioned tables
+LINE 1: ALTER TABLE partitioned ADD EXCLUDE USING gist (a WITH &&);
+                                    ^
+-- cannot drop column that is part of the partition key
 ALTER TABLE partitioned DROP COLUMN a;
 ERROR:  cannot drop column "a" because it is part of the partition key of relation "partitioned"
 ALTER TABLE partitioned ALTER COLUMN a TYPE char(5);
@@ -3876,10 +3848,6 @@ ALTER TABLE partitioned DROP COLUMN b;
 ERROR:  cannot drop column "b" because it is part of the partition key of relation "partitioned"
 ALTER TABLE partitioned ALTER COLUMN b TYPE char(5);
 ERROR:  cannot alter column "b" because it is part of the partition key of relation "partitioned"
--- specifying storage parameters for partitioned tables is not supported
-ALTER TABLE partitioned SET (fillfactor=100);
-ERROR:  cannot specify storage parameters for a partitioned table
-HINT:  Specify storage parameters for its leaf partitions instead.
 -- partitioned table cannot participate in regular inheritance
 CREATE TABLE nonpartitioned (
 	a int,
@@ -4209,7 +4177,7 @@ CREATE TABLE quuux2 PARTITION OF quuux FOR VALUES IN (2);
 DROP TABLE quuux;
 -- check validation when attaching hash partitions
 -- Use hand-rolled hash functions and operator class to get predictable result
--- on different machines. part_test_int4_ops is defined in test_setup.sql.
+-- on different machines. part_test_int4_ops is defined in insert.sql.
 -- check that the new partition won't overlap with an existing partition
 CREATE TABLE hash_parted (
 	a int,
@@ -4380,6 +4348,7 @@ ERROR:  cannot alter inherited column "b"
 -- partitions exist
 ALTER TABLE ONLY list_parted2 ALTER b SET NOT NULL;
 ERROR:  constraint must be added to child tables too
+DETAIL:  Column "b" of relation "part_2" is not already NOT NULL.
 HINT:  Do not specify the ONLY keyword.
 ALTER TABLE ONLY list_parted2 ADD CONSTRAINT check_b CHECK (b <> 'zz');
 ERROR:  constraint must be added to child tables too

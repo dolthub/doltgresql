@@ -98,37 +98,6 @@ two | 2
    1 |   2
 (1 row)
 
--- \bind (extended query protocol)
-SELECT 1 \bind \g
- ?column? 
-----------
-        1
-(1 row)
-
-SELECT $1 \bind 'foo' \g
- ?column? 
-----------
- foo
-(1 row)
-
-SELECT $1, $2 \bind 'foo' 'bar' \g
- ?column? | ?column? 
-----------+----------
- foo      | bar
-(1 row)
-
--- errors
--- parse error
-SELECT foo \bind \g
-ERROR:  column "foo" does not exist
-LINE 1: SELECT foo 
-               ^
--- tcop error
-SELECT 1 \; SELECT 2 \bind \g
-ERROR:  cannot insert multiple commands into a prepared statement
--- bind error
-SELECT $1, $2 \bind 'foo' \g
-ERROR:  bind message supplies 1 parameters, but prepared statement "" requires 2
 -- \gset
 select 10 as test01, 20 as test02, 'Hello' as test03 \gset pref01_
 \echo :pref01_test01 :pref01_test02 :pref01_test03
@@ -359,7 +328,6 @@ tuples_only              off
 unicode_border_linestyle single
 unicode_column_linestyle single
 unicode_header_linestyle single
-xheader_width            full
 -- test multi-line headers, wrapping, and newline indicators
 -- in aligned, unaligned, and wrapped formats
 prepare q as select array_to_string(array_agg(repeat('x',2*n)),E'\n') as "ab
@@ -4547,7 +4515,7 @@ invalid command \lo
 	\timing arg1
 	\unset arg1
 	\w arg1
-	\watch arg1 arg2
+	\watch arg1
 	\x arg1
 	-- \else here is eaten as part of OT_FILEPIPE argument
 	\w |/no/such/file \else
@@ -5258,35 +5226,6 @@ reset work_mem;
  pg_catalog | &&   | anyarray      | anyarray       | boolean     | overlaps
 (1 row)
 
--- check \df+
--- we have to use functions with a predictable owner name, so make a role
-create role regress_psql_user superuser;
-begin;
-set session authorization regress_psql_user;
-create function psql_df_internal (float8)
-  returns float8
-  language internal immutable parallel safe strict
-  as 'dsin';
-create function psql_df_sql (x integer)
-  returns integer
-  security definer
-  begin atomic select x + 1; end;
-create function psql_df_plpgsql ()
-  returns void
-  language plpgsql
-  as $$ begin return; end; $$;
-comment on function psql_df_plpgsql () is 'some comment';
-\df+ psql_df_*
-                                                                                       List of functions
- Schema |       Name       | Result data type | Argument data types | Type | Volatility | Parallel |       Owner       | Security | Access privileges | Language | Internal name | Description  
---------+------------------+------------------+---------------------+------+------------+----------+-------------------+----------+-------------------+----------+---------------+--------------
- public | psql_df_internal | double precision | double precision    | func | immutable  | safe     | regress_psql_user | invoker  |                   | internal | dsin          | 
- public | psql_df_plpgsql  | void             |                     | func | volatile   | unsafe   | regress_psql_user | invoker  |                   | plpgsql  |               | some comment
- public | psql_df_sql      | integer          | x integer           | func | volatile   | unsafe   | regress_psql_user | definer  |                   | sql      |               | 
-(3 rows)
-
-rollback;
-drop role regress_psql_user;
 -- check \sf
 \sf information_schema._pg_expandarray
 CREATE OR REPLACE FUNCTION information_schema._pg_expandarray(anyarray, OUT x anyelement, OUT n integer)
@@ -5534,137 +5473,6 @@ CONTEXT:  PL/pgSQL function warn(text) line 2 at RAISE
 
 \set SHOW_ALL_RESULTS on
 DROP FUNCTION warn(TEXT);
---
--- \g with file
---
-\getenv abs_builddir PG_ABS_BUILDDIR
-\set g_out_file :abs_builddir '/results/psql-output1'
-CREATE TEMPORARY TABLE reload_output(
-  lineno int NOT NULL GENERATED ALWAYS AS IDENTITY,
-  line text
-);
-SELECT 1 AS a \g :g_out_file
-COPY reload_output(line) FROM :'g_out_file';
-SELECT 2 AS b\; SELECT 3 AS c\; SELECT 4 AS d \g :g_out_file
-COPY reload_output(line) FROM :'g_out_file';
-COPY (SELECT 'foo') TO STDOUT \; COPY (SELECT 'bar') TO STDOUT \g :g_out_file
-COPY reload_output(line) FROM :'g_out_file';
-SELECT line FROM reload_output ORDER BY lineno;
-  line   
----------
-  a 
- ---
-  1
- (1 row)
- 
-  b 
- ---
-  2
- (1 row)
- 
-  c 
- ---
-  3
- (1 row)
- 
-  d 
- ---
-  4
- (1 row)
- 
- foo
- bar
-(22 rows)
-
-TRUNCATE TABLE reload_output;
---
--- \o with file
---
-\set o_out_file :abs_builddir '/results/psql-output2'
-\o :o_out_file
-SELECT max(unique1) FROM onek;
-SELECT 1 AS a\; SELECT 2 AS b\; SELECT 3 AS c;
--- COPY TO file
--- The data goes to :g_out_file and the status to :o_out_file
-\set QUIET false
-COPY (SELECT unique1 FROM onek ORDER BY unique1 LIMIT 10) TO :'g_out_file';
--- DML command status
-UPDATE onek SET unique1 = unique1 WHERE false;
-\set QUIET true
-\o
--- Check the contents of the files generated.
-COPY reload_output(line) FROM :'g_out_file';
-SELECT line FROM reload_output ORDER BY lineno;
- line 
-------
- 0
- 1
- 2
- 3
- 4
- 5
- 6
- 7
- 8
- 9
-(10 rows)
-
-TRUNCATE TABLE reload_output;
-COPY reload_output(line) FROM :'o_out_file';
-SELECT line FROM reload_output ORDER BY lineno;
-   line   
-----------
-  max 
- -----
-  999
- (1 row)
- 
-  a 
- ---
-  1
- (1 row)
- 
-  b 
- ---
-  2
- (1 row)
- 
-  c 
- ---
-  3
- (1 row)
- 
- COPY 10
- UPDATE 0
-(22 rows)
-
-TRUNCATE TABLE reload_output;
--- Multiple COPY TO STDOUT with output file
-\o :o_out_file
--- The data goes to :o_out_file with no status generated.
-COPY (SELECT 'foo1') TO STDOUT \; COPY (SELECT 'bar1') TO STDOUT;
--- Combination of \o and \g file with multiple COPY queries.
-COPY (SELECT 'foo2') TO STDOUT \; COPY (SELECT 'bar2') TO STDOUT \g :g_out_file
-\o
--- Check the contents of the files generated.
-COPY reload_output(line) FROM :'g_out_file';
-SELECT line FROM reload_output ORDER BY lineno;
- line 
-------
- foo2
- bar2
-(2 rows)
-
-TRUNCATE TABLE reload_output;
-COPY reload_output(line) FROM :'o_out_file';
-SELECT line FROM reload_output ORDER BY lineno;
- line 
-------
- foo1
- bar1
-(2 rows)
-
-DROP TABLE reload_output;
 --
 -- AUTOCOMMIT and combined queries
 --
@@ -6187,9 +5995,9 @@ List of text search templates
 (0 rows)
 
 \dg "no.such.role"
-     List of roles
- Role name | Attributes 
------------+------------
+           List of roles
+ Role name | Attributes | Member of 
+-----------+------------+-----------
 
 \dL "no.such.language"
           List of languages
@@ -6210,9 +6018,9 @@ List of schemas
 (0 rows)
 
 \dO "no.such.collation"
-                                  List of collations
- Schema | Name | Provider | Collate | Ctype | ICU Locale | ICU Rules | Deterministic? 
---------+------+----------+---------+-------+------------+-----------+----------------
+                            List of collations
+ Schema | Name | Collate | Ctype | ICU Locale | Provider | Deterministic? 
+--------+------+---------+-------+------------+----------+----------------
 (0 rows)
 
 \dp "no.such.access.privilege"
@@ -6399,9 +6207,9 @@ cross-database references are not implemented: "no.such.schema"."no.such.languag
 (0 rows)
 
 \dO "no.such.schema"."no.such.collation"
-                                  List of collations
- Schema | Name | Provider | Collate | Ctype | ICU Locale | ICU Rules | Deterministic? 
---------+------+----------+---------+-------+------------+-----------+----------------
+                            List of collations
+ Schema | Name | Collate | Ctype | ICU Locale | Provider | Deterministic? 
+--------+------+---------+-------+------------+----------+----------------
 (0 rows)
 
 \dp "no.such.schema"."no.such.access.privilege"
@@ -6542,9 +6350,9 @@ List of text search templates
 (0 rows)
 
 \dO regression."no.such.schema"."no.such.collation"
-                                  List of collations
- Schema | Name | Provider | Collate | Ctype | ICU Locale | ICU Rules | Deterministic? 
---------+------+----------+---------+-------+------------+-----------+----------------
+                            List of collations
+ Schema | Name | Collate | Ctype | ICU Locale | Provider | Deterministic? 
+--------+------+---------+-------+------------+----------+----------------
 (0 rows)
 
 \dp regression."no.such.schema"."no.such.access.privilege"
@@ -6618,43 +6426,3 @@ cross-database references are not implemented: "no.such.database"."no.such.schem
 cross-database references are not implemented: "no.such.database"."no.such.schema"."no.such.data.type"
 \dX "no.such.database"."no.such.schema"."no.such.extended.statistics"
 cross-database references are not implemented: "no.such.database"."no.such.schema"."no.such.extended.statistics"
--- check \drg and \du
-CREATE ROLE regress_du_role0;
-CREATE ROLE regress_du_role1;
-CREATE ROLE regress_du_role2;
-CREATE ROLE regress_du_admin;
-GRANT regress_du_role0 TO regress_du_admin WITH ADMIN TRUE;
-GRANT regress_du_role1 TO regress_du_admin WITH ADMIN TRUE;
-GRANT regress_du_role2 TO regress_du_admin WITH ADMIN TRUE;
-GRANT regress_du_role0 TO regress_du_role1 WITH ADMIN TRUE,  INHERIT TRUE,  SET TRUE  GRANTED BY regress_du_admin;
-GRANT regress_du_role0 TO regress_du_role2 WITH ADMIN TRUE,  INHERIT FALSE, SET FALSE GRANTED BY regress_du_admin;
-GRANT regress_du_role1 TO regress_du_role2 WITH ADMIN TRUE , INHERIT FALSE, SET TRUE  GRANTED BY regress_du_admin;
-GRANT regress_du_role0 TO regress_du_role1 WITH ADMIN FALSE, INHERIT TRUE,  SET FALSE GRANTED BY regress_du_role1;
-GRANT regress_du_role0 TO regress_du_role2 WITH ADMIN FALSE, INHERIT TRUE , SET TRUE  GRANTED BY regress_du_role1;
-GRANT regress_du_role0 TO regress_du_role1 WITH ADMIN FALSE, INHERIT FALSE, SET TRUE  GRANTED BY regress_du_role2;
-GRANT regress_du_role0 TO regress_du_role2 WITH ADMIN FALSE, INHERIT FALSE, SET FALSE GRANTED BY regress_du_role2;
-\drg regress_du_role*
-                             List of role grants
-    Role name     |    Member of     |       Options       |     Grantor      
-------------------+------------------+---------------------+------------------
- regress_du_role1 | regress_du_role0 | ADMIN, INHERIT, SET | regress_du_admin
- regress_du_role1 | regress_du_role0 | INHERIT             | regress_du_role1
- regress_du_role1 | regress_du_role0 | SET                 | regress_du_role2
- regress_du_role2 | regress_du_role0 | ADMIN               | regress_du_admin
- regress_du_role2 | regress_du_role0 | INHERIT, SET        | regress_du_role1
- regress_du_role2 | regress_du_role0 |                     | regress_du_role2
- regress_du_role2 | regress_du_role1 | ADMIN, SET          | regress_du_admin
-(7 rows)
-
-\du regress_du_role*
-          List of roles
-    Role name     |  Attributes  
-------------------+--------------
- regress_du_role0 | Cannot login
- regress_du_role1 | Cannot login
- regress_du_role2 | Cannot login
-
-DROP ROLE regress_du_role0;
-DROP ROLE regress_du_role1;
-DROP ROLE regress_du_role2;
-DROP ROLE regress_du_admin;

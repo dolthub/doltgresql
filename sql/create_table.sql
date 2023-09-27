@@ -106,6 +106,12 @@ CREATE TABLE partitioned (
 	a2 int
 ) PARTITION BY LIST (a1, a2);	-- fail
 
+-- unsupported constraint type for partitioned tables
+CREATE TABLE partitioned (
+	a int,
+	EXCLUDE USING gist (a WITH &&)
+) PARTITION BY RANGE (a);
+
 -- prevent using prohibited expressions in the key
 CREATE FUNCTION retset (a int) RETURNS SETOF int AS $$ SELECT 1; $$ LANGUAGE SQL IMMUTABLE;
 CREATE TABLE partitioned (
@@ -526,11 +532,11 @@ CREATE TABLE part_b PARTITION OF parted (
 	CONSTRAINT check_b CHECK (b >= 0)
 ) FOR VALUES IN ('b');
 -- conislocal should be false for any merged constraints, true otherwise
-SELECT conname, conislocal, coninhcount FROM pg_constraint WHERE conrelid = 'part_b'::regclass ORDER BY coninhcount DESC, conname;
+SELECT conislocal, coninhcount FROM pg_constraint WHERE conrelid = 'part_b'::regclass ORDER BY conislocal, coninhcount;
 
 -- Once check_b is added to the parent, it should be made non-local for part_b
 ALTER TABLE parted ADD CONSTRAINT check_b CHECK (b >= 0);
-SELECT conname, conislocal, coninhcount FROM pg_constraint WHERE conrelid = 'part_b'::regclass ORDER BY coninhcount DESC, conname;
+SELECT conislocal, coninhcount FROM pg_constraint WHERE conrelid = 'part_b'::regclass;
 
 -- Neither check_a nor check_b are droppable from part_b
 ALTER TABLE part_b DROP CONSTRAINT check_a;
@@ -540,7 +546,7 @@ ALTER TABLE part_b DROP CONSTRAINT check_b;
 -- traditional inheritance where they will be left behind, because they would
 -- be local constraints.
 ALTER TABLE parted DROP CONSTRAINT check_a, DROP CONSTRAINT check_b;
-SELECT conname, conislocal, coninhcount FROM pg_constraint WHERE conrelid = 'part_b'::regclass ORDER BY coninhcount DESC, conname;
+SELECT conislocal, coninhcount FROM pg_constraint WHERE conrelid = 'part_b'::regclass;
 
 -- specify PARTITION BY for a partition
 CREATE TABLE fail_part_col_not_found PARTITION OF parted FOR VALUES IN ('c') PARTITION BY RANGE (c);
@@ -645,9 +651,6 @@ COMMENT ON COLUMN parted_col_comment.a IS 'Partition key';
 SELECT obj_description('parted_col_comment'::regclass);
 \d+ parted_col_comment
 DROP TABLE parted_col_comment;
-
--- specifying storage parameters for partitioned tables is not supported
-CREATE TABLE parted_col_comment (a int, b text) PARTITION BY LIST (a) WITH (fillfactor=100);
 
 -- list partitioning on array type column
 CREATE TABLE arrlp (a int[]) PARTITION BY LIST (a);

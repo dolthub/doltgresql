@@ -72,37 +72,6 @@ INSERT INTO INTERVAL_TBL (f1) VALUES ('@ 30 eons ago');
 ERROR:  invalid input syntax for type interval: "@ 30 eons ago"
 LINE 1: INSERT INTO INTERVAL_TBL (f1) VALUES ('@ 30 eons ago');
                                               ^
--- Test non-error-throwing API
-SELECT pg_input_is_valid('1.5 weeks', 'interval');
- pg_input_is_valid 
--------------------
- t
-(1 row)
-
-SELECT pg_input_is_valid('garbage', 'interval');
- pg_input_is_valid 
--------------------
- f
-(1 row)
-
-SELECT pg_input_is_valid('@ 30 eons ago', 'interval');
- pg_input_is_valid 
--------------------
- f
-(1 row)
-
-SELECT * FROM pg_input_error_info('garbage', 'interval');
-                      message                      | detail | hint | sql_error_code 
----------------------------------------------------+--------+------+----------------
- invalid input syntax for type interval: "garbage" |        |      | 22007
-(1 row)
-
-SELECT * FROM pg_input_error_info('@ 30 eons ago', 'interval');
-                         message                         | detail | hint | sql_error_code 
----------------------------------------------------------+--------+------+----------------
- invalid input syntax for type interval: "@ 30 eons ago" |        |      | 22007
-(1 row)
-
 -- test interval operators
 SELECT * FROM INTERVAL_TBL;
        f1        
@@ -1787,21 +1756,3 @@ SELECT extract(epoch from interval '1000000000 days');
  86400000000000.000000
 (1 row)
 
--- "ago" can only appear once at the end of an interval.
-SELECT INTERVAL '42 days 2 seconds ago ago';
-ERROR:  invalid input syntax for type interval: "42 days 2 seconds ago ago"
-LINE 1: SELECT INTERVAL '42 days 2 seconds ago ago';
-                        ^
-SELECT INTERVAL '2 minutes ago 5 days';
-ERROR:  invalid input syntax for type interval: "2 minutes ago 5 days"
-LINE 1: SELECT INTERVAL '2 minutes ago 5 days';
-                        ^
--- consecutive and dangling units are not allowed.
-SELECT INTERVAL 'hour 5 months';
-ERROR:  invalid input syntax for type interval: "hour 5 months"
-LINE 1: SELECT INTERVAL 'hour 5 months';
-                        ^
-SELECT INTERVAL '1 year months days 5 hours';
-ERROR:  invalid input syntax for type interval: "1 year months days 5 hours"
-LINE 1: SELECT INTERVAL '1 year months days 5 hours';
-                        ^

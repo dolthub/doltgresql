@@ -31,13 +31,6 @@ select '[]'::fullname;          -- bad
 select ' (Joe,Blow)  '::fullname;  -- ok, extra whitespace
 select '(Joe,Blow) /'::fullname;  -- bad
 
--- test non-error-throwing API
-SELECT pg_input_is_valid('(1,2)', 'complex');
-SELECT pg_input_is_valid('(1,2', 'complex');
-SELECT pg_input_is_valid('(1,zed)', 'complex');
-SELECT * FROM pg_input_error_info('(1,zed)', 'complex');
-SELECT * FROM pg_input_error_info('(1,1e400)', 'complex');
-
 create temp table quadtable(f1 int, q quad);
 
 insert into quadtable values (1, ((3.3,4.4),(5.5,6.6)));
@@ -494,31 +487,6 @@ with r(a,b) as materialized
           (null,row(1,2)), (null,row(null,null)), (null,null) )
 select r, r is null as isnull, r is not null as isnotnull from r;
 
---
--- Check parsing of indirect references to composite values (bug #18077)
---
-explain (verbose, costs off)
-with cte(c) as materialized (select row(1, 2)),
-     cte2(c) as (select * from cte)
-select * from cte2 as t
-where (select * from (select c as c1) s
-       where (select (c1).f1 > 0)) is not null;
-
-with cte(c) as materialized (select row(1, 2)),
-     cte2(c) as (select * from cte)
-select * from cte2 as t
-where (select * from (select c as c1) s
-       where (select (c1).f1 > 0)) is not null;
-
--- Also check deparsing of such cases
-create view composite_v as
-with cte(c) as materialized (select row(1, 2)),
-     cte2(c) as (select * from cte)
-select 1 as one from cte2 as t
-where (select * from (select c as c1) s
-       where (select (c1).f1 > 0)) is not null;
-select pg_get_viewdef('composite_v', true);
-drop view composite_v;
 
 --
 -- Tests for component access / FieldSelect

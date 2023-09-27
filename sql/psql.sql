@@ -45,20 +45,6 @@ SELECT 1 as one, 2 as two \g (format=csv csv_fieldsep='\t')
 SELECT 1 as one, 2 as two \gx (title='foo bar')
 \g
 
--- \bind (extended query protocol)
-
-SELECT 1 \bind \g
-SELECT $1 \bind 'foo' \g
-SELECT $1, $2 \bind 'foo' 'bar' \g
-
--- errors
--- parse error
-SELECT foo \bind \g
--- tcop error
-SELECT 1 \; SELECT 2 \bind \g
--- bind error
-SELECT $1, $2 \bind 'foo' \g
-
 -- \gset
 
 select 10 as test01, 20 as test02, 'Hello' as test03 \gset pref01_
@@ -1030,7 +1016,7 @@ select \if false \\ (bogus \else \\ 42 \endif \\ forty_two;
 	\timing arg1
 	\unset arg1
 	\w arg1
-	\watch arg1 arg2
+	\watch arg1
 	\x arg1
 	-- \else here is eaten as part of OT_FILEPIPE argument
 	\w |/no/such/file \else
@@ -1283,30 +1269,6 @@ reset work_mem;
 \do - pg_catalog.int4
 \do && anyarray *
 
--- check \df+
--- we have to use functions with a predictable owner name, so make a role
-create role regress_psql_user superuser;
-begin;
-set session authorization regress_psql_user;
-
-create function psql_df_internal (float8)
-  returns float8
-  language internal immutable parallel safe strict
-  as 'dsin';
-create function psql_df_sql (x integer)
-  returns integer
-  security definer
-  begin atomic select x + 1; end;
-create function psql_df_plpgsql ()
-  returns void
-  language plpgsql
-  as $$ begin return; end; $$;
-comment on function psql_df_plpgsql () is 'some comment';
-
-\df+ psql_df_*
-rollback;
-drop role regress_psql_user;
-
 -- check \sf
 \sf information_schema._pg_expandarray
 \sf+ information_schema._pg_expandarray
@@ -1418,70 +1380,6 @@ SELECT 1 AS one \; SELECT warn('1.5') \; SELECT 2 AS two ;
 
 \set SHOW_ALL_RESULTS on
 DROP FUNCTION warn(TEXT);
-
---
--- \g with file
---
-\getenv abs_builddir PG_ABS_BUILDDIR
-\set g_out_file :abs_builddir '/results/psql-output1'
-
-CREATE TEMPORARY TABLE reload_output(
-  lineno int NOT NULL GENERATED ALWAYS AS IDENTITY,
-  line text
-);
-
-SELECT 1 AS a \g :g_out_file
-COPY reload_output(line) FROM :'g_out_file';
-SELECT 2 AS b\; SELECT 3 AS c\; SELECT 4 AS d \g :g_out_file
-COPY reload_output(line) FROM :'g_out_file';
-COPY (SELECT 'foo') TO STDOUT \; COPY (SELECT 'bar') TO STDOUT \g :g_out_file
-COPY reload_output(line) FROM :'g_out_file';
-
-SELECT line FROM reload_output ORDER BY lineno;
-TRUNCATE TABLE reload_output;
-
---
--- \o with file
---
-\set o_out_file :abs_builddir '/results/psql-output2'
-
-\o :o_out_file
-SELECT max(unique1) FROM onek;
-SELECT 1 AS a\; SELECT 2 AS b\; SELECT 3 AS c;
-
--- COPY TO file
--- The data goes to :g_out_file and the status to :o_out_file
-\set QUIET false
-COPY (SELECT unique1 FROM onek ORDER BY unique1 LIMIT 10) TO :'g_out_file';
--- DML command status
-UPDATE onek SET unique1 = unique1 WHERE false;
-\set QUIET true
-\o
-
--- Check the contents of the files generated.
-COPY reload_output(line) FROM :'g_out_file';
-SELECT line FROM reload_output ORDER BY lineno;
-TRUNCATE TABLE reload_output;
-COPY reload_output(line) FROM :'o_out_file';
-SELECT line FROM reload_output ORDER BY lineno;
-TRUNCATE TABLE reload_output;
-
--- Multiple COPY TO STDOUT with output file
-\o :o_out_file
--- The data goes to :o_out_file with no status generated.
-COPY (SELECT 'foo1') TO STDOUT \; COPY (SELECT 'bar1') TO STDOUT;
--- Combination of \o and \g file with multiple COPY queries.
-COPY (SELECT 'foo2') TO STDOUT \; COPY (SELECT 'bar2') TO STDOUT \g :g_out_file
-\o
-
--- Check the contents of the files generated.
-COPY reload_output(line) FROM :'g_out_file';
-SELECT line FROM reload_output ORDER BY lineno;
-TRUNCATE TABLE reload_output;
-COPY reload_output(line) FROM :'o_out_file';
-SELECT line FROM reload_output ORDER BY lineno;
-
-DROP TABLE reload_output;
 
 --
 -- AUTOCOMMIT and combined queries
@@ -1823,29 +1721,3 @@ DROP FUNCTION psql_error;
 \dP "no.such.database"."no.such.schema"."no.such.partitioned.relation"
 \dT "no.such.database"."no.such.schema"."no.such.data.type"
 \dX "no.such.database"."no.such.schema"."no.such.extended.statistics"
-
--- check \drg and \du
-CREATE ROLE regress_du_role0;
-CREATE ROLE regress_du_role1;
-CREATE ROLE regress_du_role2;
-CREATE ROLE regress_du_admin;
-
-GRANT regress_du_role0 TO regress_du_admin WITH ADMIN TRUE;
-GRANT regress_du_role1 TO regress_du_admin WITH ADMIN TRUE;
-GRANT regress_du_role2 TO regress_du_admin WITH ADMIN TRUE;
-
-GRANT regress_du_role0 TO regress_du_role1 WITH ADMIN TRUE,  INHERIT TRUE,  SET TRUE  GRANTED BY regress_du_admin;
-GRANT regress_du_role0 TO regress_du_role2 WITH ADMIN TRUE,  INHERIT FALSE, SET FALSE GRANTED BY regress_du_admin;
-GRANT regress_du_role1 TO regress_du_role2 WITH ADMIN TRUE , INHERIT FALSE, SET TRUE  GRANTED BY regress_du_admin;
-GRANT regress_du_role0 TO regress_du_role1 WITH ADMIN FALSE, INHERIT TRUE,  SET FALSE GRANTED BY regress_du_role1;
-GRANT regress_du_role0 TO regress_du_role2 WITH ADMIN FALSE, INHERIT TRUE , SET TRUE  GRANTED BY regress_du_role1;
-GRANT regress_du_role0 TO regress_du_role1 WITH ADMIN FALSE, INHERIT FALSE, SET TRUE  GRANTED BY regress_du_role2;
-GRANT regress_du_role0 TO regress_du_role2 WITH ADMIN FALSE, INHERIT FALSE, SET FALSE GRANTED BY regress_du_role2;
-
-\drg regress_du_role*
-\du regress_du_role*
-
-DROP ROLE regress_du_role0;
-DROP ROLE regress_du_role1;
-DROP ROLE regress_du_role2;
-DROP ROLE regress_du_admin;

@@ -32,13 +32,6 @@ INSERT INTO INTERVAL_TBL (f1) VALUES ('5 months 12 hours');
 INSERT INTO INTERVAL_TBL (f1) VALUES ('badly formatted interval');
 INSERT INTO INTERVAL_TBL (f1) VALUES ('@ 30 eons ago');
 
--- Test non-error-throwing API
-SELECT pg_input_is_valid('1.5 weeks', 'interval');
-SELECT pg_input_is_valid('garbage', 'interval');
-SELECT pg_input_is_valid('@ 30 eons ago', 'interval');
-SELECT * FROM pg_input_error_info('garbage', 'interval');
-SELECT * FROM pg_input_error_info('@ 30 eons ago', 'interval');
-
 -- test interval operators
 
 SELECT * FROM INTERVAL_TBL;
@@ -582,11 +575,3 @@ SELECT f1,
 
 -- internal overflow test case
 SELECT extract(epoch from interval '1000000000 days');
-
--- "ago" can only appear once at the end of an interval.
-SELECT INTERVAL '42 days 2 seconds ago ago';
-SELECT INTERVAL '2 minutes ago 5 days';
-
--- consecutive and dangling units are not allowed.
-SELECT INTERVAL 'hour 5 months';
-SELECT INTERVAL '1 year months days 5 hours';

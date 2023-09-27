@@ -3404,22 +3404,22 @@ select * from ret_query1();
 create type record_type as (x text, y int, z boolean);
 create or replace function ret_query2(lim int) returns setof record_type as $$
 begin
-    return query select fipshash(s.x::text), s.x, s.x > 0
+    return query select md5(s.x::text), s.x, s.x > 0
                  from generate_series(-8, lim) s (x) where s.x % 2 = 0;
 end;
 $$ language plpgsql;
 select * from ret_query2(8);
                 x                 | y  | z 
 ----------------------------------+----+---
- e91592205d3881e3ea35d66973bb4898 | -8 | f
- 03b26944890929ff751653acb2f2af79 | -6 | f
- e5e0093f285a4fb94c3fcc2ad7fd04ed | -4 | f
- cf3bae39dd692048a8bf961182e6a34d | -2 | f
- 5feceb66ffc86f38d952786c6d696c79 |  0 | f
- d4735e3a265e16eee03f59718b9b5d03 |  2 | t
- 4b227777d4dd1fc61c6f884f48641d02 |  4 | t
- e7f6c011776e8db7cd330b54174fd76f |  6 | t
- 2c624232cdd221771294dfbb310aca00 |  8 | t
+ a8d2ec85eaf98407310b72eb73dda247 | -8 | f
+ 596a3d04481816330f07e4f97510c28f | -6 | f
+ 0267aaf632e87a63288a08331f22c7c3 | -4 | f
+ 5d7b9adcbe1c629ec722529dd12e5129 | -2 | f
+ cfcd208495d565ef66e7dff9f98764da |  0 | f
+ c81e728d9d4c2f636f067f89cc14862c |  2 | t
+ a87ff679a2f3e71d9181a67b7542122c |  4 | t
+ 1679091c5a880faf6fb5e6087eb1b2dc |  6 | t
+ c9f0f895fb98ab9159f51fd0297e236d |  8 | t
 (9 rows)
 
 -- test EXECUTE USING
@@ -3482,9 +3482,6 @@ declare
   c2 cursor
        for select * from generate_series(41,43) i;
 begin
-  -- assign portal names to cursors to get stable output
-  c := 'c';
-  c2 := 'c2';
   for r in c(5,7) loop
     raise notice '% from %', r.i, c;
   end loop;
@@ -3627,22 +3624,6 @@ select * from forc_test;
 (10 rows)
 
 drop function forc01();
--- it's okay to re-use a cursor variable name, even when bound
-do $$
-declare cnt int := 0;
-  c1 cursor for select * from forc_test;
-begin
-  for r1 in c1 loop
-    declare c1 cursor for select * from forc_test;
-    begin
-      for r2 in c1 loop
-        cnt := cnt + 1;
-      end loop;
-    end;
-  end loop;
-  raise notice 'cnt = %', cnt;
-end $$;
-NOTICE:  cnt = 100
 -- fail because cursor has no query bound to it
 create or replace function forc_bad() returns void as $$
 declare
@@ -5229,7 +5210,7 @@ NOTICE:  outer_func() done
                20
 (1 row)
 
--- repeated call should work
+-- repeated call should to work
 select outer_outer_func(20);
 NOTICE:  calling down into outer_func()
 NOTICE:  calling down into inner_func()
@@ -5311,7 +5292,7 @@ NOTICE:  outer_func() done
                20
 (1 row)
 
--- repeated call should work
+-- repeated call should to work
 select outer_outer_func(20);
 NOTICE:  calling down into outer_func()
 NOTICE:  calling down into inner_func()
@@ -5332,33 +5313,6 @@ NOTICE:  outer_func() done
 drop function outer_outer_func(int);
 drop function outer_func(int);
 drop function inner_func(int);
--- Test pg_routine_oid
-create function current_function(text)
-returns regprocedure as $$
-declare
-  fn_oid regprocedure;
-begin
-  get diagnostics fn_oid = pg_routine_oid;
-  return fn_oid;
-end;
-$$ language plpgsql;
-select current_function('foo');
-    current_function    
-------------------------
- current_function(text)
-(1 row)
-
-drop function current_function(text);
--- shouldn't fail in DO, even though there's no useful data
-do $$
-declare
-  fn_oid oid;
-begin
-  get diagnostics fn_oid = pg_routine_oid;
-  raise notice 'pg_routine_oid = %', fn_oid;
-end;
-$$;
-NOTICE:  pg_routine_oid = 0
 --
 -- Test ASSERT
 --

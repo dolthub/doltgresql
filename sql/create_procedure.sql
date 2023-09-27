@@ -42,7 +42,7 @@ CALL ptest1s('b');
 
 SELECT * FROM cp_test ORDER BY b COLLATE "C";
 
--- utility functions currently not supported here
+-- utitlity functions currently not supported here
 CREATE PROCEDURE ptestx()
 LANGUAGE SQL
 BEGIN ATOMIC

@@ -34,15 +34,6 @@ EXPLAIN (COSTS OFF)
 SELECT t1.a, t1.c, t2.b, t2.c FROM prt1 t1, prt2 t2 WHERE t1.a = t2.b AND t1.b = 0 ORDER BY t1.a, t2.b;
 SELECT t1.a, t1.c, t2.b, t2.c FROM prt1 t1, prt2 t2 WHERE t1.a = t2.b AND t1.b = 0 ORDER BY t1.a, t2.b;
 
--- left outer join, 3-way
-EXPLAIN (COSTS OFF)
-SELECT COUNT(*) FROM prt1 t1
-  LEFT JOIN prt1 t2 ON t1.a = t2.a
-  LEFT JOIN prt1 t3 ON t2.a = t3.a;
-SELECT COUNT(*) FROM prt1 t1
-  LEFT JOIN prt1 t2 ON t1.a = t2.a
-  LEFT JOIN prt1 t3 ON t2.a = t3.a;
-
 -- left outer join, with whole-row reference; partitionwise join does not apply
 EXPLAIN (COSTS OFF)
 SELECT t1, t2 FROM prt1 t1 LEFT JOIN prt2 t2 ON t1.a = t2.b WHERE t1.b = 0 ORDER BY t1.a, t2.b;
@@ -1166,10 +1157,10 @@ SET max_parallel_workers_per_gather = 0;
 SET enable_partitionwise_join = on;
 
 EXPLAIN (COSTS OFF)
-SELECT x.id, y.id FROM fract_t x LEFT JOIN fract_t y USING (id) ORDER BY x.id ASC LIMIT 10;
+SELECT * FROM fract_t x LEFT JOIN fract_t y USING (id) ORDER BY id ASC LIMIT 10;
 
 EXPLAIN (COSTS OFF)
-SELECT x.id, y.id FROM fract_t x LEFT JOIN fract_t y USING (id) ORDER BY x.id DESC LIMIT 10;
+SELECT * FROM fract_t x LEFT JOIN fract_t y USING (id) ORDER BY id DESC LIMIT 10;
 
 -- cleanup
 DROP TABLE fract_t;

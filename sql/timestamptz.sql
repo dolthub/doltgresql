@@ -50,8 +50,6 @@ INSERT INTO TIMESTAMPTZ_TBL VALUES ('-infinity');
 INSERT INTO TIMESTAMPTZ_TBL VALUES ('infinity');
 INSERT INTO TIMESTAMPTZ_TBL VALUES ('epoch');
 
-SELECT timestamptz 'infinity' = timestamptz '+infinity' AS t;
-
 -- Postgres v6.0 standard output format
 INSERT INTO TIMESTAMPTZ_TBL VALUES ('Mon Feb 10 17:32:01 1997 PST');
 
@@ -108,13 +106,6 @@ SELECT '20500110 173201 Europe/Helsinki'::timestamptz; -- non-DST
 
 SELECT '205000-07-10 17:32:01 Europe/Helsinki'::timestamptz; -- DST
 SELECT '205000-01-10 17:32:01 Europe/Helsinki'::timestamptz; -- non-DST
-
--- Test non-error-throwing API
-SELECT pg_input_is_valid('now', 'timestamptz');
-SELECT pg_input_is_valid('garbage', 'timestamptz');
-SELECT pg_input_is_valid('2001-01-01 00:00 Nehwon/Lankhmar', 'timestamptz');
-SELECT * FROM pg_input_error_info('garbage', 'timestamptz');
-SELECT * FROM pg_input_error_info('2001-01-01 00:00 Nehwon/Lankhmar', 'timestamptz');
 
 -- Check date conversion and date arithmetic
 INSERT INTO TIMESTAMPTZ_TBL VALUES ('1997-06-10 18:32:01 PDT');
@@ -306,10 +297,6 @@ SELECT extract(epoch from '294270-01-01 00:00:00+00'::timestamptz);
 -- another internal overflow test case
 SELECT extract(epoch from '5000-01-01 00:00:00+00'::timestamptz);
 
--- test edge-case overflow in timestamp subtraction
-SELECT timestamptz '294276-12-31 23:59:59 UTC' - timestamptz '1999-12-23 19:59:04.224193 UTC' AS ok;
-SELECT timestamptz '294276-12-31 23:59:59 UTC' - timestamptz '1999-12-23 19:59:04.224192 UTC' AS overflows;
-
 -- TO_CHAR()
 SELECT to_char(d1, 'DAY Day day DY Dy dy MONTH Month month RM MON Mon mon')
    FROM TIMESTAMPTZ_TBL;
@@ -458,25 +445,6 @@ select generate_series('2022-01-01 00:00'::timestamptz,
 select * from generate_series('2020-01-01 00:00'::timestamptz,
                               '2020-01-02 03:00'::timestamptz,
                               '0 hour'::interval);
-
--- Interval crossing time shift for Europe/Warsaw timezone (with DST)
-SET TimeZone to 'UTC';
-
-SELECT date_add('2022-10-30 00:00:00+01'::timestamptz,
-                '1 day'::interval);
-SELECT date_add('2021-10-31 00:00:00+02'::timestamptz,
-                '1 day'::interval,
-                'Europe/Warsaw');
-SELECT date_subtract('2022-10-30 00:00:00+01'::timestamptz,
-                     '1 day'::interval);
-SELECT date_subtract('2021-10-31 00:00:00+02'::timestamptz,
-                     '1 day'::interval,
-                     'Europe/Warsaw');
-SELECT * FROM generate_series('2021-12-31 23:00:00+00'::timestamptz,
-                              '2020-12-31 23:00:00+00'::timestamptz,
-                              '-1 month'::interval,
-                              'Europe/Warsaw');
-RESET TimeZone;
 
 --
 -- Test behavior with a dynamic (time-varying) timezone abbreviation.

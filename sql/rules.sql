@@ -884,14 +884,33 @@ drop rule "_RETURN" on rules_fooview;
 drop view rules_fooview;
 
 --
--- We used to allow converting a table to a view by creating a "_RETURN"
--- rule for it, but no more.
+-- test conversion of table to view (needed to load some pg_dump files)
 --
 
 create table rules_fooview (x int, y text);
+select xmin, * from rules_fooview;
+
 create rule "_RETURN" as on select to rules_fooview do instead
   select 1 as x, 'aaa'::text as y;
-drop table rules_fooview;
+
+select * from rules_fooview;
+select xmin, * from rules_fooview;  -- fail, views don't have such a column
+
+select reltoastrelid, relkind, relfrozenxid
+  from pg_class where oid = 'rules_fooview'::regclass;
+
+drop view rules_fooview;
+
+-- cannot convert an inheritance parent or child to a view, though
+create table rules_fooview (x int, y text);
+create table rules_fooview_child () inherits (rules_fooview);
+
+create rule "_RETURN" as on select to rules_fooview do instead
+  select 1 as x, 'aaa'::text as y;
+create rule "_RETURN" as on select to rules_fooview_child do instead
+  select 1 as x, 'aaa'::text as y;
+
+drop table rules_fooview cascade;
 
 -- likewise, converting a partitioned table or partition to view is not allowed
 create table rules_fooview (x int, y text) partition by list (x);
@@ -1371,25 +1390,10 @@ SET SESSION AUTHORIZATION regress_rule_user1;
 INSERT INTO ruletest_v1 VALUES (1);
 
 RESET SESSION AUTHORIZATION;
-
--- Test that main query's relation's permissions are checked before
--- the rule action's relation's.
-CREATE TABLE ruletest_t3 (x int);
-CREATE RULE rule2 AS ON UPDATE TO ruletest_t1
-    DO INSTEAD INSERT INTO ruletest_t2 VALUES (OLD.*);
-REVOKE ALL ON ruletest_t2 FROM regress_rule_user1;
-REVOKE ALL ON ruletest_t3 FROM regress_rule_user1;
-ALTER TABLE ruletest_t1 OWNER TO regress_rule_user1;
-SET SESSION AUTHORIZATION regress_rule_user1;
-UPDATE ruletest_t1 t1 SET x = 0 FROM ruletest_t3 t3 WHERE t1.x = t3.x;
-
-RESET SESSION AUTHORIZATION;
 SELECT * FROM ruletest_t1;
 SELECT * FROM ruletest_t2;
 
 DROP VIEW ruletest_v1;
-DROP RULE rule2 ON ruletest_t1;
-DROP TABLE ruletest_t3;
 DROP TABLE ruletest_t2;
 DROP TABLE ruletest_t1;
 
