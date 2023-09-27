@@ -36,9 +36,10 @@ var cancelRequestDefault = connection.MessageFormat{
 			Data:  int32(0),
 		},
 		{
-			Name: "RequestCode",
-			Type: connection.Int32,
-			Data: int32(80877102),
+			Name:  "RequestCode",
+			Type:  connection.Int32,
+			Flags: connection.StaticData,
+			Data:  int32(80877102),
 		},
 		{
 			Name: "ProcessID",

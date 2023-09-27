@@ -20,34 +20,56 @@ import (
 	"net"
 	"testing"
 
+	"github.com/stretchr/testify/assert"
+
 	"github.com/jackc/pgx/v5"
 	"github.com/stretchr/testify/require"
 )
 
 func TestBasicConnection(t *testing.T) {
-	//TODO: fix me
-	return
-	//port := getEmptyPort(t)
-	//go RunMain([]string{fmt.Sprintf("--port=%d", port)})
-	//port := 5431
-	port := 5432
+	port := getEmptyPort(t)
+	go RunMainInMemory([]string{fmt.Sprintf("--port=%d", port), "--host=127.0.0.1"})
 
 	ctx := context.Background()
+	t.Run("Create Database", func(t *testing.T) {
+		conn, err := pgx.Connect(ctx, fmt.Sprintf("postgres://postgres:password@127.0.0.1:%d/", port))
+		require.NoError(t, err)
+		defer conn.Close(ctx)
+
+		func() {
+			_, err := conn.Exec(ctx, "CREATE DATABASE postgres;")
+			require.NoError(t, err)
+		}()
+	})
+
 	conn, err := pgx.Connect(ctx, fmt.Sprintf("postgres://postgres:password@localhost:%d/postgres", port))
 	require.NoError(t, err)
 	defer conn.Close(ctx)
 
-	func() {
-		//rows, err := conn.Query(ctx, "CREATE DATABASE testdb;")
+	t.Run("Create Table", func(t *testing.T) {
+		//TODO: fix CHAR
+		_, err := conn.Exec(ctx, "CREATE TABLE test (pk BIGINT PRIMARY KEY, v1 VARCHAR(13), v2 VARCHAR(11), v3 TEXT);")
+		require.NoError(t, err)
+	})
+	t.Run("Insert 1", func(t *testing.T) {
+		_, err := conn.Exec(ctx, "INSERT INTO test VALUES (1, 'hey1', 'heythere2', 'hellofellow3');")
+		require.NoError(t, err)
+	})
+	t.Run("Insert 2", func(t *testing.T) {
+		_, err := conn.Exec(ctx, "INSERT INTO test VALUES (2, 'hey44', 'heythere55', 'hellofellow66');")
+		require.NoError(t, err)
+	})
+	t.Run("Select Rows", func(t *testing.T) {
 		rows, err := conn.Query(ctx, "SELECT * FROM test;")
 		require.NoError(t, err)
 		defer rows.Close()
-		for rows.Next() {
-			row, err := rows.Values()
-			require.NoError(t, err)
-			row = row
+
+		expected := [][]interface{}{
+			{int64(1), "hey1", "heythere2", "hellofellow3"},
+			{int64(2), "hey44", "heythere55", "hellofellow66"},
 		}
-	}()
+		assert.Equal(t, expected, rowsToSlice(t, rows))
+	})
 }
 
 func getEmptyPort(t *testing.T) int {
@@ -56,4 +78,14 @@ func getEmptyPort(t *testing.T) int {
 	port := listener.Addr().(*net.TCPAddr).Port
 	require.NoError(t, listener.Close())
 	return port
+}
+
+func rowsToSlice(t *testing.T, rows pgx.Rows) [][]interface{} {
+	var slice [][]interface{}
+	for rows.Next() {
+		row, err := rows.Values()
+		require.NoError(t, err)
+		slice = append(slice, row)
+	}
+	return slice
 }

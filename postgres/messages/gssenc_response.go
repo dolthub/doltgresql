@@ -21,18 +21,18 @@ import (
 )
 
 func init() {
-	connection.InitializeDefaultMessage(SSLResponse{})
+	connection.InitializeDefaultMessage(GSSENCResponse{})
 }
 
-// SSLResponse tells the client whether SSL is supported. This is not a "true" PostgreSQL message, as it is not defined
-// by the documentation as a message. However, clients expect to receive a response, so that response is encoded as a
-// message.
-type SSLResponse struct {
-	SupportsSSL bool
+// GSSENCResponse tells the client whether GSSAPI is supported. This is not a "true" PostgreSQL message, as it is not
+// defined by the documentation as a message. However, clients expect to receive a response, so that response is encoded
+// as a message.
+type GSSENCResponse struct {
+	SupportsGSSAPI bool
 }
 
-var sslResponseDefault = connection.MessageFormat{
-	Name: "SSLResponse",
+var gssENCResponseDefault = connection.MessageFormat{
+	Name: "GSSENCResponse",
 	Fields: connection.FieldGroup{
 		{
 			Name: "Supported",
@@ -42,13 +42,13 @@ var sslResponseDefault = connection.MessageFormat{
 	},
 }
 
-var _ connection.Message = SSLResponse{}
+var _ connection.Message = GSSENCResponse{}
 
 // Encode implements the interface connection.Message.
-func (m SSLResponse) Encode() (connection.MessageFormat, error) {
+func (m GSSENCResponse) Encode() (connection.MessageFormat, error) {
 	outputMessage := m.DefaultMessage().Copy()
-	if m.SupportsSSL {
-		outputMessage.Field("Supported").MustWrite('S')
+	if m.SupportsGSSAPI {
+		outputMessage.Field("Supported").MustWrite('G')
 	} else {
 		outputMessage.Field("Supported").MustWrite('N')
 	}
@@ -56,25 +56,25 @@ func (m SSLResponse) Encode() (connection.MessageFormat, error) {
 }
 
 // Decode implements the interface connection.Message.
-func (m SSLResponse) Decode(s connection.MessageFormat) (connection.Message, error) {
+func (m GSSENCResponse) Decode(s connection.MessageFormat) (connection.Message, error) {
 	if err := s.MatchesStructure(*m.DefaultMessage()); err != nil {
 		return nil, err
 	}
 	var supported bool
 	supportedInt := s.Field("Supported").MustGet().(int32)
-	if supportedInt == 'S' {
+	if supportedInt == 'G' {
 		supported = true
 	} else if supportedInt == 'N' {
 		supported = false
 	} else {
 		return nil, fmt.Errorf("Unexpected supported value in SSLResponse message: %d", supportedInt)
 	}
-	return SSLResponse{
-		SupportsSSL: supported,
+	return GSSENCResponse{
+		SupportsGSSAPI: supported,
 	}, nil
 }
 
 // DefaultMessage implements the interface connection.Message.
-func (m SSLResponse) DefaultMessage() *connection.MessageFormat {
-	return &sslResponseDefault
+func (m GSSENCResponse) DefaultMessage() *connection.MessageFormat {
+	return &gssENCResponseDefault
 }

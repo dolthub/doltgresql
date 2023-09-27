@@ -18,6 +18,7 @@ import (
 	"fmt"
 	"io"
 	"net"
+	"strings"
 	"sync/atomic"
 
 	"github.com/dolthub/go-mysql-server/server"
@@ -77,7 +78,12 @@ func (l *Listener) HandleConnection(conn net.Conn) {
 	}
 	mysqlConn.ConnectionID = atomic.AddUint32(&connectionIDCounter, 1)
 
+	var returnErr error
 	defer func() {
+		if returnErr != nil {
+			//TODO: return errors to the client
+			fmt.Println(returnErr.Error())
+		}
 		l.cfg.Handler.ConnectionClosed(mysqlConn)
 		if err := conn.Close(); err != nil {
 			fmt.Printf("Failed to properly close connection:\n%v\n", err)
@@ -85,67 +91,82 @@ func (l *Listener) HandleConnection(conn net.Conn) {
 	}()
 	l.cfg.Handler.NewConnection(mysqlConn)
 
-	buf := make([]byte, 2048)
-	_, err := conn.Read(buf)
-	if err != nil {
-		if err != io.EOF {
-			fmt.Println(err)
+	var startupMessage messages.StartupMessage
+	// The initial message may be one of a few different messages, so we'll check for those.
+InitialMessageLoop:
+	for {
+		initialMessages, err := connection.ReceiveIntoAny(conn,
+			messages.StartupMessage{},
+			messages.SSLRequest{},
+			messages.GSSENCRequest{})
+		if err != nil {
+			if err != io.EOF {
+				returnErr = err
+			}
+			return
 		}
-		return
-	}
-
-	if err = connection.Send(conn, messages.SSLResponse{
-		SupportsSSL: false,
-	}); err != nil {
-		fmt.Println(err)
-		return
-	}
-
-	_, err = conn.Read(buf)
-	if err != nil {
-		if err != io.EOF {
-			fmt.Println(err)
+		if len(initialMessages) != 1 {
+			returnErr = fmt.Errorf("Expected a single message upon starting connection, terminating connection")
+			return
 		}
-		return
+		initialMessage := initialMessages[0]
+
+		switch initialMessage := initialMessage.(type) {
+		case messages.StartupMessage:
+			startupMessage = initialMessage
+			break InitialMessageLoop
+		case messages.SSLRequest:
+			if err = connection.Send(conn, messages.SSLResponse{
+				SupportsSSL: false,
+			}); err != nil {
+				returnErr = err
+				return
+			}
+		case messages.GSSENCRequest:
+			if err = connection.Send(conn, messages.GSSENCResponse{
+				SupportsGSSAPI: false,
+			}); err != nil {
+				returnErr = err
+				return
+			}
+		default:
+			returnErr = fmt.Errorf("Unexpected initial message, terminating connection")
+			return
+		}
 	}
-	startupMessage, err := connection.ReceiveInto(buf, messages.StartupMessage{})
-	if err != nil {
-		fmt.Println(err)
+
+	if err := connection.Send(conn, messages.AuthenticationOk{}); err != nil {
+		returnErr = err
 		return
 	}
 
-	if err = connection.Send(conn, messages.AuthenticationOk{}); err != nil {
-		fmt.Println(err)
-		return
-	}
-
-	if err = connection.Send(conn, messages.ParameterStatus{
+	if err := connection.Send(conn, messages.ParameterStatus{
 		Name:  "server_version",
 		Value: "15.0",
 	}); err != nil {
-		fmt.Println(err)
+		returnErr = err
 		return
 	}
-	if err = connection.Send(conn, messages.ParameterStatus{
+	if err := connection.Send(conn, messages.ParameterStatus{
 		Name:  "client_encoding",
 		Value: "UTF8",
 	}); err != nil {
-		fmt.Println(err)
+		returnErr = err
 		return
 	}
 
-	if err = connection.Send(conn, messages.BackendKeyData{
+	if err := connection.Send(conn, messages.BackendKeyData{
 		ProcessID: 1,
 		SecretKey: 0,
 	}); err != nil {
-		fmt.Println(err)
+		returnErr = err
 		return
 	}
 
-	if err = connection.Send(conn, messages.ReadyForQuery{
+	if err := connection.Send(conn, messages.ReadyForQuery{
 		Indicator: messages.ReadyForQueryTransactionIndicator_Idle,
 	}); err != nil {
-		fmt.Println(err)
+		returnErr = err
 		return
 	}
 
@@ -155,33 +176,84 @@ func (l *Listener) HandleConnection(conn net.Conn) {
 		})
 	}
 
+	statementCache := make(map[string]string)
 	for {
-		if _, err = conn.Read(buf); err != nil {
-			if err != io.EOF {
-				fmt.Println(err)
-			}
-			return
-		}
-
-		message, ok, err := connection.Receive(buf)
+		receivedMessages, err := connection.Receive(conn)
 		if err != nil {
-			fmt.Println(err.Error())
+			returnErr = err
 			return
-		} else if !ok {
-			fmt.Println("unknown message format, terminating connection")
+		} else if len(receivedMessages) == 0 {
+			returnErr = fmt.Errorf("Data received but contained no messages, terminating connection")
 			return
 		}
 
-		switch message := message.(type) {
-		case messages.Terminate:
-			return
-		case messages.Query:
-			l.query(conn, mysqlConn, message.String)
+		portals := make(map[string]string)
+		for _, message := range receivedMessages {
+			switch message := message.(type) {
+			case messages.Terminate:
+				return
+			case messages.Execute:
+				//TODO: implement the RowMax
+				if err = l.execute(conn, mysqlConn, portals[message.Portal]); err != nil {
+					fmt.Println(err)
+					return
+				}
+			case messages.Query:
+				if err = l.execute(conn, mysqlConn, message.String); err != nil {
+					fmt.Println(err)
+					return
+				}
+				if err := connection.Send(conn, messages.ReadyForQuery{
+					Indicator: messages.ReadyForQueryTransactionIndicator_Idle,
+				}); err != nil {
+					fmt.Println(err)
+					return
+				}
+			case messages.Parse:
+				//TODO: fully support prepared statements
+				statementCache[message.Name] = message.Query
+				if err = connection.Send(conn, messages.ParseComplete{}); err != nil {
+					fmt.Println(err)
+					return
+				}
+			case messages.Describe:
+				var query string
+				if message.IsPrepared {
+					query = statementCache[message.Target]
+				} else {
+					query = portals[message.Target]
+				}
+				if err = l.describe(conn, mysqlConn, message, query); err != nil {
+					fmt.Println(err)
+					return
+				}
+			case messages.Sync:
+				if err = connection.Send(conn, messages.ReadyForQuery{
+					Indicator: messages.ReadyForQueryTransactionIndicator_Idle,
+				}); err != nil {
+					fmt.Println(err)
+					return
+				}
+			case messages.Bind:
+				//TODO: fully support prepared statements
+				portals[message.DestinationPortal] = statementCache[message.SourcePreparedStatement]
+				if err = connection.Send(conn, messages.BindComplete{}); err != nil {
+					fmt.Println(err)
+					return
+				}
+			case nil:
+				returnErr = fmt.Errorf("Unknown message format, terminating connection")
+				return
+			default:
+				returnErr = fmt.Errorf(`Unexpected message "%s", terminating connection\n`, message.DefaultMessage().Name)
+				return
+			}
 		}
 	}
 }
 
-func (l *Listener) query(conn net.Conn, mysqlConn *mysql.Conn, query string) {
+// execute handles running the given query. This will post the RowDescription, DataRow, and CommandComplete messages.
+func (l *Listener) execute(conn net.Conn, mysqlConn *mysql.Conn, query string) error {
 	commandComplete := messages.CommandComplete{
 		Query: query,
 		Rows:  0,
@@ -209,19 +281,40 @@ func (l *Listener) query(conn net.Conn, mysqlConn *mysql.Conn, query string) {
 		}
 		return nil
 	}); err != nil {
-		fmt.Println(err.Error())
-		return
+		return err
 	}
 
 	if err := connection.Send(conn, commandComplete); err != nil {
-		fmt.Println(err)
-		return
+		return err
 	}
 
-	if err := connection.Send(conn, messages.ReadyForQuery{
-		Indicator: messages.ReadyForQueryTransactionIndicator_Idle,
+	return nil
+}
+
+// describe handles the description of the given query. This will post the ParameterDescription and RowDescription messages.
+func (l *Listener) describe(conn net.Conn, mysqlConn *mysql.Conn, message messages.Describe, statement string) error {
+	//TODO: fully support prepared statements
+	if err := connection.Send(conn, messages.ParameterDescription{
+		ObjectIDs: nil,
 	}); err != nil {
-		fmt.Println(err)
-		return
+		return err
 	}
+
+	if strings.HasPrefix(strings.TrimSpace(strings.ToLower(statement)), "select") {
+		// Since it is a SELECT statement, we can run it multiple times without worry.
+		if err := l.cfg.Handler.ComQuery(mysqlConn, statement, func(res *sqltypes.Result, more bool) error {
+			if err := connection.Send(conn, messages.RowDescription{
+				Fields: res.Fields,
+			}); err != nil {
+				return err
+			}
+			return nil
+		}); err != nil {
+			return err
+		}
+	} else {
+		return fmt.Errorf("We do not yet support returning rows from the given statement")
+	}
+
+	return nil
 }

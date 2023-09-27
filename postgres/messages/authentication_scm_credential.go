@@ -39,9 +39,10 @@ var authenticationSCMCredentialDefault = connection.MessageFormat{
 			Data:  int32(8),
 		},
 		{
-			Name: "Status",
-			Type: connection.Int32,
-			Data: int32(6),
+			Name:  "Status",
+			Type:  connection.Int32,
+			Flags: connection.StaticData,
+			Data:  int32(6),
 		},
 	},
 }
