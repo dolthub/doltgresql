@@ -83,6 +83,8 @@ func (m CommandComplete) Encode() (connection.MessageFormat, error) {
 		outputMessage.Field("CommandTag").MustWrite(fmt.Sprintf("DELETE %d", m.Rows))
 	} else if strings.HasPrefix(query, "create") {
 		outputMessage.Field("CommandTag").MustWrite(fmt.Sprintf("SELECT %d", m.Rows))
+	} else if strings.HasPrefix(query, "drop") {
+		outputMessage.Field("CommandTag").MustWrite(fmt.Sprintf("SELECT %d", m.Rows))
 	} else if strings.HasPrefix(query, "call") {
 		outputMessage.Field("CommandTag").MustWrite(fmt.Sprintf("SELECT %d", m.Rows))
 	} else {

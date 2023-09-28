@@ -14,21 +14,46 @@
 
 package messages
 
-import "github.com/dolthub/doltgresql/postgres/connection"
+import (
+	"strings"
+
+	"github.com/dolthub/doltgresql/postgres/connection"
+)
 
 func init() {
 	connection.InitializeDefaultMessage(ErrorResponse{})
 }
 
-// ErrorResponse represents a PostgreSQL message.
+// ErrorResponseSeverity represents the severity of an ErrorResponse message.
+type ErrorResponseSeverity string
+
+const (
+	ErrorResponseSeverity_Error   ErrorResponseSeverity = "ERROR"
+	ErrorResponseSeverity_Fatal   ErrorResponseSeverity = "FATAL"
+	ErrorResponseSeverity_Panic   ErrorResponseSeverity = "PANIC"
+	ErrorResponseSeverity_Warning ErrorResponseSeverity = "WARNING"
+	ErrorResponseSeverity_Notice  ErrorResponseSeverity = "NOTICE"
+	ErrorResponseSeverity_Debug   ErrorResponseSeverity = "DEBUG"
+	ErrorResponseSeverity_Info    ErrorResponseSeverity = "INFO"
+	ErrorResponseSeverity_Log     ErrorResponseSeverity = "LOG"
+)
+
+// ErrorResponse represents a server-side error that should be returned to the client. The Optional fields do not need
+// to be set, but may give additional context for the error.
 type ErrorResponse struct {
-	Fields []ErrorResponseField
+	Severity     ErrorResponseSeverity
+	SqlStateCode string
+	Message      string
+	Optional     ErrorResponseOptionalFields
 }
 
-// ErrorResponseField are the fields to an ErrorResponse message.
-type ErrorResponseField struct {
-	Code  int32
-	Value string
+// ErrorResponseOptionalFields are optional fields that will not be sent if their values are empty strings.
+type ErrorResponseOptionalFields struct {
+	Schema     string
+	Table      string
+	Column     string
+	Constraint string
+	Routine    string
 }
 
 var errorResponseDefault = connection.MessageFormat{
@@ -74,9 +99,42 @@ var _ connection.Message = ErrorResponse{}
 // Encode implements the interface connection.Message.
 func (m ErrorResponse) Encode() (connection.MessageFormat, error) {
 	outputMessage := m.DefaultMessage().Copy()
-	for i, field := range m.Fields {
-		outputMessage.Field("Fields").Child("Code", i).MustWrite(field.Code)
-		outputMessage.Field("Fields").Child("Value", i).MustWrite(field.Value)
+	// Write the required fields first
+	outputMessage.Field("Fields").Child("Code", 0).MustWrite('S')
+	outputMessage.Field("Fields").Child("Value", 0).MustWrite(string(m.Severity))
+	outputMessage.Field("Fields").Child("Code", 1).MustWrite('V')
+	outputMessage.Field("Fields").Child("Value", 1).MustWrite(string(m.Severity))
+	outputMessage.Field("Fields").Child("Code", 2).MustWrite('C')
+	outputMessage.Field("Fields").Child("Value", 2).MustWrite(m.SqlStateCode)
+	outputMessage.Field("Fields").Child("Code", 3).MustWrite('M')
+	outputMessage.Field("Fields").Child("Value", 3).MustWrite(m.Message)
+
+	// Write the optional fields after the required fields
+	i := 4
+	if len(m.Optional.Schema) > 0 {
+		outputMessage.Field("Fields").Child("Code", i).MustWrite('s')
+		outputMessage.Field("Fields").Child("Value", i).MustWrite(m.Optional.Schema)
+		i++
+	}
+	if len(m.Optional.Table) > 0 {
+		outputMessage.Field("Fields").Child("Code", i).MustWrite('t')
+		outputMessage.Field("Fields").Child("Value", i).MustWrite(m.Optional.Table)
+		i++
+	}
+	if len(m.Optional.Column) > 0 {
+		outputMessage.Field("Fields").Child("Code", i).MustWrite('c')
+		outputMessage.Field("Fields").Child("Value", i).MustWrite(m.Optional.Column)
+		i++
+	}
+	if len(m.Optional.Constraint) > 0 {
+		outputMessage.Field("Fields").Child("Code", i).MustWrite('n')
+		outputMessage.Field("Fields").Child("Value", i).MustWrite(m.Optional.Constraint)
+		i++
+	}
+	if len(m.Optional.Routine) > 0 {
+		outputMessage.Field("Fields").Child("Code", i).MustWrite('R')
+		outputMessage.Field("Fields").Child("Value", i).MustWrite(m.Optional.Routine)
+		i++
 	}
 	return outputMessage, nil
 }
@@ -86,17 +144,32 @@ func (m ErrorResponse) Decode(s connection.MessageFormat) (connection.Message, e
 	if err := s.MatchesStructure(*m.DefaultMessage()); err != nil {
 		return nil, err
 	}
+	errorResponse := ErrorResponse{}
 	count := int(s.Field("Fields").MustGet().(int32))
-	fields := make([]ErrorResponseField, count)
 	for i := 0; i < count; i++ {
-		fields[i] = ErrorResponseField{
-			Code:  s.Field("Fields").Child("Code", i).MustGet().(int32),
-			Value: s.Field("Fields").Child("Value", i).MustGet().(string),
+		value := s.Field("Fields").Child("Value", i).MustGet().(string)
+		switch s.Field("Fields").Child("Code", i).MustGet().(int32) {
+		case 'S':
+			errorResponse.Severity = ErrorResponseSeverity(strings.ToUpper(strings.TrimSpace(value)))
+		case 'V':
+			errorResponse.Severity = ErrorResponseSeverity(strings.ToUpper(strings.TrimSpace(value)))
+		case 'C':
+			errorResponse.SqlStateCode = value
+		case 'M':
+			errorResponse.Message = value
+		case 's':
+			errorResponse.Optional.Schema = value
+		case 't':
+			errorResponse.Optional.Table = value
+		case 'c':
+			errorResponse.Optional.Column = value
+		case 'n':
+			errorResponse.Optional.Constraint = value
+		case 'R':
+			errorResponse.Optional.Routine = value
 		}
 	}
-	return ErrorResponse{
-		Fields: fields,
-	}, nil
+	return errorResponse, nil
 }
 
 // DefaultMessage implements the interface connection.Message.
