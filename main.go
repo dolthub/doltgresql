@@ -22,6 +22,7 @@ import (
 	"math/rand"
 	_ "net/http/pprof"
 	"os"
+	"sync"
 
 	"github.com/dolthub/dolt/go/cmd/dolt/cli"
 	"github.com/dolthub/dolt/go/cmd/dolt/commands"
@@ -70,18 +71,27 @@ const stdOutAndErrFlag = "--out-and-err"
 const ignoreLocksFlag = "--ignore-lock-file"
 
 func main() {
-	os.Exit(RunMainOnDisk(os.Args[1:]))
+	code, wg := RunMainOnDisk(os.Args[1:])
+	wg.Wait()
+	os.Exit(*code)
 }
 
-func RunMainOnDisk(args []string) int {
+// RunMainOnDisk starts the server based on the given args, while also using the local disk as the backing store.
+// The returned WaitGroup may be used to wait for the server to close.
+func RunMainOnDisk(args []string) (*int, *sync.WaitGroup) {
 	return runMain(args, filesys.LocalFS)
 }
 
-func RunMainInMemory(args []string) int {
+// RunMainInMemory starts the server based on the given args, while also using RAM as the backing store.
+// The returned WaitGroup may be used to wait for the server to close.
+func RunMainInMemory(args []string) (*int, *sync.WaitGroup) {
 	return runMain(args, filesys.EmptyInMemFS(""))
 }
 
-func runMain(args []string, fs filesys.Filesys) int {
+// runMain starts the server based on the given args, using the provided file system as the backing store.
+// The returned WaitGroup may be used to wait for the server to close.
+func runMain(args []string, fs filesys.Filesys) (*int, *sync.WaitGroup) {
+	wg := &sync.WaitGroup{}
 	ctx := context.Background()
 	// Inject the "sql-server" command
 	args = append([]string{"sql-server"}, args...)
@@ -120,7 +130,7 @@ func runMain(args []string, fs filesys.Filesys) int {
 				f, err := os.Open(stdInFile)
 				if err != nil {
 					cli.PrintErrln("Failed to open", stdInFile, err.Error())
-					return 1
+					return newInt(1), wg
 				}
 
 				os.Stdin = f
@@ -132,7 +142,7 @@ func runMain(args []string, fs filesys.Filesys) int {
 				f, err := os.OpenFile(filename, os.O_APPEND|os.O_WRONLY|os.O_CREATE, os.ModePerm)
 				if err != nil {
 					cli.PrintErrln("Failed to open", filename, "for writing:", err.Error())
-					return 1
+					return newInt(1), wg
 				}
 
 				switch args[0] {
@@ -174,17 +184,24 @@ func runMain(args []string, fs filesys.Filesys) int {
 	globalConfig, ok := dEnv.Config.GetConfig(env.GlobalConfig)
 	if !ok {
 		cli.PrintErrln(color.RedString("Failed to get global config"))
-		return 1
+		return newInt(1), wg
+	}
+	// The in-memory database is only used for testing/virtual environments, so the config may need modification
+	if _, ok = fs.(*filesys.InMemFS); ok && globalConfig.GetStringOrDefault(env.UserNameKey, "") == "" {
+		globalConfig.SetStrings(map[string]string{
+			env.UserNameKey:  "postgres",
+			env.UserEmailKey: "postgres@somewhere.com",
+		})
 	}
 
 	apr, remainingArgs, subcommandName, err := parseGlobalArgsAndSubCommandName(globalConfig, args)
 	if err == argparser.ErrHelp {
 		//TODO: display some help message
 		doltCommand.PrintUsage("dolt")
-		return 0
+		return newInt(0), wg
 	} else if err != nil {
 		cli.PrintErrln(color.RedString("Failure to parse arguments: %v", err))
-		return 1
+		return newInt(1), wg
 	}
 
 	dataDir, hasDataDir := apr.GetValue(commands.DataDirFlag)
@@ -193,23 +210,23 @@ func runMain(args []string, fs filesys.Filesys) int {
 		dataDir, err = fs.Abs(dataDir)
 		if err != nil {
 			cli.PrintErrln(color.RedString("Failed to get absolute path for %s: %v", dataDir, err))
-			return 1
+			return newInt(1), wg
 		}
 		if ok, dir := fs.Exists(dataDir); !ok || !dir {
 			cli.Println(color.RedString("Provided data directory does not exist: %s", dataDir))
-			return 1
+			return newInt(1), wg
 		}
 	}
 
 	if dEnv.CfgLoadErr != nil {
 		cli.PrintErrln(color.RedString("Failed to load the global config. %v", dEnv.CfgLoadErr))
-		return 1
+		return newInt(1), wg
 	}
 
 	err = reconfigIfTempFileMoveFails(dEnv)
 	if err != nil {
 		cli.PrintErrln(color.RedString("Failed to setup the temporary directory. %v`", err))
-		return 1
+		return newInt(1), wg
 	}
 
 	defer tempfiles.MovableTempFileProvider.Clean()
@@ -238,14 +255,14 @@ func runMain(args []string, fs filesys.Filesys) int {
 	dataDirFS, err := dEnv.FS.WithWorkingDir(dataDir)
 	if err != nil {
 		cli.PrintErrln(color.RedString("Failed to set the data directory. %v", err))
-		return 1
+		return newInt(1), wg
 	}
 	dEnv.FS = dataDirFS
 
 	mrEnv, err := env.MultiEnvForDirectory(ctx, dEnv.Config.WriteableConfig(), dataDirFS, dEnv.Version, dEnv.IgnoreLockFile, dEnv)
 	if err != nil {
 		cli.PrintErrln("failed to load database names")
-		return 1
+		return newInt(1), wg
 	}
 	_ = mrEnv.Iter(func(dbName string, dEnv *env.DoltEnv) (stop bool, err error) {
 		dsess.DefineSystemVariablesForDB(dbName)
@@ -264,20 +281,20 @@ func runMain(args []string, fs filesys.Filesys) int {
 		apr = aprAlt
 		if err != nil {
 			cli.PrintErrln(color.RedString("Failed to parse credentials: %v", err))
-			return 1
+			return newInt(1), wg
 		}
 
 		lateBind, err := buildLateBinder(ctx, cwdFS, dEnv, mrEnv, creds, apr, subcommandName, false)
 
 		if err != nil {
 			cli.PrintErrln(color.RedString("%v", err))
-			return 1
+			return newInt(1), wg
 		}
 
 		cliCtx, err = cli.NewCliContext(apr, dEnv.Config, lateBind)
 		if err != nil {
 			cli.PrintErrln(color.RedString("Unexpected Error: %v", err))
-			return 1
+			return new(int), wg
 		}
 	}
 
@@ -285,17 +302,23 @@ func runMain(args []string, fs filesys.Filesys) int {
 	if !dEnv.HasDoltDataDir() {
 		_ = doltCommand.Exec(ctx, "dolt", []string{"init"}, dEnv, cliCtx)
 	}
-	res := doltCommand.Exec(ctx, "dolt", remainingArgs, dEnv, cliCtx)
-	stop()
 
-	if err = dbfactory.CloseAllLocalDatabases(); err != nil {
-		cli.PrintErrln(err)
-		if res == 0 {
-			res = 1
+	// We're now running the server, so we can increment the WaitGroup.
+	wg.Add(1)
+	res := new(int)
+	go func() {
+		*res = doltCommand.Exec(ctx, "dolt", remainingArgs, dEnv, cliCtx)
+		stop()
+
+		if err = dbfactory.CloseAllLocalDatabases(); err != nil {
+			cli.PrintErrln(err)
+			if *res == 0 {
+				*res = 1
+			}
 		}
-	}
-
-	return res
+		wg.Done()
+	}()
+	return res, wg
 }
 
 // buildLateBinder builds a LateBindQueryist for which is used to obtain the Queryist used for the length of the
@@ -486,4 +509,10 @@ func getProfile(apr *argparser.ArgParseResults, profileName, profiles string) (r
 	} else {
 		return nil, fmt.Errorf("profile %s not found", profileName)
 	}
+}
+
+func newInt(val int) *int {
+	p := new(int)
+	*p = val
+	return p
 }
