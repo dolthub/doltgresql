@@ -176,7 +176,6 @@ InitialMessageLoop:
 	}
 
 	statementCache := make(map[string]string)
-MessageLoop:
 	for {
 		receivedMessages, err := connection.Receive(conn)
 		if err != nil {
@@ -188,6 +187,7 @@ MessageLoop:
 		}
 
 		portals := make(map[string]string)
+	ReadMessages:
 		for _, message := range receivedMessages {
 			switch message := message.(type) {
 			case messages.Terminate:
@@ -196,7 +196,7 @@ MessageLoop:
 				//TODO: implement the RowMax
 				if err = l.execute(conn, mysqlConn, portals[message.Portal]); err != nil {
 					l.endOfMessages(conn, err)
-					continue MessageLoop
+					break ReadMessages
 				}
 			case messages.Query:
 				err = l.execute(conn, mysqlConn, message.String)
@@ -206,7 +206,7 @@ MessageLoop:
 				statementCache[message.Name] = message.Query
 				if err = connection.Send(conn, messages.ParseComplete{}); err != nil {
 					l.endOfMessages(conn, err)
-					continue MessageLoop
+					break ReadMessages
 				}
 			case messages.Describe:
 				var query string
@@ -217,7 +217,7 @@ MessageLoop:
 				}
 				if err = l.describe(conn, mysqlConn, message, query); err != nil {
 					l.endOfMessages(conn, err)
-					continue MessageLoop
+					break ReadMessages
 				}
 			case messages.Sync:
 				l.endOfMessages(conn, nil)
@@ -226,11 +226,11 @@ MessageLoop:
 				portals[message.DestinationPortal] = statementCache[message.SourcePreparedStatement]
 				if err = connection.Send(conn, messages.BindComplete{}); err != nil {
 					l.endOfMessages(conn, err)
-					continue MessageLoop
+					break ReadMessages
 				}
 			default:
 				l.endOfMessages(conn, fmt.Errorf(`Unexpected message "%s"`, message.DefaultMessage().Name))
-				continue MessageLoop
+				break ReadMessages
 			}
 		}
 	}
