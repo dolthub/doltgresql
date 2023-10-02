@@ -20,7 +20,7 @@ import (
 	"github.com/dolthub/go-mysql-server/sql"
 )
 
-func TestRandomScenarios(t *testing.T) {
+func TestSmokeTests(t *testing.T) {
 	RunScripts(t, []ScriptTest{
 		{
 			Name: "Basic Connection",

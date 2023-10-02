@@ -130,7 +130,7 @@ func runMain(args []string, fs filesys.Filesys) (*int, *sync.WaitGroup) {
 				f, err := os.Open(stdInFile)
 				if err != nil {
 					cli.PrintErrln("Failed to open", stdInFile, err.Error())
-					return newInt(1), wg
+					return intPointer(1), wg
 				}
 
 				os.Stdin = f
@@ -142,7 +142,7 @@ func runMain(args []string, fs filesys.Filesys) (*int, *sync.WaitGroup) {
 				f, err := os.OpenFile(filename, os.O_APPEND|os.O_WRONLY|os.O_CREATE, os.ModePerm)
 				if err != nil {
 					cli.PrintErrln("Failed to open", filename, "for writing:", err.Error())
-					return newInt(1), wg
+					return intPointer(1), wg
 				}
 
 				switch args[0] {
@@ -184,7 +184,7 @@ func runMain(args []string, fs filesys.Filesys) (*int, *sync.WaitGroup) {
 	globalConfig, ok := dEnv.Config.GetConfig(env.GlobalConfig)
 	if !ok {
 		cli.PrintErrln(color.RedString("Failed to get global config"))
-		return newInt(1), wg
+		return intPointer(1), wg
 	}
 	// The in-memory database is only used for testing/virtual environments, so the config may need modification
 	if _, ok = fs.(*filesys.InMemFS); ok && globalConfig.GetStringOrDefault(env.UserNameKey, "") == "" {
@@ -198,10 +198,10 @@ func runMain(args []string, fs filesys.Filesys) (*int, *sync.WaitGroup) {
 	if err == argparser.ErrHelp {
 		//TODO: display some help message
 		doltCommand.PrintUsage("dolt")
-		return newInt(0), wg
+		return intPointer(0), wg
 	} else if err != nil {
 		cli.PrintErrln(color.RedString("Failure to parse arguments: %v", err))
-		return newInt(1), wg
+		return intPointer(1), wg
 	}
 
 	dataDir, hasDataDir := apr.GetValue(commands.DataDirFlag)
@@ -210,23 +210,23 @@ func runMain(args []string, fs filesys.Filesys) (*int, *sync.WaitGroup) {
 		dataDir, err = fs.Abs(dataDir)
 		if err != nil {
 			cli.PrintErrln(color.RedString("Failed to get absolute path for %s: %v", dataDir, err))
-			return newInt(1), wg
+			return intPointer(1), wg
 		}
 		if ok, dir := fs.Exists(dataDir); !ok || !dir {
 			cli.Println(color.RedString("Provided data directory does not exist: %s", dataDir))
-			return newInt(1), wg
+			return intPointer(1), wg
 		}
 	}
 
 	if dEnv.CfgLoadErr != nil {
 		cli.PrintErrln(color.RedString("Failed to load the global config. %v", dEnv.CfgLoadErr))
-		return newInt(1), wg
+		return intPointer(1), wg
 	}
 
 	err = reconfigIfTempFileMoveFails(dEnv)
 	if err != nil {
 		cli.PrintErrln(color.RedString("Failed to setup the temporary directory. %v`", err))
-		return newInt(1), wg
+		return intPointer(1), wg
 	}
 
 	defer tempfiles.MovableTempFileProvider.Clean()
@@ -255,14 +255,14 @@ func runMain(args []string, fs filesys.Filesys) (*int, *sync.WaitGroup) {
 	dataDirFS, err := dEnv.FS.WithWorkingDir(dataDir)
 	if err != nil {
 		cli.PrintErrln(color.RedString("Failed to set the data directory. %v", err))
-		return newInt(1), wg
+		return intPointer(1), wg
 	}
 	dEnv.FS = dataDirFS
 
 	mrEnv, err := env.MultiEnvForDirectory(ctx, dEnv.Config.WriteableConfig(), dataDirFS, dEnv.Version, dEnv.IgnoreLockFile, dEnv)
 	if err != nil {
 		cli.PrintErrln("failed to load database names")
-		return newInt(1), wg
+		return intPointer(1), wg
 	}
 	_ = mrEnv.Iter(func(dbName string, dEnv *env.DoltEnv) (stop bool, err error) {
 		dsess.DefineSystemVariablesForDB(dbName)
@@ -281,14 +281,14 @@ func runMain(args []string, fs filesys.Filesys) (*int, *sync.WaitGroup) {
 		apr = aprAlt
 		if err != nil {
 			cli.PrintErrln(color.RedString("Failed to parse credentials: %v", err))
-			return newInt(1), wg
+			return intPointer(1), wg
 		}
 
 		lateBind, err := buildLateBinder(ctx, cwdFS, dEnv, mrEnv, creds, apr, subcommandName, false)
 
 		if err != nil {
 			cli.PrintErrln(color.RedString("%v", err))
-			return newInt(1), wg
+			return intPointer(1), wg
 		}
 
 		cliCtx, err = cli.NewCliContext(apr, dEnv.Config, lateBind)
@@ -511,7 +511,7 @@ func getProfile(apr *argparser.ArgParseResults, profileName, profiles string) (r
 	}
 }
 
-func newInt(val int) *int {
+func intPointer(val int) *int {
 	p := new(int)
 	*p = val
 	return p
