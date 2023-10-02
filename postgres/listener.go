@@ -81,7 +81,6 @@ func (l *Listener) HandleConnection(conn net.Conn) {
 	var returnErr error
 	defer func() {
 		if returnErr != nil {
-			//TODO: return errors to the client
 			fmt.Println(returnErr.Error())
 		}
 		l.cfg.Handler.ConnectionClosed(mysqlConn)
@@ -188,6 +187,7 @@ InitialMessageLoop:
 		}
 
 		portals := make(map[string]string)
+	ReadMessages:
 		for _, message := range receivedMessages {
 			switch message := message.(type) {
 			case messages.Terminate:
@@ -195,26 +195,18 @@ InitialMessageLoop:
 			case messages.Execute:
 				//TODO: implement the RowMax
 				if err = l.execute(conn, mysqlConn, portals[message.Portal]); err != nil {
-					fmt.Println(err)
-					return
+					l.endOfMessages(conn, err)
+					break ReadMessages
 				}
 			case messages.Query:
-				if err = l.execute(conn, mysqlConn, message.String); err != nil {
-					fmt.Println(err)
-					return
-				}
-				if err := connection.Send(conn, messages.ReadyForQuery{
-					Indicator: messages.ReadyForQueryTransactionIndicator_Idle,
-				}); err != nil {
-					fmt.Println(err)
-					return
-				}
+				err = l.execute(conn, mysqlConn, message.String)
+				l.endOfMessages(conn, err)
 			case messages.Parse:
 				//TODO: fully support prepared statements
 				statementCache[message.Name] = message.Query
 				if err = connection.Send(conn, messages.ParseComplete{}); err != nil {
-					fmt.Println(err)
-					return
+					l.endOfMessages(conn, err)
+					break ReadMessages
 				}
 			case messages.Describe:
 				var query string
@@ -224,29 +216,21 @@ InitialMessageLoop:
 					query = portals[message.Target]
 				}
 				if err = l.describe(conn, mysqlConn, message, query); err != nil {
-					fmt.Println(err)
-					return
+					l.endOfMessages(conn, err)
+					break ReadMessages
 				}
 			case messages.Sync:
-				if err = connection.Send(conn, messages.ReadyForQuery{
-					Indicator: messages.ReadyForQueryTransactionIndicator_Idle,
-				}); err != nil {
-					fmt.Println(err)
-					return
-				}
+				l.endOfMessages(conn, nil)
 			case messages.Bind:
 				//TODO: fully support prepared statements
 				portals[message.DestinationPortal] = statementCache[message.SourcePreparedStatement]
 				if err = connection.Send(conn, messages.BindComplete{}); err != nil {
-					fmt.Println(err)
-					return
+					l.endOfMessages(conn, err)
+					break ReadMessages
 				}
-			case nil:
-				returnErr = fmt.Errorf("Unknown message format, terminating connection")
-				return
 			default:
-				returnErr = fmt.Errorf(`Unexpected message "%s", terminating connection\n`, message.DefaultMessage().Name)
-				return
+				l.endOfMessages(conn, fmt.Errorf(`Unexpected message "%s"`, message.DefaultMessage().Name))
+				break ReadMessages
 			}
 		}
 	}
@@ -317,4 +301,29 @@ func (l *Listener) describe(conn net.Conn, mysqlConn *mysql.Conn, message messag
 	}
 
 	return nil
+}
+
+// endOfMessages should be called from HandleConnection or a function within HandleConnection. This represents the end
+// of the message slice, which may occur naturally (all relevant response messages have been sent) or on error. Once
+// endOfMessages has been called, no further messages should be sent, and the connection loop should wait for the next
+// query. A nil error should be provided if this is being called naturally.
+func (l *Listener) endOfMessages(conn net.Conn, err error) {
+	if err != nil {
+		fmt.Println(err.Error())
+		if sendErr := connection.Send(conn, messages.ErrorResponse{
+			Severity:     messages.ErrorResponseSeverity_Error,
+			SqlStateCode: "XX000", // internal_error for now
+			Message:      err.Error(),
+		}); sendErr != nil {
+			// If we're unable to send anything to the connection, then there's something wrong with the connection and
+			// we should terminate it. This will be caught in HandleConnection's defer block.
+			panic(sendErr)
+		}
+	}
+	if sendErr := connection.Send(conn, messages.ReadyForQuery{
+		Indicator: messages.ReadyForQueryTransactionIndicator_Idle,
+	}); sendErr != nil {
+		// We panic here for the same reason as above.
+		panic(sendErr)
+	}
 }
