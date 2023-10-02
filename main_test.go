@@ -15,77 +15,78 @@
 package main
 
 import (
-	"context"
-	"fmt"
-	"net"
 	"testing"
 
-	"github.com/stretchr/testify/assert"
-
-	"github.com/jackc/pgx/v5"
-	"github.com/stretchr/testify/require"
+	"github.com/dolthub/go-mysql-server/sql"
 )
 
-func TestBasicConnection(t *testing.T) {
-	port := getEmptyPort(t)
-	go RunMainInMemory([]string{fmt.Sprintf("--port=%d", port), "--host=127.0.0.1"})
-
-	ctx := context.Background()
-	t.Run("Create Database", func(t *testing.T) {
-		conn, err := pgx.Connect(ctx, fmt.Sprintf("postgres://postgres:password@127.0.0.1:%d/", port))
-		require.NoError(t, err)
-		defer conn.Close(ctx)
-
-		func() {
-			_, err := conn.Exec(ctx, "CREATE DATABASE postgres;")
-			require.NoError(t, err)
-		}()
+func TestSmokeTests(t *testing.T) {
+	RunScripts(t, []ScriptTest{
+		{
+			Name: "Basic Connection",
+			SetUpScript: []string{
+				"CREATE TABLE test (pk BIGINT PRIMARY KEY, v1 VARCHAR(13), v2 VARCHAR(11), v3 TEXT);",
+				"INSERT INTO test VALUES (1, 'hey1', 'heythere2', 'hellofellow3');",
+				"INSERT INTO test VALUES (2, 'hey44', 'heythere55', 'hellofellow66');",
+			},
+			Assertions: []ScriptTestAssertion{
+				{
+					Query: "SELECT * FROM test;",
+					Expected: []sql.Row{
+						{1, "hey1", "heythere2", "hellofellow3"},
+						{2, "hey44", "heythere55", "hellofellow66"},
+					},
+				},
+			},
+		},
+		{
+			Name: "Commit and diff across branches",
+			SetUpScript: []string{
+				"CREATE TABLE test (pk BIGINT PRIMARY KEY, v1 BIGINT);",
+				"INSERT INTO test VALUES (1, 1), (2, 2);",
+				"CALL DOLT_ADD('-A');",
+				"CALL DOLT_COMMIT('-m', 'initial commit');",
+				"CALL DOLT_BRANCH('other');",
+				"UPDATE test SET v1 = 3;",
+				"CALL DOLT_ADD('-A');",
+				"CALL DOLT_COMMIT('-m', 'commit main');",
+				"CALL DOLT_CHECKOUT('other');",
+				"UPDATE test SET v1 = 4 WHERE pk = 2;",
+				"CALL DOLT_ADD('-A');",
+				"CALL DOLT_COMMIT('-m', 'commit other');",
+			},
+			Assertions: []ScriptTestAssertion{
+				{
+					Query:            "CALL DOLT_CHECKOUT('main');",
+					SkipResultsCheck: true,
+				},
+				{
+					Query: "SELECT * FROM test;",
+					Expected: []sql.Row{
+						{1, 3},
+						{2, 3},
+					},
+				},
+				{
+					Query:            "CALL DOLT_CHECKOUT('other');",
+					SkipResultsCheck: true,
+				},
+				{
+					Query: "SELECT * FROM test;",
+					Expected: []sql.Row{
+						{1, 1},
+						{2, 4},
+					},
+				},
+				{
+					Query: "SELECT from_pk, to_pk, from_v1, to_v1 FROM dolt_diff_test;",
+					Expected: []sql.Row{
+						{2, 2, 2, 4},
+						{nil, 1, nil, 1},
+						{nil, 2, nil, 2},
+					},
+				},
+			},
+		},
 	})
-
-	conn, err := pgx.Connect(ctx, fmt.Sprintf("postgres://postgres:password@localhost:%d/postgres", port))
-	require.NoError(t, err)
-	defer conn.Close(ctx)
-
-	t.Run("Create Table", func(t *testing.T) {
-		//TODO: fix CHAR
-		_, err := conn.Exec(ctx, "CREATE TABLE test (pk BIGINT PRIMARY KEY, v1 VARCHAR(13), v2 VARCHAR(11), v3 TEXT);")
-		require.NoError(t, err)
-	})
-	t.Run("Insert 1", func(t *testing.T) {
-		_, err := conn.Exec(ctx, "INSERT INTO test VALUES (1, 'hey1', 'heythere2', 'hellofellow3');")
-		require.NoError(t, err)
-	})
-	t.Run("Insert 2", func(t *testing.T) {
-		_, err := conn.Exec(ctx, "INSERT INTO test VALUES (2, 'hey44', 'heythere55', 'hellofellow66');")
-		require.NoError(t, err)
-	})
-	t.Run("Select Rows", func(t *testing.T) {
-		rows, err := conn.Query(ctx, "SELECT * FROM test;")
-		require.NoError(t, err)
-		defer rows.Close()
-
-		expected := [][]interface{}{
-			{int64(1), "hey1", "heythere2", "hellofellow3"},
-			{int64(2), "hey44", "heythere55", "hellofellow66"},
-		}
-		assert.Equal(t, expected, rowsToSlice(t, rows))
-	})
-}
-
-func getEmptyPort(t *testing.T) int {
-	listener, err := net.Listen("tcp", ":0")
-	require.NoError(t, err)
-	port := listener.Addr().(*net.TCPAddr).Port
-	require.NoError(t, listener.Close())
-	return port
-}
-
-func rowsToSlice(t *testing.T, rows pgx.Rows) [][]interface{} {
-	var slice [][]interface{}
-	for rows.Next() {
-		row, err := rows.Values()
-		require.NoError(t, err)
-		slice = append(slice, row)
-	}
-	return slice
 }

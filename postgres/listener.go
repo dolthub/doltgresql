@@ -18,10 +18,12 @@ import (
 	"fmt"
 	"io"
 	"net"
+	"os"
 	"strings"
 	"sync/atomic"
 
 	"github.com/dolthub/go-mysql-server/server"
+	"github.com/dolthub/go-mysql-server/sql/mysql_db"
 	"github.com/dolthub/vitess/go/mysql"
 	"github.com/dolthub/vitess/go/sqltypes"
 
@@ -30,6 +32,7 @@ import (
 )
 
 var connectionIDCounter uint32
+var processID = int32(os.Getpid())
 
 // Listener listens for connections to process PostgreSQL requests into Dolt requests.
 type Listener struct {
@@ -134,6 +137,30 @@ InitialMessageLoop:
 		}
 	}
 
+	//TODO: implement users
+	if user, ok := startupMessage.Parameters["user"]; ok && len(user) > 0 {
+		var host string
+		if conn.RemoteAddr().Network() == "unix" {
+			host = "localhost"
+		} else {
+			host, _, _ = net.SplitHostPort(conn.RemoteAddr().String())
+			if len(host) == 0 {
+				host = "localhost"
+			}
+		}
+		mysqlConn.User = user
+		mysqlConn.UserData = mysql_db.MysqlConnectionUser{
+			User: user,
+			Host: host,
+		}
+	} else {
+		mysqlConn.User = "postgres"
+		mysqlConn.UserData = mysql_db.MysqlConnectionUser{
+			User: "postgres",
+			Host: "localhost",
+		}
+	}
+
 	if err := connection.Send(conn, messages.AuthenticationOk{}); err != nil {
 		returnErr = err
 		return
@@ -155,15 +182,8 @@ InitialMessageLoop:
 	}
 
 	if err := connection.Send(conn, messages.BackendKeyData{
-		ProcessID: 1,
+		ProcessID: processID,
 		SecretKey: 0,
-	}); err != nil {
-		returnErr = err
-		return
-	}
-
-	if err := connection.Send(conn, messages.ReadyForQuery{
-		Indicator: messages.ReadyForQueryTransactionIndicator_Idle,
 	}); err != nil {
 		returnErr = err
 		return
@@ -173,6 +193,13 @@ InitialMessageLoop:
 		l.cfg.Handler.ComQuery(mysqlConn, fmt.Sprintf("USE `%s`;", db), func(res *sqltypes.Result, more bool) error {
 			return nil
 		})
+	}
+
+	if err := connection.Send(conn, messages.ReadyForQuery{
+		Indicator: messages.ReadyForQueryTransactionIndicator_Idle,
+	}); err != nil {
+		returnErr = err
+		return
 	}
 
 	statementCache := make(map[string]string)

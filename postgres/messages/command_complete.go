@@ -81,14 +81,9 @@ func (m CommandComplete) Encode() (connection.MessageFormat, error) {
 		outputMessage.Field("CommandTag").MustWrite(fmt.Sprintf("UPDATE %d", m.Rows))
 	} else if strings.HasPrefix(query, "delete") {
 		outputMessage.Field("CommandTag").MustWrite(fmt.Sprintf("DELETE %d", m.Rows))
-	} else if strings.HasPrefix(query, "create") {
-		outputMessage.Field("CommandTag").MustWrite(fmt.Sprintf("SELECT %d", m.Rows))
-	} else if strings.HasPrefix(query, "drop") {
-		outputMessage.Field("CommandTag").MustWrite(fmt.Sprintf("SELECT %d", m.Rows))
-	} else if strings.HasPrefix(query, "call") {
-		outputMessage.Field("CommandTag").MustWrite(fmt.Sprintf("SELECT %d", m.Rows))
 	} else {
-		return connection.MessageFormat{}, fmt.Errorf("unsupported query for now")
+		// We'll just default to SELECT since that seems to be the return value for a lot of query types.
+		outputMessage.Field("CommandTag").MustWrite(fmt.Sprintf("SELECT %d", m.Rows))
 	}
 	return outputMessage, nil
 }
