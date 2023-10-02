@@ -19,7 +19,6 @@ import (
 	"io"
 	"net"
 	"os"
-	"strings"
 	"sync/atomic"
 
 	"github.com/dolthub/go-mysql-server/server"
@@ -55,6 +54,9 @@ func (l *Listener) Accept() {
 	for {
 		conn, err := l.listener.Accept()
 		if err != nil {
+			if err.Error() == "use of closed network connection" {
+				break
+			}
 			fmt.Printf("Unable to accept connection:\n%v\n", err)
 			continue
 		}
@@ -311,20 +313,35 @@ func (l *Listener) describe(conn net.Conn, mysqlConn *mysql.Conn, message messag
 		return err
 	}
 
-	if strings.HasPrefix(strings.TrimSpace(strings.ToLower(statement)), "select") {
-		// Since it is a SELECT statement, we can run it multiple times without worry.
-		if err := l.cfg.Handler.ComQuery(mysqlConn, statement, func(res *sqltypes.Result, more bool) error {
+	//TODO: properly handle these statements
+	if ImplicitlyCommits(statement) {
+		return fmt.Errorf("We do not yet support the Describe message for the given statement")
+	}
+	// We'll start a transaction, so that we can later rollback any changes that were made.
+	//TODO: handle the case where we are already in a transaction (SAVEPOINT will sometimes fail it seems?)
+	if err := l.cfg.Handler.ComQuery(mysqlConn, "START TRANSACTION;", func(_ *sqltypes.Result, _ bool) error {
+		return nil
+	}); err != nil {
+		return err
+	}
+	// We need to defer the rollback, so that it will always be executed.
+	defer func() {
+		_ = l.cfg.Handler.ComQuery(mysqlConn, "ROLLBACK;", func(_ *sqltypes.Result, _ bool) error {
+			return nil
+		})
+	}()
+	// Execute the statement, and send the description.
+	if err := l.cfg.Handler.ComQuery(mysqlConn, statement, func(res *sqltypes.Result, more bool) error {
+		if res != nil {
 			if err := connection.Send(conn, messages.RowDescription{
 				Fields: res.Fields,
 			}); err != nil {
 				return err
 			}
-			return nil
-		}); err != nil {
-			return err
 		}
-	} else {
-		return fmt.Errorf("We do not yet support returning rows from the given statement")
+		return nil
+	}); err != nil {
+		return err
 	}
 
 	return nil

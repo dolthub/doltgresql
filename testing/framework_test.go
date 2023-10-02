@@ -12,7 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-package main
+package testing
 
 import (
 	"context"
@@ -29,6 +29,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/dolthub/doltgresql/postgres"
+	dserver "github.com/dolthub/doltgresql/server"
 )
 
 // ScriptTest defines a consistent structure for testing queries.
@@ -121,7 +122,7 @@ func CreateServer(t *testing.T, database string) (context.Context, *pgx.Conn, *s
 	require.NotEmpty(t, database)
 	port := GetUnusedPort(t)
 	server.DefaultProtocolListenerFunc = postgres.NewLimitedListener
-	code, serverClosed := RunMainInMemory([]string{fmt.Sprintf("--port=%d", port), "--host=127.0.0.1"})
+	code, serverClosed := dserver.RunInMemory([]string{fmt.Sprintf("--port=%d", port), "--host=127.0.0.1"})
 	require.Equal(t, 0, *code)
 
 	ctx := context.Background()
