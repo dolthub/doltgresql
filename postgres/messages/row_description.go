@@ -147,8 +147,12 @@ func VitessFieldToDataTypeObjectID(field *query.Field) (int32, error) {
 		return 23, nil
 	case query.Type_INT64:
 		return 20, nil
+	case query.Type_FLOAT32:
+		return 700, nil
+	case query.Type_FLOAT64:
+		return 701, nil
 	case query.Type_CHAR:
-		return 18, nil
+		return 1042, nil
 	case query.Type_VARCHAR:
 		return 1043, nil
 	case query.Type_TEXT:
@@ -170,6 +174,10 @@ func VitessFieldToDataTypeSize(field *query.Field) (int16, error) {
 	case query.Type_INT32:
 		return 4, nil
 	case query.Type_INT64:
+		return 8, nil
+	case query.Type_FLOAT32:
+		return 4, nil
+	case query.Type_FLOAT64:
 		return 8, nil
 	case query.Type_CHAR:
 		return -1, nil
@@ -194,6 +202,10 @@ func VitessFieldToDataTypeModifier(field *query.Field) (int32, error) {
 	case query.Type_INT32:
 		return -1, nil
 	case query.Type_INT64:
+		return -1, nil
+	case query.Type_FLOAT32:
+		return -1, nil
+	case query.Type_FLOAT64:
 		return -1, nil
 	case query.Type_CHAR:
 		// PostgreSQL adds 4 to the length for an unknown reason

@@ -12,7 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-package main
+package testing
 
 import (
 	"testing"
@@ -23,18 +23,56 @@ import (
 func TestSmokeTests(t *testing.T) {
 	RunScripts(t, []ScriptTest{
 		{
-			Name: "Basic Connection",
+			Name: "String types",
 			SetUpScript: []string{
-				"CREATE TABLE test (pk BIGINT PRIMARY KEY, v1 VARCHAR(13), v2 VARCHAR(11), v3 TEXT);",
-				"INSERT INTO test VALUES (1, 'hey1', 'heythere2', 'hellofellow3');",
-				"INSERT INTO test VALUES (2, 'hey44', 'heythere55', 'hellofellow66');",
+				"CREATE TABLE test (pk BIGINT PRIMARY KEY, v1 VARCHAR(13), v2 CHAR(11), v3 TEXT);",
 			},
 			Assertions: []ScriptTestAssertion{
+				{
+					Query:    "INSERT INTO test VALUES (1, 'hey1', 'heythere2', 'hellofellow3');",
+					Expected: []sql.Row{},
+				},
+				{
+					Query:    "INSERT INTO test VALUES (2, 'hey44', 'heythere55', 'hellofellow66');",
+					Expected: []sql.Row{},
+				},
 				{
 					Query: "SELECT * FROM test;",
 					Expected: []sql.Row{
 						{1, "hey1", "heythere2", "hellofellow3"},
 						{2, "hey44", "heythere55", "hellofellow66"},
+					},
+				},
+			},
+		},
+		{
+			Name: "Int types",
+			SetUpScript: []string{
+				"CREATE TABLE test (v1 SMALLINT, v2 INTEGER, v3 BIGINT);",
+				"INSERT INTO test VALUES (1, 2, 3), (4, 5, 6);",
+			},
+			Assertions: []ScriptTestAssertion{
+				{
+					Query: "SELECT * FROM test ORDER BY 1;",
+					Expected: []sql.Row{
+						{1, 2, 3},
+						{4, 5, 6},
+					},
+				},
+			},
+		},
+		{
+			Name: "Float types",
+			SetUpScript: []string{
+				"CREATE TABLE test (v1 REAL, v2 DOUBLE PRECISION);",
+				"INSERT INTO test VALUES (1.5, 2.25), (10.125, 15.0625);",
+			},
+			Assertions: []ScriptTestAssertion{
+				{
+					Query: "SELECT * FROM test ORDER BY 1;",
+					Expected: []sql.Row{
+						{1.5, 2.25},
+						{10.125, 15.0625},
 					},
 				},
 			},
