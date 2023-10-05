@@ -22,6 +22,7 @@ import (
 	"math/rand"
 	_ "net/http/pprof"
 	"os"
+	"strings"
 	"sync"
 
 	"github.com/dolthub/dolt/go/cmd/dolt/cli"
@@ -41,8 +42,6 @@ import (
 	"github.com/dolthub/go-mysql-server/sql"
 	"github.com/fatih/color"
 	"github.com/tidwall/gjson"
-
-	"github.com/dolthub/doltgresql/postgres"
 )
 
 //TODO: cleanup this file
@@ -53,12 +52,14 @@ const (
 
 var doltCommand = cli.NewSubCommandHandler("doltgresql", "it's git for data", []cli.Command{
 	commands.InitCmd{},
+	commands.ConfigCmd{},
+	commands.VersionCmd{VersionStr: Version},
 	sqlserver.SqlServerCmd{VersionStr: Version},
 })
 var globalArgParser = cli.CreateGlobalArgParser("doltgresql")
 
 func init() {
-	server.DefaultProtocolListenerFunc = postgres.NewListener
+	server.DefaultProtocolListenerFunc = NewListener
 	sqlserver.ExternalDisableUsers = true
 	dfunctions.VersionString = Version
 }
@@ -87,12 +88,19 @@ func RunInMemory(args []string) (*int, *sync.WaitGroup) {
 func runServer(args []string, fs filesys.Filesys) (*int, *sync.WaitGroup) {
 	wg := &sync.WaitGroup{}
 	ctx := context.Background()
-	// Inject the "sql-server" command
-	args = append([]string{"sql-server"}, args...)
-	// Enforce a default port of 5432
-	if serverArgs, err := (sqlserver.SqlServerCmd{}).ArgParser().Parse(args); err == nil {
-		if _, ok := serverArgs.GetValue("port"); !ok {
-			args = append(args, "--port=5432")
+	// Inject the "sql-server" command if no other commands were given
+	if len(args) == 0 || (len(args) > 0 && strings.HasPrefix(args[0], "-")) {
+		args = append([]string{"sql-server"}, args...)
+	}
+	// The "sql-server" command will automatically initialize the repository
+	serverMode := false
+	if args[0] == "sql-server" {
+		serverMode = true
+		// Enforce a default port of 5432
+		if serverArgs, err := (sqlserver.SqlServerCmd{}).ArgParser().Parse(args); err == nil {
+			if _, ok := serverArgs.GetValue("port"); !ok {
+				args = append(args, "--port=5432")
+			}
 		}
 	}
 
@@ -293,8 +301,11 @@ func runServer(args []string, fs filesys.Filesys) (*int, *sync.WaitGroup) {
 	}
 
 	ctx, stop := context.WithCancel(ctx)
-	if !dEnv.HasDoltDataDir() {
-		_ = doltCommand.Exec(ctx, "dolt", []string{"init"}, dEnv, cliCtx)
+	if serverMode {
+		// Server mode automatically initializes the repository
+		if !dEnv.HasDoltDataDir() {
+			_ = doltCommand.Exec(ctx, "dolt", []string{"init"}, dEnv, cliCtx)
+		}
 	}
 
 	// We're now running the server, so we can increment the WaitGroup.
