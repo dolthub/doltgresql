@@ -19,33 +19,11 @@ jobs:
     env:
       use_credentials: ${{ secrets.AWS_SECRET_ACCESS_KEY != '' && secrets.AWS_ACCESS_KEY_ID != '' }}
     steps:
-      - name: Conditionally Set ENV VARS for AWS tests
-        run: |
-          if [[ $use_credentials == true ]]; then
-            echo "AWS_SDK_LOAD_CONFIG=1" >> $GITHUB_ENV
-            echo "AWS_REGION=us-west-2" >> $GITHUB_ENV
-            echo "DOLT_BATS_AWS_TABLE=dolt-ci-bats-manifests-us-west-2" >> $GITHUB_ENV
-            echo "DOLT_BATS_AWS_BUCKET=dolt-ci-bats-chunks-us-west-2" >> $GITHUB_ENV
-            echo "DOLT_BATS_AWS_EXISTING_REPO=aws_remote_bats_tests__dolt__" >> $GITHUB_ENV
-          fi
-      - name: Configure AWS Credentials
-        if: ${{ env.use_credentials == 'true' }}
-        uses: aws-actions/configure-aws-credentials@v2.2.0
-        with:
-          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
-          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
-          aws-region: us-west-2
-          role-to-assume: ${{ secrets.AWS_ROLE_TO_ASSUME }}
-          role-duration-seconds: 10800 # 3 hours D:
       - name: Setup Go 1.x
         uses: actions/setup-go@v3
         with:
           go-version: ^1.20
         id: go
-      - name: Setup Python 3.x
-        uses: actions/setup-python@v4
-        with:
-          python-version: "3.10"
       - uses: actions/checkout@v3
       - uses: actions/setup-node@v3
         with:
@@ -62,9 +40,6 @@ jobs:
           npm i bats
           echo "$(pwd)/node_modules/.bin" >> $GITHUB_PATH
         working-directory: ./.ci_bin
-      - name: Install Python Deps
-        run: |
-          pip install mysql-connector-python
       - name: Install DoltgreSQL
         working-directory: ./
         run: |
