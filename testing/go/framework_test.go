@@ -12,7 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-package testing
+package _go
 
 import (
 	"context"
@@ -28,7 +28,6 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"github.com/dolthub/doltgresql/postgres"
 	dserver "github.com/dolthub/doltgresql/server"
 )
 
@@ -121,7 +120,7 @@ func RunScripts(t *testing.T, scripts []ScriptTest) {
 func CreateServer(t *testing.T, database string) (context.Context, *pgx.Conn, *sync.WaitGroup) {
 	require.NotEmpty(t, database)
 	port := GetUnusedPort(t)
-	server.DefaultProtocolListenerFunc = postgres.NewLimitedListener
+	server.DefaultProtocolListenerFunc = dserver.NewLimitedListener
 	code, serverClosed := dserver.RunInMemory([]string{fmt.Sprintf("--port=%d", port), "--host=127.0.0.1"})
 	require.Equal(t, 0, *code)
 

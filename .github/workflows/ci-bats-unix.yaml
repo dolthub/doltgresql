@@ -1,0 +1,69 @@
+name: Test Bats Unix
+on: [pull_request]
+
+concurrency:
+  group: ci-bats-unix-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  test:
+    name: Bats tests
+    defaults:
+      run:
+        shell: bash
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ ubuntu-22.04, macos-latest ]
+    env:
+      use_credentials: ${{ secrets.AWS_SECRET_ACCESS_KEY != '' && secrets.AWS_ACCESS_KEY_ID != '' }}
+    steps:
+      - name: Setup Go 1.x
+        uses: actions/setup-go@v3
+        with:
+          go-version: ^1.20
+        id: go
+      - uses: actions/checkout@v3
+      - uses: actions/setup-node@v3
+        with:
+          node-version: ^16
+      - name: Create CI Bin
+        run: |
+          mkdir -p ./.ci_bin
+          echo "$(pwd)/.ci_bin" >> $GITHUB_PATH
+      - name: Verify Bats Naming Scheme
+        run: ./check_bats_fmt.sh
+        working-directory: ./testing/bats/setup
+      - name: Install Bats
+        run: |
+          npm i bats
+          echo "$(pwd)/node_modules/.bin" >> $GITHUB_PATH
+        working-directory: ./.ci_bin
+      - name: Install DoltgreSQL
+        working-directory: ./
+        run: |
+          go build -mod=readonly -o .ci_bin/doltgresql .
+      - name: Setup DoltgreSQL Config
+        run: |
+          doltgresql config --global --add user.name 'Dolthub Actions'
+          doltgresql config --global --add user.email 'actions@dolthub.com'
+      - name: Install PSQL Ubuntu
+        if: matrix.os == 'ubuntu-22.04'
+        run: |
+          sudo sh -c 'echo "deb https://apt.postgresql.org/pub/repos/apt $(lsb_release -cs)-pgdg main" > /etc/apt/sources.list.d/pgdg.list'
+          wget --quiet -O - https://www.postgresql.org/media/keys/ACCC4CF8.asc | sudo apt-key add -
+          sudo apt-get update
+          sudo apt-get install --yes --no-install-recommends postgresql-client-15
+      - name: Install PSQL MacOS
+        if: matrix.os == 'macos-latest'
+        run: |
+          brew install postgresql@15
+          brew link --overwrite postgresql@15
+      - name: Test all Unix
+        env:
+          SQL_ENGINE: "local-engine"
+          BATS_TEST_RETRIES: "3"
+        run: |
+          bats --tap .
+        working-directory: ./testing/bats
