@@ -149,7 +149,7 @@ func CreateServer(t *testing.T, database string) (context.Context, *pgx.Conn, *s
 	}()
 	require.NoError(t, err)
 
-	conn, err := pgx.Connect(ctx, fmt.Sprintf("postgres://postgres:password@127.0.0.1:%d/postgres?sslmode=disable", port))
+	conn, err := pgx.Connect(ctx, fmt.Sprintf("postgres://postgres:password@127.0.0.1:%d/%s?sslmode=disable", port, database))
 	require.NoError(t, err)
 	return ctx, conn, serverClosed
 }
