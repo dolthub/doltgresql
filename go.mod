@@ -1,18 +1,28 @@
 module github.com/dolthub/doltgresql
 
-go 1.20
+go 1.21
 
 require (
-	github.com/dolthub/dolt/go v0.40.5-0.20230917024726-1ae3a49864ac
-	github.com/dolthub/go-mysql-server v0.17.1-0.20230916212652-86f1cdf0339c
-	github.com/dolthub/vitess v0.0.0-20230915082726-ef1b92774b14
+	github.com/biogo/store v0.0.0-20201120204734-aad293a2328f
+	github.com/cockroachdb/apd/v2 v2.0.3-0.20200518165714-d020e156310a
+	github.com/cockroachdb/errors v1.7.5
+	github.com/dolthub/dolt/go v0.40.5-0.20231007000446-a29c9d57492d
+	github.com/dolthub/go-mysql-server v0.17.1-0.20231005225621-4cc2f2ca38ce
+	github.com/dolthub/vitess v0.0.0-20230929000236-6c60b48b32da
 	github.com/fatih/color v1.13.0
+	github.com/gogo/protobuf v1.3.2
+	github.com/golang/geo v0.0.0-20200730024412-e86565bf3f35
+	github.com/google/go-cmp v0.5.9
+	github.com/grpc-ecosystem/grpc-gateway v1.16.0
 	github.com/jackc/pgx/v5 v5.4.3
-	github.com/shopspring/decimal v1.2.0
+	github.com/lib/pq v1.10.0
+	github.com/pierrre/geohash v1.0.0
+	github.com/sasha-s/go-deadlock v0.3.1
 	github.com/stretchr/testify v1.8.2
 	github.com/tidwall/gjson v1.14.4
-	golang.org/x/exp v0.0.0-20230522175609-2e198f4a06a1
-	golang.org/x/sys v0.10.0
+	github.com/twpayne/go-geom v1.3.6
+	golang.org/x/sys v0.12.0
+	golang.org/x/text v0.13.0
 )
 
 require (
@@ -32,9 +42,12 @@ require (
 	github.com/cenkalti/backoff/v4 v4.1.3 // indirect
 	github.com/cespare/xxhash v1.1.0 // indirect
 	github.com/cespare/xxhash/v2 v2.2.0 // indirect
+	github.com/cockroachdb/logtags v0.0.0-20190617123548-eb05cc24525f // indirect
+	github.com/cockroachdb/redact v1.0.6 // indirect
+	github.com/cockroachdb/sentry-go v0.6.1-cockroachdb.2 // indirect
 	github.com/davecgh/go-spew v1.1.1 // indirect
 	github.com/denisbrodbeck/machineid v1.0.1 // indirect
-	github.com/dolthub/dolt/go/gen/proto/dolt/services/eventsapi v0.0.0-20230917024726-1ae3a49864ac // indirect
+	github.com/dolthub/dolt/go/gen/proto/dolt/services/eventsapi v0.0.0-20231007000446-a29c9d57492d // indirect
 	github.com/dolthub/flatbuffers/v23 v23.3.3-dh.2 // indirect
 	github.com/dolthub/fslock v0.0.3 // indirect
 	github.com/dolthub/go-icu-regex v0.0.0-20230524105445-af7e7991c97e // indirect
@@ -53,7 +66,6 @@ require (
 	github.com/golang/groupcache v0.0.0-20210331224755-41bb18bfe9da // indirect
 	github.com/golang/protobuf v1.5.3 // indirect
 	github.com/golang/snappy v0.0.4 // indirect
-	github.com/google/go-cmp v0.5.9 // indirect
 	github.com/google/s2a-go v0.1.4 // indirect
 	github.com/google/shlex v0.0.0-20191202100458-e7afc7fbc510 // indirect
 	github.com/google/uuid v1.3.0 // indirect
@@ -69,6 +81,8 @@ require (
 	github.com/kch42/buzhash v0.0.0-20160816060738-9bdec3dec7c6 // indirect
 	github.com/klauspost/compress v1.10.10 // indirect
 	github.com/klauspost/cpuid/v2 v2.0.12 // indirect
+	github.com/kr/pretty v0.3.0 // indirect
+	github.com/kr/text v0.2.0 // indirect
 	github.com/kylelemons/godebug v1.1.0 // indirect
 	github.com/lestrrat-go/strftime v1.0.4 // indirect
 	github.com/mattn/go-colorable v0.1.13 // indirect
@@ -77,6 +91,7 @@ require (
 	github.com/matttproud/golang_protobuf_extensions v1.0.1 // indirect
 	github.com/mitchellh/go-ps v1.0.0 // indirect
 	github.com/mitchellh/hashstructure v1.1.0 // indirect
+	github.com/petermattis/goid v0.0.0-20180202154549-b0b1615b78e5 // indirect
 	github.com/pierrec/lz4/v4 v4.1.6 // indirect
 	github.com/pkg/errors v0.9.1 // indirect
 	github.com/pmezard/go-difflib v1.0.0 // indirect
@@ -87,6 +102,7 @@ require (
 	github.com/rivo/uniseg v0.2.0 // indirect
 	github.com/rogpeppe/go-internal v1.11.0 // indirect
 	github.com/sergi/go-diff v1.1.0 // indirect
+	github.com/shopspring/decimal v1.2.0 // indirect
 	github.com/silvasur/buzhash v0.0.0-20160816060738-9bdec3dec7c6 // indirect
 	github.com/sirupsen/logrus v1.8.1 // indirect
 	github.com/skratchdot/open-golang v0.0.0-20200116055534-eef842397966 // indirect
@@ -95,6 +111,7 @@ require (
 	github.com/tidwall/match v1.1.1 // indirect
 	github.com/tidwall/pretty v1.2.1 // indirect
 	github.com/tidwall/sjson v1.2.5 // indirect
+	github.com/twpayne/go-kml v1.5.2-0.20200728095708-9f2fd4dfcbfe // indirect
 	github.com/vbauerster/mpb/v8 v8.0.2 // indirect
 	github.com/xitongsys/parquet-go v1.6.1 // indirect
 	github.com/xitongsys/parquet-go-source v0.0.0-20211010230925-397910c5e371 // indirect
@@ -105,15 +122,15 @@ require (
 	go.uber.org/atomic v1.7.0 // indirect
 	go.uber.org/multierr v1.6.0 // indirect
 	go.uber.org/zap v1.24.0 // indirect
-	golang.org/x/crypto v0.11.0 // indirect
-	golang.org/x/mod v0.9.0 // indirect
-	golang.org/x/net v0.12.0 // indirect
+	golang.org/x/crypto v0.13.0 // indirect
+	golang.org/x/exp v0.0.0-20230522175609-2e198f4a06a1 // indirect
+	golang.org/x/mod v0.12.0 // indirect
+	golang.org/x/net v0.15.0 // indirect
 	golang.org/x/oauth2 v0.8.0 // indirect
-	golang.org/x/sync v0.2.0 // indirect
-	golang.org/x/term v0.10.0 // indirect
-	golang.org/x/text v0.11.0 // indirect
+	golang.org/x/sync v0.3.0 // indirect
+	golang.org/x/term v0.12.0 // indirect
 	golang.org/x/time v0.1.0 // indirect
-	golang.org/x/tools v0.6.0 // indirect
+	golang.org/x/tools v0.13.0 // indirect
 	golang.org/x/xerrors v0.0.0-20220907171357-04be3eba64a2 // indirect
 	google.golang.org/api v0.126.0 // indirect
 	google.golang.org/appengine v1.6.7 // indirect

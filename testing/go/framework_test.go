@@ -85,7 +85,7 @@ func RunScript(t *testing.T, script ScriptTest) {
 				}
 				// If we're skipping the results check, then we call Execute, as it uses a simplified message model.
 				// The more complicated model is only partially implemented, and therefore won't work for all queries.
-				if assertion.SkipResultsCheck {
+				if assertion.SkipResultsCheck || assertion.ExpectedErr {
 					_, err := conn.Exec(ctx, assertion.Query)
 					if assertion.ExpectedErr {
 						require.Error(t, err)
@@ -94,13 +94,9 @@ func RunScript(t *testing.T, script ScriptTest) {
 					}
 				} else {
 					rows, err := conn.Query(ctx, assertion.Query)
-					if assertion.ExpectedErr {
-						require.Error(t, err)
-					} else {
-						require.NoError(t, err)
-						defer rows.Close()
-						assert.Equal(t, NormalizeRows(assertion.Expected), ReadRows(t, rows))
-					}
+					require.NoError(t, err)
+					defer rows.Close()
+					assert.Equal(t, NormalizeRows(assertion.Expected), ReadRows(t, rows))
 				}
 			})
 		}
@@ -188,6 +184,8 @@ func NormalizeRow(row sql.Row) sql.Row {
 		case uint64:
 			// PostgreSQL does not support an uint64 type, so we can always convert this to an int64 safely.
 			newRow[i] = int64(val)
+		case float32:
+			newRow[i] = float64(val)
 		default:
 			newRow[i] = val
 		}
