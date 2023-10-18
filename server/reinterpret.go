@@ -17,17 +17,35 @@ package server
 import (
 	"fmt"
 
+	vitess "github.com/dolthub/vitess/go/vt/sqlparser"
+
 	"github.com/dolthub/doltgresql/postgres/parser/parser"
+	"github.com/dolthub/doltgresql/postgres/parser/sem/tree"
 )
 
-// reinterpretQuery takes the given Postgres query, and reinterprets it as a query that will work with the handler.
-func (l *Listener) reinterpretQuery(query string) (string, error) {
+// reinterpretQuery takes the given Postgres query, and reinterprets it as a ParsedQuery that will work with the handler.
+func (l *Listener) reinterpretQuery(query string) (ParsedQuery, error) {
 	s, err := parser.Parse(query)
 	if err != nil {
-		return "", err
+		return ParsedQuery{}, err
 	}
 	if len(s) > 1 {
-		return "", fmt.Errorf("only a single statement at a time is currently supported")
+		return ParsedQuery{}, fmt.Errorf("only a single statement at a time is currently supported")
 	}
-	return s[0].AST.String(), nil
+	parsedAST := s[0].AST
+	// Proof-of-concept on how this can be expanded and used. We'll eventually have a full translation layer to convert
+	// from one AST to the other. For now, this lets us parse CREATE DATABASE while ignoring extra options like templates.
+	switch ast := parsedAST.(type) {
+	case *tree.CreateDatabase:
+		vitessParsed := &vitess.DBDDL{
+			Action:      vitess.CreateStr,
+			DBName:      ast.Name.String(),
+			IfNotExists: ast.IfNotExists,
+		}
+		// Normally we'd pass the original query in rather than use the empty string (for tracking purposes).
+		// However, for the sake of demonstration, we're using an empty string so that it's clear that it's working.
+		return ParsedQuery{"", vitessParsed}, nil
+	default:
+		return ParsedQuery{parsedAST.String(), nil}, nil
+	}
 }
