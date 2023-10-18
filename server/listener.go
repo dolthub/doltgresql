@@ -87,6 +87,9 @@ func (l *Listener) HandleConnection(conn net.Conn) {
 	var err error
 	var returnErr error
 	defer func() {
+		if r := recover(); r != nil {
+			fmt.Println(r)
+		}
 		if returnErr != nil {
 			fmt.Println(returnErr.Error())
 		}
@@ -244,12 +247,24 @@ InitialMessageLoop:
 			case messages.Query:
 				var ok bool
 				if ok, err = l.handledPSQLCommands(conn, mysqlConn, message.String); !ok && err == nil {
-					err = l.execute(conn, mysqlConn, message.String)
+					var query string
+					if query, err = l.reinterpretQuery(message.String); err != nil {
+						l.endOfMessages(conn, err)
+						break ReadMessages
+					} else {
+						err = l.execute(conn, mysqlConn, query)
+					}
 				}
 				l.endOfMessages(conn, err)
 			case messages.Parse:
 				//TODO: fully support prepared statements
-				statementCache[message.Name] = message.Query
+				var query string
+				if query, err = l.reinterpretQuery(message.Query); err != nil {
+					l.endOfMessages(conn, err)
+					break ReadMessages
+				} else {
+					statementCache[message.Name] = query
+				}
 				if err = connection.Send(conn, messages.ParseComplete{}); err != nil {
 					l.endOfMessages(conn, err)
 					break ReadMessages
@@ -311,6 +326,9 @@ func (l *Listener) execute(conn net.Conn, mysqlConn *mysql.Conn, query string) e
 		}
 		return nil
 	}); err != nil {
+		if strings.HasPrefix(err.Error(), "syntax error at position") {
+			return fmt.Errorf("This statement is not yet supported")
+		}
 		return err
 	}
 

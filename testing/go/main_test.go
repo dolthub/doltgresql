@@ -126,5 +126,14 @@ func TestSmokeTests(t *testing.T) {
 				},
 			},
 		},
+		{
+			Name: "Unsupported MySQL statements",
+			Assertions: []ScriptTestAssertion{
+				{
+					Query:       "SHOW CREATE TABLE;",
+					ExpectedErr: true,
+				},
+			},
+		},
 	})
 }
