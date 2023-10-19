@@ -26,9 +26,8 @@ package pgdate
 
 import (
 	"fmt"
+	"sync"
 	"time"
-
-	"github.com/dolthub/doltgresql/postgres/parser/syncutil"
 )
 
 // zoneCache stores the results of resolving time.Location instances.
@@ -40,7 +39,7 @@ import (
 // the string representation.
 type zoneCache struct {
 	mu struct {
-		syncutil.Mutex
+		sync.Mutex
 		named map[string]*zoneCacheEntry
 		fixed map[int]*time.Location
 	}

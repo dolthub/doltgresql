@@ -77,15 +77,6 @@ type Overload struct {
 	// might be more appropriate.
 	Info string
 
-	AggregateFunc func([]*types.T, *EvalContext, Datums) AggregateFunc
-	WindowFunc    func([]*types.T, *EvalContext) WindowFunc
-	Fn            func(*EvalContext, Datums) (Datum, error)
-	Generator     GeneratorFactory
-
-	// SQLFn must be set for overloads of type SQLClass. It should return a SQL
-	// statement which will be executed as a common table expression in the query.
-	SQLFn func(*EvalContext, Datums) (string, error)
-
 	// SpecializedVecBuiltin is used to let the vectorized engine
 	// know when an Overload has a specialized vectorized operator.
 	SpecializedVecBuiltin SpecializedVectorizedBuiltin

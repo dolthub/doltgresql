@@ -29,7 +29,6 @@ import (
 	"encoding/binary"
 	"io"
 	"math"
-	"math/rand"
 	"net"
 	"strconv"
 	"strings"
@@ -263,22 +262,6 @@ func ParseINet(s string, dest *IPAddr) error {
 		Mask: byte(maskOnes),
 	}
 	return nil
-}
-
-// RandIPAddr generates a random IPAddr. This includes random mask size and IP
-// family.
-func RandIPAddr(rng *rand.Rand) IPAddr {
-	var ipAddr IPAddr
-	if rng.Intn(2) > 0 {
-		ipAddr.Family = IPv4family
-		ipAddr.Mask = byte(rng.Intn(33))
-		ipAddr.Addr = Addr(utils.FromInts(0, uint64(rng.Uint32())|IPv4mappedIPv6prefix))
-	} else {
-		ipAddr.Family = IPv6family
-		ipAddr.Mask = byte(rng.Intn(129))
-		ipAddr.Addr = Addr(utils.FromInts(rng.Uint64(), rng.Uint64()))
-	}
-	return ipAddr
 }
 
 // Hostmask returns the host masked IP. This is defined as the IP address bits

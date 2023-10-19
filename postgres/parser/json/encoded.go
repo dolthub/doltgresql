@@ -29,11 +29,10 @@ import (
 	"fmt"
 	"sort"
 	"strconv"
+	"sync"
 	"unsafe"
 
 	"github.com/cockroachdb/errors"
-
-	"github.com/dolthub/doltgresql/postgres/parser/syncutil"
 )
 
 type jsonEncoded struct {
@@ -48,7 +47,7 @@ type jsonEncoded struct {
 	// TODO(justin): for simplicity right now we use a mutex, we could be using
 	// an atomic CAS though.
 	mu struct {
-		syncutil.RWMutex
+		sync.RWMutex
 
 		cachedDecoded JSON
 	}

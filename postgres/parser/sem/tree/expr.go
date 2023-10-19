@@ -64,17 +64,6 @@ type Expr interface {
 // TypedExpr represents a well-typed expression.
 type TypedExpr interface {
 	Expr
-	// Eval evaluates an SQL expression. Expression evaluation is a
-	// mostly straightforward walk over the parse tree. The only
-	// significant complexity is the handling of types and implicit
-	// conversions. See binOps and cmpOps for more details. Note that
-	// expression evaluation returns an error if certain node types are
-	// encountered: Placeholder, VarName (and related UnqualifiedStar,
-	// UnresolvedName and AllColumnsSelector) or Subquery. These nodes
-	// should be replaced prior to expression evaluation by an
-	// appropriate WalkExpr. For example, Placeholder should be replace
-	// by the argument passed from the client.
-	Eval(*EvalContext) (Datum, error)
 	// ResolvedType provides the type of the TypedExpr, which is the type of Datum
 	// that the TypedExpr will return when evaluated.
 	ResolvedType() *types.T
@@ -1109,11 +1098,6 @@ func (node *TypedDummy) TypeCheck(context.Context, *SemaContext, *types.T) (Type
 // Walk implements the Expr interface.
 func (node *TypedDummy) Walk(Visitor) Expr { return node }
 
-// Eval implements the TypedExpr interface.
-func (node *TypedDummy) Eval(*EvalContext) (Datum, error) {
-	return nil, errors.AssertionFailedf("should not eval typed dummy")
-}
-
 // BinaryOperator represents a binary operator.
 type BinaryOperator int
 
@@ -1398,11 +1382,6 @@ func NewTypedFuncExpr(
 // Resolve (which happens during TypeCheck).
 func (node *FuncExpr) ResolvedOverload() *Overload {
 	return node.fn
-}
-
-// IsGeneratorApplication returns true iff the function applied is a generator (SRF).
-func (node *FuncExpr) IsGeneratorApplication() bool {
-	return node.fn != nil && node.fn.Generator != nil
 }
 
 // IsWindowFunctionApplication returns true iff the function is being applied as a window function.
