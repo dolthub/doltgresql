@@ -127,7 +127,7 @@ func CreateServer(t *testing.T, database string) (context.Context, *pgx.Conn, *s
 		var conn *pgx.Conn
 		var err error
 		for i := 0; i < 3; i++ {
-			conn, err = pgx.Connect(ctx, fmt.Sprintf("postgres://postgres:password@127.0.0.1:%d/?sslmode=disable", port))
+			conn, err = pgx.Connect(ctx, fmt.Sprintf("postgres://postgres:password@127.0.0.1:%d/", port))
 			if err == nil {
 				break
 			} else {
@@ -144,7 +144,7 @@ func CreateServer(t *testing.T, database string) (context.Context, *pgx.Conn, *s
 	}()
 	require.NoError(t, err)
 
-	conn, err := pgx.Connect(ctx, fmt.Sprintf("postgres://postgres:password@127.0.0.1:%d/%s?sslmode=disable", port, database))
+	conn, err := pgx.Connect(ctx, fmt.Sprintf("postgres://postgres:password@127.0.0.1:%d/%s", port, database))
 	require.NoError(t, err)
 	return ctx, conn, serverClosed
 }

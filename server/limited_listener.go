@@ -15,8 +15,11 @@
 package server
 
 import (
+	"crypto/tls"
 	"net"
 	"sync"
+
+	"github.com/madflojo/testcerts"
 
 	"github.com/dolthub/go-mysql-server/server"
 	"github.com/dolthub/vitess/go/mysql"
@@ -24,8 +27,8 @@ import (
 
 // LimitedListener automatically shuts down the listener after two connections close. This is intended only for testing.
 // Tests will always make use of two connections, and they are as follows:
-// 1. Establish a non-SSL connection, and create the database. Disconnect afterward (Postgres enforces one connection per database).
-// 2. Establish a non-SSL connection, and run all of the queries relevant to the database.
+// 1. Establish a connection, and create the database. Disconnect afterward (Postgres enforces one connection per database).
+// 2. Establish a connection, and run all of the queries relevant to the database.
 // Tests that do not use the framework provided may not adhere to the above rules, and therefore must find another way
 // to properly close their servers.
 type LimitedListener struct {
@@ -37,6 +40,17 @@ var _ server.ProtocolListener = (*LimitedListener)(nil)
 
 // NewLimitedListener creates a new LimitedListener.
 func NewLimitedListener(listenerCfg mysql.ListenerConfig) (server.ProtocolListener, error) {
+	// Since this is intended for testing, we'll configure a test certificate so that we can test for SSL support
+	if len(certificate.Certificate) == 0 {
+		cert, key, err := testcerts.GenerateCerts()
+		if err != nil {
+			panic(err)
+		}
+		certificate, err = tls.X509KeyPair(cert, key)
+		if err != nil {
+			panic(err)
+		}
+	}
 	listener, err := NewListener(listenerCfg)
 	if err != nil {
 		return nil, err

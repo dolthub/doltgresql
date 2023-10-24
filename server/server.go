@@ -312,6 +312,25 @@ func runServer(args []string, fs filesys.Filesys) (*int, *sync.WaitGroup) {
 	wg.Add(1)
 	res := new(int)
 	go func() {
+		defer wg.Done()
+		// Grab the config so that we can pull the TLS key & cert. If there's an error then we can ignore it here, as
+		// it'll be caught when the server actually tries to run.
+		if sqlServerApr, err := cli.ParseArgs(sqlserver.SqlServerCmd{}.ArgParser(), args, nil); err == nil {
+			if serverConfig, err := sqlserver.GetServerConfig(dEnv.FS, sqlServerApr); err == nil {
+				// We throw an error if there's an issue with the TLS cert though
+				tlsConfig, err := sqlserver.LoadTLSConfig(serverConfig)
+				if err != nil {
+					cli.PrintErrln(err)
+					if *res == 0 {
+						*res = 1
+					}
+					return
+				}
+				if tlsConfig != nil && len(tlsConfig.Certificates) > 0 {
+					certificate = tlsConfig.Certificates[0]
+				}
+			}
+		}
 		*res = doltCommand.Exec(ctx, "dolt", remainingArgs, dEnv, cliCtx)
 		stop()
 
@@ -321,7 +340,6 @@ func runServer(args []string, fs filesys.Filesys) (*int, *sync.WaitGroup) {
 				*res = 1
 			}
 		}
-		wg.Done()
 	}()
 	return res, wg
 }
