@@ -37,16 +37,6 @@ const PgCatalogName = "pg_catalog"
 // PublicSchemaName is the name of the pg_catalog system schema.
 const PublicSchemaName = "public"
 
-// InformationSchemaName is the name of the information_schema system schema.
-const InformationSchemaName = "information_schema"
-
-// CRDBInternalSchemaName is the name of the crdb_internal system schema.
-const CRDBInternalSchemaName = "crdb_internal"
-
-// PgSchemaPrefix is a prefix for Postgres system schemas. Users cannot
-// create schemas with this prefix.
-const PgSchemaPrefix = "pg_"
-
 // PgTempSchemaName is the alias for temporary schemas across sessions.
 const PgTempSchemaName = "pg_temp"
 

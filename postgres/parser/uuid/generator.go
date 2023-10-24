@@ -43,8 +43,6 @@ import (
 	"time"
 
 	"github.com/cockroachdb/errors"
-
-	"github.com/dolthub/doltgresql/postgres/parser/syncutil"
 )
 
 // Difference in 100-nanosecond intervals between
@@ -102,7 +100,7 @@ type Generator interface {
 type Gen struct {
 	clockSequenceOnce sync.Once
 	hardwareAddrOnce  sync.Once
-	storageMutex      syncutil.Mutex
+	storageMutex      sync.Mutex
 
 	rand io.Reader
 

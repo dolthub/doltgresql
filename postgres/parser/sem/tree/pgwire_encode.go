@@ -47,7 +47,7 @@ func (d *DTuple) pgwireFormat(ctx *FmtCtx) {
 	comma := ""
 	for _, v := range d.D {
 		ctx.WriteString(comma)
-		switch dv := UnwrapDatum(nil, v).(type) {
+		switch dv := UnwrapDatum(v).(type) {
 		case dNull:
 		case *DString:
 			pgwireFormatStringInTuple(&ctx.Buffer, string(*dv))
@@ -120,7 +120,7 @@ func (d *DArray) pgwireFormat(ctx *FmtCtx) {
 	comma := ""
 	for _, v := range d.Array {
 		ctx.WriteString(comma)
-		switch dv := UnwrapDatum(nil, v).(type) {
+		switch dv := UnwrapDatum(v).(type) {
 		case dNull:
 			ctx.WriteString("NULL")
 		case *DString:

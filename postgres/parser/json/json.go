@@ -44,7 +44,6 @@ import (
 	"github.com/dolthub/doltgresql/postgres/parser/geo/geopb"
 	"github.com/dolthub/doltgresql/postgres/parser/pgcode"
 	"github.com/dolthub/doltgresql/postgres/parser/pgerror"
-	"github.com/dolthub/doltgresql/postgres/parser/unique"
 )
 
 // Type represents a JSON type.
@@ -781,8 +780,34 @@ func (j jsonArray) encodeInvertedIndexKeys(b []byte) ([][]byte, error) {
 	// to emit duplicate keys from this method, as it's more expensive to
 	// deduplicate keys via KV (which will actually write the keys) than via SQL
 	// (just an in-memory sort and distinct).
-	outKeys = unique.UniquifyByteSlices(outKeys)
+	outKeys = UniquifyByteSlices(outKeys)
 	return outKeys, nil
+}
+
+// UniquifyByteSlices takes as input a slice of slices of bytes, and
+// deduplicates them using a sort and unique. The output will not contain any
+// duplicates but it will be sorted.
+func UniquifyByteSlices(slices [][]byte) [][]byte {
+	if len(slices) == 0 {
+		return slices
+	}
+	// First sort:
+	sort.Slice(slices, func(i int, j int) bool {
+		return bytes.Compare(slices[i], slices[j]) < 0
+	})
+	// Then distinct: (wouldn't it be nice if Go had generics?)
+	lastUniqueIdx := 0
+	for i := 1; i < len(slices); i++ {
+		if !bytes.Equal(slices[i], slices[lastUniqueIdx]) {
+			// We found a unique entry, at index i. The last unique entry in the array
+			// was at lastUniqueIdx, so set the entry after that one to our new unique
+			// entry, and bump lastUniqueIdx for the next loop iteration.
+			lastUniqueIdx++
+			slices[lastUniqueIdx] = slices[i]
+		}
+	}
+	slices = slices[:lastUniqueIdx+1]
+	return slices
 }
 
 func (j jsonObject) encodeInvertedIndexKeys(b []byte) ([][]byte, error) {

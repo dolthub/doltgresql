@@ -30,9 +30,6 @@ import (
 	"strings"
 
 	"github.com/cockroachdb/errors"
-
-	"github.com/dolthub/doltgresql/postgres/parser/pgcode"
-	"github.com/dolthub/doltgresql/postgres/parser/pgerror"
 )
 
 //go:generate stringer -type=Kind
@@ -175,21 +172,6 @@ func (pl List) ToBitField() uint32 {
 	return ret
 }
 
-// ListFromBitField takes a bitfield of privileges and a ObjectType
-// returns a List. It is ordered in increasing value of privilege.Kind.
-func ListFromBitField(m uint32, objectType ObjectType) List {
-	ret := List{}
-
-	privileges := GetValidPrivilegesForObject(objectType)
-
-	for _, p := range privileges {
-		if m&p.Mask() != 0 {
-			ret = append(ret, p)
-		}
-	}
-	return ret
-}
-
 // ListFromStrings takes a list of strings and attempts to build a list of Kind.
 // We convert each string to uppercase and search for it in the ByName map.
 // If an entry is not found in ByName, an error is returned.
@@ -203,37 +185,4 @@ func ListFromStrings(strs []string) (List, error) {
 		ret[i] = k
 	}
 	return ret, nil
-}
-
-// ValidatePrivileges returns an error if any privilege in
-// privileges cannot be granted on the given objectType.
-// Currently db/schema/table can all be granted the same privileges.
-func ValidatePrivileges(privileges List, objectType ObjectType) error {
-	validPrivs := GetValidPrivilegesForObject(objectType)
-	for _, priv := range privileges {
-		// Check if priv is in DBTablePrivileges.
-		if validPrivs.ToBitField()&priv.Mask() == 0 {
-			return pgerror.Newf(pgcode.InvalidGrantOperation,
-				"invalid privilege type %s for %s", priv.String(), objectType)
-		}
-	}
-
-	return nil
-}
-
-// GetValidPrivilegesForObject returns the list of valid privileges for the
-// specified object type.
-func GetValidPrivilegesForObject(objectType ObjectType) List {
-	switch objectType {
-	case Table, Database:
-		return DBTablePrivileges
-	case Schema:
-		return SchemaPrivileges
-	case Type:
-		return TypePrivileges
-	case Any:
-		return AllPrivileges
-	default:
-		panic(errors.AssertionFailedf("unknown object type %s", objectType))
-	}
 }

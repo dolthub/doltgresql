@@ -26,11 +26,10 @@ package protoutil
 
 import (
 	"reflect"
+	"sync"
 
 	"github.com/cockroachdb/errors"
 	"github.com/gogo/protobuf/proto"
-
-	"github.com/dolthub/doltgresql/postgres/parser/syncutil"
 )
 
 var verbotenKinds = [...]reflect.Kind{
@@ -43,7 +42,7 @@ type typeKey struct {
 }
 
 var types struct {
-	syncutil.Mutex
+	sync.Mutex
 	known map[typeKey]reflect.Type
 }
 
