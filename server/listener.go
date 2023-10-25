@@ -15,6 +15,7 @@
 package server
 
 import (
+	"crypto/tls"
 	"fmt"
 	"io"
 	"net"
@@ -32,8 +33,11 @@ import (
 	"github.com/dolthub/doltgresql/postgres/messages"
 )
 
-var connectionIDCounter uint32
-var processID = int32(os.Getpid())
+var (
+	connectionIDCounter uint32
+	processID           = int32(os.Getpid())
+	certificate         tls.Certificate
+)
 
 // ParsedQuery represents a query that may have been parsed. If Parsed is nil, then the Query should be parsed by the
 // listener, otherwise the Parsed statement should be used.
@@ -133,11 +137,20 @@ InitialMessageLoop:
 			startupMessage = initialMessage
 			break InitialMessageLoop
 		case messages.SSLRequest:
-			if err = connection.Send(conn, messages.SSLResponse{
-				SupportsSSL: false,
+			hasCertificate := len(certificate.Certificate) > 0
+			if err := connection.Send(conn, messages.SSLResponse{
+				SupportsSSL: hasCertificate,
 			}); err != nil {
 				returnErr = err
 				return
+			}
+			// If we have a certificate and the client has asked for SSL support, then we switch here.
+			// We can't start in SSL mode, as the client does not attempt the handshake until after our response.
+			if hasCertificate {
+				conn = tls.Server(conn, &tls.Config{
+					Certificates: []tls.Certificate{certificate},
+				})
+				mysqlConn.Conn = conn
 			}
 		case messages.GSSENCRequest:
 			if err = connection.Send(conn, messages.GSSENCResponse{
@@ -152,7 +165,7 @@ InitialMessageLoop:
 		}
 	}
 
-	//TODO: implement users
+	//TODO: implement users and authentication
 	if user, ok := startupMessage.Parameters["user"]; ok && len(user) > 0 {
 		var host string
 		if conn.RemoteAddr().Network() == "unix" {
@@ -437,21 +450,26 @@ func (l *Listener) handledPSQLCommands(conn net.Conn, mysqlConn *mysql.Conn, sta
 // query. A nil error should be provided if this is being called naturally.
 func (l *Listener) endOfMessages(conn net.Conn, err error) {
 	if err != nil {
-		fmt.Println(err.Error())
-		if sendErr := connection.Send(conn, messages.ErrorResponse{
-			Severity:     messages.ErrorResponseSeverity_Error,
-			SqlStateCode: "XX000", // internal_error for now
-			Message:      err.Error(),
-		}); sendErr != nil {
-			// If we're unable to send anything to the connection, then there's something wrong with the connection and
-			// we should terminate it. This will be caught in HandleConnection's defer block.
-			panic(sendErr)
-		}
+		l.sendError(conn, err)
 	}
 	if sendErr := connection.Send(conn, messages.ReadyForQuery{
 		Indicator: messages.ReadyForQueryTransactionIndicator_Idle,
 	}); sendErr != nil {
 		// We panic here for the same reason as above.
+		panic(sendErr)
+	}
+}
+
+// sendError sends the given error to the client. This should generally never be called directly.
+func (l *Listener) sendError(conn net.Conn, err error) {
+	fmt.Println(err.Error())
+	if sendErr := connection.Send(conn, messages.ErrorResponse{
+		Severity:     messages.ErrorResponseSeverity_Error,
+		SqlStateCode: "XX000", // internal_error for now
+		Message:      err.Error(),
+	}); sendErr != nil {
+		// If we're unable to send anything to the connection, then there's something wrong with the connection and
+		// we should terminate it. This will be caught in HandleConnection's defer block.
 		panic(sendErr)
 	}
 }

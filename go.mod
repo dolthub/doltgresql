@@ -3,7 +3,6 @@ module github.com/dolthub/doltgresql
 go 1.21
 
 require (
-	github.com/biogo/store v0.0.0-20201120204734-aad293a2328f
 	github.com/cockroachdb/apd/v2 v2.0.3-0.20200518165714-d020e156310a
 	github.com/cockroachdb/errors v1.7.5
 	github.com/dolthub/dolt/go v0.40.5-0.20231018220650-48f565111c6a
@@ -16,8 +15,8 @@ require (
 	github.com/grpc-ecosystem/grpc-gateway v1.16.0
 	github.com/jackc/pgx/v5 v5.4.3
 	github.com/lib/pq v1.10.0
+	github.com/madflojo/testcerts v1.1.1
 	github.com/pierrre/geohash v1.0.0
-	github.com/sasha-s/go-deadlock v0.3.1
 	github.com/stretchr/testify v1.8.2
 	github.com/tidwall/gjson v1.14.4
 	github.com/twpayne/go-geom v1.3.6
@@ -91,7 +90,6 @@ require (
 	github.com/matttproud/golang_protobuf_extensions v1.0.1 // indirect
 	github.com/mitchellh/go-ps v1.0.0 // indirect
 	github.com/mitchellh/hashstructure v1.1.0 // indirect
-	github.com/petermattis/goid v0.0.0-20180202154549-b0b1615b78e5 // indirect
 	github.com/pierrec/lz4/v4 v4.1.6 // indirect
 	github.com/pkg/errors v0.9.1 // indirect
 	github.com/pmezard/go-difflib v1.0.0 // indirect
