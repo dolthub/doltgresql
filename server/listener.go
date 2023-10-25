@@ -36,7 +36,7 @@ import (
 var (
 	connectionIDCounter uint32
 	processID           = int32(os.Getpid())
-	certificate         tls.Certificate
+	certificate         tls.Certificate //TODO: move this into the mysql.ListenerConfig
 )
 
 // ParsedQuery represents a query that may have been parsed. If Parsed is nil, then the Query should be parsed by the
