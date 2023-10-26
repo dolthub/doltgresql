@@ -16,7 +16,9 @@ package _go
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
+	"math"
 	"net"
 	"sync"
 	"testing"
@@ -25,6 +27,7 @@ import (
 	"github.com/dolthub/go-mysql-server/server"
 	"github.com/dolthub/go-mysql-server/sql"
 	"github.com/jackc/pgx/v5"
+	"github.com/jackc/pgx/v5/pgtype"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
@@ -186,6 +189,31 @@ func NormalizeRow(row sql.Row) sql.Row {
 			newRow[i] = int64(val)
 		case float32:
 			newRow[i] = float64(val)
+		case pgtype.Numeric:
+			if val.NaN {
+				newRow[i] = math.NaN()
+			} else if val.InfinityModifier != pgtype.Finite {
+				newRow[i] = math.Inf(int(val.InfinityModifier))
+			} else if !val.Valid {
+				newRow[i] = nil
+			} else {
+				fVal, err := val.Float64Value()
+				if err != nil {
+					panic(err)
+				}
+				if !fVal.Valid {
+					panic("no idea why the numeric float value is invalid")
+				}
+				newRow[i] = fVal.Float64
+			}
+		case time.Time:
+			newRow[i] = val.Format("2006-01-02 15:04:05")
+		case map[string]interface{}:
+			str, err := json.Marshal(val)
+			if err != nil {
+				panic(err)
+			}
+			newRow[i] = string(str)
 		default:
 			newRow[i] = val
 		}

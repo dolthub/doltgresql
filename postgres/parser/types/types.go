@@ -1657,8 +1657,7 @@ func (t *T) SQLString() string {
 			return fmt.Sprintf("DECIMAL(%d)", t.Precision())
 		}
 	case JsonFamily:
-		// Only binary JSON is currently supported.
-		return "JSONB"
+		return "JSON"
 	case TimestampFamily, TimestampTZFamily, TimeFamily, TimeTZFamily:
 		if t.InternalType.Precision > 0 || t.InternalType.TimePrecisionIsSet {
 			return fmt.Sprintf("%s(%d)", strings.ToUpper(t.Name()), t.Precision())
