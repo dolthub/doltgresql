@@ -18,11 +18,10 @@ Moreover, Dolt was conceived of and built as [Git for Data](https://www.dolthub.
 Dolt later became a [version controlled database](https://www.dolthub.com/blog/2021-09-17-database-version-control/).
 DoltgreSQL gives us the opportunity to strip out some of the Git for Data pieces like the CLI
 and build directly for the version controlled database use case. With Doltgres, you start a server,
-connect a client, and do everything with SQL, a familiar experience for Postgres users. Expect 
-Doltgres to diverge from Dolt over time and become the preferred database version control solution 
-for most customers.
+connect a client, and do everything with SQL, a familiar experience for Postgres users. 
 
-That said, we have a five year head start with core Dolt. Dolt is a production-grade version
+Doltgres will diverge from Dolt over time to be a focused database version control solution. 
+That said, we have a five year head start with Dolt. Dolt is a production-grade version
 controlled database today. [Dolt is 1.0](https://www.dolthub.com/blog/2023-05-05-dolt-1-dot-0/).
 If you are ok with using a MySQL-client, we recommend using Dolt for all use cases. Doltgres 
 is [experimental](#limitations).
@@ -59,6 +58,10 @@ Is here any? Daylon should fill this out.
 * Limited support of Postgres-specific types.
 * No information schema support
 * No users and grants
+
+# Architecture
+
+A translation at the AST layer. Then, same Dolt engine.
 
 # Performance
 
