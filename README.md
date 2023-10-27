@@ -61,15 +61,22 @@ Is here any? Daylon should fill this out.
 
 # Performance
 
-Can we run a sysbench test?
+Dolt is [1.7X to 1.8X slower than MySQL](https://docs.dolthub.com/sql-reference/benchmarks/latency) as measured by 
+a standard suite of Sysnbench tests. 
+
+Similar tests for Doltgres vs Postgres coming soon. 
 
 # Correctness
 
-How are we at compatibility.
+Dolt ios [99.99% compatible](https://docs.dolthub.com/sql-reference/benchmarks/correctness) with MySQL based on a 
+standard suite of correctness tests called `sqllogictest`.
+
+A similar comparison for Doltgres coming soon.
 
 # Architecture
 
-A translation at the AST layer. Then, same Dolt engine.
+Doltgres performs a translation of Postgres SQL to an Abstract Syntax Tree (AST). This AST is converted to a 
+form that can be interpreted by the Dolt engine. Doltgres SQL engine and storage is the same as Dolt.
 
-[Dolt Architecure](https://docs.dolthub.com/architecture/architecture)
-
+[Dolt has a unique architecure](https://docs.dolthub.com/architecture/architecture) that allows for version control
+features at OLTP database performance. Doltgres uses the same architecture.
