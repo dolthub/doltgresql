@@ -66,3 +66,7 @@ A translation at the AST layer. Then, same Dolt engine.
 # Performance
 
 Can we run a sysbench test?
+
+# Correctness
+
+How are we at compatibility.
