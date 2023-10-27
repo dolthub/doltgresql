@@ -151,12 +151,20 @@ func VitessFieldToDataTypeObjectID(field *query.Field) (int32, error) {
 		return 700, nil
 	case query.Type_FLOAT64:
 		return 701, nil
+	case query.Type_DECIMAL:
+		return 1700, nil
 	case query.Type_CHAR:
 		return 1042, nil
 	case query.Type_VARCHAR:
 		return 1043, nil
 	case query.Type_TEXT:
 		return 25, nil
+	case query.Type_JSON:
+		return 114, nil
+	case query.Type_TIMESTAMP, query.Type_DATETIME:
+		return 1114, nil
+	case query.Type_DATE:
+		return 1082, nil
 	default:
 		return 0, fmt.Errorf("unsupported type returned from engine")
 	}
@@ -179,12 +187,20 @@ func VitessFieldToDataTypeSize(field *query.Field) (int16, error) {
 		return 4, nil
 	case query.Type_FLOAT64:
 		return 8, nil
+	case query.Type_DECIMAL:
+		return -1, nil
 	case query.Type_CHAR:
 		return -1, nil
 	case query.Type_VARCHAR:
 		return -1, nil
 	case query.Type_TEXT:
 		return -1, nil
+	case query.Type_JSON:
+		return -1, nil
+	case query.Type_TIMESTAMP, query.Type_DATETIME:
+		return 8, nil
+	case query.Type_DATE:
+		return 4, nil
 	default:
 		return 0, fmt.Errorf("unsupported type returned from engine")
 	}
@@ -207,6 +223,15 @@ func VitessFieldToDataTypeModifier(field *query.Field) (int32, error) {
 		return -1, nil
 	case query.Type_FLOAT64:
 		return -1, nil
+	case query.Type_DECIMAL:
+		// This is how we encode the precision and scale for some reason
+		precision := int32(field.ColumnLength - 1)
+		scale := int32(field.Decimals)
+		if scale > 0 {
+			precision--
+		}
+		// PostgreSQL adds 4 to the length for an unknown reason
+		return (precision<<16 + scale) + 4, nil
 	case query.Type_CHAR:
 		// PostgreSQL adds 4 to the length for an unknown reason
 		return int32(int64(field.ColumnLength)/sql.CharacterSetID(field.Charset).MaxLength()) + 4, nil
@@ -214,6 +239,12 @@ func VitessFieldToDataTypeModifier(field *query.Field) (int32, error) {
 		// PostgreSQL adds 4 to the length for an unknown reason
 		return int32(int64(field.ColumnLength)/sql.CharacterSetID(field.Charset).MaxLength()) + 4, nil
 	case query.Type_TEXT:
+		return -1, nil
+	case query.Type_JSON:
+		return -1, nil
+	case query.Type_TIMESTAMP, query.Type_DATETIME:
+		return -1, nil
+	case query.Type_DATE:
 		return -1, nil
 	default:
 		return 0, fmt.Errorf("unsupported type returned from engine")
