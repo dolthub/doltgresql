@@ -24,16 +24,41 @@ for most customers.
 
 That said, we have a five year head start with core Dolt. 
 [Dolt is 1.0](https://www.dolthub.com/blog/2023-05-05-dolt-1-dot-0/). If you are ok with using 
-a MySQL-client, we recommend using Dolt for all use cases. Doltgres is more experimental at this point.
+a MySQL-client, we recommend using Dolt for all use cases. Doltgres is [experimental](#limitations).
+
+# How You Can Help
+
+* Star this repo to tell us you are interested.
+* Try Doltgres
+* Create issues if you find bugs
+* Create issues for missing functionality you want
+* Contribute Code for features you want
 
 # Getting Started
 
+1. Download the latest release
+2. Put the binary on your PATH
+3. Navigate to a directory you want your database data stored
+4. Type `doltgresql`
+5. Connect `psql`
+6. Create database
+7. Create tables
+8. Make a Dolt Commit
+9. View the log
+10. Continue with [Dolt Getting Started](https://docs.dolthub.com/introduction/getting-started/database#insert-some-data)
 
+# Configuration
+
+Is here any? Daylon should fill this out.
 
 # Limitations
 
 * No Git-style CLI for version control, only a SQL interface.
-* Can't push to DoltHub or DoltLab. 
-* Limited support of Postgres types.
+* Can't push to DoltHub or DoltLab, only custom remotes
+* Limited support of Postgres-specific types.
 * No information schema support
 * No users and grants
+
+# Performance
+
+Can we run a sysbench test?
