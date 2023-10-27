@@ -29,9 +29,9 @@ is [experimental](#limitations).
 # How You Can Help
 
 * Star this repo to tell us you are interested.
-* Try Doltgres
-* Create issues if you find bugs
-* Create issues for missing functionality you want
+* [Try Doltgres](#getting-started)
+* Create [issues](https://github.com/dolthub/doltgresql/issues) if you find bugs
+* Create [issues](https://github.com/dolthub/doltgresql/issues) for missing functionality you want
 * Contribute Code for features you want
 
 # Getting Started
@@ -40,9 +40,9 @@ is [experimental](#limitations).
 2. Put the binary on your PATH
 3. Navigate to a directory you want your database data stored
 4. Type `doltgresql`
-5. Connect `psql`
+5. Open a new terminal. Connect `psql`
 6. Create database
-7. Create tables
+7. Create tables. Use text types to show it's Postgres.
 8. Make a Dolt Commit
 9. View the log
 10. Continue with [Dolt Getting Started](https://docs.dolthub.com/introduction/getting-started/database#insert-some-data)
@@ -59,10 +59,6 @@ Is here any? Daylon should fill this out.
 * No information schema support
 * No users and grants
 
-# Architecture
-
-A translation at the AST layer. Then, same Dolt engine.
-
 # Performance
 
 Can we run a sysbench test?
@@ -70,3 +66,10 @@ Can we run a sysbench test?
 # Correctness
 
 How are we at compatibility.
+
+# Architecture
+
+A translation at the AST layer. Then, same Dolt engine.
+
+[Dolt Architecure](https://docs.dolthub.com/architecture/architecture)
+
