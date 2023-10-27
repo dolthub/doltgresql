@@ -22,9 +22,10 @@ connect a client, and do everything with SQL, a familiar experience for Postgres
 Doltgres to diverge from Dolt over time and become the preferred database version control solution 
 for most customers.
 
-That said, we have a five year head start with core Dolt. 
-[Dolt is 1.0](https://www.dolthub.com/blog/2023-05-05-dolt-1-dot-0/). If you are ok with using 
-a MySQL-client, we recommend using Dolt for all use cases. Doltgres is [experimental](#limitations).
+That said, we have a five year head start with core Dolt. Dolt is a production-grade version
+controlled database today. [Dolt is 1.0](https://www.dolthub.com/blog/2023-05-05-dolt-1-dot-0/).
+If you are ok with using a MySQL-client, we recommend using Dolt for all use cases. Doltgres 
+is [experimental](#limitations).
 
 # How You Can Help
 
