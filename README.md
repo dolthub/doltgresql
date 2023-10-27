@@ -28,11 +28,16 @@ is [experimental](#limitations).
 
 # How You Can Help
 
+Doltgres is experimental. We need your feedback to understand how much we should invest in it.
+If you are interested in using Doltgres now or in the future, please:
+
 * Star this repo to tell us you are interested.
 * [Try Doltgres](#getting-started)
 * Create [issues](https://github.com/dolthub/doltgresql/issues) if you find bugs
 * Create [issues](https://github.com/dolthub/doltgresql/issues) for missing functionality you want
 * Contribute Code for features you want
+
+Contribution Guide coming soon.
 
 # Getting Started
 
