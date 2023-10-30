@@ -57,7 +57,7 @@ Due to the rapid pace of development at this early stage, building from source w
 with the latest improvement and features.
 
 1. Clone the repository to your local drive
-2. Run `./postgres/parser/build.sh` to generate the parser
+2. `cd ./postgres/parser/` and run `build.sh` to generate the parser
 3. Run `go build .` in the root directory
 
 # Limitations
