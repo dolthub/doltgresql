@@ -35,7 +35,7 @@ If you are interested in using Doltgres now or in the future, please:
 * [Try Doltgres](#getting-started)
 * Create [issues](https://github.com/dolthub/doltgresql/issues) if you find bugs
 * Create [issues](https://github.com/dolthub/doltgresql/issues) for missing functionality you want
-* Contribute Code for features you want
+* Contribute Code for features you want (see [Building From Source](#building-from-source))
 
 Contribution Guide coming soon.
 
@@ -51,17 +51,25 @@ Contribution Guide coming soon.
 8. View the log
 9. Continue with [Dolt Getting Started](https://docs.dolthub.com/introduction/getting-started/database#insert-some-data)
 
-# Configuration
+# Building From Source
 
-Is here any? Daylon should fill this out.
+Due to the rapid pace of development at this early stage, building from source will guarantee that you're always working
+with the latest improvement and features.
+
+1. Clone the repository to your local drive
+2. Run `./postgres/parser/build.sh` to generate the parser
+3. Run `go build .` in the root directory
 
 # Limitations
 
 * No Git-style CLI for version control, only a SQL interface.
-* Can't push to DoltHub or DoltLab, only custom remotes
-* Limited support of Postgres-specific types.
-* No information schema support
-* No users and grants
+* Can't push to DoltHub or DoltLab, only custom remotes.
+* Limited support of Postgres-specific types and functions.
+* No Postgres system tables.
+* No authentication or users.
+* Database and schema models are merged.
+* Limited support for SSL connections (non-verified connections only).
+* No GSSAPI support.
 
 # Performance
 
@@ -72,15 +80,15 @@ Similar tests for Doltgres vs Postgres coming soon.
 
 # Correctness
 
-Dolt ios [99.99% compatible](https://docs.dolthub.com/sql-reference/benchmarks/correctness) with MySQL based on a 
+Dolt is [99.99% compatible](https://docs.dolthub.com/sql-reference/benchmarks/correctness) with MySQL based on a 
 standard suite of correctness tests called `sqllogictest`.
 
 A similar comparison for Doltgres coming soon.
 
 # Architecture
 
-Doltgres performs a translation of Postgres SQL to an Abstract Syntax Tree (AST). This AST is converted to a 
-form that can be interpreted by the Dolt engine. Doltgres SQL engine and storage is the same as Dolt.
+Doltgres emulates a Postgres server, including parsing Postgres SQL into an Abstract Syntax Tree (AST). This AST is
+converted to a form that can be interpreted by the Dolt engine. Doltgres uses the same SQL engine and storage format as Dolt.
 
 [Dolt has a unique architecure](https://docs.dolthub.com/architecture/architecture) that allows for version control
 features at OLTP database performance. Doltgres uses the same architecture.
