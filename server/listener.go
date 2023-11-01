@@ -182,9 +182,9 @@ InitialMessageLoop:
 			Host: host,
 		}
 	} else {
-		mysqlConn.User = "postgres"
+		mysqlConn.User = "doltgres"
 		mysqlConn.UserData = mysql_db.MysqlConnectionUser{
-			User: "postgres",
+			User: "doltgres",
 			Host: "localhost",
 		}
 	}
@@ -233,6 +233,11 @@ InitialMessageLoop:
 			})
 			return
 		}
+	} else {
+		// If a database isn't specified, then we connect to a database with the same name as the user
+		_ = l.cfg.Handler.ComQuery(mysqlConn, fmt.Sprintf("USE `%s`;", mysqlConn.User), func(*sqltypes.Result, bool) error {
+			return nil
+		})
 	}
 
 	if err := connection.Send(conn, messages.ReadyForQuery{

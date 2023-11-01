@@ -225,6 +225,12 @@ func runServer(args []string, fs filesys.Filesys) (*int, *sync.WaitGroup) {
 		return intPointer(1), wg
 	}
 
+	if dEnv.HasDoltDataDir() {
+		cli.PrintErrln(color.RedString("Cannot start a server within a directory containing a Dolt or Doltgres database."+
+			"To use the current directory as a database, start the server from the parent directory."))
+		return intPointer(1), wg
+	}
+
 	err = reconfigIfTempFileMoveFails(dEnv)
 	if err != nil {
 		cli.PrintErrln(color.RedString("Failed to setup the temporary directory. %v`", err))
@@ -276,35 +282,61 @@ func runServer(args []string, fs filesys.Filesys) (*int, *sync.WaitGroup) {
 		cli.Printf("error: failed to load persisted global variables: %s\n", err.Error())
 	}
 
-	var cliCtx cli.CliContext = nil
-	if !dEnv.HasDoltDataDir() {
-		// validate that --user and --password are set appropriately.
-		aprAlt, creds, err := cli.BuildUserPasswordPrompt(apr)
-		apr = aprAlt
-		if err != nil {
-			cli.PrintErrln(color.RedString("Failed to parse credentials: %v", err))
-			return intPointer(1), wg
-		}
+	// validate that --user and --password are set appropriately.
+	aprAlt, creds, err := cli.BuildUserPasswordPrompt(apr)
+	apr = aprAlt
+	if err != nil {
+		cli.PrintErrln(color.RedString("Failed to parse credentials: %v", err))
+		return intPointer(1), wg
+	}
 
-		lateBind, err := buildLateBinder(ctx, cwdFS, dEnv, mrEnv, creds, apr, subcommandName, false)
+	lateBind, err := buildLateBinder(ctx, cwdFS, dEnv, mrEnv, creds, apr, subcommandName, false)
+	if err != nil {
+		cli.PrintErrln(color.RedString("%v", err))
+		return intPointer(1), wg
+	}
 
-		if err != nil {
-			cli.PrintErrln(color.RedString("%v", err))
-			return intPointer(1), wg
-		}
-
-		cliCtx, err = cli.NewCliContext(apr, dEnv.Config, lateBind)
-		if err != nil {
-			cli.PrintErrln(color.RedString("Unexpected Error: %v", err))
-			return new(int), wg
-		}
+	cliCtx, err := cli.NewCliContext(apr, dEnv.Config, lateBind)
+	if err != nil {
+		cli.PrintErrln(color.RedString("Unexpected Error: %v", err))
+		return intPointer(1), wg
 	}
 
 	ctx, stop := context.WithCancel(ctx)
 	if serverMode {
-		// Server mode automatically initializes the repository
-		if !dEnv.HasDoltDataDir() {
-			_ = doltCommand.Exec(ctx, "dolt", []string{"init"}, dEnv, cliCtx)
+		var serverConfig sqlserver.ServerConfig
+		// Grab the config so that we can pull the TLS key & cert. If there's an error then we can ignore it here, as
+		// it'll be caught when the server actually tries to run. We'll also use the config to determine whether we need to
+		// create a doltgres directory.
+		if sqlServerApr, err := cli.ParseArgs(sqlserver.SqlServerCmd{}.ArgParser(), args, nil); err == nil {
+			if serverConfig, err = sqlserver.GetServerConfig(dEnv.FS, sqlServerApr); err == nil {
+				// We throw an error if there's an issue with the TLS cert though
+				tlsConfig, err := sqlserver.LoadTLSConfig(serverConfig)
+				if err != nil {
+					stop()
+					cli.PrintErrln(err)
+					return intPointer(1), wg
+				}
+				if tlsConfig != nil && len(tlsConfig.Certificates) > 0 {
+					certificate = tlsConfig.Certificates[0]
+				}
+			}
+		}
+		// Server mode automatically initializes a doltgres database
+		if !dEnv.HasDoltDir() {
+			// Need to make sure that there isn't a doltgres subdirectory. If there is, we'll assume it's a db.
+			if exists, _ := dEnv.FS.Exists("doltgres"); !exists {
+				dEnv.FS.MkDirs("doltgres")
+				subdirectoryFS, err := dEnv.FS.WithWorkingDir("doltgres")
+				if err != nil {
+					stop()
+					cli.PrintErrln(err)
+					return intPointer(1), wg
+				}
+				// We'll use a temporary environment to instantiate the subdirectory
+				tempDEnv := env.Load(ctx, env.GetCurrentUserHomeDir, subdirectoryFS, doltdb.LocalDirDoltDB, Version)
+				_ = doltCommand.Exec(ctx, "dolt", []string{"init"}, tempDEnv, cliCtx)
+			}
 		}
 	}
 
@@ -313,24 +345,6 @@ func runServer(args []string, fs filesys.Filesys) (*int, *sync.WaitGroup) {
 	res := new(int)
 	go func() {
 		defer wg.Done()
-		// Grab the config so that we can pull the TLS key & cert. If there's an error then we can ignore it here, as
-		// it'll be caught when the server actually tries to run.
-		if sqlServerApr, err := cli.ParseArgs(sqlserver.SqlServerCmd{}.ArgParser(), args, nil); err == nil {
-			if serverConfig, err := sqlserver.GetServerConfig(dEnv.FS, sqlServerApr); err == nil {
-				// We throw an error if there's an issue with the TLS cert though
-				tlsConfig, err := sqlserver.LoadTLSConfig(serverConfig)
-				if err != nil {
-					cli.PrintErrln(err)
-					if *res == 0 {
-						*res = 1
-					}
-					return
-				}
-				if tlsConfig != nil && len(tlsConfig.Certificates) > 0 {
-					certificate = tlsConfig.Certificates[0]
-				}
-			}
-		}
 		*res = doltCommand.Exec(ctx, "dolt", remainingArgs, dEnv, cliCtx)
 		stop()
 

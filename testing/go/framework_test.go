@@ -20,6 +20,7 @@ import (
 	"fmt"
 	"math"
 	"net"
+	"os"
 	"sync"
 	"testing"
 	"time"
@@ -44,6 +45,12 @@ type ScriptTest struct {
 	SetUpScript []string
 	// The set of assertions to make after setup, in order
 	Assertions []ScriptTestAssertion
+	// When using RunScripts, setting this on one (or more) tests causes RunScripts to ignore all tests that have this
+	// set to false (which is the default value). This allows a developer to easily "focus" on a specific test without
+	// having to comment out other tests, pull it into a different function, etc. In addition, CI ensures that this is
+	// false before passing, meaning this prevents the commented-out situation where the developer forgets to uncomment
+	// their code.
+	Focus bool
 }
 
 // ScriptTestAssertion are the assertions upon which the script executes its main "testing" logic.
@@ -108,6 +115,23 @@ func RunScript(t *testing.T, script ScriptTest) {
 
 // RunScripts runs the given collection of scripts.
 func RunScripts(t *testing.T, scripts []ScriptTest) {
+	// First, we'll run through the scripts to check for the Focus variable. If it's true, then append it to the new slice.
+	focusScripts := make([]ScriptTest, 0, len(scripts))
+	for _, script := range scripts {
+		if script.Focus {
+			// If this is running in GitHub Actions, then we'll panic, because someone forgot to disable it before committing
+			if _, ok := os.LookupEnv("GITHUB_ACTION"); ok {
+				panic(fmt.Sprintf("The script `%s` has Focus set to `true`. GitHub Actions requires that "+
+					"all tests are run, which Focus circumvents, leading to this error. Please disable Focus on "+
+					"all tests.", script.Name))
+			}
+			focusScripts = append(focusScripts, script)
+		}
+	}
+	// If we have scripts with Focus set, then we replace the normal script slice with the new slice.
+	if len(focusScripts) > 0 {
+		scripts = focusScripts
+	}
 	for _, script := range scripts {
 		RunScript(t, script)
 	}
