@@ -21,7 +21,7 @@ teardown() {
     [ "$status" -eq 0 ]
     [[ "$output" =~ "information_schema" ]] || false
     [[ "$output" =~ "postgres" ]] || false
-    [[ "$output" =~ "dolt_repo_$$" ]] || false
+    [[ "$output" =~ "doltgres" ]] || false
 }
 
 @test 'psql-commands: \dt' {

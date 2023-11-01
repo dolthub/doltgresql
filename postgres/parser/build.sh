@@ -1,5 +1,8 @@
 #!/usr/bin/env bash
 
+# Set the working directory to the directory of the script's location
+cd "$(cd -P -- "$(dirname -- "$0")" && pwd -P)"
+
 # Generate sql-gen.y, which is modified from the sql.y file
 mkdir -p parser/gen
 set -euo pipefail; \
