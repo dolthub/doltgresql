@@ -59,7 +59,7 @@ This requires I manually add `/opt/homebrew/opt/postgresql@15/bin` to my path.
 ```
 export PATH="/opt/homebrew/opt/postgresql@15/bin:$PATH"
 ```
-On Postgres version 14 or lower, `\` commands (ie. `\d`, `\l`) do not work with Doltgres. 
+On Postgres version 14 or lower, `\` commands (ie. `\d`, `\l`) do not work with Doltgres.
 7. Open a new terminal. Connect with the following command: `psql -h localhost -U doltgres`. This will connect to the `doltgres` database with the `doltgres` user.
 ```bash
 $ psql -h 127.0.0.1 -U doltgres                  
