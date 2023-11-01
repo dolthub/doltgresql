@@ -41,7 +41,7 @@ Contribution Guide coming soon.
 
 # Getting Started
 
-1. Download the latest release of `postgresql`
+1. Download the latest release of `doltgres`
 2. Put `doltgres` on your `PATH`
 3. Navigate to a directory you want your database data stored (ie. `~/doltgresql`).
 ```bash
