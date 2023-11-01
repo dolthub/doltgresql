@@ -41,15 +41,115 @@ Contribution Guide coming soon.
 
 # Getting Started
 
-1. Download the latest release
-2. Put the binary on your PATH
+1. Download the latest release of `doltgres`
+2. Put `doltgres` on your `PATH`
 3. Navigate to a directory you want your database data stored (ie. `~/doltgresql`).
-4. Run `doltgresql`. This will create a `doltgres` user and a `doltgres` database
-5. Open a new terminal. Connect with the following command: `psql -h localhost -U doltgres`. This will connect to the `doltgres` database with the `doltgres` user.
-6. Create tables. Use `text` types to show it's Postgres.
-7. Make a Dolt Commit
-8. View the log
-9. Continue with [Dolt Getting Started](https://docs.dolthub.com/introduction/getting-started/database#insert-some-data)
+```bash
+$ mkdir ~/doltgresql
+$ cd ~/doltgresql
+```
+5. Run `doltgres`. This will create a `doltgres` user and a `doltgres` database.
+```bash
+$ doltgres
+Successfully initialized dolt data repository.
+Starting server with Config HP="localhost:5432"|T="28800000"|R="false"|L="info"|S="/tmp/mysql.sock"
+```
+5. Make sure you have Postgres version 15 or higher installed. I used Homebrew to install Postgeres on my Mac.
+This requires I manually add `/opt/homebrew/opt/postgresql@15/bin` to my path.
+```
+export PATH="/opt/homebrew/opt/postgresql@15/bin:$PATH"
+```
+On Postgres version 14 or lower, `\` commands (ie. `\d`, \l`) do not work with Doltgres. 
+7. Open a new terminal. Connect with the following command: `psql -h localhost -U doltgres`. This will connect to the `doltgres` database with the `doltgres` user.
+```bash
+$ psql -h 127.0.0.1 -U doltgres                  
+psql (15.4 (Homebrew), server 15.0)
+Type "help" for help.
+
+doltgres=>
+```
+8. Create a `getting_started` database. Create the `getting _started` example tables.
+```sql
+doltgres=> create database getting_started;
+--
+(0 rows)
+
+doltgres=> \c getting_started;
+psql (15.4 (Homebrew), server 15.0)
+You are now connected to database "getting_started" as user "doltgres".
+getting_started=> create table employees (
+    id int8,
+    last_name text,
+    first_name text,
+    primary key(id));
+--
+(0 rows)
+
+getting_started=> create table teams (
+    id int8,
+    team_name text,
+    primary key(id));
+--
+(0 rows)
+
+getting_started=> create table employees_teams(
+    team_id int8,
+    employee_id int8,
+    primary key(team_id, employee_id),
+    foreign key (team_id) references teams(id),
+    foreign key (employee_id) references employees(id));
+--
+(0 rows)
+
+getting_started=> \d
+              List of relations
+ Schema |      Name       | Type  |  Owner   
+--------+-----------------+-------+----------
+ public | employees       | table | postgres
+ public | employees_teams | table | postgres
+ public | teams           | table | postgres
+(3 rows)
+```
+7. Make a Dolt Commit.
+```sql
+getting_started=> select * from dolt_status;
+   table_name    | staged |  status   
+-----------------+--------+-----------
+ employees       | 0      | new table
+ employees_teams | 0      | new table
+ teams           | 0      | new table
+(3 rows)
+
+getting_started=> call dolt_add('teams', 'employees', 'employees_teams');
+ status 
+--------
+      0
+(1 row)
+getting_started=> select * from dolt_status; 
+   table_name    | staged |  status   
+-----------------+--------+-----------
+ employees       | 1      | new table
+ employees_teams | 1      | new table
+ teams           | 1      | new table
+(3 rows)
+
+getting_started=> call dolt_commit('-m', 'Created initial schema');
+               hash               
+----------------------------------
+ peqq98e2dl5gscvfvic71e7j6ne34533
+(1 row)
+```
+9. View the Dolt log.
+```
+getting_started=> select * from dolt_log;
+           commit_hash            | committer |       email        |        date         |          message           
+----------------------------------+-----------+--------------------+---------------------+----------------------------
+ peqq98e2dl5gscvfvic71e7j6ne34533 | doltgres  | doltgres@127.0.0.1 | 2023-11-01 22:08:04 | Created initial schema
+ in7bk735qa6p6rv6i3s797jjem2pg4ru | timsehn   | tim@dolthub.com    | 2023-11-01 22:04:03 | Initialize data repository
+(2 rows)
+```
+11. Continue with [Dolt Getting Started](https://docs.dolthub.com/introduction/getting-started/database#insert-some-data) 
+to test out more Doltgres versioning functionality.
 
 # Building From Source
 
@@ -73,8 +173,8 @@ with the latest improvement and features.
 
 # Performance
 
-Dolt is [1.7X to 1.8X slower than MySQL](https://docs.dolthub.com/sql-reference/benchmarks/latency) as measured by 
-a standard suite of Sysnbench tests. 
+Dolt is [1.7X slower than MySQL](https://docs.dolthub.com/sql-reference/benchmarks/latency) as measured by 
+a standard suite of Sysbench tests. 
 
 Similar tests for Doltgres vs Postgres coming soon. 
 
