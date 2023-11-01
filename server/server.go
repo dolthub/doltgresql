@@ -226,7 +226,8 @@ func runServer(args []string, fs filesys.Filesys) (*int, *sync.WaitGroup) {
 	}
 
 	if dEnv.HasDoltDataDir() {
-		cli.PrintErrln(color.RedString("Cannot start a server within a directory containing a Dolt or Doltgres database"))
+		cli.PrintErrln(color.RedString("Cannot start a server within a directory containing a Dolt or Doltgres database."+
+			"To use the current directory as a database, start the server from the parent directory."))
 		return intPointer(1), wg
 	}
 
