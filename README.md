@@ -42,25 +42,30 @@ Contribution Guide coming soon.
 # Getting Started
 
 1. Download the latest release of `doltgres`
+   
 2. Put `doltgres` on your `PATH`
+
 3. Navigate to a directory you want your database data stored (ie. `~/doltgresql`).
 ```bash
 $ mkdir ~/doltgresql
 $ cd ~/doltgresql
 ```
-5. Run `doltgres`. This will create a `doltgres` user and a `doltgres` database.
+
+4. Run `doltgres`. This will create a `doltgres` user and a `doltgres` database.
 ```bash
 $ doltgres
 Successfully initialized dolt data repository.
 Starting server with Config HP="localhost:5432"|T="28800000"|R="false"|L="info"|S="/tmp/mysql.sock"
 ```
+
 5. Make sure you have Postgres version 15 or higher installed. I used Homebrew to install Postgeres on my Mac.
-This requires I manually add `/opt/homebrew/opt/postgresql@15/bin` to my path.
+This requires I manually add `/opt/homebrew/opt/postgresql@15/bin` to my path. On Postgres version 14 or lower,
+`\` commands (ie. `\d`, `\l`) do not work with Doltgres. 
 ```
 export PATH="/opt/homebrew/opt/postgresql@15/bin:$PATH"
 ```
-On Postgres version 14 or lower, `\` commands (ie. `\d`, `\l`) do not work with Doltgres. 
-7. Open a new terminal. Connect with the following command: `psql -h localhost -U doltgres`. This will connect to the `doltgres` database with the `doltgres` user.
+
+6. Open a new terminal. Connect with the following command: `psql -h localhost -U doltgres`. This will connect to the `doltgres` database with the `doltgres` user.
 ```bash
 $ psql -h 127.0.0.1 -U doltgres                  
 psql (15.4 (Homebrew), server 15.0)
@@ -68,7 +73,8 @@ Type "help" for help.
 
 doltgres=>
 ```
-8. Create a `getting_started` database. Create the `getting_started` example tables.
+
+7. Create a `getting_started` database. Create the `getting_started` example tables.
 ```sql
 doltgres=> create database getting_started;
 --
@@ -110,7 +116,8 @@ getting_started=> \d
  public | teams           | table | postgres
 (3 rows)
 ```
-7. Make a Dolt Commit.
+
+8. Make a Dolt Commit.
 ```sql
 getting_started=> select * from dolt_status;
    table_name    | staged |  status   
@@ -139,6 +146,7 @@ getting_started=> call dolt_commit('-m', 'Created initial schema');
  peqq98e2dl5gscvfvic71e7j6ne34533
 (1 row)
 ```
+
 9. View the Dolt log.
 ```
 getting_started=> select * from dolt_log;
@@ -148,7 +156,8 @@ getting_started=> select * from dolt_log;
  in7bk735qa6p6rv6i3s797jjem2pg4ru | timsehn   | tim@dolthub.com    | 2023-11-01 22:04:03 | Initialize data repository
 (2 rows)
 ```
-11. Continue with [Dolt Getting Started](https://docs.dolthub.com/introduction/getting-started/database#insert-some-data) 
+
+10. Continue with [Dolt Getting Started](https://docs.dolthub.com/introduction/getting-started/database#insert-some-data) 
 to test out more Doltgres versioning functionality.
 
 # Building From Source
