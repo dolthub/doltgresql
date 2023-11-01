@@ -68,7 +68,7 @@ Type "help" for help.
 
 doltgres=>
 ```
-8. Create a `getting_started` database. Create the `getting _started` example tables.
+8. Create a `getting_started` database. Create the `getting_started` example tables.
 ```sql
 doltgres=> create database getting_started;
 --
