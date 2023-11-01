@@ -179,6 +179,7 @@ with the latest improvement and features.
 * Database and schema models are merged.
 * Limited support for SSL connections (non-verified connections only).
 * No GSSAPI support.
+* No PostgreSQL functions have been implemented, therefore only MySQL functions may be used.
 
 # Performance
 
