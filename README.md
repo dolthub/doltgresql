@@ -41,15 +41,41 @@ Contribution Guide coming soon.
 
 # Getting Started
 
-1. Download the latest release
-2. Put the binary on your PATH
+1. Download the latest release of `postgresql`
+2. Put `postgresql` on your `PATH`
 3. Navigate to a directory you want your database data stored (ie. `~/doltgresql`).
-4. Run `doltgresql`. This will create a `doltgres` user and a `doltgres` database
+4. Run `doltgresql`. This will create a `doltgres` user and a `doltgres` database.
 5. Open a new terminal. Connect with the following command: `psql -h localhost -U doltgres`. This will connect to the `doltgres` database with the `doltgres` user.
-6. Create tables. Use `text` types to show it's Postgres.
-7. Make a Dolt Commit
-8. View the log
-9. Continue with [Dolt Getting Started](https://docs.dolthub.com/introduction/getting-started/database#insert-some-data)
+6. Create database. Create tables.
+```sql
+create database getting_started;
+use getting_started;
+create table employees (
+    id int8,
+    last_name text,
+    first_name text,
+    primary key(id));
+create table teams (
+    id int8,
+    team_name text,
+    primary key(id));
+create table employees_teams(
+    team_id int8,
+    employee_id int8,
+    primary key(team_id, employee_id),
+    foreign key (team_id) references teams(id),
+    foreign key (employee_id) references employees(id));
+```
+7. Make a Dolt Commit.
+```sql
+call dolt_add('teams', 'employees', 'employees_teams');
+call dolt_commit('-m', 'Created initial schema');
+```
+9. View the log
+```
+select * from dolt_log;
+```
+11. Continue with [Dolt Getting Started](https://docs.dolthub.com/introduction/getting-started/database#insert-some-data)
 
 # Building From Source
 
@@ -73,8 +99,8 @@ with the latest improvement and features.
 
 # Performance
 
-Dolt is [1.7X to 1.8X slower than MySQL](https://docs.dolthub.com/sql-reference/benchmarks/latency) as measured by 
-a standard suite of Sysnbench tests. 
+Dolt is [1.7X slower than MySQL](https://docs.dolthub.com/sql-reference/benchmarks/latency) as measured by 
+a standard suite of Sysbench tests. 
 
 Similar tests for Doltgres vs Postgres coming soon. 
 
