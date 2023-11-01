@@ -43,10 +43,10 @@ Contribution Guide coming soon.
 
 1. Download the latest release
 2. Put the binary on your PATH
-3. Navigate to a directory you want your database data stored. The directory name will be the name of your database.
-4. Type `doltgresql`
-5. Open a new terminal. Connect with the following command: `psql -h localhost -d [DB name]`
-6. Create tables. Use text types to show it's Postgres.
+3. Navigate to a directory you want your database data stored (ie. `~/doltgresql`).
+4. Run `doltgresql`. This will create a `doltgres` user and a `doltgres` database
+5. Open a new terminal. Connect with the following command: `psql -h localhost -U doltgres`. This will connect to the `doltgres` database with the `doltgres` user.
+6. Create tables. Use `text` types to show it's Postgres.
 7. Make a Dolt Commit
 8. View the log
 9. Continue with [Dolt Getting Started](https://docs.dolthub.com/introduction/getting-started/database#insert-some-data)
