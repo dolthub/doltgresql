@@ -42,19 +42,25 @@ Contribution Guide coming soon.
 # Getting Started
 
 1. Download the latest release of `postgresql`
-2. Put `postgresql` on your `PATH`
+2. Put `doltgres` on your `PATH`
 3. Navigate to a directory you want your database data stored (ie. `~/doltgresql`).
 ```bash
 $ mkdir ~/doltgresql
 $ cd ~/doltgresql
 ```
-5. Run `doltgresql`. This will create a `doltgres` user and a `doltgres` database.
+5. Run `doltgres`. This will create a `doltgres` user and a `doltgres` database.
 ```bash
-$ doltgresql  
+$ doltgres
 Successfully initialized dolt data repository.
 Starting server with Config HP="localhost:5432"|T="28800000"|R="false"|L="info"|S="/tmp/mysql.sock"
 ```
-6. Open a new terminal. Connect with the following command: `psql -h localhost -U doltgres`. This will connect to the `doltgres` database with the `doltgres` user.
+5. Make sure you have Postgres version 15 or higher installed. I used Homebrew to install Postgeres on my Mac.
+This requires I manually add `/opt/homebrew/opt/postgresql@15/bin` to my path.
+```
+export PATH="/opt/homebrew/opt/postgresql@15/bin:$PATH"
+```
+On Postgres version 14 or lower, `\` commands (ie. `\d`, \l`) do not work with Doltgres. 
+7. Open a new terminal. Connect with the following command: `psql -h localhost -U doltgres`. This will connect to the `doltgres` database with the `doltgres` user.
 ```bash
 $ psql -h 127.0.0.1 -U doltgres                  
 psql (15.4 (Homebrew), server 15.0)
