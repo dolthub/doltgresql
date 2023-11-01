@@ -4,7 +4,7 @@
 
 By default, the most recent release of DoltgreSQL is the version which is
 supported for all security updates. If you need ongoing security
-support for an older version of Dolt, please [contact us](https://www.dolthub.com/contact).
+support for an older version of DoltgreSQL, please [contact us](https://www.dolthub.com/contact).
 
 ## Reporting a Vulnerability
 
