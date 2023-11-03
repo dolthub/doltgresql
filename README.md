@@ -171,7 +171,7 @@ with the latest improvement and features.
 
 # Limitations
 
-* No Git-style CLI for version control, only a SQL interface.
+* No [Git-style CLI](https://docs.dolthub.com/cli-reference/cli) for version control like in [Dolt](https://github.com/dolthub/dolt), only a SQL interface.
 * Can't push to DoltHub or DoltLab, only custom remotes.
 * Limited support of Postgres-specific types and functions.
 * No Postgres system tables.
@@ -180,6 +180,7 @@ with the latest improvement and features.
 * Limited support for SSL connections (non-verified connections only).
 * No GSSAPI support.
 * No PostgreSQL functions have been implemented, therefore only MySQL functions may be used.
+* No support for replication, clustering, etc.
 
 # Performance
 
