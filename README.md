@@ -171,7 +171,7 @@ with the latest improvement and features.
 
 # Limitations
 
-* No Git-style CLI for version control, only a SQL interface (compared to [Dolt](https://github.com/dolthub/dolt)).
+* No [Git-style CLI](https://docs.dolthub.com/cli-reference/cli) for version control like in [Dolt](https://github.com/dolthub/dolt), only a SQL interface.
 * Can't push to DoltHub or DoltLab, only custom remotes.
 * Limited support of Postgres-specific types and functions.
 * No Postgres system tables.
