@@ -58,7 +58,7 @@ Successfully initialized dolt data repository.
 Starting server with Config HP="localhost:5432"|T="28800000"|R="false"|L="info"|S="/tmp/mysql.sock"
 ```
 
-5. Make sure you have Postgres version 15 or higher installed. I used Homebrew to install Postgeres on my Mac.
+5. Make sure you have Postgres version 15 or higher installed. I used Homebrew to install Postgres on my Mac.
 This requires I manually add `/opt/homebrew/opt/postgresql@15/bin` to my path. On Postgres version 14 or lower,
 `\` commands (ie. `\d`, `\l`) do not work with Doltgres. 
 ```
