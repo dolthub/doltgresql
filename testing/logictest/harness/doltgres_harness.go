@@ -99,7 +99,7 @@ func (h *PostgresqlServerHarness) ExecuteQuery(statement string) (schema string,
 }
 
 func (h *PostgresqlServerHarness) dropAllTables() error {
-	rows, err := h.db.Query("show tables")
+	rows, err := h.db.Query("SELECT table_name FROM information_schema.tables WHERE table_schema = 'public' AND table_type = 'BASE TABLE';")
 	if err != nil {
 		return err
 	}
