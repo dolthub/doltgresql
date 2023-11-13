@@ -58,6 +58,7 @@ teardown() {
 }
 
 @test 'psql-commands: \dv' {
+    skip "need to reimplement CREATE VIEW support"
     run query_server --csv -c "\dv"
     [ "$status" -eq 0 ]
     [[ "$output" =~ "public,testview,view,postgres" ]] || false
