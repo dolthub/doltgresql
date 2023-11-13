@@ -7,14 +7,16 @@ require (
 	github.com/cockroachdb/errors v1.7.5
 	github.com/dolthub/dolt/go v0.40.5-0.20231018220650-48f565111c6a
 	github.com/dolthub/go-mysql-server v0.17.1-0.20231018193155-b175f6f77388
+	github.com/dolthub/sqllogictest/go v0.0.0-20201107003712-816f3ae12d81
 	github.com/dolthub/vitess v0.0.0-20231018185551-6acf9c09c4fa
 	github.com/fatih/color v1.13.0
 	github.com/gogo/protobuf v1.3.2
 	github.com/golang/geo v0.0.0-20200730024412-e86565bf3f35
 	github.com/google/go-cmp v0.5.9
 	github.com/grpc-ecosystem/grpc-gateway v1.16.0
+	github.com/jackc/pgx/v4 v4.18.1
 	github.com/jackc/pgx/v5 v5.4.3
-	github.com/lib/pq v1.10.0
+	github.com/lib/pq v1.10.2
 	github.com/madflojo/testcerts v1.1.1
 	github.com/pierrre/geohash v1.0.0
 	github.com/stretchr/testify v1.8.2
@@ -72,8 +74,13 @@ require (
 	github.com/googleapis/gax-go/v2 v2.11.0 // indirect
 	github.com/hashicorp/golang-lru v0.5.4 // indirect
 	github.com/hashicorp/golang-lru/v2 v2.0.2 // indirect
+	github.com/jackc/chunkreader/v2 v2.0.1 // indirect
+	github.com/jackc/pgconn v1.14.0 // indirect
+	github.com/jackc/pgio v1.0.0 // indirect
 	github.com/jackc/pgpassfile v1.0.0 // indirect
+	github.com/jackc/pgproto3/v2 v2.3.2 // indirect
 	github.com/jackc/pgservicefile v0.0.0-20221227161230-091c0ba34f0a // indirect
+	github.com/jackc/pgtype v1.14.0 // indirect
 	github.com/jmespath/go-jmespath v0.4.0 // indirect
 	github.com/jpillora/backoff v1.0.0 // indirect
 	github.com/juju/gnuflag v0.0.0-20171113085948-2ce1bb71843d // indirect
