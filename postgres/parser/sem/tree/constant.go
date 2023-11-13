@@ -156,12 +156,13 @@ func (expr *NumVal) Kind() constant.Kind {
 	return expr.value.Kind()
 }
 
-// ExactString implements the constant.Value interface.
+// ExactString implements the constant.Value interface. Does not include the
+// negative sign.
 func (expr *NumVal) ExactString() string {
 	return expr.value.ExactString()
 }
 
-// OrigString returns the origString field.
+// OrigString returns the origString field. Does not include the negative sign.
 func (expr *NumVal) OrigString() string {
 	return expr.origString
 }
@@ -188,6 +189,19 @@ func (expr *NumVal) Format(ctx *FmtCtx) {
 		ctx.WriteByte('-')
 	}
 	ctx.WriteString(s)
+}
+
+// FormattedString returns a string that includes the negative sign.
+func (expr *NumVal) FormattedString() string {
+	s := expr.origString
+	if s == "" {
+		s = expr.value.String()
+	}
+	if expr.negative {
+		return "-" + s
+	} else {
+		return s
+	}
 }
 
 // canBeInt64 checks if it's possible for the value to become an int64:
@@ -467,6 +481,11 @@ func (expr *StrVal) Format(ctx *FmtCtx) {
 	} else {
 		lex.EncodeSQLStringWithFlags(buf, expr.s, f.EncodeFlags())
 	}
+}
+
+// WasScannedAsBytes returns true iff the input syntax was using b'...' or x'....'
+func (expr *StrVal) WasScannedAsBytes() bool {
+	return expr.scannedAsBytes
 }
 
 var (
