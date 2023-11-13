@@ -464,7 +464,15 @@ func nodeExpr(node tree.Expr) (vitess.Expr, error) {
 	case *tree.Subquery:
 		return nodeSubquery(node)
 	case *tree.Tuple:
-		return nil, fmt.Errorf("tuples are not yet supported")
+		valTuple := make(vitess.ValTuple, len(node.Exprs))
+		var err error
+		for i, expr := range node.Exprs {
+			valTuple[i], err = nodeExpr(expr)
+			if err != nil {
+				return nil, err
+			}
+		}
+		return valTuple, nil
 	case *tree.TupleStar:
 		return nil, fmt.Errorf("(E).* is not yet supported")
 	case *tree.UnaryExpr:
