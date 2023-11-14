@@ -489,7 +489,10 @@ func (l *Listener) convertQuery(query string) (ConvertedQuery, error) {
 	if vitessAST == nil {
 		return ConvertedQuery{String: s[0].AST.String()}, nil
 	}
-	return ConvertedQuery{AST: vitessAST}, nil
+	return ConvertedQuery{
+		String: query,
+		AST:    vitessAST,
+	}, nil
 }
 
 // comQuery is a shortcut that determines which version of ComQuery to call based on whether the query has been parsed.
