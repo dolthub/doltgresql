@@ -41,7 +41,7 @@ func main() {
 	}
 
 	if args[0] == "run" {
-		h := harness.NewPostgresqlHarness("postgresql://postgres@localhost:5432/sqllogictest?sslmode=disable")
+		h := harness.NewPostgresqlHarness("postgresql://postgres:password@localhost:5432/sqllogictest?sslmode=disable")
 		logictest.RunTestFiles(h, args[1:]...)
 	} else if args[0] == "parse" {
 		if len(args) < 3 {

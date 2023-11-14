@@ -23,15 +23,15 @@ import (
 	"strings"
 	"sync/atomic"
 
-	"github.com/dolthub/go-mysql-server/server"
-	"github.com/dolthub/go-mysql-server/sql/mysql_db"
-	"github.com/dolthub/vitess/go/mysql"
-	"github.com/dolthub/vitess/go/sqltypes"
-
 	"github.com/dolthub/doltgresql/postgres/connection"
 	"github.com/dolthub/doltgresql/postgres/messages"
 	"github.com/dolthub/doltgresql/postgres/parser/parser"
 	"github.com/dolthub/doltgresql/server/ast"
+	"github.com/dolthub/go-mysql-server/server"
+	"github.com/dolthub/go-mysql-server/sql/mysql_db"
+	"github.com/dolthub/vitess/go/mysql"
+	"github.com/dolthub/vitess/go/sqltypes"
+	"github.com/dolthub/vitess/go/vt/sqlparser"
 )
 
 var (
@@ -106,107 +106,14 @@ func (l *Listener) HandleConnection(conn net.Conn) {
 	}()
 	l.cfg.Handler.NewConnection(mysqlConn)
 
-	var startupMessage messages.StartupMessage
-	// The initial message may be one of a few different messages, so we'll check for those.
-InitialMessageLoop:
-	for {
-		initialMessages, err := connection.ReceiveIntoAny(conn,
-			messages.StartupMessage{},
-			messages.SSLRequest{},
-			messages.GSSENCRequest{})
-		if err != nil {
-			if err != io.EOF {
-				returnErr = err
-			}
-			return
-		}
-		if len(initialMessages) != 1 {
-			returnErr = fmt.Errorf("Expected a single message upon starting connection, terminating connection")
-			return
-		}
-		initialMessage := initialMessages[0]
-
-		switch initialMessage := initialMessage.(type) {
-		case messages.StartupMessage:
-			startupMessage = initialMessage
-			break InitialMessageLoop
-		case messages.SSLRequest:
-			hasCertificate := len(certificate.Certificate) > 0
-			if err := connection.Send(conn, messages.SSLResponse{
-				SupportsSSL: hasCertificate,
-			}); err != nil {
-				returnErr = err
-				return
-			}
-			// If we have a certificate and the client has asked for SSL support, then we switch here.
-			// We can't start in SSL mode, as the client does not attempt the handshake until after our response.
-			if hasCertificate {
-				conn = tls.Server(conn, &tls.Config{
-					Certificates: []tls.Certificate{certificate},
-				})
-				mysqlConn.Conn = conn
-			}
-		case messages.GSSENCRequest:
-			if err = connection.Send(conn, messages.GSSENCResponse{
-				SupportsGSSAPI: false,
-			}); err != nil {
-				returnErr = err
-				return
-			}
-		default:
-			returnErr = fmt.Errorf("Unexpected initial message, terminating connection")
-			return
-		}
-	}
-
-	//TODO: implement users and authentication
-	if user, ok := startupMessage.Parameters["user"]; ok && len(user) > 0 {
-		var host string
-		if conn.RemoteAddr().Network() == "unix" {
-			host = "localhost"
-		} else {
-			host, _, _ = net.SplitHostPort(conn.RemoteAddr().String())
-			if len(host) == 0 {
-				host = "localhost"
-			}
-		}
-		mysqlConn.User = user
-		mysqlConn.UserData = mysql_db.MysqlConnectionUser{
-			User: user,
-			Host: host,
-		}
-	} else {
-		mysqlConn.User = "doltgres"
-		mysqlConn.UserData = mysql_db.MysqlConnectionUser{
-			User: "doltgres",
-			Host: "localhost",
-		}
-	}
-
-	if err = connection.Send(conn, messages.AuthenticationOk{}); err != nil {
+	startupMessage, err := l.handshake(conn, mysqlConn)
+	if err != nil {
 		returnErr = err
 		return
 	}
 
-	if err = connection.Send(conn, messages.ParameterStatus{
-		Name:  "server_version",
-		Value: "15.0",
-	}); err != nil {
-		returnErr = err
-		return
-	}
-	if err = connection.Send(conn, messages.ParameterStatus{
-		Name:  "client_encoding",
-		Value: "UTF8",
-	}); err != nil {
-		returnErr = err
-		return
-	}
-
-	if err = connection.Send(conn, messages.BackendKeyData{
-		ProcessID: processID,
-		SecretKey: 0,
-	}); err != nil {
+	err = l.sendClientStartupMessages(conn, startupMessage, mysqlConn)
+	if err != nil {
 		returnErr = err
 		return
 	}
@@ -241,14 +148,14 @@ InitialMessageLoop:
 		return
 	}
 
-	statementCache := make(map[string]ConvertedQuery)
+	preparedStatements := make(map[string]ConvertedQuery)
 	for {
 		receivedMessages, err := connection.Receive(conn)
 		if err != nil {
 			returnErr = err
 			return
 		} else if len(receivedMessages) == 0 {
-			returnErr = fmt.Errorf("Data received but contained no messages, terminating connection")
+			returnErr = fmt.Errorf("data received but contained no messages, terminating connection")
 			return
 		}
 
@@ -259,7 +166,7 @@ InitialMessageLoop:
 			case messages.Terminate:
 				return
 			case messages.Execute:
-				//TODO: implement the RowMax
+				// TODO: implement the RowMax
 				if err = l.execute(conn, mysqlConn, portals[message.Portal]); err != nil {
 					l.endOfMessages(conn, err)
 					break ReadMessages
@@ -272,27 +179,49 @@ InitialMessageLoop:
 						l.endOfMessages(conn, err)
 						break ReadMessages
 					} else {
-						err = l.execute(conn, mysqlConn, query)
+						// The Deallocate message must not get passed to the engine, since we handle allocation / deallocation of
+						// prepared statements at this layer
+						switch stmt := query.AST.(type) {
+						case *sqlparser.Deallocate:
+							_, ok := preparedStatements[stmt.Name]
+							if !ok {
+								err = fmt.Errorf("prepared statement %s does not exist", stmt.Name)
+								break ReadMessages
+							}
+							delete(preparedStatements, stmt.Name)
+
+							commandComplete := messages.CommandComplete{
+								Query: query.String,
+								Rows:  0,
+							}
+
+							if err = connection.Send(conn, commandComplete); err != nil {
+								returnErr = err
+								return
+							}
+						default:
+							err = l.execute(conn, mysqlConn, query)
+						}
 					}
 				}
 				l.endOfMessages(conn, err)
 			case messages.Parse:
-				//TODO: fully support prepared statements
+				// TODO: fully support prepared statements
 				var query ConvertedQuery
 				if query, err = l.convertQuery(message.Query); err != nil {
 					l.endOfMessages(conn, err)
 					break ReadMessages
 				} else {
-					statementCache[message.Name] = query
-				}
-				if err = connection.Send(conn, messages.ParseComplete{}); err != nil {
-					l.endOfMessages(conn, err)
-					break ReadMessages
+					preparedStatements[message.Name] = query
+					if err = connection.Send(conn, messages.ParseComplete{}); err != nil {
+						l.endOfMessages(conn, err)
+						break ReadMessages
+					}
 				}
 			case messages.Describe:
 				var query ConvertedQuery
 				if message.IsPrepared {
-					query = statementCache[message.Target]
+					query = preparedStatements[message.Target]
 				} else {
 					query = portals[message.Target]
 				}
@@ -303,8 +232,8 @@ InitialMessageLoop:
 			case messages.Sync:
 				l.endOfMessages(conn, nil)
 			case messages.Bind:
-				//TODO: fully support prepared statements
-				portals[message.DestinationPortal] = statementCache[message.SourcePreparedStatement]
+				// TODO: fully support prepared statements
+				portals[message.DestinationPortal] = preparedStatements[message.SourcePreparedStatement]
 				if err = connection.Send(conn, messages.BindComplete{}); err != nil {
 					l.endOfMessages(conn, err)
 					break ReadMessages
@@ -317,13 +246,123 @@ InitialMessageLoop:
 	}
 }
 
+// handshake performs the initial handshake with the client, and returns the startup message received
+func (l *Listener) handshake(conn net.Conn, mysqlConn *mysql.Conn) (messages.StartupMessage, error) {
+	var startupMessage messages.StartupMessage
+	// The initial message may be one of a few different messages, so we'll check for those.
+InitialMessageLoop:
+	for {
+		initialMessages, err := connection.ReceiveIntoAny(conn,
+			messages.StartupMessage{},
+			messages.SSLRequest{},
+			messages.GSSENCRequest{})
+		if err != nil {
+			if err != io.EOF {
+				return messages.StartupMessage{}, err
+			}
+			return messages.StartupMessage{}, nil
+		}
+		if len(initialMessages) != 1 {
+			returnErr := fmt.Errorf("Expected a single message upon starting connection, terminating connection")
+			return messages.StartupMessage{}, returnErr
+		}
+		initialMessage := initialMessages[0]
+
+		switch initialMessage := initialMessage.(type) {
+		case messages.StartupMessage:
+			startupMessage = initialMessage
+			break InitialMessageLoop
+		case messages.SSLRequest:
+			hasCertificate := len(certificate.Certificate) > 0
+			if err := connection.Send(conn, messages.SSLResponse{
+				SupportsSSL: hasCertificate,
+			}); err != nil {
+				return messages.StartupMessage{}, err
+			}
+			// If we have a certificate and the client has asked for SSL support, then we switch here.
+			// We can't start in SSL mode, as the client does not attempt the handshake until after our response.
+			if hasCertificate {
+				conn = tls.Server(conn, &tls.Config{
+					Certificates: []tls.Certificate{certificate},
+				})
+				mysqlConn.Conn = conn
+			}
+		case messages.GSSENCRequest:
+			if err = connection.Send(conn, messages.GSSENCResponse{
+				SupportsGSSAPI: false,
+			}); err != nil {
+				return messages.StartupMessage{}, err
+			}
+		default:
+			err := fmt.Errorf("Unexpected initial message, terminating connection")
+			return messages.StartupMessage{}, err
+		}
+	}
+	
+	return startupMessage, nil
+}
+
+// sendClientStartupMessages sends introductory messages to the client and returns any error
+// TODO: implement users and authentication
+func (l *Listener) sendClientStartupMessages(conn net.Conn, startupMessage messages.StartupMessage, mysqlConn *mysql.Conn) error {
+	if user, ok := startupMessage.Parameters["user"]; ok && len(user) > 0 {
+		var host string
+		if conn.RemoteAddr().Network() == "unix" {
+			host = "localhost"
+		} else {
+			host, _, _ = net.SplitHostPort(conn.RemoteAddr().String())
+			if len(host) == 0 {
+				host = "localhost"
+			}
+		}
+		mysqlConn.User = user
+		mysqlConn.UserData = mysql_db.MysqlConnectionUser{
+			User: user,
+			Host: host,
+		}
+	} else {
+		mysqlConn.User = "doltgres"
+		mysqlConn.UserData = mysql_db.MysqlConnectionUser{
+			User: "doltgres",
+			Host: "localhost",
+		}
+	}
+
+	if err := connection.Send(conn, messages.AuthenticationOk{}); err != nil {
+		return err
+	}
+
+	if err := connection.Send(conn, messages.ParameterStatus{
+		Name:  "server_version",
+		Value: "15.0",
+	}); err != nil {
+		return err
+	}
+	
+	if err := connection.Send(conn, messages.ParameterStatus{
+		Name:  "client_encoding",
+		Value: "UTF8",
+	}); err != nil {
+		return err
+	}
+
+	if err := connection.Send(conn, messages.BackendKeyData{
+		ProcessID: processID,
+		SecretKey: 0,
+	}); err != nil {
+		return err
+	}
+	
+	return nil
+}
+
 // execute handles running the given query. This will post the RowDescription, DataRow, and CommandComplete messages.
 func (l *Listener) execute(conn net.Conn, mysqlConn *mysql.Conn, query ConvertedQuery) error {
 	commandComplete := messages.CommandComplete{
 		Query: query.String,
 		Rows:  0,
 	}
-
+	
 	if err := l.comQuery(mysqlConn, query, func(res *sqltypes.Result, more bool) error {
 		if err := connection.Send(conn, messages.RowDescription{
 			Fields: res.Fields,
