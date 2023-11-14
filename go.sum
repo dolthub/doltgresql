@@ -212,8 +212,8 @@ github.com/dgrijalva/jwt-go v3.2.0+incompatible/go.mod h1:E3ru+11k8xSBh+hMPgOLZm
 github.com/dgryski/go-farm v0.0.0-20190423205320-6a90982ecee2/go.mod h1:SqUrOPUnsFjfmXRMNPybcSiG0BgUW2AuFH8PAnS2iTw=
 github.com/docker/go-connections v0.4.0/go.mod h1:Gbd7IOopHjR8Iph03tsViu4nIes5XhDvyHbTtUxmeec=
 github.com/docker/go-units v0.4.0/go.mod h1:fgPhTUdO+D/Jk86RDLlptpiXQzgHJF7gydDDbaIK4Dk=
-github.com/dolthub/dolt/go v0.40.5-0.20231018220650-48f565111c6a h1:JhVPlX0bjOODGoG15d61p+EdRNhqmWEfDqmrAbAUQEQ=
-github.com/dolthub/dolt/go v0.40.5-0.20231018220650-48f565111c6a/go.mod h1:8zPn6VcsIyoLDhESnV9zZlN7j2rb1DrQ7TxljxQKjTk=
+github.com/dolthub/dolt/go v0.40.5-0.20231114163244-0cc42b844045 h1:3XcJEPd9hydNGegfDC95b+PJWvzJrqU0serxh5Bo9Qw=
+github.com/dolthub/dolt/go v0.40.5-0.20231114163244-0cc42b844045/go.mod h1:CAA/kBFxZdT8s3aLtLUw3gEsuxSOVeChlQucDlZCTBU=
 github.com/dolthub/dolt/go/gen/proto/dolt/services/eventsapi v0.0.0-20231018220650-48f565111c6a h1:WYBHmrFuKPqPfLB8ab1WqL5MgR8PQICkfUs5RTjHZM8=
 github.com/dolthub/dolt/go/gen/proto/dolt/services/eventsapi v0.0.0-20231018220650-48f565111c6a/go.mod h1:Fi7KchJVfwMuPJkX4vJeAlNZkxCiVyhvVYfCgaSDlTU=
 github.com/dolthub/flatbuffers/v23 v23.3.3-dh.2 h1:u3PMzfF8RkKd3lB9pZ2bfn0qEG+1Gms9599cr0REMww=
