@@ -15,6 +15,9 @@
 package ast
 
 import (
+	"fmt"
+	"strings"
+
 	vitess "github.com/dolthub/vitess/go/vt/sqlparser"
 
 	"github.com/dolthub/doltgresql/postgres/parser/sem/tree"
@@ -24,6 +27,9 @@ import (
 func nodeTableName(node *tree.TableName) (vitess.TableName, error) {
 	if node == nil {
 		return vitess.TableName{}, nil
+	}
+	if node.ExplicitCatalog || node.ExplicitSchema && strings.ToLower(string(node.SchemaName)) != "information_schema" {
+		return vitess.TableName{}, fmt.Errorf("referencing items outside the schema or database is not yet supported")
 	}
 	return vitess.TableName{
 		Name:      vitess.NewTableIdent(string(node.ObjectName)),
