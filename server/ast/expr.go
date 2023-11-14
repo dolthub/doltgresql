@@ -179,7 +179,7 @@ func nodeExpr(node tree.Expr) (vitess.Expr, error) {
 			Else:  else_,
 		}, nil
 	case *tree.CastExpr:
-		//TODO: this should probably be a ConvertExpr
+		//TODO: finish the implementation
 		return &vitess.ConvertExpr{
 			Name: "",
 			Expr: nil,
@@ -377,7 +377,7 @@ func nodeExpr(node tree.Expr) (vitess.Expr, error) {
 		}, nil
 	case *tree.NullIfExpr:
 		//TODO: probably should be the IF function: IF(Expr1 == Expr2, NULL, Expr1)
-		return nil, fmt.Errorf("IFERROR is not yet supported")
+		return nil, fmt.Errorf("NULLIF is not yet supported")
 	case *tree.NumVal:
 		switch node.Kind() {
 		case constant.Int:
@@ -409,12 +409,12 @@ func nodeExpr(node tree.Expr) (vitess.Expr, error) {
 			Expr: expr,
 		}, nil
 	case *tree.PartitionMaxVal:
-		return nil, fmt.Errorf("MAX is not yet supported")
+		return nil, fmt.Errorf("MAXVALUE is not yet supported")
 	case *tree.PartitionMinVal:
-		return nil, fmt.Errorf("MIN is not yet supported")
+		return nil, fmt.Errorf("MINVALUE is not yet supported")
 	case *tree.Placeholder:
 		//TODO: figure out if I can delete this
-		return nil, fmt.Errorf("this should probably be deleted (internal error, Placeholder)")
+		panic("this should probably be deleted (internal error, Placeholder)")
 	case *tree.RangeCond:
 		operator := vitess.BetweenStr
 		if node.Not {
