@@ -886,9 +886,8 @@ func (node *ForeignKeyConstraintTableDef) SetName(name Name) {
 // CheckConstraintTableDef represents a check constraint within a CREATE
 // TABLE statement.
 type CheckConstraintTableDef struct {
-	Name   Name
-	Expr   Expr
-	Hidden bool
+	Name Name
+	Expr Expr
 }
 
 // SetName implements the ConstraintTableDef interface.

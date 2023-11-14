@@ -1067,37 +1067,6 @@ func (node *Subquery) Format(ctx *FmtCtx) {
 	}
 }
 
-// TypedDummy is a dummy expression that represents a dummy value with
-// a specified type. It can be used in situations where TypedExprs of a
-// particular type are required for semantic analysis.
-type TypedDummy struct {
-	Typ *types.T
-}
-
-func (node *TypedDummy) String() string {
-	return AsString(node)
-}
-
-// Format implements the NodeFormatter interface.
-func (node *TypedDummy) Format(ctx *FmtCtx) {
-	ctx.WriteString("dummyvalof(")
-	ctx.FormatTypeReference(node.Typ)
-	ctx.WriteString(")")
-}
-
-// ResolvedType implements the TypedExpr interface.
-func (node *TypedDummy) ResolvedType() *types.T {
-	return node.Typ
-}
-
-// TypeCheck implements the Expr interface.
-func (node *TypedDummy) TypeCheck(context.Context, *SemaContext, *types.T) (TypedExpr, error) {
-	return node, nil
-}
-
-// Walk implements the Expr interface.
-func (node *TypedDummy) Walk(Visitor) Expr { return node }
-
 // BinaryOperator represents a binary operator.
 type BinaryOperator int
 

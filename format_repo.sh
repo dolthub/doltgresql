@@ -16,7 +16,7 @@
 
 set -eo pipefail
 
-paths=`find . -maxdepth 1 -mindepth 1 \( -name gen -prune -o -type d -print -o -type f -name '*.go' -print \)`
+paths=`find . -maxdepth 1 -mindepth 1 ! -name ".idea" ! -name ".git" ! -name ".github" \( -name gen -prune -o -type d -print -o -type f -name '*.go' -print \)`
 
 goimports -w -local github.com/dolthub/doltgresql $paths
 
