@@ -18,6 +18,7 @@ import (
 	"fmt"
 
 	vitess "github.com/dolthub/vitess/go/vt/sqlparser"
+	"github.com/sirupsen/logrus"
 
 	"github.com/dolthub/doltgresql/postgres/parser/sem/tree"
 )
@@ -57,12 +58,12 @@ func nodeIndexTableDef(node *tree.IndexTableDef) (*vitess.IndexDefinition, error
 		case tree.Ascending:
 			// The only default supported in GMS for now
 		case tree.Descending:
-			return nil, fmt.Errorf("indexes with descending columns are not yet supported")
+			logrus.Warn("descending indexes are not yet supported, ignoring sort order")
 		default:
 			return nil, fmt.Errorf("unknown index sorting direction encountered")
 		}
 		if indexElem.Direction != tree.Ascending {
-			return nil, fmt.Errorf("all non-ASCENDING is not yet supported")
+			logrus.Warn("descending indexes are not yet supported, ignoring sort order")
 		}
 		switch indexElem.NullsOrder {
 		case tree.DefaultNullsOrder:
