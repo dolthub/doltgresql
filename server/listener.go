@@ -213,10 +213,10 @@ func (l *Listener) HandleConnection(conn net.Conn) {
 					break ReadMessages
 				} else {
 					preparedStatements[message.Name] = query
-					if err = connection.Send(conn, messages.ParseComplete{}); err != nil {
-						l.endOfMessages(conn, err)
-						break ReadMessages
-					}
+				}
+				if err = connection.Send(conn, messages.ParseComplete{}); err != nil {
+					l.endOfMessages(conn, err)
+					break ReadMessages
 				}
 			case messages.Describe:
 				var query ConvertedQuery

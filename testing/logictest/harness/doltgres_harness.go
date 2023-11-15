@@ -212,7 +212,7 @@ func columns(rows *sql.Rows) (string, []interface{}, error) {
 			colVal := sql.NullBool{}
 			columns = append(columns, &colVal)
 			sb.WriteString("I")
-		case "TEXT", "VARCHAR", "MEDIUMTEXT", "CHAR", "TINYTEXT", "NAME":
+		case "TEXT", "VARCHAR", "MEDIUMTEXT", "CHAR", "TINYTEXT", "NAME", "BYTEA":
 			colVal := sql.NullString{}
 			columns = append(columns, &colVal)
 			sb.WriteString("T")
