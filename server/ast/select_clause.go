@@ -35,10 +35,6 @@ func nodeSelectClause(node *tree.SelectClause) (*vitess.Select, error) {
 	if err != nil {
 		return nil, err
 	}
-	var distinct bool
-	if node.Distinct {
-		distinct = true
-	}
 	if len(node.DistinctOn) > 0 {
 		return nil, fmt.Errorf("DISTINCT ON is not yet supported")
 	}
@@ -59,7 +55,7 @@ func nodeSelectClause(node *tree.SelectClause) (*vitess.Select, error) {
 		return nil, err
 	}
 	return &vitess.Select{
-		QueryOpts:   vitess.QueryOpts{Distinct: distinct},
+		QueryOpts:   vitess.QueryOpts{Distinct: node.Distinct},
 		SelectExprs: selectExprs,
 		From:        from,
 		Where:       where,

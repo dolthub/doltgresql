@@ -353,7 +353,7 @@ func (l *Listener) execute(conn net.Conn, mysqlConn *mysql.Conn, query Converted
 		Query: query.String,
 		Rows:  0,
 	}
-	
+
 	if err := l.comQuery(mysqlConn, query, func(res *sqltypes.Result, more bool) error {
 		if err := connection.Send(conn, messages.RowDescription{
 			Fields: res.Fields,
