@@ -106,10 +106,57 @@ func (l *Listener) HandleConnection(conn net.Conn) {
 	}()
 	l.cfg.Handler.NewConnection(mysqlConn)
 
-	startupMessage, err := l.handshake(conn, mysqlConn)
-	if err != nil {
-		returnErr = err
-		return
+	var startupMessage messages.StartupMessage
+	// The initial message may be one of a few different messages, so we'll check for those.
+InitialMessageLoop:
+	for {
+		initialMessages, err := connection.ReceiveIntoAny(conn,
+			messages.StartupMessage{},
+			messages.SSLRequest{},
+			messages.GSSENCRequest{})
+		if err != nil {
+			if err != io.EOF {
+				returnErr = err
+			}
+			return
+		}
+		if len(initialMessages) != 1 {
+			returnErr = fmt.Errorf("Expected a single message upon starting connection, terminating connection")
+			return
+		}
+		initialMessage := initialMessages[0]
+
+		switch initialMessage := initialMessage.(type) {
+		case messages.StartupMessage:
+			startupMessage = initialMessage
+			break InitialMessageLoop
+		case messages.SSLRequest:
+			hasCertificate := len(certificate.Certificate) > 0
+			if err := connection.Send(conn, messages.SSLResponse{
+				SupportsSSL: hasCertificate,
+			}); err != nil {
+				returnErr = err
+				return
+			}
+			// If we have a certificate and the client has asked for SSL support, then we switch here.
+			// We can't start in SSL mode, as the client does not attempt the handshake until after our response.
+			if hasCertificate {
+				conn = tls.Server(conn, &tls.Config{
+					Certificates: []tls.Certificate{certificate},
+				})
+				mysqlConn.Conn = conn
+			}
+		case messages.GSSENCRequest:
+			if err = connection.Send(conn, messages.GSSENCResponse{
+				SupportsGSSAPI: false,
+			}); err != nil {
+				returnErr = err
+				return
+			}
+		default:
+			returnErr = fmt.Errorf("Unexpected initial message, terminating connection")
+			return
+		}
 	}
 
 	err = l.sendClientStartupMessages(conn, startupMessage, mysqlConn)
@@ -244,62 +291,6 @@ func (l *Listener) HandleConnection(conn net.Conn) {
 			}
 		}
 	}
-}
-
-// handshake performs the initial handshake with the client, and returns the startup message received
-func (l *Listener) handshake(conn net.Conn, mysqlConn *mysql.Conn) (messages.StartupMessage, error) {
-	var startupMessage messages.StartupMessage
-	// The initial message may be one of a few different messages, so we'll check for those.
-InitialMessageLoop:
-	for {
-		initialMessages, err := connection.ReceiveIntoAny(conn,
-			messages.StartupMessage{},
-			messages.SSLRequest{},
-			messages.GSSENCRequest{})
-		if err != nil {
-			if err != io.EOF {
-				return messages.StartupMessage{}, err
-			}
-			return messages.StartupMessage{}, nil
-		}
-		if len(initialMessages) != 1 {
-			returnErr := fmt.Errorf("Expected a single message upon starting connection, terminating connection")
-			return messages.StartupMessage{}, returnErr
-		}
-		initialMessage := initialMessages[0]
-
-		switch initialMessage := initialMessage.(type) {
-		case messages.StartupMessage:
-			startupMessage = initialMessage
-			break InitialMessageLoop
-		case messages.SSLRequest:
-			hasCertificate := len(certificate.Certificate) > 0
-			if err := connection.Send(conn, messages.SSLResponse{
-				SupportsSSL: hasCertificate,
-			}); err != nil {
-				return messages.StartupMessage{}, err
-			}
-			// If we have a certificate and the client has asked for SSL support, then we switch here.
-			// We can't start in SSL mode, as the client does not attempt the handshake until after our response.
-			if hasCertificate {
-				conn = tls.Server(conn, &tls.Config{
-					Certificates: []tls.Certificate{certificate},
-				})
-				mysqlConn.Conn = conn
-			}
-		case messages.GSSENCRequest:
-			if err = connection.Send(conn, messages.GSSENCResponse{
-				SupportsGSSAPI: false,
-			}); err != nil {
-				return messages.StartupMessage{}, err
-			}
-		default:
-			err := fmt.Errorf("Unexpected initial message, terminating connection")
-			return messages.StartupMessage{}, err
-		}
-	}
-	
-	return startupMessage, nil
 }
 
 // sendClientStartupMessages sends introductory messages to the client and returns any error
