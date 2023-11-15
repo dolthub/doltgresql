@@ -23,15 +23,15 @@ import (
 	"strings"
 	"sync/atomic"
 
-	"github.com/dolthub/go-mysql-server/server"
-	"github.com/dolthub/go-mysql-server/sql/mysql_db"
-	"github.com/dolthub/vitess/go/mysql"
-	"github.com/dolthub/vitess/go/sqltypes"
-
 	"github.com/dolthub/doltgresql/postgres/connection"
 	"github.com/dolthub/doltgresql/postgres/messages"
 	"github.com/dolthub/doltgresql/postgres/parser/parser"
 	"github.com/dolthub/doltgresql/server/ast"
+	"github.com/dolthub/go-mysql-server/server"
+	"github.com/dolthub/go-mysql-server/sql/mysql_db"
+	"github.com/dolthub/vitess/go/mysql"
+	"github.com/dolthub/vitess/go/sqltypes"
+	"github.com/dolthub/vitess/go/vt/sqlparser"
 )
 
 var (
@@ -159,54 +159,8 @@ InitialMessageLoop:
 		}
 	}
 
-	//TODO: implement users and authentication
-	if user, ok := startupMessage.Parameters["user"]; ok && len(user) > 0 {
-		var host string
-		if conn.RemoteAddr().Network() == "unix" {
-			host = "localhost"
-		} else {
-			host, _, _ = net.SplitHostPort(conn.RemoteAddr().String())
-			if len(host) == 0 {
-				host = "localhost"
-			}
-		}
-		mysqlConn.User = user
-		mysqlConn.UserData = mysql_db.MysqlConnectionUser{
-			User: user,
-			Host: host,
-		}
-	} else {
-		mysqlConn.User = "doltgres"
-		mysqlConn.UserData = mysql_db.MysqlConnectionUser{
-			User: "doltgres",
-			Host: "localhost",
-		}
-	}
-
-	if err = connection.Send(conn, messages.AuthenticationOk{}); err != nil {
-		returnErr = err
-		return
-	}
-
-	if err = connection.Send(conn, messages.ParameterStatus{
-		Name:  "server_version",
-		Value: "15.0",
-	}); err != nil {
-		returnErr = err
-		return
-	}
-	if err = connection.Send(conn, messages.ParameterStatus{
-		Name:  "client_encoding",
-		Value: "UTF8",
-	}); err != nil {
-		returnErr = err
-		return
-	}
-
-	if err = connection.Send(conn, messages.BackendKeyData{
-		ProcessID: processID,
-		SecretKey: 0,
-	}); err != nil {
+	err = l.sendClientStartupMessages(conn, startupMessage, mysqlConn)
+	if err != nil {
 		returnErr = err
 		return
 	}
@@ -241,14 +195,14 @@ InitialMessageLoop:
 		return
 	}
 
-	statementCache := make(map[string]ConvertedQuery)
+	preparedStatements := make(map[string]ConvertedQuery)
 	for {
 		receivedMessages, err := connection.Receive(conn)
 		if err != nil {
 			returnErr = err
 			return
 		} else if len(receivedMessages) == 0 {
-			returnErr = fmt.Errorf("Data received but contained no messages, terminating connection")
+			returnErr = fmt.Errorf("data received but contained no messages, terminating connection")
 			return
 		}
 
@@ -259,7 +213,7 @@ InitialMessageLoop:
 			case messages.Terminate:
 				return
 			case messages.Execute:
-				//TODO: implement the RowMax
+				// TODO: implement the RowMax
 				if err = l.execute(conn, mysqlConn, portals[message.Portal]); err != nil {
 					l.endOfMessages(conn, err)
 					break ReadMessages
@@ -272,18 +226,40 @@ InitialMessageLoop:
 						l.endOfMessages(conn, err)
 						break ReadMessages
 					} else {
-						err = l.execute(conn, mysqlConn, query)
+						// The Deallocate message must not get passed to the engine, since we handle allocation / deallocation of
+						// prepared statements at this layer
+						switch stmt := query.AST.(type) {
+						case *sqlparser.Deallocate:
+							_, ok := preparedStatements[stmt.Name]
+							if !ok {
+								err = fmt.Errorf("prepared statement %s does not exist", stmt.Name)
+								break ReadMessages
+							}
+							delete(preparedStatements, stmt.Name)
+
+							commandComplete := messages.CommandComplete{
+								Query: query.String,
+								Rows:  0,
+							}
+
+							if err = connection.Send(conn, commandComplete); err != nil {
+								returnErr = err
+								return
+							}
+						default:
+							err = l.execute(conn, mysqlConn, query)
+						}
 					}
 				}
 				l.endOfMessages(conn, err)
 			case messages.Parse:
-				//TODO: fully support prepared statements
+				// TODO: fully support prepared statements
 				var query ConvertedQuery
 				if query, err = l.convertQuery(message.Query); err != nil {
 					l.endOfMessages(conn, err)
 					break ReadMessages
 				} else {
-					statementCache[message.Name] = query
+					preparedStatements[message.Name] = query
 				}
 				if err = connection.Send(conn, messages.ParseComplete{}); err != nil {
 					l.endOfMessages(conn, err)
@@ -292,7 +268,7 @@ InitialMessageLoop:
 			case messages.Describe:
 				var query ConvertedQuery
 				if message.IsPrepared {
-					query = statementCache[message.Target]
+					query = preparedStatements[message.Target]
 				} else {
 					query = portals[message.Target]
 				}
@@ -303,8 +279,8 @@ InitialMessageLoop:
 			case messages.Sync:
 				l.endOfMessages(conn, nil)
 			case messages.Bind:
-				//TODO: fully support prepared statements
-				portals[message.DestinationPortal] = statementCache[message.SourcePreparedStatement]
+				// TODO: fully support prepared statements
+				portals[message.DestinationPortal] = preparedStatements[message.SourcePreparedStatement]
 				if err = connection.Send(conn, messages.BindComplete{}); err != nil {
 					l.endOfMessages(conn, err)
 					break ReadMessages
@@ -315,6 +291,60 @@ InitialMessageLoop:
 			}
 		}
 	}
+}
+
+// sendClientStartupMessages sends introductory messages to the client and returns any error
+// TODO: implement users and authentication
+func (l *Listener) sendClientStartupMessages(conn net.Conn, startupMessage messages.StartupMessage, mysqlConn *mysql.Conn) error {
+	if user, ok := startupMessage.Parameters["user"]; ok && len(user) > 0 {
+		var host string
+		if conn.RemoteAddr().Network() == "unix" {
+			host = "localhost"
+		} else {
+			host, _, _ = net.SplitHostPort(conn.RemoteAddr().String())
+			if len(host) == 0 {
+				host = "localhost"
+			}
+		}
+		mysqlConn.User = user
+		mysqlConn.UserData = mysql_db.MysqlConnectionUser{
+			User: user,
+			Host: host,
+		}
+	} else {
+		mysqlConn.User = "doltgres"
+		mysqlConn.UserData = mysql_db.MysqlConnectionUser{
+			User: "doltgres",
+			Host: "localhost",
+		}
+	}
+
+	if err := connection.Send(conn, messages.AuthenticationOk{}); err != nil {
+		return err
+	}
+
+	if err := connection.Send(conn, messages.ParameterStatus{
+		Name:  "server_version",
+		Value: "15.0",
+	}); err != nil {
+		return err
+	}
+	
+	if err := connection.Send(conn, messages.ParameterStatus{
+		Name:  "client_encoding",
+		Value: "UTF8",
+	}); err != nil {
+		return err
+	}
+
+	if err := connection.Send(conn, messages.BackendKeyData{
+		ProcessID: processID,
+		SecretKey: 0,
+	}); err != nil {
+		return err
+	}
+	
+	return nil
 }
 
 // execute handles running the given query. This will post the RowDescription, DataRow, and CommandComplete messages.
@@ -489,7 +519,10 @@ func (l *Listener) convertQuery(query string) (ConvertedQuery, error) {
 	if vitessAST == nil {
 		return ConvertedQuery{String: s[0].AST.String()}, nil
 	}
-	return ConvertedQuery{AST: vitessAST}, nil
+	return ConvertedQuery{
+		String: query,
+		AST:    vitessAST,
+	}, nil
 }
 
 // comQuery is a shortcut that determines which version of ComQuery to call based on whether the query has been parsed.
