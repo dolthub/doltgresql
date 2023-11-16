@@ -22,17 +22,16 @@ import (
 	"github.com/dolthub/doltgresql/utils"
 )
 
-//TODO: determine how to handle messages that are larger than the buffer
-const bufferSize = 2048
+var BufferSize = 2048
 
 // connBuffers maintains a pool of buffers, reusable between connections.
 var connBuffers = sync.Pool{
 	New: func() any {
-		return make([]byte, bufferSize)
+		return make([]byte, BufferSize)
 	},
 }
 
-var sliceOfZeroes = make([]byte, bufferSize)
+var sliceOfZeroes = make([]byte, BufferSize)
 
 // Receive returns all messages that were sent from the given connection. A connection may send multiple messages at
 // once, therefore this may return multiple messages. This checks with all messages that have a Header, and have
