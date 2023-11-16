@@ -40,11 +40,11 @@ message Error {
   string severity = 8;
 
   message Source {
-      string file = 1;
-      int32 line = 2;
-      string function = 3;
+    string file = 1;
+    int32 line = 2;
+    string function = 3;
   }
   Source source = 5;
 
-  reserved 6,7;
+  reserved 6, 7;
 };

@@ -25,9 +25,6 @@ jobs:
       - name: Check all
         id: should_format
         run: |
-          ./postgres/parser/build.sh
-          GOFLAGS="-mod=readonly" go build ./...
-          go vet -mod=readonly ./...
           ./scripts/check_bats_fmt.sh
 
           if ./scripts/check_fmt.sh ; then
@@ -36,6 +33,10 @@ jobs:
             echo "Please run scripts/format_repo.sh to format this pull request."
             exit 1;
           fi
+
+          ./postgres/parser/build.sh
+          GOFLAGS="-mod=readonly" go build ./...
+          go vet -mod=readonly ./...
         env:
           BRANCH_NAME: ${{ github.head_ref }}
           CHANGE_TARGET: ${{ github.base_ref }}

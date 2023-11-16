@@ -49,7 +49,7 @@ import (
 	"text/template"
 )
 
-//TODO: investigate if this file may be safely deleted (maybe generation script too?)
+// TODO: investigate if this file may be safely deleted (maybe generation script too?)
 func main() {
 	blockRE := regexp.MustCompile(`^.*_keyword:`)
 	keywordRE := regexp.MustCompile(`[A-Z].*`)

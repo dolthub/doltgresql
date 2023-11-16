@@ -71,7 +71,7 @@ func NewWithIssueDetailf(issue int, detail, format string, args ...interface{}) 
 	return unimplementedInternal(1 /*depth*/, issue, detail, true /*format*/, format, args...)
 }
 
-//TODO: remove issue int
+// TODO: remove issue int
 func unimplementedInternal(depth, issue int, detail string, format bool, msg string, args ...interface{}) error {
 	// Create the issue link.
 	link := errors.IssueLink{Detail: detail}
