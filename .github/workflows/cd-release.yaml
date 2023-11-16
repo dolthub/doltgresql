@@ -1,0 +1,137 @@
+name: Release DoltgreSQL
+
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 'SemVer format release tag, i.e. 0.2.4'
+        required: true
+
+jobs:
+  format-version:
+    runs-on: ubuntu-22.04
+    outputs:
+      version: ${{ steps.format_version.outputs.version }}
+    steps:
+      - name: Format Input
+        id: format_version
+        run: |
+          version="${{ github.event.inputs.version }}"
+          if [[ $version == v* ]];
+          then
+            version="${version:1}"
+          fi
+          echo "version=$version" >> $GITHUB_OUTPUT
+
+  create-release:
+    needs: format-version
+    name: Create release
+    runs-on: ubuntu-22.04
+    outputs:
+      release_id: ${{ steps.create_release.outputs.id }}
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v3
+      - name: Update Doltgres version command
+        run: sed -i -e 's/	Version = ".*"/	Version = "'"$NEW_VERSION"'"/' "$FILE"
+        env:
+          FILE: ${{ format('{0}/server/server.go', github.workspace) }}
+          NEW_VERSION: ${{ needs.format-version.outputs.version }}
+      - uses: EndBug/add-and-commit@v9.1.1
+        with:
+          message: ${{ format('[ga-bump-release] Update DoltgreSQL version to {0} and release v{0}', needs.format-version.outputs.version) }}
+          add: ${{ format('{0}/server/server.go', github.workspace) }}
+          cwd: "."
+          pull: "--ff"
+      - name: Build SQL Syntax
+        run: ./build.sh
+        working-directory: ./postgres/parser
+        shell: bash
+      - name: Build Binaries
+        id: build_binaries
+        run: |
+          latest=$(git rev-parse HEAD)
+          echo "commitish=$latest" >> $GITHUB_OUTPUT
+          GO_BUILD_VERSION=1.21 scripts/build_binaries.sh
+      - name: Create Release
+        id: create_release
+        uses: dolthub/create-release@v1
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          tag_name: v${{ needs.format-version.outputs.version }}
+          release_name: ${{ needs.format-version.outputs.version }}
+          draft: false
+          prerelease: true
+          commitish: ${{ steps.build_binaries.outputs.commitish }}
+      - name: Upload Linux AMD64 Distro
+        id: upload-linux-amd64-distro
+        uses: dolthub/upload-release-asset@v1
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          upload_url: ${{ steps.create_release.outputs.upload_url }}
+          asset_path: out/doltgres-linux-amd64.tar.gz
+          asset_name: doltgres-linux-amd64.tar.gz
+          asset_content_type: application/zip
+      - name: Upload Linux ARM64 Distro
+        id: upload-linux-arm64-distro
+        uses: dolthub/upload-release-asset@v1
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          upload_url: ${{ steps.create_release.outputs.upload_url }}
+          asset_path: out/doltgres-linux-arm64.tar.gz
+          asset_name: doltgres-linux-arm64.tar.gz
+          asset_content_type: application/zip
+      - name: Upload OSX AMD64 Distro
+        id: upload-osx-amd64-distro
+        uses: dolthub/upload-release-asset@v1
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          upload_url: ${{ steps.create_release.outputs.upload_url }}
+          asset_path: out/doltgres-darwin-amd64.tar.gz
+          asset_name: doltgres-darwin-amd64.tar.gz
+          asset_content_type: application/zip
+      - name: Upload OSX ARM64 Distro
+        id: upload-osx-arm64-distro
+        uses: dolthub/upload-release-asset@v1
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          upload_url: ${{ steps.create_release.outputs.upload_url }}
+          asset_path: out/doltgres-darwin-arm64.tar.gz
+          asset_name: doltgres-darwin-arm64.tar.gz
+          asset_content_type: application/zip
+      - name: Upload Windows Distro
+        id: upload-windows-distro
+        uses: dolthub/upload-release-asset@v1
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          upload_url: ${{ steps.create_release.outputs.upload_url }}
+          asset_path: out/doltgres-windows-amd64.zip
+          asset_name: doltgres-windows-amd64.zip
+          asset_content_type: application/zip
+      - name: Upload Windows Distro 7z
+        id: upload-windows-distro-7z
+        uses: dolthub/upload-release-asset@v1
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          upload_url: ${{ steps.create_release.outputs.upload_url }}
+          asset_path: out/doltgres-windows-amd64.7z
+          asset_name: doltgres-windows-amd64.7z
+          asset_content_type: application/x-7z-compressed
+
+  create-release-notes:
+    needs: [format-version, create-release]
+    runs-on: ubuntu-22.04
+    steps:
+      - name: Trigger Release Notes
+        uses: peter-evans/repository-dispatch@v2.0.0
+        with:
+          token: ${{ secrets.REPO_ACCESS_TOKEN }}
+          event-type: release-notes
+          client-payload: '{"version": "${{ needs.format-version.outputs.version }}", "release_id": "${{ needs.create-release.outputs.release_id }}"}'

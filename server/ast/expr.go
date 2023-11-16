@@ -470,7 +470,7 @@ func nodeExpr(node tree.Expr) (vitess.Expr, error) {
 		if node.Row {
 			return nil, fmt.Errorf("ROW keyword for tuples not yet supported")
 		}
-		
+
 		valTuple, err := nodeExprs(node.Exprs)
 		if err != nil {
 			return nil, err
