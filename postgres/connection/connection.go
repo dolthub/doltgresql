@@ -69,7 +69,7 @@ func Receive(conn net.Conn) (Message, error) {
 	}
 
 	if n < messageLen {
-		return nil, fmt.Errorf("received message header is not recognized: %v", header[0])
+		return nil, fmt.Errorf("received message body is too short: expected %d bytes but read %d", messageLen, n)
 	}
 
 	db := newDecodeBuffer(buffer)
