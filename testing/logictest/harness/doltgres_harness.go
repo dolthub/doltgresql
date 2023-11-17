@@ -15,14 +15,12 @@
 package harness
 
 import (
+	"database/sql"
 	"fmt"
 	"strings"
 
-	"database/sql"
-
-	_ "github.com/jackc/pgx/v4/stdlib"
-
 	"github.com/dolthub/sqllogictest/go/logictest"
+	_ "github.com/jackc/pgx/v4/stdlib"
 )
 
 var _ logictest.Harness = &PostgresqlServerHarness{}
@@ -163,7 +161,6 @@ func (h *PostgresqlServerHarness) dropAllViews() error {
 
 	return nil
 }
-
 
 // Returns the string representation of the column value given
 func stringVal(col interface{}) string {

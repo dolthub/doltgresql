@@ -1583,9 +1583,10 @@ func (d *DTuple) Size() uintptr {
 
 // ContainsNull returns true if the tuple contains NULL, possibly nested inside
 // other tuples. For example, all the following tuples contain NULL:
-//  (1, 2, NULL)
-//  ((1, 1), (2, NULL))
-//  (((1, 1), (2, 2)), ((3, 3), (4, NULL)))
+//
+//	(1, 2, NULL)
+//	((1, 1), (2, NULL))
+//	(((1, 1), (2, 2)), ((3, 3), (4, NULL)))
 func (d *DTuple) ContainsNull() bool {
 	for _, r := range d.D {
 		if r == DNull {
@@ -2029,14 +2030,13 @@ func (d *DOid) Size() uintptr { return unsafe.Sizeof(*d) }
 //
 // Instead, DOidWrapper allows a standard Datum to be wrapped with a new Oid.
 // This approach provides two major advantages:
-// - performance of the existing Datum types are not affected because they
-//   do not need to have custom oid.Oids added to their structure.
-// - the introduction of new Datum aliases is straightforward and does not require
-//   additions to typing rules or type-dependent evaluation behavior.
+//   - performance of the existing Datum types are not affected because they
+//     do not need to have custom oid.Oids added to their structure.
+//   - the introduction of new Datum aliases is straightforward and does not require
+//     additions to typing rules or type-dependent evaluation behavior.
 //
 // Types that currently benefit from DOidWrapper are:
 // - DName => DOidWrapper(*DString, oid.T_name)
-//
 type DOidWrapper struct {
 	Wrapped Datum
 	Oid     oid.Oid

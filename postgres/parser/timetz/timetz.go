@@ -117,7 +117,6 @@ func Now() TimeTZ {
 //
 // The dependsOnContext return value indicates if we had to consult the given
 // `now` value (either for the time or the local timezone).
-//
 func ParseTimeTZ(
 	now time.Time, s string, precision time.Duration,
 ) (_ TimeTZ, dependsOnContext bool, _ error) {

@@ -1,0 +1,69 @@
+name: Create Release Notes
+
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 'SemVer format release tag, i.e. 0.2.4'
+        required: true
+  repository_dispatch:
+    types: [ release-notes ]
+
+jobs:
+  create-release-notes:
+    runs-on: ubuntu-22.04
+    steps:
+      - name: Get Vars
+        id: get_vars
+        run: |
+          if [ "$EVENT_NAME" == "workflow_dispatch" ]
+          then
+            release_id=$(curl -H "Accept: application/vnd.github.v3+json" https://api.github.com/repos/dolthub/doltgresql/releases/tags/v${{ github.event.inputs.version }} | jq '.id')
+            echo "version=${{ github.event.inputs.version }}" >> $GITHUB_OUTPUT
+            echo "release_id=$release_id" >> $GITHUB_OUTPUT
+          else
+            echo "version=${{ github.event.client_payload.version }}" >> $GITHUB_OUTPUT
+            echo "release_id=${{ github.event.client_payload.release_id }}" >> $GITHUB_OUTPUT
+          fi
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+      - name: Checkout Release Notes Generator
+        uses: actions/checkout@v3
+        with:
+          repository: dolthub/release-notes-generator
+          token: ${{ secrets.REPO_ACCESS_TOKEN }}
+      - name: Install Dependencies
+        run: sudo ./install-deps.sh
+        env:
+          PERL_MM_USE_DEFAULT: 1
+      - name: Create Notes
+        run: |
+          git clone https://github.com/dolthub/doltgresql.git
+          ./gen_release_notes.pl \
+          --token "$TOKEN" dolthub/doltgresql v${{ steps.get_vars.outputs.version }} > changelog.txt
+        env:
+          TOKEN: ${{ secrets.REPO_ACCESS_TOKEN }}
+      - name: Post Changelog to Release
+        uses: actions/github-script@v6
+        with:
+          debug: true
+          github-token: ${{ secrets.REPO_ACCESS_TOKEN }}
+          script: |
+            const fs = require('fs');
+            const path = require('path')
+            try {
+              const body = fs.readFileSync(path.join(process.env.WORKSPACE, "changelog.txt"),  { encoding: "utf8" })
+              const res = await github.rest.repos.updateRelease({
+                owner: "dolthub",
+                repo: "doltgresql",
+                release_id: parseInt(process.env.RELEASE_ID, 10),
+                body,
+              });
+              console.log("Successfully updated release notes", res)
+            } catch (err) {
+              console.log("Error", err);
+              process.exit(1);
+            }
+        env:
+          WORKSPACE: ${{ github.workspace }}
+          RELEASE_ID: ${{ steps.get_vars.outputs.release_id }}
