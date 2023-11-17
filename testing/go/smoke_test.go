@@ -40,7 +40,6 @@ func TestSmokeTests(t *testing.T) {
 					},
 				},
 			},
-			Focus: true,
 		},
 		{
 			Name: "Commit and diff across branches",

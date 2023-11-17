@@ -197,6 +197,7 @@ InitialMessageLoop:
 	}
 
 	preparedStatements := make(map[string]ConvertedQuery)
+	portals := make(map[string]ConvertedQuery)
 	for {
 		message, err := connection.Receive(conn)
 		if err != nil {
@@ -204,7 +205,6 @@ InitialMessageLoop:
 			return
 		}
 
-		portals := make(map[string]ConvertedQuery)
 		switch message := message.(type) {
 		case messages.Terminate:
 			return
