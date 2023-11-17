@@ -198,98 +198,92 @@ InitialMessageLoop:
 
 	preparedStatements := make(map[string]ConvertedQuery)
 	for {
-		receivedMessages, err := connection.Receive(conn)
+		message, err := connection.Receive(conn)
 		if err != nil {
 			returnErr = err
-			return
-		} else if len(receivedMessages) == 0 {
-			returnErr = fmt.Errorf("data received but contained no messages, terminating connection")
 			return
 		}
 
 		portals := make(map[string]ConvertedQuery)
-	ReadMessages:
-		for _, message := range receivedMessages {
-			switch message := message.(type) {
-			case messages.Terminate:
+		switch message := message.(type) {
+		case messages.Terminate:
+			return
+		case messages.Execute:
+			// TODO: implement the RowMax
+			if err = l.execute(conn, mysqlConn, portals[message.Portal]); err != nil {
+				l.endOfMessages(conn, err)
 				return
-			case messages.Execute:
-				// TODO: implement the RowMax
-				if err = l.execute(conn, mysqlConn, portals[message.Portal]); err != nil {
+			}
+		case messages.Query:
+			var ok bool
+			if ok, err = l.handledPSQLCommands(conn, mysqlConn, message.String); !ok && err == nil {
+				var query ConvertedQuery
+				if query, err = l.convertQuery(message.String); err != nil {
 					l.endOfMessages(conn, err)
-					break ReadMessages
-				}
-			case messages.Query:
-				var ok bool
-				if ok, err = l.handledPSQLCommands(conn, mysqlConn, message.String); !ok && err == nil {
-					var query ConvertedQuery
-					if query, err = l.convertQuery(message.String); err != nil {
-						l.endOfMessages(conn, err)
-						break ReadMessages
-					} else {
-						// The Deallocate message must not get passed to the engine, since we handle allocation / deallocation of
-						// prepared statements at this layer
-						switch stmt := query.AST.(type) {
-						case *sqlparser.Deallocate:
-							_, ok := preparedStatements[stmt.Name]
-							if !ok {
-								err = fmt.Errorf("prepared statement %s does not exist", stmt.Name)
-								break ReadMessages
-							}
-							delete(preparedStatements, stmt.Name)
-
-							commandComplete := messages.CommandComplete{
-								Query: query.String,
-								Rows:  0,
-							}
-
-							if err = connection.Send(conn, commandComplete); err != nil {
-								returnErr = err
-								return
-							}
-						default:
-							err = l.execute(conn, mysqlConn, query)
+					return
+				} else {
+					// The Deallocate message must not get passed to the engine, since we handle allocation / deallocation of
+					// prepared statements at this layer
+					switch stmt := query.AST.(type) {
+					case *sqlparser.Deallocate:
+						_, ok := preparedStatements[stmt.Name]
+						if !ok {
+							err = fmt.Errorf("prepared statement %s does not exist", stmt.Name)
+							return
 						}
+						delete(preparedStatements, stmt.Name)
+
+						commandComplete := messages.CommandComplete{
+							Query: query.String,
+							Rows:  0,
+						}
+
+						if err = connection.Send(conn, commandComplete); err != nil {
+							returnErr = err
+							return
+						}
+					default:
+						err = l.execute(conn, mysqlConn, query)
 					}
 				}
-				l.endOfMessages(conn, err)
-			case messages.Parse:
-				// TODO: fully support prepared statements
-				var query ConvertedQuery
-				if query, err = l.convertQuery(message.Query); err != nil {
-					l.endOfMessages(conn, err)
-					break ReadMessages
-				} else {
-					preparedStatements[message.Name] = query
-				}
-				if err = connection.Send(conn, messages.ParseComplete{}); err != nil {
-					l.endOfMessages(conn, err)
-					break ReadMessages
-				}
-			case messages.Describe:
-				var query ConvertedQuery
-				if message.IsPrepared {
-					query = preparedStatements[message.Target]
-				} else {
-					query = portals[message.Target]
-				}
-				if err = l.describe(conn, mysqlConn, message, query); err != nil {
-					l.endOfMessages(conn, err)
-					break ReadMessages
-				}
-			case messages.Sync:
-				l.endOfMessages(conn, nil)
-			case messages.Bind:
-				// TODO: fully support prepared statements
-				portals[message.DestinationPortal] = preparedStatements[message.SourcePreparedStatement]
-				if err = connection.Send(conn, messages.BindComplete{}); err != nil {
-					l.endOfMessages(conn, err)
-					break ReadMessages
-				}
-			default:
-				l.endOfMessages(conn, fmt.Errorf(`Unexpected message "%s"`, message.DefaultMessage().Name))
-				break ReadMessages
 			}
+			l.endOfMessages(conn, err)
+		case messages.Parse:
+			// TODO: fully support prepared statements
+			var query ConvertedQuery
+			if query, err = l.convertQuery(message.Query); err != nil {
+				l.endOfMessages(conn, err)
+				return
+			} else {
+				preparedStatements[message.Name] = query
+			}
+			if err = connection.Send(conn, messages.ParseComplete{}); err != nil {
+				l.endOfMessages(conn, err)
+				return
+			}
+		case messages.Describe:
+			var query ConvertedQuery
+			if message.IsPrepared {
+				query = preparedStatements[message.Target]
+			} else {
+				query = portals[message.Target]
+			}
+			if err = l.describe(conn, mysqlConn, message, query); err != nil {
+				l.endOfMessages(conn, err)
+				return
+			}
+		case messages.Sync:
+			l.endOfMessages(conn, nil)
+		case messages.Bind:
+			// TODO: fully support prepared statements
+			portals[message.DestinationPortal] = preparedStatements[message.SourcePreparedStatement]
+			if err = connection.Send(conn, messages.BindComplete{}); err != nil {
+				l.endOfMessages(conn, err)
+				return
+			}
+		default:
+			l.endOfMessages(conn, fmt.Errorf(`Unexpected message "%s"`, message.DefaultMessage().Name))
+			return
 		}
 	}
 }

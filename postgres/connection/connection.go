@@ -17,6 +17,7 @@ package connection
 import (
 	"encoding/binary"
 	"errors"
+	"fmt"
 	"net"
 	"sync"
 
@@ -34,56 +35,47 @@ var connBuffers = sync.Pool{
 
 var sliceOfZeroes = make([]byte, BufferSize)
 
-// Receive returns all messages that were sent from the given connection. A connection may send multiple messages at
-// once, therefore this may return multiple messages. This checks with all messages that have a Header, and have
-// called AddMessageHeader within their init() function. Returns a nil slice if no messages were matched. This is the
-// recommended way to check for messages when a specific message is not expected. Use ReceiveInto or ReceiveIntoAny when
-// expecting specific messages, where it would be an error to receive messages different from the expectation.
-func Receive(conn net.Conn) ([]Message, error) {
+// Receive returns all messages that were sent from the given connection. This checks with all messages that have a 
+// Header, and have called AddMessageHeader within their init() function. Returns a nil slice if no messages were 
+// matched. This is the recommended way to check for messages when a specific message is not expected.
+// Use ReceiveInto or ReceiveIntoAny when expecting specific messages, where it would be an error to receive messages
+// different from the expectation.
+func Receive(conn net.Conn) (Message, error) {
 	// buffer := connBuffers.Get().([]byte)
 	// defer connBuffers.Put(zeroBuffer(buffer))
-	
-	var outMessages []Message
-	for {
-		header := make([]byte, 5)
-		n, err := conn.Read(header)
-		if err != nil {
-			return nil, err
-		}
-		
-		if n < 5 {
-			break
-		}
 
-		message, ok := allMessageHeaders[header[0]]
-		if !ok {
-			break
-		}
-		
-		// TODO: possibly not every message has a length in this position
-		messageLen := int(binary.BigEndian.Uint32(header[1:])) - 4
-		
-		buffer := make([]byte, messageLen)
-		n, err = conn.Read(buffer)
-		if err != nil {
-			return nil, err
-		}
-
-		if n < messageLen {
-			break
-		}
-
-		db := newDecodeBuffer(buffer)
-		db.skipHeader = true
-		
-		outMessage, err := receiveFromBuffer(db, message)
-		if err != nil {
-			return nil, err
-		}
-		outMessages = append(outMessages, outMessage)
+	header := make([]byte, 5)
+	n, err := conn.Read(header)
+	if err != nil {
+		return nil, err
 	}
-	
-	return outMessages, nil
+
+	if n < 5 {
+		return nil, errors.New("received message header is too short")
+	}
+
+	message, ok := allMessageHeaders[header[0]]
+	if !ok {
+		return nil, fmt.Errorf("received message header is not recognized: %v", header[0])
+	}
+
+	// TODO: possibly not every message has a length in this position
+	messageLen := int(binary.BigEndian.Uint32(header[1:])) - 4
+
+	buffer := make([]byte, messageLen)
+	n, err = conn.Read(buffer)
+	if err != nil {
+		return nil, err
+	}
+
+	if n < messageLen {
+		return nil, fmt.Errorf("received message header is not recognized: %v", header[0])
+	}
+
+	db := newDecodeBuffer(buffer)
+	db.skipHeader = true
+
+	return receiveFromBuffer(db, message)
 }
 
 // ReceiveInto reads the given Message from the connection. This should only be used when a specific message is expected,
