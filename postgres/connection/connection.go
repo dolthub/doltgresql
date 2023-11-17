@@ -22,7 +22,7 @@ import (
 	"github.com/dolthub/doltgresql/utils"
 )
 
-//TODO: determine how to handle messages that are larger than the buffer
+// TODO: determine how to handle messages that are larger than the buffer
 const bufferSize = 2048
 
 // connBuffers maintains a pool of buffers, reusable between connections.

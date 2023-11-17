@@ -176,22 +176,23 @@ func (u *UUID) SetVersion(v byte) {
 func (u *UUID) SetVariant(v byte) {
 	switch v {
 	case VariantNCS:
-		u[8] = (u[8]&(0xff>>1) | (0x00 << 7))
+		u[8] = u[8]&(0xff>>1) | (0x00 << 7)
 	case VariantRFC4122:
-		u[8] = (u[8]&(0xff>>2) | (0x02 << 6))
+		u[8] = u[8]&(0xff>>2) | (0x02 << 6)
 	case VariantMicrosoft:
-		u[8] = (u[8]&(0xff>>3) | (0x06 << 5))
+		u[8] = u[8]&(0xff>>3) | (0x06 << 5)
 	case VariantFuture:
 		fallthrough
 	default:
-		u[8] = (u[8]&(0xff>>3) | (0x07 << 5))
+		u[8] = u[8]&(0xff>>3) | (0x07 << 5)
 	}
 }
 
 // Must is a helper that wraps a call to a function returning (UUID, error)
 // and panics if the error is non-nil. It is intended for use in variable
 // initializations such as
-//  var packageUUID = uuid.Must(uuid.FromString("123e4567-e89b-12d3-a456-426655440000"))
+//
+//	var packageUUID = uuid.Must(uuid.FromString("123e4567-e89b-12d3-a456-426655440000"))
 func Must(u UUID, err error) UUID {
 	if err != nil {
 		panic(err)

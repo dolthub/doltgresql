@@ -44,17 +44,19 @@ type castInfo struct {
 //
 // Each cast defines a volatility:
 //
-//  - immutable casts yield the same result on the same arguments in whatever
-//    context they are evaluated.
+//   - immutable casts yield the same result on the same arguments in whatever
+//     context they are evaluated.
 //
-//  - stable casts can yield a different result depending on the evaluation context:
-//    - session settings (e.g. bytes encoding format)
-//    - current timezone
-//    - current time (e.g. 'now'::string).
+//   - stable casts can yield a different result depending on the evaluation context:
+//
+//   - session settings (e.g. bytes encoding format)
+//
+//   - current timezone
+//
+//   - current time (e.g. 'now'::string).
 //
 // TODO(radu): move the PerformCast code for each cast into functions defined
 // within each cast.
-//
 var validCasts = []castInfo{
 	// Casts to BitFamily.
 	{from: types.UnknownFamily, to: types.BitFamily, volatility: VolatilityImmutable},

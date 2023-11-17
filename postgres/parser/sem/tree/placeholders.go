@@ -120,7 +120,7 @@ func (p *PlaceholderTypesInfo) Type(idx PlaceholderIdx) (_ *types.T, ok bool) {
 	if t == nil && len(p.TypeHints) >= int(idx) {
 		t = p.TypeHints[idx]
 	}
-	return t, (t != nil)
+	return t, t != nil
 }
 
 // ValueType returns the type of the value that must be supplied for a placeholder.
@@ -135,7 +135,7 @@ func (p *PlaceholderTypesInfo) ValueType(idx PlaceholderIdx) (_ *types.T, ok boo
 	if t == nil {
 		t = p.Types[idx]
 	}
-	return t, (t != nil)
+	return t, t != nil
 }
 
 // SetType assigns a known type to a placeholder.

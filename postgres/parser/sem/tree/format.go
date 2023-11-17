@@ -66,15 +66,15 @@ const (
 	// string will be escaped and enclosed in e'...' regardless of
 	// whether FmtBareStrings is specified. See FmtRawStrings below for
 	// an alternative.
-	FmtBareStrings FmtFlags = FmtFlags(lex.EncBareStrings)
+	FmtBareStrings = FmtFlags(lex.EncBareStrings)
 
 	// FmtBareIdentifiers instructs the pretty-printer to print
 	// identifiers without wrapping quotes in any case.
-	FmtBareIdentifiers FmtFlags = FmtFlags(lex.EncBareIdentifiers)
+	FmtBareIdentifiers = FmtFlags(lex.EncBareIdentifiers)
 
 	// FmtShowPasswords instructs the pretty-printer to not suppress passwords.
 	// If not set, passwords are replaced by *****.
-	FmtShowPasswords FmtFlags = FmtFlags(lex.EncFirstFreeFlagBit) << iota
+	FmtShowPasswords = FmtFlags(lex.EncFirstFreeFlagBit) << iota
 
 	// FmtShowTypes instructs the pretty-printer to
 	// annotate expressions with their resolved types.
@@ -160,21 +160,21 @@ const (
 	// FmtPgwireText instructs the pretty-printer to use
 	// a pg-compatible conversion to strings. See comments
 	// in pgwire_encode.go.
-	FmtPgwireText FmtFlags = fmtPgwireFormat | FmtFlags(lex.EncBareStrings)
+	FmtPgwireText = fmtPgwireFormat | FmtFlags(lex.EncBareStrings)
 
 	// FmtParsable instructs the pretty-printer to produce a representation that
 	// can be parsed into an equivalent expression. If there is a chance that the
 	// formatted data will be stored durably on disk or sent to other nodes,
 	// then this formatting directive is not appropriate, and FmtSerializable
 	// should be used instead.
-	FmtParsable FmtFlags = fmtDisambiguateDatumTypes | FmtParsableNumerics
+	FmtParsable = fmtDisambiguateDatumTypes | FmtParsableNumerics
 
 	// FmtSerializable instructs the pretty-printer to produce a representation
 	// for expressions that can be serialized to disk. It serializes user defined
 	// types using representations that are stable across changes of the type
 	// itself. This should be used when serializing expressions that will be
 	// stored on disk, like DEFAULT expressions of columns.
-	FmtSerializable FmtFlags = FmtParsable | fmtStaticallyFormatUserDefinedTypes
+	FmtSerializable = FmtParsable | fmtStaticallyFormatUserDefinedTypes
 
 	// FmtCheckEquivalence instructs the pretty-printer to produce a representation
 	// that can be used to check equivalence of expressions. Specifically:
@@ -187,7 +187,7 @@ const (
 	//  - user defined types and datums of user defined types are formatted
 	//    using static representations to avoid name resolution and invalidation
 	//    due to changes in the underlying type.
-	FmtCheckEquivalence FmtFlags = fmtSymbolicVars |
+	FmtCheckEquivalence = fmtSymbolicVars |
 		fmtDisambiguateDatumTypes |
 		FmtParsableNumerics |
 		fmtStaticallyFormatUserDefinedTypes
@@ -196,7 +196,7 @@ const (
 	// for the output of array_to_string(). This de-quotes
 	// the strings enclosed in the array and skips the normal escaping
 	// of strings. Special characters are hex-escaped.
-	FmtArrayToString FmtFlags = FmtBareStrings | fmtRawStrings
+	FmtArrayToString = FmtBareStrings | fmtRawStrings
 
 	// FmtExport, if set, formats datums in a raw form suitable for
 	// EXPORT, e.g. suitable for output into a CSV file. The intended
@@ -214,10 +214,10 @@ const (
 	//
 	// TODO(mjibson): Note that this is currently not suitable for
 	// emitting arrays or tuples. See: #33429
-	FmtExport FmtFlags = FmtBareStrings | fmtRawStrings
+	FmtExport = FmtBareStrings | fmtRawStrings
 )
 
-const flagsRequiringAnnotations FmtFlags = FmtAlwaysQualifyTableNames
+const flagsRequiringAnnotations = FmtAlwaysQualifyTableNames
 
 // NoCopy may be embedded into structs which must not be copied
 // after the first use.

@@ -52,9 +52,12 @@ func JoinDoc(s Doc, d ...Doc) Doc {
 // For example:
 // aaaa
 // <sep> bbb
-//       bbb
+//
+//	bbb
+//
 // <sep> ccc
-//       ccc
+//
+//	ccc
 func JoinNestedRight(sep Doc, nested ...Doc) Doc {
 	switch len(nested) {
 	case 0:
@@ -229,16 +232,16 @@ const (
 )
 
 // Table defines a document that formats a list of pairs of items either:
-//  - as a 2-column table, with the two columns aligned for example:
-//       SELECT aaa
-//              bbb
-//         FROM ccc
-//  - as sections, for example:
-//       SELECT
-//           aaa
-//           bbb
-//       FROM
-//           ccc
+//   - as a 2-column table, with the two columns aligned for example:
+//     SELECT aaa
+//     bbb
+//     FROM ccc
+//   - as sections, for example:
+//     SELECT
+//     aaa
+//     bbb
+//     FROM
+//     ccc
 //
 // We restrict the left value in each list item to be a one-line string
 // to make the width computation efficient.

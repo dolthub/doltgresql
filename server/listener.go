@@ -23,15 +23,16 @@ import (
 	"strings"
 	"sync/atomic"
 
-	"github.com/dolthub/doltgresql/postgres/connection"
-	"github.com/dolthub/doltgresql/postgres/messages"
-	"github.com/dolthub/doltgresql/postgres/parser/parser"
-	"github.com/dolthub/doltgresql/server/ast"
 	"github.com/dolthub/go-mysql-server/server"
 	"github.com/dolthub/go-mysql-server/sql/mysql_db"
 	"github.com/dolthub/vitess/go/mysql"
 	"github.com/dolthub/vitess/go/sqltypes"
 	"github.com/dolthub/vitess/go/vt/sqlparser"
+
+	"github.com/dolthub/doltgresql/postgres/connection"
+	"github.com/dolthub/doltgresql/postgres/messages"
+	"github.com/dolthub/doltgresql/postgres/parser/parser"
+	"github.com/dolthub/doltgresql/server/ast"
 )
 
 var (
@@ -329,7 +330,7 @@ func (l *Listener) sendClientStartupMessages(conn net.Conn, startupMessage messa
 	}); err != nil {
 		return err
 	}
-	
+
 	if err := connection.Send(conn, messages.ParameterStatus{
 		Name:  "client_encoding",
 		Value: "UTF8",
@@ -343,7 +344,7 @@ func (l *Listener) sendClientStartupMessages(conn net.Conn, startupMessage messa
 	}); err != nil {
 		return err
 	}
-	
+
 	return nil
 }
 

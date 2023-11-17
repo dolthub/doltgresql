@@ -129,7 +129,7 @@ const (
 	// database/catalog.
 	PublicSchema string = sessiondata.PublicSchemaName
 	// PublicSchemaName is the same, typed as Name.
-	PublicSchemaName Name = Name(PublicSchema)
+	PublicSchemaName = Name(PublicSchema)
 )
 
 // NumResolutionResults represents the number of results in the lookup

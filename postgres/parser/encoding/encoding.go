@@ -53,11 +53,11 @@ const (
 	// The gap between floatNaNDesc and bytesMarker was left for
 	// compatibility reasons.
 	bytesMarker          byte = 0x12
-	bytesDescMarker      byte = bytesMarker + 1
-	timeMarker           byte = bytesDescMarker + 1
-	durationBigNegMarker byte = timeMarker + 1 // Only used for durations < MinInt64 nanos.
-	durationMarker       byte = durationBigNegMarker + 1
-	durationBigPosMarker byte = durationMarker + 1 // Only used for durations > MaxInt64 nanos.
+	bytesDescMarker           = bytesMarker + 1
+	timeMarker                = bytesDescMarker + 1
+	durationBigNegMarker      = timeMarker + 1 // Only used for durations < MinInt64 nanos.
+	durationMarker            = durationBigNegMarker + 1
+	durationBigPosMarker      = durationMarker + 1 // Only used for durations > MaxInt64 nanos.
 
 	decimalNaN              = durationBigPosMarker + 1 // 24
 	decimalNegativeInfinity = decimalNaN + 1
@@ -569,6 +569,7 @@ func getBitArrayWordsLen(b []byte, term byte) (int, int, error) {
 
 // Type represents the type of a value encoded by
 // Encode{Null,NotNull,Varint,Uvarint,Float,Bytes}.
+//
 //go:generate stringer -type=Type
 type Type int
 
@@ -912,12 +913,16 @@ func EncodeUntaggedDecimalValue(appendTo []byte, d *apd.Decimal) []byte {
 // returned colID should be discarded.)
 //
 // Concretely:
-//     b := ...
-//     typeOffset, _, colID, typ, err := DecodeValueTag(b)
-//     _, _, _, typ, err := DecodeValueTag(b[typeOffset:])
+//
+//	b := ...
+//	typeOffset, _, colID, typ, err := DecodeValueTag(b)
+//	_, _, _, typ, err := DecodeValueTag(b[typeOffset:])
+//
 // will return the same typ and err and
-//     DecodeFooValue(b)
-//     DecodeFooValue(b[typeOffset:])
+//
+//	DecodeFooValue(b)
+//	DecodeFooValue(b[typeOffset:])
+//
 // will return the same thing. PeekValueLength works as expected with either of
 // `b` or `b[typeOffset:]`.
 func DecodeValueTag(b []byte) (typeOffset int, dataOffset int, colID uint32, typ Type, err error) {

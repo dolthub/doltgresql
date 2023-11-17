@@ -1,0 +1,42 @@
+name: Check Formatting, Committers and Generated Code
+
+on:
+  pull_request:
+    branches: [ main ]
+
+concurrency:
+  group: ci-check-repo-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  verify:
+    name: Verify format
+    runs-on: ubuntu-22.04
+    outputs:
+      format: ${{ steps.should_format.outputs.format }}
+    steps:
+      - name: Setup Go 1.x
+        uses: actions/setup-go@v3
+        with:
+          go-version: ^1.21
+      - uses: actions/checkout@v3
+        with:
+          submodules: true
+      - name: Check all
+        id: should_format
+        run: |
+          ./scripts/check_bats_fmt.sh
+
+          if ./scripts/check_fmt.sh ; then
+            echo "code is formatted"
+          else
+            echo "Please run scripts/format_repo.sh to format this pull request."
+            exit 1;
+          fi
+
+          ./postgres/parser/build.sh
+          GOFLAGS="-mod=readonly" go build ./...
+          go vet -mod=readonly ./...
+        env:
+          BRANCH_NAME: ${{ github.head_ref }}
+          CHANGE_TARGET: ${{ github.base_ref }}
