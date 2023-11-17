@@ -160,13 +160,17 @@ func nodeExpr(node tree.Expr) (vitess.Expr, error) {
 		}
 		whens := make([]*vitess.When, len(node.Whens))
 		for i := range node.Whens {
-			whens[i].Val, err = nodeExpr(node.Whens[i].Val)
+			val, err := nodeExpr(node.Whens[i].Val)
 			if err != nil {
 				return nil, err
 			}
-			whens[i].Cond, err = nodeExpr(node.Whens[i].Cond)
+			cond, err := nodeExpr(node.Whens[i].Cond)
 			if err != nil {
 				return nil, err
+			}
+			whens[i] = &vitess.When{
+				Val:  val,
+				Cond: cond,
 			}
 		}
 		else_, err := nodeExpr(node.Else)

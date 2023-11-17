@@ -212,54 +212,59 @@ InitialMessageLoop:
 			// TODO: implement the RowMax
 			if err = l.execute(conn, mysqlConn, portals[message.Portal]); err != nil {
 				l.endOfMessages(conn, err)
-				return
+				continue
 			}
 		case messages.Query:
-			var ok bool
-			if ok, err = l.handledPSQLCommands(conn, mysqlConn, message.String); !ok && err == nil {
-				var query ConvertedQuery
-				if query, err = l.convertQuery(message.String); err != nil {
-					l.endOfMessages(conn, err)
-					return
-				} else {
-					// The Deallocate message must not get passed to the engine, since we handle allocation / deallocation of
-					// prepared statements at this layer
-					switch stmt := query.AST.(type) {
-					case *sqlparser.Deallocate:
-						_, ok := preparedStatements[stmt.Name]
-						if !ok {
-							err = fmt.Errorf("prepared statement %s does not exist", stmt.Name)
-							return
-						}
-						delete(preparedStatements, stmt.Name)
-
-						commandComplete := messages.CommandComplete{
-							Query: query.String,
-							Rows:  0,
-						}
-
-						if err = connection.Send(conn, commandComplete); err != nil {
-							returnErr = err
-							return
-						}
-					default:
-						err = l.execute(conn, mysqlConn, query)
+			handled, err := l.handledPSQLCommands(conn, mysqlConn, message.String)
+			if handled {
+				l.endOfMessages(conn, err)
+				continue
+			}
+			var query ConvertedQuery
+			if query, err = l.convertQuery(message.String); err != nil {
+				l.endOfMessages(conn, err)
+				continue
+			} else {
+				// The Deallocate message must not get passed to the engine, since we handle allocation / deallocation of
+				// prepared statements at this layer
+				switch stmt := query.AST.(type) {
+				case *sqlparser.Deallocate:
+					_, ok := preparedStatements[stmt.Name]
+					if !ok {
+						err = fmt.Errorf("prepared statement %s does not exist", stmt.Name)
+						continue
 					}
+					delete(preparedStatements, stmt.Name)
+
+					commandComplete := messages.CommandComplete{
+						Query: query.String,
+						Rows:  0,
+					}
+
+					if err = connection.Send(conn, commandComplete); err != nil {
+						returnErr = err
+						return
+					}
+
+					l.endOfMessages(conn, err)
+					continue
+				default:
+					err = l.execute(conn, mysqlConn, query)
+					l.endOfMessages(conn, err)
 				}
 			}
-			l.endOfMessages(conn, err)
 		case messages.Parse:
 			// TODO: fully support prepared statements
 			var query ConvertedQuery
 			if query, err = l.convertQuery(message.Query); err != nil {
 				l.endOfMessages(conn, err)
-				return
+				continue
 			} else {
 				preparedStatements[message.Name] = query
 			}
 			if err = connection.Send(conn, messages.ParseComplete{}); err != nil {
 				l.endOfMessages(conn, err)
-				return
+				continue
 			}
 		case messages.Describe:
 			var query ConvertedQuery
@@ -270,7 +275,7 @@ InitialMessageLoop:
 			}
 			if err = l.describe(conn, mysqlConn, message, query); err != nil {
 				l.endOfMessages(conn, err)
-				return
+				continue
 			}
 		case messages.Sync:
 			l.endOfMessages(conn, nil)
@@ -279,11 +284,11 @@ InitialMessageLoop:
 			portals[message.DestinationPortal] = preparedStatements[message.SourcePreparedStatement]
 			if err = connection.Send(conn, messages.BindComplete{}); err != nil {
 				l.endOfMessages(conn, err)
-				return
+				continue
 			}
 		default:
 			l.endOfMessages(conn, fmt.Errorf(`Unexpected message "%s"`, message.DefaultMessage().Name))
-			return
+			continue
 		}
 	}
 }
@@ -440,6 +445,13 @@ func (l *Listener) handledPSQLCommands(conn net.Conn, mysqlConn *mysql.Conn, sta
 	}
 	// Command: \d
 	if statement == "select n.nspname as \"schema\",\n  c.relname as \"name\",\n  case c.relkind when 'r' then 'table' when 'v' then 'view' when 'm' then 'materialized view' when 'i' then 'index' when 's' then 'sequence' when 't' then 'toast table' when 'f' then 'foreign table' when 'p' then 'partitioned table' when 'i' then 'partitioned index' end as \"type\",\n  pg_catalog.pg_get_userbyid(c.relowner) as \"owner\"\nfrom pg_catalog.pg_class c\n     left join pg_catalog.pg_namespace n on n.oid = c.relnamespace\n     left join pg_catalog.pg_am am on am.oid = c.relam\nwhere c.relkind in ('r','p','v','m','s','f','')\n      and n.nspname <> 'pg_catalog'\n      and n.nspname !~ '^pg_toast'\n      and n.nspname <> 'information_schema'\n  and pg_catalog.pg_table_is_visible(c.oid)\norder by 1,2;" {
+		return true, l.execute(conn, mysqlConn, ConvertedQuery{`SELECT 'public' AS 'Schema', TABLE_NAME AS 'Name', 'table' AS 'Type', 'postgres' AS 'Owner' FROM INFORMATION_SCHEMA.TABLES WHERE TABLE_SCHEMA = database() AND TABLE_TYPE = 'BASE TABLE' ORDER BY 2;`, nil})
+	}
+	// Alternate \d for some versions
+	if statement == "SELECT n.nspname as \"Schema\",\n  c.relname as \"Name\",\n  CASE c.relkind WHEN 'r' THEN 'table' WHEN 'v' THEN 'view' WHEN 'm' THEN 'materialized view' WHEN 'i' THEN 'index' WHEN 'S' THEN 'sequence' WHEN 's' THEN 'special' WHEN 't' THEN 'TOAST table' WHEN 'f' THEN 'foreign table' WHEN 'p' THEN 'partitioned table' WHEN 'I' THEN 'partitioned index' END as \"Type\",\n  pg_catalog.pg_get_userbyid(c.relowner) as \"Owner\"\nFROM pg_catalog.pg_class c\n     LEFT JOIN pg_catalog.pg_namespace n ON n.oid = c.relnamespace\n     LEFT JOIN pg_catalog.pg_am am ON am.oid = c.relam\nWHERE c.relkind IN ('r','p','v','m','S','f','')\n      AND n.nspname <> 'pg_catalog'\n      AND n.nspname !~ '^pg_toast'\n      AND n.nspname <> 'information_schema'\n  AND pg_catalog.pg_table_is_visible(c.oid)\nORDER BY 1,2;" {
+		return true, l.execute(conn, mysqlConn, ConvertedQuery{`SELECT 'public' AS 'Schema', TABLE_NAME AS 'Name', 'table' AS 'Type', 'postgres' AS 'Owner' FROM INFORMATION_SCHEMA.TABLES WHERE TABLE_SCHEMA = database() AND TABLE_TYPE = 'BASE TABLE' ORDER BY 2;`, nil})
+	}
+	if statement == "select n.nspname as \"schema\",\n  c.relname as \"name\",\n  case c.relkind when 'r' then 'table' when 'v' then 'view' when 'm' then 'materialized view' when 'i' then 'index' when 's' then 'sequence' when 's' then 'special' when 't' then 'toast table' when 'f' then 'foreign table' when 'p' then 'partitioned table' when 'i' then 'partitioned index' end as \"type\",\n  pg_catalog.pg_get_userbyid(c.relowner) as \"owner\"\nfrom pg_catalog.pg_class c\n     left join pg_catalog.pg_namespace n on n.oid = c.relnamespace\n     left join pg_catalog.pg_am am on am.oid = c.relam\nwhere c.relkind in ('r','p','v','m','s','f','')\n      and n.nspname <> 'pg_catalog'\n      and n.nspname !~ '^pg_toast'\n      and n.nspname <> 'information_schema'\n  and pg_catalog.pg_table_is_visible(c.oid)\norder by 1,2;" {
 		return true, l.execute(conn, mysqlConn, ConvertedQuery{`SELECT 'public' AS 'Schema', TABLE_NAME AS 'Name', 'table' AS 'Type', 'postgres' AS 'Owner' FROM INFORMATION_SCHEMA.TABLES WHERE TABLE_SCHEMA = database() AND TABLE_TYPE = 'BASE TABLE' ORDER BY 2;`, nil})
 	}
 	// Command: \d table_name
