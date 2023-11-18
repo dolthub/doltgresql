@@ -166,27 +166,10 @@ InitialMessageLoop:
 		return
 	}
 
-	if db, ok := startupMessage.Parameters["database"]; ok && len(db) > 0 {
-		err = l.cfg.Handler.ComQuery(mysqlConn, fmt.Sprintf("USE `%s`;", db), func(res *sqltypes.Result, more bool) error {
-			return nil
-		})
-		if err != nil {
-			returnErr = err
-			_ = connection.Send(conn, messages.ErrorResponse{
-				Severity:     messages.ErrorResponseSeverity_Fatal,
-				SqlStateCode: "3D000",
-				Message:      fmt.Sprintf(`"database "%s" does not exist"`, db),
-				Optional: messages.ErrorResponseOptionalFields{
-					Routine: "InitPostgres",
-				},
-			})
-			return
-		}
-	} else {
-		// If a database isn't specified, then we connect to a database with the same name as the user
-		_ = l.cfg.Handler.ComQuery(mysqlConn, fmt.Sprintf("USE `%s`;", mysqlConn.User), func(*sqltypes.Result, bool) error {
-			return nil
-		})
+	err = l.chooseInitialDatabase(conn, startupMessage, mysqlConn)
+	if err != nil {
+		returnErr = err
+		return
 	}
 
 	if err := connection.Send(conn, messages.ReadyForQuery{
@@ -205,18 +188,43 @@ InitialMessageLoop:
 			return
 		}
 
-		cont, err := l.handleMessage(message, conn, mysqlConn, preparedStatements, portals)
-		l.endOfMessages(conn, err)
-		// if eomErr != nil {
-		// 	returnErr = eomErr
-		// 	return
-		// }
-		
-		if !cont {
+		stop, endOfMessages, err := l.handleMessage(message, conn, mysqlConn, preparedStatements, portals)
+		if err != nil || endOfMessages {
+			// TODO: do we need to clear the connection here?
+			l.endOfMessages(conn, err)
+		}
+
+		if stop {
 			returnErr = err
 			break
 		}
 	}
+}
+
+func (l *Listener) chooseInitialDatabase(conn net.Conn, startupMessage messages.StartupMessage, mysqlConn *mysql.Conn) error {
+	if db, ok := startupMessage.Parameters["database"]; ok && len(db) > 0 {
+		err := l.cfg.Handler.ComQuery(mysqlConn, fmt.Sprintf("USE `%s`;", db), func(res *sqltypes.Result, more bool) error {
+			return nil
+		})
+		if err != nil {
+			_ = connection.Send(conn, messages.ErrorResponse{
+				Severity:     messages.ErrorResponseSeverity_Fatal,
+				SqlStateCode: "3D000",
+				Message:      fmt.Sprintf(`"database "%s" does not exist"`, db),
+				Optional: messages.ErrorResponseOptionalFields{
+					Routine: "InitPostgres",
+				},
+			})
+			return err
+		}
+	} else {
+		// If a database isn't specified, then we attempt to connect to a database with the same name as the user, 
+		// ignoring any error
+		_ = l.cfg.Handler.ComQuery(mysqlConn, fmt.Sprintf("USE `%s`;", mysqlConn.User), func(*sqltypes.Result, bool) error {
+			return nil
+		})
+	}
+	return nil
 }
 
 func (l *Listener) handleMessage(
@@ -224,22 +232,22 @@ func (l *Listener) handleMessage(
 		conn net.Conn,
 		mysqlConn *mysql.Conn,
 		preparedStatements, portals map[string]ConvertedQuery,
-) (bool, error) {
+) (stop, endOfMessages bool, err error) {
 	switch message := message.(type) {
 	case messages.Terminate:
-		return false, nil
+		return true, false, nil
 	case messages.Execute:
 		// TODO: implement the RowMax
-		return true, l.execute(conn, mysqlConn, portals[message.Portal])
+		return false, false, l.execute(conn, mysqlConn, portals[message.Portal])
 	case messages.Query:
 		handled, err := l.handledPSQLCommands(conn, mysqlConn, message.String)
 		if handled || err != nil {
-			return true, err
+			return false, false, err
 		}
 		
 		query, err := l.convertQuery(message.String)
 		if err != nil {
-			return true, err
+			return false, false, err
 		}
 
 		// The Deallocate message must not get passed to the engine, since we handle allocation / deallocation of
@@ -248,7 +256,7 @@ func (l *Listener) handleMessage(
 		case *sqlparser.Deallocate:
 			_, ok := preparedStatements[stmt.Name]
 			if !ok {
-				return true, fmt.Errorf("prepared statement %s does not exist", stmt.Name)
+				return false, false, fmt.Errorf("prepared statement %s does not exist", stmt.Name)
 			}
 			delete(preparedStatements, stmt.Name)
 
@@ -257,19 +265,19 @@ func (l *Listener) handleMessage(
 				Rows:  0,
 			}
 
-			return true, connection.Send(conn, commandComplete)
+			return false, true, connection.Send(conn, commandComplete)
 		default:
-			return true, l.execute(conn, mysqlConn, query)
+			return false, true, l.execute(conn, mysqlConn, query)
 		}
 	case messages.Parse:
 		// TODO: fully support prepared statements
 		if query, err := l.convertQuery(message.Query); err != nil {
-			return true, err
+			return false, false, err
 		} else {
 			preparedStatements[message.Name] = query
 		}
-		
-		return true, connection.Send(conn, messages.ParseComplete{})
+
+		return false, false, connection.Send(conn, messages.ParseComplete{})
 	case messages.Describe:
 		var query ConvertedQuery
 		if message.IsPrepared {
@@ -277,16 +285,16 @@ func (l *Listener) handleMessage(
 		} else {
 			query = portals[message.Target]
 		}
-		
-		return true, l.describe(conn, mysqlConn, message, query)
+
+		return false, false, l.describe(conn, mysqlConn, message, query)
 	case messages.Sync:
-		return true, nil
+		return false, true, nil
 	case messages.Bind:
 		// TODO: fully support prepared statements
 		portals[message.DestinationPortal] = preparedStatements[message.SourcePreparedStatement]
-		return true, connection.Send(conn, messages.BindComplete{})
+		return false, false, connection.Send(conn, messages.BindComplete{})
 	default:
-		return true, fmt.Errorf(`Unhandled message "%s"`, message.DefaultMessage().Name)
+		return false, false, fmt.Errorf(`Unhandled message "%s"`, message.DefaultMessage().Name)
 	}
 }
 

@@ -57,7 +57,6 @@ func TestSmokeTests(t *testing.T) {
 				"CALL DOLT_ADD('-A');",
 				"CALL DOLT_COMMIT('-m', 'commit other');",
 			},
-			Focus: true,
 			Assertions: []ScriptTestAssertion{
 				{
 					Query:            "CALL DOLT_CHECKOUT('main');",
