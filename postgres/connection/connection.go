@@ -21,17 +21,30 @@ import (
 	"net"
 	"sync"
 
+	"github.com/dolthub/doltgresql/postgres/connection/iobufpool"
 	"github.com/dolthub/doltgresql/utils"
 )
 
 var BufferSize = 2048
 
-// connBuffers maintains a pool of buffers, reusable between connections.
+// connBuffers maintains a pool of buffers, reusable between connections. These are only used for processing 
+// fixed-length messages where we know we won't exceed the buffer size on a single read.
 var connBuffers = sync.Pool{
 	New: func() any {
 		return make([]byte, BufferSize)
 	},
 }
+
+const headerSize = 5
+
+// headerBuffers maintains a pool of buffers, reusable between connections, that are used for reading message headers
+// (the first 5 bytes of a client message)
+var headerBuffers = sync.Pool{
+	New: func() any {
+		return make([]byte, headerSize)
+	},
+}
+
 
 var sliceOfZeroes = make([]byte, BufferSize)
 
@@ -41,16 +54,15 @@ var sliceOfZeroes = make([]byte, BufferSize)
 // Use ReceiveInto or ReceiveIntoAny when expecting specific messages, where it would be an error to receive messages
 // different from the expectation.
 func Receive(conn net.Conn) (Message, error) {
-	// buffer := connBuffers.Get().([]byte)
-	// defer connBuffers.Put(zeroBuffer(buffer))
-
-	header := make([]byte, 5)
+	header := headerBuffers.Get().([]byte)
+	defer headerBuffers.Put(header)
+	
 	n, err := conn.Read(header)
 	if err != nil {
 		return nil, err
 	}
 
-	if n < 5 {
+	if n < headerSize {
 		return nil, errors.New("received message header is too short")
 	}
 
@@ -59,11 +71,14 @@ func Receive(conn net.Conn) (Message, error) {
 		return nil, fmt.Errorf("received message header is not recognized: %v", header[0])
 	}
 
-	// TODO: possibly not every message has a length in this position
+	// TODO: possibly not every message has a length in this position, need an easy interface to tell us if so
 	messageLen := int(binary.BigEndian.Uint32(header[1:])) - 4
-
-	buffer := make([]byte, messageLen)
-	n, err = conn.Read(buffer)
+	
+	buffer := iobufpool.Get(messageLen)
+	defer iobufpool.Put(buffer)
+	
+	msgBuffer := (*buffer)[:messageLen]
+	n, err = conn.Read(msgBuffer)
 	if err != nil {
 		return nil, err
 	}
@@ -72,7 +87,7 @@ func Receive(conn net.Conn) (Message, error) {
 		return nil, fmt.Errorf("received message body is too short: expected %d bytes but read %d", messageLen, n)
 	}
 
-	db := newDecodeBuffer(buffer)
+	db := newDecodeBuffer(msgBuffer)
 	db.skipHeader = true
 
 	return receiveFromBuffer(db, message)

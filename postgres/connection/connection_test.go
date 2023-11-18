@@ -47,11 +47,10 @@ func TestReceive(t *testing.T) {
 		_, err := mockConn.Write(encodedMessage)
 		require.NoError(t, err)
 
-		receivedMessages, err := connection.Receive(mockConn)
+		receivedMessage, err := connection.Receive(mockConn)
 		require.NoError(t, err)
 
-		require.Equal(t, 1, len(receivedMessages))
-		receivedQuery, ok := receivedMessages[0].(messages.Query)
+		receivedQuery, ok := receivedMessage.(messages.Query)
 		require.True(t, ok, "Received message is not a Query type")
 
 		require.Equal(t, "SELECT * FROM example", receivedQuery.String)
@@ -68,11 +67,10 @@ func TestReceive(t *testing.T) {
 		_, err := mockConn.Write(encodedMessage)
 		require.NoError(t, err)
 
-		receivedMessages, err := connection.Receive(mockConn)
+		receivedMessage, err := connection.Receive(mockConn)
 		require.NoError(t, err)
 
-		require.Equal(t, 1, len(receivedMessages))
-		receivedQuery, ok := receivedMessages[0].(messages.Query)
+		receivedQuery, ok := receivedMessage.(messages.Query)
 		require.True(t, ok, "Received message is not a Query type")
 
 		require.Equal(t, "SELECT abc, def, ghi, jkl, mno, pqr, stuv, wxyz, abc, def, ghi, jkl, mno, pqr, stuv, wxyz FROM example", receivedQuery.String)

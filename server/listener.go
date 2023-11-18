@@ -91,7 +91,6 @@ func (l *Listener) HandleConnection(conn net.Conn) {
 	}
 	mysqlConn.ConnectionID = atomic.AddUint32(&connectionIDCounter, 1)
 
-	var err error
 	var returnErr error
 	defer func() {
 		if r := recover(); r != nil {
@@ -107,57 +106,10 @@ func (l *Listener) HandleConnection(conn net.Conn) {
 	}()
 	l.cfg.Handler.NewConnection(mysqlConn)
 
-	var startupMessage messages.StartupMessage
-	// The initial message may be one of a few different messages, so we'll check for those.
-InitialMessageLoop:
-	for {
-		initialMessages, err := connection.ReceiveIntoAny(conn,
-			messages.StartupMessage{},
-			messages.SSLRequest{},
-			messages.GSSENCRequest{})
-		if err != nil {
-			if err != io.EOF {
-				returnErr = err
-			}
-			return
-		}
-		if len(initialMessages) != 1 {
-			returnErr = fmt.Errorf("Expected a single message upon starting connection, terminating connection")
-			return
-		}
-		initialMessage := initialMessages[0]
-
-		switch initialMessage := initialMessage.(type) {
-		case messages.StartupMessage:
-			startupMessage = initialMessage
-			break InitialMessageLoop
-		case messages.SSLRequest:
-			hasCertificate := len(certificate.Certificate) > 0
-			if err := connection.Send(conn, messages.SSLResponse{
-				SupportsSSL: hasCertificate,
-			}); err != nil {
-				returnErr = err
-				return
-			}
-			// If we have a certificate and the client has asked for SSL support, then we switch here.
-			// We can't start in SSL mode, as the client does not attempt the handshake until after our response.
-			if hasCertificate {
-				conn = tls.Server(conn, &tls.Config{
-					Certificates: []tls.Certificate{certificate},
-				})
-				mysqlConn.Conn = conn
-			}
-		case messages.GSSENCRequest:
-			if err = connection.Send(conn, messages.GSSENCResponse{
-				SupportsGSSAPI: false,
-			}); err != nil {
-				returnErr = err
-				return
-			}
-		default:
-			returnErr = fmt.Errorf("Unexpected initial message, terminating connection")
-			return
-		}
+	startupMessage, conn, err := l.receiveStartupMessage(conn, mysqlConn)
+	if err != nil {
+		returnErr = err
+		return
 	}
 
 	err = l.sendClientStartupMessages(conn, startupMessage, mysqlConn)
@@ -179,8 +131,15 @@ InitialMessageLoop:
 		return
 	}
 
+	// Postgres has a two-stage procedure for prepared queries. First the query is parsed via a |Parse| message, and
+	// the result is stored in the |preparedStatements| map by the name provided. Then one or more |Bind| messages
+	// provide parameters for the query, and the result is stored in |portals|. Finally, a call to |Execute| executes 
+	// the named portal.   
 	preparedStatements := make(map[string]ConvertedQuery)
 	portals := make(map[string]ConvertedQuery)
+	
+	// Main session loop: read messages one at a time off the connection until we receive a |Terminate| message, in 
+	// which case we hang up, or the connection is closed by the client, which generates an io.EOF from the connection.
 	for {
 		message, err := connection.Receive(conn)
 		if err != nil {
@@ -190,7 +149,7 @@ InitialMessageLoop:
 
 		stop, endOfMessages, err := l.handleMessage(message, conn, mysqlConn, preparedStatements, portals)
 		if err != nil || endOfMessages {
-			// TODO: do we need to clear the connection here?
+			// TODO: do we need to clear out the connection here? If so, we need to read from it without blocking
 			l.endOfMessages(conn, err)
 		}
 
@@ -199,6 +158,62 @@ InitialMessageLoop:
 			break
 		}
 	}
+}
+
+// receiveStarupMessage reads a startup message from the connection given and returns it. Some startup messages will 
+// result in the establishment of a new connection, which is also returned.
+func (l *Listener) receiveStartupMessage(conn net.Conn, mysqlConn *mysql.Conn) (messages.StartupMessage, net.Conn, error) {
+	var startupMessage messages.StartupMessage
+	// The initial message may be one of a few different messages, so we'll check for those.
+InitialMessageLoop:
+	for {
+		initialMessages, err := connection.ReceiveIntoAny(conn,
+			messages.StartupMessage{},
+			messages.SSLRequest{},
+			messages.GSSENCRequest{})
+		if err != nil {
+			if err == io.EOF {
+				return messages.StartupMessage{}, nil, nil	
+			}
+			return messages.StartupMessage{}, nil, err
+		}
+		
+		if len(initialMessages) != 1 {
+			return messages.StartupMessage{}, nil, fmt.Errorf("expected a single message upon starting connection, terminating connection")
+		}
+		
+		initialMessage := initialMessages[0]
+		switch initialMessage := initialMessage.(type) {
+		case messages.StartupMessage:
+			startupMessage = initialMessage
+			break InitialMessageLoop
+		case messages.SSLRequest:
+			hasCertificate := len(certificate.Certificate) > 0
+			if err := connection.Send(conn, messages.SSLResponse{
+				SupportsSSL: hasCertificate,
+			}); err != nil {
+				return messages.StartupMessage{}, nil, err
+			}
+			// If we have a certificate and the client has asked for SSL support, then we switch here.
+			// We can't start in SSL mode, as the client does not attempt the handshake until after our response.
+			if hasCertificate {
+				conn = tls.Server(conn, &tls.Config{
+					Certificates: []tls.Certificate{certificate},
+				})
+				mysqlConn.Conn = conn
+			}
+		case messages.GSSENCRequest:
+			if err = connection.Send(conn, messages.GSSENCResponse{
+				SupportsGSSAPI: false,
+			}); err != nil {
+				return messages.StartupMessage{}, nil, err
+			}
+		default:
+			return messages.StartupMessage{}, nil, fmt.Errorf("unexpected initial message, terminating connection")
+		}
+	}
+	
+	return startupMessage, conn, nil
 }
 
 func (l *Listener) chooseInitialDatabase(conn net.Conn, startupMessage messages.StartupMessage, mysqlConn *mysql.Conn) error {
