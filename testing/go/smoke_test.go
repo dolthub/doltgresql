@@ -29,7 +29,7 @@ func TestSmokeTests(t *testing.T) {
 			},
 			Assertions: []ScriptTestAssertion{
 				{
-					Query: "insert into test values (1, 1), (2, 2);",
+					Query:            "insert into test values (1, 1), (2, 2);",
 					SkipResultsCheck: true,
 				},
 				{

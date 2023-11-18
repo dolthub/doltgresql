@@ -20,10 +20,11 @@ import (
 	"testing"
 	"time"
 
-	"github.com/dolthub/doltgresql/postgres/connection"
-	"github.com/dolthub/doltgresql/postgres/messages"
 	"github.com/jackc/pgx/v5/pgproto3"
 	"github.com/stretchr/testify/require"
+
+	"github.com/dolthub/doltgresql/postgres/connection"
+	"github.com/dolthub/doltgresql/postgres/messages"
 )
 
 func TestReceive(t *testing.T) {
@@ -59,7 +60,7 @@ func TestReceive(t *testing.T) {
 	t.Run("Receive Query larger than buffer", func(t *testing.T) {
 		mockBuffer := bytes.NewBuffer([]byte{})
 		mockConn := &MockConn{buffer: mockBuffer}
-		
+
 		message := &pgproto3.Query{
 			String: "SELECT abc, def, ghi, jkl, mno, pqr, stuv, wxyz, abc, def, ghi, jkl, mno, pqr, stuv, wxyz FROM example",
 		}

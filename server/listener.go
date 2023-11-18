@@ -133,12 +133,12 @@ func (l *Listener) HandleConnection(conn net.Conn) {
 
 	// Postgres has a two-stage procedure for prepared queries. First the query is parsed via a |Parse| message, and
 	// the result is stored in the |preparedStatements| map by the name provided. Then one or more |Bind| messages
-	// provide parameters for the query, and the result is stored in |portals|. Finally, a call to |Execute| executes 
-	// the named portal.   
+	// provide parameters for the query, and the result is stored in |portals|. Finally, a call to |Execute| executes
+	// the named portal.
 	preparedStatements := make(map[string]ConvertedQuery)
 	portals := make(map[string]ConvertedQuery)
-	
-	// Main session loop: read messages one at a time off the connection until we receive a |Terminate| message, in 
+
+	// Main session loop: read messages one at a time off the connection until we receive a |Terminate| message, in
 	// which case we hang up, or the connection is closed by the client, which generates an io.EOF from the connection.
 	for {
 		message, err := connection.Receive(conn)
@@ -160,7 +160,7 @@ func (l *Listener) HandleConnection(conn net.Conn) {
 	}
 }
 
-// receiveStarupMessage reads a startup message from the connection given and returns it. Some startup messages will 
+// receiveStarupMessage reads a startup message from the connection given and returns it. Some startup messages will
 // result in the establishment of a new connection, which is also returned.
 func (l *Listener) receiveStartupMessage(conn net.Conn, mysqlConn *mysql.Conn) (messages.StartupMessage, net.Conn, error) {
 	var startupMessage messages.StartupMessage
@@ -173,15 +173,15 @@ InitialMessageLoop:
 			messages.GSSENCRequest{})
 		if err != nil {
 			if err == io.EOF {
-				return messages.StartupMessage{}, nil, nil	
+				return messages.StartupMessage{}, nil, nil
 			}
 			return messages.StartupMessage{}, nil, err
 		}
-		
+
 		if len(initialMessages) != 1 {
 			return messages.StartupMessage{}, nil, fmt.Errorf("expected a single message upon starting connection, terminating connection")
 		}
-		
+
 		initialMessage := initialMessages[0]
 		switch initialMessage := initialMessage.(type) {
 		case messages.StartupMessage:
@@ -212,7 +212,7 @@ InitialMessageLoop:
 			return messages.StartupMessage{}, nil, fmt.Errorf("unexpected initial message, terminating connection")
 		}
 	}
-	
+
 	return startupMessage, conn, nil
 }
 
@@ -233,7 +233,7 @@ func (l *Listener) chooseInitialDatabase(conn net.Conn, startupMessage messages.
 			return err
 		}
 	} else {
-		// If a database isn't specified, then we attempt to connect to a database with the same name as the user, 
+		// If a database isn't specified, then we attempt to connect to a database with the same name as the user,
 		// ignoring any error
 		_ = l.cfg.Handler.ComQuery(mysqlConn, fmt.Sprintf("USE `%s`;", mysqlConn.User), func(*sqltypes.Result, bool) error {
 			return nil
@@ -243,10 +243,10 @@ func (l *Listener) chooseInitialDatabase(conn net.Conn, startupMessage messages.
 }
 
 func (l *Listener) handleMessage(
-		message connection.Message,
-		conn net.Conn,
-		mysqlConn *mysql.Conn,
-		preparedStatements, portals map[string]ConvertedQuery,
+	message connection.Message,
+	conn net.Conn,
+	mysqlConn *mysql.Conn,
+	preparedStatements, portals map[string]ConvertedQuery,
 ) (stop, endOfMessages bool, err error) {
 	switch message := message.(type) {
 	case messages.Terminate:
@@ -259,7 +259,7 @@ func (l *Listener) handleMessage(
 		if handled || err != nil {
 			return false, false, err
 		}
-		
+
 		query, err := l.convertQuery(message.String)
 		if err != nil {
 			return false, false, err

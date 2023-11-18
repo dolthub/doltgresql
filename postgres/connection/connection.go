@@ -27,7 +27,7 @@ import (
 
 var BufferSize = 2048
 
-// connBuffers maintains a pool of buffers, reusable between connections. These are only used for processing 
+// connBuffers maintains a pool of buffers, reusable between connections. These are only used for processing
 // fixed-length messages where we know we won't exceed the buffer size on a single read.
 var connBuffers = sync.Pool{
 	New: func() any {
@@ -45,18 +45,17 @@ var headerBuffers = sync.Pool{
 	},
 }
 
-
 var sliceOfZeroes = make([]byte, BufferSize)
 
-// Receive returns all messages that were sent from the given connection. This checks with all messages that have a 
-// Header, and have called AddMessageHeader within their init() function. Returns a nil slice if no messages were 
+// Receive returns all messages that were sent from the given connection. This checks with all messages that have a
+// Header, and have called AddMessageHeader within their init() function. Returns a nil slice if no messages were
 // matched. This is the recommended way to check for messages when a specific message is not expected.
 // Use ReceiveInto or ReceiveIntoAny when expecting specific messages, where it would be an error to receive messages
 // different from the expectation.
 func Receive(conn net.Conn) (Message, error) {
 	header := headerBuffers.Get().([]byte)
 	defer headerBuffers.Put(header)
-	
+
 	n, err := conn.Read(header)
 	if err != nil {
 		return nil, err
@@ -73,10 +72,10 @@ func Receive(conn net.Conn) (Message, error) {
 
 	// TODO: possibly not every message has a length in this position, need an easy interface to tell us if so
 	messageLen := int(binary.BigEndian.Uint32(header[1:])) - 4
-	
+
 	buffer := iobufpool.Get(messageLen)
 	defer iobufpool.Put(buffer)
-	
+
 	msgBuffer := (*buffer)[:messageLen]
 	n, err = conn.Read(msgBuffer)
 	if err != nil {
