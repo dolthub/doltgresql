@@ -17,7 +17,6 @@ package connection
 import (
 	"fmt"
 
-	"github.com/dolthub/doltgresql/postgres/messages"
 	"github.com/dolthub/doltgresql/utils"
 )
 
@@ -111,16 +110,6 @@ func InitializeDefaultMessage(message Message) {
 			}
 			if field.Flags&StaticData != 0 {
 				panic(fmt.Errorf("Message lengths cannot declare the StaticData flag.\nMessageFormat:\n\n%s", messageFormat.String()))
-			}
-			if !headerFound {
-				// There are four messages that have a message length without a corresponding header. 
-				// This prevents us from adding more of them.
-				switch message.(type) {
-				case messages.CancelRequest, messages.GSSENCRequest, messages.SSLRequest, messages.StartupMessage:
-					// These are the four messages that have a message length without a header.
-				default:
-					panic(fmt.Errorf("Message lengths must be preceded by a header.\nMessageFormat:\n\n%s", messageFormat.String()))
-				}
 			}
 			switch field.Type {
 			case Byte1, Int8, Int16, Int32:

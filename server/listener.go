@@ -94,7 +94,7 @@ func (l *Listener) HandleConnection(conn net.Conn) {
 	var returnErr error
 	defer func() {
 		if r := recover(); r != nil {
-			fmt.Println(r)
+			fmt.Printf("Linener recovered panic: %v", r)
 		}
 		if returnErr != nil {
 			fmt.Println(returnErr.Error())
@@ -468,9 +468,6 @@ func (l *Listener) handledPSQLCommands(conn net.Conn, mysqlConn *mysql.Conn, sta
 		return true, l.execute(conn, mysqlConn, ConvertedQuery{`SELECT 'public' AS 'Schema', TABLE_NAME AS 'Name', 'table' AS 'Type', 'postgres' AS 'Owner' FROM INFORMATION_SCHEMA.TABLES WHERE TABLE_SCHEMA = database() AND TABLE_TYPE = 'BASE TABLE' ORDER BY 2;`, nil})
 	}
 	// Alternate \d for some versions
-	if statement == "SELECT n.nspname as \"Schema\",\n  c.relname as \"Name\",\n  CASE c.relkind WHEN 'r' THEN 'table' WHEN 'v' THEN 'view' WHEN 'm' THEN 'materialized view' WHEN 'i' THEN 'index' WHEN 'S' THEN 'sequence' WHEN 's' THEN 'special' WHEN 't' THEN 'TOAST table' WHEN 'f' THEN 'foreign table' WHEN 'p' THEN 'partitioned table' WHEN 'I' THEN 'partitioned index' END as \"Type\",\n  pg_catalog.pg_get_userbyid(c.relowner) as \"Owner\"\nFROM pg_catalog.pg_class c\n     LEFT JOIN pg_catalog.pg_namespace n ON n.oid = c.relnamespace\n     LEFT JOIN pg_catalog.pg_am am ON am.oid = c.relam\nWHERE c.relkind IN ('r','p','v','m','S','f','')\n      AND n.nspname <> 'pg_catalog'\n      AND n.nspname !~ '^pg_toast'\n      AND n.nspname <> 'information_schema'\n  AND pg_catalog.pg_table_is_visible(c.oid)\nORDER BY 1,2;" {
-		return true, l.execute(conn, mysqlConn, ConvertedQuery{`SELECT 'public' AS 'Schema', TABLE_NAME AS 'Name', 'table' AS 'Type', 'postgres' AS 'Owner' FROM INFORMATION_SCHEMA.TABLES WHERE TABLE_SCHEMA = database() AND TABLE_TYPE = 'BASE TABLE' ORDER BY 2;`, nil})
-	}
 	if statement == "select n.nspname as \"schema\",\n  c.relname as \"name\",\n  case c.relkind when 'r' then 'table' when 'v' then 'view' when 'm' then 'materialized view' when 'i' then 'index' when 's' then 'sequence' when 's' then 'special' when 't' then 'toast table' when 'f' then 'foreign table' when 'p' then 'partitioned table' when 'i' then 'partitioned index' end as \"type\",\n  pg_catalog.pg_get_userbyid(c.relowner) as \"owner\"\nfrom pg_catalog.pg_class c\n     left join pg_catalog.pg_namespace n on n.oid = c.relnamespace\n     left join pg_catalog.pg_am am on am.oid = c.relam\nwhere c.relkind in ('r','p','v','m','s','f','')\n      and n.nspname <> 'pg_catalog'\n      and n.nspname !~ '^pg_toast'\n      and n.nspname <> 'information_schema'\n  and pg_catalog.pg_table_is_visible(c.oid)\norder by 1,2;" {
 		return true, l.execute(conn, mysqlConn, ConvertedQuery{`SELECT 'public' AS 'Schema', TABLE_NAME AS 'Name', 'table' AS 'Type', 'postgres' AS 'Owner' FROM INFORMATION_SCHEMA.TABLES WHERE TABLE_SCHEMA = database() AND TABLE_TYPE = 'BASE TABLE' ORDER BY 2;`, nil})
 	}

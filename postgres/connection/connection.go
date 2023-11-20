@@ -65,6 +65,8 @@ func Receive(conn net.Conn) (Message, error) {
 		return nil, errors.New("received message header is too short")
 	}
 	
+	// TODO: there is one non-startup frontend message that doesn't have a header byte, which is the CancelRequest.
+	//  We need to figure out how to handle it here. 
 	message, ok := allMessageHeaders[header[0]]
 	if !ok {
 		return nil, fmt.Errorf("received message header is not recognized: %v", header[0])
