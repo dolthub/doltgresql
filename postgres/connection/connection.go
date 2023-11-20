@@ -64,7 +64,7 @@ func Receive(conn net.Conn) (Message, error) {
 	if n < headerSize {
 		return nil, errors.New("received message header is too short")
 	}
-
+	
 	message, ok := allMessageHeaders[header[0]]
 	if !ok {
 		return nil, fmt.Errorf("received message header is not recognized: %v", header[0])
