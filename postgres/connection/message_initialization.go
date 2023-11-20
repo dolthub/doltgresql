@@ -111,6 +111,9 @@ func InitializeDefaultMessage(message Message) {
 			if field.Flags&StaticData != 0 {
 				panic(fmt.Errorf("Message lengths cannot declare the StaticData flag.\nMessageFormat:\n\n%s", messageFormat.String()))
 			}
+			if !headerFound {
+				panic(fmt.Errorf("Message lengths must be preceded by a header.\nMessageFormat:\n\n%s", messageFormat.String()))
+			}
 			switch field.Type {
 			case Byte1, Int8, Int16, Int32:
 			default:
