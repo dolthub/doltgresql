@@ -70,25 +70,29 @@ func Receive(conn net.Conn) (Message, error) {
 		return nil, fmt.Errorf("received message header is not recognized: %v", header[0])
 	}
 
-	// TODO: possibly not every message has a length in this position, need an easy interface to tell us if so
 	messageLen := int(binary.BigEndian.Uint32(header[1:])) - 4
+	
+	var msgBuffer []byte
+	if messageLen > 0 {
+		buffer := iobufpool.Get(messageLen + headerSize)
+		defer iobufpool.Put(buffer)
+		
+		msgBuffer = (*buffer)[:headerSize+messageLen]
+		n, err = conn.Read(msgBuffer[headerSize:])
+		if err != nil {
+			return nil, err
+		}
 
-	buffer := iobufpool.Get(messageLen)
-	defer iobufpool.Put(buffer)
-
-	msgBuffer := (*buffer)[:messageLen]
-	n, err = conn.Read(msgBuffer)
-	if err != nil {
-		return nil, err
+		if n < messageLen {
+			return nil, fmt.Errorf("received message body is too short: expected %d bytes but read %d", messageLen, n)
+		}
+		
+		copy(msgBuffer[:headerSize], header)
+	} else {
+		msgBuffer = header	
 	}
-
-	if n < messageLen {
-		return nil, fmt.Errorf("received message body is too short: expected %d bytes but read %d", messageLen, n)
-	}
-
+	
 	db := newDecodeBuffer(msgBuffer)
-	db.skipHeader = true
-
 	return receiveFromBuffer(db, message)
 }
 

@@ -27,7 +27,6 @@ type decodeBuffer struct {
 	data        []byte
 	nextBuffer  []byte
 	resetBuffer []byte
-	skipHeader  bool
 }
 
 // advance moves the buffer forward by the given amount.
@@ -81,13 +80,6 @@ func newDecodeBuffer(buffer []byte) *decodeBuffer {
 func decode(buffer *decodeBuffer, fields []FieldGroup, iterations int32) error {
 	for iteration := int32(0); iteration < iterations; iteration++ {
 		for i, field := range fields[iteration] {
-			// Some calls to decode will have already processed the message header and length to determine the message type,
-			// so skip those fields when decoding.
-			if buffer.skipHeader &&
-				(field.Flags&Header != 0 || field.Flags&MessageLengthInclusive != 0) {
-				continue
-			}
-
 			if len(buffer.data) == 0 {
 				return errors.New("buffer too small")
 			}
