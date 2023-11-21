@@ -18,6 +18,7 @@ import (
 	"fmt"
 
 	"github.com/dolthub/doltgresql/postgres/connection"
+	"github.com/dolthub/go-mysql-server/sql"
 )
 
 func init() {
@@ -30,6 +31,8 @@ type Describe struct {
 	IsPrepared bool // IsPrepared states whether we're describing a prepared statement or a portal.
 	Target     string
 }
+
+var _ sql.DebugStringer = Describe{}
 
 var describeDefault = connection.MessageFormat{
 	Name: "Describe",
@@ -96,4 +99,8 @@ func (m Describe) Decode(s connection.MessageFormat) (connection.Message, error)
 // DefaultMessage implements the interface connection.Message.
 func (m Describe) DefaultMessage() *connection.MessageFormat {
 	return &describeDefault
+}
+
+func (m Describe) DebugString() string {
+	return fmt.Sprintf("Describe { IsPrepared: %v, Target: %s }", m.IsPrepared, m.Target)
 }

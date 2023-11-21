@@ -14,7 +14,10 @@
 
 package messages
 
-import "github.com/dolthub/doltgresql/postgres/connection"
+import (
+	"github.com/dolthub/doltgresql/postgres/connection"
+	"github.com/dolthub/go-mysql-server/sql"
+)
 
 func init() {
 	connection.InitializeDefaultMessage(Sync{})
@@ -43,6 +46,7 @@ var syncDefault = connection.MessageFormat{
 }
 
 var _ connection.Message = Sync{}
+var _ sql.DebugStringer = Sync{}
 
 // Encode implements the interface connection.Message.
 func (m Sync) Encode() (connection.MessageFormat, error) {
@@ -60,4 +64,8 @@ func (m Sync) Decode(s connection.MessageFormat) (connection.Message, error) {
 // DefaultMessage implements the interface connection.Message.
 func (m Sync) DefaultMessage() *connection.MessageFormat {
 	return &syncDefault
+}
+
+func (m Sync) DebugString() string {
+	return "Sync {}"
 }

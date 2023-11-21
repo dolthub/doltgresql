@@ -14,7 +14,12 @@
 
 package messages
 
-import "github.com/dolthub/doltgresql/postgres/connection"
+import (
+	"fmt"
+
+	"github.com/dolthub/doltgresql/postgres/connection"
+	"github.com/dolthub/go-mysql-server/sql"
+)
 
 func init() {
 	connection.InitializeDefaultMessage(Query{})
@@ -25,6 +30,8 @@ func init() {
 type Query struct {
 	String string
 }
+
+var _ sql.DebugStringer = &Query{}
 
 var queryDefault = connection.MessageFormat{
 	Name: "Query",
@@ -71,4 +78,8 @@ func (m Query) Decode(s connection.MessageFormat) (connection.Message, error) {
 // DefaultMessage implements the interface connection.Message.
 func (m Query) DefaultMessage() *connection.MessageFormat {
 	return &queryDefault
+}
+
+func (m Query) DebugString() string {
+	return fmt.Sprintf("Query { %s }", m.String)
 }

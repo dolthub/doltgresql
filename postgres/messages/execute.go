@@ -14,7 +14,12 @@
 
 package messages
 
-import "github.com/dolthub/doltgresql/postgres/connection"
+import (
+	"fmt"
+
+	"github.com/dolthub/doltgresql/postgres/connection"
+	"github.com/dolthub/go-mysql-server/sql"
+)
 
 func init() {
 	connection.InitializeDefaultMessage(Execute{})
@@ -26,6 +31,8 @@ type Execute struct {
 	Portal string
 	RowMax int32
 }
+
+var _ sql.DebugStringer = Execute{}
 
 var executeDefault = connection.MessageFormat{
 	Name: "Execute",
@@ -80,3 +87,8 @@ func (m Execute) Decode(s connection.MessageFormat) (connection.Message, error) 
 func (m Execute) DefaultMessage() *connection.MessageFormat {
 	return &executeDefault
 }
+
+func (m Execute) DebugString() string {
+	return fmt.Sprintf("Execute {\n  Portal: %s\n  RowMax: %d\n}", m.Portal, m.RowMax)
+}
+

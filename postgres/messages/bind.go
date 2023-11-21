@@ -14,7 +14,13 @@
 
 package messages
 
-import "github.com/dolthub/doltgresql/postgres/connection"
+import (
+	"fmt"
+	"strings"
+
+	"github.com/dolthub/doltgresql/postgres/connection"
+	"github.com/dolthub/go-mysql-server/sql"
+)
 
 func init() {
 	connection.InitializeDefaultMessage(Bind{})
@@ -29,6 +35,8 @@ type Bind struct {
 	ParameterValues         []BindParameterValue
 	ResultFormatCodes       []int32
 }
+
+var _ sql.DebugStringer = &Bind{}
 
 // BindParameterValue are parameter values for the Bind message.
 type BindParameterValue struct {
@@ -183,4 +191,35 @@ func (m Bind) Decode(s connection.MessageFormat) (connection.Message, error) {
 // DefaultMessage implements the interface connection.Message.
 func (m Bind) DefaultMessage() *connection.MessageFormat {
 	return &bindDefault
+}
+
+// DebugString returns a debug representation of the Bind message.
+func (m *Bind) DebugString() string {
+	var builder strings.Builder
+
+	builder.WriteString("Bind {\n")
+	builder.WriteString(fmt.Sprintf("  DestinationPortal: %s\n", m.DestinationPortal))
+	builder.WriteString(fmt.Sprintf("  SourcePreparedStatement: %s\n", m.SourcePreparedStatement))
+	builder.WriteString("  ParameterFormatCodes: [")
+	for _, code := range m.ParameterFormatCodes {
+		builder.WriteString(fmt.Sprintf("%d, ", code))
+	}
+	builder.WriteString("]\n")
+
+	builder.WriteString("  ParameterValues: [")
+	for _, param := range m.ParameterValues {
+		// Modify this part based on the structure of BindParameterValue.
+		builder.WriteString(fmt.Sprintf("%#v, ", param))
+	}
+	builder.WriteString("]\n")
+
+	builder.WriteString("  ResultFormatCodes: [")
+	for _, code := range m.ResultFormatCodes {
+		builder.WriteString(fmt.Sprintf("%d, ", code))
+	}
+	builder.WriteString("]\n")
+
+	builder.WriteString("}")
+
+	return builder.String()
 }

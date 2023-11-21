@@ -24,10 +24,12 @@ import (
 	"sync/atomic"
 
 	"github.com/dolthub/go-mysql-server/server"
+	"github.com/dolthub/go-mysql-server/sql"
 	"github.com/dolthub/go-mysql-server/sql/mysql_db"
 	"github.com/dolthub/vitess/go/mysql"
 	"github.com/dolthub/vitess/go/sqltypes"
 	"github.com/dolthub/vitess/go/vt/sqlparser"
+	"github.com/sirupsen/logrus"
 
 	"github.com/dolthub/doltgresql/postgres/connection"
 	"github.com/dolthub/doltgresql/postgres/messages"
@@ -145,6 +147,12 @@ func (l *Listener) HandleConnection(conn net.Conn) {
 		if err != nil {
 			returnErr = err
 			return
+		}
+		
+		if ds, ok := message.(sql.DebugStringer); ok {
+			logrus.Warnf("Received message: %s", ds.DebugString())
+		} else {
+			logrus.Warnf("Received message: %v", message)
 		}
 
 		stop, endOfMessages, err := l.handleMessage(message, conn, mysqlConn, preparedStatements, portals)
