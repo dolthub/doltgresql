@@ -20,6 +20,7 @@ import (
 	"testing"
 
 	"github.com/jackc/pgx/v5/pgproto3"
+	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
 	"github.com/dolthub/doltgresql/postgres/connection"
@@ -57,7 +58,7 @@ func TestReceive(t *testing.T) {
 		require.Equal(t, "SELECT * FROM example", receivedQuery.String)
 	})
 
-	t.Run("Receive Query larger than buffer", func(t *testing.T) {
+	t.Run("Receive Query in multiple packets", func(t *testing.T) {
 		serverConn, clientConn := getLocalHostConnection(t)
 		defer clientConn.Close()
 		defer serverConn.Close()
@@ -66,7 +67,9 @@ func TestReceive(t *testing.T) {
 			String: "SELECT abc, def, ghi, jkl, mno, pqr, stuv, wxyz, abc, def, ghi, jkl, mno, pqr, stuv, wxyz FROM example",
 		}
 		encodedMessage := message.Encode(nil)
-		_, err := clientConn.Write(encodedMessage)
+		_, err := clientConn.Write(encodedMessage[:len(encodedMessage)/2])
+		require.NoError(t, err)
+		_, err = clientConn.Write(encodedMessage[len(encodedMessage)/2:])
 		require.NoError(t, err)
 
 		receivedMessage, err := connection.Receive(serverConn)
@@ -77,6 +80,44 @@ func TestReceive(t *testing.T) {
 
 		require.Equal(t, "SELECT abc, def, ghi, jkl, mno, pqr, stuv, wxyz, abc, def, ghi, jkl, mno, pqr, stuv, wxyz FROM example", receivedQuery.String)
 	})
+
+	t.Run("Receive multiple messages in one packet", func(t *testing.T) {
+		serverConn, clientConn := getLocalHostConnection(t)
+		defer clientConn.Close()
+		defer serverConn.Close()
+
+		queries := []*pgproto3.Query{
+			{
+				String: "SELECT abc123 FROM example",
+			},
+			{
+				String: "SELECT def456 FROM example",
+			},
+			{
+				String: "INSERT INTO example VALUES (1, 2, 3)",
+			},
+		}
+
+		for _, message := range queries {
+			encodedMessage := message.Encode(nil)
+			_, err := clientConn.Write(encodedMessage)
+			require.NoError(t, err)
+		}
+
+		messageCount := 0
+		for _, message := range queries {
+			receivedMessage, err := connection.Receive(serverConn)
+			require.NoError(t, err)
+			messageCount++
+
+			receivedQuery, ok := receivedMessage.(messages.Query)
+			require.True(t, ok, "Received message is not a Query type")
+			assert.Equal(t, message.String, receivedQuery.String)
+		}
+		
+		assert.Equal(t, len(queries), messageCount)
+	})
+
 }
 
 func getLocalHostConnection(t *testing.T) (net.Conn, net.Conn) {
