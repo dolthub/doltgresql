@@ -15,52 +15,95 @@
 package connection
 
 import (
+	"encoding/binary"
 	"errors"
+	"fmt"
 	"net"
 	"sync"
+	"time"
 
+	"github.com/dolthub/doltgresql/postgres/connection/iobufpool"
 	"github.com/dolthub/doltgresql/utils"
 )
 
-// TODO: determine how to handle messages that are larger than the buffer
-const bufferSize = 2048
+var BufferSize = 2048
 
-// connBuffers maintains a pool of buffers, reusable between connections.
+// connBuffers maintains a pool of buffers, reusable between connections. These are only used for processing
+// fixed-length messages where we know we won't exceed the buffer size on a single read.
 var connBuffers = sync.Pool{
 	New: func() any {
-		return make([]byte, bufferSize)
+		return make([]byte, BufferSize)
 	},
 }
 
-var sliceOfZeroes = make([]byte, bufferSize)
+const headerSize = 5
 
-// Receive returns all messages that were sent from the given connection. A connection may send multiple messages at
-// once, therefore this may return multiple messages. This checks with all messages that have a Header, and have
-// called AddMessageHeader within their init() function. Returns a nil slice if no messages were matched. This is the
-// recommended way to check for messages when a specific message is not expected. Use ReceiveInto or ReceiveIntoAny when
-// expecting specific messages, where it would be an error to receive messages different from the expectation.
-func Receive(conn net.Conn) ([]Message, error) {
-	buffer := connBuffers.Get().([]byte)
-	defer connBuffers.Put(zeroBuffer(buffer))
+// headerBuffers maintains a pool of buffers, reusable between connections, that are used for reading message headers
+// (the first 5 bytes of a client message)
+var headerBuffers = sync.Pool{
+	New: func() any {
+		return make([]byte, headerSize)
+	},
+}
 
-	if _, err := conn.Read(buffer); err != nil {
+var sliceOfZeroes = make([]byte, BufferSize)
+
+// Receive returns all messages that were sent from the given connection. This checks with all messages that have a
+// Header, and have called AddMessageHeader within their init() function. Returns a nil slice if no messages were
+// matched. This is the recommended way to check for messages when a specific message is not expected.
+// Use ReceiveInto or ReceiveIntoAny when expecting specific messages, where it would be an error to receive messages
+// different from the expectation.
+func Receive(conn net.Conn) (Message, error) {
+	header := headerBuffers.Get().([]byte)
+	defer headerBuffers.Put(header)
+
+	n, err := conn.Read(header)
+	if err != nil {
 		return nil, err
 	}
-	db := newDecodeBuffer(buffer)
-	var outMessages []Message
-	for len(db.data) > 0 {
-		message, ok := allMessageHeaders[db.data[0]]
-		if !ok {
-			break
-		}
-		outMessage, err := receiveFromBuffer(db, message)
-		if err != nil {
-			return nil, err
-		}
-		outMessages = append(outMessages, outMessage)
-		db.next()
+
+	if n < headerSize {
+		return nil, errors.New("received message header is too short")
 	}
-	return outMessages, nil
+
+	// TODO: there is one non-startup frontend message that doesn't have a header byte, which is the CancelRequest.
+	//  We need to figure out how to handle it here.
+	message, ok := allMessageHeaders[header[0]]
+	if !ok {
+		return nil, fmt.Errorf("received message header is not recognized: %v", header[0])
+	}
+
+	messageLen := int(binary.BigEndian.Uint32(header[1:])) - 4
+
+	var msgBuffer []byte
+	if messageLen > 0 {
+		read := 0
+		buffer := iobufpool.Get(messageLen + headerSize)
+		msgBuffer = (*buffer)[:headerSize+messageLen]
+		defer iobufpool.Put(buffer)
+
+		for read < messageLen {
+			// TODO: this timeout is arbitrary, and should be configurable
+			err := conn.SetReadDeadline(time.Now().Add(time.Minute))
+			if err != nil {
+				return nil, err
+			}
+
+			n, err = conn.Read(msgBuffer[headerSize+read:])
+			if err != nil {
+				return nil, err
+			}
+
+			read += n
+		}
+
+		copy(msgBuffer[:headerSize], header)
+	} else {
+		msgBuffer = header
+	}
+
+	db := newDecodeBuffer(msgBuffer)
+	return receiveFromBuffer(db, message)
 }
 
 // ReceiveInto reads the given Message from the connection. This should only be used when a specific message is expected,

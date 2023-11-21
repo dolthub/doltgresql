@@ -87,6 +87,7 @@ func RunScript(t *testing.T, script ScriptTest) {
 			_, err := conn.Exec(ctx, query)
 			require.NoError(t, err)
 		}
+
 		// Run the assertions
 		for _, assertion := range script.Assertions {
 			t.Run(assertion.Query, func(t *testing.T) {
@@ -146,6 +147,8 @@ func CreateServer(t *testing.T, database string) (context.Context, *pgx.Conn, *s
 	server.DefaultProtocolListenerFunc = dserver.NewLimitedListener
 	code, serverClosed := dserver.RunInMemory([]string{fmt.Sprintf("--port=%d", port), "--host=127.0.0.1"})
 	require.Equal(t, 0, *code)
+
+	fmt.Printf("port is %d\n", port)
 
 	ctx := context.Background()
 	err := func() error {

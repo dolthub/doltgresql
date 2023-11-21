@@ -40,7 +40,7 @@ current_dolt_user_email() {
 
 setup_common() {
     run psql --version
-    if [[ ! "$output" =~ "(PostgreSQL) 15" ]]; then
+    if [[ ! "$output" =~ "(PostgreSQL) 15" ]] && [[ ! "$output" =~ "(PostgreSQL) 16" ]]; then
         echo "PSQL must be version 15"
         return 1
     fi

@@ -23,6 +23,25 @@ import (
 func TestSmokeTests(t *testing.T) {
 	RunScripts(t, []ScriptTest{
 		{
+			Name: "simple statements",
+			SetUpScript: []string{
+				"CREATE TABLE test (pk BIGINT PRIMARY KEY, v1 BIGINT);",
+			},
+			Assertions: []ScriptTestAssertion{
+				{
+					Query:            "insert into test values (1, 1), (2, 2);",
+					SkipResultsCheck: true,
+				},
+				{
+					Query: "select * from test;",
+					Expected: []sql.Row{
+						{1, 1},
+						{2, 2},
+					},
+				},
+			},
+		},
+		{
 			Name: "Commit and diff across branches",
 			SetUpScript: []string{
 				"CREATE TABLE test (pk BIGINT PRIMARY KEY, v1 BIGINT);",

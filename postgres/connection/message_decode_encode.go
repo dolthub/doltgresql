@@ -83,6 +83,7 @@ func decode(buffer *decodeBuffer, fields []FieldGroup, iterations int32) error {
 			if len(buffer.data) == 0 {
 				return errors.New("buffer too small")
 			}
+
 			switch field.Type {
 			case Byte1, Int8:
 				data := int32(buffer.data[0])
