@@ -72,7 +72,7 @@ func TestReceive(t *testing.T) {
 		_, err := clientConn.Write(encodedMessage[:len(encodedMessage)/2])
 		require.NoError(t, err)
 
-		wg := sync.WaitGroup{}
+		wg := &sync.WaitGroup{}
 		wg.Add(1)
 		var receivedMessage connection.Message
 		go func() {
@@ -141,7 +141,7 @@ func getLocalHostConnection(t *testing.T) (net.Conn, net.Conn) {
 	require.NoError(t, err)
 	defer ln.Close()
 
-	wg := sync.WaitGroup{}
+	wg := &sync.WaitGroup{}
 	wg.Add(2)
 
 	var serverConn net.Conn
