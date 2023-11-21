@@ -20,6 +20,7 @@ import (
 	"fmt"
 	"net"
 	"sync"
+	"time"
 
 	"github.com/dolthub/doltgresql/postgres/connection/iobufpool"
 	"github.com/dolthub/doltgresql/utils"
@@ -76,17 +77,24 @@ func Receive(conn net.Conn) (Message, error) {
 	
 	var msgBuffer []byte
 	if messageLen > 0 {
+		read := 0
 		buffer := iobufpool.Get(messageLen + headerSize)
-		defer iobufpool.Put(buffer)
-		
 		msgBuffer = (*buffer)[:headerSize+messageLen]
-		n, err = conn.Read(msgBuffer[headerSize:])
-		if err != nil {
-			return nil, err
-		}
+		defer iobufpool.Put(buffer)
 
-		if n < messageLen {
-			return nil, fmt.Errorf("received message body is too short: expected %d bytes but read %d", messageLen, n)
+		for read < messageLen {
+			// TODO: this timeout is arbitrary, and should be configurable
+			err := conn.SetReadDeadline(time.Now().Add(time.Minute))
+			if err != nil {
+				return nil, err
+			}
+			
+			n, err = conn.Read(msgBuffer[headerSize+read:])
+			if err != nil {
+				return nil, err
+			}
+			
+			read += n
 		}
 		
 		copy(msgBuffer[:headerSize], header)
