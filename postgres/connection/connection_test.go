@@ -15,10 +15,9 @@
 package connection_test
 
 import (
-	"bytes"
 	"net"
+	"sync"
 	"testing"
-	"time"
 
 	"github.com/jackc/pgx/v5/pgproto3"
 	"github.com/stretchr/testify/require"
@@ -36,8 +35,9 @@ func TestReceive(t *testing.T) {
 	}()
 
 	t.Run("Receive Query", func(t *testing.T) {
-		mockBuffer := bytes.NewBuffer([]byte{})
-		mockConn := &MockConn{buffer: mockBuffer}
+		serverConn, clientConn := getLocalHostConnection(t)
+		defer clientConn.Close()
+		defer serverConn.Close()
 
 		message := &pgproto3.Query{
 			String: "SELECT * FROM example",
@@ -45,10 +45,10 @@ func TestReceive(t *testing.T) {
 		encodedMessage := message.Encode(nil)
 
 		// Write the encoded message to the mock connection's buffer
-		_, err := mockConn.Write(encodedMessage)
+		_, err := clientConn.Write(encodedMessage)
 		require.NoError(t, err)
 
-		receivedMessage, err := connection.Receive(mockConn)
+		receivedMessage, err := connection.Receive(serverConn)
 		require.NoError(t, err)
 
 		receivedQuery, ok := receivedMessage.(messages.Query)
@@ -58,17 +58,18 @@ func TestReceive(t *testing.T) {
 	})
 
 	t.Run("Receive Query larger than buffer", func(t *testing.T) {
-		mockBuffer := bytes.NewBuffer([]byte{})
-		mockConn := &MockConn{buffer: mockBuffer}
+		serverConn, clientConn := getLocalHostConnection(t)
+		defer clientConn.Close()
+		defer serverConn.Close()
 
 		message := &pgproto3.Query{
 			String: "SELECT abc, def, ghi, jkl, mno, pqr, stuv, wxyz, abc, def, ghi, jkl, mno, pqr, stuv, wxyz FROM example",
 		}
 		encodedMessage := message.Encode(nil)
-		_, err := mockConn.Write(encodedMessage)
+		_, err := clientConn.Write(encodedMessage)
 		require.NoError(t, err)
 
-		receivedMessage, err := connection.Receive(mockConn)
+		receivedMessage, err := connection.Receive(serverConn)
 		require.NoError(t, err)
 
 		receivedQuery, ok := receivedMessage.(messages.Query)
@@ -78,39 +79,28 @@ func TestReceive(t *testing.T) {
 	})
 }
 
-// MockConn is a simple in-memory implementation of net.Conn for testing purposes.
-type MockConn struct {
-	buffer *bytes.Buffer
-}
+func getLocalHostConnection(t *testing.T) (net.Conn, net.Conn) {
+	ln, err := net.Listen("tcp", "localhost:0") // 0 for a randomly available port
+	require.NoError(t, err)
+	defer ln.Close()
 
-func (m *MockConn) Read(b []byte) (n int, err error) {
-	return m.buffer.Read(b)
-}
+	wg := sync.WaitGroup{}
+	wg.Add(2)
 
-func (m *MockConn) Write(b []byte) (n int, err error) {
-	return m.buffer.Write(b)
-}
+	var serverConn net.Conn
+	go func() {
+		defer wg.Done()
+		serverConn, err = ln.Accept()
+		require.NoError(t, err)
+	}()
 
-func (m *MockConn) Close() error {
-	return nil
-}
+	var clientConn net.Conn
+	go func() {
+		defer wg.Done()
+		clientConn, err = net.Dial("tcp", ln.Addr().String())
+		require.NoError(t, err)
+	}()
 
-func (m *MockConn) LocalAddr() net.Addr {
-	return nil
-}
-
-func (m *MockConn) RemoteAddr() net.Addr {
-	return nil
-}
-
-func (m *MockConn) SetDeadline(t time.Time) error {
-	return nil
-}
-
-func (m *MockConn) SetReadDeadline(t time.Time) error {
-	return nil
-}
-
-func (m *MockConn) SetWriteDeadline(t time.Time) error {
-	return nil
+	wg.Wait()
+	return serverConn, clientConn
 }
