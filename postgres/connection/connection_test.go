@@ -77,6 +77,7 @@ func TestReceive(t *testing.T) {
 		var receivedMessage connection.Message
 		go func() {
 			defer wg.Done()
+			var err error
 			receivedMessage, err = connection.Receive(serverConn)
 			require.NoError(t, err)
 		}()
@@ -147,6 +148,7 @@ func getLocalHostConnection(t *testing.T) (net.Conn, net.Conn) {
 	var serverConn net.Conn
 	go func() {
 		defer wg.Done()
+		var err error
 		serverConn, err = ln.Accept()
 		require.NoError(t, err)
 	}()
@@ -154,6 +156,7 @@ func getLocalHostConnection(t *testing.T) (net.Conn, net.Conn) {
 	var clientConn net.Conn
 	go func() {
 		defer wg.Done()
+		var err error
 		clientConn, err = net.Dial("tcp", ln.Addr().String())
 		require.NoError(t, err)
 	}()
