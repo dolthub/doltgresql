@@ -69,6 +69,7 @@ func InitializeDefaultMessage(message Message) {
 
 	allFieldNames := make(map[string]struct{}) // Verify that all field names are unique
 	headerFound := false                       // Only one header may exist in the message
+	lastWasHeader := false                     // We enforce that messages with headers always have a length field next 
 	messageLengthFound := false                // Only one message length may exist in the message
 	endingByteNFound := false                  // If a ByteN has been found that does not have a preceding ByteCount
 	repeatedFoundHeight := 0                   // The depth that a Repeated type has been found
@@ -97,13 +98,20 @@ func InitializeDefaultMessage(message Message) {
 		}
 		// Grab the field.
 		field := ftStack.Peek().Fields[ftStack.Peek().Index]
+
+		if lastWasHeader && field.Flags&(MessageLengthInclusive|MessageLengthExclusive) == 0 {
+			panic(fmt.Errorf("Header was not followed by a message length.\nMessageFormat:\n\n%s", messageFormat.String()))
+		}
+
 		// Verify uniqueness and correctness of tags (if any)
 		if field.Flags&Header != 0 {
 			if headerFound {
 				panic(fmt.Errorf("Multiple headers in message.\nMessageFormat:\n\n%s", messageFormat.String()))
 			}
 			headerFound = true
+			lastWasHeader = true
 		}
+		
 		if field.Flags&(MessageLengthInclusive|MessageLengthExclusive) != 0 {
 			if messageLengthFound {
 				panic(fmt.Errorf("Multiple message lengths in message.\nMessageFormat:\n\n%s", messageFormat.String()))
@@ -117,6 +125,7 @@ func InitializeDefaultMessage(message Message) {
 				panic(fmt.Errorf("Message length tags are only allowed on integer types.\nField: %s\nMessage:\n\n%s", field.Name, messageFormat.String()))
 			}
 			messageLengthFound = true
+			lastWasHeader = false
 		}
 		if field.Flags&ByteCount != 0 {
 			switch field.Type {
@@ -213,5 +222,9 @@ func InitializeDefaultMessage(message Message) {
 		if len(field.Children) == 1 {
 			ftStack.Push(FieldTraversal{0, field.Children[0]})
 		}
+	}
+	
+	if lastWasHeader {
+		panic(fmt.Errorf("Header was not followed by a message length.\nMessageFormat:\n\n%s", messageFormat.String()))
 	}
 }
