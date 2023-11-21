@@ -18,6 +18,7 @@ import (
 	"net"
 	"sync"
 	"testing"
+	"time"
 
 	"github.com/jackc/pgx/v5/pgproto3"
 	"github.com/stretchr/testify/assert"
@@ -69,12 +70,23 @@ func TestReceive(t *testing.T) {
 		encodedMessage := message.Encode(nil)
 		_, err := clientConn.Write(encodedMessage[:len(encodedMessage)/2])
 		require.NoError(t, err)
+
+		wg := sync.WaitGroup{}
+		wg.Add(1)
+		var receivedMessage connection.Message
+		go func() {
+			defer wg.Done()
+			receivedMessage, err = connection.Receive(serverConn)
+			require.NoError(t, err)
+		}()
+
+		// sleep a bit to make sure the goroutine is receiving (can't sync on it because it's blocked on the receive)
+		time.Sleep(100 * time.Millisecond)
 		_, err = clientConn.Write(encodedMessage[len(encodedMessage)/2:])
 		require.NoError(t, err)
 
-		receivedMessage, err := connection.Receive(serverConn)
-		require.NoError(t, err)
-
+		wg.Wait()
+		
 		receivedQuery, ok := receivedMessage.(messages.Query)
 		require.True(t, ok, "Received message is not a Query type")
 
