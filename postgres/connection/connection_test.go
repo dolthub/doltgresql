@@ -86,7 +86,7 @@ func TestReceive(t *testing.T) {
 		require.NoError(t, err)
 
 		wg.Wait()
-		
+
 		receivedQuery, ok := receivedMessage.(messages.Query)
 		require.True(t, ok, "Received message is not a Query type")
 
@@ -126,7 +126,7 @@ func TestReceive(t *testing.T) {
 			require.True(t, ok, "Received message is not a Query type")
 			assert.Equal(t, message.String, receivedQuery.String)
 		}
-		
+
 		assert.Equal(t, len(queries), messageCount)
 	})
 

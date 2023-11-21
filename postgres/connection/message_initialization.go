@@ -69,7 +69,7 @@ func InitializeDefaultMessage(message Message) {
 
 	allFieldNames := make(map[string]struct{}) // Verify that all field names are unique
 	headerFound := false                       // Only one header may exist in the message
-	lastWasHeader := false                     // We enforce that messages with headers always have a length field next 
+	lastWasHeader := false                     // We enforce that messages with headers always have a length field next
 	messageLengthFound := false                // Only one message length may exist in the message
 	endingByteNFound := false                  // If a ByteN has been found that does not have a preceding ByteCount
 	repeatedFoundHeight := 0                   // The depth that a Repeated type has been found
@@ -111,7 +111,7 @@ func InitializeDefaultMessage(message Message) {
 			headerFound = true
 			lastWasHeader = true
 		}
-		
+
 		if field.Flags&(MessageLengthInclusive|MessageLengthExclusive) != 0 {
 			if messageLengthFound {
 				panic(fmt.Errorf("Multiple message lengths in message.\nMessageFormat:\n\n%s", messageFormat.String()))
@@ -223,7 +223,7 @@ func InitializeDefaultMessage(message Message) {
 			ftStack.Push(FieldTraversal{0, field.Children[0]})
 		}
 	}
-	
+
 	if lastWasHeader {
 		panic(fmt.Errorf("Header was not followed by a message length.\nMessageFormat:\n\n%s", messageFormat.String()))
 	}

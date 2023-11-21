@@ -65,16 +65,16 @@ func Receive(conn net.Conn) (Message, error) {
 	if n < headerSize {
 		return nil, errors.New("received message header is too short")
 	}
-	
+
 	// TODO: there is one non-startup frontend message that doesn't have a header byte, which is the CancelRequest.
-	//  We need to figure out how to handle it here. 
+	//  We need to figure out how to handle it here.
 	message, ok := allMessageHeaders[header[0]]
 	if !ok {
 		return nil, fmt.Errorf("received message header is not recognized: %v", header[0])
 	}
 
 	messageLen := int(binary.BigEndian.Uint32(header[1:])) - 4
-	
+
 	var msgBuffer []byte
 	if messageLen > 0 {
 		read := 0
@@ -88,20 +88,20 @@ func Receive(conn net.Conn) (Message, error) {
 			if err != nil {
 				return nil, err
 			}
-			
+
 			n, err = conn.Read(msgBuffer[headerSize+read:])
 			if err != nil {
 				return nil, err
 			}
-			
+
 			read += n
 		}
-		
+
 		copy(msgBuffer[:headerSize], header)
 	} else {
-		msgBuffer = header	
+		msgBuffer = header
 	}
-	
+
 	db := newDecodeBuffer(msgBuffer)
 	return receiveFromBuffer(db, message)
 }
