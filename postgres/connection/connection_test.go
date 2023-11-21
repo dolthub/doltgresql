@@ -15,6 +15,7 @@
 package connection_test
 
 import (
+	"bytes"
 	"net"
 	"sync"
 	"testing"
@@ -110,11 +111,14 @@ func TestReceive(t *testing.T) {
 			},
 		}
 
+		b := bytes.Buffer{}
 		for _, message := range queries {
 			encodedMessage := message.Encode(nil)
-			_, err := clientConn.Write(encodedMessage)
-			require.NoError(t, err)
+			b.Write(encodedMessage)
 		}
+
+		_, err := clientConn.Write(b.Bytes())
+		require.NoError(t, err)
 
 		messageCount := 0
 		for _, message := range queries {
