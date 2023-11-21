@@ -524,6 +524,8 @@ func nodeExpr(node tree.Expr) (vitess.Expr, error) {
 			Name:      vitess.NewColIdent(node.Parts[0]),
 			Qualifier: tableName,
 		}, nil
+	case tree.NullLiteral:
+		return &vitess.NullVal{}, nil
 	case nil:
 		return nil, nil
 	default:
