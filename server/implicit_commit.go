@@ -14,7 +14,13 @@
 
 package server
 
-import "strings"
+import (
+	"fmt"
+	"strings"
+
+	"github.com/dolthub/doltgresql/postgres/parser/parser"
+	"github.com/dolthub/doltgresql/postgres/parser/sem/tree"
+)
 
 // implicitCommitStatements are a collection of statements that perform an implicit COMMIT before executing. Such
 // statements cannot have their effects reversed by rolling back a transaction or rolling back to a savepoint.
@@ -38,4 +44,23 @@ func ImplicitlyCommits(statement string) bool {
 		}
 	}
 	return false
+}
+
+// HandleImplicitCommitStatement returns a statement that can reverse the given statement, such that it appears to have
+// never executed. This only applies to statements that implicitly commit, as determined by ImplicitlyCommits.
+func HandleImplicitCommitStatement(statement string) (reverseStatement string, handled bool) {
+	s, err := parser.Parse(statement)
+	if err != nil || len(s) != 1 {
+		return "", false
+	}
+	switch node := s[0].AST.(type) {
+	case *tree.CreateDatabase:
+		return fmt.Sprintf("DROP DATABASE %s", string(node.Name)), true
+	case *tree.CreateTable:
+		return fmt.Sprintf("DROP TABLE %s", node.Table.String()), true
+	case *tree.CreateView:
+		return fmt.Sprintf("DROP VIEW %s", node.Name.String()), true
+	default:
+		return "", false
+	}
 }
