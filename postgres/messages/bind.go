@@ -36,7 +36,7 @@ type Bind struct {
 	ResultFormatCodes       []int32
 }
 
-var _ sql.DebugStringer = &Bind{}
+var _ sql.DebugStringer = Bind{}
 
 // BindParameterValue are parameter values for the Bind message.
 type BindParameterValue struct {
@@ -194,7 +194,7 @@ func (m Bind) DefaultMessage() *connection.MessageFormat {
 }
 
 // DebugString returns a debug representation of the Bind message.
-func (m *Bind) DebugString() string {
+func (m Bind) DebugString() string {
 	var builder strings.Builder
 
 	builder.WriteString("Bind {\n")
