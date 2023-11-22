@@ -24,4 +24,3 @@ type ConvertedQuery struct {
 	String string
 	AST    vitess.Statement
 }
-

@@ -31,7 +31,7 @@ func TestPreparedStatements(t *testing.T) {
 		},
 		Assertions: []ScriptTestAssertion{
 			{
-				Query:    "select v1 from doesNotExist where pk = 1;",
+				Query:       "select v1 from doesNotExist where pk = 1;",
 				ExpectedErr: true,
 			},
 			{
@@ -104,7 +104,7 @@ func RunScriptN(t *testing.T, script ScriptTest, n int) {
 					} else {
 						require.NoError(t, err)
 					}
-					
+
 					defer rows.Close()
 					foundRows, err := ReadRows(rows)
 					assert.Equal(t, NormalizeRows(assertion.Expected), foundRows)

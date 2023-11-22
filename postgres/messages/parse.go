@@ -18,8 +18,9 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/dolthub/doltgresql/postgres/connection"
 	"github.com/dolthub/go-mysql-server/sql"
+
+	"github.com/dolthub/doltgresql/postgres/connection"
 )
 
 func init() {
@@ -112,7 +113,6 @@ func (m Parse) Decode(s connection.MessageFormat) (connection.Message, error) {
 func (m Parse) DefaultMessage() *connection.MessageFormat {
 	return &parseDefault
 }
-
 
 // DebugString returns a debug representation of the Parse message.
 func (m Parse) DebugString() string {

@@ -17,8 +17,9 @@ package messages
 import (
 	"fmt"
 
-	"github.com/dolthub/doltgresql/postgres/connection"
 	"github.com/dolthub/go-mysql-server/sql"
+
+	"github.com/dolthub/doltgresql/postgres/connection"
 )
 
 func init() {

@@ -148,7 +148,7 @@ func (l *Listener) HandleConnection(conn net.Conn) {
 			returnErr = err
 			return
 		}
-		
+
 		if ds, ok := message.(sql.DebugStringer); ok {
 			if logrus.IsLevelEnabled(logrus.DebugLevel) {
 				logrus.Debugf("Received message: %s", ds.DebugString())
@@ -430,7 +430,7 @@ func (l *Listener) execute(conn net.Conn, mysqlConn *mysql.Conn, query Converted
 // describe handles the description of the given query. This will post the ParameterDescription and RowDescription messages.
 func (l *Listener) describe(conn net.Conn, mysqlConn *mysql.Conn, message messages.Describe, statement ConvertedQuery) (err error) {
 	logrus.Tracef("describing statement %v", statement)
-	
+
 	//TODO: fully support prepared statements
 	if err := connection.Send(conn, messages.ParameterDescription{
 		ObjectIDs: nil,

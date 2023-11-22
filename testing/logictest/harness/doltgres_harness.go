@@ -34,7 +34,7 @@ const (
 // sqllogictest harness for postgres databases.
 type PostgresqlServerHarness struct {
 	dsn string
-	db *sql.DB
+	db  *sql.DB
 }
 
 // compile check for interface compliance
@@ -49,7 +49,7 @@ func NewPostgresqlHarness(dsn string) *PostgresqlServerHarness {
 	}
 	return &PostgresqlServerHarness{
 		dsn: dsn,
-		db: db,
+		db:  db,
 	}
 }
 
@@ -83,7 +83,7 @@ func (h *PostgresqlServerHarness) ExecuteQuery(statement string) (schema string,
 	if rows != nil {
 		defer rows.Close()
 	}
-	
+
 	if err != nil {
 		return "", nil, err
 	}
