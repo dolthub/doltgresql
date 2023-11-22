@@ -55,5 +55,7 @@ func TestSSL(t *testing.T) {
 	require.NoError(t, err)
 	rows, err := conn.Query(ctx, "SELECT * FROM test;")
 	require.NoError(t, err)
-	assert.Equal(t, NormalizeRows([]sql.Row{{3645, 37643}}), ReadRows(t, rows))
+	readRows, err := ReadRows(rows)
+	require.NoError(t, err)
+	assert.Equal(t, NormalizeRows([]sql.Row{{3645, 37643}}), readRows)
 }

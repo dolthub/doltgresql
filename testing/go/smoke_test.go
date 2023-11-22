@@ -23,20 +23,52 @@ import (
 func TestSmokeTests(t *testing.T) {
 	RunScripts(t, []ScriptTest{
 		{
-			Name: "simple statements",
+			Name: "Simple statements",
 			SetUpScript: []string{
 				"CREATE TABLE test (pk BIGINT PRIMARY KEY, v1 BIGINT);",
 			},
 			Assertions: []ScriptTestAssertion{
 				{
-					Query:            "insert into test values (1, 1), (2, 2);",
-					SkipResultsCheck: true,
+					Query:    "CREATE TABLE test2 (pk BIGINT PRIMARY KEY, v1 BIGINT);",
+					Expected: []sql.Row{},
 				},
 				{
-					Query: "select * from test;",
+					Query:    "INSERT INTO test VALUES (1, 1), (2, 2);",
+					Expected: []sql.Row{},
+				},
+				{
+					Query:    "INSERT INTO test2 VALUES (3, 3), (4, 4);",
+					Expected: []sql.Row{},
+				},
+				{
+					Query: "SELECT * FROM test;",
 					Expected: []sql.Row{
 						{1, 1},
 						{2, 2},
+					},
+				},
+				{
+					Query: "SELECT * FROM test2;",
+					Expected: []sql.Row{
+						{3, 3},
+						{4, 4},
+					},
+				},
+			},
+		},
+		{
+			Name: "Boolean results",
+			Assertions: []ScriptTestAssertion{
+				{
+					Query: "SELECT 1 IN (2);",
+					Expected: []sql.Row{
+						{0},
+					},
+				},
+				{
+					Query: "SELECT 2 IN (2);",
+					Expected: []sql.Row{
+						{1},
 					},
 				},
 			},

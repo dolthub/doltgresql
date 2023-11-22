@@ -17,6 +17,7 @@ package _go
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"math"
 	"net"
@@ -106,8 +107,9 @@ func RunScript(t *testing.T, script ScriptTest) {
 				} else {
 					rows, err := conn.Query(ctx, assertion.Query)
 					require.NoError(t, err)
-					defer rows.Close()
-					assert.Equal(t, NormalizeRows(assertion.Expected), ReadRows(t, rows))
+					readRows, err := ReadRows(rows)
+					require.NoError(t, err)
+					assert.Equal(t, NormalizeRows(assertion.Expected), readRows)
 				}
 			})
 		}
@@ -179,19 +181,27 @@ func CreateServer(t *testing.T, database string) (context.Context, *pgx.Conn, *s
 	return ctx, conn, serverClosed
 }
 
-// ReadRows reads all of the given rows into a slice. This also normalizes all of the rows. Does not call Close() on the rows.
-func ReadRows(t *testing.T, rows pgx.Rows) []sql.Row {
+// ReadRows reads all of the given rows into a slice, then closes the rows. This also normalizes all of the rows.
+func ReadRows(rows pgx.Rows) (readRows []sql.Row, err error) {
+	defer func() {
+		err = errors.Join(err, rows.Err())
+	}()
 	var slice []sql.Row
 	for rows.Next() {
 		row, err := rows.Values()
-		require.NoError(t, err)
+		if err != nil {
+			return nil, err
+		}
 		slice = append(slice, row)
 	}
-	return NormalizeRows(slice)
+	return NormalizeRows(slice), nil
 }
 
 // NormalizeRow normalizes each value's type, as the tests only want to compare values. Returns a new row.
 func NormalizeRow(row sql.Row) sql.Row {
+	if len(row) == 0 {
+		return nil
+	}
 	newRow := make(sql.Row, len(row))
 	for i := range row {
 		switch val := row[i].(type) {

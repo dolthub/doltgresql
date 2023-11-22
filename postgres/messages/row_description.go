@@ -135,13 +135,22 @@ func (m RowDescription) DefaultMessage() *connection.MessageFormat {
 }
 
 // VitessFieldToDataTypeObjectID returns a type, as defined by Vitess, into a type as defined by Postgres.
+// OIDs can be obtained with the following query: `SELECT oid, typname FROM pg_type ORDER BY 1;`
 func VitessFieldToDataTypeObjectID(field *query.Field) (int32, error) {
 	switch field.Type {
 	case query.Type_INT8:
-		return 17, nil
+		// Postgres doesn't make use of a small integer type for integer returns, which presents a bit of a conundrum.
+		// GMS defines boolean operations as the smallest integer type, while Postgres has an explicit bool type.
+		// We can't always assume that `INT8` means bool, since it could just be a small integer. As a result, we'll
+		// always return this as though it's an `INT32`, which also means that we can't support bools right now.
+		// OIDs 16 (bool) and 18 (char, ASCII only?) are the only single-byte types as far as I'm aware.
+		return 23, nil
 	case query.Type_INT16:
-		return 21, nil
+		// The technically correct OID is 21 (2-byte integer), however it seems like some clients don't actually expect
+		// this, so I'm not sure when it's actually used by Postgres. Because of this, we'll just pretend it's an `INT32`.
+		return 23, nil
 	case query.Type_INT24:
+		// Postgres doesn't have a 3-byte integer type, so just pretend it's `INT32`.
 		return 23, nil
 	case query.Type_INT32:
 		return 23, nil
