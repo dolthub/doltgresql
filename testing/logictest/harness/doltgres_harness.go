@@ -15,6 +15,7 @@
 package harness
 
 import (
+	"context"
 	"database/sql"
 	"fmt"
 	"strings"
@@ -32,6 +33,7 @@ const (
 
 // sqllogictest harness for postgres databases.
 type PostgresqlServerHarness struct {
+	dsn string
 	db *sql.DB
 }
 
@@ -45,7 +47,10 @@ func NewPostgresqlHarness(dsn string) *PostgresqlServerHarness {
 	if err != nil {
 		panic(err)
 	}
-	return &PostgresqlServerHarness{db: db}
+	return &PostgresqlServerHarness{
+		dsn: dsn,
+		db: db,
+	}
 }
 
 func (h *PostgresqlServerHarness) EngineStr() string {
@@ -53,6 +58,12 @@ func (h *PostgresqlServerHarness) EngineStr() string {
 }
 
 func (h *PostgresqlServerHarness) Init() error {
+	// db, err := sql.Open("pgx", h.dsn)
+	// if err != nil {
+	// 	panic(err)
+	// }
+	// h.db = db
+
 	if err := h.dropAllTables(); err != nil {
 		return err
 	}
@@ -69,6 +80,10 @@ func (h *PostgresqlServerHarness) ExecuteStatement(statement string) error {
 // See Harness.ExecuteQuery
 func (h *PostgresqlServerHarness) ExecuteQuery(statement string) (schema string, results []string, err error) {
 	rows, err := h.db.Query(statement)
+	if rows != nil {
+		defer rows.Close()
+	}
+	
 	if err != nil {
 		return "", nil, err
 	}
@@ -97,7 +112,12 @@ func (h *PostgresqlServerHarness) ExecuteQuery(statement string) (schema string,
 }
 
 func (h *PostgresqlServerHarness) dropAllTables() error {
-	rows, err := h.db.Query("SELECT table_name FROM information_schema.tables WHERE table_schema = 'sqllogictest' AND table_type = 'BASE TABLE';")
+	var rows *sql.Rows
+	var err error
+	rows, err = h.db.QueryContext(context.Background(), "SELECT table_name FROM information_schema.tables WHERE table_schema = 'sqllogictest' AND table_type = 'BASE TABLE';")
+	if rows != nil {
+		defer rows.Close()
+	}
 	if err != nil {
 		return err
 	}
@@ -130,7 +150,10 @@ func (h *PostgresqlServerHarness) dropAllTables() error {
 }
 
 func (h *PostgresqlServerHarness) dropAllViews() error {
-	rows, err := h.db.Query("select table_name from INFORMATION_SCHEMA.views")
+	rows, err := h.db.QueryContext(context.Background(), "select table_name from INFORMATION_SCHEMA.views")
+	if rows != nil {
+		defer rows.Close()
+	}
 	if err != nil {
 		return err
 	}
