@@ -24,12 +24,16 @@ import (
 
 func TestPreparedStatements(t *testing.T) {
 	tt := ScriptTest{
-		Name: "simple statements",
+		Name: "error handling doesn't foul session",
 		SetUpScript: []string{
 			"CREATE TABLE test (pk BIGINT PRIMARY KEY, v1 BIGINT);",
 			"insert into test values (1, 1), (2, 2), (3, 3), (4, 4), (5, 5), (6, 6), (7, 7);",
 		},
 		Assertions: []ScriptTestAssertion{
+			{
+				Query:    "select v1 from doesNotExist where pk = 1;",
+				ExpectedErr: true,
+			},
 			{
 				Query:    "select v1 from test where pk = 1;",
 				Expected: []sql.Row{{1}},
@@ -58,16 +62,13 @@ func TestPreparedStatements(t *testing.T) {
 				Query:    "select v1 from test where pk = 7;",
 				Expected: []sql.Row{{7}},
 			},
-			// {
-			// 	Query:            "drop table test",
-			// 	SkipResultsCheck: true,
-			// },
 		},
 	}
 
 	RunScriptN(t, tt, 20)
 }
 
+// RunScriptN runs the assertios of the given script n times using the same connection
 func RunScriptN(t *testing.T, script ScriptTest, n int) {
 	scriptDatabase := script.Database
 	if len(scriptDatabase) == 0 {
@@ -78,18 +79,18 @@ func RunScriptN(t *testing.T, script ScriptTest, n int) {
 		conn.Close(ctx)
 		serverClosed.Wait()
 	}()
-	
+
+	// Run the setup
+	for _, query := range script.SetUpScript {
+		rows, err := conn.Query(ctx, query)
+		require.NoError(t, err)
+		_, err = ReadRows(rows)
+		assert.NoError(t, err)
+		rows.Close()
+	}
+
 	for i := 0; i < n; i++ {
 		t.Run(script.Name, func(t *testing.T) {
-
-			// Run the setup
-			for _, query := range script.SetUpScript {
-				rows, err := conn.Query(ctx, query)
-				require.NoError(t, err)
-				ReadRows(t, rows)
-				rows.Close()
-			}
-
 			// Run the assertions
 			for _, assertion := range script.Assertions {
 				t.Run(assertion.Query, func(t *testing.T) {
@@ -97,9 +98,16 @@ func RunScriptN(t *testing.T, script ScriptTest, n int) {
 						t.Skip("Skip has been set in the assertion")
 					}
 					rows, err := conn.Query(ctx, assertion.Query)
-					require.NoError(t, err)
+					if assertion.ExpectedErr {
+						require.Error(t, err)
+						return
+					} else {
+						require.NoError(t, err)
+					}
+					
 					defer rows.Close()
-					assert.Equal(t, NormalizeRows(assertion.Expected), ReadRows(t, rows))
+					foundRows, err := ReadRows(rows)
+					assert.Equal(t, NormalizeRows(assertion.Expected), foundRows)
 				})
 			}
 		})
