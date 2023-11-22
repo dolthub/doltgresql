@@ -148,9 +148,15 @@ func (l *Listener) HandleConnection(conn net.Conn) {
 		}
 
 		stop, endOfMessages, err := l.handleMessage(message, conn, mysqlConn, preparedStatements, portals)
-		if err != nil || endOfMessages {
-			// TODO: do we need to clear out the connection here? If so, we need to read from it without blocking
+		if err != nil {
+			if !endOfMessages {
+				if syncErr := connection.DiscardToSync(conn); syncErr != nil {
+					fmt.Println(syncErr.Error())
+				}
+			}
 			l.endOfMessages(conn, err)
+		} else if endOfMessages {
+			l.endOfMessages(conn, nil)
 		}
 
 		if stop {
@@ -262,7 +268,7 @@ func (l *Listener) handleMessage(
 
 		query, err := l.convertQuery(message.String)
 		if err != nil {
-			return false, false, err
+			return false, true, err
 		}
 
 		// The Deallocate message must not get passed to the engine, since we handle allocation / deallocation of
@@ -271,7 +277,7 @@ func (l *Listener) handleMessage(
 		case *sqlparser.Deallocate:
 			_, ok := preparedStatements[stmt.Name]
 			if !ok {
-				return false, false, fmt.Errorf("prepared statement %s does not exist", stmt.Name)
+				return false, true, fmt.Errorf("prepared statement %s does not exist", stmt.Name)
 			}
 			delete(preparedStatements, stmt.Name)
 
@@ -309,7 +315,7 @@ func (l *Listener) handleMessage(
 		portals[message.DestinationPortal] = preparedStatements[message.SourcePreparedStatement]
 		return false, false, connection.Send(conn, messages.BindComplete{})
 	default:
-		return false, false, fmt.Errorf(`Unhandled message "%s"`, message.DefaultMessage().Name)
+		return false, true, fmt.Errorf(`Unhandled message "%s"`, message.DefaultMessage().Name)
 	}
 }
 
@@ -410,7 +416,7 @@ func (l *Listener) execute(conn net.Conn, mysqlConn *mysql.Conn, query Converted
 }
 
 // describe handles the description of the given query. This will post the ParameterDescription and RowDescription messages.
-func (l *Listener) describe(conn net.Conn, mysqlConn *mysql.Conn, message messages.Describe, statement ConvertedQuery) error {
+func (l *Listener) describe(conn net.Conn, mysqlConn *mysql.Conn, message messages.Describe, statement ConvertedQuery) (err error) {
 	//TODO: fully support prepared statements
 	if err := connection.Send(conn, messages.ParameterDescription{
 		ObjectIDs: nil,
@@ -420,7 +426,21 @@ func (l *Listener) describe(conn net.Conn, mysqlConn *mysql.Conn, message messag
 
 	//TODO: properly handle these statements
 	if ImplicitlyCommits(statement.String) {
-		return fmt.Errorf("We do not yet support the Describe message for the given statement")
+		if reverseStatement, ok := HandleImplicitCommitStatement(statement.String); ok {
+			// We have a reverse statement that can function as a workaround for the lack of proper rollback support.
+			// This does mean that we'll still create an implicit commit, but we can fix that whenever we add proper
+			// transaction support.
+			defer func() {
+				// If there's an error, then we don't want to execute the reverse statement
+				if err == nil {
+					_ = l.cfg.Handler.ComQuery(mysqlConn, reverseStatement, func(_ *sqltypes.Result, _ bool) error {
+						return nil
+					})
+				}
+			}()
+		} else {
+			return fmt.Errorf("We do not yet support the Describe message for the given statement")
+		}
 	}
 	// We'll start a transaction, so that we can later rollback any changes that were made.
 	//TODO: handle the case where we are already in a transaction (SAVEPOINT will sometimes fail it seems?)

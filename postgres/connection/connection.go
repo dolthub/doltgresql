@@ -220,6 +220,20 @@ TopLevelLoop:
 	return allPossibleMessages, nil
 }
 
+// DiscardToSync discards all messages in the buffer until a Sync has been reached. If a Sync was never sent, then this
+// may cause the connection to lock until the client send a Sync, as their request structure was malformed.
+func DiscardToSync(conn net.Conn) error {
+	for {
+		message, err := Receive(conn)
+		if err != nil {
+			return err
+		}
+		if message.DefaultMessage().Name == "Sync" {
+			return nil
+		}
+	}
+}
+
 // Send sends the given message over the connection.
 func Send(conn net.Conn, message Message) error {
 	encodedMessage, err := message.Encode()
