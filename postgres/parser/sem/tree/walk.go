@@ -692,7 +692,7 @@ func (expr *DUuid) Walk(_ Visitor) Expr { return expr }
 func (expr *DIPAddr) Walk(_ Visitor) Expr { return expr }
 
 // Walk implements the Expr interface.
-func (expr dNull) Walk(_ Visitor) Expr { return expr }
+func (d NullLiteral) Walk(_ Visitor) Expr { return d }
 
 // Walk implements the Expr interface.
 func (expr *DString) Walk(_ Visitor) Expr { return expr }

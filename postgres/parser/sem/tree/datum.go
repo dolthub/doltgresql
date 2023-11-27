@@ -68,7 +68,7 @@ var (
 	DBoolFalse = &constDBoolFalse
 
 	// DNull is the NULL Datum.
-	DNull Datum = dNull{}
+	DNull Datum = NullLiteral{}
 
 	// DTimeMaxTimeRegex is a compiled regex for parsing the 24:00 time value.
 	DTimeMaxTimeRegex = regexp.MustCompile(`^([0-9-]*(\s|T))?\s*24:00(:00(.0+)?)?\s*$`)
@@ -1601,18 +1601,18 @@ func (d *DTuple) ContainsNull() bool {
 	return false
 }
 
-type dNull struct{}
+type NullLiteral struct{}
 
 // ResolvedType implements the TypedExpr interface.
-func (dNull) ResolvedType() *types.T {
+func (NullLiteral) ResolvedType() *types.T {
 	return types.Unknown
 }
 
 // AmbiguousFormat implements the Datum interface.
-func (dNull) AmbiguousFormat() bool { return false }
+func (NullLiteral) AmbiguousFormat() bool { return false }
 
 // Format implements the NodeFormatter interface.
-func (dNull) Format(ctx *FmtCtx) {
+func (NullLiteral) Format(ctx *FmtCtx) {
 	if ctx.HasFlags(fmtPgwireFormat) {
 		// NULL sub-expressions in pgwire text values are represented with
 		// the empty string.
@@ -1622,7 +1622,7 @@ func (dNull) Format(ctx *FmtCtx) {
 }
 
 // Size implements the Datum interface.
-func (d dNull) Size() uintptr {
+func (d NullLiteral) Size() uintptr {
 	return unsafe.Sizeof(d)
 }
 
@@ -2050,7 +2050,7 @@ func wrapWithOid(d Datum, oid oid.Oid) Datum {
 	case *DInt:
 	case *DString:
 	case *DArray:
-	case dNull, *DOidWrapper:
+	case NullLiteral, *DOidWrapper:
 		panic(errors.AssertionFailedf("cannot wrap %T with an Oid", v))
 	default:
 		// Currently only *DInt, *DString, *DArray are hooked up to work with

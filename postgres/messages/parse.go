@@ -14,7 +14,14 @@
 
 package messages
 
-import "github.com/dolthub/doltgresql/postgres/connection"
+import (
+	"fmt"
+	"strings"
+
+	"github.com/dolthub/go-mysql-server/sql"
+
+	"github.com/dolthub/doltgresql/postgres/connection"
+)
 
 func init() {
 	connection.InitializeDefaultMessage(Parse{})
@@ -27,6 +34,8 @@ type Parse struct {
 	Query              string
 	ParameterObjectIDs []int32
 }
+
+var _ sql.DebugStringer = Parse{}
 
 var parseDefault = connection.MessageFormat{
 	Name: "Parse",
@@ -103,4 +112,21 @@ func (m Parse) Decode(s connection.MessageFormat) (connection.Message, error) {
 // DefaultMessage implements the interface connection.Message.
 func (m Parse) DefaultMessage() *connection.MessageFormat {
 	return &parseDefault
+}
+
+// DebugString returns a debug representation of the Parse message.
+func (m Parse) DebugString() string {
+	var builder strings.Builder
+
+	builder.WriteString("Parse {\n")
+	builder.WriteString(fmt.Sprintf("  Name: %s\n", m.Name))
+	builder.WriteString(fmt.Sprintf("  Query: %s\n", m.Query))
+	builder.WriteString("  ParameterObjectIDs: [")
+	for _, id := range m.ParameterObjectIDs {
+		builder.WriteString(fmt.Sprintf("%d, ", id))
+	}
+	builder.WriteString("]\n")
+	builder.WriteString("}")
+
+	return builder.String()
 }

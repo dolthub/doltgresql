@@ -24,10 +24,12 @@ import (
 	"sync/atomic"
 
 	"github.com/dolthub/go-mysql-server/server"
+	"github.com/dolthub/go-mysql-server/sql"
 	"github.com/dolthub/go-mysql-server/sql/mysql_db"
 	"github.com/dolthub/vitess/go/mysql"
 	"github.com/dolthub/vitess/go/sqltypes"
 	"github.com/dolthub/vitess/go/vt/sqlparser"
+	"github.com/sirupsen/logrus"
 
 	"github.com/dolthub/doltgresql/postgres/connection"
 	"github.com/dolthub/doltgresql/postgres/messages"
@@ -147,6 +149,12 @@ func (l *Listener) HandleConnection(conn net.Conn) {
 			return
 		}
 
+		if ds, ok := message.(sql.DebugStringer); ok && logrus.IsLevelEnabled(logrus.DebugLevel) {
+			logrus.Debugf("Received message: %s", ds.DebugString())
+		} else {
+			logrus.Debugf("Received message: %s", message.DefaultMessage().Name)
+		}
+
 		stop, endOfMessages, err := l.handleMessage(message, conn, mysqlConn, preparedStatements, portals)
 		if err != nil {
 			if !endOfMessages {
@@ -259,6 +267,7 @@ func (l *Listener) handleMessage(
 		return true, false, nil
 	case messages.Execute:
 		// TODO: implement the RowMax
+		logrus.Tracef("executing portal %s with contents %v", message.Portal, portals[message.Portal])
 		return false, false, l.execute(conn, mysqlConn, portals[message.Portal])
 	case messages.Query:
 		handled, err := l.handledPSQLCommands(conn, mysqlConn, message.String)
@@ -311,6 +320,7 @@ func (l *Listener) handleMessage(
 	case messages.Sync:
 		return false, true, nil
 	case messages.Bind:
+		logrus.Tracef("binding portal %q to prepared statement %s", message.DestinationPortal, message.SourcePreparedStatement)
 		// TODO: fully support prepared statements
 		portals[message.DestinationPortal] = preparedStatements[message.SourcePreparedStatement]
 		return false, false, connection.Send(conn, messages.BindComplete{})
@@ -417,6 +427,8 @@ func (l *Listener) execute(conn net.Conn, mysqlConn *mysql.Conn, query Converted
 
 // describe handles the description of the given query. This will post the ParameterDescription and RowDescription messages.
 func (l *Listener) describe(conn net.Conn, mysqlConn *mysql.Conn, message messages.Describe, statement ConvertedQuery) (err error) {
+	logrus.Tracef("describing statement %v", statement)
+
 	//TODO: fully support prepared statements
 	if err := connection.Send(conn, messages.ParameterDescription{
 		ObjectIDs: nil,
