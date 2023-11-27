@@ -149,10 +149,8 @@ func (l *Listener) HandleConnection(conn net.Conn) {
 			return
 		}
 
-		if ds, ok := message.(sql.DebugStringer); ok {
-			if logrus.IsLevelEnabled(logrus.DebugLevel) {
-				logrus.Debugf("Received message: %s", ds.DebugString())
-			}
+		if ds, ok := message.(sql.DebugStringer); ok && logrus.IsLevelEnabled(logrus.DebugLevel) {
+			logrus.Debugf("Received message: %s", ds.DebugString())
 		} else {
 			logrus.Debugf("Received message: %s", message.DefaultMessage().Name)
 		}

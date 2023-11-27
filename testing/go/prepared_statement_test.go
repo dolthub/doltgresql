@@ -86,7 +86,6 @@ func RunScriptN(t *testing.T, script ScriptTest, n int) {
 		require.NoError(t, err)
 		_, err = ReadRows(rows)
 		assert.NoError(t, err)
-		rows.Close()
 	}
 
 	for i := 0; i < n; i++ {
@@ -99,14 +98,20 @@ func RunScriptN(t *testing.T, script ScriptTest, n int) {
 					}
 					rows, err := conn.Query(ctx, assertion.Query)
 					if assertion.ExpectedErr {
+						rows.Close()
 						require.Error(t, err)
 						return
 					} else {
 						require.NoError(t, err)
 					}
 
-					defer rows.Close()
 					foundRows, err := ReadRows(rows)
+					if assertion.ExpectedErr {
+						require.Error(t, err)
+						return
+					} else {
+						require.NoError(t, err)
+					}
 					assert.Equal(t, NormalizeRows(assertion.Expected), foundRows)
 				})
 			}

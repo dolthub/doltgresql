@@ -58,12 +58,6 @@ func (h *PostgresqlServerHarness) EngineStr() string {
 }
 
 func (h *PostgresqlServerHarness) Init() error {
-	// db, err := sql.Open("pgx", h.dsn)
-	// if err != nil {
-	// 	panic(err)
-	// }
-	// h.db = db
-
 	if err := h.dropAllTables(); err != nil {
 		return err
 	}

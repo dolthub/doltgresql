@@ -382,6 +382,8 @@ func nodeExpr(node tree.Expr) (vitess.Expr, error) {
 	case *tree.NullIfExpr:
 		//TODO: probably should be the IF function: IF(Expr1 == Expr2, NULL, Expr1)
 		return nil, fmt.Errorf("NULLIF is not yet supported")
+	case tree.NullLiteral:
+		return &vitess.NullVal{}, nil
 	case *tree.NumVal:
 		switch node.Kind() {
 		case constant.Int:
@@ -524,8 +526,6 @@ func nodeExpr(node tree.Expr) (vitess.Expr, error) {
 			Name:      vitess.NewColIdent(node.Parts[0]),
 			Qualifier: tableName,
 		}, nil
-	case tree.NullLiteral:
-		return &vitess.NullVal{}, nil
 	case nil:
 		return nil, nil
 	default:
