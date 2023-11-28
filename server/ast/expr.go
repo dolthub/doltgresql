@@ -17,7 +17,9 @@ package ast
 import (
 	"fmt"
 	"go/constant"
+	"strconv"
 
+	"github.com/dolthub/doltgresql/postgres/parser/types"
 	vitess "github.com/dolthub/vitess/go/vt/sqlparser"
 
 	"github.com/dolthub/doltgresql/postgres/parser/sem/tree"
@@ -183,12 +185,21 @@ func nodeExpr(node tree.Expr) (vitess.Expr, error) {
 			Else:  else_,
 		}, nil
 	case *tree.CastExpr:
-		//TODO: finish the implementation
+		expr, err := nodeExpr(node.Expr)
+		if err != nil {
+			return nil, err
+		}
+		
+		convertType, err := typeConvertType(node.Type)
+		if err != nil {
+			return nil, err
+		}
+		
 		return &vitess.ConvertExpr{
-			Name: "",
-			Expr: nil,
-			Type: nil,
-		}, fmt.Errorf("CAST is not yet supported")
+			Name: "CAST",
+			Expr: expr,
+			Type: convertType,
+		}, nil
 	case *tree.CoalesceExpr:
 		return nil, fmt.Errorf("COALESCE is not yet supported")
 	case *tree.CollateExpr:
@@ -531,4 +542,44 @@ func nodeExpr(node tree.Expr) (vitess.Expr, error) {
 	default:
 		return nil, fmt.Errorf("unknown expression: `%T`", node)
 	}
+}
+
+func typeConvertType(typ tree.ResolvableTypeReference) (*vitess.ConvertType, error) {
+	if typ == nil {
+		return nil, nil
+	}
+
+	var columnTypeName string
+	var columnTypeLength *vitess.SQLVal
+	var columnTypeScale *vitess.SQLVal
+	switch columnType := typ.(type) {
+	case *tree.ArrayTypeReference:
+		return nil, fmt.Errorf("array types are not yet supported")
+	case *tree.OIDTypeReference:
+		return nil, fmt.Errorf("referencing types by their OID is not yet supported")
+	case *tree.UnresolvedObjectName:
+		return nil, fmt.Errorf("type declaration format is not yet supported")
+	case *types.GeoMetadata:
+		return nil, fmt.Errorf("geometry types are not yet supported")
+	case *types.T:
+		columnTypeName = columnType.SQLStandardName()
+		switch columnType.Family() {
+		case types.DecimalFamily:
+			columnTypeLength = vitess.NewIntVal([]byte(strconv.Itoa(int(columnType.Precision()))))
+			columnTypeScale = vitess.NewIntVal([]byte(strconv.Itoa(int(columnType.Scale()))))
+		case types.JsonFamily:
+			columnTypeName = "JSON"
+		case types.StringFamily:
+			columnTypeLength = vitess.NewIntVal([]byte(strconv.Itoa(int(columnType.Width()))))
+		case types.TimestampFamily:
+			columnTypeName = columnType.Name()
+		}
+	}
+	
+	return &vitess.ConvertType{
+		Type:     columnTypeName,
+		Length:   columnTypeLength,
+		Scale:    columnTypeScale,
+		Charset:  "", // TODO
+	}, nil
 }
