@@ -1,0 +1,5 @@
+ALTER SYSTEM SET $configuration_parameter$ { TO | = } { $value$ [ , ... ] | DEFAULT }
+
+ALTER SYSTEM RESET $configuration_parameter$
+
+ALTER SYSTEM RESET ALL

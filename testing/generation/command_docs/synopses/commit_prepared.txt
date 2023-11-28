@@ -1,0 +1,1 @@
+COMMIT PREPARED $transaction_id$

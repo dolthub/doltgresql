@@ -1,0 +1,5 @@
+DROP DATABASE [ IF EXISTS ] $name$ [ [ WITH ] ( $option$ [ , ... ] ) ]
+
+where $option$ is:
+
+FORCE

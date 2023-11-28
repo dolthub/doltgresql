@@ -1,0 +1,2 @@
+CREATE [ DEFAULT ] CONVERSION $name$
+    FOR $source_encoding$ TO $dest_encoding$ FROM $function_name$

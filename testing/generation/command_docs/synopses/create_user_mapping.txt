@@ -1,0 +1,3 @@
+CREATE USER MAPPING [ IF NOT EXISTS ] FOR { $user_name$ | USER | CURRENT_ROLE | CURRENT_USER | PUBLIC }
+    SERVER $server_name$
+    [ OPTIONS ( $option$ '$value$' [ , ... ] ) ]

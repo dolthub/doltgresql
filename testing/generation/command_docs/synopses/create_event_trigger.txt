@@ -1,0 +1,4 @@
+CREATE EVENT TRIGGER $name$
+    ON $event$
+    [ WHEN $filter_variable$ IN ($filter_value$ [ , ... ]) [ AND ... ] ]
+    EXECUTE { FUNCTION | PROCEDURE } $function_name$()

@@ -1,0 +1,6 @@
+CREATE [ { TEMPORARY | TEMP } | UNLOGGED ] SEQUENCE [ IF NOT EXISTS ] $name$
+    [ AS $data_type$ ]
+    [ INCREMENT [ BY ] $increment$ ]
+    [ MINVALUE $minvalue$ | NO MINVALUE ] [ MAXVALUE $maxvalue$ | NO MAXVALUE ]
+    [ START [ WITH ] $start$ ] [ CACHE $cache$ ] [ [ NO ] CYCLE ]
+    [ OWNED BY { $table_name$.$column_name$ | NONE } ]

@@ -1,0 +1,8 @@
+CREATE [ [ GLOBAL | LOCAL ] { TEMPORARY | TEMP } | UNLOGGED ] TABLE [ IF NOT EXISTS ] $table_name$
+    [ ($column_name$ [ , ... ] ) ]
+    [ USING $method$ ]
+    [ WITH ( $storage_parameter$ [= $value$] [ , ... ] ) | WITHOUT OIDS ]
+    [ ON COMMIT { PRESERVE ROWS | DELETE ROWS | DROP } ]
+    [ TABLESPACE $tablespace_name$ ]
+    AS $query$
+    [ WITH [ NO ] DATA ]

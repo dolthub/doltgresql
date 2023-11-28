@@ -1,0 +1,11 @@
+CREATE CAST ($source_type$ AS $target_type$)
+    WITH FUNCTION $function_name$ [ ($argument_type$ [ , ... ]) ]
+    [ AS ASSIGNMENT | AS IMPLICIT ]
+
+CREATE CAST ($source_type$ AS $target_type$)
+    WITHOUT FUNCTION
+    [ AS ASSIGNMENT | AS IMPLICIT ]
+
+CREATE CAST ($source_type$ AS $target_type$)
+    WITH INOUT
+    [ AS ASSIGNMENT | AS IMPLICIT ]

@@ -1,0 +1,9 @@
+CREATE PUBLICATION $name$
+    [ FOR ALL TABLES
+    | FOR $publication_object$ [ , ... ] ]
+    [ WITH ( $publication_parameter$ [= $value$] [ , ... ] ) ]
+
+where $publication_object$ is:
+
+TABLE [ ONLY ] $table_name$ [ * ] [ ( $column_name$ [ , ... ] ) ] [ WHERE ( $expression$ ) ] [ , ... ] |
+    TABLES IN SCHEMA { $schema_name$ | CURRENT_SCHEMA } [ , ... ]

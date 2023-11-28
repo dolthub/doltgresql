@@ -1,0 +1,7 @@
+REINDEX [ ( $option$ [ , ... ] ) ] { INDEX | TABLE | SCHEMA | DATABASE | SYSTEM } [ CONCURRENTLY ] $name$
+
+where $option$ is:
+
+CONCURRENTLY [ $boolean$ ] |
+    TABLESPACE $new_tablespace$ |
+    VERBOSE [ $boolean$ ]

@@ -1,0 +1,27 @@
+[ WITH $with_query$ [ , ... ] ] MERGE INTO [ ONLY ] $target_table_name$ [ * ] [ [ AS ] $target_alias$ ]
+    USING $data_source$ ON $join_condition$
+    $when_clause$ [ ... ]
+
+where $data_source$ is:
+
+{ [ ONLY ] $source_table_name$ [ * ] | ( $source_query$ ) } [ [ AS ] $source_alias$ ]
+
+where $when_clause$ is:
+
+{ WHEN MATCHED [ AND $condition$ ] THEN { $merge_update$ | $merge_delete$ | DO NOTHING } |
+    WHEN NOT MATCHED [ AND $condition$ ] THEN { $merge_insert$ | DO NOTHING } }
+
+where $merge_insert$ is:
+
+INSERT [( $column_name$ [ , ... ] )]
+    [ OVERRIDING { SYSTEM | USER } VALUE ]
+    { VALUES ( { $expression$ | DEFAULT } [ , ... ] ) | DEFAULT VALUES }
+
+where $merge_update$ is:
+
+UPDATE SET { $column_name$ = { $expression$ | DEFAULT } |
+    ( $column_name$ [ , ... ] ) = ( { $expression$ | DEFAULT } [ , ... ] ) } [ , ... ]
+
+where $merge_delete$ is:
+
+DELETE

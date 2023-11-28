@@ -1,0 +1,12 @@
+ANALYZE [ ( $option$ [ , ... ] ) ] [ $table_and_columns$ [ , ... ] ]
+
+ANALYZE [ VERBOSE ] [ $table_and_columns$ [ , ... ] ]
+
+where $option$ is:
+
+VERBOSE [ $boolean$ ] |
+    SKIP_LOCKED [ $boolean$ ]
+
+where $table_and_columns$ is:
+
+$table_name$ [ ( $column_name$ [ , ... ] ) ]

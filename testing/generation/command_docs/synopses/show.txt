@@ -1,0 +1,12 @@
+SHOW $name$
+
+SHOW ALL
+
+where $name$ is:
+
+SERVER_VERSION |
+    SERVER_ENCODING |
+    LC_COLLATE |
+    LC_CTYPE |
+    IS_SUPERUSER |
+    DateStyle
