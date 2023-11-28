@@ -16,12 +16,10 @@ package ast
 
 import (
 	"fmt"
-	"strconv"
 
 	vitess "github.com/dolthub/vitess/go/vt/sqlparser"
 
 	"github.com/dolthub/doltgresql/postgres/parser/sem/tree"
-	"github.com/dolthub/doltgresql/postgres/parser/types"
 )
 
 // nodeColumnTableDef handles *tree.ColumnTableDef nodes.
@@ -40,32 +38,12 @@ func nodeColumnTableDef(node *tree.ColumnTableDef) (_ *vitess.ColumnDefinition, 
 	if node.Family.Create || len(node.Family.Name) > 0 {
 		return nil, fmt.Errorf("FAMILY is not yet supported")
 	}
-	var columnTypeName string
-	var columnTypeLength *vitess.SQLVal
-	var columnTypeScale *vitess.SQLVal
-	switch columnType := node.Type.(type) {
-	case *tree.ArrayTypeReference:
-		return nil, fmt.Errorf("array types are not yet supported")
-	case *tree.OIDTypeReference:
-		return nil, fmt.Errorf("referencing types by their OID is not yet supported")
-	case *tree.UnresolvedObjectName:
-		return nil, fmt.Errorf("type declaration format is not yet supported")
-	case *types.GeoMetadata:
-		return nil, fmt.Errorf("geometry types are not yet supported")
-	case *types.T:
-		columnTypeName = columnType.SQLStandardName()
-		switch columnType.Family() {
-		case types.DecimalFamily:
-			columnTypeLength = vitess.NewIntVal([]byte(strconv.Itoa(int(columnType.Precision()))))
-			columnTypeScale = vitess.NewIntVal([]byte(strconv.Itoa(int(columnType.Scale()))))
-		case types.JsonFamily:
-			columnTypeName = "JSON"
-		case types.StringFamily:
-			columnTypeLength = vitess.NewIntVal([]byte(strconv.Itoa(int(columnType.Width()))))
-		case types.TimestampFamily:
-			columnTypeName = columnType.Name()
-		}
+
+	typeParams, err := nodeResolvableTypeReference(node.Type)
+	if err != nil {
+		return nil, err
 	}
+
 	var isNull vitess.BoolVal
 	var isNotNull vitess.BoolVal
 	switch node.Nullable.Nullability {
@@ -126,13 +104,13 @@ func nodeColumnTableDef(node *tree.ColumnTableDef) (_ *vitess.ColumnDefinition, 
 	return &vitess.ColumnDefinition{
 		Name: vitess.NewColIdent(string(node.Name)),
 		Type: vitess.ColumnType{
-			Type:          columnTypeName,
+			Type:          typeParams.name,
 			Null:          isNull,
 			NotNull:       isNotNull,
 			Autoincrement: vitess.BoolVal(node.IsSerial),
 			Default:       defaultExpr,
-			Length:        columnTypeLength,
-			Scale:         columnTypeScale,
+			Length:        typeParams.length,
+			Scale:         typeParams.scale,
 			KeyOpt:        keyOpt,
 			ForeignKeyDef: fkDef,
 			GeneratedExpr: generated,

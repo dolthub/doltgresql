@@ -183,12 +183,37 @@ func nodeExpr(node tree.Expr) (vitess.Expr, error) {
 			Else:  else_,
 		}, nil
 	case *tree.CastExpr:
-		//TODO: finish the implementation
+		expr, err := nodeExpr(node.Expr)
+		if err != nil {
+			return nil, err
+		}
+
+		switch node.SyntaxMode {
+		case tree.CastExplicit:
+			// only acceptable cast type
+		case tree.CastShort:
+			return nil, fmt.Errorf("TYPECAST is not yet supported")
+		case tree.CastPrepend:
+			return nil, fmt.Errorf("typed literals are not yet supported")
+		default:
+			return nil, fmt.Errorf("unknown cast syntax")
+		}
+
+		params, err := nodeResolvableTypeReference(node.Type)
+		if err != nil {
+			return nil, err
+		}
+
 		return &vitess.ConvertExpr{
-			Name: "",
-			Expr: nil,
-			Type: nil,
-		}, fmt.Errorf("CAST is not yet supported")
+			Name: "CAST",
+			Expr: expr,
+			Type: &vitess.ConvertType{
+				Type:    params.name,
+				Length:  params.length,
+				Scale:   params.scale,
+				Charset: "", // TODO
+			},
+		}, nil
 	case *tree.CoalesceExpr:
 		return nil, fmt.Errorf("COALESCE is not yet supported")
 	case *tree.CollateExpr:

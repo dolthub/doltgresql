@@ -230,7 +230,7 @@ func columns(rows *sql.Rows) (string, []interface{}, error) {
 			colVal := sql.NullString{}
 			columns = append(columns, &colVal)
 			sb.WriteString("T")
-		case "DECIMAL", "DOUBLE", "FLOAT":
+		case "DECIMAL", "DOUBLE", "FLOAT", "FLOAT8", "NUMERIC":
 			colVal := sql.NullFloat64{}
 			columns = append(columns, &colVal)
 			sb.WriteString("R")
