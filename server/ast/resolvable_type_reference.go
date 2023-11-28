@@ -18,15 +18,16 @@ import (
 	"fmt"
 	"strconv"
 
+	vitess "github.com/dolthub/vitess/go/vt/sqlparser"
+
 	"github.com/dolthub/doltgresql/postgres/parser/sem/tree"
 	"github.com/dolthub/doltgresql/postgres/parser/types"
-	vitess "github.com/dolthub/vitess/go/vt/sqlparser"
 )
 
 type typeParams struct {
-	name string
+	name   string
 	length *vitess.SQLVal
-	scale *vitess.SQLVal
+	scale  *vitess.SQLVal
 }
 
 func nodeResolvableTypeReference(typ tree.ResolvableTypeReference) (*typeParams, error) {
@@ -62,8 +63,8 @@ func nodeResolvableTypeReference(typ tree.ResolvableTypeReference) (*typeParams,
 	}
 
 	return &typeParams{
-		name:     columnTypeName,
-		length:   columnTypeLength,
-		scale:    columnTypeScale,
+		name:   columnTypeName,
+		length: columnTypeLength,
+		scale:  columnTypeScale,
 	}, nil
 }

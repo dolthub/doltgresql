@@ -187,7 +187,7 @@ func nodeExpr(node tree.Expr) (vitess.Expr, error) {
 		if err != nil {
 			return nil, err
 		}
-		
+
 		if node.SyntaxMode == tree.CastShort {
 			return nil, fmt.Errorf("TYPECAST is not yet supported")
 		}

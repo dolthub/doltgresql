@@ -38,12 +38,12 @@ func nodeColumnTableDef(node *tree.ColumnTableDef) (_ *vitess.ColumnDefinition, 
 	if node.Family.Create || len(node.Family.Name) > 0 {
 		return nil, fmt.Errorf("FAMILY is not yet supported")
 	}
-	
+
 	typeParams, err := nodeResolvableTypeReference(node.Type)
 	if err != nil {
 		return nil, err
 	}
-	
+
 	var isNull vitess.BoolVal
 	var isNotNull vitess.BoolVal
 	switch node.Nullable.Nullability {
