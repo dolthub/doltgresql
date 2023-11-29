@@ -27,6 +27,33 @@ import (
 	"github.com/dolthub/doltgresql/server/ast"
 )
 
+const TestHeader = `// Copyright %d Dolthub, Inc.
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//     http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
+
+package output
+
+import "testing"
+
+func Test%s(t *testing.T) {
+	tests := []QueryParses{
+`
+
+const TestFooter = `	}
+	RunTests(t, tests)
+}
+`
+
 // GenerateTestsFromSynopses generates a test file in the output directory for each file in the synopses directory.
 func GenerateTestsFromSynopses() (err error) {
 	parentFolder, err := GetCommandDocsFolder()
@@ -93,27 +120,7 @@ FileLoop:
 			continue FileLoop
 		}
 		sb := strings.Builder{}
-		sb.WriteString(fmt.Sprintf(`// Copyright %d Dolthub, Inc.
-//
-// Licensed under the Apache License, Version 2.0 (the "License");
-// you may not use this file except in compliance with the License.
-// You may obtain a copy of the License at
-//
-//     http://www.apache.org/licenses/LICENSE-2.0
-//
-// Unless required by applicable law or agreed to in writing, software
-// distributed under the License is distributed on an "AS IS" BASIS,
-// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-// See the License for the specific language governing permissions and
-// limitations under the License.
-
-package output
-
-import "testing"
-
-func Test%s(t *testing.T) {
-	tests := []QueryParses{
-`, time.Now().Year(), strings.ReplaceAll(strings.Title(strings.ToLower(prefix)), " ", "")))
+		sb.WriteString(fmt.Sprintf(TestHeader, time.Now().Year(), strings.ReplaceAll(strings.Title(strings.ToLower(prefix)), " ", "")))
 
 		result, nErr := GetQueryResult(stmtGen.String())
 		if nErr != nil {
@@ -130,10 +137,7 @@ func Test%s(t *testing.T) {
 			sb.WriteString(result)
 		}
 
-		sb.WriteString(`	}
-	RunTests(t, tests)
-}
-`)
+		sb.WriteString(TestFooter)
 		outputFileName := strings.ToLower(strings.ReplaceAll(prefix, " ", "_"))
 		if nErr = os.WriteFile(fmt.Sprintf("%s/output/%s_test.go", parentFolder, outputFileName), []byte(sb.String()), 0644); nErr != nil {
 			err = errors.Join(err, nErr)

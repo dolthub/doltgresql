@@ -199,7 +199,7 @@ func nodeExpr(node tree.Expr) (vitess.Expr, error) {
 			return nil, fmt.Errorf("unknown cast syntax")
 		}
 
-		params, err := nodeResolvableTypeReference(node.Type)
+		convertType, err := nodeResolvableTypeReference(node.Type)
 		if err != nil {
 			return nil, err
 		}
@@ -207,12 +207,7 @@ func nodeExpr(node tree.Expr) (vitess.Expr, error) {
 		return &vitess.ConvertExpr{
 			Name: "CAST",
 			Expr: expr,
-			Type: &vitess.ConvertType{
-				Type:    params.name,
-				Length:  params.length,
-				Scale:   params.scale,
-				Charset: "", // TODO
-			},
+			Type: convertType,
 		}, nil
 	case *tree.CoalesceExpr:
 		return nil, fmt.Errorf("COALESCE is not yet supported")

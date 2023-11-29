@@ -24,13 +24,8 @@ import (
 	"github.com/dolthub/doltgresql/postgres/parser/types"
 )
 
-type typeParams struct {
-	name   string
-	length *vitess.SQLVal
-	scale  *vitess.SQLVal
-}
-
-func nodeResolvableTypeReference(typ tree.ResolvableTypeReference) (*typeParams, error) {
+// nodeResolvableTypeReference handles tree.ResolvableTypeReference nodes.
+func nodeResolvableTypeReference(typ tree.ResolvableTypeReference) (*vitess.ConvertType, error) {
 	if typ == nil {
 		return nil, nil
 	}
@@ -62,9 +57,10 @@ func nodeResolvableTypeReference(typ tree.ResolvableTypeReference) (*typeParams,
 		}
 	}
 
-	return &typeParams{
-		name:   columnTypeName,
-		length: columnTypeLength,
-		scale:  columnTypeScale,
+	return &vitess.ConvertType{
+		Type:    columnTypeName,
+		Length:  columnTypeLength,
+		Scale:   columnTypeScale,
+		Charset: "", // TODO
 	}, nil
 }

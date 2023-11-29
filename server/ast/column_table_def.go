@@ -39,7 +39,7 @@ func nodeColumnTableDef(node *tree.ColumnTableDef) (_ *vitess.ColumnDefinition, 
 		return nil, fmt.Errorf("FAMILY is not yet supported")
 	}
 
-	typeParams, err := nodeResolvableTypeReference(node.Type)
+	convertType, err := nodeResolvableTypeReference(node.Type)
 	if err != nil {
 		return nil, err
 	}
@@ -104,13 +104,13 @@ func nodeColumnTableDef(node *tree.ColumnTableDef) (_ *vitess.ColumnDefinition, 
 	return &vitess.ColumnDefinition{
 		Name: vitess.NewColIdent(string(node.Name)),
 		Type: vitess.ColumnType{
-			Type:          typeParams.name,
+			Type:          convertType.Type,
 			Null:          isNull,
 			NotNull:       isNotNull,
 			Autoincrement: vitess.BoolVal(node.IsSerial),
 			Default:       defaultExpr,
-			Length:        typeParams.length,
-			Scale:         typeParams.scale,
+			Length:        convertType.Length,
+			Scale:         convertType.Scale,
 			KeyOpt:        keyOpt,
 			ForeignKeyDef: fkDef,
 			GeneratedExpr: generated,
