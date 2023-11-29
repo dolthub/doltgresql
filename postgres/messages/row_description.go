@@ -175,7 +175,7 @@ func VitessFieldToDataTypeObjectID(field *query.Field) (int32, error) {
 	case query.Type_DATE:
 		return 1082, nil
 	default:
-		return 0, fmt.Errorf("unsupported type returned from engine")
+		return 0, fmt.Errorf("unsupported type returned from engine: %s", field.Type)
 	}
 }
 
@@ -211,8 +211,8 @@ func VitessFieldToDataTypeSize(field *query.Field) (int16, error) {
 	case query.Type_DATE:
 		return 4, nil
 	default:
-		return 0, fmt.Errorf("unsupported type returned from engine")
-	}
+		return 0, fmt.Errorf("unsupported type returned from engine: %s", field.Type)
+	}	
 }
 
 // VitessFieldToDataTypeModifier returns the field's data type modifier as defined by Postgres.
@@ -256,6 +256,6 @@ func VitessFieldToDataTypeModifier(field *query.Field) (int32, error) {
 	case query.Type_DATE:
 		return -1, nil
 	default:
-		return 0, fmt.Errorf("unsupported type returned from engine")
+		return 0, fmt.Errorf("unsupported type returned from engine: %s", field.Type)
 	}
 }
