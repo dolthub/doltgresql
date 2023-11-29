@@ -1,0 +1,11 @@
+SET TRANSACTION $transaction_mode$ [ , ... ]
+
+SET TRANSACTION SNAPSHOT $snapshot_id$
+
+SET SESSION CHARACTERISTICS AS TRANSACTION $transaction_mode$ [ , ... ]
+
+where $transaction_mode$ is:
+
+ISOLATION LEVEL { SERIALIZABLE | REPEATABLE READ | READ COMMITTED | READ UNCOMMITTED } |
+    READ WRITE | READ ONLY |
+    [ NOT ] DEFERRABLE

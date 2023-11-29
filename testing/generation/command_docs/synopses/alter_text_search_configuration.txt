@@ -1,0 +1,20 @@
+ALTER TEXT SEARCH CONFIGURATION $name$
+    ADD MAPPING FOR $token_type$ [ , ... ] WITH $dictionary_name$ [ , ... ]
+
+ALTER TEXT SEARCH CONFIGURATION $name$
+    ALTER MAPPING FOR $token_type$ [ , ... ] WITH $dictionary_name$ [ , ... ]
+
+ALTER TEXT SEARCH CONFIGURATION $name$
+    ALTER MAPPING REPLACE $old_dictionary$ WITH $new_dictionary$
+
+ALTER TEXT SEARCH CONFIGURATION $name$
+    ALTER MAPPING FOR $token_type$ [ , ... ] REPLACE $old_dictionary$ WITH $new_dictionary$
+
+ALTER TEXT SEARCH CONFIGURATION $name$
+    DROP MAPPING [ IF EXISTS ] FOR $token_type$ [ , ... ]
+
+ALTER TEXT SEARCH CONFIGURATION $name$ RENAME TO $new_name$
+
+ALTER TEXT SEARCH CONFIGURATION $name$ OWNER TO { $new_owner$ | CURRENT_ROLE | CURRENT_USER | SESSION_USER }
+
+ALTER TEXT SEARCH CONFIGURATION $name$ SET SCHEMA $new_schema$

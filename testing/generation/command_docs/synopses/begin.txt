@@ -1,0 +1,7 @@
+BEGIN [ WORK | TRANSACTION ] [ $transaction_mode$ [ , ... ] ]
+
+where $transaction_mode$ is:
+
+ISOLATION LEVEL { SERIALIZABLE | REPEATABLE READ | READ COMMITTED | READ UNCOMMITTED } |
+    READ WRITE | READ ONLY |
+    [ NOT ] DEFERRABLE

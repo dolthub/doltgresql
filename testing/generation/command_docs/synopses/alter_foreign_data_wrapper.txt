@@ -1,0 +1,8 @@
+ALTER FOREIGN DATA WRAPPER $name$
+    [ HANDLER $handler_function$ | NO HANDLER ]
+    [ VALIDATOR $validator_function$ | NO VALIDATOR ]
+    [ OPTIONS ( [ ADD | SET | DROP ] $option$ ['$value$'] [ , ... ]) ]
+
+ALTER FOREIGN DATA WRAPPER $name$ OWNER TO { $new_owner$ | CURRENT_ROLE | CURRENT_USER | SESSION_USER }
+
+ALTER FOREIGN DATA WRAPPER $name$ RENAME TO $new_name$

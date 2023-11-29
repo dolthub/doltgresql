@@ -1,0 +1,87 @@
+GRANT { { SELECT | INSERT | UPDATE | DELETE | TRUNCATE | REFERENCES | TRIGGER }
+    [ , ... ] | ALL [ PRIVILEGES ] }
+    ON { [ TABLE ] $table_name$ [ , ... ]
+    | ALL TABLES IN SCHEMA $schema_name$ [ , ... ] }
+    TO $role_specification$ [ , ... ] [ WITH GRANT OPTION ]
+    [ GRANTED BY $role_specification$ ]
+
+GRANT { { SELECT | INSERT | UPDATE | REFERENCES } ( $column_name$ [ , ... ] )
+    [ , ... ] | ALL [ PRIVILEGES ] ( $column_name$ [ , ... ] ) }
+    ON [ TABLE ] $table_name$ [ , ... ]
+    TO $role_specification$ [ , ... ] [ WITH GRANT OPTION ]
+    [ GRANTED BY $role_specification$ ]
+
+GRANT { { USAGE | SELECT | UPDATE }
+    [ , ... ] | ALL [ PRIVILEGES ] }
+    ON { SEQUENCE $sequence_name$ [ , ... ]
+    | ALL SEQUENCES IN SCHEMA $schema_name$ [ , ... ] }
+    TO $role_specification$ [ , ... ] [ WITH GRANT OPTION ]
+    [ GRANTED BY $role_specification$ ]
+
+GRANT { { CREATE | CONNECT | TEMPORARY | TEMP } [ , ... ] | ALL [ PRIVILEGES ] }
+    ON DATABASE $database_name$ [ , ... ]
+    TO $role_specification$ [ , ... ] [ WITH GRANT OPTION ]
+    [ GRANTED BY $role_specification$ ]
+
+GRANT { USAGE | ALL [ PRIVILEGES ] }
+    ON DOMAIN $domain_name$ [ , ... ]
+    TO $role_specification$ [ , ... ] [ WITH GRANT OPTION ]
+    [ GRANTED BY $role_specification$ ]
+
+GRANT { USAGE | ALL [ PRIVILEGES ] }
+    ON FOREIGN DATA WRAPPER $fdw_name$ [ , ... ]
+    TO $role_specification$ [ , ... ] [ WITH GRANT OPTION ]
+    [ GRANTED BY $role_specification$ ]
+
+GRANT { USAGE | ALL [ PRIVILEGES ] }
+    ON FOREIGN SERVER $server_name$ [ , ... ]
+    TO $role_specification$ [ , ... ] [ WITH GRANT OPTION ]
+    [ GRANTED BY $role_specification$ ]
+
+GRANT { EXECUTE | ALL [ PRIVILEGES ] }
+    ON { { FUNCTION | PROCEDURE | ROUTINE } $routine_name$ [ ( [ [ $argmode$ ] [ $arg_name$ ] $arg_type$ [ , ... ] ] ) ] [ , ... ]
+    | ALL { FUNCTIONS | PROCEDURES | ROUTINES } IN SCHEMA $schema_name$ [ , ... ] }
+    TO $role_specification$ [ , ... ] [ WITH GRANT OPTION ]
+    [ GRANTED BY $role_specification$ ]
+
+GRANT { USAGE | ALL [ PRIVILEGES ] }
+    ON LANGUAGE $lang_name$ [ , ... ]
+    TO $role_specification$ [ , ... ] [ WITH GRANT OPTION ]
+    [ GRANTED BY $role_specification$ ]
+
+GRANT { { SELECT | UPDATE } [ , ... ] | ALL [ PRIVILEGES ] }
+    ON LARGE OBJECT $loid$ [ , ... ]
+    TO $role_specification$ [ , ... ] [ WITH GRANT OPTION ]
+    [ GRANTED BY $role_specification$ ]
+
+GRANT { { SET | ALTER SYSTEM } [ , ... ] | ALL [ PRIVILEGES ] }
+    ON PARAMETER $configuration_parameter$ [ , ... ]
+    TO $role_specification$ [ , ... ] [ WITH GRANT OPTION ]
+    [ GRANTED BY $role_specification$ ]
+
+GRANT { { CREATE | USAGE } [ , ... ] | ALL [ PRIVILEGES ] }
+    ON SCHEMA $schema_name$ [ , ... ]
+    TO $role_specification$ [ , ... ] [ WITH GRANT OPTION ]
+    [ GRANTED BY $role_specification$ ]
+
+GRANT { CREATE | ALL [ PRIVILEGES ] }
+    ON TABLESPACE $tablespace_name$ [ , ... ]
+    TO $role_specification$ [ , ... ] [ WITH GRANT OPTION ]
+    [ GRANTED BY $role_specification$ ]
+
+GRANT { USAGE | ALL [ PRIVILEGES ] }
+    ON TYPE $type_name$ [ , ... ]
+    TO $role_specification$ [ , ... ] [ WITH GRANT OPTION ]
+    [ GRANTED BY $role_specification$ ]
+
+GRANT $role_name$ [ , ... ] TO $role_specification$ [ , ... ]
+    [ WITH ADMIN OPTION ]
+    [ GRANTED BY $role_specification$ ]
+
+where $role_specification$ is:
+
+[ GROUP ] $role_name$ |
+    PUBLIC |
+    CURRENT_ROLE |
+    CURRENT_USER |
+    SESSION_USER

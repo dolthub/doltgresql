@@ -1,0 +1,3 @@
+CREATE ACCESS METHOD $name$
+    TYPE $access_method_type$
+    HANDLER $handler_function$

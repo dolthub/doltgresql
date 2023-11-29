@@ -1,0 +1,18 @@
+MOVE [ $direction$ ] [ FROM | IN ] $cursor_name$
+
+where $direction$ is:
+
+NEXT
+    PRIOR |
+    FIRST |
+    LAST |
+    ABSOLUTE $count$ |
+    RELATIVE $count$ |
+    $count$ |
+    ALL |
+    FORWARD |
+    FORWARD $count$ |
+    FORWARD ALL |
+    BACKWARD |
+    BACKWARD $count$ |
+    BACKWARD ALL

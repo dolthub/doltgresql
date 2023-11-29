@@ -1,0 +1,1 @@
+PREPARE TRANSACTION $transaction_id$

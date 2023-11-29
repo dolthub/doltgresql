@@ -1,0 +1,10 @@
+ALTER OPERATOR $name$ ( { $left_type$ | NONE } , $right_type$ )
+    OWNER TO { $new_owner$ | CURRENT_ROLE | CURRENT_USER | SESSION_USER }
+
+ALTER OPERATOR $name$ ( { $left_type$ | NONE } , $right_type$ )
+    SET SCHEMA $new_schema$
+
+ALTER OPERATOR $name$ ( { $left_type$ | NONE } , $right_type$ )
+    SET ( { RESTRICT = { $res_proc$ | NONE }
+    | JOIN = { $join_proc$ | NONE }
+    } [ , ... ] )

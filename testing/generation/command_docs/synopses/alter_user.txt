@@ -1,0 +1,31 @@
+ALTER USER $role_specification$ [ WITH ] $option$ [ ... ]
+
+ALTER USER $name$ RENAME TO $new_name$
+
+ALTER USER { $role_specification$ | ALL } [ IN DATABASE $database_name$ ] SET $configuration_parameter$ { TO | = } { $value$ | DEFAULT }
+
+ALTER USER { $role_specification$ | ALL } [ IN DATABASE $database_name$ ] SET $configuration_parameter$ FROM CURRENT
+
+ALTER USER { $role_specification$ | ALL } [ IN DATABASE $database_name$ ] RESET $configuration_parameter$
+
+ALTER USER { $role_specification$ | ALL } [ IN DATABASE $database_name$ ] RESET ALL
+
+where $option$ is:
+
+SUPERUSER | NOSUPERUSER |
+    CREATEDB | NOCREATEDB |
+    CREATEROLE | NOCREATEROLE |
+    INHERIT | NOINHERIT |
+    LOGIN | NOLOGIN |
+    REPLICATION | NOREPLICATION |
+    BYPASSRLS | NOBYPASSRLS |
+    CONNECTION LIMIT $connlimit$ |
+    [ ENCRYPTED ] PASSWORD '$password$' | PASSWORD NULL |
+    VALID UNTIL '$timestamp$'
+
+where $role_specification$ is:
+
+$role_name$ |
+    CURRENT_ROLE |
+    CURRENT_USER |
+    SESSION_USER

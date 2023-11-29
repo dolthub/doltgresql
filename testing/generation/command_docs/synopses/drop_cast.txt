@@ -1,0 +1,1 @@
+DROP CAST [ IF EXISTS ] ($source_type$ AS $target_type$) [ CASCADE | RESTRICT ]

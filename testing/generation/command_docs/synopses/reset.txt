@@ -1,0 +1,3 @@
+RESET $configuration_parameter$
+
+RESET ALL

@@ -3,6 +3,7 @@ module github.com/dolthub/doltgresql
 go 1.21
 
 require (
+	github.com/PuerkitoBio/goquery v1.8.1
 	github.com/cockroachdb/apd/v2 v2.0.3-0.20200518165714-d020e156310a
 	github.com/cockroachdb/errors v1.7.5
 	github.com/dolthub/dolt/go v0.40.5-0.20231114163244-0cc42b844045
@@ -19,6 +20,7 @@ require (
 	github.com/lib/pq v1.10.2
 	github.com/madflojo/testcerts v1.1.1
 	github.com/pierrre/geohash v1.0.0
+	github.com/sirupsen/logrus v1.8.1
 	github.com/stretchr/testify v1.8.2
 	github.com/tidwall/gjson v1.14.4
 	github.com/twpayne/go-geom v1.3.6
@@ -36,6 +38,7 @@ require (
 	github.com/abiosoft/readline v0.0.0-20180607040430-155bce2042db // indirect
 	github.com/aliyun/aliyun-oss-go-sdk v2.2.5+incompatible // indirect
 	github.com/andreyvit/diff v0.0.0-20170406064948-c7f18ee00883 // indirect
+	github.com/andybalholm/cascadia v1.3.1 // indirect
 	github.com/apache/thrift v0.13.1-0.20201008052519-daf620915714 // indirect
 	github.com/aws/aws-sdk-go v1.34.0 // indirect
 	github.com/bcicen/jstream v1.0.0 // indirect
@@ -109,7 +112,6 @@ require (
 	github.com/sergi/go-diff v1.1.0 // indirect
 	github.com/shopspring/decimal v1.2.0 // indirect
 	github.com/silvasur/buzhash v0.0.0-20160816060738-9bdec3dec7c6 // indirect
-	github.com/sirupsen/logrus v1.8.1 // indirect
 	github.com/skratchdot/open-golang v0.0.0-20200116055534-eef842397966 // indirect
 	github.com/tealeg/xlsx v1.0.5 // indirect
 	github.com/tetratelabs/wazero v1.1.0 // indirect

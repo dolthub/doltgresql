@@ -1,0 +1,1 @@
+DROP RULE [ IF EXISTS ] $name$ ON $table_name$ [ CASCADE | RESTRICT ]

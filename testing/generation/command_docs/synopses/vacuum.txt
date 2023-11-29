@@ -1,0 +1,20 @@
+VACUUM [ ( $option$ [ , ... ] ) ] [ $table_and_columns$ [ , ... ] ]
+
+VACUUM [ FULL ] [ FREEZE ] [ VERBOSE ] [ ANALYZE ] [ $table_and_columns$ [ , ... ] ]
+
+where $option$ is:
+
+FULL [ $boolean$ ] |
+    FREEZE [ $boolean$ ] |
+    VERBOSE [ $boolean$ ] |
+    ANALYZE [ $boolean$ ] |
+    DISABLE_PAGE_SKIPPING [ $boolean$ ] |
+    SKIP_LOCKED [ $boolean$ ] |
+    INDEX_CLEANUP { AUTO | ON | OFF } |
+    PROCESS_TOAST [ $boolean$ ] |
+    TRUNCATE [ $boolean$ ] |
+    PARALLEL $integer$
+
+where $table_and_columns$ is:
+
+$table_name$ [ ( $column_name$ [ , ... ] ) ]

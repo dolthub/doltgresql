@@ -1,0 +1,4 @@
+CREATE [ OR REPLACE ] [ TRUSTED ] [ PROCEDURAL ] LANGUAGE $name$
+    HANDLER $call_handler$ [ INLINE $inline_handler$ ] [ VALIDATOR $valfunction$ ]
+
+CREATE [ OR REPLACE ] [ TRUSTED ] [ PROCEDURAL ] LANGUAGE $name$

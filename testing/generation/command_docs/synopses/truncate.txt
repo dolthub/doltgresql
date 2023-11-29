@@ -1,0 +1,2 @@
+TRUNCATE [ TABLE ] [ ONLY ] $name$ [ * ] [ , ... ]
+    [ RESTART IDENTITY | CONTINUE IDENTITY ] [ CASCADE | RESTRICT ]
