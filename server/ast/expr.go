@@ -215,7 +215,15 @@ func nodeExpr(node tree.Expr) (vitess.Expr, error) {
 			},
 		}, nil
 	case *tree.CoalesceExpr:
-		return nil, fmt.Errorf("COALESCE is not yet supported")
+		exprs, err := nodeExprsToSelectExprs(node.Exprs)
+		if err != nil {
+			return nil, err
+		}
+		
+		return &vitess.FuncExpr{
+			Name:  vitess.NewColIdent("COALESCE"),
+			Exprs: exprs,
+		}, nil
 	case *tree.CollateExpr:
 		return nil, fmt.Errorf("collations are not yet supported")
 	case *tree.ColumnAccessExpr:
