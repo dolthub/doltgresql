@@ -51,6 +51,8 @@ func nodeTableExpr(node tree.TableExpr) (vitess.TableExpr, error) {
 			for i := range treeCondition.Cols {
 				condition.Using[i] = vitess.NewColIdent(string(treeCondition.Cols[i]))
 			}
+		case nil:
+			// cross join (no join condition)
 		default:
 			return nil, fmt.Errorf("unknown JOIN condition: `%T`", treeCondition)
 		}
@@ -70,10 +72,7 @@ func nodeTableExpr(node tree.TableExpr) (vitess.TableExpr, error) {
 			} else {
 				joinType = vitess.RightJoinStr
 			}
-		case tree.AstCross:
-			// GMS doesn't have any support for CROSS joins, as MySQL doesn't actually implement them
-			return nil, fmt.Errorf("CROSS joins are not yet supported")
-		case tree.AstInner:
+		case tree.AstCross, tree.AstInner:
 			joinType = vitess.JoinStr
 		case "":
 			if condition.On == nil && len(condition.Using) == 0 {
