@@ -413,36 +413,19 @@ func nodeExpr(node tree.Expr) (vitess.Expr, error) {
 			Expr: expr,
 		}, nil
 	case *tree.NullIfExpr:
-		expr1, err := nodeExpr(node.Expr1)
+		expr1, err := nodeExprToSelectExpr(node.Expr1)
 		if err != nil {
 			return nil, err
 		}
 
-		expr2, err := nodeExpr(node.Expr2)
+		expr2, err := nodeExprToSelectExpr(node.Expr2)
 		if err != nil {
 			return nil, err
 		}
 
-		selectExpr1, err := nodeExprToSelectExpr(node.Expr1)
-		if err != nil {
-			return nil, err
-		}
-		
 		return &vitess.FuncExpr{
-			Name:      vitess.NewColIdent("IF"),
-			Exprs:     vitess.SelectExprs{
-				&vitess.AliasedExpr{
-					Expr: &vitess.ComparisonExpr{
-						Operator: vitess.EqualStr,
-						Left:     expr1,
-						Right:    expr2,
-					},
-				},
-				&vitess.AliasedExpr{
-					Expr: &vitess.NullVal{},	
-				},
-				selectExpr1,
-			},
+			Name:      vitess.NewColIdent("NULLIF"),
+			Exprs:     vitess.SelectExprs{expr1, expr2},
 		}, nil
 	case tree.NullLiteral:
 		return &vitess.NullVal{}, nil
