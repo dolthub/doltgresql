@@ -1,0 +1,9 @@
+CLUSTER [ VERBOSE ] $table_name$ [ USING $index_name$ ]
+
+CLUSTER ( $option$ [ , ... ] ) $table_name$ [ USING $index_name$ ]
+
+CLUSTER [ VERBOSE ]
+
+where $option$ is:
+
+VERBOSE [ $boolean$ ]

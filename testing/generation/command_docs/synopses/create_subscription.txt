@@ -1,0 +1,4 @@
+CREATE SUBSCRIPTION $subscription_name$
+    CONNECTION '$conninfo$'
+    PUBLICATION $publication_name$ [ , ... ]
+    [ WITH ( $subscription_parameter$ [= $value$] [ , ... ] ) ]

@@ -1,0 +1,1 @@
+DROP STATISTICS [ IF EXISTS ] $name$ [ , ... ] [ CASCADE | RESTRICT ]

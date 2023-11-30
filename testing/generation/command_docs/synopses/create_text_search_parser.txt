@@ -1,0 +1,6 @@
+CREATE TEXT SEARCH PARSER $name$ (
+    START = $start_function$ ,
+    GETTOKEN = $gettoken_function$ ,
+    END = $end_function$ ,
+    LEXTYPES = $lextypes_function$
+    [, HEADLINE = $headline_function$ ] )

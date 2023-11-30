@@ -1,0 +1,8 @@
+ALTER OPERATOR CLASS $name$ USING $index_method$
+    RENAME TO $new_name$
+
+ALTER OPERATOR CLASS $name$ USING $index_method$
+    OWNER TO { $new_owner$ | CURRENT_ROLE | CURRENT_USER | SESSION_USER }
+
+ALTER OPERATOR CLASS $name$ USING $index_method$
+    SET SCHEMA $new_schema$

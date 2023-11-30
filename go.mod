@@ -3,6 +3,7 @@ module github.com/dolthub/doltgresql
 go 1.21
 
 require (
+	github.com/PuerkitoBio/goquery v1.8.1
 	github.com/cockroachdb/apd/v2 v2.0.3-0.20200518165714-d020e156310a
 	github.com/cockroachdb/errors v1.7.5
 	github.com/dolthub/dolt/go v0.40.5-0.20231130221002-0d5eeb513092
@@ -37,6 +38,7 @@ require (
 	github.com/abiosoft/readline v0.0.0-20180607040430-155bce2042db // indirect
 	github.com/aliyun/aliyun-oss-go-sdk v2.2.5+incompatible // indirect
 	github.com/andreyvit/diff v0.0.0-20170406064948-c7f18ee00883 // indirect
+	github.com/andybalholm/cascadia v1.3.1 // indirect
 	github.com/apache/thrift v0.13.1-0.20201008052519-daf620915714 // indirect
 	github.com/aws/aws-sdk-go v1.34.0 // indirect
 	github.com/bcicen/jstream v1.0.0 // indirect

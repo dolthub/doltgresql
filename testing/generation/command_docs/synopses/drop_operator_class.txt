@@ -1,0 +1,1 @@
+DROP OPERATOR CLASS [ IF EXISTS ] $name$ USING $index_method$ [ CASCADE | RESTRICT ]

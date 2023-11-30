@@ -1,0 +1,8 @@
+CREATE STATISTICS [ IF NOT EXISTS ] $statistics_name$
+    ON ( $expression$ )
+    FROM $table_name$
+
+CREATE STATISTICS [ IF NOT EXISTS ] $statistics_name$
+    [ ( $statistics_kind$ [ , ... ] ) ]
+    ON { $column_name$ | ( $expression$ ) }, { $column_name$ | ( $expression$ ) } [ , ... ]
+    FROM $table_name$

@@ -1,0 +1,12 @@
+ALTER GROUP $role_specification$ ADD USER $user_name$ [ , ... ]
+
+ALTER GROUP $role_specification$ DROP USER $user_name$ [ , ... ]
+
+ALTER GROUP $group_name$ RENAME TO $new_name$
+
+where $role_specification$ is:
+
+$role_name$ |
+    CURRENT_ROLE |
+    CURRENT_USER |
+    SESSION_USER

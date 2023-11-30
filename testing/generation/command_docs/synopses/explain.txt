@@ -1,0 +1,15 @@
+EXPLAIN [ ( $option$ [ , ... ] ) ] $statement$
+
+EXPLAIN [ ANALYZE ] [ VERBOSE ] $statement$
+
+where $option$ is:
+
+ANALYZE [ $boolean$ ] |
+    VERBOSE [ $boolean$ ] |
+    COSTS [ $boolean$ ] |
+    SETTINGS [ $boolean$ ] |
+    BUFFERS [ $boolean$ ] |
+    WAL [ $boolean$ ] |
+    TIMING [ $boolean$ ] |
+    SUMMARY [ $boolean$ ] |
+    FORMAT { TEXT | XML | JSON | YAML }

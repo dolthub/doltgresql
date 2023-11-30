@@ -1,0 +1,1 @@
+ALTER LARGE OBJECT $large_object_oid$ OWNER TO { $new_owner$ | CURRENT_ROLE | CURRENT_USER | SESSION_USER }

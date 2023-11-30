@@ -1,0 +1,20 @@
+ALTER OPERATOR FAMILY $name$ USING $index_method$ ADD
+    { OPERATOR $strategy_number$ $operator_name$ ( $op_type$, $op_type$ )
+    [ FOR SEARCH | FOR ORDER BY $sort_family_name$ ]
+    | FUNCTION $support_number$ [ ( $op_type$ [ , $op_type$ ] ) ]
+    $function_name$ [ ( $argument_type$ [ , ... ] ) ]
+    } [ , ... ]
+
+ALTER OPERATOR FAMILY $name$ USING $index_method$ DROP
+    { OPERATOR $strategy_number$ ( $op_type$ [ , $op_type$ ] )
+    | FUNCTION $support_number$ ( $op_type$ [ , $op_type$ ] )
+    } [ , ... ]
+
+ALTER OPERATOR FAMILY $name$ USING $index_method$
+    RENAME TO $new_name$
+
+ALTER OPERATOR FAMILY $name$ USING $index_method$
+    OWNER TO { $new_owner$ | CURRENT_ROLE | CURRENT_USER | SESSION_USER }
+
+ALTER OPERATOR FAMILY $name$ USING $index_method$
+    SET SCHEMA $new_schema$

@@ -1,0 +1,1 @@
+CLOSE { $name$ | ALL }

@@ -1,0 +1,29 @@
+ALTER FUNCTION $name$ [ ( [ [ $argmode$ ] [ $argname$ ] $argtype$ [ , ... ] ] ) ]
+    $action$ [ ... ] [ RESTRICT ]
+
+ALTER FUNCTION $name$ [ ( [ [ $argmode$ ] [ $argname$ ] $argtype$ [ , ... ] ] ) ]
+    RENAME TO $new_name$
+
+ALTER FUNCTION $name$ [ ( [ [ $argmode$ ] [ $argname$ ] $argtype$ [ , ... ] ] ) ]
+    OWNER TO { $new_owner$ | CURRENT_ROLE | CURRENT_USER | SESSION_USER }
+
+ALTER FUNCTION $name$ [ ( [ [ $argmode$ ] [ $argname$ ] $argtype$ [ , ... ] ] ) ]
+    SET SCHEMA $new_schema$
+
+ALTER FUNCTION $name$ [ ( [ [ $argmode$ ] [ $argname$ ] $argtype$ [ , ... ] ] ) ]
+    [ NO ] DEPENDS ON EXTENSION $extension_name$
+
+where $action$ is:
+
+CALLED ON NULL INPUT | RETURNS NULL ON NULL INPUT | STRICT |
+    IMMUTABLE | STABLE | VOLATILE |
+    [ NOT ] LEAKPROOF |
+    [ EXTERNAL ] SECURITY INVOKER | [ EXTERNAL ] SECURITY DEFINER |
+    PARALLEL { UNSAFE | RESTRICTED | SAFE } |
+    COST $execution_cost$ |
+    ROWS $result_rows$ |
+    SUPPORT $support_function$ |
+    SET $configuration_parameter$ { TO | = } { $value$ | DEFAULT } |
+    SET $configuration_parameter$ FROM CURRENT |
+    RESET $configuration_parameter$ |
+    RESET ALL
