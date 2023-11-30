@@ -219,7 +219,7 @@ func nodeExpr(node tree.Expr) (vitess.Expr, error) {
 		if err != nil {
 			return nil, err
 		}
-		
+
 		return &vitess.FuncExpr{
 			Name:  vitess.NewColIdent("COALESCE"),
 			Exprs: exprs,
@@ -424,8 +424,8 @@ func nodeExpr(node tree.Expr) (vitess.Expr, error) {
 		}
 
 		return &vitess.FuncExpr{
-			Name:      vitess.NewColIdent("NULLIF"),
-			Exprs:     vitess.SelectExprs{expr1, expr2},
+			Name:  vitess.NewColIdent("NULLIF"),
+			Exprs: vitess.SelectExprs{expr1, expr2},
 		}, nil
 	case tree.NullLiteral:
 		return &vitess.NullVal{}, nil

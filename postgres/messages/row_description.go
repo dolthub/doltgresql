@@ -216,7 +216,7 @@ func VitessFieldToDataTypeSize(field *query.Field) (int16, error) {
 		return -1, nil // NULL is treated as TEXT on the wire
 	default:
 		return 0, fmt.Errorf("unsupported type returned from engine: %s", field.Type)
-	}	
+	}
 }
 
 // VitessFieldToDataTypeModifier returns the field's data type modifier as defined by Postgres.
