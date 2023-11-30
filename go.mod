@@ -5,10 +5,10 @@ go 1.21
 require (
 	github.com/cockroachdb/apd/v2 v2.0.3-0.20200518165714-d020e156310a
 	github.com/cockroachdb/errors v1.7.5
-	github.com/dolthub/dolt/go v0.40.5-0.20231114163244-0cc42b844045
-	github.com/dolthub/go-mysql-server v0.17.1-0.20231113191556-2da061871eb8
+	github.com/dolthub/dolt/go v0.40.5-0.20231130221002-0d5eeb513092
+	github.com/dolthub/go-mysql-server v0.17.1-0.20231130181846-c0a0060c4fe7
 	github.com/dolthub/sqllogictest/go v0.0.0-20201107003712-816f3ae12d81
-	github.com/dolthub/vitess v0.0.0-20231109003730-c0fa018b5ef6
+	github.com/dolthub/vitess v0.0.0-20231127171856-2466012fb61f
 	github.com/fatih/color v1.13.0
 	github.com/gogo/protobuf v1.3.2
 	github.com/golang/geo v0.0.0-20200730024412-e86565bf3f35
@@ -19,6 +19,7 @@ require (
 	github.com/lib/pq v1.10.2
 	github.com/madflojo/testcerts v1.1.1
 	github.com/pierrre/geohash v1.0.0
+	github.com/sirupsen/logrus v1.8.1
 	github.com/stretchr/testify v1.8.2
 	github.com/tidwall/gjson v1.14.4
 	github.com/twpayne/go-geom v1.3.6
@@ -109,7 +110,6 @@ require (
 	github.com/sergi/go-diff v1.1.0 // indirect
 	github.com/shopspring/decimal v1.2.0 // indirect
 	github.com/silvasur/buzhash v0.0.0-20160816060738-9bdec3dec7c6 // indirect
-	github.com/sirupsen/logrus v1.8.1 // indirect
 	github.com/skratchdot/open-golang v0.0.0-20200116055534-eef842397966 // indirect
 	github.com/tealeg/xlsx v1.0.5 // indirect
 	github.com/tetratelabs/wazero v1.1.0 // indirect
