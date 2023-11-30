@@ -15,8 +15,8 @@
 package main
 
 import (
-	"errors"
 	"fmt"
+	"math/big"
 	"strings"
 )
 
@@ -37,6 +37,8 @@ type StatementGenerator interface {
 	Reset()
 	// SourceString returns a string that may be used to recreate the StatementGenerator in a Go source file.
 	SourceString() string
+	// Permutations returns the number of unique permutations that the generator can return.
+	Permutations() *big.Int
 }
 
 // TextGen is a generator that returns a simple string.
@@ -81,6 +83,11 @@ func (t *TextGen) SourceString() string {
 	return fmt.Sprintf(`Text("%s")`, string(*t))
 }
 
+// Permutations implements the interface StatementGenerator.
+func (t *TextGen) Permutations() *big.Int {
+	return big.NewInt(1)
+}
+
 // OrGen is a generator that contains multiple child generators, and will print only one at a time. Consuming will
 // cycle to the next child.
 type OrGen struct {
@@ -100,7 +107,7 @@ func Or(children ...StatementGenerator) *OrGen {
 
 // AddChildren implements the interface StatementGenerator.
 func (o *OrGen) AddChildren(children ...StatementGenerator) error {
-	o.children = append(o.children, removeNilGenerators(children)...)
+	o.children = append(o.children, copyGenerators(children)...)
 	return nil
 }
 
@@ -146,20 +153,36 @@ func (o *OrGen) SourceString() string {
 	return fmt.Sprintf(`Or(%s)`, sourceGenerators(o.children))
 }
 
+// Permutations implements the interface StatementGenerator.
+func (o *OrGen) Permutations() *big.Int {
+	sum := big.NewInt(0)
+	for _, child := range o.children {
+		sum.Add(sum, child.Permutations())
+	}
+	return sum
+}
+
 // VariableGen represents a variable in the synopsis. Its values are user-configurable if they cannot be deduced from
 // the synopsis.
 type VariableGen struct {
 	name    string
-	options *OrGen
+	options StatementGenerator
 }
 
 var _ StatementGenerator = (*VariableGen)(nil)
 
 // Variable creates a new StatementGenerator representing a VariableGen.
-func Variable(name string, children ...StatementGenerator) *VariableGen {
-	return &VariableGen{
-		name:    name,
-		options: Or(children...),
+func Variable(name string, child StatementGenerator) *VariableGen {
+	if child != nil {
+		return &VariableGen{
+			name:    name,
+			options: child.Copy(),
+		}
+	} else {
+		return &VariableGen{
+			name:    name,
+			options: nil,
+		}
 	}
 }
 
@@ -175,11 +198,7 @@ func (v *VariableGen) AddChildren(children ...StatementGenerator) error {
 	if v.options != nil {
 		return fmt.Errorf("variable `%s` has already been assigned", v.name)
 	}
-	orChild, ok := children[0].(*OrGen)
-	if !ok {
-		return fmt.Errorf("variable `%s` was given an invalid child type `%T`", v.name, children[0])
-	}
-	v.options = orChild
+	v.options = children[0].Copy()
 	return nil
 }
 
@@ -196,12 +215,12 @@ func (v *VariableGen) Copy() StatementGenerator {
 	if v == nil {
 		return nil
 	}
-	return Variable(v.name, v.options.children...)
+	return Variable(v.name, v.options)
 }
 
 // String implements the interface StatementGenerator.
 func (v *VariableGen) String() string {
-	if len(v.options.children) > 0 {
+	if v.options != nil {
 		return v.options.String()
 	} else {
 		return v.name
@@ -210,15 +229,26 @@ func (v *VariableGen) String() string {
 
 // Reset implements the interface StatementGenerator.
 func (v *VariableGen) Reset() {
-	v.options.Reset()
+	if v.options != nil {
+		v.options.Reset()
+	}
 }
 
 // SourceString implements the interface StatementGenerator.
 func (v *VariableGen) SourceString() string {
-	if len(v.options.children) > 0 {
-		return fmt.Sprintf(`Variable("%s", %s)`, v.name, sourceGenerators(v.options.children))
+	if v.options != nil {
+		return fmt.Sprintf(`Variable("%s", %s)`, v.name, v.options.SourceString())
 	} else {
-		return fmt.Sprintf(`Variable("%s")`, v.name)
+		return fmt.Sprintf(`Variable("%s", nil)`, v.name)
+	}
+}
+
+// Permutations implements the interface StatementGenerator.
+func (v *VariableGen) Permutations() *big.Int {
+	if v.options != nil {
+		return v.options.Permutations()
+	} else {
+		return big.NewInt(1)
 	}
 }
 
@@ -238,7 +268,7 @@ func Collection(children ...StatementGenerator) *CollectionGen {
 
 // AddChildren implements the interface StatementGenerator.
 func (c *CollectionGen) AddChildren(children ...StatementGenerator) error {
-	c.children = append(c.children, removeNilGenerators(children)...)
+	c.children = append(c.children, copyGenerators(children)...)
 	return nil
 }
 
@@ -284,94 +314,17 @@ func (c *CollectionGen) SourceString() string {
 	return fmt.Sprintf(`Collection(%s)`, sourceGenerators(c.children))
 }
 
-// RepeatGen is a generator that will repeat its children up to the limit, starting with no repetition.
-type RepeatGen struct {
-	template *CollectionGen
-	children *CollectionGen
-	start    int
-	current  int
-	limit    int
-}
-
-var _ StatementGenerator = (*RepeatGen)(nil)
-
-// Repeat creates a new StatementGenerator representing a RepeatGen. The start count must be either zero or one, and is
-// bounded to whichever is closest. The limit cannot be less than the start count, and is set to the start count in such
-// cases.
-func Repeat(startCount int, limit int, children ...StatementGenerator) *RepeatGen {
-	if startCount < 0 {
-		startCount = 0
-	} else if startCount > 1 {
-		startCount = 1
+// Permutations implements the interface StatementGenerator.
+func (c *CollectionGen) Permutations() *big.Int {
+	total := big.NewInt(1)
+	zero := big.NewInt(0)
+	for _, child := range c.children {
+		childPermutations := child.Permutations()
+		if childPermutations.Cmp(zero) != 0 {
+			total.Mul(total, child.Permutations())
+		}
 	}
-	if limit < startCount {
-		limit = startCount
-	}
-	repeatGen := &RepeatGen{
-		template: Collection(children...),
-		children: Collection(),
-		start:    startCount,
-		current:  startCount,
-		limit:    limit,
-	}
-	if startCount == 1 {
-		_ = repeatGen.children.AddChildren(children...)
-	}
-	return repeatGen
-}
-
-// AddChildren implements the interface StatementGenerator.
-func (r *RepeatGen) AddChildren(children ...StatementGenerator) error {
-	err1 := r.template.AddChildren(children...)
-	var err2 error
-	if r.start == 1 {
-		err2 = r.children.AddChildren(children...)
-	}
-	return errors.Join(err1, err2)
-}
-
-// Consume implements the interface StatementGenerator.
-func (r *RepeatGen) Consume() bool {
-	if r.children.Consume() {
-		return true
-	}
-	if r.current < r.limit {
-		_ = r.children.AddChildren(r.template.Copy())
-		r.current++
-		return true
-	}
-	return false
-}
-
-// Copy implements the interface StatementGenerator.
-func (r *RepeatGen) Copy() StatementGenerator {
-	if r == nil {
-		return nil
-	}
-	return Repeat(r.start, r.limit, r.template.children...)
-}
-
-// String implements the interface StatementGenerator.
-func (r *RepeatGen) String() string {
-	return r.children.String()
-}
-
-// Reset implements the interface StatementGenerator.
-func (r *RepeatGen) Reset() {
-	r.current = r.start
-	r.children = Collection()
-	if r.start == 1 {
-		_ = r.children.AddChildren(r.template.children...)
-	}
-}
-
-// SourceString implements the interface StatementGenerator.
-func (r *RepeatGen) SourceString() string {
-	if len(r.template.children) > 0 {
-		return fmt.Sprintf(`Repeat(%d, %s)`, r.limit, sourceGenerators(r.template.children))
-	} else {
-		return fmt.Sprintf(`Repeat(%d)`, r.limit)
-	}
+	return total
 }
 
 // OptionalGen is a generator that will toggle between displaying its children and not displaying its children.
@@ -434,6 +387,45 @@ func (o *OptionalGen) Reset() {
 // SourceString implements the interface StatementGenerator.
 func (o *OptionalGen) SourceString() string {
 	return fmt.Sprintf(`Optional(%s)`, sourceGenerators(o.children.children))
+}
+
+// Permutations implements the interface StatementGenerator.
+func (o *OptionalGen) Permutations() *big.Int {
+	return new(big.Int).Add(big.NewInt(1), o.children.Permutations())
+}
+
+// ApplyVariableDefinition applies the given map of variable definitions to the statement generator. This modifies the
+// statement generator, rather than returning a copy.
+func ApplyVariableDefinition(gen StatementGenerator, definitions map[string]StatementGenerator) error {
+	switch gen := gen.(type) {
+	case *CollectionGen:
+		for _, child := range gen.children {
+			if err := ApplyVariableDefinition(child, definitions); err != nil {
+				return err
+			}
+		}
+	case *OptionalGen:
+		if err := ApplyVariableDefinition(gen.children, definitions); err != nil {
+			return err
+		}
+	case *OrGen:
+		for _, child := range gen.children {
+			if err := ApplyVariableDefinition(child, definitions); err != nil {
+				return err
+			}
+		}
+	case *TextGen:
+		// Nothing to do here
+	case *VariableGen:
+		if definition, ok := definitions[gen.name]; ok {
+			if err := gen.AddChildren(definition); err != nil {
+				return err
+			}
+		}
+	default:
+		return fmt.Errorf("unknown generator encountered: %T", gen)
+	}
+	return nil
 }
 
 // copyGenerators returns a full copy of the given slice of generators. Each generator will be in its original state.

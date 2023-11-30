@@ -39,7 +39,7 @@ func NewTokenReader(tokens []Token) *TokenReader {
 // Next returns the next token while advancing the reader. Returns false if there are no more tokens.
 func (reader *TokenReader) Next() (Token, bool) {
 	if reader.index+1 >= len(reader.tokens) {
-		return Token{}, false
+		return Token{Type: TokenType_EOF}, false
 	}
 	reader.index++
 	return reader.tokens[reader.index], true
@@ -48,7 +48,7 @@ func (reader *TokenReader) Next() (Token, bool) {
 // Peek returns the next token. Does not advance the reader. Returns false if there are no more tokens.
 func (reader *TokenReader) Peek() (Token, bool) {
 	if reader.index+1 >= len(reader.tokens) {
-		return Token{}, false
+		return Token{Type: TokenType_EOF}, false
 	}
 	return reader.tokens[reader.index+1], true
 }
@@ -57,7 +57,7 @@ func (reader *TokenReader) Peek() (Token, bool) {
 // if we are peeking beyond the slice.
 func (reader *TokenReader) PeekBy(n int) (Token, bool) {
 	if reader.index+n >= len(reader.tokens) || reader.index+n < 0 {
-		return Token{}, false
+		return Token{Type: TokenType_EOF}, false
 	}
 	return reader.tokens[reader.index+n], true
 }

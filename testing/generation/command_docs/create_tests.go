@@ -55,7 +55,7 @@ const TestFooter = `	}
 `
 
 // GenerateTestsFromSynopses generates a test file in the output directory for each file in the synopses directory.
-func GenerateTestsFromSynopses() (err error) {
+func GenerateTestsFromSynopses(repetitionDisabled ...string) (err error) {
 	parentFolder, err := GetCommandDocsFolder()
 	if err != nil {
 		return err
@@ -114,7 +114,14 @@ FileLoop:
 			err = errors.Join(err, errors.New(sb.String()))
 			continue FileLoop
 		}
-		stmtGen, nErr := ParseTokens(tokens)
+		includeRepetition := len(repetitionDisabled) == 0 || repetitionDisabled[0] != "*"
+		for _, bans := range repetitionDisabled {
+			if strings.ToLower(bans) == strings.ToLower(prefix) {
+				includeRepetition = false
+				break
+			}
+		}
+		stmtGen, nErr := ParseTokens(tokens, includeRepetition)
 		if nErr != nil {
 			err = errors.Join(err, nErr)
 			continue FileLoop
@@ -148,9 +155,11 @@ FileLoop:
 }
 
 // ParseTokens parses the given tokens into a StatementGenerator.
-func ParseTokens(tokens []Token) (StatementGenerator, error) {
+func ParseTokens(tokens []Token, includeRepetition bool) (StatementGenerator, error) {
 	stack := NewStatementGeneratorStack()
 	var statements []StatementGenerator
+	variables := make(map[string]StatementGenerator)
+	currentVariable := ""
 	tokenReader := NewTokenReader(tokens)
 ForLoop:
 	for {
@@ -164,27 +173,25 @@ ForLoop:
 		case TokenType_Variable:
 			stack.AddVariable(token.Literal)
 		case TokenType_VariableDefinition:
-			//TODO: implement variable definitions
-			break ForLoop
+			currentVariable = token.Literal
+			if token, _ = tokenReader.Next(); token.Type != TokenType_LongSpace {
+				return nil, fmt.Errorf("expected a long space after a variable definition declaration")
+			}
 		case TokenType_Or:
 			if err := stack.Or(); err != nil {
 				return nil, err
 			}
 		case TokenType_Repeat:
-			if err := stack.Repeat(false); err != nil {
-				return nil, err
-			}
-		case TokenType_CommaRepeat:
-			if err := stack.Repeat(true); err != nil {
-				return nil, err
+			if includeRepetition {
+				if err := stack.Repeat(); err != nil {
+					return nil, err
+				}
 			}
 		case TokenType_OptionalRepeat:
-			if err := stack.OptionalRepeat(false); err != nil {
-				return nil, err
-			}
-		case TokenType_OptionalCommaRepeat:
-			if err := stack.OptionalRepeat(true); err != nil {
-				return nil, err
+			if includeRepetition {
+				if err := stack.OptionalRepeat(token.Literal); err != nil {
+					return nil, err
+				}
 			}
 		case TokenType_ShortSpace, TokenType_MediumSpace:
 			return nil, fmt.Errorf("token reader should have removed all short and medium spaces")
@@ -196,7 +203,15 @@ ForLoop:
 			if newStatement == nil {
 				return nil, fmt.Errorf("long space encountered before writing to the stack")
 			}
-			statements = append(statements, newStatement)
+			if len(currentVariable) > 0 {
+				if _, ok = variables[currentVariable]; ok {
+					return nil, fmt.Errorf("multiple definitions for the same variable: %s", currentVariable)
+				}
+				variables[currentVariable] = newStatement
+				currentVariable = ""
+			} else {
+				statements = append(statements, newStatement)
+			}
 			if token.Type == TokenType_EOF {
 				break ForLoop
 			} else {
@@ -233,11 +248,17 @@ ForLoop:
 	}
 	if len(statements) == 0 {
 		return nil, fmt.Errorf("no statements were generated from the token stream")
-	} else if len(statements) == 1 {
-		return statements[0], nil
-	} else {
-		return Or(statements...), nil
 	}
+	var finalStatementGenerator StatementGenerator
+	if len(statements) == 1 {
+		finalStatementGenerator = statements[0]
+	} else {
+		finalStatementGenerator = Or(statements...)
+	}
+	if err = ApplyVariableDefinition(finalStatementGenerator, variables); err != nil {
+		return nil, err
+	}
+	return finalStatementGenerator, nil
 }
 
 // GetQueryResult runs the query against a Postgres server to validate that the query is syntactically valid. It then
