@@ -111,7 +111,7 @@ func TestRegressions(t *testing.T) {
 			},
 			Assertions: []ScriptTestAssertion{
 				{
-					Query:    "select * from t1 cross join t2 order by pk1, pk2;",
+					Query: "select * from t1 cross join t2 order by pk1, pk2;",
 					Expected: []sql.Row{
 						{1, 3},
 						{1, 4},
@@ -120,7 +120,7 @@ func TestRegressions(t *testing.T) {
 					},
 				},
 				{
-					Query:    "select * from t1, t2 order by pk1, pk2;",
+					Query: "select * from t1, t2 order by pk1, pk2;",
 					Expected: []sql.Row{
 						{1, 3},
 						{1, 4},
