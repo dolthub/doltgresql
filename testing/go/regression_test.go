@@ -104,19 +104,29 @@ func TestRegressions(t *testing.T) {
 		{
 			Name: "cross joins",
 			SetUpScript: []string{
-				"create table t1 (pk int);",
-				"create table t2 (pk int);",
+				"create table t1 (pk1 int);",
+				"create table t2 (pk2 int);",
 				"insert into t1 values (1), (2);",
 				"insert into t2 values (3), (4);",
 			},
 			Assertions: []ScriptTestAssertion{
 				{
-					Query:    "select count(*) from t1 cross join t2;",
-					Expected: []sql.Row{{4}},
+					Query:    "select * from t1 cross join t2 order by pk1, pk2;",
+					Expected: []sql.Row{
+						{1, 3},
+						{1, 4},
+						{2, 3},
+						{2, 4},
+					},
 				},
 				{
-					Query:    "select count(*) from t1, t2;",
-					Expected: []sql.Row{{4}},
+					Query:    "select * from t1, t2 order by pk1, pk2;",
+					Expected: []sql.Row{
+						{1, 3},
+						{1, 4},
+						{2, 3},
+						{2, 4},
+					},
 				},
 			},
 		},
