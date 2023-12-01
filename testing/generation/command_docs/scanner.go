@@ -191,73 +191,37 @@ ScannerLoop:
 				}
 			}
 		case ',':
-			// All comma-dot repetition blocks look like `, ...`
-			if peek, _ := scanner.Peek(); peek != ' ' {
+			scanner.tokens = append(scanner.tokens, Token{
+				Type:    TokenType_Text,
+				Literal: ",",
+			})
+		case '[':
+			if scanner.PeekMatchOffset("[ ... ]", 0) {
+				scanner.AdvanceBy(6)
 				scanner.tokens = append(scanner.tokens, Token{
-					Type:    TokenType_Text,
+					Type:    TokenType_OptionalRepeat,
+					Literal: "",
+				})
+			} else if scanner.PeekMatchOffset("[ , ... ]", 0) {
+				scanner.AdvanceBy(8)
+				scanner.tokens = append(scanner.tokens, Token{
+					Type:    TokenType_OptionalRepeat,
 					Literal: ",",
 				})
-				continue ScannerLoop
-			}
-			dotCount := 0
-		CommaDotRepetitionLoop:
-			for n := 2; true; n++ {
-				peek, _ := scanner.PeekBy(n)
-				switch peek {
-				case '.':
-					dotCount++
-				default:
-					// If the dot count is different from 3, then we treat the comma as text
-					if dotCount == 3 {
-						scanner.AdvanceBy(n - 1)
-						scanner.tokens = append(scanner.tokens, Token{Type: TokenType_CommaRepeat})
-					} else {
-						scanner.tokens = append(scanner.tokens, Token{
-							Type:    TokenType_Text,
-							Literal: ",",
-						})
-					}
-					break CommaDotRepetitionLoop
-				}
-			}
-
-		case '[':
-			commaCount := 0
-			dotCount := 0
-			// Optional repetition blocks generally look like either [...] or [ , ... ]
-		RepetitionLoop:
-			for n := 1; true; n++ {
-				peek, ok := scanner.PeekBy(n)
-				if !ok {
-					scanner.savedErr = fmt.Errorf("unexpected EOF when looking for potential repetition")
-					break ScannerLoop
-				}
-				switch peek {
-				case ' ':
-					// We ignore spaces here, as no optional repetition blocks have other forms of whitespace.
-				case '.':
-					dotCount++
-				case ',':
-					commaCount++
-				case ']':
-					// If the dot count is different from 3, then we'll ignore it
-					if dotCount == 3 {
-						// If the comma count is greater than 1, then we'll ignore it
-						if commaCount == 0 {
-							scanner.tokens = append(scanner.tokens, Token{Type: TokenType_OptionalRepeat})
-						} else if commaCount == 1 {
-							scanner.tokens = append(scanner.tokens, Token{Type: TokenType_OptionalCommaRepeat})
-						}
-						scanner.AdvanceBy(n)
-						break RepetitionLoop
-					}
-					scanner.tokens = append(scanner.tokens, Token{Type: TokenType_OptionalOpen})
-					break RepetitionLoop
-				default:
-					// We've encountered something not present in normal repetition blocks
-					scanner.tokens = append(scanner.tokens, Token{Type: TokenType_OptionalOpen})
-					break RepetitionLoop
-				}
+			} else if scanner.PeekMatchOffset("[ AND ... ]", 0) {
+				scanner.AdvanceBy(10)
+				scanner.tokens = append(scanner.tokens, Token{
+					Type:    TokenType_OptionalRepeat,
+					Literal: "AND",
+				})
+			} else if scanner.PeekMatchOffset("[ OR ... ]", 0) {
+				scanner.AdvanceBy(9)
+				scanner.tokens = append(scanner.tokens, Token{
+					Type:    TokenType_OptionalRepeat,
+					Literal: "OR",
+				})
+			} else {
+				scanner.tokens = append(scanner.tokens, Token{Type: TokenType_OptionalOpen})
 			}
 		case ']':
 			scanner.tokens = append(scanner.tokens, Token{Type: TokenType_OptionalClose})

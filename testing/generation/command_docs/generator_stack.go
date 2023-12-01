@@ -58,7 +58,7 @@ func (sgs *StatementGeneratorStack) AddText(text string) {
 
 // AddVariable creates a new VariableGen at the current depth.
 func (sgs *StatementGeneratorStack) AddVariable(name string) {
-	sgs.stack.Peek().Append(Variable(name))
+	sgs.stack.Peek().Append(Variable(name, nil))
 }
 
 // Or will take all items from the current depth and add them to a parent OrGen. Either the previous depth is an OrGen,
@@ -209,43 +209,29 @@ func (sgs *StatementGeneratorStack) ExitParenScope() error {
 	return nil
 }
 
-// Repeat will add the last StatementGenerator at the current depth to a RepeatGen. By default, the limit is 2, however
-// an optional parameter may be passed to specify a custom limit (only the first limit given is used).
-func (sgs *StatementGeneratorStack) Repeat(includesComma bool, limit ...int) error {
+// Repeat will add the last StatementGenerator at the current depth to an OptionalGen.
+func (sgs *StatementGeneratorStack) Repeat() error {
 	current := sgs.stack.Peek()
 	lastGen := current.LastGenerator()
 	if lastGen == nil {
 		return fmt.Errorf("unable to repeat as no generators exist at the current depth")
 	}
-	actualLimit := 2
-	if len(limit) >= 1 {
-		actualLimit = limit[0]
-	}
-	if includesComma {
-		current.Append(Repeat(0, actualLimit, Collection(Text(","), lastGen.Copy())))
-	} else {
-		current.Append(Repeat(0, actualLimit, lastGen.Copy()))
-	}
+	current.Append(Optional(lastGen.Copy()))
 	return nil
 }
 
-// OptionalRepeat will add the last StatementGenerator at the current depth to a RepeatGen inside an OptionalGen. By
-// default, the limit is 2, however an optional parameter may be passed to specify a custom limit (only the first limit
-// given is used).
-func (sgs *StatementGeneratorStack) OptionalRepeat(includesComma bool, limit ...int) error {
+// OptionalRepeat will add the last StatementGenerator at the current depth to an OptionalGen. If a prefix is given,
+// then it will be added as a TextGen before the repeated generator.
+func (sgs *StatementGeneratorStack) OptionalRepeat(prefix string) error {
 	current := sgs.stack.Peek()
 	lastGen := current.LastGenerator()
 	if lastGen == nil {
 		return fmt.Errorf("unable to optionally repeat as no generators exist at the current depth")
 	}
-	actualLimit := 2
-	if len(limit) >= 1 {
-		actualLimit = limit[0]
-	}
-	if includesComma {
-		current.Append(Optional(Repeat(1, actualLimit, Collection(Text(","), lastGen.Copy()))))
+	if len(prefix) > 0 {
+		current.Append(Optional(Collection(Text(prefix), lastGen.Copy())))
 	} else {
-		current.Append(Optional(Repeat(1, actualLimit, lastGen.Copy())))
+		current.Append(Optional(lastGen.Copy()))
 	}
 	return nil
 }
@@ -271,10 +257,16 @@ func (sgs *StatementGeneratorStack) Finish() (StatementGenerator, error) {
 		if len(currentDepth.generators) == 0 {
 			return nil, fmt.Errorf("internal bookkeeping error, stack has a depth with no generators")
 		}
-		if len(lastDepth) == 1 {
-			currentDepth.generators = append(currentDepth.generators, lastDepth[0])
-		} else if len(lastDepth) > 1 {
-			currentDepth.generators = append(currentDepth.generators, Collection(lastDepth...))
+		if lastGen := currentDepth.LastGenerator(); lastGen != nil {
+			if orGen, ok := lastGen.(*OrGen); ok {
+				if err := orGen.AddChildren(sgs.aggregate(lastDepth)); err != nil {
+					return nil, err
+				}
+			} else {
+				currentDepth.Append(sgs.aggregate(lastDepth))
+			}
+		} else {
+			currentDepth.Append(sgs.aggregate(lastDepth))
 		}
 		lastDepth = currentDepth.generators
 	}
