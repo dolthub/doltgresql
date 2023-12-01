@@ -28,12 +28,18 @@ type StatementGenerator interface {
 	// generator should mutate per call, meaning a parent generator should only mutate when its children return false.
 	// If the top-level generator returns false, then all permutations have been created.
 	Consume() bool
+	// SetConsumeIterations is equivalent to calling Copy then Consume the given number of times, without allocating a
+	// new StatementGenerator. This allows you to generate a specific statement efficiently, rather than calling Consume
+	// the given number of times. If the count is <= 0, then the statement will be in its original state (the same state
+	// as a StatementGenerator copy).
+	SetConsumeIterations(count *big.Int)
 	// String returns a string based on the current permutation.
 	String() string
 	// Copy returns a copy of the given generator (along with all of its children) in its original setting. This means
 	// that the copy is in the same state that the target would be in if it had never called Consume.
 	Copy() StatementGenerator
 	// Reset sets the StatementGenerator back to its original state, which would be as though Consume was never called.
+	// This is equivalent to calling SetConsumeIterations(0), albeit slightly more efficient.
 	Reset()
 	// SourceString returns a string that may be used to recreate the StatementGenerator in a Go source file.
 	SourceString() string
@@ -62,6 +68,9 @@ func (t *TextGen) Consume() bool {
 	return false
 }
 
+// SetConsumeIterations implements the interface StatementGenerator.
+func (t *TextGen) SetConsumeIterations(count *big.Int) {}
+
 // Copy implements the interface StatementGenerator.
 func (t *TextGen) Copy() StatementGenerator {
 	if t == nil {
@@ -85,7 +94,7 @@ func (t *TextGen) SourceString() string {
 
 // Permutations implements the interface StatementGenerator.
 func (t *TextGen) Permutations() *big.Int {
-	return big.NewInt(1)
+	return bigIntOne
 }
 
 // OrGen is a generator that contains multiple child generators, and will print only one at a time. Consuming will
@@ -93,6 +102,7 @@ func (t *TextGen) Permutations() *big.Int {
 type OrGen struct {
 	children []StatementGenerator
 	index    int
+	localInt *big.Int
 }
 
 var _ StatementGenerator = (*OrGen)(nil)
@@ -102,6 +112,7 @@ func Or(children ...StatementGenerator) *OrGen {
 	return &OrGen{
 		children: copyGenerators(children),
 		index:    0,
+		localInt: new(big.Int),
 	}
 }
 
@@ -125,6 +136,37 @@ func (o *OrGen) Consume() bool {
 		return false
 	}
 	return true
+}
+
+// SetConsumeIterations implements the interface StatementGenerator.
+func (o *OrGen) SetConsumeIterations(count *big.Int) {
+	// If we're given zero, then we'll just call Reset
+	if count.Cmp(bigIntZero) <= 0 {
+		o.Reset()
+		return
+	}
+	count = o.localInt.Mod(count, o.Permutations())
+	for i, child := range o.children {
+		// The index is equal to whichever child we stop on
+		o.index = i
+		childPermutations := child.Permutations()
+		if childPermutations.Cmp(count) > 0 {
+			// The child has more permutations than the count, so we'll stop here
+			child.SetConsumeIterations(count)
+			break
+		} else {
+			// The child's permutations are <= the count, so we'll reset it and subtract it from the total.
+			// Subtraction here is the opposite of the addition we do to determine the permutation count.
+			// Important to note that the permutations equaling the count means that the index increments to the next
+			// item, but since the count will be zero, it matches the original state of that item.
+			child.Reset()
+			count.Sub(count, childPermutations)
+		}
+	}
+	// We still need to reset any children that we never looped over
+	for i := o.index + 1; i < len(o.children); i++ {
+		o.children[i].Reset()
+	}
 }
 
 // Copy implements the interface StatementGenerator.
@@ -210,6 +252,13 @@ func (v *VariableGen) Consume() bool {
 	return false
 }
 
+// SetConsumeIterations implements the interface StatementGenerator.
+func (v *VariableGen) SetConsumeIterations(count *big.Int) {
+	if v.options != nil {
+		v.options.SetConsumeIterations(count)
+	}
+}
+
 // Copy implements the interface StatementGenerator.
 func (v *VariableGen) Copy() StatementGenerator {
 	if v == nil {
@@ -248,13 +297,14 @@ func (v *VariableGen) Permutations() *big.Int {
 	if v.options != nil {
 		return v.options.Permutations()
 	} else {
-		return big.NewInt(1)
+		return bigIntOne
 	}
 }
 
 // CollectionGen is a generator that contains multiple child generators, and will print all of its children.
 type CollectionGen struct {
 	children []StatementGenerator
+	localInt *big.Int
 }
 
 var _ StatementGenerator = (*CollectionGen)(nil)
@@ -263,6 +313,7 @@ var _ StatementGenerator = (*CollectionGen)(nil)
 func Collection(children ...StatementGenerator) *CollectionGen {
 	return &CollectionGen{
 		children: copyGenerators(children),
+		localInt: new(big.Int),
 	}
 }
 
@@ -280,6 +331,43 @@ func (c *CollectionGen) Consume() bool {
 		}
 	}
 	return false
+}
+
+// SetConsumeIterations implements the interface StatementGenerator.
+func (c *CollectionGen) SetConsumeIterations(count *big.Int) {
+	// We handle this one as though it's a non-uniform numbering system (binary and decimal are uniform systems).
+	// In a traditional number system like binary, you can find each bit's value using the following:
+	//
+	// bit = number % 2; number = number / 2;
+	//
+	// Collections behave similarly to that system, where we increment the second generator after fully incrementing the
+	// first generator. Then we have to iterate over the first generator again before we can increment the second
+	// generator again. Do this until the second generator has exhausted its permutations, and then the third generator
+	// can increment.
+	//
+	// Going back to our binary example, we can achieve that same counting effect by replacing 2 with the permutation
+	// count. This lets us have our non-uniform numbering system, and allows us to efficiently find the exact number for
+	// each generator.
+	count = c.localInt.Mod(count, c.Permutations())
+	index := 0
+	for i, child := range c.children {
+		// The index is equal to whichever child we stop on
+		index = i
+		childPermutations := child.Permutations()
+		// We give the child the modulo of the count versus its permutation count, which will determine how many
+		// iterations it's supposed to simulate from the total.
+		child.SetConsumeIterations(new(big.Int).Mod(count, childPermutations))
+		// We divide the count by this child's permutation count to move to the next "base".
+		count.Div(count, childPermutations)
+		// If we're at zero now, then this child used up the remaining count, so we'll stop here
+		if count.Cmp(bigIntZero) <= 0 {
+			break
+		}
+	}
+	// We still need to reset any children that we never looped over
+	for index += 1; index < len(c.children); index++ {
+		c.children[index].Reset()
+	}
 }
 
 // Copy implements the interface StatementGenerator.
@@ -317,10 +405,9 @@ func (c *CollectionGen) SourceString() string {
 // Permutations implements the interface StatementGenerator.
 func (c *CollectionGen) Permutations() *big.Int {
 	total := big.NewInt(1)
-	zero := big.NewInt(0)
 	for _, child := range c.children {
 		childPermutations := child.Permutations()
-		if childPermutations.Cmp(zero) != 0 {
+		if childPermutations.Cmp(bigIntZero) != 0 {
 			total.Mul(total, child.Permutations())
 		}
 	}
@@ -331,6 +418,7 @@ func (c *CollectionGen) Permutations() *big.Int {
 type OptionalGen struct {
 	children *CollectionGen
 	display  bool
+	localInt *big.Int
 }
 
 var _ StatementGenerator = (*OptionalGen)(nil)
@@ -340,6 +428,7 @@ func Optional(children ...StatementGenerator) *OptionalGen {
 	return &OptionalGen{
 		children: Collection(children...),
 		display:  false,
+		localInt: new(big.Int),
 	}
 }
 
@@ -359,6 +448,22 @@ func (o *OptionalGen) Consume() bool {
 		o.display = false
 		return false
 	}
+}
+
+// SetConsumeIterations implements the interface StatementGenerator.
+func (o *OptionalGen) SetConsumeIterations(count *big.Int) {
+	// If we're given zero, then we'll just call Reset
+	if count.Cmp(bigIntZero) <= 0 {
+		o.Reset()
+		return
+	}
+	// The count is >= 1, so display will be true
+	o.display = true
+	count = o.localInt.Mod(count, o.Permutations())
+	// Setting display to true uses a single Consume, so we subtract it before passing the count to the child
+	count.Sub(count, bigIntOne)
+	// We'll pass the rest of the remaining count to the child, which will be >= 0
+	o.children.SetConsumeIterations(count)
 }
 
 // Copy implements the interface StatementGenerator.
@@ -391,7 +496,7 @@ func (o *OptionalGen) SourceString() string {
 
 // Permutations implements the interface StatementGenerator.
 func (o *OptionalGen) Permutations() *big.Int {
-	return new(big.Int).Add(big.NewInt(1), o.children.Permutations())
+	return new(big.Int).Add(bigIntOne, o.children.Permutations())
 }
 
 // ApplyVariableDefinition applies the given map of variable definitions to the statement generator. This modifies the
