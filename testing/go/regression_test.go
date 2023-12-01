@@ -63,7 +63,7 @@ func TestRegressions(t *testing.T) {
 			SetUpScript: []string{},
 			Assertions: []ScriptTestAssertion{
 				{
-					Query:    "SELECT\n" +
+					Query: "SELECT\n" +
 						"  CASE\n" +
 						"    WHEN 1 = 1 THEN 'One is equal to One'\n" +
 						"    ELSE 'One is not equal to One'\n" +
@@ -71,7 +71,7 @@ func TestRegressions(t *testing.T) {
 					Expected: []sql.Row{{"One is equal to One"}},
 				},
 				{
-					Query:    "SELECT\n" +
+					Query: "SELECT\n" +
 						"  CASE\n" +
 						"    WHEN NULL IS NULL THEN 'NULL is NULL'\n" +
 						"    ELSE 'NULL is not NULL'\n" +
@@ -81,7 +81,7 @@ func TestRegressions(t *testing.T) {
 			},
 		},
 		{
-			Name:        "ALL / DISTINCT in functions",
+			Name: "ALL / DISTINCT in functions",
 			SetUpScript: []string{
 				"create table t1 (pk int);",
 				"insert into t1 values (1), (2), (3), (1);",
@@ -102,7 +102,7 @@ func TestRegressions(t *testing.T) {
 			},
 		},
 		{
-			Name:        "cross joins",
+			Name: "cross joins",
 			SetUpScript: []string{
 				"create table t1 (pk int);",
 				"create table t2 (pk int);",
@@ -122,4 +122,3 @@ func TestRegressions(t *testing.T) {
 		},
 	})
 }
-
