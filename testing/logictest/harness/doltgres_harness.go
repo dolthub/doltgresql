@@ -238,6 +238,10 @@ func columns(rows *sql.Rows) (string, []interface{}, error) {
 			colVal := sql.NullInt64{}
 			columns = append(columns, &colVal)
 			sb.WriteString("I")
+		case "UNKNOWN": // used for NULL values
+			colVal := sql.NullString{}
+			columns = append(columns, &colVal)
+			sb.WriteString("I") // is this right?
 		default:
 			return "", nil, fmt.Errorf("Unhandled type %s", columnType.DatabaseTypeName())
 		}

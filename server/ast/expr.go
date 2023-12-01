@@ -210,7 +210,15 @@ func nodeExpr(node tree.Expr) (vitess.Expr, error) {
 			Type: convertType,
 		}, nil
 	case *tree.CoalesceExpr:
-		return nil, fmt.Errorf("COALESCE is not yet supported")
+		exprs, err := nodeExprsToSelectExprs(node.Exprs)
+		if err != nil {
+			return nil, err
+		}
+
+		return &vitess.FuncExpr{
+			Name:  vitess.NewColIdent("COALESCE"),
+			Exprs: exprs,
+		}, nil
 	case *tree.CollateExpr:
 		return nil, fmt.Errorf("collations are not yet supported")
 	case *tree.ColumnAccessExpr:
@@ -400,8 +408,20 @@ func nodeExpr(node tree.Expr) (vitess.Expr, error) {
 			Expr: expr,
 		}, nil
 	case *tree.NullIfExpr:
-		//TODO: probably should be the IF function: IF(Expr1 == Expr2, NULL, Expr1)
-		return nil, fmt.Errorf("NULLIF is not yet supported")
+		expr1, err := nodeExprToSelectExpr(node.Expr1)
+		if err != nil {
+			return nil, err
+		}
+
+		expr2, err := nodeExprToSelectExpr(node.Expr2)
+		if err != nil {
+			return nil, err
+		}
+
+		return &vitess.FuncExpr{
+			Name:  vitess.NewColIdent("NULLIF"),
+			Exprs: vitess.SelectExprs{expr1, expr2},
+		}, nil
 	case tree.NullLiteral:
 		return &vitess.NullVal{}, nil
 	case *tree.NumVal:

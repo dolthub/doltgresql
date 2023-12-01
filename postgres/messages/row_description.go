@@ -174,8 +174,10 @@ func VitessFieldToDataTypeObjectID(field *query.Field) (int32, error) {
 		return 1114, nil
 	case query.Type_DATE:
 		return 1082, nil
+	case query.Type_NULL_TYPE:
+		return 25, nil // NULL is treated as TEXT on the wire
 	default:
-		return 0, fmt.Errorf("unsupported type returned from engine")
+		return 0, fmt.Errorf("unsupported type returned from engine: %s", field.Type)
 	}
 }
 
@@ -210,8 +212,10 @@ func VitessFieldToDataTypeSize(field *query.Field) (int16, error) {
 		return 8, nil
 	case query.Type_DATE:
 		return 4, nil
+	case query.Type_NULL_TYPE:
+		return -1, nil // NULL is treated as TEXT on the wire
 	default:
-		return 0, fmt.Errorf("unsupported type returned from engine")
+		return 0, fmt.Errorf("unsupported type returned from engine: %s", field.Type)
 	}
 }
 
@@ -255,7 +259,9 @@ func VitessFieldToDataTypeModifier(field *query.Field) (int32, error) {
 		return -1, nil
 	case query.Type_DATE:
 		return -1, nil
+	case query.Type_NULL_TYPE:
+		return -1, nil // NULL is treated as TEXT on the wire
 	default:
-		return 0, fmt.Errorf("unsupported type returned from engine")
+		return 0, fmt.Errorf("unsupported type returned from engine: %s", field.Type)
 	}
 }

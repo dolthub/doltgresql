@@ -54,12 +54,12 @@ func nodeFuncExpr(node *tree.FuncExpr) (*vitess.FuncExpr, error) {
 	}
 	var distinct bool
 	switch node.Type {
-	case 0:
+	case 0, tree.AllFuncType:
 		distinct = false
 	case tree.DistinctFuncType:
 		distinct = true
-	case tree.AllFuncType:
-		return nil, fmt.Errorf("function spec is not yet supported")
+	default:
+		return nil, fmt.Errorf("unknown function spec type %d", node.Type)
 	}
 	windowDef, err := nodeWindowDef(node.WindowDef)
 	if err != nil {
