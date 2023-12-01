@@ -69,7 +69,6 @@ const stdInFlag = "--stdin"
 const stdOutFlag = "--stdout"
 const stdErrFlag = "--stderr"
 const stdOutAndErrFlag = "--out-and-err"
-const ignoreLocksFlag = "--ignore-lock-file"
 
 // RunOnDisk starts the server based on the given args, while also using the local disk as the backing store.
 // The returned WaitGroup may be used to wait for the server to close.
@@ -108,7 +107,6 @@ func runServer(args []string, fs filesys.Filesys) (*int, *sync.WaitGroup) {
 		nbs.TableIndexGCFinalizerWithStackTrace = false
 	}
 
-	ignoreLockFile := false
 	if len(args) > 0 {
 		var doneDebugFlags bool
 		for !doneDebugFlags && len(args) > 0 {
@@ -162,11 +160,7 @@ func runServer(args []string, fs filesys.Filesys) (*int, *sync.WaitGroup) {
 
 				color.NoColor = true
 				args = args[2:]
-
-			case ignoreLocksFlag:
-				ignoreLockFile = true
-				args = args[1:]
-
+				
 			default:
 				doneDebugFlags = true
 			}
@@ -181,7 +175,6 @@ func runServer(args []string, fs filesys.Filesys) (*int, *sync.WaitGroup) {
 	warnIfMaxFilesTooLow()
 
 	dEnv := env.Load(ctx, env.GetCurrentUserHomeDir, fs, doltdb.LocalDirDoltDB, Version)
-	dEnv.IgnoreLockFile = ignoreLockFile
 
 	globalConfig, ok := dEnv.Config.GetConfig(env.GlobalConfig)
 	if !ok {
@@ -267,7 +260,7 @@ func runServer(args []string, fs filesys.Filesys) (*int, *sync.WaitGroup) {
 	}
 	dEnv.FS = dataDirFS
 
-	mrEnv, err := env.MultiEnvForDirectory(ctx, dEnv.Config.WriteableConfig(), dataDirFS, dEnv.Version, dEnv.IgnoreLockFile, dEnv)
+	mrEnv, err := env.MultiEnvForDirectory(ctx, dEnv.Config.WriteableConfig(), dataDirFS, dEnv.Version, dEnv)
 	if err != nil {
 		cli.PrintErrln("failed to load database names")
 		return intPointer(1), wg
@@ -427,22 +420,7 @@ func buildLateBinder(ctx context.Context, cwdFS filesys.Filesys, rootEnv *env.Do
 	if targetEnv == nil {
 		targetEnv = rootEnv
 	}
-
-	isLocked, lock, err := targetEnv.GetLock()
-	if err != nil {
-		return nil, err
-	}
-	if isLocked {
-		if verbose {
-			cli.Println("verbose: starting remote mode")
-		}
-
-		if !creds.Specified {
-			creds = &cli.UserPassword{Username: sqlserver.LocalConnectionUser, Password: lock.Secret, Specified: false}
-		}
-		return sqlserver.BuildConnectionStringQueryist(ctx, cwdFS, creds, apr, "localhost", lock.Port, false, useDb)
-	}
-
+	
 	if verbose {
 		cli.Println("verbose: starting local mode")
 	}
