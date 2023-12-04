@@ -50,3 +50,15 @@ func GenerateRandomInts(count int64, max *big.Int) (randInts []*big.Int, err err
 	})
 	return randInts, nil
 }
+
+// GetPercentages converts the slice of numbers to percentages. The max defines the number that would equal 100%. All
+// floats will be between [0.0, 100.0], unless the number is not between [0, max].
+func GetPercentages(numbers []*big.Int, max *big.Int) []float64 {
+	maxAsFloat, _ := max.Float64()
+	percentages := make([]float64, len(numbers))
+	for i, number := range numbers {
+		numberAsFloat, _ := number.Float64()
+		percentages[i] = (numberAsFloat / maxAsFloat) * 100.0
+	}
+	return percentages
+}
