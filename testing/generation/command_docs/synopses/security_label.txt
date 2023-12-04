@@ -5,7 +5,7 @@ SECURITY LABEL [ FOR $provider$ ] ON {
     DATABASE $object_name$ |
     DOMAIN $object_name$ |
     EVENT TRIGGER $object_name$ |
-    FOREIGN TABLE $object_name$
+    FOREIGN TABLE $object_name$ |
     FUNCTION $function_name$ [ ( [ [ $argmode$ ] [ $argname$ ] $argtype$ [ , ... ] ] ) ] |
     LARGE OBJECT $large_object_oid$ |
     MATERIALIZED VIEW $object_name$ |

@@ -16,13 +16,17 @@ package main
 
 import (
 	"crypto/rand"
+	"math"
 	"math/big"
 	"sort"
 )
 
 var (
-	bigIntZero = big.NewInt(0)
-	bigIntOne  = big.NewInt(1)
+	bigIntZero      = big.NewInt(0)
+	bigIntOne       = big.NewInt(1)
+	bigIntTwo       = big.NewInt(2)
+	bigIntMaxInt64  = big.NewInt(math.MaxInt64)
+	bigIntMaxUint64 = new(big.Int).Add(new(big.Int).Mul(bigIntMaxInt64, bigIntTwo), bigIntOne)
 )
 
 // GenerateRandomInts generates a slice of random integers, with each integer ranging from [0, max). The returned slice

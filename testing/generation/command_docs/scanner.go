@@ -141,17 +141,34 @@ ScannerLoop:
 			if r == '\n' {
 				lineCount++
 			}
+			commentMode := false
 		WhitespaceLoop:
 			for r, ok = scanner.Peek(); ok; r, ok = scanner.Peek() {
-				switch r {
-				case ' ':
+				if commentMode {
 					scanner.Advance()
-					spaceCount += 1
-				case '\n':
-					scanner.Advance()
-					lineCount++
-				default:
-					break WhitespaceLoop
+					if r == '\n' {
+						commentMode = false
+					}
+				} else {
+					switch r {
+					case ' ':
+						scanner.Advance()
+						spaceCount += 1
+					case '\n':
+						scanner.Advance()
+						lineCount++
+					case '/':
+						if next, _ := scanner.PeekBy(2); next == '/' {
+							if last, _ := scanner.PeekBy(0); last == '\n' {
+								scanner.Advance()
+								commentMode = true
+								continue WhitespaceLoop
+							}
+						}
+						break WhitespaceLoop
+					default:
+						break WhitespaceLoop
+					}
 				}
 			}
 			// EOF, no need to add the last bit of whitespace

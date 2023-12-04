@@ -1,1 +1,1 @@
-CALL $name$ ( [ $argument$ ] [ , ... ] )
+CALL $name$ ( [ $argument$ [ , ... ] ] )

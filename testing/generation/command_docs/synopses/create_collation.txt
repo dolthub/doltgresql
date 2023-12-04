@@ -1,9 +1,18 @@
 CREATE COLLATION [ IF NOT EXISTS ] $name$ (
-    [ LOCALE = $locale$, ]
-    [ LC_COLLATE = $lc_collate$, ]
-    [ LC_CTYPE = $lc_ctype$, ]
-    [ PROVIDER = $provider$, ]
-    [ DETERMINISTIC = $boolean$, ]
-    [ VERSION = $version$ ] )
+    { LOCALE = $locale$ | LC_COLLATE = $lc_collate$ [ , LC_CTYPE = $lc_ctype$ ] | LC_CTYPE = $lc_ctype$ }
+    [ , PROVIDER = $provider$ ]
+    [ , DETERMINISTIC = $boolean$ ]
+    [ , VERSION = $version$ ] )
+
+CREATE COLLATION [ IF NOT EXISTS ] $name$ (
+    PROVIDER = $provider$
+    [ , DETERMINISTIC = $boolean$ ]
+    [ , VERSION = $version$ ] )
+
+CREATE COLLATION [ IF NOT EXISTS ] $name$ (
+    DETERMINISTIC = $boolean$
+    [ , VERSION = $version$ ] )
+
+CREATE COLLATION [ IF NOT EXISTS ] $name$ ( VERSION = $version$ )
 
 CREATE COLLATION [ IF NOT EXISTS ] $name$ FROM $existing_collation$

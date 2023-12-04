@@ -16,7 +16,9 @@ package main
 
 import (
 	"fmt"
+	"math"
 	"math/big"
+	"sort"
 	"strings"
 )
 
@@ -33,6 +35,9 @@ type StatementGenerator interface {
 	// the given number of times. If the count is <= 0, then the statement will be in its original state (the same state
 	// as a StatementGenerator copy).
 	SetConsumeIterations(count *big.Int)
+	// SetConsumeIterationsFast is the same as SetConsumeIterations, except far more efficient due to using uint64,
+	// however it only works for iteration counts <= MAX_SIZE(uint64).
+	SetConsumeIterationsFast(count uint64)
 	// String returns a string based on the current permutation.
 	String() string
 	// Copy returns a copy of the given generator (along with all of its children) in its original setting. This means
@@ -45,6 +50,9 @@ type StatementGenerator interface {
 	SourceString() string
 	// Permutations returns the number of unique permutations that the generator can return.
 	Permutations() *big.Int
+	// PermutationsUint64 returns the number of unique permutations that the generator can return. Returns true if the
+	// number fits within an uint64, false if it's larger than an uint64.
+	PermutationsUint64() (uint64, bool)
 }
 
 // TextGen is a generator that returns a simple string.
@@ -71,6 +79,9 @@ func (t *TextGen) Consume() bool {
 // SetConsumeIterations implements the interface StatementGenerator.
 func (t *TextGen) SetConsumeIterations(count *big.Int) {}
 
+// SetConsumeIterationsFast implements the interface StatementGenerator.
+func (t *TextGen) SetConsumeIterationsFast(count uint64) {}
+
 // Copy implements the interface StatementGenerator.
 func (t *TextGen) Copy() StatementGenerator {
 	if t == nil {
@@ -95,6 +106,11 @@ func (t *TextGen) SourceString() string {
 // Permutations implements the interface StatementGenerator.
 func (t *TextGen) Permutations() *big.Int {
 	return bigIntOne
+}
+
+// PermutationsUint64 implements the interface StatementGenerator.
+func (t *TextGen) PermutationsUint64() (uint64, bool) {
+	return 1, true
 }
 
 // OrGen is a generator that contains multiple child generators, and will print only one at a time. Consuming will
@@ -152,7 +168,11 @@ func (o *OrGen) SetConsumeIterations(count *big.Int) {
 		childPermutations := child.Permutations()
 		if childPermutations.Cmp(count) > 0 {
 			// The child has more permutations than the count, so we'll stop here
-			child.SetConsumeIterations(count)
+			if count.Cmp(bigIntMaxUint64) <= 0 {
+				child.SetConsumeIterationsFast(count.Uint64())
+			} else {
+				child.SetConsumeIterations(count)
+			}
 			break
 		} else {
 			// The child's permutations are <= the count, so we'll reset it and subtract it from the total.
@@ -164,6 +184,31 @@ func (o *OrGen) SetConsumeIterations(count *big.Int) {
 		}
 	}
 	// We still need to reset any children that we never looped over
+	for i := o.index + 1; i < len(o.children); i++ {
+		o.children[i].Reset()
+	}
+}
+
+// SetConsumeIterationsFast implements the interface StatementGenerator.
+func (o *OrGen) SetConsumeIterationsFast(count uint64) {
+	// This is a copy of SetConsumeIterations, except rewritten to use uint64
+	if count <= 0 {
+		o.Reset()
+		return
+	}
+	permutations, _ := o.PermutationsUint64()
+	count = count % permutations
+	for i, child := range o.children {
+		o.index = i
+		childPermutations, _ := child.PermutationsUint64()
+		if childPermutations > count {
+			child.SetConsumeIterationsFast(count)
+			break
+		} else {
+			child.Reset()
+			count -= childPermutations
+		}
+	}
 	for i := o.index + 1; i < len(o.children); i++ {
 		o.children[i].Reset()
 	}
@@ -202,6 +247,19 @@ func (o *OrGen) Permutations() *big.Int {
 		sum.Add(sum, child.Permutations())
 	}
 	return sum
+}
+
+// PermutationsUint64 implements the interface StatementGenerator.
+func (o *OrGen) PermutationsUint64() (uint64, bool) {
+	sum := uint64(0)
+	for _, child := range o.children {
+		childCount, ok := child.PermutationsUint64()
+		if !ok || sum > (math.MaxUint64-childCount) {
+			return math.MaxUint64, false
+		}
+		sum += childCount
+	}
+	return sum, true
 }
 
 // VariableGen represents a variable in the synopsis. Its values are user-configurable if they cannot be deduced from
@@ -259,6 +317,13 @@ func (v *VariableGen) SetConsumeIterations(count *big.Int) {
 	}
 }
 
+// SetConsumeIterationsFast implements the interface StatementGenerator.
+func (v *VariableGen) SetConsumeIterationsFast(count uint64) {
+	if v.options != nil {
+		v.options.SetConsumeIterationsFast(count)
+	}
+}
+
 // Copy implements the interface StatementGenerator.
 func (v *VariableGen) Copy() StatementGenerator {
 	if v == nil {
@@ -298,6 +363,15 @@ func (v *VariableGen) Permutations() *big.Int {
 		return v.options.Permutations()
 	} else {
 		return bigIntOne
+	}
+}
+
+// PermutationsUint64 implements the interface StatementGenerator.
+func (v *VariableGen) PermutationsUint64() (uint64, bool) {
+	if v.options != nil {
+		return v.options.PermutationsUint64()
+	} else {
+		return 1, true
 	}
 }
 
@@ -356,7 +430,12 @@ func (c *CollectionGen) SetConsumeIterations(count *big.Int) {
 		childPermutations := child.Permutations()
 		// We give the child the modulo of the count versus its permutation count, which will determine how many
 		// iterations it's supposed to simulate from the total.
-		child.SetConsumeIterations(new(big.Int).Mod(count, childPermutations))
+		childIterations := new(big.Int).Mod(count, childPermutations)
+		if childIterations.Cmp(bigIntMaxUint64) <= 0 {
+			child.SetConsumeIterationsFast(childIterations.Uint64())
+		} else {
+			child.SetConsumeIterations(childIterations)
+		}
 		// We divide the count by this child's permutation count to move to the next "base".
 		count.Div(count, childPermutations)
 		// If we're at zero now, then this child used up the remaining count, so we'll stop here
@@ -365,6 +444,26 @@ func (c *CollectionGen) SetConsumeIterations(count *big.Int) {
 		}
 	}
 	// We still need to reset any children that we never looped over
+	for index += 1; index < len(c.children); index++ {
+		c.children[index].Reset()
+	}
+}
+
+// SetConsumeIterationsFast implements the interface StatementGenerator.
+func (c *CollectionGen) SetConsumeIterationsFast(count uint64) {
+	// This is a copy of SetConsumeIterations, except rewritten to use uint64
+	permutations, _ := c.PermutationsUint64()
+	count = count % permutations
+	index := 0
+	for i, child := range c.children {
+		index = i
+		childPermutations, _ := child.PermutationsUint64()
+		child.SetConsumeIterationsFast(count % childPermutations)
+		count /= childPermutations
+		if count <= 0 {
+			break
+		}
+	}
 	for index += 1; index < len(c.children); index++ {
 		c.children[index].Reset()
 	}
@@ -408,10 +507,29 @@ func (c *CollectionGen) Permutations() *big.Int {
 	for _, child := range c.children {
 		childPermutations := child.Permutations()
 		if childPermutations.Cmp(bigIntZero) != 0 {
-			total.Mul(total, child.Permutations())
+			total.Mul(total, childPermutations)
 		}
 	}
 	return total
+}
+
+// PermutationsUint64 implements the interface StatementGenerator.
+func (c *CollectionGen) PermutationsUint64() (uint64, bool) {
+	total := uint64(1)
+	for _, child := range c.children {
+		childPermutations, ok := child.PermutationsUint64()
+		if !ok {
+			return math.MaxUint64, false
+		}
+		if childPermutations == 0 {
+			continue
+		}
+		if total > math.MaxUint64/childPermutations {
+			return math.MaxUint64, false
+		}
+		total *= childPermutations
+	}
+	return total, true
 }
 
 // OptionalGen is a generator that will toggle between displaying its children and not displaying its children.
@@ -466,6 +584,20 @@ func (o *OptionalGen) SetConsumeIterations(count *big.Int) {
 	o.children.SetConsumeIterations(count)
 }
 
+// SetConsumeIterationsFast implements the interface StatementGenerator.
+func (o *OptionalGen) SetConsumeIterationsFast(count uint64) {
+	// This is a copy of SetConsumeIterations, except rewritten to use uint64
+	if count <= 0 {
+		o.Reset()
+		return
+	}
+	o.display = true
+	permutations, _ := o.PermutationsUint64()
+	count = count % permutations
+	count -= 1
+	o.children.SetConsumeIterationsFast(count)
+}
+
 // Copy implements the interface StatementGenerator.
 func (o *OptionalGen) Copy() StatementGenerator {
 	if o == nil {
@@ -499,9 +631,21 @@ func (o *OptionalGen) Permutations() *big.Int {
 	return new(big.Int).Add(bigIntOne, o.children.Permutations())
 }
 
+// PermutationsUint64 implements the interface StatementGenerator.
+func (o *OptionalGen) PermutationsUint64() (uint64, bool) {
+	childCount, ok := o.children.PermutationsUint64()
+	if !ok || childCount == math.MaxUint64 {
+		return math.MaxUint64, false
+	}
+	return 1 + childCount, true
+}
+
 // ApplyVariableDefinition applies the given map of variable definitions to the statement generator. This modifies the
 // statement generator, rather than returning a copy.
 func ApplyVariableDefinition(gen StatementGenerator, definitions map[string]StatementGenerator) error {
+	if len(definitions) == 0 {
+		return nil
+	}
 	switch gen := gen.(type) {
 	case *CollectionGen:
 		for _, child := range gen.children {
@@ -522,15 +666,63 @@ func ApplyVariableDefinition(gen StatementGenerator, definitions map[string]Stat
 	case *TextGen:
 		// Nothing to do here
 	case *VariableGen:
-		if definition, ok := definitions[gen.name]; ok {
-			if err := gen.AddChildren(definition); err != nil {
+		if gen.options == nil {
+			if definition, ok := definitions[gen.name]; ok {
+				if err := gen.AddChildren(definition); err != nil {
+					return err
+				}
+				if err := ApplyVariableDefinition(gen.options, definitions); err != nil {
+					return err
+				}
+			}
+		} else {
+			if err := ApplyVariableDefinition(gen.options, definitions); err != nil {
 				return err
 			}
 		}
+	case nil:
+		return nil
 	default:
 		return fmt.Errorf("unknown generator encountered: %T", gen)
 	}
 	return nil
+}
+
+// UnsetVariables returns the name of all variables that do not have a definition. Sorted in ascending order.
+func UnsetVariables(gen StatementGenerator) ([]string, error) {
+	varNames := make(map[string]struct{})
+	switch gen := gen.(type) {
+	case *CollectionGen:
+		for _, child := range gen.children {
+			children, err := UnsetVariables(child)
+			if err != nil {
+				return nil, err
+			}
+			for _, childName := range children {
+				varNames[childName] = struct{}{}
+			}
+		}
+	case *OptionalGen:
+		return UnsetVariables(gen.children)
+	case *OrGen:
+		return UnsetVariables(Collection(gen.children...))
+	case *TextGen:
+		// Nothing to do here
+	case *VariableGen:
+		if gen.options == nil {
+			return []string{gen.name}, nil
+		} else {
+			return UnsetVariables(gen.options)
+		}
+	default:
+		return nil, fmt.Errorf("unknown generator encountered: %T", gen)
+	}
+	var varNamesSlice []string
+	for varName := range varNames {
+		varNamesSlice = append(varNamesSlice, varName)
+	}
+	sort.Strings(varNamesSlice)
+	return varNamesSlice, nil
 }
 
 // copyGenerators returns a full copy of the given slice of generators. Each generator will be in its original state.

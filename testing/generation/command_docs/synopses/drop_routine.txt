@@ -1,2 +1,2 @@
-DROP ROUTINE [ IF EXISTS ] $name$ [ ( [ [ $argmode$ ] [ $argname$ ] $argtype$ [ , ... ] ] ) ] [ , ... ]
+DROP ROUTINE [ IF EXISTS ] { $name$ [ ( [ [ $argmode$ ] [ $argname$ ] $argtype$ [ , ... ] ] ) ] } [ , ... ]
     [ CASCADE | RESTRICT ]

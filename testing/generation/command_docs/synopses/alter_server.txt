@@ -1,5 +1,7 @@
-ALTER SERVER $name$ [ VERSION '$new_version$' ]
-    [ OPTIONS ( [ ADD | SET | DROP ] $option$ ['$value$'] [ , ... ] ) ]
+ALTER SERVER $name$ VERSION '$new_version$'
+    [ OPTIONS ( { { ADD | SET } $option$ '$value$' | DROP $option$ } [ , ... ] ) ]
+
+ALTER SERVER $name$ OPTIONS ( { { ADD | SET } $option$ '$value$' | DROP $option$ } [ , ... ] )
 
 ALTER SERVER $name$ OWNER TO { $new_owner$ | CURRENT_ROLE | CURRENT_USER | SESSION_USER }
 

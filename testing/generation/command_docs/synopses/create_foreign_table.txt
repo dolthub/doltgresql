@@ -1,11 +1,11 @@
 CREATE FOREIGN TABLE [ IF NOT EXISTS ] $table_name$ ( [
-    { $column_name$ $data_type$ [ OPTIONS ( $option$ '$value$' [ , ... ] ) ] [ COLLATE $collation$ ] [ $column_constraint$ [ ... ] ]
+    { $column_name$ $data_type$ [ OPTIONS ( { $option$ '$value$' } [ , ... ] ) ] [ COLLATE $collation$ ] [ $column_constraint$ [ ... ] ]
     | $table_constraint$ }
     [ , ... ]
     ] )
     [ INHERITS ( $parent_table$ [ , ... ] ) ]
     SERVER $server_name$
-    [ OPTIONS ( $option$ '$value$' [ , ... ] ) ]
+    [ OPTIONS ( { $option$ '$value$' } [ , ... ] ) ]
 
 CREATE FOREIGN TABLE [ IF NOT EXISTS ] $table_name$
     PARTITION OF $parent_table$ [ (
@@ -15,11 +15,11 @@ CREATE FOREIGN TABLE [ IF NOT EXISTS ] $table_name$
     ) ]
     { FOR VALUES $partition_bound_spec$ | DEFAULT }
     SERVER $server_name$
-    [ OPTIONS ( $option$ '$value$' [ , ... ] ) ]
+    [ OPTIONS ( { $option$ '$value$' } [ , ... ] ) ]
 
 where $column_constraint$ is:
 
-[ CONSTRAINT $constraint_name$ ] |
+[ CONSTRAINT $constraint_name$ ]
     { NOT NULL |
     NULL |
     CHECK ( $expression$ ) [ NO INHERIT ] |

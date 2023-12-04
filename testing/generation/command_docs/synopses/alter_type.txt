@@ -12,7 +12,7 @@ ALTER TYPE $name$ ADD VALUE [ IF NOT EXISTS ] $new_enum_value$ [ { BEFORE | AFTE
 
 ALTER TYPE $name$ RENAME VALUE $existing_enum_value$ TO $new_enum_value$
 
-ALTER TYPE $name$ SET ( $property$ = $value$ [ , ... ] )
+ALTER TYPE $name$ SET ( { $property$ = $value$ } [ , ... ] )
 
 where $action$ is:
 
