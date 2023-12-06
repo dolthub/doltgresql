@@ -1,5 +1,5 @@
 CREATE TYPE $name$ AS
-    ( [ $attribute_name$ $data_type$ [ COLLATE $collation$ ] [ , ... ] ] )
+    ( [ { $attribute_name$ $data_type$ [ COLLATE $collation$ ] } [ , ... ] ] )
 
 CREATE TYPE $name$ AS ENUM
     ( [ '$label$' [ , ... ] ] )

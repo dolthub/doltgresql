@@ -1,18 +1,18 @@
 ALTER SUBSCRIPTION $name$ CONNECTION '$conninfo$'
 
-ALTER SUBSCRIPTION $name$ SET PUBLICATION $publication_name$ [ , ... ] [ WITH ( $publication_option$ [= $value$] [ , ... ] ) ]
+ALTER SUBSCRIPTION $name$ SET PUBLICATION $publication_name$ [ , ... ] [ WITH ( { $publication_option$ [ = $value$ ] } [ , ... ] ) ]
 
-ALTER SUBSCRIPTION $name$ ADD PUBLICATION $publication_name$ [ , ... ] [ WITH ( $publication_option$ [= $value$] [ , ... ] ) ]
+ALTER SUBSCRIPTION $name$ ADD PUBLICATION $publication_name$ [ , ... ] [ WITH ( { $publication_option$ [ = $value$ ] } [ , ... ] ) ]
 
-ALTER SUBSCRIPTION $name$ DROP PUBLICATION $publication_name$ [ , ... ] [ WITH ( $publication_option$ [= $value$] [ , ... ] ) ]
+ALTER SUBSCRIPTION $name$ DROP PUBLICATION $publication_name$ [ , ... ] [ WITH ( { $publication_option$ [ = $value$ ] } [ , ... ] ) ]
 
-ALTER SUBSCRIPTION $name$ REFRESH PUBLICATION [ WITH ( $refresh_option$ [= $value$] [ , ... ] ) ]
+ALTER SUBSCRIPTION $name$ REFRESH PUBLICATION [ WITH ( { $refresh_option$ [ = $value$ ] } [ , ... ] ) ]
 
 ALTER SUBSCRIPTION $name$ ENABLE
 
 ALTER SUBSCRIPTION $name$ DISABLE
 
-ALTER SUBSCRIPTION $name$ SET ( $subscription_parameter$ [= $value$] [ , ... ] )
+ALTER SUBSCRIPTION $name$ SET ( { $subscription_parameter$ [ = $value$ ] } [ , ... ] )
 
 ALTER SUBSCRIPTION $name$ SKIP ( $skip_option$ = $value$ )
 

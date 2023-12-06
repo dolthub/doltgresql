@@ -1,7 +1,7 @@
 CREATE [ OR REPLACE ] FUNCTION
-    $name$ ( [ [ $argmode$ ] [ $argname$ ] $argtype$ [ { DEFAULT | = } $default_expr$ ] [ , ... ] ] )
+    $name$ ( [ { [ $argmode$ ] [ $argname$ ] $argtype$ [ { DEFAULT | = } $default_expr$ ] } [ , ... ] ] )
     [ RETURNS $rettype$
-    | RETURNS TABLE ( $column_name$ $column_type$ [ , ... ] ) ]
+    | RETURNS TABLE ( { $column_name$ $column_type$ } [ , ... ] ) ]
     { LANGUAGE $lang_name$
     | TRANSFORM { FOR TYPE $type_name$ } [ , ... ]
     | WINDOW
@@ -16,5 +16,4 @@ CREATE [ OR REPLACE ] FUNCTION
     | SET $configuration_parameter$ { TO $value$ | = $value$ | FROM CURRENT }
     | AS '$definition$'
     | AS '$obj_file$', '$link_symbol$'
-    | $sql_body$
-    } ...
+    } ... [ $sql_body$ ]

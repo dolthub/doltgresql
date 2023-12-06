@@ -18,7 +18,7 @@ ALTER MATERIALIZED VIEW ALL IN TABLESPACE $name$ [ OWNED BY $role_name$ [ , ... 
 
 where $action$ is:
 
-ALTER [ COLUMN ] $column_name$ SET STATISTICS $integer$
+ALTER [ COLUMN ] $column_name$ SET STATISTICS $integer$ |
     ALTER [ COLUMN ] $column_name$ SET ( $attribute_option$ = $value$ [ , ... ] ) |
     ALTER [ COLUMN ] $column_name$ RESET ( $attribute_option$ [ , ... ] ) |
     ALTER [ COLUMN ] $column_name$ SET STORAGE { PLAIN | EXTERNAL | EXTENDED | MAIN } |
@@ -27,6 +27,6 @@ ALTER [ COLUMN ] $column_name$ SET STATISTICS $integer$
     SET WITHOUT CLUSTER |
     SET ACCESS METHOD $new_access_method$ |
     SET TABLESPACE $new_tablespace$ |
-    SET ( $storage_parameter$ [= $value$] [ , ... ] ) |
+    SET ( { $storage_parameter$ [ = $value$ ] } [ , ... ] ) |
     RESET ( $storage_parameter$ [ , ... ] ) |
     OWNER TO { $new_owner$ | CURRENT_ROLE | CURRENT_USER | SESSION_USER }

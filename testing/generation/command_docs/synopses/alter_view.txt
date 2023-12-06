@@ -10,6 +10,6 @@ ALTER VIEW [ IF EXISTS ] $name$ RENAME TO $new_name$
 
 ALTER VIEW [ IF EXISTS ] $name$ SET SCHEMA $new_schema$
 
-ALTER VIEW [ IF EXISTS ] $name$ SET ( $view_option_name$ [= $view_option_value$] [ , ... ] )
+ALTER VIEW [ IF EXISTS ] $name$ SET ( { $view_option_name$ [ = $view_option_value$ ] } [ , ... ] )
 
 ALTER VIEW [ IF EXISTS ] $name$ RESET ( $view_option_name$ [ , ... ] )

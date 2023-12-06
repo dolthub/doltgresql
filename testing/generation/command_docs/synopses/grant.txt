@@ -5,7 +5,7 @@ GRANT { { SELECT | INSERT | UPDATE | DELETE | TRUNCATE | REFERENCES | TRIGGER }
     TO $role_specification$ [ , ... ] [ WITH GRANT OPTION ]
     [ GRANTED BY $role_specification$ ]
 
-GRANT { { SELECT | INSERT | UPDATE | REFERENCES } ( $column_name$ [ , ... ] )
+GRANT { { { SELECT | INSERT | UPDATE | REFERENCES } ( $column_name$ [ , ... ] ) }
     [ , ... ] | ALL [ PRIVILEGES ] ( $column_name$ [ , ... ] ) }
     ON [ TABLE ] $table_name$ [ , ... ]
     TO $role_specification$ [ , ... ] [ WITH GRANT OPTION ]
@@ -39,7 +39,7 @@ GRANT { USAGE | ALL [ PRIVILEGES ] }
     [ GRANTED BY $role_specification$ ]
 
 GRANT { EXECUTE | ALL [ PRIVILEGES ] }
-    ON { { FUNCTION | PROCEDURE | ROUTINE } $routine_name$ [ ( [ [ $argmode$ ] [ $arg_name$ ] $arg_type$ [ , ... ] ] ) ] [ , ... ]
+    ON { { FUNCTION | PROCEDURE | ROUTINE } { $routine_name$ [ ( [ [ $argmode$ ] [ $arg_name$ ] $arg_type$ [ , ... ] ] ) ] } [ , ... ]
     | ALL { FUNCTIONS | PROCEDURES | ROUTINES } IN SCHEMA $schema_name$ [ , ... ] }
     TO $role_specification$ [ , ... ] [ WITH GRANT OPTION ]
     [ GRANTED BY $role_specification$ ]
@@ -80,7 +80,7 @@ GRANT $role_name$ [ , ... ] TO $role_specification$ [ , ... ]
 
 where $role_specification$ is:
 
-[ GROUP ] $role_name$ |
+$role_name$ |
     PUBLIC |
     CURRENT_ROLE |
     CURRENT_USER |

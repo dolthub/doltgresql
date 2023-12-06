@@ -1,22 +1,22 @@
-[ WITH [ RECURSIVE ] $with_query$ [ , ... ] ] SELECT [ ALL | DISTINCT [ ON ( $expression$ [ , ... ] ) ] ]
-    [ * | $expression$ [ [ AS ] $output_name$ ] [ , ... ] ]
+[ WITH [ RECURSIVE ] $with_query$ [ , ... ] ]
+    SELECT [ ALL [ * | { $expression$ [ [ AS ] $output_name$ ] } [ , ... ] ] |
+    DISTINCT [ ON ( $expression$ [ , ... ] ) ] { * | { $expression$ [ [ AS ] $output_name$ ] } [ , ... ] } ]
     [ FROM $from_item$ [ , ... ] ]
     [ WHERE $condition$ ]
     [ GROUP BY [ ALL | DISTINCT ] $grouping_element$ [ , ... ] ]
     [ HAVING $condition$ ]
-    [ WINDOW $window_name$ AS ( $window_definition$ ) [ , ... ] ]
+    [ WINDOW { $window_name$ AS ( $window_definition$ ) } [ , ... ] ]
     [ { UNION | INTERSECT | EXCEPT } [ ALL | DISTINCT ] $select$ ]
-    [ ORDER BY $expression$ [ ASC | DESC | USING $operator$ ] [ NULLS { FIRST | LAST } ] [ , ... ] ]
-    [ LIMIT { $count$ | ALL } ]
+    [ ORDER BY { $expression$ [ ASC | DESC | USING $operator$ ] [ NULLS { FIRST | LAST } ] } [ , ... ] ]
+    [ LIMIT { $count$ | ALL } | FETCH { FIRST | NEXT } [ $count$ ] { ROW | ROWS } { ONLY | WITH TIES } ]
     [ OFFSET $start$ [ ROW | ROWS ] ]
-    [ FETCH { FIRST | NEXT } [ $count$ ] { ROW | ROWS } { ONLY | WITH TIES } ]
-    [ FOR { UPDATE | NO KEY UPDATE | SHARE | KEY SHARE } [ OF $table_name$ [ , ... ] ] [ NOWAIT | SKIP LOCKED ] [ ... ] ]
+    [ { FOR { UPDATE | NO KEY UPDATE | SHARE | KEY SHARE } [ OF $table_name$ [ , ... ] ] [ NOWAIT | SKIP LOCKED ] } [ ... ] ]
 
-TABLE [ ONLY ] $table_name$ [ * ]
+TABLE { ONLY $table_name$ | $table_name$ [ * ] }
 
 where $from_item$ is:
 
-[ ONLY ] $table_name$ [ * ] [ [ AS ] $alias$ [ ( $column_alias$ [ , ... ] ) ] ]
+{ ONLY $table_name$ | $table_name$ [ * ] } [ [ AS ] $alias$ [ ( $column_alias$ [ , ... ] ) ] ]
     [ TABLESAMPLE $sampling_method$ ( $argument$ [ , ... ] ) [ REPEATABLE ( $seed$ ) ] ] |
     [ LATERAL ] ( $select$ ) [ AS ] $alias$ [ ( $column_alias$ [ , ... ] ) ] |
     $with_query_name$ [ [ AS ] $alias$ [ ( $column_alias$ [ , ... ] ) ] ] |
@@ -24,11 +24,11 @@ where $from_item$ is:
     [ WITH ORDINALITY ] [ [ AS ] $alias$ [ ( $column_alias$ [ , ... ] ) ] ] |
     [ LATERAL ] $function_name$ ( [ $argument$ [ , ... ] ] ) [ AS ] $alias$ ( $column_definition$ [ , ... ] ) |
     [ LATERAL ] $function_name$ ( [ $argument$ [ , ... ] ] ) AS ( $column_definition$ [ , ... ] ) |
-    [ LATERAL ] ROWS FROM( $function_name$ ( [ $argument$ [ , ... ] ] ) [ AS ( $column_definition$ [ , ... ] ) ] [ , ... ] )
+    [ LATERAL ] ROWS FROM( { $function_name$ ( [ $argument$ [ , ... ] ] ) [ AS ( $column_definition$ [ , ... ] ) ] } [ , ... ] )
     [ WITH ORDINALITY ] [ [ AS ] $alias$ [ ( $column_alias$ [ , ... ] ) ] ] |
-    $from_item$ $join_type$ $from_item$ { ON $join_condition$ | USING ( $join_column$ [ , ... ] ) [ AS $join_using_alias$ ] } |
-    $from_item$ NATURAL $join_type$ $from_item$ |
-    $from_item$ CROSS JOIN $from_item$
+    $from_item_recursive$ $join_type$ $from_item_recursive$ { ON $join_condition$ | USING ( $join_column$ [ , ... ] ) [ AS $join_using_alias$ ] } |
+    $from_item_recursive$ NATURAL $join_type$ $from_item_recursive$ |
+    $from_item_recursive$ CROSS JOIN $from_item_recursive$
 
 where $grouping_element$ is:
 
@@ -37,7 +37,7 @@ where $grouping_element$ is:
     ( $expression$ [ , ... ] ) |
     ROLLUP ( { $expression$ | ( $expression$ [ , ... ] ) } [ , ... ] ) |
     CUBE ( { $expression$ | ( $expression$ [ , ... ] ) } [ , ... ] ) |
-    GROUPING SETS ( $grouping_element$ [ , ... ] )
+    GROUPING SETS ( $grouping_element_recursive$ [ , ... ] )
 
 where $with_query$ is:
 

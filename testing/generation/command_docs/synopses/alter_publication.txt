@@ -4,7 +4,7 @@ ALTER PUBLICATION $name$ SET $publication_object$ [ , ... ]
 
 ALTER PUBLICATION $name$ DROP $publication_object$ [ , ... ]
 
-ALTER PUBLICATION $name$ SET ( $publication_parameter$ [= $value$] [ , ... ] )
+ALTER PUBLICATION $name$ SET ( { $publication_parameter$ [ = $value$ ] } [ , ... ] )
 
 ALTER PUBLICATION $name$ OWNER TO { $new_owner$ | CURRENT_ROLE | CURRENT_USER | SESSION_USER }
 
@@ -12,5 +12,5 @@ ALTER PUBLICATION $name$ RENAME TO $new_name$
 
 where $publication_object$ is:
 
-TABLE [ ONLY ] $table_name$ [ * ] [ ( $column_name$ [ , ... ] ) ] [ WHERE ( $expression$ ) ] [ , ... ] |
+{ TABLE { ONLY $table_name$ | $table_name$ [ * ] } [ ( $column_name$ [ , ... ] ) ] [ WHERE ( $expression$ ) ] } [ , ... ] |
     TABLES IN SCHEMA { $schema_name$ | CURRENT_SCHEMA } [ , ... ]

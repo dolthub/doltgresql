@@ -1,8 +1,8 @@
-[ WITH [ RECURSIVE ] $with_query$ [ , ... ] ] UPDATE [ ONLY ] $table_name$ [ * ] [ [ AS ] $alias$ ]
+[ WITH [ RECURSIVE ] $with_query$ [ , ... ] ] UPDATE { ONLY $table_name$ | $table_name$ [ * ] } [ [ AS ] $alias$ ]
     SET { $column_name$ = { $expression$ | DEFAULT } |
     ( $column_name$ [ , ... ] ) = [ ROW ] ( { $expression$ | DEFAULT } [ , ... ] ) |
     ( $column_name$ [ , ... ] ) = ( $sub-SELECT$ )
     } [ , ... ]
     [ FROM $from_item$ [ , ... ] ]
     [ WHERE $condition$ | WHERE CURRENT OF $cursor_name$ ]
-    [ RETURNING * | $output_expression$ [ [ AS ] $output_name$ ] [ , ... ] ]
+    [ RETURNING { * | { $output_expression$ [ [ AS ] $output_name$ ] } [ , ... ] } ]

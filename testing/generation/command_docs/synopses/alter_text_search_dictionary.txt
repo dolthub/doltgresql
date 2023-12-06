@@ -1,5 +1,5 @@
 ALTER TEXT SEARCH DICTIONARY $name$ (
-    $option$ [ = $value$ ] [ , ... ] )
+    { $option$ [ = $value$ ] } [ , ... ] )
 
 ALTER TEXT SEARCH DICTIONARY $name$ RENAME TO $new_name$
 

@@ -16,13 +16,17 @@ package main
 
 import (
 	"crypto/rand"
+	"math"
 	"math/big"
 	"sort"
 )
 
 var (
-	bigIntZero = big.NewInt(0)
-	bigIntOne  = big.NewInt(1)
+	bigIntZero      = big.NewInt(0)
+	bigIntOne       = big.NewInt(1)
+	bigIntTwo       = big.NewInt(2)
+	bigIntMaxInt64  = big.NewInt(math.MaxInt64)
+	bigIntMaxUint64 = new(big.Int).Add(new(big.Int).Mul(bigIntMaxInt64, bigIntTwo), bigIntOne)
 )
 
 // GenerateRandomInts generates a slice of random integers, with each integer ranging from [0, max). The returned slice
@@ -45,4 +49,16 @@ func GenerateRandomInts(count int64, max *big.Int) (randInts []*big.Int, err err
 		return randInts[i].Cmp(randInts[j]) == -1
 	})
 	return randInts, nil
+}
+
+// GetPercentages converts the slice of numbers to percentages. The max defines the number that would equal 100%. All
+// floats will be between [0.0, 100.0], unless the number is not between [0, max].
+func GetPercentages(numbers []*big.Int, max *big.Int) []float64 {
+	maxAsFloat, _ := max.Float64()
+	percentages := make([]float64, len(numbers))
+	for i, number := range numbers {
+		numberAsFloat, _ := number.Float64()
+		percentages[i] = (numberAsFloat / maxAsFloat) * 100.0
+	}
+	return percentages
 }

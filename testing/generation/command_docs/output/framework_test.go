@@ -17,6 +17,7 @@ package output
 import (
 	"testing"
 
+	"github.com/dolthub/vitess/go/vt/sqlparser"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
@@ -100,15 +101,26 @@ func RunTests(t *testing.T, tests []QueryParses) {
 		t.Run(test.String(), func(t *testing.T) {
 			statements, err := parser.Parse(test.String())
 			if !test.ShouldParse() {
-				assert.Error(t, err, "Query now parses, please upgrade the type to `Parses`")
+				if err == nil && len(statements) > 0 {
+					t.Fatal("Query now parses, please upgrade the type to `Parses`")
+				}
 				return
 			}
 			require.NoError(t, err, "Regression, query previously parsed")
 			require.Truef(t, len(statements) > 0, "Regression, query previously produced a Postgres AST")
 			for _, statement := range statements {
-				vitessAST, err := ast.Convert(statement)
+				vitessAST, err := func() (vitessAST sqlparser.Statement, err error) {
+					defer func() {
+						if recoverVal := recover(); recoverVal != nil {
+							vitessAST = nil
+						}
+					}()
+					return ast.Convert(statement)
+				}()
 				if !test.ShouldConvert() {
-					assert.Error(t, err, "Query now converts, please upgrade the type to `Converts`")
+					if err == nil && vitessAST != nil {
+						t.Fatal("Query now converts, please upgrade the type to `Converts`")
+					}
 					return
 				}
 				assert.NoError(t, err, "Regression, query previously converted from a Postgres AST to a Vitess AST")

@@ -1,5 +1,4 @@
 VALUES ( $expression$ [ , ... ] ) [ , ... ]
-    [ ORDER BY $sort_expression$ [ ASC | DESC | USING $operator$ ] [ , ... ] ]
-    [ LIMIT { $count$ | ALL } ]
+    [ ORDER BY { $sort_expression$ [ ASC | DESC | USING $operator$ ] } [ , ... ] ]
+    [ LIMIT { $count$ | ALL } | FETCH { FIRST | NEXT } [ $count$ ] { ROW | ROWS } ONLY ]
     [ OFFSET $start$ [ ROW | ROWS ] ]
-    [ FETCH { FIRST | NEXT } [ $count$ ] { ROW | ROWS } ONLY ]

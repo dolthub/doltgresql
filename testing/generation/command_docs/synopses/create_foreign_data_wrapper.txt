@@ -1,4 +1,4 @@
 CREATE FOREIGN DATA WRAPPER $name$
     [ HANDLER $handler_function$ | NO HANDLER ]
     [ VALIDATOR $validator_function$ | NO VALIDATOR ]
-    [ OPTIONS ( $option$ '$value$' [ , ... ] ) ]
+    [ OPTIONS ( { $option$ '$value$' } [ , ... ] ) ]
