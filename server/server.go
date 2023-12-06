@@ -23,7 +23,6 @@ import (
 	_ "net/http/pprof"
 	"os"
 	"strings"
-	"sync"
 
 	"github.com/dolthub/dolt/go/cmd/dolt/cli"
 	"github.com/dolthub/dolt/go/cmd/dolt/commands"
@@ -36,6 +35,7 @@ import (
 	"github.com/dolthub/dolt/go/libraries/utils/argparser"
 	"github.com/dolthub/dolt/go/libraries/utils/config"
 	"github.com/dolthub/dolt/go/libraries/utils/filesys"
+	"github.com/dolthub/dolt/go/libraries/utils/svcs"
 	"github.com/dolthub/dolt/go/store/nbs"
 	"github.com/dolthub/dolt/go/store/util/tempfiles"
 	"github.com/dolthub/go-mysql-server/server"
@@ -72,20 +72,19 @@ const stdOutAndErrFlag = "--out-and-err"
 
 // RunOnDisk starts the server based on the given args, while also using the local disk as the backing store.
 // The returned WaitGroup may be used to wait for the server to close.
-func RunOnDisk(args []string) (*int, *sync.WaitGroup) {
+func RunOnDisk(args []string) (*svcs.Controller, error) {
 	return runServer(args, filesys.LocalFS)
 }
 
 // RunInMemory starts the server based on the given args, while also using RAM as the backing store.
 // The returned WaitGroup may be used to wait for the server to close.
-func RunInMemory(args []string) (*int, *sync.WaitGroup) {
+func RunInMemory(args []string) (*svcs.Controller, error) {
 	return runServer(args, filesys.EmptyInMemFS(""))
 }
 
 // runServer starts the server based on the given args, using the provided file system as the backing store.
 // The returned WaitGroup may be used to wait for the server to close.
-func runServer(args []string, fs filesys.Filesys) (*int, *sync.WaitGroup) {
-	wg := &sync.WaitGroup{}
+func runServer(args []string, fs filesys.Filesys) (*svcs.Controller, error) {
 	ctx := context.Background()
 	// Inject the "sql-server" command if no other commands were given
 	if len(args) == 0 || (len(args) > 0 && strings.HasPrefix(args[0], "-")) {
@@ -129,8 +128,7 @@ func runServer(args []string, fs filesys.Filesys) (*int, *sync.WaitGroup) {
 
 				f, err := os.Open(stdInFile)
 				if err != nil {
-					cli.PrintErrln("Failed to open", stdInFile, err.Error())
-					return intPointer(1), wg
+					return nil, fmt.Errorf("Failed to open %s: %w", stdInFile, err)
 				}
 
 				os.Stdin = f
@@ -141,8 +139,7 @@ func runServer(args []string, fs filesys.Filesys) (*int, *sync.WaitGroup) {
 
 				f, err := os.OpenFile(filename, os.O_APPEND|os.O_WRONLY|os.O_CREATE, os.ModePerm)
 				if err != nil {
-					cli.PrintErrln("Failed to open", filename, "for writing:", err.Error())
-					return intPointer(1), wg
+					return nil, fmt.Errorf("Failed to open %s for writing: %w", filename, err)
 				}
 
 				switch args[0] {
@@ -178,25 +175,22 @@ func runServer(args []string, fs filesys.Filesys) (*int, *sync.WaitGroup) {
 
 	globalConfig, ok := dEnv.Config.GetConfig(env.GlobalConfig)
 	if !ok {
-		cli.PrintErrln(color.RedString("Failed to get global config"))
-		return intPointer(1), wg
+		return nil, fmt.Errorf("Failed to get global config")
 	}
 	// The in-memory database is only used for testing/virtual environments, so the config may need modification
-	if _, ok = fs.(*filesys.InMemFS); ok && globalConfig.GetStringOrDefault(env.UserNameKey, "") == "" {
+	if _, ok = fs.(*filesys.InMemFS); ok && globalConfig.GetStringOrDefault(config.UserNameKey, "") == "" {
 		globalConfig.SetStrings(map[string]string{
-			env.UserNameKey:  "postgres",
-			env.UserEmailKey: "postgres@somewhere.com",
+			config.UserNameKey:  "postgres",
+			config.UserEmailKey: "postgres@somewhere.com",
 		})
 	}
 
 	apr, remainingArgs, subcommandName, err := parseGlobalArgsAndSubCommandName(globalConfig, args)
 	if err == argparser.ErrHelp {
 		//TODO: display some help message
-		doltCommand.PrintUsage("dolt")
-		return intPointer(0), wg
+		return nil, fmt.Errorf("help")
 	} else if err != nil {
-		cli.PrintErrln(color.RedString("Failure to parse arguments: %v", err))
-		return intPointer(1), wg
+		return nil, fmt.Errorf("failed to parse arguments: %w", err)
 	}
 
 	dataDir, hasDataDir := apr.GetValue(commands.DataDirFlag)
@@ -204,30 +198,25 @@ func runServer(args []string, fs filesys.Filesys) (*int, *sync.WaitGroup) {
 		// If a relative path was provided, this ensures we have an absolute path everywhere.
 		dataDir, err = fs.Abs(dataDir)
 		if err != nil {
-			cli.PrintErrln(color.RedString("Failed to get absolute path for %s: %v", dataDir, err))
-			return intPointer(1), wg
+			return nil, fmt.Errorf("failed to get absolute path for %s: %w", dataDir, err)
 		}
 		if ok, dir := fs.Exists(dataDir); !ok || !dir {
-			cli.Println(color.RedString("Provided data directory does not exist: %s", dataDir))
-			return intPointer(1), wg
+			return nil, fmt.Errorf("data directory %s does not exist", dataDir)
 		}
 	}
 
 	if dEnv.CfgLoadErr != nil {
-		cli.PrintErrln(color.RedString("Failed to load the global config. %v", dEnv.CfgLoadErr))
-		return intPointer(1), wg
+		return nil, fmt.Errorf("failed to load the global config: %w", dEnv.CfgLoadErr)
 	}
 
 	if dEnv.HasDoltDataDir() {
-		cli.PrintErrln(color.RedString("Cannot start a server within a directory containing a Dolt or Doltgres database." +
-			"To use the current directory as a database, start the server from the parent directory."))
-		return intPointer(1), wg
+		return nil, fmt.Errorf("Cannot start a server within a directory containing a Dolt or Doltgres database." +
+				"To use the current directory as a database, start the server from the parent directory.")
 	}
 
 	err = reconfigIfTempFileMoveFails(dEnv)
 	if err != nil {
-		cli.PrintErrln(color.RedString("Failed to setup the temporary directory. %v`", err))
-		return intPointer(1), wg
+		return nil, fmt.Errorf("failed to set up the temporary directory: %w", err)
 	}
 
 	defer tempfiles.MovableTempFileProvider.Clean()
@@ -255,15 +244,13 @@ func runServer(args []string, fs filesys.Filesys) (*int, *sync.WaitGroup) {
 	cwdFS := dEnv.FS
 	dataDirFS, err := dEnv.FS.WithWorkingDir(dataDir)
 	if err != nil {
-		cli.PrintErrln(color.RedString("Failed to set the data directory. %v", err))
-		return intPointer(1), wg
+		return nil, fmt.Errorf("failed to set the data directory: %w", err)
 	}
 	dEnv.FS = dataDirFS
 
 	mrEnv, err := env.MultiEnvForDirectory(ctx, dEnv.Config.WriteableConfig(), dataDirFS, dEnv.Version, dEnv)
 	if err != nil {
-		cli.PrintErrln("failed to load database names")
-		return intPointer(1), wg
+		return nil, fmt.Errorf("failed to load database names: %w", err)
 	}
 	_ = mrEnv.Iter(func(dbName string, dEnv *env.DoltEnv) (stop bool, err error) {
 		dsess.DefineSystemVariablesForDB(dbName)
@@ -272,29 +259,26 @@ func runServer(args []string, fs filesys.Filesys) (*int, *sync.WaitGroup) {
 
 	err = dsess.InitPersistedSystemVars(dEnv)
 	if err != nil {
-		cli.Printf("error: failed to load persisted global variables: %s\n", err.Error())
+		return nil, fmt.Errorf("failed to load persisted system variables: %w", err)
 	}
 
 	// validate that --user and --password are set appropriately.
 	aprAlt, creds, err := cli.BuildUserPasswordPrompt(apr)
 	apr = aprAlt
 	if err != nil {
-		cli.PrintErrln(color.RedString("Failed to parse credentials: %v", err))
-		return intPointer(1), wg
+		return nil, fmt.Errorf("failed to parse credentials: %w", err)
 	}
 
 	lateBind, err := buildLateBinder(ctx, cwdFS, dEnv, mrEnv, creds, apr, subcommandName, false)
 	if err != nil {
-		cli.PrintErrln(color.RedString("%v", err))
-		return intPointer(1), wg
+		return nil, err
 	}
 
 	cliCtx, err := cli.NewCliContext(apr, dEnv.Config, lateBind)
 	if err != nil {
-		cli.PrintErrln(color.RedString("Unexpected Error: %v", err))
-		return intPointer(1), wg
+		return nil, err
 	}
-
+	
 	ctx, stop := context.WithCancel(ctx)
 	if serverMode {
 		var serverConfig sqlserver.ServerConfig
@@ -307,8 +291,7 @@ func runServer(args []string, fs filesys.Filesys) (*int, *sync.WaitGroup) {
 				tlsConfig, err := sqlserver.LoadTLSConfig(serverConfig)
 				if err != nil {
 					stop()
-					cli.PrintErrln(err)
-					return intPointer(1), wg
+					return nil, err
 				}
 				if tlsConfig != nil && len(tlsConfig.Certificates) > 0 {
 					certificate = tlsConfig.Certificates[0]
@@ -323,8 +306,7 @@ func runServer(args []string, fs filesys.Filesys) (*int, *sync.WaitGroup) {
 				subdirectoryFS, err := dEnv.FS.WithWorkingDir("doltgres")
 				if err != nil {
 					stop()
-					cli.PrintErrln(err)
-					return intPointer(1), wg
+					return nil, err
 				}
 				// We'll use a temporary environment to instantiate the subdirectory
 				tempDEnv := env.Load(ctx, env.GetCurrentUserHomeDir, subdirectoryFS, doltdb.LocalDirDoltDB, Version)
@@ -333,13 +315,26 @@ func runServer(args []string, fs filesys.Filesys) (*int, *sync.WaitGroup) {
 		}
 	}
 
-	// We're now running the server, so we can increment the WaitGroup.
-	wg.Add(1)
+	controller := svcs.NewController()
+	newCtx, cancelF := context.WithCancel(ctx)
+	go func() {
+		// Here we only forward along the SIGINT if the server starts
+		// up successfully.  If the service does not start up
+		// successfully, or if WaitForStart() blocks indefinitely, then
+		// startServer() should have returned an error and we do not
+		// need to Stop the running server or deal with our canceled
+		// parent context.
+		if controller.WaitForStart() == nil {
+			<-ctx.Done()
+			controller.Stop()
+			cancelF()
+		}
+	}()
+	
 	res := new(int)
 	go func() {
-		defer wg.Done()
-		*res = doltCommand.Exec(ctx, "dolt", remainingArgs, dEnv, cliCtx)
-		stop()
+		err := sqlserver.StartServer(newCtx, "doltgreSQL-0.1", "dolt", remainingArgs, dEnv, controller)
+		// TODO: hande this
 
 		if err = dbfactory.CloseAllLocalDatabases(); err != nil {
 			cli.PrintErrln(err)
@@ -348,7 +343,8 @@ func runServer(args []string, fs filesys.Filesys) (*int, *sync.WaitGroup) {
 			}
 		}
 	}()
-	return res, wg
+
+	return controller, nil
 }
 
 // buildLateBinder builds a LateBindQueryist for which is used to obtain the Queryist used for the length of the

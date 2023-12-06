@@ -15,13 +15,20 @@
 package main
 
 import (
+	"fmt"
 	"os"
 
 	"github.com/dolthub/doltgresql/server"
 )
 
 func main() {
-	code, wg := server.RunOnDisk(os.Args[1:])
-	wg.Wait()
+	code, controller := server.RunOnDisk(os.Args[1:])
+	
+	err := controller.WaitForStop()
+	if err != nil {
+		fmt.Println(err.Error())
+		os.Exit(1)
+	}
+	
 	os.Exit(*code)
 }
