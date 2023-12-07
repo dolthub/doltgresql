@@ -96,7 +96,7 @@ func (l *Listener) HandleConnection(conn net.Conn) {
 	var returnErr error
 	defer func() {
 		if r := recover(); r != nil {
-			fmt.Printf("Linener recovered panic: %v", r)
+			fmt.Printf("Listener recovered panic: %v", r)
 		}
 		if returnErr != nil {
 			fmt.Println(returnErr.Error())
