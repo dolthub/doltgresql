@@ -22,14 +22,18 @@ import (
 	"math/rand"
 	_ "net/http/pprof"
 	"os"
+	"strconv"
+	"strings"
 
 	"github.com/dolthub/dolt/go/cmd/dolt/cli"
 	"github.com/dolthub/dolt/go/cmd/dolt/commands"
 	"github.com/dolthub/dolt/go/cmd/dolt/commands/sqlserver"
+	eventsapi "github.com/dolthub/dolt/go/gen/proto/dolt/services/eventsapi/v1alpha1"
 	"github.com/dolthub/dolt/go/libraries/doltcore/doltdb"
 	"github.com/dolthub/dolt/go/libraries/doltcore/env"
 	"github.com/dolthub/dolt/go/libraries/doltcore/sqle/dfunctions"
 	"github.com/dolthub/dolt/go/libraries/doltcore/sqle/dsess"
+	"github.com/dolthub/dolt/go/libraries/events"
 	"github.com/dolthub/dolt/go/libraries/utils/argparser"
 	"github.com/dolthub/dolt/go/libraries/utils/config"
 	"github.com/dolthub/dolt/go/libraries/utils/filesys"
@@ -42,24 +46,83 @@ import (
 	"github.com/tidwall/gjson"
 )
 
-//TODO: cleanup this file
-
 const (
 	Version = "0.1.0"
 )
 
-var doltCommand = cli.NewSubCommandHandler("doltgresql", "it's git for data", []cli.Command{
-	commands.InitCmd{},
-	commands.ConfigCmd{},
-	commands.VersionCmd{VersionStr: Version},
-	sqlserver.SqlServerCmd{VersionStr: Version},
-})
-var globalArgParser = cli.CreateGlobalArgParser("doltgresql")
+var sqlServerDocs = cli.CommandDocumentationContent{
+	ShortDesc: "Start a PostgreSQL-compatible server.",
+	LongDesc: "By default, starts a PostgreSQL-compatible server on the dolt database in the current directory. " +
+			"Databases are named after the directories they appear in" +
+			"Parameters can be specified using a yaml configuration file passed to the server via " +
+			"{{.EmphasisLeft}}--config <file>{{.EmphasisRight}}, or by using the supported switches and flags to configure " +
+			"the server directly on the command line. If {{.EmphasisLeft}}--config <file>{{.EmphasisRight}} is provided all" +
+			" other command line arguments are ignored.\n\nThis is an example yaml configuration file showing all supported" +
+			" items and their default values:\n\n" +
+			indentLines(sqlserver.ServerConfigAsYAMLConfig(sqlserver.DefaultServerConfig()).String()) + "\n\n" + `
+SUPPORTED CONFIG FILE FIELDS:
+
+{{.EmphasisLeft}}data_dir{{.EmphasisRight}}: A directory where the server will load dolt databases to serve, and create new ones. Defaults to the current directory.
+
+{{.EmphasisLeft}}cfg_dir{{.EmphasisRight}}: A directory where the server will load and store non-database configuration data, such as permission information. Defaults {{.EmphasisLeft}}$data_dir/.doltcfg{{.EmphasisRight}}.
+
+{{.EmphasisLeft}}log_level{{.EmphasisRight}}: Level of logging provided. Options are: {{.EmphasisLeft}}trace{{.EmphasisRight}}, {{.EmphasisLeft}}debug{{.EmphasisRight}}, {{.EmphasisLeft}}info{{.EmphasisRight}}, {{.EmphasisLeft}}warning{{.EmphasisRight}}, {{.EmphasisLeft}}error{{.EmphasisRight}}, and {{.EmphasisLeft}}fatal{{.EmphasisRight}}.
+
+{{.EmphasisLeft}}privilege_file{{.EmphasisRight}}: "Path to a file to load and store users and grants. Defaults to {{.EmphasisLeft}}$doltcfg-dir/privileges.db{{.EmphasisRight}}. Will be created as needed.
+
+{{.EmphasisLeft}}branch_control_file{{.EmphasisRight}}: Path to a file to load and store branch control permissions. Defaults to {{.EmphasisLeft}}$doltcfg-dir/branch_control.db{{.EmphasisRight}}. Will be created as needed.
+
+{{.EmphasisLeft}}max_logged_query_len{{.EmphasisRight}}: If greater than zero, truncates query strings in logging to the number of characters given.
+
+{{.EmphasisLeft}}behavior.read_only{{.EmphasisRight}}: If true database modification is disabled. Defaults to false.
+
+{{.EmphasisLeft}}behavior.autocommit{{.EmphasisRight}}: If true every statement is committed automatically. Defaults to true. @@autocommit can also be specified in each session.
+
+{{.EmphasisLeft}}behavior.dolt_transaction_commit{{.EmphasisRight}}: If true all SQL transaction commits will automatically create a Dolt commit, with a generated commit message. This is useful when a system working with Dolt wants to create versioned data, but doesn't want to directly use Dolt features such as dolt_commit(). 
+
+{{.EmphasisLeft}}user.name{{.EmphasisRight}}: The username that connections should use for authentication
+
+{{.EmphasisLeft}}user.password{{.EmphasisRight}}: The password that connections should use for authentication.
+
+{{.EmphasisLeft}}listener.host{{.EmphasisRight}}: The host address that the server will run on.  This may be {{.EmphasisLeft}}localhost{{.EmphasisRight}} or an IPv4 or IPv6 address
+
+{{.EmphasisLeft}}listener.port{{.EmphasisRight}}: The port that the server should listen on
+
+{{.EmphasisLeft}}listener.max_connections{{.EmphasisRight}}: The number of simultaneous connections that the server will accept
+
+{{.EmphasisLeft}}listener.read_timeout_millis{{.EmphasisRight}}: The number of milliseconds that the server will wait for a read operation
+
+{{.EmphasisLeft}}listener.write_timeout_millis{{.EmphasisRight}}: The number of milliseconds that the server will wait for a write operation
+
+{{.EmphasisLeft}}remotesapi.port{{.EmphasisRight}}: A port to listen for remote API operations on. If set to a positive integer, this server will accept connections from clients to clone, pull, etc. databases being served.
+
+{{.EmphasisLeft}}user_session_vars{{.EmphasisRight}}: A map of user name to a map of session variables to set on connection for each session.
+
+{{.EmphasisLeft}}cluster{{.EmphasisRight}}: Settings related to running this server in a replicated cluster. For information on setting these values, see https://docs.dolthub.com/sql-reference/server/replication
+
+If a config file is not provided many of these settings may be configured on the command line.`,
+	Synopsis: []string{
+		"--config {{.LessThan}}file{{.GreaterThan}}",
+		"[-H {{.LessThan}}host{{.GreaterThan}}] [-P {{.LessThan}}port{{.GreaterThan}}] [-u {{.LessThan}}user{{.GreaterThan}}] [-p {{.LessThan}}password{{.GreaterThan}}] [-t {{.LessThan}}timeout{{.GreaterThan}}] [-l {{.LessThan}}loglevel{{.GreaterThan}}] [--data-dir {{.LessThan}}directory{{.GreaterThan}}] [-r]",
+	},
+}
+
+func indentLines(s string) string {
+	sb := strings.Builder{}
+	lines := strings.Split(s, "\n")
+	for _, line := range lines {
+		sb.WriteRune('\t')
+		sb.WriteString(line)
+		sb.WriteRune('\n')
+	}
+	return sb.String()
+}
 
 func init() {
 	server.DefaultProtocolListenerFunc = NewListener
 	sqlserver.ExternalDisableUsers = true
 	dfunctions.VersionString = Version
+	events.Application = eventsapi.AppID_APP_DOLTGRES 
 }
 
 const chdirFlag = "--chdir"
@@ -161,31 +224,15 @@ func runServer(args []string, fs filesys.Filesys) (*svcs.Controller, error) {
 	warnIfMaxFilesTooLow()
 
 	dEnv := env.Load(ctx, env.GetCurrentUserHomeDir, fs, doltdb.LocalDirDoltDB, Version)
-
-	globalConfig, ok := dEnv.Config.GetConfig(env.GlobalConfig)
-	if !ok {
-		return nil, fmt.Errorf("Failed to get global config")
-	}
-	// The in-memory database is only used for testing/virtual environments, so the config may need modification
-	if _, ok = fs.(*filesys.InMemFS); ok && globalConfig.GetStringOrDefault(config.UserNameKey, "") == "" {
-		globalConfig.SetStrings(map[string]string{
-			config.UserNameKey:  "postgres",
-			config.UserEmailKey: "postgres@somewhere.com",
-		})
-	}
-
-	apr, _, _, err := parseGlobalArgsAndSubCommandName(globalConfig, append([]string {"sql-server"}, args...))
-	if err == argparser.ErrHelp {
-		//TODO: display some help message
-		return nil, fmt.Errorf("help")
-	} else if err != nil {
-		return nil, fmt.Errorf("failed to parse arguments: %w", err)
-	}
-
+	
+	ap := sqlserver.SqlServerCmd{}.ArgParser()
+	help, _ := cli.HelpAndUsagePrinters(cli.CommandDocsForCommandString("doltgres", sqlServerDocs, ap))
+	apr := cli.ParseArgsOrDie(ap, args, help)
+	
 	dataDir, hasDataDir := apr.GetValue(commands.DataDirFlag)
 	if hasDataDir {
 		// If a relative path was provided, this ensures we have an absolute path everywhere.
-		dataDir, err = fs.Abs(dataDir)
+		dataDir, err := fs.Abs(dataDir)
 		if err != nil {
 			return nil, fmt.Errorf("failed to get absolute path for %s: %w", dataDir, err)
 		}
@@ -203,7 +250,7 @@ func runServer(args []string, fs filesys.Filesys) (*svcs.Controller, error) {
 				"To use the current directory as a database, start the server from the parent directory.")
 	}
 
-	err = reconfigIfTempFileMoveFails(dEnv)
+	err := reconfigIfTempFileMoveFails(dEnv)
 	if err != nil {
 		return nil, fmt.Errorf("failed to set up the temporary directory: %w", err)
 	}
@@ -282,7 +329,7 @@ func runServer(args []string, fs filesys.Filesys) (*svcs.Controller, error) {
 		certificate = tlsConfig.Certificates[0]
 	}
 
-	// Automatically initializes a doltgres database if necessary
+	// Automatically initialize a doltgres database if necessary
 	if !dEnv.HasDoltDir() {
 		// Need to make sure that there isn't a doltgres subdirectory. If there is, we'll assume it's a db.
 		if exists, _ := dEnv.FS.Exists("doltgres"); !exists {
@@ -296,9 +343,18 @@ func runServer(args []string, fs filesys.Filesys) (*svcs.Controller, error) {
 			}
 			// We'll use a temporary environment to instantiate the subdirectory
 			tempDEnv := env.Load(ctx, env.GetCurrentUserHomeDir, subdirectoryFS, doltdb.LocalDirDoltDB, Version)
-			_ = doltCommand.Exec(ctx, "dolt", []string{"init"}, tempDEnv, cliCtx)
+			res := commands.InitCmd{}.Exec(ctx, "init", []string{}, tempDEnv, cliCtx)
+			if res != 0 {
+				return nil, fmt.Errorf("failed to initialize doltgres database")
+			}
 		}
 	}
+	
+	// If we got this far, emit a usage event in the background while we launch the server
+	// Dolt is more permissive with events: it emits events even if the command fails in earliest phase.
+	// We'll also emit a heartbeat event every 24 hours the server is running. All events will be tagged with the
+	// doltgresql app id.
+	go emitUsageEvent(dEnv)
 
 	controller := svcs.NewController()
 	newCtx, cancelF := context.WithCancel(ctx)
@@ -317,11 +373,34 @@ func runServer(args []string, fs filesys.Filesys) (*svcs.Controller, error) {
 	}()
 
 	// We need a username and password for many SQL commands, so set defaults if they don't exist
-	dEnv.Config.SetFailsafes(env.DefaultFailsafeConfig)
+	dEnv.Config.SetFailsafes(map[string]string{
+		config.UserNameKey:  "postgres",
+		config.UserEmailKey: "postgres@somewhere.com",
+	})
 	
 	sqlserver.ConfigureServices(serverConfig, controller, Version, dEnv)
 	go controller.Start(newCtx)
 	return controller, controller.WaitForStart()
+}
+
+func emitUsageEvent(dEnv *env.DoltEnv) {
+	metricsDisabled := dEnv.Config.GetStringOrDefault(config.MetricsDisabled, "false")
+	disabled, err := strconv.ParseBool(metricsDisabled)
+	if err != nil || disabled {
+		return
+	}
+
+	evt := events.NewEvent(sqlserver.SqlServerCmd{}.EventType())
+	evtCollector := events.NewCollector()
+	evtCollector.CloseEventAndAdd(evt)
+	clientEvents := evtCollector.Close()
+	
+	emitter, err := commands.GRPCEmitterForConfig(dEnv)
+	if err != nil {
+		return
+	}
+	
+	err = emitter.LogEvents(Version, clientEvents)
 }
 
 // buildLateBinder builds a LateBindQueryist for which is used to obtain the Queryist used for the length of the
@@ -407,62 +486,6 @@ func seedGlobalRand() {
 		panic("failed to initial rand " + err.Error())
 	}
 	rand.Seed(int64(binary.LittleEndian.Uint64(bs)))
-}
-
-// parseGlobalArgsAndSubCommandName parses the global arguments, including a profile if given or a default profile if exists. Also returns the subcommand name.
-func parseGlobalArgsAndSubCommandName(globalConfig config.ReadWriteConfig, args []string) (apr *argparser.ArgParseResults, remaining []string, subcommandName string, err error) {
-	apr, remaining, err = globalArgParser.ParseGlobalArgs(args)
-	if err != nil {
-		return nil, nil, "", err
-	}
-
-	subcommandName = remaining[0]
-
-	useDefaultProfile := false
-	profileName, hasProfile := apr.GetValue(commands.ProfileFlag)
-	encodedProfiles, err := globalConfig.GetString(commands.GlobalCfgProfileKey)
-	if err != nil {
-		if err == config.ErrConfigParamNotFound {
-			if hasProfile {
-				return nil, nil, "", fmt.Errorf("no profiles found")
-			} else {
-				return apr, remaining, subcommandName, nil
-			}
-		} else {
-			return nil, nil, "", err
-		}
-	}
-	profiles, err := commands.DecodeProfile(encodedProfiles)
-	if err != nil {
-		return nil, nil, "", err
-	}
-
-	if !hasProfile {
-		defaultProfile := gjson.Get(profiles, commands.DefaultProfileName)
-		if defaultProfile.Exists() {
-			args = append([]string{"--profile", commands.DefaultProfileName}, args...)
-			apr, remaining, err = globalArgParser.ParseGlobalArgs(args)
-			if err != nil {
-				return nil, nil, "", err
-			}
-			profileName, _ = apr.GetValue(commands.ProfileFlag)
-			useDefaultProfile = true
-		}
-	}
-
-	if hasProfile || useDefaultProfile {
-		profileArgs, err := getProfile(apr, profileName, profiles)
-		if err != nil {
-			return nil, nil, "", err
-		}
-		args = append(profileArgs, args...)
-		apr, remaining, err = globalArgParser.ParseGlobalArgs(args)
-		if err != nil {
-			return nil, nil, "", err
-		}
-	}
-
-	return
 }
 
 // getProfile retrieves the given profile from the provided list of profiles and returns the args (as flags) and values
