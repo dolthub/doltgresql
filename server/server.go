@@ -268,23 +268,21 @@ func runServer(args []string, fs filesys.Filesys) (*svcs.Controller, error) {
 		return nil, err
 	}
 	
-	var serverConfig sqlserver.ServerConfig
-	// Grab the config so that we can pull the TLS key & cert. If there's an error then we can ignore it here, as
-	// it'll be caught when the server actually tries to run. We'll also use the config to determine whether we need to
-	// create a doltgres directory.
-	if sqlServerApr, err := cli.ParseArgs(sqlserver.SqlServerCmd{}.ArgParser(), args, nil); err == nil {
-		if serverConfig, err = sqlserver.GetServerConfig(dEnv.FS, sqlServerApr); err == nil {
-			// We throw an error if there's an issue with the TLS cert though
-			tlsConfig, err := sqlserver.LoadTLSConfig(serverConfig)
-			if err != nil {
-				return nil, err
-			}
-			if tlsConfig != nil && len(tlsConfig.Certificates) > 0 {
-				certificate = tlsConfig.Certificates[0]
-			}
-		}
+	serverConfig, err := sqlserver.ServerConfigFromArgs("sql-server", args, dEnv)
+	if err != nil {
+		return nil, err
 	}
-	// Server mode automatically initializes a doltgres database
+
+	tlsConfig, err := sqlserver.LoadTLSConfig(serverConfig)
+	if err != nil {
+		return nil, err
+	}
+	
+	if tlsConfig != nil && len(tlsConfig.Certificates) > 0 {
+		certificate = tlsConfig.Certificates[0]
+	}
+
+	// Automatically initializes a doltgres database if necessary
 	if !dEnv.HasDoltDir() {
 		// Need to make sure that there isn't a doltgres subdirectory. If there is, we'll assume it's a db.
 		if exists, _ := dEnv.FS.Exists("doltgres"); !exists {
