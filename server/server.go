@@ -324,8 +324,8 @@ func runServer(args []string, fs filesys.Filesys) (*int, *sync.WaitGroup) {
 		}
 		// Server mode automatically initializes a doltgres database
 		if !dEnv.HasDoltDir() {
-			// Need to make sure that there isn't a doltgres subdirectory. If there is, we'll assume it's a db.
-			if exists, _ := dEnv.FS.Exists("doltgres"); !exists {
+			// Need to make sure that there isn't a doltgres item in the path.
+			if exists, isDirectory := dEnv.FS.Exists("doltgres"); !exists {
 				dEnv.FS.MkDirs("doltgres")
 				subdirectoryFS, err := dEnv.FS.WithWorkingDir("doltgres")
 				if err != nil {
@@ -336,6 +336,14 @@ func runServer(args []string, fs filesys.Filesys) (*int, *sync.WaitGroup) {
 				// We'll use a temporary environment to instantiate the subdirectory
 				tempDEnv := env.Load(ctx, env.GetCurrentUserHomeDir, subdirectoryFS, doltdb.LocalDirDoltDB, Version)
 				_ = doltCommand.Exec(ctx, "dolt", []string{"init"}, tempDEnv, cliCtx)
+			} else if !isDirectory {
+				// The else branch means that there's a Doltgres item, so we need to error if it's a file since we
+				// enforce the creation of a Doltgres database/directory, which would create a name conflict with the file
+				stop()
+				cli.PrintErrln(fmt.Errorf("Attempted to create the default `doltgres` database, but a file with" +
+					" the same name was found. Please run the doltgres command in a directory that does not contain a" +
+					" file with the name doltgres"))
+				return intPointer(1), wg
 			}
 		}
 	}
