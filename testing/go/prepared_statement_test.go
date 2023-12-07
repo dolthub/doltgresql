@@ -74,10 +74,12 @@ func RunScriptN(t *testing.T, script ScriptTest, n int) {
 	if len(scriptDatabase) == 0 {
 		scriptDatabase = "postgres"
 	}
-	ctx, conn, serverClosed := CreateServer(t, scriptDatabase)
+	ctx, conn, controller := CreateServer(t, scriptDatabase)
 	defer func() {
 		conn.Close(ctx)
-		serverClosed.Wait()
+		controller.Stop()
+		err := controller.WaitForStop()
+		require.NoError(t, err)
 	}()
 
 	// Run the setup

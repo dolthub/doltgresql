@@ -22,13 +22,18 @@ import (
 )
 
 func main() {
-	code, controller := server.RunOnDisk(os.Args[1:])
-	
-	err := controller.WaitForStop()
+	controller, err := server.RunOnDisk(os.Args[1:])
+
 	if err != nil {
 		fmt.Println(err.Error())
 		os.Exit(1)
 	}
 	
-	os.Exit(*code)
+	err = controller.WaitForStop()
+	if err != nil {
+		fmt.Println(err.Error())
+		os.Exit(1)
+	}
+	
+	os.Exit(0)
 }

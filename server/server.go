@@ -22,12 +22,10 @@ import (
 	"math/rand"
 	_ "net/http/pprof"
 	"os"
-	"strings"
 
 	"github.com/dolthub/dolt/go/cmd/dolt/cli"
 	"github.com/dolthub/dolt/go/cmd/dolt/commands"
 	"github.com/dolthub/dolt/go/cmd/dolt/commands/sqlserver"
-	"github.com/dolthub/dolt/go/libraries/doltcore/dbfactory"
 	"github.com/dolthub/dolt/go/libraries/doltcore/doltdb"
 	"github.com/dolthub/dolt/go/libraries/doltcore/env"
 	"github.com/dolthub/dolt/go/libraries/doltcore/sqle/dfunctions"
@@ -86,19 +84,10 @@ func RunInMemory(args []string) (*svcs.Controller, error) {
 // The returned WaitGroup may be used to wait for the server to close.
 func runServer(args []string, fs filesys.Filesys) (*svcs.Controller, error) {
 	ctx := context.Background()
-	// Inject the "sql-server" command if no other commands were given
-	if len(args) == 0 || (len(args) > 0 && strings.HasPrefix(args[0], "-")) {
-		args = append([]string{"sql-server"}, args...)
-	}
-	// The "sql-server" command will automatically initialize the repository
-	serverMode := false
-	if args[0] == "sql-server" {
-		serverMode = true
-		// Enforce a default port of 5432
-		if serverArgs, err := (sqlserver.SqlServerCmd{}).ArgParser().Parse(args); err == nil {
-			if _, ok := serverArgs.GetValue("port"); !ok {
-				args = append(args, "--port=5432")
-			}
+
+	if serverArgs, err := (sqlserver.SqlServerCmd{}).ArgParser().Parse(append([]string{"sql-server"}, args...)); err == nil {
+		if _, ok := serverArgs.GetValue("port"); !ok {
+			args = append(args, "--port=5432")
 		}
 	}
 
@@ -185,7 +174,7 @@ func runServer(args []string, fs filesys.Filesys) (*svcs.Controller, error) {
 		})
 	}
 
-	apr, remainingArgs, subcommandName, err := parseGlobalArgsAndSubCommandName(globalConfig, args)
+	apr, _, _, err := parseGlobalArgsAndSubCommandName(globalConfig, append([]string {"sql-server"}, args...))
 	if err == argparser.ErrHelp {
 		//TODO: display some help message
 		return nil, fmt.Errorf("help")
@@ -269,7 +258,7 @@ func runServer(args []string, fs filesys.Filesys) (*svcs.Controller, error) {
 		return nil, fmt.Errorf("failed to parse credentials: %w", err)
 	}
 
-	lateBind, err := buildLateBinder(ctx, cwdFS, dEnv, mrEnv, creds, apr, subcommandName, false)
+	lateBind, err := buildLateBinder(ctx, cwdFS, dEnv, mrEnv, creds, apr, "sql-server", false)
 	if err != nil {
 		return nil, err
 	}
@@ -279,39 +268,37 @@ func runServer(args []string, fs filesys.Filesys) (*svcs.Controller, error) {
 		return nil, err
 	}
 	
-	ctx, stop := context.WithCancel(ctx)
-	if serverMode {
-		var serverConfig sqlserver.ServerConfig
-		// Grab the config so that we can pull the TLS key & cert. If there's an error then we can ignore it here, as
-		// it'll be caught when the server actually tries to run. We'll also use the config to determine whether we need to
-		// create a doltgres directory.
-		if sqlServerApr, err := cli.ParseArgs(sqlserver.SqlServerCmd{}.ArgParser(), args, nil); err == nil {
-			if serverConfig, err = sqlserver.GetServerConfig(dEnv.FS, sqlServerApr); err == nil {
-				// We throw an error if there's an issue with the TLS cert though
-				tlsConfig, err := sqlserver.LoadTLSConfig(serverConfig)
-				if err != nil {
-					stop()
-					return nil, err
-				}
-				if tlsConfig != nil && len(tlsConfig.Certificates) > 0 {
-					certificate = tlsConfig.Certificates[0]
-				}
+	var serverConfig sqlserver.ServerConfig
+	// Grab the config so that we can pull the TLS key & cert. If there's an error then we can ignore it here, as
+	// it'll be caught when the server actually tries to run. We'll also use the config to determine whether we need to
+	// create a doltgres directory.
+	if sqlServerApr, err := cli.ParseArgs(sqlserver.SqlServerCmd{}.ArgParser(), args, nil); err == nil {
+		if serverConfig, err = sqlserver.GetServerConfig(dEnv.FS, sqlServerApr); err == nil {
+			// We throw an error if there's an issue with the TLS cert though
+			tlsConfig, err := sqlserver.LoadTLSConfig(serverConfig)
+			if err != nil {
+				return nil, err
+			}
+			if tlsConfig != nil && len(tlsConfig.Certificates) > 0 {
+				certificate = tlsConfig.Certificates[0]
 			}
 		}
-		// Server mode automatically initializes a doltgres database
-		if !dEnv.HasDoltDir() {
-			// Need to make sure that there isn't a doltgres subdirectory. If there is, we'll assume it's a db.
-			if exists, _ := dEnv.FS.Exists("doltgres"); !exists {
-				dEnv.FS.MkDirs("doltgres")
-				subdirectoryFS, err := dEnv.FS.WithWorkingDir("doltgres")
-				if err != nil {
-					stop()
-					return nil, err
-				}
-				// We'll use a temporary environment to instantiate the subdirectory
-				tempDEnv := env.Load(ctx, env.GetCurrentUserHomeDir, subdirectoryFS, doltdb.LocalDirDoltDB, Version)
-				_ = doltCommand.Exec(ctx, "dolt", []string{"init"}, tempDEnv, cliCtx)
+	}
+	// Server mode automatically initializes a doltgres database
+	if !dEnv.HasDoltDir() {
+		// Need to make sure that there isn't a doltgres subdirectory. If there is, we'll assume it's a db.
+		if exists, _ := dEnv.FS.Exists("doltgres"); !exists {
+			err := dEnv.FS.MkDirs("doltgres")
+			if err != nil {
+				return nil, err
 			}
+			subdirectoryFS, err := dEnv.FS.WithWorkingDir("doltgres")
+			if err != nil {
+				return nil, err
+			}
+			// We'll use a temporary environment to instantiate the subdirectory
+			tempDEnv := env.Load(ctx, env.GetCurrentUserHomeDir, subdirectoryFS, doltdb.LocalDirDoltDB, Version)
+			_ = doltCommand.Exec(ctx, "dolt", []string{"init"}, tempDEnv, cliCtx)
 		}
 	}
 
@@ -330,21 +317,13 @@ func runServer(args []string, fs filesys.Filesys) (*svcs.Controller, error) {
 			cancelF()
 		}
 	}()
+
+	// We need a username and password for many SQL commands, so set defaults if they don't exist
+	dEnv.Config.SetFailsafes(env.DefaultFailsafeConfig)
 	
-	res := new(int)
-	go func() {
-		err := sqlserver.StartServer(newCtx, "doltgreSQL-0.1", "dolt", remainingArgs, dEnv, controller)
-		// TODO: hande this
-
-		if err = dbfactory.CloseAllLocalDatabases(); err != nil {
-			cli.PrintErrln(err)
-			if *res == 0 {
-				*res = 1
-			}
-		}
-	}()
-
-	return controller, nil
+	sqlserver.ConfigureServices(serverConfig, controller, Version, dEnv)
+	go controller.Start(newCtx)
+	return controller, controller.WaitForStart()
 }
 
 // buildLateBinder builds a LateBindQueryist for which is used to obtain the Queryist used for the length of the
