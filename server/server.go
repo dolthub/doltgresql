@@ -127,8 +127,8 @@ const stdOutAndErrFlag = "--out-and-err"
 
 // RunOnDisk starts the server based on the given args, while also using the local disk as the backing store.
 // The returned WaitGroup may be used to wait for the server to close.
-func RunOnDisk(ctx context.Context, args []string, dEnv *env.DoltEnv, cliCtx cli.CliContext) (*svcs.Controller, error) {
-	return runServer(ctx, args, filesys.LocalFS, dEnv, cliCtx)
+func RunOnDisk(ctx context.Context, args []string, dEnv *env.DoltEnv) (*svcs.Controller, error) {
+	return runServer(ctx, args, dEnv)
 }
 
 // RunInMemory starts the server based on the given args, while also using RAM as the backing store.
@@ -137,12 +137,12 @@ func RunInMemory(args []string) (*svcs.Controller, error) {
 	ctx := context.Background()
 	fs := filesys.EmptyInMemFS("")
 	dEnv := env.Load(ctx, env.GetCurrentUserHomeDir, fs, doltdb.LocalDirDoltDB, Version)
-	return runServer(ctx, args, fs, dEnv, nil)
+	return runServer(ctx, args, dEnv)
 }
 
 // runServer starts the server based on the given args, using the provided file system as the backing store.
 // The returned WaitGroup may be used to wait for the server to close.
-func runServer(ctx context.Context, args []string, fs filesys.Filesys, dEnv *env.DoltEnv, cliCtx cli.CliContext) (*svcs.Controller, error) {
+func runServer(ctx context.Context, args []string, dEnv *env.DoltEnv) (*svcs.Controller, error) {
 	sqlServerCmd := sqlserver.SqlServerCmd{}
 	if serverArgs, err := sqlServerCmd.ArgParser().Parse(append([]string{"sql-server"}, args...)); err == nil {
 		if _, ok := serverArgs.GetValue("port"); !ok {
@@ -203,7 +203,7 @@ func runServer(ctx context.Context, args []string, fs filesys.Filesys, dEnv *env
 			}
 			// We'll use a temporary environment to instantiate the subdirectory
 			tempDEnv := env.Load(ctx, env.GetCurrentUserHomeDir, subdirectoryFS, doltdb.LocalDirDoltDB, Version)
-			res := commands.InitCmd{}.Exec(ctx, "init", []string{}, tempDEnv, cliCtx)
+			res := commands.InitCmd{}.Exec(ctx, "init", []string{}, tempDEnv, nil)
 			if res != 0 {
 				return nil, fmt.Errorf("failed to initialize doltgres database")
 			}

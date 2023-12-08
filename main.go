@@ -64,16 +64,16 @@ func main() {
 		fmt.Println(err.Error())
 		os.Exit(1)
 	}
+	
+	// the sql-server command has special cased logic since we have to wait for the server to stop
+	if subCommandName == "" || subCommandName == "sql-server" {
+		runServer(ctx, dEnv)
+	}
 
 	cliCtx, err := configureCliCtx(apr, fs, dEnv, err, ctx)
 	if err != nil {
 		fmt.Println(err.Error())
 		os.Exit(1)
-	}
-
-	// the sql-server command has special cased logic since we have to wait for the server to stop
-	if subCommandName == "" || subCommandName == "sql-server" {
-		runServer(ctx, dEnv, cliCtx)
 	}
 
 	exitCode := doltgresCommands.Exec(ctx, "doltgresql", args, dEnv, cliCtx)
@@ -145,8 +145,8 @@ func configureCliCtx(apr *argparser.ArgParseResults, fs filesys.Filesys, dEnv *e
 	return cli.NewCliContext(apr, dEnv.Config, lateBind)
 }
 
-func runServer(ctx context.Context, dEnv *env.DoltEnv, cliCtx cli.CliContext) {
-	controller, err := server.RunOnDisk(ctx, os.Args[1:], dEnv, cliCtx)
+func runServer(ctx context.Context, dEnv *env.DoltEnv) {
+	controller, err := server.RunOnDisk(ctx, os.Args[1:], dEnv)
 
 	if err != nil {
 		fmt.Println(err.Error())
