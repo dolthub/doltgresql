@@ -15,7 +15,7 @@
 //go:build !linux && !darwin
 // +build !linux,!darwin
 
-package server
+package main
 
 func warnIfMaxFilesTooLow() {
 }
