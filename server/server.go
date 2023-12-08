@@ -16,10 +16,7 @@ package server
 
 import (
 	"context"
-	crand "crypto/rand"
-	"encoding/binary"
 	"fmt"
-	"math/rand"
 	_ "net/http/pprof"
 	"os"
 	"strconv"
@@ -43,7 +40,6 @@ import (
 	"github.com/dolthub/go-mysql-server/server"
 	"github.com/dolthub/go-mysql-server/sql"
 	"github.com/fatih/color"
-	"github.com/tidwall/gjson"
 )
 
 const (
@@ -133,21 +129,22 @@ const stdOutAndErrFlag = "--out-and-err"
 
 // RunOnDisk starts the server based on the given args, while also using the local disk as the backing store.
 // The returned WaitGroup may be used to wait for the server to close.
-func RunOnDisk(args []string) (*svcs.Controller, error) {
-	return runServer(args, filesys.LocalFS)
+func RunOnDisk(ctx context.Context, args []string, dEnv *env.DoltEnv) (*svcs.Controller, error) {
+	return runServer(ctx, args, filesys.LocalFS, dEnv)
 }
 
 // RunInMemory starts the server based on the given args, while also using RAM as the backing store.
 // The returned WaitGroup may be used to wait for the server to close.
 func RunInMemory(args []string) (*svcs.Controller, error) {
-	return runServer(args, filesys.EmptyInMemFS(""))
+	ctx := context.Background()
+	fs := filesys.EmptyInMemFS("")
+	dEnv := env.Load(ctx, env.GetCurrentUserHomeDir, fs, doltdb.LocalDirDoltDB, Version)
+	return runServer(ctx, args, fs, dEnv)
 }
 
 // runServer starts the server based on the given args, using the provided file system as the backing store.
 // The returned WaitGroup may be used to wait for the server to close.
-func runServer(args []string, fs filesys.Filesys) (*svcs.Controller, error) {
-	ctx := context.Background()
-
+func runServer(ctx context.Context, args []string, fs filesys.Filesys, dEnv *env.DoltEnv) (*svcs.Controller, error) {
 	if serverArgs, err := (sqlserver.SqlServerCmd{}).ArgParser().Parse(append([]string{"sql-server"}, args...)); err == nil {
 		if _, ok := serverArgs.GetValue("port"); !ok {
 			args = append(args, "--port=5432")
@@ -215,15 +212,6 @@ func runServer(args []string, fs filesys.Filesys) (*svcs.Controller, error) {
 			}
 		}
 	}
-
-	seedGlobalRand()
-
-	restoreIO := cli.InitIO()
-	defer restoreIO()
-
-	warnIfMaxFilesTooLow()
-
-	dEnv := env.Load(ctx, env.GetCurrentUserHomeDir, fs, doltdb.LocalDirDoltDB, Version)
 	
 	ap := sqlserver.SqlServerCmd{}.ArgParser()
 	help, _ := cli.HelpAndUsagePrinters(cli.CommandDocsForCommandString("doltgres", sqlServerDocs, ap))
@@ -477,53 +465,4 @@ func buildLateBinder(ctx context.Context, cwdFS filesys.Filesys, rootEnv *env.Do
 		cli.Println("verbose: starting local mode")
 	}
 	return commands.BuildSqlEngineQueryist(ctx, cwdFS, mrEnv, creds, apr)
-}
-
-func seedGlobalRand() {
-	bs := make([]byte, 8)
-	_, err := crand.Read(bs)
-	if err != nil {
-		panic("failed to initial rand " + err.Error())
-	}
-	rand.Seed(int64(binary.LittleEndian.Uint64(bs)))
-}
-
-// getProfile retrieves the given profile from the provided list of profiles and returns the args (as flags) and values
-// for that profile in a []string. If the profile is not found, an error is returned.
-func getProfile(apr *argparser.ArgParseResults, profileName, profiles string) (result []string, err error) {
-	prof := gjson.Get(profiles, profileName)
-	if prof.Exists() {
-		hasPassword := false
-		password := ""
-		for flag, value := range prof.Map() {
-			if !apr.Contains(flag) {
-				if flag == cli.PasswordFlag {
-					password = value.Str
-				} else if flag == "has-password" {
-					hasPassword = value.Bool()
-				} else if flag == cli.NoTLSFlag {
-					if value.Bool() {
-						result = append(result, "--"+flag)
-						continue
-					}
-				} else {
-					if value.Str != "" {
-						result = append(result, "--"+flag, value.Str)
-					}
-				}
-			}
-		}
-		if !apr.Contains(cli.PasswordFlag) && hasPassword {
-			result = append(result, "--"+cli.PasswordFlag, password)
-		}
-		return result, nil
-	} else {
-		return nil, fmt.Errorf("profile %s not found", profileName)
-	}
-}
-
-func intPointer(val int) *int {
-	p := new(int)
-	*p = val
-	return p
 }
