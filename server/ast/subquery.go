@@ -20,6 +20,7 @@ import (
 	vitess "github.com/dolthub/vitess/go/vt/sqlparser"
 
 	"github.com/dolthub/doltgresql/postgres/parser/sem/tree"
+	"github.com/dolthub/doltgresql/utils"
 )
 
 // nodeSubquery handles *tree.Subquery nodes.
@@ -47,6 +48,6 @@ func nodeSubqueryToTableExpr(node *tree.Subquery) (vitess.TableExpr, error) {
 	}
 	return &vitess.AliasedTableExpr{
 		Expr: subquery,
-		As:   vitess.NewTableIdent(generateUniqueAlias()),
+		As:   vitess.NewTableIdent(utils.GenerateUniqueAlias()),
 	}, nil
 }

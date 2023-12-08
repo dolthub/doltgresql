@@ -30,7 +30,8 @@ func GetMapKeys[K comparable, V any](m map[K]V) []K {
 	return allKeys
 }
 
-// GetMapKeysSorted returns the map's keys as a sorted slice.
+// GetMapKeysSorted returns the map's keys as a sorted slice. The keys are sorted in ascending order. For descending
+// order, use GetMapKeysSortedDescending.
 func GetMapKeysSorted[K cmp.Ordered, V any](m map[K]V) []K {
 	allKeys := make([]K, len(m))
 	i := 0
@@ -40,6 +41,21 @@ func GetMapKeysSorted[K cmp.Ordered, V any](m map[K]V) []K {
 	}
 	sort.Slice(allKeys, func(i, j int) bool {
 		return allKeys[i] < allKeys[j]
+	})
+	return allKeys
+}
+
+// GetMapKeysSortedDescending returns the map's keys as a sorted slice. The keys are sorted in descending order. For
+// ascending order, use GetMapKeysSorted.
+func GetMapKeysSortedDescending[K cmp.Ordered, V any](m map[K]V) []K {
+	allKeys := make([]K, len(m))
+	i := 0
+	for k := range m {
+		allKeys[i] = k
+		i++
+	}
+	sort.Slice(allKeys, func(i, j int) bool {
+		return allKeys[i] > allKeys[j]
 	})
 	return allKeys
 }

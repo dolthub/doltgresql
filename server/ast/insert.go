@@ -59,7 +59,7 @@ func nodeInsert(node *tree.Insert) (*vitess.Insert, error) {
 	}
 	var columns []vitess.ColIdent
 	if len(node.Columns) > 0 {
-		columns := make([]vitess.ColIdent, len(node.Columns))
+		columns = make([]vitess.ColIdent, len(node.Columns))
 		for i := range node.Columns {
 			columns[i] = vitess.NewColIdent(string(node.Columns[i]))
 		}
