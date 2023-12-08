@@ -27,10 +27,14 @@ import (
 	"github.com/dolthub/dolt/go/cmd/dolt/commands/sqlserver"
 	"github.com/dolthub/dolt/go/libraries/doltcore/doltdb"
 	"github.com/dolthub/dolt/go/libraries/doltcore/env"
+	"github.com/dolthub/dolt/go/libraries/doltcore/sqle/dsess"
 	"github.com/dolthub/dolt/go/libraries/utils/argparser"
 	"github.com/dolthub/dolt/go/libraries/utils/config"
+	"github.com/dolthub/dolt/go/libraries/utils/file"
 	"github.com/dolthub/dolt/go/libraries/utils/filesys"
+	"github.com/dolthub/dolt/go/store/util/tempfiles"
 	"github.com/dolthub/doltgresql/server"
+	"github.com/dolthub/go-mysql-server/sql"
 	"github.com/tidwall/gjson"
 )
 
@@ -61,8 +65,76 @@ func main() {
 		os.Exit(1)
 	}
 
+	cliCtx, err := configureCliCtx(apr, fs, dEnv, err, ctx)
+	if err != nil {
+		fmt.Println(err.Error())
+		os.Exit(1)
+	}
+
+	// the sql-server command has special cased logic since we have to wait for the server to stop
 	if subCommandName == "" || subCommandName == "sql-server" {
-		runServer(ctx, dEnv)
+		runServer(ctx, dEnv, cliCtx)
+	}
+
+	exitCode := doltgresCommands.Exec(ctx, "doltgresql", args, dEnv, cliCtx)
+	os.Exit(exitCode)
+}
+
+func configureCliCtx(apr *argparser.ArgParseResults, fs filesys.Filesys, dEnv *env.DoltEnv, err error, ctx context.Context) (cli.CliContext, error) {
+	dataDir, hasDataDir := apr.GetValue(commands.DataDirFlag)
+	if hasDataDir {
+		// If a relative path was provided, this ensures we have an absolute path everywhere.
+		dataDir, err := fs.Abs(dataDir)
+		if err != nil {
+			return nil, fmt.Errorf("failed to get absolute path for %s: %w", dataDir, err)
+		}
+		if ok, dir := fs.Exists(dataDir); !ok || !dir {
+			return nil, fmt.Errorf("data directory %s does not exist", dataDir)
+		}
+	}
+
+	if dEnv.CfgLoadErr != nil {
+		return nil, fmt.Errorf("failed to load the global config: %w", dEnv.CfgLoadErr)
+	}
+
+	if dEnv.HasDoltDataDir() {
+		return nil, fmt.Errorf("Cannot start a server within a directory containing a Dolt or Doltgres database." +
+				"To use the current directory as a database, start the server from the parent directory.")
+	}
+
+	err = reconfigIfTempFileMoveFails(dEnv)
+	if err != nil {
+		return nil, fmt.Errorf("failed to set up the temporary directory: %w", err)
+	}
+
+	defer tempfiles.MovableTempFileProvider.Clean()
+
+	cwdFS := dEnv.FS
+	dataDirFS, err := dEnv.FS.WithWorkingDir(dataDir)
+	if err != nil {
+		return nil, fmt.Errorf("failed to set the data directory: %w", err)
+	}
+	dEnv.FS = dataDirFS
+
+	mrEnv, err := env.MultiEnvForDirectory(ctx, dEnv.Config.WriteableConfig(), dataDirFS, dEnv.Version, dEnv)
+	if err != nil {
+		return nil, fmt.Errorf("failed to load database names: %w", err)
+	}
+	_ = mrEnv.Iter(func(dbName string, dEnv *env.DoltEnv) (stop bool, err error) {
+		dsess.DefineSystemVariablesForDB(dbName)
+		return false, nil
+	})
+
+	err = dsess.InitPersistedSystemVars(dEnv)
+	if err != nil {
+		return nil, fmt.Errorf("failed to load persisted system variables: %w", err)
+	}
+
+	// validate that --user and --password are set appropriately.
+	aprAlt, creds, err := cli.BuildUserPasswordPrompt(apr)
+	apr = aprAlt
+	if err != nil {
+		return nil, fmt.Errorf("failed to parse credentials: %w", err)
 	}
 
 	lateBind, err := buildLateBinder(ctx, cwdFS, dEnv, mrEnv, creds, apr, "sql-server", false)
@@ -70,18 +142,11 @@ func main() {
 		return nil, err
 	}
 
-	cliCtx, err := cli.NewCliContext(apr, dEnv.Config, lateBind)
-	if err != nil {
-		return nil, err
-	}
-
-	doltgresCommands.Exec(ctx, "doltgresql", args, dEnv)
-
-	os.Exit(0)
+	return cli.NewCliContext(apr, dEnv.Config, lateBind)
 }
 
-func runServer(ctx context.Context, dEnv *env.DoltEnv) {
-	controller, err := server.RunOnDisk(ctx, os.Args[1:], dEnv)
+func runServer(ctx context.Context, dEnv *env.DoltEnv, cliCtx cli.CliContext) {
+	controller, err := server.RunOnDisk(ctx, os.Args[1:], dEnv, cliCtx)
 
 	if err != nil {
 		fmt.Println(err.Error())
@@ -192,4 +257,134 @@ func seedGlobalRand() {
 		panic("failed to initial rand " + err.Error())
 	}
 	rand.Seed(int64(binary.LittleEndian.Uint64(bs)))
+}
+
+// buildLateBinder builds a LateBindQueryist for which is used to obtain the Queryist used for the length of the
+// command execution.
+func buildLateBinder(ctx context.Context, cwdFS filesys.Filesys, rootEnv *env.DoltEnv, mrEnv *env.MultiRepoEnv, creds *cli.UserPassword, apr *argparser.ArgParseResults, subcommandName string, verbose bool) (cli.LateBindQueryist, error) {
+
+	var targetEnv *env.DoltEnv = nil
+
+	useDb, hasUseDb := apr.GetValue(commands.UseDbFlag)
+	useBranch, hasBranch := apr.GetValue(cli.BranchParam)
+
+	if hasUseDb && hasBranch {
+		dbName, branchNameInDb := dsess.SplitRevisionDbName(useDb)
+		if len(branchNameInDb) != 0 {
+			return nil, fmt.Errorf("Ambiguous branch name: %s or %s", branchNameInDb, useBranch)
+		}
+		useDb = dbName + "/" + useBranch
+	}
+	// If the host flag is given, we are forced to use a remote connection to a server.
+	host, hasHost := apr.GetValue(cli.HostFlag)
+	if hasHost {
+		if !hasUseDb && subcommandName != "sql" {
+			return nil, fmt.Errorf("The --%s flag requires the additional --%s flag.", cli.HostFlag, commands.UseDbFlag)
+		}
+
+		port, hasPort := apr.GetInt(cli.PortFlag)
+		if !hasPort {
+			port = 3306
+		}
+		useTLS := !apr.Contains(cli.NoTLSFlag)
+		return sqlserver.BuildConnectionStringQueryist(ctx, cwdFS, creds, apr, host, port, useTLS, useDb)
+	} else {
+		_, hasPort := apr.GetInt(cli.PortFlag)
+		if hasPort {
+			return nil, fmt.Errorf("The --%s flag is only meaningful with the --%s flag.", cli.PortFlag, cli.HostFlag)
+		}
+	}
+
+	if hasUseDb {
+		dbName, _ := dsess.SplitRevisionDbName(useDb)
+		targetEnv = mrEnv.GetEnv(dbName)
+		if targetEnv == nil {
+			return nil, fmt.Errorf("The provided --use-db %s does not exist.", dbName)
+		}
+	} else {
+		useDb = mrEnv.GetFirstDatabase()
+		if hasBranch {
+			useDb += "/" + useBranch
+		}
+	}
+
+	if targetEnv == nil && useDb != "" {
+		targetEnv = mrEnv.GetEnv(useDb)
+	}
+
+	// There is no target environment detected. This is allowed for a small number of commands.
+	// We don't expect that number to grow, so we list them here.
+	// It's also allowed when --help is passed.
+	// So we defer the error until the caller tries to use the cli.LateBindQueryist
+	isDoltEnvironmentRequired := subcommandName != "init" && subcommandName != "sql" && subcommandName != "sql-server" && subcommandName != "sql-client"
+	if targetEnv == nil && isDoltEnvironmentRequired {
+		return func(ctx context.Context) (cli.Queryist, *sql.Context, func(), error) {
+			return nil, nil, nil, fmt.Errorf("The current directory is not a valid dolt repository.")
+		}, nil
+	}
+
+	// nil targetEnv will happen if the user ran a command in an empty directory or when there is a server running with
+	// no databases. CLI will try to connect to the server in this case.
+	if targetEnv == nil {
+		targetEnv = rootEnv
+	}
+
+	if verbose {
+		cli.Println("verbose: starting local mode")
+	}
+	return commands.BuildSqlEngineQueryist(ctx, cwdFS, mrEnv, creds, apr)
+}
+
+// If we cannot verify that we can move files for any reason, use a ./.dolt/tmp as the temp dir.
+func reconfigIfTempFileMoveFails(dEnv *env.DoltEnv) error {
+	if !canMoveTempFile() {
+		tmpDir := "./.dolt/tmp"
+
+		if !dEnv.HasDoltDir() {
+			tmpDir = "./.tmp"
+		}
+
+		stat, err := os.Stat(tmpDir)
+
+		if err != nil {
+			err := os.MkdirAll(tmpDir, os.ModePerm)
+
+			if err != nil {
+				return fmt.Errorf("failed to create temp dir '%s': %s", tmpDir, err.Error())
+			}
+		} else if !stat.IsDir() {
+			return fmt.Errorf("attempting to use '%s' as a temp directory, but there exists a file with that name", tmpDir)
+		}
+
+		tempfiles.MovableTempFileProvider = tempfiles.NewTempFileProviderAt(tmpDir)
+	}
+
+	return nil
+}
+
+func canMoveTempFile() bool {
+	const testfile = "./testfile"
+
+	f, err := os.CreateTemp("", "")
+
+	if err != nil {
+		return false
+	}
+
+	name := f.Name()
+	err = f.Close()
+
+	if err != nil {
+		return false
+	}
+
+	err = file.Rename(name, testfile)
+
+	if err != nil {
+		_ = file.Remove(name)
+		return false
+	}
+
+	_ = file.Remove(testfile)
+	return true
 }
