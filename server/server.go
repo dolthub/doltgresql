@@ -189,6 +189,12 @@ func runServer(ctx context.Context, args []string, dEnv *env.DoltEnv) (*svcs.Con
 		certificate = tlsConfig.Certificates[0]
 	}
 
+	// We need a username and password for many SQL commands, so set defaults if they don't exist
+	dEnv.Config.SetFailsafes(map[string]string{
+		config.UserNameKey:  "postgres",
+		config.UserEmailKey: "postgres@somewhere.com",
+	})
+
 	// Automatically initialize a doltgres database if necessary
 	if !dEnv.HasDoltDir() {
 		// Need to make sure that there isn't a doltgres subdirectory. If there is, we'll assume it's a db.
@@ -231,13 +237,7 @@ func runServer(ctx context.Context, args []string, dEnv *env.DoltEnv) (*svcs.Con
 			cancelF()
 		}
 	}()
-
-	// We need a username and password for many SQL commands, so set defaults if they don't exist
-	dEnv.Config.SetFailsafes(map[string]string{
-		config.UserNameKey:  "postgres",
-		config.UserEmailKey: "postgres@somewhere.com",
-	})
-
+	
 	sqlserver.ConfigureServices(serverConfig, controller, Version, dEnv)
 	go controller.Start(newCtx)
 	return controller, controller.WaitForStart()
