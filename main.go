@@ -21,6 +21,7 @@ import (
 	"fmt"
 	"math/rand"
 	"os"
+	"strings"
 
 	"github.com/dolthub/dolt/go/cmd/dolt/cli"
 	"github.com/dolthub/dolt/go/cmd/dolt/commands"
@@ -59,9 +60,16 @@ func main() {
 	dEnv := env.Load(ctx, env.GetCurrentUserHomeDir, fs, doltdb.LocalDirDoltDB, server.Version)
 
 	globalConfig, _ := dEnv.Config.GetConfig(env.GlobalConfig)
-	apr, args, subCommandName, err := parseGlobalArgsAndSubCommandName(globalConfig, os.Args[1:])
+
+	// Inject the "sql-server" command if no other commands were given
+	args := os.Args[1:]
+	if len(args) == 0 || (len(args) > 0 && strings.HasPrefix(args[0], "-")) {
+		args = append([]string{"sql-server"}, args...)
+	}
+
+	apr, args, subCommandName, err := parseGlobalArgsAndSubCommandName(globalConfig, args)
 	if err != nil {
-		fmt.Println(err.Error())
+		cli.PrintErrln(err.Error())
 		os.Exit(1)
 	}
 	
@@ -72,7 +80,7 @@ func main() {
 
 	cliCtx, err := configureCliCtx(apr, fs, dEnv, err, ctx)
 	if err != nil {
-		fmt.Println(err.Error())
+		cli.PrintErrln(err.Error())
 		os.Exit(1)
 	}
 
