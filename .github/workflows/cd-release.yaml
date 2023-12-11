@@ -42,7 +42,6 @@ jobs:
           message: ${{ format('[ga-bump-release] Update DoltgreSQL version to {0} and release v{0}', needs.format-version.outputs.version) }}
           add: ${{ format('{0}/server/server.go', github.workspace) }}
           cwd: "."
-          pull: "--ff"
           new_branch: cd-release
       - name: Create Pull Request
         id: cpr
