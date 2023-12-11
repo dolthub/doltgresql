@@ -39,7 +39,7 @@ jobs:
           NEW_VERSION: ${{ needs.format-version.outputs.version }}
       - uses: EndBug/add-and-commit@v9.1.1
         with:
-          message: ${{ format('[ga-bump-release] Update DoltgreSQL version to {0} and release v{0}', needs.format-version.outputs.version) }}
+          message: ${{ format('Update DoltgreSQL version to {0}', needs.format-version.outputs.version) }}
           add: ${{ format('{0}/server/server.go', github.workspace) }}
           cwd: "."
           new_branch: cd-release
@@ -47,6 +47,7 @@ jobs:
         id: cpr
         uses: peter-evans/create-pull-request@v5
         with:
+          base: main
           branch: cd-release
           title: "Release v${{ needs.format-version.outputs.version }}"
           token: ${{ secrets.GITHUB_TOKEN }}
