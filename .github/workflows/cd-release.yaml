@@ -79,8 +79,8 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:
           upload_url: ${{ steps.create_release.outputs.upload_url }}
-          asset_path: out/doltgres-linux-amd64.tar.gz
-          asset_name: doltgres-linux-amd64.tar.gz
+          asset_path: out/doltgresql-linux-amd64.tar.gz
+          asset_name: doltgresql-linux-amd64.tar.gz
           asset_content_type: application/zip
       - name: Upload Linux ARM64 Distro
         id: upload-linux-arm64-distro
@@ -89,8 +89,8 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:
           upload_url: ${{ steps.create_release.outputs.upload_url }}
-          asset_path: out/doltgres-linux-arm64.tar.gz
-          asset_name: doltgres-linux-arm64.tar.gz
+          asset_path: out/doltgresql-linux-arm64.tar.gz
+          asset_name: doltgresql-linux-arm64.tar.gz
           asset_content_type: application/zip
       - name: Upload OSX AMD64 Distro
         id: upload-osx-amd64-distro
@@ -99,8 +99,8 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:
           upload_url: ${{ steps.create_release.outputs.upload_url }}
-          asset_path: out/doltgres-darwin-amd64.tar.gz
-          asset_name: doltgres-darwin-amd64.tar.gz
+          asset_path: out/doltgresql-darwin-amd64.tar.gz
+          asset_name: doltgresql-darwin-amd64.tar.gz
           asset_content_type: application/zip
       - name: Upload OSX ARM64 Distro
         id: upload-osx-arm64-distro
@@ -109,8 +109,8 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:
           upload_url: ${{ steps.create_release.outputs.upload_url }}
-          asset_path: out/doltgres-darwin-arm64.tar.gz
-          asset_name: doltgres-darwin-arm64.tar.gz
+          asset_path: out/doltgresql-darwin-arm64.tar.gz
+          asset_name: doltgresql-darwin-arm64.tar.gz
           asset_content_type: application/zip
       - name: Upload Windows Distro
         id: upload-windows-distro
@@ -119,8 +119,8 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:
           upload_url: ${{ steps.create_release.outputs.upload_url }}
-          asset_path: out/doltgres-windows-amd64.zip
-          asset_name: doltgres-windows-amd64.zip
+          asset_path: out/doltgresql-windows-amd64.zip
+          asset_name: doltgresql-windows-amd64.zip
           asset_content_type: application/zip
       - name: Upload Windows Distro 7z
         id: upload-windows-distro-7z
@@ -129,8 +129,8 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:
           upload_url: ${{ steps.create_release.outputs.upload_url }}
-          asset_path: out/doltgres-windows-amd64.7z
-          asset_name: doltgres-windows-amd64.7z
+          asset_path: out/doltgresql-windows-amd64.7z
+          asset_name: doltgresql-windows-amd64.7z
           asset_content_type: application/x-7z-compressed
 
   create-release-notes:
