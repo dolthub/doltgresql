@@ -23,7 +23,6 @@ for tuple in $OS_ARCH_TUPLES; do
   o="out/doltgresql-$os-$arch"
   mkdir -p "$o/bin"
   mkdir -p "$o/licenses"
-  cp Godeps/LICENSES "$o/"
   cp -r ./licenses "$o/licenses"
   cp LICENSE "$o/licenses"
   for bin in $BINS; do
