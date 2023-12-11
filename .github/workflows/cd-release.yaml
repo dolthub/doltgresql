@@ -44,14 +44,9 @@ jobs:
           cwd: "."
           new_branch: cd-release
       - name: Create Pull Request
-        id: cpr
-        uses: peter-evans/create-pull-request@v5
-        with:
-          base: main
-          branch: cd-release
-          title: "Release v${{ needs.format-version.outputs.version }}"
-          token: ${{ secrets.GITHUB_TOKEN }}
-          body: "Created by the Release workflow to update DoltgreSQL's version"
+        run: gh pr create --base main --head "cd-release" --title "Release v${{ needs.format-version.outputs.version }}" --body "Created by the Release workflow to update DoltgreSQL's version"
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
       - name: Enable Pull Request Auto-Merge
         run: gh pr merge --merge --auto "cd-release"
         env:
