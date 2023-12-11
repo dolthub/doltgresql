@@ -18,12 +18,15 @@ This creates a few files within the `doltgresql/postgres/parser/parser` director
 It is recommended to run this file every time you pull changes into your local repository, as these generated files are not included since they would cause near guaranteed merge conflicts.
 6. **Run Go tests**: Before building the project, you should always run all of the tests, which can be done by running `go run test ./... --count=1` from the source root directory.
 This ensures that all Go tests pass, which also ensures that your Go environment is installed and configured correctly.
-7. **Run Bats tests**: We make use of [Bats](https://github.com/bats-core/bats-core) for all end-user-style tests.
+7. **Build the binary**: From the source root directory, run `go build -o <bin_name> .`, where `<bin_name>` is the name of the binary (usually `doltgres` or `doltgres.exe`).
+   To run the program without creating an executable, run `go run .`.
+8. **Run Bats tests**: We make use of [Bats](https://github.com/bats-core/bats-core) for all end-user-style tests.
 Assuming you have [NPM installed](https://docs.npmjs.com/downloading-and-installing-node-js-and-npm), you can install [Bats](https://www.npmjs.com/package/bats) by running `npm install -g bats`.
-Then, navigate to `doltgresql/testing/bats` and run `bats --tap .`, which will run all of the Bats tests in the directory.
+Then, navigate to `doltgresql/testing/bats` and run `bats .`, which will run all of the Bats tests in the directory.
 An alternative is to use [BashSupport Pro](https://plugins.jetbrains.com/plugin/13841-bashsupport-pro), which is cross-platform and used by several developers.
-8. **Build the binary**: From the source root directory, run `go build -o <bin_name> .`, where `<bin_name>` is the name of the binary (usually `doltgres` or `doltgres.exe`).
-To run the program without creating an executable, run `go run .`.
+Additionally, our [Bats](https://github.com/bats-core/bats-core) tests assume that you have a `doltgresql` (not `doltgres`) binary on your PATH.
+For Windows users, this means that the binary should _not_ end with the `.exe` file extension.
+Remember to recompile the executable on your PATH whenever you want to re-test any [Bats](https://github.com/bats-core/bats-core) tests.
 
 ### Note for Windows Users
 
