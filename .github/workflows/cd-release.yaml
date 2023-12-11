@@ -43,6 +43,19 @@ jobs:
           add: ${{ format('{0}/server/server.go', github.workspace) }}
           cwd: "."
           pull: "--ff"
+          new_branch: cd-release
+      - name: Create Pull Request
+        id: cpr
+        uses: peter-evans/create-pull-request@v5
+        with:
+          branch: cd-release
+          title: "Release v${{ needs.format-version.outputs.version }}"
+          token: ${{ secrets.GITHUB_TOKEN }}
+          body: "Created by the Release workflow to update DoltgreSQL's version"
+      - name: Enable Pull Request Auto-Merge
+        run: gh pr merge --merge --auto "cd-release"
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
       - name: Build SQL Syntax
         run: ./build.sh
         working-directory: ./postgres/parser
