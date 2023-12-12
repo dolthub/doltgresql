@@ -17,19 +17,36 @@ package _go
 import "testing"
 
 func TestIssues(t *testing.T) {
-	t.Skip("need to implement AST conversions")
 	RunScripts(t, []ScriptTest{
 		{
 			Name: "Issue #25",
 			SetUpScript: []string{
 				"create table tbl (pk int);",
 				"insert into tbl values (1);",
-				`call dolt_add(".");`,
-				`call dolt_commit("-m", "look ma");`,
 			},
 			Assertions: []ScriptTestAssertion{
 				{
-					Query:            `call dolt_branch("br1");`,
+					Query:       `call dolt_add(".");`,
+					ExpectedErr: true,
+				},
+				{
+					Query:            `call dolt_add('.');`,
+					SkipResultsCheck: true,
+				},
+				{
+					Query:       `call dolt_commit("-m", "look ma");`,
+					ExpectedErr: true,
+				},
+				{
+					Query:            `call dolt_commit('-m', 'look ma');`,
+					SkipResultsCheck: true,
+				},
+				{
+					Query:       `call dolt_branch("br1");`,
+					ExpectedErr: true,
+				},
+				{
+					Query:            `call dolt_branch('br1');`,
 					SkipResultsCheck: true,
 				},
 			},
