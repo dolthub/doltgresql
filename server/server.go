@@ -136,7 +136,15 @@ func RunOnDisk(ctx context.Context, args []string, dEnv *env.DoltEnv) (*svcs.Con
 func RunInMemory(args []string) (*svcs.Controller, error) {
 	ctx := context.Background()
 	fs := filesys.EmptyInMemFS("")
-	dEnv := env.Load(ctx, env.GetCurrentUserHomeDir, fs, doltdb.LocalDirDoltDB, Version)
+	dEnv := env.Load(ctx, env.GetCurrentUserHomeDir, fs, doltdb.InMemDoltDB, Version)
+	globalConfig, _ := dEnv.Config.GetConfig(env.GlobalConfig)
+	if globalConfig.GetStringOrDefault(config.UserNameKey, "") == "" {
+		globalConfig.SetStrings(map[string]string{
+			config.UserNameKey:  "postgres",
+			config.UserEmailKey: "postgres@somewhere.com",
+		})
+	}
+
 	return runServer(ctx, args, dEnv)
 }
 
