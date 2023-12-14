@@ -1,21 +1,14 @@
 module github.com/dolthub/doltgresql
 
-replace github.com/dolthub/dolt/go => ../dolt/go
-
-replace github.com/dolthub/go-mysql-server => ../go-mysql-server
-
-replace github.com/dolthub/vitess => ../vitess
-
-replace github.com/dolthub/dolt/go/gen/proto/dolt/services/eventsapi => ../dolt/go/gen/proto/dolt/services/eventsapi
-
 go 1.21
 
 require (
 	github.com/PuerkitoBio/goquery v1.8.1
 	github.com/cockroachdb/apd/v2 v2.0.3-0.20200518165714-d020e156310a
 	github.com/cockroachdb/errors v1.7.5
-	github.com/dolthub/dolt/go v0.40.5-0.20231130221002-0d5eeb513092
-	github.com/dolthub/go-mysql-server v0.17.1-0.20231205222834-2eb85072ed9d
+	github.com/dolthub/dolt/go v0.40.5-0.20231214014142-bf6f4efa51eb
+	github.com/dolthub/dolt/go/gen/proto/dolt/services/eventsapi v0.0.0-20231213233028-64c353bf920f
+	github.com/dolthub/go-mysql-server v0.17.1-0.20231213201402-47a48c5f014b
 	github.com/dolthub/sqllogictest/go v0.0.0-20201107003712-816f3ae12d81
 	github.com/dolthub/vitess v0.0.0-20231207010700-88fb35413580
 	github.com/fatih/color v1.13.0
@@ -60,7 +53,6 @@ require (
 	github.com/cockroachdb/sentry-go v0.6.1-cockroachdb.2 // indirect
 	github.com/davecgh/go-spew v1.1.1 // indirect
 	github.com/denisbrodbeck/machineid v1.0.1 // indirect
-	github.com/dolthub/dolt/go/gen/proto/dolt/services/eventsapi v0.0.0-20231018220650-48f565111c6a // indirect
 	github.com/dolthub/flatbuffers/v23 v23.3.3-dh.2 // indirect
 	github.com/dolthub/fslock v0.0.3 // indirect
 	github.com/dolthub/go-icu-regex v0.0.0-20230524105445-af7e7991c97e // indirect
@@ -79,6 +71,8 @@ require (
 	github.com/golang/groupcache v0.0.0-20210331224755-41bb18bfe9da // indirect
 	github.com/golang/protobuf v1.5.3 // indirect
 	github.com/golang/snappy v0.0.4 // indirect
+	github.com/google/go-github/v57 v57.0.0 // indirect
+	github.com/google/go-querystring v1.1.0 // indirect
 	github.com/google/s2a-go v0.1.4 // indirect
 	github.com/google/shlex v0.0.0-20191202100458-e7afc7fbc510 // indirect
 	github.com/google/uuid v1.3.0 // indirect
