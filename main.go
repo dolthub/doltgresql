@@ -46,6 +46,7 @@ import (
 )
 
 var doltgresCommands = cli.NewSubCommandHandler("doltgresql", "it's git for data", []cli.Command{
+	commands.InitCmd{},
 	commands.ConfigCmd{},
 	commands.VersionCmd{VersionStr: server.Version},
 	sqlserver.SqlServerCmd{VersionStr: server.Version},
