@@ -18,7 +18,6 @@ import (
 	"context"
 	"fmt"
 	_ "net/http/pprof"
-	"os"
 	"strings"
 
 	"github.com/dolthub/dolt/go/cmd/dolt/cli"
@@ -32,7 +31,6 @@ import (
 	"github.com/dolthub/dolt/go/libraries/utils/config"
 	"github.com/dolthub/dolt/go/libraries/utils/filesys"
 	"github.com/dolthub/dolt/go/libraries/utils/svcs"
-	"github.com/dolthub/dolt/go/store/nbs"
 	"github.com/dolthub/dolt/go/store/util/tempfiles"
 	"github.com/dolthub/go-mysql-server/server"
 	"github.com/dolthub/go-mysql-server/sql"
@@ -147,10 +145,6 @@ func runServer(ctx context.Context, args []string, dEnv *env.DoltEnv) (*svcs.Con
 		if _, ok := serverArgs.GetValue("port"); !ok {
 			args = append(args, "--port=5432")
 		}
-	}
-
-	if os.Getenv("DOLT_VERBOSE_ASSERT_TABLE_FILES_CLOSED") == "" {
-		nbs.TableIndexGCFinalizerWithStackTrace = false
 	}
 	
 	if dEnv.CfgLoadErr != nil {

@@ -36,6 +36,7 @@ import (
 	"github.com/dolthub/dolt/go/libraries/utils/config"
 	"github.com/dolthub/dolt/go/libraries/utils/file"
 	"github.com/dolthub/dolt/go/libraries/utils/filesys"
+	"github.com/dolthub/dolt/go/store/nbs"
 	"github.com/dolthub/dolt/go/store/util/tempfiles"
 	"github.com/dolthub/doltgresql/server"
 	"github.com/dolthub/go-mysql-server/sql"
@@ -52,6 +53,10 @@ var globalArgParser = cli.CreateGlobalArgParser("doltgresql")
 
 func init() {
 	events.Application = eventsapi.AppID_APP_DOLTGRES
+
+	if os.Getenv("DOLT_VERBOSE_ASSERT_TABLE_FILES_CLOSED") == "" {
+		nbs.TableIndexGCFinalizerWithStackTrace = false
+	}
 }
 
 const chdirFlag = "--chdir"
