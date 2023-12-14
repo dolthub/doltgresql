@@ -169,7 +169,10 @@ func runServer(ctx context.Context, args []string, dEnv *env.DoltEnv) (*svcs.Con
 		return nil, fmt.Errorf("failed to load persisted system variables: %w", err)
 	}
 
-	serverConfig, err := sqlserver.ServerConfigFromArgs("sql-server", args, dEnv)
+	ap := sqlserver.SqlServerCmd{}.ArgParser()
+	help, _ := cli.HelpAndUsagePrinters(cli.CommandDocsForCommandString("sql-server", sqlServerDocs, ap))
+
+	serverConfig, err := sqlserver.ServerConfigFromArgs(ap, help, args, dEnv)
 	if err != nil {
 		return nil, err
 	}
