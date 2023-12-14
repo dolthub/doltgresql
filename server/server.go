@@ -210,13 +210,13 @@ func runServer(ctx context.Context, args []string, dEnv *env.DoltEnv) (*svcs.Con
 			res := commands.InitCmd{}.Exec(ctx, "init", []string{}, tempDEnv, configCliContext{tempDEnv})
 			if res != 0 {
 				return nil, fmt.Errorf("failed to initialize doltgres database")
-			} else if !isDirectory {
-				// The else branch means that there's a Doltgres item, so we need to error if it's a file since we
-				// enforce the creation of a Doltgres database/directory, which would create a name conflict with the file
-				return nil, fmt.Errorf("Attempted to create the default `doltgres` database, but a file with" +
-						" the same name was found. Please run the doltgres command in a directory that does not contain a" +
-						" file with the name doltgres")
 			}
+		} else if !isDirectory {
+			// The else branch means that there's a Doltgres item, so we need to error if it's a file since we
+			// enforce the creation of a Doltgres database/directory, which would create a name conflict with the file
+			return nil, fmt.Errorf("Attempted to create the default `doltgres` database, but a file with" +
+					" the same name was found. Please run the doltgres command in a directory that does not contain a" +
+					" file with the name doltgres")
 		}
 	}
 	
