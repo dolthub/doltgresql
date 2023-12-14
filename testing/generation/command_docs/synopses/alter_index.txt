@@ -6,7 +6,7 @@ ALTER INDEX $name$ ATTACH PARTITION $index_name$
 
 ALTER INDEX $name$ [ NO ] DEPENDS ON EXTENSION $extension_name$
 
-ALTER INDEX [ IF EXISTS ] $name$ SET ( $storage_parameter$ [= $value$] [ , ... ] )
+ALTER INDEX [ IF EXISTS ] $name$ SET ( { $storage_parameter$ [ = $value$ ] } [ , ... ] )
 
 ALTER INDEX [ IF EXISTS ] $name$ RESET ( $storage_parameter$ [ , ... ] )
 

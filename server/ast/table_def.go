@@ -16,13 +16,18 @@ package ast
 
 import (
 	"fmt"
+	"sort"
 
 	vitess "github.com/dolthub/vitess/go/vt/sqlparser"
 
 	"github.com/dolthub/doltgresql/postgres/parser/sem/tree"
+	"github.com/dolthub/doltgresql/utils"
 )
 
-// assignTableDef handles tree.TableDef nodes for *vitess.DDL targets.
+// assignTableDef handles tree.TableDef nodes for *vitess.DDL targets. Some table defs, such as indexes, affect other
+// defs, such as columns, and they're therefore dependent on columns being handled first. It is up to the caller to
+// ensure that all defs have been ordered properly before calling. assignTableDefs handles the sort for you, so this
+// notice is only relevant when individually calling assignTableDef.
 func assignTableDef(node tree.TableDef, target *vitess.DDL) error {
 	switch node := node.(type) {
 	case *tree.CheckConstraintTableDef:
@@ -98,6 +103,18 @@ func assignTableDef(node tree.TableDef, target *vitess.DDL) error {
 		}
 		indexDef.Info.Unique = true
 		indexDef.Info.Primary = node.PrimaryKey
+		// If we're setting a primary key, then we need to make sure that all of the columns are also set to NOT NULL
+		if indexDef.Info.Primary {
+			tableColumns := utils.SliceToMapValues(target.TableSpec.Columns, func(col *vitess.ColumnDefinition) string {
+				return col.Name.String()
+			})
+			for _, indexedColumn := range indexDef.Columns {
+				if column, ok := tableColumns[indexedColumn.Column.String()]; ok {
+					column.Type.Null = false
+					column.Type.NotNull = true
+				}
+			}
+		}
 		target.TableSpec.Indexes = append(target.TableSpec.Indexes, indexDef)
 		return nil
 	case nil:
@@ -107,10 +124,28 @@ func assignTableDef(node tree.TableDef, target *vitess.DDL) error {
 	}
 }
 
-// assignTableDefs handles tree.TableDefs nodes for *vitess.DDL targets.
+// assignTableDefs handles tree.TableDefs nodes for *vitess.DDL targets. This also sorts table defs by whether they're
+// dependent on other table defs evaluating first. Some table defs, such as indexes, affect other defs, such as columns,
+// and they're therefore dependent on columns being handled first.
 func assignTableDefs(node tree.TableDefs, target *vitess.DDL) error {
-	for i := range node {
-		if err := assignTableDef(node[i], target); err != nil {
+	sortedNode := make(tree.TableDefs, len(node))
+	copy(sortedNode, node)
+	sort.Slice(sortedNode, func(i, j int) bool {
+		var cmps [2]int
+		for cmpsIdx := range []tree.TableDef{sortedNode[i], sortedNode[j]} {
+			switch sortedNode[i].(type) {
+			case *tree.IndexTableDef:
+				cmps[cmpsIdx] = 1
+			case *tree.UniqueConstraintTableDef:
+				cmps[cmpsIdx] = 2
+			default:
+				cmps[cmpsIdx] = 0
+			}
+		}
+		return cmps[0] < cmps[1]
+	})
+	for i := range sortedNode {
+		if err := assignTableDef(sortedNode[i], target); err != nil {
 			return err
 		}
 	}

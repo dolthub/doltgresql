@@ -1,10 +1,10 @@
-ALTER TABLE [ IF EXISTS ] [ ONLY ] $name$ [ * ]
+ALTER TABLE [ IF EXISTS ] { ONLY $name$ | $name$ [ * ] }
     $action$ [ , ... ]
 
-ALTER TABLE [ IF EXISTS ] [ ONLY ] $name$ [ * ]
+ALTER TABLE [ IF EXISTS ] { ONLY $name$ | $name$ [ * ] }
     RENAME [ COLUMN ] $column_name$ TO $new_column_name$
 
-ALTER TABLE [ IF EXISTS ] [ ONLY ] $name$ [ * ]
+ALTER TABLE [ IF EXISTS ] { ONLY $name$ | $name$ [ * ] }
     RENAME CONSTRAINT $constraint_name$ TO $new_constraint_name$
 
 ALTER TABLE [ IF EXISTS ] $name$
@@ -62,7 +62,7 @@ ADD [ COLUMN ] [ IF NOT EXISTS ] $column_name$ $data_type$ [ COLLATE $collation$
     SET ACCESS METHOD $new_access_method$ |
     SET TABLESPACE $new_tablespace$ |
     SET { LOGGED | UNLOGGED } |
-    SET ( $storage_parameter$ [= $value$] [ , ... ] ) |
+    SET ( { $storage_parameter$ [ = $value$ ] } [ , ... ] ) |
     RESET ( $storage_parameter$ [ , ... ] ) |
     INHERIT $parent_table$ |
     NO INHERIT $parent_table$ |
@@ -87,8 +87,8 @@ where $column_constraint$ is:
     DEFAULT $default_expr$ |
     GENERATED ALWAYS AS ( $generation_expr$ ) STORED |
     GENERATED { ALWAYS | BY DEFAULT } AS IDENTITY [ ( $sequence_options$ ) ] |
-    UNIQUE [ NULLS [ NOT ] DISTINCT ] $index_parameters$ |
-    PRIMARY KEY $index_parameters$ |
+    UNIQUE [ NULLS [ NOT ] DISTINCT ] $column_index_parameters$ |
+    PRIMARY KEY $column_index_parameters$ |
     REFERENCES $reftable$ [ ( $refcolumn$ ) ] [ MATCH FULL | MATCH PARTIAL | MATCH SIMPLE ]
     [ ON DELETE $referential_action$ ] [ ON UPDATE $referential_action$ ] }
     [ DEFERRABLE | NOT DEFERRABLE ] [ INITIALLY DEFERRED | INITIALLY IMMEDIATE ]
@@ -99,7 +99,7 @@ where $table_constraint$ is:
     { CHECK ( $expression$ ) [ NO INHERIT ] |
     UNIQUE [ NULLS [ NOT ] DISTINCT ] ( $column_name$ [ , ... ] ) $index_parameters$ |
     PRIMARY KEY ( $column_name$ [ , ... ] ) $index_parameters$ |
-    EXCLUDE [ USING $index_method$ ] ( $exclude_element$ WITH $operator$ [ , ... ] ) $index_parameters$ [ WHERE ( $predicate$ ) ] |
+    EXCLUDE [ USING $index_method$ ] ( { $exclude_element$ WITH $operator$ } [ , ... ] ) $index_parameters$ [ WHERE ( $predicate$ ) ] |
     FOREIGN KEY ( $column_name$ [ , ... ] ) REFERENCES $reftable$ [ ( $refcolumn$ [ , ... ] ) ]
     [ MATCH FULL | MATCH PARTIAL | MATCH SIMPLE ] [ ON DELETE $referential_action$ ] [ ON UPDATE $referential_action$ ] }
     [ DEFERRABLE | NOT DEFERRABLE ] [ INITIALLY DEFERRED | INITIALLY IMMEDIATE ]
@@ -113,8 +113,12 @@ where $table_constraint_using_index$ is:
 where $index_parameters$ is:
 
 [ INCLUDE ( $column_name$ [ , ... ] ) ]
-    [ WITH ( $storage_parameter$ [= $value$] [ , ... ] ) ]
+    [ WITH ( { $storage_parameter$ [ = $value$ ] } [ , ... ] ) ]
     [ USING INDEX TABLESPACE $tablespace_name$ ]
+
+where $column_index_parameters$ is:
+
+USING INDEX TABLESPACE $tablespace_name$
 
 where $exclude_element$ is:
 

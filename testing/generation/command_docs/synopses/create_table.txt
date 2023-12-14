@@ -5,9 +5,9 @@ CREATE [ [ GLOBAL | LOCAL ] { TEMPORARY | TEMP } | UNLOGGED ] TABLE [ IF NOT EXI
     [ , ... ]
     ] )
     [ INHERITS ( $parent_table$ [ , ... ] ) ]
-    [ PARTITION BY { RANGE | LIST | HASH } ( { $column_name$ | ( $expression$ ) } [ COLLATE $collation$ ] [ $opclass$ ] [ , ... ] ) ]
+    [ PARTITION BY { RANGE | LIST | HASH } ( { { $column_name$ | ( $expression$ ) } [ COLLATE $collation$ ] [ $opclass$ ] } [ , ... ] ) ]
     [ USING $method$ ]
-    [ WITH ( $storage_parameter$ [= $value$] [ , ... ] ) | WITHOUT OIDS ]
+    [ WITH ( { $storage_parameter$ [ = $value$ ] } [ , ... ] ) | WITHOUT OIDS ]
     [ ON COMMIT { PRESERVE ROWS | DELETE ROWS | DROP } ]
     [ TABLESPACE $tablespace_name$ ]
 
@@ -17,9 +17,9 @@ CREATE [ [ GLOBAL | LOCAL ] { TEMPORARY | TEMP } | UNLOGGED ] TABLE [ IF NOT EXI
     | $table_constraint$ }
     [ , ... ]
     ) ]
-    [ PARTITION BY { RANGE | LIST | HASH } ( { $column_name$ | ( $expression$ ) } [ COLLATE $collation$ ] [ $opclass$ ] [ , ... ] ) ]
+    [ PARTITION BY { RANGE | LIST | HASH } ( { { $column_name$ | ( $expression$ ) } [ COLLATE $collation$ ] [ $opclass$ ] } [ , ... ] ) ]
     [ USING $method$ ]
-    [ WITH ( $storage_parameter$ [= $value$] [ , ... ] ) | WITHOUT OIDS ]
+    [ WITH ( { $storage_parameter$ [ = $value$ ] } [ , ... ] ) | WITHOUT OIDS ]
     [ ON COMMIT { PRESERVE ROWS | DELETE ROWS | DROP } ]
     [ TABLESPACE $tablespace_name$ ]
 
@@ -29,9 +29,9 @@ CREATE [ [ GLOBAL | LOCAL ] { TEMPORARY | TEMP } | UNLOGGED ] TABLE [ IF NOT EXI
     | $table_constraint$ }
     [ , ... ]
     ) ] { FOR VALUES $partition_bound_spec$ | DEFAULT }
-    [ PARTITION BY { RANGE | LIST | HASH } ( { $column_name$ | ( $expression$ ) } [ COLLATE $collation$ ] [ $opclass$ ] [ , ... ] ) ]
+    [ PARTITION BY { RANGE | LIST | HASH } ( { { $column_name$ | ( $expression$ ) } [ COLLATE $collation$ ] [ $opclass$ ] } [ , ... ] ) ]
     [ USING $method$ ]
-    [ WITH ( $storage_parameter$ [= $value$] [ , ... ] ) | WITHOUT OIDS ]
+    [ WITH ( { $storage_parameter$ [ = $value$ ] } [ , ... ] ) | WITHOUT OIDS ]
     [ ON COMMIT { PRESERVE ROWS | DELETE ROWS | DROP } ]
     [ TABLESPACE $tablespace_name$ ]
 
@@ -44,9 +44,9 @@ where $column_constraint$ is:
     DEFAULT $default_expr$ |
     GENERATED ALWAYS AS ( $generation_expr$ ) STORED |
     GENERATED { ALWAYS | BY DEFAULT } AS IDENTITY [ ( $sequence_options$ ) ] |
-    UNIQUE [ NULLS [ NOT ] DISTINCT ] $index_parameters$ |
-    PRIMARY KEY $index_parameters$ |
-    REFERENCES $reftable$ [ ( $refcolumn$ ) ] [ MATCH FULL | MATCH PARTIAL | MATCH SIMPLE ]
+    UNIQUE [ NULLS [ NOT ] DISTINCT ] $column_index_parameters$ |
+    PRIMARY KEY $column_index_parameters$ |
+    REFERENCES $reftable$ [ ( $refcolumn$ ) ] [ MATCH FULL | MATCH SIMPLE ]
     [ ON DELETE $referential_action$ ] [ ON UPDATE $referential_action$ ] }
     [ DEFERRABLE | NOT DEFERRABLE ] [ INITIALLY DEFERRED | INITIALLY IMMEDIATE ]
 
@@ -56,9 +56,9 @@ where $table_constraint$ is:
     { CHECK ( $expression$ ) [ NO INHERIT ] |
     UNIQUE [ NULLS [ NOT ] DISTINCT ] ( $column_name$ [ , ... ] ) $index_parameters$ |
     PRIMARY KEY ( $column_name$ [ , ... ] ) $index_parameters$ |
-    EXCLUDE [ USING $index_method$ ] ( $exclude_element$ WITH $operator$ [ , ... ] ) $index_parameters$ [ WHERE ( $predicate$ ) ] |
+    EXCLUDE [ USING $index_method$ ] ( { $exclude_element$ WITH $operator$ } [ , ... ] ) $index_parameters$ [ WHERE ( $predicate$ ) ] |
     FOREIGN KEY ( $column_name$ [ , ... ] ) REFERENCES $reftable$ [ ( $refcolumn$ [ , ... ] ) ]
-    [ MATCH FULL | MATCH PARTIAL | MATCH SIMPLE ] [ ON DELETE $referential_action$ ] [ ON UPDATE $referential_action$ ] }
+    [ MATCH FULL | MATCH SIMPLE ] [ ON DELETE $referential_action$ ] [ ON UPDATE $referential_action$ ] }
     [ DEFERRABLE | NOT DEFERRABLE ] [ INITIALLY DEFERRED | INITIALLY IMMEDIATE ]
 
 where $like_option$ is:
@@ -75,8 +75,12 @@ IN ( $partition_bound_expr$ [ , ... ] ) |
 where $index_parameters$ is:
 
 [ INCLUDE ( $column_name$ [ , ... ] ) ]
-    [ WITH ( $storage_parameter$ [= $value$] [ , ... ] ) ]
+    [ WITH ( { $storage_parameter$ [ = $value$ ] } [ , ... ] ) ]
     [ USING INDEX TABLESPACE $tablespace_name$ ]
+
+where $column_index_parameters$ is:
+
+USING INDEX TABLESPACE $tablespace_name$
 
 where $exclude_element$ is:
 

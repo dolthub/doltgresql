@@ -1,7 +1,14 @@
 ALTER FOREIGN DATA WRAPPER $name$
-    [ HANDLER $handler_function$ | NO HANDLER ]
+    { HANDLER $handler_function$ | NO HANDLER }
     [ VALIDATOR $validator_function$ | NO VALIDATOR ]
-    [ OPTIONS ( [ ADD | SET | DROP ] $option$ ['$value$'] [ , ... ]) ]
+    [ OPTIONS ( { { ADD | SET } $option$ '$value$' | DROP $option$ } [ , ... ] ) ]
+
+ALTER FOREIGN DATA WRAPPER $name$
+    { VALIDATOR $validator_function$ | NO VALIDATOR }
+    [ OPTIONS ( { { ADD | SET } $option$ '$value$' | DROP $option$ } [ , ... ] ) ]
+
+ALTER FOREIGN DATA WRAPPER $name$
+    OPTIONS ( { { ADD | SET } $option$ '$value$' | DROP $option$ } [ , ... ] )
 
 ALTER FOREIGN DATA WRAPPER $name$ OWNER TO { $new_owner$ | CURRENT_ROLE | CURRENT_USER | SESSION_USER }
 

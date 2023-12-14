@@ -572,6 +572,9 @@ func (l *Listener) convertQuery(query string) (ConvertedQuery, error) {
 	if len(s) > 1 {
 		return ConvertedQuery{}, fmt.Errorf("only a single statement at a time is currently supported")
 	}
+	if len(s) == 0 {
+		return ConvertedQuery{String: query}, nil
+	}
 	vitessAST, err := ast.Convert(s[0])
 	if err != nil {
 		return ConvertedQuery{}, err

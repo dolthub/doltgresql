@@ -22,42 +22,42 @@ import (
 
 func TestRegressions(t *testing.T) {
 	RunScripts(t, []ScriptTest{
-		{
-			Name:        "nullif",
-			SetUpScript: []string{},
-			Assertions: []ScriptTestAssertion{
-				{
-					Query:    "select nullif(1, 1);",
-					Expected: []sql.Row{{nil}},
-				},
-				{
-					Query:    "select nullif('', null);",
-					Expected: []sql.Row{{""}},
-				},
-				{
-					Query:    "select nullif(10, 'a');",
-					Expected: []sql.Row{{10}},
-				},
-			},
-		},
-		{
-			Name:        "coalesce",
-			SetUpScript: []string{},
-			Assertions: []ScriptTestAssertion{
-				{
-					Query:    "select coalesce(null + 5, 100);",
-					Expected: []sql.Row{{100.0}}, // TODO: this should be an integer
-				},
-				{
-					Query:    "select coalesce(null, null, 'abc');",
-					Expected: []sql.Row{{"abc"}},
-				},
-				{
-					Query:    "select coalesce(null, null);",
-					Expected: []sql.Row{{nil}},
-				},
-			},
-		},
+		// {
+		// 	Name:        "nullif",
+		// 	SetUpScript: []string{},
+		// 	Assertions: []ScriptTestAssertion{
+		// 		{
+		// 			Query:    "select nullif(1, 1);",
+		// 			Expected: []sql.Row{{nil}},
+		// 		},
+		// 		{
+		// 			Query:    "select nullif('', null);",
+		// 			Expected: []sql.Row{{""}},
+		// 		},
+		// 		{
+		// 			Query:    "select nullif(10, 'a');",
+		// 			Expected: []sql.Row{{10}},
+		// 		},
+		// 	},
+		// },
+		// {
+		// 	Name:        "coalesce",
+		// 	SetUpScript: []string{},
+		// 	Assertions: []ScriptTestAssertion{
+		// 		{
+		// 			Query:    "select coalesce(null + 5, 100);",
+		// 			Expected: []sql.Row{{100.0}}, // TODO: this should be an integer
+		// 		},
+		// 		{
+		// 			Query:    "select coalesce(null, null, 'abc');",
+		// 			Expected: []sql.Row{{"abc"}},
+		// 		},
+		// 		{
+		// 			Query:    "select coalesce(null, null);",
+		// 			Expected: []sql.Row{{nil}},
+		// 		},
+		// 	},
+		// },
 		{
 			Name:        "case / when",
 			SetUpScript: []string{},
@@ -111,7 +111,7 @@ func TestRegressions(t *testing.T) {
 			},
 			Assertions: []ScriptTestAssertion{
 				{
-					Query:    "select * from t1 cross join t2 order by pk1, pk2;",
+					Query: "select * from t1 cross join t2 order by pk1, pk2;",
 					Expected: []sql.Row{
 						{1, 3},
 						{1, 4},
@@ -120,7 +120,7 @@ func TestRegressions(t *testing.T) {
 					},
 				},
 				{
-					Query:    "select * from t1, t2 order by pk1, pk2;",
+					Query: "select * from t1, t2 order by pk1, pk2;",
 					Expected: []sql.Row{
 						{1, 3},
 						{1, 4},

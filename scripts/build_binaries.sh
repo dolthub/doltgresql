@@ -23,7 +23,6 @@ for tuple in $OS_ARCH_TUPLES; do
   o="out/doltgresql-$os-$arch"
   mkdir -p "$o/bin"
   mkdir -p "$o/licenses"
-  cp Godeps/LICENSES "$o/"
   cp -r ./licenses "$o/licenses"
   cp LICENSE "$o/licenses"
   for bin in $BINS; do
@@ -32,7 +31,7 @@ for tuple in $OS_ARCH_TUPLES; do
     if [ "$os" = windows ]; then
       obin="$bin.exe"
     fi
-    CGO_ENABLED=0 GOOS="$os" GOARCH="$arch" go build -trimpath -ldflags="-s -w" -o "$o/bin/$obin" .
+    CGO_ENABLED=0 GOOS="$os" GOARCH="$arch" go build -buildvcs=false -trimpath -ldflags="-s -w" -o "$o/bin/$obin" .
   done
   if [ "$os" = windows ]; then
     (cd out && 7z a "doltgresql-$os-$arch.zip" "doltgresql-$os-$arch" && 7z a "doltgresql-$os-$arch.7z" "doltgresql-$os-$arch")

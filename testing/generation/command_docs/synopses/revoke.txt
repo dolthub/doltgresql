@@ -8,7 +8,7 @@ REVOKE [ GRANT OPTION FOR ]
     [ CASCADE | RESTRICT ]
 
 REVOKE [ GRANT OPTION FOR ]
-    { { SELECT | INSERT | UPDATE | REFERENCES } ( $column_name$ [ , ... ] )
+    { { { SELECT | INSERT | UPDATE | REFERENCES } ( $column_name$ [ , ... ] ) }
     [ , ... ] | ALL [ PRIVILEGES ] ( $column_name$ [ , ... ] ) }
     ON [ TABLE ] $table_name$ [ , ... ]
     FROM $role_specification$ [ , ... ]
@@ -54,7 +54,7 @@ REVOKE [ GRANT OPTION FOR ]
 
 REVOKE [ GRANT OPTION FOR ]
     { EXECUTE | ALL [ PRIVILEGES ] }
-    ON { { FUNCTION | PROCEDURE | ROUTINE } $function_name$ [ ( [ [ $argmode$ ] [ $arg_name$ ] $arg_type$ [ , ... ] ] ) ] [ , ... ]
+    ON { { FUNCTION | PROCEDURE | ROUTINE } { $function_name$ [ ( [ [ $argmode$ ] [ $arg_name$ ] $arg_type$ [ , ... ] ] ) ] } [ , ... ]
     | ALL { FUNCTIONS | PROCEDURES | ROUTINES } IN SCHEMA $schema_name$ [ , ... ] }
     FROM $role_specification$ [ , ... ]
     [ GRANTED BY $role_specification$ ]
@@ -109,7 +109,7 @@ REVOKE [ ADMIN OPTION FOR ]
 
 where $role_specification$ is:
 
-[ GROUP ] $role_name$ |
+$role_name$ |
     PUBLIC |
     CURRENT_ROLE |
     CURRENT_USER |

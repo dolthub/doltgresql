@@ -3,7 +3,7 @@ CREATE [ OR REPLACE ] AGGREGATE $name$ ( [ $argmode$ ] [ $argname$ ] $arg_data_t
     STYPE = $state_data_type$
     [ , SSPACE = $state_data_size$ ]
     [ , FINALFUNC = $ffunc$ ]
-    [ , FINALFUNC_EXTRA ]
+    [ , FINALFUNC_EXTRA = { TRUE | FALSE } ]
     [ , FINALFUNC_MODIFY = { READ_ONLY | SHAREABLE | READ_WRITE } ]
     [ , COMBINEFUNC = $combinefunc$ ]
     [ , SERIALFUNC = $serialfunc$ ]
@@ -14,7 +14,7 @@ CREATE [ OR REPLACE ] AGGREGATE $name$ ( [ $argmode$ ] [ $argname$ ] $arg_data_t
     [ , MSTYPE = $mstate_data_type$ ]
     [ , MSSPACE = $mstate_data_size$ ]
     [ , MFINALFUNC = $mffunc$ ]
-    [ , MFINALFUNC_EXTRA ]
+    [ , MFINALFUNC_EXTRA = { TRUE | FALSE } ]
     [ , MFINALFUNC_MODIFY = { READ_ONLY | SHAREABLE | READ_WRITE } ]
     [ , MINITCOND = $minitial_condition$ ]
     [ , SORTOP = $sort_operator$ ]
@@ -26,7 +26,7 @@ CREATE [ OR REPLACE ] AGGREGATE $name$ ( [ [ $argmode$ ] [ $argname$ ] $arg_data
     STYPE = $state_data_type$
     [ , SSPACE = $state_data_size$ ]
     [ , FINALFUNC = $ffunc$ ]
-    [ , FINALFUNC_EXTRA ]
+    [ , FINALFUNC_EXTRA = { TRUE | FALSE } ]
     [ , FINALFUNC_MODIFY = { READ_ONLY | SHAREABLE | READ_WRITE } ]
     [ , INITCOND = $initial_condition$ ]
     [ , PARALLEL = { SAFE | RESTRICTED | UNSAFE } ]
@@ -38,7 +38,7 @@ CREATE [ OR REPLACE ] AGGREGATE $name$ (
     STYPE = $state_data_type$
     [ , SSPACE = $state_data_size$ ]
     [ , FINALFUNC = $ffunc$ ]
-    [ , FINALFUNC_EXTRA ]
+    [ , FINALFUNC_EXTRA = { TRUE | FALSE } ]
     [ , FINALFUNC_MODIFY = { READ_ONLY | SHAREABLE | READ_WRITE } ]
     [ , COMBINEFUNC = $combinefunc$ ]
     [ , SERIALFUNC = $serialfunc$ ]
@@ -49,7 +49,7 @@ CREATE [ OR REPLACE ] AGGREGATE $name$ (
     [ , MSTYPE = $mstate_data_type$ ]
     [ , MSSPACE = $mstate_data_size$ ]
     [ , MFINALFUNC = $mffunc$ ]
-    [ , MFINALFUNC_EXTRA ]
+    [ , MFINALFUNC_EXTRA = { TRUE | FALSE } ]
     [ , MFINALFUNC_MODIFY = { READ_ONLY | SHAREABLE | READ_WRITE } ]
     [ , MINITCOND = $minitial_condition$ ]
     [ , SORTOP = $sort_operator$ ] )

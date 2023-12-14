@@ -1,6 +1,6 @@
 CREATE [ OR REPLACE ] RULE $name$ AS ON $event$
     TO $table_name$ [ WHERE $condition$ ]
-    DO [ ALSO | INSTEAD ] { NOTHING | $command$ | ( $command$ ; $command$ ... ) }
+    DO [ ALSO | INSTEAD ] { NOTHING | $command$ | ( $command$ { ; $command$ } [ ... ] ) }
 
 where $event$ is:
 

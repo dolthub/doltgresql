@@ -1,11 +1,64 @@
 ALTER SEQUENCE [ IF EXISTS ] $name$
-    [ AS $data_type$ ]
+    AS $data_type$
     [ INCREMENT [ BY ] $increment$ ]
-    [ MINVALUE $minvalue$ | NO MINVALUE ] [ MAXVALUE $maxvalue$ | NO MAXVALUE ]
+    [ MINVALUE $minvalue$ | NO MINVALUE ]
+    [ MAXVALUE $maxvalue$ | NO MAXVALUE ]
     [ START [ WITH ] $start$ ]
     [ RESTART [ [ WITH ] $restart$ ] ]
-    [ CACHE $cache$ ] [ [ NO ] CYCLE ]
+    [ CACHE $cache$ ]
+    [ [ NO ] CYCLE ]
     [ OWNED BY { $table_name$.$column_name$ | NONE } ]
+
+ALTER SEQUENCE [ IF EXISTS ] $name$
+    INCREMENT [ BY ] $increment$
+    [ MINVALUE $minvalue$ | NO MINVALUE ]
+    [ MAXVALUE $maxvalue$ | NO MAXVALUE ]
+    [ START [ WITH ] $start$ ]
+    [ RESTART [ [ WITH ] $restart$ ] ]
+    [ CACHE $cache$ ]
+    [ [ NO ] CYCLE ]
+    [ OWNED BY { $table_name$.$column_name$ | NONE } ]
+
+ALTER SEQUENCE [ IF EXISTS ] $name$
+    { MINVALUE $minvalue$ | NO MINVALUE }
+    [ MAXVALUE $maxvalue$ | NO MAXVALUE ]
+    [ START [ WITH ] $start$ ]
+    [ RESTART [ [ WITH ] $restart$ ] ]
+    [ CACHE $cache$ ]
+    [ [ NO ] CYCLE ]
+    [ OWNED BY { $table_name$.$column_name$ | NONE } ]
+
+ALTER SEQUENCE [ IF EXISTS ] $name$
+    { MAXVALUE $maxvalue$ | NO MAXVALUE }
+    [ START [ WITH ] $start$ ]
+    [ RESTART [ [ WITH ] $restart$ ] ]
+    [ CACHE $cache$ ]
+    [ [ NO ] CYCLE ]
+    [ OWNED BY { $table_name$.$column_name$ | NONE } ]
+
+ALTER SEQUENCE [ IF EXISTS ] $name$
+    START [ WITH ] $start$
+    [ RESTART [ [ WITH ] $restart$ ] ]
+    [ CACHE $cache$ ]
+    [ [ NO ] CYCLE ]
+    [ OWNED BY { $table_name$.$column_name$ | NONE } ]
+
+ALTER SEQUENCE [ IF EXISTS ] $name$
+    RESTART [ [ WITH ] $restart$ ]
+    [ CACHE $cache$ ]
+    [ [ NO ] CYCLE ]
+    [ OWNED BY { $table_name$.$column_name$ | NONE } ]
+
+ALTER SEQUENCE [ IF EXISTS ] $name$
+    CACHE $cache$
+    [ [ NO ] CYCLE ]
+    [ OWNED BY { $table_name$.$column_name$ | NONE } ]
+
+ALTER SEQUENCE [ IF EXISTS ] $name$
+    [ NO ] CYCLE
+    [ OWNED BY { $table_name$.$column_name$ | NONE } ]
+
+ALTER SEQUENCE [ IF EXISTS ] $name$ OWNED BY { $table_name$.$column_name$ | NONE }
 
 ALTER SEQUENCE [ IF EXISTS ] $name$ SET { LOGGED | UNLOGGED }
 

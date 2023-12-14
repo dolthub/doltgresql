@@ -16,17 +16,12 @@ package ast
 
 import (
 	"fmt"
-	"sync/atomic"
 
 	vitess "github.com/dolthub/vitess/go/vt/sqlparser"
 
 	"github.com/dolthub/doltgresql/postgres/parser/sem/tree"
+	"github.com/dolthub/doltgresql/utils"
 )
-
-// uniqueAliasCounter is used to create unique aliases. Aliases are required by GMS when some expressions are contained
-// within a vitess.AliasedTableExpr. The Postgres AST does not have this restriction, so we must do this for
-// compatibility. Callers are free to change the alias if need be, but we'll always set an alias to be safe.
-var uniqueAliasCounter atomic.Uint64
 
 // nodeAliasedTableExpr handles *tree.AliasedTableExpr nodes.
 func nodeAliasedTableExpr(node *tree.AliasedTableExpr) (*vitess.AliasedTableExpr, error) {
@@ -66,7 +61,7 @@ func nodeAliasedTableExpr(node *tree.AliasedTableExpr) (*vitess.AliasedTableExpr
 	}
 	alias := string(node.As.Alias)
 	if len(alias) == 0 {
-		alias = generateUniqueAlias()
+		alias = utils.GenerateUniqueAlias()
 	}
 	return &vitess.AliasedTableExpr{
 		Expr:    aliasExpr,
@@ -74,9 +69,4 @@ func nodeAliasedTableExpr(node *tree.AliasedTableExpr) (*vitess.AliasedTableExpr
 		AsOf:    nil,
 		Lateral: node.Lateral,
 	}, nil
-}
-
-// generateUniqueAlias generates a unique alias. This is thread-safe.
-func generateUniqueAlias() string {
-	return fmt.Sprintf("doltgres!|alias|%d", uniqueAliasCounter.Add(1))
 }

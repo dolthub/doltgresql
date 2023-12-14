@@ -23,9 +23,7 @@ const (
 	TokenType_VariableDefinition
 	TokenType_Or
 	TokenType_Repeat
-	TokenType_CommaRepeat
 	TokenType_OptionalRepeat
-	TokenType_OptionalCommaRepeat
 	TokenType_ShortSpace
 	TokenType_MediumSpace
 	TokenType_LongSpace
@@ -83,12 +81,12 @@ func (t Token) String() string {
 		return "|"
 	case TokenType_Repeat:
 		return "..."
-	case TokenType_CommaRepeat:
-		return ", ..."
 	case TokenType_OptionalRepeat:
-		return "[ ... ]"
-	case TokenType_OptionalCommaRepeat:
-		return "[ , ... ]"
+		if len(t.Literal) > 0 {
+			return "[ " + t.Literal + " ... ]"
+		} else {
+			return "[ ... ]"
+		}
 	case TokenType_ShortSpace:
 		return " "
 	case TokenType_MediumSpace:
