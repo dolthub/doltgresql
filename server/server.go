@@ -19,7 +19,6 @@ import (
 	"fmt"
 	_ "net/http/pprof"
 	"os"
-	"strconv"
 	"strings"
 
 	"github.com/dolthub/dolt/go/cmd/dolt/cli"
@@ -31,13 +30,14 @@ import (
 	"github.com/dolthub/dolt/go/libraries/doltcore/sqle/dfunctions"
 	"github.com/dolthub/dolt/go/libraries/doltcore/sqle/dsess"
 	"github.com/dolthub/dolt/go/libraries/events"
+	"github.com/dolthub/dolt/go/libraries/utils/argparser"
 	"github.com/dolthub/dolt/go/libraries/utils/config"
 	"github.com/dolthub/dolt/go/libraries/utils/filesys"
 	"github.com/dolthub/dolt/go/libraries/utils/svcs"
 	"github.com/dolthub/dolt/go/store/nbs"
 	"github.com/dolthub/dolt/go/store/util/tempfiles"
 	"github.com/dolthub/go-mysql-server/server"
-	"github.com/fatih/color"
+	"github.com/dolthub/go-mysql-server/sql"
 )
 
 const (
@@ -119,12 +119,6 @@ func init() {
 	events.Application = eventsapi.AppID_APP_DOLTGRES 
 }
 
-const chdirFlag = "--chdir"
-const stdInFlag = "--stdin"
-const stdOutFlag = "--stdout"
-const stdErrFlag = "--stderr"
-const stdOutAndErrFlag = "--out-and-err"
-
 // RunOnDisk starts the server based on the given args, while also using the local disk as the backing store.
 // The returned WaitGroup may be used to wait for the server to close.
 func RunOnDisk(ctx context.Context, args []string, dEnv *env.DoltEnv) (*svcs.Controller, error) {
@@ -162,11 +156,6 @@ func runServer(ctx context.Context, args []string, dEnv *env.DoltEnv) (*svcs.Con
 		nbs.TableIndexGCFinalizerWithStackTrace = false
 	}
 	
-	args, err := redirectStdio(args)
-	if err != nil {
-		return nil, err
-	}
-	
 	if dEnv.CfgLoadErr != nil {
 		return nil, fmt.Errorf("failed to load the global config: %w", dEnv.CfgLoadErr)
 	}
@@ -178,7 +167,7 @@ func runServer(ctx context.Context, args []string, dEnv *env.DoltEnv) (*svcs.Con
 
 	defer tempfiles.MovableTempFileProvider.Clean()
 
-	err = dsess.InitPersistedSystemVars(dEnv)
+	err := dsess.InitPersistedSystemVars(dEnv)
 	if err != nil {
 		return nil, fmt.Errorf("failed to load persisted system variables: %w", err)
 	}
@@ -215,21 +204,16 @@ func runServer(ctx context.Context, args []string, dEnv *env.DoltEnv) (*svcs.Con
 			if err != nil {
 				return nil, err
 			}
+			
 			// We'll use a temporary environment to instantiate the subdirectory
-			tempDEnv := env.Load(ctx, env.GetCurrentUserHomeDir, subdirectoryFS, doltdb.LocalDirDoltDB, Version)
-			res := commands.InitCmd{}.Exec(ctx, "init", []string{}, tempDEnv, nil)
+			tempDEnv := env.Load(ctx, env.GetCurrentUserHomeDir, subdirectoryFS, dEnv.UrlStr(), Version)
+			res := commands.InitCmd{}.Exec(ctx, "init", []string{}, tempDEnv, configCliContext{tempDEnv})
 			if res != 0 {
 				return nil, fmt.Errorf("failed to initialize doltgres database")
 			}
 		}
 	}
-
-	// If we got this far, emit a usage event in the background while we launch the server
-	// Dolt is more permissive with events: it emits events even if the command fails in earliest phase.
-	// We'll also emit a heartbeat event every 24 hours the server is running. All events will be tagged with the
-	// doltgresql app id.
-	go emitUsageEvent(dEnv)
-
+	
 	controller := svcs.NewController()
 	newCtx, cancelF := context.WithCancel(ctx)
 	go func() {
@@ -251,83 +235,21 @@ func runServer(ctx context.Context, args []string, dEnv *env.DoltEnv) (*svcs.Con
 	return controller, controller.WaitForStart()
 }
 
-func redirectStdio(args []string) ([]string, error) {
-	if len(args) > 0 {
-		var doneDebugFlags bool
-		for !doneDebugFlags && len(args) > 0 {
-			switch args[0] {
-			// Currently goland doesn't support running with a different working directory when using go modules.
-			// This is a hack that allows a different working directory to be set after the application starts using
-			// chdir=<DIR>.  The syntax is not flexible and must match exactly this.
-			case chdirFlag:
-				err := os.Chdir(args[1])
-
-				if err != nil {
-					panic(err)
-				}
-
-				args = args[2:]
-
-			case stdInFlag:
-				stdInFile := args[1]
-				cli.Println("Using file contents as stdin:", stdInFile)
-
-				f, err := os.Open(stdInFile)
-				if err != nil {
-					return nil, fmt.Errorf("Failed to open %s: %w", stdInFile, err)
-				}
-
-				os.Stdin = f
-				args = args[2:]
-
-			case stdOutFlag, stdErrFlag, stdOutAndErrFlag:
-				filename := args[1]
-
-				f, err := os.OpenFile(filename, os.O_APPEND|os.O_WRONLY|os.O_CREATE, os.ModePerm)
-				if err != nil {
-					return nil, fmt.Errorf("Failed to open %s for writing: %w", filename, err)
-				}
-
-				switch args[0] {
-				case stdOutFlag:
-					cli.Println("Stdout being written to", filename)
-					cli.CliOut = f
-				case stdErrFlag:
-					cli.Println("Stderr being written to", filename)
-					cli.CliErr = f
-				case stdOutAndErrFlag:
-					cli.Println("Stdout and Stderr being written to", filename)
-					cli.CliOut = f
-					cli.CliErr = f
-				}
-
-				color.NoColor = true
-				args = args[2:]
-
-			default:
-				doneDebugFlags = true
-			}
-		}
-	}
-	return args, nil
+// configCliContext is a minimal implementation of CliContext that only supports Config()
+type configCliContext struct {
+	dEnv *env.DoltEnv
 }
 
-func emitUsageEvent(dEnv *env.DoltEnv) {
-	metricsDisabled := dEnv.Config.GetStringOrDefault(config.MetricsDisabled, "false")
-	disabled, err := strconv.ParseBool(metricsDisabled)
-	if err != nil || disabled {
-		return
-	}
-
-	evt := events.NewEvent(sqlserver.SqlServerCmd{}.EventType())
-	evtCollector := events.NewCollector()
-	evtCollector.CloseEventAndAdd(evt)
-	clientEvents := evtCollector.Close()
-	
-	emitter, err := commands.GRPCEmitterForConfig(dEnv)
-	if err != nil {
-		return
-	}
-	
-	err = emitter.LogEvents(Version, clientEvents)
+func (c configCliContext) Config() *env.DoltCliConfig {
+	return c.dEnv.Config
 }
+
+func (c configCliContext) GlobalArgs() *argparser.ArgParseResults {
+	panic("ConfigCliContext does not support GlobalArgs()")
+}
+
+func (c configCliContext) QueryEngine(ctx context.Context) (cli.Queryist, *sql.Context, func(), error) {
+	return nil, nil, nil, fmt.Errorf("ConfigCliContext does not support QueryEngine()")
+}
+
+var _ cli.CliContext = configCliContext{}

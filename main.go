@@ -21,6 +21,7 @@ import (
 	"fmt"
 	"math/rand"
 	"os"
+	"strconv"
 	"strings"
 
 	"github.com/dolthub/dolt/go/cmd/dolt/cli"
@@ -29,6 +30,7 @@ import (
 	"github.com/dolthub/dolt/go/libraries/doltcore/doltdb"
 	"github.com/dolthub/dolt/go/libraries/doltcore/env"
 	"github.com/dolthub/dolt/go/libraries/doltcore/sqle/dsess"
+	"github.com/dolthub/dolt/go/libraries/events"
 	"github.com/dolthub/dolt/go/libraries/utils/argparser"
 	"github.com/dolthub/dolt/go/libraries/utils/config"
 	"github.com/dolthub/dolt/go/libraries/utils/file"
@@ -36,6 +38,7 @@ import (
 	"github.com/dolthub/dolt/go/store/util/tempfiles"
 	"github.com/dolthub/doltgresql/server"
 	"github.com/dolthub/go-mysql-server/sql"
+	"github.com/fatih/color"
 	"github.com/tidwall/gjson"
 )
 
@@ -47,9 +50,23 @@ var doltgresCommands = cli.NewSubCommandHandler("doltgresql", "it's git for data
 })
 var globalArgParser = cli.CreateGlobalArgParser("doltgresql")
 
+const chdirFlag = "--chdir"
+const stdInFlag = "--stdin"
+const stdOutFlag = "--stdout"
+const stdErrFlag = "--stderr"
+const stdOutAndErrFlag = "--out-and-err"
+
 func main() {
 	ctx := context.Background()
 	seedGlobalRand()
+	
+	args := os.Args[1:]
+	
+	args, err := redirectStdio(args)
+	if err != nil {
+		cli.PrintErrln(err.Error())
+		os.Exit(1)
+	}
 
 	restoreIO := cli.InitIO()
 	defer restoreIO()
@@ -62,7 +79,6 @@ func main() {
 	globalConfig, _ := dEnv.Config.GetConfig(env.GlobalConfig)
 
 	// Inject the "sql-server" command if no other commands were given
-	args := os.Args[1:]
 	if len(args) == 0 || (len(args) > 0 && strings.HasPrefix(args[0], "-")) {
 		args = append([]string{"sql-server"}, args...)
 	}
@@ -73,12 +89,19 @@ func main() {
 		os.Exit(1)
 	}
 	
-	// the sql-server command has special cased logic since we have to wait for the server to stop
+	// The sql-server command has special cased logic since it doesn't invoke a Dolt command directly, but runs a server
+	// and waits for it to finish
 	if subCommandName == "" || subCommandName == "sql-server" {
-		runServer(ctx, dEnv)
+		err = runServer(ctx, dEnv)
+		if err != nil {
+			cli.PrintErrln(err.Error())
+			os.Exit(1)
+		}
+		os.Exit(0)
 	}
 
-	cliCtx, err := configureCliCtx(apr, fs, dEnv, err, ctx)
+	// Otherwise, attempt to run the command indicated
+	cliCtx, err := configureCliCtx(subCommandName, apr, fs, dEnv, err, ctx)
 	if err != nil {
 		cli.PrintErrln(err.Error())
 		os.Exit(1)
@@ -88,7 +111,7 @@ func main() {
 	os.Exit(exitCode)
 }
 
-func configureCliCtx(apr *argparser.ArgParseResults, fs filesys.Filesys, dEnv *env.DoltEnv, err error, ctx context.Context) (cli.CliContext, error) {
+func configureCliCtx(subcommand string, apr *argparser.ArgParseResults, fs filesys.Filesys, dEnv *env.DoltEnv, err error, ctx context.Context) (cli.CliContext, error) {
 	dataDir, hasDataDir := apr.GetValue(commands.DataDirFlag)
 	if hasDataDir {
 		// If a relative path was provided, this ensures we have an absolute path everywhere.
@@ -145,7 +168,7 @@ func configureCliCtx(apr *argparser.ArgParseResults, fs filesys.Filesys, dEnv *e
 		return nil, fmt.Errorf("failed to parse credentials: %w", err)
 	}
 
-	lateBind, err := buildLateBinder(ctx, cwdFS, dEnv, mrEnv, creds, apr, "sql-server", false)
+	lateBind, err := buildLateBinder(ctx, cwdFS, dEnv, mrEnv, creds, apr, subcommand, false)
 	if err != nil {
 		return nil, err
 	}
@@ -153,19 +176,20 @@ func configureCliCtx(apr *argparser.ArgParseResults, fs filesys.Filesys, dEnv *e
 	return cli.NewCliContext(apr, dEnv.Config, lateBind)
 }
 
-func runServer(ctx context.Context, dEnv *env.DoltEnv) {
+func runServer(ctx context.Context, dEnv *env.DoltEnv) error {
+	// Emit a usage event in the background while we launch the server
+	// Dolt is more permissive with events: it emits events even if the command fails in earliest phase.
+	// We'll also emit a heartbeat event every 24 hours the server is running. All events will be tagged with the
+	// doltgresql app id.
+	go emitUsageEvent(dEnv)
+
 	controller, err := server.RunOnDisk(ctx, os.Args[1:], dEnv)
 
 	if err != nil {
-		fmt.Println(err.Error())
-		os.Exit(1)
+		return err
 	}
 
-	err = controller.WaitForStop()
-	if err != nil {
-		fmt.Println(err.Error())
-		os.Exit(1)
-	}
+	return controller.WaitForStop()
 }
 
 // parseGlobalArgsAndSubCommandName parses the global arguments, including a profile if given or a default profile if exists. Also returns the subcommand name.
@@ -395,4 +419,85 @@ func canMoveTempFile() bool {
 
 	_ = file.Remove(testfile)
 	return true
+}
+
+func redirectStdio(args []string) ([]string, error) {
+	if len(args) > 0 {
+		var doneDebugFlags bool
+		for !doneDebugFlags && len(args) > 0 {
+			switch args[0] {
+			// Currently goland doesn't support running with a different working directory when using go modules.
+			// This is a hack that allows a different working directory to be set after the application starts using
+			// chdir=<DIR>.  The syntax is not flexible and must match exactly this.
+			case chdirFlag:
+				err := os.Chdir(args[1])
+
+				if err != nil {
+					panic(err)
+				}
+
+				args = args[2:]
+
+			case stdInFlag:
+				stdInFile := args[1]
+				cli.Println("Using file contents as stdin:", stdInFile)
+
+				f, err := os.Open(stdInFile)
+				if err != nil {
+					return nil, fmt.Errorf("Failed to open %s: %w", stdInFile, err)
+				}
+
+				os.Stdin = f
+				args = args[2:]
+
+			case stdOutFlag, stdErrFlag, stdOutAndErrFlag:
+				filename := args[1]
+
+				f, err := os.OpenFile(filename, os.O_APPEND|os.O_WRONLY|os.O_CREATE, os.ModePerm)
+				if err != nil {
+					return nil, fmt.Errorf("Failed to open %s for writing: %w", filename, err)
+				}
+
+				switch args[0] {
+				case stdOutFlag:
+					cli.Println("Stdout being written to", filename)
+					cli.CliOut = f
+				case stdErrFlag:
+					cli.Println("Stderr being written to", filename)
+					cli.CliErr = f
+				case stdOutAndErrFlag:
+					cli.Println("Stdout and Stderr being written to", filename)
+					cli.CliOut = f
+					cli.CliErr = f
+				}
+
+				color.NoColor = true
+				args = args[2:]
+
+			default:
+				doneDebugFlags = true
+			}
+		}
+	}
+	return args, nil
+}
+
+func emitUsageEvent(dEnv *env.DoltEnv) {
+	metricsDisabled := dEnv.Config.GetStringOrDefault(config.MetricsDisabled, "false")
+	disabled, err := strconv.ParseBool(metricsDisabled)
+	if err != nil || disabled {
+		return
+	}
+
+	evt := events.NewEvent(sqlserver.SqlServerCmd{}.EventType())
+	evtCollector := events.NewCollector()
+	evtCollector.CloseEventAndAdd(evt)
+	clientEvents := evtCollector.Close()
+
+	emitter, err := commands.GRPCEmitterForConfig(dEnv)
+	if err != nil {
+		return
+	}
+
+	err = emitter.LogEvents(server.Version, clientEvents)
 }
