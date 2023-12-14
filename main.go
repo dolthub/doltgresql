@@ -27,6 +27,7 @@ import (
 	"github.com/dolthub/dolt/go/cmd/dolt/cli"
 	"github.com/dolthub/dolt/go/cmd/dolt/commands"
 	"github.com/dolthub/dolt/go/cmd/dolt/commands/sqlserver"
+	eventsapi "github.com/dolthub/dolt/go/gen/proto/dolt/services/eventsapi/v1alpha1"
 	"github.com/dolthub/dolt/go/libraries/doltcore/doltdb"
 	"github.com/dolthub/dolt/go/libraries/doltcore/env"
 	"github.com/dolthub/dolt/go/libraries/doltcore/sqle/dsess"
@@ -42,13 +43,16 @@ import (
 	"github.com/tidwall/gjson"
 )
 
-
 var doltgresCommands = cli.NewSubCommandHandler("doltgresql", "it's git for data", []cli.Command{
 	commands.ConfigCmd{},
 	commands.VersionCmd{VersionStr: server.Version},
 	sqlserver.SqlServerCmd{VersionStr: server.Version},
 })
 var globalArgParser = cli.CreateGlobalArgParser("doltgresql")
+
+func init() {
+	events.Application = eventsapi.AppID_APP_DOLTGRES
+}
 
 const chdirFlag = "--chdir"
 const stdInFlag = "--stdin"
@@ -176,11 +180,15 @@ func configureCliCtx(subcommand string, apr *argparser.ArgParseResults, fs files
 	return cli.NewCliContext(apr, dEnv.Config, lateBind)
 }
 
+// runServer launches a server on the env given and waits for it to finish
 func runServer(ctx context.Context, dEnv *env.DoltEnv) error {
-	// Emit a usage event in the background while we launch the server
-	// Dolt is more permissive with events: it emits events even if the command fails in earliest phase.
-	// We'll also emit a heartbeat event every 24 hours the server is running. All events will be tagged with the
-	// doltgresql app id.
+	// Emit a usage event in the background while we start the server.
+	// Dolt is more permissive with events: it emits events even if the command fails in the earliest possible phase, 
+	// we emit an event only if we got far enough to attempt to launch a server (and we may not emit it if the server
+	// dies quickly enough).
+	// 
+	// We also emit a heartbeat event every 24 hours the server is running.
+	// All events will be tagged with the doltgresql app id.
 	go emitUsageEvent(dEnv)
 
 	controller, err := server.RunOnDisk(ctx, os.Args[1:], dEnv)
@@ -482,6 +490,7 @@ func redirectStdio(args []string) ([]string, error) {
 	return args, nil
 }
 
+// emitUsageEvent emits a usage event to the event server
 func emitUsageEvent(dEnv *env.DoltEnv) {
 	metricsDisabled := dEnv.Config.GetStringOrDefault(config.MetricsDisabled, "false")
 	disabled, err := strconv.ParseBool(metricsDisabled)
