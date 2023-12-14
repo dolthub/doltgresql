@@ -76,7 +76,7 @@ func RunScript(t *testing.T, script ScriptTest) {
 	if len(scriptDatabase) == 0 {
 		scriptDatabase = "postgres"
 	}
-	
+
 	ctx, conn, controller := CreateServer(t, scriptDatabase)
 	defer func() {
 		conn.Close(ctx)
@@ -152,7 +152,7 @@ func CreateServer(t *testing.T, database string) (context.Context, *pgx.Conn, *s
 	server.DefaultProtocolListenerFunc = dserver.NewLimitedListener
 	controller, err := dserver.RunInMemory([]string{fmt.Sprintf("--port=%d", port), "--host=127.0.0.1"})
 	require.NoError(t, err)
-	
+
 	fmt.Printf("port is %d\n", port)
 
 	ctx := context.Background()

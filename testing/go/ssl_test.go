@@ -25,7 +25,7 @@ func TestSSL(t *testing.T) {
 		controller.Stop()
 		require.NoError(t, controller.WaitForStop())
 	}()
-	
+
 	ctx := context.Background()
 	err = func() error {
 		// The connection attempt may be made before the server has grabbed the port, so we'll retry the first

@@ -38,10 +38,11 @@ import (
 	"github.com/dolthub/dolt/go/libraries/utils/filesys"
 	"github.com/dolthub/dolt/go/store/nbs"
 	"github.com/dolthub/dolt/go/store/util/tempfiles"
-	"github.com/dolthub/doltgresql/server"
 	"github.com/dolthub/go-mysql-server/sql"
 	"github.com/fatih/color"
 	"github.com/tidwall/gjson"
+
+	"github.com/dolthub/doltgresql/server"
 )
 
 var doltgresCommands = cli.NewSubCommandHandler("doltgresql", "it's git for data", []cli.Command{
@@ -68,9 +69,9 @@ const stdOutAndErrFlag = "--out-and-err"
 func main() {
 	ctx := context.Background()
 	seedGlobalRand()
-	
+
 	args := os.Args[1:]
-	
+
 	args, err := redirectStdio(args)
 	if err != nil {
 		cli.PrintErrln(err.Error())
@@ -97,7 +98,7 @@ func main() {
 		cli.PrintErrln(err.Error())
 		os.Exit(1)
 	}
-	
+
 	// The sql-server command has special cased logic since it doesn't invoke a Dolt command directly, but runs a server
 	// and waits for it to finish
 	if subCommandName == "" || subCommandName == "sql-server" {
@@ -139,7 +140,7 @@ func configureCliCtx(subcommand string, apr *argparser.ArgParseResults, fs files
 
 	if dEnv.HasDoltDataDir() {
 		return nil, fmt.Errorf("Cannot start a server within a directory containing a Dolt or Doltgres database." +
-				"To use the current directory as a database, start the server from the parent directory.")
+			"To use the current directory as a database, start the server from the parent directory.")
 	}
 
 	err = reconfigIfTempFileMoveFails(dEnv)
@@ -188,10 +189,10 @@ func configureCliCtx(subcommand string, apr *argparser.ArgParseResults, fs files
 // runServer launches a server on the env given and waits for it to finish
 func runServer(ctx context.Context, dEnv *env.DoltEnv) error {
 	// Emit a usage event in the background while we start the server.
-	// Dolt is more permissive with events: it emits events even if the command fails in the earliest possible phase, 
+	// Dolt is more permissive with events: it emits events even if the command fails in the earliest possible phase,
 	// we emit an event only if we got far enough to attempt to launch a server (and we may not emit it if the server
 	// dies quickly enough).
-	// 
+	//
 	// We also emit a heartbeat event every 24 hours the server is running.
 	// All events will be tagged with the doltgresql app id.
 	go emitUsageEvent(dEnv)

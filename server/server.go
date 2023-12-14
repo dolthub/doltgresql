@@ -43,13 +43,13 @@ const (
 var sqlServerDocs = cli.CommandDocumentationContent{
 	ShortDesc: "Start a PostgreSQL-compatible server.",
 	LongDesc: "By default, starts a PostgreSQL-compatible server on the dolt database in the current directory. " +
-			"Databases are named after the directories they appear in" +
-			"Parameters can be specified using a yaml configuration file passed to the server via " +
-			"{{.EmphasisLeft}}--config <file>{{.EmphasisRight}}, or by using the supported switches and flags to configure " +
-			"the server directly on the command line. If {{.EmphasisLeft}}--config <file>{{.EmphasisRight}} is provided all" +
-			" other command line arguments are ignored.\n\nThis is an example yaml configuration file showing all supported" +
-			" items and their default values:\n\n" +
-			indentLines(sqlserver.ServerConfigAsYAMLConfig(sqlserver.DefaultServerConfig()).String()) + "\n\n" + `
+		"Databases are named after the directories they appear in" +
+		"Parameters can be specified using a yaml configuration file passed to the server via " +
+		"{{.EmphasisLeft}}--config <file>{{.EmphasisRight}}, or by using the supported switches and flags to configure " +
+		"the server directly on the command line. If {{.EmphasisLeft}}--config <file>{{.EmphasisRight}} is provided all" +
+		" other command line arguments are ignored.\n\nThis is an example yaml configuration file showing all supported" +
+		" items and their default values:\n\n" +
+		indentLines(sqlserver.ServerConfigAsYAMLConfig(sqlserver.DefaultServerConfig()).String()) + "\n\n" + `
 SUPPORTED CONFIG FILE FIELDS:
 
 {{.EmphasisLeft}}data_dir{{.EmphasisRight}}: A directory where the server will load dolt databases to serve, and create new ones. Defaults to the current directory.
@@ -146,14 +146,14 @@ func runServer(ctx context.Context, args []string, dEnv *env.DoltEnv) (*svcs.Con
 			args = append(args, "--port=5432")
 		}
 	}
-	
+
 	if dEnv.CfgLoadErr != nil {
 		return nil, fmt.Errorf("failed to load the global config: %w", dEnv.CfgLoadErr)
 	}
 
 	if dEnv.HasDoltDataDir() {
 		return nil, fmt.Errorf("Cannot start a server within a directory containing a Dolt or Doltgres database." +
-				"To use the current directory as a database, start the server from the parent directory.")
+			"To use the current directory as a database, start the server from the parent directory.")
 	}
 
 	defer tempfiles.MovableTempFileProvider.Clean()
@@ -198,7 +198,7 @@ func runServer(ctx context.Context, args []string, dEnv *env.DoltEnv) (*svcs.Con
 			if err != nil {
 				return nil, err
 			}
-			
+
 			// We'll use a temporary environment to instantiate the subdirectory
 			tempDEnv := env.Load(ctx, env.GetCurrentUserHomeDir, subdirectoryFS, dEnv.UrlStr(), Version)
 			res := commands.InitCmd{}.Exec(ctx, "init", []string{}, tempDEnv, configCliContext{tempDEnv})
@@ -209,11 +209,11 @@ func runServer(ctx context.Context, args []string, dEnv *env.DoltEnv) (*svcs.Con
 			// The else branch means that there's a Doltgres item, so we need to error if it's a file since we
 			// enforce the creation of a Doltgres database/directory, which would create a name conflict with the file
 			return nil, fmt.Errorf("Attempted to create the default `doltgres` database, but a file with" +
-					" the same name was found. Please run the doltgres command in a directory that does not contain a" +
-					" file with the name doltgres")
+				" the same name was found. Please run the doltgres command in a directory that does not contain a" +
+				" file with the name doltgres")
 		}
 	}
-	
+
 	controller := svcs.NewController()
 	newCtx, cancelF := context.WithCancel(ctx)
 	go func() {
@@ -229,7 +229,7 @@ func runServer(ctx context.Context, args []string, dEnv *env.DoltEnv) (*svcs.Con
 			cancelF()
 		}
 	}()
-	
+
 	sqlserver.ConfigureServices(serverConfig, controller, Version, dEnv)
 	go controller.Start(newCtx)
 	return controller, controller.WaitForStart()
