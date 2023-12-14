@@ -22,10 +22,10 @@ import (
 	"math"
 	"net"
 	"os"
-	"sync"
 	"testing"
 	"time"
 
+	"github.com/dolthub/dolt/go/libraries/utils/svcs"
 	"github.com/dolthub/go-mysql-server/server"
 	"github.com/dolthub/go-mysql-server/sql"
 	"github.com/jackc/pgx/v5"
@@ -76,10 +76,13 @@ func RunScript(t *testing.T, script ScriptTest) {
 	if len(scriptDatabase) == 0 {
 		scriptDatabase = "postgres"
 	}
-	ctx, conn, serverClosed := CreateServer(t, scriptDatabase)
+
+	ctx, conn, controller := CreateServer(t, scriptDatabase)
 	defer func() {
 		conn.Close(ctx)
-		serverClosed.Wait()
+		controller.Stop()
+		err := controller.WaitForStop()
+		require.NoError(t, err)
 	}()
 
 	t.Run(script.Name, func(t *testing.T) {
@@ -143,17 +146,17 @@ func RunScripts(t *testing.T, scripts []ScriptTest) {
 // CreateServer creates a server with the given database, returning a connection to the server. The server will close
 // when the connection is closed (or loses its connection to the server). The accompanying WaitGroup may be used to wait
 // until the server has closed.
-func CreateServer(t *testing.T, database string) (context.Context, *pgx.Conn, *sync.WaitGroup) {
+func CreateServer(t *testing.T, database string) (context.Context, *pgx.Conn, *svcs.Controller) {
 	require.NotEmpty(t, database)
 	port := GetUnusedPort(t)
 	server.DefaultProtocolListenerFunc = dserver.NewLimitedListener
-	code, serverClosed := dserver.RunInMemory([]string{fmt.Sprintf("--port=%d", port), "--host=127.0.0.1"})
-	require.Equal(t, 0, *code)
+	controller, err := dserver.RunInMemory([]string{fmt.Sprintf("--port=%d", port), "--host=127.0.0.1"})
+	require.NoError(t, err)
 
 	fmt.Printf("port is %d\n", port)
 
 	ctx := context.Background()
-	err := func() error {
+	err = func() error {
 		// The connection attempt may be made before the server has grabbed the port, so we'll retry the first
 		// connection a few times.
 		var conn *pgx.Conn
@@ -178,7 +181,7 @@ func CreateServer(t *testing.T, database string) (context.Context, *pgx.Conn, *s
 
 	conn, err := pgx.Connect(ctx, fmt.Sprintf("postgres://postgres:password@127.0.0.1:%d/%s", port, database))
 	require.NoError(t, err)
-	return ctx, conn, serverClosed
+	return ctx, conn, controller
 }
 
 // ReadRows reads all of the given rows into a slice, then closes the rows. This also normalizes all of the rows.

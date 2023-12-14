@@ -12,22 +12,10 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-package server
+//go:build !linux && !darwin
+// +build !linux,!darwin
 
-import (
-	"golang.org/x/sys/unix"
-)
+package main
 
 func warnIfMaxFilesTooLow() {
-	var lim unix.Rlimit
-	if err := unix.Getrlimit(unix.RLIMIT_NOFILE, &lim); err != nil {
-		return
-	}
-	lim.Cur = lim.Max
-	if err := unix.Setrlimit(unix.RLIMIT_NOFILE, &lim); err != nil {
-		return
-	}
-	if err := unix.Getrlimit(unix.RLIMIT_NOFILE, &lim); err != nil {
-		return
-	}
 }

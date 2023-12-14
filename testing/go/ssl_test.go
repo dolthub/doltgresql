@@ -18,11 +18,16 @@ import (
 func TestSSL(t *testing.T) {
 	port := GetUnusedPort(t)
 	server.DefaultProtocolListenerFunc = dserver.NewLimitedListener
-	code, _ := dserver.RunInMemory([]string{fmt.Sprintf("--port=%d", port), "--host=127.0.0.1"})
-	require.Equal(t, 0, *code)
+	controller, err := dserver.RunInMemory([]string{fmt.Sprintf("--port=%d", port), "--host=127.0.0.1"})
+	require.NoError(t, err)
+
+	defer func() {
+		controller.Stop()
+		require.NoError(t, controller.WaitForStop())
+	}()
 
 	ctx := context.Background()
-	err := func() error {
+	err = func() error {
 		// The connection attempt may be made before the server has grabbed the port, so we'll retry the first
 		// connection a few times.
 		var conn *pgx.Conn

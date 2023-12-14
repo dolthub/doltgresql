@@ -6,24 +6,27 @@ require (
 	github.com/PuerkitoBio/goquery v1.8.1
 	github.com/cockroachdb/apd/v2 v2.0.3-0.20200518165714-d020e156310a
 	github.com/cockroachdb/errors v1.7.5
-	github.com/dolthub/dolt/go v0.40.5-0.20231114163244-0cc42b844045
-	github.com/dolthub/go-mysql-server v0.17.1-0.20231113191556-2da061871eb8
+	github.com/dolthub/dolt/go v0.40.5-0.20231214175736-2c32f8dc8f79
+	github.com/dolthub/dolt/go/gen/proto/dolt/services/eventsapi v0.0.0-20231213233028-64c353bf920f
+	github.com/dolthub/go-mysql-server v0.17.1-0.20231213201402-47a48c5f014b
 	github.com/dolthub/sqllogictest/go v0.0.0-20201107003712-816f3ae12d81
-	github.com/dolthub/vitess v0.0.0-20231109003730-c0fa018b5ef6
+	github.com/dolthub/vitess v0.0.0-20231207010700-88fb35413580
 	github.com/fatih/color v1.13.0
 	github.com/gogo/protobuf v1.3.2
 	github.com/golang/geo v0.0.0-20200730024412-e86565bf3f35
-	github.com/google/go-cmp v0.5.9
+	github.com/google/go-cmp v0.6.0
 	github.com/grpc-ecosystem/grpc-gateway v1.16.0
 	github.com/jackc/pgx/v4 v4.18.1
 	github.com/jackc/pgx/v5 v5.4.3
 	github.com/lib/pq v1.10.2
 	github.com/madflojo/testcerts v1.1.1
 	github.com/pierrre/geohash v1.0.0
+	github.com/sergi/go-diff v1.1.0
 	github.com/sirupsen/logrus v1.8.1
-	github.com/stretchr/testify v1.8.2
+	github.com/stretchr/testify v1.8.3
 	github.com/tidwall/gjson v1.14.4
 	github.com/twpayne/go-geom v1.3.6
+	golang.org/x/net v0.17.0
 	golang.org/x/sys v0.13.0
 	golang.org/x/text v0.13.0
 )
@@ -44,14 +47,12 @@ require (
 	github.com/bcicen/jstream v1.0.0 // indirect
 	github.com/beorn7/perks v1.0.1 // indirect
 	github.com/cenkalti/backoff/v4 v4.1.3 // indirect
-	github.com/cespare/xxhash v1.1.0 // indirect
 	github.com/cespare/xxhash/v2 v2.2.0 // indirect
 	github.com/cockroachdb/logtags v0.0.0-20190617123548-eb05cc24525f // indirect
 	github.com/cockroachdb/redact v1.0.6 // indirect
 	github.com/cockroachdb/sentry-go v0.6.1-cockroachdb.2 // indirect
 	github.com/davecgh/go-spew v1.1.1 // indirect
 	github.com/denisbrodbeck/machineid v1.0.1 // indirect
-	github.com/dolthub/dolt/go/gen/proto/dolt/services/eventsapi v0.0.0-20231018220650-48f565111c6a // indirect
 	github.com/dolthub/flatbuffers/v23 v23.3.3-dh.2 // indirect
 	github.com/dolthub/fslock v0.0.3 // indirect
 	github.com/dolthub/go-icu-regex v0.0.0-20230524105445-af7e7991c97e // indirect
@@ -59,7 +60,7 @@ require (
 	github.com/dolthub/jsonpath v0.0.2-0.20230525180605-8dc13778fd72 // indirect
 	github.com/dolthub/maphash v0.0.0-20221220182448-74e1e1ea1577 // indirect
 	github.com/dolthub/swiss v0.1.0 // indirect
-	github.com/dustin/go-humanize v1.0.0 // indirect
+	github.com/dustin/go-humanize v1.0.1 // indirect
 	github.com/flynn-archive/go-shlex v0.0.0-20150515145356-3f9db97f8568 // indirect
 	github.com/go-kit/kit v0.10.0 // indirect
 	github.com/go-logr/logr v1.2.3 // indirect
@@ -70,6 +71,8 @@ require (
 	github.com/golang/groupcache v0.0.0-20210331224755-41bb18bfe9da // indirect
 	github.com/golang/protobuf v1.5.3 // indirect
 	github.com/golang/snappy v0.0.4 // indirect
+	github.com/google/go-github/v57 v57.0.0 // indirect
+	github.com/google/go-querystring v1.1.0 // indirect
 	github.com/google/s2a-go v0.1.4 // indirect
 	github.com/google/shlex v0.0.0-20191202100458-e7afc7fbc510 // indirect
 	github.com/google/uuid v1.3.0 // indirect
@@ -95,10 +98,9 @@ require (
 	github.com/kylelemons/godebug v1.1.0 // indirect
 	github.com/lestrrat-go/strftime v1.0.4 // indirect
 	github.com/mattn/go-colorable v0.1.13 // indirect
-	github.com/mattn/go-isatty v0.0.16 // indirect
+	github.com/mattn/go-isatty v0.0.17 // indirect
 	github.com/mattn/go-runewidth v0.0.13 // indirect
 	github.com/matttproud/golang_protobuf_extensions v1.0.1 // indirect
-	github.com/mitchellh/go-ps v1.0.0 // indirect
 	github.com/mitchellh/hashstructure v1.1.0 // indirect
 	github.com/pierrec/lz4/v4 v4.1.6 // indirect
 	github.com/pkg/errors v0.9.1 // indirect
@@ -109,7 +111,6 @@ require (
 	github.com/prometheus/procfs v0.8.0 // indirect
 	github.com/rivo/uniseg v0.2.0 // indirect
 	github.com/rogpeppe/go-internal v1.11.0 // indirect
-	github.com/sergi/go-diff v1.1.0 // indirect
 	github.com/shopspring/decimal v1.2.0 // indirect
 	github.com/silvasur/buzhash v0.0.0-20160816060738-9bdec3dec7c6 // indirect
 	github.com/skratchdot/open-golang v0.0.0-20200116055534-eef842397966 // indirect
@@ -132,7 +133,6 @@ require (
 	golang.org/x/crypto v0.14.0 // indirect
 	golang.org/x/exp v0.0.0-20230522175609-2e198f4a06a1 // indirect
 	golang.org/x/mod v0.12.0 // indirect
-	golang.org/x/net v0.17.0 // indirect
 	golang.org/x/oauth2 v0.8.0 // indirect
 	golang.org/x/sync v0.3.0 // indirect
 	golang.org/x/term v0.13.0 // indirect

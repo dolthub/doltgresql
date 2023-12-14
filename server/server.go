@@ -16,19 +16,13 @@ package server
 
 import (
 	"context"
-	crand "crypto/rand"
-	"encoding/binary"
 	"fmt"
-	"math/rand"
 	_ "net/http/pprof"
-	"os"
 	"strings"
-	"sync"
 
 	"github.com/dolthub/dolt/go/cmd/dolt/cli"
 	"github.com/dolthub/dolt/go/cmd/dolt/commands"
 	"github.com/dolthub/dolt/go/cmd/dolt/commands/sqlserver"
-	"github.com/dolthub/dolt/go/libraries/doltcore/dbfactory"
 	"github.com/dolthub/dolt/go/libraries/doltcore/doltdb"
 	"github.com/dolthub/dolt/go/libraries/doltcore/env"
 	"github.com/dolthub/dolt/go/libraries/doltcore/sqle/dfunctions"
@@ -36,27 +30,83 @@ import (
 	"github.com/dolthub/dolt/go/libraries/utils/argparser"
 	"github.com/dolthub/dolt/go/libraries/utils/config"
 	"github.com/dolthub/dolt/go/libraries/utils/filesys"
-	"github.com/dolthub/dolt/go/store/nbs"
+	"github.com/dolthub/dolt/go/libraries/utils/svcs"
 	"github.com/dolthub/dolt/go/store/util/tempfiles"
 	"github.com/dolthub/go-mysql-server/server"
 	"github.com/dolthub/go-mysql-server/sql"
-	"github.com/fatih/color"
-	"github.com/tidwall/gjson"
 )
-
-//TODO: cleanup this file
 
 const (
 	Version = "0.2.0"
 )
 
-var doltCommand = cli.NewSubCommandHandler("doltgresql", "it's git for data", []cli.Command{
-	commands.InitCmd{},
-	commands.ConfigCmd{},
-	commands.VersionCmd{VersionStr: Version},
-	sqlserver.SqlServerCmd{VersionStr: Version},
-})
-var globalArgParser = cli.CreateGlobalArgParser("doltgresql")
+var sqlServerDocs = cli.CommandDocumentationContent{
+	ShortDesc: "Start a PostgreSQL-compatible server.",
+	LongDesc: "By default, starts a PostgreSQL-compatible server on the dolt database in the current directory. " +
+		"Databases are named after the directories they appear in" +
+		"Parameters can be specified using a yaml configuration file passed to the server via " +
+		"{{.EmphasisLeft}}--config <file>{{.EmphasisRight}}, or by using the supported switches and flags to configure " +
+		"the server directly on the command line. If {{.EmphasisLeft}}--config <file>{{.EmphasisRight}} is provided all" +
+		" other command line arguments are ignored.\n\nThis is an example yaml configuration file showing all supported" +
+		" items and their default values:\n\n" +
+		indentLines(sqlserver.ServerConfigAsYAMLConfig(sqlserver.DefaultServerConfig()).String()) + "\n\n" + `
+SUPPORTED CONFIG FILE FIELDS:
+
+{{.EmphasisLeft}}data_dir{{.EmphasisRight}}: A directory where the server will load dolt databases to serve, and create new ones. Defaults to the current directory.
+
+{{.EmphasisLeft}}cfg_dir{{.EmphasisRight}}: A directory where the server will load and store non-database configuration data, such as permission information. Defaults {{.EmphasisLeft}}$data_dir/.doltcfg{{.EmphasisRight}}.
+
+{{.EmphasisLeft}}log_level{{.EmphasisRight}}: Level of logging provided. Options are: {{.EmphasisLeft}}trace{{.EmphasisRight}}, {{.EmphasisLeft}}debug{{.EmphasisRight}}, {{.EmphasisLeft}}info{{.EmphasisRight}}, {{.EmphasisLeft}}warning{{.EmphasisRight}}, {{.EmphasisLeft}}error{{.EmphasisRight}}, and {{.EmphasisLeft}}fatal{{.EmphasisRight}}.
+
+{{.EmphasisLeft}}privilege_file{{.EmphasisRight}}: "Path to a file to load and store users and grants. Defaults to {{.EmphasisLeft}}$doltcfg-dir/privileges.db{{.EmphasisRight}}. Will be created as needed.
+
+{{.EmphasisLeft}}branch_control_file{{.EmphasisRight}}: Path to a file to load and store branch control permissions. Defaults to {{.EmphasisLeft}}$doltcfg-dir/branch_control.db{{.EmphasisRight}}. Will be created as needed.
+
+{{.EmphasisLeft}}max_logged_query_len{{.EmphasisRight}}: If greater than zero, truncates query strings in logging to the number of characters given.
+
+{{.EmphasisLeft}}behavior.read_only{{.EmphasisRight}}: If true database modification is disabled. Defaults to false.
+
+{{.EmphasisLeft}}behavior.autocommit{{.EmphasisRight}}: If true every statement is committed automatically. Defaults to true. @@autocommit can also be specified in each session.
+
+{{.EmphasisLeft}}behavior.dolt_transaction_commit{{.EmphasisRight}}: If true all SQL transaction commits will automatically create a Dolt commit, with a generated commit message. This is useful when a system working with Dolt wants to create versioned data, but doesn't want to directly use Dolt features such as dolt_commit(). 
+
+{{.EmphasisLeft}}user.name{{.EmphasisRight}}: The username that connections should use for authentication
+
+{{.EmphasisLeft}}user.password{{.EmphasisRight}}: The password that connections should use for authentication.
+
+{{.EmphasisLeft}}listener.host{{.EmphasisRight}}: The host address that the server will run on.  This may be {{.EmphasisLeft}}localhost{{.EmphasisRight}} or an IPv4 or IPv6 address
+
+{{.EmphasisLeft}}listener.port{{.EmphasisRight}}: The port that the server should listen on
+
+{{.EmphasisLeft}}listener.max_connections{{.EmphasisRight}}: The number of simultaneous connections that the server will accept
+
+{{.EmphasisLeft}}listener.read_timeout_millis{{.EmphasisRight}}: The number of milliseconds that the server will wait for a read operation
+
+{{.EmphasisLeft}}listener.write_timeout_millis{{.EmphasisRight}}: The number of milliseconds that the server will wait for a write operation
+
+{{.EmphasisLeft}}remotesapi.port{{.EmphasisRight}}: A port to listen for remote API operations on. If set to a positive integer, this server will accept connections from clients to clone, pull, etc. databases being served.
+
+{{.EmphasisLeft}}user_session_vars{{.EmphasisRight}}: A map of user name to a map of session variables to set on connection for each session.
+
+{{.EmphasisLeft}}cluster{{.EmphasisRight}}: Settings related to running this server in a replicated cluster. For information on setting these values, see https://docs.dolthub.com/sql-reference/server/replication
+
+If a config file is not provided many of these settings may be configured on the command line.`,
+	Synopsis: []string{
+		"--config {{.LessThan}}file{{.GreaterThan}}",
+		"[-H {{.LessThan}}host{{.GreaterThan}}] [-P {{.LessThan}}port{{.GreaterThan}}] [-u {{.LessThan}}user{{.GreaterThan}}] [-p {{.LessThan}}password{{.GreaterThan}}] [-t {{.LessThan}}timeout{{.GreaterThan}}] [-l {{.LessThan}}loglevel{{.GreaterThan}}] [--data-dir {{.LessThan}}directory{{.GreaterThan}}] [-r]",
+	},
+}
+
+func indentLines(s string) string {
+	sb := strings.Builder{}
+	lines := strings.Split(s, "\n")
+	for _, line := range lines {
+		sb.WriteRune('\t')
+		sb.WriteString(line)
+		sb.WriteRune('\n')
+	}
+	return sb.String()
+}
 
 func init() {
 	server.DefaultProtocolListenerFunc = NewListener
@@ -64,500 +114,142 @@ func init() {
 	dfunctions.VersionString = Version
 }
 
-const chdirFlag = "--chdir"
-const stdInFlag = "--stdin"
-const stdOutFlag = "--stdout"
-const stdErrFlag = "--stderr"
-const stdOutAndErrFlag = "--out-and-err"
-const ignoreLocksFlag = "--ignore-lock-file"
-
 // RunOnDisk starts the server based on the given args, while also using the local disk as the backing store.
 // The returned WaitGroup may be used to wait for the server to close.
-func RunOnDisk(args []string) (*int, *sync.WaitGroup) {
-	return runServer(args, filesys.LocalFS)
+func RunOnDisk(ctx context.Context, args []string, dEnv *env.DoltEnv) (*svcs.Controller, error) {
+	return runServer(ctx, args, dEnv)
 }
 
 // RunInMemory starts the server based on the given args, while also using RAM as the backing store.
 // The returned WaitGroup may be used to wait for the server to close.
-func RunInMemory(args []string) (*int, *sync.WaitGroup) {
-	return runServer(args, filesys.EmptyInMemFS(""))
+func RunInMemory(args []string) (*svcs.Controller, error) {
+	ctx := context.Background()
+	fs := filesys.EmptyInMemFS("")
+	dEnv := env.Load(ctx, env.GetCurrentUserHomeDir, fs, doltdb.InMemDoltDB, Version)
+	globalConfig, _ := dEnv.Config.GetConfig(env.GlobalConfig)
+	if globalConfig.GetStringOrDefault(config.UserNameKey, "") == "" {
+		globalConfig.SetStrings(map[string]string{
+			config.UserNameKey:  "postgres",
+			config.UserEmailKey: "postgres@somewhere.com",
+		})
+	}
+
+	return runServer(ctx, args, dEnv)
 }
 
 // runServer starts the server based on the given args, using the provided file system as the backing store.
 // The returned WaitGroup may be used to wait for the server to close.
-func runServer(args []string, fs filesys.Filesys) (*int, *sync.WaitGroup) {
-	wg := &sync.WaitGroup{}
-	ctx := context.Background()
-	// Inject the "sql-server" command if no other commands were given
-	if len(args) == 0 || (len(args) > 0 && strings.HasPrefix(args[0], "-")) {
-		args = append([]string{"sql-server"}, args...)
-	}
-	// The "sql-server" command will automatically initialize the repository
-	serverMode := false
-	if args[0] == "sql-server" {
-		serverMode = true
-		// Enforce a default port of 5432
-		if serverArgs, err := (sqlserver.SqlServerCmd{}).ArgParser().Parse(args); err == nil {
-			if _, ok := serverArgs.GetValue("port"); !ok {
-				args = append(args, "--port=5432")
-			}
-		}
-	}
-
-	if os.Getenv("DOLT_VERBOSE_ASSERT_TABLE_FILES_CLOSED") == "" {
-		nbs.TableIndexGCFinalizerWithStackTrace = false
-	}
-
-	ignoreLockFile := false
-	if len(args) > 0 {
-		var doneDebugFlags bool
-		for !doneDebugFlags && len(args) > 0 {
-			switch args[0] {
-			// Currently goland doesn't support running with a different working directory when using go modules.
-			// This is a hack that allows a different working directory to be set after the application starts using
-			// chdir=<DIR>.  The syntax is not flexible and must match exactly this.
-			case chdirFlag:
-				err := os.Chdir(args[1])
-
-				if err != nil {
-					panic(err)
-				}
-
-				args = args[2:]
-
-			case stdInFlag:
-				stdInFile := args[1]
-				cli.Println("Using file contents as stdin:", stdInFile)
-
-				f, err := os.Open(stdInFile)
-				if err != nil {
-					cli.PrintErrln("Failed to open", stdInFile, err.Error())
-					return intPointer(1), wg
-				}
-
-				os.Stdin = f
-				args = args[2:]
-
-			case stdOutFlag, stdErrFlag, stdOutAndErrFlag:
-				filename := args[1]
-
-				f, err := os.OpenFile(filename, os.O_APPEND|os.O_WRONLY|os.O_CREATE, os.ModePerm)
-				if err != nil {
-					cli.PrintErrln("Failed to open", filename, "for writing:", err.Error())
-					return intPointer(1), wg
-				}
-
-				switch args[0] {
-				case stdOutFlag:
-					cli.Println("Stdout being written to", filename)
-					cli.CliOut = f
-				case stdErrFlag:
-					cli.Println("Stderr being written to", filename)
-					cli.CliErr = f
-				case stdOutAndErrFlag:
-					cli.Println("Stdout and Stderr being written to", filename)
-					cli.CliOut = f
-					cli.CliErr = f
-				}
-
-				color.NoColor = true
-				args = args[2:]
-
-			case ignoreLocksFlag:
-				ignoreLockFile = true
-				args = args[1:]
-
-			default:
-				doneDebugFlags = true
-			}
-		}
-	}
-
-	seedGlobalRand()
-
-	restoreIO := cli.InitIO()
-	defer restoreIO()
-
-	warnIfMaxFilesTooLow()
-
-	dEnv := env.Load(ctx, env.GetCurrentUserHomeDir, fs, doltdb.LocalDirDoltDB, Version)
-	dEnv.IgnoreLockFile = ignoreLockFile
-
-	globalConfig, ok := dEnv.Config.GetConfig(env.GlobalConfig)
-	if !ok {
-		cli.PrintErrln(color.RedString("Failed to get global config"))
-		return intPointer(1), wg
-	}
-	// The in-memory database is only used for testing/virtual environments, so the config may need modification
-	if _, ok = fs.(*filesys.InMemFS); ok && globalConfig.GetStringOrDefault(env.UserNameKey, "") == "" {
-		globalConfig.SetStrings(map[string]string{
-			env.UserNameKey:  "postgres",
-			env.UserEmailKey: "postgres@somewhere.com",
-		})
-	}
-
-	apr, remainingArgs, subcommandName, err := parseGlobalArgsAndSubCommandName(globalConfig, args)
-	if err == argparser.ErrHelp {
-		//TODO: display some help message
-		doltCommand.PrintUsage("dolt")
-		return intPointer(0), wg
-	} else if err != nil {
-		cli.PrintErrln(color.RedString("Failure to parse arguments: %v", err))
-		return intPointer(1), wg
-	}
-
-	dataDir, hasDataDir := apr.GetValue(commands.DataDirFlag)
-	if hasDataDir {
-		// If a relative path was provided, this ensures we have an absolute path everywhere.
-		dataDir, err = fs.Abs(dataDir)
-		if err != nil {
-			cli.PrintErrln(color.RedString("Failed to get absolute path for %s: %v", dataDir, err))
-			return intPointer(1), wg
-		}
-		if ok, dir := fs.Exists(dataDir); !ok || !dir {
-			cli.Println(color.RedString("Provided data directory does not exist: %s", dataDir))
-			return intPointer(1), wg
+func runServer(ctx context.Context, args []string, dEnv *env.DoltEnv) (*svcs.Controller, error) {
+	sqlServerCmd := sqlserver.SqlServerCmd{}
+	if serverArgs, err := sqlServerCmd.ArgParser().Parse(append([]string{"sql-server"}, args...)); err == nil {
+		if _, ok := serverArgs.GetValue("port"); !ok {
+			args = append(args, "--port=5432")
 		}
 	}
 
 	if dEnv.CfgLoadErr != nil {
-		cli.PrintErrln(color.RedString("Failed to load the global config. %v", dEnv.CfgLoadErr))
-		return intPointer(1), wg
+		return nil, fmt.Errorf("failed to load the global config: %w", dEnv.CfgLoadErr)
 	}
 
 	if dEnv.HasDoltDataDir() {
-		cli.PrintErrln(color.RedString("Cannot start a server within a directory containing a Dolt or Doltgres database." +
-			"To use the current directory as a database, start the server from the parent directory."))
-		return intPointer(1), wg
-	}
-
-	err = reconfigIfTempFileMoveFails(dEnv)
-	if err != nil {
-		cli.PrintErrln(color.RedString("Failed to setup the temporary directory. %v`", err))
-		return intPointer(1), wg
+		return nil, fmt.Errorf("Cannot start a server within a directory containing a Dolt or Doltgres database." +
+			"To use the current directory as a database, start the server from the parent directory.")
 	}
 
 	defer tempfiles.MovableTempFileProvider.Clean()
 
-	// Find all database names and add global variables for them. This needs to
-	// occur before a call to dsess.InitPersistedSystemVars. Otherwise, database
-	// specific persisted system vars will fail to load.
-	//
-	// In general, there is a lot of work TODO in this area. System global
-	// variables are persisted to the Dolt local config if found and if not
-	// found the Dolt global config (typically ~/.dolt/config_global.json).
-
-	// Depending on what directory a dolt sql-server is started in, users may
-	// see different variables values. For example, start a dolt sql-server in
-	// the dolt database folder and persist some system variable.
-
-	// If dolt sql-server is started outside that folder, those system variables
-	// will be lost. This is particularly confusing for database specific system
-	// variables like `${db_name}_default_branch` (maybe these should not be
-	// part of Dolt config in the first place!).
-
-	// Current working directory is preserved to ensure that user provided path arguments are always calculated
-	// relative to this directory. The root environment's FS will be updated to be the --data-dir path if the user
-	// specified one.
-	cwdFS := dEnv.FS
-	dataDirFS, err := dEnv.FS.WithWorkingDir(dataDir)
+	err := dsess.InitPersistedSystemVars(dEnv)
 	if err != nil {
-		cli.PrintErrln(color.RedString("Failed to set the data directory. %v", err))
-		return intPointer(1), wg
-	}
-	dEnv.FS = dataDirFS
-
-	mrEnv, err := env.MultiEnvForDirectory(ctx, dEnv.Config.WriteableConfig(), dataDirFS, dEnv.Version, dEnv.IgnoreLockFile, dEnv)
-	if err != nil {
-		cli.PrintErrln("failed to load database names")
-		return intPointer(1), wg
-	}
-	_ = mrEnv.Iter(func(dbName string, dEnv *env.DoltEnv) (stop bool, err error) {
-		dsess.DefineSystemVariablesForDB(dbName)
-		return false, nil
-	})
-
-	err = dsess.InitPersistedSystemVars(dEnv)
-	if err != nil {
-		cli.Printf("error: failed to load persisted global variables: %s\n", err.Error())
+		return nil, fmt.Errorf("failed to load persisted system variables: %w", err)
 	}
 
-	// validate that --user and --password are set appropriately.
-	aprAlt, creds, err := cli.BuildUserPasswordPrompt(apr)
-	apr = aprAlt
-	if err != nil {
-		cli.PrintErrln(color.RedString("Failed to parse credentials: %v", err))
-		return intPointer(1), wg
-	}
+	ap := sqlserver.SqlServerCmd{}.ArgParser()
+	help, _ := cli.HelpAndUsagePrinters(cli.CommandDocsForCommandString("sql-server", sqlServerDocs, ap))
 
-	lateBind, err := buildLateBinder(ctx, cwdFS, dEnv, mrEnv, creds, apr, subcommandName, false)
-	if err != nil {
-		cli.PrintErrln(color.RedString("%v", err))
-		return intPointer(1), wg
-	}
-
-	cliCtx, err := cli.NewCliContext(apr, dEnv.Config, lateBind)
-	if err != nil {
-		cli.PrintErrln(color.RedString("Unexpected Error: %v", err))
-		return intPointer(1), wg
-	}
-
-	ctx, stop := context.WithCancel(ctx)
-	if serverMode {
-		var serverConfig sqlserver.ServerConfig
-		// Grab the config so that we can pull the TLS key & cert. If there's an error then we can ignore it here, as
-		// it'll be caught when the server actually tries to run. We'll also use the config to determine whether we need to
-		// create a doltgres directory.
-		if sqlServerApr, err := cli.ParseArgs(sqlserver.SqlServerCmd{}.ArgParser(), args, nil); err == nil {
-			if serverConfig, err = sqlserver.GetServerConfig(dEnv.FS, sqlServerApr); err == nil {
-				// We throw an error if there's an issue with the TLS cert though
-				tlsConfig, err := sqlserver.LoadTLSConfig(serverConfig)
-				if err != nil {
-					stop()
-					cli.PrintErrln(err)
-					return intPointer(1), wg
-				}
-				if tlsConfig != nil && len(tlsConfig.Certificates) > 0 {
-					certificate = tlsConfig.Certificates[0]
-				}
-			}
-		}
-		// Server mode automatically initializes a doltgres database
-		if !dEnv.HasDoltDir() {
-			// Need to make sure that there isn't a doltgres item in the path.
-			if exists, isDirectory := dEnv.FS.Exists("doltgres"); !exists {
-				dEnv.FS.MkDirs("doltgres")
-				subdirectoryFS, err := dEnv.FS.WithWorkingDir("doltgres")
-				if err != nil {
-					stop()
-					cli.PrintErrln(err)
-					return intPointer(1), wg
-				}
-				// We'll use a temporary environment to instantiate the subdirectory
-				tempDEnv := env.Load(ctx, env.GetCurrentUserHomeDir, subdirectoryFS, doltdb.LocalDirDoltDB, Version)
-				_ = doltCommand.Exec(ctx, "dolt", []string{"init"}, tempDEnv, cliCtx)
-			} else if !isDirectory {
-				// The else branch means that there's a Doltgres item, so we need to error if it's a file since we
-				// enforce the creation of a Doltgres database/directory, which would create a name conflict with the file
-				stop()
-				cli.PrintErrln(fmt.Errorf("Attempted to create the default `doltgres` database, but a file with" +
-					" the same name was found. Please run the doltgres command in a directory that does not contain a" +
-					" file with the name doltgres"))
-				return intPointer(1), wg
-			}
-		}
-	}
-
-	// We're now running the server, so we can increment the WaitGroup.
-	wg.Add(1)
-	res := new(int)
-	go func() {
-		defer wg.Done()
-		*res = doltCommand.Exec(ctx, "dolt", remainingArgs, dEnv, cliCtx)
-		stop()
-
-		if err = dbfactory.CloseAllLocalDatabases(); err != nil {
-			cli.PrintErrln(err)
-			if *res == 0 {
-				*res = 1
-			}
-		}
-	}()
-	return res, wg
-}
-
-// buildLateBinder builds a LateBindQueryist for which is used to obtain the Queryist used for the length of the
-// command execution.
-func buildLateBinder(ctx context.Context, cwdFS filesys.Filesys, rootEnv *env.DoltEnv, mrEnv *env.MultiRepoEnv, creds *cli.UserPassword, apr *argparser.ArgParseResults, subcommandName string, verbose bool) (cli.LateBindQueryist, error) {
-
-	var targetEnv *env.DoltEnv = nil
-
-	useDb, hasUseDb := apr.GetValue(commands.UseDbFlag)
-	useBranch, hasBranch := apr.GetValue(cli.BranchParam)
-
-	if hasUseDb && hasBranch {
-		dbName, branchNameInDb := dsess.SplitRevisionDbName(useDb)
-		if len(branchNameInDb) != 0 {
-			return nil, fmt.Errorf("Ambiguous branch name: %s or %s", branchNameInDb, useBranch)
-		}
-		useDb = dbName + "/" + useBranch
-	}
-	// If the host flag is given, we are forced to use a remote connection to a server.
-	host, hasHost := apr.GetValue(cli.HostFlag)
-	if hasHost {
-		if !hasUseDb && subcommandName != "sql" {
-			return nil, fmt.Errorf("The --%s flag requires the additional --%s flag.", cli.HostFlag, commands.UseDbFlag)
-		}
-
-		port, hasPort := apr.GetInt(cli.PortFlag)
-		if !hasPort {
-			port = 3306
-		}
-		useTLS := !apr.Contains(cli.NoTLSFlag)
-		return sqlserver.BuildConnectionStringQueryist(ctx, cwdFS, creds, apr, host, port, useTLS, useDb)
-	} else {
-		_, hasPort := apr.GetInt(cli.PortFlag)
-		if hasPort {
-			return nil, fmt.Errorf("The --%s flag is only meaningful with the --%s flag.", cli.PortFlag, cli.HostFlag)
-		}
-	}
-
-	if hasUseDb {
-		dbName, _ := dsess.SplitRevisionDbName(useDb)
-		targetEnv = mrEnv.GetEnv(dbName)
-		if targetEnv == nil {
-			return nil, fmt.Errorf("The provided --use-db %s does not exist.", dbName)
-		}
-	} else {
-		useDb = mrEnv.GetFirstDatabase()
-		if hasBranch {
-			useDb += "/" + useBranch
-		}
-	}
-
-	if targetEnv == nil && useDb != "" {
-		targetEnv = mrEnv.GetEnv(useDb)
-	}
-
-	// There is no target environment detected. This is allowed for a small number of commands.
-	// We don't expect that number to grow, so we list them here.
-	// It's also allowed when --help is passed.
-	// So we defer the error until the caller tries to use the cli.LateBindQueryist
-	isDoltEnvironmentRequired := subcommandName != "init" && subcommandName != "sql" && subcommandName != "sql-server" && subcommandName != "sql-client"
-	if targetEnv == nil && isDoltEnvironmentRequired {
-		return func(ctx context.Context) (cli.Queryist, *sql.Context, func(), error) {
-			return nil, nil, nil, fmt.Errorf("The current directory is not a valid dolt repository.")
-		}, nil
-	}
-
-	// nil targetEnv will happen if the user ran a command in an empty directory or when there is a server running with
-	// no databases. CLI will try to connect to the server in this case.
-	if targetEnv == nil {
-		targetEnv = rootEnv
-	}
-
-	isLocked, lock, err := targetEnv.GetLock()
+	serverConfig, err := sqlserver.ServerConfigFromArgs(ap, help, args, dEnv)
 	if err != nil {
 		return nil, err
 	}
-	if isLocked {
-		if verbose {
-			cli.Println("verbose: starting remote mode")
-		}
 
-		if !creds.Specified {
-			creds = &cli.UserPassword{Username: sqlserver.LocalConnectionUser, Password: lock.Secret, Specified: false}
-		}
-		return sqlserver.BuildConnectionStringQueryist(ctx, cwdFS, creds, apr, "localhost", lock.Port, false, useDb)
-	}
-
-	if verbose {
-		cli.Println("verbose: starting local mode")
-	}
-	return commands.BuildSqlEngineQueryist(ctx, cwdFS, mrEnv, creds, apr)
-}
-
-func seedGlobalRand() {
-	bs := make([]byte, 8)
-	_, err := crand.Read(bs)
+	tlsConfig, err := sqlserver.LoadTLSConfig(serverConfig)
 	if err != nil {
-		panic("failed to initial rand " + err.Error())
-	}
-	rand.Seed(int64(binary.LittleEndian.Uint64(bs)))
-}
-
-// parseGlobalArgsAndSubCommandName parses the global arguments, including a profile if given or a default profile if exists. Also returns the subcommand name.
-func parseGlobalArgsAndSubCommandName(globalConfig config.ReadWriteConfig, args []string) (apr *argparser.ArgParseResults, remaining []string, subcommandName string, err error) {
-	apr, remaining, err = globalArgParser.ParseGlobalArgs(args)
-	if err != nil {
-		return nil, nil, "", err
+		return nil, err
 	}
 
-	subcommandName = remaining[0]
-
-	useDefaultProfile := false
-	profileName, hasProfile := apr.GetValue(commands.ProfileFlag)
-	encodedProfiles, err := globalConfig.GetString(commands.GlobalCfgProfileKey)
-	if err != nil {
-		if err == config.ErrConfigParamNotFound {
-			if hasProfile {
-				return nil, nil, "", fmt.Errorf("no profiles found")
-			} else {
-				return apr, remaining, subcommandName, nil
-			}
-		} else {
-			return nil, nil, "", err
-		}
-	}
-	profiles, err := commands.DecodeProfile(encodedProfiles)
-	if err != nil {
-		return nil, nil, "", err
+	if tlsConfig != nil && len(tlsConfig.Certificates) > 0 {
+		certificate = tlsConfig.Certificates[0]
 	}
 
-	if !hasProfile {
-		defaultProfile := gjson.Get(profiles, commands.DefaultProfileName)
-		if defaultProfile.Exists() {
-			args = append([]string{"--profile", commands.DefaultProfileName}, args...)
-			apr, remaining, err = globalArgParser.ParseGlobalArgs(args)
+	// We need a username and password for many SQL commands, so set defaults if they don't exist
+	dEnv.Config.SetFailsafes(map[string]string{
+		config.UserNameKey:  "postgres",
+		config.UserEmailKey: "postgres@somewhere.com",
+	})
+
+	// Automatically initialize a doltgres database if necessary
+	if !dEnv.HasDoltDir() {
+		// Need to make sure that there isn't a doltgres item in the path.
+		if exists, isDirectory := dEnv.FS.Exists("doltgres"); !exists {
+			err := dEnv.FS.MkDirs("doltgres")
 			if err != nil {
-				return nil, nil, "", err
+				return nil, err
 			}
-			profileName, _ = apr.GetValue(commands.ProfileFlag)
-			useDefaultProfile = true
-		}
-	}
-
-	if hasProfile || useDefaultProfile {
-		profileArgs, err := getProfile(apr, profileName, profiles)
-		if err != nil {
-			return nil, nil, "", err
-		}
-		args = append(profileArgs, args...)
-		apr, remaining, err = globalArgParser.ParseGlobalArgs(args)
-		if err != nil {
-			return nil, nil, "", err
-		}
-	}
-
-	return
-}
-
-// getProfile retrieves the given profile from the provided list of profiles and returns the args (as flags) and values
-// for that profile in a []string. If the profile is not found, an error is returned.
-func getProfile(apr *argparser.ArgParseResults, profileName, profiles string) (result []string, err error) {
-	prof := gjson.Get(profiles, profileName)
-	if prof.Exists() {
-		hasPassword := false
-		password := ""
-		for flag, value := range prof.Map() {
-			if !apr.Contains(flag) {
-				if flag == cli.PasswordFlag {
-					password = value.Str
-				} else if flag == "has-password" {
-					hasPassword = value.Bool()
-				} else if flag == cli.NoTLSFlag {
-					if value.Bool() {
-						result = append(result, "--"+flag)
-						continue
-					}
-				} else {
-					if value.Str != "" {
-						result = append(result, "--"+flag, value.Str)
-					}
-				}
+			subdirectoryFS, err := dEnv.FS.WithWorkingDir("doltgres")
+			if err != nil {
+				return nil, err
 			}
+
+			// We'll use a temporary environment to instantiate the subdirectory
+			tempDEnv := env.Load(ctx, env.GetCurrentUserHomeDir, subdirectoryFS, dEnv.UrlStr(), Version)
+			res := commands.InitCmd{}.Exec(ctx, "init", []string{}, tempDEnv, configCliContext{tempDEnv})
+			if res != 0 {
+				return nil, fmt.Errorf("failed to initialize doltgres database")
+			}
+		} else if !isDirectory {
+			// The else branch means that there's a Doltgres item, so we need to error if it's a file since we
+			// enforce the creation of a Doltgres database/directory, which would create a name conflict with the file
+			return nil, fmt.Errorf("Attempted to create the default `doltgres` database, but a file with" +
+				" the same name was found. Please run the doltgres command in a directory that does not contain a" +
+				" file with the name doltgres")
 		}
-		if !apr.Contains(cli.PasswordFlag) && hasPassword {
-			result = append(result, "--"+cli.PasswordFlag, password)
-		}
-		return result, nil
-	} else {
-		return nil, fmt.Errorf("profile %s not found", profileName)
 	}
+
+	controller := svcs.NewController()
+	newCtx, cancelF := context.WithCancel(ctx)
+	go func() {
+		// Here we only forward along the SIGINT if the server starts
+		// up successfully.  If the service does not start up
+		// successfully, or if WaitForStart() blocks indefinitely, then
+		// startServer() should have returned an error and we do not
+		// need to Stop the running server or deal with our canceled
+		// parent context.
+		if controller.WaitForStart() == nil {
+			<-ctx.Done()
+			controller.Stop()
+			cancelF()
+		}
+	}()
+
+	sqlserver.ConfigureServices(serverConfig, controller, Version, dEnv)
+	go controller.Start(newCtx)
+	return controller, controller.WaitForStart()
 }
 
-func intPointer(val int) *int {
-	p := new(int)
-	*p = val
-	return p
+// configCliContext is a minimal implementation of CliContext that only supports Config()
+type configCliContext struct {
+	dEnv *env.DoltEnv
 }
+
+func (c configCliContext) Config() *env.DoltCliConfig {
+	return c.dEnv.Config
+}
+
+func (c configCliContext) GlobalArgs() *argparser.ArgParseResults {
+	panic("ConfigCliContext does not support GlobalArgs()")
+}
+
+func (c configCliContext) QueryEngine(ctx context.Context) (cli.Queryist, *sql.Context, func(), error) {
+	return nil, nil, nil, fmt.Errorf("ConfigCliContext does not support QueryEngine()")
+}
+
+var _ cli.CliContext = configCliContext{}
