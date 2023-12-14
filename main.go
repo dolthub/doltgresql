@@ -102,7 +102,7 @@ func main() {
 
 	// The sql-server command has special cased logic since it doesn't invoke a Dolt command directly, but runs a server
 	// and waits for it to finish
-	if subCommandName == "" || subCommandName == "sql-server" {
+	if subCommandName == "sql-server" {
 		err = runServer(ctx, dEnv)
 		if err != nil {
 			cli.PrintErrln(err.Error())
