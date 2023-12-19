@@ -27,6 +27,8 @@ import (
 	"github.com/dolthub/vitess/go/vt/sqlparser"
 	"github.com/jackc/pgx/v5"
 	"github.com/sergi/go-diff/diffmatchpatch"
+	"golang.org/x/text/cases"
+	"golang.org/x/text/language"
 
 	"github.com/dolthub/doltgresql/postgres/parser/parser"
 	"github.com/dolthub/doltgresql/server/ast"
@@ -121,7 +123,7 @@ FileLoop:
 		}
 		includeRepetition := len(repetitionDisabled) == 0 || repetitionDisabled[0] != "*"
 		for _, bans := range repetitionDisabled {
-			if strings.ToLower(bans) == strings.ToLower(prefix) {
+			if strings.EqualFold(bans, prefix) {
 				includeRepetition = false
 				break
 			}
@@ -157,7 +159,8 @@ FileLoop:
 			continue FileLoop
 		}
 		sb := strings.Builder{}
-		sb.WriteString(fmt.Sprintf(TestHeader, time.Now().Year(), strings.ReplaceAll(strings.Title(strings.ToLower(prefix)), " ", "")))
+		sb.WriteString(fmt.Sprintf(TestHeader, time.Now().Year(),
+			strings.ReplaceAll(cases.Title(language.English).String(strings.ToLower(prefix)), " ", "")))
 
 		permutations := stmtGen.Permutations()
 		if permutations.Cmp(big.NewInt(MaxTestCount)) <= 0 {

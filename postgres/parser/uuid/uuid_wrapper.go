@@ -25,14 +25,11 @@
 package uuid
 
 import (
-	"encoding/binary"
+	"crypto/rand"
 	"encoding/json"
 	"fmt"
-	"math/rand"
 
 	"github.com/dolthub/doltgresql/postgres/parser/utils"
-
-	"github.com/cockroachdb/errors"
 )
 
 // Short returns the first eight characters of the output of String().
@@ -109,47 +106,10 @@ func (u *UUID) UnmarshalJSON(data []byte) error {
 	return err
 }
 
-// MakeV4 calls Must(NewV4)
-func MakeV4() UUID {
-	return Must(NewV4())
-}
-
-// FastMakeV4 generates a UUID using a fast but not cryptographically secure
-// source of randomness.
-func FastMakeV4() UUID {
-	u, err := fastGen.NewV4()
-	if err != nil {
-		panic(errors.Wrap(err, "should never happen with math/rand.Rand"))
-	}
-	return u
-}
-
 // defaultRandReader is an io.Reader that calls through to "math/rand".Read
 // which is safe for concurrent use.
 type defaultRandReader struct{}
 
 func (r defaultRandReader) Read(p []byte) (n int, err error) {
 	return rand.Read(p)
-}
-
-// fastGen is a non-cryptographically secure Generator.
-var fastGen = NewGenWithReader(defaultRandReader{})
-
-// NewPopulatedUUID returns a populated UUID.
-func NewPopulatedUUID(r interface {
-	Int63() int64
-}) *UUID {
-	var u UUID
-	binary.LittleEndian.PutUint64(u[:8], uint64(r.Int63()))
-	binary.LittleEndian.PutUint64(u[8:], uint64(r.Int63()))
-	return &u
-}
-
-// FromUint128 delegates to FromBytes and wraps the result in a UUID.
-func FromUint128(input utils.Uint128) UUID {
-	u, err := FromBytes(input.GetBytes())
-	if err != nil {
-		panic(errors.Wrap(err, "should never happen with 16 byte slice"))
-	}
-	return u
 }

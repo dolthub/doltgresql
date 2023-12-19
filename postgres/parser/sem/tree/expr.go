@@ -1200,25 +1200,6 @@ func (node *BinaryExpr) memoizeFn() {
 	node.Fn = fn
 }
 
-// newBinExprIfValidOverload constructs a new BinaryExpr if and only
-// if the pair of arguments have a valid implementation for the given
-// BinaryOperator.
-func newBinExprIfValidOverload(op BinaryOperator, left TypedExpr, right TypedExpr) *BinaryExpr {
-	leftRet, rightRet := left.ResolvedType(), right.ResolvedType()
-	fn, ok := BinOps[op].lookupImpl(leftRet, rightRet)
-	if ok {
-		expr := &BinaryExpr{
-			Operator: op,
-			Left:     left,
-			Right:    right,
-			Fn:       fn,
-		}
-		expr.typ = returnTypeToFixedType(fn.returnType())
-		return expr
-	}
-	return nil
-}
-
 // Format implements the NodeFormatter interface.
 func (node *BinaryExpr) Format(ctx *FmtCtx) {
 	binExprFmtWithParen(ctx, node.Left, node.Operator.String(), node.Right, node.Operator.isPadded())

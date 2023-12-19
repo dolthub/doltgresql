@@ -28,7 +28,6 @@ import (
 	"bytes"
 	"encoding/binary"
 	"fmt"
-	"reflect"
 	"unsafe"
 
 	"github.com/cockroachdb/apd/v2"
@@ -160,8 +159,6 @@ func DecodeUint32Ascending(b []byte) ([]byte, uint32, error) {
 	v := binary.BigEndian.Uint32(b)
 	return b[4:], v, nil
 }
-
-const uint64AscendingEncodedLength = 8
 
 // EncodeUint64Ascending encodes the uint64 value using a big-endian 8 byte
 // representation. The bytes are appended to the supplied buffer and
@@ -461,10 +458,10 @@ func UnsafeConvertStringToBytes(s string) []byte {
 	// kosher because we know that EncodeBytes{,Descending} does
 	// not keep a reference to the value it encodes. The first
 	// step is getting access to the string internals.
-	hdr := (*reflect.StringHeader)(unsafe.Pointer(&s))
+	data := unsafe.StringData(s)
 	// Next we treat the string data as a maximally sized array which we
 	// slice. This usage is safe because the pointer value remains in the string.
-	return (*[0x7fffffff]byte)(unsafe.Pointer(hdr.Data))[:len(s):len(s)]
+	return (*[0x7fffffff]byte)(unsafe.Pointer(data))[:len(s):len(s)]
 }
 
 // EncodeStringAscending encodes the string value using an escape-based encoding. See
@@ -694,19 +691,6 @@ func GetMultiVarintLen(b []byte, num int) (int, error) {
 	return p, nil
 }
 
-// getMultiNonsortingVarintLen finds the length of <num> encoded nonsorting varints.
-func getMultiNonsortingVarintLen(b []byte, num int) (int, error) {
-	p := 0
-	for i := 0; i < num && p < len(b); i++ {
-		_, len, _, err := DecodeNonsortingStdlibVarint(b[p:])
-		if err != nil {
-			return 0, err
-		}
-		p += len
-	}
-	return p, nil
-}
-
 // getArrayLength returns the length of a key encoded array. The input
 // must have had the array type marker stripped from the front.
 func getArrayLength(buf []byte, dir Direction) (int, error) {
@@ -882,8 +866,6 @@ func DecodeNonsortingStdlibUvarint(
 	}
 	return buf[n:], n, i, nil
 }
-
-const floatValueEncodedLength = uint64AscendingEncodedLength
 
 // EncodeUntaggedDecimalValue encodes an apd.Decimal value, appends it to the supplied
 // buffer, and returns the final buffer.

@@ -37,8 +37,6 @@ import (
 	"github.com/cockroachdb/apd/v2"
 	"github.com/cockroachdb/errors"
 	"github.com/lib/pq/oid"
-	"golang.org/x/text/collate"
-	"golang.org/x/text/language"
 
 	"github.com/dolthub/doltgresql/postgres/parser/duration"
 	"github.com/dolthub/doltgresql/postgres/parser/geo"
@@ -611,40 +609,6 @@ type DCollatedString struct {
 	Key []byte
 }
 
-// CollationEnvironment stores the state needed by NewDCollatedString to
-// construct collation keys efficiently.
-type CollationEnvironment struct {
-	cache  map[string]collationEnvironmentCacheEntry
-	buffer *collate.Buffer
-}
-
-type collationEnvironmentCacheEntry struct {
-	// locale is interned.
-	locale string
-	// collator is an expensive factory.
-	collator *collate.Collator
-}
-
-func (env *CollationEnvironment) getCacheEntry(
-	locale string,
-) (collationEnvironmentCacheEntry, error) {
-	entry, ok := env.cache[locale]
-	if !ok {
-		if env.cache == nil {
-			env.cache = make(map[string]collationEnvironmentCacheEntry)
-		}
-		tag, err := language.Parse(locale)
-		if err != nil {
-			err = errors.NewAssertionErrorWithWrappedErrf(err, "failed to parse locale %q", locale)
-			return collationEnvironmentCacheEntry{}, err
-		}
-
-		entry = collationEnvironmentCacheEntry{locale, collate.New(tag)}
-		env.cache[locale] = entry
-	}
-	return entry, nil
-}
-
 // AmbiguousFormat implements the Datum interface.
 func (*DCollatedString) AmbiguousFormat() bool { return false }
 
@@ -768,10 +732,6 @@ type DIPAddr struct {
 // ResolvedType implements the TypedExpr interface.
 func (*DIPAddr) ResolvedType() *types.T {
 	return types.INet
-}
-
-func (d DIPAddr) equal(other *DIPAddr) bool {
-	return d.IPAddr.Equal(&other.IPAddr)
 }
 
 // AmbiguousFormat implements the Datum interface.

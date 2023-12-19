@@ -102,7 +102,7 @@ func decode(buffer *decodeBuffer, fields []FieldGroup, iterations int32) error {
 					}
 					data := make([]byte, byteCount)
 					copy(data, buffer.data)
-					if field.Flags&StaticData != 0 && bytes.Compare(field.Data.([]byte), data) != 0 {
+					if field.Flags&StaticData != 0 && !bytes.Equal(field.Data.([]byte), data) {
 						return errors.New("static data differs from the buffer data")
 					}
 					field.Data = data
@@ -110,7 +110,7 @@ func decode(buffer *decodeBuffer, fields []FieldGroup, iterations int32) error {
 				} else {
 					data := make([]byte, len(buffer.data))
 					copy(data, buffer.data)
-					if field.Flags&StaticData != 0 && bytes.Compare(field.Data.([]byte), data) != 0 {
+					if field.Flags&StaticData != 0 && !bytes.Equal(field.Data.([]byte), data) {
 						return errors.New("static data differs from the buffer data")
 					}
 					field.Data = data

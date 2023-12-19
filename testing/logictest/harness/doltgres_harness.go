@@ -26,11 +26,6 @@ import (
 
 var _ logictest.Harness = &PostgresqlServerHarness{}
 
-const (
-	name  = "sqllogictest runner"
-	email = "sqllogictestrunner@dolthub.com"
-)
-
 // sqllogictest harness for postgres databases.
 type PostgresqlServerHarness struct {
 	dsn string
