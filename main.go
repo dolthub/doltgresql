@@ -16,10 +16,7 @@ package main
 
 import (
 	"context"
-	crand "crypto/rand"
-	"encoding/binary"
 	"fmt"
-	"math/rand"
 	"os"
 	"strconv"
 	"strings"
@@ -69,7 +66,6 @@ const stdOutAndErrFlag = "--out-and-err"
 
 func main() {
 	ctx := context.Background()
-	seedGlobalRand()
 
 	args := os.Args[1:]
 
@@ -112,7 +108,7 @@ func main() {
 	}
 
 	// Otherwise, attempt to run the command indicated
-	cliCtx, err := configureCliCtx(subCommandName, apr, fs, dEnv, err, ctx)
+	cliCtx, err := configureCliCtx(subCommandName, apr, fs, dEnv, ctx)
 	if err != nil {
 		cli.PrintErrln(err.Error())
 		os.Exit(1)
@@ -122,7 +118,7 @@ func main() {
 	os.Exit(exitCode)
 }
 
-func configureCliCtx(subcommand string, apr *argparser.ArgParseResults, fs filesys.Filesys, dEnv *env.DoltEnv, err error, ctx context.Context) (cli.CliContext, error) {
+func configureCliCtx(subcommand string, apr *argparser.ArgParseResults, fs filesys.Filesys, dEnv *env.DoltEnv, ctx context.Context) (cli.CliContext, error) {
 	dataDir, hasDataDir := apr.GetValue(commands.DataDirFlag)
 	if hasDataDir {
 		// If a relative path was provided, this ensures we have an absolute path everywhere.
@@ -144,7 +140,7 @@ func configureCliCtx(subcommand string, apr *argparser.ArgParseResults, fs files
 			"To use the current directory as a database, start the server from the parent directory.")
 	}
 
-	err = reconfigIfTempFileMoveFails(dEnv)
+	err := reconfigIfTempFileMoveFails(dEnv)
 	if err != nil {
 		return nil, fmt.Errorf("failed to set up the temporary directory: %w", err)
 	}
@@ -297,15 +293,6 @@ func getProfile(apr *argparser.ArgParseResults, profileName, profiles string) (r
 	}
 }
 
-func seedGlobalRand() {
-	bs := make([]byte, 8)
-	_, err := crand.Read(bs)
-	if err != nil {
-		panic("failed to initial rand " + err.Error())
-	}
-	rand.Seed(int64(binary.LittleEndian.Uint64(bs)))
-}
-
 // buildLateBinder builds a LateBindQueryist for which is used to obtain the Queryist used for the length of the
 // command execution.
 func buildLateBinder(ctx context.Context, cwdFS filesys.Filesys, rootEnv *env.DoltEnv, mrEnv *env.MultiRepoEnv, creds *cli.UserPassword, apr *argparser.ArgParseResults, subcommandName string, verbose bool) (cli.LateBindQueryist, error) {
@@ -368,12 +355,6 @@ func buildLateBinder(ctx context.Context, cwdFS filesys.Filesys, rootEnv *env.Do
 		return func(ctx context.Context) (cli.Queryist, *sql.Context, func(), error) {
 			return nil, nil, nil, fmt.Errorf("The current directory is not a valid dolt repository.")
 		}, nil
-	}
-
-	// nil targetEnv will happen if the user ran a command in an empty directory or when there is a server running with
-	// no databases. CLI will try to connect to the server in this case.
-	if targetEnv == nil {
-		targetEnv = rootEnv
 	}
 
 	if verbose {
@@ -515,5 +496,5 @@ func emitUsageEvent(dEnv *env.DoltEnv) {
 		return
 	}
 
-	err = emitter.LogEvents(server.Version, clientEvents)
+	_ = emitter.LogEvents(server.Version, clientEvents)
 }

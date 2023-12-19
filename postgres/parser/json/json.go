@@ -64,8 +64,8 @@ const (
 const (
 	wordSize          = unsafe.Sizeof(big.Word(0))
 	decimalSize       = unsafe.Sizeof(apd.Decimal{})
-	stringHeaderSize  = unsafe.Sizeof(reflect.StringHeader{})
-	sliceHeaderSize   = unsafe.Sizeof(reflect.SliceHeader{})
+	stringHeaderSize  = unsafe.Sizeof(reflect.StringHeader{}) //lint:ignore SA1019 Still useful here
+	sliceHeaderSize   = unsafe.Sizeof(reflect.SliceHeader{})  //lint:ignore SA1019 Still useful here
 	keyValuePairSize  = unsafe.Sizeof(jsonKeyValuePair{})
 	jsonInterfaceSize = unsafe.Sizeof((JSON)(nil))
 )
@@ -1423,12 +1423,8 @@ func (j jsonObject) RemoveString(s string) (JSON, bool, error) {
 	}
 
 	newVal := make([]jsonKeyValuePair, len(j)-1)
-	for i, elem := range j[:idx] {
-		newVal[i] = elem
-	}
-	for i, elem := range j[idx+1:] {
-		newVal[idx+i] = elem
-	}
+	copy(newVal, j[:idx])
+	copy(newVal[idx:], j[idx+1:])
 	return jsonObject(newVal), true, nil
 }
 
@@ -1487,9 +1483,7 @@ func scalarConcat(left, other JSON) (JSON, error) {
 		right := decoded.(jsonArray)
 		result := make(jsonArray, len(right)+1)
 		result[0] = left
-		for i := range right {
-			result[i+1] = right[i]
-		}
+		copy(result[1:], right)
 		return result, nil
 	case ObjectJSONType:
 		return nil, errInvalidConcat
@@ -1514,18 +1508,12 @@ func (j jsonArray) Concat(other JSON) (JSON, error) {
 		}
 		right := decoded.(jsonArray)
 		result := make(jsonArray, len(left)+len(right))
-		for i := range left {
-			result[i] = left[i]
-		}
-		for i := range right {
-			result[len(left)+i] = right[i]
-		}
+		copy(result, left)
+		copy(result[len(left):], right)
 		return result, nil
 	default:
 		result := make(jsonArray, len(left)+1)
-		for i := range left {
-			result[i] = left[i]
-		}
+		copy(result, left)
 		result[len(left)] = other
 		return result, nil
 	}
@@ -1833,9 +1821,7 @@ func (j jsonArray) doRemovePath(path []string) (JSON, bool, error) {
 	}
 
 	result := make(jsonArray, len(j))
-	for i := range j {
-		result[i] = j[i]
-	}
+	copy(result, j)
 	result[idx] = newVal
 
 	return result, true, nil
@@ -1862,9 +1848,7 @@ func (j jsonObject) doRemovePath(path []string) (JSON, bool, error) {
 	}
 
 	result := make(jsonObject, len(j))
-	for i := range j {
-		result[i] = j[i]
-	}
+	copy(result, j)
 	result[idx].v = newVal
 
 	return result, true, nil
