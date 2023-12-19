@@ -52,6 +52,8 @@ type ScriptTest struct {
 	// false before passing, meaning this prevents the commented-out situation where the developer forgets to uncomment
 	// their code.
 	Focus bool
+	// Skip is used to completely skip a test including setup
+	Skip bool
 }
 
 // ScriptTestAssertion are the assertions upon which the script executes its main "testing" logic.
@@ -86,6 +88,10 @@ func RunScript(t *testing.T, script ScriptTest) {
 	}()
 
 	t.Run(script.Name, func(t *testing.T) {
+		if script.Skip {
+			t.Skip("Skip has been set in the script")
+		}
+
 		// Run the setup
 		for _, query := range script.SetUpScript {
 			_, err := conn.Exec(ctx, query)
