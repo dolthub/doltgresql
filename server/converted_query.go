@@ -24,3 +24,8 @@ type ConvertedQuery struct {
 	String string
 	AST    vitess.Statement
 }
+
+type PortalData struct {
+  Query ConvertedQuery
+	Bindings []interface{}
+}
