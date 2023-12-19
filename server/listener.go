@@ -28,6 +28,7 @@ import (
 	"github.com/dolthub/go-mysql-server/sql/mysql_db"
 	"github.com/dolthub/vitess/go/mysql"
 	"github.com/dolthub/vitess/go/sqltypes"
+	"github.com/dolthub/vitess/go/vt/proto/query"
 	"github.com/dolthub/vitess/go/vt/sqlparser"
 	"github.com/sirupsen/logrus"
 
@@ -435,48 +436,16 @@ func (l *Listener) describe(conn net.Conn, mysqlConn *mysql.Conn, message messag
 	}); err != nil {
 		return err
 	}
-
-	//TODO: properly handle these statements
-	if ImplicitlyCommits(statement.String) {
-		if reverseStatement, ok := HandleImplicitCommitStatement(statement.String); ok {
-			// We have a reverse statement that can function as a workaround for the lack of proper rollback support.
-			// This does mean that we'll still create an implicit commit, but we can fix that whenever we add proper
-			// transaction support.
-			defer func() {
-				// If there's an error, then we don't want to execute the reverse statement
-				if err == nil {
-					_ = l.cfg.Handler.ComQuery(mysqlConn, reverseStatement, func(_ *sqltypes.Result, _ bool) error {
-						return nil
-					})
-				}
-			}()
-		} else {
-			return fmt.Errorf("We do not yet support the Describe message for the given statement")
-		}
-	}
-	// We'll start a transaction, so that we can later rollback any changes that were made.
-	//TODO: handle the case where we are already in a transaction (SAVEPOINT will sometimes fail it seems?)
-	if err := l.cfg.Handler.ComQuery(mysqlConn, "START TRANSACTION;", func(_ *sqltypes.Result, _ bool) error {
-		return nil
-	}); err != nil {
+	
+	// Execute the statement, and send the description.
+	// TODO: we should probably be doing this on Parse, not Describe. Is a Describe required after a Parse?
+	fields, err := l.comPrepare(mysqlConn, statement)
+	if err != nil {
 		return err
 	}
-	// We need to defer the rollback, so that it will always be executed.
-	defer func() {
-		_ = l.cfg.Handler.ComQuery(mysqlConn, "ROLLBACK;", func(_ *sqltypes.Result, _ bool) error {
-			return nil
-		})
-	}()
-	// Execute the statement, and send the description.
-	if err := l.comQuery(mysqlConn, statement, func(res *sqltypes.Result, more bool) error {
-		if res != nil {
-			if err := connection.Send(conn, messages.RowDescription{
-				Fields: res.Fields,
-			}); err != nil {
-				return err
-			}
-		}
-		return nil
+
+	if err := connection.Send(conn, messages.RowDescription{
+		Fields: fields,
 	}); err != nil {
 		return err
 	}
@@ -588,11 +557,19 @@ func (l *Listener) convertQuery(query string) (ConvertedQuery, error) {
 	}, nil
 }
 
+func (l *Listener) comPrepare(mysqlConn *mysql.Conn, query ConvertedQuery) ([]*query.Field, error) {
+	if query.AST == nil {
+		return nil, fmt.Errorf("cannot prepare a query that has not been parsed")
+	} 
+	
+	return l.cfg.Handler.(mysql.ExtendedHandler).ComPrepareParsed(mysqlConn, query.String, query.AST, nil)
+}
+
 // comQuery is a shortcut that determines which version of ComQuery to call based on whether the query has been parsed.
 func (l *Listener) comQuery(mysqlConn *mysql.Conn, query ConvertedQuery, callback func(res *sqltypes.Result, more bool) error) error {
 	if query.AST == nil {
 		return l.cfg.Handler.ComQuery(mysqlConn, query.String, callback)
 	} else {
-		return l.cfg.Handler.ComParsedQuery(mysqlConn, query.String, query.AST, callback)
+		return l.cfg.Handler.(mysql.ExtendedHandler).ComParsedQuery(mysqlConn, query.String, query.AST, callback)
 	}
 }
