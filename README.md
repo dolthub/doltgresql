@@ -35,9 +35,7 @@ If you are interested in using Doltgres now or in the future, please:
 * [Try Doltgres](#getting-started)
 * Create [issues](https://github.com/dolthub/doltgresql/issues) if you find bugs
 * Create [issues](https://github.com/dolthub/doltgresql/issues) for missing functionality you want
-* Contribute Code for features you want (see [Building From Source](#building-from-source))
-
-Contribution Guide coming soon.
+* Contribute code for features you want (see the [Contribution Guide](https://github.com/dolthub/doltgresql/blob/main/CONTRIBUTING.md))
 
 # Getting Started
 
@@ -45,36 +43,30 @@ Contribution Guide coming soon.
    
 2. Put `doltgres` on your `PATH`
 
-3. Navigate to a directory you want your database data stored (ie. `~/doltgresql`).
-```bash
-$ mkdir ~/doltgresql
-$ cd ~/doltgresql
-```
-
-4. Run `doltgres`. This will create a `doltgres` user and a `doltgres` database.
+3. Run `doltgres`. This will create a `doltgres` user and a `doltgres` database in `~/doltgres/databases` (change the `DOLTGRES_DATA_DIR` environment variable to use a different directory).
 ```bash
 $ doltgres
 Successfully initialized dolt data repository.
 Starting server with Config HP="localhost:5432"|T="28800000"|R="false"|L="info"|S="/tmp/mysql.sock"
 ```
 
-5. Make sure you have Postgres version 15 or higher installed. I used Homebrew to install Postgres on my Mac.
+4. Make sure you have Postgres version 15 or higher installed. I used Homebrew to install Postgres on my Mac.
 This requires I manually add `/opt/homebrew/opt/postgresql@15/bin` to my path. On Postgres version 14 or lower,
-`\` commands (ie. `\d`, `\l`) do not work with Doltgres. 
+`\` commands (ie. `\d`, `\l`) do not yet work with Doltgres. 
 ```
 export PATH="/opt/homebrew/opt/postgresql@15/bin:$PATH"
 ```
 
-6. Open a new terminal. Connect with the following command: `psql -h localhost -U doltgres`. This will connect to the `doltgres` database with the `doltgres` user.
+5. Open a new terminal. Connect with the following command: `psql -h localhost -U doltgres`. This will connect to the `doltgres` database with the `doltgres` user.
 ```bash
-$ psql -h 127.0.0.1 -U doltgres                  
+$ psql -h 127.0.0.1 -U doltgres
 psql (15.4 (Homebrew), server 15.0)
 Type "help" for help.
 
 doltgres=>
 ```
 
-7. Create a `getting_started` database. Create the `getting_started` example tables.
+6. Create a `getting_started` database. Create the `getting_started` example tables.
 ```sql
 doltgres=> create database getting_started;
 --
@@ -117,7 +109,7 @@ getting_started=> \d
 (3 rows)
 ```
 
-8. Make a Dolt Commit.
+7. Make a Dolt Commit.
 ```sql
 getting_started=> select * from dolt_status;
    table_name    | staged |  status   
@@ -147,7 +139,7 @@ getting_started=> call dolt_commit('-m', 'Created initial schema');
 (1 row)
 ```
 
-9. View the Dolt log.
+8. View the Dolt log.
 ```
 getting_started=> select * from dolt_log;
            commit_hash            | committer |       email        |        date         |          message           
@@ -157,17 +149,12 @@ getting_started=> select * from dolt_log;
 (2 rows)
 ```
 
-10. Continue with [Dolt Getting Started](https://docs.dolthub.com/introduction/getting-started/database#insert-some-data) 
+9. Continue with [Dolt Getting Started](https://docs.dolthub.com/introduction/getting-started/database#insert-some-data) 
 to test out more Doltgres versioning functionality.
 
 # Building From Source
 
-Due to the rapid pace of development at this early stage, building from source will guarantee that you're always working
-with the latest improvement and features.
-
-1. Clone the repository to your local drive
-2. Run `./postgres/parser/build.sh` to generate the parser
-3. Run `go build .` in the root directory
+Please follow the [Contributor's Guide](https://github.com/dolthub/doltgresql/blob/main/CONTRIBUTING.md#getting-set-up) to learn how to build from source.
 
 # Limitations
 

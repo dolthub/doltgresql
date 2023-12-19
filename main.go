@@ -18,6 +18,7 @@ import (
 	"context"
 	"fmt"
 	"os"
+	"path/filepath"
 	"strconv"
 	"strings"
 
@@ -58,11 +59,13 @@ func init() {
 	}
 }
 
-const chdirFlag = "--chdir"
-const stdInFlag = "--stdin"
-const stdOutFlag = "--stdout"
-const stdErrFlag = "--stderr"
-const stdOutAndErrFlag = "--out-and-err"
+const (
+	chdirFlag        = "--chdir"
+	stdInFlag        = "--stdin"
+	stdOutFlag       = "--stdout"
+	stdErrFlag       = "--stderr"
+	stdOutAndErrFlag = "--out-and-err"
+)
 
 func main() {
 	ctx := context.Background()
@@ -80,7 +83,44 @@ func main() {
 
 	warnIfMaxFilesTooLow()
 
-	fs := filesys.LocalFS
+	var fs filesys.Filesys
+	if (len(args) >= 1 && args[0] == "init") || (strings.ToLower(os.Getenv(server.DOLTGRES_DATA_DIR_CWD)) == "true") {
+		// If "init" is passed as the command, or DOLTGRES_DATA_DIR_CWD is set to "true", then we use the current directory
+		fs = filesys.LocalFS
+	} else {
+		// We should use the directory as pointed to by "DOLTGRES_DATA_DIR", if has been set, otherwise we'll use the default
+		var dbDir string
+		if envDir := os.Getenv(server.DOLTGRES_DATA_DIR); len(envDir) > 0 {
+			dbDir = envDir
+		} else {
+			homeDir, err := env.GetCurrentUserHomeDir()
+			if err != nil {
+				cli.PrintErrln(err.Error())
+				os.Exit(1)
+			}
+			dbDir = filepath.Join(homeDir, server.DOLTGRES_DATA_DIR_DEFAULT)
+			fileInfo, err := os.Stat(dbDir)
+			if os.IsNotExist(err) {
+				if err = os.MkdirAll(dbDir, 0755); err != nil {
+					cli.PrintErrln(err.Error())
+					os.Exit(1)
+				}
+			} else if err != nil {
+				cli.PrintErrln(err.Error())
+				os.Exit(1)
+			} else if !fileInfo.IsDir() {
+				cli.PrintErrln(fmt.Sprintf("Attempted to use the directory `%s` as the DoltgreSQL database directory, "+
+					"however the preceding is a file and not a directory. Please change the environment variable `%s` so "+
+					"that is points to a directory.", dbDir, server.DOLTGRES_DATA_DIR))
+				os.Exit(1)
+			}
+		}
+		fs, err = filesys.LocalFilesysWithWorkingDir(dbDir)
+		if err != nil {
+			cli.PrintErrln(err.Error())
+			os.Exit(1)
+		}
+	}
 	dEnv := env.Load(ctx, env.GetCurrentUserHomeDir, fs, doltdb.LocalDirDoltDB, server.Version)
 
 	globalConfig, _ := dEnv.Config.GetConfig(env.GlobalConfig)
@@ -136,8 +176,9 @@ func configureCliCtx(subcommand string, apr *argparser.ArgParseResults, fs files
 	}
 
 	if dEnv.HasDoltDataDir() {
-		return nil, fmt.Errorf("Cannot start a server within a directory containing a Dolt or Doltgres database." +
-			"To use the current directory as a database, start the server from the parent directory.")
+		cwd, _ := dEnv.FS.Abs(".")
+		return nil, fmt.Errorf("Cannot start a server within a directory containing a Dolt or Doltgres database. "+
+			"To use the current directory (%s) as a database, start the server from the parent directory.", cwd)
 	}
 
 	err := reconfigIfTempFileMoveFails(dEnv)

@@ -56,6 +56,8 @@ setup_common() {
     # multiple tests can be run in parallel on the same machine
     mkdir "dolt-repo-$$"
     cd "dolt-repo-$$"
+    nativevar DOLTGRES_DATA_DIR "$(pwd)" /p # This has to be set in every function that calls doltgresql
+    nativevar DOLTGRES_DATA_DIR_CWD "" /w
 
     mkdir "postgres"
     cd "postgres"

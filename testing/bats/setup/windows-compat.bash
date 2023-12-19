@@ -17,7 +17,7 @@ if [ -d "$WINDOWS_BASE_DIR"/Windows/System32 ]  || [ "$IS_WINDOWS" == true ]; th
     }
     nativevar() {
         eval export "$1"="$2"
-        export WSLENV="$1$3"
+        export WSLENV="$WSLENV:$1$3"
     }
     skiponwindows() {
         skip "$1"
