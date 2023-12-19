@@ -20,7 +20,7 @@ import (
 	"github.com/dolthub/go-mysql-server/sql"
 )
 
-var typesTests = []ScriptTest {
+var typesTests = []ScriptTest{
 	{
 		Name: "Bigint type",
 		SetUpScript: []string{
@@ -215,7 +215,7 @@ var typesTests = []ScriptTest {
 		},
 		Assertions: []ScriptTestAssertion{
 			{
-				Skip: true, // TODO: these are coming back as date time objects, not dates
+				Skip:  true, // TODO: these are coming back as date time objects, not dates
 				Query: "SELECT * FROM t_date ORDER BY id;",
 				Expected: []sql.Row{
 					{1, "2023-01-01"},
@@ -693,7 +693,7 @@ var typesTests = []ScriptTest {
 			},
 		},
 	},
-} 
+}
 
 func TestTypes(t *testing.T) {
 	RunScripts(t, typesTests)

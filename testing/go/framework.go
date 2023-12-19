@@ -91,7 +91,7 @@ func RunScript(t *testing.T, script ScriptTest) {
 		if script.Skip {
 			t.Skip("Skip has been set in the script")
 		}
-		
+
 		// Run the setup
 		for _, query := range script.SetUpScript {
 			_, err := conn.Exec(ctx, query)
