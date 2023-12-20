@@ -27,6 +27,11 @@ An alternative is to use [BashSupport Pro](https://plugins.jetbrains.com/plugin/
 Additionally, our [Bats](https://github.com/bats-core/bats-core) tests assume that you have a `doltgresql` (not `doltgres`) binary on your PATH.
 For Windows users, this means that the binary should _not_ end with the `.exe` file extension.
 Remember to recompile the executable on your PATH whenever you want to re-test any [Bats](https://github.com/bats-core/bats-core) tests.
+9. **Change the data directory**: This is optional but recommended.
+By default, we create databases within the `~/doltgres/databases` directory.
+For developmental purposes, you may want to change this behavior. You have two options:
+   1. Set the `DOLTGRES_DATA_DIR` environment variable to a different directory. A value of `.` causes DoltgreSQL to use the current directory as the data directory, so you can have multiple data directories simply by running the program in different directories. This behavior is more consistent with [Dolt's](https://github.com/dolthub/dolt) behavior. This is the recommended option for development.
+   2. Specify the directory in the `--data-dir` argument. This overrides the environment variable if it is present. 
 
 ### Note for Windows Users
 

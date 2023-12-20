@@ -29,13 +29,14 @@ wait_for_connection() {
 start_sql_server() {
     DEFAULT_DB="$1"
     DEFAULT_DB="${DEFAULT_DB:=postgres}"
+    nativevar DEFAULT_DB "$DEFAULT_DB" /w
     logFile="$2"
     PORT=$( definePORT )
     if [[ $logFile ]]
     then
-        doltgresql --host 0.0.0.0 --port=$PORT --user "${SQL_USER:-postgres}" > $logFile 2>&1 &
+        doltgresql --host 0.0.0.0 --port=$PORT --data-dir=. --user "${SQL_USER:-postgres}" > $logFile 2>&1 &
     else
-        doltgresql --host 0.0.0.0 --port=$PORT --user "${SQL_USER:-postgres}" &
+        doltgresql --host 0.0.0.0 --port=$PORT --data-dir=. --user "${SQL_USER:-postgres}" &
     fi
     SERVER_PID=$!
     wait_for_connection $PORT 7500
@@ -46,6 +47,8 @@ start_sql_server() {
 # this func)
 start_sql_server_with_args() {
     DEFAULT_DB=""
+    nativevar DEFAULT_DB "$DEFAULT_DB" /w
+    nativevar DOLTGRES_DATA_DIR "$(pwd)" /p
     PORT=$( definePORT )
     doltgresql "$@" --port=$PORT &
     SERVER_PID=$!
@@ -55,6 +58,8 @@ start_sql_server_with_args() {
 start_sql_server_with_config() {
     DEFAULT_DB="$1"
     DEFAULT_DB="${DEFAULT_DB:=postgres}"
+    nativevar DEFAULT_DB "$DEFAULT_DB" /w
+    nativevar DOLTGRES_DATA_DIR "$(pwd)" /p
     PORT=$( definePORT )
     echo "
 log_level: debug
@@ -79,6 +84,8 @@ behavior:
 start_sql_multi_user_server() {
     DEFAULT_DB="$1"
     DEFAULT_DB="${DEFAULT_DB:=postgres}"
+    nativevar DEFAULT_DB "$DEFAULT_DB" /w
+    nativevar DOLTGRES_DATA_DIR "$(pwd)" /p
     PORT=$( definePORT )
     echo "
 log_level: debug
@@ -102,6 +109,7 @@ behavior:
 start_multi_db_server() {
     DEFAULT_DB="$1"
     DEFAULT_DB="${DEFAULT_DB:=postgres}"
+    nativevar DEFAULT_DB "$DEFAULT_DB" /w
     PORT=$( definePORT )
     doltgresql --host 0.0.0.0 --port=$PORT --user postgres --data-dir ./ &
     SERVER_PID=$!
