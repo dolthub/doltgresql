@@ -22,6 +22,5 @@ jobs:
         working-directory: ./postgres/parser
         shell: bash
       - name: Run check
-        run: |
-          go install honnef.co/go/tools/cmd/staticcheck@2023.1.6
-          staticcheck ./...
+        run: ./run_staticcheck.sh
+        working-directory: ./scripts

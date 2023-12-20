@@ -84,42 +84,10 @@ func main() {
 	warnIfMaxFilesTooLow()
 
 	var fs filesys.Filesys
-	if (len(args) >= 1 && args[0] == "init") || (strings.ToLower(os.Getenv(server.DOLTGRES_DATA_DIR_CWD)) == "true") {
-		// If "init" is passed as the command, or DOLTGRES_DATA_DIR_CWD is set to "true", then we use the current directory
-		fs = filesys.LocalFS
-	} else {
-		// We should use the directory as pointed to by "DOLTGRES_DATA_DIR", if has been set, otherwise we'll use the default
-		var dbDir string
-		if envDir := os.Getenv(server.DOLTGRES_DATA_DIR); len(envDir) > 0 {
-			dbDir = envDir
-		} else {
-			homeDir, err := env.GetCurrentUserHomeDir()
-			if err != nil {
-				cli.PrintErrln(err.Error())
-				os.Exit(1)
-			}
-			dbDir = filepath.Join(homeDir, server.DOLTGRES_DATA_DIR_DEFAULT)
-			fileInfo, err := os.Stat(dbDir)
-			if os.IsNotExist(err) {
-				if err = os.MkdirAll(dbDir, 0755); err != nil {
-					cli.PrintErrln(err.Error())
-					os.Exit(1)
-				}
-			} else if err != nil {
-				cli.PrintErrln(err.Error())
-				os.Exit(1)
-			} else if !fileInfo.IsDir() {
-				cli.PrintErrln(fmt.Sprintf("Attempted to use the directory `%s` as the DoltgreSQL database directory, "+
-					"however the preceding is a file and not a directory. Please change the environment variable `%s` so "+
-					"that is points to a directory.", dbDir, server.DOLTGRES_DATA_DIR))
-				os.Exit(1)
-			}
-		}
-		fs, err = filesys.LocalFilesysWithWorkingDir(dbDir)
-		if err != nil {
-			cli.PrintErrln(err.Error())
-			os.Exit(1)
-		}
+	fs, args, err = loadFileSystem(args)
+	if err != nil {
+		cli.PrintErrln(err.Error())
+		os.Exit(1)
 	}
 	dEnv := env.Load(ctx, env.GetCurrentUserHomeDir, fs, doltdb.LocalDirDoltDB, server.Version)
 
@@ -156,6 +124,107 @@ func main() {
 
 	exitCode := doltgresCommands.Exec(ctx, "doltgresql", args, dEnv, cliCtx)
 	os.Exit(exitCode)
+}
+
+// loadFileSystem loads the file system from a combination of the given arguments and environment variables.
+func loadFileSystem(args []string) (fs filesys.Filesys, outArgs []string, err error) {
+	// We can't use the argument parser yet since it relies on the environment, so we'll handle the data directory
+	// argument here. This will also remove it from the args, so that the Dolt layer doesn't try to move the directory
+	// again (in the case of relative paths).
+	var dataDir string
+	var hasDataDirArgument bool
+	for i, arg := range args {
+		arg = strings.ToLower(arg)
+		if arg == "--data-dir" {
+			if len(args) <= i+1 {
+				return nil, args, fmt.Errorf("--data-dir is missing the directory")
+			}
+			dataDir = args[i+1]
+			hasDataDirArgument = true
+			// os.Args is read from Dolt, so we have to update it, else we'll apply the move twice
+			newArgs := make([]string, len(args)-2)
+			copy(newArgs, args[:i])
+			copy(newArgs[i:], args[i+2:])
+			args = newArgs
+			os.Args = os.Args[:len(args)+1]
+			copy(os.Args[1:], args)
+			break
+		} else if strings.HasPrefix(arg, "--data-dir=") {
+			dataDir = arg[11:]
+			hasDataDirArgument = true
+			// os.Args is read from Dolt, so we have to update it, else we'll apply the move twice
+			newArgs := make([]string, len(args)-1)
+			copy(newArgs, args[:i])
+			copy(newArgs[i:], args[i+1:])
+			args = newArgs
+			os.Args = os.Args[:len(args)+1]
+			copy(os.Args[1:], args)
+		}
+	}
+
+	if len(args) >= 1 && args[0] == "init" {
+		// If "init" is passed as the command, then we use the current directory
+		fs = filesys.LocalFS
+	} else if hasDataDirArgument {
+		// If the --data-dir argument was used, then we'll use the directory that it points to
+		fileInfo, err := os.Stat(dataDir)
+		if os.IsNotExist(err) {
+			if err = os.MkdirAll(dataDir, 0755); err != nil {
+				return nil, args, err
+			}
+		} else if err != nil {
+			return nil, args, err
+		} else if !fileInfo.IsDir() {
+			return nil, args, fmt.Errorf("Attempted to use the directory `%s` as the DoltgreSQL database directory, "+
+				"however the preceding is a file and not a directory. Please change the `--data-dir` argument so "+
+				"that it points to a directory.", dataDir)
+		}
+		fs, err = filesys.LocalFilesysWithWorkingDir(dataDir)
+		if err != nil {
+			return nil, args, err
+		}
+	} else {
+		// We should use the directory as pointed to by "DOLTGRES_DATA_DIR", if has been set, otherwise we'll use the default
+		var dbDir string
+		if envDir := os.Getenv(server.DOLTGRES_DATA_DIR); len(envDir) > 0 {
+			dbDir = envDir
+			fileInfo, err := os.Stat(dbDir)
+			if os.IsNotExist(err) {
+				if err = os.MkdirAll(dbDir, 0755); err != nil {
+					return nil, args, err
+				}
+			} else if err != nil {
+				return nil, args, err
+			} else if !fileInfo.IsDir() {
+				return nil, args, fmt.Errorf("Attempted to use the directory `%s` as the DoltgreSQL database directory, "+
+					"however the preceding is a file and not a directory. Please change the environment variable `%s` so "+
+					"that it points to a directory.", dbDir, server.DOLTGRES_DATA_DIR)
+			}
+		} else {
+			homeDir, err := env.GetCurrentUserHomeDir()
+			if err != nil {
+				return nil, args, err
+			}
+			dbDir = filepath.Join(homeDir, server.DOLTGRES_DATA_DIR_DEFAULT)
+			fileInfo, err := os.Stat(dbDir)
+			if os.IsNotExist(err) {
+				if err = os.MkdirAll(dbDir, 0755); err != nil {
+					return nil, args, err
+				}
+			} else if err != nil {
+				return nil, args, err
+			} else if !fileInfo.IsDir() {
+				return nil, args, fmt.Errorf("Attempted to use the directory `%s` as the DoltgreSQL database directory, "+
+					"however the preceding is a file and not a directory. Please change the environment variable `%s` so "+
+					"that it points to a directory.", dbDir, server.DOLTGRES_DATA_DIR)
+			}
+		}
+		fs, err = filesys.LocalFilesysWithWorkingDir(dbDir)
+		if err != nil {
+			return nil, args, err
+		}
+	}
+	return fs, args, nil
 }
 
 func configureCliCtx(subcommand string, apr *argparser.ArgParseResults, fs filesys.Filesys, dEnv *env.DoltEnv, ctx context.Context) (cli.CliContext, error) {

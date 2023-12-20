@@ -30,8 +30,8 @@ Remember to recompile the executable on your PATH whenever you want to re-test a
 9. **Change the data directory**: This is optional but recommended.
 By default, we create databases within the `~/doltgres/databases` directory.
 For developmental purposes, you may want to change this behavior. You have two options:
-   1. Set the `DOLTGRES_DATA_DIR_CWD` environment variable to `true`. Any value besides `true` will be interpreted as `false`. This causes DoltgreSQL to use the current directory as the data directory, so you can have multiple data directories simply by running the program in different directories. This behavior is more consistent with [Dolt's](https://github.com/dolthub/dolt) behavior. This is the recommended option for development. If this variable is set to `true`, then it overrides all other environment variables.
-   2. Specify a new directory in the `DOLTGRES_DATA_DIR` environment variable. When this is empty, it uses the default directory.
+   1. Set the `DOLTGRES_DATA_DIR` environment variable to a different directory. A value of `.` causes DoltgreSQL to use the current directory as the data directory, so you can have multiple data directories simply by running the program in different directories. This behavior is more consistent with [Dolt's](https://github.com/dolthub/dolt) behavior. This is the recommended option for development.
+   2. Specify the directory in the `--data-dir` argument. This overrides the environment variable if it is present. 
 
 ### Note for Windows Users
 

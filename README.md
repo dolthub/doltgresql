@@ -43,7 +43,7 @@ If you are interested in using Doltgres now or in the future, please:
    
 2. Put `doltgres` on your `PATH`
 
-3. Run `doltgres`. This will create a `doltgres` user and a `doltgres` database in `~/doltgres/databases` (change the `DOLTGRES_DATA_DIR` environment variable to use a different directory).
+3. Run `doltgres`. This will create a `doltgres` user and a `doltgres` database in `~/doltgres/databases` (add the `--data-dir` argument or change the `DOLTGRES_DATA_DIR` environment variable to use a different directory).
 ```bash
 $ doltgres
 Successfully initialized dolt data repository.

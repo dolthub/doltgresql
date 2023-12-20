@@ -43,10 +43,6 @@ const (
 	DOLTGRES_DATA_DIR = "DOLTGRES_DATA_DIR"
 	// DOLTGRES_DATA_DIR_DEFAULT is the portion to append to the user's home directory if DOLTGRES_DATA_DIR has not been specified
 	DOLTGRES_DATA_DIR_DEFAULT = "doltgres/databases"
-	// DOLTGRES_DATA_DIR_CWD is an environment variable that causes DoltgreSQL to use the current directory for the
-	// location of DoltgreSQL databases, rather than the DOLTGRES_DATA_DIR. This means that it has priority over
-	// DOLTGRES_DATA_DIR.
-	DOLTGRES_DATA_DIR_CWD = "DOLTGRES_DATA_DIR_CWD"
 )
 
 var sqlServerDocs = cli.CommandDocumentationContent{
@@ -61,7 +57,7 @@ var sqlServerDocs = cli.CommandDocumentationContent{
 		indentLines(sqlserver.ServerConfigAsYAMLConfig(sqlserver.DefaultServerConfig()).String()) + "\n\n" + `
 SUPPORTED CONFIG FILE FIELDS:
 
-{{.EmphasisLeft}}data_dir{{.EmphasisRight}}: A directory where the server will load dolt databases to serve, and create new ones. Defaults to the current directory.
+{{.EmphasisLeft}}data_dir{{.EmphasisRight}}: A directory where the server will load dolt databases to serve, and create new ones. Defaults to the DOLTGRES_DATA_DIR environment variable, or {{.EmphasisLeft}}~/doltgres/databases{{.EmphasisRight}}.
 
 {{.EmphasisLeft}}cfg_dir{{.EmphasisRight}}: A directory where the server will load and store non-database configuration data, such as permission information. Defaults {{.EmphasisLeft}}$data_dir/.doltcfg{{.EmphasisRight}}.
 
@@ -220,8 +216,8 @@ func runServer(ctx context.Context, args []string, dEnv *env.DoltEnv) (*svcs.Con
 			// The else branch means that there's a Doltgres item, so we need to error if it's a file since we
 			// enforce the creation of a Doltgres database/directory, which would create a name conflict with the file
 			return nil, fmt.Errorf("Attempted to create the default `doltgres` database at `%s`, but a file with "+
-				"the same name was found. Either remove the file, or change the environment variable `%s` so that it "+
-				"points to a different directory.", workingDir, DOLTGRES_DATA_DIR)
+				"the same name was found. Either remove the file, change the directory using the `--data-dir` argument, "+
+				"or change the environment variable `%s` so that it points to a different directory.", workingDir, DOLTGRES_DATA_DIR)
 		}
 	}
 
