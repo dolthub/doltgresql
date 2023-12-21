@@ -26,10 +26,15 @@ import (
 type ConvertedQuery struct {
 	String string
 	AST    vitess.Statement
+}
+
+type PreparedStatementData struct {
+	Query    ConvertedQuery
 	Fields []*querypb.Field
 }
 
 type PortalData struct {
   Query ConvertedQuery
 	Bindings map[string]*querypb.BindVariable
+	Fields []*querypb.Field
 }

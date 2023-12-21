@@ -28,7 +28,6 @@ import (
 	"github.com/dolthub/go-mysql-server/sql/mysql_db"
 	"github.com/dolthub/vitess/go/mysql"
 	"github.com/dolthub/vitess/go/sqltypes"
-	"github.com/dolthub/vitess/go/vt/proto/query"
 	"github.com/dolthub/vitess/go/vt/sqlparser"
 	"github.com/sirupsen/logrus"
 
@@ -140,7 +139,7 @@ func (l *Listener) HandleConnection(conn net.Conn) {
 	// the result is stored in the |preparedStatements| map by the name provided. Then one or more |Bind| messages
 	// provide parameters for the query, and the result is stored in |portals|. Finally, a call to |Execute| executes
 	// the named portal.
-	preparedStatements := make(map[string]ConvertedQuery)
+	preparedStatements := make(map[string]PreparedStatementData)
 	portals := make(map[string]PortalData)
 
 	// Main session loop: read messages one at a time off the connection until we receive a |Terminate| message, in
@@ -259,14 +258,19 @@ func (l *Listener) chooseInitialDatabase(conn net.Conn, startupMessage messages.
 	return nil
 }
 
-func (l *Listener) handleMessage(message connection.Message, conn net.Conn, mysqlConn *mysql.Conn, preparedStatements map[string]ConvertedQuery, portals map[string]PortalData, ) (stop, endOfMessages bool, err error) {
+func (l *Listener) handleMessage(message connection.Message, conn net.Conn, mysqlConn *mysql.Conn, preparedStatements map[string]PreparedStatementData, portals map[string]PortalData, ) (stop, endOfMessages bool, err error) {
 	switch message := message.(type) {
 	case messages.Terminate:
 		return true, false, nil
 	case messages.Execute:
 		// TODO: implement the RowMax
-		logrus.Tracef("executing portal %s with contents %v", message.Portal, portals[message.Portal])
-		return false, false, l.execute(conn, mysqlConn, portals[message.Portal])
+		portalData, ok := portals[message.Portal]
+		if !ok {
+			return false, false, fmt.Errorf("portal %s does not exist", message.Portal)
+		}
+		
+		logrus.Tracef("executing portal %s with contents %v", message.Portal, portalData)
+		return false, false, l.execute(conn, mysqlConn, portalData)
 	case messages.Query:
 		// TODO: according to docs, "Note that a simple Query message also destroys the unnamed statement."
 		handled, err := l.handledPSQLCommands(conn, mysqlConn, message.String)
@@ -299,33 +303,66 @@ func (l *Listener) handleMessage(message connection.Message, conn net.Conn, mysq
 			return false, true, l.execute(conn, mysqlConn, PortalData{Query: query})
 		}
 	case messages.Parse:
-		// TODO: should we analyze here, or in Bind?
-		// Answer: we need to analyze in Parse, and then again in Bind
 		// TODO: "Named prepared statements must be explicitly closed before they can be redefined by another Parse message, but this is not required for the unnamed statement"
-		if query, err := l.convertQuery(message.Query); err != nil {
+		query, err := l.convertQuery(message.Query)
+		if err != nil {
 			return false, false, err
-		} else {
-			preparedStatements[message.Name] = query
+		}
+					
+		fields, err := l.comPrepare(mysqlConn, message.Name, query)
+		if err != nil {
+			return false, false, err
+		}
+
+		preparedStatements[message.Name] = PreparedStatementData{
+			Query:  query,
+			Fields: fields,
 		}
 
 		return false, false, connection.Send(conn, messages.ParseComplete{})
 	case messages.Describe:
-		var query ConvertedQuery
+		var fields []*querypb.Field
+		
 		if message.IsPrepared {
-			query = preparedStatements[message.Target]
+			preparedStatementData, ok := preparedStatements[message.Target]
+			if !ok {
+				return false, true, fmt.Errorf("prepared statement %s does not exist", message.Target)
+			}
+			
+			fields = preparedStatementData.Fields
 		} else {
-			query = portals[message.Target].Query
+			portalData, ok := portals[message.Target]
+			if !ok {
+				return false, true, fmt.Errorf("portal %s does not exist", message.Target)
+			}
+
+			fields = portalData.Fields
 		}
 
-		return false, false, l.describe(conn, mysqlConn, message, query)
+		return false, false, l.describe(conn, fields)
 	case messages.Sync:
 		return false, true, nil
 	case messages.Bind:
 		logrus.Tracef("binding portal %q to prepared statement %s", message.DestinationPortal, message.SourcePreparedStatement)
-		query := preparedStatements[message.SourcePreparedStatement]
+		// TODO: call comBind here to actually bind the params, get new fields back
+		preparedData, ok := preparedStatements[message.SourcePreparedStatement]
+		if !ok {
+			return false, true, fmt.Errorf("prepared statement %s does not exist", message.SourcePreparedStatement)
+		}
+
+		bindVars, err := convertBindParameters(preparedData.Fields, message.ParameterValues)
+		if err != nil {
+			return false, false, err
+		}
+		
+		fields, err := l.bind(conn, message, bindVars)
+		if err != nil {
+			return false, false, err
+		}
+		
 		portals[message.DestinationPortal] = PortalData{
-			Query: query,
-			Bindings: convertBindParameters(query.Fields, message.ParameterValues),
+			Query:    preparedData.Query,
+			Fields: fields,
 		}
 		return false, false, connection.Send(conn, messages.BindComplete{})
 	default:
@@ -333,7 +370,7 @@ func (l *Listener) handleMessage(message connection.Message, conn net.Conn, mysq
 	}
 }
 
-func convertBindParameters(types []*querypb.Field, values []messages.BindParameterValue) map[string]*querypb.BindVariable {
+func convertBindParameters(types []*querypb.Field, values []messages.BindParameterValue) (map[string]*querypb.BindVariable, error) {
 	bindings := make(map[string]*querypb.BindVariable, len(values))
 	for i, value := range values {
 		bindingName := fmt.Sprintf(":v%d", i+1)
@@ -344,7 +381,7 @@ func convertBindParameters(types []*querypb.Field, values []messages.BindParamet
 		}
 		bindings[bindingName] = bindVar
 	}
-	return bindings
+	return bindings, nil
 }
 
 // sendClientStartupMessages sends introductory messages to the client and returns any error
@@ -446,9 +483,7 @@ func (l *Listener) execute(conn net.Conn, mysqlConn *mysql.Conn, portalData Port
 }
 
 // describe handles the description of the given query. This will post the ParameterDescription and RowDescription messages.
-func (l *Listener) describe(conn net.Conn, mysqlConn *mysql.Conn, message messages.Describe, statement ConvertedQuery) (err error) {
-	logrus.Tracef("describing statement %v", statement)
-
+func (l *Listener) describe(conn net.Conn, fields []*querypb.Field) (err error) {
 	//TODO: fully support prepared statements
 	if err := connection.Send(conn, messages.ParameterDescription{
 		ObjectIDs: nil,
@@ -456,13 +491,6 @@ func (l *Listener) describe(conn net.Conn, mysqlConn *mysql.Conn, message messag
 		return err
 	}
 	
-	// Execute the statement, and send the description.
-	// TODO: we should probably be doing this on Parse, not Describe. Is a Describe required after a Parse?
-	fields, err := l.comPrepare(mysqlConn, statement)
-	if err != nil {
-		return err
-	}
-
 	if err := connection.Send(conn, messages.RowDescription{
 		Fields: fields,
 	}); err != nil {
@@ -576,12 +604,13 @@ func (l *Listener) convertQuery(query string) (ConvertedQuery, error) {
 	}, nil
 }
 
-func (l *Listener) comPrepare(mysqlConn *mysql.Conn, query ConvertedQuery) ([]*query.Field, error) {
+func (l *Listener) comPrepare(mysqlConn *mysql.Conn, name string, query ConvertedQuery) ([]*querypb.Field, error) {
 	if query.AST == nil {
 		return nil, fmt.Errorf("cannot prepare a query that has not been parsed")
 	} 
 	
-	return l.cfg.Handler.(mysql.ExtendedHandler).ComPrepareParsed(mysqlConn, query.String, query.AST, nil)
+	// TODO: fill in prepare data
+	return l.cfg.Handler.(mysql.ExtendedHandler).ComPrepareParsed(mysqlConn, name, query.String, query.AST, nil)
 }
 
 // comQuery is a shortcut that determines which version of ComQuery to call based on whether the query has been parsed.
@@ -591,4 +620,13 @@ func (l *Listener) comQuery(mysqlConn *mysql.Conn, query ConvertedQuery, callbac
 	} else {
 		return l.cfg.Handler.(mysql.ExtendedHandler).ComParsedQuery(mysqlConn, query.String, query.AST, callback)
 	}
+}
+
+func (l *Listener) bind(mysqlConn *mysql.Conn, name, query string, bindVars map[string]*querypb.BindVariable) ([]*querypb.Field, error) {
+	
+	return l.cfg.Handler.(mysql.ExtendedHandler).ComBind(mysqlConn, name, query, &mysql.PrepareData{
+		PrepareStmt: query,
+		ParamsCount: uint16(len(bindVars)),
+		BindVars:    bindVars,
+	})
 }
