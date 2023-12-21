@@ -36,6 +36,8 @@ import (
 	"github.com/dolthub/doltgresql/postgres/messages"
 	"github.com/dolthub/doltgresql/postgres/parser/parser"
 	"github.com/dolthub/doltgresql/server/ast"
+
+	querypb "github.com/dolthub/vitess/go/vt/proto/query"
 )
 
 var (
@@ -266,6 +268,7 @@ func (l *Listener) handleMessage(message connection.Message, conn net.Conn, mysq
 		logrus.Tracef("executing portal %s with contents %v", message.Portal, portals[message.Portal])
 		return false, false, l.execute(conn, mysqlConn, portals[message.Portal])
 	case messages.Query:
+		// TODO: according to docs, "Note that a simple Query message also destroys the unnamed statement."
 		handled, err := l.handledPSQLCommands(conn, mysqlConn, message.String)
 		if handled || err != nil {
 			return false, true, err
@@ -293,10 +296,12 @@ func (l *Listener) handleMessage(message connection.Message, conn net.Conn, mysq
 
 			return false, true, connection.Send(conn, commandComplete)
 		default:
-			return false, true, l.execute(conn, mysqlConn, query)
+			return false, true, l.execute(conn, mysqlConn, PortalData{Query: query})
 		}
 	case messages.Parse:
-		// TODO: fully support prepared statements
+		// TODO: should we analyze here, or in Bind?
+		// Answer: we need to analyze in Parse, and then again in Bind
+		// TODO: "Named prepared statements must be explicitly closed before they can be redefined by another Parse message, but this is not required for the unnamed statement"
 		if query, err := l.convertQuery(message.Query); err != nil {
 			return false, false, err
 		} else {
@@ -309,7 +314,7 @@ func (l *Listener) handleMessage(message connection.Message, conn net.Conn, mysq
 		if message.IsPrepared {
 			query = preparedStatements[message.Target]
 		} else {
-			query = portals[message.Target]
+			query = portals[message.Target].Query
 		}
 
 		return false, false, l.describe(conn, mysqlConn, message, query)
@@ -317,12 +322,29 @@ func (l *Listener) handleMessage(message connection.Message, conn net.Conn, mysq
 		return false, true, nil
 	case messages.Bind:
 		logrus.Tracef("binding portal %q to prepared statement %s", message.DestinationPortal, message.SourcePreparedStatement)
-		// TODO: fully support prepared statements
-		portals[message.DestinationPortal] = preparedStatements[message.SourcePreparedStatement]
+		query := preparedStatements[message.SourcePreparedStatement]
+		portals[message.DestinationPortal] = PortalData{
+			Query: query,
+			Bindings: convertBindParameters(query.Fields, message.ParameterValues),
+		}
 		return false, false, connection.Send(conn, messages.BindComplete{})
 	default:
 		return false, true, fmt.Errorf(`Unhandled message "%s"`, message.DefaultMessage().Name)
 	}
+}
+
+func convertBindParameters(types []*querypb.Field, values []messages.BindParameterValue) map[string]*querypb.BindVariable {
+	bindings := make(map[string]*querypb.BindVariable, len(values))
+	for i, value := range values {
+		bindingName := fmt.Sprintf(":v%d", i+1)
+		bindVar := &querypb.BindVariable{
+			Type:   types[i].Type,
+			Value:  value.Data,
+			Values: nil, // TODO
+		}
+		bindings[bindingName] = bindVar
+	}
+	return bindings
 }
 
 // sendClientStartupMessages sends introductory messages to the client and returns any error
@@ -455,23 +477,23 @@ func (l *Listener) handledPSQLCommands(conn net.Conn, mysqlConn *mysql.Conn, sta
 	statement = strings.ToLower(statement)
 	// Command: \l
 	if statement == "select d.datname as \"name\",\n       pg_catalog.pg_get_userbyid(d.datdba) as \"owner\",\n       pg_catalog.pg_encoding_to_char(d.encoding) as \"encoding\",\n       d.datcollate as \"collate\",\n       d.datctype as \"ctype\",\n       d.daticulocale as \"icu locale\",\n       case d.datlocprovider when 'c' then 'libc' when 'i' then 'icu' end as \"locale provider\",\n       pg_catalog.array_to_string(d.datacl, e'\\n') as \"access privileges\"\nfrom pg_catalog.pg_database d\norder by 1;" {
-		return true, l.execute(conn, mysqlConn, PortalData{Query: ConvertedQuery{`SELECT SCHEMA_NAME AS 'Name', 'postgres' AS 'Owner', 'UTF8' AS 'Encoding', 'English_United States.1252' AS 'Collate', 'English_United States.1252' AS 'Ctype', '' AS 'ICU Locale', 'libc' AS 'Locale Provider', '' AS 'Access privileges' FROM INFORMATION_SCHEMA.SCHEMATA ORDER BY 1;`, nil}})
+		return true, l.execute(conn, mysqlConn, PortalData{Query: ConvertedQuery{String: `SELECT SCHEMA_NAME AS 'Name', 'postgres' AS 'Owner', 'UTF8' AS 'Encoding', 'English_United States.1252' AS 'Collate', 'English_United States.1252' AS 'Ctype', '' AS 'ICU Locale', 'libc' AS 'Locale Provider', '' AS 'Access privileges' FROM INFORMATION_SCHEMA.SCHEMATA ORDER BY 1;`}})
 	}
 	// Command: \l on psql 16
 	if statement == "select\n  d.datname as \"name\",\n  pg_catalog.pg_get_userbyid(d.datdba) as \"owner\",\n  pg_catalog.pg_encoding_to_char(d.encoding) as \"encoding\",\n  case d.datlocprovider when 'c' then 'libc' when 'i' then 'icu' end as \"locale provider\",\n  d.datcollate as \"collate\",\n  d.datctype as \"ctype\",\n  d.daticulocale as \"icu locale\",\n  null as \"icu rules\",\n  pg_catalog.array_to_string(d.datacl, e'\\n') as \"access privileges\"\nfrom pg_catalog.pg_database d\norder by 1;" {
-		return true, l.execute(conn, mysqlConn, PortalData{Query: ConvertedQuery{`SELECT SCHEMA_NAME AS 'Name', 'postgres' AS 'Owner', 'UTF8' AS 'Encoding', 'English_United States.1252' AS 'Collate', 'English_United States.1252' AS 'Ctype', '' AS 'ICU Locale', 'libc' AS 'Locale Provider', '' AS 'Access privileges' FROM INFORMATION_SCHEMA.SCHEMATA ORDER BY 1;`, nil}})
+		return true, l.execute(conn, mysqlConn, PortalData{Query: ConvertedQuery{String: `SELECT SCHEMA_NAME AS 'Name', 'postgres' AS 'Owner', 'UTF8' AS 'Encoding', 'English_United States.1252' AS 'Collate', 'English_United States.1252' AS 'Ctype', '' AS 'ICU Locale', 'libc' AS 'Locale Provider', '' AS 'Access privileges' FROM INFORMATION_SCHEMA.SCHEMATA ORDER BY 1;`}})
 	}
 	// Command: \dt
 	if statement == "select n.nspname as \"schema\",\n  c.relname as \"name\",\n  case c.relkind when 'r' then 'table' when 'v' then 'view' when 'm' then 'materialized view' when 'i' then 'index' when 's' then 'sequence' when 't' then 'toast table' when 'f' then 'foreign table' when 'p' then 'partitioned table' when 'i' then 'partitioned index' end as \"type\",\n  pg_catalog.pg_get_userbyid(c.relowner) as \"owner\"\nfrom pg_catalog.pg_class c\n     left join pg_catalog.pg_namespace n on n.oid = c.relnamespace\n     left join pg_catalog.pg_am am on am.oid = c.relam\nwhere c.relkind in ('r','p','')\n      and n.nspname <> 'pg_catalog'\n      and n.nspname !~ '^pg_toast'\n      and n.nspname <> 'information_schema'\n  and pg_catalog.pg_table_is_visible(c.oid)\norder by 1,2;" {
-		return true, l.execute(conn, mysqlConn, PortalData{Query: ConvertedQuery{`SELECT 'public' AS 'Schema', TABLE_NAME AS 'Name', 'table' AS 'Type', 'postgres' AS 'Owner' FROM INFORMATION_SCHEMA.TABLES WHERE TABLE_SCHEMA = database() AND TABLE_TYPE = 'BASE TABLE' ORDER BY 2;`, nil}})
+		return true, l.execute(conn, mysqlConn, PortalData{Query: ConvertedQuery{String: `SELECT 'public' AS 'Schema', TABLE_NAME AS 'Name', 'table' AS 'Type', 'postgres' AS 'Owner' FROM INFORMATION_SCHEMA.TABLES WHERE TABLE_SCHEMA = database() AND TABLE_TYPE = 'BASE TABLE' ORDER BY 2;`}})
 	}
 	// Command: \d
 	if statement == "select n.nspname as \"schema\",\n  c.relname as \"name\",\n  case c.relkind when 'r' then 'table' when 'v' then 'view' when 'm' then 'materialized view' when 'i' then 'index' when 's' then 'sequence' when 't' then 'toast table' when 'f' then 'foreign table' when 'p' then 'partitioned table' when 'i' then 'partitioned index' end as \"type\",\n  pg_catalog.pg_get_userbyid(c.relowner) as \"owner\"\nfrom pg_catalog.pg_class c\n     left join pg_catalog.pg_namespace n on n.oid = c.relnamespace\n     left join pg_catalog.pg_am am on am.oid = c.relam\nwhere c.relkind in ('r','p','v','m','s','f','')\n      and n.nspname <> 'pg_catalog'\n      and n.nspname !~ '^pg_toast'\n      and n.nspname <> 'information_schema'\n  and pg_catalog.pg_table_is_visible(c.oid)\norder by 1,2;" {
-		return true, l.execute(conn, mysqlConn, PortalData{Query: ConvertedQuery{`SELECT 'public' AS 'Schema', TABLE_NAME AS 'Name', 'table' AS 'Type', 'postgres' AS 'Owner' FROM INFORMATION_SCHEMA.TABLES WHERE TABLE_SCHEMA = database() AND TABLE_TYPE = 'BASE TABLE' ORDER BY 2;`, nil}})
+		return true, l.execute(conn, mysqlConn, PortalData{Query: ConvertedQuery{String: `SELECT 'public' AS 'Schema', TABLE_NAME AS 'Name', 'table' AS 'Type', 'postgres' AS 'Owner' FROM INFORMATION_SCHEMA.TABLES WHERE TABLE_SCHEMA = database() AND TABLE_TYPE = 'BASE TABLE' ORDER BY 2;`}})
 	}
 	// Alternate \d for psql 14
 	if statement == "select n.nspname as \"schema\",\n  c.relname as \"name\",\n  case c.relkind when 'r' then 'table' when 'v' then 'view' when 'm' then 'materialized view' when 'i' then 'index' when 's' then 'sequence' when 's' then 'special' when 't' then 'toast table' when 'f' then 'foreign table' when 'p' then 'partitioned table' when 'i' then 'partitioned index' end as \"type\",\n  pg_catalog.pg_get_userbyid(c.relowner) as \"owner\"\nfrom pg_catalog.pg_class c\n     left join pg_catalog.pg_namespace n on n.oid = c.relnamespace\n     left join pg_catalog.pg_am am on am.oid = c.relam\nwhere c.relkind in ('r','p','v','m','s','f','')\n      and n.nspname <> 'pg_catalog'\n      and n.nspname !~ '^pg_toast'\n      and n.nspname <> 'information_schema'\n  and pg_catalog.pg_table_is_visible(c.oid)\norder by 1,2;" {
-		return true, l.execute(conn, mysqlConn, PortalData{Query: ConvertedQuery{`SELECT 'public' AS 'Schema', TABLE_NAME AS 'Name', 'table' AS 'Type', 'postgres' AS 'Owner' FROM INFORMATION_SCHEMA.TABLES WHERE TABLE_SCHEMA = database() AND TABLE_TYPE = 'BASE TABLE' ORDER BY 2;`, nil}})
+		return true, l.execute(conn, mysqlConn, PortalData{Query: ConvertedQuery{String: `SELECT 'public' AS 'Schema', TABLE_NAME AS 'Name', 'table' AS 'Type', 'postgres' AS 'Owner' FROM INFORMATION_SCHEMA.TABLES WHERE TABLE_SCHEMA = database() AND TABLE_TYPE = 'BASE TABLE' ORDER BY 2;`}})
 	}
 	// Command: \d table_name
 	if strings.HasPrefix(statement, "select c.oid,\n  n.nspname,\n  c.relname\nfrom pg_catalog.pg_class c\n     left join pg_catalog.pg_namespace n on n.oid = c.relnamespace\nwhere c.relname operator(pg_catalog.~) '^(") && strings.HasSuffix(statement, ")$' collate pg_catalog.default\n  and pg_catalog.pg_table_is_visible(c.oid)\norder by 2, 3;") {
@@ -481,20 +503,20 @@ func (l *Listener) handledPSQLCommands(conn net.Conn, mysqlConn *mysql.Conn, sta
 	}
 	// Command: \dn
 	if statement == "select n.nspname as \"name\",\n  pg_catalog.pg_get_userbyid(n.nspowner) as \"owner\"\nfrom pg_catalog.pg_namespace n\nwhere n.nspname !~ '^pg_' and n.nspname <> 'information_schema'\norder by 1;" {
-		return true, l.execute(conn, mysqlConn, PortalData{Query: ConvertedQuery{"SELECT 'public' AS 'Name', 'pg_database_owner' AS 'Owner';", nil}})
+		return true, l.execute(conn, mysqlConn, PortalData{Query: ConvertedQuery{String: "SELECT 'public' AS 'Name', 'pg_database_owner' AS 'Owner';"}})
 	}
 	// Command: \df
 	if statement == "select n.nspname as \"schema\",\n  p.proname as \"name\",\n  pg_catalog.pg_get_function_result(p.oid) as \"result data type\",\n  pg_catalog.pg_get_function_arguments(p.oid) as \"argument data types\",\n case p.prokind\n  when 'a' then 'agg'\n  when 'w' then 'window'\n  when 'p' then 'proc'\n  else 'func'\n end as \"type\"\nfrom pg_catalog.pg_proc p\n     left join pg_catalog.pg_namespace n on n.oid = p.pronamespace\nwhere pg_catalog.pg_function_is_visible(p.oid)\n      and n.nspname <> 'pg_catalog'\n      and n.nspname <> 'information_schema'\norder by 1, 2, 4;" {
-		return true, l.execute(conn, mysqlConn, PortalData{Query: ConvertedQuery{"SELECT '' AS 'Schema', '' AS 'Name', '' AS 'Result data type', '' AS 'Argument data types', '' AS 'Type' FROM dual LIMIT 0;", nil}})
+		return true, l.execute(conn, mysqlConn, PortalData{Query: ConvertedQuery{String: "SELECT '' AS 'Schema', '' AS 'Name', '' AS 'Result data type', '' AS 'Argument data types', '' AS 'Type' FROM dual LIMIT 0;"}})
 	}
 	// Command: \dv
 	if statement == "select n.nspname as \"schema\",\n  c.relname as \"name\",\n  case c.relkind when 'r' then 'table' when 'v' then 'view' when 'm' then 'materialized view' when 'i' then 'index' when 's' then 'sequence' when 't' then 'toast table' when 'f' then 'foreign table' when 'p' then 'partitioned table' when 'i' then 'partitioned index' end as \"type\",\n  pg_catalog.pg_get_userbyid(c.relowner) as \"owner\"\nfrom pg_catalog.pg_class c\n     left join pg_catalog.pg_namespace n on n.oid = c.relnamespace\nwhere c.relkind in ('v','')\n      and n.nspname <> 'pg_catalog'\n      and n.nspname !~ '^pg_toast'\n      and n.nspname <> 'information_schema'\n  and pg_catalog.pg_table_is_visible(c.oid)\norder by 1,2;" {
-		return true, l.execute(conn, mysqlConn, PortalData{Query: ConvertedQuery{"SELECT 'public' AS 'Schema', TABLE_NAME AS 'Name', 'view' AS 'Type', 'postgres' AS 'Owner' FROM INFORMATION_SCHEMA.TABLES WHERE TABLE_SCHEMA = database() AND TABLE_TYPE = 'VIEW' ORDER BY 2;", nil}})
+		return true, l.execute(conn, mysqlConn, PortalData{Query: ConvertedQuery{String: "SELECT 'public' AS 'Schema', TABLE_NAME AS 'Name', 'view' AS 'Type', 'postgres' AS 'Owner' FROM INFORMATION_SCHEMA.TABLES WHERE TABLE_SCHEMA = database() AND TABLE_TYPE = 'VIEW' ORDER BY 2;"}})
 	}
 	// Command: \du
 	if statement == "select r.rolname, r.rolsuper, r.rolinherit,\n  r.rolcreaterole, r.rolcreatedb, r.rolcanlogin,\n  r.rolconnlimit, r.rolvaliduntil,\n  array(select b.rolname\n        from pg_catalog.pg_auth_members m\n        join pg_catalog.pg_roles b on (m.roleid = b.oid)\n        where m.member = r.oid) as memberof\n, r.rolreplication\n, r.rolbypassrls\nfrom pg_catalog.pg_roles r\nwhere r.rolname !~ '^pg_'\norder by 1;" {
 		// We don't support users yet, so we'll just return nothing for now
-		return true, l.execute(conn, mysqlConn, PortalData{Query: ConvertedQuery{"SELECT '' FROM dual LIMIT 0;", nil}})
+		return true, l.execute(conn, mysqlConn, PortalData{Query: ConvertedQuery{String: "SELECT '' FROM dual LIMIT 0;"}})
 	}
 	return false, nil
 }
