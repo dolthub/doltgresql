@@ -21,7 +21,7 @@ teardown() {
 }
 
 @test 'doltgres: with --data-dir' {
-    start_sql_server_with_args "--host 0.0.0.0 --data-dir=."
+    start_sql_server_with_args "--host 0.0.0.0" "--data-dir=."
     run query_server -c "\l"
     [ "$status" -eq 0 ]
     [[ "$output" =~ "information_schema" ]] || false
@@ -46,7 +46,7 @@ teardown() {
 
 @test 'doltgres: with both --data-dir and DOLTGRES_DATA_DIR' {
     DOLTGRES_DATA_DIR="$BATS_TEST_DIRNAME/test1"
-    start_sql_server_with_args "--host 0.0.0.0 --data-dir=./test2"
+    start_sql_server_with_args "--host 0.0.0.0" "--data-dir=./test2"
     run query_server -c "\l"
     [ "$status" -eq 0 ]
     [[ "$output" =~ "information_schema" ]] || false
