@@ -43,7 +43,7 @@ start_sql_server() {
 }
 
 # like start_sql_server, but the second argument is a string with all
-# arguments to dolt-sql-server (excluding --port, which is defined in
+# arguments to doltgres (excluding --port, which is defined in
 # this func)
 start_sql_server_with_args() {
     DEFAULT_DB=""

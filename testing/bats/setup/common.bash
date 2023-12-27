@@ -66,8 +66,6 @@ setup_common() {
     if [ -z "$DOLT_TEST_RETRIES" ]; then
         export BATS_TEST_RETRIES="$DOLT_TEST_RETRIES"
     fi
-
-    start_sql_server
 }
 
 teardown_common() {

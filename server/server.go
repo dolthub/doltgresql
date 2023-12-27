@@ -43,6 +43,10 @@ const (
 	DOLTGRES_DATA_DIR = "DOLTGRES_DATA_DIR"
 	// DOLTGRES_DATA_DIR_DEFAULT is the portion to append to the user's home directory if DOLTGRES_DATA_DIR has not been specified
 	DOLTGRES_DATA_DIR_DEFAULT = "doltgres/databases"
+
+	DefUserName  = "postres"
+	DefUserEmail = "postgres@somewhere.com"
+	DoltgresDir  = "doltgres"
 )
 
 var sqlServerDocs = cli.CommandDocumentationContent{
@@ -134,8 +138,8 @@ func RunInMemory(args []string) (*svcs.Controller, error) {
 	globalConfig, _ := dEnv.Config.GetConfig(env.GlobalConfig)
 	if globalConfig.GetStringOrDefault(config.UserNameKey, "") == "" {
 		globalConfig.SetStrings(map[string]string{
-			config.UserNameKey:  "postgres",
-			config.UserEmailKey: "postgres@somewhere.com",
+			config.UserNameKey:  DefUserName,
+			config.UserEmailKey: DefUserEmail,
 		})
 	}
 
@@ -188,26 +192,29 @@ func runServer(ctx context.Context, args []string, dEnv *env.DoltEnv) (*svcs.Con
 
 	// We need a username and password for many SQL commands, so set defaults if they don't exist
 	dEnv.Config.SetFailsafes(map[string]string{
-		config.UserNameKey:  "postgres",
-		config.UserEmailKey: "postgres@somewhere.com",
+		config.UserNameKey:  DefUserName,
+		config.UserEmailKey: DefUserEmail,
 	})
 
 	// Automatically initialize a doltgres database if necessary
 	if !dEnv.HasDoltDir() {
 		// Need to make sure that there isn't a doltgres item in the path.
-		if exists, isDirectory := dEnv.FS.Exists("doltgres"); !exists {
-			err := dEnv.FS.MkDirs("doltgres")
+		if exists, isDirectory := dEnv.FS.Exists(DoltgresDir); !exists {
+			err := dEnv.FS.MkDirs(DoltgresDir)
 			if err != nil {
 				return nil, err
 			}
-			subdirectoryFS, err := dEnv.FS.WithWorkingDir("doltgres")
+			subdirectoryFS, err := dEnv.FS.WithWorkingDir(DoltgresDir)
 			if err != nil {
 				return nil, err
 			}
 
 			// We'll use a temporary environment to instantiate the subdirectory
 			tempDEnv := env.Load(ctx, env.GetCurrentUserHomeDir, subdirectoryFS, dEnv.UrlStr(), Version)
-			res := commands.InitCmd{}.Exec(ctx, "init", []string{}, tempDEnv, configCliContext{tempDEnv})
+			// username and user email is needed for creating a database.
+			name := dEnv.Config.GetStringOrDefault(config.UserNameKey, DefUserName)
+			email := dEnv.Config.GetStringOrDefault(config.UserEmailKey, DefUserEmail)
+			res := commands.InitCmd{}.Exec(ctx, "init", []string{"--name", name, "--email", email}, tempDEnv, configCliContext{tempDEnv})
 			if res != 0 {
 				return nil, fmt.Errorf("failed to initialize doltgres database")
 			}
