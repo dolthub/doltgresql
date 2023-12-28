@@ -3,9 +3,12 @@ load $BATS_TEST_DIRNAME/setup/common.bash
 
 setup() {
     setup_common
+    stash_current_dolt_user
+    unset_dolt_user
 }
 
 teardown() {
+    restore_stashed_dolt_user
     teardown_common
 }
 
