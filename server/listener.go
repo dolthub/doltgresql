@@ -355,13 +355,13 @@ func (l *Listener) handleMessage(message connection.Message, conn net.Conn, mysq
 			return false, false, err
 		}
 		
-		fields, err := l.bind(conn, message, bindVars)
+		fields, err := l.bind(mysqlConn, message.DestinationPortal, preparedData.Query.String, bindVars)
 		if err != nil {
 			return false, false, err
 		}
-		
+
 		portals[message.DestinationPortal] = PortalData{
-			Query:    preparedData.Query,
+			Query:  preparedData.Query,
 			Fields: fields,
 		}
 		return false, false, connection.Send(conn, messages.BindComplete{})
@@ -609,8 +609,9 @@ func (l *Listener) comPrepare(mysqlConn *mysql.Conn, name string, query Converte
 		return nil, fmt.Errorf("cannot prepare a query that has not been parsed")
 	} 
 	
-	// TODO: fill in prepare data
-	return l.cfg.Handler.(mysql.ExtendedHandler).ComPrepareParsed(mysqlConn, name, query.String, query.AST, nil)
+	return l.cfg.Handler.(mysql.ExtendedHandler).ComPrepareParsed(mysqlConn, name, query.String, query.AST, &mysql.PrepareData{
+		PrepareStmt: query.String,
+	})
 }
 
 // comQuery is a shortcut that determines which version of ComQuery to call based on whether the query has been parsed.
