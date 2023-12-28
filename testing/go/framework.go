@@ -61,6 +61,8 @@ type ScriptTestAssertion struct {
 	Query       string
 	Expected    []sql.Row
 	ExpectedErr bool
+	
+	BindVars []any
 
 	// SkipResultsCheck is used to skip assertions on the expected rows returned from a query. For now, this is
 	// included as some messages do not have a full logical implementation. Skipping the results check allows us to
@@ -115,6 +117,55 @@ func RunScript(t *testing.T, script ScriptTest) {
 					}
 				} else {
 					rows, err := conn.Query(ctx, assertion.Query)
+					require.NoError(t, err)
+					readRows, err := ReadRows(rows)
+					require.NoError(t, err)
+					assert.Equal(t, NormalizeRows(assertion.Expected), readRows)
+				}
+			})
+		}
+	})
+}
+
+// RunScriptPrepared runs the given script using prepared statements
+func RunScriptPrepared(t *testing.T, script ScriptTest) {
+	scriptDatabase := script.Database
+	if len(scriptDatabase) == 0 {
+		scriptDatabase = "postgres"
+	}
+
+	ctx, conn, controller := CreateServer(t, scriptDatabase)
+	defer func() {
+		conn.Close(ctx)
+		controller.Stop()
+		err := controller.WaitForStop()
+		require.NoError(t, err)
+	}()
+
+	t.Run(script.Name, func(t *testing.T) {
+		if script.Skip {
+			t.Skip("Skip has been set in the script")
+		}
+
+		// Run the setup
+		for _, query := range script.SetUpScript {
+			_, err := conn.Exec(ctx, query)
+			require.NoError(t, err)
+		}
+
+		// Run the assertions
+		for _, assertion := range script.Assertions {
+			t.Run(assertion.Query, func(t *testing.T) {
+				if assertion.Skip {
+					t.Skip("Skip has been set in the assertion")
+				}
+				// If we're skipping the results check, then we call Execute, as it uses a simplified message model.
+				// The more complicated model is only partially implemented, and therefore won't work for all queries.
+				if assertion.ExpectedErr {
+					_, err := conn.Exec(ctx, assertion.Query, assertion.BindVars...)
+					require.Error(t, err)
+				} else {
+					rows, err := conn.Query(ctx, assertion.Query, assertion.BindVars...)
 					require.NoError(t, err)
 					readRows, err := ReadRows(rows)
 					require.NoError(t, err)

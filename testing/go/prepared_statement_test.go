@@ -22,7 +22,33 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-func TestPreparedStatements(t *testing.T) {
+var preparedStatementTests = []ScriptTest {
+	{
+		Name: "Integers",
+		SetUpScript: []string{
+			"CREATE TABLE test (pk BIGINT PRIMARY KEY, v1 BIGINT);",
+		},
+		Assertions: []ScriptTestAssertion{
+			{
+				Query:    "INSERT INTO test VALUES (?, ?), (?, ?);",
+				BindVars: []any{1, 2, 3, 4},
+			},
+			{
+				Query: "SELECT * FROM test order by pk;",
+				Expected: []sql.Row{
+					{1, 2},
+					{3, 4},
+				},
+			},
+			{
+				Query:    "SELECT * FROM test WHERE v1 = ?;",
+				BindVars: []any{2},
+			},
+		},
+	},
+}
+
+func TestErrorHandling(t *testing.T) {
 	tt := ScriptTest{
 		Name: "error handling doesn't foul session",
 		SetUpScript: []string{
@@ -66,6 +92,10 @@ func TestPreparedStatements(t *testing.T) {
 	}
 
 	RunScriptN(t, tt, 20)
+}
+
+func TestPreparedStatement(t *testing.T) {
+	RunScriptPrepared(t, preparedStatementTests[0])
 }
 
 // RunScriptN runs the assertios of the given script n times using the same connection
