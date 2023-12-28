@@ -212,8 +212,8 @@ func runServer(ctx context.Context, args []string, dEnv *env.DoltEnv) (*svcs.Con
 			// We'll use a temporary environment to instantiate the subdirectory
 			tempDEnv := env.Load(ctx, env.GetCurrentUserHomeDir, subdirectoryFS, dEnv.UrlStr(), Version)
 			// username and user email is needed to create a new database.
-			name := dEnv.Config.GetStringOrDefault(config.UserNameKey, DefUserName)
-			email := dEnv.Config.GetStringOrDefault(config.UserEmailKey, DefUserEmail)
+			name := tempDEnv.Config.GetStringOrDefault(config.UserNameKey, DefUserName)
+			email := tempDEnv.Config.GetStringOrDefault(config.UserEmailKey, DefUserEmail)
 			res := commands.InitCmd{}.Exec(ctx, "init", []string{"--name", name, "--email", email}, tempDEnv, configCliContext{tempDEnv})
 			if res != 0 {
 				return nil, fmt.Errorf("failed to initialize doltgres database")

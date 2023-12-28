@@ -48,7 +48,6 @@ start_sql_server() {
 start_sql_server_with_args() {
     DEFAULT_DB=""
     nativevar DEFAULT_DB "$DEFAULT_DB" /w
-    nativevar DOLTGRES_DATA_DIR "$(pwd)" /p
     PORT=$( definePORT )
     doltgresql "$@" --port=$PORT &
     SERVER_PID=$!
