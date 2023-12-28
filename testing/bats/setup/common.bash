@@ -26,8 +26,8 @@ set_dolt_user() {
 }
 
 unset_dolt_user() {
-  doltgresql config --global --unset user.name
-  doltgresql config --global --unset user.email
+    doltgresql config --global --unset user.name
+    doltgresql config --global --unset user.email
 }
 
 current_dolt_user_name() {
