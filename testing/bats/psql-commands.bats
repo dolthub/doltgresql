@@ -3,6 +3,7 @@ load $BATS_TEST_DIRNAME/setup/common.bash
 
 setup() {
     setup_common
+    start_sql_server
     query_server <<SQL
     CREATE TABLE test1 (pk BIGINT PRIMARY KEY, v1 SMALLINT);
     CREATE TABLE test2 (pk BIGINT PRIMARY KEY, v1 INTEGER, v2 SMALLINT);

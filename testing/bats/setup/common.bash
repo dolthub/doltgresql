@@ -26,8 +26,8 @@ set_dolt_user() {
 }
 
 unset_dolt_user() {
-  doltgresql config --global --unset user.name
-  doltgresql config --global --unset user.email
+    doltgresql config --global --unset user.name
+    doltgresql config --global --unset user.email
 }
 
 current_dolt_user_name() {
@@ -66,8 +66,6 @@ setup_common() {
     if [ -z "$DOLT_TEST_RETRIES" ]; then
         export BATS_TEST_RETRIES="$DOLT_TEST_RETRIES"
     fi
-
-    start_sql_server
 }
 
 teardown_common() {
