@@ -459,8 +459,9 @@ func nodeExpr(node tree.Expr) (vitess.Expr, error) {
 	case *tree.PartitionMinVal:
 		return nil, fmt.Errorf("MINVALUE is not yet supported")
 	case *tree.Placeholder:
-		//TODO: figure out if I can delete this
-		panic("this should probably be deleted (internal error, Placeholder)")
+		// TODO: deal with type annotation
+		mysqlBindVarIdx := node.Idx + 1
+		return vitess.NewValArg([]byte(fmt.Sprintf(":v%d", mysqlBindVarIdx))), nil
 	case *tree.RangeCond:
 		operator := vitess.BetweenStr
 		if node.Not {

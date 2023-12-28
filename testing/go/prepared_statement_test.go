@@ -30,7 +30,7 @@ var preparedStatementTests = []ScriptTest {
 		},
 		Assertions: []ScriptTestAssertion{
 			{
-				Query:    "INSERT INTO test VALUES (?, ?), (?, ?);",
+				Query:    "INSERT INTO test VALUES ($1, $2), ($3, $4);",
 				BindVars: []any{1, 2, 3, 4},
 			},
 			{
@@ -41,7 +41,7 @@ var preparedStatementTests = []ScriptTest {
 				},
 			},
 			{
-				Query:    "SELECT * FROM test WHERE v1 = ?;",
+				Query:    "SELECT * FROM test WHERE v1 = $1;",
 				BindVars: []any{2},
 			},
 		},

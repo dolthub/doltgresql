@@ -344,7 +344,6 @@ func (l *Listener) handleMessage(message connection.Message, conn net.Conn, mysq
 		return false, true, nil
 	case messages.Bind:
 		logrus.Tracef("binding portal %q to prepared statement %s", message.DestinationPortal, message.SourcePreparedStatement)
-		// TODO: call comBind here to actually bind the params, get new fields back
 		preparedData, ok := preparedStatements[message.SourcePreparedStatement]
 		if !ok {
 			return false, true, fmt.Errorf("prepared statement %s does not exist", message.SourcePreparedStatement)
@@ -624,7 +623,6 @@ func (l *Listener) comQuery(mysqlConn *mysql.Conn, query ConvertedQuery, callbac
 }
 
 func (l *Listener) bind(mysqlConn *mysql.Conn, name, query string, bindVars map[string]*querypb.BindVariable) ([]*querypb.Field, error) {
-	
 	return l.cfg.Handler.(mysql.ExtendedHandler).ComBind(mysqlConn, name, query, &mysql.PrepareData{
 		PrepareStmt: query,
 		ParamsCount: uint16(len(bindVars)),
