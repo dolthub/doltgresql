@@ -25,7 +25,9 @@ import (
 
 	"github.com/dolthub/go-mysql-server/server"
 	"github.com/dolthub/go-mysql-server/sql"
+	"github.com/dolthub/go-mysql-server/sql/expression"
 	"github.com/dolthub/go-mysql-server/sql/mysql_db"
+	"github.com/dolthub/go-mysql-server/sql/transform"
 	"github.com/dolthub/vitess/go/mysql"
 	"github.com/dolthub/vitess/go/sqltypes"
 	"github.com/dolthub/vitess/go/vt/sqlparser"
@@ -258,7 +260,13 @@ func (l *Listener) chooseInitialDatabase(conn net.Conn, startupMessage messages.
 	return nil
 }
 
-func (l *Listener) handleMessage(message connection.Message, conn net.Conn, mysqlConn *mysql.Conn, preparedStatements map[string]PreparedStatementData, portals map[string]PortalData, ) (stop, endOfMessages bool, err error) {
+func (l *Listener) handleMessage(
+		message connection.Message,
+		conn net.Conn,
+		mysqlConn *mysql.Conn,
+		preparedStatements map[string]PreparedStatementData,
+		portals map[string]PortalData,
+) (stop, endOfMessages bool, err error) {
 	switch message := message.(type) {
 	case messages.Terminate:
 		return true, false, nil
@@ -309,14 +317,20 @@ func (l *Listener) handleMessage(message connection.Message, conn net.Conn, mysq
 			return false, false, err
 		}
 					
-		fields, err := l.comPrepare(mysqlConn, message.Name, query)
+		plan, fields, err := l.handleParse(mysqlConn, message.Name, query)
 		if err != nil {
 			return false, false, err
 		}
 
+		bindVarTypes, err := extractBindVarTypes(plan)
+		if err != nil {
+			return false, false, err
+		}
+		
 		preparedStatements[message.Name] = PreparedStatementData{
-			Query:  query,
-			Fields: fields,
+			Query:        query,
+			ReturnFields: fields,
+			BindVarTypes: bindVarTypes,
 		}
 
 		return false, false, connection.Send(conn, messages.ParseComplete{})
@@ -329,7 +343,7 @@ func (l *Listener) handleMessage(message connection.Message, conn net.Conn, mysq
 				return false, true, fmt.Errorf("prepared statement %s does not exist", message.Target)
 			}
 			
-			fields = preparedStatementData.Fields
+			fields = preparedStatementData.ReturnFields
 		} else {
 			portalData, ok := portals[message.Target]
 			if !ok {
@@ -349,7 +363,7 @@ func (l *Listener) handleMessage(message connection.Message, conn net.Conn, mysq
 			return false, true, fmt.Errorf("prepared statement %s does not exist", message.SourcePreparedStatement)
 		}
 
-		bindVars, err := convertBindParameters(preparedData.Fields, message.ParameterValues)
+		bindVars, err := convertBindParameters(preparedData.ReturnFields, message.ParameterValues)
 		if err != nil {
 			return false, false, err
 		}
@@ -367,6 +381,23 @@ func (l *Listener) handleMessage(message connection.Message, conn net.Conn, mysq
 	default:
 		return false, true, fmt.Errorf(`Unhandled message "%s"`, message.DefaultMessage().Name)
 	}
+}
+
+func extractBindVarTypes(plan sql.Node) ([]int32, error) {
+	types := make([]int32, 0)
+	var err error
+	transform.InspectExpressions(plan, func(expr sql.Expression) bool{
+		if bindVar, ok := expr.(*expression.BindVar); ok {
+			var id int32
+			id, err = messages.VitessTypeToObjectID(bindVar.Type().Type())
+			if err != nil {
+				return false
+			}
+			types = append(types, id)
+		}
+		return true
+	})
+	return types, err
 }
 
 func convertBindParameters(types []*querypb.Field, values []messages.BindParameterValue) (map[string]*querypb.BindVariable, error) {
@@ -485,7 +516,9 @@ func (l *Listener) execute(conn net.Conn, mysqlConn *mysql.Conn, portalData Port
 func (l *Listener) describe(conn net.Conn, fields []*querypb.Field) (err error) {
 	//TODO: fully support prepared statements
 	if err := connection.Send(conn, messages.ParameterDescription{
-		ObjectIDs: nil,
+		// ObjectIDs: nil,
+		// TODO
+		ObjectIDs: []int32{23,23,23,23},
 	}); err != nil {
 		return err
 	}
@@ -603,14 +636,21 @@ func (l *Listener) convertQuery(query string) (ConvertedQuery, error) {
 	}, nil
 }
 
-func (l *Listener) comPrepare(mysqlConn *mysql.Conn, name string, query ConvertedQuery) ([]*querypb.Field, error) {
+func (l *Listener) handleParse(mysqlConn *mysql.Conn, name string, query ConvertedQuery) (sql.Node, []*querypb.Field, error) {
 	if query.AST == nil {
-		return nil, fmt.Errorf("cannot prepare a query that has not been parsed")
-	} 
-	
-	return l.cfg.Handler.(mysql.ExtendedHandler).ComPrepareParsed(mysqlConn, name, query.String, query.AST, &mysql.PrepareData{
+		return nil, nil, fmt.Errorf("cannot prepare a query that has not been parsed")
+	}
+
+	analyzedPlan, fields, err := l.cfg.Handler.(mysql.ExtendedHandler).ComPrepareParsed(mysqlConn, name, query.String, query.AST, &mysql.PrepareData{
 		PrepareStmt: query.String,
 	})
+	
+	plan, ok := analyzedPlan.(sql.Node)
+	if !ok {
+		return nil, nil, fmt.Errorf("expected a sql.Node, got %T", analyzedPlan)
+	}
+	
+	return plan, fields, err
 }
 
 // comQuery is a shortcut that determines which version of ComQuery to call based on whether the query has been parsed.

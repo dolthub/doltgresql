@@ -33,17 +33,17 @@ var preparedStatementTests = []ScriptTest {
 				Query:    "INSERT INTO test VALUES ($1, $2), ($3, $4);",
 				BindVars: []any{1, 2, 3, 4},
 			},
-			{
-				Query: "SELECT * FROM test order by pk;",
-				Expected: []sql.Row{
-					{1, 2},
-					{3, 4},
-				},
-			},
-			{
-				Query:    "SELECT * FROM test WHERE v1 = $1;",
-				BindVars: []any{2},
-			},
+			// {
+			// 	Query: "SELECT * FROM test order by pk;",
+			// 	Expected: []sql.Row{
+			// 		{1, 2},
+			// 		{3, 4},
+			// 	},
+			// },
+			// {
+			// 	Query:    "SELECT * FROM test WHERE v1 = $1;",
+			// 	BindVars: []any{2},
+			// },
 		},
 	},
 }

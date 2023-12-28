@@ -29,8 +29,9 @@ type ConvertedQuery struct {
 }
 
 type PreparedStatementData struct {
-	Query    ConvertedQuery
-	Fields []*querypb.Field
+	Query        ConvertedQuery
+	ReturnFields []*querypb.Field
+	BindVarTypes []int32
 }
 
 type PortalData struct {
