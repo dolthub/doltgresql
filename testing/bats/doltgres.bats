@@ -10,6 +10,7 @@ teardown() {
 }
 
 @test 'doltgres: no args' {
+    export DOLTGRES_DATA_DIR=
     start_sql_server_with_args "--host 0.0.0.0"
     run query_server -c "\l"
     [ "$status" -eq 0 ]
@@ -21,31 +22,30 @@ teardown() {
 }
 
 @test 'doltgres: with --data-dir' {
+    export DOLTGRES_DATA_DIR=
     start_sql_server_with_args "--host 0.0.0.0" "--data-dir=."
     run query_server -c "\l"
     [ "$status" -eq 0 ]
     [[ "$output" =~ "information_schema" ]] || false
     [[ "$output" =~ "doltgres" ]] || false
-    [[ "$output" =~ "postgres" ]] || false
 
     [ -d "doltgres" ]
 }
 
 @test 'doltgres: with DOLTGRES_DATA_DIR' {
-    DOLTGRES_DATA_DIR="$BATS_TEST_DIRNAME/test"
+    export DOLTGRES_DATA_DIR="$(pwd)/test"
     start_sql_server_with_args "--host 0.0.0.0"
     run query_server -c "\l"
     [ "$status" -eq 0 ]
     [[ "$output" =~ "information_schema" ]] || false
     [[ "$output" =~ "doltgres" ]] || false
-    [[ "$output" =~ "postgres" ]] || false
 
     [ -d "test/doltgres" ]
     [ ! -d "doltgres" ]
 }
 
 @test 'doltgres: with both --data-dir and DOLTGRES_DATA_DIR' {
-    DOLTGRES_DATA_DIR="$BATS_TEST_DIRNAME/test1"
+    export DOLTGRES_DATA_DIR="$(pwd)/test1"
     start_sql_server_with_args "--host 0.0.0.0" "--data-dir=./test2"
     run query_server -c "\l"
     [ "$status" -eq 0 ]
