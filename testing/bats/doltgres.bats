@@ -3,15 +3,9 @@ load $BATS_TEST_DIRNAME/setup/common.bash
 
 setup() {
     setup_common
-    # dolt config was being used to create a new doltgres database
-    # so unset user name and email for testing
-    dolt config --global --unset user.name
-    dolt config --global --unset user.email
 }
 
 teardown() {
-    dolt config --global --add user.name "Bats Tests"
-    dolt config --global --add user.email "bats@email.fake"
     teardown_common
 }
 
