@@ -27,6 +27,7 @@ import (
 	"github.com/dolthub/go-mysql-server/sql"
 	"github.com/dolthub/go-mysql-server/sql/expression"
 	"github.com/dolthub/go-mysql-server/sql/mysql_db"
+	plan2 "github.com/dolthub/go-mysql-server/sql/plan"
 	"github.com/dolthub/go-mysql-server/sql/transform"
 	"github.com/dolthub/vitess/go/mysql"
 	"github.com/dolthub/vitess/go/sqltypes"
@@ -322,9 +323,20 @@ func (l *Listener) handleMessage(
 			return false, false, err
 		}
 
+		// TODO: we need a deeper analysis here, the bindvars themselves have a deferred type as of this phase of analysis
 		bindVarTypes, err := extractBindVarTypes(plan)
 		if err != nil {
 			return false, false, err
+		}
+		
+		// Nil fields means an OKResult, fill one in here
+		if fields == nil {
+			fields = []*querypb.Field{
+				{
+					Name:         "Rows",
+					Type:         sqltypes.Int32,
+				},
+			}
 		}
 		
 		preparedStatements[message.Name] = PreparedStatementData{
@@ -352,7 +364,7 @@ func (l *Listener) handleMessage(
 
 			fields = portalData.Fields
 		}
-
+		
 		return false, false, l.describe(conn, fields)
 	case messages.Sync:
 		return false, true, nil
@@ -363,12 +375,12 @@ func (l *Listener) handleMessage(
 			return false, true, fmt.Errorf("prepared statement %s does not exist", message.SourcePreparedStatement)
 		}
 
-		bindVars, err := convertBindParameters(preparedData.ReturnFields, message.ParameterValues)
+		bindVars, err := convertBindParameters(preparedData.BindVarTypes, message.ParameterValues)
 		if err != nil {
 			return false, false, err
 		}
 		
-		fields, err := l.bind(mysqlConn, message.DestinationPortal, preparedData.Query.String, bindVars)
+		fields, err := l.bind(mysqlConn, message.SourcePreparedStatement, preparedData.Query.String, bindVars)
 		if err != nil {
 			return false, false, err
 		}
@@ -383,35 +395,68 @@ func (l *Listener) handleMessage(
 	}
 }
 
-func extractBindVarTypes(plan sql.Node) ([]int32, error) {
+func extractBindVarTypes(queryPlan sql.Node) ([]int32, error) {
+	inspectNode := queryPlan
+	switch queryPlan := queryPlan.(type) {
+	case *plan2.InsertInto:
+		inspectNode = queryPlan.Source
+	}
+	
 	types := make([]int32, 0)
 	var err error
-	transform.InspectExpressions(plan, func(expr sql.Expression) bool{
+	transform.InspectExpressions(inspectNode, func(expr sql.Expression) bool{
 		if bindVar, ok := expr.(*expression.BindVar); ok {
 			var id int32
 			id, err = messages.VitessTypeToObjectID(bindVar.Type().Type())
 			if err != nil {
-				return false
+				types = append(types, 0)
+			} else {
+				types = append(types, id)
 			}
-			types = append(types, id)
 		}
 		return true
 	})
-	return types, err
+	return types, nil
 }
 
-func convertBindParameters(types []*querypb.Field, values []messages.BindParameterValue) (map[string]*querypb.BindVariable, error) {
+func convertBindParameters(types []int32, values []messages.BindParameterValue) (map[string]*querypb.BindVariable, error) {
 	bindings := make(map[string]*querypb.BindVariable, len(values))
 	for i, value := range values {
 		bindingName := fmt.Sprintf(":v%d", i+1)
 		bindVar := &querypb.BindVariable{
-			Type:   types[i].Type,
+			Type:   convertType(types[i]),
 			Value:  value.Data,
 			Values: nil, // TODO
 		}
 		bindings[bindingName] = bindVar
 	}
 	return bindings, nil
+}
+
+func convertType(oid int32) querypb.Type {
+	switch oid {
+	// TODO: this should never be 0
+	case 0:
+		return sqltypes.Int32
+	case messages.OidInt4:
+		return sqltypes.Int32
+	case messages.OidInt8:
+		return sqltypes.Int64
+	case messages.OidFloat4:
+		return sqltypes.Float32
+	case messages.OidFloat8:
+		return sqltypes.Float64
+	case messages.OidText:
+		return sqltypes.VarChar
+	case messages.OidBool:
+		return sqltypes.Bit
+	case messages.OidDate:
+		return sqltypes.Date
+	case messages.OidTimestamp:
+		return sqltypes.Timestamp
+	default:
+		panic(fmt.Sprintf("unhandled type %d", oid))
+	}
 }
 
 // sendClientStartupMessages sends introductory messages to the client and returns any error
@@ -513,7 +558,7 @@ func (l *Listener) execute(conn net.Conn, mysqlConn *mysql.Conn, portalData Port
 }
 
 // describe handles the description of the given query. This will post the ParameterDescription and RowDescription messages.
-func (l *Listener) describe(conn net.Conn, fields []*querypb.Field) (err error) {
+func (l *Listener)  describe(conn net.Conn, fields []*querypb.Field) (err error) {
 	//TODO: fully support prepared statements
 	if err := connection.Send(conn, messages.ParameterDescription{
 		// ObjectIDs: nil,
@@ -663,6 +708,7 @@ func (l *Listener) comQuery(mysqlConn *mysql.Conn, query ConvertedQuery, callbac
 }
 
 func (l *Listener) bind(mysqlConn *mysql.Conn, name, query string, bindVars map[string]*querypb.BindVariable) ([]*querypb.Field, error) {
+	// TODO NEXT: the engine hasn't cached the prepared statement by the correct name. Maybe time to side step it entirely, manage all the prepared statements ourselves?
 	return l.cfg.Handler.(mysql.ExtendedHandler).ComBind(mysqlConn, name, query, &mysql.PrepareData{
 		PrepareStmt: query,
 		ParamsCount: uint16(len(bindVars)),
