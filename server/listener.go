@@ -287,55 +287,48 @@ func (l *Listener) handleMessage(
 			return false, true, err
 		}
 
-		// according to docs, "Note that a simple Query message also destroys the unnamed statement."
+		// A query message destroys the unnamed statement and the unnamed portal
 		delete (preparedStatements, "")
+		delete (portals, "")
 
-		// The Deallocate message must not get passed to the engine, since we handle allocation / deallocation of
+		// The Deallocate message does not get passed to the engine, since we handle allocation / deallocation of
 		// prepared statements at this layer
 		switch stmt := query.AST.(type) {
 		case *sqlparser.Deallocate:
-			_, ok := preparedStatements[stmt.Name]
-			if !ok {
-				return false, true, fmt.Errorf("prepared statement %s does not exist", stmt.Name)
-			}
-			delete(preparedStatements, stmt.Name)
-
-			commandComplete := messages.CommandComplete{
-				Query: query.String,
-			}
-
-			return false, true, connection.Send(conn, commandComplete)
-		default:
-			return false, true, l.query(conn, mysqlConn, query)
+			// TODO: handle ALL keyword
+			return false, true, l.deallocatePreparedStatement(stmt.Name, preparedStatements, query, conn)
 		}
+			
+		return false, true, l.query(conn, mysqlConn, query)
 	case messages.Parse:
 		// TODO: "Named prepared statements must be explicitly closed before they can be redefined by another Parse message, but this is not required for the unnamed statement"
 		query, err := l.convertQuery(message.Query)
 		if err != nil {
 			return false, false, err
 		}
-					
+
 		plan, fields, err := l.handleParse(mysqlConn, query)
 		if err != nil {
 			return false, false, err
 		}
 
 		// TODO: we need a deeper analysis here, the bindvars themselves have a deferred type as of this phase of analysis
+		// TODO: this can be specified directly in the message
 		bindVarTypes, err := extractBindVarTypes(plan)
 		if err != nil {
 			return false, false, err
 		}
-		
+
 		// Nil fields means an OKResult, fill one in here
 		if fields == nil {
 			fields = []*querypb.Field{
 				{
-					Name:         "Rows",
-					Type:         sqltypes.Int32,
+					Name: "Rows",
+					Type: sqltypes.Int32,
 				},
 			}
 		}
-		
+
 		preparedStatements[message.Name] = PreparedStatementData{
 			Query:        query,
 			ReturnFields: fields,
@@ -345,14 +338,16 @@ func (l *Listener) handleMessage(
 		return false, false, connection.Send(conn, messages.ParseComplete{})
 	case messages.Describe:
 		var fields []*querypb.Field
-		
+		var bindvarTypes []int32
+
 		if message.IsPrepared {
 			preparedStatementData, ok := preparedStatements[message.Target]
 			if !ok {
 				return false, true, fmt.Errorf("prepared statement %s does not exist", message.Target)
 			}
-			
+
 			fields = preparedStatementData.ReturnFields
+			bindvarTypes = preparedStatementData.BindVarTypes
 		} else {
 			portalData, ok := portals[message.Target]
 			if !ok {
@@ -361,9 +356,11 @@ func (l *Listener) handleMessage(
 
 			fields = portalData.Fields
 		}
-		
-		return false, false, l.describe(conn, fields)
+
+		return false, false, l.describe(conn, fields, bindvarTypes)
 	case messages.Bind:
+		// TODO: a named portal object lasts till the end of the current transaction, unless explicitly destroyed
+		//  we need to destroy the named portal as a side effect of the transaction ending
 		logrus.Tracef("binding portal %q to prepared statement %s", message.DestinationPortal, message.SourcePreparedStatement)
 		preparedData, ok := preparedStatements[message.SourcePreparedStatement]
 		if !ok {
@@ -374,7 +371,7 @@ func (l *Listener) handleMessage(
 		if err != nil {
 			return false, false, err
 		}
-		
+
 		boundPlan, fields, err := l.bind(mysqlConn, message.SourcePreparedStatement, preparedData.Query.AST, bindVars)
 		if err != nil {
 			return false, false, err
@@ -394,10 +391,32 @@ func (l *Listener) handleMessage(
 		}
 
 		logrus.Tracef("executing portal %s with contents %v", message.Portal, portalData)
-		return false, false, l.execute(conn, message.Portal, mysqlConn, portalData)
+		return false, false, l.execute(conn, mysqlConn, portalData)
+	case messages.Close:
+		if message.ClosingPreparedStatement {
+			delete(preparedStatements, message.Target)
+		} else {
+			delete(portals, message.Target)
+		}
+		
+		return false, false, connection.Send(conn, messages.CloseComplete{})
 	default:
 		return false, true, fmt.Errorf(`Unhandled message "%s"`, message.DefaultMessage().Name)
 	}
+}
+
+func (l *Listener) deallocatePreparedStatement(name string, preparedStatements map[string]PreparedStatementData, query ConvertedQuery, conn net.Conn) error {
+	_, ok := preparedStatements[name]
+	if !ok {
+		return fmt.Errorf("prepared statement %s does not exist", name)
+	}
+	delete(preparedStatements, name)
+
+	commandComplete := messages.CommandComplete{
+		Query: query.String,
+	}
+
+	return connection.Send(conn, commandComplete)
 }
 
 func extractBindVarTypes(queryPlan sql.Node) ([]int32, error) {
@@ -585,7 +604,7 @@ func spoolRowsCallback(conn net.Conn, commandComplete messages.CommandComplete) 
 }
 
 // query runs the given query. This will post the RowDescription, DataRow, and CommandComplete messages.
-func (l *Listener) execute(conn net.Conn, statementKey string, mysqlConn *mysql.Conn, portalData PortalData) error {
+func (l *Listener) execute(conn net.Conn, mysqlConn *mysql.Conn, portalData PortalData) error {
 	query := portalData.Query
 
 	commandComplete := messages.CommandComplete{
@@ -601,16 +620,17 @@ func (l *Listener) execute(conn net.Conn, statementKey string, mysqlConn *mysql.
 }
 
 // describe handles the description of the given query. This will post the ParameterDescription and RowDescription messages.
-func (l *Listener) describe(conn net.Conn, fields []*querypb.Field) (err error) {
-	//TODO: fully support prepared statements
-	if err := connection.Send(conn, messages.ParameterDescription{
-		// ObjectIDs: nil,
-		// TODO
-		ObjectIDs: []int32{23,23,23,23},
-	}); err != nil {
-		return err
+func (l *Listener) describe(conn net.Conn, fields []*querypb.Field, types []int32) (err error) {
+	// The prepared statement variant of the describe command returns the OIDs of the parameters.
+	if types != nil {
+		if err := connection.Send(conn, messages.ParameterDescription{
+			ObjectIDs: types,
+		}); err != nil {
+			return err
+		}
 	}
 	
+	// Both variants finish with a row description.
 	if err := connection.Send(conn, messages.RowDescription{
 		Fields: fields,
 	}); err != nil {
