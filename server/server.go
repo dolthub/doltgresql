@@ -37,7 +37,16 @@ import (
 )
 
 const (
-	Version = "0.2.0"
+	Version = "0.3.0"
+
+	// DOLTGRES_DATA_DIR is an environment variable that defines the location of DoltgreSQL databases
+	DOLTGRES_DATA_DIR = "DOLTGRES_DATA_DIR"
+	// DOLTGRES_DATA_DIR_DEFAULT is the portion to append to the user's home directory if DOLTGRES_DATA_DIR has not been specified
+	DOLTGRES_DATA_DIR_DEFAULT = "doltgres/databases"
+
+	DefUserName  = "postres"
+	DefUserEmail = "postgres@somewhere.com"
+	DoltgresDir  = "doltgres"
 )
 
 var sqlServerDocs = cli.CommandDocumentationContent{
@@ -52,7 +61,7 @@ var sqlServerDocs = cli.CommandDocumentationContent{
 		indentLines(sqlserver.ServerConfigAsYAMLConfig(sqlserver.DefaultServerConfig()).String()) + "\n\n" + `
 SUPPORTED CONFIG FILE FIELDS:
 
-{{.EmphasisLeft}}data_dir{{.EmphasisRight}}: A directory where the server will load dolt databases to serve, and create new ones. Defaults to the current directory.
+{{.EmphasisLeft}}data_dir{{.EmphasisRight}}: A directory where the server will load dolt databases to serve, and create new ones. Defaults to the DOLTGRES_DATA_DIR environment variable, or {{.EmphasisLeft}}~/doltgres/databases{{.EmphasisRight}}.
 
 {{.EmphasisLeft}}cfg_dir{{.EmphasisRight}}: A directory where the server will load and store non-database configuration data, such as permission information. Defaults {{.EmphasisLeft}}$data_dir/.doltcfg{{.EmphasisRight}}.
 
@@ -129,8 +138,8 @@ func RunInMemory(args []string) (*svcs.Controller, error) {
 	globalConfig, _ := dEnv.Config.GetConfig(env.GlobalConfig)
 	if globalConfig.GetStringOrDefault(config.UserNameKey, "") == "" {
 		globalConfig.SetStrings(map[string]string{
-			config.UserNameKey:  "postgres",
-			config.UserEmailKey: "postgres@somewhere.com",
+			config.UserNameKey:  DefUserName,
+			config.UserEmailKey: DefUserEmail,
 		})
 	}
 
@@ -152,8 +161,9 @@ func runServer(ctx context.Context, args []string, dEnv *env.DoltEnv) (*svcs.Con
 	}
 
 	if dEnv.HasDoltDataDir() {
-		return nil, fmt.Errorf("Cannot start a server within a directory containing a Dolt or Doltgres database." +
-			"To use the current directory as a database, start the server from the parent directory.")
+		cwd, _ := dEnv.FS.Abs(".")
+		return nil, fmt.Errorf("Cannot start a server within a directory containing a Dolt or Doltgres database. "+
+			"To use the current directory (%s) as a database, start the server from the parent directory.", cwd)
 	}
 
 	defer tempfiles.MovableTempFileProvider.Clean()
@@ -182,35 +192,39 @@ func runServer(ctx context.Context, args []string, dEnv *env.DoltEnv) (*svcs.Con
 
 	// We need a username and password for many SQL commands, so set defaults if they don't exist
 	dEnv.Config.SetFailsafes(map[string]string{
-		config.UserNameKey:  "postgres",
-		config.UserEmailKey: "postgres@somewhere.com",
+		config.UserNameKey:  DefUserName,
+		config.UserEmailKey: DefUserEmail,
 	})
 
 	// Automatically initialize a doltgres database if necessary
 	if !dEnv.HasDoltDir() {
 		// Need to make sure that there isn't a doltgres item in the path.
-		if exists, isDirectory := dEnv.FS.Exists("doltgres"); !exists {
-			err := dEnv.FS.MkDirs("doltgres")
+		if exists, isDirectory := dEnv.FS.Exists(DoltgresDir); !exists {
+			err := dEnv.FS.MkDirs(DoltgresDir)
 			if err != nil {
 				return nil, err
 			}
-			subdirectoryFS, err := dEnv.FS.WithWorkingDir("doltgres")
+			subdirectoryFS, err := dEnv.FS.WithWorkingDir(DoltgresDir)
 			if err != nil {
 				return nil, err
 			}
 
 			// We'll use a temporary environment to instantiate the subdirectory
 			tempDEnv := env.Load(ctx, env.GetCurrentUserHomeDir, subdirectoryFS, dEnv.UrlStr(), Version)
-			res := commands.InitCmd{}.Exec(ctx, "init", []string{}, tempDEnv, configCliContext{tempDEnv})
+			// username and user email is needed to create a new database.
+			name := tempDEnv.Config.GetStringOrDefault(config.UserNameKey, DefUserName)
+			email := tempDEnv.Config.GetStringOrDefault(config.UserEmailKey, DefUserEmail)
+			res := commands.InitCmd{}.Exec(ctx, "init", []string{"--name", name, "--email", email}, tempDEnv, configCliContext{tempDEnv})
 			if res != 0 {
 				return nil, fmt.Errorf("failed to initialize doltgres database")
 			}
 		} else if !isDirectory {
+			workingDir, _ := dEnv.FS.Abs(".")
 			// The else branch means that there's a Doltgres item, so we need to error if it's a file since we
 			// enforce the creation of a Doltgres database/directory, which would create a name conflict with the file
-			return nil, fmt.Errorf("Attempted to create the default `doltgres` database, but a file with" +
-				" the same name was found. Please run the doltgres command in a directory that does not contain a" +
-				" file with the name doltgres")
+			return nil, fmt.Errorf("Attempted to create the default `doltgres` database at `%s`, but a file with "+
+				"the same name was found. Either remove the file, change the directory using the `--data-dir` argument, "+
+				"or change the environment variable `%s` so that it points to a different directory.", workingDir, DOLTGRES_DATA_DIR)
 		}
 	}
 

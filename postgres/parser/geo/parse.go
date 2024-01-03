@@ -35,8 +35,6 @@ import (
 	"github.com/twpayne/go-geom/encoding/ewkb"
 	"github.com/twpayne/go-geom/encoding/ewkbhex"
 	"github.com/twpayne/go-geom/encoding/geojson"
-	"github.com/twpayne/go-geom/encoding/wkb"
-	"github.com/twpayne/go-geom/encoding/wkbcommon"
 
 	"github.com/dolthub/doltgresql/postgres/parser/geo/geopb"
 	"github.com/dolthub/doltgresql/postgres/parser/geo/geos"
@@ -106,18 +104,6 @@ func parseEWKB(
 	if overwrite == DefaultSRIDShouldOverwrite || (defaultSRID != 0 && t.SRID() == 0) || int32(t.SRID()) < 0 {
 		AdjustGeomTSRID(t, defaultSRID)
 	}
-	return spatialObjectFromGeomT(t, soType)
-}
-
-// parseWKB takes given bytes assumed to be WKB and transforms it into a SpatialObject.
-func parseWKB(
-	soType geopb.SpatialObjectType, b []byte, defaultSRID geopb.SRID,
-) (geopb.SpatialObject, error) {
-	t, err := wkb.Unmarshal(b, wkbcommon.WKBOptionEmptyPointHandling(wkbcommon.EmptyPointHandlingNaN))
-	if err != nil {
-		return geopb.SpatialObject{}, err
-	}
-	AdjustGeomTSRID(t, defaultSRID)
 	return spatialObjectFromGeomT(t, soType)
 }
 

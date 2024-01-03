@@ -31,7 +31,6 @@ package encoding
 import (
 	"bytes"
 	"fmt"
-	"math"
 	"math/big"
 	"unsafe"
 
@@ -728,23 +727,6 @@ func UpperBoundNonsortingDecimalSize(d *apd.Decimal) int {
 	// - MaxVarintLen for the exponent
 	// - WordLen for the big.Int bytes
 	return 1 + MaxVarintLen + WordLen(d.Coeff.Bits())
-}
-
-// upperBoundNonsortingDecimalUnscaledSize is the same as
-// UpperBoundNonsortingDecimalSize but for a decimal with the given unscaled
-// length. The upper bound here may not be as tight as the one returned by
-// UpperBoundNonsortingDecimalSize.
-func upperBoundNonsortingDecimalUnscaledSize(unscaledLen int) int {
-	// The number of digits needed to represent a base 10 number of length
-	// unscaledLen in base 2.
-	unscaledLenBase2 := float64(unscaledLen) * math.Log2(10)
-	unscaledLenBase2Words := math.Ceil(unscaledLenBase2 / 8 / float64(bigWordSize))
-	unscaledLenWordRounded := int(unscaledLenBase2Words) * bigWordSize
-	// Makeup of upper bound size:
-	// - 1 byte for the prefix
-	// - MaxVarintLen for the exponent
-	// - unscaledLenWordRounded for the big.Int bytes
-	return 1 + MaxVarintLen + unscaledLenWordRounded
 }
 
 // Taken from math/big/arith.go.
