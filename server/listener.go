@@ -373,7 +373,7 @@ func (l *Listener) handleMessage(
 			return false, false, err
 		}
 		
-		fields, err := l.bind(mysqlConn, message.SourcePreparedStatement, preparedData.Query.String, bindVars)
+		boundPlan, fields, err := l.bind(mysqlConn, message.SourcePreparedStatement, preparedData.Query.String, bindVars)
 		if err != nil {
 			return false, false, err
 		}
@@ -381,6 +381,7 @@ func (l *Listener) handleMessage(
 		portals[message.DestinationPortal] = PortalData{
 			Query:  preparedData.Query,
 			Fields: fields,
+			BoundPlan:   boundPlan,
 		}
 		return false, false, connection.Send(conn, messages.BindComplete{})
 	case messages.Execute:
@@ -391,7 +392,7 @@ func (l *Listener) handleMessage(
 		}
 
 		logrus.Tracef("executing portal %s with contents %v", message.Portal, portalData)
-		return false, false, l.execute(conn, mysqlConn, portalData)
+		return false, false, l.execute(conn, message.Portal, mysqlConn, portalData)
 	default:
 		return false, true, fmt.Errorf(`Unhandled message "%s"`, message.DefaultMessage().Name)
 	}
@@ -582,32 +583,19 @@ func spoolRowsCallback(conn net.Conn, commandComplete messages.CommandComplete) 
 }
 
 // query runs the given query. This will post the RowDescription, DataRow, and CommandComplete messages.
-func (l *Listener) execute(conn net.Conn, mysqlConn *mysql.Conn, portalData PortalData) error {
+func (l *Listener) execute(conn net.Conn, statementKey string, mysqlConn *mysql.Conn, portalData PortalData) error {
 	query := portalData.Query
 
 	commandComplete := messages.CommandComplete{
 		Query: query.String,
 	}
 
-	prepareData := &mysql.PrepareData{
-		PrepareStmt: query.String,
-		ParamsCount: uint16(len(portalData.Bindings)),
-		BindVars:    portalData.Bindings,
-	}
-	err := l.cfg.Handler.(mysql.ExtendedHandler).ComExecuteBound(mysqlConn, "", "", prepareData, spoolRowsCallback(conn, commandComplete))
-
+	err := l.cfg.Handler.(mysql.ExtendedHandler).ComExecuteBound(mysqlConn, query.String, portalData.BoundPlan, spoolRowsCallback(conn, commandComplete))
 	if err != nil {
-		if strings.HasPrefix(err.Error(), "syntax error at position") {
-			return fmt.Errorf("This statement is not yet supported")
-		}
 		return err
 	}
 
-	if err := connection.Send(conn, commandComplete); err != nil {
-		return err
-	}
-
-	return nil
+	return connection.Send(conn, commandComplete)
 }
 
 // describe handles the description of the given query. This will post the ParameterDescription and RowDescription messages.
@@ -739,13 +727,13 @@ func (l *Listener) handleParse(mysqlConn *mysql.Conn, name string, query Convert
 		return nil, nil, fmt.Errorf("cannot prepare a query that has not been parsed")
 	}
 
-	analyzedPlan, fields, err := l.cfg.Handler.(mysql.ExtendedHandler).ComPrepareParsed(mysqlConn, name, query.String, query.AST, &mysql.PrepareData{
+	parsedQuery, fields, err := l.cfg.Handler.(mysql.ExtendedHandler).ComPrepareParsed(mysqlConn, query.String, query.AST, &mysql.PrepareData{
 		PrepareStmt: query.String,
 	})
 	
-	plan, ok := analyzedPlan.(sql.Node)
+	plan, ok := parsedQuery.(sql.Node)
 	if !ok {
-		return nil, nil, fmt.Errorf("expected a sql.Node, got %T", analyzedPlan)
+		return nil, nil, fmt.Errorf("expected a sql.Node, got %T", parsedQuery)
 	}
 	
 	return plan, fields, err
@@ -760,11 +748,17 @@ func (l *Listener) comQuery(mysqlConn *mysql.Conn, query ConvertedQuery, callbac
 	}
 }
 
-func (l *Listener) bind(mysqlConn *mysql.Conn, name, query string, bindVars map[string]*querypb.BindVariable) ([]*querypb.Field, error) {
-	// TODO NEXT: the engine hasn't cached the prepared statement by the correct name. Maybe time to side step it entirely, manage all the prepared statements ourselves?
-	return l.cfg.Handler.(mysql.ExtendedHandler).ComBind(mysqlConn, name, query, &mysql.PrepareData{
+func (l *Listener) bind(mysqlConn *mysql.Conn, query string, parsedQuery mysql.ParsedQuery, bindVars map[string]*querypb.BindVariable) (sql.Node, []*querypb.Field, error) {
+	bound, fields, err := l.cfg.Handler.(mysql.ExtendedHandler).ComBind(mysqlConn, query, parsedQuery, &mysql.PrepareData{
 		PrepareStmt: query,
 		ParamsCount: uint16(len(bindVars)),
 		BindVars:    bindVars,
 	})
+	
+	plan, ok := bound.(sql.Node)
+	if !ok {
+		return nil, nil, fmt.Errorf("expected a sql.Node, got %T", bound)
+	}
+	
+	return plan, fields, err
 }

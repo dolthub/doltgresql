@@ -15,6 +15,7 @@
 package server
 
 import (
+	"github.com/dolthub/go-mysql-server/sql"
 	querypb "github.com/dolthub/vitess/go/vt/proto/query"
 	vitess "github.com/dolthub/vitess/go/vt/sqlparser"
 )
@@ -36,6 +37,6 @@ type PreparedStatementData struct {
 
 type PortalData struct {
   Query ConvertedQuery
-	Bindings map[string]*querypb.BindVariable
 	Fields []*querypb.Field
+	BoundPlan sql.Node
 }
