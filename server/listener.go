@@ -16,10 +16,13 @@ package server
 
 import (
 	"crypto/tls"
+	"encoding/binary"
 	"fmt"
 	"io"
+	"math"
 	"net"
 	"os"
+	"strconv"
 	"strings"
 	"sync/atomic"
 
@@ -271,15 +274,6 @@ func (l *Listener) handleMessage(
 	switch message := message.(type) {
 	case messages.Terminate:
 		return true, false, nil
-	case messages.Execute:
-		// TODO: implement the RowMax
-		portalData, ok := portals[message.Portal]
-		if !ok {
-			return false, false, fmt.Errorf("portal %s does not exist", message.Portal)
-		}
-		
-		logrus.Tracef("executing portal %s with contents %v", message.Portal, portalData)
-		return false, false, l.execute(conn, mysqlConn, portalData)
 	case messages.Query:
 		// TODO: according to docs, "Note that a simple Query message also destroys the unnamed statement."
 		handled, err := l.handledPSQLCommands(conn, mysqlConn, message.String)
@@ -390,6 +384,15 @@ func (l *Listener) handleMessage(
 			Fields: fields,
 		}
 		return false, false, connection.Send(conn, messages.BindComplete{})
+	case messages.Execute:
+		// TODO: implement the RowMax
+		portalData, ok := portals[message.Portal]
+		if !ok {
+			return false, false, fmt.Errorf("portal %s does not exist", message.Portal)
+		}
+
+		logrus.Tracef("executing portal %s with contents %v", message.Portal, portalData)
+		return false, false, l.execute(conn, mysqlConn, portalData)
 	default:
 		return false, true, fmt.Errorf(`Unhandled message "%s"`, message.DefaultMessage().Name)
 	}
@@ -409,6 +412,7 @@ func extractBindVarTypes(queryPlan sql.Node) ([]int32, error) {
 			var id int32
 			id, err = messages.VitessTypeToObjectID(bindVar.Type().Type())
 			if err != nil {
+				// TODO
 				types = append(types, 0)
 			} else {
 				types = append(types, id)
@@ -422,15 +426,31 @@ func extractBindVarTypes(queryPlan sql.Node) ([]int32, error) {
 func convertBindParameters(types []int32, values []messages.BindParameterValue) (map[string]*querypb.BindVariable, error) {
 	bindings := make(map[string]*querypb.BindVariable, len(values))
 	for i, value := range values {
-		bindingName := fmt.Sprintf(":v%d", i+1)
+		bindingName := fmt.Sprintf("v%d", i+1)
+		typ := convertType(types[i])
 		bindVar := &querypb.BindVariable{
-			Type:   convertType(types[i]),
-			Value:  value.Data,
+			Type:   typ,
+			Value:  convertBindVarValue(typ, value),
 			Values: nil, // TODO
 		}
 		bindings[bindingName] = bindVar
 	}
 	return bindings, nil
+}
+
+func convertBindVarValue(typ querypb.Type, value messages.BindParameterValue) []byte {
+	switch typ {
+	case querypb.Type_INT8, querypb.Type_INT16, querypb.Type_INT24, querypb.Type_INT32, querypb.Type_INT64, querypb.Type_UINT8, querypb.Type_UINT16, querypb.Type_UINT24, querypb.Type_UINT32, querypb.Type_UINT64:
+		// first convert the bytes in the payload to an integer, then convert that to its base 10 string representation
+		intVal := binary.BigEndian.Uint32(value.Data) // TODO: bound check
+		return []byte(strconv.FormatUint(uint64(intVal), 10))
+	case querypb.Type_FLOAT32, querypb.Type_FLOAT64:
+		// first convert the bytes in the payload to a float, then convert that to its base 10 string representation
+		floatVal := binary.BigEndian.Uint64(value.Data) // TODO: bound check
+		return []byte(strconv.FormatFloat(math.Float64frombits(floatVal), 'f', -1, 64))
+	default:
+		panic(fmt.Sprintf("unhandled type %v", typ))
+	}
 }
 
 func convertType(oid int32) querypb.Type {
@@ -558,7 +578,7 @@ func (l *Listener) execute(conn net.Conn, mysqlConn *mysql.Conn, portalData Port
 }
 
 // describe handles the description of the given query. This will post the ParameterDescription and RowDescription messages.
-func (l *Listener)  describe(conn net.Conn, fields []*querypb.Field) (err error) {
+func (l *Listener) describe(conn net.Conn, fields []*querypb.Field) (err error) {
 	//TODO: fully support prepared statements
 	if err := connection.Send(conn, messages.ParameterDescription{
 		// ObjectIDs: nil,
