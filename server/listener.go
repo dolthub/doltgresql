@@ -274,8 +274,9 @@ func (l *Listener) handleMessage(
 	switch message := message.(type) {
 	case messages.Terminate:
 		return true, false, nil
+	case messages.Sync:
+		return false, true, nil
 	case messages.Query:
-		// TODO: according to docs, "Note that a simple Query message also destroys the unnamed statement."
 		handled, err := l.handledPSQLCommands(conn, mysqlConn, message.String)
 		if handled || err != nil {
 			return false, true, err
@@ -285,6 +286,9 @@ func (l *Listener) handleMessage(
 		if err != nil {
 			return false, true, err
 		}
+
+		// according to docs, "Note that a simple Query message also destroys the unnamed statement."
+		delete (preparedStatements, "")
 
 		// The Deallocate message must not get passed to the engine, since we handle allocation / deallocation of
 		// prepared statements at this layer
@@ -359,8 +363,6 @@ func (l *Listener) handleMessage(
 		}
 		
 		return false, false, l.describe(conn, fields)
-	case messages.Sync:
-		return false, true, nil
 	case messages.Bind:
 		logrus.Tracef("binding portal %q to prepared statement %s", message.DestinationPortal, message.SourcePreparedStatement)
 		preparedData, ok := preparedStatements[message.SourcePreparedStatement]
@@ -373,15 +375,15 @@ func (l *Listener) handleMessage(
 			return false, false, err
 		}
 		
-		boundPlan, fields, err := l.bind(mysqlConn, message.SourcePreparedStatement, preparedData.Query.String, bindVars)
+		boundPlan, fields, err := l.bind(mysqlConn, message.SourcePreparedStatement, preparedData.Query.AST, bindVars)
 		if err != nil {
 			return false, false, err
 		}
 
 		portals[message.DestinationPortal] = PortalData{
-			Query:  preparedData.Query,
-			Fields: fields,
-			BoundPlan:   boundPlan,
+			Query:     preparedData.Query,
+			Fields:    fields,
+			BoundPlan: boundPlan,
 		}
 		return false, false, connection.Send(conn, messages.BindComplete{})
 	case messages.Execute:
@@ -748,7 +750,7 @@ func (l *Listener) comQuery(mysqlConn *mysql.Conn, query ConvertedQuery, callbac
 	}
 }
 
-func (l *Listener) bind(mysqlConn *mysql.Conn, query string, parsedQuery mysql.ParsedQuery, bindVars map[string]*querypb.BindVariable) (sql.Node, []*querypb.Field, error) {
+func (l *Listener) bind(mysqlConn *mysql.Conn, query string, parsedQuery sqlparser.Statement, bindVars map[string]*querypb.BindVariable) (sql.Node, []*querypb.Field, error) {
 	bound, fields, err := l.cfg.Handler.(mysql.ExtendedHandler).ComBind(mysqlConn, query, parsedQuery, &mysql.PrepareData{
 		PrepareStmt: query,
 		ParamsCount: uint16(len(bindVars)),
