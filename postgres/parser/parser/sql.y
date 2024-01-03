@@ -576,7 +576,7 @@ func (u *sqlSymUnion) refreshDataOption() tree.RefreshDataOption {
 %token <str> BUCKET_COUNT
 %token <str> BOOLEAN BOTH BOX2D BUNDLE BY
 
-%token <str> CACHE CALL CANCEL CANCELQUERY CASCADE CASE CAST CBRT CHANGEFEED CHAR
+%token <str> CACHE CHAIN CALL CANCEL CANCELQUERY CASCADE CASE CAST CBRT CHANGEFEED CHAR
 %token <str> CHARACTER CHARACTERISTICS CHECK CLOSE
 %token <str> CLUSTER COALESCE COLLATE COLLATION COLUMN COLUMNS COMMENT COMMENTS COMMIT
 %token <str> COMMITTED COMPACT COMPLETE CONCAT CONCURRENTLY CONFIGURATION CONFIGURATIONS CONFIGURE
@@ -664,7 +664,7 @@ func (u *sqlSymUnion) refreshDataOption() tree.RefreshDataOption {
 %token <str> UNBOUNDED UNCOMMITTED UNION UNIQUE UNKNOWN UNLOGGED UNSPLIT
 %token <str> UPDATE UPSERT UNTIL USE USER USERS USING UUID
 
-%token <str> VALID VALIDATE VALUE VALUES VARBIT VARCHAR VARIADIC VIEW VARYING VIEWACTIVITY VIRTUAL
+%token <str> VALID VALIDATE VALUE VALUES VARBIT VARCHAR VARIADIC VERSION VIEW VARYING VIEWACTIVITY VIRTUAL
 
 %token <str> WHEN WHERE WINDOW WITH WITHIN WITHOUT WORK WRITE
 
@@ -748,6 +748,8 @@ func (u *sqlSymUnion) refreshDataOption() tree.RefreshDataOption {
 %type <tree.Statement> alter_rename_sequence_stmt
 %type <tree.Statement> alter_sequence_options_stmt
 %type <tree.Statement> alter_sequence_set_schema_stmt
+
+%type <tree.Statement> alter_collation_stmt
 
 %type <tree.Statement> backup_stmt
 %type <tree.Statement> begin_stmt
@@ -1093,7 +1095,7 @@ func (u *sqlSymUnion) refreshDataOption() tree.RefreshDataOption {
 %type <str> unrestricted_name type_function_name type_function_name_no_crdb_extra
 %type <str> non_reserved_word
 %type <str> non_reserved_word_or_sconst
-%type <str> role_spec
+%type <str> role_spec opt_owner_to
 %type <tree.Expr> zone_value
 %type <tree.Expr> string_or_placeholder
 %type <tree.Expr> string_or_placeholder_list
@@ -1258,11 +1260,12 @@ stmt:
 
 // %Help: ALTER
 // %Category: Group
-// %Text: ALTER TABLE, ALTER INDEX, ALTER VIEW, ALTER SEQUENCE, ALTER DATABASE, ALTER USER, ALTER ROLE
+// %Text: ALTER TABLE, ALTER INDEX, ALTER VIEW, ALTER SEQUENCE, ALTER DATABASE, ALTER USER, ALTER ROLE, ALTER COLLATION
 alter_stmt:
-  alter_ddl_stmt      // help texts in sub-rule
-| alter_role_stmt     // EXTEND WITH HELP: ALTER ROLE
-| ALTER error         // SHOW HELP: ALTER
+  alter_ddl_stmt       // help texts in sub-rule
+| alter_role_stmt      // EXTEND WITH HELP: ALTER ROLE
+| alter_collation_stmt // EXTEND WITH HELP: ALTER COLLATION
+| ALTER error          // SHOW HELP: ALTER
 
 alter_ddl_stmt:
   alter_table_stmt     // EXTEND WITH HELP: ALTER TABLE
@@ -1413,9 +1416,9 @@ alter_database_stmt:
 | ALTER DATABASE error // SHOW HELP: ALTER DATABASE
 
 alter_database_owner:
-	ALTER DATABASE database_name OWNER TO role_spec
+	ALTER DATABASE database_name opt_owner_to
 	{
-		$$.val = &tree.AlterDatabaseOwner{Name: tree.Name($3), Owner: $6}
+		$$.val = &tree.AlterDatabaseOwner{Name: tree.Name($3), Owner: $4}
 	}
 
 // %Help: ALTER RANGE - change the parameters of a range
@@ -1890,10 +1893,10 @@ alter_table_cmd:
     }
   }
   // ALTER TABLE <name> OWNER TO <newowner>
-| OWNER TO role_spec
+| opt_owner_to
   {
     $$.val = &tree.AlterTableOwner{
-      Owner: $3,
+      Owner: $1,
     }
   }
 
@@ -1973,7 +1976,7 @@ opt_validate_behavior:
 //   ALTER TYPE ... RENAME VALUE <oldname> TO <newname>
 //   ALTER TYPE ... RENAME TO <newname>
 //   ALTER TYPE ... SET SCHEMA <newschemaname>
-//   ALTER TYPE ... OWNER TO {<newowner> | CURRENT_USER | SESSION_USER }
+//   ALTER TYPE ... OWNER TO {<newowner> | CURRENT_ROLE | CURRENT_USER | SESSION_USER }
 //   ALTER TYPE ... RENAME ATTRIBUTE <oldname> TO <newname> [ CASCADE | RESTRICT ]
 //   ALTER TYPE ... <attributeaction> [, ... ]
 //
@@ -2034,12 +2037,12 @@ alter_type_stmt:
       },
     }
   }
-| ALTER TYPE type_name OWNER TO role_spec
+| ALTER TYPE type_name opt_owner_to
   {
     $$.val = &tree.AlterType{
       Type: $3.unresolvedObjectName(),
       Cmd: &tree.AlterTypeOwner{
-        Owner: $6,
+        Owner: $4,
       },
     }
   }
@@ -2075,8 +2078,28 @@ opt_add_val_placement:
 
 role_spec:
   non_reserved_word_or_sconst
+| CURRENT_ROLE
 | CURRENT_USER
 | SESSION_USER
+
+opt_owner_to:
+  OWNER TO role_spec {
+    $$ = $3
+  }
+
+alter_collation_stmt:
+  ALTER COLLATION unrestricted_name REFRESH VERSION {
+    $$.val = &tree.AlterCollation{Name: tree.Name($3), RefreshVersion: true}
+  }
+| ALTER COLLATION unrestricted_name RENAME TO unrestricted_name {
+    $$.val = &tree.AlterCollation{Name: tree.Name($3), Rename: tree.Name($6)}
+  }
+| ALTER COLLATION unrestricted_name opt_owner_to {
+    $$.val = &tree.AlterCollation{Name: tree.Name($3), Owner: $4}
+  }
+| ALTER COLLATION unrestricted_name SET SCHEMA schema_name {
+    $$.val = &tree.AlterCollation{Name: tree.Name($3), Schema: $6}
+  }
 
 alter_attribute_action_list:
   alter_attribute_action
@@ -5342,7 +5365,7 @@ create_schema_stmt:
 //
 // Commands:
 //   ALTER SCHEMA ... RENAME TO <newschemaname>
-//   ALTER SCHEMA ... OWNER TO {<newowner> | CURRENT_USER | SESSION_USER }
+//   ALTER SCHEMA ... OWNER TO {<newowner> | CURRENT_ROLE | CURRENT_USER | SESSION_USER }
 alter_schema_stmt:
   ALTER SCHEMA schema_name RENAME TO schema_name
   {
@@ -5353,12 +5376,12 @@ alter_schema_stmt:
       },
     }
   }
-| ALTER SCHEMA schema_name OWNER TO role_spec
+| ALTER SCHEMA schema_name opt_owner_to
   {
     $$.val = &tree.AlterSchema{
       Schema: $3,
       Cmd: &tree.AlterSchemaOwner{
-        Owner: $6,
+        Owner: $4,
       },
     }
   }
@@ -7095,9 +7118,14 @@ abort_stmt:
   }
 
 opt_abort_mod:
-  TRANSACTION {}
-| WORK        {}
-| /* EMPTY */ {}
+  opt_abort_chain {}
+| TRANSACTION opt_abort_chain {}
+| WORK opt_abort_chain        {}
+
+opt_abort_chain:
+  /* EMPTY */ {}
+| AND CHAIN {}
+| AND NO CHAIN {}
 
 // %Help: ROLLBACK - abort the current (sub-)transaction
 // %Category: Txn
@@ -11385,6 +11413,7 @@ unreserved_keyword:
 | BUNDLE
 | BY
 | CACHE
+| CHAIN
 | CALL
 | CANCEL
 | CANCELQUERY
@@ -11679,6 +11708,7 @@ unreserved_keyword:
 | VALIDATE
 | VALUE
 | VARYING
+| VERSION
 | VIEW
 | VIEWACTIVITY
 | WITHIN
