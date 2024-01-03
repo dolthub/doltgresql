@@ -315,7 +315,7 @@ func (l *Listener) handleMessage(
 			return false, false, err
 		}
 					
-		plan, fields, err := l.handleParse(mysqlConn, message.Name, query)
+		plan, fields, err := l.handleParse(mysqlConn, query)
 		if err != nil {
 			return false, false, err
 		}
@@ -724,7 +724,7 @@ func (l *Listener) convertQuery(query string) (ConvertedQuery, error) {
 	}, nil
 }
 
-func (l *Listener) handleParse(mysqlConn *mysql.Conn, name string, query ConvertedQuery) (sql.Node, []*querypb.Field, error) {
+func (l *Listener) handleParse(mysqlConn *mysql.Conn, query ConvertedQuery) (sql.Node, []*querypb.Field, error) {
 	if query.AST == nil {
 		return nil, nil, fmt.Errorf("cannot prepare a query that has not been parsed")
 	}
@@ -732,6 +732,10 @@ func (l *Listener) handleParse(mysqlConn *mysql.Conn, name string, query Convert
 	parsedQuery, fields, err := l.cfg.Handler.(mysql.ExtendedHandler).ComPrepareParsed(mysqlConn, query.String, query.AST, &mysql.PrepareData{
 		PrepareStmt: query.String,
 	})
+
+	if err != nil {
+		return nil, nil, err
+	}
 	
 	plan, ok := parsedQuery.(sql.Node)
 	if !ok {
@@ -756,6 +760,10 @@ func (l *Listener) bind(mysqlConn *mysql.Conn, query string, parsedQuery sqlpars
 		ParamsCount: uint16(len(bindVars)),
 		BindVars:    bindVars,
 	})
+
+	if err != nil {
+		return nil, nil, err
+	}
 	
 	plan, ok := bound.(sql.Node)
 	if !ok {
