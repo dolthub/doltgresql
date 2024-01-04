@@ -185,6 +185,14 @@ var _ CCLOnlyStatement = &Export{}
 var _ CCLOnlyStatement = &ScheduledBackup{}
 
 // StatementType implements the Statement interface.
+func (*AlterAggregate) StatementType() StatementType { return DDL }
+
+// StatementTag returns a short string identifying the type of statement.
+func (*AlterAggregate) StatementTag() string { return "ALTER AGGREGATE" }
+
+func (*AlterAggregate) hiddenFromShowQueries() {}
+
+// StatementType implements the Statement interface.
 func (*AlterCollation) StatementType() StatementType { return DDL }
 
 // StatementTag returns a short string identifying the type of statement.
@@ -1024,6 +1032,7 @@ func (*ValuesClause) StatementType() StatementType { return Rows }
 // StatementTag returns a short string identifying the type of statement.
 func (*ValuesClause) StatementTag() string { return "VALUES" }
 
+func (n *AlterAggregate) String() string                 { return AsString(n) }
 func (n *AlterCollation) String() string                 { return AsString(n) }
 func (n *AlterIndex) String() string                     { return AsString(n) }
 func (n *AlterDatabaseOwner) String() string             { return AsString(n) }

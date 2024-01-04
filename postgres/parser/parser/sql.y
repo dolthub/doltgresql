@@ -549,6 +549,12 @@ func (u *sqlSymUnion) executorType() tree.ScheduledJobExecutorType {
 func (u *sqlSymUnion) refreshDataOption() tree.RefreshDataOption {
   return u.val.(tree.RefreshDataOption)
 }
+func (u *sqlSymUnion) aggregateSignature() *tree.AggregateSignature {
+  return u.val.(*tree.AggregateSignature)
+}
+func (u *sqlSymUnion) aggregateArg() *tree.AggregateArg {
+  return u.val.(*tree.AggregateArg)
+}
 %}
 
 // NB: the %token definitions must come before the %type definitions in this
@@ -749,6 +755,7 @@ func (u *sqlSymUnion) refreshDataOption() tree.RefreshDataOption {
 %type <tree.Statement> alter_sequence_options_stmt
 %type <tree.Statement> alter_sequence_set_schema_stmt
 
+%type <tree.Statement> alter_aggregate_stmt
 %type <tree.Statement> alter_collation_stmt
 
 %type <tree.Statement> backup_stmt
@@ -911,6 +918,9 @@ func (u *sqlSymUnion) refreshDataOption() tree.RefreshDataOption {
 %type <tree.Expr> alter_column_default
 %type <tree.Direction> opt_asc_desc
 %type <tree.NullsOrder> opt_nulls_order
+
+%type <*tree.AggregateSignature> aggregate_signature
+%type <*tree.AggregateArg> aggregate_arg
 
 %type <tree.AlterTableCmd> alter_table_cmd
 %type <tree.AlterTableCmds> alter_table_cmds
@@ -1095,7 +1105,7 @@ func (u *sqlSymUnion) refreshDataOption() tree.RefreshDataOption {
 %type <str> unrestricted_name type_function_name type_function_name_no_crdb_extra
 %type <str> non_reserved_word
 %type <str> non_reserved_word_or_sconst
-%type <str> role_spec opt_owner_to
+%type <str> role_spec opt_owner_to opt_set_schema
 %type <tree.Expr> zone_value
 %type <tree.Expr> string_or_placeholder
 %type <tree.Expr> string_or_placeholder_list
@@ -1260,11 +1270,12 @@ stmt:
 
 // %Help: ALTER
 // %Category: Group
-// %Text: ALTER TABLE, ALTER INDEX, ALTER VIEW, ALTER SEQUENCE, ALTER DATABASE, ALTER USER, ALTER ROLE, ALTER COLLATION
+// %Text: ALTER TABLE, ALTER INDEX, ALTER VIEW, ALTER SEQUENCE, ALTER DATABASE, ALTER USER, ALTER ROLE
 alter_stmt:
   alter_ddl_stmt       // help texts in sub-rule
 | alter_role_stmt      // EXTEND WITH HELP: ALTER ROLE
 | alter_collation_stmt // EXTEND WITH HELP: ALTER COLLATION
+| alter_aggregate_stmt // EXTEND WITH HELP: ALTER AGGREGATE
 | ALTER error          // SHOW HELP: ALTER
 
 alter_ddl_stmt:
@@ -2028,12 +2039,12 @@ alter_type_stmt:
       },
     }
   }
-| ALTER TYPE type_name SET SCHEMA schema_name
+| ALTER TYPE type_name opt_set_schema
   {
     $$.val = &tree.AlterType{
       Type: $3.unresolvedObjectName(),
       Cmd: &tree.AlterTypeSetSchema{
-        Schema: $6,
+        Schema: $4,
       },
     }
   }
@@ -2055,6 +2066,12 @@ alter_type_stmt:
     return unimplementedWithIssueDetail(sqllex, 48701, "ALTER TYPE ATTRIBUTE")
   }
 | ALTER TYPE error // SHOW HELP: ALTER TYPE
+
+opt_set_schema:
+  SET SCHEMA schema_name
+  {
+    $$ = $3
+  }
 
 opt_add_val_placement:
   BEFORE SCONST
@@ -2083,22 +2100,85 @@ role_spec:
 | SESSION_USER
 
 opt_owner_to:
-  OWNER TO role_spec {
+  OWNER TO role_spec
+  {
     $$ = $3
   }
 
+alter_aggregate_stmt:
+  ALTER AGGREGATE unrestricted_name '(' aggregate_signature ')' RENAME TO unrestricted_name
+  {
+    $$.val = &tree.AlterAggregate{Name: tree.Name($3), AggSig: $5.aggregateSignature(), Rename: tree.Name($9)}
+  }
+| ALTER AGGREGATE unrestricted_name '(' aggregate_signature ')' opt_owner_to
+  {
+    $$.val = &tree.AlterAggregate{Name: tree.Name($3), AggSig: $5.aggregateSignature(), Owner: $7}
+  }
+| ALTER AGGREGATE unrestricted_name '(' aggregate_signature ')' opt_set_schema
+  {
+    $$.val = &tree.AlterAggregate{Name: tree.Name($3), AggSig: $5.aggregateSignature(), Schema: $7}
+  }
+
+aggregate_signature:
+  '*'
+  {
+    $$.val = &tree.AggregateSignature{All: true}
+  }
+| aggregate_arg
+  {
+    $$.val = &tree.AggregateSignature{Arg: $1.aggregateArg()}
+  }
+| aggregate_arg ORDER BY aggregate_arg
+  {
+    $$.val = &tree.AggregateSignature{Arg: $1.aggregateArg(), OrderBy: $4.aggregateArg()}
+  }
+| ORDER BY aggregate_arg
+  {
+    $$.val = &tree.AggregateSignature{OrderBy: $3.aggregateArg()}
+  }
+
+aggregate_arg:
+  type_list
+  {
+    $$.val = &tree.AggregateArg{Mode: "IN", Types: $1.typeReferences()}
+  }
+| type_function_name type_list
+  {
+    $$.val = &tree.AggregateArg{Mode: "IN", Name: tree.Name($1), Types: $2.typeReferences()}
+  }
+| IN type_list
+  {
+    $$.val = &tree.AggregateArg{Mode: $1, Types: $2.typeReferences()}
+  }
+| VARIADIC type_list
+  {
+    $$.val = &tree.AggregateArg{Mode: $1, Types: $2.typeReferences()}
+  }
+| IN type_function_name type_list
+  {
+    $$.val = &tree.AggregateArg{Mode: $1, Name: tree.Name($2), Types: $3.typeReferences()}
+  }
+| VARIADIC type_function_name type_list
+  {
+    $$.val = &tree.AggregateArg{Mode: $1, Name: tree.Name($2), Types: $3.typeReferences()}
+  }
+
 alter_collation_stmt:
-  ALTER COLLATION unrestricted_name REFRESH VERSION {
+  ALTER COLLATION unrestricted_name REFRESH VERSION
+  {
     $$.val = &tree.AlterCollation{Name: tree.Name($3), RefreshVersion: true}
   }
-| ALTER COLLATION unrestricted_name RENAME TO unrestricted_name {
+| ALTER COLLATION unrestricted_name RENAME TO unrestricted_name
+  {
     $$.val = &tree.AlterCollation{Name: tree.Name($3), Rename: tree.Name($6)}
   }
-| ALTER COLLATION unrestricted_name opt_owner_to {
+| ALTER COLLATION unrestricted_name opt_owner_to
+  {
     $$.val = &tree.AlterCollation{Name: tree.Name($3), Owner: $4}
   }
-| ALTER COLLATION unrestricted_name SET SCHEMA schema_name {
-    $$.val = &tree.AlterCollation{Name: tree.Name($3), Schema: $6}
+| ALTER COLLATION unrestricted_name opt_set_schema
+  {
+    $$.val = &tree.AlterCollation{Name: tree.Name($3), Schema: $4}
   }
 
 alter_attribute_action_list:
@@ -6825,66 +6905,66 @@ alter_rename_table_stmt:
   }
 
 alter_table_set_schema_stmt:
-  ALTER TABLE relation_expr SET SCHEMA schema_name
+  ALTER TABLE relation_expr opt_set_schema
    {
      $$.val = &tree.AlterTableSetSchema{
-       Name: $3.unresolvedObjectName(), Schema: $6, IfExists: false,
+       Name: $3.unresolvedObjectName(), Schema: $4, IfExists: false,
      }
    }
-| ALTER TABLE IF EXISTS relation_expr SET SCHEMA schema_name
+| ALTER TABLE IF EXISTS relation_expr opt_set_schema
   {
     $$.val = &tree.AlterTableSetSchema{
-      Name: $5.unresolvedObjectName(), Schema: $8, IfExists: true,
+      Name: $5.unresolvedObjectName(), Schema: $6, IfExists: true,
     }
   }
 
 alter_view_set_schema_stmt:
-	ALTER VIEW relation_expr SET SCHEMA schema_name
-	 {
-		 $$.val = &tree.AlterTableSetSchema{
-			 Name: $3.unresolvedObjectName(), Schema: $6, IfExists: false, IsView: true,
-		 }
-	 }
-| ALTER MATERIALIZED VIEW relation_expr SET SCHEMA schema_name
-	 {
-		 $$.val = &tree.AlterTableSetSchema{
-			 Name: $4.unresolvedObjectName(),
-			 Schema: $7,
-			 IfExists: false,
-			 IsView: true,
-			 IsMaterialized: true,
-		 }
-	 }
-| ALTER VIEW IF EXISTS relation_expr SET SCHEMA schema_name
-	{
-		$$.val = &tree.AlterTableSetSchema{
-			Name: $5.unresolvedObjectName(), Schema: $8, IfExists: true, IsView: true,
-		}
-	}
-| ALTER MATERIALIZED VIEW IF EXISTS relation_expr SET SCHEMA schema_name
-	{
-		$$.val = &tree.AlterTableSetSchema{
-			Name: $6.unresolvedObjectName(),
-			Schema: $9,
-			IfExists: true,
-			IsView: true,
-			IsMaterialized: true,
-		}
-	}
+  ALTER VIEW relation_expr opt_set_schema
+  {
+    $$.val = &tree.AlterTableSetSchema{
+      Name: $3.unresolvedObjectName(), Schema: $4, IfExists: false, IsView: true,
+    }
+  }
+| ALTER MATERIALIZED VIEW relation_expr opt_set_schema
+  {
+    $$.val = &tree.AlterTableSetSchema{
+      Name: $4.unresolvedObjectName(),
+      Schema: $5,
+      IfExists: false,
+      IsView: true,
+      IsMaterialized: true,
+    }
+  }
+| ALTER VIEW IF EXISTS relation_expr opt_set_schema
+  {
+    $$.val = &tree.AlterTableSetSchema{
+      Name: $5.unresolvedObjectName(), Schema: $6, IfExists: true, IsView: true,
+    }
+  }
+| ALTER MATERIALIZED VIEW IF EXISTS relation_expr opt_set_schema
+  {
+    $$.val = &tree.AlterTableSetSchema{
+      Name: $6.unresolvedObjectName(),
+      Schema: $7,
+      IfExists: true,
+      IsView: true,
+      IsMaterialized: true,
+    }
+  }
 
 alter_sequence_set_schema_stmt:
-	ALTER SEQUENCE relation_expr SET SCHEMA schema_name
-	 {
-		 $$.val = &tree.AlterTableSetSchema{
-			 Name: $3.unresolvedObjectName(), Schema: $6, IfExists: false, IsSequence: true,
-		 }
-	 }
-| ALTER SEQUENCE IF EXISTS relation_expr SET SCHEMA schema_name
-	{
-		$$.val = &tree.AlterTableSetSchema{
-			Name: $5.unresolvedObjectName(), Schema: $8, IfExists: true, IsSequence: true,
-		}
-	}
+  ALTER SEQUENCE relation_expr opt_set_schema
+  {
+    $$.val = &tree.AlterTableSetSchema{
+      Name: $3.unresolvedObjectName(), Schema: $4, IfExists: false, IsSequence: true,
+    }
+  }
+| ALTER SEQUENCE IF EXISTS relation_expr opt_set_schema
+  {
+    $$.val = &tree.AlterTableSetSchema{
+      Name: $5.unresolvedObjectName(), Schema: $6, IfExists: true, IsSequence: true,
+    }
+  }
 
 alter_rename_view_stmt:
   ALTER VIEW relation_expr RENAME TO view_name

@@ -20,7 +20,7 @@ func TestAlterSchema(t *testing.T) {
 	tests := []QueryParses{
 		Parses("ALTER SCHEMA name RENAME TO new_name"),
 		Parses("ALTER SCHEMA name OWNER TO new_owner"),
-		Unimplemented("ALTER SCHEMA name OWNER TO CURRENT_ROLE"),
+		Parses("ALTER SCHEMA name OWNER TO CURRENT_ROLE"),
 		Parses("ALTER SCHEMA name OWNER TO CURRENT_USER"),
 		Parses("ALTER SCHEMA name OWNER TO SESSION_USER"),
 	}
