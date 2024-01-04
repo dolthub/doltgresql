@@ -24,14 +24,6 @@
 
 package tree
 
-//ALTER COLLATION name REFRESH VERSION
-
-//ALTER COLLATION name RENAME TO new_name
-//ALTER COLLATION name OWNER TO { new_owner | CURRENT_ROLE | CURRENT_USER | SESSION_USER }
-//ALTER COLLATION name SET SCHEMA new_schema
-
-var _ Statement = &AlterCollation{}
-
 // AlterCollation represents a ALTER COLLATION statement.
 type AlterCollation struct {
 	Name           Name

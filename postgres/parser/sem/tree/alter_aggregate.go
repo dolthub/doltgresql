@@ -26,19 +26,6 @@ package tree
 
 import "strings"
 
-//ALTER AGGREGATE name ( aggregate_signature ) RENAME TO new_name
-//ALTER AGGREGATE name ( aggregate_signature )
-//                OWNER TO { new_owner | CURRENT_ROLE | CURRENT_USER | SESSION_USER }
-//ALTER AGGREGATE name ( aggregate_signature ) SET SCHEMA new_schema
-//
-//where aggregate_signature is:
-//
-//* |
-//[ argmode ] [ argname ] argtype [ , ... ] |
-//[ [ argmode ] [ argname ] argtype [ , ... ] ] ORDER BY [ argmode ] [ argname ] argtype [ , ... ]
-
-var _ Statement = &AlterAggregate{}
-
 // AlterAggregate represents a ALTER AGGREGATE statement.
 type AlterAggregate struct {
 	Name   Name

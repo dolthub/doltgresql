@@ -555,6 +555,12 @@ func (u *sqlSymUnion) aggregateSignature() *tree.AggregateSignature {
 func (u *sqlSymUnion) aggregateArg() *tree.AggregateArg {
   return u.val.(*tree.AggregateArg)
 }
+func (u *sqlSymUnion) databaseOption() tree.DatabaseOption {
+    return u.val.(tree.DatabaseOption)
+}
+func (u *sqlSymUnion) databaseOptionList() []tree.DatabaseOption {
+    return u.val.([]tree.DatabaseOption)
+}
 %}
 
 // NB: the %token definitions must come before the %type definitions in this
@@ -575,7 +581,7 @@ func (u *sqlSymUnion) aggregateArg() *tree.AggregateArg {
 
 // Ordinary key words in alphabetical order.
 %token <str> ABORT ACTION ADD ADMIN AFTER AGGREGATE
-%token <str> ALL ALTER ALWAYS ANALYSE ANALYZE AND AND_AND ANY ANNOTATE_TYPE ARRAY AS ASC
+%token <str> ALL ALLOW_CONNECTIONS ALTER ALWAYS ANALYSE ANALYZE AND AND_AND ANY ANNOTATE_TYPE ARRAY AS ASC
 %token <str> ASYMMETRIC AT ATTRIBUTE AUTHORIZATION AUTOMATIC
 
 %token <str> BACKUP BACKUPS BEFORE BEGIN BETWEEN BIGINT BIGSERIAL BINARY BIT
@@ -586,7 +592,7 @@ func (u *sqlSymUnion) aggregateArg() *tree.AggregateArg {
 %token <str> CHARACTER CHARACTERISTICS CHECK CLOSE
 %token <str> CLUSTER COALESCE COLLATE COLLATION COLUMN COLUMNS COMMENT COMMENTS COMMIT
 %token <str> COMMITTED COMPACT COMPLETE CONCAT CONCURRENTLY CONFIGURATION CONFIGURATIONS CONFIGURE
-%token <str> CONFLICT CONSTRAINT CONSTRAINTS CONTAINS CONTROLCHANGEFEED CONTROLJOB
+%token <str> CONFLICT CONNECTION CONSTRAINT CONSTRAINTS CONTAINS CONTROLCHANGEFEED CONTROLJOB
 %token <str> CONVERSION CONVERT COPY COVERING CREATE CREATEDB CREATELOGIN CREATEROLE
 %token <str> CROSS CUBE CURRENT CURRENT_CATALOG CURRENT_DATE CURRENT_SCHEMA
 %token <str> CURRENT_ROLE CURRENT_TIME CURRENT_TIMESTAMP
@@ -617,7 +623,7 @@ func (u *sqlSymUnion) aggregateArg() *tree.AggregateArg {
 %token <str> INET INET_CONTAINED_BY_OR_EQUALS
 %token <str> INET_CONTAINS_OR_EQUALS INDEX INDEXES INJECT INTERLEAVE INITIALLY
 %token <str> INNER INSERT INT INTEGER
-%token <str> INTERSECT INTERVAL INTO INTO_DB INVERTED IS ISERROR ISNULL ISOLATION
+%token <str> INTERSECT INTERVAL INTO INTO_DB INVERTED IS ISERROR ISNULL ISOLATION IS_TEMPLATE
 
 %token <str> JOB JOBS JOIN JSON JSONB JSON_SOME_EXISTS JSON_ALL_EXISTS
 
@@ -735,6 +741,7 @@ func (u *sqlSymUnion) aggregateArg() *tree.AggregateArg {
 %type <tree.Statement> alter_database_to_schema_stmt
 %type <tree.Statement> alter_zone_database_stmt
 %type <tree.Statement> alter_database_owner
+%type <tree.Statement> alter_database_with_options
 
 // ALTER INDEX
 %type <tree.Statement> alter_oneindex_stmt
@@ -922,6 +929,9 @@ func (u *sqlSymUnion) aggregateArg() *tree.AggregateArg {
 
 %type <*tree.AggregateSignature> aggregate_signature
 %type <*tree.AggregateArg> aggregate_arg
+
+%type <tree.DatabaseOption> opt_database_options
+%type <[]tree.DatabaseOption> opt_database_options_list opt_database_with_options
 
 %type <tree.AlterTableCmd> alter_table_cmd
 %type <tree.AlterTableCmds> alter_table_cmds
@@ -1421,18 +1431,63 @@ alter_sequence_options_stmt:
 // %SeeAlso: WEBDOCS/alter-database.html
 alter_database_stmt:
   alter_rename_database_stmt
-|  alter_zone_database_stmt
-|  alter_database_owner
+| alter_zone_database_stmt
+| alter_database_owner
+| alter_database_with_options
 | alter_database_to_schema_stmt
 // ALTER DATABASE has its error help token here because the ALTER DATABASE
 // prefix is spread over multiple non-terminals.
 | ALTER DATABASE error // SHOW HELP: ALTER DATABASE
 
 alter_database_owner:
-	ALTER DATABASE database_name opt_owner_to
-	{
-		$$.val = &tree.AlterDatabaseOwner{Name: tree.Name($3), Owner: $4}
-	}
+  ALTER DATABASE database_name opt_owner_to
+  {
+    $$.val = &tree.AlterDatabaseOwner{Name: tree.Name($3), Owner: $4}
+  }
+
+alter_database_with_options:
+  ALTER DATABASE database_name opt_database_with_options
+  {
+    $$.val = &tree.AlterDatabaseOptions{Name: tree.Name($3), Options: $4.databaseOptionList()}
+  }
+
+opt_database_with_options:
+  /* EMPTY */
+  {
+    $$.val = []tree.DatabaseOption(nil)
+  }
+| opt_database_options_list
+  {
+    $$.val = $1.databaseOptionList()
+  }
+| WITH opt_database_options_list
+  {
+    $$.val = $2.databaseOptionList()
+  }
+
+opt_database_options_list:
+  opt_database_options
+  {
+    $$.val = []tree.DatabaseOption{$1.databaseOption()}
+  }
+| opt_database_options_list opt_database_options
+  {
+    $$.val = append($1.databaseOptionList(), $2.databaseOption())
+  }
+
+opt_database_options:
+  ALLOW_CONNECTIONS a_expr
+  {
+    $$.val = tree.DatabaseOption{Opt: tree.OptAllowConnections, Val: $2.expr()}
+  }
+| CONNECTION LIMIT a_expr
+  {
+    $$.val = tree.DatabaseOption{Opt: tree.OptConnectionLimit, Val: $3.expr()}
+  }
+| IS_TEMPLATE a_expr
+  {
+    $$.val = tree.DatabaseOption{Opt: tree.OptIsTemplate, Val: $2.expr()}
+  }
 
 // %Help: ALTER RANGE - change the parameters of a range
 // %Category: DDL
@@ -11495,6 +11550,7 @@ unreserved_keyword:
 | ADMIN
 | AFTER
 | AGGREGATE
+| ALLOW_CONNECTIONS
 | ALTER
 | ALWAYS
 | AT
@@ -11528,6 +11584,7 @@ unreserved_keyword:
 | CONFIGURATION
 | CONFIGURATIONS
 | CONFIGURE
+| CONNECTION
 | CONSTRAINTS
 | CONTROLCHANGEFEED
 | CONTROLJOB
@@ -11609,6 +11666,7 @@ unreserved_keyword:
 | INTO_DB
 | INVERTED
 | ISOLATION
+| IS_TEMPLATE
 | JOB
 | JOBS
 | JSON

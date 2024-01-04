@@ -24,6 +24,11 @@
 
 package tree
 
+import (
+	"fmt"
+	"strings"
+)
+
 // AlterDatabaseOwner represents a ALTER DATABASE OWNER TO statement.
 type AlterDatabaseOwner struct {
 	Name  Name
@@ -36,4 +41,39 @@ func (node *AlterDatabaseOwner) Format(ctx *FmtCtx) {
 	ctx.FormatNode(&node.Name)
 	ctx.WriteString(" OWNER TO ")
 	ctx.FormatNameP(&node.Owner)
+}
+
+type AlterDatabaseOption string
+
+// Names of options on ALTER DATABASE.
+const (
+	OptAllowConnections AlterDatabaseOption = "ALLOW_CONNECTIONS"
+	OptConnectionLimit                      = "CONNECTION LIMIT"
+	OptIsTemplate                           = "IS_TEMPLATE"
+)
+
+// DatabaseOption represents a ALTER DATABASE option.
+type DatabaseOption struct {
+	Opt AlterDatabaseOption
+	Val Expr
+}
+
+// AlterDatabaseOptions represents a ALTER DATABASE OWNER TO statement.
+type AlterDatabaseOptions struct {
+	Name    Name
+	Options []DatabaseOption
+}
+
+// Format implements the NodeFormatter interface.
+func (node *AlterDatabaseOptions) Format(ctx *FmtCtx) {
+	ctx.WriteString("ALTER DATABASE ")
+	ctx.FormatNode(&node.Name)
+	opts := make([]string, len(node.Options))
+	for i, opt := range node.Options {
+		opts[i] = fmt.Sprintf("%s %s", opt.Opt, AsString(opt.Val))
+	}
+
+	if len(opts) > 0 {
+		ctx.WriteString(fmt.Sprintf(" WITH %s", strings.Join(opts, " ")))
+	}
 }
