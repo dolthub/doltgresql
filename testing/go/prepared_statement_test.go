@@ -24,7 +24,28 @@ import (
 
 var preparedStatementTests = []ScriptTest {
 	{
-		Name: "Integer insert and select",
+		Name: "expressions without tables",
+		Assertions: []ScriptTestAssertion{
+			{
+				Query:    "SELECT CONCAT($1, $2)",
+				BindVars: []any{"hello", "world"},
+				Expected: []sql.Row{
+					{"helloworld"},
+				},
+				Skip: true, // this doesn't work without explicit type hints for the params
+			},
+			{
+				Query:    "SELECT $1 + $2",
+				BindVars: []any{1, 2},
+				Expected: []sql.Row{
+					{3},
+				},
+				Skip: true, // this doesn't work without explicit type hints for the params
+			},
+		},
+	},
+	{
+		Name: "Integer insert",
 		SetUpScript: []string{
 			"drop table if exists test",
 			"CREATE TABLE test (pk BIGINT PRIMARY KEY, v1 BIGINT);",
