@@ -434,7 +434,7 @@ func extractBindVarTypes(queryPlan sql.Node) ([]int32, error) {
 			id, err = messages.VitessTypeToObjectID(bindVar.Type().Type())
 			if err != nil {
 				// TODO
-				types = append(types, 0)
+				types = append(types, messages.OidInt4) 
 			} else {
 				types = append(types, id)
 			}

@@ -134,13 +134,17 @@ func RunScriptPrepared(t *testing.T, script ScriptTest) {
 		scriptDatabase = "postgres"
 	}
 
-	ctx, conn, controller := CreateServer(t, scriptDatabase)
-	defer func() {
-		conn.Close(ctx)
-		controller.Stop()
-		err := controller.WaitForStop()
-		require.NoError(t, err)
-	}()
+	// ctx, conn, controller := CreateServer(t, scriptDatabase)
+	// defer func() {
+	// 	conn.Close(ctx)
+	// 	controller.Stop()
+	// 	err := controller.WaitForStop()
+	// 	require.NoError(t, err)
+	// }()
+
+	ctx := context.Background()
+	conn, err := pgx.Connect(ctx, fmt.Sprintf("postgres://postgres:password@127.0.0.1:%d/%s?sslmode=disable", 5432, "testing"))
+	require.NoError(t, err)
 
 	t.Run(script.Name, func(t *testing.T) {
 		if script.Skip {
