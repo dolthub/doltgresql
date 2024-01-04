@@ -201,6 +201,14 @@ func (*AlterCollation) StatementTag() string { return "ALTER COLLATION" }
 func (*AlterCollation) hiddenFromShowQueries() {}
 
 // StatementType implements the Statement interface.
+func (*AlterConversion) StatementType() StatementType { return DDL }
+
+// StatementTag returns a short string identifying the type of statement.
+func (*AlterConversion) StatementTag() string { return "ALTER CONVERSION" }
+
+func (*AlterConversion) hiddenFromShowQueries() {}
+
+// StatementType implements the Statement interface.
 func (*AlterDatabaseOwner) StatementType() StatementType { return DDL }
 
 // StatementTag returns a short string identifying the type of statement.
@@ -1034,6 +1042,7 @@ func (*ValuesClause) StatementTag() string { return "VALUES" }
 
 func (n *AlterAggregate) String() string                 { return AsString(n) }
 func (n *AlterCollation) String() string                 { return AsString(n) }
+func (n *AlterConversion) String() string                { return AsString(n) }
 func (n *AlterIndex) String() string                     { return AsString(n) }
 func (n *AlterDatabaseOwner) String() string             { return AsString(n) }
 func (n *AlterSchema) String() string                    { return AsString(n) }

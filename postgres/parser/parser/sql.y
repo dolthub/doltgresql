@@ -757,6 +757,7 @@ func (u *sqlSymUnion) aggregateArg() *tree.AggregateArg {
 
 %type <tree.Statement> alter_aggregate_stmt
 %type <tree.Statement> alter_collation_stmt
+%type <tree.Statement> alter_conversion_stmt
 
 %type <tree.Statement> backup_stmt
 %type <tree.Statement> begin_stmt
@@ -1272,11 +1273,12 @@ stmt:
 // %Category: Group
 // %Text: ALTER TABLE, ALTER INDEX, ALTER VIEW, ALTER SEQUENCE, ALTER DATABASE, ALTER USER, ALTER ROLE
 alter_stmt:
-  alter_ddl_stmt       // help texts in sub-rule
-| alter_role_stmt      // EXTEND WITH HELP: ALTER ROLE
-| alter_collation_stmt // EXTEND WITH HELP: ALTER COLLATION
-| alter_aggregate_stmt // EXTEND WITH HELP: ALTER AGGREGATE
-| ALTER error          // SHOW HELP: ALTER
+  alter_ddl_stmt        // help texts in sub-rule
+| alter_role_stmt       // EXTEND WITH HELP: ALTER ROLE
+| alter_aggregate_stmt  // EXTEND WITH HELP: ALTER AGGREGATE
+| alter_collation_stmt  // EXTEND WITH HELP: ALTER COLLATION
+| alter_conversion_stmt // EXTEND WITH HELP: ALTER CONVERSION
+| ALTER error           // SHOW HELP: ALTER
 
 alter_ddl_stmt:
   alter_table_stmt     // EXTEND WITH HELP: ALTER TABLE
@@ -2179,6 +2181,20 @@ alter_collation_stmt:
 | ALTER COLLATION unrestricted_name opt_set_schema
   {
     $$.val = &tree.AlterCollation{Name: tree.Name($3), Schema: $4}
+  }
+
+alter_conversion_stmt:
+  ALTER CONVERSION unrestricted_name RENAME TO unrestricted_name
+  {
+    $$.val = &tree.AlterConversion{Name: tree.Name($3), Rename: tree.Name($6)}
+  }
+| ALTER CONVERSION unrestricted_name opt_owner_to
+  {
+    $$.val = &tree.AlterConversion{Name: tree.Name($3), Owner: $4}
+  }
+| ALTER CONVERSION unrestricted_name opt_set_schema
+  {
+    $$.val = &tree.AlterConversion{Name: tree.Name($3), Schema: $4}
   }
 
 alter_attribute_action_list:
