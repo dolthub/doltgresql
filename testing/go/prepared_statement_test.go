@@ -74,6 +74,28 @@ var preparedStatementTests = []ScriptTest {
 				BindVars: []any{3},
 				Expected: []sql.Row{},
 			},
+			{
+				Query:    "SELECT * FROM test WHERE v1 + $1 = $2;",
+				BindVars: []any{1, 3},
+				Expected: []sql.Row{
+					{1, 2},
+				},
+			},
+			{
+				Query:    "SELECT * FROM test WHERE pk + v1 = $1;",
+				BindVars: []any{3},
+				Expected: []sql.Row{
+					{1, 2},
+				},
+			},
+			{
+				Query:    "SELECT * FROM test WHERE v1 = $1 + $2;",
+				BindVars: []any{1, 3},
+				Expected: []sql.Row{
+					{3, 4},
+				},
+				Skip: true, // this doesn't work without explicit type hints for the params
+			},
 		},
 	},
 	{
@@ -144,6 +166,21 @@ var preparedStatementTests = []ScriptTest {
 			{
 				Query:    "SELECT * FROM test WHERE s = $1;",
 				BindVars: []any{"hello"},
+				Expected: []sql.Row{
+					{1, "hello"},
+				},
+			},
+			{
+				Query:    "SELECT * FROM test WHERE s = concat($1, $2);",
+				BindVars: []any{"he", "llo"},
+				Expected: []sql.Row{
+					{1, "hello"},
+				},
+				Skip: true, // this doesn't work without explicit type hints for the params
+			},
+			{
+				Query:    "SELECT * FROM test WHERE concat(s, '!') = $1",
+				BindVars: []any{"hello!"},
 				Expected: []sql.Row{
 					{1, "hello"},
 				},
@@ -221,6 +258,21 @@ var preparedStatementTests = []ScriptTest {
 				Expected: []sql.Row{
 					{1, 1.1},
 				},
+			},
+			{
+				Query:    "SELECT * FROM test WHERE f1 + $1 = $2;",
+				BindVars: []any{1.0, 2.1},
+				Expected: []sql.Row{
+					{1, 1.1},
+				},
+			},
+			{
+				Query:    "SELECT * FROM test WHERE f1 = $1 + $2;",
+				BindVars: []any{1.0, 0.1},
+				Expected: []sql.Row{
+					{1, 1.1},
+				},
+				Skip: true, // this doesn't work without explicit type hints for the params
 			},
 		},
 	},
