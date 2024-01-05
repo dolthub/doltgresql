@@ -149,11 +149,11 @@ func goBuild(ctx context.Context, parserScriptPath, source, dest string) (string
 		return "", err
 	}
 
-	doltFileName := "doltgres"
+	doltgresFileName := "doltgres"
 	if runtime.GOOS == "windows" {
-		doltFileName = "doltgres.exe"
+		doltgresFileName = "doltgres.exe"
 	}
-	toBuild := filepath.Join(dest, doltFileName)
+	toBuild := filepath.Join(dest, doltgresFileName)
 	build := builder.ExecCommand(ctx, "go", "build", "-o", toBuild, ".")
 	build.Dir = source
 	err = build.Run()
