@@ -238,6 +238,24 @@ There are exceptions, as some statements we do not yet support, and cannot suppo
 In these cases, we must add a `//TODO:` comment stating what is missing and why it isn't an error.
 This will at least allow us to track all such instances where we deviate from the expected behavior, which we can also document elsewhere for users of DoltgreSQL.
 
+### `server/functions`
+
+The `functions` package contains the functions, along with an implementation to approximate the function overloading structure (and type coercion).
+
+The function overloading structure is defined in all files that have the `zinternal_` prefix.
+Although not preferable, this was chosen as Go does not allow cyclical references between packages.
+Rather than have half of the implementation in `functions`, and the other half in another package, the decision was made to include both in the `functions` package with the added prefix for distinction.
+
+There's an `init` function in `server/functions/zinternal_catalog.go` (this is included in `server/listener.go`) that removes any conflicting GMS function names, and replaces them with the PostgreSQL equivalents.
+This means that the functions that we've added behave as expected, and for others to have _some_ sort of implementation rather than outright failing.
+We will eventually remove all GMS functions once all PostgreSQL functions have been implemented.
+The other internal files all contribute to the generation of functions, along with their proper handling.
+
+Each function (and all overloads) are contained in a single file.
+Overloads are named according to their parameters, and prefixed by their target function name.
+The set of overloads are then added to the `Catalog` within `server/functions/zinternal_catalog.go`.
+To add a new function, it is as simple as creating the `Function`, adding the overloads, and adding it to the `Catalog`.
+
 ### `testing/bats`
 
 All Bats tests must follow this general structure:

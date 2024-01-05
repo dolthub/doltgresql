@@ -189,10 +189,8 @@ func nodeExpr(node tree.Expr) (vitess.Expr, error) {
 		}
 
 		switch node.SyntaxMode {
-		case tree.CastExplicit:
-			// only acceptable cast type
-		case tree.CastShort:
-			return nil, fmt.Errorf("TYPECAST is not yet supported")
+		case tree.CastExplicit, tree.CastShort:
+			// Both of these are acceptable
 		case tree.CastPrepend:
 			return nil, fmt.Errorf("typed literals are not yet supported")
 		default:

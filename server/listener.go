@@ -42,6 +42,7 @@ import (
 	"github.com/dolthub/doltgresql/postgres/parser/parser"
 	"github.com/dolthub/doltgresql/server/ast"
 
+	_ "github.com/dolthub/doltgresql/server/functions"
 	querypb "github.com/dolthub/vitess/go/vt/proto/query"
 )
 

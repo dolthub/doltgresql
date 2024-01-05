@@ -46,6 +46,7 @@ func nodeResolvableTypeReference(typ tree.ResolvableTypeReference) (*vitess.Conv
 		columnTypeName = columnType.SQLStandardName()
 		switch columnType.Family() {
 		case types.DecimalFamily:
+			columnTypeName = "decimal"
 			columnTypeLength = vitess.NewIntVal([]byte(strconv.Itoa(int(columnType.Precision()))))
 			columnTypeScale = vitess.NewIntVal([]byte(strconv.Itoa(int(columnType.Scale()))))
 		case types.JsonFamily:
