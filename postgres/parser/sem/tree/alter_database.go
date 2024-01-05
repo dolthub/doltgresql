@@ -34,8 +34,8 @@ type AlterDatabaseOption string
 // Names of options on ALTER DATABASE.
 const (
 	OptAllowConnections AlterDatabaseOption = "ALLOW_CONNECTIONS"
-	OptConnectionLimit                      = "CONNECTION LIMIT"
-	OptIsTemplate                           = "IS_TEMPLATE"
+	OptConnectionLimit  AlterDatabaseOption = "CONNECTION LIMIT"
+	OptIsTemplate       AlterDatabaseOption = "IS_TEMPLATE"
 )
 
 // DatabaseOption represents a ALTER DATABASE option.
