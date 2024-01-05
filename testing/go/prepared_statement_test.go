@@ -191,7 +191,7 @@ var preparedStatementTests = []ScriptTest {
 		Name: "String update",
 		SetUpScript: []string{
 			"drop table if exists test",
-			"CREATE TABLE test (pk BIGINT PRIMARY KEY, s character varying);",
+			"CREATE TABLE test (pk BIGINT PRIMARY KEY, s character varying(20));",
 		},
 		Assertions: []ScriptTestAssertion{
 			{
@@ -215,7 +215,7 @@ var preparedStatementTests = []ScriptTest {
 		Name: "String delete",
 		SetUpScript: []string{
 			"drop table if exists test",
-			"CREATE TABLE test (pk BIGINT PRIMARY KEY, s character varying);",
+			"CREATE TABLE test (pk BIGINT PRIMARY KEY, s character varying(20));",
 		},
 		Assertions: []ScriptTestAssertion{
 			{
@@ -223,8 +223,8 @@ var preparedStatementTests = []ScriptTest {
 				BindVars: []any{1, "hello", 3, "goodbye"},
 			},
 			{
-				Query: "DELETE FROM test WHERE pk = $1;",
-				BindVars: []any{1},
+				Query: "DELETE FROM test WHERE s = $1;",
+				BindVars: []any{"hello"},
 			},
 			{
 				Query:    "SELECT * FROM test ORDER BY 1;",
@@ -288,8 +288,8 @@ var preparedStatementTests = []ScriptTest {
 				BindVars: []any{1, 1.1, 3, 3.3},
 			},
 			{
-				Query: "UPDATE test set f1 = $1 WHERE pk = $2;",
-				BindVars: []any{2.2, 1},
+				Query: "UPDATE test set f1 = $1 WHERE f1 = $2;",
+				BindVars: []any{2.2, 1.1},
 			},
 			{
 				Query:    "SELECT * FROM test WHERE f1 = $1;",
@@ -372,7 +372,7 @@ func TestErrorHandling(t *testing.T) {
 }
 
 func TestPreparedStatement(t *testing.T) {
-	for _, script := range preparedStatementTests[4:5] {
+	for _, script := range preparedStatementTests[:] {
 		RunScriptPrepared(t, script)	
 	}
 }

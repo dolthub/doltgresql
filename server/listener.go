@@ -428,20 +428,20 @@ func extractBindVarTypes(queryPlan sql.Node) ([]int32, error) {
 	
 	types := make([]int32, 0)
 	var err error
-	transform.InspectExpressions(inspectNode, func(expr sql.Expression) bool{
+	transform.InspectExpressions(inspectNode, func(expr sql.Expression) bool {
 		if bindVar, ok := expr.(*expression.BindVar); ok {
 			var id int32
 			id, err = messages.VitessTypeToObjectID(bindVar.Type().Type())
 			if err != nil {
-				// TODO
-				types = append(types, messages.OidInt4) 
+				return false 
 			} else {
 				types = append(types, id)
 			}
 		}
 		return true
 	})
-	return types, nil
+	
+	return types, err
 }
 
 func convertBindParameters(types []int32, values []messages.BindParameterValue) (map[string]*querypb.BindVariable, error) {
