@@ -461,10 +461,14 @@ func convertBindParameters(types []int32, values []messages.BindParameterValue) 
 
 func convertBindVarValue(typ querypb.Type, value messages.BindParameterValue) []byte {
 	switch typ {
-	case querypb.Type_INT8, querypb.Type_INT16, querypb.Type_INT24, querypb.Type_INT32, querypb.Type_INT64, querypb.Type_UINT8, querypb.Type_UINT16, querypb.Type_UINT24, querypb.Type_UINT32, querypb.Type_UINT64:
+	case querypb.Type_INT8, querypb.Type_INT16, querypb.Type_INT24, querypb.Type_INT32, querypb.Type_UINT8, querypb.Type_UINT16, querypb.Type_UINT24, querypb.Type_UINT32:
 		// first convert the bytes in the payload to an integer, then convert that to its base 10 string representation
 		intVal := binary.BigEndian.Uint32(value.Data) // TODO: bound check
 		return []byte(strconv.FormatUint(uint64(intVal), 10))
+	case querypb.Type_INT64, querypb.Type_UINT64:
+		// first convert the bytes in the payload to an integer, then convert that to its base 10 string representation
+		intVal := binary.BigEndian.Uint64(value.Data)
+		return []byte(strconv.FormatUint(intVal, 10))
 	case querypb.Type_FLOAT32, querypb.Type_FLOAT64:
 		// first convert the bytes in the payload to a float, then convert that to its base 10 string representation
 		floatVal := binary.BigEndian.Uint64(value.Data) // TODO: bound check
