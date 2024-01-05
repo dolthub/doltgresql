@@ -3,19 +3,20 @@ package doltgres_builder
 import (
 	"context"
 	"fmt"
-	builder "github.com/dolthub/dolt/go/performance/utils/dolt_builder"
-	"golang.org/x/sync/errgroup"
 	"os"
 	"os/signal"
 	"path/filepath"
 	"runtime"
 	"sync"
 	"syscall"
+
+	builder "github.com/dolthub/dolt/go/performance/utils/dolt_builder"
+	"golang.org/x/sync/errgroup"
 )
 
 const envDoltgresBin = "DOLTGRES_BIN"
 
-func Run(parentCtx context.Context, parserScriptPath string, commitList []string) error {
+func Run(parentCtx context.Context, commitList []string) error {
 	doltgresBin, err := getDoltgresBin()
 	if err != nil {
 		return err
@@ -65,7 +66,7 @@ func Run(parentCtx context.Context, parserScriptPath string, commitList []string
 	for _, commit := range commitList {
 		commit := commit // https://golang.org/doc/faq#closures_and_goroutines
 		g.Go(func() error {
-			return buildBinaries(ctx, parserScriptPath, tempDir, repoDir, doltgresBin, commit)
+			return buildBinaries(ctx, tempDir, repoDir, doltgresBin, commit)
 		})
 	}
 
@@ -113,8 +114,8 @@ func getDoltgresBin() (string, error) {
 	return doltgresBin, nil
 }
 
-// buildBinaries builds a dolt binary at the given commit and stores it in the doltBin
-func buildBinaries(ctx context.Context, parserScriptPath, tempDir, repoDir, doltBinDir, commit string) error {
+// buildBinaries builds a doltgres binary at the given commit and stores it in the doltgresBin
+func buildBinaries(ctx context.Context, tempDir, repoDir, doltgresBinDir, commit string) error {
 	checkoutDir := filepath.Join(tempDir, commit)
 	if err := os.MkdirAll(checkoutDir, os.ModePerm); err != nil {
 		return err
@@ -125,10 +126,12 @@ func buildBinaries(ctx context.Context, parserScriptPath, tempDir, repoDir, dolt
 		return err
 	}
 
-	commitDir := filepath.Join(doltBinDir, commit)
+	commitDir := filepath.Join(doltgresBinDir, commit)
 	if err := os.MkdirAll(commitDir, os.ModePerm); err != nil {
 		return err
 	}
+
+	parserScriptPath := filepath.Join(checkoutDir, "postgres", "parser", "build.sh")
 
 	command, err := goBuild(ctx, parserScriptPath, checkoutDir, commitDir)
 	if err != nil {
@@ -162,9 +165,9 @@ func goBuild(ctx context.Context, parserScriptPath, source, dest string) (string
 
 // doltgresVersion prints doltgres version of binary
 func doltgresVersion(ctx context.Context, dir, command string) error {
-	doltVersion := builder.ExecCommand(ctx, command, "version")
-	doltVersion.Stderr = os.Stderr
-	doltVersion.Stdout = os.Stdout
-	doltVersion.Dir = dir
-	return doltVersion.Run()
+	doltgresVersion := builder.ExecCommand(ctx, command, "version")
+	doltgresVersion.Stderr = os.Stderr
+	doltgresVersion.Stdout = os.Stdout
+	doltgresVersion.Dir = dir
+	return doltgresVersion.Run()
 }
