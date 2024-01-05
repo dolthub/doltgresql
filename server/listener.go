@@ -473,6 +473,8 @@ func convertBindVarValue(typ querypb.Type, value messages.BindParameterValue) []
 		// first convert the bytes in the payload to a float, then convert that to its base 10 string representation
 		floatVal := binary.BigEndian.Uint64(value.Data) // TODO: bound check
 		return []byte(strconv.FormatFloat(math.Float64frombits(floatVal), 'f', -1, 64))
+	case querypb.Type_VARCHAR, querypb.Type_VARBINARY, querypb.Type_TEXT, querypb.Type_BLOB:
+		return value.Data
 	default:
 		panic(fmt.Sprintf("unhandled type %v", typ))
 	}
@@ -492,13 +494,15 @@ func convertType(oid int32) querypb.Type {
 	case messages.OidFloat8:
 		return sqltypes.Float64
 	case messages.OidText:
-		return sqltypes.VarChar
+		return sqltypes.Text
 	case messages.OidBool:
 		return sqltypes.Bit
 	case messages.OidDate:
 		return sqltypes.Date
 	case messages.OidTimestamp:
 		return sqltypes.Timestamp
+	case messages.OidVarchar:
+		return sqltypes.Text
 	default:
 		panic(fmt.Sprintf("unhandled type %d", oid))
 	}
