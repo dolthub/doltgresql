@@ -1,4 +1,4 @@
-// Copyright 2023 Dolthub, Inc.
+// Copyright 2024 Dolthub, Inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -23,12 +23,6 @@
 // licenses/APL.txt.
 
 package tree
-
-//ALTER COLLATION name REFRESH VERSION
-
-//ALTER COLLATION name RENAME TO new_name
-//ALTER COLLATION name OWNER TO { new_owner | CURRENT_ROLE | CURRENT_USER | SESSION_USER }
-//ALTER COLLATION name SET SCHEMA new_schema
 
 var _ Statement = &AlterConversion{}
 

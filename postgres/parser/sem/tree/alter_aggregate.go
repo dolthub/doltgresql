@@ -1,4 +1,4 @@
-// Copyright 2023 Dolthub, Inc.
+// Copyright 2024 Dolthub, Inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -25,17 +25,6 @@
 package tree
 
 import "strings"
-
-//ALTER AGGREGATE name ( aggregate_signature ) RENAME TO new_name
-//ALTER AGGREGATE name ( aggregate_signature )
-//                OWNER TO { new_owner | CURRENT_ROLE | CURRENT_USER | SESSION_USER }
-//ALTER AGGREGATE name ( aggregate_signature ) SET SCHEMA new_schema
-//
-//where aggregate_signature is:
-//
-//* |
-//[ argmode ] [ argname ] argtype [ , ... ] |
-//[ [ argmode ] [ argname ] argtype [ , ... ] ] ORDER BY [ argmode ] [ argname ] argtype [ , ... ]
 
 var _ Statement = &AlterAggregate{}
 
