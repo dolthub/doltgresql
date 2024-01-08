@@ -21,12 +21,12 @@ func TestAbort(t *testing.T) {
 		Converts("ABORT"),
 		Converts("ABORT WORK"),
 		Converts("ABORT TRANSACTION"),
-		Unimplemented("ABORT AND CHAIN"),
-		Unimplemented("ABORT WORK AND CHAIN"),
-		Unimplemented("ABORT TRANSACTION AND CHAIN"),
-		Unimplemented("ABORT AND NO CHAIN"),
-		Unimplemented("ABORT WORK AND NO CHAIN"),
-		Unimplemented("ABORT TRANSACTION AND NO CHAIN"),
+		Converts("ABORT AND CHAIN"),
+		Converts("ABORT WORK AND CHAIN"),
+		Converts("ABORT TRANSACTION AND CHAIN"),
+		Converts("ABORT AND NO CHAIN"),
+		Converts("ABORT WORK AND NO CHAIN"),
+		Converts("ABORT TRANSACTION AND NO CHAIN"),
 	}
 	RunTests(t, tests)
 }
