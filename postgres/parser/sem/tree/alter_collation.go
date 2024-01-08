@@ -1,4 +1,4 @@
-// Copyright 2023 Dolthub, Inc.
+// Copyright 2024 Dolthub, Inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -23,6 +23,8 @@
 // licenses/APL.txt.
 
 package tree
+
+var _ Statement = &AlterCollation{}
 
 // AlterCollation represents a ALTER COLLATION statement.
 type AlterCollation struct {

@@ -35,6 +35,7 @@ import (
 	"github.com/dolthub/doltgresql/postgres/messages"
 	"github.com/dolthub/doltgresql/postgres/parser/parser"
 	"github.com/dolthub/doltgresql/server/ast"
+	_ "github.com/dolthub/doltgresql/server/functions"
 )
 
 var (
