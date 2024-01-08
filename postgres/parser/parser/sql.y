@@ -555,6 +555,15 @@ func (u *sqlSymUnion) aggregateSignature() *tree.AggregateSignature {
 func (u *sqlSymUnion) aggregateArg() *tree.AggregateArg {
   return u.val.(*tree.AggregateArg)
 }
+func (u *sqlSymUnion) databaseOption() tree.DatabaseOption {
+    return u.val.(tree.DatabaseOption)
+}
+func (u *sqlSymUnion) databaseOptionList() []tree.DatabaseOption {
+    return u.val.([]tree.DatabaseOption)
+}
+func (u *sqlSymUnion) setVar() *tree.SetVar {
+    return u.val.(*tree.SetVar)
+}
 %}
 
 // NB: the %token definitions must come before the %type definitions in this
@@ -575,7 +584,7 @@ func (u *sqlSymUnion) aggregateArg() *tree.AggregateArg {
 
 // Ordinary key words in alphabetical order.
 %token <str> ABORT ACTION ADD ADMIN AFTER AGGREGATE
-%token <str> ALL ALTER ALWAYS ANALYSE ANALYZE AND AND_AND ANY ANNOTATE_TYPE ARRAY AS ASC
+%token <str> ALL ALLOW_CONNECTIONS ALTER ALWAYS ANALYSE ANALYZE AND AND_AND ANY ANNOTATE_TYPE ARRAY AS ASC
 %token <str> ASYMMETRIC AT ATTRIBUTE AUTHORIZATION AUTOMATIC
 
 %token <str> BACKUP BACKUPS BEFORE BEGIN BETWEEN BIGINT BIGSERIAL BINARY BIT
@@ -586,7 +595,7 @@ func (u *sqlSymUnion) aggregateArg() *tree.AggregateArg {
 %token <str> CHARACTER CHARACTERISTICS CHECK CLOSE
 %token <str> CLUSTER COALESCE COLLATE COLLATION COLUMN COLUMNS COMMENT COMMENTS COMMIT
 %token <str> COMMITTED COMPACT COMPLETE CONCAT CONCURRENTLY CONFIGURATION CONFIGURATIONS CONFIGURE
-%token <str> CONFLICT CONSTRAINT CONSTRAINTS CONTAINS CONTROLCHANGEFEED CONTROLJOB
+%token <str> CONFLICT CONNECTION CONSTRAINT CONSTRAINTS CONTAINS CONTROLCHANGEFEED CONTROLJOB
 %token <str> CONVERSION CONVERT COPY COVERING CREATE CREATEDB CREATELOGIN CREATEROLE
 %token <str> CROSS CUBE CURRENT CURRENT_CATALOG CURRENT_DATE CURRENT_SCHEMA
 %token <str> CURRENT_ROLE CURRENT_TIME CURRENT_TIMESTAMP
@@ -617,7 +626,7 @@ func (u *sqlSymUnion) aggregateArg() *tree.AggregateArg {
 %token <str> INET INET_CONTAINED_BY_OR_EQUALS
 %token <str> INET_CONTAINS_OR_EQUALS INDEX INDEXES INJECT INTERLEAVE INITIALLY
 %token <str> INNER INSERT INT INTEGER
-%token <str> INTERSECT INTERVAL INTO INTO_DB INVERTED IS ISERROR ISNULL ISOLATION
+%token <str> INTERSECT INTERVAL INTO INTO_DB INVERTED IS ISERROR ISNULL ISOLATION IS_TEMPLATE
 
 %token <str> JOB JOBS JOIN JSON JSONB JSON_SOME_EXISTS JSON_ALL_EXISTS
 
@@ -661,7 +670,7 @@ func (u *sqlSymUnion) aggregateArg() *tree.AggregateArg {
 %token <str> START STATISTICS STATUS STDIN STRICT STRING STORAGE STORE STORED STORING SUBSTRING
 %token <str> SYMMETRIC SYNTAX SYSTEM SQRT SUBSCRIPTION
 
-%token <str> TABLE TABLES TEMP TEMPLATE TEMPORARY TENANT TESTING_RELOCATE EXPERIMENTAL_RELOCATE TEXT THEN
+%token <str> TABLE TABLES TABLESPACE TEMP TEMPLATE TEMPORARY TENANT TESTING_RELOCATE EXPERIMENTAL_RELOCATE TEXT THEN
 %token <str> TIES TIME TIMETZ TIMESTAMP TIMESTAMPTZ TO THROTTLING TRAILING TRACE
 %token <str> TRANSACTION TRANSACTIONS TREAT TRIGGER TRIM TRUE
 %token <str> TRUNCATE TRUSTED TYPE TYPES
@@ -734,7 +743,7 @@ func (u *sqlSymUnion) aggregateArg() *tree.AggregateArg {
 %type <tree.Statement> alter_rename_database_stmt
 %type <tree.Statement> alter_database_to_schema_stmt
 %type <tree.Statement> alter_zone_database_stmt
-%type <tree.Statement> alter_database_owner
+%type <tree.Statement> opt_alter_database
 
 // ALTER INDEX
 %type <tree.Statement> alter_oneindex_stmt
@@ -846,7 +855,7 @@ func (u *sqlSymUnion) aggregateArg() *tree.AggregateArg {
 %type <tree.Statement> set_csetting_stmt
 %type <tree.Statement> set_transaction_stmt
 %type <tree.Statement> set_exprs_internal
-%type <tree.Statement> generic_set
+%type <tree.Statement> generic_set_config generic_set_single_config
 %type <tree.Statement> set_rest_more
 %type <tree.Statement> set_names
 
@@ -922,6 +931,9 @@ func (u *sqlSymUnion) aggregateArg() *tree.AggregateArg {
 
 %type <*tree.AggregateSignature> aggregate_signature
 %type <*tree.AggregateArg> aggregate_arg
+
+%type <tree.DatabaseOption> opt_database_options
+%type <[]tree.DatabaseOption> opt_database_options_list opt_database_with_options
 
 %type <tree.AlterTableCmd> alter_table_cmd
 %type <tree.AlterTableCmds> alter_table_cmds
@@ -1421,18 +1433,80 @@ alter_sequence_options_stmt:
 // %SeeAlso: WEBDOCS/alter-database.html
 alter_database_stmt:
   alter_rename_database_stmt
-|  alter_zone_database_stmt
-|  alter_database_owner
+| alter_zone_database_stmt
+| opt_alter_database
 | alter_database_to_schema_stmt
 // ALTER DATABASE has its error help token here because the ALTER DATABASE
 // prefix is spread over multiple non-terminals.
 | ALTER DATABASE error // SHOW HELP: ALTER DATABASE
 
-alter_database_owner:
-	ALTER DATABASE database_name opt_owner_to
-	{
-		$$.val = &tree.AlterDatabaseOwner{Name: tree.Name($3), Owner: $4}
-	}
+opt_alter_database:
+  ALTER DATABASE database_name opt_owner_to
+  {
+    $$.val = &tree.AlterDatabase{Name: tree.Name($3), Owner: $4}
+  }
+| ALTER DATABASE database_name opt_database_with_options
+  {
+    $$.val = &tree.AlterDatabase{Name: tree.Name($3), Options: $4.databaseOptionList()}
+  }
+| ALTER DATABASE database_name SET TABLESPACE non_reserved_word
+  {
+    $$.val = &tree.AlterDatabase{Name: tree.Name($3), Tablespace: $5}
+  }
+| ALTER DATABASE database_name REFRESH COLLATION VERSION
+  {
+    $$.val = &tree.AlterDatabase{Name: tree.Name($3), RefreshCollationVersion: true}
+  }
+| ALTER DATABASE database_name SET generic_set_single_config
+  {
+    $$.val = &tree.AlterDatabase{Name: tree.Name($3), SetVar: $5.setVar()}
+  }
+| ALTER DATABASE database_name RESET name
+  {
+    $$.val = &tree.AlterDatabase{Name: tree.Name($3), Tablespace: $5}
+  }
+| ALTER DATABASE database_name RESET ALL
+  {
+    $$.val = &tree.AlterDatabase{Name: tree.Name($3), ResetAll: true}
+  }
+
+opt_database_with_options:
+  /* EMPTY */
+  {
+    $$.val = []tree.DatabaseOption(nil)
+  }
+| opt_database_options_list
+  {
+    $$.val = $1.databaseOptionList()
+  }
+| WITH opt_database_options_list
+  {
+    $$.val = $2.databaseOptionList()
+  }
+
+opt_database_options_list:
+  opt_database_options
+  {
+    $$.val = []tree.DatabaseOption{$1.databaseOption()}
+  }
+| opt_database_options_list opt_database_options
+  {
+    $$.val = append($1.databaseOptionList(), $2.databaseOption())
+  }
+
+opt_database_options:
+  ALLOW_CONNECTIONS a_expr
+  {
+    $$.val = tree.DatabaseOption{Opt: tree.OptAllowConnections, Val: $2.expr()}
+  }
+| CONNECTION LIMIT a_expr
+  {
+    $$.val = tree.DatabaseOption{Opt: tree.OptConnectionLimit, Val: $3.expr()}
+  }
+| IS_TEMPLATE a_expr
+  {
+    $$.val = tree.DatabaseOption{Opt: tree.OptIsTemplate, Val: $2.expr()}
+  }
 
 // %Help: ALTER RANGE - change the parameters of a range
 // %Category: DDL
@@ -4125,7 +4199,17 @@ set_transaction_stmt:
   }
 | SET SESSION TRANSACTION error // SHOW HELP: SET TRANSACTION
 
-generic_set:
+generic_set_single_config:
+  name to_or_eq var_value
+  {
+    $$.val = &tree.SetVar{Name: $1, Values: tree.Exprs{$3.expr()}}
+  }
+| name FROM CURRENT
+  {
+    $$.val = &tree.SetVar{Name: $1, FromCurrent: true}
+  }
+
+generic_set_config:
   var_name to_or_eq var_list
   {
     // We need to recognize the "set tracing" specially here; couldn't make "set
@@ -4137,10 +4221,14 @@ generic_set:
       $$.val = &tree.SetVar{Name: strings.Join($1.strs(), "."), Values: $3.exprs()}
     }
   }
+| var_name FROM CURRENT
+  {
+    $$.val = &tree.SetVar{Name: strings.Join($1.strs(), "."), FromCurrent: true}
+  }
 
 set_rest_more:
 // Generic SET syntaxes:
-   generic_set
+   generic_set_config
 // Special SET syntax forms in addition to the generic form.
 // See: https://www.postgresql.org/docs/10/static/sql-set.html
 //
@@ -4168,7 +4256,6 @@ set_rest_more:
   }
 // See comment for the non-terminal for SET NAMES below.
 | set_names
-| var_name FROM CURRENT { return unimplemented(sqllex, "set from current") }
 | error // SHOW HELP: SET SESSION
 
 // SET NAMES is the SQL standard syntax for SET client_encoding.
@@ -11495,6 +11582,7 @@ unreserved_keyword:
 | ADMIN
 | AFTER
 | AGGREGATE
+| ALLOW_CONNECTIONS
 | ALTER
 | ALWAYS
 | AT
@@ -11528,6 +11616,7 @@ unreserved_keyword:
 | CONFIGURATION
 | CONFIGURATIONS
 | CONFIGURE
+| CONNECTION
 | CONSTRAINTS
 | CONTROLCHANGEFEED
 | CONTROLJOB
@@ -11609,6 +11698,7 @@ unreserved_keyword:
 | INTO_DB
 | INVERTED
 | ISOLATION
+| IS_TEMPLATE
 | JOB
 | JOBS
 | JSON
@@ -11774,6 +11864,7 @@ unreserved_keyword:
 | SYNTAX
 | SYSTEM
 | TABLES
+| TABLESPACE
 | TEMP
 | TEMPLATE
 | TEMPORARY

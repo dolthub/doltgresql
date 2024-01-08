@@ -22,10 +22,10 @@ import (
 	"github.com/dolthub/doltgresql/postgres/parser/sem/tree"
 )
 
-// nodeAlterDatabaseOwner handles *tree.AlterDatabaseOwner nodes.
-func nodeAlterDatabaseOwner(node *tree.AlterDatabaseOwner) (vitess.Statement, error) {
+// nodeAlterDatabase handles *tree.AlterDatabase nodes.
+func nodeAlterDatabase(node *tree.AlterDatabase) (vitess.Statement, error) {
 	if node == nil {
 		return nil, nil
 	}
-	return nil, fmt.Errorf("ALTER DATABASE OWNER is not yet supported")
+	return nil, fmt.Errorf("ALTER DATABASE is not yet supported")
 }
