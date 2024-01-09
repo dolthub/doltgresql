@@ -23,11 +23,11 @@ import (
 // lcm represents the PostgreSQL function of the same name.
 var lcm = Function{
 	Name:      "lcm",
-	Overloads: []interface{}{lcm1_int_int},
+	Overloads: []interface{}{lcm_int_int},
 }
 
-// lcm1 is one of the overloads of lcm.
-func lcm1_int_int(num1 IntegerType, num2 IntegerType) (IntegerType, error) {
+// lcm_int_int is one of the overloads of lcm.
+func lcm_int_int(num1 IntegerType, num2 IntegerType) (IntegerType, error) {
 	if num1.IsNull || num2.IsNull {
 		return IntegerType{IsNull: true}, nil
 	}
