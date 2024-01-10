@@ -18,12 +18,12 @@ import "testing"
 
 func TestAlterConversion(t *testing.T) {
 	tests := []QueryParses{
-		Unimplemented("ALTER CONVERSION name RENAME TO new_name"),
-		Unimplemented("ALTER CONVERSION name OWNER TO new_owner"),
-		Unimplemented("ALTER CONVERSION name OWNER TO CURRENT_ROLE"),
-		Unimplemented("ALTER CONVERSION name OWNER TO CURRENT_USER"),
-		Unimplemented("ALTER CONVERSION name OWNER TO SESSION_USER"),
-		Unimplemented("ALTER CONVERSION name SET SCHEMA new_schema"),
+		Parses("ALTER CONVERSION name RENAME TO new_name"),
+		Parses("ALTER CONVERSION name OWNER TO new_owner"),
+		Parses("ALTER CONVERSION name OWNER TO CURRENT_ROLE"),
+		Parses("ALTER CONVERSION name OWNER TO CURRENT_USER"),
+		Parses("ALTER CONVERSION name OWNER TO SESSION_USER"),
+		Parses("ALTER CONVERSION name SET SCHEMA new_schema"),
 	}
 	RunTests(t, tests)
 }

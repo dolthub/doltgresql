@@ -19,7 +19,7 @@ import "testing"
 func TestAlterType(t *testing.T) {
 	tests := []QueryParses{
 		Parses("ALTER TYPE name OWNER TO new_owner"),
-		Unimplemented("ALTER TYPE name OWNER TO CURRENT_ROLE"),
+		Parses("ALTER TYPE name OWNER TO CURRENT_ROLE"),
 		Parses("ALTER TYPE name OWNER TO CURRENT_USER"),
 		Parses("ALTER TYPE name OWNER TO SESSION_USER"),
 		Parses("ALTER TYPE name RENAME TO new_name"),

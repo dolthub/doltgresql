@@ -45,7 +45,7 @@ func TestAlterDatabase(t *testing.T) {
 		Unimplemented("ALTER DATABASE name WITH IS_TEMPLATE istemplate IS_TEMPLATE istemplate"),
 		Parses("ALTER DATABASE name RENAME TO new_name"),
 		Parses("ALTER DATABASE name OWNER TO new_owner"),
-		Unimplemented("ALTER DATABASE name OWNER TO CURRENT_ROLE"),
+		Parses("ALTER DATABASE name OWNER TO CURRENT_ROLE"),
 		Parses("ALTER DATABASE name OWNER TO CURRENT_USER"),
 		Parses("ALTER DATABASE name OWNER TO SESSION_USER"),
 		Unimplemented("ALTER DATABASE name SET TABLESPACE new_tablespace"),

@@ -18,13 +18,13 @@ import "testing"
 
 func TestAlterCollation(t *testing.T) {
 	tests := []QueryParses{
-		Unimplemented("ALTER COLLATION name REFRESH VERSION"),
-		Unimplemented("ALTER COLLATION name RENAME TO new_name"),
-		Unimplemented("ALTER COLLATION name OWNER TO new_owner"),
-		Unimplemented("ALTER COLLATION name OWNER TO CURRENT_ROLE"),
-		Unimplemented("ALTER COLLATION name OWNER TO CURRENT_USER"),
-		Unimplemented("ALTER COLLATION name OWNER TO SESSION_USER"),
-		Unimplemented("ALTER COLLATION name SET SCHEMA new_schema"),
+		Parses("ALTER COLLATION name REFRESH VERSION"),
+		Parses("ALTER COLLATION name RENAME TO new_name"),
+		Parses("ALTER COLLATION name OWNER TO new_owner"),
+		Parses("ALTER COLLATION name OWNER TO CURRENT_ROLE"),
+		Parses("ALTER COLLATION name OWNER TO CURRENT_USER"),
+		Parses("ALTER COLLATION name OWNER TO SESSION_USER"),
+		Parses("ALTER COLLATION name SET SCHEMA new_schema"),
 	}
 	RunTests(t, tests)
 }
