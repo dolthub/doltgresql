@@ -612,7 +612,7 @@ func (l *Listener) sendClientStartupMessages(conn net.Conn, startupMessage messa
 	return nil
 }
 
-// query runs the given query. This will post the RowDescription, DataRow, and CommandComplete messages.
+// query runs the given query and sends a CommandComplete message to the client
 func (l *Listener) query(conn net.Conn, mysqlConn *mysql.Conn, query ConvertedQuery) error {
 	commandComplete := messages.CommandComplete{
 		Query: query.String,
