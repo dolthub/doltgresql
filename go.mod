@@ -6,11 +6,11 @@ require (
 	github.com/PuerkitoBio/goquery v1.8.1
 	github.com/cockroachdb/apd/v2 v2.0.3-0.20200518165714-d020e156310a
 	github.com/cockroachdb/errors v1.7.5
-	github.com/dolthub/dolt/go v0.40.5-0.20240105180317-61c234610835
+	github.com/dolthub/dolt/go v0.40.5-0.20240110011351-84b9180295cc
 	github.com/dolthub/dolt/go/gen/proto/dolt/services/eventsapi v0.0.0-20231213233028-64c353bf920f
-	github.com/dolthub/go-mysql-server v0.17.1-0.20240104231423-dcf9acb9f61f
+	github.com/dolthub/go-mysql-server v0.17.1-0.20240110020052-1eabd6054d96
 	github.com/dolthub/sqllogictest/go v0.0.0-20201107003712-816f3ae12d81
-	github.com/dolthub/vitess v0.0.0-20240104220048-4b296d3a3d8b
+	github.com/dolthub/vitess v0.0.0-20240110003421-4030c3dac015
 	github.com/fatih/color v1.13.0
 	github.com/gogo/protobuf v1.3.2
 	github.com/golang/geo v0.0.0-20200730024412-e86565bf3f35
@@ -29,7 +29,6 @@ require (
 	github.com/twpayne/go-geom v1.3.6
 	golang.org/x/exp v0.0.0-20230522175609-2e198f4a06a1
 	golang.org/x/net v0.17.0
-	golang.org/x/sync v0.3.0
 	golang.org/x/sys v0.15.0
 	golang.org/x/text v0.14.0
 )
@@ -139,6 +138,7 @@ require (
 	golang.org/x/crypto v0.17.0 // indirect
 	golang.org/x/mod v0.12.0 // indirect
 	golang.org/x/oauth2 v0.8.0 // indirect
+	golang.org/x/sync v0.3.0 // indirect
 	golang.org/x/term v0.15.0 // indirect
 	golang.org/x/time v0.1.0 // indirect
 	golang.org/x/tools v0.13.0 // indirect

@@ -62,6 +62,8 @@ type ScriptTestAssertion struct {
 	Expected    []sql.Row
 	ExpectedErr bool
 
+	BindVars []any
+
 	// SkipResultsCheck is used to skip assertions on the expected rows returned from a query. For now, this is
 	// included as some messages do not have a full logical implementation. Skipping the results check allows us to
 	// force the test client to not send of those messages.
@@ -88,40 +90,61 @@ func RunScript(t *testing.T, script ScriptTest) {
 	}()
 
 	t.Run(script.Name, func(t *testing.T) {
-		if script.Skip {
-			t.Skip("Skip has been set in the script")
-		}
+		runScript(t, script, conn, ctx)
+	})
+}
 
-		// Run the setup
-		for _, query := range script.SetUpScript {
-			_, err := conn.Exec(ctx, query)
-			require.NoError(t, err)
-		}
+// runScript runs the script given on the postgres connection provided
+func runScript(t *testing.T, script ScriptTest, conn *pgx.Conn, ctx context.Context) {
+	if script.Skip {
+		t.Skip("Skip has been set in the script")
+	}
 
-		// Run the assertions
-		for _, assertion := range script.Assertions {
-			t.Run(assertion.Query, func(t *testing.T) {
-				if assertion.Skip {
-					t.Skip("Skip has been set in the assertion")
-				}
-				// If we're skipping the results check, then we call Execute, as it uses a simplified message model.
-				// The more complicated model is only partially implemented, and therefore won't work for all queries.
-				if assertion.SkipResultsCheck || assertion.ExpectedErr {
-					_, err := conn.Exec(ctx, assertion.Query)
-					if assertion.ExpectedErr {
-						require.Error(t, err)
-					} else {
-						require.NoError(t, err)
-					}
+	// Run the setup
+	for _, query := range script.SetUpScript {
+		_, err := conn.Exec(ctx, query)
+		require.NoError(t, err)
+	}
+
+	// Run the assertions
+	for _, assertion := range script.Assertions {
+		t.Run(assertion.Query, func(t *testing.T) {
+			if assertion.Skip {
+				t.Skip("Skip has been set in the assertion")
+			}
+			// If we're skipping the results check, then we call Execute, as it uses a simplified message model.
+			// The more complicated model is only partially implemented, and therefore won't work for all queries.
+			if assertion.SkipResultsCheck || assertion.ExpectedErr {
+				_, err := conn.Exec(ctx, assertion.Query, assertion.BindVars...)
+				if assertion.ExpectedErr {
+					require.Error(t, err)
 				} else {
-					rows, err := conn.Query(ctx, assertion.Query)
 					require.NoError(t, err)
-					readRows, err := ReadRows(rows)
-					require.NoError(t, err)
-					assert.Equal(t, NormalizeRows(assertion.Expected), readRows)
 				}
-			})
-		}
+			} else {
+				rows, err := conn.Query(ctx, assertion.Query, assertion.BindVars...)
+				require.NoError(t, err)
+				readRows, err := ReadRows(rows)
+				require.NoError(t, err)
+				assert.Equal(t, NormalizeRows(assertion.Expected), readRows)
+			}
+		})
+	}
+}
+
+// RunScriptOnPostgres runs the given script on a local postgres database called "testing".
+func RunScriptOnPostgres(t *testing.T, script ScriptTest) {
+	scriptDatabase := script.Database
+	if len(scriptDatabase) == 0 {
+		scriptDatabase = "postgres"
+	}
+
+	ctx := context.Background()
+	conn, err := pgx.Connect(ctx, fmt.Sprintf("postgres://postgres:password@127.0.0.1:%d/%s?sslmode=disable", 5432, "testing"))
+	require.NoError(t, err)
+
+	t.Run(script.Name, func(t *testing.T) {
+		runScript(t, script, conn, ctx)
 	})
 }
 

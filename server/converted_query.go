@@ -14,7 +14,11 @@
 
 package server
 
-import vitess "github.com/dolthub/vitess/go/vt/sqlparser"
+import (
+	"github.com/dolthub/go-mysql-server/sql"
+	querypb "github.com/dolthub/vitess/go/vt/proto/query"
+	vitess "github.com/dolthub/vitess/go/vt/sqlparser"
+)
 
 // ConvertedQuery represents a query that has been converted from the Postgres representation to the Vitess
 // representation. String may contain the string version of the converted query. AST will contain the tree
@@ -23,4 +27,17 @@ import vitess "github.com/dolthub/vitess/go/vt/sqlparser"
 type ConvertedQuery struct {
 	String string
 	AST    vitess.Statement
+}
+
+type PreparedStatementData struct {
+	Query        ConvertedQuery
+	ReturnFields []*querypb.Field
+	BindVarTypes []int32
+}
+
+type PortalData struct {
+	Query        ConvertedQuery
+	IsEmptyQuery bool
+	Fields       []*querypb.Field
+	BoundPlan    sql.Node
 }

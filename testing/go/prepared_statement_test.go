@@ -22,7 +22,312 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-func TestPreparedStatements(t *testing.T) {
+var preparedStatementTests = []ScriptTest{
+	{
+		Name: "expressions without tables",
+		Assertions: []ScriptTestAssertion{
+			{
+				Query:    "SELECT CONCAT($1, $2)",
+				BindVars: []any{"hello", "world"},
+				Expected: []sql.Row{
+					{"helloworld"},
+				},
+				Skip: true, // this doesn't work without explicit type hints for the params
+			},
+			{
+				Query:    "SELECT $1 + $2",
+				BindVars: []any{1, 2},
+				Expected: []sql.Row{
+					{3},
+				},
+				Skip: true, // this doesn't work without explicit type hints for the params
+			},
+		},
+	},
+	{
+		Name: "Integer insert",
+		SetUpScript: []string{
+			"drop table if exists test",
+			"CREATE TABLE test (pk BIGINT PRIMARY KEY, v1 BIGINT);",
+		},
+		Assertions: []ScriptTestAssertion{
+			{
+				Query:    "INSERT INTO test VALUES ($1, $2), ($3, $4);",
+				BindVars: []any{1, 2, 3, 4},
+			},
+			{
+				Query: "SELECT * FROM test order by pk;",
+				Expected: []sql.Row{
+					{1, 2},
+					{3, 4},
+				},
+			},
+			{
+				Query:    "SELECT * FROM test WHERE v1 = $1;",
+				BindVars: []any{2},
+				Expected: []sql.Row{
+					{1, 2},
+				},
+			},
+			{
+				Query:    "SELECT * FROM test WHERE v1 = $1;",
+				BindVars: []any{3},
+				Expected: []sql.Row{},
+			},
+			{
+				Query:    "SELECT * FROM test WHERE v1 + $1 = $2;",
+				BindVars: []any{1, 3},
+				Expected: []sql.Row{
+					{1, 2},
+				},
+				Skip: true, // can't correctly extract the bindvar type with more complicated processing during plan building
+			},
+			{
+				Query:    "SELECT * FROM test WHERE pk + v1 = $1;",
+				BindVars: []any{3},
+				Expected: []sql.Row{
+					{1, 2},
+				},
+			},
+			{
+				Query:    "SELECT * FROM test WHERE v1 = $1 + $2;",
+				BindVars: []any{1, 3},
+				Expected: []sql.Row{
+					{3, 4},
+				},
+				Skip: true, // this doesn't work without explicit type hints for the params
+			},
+		},
+	},
+	{
+		Name: "Integer update",
+		SetUpScript: []string{
+			"drop table if exists test",
+			"CREATE TABLE test (pk BIGINT PRIMARY KEY, v1 BIGINT);",
+		},
+		Assertions: []ScriptTestAssertion{
+			{
+				Query:    "INSERT INTO test VALUES ($1, $2), ($3, $4);",
+				BindVars: []any{1, 2, 3, 4},
+			},
+			{
+				Query:    "UPDATE test set v1 = $1 WHERE pk = $2;",
+				BindVars: []any{5, 1},
+			},
+			{
+				Query:    "SELECT * FROM test WHERE v1 = $1;",
+				BindVars: []any{5},
+				Expected: []sql.Row{
+					{1, 5},
+				},
+			},
+		},
+	},
+	{
+		Name: "Integer delete",
+		SetUpScript: []string{
+			"drop table if exists test",
+			"CREATE TABLE test (pk BIGINT PRIMARY KEY, v1 BIGINT);",
+		},
+		Assertions: []ScriptTestAssertion{
+			{
+				Query:    "INSERT INTO test VALUES ($1, $2), ($3, $4);",
+				BindVars: []any{1, 2, 3, 4},
+			},
+			{
+				Query:    "DELETE FROM test WHERE pk = $1;",
+				BindVars: []any{1},
+			},
+			{
+				Query: "SELECT * FROM test order by 1;",
+				Expected: []sql.Row{
+					{3, 4},
+				},
+			},
+		},
+	},
+	{
+		Name: "String insert",
+		SetUpScript: []string{
+			"drop table if exists test",
+			"CREATE TABLE test (pk BIGINT PRIMARY KEY, s character varying(20));",
+		},
+		Assertions: []ScriptTestAssertion{
+			{
+				Query:    "INSERT INTO test VALUES ($1, $2), ($3, $4);",
+				BindVars: []any{1, "hello", 3, "goodbye"},
+			},
+			{
+				Query: "SELECT * FROM test order by pk;",
+				Expected: []sql.Row{
+					{1, "hello"},
+					{3, "goodbye"},
+				},
+			},
+			{
+				Query:    "SELECT * FROM test WHERE s = $1;",
+				BindVars: []any{"hello"},
+				Expected: []sql.Row{
+					{1, "hello"},
+				},
+			},
+			{
+				Query:    "SELECT * FROM test WHERE s = concat($1, $2);",
+				BindVars: []any{"he", "llo"},
+				Expected: []sql.Row{
+					{1, "hello"},
+				},
+				Skip: true, // this doesn't work without explicit type hints for the params
+			},
+			{
+				Query:    "SELECT * FROM test WHERE concat(s, '!') = $1",
+				BindVars: []any{"hello!"},
+				Expected: []sql.Row{
+					{1, "hello"},
+				},
+			},
+		},
+	},
+	{
+		Name: "String update",
+		SetUpScript: []string{
+			"drop table if exists test",
+			"CREATE TABLE test (pk BIGINT PRIMARY KEY, s character varying(20));",
+		},
+		Assertions: []ScriptTestAssertion{
+			{
+				Query:    "INSERT INTO test VALUES ($1, $2), ($3, $4);",
+				BindVars: []any{1, "hello", 3, "goodbye"},
+			},
+			{
+				Query:    "UPDATE test set s = $1 WHERE pk = $2;",
+				BindVars: []any{"new value", 1},
+			},
+			{
+				Query:    "SELECT * FROM test WHERE s = $1;",
+				BindVars: []any{"new value"},
+				Expected: []sql.Row{
+					{1, "new value"},
+				},
+			},
+		},
+	},
+	{
+		Name: "String delete",
+		SetUpScript: []string{
+			"drop table if exists test",
+			"CREATE TABLE test (pk BIGINT PRIMARY KEY, s character varying(20));",
+		},
+		Assertions: []ScriptTestAssertion{
+			{
+				Query:    "INSERT INTO test VALUES ($1, $2), ($3, $4);",
+				BindVars: []any{1, "hello", 3, "goodbye"},
+			},
+			{
+				Query:    "DELETE FROM test WHERE s = $1;",
+				BindVars: []any{"hello"},
+			},
+			{
+				Query: "SELECT * FROM test ORDER BY 1;",
+				Expected: []sql.Row{
+					{3, "goodbye"},
+				},
+			},
+		},
+	},
+	{
+		Name: "Float insert",
+		SetUpScript: []string{
+			"drop table if exists test",
+			"CREATE TABLE test (pk BIGINT PRIMARY KEY, f1 DOUBLE PRECISION);",
+		},
+		Assertions: []ScriptTestAssertion{
+			{
+				Query:    "INSERT INTO test VALUES ($1, $2), ($3, $4);",
+				BindVars: []any{1, 1.1, 3, 3.3},
+			},
+			{
+				Query: "SELECT * FROM test ORDER BY 1;",
+				Expected: []sql.Row{
+					{1, 1.1},
+					{3, 3.3},
+				},
+			},
+			{
+				Query:    "SELECT * FROM test WHERE f1 = $1;",
+				BindVars: []any{1.1},
+				Expected: []sql.Row{
+					{1, 1.1},
+				},
+			},
+			{
+				Query:    "SELECT * FROM test WHERE f1 + $1 = $2;",
+				BindVars: []any{1.0, 2.1},
+				Expected: []sql.Row{
+					{1, 1.1},
+				},
+				Skip: true, // can't correctly extract the bindvar type with more complicated processing during plan building
+			},
+			{
+				Query:    "SELECT * FROM test WHERE f1 = $1 + $2;",
+				BindVars: []any{1.0, 0.1},
+				Expected: []sql.Row{
+					{1, 1.1},
+				},
+				Skip: true, // this doesn't work without explicit type hints for the params
+			},
+		},
+	},
+	{
+		Name: "Float update",
+		SetUpScript: []string{
+			"drop table if exists test",
+			"CREATE TABLE test (pk BIGINT PRIMARY KEY, f1 DOUBLE PRECISION);",
+		},
+		Assertions: []ScriptTestAssertion{
+			{
+				Query:    "INSERT INTO test VALUES ($1, $2), ($3, $4);",
+				BindVars: []any{1, 1.1, 3, 3.3},
+			},
+			{
+				Query:    "UPDATE test set f1 = $1 WHERE f1 = $2;",
+				BindVars: []any{2.2, 1.1},
+			},
+			{
+				Query:    "SELECT * FROM test WHERE f1 = $1;",
+				BindVars: []any{2.2},
+				Expected: []sql.Row{
+					{1, 2.2},
+				},
+			},
+		},
+	},
+	{
+		Name: "Float delete",
+		SetUpScript: []string{
+			"drop table if exists test",
+			"CREATE TABLE test (pk BIGINT PRIMARY KEY, f1 DOUBLE PRECISION);",
+		},
+		Assertions: []ScriptTestAssertion{
+			{
+				Query:    "INSERT INTO test VALUES ($1, $2), ($3, $4);",
+				BindVars: []any{1, 1.1, 3, 3.3},
+			},
+			{
+				Query:    "DELETE FROM test WHERE f1 = $1;",
+				BindVars: []any{1.1},
+			},
+			{
+				Query: "SELECT * FROM test order by 1;",
+				Expected: []sql.Row{
+					{3, 3.3},
+				},
+			},
+		},
+	},
+}
+
+func TestPreparedErrorHandling(t *testing.T) {
 	tt := ScriptTest{
 		Name: "error handling doesn't foul session",
 		SetUpScript: []string{
@@ -66,6 +371,10 @@ func TestPreparedStatements(t *testing.T) {
 	}
 
 	RunScriptN(t, tt, 20)
+}
+
+func TestPreparedStatements(t *testing.T) {
+	RunScripts(t, preparedStatementTests)
 }
 
 // RunScriptN runs the assertios of the given script n times using the same connection
