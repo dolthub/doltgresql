@@ -307,6 +307,14 @@ func (l *Listener) handleMessage(
 		if err != nil {
 			return false, false, err
 		}
+		
+		if query.AST == nil {
+			// special case: empty query
+			preparedStatements[message.Name] = PreparedStatementData{
+				Query:        query,
+			}
+			return false, false, nil
+		}
 
 		plan, fields, err := l.handleParse(mysqlConn, query)
 		if err != nil {
@@ -366,6 +374,15 @@ func (l *Listener) handleMessage(
 		preparedData, ok := preparedStatements[message.SourcePreparedStatement]
 		if !ok {
 			return false, true, fmt.Errorf("prepared statement %s does not exist", message.SourcePreparedStatement)
+		}
+		
+		if preparedData.Query.AST == nil {
+			// special case: empty query
+			portals[message.DestinationPortal] = PortalData{
+				Query: preparedData.Query,
+				IsEmptyQuery: true,
+			}
+			return false, false, connection.Send(conn, messages.BindComplete{}) 
 		}
 
 		bindVars, err := convertBindParameters(preparedData.BindVarTypes, message.ParameterValues)
@@ -612,20 +629,23 @@ func spoolRowsCallback(conn net.Conn, commandComplete messages.CommandComplete) 
 	}
 }
 
-// query runs the given query. This will post the RowDescription, DataRow, and CommandComplete messages.
+// execute executes the given portalData and posts a CommandComplete message when it finishes without error
 func (l *Listener) execute(conn net.Conn, mysqlConn *mysql.Conn, portalData PortalData) error {
 	query := portalData.Query
 
-	commandComplete := messages.CommandComplete{
+	// we need the CommandComplete message defined here because it's altered by the callback below
+	complete := messages.CommandComplete{
 		Query: query.String,
 	}
-
-	err := l.cfg.Handler.(mysql.ExtendedHandler).ComExecuteBound(mysqlConn, query.String, portalData.BoundPlan, spoolRowsCallback(conn, commandComplete))
-	if err != nil {
-		return err
+	
+	if !portalData.IsEmptyQuery {
+		err := l.cfg.Handler.(mysql.ExtendedHandler).ComExecuteBound(mysqlConn, query.String, portalData.BoundPlan, spoolRowsCallback(conn, complete))
+		if err != nil {
+			return err
+		}
 	}
 
-	return connection.Send(conn, commandComplete)
+	return connection.Send(conn, complete)
 }
 
 // describe handles the description of the given query. This will post the ParameterDescription and RowDescription messages.
