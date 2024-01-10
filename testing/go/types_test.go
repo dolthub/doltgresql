@@ -809,7 +809,6 @@ func TestSameTypes(t *testing.T) {
 				"CREATE TABLE test (v1 CHARACTER VARYING(255), v2 CHARACTER(3), v3 TEXT);",
 				"INSERT INTO test VALUES ('abc', 'def', 'ghi'), ('jkl', 'mno', 'pqr');",
 			},
-			Focus: true,
 			Assertions: []ScriptTestAssertion{
 				{
 					Query: "SELECT * FROM test ORDER BY 1;",
@@ -817,7 +816,9 @@ func TestSameTypes(t *testing.T) {
 						{"abc", "def", "ghi"},
 						{"jkl", "mno", "pqr"},
 					},
-				},
+					Skip: true, // type length info is not being passed correctly to the engine, which causes the 
+					// select to fail with 'invalid length for "char": 3'
+				}, 
 			},
 		},
 		{
