@@ -278,149 +278,182 @@ func (l *Listener) handleMessage(
 	case messages.Sync:
 		return false, true, nil
 	case messages.Query:
-		handled, err := l.handledPSQLCommands(conn, mysqlConn, message.String)
-		if handled || err != nil {
-			return false, true, err
-		}
-
-		query, err := l.convertQuery(message.String)
-		if err != nil {
-			return false, true, err
-		}
-
-		// A query message destroys the unnamed statement and the unnamed portal
-		delete (preparedStatements, "")
-		delete (portals, "")
-
-		// The Deallocate message does not get passed to the engine, since we handle allocation / deallocation of
-		// prepared statements at this layer
-		switch stmt := query.AST.(type) {
-		case *sqlparser.Deallocate:
-			// TODO: handle ALL keyword
-			return false, true, l.deallocatePreparedStatement(stmt.Name, preparedStatements, query, conn)
-		}
-			
-		return false, true, l.query(conn, mysqlConn, query)
+		return l.handleQuery(message, preparedStatements, portals, mysqlConn, conn)
 	case messages.Parse:
-		// TODO: "Named prepared statements must be explicitly closed before they can be redefined by another Parse message, but this is not required for the unnamed statement"
-		query, err := l.convertQuery(message.Query)
-		if err != nil {
-			return false, false, err
-		}
-		
-		if query.AST == nil {
-			// special case: empty query
-			preparedStatements[message.Name] = PreparedStatementData{
-				Query:        query,
-			}
-			return false, false, nil
-		}
-
-		plan, fields, err := l.handleParse(mysqlConn, query)
-		if err != nil {
-			return false, false, err
-		}
-
-		// TODO: we need a deeper analysis here, the bindvars themselves have a deferred type as of this phase of analysis
-		// TODO: this can be specified directly in the message
-		bindVarTypes, err := extractBindVarTypes(plan)
-		if err != nil {
-			return false, false, err
-		}
-
-		// Nil fields means an OKResult, fill one in here
-		if fields == nil {
-			fields = []*querypb.Field{
-				{
-					Name: "Rows",
-					Type: sqltypes.Int32,
-				},
-			}
-		}
-
-		preparedStatements[message.Name] = PreparedStatementData{
-			Query:        query,
-			ReturnFields: fields,
-			BindVarTypes: bindVarTypes,
-		}
-
-		return false, false, connection.Send(conn, messages.ParseComplete{})
+		return l.handleParse(message, preparedStatements, mysqlConn, conn)
 	case messages.Describe:
-		var fields []*querypb.Field
-		var bindvarTypes []int32
-
-		if message.IsPrepared {
-			preparedStatementData, ok := preparedStatements[message.Target]
-			if !ok {
-				return false, true, fmt.Errorf("prepared statement %s does not exist", message.Target)
-			}
-
-			fields = preparedStatementData.ReturnFields
-			bindvarTypes = preparedStatementData.BindVarTypes
-		} else {
-			portalData, ok := portals[message.Target]
-			if !ok {
-				return false, true, fmt.Errorf("portal %s does not exist", message.Target)
-			}
-
-			fields = portalData.Fields
-		}
-
-		return false, false, l.describe(conn, fields, bindvarTypes)
+		return l.handleDescribe(message, preparedStatements, portals, conn)
 	case messages.Bind:
-		// TODO: a named portal object lasts till the end of the current transaction, unless explicitly destroyed
-		//  we need to destroy the named portal as a side effect of the transaction ending
-		logrus.Tracef("binding portal %q to prepared statement %s", message.DestinationPortal, message.SourcePreparedStatement)
-		preparedData, ok := preparedStatements[message.SourcePreparedStatement]
-		if !ok {
-			return false, true, fmt.Errorf("prepared statement %s does not exist", message.SourcePreparedStatement)
-		}
-		
-		if preparedData.Query.AST == nil {
-			// special case: empty query
-			portals[message.DestinationPortal] = PortalData{
-				Query: preparedData.Query,
-				IsEmptyQuery: true,
-			}
-			return false, false, connection.Send(conn, messages.BindComplete{}) 
-		}
-
-		bindVars, err := convertBindParameters(preparedData.BindVarTypes, message.ParameterValues)
-		if err != nil {
-			return false, false, err
-		}
-
-		boundPlan, fields, err := l.bind(mysqlConn, message.SourcePreparedStatement, preparedData.Query.AST, bindVars)
-		if err != nil {
-			return false, false, err
-		}
-
-		portals[message.DestinationPortal] = PortalData{
-			Query:     preparedData.Query,
-			Fields:    fields,
-			BoundPlan: boundPlan,
-		}
-		return false, false, connection.Send(conn, messages.BindComplete{})
+		return l.handleBind(message, preparedStatements, portals, conn, mysqlConn)
 	case messages.Execute:
-		// TODO: implement the RowMax
-		portalData, ok := portals[message.Portal]
-		if !ok {
-			return false, false, fmt.Errorf("portal %s does not exist", message.Portal)
-		}
-
-		logrus.Tracef("executing portal %s with contents %v", message.Portal, portalData)
-		return false, false, l.execute(conn, mysqlConn, portalData)
+		return l.handleExecute(message, portals, conn, mysqlConn)
 	case messages.Close:
 		if message.ClosingPreparedStatement {
 			delete(preparedStatements, message.Target)
 		} else {
 			delete(portals, message.Target)
 		}
-		
+
 		return false, false, connection.Send(conn, messages.CloseComplete{})
 	default:
 		return false, true, fmt.Errorf(`Unhandled message "%s"`, message.DefaultMessage().Name)
 	}
+}
+
+func (l *Listener) handleQuery(message messages.Query, preparedStatements map[string]PreparedStatementData, portals map[string]PortalData, mysqlConn *mysql.Conn, conn net.Conn) (bool, bool, error) {
+	handled, err := l.handledPSQLCommands(conn, mysqlConn, message.String)
+	if handled || err != nil {
+		return false, true, err
+	}
+
+	query, err := l.convertQuery(message.String)
+	if err != nil {
+		return false, true, err
+	}
+
+	// A query message destroys the unnamed statement and the unnamed portal
+	delete(preparedStatements, "")
+	delete(portals, "")
+
+	// The Deallocate message does not get passed to the engine, since we handle allocation / deallocation of
+	// prepared statements at this layer
+	switch stmt := query.AST.(type) {
+	case *sqlparser.Deallocate:
+		// TODO: handle ALL keyword
+		return false, true, l.deallocatePreparedStatement(stmt.Name, preparedStatements, query, conn)
+	}
+
+	return false, true, l.query(conn, mysqlConn, query)
+}
+
+func (l *Listener) handleParse(message messages.Parse, preparedStatements map[string]PreparedStatementData, mysqlConn *mysql.Conn, conn net.Conn) (bool, bool, error) {
+	// TODO: "Named prepared statements must be explicitly closed before they can be redefined by another Parse message, but this is not required for the unnamed statement"
+	query, err := l.convertQuery(message.Query)
+	if err != nil {
+		return false, false, err
+	}
+
+	if query.AST == nil {
+		// special case: empty query
+		preparedStatements[message.Name] = PreparedStatementData{
+			Query: query,
+		}
+		return false, false, nil
+	}
+
+	plan, fields, err := l.getPlanAndFields(mysqlConn, query)
+	if err != nil {
+		return false, false, err
+	}
+
+	// TODO: bindvar types can be specified directly in the message, need tests of this
+	bindVarTypes, err := extractBindVarTypes(plan)
+	if err != nil {
+		return false, false, err
+	}
+
+	// Nil fields means an OKResult, fill one in here
+	if fields == nil {
+		fields = []*querypb.Field{
+			{
+				Name: "Rows",
+				Type: sqltypes.Int32,
+			},
+		}
+	}
+
+	preparedStatements[message.Name] = PreparedStatementData{
+		Query:        query,
+		ReturnFields: fields,
+		BindVarTypes: bindVarTypes,
+	}
+
+	return false, false, connection.Send(conn, messages.ParseComplete{})
+}
+
+func (l *Listener) handleDescribe(message messages.Describe, preparedStatements map[string]PreparedStatementData, portals map[string]PortalData, conn net.Conn) (bool, bool, error) {
+	var fields []*querypb.Field
+	var bindvarTypes []int32
+
+	if message.IsPrepared {
+		preparedStatementData, ok := preparedStatements[message.Target]
+		if !ok {
+			return false, true, fmt.Errorf("prepared statement %s does not exist", message.Target)
+		}
+
+		fields = preparedStatementData.ReturnFields
+		bindvarTypes = preparedStatementData.BindVarTypes
+	} else {
+		portalData, ok := portals[message.Target]
+		if !ok {
+			return false, true, fmt.Errorf("portal %s does not exist", message.Target)
+		}
+
+		fields = portalData.Fields
+	}
+
+	return false, false, l.describe(conn, fields, bindvarTypes)
+}
+
+func (l *Listener) handleBind(message messages.Bind, preparedStatements map[string]PreparedStatementData, portals map[string]PortalData, conn net.Conn, mysqlConn *mysql.Conn) (bool, bool, error) {
+	// TODO: a named portal object lasts till the end of the current transaction, unless explicitly destroyed
+	//  we need to destroy the named portal as a side effect of the transaction ending
+	logrus.Tracef("binding portal %q to prepared statement %s", message.DestinationPortal, message.SourcePreparedStatement)
+	preparedData, ok := preparedStatements[message.SourcePreparedStatement]
+	if !ok {
+		return false, true, fmt.Errorf("prepared statement %s does not exist", message.SourcePreparedStatement)
+	}
+
+	if preparedData.Query.AST == nil {
+		// special case: empty query
+		portals[message.DestinationPortal] = PortalData{
+			Query:        preparedData.Query,
+			IsEmptyQuery: true,
+		}
+		return false, false, connection.Send(conn, messages.BindComplete{})
+	}
+
+	bindVars, err := convertBindParameters(preparedData.BindVarTypes, message.ParameterValues)
+	if err != nil {
+		return false, false, err
+	}
+
+	boundPlan, fields, err := l.bindParams(mysqlConn, message.SourcePreparedStatement, preparedData.Query.AST, bindVars)
+	if err != nil {
+		return false, false, err
+	}
+
+	portals[message.DestinationPortal] = PortalData{
+		Query:     preparedData.Query,
+		Fields:    fields,
+		BoundPlan: boundPlan,
+	}
+	return false, false, connection.Send(conn, messages.BindComplete{})
+}
+
+func (l *Listener) handleExecute(message messages.Execute, portals map[string]PortalData, conn net.Conn, mysqlConn *mysql.Conn) (bool, bool, error) {
+	// TODO: implement the RowMax
+	portalData, ok := portals[message.Portal]
+	if !ok {
+		return false, false, fmt.Errorf("portal %s does not exist", message.Portal)
+	}
+
+	logrus.Tracef("executing portal %s with contents %v", message.Portal, portalData)
+	query := portalData.Query
+
+	// we need the CommandComplete message defined here because it's altered by the callback below
+	complete := messages.CommandComplete{
+		Query: query.String,
+	}
+
+	if !portalData.IsEmptyQuery {
+		err := l.cfg.Handler.(mysql.ExtendedHandler).ComExecuteBound(mysqlConn, query.String, portalData.BoundPlan, spoolRowsCallback(conn, complete))
+		if err != nil {
+			return false, false, err
+		}
+	}
+
+	return false, false, connection.Send(conn, complete)
 }
 
 func (l *Listener) deallocatePreparedStatement(name string, preparedStatements map[string]PreparedStatementData, query ConvertedQuery, conn net.Conn) error {
@@ -629,25 +662,6 @@ func spoolRowsCallback(conn net.Conn, commandComplete messages.CommandComplete) 
 	}
 }
 
-// execute executes the given portalData and posts a CommandComplete message when it finishes without error
-func (l *Listener) execute(conn net.Conn, mysqlConn *mysql.Conn, portalData PortalData) error {
-	query := portalData.Query
-
-	// we need the CommandComplete message defined here because it's altered by the callback below
-	complete := messages.CommandComplete{
-		Query: query.String,
-	}
-	
-	if !portalData.IsEmptyQuery {
-		err := l.cfg.Handler.(mysql.ExtendedHandler).ComExecuteBound(mysqlConn, query.String, portalData.BoundPlan, spoolRowsCallback(conn, complete))
-		if err != nil {
-			return err
-		}
-	}
-
-	return connection.Send(conn, complete)
-}
-
 // describe handles the description of the given query. This will post the ParameterDescription and RowDescription messages.
 func (l *Listener) describe(conn net.Conn, fields []*querypb.Field, types []int32) (err error) {
 	// The prepared statement variant of the describe command returns the OIDs of the parameters.
@@ -773,7 +787,8 @@ func (l *Listener) convertQuery(query string) (ConvertedQuery, error) {
 	}, nil
 }
 
-func (l *Listener) handleParse(mysqlConn *mysql.Conn, query ConvertedQuery) (sql.Node, []*querypb.Field, error) {
+// getPlanAndFields builds a plan and return fields for the given query
+func (l *Listener) getPlanAndFields(mysqlConn *mysql.Conn, query ConvertedQuery) (sql.Node, []*querypb.Field, error) {
 	if query.AST == nil {
 		return nil, nil, fmt.Errorf("cannot prepare a query that has not been parsed")
 	}
@@ -791,7 +806,7 @@ func (l *Listener) handleParse(mysqlConn *mysql.Conn, query ConvertedQuery) (sql
 		return nil, nil, fmt.Errorf("expected a sql.Node, got %T", parsedQuery)
 	}
 	
-	return plan, fields, err
+	return plan, fields, nil
 }
 
 // comQuery is a shortcut that determines which version of ComQuery to call based on whether the query has been parsed.
@@ -803,7 +818,12 @@ func (l *Listener) comQuery(mysqlConn *mysql.Conn, query ConvertedQuery, callbac
 	}
 }
 
-func (l *Listener) bind(mysqlConn *mysql.Conn, query string, parsedQuery sqlparser.Statement, bindVars map[string]*querypb.BindVariable) (sql.Node, []*querypb.Field, error) {
+func (l *Listener) bindParams(
+		mysqlConn *mysql.Conn,
+		query string,
+		parsedQuery sqlparser.Statement,
+		bindVars map[string]*querypb.BindVariable,
+) (sql.Node, []*querypb.Field, error) {
 	bound, fields, err := l.cfg.Handler.(mysql.ExtendedHandler).ComBind(mysqlConn, query, parsedQuery, &mysql.PrepareData{
 		PrepareStmt: query,
 		ParamsCount: uint16(len(bindVars)),
