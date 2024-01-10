@@ -809,6 +809,7 @@ func TestSameTypes(t *testing.T) {
 				"CREATE TABLE test (v1 CHARACTER VARYING(255), v2 CHARACTER(3), v3 TEXT);",
 				"INSERT INTO test VALUES ('abc', 'def', 'ghi'), ('jkl', 'mno', 'pqr');",
 			},
+			Focus: true,
 			Assertions: []ScriptTestAssertion{
 				{
 					Query: "SELECT * FROM test ORDER BY 1;",

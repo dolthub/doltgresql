@@ -325,7 +325,7 @@ var preparedStatementTests = []ScriptTest {
 	},
 }
 
-func TestErrorHandling(t *testing.T) {
+func TestPreparedErrorHandling(t *testing.T) {
 	tt := ScriptTest{
 		Name: "error handling doesn't foul session",
 		SetUpScript: []string{
@@ -373,7 +373,7 @@ func TestErrorHandling(t *testing.T) {
 
 func TestPreparedStatement(t *testing.T) {
 	for _, script := range preparedStatementTests[:] {
-		RunScriptPrepared(t, script)	
+		RunScript(t, script)	
 	}
 }
 
