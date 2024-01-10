@@ -22,7 +22,7 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-var preparedStatementTests = []ScriptTest {
+var preparedStatementTests = []ScriptTest{
 	{
 		Name: "expressions without tables",
 		Assertions: []ScriptTestAssertion{
@@ -139,7 +139,7 @@ var preparedStatementTests = []ScriptTest {
 				BindVars: []any{1},
 			},
 			{
-				Query:    "SELECT * FROM test order by 1;",
+				Query: "SELECT * FROM test order by 1;",
 				Expected: []sql.Row{
 					{3, 4},
 				},
@@ -200,7 +200,7 @@ var preparedStatementTests = []ScriptTest {
 				BindVars: []any{1, "hello", 3, "goodbye"},
 			},
 			{
-				Query: "UPDATE test set s = $1 WHERE pk = $2;",
+				Query:    "UPDATE test set s = $1 WHERE pk = $2;",
 				BindVars: []any{"new value", 1},
 			},
 			{
@@ -224,11 +224,11 @@ var preparedStatementTests = []ScriptTest {
 				BindVars: []any{1, "hello", 3, "goodbye"},
 			},
 			{
-				Query: "DELETE FROM test WHERE s = $1;",
+				Query:    "DELETE FROM test WHERE s = $1;",
 				BindVars: []any{"hello"},
 			},
 			{
-				Query:    "SELECT * FROM test ORDER BY 1;",
+				Query: "SELECT * FROM test ORDER BY 1;",
 				Expected: []sql.Row{
 					{3, "goodbye"},
 				},
@@ -290,7 +290,7 @@ var preparedStatementTests = []ScriptTest {
 				BindVars: []any{1, 1.1, 3, 3.3},
 			},
 			{
-				Query: "UPDATE test set f1 = $1 WHERE f1 = $2;",
+				Query:    "UPDATE test set f1 = $1 WHERE f1 = $2;",
 				BindVars: []any{2.2, 1.1},
 			},
 			{
@@ -314,11 +314,11 @@ var preparedStatementTests = []ScriptTest {
 				BindVars: []any{1, 1.1, 3, 3.3},
 			},
 			{
-				Query: "DELETE FROM test WHERE f1 = $1;",
+				Query:    "DELETE FROM test WHERE f1 = $1;",
 				BindVars: []any{1.1},
 			},
 			{
-				Query:    "SELECT * FROM test order by 1;",
+				Query: "SELECT * FROM test order by 1;",
 				Expected: []sql.Row{
 					{3, 3.3},
 				},

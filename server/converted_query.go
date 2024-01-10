@@ -36,8 +36,8 @@ type PreparedStatementData struct {
 }
 
 type PortalData struct {
-  Query ConvertedQuery
+	Query        ConvertedQuery
 	IsEmptyQuery bool
-	Fields []*querypb.Field
-	BoundPlan sql.Node
+	Fields       []*querypb.Field
+	BoundPlan    sql.Node
 }

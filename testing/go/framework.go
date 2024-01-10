@@ -61,7 +61,7 @@ type ScriptTestAssertion struct {
 	Query       string
 	Expected    []sql.Row
 	ExpectedErr bool
-	
+
 	BindVars []any
 
 	// SkipResultsCheck is used to skip assertions on the expected rows returned from a query. For now, this is
@@ -138,7 +138,7 @@ func RunScriptOnPostgres(t *testing.T, script ScriptTest) {
 	if len(scriptDatabase) == 0 {
 		scriptDatabase = "postgres"
 	}
-	
+
 	ctx := context.Background()
 	conn, err := pgx.Connect(ctx, fmt.Sprintf("postgres://postgres:password@127.0.0.1:%d/%s?sslmode=disable", 5432, "testing"))
 	require.NoError(t, err)

@@ -34,6 +34,7 @@ import (
 	"github.com/dolthub/go-mysql-server/sql/transform"
 	"github.com/dolthub/vitess/go/mysql"
 	"github.com/dolthub/vitess/go/sqltypes"
+	querypb "github.com/dolthub/vitess/go/vt/proto/query"
 	"github.com/dolthub/vitess/go/vt/sqlparser"
 	"github.com/sirupsen/logrus"
 
@@ -41,9 +42,7 @@ import (
 	"github.com/dolthub/doltgresql/postgres/messages"
 	"github.com/dolthub/doltgresql/postgres/parser/parser"
 	"github.com/dolthub/doltgresql/server/ast"
-
 	_ "github.com/dolthub/doltgresql/server/functions"
-	querypb "github.com/dolthub/vitess/go/vt/proto/query"
 )
 
 var (
@@ -266,11 +265,11 @@ func (l *Listener) chooseInitialDatabase(conn net.Conn, startupMessage messages.
 }
 
 func (l *Listener) handleMessage(
-		message connection.Message,
-		conn net.Conn,
-		mysqlConn *mysql.Conn,
-		preparedStatements map[string]PreparedStatementData,
-		portals map[string]PortalData,
+	message connection.Message,
+	conn net.Conn,
+	mysqlConn *mysql.Conn,
+	preparedStatements map[string]PreparedStatementData,
+	portals map[string]PortalData,
 ) (stop, endOfMessages bool, err error) {
 	switch message := message.(type) {
 	case messages.Terminate:
@@ -476,7 +475,7 @@ func extractBindVarTypes(queryPlan sql.Node) ([]int32, error) {
 	case *plan2.InsertInto:
 		inspectNode = queryPlan.Source
 	}
-	
+
 	types := make([]int32, 0)
 	var err error
 	transform.InspectExpressions(inspectNode, func(expr sql.Expression) bool {
@@ -484,14 +483,14 @@ func extractBindVarTypes(queryPlan sql.Node) ([]int32, error) {
 			var id int32
 			id, err = messages.VitessTypeToObjectID(bindVar.Type().Type())
 			if err != nil {
-				return false 
+				return false
 			} else {
 				types = append(types, id)
 			}
 		}
 		return true
 	})
-	
+
 	return types, err
 }
 
@@ -635,7 +634,7 @@ func (l *Listener) query(conn net.Conn, mysqlConn *mysql.Conn, query ConvertedQu
 	return nil
 }
 
-// spoolRowsCallback returns a callback function that will send RowDescription message, then a DataRow message for 
+// spoolRowsCallback returns a callback function that will send RowDescription message, then a DataRow message for
 // each row in the result set.
 func spoolRowsCallback(conn net.Conn, commandComplete messages.CommandComplete) mysql.ResultSpoolFn {
 	return func(res *sqltypes.Result, more bool) error {
@@ -672,7 +671,7 @@ func (l *Listener) describe(conn net.Conn, fields []*querypb.Field, types []int3
 			return err
 		}
 	}
-	
+
 	// Both variants finish with a row description.
 	if err := connection.Send(conn, messages.RowDescription{
 		Fields: fields,
@@ -800,12 +799,12 @@ func (l *Listener) getPlanAndFields(mysqlConn *mysql.Conn, query ConvertedQuery)
 	if err != nil {
 		return nil, nil, err
 	}
-	
+
 	plan, ok := parsedQuery.(sql.Node)
 	if !ok {
 		return nil, nil, fmt.Errorf("expected a sql.Node, got %T", parsedQuery)
 	}
-	
+
 	return plan, fields, nil
 }
 
@@ -819,10 +818,10 @@ func (l *Listener) comQuery(mysqlConn *mysql.Conn, query ConvertedQuery, callbac
 }
 
 func (l *Listener) bindParams(
-		mysqlConn *mysql.Conn,
-		query string,
-		parsedQuery sqlparser.Statement,
-		bindVars map[string]*querypb.BindVariable,
+	mysqlConn *mysql.Conn,
+	query string,
+	parsedQuery sqlparser.Statement,
+	bindVars map[string]*querypb.BindVariable,
 ) (sql.Node, []*querypb.Field, error) {
 	bound, fields, err := l.cfg.Handler.(mysql.ExtendedHandler).ComBind(mysqlConn, query, parsedQuery, &mysql.PrepareData{
 		PrepareStmt: query,
@@ -833,11 +832,11 @@ func (l *Listener) bindParams(
 	if err != nil {
 		return nil, nil, err
 	}
-	
+
 	plan, ok := bound.(sql.Node)
 	if !ok {
 		return nil, nil, fmt.Errorf("expected a sql.Node, got %T", bound)
 	}
-	
+
 	return plan, fields, err
 }
