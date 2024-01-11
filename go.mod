@@ -8,9 +8,9 @@ require (
 	github.com/cockroachdb/errors v1.7.5
 	github.com/dolthub/dolt/go v0.40.5-0.20240110011351-84b9180295cc
 	github.com/dolthub/dolt/go/gen/proto/dolt/services/eventsapi v0.0.0-20231213233028-64c353bf920f
-	github.com/dolthub/go-mysql-server v0.17.1-0.20240110020052-1eabd6054d96
+	github.com/dolthub/go-mysql-server v0.17.1-0.20240110234302-66c569a3137e
 	github.com/dolthub/sqllogictest/go v0.0.0-20201107003712-816f3ae12d81
-	github.com/dolthub/vitess v0.0.0-20240110003421-4030c3dac015
+	github.com/dolthub/vitess v0.0.0-20240110233415-e46007d964c0
 	github.com/fatih/color v1.13.0
 	github.com/gogo/protobuf v1.3.2
 	github.com/golang/geo v0.0.0-20200730024412-e86565bf3f35
