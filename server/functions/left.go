@@ -17,11 +17,11 @@ package functions
 // left represents the PostgreSQL function of the same name.
 var left = Function{
 	Name:      "left",
-	Overloads: []interface{}{left_string},
+	Overloads: []interface{}{left_string_int},
 }
 
 // left_string is one of the overloads of left.
-func left_string(string StringType, n IntegerType) (StringType, error) {
+func left_string_int(string StringType, n IntegerType) (StringType, error) {
 	if string.IsNull || n.IsNull {
 		return StringType{IsNull: true}, nil
 	}
