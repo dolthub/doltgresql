@@ -24,11 +24,11 @@ import (
 // split_part represents the PostgreSQL function of the same name.
 var split_part = Function{
 	Name:      "split_part",
-	Overloads: []interface{}{split_part_string},
+	Overloads: []interface{}{split_part_string_string_int},
 }
 
 // split_part_string is one of the overloads of split_part.
-func split_part_string(str StringType, delimiter StringType, n IntegerType) (StringType, error) {
+func split_part_string_string_int(str StringType, delimiter StringType, n IntegerType) (StringType, error) {
 	if str.IsNull || delimiter.IsNull || n.IsNull {
 		return StringType{IsNull: true}, nil
 	}

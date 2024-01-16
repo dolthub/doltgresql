@@ -17,11 +17,11 @@ package functions
 // right represents the PostgreSQL function of the same name.
 var right = Function{
 	Name:      "right",
-	Overloads: []interface{}{right_string},
+	Overloads: []interface{}{right_string_int},
 }
 
 // right_string is one of the overloads of right.
-func right_string(string StringType, n IntegerType) (StringType, error) {
+func right_string_int(string StringType, n IntegerType) (StringType, error) {
 	if string.IsNull || n.IsNull {
 		return StringType{IsNull: true}, nil
 	}
