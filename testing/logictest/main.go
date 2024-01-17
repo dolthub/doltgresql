@@ -20,6 +20,7 @@ import (
 	"encoding/json"
 	"flag"
 	"fmt"
+	"log"
 	"os"
 
 	"github.com/dolthub/sqllogictest/go/logictest"
@@ -28,6 +29,8 @@ import (
 )
 
 var resultFormat = flag.String("r", "json", "format of parsed results")
+var withServer = flag.Bool("server", false, "format of parsed results")
+var doltgres = flag.String("doltgres", "", "local doltgres binary")
 
 // Runs all sqllogictest test files (or directories containing them) given as arguments.
 // Usage: $command (run|parse) [version] [file1.test dir1/ dir2/]
@@ -42,8 +45,18 @@ func main() {
 	}
 
 	if args[0] == "run" {
-		h := harness.NewPostgresqlHarness("postgresql://postgres:password@localhost:5432/sqllogictest?sslmode=disable")
-		logictest.RunTestFiles(h, args[1:]...)
+		// to run with server: $command --server=true --doltgres=<path to doltgres> run [tests]
+		if *withServer {
+			if *doltgres == "" {
+				log.Fatal("Must supply --doltgres with -s")
+			}
+			h := harness.NewDoltgresHarness(*doltgres)
+			logictest.RunTestFiles(h, args[1:]...)
+			defer h.Close()
+		} else {
+			h := harness.NewPostgresqlHarness("postgresql://postgres:password@localhost:5432/sqllogictest?sslmode=disable")
+			logictest.RunTestFiles(h, args[1:]...)
+		}
 	} else if args[0] == "parse" {
 		if len(args) < 3 {
 			panic("Usage: logictest [-r(csv|json)] parse <version> (file | dir/)")
