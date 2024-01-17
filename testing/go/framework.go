@@ -36,6 +36,10 @@ import (
 	dserver "github.com/dolthub/doltgresql/server"
 )
 
+// runOnPostgres is a debug setting to redirect the test framework to a local running postgres server,
+// rather than starting a doltgres server. 
+const runOnPostgres = true
+
 // ScriptTest defines a consistent structure for testing queries.
 type ScriptTest struct {
 	// Name of the script.
@@ -166,8 +170,13 @@ func RunScripts(t *testing.T, scripts []ScriptTest) {
 	if len(focusScripts) > 0 {
 		scripts = focusScripts
 	}
+	
 	for _, script := range scripts {
-		RunScript(t, script)
+		if runOnPostgres {
+			RunScriptOnPostgres(t, script)
+		} else {
+			RunScript(t, script)
+		}
 	}
 }
 
