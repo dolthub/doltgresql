@@ -113,7 +113,6 @@ func runScript(t *testing.T, script ScriptTest, conn *pgx.Conn, ctx context.Cont
 				t.Skip("Skip has been set in the assertion")
 			}
 			// If we're skipping the results check, then we call Execute, as it uses a simplified message model.
-			// The more complicated model is only partially implemented, and therefore won't work for all queries.
 			if assertion.SkipResultsCheck || assertion.ExpectedErr {
 				_, err := conn.Exec(ctx, assertion.Query, assertion.BindVars...)
 				if assertion.ExpectedErr {

@@ -24,7 +24,6 @@ import (
 
 var preparedStatementTests = []ScriptTest{
 	{
-		Focus: true,
 		Name: "expressions without tables",
 		Assertions: []ScriptTestAssertion{
 			{
