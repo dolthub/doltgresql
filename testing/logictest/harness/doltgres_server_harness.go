@@ -17,7 +17,6 @@ package harness
 import (
 	"context"
 	"database/sql"
-	"golang.org/x/sync/errgroup"
 	"log"
 	"os"
 	"os/exec"
@@ -27,6 +26,8 @@ import (
 	"sync"
 	"syscall"
 	"time"
+
+	"golang.org/x/sync/errgroup"
 
 	"github.com/dolthub/sqllogictest/go/logictest"
 	_ "github.com/jackc/pgx/v4/stdlib"
