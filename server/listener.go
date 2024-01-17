@@ -478,19 +478,32 @@ func extractBindVarTypes(queryPlan sql.Node) ([]int32, error) {
 
 	types := make([]int32, 0)
 	var err error
-	transform.InspectExpressions(inspectNode, func(expr sql.Expression) bool {
-		if bindVar, ok := expr.(*expression.BindVar); ok {
-			var id int32
-			id, err = messages.VitessTypeToObjectID(bindVar.Type().Type())
+	extractBindVars := func(expr sql.Expression) bool {
+		switch e := expr.(type) {
+		case *expression.BindVar:
+			var oid int32
+			oid, err = messages.VitessTypeToObjectID(e.Type().Type())
 			if err != nil {
 				return false
-			} else {
-				types = append(types, id)
+			}
+			types = append(types, oid) 
+		// $1::text and similar get converted to a Convert expression wrapping the bindvar
+		case *expression.Convert:
+			if _, ok := e.Child.(*expression.BindVar); ok {
+				var oid int32
+				oid, err = messages.VitessTypeToObjectID(e.Type().Type())
+				if err != nil {
+					return false
+				}
+				types = append(types, oid)
+				return false
 			}
 		}
+		
 		return true
-	})
-
+	}
+	
+	transform.InspectExpressions(inspectNode, extractBindVars)
 	return types, err
 }
 
