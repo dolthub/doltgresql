@@ -24,23 +24,22 @@ import (
 
 var preparedStatementTests = []ScriptTest{
 	{
+		Focus: true,
 		Name: "expressions without tables",
 		Assertions: []ScriptTestAssertion{
 			{
-				Query:    "SELECT CONCAT($1, $2)",
+				Query:    "SELECT CONCAT($1::text, $2::text)",
 				BindVars: []any{"hello", "world"},
 				Expected: []sql.Row{
 					{"helloworld"},
 				},
-				Skip: true, // this doesn't work without explicit type hints for the params
 			},
 			{
-				Query:    "SELECT $1 + $2",
+				Query:    "SELECT $1::integer + $2::integer",
 				BindVars: []any{1, 2},
 				Expected: []sql.Row{
 					{3},
 				},
-				Skip: true, // this doesn't work without explicit type hints for the params
 			},
 		},
 	},
