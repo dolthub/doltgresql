@@ -23,8 +23,9 @@ import (
 	"log"
 	"os"
 
-	"github.com/dolthub/doltgresql/testing/logictest/harness"
 	"github.com/dolthub/sqllogictest/go/logictest"
+
+	"github.com/dolthub/doltgresql/testing/logictest/harness"
 )
 
 var resultFormat = flag.String("r", "json", "format of parsed results")
