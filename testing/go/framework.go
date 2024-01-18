@@ -38,7 +38,7 @@ import (
 
 // runOnPostgres is a debug setting to redirect the test framework to a local running postgres server,
 // rather than starting a doltgres server. 
-const runOnPostgres = true
+const runOnPostgres = false
 
 // ScriptTest defines a consistent structure for testing queries.
 type ScriptTest struct {

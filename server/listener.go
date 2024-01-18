@@ -479,20 +479,25 @@ func extractBindVarTypes(queryPlan sql.Node) ([]int32, error) {
 	types := make([]int32, 0)
 	var err error
 	extractBindVars := func(expr sql.Expression) bool {
+		if err != nil {
+			return false
+		}
 		switch e := expr.(type) {
 		case *expression.BindVar:
 			var oid int32
 			oid, err = messages.VitessTypeToObjectID(e.Type().Type())
 			if err != nil {
+				err = fmt.Errorf("could not determine OID for placeholder %s: %w", e.Name, err)
 				return false
 			}
 			types = append(types, oid) 
 		// $1::text and similar get converted to a Convert expression wrapping the bindvar
 		case *expression.Convert:
-			if _, ok := e.Child.(*expression.BindVar); ok {
+			if bindVar, ok := e.Child.(*expression.BindVar); ok {
 				var oid int32
 				oid, err = messages.VitessTypeToObjectID(e.Type().Type())
 				if err != nil {
+					err = fmt.Errorf("could not determine OID for placeholder %s: %w", bindVar.Name, err)
 					return false
 				}
 				types = append(types, oid)
