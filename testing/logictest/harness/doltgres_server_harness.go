@@ -17,6 +17,7 @@ package harness
 import (
 	"context"
 	"database/sql"
+	"fmt"
 	"log"
 	"os"
 	"os/exec"
@@ -36,8 +37,8 @@ import (
 const (
 	dsn               = "postgresql://postgres:password@localhost:5432/sqllogictest?sslmode=disable"
 	doltgresResultDir = "doltgresBin"
-	serverLog         = "doltgres_server.log"
-	errorLog          = "error.log"
+	serverLogFile     = "server.log"
+	harnessLogFile    = "harness.log"
 )
 
 var _ logictest.Harness = &DoltgresHarness{}
@@ -54,11 +55,11 @@ type DoltgresHarness struct {
 // It starts doltgres server and handles every connection to it.
 func NewDoltgresHarness(doltgresExec string) *DoltgresHarness {
 	serverDir := prepareSqlLogicTestDBAndGetServerDir(context.Background(), doltgresExec)
-	errLog, err := os.OpenFile(errorLog, os.O_RDWR|os.O_CREATE|os.O_APPEND, 0666)
+	logFile, err := os.OpenFile(harnessLogFile, os.O_RDWR|os.O_CREATE|os.O_APPEND, 0666)
 	if err != nil {
 		log.Fatal(err)
 	}
-	log.SetOutput(errLog)
+	log.SetOutput(logFile)
 
 	return &DoltgresHarness{
 		doltgresExec: doltgresExec,
@@ -71,10 +72,10 @@ func (h *DoltgresHarness) EngineStr() string {
 }
 
 func (h *DoltgresHarness) Init() error {
-	h.startNewDoltgresServer(context.Background())
+	h.startNewDoltgresServer(context.Background(), logictest.GetCurrentFileName())
 	db, err := sql.Open("pgx", dsn)
 	if err != nil {
-		log.Printf("got error opening connection: %s", err.Error())
+		logErr(err, "opening connection to pgx")
 		return err
 	}
 	h.db = db
@@ -206,7 +207,7 @@ func (h *DoltgresHarness) dropAllViews() error {
 
 // startNewDoltgresServer stops the existing server if exists.
 // It starts a new server and update the |server| of the harness.
-func (h *DoltgresHarness) startNewDoltgresServer(ctx context.Context) {
+func (h *DoltgresHarness) startNewDoltgresServer(ctx context.Context, newTestFile string) {
 	if h.server != nil {
 		h.server.Stop()
 		h.server = nil
@@ -215,15 +216,16 @@ func (h *DoltgresHarness) startNewDoltgresServer(ctx context.Context) {
 	withKeyCtx, cancel := context.WithCancel(ctx)
 	gServer, serverCtx := errgroup.WithContext(withKeyCtx)
 
-	l, err := os.OpenFile(serverLog, os.O_RDWR|os.O_CREATE|os.O_APPEND, 0666)
-	if err != nil {
-		log.Fatal(err)
-	}
-
 	server := exec.CommandContext(serverCtx, h.doltgresExec, "--data-dir=.")
+	server.Dir = h.serverDir
+
+	// open log file for server output
+	l, err := os.OpenFile(serverLogFile, os.O_RDWR|os.O_CREATE|os.O_APPEND, 0666)
+	if err != nil {
+		logErr(err, fmt.Sprintf("opening %s file", serverLogFile))
+	}
 	server.Stdout = l
 	server.Stderr = l
-	server.Dir = h.serverDir
 
 	// handle user interrupt
 	quit := make(chan os.Signal, 1)
@@ -238,11 +240,12 @@ func (h *DoltgresHarness) startNewDoltgresServer(ctx context.Context) {
 	}()
 
 	doltgresServer := &DoltgresServer{
-		dir:     h.serverDir,
-		quit:    quit,
-		wg:      &wg,
-		gServer: gServer,
-		server:  server,
+		dir:      h.serverDir,
+		quit:     quit,
+		wg:       &wg,
+		gServer:  gServer,
+		server:   server,
+		testFile: newTestFile,
 	}
 
 	h.server = doltgresServer
@@ -252,42 +255,44 @@ func (h *DoltgresHarness) startNewDoltgresServer(ctx context.Context) {
 func prepareSqlLogicTestDBAndGetServerDir(ctx context.Context, doltgresExec string) string {
 	cwd, err := os.Getwd()
 	if err != nil {
-		log.Printf("got error from cwd: %s", err.Error())
+		logErr(err, "getting cwd")
 	}
 
 	serverDir := filepath.Join(cwd, doltgresResultDir)
 	// remove this dir to make sure it doesn't exist from previous run
 	err = os.RemoveAll(serverDir)
 	if err != nil {
-		log.Printf("got error from RemoveAll: %s", err.Error())
+		logErr(err, "running `RemoveAll`")
 	}
 
 	// this creates db named 'sqllogictest'
 	logicTestDbDir := filepath.Join(serverDir, "sqllogictest")
 	err = os.MkdirAll(logicTestDbDir, os.ModePerm)
 	if err != nil {
-		log.Printf("got error from MkdirAll: %s", err.Error())
+		logErr(err, "running `MkdirAll`")
 	}
 
 	testInit := exec.CommandContext(ctx, doltgresExec, "init")
 	testInit.Dir = logicTestDbDir
 	err = testInit.Run()
 	if err != nil {
-		log.Printf("got error from running `doltgres init`: %s", err.Error())
+		logErr(err, "running `doltgres init`")
 	}
 
 	return serverDir
 }
 
 type DoltgresServer struct {
-	dir     string
-	quit    chan os.Signal
-	wg      *sync.WaitGroup
-	gServer *errgroup.Group
-	server  *exec.Cmd
+	dir      string
+	quit     chan os.Signal
+	wg       *sync.WaitGroup
+	gServer  *errgroup.Group
+	server   *exec.Cmd
+	testFile string
 }
 
 func (s *DoltgresServer) Start() {
+	logMsg(fmt.Sprintf("starting server for: %s", s.testFile))
 	var err error
 	// launch the dolt server
 	s.gServer.Go(func() error {
@@ -298,7 +303,7 @@ func (s *DoltgresServer) Start() {
 	// sleep to allow the server to start
 	time.Sleep(3 * time.Second)
 	if err != nil {
-		log.Printf("got error from starting the server: %s", err.Error())
+		logErr(err, "server.Start()")
 	}
 }
 
@@ -310,6 +315,8 @@ func (s *DoltgresServer) Stop() {
 	default:
 	}
 
+	logMsg(fmt.Sprintf("stopping server for: %s", s.testFile))
+
 	// send signal to dolt server
 	s.quit <- syscall.SIGTERM
 	//defer s.isRunning.Store(false)
@@ -318,10 +325,10 @@ func (s *DoltgresServer) Stop() {
 		// we expect a kill error
 		// we only exit in error
 		// if this is not the error
-		if err.Error() != "signal: killed" {
-			log.Printf("server is stopped from potential panic: %s", err.Error())
+		if err.Error() == "signal: killed" {
+			logMsg("server is stopped successfully from SIGTERM sent")
 		} else {
-			log.Printf("server is stopped from SIGTERM sent: %s", err.Error())
+			logErr(err, "server.Stop()")
 		}
 	}
 
@@ -331,4 +338,12 @@ func (s *DoltgresServer) Stop() {
 
 func (s *DoltgresServer) Close() {
 	s.Stop()
+}
+
+func logErr(err error, cause string) {
+	log.Printf("ERROR: %s received from %s", err.Error(), cause)
+}
+
+func logMsg(msg string) {
+	log.Printf(msg)
 }

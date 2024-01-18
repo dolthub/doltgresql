@@ -22,6 +22,7 @@ import (
 	"fmt"
 	"log"
 	"os"
+	"time"
 
 	"github.com/dolthub/sqllogictest/go/logictest"
 
@@ -58,9 +59,9 @@ func main() {
 		} else {
 			h = harness.NewPostgresqlHarness("postgresql://postgres:password@localhost:5432/sqllogictest?sslmode=disable")
 		}
-		//if *timeout != 0 {
-		//	logictest.SetTimeout(time.Duration(*timeout))
-		//}
+		if *timeout != 0 {
+			logictest.SetTimeout(time.Duration(*timeout))
+		}
 		logictest.RunTestFiles(h, args[1:]...)
 	} else if args[0] == "parse" {
 		if len(args) < 3 {
