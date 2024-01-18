@@ -20,11 +20,9 @@ import (
 	"encoding/json"
 	"flag"
 	"fmt"
+	"github.com/dolthub/sqllogictest/go/logictest"
 	"log"
 	"os"
-	"time"
-
-	"github.com/dolthub/sqllogictest/go/logictest"
 
 	"github.com/dolthub/doltgresql/testing/logictest/harness"
 )
@@ -32,7 +30,7 @@ import (
 var resultFormat = flag.String("r", "json", "format of parsed results")
 var withServer = flag.Bool("server", false, "format of parsed results")
 var doltgres = flag.String("doltgres", "", "local doltgres binary")
-var timeout = flag.Int64("timeout", 0, "set a timeout (in ms) for each test query")
+var timeout = flag.Int64("timeout", 0, "set a timeout (in seconds) for each test query")
 
 // Runs all sqllogictest test files (or directories containing them) given as arguments.
 // Usage: $command (run|parse) [version] [file1.test dir1/ dir2/]
@@ -53,14 +51,11 @@ func main() {
 			if *doltgres == "" {
 				log.Fatal("Must supply --doltgres=<path to doltgres> with --server=true")
 			}
-			dh := harness.NewDoltgresHarness(*doltgres)
+			dh := harness.NewDoltgresHarness(*doltgres, *timeout)
 			defer dh.Close()
 			h = dh
 		} else {
-			h = harness.NewPostgresqlHarness("postgresql://postgres:password@localhost:5432/sqllogictest?sslmode=disable")
-		}
-		if *timeout != 0 {
-			logictest.SetTimeout(time.Duration(*timeout))
+			h = harness.NewPostgresqlHarness("postgresql://postgres:password@localhost:5432/sqllogictest?sslmode=disable", *timeout)
 		}
 		logictest.RunTestFiles(h, args[1:]...)
 	} else if args[0] == "parse" {

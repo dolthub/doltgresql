@@ -49,21 +49,24 @@ type DoltgresHarness struct {
 	doltgresExec string
 	server       *DoltgresServer
 	serverDir    string
+	timeout      int64 // in seconds
 }
 
 // NewDoltgresHarness returns a new Doltgres test harness for the data source name given.
 // It starts doltgres server and handles every connection to it.
-func NewDoltgresHarness(doltgresExec string) *DoltgresHarness {
+func NewDoltgresHarness(doltgresExec string, t int64) *DoltgresHarness {
 	serverDir := prepareSqlLogicTestDBAndGetServerDir(context.Background(), doltgresExec)
 	logFile, err := os.OpenFile(harnessLogFile, os.O_RDWR|os.O_CREATE|os.O_APPEND, 0666)
 	if err != nil {
 		log.Fatal(err)
 	}
 	log.SetOutput(logFile)
+	logMsg("creating a new DoltgresHarness")
 
 	return &DoltgresHarness{
 		doltgresExec: doltgresExec,
 		serverDir:    serverDir,
+		timeout:      t,
 	}
 }
 
@@ -129,6 +132,10 @@ func (h *DoltgresHarness) ExecuteQuery(statement string) (schema string, results
 	}
 
 	return schema, results, nil
+}
+
+func (h *DoltgresHarness) GetTimeout() int64 {
+	return h.timeout
 }
 
 func (h *DoltgresHarness) dropAllTables() error {
