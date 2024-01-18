@@ -292,7 +292,7 @@ type DoltgresServer struct {
 }
 
 func (s *DoltgresServer) Start() {
-	logMsg(fmt.Sprintf("starting server for: %s", s.testFile))
+	log.Printf(fmt.Sprintf("starting server for: %s", s.testFile))
 	var err error
 	// launch the dolt server
 	s.gServer.Go(func() error {
@@ -315,7 +315,7 @@ func (s *DoltgresServer) Stop() {
 	default:
 	}
 
-	logMsg(fmt.Sprintf("stopping server for: %s", s.testFile))
+	log.Printf(fmt.Sprintf("stopping server for: %s", s.testFile))
 
 	// send signal to dolt server
 	s.quit <- syscall.SIGTERM
@@ -326,7 +326,7 @@ func (s *DoltgresServer) Stop() {
 		// we only exit in error
 		// if this is not the error
 		if err.Error() == "signal: killed" {
-			logMsg("server is stopped successfully from SIGTERM sent")
+			log.Printf("server is stopped successfully from SIGTERM sent")
 		} else {
 			logErr(err, "server.Stop()")
 		}
@@ -342,8 +342,4 @@ func (s *DoltgresServer) Close() {
 
 func logErr(err error, cause string) {
 	log.Printf("ERROR: %s received from %s", err.Error(), cause)
-}
-
-func logMsg(msg string) {
-	log.Printf(msg)
 }
