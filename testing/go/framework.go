@@ -80,6 +80,11 @@ type ScriptTestAssertion struct {
 
 // RunScript runs the given script.
 func RunScript(t *testing.T, script ScriptTest) {
+	if runOnPostgres {
+		RunScriptOnPostgres(t, script)
+		return
+	}
+
 	scriptDatabase := script.Database
 	if len(scriptDatabase) == 0 {
 		scriptDatabase = "postgres"
@@ -172,11 +177,7 @@ func RunScripts(t *testing.T, scripts []ScriptTest) {
 	}
 
 	for _, script := range scripts {
-		if runOnPostgres {
-			RunScriptOnPostgres(t, script)
-		} else {
-			RunScript(t, script)
-		}
+		RunScript(t, script)
 	}
 }
 
