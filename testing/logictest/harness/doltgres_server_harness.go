@@ -35,10 +35,10 @@ import (
 )
 
 const (
-	dsn               = "postgresql://postgres:password@localhost:5432/sqllogictest?sslmode=disable"
-	doltgresResultDir = "doltgresBin"
-	serverLogFile     = "server.log"
-	harnessLogFile    = "harness.log"
+	dsn            = "postgresql://postgres:password@localhost:5432/sqllogictest?sslmode=disable"
+	doltgresDBDir  = "doltgresDatabases"
+	serverLogFile  = "server.log"
+	harnessLogFile = "harness.log"
 )
 
 var _ logictest.Harness = &DoltgresHarness{}
@@ -265,7 +265,7 @@ func prepareSqlLogicTestDBAndGetServerDir(ctx context.Context, doltgresExec stri
 		logErr(err, "getting cwd")
 	}
 
-	serverDir := filepath.Join(cwd, doltgresResultDir)
+	serverDir := filepath.Join(cwd, doltgresDBDir)
 	// remove this dir to make sure it doesn't exist from previous run
 	err = os.RemoveAll(serverDir)
 	if err != nil {
