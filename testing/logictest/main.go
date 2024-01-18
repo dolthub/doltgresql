@@ -20,9 +20,10 @@ import (
 	"encoding/json"
 	"flag"
 	"fmt"
-	"github.com/dolthub/sqllogictest/go/logictest"
 	"log"
 	"os"
+
+	"github.com/dolthub/sqllogictest/go/logictest"
 
 	"github.com/dolthub/doltgresql/testing/logictest/harness"
 )
