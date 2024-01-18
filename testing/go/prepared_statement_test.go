@@ -27,20 +27,18 @@ var preparedStatementTests = []ScriptTest{
 		Name: "expressions without tables",
 		Assertions: []ScriptTestAssertion{
 			{
-				Query:    "SELECT CONCAT($1, $2)",
+				Query:    "SELECT CONCAT($1::text, $2::text)",
 				BindVars: []any{"hello", "world"},
 				Expected: []sql.Row{
 					{"helloworld"},
 				},
-				Skip: true, // this doesn't work without explicit type hints for the params
 			},
 			{
-				Query:    "SELECT $1 + $2",
+				Query:    "SELECT $1::integer + $2::integer",
 				BindVars: []any{1, 2},
 				Expected: []sql.Row{
 					{3},
 				},
-				Skip: true, // this doesn't work without explicit type hints for the params
 			},
 		},
 	},
@@ -80,7 +78,6 @@ var preparedStatementTests = []ScriptTest{
 				Expected: []sql.Row{
 					{1, 2},
 				},
-				Skip: true, // can't correctly extract the bindvar type with more complicated processing during plan building
 			},
 			{
 				Query:    "SELECT * FROM test WHERE pk + v1 = $1;",
@@ -90,12 +87,11 @@ var preparedStatementTests = []ScriptTest{
 				},
 			},
 			{
-				Query:    "SELECT * FROM test WHERE v1 = $1 + $2;",
+				Query:    "SELECT * FROM test WHERE v1 = $1::integer + $2::integer;",
 				BindVars: []any{1, 3},
 				Expected: []sql.Row{
 					{3, 4},
 				},
-				Skip: true, // this doesn't work without explicit type hints for the params
 			},
 		},
 	},
@@ -172,12 +168,11 @@ var preparedStatementTests = []ScriptTest{
 				},
 			},
 			{
-				Query:    "SELECT * FROM test WHERE s = concat($1, $2);",
+				Query:    "SELECT * FROM test WHERE s = concat($1::text, $2::text);",
 				BindVars: []any{"he", "llo"},
 				Expected: []sql.Row{
 					{1, "hello"},
 				},
-				Skip: true, // this doesn't work without explicit type hints for the params
 			},
 			{
 				Query:    "SELECT * FROM test WHERE concat(s, '!') = $1",
@@ -266,15 +261,13 @@ var preparedStatementTests = []ScriptTest{
 				Expected: []sql.Row{
 					{1, 1.1},
 				},
-				Skip: true, // can't correctly extract the bindvar type with more complicated processing during plan building
 			},
 			{
-				Query:    "SELECT * FROM test WHERE f1 = $1 + $2;",
+				Query:    "SELECT * FROM test WHERE f1 = $1::decimal + $2::decimal;",
 				BindVars: []any{1.0, 0.1},
 				Expected: []sql.Row{
 					{1, 1.1},
 				},
-				Skip: true, // this doesn't work without explicit type hints for the params
 			},
 		},
 	},

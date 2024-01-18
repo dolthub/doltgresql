@@ -478,19 +478,37 @@ func extractBindVarTypes(queryPlan sql.Node) ([]int32, error) {
 
 	types := make([]int32, 0)
 	var err error
-	transform.InspectExpressions(inspectNode, func(expr sql.Expression) bool {
-		if bindVar, ok := expr.(*expression.BindVar); ok {
-			var id int32
-			id, err = messages.VitessTypeToObjectID(bindVar.Type().Type())
+	extractBindVars := func(expr sql.Expression) bool {
+		if err != nil {
+			return false
+		}
+		switch e := expr.(type) {
+		case *expression.BindVar:
+			var oid int32
+			oid, err = messages.VitessTypeToObjectID(e.Type().Type())
 			if err != nil {
+				err = fmt.Errorf("could not determine OID for placeholder %s: %w", e.Name, err)
 				return false
-			} else {
-				types = append(types, id)
+			}
+			types = append(types, oid)
+		// $1::text and similar get converted to a Convert expression wrapping the bindvar
+		case *expression.Convert:
+			if bindVar, ok := e.Child.(*expression.BindVar); ok {
+				var oid int32
+				oid, err = messages.VitessTypeToObjectID(e.Type().Type())
+				if err != nil {
+					err = fmt.Errorf("could not determine OID for placeholder %s: %w", bindVar.Name, err)
+					return false
+				}
+				types = append(types, oid)
+				return false
 			}
 		}
-		return true
-	})
 
+		return true
+	}
+
+	transform.InspectExpressions(inspectNode, extractBindVars)
 	return types, err
 }
 
@@ -513,15 +531,19 @@ func convertBindVarValue(typ querypb.Type, value messages.BindParameterValue) []
 	switch typ {
 	case querypb.Type_INT8, querypb.Type_INT16, querypb.Type_INT24, querypb.Type_INT32, querypb.Type_UINT8, querypb.Type_UINT16, querypb.Type_UINT24, querypb.Type_UINT32:
 		// first convert the bytes in the payload to an integer, then convert that to its base 10 string representation
-		intVal := binary.BigEndian.Uint32(value.Data) // TODO: bound check
+		intVal := binary.BigEndian.Uint32(value.Data)
 		return []byte(strconv.FormatUint(uint64(intVal), 10))
 	case querypb.Type_INT64, querypb.Type_UINT64:
 		// first convert the bytes in the payload to an integer, then convert that to its base 10 string representation
 		intVal := binary.BigEndian.Uint64(value.Data)
 		return []byte(strconv.FormatUint(intVal, 10))
-	case querypb.Type_FLOAT32, querypb.Type_FLOAT64:
+	case querypb.Type_FLOAT32:
 		// first convert the bytes in the payload to a float, then convert that to its base 10 string representation
-		floatVal := binary.BigEndian.Uint64(value.Data) // TODO: bound check
+		floatVal := binary.BigEndian.Uint32(value.Data)
+		return []byte(strconv.FormatFloat(float64(math.Float32frombits(floatVal)), 'f', -1, 64))
+	case querypb.Type_FLOAT64:
+		// first convert the bytes in the payload to a float, then convert that to its base 10 string representation
+		floatVal := binary.BigEndian.Uint64(value.Data)
 		return []byte(strconv.FormatFloat(math.Float64frombits(floatVal), 'f', -1, 64))
 	case querypb.Type_VARCHAR, querypb.Type_VARBINARY, querypb.Type_TEXT, querypb.Type_BLOB:
 		return value.Data

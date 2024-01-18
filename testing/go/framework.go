@@ -36,6 +36,10 @@ import (
 	dserver "github.com/dolthub/doltgresql/server"
 )
 
+// runOnPostgres is a debug setting to redirect the test framework to a local running postgres server,
+// rather than starting a doltgres server.
+const runOnPostgres = false
+
 // ScriptTest defines a consistent structure for testing queries.
 type ScriptTest struct {
 	// Name of the script.
@@ -76,6 +80,11 @@ type ScriptTestAssertion struct {
 
 // RunScript runs the given script.
 func RunScript(t *testing.T, script ScriptTest) {
+	if runOnPostgres {
+		RunScriptOnPostgres(t, script)
+		return
+	}
+
 	scriptDatabase := script.Database
 	if len(scriptDatabase) == 0 {
 		scriptDatabase = "postgres"
@@ -113,7 +122,6 @@ func runScript(t *testing.T, script ScriptTest, conn *pgx.Conn, ctx context.Cont
 				t.Skip("Skip has been set in the assertion")
 			}
 			// If we're skipping the results check, then we call Execute, as it uses a simplified message model.
-			// The more complicated model is only partially implemented, and therefore won't work for all queries.
 			if assertion.SkipResultsCheck || assertion.ExpectedErr {
 				_, err := conn.Exec(ctx, assertion.Query, assertion.BindVars...)
 				if assertion.ExpectedErr {
@@ -167,6 +175,7 @@ func RunScripts(t *testing.T, scripts []ScriptTest) {
 	if len(focusScripts) > 0 {
 		scripts = focusScripts
 	}
+
 	for _, script := range scripts {
 		RunScript(t, script)
 	}

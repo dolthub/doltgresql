@@ -17,7 +17,9 @@ package ast
 import (
 	"fmt"
 	"go/constant"
+	"strings"
 
+	"github.com/dolthub/go-mysql-server/sql/expression"
 	vitess "github.com/dolthub/vitess/go/vt/sqlparser"
 
 	"github.com/dolthub/doltgresql/postgres/parser/sem/tree"
@@ -198,6 +200,11 @@ func nodeExpr(node tree.Expr) (vitess.Expr, error) {
 		}
 
 		convertType, err := nodeResolvableTypeReference(node.Type)
+		if err != nil {
+			return nil, err
+		}
+
+		convertType, err = translateConvertType(convertType)
 		if err != nil {
 			return nil, err
 		}
@@ -569,5 +576,37 @@ func nodeExpr(node tree.Expr) (vitess.Expr, error) {
 		return nil, nil
 	default:
 		return nil, fmt.Errorf("unknown expression: `%T`", node)
+	}
+}
+
+func translateConvertType(convertType *vitess.ConvertType) (*vitess.ConvertType, error) {
+	switch strings.ToLower(convertType.Type) {
+	// passthrough types that need no conversion
+	case expression.ConvertToBinary, expression.ConvertToChar, expression.ConvertToNChar, expression.ConvertToDate,
+		expression.ConvertToDatetime, expression.ConvertToFloat, expression.ConvertToDouble, expression.ConvertToJSON,
+		expression.ConvertToReal, expression.ConvertToSigned, expression.ConvertToTime, expression.ConvertToUnsigned:
+		return convertType, nil
+	case "text", "character varying", "varchar":
+		return &vitess.ConvertType{
+			Type: expression.ConvertToChar,
+		}, nil
+	case "integer", "bigint":
+		return &vitess.ConvertType{
+			Type: expression.ConvertToSigned,
+		}, nil
+	case "decimal", "numeric":
+		return &vitess.ConvertType{
+			Type: expression.ConvertToFloat,
+		}, nil
+	case "boolean":
+		return &vitess.ConvertType{
+			Type: expression.ConvertToSigned,
+		}, nil
+	case "timestamp", "timestamp with time zone", "timestamp without time zone":
+		return &vitess.ConvertType{
+			Type: expression.ConvertToDatetime,
+		}, nil
+	default:
+		return nil, fmt.Errorf("unknown convert type: `%T`", convertType.Type)
 	}
 }
