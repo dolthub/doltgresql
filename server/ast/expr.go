@@ -579,6 +579,8 @@ func nodeExpr(node tree.Expr) (vitess.Expr, error) {
 	}
 }
 
+// translateConvertType translates the *vitess.ConvertType expression given to a new one, substituting type names as 
+// appropriate. An error is returned if the type named cannot be supported.
 func translateConvertType(convertType *vitess.ConvertType) (*vitess.ConvertType, error) {
 	switch strings.ToLower(convertType.Type) {
 	// passthrough types that need no conversion

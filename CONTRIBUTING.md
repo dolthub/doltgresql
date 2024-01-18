@@ -191,10 +191,15 @@ func assignTableDef(node tree.TableDef, target *vitess.DDL) error
 `tree.TableDef` is not a node that can be transformed into a [Vitess](https://github.com/dolthub/vitess) node.
 Instead, it's purpose is to modify other nodes, which in this case is `*vitess.DDL`.
 
-If there are any functions that do not fall into these two categories, and that function belongs in the `ast` package, then create an issue/PR and we will discuss it there.
+#### Rule 3: Functions modifying vitess AST nodes start with `translate`
+
+Functions that modify a vitess expression, e.g. to perform additional or common translation logic
+after other translation steps, should start with `translate`.
+
+If there are any functions that do not fall into the categories above, and that function belongs in the `ast` package, then create an issue/PR and we will discuss it there.
 If we add another function type, then this guide will also be updated.
 
-#### Rule 3: Each node gets its own file
+#### Rule 4: Each node gets its own file
 
 With very few exceptions, each node should have its own file.
 While this will create many files, it also allows a developer to quickly find the file containing the functionality that they're interested in.
@@ -204,7 +209,7 @@ All `tree.CompositeDatum` nodes are also `tree.Expr` nodes, and thus `nodeCompos
 In this case, `nodeCompositeDatum` is in [`expr.go`](https://github.com/dolthub/doltgresql/blob/main/server/ast/expr.go), since its implementation is essentially in [`expr.go`](https://github.com/dolthub/doltgresql/blob/main/server/ast/expr.go).
 This is technically a discrepancy though, and all such exceptions should be moved to their own files if they cause any confusion.
 
-#### Rule 4: Node slices get their own functions
+#### Rule 5: Node slices get their own functions
 
 Many nodes also have slice forms.
 For example `tree.Expr` has `tree.Exprs`, which is defined as `type Exprs []Expr`.
@@ -213,7 +218,7 @@ It may seem unnecessary, but it follows in the spirit of [Rule 1](#rule-1-functi
 In these cases, we generally do not create a new file, which technically violates [Rule 3](#rule-3-each-node-gets-its-own-file).
 However, since most of these functions amount to mere convenience functions, we include them in the same file to reduce the total number of files.
 
-#### Rule 5: All fields are accounted for
+#### Rule 6: All fields are accounted for
 
 All functions must account for all fields, implementations, etc. of their respective inputs.
 All interfaces must handle all integrators through a `switch` statement.
