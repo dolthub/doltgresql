@@ -9,7 +9,7 @@ require (
 	github.com/dolthub/dolt/go v0.40.5-0.20240110011351-84b9180295cc
 	github.com/dolthub/dolt/go/gen/proto/dolt/services/eventsapi v0.0.0-20231213233028-64c353bf920f
 	github.com/dolthub/go-mysql-server v0.17.1-0.20240110234302-66c569a3137e
-	github.com/dolthub/sqllogictest/go v0.0.0-20201107003712-816f3ae12d81
+	github.com/dolthub/sqllogictest/go v0.0.0-20240117232851-47bf95e955a2
 	github.com/dolthub/vitess v0.0.0-20240110233415-e46007d964c0
 	github.com/fatih/color v1.13.0
 	github.com/gogo/protobuf v1.3.2
@@ -29,6 +29,7 @@ require (
 	github.com/twpayne/go-geom v1.3.6
 	golang.org/x/exp v0.0.0-20230522175609-2e198f4a06a1
 	golang.org/x/net v0.17.0
+	golang.org/x/sync v0.3.0
 	golang.org/x/sys v0.15.0
 	golang.org/x/text v0.14.0
 )
@@ -138,7 +139,6 @@ require (
 	golang.org/x/crypto v0.17.0 // indirect
 	golang.org/x/mod v0.12.0 // indirect
 	golang.org/x/oauth2 v0.8.0 // indirect
-	golang.org/x/sync v0.3.0 // indirect
 	golang.org/x/term v0.15.0 // indirect
 	golang.org/x/time v0.1.0 // indirect
 	golang.org/x/tools v0.13.0 // indirect
