@@ -203,7 +203,7 @@ func nodeExpr(node tree.Expr) (vitess.Expr, error) {
 		if err != nil {
 			return nil, err
 		}
-		
+
 		convertType, err = translateConvertType(convertType)
 		if err != nil {
 			return nil, err
@@ -588,23 +588,23 @@ func translateConvertType(convertType *vitess.ConvertType) (*vitess.ConvertType,
 		return convertType, nil
 	case "text", "character varying", "varchar":
 		return &vitess.ConvertType{
-			Type:     expression.ConvertToChar,
+			Type: expression.ConvertToChar,
 		}, nil
 	case "integer", "bigint":
 		return &vitess.ConvertType{
-			Type:     expression.ConvertToSigned,
+			Type: expression.ConvertToSigned,
 		}, nil
 	case "decimal", "numeric":
 		return &vitess.ConvertType{
-			Type:     expression.ConvertToFloat,
+			Type: expression.ConvertToFloat,
 		}, nil
 	case "boolean":
 		return &vitess.ConvertType{
-			Type:     expression.ConvertToSigned,
+			Type: expression.ConvertToSigned,
 		}, nil
 	case "timestamp", "timestamp with time zone", "timestamp without time zone":
 		return &vitess.ConvertType{
-			Type:     expression.ConvertToDatetime,
+			Type: expression.ConvertToDatetime,
 		}, nil
 	default:
 		return nil, fmt.Errorf("unknown convert type: `%T`", convertType.Type)

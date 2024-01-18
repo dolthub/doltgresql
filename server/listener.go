@@ -490,7 +490,7 @@ func extractBindVarTypes(queryPlan sql.Node) ([]int32, error) {
 				err = fmt.Errorf("could not determine OID for placeholder %s: %w", e.Name, err)
 				return false
 			}
-			types = append(types, oid) 
+			types = append(types, oid)
 		// $1::text and similar get converted to a Convert expression wrapping the bindvar
 		case *expression.Convert:
 			if bindVar, ok := e.Child.(*expression.BindVar); ok {
@@ -504,10 +504,10 @@ func extractBindVarTypes(queryPlan sql.Node) ([]int32, error) {
 				return false
 			}
 		}
-		
+
 		return true
 	}
-	
+
 	transform.InspectExpressions(inspectNode, extractBindVars)
 	return types, err
 }
