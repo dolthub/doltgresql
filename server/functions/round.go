@@ -22,7 +22,7 @@ var round = Function{
 	Overloads: []interface{}{round_num, round_float, round_num_dec},
 }
 
-// round1 is one of the overloads of round.
+// round_num is one of the overloads of round.
 func round_num(num NumericType) (NumericType, error) {
 	if num.IsNull {
 		return NumericType{IsNull: true}, nil
@@ -30,7 +30,7 @@ func round_num(num NumericType) (NumericType, error) {
 	return NumericType{Value: math.Round(num.Value)}, nil
 }
 
-// round2 is one of the overloads of round.
+// round_float is one of the overloads of round.
 func round_float(num FloatType) (FloatType, error) {
 	if num.IsNull {
 		return FloatType{IsNull: true}, nil
@@ -38,7 +38,7 @@ func round_float(num FloatType) (FloatType, error) {
 	return FloatType{Value: math.RoundToEven(num.Value)}, nil
 }
 
-// round3 is one of the overloads of round.
+// round_num_dec is one of the overloads of round.
 func round_num_dec(num NumericType, decimalPlaces IntegerType) (NumericType, error) {
 	if num.IsNull || decimalPlaces.IsNull {
 		return NumericType{IsNull: true}, nil
