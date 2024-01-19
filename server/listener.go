@@ -16,18 +16,25 @@ package server
 
 import (
 	"crypto/tls"
+	"encoding/binary"
 	"fmt"
 	"io"
+	"math"
 	"net"
 	"os"
+	"strconv"
 	"strings"
 	"sync/atomic"
 
 	"github.com/dolthub/go-mysql-server/server"
 	"github.com/dolthub/go-mysql-server/sql"
+	"github.com/dolthub/go-mysql-server/sql/expression"
 	"github.com/dolthub/go-mysql-server/sql/mysql_db"
+	plan2 "github.com/dolthub/go-mysql-server/sql/plan"
+	"github.com/dolthub/go-mysql-server/sql/transform"
 	"github.com/dolthub/vitess/go/mysql"
 	"github.com/dolthub/vitess/go/sqltypes"
+	querypb "github.com/dolthub/vitess/go/vt/proto/query"
 	"github.com/dolthub/vitess/go/vt/sqlparser"
 	"github.com/sirupsen/logrus"
 
@@ -138,8 +145,8 @@ func (l *Listener) HandleConnection(conn net.Conn) {
 	// the result is stored in the |preparedStatements| map by the name provided. Then one or more |Bind| messages
 	// provide parameters for the query, and the result is stored in |portals|. Finally, a call to |Execute| executes
 	// the named portal.
-	preparedStatements := make(map[string]ConvertedQuery)
-	portals := make(map[string]ConvertedQuery)
+	preparedStatements := make(map[string]PreparedStatementData)
+	portals := make(map[string]PortalData)
 
 	// Main session loop: read messages one at a time off the connection until we receive a |Terminate| message, in
 	// which case we hang up, or the connection is closed by the client, which generates an io.EOF from the connection.
@@ -261,72 +268,315 @@ func (l *Listener) handleMessage(
 	message connection.Message,
 	conn net.Conn,
 	mysqlConn *mysql.Conn,
-	preparedStatements, portals map[string]ConvertedQuery,
+	preparedStatements map[string]PreparedStatementData,
+	portals map[string]PortalData,
 ) (stop, endOfMessages bool, err error) {
 	switch message := message.(type) {
 	case messages.Terminate:
 		return true, false, nil
-	case messages.Execute:
-		// TODO: implement the RowMax
-		logrus.Tracef("executing portal %s with contents %v", message.Portal, portals[message.Portal])
-		return false, false, l.execute(conn, mysqlConn, portals[message.Portal])
-	case messages.Query:
-		handled, err := l.handledPSQLCommands(conn, mysqlConn, message.String)
-		if handled || err != nil {
-			return false, true, err
-		}
-
-		query, err := l.convertQuery(message.String)
-		if err != nil {
-			return false, true, err
-		}
-
-		// The Deallocate message must not get passed to the engine, since we handle allocation / deallocation of
-		// prepared statements at this layer
-		switch stmt := query.AST.(type) {
-		case *sqlparser.Deallocate:
-			_, ok := preparedStatements[stmt.Name]
-			if !ok {
-				return false, true, fmt.Errorf("prepared statement %s does not exist", stmt.Name)
-			}
-			delete(preparedStatements, stmt.Name)
-
-			commandComplete := messages.CommandComplete{
-				Query: query.String,
-				Rows:  0,
-			}
-
-			return false, true, connection.Send(conn, commandComplete)
-		default:
-			return false, true, l.execute(conn, mysqlConn, query)
-		}
-	case messages.Parse:
-		// TODO: fully support prepared statements
-		if query, err := l.convertQuery(message.Query); err != nil {
-			return false, false, err
-		} else {
-			preparedStatements[message.Name] = query
-		}
-
-		return false, false, connection.Send(conn, messages.ParseComplete{})
-	case messages.Describe:
-		var query ConvertedQuery
-		if message.IsPrepared {
-			query = preparedStatements[message.Target]
-		} else {
-			query = portals[message.Target]
-		}
-
-		return false, false, l.describe(conn, mysqlConn, message, query)
 	case messages.Sync:
 		return false, true, nil
+	case messages.Query:
+		return l.handleQuery(message, preparedStatements, portals, mysqlConn, conn)
+	case messages.Parse:
+		return l.handleParse(message, preparedStatements, mysqlConn, conn)
+	case messages.Describe:
+		return l.handleDescribe(message, preparedStatements, portals, conn)
 	case messages.Bind:
-		logrus.Tracef("binding portal %q to prepared statement %s", message.DestinationPortal, message.SourcePreparedStatement)
-		// TODO: fully support prepared statements
-		portals[message.DestinationPortal] = preparedStatements[message.SourcePreparedStatement]
-		return false, false, connection.Send(conn, messages.BindComplete{})
+		return l.handleBind(message, preparedStatements, portals, conn, mysqlConn)
+	case messages.Execute:
+		return l.handleExecute(message, portals, conn, mysqlConn)
+	case messages.Close:
+		if message.ClosingPreparedStatement {
+			delete(preparedStatements, message.Target)
+		} else {
+			delete(portals, message.Target)
+		}
+
+		return false, false, connection.Send(conn, messages.CloseComplete{})
 	default:
 		return false, true, fmt.Errorf(`Unhandled message "%s"`, message.DefaultMessage().Name)
+	}
+}
+
+func (l *Listener) handleQuery(message messages.Query, preparedStatements map[string]PreparedStatementData, portals map[string]PortalData, mysqlConn *mysql.Conn, conn net.Conn) (bool, bool, error) {
+	handled, err := l.handledPSQLCommands(conn, mysqlConn, message.String)
+	if handled || err != nil {
+		return false, true, err
+	}
+
+	query, err := l.convertQuery(message.String)
+	if err != nil {
+		return false, true, err
+	}
+
+	// A query message destroys the unnamed statement and the unnamed portal
+	delete(preparedStatements, "")
+	delete(portals, "")
+
+	// The Deallocate message does not get passed to the engine, since we handle allocation / deallocation of
+	// prepared statements at this layer
+	switch stmt := query.AST.(type) {
+	case *sqlparser.Deallocate:
+		// TODO: handle ALL keyword
+		return false, true, l.deallocatePreparedStatement(stmt.Name, preparedStatements, query, conn)
+	}
+
+	return false, true, l.query(conn, mysqlConn, query)
+}
+
+func (l *Listener) handleParse(message messages.Parse, preparedStatements map[string]PreparedStatementData, mysqlConn *mysql.Conn, conn net.Conn) (bool, bool, error) {
+	// TODO: "Named prepared statements must be explicitly closed before they can be redefined by another Parse message, but this is not required for the unnamed statement"
+	query, err := l.convertQuery(message.Query)
+	if err != nil {
+		return false, false, err
+	}
+
+	if query.AST == nil {
+		// special case: empty query
+		preparedStatements[message.Name] = PreparedStatementData{
+			Query: query,
+		}
+		return false, false, nil
+	}
+
+	plan, fields, err := l.getPlanAndFields(mysqlConn, query)
+	if err != nil {
+		return false, false, err
+	}
+
+	// TODO: bindvar types can be specified directly in the message, need tests of this
+	bindVarTypes, err := extractBindVarTypes(plan)
+	if err != nil {
+		return false, false, err
+	}
+
+	// Nil fields means an OKResult, fill one in here
+	if fields == nil {
+		fields = []*querypb.Field{
+			{
+				Name: "Rows",
+				Type: sqltypes.Int32,
+			},
+		}
+	}
+
+	preparedStatements[message.Name] = PreparedStatementData{
+		Query:        query,
+		ReturnFields: fields,
+		BindVarTypes: bindVarTypes,
+	}
+
+	return false, false, connection.Send(conn, messages.ParseComplete{})
+}
+
+func (l *Listener) handleDescribe(message messages.Describe, preparedStatements map[string]PreparedStatementData, portals map[string]PortalData, conn net.Conn) (bool, bool, error) {
+	var fields []*querypb.Field
+	var bindvarTypes []int32
+
+	if message.IsPrepared {
+		preparedStatementData, ok := preparedStatements[message.Target]
+		if !ok {
+			return false, true, fmt.Errorf("prepared statement %s does not exist", message.Target)
+		}
+
+		fields = preparedStatementData.ReturnFields
+		bindvarTypes = preparedStatementData.BindVarTypes
+	} else {
+		portalData, ok := portals[message.Target]
+		if !ok {
+			return false, true, fmt.Errorf("portal %s does not exist", message.Target)
+		}
+
+		fields = portalData.Fields
+	}
+
+	return false, false, l.describe(conn, fields, bindvarTypes)
+}
+
+func (l *Listener) handleBind(message messages.Bind, preparedStatements map[string]PreparedStatementData, portals map[string]PortalData, conn net.Conn, mysqlConn *mysql.Conn) (bool, bool, error) {
+	// TODO: a named portal object lasts till the end of the current transaction, unless explicitly destroyed
+	//  we need to destroy the named portal as a side effect of the transaction ending
+	logrus.Tracef("binding portal %q to prepared statement %s", message.DestinationPortal, message.SourcePreparedStatement)
+	preparedData, ok := preparedStatements[message.SourcePreparedStatement]
+	if !ok {
+		return false, true, fmt.Errorf("prepared statement %s does not exist", message.SourcePreparedStatement)
+	}
+
+	if preparedData.Query.AST == nil {
+		// special case: empty query
+		portals[message.DestinationPortal] = PortalData{
+			Query:        preparedData.Query,
+			IsEmptyQuery: true,
+		}
+		return false, false, connection.Send(conn, messages.BindComplete{})
+	}
+
+	bindVars, err := convertBindParameters(preparedData.BindVarTypes, message.ParameterValues)
+	if err != nil {
+		return false, false, err
+	}
+
+	boundPlan, fields, err := l.bindParams(mysqlConn, message.SourcePreparedStatement, preparedData.Query.AST, bindVars)
+	if err != nil {
+		return false, false, err
+	}
+
+	portals[message.DestinationPortal] = PortalData{
+		Query:     preparedData.Query,
+		Fields:    fields,
+		BoundPlan: boundPlan,
+	}
+	return false, false, connection.Send(conn, messages.BindComplete{})
+}
+
+func (l *Listener) handleExecute(message messages.Execute, portals map[string]PortalData, conn net.Conn, mysqlConn *mysql.Conn) (bool, bool, error) {
+	// TODO: implement the RowMax
+	portalData, ok := portals[message.Portal]
+	if !ok {
+		return false, false, fmt.Errorf("portal %s does not exist", message.Portal)
+	}
+
+	logrus.Tracef("executing portal %s with contents %v", message.Portal, portalData)
+	query := portalData.Query
+
+	// we need the CommandComplete message defined here because it's altered by the callback below
+	complete := messages.CommandComplete{
+		Query: query.String,
+	}
+
+	if !portalData.IsEmptyQuery {
+		err := l.cfg.Handler.(mysql.ExtendedHandler).ComExecuteBound(mysqlConn, query.String, portalData.BoundPlan, spoolRowsCallback(conn, complete))
+		if err != nil {
+			return false, false, err
+		}
+	}
+
+	return false, false, connection.Send(conn, complete)
+}
+
+func (l *Listener) deallocatePreparedStatement(name string, preparedStatements map[string]PreparedStatementData, query ConvertedQuery, conn net.Conn) error {
+	_, ok := preparedStatements[name]
+	if !ok {
+		return fmt.Errorf("prepared statement %s does not exist", name)
+	}
+	delete(preparedStatements, name)
+
+	commandComplete := messages.CommandComplete{
+		Query: query.String,
+	}
+
+	return connection.Send(conn, commandComplete)
+}
+
+func extractBindVarTypes(queryPlan sql.Node) ([]int32, error) {
+	inspectNode := queryPlan
+	switch queryPlan := queryPlan.(type) {
+	case *plan2.InsertInto:
+		inspectNode = queryPlan.Source
+	}
+
+	types := make([]int32, 0)
+	var err error
+	extractBindVars := func(expr sql.Expression) bool {
+		if err != nil {
+			return false
+		}
+		switch e := expr.(type) {
+		case *expression.BindVar:
+			var oid int32
+			oid, err = messages.VitessTypeToObjectID(e.Type().Type())
+			if err != nil {
+				err = fmt.Errorf("could not determine OID for placeholder %s: %w", e.Name, err)
+				return false
+			}
+			types = append(types, oid)
+		// $1::text and similar get converted to a Convert expression wrapping the bindvar
+		case *expression.Convert:
+			if bindVar, ok := e.Child.(*expression.BindVar); ok {
+				var oid int32
+				oid, err = messages.VitessTypeToObjectID(e.Type().Type())
+				if err != nil {
+					err = fmt.Errorf("could not determine OID for placeholder %s: %w", bindVar.Name, err)
+					return false
+				}
+				types = append(types, oid)
+				return false
+			}
+		}
+
+		return true
+	}
+
+	transform.InspectExpressions(inspectNode, extractBindVars)
+	return types, err
+}
+
+func convertBindParameters(types []int32, values []messages.BindParameterValue) (map[string]*querypb.BindVariable, error) {
+	bindings := make(map[string]*querypb.BindVariable, len(values))
+	for i, value := range values {
+		bindingName := fmt.Sprintf("v%d", i+1)
+		typ := convertType(types[i])
+		bindVar := &querypb.BindVariable{
+			Type:   typ,
+			Value:  convertBindVarValue(typ, value),
+			Values: nil, // TODO
+		}
+		bindings[bindingName] = bindVar
+	}
+	return bindings, nil
+}
+
+func convertBindVarValue(typ querypb.Type, value messages.BindParameterValue) []byte {
+	switch typ {
+	case querypb.Type_INT8, querypb.Type_INT16, querypb.Type_INT24, querypb.Type_INT32, querypb.Type_UINT8, querypb.Type_UINT16, querypb.Type_UINT24, querypb.Type_UINT32:
+		// first convert the bytes in the payload to an integer, then convert that to its base 10 string representation
+		intVal := binary.BigEndian.Uint32(value.Data)
+		return []byte(strconv.FormatUint(uint64(intVal), 10))
+	case querypb.Type_INT64, querypb.Type_UINT64:
+		// first convert the bytes in the payload to an integer, then convert that to its base 10 string representation
+		intVal := binary.BigEndian.Uint64(value.Data)
+		return []byte(strconv.FormatUint(intVal, 10))
+	case querypb.Type_FLOAT32:
+		// first convert the bytes in the payload to a float, then convert that to its base 10 string representation
+		floatVal := binary.BigEndian.Uint32(value.Data)
+		return []byte(strconv.FormatFloat(float64(math.Float32frombits(floatVal)), 'f', -1, 64))
+	case querypb.Type_FLOAT64:
+		// first convert the bytes in the payload to a float, then convert that to its base 10 string representation
+		floatVal := binary.BigEndian.Uint64(value.Data)
+		return []byte(strconv.FormatFloat(math.Float64frombits(floatVal), 'f', -1, 64))
+	case querypb.Type_VARCHAR, querypb.Type_VARBINARY, querypb.Type_TEXT, querypb.Type_BLOB:
+		return value.Data
+	default:
+		panic(fmt.Sprintf("unhandled type %v", typ))
+	}
+}
+
+func convertType(oid int32) querypb.Type {
+	switch oid {
+	// TODO: this should never be 0
+	case 0:
+		return sqltypes.Int32
+	case messages.OidInt4:
+		return sqltypes.Int32
+	case messages.OidInt8:
+		return sqltypes.Int64
+	case messages.OidFloat4:
+		return sqltypes.Float32
+	case messages.OidFloat8:
+		return sqltypes.Float64
+	case messages.OidText:
+		return sqltypes.Text
+	case messages.OidBool:
+		return sqltypes.Bit
+	case messages.OidDate:
+		return sqltypes.Date
+	case messages.OidTimestamp:
+		return sqltypes.Timestamp
+	case messages.OidVarchar:
+		return sqltypes.Text
+	default:
+		panic(fmt.Sprintf("unhandled type %d", oid))
 	}
 }
 
@@ -384,14 +634,32 @@ func (l *Listener) sendClientStartupMessages(conn net.Conn, startupMessage messa
 	return nil
 }
 
-// execute handles running the given query. This will post the RowDescription, DataRow, and CommandComplete messages.
-func (l *Listener) execute(conn net.Conn, mysqlConn *mysql.Conn, query ConvertedQuery) error {
+// query runs the given query and sends a CommandComplete message to the client
+func (l *Listener) query(conn net.Conn, mysqlConn *mysql.Conn, query ConvertedQuery) error {
 	commandComplete := messages.CommandComplete{
 		Query: query.String,
-		Rows:  0,
 	}
 
-	if err := l.comQuery(mysqlConn, query, func(res *sqltypes.Result, more bool) error {
+	err := l.comQuery(mysqlConn, query, spoolRowsCallback(conn, commandComplete))
+
+	if err != nil {
+		if strings.HasPrefix(err.Error(), "syntax error at position") {
+			return fmt.Errorf("This statement is not yet supported")
+		}
+		return err
+	}
+
+	if err := connection.Send(conn, commandComplete); err != nil {
+		return err
+	}
+
+	return nil
+}
+
+// spoolRowsCallback returns a callback function that will send RowDescription message, then a DataRow message for
+// each row in the result set.
+func spoolRowsCallback(conn net.Conn, commandComplete messages.CommandComplete) mysql.ResultSpoolFn {
+	return func(res *sqltypes.Result, more bool) error {
 		if err := connection.Send(conn, messages.RowDescription{
 			Fields: res.Fields,
 		}); err != nil {
@@ -412,72 +680,23 @@ func (l *Listener) execute(conn net.Conn, mysqlConn *mysql.Conn, query Converted
 			commandComplete.Rows += int32(len(res.Rows))
 		}
 		return nil
-	}); err != nil {
-		if strings.HasPrefix(err.Error(), "syntax error at position") {
-			return fmt.Errorf("This statement is not yet supported")
-		}
-		return err
 	}
-
-	if err := connection.Send(conn, commandComplete); err != nil {
-		return err
-	}
-
-	return nil
 }
 
 // describe handles the description of the given query. This will post the ParameterDescription and RowDescription messages.
-func (l *Listener) describe(conn net.Conn, mysqlConn *mysql.Conn, message messages.Describe, statement ConvertedQuery) (err error) {
-	logrus.Tracef("describing statement %v", statement)
-
-	//TODO: fully support prepared statements
-	if err := connection.Send(conn, messages.ParameterDescription{
-		ObjectIDs: nil,
-	}); err != nil {
-		return err
-	}
-
-	//TODO: properly handle these statements
-	if ImplicitlyCommits(statement.String) {
-		if reverseStatement, ok := HandleImplicitCommitStatement(statement.String); ok {
-			// We have a reverse statement that can function as a workaround for the lack of proper rollback support.
-			// This does mean that we'll still create an implicit commit, but we can fix that whenever we add proper
-			// transaction support.
-			defer func() {
-				// If there's an error, then we don't want to execute the reverse statement
-				if err == nil {
-					_ = l.cfg.Handler.ComQuery(mysqlConn, reverseStatement, func(_ *sqltypes.Result, _ bool) error {
-						return nil
-					})
-				}
-			}()
-		} else {
-			return fmt.Errorf("We do not yet support the Describe message for the given statement")
+func (l *Listener) describe(conn net.Conn, fields []*querypb.Field, types []int32) (err error) {
+	// The prepared statement variant of the describe command returns the OIDs of the parameters.
+	if types != nil {
+		if err := connection.Send(conn, messages.ParameterDescription{
+			ObjectIDs: types,
+		}); err != nil {
+			return err
 		}
 	}
-	// We'll start a transaction, so that we can later rollback any changes that were made.
-	//TODO: handle the case where we are already in a transaction (SAVEPOINT will sometimes fail it seems?)
-	if err := l.cfg.Handler.ComQuery(mysqlConn, "START TRANSACTION;", func(_ *sqltypes.Result, _ bool) error {
-		return nil
-	}); err != nil {
-		return err
-	}
-	// We need to defer the rollback, so that it will always be executed.
-	defer func() {
-		_ = l.cfg.Handler.ComQuery(mysqlConn, "ROLLBACK;", func(_ *sqltypes.Result, _ bool) error {
-			return nil
-		})
-	}()
-	// Execute the statement, and send the description.
-	if err := l.comQuery(mysqlConn, statement, func(res *sqltypes.Result, more bool) error {
-		if res != nil {
-			if err := connection.Send(conn, messages.RowDescription{
-				Fields: res.Fields,
-			}); err != nil {
-				return err
-			}
-		}
-		return nil
+
+	// Both variants finish with a row description.
+	if err := connection.Send(conn, messages.RowDescription{
+		Fields: fields,
 	}); err != nil {
 		return err
 	}
@@ -490,23 +709,23 @@ func (l *Listener) handledPSQLCommands(conn net.Conn, mysqlConn *mysql.Conn, sta
 	statement = strings.ToLower(statement)
 	// Command: \l
 	if statement == "select d.datname as \"name\",\n       pg_catalog.pg_get_userbyid(d.datdba) as \"owner\",\n       pg_catalog.pg_encoding_to_char(d.encoding) as \"encoding\",\n       d.datcollate as \"collate\",\n       d.datctype as \"ctype\",\n       d.daticulocale as \"icu locale\",\n       case d.datlocprovider when 'c' then 'libc' when 'i' then 'icu' end as \"locale provider\",\n       pg_catalog.array_to_string(d.datacl, e'\\n') as \"access privileges\"\nfrom pg_catalog.pg_database d\norder by 1;" {
-		return true, l.execute(conn, mysqlConn, ConvertedQuery{`SELECT SCHEMA_NAME AS 'Name', 'postgres' AS 'Owner', 'UTF8' AS 'Encoding', 'English_United States.1252' AS 'Collate', 'English_United States.1252' AS 'Ctype', '' AS 'ICU Locale', 'libc' AS 'Locale Provider', '' AS 'Access privileges' FROM INFORMATION_SCHEMA.SCHEMATA ORDER BY 1;`, nil})
+		return true, l.query(conn, mysqlConn, ConvertedQuery{String: `SELECT SCHEMA_NAME AS 'Name', 'postgres' AS 'Owner', 'UTF8' AS 'Encoding', 'English_United States.1252' AS 'Collate', 'English_United States.1252' AS 'Ctype', '' AS 'ICU Locale', 'libc' AS 'Locale Provider', '' AS 'Access privileges' FROM INFORMATION_SCHEMA.SCHEMATA ORDER BY 1;`})
 	}
 	// Command: \l on psql 16
 	if statement == "select\n  d.datname as \"name\",\n  pg_catalog.pg_get_userbyid(d.datdba) as \"owner\",\n  pg_catalog.pg_encoding_to_char(d.encoding) as \"encoding\",\n  case d.datlocprovider when 'c' then 'libc' when 'i' then 'icu' end as \"locale provider\",\n  d.datcollate as \"collate\",\n  d.datctype as \"ctype\",\n  d.daticulocale as \"icu locale\",\n  null as \"icu rules\",\n  pg_catalog.array_to_string(d.datacl, e'\\n') as \"access privileges\"\nfrom pg_catalog.pg_database d\norder by 1;" {
-		return true, l.execute(conn, mysqlConn, ConvertedQuery{`SELECT SCHEMA_NAME AS 'Name', 'postgres' AS 'Owner', 'UTF8' AS 'Encoding', 'English_United States.1252' AS 'Collate', 'English_United States.1252' AS 'Ctype', '' AS 'ICU Locale', 'libc' AS 'Locale Provider', '' AS 'Access privileges' FROM INFORMATION_SCHEMA.SCHEMATA ORDER BY 1;`, nil})
+		return true, l.query(conn, mysqlConn, ConvertedQuery{String: `SELECT SCHEMA_NAME AS 'Name', 'postgres' AS 'Owner', 'UTF8' AS 'Encoding', 'English_United States.1252' AS 'Collate', 'English_United States.1252' AS 'Ctype', '' AS 'ICU Locale', 'libc' AS 'Locale Provider', '' AS 'Access privileges' FROM INFORMATION_SCHEMA.SCHEMATA ORDER BY 1;`})
 	}
 	// Command: \dt
 	if statement == "select n.nspname as \"schema\",\n  c.relname as \"name\",\n  case c.relkind when 'r' then 'table' when 'v' then 'view' when 'm' then 'materialized view' when 'i' then 'index' when 's' then 'sequence' when 't' then 'toast table' when 'f' then 'foreign table' when 'p' then 'partitioned table' when 'i' then 'partitioned index' end as \"type\",\n  pg_catalog.pg_get_userbyid(c.relowner) as \"owner\"\nfrom pg_catalog.pg_class c\n     left join pg_catalog.pg_namespace n on n.oid = c.relnamespace\n     left join pg_catalog.pg_am am on am.oid = c.relam\nwhere c.relkind in ('r','p','')\n      and n.nspname <> 'pg_catalog'\n      and n.nspname !~ '^pg_toast'\n      and n.nspname <> 'information_schema'\n  and pg_catalog.pg_table_is_visible(c.oid)\norder by 1,2;" {
-		return true, l.execute(conn, mysqlConn, ConvertedQuery{`SELECT 'public' AS 'Schema', TABLE_NAME AS 'Name', 'table' AS 'Type', 'postgres' AS 'Owner' FROM INFORMATION_SCHEMA.TABLES WHERE TABLE_SCHEMA = database() AND TABLE_TYPE = 'BASE TABLE' ORDER BY 2;`, nil})
+		return true, l.query(conn, mysqlConn, ConvertedQuery{String: `SELECT 'public' AS 'Schema', TABLE_NAME AS 'Name', 'table' AS 'Type', 'postgres' AS 'Owner' FROM INFORMATION_SCHEMA.TABLES WHERE TABLE_SCHEMA = database() AND TABLE_TYPE = 'BASE TABLE' ORDER BY 2;`})
 	}
 	// Command: \d
 	if statement == "select n.nspname as \"schema\",\n  c.relname as \"name\",\n  case c.relkind when 'r' then 'table' when 'v' then 'view' when 'm' then 'materialized view' when 'i' then 'index' when 's' then 'sequence' when 't' then 'toast table' when 'f' then 'foreign table' when 'p' then 'partitioned table' when 'i' then 'partitioned index' end as \"type\",\n  pg_catalog.pg_get_userbyid(c.relowner) as \"owner\"\nfrom pg_catalog.pg_class c\n     left join pg_catalog.pg_namespace n on n.oid = c.relnamespace\n     left join pg_catalog.pg_am am on am.oid = c.relam\nwhere c.relkind in ('r','p','v','m','s','f','')\n      and n.nspname <> 'pg_catalog'\n      and n.nspname !~ '^pg_toast'\n      and n.nspname <> 'information_schema'\n  and pg_catalog.pg_table_is_visible(c.oid)\norder by 1,2;" {
-		return true, l.execute(conn, mysqlConn, ConvertedQuery{`SELECT 'public' AS 'Schema', TABLE_NAME AS 'Name', 'table' AS 'Type', 'postgres' AS 'Owner' FROM INFORMATION_SCHEMA.TABLES WHERE TABLE_SCHEMA = database() AND TABLE_TYPE = 'BASE TABLE' ORDER BY 2;`, nil})
+		return true, l.query(conn, mysqlConn, ConvertedQuery{String: `SELECT 'public' AS 'Schema', TABLE_NAME AS 'Name', 'table' AS 'Type', 'postgres' AS 'Owner' FROM INFORMATION_SCHEMA.TABLES WHERE TABLE_SCHEMA = database() AND TABLE_TYPE = 'BASE TABLE' ORDER BY 2;`})
 	}
 	// Alternate \d for psql 14
 	if statement == "select n.nspname as \"schema\",\n  c.relname as \"name\",\n  case c.relkind when 'r' then 'table' when 'v' then 'view' when 'm' then 'materialized view' when 'i' then 'index' when 's' then 'sequence' when 's' then 'special' when 't' then 'toast table' when 'f' then 'foreign table' when 'p' then 'partitioned table' when 'i' then 'partitioned index' end as \"type\",\n  pg_catalog.pg_get_userbyid(c.relowner) as \"owner\"\nfrom pg_catalog.pg_class c\n     left join pg_catalog.pg_namespace n on n.oid = c.relnamespace\n     left join pg_catalog.pg_am am on am.oid = c.relam\nwhere c.relkind in ('r','p','v','m','s','f','')\n      and n.nspname <> 'pg_catalog'\n      and n.nspname !~ '^pg_toast'\n      and n.nspname <> 'information_schema'\n  and pg_catalog.pg_table_is_visible(c.oid)\norder by 1,2;" {
-		return true, l.execute(conn, mysqlConn, ConvertedQuery{`SELECT 'public' AS 'Schema', TABLE_NAME AS 'Name', 'table' AS 'Type', 'postgres' AS 'Owner' FROM INFORMATION_SCHEMA.TABLES WHERE TABLE_SCHEMA = database() AND TABLE_TYPE = 'BASE TABLE' ORDER BY 2;`, nil})
+		return true, l.query(conn, mysqlConn, ConvertedQuery{String: `SELECT 'public' AS 'Schema', TABLE_NAME AS 'Name', 'table' AS 'Type', 'postgres' AS 'Owner' FROM INFORMATION_SCHEMA.TABLES WHERE TABLE_SCHEMA = database() AND TABLE_TYPE = 'BASE TABLE' ORDER BY 2;`})
 	}
 	// Command: \d table_name
 	if strings.HasPrefix(statement, "select c.oid,\n  n.nspname,\n  c.relname\nfrom pg_catalog.pg_class c\n     left join pg_catalog.pg_namespace n on n.oid = c.relnamespace\nwhere c.relname operator(pg_catalog.~) '^(") && strings.HasSuffix(statement, ")$' collate pg_catalog.default\n  and pg_catalog.pg_table_is_visible(c.oid)\norder by 2, 3;") {
@@ -516,20 +735,20 @@ func (l *Listener) handledPSQLCommands(conn net.Conn, mysqlConn *mysql.Conn, sta
 	}
 	// Command: \dn
 	if statement == "select n.nspname as \"name\",\n  pg_catalog.pg_get_userbyid(n.nspowner) as \"owner\"\nfrom pg_catalog.pg_namespace n\nwhere n.nspname !~ '^pg_' and n.nspname <> 'information_schema'\norder by 1;" {
-		return true, l.execute(conn, mysqlConn, ConvertedQuery{"SELECT 'public' AS 'Name', 'pg_database_owner' AS 'Owner';", nil})
+		return true, l.query(conn, mysqlConn, ConvertedQuery{String: "SELECT 'public' AS 'Name', 'pg_database_owner' AS 'Owner';"})
 	}
 	// Command: \df
 	if statement == "select n.nspname as \"schema\",\n  p.proname as \"name\",\n  pg_catalog.pg_get_function_result(p.oid) as \"result data type\",\n  pg_catalog.pg_get_function_arguments(p.oid) as \"argument data types\",\n case p.prokind\n  when 'a' then 'agg'\n  when 'w' then 'window'\n  when 'p' then 'proc'\n  else 'func'\n end as \"type\"\nfrom pg_catalog.pg_proc p\n     left join pg_catalog.pg_namespace n on n.oid = p.pronamespace\nwhere pg_catalog.pg_function_is_visible(p.oid)\n      and n.nspname <> 'pg_catalog'\n      and n.nspname <> 'information_schema'\norder by 1, 2, 4;" {
-		return true, l.execute(conn, mysqlConn, ConvertedQuery{"SELECT '' AS 'Schema', '' AS 'Name', '' AS 'Result data type', '' AS 'Argument data types', '' AS 'Type' FROM dual LIMIT 0;", nil})
+		return true, l.query(conn, mysqlConn, ConvertedQuery{String: "SELECT '' AS 'Schema', '' AS 'Name', '' AS 'Result data type', '' AS 'Argument data types', '' AS 'Type' FROM dual LIMIT 0;"})
 	}
 	// Command: \dv
 	if statement == "select n.nspname as \"schema\",\n  c.relname as \"name\",\n  case c.relkind when 'r' then 'table' when 'v' then 'view' when 'm' then 'materialized view' when 'i' then 'index' when 's' then 'sequence' when 't' then 'toast table' when 'f' then 'foreign table' when 'p' then 'partitioned table' when 'i' then 'partitioned index' end as \"type\",\n  pg_catalog.pg_get_userbyid(c.relowner) as \"owner\"\nfrom pg_catalog.pg_class c\n     left join pg_catalog.pg_namespace n on n.oid = c.relnamespace\nwhere c.relkind in ('v','')\n      and n.nspname <> 'pg_catalog'\n      and n.nspname !~ '^pg_toast'\n      and n.nspname <> 'information_schema'\n  and pg_catalog.pg_table_is_visible(c.oid)\norder by 1,2;" {
-		return true, l.execute(conn, mysqlConn, ConvertedQuery{"SELECT 'public' AS 'Schema', TABLE_NAME AS 'Name', 'view' AS 'Type', 'postgres' AS 'Owner' FROM INFORMATION_SCHEMA.TABLES WHERE TABLE_SCHEMA = database() AND TABLE_TYPE = 'VIEW' ORDER BY 2;", nil})
+		return true, l.query(conn, mysqlConn, ConvertedQuery{String: "SELECT 'public' AS 'Schema', TABLE_NAME AS 'Name', 'view' AS 'Type', 'postgres' AS 'Owner' FROM INFORMATION_SCHEMA.TABLES WHERE TABLE_SCHEMA = database() AND TABLE_TYPE = 'VIEW' ORDER BY 2;"})
 	}
 	// Command: \du
 	if statement == "select r.rolname, r.rolsuper, r.rolinherit,\n  r.rolcreaterole, r.rolcreatedb, r.rolcanlogin,\n  r.rolconnlimit, r.rolvaliduntil,\n  array(select b.rolname\n        from pg_catalog.pg_auth_members m\n        join pg_catalog.pg_roles b on (m.roleid = b.oid)\n        where m.member = r.oid) as memberof\n, r.rolreplication\n, r.rolbypassrls\nfrom pg_catalog.pg_roles r\nwhere r.rolname !~ '^pg_'\norder by 1;" {
 		// We don't support users yet, so we'll just return nothing for now
-		return true, l.execute(conn, mysqlConn, ConvertedQuery{"SELECT '' FROM dual LIMIT 0;", nil})
+		return true, l.query(conn, mysqlConn, ConvertedQuery{String: "SELECT '' FROM dual LIMIT 0;"})
 	}
 	return false, nil
 }
@@ -589,11 +808,57 @@ func (l *Listener) convertQuery(query string) (ConvertedQuery, error) {
 	}, nil
 }
 
+// getPlanAndFields builds a plan and return fields for the given query
+func (l *Listener) getPlanAndFields(mysqlConn *mysql.Conn, query ConvertedQuery) (sql.Node, []*querypb.Field, error) {
+	if query.AST == nil {
+		return nil, nil, fmt.Errorf("cannot prepare a query that has not been parsed")
+	}
+
+	parsedQuery, fields, err := l.cfg.Handler.(mysql.ExtendedHandler).ComPrepareParsed(mysqlConn, query.String, query.AST, &mysql.PrepareData{
+		PrepareStmt: query.String,
+	})
+
+	if err != nil {
+		return nil, nil, err
+	}
+
+	plan, ok := parsedQuery.(sql.Node)
+	if !ok {
+		return nil, nil, fmt.Errorf("expected a sql.Node, got %T", parsedQuery)
+	}
+
+	return plan, fields, nil
+}
+
 // comQuery is a shortcut that determines which version of ComQuery to call based on whether the query has been parsed.
 func (l *Listener) comQuery(mysqlConn *mysql.Conn, query ConvertedQuery, callback func(res *sqltypes.Result, more bool) error) error {
 	if query.AST == nil {
 		return l.cfg.Handler.ComQuery(mysqlConn, query.String, callback)
 	} else {
-		return l.cfg.Handler.ComParsedQuery(mysqlConn, query.String, query.AST, callback)
+		return l.cfg.Handler.(mysql.ExtendedHandler).ComParsedQuery(mysqlConn, query.String, query.AST, callback)
 	}
+}
+
+func (l *Listener) bindParams(
+	mysqlConn *mysql.Conn,
+	query string,
+	parsedQuery sqlparser.Statement,
+	bindVars map[string]*querypb.BindVariable,
+) (sql.Node, []*querypb.Field, error) {
+	bound, fields, err := l.cfg.Handler.(mysql.ExtendedHandler).ComBind(mysqlConn, query, parsedQuery, &mysql.PrepareData{
+		PrepareStmt: query,
+		ParamsCount: uint16(len(bindVars)),
+		BindVars:    bindVars,
+	})
+
+	if err != nil {
+		return nil, nil, err
+	}
+
+	plan, ok := bound.(sql.Node)
+	if !ok {
+		return nil, nil, fmt.Errorf("expected a sql.Node, got %T", bound)
+	}
+
+	return plan, fields, err
 }

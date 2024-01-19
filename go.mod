@@ -6,11 +6,11 @@ require (
 	github.com/PuerkitoBio/goquery v1.8.1
 	github.com/cockroachdb/apd/v2 v2.0.3-0.20200518165714-d020e156310a
 	github.com/cockroachdb/errors v1.7.5
-	github.com/dolthub/dolt/go v0.40.5-0.20240105180317-61c234610835
+	github.com/dolthub/dolt/go v0.40.5-0.20240118214900-3cbb73cafa3c
 	github.com/dolthub/dolt/go/gen/proto/dolt/services/eventsapi v0.0.0-20231213233028-64c353bf920f
-	github.com/dolthub/go-mysql-server v0.17.1-0.20240104231423-dcf9acb9f61f
-	github.com/dolthub/sqllogictest/go v0.0.0-20201107003712-816f3ae12d81
-	github.com/dolthub/vitess v0.0.0-20240104220048-4b296d3a3d8b
+	github.com/dolthub/go-mysql-server v0.17.1-0.20240118213933-3c0fb56900df
+	github.com/dolthub/sqllogictest/go v0.0.0-20240118211725-a52e3f5697e3
+	github.com/dolthub/vitess v0.0.0-20240117231546-55b8c7b39462
 	github.com/fatih/color v1.13.0
 	github.com/gogo/protobuf v1.3.2
 	github.com/golang/geo v0.0.0-20200730024412-e86565bf3f35
@@ -18,7 +18,7 @@ require (
 	github.com/grpc-ecosystem/grpc-gateway v1.16.0
 	github.com/jackc/pgx/v4 v4.18.1
 	github.com/jackc/pgx/v5 v5.4.3
-	github.com/lib/pq v1.10.2
+	github.com/lib/pq v1.10.9
 	github.com/madflojo/testcerts v1.1.1
 	github.com/pierrre/geohash v1.0.0
 	github.com/sergi/go-diff v1.1.0

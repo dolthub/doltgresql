@@ -28,8 +28,9 @@ var _ logictest.Harness = &PostgresqlServerHarness{}
 
 // sqllogictest harness for postgres databases.
 type PostgresqlServerHarness struct {
-	dsn string
-	db  *sql.DB
+	dsn     string
+	db      *sql.DB
+	timeout int64
 }
 
 // compile check for interface compliance
@@ -37,14 +38,15 @@ var _ logictest.Harness = &PostgresqlServerHarness{}
 
 // NewPostgresqlHarness returns a new Postgres test harness for the data source name given. Panics if it cannot open a
 // connection using the DSN.
-func NewPostgresqlHarness(dsn string) *PostgresqlServerHarness {
+func NewPostgresqlHarness(dsn string, t int64) *PostgresqlServerHarness {
 	db, err := sql.Open("pgx", dsn)
 	if err != nil {
 		panic(err)
 	}
 	return &PostgresqlServerHarness{
-		dsn: dsn,
-		db:  db,
+		dsn:     dsn,
+		db:      db,
+		timeout: t,
 	}
 }
 
@@ -98,6 +100,10 @@ func (h *PostgresqlServerHarness) ExecuteQuery(statement string) (schema string,
 	}
 
 	return schema, results, nil
+}
+
+func (h *PostgresqlServerHarness) GetTimeout() int64 {
+	return h.timeout
 }
 
 func (h *PostgresqlServerHarness) dropAllTables() error {
