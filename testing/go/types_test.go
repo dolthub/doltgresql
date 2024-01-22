@@ -55,11 +55,11 @@ var typesTests = []ScriptTest{
 		},
 	},
 	{
-		Name: "Boolean type",
-		Skip: true,
+		Name:  "Boolean type",
+		Focus: true,
 		SetUpScript: []string{
 			"CREATE TABLE t_boolean (id INTEGER primary key, v1 BOOLEAN);",
-			"INSERT INTO t_boolean VALUES (1, true), (2, false);",
+			"INSERT INTO t_boolean VALUES (1, 'true'), (2, 'false'), (3, NULL);", //TODO: "INSERT INTO t_boolean VALUES (1, true), (2, false), (3, NULL);",
 		},
 		Assertions: []ScriptTestAssertion{
 			{
@@ -67,6 +67,15 @@ var typesTests = []ScriptTest{
 				Expected: []sql.Row{
 					{1, true},
 					{2, false},
+					{3, nil},
+				},
+			},
+			{
+				Query: "SELECT * FROM t_boolean ORDER BY v1;",
+				Expected: []sql.Row{
+					{2, false},
+					{1, true},
+					{3, nil},
 				},
 			},
 		},

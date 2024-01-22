@@ -8,7 +8,7 @@ require (
 	github.com/cockroachdb/errors v1.7.5
 	github.com/dolthub/dolt/go v0.40.5-0.20240118214900-3cbb73cafa3c
 	github.com/dolthub/dolt/go/gen/proto/dolt/services/eventsapi v0.0.0-20231213233028-64c353bf920f
-	github.com/dolthub/go-mysql-server v0.17.1-0.20240118213933-3c0fb56900df
+	github.com/dolthub/go-mysql-server v0.17.1-0.20240120173725-66af90acdccf
 	github.com/dolthub/sqllogictest/go v0.0.0-20240118211725-a52e3f5697e3
 	github.com/dolthub/vitess v0.0.0-20240117231546-55b8c7b39462
 	github.com/fatih/color v1.13.0
@@ -154,4 +154,10 @@ require (
 	gopkg.in/src-d/go-errors.v1 v1.0.0 // indirect
 	gopkg.in/yaml.v2 v2.4.0 // indirect
 	gopkg.in/yaml.v3 v3.0.1 // indirect
+)
+
+replace (
+	github.com/dolthub/go-mysql-server => ../go-mysql-server
+	github.com/dolthub/vitess => ../vitess
+	github.com/dolthub/dolt/go => ../dolt/go
 )

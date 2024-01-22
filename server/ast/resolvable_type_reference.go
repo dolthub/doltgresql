@@ -18,33 +18,38 @@ import (
 	"fmt"
 	"strconv"
 
+	"github.com/dolthub/go-mysql-server/sql"
 	vitess "github.com/dolthub/vitess/go/vt/sqlparser"
 
 	"github.com/dolthub/doltgresql/postgres/parser/sem/tree"
 	"github.com/dolthub/doltgresql/postgres/parser/types"
+	pgtypes "github.com/dolthub/doltgresql/server/types"
 )
 
 // nodeResolvableTypeReference handles tree.ResolvableTypeReference nodes.
-func nodeResolvableTypeReference(typ tree.ResolvableTypeReference) (*vitess.ConvertType, error) {
+func nodeResolvableTypeReference(typ tree.ResolvableTypeReference) (*vitess.ConvertType, sql.Type, error) {
 	if typ == nil {
-		return nil, nil
+		return nil, nil, nil
 	}
 
 	var columnTypeName string
 	var columnTypeLength *vitess.SQLVal
 	var columnTypeScale *vitess.SQLVal
+	var resolvedType sql.Type
 	switch columnType := typ.(type) {
 	case *tree.ArrayTypeReference:
-		return nil, fmt.Errorf("array types are not yet supported")
+		return nil, nil, fmt.Errorf("array types are not yet supported")
 	case *tree.OIDTypeReference:
-		return nil, fmt.Errorf("referencing types by their OID is not yet supported")
+		return nil, nil, fmt.Errorf("referencing types by their OID is not yet supported")
 	case *tree.UnresolvedObjectName:
-		return nil, fmt.Errorf("type declaration format is not yet supported")
+		return nil, nil, fmt.Errorf("type declaration format is not yet supported")
 	case *types.GeoMetadata:
-		return nil, fmt.Errorf("geometry types are not yet supported")
+		return nil, nil, fmt.Errorf("geometry types are not yet supported")
 	case *types.T:
 		columnTypeName = columnType.SQLStandardName()
 		switch columnType.Family() {
+		case types.BoolFamily:
+			resolvedType = pgtypes.Bool
 		case types.DecimalFamily:
 			columnTypeName = "decimal"
 			columnTypeLength = vitess.NewIntVal([]byte(strconv.Itoa(int(columnType.Precision()))))
@@ -63,5 +68,5 @@ func nodeResolvableTypeReference(typ tree.ResolvableTypeReference) (*vitess.Conv
 		Length:  columnTypeLength,
 		Scale:   columnTypeScale,
 		Charset: "", // TODO
-	}, nil
+	}, resolvedType, nil
 }

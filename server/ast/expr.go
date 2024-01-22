@@ -199,7 +199,7 @@ func nodeExpr(node tree.Expr) (vitess.Expr, error) {
 			return nil, fmt.Errorf("unknown cast syntax")
 		}
 
-		convertType, err := nodeResolvableTypeReference(node.Type)
+		convertType, _, err := nodeResolvableTypeReference(node.Type)
 		if err != nil {
 			return nil, err
 		}
