@@ -159,11 +159,10 @@ func (h *ConnectionHandler) receiveMessage() (bool, error) {
 			fmt.Printf("Listener recovered panic: %v", r)
 
 			var eomErr error
-			if !endOfMessages {
-				// TODO: DiscardToSync is only appropriate at certain points in the Sync cycle
-				// if syncErr := connection.DiscardToSync(conn); syncErr != nil {
-				// 	fmt.Println(syncErr.Error())
-				// }
+			if !endOfMessages && h.waitForSync {
+				if syncErr := connection.DiscardToSync(h.Conn()); syncErr != nil {
+					fmt.Println(syncErr.Error())
+				}
 			}
 			h.endOfMessages(eomErr)
 		}
@@ -183,7 +182,7 @@ func (h *ConnectionHandler) receiveMessage() (bool, error) {
 	var stop bool
 	stop, endOfMessages, err = h.handleMessage(message)
 	if err != nil {
-		if !endOfMessages {
+		if !endOfMessages && h.waitForSync {
 			if syncErr := connection.DiscardToSync(h.Conn()); syncErr != nil {
 				fmt.Println(syncErr.Error())
 			}
@@ -284,16 +283,21 @@ func (h *ConnectionHandler) handleMessage(message connection.Message) (stop, end
 	case messages.Terminate:
 		return true, false, nil
 	case messages.Sync:
+		h.waitForSync = false
 		return false, true, nil
 	case messages.Query:
 		return h.handleQuery(message)
 	case messages.Parse:
+		h.waitForSync = true
 		return h.handleParse(message)
 	case messages.Describe:
+		h.waitForSync = true
 		return h.handleDescribe(message)
 	case messages.Bind:
+		h.waitForSync = true
 		return h.handleBind(message)
 	case messages.Execute:
+		h.waitForSync = true
 		return h.handleExecute(message)
 	case messages.Close:
 		if message.ClosingPreparedStatement {
