@@ -93,6 +93,34 @@ func (l *Listener) Addr() net.Addr {
 	return l.listener.Addr()
 }
 
+type ConnectionHandler struct {
+	mysqlConn *mysql.Conn
+	preparedStatements map[string]PreparedStatementData
+	portals map[string]PortalData
+	waitForSync bool
+}
+
+func newConnectionHandler(conn net.Conn) *ConnectionHandler {
+	mysqlConn := &mysql.Conn{
+		Conn:        conn,
+		PrepareData: make(map[uint32]*mysql.PrepareData),
+	}
+	mysqlConn.ConnectionID = atomic.AddUint32(&connectionIDCounter, 1)
+
+	// Postgres has a two-stage procedure for prepared queries. First the query is parsed via a |Parse| message, and
+	// the result is stored in the |preparedStatements| map by the name provided. Then one or more |Bind| messages
+	// provide parameters for the query, and the result is stored in |portals|. Finally, a call to |Execute| executes
+	// the named portal.
+	preparedStatements := make(map[string]PreparedStatementData)
+	portals := make(map[string]PortalData)
+
+	return &ConnectionHandler{
+		mysqlConn: mysqlConn,
+		preparedStatements: preparedStatements,
+		portals: portals,
+	}
+}
+
 // HandleConnection handles a connection's session.
 func (l *Listener) HandleConnection(conn net.Conn) {
 	mysqlConn := &mysql.Conn{
@@ -114,6 +142,7 @@ func (l *Listener) HandleConnection(conn net.Conn) {
 			} else {
 				eomErr = fmt.Errorf("panic: %v", r)
 			}
+			
 			l.endOfMessages(conn, eomErr)
 		}
 		
@@ -163,35 +192,72 @@ func (l *Listener) HandleConnection(conn net.Conn) {
 	// Main session loop: read messages one at a time off the connection until we receive a |Terminate| message, in
 	// which case we hang up, or the connection is closed by the client, which generates an io.EOF from the connection.
 	for {
-		message, err := connection.Receive(conn)
+		stop, err := l.receiveMessage(conn, mysqlConn, preparedStatements, portals)
 		if err != nil {
-			returnErr = err
-			return
-		}
-
-		if ds, ok := message.(sql.DebugStringer); ok && logrus.IsLevelEnabled(logrus.DebugLevel) {
-			logrus.Debugf("Received message: %s", ds.DebugString())
-		} else {
-			logrus.Debugf("Received message: %s", message.DefaultMessage().Name)
-		}
-
-		stop, endOfMessages, err := l.handleMessage(message, conn, mysqlConn, preparedStatements, portals)
-		if err != nil {
-			if !endOfMessages {
-				if syncErr := connection.DiscardToSync(conn); syncErr != nil {
-					fmt.Println(syncErr.Error())
-				}
-			}
-			l.endOfMessages(conn, err)
-		} else if endOfMessages {
-			l.endOfMessages(conn, nil)
-		}
-
-		if stop {
 			returnErr = err
 			break
 		}
+		
+		if stop {
+			break
+		}
 	}
+}
+
+// receiveMessage reads a single message off the connection and processes it, returning an error if no message could be
+// received from the connection. Otherwise (a message is received successfully), the message is processed and any 
+// error is handled appropriately. The return value indicates whether the connection should be closed.
+func (l *Listener) receiveMessage(
+		conn net.Conn,
+		mysqlConn *mysql.Conn,
+		preparedStatements map[string]PreparedStatementData,
+		portals map[string]PortalData,
+) (bool, error) {
+	var endOfMessages bool
+	// For the time being, we handle panics in this function and treat them the same as errors so that they don't 
+	// forcibly close the connection. Contrast this with the panic handling logic in HandleConnection, where we treat any
+	// panic as unrecoverable to the connection. As we fill out the implementation, we can revisit this decision and 
+	// rethink our posture over whether panics should terminate a connection.
+	defer func() {
+		if r := recover(); r != nil {
+			fmt.Printf("Listener recovered panic: %v", r)
+
+			var eomErr error
+			if !endOfMessages {
+				// TODO: DiscardToSync is only appropriate at certain points in the Sync cycle
+				// if syncErr := connection.DiscardToSync(conn); syncErr != nil {
+				// 	fmt.Println(syncErr.Error())
+				// }
+			}
+			l.endOfMessages(conn, eomErr)
+		}
+	}()
+
+	message, err := connection.Receive(conn)
+	if err != nil {
+		return false, err
+	}
+
+	if ds, ok := message.(sql.DebugStringer); ok && logrus.IsLevelEnabled(logrus.DebugLevel) {
+		logrus.Debugf("Received message: %s", ds.DebugString())
+	} else {
+		logrus.Debugf("Received message: %s", message.DefaultMessage().Name)
+	}
+
+	var stop bool
+	stop, endOfMessages, err = l.handleMessage(message, conn, mysqlConn, preparedStatements, portals)
+	if err != nil {
+		if !endOfMessages {
+			if syncErr := connection.DiscardToSync(conn); syncErr != nil {
+				fmt.Println(syncErr.Error())
+			}
+		}
+		l.endOfMessages(conn, err)
+	} else if endOfMessages {
+		l.endOfMessages(conn, nil)
+	}
+
+	return stop, nil
 }
 
 // receiveStarupMessage reads a startup message from the connection given and returns it. Some startup messages will
