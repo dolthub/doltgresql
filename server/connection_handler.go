@@ -87,7 +87,7 @@ func (h *ConnectionHandler) HandleConnection() {
 				eomErr = fmt.Errorf("panic: %v", r)
 			}
 
-			h.endOfMessages(h.Conn(), eomErr)
+			h.endOfMessages(eomErr)
 		}
 
 		if returnErr != nil {
@@ -165,7 +165,7 @@ func (h *ConnectionHandler) receiveMessage() (bool, error) {
 				// 	fmt.Println(syncErr.Error())
 				// }
 			}
-			h.endOfMessages(h.Conn(), eomErr)
+			h.endOfMessages(eomErr)
 		}
 	}()
 
@@ -188,9 +188,9 @@ func (h *ConnectionHandler) receiveMessage() (bool, error) {
 				fmt.Println(syncErr.Error())
 			}
 		}
-		h.endOfMessages(h.Conn(), err)
+		h.endOfMessages(err)
 	} else if endOfMessages {
-		h.endOfMessages(h.Conn(), nil)
+		h.endOfMessages(nil)
 	}
 
 	return stop, nil
@@ -349,7 +349,7 @@ func (h *ConnectionHandler) handleParse(message messages.Parse) (bool, bool, err
 		return false, false, nil
 	}
 
-	plan, fields, err := h.getPlanAndFields(h.mysqlConn, query)
+	plan, fields, err := h.getPlanAndFields(query)
 	if err != nil {
 		return false, false, err
 	}
@@ -426,7 +426,7 @@ func (h *ConnectionHandler) handleBind(message messages.Bind) (bool, bool, error
 		return false, false, err
 	}
 
-	boundPlan, fields, err := h.bindParams(h.mysqlConn, message.SourcePreparedStatement, preparedData.Query.AST, bindVars)
+	boundPlan, fields, err := h.bindParams(message.SourcePreparedStatement, preparedData.Query.AST, bindVars)
 	if err != nil {
 		return false, false, err
 	}
@@ -650,7 +650,7 @@ func (h *ConnectionHandler) query(query ConvertedQuery) error {
 		Query: query.String,
 	}
 
-	err := h.comQuery(h.mysqlConn, query, spoolRowsCallback(h.Conn(), commandComplete))
+	err := h.comQuery(query, spoolRowsCallback(h.Conn(), commandComplete))
 
 	if err != nil {
 		if strings.HasPrefix(err.Error(), "syntax error at position") {
@@ -767,11 +767,11 @@ func (h *ConnectionHandler) handledPSQLCommands(statement string) (bool, error) 
 // of the message slice, which may occur naturally (all relevant response messages have been sent) or on error. Once
 // endOfMessages has been called, no further messages should be sent, and the connection loop should wait for the next
 // query. A nil error should be provided if this is being called naturally.
-func (h *ConnectionHandler) endOfMessages(conn net.Conn, err error) {
+func (h *ConnectionHandler) endOfMessages(err error) {
 	if err != nil {
-		h.sendError(conn, err)
+		h.sendError(h.Conn(), err)
 	}
-	if sendErr := connection.Send(conn, messages.ReadyForQuery{
+	if sendErr := connection.Send(h.Conn(), messages.ReadyForQuery{
 		Indicator: messages.ReadyForQueryTransactionIndicator_Idle,
 	}); sendErr != nil {
 		// We panic here for the same reason as above.
@@ -819,12 +819,12 @@ func (h *ConnectionHandler) convertQuery(query string) (ConvertedQuery, error) {
 }
 
 // getPlanAndFields builds a plan and return fields for the given query
-func (h *ConnectionHandler) getPlanAndFields(mysqlConn *mysql.Conn, query ConvertedQuery) (sql.Node, []*query2.Field, error) {
+func (h *ConnectionHandler) getPlanAndFields(query ConvertedQuery) (sql.Node, []*query2.Field, error) {
 	if query.AST == nil {
 		return nil, nil, fmt.Errorf("cannot prepare a query that has not been parsed")
 	}
 
-	parsedQuery, fields, err := h.handler.(mysql.ExtendedHandler).ComPrepareParsed(mysqlConn, query.String, query.AST, &mysql.PrepareData{
+	parsedQuery, fields, err := h.handler.(mysql.ExtendedHandler).ComPrepareParsed(h.mysqlConn, query.String, query.AST, &mysql.PrepareData{
 		PrepareStmt: query.String,
 	})
 
@@ -841,21 +841,20 @@ func (h *ConnectionHandler) getPlanAndFields(mysqlConn *mysql.Conn, query Conver
 }
 
 // comQuery is a shortcut that determines which version of ComQuery to call based on whether the query has been parsed.
-func (h *ConnectionHandler) comQuery(mysqlConn *mysql.Conn, query ConvertedQuery, callback func(res *sqltypes.Result, more bool) error) error {
+func (h *ConnectionHandler) comQuery(query ConvertedQuery, callback func(res *sqltypes.Result, more bool) error) error {
 	if query.AST == nil {
-		return h.handler.ComQuery(mysqlConn, query.String, callback)
+		return h.handler.ComQuery(h.mysqlConn, query.String, callback)
 	} else {
-		return h.handler.(mysql.ExtendedHandler).ComParsedQuery(mysqlConn, query.String, query.AST, callback)
+		return h.handler.(mysql.ExtendedHandler).ComParsedQuery(h.mysqlConn, query.String, query.AST, callback)
 	}
 }
 
 func (h *ConnectionHandler) bindParams(
-		mysqlConn *mysql.Conn,
 		query string,
 		parsedQuery sqlparser.Statement,
 		bindVars map[string]*query2.BindVariable,
 ) (sql.Node, []*query2.Field, error) {
-	bound, fields, err := h.handler.(mysql.ExtendedHandler).ComBind(mysqlConn, query, parsedQuery, &mysql.PrepareData{
+	bound, fields, err := h.handler.(mysql.ExtendedHandler).ComBind(h.mysqlConn, query, parsedQuery, &mysql.PrepareData{
 		PrepareStmt: query,
 		ParamsCount: uint16(len(bindVars)),
 		BindVars:    bindVars,
