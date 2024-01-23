@@ -72,7 +72,7 @@ func NewConnectionHandler(conn net.Conn, handler mysql.Handler) *ConnectionHandl
 }
 
 // HandleConnection handles a connection's session.
-func (l *ConnectionHandler) HandleConnection() {
+func (h *ConnectionHandler) HandleConnection() {
 	var returnErr error
 	defer func() {
 		if r := recover(); r != nil {
@@ -87,39 +87,39 @@ func (l *ConnectionHandler) HandleConnection() {
 				eomErr = fmt.Errorf("panic: %v", r)
 			}
 
-			l.endOfMessages(l.mysqlConn.Conn, eomErr)
+			h.endOfMessages(h.Conn(), eomErr)
 		}
 
 		if returnErr != nil {
 			fmt.Println(returnErr.Error())
 		}
 
-		l.handler.ConnectionClosed(l.mysqlConn)
-		if err := l.mysqlConn.Conn.Close(); err != nil {
+		h.handler.ConnectionClosed(h.mysqlConn)
+		if err := h.Conn().Close(); err != nil {
 			fmt.Printf("Failed to properly close connection:\n%v\n", err)
 		}
 	}()
-	l.handler.NewConnection(l.mysqlConn)
+	h.handler.NewConnection(h.mysqlConn)
 
-	startupMessage, conn, err := l.receiveStartupMessage(l.mysqlConn.Conn, l.mysqlConn)
+	startupMessage, err := h.receiveStartupMessage()
 	if err != nil {
 		returnErr = err
 		return
 	}
 
-	err = l.sendClientStartupMessages(conn, startupMessage, l.mysqlConn)
+	err = h.sendClientStartupMessages(startupMessage)
 	if err != nil {
 		returnErr = err
 		return
 	}
 
-	err = l.chooseInitialDatabase(conn, startupMessage, l.mysqlConn)
+	err = h.chooseInitialDatabase(startupMessage)
 	if err != nil {
 		returnErr = err
 		return
 	}
 
-	if err := connection.Send(conn, messages.ReadyForQuery{
+	if err := connection.Send(h.Conn(), messages.ReadyForQuery{
 		Indicator: messages.ReadyForQueryTransactionIndicator_Idle,
 	}); err != nil {
 		returnErr = err
@@ -129,7 +129,7 @@ func (l *ConnectionHandler) HandleConnection() {
 	// Main session loop: read messages one at a time off the connection until we receive a |Terminate| message, in
 	// which case we hang up, or the connection is closed by the client, which generates an io.EOF from the connection.
 	for {
-		stop, err := l.receiveMessage(conn, l.mysqlConn, l.preparedStatements, l.portals)
+		stop, err := h.receiveMessage()
 		if err != nil {
 			returnErr = err
 			break
@@ -141,15 +141,14 @@ func (l *ConnectionHandler) HandleConnection() {
 	}
 }
 
+func (h *ConnectionHandler) Conn() net.Conn {
+	return h.mysqlConn.Conn
+}
+
 // receiveMessage reads a single message off the connection and processes it, returning an error if no message could be
 // received from the connection. Otherwise (a message is received successfully), the message is processed and any 
 // error is handled appropriately. The return value indicates whether the connection should be closed.
-func (l *ConnectionHandler) receiveMessage(
-		conn net.Conn,
-		mysqlConn *mysql.Conn,
-		preparedStatements map[string]PreparedStatementData,
-		portals map[string]PortalData,
-) (bool, error) {
+func (h *ConnectionHandler) receiveMessage() (bool, error) {
 	var endOfMessages bool
 	// For the time being, we handle panics in this function and treat them the same as errors so that they don't 
 	// forcibly close the connection. Contrast this with the panic handling logic in HandleConnection, where we treat any
@@ -166,11 +165,11 @@ func (l *ConnectionHandler) receiveMessage(
 				// 	fmt.Println(syncErr.Error())
 				// }
 			}
-			l.endOfMessages(conn, eomErr)
+			h.endOfMessages(h.Conn(), eomErr)
 		}
 	}()
 
-	message, err := connection.Receive(conn)
+	message, err := connection.Receive(h.Conn())
 	if err != nil {
 		return false, err
 	}
@@ -182,16 +181,16 @@ func (l *ConnectionHandler) receiveMessage(
 	}
 
 	var stop bool
-	stop, endOfMessages, err = l.handleMessage(message, conn, mysqlConn, preparedStatements, portals)
+	stop, endOfMessages, err = h.handleMessage(message)
 	if err != nil {
 		if !endOfMessages {
-			if syncErr := connection.DiscardToSync(conn); syncErr != nil {
+			if syncErr := connection.DiscardToSync(h.Conn()); syncErr != nil {
 				fmt.Println(syncErr.Error())
 			}
 		}
-		l.endOfMessages(conn, err)
+		h.endOfMessages(h.Conn(), err)
 	} else if endOfMessages {
-		l.endOfMessages(conn, nil)
+		h.endOfMessages(h.Conn(), nil)
 	}
 
 	return stop, nil
@@ -199,24 +198,24 @@ func (l *ConnectionHandler) receiveMessage(
 
 // receiveStarupMessage reads a startup message from the connection given and returns it. Some startup messages will
 // result in the establishment of a new connection, which is also returned.
-func (l *ConnectionHandler) receiveStartupMessage(conn net.Conn, mysqlConn *mysql.Conn) (messages.StartupMessage, net.Conn, error) {
+func (h *ConnectionHandler) receiveStartupMessage() (messages.StartupMessage, error) {
 	var startupMessage messages.StartupMessage
 	// The initial message may be one of a few different messages, so we'll check for those.
 InitialMessageLoop:
 	for {
-		initialMessages, err := connection.ReceiveIntoAny(conn,
+		initialMessages, err := connection.ReceiveIntoAny(h.Conn(),
 			messages.StartupMessage{},
 			messages.SSLRequest{},
 			messages.GSSENCRequest{})
 		if err != nil {
 			if err == io.EOF {
-				return messages.StartupMessage{}, nil, nil
+				return messages.StartupMessage{}, nil
 			}
-			return messages.StartupMessage{}, nil, err
+			return messages.StartupMessage{}, err
 		}
 
 		if len(initialMessages) != 1 {
-			return messages.StartupMessage{}, nil, fmt.Errorf("expected a single message upon starting connection, terminating connection")
+			return messages.StartupMessage{}, fmt.Errorf("expected a single message upon starting connection, terminating connection")
 		}
 
 		initialMessage := initialMessages[0]
@@ -226,40 +225,41 @@ InitialMessageLoop:
 			break InitialMessageLoop
 		case messages.SSLRequest:
 			hasCertificate := len(certificate.Certificate) > 0
-			if err := connection.Send(conn, messages.SSLResponse{
+			if err := connection.Send(h.Conn(), messages.SSLResponse{
 				SupportsSSL: hasCertificate,
 			}); err != nil {
-				return messages.StartupMessage{}, nil, err
+				return messages.StartupMessage{}, err
 			}
 			// If we have a certificate and the client has asked for SSL support, then we switch here.
+			// This involves swapping out our underlying net connection for a new one.
 			// We can't start in SSL mode, as the client does not attempt the handshake until after our response.
 			if hasCertificate {
-				conn = tls.Server(conn, &tls.Config{
+				conn := tls.Server(h.Conn(), &tls.Config{
 					Certificates: []tls.Certificate{certificate},
 				})
-				mysqlConn.Conn = conn
+				h.mysqlConn.Conn = conn
 			}
 		case messages.GSSENCRequest:
-			if err = connection.Send(conn, messages.GSSENCResponse{
+			if err = connection.Send(h.Conn(), messages.GSSENCResponse{
 				SupportsGSSAPI: false,
 			}); err != nil {
-				return messages.StartupMessage{}, nil, err
+				return messages.StartupMessage{}, err
 			}
 		default:
-			return messages.StartupMessage{}, nil, fmt.Errorf("unexpected initial message, terminating connection")
+			return messages.StartupMessage{}, fmt.Errorf("unexpected initial message, terminating connection")
 		}
 	}
 
-	return startupMessage, conn, nil
+	return startupMessage, nil
 }
 
-func (l *ConnectionHandler) chooseInitialDatabase(conn net.Conn, startupMessage messages.StartupMessage, mysqlConn *mysql.Conn) error {
+func (h *ConnectionHandler) chooseInitialDatabase(startupMessage messages.StartupMessage) error {
 	if db, ok := startupMessage.Parameters["database"]; ok && len(db) > 0 {
-		err := l.handler.ComQuery(mysqlConn, fmt.Sprintf("USE `%s`;", db), func(res *sqltypes.Result, more bool) error {
+		err := h.handler.ComQuery(h.mysqlConn, fmt.Sprintf("USE `%s`;", db), func(res *sqltypes.Result, more bool) error {
 			return nil
 		})
 		if err != nil {
-			_ = connection.Send(conn, messages.ErrorResponse{
+			_ = connection.Send(h.Conn(), messages.ErrorResponse{
 				Severity:     messages.ErrorResponseSeverity_Fatal,
 				SqlStateCode: "3D000",
 				Message:      fmt.Sprintf(`"database "%s" does not exist"`, db),
@@ -272,90 +272,84 @@ func (l *ConnectionHandler) chooseInitialDatabase(conn net.Conn, startupMessage 
 	} else {
 		// If a database isn't specified, then we attempt to connect to a database with the same name as the user,
 		// ignoring any error
-		_ = l.handler.ComQuery(mysqlConn, fmt.Sprintf("USE `%s`;", mysqlConn.User), func(*sqltypes.Result, bool) error {
+		_ = h.handler.ComQuery(h.mysqlConn, fmt.Sprintf("USE `%s`;", h.mysqlConn.User), func(*sqltypes.Result, bool) error {
 			return nil
 		})
 	}
 	return nil
 }
 
-func (l *ConnectionHandler) handleMessage(
-		message connection.Message,
-		conn net.Conn,
-		mysqlConn *mysql.Conn,
-		preparedStatements map[string]PreparedStatementData,
-		portals map[string]PortalData,
-) (stop, endOfMessages bool, err error) {
+func (h *ConnectionHandler) handleMessage(message connection.Message) (stop, endOfMessages bool, err error) {
 	switch message := message.(type) {
 	case messages.Terminate:
 		return true, false, nil
 	case messages.Sync:
 		return false, true, nil
 	case messages.Query:
-		return l.handleQuery(message, preparedStatements, portals, mysqlConn, conn)
+		return h.handleQuery(message)
 	case messages.Parse:
-		return l.handleParse(message, preparedStatements, mysqlConn, conn)
+		return h.handleParse(message)
 	case messages.Describe:
-		return l.handleDescribe(message, preparedStatements, portals, conn)
+		return h.handleDescribe(message)
 	case messages.Bind:
-		return l.handleBind(message, preparedStatements, portals, conn, mysqlConn)
+		return h.handleBind(message)
 	case messages.Execute:
-		return l.handleExecute(message, portals, conn, mysqlConn)
+		return h.handleExecute(message)
 	case messages.Close:
 		if message.ClosingPreparedStatement {
-			delete(preparedStatements, message.Target)
+			delete(h.preparedStatements, message.Target)
 		} else {
-			delete(portals, message.Target)
+			delete(h.portals, message.Target)
 		}
 
-		return false, false, connection.Send(conn, messages.CloseComplete{})
+		return false, false, connection.Send(h.Conn(), messages.CloseComplete{})
 	default:
 		return false, true, fmt.Errorf(`Unhandled message "%s"`, message.DefaultMessage().Name)
 	}
 }
 
-func (l *ConnectionHandler) handleQuery(message messages.Query, preparedStatements map[string]PreparedStatementData, portals map[string]PortalData, mysqlConn *mysql.Conn, conn net.Conn) (bool, bool, error) {
-	handled, err := l.handledPSQLCommands(conn, mysqlConn, message.String)
+func (h *ConnectionHandler) handleQuery(message messages.Query) (bool, bool, error) {
+	handled, err := h.handledPSQLCommands(message.String)
 	if handled || err != nil {
 		return false, true, err
 	}
 
-	query, err := l.convertQuery(message.String)
+	query, err := h.convertQuery(message.String)
 	if err != nil {
 		return false, true, err
 	}
 
 	// A query message destroys the unnamed statement and the unnamed portal
-	delete(preparedStatements, "")
-	delete(portals, "")
+	delete(h.preparedStatements, "")
+	delete(h.portals, "")
 
 	// The Deallocate message does not get passed to the engine, since we handle allocation / deallocation of
 	// prepared statements at this layer
 	switch stmt := query.AST.(type) {
 	case *sqlparser.Deallocate:
 		// TODO: handle ALL keyword
-		return false, true, l.deallocatePreparedStatement(stmt.Name, preparedStatements, query, conn)
+		return false, true, h.deallocatePreparedStatement(stmt.Name, h.preparedStatements, query, h.Conn())
 	}
 
-	return false, true, l.query(conn, mysqlConn, query)
+	return false, true, h.query(query)
 }
 
-func (l *ConnectionHandler) handleParse(message messages.Parse, preparedStatements map[string]PreparedStatementData, mysqlConn *mysql.Conn, conn net.Conn) (bool, bool, error) {
+func (h *ConnectionHandler) handleParse(message messages.Parse) (bool, bool, error) {
 	// TODO: "Named prepared statements must be explicitly closed before they can be redefined by another Parse message, but this is not required for the unnamed statement"
-	query, err := l.convertQuery(message.Query)
+	query, err := h.convertQuery(message.Query)
 	if err != nil {
 		return false, false, err
 	}
 
 	if query.AST == nil {
 		// special case: empty query
-		preparedStatements[message.Name] = PreparedStatementData{
+		h.preparedStatements[message.Name] = PreparedStatementData{
 			Query: query,
 		}
 		return false, false, nil
 	}
 
-	plan, fields, err := l.getPlanAndFields(mysqlConn, query)
+	plan, fields, err := h.getPlanAndFields(h.mysqlConn, query)
 	if err != nil {
 		return false, false, err
 	}
@@ -376,21 +370,21 @@ func (l *ConnectionHandler) handleParse(message messages.Parse, preparedStatemen
 		}
 	}
 
-	preparedStatements[message.Name] = PreparedStatementData{
+	h.preparedStatements[message.Name] = PreparedStatementData{
 		Query:        query,
 		ReturnFields: fields,
 		BindVarTypes: bindVarTypes,
 	}
 
-	return false, false, connection.Send(conn, messages.ParseComplete{})
+	return false, false, connection.Send(h.Conn(), messages.ParseComplete{})
 }
 
-func (l *ConnectionHandler) handleDescribe(message messages.Describe, preparedStatements map[string]PreparedStatementData, portals map[string]PortalData, conn net.Conn) (bool, bool, error) {
+func (h *ConnectionHandler) handleDescribe(message messages.Describe) (bool, bool, error) {
 	var fields []*query2.Field
 	var bindvarTypes []int32
 
 	if message.IsPrepared {
-		preparedStatementData, ok := preparedStatements[message.Target]
+		preparedStatementData, ok := h.preparedStatements[message.Target]
 		if !ok {
 			return false, true, fmt.Errorf("prepared statement %s does not exist", message.Target)
 		}
@@ -398,7 +392,7 @@ func (l *ConnectionHandler) handleDescribe(message messages.Describe, preparedSt
 		fields = preparedStatementData.ReturnFields
 		bindvarTypes = preparedStatementData.BindVarTypes
 	} else {
-		portalData, ok := portals[message.Target]
+		portalData, ok := h.portals[message.Target]
 		if !ok {
 			return false, true, fmt.Errorf("portal %s does not exist", message.Target)
 		}
@@ -406,25 +400,25 @@ func (l *ConnectionHandler) handleDescribe(message messages.Describe, preparedSt
 		fields = portalData.Fields
 	}
 
-	return false, false, l.describe(conn, fields, bindvarTypes)
+	return false, false, h.describe(h.Conn(), fields, bindvarTypes)
 }
 
-func (l *ConnectionHandler) handleBind(message messages.Bind, preparedStatements map[string]PreparedStatementData, portals map[string]PortalData, conn net.Conn, mysqlConn *mysql.Conn) (bool, bool, error) {
+func (h *ConnectionHandler) handleBind(message messages.Bind) (bool, bool, error) {
 	// TODO: a named portal object lasts till the end of the current transaction, unless explicitly destroyed
 	//  we need to destroy the named portal as a side effect of the transaction ending
 	logrus.Tracef("binding portal %q to prepared statement %s", message.DestinationPortal, message.SourcePreparedStatement)
-	preparedData, ok := preparedStatements[message.SourcePreparedStatement]
+	preparedData, ok := h.preparedStatements[message.SourcePreparedStatement]
 	if !ok {
 		return false, true, fmt.Errorf("prepared statement %s does not exist", message.SourcePreparedStatement)
 	}
 
 	if preparedData.Query.AST == nil {
 		// special case: empty query
-		portals[message.DestinationPortal] = PortalData{
+		h.portals[message.DestinationPortal] = PortalData{
 			Query:        preparedData.Query,
 			IsEmptyQuery: true,
 		}
-		return false, false, connection.Send(conn, messages.BindComplete{})
+		return false, false, connection.Send(h.Conn(), messages.BindComplete{})
 	}
 
 	bindVars, err := convertBindParameters(preparedData.BindVarTypes, message.ParameterValues)
@@ -432,22 +426,22 @@ func (l *ConnectionHandler) handleBind(message messages.Bind, preparedStatements
 		return false, false, err
 	}
 
-	boundPlan, fields, err := l.bindParams(mysqlConn, message.SourcePreparedStatement, preparedData.Query.AST, bindVars)
+	boundPlan, fields, err := h.bindParams(h.mysqlConn, message.SourcePreparedStatement, preparedData.Query.AST, bindVars)
 	if err != nil {
 		return false, false, err
 	}
 
-	portals[message.DestinationPortal] = PortalData{
+	h.portals[message.DestinationPortal] = PortalData{
 		Query:     preparedData.Query,
 		Fields:    fields,
 		BoundPlan: boundPlan,
 	}
-	return false, false, connection.Send(conn, messages.BindComplete{})
+	return false, false, connection.Send(h.Conn(), messages.BindComplete{})
 }
 
-func (l *ConnectionHandler) handleExecute(message messages.Execute, portals map[string]PortalData, conn net.Conn, mysqlConn *mysql.Conn) (bool, bool, error) {
+func (h *ConnectionHandler) handleExecute(message messages.Execute) (bool, bool, error) {
 	// TODO: implement the RowMax
-	portalData, ok := portals[message.Portal]
+	portalData, ok := h.portals[message.Portal]
 	if !ok {
 		return false, false, fmt.Errorf("portal %s does not exist", message.Portal)
 	}
@@ -461,16 +455,16 @@ func (l *ConnectionHandler) handleExecute(message messages.Execute, portals map[
 	}
 
 	if !portalData.IsEmptyQuery {
-		err := l.handler.(mysql.ExtendedHandler).ComExecuteBound(mysqlConn, query.String, portalData.BoundPlan, spoolRowsCallback(conn, complete))
+		err := h.handler.(mysql.ExtendedHandler).ComExecuteBound(h.mysqlConn, query.String, portalData.BoundPlan, spoolRowsCallback(h.Conn(), complete))
 		if err != nil {
 			return false, false, err
 		}
 	}
-
-	return false, false, connection.Send(conn, complete)
+	
+	return false, false, connection.Send(h.Conn(), complete)
 }
 
-func (l *ConnectionHandler) deallocatePreparedStatement(name string, preparedStatements map[string]PreparedStatementData, query ConvertedQuery, conn net.Conn) error {
+func (h *ConnectionHandler) deallocatePreparedStatement(name string, preparedStatements map[string]PreparedStatementData, query ConvertedQuery, conn net.Conn) error {
 	_, ok := preparedStatements[name]
 	if !ok {
 		return fmt.Errorf("prepared statement %s does not exist", name)
@@ -597,49 +591,50 @@ func convertType(oid int32) query2.Type {
 
 // sendClientStartupMessages sends introductory messages to the client and returns any error
 // TODO: implement users and authentication
-func (l *ConnectionHandler) sendClientStartupMessages(conn net.Conn, startupMessage messages.StartupMessage, mysqlConn *mysql.Conn) error {
+func (h *ConnectionHandler) sendClientStartupMessages(startupMessage messages.StartupMessage) error {
 	if user, ok := startupMessage.Parameters["user"]; ok && len(user) > 0 {
 		var host string
-		if conn.RemoteAddr().Network() == "unix" {
+		if h.Conn().RemoteAddr().Network() == "unix" {
 			host = "localhost"
 		} else {
-			host, _, _ = net.SplitHostPort(conn.RemoteAddr().String())
+			host, _, _ = net.SplitHostPort(h.Conn().RemoteAddr().String())
 			if len(host) == 0 {
 				host = "localhost"
 			}
 		}
-		mysqlConn.User = user
-		mysqlConn.UserData = mysql_db.MysqlConnectionUser{
+		
+		h.mysqlConn.User = user
+		h.mysqlConn.UserData = mysql_db.MysqlConnectionUser{
 			User: user,
 			Host: host,
 		}
 	} else {
-		mysqlConn.User = "doltgres"
-		mysqlConn.UserData = mysql_db.MysqlConnectionUser{
+		h.mysqlConn.User = "doltgres"
+		h.mysqlConn.UserData = mysql_db.MysqlConnectionUser{
 			User: "doltgres",
 			Host: "localhost",
 		}
 	}
 
-	if err := connection.Send(conn, messages.AuthenticationOk{}); err != nil {
+	if err := connection.Send(h.Conn(), messages.AuthenticationOk{}); err != nil {
 		return err
 	}
 
-	if err := connection.Send(conn, messages.ParameterStatus{
+	if err := connection.Send(h.Conn(), messages.ParameterStatus{
 		Name:  "server_version",
 		Value: "15.0",
 	}); err != nil {
 		return err
 	}
 
-	if err := connection.Send(conn, messages.ParameterStatus{
+	if err := connection.Send(h.Conn(), messages.ParameterStatus{
 		Name:  "client_encoding",
 		Value: "UTF8",
 	}); err != nil {
 		return err
 	}
 
-	if err := connection.Send(conn, messages.BackendKeyData{
+	if err := connection.Send(h.Conn(), messages.BackendKeyData{
 		ProcessID: processID,
 		SecretKey: 0,
 	}); err != nil {
@@ -650,12 +645,12 @@ func (l *ConnectionHandler) sendClientStartupMessages(conn net.Conn, startupMess
 }
 
 // query runs the given query and sends a CommandComplete message to the client
-func (l *ConnectionHandler) query(conn net.Conn, mysqlConn *mysql.Conn, query ConvertedQuery) error {
+func (h *ConnectionHandler) query(query ConvertedQuery) error {
 	commandComplete := messages.CommandComplete{
 		Query: query.String,
 	}
 
-	err := l.comQuery(mysqlConn, query, spoolRowsCallback(conn, commandComplete))
+	err := h.comQuery(h.mysqlConn, query, spoolRowsCallback(h.Conn(), commandComplete))
 
 	if err != nil {
 		if strings.HasPrefix(err.Error(), "syntax error at position") {
@@ -664,7 +659,7 @@ func (l *ConnectionHandler) query(conn net.Conn, mysqlConn *mysql.Conn, query Co
 		return err
 	}
 
-	if err := connection.Send(conn, commandComplete); err != nil {
+	if err := connection.Send(h.Conn(), commandComplete); err != nil {
 		return err
 	}
 
@@ -699,7 +694,7 @@ func spoolRowsCallback(conn net.Conn, commandComplete messages.CommandComplete) 
 }
 
 // describe handles the description of the given query. This will post the ParameterDescription and RowDescription messages.
-func (l *ConnectionHandler) describe(conn net.Conn, fields []*query2.Field, types []int32) (err error) {
+func (h *ConnectionHandler) describe(conn net.Conn, fields []*query2.Field, types []int32) (err error) {
 	// The prepared statement variant of the describe command returns the OIDs of the parameters.
 	if types != nil {
 		if err := connection.Send(conn, messages.ParameterDescription{
@@ -720,27 +715,27 @@ func (l *ConnectionHandler) describe(conn net.Conn, fields []*query2.Field, type
 }
 
 // handledPSQLCommands handles the special PSQL commands, such as \l and \dt.
-func (l *ConnectionHandler) handledPSQLCommands(conn net.Conn, mysqlConn *mysql.Conn, statement string) (bool, error) {
+func (h *ConnectionHandler) handledPSQLCommands(statement string) (bool, error) {
 	statement = strings.ToLower(statement)
 	// Command: \l
 	if statement == "select d.datname as \"name\",\n       pg_catalog.pg_get_userbyid(d.datdba) as \"owner\",\n       pg_catalog.pg_encoding_to_char(d.encoding) as \"encoding\",\n       d.datcollate as \"collate\",\n       d.datctype as \"ctype\",\n       d.daticulocale as \"icu locale\",\n       case d.datlocprovider when 'c' then 'libc' when 'i' then 'icu' end as \"locale provider\",\n       pg_catalog.array_to_string(d.datacl, e'\\n') as \"access privileges\"\nfrom pg_catalog.pg_database d\norder by 1;" {
-		return true, l.query(conn, mysqlConn, ConvertedQuery{String: `SELECT SCHEMA_NAME AS 'Name', 'postgres' AS 'Owner', 'UTF8' AS 'Encoding', 'English_United States.1252' AS 'Collate', 'English_United States.1252' AS 'Ctype', '' AS 'ICU Locale', 'libc' AS 'Locale Provider', '' AS 'Access privileges' FROM INFORMATION_SCHEMA.SCHEMATA ORDER BY 1;`})
+		return true, h.query(ConvertedQuery{String: `SELECT SCHEMA_NAME AS 'Name', 'postgres' AS 'Owner', 'UTF8' AS 'Encoding', 'English_United States.1252' AS 'Collate', 'English_United States.1252' AS 'Ctype', '' AS 'ICU Locale', 'libc' AS 'Locale Provider', '' AS 'Access privileges' FROM INFORMATION_SCHEMA.SCHEMATA ORDER BY 1;`})
 	}
 	// Command: \l on psql 16
 	if statement == "select\n  d.datname as \"name\",\n  pg_catalog.pg_get_userbyid(d.datdba) as \"owner\",\n  pg_catalog.pg_encoding_to_char(d.encoding) as \"encoding\",\n  case d.datlocprovider when 'c' then 'libc' when 'i' then 'icu' end as \"locale provider\",\n  d.datcollate as \"collate\",\n  d.datctype as \"ctype\",\n  d.daticulocale as \"icu locale\",\n  null as \"icu rules\",\n  pg_catalog.array_to_string(d.datacl, e'\\n') as \"access privileges\"\nfrom pg_catalog.pg_database d\norder by 1;" {
-		return true, l.query(conn, mysqlConn, ConvertedQuery{String: `SELECT SCHEMA_NAME AS 'Name', 'postgres' AS 'Owner', 'UTF8' AS 'Encoding', 'English_United States.1252' AS 'Collate', 'English_United States.1252' AS 'Ctype', '' AS 'ICU Locale', 'libc' AS 'Locale Provider', '' AS 'Access privileges' FROM INFORMATION_SCHEMA.SCHEMATA ORDER BY 1;`})
+		return true, h.query(ConvertedQuery{String: `SELECT SCHEMA_NAME AS 'Name', 'postgres' AS 'Owner', 'UTF8' AS 'Encoding', 'English_United States.1252' AS 'Collate', 'English_United States.1252' AS 'Ctype', '' AS 'ICU Locale', 'libc' AS 'Locale Provider', '' AS 'Access privileges' FROM INFORMATION_SCHEMA.SCHEMATA ORDER BY 1;`})
 	}
 	// Command: \dt
 	if statement == "select n.nspname as \"schema\",\n  c.relname as \"name\",\n  case c.relkind when 'r' then 'table' when 'v' then 'view' when 'm' then 'materialized view' when 'i' then 'index' when 's' then 'sequence' when 't' then 'toast table' when 'f' then 'foreign table' when 'p' then 'partitioned table' when 'i' then 'partitioned index' end as \"type\",\n  pg_catalog.pg_get_userbyid(c.relowner) as \"owner\"\nfrom pg_catalog.pg_class c\n     left join pg_catalog.pg_namespace n on n.oid = c.relnamespace\n     left join pg_catalog.pg_am am on am.oid = c.relam\nwhere c.relkind in ('r','p','')\n      and n.nspname <> 'pg_catalog'\n      and n.nspname !~ '^pg_toast'\n      and n.nspname <> 'information_schema'\n  and pg_catalog.pg_table_is_visible(c.oid)\norder by 1,2;" {
-		return true, l.query(conn, mysqlConn, ConvertedQuery{String: `SELECT 'public' AS 'Schema', TABLE_NAME AS 'Name', 'table' AS 'Type', 'postgres' AS 'Owner' FROM INFORMATION_SCHEMA.TABLES WHERE TABLE_SCHEMA = database() AND TABLE_TYPE = 'BASE TABLE' ORDER BY 2;`})
+		return true, h.query(ConvertedQuery{String: `SELECT 'public' AS 'Schema', TABLE_NAME AS 'Name', 'table' AS 'Type', 'postgres' AS 'Owner' FROM INFORMATION_SCHEMA.TABLES WHERE TABLE_SCHEMA = database() AND TABLE_TYPE = 'BASE TABLE' ORDER BY 2;`})
 	}
 	// Command: \d
 	if statement == "select n.nspname as \"schema\",\n  c.relname as \"name\",\n  case c.relkind when 'r' then 'table' when 'v' then 'view' when 'm' then 'materialized view' when 'i' then 'index' when 's' then 'sequence' when 't' then 'toast table' when 'f' then 'foreign table' when 'p' then 'partitioned table' when 'i' then 'partitioned index' end as \"type\",\n  pg_catalog.pg_get_userbyid(c.relowner) as \"owner\"\nfrom pg_catalog.pg_class c\n     left join pg_catalog.pg_namespace n on n.oid = c.relnamespace\n     left join pg_catalog.pg_am am on am.oid = c.relam\nwhere c.relkind in ('r','p','v','m','s','f','')\n      and n.nspname <> 'pg_catalog'\n      and n.nspname !~ '^pg_toast'\n      and n.nspname <> 'information_schema'\n  and pg_catalog.pg_table_is_visible(c.oid)\norder by 1,2;" {
-		return true, l.query(conn, mysqlConn, ConvertedQuery{String: `SELECT 'public' AS 'Schema', TABLE_NAME AS 'Name', 'table' AS 'Type', 'postgres' AS 'Owner' FROM INFORMATION_SCHEMA.TABLES WHERE TABLE_SCHEMA = database() AND TABLE_TYPE = 'BASE TABLE' ORDER BY 2;`})
+		return true, h.query(ConvertedQuery{String: `SELECT 'public' AS 'Schema', TABLE_NAME AS 'Name', 'table' AS 'Type', 'postgres' AS 'Owner' FROM INFORMATION_SCHEMA.TABLES WHERE TABLE_SCHEMA = database() AND TABLE_TYPE = 'BASE TABLE' ORDER BY 2;`})
 	}
 	// Alternate \d for psql 14
 	if statement == "select n.nspname as \"schema\",\n  c.relname as \"name\",\n  case c.relkind when 'r' then 'table' when 'v' then 'view' when 'm' then 'materialized view' when 'i' then 'index' when 's' then 'sequence' when 's' then 'special' when 't' then 'toast table' when 'f' then 'foreign table' when 'p' then 'partitioned table' when 'i' then 'partitioned index' end as \"type\",\n  pg_catalog.pg_get_userbyid(c.relowner) as \"owner\"\nfrom pg_catalog.pg_class c\n     left join pg_catalog.pg_namespace n on n.oid = c.relnamespace\n     left join pg_catalog.pg_am am on am.oid = c.relam\nwhere c.relkind in ('r','p','v','m','s','f','')\n      and n.nspname <> 'pg_catalog'\n      and n.nspname !~ '^pg_toast'\n      and n.nspname <> 'information_schema'\n  and pg_catalog.pg_table_is_visible(c.oid)\norder by 1,2;" {
-		return true, l.query(conn, mysqlConn, ConvertedQuery{String: `SELECT 'public' AS 'Schema', TABLE_NAME AS 'Name', 'table' AS 'Type', 'postgres' AS 'Owner' FROM INFORMATION_SCHEMA.TABLES WHERE TABLE_SCHEMA = database() AND TABLE_TYPE = 'BASE TABLE' ORDER BY 2;`})
+		return true, h.query(ConvertedQuery{String: `SELECT 'public' AS 'Schema', TABLE_NAME AS 'Name', 'table' AS 'Type', 'postgres' AS 'Owner' FROM INFORMATION_SCHEMA.TABLES WHERE TABLE_SCHEMA = database() AND TABLE_TYPE = 'BASE TABLE' ORDER BY 2;`})
 	}
 	// Command: \d table_name
 	if strings.HasPrefix(statement, "select c.oid,\n  n.nspname,\n  c.relname\nfrom pg_catalog.pg_class c\n     left join pg_catalog.pg_namespace n on n.oid = c.relnamespace\nwhere c.relname operator(pg_catalog.~) '^(") && strings.HasSuffix(statement, ")$' collate pg_catalog.default\n  and pg_catalog.pg_table_is_visible(c.oid)\norder by 2, 3;") {
@@ -750,20 +745,20 @@ func (l *ConnectionHandler) handledPSQLCommands(conn net.Conn, mysqlConn *mysql.
 	}
 	// Command: \dn
 	if statement == "select n.nspname as \"name\",\n  pg_catalog.pg_get_userbyid(n.nspowner) as \"owner\"\nfrom pg_catalog.pg_namespace n\nwhere n.nspname !~ '^pg_' and n.nspname <> 'information_schema'\norder by 1;" {
-		return true, l.query(conn, mysqlConn, ConvertedQuery{String: "SELECT 'public' AS 'Name', 'pg_database_owner' AS 'Owner';"})
+		return true, h.query(ConvertedQuery{String: "SELECT 'public' AS 'Name', 'pg_database_owner' AS 'Owner';"})
 	}
 	// Command: \df
 	if statement == "select n.nspname as \"schema\",\n  p.proname as \"name\",\n  pg_catalog.pg_get_function_result(p.oid) as \"result data type\",\n  pg_catalog.pg_get_function_arguments(p.oid) as \"argument data types\",\n case p.prokind\n  when 'a' then 'agg'\n  when 'w' then 'window'\n  when 'p' then 'proc'\n  else 'func'\n end as \"type\"\nfrom pg_catalog.pg_proc p\n     left join pg_catalog.pg_namespace n on n.oid = p.pronamespace\nwhere pg_catalog.pg_function_is_visible(p.oid)\n      and n.nspname <> 'pg_catalog'\n      and n.nspname <> 'information_schema'\norder by 1, 2, 4;" {
-		return true, l.query(conn, mysqlConn, ConvertedQuery{String: "SELECT '' AS 'Schema', '' AS 'Name', '' AS 'Result data type', '' AS 'Argument data types', '' AS 'Type' FROM dual LIMIT 0;"})
+		return true, h.query(ConvertedQuery{String: "SELECT '' AS 'Schema', '' AS 'Name', '' AS 'Result data type', '' AS 'Argument data types', '' AS 'Type' FROM dual LIMIT 0;"})
 	}
 	// Command: \dv
 	if statement == "select n.nspname as \"schema\",\n  c.relname as \"name\",\n  case c.relkind when 'r' then 'table' when 'v' then 'view' when 'm' then 'materialized view' when 'i' then 'index' when 's' then 'sequence' when 't' then 'toast table' when 'f' then 'foreign table' when 'p' then 'partitioned table' when 'i' then 'partitioned index' end as \"type\",\n  pg_catalog.pg_get_userbyid(c.relowner) as \"owner\"\nfrom pg_catalog.pg_class c\n     left join pg_catalog.pg_namespace n on n.oid = c.relnamespace\nwhere c.relkind in ('v','')\n      and n.nspname <> 'pg_catalog'\n      and n.nspname !~ '^pg_toast'\n      and n.nspname <> 'information_schema'\n  and pg_catalog.pg_table_is_visible(c.oid)\norder by 1,2;" {
-		return true, l.query(conn, mysqlConn, ConvertedQuery{String: "SELECT 'public' AS 'Schema', TABLE_NAME AS 'Name', 'view' AS 'Type', 'postgres' AS 'Owner' FROM INFORMATION_SCHEMA.TABLES WHERE TABLE_SCHEMA = database() AND TABLE_TYPE = 'VIEW' ORDER BY 2;"})
+		return true, h.query(ConvertedQuery{String: "SELECT 'public' AS 'Schema', TABLE_NAME AS 'Name', 'view' AS 'Type', 'postgres' AS 'Owner' FROM INFORMATION_SCHEMA.TABLES WHERE TABLE_SCHEMA = database() AND TABLE_TYPE = 'VIEW' ORDER BY 2;"})
 	}
 	// Command: \du
 	if statement == "select r.rolname, r.rolsuper, r.rolinherit,\n  r.rolcreaterole, r.rolcreatedb, r.rolcanlogin,\n  r.rolconnlimit, r.rolvaliduntil,\n  array(select b.rolname\n        from pg_catalog.pg_auth_members m\n        join pg_catalog.pg_roles b on (m.roleid = b.oid)\n        where m.member = r.oid) as memberof\n, r.rolreplication\n, r.rolbypassrls\nfrom pg_catalog.pg_roles r\nwhere r.rolname !~ '^pg_'\norder by 1;" {
 		// We don't support users yet, so we'll just return nothing for now
-		return true, l.query(conn, mysqlConn, ConvertedQuery{String: "SELECT '' FROM dual LIMIT 0;"})
+		return true, h.query(ConvertedQuery{String: "SELECT '' FROM dual LIMIT 0;"})
 	}
 	return false, nil
 }
@@ -772,9 +767,9 @@ func (l *ConnectionHandler) handledPSQLCommands(conn net.Conn, mysqlConn *mysql.
 // of the message slice, which may occur naturally (all relevant response messages have been sent) or on error. Once
 // endOfMessages has been called, no further messages should be sent, and the connection loop should wait for the next
 // query. A nil error should be provided if this is being called naturally.
-func (l *ConnectionHandler) endOfMessages(conn net.Conn, err error) {
+func (h *ConnectionHandler) endOfMessages(conn net.Conn, err error) {
 	if err != nil {
-		l.sendError(conn, err)
+		h.sendError(conn, err)
 	}
 	if sendErr := connection.Send(conn, messages.ReadyForQuery{
 		Indicator: messages.ReadyForQueryTransactionIndicator_Idle,
@@ -785,7 +780,7 @@ func (l *ConnectionHandler) endOfMessages(conn net.Conn, err error) {
 }
 
 // sendError sends the given error to the client. This should generally never be called directly.
-func (l *ConnectionHandler) sendError(conn net.Conn, err error) {
+func (h *ConnectionHandler) sendError(conn net.Conn, err error) {
 	fmt.Println(err.Error())
 	if sendErr := connection.Send(conn, messages.ErrorResponse{
 		Severity:     messages.ErrorResponseSeverity_Error,
@@ -799,7 +794,7 @@ func (l *ConnectionHandler) sendError(conn net.Conn, err error) {
 }
 
 // convertQuery takes the given Postgres query, and converts it as an ast.ConvertedQuery that will work with the handler.
-func (l *ConnectionHandler) convertQuery(query string) (ConvertedQuery, error) {
+func (h *ConnectionHandler) convertQuery(query string) (ConvertedQuery, error) {
 	s, err := parser.Parse(query)
 	if err != nil {
 		return ConvertedQuery{}, err
@@ -824,12 +819,12 @@ func (l *ConnectionHandler) convertQuery(query string) (ConvertedQuery, error) {
 }
 
 // getPlanAndFields builds a plan and return fields for the given query
-func (l *ConnectionHandler) getPlanAndFields(mysqlConn *mysql.Conn, query ConvertedQuery) (sql.Node, []*query2.Field, error) {
+func (h *ConnectionHandler) getPlanAndFields(mysqlConn *mysql.Conn, query ConvertedQuery) (sql.Node, []*query2.Field, error) {
 	if query.AST == nil {
 		return nil, nil, fmt.Errorf("cannot prepare a query that has not been parsed")
 	}
 
-	parsedQuery, fields, err := l.handler.(mysql.ExtendedHandler).ComPrepareParsed(mysqlConn, query.String, query.AST, &mysql.PrepareData{
+	parsedQuery, fields, err := h.handler.(mysql.ExtendedHandler).ComPrepareParsed(mysqlConn, query.String, query.AST, &mysql.PrepareData{
 		PrepareStmt: query.String,
 	})
 
@@ -846,21 +841,21 @@ func (l *ConnectionHandler) getPlanAndFields(mysqlConn *mysql.Conn, query Conver
 }
 
 // comQuery is a shortcut that determines which version of ComQuery to call based on whether the query has been parsed.
-func (l *ConnectionHandler) comQuery(mysqlConn *mysql.Conn, query ConvertedQuery, callback func(res *sqltypes.Result, more bool) error) error {
+func (h *ConnectionHandler) comQuery(mysqlConn *mysql.Conn, query ConvertedQuery, callback func(res *sqltypes.Result, more bool) error) error {
 	if query.AST == nil {
-		return l.handler.ComQuery(mysqlConn, query.String, callback)
+		return h.handler.ComQuery(mysqlConn, query.String, callback)
 	} else {
-		return l.handler.(mysql.ExtendedHandler).ComParsedQuery(mysqlConn, query.String, query.AST, callback)
+		return h.handler.(mysql.ExtendedHandler).ComParsedQuery(mysqlConn, query.String, query.AST, callback)
 	}
 }
 
-func (l *ConnectionHandler) bindParams(
+func (h *ConnectionHandler) bindParams(
 		mysqlConn *mysql.Conn,
 		query string,
 		parsedQuery sqlparser.Statement,
 		bindVars map[string]*query2.BindVariable,
 ) (sql.Node, []*query2.Field, error) {
-	bound, fields, err := l.handler.(mysql.ExtendedHandler).ComBind(mysqlConn, query, parsedQuery, &mysql.PrepareData{
+	bound, fields, err := h.handler.(mysql.ExtendedHandler).ComBind(mysqlConn, query, parsedQuery, &mysql.PrepareData{
 		PrepareStmt: query,
 		ParamsCount: uint16(len(bindVars)),
 		BindVars:    bindVars,
