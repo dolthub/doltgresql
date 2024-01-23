@@ -105,10 +105,22 @@ func (l *Listener) HandleConnection(conn net.Conn) {
 	defer func() {
 		if r := recover(); r != nil {
 			fmt.Printf("Listener recovered panic: %v", r)
+			
+			var eomErr error
+			if returnErr != nil {
+				eomErr = returnErr
+			} else if rErr, ok := r.(error); ok {
+				eomErr = rErr
+			} else {
+				eomErr = fmt.Errorf("panic: %v", r)
+			}
+			l.endOfMessages(conn, eomErr)
 		}
+		
 		if returnErr != nil {
 			fmt.Println(returnErr.Error())
 		}
+		
 		l.cfg.Handler.ConnectionClosed(mysqlConn)
 		if err := conn.Close(); err != nil {
 			fmt.Printf("Failed to properly close connection:\n%v\n", err)
