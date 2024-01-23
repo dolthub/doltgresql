@@ -78,8 +78,9 @@ func (l *Listener) Accept() {
 			fmt.Printf("Unable to accept connection:\n%v\n", err)
 			continue
 		}
-
-		go l.HandleConnection(conn)
+		
+		connectionHandler := NewConnectionHandler(conn, l.cfg.Handler)
+		go connectionHandler.HandleConnection()
 	}
 }
 
@@ -97,10 +98,11 @@ type ConnectionHandler struct {
 	mysqlConn *mysql.Conn
 	preparedStatements map[string]PreparedStatementData
 	portals map[string]PortalData
+	handler mysql.Handler
 	waitForSync bool
 }
 
-func newConnectionHandler(conn net.Conn) *ConnectionHandler {
+func NewConnectionHandler(conn net.Conn, handler mysql.Handler) *ConnectionHandler {
 	mysqlConn := &mysql.Conn{
 		Conn:        conn,
 		PrepareData: make(map[uint32]*mysql.PrepareData),
@@ -118,17 +120,12 @@ func newConnectionHandler(conn net.Conn) *ConnectionHandler {
 		mysqlConn: mysqlConn,
 		preparedStatements: preparedStatements,
 		portals: portals,
+		handler: handler,
 	}
 }
 
 // HandleConnection handles a connection's session.
-func (l *Listener) HandleConnection(conn net.Conn) {
-	mysqlConn := &mysql.Conn{
-		Conn:        conn,
-		PrepareData: make(map[uint32]*mysql.PrepareData),
-	}
-	mysqlConn.ConnectionID = atomic.AddUint32(&connectionIDCounter, 1)
-
+func (l *ConnectionHandler) HandleConnection() {
 	var returnErr error
 	defer func() {
 		if r := recover(); r != nil {
@@ -143,33 +140,33 @@ func (l *Listener) HandleConnection(conn net.Conn) {
 				eomErr = fmt.Errorf("panic: %v", r)
 			}
 			
-			l.endOfMessages(conn, eomErr)
+			l.endOfMessages(l.mysqlConn.Conn, eomErr)
 		}
 		
 		if returnErr != nil {
 			fmt.Println(returnErr.Error())
 		}
 		
-		l.cfg.Handler.ConnectionClosed(mysqlConn)
-		if err := conn.Close(); err != nil {
+		l.handler.ConnectionClosed(l.mysqlConn)
+		if err := l.mysqlConn.Conn.Close(); err != nil {
 			fmt.Printf("Failed to properly close connection:\n%v\n", err)
 		}
 	}()
-	l.cfg.Handler.NewConnection(mysqlConn)
+	l.handler.NewConnection(l.mysqlConn)
 
-	startupMessage, conn, err := l.receiveStartupMessage(conn, mysqlConn)
+	startupMessage, conn, err := l.receiveStartupMessage(l.mysqlConn.Conn, l.mysqlConn)
 	if err != nil {
 		returnErr = err
 		return
 	}
 
-	err = l.sendClientStartupMessages(conn, startupMessage, mysqlConn)
+	err = l.sendClientStartupMessages(conn, startupMessage, l.mysqlConn)
 	if err != nil {
 		returnErr = err
 		return
 	}
 
-	err = l.chooseInitialDatabase(conn, startupMessage, mysqlConn)
+	err = l.chooseInitialDatabase(conn, startupMessage, l.mysqlConn)
 	if err != nil {
 		returnErr = err
 		return
@@ -181,18 +178,11 @@ func (l *Listener) HandleConnection(conn net.Conn) {
 		returnErr = err
 		return
 	}
-
-	// Postgres has a two-stage procedure for prepared queries. First the query is parsed via a |Parse| message, and
-	// the result is stored in the |preparedStatements| map by the name provided. Then one or more |Bind| messages
-	// provide parameters for the query, and the result is stored in |portals|. Finally, a call to |Execute| executes
-	// the named portal.
-	preparedStatements := make(map[string]PreparedStatementData)
-	portals := make(map[string]PortalData)
-
+	
 	// Main session loop: read messages one at a time off the connection until we receive a |Terminate| message, in
 	// which case we hang up, or the connection is closed by the client, which generates an io.EOF from the connection.
 	for {
-		stop, err := l.receiveMessage(conn, mysqlConn, preparedStatements, portals)
+		stop, err := l.receiveMessage(conn, l.mysqlConn, l.preparedStatements, l.portals)
 		if err != nil {
 			returnErr = err
 			break
@@ -207,7 +197,7 @@ func (l *Listener) HandleConnection(conn net.Conn) {
 // receiveMessage reads a single message off the connection and processes it, returning an error if no message could be
 // received from the connection. Otherwise (a message is received successfully), the message is processed and any 
 // error is handled appropriately. The return value indicates whether the connection should be closed.
-func (l *Listener) receiveMessage(
+func (l *ConnectionHandler) receiveMessage(
 		conn net.Conn,
 		mysqlConn *mysql.Conn,
 		preparedStatements map[string]PreparedStatementData,
@@ -262,7 +252,7 @@ func (l *Listener) receiveMessage(
 
 // receiveStarupMessage reads a startup message from the connection given and returns it. Some startup messages will
 // result in the establishment of a new connection, which is also returned.
-func (l *Listener) receiveStartupMessage(conn net.Conn, mysqlConn *mysql.Conn) (messages.StartupMessage, net.Conn, error) {
+func (l *ConnectionHandler) receiveStartupMessage(conn net.Conn, mysqlConn *mysql.Conn) (messages.StartupMessage, net.Conn, error) {
 	var startupMessage messages.StartupMessage
 	// The initial message may be one of a few different messages, so we'll check for those.
 InitialMessageLoop:
@@ -316,9 +306,9 @@ InitialMessageLoop:
 	return startupMessage, conn, nil
 }
 
-func (l *Listener) chooseInitialDatabase(conn net.Conn, startupMessage messages.StartupMessage, mysqlConn *mysql.Conn) error {
+func (l *ConnectionHandler) chooseInitialDatabase(conn net.Conn, startupMessage messages.StartupMessage, mysqlConn *mysql.Conn) error {
 	if db, ok := startupMessage.Parameters["database"]; ok && len(db) > 0 {
-		err := l.cfg.Handler.ComQuery(mysqlConn, fmt.Sprintf("USE `%s`;", db), func(res *sqltypes.Result, more bool) error {
+		err := l.handler.ComQuery(mysqlConn, fmt.Sprintf("USE `%s`;", db), func(res *sqltypes.Result, more bool) error {
 			return nil
 		})
 		if err != nil {
@@ -335,14 +325,14 @@ func (l *Listener) chooseInitialDatabase(conn net.Conn, startupMessage messages.
 	} else {
 		// If a database isn't specified, then we attempt to connect to a database with the same name as the user,
 		// ignoring any error
-		_ = l.cfg.Handler.ComQuery(mysqlConn, fmt.Sprintf("USE `%s`;", mysqlConn.User), func(*sqltypes.Result, bool) error {
+		_ = l.handler.ComQuery(mysqlConn, fmt.Sprintf("USE `%s`;", mysqlConn.User), func(*sqltypes.Result, bool) error {
 			return nil
 		})
 	}
 	return nil
 }
 
-func (l *Listener) handleMessage(
+func (l *ConnectionHandler) handleMessage(
 	message connection.Message,
 	conn net.Conn,
 	mysqlConn *mysql.Conn,
@@ -377,7 +367,7 @@ func (l *Listener) handleMessage(
 	}
 }
 
-func (l *Listener) handleQuery(message messages.Query, preparedStatements map[string]PreparedStatementData, portals map[string]PortalData, mysqlConn *mysql.Conn, conn net.Conn) (bool, bool, error) {
+func (l *ConnectionHandler) handleQuery(message messages.Query, preparedStatements map[string]PreparedStatementData, portals map[string]PortalData, mysqlConn *mysql.Conn, conn net.Conn) (bool, bool, error) {
 	handled, err := l.handledPSQLCommands(conn, mysqlConn, message.String)
 	if handled || err != nil {
 		return false, true, err
@@ -403,7 +393,7 @@ func (l *Listener) handleQuery(message messages.Query, preparedStatements map[st
 	return false, true, l.query(conn, mysqlConn, query)
 }
 
-func (l *Listener) handleParse(message messages.Parse, preparedStatements map[string]PreparedStatementData, mysqlConn *mysql.Conn, conn net.Conn) (bool, bool, error) {
+func (l *ConnectionHandler) handleParse(message messages.Parse, preparedStatements map[string]PreparedStatementData, mysqlConn *mysql.Conn, conn net.Conn) (bool, bool, error) {
 	// TODO: "Named prepared statements must be explicitly closed before they can be redefined by another Parse message, but this is not required for the unnamed statement"
 	query, err := l.convertQuery(message.Query)
 	if err != nil {
@@ -448,7 +438,7 @@ func (l *Listener) handleParse(message messages.Parse, preparedStatements map[st
 	return false, false, connection.Send(conn, messages.ParseComplete{})
 }
 
-func (l *Listener) handleDescribe(message messages.Describe, preparedStatements map[string]PreparedStatementData, portals map[string]PortalData, conn net.Conn) (bool, bool, error) {
+func (l *ConnectionHandler) handleDescribe(message messages.Describe, preparedStatements map[string]PreparedStatementData, portals map[string]PortalData, conn net.Conn) (bool, bool, error) {
 	var fields []*querypb.Field
 	var bindvarTypes []int32
 
@@ -472,7 +462,7 @@ func (l *Listener) handleDescribe(message messages.Describe, preparedStatements 
 	return false, false, l.describe(conn, fields, bindvarTypes)
 }
 
-func (l *Listener) handleBind(message messages.Bind, preparedStatements map[string]PreparedStatementData, portals map[string]PortalData, conn net.Conn, mysqlConn *mysql.Conn) (bool, bool, error) {
+func (l *ConnectionHandler) handleBind(message messages.Bind, preparedStatements map[string]PreparedStatementData, portals map[string]PortalData, conn net.Conn, mysqlConn *mysql.Conn) (bool, bool, error) {
 	// TODO: a named portal object lasts till the end of the current transaction, unless explicitly destroyed
 	//  we need to destroy the named portal as a side effect of the transaction ending
 	logrus.Tracef("binding portal %q to prepared statement %s", message.DestinationPortal, message.SourcePreparedStatement)
@@ -508,7 +498,7 @@ func (l *Listener) handleBind(message messages.Bind, preparedStatements map[stri
 	return false, false, connection.Send(conn, messages.BindComplete{})
 }
 
-func (l *Listener) handleExecute(message messages.Execute, portals map[string]PortalData, conn net.Conn, mysqlConn *mysql.Conn) (bool, bool, error) {
+func (l *ConnectionHandler) handleExecute(message messages.Execute, portals map[string]PortalData, conn net.Conn, mysqlConn *mysql.Conn) (bool, bool, error) {
 	// TODO: implement the RowMax
 	portalData, ok := portals[message.Portal]
 	if !ok {
@@ -524,7 +514,7 @@ func (l *Listener) handleExecute(message messages.Execute, portals map[string]Po
 	}
 
 	if !portalData.IsEmptyQuery {
-		err := l.cfg.Handler.(mysql.ExtendedHandler).ComExecuteBound(mysqlConn, query.String, portalData.BoundPlan, spoolRowsCallback(conn, complete))
+		err := l.handler.(mysql.ExtendedHandler).ComExecuteBound(mysqlConn, query.String, portalData.BoundPlan, spoolRowsCallback(conn, complete))
 		if err != nil {
 			return false, false, err
 		}
@@ -533,7 +523,7 @@ func (l *Listener) handleExecute(message messages.Execute, portals map[string]Po
 	return false, false, connection.Send(conn, complete)
 }
 
-func (l *Listener) deallocatePreparedStatement(name string, preparedStatements map[string]PreparedStatementData, query ConvertedQuery, conn net.Conn) error {
+func (l *ConnectionHandler) deallocatePreparedStatement(name string, preparedStatements map[string]PreparedStatementData, query ConvertedQuery, conn net.Conn) error {
 	_, ok := preparedStatements[name]
 	if !ok {
 		return fmt.Errorf("prepared statement %s does not exist", name)
@@ -660,7 +650,7 @@ func convertType(oid int32) querypb.Type {
 
 // sendClientStartupMessages sends introductory messages to the client and returns any error
 // TODO: implement users and authentication
-func (l *Listener) sendClientStartupMessages(conn net.Conn, startupMessage messages.StartupMessage, mysqlConn *mysql.Conn) error {
+func (l *ConnectionHandler) sendClientStartupMessages(conn net.Conn, startupMessage messages.StartupMessage, mysqlConn *mysql.Conn) error {
 	if user, ok := startupMessage.Parameters["user"]; ok && len(user) > 0 {
 		var host string
 		if conn.RemoteAddr().Network() == "unix" {
@@ -713,7 +703,7 @@ func (l *Listener) sendClientStartupMessages(conn net.Conn, startupMessage messa
 }
 
 // query runs the given query and sends a CommandComplete message to the client
-func (l *Listener) query(conn net.Conn, mysqlConn *mysql.Conn, query ConvertedQuery) error {
+func (l *ConnectionHandler) query(conn net.Conn, mysqlConn *mysql.Conn, query ConvertedQuery) error {
 	commandComplete := messages.CommandComplete{
 		Query: query.String,
 	}
@@ -762,7 +752,7 @@ func spoolRowsCallback(conn net.Conn, commandComplete messages.CommandComplete) 
 }
 
 // describe handles the description of the given query. This will post the ParameterDescription and RowDescription messages.
-func (l *Listener) describe(conn net.Conn, fields []*querypb.Field, types []int32) (err error) {
+func (l *ConnectionHandler) describe(conn net.Conn, fields []*querypb.Field, types []int32) (err error) {
 	// The prepared statement variant of the describe command returns the OIDs of the parameters.
 	if types != nil {
 		if err := connection.Send(conn, messages.ParameterDescription{
@@ -783,7 +773,7 @@ func (l *Listener) describe(conn net.Conn, fields []*querypb.Field, types []int3
 }
 
 // handledPSQLCommands handles the special PSQL commands, such as \l and \dt.
-func (l *Listener) handledPSQLCommands(conn net.Conn, mysqlConn *mysql.Conn, statement string) (bool, error) {
+func (l *ConnectionHandler) handledPSQLCommands(conn net.Conn, mysqlConn *mysql.Conn, statement string) (bool, error) {
 	statement = strings.ToLower(statement)
 	// Command: \l
 	if statement == "select d.datname as \"name\",\n       pg_catalog.pg_get_userbyid(d.datdba) as \"owner\",\n       pg_catalog.pg_encoding_to_char(d.encoding) as \"encoding\",\n       d.datcollate as \"collate\",\n       d.datctype as \"ctype\",\n       d.daticulocale as \"icu locale\",\n       case d.datlocprovider when 'c' then 'libc' when 'i' then 'icu' end as \"locale provider\",\n       pg_catalog.array_to_string(d.datacl, e'\\n') as \"access privileges\"\nfrom pg_catalog.pg_database d\norder by 1;" {
@@ -835,7 +825,7 @@ func (l *Listener) handledPSQLCommands(conn net.Conn, mysqlConn *mysql.Conn, sta
 // of the message slice, which may occur naturally (all relevant response messages have been sent) or on error. Once
 // endOfMessages has been called, no further messages should be sent, and the connection loop should wait for the next
 // query. A nil error should be provided if this is being called naturally.
-func (l *Listener) endOfMessages(conn net.Conn, err error) {
+func (l *ConnectionHandler) endOfMessages(conn net.Conn, err error) {
 	if err != nil {
 		l.sendError(conn, err)
 	}
@@ -848,7 +838,7 @@ func (l *Listener) endOfMessages(conn net.Conn, err error) {
 }
 
 // sendError sends the given error to the client. This should generally never be called directly.
-func (l *Listener) sendError(conn net.Conn, err error) {
+func (l *ConnectionHandler) sendError(conn net.Conn, err error) {
 	fmt.Println(err.Error())
 	if sendErr := connection.Send(conn, messages.ErrorResponse{
 		Severity:     messages.ErrorResponseSeverity_Error,
@@ -862,7 +852,7 @@ func (l *Listener) sendError(conn net.Conn, err error) {
 }
 
 // convertQuery takes the given Postgres query, and converts it as an ast.ConvertedQuery that will work with the handler.
-func (l *Listener) convertQuery(query string) (ConvertedQuery, error) {
+func (l *ConnectionHandler) convertQuery(query string) (ConvertedQuery, error) {
 	s, err := parser.Parse(query)
 	if err != nil {
 		return ConvertedQuery{}, err
@@ -887,12 +877,12 @@ func (l *Listener) convertQuery(query string) (ConvertedQuery, error) {
 }
 
 // getPlanAndFields builds a plan and return fields for the given query
-func (l *Listener) getPlanAndFields(mysqlConn *mysql.Conn, query ConvertedQuery) (sql.Node, []*querypb.Field, error) {
+func (l *ConnectionHandler) getPlanAndFields(mysqlConn *mysql.Conn, query ConvertedQuery) (sql.Node, []*querypb.Field, error) {
 	if query.AST == nil {
 		return nil, nil, fmt.Errorf("cannot prepare a query that has not been parsed")
 	}
 
-	parsedQuery, fields, err := l.cfg.Handler.(mysql.ExtendedHandler).ComPrepareParsed(mysqlConn, query.String, query.AST, &mysql.PrepareData{
+	parsedQuery, fields, err := l.handler.(mysql.ExtendedHandler).ComPrepareParsed(mysqlConn, query.String, query.AST, &mysql.PrepareData{
 		PrepareStmt: query.String,
 	})
 
@@ -909,21 +899,21 @@ func (l *Listener) getPlanAndFields(mysqlConn *mysql.Conn, query ConvertedQuery)
 }
 
 // comQuery is a shortcut that determines which version of ComQuery to call based on whether the query has been parsed.
-func (l *Listener) comQuery(mysqlConn *mysql.Conn, query ConvertedQuery, callback func(res *sqltypes.Result, more bool) error) error {
+func (l *ConnectionHandler) comQuery(mysqlConn *mysql.Conn, query ConvertedQuery, callback func(res *sqltypes.Result, more bool) error) error {
 	if query.AST == nil {
-		return l.cfg.Handler.ComQuery(mysqlConn, query.String, callback)
+		return l.handler.ComQuery(mysqlConn, query.String, callback)
 	} else {
-		return l.cfg.Handler.(mysql.ExtendedHandler).ComParsedQuery(mysqlConn, query.String, query.AST, callback)
+		return l.handler.(mysql.ExtendedHandler).ComParsedQuery(mysqlConn, query.String, query.AST, callback)
 	}
 }
 
-func (l *Listener) bindParams(
+func (l *ConnectionHandler) bindParams(
 	mysqlConn *mysql.Conn,
 	query string,
 	parsedQuery sqlparser.Statement,
 	bindVars map[string]*querypb.BindVariable,
 ) (sql.Node, []*querypb.Field, error) {
-	bound, fields, err := l.cfg.Handler.(mysql.ExtendedHandler).ComBind(mysqlConn, query, parsedQuery, &mysql.PrepareData{
+	bound, fields, err := l.handler.(mysql.ExtendedHandler).ComBind(mysqlConn, query, parsedQuery, &mysql.PrepareData{
 		PrepareStmt: query,
 		ParamsCount: uint16(len(bindVars)),
 		BindVars:    bindVars,
