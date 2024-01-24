@@ -34,8 +34,9 @@
 package tree
 
 import (
-	"github.com/dolthub/doltgresql/postgres/parser/privilege"
 	"strings"
+
+	"github.com/dolthub/doltgresql/postgres/parser/privilege"
 )
 
 // Revoke represents a REVOKE statement.

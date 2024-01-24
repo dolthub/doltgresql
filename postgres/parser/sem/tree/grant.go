@@ -35,8 +35,9 @@ package tree
 
 import (
 	"fmt"
-	"github.com/dolthub/doltgresql/postgres/parser/privilege"
 	"strings"
+
+	"github.com/dolthub/doltgresql/postgres/parser/privilege"
 )
 
 // Grant represents a GRANT statement.
