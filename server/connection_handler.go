@@ -42,7 +42,7 @@ import (
 	"github.com/dolthub/doltgresql/server/ast"
 )
 
-// ConnectionHandler is responsible for the entire lifecycle of a user connection: receiving messages they send, 
+// ConnectionHandler is responsible for the entire lifecycle of a user connection: receiving messages they send,
 // executing queries, sending the correct messages in return, and terminating the connection when appropriate.
 type ConnectionHandler struct {
 	mysqlConn          *mysql.Conn
@@ -258,7 +258,7 @@ InitialMessageLoop:
 	return startupMessage, nil
 }
 
-// chooseInitialDatabase attempts to choose the initial database for the connection, if one is specified in the 
+// chooseInitialDatabase attempts to choose the initial database for the connection, if one is specified in the
 // startup message provided
 func (h *ConnectionHandler) chooseInitialDatabase(startupMessage messages.StartupMessage) error {
 	if db, ok := startupMessage.Parameters["database"]; ok && len(db) > 0 {
@@ -460,7 +460,7 @@ func (h *ConnectionHandler) handleBind(message messages.Bind) error {
 // handleExecute handles an execute message, returning any error that occurs
 func (h *ConnectionHandler) handleExecute(message messages.Execute) error {
 	h.waitForSync = true
-	
+
 	// TODO: implement the RowMax
 	portalData, ok := h.portals[message.Portal]
 	if !ok {
