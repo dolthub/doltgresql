@@ -20,9 +20,10 @@ import (
 	"net"
 	"os"
 
-	_ "github.com/dolthub/doltgresql/server/functions"
 	"github.com/dolthub/go-mysql-server/server"
 	"github.com/dolthub/vitess/go/mysql"
+
+	_ "github.com/dolthub/doltgresql/server/functions"
 )
 
 var (
@@ -58,7 +59,7 @@ func (l *Listener) Accept() {
 			fmt.Printf("Unable to accept connection:\n%v\n", err)
 			continue
 		}
-		
+
 		connectionHandler := NewConnectionHandler(conn, l.cfg.Handler)
 		go connectionHandler.HandleConnection()
 	}
@@ -73,4 +74,3 @@ func (l *Listener) Close() {
 func (l *Listener) Addr() net.Addr {
 	return l.listener.Addr()
 }
-

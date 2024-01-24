@@ -25,10 +25,6 @@ import (
 	"strings"
 	"sync/atomic"
 
-	"github.com/dolthub/doltgresql/postgres/connection"
-	"github.com/dolthub/doltgresql/postgres/messages"
-	"github.com/dolthub/doltgresql/postgres/parser/parser"
-	"github.com/dolthub/doltgresql/server/ast"
 	"github.com/dolthub/go-mysql-server/sql"
 	"github.com/dolthub/go-mysql-server/sql/expression"
 	"github.com/dolthub/go-mysql-server/sql/mysql_db"
@@ -39,6 +35,11 @@ import (
 	query2 "github.com/dolthub/vitess/go/vt/proto/query"
 	"github.com/dolthub/vitess/go/vt/sqlparser"
 	"github.com/sirupsen/logrus"
+
+	"github.com/dolthub/doltgresql/postgres/connection"
+	"github.com/dolthub/doltgresql/postgres/messages"
+	"github.com/dolthub/doltgresql/postgres/parser/parser"
+	"github.com/dolthub/doltgresql/server/ast"
 )
 
 type ConnectionHandler struct {
@@ -146,13 +147,13 @@ func (h *ConnectionHandler) Conn() net.Conn {
 }
 
 // receiveMessage reads a single message off the connection and processes it, returning an error if no message could be
-// received from the connection. Otherwise (a message is received successfully), the message is processed and any 
+// received from the connection. Otherwise (a message is received successfully), the message is processed and any
 // error is handled appropriately. The return value indicates whether the connection should be closed.
 func (h *ConnectionHandler) receiveMessage() (bool, error) {
 	var endOfMessages bool
-	// For the time being, we handle panics in this function and treat them the same as errors so that they don't 
+	// For the time being, we handle panics in this function and treat them the same as errors so that they don't
 	// forcibly close the connection. Contrast this with the panic handling logic in HandleConnection, where we treat any
-	// panic as unrecoverable to the connection. As we fill out the implementation, we can revisit this decision and 
+	// panic as unrecoverable to the connection. As we fill out the implementation, we can revisit this decision and
 	// rethink our posture over whether panics should terminate a connection.
 	defer func() {
 		if r := recover(); r != nil {
@@ -464,7 +465,7 @@ func (h *ConnectionHandler) handleExecute(message messages.Execute) (bool, bool,
 			return false, false, err
 		}
 	}
-	
+
 	return false, false, connection.Send(h.Conn(), complete)
 }
 
@@ -606,7 +607,7 @@ func (h *ConnectionHandler) sendClientStartupMessages(startupMessage messages.St
 				host = "localhost"
 			}
 		}
-		
+
 		h.mysqlConn.User = user
 		h.mysqlConn.UserData = mysql_db.MysqlConnectionUser{
 			User: user,
@@ -854,9 +855,9 @@ func (h *ConnectionHandler) comQuery(query ConvertedQuery, callback func(res *sq
 }
 
 func (h *ConnectionHandler) bindParams(
-		query string,
-		parsedQuery sqlparser.Statement,
-		bindVars map[string]*query2.BindVariable,
+	query string,
+	parsedQuery sqlparser.Statement,
+	bindVars map[string]*query2.BindVariable,
 ) (sql.Node, []*query2.Field, error) {
 	bound, fields, err := h.handler.(mysql.ExtendedHandler).ComBind(h.mysqlConn, query, parsedQuery, &mysql.PrepareData{
 		PrepareStmt: query,
