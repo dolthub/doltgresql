@@ -576,6 +576,9 @@ func (u *sqlSymUnion) privForCols() tree.PrivForCols {
 func (u *sqlSymUnion) privForColsList() []tree.PrivForCols {
   return u.val.([]tree.PrivForCols)
 }
+func (u *sqlSymUnion) alterDefaultPrivileges() *tree.AlterDefaultPrivileges {
+  return u.val.(*tree.AlterDefaultPrivileges)
+}
 %}
 
 // NB: the %token definitions must come before the %type definitions in this
@@ -756,6 +759,9 @@ func (u *sqlSymUnion) privForColsList() []tree.PrivForCols {
 %type <tree.Statement> alter_database_to_schema_stmt
 %type <tree.Statement> alter_zone_database_stmt
 %type <tree.Statement> opt_alter_database
+
+// ALTER DEFAULT PRIVILEGES
+%type <tree.Statement> alter_default_privileges_stmt adp_abbreviated_grant_or_revoke
 
 // ALTER INDEX
 %type <tree.Statement> alter_oneindex_stmt
@@ -980,7 +986,7 @@ func (u *sqlSymUnion) privForColsList() []tree.PrivForCols {
 %type <*tree.UnresolvedObjectName> table_name standalone_index_name sequence_name type_name view_name db_object_name simple_db_object_name complex_db_object_name
 %type <[]*tree.UnresolvedObjectName> type_name_list
 %type <str> schema_name opt_schema_name
-%type <[]string> schema_name_list role_spec_list
+%type <[]string> schema_name_list role_spec_list opt_role_list
 %type <*tree.UnresolvedName> table_pattern complex_table_pattern
 %type <*tree.UnresolvedName> column_path prefixed_column_path column_path_with_star
 %type <tree.TableExpr> insert_target create_stats_target analyze_target
@@ -1133,7 +1139,7 @@ func (u *sqlSymUnion) privForColsList() []tree.PrivForCols {
 %type <str> unrestricted_name type_function_name type_function_name_no_crdb_extra
 %type <str> non_reserved_word
 %type <str> non_reserved_word_or_sconst
-%type <str> role_spec opt_owner_to opt_set_schema
+%type <str> role_spec opt_owner_to opt_set_schema opt_role
 %type <tree.Expr> zone_value
 %type <tree.Expr> string_or_placeholder
 %type <tree.Expr> string_or_placeholder_list
@@ -1175,7 +1181,7 @@ func (u *sqlSymUnion) privForColsList() []tree.PrivForCols {
 
 %type <[]tree.ColumnID> opt_tableref_col_list tableref_col_list
 
-%type <tree.TargetList> targets_table targets_roles changefeed_targets other_targets targets
+%type <tree.TargetList> targets_table targets_roles changefeed_targets other_targets targets targets_for_alter_def_priv
 %type <*tree.TargetList> opt_on_targets_roles opt_backup_targets
 %type <tree.NameList> for_grantee_clause
 %type <privilege.List> privileges
@@ -1193,7 +1199,7 @@ func (u *sqlSymUnion) privForColsList() []tree.PrivForCols {
 
 %type <tree.Persistence> opt_temp
 %type <tree.Persistence> opt_persistence_temp_table
-%type <bool> role_or_group_or_user role_or_user opt_with_grant_option opt_cascade_or_restrict
+%type <bool> role_or_group_or_user role_or_user opt_with_grant_option opt_cascade_or_restrict opt_grant_option_for
 
 %type <tree.Expr>  cron_expr opt_description sconst_or_placeholder
 %type <*tree.FullBackupClause> opt_full_backup_clause
@@ -1311,15 +1317,16 @@ alter_stmt:
 | ALTER error           // SHOW HELP: ALTER
 
 alter_ddl_stmt:
-  alter_table_stmt     // EXTEND WITH HELP: ALTER TABLE
-| alter_index_stmt     // EXTEND WITH HELP: ALTER INDEX
-| alter_view_stmt      // EXTEND WITH HELP: ALTER VIEW
-| alter_sequence_stmt  // EXTEND WITH HELP: ALTER SEQUENCE
-| alter_database_stmt  // EXTEND WITH HELP: ALTER DATABASE
-| alter_range_stmt     // EXTEND WITH HELP: ALTER RANGE
-| alter_partition_stmt // EXTEND WITH HELP: ALTER PARTITION
-| alter_schema_stmt    // EXTEND WITH HELP: ALTER SCHEMA
-| alter_type_stmt      // EXTEND WITH HELP: ALTER TYPE
+  alter_table_stmt              // EXTEND WITH HELP: ALTER TABLE
+| alter_index_stmt              // EXTEND WITH HELP: ALTER INDEX
+| alter_view_stmt               // EXTEND WITH HELP: ALTER VIEW
+| alter_sequence_stmt           // EXTEND WITH HELP: ALTER SEQUENCE
+| alter_database_stmt           // EXTEND WITH HELP: ALTER DATABASE
+| alter_default_privileges_stmt // EXTEND WITH HELP: ALTER DEFAULT PRIVILEGES
+| alter_range_stmt              // EXTEND WITH HELP: ALTER RANGE
+| alter_partition_stmt          // EXTEND WITH HELP: ALTER PARTITION
+| alter_schema_stmt             // EXTEND WITH HELP: ALTER SCHEMA
+| alter_type_stmt               // EXTEND WITH HELP: ALTER TYPE
 
 // %Help: ALTER TABLE - change the definition of a table
 // %Category: DDL
@@ -1526,56 +1533,99 @@ opt_database_options:
     $$.val = tree.DatabaseOption{Opt: tree.OptIsTemplate, Val: $2.expr()}
   }
 
-//alter_default_privileges_statement:
-//  ALTER_DEFAULT PRIVILEGES abbreviated_grant_or_revoke
-//  {
-//
-//  }
-//| ALTER DEFAULT PRIVILEGES FOR role_or_user targets_roles abbreviated_grant_or_revoke
-//  {
-//
-//  }
-//| ALTER DEFAULT PRIVILEGES IN SCHEMA schema_name_list abbreviated_grant_or_revoke
-//  {
-//
-//  }
-//
-//abbreviated_grant_or_revoke:
-//  GRANT privileges ON opt_target TO opt_role_list opt_with_grant_option
-//  {
-//    $$.val = tree.AlterDefaultPrivileges{Grant: &AbbrGrant{Privileges: $2, OnTarget: $4, Roles: $5}}
-//  }
-//| REVOKE opt_grant_option_for privileges ON opt_target FROM opt_role cascade_or_restrict
-//  {
-//    $$.val = tree.AlterDefaultPrivileges{Revoke: &AbbrRevoke{GrantOptionFor: $2, Privileges: $3, OnTarget: $5, Roles: $7, Restrict: $8}}
-//  }
-//
-//opt_target:
-//  TABLES
-//| SEQUENCES
-//| FUNCTIONS
-//| ROUTINES
-//| TYPES
-//| SCHEMAS
-//  {
-//    $$ = $1
-//  }
-//
-//opt_role_list:
-//  opt_role
-//  {
-//    $$.val = tree.NameList{tree.Name($1)}
-//  }
-//| opt_role_list ',' opt_role
-//  {
-//    $$.val = append($1.nameList(), tree.Name($3))
-//  }
-//
-//opt_role:
-//  role_spec
-//| GROUP role_spec
-//| PUBLIC
-//
+alter_default_privileges_stmt:
+  ALTER DEFAULT PRIVILEGES adp_abbreviated_grant_or_revoke
+  {
+    $$.val = $4.alterDefaultPrivileges()
+  }
+| ALTER DEFAULT PRIVILEGES FOR role_or_user opt_role_list adp_abbreviated_grant_or_revoke
+  {
+    adp := $7.alterDefaultPrivileges()
+    adp.ForRole = $5.bool()
+    adp.TargetRoles = $6.strs()
+    $$.val = adp
+  }
+| ALTER DEFAULT PRIVILEGES IN SCHEMA schema_name_list adp_abbreviated_grant_or_revoke
+  {
+    adp := $7.alterDefaultPrivileges()
+    adp.Target.InSchema = $6.strs()
+    $$.val = adp
+  }
+| ALTER DEFAULT PRIVILEGES FOR role_or_user opt_role_list IN SCHEMA schema_name_list adp_abbreviated_grant_or_revoke
+  {
+    adp := $10.alterDefaultPrivileges()
+    adp.ForRole = $5.bool()
+    adp.TargetRoles = $6.strs()
+    adp.Target.InSchema = $9.strs()
+    $$.val = adp
+  }
+
+adp_abbreviated_grant_or_revoke:
+  GRANT privileges ON targets_for_alter_def_priv TO opt_role_list opt_with_grant_option
+  {
+    $$.val = &tree.AlterDefaultPrivileges{Privileges: $2.privilegeList(), Target: $4.targetList(), Grantees: $6.strs(), GrantOption: $7.bool(), Grant: true}
+  }
+| REVOKE opt_grant_option_for privileges ON targets_for_alter_def_priv FROM opt_role_list opt_cascade_or_restrict
+  {
+    $$.val = &tree.AlterDefaultPrivileges{GrantOption: $2.bool(), Privileges: $3.privilegeList(), Target: $5.targetList(), Grantees: $7.strs(), Restrict: $8.bool()}
+  }
+
+opt_grant_option_for:
+  /* EMPTY */
+  {
+    $$.val = false
+  }
+| GRANT OPTION FOR
+  {
+    $$.val = true
+  }
+
+targets_for_alter_def_priv:
+  TABLES
+  {
+    $$.val = tree.TargetList{TargetType: privilege.Table}
+  }
+| SEQUENCES
+  {
+    $$.val = tree.TargetList{TargetType: privilege.Sequence}
+  }
+| FUNCTIONS
+  {
+    $$.val = tree.TargetList{TargetType: privilege.Function}
+  }
+| ROUTINES
+  {
+    $$.val = tree.TargetList{TargetType: privilege.Routine}
+  }
+| TYPES
+  {
+    $$.val = tree.TargetList{TargetType: privilege.Type}
+  }
+| SCHEMAS
+  {
+    $$.val = tree.TargetList{TargetType: privilege.Schema}
+  }
+
+opt_role_list:
+  opt_role
+  {
+    $$.val = []string{$1}
+  }
+| opt_role_list ',' opt_role
+  {
+    $$.val = append($1.strs(), $3)
+  }
+
+// option 'PUBLIC' is under 'unreserved_keywords', so it's included 'role_spec' rule.
+opt_role:
+  role_spec
+  {
+    $$ = string($1)
+  }
+| GROUP role_spec
+  {
+    $$ = string($1) + " " + string($2)
+  }
 
 // %Help: ALTER RANGE - change the parameters of a range
 // %Category: DDL

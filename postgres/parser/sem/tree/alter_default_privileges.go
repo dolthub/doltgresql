@@ -24,15 +24,25 @@
 
 package tree
 
+import (
+	"fmt"
+	"strings"
+
+	"github.com/dolthub/doltgresql/postgres/parser/privilege"
+)
+
 var _ Statement = &AlterDefaultPrivileges{}
 
 // AlterDefaultPrivileges represents a ALTER DEFAULT PRIVILEGES statement.
 type AlterDefaultPrivileges struct {
 	ForRole     bool
-	TargetRoles NameList
-	InSchemas   NameList
-	Grant       *Grant
-	Revoke      *Revoke
+	TargetRoles []string
+	Privileges  privilege.List
+	Target      TargetList
+	Grantees    []string
+	GrantOption bool
+	Restrict    bool
+	Grant       bool
 }
 
 // Format implements the NodeFormatter interface.
@@ -45,16 +55,32 @@ func (node *AlterDefaultPrivileges) Format(ctx *FmtCtx) {
 		} else {
 			ctx.WriteString("USER ")
 		}
-		ctx.FormatNode(&node.TargetRoles)
+		ctx.WriteString(strings.Join(node.TargetRoles, ", "))
 	}
-	if len(node.InSchemas) > 0 {
+	if len(node.Target.InSchema) > 0 {
 		ctx.WriteString("IN SCHEMAS ")
-		ctx.FormatNode(&node.InSchemas)
+		ctx.WriteString(strings.Join(node.Target.InSchema, ", "))
 	}
-	ctx.WriteByte(' ')
-	if node.Grant != nil {
-		node.Grant.Format(ctx)
+	if node.Grant {
+		ctx.WriteString(" GRANT ")
+		node.Privileges.Format(&ctx.Buffer)
+		ctx.WriteString(fmt.Sprintf(" ON %sS TO ", strings.ToUpper(string(node.Target.TargetType))))
+		ctx.WriteString(strings.Join(node.Grantees, ", "))
+		if node.GrantOption {
+			ctx.WriteString(" WITH GRANT OPTION")
+		}
 	} else {
-		node.Revoke.Format(ctx)
+		ctx.WriteString(" REVOKE ")
+		if node.GrantOption {
+			ctx.WriteString(" GRANT OPTION FOR ")
+		}
+		node.Privileges.Format(&ctx.Buffer)
+		ctx.WriteString(fmt.Sprintf(" ON %sS FROM ", strings.ToUpper(string(node.Target.TargetType))))
+		ctx.WriteString(strings.Join(node.Grantees, ", "))
+		if node.Restrict {
+			ctx.WriteString(" RESTRICT")
+		} else {
+			ctx.WriteString(" CASCADE")
+		}
 	}
 }
