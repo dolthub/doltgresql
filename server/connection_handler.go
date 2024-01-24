@@ -32,7 +32,7 @@ import (
 	"github.com/dolthub/go-mysql-server/sql/transform"
 	"github.com/dolthub/vitess/go/mysql"
 	"github.com/dolthub/vitess/go/sqltypes"
-	query2 "github.com/dolthub/vitess/go/vt/proto/query"
+	querypb "github.com/dolthub/vitess/go/vt/proto/query"
 	"github.com/dolthub/vitess/go/vt/sqlparser"
 	"github.com/sirupsen/logrus"
 
@@ -42,6 +42,8 @@ import (
 	"github.com/dolthub/doltgresql/server/ast"
 )
 
+// ConnectionHandler is responsible for the entire lifecycle of a user connection: receiving messages they send, 
+// executing queries, sending the correct messages in return, and terminating the connection when appropriate.
 type ConnectionHandler struct {
 	mysqlConn          *mysql.Conn
 	preparedStatements map[string]PreparedStatementData
@@ -50,6 +52,7 @@ type ConnectionHandler struct {
 	waitForSync        bool
 }
 
+// NewConnectionHandler returns a new ConnectionHandler for the connection provided
 func NewConnectionHandler(conn net.Conn, handler mysql.Handler) *ConnectionHandler {
 	mysqlConn := &mysql.Conn{
 		Conn:        conn,
@@ -72,7 +75,8 @@ func NewConnectionHandler(conn net.Conn, handler mysql.Handler) *ConnectionHandl
 	}
 }
 
-// HandleConnection handles a connection's session.
+// HandleConnection handles a connection's session, reading messages, executing queries, and sending responses.
+// Expected to run in a goroutine per connection.
 func (h *ConnectionHandler) HandleConnection() {
 	var returnErr error
 	defer func() {
@@ -142,6 +146,7 @@ func (h *ConnectionHandler) HandleConnection() {
 	}
 }
 
+// Conn returns the underlying net.Conn for this connection.
 func (h *ConnectionHandler) Conn() net.Conn {
 	return h.mysqlConn.Conn
 }
@@ -253,6 +258,8 @@ InitialMessageLoop:
 	return startupMessage, nil
 }
 
+// chooseInitialDatabase attempts to choose the initial database for the connection, if one is specified in the 
+// startup message provided
 func (h *ConnectionHandler) chooseInitialDatabase(startupMessage messages.StartupMessage) error {
 	if db, ok := startupMessage.Parameters["database"]; ok && len(db) > 0 {
 		err := h.handler.ComQuery(h.mysqlConn, fmt.Sprintf("USE `%s`;", db), func(res *sqltypes.Result, more bool) error {
@@ -279,6 +286,7 @@ func (h *ConnectionHandler) chooseInitialDatabase(startupMessage messages.Startu
 	return nil
 }
 
+// handleMessages processes the message provided and returns status flags for what should happen next
 func (h *ConnectionHandler) handleMessage(message connection.Message) (stop, endOfMessages bool, err error) {
 	switch message := message.(type) {
 	case messages.Terminate:
@@ -287,19 +295,15 @@ func (h *ConnectionHandler) handleMessage(message connection.Message) (stop, end
 		h.waitForSync = false
 		return false, true, nil
 	case messages.Query:
-		return h.handleQuery(message)
+		return false, true, h.handleQuery(message)
 	case messages.Parse:
-		h.waitForSync = true
-		return h.handleParse(message)
+		return false, false, h.handleParse(message)
 	case messages.Describe:
-		h.waitForSync = true
-		return h.handleDescribe(message)
+		return false, false, h.handleDescribe(message)
 	case messages.Bind:
-		h.waitForSync = true
-		return h.handleBind(message)
+		return false, false, h.handleBind(message)
 	case messages.Execute:
-		h.waitForSync = true
-		return h.handleExecute(message)
+		return false, false, h.handleExecute(message)
 	case messages.Close:
 		if message.ClosingPreparedStatement {
 			delete(h.preparedStatements, message.Target)
@@ -313,15 +317,16 @@ func (h *ConnectionHandler) handleMessage(message connection.Message) (stop, end
 	}
 }
 
-func (h *ConnectionHandler) handleQuery(message messages.Query) (bool, bool, error) {
+// handleQuery handles a query message, returning any error that occurs
+func (h *ConnectionHandler) handleQuery(message messages.Query) error {
 	handled, err := h.handledPSQLCommands(message.String)
 	if handled || err != nil {
-		return false, true, err
+		return err
 	}
 
 	query, err := h.convertQuery(message.String)
 	if err != nil {
-		return false, true, err
+		return err
 	}
 
 	// A query message destroys the unnamed statement and the unnamed portal
@@ -333,17 +338,20 @@ func (h *ConnectionHandler) handleQuery(message messages.Query) (bool, bool, err
 	switch stmt := query.AST.(type) {
 	case *sqlparser.Deallocate:
 		// TODO: handle ALL keyword
-		return false, true, h.deallocatePreparedStatement(stmt.Name, h.preparedStatements, query, h.Conn())
+		return h.deallocatePreparedStatement(stmt.Name, h.preparedStatements, query, h.Conn())
 	}
 
-	return false, true, h.query(query)
+	return h.query(query)
 }
 
-func (h *ConnectionHandler) handleParse(message messages.Parse) (bool, bool, error) {
+// handleParse handles a parse message, returning any error that occurs
+func (h *ConnectionHandler) handleParse(message messages.Parse) error {
+	h.waitForSync = true
+
 	// TODO: "Named prepared statements must be explicitly closed before they can be redefined by another Parse message, but this is not required for the unnamed statement"
 	query, err := h.convertQuery(message.Query)
 	if err != nil {
-		return false, false, err
+		return err
 	}
 
 	if query.AST == nil {
@@ -351,23 +359,23 @@ func (h *ConnectionHandler) handleParse(message messages.Parse) (bool, bool, err
 		h.preparedStatements[message.Name] = PreparedStatementData{
 			Query: query,
 		}
-		return false, false, nil
+		return nil
 	}
 
 	plan, fields, err := h.getPlanAndFields(query)
 	if err != nil {
-		return false, false, err
+		return err
 	}
 
 	// TODO: bindvar types can be specified directly in the message, need tests of this
 	bindVarTypes, err := extractBindVarTypes(plan)
 	if err != nil {
-		return false, false, err
+		return err
 	}
 
 	// Nil fields means an OKResult, fill one in here
 	if fields == nil {
-		fields = []*query2.Field{
+		fields = []*querypb.Field{
 			{
 				Name: "Rows",
 				Type: sqltypes.Int32,
@@ -381,17 +389,19 @@ func (h *ConnectionHandler) handleParse(message messages.Parse) (bool, bool, err
 		BindVarTypes: bindVarTypes,
 	}
 
-	return false, false, connection.Send(h.Conn(), messages.ParseComplete{})
+	return connection.Send(h.Conn(), messages.ParseComplete{})
 }
 
-func (h *ConnectionHandler) handleDescribe(message messages.Describe) (bool, bool, error) {
-	var fields []*query2.Field
+// handleDescribe handles a Describe message, returning any error that occurs
+func (h *ConnectionHandler) handleDescribe(message messages.Describe) error {
+	var fields []*querypb.Field
 	var bindvarTypes []int32
 
+	h.waitForSync = true
 	if message.IsPrepared {
 		preparedStatementData, ok := h.preparedStatements[message.Target]
 		if !ok {
-			return false, true, fmt.Errorf("prepared statement %s does not exist", message.Target)
+			return fmt.Errorf("prepared statement %s does not exist", message.Target)
 		}
 
 		fields = preparedStatementData.ReturnFields
@@ -399,22 +409,25 @@ func (h *ConnectionHandler) handleDescribe(message messages.Describe) (bool, boo
 	} else {
 		portalData, ok := h.portals[message.Target]
 		if !ok {
-			return false, true, fmt.Errorf("portal %s does not exist", message.Target)
+			return fmt.Errorf("portal %s does not exist", message.Target)
 		}
 
 		fields = portalData.Fields
 	}
 
-	return false, false, h.describe(h.Conn(), fields, bindvarTypes)
+	return h.sendDescribeResponse(h.Conn(), fields, bindvarTypes)
 }
 
-func (h *ConnectionHandler) handleBind(message messages.Bind) (bool, bool, error) {
+// handleBind handles a bind message, returning any error that occurs
+func (h *ConnectionHandler) handleBind(message messages.Bind) error {
+	h.waitForSync = true
+
 	// TODO: a named portal object lasts till the end of the current transaction, unless explicitly destroyed
 	//  we need to destroy the named portal as a side effect of the transaction ending
 	logrus.Tracef("binding portal %q to prepared statement %s", message.DestinationPortal, message.SourcePreparedStatement)
 	preparedData, ok := h.preparedStatements[message.SourcePreparedStatement]
 	if !ok {
-		return false, true, fmt.Errorf("prepared statement %s does not exist", message.SourcePreparedStatement)
+		return fmt.Errorf("prepared statement %s does not exist", message.SourcePreparedStatement)
 	}
 
 	if preparedData.Query.AST == nil {
@@ -423,17 +436,17 @@ func (h *ConnectionHandler) handleBind(message messages.Bind) (bool, bool, error
 			Query:        preparedData.Query,
 			IsEmptyQuery: true,
 		}
-		return false, false, connection.Send(h.Conn(), messages.BindComplete{})
+		return connection.Send(h.Conn(), messages.BindComplete{})
 	}
 
 	bindVars, err := convertBindParameters(preparedData.BindVarTypes, message.ParameterValues)
 	if err != nil {
-		return false, false, err
+		return err
 	}
 
 	boundPlan, fields, err := h.bindParams(message.SourcePreparedStatement, preparedData.Query.AST, bindVars)
 	if err != nil {
-		return false, false, err
+		return err
 	}
 
 	h.portals[message.DestinationPortal] = PortalData{
@@ -441,14 +454,17 @@ func (h *ConnectionHandler) handleBind(message messages.Bind) (bool, bool, error
 		Fields:    fields,
 		BoundPlan: boundPlan,
 	}
-	return false, false, connection.Send(h.Conn(), messages.BindComplete{})
+	return connection.Send(h.Conn(), messages.BindComplete{})
 }
 
-func (h *ConnectionHandler) handleExecute(message messages.Execute) (bool, bool, error) {
+// handleExecute handles an execute message, returning any error that occurs
+func (h *ConnectionHandler) handleExecute(message messages.Execute) error {
+	h.waitForSync = true
+	
 	// TODO: implement the RowMax
 	portalData, ok := h.portals[message.Portal]
 	if !ok {
-		return false, false, fmt.Errorf("portal %s does not exist", message.Portal)
+		return fmt.Errorf("portal %s does not exist", message.Portal)
 	}
 
 	logrus.Tracef("executing portal %s with contents %v", message.Portal, portalData)
@@ -462,11 +478,11 @@ func (h *ConnectionHandler) handleExecute(message messages.Execute) (bool, bool,
 	if !portalData.IsEmptyQuery {
 		err := h.handler.(mysql.ExtendedHandler).ComExecuteBound(h.mysqlConn, query.String, portalData.BoundPlan, spoolRowsCallback(h.Conn(), complete))
 		if err != nil {
-			return false, false, err
+			return err
 		}
 	}
 
-	return false, false, connection.Send(h.Conn(), complete)
+	return connection.Send(h.Conn(), complete)
 }
 
 func (h *ConnectionHandler) deallocatePreparedStatement(name string, preparedStatements map[string]PreparedStatementData, query ConvertedQuery, conn net.Conn) error {
@@ -526,12 +542,12 @@ func extractBindVarTypes(queryPlan sql.Node) ([]int32, error) {
 	return types, err
 }
 
-func convertBindParameters(types []int32, values []messages.BindParameterValue) (map[string]*query2.BindVariable, error) {
-	bindings := make(map[string]*query2.BindVariable, len(values))
+func convertBindParameters(types []int32, values []messages.BindParameterValue) (map[string]*querypb.BindVariable, error) {
+	bindings := make(map[string]*querypb.BindVariable, len(values))
 	for i, value := range values {
 		bindingName := fmt.Sprintf("v%d", i+1)
 		typ := convertType(types[i])
-		bindVar := &query2.BindVariable{
+		bindVar := &querypb.BindVariable{
 			Type:   typ,
 			Value:  convertBindVarValue(typ, value),
 			Values: nil, // TODO
@@ -541,32 +557,32 @@ func convertBindParameters(types []int32, values []messages.BindParameterValue) 
 	return bindings, nil
 }
 
-func convertBindVarValue(typ query2.Type, value messages.BindParameterValue) []byte {
+func convertBindVarValue(typ querypb.Type, value messages.BindParameterValue) []byte {
 	switch typ {
-	case query2.Type_INT8, query2.Type_INT16, query2.Type_INT24, query2.Type_INT32, query2.Type_UINT8, query2.Type_UINT16, query2.Type_UINT24, query2.Type_UINT32:
+	case querypb.Type_INT8, querypb.Type_INT16, querypb.Type_INT24, querypb.Type_INT32, querypb.Type_UINT8, querypb.Type_UINT16, querypb.Type_UINT24, querypb.Type_UINT32:
 		// first convert the bytes in the payload to an integer, then convert that to its base 10 string representation
 		intVal := binary.BigEndian.Uint32(value.Data)
 		return []byte(strconv.FormatUint(uint64(intVal), 10))
-	case query2.Type_INT64, query2.Type_UINT64:
+	case querypb.Type_INT64, querypb.Type_UINT64:
 		// first convert the bytes in the payload to an integer, then convert that to its base 10 string representation
 		intVal := binary.BigEndian.Uint64(value.Data)
 		return []byte(strconv.FormatUint(intVal, 10))
-	case query2.Type_FLOAT32:
+	case querypb.Type_FLOAT32:
 		// first convert the bytes in the payload to a float, then convert that to its base 10 string representation
 		floatVal := binary.BigEndian.Uint32(value.Data)
 		return []byte(strconv.FormatFloat(float64(math.Float32frombits(floatVal)), 'f', -1, 64))
-	case query2.Type_FLOAT64:
+	case querypb.Type_FLOAT64:
 		// first convert the bytes in the payload to a float, then convert that to its base 10 string representation
 		floatVal := binary.BigEndian.Uint64(value.Data)
 		return []byte(strconv.FormatFloat(math.Float64frombits(floatVal), 'f', -1, 64))
-	case query2.Type_VARCHAR, query2.Type_VARBINARY, query2.Type_TEXT, query2.Type_BLOB:
+	case querypb.Type_VARCHAR, querypb.Type_VARBINARY, querypb.Type_TEXT, querypb.Type_BLOB:
 		return value.Data
 	default:
 		panic(fmt.Sprintf("unhandled type %v", typ))
 	}
 }
 
-func convertType(oid int32) query2.Type {
+func convertType(oid int32) querypb.Type {
 	switch oid {
 	// TODO: this should never be 0
 	case 0:
@@ -698,8 +714,8 @@ func spoolRowsCallback(conn net.Conn, commandComplete messages.CommandComplete) 
 	}
 }
 
-// describe handles the description of the given query. This will post the ParameterDescription and RowDescription messages.
-func (h *ConnectionHandler) describe(conn net.Conn, fields []*query2.Field, types []int32) (err error) {
+// sendDescribeResponse sends a response message for a Describe message
+func (h *ConnectionHandler) sendDescribeResponse(conn net.Conn, fields []*querypb.Field, types []int32) (err error) {
 	// The prepared statement variant of the describe command returns the OIDs of the parameters.
 	if types != nil {
 		if err := connection.Send(conn, messages.ParameterDescription{
@@ -824,7 +840,7 @@ func (h *ConnectionHandler) convertQuery(query string) (ConvertedQuery, error) {
 }
 
 // getPlanAndFields builds a plan and return fields for the given query
-func (h *ConnectionHandler) getPlanAndFields(query ConvertedQuery) (sql.Node, []*query2.Field, error) {
+func (h *ConnectionHandler) getPlanAndFields(query ConvertedQuery) (sql.Node, []*querypb.Field, error) {
 	if query.AST == nil {
 		return nil, nil, fmt.Errorf("cannot prepare a query that has not been parsed")
 	}
@@ -854,11 +870,12 @@ func (h *ConnectionHandler) comQuery(query ConvertedQuery, callback func(res *sq
 	}
 }
 
+// bindParams binds the paramters given to the query plan given and returns the resulting plan and fields.
 func (h *ConnectionHandler) bindParams(
 	query string,
 	parsedQuery sqlparser.Statement,
-	bindVars map[string]*query2.BindVariable,
-) (sql.Node, []*query2.Field, error) {
+	bindVars map[string]*querypb.BindVariable,
+) (sql.Node, []*querypb.Field, error) {
 	bound, fields, err := h.handler.(mysql.ExtendedHandler).ComBind(h.mysqlConn, query, parsedQuery, &mysql.PrepareData{
 		PrepareStmt: query,
 		ParamsCount: uint16(len(bindVars)),
