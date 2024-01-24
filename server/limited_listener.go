@@ -76,7 +76,8 @@ func (l *LimitedListener) Accept() {
 		l.count++
 
 		go func() {
-			l.listener.HandleConnection(conn)
+			connectionHandler := NewConnectionHandler(conn, l.listener.cfg.Handler)
+			connectionHandler.HandleConnection()
 			wg.Done()
 		}()
 	}
