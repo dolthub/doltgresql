@@ -1616,7 +1616,7 @@ opt_role_list:
     $$.val = append($1.strs(), $3)
   }
 
-// option 'PUBLIC' is under 'unreserved_keywords', so it's included 'role_spec' rule.
+// option 'PUBLIC' is under 'unreserved_keywords', so it's included in 'role_spec' rule.
 opt_role:
   role_spec
   {
@@ -4287,18 +4287,9 @@ privilege_list:
 privilege:
   name
 | SELECT
-//| INSERT
-//| UPDATE
-//| DELETE
-//| TRUNCATE
 | REFERENCES
-//| TRIGGER
 | CREATE
 | CONNECT
-//| TEMPORARY
-//| EXECUTE
-//| USAGE
-//| SET
   {
     $$ = string($1)
   }
