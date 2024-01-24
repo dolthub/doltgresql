@@ -1175,7 +1175,7 @@ func (u *sqlSymUnion) privForColsList() []tree.PrivForCols {
 
 %type <[]tree.ColumnID> opt_tableref_col_list tableref_col_list
 
-%type <tree.TargetList> targets_table targets_roles target_types changefeed_targets other_targets targets
+%type <tree.TargetList> targets_table targets_roles changefeed_targets other_targets targets
 %type <*tree.TargetList> opt_on_targets_roles opt_backup_targets
 %type <tree.NameList> for_grantee_clause
 %type <privilege.List> privileges
@@ -1183,7 +1183,7 @@ func (u *sqlSymUnion) privForColsList() []tree.PrivForCols {
 %type <[]tree.PrivForCols> privilege_for_cols_list privileges_for_cols
 %type <[]tree.KVOption> opt_role_options role_options
 %type <tree.AuditMode> audit_mode
-%type <str> opt_grant_role_with opt_admin_inherit_set opt_option_true_false opt_granted_by
+%type <str> opt_grant_role_with admin_inherit_set option_true_false opt_granted_by
 
 %type <str> relocate_kw
 
@@ -1193,7 +1193,7 @@ func (u *sqlSymUnion) privForColsList() []tree.PrivForCols {
 
 %type <tree.Persistence> opt_temp
 %type <tree.Persistence> opt_persistence_temp_table
-%type <bool> role_or_group_or_user role_or_user opt_with_grant_option
+%type <bool> role_or_group_or_user role_or_user opt_with_grant_option opt_cascade_or_restrict
 
 %type <tree.Expr>  cron_expr opt_description sconst_or_placeholder
 %type <*tree.FullBackupClause> opt_full_backup_clause
@@ -1525,6 +1525,57 @@ opt_database_options:
   {
     $$.val = tree.DatabaseOption{Opt: tree.OptIsTemplate, Val: $2.expr()}
   }
+
+//alter_default_privileges_statement:
+//  ALTER_DEFAULT PRIVILEGES abbreviated_grant_or_revoke
+//  {
+//
+//  }
+//| ALTER DEFAULT PRIVILEGES FOR role_or_user targets_roles abbreviated_grant_or_revoke
+//  {
+//
+//  }
+//| ALTER DEFAULT PRIVILEGES IN SCHEMA schema_name_list abbreviated_grant_or_revoke
+//  {
+//
+//  }
+//
+//abbreviated_grant_or_revoke:
+//  GRANT privileges ON opt_target TO opt_role_list opt_with_grant_option
+//  {
+//    $$.val = tree.AlterDefaultPrivileges{Grant: &AbbrGrant{Privileges: $2, OnTarget: $4, Roles: $5}}
+//  }
+//| REVOKE opt_grant_option_for privileges ON opt_target FROM opt_role cascade_or_restrict
+//  {
+//    $$.val = tree.AlterDefaultPrivileges{Revoke: &AbbrRevoke{GrantOptionFor: $2, Privileges: $3, OnTarget: $5, Roles: $7, Restrict: $8}}
+//  }
+//
+//opt_target:
+//  TABLES
+//| SEQUENCES
+//| FUNCTIONS
+//| ROUTINES
+//| TYPES
+//| SCHEMAS
+//  {
+//    $$ = $1
+//  }
+//
+//opt_role_list:
+//  opt_role
+//  {
+//    $$.val = tree.NameList{tree.Name($1)}
+//  }
+//| opt_role_list ',' opt_role
+//  {
+//    $$.val = append($1.nameList(), tree.Name($3))
+//  }
+//
+//opt_role:
+//  role_spec
+//| GROUP role_spec
+//| PUBLIC
+//
 
 // %Help: ALTER RANGE - change the parameters of a range
 // %Category: DDL
@@ -3561,12 +3612,6 @@ drop_type_stmt:
   }
 | DROP TYPE error // SHOW HELP: DROP TYPE
 
-target_types:
-  type_name_list
-  {
-    $$.val = tree.TargetList{Types: $1.unresolvedObjectNames()}
-  }
-
 type_name_list:
   type_name
   {
@@ -4033,12 +4078,12 @@ opt_grant_role_with:
   {
     $$ = ""
   }
-| WITH opt_admin_inherit_set opt_option_true_false
+| WITH admin_inherit_set option_true_false
   {
     $$ = string($2) + " " + string($3)
   }
 
-opt_admin_inherit_set:
+admin_inherit_set:
   ADMIN
 | INHERIT
 | SET
@@ -4046,7 +4091,7 @@ opt_admin_inherit_set:
     $$ = $1
   }
 
-opt_option_true_false:
+option_true_false:
   OPTION
 | TRUE
 | FALSE
@@ -4083,33 +4128,45 @@ opt_granted_by:
 //
 // %SeeAlso: GRANT, WEBDOCS/revoke.html
 revoke_stmt:
-  REVOKE privileges ON targets_table FROM name_list
+  REVOKE privileges_for_cols ON targets_table FROM role_spec_list opt_granted_by opt_cascade_or_restrict
   {
-    $$.val = &tree.Revoke{Privileges: $2.privilegeList(), Grantees: $6.nameList(), Targets: $4.targetList()}
+    $$.val = &tree.Revoke{PrivsWithCols: $2.privForColsList(), Targets: $4.targetList(), Grantees: $6.strs(), GrantedBy: $7, Restrict: $8.bool()}
   }
-| REVOKE privilege_list FROM name_list
+| REVOKE GRANT OPTION FOR privileges_for_cols ON targets_table FROM role_spec_list opt_granted_by opt_cascade_or_restrict
   {
-    $$.val = &tree.RevokeRole{Roles: $2.nameList(), Members: $4.nameList(), AdminOption: false }
+    $$.val = &tree.Revoke{PrivsWithCols: $5.privForColsList(), Targets: $7.targetList(), Grantees: $9.strs(), GrantOptionFor: true, GrantedBy: $10, Restrict: $11.bool()}
   }
-| REVOKE ADMIN OPTION FOR privilege_list FROM name_list
+| REVOKE privileges ON targets FROM role_spec_list opt_granted_by opt_cascade_or_restrict
   {
-    $$.val = &tree.RevokeRole{Roles: $5.nameList(), Members: $7.nameList(), AdminOption: true }
+    $$.val = &tree.Revoke{Privileges: $2.privilegeList(), Targets: $4.targetList(), Grantees: $6.strs(), GrantedBy: $7, Restrict: $8.bool()}
   }
-| REVOKE privileges ON TYPE target_types FROM name_list
+| REVOKE GRANT OPTION FOR privileges ON targets FROM role_spec_list opt_granted_by opt_cascade_or_restrict
   {
-    $$.val = &tree.Revoke{Privileges: $2.privilegeList(), Targets: $5.targetList(), Grantees: $7.nameList()}
+    $$.val = &tree.Revoke{Privileges: $5.privilegeList(), Targets: $7.targetList(), Grantees: $9.strs(), GrantOptionFor: true, GrantedBy: $10, Restrict: $11.bool()}
   }
-| REVOKE privileges ON SCHEMA schema_name_list FROM name_list
+| REVOKE privilege_list FROM role_spec_list opt_granted_by opt_cascade_or_restrict
   {
-    $$.val = &tree.Revoke{
-      Privileges: $2.privilegeList(),
-      Targets: tree.TargetList{
-        Names: $5.strs(),
-      },
-      Grantees: $7.nameList(),
-    }
+    $$.val = &tree.RevokeRole{Roles: $2.nameList(), Members: $4.strs(), GrantedBy: $5, Restrict: $6.bool()}
+  }
+| REVOKE admin_inherit_set OPTION FOR privilege_list FROM role_spec_list opt_granted_by opt_cascade_or_restrict
+  {
+    $$.val = &tree.RevokeRole{Roles: $5.nameList(), Members: $7.strs(), Option: $2, GrantedBy: $8, Restrict: $9.bool()}
   }
 | REVOKE error // SHOW HELP: REVOKE
+
+opt_cascade_or_restrict:
+  /* EMPTY */
+  {
+    $$.val = true
+  }
+| RESTRICT
+  {
+    $$.val = true
+  }
+| CASCADE
+  {
+    $$.val = false
+  }
 
 privileges_for_cols:
   ALL '(' name_list ')'
