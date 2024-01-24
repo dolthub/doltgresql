@@ -26,14 +26,12 @@ package tree
 
 import (
 	"bytes"
-	"strconv"
 	"strings"
 
 	"github.com/cockroachdb/errors"
 
 	"github.com/dolthub/doltgresql/postgres/parser/json"
 	"github.com/dolthub/doltgresql/postgres/parser/pretty"
-	"github.com/dolthub/doltgresql/postgres/parser/roachpb"
 	"github.com/dolthub/doltgresql/postgres/parser/types"
 )
 
@@ -2024,20 +2022,6 @@ func (node *Restore) doc(p *PrettyCfg) pretty.Doc {
 		items = append(items, p.row("WITH", p.Doc(&node.Options)))
 	}
 	return p.rlTable(items...)
-}
-
-func (node *TargetList) doc(p *PrettyCfg) pretty.Doc {
-	return p.unrow(node.docRow(p))
-}
-
-func (node *TargetList) docRow(p *PrettyCfg) pretty.TableRow {
-	if node.Databases != nil {
-		return p.row("DATABASE", p.Doc(&node.Databases))
-	}
-	if node.Tenant != (roachpb.TenantID{}) {
-		return p.row("TENANT", pretty.Text(strconv.FormatUint(node.Tenant.ToUint64(), 10)))
-	}
-	return p.row("TABLE", p.Doc(&node.Tables))
 }
 
 func (node *AsOfClause) doc(p *PrettyCfg) pretty.Doc {

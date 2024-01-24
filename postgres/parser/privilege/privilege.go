@@ -43,15 +43,20 @@ type Kind uint32
 const (
 	_ Kind = iota
 	ALL
-	CREATE
-	DROP
-	GRANT
 	SELECT
 	INSERT
-	DELETE
 	UPDATE
+	DELETE
+	TRUNCATE
+	REFERENCES
+	TRIGGER
+	CREATE
+	CONNECT
+	TEMPORARY
+	EXECUTE
 	USAGE
-	ZONECONFIG
+	SET
+	ALTERSYSTEM
 )
 
 // ObjectType represents objects that can have privileges.
@@ -62,22 +67,54 @@ const (
 	Any ObjectType = "any"
 	// Database represents a database object.
 	Database ObjectType = "database"
+	// Domain represents a domain object.
+	Domain ObjectType = "domain"
+	// Function represents a function object.
+	Function ObjectType = "function"
+	// Procedure represents a procedure object.
+	Procedure ObjectType = "procedure"
+	// ForeignDataWrapper represents a foreign data wrapper object.
+	ForeignDataWrapper ObjectType = "foreign data wrapper"
+	// ForeignServer represents a foreign server object.
+	ForeignServer ObjectType = "foreign server"
+	// Language represents a language object.
+	Language ObjectType = "language"
+	// LargeObject represents a large object object.
+	LargeObject ObjectType = "large object"
+	// Parameter represents a parameter object.
+	Parameter ObjectType = "parameter"
 	// Schema represents a schema object.
 	Schema ObjectType = "schema"
+	// Sequence represents a sequence object.
+	Sequence ObjectType = "sequence"
 	// Table represents a table object.
 	Table ObjectType = "table"
+	// Tablespace represents a tablespace object.
+	Tablespace ObjectType = "tablespace"
 	// Type represents a type object.
 	Type ObjectType = "type"
+
+	// Routine represents a routine object.
+	Routine ObjectType = "routine" // it includes both functions and procedures
 )
 
 // Predefined sets of privileges.
 var (
-	AllPrivileges     = List{ALL, CREATE, DROP, GRANT, SELECT, INSERT, DELETE, UPDATE, USAGE, ZONECONFIG}
-	ReadData          = List{GRANT, SELECT}
-	ReadWriteData     = List{GRANT, SELECT, INSERT, DELETE, UPDATE}
-	DBTablePrivileges = List{ALL, CREATE, DROP, GRANT, SELECT, INSERT, DELETE, UPDATE, ZONECONFIG}
-	SchemaPrivileges  = List{ALL, GRANT, CREATE, USAGE}
-	TypePrivileges    = List{ALL, GRANT, USAGE}
+	AllPrivileges         = List{ALL, SELECT, INSERT, UPDATE, DELETE, TRUNCATE, REFERENCES, TRIGGER, CREATE, CONNECT, TEMPORARY, EXECUTE, USAGE, SET, ALTERSYSTEM}
+	ReadData              = List{ALL, SELECT}
+	ReadWriteData         = List{ALL, SELECT, INSERT, DELETE, UPDATE}
+	DatabasePrivileges    = List{ALL, CREATE, CONNECT, TEMPORARY}
+	LargeObjectPrivileges = List{ALL, SELECT, UPDATE}
+	ParameterPrivileges   = List{ALL, SET, ALTERSYSTEM}
+	TablePrivileges       = List{ALL, SELECT, INSERT, UPDATE, DELETE, TRUNCATE, REFERENCES, TRIGGER}
+	TableColumnPrivileges = List{ALL, SELECT, INSERT, UPDATE, REFERENCES}
+	SequencePrivileges    = List{ALL, SELECT, UPDATE, USAGE}
+	SchemaPrivileges      = List{ALL, CREATE, USAGE}
+
+	// UsagePrivilege is used for domains, foreign data wrappers, foreign servers, languages and types
+	UsagePrivilege = List{ALL, USAGE}
+	// ExecutePrivilege is used for functions and procedures
+	ExecutePrivilege = List{ALL, EXECUTE}
 )
 
 // Mask returns the bitmask for a given privilege.
@@ -87,21 +124,28 @@ func (k Kind) Mask() uint32 {
 
 // ByValue is just an array of privilege kinds sorted by value.
 var ByValue = [...]Kind{
-	ALL, CREATE, DROP, GRANT, SELECT, INSERT, DELETE, UPDATE, USAGE, ZONECONFIG,
+	ALL, SELECT, INSERT, UPDATE, DELETE, TRUNCATE, REFERENCES,
+	TRIGGER, CREATE, CONNECT, TEMPORARY, EXECUTE, USAGE, SET, ALTERSYSTEM,
 }
 
 // ByName is a map of string -> kind value.
 var ByName = map[string]Kind{
-	"ALL":        ALL,
-	"CREATE":     CREATE,
-	"DROP":       DROP,
-	"GRANT":      GRANT,
-	"SELECT":     SELECT,
-	"INSERT":     INSERT,
-	"DELETE":     DELETE,
-	"UPDATE":     UPDATE,
-	"ZONECONFIG": ZONECONFIG,
-	"USAGE":      USAGE,
+	"ALL":          ALL,
+	"CREATE":       CREATE,
+	"SELECT":       SELECT,
+	"INSERT":       INSERT,
+	"DELETE":       DELETE,
+	"UPDATE":       UPDATE,
+	"USAGE":        USAGE,
+	"TRUNCATE":     TRUNCATE,
+	"REFERENCES":   REFERENCES,
+	"TRIGGER":      TRIGGER,
+	"EXECUTE":      EXECUTE,
+	"CONNECT":      CONNECT,
+	"TEMP":         TEMPORARY,
+	"TEMPORARY":    TEMPORARY,
+	"SET":          SET,
+	"ALTER SYSTEM": ALTERSYSTEM,
 }
 
 // List is a list of privileges.
@@ -178,11 +222,20 @@ func (pl List) ToBitField() uint32 {
 func ListFromStrings(strs []string) (List, error) {
 	ret := make(List, len(strs))
 	for i, s := range strs {
-		k, ok := ByName[strings.ToUpper(s)]
-		if !ok {
-			return nil, errors.Errorf("not a valid privilege: %q", s)
+		k, err := KindFromString(s)
+		if err != nil {
+			return nil, err
 		}
 		ret[i] = k
 	}
 	return ret, nil
+}
+
+func KindFromString(s string) (Kind, error) {
+	k, ok := ByName[strings.ToUpper(s)]
+	if !ok {
+
+		return 0, errors.Errorf("not a valid privilege: %q", s)
+	}
+	return k, nil
 }

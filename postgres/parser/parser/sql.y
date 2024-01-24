@@ -564,6 +564,18 @@ func (u *sqlSymUnion) databaseOptionList() []tree.DatabaseOption {
 func (u *sqlSymUnion) setVar() *tree.SetVar {
     return u.val.(*tree.SetVar)
 }
+func (u *sqlSymUnion) routine() tree.Routine {
+  return u.val.(tree.Routine)
+}
+func (u *sqlSymUnion) routines() []tree.Routine {
+  return u.val.([]tree.Routine)
+}
+func (u *sqlSymUnion) privForCols() tree.PrivForCols {
+  return u.val.(tree.PrivForCols)
+}
+func (u *sqlSymUnion) privForColsList() []tree.PrivForCols {
+  return u.val.([]tree.PrivForCols)
+}
 %}
 
 // NB: the %token definitions must come before the %type definitions in this
@@ -595,8 +607,8 @@ func (u *sqlSymUnion) setVar() *tree.SetVar {
 %token <str> CHARACTER CHARACTERISTICS CHECK CLOSE
 %token <str> CLUSTER COALESCE COLLATE COLLATION COLUMN COLUMNS COMMENT COMMENTS COMMIT
 %token <str> COMMITTED COMPACT COMPLETE CONCAT CONCURRENTLY CONFIGURATION CONFIGURATIONS CONFIGURE
-%token <str> CONFLICT CONNECTION CONSTRAINT CONSTRAINTS CONTAINS CONTROLCHANGEFEED CONTROLJOB
-%token <str> CONVERSION CONVERT COPY COVERING CREATE CREATEDB CREATELOGIN CREATEROLE
+%token <str> CONFLICT CONNECT CONNECTION CONSTRAINT CONSTRAINTS CONTAINS CONTROLCHANGEFEED
+%token <str> CONTROLJOB CONVERSION CONVERT COPY COVERING CREATE CREATEDB CREATELOGIN CREATEROLE
 %token <str> CROSS CUBE CURRENT CURRENT_CATALOG CURRENT_DATE CURRENT_SCHEMA
 %token <str> CURRENT_ROLE CURRENT_TIME CURRENT_TIMESTAMP
 %token <str> CURRENT_USER CYCLE
@@ -612,19 +624,19 @@ func (u *sqlSymUnion) setVar() *tree.SetVar {
 %token <str> EXPIRATION EXPLAIN EXPORT EXTENSION EXTRACT EXTRACT_DURATION
 
 %token <str> FALSE FAMILY FETCH FETCHVAL FETCHTEXT FETCHVAL_PATH FETCHTEXT_PATH
-%token <str> FILES FILTER
-%token <str> FIRST FLOAT FLOAT4 FLOAT8 FLOORDIV FOLLOWING FOR FORCE_INDEX FOREIGN FROM FULL FUNCTION
+%token <str> FILES FILTER FIRST FLOAT FLOAT4 FLOAT8 FLOORDIV
+%token <str> FOLLOWING FOR FORCE_INDEX FOREIGN FROM FULL FUNCTION FUNCTIONS
 
 %token <str> GENERATED GEOGRAPHY GEOMETRY GEOMETRYM GEOMETRYZ GEOMETRYZM
 %token <str> GEOMETRYCOLLECTION GEOMETRYCOLLECTIONM GEOMETRYCOLLECTIONZ GEOMETRYCOLLECTIONZM
-%token <str> GLOBAL GRANT GRANTS GREATEST GROUP GROUPING GROUPS
+%token <str> GLOBAL GRANT GRANTED GRANTS GREATEST GROUP GROUPING GROUPS
 
 %token <str> HAVING HASH HIGH HISTOGRAM HOUR
 
 %token <str> IDENTITY
 %token <str> IF IFERROR IFNULL IGNORE_FOREIGN_KEYS ILIKE IMMEDIATE IMPORT IN INCLUDE INCLUDING INCREMENT INCREMENTAL
 %token <str> INET INET_CONTAINED_BY_OR_EQUALS
-%token <str> INET_CONTAINS_OR_EQUALS INDEX INDEXES INJECT INTERLEAVE INITIALLY
+%token <str> INET_CONTAINS_OR_EQUALS INDEX INDEXES INHERIT INJECT INTERLEAVE INITIALLY
 %token <str> INNER INSERT INT INTEGER
 %token <str> INTERSECT INTERVAL INTO INTO_DB INVERTED IS ISERROR ISNULL ISOLATION IS_TEMPLATE
 
@@ -632,7 +644,7 @@ func (u *sqlSymUnion) setVar() *tree.SetVar {
 
 %token <str> KEY KEYS KMS KV
 
-%token <str> LANGUAGE LAST LATERAL LATEST LC_CTYPE LC_COLLATE
+%token <str> LANGUAGE LARGE LAST LATERAL LATEST LC_CTYPE LC_COLLATE
 %token <str> LEADING LEASE LEAST LEFT LESS LEVEL LIKE LIMIT
 %token <str> LINESTRING LINESTRINGM LINESTRINGZ LINESTRINGZM
 %token <str> LIST LOCAL LOCALTIME LOCALTIMESTAMP LOCKED LOGIN LOOKUP LOW LSHIFT
@@ -646,13 +658,13 @@ func (u *sqlSymUnion) setVar() *tree.SetVar {
 %token <str> NOCREATEDB NOCREATELOGIN NOCREATEROLE NOLOGIN NOMODIFYCLUSTERSETTING NO_INDEX_JOIN
 %token <str> NONE NORMAL NOT NOTHING NOTNULL NOVIEWACTIVITY NOWAIT NULL NULLIF NULLS NUMERIC
 
-%token <str> OF OFF OFFSET OID OIDS OIDVECTOR ON ONLY OPT OPTION OPTIONS OR
+%token <str> OBJECT OF OFF OFFSET OID OIDS OIDVECTOR ON ONLY OPT OPTION OPTIONS OR
 %token <str> ORDER ORDINALITY OTHERS OUT OUTER OVER OVERLAPS OVERLAY OWNED OWNER OPERATOR
 
-%token <str> PARENT PARTIAL PARTITION PARTITIONS PASSWORD PAUSE PAUSED PHYSICAL PLACING
+%token <str> PARAMETER PARENT PARTIAL PARTITION PARTITIONS PASSWORD PAUSE PAUSED PHYSICAL PLACING
 %token <str> PLAN PLANS POINT POINTM POINTZ POINTZM POLYGON POLYGONM POLYGONZ POLYGONZM
-%token <str> POSITION PRECEDING PRECISION PREPARE PRESERVE PRIMARY PRIORITY
-%token <str> PROCEDURAL PUBLIC PUBLICATION
+%token <str> POSITION PRECEDING PRECISION PREPARE PRESERVE PRIMARY PRIORITY PRIVILEGES
+%token <str> PROCEDURAL PROCEDURE PROCEDURES PUBLIC PUBLICATION
 
 %token <str> QUERIES QUERY
 
@@ -660,7 +672,7 @@ func (u *sqlSymUnion) setVar() *tree.SetVar {
 %token <str> REGCLASS REGPROC REGPROCEDURE REGNAMESPACE REGTYPE REINDEX
 %token <str> REMOVE_PATH RENAME REPEATABLE REPLACE
 %token <str> RELEASE RESET RESTORE RESTRICT RESUME RETURNING RETRY REVISION_HISTORY REVOKE RIGHT
-%token <str> ROLE ROLES ROLLBACK ROLLUP ROW ROWS RSHIFT RULE RUNNING
+%token <str> ROLE ROLES ROUTINE ROUTINES ROLLBACK ROLLUP ROW ROWS RSHIFT RULE RUNNING
 
 %token <str> SAVEPOINT SCATTER SCHEDULE SCHEDULES SCHEMA SCHEMAS SCRUB SEARCH SECOND SELECT SEQUENCE SEQUENCES
 %token <str> SERIALIZABLE SERVER SESSION SESSIONS SESSION_USER SET SETTING SETTINGS
@@ -670,18 +682,18 @@ func (u *sqlSymUnion) setVar() *tree.SetVar {
 %token <str> START STATISTICS STATUS STDIN STRICT STRING STORAGE STORE STORED STORING SUBSTRING
 %token <str> SYMMETRIC SYNTAX SYSTEM SQRT SUBSCRIPTION
 
-%token <str> TABLE TABLES TABLESPACE TEMP TEMPLATE TEMPORARY TENANT TESTING_RELOCATE EXPERIMENTAL_RELOCATE TEXT THEN
+%token <str> TABLE TABLES TABLESPACE TEMP TEMPLATE TEMPORARY TESTING_RELOCATE EXPERIMENTAL_RELOCATE TEXT THEN
 %token <str> TIES TIME TIMETZ TIMESTAMP TIMESTAMPTZ TO THROTTLING TRAILING TRACE
 %token <str> TRANSACTION TRANSACTIONS TREAT TRIGGER TRIM TRUE
 %token <str> TRUNCATE TRUSTED TYPE TYPES
 %token <str> TRACING
 
 %token <str> UNBOUNDED UNCOMMITTED UNION UNIQUE UNKNOWN UNLOGGED UNSPLIT
-%token <str> UPDATE UPSERT UNTIL USE USER USERS USING UUID
+%token <str> UPDATE UPSERT UNTIL USAGE USE USER USERS USING UUID
 
 %token <str> VALID VALIDATE VALUE VALUES VARBIT VARCHAR VARIADIC VERSION VIEW VARYING VIEWACTIVITY VIRTUAL
 
-%token <str> WHEN WHERE WINDOW WITH WITHIN WITHOUT WORK WRITE
+%token <str> WHEN WHERE WINDOW WITH WITHIN WITHOUT WORK WRAPPER WRITE
 
 %token <str> YEAR
 
@@ -930,7 +942,10 @@ func (u *sqlSymUnion) setVar() *tree.SetVar {
 %type <tree.NullsOrder> opt_nulls_order
 
 %type <*tree.AggregateSignature> aggregate_signature
-%type <*tree.AggregateArg> aggregate_arg
+%type <*tree.AggregateArg> aggregate_arg opt_aggregate_arg
+
+%type <tree.Routine> routine_with_args
+%type <[]tree.Routine> routine_with_args_list
 
 %type <tree.DatabaseOption> opt_database_options
 %type <[]tree.DatabaseOption> opt_database_options_list opt_database_with_options
@@ -965,7 +980,7 @@ func (u *sqlSymUnion) setVar() *tree.SetVar {
 %type <*tree.UnresolvedObjectName> table_name standalone_index_name sequence_name type_name view_name db_object_name simple_db_object_name complex_db_object_name
 %type <[]*tree.UnresolvedObjectName> type_name_list
 %type <str> schema_name opt_schema_name
-%type <[]string> schema_name_list
+%type <[]string> schema_name_list role_spec_list
 %type <*tree.UnresolvedName> table_pattern complex_table_pattern
 %type <*tree.UnresolvedName> column_path prefixed_column_path column_path_with_star
 %type <tree.TableExpr> insert_target create_stats_target analyze_target
@@ -1067,7 +1082,7 @@ func (u *sqlSymUnion) setVar() *tree.SetVar {
 %type <tree.Expr> array_expr
 %type <tree.Expr> interval_value
 %type <[]tree.ResolvableTypeReference> type_list prep_type_clause
-%type <tree.Exprs> array_expr_list
+%type <tree.Exprs> array_expr_list int_expr_list
 %type <*tree.Tuple> row labeled_row
 %type <tree.Expr> case_expr case_arg case_default
 %type <*tree.When> when_clause
@@ -1160,12 +1175,15 @@ func (u *sqlSymUnion) setVar() *tree.SetVar {
 
 %type <[]tree.ColumnID> opt_tableref_col_list tableref_col_list
 
-%type <tree.TargetList> targets targets_roles target_types changefeed_targets
+%type <tree.TargetList> targets_table targets_roles target_types changefeed_targets other_targets targets
 %type <*tree.TargetList> opt_on_targets_roles opt_backup_targets
 %type <tree.NameList> for_grantee_clause
 %type <privilege.List> privileges
+%type <tree.PrivForCols> privilege_for_cols
+%type <[]tree.PrivForCols> privilege_for_cols_list privileges_for_cols
 %type <[]tree.KVOption> opt_role_options role_options
 %type <tree.AuditMode> audit_mode
+%type <str> opt_grant_role_with opt_admin_inherit_set opt_option_true_false opt_granted_by
 
 %type <str> relocate_kw
 
@@ -1175,7 +1193,7 @@ func (u *sqlSymUnion) setVar() *tree.SetVar {
 
 %type <tree.Persistence> opt_temp
 %type <tree.Persistence> opt_persistence_temp_table
-%type <bool> role_or_group_or_user
+%type <bool> role_or_group_or_user role_or_user opt_with_grant_option
 
 %type <tree.Expr>  cron_expr opt_description sconst_or_placeholder
 %type <*tree.FullBackupClause> opt_full_backup_clause
@@ -2169,6 +2187,16 @@ opt_add_val_placement:
     $$.val = (*tree.AlterTypeAddValuePlacement)(nil)
   }
 
+role_spec_list:
+  role_spec
+  {
+    $$.val = []string{$1}
+  }
+| role_spec_list ',' role_spec
+  {
+    $$.val = append($1.strs(), $3)
+  }
+
 role_spec:
   non_reserved_word_or_sconst
 | CURRENT_ROLE
@@ -2211,6 +2239,16 @@ aggregate_signature:
 | ORDER BY aggregate_arg
   {
     $$.val = &tree.AggregateSignature{OrderBy: $3.aggregateArg()}
+  }
+
+opt_aggregate_arg:
+  /* EMPTY */
+  {
+    $$.val = &tree.AggregateArg{}
+  }
+| aggregate_arg
+  {
+    $$.val = $1.aggregateArg()
   }
 
 aggregate_arg:
@@ -2385,7 +2423,7 @@ opt_backup_targets:
   {
     $$.val = (*tree.TargetList)(nil)
   }
-| targets
+| targets_table
   {
     t := $1.targetList()
     $$.val = &t
@@ -2620,7 +2658,7 @@ restore_stmt:
     Options: *($5.restoreOptions()),
     }
   }
-| RESTORE targets FROM list_of_string_or_placeholder_opt_list opt_as_of_clause opt_with_restore_options
+| RESTORE targets_table FROM list_of_string_or_placeholder_opt_list opt_as_of_clause opt_with_restore_options
   {
     $$.val = &tree.Restore{
     Targets: $2.targetList(),
@@ -2629,7 +2667,7 @@ restore_stmt:
     Options: *($6.restoreOptions()),
     }
   }
-| RESTORE targets FROM string_or_placeholder IN list_of_string_or_placeholder_opt_list opt_as_of_clause opt_with_restore_options
+| RESTORE targets_table FROM string_or_placeholder IN list_of_string_or_placeholder_opt_list opt_as_of_clause opt_with_restore_options
   {
     $$.val = &tree.Restore{
       Targets: $2.targetList(),
@@ -3853,37 +3891,178 @@ deallocate_stmt:
 //   DATABASE <databasename> [, ...]
 //   [TABLE] [<databasename> .] { <tablename> | * } [, ...]
 //   TYPE <typename> [, <typename>]...
-//   SCHEMA <schemaname> [, <schemaname]...
+//   SCHEMA <schemaname> [, <schemaname>]...
 //
 // %SeeAlso: REVOKE, WEBDOCS/grant.html
 grant_stmt:
-  GRANT privileges ON targets TO name_list
+  GRANT privileges_for_cols ON targets_table TO role_spec_list opt_with_grant_option opt_granted_by
   {
-    $$.val = &tree.Grant{Privileges: $2.privilegeList(), Grantees: $6.nameList(), Targets: $4.targetList()}
+    $$.val = &tree.Grant{PrivsWithCols: $2.privForColsList(), Targets: $4.targetList(), Grantees: $6.strs(), WithGrantOption: $7.bool(), GrantedBy: $8}
   }
-| GRANT privilege_list TO name_list
+| GRANT privileges ON targets TO role_spec_list opt_with_grant_option opt_granted_by
   {
-    $$.val = &tree.GrantRole{Roles: $2.nameList(), Members: $4.nameList(), AdminOption: false}
+    $$.val = &tree.Grant{Privileges: $2.privilegeList(), Targets: $4.targetList(), Grantees: $6.strs(), WithGrantOption: $7.bool(), GrantedBy: $8}
   }
-| GRANT privilege_list TO name_list WITH ADMIN OPTION
+| GRANT privilege_list TO role_spec_list opt_grant_role_with opt_granted_by
   {
-    $$.val = &tree.GrantRole{Roles: $2.nameList(), Members: $4.nameList(), AdminOption: true}
-  }
-| GRANT privileges ON TYPE target_types TO name_list
-  {
-    $$.val = &tree.Grant{Privileges: $2.privilegeList(), Targets: $5.targetList(), Grantees: $7.nameList()}
-  }
-| GRANT privileges ON SCHEMA schema_name_list TO name_list
-  {
-    $$.val = &tree.Grant{
-      Privileges: $2.privilegeList(),
-      Targets: tree.TargetList{
-        Schemas: $5.strs(),
-      },
-      Grantees: $7.nameList(),
-    }
+    $$.val = &tree.GrantRole{Roles: $2.nameList(), Members: $4.strs(), WithOption: $5, GrantedBy: $6}
   }
 | GRANT error // SHOW HELP: GRANT
+
+targets:
+  targets_table
+  {
+    $$.val = $1.targetList()
+  }
+| other_targets
+  {
+    $$.val = $1.targetList()
+  }
+
+// these can be extended to more detailed rules
+other_targets:
+  SEQUENCE name_list
+  {
+    $$.val = tree.TargetList{TargetType: privilege.Sequence, Sequences: $2.nameList()}
+  }
+| DATABASE name_list
+  {
+    $$.val = tree.TargetList{TargetType: privilege.Database, Databases: $2.nameList()}
+  }
+| DOMAIN name_list
+  {
+    $$.val = tree.TargetList{TargetType: privilege.Domain, Names: $2.nameList().ToStrings()}
+  }
+| FOREIGN DATA WRAPPER name_list
+  {
+    $$.val = tree.TargetList{TargetType: privilege.ForeignDataWrapper, Names: $4.nameList().ToStrings()}
+  }
+| FOREIGN SERVER name_list
+  {
+    $$.val = tree.TargetList{TargetType: privilege.ForeignServer, Names: $3.nameList().ToStrings()}
+  }
+| FUNCTION routine_with_args_list
+  {
+    $$.val = tree.TargetList{TargetType: privilege.Routine, Routines: $2.routines()}
+  }
+| PROCEDURE routine_with_args_list
+  {
+    $$.val = tree.TargetList{TargetType: privilege.Routine, Routines: $2.routines()}
+  }
+| ROUTINE routine_with_args_list
+  {
+    $$.val = tree.TargetList{TargetType: privilege.Routine, Routines: $2.routines()}
+  }
+| LANGUAGE name_list
+  {
+    $$.val = tree.TargetList{TargetType: privilege.Language, Names: $2.nameList().ToStrings()}
+  }
+| LARGE OBJECT int_expr_list
+  {
+    $$.val = tree.TargetList{TargetType: privilege.LargeObject, LargeObjects: $3.exprs()}
+  }
+| PARAMETER name_list
+  {
+    $$.val = tree.TargetList{TargetType: privilege.Parameter, Names: $2.nameList().ToStrings()}
+  }
+| SCHEMA schema_name_list
+  {
+    $$.val = tree.TargetList{TargetType: privilege.Schema, Names: $2.strs()}
+  }
+| TABLESPACE name_list
+  {
+    $$.val = tree.TargetList{TargetType: privilege.Tablespace, Names: $2.nameList().ToStrings()}
+  }
+| TYPE type_name_list
+  {
+    $$.val = tree.TargetList{TargetType: privilege.Type, Types: $2.unresolvedObjectNames()}
+  }
+| ALL SEQUENCES IN SCHEMA schema_name_list
+  {
+    $$.val = tree.TargetList{TargetType: privilege.Sequence, InSchema: $5.strs()}
+  }
+| ALL FUNCTIONS IN SCHEMA schema_name_list
+  {
+    $$.val = tree.TargetList{TargetType: privilege.Function, InSchema: $5.strs()}
+  }
+| ALL PROCEDURES IN SCHEMA schema_name_list
+  {
+    $$.val = tree.TargetList{TargetType: privilege.Procedure, InSchema: $5.strs()}
+  }
+| ALL ROUTINES IN SCHEMA schema_name_list
+  {
+    $$.val = tree.TargetList{TargetType: privilege.Routine, InSchema: $5.strs()}
+  }
+| ALL TABLES IN SCHEMA schema_name_list
+  {
+    $$.val = tree.TargetList{TargetType: privilege.Table, InSchema: $5.strs()}
+  }
+
+routine_with_args_list:
+  routine_with_args
+  {
+    $$.val = []tree.Routine{$1.routine()}
+  }
+| routine_with_args_list ',' routine_with_args
+  {
+    $$.val = append($1.routines(), $3.routine())
+  }
+
+routine_with_args:
+  name
+  {
+    $$.val = tree.Routine{Name: tree.Name($1), Args: nil}
+  }
+| name '(' opt_aggregate_arg ')'
+  {
+    $$.val = tree.Routine{Name: tree.Name($1), Args: $3.aggregateArg()}
+  }
+
+opt_with_grant_option:
+  /* EMPTY */
+  {
+    $$.val = false
+  }
+| WITH GRANT OPTION
+  {
+    $$.val = true
+  }
+
+opt_grant_role_with:
+  /* EMPTY */
+  {
+    $$ = ""
+  }
+| WITH opt_admin_inherit_set opt_option_true_false
+  {
+    $$ = string($2) + " " + string($3)
+  }
+
+opt_admin_inherit_set:
+  ADMIN
+| INHERIT
+| SET
+  {
+    $$ = $1
+  }
+
+opt_option_true_false:
+  OPTION
+| TRUE
+| FALSE
+  {
+    $$ = $1
+  }
+
+opt_granted_by:
+  /* EMPTY */
+  {
+    $$ = ""
+  }
+| GRANTED BY role_spec
+  {
+    $$ = $3
+  }
 
 // %Help: REVOKE - remove access privileges and role memberships
 // %Category: Priv
@@ -3904,7 +4083,7 @@ grant_stmt:
 //
 // %SeeAlso: GRANT, WEBDOCS/revoke.html
 revoke_stmt:
-  REVOKE privileges ON targets FROM name_list
+  REVOKE privileges ON targets_table FROM name_list
   {
     $$.val = &tree.Revoke{Privileges: $2.privilegeList(), Grantees: $6.nameList(), Targets: $4.targetList()}
   }
@@ -3925,16 +4104,54 @@ revoke_stmt:
     $$.val = &tree.Revoke{
       Privileges: $2.privilegeList(),
       Targets: tree.TargetList{
-        Schemas: $5.strs(),
+        Names: $5.strs(),
       },
       Grantees: $7.nameList(),
     }
   }
 | REVOKE error // SHOW HELP: REVOKE
 
+privileges_for_cols:
+  ALL '(' name_list ')'
+  {
+    $$.val = []tree.PrivForCols{tree.PrivForCols{Privilege: privilege.ALL, ColNames: $3.nameList()}}
+  }
+| ALL PRIVILEGES '(' name_list ')'
+  {
+    $$.val = []tree.PrivForCols{tree.PrivForCols{Privilege: privilege.ALL, ColNames: $4.nameList()}}
+  }
+| privilege_for_cols_list
+  {
+     $$.val = $1.privForColsList()
+  }
+
+privilege_for_cols_list:
+  privilege_for_cols
+  {
+    $$.val = []tree.PrivForCols{$1.privForCols()}
+  }
+| privilege_for_cols_list ',' privilege_for_cols
+  {
+    $$.val = append($1.privForColsList(), $3.privForCols())
+  }
+
+privilege_for_cols:
+  privilege '(' name_list ')'
+  {
+    privKind, err := privilege.KindFromString($1)
+    if err != nil {
+      return setErr(sqllex, err)
+    }
+    $$.val = tree.PrivForCols{Privilege: privKind, ColNames: $3.nameList()}
+  }
+
 // ALL is always by itself.
 privileges:
   ALL
+  {
+    $$.val = privilege.List{privilege.ALL}
+  }
+| ALL PRIVILEGES
   {
     $$.val = privilege.List{privilege.ALL}
   }
@@ -3962,9 +4179,26 @@ privilege_list:
 // The full list is in sql/privilege/privilege.go.
 privilege:
   name
-| CREATE
-| GRANT
 | SELECT
+//| INSERT
+//| UPDATE
+//| DELETE
+//| TRUNCATE
+| REFERENCES
+//| TRIGGER
+| CREATE
+| CONNECT
+//| TEMPORARY
+//| EXECUTE
+//| USAGE
+//| SET
+  {
+    $$ = string($1)
+  }
+| ALTER SYSTEM
+  {
+    $$ = string($1) + " " + string($2)
+  }
 
 reset_stmt:
   reset_session_stmt  // EXTEND WITH HELP: RESET
@@ -5207,8 +5441,7 @@ opt_on_targets_roles:
     $$.val = (*tree.TargetList)(nil)
   }
 
-// targets is a non-terminal for a list of privilege targets, either a
-// list of databases or a list of tables.
+// targets_table is a non-terminal for a list of privilege targets, a list of tables.
 //
 // This rule is complex and cannot be decomposed as a tree of
 // non-terminals because it must resolve syntax ambiguities in the
@@ -5321,14 +5554,14 @@ opt_on_targets_roles:
 //   more nuance.)
 //
 // Tada!
-targets:
+targets_table:
   IDENT
   {
-    $$.val = tree.TargetList{Tables: tree.TablePatterns{&tree.UnresolvedName{NumParts:1, Parts: tree.NameParts{$1}}}}
+    $$.val = tree.TargetList{TargetType: privilege.Table, Tables: tree.TablePatterns{&tree.UnresolvedName{NumParts:1, Parts: tree.NameParts{$1}}}}
   }
 | col_name_keyword
   {
-    $$.val = tree.TargetList{Tables: tree.TablePatterns{&tree.UnresolvedName{NumParts:1, Parts: tree.NameParts{$1}}}}
+    $$.val = tree.TargetList{TargetType: privilege.Table, Tables: tree.TablePatterns{&tree.UnresolvedName{NumParts:1, Parts: tree.NameParts{$1}}}}
   }
 | unreserved_keyword
   {
@@ -5371,39 +5604,27 @@ targets:
   }
 | complex_table_pattern
   {
-    $$.val = tree.TargetList{Tables: tree.TablePatterns{$1.unresolvedName()}}
+    $$.val = tree.TargetList{TargetType: privilege.Table, Tables: tree.TablePatterns{$1.unresolvedName()}}
   }
 | table_pattern ',' table_pattern_list
   {
     remainderPats := $3.tablePatterns()
-    $$.val = tree.TargetList{Tables: append(tree.TablePatterns{$1.unresolvedName()}, remainderPats...)}
+    $$.val = tree.TargetList{TargetType: privilege.Table, Tables: append(tree.TablePatterns{$1.unresolvedName()}, remainderPats...)}
   }
 | TABLE table_pattern_list
   {
-    $$.val = tree.TargetList{Tables: $2.tablePatterns()}
-  }
-| TENANT iconst64
-  {
-    tenID := uint64($2.int64())
-    if tenID == 0 {
-      return setErr(sqllex, errors.New("invalid tenant ID"))
-    }
-    $$.val = tree.TargetList{Tenant: roachpb.MakeTenantID(tenID)}
-  }
-| DATABASE name_list
-  {
-    $$.val = tree.TargetList{Databases: $2.nameList()}
+    $$.val = tree.TargetList{TargetType: privilege.Table, Tables: $2.tablePatterns()}
   }
 
 // target_roles is the variant of targets which recognizes ON ROLES
-// with a name list. This cannot be included in targets directly
+// with a name list. This cannot be included in targets_table directly
 // because some statements must not recognize this syntax.
 targets_roles:
   ROLE name_list
   {
      $$.val = tree.TargetList{ForRoles: true, Roles: $2.nameList()}
   }
-| targets
+| targets_table
 
 for_grantee_clause:
   FOR name_list
@@ -6560,13 +6781,19 @@ alter_role_stmt:
 // "CREATE GROUP is now an alias for CREATE ROLE"
 // https://www.postgresql.org/docs/10/static/sql-creategroup.html
 role_or_group_or_user:
-  ROLE
+  role_or_user
   {
-    $$.val = true
+    $$ = $1
   }
 | GROUP
   {
     /* SKIP DOC */
+    $$.val = true
+  }
+
+role_or_user:
+  ROLE
+  {
     $$.val = true
   }
 | USER
@@ -11217,6 +11444,16 @@ numeric_only:
   signed_iconst
 | signed_fconst
 
+int_expr_list:
+  signed_iconst
+  {
+    $$.val = tree.Exprs{$1.expr()}
+  }
+| int_expr_list ',' signed_iconst
+  {
+    $$.val = append($1.exprs(), $3.expr())
+  }
+
 signed_iconst:
   ICONST
 | only_signed_iconst
@@ -11669,6 +11906,7 @@ unreserved_keyword:
 | FOLLOWING
 | FORCE_INDEX
 | FUNCTION
+| FUNCTIONS
 | GENERATED
 | GEOMETRYM
 | GEOMETRYZ
@@ -11678,6 +11916,7 @@ unreserved_keyword:
 | GEOMETRYCOLLECTIONZ
 | GEOMETRYCOLLECTIONZM
 | GLOBAL
+| GRANTED
 | GRANTS
 | GROUPS
 | HASH
@@ -11692,6 +11931,7 @@ unreserved_keyword:
 | INCREMENT
 | INCREMENTAL
 | INDEXES
+| INHERIT
 | INJECT
 | INSERT
 | INTERLEAVE
@@ -11707,6 +11947,7 @@ unreserved_keyword:
 | KMS
 | KV
 | LANGUAGE
+| LARGE
 | LAST
 | LATEST
 | LC_COLLATE
@@ -11760,6 +12001,7 @@ unreserved_keyword:
 | NOWAIT
 | NULLS
 | IGNORE_FOREIGN_KEYS
+| OBJECT
 | OF
 | OFF
 | OIDS
@@ -11772,6 +12014,7 @@ unreserved_keyword:
 | OVER
 | OWNED
 | OWNER
+| PARAMETER
 | PARENT
 | PARTIAL
 | PARTITION
@@ -11792,6 +12035,9 @@ unreserved_keyword:
 | PREPARE
 | PRESERVE
 | PRIORITY
+| PRIVILEGES
+| PROCEDURE
+| PROCEDURES
 | PUBLIC
 | PUBLICATION
 | QUERIES
@@ -11819,6 +12065,8 @@ unreserved_keyword:
 | ROLES
 | ROLLBACK
 | ROLLUP
+| ROUTINE
+| ROUTINES
 | ROWS
 | RULE
 | RUNNING
@@ -11868,7 +12116,6 @@ unreserved_keyword:
 | TEMP
 | TEMPLATE
 | TEMPORARY
-| TENANT
 | TESTING_RELOCATE
 | TEXT
 | TIES
@@ -11889,6 +12136,7 @@ unreserved_keyword:
 | UNTIL
 | UPDATE
 | UPSERT
+| USAGE
 | USE
 | USERS
 | VALID
@@ -12043,6 +12291,7 @@ reserved_keyword:
 | COLLATE
 | COLUMN
 | CONCURRENTLY
+| CONNECT
 | CONSTRAINT
 | CREATE
 | CURRENT_CATALOG
@@ -12106,6 +12355,7 @@ reserved_keyword:
 | WHERE
 | WINDOW
 | WITH
+| WRAPPER
 | cockroachdb_extra_reserved_keyword
 
 // Reserved keywords in CockroachDB, in addition to those reserved in
