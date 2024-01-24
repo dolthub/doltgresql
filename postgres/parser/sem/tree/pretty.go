@@ -1965,65 +1965,6 @@ func (node *ReferenceActions) doc(p *PrettyCfg) pretty.Doc {
 	return pretty.Fold(pretty.ConcatSpace, docs...)
 }
 
-func (node *Backup) doc(p *PrettyCfg) pretty.Doc {
-	items := make([]pretty.TableRow, 0, 6)
-
-	items = append(items, p.row("BACKUP", pretty.Nil))
-	if node.Targets != nil {
-		items = append(items, node.Targets.docRow(p))
-	}
-	if node.Nested {
-		if node.Subdir != nil {
-			items = append(items, p.row("INTO ", p.Doc(node.Subdir)))
-			items = append(items, p.row(" IN ", p.Doc(&node.To)))
-		} else if node.AppendToLatest {
-			items = append(items, p.row("INTO LATEST IN", p.Doc(&node.To)))
-		} else {
-			items = append(items, p.row("INTO", p.Doc(&node.To)))
-		}
-	} else {
-		items = append(items, p.row("TO", p.Doc(&node.To)))
-	}
-
-	if node.AsOf.Expr != nil {
-		items = append(items, node.AsOf.docRow(p))
-	}
-	if node.IncrementalFrom != nil {
-		items = append(items, p.row("INCREMENTAL FROM", p.Doc(&node.IncrementalFrom)))
-	}
-	if !node.Options.IsDefault() {
-		items = append(items, p.row("WITH", p.Doc(&node.Options)))
-	}
-	return p.rlTable(items...)
-}
-
-func (node *Restore) doc(p *PrettyCfg) pretty.Doc {
-	items := make([]pretty.TableRow, 0, 5)
-
-	items = append(items, p.row("RESTORE", pretty.Nil))
-	if node.DescriptorCoverage == RequestedDescriptors {
-		items = append(items, node.Targets.docRow(p))
-	}
-	from := make([]pretty.Doc, len(node.From))
-	for i := range node.From {
-		from[i] = p.Doc(&node.From[i])
-	}
-	if node.Subdir != nil {
-		items = append(items, p.row("FROM", p.Doc(node.Subdir)))
-		items = append(items, p.row("IN", p.commaSeparated(from...)))
-	} else {
-		items = append(items, p.row("FROM", p.commaSeparated(from...)))
-	}
-
-	if node.AsOf.Expr != nil {
-		items = append(items, node.AsOf.docRow(p))
-	}
-	if !node.Options.IsDefault() {
-		items = append(items, p.row("WITH", p.Doc(&node.Options)))
-	}
-	return p.rlTable(items...)
-}
-
 func (node *AsOfClause) doc(p *PrettyCfg) pretty.Doc {
 	return p.unrow(node.docRow(p))
 }
