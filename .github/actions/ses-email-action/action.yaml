@@ -1,0 +1,50 @@
+name: 'SES email action'
+description: 'Send email with aws ses'
+inputs:
+  region:
+    description: 'aws region'
+    required: true
+    default: ''
+  version:
+    description: 'doltgres version being benchmarked or ref of bats windows job'
+    required: true
+    default: ''
+  format:
+    description: 'doltgres noms bin format'
+    required: true
+    default: '__DOLT__'
+  template:
+    description: 'email template'
+    required: false
+    default: 'PerformanceBenchmarkingReleaseTemplate'
+  dataFile:
+    required: false
+    description: 'path to email data file'
+    default: ''
+  bodyPath:
+    required: false
+    description: 'path to email body file'
+    default: ''
+  subject:
+    required: false
+    description: 'path to email subject'
+    default: ''
+  toAddresses:
+    description: 'json string list of to addresses'
+    required: true
+    default: "[]"
+  ccAddresses:
+    description: 'json string list of cc addresses'
+    required: false
+    default: "[]"
+  replyToAddresses:
+    description: 'json string list of reply to addresses'
+    required: false
+    default: "[]"
+  workflowURL:
+    description: 'url of the workflow run'
+    default: ''
+    required: false
+runs:
+  using: 'node16'
+  main: 'dist/index.js'
