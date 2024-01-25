@@ -97,9 +97,7 @@ func (h *DoltgresHarness) Init() error {
 }
 
 func (s *DoltgresHarness) Close() error {
-	s.db.Close()
-	s.server.Close()
-	s.server = nil
+	s.ClearServer()
 	s.harnessLog.Close()
 	log.SetOutput(s.stashedLogOutput)
 	return os.RemoveAll(s.serverDir)
