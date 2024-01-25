@@ -71,7 +71,7 @@ echo '
         "containers": [
           {
             "name": "performance-benchmarking",
-            "image": "407903926827.dkr.ecr.us-west-2.amazonaws.com/liquidata/performance-benchmarking:latest",
+            "image": "407903926827.dkr.ecr.us-west-2.amazonaws.com/liquidata/performance-benchmarking:jennifer",
             "resources": {
               "limits": {
                 "cpu": "7000m"
