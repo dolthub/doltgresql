@@ -50,12 +50,24 @@ import (
 
 // CreateDatabase represents a CREATE DATABASE statement.
 type CreateDatabase struct {
-	IfNotExists bool
-	Name        Name
-	Template    string
-	Encoding    string
-	Collate     string
-	CType       string
+	IfNotExists      bool
+	Name             Name
+	Owner            string
+	Template         string
+	Encoding         string
+	Strategy         string
+	Locale           string
+	Collate          string
+	CType            string
+	IcuLocale        string
+	IcuRules         string
+	LocaleProvider   string
+	CollationVersion string
+	Tablespace       string
+	AllowConnections Expr // default is true
+	ConnectionLimit  Expr // default is -1
+	IsTemplate       Expr // default is false
+	Oid              Expr
 }
 
 // Format implements the NodeFormatter interface.
@@ -65,6 +77,10 @@ func (node *CreateDatabase) Format(ctx *FmtCtx) {
 		ctx.WriteString("IF NOT EXISTS ")
 	}
 	ctx.FormatNode(&node.Name)
+	if node.Owner != "" {
+		ctx.WriteString(" OWNER = ")
+		lex.EncodeSQLStringWithFlags(&ctx.Buffer, node.Owner, ctx.flags.EncodeFlags())
+	}
 	if node.Template != "" {
 		ctx.WriteString(" TEMPLATE = ")
 		lex.EncodeSQLStringWithFlags(&ctx.Buffer, node.Template, ctx.flags.EncodeFlags())
@@ -73,6 +89,14 @@ func (node *CreateDatabase) Format(ctx *FmtCtx) {
 		ctx.WriteString(" ENCODING = ")
 		lex.EncodeSQLStringWithFlags(&ctx.Buffer, node.Encoding, ctx.flags.EncodeFlags())
 	}
+	if node.Strategy != "" {
+		ctx.WriteString(" STRATEGY = ")
+		lex.EncodeSQLStringWithFlags(&ctx.Buffer, node.Strategy, ctx.flags.EncodeFlags())
+	}
+	if node.Locale != "" {
+		ctx.WriteString(" LOCALE = ")
+		lex.EncodeSQLStringWithFlags(&ctx.Buffer, node.Locale, ctx.flags.EncodeFlags())
+	}
 	if node.Collate != "" {
 		ctx.WriteString(" LC_COLLATE = ")
 		lex.EncodeSQLStringWithFlags(&ctx.Buffer, node.Collate, ctx.flags.EncodeFlags())
@@ -80,6 +104,42 @@ func (node *CreateDatabase) Format(ctx *FmtCtx) {
 	if node.CType != "" {
 		ctx.WriteString(" LC_CTYPE = ")
 		lex.EncodeSQLStringWithFlags(&ctx.Buffer, node.CType, ctx.flags.EncodeFlags())
+	}
+	if node.IcuLocale != "" {
+		ctx.WriteString(" ICU_LOCALE = ")
+		lex.EncodeSQLStringWithFlags(&ctx.Buffer, node.IcuLocale, ctx.flags.EncodeFlags())
+	}
+	if node.IcuRules != "" {
+		ctx.WriteString(" ICU_RULES = ")
+		lex.EncodeSQLStringWithFlags(&ctx.Buffer, node.IcuRules, ctx.flags.EncodeFlags())
+	}
+	if node.LocaleProvider != "" {
+		ctx.WriteString(" LOCALE_PROVIDER = ")
+		lex.EncodeSQLStringWithFlags(&ctx.Buffer, node.LocaleProvider, ctx.flags.EncodeFlags())
+	}
+	if node.CollationVersion != "" {
+		ctx.WriteString(" COLLATION_VERSION = ")
+		lex.EncodeSQLStringWithFlags(&ctx.Buffer, node.CollationVersion, ctx.flags.EncodeFlags())
+	}
+	if node.Tablespace != "" {
+		ctx.WriteString(" TABLESPACE = ")
+		lex.EncodeSQLStringWithFlags(&ctx.Buffer, node.Tablespace, ctx.flags.EncodeFlags())
+	}
+	if node.AllowConnections != nil {
+		ctx.WriteString(" ALLOW_CONNECTIONS = ")
+		lex.EncodeSQLStringWithFlags(&ctx.Buffer, node.AllowConnections.String(), ctx.flags.EncodeFlags())
+	}
+	if node.ConnectionLimit != nil {
+		ctx.WriteString(" CONNECTION LIMIT = ")
+		lex.EncodeSQLStringWithFlags(&ctx.Buffer, node.ConnectionLimit.String(), ctx.flags.EncodeFlags())
+	}
+	if node.IsTemplate != nil {
+		ctx.WriteString(" IS_TEMPLATE = ")
+		lex.EncodeSQLStringWithFlags(&ctx.Buffer, node.IsTemplate.String(), ctx.flags.EncodeFlags())
+	}
+	if node.Oid != nil {
+		ctx.WriteString(" OID = ")
+		lex.EncodeSQLStringWithFlags(&ctx.Buffer, node.Oid.String(), ctx.flags.EncodeFlags())
 	}
 }
 

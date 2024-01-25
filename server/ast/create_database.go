@@ -24,18 +24,55 @@ import (
 
 // nodeCreateDatabase handles *tree.CreateDatabase nodes.
 func nodeCreateDatabase(node *tree.CreateDatabase) (*vitess.DBDDL, error) {
+	if len(node.Owner) > 0 {
+		return nil, fmt.Errorf("OWNER clause is not yet supported")
+	}
 	if len(node.Template) > 0 {
-		return nil, fmt.Errorf("templates are not yet supported")
+		return nil, fmt.Errorf("TEMPLATE clause is not yet supported")
 	}
 	if len(node.Encoding) > 0 {
-		return nil, fmt.Errorf("encodings are not yet supported")
+		return nil, fmt.Errorf("ENCODING clause is not yet supported")
+	}
+	if len(node.Strategy) > 0 {
+		return nil, fmt.Errorf("STRATEGY clause is not yet supported")
+	}
+	if len(node.Locale) > 0 {
+		return nil, fmt.Errorf("LOCALE clause is not yet supported")
 	}
 	if len(node.Collate) > 0 {
-		return nil, fmt.Errorf("collations are not yet supported")
+		return nil, fmt.Errorf("LC_COLLATE clause is not yet supported")
 	}
 	if len(node.CType) > 0 {
-		return nil, fmt.Errorf("ctypes are not yet supported")
+		return nil, fmt.Errorf("LC_CTYPE clause is not yet supported")
 	}
+	if len(node.IcuLocale) > 0 {
+		return nil, fmt.Errorf("ICU_LOCALE clause is not yet supported")
+	}
+	if len(node.IcuRules) > 0 {
+		return nil, fmt.Errorf("TEMPLATE clause is not yet supported")
+	}
+	if len(node.LocaleProvider) > 0 {
+		return nil, fmt.Errorf("LOCALE_PROVIDER clause is not yet supported")
+	}
+	if len(node.CollationVersion) > 0 {
+		return nil, fmt.Errorf("COLLATION_VERSION clause is not yet supported")
+	}
+	if len(node.Tablespace) > 0 {
+		return nil, fmt.Errorf("TABLESPACE clause is not yet supported")
+	}
+	if node.AllowConnections != nil {
+		return nil, fmt.Errorf("ALLOW_CONNECTIONS clause is not yet supported")
+	}
+	if node.ConnectionLimit != nil {
+		return nil, fmt.Errorf("CONNECTION LIMIT clause is not yet supported")
+	}
+	if node.IsTemplate != nil {
+		return nil, fmt.Errorf("IS_TEMPLATE clause is not yet supported")
+	}
+	if node.Oid != nil {
+		return nil, fmt.Errorf("OID clause is not yet supported")
+	}
+
 	return &vitess.DBDDL{
 		Action:      vitess.CreateStr,
 		DBName:      node.Name.String(),

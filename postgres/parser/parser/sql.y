@@ -614,7 +614,7 @@ func (u *sqlSymUnion) alterDefaultPrivileges() *tree.AlterDefaultPrivileges {
 
 %token <str> CACHE CHAIN CALL CANCEL CANCELQUERY CASCADE CASE CAST CBRT CHANGEFEED CHAR
 %token <str> CHARACTER CHARACTERISTICS CHECK CLOSE
-%token <str> CLUSTER COALESCE COLLATE COLLATION COLUMN COLUMNS COMMENT COMMENTS COMMIT
+%token <str> CLUSTER COALESCE COLLATE COLLATION COLLATION_VERSION COLUMN COLUMNS COMMENT COMMENTS COMMIT
 %token <str> COMMITTED COMPACT COMPLETE CONCAT CONCURRENTLY CONFIGURATION CONFIGURATIONS CONFIGURE
 %token <str> CONFLICT CONNECT CONNECTION CONSTRAINT CONSTRAINTS CONTAINS CONTROLCHANGEFEED
 %token <str> CONTROLJOB CONVERSION CONVERT COPY COVERING CREATE CREATEDB CREATELOGIN CREATEROLE
@@ -642,7 +642,7 @@ func (u *sqlSymUnion) alterDefaultPrivileges() *tree.AlterDefaultPrivileges {
 
 %token <str> HAVING HASH HIGH HISTOGRAM HOUR
 
-%token <str> IDENTITY
+%token <str> ICU_LOCALE ICU_RULES IDENTITY
 %token <str> IF IFERROR IFNULL IGNORE_FOREIGN_KEYS ILIKE IMMEDIATE IMPORT IN INCLUDE INCLUDING INCREMENT INCREMENTAL
 %token <str> INET INET_CONTAINED_BY_OR_EQUALS
 %token <str> INET_CONTAINS_OR_EQUALS INDEX INDEXES INHERIT INJECT INTERLEAVE INITIALLY
@@ -655,8 +655,8 @@ func (u *sqlSymUnion) alterDefaultPrivileges() *tree.AlterDefaultPrivileges {
 
 %token <str> LANGUAGE LARGE LAST LATERAL LATEST LC_CTYPE LC_COLLATE
 %token <str> LEADING LEASE LEAST LEFT LESS LEVEL LIKE LIMIT
-%token <str> LINESTRING LINESTRINGM LINESTRINGZ LINESTRINGZM
-%token <str> LIST LOCAL LOCALTIME LOCALTIMESTAMP LOCKED LOGIN LOOKUP LOW LSHIFT
+%token <str> LINESTRING LINESTRINGM LINESTRINGZ LINESTRINGZM LIST
+%token <str> LOCAL LOCALE LOCALE_PROVIDER LOCALTIME LOCALTIMESTAMP LOCKED LOGIN LOOKUP LOW LSHIFT
 
 %token <str> MATCH MATERIALIZED MERGE MINVALUE MAXVALUE MINUTE MODIFYCLUSTERSETTING MONTH
 %token <str> MULTILINESTRING MULTILINESTRINGM MULTILINESTRINGZ MULTILINESTRINGZM
@@ -687,8 +687,7 @@ func (u *sqlSymUnion) alterDefaultPrivileges() *tree.AlterDefaultPrivileges {
 %token <str> SERIALIZABLE SERVER SESSION SESSIONS SESSION_USER SET SETTING SETTINGS
 %token <str> SHARE SHOW SIMILAR SIMPLE SKIP SKIP_MISSING_FOREIGN_KEYS
 %token <str> SKIP_MISSING_SEQUENCES SKIP_MISSING_SEQUENCE_OWNERS SKIP_MISSING_VIEWS SMALLINT SMALLSERIAL SNAPSHOT SOME SPLIT SQL
-
-%token <str> START STATISTICS STATUS STDIN STRICT STRING STORAGE STORE STORED STORING SUBSTRING
+%token <str> START STATISTICS STATUS STDIN STRATEGY STRICT STRING STORAGE STORE STORED STORING SUBSTRING
 %token <str> SYMMETRIC SYNTAX SYSTEM SQRT SUBSCRIPTION
 
 %token <str> TABLE TABLES TABLESPACE TEMP TEMPLATE TEMPORARY TESTING_RELOCATE EXPERIMENTAL_RELOCATE TEXT THEN
@@ -976,7 +975,8 @@ func (u *sqlSymUnion) alterDefaultPrivileges() *tree.AlterDefaultPrivileges {
 
 %type <tree.ValidationBehavior> opt_validate_behavior
 
-%type <str> opt_template_clause opt_encoding_clause opt_lc_collate_clause opt_lc_ctype_clause
+%type <str> opt_owner opt_template opt_encoding opt_strategy opt_locale opt_lc_collate opt_lc_ctype opt_icu_locale
+%type <str> opt_icu_rules opt_icu_rules opt_locale_provider opt_collation_version opt_tablespace
 
 %type <tree.IsolationLevel> transaction_iso_level
 %type <tree.UserPriority> transaction_user_priority
@@ -1104,7 +1104,7 @@ func (u *sqlSymUnion) alterDefaultPrivileges() *tree.AlterDefaultPrivileges {
 %type <*tree.When> when_clause
 %type <[]*tree.When> when_clause_list
 %type <tree.ComparisonOperator> sub_type
-%type <tree.Expr> numeric_only
+%type <tree.Expr> numeric_only opt_allow_connections opt_connection_limit opt_is_template opt_oid
 %type <tree.AliasClause> alias_clause opt_alias_clause
 %type <bool> opt_ordinality opt_compact
 %type <*tree.Order> sortby
@@ -7801,30 +7801,65 @@ transaction_deferrable_mode:
 // %Text: CREATE DATABASE [IF NOT EXISTS] <name>
 // %SeeAlso: WEBDOCS/create-database.html
 create_database_stmt:
-  CREATE DATABASE database_name opt_with opt_template_clause opt_encoding_clause opt_lc_collate_clause opt_lc_ctype_clause
+  CREATE DATABASE database_name opt_with opt_owner opt_template opt_encoding opt_strategy opt_locale opt_lc_collate opt_lc_ctype opt_icu_locale opt_icu_rules opt_locale_provider opt_collation_version opt_tablespace opt_allow_connections opt_connection_limit opt_is_template opt_oid
   {
     $$.val = &tree.CreateDatabase{
       Name: tree.Name($3),
-      Template: $5,
-      Encoding: $6,
-      Collate: $7,
-      CType: $8,
+      Owner: $5,
+      Template: $6,
+      Encoding: $7,
+      Strategy: $8,
+      Locale: $9,
+      Collate: $10,
+      CType: $11,
+      IcuLocale: $12,
+      IcuRules: $13,
+      LocaleProvider: $14,
+      CollationVersion: $15,
+      Tablespace: $16,
+      AllowConnections: $17.expr(),
+      ConnectionLimit: $18.expr(),
+      IsTemplate: $19.expr(),
+      Oid: $20.expr(),
     }
   }
-| CREATE DATABASE IF NOT EXISTS database_name opt_with opt_template_clause opt_encoding_clause opt_lc_collate_clause opt_lc_ctype_clause
+| CREATE DATABASE IF NOT EXISTS database_name opt_with opt_owner opt_template opt_encoding opt_strategy opt_locale opt_lc_collate opt_lc_ctype opt_icu_locale opt_icu_rules opt_locale_provider opt_collation_version opt_tablespace opt_allow_connections opt_connection_limit opt_is_template opt_oid
   {
     $$.val = &tree.CreateDatabase{
       IfNotExists: true,
       Name: tree.Name($6),
-      Template: $8,
-      Encoding: $9,
-      Collate: $10,
-      CType: $11,
+      Owner: $8,
+      Template: $9,
+      Encoding: $10,
+      Strategy: $11,
+      Locale: $12,
+      Collate: $13,
+      CType: $14,
+      IcuLocale: $15,
+      IcuRules: $16,
+      LocaleProvider: $17,
+      CollationVersion: $18,
+      Tablespace: $19,
+      AllowConnections: $20.expr(),
+      ConnectionLimit: $21.expr(),
+      IsTemplate: $22.expr(),
+      Oid: $23.expr(),
     }
    }
 | CREATE DATABASE error // SHOW HELP: CREATE DATABASE
 
-opt_template_clause:
+// Optional parameters can be written in any order, not only the order illustrated above.
+opt_owner:
+  OWNER opt_equal role_spec
+  {
+    $$ = $3
+  }
+| /* EMPTY */
+  {
+    $$ = ""
+  }
+
+opt_template:
   TEMPLATE opt_equal non_reserved_word_or_sconst
   {
     $$ = $3
@@ -7834,7 +7869,7 @@ opt_template_clause:
     $$ = ""
   }
 
-opt_encoding_clause:
+opt_encoding:
   ENCODING opt_equal non_reserved_word_or_sconst
   {
     $$ = $3
@@ -7844,7 +7879,27 @@ opt_encoding_clause:
     $$ = ""
   }
 
-opt_lc_collate_clause:
+opt_strategy:
+  STRATEGY opt_equal non_reserved_word_or_sconst
+  {
+    $$ = $3
+  }
+| /* EMPTY */
+  {
+    $$ = ""
+  }
+
+opt_locale:
+  LOCALE opt_equal non_reserved_word_or_sconst
+  {
+    $$ = $3
+  }
+| /* EMPTY */
+  {
+    $$ = ""
+  }
+
+opt_lc_collate:
   LC_COLLATE opt_equal non_reserved_word_or_sconst
   {
     $$ = $3
@@ -7854,7 +7909,7 @@ opt_lc_collate_clause:
     $$ = ""
   }
 
-opt_lc_ctype_clause:
+opt_lc_ctype:
   LC_CTYPE opt_equal non_reserved_word_or_sconst
   {
     $$ = $3
@@ -7862,6 +7917,96 @@ opt_lc_ctype_clause:
 | /* EMPTY */
   {
     $$ = ""
+  }
+
+opt_icu_locale:
+  ICU_LOCALE opt_equal non_reserved_word_or_sconst
+  {
+    $$ = $3
+  }
+| /* EMPTY */
+  {
+    $$ = ""
+  }
+
+opt_icu_rules:
+  ICU_RULES opt_equal non_reserved_word_or_sconst
+  {
+    $$ = $3
+  }
+| /* EMPTY */
+  {
+    $$ = ""
+  }
+
+opt_locale_provider:
+  LOCALE_PROVIDER opt_equal non_reserved_word_or_sconst
+  {
+    $$ = $3
+  }
+| /* EMPTY */
+  {
+    $$ = ""
+  }
+
+opt_collation_version:
+  COLLATION_VERSION opt_equal non_reserved_word_or_sconst
+  {
+    $$ = $3
+  }
+| /* EMPTY */
+  {
+    $$ = ""
+  }
+
+opt_tablespace:
+  TABLESPACE opt_equal non_reserved_word_or_sconst
+  {
+    $$ = $3
+  }
+| /* EMPTY */
+  {
+    $$ = ""
+  }
+
+opt_allow_connections:
+  ALLOW_CONNECTIONS opt_equal a_expr
+  {
+    $$.val = $3.expr()
+  }
+| /* EMPTY */
+  {
+    $$.val = nil
+  }
+
+opt_connection_limit:
+  CONNECTION LIMIT opt_equal signed_iconst
+  {
+    $$.val = $4.expr()
+  }
+| /* EMPTY */
+  {
+    $$.val = nil
+  }
+
+opt_is_template:
+  IS_TEMPLATE opt_equal a_expr
+  {
+    $$.val = $3.expr()
+  }
+| /* EMPTY */
+  {
+    $$.val = nil
+  }
+
+opt_oid:
+  OID opt_equal signed_iconst
+  {
+    $$.val = $3.expr()
+  }
+| /* EMPTY */
+  {
+    $$.val = nil
   }
 
 opt_equal:
@@ -11982,6 +12127,7 @@ unreserved_keyword:
 | CHANGEFEED
 | CLOSE
 | CLUSTER
+| COLLATION_VERSION
 | COLUMNS
 | COMMENT
 | COMMENTS
@@ -12063,6 +12209,8 @@ unreserved_keyword:
 | HIGH
 | HISTOGRAM
 | HOUR
+| ICU_LOCALE
+| ICU_RULES
 | IDENTITY
 | IMMEDIATE
 | IMPORT
@@ -12098,6 +12246,8 @@ unreserved_keyword:
 | LINESTRING
 | LIST
 | LOCAL
+| LOCALE
+| LOCALE_PROVIDER
 | LOCKED
 | LOGIN
 | LOOKUP
@@ -12144,6 +12294,7 @@ unreserved_keyword:
 | OBJECT
 | OF
 | OFF
+| OID
 | OIDS
 | OPERATOR
 | OPT
@@ -12247,6 +12398,7 @@ unreserved_keyword:
 | STORE
 | STORED
 | STORING
+| STRATEGY
 | STRICT
 | SUBSCRIPTION
 | SYNTAX
