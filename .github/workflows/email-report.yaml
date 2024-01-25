@@ -4,6 +4,10 @@ on:
   repository_dispatch:
     types: [ email-report ]
 
+permissions:
+  id-token: write # This is required for requesting the JWT
+  contents: read  # This is required for actions/checkout
+
 jobs:
   email-team:
     runs-on: ubuntu-22.04
@@ -13,6 +17,7 @@ jobs:
       - name: Configure AWS Credentials
         uses: aws-actions/configure-aws-credentials@v2.2.0
         with:
+          role-session-name: GitHub_to_AWS_via_FederatedOIDC
           role-to-assume: ${{ secrets.AWS_ROLE_TO_ASSUME_CORP }}
           aws-region: us-west-2
       - name: Get Results
@@ -30,8 +35,8 @@ jobs:
           fi
           echo "addresses=$addresses" >> $GITHUB_OUTPUT
         env:
-          RECIPIENT: ${{ github.event.client_payload.email_recipient  || 'dustin@dolthub.com' }}
-#          TEAM: '["${{ secrets.PERF_REPORTS_EMAIL_ADDRESS }}"]'
+          RECIPIENT: ${{ github.event.client_payload.email_recipient }}
+          TEAM: '["${{ secrets.PERF_REPORTS_EMAIL_ADDRESS }}"]'
       - name: Send Email
         uses: ./.github/actions/ses-email-action
         with:
