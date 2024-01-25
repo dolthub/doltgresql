@@ -21,8 +21,9 @@ jobs:
           sudo cp ./aws-iam-authenticator /usr/local/bin/aws-iam-authenticator
           aws-iam-authenticator version
       - name: Configure AWS Credentials
-        uses: aws-actions/configure-aws-credentials@v2.2.0
+        uses: aws-actions/configure-aws-credentials@v4
         with:
+          role-session-name: GitHub_to_AWS_via_FederatedOIDC
           role-to-assume: ${{ secrets.AWS_ROLE_TO_ASSUME_CORP }}
           aws-region: us-west-2
       - name: Create and Auth kubeconfig
