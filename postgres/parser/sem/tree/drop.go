@@ -55,9 +55,9 @@ func (d DropBehavior) String() string {
 
 // DropDatabase represents a DROP DATABASE statement.
 type DropDatabase struct {
-	Name         Name
-	IfExists     bool
-	DropBehavior DropBehavior
+	Name     Name
+	IfExists bool
+	Force    bool
 }
 
 // Format implements the NodeFormatter interface.
@@ -67,9 +67,8 @@ func (node *DropDatabase) Format(ctx *FmtCtx) {
 		ctx.WriteString("IF EXISTS ")
 	}
 	ctx.FormatNode(&node.Name)
-	if node.DropBehavior != DropDefault {
-		ctx.WriteByte(' ')
-		ctx.WriteString(node.DropBehavior.String())
+	if node.Force {
+		ctx.WriteString(" WITH ( FORCE )")
 	}
 }
 

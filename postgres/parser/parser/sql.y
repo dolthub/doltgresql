@@ -634,7 +634,7 @@ func (u *sqlSymUnion) alterDefaultPrivileges() *tree.AlterDefaultPrivileges {
 
 %token <str> FALSE FAMILY FETCH FETCHVAL FETCHTEXT FETCHVAL_PATH FETCHTEXT_PATH
 %token <str> FILES FILTER FIRST FLOAT FLOAT4 FLOAT8 FLOORDIV
-%token <str> FOLLOWING FOR FORCE_INDEX FOREIGN FROM FULL FUNCTION FUNCTIONS
+%token <str> FOLLOWING FOR FORCE FORCE_INDEX FOREIGN FROM FULL FUNCTION FUNCTIONS
 
 %token <str> GENERATED GEOGRAPHY GEOMETRY GEOMETRYM GEOMETRYZ GEOMETRYZM
 %token <str> GEOMETRYCOLLECTION GEOMETRYCOLLECTIONM GEOMETRYCOLLECTIONZ GEOMETRYCOLLECTIONZM
@@ -1051,7 +1051,7 @@ func (u *sqlSymUnion) alterDefaultPrivileges() *tree.AlterDefaultPrivileges {
 %type <tree.SequenceOption> sequence_option_elem
 
 %type <bool> all_or_distinct
-%type <bool> with_comment
+%type <bool> with_comment opt_with_force
 %type <empty> join_outer
 %type <tree.JoinCond> join_qual
 %type <str> join_type
@@ -1209,7 +1209,7 @@ func (u *sqlSymUnion) alterDefaultPrivileges() *tree.AlterDefaultPrivileges {
 
 %type <tree.Persistence> opt_temp
 %type <tree.Persistence> opt_persistence_temp_table
-%type <bool> role_or_group_or_user role_or_user opt_with_grant_option opt_cascade_or_restrict opt_grant_option_for
+%type <bool> role_or_group_or_user role_or_user opt_with_grant_option opt_grant_option_for
 
 %type <tree.Expr>  cron_expr opt_description sconst_or_placeholder
 %type <*tree.FullBackupClause> opt_full_backup_clause
@@ -1575,9 +1575,9 @@ adp_abbreviated_grant_or_revoke:
   {
     $$.val = &tree.AlterDefaultPrivileges{Privileges: $2.privilegeList(), Target: $4.targetList(), Grantees: $6.strs(), GrantOption: $7.bool(), Grant: true}
   }
-| REVOKE opt_grant_option_for privileges ON targets_for_alter_def_priv FROM opt_role_list opt_cascade_or_restrict
+| REVOKE opt_grant_option_for privileges ON targets_for_alter_def_priv FROM opt_role_list opt_drop_behavior
   {
-    $$.val = &tree.AlterDefaultPrivileges{GrantOption: $2.bool(), Privileges: $3.privilegeList(), Target: $5.targetList(), Grantees: $7.strs(), Restrict: $8.bool()}
+    $$.val = &tree.AlterDefaultPrivileges{GrantOption: $2.bool(), Privileges: $3.privilegeList(), Target: $5.targetList(), Grantees: $7.strs(), DropBehavior: $8.dropBehavior()}
   }
 
 opt_grant_option_for:
@@ -2157,7 +2157,6 @@ opt_alter_column_using:
   {
      $$.val = nil
   }
-
 
 opt_drop_behavior:
   CASCADE
@@ -3632,26 +3631,40 @@ drop_index_stmt:
 
 // %Help: DROP DATABASE - remove a database
 // %Category: DDL
-// %Text: DROP DATABASE [IF EXISTS] <databasename> [CASCADE | RESTRICT]
+// %Text: DROP DATABASE [IF EXISTS] <databasename> [ [ WITH ] ( option [, ...] ) ]
 // %SeeAlso: WEBDOCS/drop-database.html
 drop_database_stmt:
-  DROP DATABASE database_name opt_drop_behavior
+  DROP DATABASE database_name opt_with_force
   {
     $$.val = &tree.DropDatabase{
       Name: tree.Name($3),
       IfExists: false,
-      DropBehavior: $4.dropBehavior(),
+      Force: $4.bool(),
     }
   }
-| DROP DATABASE IF EXISTS database_name opt_drop_behavior
+| DROP DATABASE IF EXISTS database_name opt_with_force
   {
     $$.val = &tree.DropDatabase{
       Name: tree.Name($5),
       IfExists: true,
-      DropBehavior: $6.dropBehavior(),
+      Force: $6.bool(),
     }
   }
 | DROP DATABASE error // SHOW HELP: DROP DATABASE
+
+opt_with_force:
+  /* EMPTY */
+  {
+    $$.val = false
+  }
+| opt_with '(' force_list ')'
+  {
+    $$.val = true
+  }
+
+force_list:
+  FORCE
+| force_list ',' FORCE
 
 // %Help: DROP TYPE - remove a type
 // %Category: DDL
@@ -4191,45 +4204,31 @@ opt_granted_by:
 //
 // %SeeAlso: GRANT, WEBDOCS/revoke.html
 revoke_stmt:
-  REVOKE privileges_for_cols ON targets_table FROM role_spec_list opt_granted_by opt_cascade_or_restrict
+  REVOKE privileges_for_cols ON targets_table FROM role_spec_list opt_granted_by opt_drop_behavior
   {
-    $$.val = &tree.Revoke{PrivsWithCols: $2.privForColsList(), Targets: $4.targetList(), Grantees: $6.strs(), GrantedBy: $7, Restrict: $8.bool()}
+    $$.val = &tree.Revoke{PrivsWithCols: $2.privForColsList(), Targets: $4.targetList(), Grantees: $6.strs(), GrantedBy: $7, DropBehavior: $8.dropBehavior()}
   }
-| REVOKE GRANT OPTION FOR privileges_for_cols ON targets_table FROM role_spec_list opt_granted_by opt_cascade_or_restrict
+| REVOKE GRANT OPTION FOR privileges_for_cols ON targets_table FROM role_spec_list opt_granted_by opt_drop_behavior
   {
-    $$.val = &tree.Revoke{PrivsWithCols: $5.privForColsList(), Targets: $7.targetList(), Grantees: $9.strs(), GrantOptionFor: true, GrantedBy: $10, Restrict: $11.bool()}
+    $$.val = &tree.Revoke{PrivsWithCols: $5.privForColsList(), Targets: $7.targetList(), Grantees: $9.strs(), GrantOptionFor: true, GrantedBy: $10, DropBehavior: $11.dropBehavior()}
   }
-| REVOKE privileges ON targets FROM role_spec_list opt_granted_by opt_cascade_or_restrict
+| REVOKE privileges ON targets FROM role_spec_list opt_granted_by opt_drop_behavior
   {
-    $$.val = &tree.Revoke{Privileges: $2.privilegeList(), Targets: $4.targetList(), Grantees: $6.strs(), GrantedBy: $7, Restrict: $8.bool()}
+    $$.val = &tree.Revoke{Privileges: $2.privilegeList(), Targets: $4.targetList(), Grantees: $6.strs(), GrantedBy: $7, DropBehavior: $8.dropBehavior()}
   }
-| REVOKE GRANT OPTION FOR privileges ON targets FROM role_spec_list opt_granted_by opt_cascade_or_restrict
+| REVOKE GRANT OPTION FOR privileges ON targets FROM role_spec_list opt_granted_by opt_drop_behavior
   {
-    $$.val = &tree.Revoke{Privileges: $5.privilegeList(), Targets: $7.targetList(), Grantees: $9.strs(), GrantOptionFor: true, GrantedBy: $10, Restrict: $11.bool()}
+    $$.val = &tree.Revoke{Privileges: $5.privilegeList(), Targets: $7.targetList(), Grantees: $9.strs(), GrantOptionFor: true, GrantedBy: $10, DropBehavior: $11.dropBehavior()}
   }
-| REVOKE privilege_list FROM role_spec_list opt_granted_by opt_cascade_or_restrict
+| REVOKE privilege_list FROM role_spec_list opt_granted_by opt_drop_behavior
   {
-    $$.val = &tree.RevokeRole{Roles: $2.nameList(), Members: $4.strs(), GrantedBy: $5, Restrict: $6.bool()}
+    $$.val = &tree.RevokeRole{Roles: $2.nameList(), Members: $4.strs(), GrantedBy: $5, DropBehavior: $6.dropBehavior()}
   }
-| REVOKE admin_inherit_set OPTION FOR privilege_list FROM role_spec_list opt_granted_by opt_cascade_or_restrict
+| REVOKE admin_inherit_set OPTION FOR privilege_list FROM role_spec_list opt_granted_by opt_drop_behavior
   {
-    $$.val = &tree.RevokeRole{Roles: $5.nameList(), Members: $7.strs(), Option: $2, GrantedBy: $8, Restrict: $9.bool()}
+    $$.val = &tree.RevokeRole{Roles: $5.nameList(), Members: $7.strs(), Option: $2, GrantedBy: $8, DropBehavior: $9.dropBehavior()}
   }
 | REVOKE error // SHOW HELP: REVOKE
-
-opt_cascade_or_restrict:
-  /* EMPTY */
-  {
-    $$.val = true
-  }
-| RESTRICT
-  {
-    $$.val = true
-  }
-| CASCADE
-  {
-    $$.val = false
-  }
 
 privileges_for_cols:
   ALL '(' name_list ')'
@@ -12190,6 +12189,7 @@ unreserved_keyword:
 | FILTER
 | FIRST
 | FOLLOWING
+| FORCE
 | FORCE_INDEX
 | FUNCTION
 | FUNCTIONS

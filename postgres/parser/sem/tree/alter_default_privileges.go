@@ -35,14 +35,14 @@ var _ Statement = &AlterDefaultPrivileges{}
 
 // AlterDefaultPrivileges represents a ALTER DEFAULT PRIVILEGES statement.
 type AlterDefaultPrivileges struct {
-	ForRole     bool
-	TargetRoles []string
-	Privileges  privilege.List
-	Target      TargetList
-	Grantees    []string
-	GrantOption bool
-	Restrict    bool
-	Grant       bool
+	ForRole      bool
+	TargetRoles  []string
+	Privileges   privilege.List
+	Target       TargetList
+	Grantees     []string
+	GrantOption  bool
+	DropBehavior DropBehavior
+	Grant        bool
 }
 
 // Format implements the NodeFormatter interface.
@@ -77,10 +77,9 @@ func (node *AlterDefaultPrivileges) Format(ctx *FmtCtx) {
 		node.Privileges.Format(&ctx.Buffer)
 		ctx.WriteString(fmt.Sprintf(" ON %sS FROM ", strings.ToUpper(string(node.Target.TargetType))))
 		ctx.WriteString(strings.Join(node.Grantees, ", "))
-		if node.Restrict {
-			ctx.WriteString(" RESTRICT")
-		} else {
-			ctx.WriteString(" CASCADE")
+		if node.DropBehavior.String() != "" {
+			ctx.WriteByte(' ')
+			ctx.WriteString(node.DropBehavior.String())
 		}
 	}
 }
