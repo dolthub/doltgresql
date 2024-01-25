@@ -82,6 +82,7 @@ echo '
             "args": [
               "--schema=/schema.sql",
               "--useDoltHubLuaScriptsRepo",
+              "--repo=doltgresql",
               "--output='$format'",
               "--postgres-exec=/usr/lib/postgresql/15/bin/postgres",
               "--init-db-exec=/usr/lib/postgresql/15/bin/initdb",
