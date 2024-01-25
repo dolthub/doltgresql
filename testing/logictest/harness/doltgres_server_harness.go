@@ -18,6 +18,7 @@ import (
 	"context"
 	"database/sql"
 	"fmt"
+	"io"
 	"log"
 	"os"
 	"os/exec"
@@ -45,28 +46,33 @@ var _ logictest.Harness = &DoltgresHarness{}
 
 // DoltgresHarness is sqllogictest harness for doltgres databases.
 type DoltgresHarness struct {
-	db           *sql.DB
-	doltgresExec string
-	server       *DoltgresServer
-	serverDir    string
-	timeout      int64 // in seconds
+	db               *sql.DB
+	doltgresExec     string
+	server           *DoltgresServer
+	serverDir        string
+	timeout          int64 // in seconds
+	harnessLog       *os.File
+	stashedLogOutput io.Writer
 }
 
 // NewDoltgresHarness returns a new Doltgres test harness for the data source name given.
 // It starts doltgres server and handles every connection to it.
 func NewDoltgresHarness(doltgresExec string, t int64) *DoltgresHarness {
 	serverDir := prepareSqlLogicTestDBAndGetServerDir(context.Background(), doltgresExec)
-	logFile, err := os.OpenFile(harnessLogFile, os.O_RDWR|os.O_CREATE|os.O_APPEND, 0666)
+	hl, err := os.OpenFile(harnessLogFile, os.O_RDWR|os.O_CREATE|os.O_APPEND, 0666)
 	if err != nil {
 		log.Fatal(err)
 	}
-	log.SetOutput(logFile)
+	stashLogOutput := log.Writer()
+	log.SetOutput(hl)
 	logMsg("creating a new DoltgresHarness")
 
 	return &DoltgresHarness{
-		doltgresExec: doltgresExec,
-		serverDir:    serverDir,
-		timeout:      t,
+		doltgresExec:     doltgresExec,
+		serverDir:        serverDir,
+		timeout:          t,
+		harnessLog:       hl,
+		stashedLogOutput: stashLogOutput,
 	}
 }
 
@@ -91,8 +97,9 @@ func (h *DoltgresHarness) Init() error {
 }
 
 func (s *DoltgresHarness) Close() error {
-	s.server.Close()
-	s.server = nil
+	s.ClearServer()
+	s.harnessLog.Close()
+	log.SetOutput(s.stashedLogOutput)
 	return os.RemoveAll(s.serverDir)
 }
 
@@ -215,10 +222,7 @@ func (h *DoltgresHarness) dropAllViews() error {
 // startNewDoltgresServer stops the existing server if exists.
 // It starts a new server and update the |server| of the harness.
 func (h *DoltgresHarness) startNewDoltgresServer(ctx context.Context, newTestFile string) {
-	if h.server != nil {
-		h.server.Stop()
-		h.server = nil
-	}
+	h.ClearServer()
 
 	withKeyCtx, cancel := context.WithCancel(ctx)
 	gServer, serverCtx := errgroup.WithContext(withKeyCtx)
@@ -247,16 +251,31 @@ func (h *DoltgresHarness) startNewDoltgresServer(ctx context.Context, newTestFil
 	}()
 
 	doltgresServer := &DoltgresServer{
-		dir:      h.serverDir,
-		quit:     quit,
-		wg:       &wg,
-		gServer:  gServer,
-		server:   server,
-		testFile: newTestFile,
+		dir:       h.serverDir,
+		quit:      quit,
+		wg:        &wg,
+		gServer:   gServer,
+		server:    server,
+		testFile:  newTestFile,
+		serverLog: l,
 	}
 
 	h.server = doltgresServer
 	h.server.Start()
+}
+
+// ClearServer closes the connection to the server and the server if either exists.
+func (h *DoltgresHarness) ClearServer() {
+	if h.db != nil {
+		err := h.db.Close()
+		logErr(err, "closing connection")
+		h.db = nil
+	}
+	// close
+	if h.server != nil {
+		h.server.Close()
+		h.server = nil
+	}
 }
 
 func prepareSqlLogicTestDBAndGetServerDir(ctx context.Context, doltgresExec string) string {
@@ -290,12 +309,13 @@ func prepareSqlLogicTestDBAndGetServerDir(ctx context.Context, doltgresExec stri
 }
 
 type DoltgresServer struct {
-	dir      string
-	quit     chan os.Signal
-	wg       *sync.WaitGroup
-	gServer  *errgroup.Group
-	server   *exec.Cmd
-	testFile string
+	dir       string
+	quit      chan os.Signal
+	wg        *sync.WaitGroup
+	gServer   *errgroup.Group
+	server    *exec.Cmd
+	testFile  string
+	serverLog *os.File
 }
 
 func (s *DoltgresServer) Start() {
@@ -343,6 +363,10 @@ func (s *DoltgresServer) Stop() {
 
 func (s *DoltgresServer) Close() {
 	s.Stop()
+	err := s.serverLog.Close()
+	if err != nil {
+		logErr(err, fmt.Sprintf("closing server.log file for server for %s", s.testFile))
+	}
 }
 
 func logErr(err error, cause string) {
