@@ -9,20 +9,25 @@ func _() {
 	// Re-run the stringer command to generate them again.
 	var x [1]struct{}
 	_ = x[ALL-1]
-	_ = x[CREATE-2]
-	_ = x[DROP-3]
-	_ = x[GRANT-4]
-	_ = x[SELECT-5]
-	_ = x[INSERT-6]
-	_ = x[DELETE-7]
-	_ = x[UPDATE-8]
-	_ = x[USAGE-9]
-	_ = x[ZONECONFIG-10]
+	_ = x[SELECT-2]
+	_ = x[INSERT-3]
+	_ = x[UPDATE-4]
+	_ = x[DELETE-5]
+	_ = x[TRUNCATE-6]
+	_ = x[REFERENCES-7]
+	_ = x[TRIGGER-8]
+	_ = x[CREATE-9]
+	_ = x[CONNECT-10]
+	_ = x[TEMPORARY-11]
+	_ = x[EXECUTE-12]
+	_ = x[USAGE-13]
+	_ = x[SET-14]
+	_ = x[ALTERSYSTEM-15]
 }
 
-const _Kind_name = "ALLCREATEDROPGRANTSELECTINSERTDELETEUPDATEUSAGEZONECONFIG"
+const _Kind_name = "ALLSELECTINSERTUPDATEDELETETRUNCATEREFERENCESTRIGGERCREATECONNECTTEMPORARYEXECUTEUSAGESETALTERSYSTEM"
 
-var _Kind_index = [...]uint8{0, 3, 9, 13, 18, 24, 30, 36, 42, 47, 57}
+var _Kind_index = [...]uint8{0, 3, 9, 15, 21, 27, 35, 45, 52, 58, 65, 74, 81, 86, 89, 100}
 
 func (i Kind) String() string {
 	i -= 1

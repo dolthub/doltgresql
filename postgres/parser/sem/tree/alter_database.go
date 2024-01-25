@@ -24,16 +24,64 @@
 
 package tree
 
-// AlterDatabaseOwner represents a ALTER DATABASE OWNER TO statement.
-type AlterDatabaseOwner struct {
-	Name  Name
-	Owner string
+import (
+	"fmt"
+	"strings"
+)
+
+type AlterDatabaseOption string
+
+// Names of options on ALTER DATABASE.
+const (
+	OptAllowConnections AlterDatabaseOption = "ALLOW_CONNECTIONS"
+	OptConnectionLimit  AlterDatabaseOption = "CONNECTION LIMIT"
+	OptIsTemplate       AlterDatabaseOption = "IS_TEMPLATE"
+)
+
+// DatabaseOption represents a ALTER DATABASE option.
+type DatabaseOption struct {
+	Opt AlterDatabaseOption
+	Val Expr
+}
+
+// AlterDatabase represents a ALTER DATABASE statement.
+type AlterDatabase struct {
+	Name    Name
+	Options []DatabaseOption
+	// Rename is handled by RenameDatabase
+	Owner                   string
+	Tablespace              string
+	RefreshCollationVersion bool
+	SetVar                  *SetVar
+	ResetVar                string
+	ResetAll                bool
 }
 
 // Format implements the NodeFormatter interface.
-func (node *AlterDatabaseOwner) Format(ctx *FmtCtx) {
+func (node *AlterDatabase) Format(ctx *FmtCtx) {
 	ctx.WriteString("ALTER DATABASE ")
 	ctx.FormatNode(&node.Name)
-	ctx.WriteString(" OWNER TO ")
-	ctx.FormatNameP(&node.Owner)
+	if len(node.Options) > 0 {
+		opts := make([]string, len(node.Options))
+		for i, opt := range node.Options {
+			opts[i] = fmt.Sprintf("%s %s", opt.Opt, AsString(opt.Val))
+		}
+		ctx.WriteString(fmt.Sprintf(" WITH %s", strings.Join(opts, " ")))
+	} else if node.Owner != "" {
+		ctx.WriteString(" OWNER TO ")
+		ctx.FormatNameP(&node.Owner)
+	} else if node.Tablespace != "" {
+		ctx.WriteString(" SET TABLESPACE ")
+		ctx.FormatNameP(&node.Tablespace)
+	} else if node.RefreshCollationVersion {
+		ctx.WriteString(" REFRESH COLLATION VERSION")
+	} else if node.SetVar != nil {
+		ctx.WriteByte(' ')
+		node.SetVar.Format(ctx)
+	} else if node.ResetVar != "" {
+		ctx.WriteString(" RESET ")
+		ctx.FormatNameP(&node.ResetVar)
+	} else if node.ResetAll {
+		ctx.WriteString(" RESET ALL")
+	}
 }

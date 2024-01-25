@@ -33,40 +33,86 @@
 
 package tree
 
-import "github.com/dolthub/doltgresql/postgres/parser/privilege"
+import (
+	"strings"
+
+	"github.com/dolthub/doltgresql/postgres/parser/privilege"
+)
 
 // Revoke represents a REVOKE statement.
 // PrivilegeList and TargetList are defined in grant.go
 type Revoke struct {
-	Privileges privilege.List
-	Targets    TargetList
-	Grantees   NameList
+	Privileges     privilege.List
+	Targets        TargetList
+	Grantees       []string
+	GrantOptionFor bool
+	GrantedBy      string
+	Restrict       bool
+
+	// only used for table target with column names defined
+	PrivsWithCols []PrivForCols
 }
 
 // Format implements the NodeFormatter interface.
 func (node *Revoke) Format(ctx *FmtCtx) {
 	ctx.WriteString("REVOKE ")
-	node.Privileges.Format(&ctx.Buffer)
+	if node.GrantOptionFor {
+		ctx.WriteString(" GRANT OPTION FOR ")
+	}
+	if node.PrivsWithCols != nil {
+		for i, p := range node.PrivsWithCols {
+			if i != 0 {
+				ctx.WriteString(", ")
+			}
+			ctx.WriteString(p.Privilege.String())
+			ctx.WriteString(" ( ")
+			ctx.FormatNode(&p.ColNames)
+			ctx.WriteString(" )")
+		}
+	} else {
+		node.Privileges.Format(&ctx.Buffer)
+	}
 	ctx.WriteString(" ON ")
 	ctx.FormatNode(&node.Targets)
 	ctx.WriteString(" FROM ")
-	ctx.FormatNode(&node.Grantees)
+	ctx.WriteString(strings.Join(node.Grantees, ", "))
+	if node.GrantedBy != "" {
+		ctx.WriteString(" GRANTED BY ")
+		ctx.WriteString(node.GrantedBy)
+	}
+	if node.Restrict {
+		ctx.WriteString(" RESTRICT")
+	} else {
+		ctx.WriteString(" CASCADE")
+	}
 }
 
 // RevokeRole represents a REVOKE <role> statement.
 type RevokeRole struct {
-	Roles       NameList
-	Members     NameList
-	AdminOption bool
+	Roles     NameList
+	Members   []string
+	Option    string
+	GrantedBy string
+	Restrict  bool
 }
 
 // Format implements the NodeFormatter interface.
 func (node *RevokeRole) Format(ctx *FmtCtx) {
 	ctx.WriteString("REVOKE ")
-	if node.AdminOption {
-		ctx.WriteString("ADMIN OPTION FOR ")
+	if node.Option != "" {
+		ctx.WriteString(node.Option)
+		ctx.WriteString(" OPTION FOR ")
 	}
 	ctx.FormatNode(&node.Roles)
 	ctx.WriteString(" FROM ")
-	ctx.FormatNode(&node.Members)
+	ctx.WriteString(strings.Join(node.Members, ", "))
+	if node.GrantedBy != "" {
+		ctx.WriteString(" GRANTED BY ")
+		ctx.WriteString(node.GrantedBy)
+	}
+	if node.Restrict {
+		ctx.WriteString(" RESTRICT")
+	} else {
+		ctx.WriteString(" CASCADE")
+	}
 }

@@ -26,8 +26,8 @@ import (
 // Convert converts a Postgres AST into a Vitess AST.
 func Convert(postgresStmt parser.Statement) (vitess.Statement, error) {
 	switch stmt := postgresStmt.AST.(type) {
-	case *tree.AlterDatabaseOwner:
-		return nodeAlterDatabaseOwner(stmt)
+	case *tree.AlterDatabase:
+		return nodeAlterDatabase(stmt)
 	case *tree.AlterIndex:
 		return nodeAlterIndex(stmt)
 	case *tree.AlterRole:

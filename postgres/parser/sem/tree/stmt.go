@@ -209,12 +209,20 @@ func (*AlterConversion) StatementTag() string { return "ALTER CONVERSION" }
 func (*AlterConversion) hiddenFromShowQueries() {}
 
 // StatementType implements the Statement interface.
-func (*AlterDatabaseOwner) StatementType() StatementType { return DDL }
+func (*AlterDatabase) StatementType() StatementType { return DDL }
 
 // StatementTag returns a short string identifying the type of statement.
-func (*AlterDatabaseOwner) StatementTag() string { return "ALTER DATABASE OWNER" }
+func (*AlterDatabase) StatementTag() string { return "ALTER DATABASE" }
 
-func (*AlterDatabaseOwner) hiddenFromShowQueries() {}
+func (*AlterDatabase) hiddenFromShowQueries() {}
+
+// StatementType implements the Statement interface.
+func (*AlterDefaultPrivileges) StatementType() StatementType { return DDL }
+
+// StatementTag returns a short string identifying the type of statement.
+func (*AlterDefaultPrivileges) StatementTag() string { return "ALTER DEFAULT PRIVILEGES" }
+
+func (*AlterDefaultPrivileges) hiddenFromShowQueries() {}
 
 // StatementType implements the Statement interface.
 func (*AlterIndex) StatementType() StatementType { return DDL }
@@ -1044,7 +1052,8 @@ func (n *AlterAggregate) String() string                 { return AsString(n) }
 func (n *AlterCollation) String() string                 { return AsString(n) }
 func (n *AlterConversion) String() string                { return AsString(n) }
 func (n *AlterIndex) String() string                     { return AsString(n) }
-func (n *AlterDatabaseOwner) String() string             { return AsString(n) }
+func (n *AlterDatabase) String() string                  { return AsString(n) }
+func (n *AlterDefaultPrivileges) String() string         { return AsString(n) }
 func (n *AlterSchema) String() string                    { return AsString(n) }
 func (n *AlterTable) String() string                     { return AsString(n) }
 func (n *AlterTableCmds) String() string                 { return AsString(n) }
