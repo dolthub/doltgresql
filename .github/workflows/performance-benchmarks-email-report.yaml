@@ -1,6 +1,8 @@
 name: Benchmark DoltgreSQL vs PostgreSQL
 
 on:
+  repository_dispatch:
+    types: [ release-doltgres ]
   workflow_dispatch:
     inputs:
       version:

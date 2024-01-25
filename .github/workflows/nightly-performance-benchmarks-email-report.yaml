@@ -1,0 +1,22 @@
+name: Nightly Benchmarks
+
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: '0 2 * * *'
+
+jobs:
+  perf:
+    runs-on: ubuntu-22.04
+    name: Trigger Benchmark Latency and SQL Correctness K8s Workflows
+    steps:
+      - uses: peter-evans/repository-dispatch@v2.0.0
+        with:
+          token: ${{ secrets.REPO_ACCESS_TOKEN }}
+          event-type: benchmark-latency
+          client-payload: '{"from_server": "postgres", "from_version": "15.5", "to_server": "doltgres", "to_version": "${{ github.sha }}", "mode": "nightly", "actor": "${{ github.actor }}", "template_script": "./.github/scripts/performance-benchmarking/get-postgres-doltgres-job-json.sh"}'
+#      - uses: peter-evans/repository-dispatch@v2.0.0
+#        with:
+#          token: ${{ secrets.REPO_ACCESS_TOKEN }}
+#          event-type: sql-correctness
+#          client-payload: '{"version": "${{ github.sha }}", "mode": "nightly", "actor": "${{ github.actor }}", "template_script": "./.github/scripts/sql-correctness/get-dolt-correctness-job-json.sh"}'
