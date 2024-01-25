@@ -189,6 +189,12 @@ func (u *sqlSymUnion) stmt() tree.Statement {
     }
     return nil
 }
+func (u *sqlSymUnion) stmts() []tree.Statement {
+    if stmt, ok := u.val.([]tree.Statement); ok {
+        return stmt
+    }
+    return nil
+}
 func (u *sqlSymUnion) cte() *tree.CTE {
     if cte, ok := u.val.(*tree.CTE); ok {
         return cte
@@ -811,6 +817,7 @@ func (u *sqlSymUnion) alterDefaultPrivileges() *tree.AlterDefaultPrivileges {
 %type <tree.Statement> create_stmt
 %type <tree.Statement> create_changefeed_stmt
 %type <tree.Statement> create_ddl_stmt
+%type <tree.Statement> create_ddl_stmt_schema_element
 %type <tree.Statement> create_database_stmt
 %type <tree.Statement> create_index_stmt
 %type <tree.Statement> create_role_stmt
@@ -820,6 +827,7 @@ func (u *sqlSymUnion) alterDefaultPrivileges() *tree.AlterDefaultPrivileges {
 %type <tree.Statement> create_table_as_stmt
 %type <tree.Statement> create_view_stmt
 %type <tree.Statement> create_sequence_stmt
+%type <tree.Statement> create_trigger_stmt
 
 %type <tree.Statement> create_stats_stmt
 %type <*tree.CreateStatsOptions> opt_create_stats_options
@@ -868,6 +876,8 @@ func (u *sqlSymUnion) alterDefaultPrivileges() *tree.AlterDefaultPrivileges {
 %type <tree.Statement> rollback_stmt
 %type <tree.Statement> savepoint_stmt
 
+%type <tree.Statement> schema_element
+%type <[]tree.Statement> schema_element_list opt_schema_element_list
 %type <tree.Statement> preparable_set_stmt nonpreparable_set_stmt
 %type <tree.Statement> set_session_stmt
 %type <tree.Statement> set_csetting_stmt
@@ -3276,7 +3286,6 @@ create_unsupported:
 | CREATE SERVER error { return unimplemented(sqllex, "create server") }
 | CREATE SUBSCRIPTION error { return unimplemented(sqllex, "create subscription") }
 | CREATE TEXT error { return unimplementedWithIssueDetail(sqllex, 7821, "create text") }
-| CREATE TRIGGER error { return unimplementedWithIssueDetail(sqllex, 28296, "create") }
 
 opt_or_replace:
   OR REPLACE {}
@@ -3313,15 +3322,19 @@ drop_unsupported:
 create_ddl_stmt:
   create_changefeed_stmt
 | create_database_stmt // EXTEND WITH HELP: CREATE DATABASE
-| create_index_stmt    // EXTEND WITH HELP: CREATE INDEX
 | create_schema_stmt   // EXTEND WITH HELP: CREATE SCHEMA
+| create_type_stmt     // EXTEND WITH HELP: CREATE TYPE
+| create_ddl_stmt_schema_element // help texts in sub-rule
+
+create_ddl_stmt_schema_element:
+  create_index_stmt    // EXTEND WITH HELP: CREATE INDEX
 | create_table_stmt    // EXTEND WITH HELP: CREATE TABLE
 | create_table_as_stmt // EXTEND WITH HELP: CREATE TABLE
 // Error case for both CREATE TABLE and CREATE TABLE ... AS in one
 | CREATE opt_persistence_temp_table TABLE error   // SHOW HELP: CREATE TABLE
-| create_type_stmt     // EXTEND WITH HELP: CREATE TYPE
 | create_view_stmt     // EXTEND WITH HELP: CREATE VIEW
 | create_sequence_stmt // EXTEND WITH HELP: CREATE SEQUENCE
+| create_trigger_stmt
 
 // %Help: CREATE STATISTICS - create a new table statistic
 // %Category: Misc
@@ -5831,10 +5844,19 @@ pause_schedules_stmt:
 // %Text:
 // CREATE SCHEMA [IF NOT EXISTS] { <schemaname> | [<schemaname>] AUTHORIZATION <rolename> }
 create_schema_stmt:
-  CREATE SCHEMA schema_name
+  CREATE SCHEMA schema_name opt_schema_element_list
   {
     $$.val = &tree.CreateSchema{
       Schema: $3,
+      SchemaElements: $4.stmts(),
+    }
+  }
+| CREATE SCHEMA opt_schema_name AUTHORIZATION role_spec opt_schema_element_list
+  {
+    $$.val = &tree.CreateSchema{
+      Schema: $3,
+      AuthRole: $5,
+      SchemaElements: $6.stmts(),
     }
   }
 | CREATE SCHEMA IF NOT EXISTS schema_name
@@ -5842,13 +5864,6 @@ create_schema_stmt:
     $$.val = &tree.CreateSchema{
       Schema: $6,
       IfNotExists: true,
-    }
-  }
-| CREATE SCHEMA opt_schema_name AUTHORIZATION role_spec
-  {
-    $$.val = &tree.CreateSchema{
-      Schema: $3,
-      AuthRole: $5,
     }
   }
 | CREATE SCHEMA IF NOT EXISTS opt_schema_name AUTHORIZATION role_spec
@@ -5860,6 +5875,30 @@ create_schema_stmt:
     }
   }
 | CREATE SCHEMA error // SHOW HELP: CREATE SCHEMA
+
+opt_schema_element_list:
+  /* EMPTY */
+  {
+  $$.val = nil
+  }
+| schema_element_list
+  {
+  $$.val = $1.stmts()
+  }
+
+schema_element_list:
+  schema_element
+  {
+    $$.val = []tree.Statement{$1.stmt()}
+  }
+| schema_element_list schema_element
+  {
+    $$.val = append($1.stmts(), $2.stmt())
+  }
+
+schema_element:
+  create_ddl_stmt_schema_element
+| grant_stmt
 
 // %Help: ALTER SCHEMA - alter an existing schema
 // %Category: DDL
@@ -6845,6 +6884,9 @@ password_clause:
   {
     $$.val = tree.KVOption{Key: tree.Name($1), Value: tree.DNull}
   }
+
+create_trigger_stmt:
+  CREATE TRIGGER error { return unimplementedWithIssueDetail(sqllex, 28296, "create trigger") }
 
 // %Help: CREATE ROLE - define a new role
 // %Category: Priv

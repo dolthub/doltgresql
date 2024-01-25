@@ -1227,9 +1227,10 @@ func (node *CreateTable) HoistConstraints() {
 
 // CreateSchema represents a CREATE SCHEMA statement.
 type CreateSchema struct {
-	IfNotExists bool
-	Schema      string
-	AuthRole    string
+	IfNotExists    bool
+	Schema         string
+	AuthRole       string
+	SchemaElements []Statement
 }
 
 // Format implements the NodeFormatter interface.
@@ -1248,6 +1249,13 @@ func (node *CreateSchema) Format(ctx *FmtCtx) {
 	if node.AuthRole != "" {
 		ctx.WriteString(" AUTHORIZATION ")
 		ctx.WriteString(node.AuthRole)
+	}
+
+	if node.SchemaElements != nil {
+		for _, se := range node.SchemaElements {
+			ctx.WriteByte(' ')
+			ctx.FormatNode(se)
+		}
 	}
 }
 
