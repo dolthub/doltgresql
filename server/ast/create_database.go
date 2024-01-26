@@ -60,12 +60,16 @@ func nodeCreateDatabase(node *tree.CreateDatabase) (*vitess.DBDDL, error) {
 	if len(node.Tablespace) > 0 {
 		return nil, fmt.Errorf("TABLESPACE clause is not yet supported")
 	}
+	// TODO: some clauses have default values in case of not being defined.
+	// ALLOW_CONNECTIONS defaults to TRUE
 	if node.AllowConnections != nil {
 		return nil, fmt.Errorf("ALLOW_CONNECTIONS clause is not yet supported")
 	}
+	// CONNECTION LIMIT defaults to -1
 	if node.ConnectionLimit != nil {
 		return nil, fmt.Errorf("CONNECTION LIMIT clause is not yet supported")
 	}
+	// IS_TEMPLATE defaults to FALSE
 	if node.IsTemplate != nil {
 		return nil, fmt.Errorf("IS_TEMPLATE clause is not yet supported")
 	}
