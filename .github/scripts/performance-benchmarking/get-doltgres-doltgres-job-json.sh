@@ -86,6 +86,7 @@ echo '
               "--output='$format'",
               "--postgres-exec=/usr/lib/postgresql/15/bin/postgres",
               "--init-db-exec=/usr/lib/postgresql/15/bin/initdb",
+              "--email-template=DoltgresPerformanceBenchmarkingReleaseTemplate",
               "--from-server='$fromServer'",
               "--from-version='$fromVersion'",
               "--to-server='$toServer'",
