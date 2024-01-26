@@ -189,6 +189,12 @@ func (u *sqlSymUnion) stmt() tree.Statement {
     }
     return nil
 }
+func (u *sqlSymUnion) stmts() []tree.Statement {
+    if stmt, ok := u.val.([]tree.Statement); ok {
+        return stmt
+    }
+    return nil
+}
 func (u *sqlSymUnion) cte() *tree.CTE {
     if cte, ok := u.val.(*tree.CTE); ok {
         return cte
@@ -608,7 +614,7 @@ func (u *sqlSymUnion) alterDefaultPrivileges() *tree.AlterDefaultPrivileges {
 
 %token <str> CACHE CHAIN CALL CANCEL CANCELQUERY CASCADE CASE CAST CBRT CHANGEFEED CHAR
 %token <str> CHARACTER CHARACTERISTICS CHECK CLOSE
-%token <str> CLUSTER COALESCE COLLATE COLLATION COLUMN COLUMNS COMMENT COMMENTS COMMIT
+%token <str> CLUSTER COALESCE COLLATE COLLATION COLLATION_VERSION COLUMN COLUMNS COMMENT COMMENTS COMMIT
 %token <str> COMMITTED COMPACT COMPLETE CONCAT CONCURRENTLY CONFIGURATION CONFIGURATIONS CONFIGURE
 %token <str> CONFLICT CONNECT CONNECTION CONSTRAINT CONSTRAINTS CONTAINS CONTROLCHANGEFEED
 %token <str> CONTROLJOB CONVERSION CONVERT COPY COVERING CREATE CREATEDB CREATELOGIN CREATEROLE
@@ -628,7 +634,7 @@ func (u *sqlSymUnion) alterDefaultPrivileges() *tree.AlterDefaultPrivileges {
 
 %token <str> FALSE FAMILY FETCH FETCHVAL FETCHTEXT FETCHVAL_PATH FETCHTEXT_PATH
 %token <str> FILES FILTER FIRST FLOAT FLOAT4 FLOAT8 FLOORDIV
-%token <str> FOLLOWING FOR FORCE_INDEX FOREIGN FROM FULL FUNCTION FUNCTIONS
+%token <str> FOLLOWING FOR FORCE FORCE_INDEX FOREIGN FROM FULL FUNCTION FUNCTIONS
 
 %token <str> GENERATED GEOGRAPHY GEOMETRY GEOMETRYM GEOMETRYZ GEOMETRYZM
 %token <str> GEOMETRYCOLLECTION GEOMETRYCOLLECTIONM GEOMETRYCOLLECTIONZ GEOMETRYCOLLECTIONZM
@@ -636,7 +642,7 @@ func (u *sqlSymUnion) alterDefaultPrivileges() *tree.AlterDefaultPrivileges {
 
 %token <str> HAVING HASH HIGH HISTOGRAM HOUR
 
-%token <str> IDENTITY
+%token <str> ICU_LOCALE ICU_RULES IDENTITY
 %token <str> IF IFERROR IFNULL IGNORE_FOREIGN_KEYS ILIKE IMMEDIATE IMPORT IN INCLUDE INCLUDING INCREMENT INCREMENTAL
 %token <str> INET INET_CONTAINED_BY_OR_EQUALS
 %token <str> INET_CONTAINS_OR_EQUALS INDEX INDEXES INHERIT INJECT INTERLEAVE INITIALLY
@@ -649,8 +655,8 @@ func (u *sqlSymUnion) alterDefaultPrivileges() *tree.AlterDefaultPrivileges {
 
 %token <str> LANGUAGE LARGE LAST LATERAL LATEST LC_CTYPE LC_COLLATE
 %token <str> LEADING LEASE LEAST LEFT LESS LEVEL LIKE LIMIT
-%token <str> LINESTRING LINESTRINGM LINESTRINGZ LINESTRINGZM
-%token <str> LIST LOCAL LOCALTIME LOCALTIMESTAMP LOCKED LOGIN LOOKUP LOW LSHIFT
+%token <str> LINESTRING LINESTRINGM LINESTRINGZ LINESTRINGZM LIST
+%token <str> LOCAL LOCALE LOCALE_PROVIDER LOCALTIME LOCALTIMESTAMP LOCKED LOGIN LOOKUP LOW LSHIFT
 
 %token <str> MATCH MATERIALIZED MERGE MINVALUE MAXVALUE MINUTE MODIFYCLUSTERSETTING MONTH
 %token <str> MULTILINESTRING MULTILINESTRINGM MULTILINESTRINGZ MULTILINESTRINGZM
@@ -681,8 +687,7 @@ func (u *sqlSymUnion) alterDefaultPrivileges() *tree.AlterDefaultPrivileges {
 %token <str> SERIALIZABLE SERVER SESSION SESSIONS SESSION_USER SET SETTING SETTINGS
 %token <str> SHARE SHOW SIMILAR SIMPLE SKIP SKIP_MISSING_FOREIGN_KEYS
 %token <str> SKIP_MISSING_SEQUENCES SKIP_MISSING_SEQUENCE_OWNERS SKIP_MISSING_VIEWS SMALLINT SMALLSERIAL SNAPSHOT SOME SPLIT SQL
-
-%token <str> START STATISTICS STATUS STDIN STRICT STRING STORAGE STORE STORED STORING SUBSTRING
+%token <str> START STATISTICS STATUS STDIN STRATEGY STRICT STRING STORAGE STORE STORED STORING SUBSTRING
 %token <str> SYMMETRIC SYNTAX SYSTEM SQRT SUBSCRIPTION
 
 %token <str> TABLE TABLES TABLESPACE TEMP TEMPLATE TEMPORARY TESTING_RELOCATE EXPERIMENTAL_RELOCATE TEXT THEN
@@ -811,6 +816,7 @@ func (u *sqlSymUnion) alterDefaultPrivileges() *tree.AlterDefaultPrivileges {
 %type <tree.Statement> create_stmt
 %type <tree.Statement> create_changefeed_stmt
 %type <tree.Statement> create_ddl_stmt
+%type <tree.Statement> create_ddl_stmt_schema_element
 %type <tree.Statement> create_database_stmt
 %type <tree.Statement> create_index_stmt
 %type <tree.Statement> create_role_stmt
@@ -820,6 +826,7 @@ func (u *sqlSymUnion) alterDefaultPrivileges() *tree.AlterDefaultPrivileges {
 %type <tree.Statement> create_table_as_stmt
 %type <tree.Statement> create_view_stmt
 %type <tree.Statement> create_sequence_stmt
+%type <tree.Statement> create_trigger_stmt
 
 %type <tree.Statement> create_stats_stmt
 %type <*tree.CreateStatsOptions> opt_create_stats_options
@@ -868,6 +875,8 @@ func (u *sqlSymUnion) alterDefaultPrivileges() *tree.AlterDefaultPrivileges {
 %type <tree.Statement> rollback_stmt
 %type <tree.Statement> savepoint_stmt
 
+%type <tree.Statement> schema_element
+%type <[]tree.Statement> schema_element_list opt_schema_element_list
 %type <tree.Statement> preparable_set_stmt nonpreparable_set_stmt
 %type <tree.Statement> set_session_stmt
 %type <tree.Statement> set_csetting_stmt
@@ -966,7 +975,8 @@ func (u *sqlSymUnion) alterDefaultPrivileges() *tree.AlterDefaultPrivileges {
 
 %type <tree.ValidationBehavior> opt_validate_behavior
 
-%type <str> opt_template_clause opt_encoding_clause opt_lc_collate_clause opt_lc_ctype_clause
+%type <str> opt_owner opt_template opt_encoding opt_strategy opt_locale opt_lc_collate opt_lc_ctype opt_icu_locale
+%type <str> opt_icu_rules opt_icu_rules opt_locale_provider opt_collation_version opt_tablespace
 
 %type <tree.IsolationLevel> transaction_iso_level
 %type <tree.UserPriority> transaction_user_priority
@@ -1041,7 +1051,7 @@ func (u *sqlSymUnion) alterDefaultPrivileges() *tree.AlterDefaultPrivileges {
 %type <tree.SequenceOption> sequence_option_elem
 
 %type <bool> all_or_distinct
-%type <bool> with_comment
+%type <bool> with_comment opt_with_force
 %type <empty> join_outer
 %type <tree.JoinCond> join_qual
 %type <str> join_type
@@ -1094,7 +1104,7 @@ func (u *sqlSymUnion) alterDefaultPrivileges() *tree.AlterDefaultPrivileges {
 %type <*tree.When> when_clause
 %type <[]*tree.When> when_clause_list
 %type <tree.ComparisonOperator> sub_type
-%type <tree.Expr> numeric_only
+%type <tree.Expr> numeric_only opt_allow_connections opt_connection_limit opt_is_template opt_oid
 %type <tree.AliasClause> alias_clause opt_alias_clause
 %type <bool> opt_ordinality opt_compact
 %type <*tree.Order> sortby
@@ -1199,7 +1209,7 @@ func (u *sqlSymUnion) alterDefaultPrivileges() *tree.AlterDefaultPrivileges {
 
 %type <tree.Persistence> opt_temp
 %type <tree.Persistence> opt_persistence_temp_table
-%type <bool> role_or_group_or_user role_or_user opt_with_grant_option opt_cascade_or_restrict opt_grant_option_for
+%type <bool> role_or_group_or_user role_or_user opt_with_grant_option opt_grant_option_for
 
 %type <tree.Expr>  cron_expr opt_description sconst_or_placeholder
 %type <*tree.FullBackupClause> opt_full_backup_clause
@@ -1565,9 +1575,9 @@ adp_abbreviated_grant_or_revoke:
   {
     $$.val = &tree.AlterDefaultPrivileges{Privileges: $2.privilegeList(), Target: $4.targetList(), Grantees: $6.strs(), GrantOption: $7.bool(), Grant: true}
   }
-| REVOKE opt_grant_option_for privileges ON targets_for_alter_def_priv FROM opt_role_list opt_cascade_or_restrict
+| REVOKE opt_grant_option_for privileges ON targets_for_alter_def_priv FROM opt_role_list opt_drop_behavior
   {
-    $$.val = &tree.AlterDefaultPrivileges{GrantOption: $2.bool(), Privileges: $3.privilegeList(), Target: $5.targetList(), Grantees: $7.strs(), Restrict: $8.bool()}
+    $$.val = &tree.AlterDefaultPrivileges{GrantOption: $2.bool(), Privileges: $3.privilegeList(), Target: $5.targetList(), Grantees: $7.strs(), DropBehavior: $8.dropBehavior()}
   }
 
 opt_grant_option_for:
@@ -2147,7 +2157,6 @@ opt_alter_column_using:
   {
      $$.val = nil
   }
-
 
 opt_drop_behavior:
   CASCADE
@@ -3276,7 +3285,6 @@ create_unsupported:
 | CREATE SERVER error { return unimplemented(sqllex, "create server") }
 | CREATE SUBSCRIPTION error { return unimplemented(sqllex, "create subscription") }
 | CREATE TEXT error { return unimplementedWithIssueDetail(sqllex, 7821, "create text") }
-| CREATE TRIGGER error { return unimplementedWithIssueDetail(sqllex, 28296, "create") }
 
 opt_or_replace:
   OR REPLACE {}
@@ -3313,15 +3321,19 @@ drop_unsupported:
 create_ddl_stmt:
   create_changefeed_stmt
 | create_database_stmt // EXTEND WITH HELP: CREATE DATABASE
-| create_index_stmt    // EXTEND WITH HELP: CREATE INDEX
 | create_schema_stmt   // EXTEND WITH HELP: CREATE SCHEMA
+| create_type_stmt     // EXTEND WITH HELP: CREATE TYPE
+| create_ddl_stmt_schema_element // help texts in sub-rule
+
+create_ddl_stmt_schema_element:
+  create_index_stmt    // EXTEND WITH HELP: CREATE INDEX
 | create_table_stmt    // EXTEND WITH HELP: CREATE TABLE
 | create_table_as_stmt // EXTEND WITH HELP: CREATE TABLE
 // Error case for both CREATE TABLE and CREATE TABLE ... AS in one
 | CREATE opt_persistence_temp_table TABLE error   // SHOW HELP: CREATE TABLE
-| create_type_stmt     // EXTEND WITH HELP: CREATE TYPE
 | create_view_stmt     // EXTEND WITH HELP: CREATE VIEW
 | create_sequence_stmt // EXTEND WITH HELP: CREATE SEQUENCE
+| create_trigger_stmt
 
 // %Help: CREATE STATISTICS - create a new table statistic
 // %Category: Misc
@@ -3619,26 +3631,40 @@ drop_index_stmt:
 
 // %Help: DROP DATABASE - remove a database
 // %Category: DDL
-// %Text: DROP DATABASE [IF EXISTS] <databasename> [CASCADE | RESTRICT]
+// %Text: DROP DATABASE [IF EXISTS] <databasename> [ [ WITH ] ( option [, ...] ) ]
 // %SeeAlso: WEBDOCS/drop-database.html
 drop_database_stmt:
-  DROP DATABASE database_name opt_drop_behavior
+  DROP DATABASE database_name opt_with_force
   {
     $$.val = &tree.DropDatabase{
       Name: tree.Name($3),
       IfExists: false,
-      DropBehavior: $4.dropBehavior(),
+      Force: $4.bool(),
     }
   }
-| DROP DATABASE IF EXISTS database_name opt_drop_behavior
+| DROP DATABASE IF EXISTS database_name opt_with_force
   {
     $$.val = &tree.DropDatabase{
       Name: tree.Name($5),
       IfExists: true,
-      DropBehavior: $6.dropBehavior(),
+      Force: $6.bool(),
     }
   }
 | DROP DATABASE error // SHOW HELP: DROP DATABASE
+
+opt_with_force:
+  /* EMPTY */
+  {
+    $$.val = false
+  }
+| opt_with '(' force_list ')'
+  {
+    $$.val = true
+  }
+
+force_list:
+  FORCE
+| force_list ',' FORCE
 
 // %Help: DROP TYPE - remove a type
 // %Category: DDL
@@ -4178,45 +4204,31 @@ opt_granted_by:
 //
 // %SeeAlso: GRANT, WEBDOCS/revoke.html
 revoke_stmt:
-  REVOKE privileges_for_cols ON targets_table FROM role_spec_list opt_granted_by opt_cascade_or_restrict
+  REVOKE privileges_for_cols ON targets_table FROM role_spec_list opt_granted_by opt_drop_behavior
   {
-    $$.val = &tree.Revoke{PrivsWithCols: $2.privForColsList(), Targets: $4.targetList(), Grantees: $6.strs(), GrantedBy: $7, Restrict: $8.bool()}
+    $$.val = &tree.Revoke{PrivsWithCols: $2.privForColsList(), Targets: $4.targetList(), Grantees: $6.strs(), GrantedBy: $7, DropBehavior: $8.dropBehavior()}
   }
-| REVOKE GRANT OPTION FOR privileges_for_cols ON targets_table FROM role_spec_list opt_granted_by opt_cascade_or_restrict
+| REVOKE GRANT OPTION FOR privileges_for_cols ON targets_table FROM role_spec_list opt_granted_by opt_drop_behavior
   {
-    $$.val = &tree.Revoke{PrivsWithCols: $5.privForColsList(), Targets: $7.targetList(), Grantees: $9.strs(), GrantOptionFor: true, GrantedBy: $10, Restrict: $11.bool()}
+    $$.val = &tree.Revoke{PrivsWithCols: $5.privForColsList(), Targets: $7.targetList(), Grantees: $9.strs(), GrantOptionFor: true, GrantedBy: $10, DropBehavior: $11.dropBehavior()}
   }
-| REVOKE privileges ON targets FROM role_spec_list opt_granted_by opt_cascade_or_restrict
+| REVOKE privileges ON targets FROM role_spec_list opt_granted_by opt_drop_behavior
   {
-    $$.val = &tree.Revoke{Privileges: $2.privilegeList(), Targets: $4.targetList(), Grantees: $6.strs(), GrantedBy: $7, Restrict: $8.bool()}
+    $$.val = &tree.Revoke{Privileges: $2.privilegeList(), Targets: $4.targetList(), Grantees: $6.strs(), GrantedBy: $7, DropBehavior: $8.dropBehavior()}
   }
-| REVOKE GRANT OPTION FOR privileges ON targets FROM role_spec_list opt_granted_by opt_cascade_or_restrict
+| REVOKE GRANT OPTION FOR privileges ON targets FROM role_spec_list opt_granted_by opt_drop_behavior
   {
-    $$.val = &tree.Revoke{Privileges: $5.privilegeList(), Targets: $7.targetList(), Grantees: $9.strs(), GrantOptionFor: true, GrantedBy: $10, Restrict: $11.bool()}
+    $$.val = &tree.Revoke{Privileges: $5.privilegeList(), Targets: $7.targetList(), Grantees: $9.strs(), GrantOptionFor: true, GrantedBy: $10, DropBehavior: $11.dropBehavior()}
   }
-| REVOKE privilege_list FROM role_spec_list opt_granted_by opt_cascade_or_restrict
+| REVOKE privilege_list FROM role_spec_list opt_granted_by opt_drop_behavior
   {
-    $$.val = &tree.RevokeRole{Roles: $2.nameList(), Members: $4.strs(), GrantedBy: $5, Restrict: $6.bool()}
+    $$.val = &tree.RevokeRole{Roles: $2.nameList(), Members: $4.strs(), GrantedBy: $5, DropBehavior: $6.dropBehavior()}
   }
-| REVOKE admin_inherit_set OPTION FOR privilege_list FROM role_spec_list opt_granted_by opt_cascade_or_restrict
+| REVOKE admin_inherit_set OPTION FOR privilege_list FROM role_spec_list opt_granted_by opt_drop_behavior
   {
-    $$.val = &tree.RevokeRole{Roles: $5.nameList(), Members: $7.strs(), Option: $2, GrantedBy: $8, Restrict: $9.bool()}
+    $$.val = &tree.RevokeRole{Roles: $5.nameList(), Members: $7.strs(), Option: $2, GrantedBy: $8, DropBehavior: $9.dropBehavior()}
   }
 | REVOKE error // SHOW HELP: REVOKE
-
-opt_cascade_or_restrict:
-  /* EMPTY */
-  {
-    $$.val = true
-  }
-| RESTRICT
-  {
-    $$.val = true
-  }
-| CASCADE
-  {
-    $$.val = false
-  }
 
 privileges_for_cols:
   ALL '(' name_list ')'
@@ -5831,10 +5843,19 @@ pause_schedules_stmt:
 // %Text:
 // CREATE SCHEMA [IF NOT EXISTS] { <schemaname> | [<schemaname>] AUTHORIZATION <rolename> }
 create_schema_stmt:
-  CREATE SCHEMA schema_name
+  CREATE SCHEMA schema_name opt_schema_element_list
   {
     $$.val = &tree.CreateSchema{
       Schema: $3,
+      SchemaElements: $4.stmts(),
+    }
+  }
+| CREATE SCHEMA opt_schema_name AUTHORIZATION role_spec opt_schema_element_list
+  {
+    $$.val = &tree.CreateSchema{
+      Schema: $3,
+      AuthRole: $5,
+      SchemaElements: $6.stmts(),
     }
   }
 | CREATE SCHEMA IF NOT EXISTS schema_name
@@ -5842,13 +5863,6 @@ create_schema_stmt:
     $$.val = &tree.CreateSchema{
       Schema: $6,
       IfNotExists: true,
-    }
-  }
-| CREATE SCHEMA opt_schema_name AUTHORIZATION role_spec
-  {
-    $$.val = &tree.CreateSchema{
-      Schema: $3,
-      AuthRole: $5,
     }
   }
 | CREATE SCHEMA IF NOT EXISTS opt_schema_name AUTHORIZATION role_spec
@@ -5860,6 +5874,30 @@ create_schema_stmt:
     }
   }
 | CREATE SCHEMA error // SHOW HELP: CREATE SCHEMA
+
+opt_schema_element_list:
+  /* EMPTY */
+  {
+  $$.val = nil
+  }
+| schema_element_list
+  {
+  $$.val = $1.stmts()
+  }
+
+schema_element_list:
+  schema_element
+  {
+    $$.val = []tree.Statement{$1.stmt()}
+  }
+| schema_element_list schema_element
+  {
+    $$.val = append($1.stmts(), $2.stmt())
+  }
+
+schema_element:
+  create_ddl_stmt_schema_element
+| grant_stmt
 
 // %Help: ALTER SCHEMA - alter an existing schema
 // %Category: DDL
@@ -6846,6 +6884,9 @@ password_clause:
     $$.val = tree.KVOption{Key: tree.Name($1), Value: tree.DNull}
   }
 
+create_trigger_stmt:
+  CREATE TRIGGER error { return unimplementedWithIssueDetail(sqllex, 28296, "create trigger") }
+
 // %Help: CREATE ROLE - define a new role
 // %Category: Priv
 // %Text: CREATE ROLE [IF NOT EXISTS] <name> [ [WITH] <OPTIONS...> ]
@@ -7759,30 +7800,65 @@ transaction_deferrable_mode:
 // %Text: CREATE DATABASE [IF NOT EXISTS] <name>
 // %SeeAlso: WEBDOCS/create-database.html
 create_database_stmt:
-  CREATE DATABASE database_name opt_with opt_template_clause opt_encoding_clause opt_lc_collate_clause opt_lc_ctype_clause
+  CREATE DATABASE database_name opt_with opt_owner opt_template opt_encoding opt_strategy opt_locale opt_lc_collate opt_lc_ctype opt_icu_locale opt_icu_rules opt_locale_provider opt_collation_version opt_tablespace opt_allow_connections opt_connection_limit opt_is_template opt_oid
   {
     $$.val = &tree.CreateDatabase{
       Name: tree.Name($3),
-      Template: $5,
-      Encoding: $6,
-      Collate: $7,
-      CType: $8,
+      Owner: $5,
+      Template: $6,
+      Encoding: $7,
+      Strategy: $8,
+      Locale: $9,
+      Collate: $10,
+      CType: $11,
+      IcuLocale: $12,
+      IcuRules: $13,
+      LocaleProvider: $14,
+      CollationVersion: $15,
+      Tablespace: $16,
+      AllowConnections: $17.expr(),
+      ConnectionLimit: $18.expr(),
+      IsTemplate: $19.expr(),
+      Oid: $20.expr(),
     }
   }
-| CREATE DATABASE IF NOT EXISTS database_name opt_with opt_template_clause opt_encoding_clause opt_lc_collate_clause opt_lc_ctype_clause
+| CREATE DATABASE IF NOT EXISTS database_name opt_with opt_owner opt_template opt_encoding opt_strategy opt_locale opt_lc_collate opt_lc_ctype opt_icu_locale opt_icu_rules opt_locale_provider opt_collation_version opt_tablespace opt_allow_connections opt_connection_limit opt_is_template opt_oid
   {
     $$.val = &tree.CreateDatabase{
       IfNotExists: true,
       Name: tree.Name($6),
-      Template: $8,
-      Encoding: $9,
-      Collate: $10,
-      CType: $11,
+      Owner: $8,
+      Template: $9,
+      Encoding: $10,
+      Strategy: $11,
+      Locale: $12,
+      Collate: $13,
+      CType: $14,
+      IcuLocale: $15,
+      IcuRules: $16,
+      LocaleProvider: $17,
+      CollationVersion: $18,
+      Tablespace: $19,
+      AllowConnections: $20.expr(),
+      ConnectionLimit: $21.expr(),
+      IsTemplate: $22.expr(),
+      Oid: $23.expr(),
     }
    }
 | CREATE DATABASE error // SHOW HELP: CREATE DATABASE
 
-opt_template_clause:
+// Optional parameters can be written in any order, not only the order illustrated above.
+opt_owner:
+  OWNER opt_equal role_spec
+  {
+    $$ = $3
+  }
+| /* EMPTY */
+  {
+    $$ = ""
+  }
+
+opt_template:
   TEMPLATE opt_equal non_reserved_word_or_sconst
   {
     $$ = $3
@@ -7792,7 +7868,7 @@ opt_template_clause:
     $$ = ""
   }
 
-opt_encoding_clause:
+opt_encoding:
   ENCODING opt_equal non_reserved_word_or_sconst
   {
     $$ = $3
@@ -7802,7 +7878,27 @@ opt_encoding_clause:
     $$ = ""
   }
 
-opt_lc_collate_clause:
+opt_strategy:
+  STRATEGY opt_equal non_reserved_word_or_sconst
+  {
+    $$ = $3
+  }
+| /* EMPTY */
+  {
+    $$ = ""
+  }
+
+opt_locale:
+  LOCALE opt_equal non_reserved_word_or_sconst
+  {
+    $$ = $3
+  }
+| /* EMPTY */
+  {
+    $$ = ""
+  }
+
+opt_lc_collate:
   LC_COLLATE opt_equal non_reserved_word_or_sconst
   {
     $$ = $3
@@ -7812,7 +7908,7 @@ opt_lc_collate_clause:
     $$ = ""
   }
 
-opt_lc_ctype_clause:
+opt_lc_ctype:
   LC_CTYPE opt_equal non_reserved_word_or_sconst
   {
     $$ = $3
@@ -7820,6 +7916,96 @@ opt_lc_ctype_clause:
 | /* EMPTY */
   {
     $$ = ""
+  }
+
+opt_icu_locale:
+  ICU_LOCALE opt_equal non_reserved_word_or_sconst
+  {
+    $$ = $3
+  }
+| /* EMPTY */
+  {
+    $$ = ""
+  }
+
+opt_icu_rules:
+  ICU_RULES opt_equal non_reserved_word_or_sconst
+  {
+    $$ = $3
+  }
+| /* EMPTY */
+  {
+    $$ = ""
+  }
+
+opt_locale_provider:
+  LOCALE_PROVIDER opt_equal non_reserved_word_or_sconst
+  {
+    $$ = $3
+  }
+| /* EMPTY */
+  {
+    $$ = ""
+  }
+
+opt_collation_version:
+  COLLATION_VERSION opt_equal non_reserved_word_or_sconst
+  {
+    $$ = $3
+  }
+| /* EMPTY */
+  {
+    $$ = ""
+  }
+
+opt_tablespace:
+  TABLESPACE opt_equal non_reserved_word_or_sconst
+  {
+    $$ = $3
+  }
+| /* EMPTY */
+  {
+    $$ = ""
+  }
+
+opt_allow_connections:
+  ALLOW_CONNECTIONS opt_equal a_expr
+  {
+    $$.val = $3.expr()
+  }
+| /* EMPTY */
+  {
+    $$.val = nil
+  }
+
+opt_connection_limit:
+  CONNECTION LIMIT opt_equal signed_iconst
+  {
+    $$.val = $4.expr()
+  }
+| /* EMPTY */
+  {
+    $$.val = nil
+  }
+
+opt_is_template:
+  IS_TEMPLATE opt_equal a_expr
+  {
+    $$.val = $3.expr()
+  }
+| /* EMPTY */
+  {
+    $$.val = nil
+  }
+
+opt_oid:
+  OID opt_equal signed_iconst
+  {
+    $$.val = $3.expr()
+  }
+| /* EMPTY */
+  {
+    $$.val = nil
   }
 
 opt_equal:
@@ -11940,6 +12126,7 @@ unreserved_keyword:
 | CHANGEFEED
 | CLOSE
 | CLUSTER
+| COLLATION_VERSION
 | COLUMNS
 | COMMENT
 | COMMENTS
@@ -12002,6 +12189,7 @@ unreserved_keyword:
 | FILTER
 | FIRST
 | FOLLOWING
+| FORCE
 | FORCE_INDEX
 | FUNCTION
 | FUNCTIONS
@@ -12021,6 +12209,8 @@ unreserved_keyword:
 | HIGH
 | HISTOGRAM
 | HOUR
+| ICU_LOCALE
+| ICU_RULES
 | IDENTITY
 | IMMEDIATE
 | IMPORT
@@ -12056,6 +12246,8 @@ unreserved_keyword:
 | LINESTRING
 | LIST
 | LOCAL
+| LOCALE
+| LOCALE_PROVIDER
 | LOCKED
 | LOGIN
 | LOOKUP
@@ -12102,6 +12294,7 @@ unreserved_keyword:
 | OBJECT
 | OF
 | OFF
+| OID
 | OIDS
 | OPERATOR
 | OPT
@@ -12205,6 +12398,7 @@ unreserved_keyword:
 | STORE
 | STORED
 | STORING
+| STRATEGY
 | STRICT
 | SUBSCRIPTION
 | SYNTAX

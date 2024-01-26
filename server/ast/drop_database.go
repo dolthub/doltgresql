@@ -27,13 +27,8 @@ func nodeDropDatabase(node *tree.DropDatabase) (*vitess.DBDDL, error) {
 	if node == nil {
 		return nil, nil
 	}
-	switch node.DropBehavior {
-	case tree.DropDefault:
-		// Default behavior, nothing to do
-	case tree.DropRestrict:
-		return nil, fmt.Errorf("RESTRICT is not yet supported")
-	case tree.DropCascade:
-		return nil, fmt.Errorf("CASCADE is not yet supported")
+	if node.Force {
+		return nil, fmt.Errorf("WITH ( FORCE ) is not yet supported")
 	}
 	return &vitess.DBDDL{
 		Action:   vitess.DropStr,

@@ -47,7 +47,7 @@ type Revoke struct {
 	Grantees       []string
 	GrantOptionFor bool
 	GrantedBy      string
-	Restrict       bool
+	DropBehavior   DropBehavior
 
 	// only used for table target with column names defined
 	PrivsWithCols []PrivForCols
@@ -80,20 +80,19 @@ func (node *Revoke) Format(ctx *FmtCtx) {
 		ctx.WriteString(" GRANTED BY ")
 		ctx.WriteString(node.GrantedBy)
 	}
-	if node.Restrict {
-		ctx.WriteString(" RESTRICT")
-	} else {
-		ctx.WriteString(" CASCADE")
+	if node.DropBehavior.String() != "" {
+		ctx.WriteByte(' ')
+		ctx.WriteString(node.DropBehavior.String())
 	}
 }
 
 // RevokeRole represents a REVOKE <role> statement.
 type RevokeRole struct {
-	Roles     NameList
-	Members   []string
-	Option    string
-	GrantedBy string
-	Restrict  bool
+	Roles        NameList
+	Members      []string
+	Option       string
+	GrantedBy    string
+	DropBehavior DropBehavior
 }
 
 // Format implements the NodeFormatter interface.
@@ -110,9 +109,8 @@ func (node *RevokeRole) Format(ctx *FmtCtx) {
 		ctx.WriteString(" GRANTED BY ")
 		ctx.WriteString(node.GrantedBy)
 	}
-	if node.Restrict {
-		ctx.WriteString(" RESTRICT")
-	} else {
-		ctx.WriteString(" CASCADE")
+	if node.DropBehavior.String() != "" {
+		ctx.WriteByte(' ')
+		ctx.WriteString(node.DropBehavior.String())
 	}
 }
