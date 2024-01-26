@@ -171,17 +171,30 @@ Please follow the [Contributor's Guide](https://github.com/dolthub/doltgresql/bl
 
 # Performance
 
-Dolt is [1.7X slower than MySQL](https://docs.dolthub.com/sql-reference/benchmarks/latency) as measured by 
-a standard suite of Sysbench tests. 
+Dolt is [1.7X slower than MySQL](https://docs.dolthub.com/sql-reference/benchmarks/latency) as measured by
+a standard suite of Sysbench tests.
 
-Similar tests for Doltgres vs Postgres coming soon. 
+We use these same Sysbench tests to benchmark DoltgreSQL and compare the results to PostgreSQL. 
+
+Here are the benchmarks for DoltgreSQL version `0.3.0`.
+
+<!-- START_LATENCY_RESULTS_TABLE -->
+<!-- END_LATENCY_RESULTS_TABLE -->
+<br/>
 
 # Correctness
 
 Dolt is [99.99% compatible](https://docs.dolthub.com/sql-reference/benchmarks/correctness) with MySQL based on a 
 standard suite of correctness tests called `sqllogictest`.
 
-A similar comparison for Doltgres coming soon.
+We use these same tests to measure the correctness of DoltgreSQL.
+
+Here are DoltgreSQL's sqllogictest results for version `0.3.0`.  Tests that
+did not run could not complete due to a timeout earlier in the run.
+
+<!-- START_CORRECTNESS_RESULTS_TABLE -->
+<!-- END_CORRECTNESS_RESULTS_TABLE -->
+<br/>
 
 # Architecture
 
