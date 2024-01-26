@@ -89,6 +89,7 @@ echo '
               "--useDoltHubLuaScriptsRepo",
               "--repo=doltgresql",
               "--output='$format'",
+              "--email-template=DoltgresPerformanceBenchmarkingReleaseTemplate",
               "--postgres-exec=/usr/lib/postgresql/15/bin/postgres",
               "--init-db-exec=/usr/lib/postgresql/15/bin/initdb",
               "--from-server='$fromServer'",
