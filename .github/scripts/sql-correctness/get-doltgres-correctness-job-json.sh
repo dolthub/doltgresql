@@ -76,10 +76,9 @@ echo '
             ],
             "args": [
               "--schema=/correctness.sql",
-              "--concurrent",
               "--output='$format'",
               "--version='$version'",
-              "--timeout=600",
+              "--doltgres",
               '"$nomsBinFormat"'
               '"$issueNumber"'
               '"$regressComp"'
