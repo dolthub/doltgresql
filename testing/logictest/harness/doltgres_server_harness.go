@@ -268,7 +268,9 @@ func (h *DoltgresHarness) startNewDoltgresServer(ctx context.Context, newTestFil
 func (h *DoltgresHarness) ClearServer() {
 	if h.db != nil {
 		err := h.db.Close()
-		logErr(err, "closing connection")
+		if err != nil {
+			logErr(err, "closing connection")
+		}
 		h.db = nil
 	}
 	// close
