@@ -821,6 +821,7 @@ func (u *sqlSymUnion) alterDefaultPrivileges() *tree.AlterDefaultPrivileges {
 %type <tree.Statement> create_index_stmt
 %type <tree.Statement> create_role_stmt
 %type <tree.Statement> create_schedule_for_backup_stmt
+%type <tree.Statement> create_extension_stmt
 %type <tree.Statement> create_schema_stmt
 %type <tree.Statement> create_table_stmt
 %type <tree.Statement> create_table_as_stmt
@@ -995,7 +996,7 @@ func (u *sqlSymUnion) alterDefaultPrivileges() *tree.AlterDefaultPrivileges {
 %type <str> db_object_name_component
 %type <*tree.UnresolvedObjectName> table_name standalone_index_name sequence_name type_name view_name db_object_name simple_db_object_name complex_db_object_name
 %type <[]*tree.UnresolvedObjectName> type_name_list
-%type <str> schema_name opt_schema_name
+%type <str> schema_name opt_schema_name opt_schema opt_version
 %type <[]string> schema_name_list role_spec_list opt_role_list
 %type <*tree.UnresolvedName> table_pattern complex_table_pattern
 %type <*tree.UnresolvedName> column_path prefixed_column_path column_path_with_star
@@ -1050,7 +1051,7 @@ func (u *sqlSymUnion) alterDefaultPrivileges() *tree.AlterDefaultPrivileges {
 %type <[]tree.SequenceOption> sequence_option_list opt_sequence_option_list
 %type <tree.SequenceOption> sequence_option_elem
 
-%type <bool> all_or_distinct
+%type <bool> all_or_distinct opt_cascade
 %type <bool> with_comment opt_with_force
 %type <empty> join_outer
 %type <tree.JoinCond> join_qual
@@ -3239,6 +3240,10 @@ comment_stmt:
   {
     $$.val = &tree.CommentOnIndex{Index: $4.tableIndexName(), Comment: $6.strPtr()}
   }
+| COMMENT ON EXTENSION name IS comment_text
+  {
+    $$.val = &tree.CommentOnExtension{Name: tree.Name($4), Comment: $6.strPtr()}
+  }
 
 comment_text:
   SCONST
@@ -3263,6 +3268,7 @@ create_stmt:
 | create_ddl_stmt      // help texts in sub-rule
 | create_stats_stmt    // EXTEND WITH HELP: CREATE STATISTICS
 | create_schedule_for_backup_stmt   // EXTEND WITH HELP: CREATE SCHEDULE FOR BACKUP
+| create_extension_stmt // EXTEND WITH HELP: CREATE EXTENSION
 | create_unsupported   {}
 | CREATE error         // SHOW HELP: CREATE
 
@@ -3272,8 +3278,6 @@ create_unsupported:
 | CREATE CONSTRAINT TRIGGER error { return unimplementedWithIssueDetail(sqllex, 28296, "create constraint") }
 | CREATE CONVERSION error { return unimplemented(sqllex, "create conversion") }
 | CREATE DEFAULT CONVERSION error { return unimplemented(sqllex, "create def conv") }
-| CREATE EXTENSION IF NOT EXISTS name error { return unimplemented(sqllex, "create extension " + $6) }
-| CREATE EXTENSION name error { return unimplemented(sqllex, "create extension " + $3) }
 | CREATE FOREIGN TABLE error { return unimplemented(sqllex, "create foreign table") }
 | CREATE FOREIGN DATA error { return unimplemented(sqllex, "create fdw") }
 | CREATE FUNCTION error { return unimplementedWithIssueDetail(sqllex, 17511, "create function") }
@@ -3285,6 +3289,46 @@ create_unsupported:
 | CREATE SERVER error { return unimplemented(sqllex, "create server") }
 | CREATE SUBSCRIPTION error { return unimplemented(sqllex, "create subscription") }
 | CREATE TEXT error { return unimplementedWithIssueDetail(sqllex, 7821, "create text") }
+
+create_extension_stmt:
+  CREATE EXTENSION name opt_with opt_schema opt_version opt_cascade
+  {
+    $$.val = &tree.CreateExtension{Name: tree.Name($3), Schema: $5, Version: $6, Cascade: $7.bool()}
+  }
+| CREATE EXTENSION IF NOT EXISTS name opt_with opt_schema opt_version opt_cascade
+  {
+    $$.val = &tree.CreateExtension{Name: tree.Name($6), IfNotExists: true, Schema: $8, Version: $9, Cascade: $10.bool()}
+  }
+
+opt_schema:
+  /* EMPTY */
+  {
+    $$ = ""
+  }
+| SCHEMA schema_name
+  {
+    $$ = $2
+  }
+
+opt_version:
+  /* EMPTY */
+  {
+    $$ = ""
+  }
+| VERSION name
+  {
+    $$ = $2
+  }
+
+opt_cascade:
+  /* EMPTY */
+  {
+    $$.val = false
+  }
+| CASCADE
+  {
+    $$.val = true
+  }
 
 opt_or_replace:
   OR REPLACE {}
@@ -3668,7 +3712,7 @@ force_list:
 
 // %Help: DROP TYPE - remove a type
 // %Category: DDL
-// %Text: DROP TYPE [IF EXISTS] <type_name> [, ...] [CASCASE | RESTRICT]
+// %Text: DROP TYPE [IF EXISTS] <type_name> [, ...] [CASCADE | RESTRICT]
 drop_type_stmt:
   DROP TYPE type_name_list opt_drop_behavior
   {

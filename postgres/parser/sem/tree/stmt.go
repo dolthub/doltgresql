@@ -367,6 +367,12 @@ func (*CommentOnDatabase) StatementType() StatementType { return DDL }
 func (*CommentOnDatabase) StatementTag() string { return "COMMENT ON DATABASE" }
 
 // StatementType implements the Statement interface.
+func (*CommentOnExtension) StatementType() StatementType { return DDL }
+
+// StatementTag returns a short string identifying the type of statement.
+func (*CommentOnExtension) StatementTag() string { return "COMMENT ON EXTENSION" }
+
+// StatementType implements the Statement interface.
 func (*CommentOnIndex) StatementType() StatementType { return DDL }
 
 // StatementTag returns a short string identifying the type of statement.
@@ -408,6 +414,12 @@ func (*CreateDatabase) StatementType() StatementType { return DDL }
 
 // StatementTag returns a short string identifying the type of statement.
 func (*CreateDatabase) StatementTag() string { return "CREATE DATABASE" }
+
+// StatementType implements the Statement interface.
+func (*CreateExtension) StatementType() StatementType { return DDL }
+
+// StatementTag returns a short string identifying the type of statement.
+func (*CreateExtension) StatementTag() string { return "CREATE EXTENSION" }
 
 // StatementType implements the Statement interface.
 func (*CreateIndex) StatementType() StatementType { return DDL }
@@ -1081,12 +1093,14 @@ func (n *CancelSessions) String() string                 { return AsString(n) }
 func (n *CannedOptPlan) String() string                  { return AsString(n) }
 func (n *CommentOnColumn) String() string                { return AsString(n) }
 func (n *CommentOnDatabase) String() string              { return AsString(n) }
+func (n *CommentOnExtension) String() string             { return AsString(n) }
 func (n *CommentOnIndex) String() string                 { return AsString(n) }
 func (n *CommentOnTable) String() string                 { return AsString(n) }
 func (n *CommitTransaction) String() string              { return AsString(n) }
 func (n *CopyFrom) String() string                       { return AsString(n) }
 func (n *CreateChangefeed) String() string               { return AsString(n) }
 func (n *CreateDatabase) String() string                 { return AsString(n) }
+func (n *CreateExtension) String() string                { return AsString(n) }
 func (n *CreateIndex) String() string                    { return AsString(n) }
 func (n *CreateRole) String() string                     { return AsString(n) }
 func (n *CreateTable) String() string                    { return AsString(n) }
