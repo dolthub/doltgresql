@@ -558,8 +558,11 @@ func (u *sqlSymUnion) refreshDataOption() tree.RefreshDataOption {
 func (u *sqlSymUnion) aggregateSignature() *tree.AggregateSignature {
   return u.val.(*tree.AggregateSignature)
 }
-func (u *sqlSymUnion) aggregateArg() *tree.AggregateArg {
-  return u.val.(*tree.AggregateArg)
+func (u *sqlSymUnion) routineArg() *tree.RoutineArg {
+  return u.val.(*tree.RoutineArg)
+}
+func (u *sqlSymUnion) routineArgs() []*tree.RoutineArg {
+  return u.val.([]*tree.RoutineArg)
 }
 func (u *sqlSymUnion) databaseOption() tree.DatabaseOption {
     return u.val.(tree.DatabaseOption)
@@ -585,6 +588,18 @@ func (u *sqlSymUnion) privForColsList() []tree.PrivForCols {
 func (u *sqlSymUnion) alterDefaultPrivileges() *tree.AlterDefaultPrivileges {
   return u.val.(*tree.AlterDefaultPrivileges)
 }
+func (u *sqlSymUnion) simpleColumnDef() tree.SimpleColumnDef {
+  return u.val.(tree.SimpleColumnDef)
+}
+func (u *sqlSymUnion) simpleColumnDefs() []tree.SimpleColumnDef {
+  return u.val.([]tree.SimpleColumnDef)
+}
+func (u *sqlSymUnion) routineOption() tree.RoutineOption {
+  return u.val.(tree.RoutineOption)
+}
+func (u *sqlSymUnion) routineOptions() []tree.RoutineOption {
+  return u.val.([]tree.RoutineOption)
+}
 %}
 
 // NB: the %token definitions must come before the %type definitions in this
@@ -606,31 +621,31 @@ func (u *sqlSymUnion) alterDefaultPrivileges() *tree.AlterDefaultPrivileges {
 // Ordinary key words in alphabetical order.
 %token <str> ABORT ACTION ADD ADMIN AFTER AGGREGATE
 %token <str> ALL ALLOW_CONNECTIONS ALTER ALWAYS ANALYSE ANALYZE AND AND_AND ANY ANNOTATE_TYPE ARRAY AS ASC
-%token <str> ASYMMETRIC AT ATTRIBUTE AUTHORIZATION AUTOMATIC
+%token <str> ASYMMETRIC AT ATOMIC ATTRIBUTE AUTHORIZATION AUTOMATIC
 
 %token <str> BACKUP BACKUPS BEFORE BEGIN BETWEEN BIGINT BIGSERIAL BINARY BIT
 %token <str> BUCKET_COUNT
 %token <str> BOOLEAN BOTH BOX2D BUNDLE BY
 
-%token <str> CACHE CHAIN CALL CANCEL CANCELQUERY CASCADE CASE CAST CBRT CHANGEFEED CHAR
+%token <str> CACHE CHAIN CALL CALLED CANCEL CANCELQUERY CASCADE CASE CAST CBRT CHANGEFEED CHAR
 %token <str> CHARACTER CHARACTERISTICS CHECK CLOSE
 %token <str> CLUSTER COALESCE COLLATE COLLATION COLLATION_VERSION COLUMN COLUMNS COMMENT COMMENTS COMMIT
 %token <str> COMMITTED COMPACT COMPLETE CONCAT CONCURRENTLY CONFIGURATION CONFIGURATIONS CONFIGURE
 %token <str> CONFLICT CONNECT CONNECTION CONSTRAINT CONSTRAINTS CONTAINS CONTROLCHANGEFEED
-%token <str> CONTROLJOB CONVERSION CONVERT COPY COVERING CREATE CREATEDB CREATELOGIN CREATEROLE
+%token <str> CONTROLJOB CONVERSION CONVERT COPY COST COVERING CREATE CREATEDB CREATELOGIN CREATEROLE
 %token <str> CROSS CUBE CURRENT CURRENT_CATALOG CURRENT_DATE CURRENT_SCHEMA
 %token <str> CURRENT_ROLE CURRENT_TIME CURRENT_TIMESTAMP
 %token <str> CURRENT_USER CYCLE
 
-%token <str> DATA DATABASE DATABASES DATE DAY DEC DECIMAL DEFAULT DEFAULTS
-%token <str> DEALLOCATE DECLARE DEFERRABLE DEFERRED DELETE DESC DESTINATION DETACHED
+%token <str> DATA DATABASE DATABASES DATE DAY DEALLOCATE DEC DECIMAL DECLARE
+%token <str> DEFAULT DEFAULTS DEFERRABLE DEFERRED DEFINER DELETE DESC DESTINATION DETACHED
 %token <str> DISCARD DISTINCT DO DOMAIN DOUBLE DROP
 
 %token <str> ELSE ENCODING ENCRYPTION_PASSPHRASE END ENUM ENUMS ESCAPE EXCEPT EXCLUDE EXCLUDING
 %token <str> EXISTS EXECUTE EXECUTION EXPERIMENTAL
 %token <str> EXPERIMENTAL_FINGERPRINTS EXPERIMENTAL_REPLICA
 %token <str> EXPERIMENTAL_AUDIT
-%token <str> EXPIRATION EXPLAIN EXPORT EXTENSION EXTRACT EXTRACT_DURATION
+%token <str> EXPIRATION EXPLAIN EXPORT EXTENSION EXTERNAL EXTRACT EXTRACT_DURATION
 
 %token <str> FALSE FAMILY FETCH FETCHVAL FETCHTEXT FETCHVAL_PATH FETCHTEXT_PATH
 %token <str> FILES FILTER FIRST FLOAT FLOAT4 FLOAT8 FLOORDIV
@@ -643,18 +658,18 @@ func (u *sqlSymUnion) alterDefaultPrivileges() *tree.AlterDefaultPrivileges {
 %token <str> HAVING HASH HIGH HISTOGRAM HOUR
 
 %token <str> ICU_LOCALE ICU_RULES IDENTITY
-%token <str> IF IFERROR IFNULL IGNORE_FOREIGN_KEYS ILIKE IMMEDIATE IMPORT IN INCLUDE INCLUDING INCREMENT INCREMENTAL
-%token <str> INET INET_CONTAINED_BY_OR_EQUALS
-%token <str> INET_CONTAINS_OR_EQUALS INDEX INDEXES INHERIT INJECT INTERLEAVE INITIALLY
+%token <str> IF IFERROR IFNULL IGNORE_FOREIGN_KEYS ILIKE IMMEDIATE IMMUTABLE IMPORT
+%token <str> IN INCLUDE INCLUDING INCREMENT INCREMENTAL INET INET_CONTAINED_BY_OR_EQUALS
+%token <str> INET_CONTAINS_OR_EQUALS INDEX INDEXES INHERIT INJECT INPUT INTERLEAVE INITIALLY
 %token <str> INNER INSERT INT INTEGER
-%token <str> INTERSECT INTERVAL INTO INTO_DB INVERTED IS ISERROR ISNULL ISOLATION IS_TEMPLATE
+%token <str> INTERSECT INTERVAL INTO INTO_DB INVERTED INVOKER IS ISERROR ISNULL ISOLATION IS_TEMPLATE
 
 %token <str> JOB JOBS JOIN JSON JSONB JSON_SOME_EXISTS JSON_ALL_EXISTS
 
 %token <str> KEY KEYS KMS KV
 
 %token <str> LANGUAGE LARGE LAST LATERAL LATEST LC_CTYPE LC_COLLATE
-%token <str> LEADING LEASE LEAST LEFT LESS LEVEL LIKE LIMIT
+%token <str> LEADING LEAKPROOF LEASE LEAST LEFT LESS LEVEL LIKE LIMIT
 %token <str> LINESTRING LINESTRINGM LINESTRINGZ LINESTRINGZM LIST
 %token <str> LOCAL LOCALE LOCALE_PROVIDER LOCALTIME LOCALTIMESTAMP LOCKED LOGIN LOOKUP LOW LSHIFT
 
@@ -670,7 +685,7 @@ func (u *sqlSymUnion) alterDefaultPrivileges() *tree.AlterDefaultPrivileges {
 %token <str> OBJECT OF OFF OFFSET OID OIDS OIDVECTOR ON ONLY OPT OPTION OPTIONS OR
 %token <str> ORDER ORDINALITY OTHERS OUT OUTER OVER OVERLAPS OVERLAY OWNED OWNER OPERATOR
 
-%token <str> PARAMETER PARENT PARTIAL PARTITION PARTITIONS PASSWORD PAUSE PAUSED PHYSICAL PLACING
+%token <str> PARALLEL PARAMETER PARENT PARTIAL PARTITION PARTITIONS PASSWORD PAUSE PAUSED PHYSICAL PLACING
 %token <str> PLAN PLANS POINT POINTM POINTZ POINTZM POLYGON POLYGONM POLYGONZ POLYGONZM
 %token <str> POSITION PRECEDING PRECISION PREPARE PRESERVE PRIMARY PRIORITY PRIVILEGES
 %token <str> PROCEDURAL PROCEDURE PROCEDURES PUBLIC PUBLICATION
@@ -678,28 +693,28 @@ func (u *sqlSymUnion) alterDefaultPrivileges() *tree.AlterDefaultPrivileges {
 %token <str> QUERIES QUERY
 
 %token <str> RANGE RANGES READ REAL RECURSIVE RECURRING REF REFERENCES REFRESH
-%token <str> REGCLASS REGPROC REGPROCEDURE REGNAMESPACE REGTYPE REINDEX
-%token <str> REMOVE_PATH RENAME REPEATABLE REPLACE
-%token <str> RELEASE RESET RESTORE RESTRICT RESUME RETURNING RETRY REVISION_HISTORY REVOKE RIGHT
+%token <str> REGCLASS REGPROC REGPROCEDURE REGNAMESPACE REGTYPE REINDEX RELEASE
+%token <str> REMOVE_PATH RENAME REPEATABLE REPLACE RESET RESTORE RESTRICT RESTRICTED RESUME
+%token <str> RETRY RETURN RETURNING RETURNS REVISION_HISTORY REVOKE RIGHT
 %token <str> ROLE ROLES ROUTINE ROUTINES ROLLBACK ROLLUP ROW ROWS RSHIFT RULE RUNNING
 
-%token <str> SAVEPOINT SCATTER SCHEDULE SCHEDULES SCHEMA SCHEMAS SCRUB SEARCH SECOND SELECT SEQUENCE SEQUENCES
-%token <str> SERIALIZABLE SERVER SESSION SESSIONS SESSION_USER SET SETTING SETTINGS
+%token <str> SAFE SAVEPOINT SCATTER SCHEDULE SCHEDULES SCHEMA SCHEMAS SCRUB SEARCH SECOND SECURITY SELECT
+%token <str> SERIALIZABLE SERVER SESSION SESSIONS SESSION_USER SET SETTING SETTINGS SEQUENCE SEQUENCES
 %token <str> SHARE SHOW SIMILAR SIMPLE SKIP SKIP_MISSING_FOREIGN_KEYS
 %token <str> SKIP_MISSING_SEQUENCES SKIP_MISSING_SEQUENCE_OWNERS SKIP_MISSING_VIEWS SMALLINT SMALLSERIAL SNAPSHOT SOME SPLIT SQL
-%token <str> START STATISTICS STATUS STDIN STRATEGY STRICT STRING STORAGE STORE STORED STORING SUBSTRING
+%token <str> STABLE START STATISTICS STATUS STDIN STRATEGY STRICT STRING STORAGE STORE STORED STORING SUBSTRING SUPPORT
 %token <str> SYMMETRIC SYNTAX SYSTEM SQRT SUBSCRIPTION
 
 %token <str> TABLE TABLES TABLESPACE TEMP TEMPLATE TEMPORARY TESTING_RELOCATE EXPERIMENTAL_RELOCATE TEXT THEN
 %token <str> TIES TIME TIMETZ TIMESTAMP TIMESTAMPTZ TO THROTTLING TRAILING TRACE
-%token <str> TRANSACTION TRANSACTIONS TREAT TRIGGER TRIM TRUE
+%token <str> TRANSACTION TRANSACTIONS TRANSFORM TREAT TRIGGER TRIM TRUE
 %token <str> TRUNCATE TRUSTED TYPE TYPES
 %token <str> TRACING
 
-%token <str> UNBOUNDED UNCOMMITTED UNION UNIQUE UNKNOWN UNLOGGED UNSPLIT
+%token <str> UNBOUNDED UNCOMMITTED UNION UNIQUE UNKNOWN UNLOGGED UNSAFE UNSPLIT
 %token <str> UPDATE UPSERT UNTIL USAGE USE USER USERS USING UUID
 
-%token <str> VALID VALIDATE VALUE VALUES VARBIT VARCHAR VARIADIC VERSION VIEW VARYING VIEWACTIVITY VIRTUAL
+%token <str> VALID VALIDATE VALUE VALUES VARBIT VARCHAR VARIADIC VARYING VERSION VIEW VIEWACTIVITY VIRTUAL VOLATILE
 
 %token <str> WHEN WHERE WINDOW WITH WITHIN WITHOUT WORK WRAPPER WRITE
 
@@ -728,6 +743,7 @@ func (u *sqlSymUnion) alterDefaultPrivileges() *tree.AlterDefaultPrivileges {
 
 %type <tree.Statement> stmt_block
 %type <tree.Statement> stmt
+%type <tree.Statement> non_transaction_stmt
 
 %type <tree.Statement> alter_stmt
 %type <tree.Statement> alter_ddl_stmt
@@ -822,6 +838,7 @@ func (u *sqlSymUnion) alterDefaultPrivileges() *tree.AlterDefaultPrivileges {
 %type <tree.Statement> create_role_stmt
 %type <tree.Statement> create_schedule_for_backup_stmt
 %type <tree.Statement> create_extension_stmt
+%type <tree.Statement> create_function_stmt
 %type <tree.Statement> create_schema_stmt
 %type <tree.Statement> create_table_stmt
 %type <tree.Statement> create_table_as_stmt
@@ -877,7 +894,7 @@ func (u *sqlSymUnion) alterDefaultPrivileges() *tree.AlterDefaultPrivileges {
 %type <tree.Statement> savepoint_stmt
 
 %type <tree.Statement> schema_element
-%type <[]tree.Statement> schema_element_list opt_schema_element_list
+%type <[]tree.Statement> schema_element_list opt_schema_element_list stmt_list
 %type <tree.Statement> preparable_set_stmt nonpreparable_set_stmt
 %type <tree.Statement> set_session_stmt
 %type <tree.Statement> set_csetting_stmt
@@ -886,6 +903,8 @@ func (u *sqlSymUnion) alterDefaultPrivileges() *tree.AlterDefaultPrivileges {
 %type <tree.Statement> generic_set_config generic_set_single_config
 %type <tree.Statement> set_rest_more
 %type <tree.Statement> set_names
+%type <tree.Statement> begin_end_block
+%type <tree.Statement> sql_body
 
 %type <tree.Statement> show_stmt
 %type <tree.Statement> show_backup_stmt
@@ -953,12 +972,17 @@ func (u *sqlSymUnion) alterDefaultPrivileges() *tree.AlterDefaultPrivileges {
 %type <tree.LockingWaitPolicy> opt_nowait_or_skip
 %type <tree.SelectStatement> set_operation
 
-%type <tree.Expr> alter_column_default
+%type <tree.Expr> alter_column_default opt_arg_default
 %type <tree.Direction> opt_asc_desc
 %type <tree.NullsOrder> opt_nulls_order
 
 %type <*tree.AggregateSignature> aggregate_signature
-%type <*tree.AggregateArg> aggregate_arg opt_aggregate_arg
+%type <*tree.RoutineArg> routine_arg routine_arg_with_default
+%type <[]*tree.RoutineArg> routine_arg_list opt_routine_args routine_arg_with_default_list opt_routine_arg_with_default_list
+%type <tree.SimpleColumnDef> returns_table_col_def
+%type <[]tree.SimpleColumnDef> opt_returns_table_col_def_list
+%type <tree.RoutineOption> option_clause
+%type <[]tree.RoutineOption> option_clause_list
 
 %type <tree.Routine> routine_with_args
 %type <[]tree.Routine> routine_with_args_list
@@ -1022,7 +1046,7 @@ func (u *sqlSymUnion) alterDefaultPrivileges() *tree.AlterDefaultPrivileges {
 %type <tree.RangePartition> range_partition
 %type <[]tree.RangePartition> range_partitions
 %type <empty> opt_all_clause
-%type <bool> distinct_clause
+%type <bool> distinct_clause opt_external definer_or_invoker opt_not
 %type <tree.DistinctOn> distinct_on_clause
 %type <tree.NameList> opt_column_list insert_column_list opt_stats_columns
 %type <tree.OrderBy> sort_clause single_sort_clause opt_sort_clause
@@ -1098,7 +1122,7 @@ func (u *sqlSymUnion) alterDefaultPrivileges() *tree.AlterDefaultPrivileges {
 %type <tree.Expr> having_clause
 %type <tree.Expr> array_expr
 %type <tree.Expr> interval_value
-%type <[]tree.ResolvableTypeReference> type_list prep_type_clause
+%type <[]tree.ResolvableTypeReference> type_list prep_type_clause for_type_list
 %type <tree.Exprs> array_expr_list int_expr_list
 %type <*tree.Tuple> row labeled_row
 %type <tree.Expr> case_expr case_arg case_default
@@ -1292,7 +1316,15 @@ stmt_block:
 
 stmt:
   HELPTOKEN { return helpWith(sqllex, "") }
-| preparable_stmt   // help texts in sub-rule
+| non_transaction_stmt
+| transaction_stmt  // help texts in sub-rule
+| /* EMPTY */
+  {
+    $$.val = tree.Statement(nil)
+  }
+
+non_transaction_stmt:
+  preparable_stmt   // help texts in sub-rule
 | analyze_stmt      // EXTEND WITH HELP: ANALYZE
 | call_stmt
 | copy_from_stmt
@@ -1307,13 +1339,18 @@ stmt:
 | release_stmt      // EXTEND WITH HELP: RELEASE
 | refresh_stmt      // EXTEND WITH HELP: REFRESH
 | nonpreparable_set_stmt // help texts in sub-rule
-| transaction_stmt  // help texts in sub-rule
 | close_cursor_stmt
 | declare_cursor_stmt
 | reindex_stmt
-| /* EMPTY */
+
+stmt_list:
+  non_transaction_stmt
   {
-    $$.val = tree.Statement(nil)
+    $$.val = []tree.Statement{$1.stmt()}
+  }
+| stmt_list ';' non_transaction_stmt
+  {
+    $$.val = append($1.stmts(), $3.stmt())
   }
 
 // %Help: ALTER
@@ -2339,53 +2376,63 @@ aggregate_signature:
   {
     $$.val = &tree.AggregateSignature{All: true}
   }
-| aggregate_arg
+| routine_arg_list
   {
-    $$.val = &tree.AggregateSignature{Arg: $1.aggregateArg()}
+    $$.val = &tree.AggregateSignature{Args: $1.routineArgs()}
   }
-| aggregate_arg ORDER BY aggregate_arg
+| routine_arg_list ORDER BY routine_arg_list
   {
-    $$.val = &tree.AggregateSignature{Arg: $1.aggregateArg(), OrderBy: $4.aggregateArg()}
+    $$.val = &tree.AggregateSignature{Args: $1.routineArgs(), OrderByArgs: $4.routineArgs()}
   }
-| ORDER BY aggregate_arg
+| ORDER BY routine_arg_list
   {
-    $$.val = &tree.AggregateSignature{OrderBy: $3.aggregateArg()}
+    $$.val = &tree.AggregateSignature{OrderByArgs: $3.routineArgs()}
   }
 
-opt_aggregate_arg:
+opt_routine_args:
   /* EMPTY */
   {
-    $$.val = &tree.AggregateArg{}
+    $$.val = nil
   }
-| aggregate_arg
+| routine_arg_list
   {
-    $$.val = $1.aggregateArg()
+    $$.val = $1.routineArgs()
   }
 
-aggregate_arg:
-  type_list
+routine_arg_list:
+  routine_arg
   {
-    $$.val = &tree.AggregateArg{Mode: "IN", Types: $1.typeReferences()}
+    $$.val = []*tree.RoutineArg{$1.routineArg()}
   }
-| type_function_name type_list
+| routine_arg_list ',' routine_arg
   {
-    $$.val = &tree.AggregateArg{Mode: "IN", Name: tree.Name($1), Types: $2.typeReferences()}
+    $$.val = append($1.routineArgs(), $3.routineArg())
   }
-| IN type_list
+
+routine_arg:
+  typename
   {
-    $$.val = &tree.AggregateArg{Mode: $1, Types: $2.typeReferences()}
+    $$.val = &tree.RoutineArg{Mode: "IN", Type: $1.typeReference()}
   }
-| VARIADIC type_list
+| type_function_name typename
   {
-    $$.val = &tree.AggregateArg{Mode: $1, Types: $2.typeReferences()}
+    $$.val = &tree.RoutineArg{Mode: "IN", Name: tree.Name($1), Type: $2.typeReference()}
   }
-| IN type_function_name type_list
+| IN typename
   {
-    $$.val = &tree.AggregateArg{Mode: $1, Name: tree.Name($2), Types: $3.typeReferences()}
+    $$.val = &tree.RoutineArg{Mode: $1, Type: $2.typeReference()}
   }
-| VARIADIC type_function_name type_list
+| VARIADIC typename
   {
-    $$.val = &tree.AggregateArg{Mode: $1, Name: tree.Name($2), Types: $3.typeReferences()}
+    $$.val = &tree.RoutineArg{Mode: $1, Type: $2.typeReference()}
+  }
+| IN type_function_name typename
+  {
+    $$.val = &tree.RoutineArg{Mode: $1, Name: tree.Name($2), Type: $3.typeReference()}
+  }
+| VARIADIC type_function_name typename
+  {
+    $$.val = &tree.RoutineArg{Mode: $1, Name: tree.Name($2), Type: $3.typeReference()}
   }
 
 alter_collation_stmt:
@@ -3268,6 +3315,7 @@ create_stmt:
 | create_ddl_stmt      // help texts in sub-rule
 | create_stats_stmt    // EXTEND WITH HELP: CREATE STATISTICS
 | create_schedule_for_backup_stmt   // EXTEND WITH HELP: CREATE SCHEDULE FOR BACKUP
+| create_function_stmt // EXTEND WITH HELP: CREATE FUNCTION
 | create_extension_stmt // EXTEND WITH HELP: CREATE EXTENSION
 | create_unsupported   {}
 | CREATE error         // SHOW HELP: CREATE
@@ -3279,8 +3327,6 @@ create_unsupported:
 | CREATE CONVERSION error { return unimplemented(sqllex, "create conversion") }
 | CREATE DEFAULT CONVERSION error { return unimplemented(sqllex, "create def conv") }
 | CREATE FOREIGN TABLE error { return unimplemented(sqllex, "create foreign table") }
-| CREATE FOREIGN DATA error { return unimplemented(sqllex, "create fdw") }
-| CREATE FUNCTION error { return unimplementedWithIssueDetail(sqllex, 17511, "create function") }
 | CREATE OR REPLACE FUNCTION error { return unimplementedWithIssueDetail(sqllex, 17511, "create function") }
 | CREATE opt_or_replace opt_trusted opt_procedural LANGUAGE name error { return unimplementedWithIssueDetail(sqllex, 17511, "create language " + $6) }
 | CREATE OPERATOR error { return unimplemented(sqllex, "create operator") }
@@ -3298,6 +3344,246 @@ create_extension_stmt:
 | CREATE EXTENSION IF NOT EXISTS name opt_with opt_schema opt_version opt_cascade
   {
     $$.val = &tree.CreateExtension{Name: tree.Name($6), IfNotExists: true, Schema: $8, Version: $9, Cascade: $10.bool()}
+  }
+
+create_function_stmt:
+  CREATE FUNCTION type_function_name '(' opt_routine_arg_with_default_list ')' option_clause_list
+  {
+    $$.val = &tree.CreateFunction{Name: tree.Name($3), Args: $5.routineArgs(), Options: $7.routineOptions()}
+  }
+| CREATE FUNCTION type_function_name '(' opt_routine_arg_with_default_list ')' RETURNS typename option_clause_list
+  {
+    $$.val = &tree.CreateFunction{Name: tree.Name($3), Args: $5.routineArgs(), RetType: []tree.SimpleColumnDef{tree.SimpleColumnDef{Type: $8.typeReference()}}, Options: $9.routineOptions()}
+  }
+| CREATE FUNCTION type_function_name '(' opt_routine_arg_with_default_list ')' RETURNS TABLE '(' opt_returns_table_col_def_list ')' option_clause_list
+  {
+    $$.val = &tree.CreateFunction{Name: tree.Name($3), Args: $5.routineArgs(), RetType: $10.simpleColumnDefs(), Options: $12.routineOptions()}
+  }
+| CREATE OR REPLACE FUNCTION type_function_name '(' opt_routine_arg_with_default_list ')' option_clause_list
+  {
+    $$.val = &tree.CreateFunction{Name: tree.Name($5), Replace: true, Args: $7.routineArgs(), Options: $9.routineOptions()}
+  }
+| CREATE OR REPLACE FUNCTION type_function_name '(' opt_routine_arg_with_default_list ')' RETURNS typename option_clause_list
+  {
+    $$.val = &tree.CreateFunction{Name: tree.Name($5), Replace: true, Args: $7.routineArgs(), RetType: []tree.SimpleColumnDef{tree.SimpleColumnDef{Type: $10.typeReference()}}, Options: $11.routineOptions()}
+  }
+| CREATE OR REPLACE FUNCTION type_function_name '(' opt_routine_arg_with_default_list ')' RETURNS TABLE '(' opt_returns_table_col_def_list ')' option_clause_list
+  {
+    $$.val = &tree.CreateFunction{Name: tree.Name($5), Replace: true, Args: $7.routineArgs(), RetType: $12.simpleColumnDefs(), Options: $14.routineOptions()}
+  }
+
+opt_returns_table_col_def_list:
+  returns_table_col_def
+  {
+    $$.val = []tree.SimpleColumnDef{$1.simpleColumnDef()}
+  }
+| opt_returns_table_col_def_list ',' returns_table_col_def
+  {
+    $$.val = append($1.simpleColumnDefs(), $3.simpleColumnDef())
+  }
+
+returns_table_col_def:
+  column_name typename
+  {
+    $$.val = tree.SimpleColumnDef{Name: tree.Name($1), Type: $2.typeReference()}
+  }
+
+opt_routine_arg_with_default_list:
+  /* EMPTY */
+  {
+    $$.val = []*tree.RoutineArg{}
+  }
+| routine_arg_with_default_list
+  {
+    $$.val = $1.routineArgs()
+  }
+
+routine_arg_with_default_list:
+  routine_arg_with_default
+  {
+    $$.val = []*tree.RoutineArg{$1.routineArg()}
+  }
+| routine_arg_with_default_list ',' routine_arg_with_default
+  {
+    $$.val = append($1.routineArgs(), $3.routineArg())
+  }
+
+routine_arg_with_default:
+  routine_arg opt_arg_default
+  {
+    arg := $1.routineArg()
+    arg.Default = $2.expr()
+    $$.val = arg
+  }
+
+opt_arg_default:
+  /* EMPTY */
+  {
+    $$.val = nil
+  }
+| opt_default a_expr
+  {
+    $$.val = $2.expr()
+  }
+
+opt_default:
+  DEFAULT {}
+| '=' {}
+
+option_clause_list:
+  option_clause
+  {
+    $$.val = []tree.RoutineOption{$1.routineOption()}
+  }
+| option_clause_list option_clause
+  {
+    $$.val = append($1.routineOptions(), $2.routineOption()) /* TODO: check for duplicate definition - "ERROR:  conflicting or redundant options" */
+  }
+
+option_clause:
+  LANGUAGE name
+  {
+    $$.val = tree.RoutineOption{OptionType: tree.OptionLanguage, Language: $2}
+  }
+| TRANSFORM for_type_list
+  {
+    $$.val = tree.RoutineOption{OptionType: tree.OptionTransform, TransformTypes: $2.typeReferences()}
+  }
+| WINDOW
+  {
+    $$.val = tree.RoutineOption{OptionType: tree.OptionWindow}
+  }
+| IMMUTABLE
+  {
+    $$.val = tree.RoutineOption{OptionType: tree.OptionVolatility, Volatility: tree.VolatilityImmutable}
+  }
+| STABLE
+  {
+    $$.val = tree.RoutineOption{OptionType: tree.OptionVolatility, Volatility: tree.VolatilityStable}
+  }
+| VOLATILE
+  {
+    $$.val = tree.RoutineOption{OptionType: tree.OptionVolatility, Volatility: tree.VolatilityVolatile}
+  }
+| opt_not LEAKPROOF
+  {
+    $$.val = tree.RoutineOption{OptionType: tree.OptionLeakProof, IsLeakProof: $1.bool()}
+  }
+| CALLED ON NULL INPUT
+  {
+    $$.val = tree.RoutineOption{OptionType: tree.OptionNullInput, NullInput: tree.CalledOnNullInput}
+  }
+| RETURNS NULL ON NULL INPUT
+  {
+    $$.val = tree.RoutineOption{OptionType: tree.OptionNullInput, NullInput: tree.ReturnsNullOnNullInput}
+  }
+| STRICT
+  {
+    $$.val = tree.RoutineOption{OptionType: tree.OptionNullInput, NullInput: tree.StrictNullInput}
+  }
+| opt_external SECURITY definer_or_invoker
+  {
+    $$.val = tree.RoutineOption{OptionType: tree.OptionSecurity, External: $1.bool(), Definer: $3.bool()}
+  }
+| PARALLEL UNSAFE
+  {
+    $$.val = tree.RoutineOption{OptionType: tree.OptionParallel, Parallel: tree.ParallelUnsafe}
+  }
+| PARALLEL RESTRICTED
+  {
+    $$.val = tree.RoutineOption{OptionType: tree.OptionParallel, Parallel: tree.ParallelRestricted}
+  }
+| PARALLEL SAFE
+  {
+    $$.val = tree.RoutineOption{OptionType: tree.OptionParallel, Parallel: tree.ParallelSafe}
+  }
+| COST signed_iconst
+  {
+    $$.val = tree.RoutineOption{OptionType: tree.OptionCost, Cost: $2.expr()}
+  }
+| ROWS signed_iconst
+  {
+    $$.val = tree.RoutineOption{OptionType: tree.OptionRows, Rows: $2.expr()}
+  }
+| SUPPORT name
+  {
+    $$.val = tree.RoutineOption{OptionType: tree.OptionSupport, Support: $2}
+  }
+| SET generic_set_single_config
+  {
+    $$.val = tree.RoutineOption{OptionType: tree.OptionSet, SetVar: $2.setVar()}
+  }
+| AS SCONST
+  {
+    $$.val = tree.RoutineOption{OptionType: tree.OptionAs1, Definition: $2}
+  }
+| AS SCONST ',' SCONST
+  {
+    $$.val = tree.RoutineOption{OptionType: tree.OptionAs2, ObjFile: $2, LinkSymbol: $4}
+  }
+| sql_body
+  {
+    $$.val = tree.RoutineOption{OptionType: tree.OptionSqlBody, SqlBody: $1.stmt()}
+  }
+
+sql_body:
+  RETURN a_expr
+  {
+    $$.val = &tree.Return{Expr: $2.expr()}
+  }
+| begin_end_block
+  {
+    $$.val = $1.stmt()
+  }
+
+definer_or_invoker:
+  DEFINER
+  {
+    $$.val = true
+  }
+| INVOKER
+  {
+    $$.val = false
+  }
+
+opt_external:
+  /* EMPTY */
+  {
+    $$.val = false
+  }
+| EXTERNAL
+  {
+    $$.val = true
+  }
+
+opt_not:
+  /* EMPTY */
+  {
+    $$.val = true
+  }
+| NOT
+  {
+    $$.val = false
+  }
+
+for_type_list:
+  FOR TYPE typename
+  {
+    $$.val = []tree.ResolvableTypeReference{$3.typeReference()}
+  }
+| for_type_list ',' FOR TYPE typename
+  {
+    $$.val = append($1.typeReferences(), $5.typeReference())
+  }
+
+begin_end_block:
+  BEGIN ATOMIC END
+  {
+    $$.val = &tree.BeginEndBlock{}
+  }
+| BEGIN ATOMIC stmt_list ';' END
+  {
+    $$.val = &tree.BeginEndBlock{Statements: $3.stmts()}
   }
 
 opt_schema:
@@ -4178,9 +4464,9 @@ routine_with_args:
   {
     $$.val = tree.Routine{Name: tree.Name($1), Args: nil}
   }
-| name '(' opt_aggregate_arg ')'
+| name '(' opt_routine_args ')'
   {
-    $$.val = tree.Routine{Name: tree.Name($1), Args: $3.aggregateArg()}
+    $$.val = tree.Routine{Name: tree.Name($1), Args: $3.routineArgs()}
   }
 
 opt_with_grant_option:
@@ -12151,6 +12437,7 @@ unreserved_keyword:
 | ALTER
 | ALWAYS
 | AT
+| ATOMIC
 | ATTRIBUTE
 | AUTOMATIC
 | BACKUP
@@ -12164,6 +12451,7 @@ unreserved_keyword:
 | CACHE
 | CHAIN
 | CALL
+| CALLED
 | CANCEL
 | CANCELQUERY
 | CASCADE
@@ -12189,6 +12477,7 @@ unreserved_keyword:
 | CONVERSION
 | CONVERT
 | COPY
+| COST
 | COVERING
 | CREATEDB
 | CREATELOGIN
@@ -12205,6 +12494,7 @@ unreserved_keyword:
 | DELETE
 | DEFAULTS
 | DEFERRED
+| DEFINER
 | DESTINATION
 | DETACHED
 | DISCARD
@@ -12229,6 +12519,7 @@ unreserved_keyword:
 | EXPLAIN
 | EXPORT
 | EXTENSION
+| EXTERNAL
 | FILES
 | FILTER
 | FIRST
@@ -12257,6 +12548,7 @@ unreserved_keyword:
 | ICU_RULES
 | IDENTITY
 | IMMEDIATE
+| IMMUTABLE
 | IMPORT
 | INCLUDE
 | INCLUDING
@@ -12265,10 +12557,12 @@ unreserved_keyword:
 | INDEXES
 | INHERIT
 | INJECT
+| INPUT
 | INSERT
 | INTERLEAVE
 | INTO_DB
 | INVERTED
+| INVOKER
 | ISOLATION
 | IS_TEMPLATE
 | JOB
@@ -12284,6 +12578,7 @@ unreserved_keyword:
 | LATEST
 | LC_COLLATE
 | LC_CTYPE
+| LEAKPROOF
 | LEASE
 | LESS
 | LEVEL
@@ -12349,6 +12644,7 @@ unreserved_keyword:
 | OVER
 | OWNED
 | OWNER
+| PARALLEL
 | PARAMETER
 | PARENT
 | PARTIAL
@@ -12392,8 +12688,11 @@ unreserved_keyword:
 | RESET
 | RESTORE
 | RESTRICT
+| RESTRICTED
 | RESUME
 | RETRY
+| RETURN
+| RETURNS
 | REVISION_HISTORY
 | REVOKE
 | ROLE
@@ -12405,6 +12704,7 @@ unreserved_keyword:
 | ROWS
 | RULE
 | RUNNING
+| SAFE
 | SCHEDULE
 | SCHEDULES
 | SETTING
@@ -12417,6 +12717,7 @@ unreserved_keyword:
 | SCRUB
 | SEARCH
 | SECOND
+| SECURITY
 | SERIALIZABLE
 | SEQUENCE
 | SEQUENCES
@@ -12435,6 +12736,7 @@ unreserved_keyword:
 | SNAPSHOT
 | SPLIT
 | SQL
+| STABLE
 | START
 | STATISTICS
 | STDIN
@@ -12445,6 +12747,7 @@ unreserved_keyword:
 | STRATEGY
 | STRICT
 | SUBSCRIPTION
+| SUPPORT
 | SYNTAX
 | SYSTEM
 | TABLES
@@ -12458,6 +12761,7 @@ unreserved_keyword:
 | TRACE
 | TRANSACTION
 | TRANSACTIONS
+| TRANSFORM
 | TRIGGER
 | TRUNCATE
 | TRUSTED
@@ -12470,6 +12774,7 @@ unreserved_keyword:
 | UNLOGGED
 | UNSPLIT
 | UNTIL
+| UNSAFE
 | UPDATE
 | UPSERT
 | USAGE
@@ -12549,6 +12854,7 @@ col_name_keyword:
 | VARBIT
 | VARCHAR
 | VIRTUAL
+| VOLATILE
 | WORK
 
 // type_func_name_keyword contains both the standard set of

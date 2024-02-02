@@ -115,7 +115,7 @@ type TargetList struct {
 // Routine used for { FUNCTION | PROCEDURE | ROUTINE }
 type Routine struct {
 	Name Name
-	Args *AggregateArg
+	Args RoutineArgs
 }
 
 // Format implements the NodeFormatter interface.
