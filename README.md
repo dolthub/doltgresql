@@ -176,7 +176,7 @@ a standard suite of Sysbench tests.
 
 We use these same Sysbench tests to benchmark DoltgreSQL and compare the results to PostgreSQL. 
 
-Here are the benchmarks for DoltgreSQL version `56e0e4a7`.
+Here are the benchmarks for DoltgreSQL version `0.3.1`.
 
 <!-- START_LATENCY_RESULTS_TABLE -->
 |       Read Tests        | PostgreSQL | DoltgreSQL | Multiple |
