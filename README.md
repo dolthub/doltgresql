@@ -176,7 +176,7 @@ a standard suite of Sysbench tests.
 
 We use these same Sysbench tests to benchmark DoltgreSQL and compare the results to PostgreSQL. 
 
-Here are the benchmarks for DoltgreSQL version `0.3.0`.
+Here are the benchmarks for DoltgreSQL version `0.3.1`.
 
 <!-- START_LATENCY_RESULTS_TABLE -->
 <!-- END_LATENCY_RESULTS_TABLE -->
@@ -189,7 +189,7 @@ standard suite of correctness tests called `sqllogictest`.
 
 We use these same tests to measure the correctness of DoltgreSQL.
 
-Here are DoltgreSQL's sqllogictest results for version `0.3.0`.  Tests that
+Here are DoltgreSQL's sqllogictest results for version `0.3.1`.  Tests that
 did not run could not complete due to a timeout earlier in the run.
 
 <!-- START_CORRECTNESS_RESULTS_TABLE -->
