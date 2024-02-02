@@ -189,7 +189,7 @@ standard suite of correctness tests called `sqllogictest`.
 
 We use these same tests to measure the correctness of DoltgreSQL.
 
-Here are DoltgreSQL's sqllogictest results for version `56e0e4a7`.  Tests that
+Here are DoltgreSQL's sqllogictest results for version `0.3.1`.  Tests that
 did not run could not complete due to a timeout earlier in the run.
 
 <!-- START_CORRECTNESS_RESULTS_TABLE -->
