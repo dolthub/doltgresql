@@ -3347,29 +3347,29 @@ create_extension_stmt:
   }
 
 create_function_stmt:
-  CREATE FUNCTION type_function_name '(' opt_routine_arg_with_default_list ')' option_clause_list
+  CREATE FUNCTION db_object_name '(' opt_routine_arg_with_default_list ')' option_clause_list
   {
-    $$.val = &tree.CreateFunction{Name: tree.Name($3), Args: $5.routineArgs(), Options: $7.routineOptions()}
+    $$.val = &tree.CreateFunction{Name: $3.unresolvedObjectName(), Args: $5.routineArgs(), Options: $7.routineOptions()}
   }
-| CREATE FUNCTION type_function_name '(' opt_routine_arg_with_default_list ')' RETURNS typename option_clause_list
+| CREATE FUNCTION db_object_name '(' opt_routine_arg_with_default_list ')' RETURNS typename option_clause_list
   {
-    $$.val = &tree.CreateFunction{Name: tree.Name($3), Args: $5.routineArgs(), RetType: []tree.SimpleColumnDef{tree.SimpleColumnDef{Type: $8.typeReference()}}, Options: $9.routineOptions()}
+    $$.val = &tree.CreateFunction{Name: $3.unresolvedObjectName(), Args: $5.routineArgs(), RetType: []tree.SimpleColumnDef{tree.SimpleColumnDef{Type: $8.typeReference()}}, Options: $9.routineOptions()}
   }
-| CREATE FUNCTION type_function_name '(' opt_routine_arg_with_default_list ')' RETURNS TABLE '(' opt_returns_table_col_def_list ')' option_clause_list
+| CREATE FUNCTION db_object_name '(' opt_routine_arg_with_default_list ')' RETURNS TABLE '(' opt_returns_table_col_def_list ')' option_clause_list
   {
-    $$.val = &tree.CreateFunction{Name: tree.Name($3), Args: $5.routineArgs(), RetType: $10.simpleColumnDefs(), Options: $12.routineOptions()}
+    $$.val = &tree.CreateFunction{Name: $3.unresolvedObjectName(), Args: $5.routineArgs(), RetType: $10.simpleColumnDefs(), Options: $12.routineOptions()}
   }
-| CREATE OR REPLACE FUNCTION type_function_name '(' opt_routine_arg_with_default_list ')' option_clause_list
+| CREATE OR REPLACE FUNCTION db_object_name '(' opt_routine_arg_with_default_list ')' option_clause_list
   {
-    $$.val = &tree.CreateFunction{Name: tree.Name($5), Replace: true, Args: $7.routineArgs(), Options: $9.routineOptions()}
+    $$.val = &tree.CreateFunction{Name: $5.unresolvedObjectName(), Replace: true, Args: $7.routineArgs(), Options: $9.routineOptions()}
   }
-| CREATE OR REPLACE FUNCTION type_function_name '(' opt_routine_arg_with_default_list ')' RETURNS typename option_clause_list
+| CREATE OR REPLACE FUNCTION db_object_name '(' opt_routine_arg_with_default_list ')' RETURNS typename option_clause_list
   {
-    $$.val = &tree.CreateFunction{Name: tree.Name($5), Replace: true, Args: $7.routineArgs(), RetType: []tree.SimpleColumnDef{tree.SimpleColumnDef{Type: $10.typeReference()}}, Options: $11.routineOptions()}
+    $$.val = &tree.CreateFunction{Name: $5.unresolvedObjectName(), Replace: true, Args: $7.routineArgs(), RetType: []tree.SimpleColumnDef{tree.SimpleColumnDef{Type: $10.typeReference()}}, Options: $11.routineOptions()}
   }
-| CREATE OR REPLACE FUNCTION type_function_name '(' opt_routine_arg_with_default_list ')' RETURNS TABLE '(' opt_returns_table_col_def_list ')' option_clause_list
+| CREATE OR REPLACE FUNCTION db_object_name '(' opt_routine_arg_with_default_list ')' RETURNS TABLE '(' opt_returns_table_col_def_list ')' option_clause_list
   {
-    $$.val = &tree.CreateFunction{Name: tree.Name($5), Replace: true, Args: $7.routineArgs(), RetType: $12.simpleColumnDefs(), Options: $14.routineOptions()}
+    $$.val = &tree.CreateFunction{Name: $5.unresolvedObjectName(), Replace: true, Args: $7.routineArgs(), RetType: $12.simpleColumnDefs(), Options: $14.routineOptions()}
   }
 
 opt_returns_table_col_def_list:

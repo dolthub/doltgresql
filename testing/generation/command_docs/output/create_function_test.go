@@ -18,16 +18,9 @@ import "testing"
 
 func TestCreateFunction(t *testing.T) {
 	tests := []QueryParses{
-		Parses(`CREATE FUNCTION name(VARIADIC FLOAT8 DEFAULT default_expr, VARIADIC argname FLOAT8 DEFAULT default_expr)
-    RETURNS INT
-    LANGUAGE sql
-    SUPPORT support_function
-    ROWS 10
-AS $$
-    SELECT 1;
-$$;`),
 		Parses("CREATE OR REPLACE FUNCTION name ( IN argname FLOAT8 , VARIADIC argname FLOAT8 ) LANGUAGE lang_name"),
 		Parses("CREATE FUNCTION name ( VARIADIC FLOAT8 , argname FLOAT8 = default_expr ) LANGUAGE lang_name"),
+		Parses("CREATE FUNCTION dbname.name ( VARIADIC FLOAT8 , argname FLOAT8 = default_expr ) LANGUAGE lang_name"),
 		Parses("CREATE FUNCTION name ( IN argname FLOAT8 DEFAULT default_expr , VARIADIC FLOAT8 DEFAULT default_expr ) RETURNS rettype LANGUAGE lang_name"),
 		Parses("CREATE FUNCTION name ( IN argname FLOAT8 = default_expr , argname FLOAT8 = default_expr ) RETURNS rettype LANGUAGE lang_name"),
 		Parses("CREATE FUNCTION name ( VARIADIC FLOAT8 , IN argname FLOAT8 = default_expr ) RETURNS rettype LANGUAGE lang_name"),

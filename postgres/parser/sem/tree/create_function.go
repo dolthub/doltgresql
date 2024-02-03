@@ -30,7 +30,7 @@ var _ Statement = &CreateFunction{}
 
 // CreateFunction represents a CREATE FUNCTION statement.
 type CreateFunction struct {
-	Name    Name
+	Name    *UnresolvedObjectName
 	Replace bool
 	Args    RoutineArgs
 	RetType []SimpleColumnDef // rettype can be omitted only if there is either OUT or INOUT arg defined.
@@ -44,19 +44,33 @@ func (node *CreateFunction) Format(ctx *FmtCtx) {
 		ctx.WriteString("OR REPLACE ")
 	}
 	ctx.WriteString("FUNCTION ")
-	ctx.FormatNode(&node.Name)
+	ctx.FormatNode(node.Name)
 	if len(node.Args) != 0 {
 		ctx.WriteByte(' ')
 		ctx.FormatNode(node.Args)
 	}
 	if node.RetType != nil {
 		if len(node.RetType) == 1 && node.RetType[0].Name == "" {
-			// This is RETURNS rettype
+			ctx.WriteString("RETURNS ")
+			ctx.WriteString(node.RetType[0].Type.SQLString())
 		} else {
-			// This is RETURNS TABLE columns
+			ctx.WriteString("RETURNS TABLE ")
+			for i, t := range node.RetType {
+				if i != 0 {
+					ctx.WriteString(", ")
+				}
+				ctx.FormatNode(&t.Name)
+				ctx.WriteByte(' ')
+				ctx.WriteString(t.Type.SQLString())
+			}
 		}
 	}
-
+	for i, option := range node.Options {
+		if i != 0 {
+			ctx.WriteByte(' ')
+		}
+		ctx.FormatNode(option)
+	}
 }
 
 type SimpleColumnDef struct {
