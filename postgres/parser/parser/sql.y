@@ -809,8 +809,6 @@ func (u *sqlSymUnion) functionWithArgs() []tree.FunctionWithArgs {
 %type <tree.Statement> alter_aggregate_stmt
 %type <tree.Statement> alter_collation_stmt
 %type <tree.Statement> alter_conversion_stmt
-%type <tree.Statement> alter_extension_stmt
-%type <tree.Statement> alter_function_stmt
 
 %type <tree.Statement> backup_stmt
 %type <tree.Statement> begin_stmt
@@ -1370,8 +1368,6 @@ alter_stmt:
 | alter_aggregate_stmt  // EXTEND WITH HELP: ALTER AGGREGATE
 | alter_collation_stmt  // EXTEND WITH HELP: ALTER COLLATION
 | alter_conversion_stmt // EXTEND WITH HELP: ALTER CONVERSION
-| alter_extension_stmt  // EXTEND WITH HELP: ALTER EXTENSION
-| alter_function_stmt   // EXTEND WITH HELP: ALTER FUNCTION
 | ALTER error           // SHOW HELP: ALTER
 
 alter_ddl_stmt:
@@ -2475,18 +2471,6 @@ alter_conversion_stmt:
 | ALTER CONVERSION unrestricted_name opt_set_schema
   {
     $$.val = &tree.AlterConversion{Name: tree.Name($3), Schema: $4}
-  }
-
-alter_extension_stmt:
-  ALTER EXTENSION
-  {
-    $$.val = &tree.AlterConversion{Name: tree.Name($3), Rename: tree.Name($6)}
-  }
-
-alter_function_stmt:
-  ALTER FUNCTION
-  {
-    $$.val = &tree.AlterConversion{Name: tree.Name($3), Rename: tree.Name($6)}
   }
 
 alter_attribute_action_list:
