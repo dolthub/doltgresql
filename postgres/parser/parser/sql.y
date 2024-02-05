@@ -2392,7 +2392,7 @@ aggregate_signature:
 opt_routine_args:
   /* EMPTY */
   {
-    $$.val = nil
+    $$.val = []*tree.RoutineArg{}
   }
 | routine_arg_list
   {
