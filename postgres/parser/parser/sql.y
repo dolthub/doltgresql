@@ -600,6 +600,9 @@ func (u *sqlSymUnion) routineOption() tree.RoutineOption {
 func (u *sqlSymUnion) routineOptions() []tree.RoutineOption {
   return u.val.([]tree.RoutineOption)
 }
+func (u *sqlSymUnion) functionWithArgs() []tree.FunctionWithArgs {
+  return u.val.([]tree.FunctionWithArgs)
+}
 %}
 
 // NB: the %token definitions must come before the %type definitions in this
@@ -865,6 +868,8 @@ func (u *sqlSymUnion) routineOptions() []tree.RoutineOption {
 %type <tree.Statement> drop_type_stmt
 %type <tree.Statement> drop_view_stmt
 %type <tree.Statement> drop_sequence_stmt
+%type <tree.Statement> drop_extension_stmt
+%type <tree.Statement> drop_function_stmt
 
 %type <tree.Statement> analyze_stmt
 %type <tree.Statement> explain_stmt
@@ -975,6 +980,7 @@ func (u *sqlSymUnion) routineOptions() []tree.RoutineOption {
 %type <tree.Expr> alter_column_default opt_arg_default
 %type <tree.Direction> opt_asc_desc
 %type <tree.NullsOrder> opt_nulls_order
+%type <[]tree.FunctionWithArgs> function_name_with_args_list
 
 %type <*tree.AggregateSignature> aggregate_signature
 %type <*tree.RoutineArg> routine_arg routine_arg_with_default
@@ -3347,29 +3353,29 @@ create_extension_stmt:
   }
 
 create_function_stmt:
-  CREATE FUNCTION db_object_name '(' opt_routine_arg_with_default_list ')' option_clause_list
+  CREATE FUNCTION db_object_name opt_routine_arg_with_default_list option_clause_list
   {
-    $$.val = &tree.CreateFunction{Name: $3.unresolvedObjectName(), Args: $5.routineArgs(), Options: $7.routineOptions()}
+    $$.val = &tree.CreateFunction{Name: $3.unresolvedObjectName(), Args: $4.routineArgs(), Options: $5.routineOptions()}
   }
-| CREATE FUNCTION db_object_name '(' opt_routine_arg_with_default_list ')' RETURNS typename option_clause_list
+| CREATE FUNCTION db_object_name opt_routine_arg_with_default_list RETURNS typename option_clause_list
   {
-    $$.val = &tree.CreateFunction{Name: $3.unresolvedObjectName(), Args: $5.routineArgs(), RetType: []tree.SimpleColumnDef{tree.SimpleColumnDef{Type: $8.typeReference()}}, Options: $9.routineOptions()}
+    $$.val = &tree.CreateFunction{Name: $3.unresolvedObjectName(), Args: $4.routineArgs(), RetType: []tree.SimpleColumnDef{tree.SimpleColumnDef{Type: $6.typeReference()}}, Options: $7.routineOptions()}
   }
-| CREATE FUNCTION db_object_name '(' opt_routine_arg_with_default_list ')' RETURNS TABLE '(' opt_returns_table_col_def_list ')' option_clause_list
+| CREATE FUNCTION db_object_name opt_routine_arg_with_default_list RETURNS TABLE opt_returns_table_col_def_list option_clause_list
   {
-    $$.val = &tree.CreateFunction{Name: $3.unresolvedObjectName(), Args: $5.routineArgs(), RetType: $10.simpleColumnDefs(), Options: $12.routineOptions()}
+    $$.val = &tree.CreateFunction{Name: $3.unresolvedObjectName(), Args: $4.routineArgs(), RetType: $7.simpleColumnDefs(), Options: $8.routineOptions()}
   }
-| CREATE OR REPLACE FUNCTION db_object_name '(' opt_routine_arg_with_default_list ')' option_clause_list
+| CREATE OR REPLACE FUNCTION db_object_name opt_routine_arg_with_default_list option_clause_list
   {
-    $$.val = &tree.CreateFunction{Name: $5.unresolvedObjectName(), Replace: true, Args: $7.routineArgs(), Options: $9.routineOptions()}
+    $$.val = &tree.CreateFunction{Name: $5.unresolvedObjectName(), Replace: true, Args: $6.routineArgs(), Options: $7.routineOptions()}
   }
-| CREATE OR REPLACE FUNCTION db_object_name '(' opt_routine_arg_with_default_list ')' RETURNS typename option_clause_list
+| CREATE OR REPLACE FUNCTION db_object_name opt_routine_arg_with_default_list RETURNS typename option_clause_list
   {
-    $$.val = &tree.CreateFunction{Name: $5.unresolvedObjectName(), Replace: true, Args: $7.routineArgs(), RetType: []tree.SimpleColumnDef{tree.SimpleColumnDef{Type: $10.typeReference()}}, Options: $11.routineOptions()}
+    $$.val = &tree.CreateFunction{Name: $5.unresolvedObjectName(), Replace: true, Args: $6.routineArgs(), RetType: []tree.SimpleColumnDef{tree.SimpleColumnDef{Type: $8.typeReference()}}, Options: $9.routineOptions()}
   }
-| CREATE OR REPLACE FUNCTION db_object_name '(' opt_routine_arg_with_default_list ')' RETURNS TABLE '(' opt_returns_table_col_def_list ')' option_clause_list
+| CREATE OR REPLACE FUNCTION db_object_name opt_routine_arg_with_default_list RETURNS TABLE opt_returns_table_col_def_list option_clause_list
   {
-    $$.val = &tree.CreateFunction{Name: $5.unresolvedObjectName(), Replace: true, Args: $7.routineArgs(), RetType: $12.simpleColumnDefs(), Options: $14.routineOptions()}
+    $$.val = &tree.CreateFunction{Name: $5.unresolvedObjectName(), Replace: true, Args: $6.routineArgs(), RetType: $9.simpleColumnDefs(), Options: $10.routineOptions()}
   }
 
 opt_returns_table_col_def_list:
@@ -3393,9 +3399,13 @@ opt_routine_arg_with_default_list:
   {
     $$.val = []*tree.RoutineArg{}
   }
-| routine_arg_with_default_list
+| '(' ')'
   {
-    $$.val = $1.routineArgs()
+    $$.val = []*tree.RoutineArg{}
+  }
+| '(' routine_arg_with_default_list ')'
+  {
+    $$.val = $2.routineArgs()
   }
 
 routine_arg_with_default_list:
@@ -3634,11 +3644,8 @@ drop_unsupported:
 | DROP COLLATION error { return unimplemented(sqllex, "drop collation") }
 | DROP CONVERSION error { return unimplemented(sqllex, "drop conversion") }
 | DROP DOMAIN error { return unimplementedWithIssueDetail(sqllex, 27796, "drop") }
-| DROP EXTENSION IF EXISTS name error { return unimplemented(sqllex, "drop extension " + $5) }
-| DROP EXTENSION name error { return unimplemented(sqllex, "drop extension " + $3) }
 | DROP FOREIGN TABLE error { return unimplemented(sqllex, "drop foreign table") }
 | DROP FOREIGN DATA error { return unimplemented(sqllex, "drop fdw") }
-| DROP FUNCTION error { return unimplementedWithIssueDetail(sqllex, 17511, "drop function") }
 | DROP opt_procedural LANGUAGE name error { return unimplementedWithIssueDetail(sqllex, 17511, "drop language " + $4) }
 | DROP OPERATOR error { return unimplemented(sqllex, "drop operator") }
 | DROP PUBLICATION error { return unimplemented(sqllex, "drop publication") }
@@ -3647,6 +3654,36 @@ drop_unsupported:
 | DROP SUBSCRIPTION error { return unimplemented(sqllex, "drop subscription") }
 | DROP TEXT error { return unimplementedWithIssueDetail(sqllex, 7821, "drop text") }
 | DROP TRIGGER error { return unimplementedWithIssueDetail(sqllex, 28296, "drop") }
+
+drop_extension_stmt:
+  DROP EXTENSION name_list opt_drop_behavior
+  {
+    $$.val = &tree.DropExtension{Names: $3.nameList(), DropBehavior: $4.dropBehavior()}
+  }
+| DROP EXTENSION IF EXISTS name_list opt_drop_behavior
+  {
+    $$.val = &tree.DropExtension{Names: $5.nameList(), IfExists: true, DropBehavior: $6.dropBehavior()}
+  }
+
+drop_function_stmt:
+  DROP FUNCTION function_name_with_args_list opt_drop_behavior
+  {
+    $$.val = &tree.DropFunction{Functions: $3.functionWithArgs(), DropBehavior: $4.dropBehavior()}
+  }
+| DROP FUNCTION IF EXISTS function_name_with_args_list opt_drop_behavior
+  {
+    $$.val = &tree.DropFunction{Functions: $5.functionWithArgs(), IfExists: true, DropBehavior: $6.dropBehavior()}
+  }
+
+function_name_with_args_list:
+  db_object_name opt_routine_arg_with_default_list
+  {
+    $$.val = []tree.FunctionWithArgs{{Name: $1.unresolvedObjectName(), Args: $2.routineArgs()}}
+  }
+| function_name_with_args_list ',' db_object_name opt_routine_arg_with_default_list
+  {
+    $$.val = append($1.functionWithArgs(), tree.FunctionWithArgs{Name: $3.unresolvedObjectName(), Args: $4.routineArgs()})
+  }
 
 create_ddl_stmt:
   create_changefeed_stmt
@@ -3859,6 +3896,8 @@ drop_stmt:
   drop_ddl_stmt      // help texts in sub-rule
 | drop_role_stmt     // EXTEND WITH HELP: DROP ROLE
 | drop_schedule_stmt // EXTEND WITH HELP: DROP SCHEDULES
+| drop_function_stmt
+| drop_extension_stmt
 | drop_unsupported   {}
 | DROP error         // SHOW HELP: DROP
 

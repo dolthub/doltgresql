@@ -67,10 +67,10 @@ func (node *AggregateSignature) Format(ctx *FmtCtx) {
 	if node.All {
 		ctx.WriteString("* ")
 	} else {
-		if node.Args != nil {
+		if len(node.Args) != 0 {
 			node.Args.Format(ctx)
 		}
-		if node.OrderByArgs != nil {
+		if len(node.OrderByArgs) != 0 {
 			ctx.WriteString("ORDER BY ")
 			node.OrderByArgs.Format(ctx)
 		}

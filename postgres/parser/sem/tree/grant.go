@@ -162,7 +162,7 @@ func (tl *TargetList) Format(ctx *FmtCtx) {
 					ctx.WriteString(", ")
 				}
 				ctx.FormatNode(&r.Name)
-				if r.Args != nil {
+				if len(r.Args) != 0 {
 					ctx.WriteString(" ( ")
 					ctx.FormatNode(r.Args)
 					ctx.WriteString(" )")
