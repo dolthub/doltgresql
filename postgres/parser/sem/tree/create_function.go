@@ -33,7 +33,7 @@ type CreateFunction struct {
 	Name    *UnresolvedObjectName
 	Replace bool
 	Args    RoutineArgs
-	RetType []SimpleColumnDef // rettype can be omitted only if there is either OUT or INOUT arg defined.
+	RetType []SimpleColumnDef
 	Options []RoutineOption
 }
 
@@ -237,13 +237,15 @@ const (
 
 var _ Statement = &BeginEndBlock{}
 
-// BeginEndBlock represents a BEGIN .. END block with one or more statements nested within
+// 'BEGIN ATOMIC ... END' and 'RETURN' statements are used in `sql_body` of FUNCTIONs and PROCEDUREs.
+
+// BeginEndBlock represents a BEGIN ATOMIC ... END block with one or more statements nested within
 type BeginEndBlock struct {
 	Statements []Statement
 }
 
 func (node *BeginEndBlock) Format(ctx *FmtCtx) {
-	ctx.WriteString("BEGIN ")
+	ctx.WriteString("BEGIN ATOMIC")
 	for i, s := range node.Statements {
 		if i != 0 {
 			ctx.WriteString("; ")

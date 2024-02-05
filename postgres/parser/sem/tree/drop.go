@@ -74,12 +74,14 @@ func (node *DropDatabase) Format(ctx *FmtCtx) {
 
 var _ Statement = &DropExtension{}
 
+// DropExtension represents a DROP EXTENSION statement.
 type DropExtension struct {
 	Names        NameList
 	IfExists     bool
 	DropBehavior DropBehavior
 }
 
+// Format implements the NodeFormatter interface.
 func (node *DropExtension) Format(ctx *FmtCtx) {
 	ctx.WriteString("DROP EXTENSION ")
 	if node.IfExists {
@@ -96,12 +98,14 @@ func (node *DropExtension) Format(ctx *FmtCtx) {
 
 var _ Statement = &DropFunction{}
 
+// DropFunction represents a DROP FUNCTION statement.
 type DropFunction struct {
 	Functions    []FunctionWithArgs
 	IfExists     bool
 	DropBehavior DropBehavior
 }
 
+// Format implements the NodeFormatter interface.
 func (node *DropFunction) Format(ctx *FmtCtx) {
 	ctx.WriteString("DROP FUNCTION ")
 	if node.IfExists {
@@ -121,6 +125,7 @@ func (node *DropFunction) Format(ctx *FmtCtx) {
 	}
 }
 
+// FunctionWithArgs represents the function name and its arguments, if any, for DROP FUNCTION statement.
 type FunctionWithArgs struct {
 	Name *UnresolvedObjectName
 	Args RoutineArgs

@@ -23,6 +23,6 @@ import (
 )
 
 // nodeCreateFunction handles *tree.CreateFunction nodes.
-func nodeCreateFunction(node *tree.CreateFunction) (*vitess.DBDDL, error) {
+func nodeCreateFunction(node *tree.CreateFunction) (vitess.Statement, error) {
 	return nil, fmt.Errorf("CREATE FUNCTION statement is not yet supported")
 }
