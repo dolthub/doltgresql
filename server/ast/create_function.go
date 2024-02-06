@@ -24,5 +24,6 @@ import (
 
 // nodeCreateFunction handles *tree.CreateFunction nodes.
 func nodeCreateFunction(node *tree.CreateFunction) (vitess.Statement, error) {
+	// TODO: node.Options needs to be checked that no option is defined multiple times
 	return nil, fmt.Errorf("CREATE FUNCTION statement is not yet supported")
 }
