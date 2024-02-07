@@ -1,0 +1,146 @@
+// Copyright 2023 Dolthub, Inc.
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//     http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
+
+package _go
+
+import (
+	"context"
+	"fmt"
+	"testing"
+
+	"github.com/dolthub/go-mysql-server/sql"
+	"github.com/jackc/pgx/v5"
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
+)
+
+type ReplicationTarget byte
+const (
+	ReplicationTargetPrimary ReplicationTarget = iota
+	ReplicationTargetReplica
+)
+
+type ReplicationTest struct {
+	// Name of the script.
+	Name string
+	// The database to create and use. If not provided, then it defaults to "postgres".
+	Database string
+	// The SQL statements to execute as setup, in order. Results are not checked, but statements must not error. Setup is always run on the primary.
+	SetUpScript []string
+	// The set of assertions to make after setup, in order
+	Assertions []ReplicationTestAssertion
+	// When using RunScripts, setting this on one (or more) tests causes RunScripts to ignore all tests that have this
+	// set to false (which is the default value). This allows a developer to easily "focus" on a specific test without
+	// having to comment out other tests, pull it into a different function, etc. In addition, CI ensures that this is
+	// false before passing, meaning this prevents the commented-out situation where the developer forgets to uncomment
+	// their code.
+	Focus bool
+	// Skip is used to completely skip a test including setup
+	Skip bool
+}
+
+type ReplicationTestAssertion struct {
+	ReplicationTarget ReplicationTarget
+	Query       string
+	Expected    []sql.Row
+	ExpectedErr bool
+
+	BindVars []any
+
+	// SkipResultsCheck is used to skip assertions on the expected rows returned from a query. For now, this is
+	// included as some messages do not have a full logical implementation. Skipping the results check allows us to
+	// force the test client to not send of those messages.
+	SkipResultsCheck bool
+
+	// Skip is used to completely skip a test, not execute its query at all, and record it as a skipped test
+	// in the test suite results.
+	Skip bool
+}
+
+var replicationTests = []ReplicationTest{
+	{
+		Name: "simple replication",
+		SetUpScript: []string{
+			"CREATE TABLE test (id INT PRIMARY KEY, name TEXT)",
+		},
+	},
+}
+
+// RunScript runs the given script.
+func RunReplicationScript(t *testing.T, script ReplicationTest) {
+	scriptDatabase := script.Database
+	if len(scriptDatabase) == 0 {
+		scriptDatabase = "postgres"
+	}
+
+	ctx := context.Background()
+	primaryConn, err := pgx.Connect(ctx, fmt.Sprintf("postgres://postgres:password@127.0.0.1:%d/%s?sslmode=disable", 5432, "testing"))
+	require.NoError(t, err)
+
+	ctx, replicaConn, controller := CreateServer(t, scriptDatabase)
+	defer func() {
+		replicaConn.Close(ctx)
+		controller.Stop()
+		err := controller.WaitForStop()
+		require.NoError(t, err)
+	}()
+
+	t.Run(script.Name, func(t *testing.T) {
+		runReplicationScript(ctx, t, script, primaryConn, replicaConn)
+	})
+}
+
+// runScript runs the script given on the postgres connection provided
+func runReplicationScript(ctx context.Context, t *testing.T, script ReplicationTest, primaryConn, replicaConn *pgx.Conn) {
+	if script.Skip {
+		t.Skip("Skip has been set in the script")
+	}
+
+	// Run the setup
+	for _, query := range script.SetUpScript {
+		_, err := primaryConn.Exec(ctx, query)
+		require.NoError(t, err)
+	}
+
+	// Run the assertions
+	for _, assertion := range script.Assertions {
+		t.Run(assertion.Query, func(t *testing.T) {
+			if assertion.Skip {
+				t.Skip("Skip has been set in the assertion")
+			}
+			
+			conn := replicaConn
+			if assertion.ReplicationTarget == ReplicationTargetPrimary {
+				conn = primaryConn
+			}
+			
+			// If we're skipping the results check, then we call Execute, as it uses a simplified message model.
+			if assertion.SkipResultsCheck || assertion.ExpectedErr {
+				_, err := conn.Exec(ctx, assertion.Query, assertion.BindVars...)
+				if assertion.ExpectedErr {
+					require.Error(t, err)
+				} else {
+					require.NoError(t, err)
+				}
+			} else {
+				rows, err := conn.Query(ctx, assertion.Query, assertion.BindVars...)
+				require.NoError(t, err)
+				readRows, err := ReadRows(rows)
+				require.NoError(t, err)
+				assert.Equal(t, NormalizeRows(assertion.Expected), readRows)
+			}
+		})
+	}
+}
+
