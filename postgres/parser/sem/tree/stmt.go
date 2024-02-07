@@ -313,6 +313,12 @@ func (*BeginTransaction) StatementType() StatementType { return Ack }
 func (*BeginTransaction) StatementTag() string { return "BEGIN" }
 
 // StatementType implements the Statement interface.
+func (*BeginEndBlock) StatementType() StatementType { return Unknown }
+
+// StatementTag returns a short string identifying the type of statement.
+func (*BeginEndBlock) StatementTag() string { return "BEGIN ... END" }
+
+// StatementType implements the Statement interface.
 func (*ControlJobs) StatementType() StatementType { return RowsAffected }
 
 // StatementTag returns a short string identifying the type of statement.
@@ -367,6 +373,12 @@ func (*CommentOnDatabase) StatementType() StatementType { return DDL }
 func (*CommentOnDatabase) StatementTag() string { return "COMMENT ON DATABASE" }
 
 // StatementType implements the Statement interface.
+func (*CommentOnExtension) StatementType() StatementType { return DDL }
+
+// StatementTag returns a short string identifying the type of statement.
+func (*CommentOnExtension) StatementTag() string { return "COMMENT ON EXTENSION" }
+
+// StatementType implements the Statement interface.
 func (*CommentOnIndex) StatementType() StatementType { return DDL }
 
 // StatementTag returns a short string identifying the type of statement.
@@ -408,6 +420,18 @@ func (*CreateDatabase) StatementType() StatementType { return DDL }
 
 // StatementTag returns a short string identifying the type of statement.
 func (*CreateDatabase) StatementTag() string { return "CREATE DATABASE" }
+
+// StatementType implements the Statement interface.
+func (*CreateExtension) StatementType() StatementType { return DDL }
+
+// StatementTag returns a short string identifying the type of statement.
+func (*CreateExtension) StatementTag() string { return "CREATE EXTENSION" }
+
+// StatementType implements the Statement interface.
+func (*CreateFunction) StatementType() StatementType { return DDL }
+
+// StatementTag returns a short string identifying the type of statement.
+func (*CreateFunction) StatementTag() string { return "CREATE FUNCTION" }
 
 // StatementType implements the Statement interface.
 func (*CreateIndex) StatementType() StatementType { return DDL }
@@ -503,6 +527,18 @@ func (*DropDatabase) StatementType() StatementType { return DDL }
 
 // StatementTag returns a short string identifying the type of statement.
 func (*DropDatabase) StatementTag() string { return "DROP DATABASE" }
+
+// StatementType implements the Statement interface.
+func (*DropExtension) StatementType() StatementType { return DDL }
+
+// StatementTag returns a short string identifying the type of statement.
+func (*DropExtension) StatementTag() string { return "DROP EXTENSION" }
+
+// StatementType implements the Statement interface.
+func (*DropFunction) StatementType() StatementType { return DDL }
+
+// StatementTag returns a short string identifying the type of statement.
+func (*DropFunction) StatementTag() string { return "DROP FUNCTION" }
 
 // StatementType implements the Statement interface.
 func (*DropIndex) StatementType() StatementType { return DDL }
@@ -683,6 +719,12 @@ func (*Restore) StatementTag() string { return "RESTORE" }
 func (*Restore) cclOnlyStatement() {}
 
 func (*Restore) hiddenFromShowQueries() {}
+
+// StatementType implements the Statement interface.
+func (*Return) StatementType() StatementType { return Unknown }
+
+// StatementTag returns a short string identifying the type of statement.
+func (*Return) StatementTag() string { return "RETURN" }
 
 // StatementType implements the Statement interface.
 func (*Revoke) StatementType() StatementType { return DDL }
@@ -1073,6 +1115,7 @@ func (n *AlterSequence) String() string                  { return AsString(n) }
 func (n *Analyze) String() string                        { return AsString(n) }
 func (n *Backup) String() string                         { return AsString(n) }
 func (n *BeginTransaction) String() string               { return AsString(n) }
+func (n *BeginEndBlock) String() string                  { return AsString(n) }
 func (n *ControlJobs) String() string                    { return AsString(n) }
 func (n *ControlSchedules) String() string               { return AsString(n) }
 func (n *ControlJobsForSchedules) String() string        { return AsString(n) }
@@ -1081,12 +1124,15 @@ func (n *CancelSessions) String() string                 { return AsString(n) }
 func (n *CannedOptPlan) String() string                  { return AsString(n) }
 func (n *CommentOnColumn) String() string                { return AsString(n) }
 func (n *CommentOnDatabase) String() string              { return AsString(n) }
+func (n *CommentOnExtension) String() string             { return AsString(n) }
 func (n *CommentOnIndex) String() string                 { return AsString(n) }
 func (n *CommentOnTable) String() string                 { return AsString(n) }
 func (n *CommitTransaction) String() string              { return AsString(n) }
 func (n *CopyFrom) String() string                       { return AsString(n) }
 func (n *CreateChangefeed) String() string               { return AsString(n) }
 func (n *CreateDatabase) String() string                 { return AsString(n) }
+func (n *CreateExtension) String() string                { return AsString(n) }
+func (n *CreateFunction) String() string                 { return AsString(n) }
 func (n *CreateIndex) String() string                    { return AsString(n) }
 func (n *CreateRole) String() string                     { return AsString(n) }
 func (n *CreateTable) String() string                    { return AsString(n) }
@@ -1097,6 +1143,8 @@ func (n *CreateView) String() string                     { return AsString(n) }
 func (n *Deallocate) String() string                     { return AsString(n) }
 func (n *Delete) String() string                         { return AsString(n) }
 func (n *DropDatabase) String() string                   { return AsString(n) }
+func (n *DropExtension) String() string                  { return AsString(n) }
+func (n *DropFunction) String() string                   { return AsString(n) }
 func (n *DropIndex) String() string                      { return AsString(n) }
 func (n *DropSchema) String() string                     { return AsString(n) }
 func (n *DropTable) String() string                      { return AsString(n) }
@@ -1123,6 +1171,7 @@ func (n *ReparentDatabase) String() string               { return AsString(n) }
 func (n *RenameIndex) String() string                    { return AsString(n) }
 func (n *RenameTable) String() string                    { return AsString(n) }
 func (n *Restore) String() string                        { return AsString(n) }
+func (n *Return) String() string                         { return AsString(n) }
 func (n *Revoke) String() string                         { return AsString(n) }
 func (n *RevokeRole) String() string                     { return AsString(n) }
 func (n *RollbackToSavepoint) String() string            { return AsString(n) }

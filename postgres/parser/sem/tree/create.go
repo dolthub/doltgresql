@@ -143,6 +143,38 @@ func (node *CreateDatabase) Format(ctx *FmtCtx) {
 	}
 }
 
+var _ Statement = &CreateExtension{}
+
+// CreateExtension represents a CREATE EXTENSION statement.
+type CreateExtension struct {
+	Name        Name
+	IfNotExists bool
+	Schema      string
+	Version     string
+	Cascade     bool
+}
+
+// Format implements the NodeFormatter interface.
+func (node *CreateExtension) Format(ctx *FmtCtx) {
+	ctx.WriteString("CREATE EXTENSION ")
+	if node.IfNotExists {
+		ctx.WriteString("IF NOT EXISTS ")
+	}
+	ctx.FormatNode(&node.Name)
+	ctx.WriteString(" WITH")
+	if node.Schema != "" {
+		ctx.WriteString(" SCHEMA ")
+		ctx.FormatNameP(&node.Schema)
+	}
+	if node.Version != "" {
+		ctx.WriteString(" VERSION ")
+		ctx.FormatNameP(&node.Version)
+	}
+	if node.Cascade {
+		ctx.WriteString(" CASCADE")
+	}
+}
+
 // IndexElem represents a column with a direction in a CREATE INDEX statement.
 type IndexElem struct {
 	Column     Name

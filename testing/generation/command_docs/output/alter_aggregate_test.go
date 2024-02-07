@@ -21,6 +21,7 @@ func TestAlterAggregate(t *testing.T) {
 		Parses("ALTER AGGREGATE name ( * ) RENAME TO new_name"),
 		Parses("ALTER AGGREGATE name ( FLOAT8 ) RENAME TO new_name"),
 		Parses("ALTER AGGREGATE name ( IN FLOAT8 ) RENAME TO new_name"),
+		Parses("ALTER AGGREGATE name ( IN FLOAT8 , VARIADIC FLOAT8 ) RENAME TO new_name"),
 		Parses("ALTER AGGREGATE name ( VARIADIC FLOAT8 ) RENAME TO new_name"),
 		Parses("ALTER AGGREGATE name ( argname FLOAT8 ) RENAME TO new_name"),
 		Parses("ALTER AGGREGATE name ( IN argname FLOAT8 ) RENAME TO new_name"),

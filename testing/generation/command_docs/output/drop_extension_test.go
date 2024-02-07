@@ -18,18 +18,18 @@ import "testing"
 
 func TestDropExtension(t *testing.T) {
 	tests := []QueryParses{
-		Unimplemented("DROP EXTENSION name"),
-		Unimplemented("DROP EXTENSION IF EXISTS name"),
-		Unimplemented("DROP EXTENSION name , name"),
-		Unimplemented("DROP EXTENSION IF EXISTS name , name"),
-		Unimplemented("DROP EXTENSION name CASCADE"),
-		Unimplemented("DROP EXTENSION IF EXISTS name CASCADE"),
-		Unimplemented("DROP EXTENSION name , name CASCADE"),
-		Unimplemented("DROP EXTENSION IF EXISTS name , name CASCADE"),
-		Unimplemented("DROP EXTENSION name RESTRICT"),
-		Unimplemented("DROP EXTENSION IF EXISTS name RESTRICT"),
-		Unimplemented("DROP EXTENSION name , name RESTRICT"),
-		Unimplemented("DROP EXTENSION IF EXISTS name , name RESTRICT"),
+		Parses("DROP EXTENSION name"),
+		Parses("DROP EXTENSION IF EXISTS name"),
+		Parses("DROP EXTENSION name , name"),
+		Parses("DROP EXTENSION IF EXISTS name , name"),
+		Parses("DROP EXTENSION name CASCADE"),
+		Parses("DROP EXTENSION IF EXISTS name CASCADE"),
+		Parses("DROP EXTENSION name , name CASCADE"),
+		Parses("DROP EXTENSION IF EXISTS name , name CASCADE"),
+		Parses("DROP EXTENSION name RESTRICT"),
+		Parses("DROP EXTENSION IF EXISTS name RESTRICT"),
+		Parses("DROP EXTENSION name , name RESTRICT"),
+		Parses("DROP EXTENSION IF EXISTS name , name RESTRICT"),
 	}
 	RunTests(t, tests)
 }
