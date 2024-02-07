@@ -56,17 +56,98 @@ var typesTests = []ScriptTest{
 	},
 	{
 		Name: "Boolean type",
-		Skip: true,
 		SetUpScript: []string{
 			"CREATE TABLE t_boolean (id INTEGER primary key, v1 BOOLEAN);",
-			"INSERT INTO t_boolean VALUES (1, true), (2, false);",
+			"INSERT INTO t_boolean VALUES (1, 'true'), (2, 'false'), (3, NULL);", //TODO: "INSERT INTO t_boolean VALUES (1, true), (2, false), (3, NULL);",
 		},
 		Assertions: []ScriptTestAssertion{
 			{
 				Query: "SELECT * FROM t_boolean ORDER BY id;",
+				Skip:  true, // Proper NULL-ordering has not yet been implemented
 				Expected: []sql.Row{
-					{1, true},
-					{2, false},
+					{1, "t"},
+					{2, "f"},
+					{3, nil},
+				},
+			},
+			{
+				Query: "SELECT * FROM t_boolean ORDER BY v1;",
+				Skip:  true, // Proper NULL-ordering has not yet been implemented
+				Expected: []sql.Row{
+					{2, "f"},
+					{1, "t"},
+					{3, nil},
+				},
+			},
+			{
+				Query: "SELECT * FROM t_boolean WHERE v1 IS NOT NULL ORDER BY id;",
+				Expected: []sql.Row{
+					{1, "t"},
+					{2, "f"},
+				},
+			},
+			{
+				Query: "SELECT * FROM t_boolean WHERE v1 IS NOT NULL ORDER BY v1;",
+				Expected: []sql.Row{
+					{2, "f"},
+					{1, "t"},
+				},
+			},
+		},
+	},
+	{
+		Name: "Boolean array type",
+		SetUpScript: []string{
+			"CREATE TABLE t_boolean_array (id INTEGER primary key, v1 BOOLEAN[]);",
+			"INSERT INTO t_boolean_array VALUES (1, ARRAY[true, false]), (2, ARRAY[false, true]), (3, ARRAY[true, true]), (4, ARRAY[false, false]), (5, ARRAY[true]), (6, ARRAY[false]), (7, NULL);",
+		},
+		Assertions: []ScriptTestAssertion{
+			{
+				Query: "SELECT * FROM t_boolean_array ORDER BY id;",
+				Skip:  true, // Proper NULL-ordering has not yet been implemented
+				Expected: []sql.Row{
+					{1, "{t,f}"},
+					{2, "{f,t}"},
+					{3, "{t,t}"},
+					{4, "{f,f}"},
+					{5, "{t}"},
+					{6, "{f}"},
+					{7, nil},
+				},
+			},
+			{
+				Query: "SELECT * FROM t_boolean_array ORDER BY v1;",
+				Skip:  true, // Proper NULL-ordering has not yet been implemented
+				Expected: []sql.Row{
+					{6, "{f}"},
+					{4, "{f,f}"},
+					{2, "{f,t}"},
+					{5, "{t}"},
+					{1, "{t,f}"},
+					{3, "{t,t}"},
+					{7, nil},
+				},
+			},
+			{
+				Query: "SELECT * FROM t_boolean_array WHERE v1 IS NOT NULL ORDER BY id;",
+				Expected: []sql.Row{
+					{1, "{t,f}"},
+					{2, "{f,t}"},
+					{3, "{t,t}"},
+					{4, "{f,f}"},
+					{5, "{t}"},
+					{6, "{f}"},
+				},
+			},
+			{
+				Query: "SELECT * FROM t_boolean_array WHERE v1 IS NOT NULL ORDER BY v1;",
+				Expected: []sql.Row{
+					{6, "{f}"},
+					{4, "{f,f}"},
+					{2, "{f,t}"},
+					{5, "{t}"},
+					{1, "{t,f}"},
+					{3, "{t,t}"},
 				},
 			},
 		},
