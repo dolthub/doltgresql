@@ -76,6 +76,8 @@ These are automatically included when releasing a new version of DoltgreSQL, so 
 3. `scripts`: Contains all of the non-build scripts and tools.
 4. `server`: The interface between the `postgres` directory and the underlying [GMS](https://github.com/dolthub/go-mysql-server) and [Dolt](https://github.com/dolthub/dolt) backends.
    1. `ast`: Specifically houses all transformations from the `postgres` AST to the [`vitess`](https://github.com/dolthub/vitess) AST.
+   2. `functions`: Contains all implementations of [PostgreSQL functions](https://www.postgresql.org/docs/15/functions.html).
+   3. `types`: Contains the implementations of all PostgreSQL types.
 5. `testing`: Contains all integration tests, and all things related to testing.
 This will not contain _all_ tests within the repository, as functions within other directories may declare their own unit tests.
    1. `bats`: Contains all of our [Bats](https://github.com/bats-core/bats-core) tests.

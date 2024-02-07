@@ -6,11 +6,11 @@ require (
 	github.com/PuerkitoBio/goquery v1.8.1
 	github.com/cockroachdb/apd/v2 v2.0.3-0.20200518165714-d020e156310a
 	github.com/cockroachdb/errors v1.7.5
-	github.com/dolthub/dolt/go v0.40.5-0.20240118214900-3cbb73cafa3c
-	github.com/dolthub/dolt/go/gen/proto/dolt/services/eventsapi v0.0.0-20231213233028-64c353bf920f
-	github.com/dolthub/go-mysql-server v0.17.1-0.20240118213933-3c0fb56900df
+	github.com/dolthub/dolt/go v0.40.5-0.20240207142355-cbe6b0ce7f01
+	github.com/dolthub/dolt/go/gen/proto/dolt/services/eventsapi v0.0.0-20240205125942-fc7c3429f29c
+	github.com/dolthub/go-mysql-server v0.17.1-0.20240207124505-c0f397a6aaca
 	github.com/dolthub/sqllogictest/go v0.0.0-20240118211725-a52e3f5697e3
-	github.com/dolthub/vitess v0.0.0-20240117231546-55b8c7b39462
+	github.com/dolthub/vitess v0.0.0-20240207121055-c057d2347007
 	github.com/fatih/color v1.13.0
 	github.com/gogo/protobuf v1.3.2
 	github.com/golang/geo v0.0.0-20200730024412-e86565bf3f35
@@ -61,7 +61,7 @@ require (
 	github.com/dolthub/fslock v0.0.3 // indirect
 	github.com/dolthub/go-icu-regex v0.0.0-20230524105445-af7e7991c97e // indirect
 	github.com/dolthub/ishell v0.0.0-20221214210346-d7db0b066488 // indirect
-	github.com/dolthub/jsonpath v0.0.2-0.20230525180605-8dc13778fd72 // indirect
+	github.com/dolthub/jsonpath v0.0.2-0.20240201003050-392940944c15 // indirect
 	github.com/dolthub/maphash v0.0.0-20221220182448-74e1e1ea1577 // indirect
 	github.com/dolthub/swiss v0.1.0 // indirect
 	github.com/dustin/go-humanize v1.0.1 // indirect
