@@ -19,6 +19,7 @@ import (
 	"fmt"
 	"testing"
 
+	"github.com/dolthub/doltgresql/server/logrepl"
 	"github.com/dolthub/go-mysql-server/sql"
 	"github.com/jackc/pgx/v5"
 	"github.com/stretchr/testify/assert"
@@ -72,9 +73,19 @@ var replicationTests = []ReplicationTest{
 	{
 		Name: "simple replication",
 		SetUpScript: []string{
-			"CREATE TABLE test (id INT PRIMARY KEY, name TEXT)",
+			"CREATE TABLE test (id INT PRIMARY KEY, name varchare(100))",
+			"INSERT INTO test VALUES (1, 'one')",
+			"INSERT INTO test VALUES (2, 'two')",
+			"UPDATE test SET name = 'three' WHERE id = 2",
+			"DELETE FROM test WHERE id = 1",
 		},
 	},
+}
+
+func TestReplication(*testing.T) {
+	for _, test := range replicationTests {
+		RunReplicationScript(nil, test)
+	}
 }
 
 // RunScript runs the given script.
@@ -84,6 +95,12 @@ func RunReplicationScript(t *testing.T, script ReplicationTest) {
 		scriptDatabase = "postgres"
 	}
 
+	require.NoError(t, logrepl.SetupReplication())
+	go func() {
+		err := logrepl.StartReplication()
+		require.NoError(t, err)
+	}()
+	
 	ctx := context.Background()
 	primaryConn, err := pgx.Connect(ctx, fmt.Sprintf("postgres://postgres:password@127.0.0.1:%d/%s?sslmode=disable", 5432, "testing"))
 	require.NoError(t, err)

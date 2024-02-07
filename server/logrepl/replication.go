@@ -16,6 +16,7 @@ package logrepl
 
 import (
 	"context"
+	"fmt"
 	"log"
 	"time"
 
@@ -28,29 +29,29 @@ import (
 const connectionString = "postgres://postgres:password@127.0.0.1/postgres?replication=database"
 const outputPlugin = "pgoutput"
 
-func SetupReplication() {
+func SetupReplication() error {
 	conn, err := pgconn.Connect(context.Background(), connectionString)
 	if err != nil {
-		log.Fatalln("failed to connect to PostgreSQL server:", err)
+		return err
 	}
 	defer conn.Close(context.Background())
 
 	result := conn.Exec(context.Background(), "DROP PUBLICATION IF EXISTS pglogrepl_demo;")
 	_, err = result.ReadAll()
 	if err != nil {
-		log.Fatalln("drop publication if exists error", err)
+		return err
 	}
 
 	result = conn.Exec(context.Background(), "CREATE PUBLICATION pglogrepl_demo FOR ALL TABLES;")
 	_, err = result.ReadAll()
-	if err != nil {
-		log.Fatalln("create publication error", err)
-	}
-	log.Println("create publication pglogrepl_demo")
+	return err
 }
 
-func StartReplication() {
+func StartReplication() error {
 	conn, err := pgconn.Connect(context.Background(), connectionString)
+	if err != nil {
+		return err
+	}
 
 	// streaming of large transactions is available since PG 14 (protocol version 2)
 	// we also need to set 'streaming' to 'true'
@@ -63,7 +64,7 @@ func StartReplication() {
 
 	sysident, err := pglogrepl.IdentifySystem(context.Background(), conn)
 	if err != nil {
-		log.Fatalln("IdentifySystem failed:", err)
+		return err
 	}
 	log.Println("SystemID:", sysident.SystemID, "Timeline:", sysident.Timeline, "XLogPos:", sysident.XLogPos, "DBName:", sysident.DBName)
 
@@ -71,13 +72,13 @@ func StartReplication() {
 
 	_, err = pglogrepl.CreateReplicationSlot(context.Background(), conn, slotName, outputPlugin, pglogrepl.CreateReplicationSlotOptions{Temporary: true})
 	if err != nil {
-		log.Fatalln("CreateReplicationSlot failed:", err)
+		return err
 	}
 	log.Println("Created temporary replication slot:", slotName)
 
 	err = pglogrepl.StartReplication(context.Background(), conn, slotName, sysident.XLogPos, pglogrepl.StartReplicationOptions{PluginArgs: pluginArguments})
 	if err != nil {
-		log.Fatalln("StartReplication failed:", err)
+		return err
 	}
 	log.Println("Logical replication started on slot", slotName)
 
@@ -95,7 +96,7 @@ func StartReplication() {
 		if time.Now().After(nextStandbyMessageDeadline) {
 			err = pglogrepl.SendStandbyStatusUpdate(context.Background(), conn, pglogrepl.StandbyStatusUpdate{WALWritePosition: clientXLogPos})
 			if err != nil {
-				log.Fatalln("SendStandbyStatusUpdate failed:", err)
+				return err
 			}
 			log.Printf("Sent Standby status message at %s\n", clientXLogPos.String())
 			nextStandbyMessageDeadline = time.Now().Add(standbyMessageTimeout)
@@ -108,11 +109,11 @@ func StartReplication() {
 			if pgconn.Timeout(err) {
 				continue
 			}
-			log.Fatalln("ReceiveMessage failed:", err)
+			return err
 		}
 
 		if errMsg, ok := rawMsg.(*pgproto3.ErrorResponse); ok {
-			log.Fatalf("received Postgres WAL error: %+v", errMsg)
+			return fmt.Errorf("received Postgres WAL error: %+v", errMsg)
 		}
 
 		msg, ok := rawMsg.(*pgproto3.CopyData)
