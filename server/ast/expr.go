@@ -25,6 +25,7 @@ import (
 
 	"github.com/dolthub/doltgresql/postgres/parser/sem/tree"
 	"github.com/dolthub/doltgresql/postgres/parser/types"
+	pgexprs "github.com/dolthub/doltgresql/server/expression"
 	pgtypes "github.com/dolthub/doltgresql/server/types"
 )
 
@@ -100,25 +101,38 @@ func nodeExpr(node tree.Expr) (vitess.Expr, error) {
 		return nil, fmt.Errorf("ANNOTATE_TYPE is not yet supported")
 	case *tree.Array:
 		//TODO: right now, this only works with boolean array values for the sake of demonstration
-		var gmsExpr sql.Expression
+		var sqlChildren []sql.Expression
+		var unresolvedChildren []vitess.Expr
+		var unresolvedIndexes []int
 		if len(node.Exprs) == 0 {
 			if node.ResolvedType().Family() == types.ArrayFamily && node.ResolvedType().ArrayContents().Family() == types.BoolFamily {
-				gmsExpr = expression.NewLiteral([]bool{}, pgtypes.BoolArray)
+				sqlChildren = []sql.Expression{expression.NewLiteral([]bool{}, pgtypes.BoolArray)}
 			} else {
 				return nil, fmt.Errorf("arrays are generally not yet supported")
 			}
 		} else {
-			vals := make([]bool, len(node.Exprs))
-			for i, arrayExpr := range node.Exprs {
+			for _, arrayExpr := range node.Exprs {
 				if arrayVal, ok := arrayExpr.(*tree.DBool); ok && arrayVal != nil {
-					vals[i] = bool(*arrayVal)
+					sqlChildren = append(sqlChildren, expression.NewLiteral(bool(*arrayVal), pgtypes.Bool))
 				} else {
-					return nil, fmt.Errorf("array value is not yet supported")
+					unresolvedChild, err := nodeExpr(arrayExpr)
+					if err != nil {
+						return nil, err
+					}
+					unresolvedChildren = append(unresolvedChildren, unresolvedChild)
+					unresolvedIndexes = append(unresolvedIndexes, len(sqlChildren))
+					sqlChildren = append(sqlChildren, nil)
 				}
 			}
-			gmsExpr = expression.NewLiteral(vals, pgtypes.BoolArray)
 		}
-		return vitess.InjectedExpr{Expression: gmsExpr}, nil
+		arrayExpr, err := pgexprs.NewArray(sqlChildren, unresolvedChildren, unresolvedIndexes, nil)
+		if err != nil {
+			return nil, err
+		}
+		return vitess.InjectedExpr{
+			Expression: arrayExpr,
+			Children:   unresolvedChildren,
+		}, nil
 	case *tree.ArrayFlatten:
 		return nil, fmt.Errorf("flattening arrays is not yet supported")
 	case *tree.BinaryExpr:
