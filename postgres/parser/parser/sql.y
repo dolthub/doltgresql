@@ -6457,7 +6457,7 @@ create_table_as_stmt:
       StorageParams: $7.storageParams(),
       OnCommit: $8.createTableOnCommitSetting(),
       Persistence: $2.persistence(),
-      WithData: $12.bool(),
+      WithNoData: $12.bool(),
     }
   }
 | CREATE opt_persistence_temp_table TABLE IF NOT EXISTS table_name create_as_opt_col_list opt_using_method opt_table_with opt_create_table_on_commit opt_tablespace AS select_stmt opt_create_as_with_data
@@ -6473,22 +6473,22 @@ create_table_as_stmt:
       StorageParams: $10.storageParams(),
       OnCommit: $11.createTableOnCommitSetting(),
       Persistence: $2.persistence(),
-      WithData: $15.bool(),
+      WithNoData: $15.bool(),
     }
   }
 
 opt_create_as_with_data:
   /* EMPTY */
   {
-    $$.val = true
+    $$.val = false
   }
 | WITH DATA
   {
-    $$.val = true
+    $$.val = false
   }
 | WITH NO DATA
   {
-    $$.val = false
+    $$.val = true
   }
 
 /*

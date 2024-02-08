@@ -70,7 +70,7 @@ func nodeCreateTable(node *tree.CreateTable) (*vitess.DDL, error) {
 			Select: selectStmt,
 		}
 	}
-	if !node.WithData {
+	if node.WithNoData {
 		return nil, fmt.Errorf("WITH NO DATA is not yet supported")
 	}
 	ddl := &vitess.DDL{

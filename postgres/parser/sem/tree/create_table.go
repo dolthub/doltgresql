@@ -958,9 +958,9 @@ type CreateTable struct {
 	// In CREATE...AS queries, Defs represents a list of ColumnTableDefs, one for
 	// each column, and a ConstraintTableDef for each constraint on a subset of
 	// these columns.
-	Defs     TableDefs
-	AsSource *Select
-	WithData bool
+	Defs       TableDefs
+	AsSource   *Select
+	WithNoData bool
 }
 
 // As returns true if this table represents a CREATE TABLE ... AS statement,
