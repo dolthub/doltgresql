@@ -938,6 +938,10 @@ const (
 	CreateTableOnCommitUnset CreateTableOnCommitSetting = iota
 	// CreateTableOnCommitPreserveRows indicates that ON COMMIT PRESERVE ROWS was set.
 	CreateTableOnCommitPreserveRows
+	// CreateTableOnCommitDeleteRows indicates that ON COMMIT DELETE ROWS was set.
+	CreateTableOnCommitDeleteRows
+	// CreateTableOnCommitDrop indicates that ON COMMIT DROP was set.
+	CreateTableOnCommitDrop
 )
 
 // CreateTable represents a CREATE TABLE statement.
@@ -949,11 +953,14 @@ type CreateTable struct {
 	Persistence   Persistence
 	StorageParams StorageParams
 	OnCommit      CreateTableOnCommitSetting
+	Using         string
+	Tablespace    Name
 	// In CREATE...AS queries, Defs represents a list of ColumnTableDefs, one for
 	// each column, and a ConstraintTableDef for each constraint on a subset of
 	// these columns.
 	Defs     TableDefs
 	AsSource *Select
+	WithData bool
 }
 
 // As returns true if this table represents a CREATE TABLE ... AS statement,

@@ -1088,7 +1088,7 @@ func (u *sqlSymUnion) opClassOptions() []tree.IndexElemOpClassOption {
 %type <tree.SequenceOption> sequence_option_elem
 
 %type <bool> all_or_distinct opt_cascade
-%type <bool> with_comment opt_with_force
+%type <bool> with_comment opt_with_force opt_create_as_with_data
 %type <empty> join_outer
 %type <tree.JoinCond> join_qual
 %type <str> join_type
@@ -3882,7 +3882,6 @@ opt_using_clause:
   USING from_list { return unimplementedWithIssueDetail(sqllex, 40963, "delete using") }
 | /* EMPTY */ { }
 
-
 // %Help: DISCARD - reset the session to its initial state
 // %Category: Cfg
 // %Text: DISCARD ALL
@@ -6404,18 +6403,15 @@ opt_create_table_on_commit:
   }
 | ON COMMIT PRESERVE ROWS
   {
-    /* SKIP DOC */
     $$.val = tree.CreateTableOnCommitPreserveRows
   }
 | ON COMMIT DELETE ROWS error
   {
-    /* SKIP DOC */
-    return unimplementedWithIssueDetail(sqllex, 46556, "delete rows")
+    $$.val = tree.CreateTableOnCommitDeleteRows
   }
 | ON COMMIT DROP error
   {
-    /* SKIP DOC */
-    return unimplementedWithIssueDetail(sqllex, 46556, "drop")
+    $$.val = tree.CreateTableOnCommitDrop
   }
 
 storage_parameter:
@@ -6449,39 +6445,51 @@ storage_parameter_list:
   }
 
 create_table_as_stmt:
-  CREATE opt_persistence_temp_table TABLE table_name create_as_opt_col_list opt_table_with AS select_stmt opt_create_as_data opt_create_table_on_commit
+  CREATE opt_persistence_temp_table TABLE table_name create_as_opt_col_list opt_using_method opt_table_with opt_create_table_on_commit opt_tablespace AS select_stmt opt_create_as_with_data
   {
     name := $4.unresolvedObjectName().ToTableName()
     $$.val = &tree.CreateTable{
       Table: name,
-      IfNotExists: false,
-      Interleave: nil,
       Defs: $5.tblDefs(),
-      AsSource: $8.slct(),
-      StorageParams: $6.storageParams(),
-      OnCommit: $10.createTableOnCommitSetting(),
+      Using: $6,
+      Tablespace: tree.Name($9),
+      AsSource: $11.slct(),
+      StorageParams: $7.storageParams(),
+      OnCommit: $8.createTableOnCommitSetting(),
       Persistence: $2.persistence(),
+      WithData: $12.bool(),
     }
   }
-| CREATE opt_persistence_temp_table TABLE IF NOT EXISTS table_name create_as_opt_col_list opt_table_with AS select_stmt opt_create_as_data opt_create_table_on_commit
+| CREATE opt_persistence_temp_table TABLE IF NOT EXISTS table_name create_as_opt_col_list opt_using_method opt_table_with opt_create_table_on_commit opt_tablespace AS select_stmt opt_create_as_with_data
   {
     name := $7.unresolvedObjectName().ToTableName()
     $$.val = &tree.CreateTable{
       Table: name,
       IfNotExists: true,
-      Interleave: nil,
+      Using: $9,
+      Tablespace: tree.Name($12),
       Defs: $8.tblDefs(),
-      AsSource: $11.slct(),
-      StorageParams: $9.storageParams(),
-      OnCommit: $13.createTableOnCommitSetting(),
+      AsSource: $14.slct(),
+      StorageParams: $10.storageParams(),
+      OnCommit: $11.createTableOnCommitSetting(),
       Persistence: $2.persistence(),
+      WithData: $15.bool(),
     }
   }
 
-opt_create_as_data:
-  /* EMPTY */  { /* no error */ }
-| WITH DATA    { /* SKIP DOC */ /* This is the default */ }
-| WITH NO DATA { return unimplemented(sqllex, "create table as with no data") }
+opt_create_as_with_data:
+  /* EMPTY */
+  {
+    $$.val = true
+  }
+| WITH DATA
+  {
+    $$.val = true
+  }
+| WITH NO DATA
+  {
+    $$.val = false
+  }
 
 /*
  * Redundancy here is needed to avoid shift/reduce conflicts,
@@ -6925,7 +6933,6 @@ constraint_elem:
   {
     return unimplementedWithIssueDetail(sqllex, 46657, "add constraint exclude using")
   }
-
 
 create_as_opt_col_list:
   '(' create_as_table_defs ')'

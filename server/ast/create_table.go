@@ -55,6 +55,12 @@ func nodeCreateTable(node *tree.CreateTable) (*vitess.DDL, error) {
 		return nil, fmt.Errorf("unknown persistence strategy encountered")
 	}
 	var optSelect *vitess.OptSelect
+	if node.Using != "" {
+		return nil, fmt.Errorf("USING is not yet supported")
+	}
+	if node.Tablespace != "" {
+		return nil, fmt.Errorf("TABLESPACE is not yet supported")
+	}
 	if node.AsSource != nil {
 		selectStmt, err := nodeSelect(node.AsSource)
 		if err != nil {
@@ -63,6 +69,9 @@ func nodeCreateTable(node *tree.CreateTable) (*vitess.DDL, error) {
 		optSelect = &vitess.OptSelect{
 			Select: selectStmt,
 		}
+	}
+	if !node.WithData {
+		return nil, fmt.Errorf("WITH NO DATA is not yet supported")
 	}
 	ddl := &vitess.DDL{
 		Action:      vitess.CreateStr,
