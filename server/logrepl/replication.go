@@ -26,11 +26,11 @@ import (
 	"github.com/jackc/pgx/v5/pgtype"
 )
 
-const connectionString = "postgres://postgres:password@127.0.0.1/postgres?replication=database"
+const connectionString = "postgres://postgres:password@127.0.0.1/%s?replication=database"
 const outputPlugin = "pgoutput"
 
-func SetupReplication() error {
-	conn, err := pgconn.Connect(context.Background(), connectionString)
+func SetupReplication(database string) error {
+	conn, err := pgconn.Connect(context.Background(), fmt.Sprintf(connectionString, database))
 	if err != nil {
 		return err
 	}
@@ -47,8 +47,8 @@ func SetupReplication() error {
 	return err
 }
 
-func StartReplication() error {
-	conn, err := pgconn.Connect(context.Background(), connectionString)
+func StartReplication(database string) error {
+	conn, err := pgconn.Connect(context.Background(), fmt.Sprintf(connectionString, database))
 	if err != nil {
 		return err
 	}
@@ -62,6 +62,7 @@ func StartReplication() error {
 		"streaming 'true'",
 	}
 
+	// TODO: does this change?
 	sysident, err := pglogrepl.IdentifySystem(context.Background(), conn)
 	if err != nil {
 		return err
@@ -70,6 +71,7 @@ func StartReplication() error {
 
 	slotName := "pglogrepl_demo"
 
+	_ = pglogrepl.DropReplicationSlot(context.Background(), conn, slotName, pglogrepl.DropReplicationSlotOptions{})
 	_, err = pglogrepl.CreateReplicationSlot(context.Background(), conn, slotName, outputPlugin, pglogrepl.CreateReplicationSlotOptions{Temporary: true})
 	if err != nil {
 		return err

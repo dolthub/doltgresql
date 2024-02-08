@@ -17,7 +17,9 @@ package _go
 import (
 	"context"
 	"fmt"
+	"log"
 	"testing"
+	"time"
 
 	"github.com/dolthub/doltgresql/server/logrepl"
 	"github.com/dolthub/go-mysql-server/sql"
@@ -96,14 +98,15 @@ func RunReplicationScript(t *testing.T, script ReplicationTest) {
 		scriptDatabase = "postgres"
 	}
 
-	require.NoError(t, logrepl.SetupReplication())
+	database := "postgres"
+	require.NoError(t, logrepl.SetupReplication(database))
 	go func() {
-		err := logrepl.StartReplication()
+		err := logrepl.StartReplication(database)
 		require.NoError(t, err)
 	}()
 	
 	ctx := context.Background()
-	primaryConn, err := pgx.Connect(ctx, fmt.Sprintf("postgres://postgres:password@127.0.0.1:%d/%s?sslmode=disable", 5432, "testing"))
+	primaryConn, err := pgx.Connect(ctx, fmt.Sprintf("postgres://postgres:password@127.0.0.1:%d/%s?sslmode=disable", 5432, database))
 	require.NoError(t, err)
 
 	ctx, replicaConn, controller := CreateServer(t, scriptDatabase)
@@ -115,7 +118,7 @@ func RunReplicationScript(t *testing.T, script ReplicationTest) {
 	}()
 
 	t.Run(script.Name, func(t *testing.T) {
-		runReplicationScript(ctx, t, script, primaryConn, replicaConn)
+		runReplicationScript(ctx, t, script, primaryConn, nil)
 	})
 }
 
@@ -127,9 +130,12 @@ func runReplicationScript(ctx context.Context, t *testing.T, script ReplicationT
 
 	// Run the setup
 	for _, query := range script.SetUpScript {
+		log.Println("Running setup query:", query)
 		_, err := primaryConn.Exec(ctx, query)
 		require.NoError(t, err)
 	}
+	
+	time.Sleep(3 * time.Second)
 
 	// Run the assertions
 	for _, assertion := range script.Assertions {
