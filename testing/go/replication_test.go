@@ -73,7 +73,8 @@ var replicationTests = []ReplicationTest{
 	{
 		Name: "simple replication",
 		SetUpScript: []string{
-			"CREATE TABLE test (id INT PRIMARY KEY, name varchare(100))",
+			"drop table if exists test",
+			"CREATE TABLE test (id INT PRIMARY KEY, name varchar(100))",
 			"INSERT INTO test VALUES (1, 'one')",
 			"INSERT INTO test VALUES (2, 'two')",
 			"UPDATE test SET name = 'three' WHERE id = 2",
@@ -82,9 +83,9 @@ var replicationTests = []ReplicationTest{
 	},
 }
 
-func TestReplication(*testing.T) {
+func TestReplication(t *testing.T) {
 	for _, test := range replicationTests {
-		RunReplicationScript(nil, test)
+		RunReplicationScript(t, test)
 	}
 }
 
