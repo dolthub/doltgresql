@@ -175,16 +175,57 @@ func (node *CreateExtension) Format(ctx *FmtCtx) {
 	}
 }
 
+type IndexElemOpClass struct {
+	Name    string
+	Options []IndexElemOpClassOption
+}
+
+type IndexElemOpClassOption struct {
+	Param string
+	Val   Expr
+}
+
+// Format implements the NodeFormatter interface.
+func (node *IndexElemOpClassOption) Format(ctx *FmtCtx) {
+	ctx.WriteString(node.Param)
+	ctx.WriteString(" = ")
+	ctx.FormatNode(node.Val)
+}
+
 // IndexElem represents a column with a direction in a CREATE INDEX statement.
 type IndexElem struct {
 	Column     Name
+	Expr       Expr // in parentheses or function name
+	Collation  string
+	OpClass    *IndexElemOpClass
 	Direction  Direction
 	NullsOrder NullsOrder
 }
 
 // Format implements the NodeFormatter interface.
 func (node *IndexElem) Format(ctx *FmtCtx) {
-	ctx.FormatNode(&node.Column)
+	if node.Column != "" {
+		ctx.FormatNode(&node.Column)
+	} else {
+		ctx.FormatNode(node.Expr)
+	}
+	if node.Collation != "" {
+		ctx.WriteString(" COLLATE ")
+		ctx.WriteString(node.Collation)
+	}
+	if node.OpClass != nil {
+		ctx.WriteByte(' ')
+		ctx.WriteString(node.OpClass.Name)
+		if len(node.OpClass.Options) != 0 {
+			ctx.WriteString(" (")
+			for i, option := range node.OpClass.Options {
+				if i != 0 {
+					ctx.WriteString(", ")
+				}
+				ctx.FormatNode(&option)
+			}
+		}
+	}
 	if node.Direction != DefaultDirection {
 		ctx.WriteByte(' ')
 		ctx.WriteString(node.Direction.String())
@@ -211,21 +252,19 @@ func (l *IndexElemList) Format(ctx *FmtCtx) {
 
 // CreateIndex represents a CREATE INDEX statement.
 type CreateIndex struct {
-	Name        Name
-	Table       TableName
-	Unique      bool
-	Inverted    bool
-	IfNotExists bool
-	Columns     IndexElemList
-	Sharded     *ShardedIndexDef
-	// Extra columns to be stored together with the indexed ones as an optimization
-	// for improved reading performance.
-	Storing       NameList
-	Interleave    *InterleaveDef
-	PartitionBy   *PartitionBy
-	StorageParams StorageParams
-	Predicate     Expr
+	Name          Name
+	Table         TableName
+	Unique        bool
 	Concurrently  bool
+	IfNotExists   bool
+	Only          bool
+	Using         string
+	Columns       IndexElemList
+	Include       NameList
+	NullsDistinct bool
+	StorageParams StorageParams
+	Tablespace    Name
+	Predicate     Expr
 }
 
 // Format implements the NodeFormatter interface.
@@ -233,9 +272,6 @@ func (node *CreateIndex) Format(ctx *FmtCtx) {
 	ctx.WriteString("CREATE ")
 	if node.Unique {
 		ctx.WriteString("UNIQUE ")
-	}
-	if node.Inverted && !ctx.HasFlags(FmtPGIndexDef) {
-		ctx.WriteString("INVERTED ")
 	}
 	ctx.WriteString("INDEX ")
 	if node.Concurrently {
@@ -249,36 +285,35 @@ func (node *CreateIndex) Format(ctx *FmtCtx) {
 		ctx.WriteByte(' ')
 	}
 	ctx.WriteString("ON ")
+	if node.Only {
+		ctx.WriteString("ONLY ")
+	}
 	ctx.FormatNode(&node.Table)
-	if ctx.HasFlags(FmtPGIndexDef) {
-		ctx.WriteString(" USING")
-		if node.Inverted {
-			ctx.WriteString(" gin")
-		} else {
-			ctx.WriteString(" btree")
-		}
+	if node.Using != "" {
+		ctx.WriteString(" USING ")
+		ctx.WriteString(node.Using)
 	}
-	ctx.WriteString(" (")
+	ctx.WriteString(" ( ")
 	ctx.FormatNode(&node.Columns)
-	ctx.WriteByte(')')
-	if node.Sharded != nil {
-		ctx.FormatNode(node.Sharded)
+	ctx.WriteString(" )")
+	if node.Include != nil {
+		ctx.WriteString(" INCLUDE ( ")
+		ctx.FormatNode(&node.Include)
+		ctx.WriteString(" )")
 	}
-	if len(node.Storing) > 0 {
-		ctx.WriteString(" STORING (")
-		ctx.FormatNode(&node.Storing)
-		ctx.WriteByte(')')
-	}
-	if node.Interleave != nil {
-		ctx.FormatNode(node.Interleave)
-	}
-	if node.PartitionBy != nil {
-		ctx.FormatNode(node.PartitionBy)
+	if node.NullsDistinct {
+		ctx.WriteString(" NULLS DISTINCT ")
+	} else {
+		ctx.WriteString(" NULLS NOT DISTINCT ")
 	}
 	if node.StorageParams != nil {
 		ctx.WriteString(" WITH (")
 		ctx.FormatNode(&node.StorageParams)
 		ctx.WriteString(")")
+	}
+	if node.Tablespace != "" {
+		ctx.WriteString(" TABLESPACE ")
+		ctx.FormatNode(&node.Tablespace)
 	}
 	if node.Predicate != nil {
 		ctx.WriteString(" WHERE ")

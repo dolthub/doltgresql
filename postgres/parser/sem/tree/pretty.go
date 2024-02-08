@@ -1536,9 +1536,9 @@ func (node *CreateIndex) doc(p *PrettyCfg) pretty.Doc {
 	if node.Unique {
 		title = append(title, pretty.Keyword("UNIQUE"))
 	}
-	if node.Inverted {
-		title = append(title, pretty.Keyword("INVERTED"))
-	}
+	//if node.Inverted {
+	//	title = append(title, pretty.Keyword("INVERTED"))
+	//}
 	title = append(title, pretty.Keyword("INDEX"))
 	if node.Concurrently {
 		title = append(title, pretty.Keyword("CONCURRENTLY"))
@@ -1556,22 +1556,22 @@ func (node *CreateIndex) doc(p *PrettyCfg) pretty.Doc {
 		p.Doc(&node.Table),
 		p.bracket("(", p.Doc(&node.Columns), ")")))
 
-	if node.Sharded != nil {
-		clauses = append(clauses, p.Doc(node.Sharded))
-	}
-	if len(node.Storing) > 0 {
-		clauses = append(clauses, p.bracketKeyword(
-			"STORING", " (",
-			p.Doc(&node.Storing),
-			")", "",
-		))
-	}
-	if node.Interleave != nil {
-		clauses = append(clauses, p.Doc(node.Interleave))
-	}
-	if node.PartitionBy != nil {
-		clauses = append(clauses, p.Doc(node.PartitionBy))
-	}
+	//if node.Sharded != nil {
+	//	clauses = append(clauses, p.Doc(node.Sharded))
+	//}
+	//if len(node.Storing) > 0 {
+	//	clauses = append(clauses, p.bracketKeyword(
+	//		"STORING", " (",
+	//		p.Doc(&node.Storing),
+	//		")", "",
+	//	))
+	//}
+	//if node.Interleave != nil {
+	//	clauses = append(clauses, p.Doc(node.Interleave))
+	//}
+	//if node.PartitionBy != nil {
+	//	clauses = append(clauses, p.Doc(node.PartitionBy))
+	//}
 	if node.StorageParams != nil {
 		clauses = append(clauses, p.bracketKeyword(
 			"WITH", " (",
