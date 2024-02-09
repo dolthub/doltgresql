@@ -245,6 +245,10 @@ There are exceptions, as some statements we do not yet support, and cannot suppo
 In these cases, we must add a `//TODO:` comment stating what is missing and why it isn't an error.
 This will at least allow us to track all such instances where we deviate from the expected behavior, which we can also document elsewhere for users of DoltgreSQL.
 
+### `server/expression`
+
+TODO: FILL ME OUT BEFORE COMMITTING
+
 ### `server/functions`
 
 The `functions` package contains the functions, along with an implementation to approximate the function overloading structure (and type coercion).
