@@ -76,11 +76,23 @@ var replicationTests = []ReplicationTest{
 		Name: "simple replication",
 		SetUpScript: []string{
 			"drop table if exists test",
-			"CREATE TABLE test (id INT PRIMARY KEY, name varchar(100))",
+			"CREATE TABLE test (id INT primary key, name varchar(100))",
 			"INSERT INTO test VALUES (1, 'one')",
 			"INSERT INTO test VALUES (2, 'two')",
 			"UPDATE test SET name = 'three' WHERE id = 2",
 			"DELETE FROM test WHERE id = 1",
+			"INSERT INTO test VALUES (3, 'one')",
+			"INSERT INTO test VALUES (4, 'two')",
+			"UPDATE test SET name = 'three' WHERE id = 4",
+			"DELETE FROM test WHERE id = 3",
+			"INSERT INTO test VALUES (5, 'one')",
+			"INSERT INTO test VALUES (6, 'two')",
+			"UPDATE test SET name = 'three' WHERE id = 5",
+			"DELETE FROM test WHERE id = 5",
+			"INSERT INTO test VALUES (7, 'one')",
+			"INSERT INTO test VALUES (8, 'two')",
+			"UPDATE test SET name = 'three' WHERE id = 8",
+			"DELETE FROM test WHERE id = 7",
 		},
 	},
 }
@@ -133,10 +145,9 @@ func runReplicationScript(ctx context.Context, t *testing.T, script ReplicationT
 		log.Println("Running setup query:", query)
 		_, err := primaryConn.Exec(ctx, query)
 		require.NoError(t, err)
+		time.Sleep(100 * time.Millisecond)
 	}
 	
-	time.Sleep(3 * time.Second)
-
 	// Run the assertions
 	for _, assertion := range script.Assertions {
 		t.Run(assertion.Query, func(t *testing.T) {
