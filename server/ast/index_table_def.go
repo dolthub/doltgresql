@@ -52,6 +52,15 @@ func nodeIndexTableDef(node *tree.IndexTableDef) (*vitess.IndexDefinition, error
 	}
 	columns := make([]*vitess.IndexColumn, len(node.Columns))
 	for i, indexElem := range node.Columns {
+		if indexElem.Expr != nil {
+			return nil, fmt.Errorf("expression index attribute is not yet supported")
+		}
+		if indexElem.Collation != "" {
+			return nil, fmt.Errorf("index attribute collation is not yet supported")
+		}
+		if indexElem.OpClass != nil {
+			return nil, fmt.Errorf("index attribute collation is not yet supported")
+		}
 		switch indexElem.Direction {
 		case tree.DefaultDirection:
 			// Defaults to ASC

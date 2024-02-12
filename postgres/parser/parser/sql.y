@@ -603,6 +603,12 @@ func (u *sqlSymUnion) routineOptions() []tree.RoutineOption {
 func (u *sqlSymUnion) functionWithArgs() []tree.FunctionWithArgs {
   return u.val.([]tree.FunctionWithArgs)
 }
+func (u *sqlSymUnion) opClass() *tree.IndexElemOpClass {
+  return u.val.(*tree.IndexElemOpClass)
+}
+func (u *sqlSymUnion) opClassOptions() []tree.IndexElemOpClassOption {
+  return u.val.([]tree.IndexElemOpClassOption)
+}
 %}
 
 // NB: the %token definitions must come before the %type definitions in this
@@ -1082,7 +1088,7 @@ func (u *sqlSymUnion) functionWithArgs() []tree.FunctionWithArgs {
 %type <tree.SequenceOption> sequence_option_elem
 
 %type <bool> all_or_distinct opt_cascade
-%type <bool> with_comment opt_with_force
+%type <bool> with_comment opt_with_force opt_create_as_with_data
 %type <empty> join_outer
 %type <tree.JoinCond> join_qual
 %type <str> join_type
@@ -1098,7 +1104,7 @@ func (u *sqlSymUnion) functionWithArgs() []tree.FunctionWithArgs {
 %type <tree.Expr> overlay_placing
 
 %type <bool> opt_unique opt_concurrently opt_cluster
-%type <bool> opt_using_gin_btree
+%type <str> opt_using_method
 
 %type <*tree.Limit> limit_clause offset_clause opt_limit_clause
 %type <tree.Expr> select_fetch_first_value
@@ -1114,6 +1120,10 @@ func (u *sqlSymUnion) functionWithArgs() []tree.FunctionWithArgs {
 
 %type <*tree.ShardedIndexDef> opt_hash_sharded
 %type <tree.NameList> opt_storing
+%type <bool> opt_only opt_nulls_distinct
+%type <tree.NameList> opt_include
+%type <*tree.IndexElemOpClass> opt_opclass
+%type <[]tree.IndexElemOpClassOption> opclass_option_list
 %type <*tree.ColumnTableDef> column_def
 %type <tree.TableDef> table_elem
 %type <tree.Expr> where_clause opt_where_clause
@@ -1174,7 +1184,7 @@ func (u *sqlSymUnion) functionWithArgs() []tree.FunctionWithArgs {
 %type <int32> iconst32
 %type <int64> signed_iconst64
 %type <int64> iconst64
-%type <tree.Expr> var_value
+%type <tree.Expr> var_value opt_var_value
 %type <tree.Exprs> var_list
 %type <tree.NameList> var_name
 %type <str> unrestricted_name type_function_name type_function_name_no_crdb_extra
@@ -3872,7 +3882,6 @@ opt_using_clause:
   USING from_list { return unimplementedWithIssueDetail(sqllex, 40963, "delete using") }
 | /* EMPTY */ { }
 
-
 // %Help: DISCARD - reset the session to its initial state
 // %Category: Cfg
 // %Text: DISCARD ALL
@@ -6394,28 +6403,35 @@ opt_create_table_on_commit:
   }
 | ON COMMIT PRESERVE ROWS
   {
-    /* SKIP DOC */
     $$.val = tree.CreateTableOnCommitPreserveRows
   }
 | ON COMMIT DELETE ROWS error
   {
-    /* SKIP DOC */
-    return unimplementedWithIssueDetail(sqllex, 46556, "delete rows")
+    $$.val = tree.CreateTableOnCommitDeleteRows
   }
 | ON COMMIT DROP error
   {
-    /* SKIP DOC */
-    return unimplementedWithIssueDetail(sqllex, 46556, "drop")
+    $$.val = tree.CreateTableOnCommitDrop
   }
 
 storage_parameter:
-  name '=' var_value
+  name opt_var_value
   {
-    $$.val = tree.StorageParam{Key: tree.Name($1), Value: $3.expr()}
+    $$.val = tree.StorageParam{Key: tree.Name($1), Value: $2.expr()}
   }
-|  SCONST '=' var_value
+|  SCONST opt_var_value
   {
-    $$.val = tree.StorageParam{Key: tree.Name($1), Value: $3.expr()}
+    $$.val = tree.StorageParam{Key: tree.Name($1), Value: $2.expr()}
+  }
+
+opt_var_value:
+  /* EMPTY */
+  {
+    $$.val = nil
+  }
+| '=' var_value
+  {
+    $$.val = $2.expr()
   }
 
 storage_parameter_list:
@@ -6429,39 +6445,51 @@ storage_parameter_list:
   }
 
 create_table_as_stmt:
-  CREATE opt_persistence_temp_table TABLE table_name create_as_opt_col_list opt_table_with AS select_stmt opt_create_as_data opt_create_table_on_commit
+  CREATE opt_persistence_temp_table TABLE table_name create_as_opt_col_list opt_using_method opt_table_with opt_create_table_on_commit opt_tablespace AS select_stmt opt_create_as_with_data
   {
     name := $4.unresolvedObjectName().ToTableName()
     $$.val = &tree.CreateTable{
       Table: name,
-      IfNotExists: false,
-      Interleave: nil,
       Defs: $5.tblDefs(),
-      AsSource: $8.slct(),
-      StorageParams: $6.storageParams(),
-      OnCommit: $10.createTableOnCommitSetting(),
+      Using: $6,
+      Tablespace: tree.Name($9),
+      AsSource: $11.slct(),
+      StorageParams: $7.storageParams(),
+      OnCommit: $8.createTableOnCommitSetting(),
       Persistence: $2.persistence(),
+      WithNoData: $12.bool(),
     }
   }
-| CREATE opt_persistence_temp_table TABLE IF NOT EXISTS table_name create_as_opt_col_list opt_table_with AS select_stmt opt_create_as_data opt_create_table_on_commit
+| CREATE opt_persistence_temp_table TABLE IF NOT EXISTS table_name create_as_opt_col_list opt_using_method opt_table_with opt_create_table_on_commit opt_tablespace AS select_stmt opt_create_as_with_data
   {
     name := $7.unresolvedObjectName().ToTableName()
     $$.val = &tree.CreateTable{
       Table: name,
       IfNotExists: true,
-      Interleave: nil,
+      Using: $9,
+      Tablespace: tree.Name($12),
       Defs: $8.tblDefs(),
-      AsSource: $11.slct(),
-      StorageParams: $9.storageParams(),
-      OnCommit: $13.createTableOnCommitSetting(),
+      AsSource: $14.slct(),
+      StorageParams: $10.storageParams(),
+      OnCommit: $11.createTableOnCommitSetting(),
       Persistence: $2.persistence(),
+      WithNoData: $15.bool(),
     }
   }
 
-opt_create_as_data:
-  /* EMPTY */  { /* no error */ }
-| WITH DATA    { /* SKIP DOC */ /* This is the default */ }
-| WITH NO DATA { return unimplemented(sqllex, "create table as with no data") }
+opt_create_as_with_data:
+  /* EMPTY */
+  {
+    $$.val = false
+  }
+| WITH DATA
+  {
+    $$.val = false
+  }
+| WITH NO DATA
+  {
+    $$.val = true
+  }
 
 /*
  * Redundancy here is needed to avoid shift/reduce conflicts,
@@ -6906,7 +6934,6 @@ constraint_elem:
     return unimplementedWithIssueDetail(sqllex, 46657, "add constraint exclude using")
   }
 
-
 create_as_opt_col_list:
   '(' create_as_table_defs ')'
   {
@@ -7060,6 +7087,36 @@ opt_column_list:
 | /* EMPTY */
   {
     $$.val = tree.NameList(nil)
+  }
+
+opt_only:
+  /* EMPTY */
+  {
+    $$.val = false
+  }
+| ONLY
+  {
+    $$.val = true
+  }
+
+opt_include:
+  INCLUDE '(' name_list ')'
+  {
+    $$.val = $3.nameList()
+  }
+| /* EMPTY */
+  {
+    $$.val = tree.NameList(nil)
+  }
+
+opt_nulls_distinct:
+  NULLS opt_not DISTINCT
+  {
+    $$.val = $2.bool()
+  }
+| /* EMPTY */
+  {
+    $$.val = true
   }
 
 // https://www.postgresql.org/docs/10/sql-createtable.html
@@ -7535,111 +7592,62 @@ enum_val_list:
 // %Help: CREATE INDEX - create a new index
 // %Category: DDL
 // %Text:
-// CREATE [UNIQUE | INVERTED] INDEX [CONCURRENTLY] [IF NOT EXISTS] [<idxname>]
-//        ON <tablename> ( <colname> [ASC | DESC] [, ...] )
-//        [USING HASH WITH BUCKET_COUNT = <shard_buckets>] [STORING ( <colnames...> )] [<interleave>]
-//        [PARTITION BY <partition params>]
-//        [WITH <storage_parameter_list] [WHERE <where_conds...>]
-//
-// Interleave clause:
-//    INTERLEAVE IN PARENT <tablename> ( <colnames...> ) [CASCADE | RESTRICT]
-//
-// %SeeAlso: CREATE TABLE, SHOW INDEXES, SHOW CREATE,
-// WEBDOCS/create-index.html
+// CREATE [UNIQUE] INDEX [CONCURRENTLY] [IF NOT EXISTS] [<idxname>]
+//        ON [ONLY] <tablename> [USING <method>]
+//        ( { column_name | ( expression ) } [ COLLATE collation ] [ opclass [ ( opclass_parameter = value [, ... ] ) ] ] [ ASC | DESC ] [ NULLS { FIRST | LAST } ] [, ...] )
+//        [INCLUDE ( column_name, [,...] )]
+//        [NULLS [ NOT ] DISTINCT]
+//        [WITH <storage_parameter_list>]
+//        [TABLESPACE tablespace_name]
+//        [WHERE <where_conds...>]
 create_index_stmt:
-  CREATE opt_unique INDEX opt_concurrently opt_index_name ON table_name opt_using_gin_btree '(' index_params ')' opt_hash_sharded opt_storing opt_interleave opt_partition_by opt_with_storage_parameter_list opt_where_clause
+  CREATE opt_unique INDEX opt_concurrently opt_index_name ON opt_only table_name opt_using_method '(' index_params ')' opt_include opt_nulls_distinct opt_with_storage_parameter_list opt_tablespace opt_where_clause
   {
-    table := $7.unresolvedObjectName().ToTableName()
+    table := $8.unresolvedObjectName().ToTableName()
     $$.val = &tree.CreateIndex{
       Name:          tree.Name($5),
       Table:         table,
       Unique:        $2.bool(),
-      Columns:       $10.idxElems(),
-      Sharded:       $12.shardedIndexDef(),
-      Storing:       $13.nameList(),
-      Interleave:    $14.interleave(),
-      PartitionBy:   $15.partitionBy(),
-      StorageParams: $16.storageParams(),
-      Predicate:     $17.expr(),
-      Inverted:      $8.bool(),
       Concurrently:  $4.bool(),
+      Only:          $7.bool(),
+      Using:         $9,
+      Columns:       $11.idxElems(),
+      Include:       $13.nameList(),
+      NullsDistinct: $14.bool(),
+      StorageParams: $15.storageParams(),
+      Tablespace:    tree.Name($16),
+      Predicate:     $17.expr(),
     }
   }
-| CREATE opt_unique INDEX opt_concurrently IF NOT EXISTS index_name ON table_name opt_using_gin_btree '(' index_params ')' opt_hash_sharded opt_storing opt_interleave opt_partition_by opt_with_storage_parameter_list opt_where_clause
+| CREATE opt_unique INDEX opt_concurrently IF NOT EXISTS index_name ON opt_only table_name opt_using_method '(' index_params ')' opt_include opt_nulls_distinct opt_with_storage_parameter_list opt_tablespace opt_where_clause
   {
-    table := $10.unresolvedObjectName().ToTableName()
+    table := $11.unresolvedObjectName().ToTableName()
     $$.val = &tree.CreateIndex{
       Name:          tree.Name($8),
       Table:         table,
       Unique:        $2.bool(),
-      IfNotExists:   true,
-      Columns:       $13.idxElems(),
-      Sharded:       $15.shardedIndexDef(),
-      Storing:       $16.nameList(),
-      Interleave:    $17.interleave(),
-      PartitionBy:   $18.partitionBy(),
-      Inverted:      $11.bool(),
-      StorageParams: $19.storageParams(),
-      Predicate:     $20.expr(),
       Concurrently:  $4.bool(),
-    }
-  }
-| CREATE opt_unique INVERTED INDEX opt_concurrently opt_index_name ON table_name '(' index_params ')' opt_storing opt_interleave opt_partition_by opt_with_storage_parameter_list opt_where_clause
-  {
-    table := $8.unresolvedObjectName().ToTableName()
-    $$.val = &tree.CreateIndex{
-      Name:          tree.Name($6),
-      Table:         table,
-      Unique:        $2.bool(),
-      Inverted:      true,
-      Columns:       $10.idxElems(),
-      Storing:       $12.nameList(),
-      Interleave:    $13.interleave(),
-      PartitionBy:   $14.partitionBy(),
-      StorageParams: $15.storageParams(),
-      Predicate:     $16.expr(),
-      Concurrently:  $5.bool(),
-    }
-  }
-| CREATE opt_unique INVERTED INDEX opt_concurrently IF NOT EXISTS index_name ON table_name '(' index_params ')' opt_storing opt_interleave opt_partition_by opt_with_storage_parameter_list opt_where_clause
-  {
-    table := $11.unresolvedObjectName().ToTableName()
-    $$.val = &tree.CreateIndex{
-      Name:          tree.Name($9),
-      Table:         table,
-      Unique:        $2.bool(),
-      Inverted:      true,
       IfNotExists:   true,
-      Columns:       $13.idxElems(),
-      Storing:       $15.nameList(),
-      Interleave:    $16.interleave(),
-      PartitionBy:   $17.partitionBy(),
+      Only:          $10.bool(),
+      Using:         $12,
+      Columns:       $14.idxElems(),
+      Include:       $16.nameList(),
+      NullsDistinct: $17.bool(),
       StorageParams: $18.storageParams(),
-      Predicate:     $19.expr(),
-      Concurrently:  $5.bool(),
+      Tablespace:    tree.Name($19),
+      Predicate:     $20.expr(),
     }
   }
 | CREATE opt_unique INDEX error // SHOW HELP: CREATE INDEX
 
-opt_using_gin_btree:
+opt_using_method:
   USING name
   {
-    /* FORCE DOC */
-    switch $2 {
-      case "gin", "gist":
-        $$.val = true
-      case "btree":
-        $$.val = false
-      case "hash", "spgist", "brin":
-        return unimplemented(sqllex, "index using " + $2)
-      default:
-        sqllex.Error("unrecognized access method: " + $2)
-        return 1
-    }
+    $$ = $2
   }
 | /* EMPTY */
   {
-    $$.val = false
+    $$ = ""
   }
 
 opt_concurrently:
@@ -7676,26 +7684,37 @@ index_params:
 // expressions in parens. For backwards-compatibility reasons, we allow an
 // expression that is just a function call to be written without parens.
 index_elem:
-  a_expr opt_asc_desc opt_nulls_order
+  name opt_collate opt_opclass opt_asc_desc opt_nulls_order
   {
-    /* FORCE DOC */
-    e := $1.expr()
-    dir := $2.dir()
-    nullsOrder := $3.nullsOrder()
-    // We currently only support the opposite of Postgres defaults.
-    if nullsOrder != tree.DefaultNullsOrder {
-      if dir == tree.Descending && nullsOrder == tree.NullsFirst {
-        return unimplementedWithIssue(sqllex, 6224)
-      }
-      if dir != tree.Descending && nullsOrder == tree.NullsLast {
-        return unimplementedWithIssue(sqllex, 6224)
-      }
-    }
-    if colName, ok := e.(*tree.UnresolvedName); ok && colName.NumParts == 1 {
-      $$.val = tree.IndexElem{Column: tree.Name(colName.Parts[0]), Direction: dir, NullsOrder: nullsOrder}
-    } else {
-      return unimplementedWithIssueDetail(sqllex, 9682, fmt.Sprintf("%T", e))
-    }
+    $$.val = tree.IndexElem{Column: tree.Name($1), Collation: $2, OpClass: $3.opClass(), Direction: $4.dir(), NullsOrder: $5.nullsOrder()}
+  }
+| '(' a_expr ')' opt_collate opt_opclass opt_asc_desc opt_nulls_order
+  {
+    $$.val = tree.IndexElem{Expr: $2.expr(), Collation: $4, OpClass: $5.opClass(), Direction: $6.dir(), NullsOrder: $7.nullsOrder()}
+  }
+
+opt_opclass:
+  /* EMPTY */
+  {
+    $$.val = (*tree.IndexElemOpClass)(nil)
+  }
+| IDENT
+  {
+    $$.val = &tree.IndexElemOpClass{Name: $1}
+  }
+| IDENT '(' opclass_option_list ')'
+  {
+    $$.val = &tree.IndexElemOpClass{Name: $1, Options: $3.opClassOptions()}
+  }
+
+opclass_option_list:
+  name '=' a_expr
+  {
+    $$.val = []tree.IndexElemOpClassOption{{Param: $1, Val: $3.expr()}}
+  }
+| opclass_option_list ',' name '=' a_expr
+  {
+    $$.val = append($1.opClassOptions(), tree.IndexElemOpClassOption{Param: $3, Val: $5.expr()})
   }
 
 opt_collate:
