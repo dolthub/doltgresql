@@ -263,39 +263,54 @@ func processMessage(walData []byte, relations map[uint32]*pglogrepl.RelationMess
 		log.Printf("INSERT INTO %s.%s (%s) VALUES (%s)", rel.Namespace, rel.RelationName, columnStr.String(), valuesStr.String())
 
 	case *pglogrepl.UpdateMessageV2:
+		// TODO: this won't handle primary key changes correctly
+		// TODO: this probably doesn't work for unkeyed tables
 		rel, ok := relations[logicalMsg.RelationID]
 		if !ok {
 			log.Fatalf("unknown relation ID %d", logicalMsg.RelationID)
 		}
 
-		values := map[string]interface{}{}
 		updateStr := strings.Builder{}
+		whereStr := strings.Builder{}
 		for idx, col := range logicalMsg.NewTuple.Columns {
-			if idx > 0 {
-				updateStr.WriteString(", ")
-			}
 			colName := rel.Columns[idx].Name
+			colFlags := rel.Columns[idx].Flags
+
+			var stringVal string
 			switch col.DataType {
 			case 'n': // null
-				values[colName] = nil
+				stringVal = "NULL"
 			case 'u': // unchanged toast
 			case 't': // text
 				val, err := decodeTextColumnData(typeMap, col.Data, rel.Columns[idx].DataType)
 				if err != nil {
 					log.Fatalln("error decoding column data:", err)
 				}
-				values[colName] = val
+				
+				stringVal, err = encodeColumnData(typeMap, val, rel.Columns[idx].DataType)
+				if err != nil {
+					panic(err)
+				}
 			default:
 				log.Printf("unknown column data type: %c", col.DataType)
 			}
 			
 			// TODO: quote column names?
-			// TODO: where clause
-			updateStr.WriteString(fmt.Sprintf("%s = %v", colName, values[colName]))
+			if colFlags == 0 {
+				if updateStr.Len() > 0 {
+					updateStr.WriteString(", ")
+				}
+				updateStr.WriteString(fmt.Sprintf("%s = %v", colName, stringVal))
+			} else {
+				if whereStr.Len() > 0 {
+					updateStr.WriteString(", ")
+				}
+				whereStr.WriteString(fmt.Sprintf("%s = %v", colName, stringVal))
+			}
 		}
 		
 		log.Printf("update for xid %d\n", logicalMsg.Xid)
-		log.Printf("UPDATE %s.%s SET %s", rel.Namespace, rel.RelationName, updateStr.String())
+		log.Printf("UPDATE %s.%s SET %s%s", rel.Namespace, rel.RelationName, updateStr.String(), whereClause(whereStr))
 	case *pglogrepl.DeleteMessageV2:
 		rel, ok := relations[logicalMsg.RelationID]
 		if !ok {
@@ -351,6 +366,13 @@ func processMessage(walData []byte, relations map[uint32]*pglogrepl.RelationMess
 	default:
 		log.Printf("Unknown message type in pgoutput stream: %T", logicalMsg)
 	}
+}
+
+func whereClause(str strings.Builder) string {
+	if str.Len() > 0 {
+		return " WHERE " + str.String()
+	}
+	return ""
 }
 
 func decodeTextColumnData(mi *pgtype.Map, data []byte, dataType uint32) (interface{}, error) {
