@@ -226,26 +226,41 @@ func processMessage(walData []byte, relations map[uint32]*pglogrepl.RelationMess
 		if !ok {
 			log.Fatalf("unknown relation ID %d", logicalMsg.RelationID)
 		}
-		values := map[string]interface{}{}
+
+		columnStr := strings.Builder{}
+		valuesStr := strings.Builder{}
 		for idx, col := range logicalMsg.Tuple.Columns {
+			if idx > 0 {
+				columnStr.WriteString(", ")
+				valuesStr.WriteString(", ")
+			}
+			
 			colName := rel.Columns[idx].Name
+			columnStr.WriteString(colName)
+			
 			switch col.DataType {
 			case 'n': // null
-				values[colName] = nil
-			case 'u': // unchanged toast
-				// This TOAST value was not changed. TOAST values are not stored in the tuple, and logical replication doesn't want to spend a disk read to fetch its value for you.
+				valuesStr.WriteString("NULL")
 			case 't': // text
+
+			  // We have to round-trip the data through the encodings to get an accurate text rep back
 				val, err := decodeTextColumnData(typeMap, col.Data, rel.Columns[idx].DataType)
 				if err != nil {
 					log.Fatalln("error decoding column data:", err)
 				}
-				values[colName] = val
+				colData, err := encodeColumnData(typeMap, val, rel.Columns[idx].DataType)
+				if err != nil {
+					panic(err)
+				}
+				valuesStr.WriteString(fmt.Sprintf("%s", colData))
+				// valuesStr.WriteString(fmt.Sprintf("'%s'", val))
 			default:
 				log.Printf("unknown column data type: %c", col.DataType)
 			}
 		}
+		
 		log.Printf("insert for xid %d\n", logicalMsg.Xid)
-		log.Printf("INSERT INTO %s.%s: %v", rel.Namespace, rel.RelationName, values)
+		log.Printf("INSERT INTO %s.%s (%s) VALUES (%s)", rel.Namespace, rel.RelationName, columnStr.String(), valuesStr.String())
 
 	case *pglogrepl.UpdateMessageV2:
 		rel, ok := relations[logicalMsg.RelationID]
@@ -264,7 +279,6 @@ func processMessage(walData []byte, relations map[uint32]*pglogrepl.RelationMess
 			case 'n': // null
 				values[colName] = nil
 			case 'u': // unchanged toast
-				// This TOAST value was not changed. TOAST values are not stored in the tuple, and logical replication doesn't want to spend a disk read to fetch its value for you.
 			case 't': // text
 				val, err := decodeTextColumnData(typeMap, col.Data, rel.Columns[idx].DataType)
 				if err != nil {
@@ -346,3 +360,24 @@ func decodeTextColumnData(mi *pgtype.Map, data []byte, dataType uint32) (interfa
 	return string(data), nil
 }
 
+func encodeColumnData(mi *pgtype.Map, data interface{}, dataType uint32) (string, error) {
+	var value string
+	if dt, ok := mi.TypeForOID(dataType); ok {
+		e := dt.Codec.PlanEncode(mi, dataType, pgtype.TextFormatCode, data)
+		encoded, err := e.Encode(data, nil)
+		if err != nil {
+			return "", err 
+		}
+		value = string(encoded)
+	} else {
+		value = fmt.Sprintf("%v", data)
+	}
+
+	// Some types need additional quoting after encoding	
+	switch data.(type) {
+	case string:
+		return fmt.Sprintf("'%s'", value), nil
+	default:
+		return value, nil
+	}
+}
