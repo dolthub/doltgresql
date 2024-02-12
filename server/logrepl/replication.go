@@ -312,39 +312,48 @@ func processMessage(walData []byte, relations map[uint32]*pglogrepl.RelationMess
 		log.Printf("update for xid %d\n", logicalMsg.Xid)
 		log.Printf("UPDATE %s.%s SET %s%s", rel.Namespace, rel.RelationName, updateStr.String(), whereClause(whereStr))
 	case *pglogrepl.DeleteMessageV2:
+		// TODO: this probably doesn't work for unkeyed tables
 		rel, ok := relations[logicalMsg.RelationID]
 		if !ok {
 			log.Fatalf("unknown relation ID %d", logicalMsg.RelationID)
 		}
 
-		values := map[string]interface{}{}
-		deleteStr := strings.Builder{}
+		whereStr := strings.Builder{}
 		for idx, col := range logicalMsg.OldTuple.Columns {
-			if idx > 0 {
-				deleteStr.WriteString(", ")
-			}
 			colName := rel.Columns[idx].Name
+			colFlags := rel.Columns[idx].Flags
+			
+			var stringVal string
 			switch col.DataType {
 			case 'n': // null
-				values[colName] = nil
+				stringVal = "NULL"
 			case 'u': // unchanged toast
-				// This TOAST value was not changed. TOAST values are not stored in the tuple, and logical replication doesn't want to spend a disk read to fetch its value for you.
 			case 't': // text
 				val, err := decodeTextColumnData(typeMap, col.Data, rel.Columns[idx].DataType)
 				if err != nil {
 					log.Fatalln("error decoding column data:", err)
 				}
-				values[colName] = val
+
+				stringVal, err = encodeColumnData(typeMap, val, rel.Columns[idx].DataType)
+				if err != nil {
+					panic(err)
+				}
 			default:
 				log.Printf("unknown column data type: %c", col.DataType)
 			}
 
-			// TODO: quote column names?
-			deleteStr.WriteString(fmt.Sprintf("%s = %v", colName, values[colName]))
+			if colFlags == 0 {
+				// nothing to do
+			} else {
+				if whereStr.Len() > 0 {
+					whereStr.WriteString(", ")
+				}
+				whereStr.WriteString(fmt.Sprintf("%s = %v", colName, stringVal))
+			}
 		}
 
 		log.Printf("delete for xid %d\n", logicalMsg.Xid)
-		log.Printf("DELETE FROM %s.%s WHERE %s", rel.Namespace, rel.RelationName, deleteStr.String())
+		log.Printf("DELETE FROM %s.%s WHERE %s", rel.Namespace, rel.RelationName, whereStr.String())
 	case *pglogrepl.TruncateMessageV2:
 		log.Printf("truncate for xid %d\n", logicalMsg.Xid)
 	case *pglogrepl.TypeMessageV2:
