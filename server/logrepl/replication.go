@@ -22,6 +22,7 @@ import (
 	"time"
 
 	"github.com/jackc/pglogrepl"
+	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgconn"
 	"github.com/jackc/pgx/v5/pgproto3"
 	"github.com/jackc/pgx/v5/pgtype"
@@ -30,6 +31,21 @@ import (
 const connectionString = "postgres://postgres:password@127.0.0.1/%s?replication=database"
 const outputPlugin = "pgoutput"
 const slotName = "doltgres_slot"
+
+type LogicalReplicator struct {
+	dns string
+	conn *pgx.Conn	
+}
+
+// TODO: change this to a connection string probably
+func NewLogicalReplicator(dns string) (*LogicalReplicator, error) {
+	conn, err := pgx.Connect(context.Background(), dns)
+	if err != nil {
+		return nil, err
+	}
+	
+	return &LogicalReplicator{dns: dns, conn: conn}, nil
+}
 
 func SetupReplication(database string) error {
 	conn, err := pgconn.Connect(context.Background(), fmt.Sprintf(connectionString, database))
@@ -49,7 +65,7 @@ func SetupReplication(database string) error {
 	return err
 }
 
-func StartReplication(database string) error {
+func (r *LogicalReplicator) StartReplication(database string) error {
 	standbyMessageTimeout := time.Second * 10
 	nextStandbyMessageDeadline := time.Now().Add(standbyMessageTimeout)
 	relationsV2 := map[uint32]*pglogrepl.RelationMessageV2{}
@@ -61,30 +77,30 @@ func StartReplication(database string) error {
 
 	connErrCnt := 0
 	i := 0
-	var conn *pgconn.PgConn
+	var primaryConn *pgconn.PgConn
 	var clientXLogPos pglogrepl.LSN
 	for {
-		if conn == nil {
+		if primaryConn == nil {
 			// TODO: not sure if this retry logic is correct, with some failures we appear to miss events that aren't 
 			//  sent again
 			var err error
-			conn, clientXLogPos, err = beginReplication(database, slotName)
+			primaryConn, clientXLogPos, err = beginReplication(database, slotName)
 			if err != nil {
 				return err
 			}
 		}
 		
 		if time.Now().After(nextStandbyMessageDeadline) {
-			err := pglogrepl.SendStandbyStatusUpdate(context.Background(), conn, pglogrepl.StandbyStatusUpdate{WALWritePosition: clientXLogPos})
+			err := pglogrepl.SendStandbyStatusUpdate(context.Background(), primaryConn, pglogrepl.StandbyStatusUpdate{WALWritePosition: clientXLogPos})
 			if err != nil {
 				connErrCnt++
 				if connErrCnt < 3 {
 					// re-establish connection on next pass through the loop
-					_ = conn.Close(context.Background())
-					conn = nil
+					_ = primaryConn.Close(context.Background())
+					primaryConn = nil
 					continue
 				}
-				
+
 				return err
 			}
 			
@@ -94,7 +110,7 @@ func StartReplication(database string) error {
 		}
 
 		ctx, cancel := context.WithDeadline(context.Background(), nextStandbyMessageDeadline)
-		rawMsg, err := conn.ReceiveMessage(ctx)
+		rawMsg, err := primaryConn.ReceiveMessage(ctx)
 
 		cancel()
 		if err != nil {
@@ -104,12 +120,12 @@ func StartReplication(database string) error {
 				connErrCnt++
 				if connErrCnt < 3 {
 					// re-establish connection on next pass through the loop
-					_ = conn.Close(context.Background())
-					conn = nil
+					_ = primaryConn.Close(context.Background())
+					primaryConn = nil
 					continue
 				}
 			}
-			
+
 			return err
 		}
 		
@@ -164,6 +180,11 @@ func StartReplication(database string) error {
 	}
 }
 
+func (r *LogicalReplicator) replicateQuery(query string) error {
+	_, err := r.conn.Exec(context.Background(), query)
+	return err
+}
+
 func beginReplication(database, slotName string) (*pgconn.PgConn, pglogrepl.LSN, error) {
 	conn, err := pgconn.Connect(context.Background(), fmt.Sprintf(connectionString, database))
 	if err != nil {
@@ -206,7 +227,7 @@ func beginReplication(database, slotName string) (*pgconn.PgConn, pglogrepl.LSN,
 	return conn, sysident.XLogPos, nil
 }
 
-func processMessage(walData []byte, relations map[uint32]*pglogrepl.RelationMessageV2, typeMap *pgtype.Map, inStream *bool) {
+func (r *LogicalReplicator) processMessage(walData []byte, relations map[uint32]*pglogrepl.RelationMessageV2, typeMap *pgtype.Map, inStream *bool) {
 	logicalMsg, err := pglogrepl.ParseV2(walData, *inStream)
 	if err != nil {
 		log.Fatalf("Parse logical replication message: %s", err)
@@ -260,8 +281,10 @@ func processMessage(walData []byte, relations map[uint32]*pglogrepl.RelationMess
 		}
 		
 		log.Printf("insert for xid %d\n", logicalMsg.Xid)
-		log.Printf("INSERT INTO %s.%s (%s) VALUES (%s)", rel.Namespace, rel.RelationName, columnStr.String(), valuesStr.String())
-
+		err = r.replicateQuery(fmt.Sprintf("INSERT INTO %s.%s (%s) VALUES (%s)", rel.Namespace, rel.RelationName, columnStr.String(), valuesStr.String()))
+		if err != nil {
+			panic(err)
+		}
 	case *pglogrepl.UpdateMessageV2:
 		// TODO: this won't handle primary key changes correctly
 		// TODO: this probably doesn't work for unkeyed tables
@@ -310,7 +333,10 @@ func processMessage(walData []byte, relations map[uint32]*pglogrepl.RelationMess
 		}
 		
 		log.Printf("update for xid %d\n", logicalMsg.Xid)
-		log.Printf("UPDATE %s.%s SET %s%s", rel.Namespace, rel.RelationName, updateStr.String(), whereClause(whereStr))
+		err = r.replicateQuery(fmt.Sprintf("UPDATE %s.%s SET %s%s", rel.Namespace, rel.RelationName, updateStr.String(), whereClause(whereStr)))
+		if err != nil {
+			panic(err)
+		}
 	case *pglogrepl.DeleteMessageV2:
 		// TODO: this probably doesn't work for unkeyed tables
 		rel, ok := relations[logicalMsg.RelationID]
@@ -353,7 +379,10 @@ func processMessage(walData []byte, relations map[uint32]*pglogrepl.RelationMess
 		}
 
 		log.Printf("delete for xid %d\n", logicalMsg.Xid)
-		log.Printf("DELETE FROM %s.%s WHERE %s", rel.Namespace, rel.RelationName, whereStr.String())
+		err = r.replicateQuery(fmt.Sprintf("DELETE FROM %s.%s WHERE %s", rel.Namespace, rel.RelationName, whereStr.String()))
+		if err != nil {
+			panic(err)
+		}
 	case *pglogrepl.TruncateMessageV2:
 		log.Printf("truncate for xid %d\n", logicalMsg.Xid)
 	case *pglogrepl.TypeMessageV2:

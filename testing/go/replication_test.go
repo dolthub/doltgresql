@@ -18,6 +18,7 @@ import (
 	"context"
 	"fmt"
 	"log"
+	"net/url"
 	"testing"
 	"time"
 
@@ -112,14 +113,6 @@ func RunReplicationScript(t *testing.T, script ReplicationTest) {
 
 	database := "postgres"
 	require.NoError(t, logrepl.SetupReplication(database))
-	go func() {
-		err := logrepl.StartReplication(database)
-		require.NoError(t, err)
-	}()
-	
-	ctx := context.Background()
-	primaryConn, err := pgx.Connect(ctx, fmt.Sprintf("postgres://postgres:password@127.0.0.1:%d/%s?sslmode=disable", 5432, database))
-	require.NoError(t, err)
 
 	ctx, replicaConn, controller := CreateServer(t, scriptDatabase)
 	defer func() {
@@ -129,6 +122,23 @@ func RunReplicationScript(t *testing.T, script ReplicationTest) {
 		require.NoError(t, err)
 	}()
 
+	connString := replicaConn.PgConn().Conn().RemoteAddr().String()
+	u, err := url.Parse(connString)
+	require.NoError(t, err)
+
+	replicationDns := fmt.Sprintf("postgres://postgres:password@127.0.0.1:%s/", u.Port())
+	replicator, err := logrepl.NewLogicalReplicator(replicationDns)
+	require.NoError(t, err)
+	
+	go func() {
+		err := replicator.StartReplication(database)
+		require.NoError(t, err)
+	}()
+	
+	ctx = context.Background()
+	primaryConn, err := pgx.Connect(ctx, fmt.Sprintf("postgres://postgres:password@127.0.0.1:%d/%s?sslmode=disable", 5432, database))
+	require.NoError(t, err)
+	
 	t.Run(script.Name, func(t *testing.T) {
 		runReplicationScript(ctx, t, script, primaryConn, nil)
 	})
