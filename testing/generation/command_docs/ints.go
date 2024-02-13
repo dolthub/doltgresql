@@ -39,10 +39,17 @@ func GenerateRandomInts(count int64, max *big.Int) (randInts []*big.Int, err err
 		max = bigIntOne
 	}
 	randInts = make([]*big.Int, count)
+	randIntSet := make(map[string]struct{}, count*2)
 	for i := range randInts {
-		randInts[i], err = rand.Int(rand.Reader, max)
-		if err != nil {
-			return nil, err
+		for {
+			randInts[i], err = rand.Int(rand.Reader, max)
+			if err != nil {
+				return nil, err
+			}
+			if _, ok := randIntSet[randInts[i].String()]; !ok {
+				randIntSet[randInts[i].String()] = struct{}{}
+				break
+			}
 		}
 	}
 	sort.Slice(randInts, func(i, j int) bool {
