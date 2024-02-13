@@ -6,7 +6,6 @@ import (
 	"testing"
 	"time"
 
-	"github.com/dolthub/go-mysql-server/server"
 	"github.com/dolthub/go-mysql-server/sql"
 	"github.com/jackc/pgx/v5"
 	"github.com/stretchr/testify/assert"
@@ -17,7 +16,6 @@ import (
 
 func TestSSL(t *testing.T) {
 	port := GetUnusedPort(t)
-	server.DefaultProtocolListenerFunc = dserver.NewLimitedListener
 	controller, err := dserver.RunInMemory([]string{fmt.Sprintf("--port=%d", port), "--host=127.0.0.1"})
 	require.NoError(t, err)
 

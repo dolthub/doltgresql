@@ -161,7 +161,7 @@ func (r *LogicalReplicator) StartReplication(database string) error {
 			}
 
 			log.Printf("XLogData => WALStart %s ServerWALEnd %s ServerTime %s WALData:\n", xld.WALStart, xld.ServerWALEnd, xld.ServerTime)
-			processMessage(xld.WALData, relationsV2, typeMap, &inStream)
+			r.processMessage(xld.WALData, relationsV2, typeMap, &inStream)
 
 			if xld.WALStart > clientXLogPos {
 				clientXLogPos = xld.WALStart

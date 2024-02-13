@@ -18,7 +18,7 @@ import (
 	"context"
 	"fmt"
 	"log"
-	"net/url"
+	"net"
 	"testing"
 	"time"
 
@@ -123,10 +123,10 @@ func RunReplicationScript(t *testing.T, script ReplicationTest) {
 	}()
 
 	connString := replicaConn.PgConn().Conn().RemoteAddr().String()
-	u, err := url.Parse(connString)
+	_, port, err := net.SplitHostPort(connString)
 	require.NoError(t, err)
 
-	replicationDns := fmt.Sprintf("postgres://postgres:password@127.0.0.1:%s/", u.Port())
+	replicationDns := fmt.Sprintf("postgres://postgres:password@127.0.0.1:%s/", port)
 	replicator, err := logrepl.NewLogicalReplicator(replicationDns)
 	require.NoError(t, err)
 	
