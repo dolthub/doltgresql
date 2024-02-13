@@ -181,6 +181,7 @@ func (r *LogicalReplicator) StartReplication(database string) error {
 }
 
 func (r *LogicalReplicator) replicateQuery(query string) error {
+	log.Printf("replicating query: %s", query)
 	_, err := r.conn.Exec(context.Background(), query)
 	return err
 }
