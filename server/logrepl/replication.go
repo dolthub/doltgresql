@@ -28,44 +28,46 @@ import (
 	"github.com/jackc/pgx/v5/pgtype"
 )
 
-const connectionString = "postgres://postgres:password@127.0.0.1/%s?replication=database"
 const outputPlugin = "pgoutput"
-const slotName = "doltgres_slot"
 
 type LogicalReplicator struct {
-	dns string
-	conn *pgx.Conn	
+	primaryDns      string
+	replicationConn *pgx.Conn	
 }
 
 // TODO: change this to a connection string probably
-func NewLogicalReplicator(dns string) (*LogicalReplicator, error) {
-	conn, err := pgx.Connect(context.Background(), dns)
+func NewLogicalReplicator(primaryDns string, replicationDns string) (*LogicalReplicator, error) {
+	conn, err := pgx.Connect(context.Background(), replicationDns)
 	if err != nil {
 		return nil, err
 	}
 	
-	return &LogicalReplicator{dns: dns, conn: conn}, nil
+	return &LogicalReplicator{
+		primaryDns: primaryDns,
+		replicationConn: conn,
+	}, nil
 }
 
-func SetupReplication(database string) error {
-	conn, err := pgconn.Connect(context.Background(), fmt.Sprintf(connectionString, database))
+// SetupReplication sets up the replication slot and publication for the given database
+func SetupReplication(connectionString string, publicationName string) error {
+	conn, err := pgconn.Connect(context.Background(), connectionString)
 	if err != nil {
 		return err
 	}
 	defer conn.Close(context.Background())
 
-	result := conn.Exec(context.Background(), "DROP PUBLICATION IF EXISTS pglogrepl_demo;")
+	result := conn.Exec(context.Background(), fmt.Sprintf("DROP PUBLICATION IF EXISTS %s;", publicationName))
 	_, err = result.ReadAll()
 	if err != nil {
 		return err
 	}
 
-	result = conn.Exec(context.Background(), "CREATE PUBLICATION pglogrepl_demo FOR ALL TABLES;")
+	result = conn.Exec(context.Background(), fmt.Sprintf("CREATE PUBLICATION %s FOR ALL TABLES;", publicationName))
 	_, err = result.ReadAll()
 	return err
 }
 
-func (r *LogicalReplicator) StartReplication(database string) error {
+func (r *LogicalReplicator) StartReplication(slotName string) error {
 	standbyMessageTimeout := time.Second * 10
 	nextStandbyMessageDeadline := time.Now().Add(standbyMessageTimeout)
 	relationsV2 := map[uint32]*pglogrepl.RelationMessageV2{}
@@ -84,7 +86,7 @@ func (r *LogicalReplicator) StartReplication(database string) error {
 			// TODO: not sure if this retry logic is correct, with some failures we appear to miss events that aren't 
 			//  sent again
 			var err error
-			primaryConn, clientXLogPos, err = beginReplication(database, slotName)
+			primaryConn, clientXLogPos, err = r.beginReplication(slotName)
 			if err != nil {
 				return err
 			}
@@ -182,12 +184,12 @@ func (r *LogicalReplicator) StartReplication(database string) error {
 
 func (r *LogicalReplicator) replicateQuery(query string) error {
 	log.Printf("replicating query: %s", query)
-	_, err := r.conn.Exec(context.Background(), query)
+	_, err := r.replicationConn.Exec(context.Background(), query)
 	return err
 }
 
-func beginReplication(database, slotName string) (*pgconn.PgConn, pglogrepl.LSN, error) {
-	conn, err := pgconn.Connect(context.Background(), fmt.Sprintf(connectionString, database))
+func (r *LogicalReplicator) beginReplication(slotName string) (*pgconn.PgConn, pglogrepl.LSN, error) {
+	conn, err := pgconn.Connect(context.Background(), r.primaryDns)
 	if err != nil {
 		return nil, 0, err
 	}

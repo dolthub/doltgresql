@@ -19,6 +19,7 @@ import (
 	"fmt"
 	"log"
 	"net"
+	"strings"
 	"testing"
 	"time"
 
@@ -40,7 +41,8 @@ type ReplicationTest struct {
 	Name string
 	// The database to create and use. If not provided, then it defaults to "postgres".
 	Database string
-	// The SQL statements to execute as setup, in order. Results are not checked, but statements must not error. Setup is always run on the primary.
+	// The SQL statements to execute as setup, in order. Results are not checked, but statements must not error. 
+	// An initial comment can be used to Setup is always run on the primary.
 	SetUpScript []string
 	// The set of assertions to make after setup, in order
 	Assertions []ReplicationTestAssertion
@@ -56,26 +58,15 @@ type ReplicationTest struct {
 
 type ReplicationTestAssertion struct {
 	ReplicationTarget ReplicationTarget
-	Query       string
-	Expected    []sql.Row
-	ExpectedErr bool
-
-	BindVars []any
-
-	// SkipResultsCheck is used to skip assertions on the expected rows returned from a query. For now, this is
-	// included as some messages do not have a full logical implementation. Skipping the results check allows us to
-	// force the test client to not send of those messages.
-	SkipResultsCheck bool
-
-	// Skip is used to completely skip a test, not execute its query at all, and record it as a skipped test
-	// in the test suite results.
-	Skip bool
+	ScriptTestAssertion
 }
 
 var replicationTests = []ReplicationTest{
 	{
 		Name: "simple replication",
 		SetUpScript: []string{
+			"/* replica */ drop table if exists test",
+			"/* replica */ create table test (id INT primary key, name varchar(100))",
 			"drop table if exists test",
 			"CREATE TABLE test (id INT primary key, name varchar(100))",
 			"INSERT INTO test VALUES (1, 'one')",
@@ -84,16 +75,25 @@ var replicationTests = []ReplicationTest{
 			"DELETE FROM test WHERE id = 1",
 			"INSERT INTO test VALUES (3, 'one')",
 			"INSERT INTO test VALUES (4, 'two')",
-			"UPDATE test SET name = 'three' WHERE id = 4",
+			"UPDATE test SET name = 'five' WHERE id = 4",
 			"DELETE FROM test WHERE id = 3",
 			"INSERT INTO test VALUES (5, 'one')",
 			"INSERT INTO test VALUES (6, 'two')",
-			"UPDATE test SET name = 'three' WHERE id = 5",
+			"UPDATE test SET name = 'six' WHERE id = 6",
 			"DELETE FROM test WHERE id = 5",
-			"INSERT INTO test VALUES (7, 'one')",
-			"INSERT INTO test VALUES (8, 'two')",
-			"UPDATE test SET name = 'three' WHERE id = 8",
-			"DELETE FROM test WHERE id = 7",
+		},
+		Assertions: []ReplicationTestAssertion{
+			{
+				ReplicationTarget: ReplicationTargetReplica,
+				ScriptTestAssertion: ScriptTestAssertion{
+					Query: "SELECT * FROM test order by id",
+					Expected: []sql.Row{
+						{int32(2), "three"},
+						{int32(4), "five"},
+						{int32(6), "six"},
+					},
+				},
+			},
 		},
 	},
 }
@@ -104,6 +104,8 @@ func TestReplication(t *testing.T) {
 	}
 }
 
+const slotName = "doltgres_slot"
+
 // RunScript runs the given script.
 func RunReplicationScript(t *testing.T, script ReplicationTest) {
 	scriptDatabase := script.Database
@@ -112,7 +114,9 @@ func RunReplicationScript(t *testing.T, script ReplicationTest) {
 	}
 
 	database := "postgres"
-	require.NoError(t, logrepl.SetupReplication(database))
+	primaryDns := fmt.Sprintf("postgres://postgres:password@127.0.0.1:%d/%s?sslmode=disable", 5432, database)
+	primaryReplicationDns := fmt.Sprintf("postgres://postgres:password@127.0.0.1:%d/%s?replication=database", 5432, database)
+	require.NoError(t, logrepl.SetupReplication(primaryDns, slotName))
 
 	ctx, replicaConn, controller := CreateServer(t, scriptDatabase)
 	defer func() {
@@ -127,20 +131,25 @@ func RunReplicationScript(t *testing.T, script ReplicationTest) {
 	require.NoError(t, err)
 
 	replicationDns := fmt.Sprintf("postgres://postgres:password@127.0.0.1:%s/", port)
-	replicator, err := logrepl.NewLogicalReplicator(replicationDns)
+	replicator, err := logrepl.NewLogicalReplicator(primaryReplicationDns, replicationDns)
 	require.NoError(t, err)
 	
 	go func() {
-		err := replicator.StartReplication(database)
+		err := replicator.StartReplication(slotName)
 		require.NoError(t, err)
 	}()
+
+	// give replication time to begin before running scripts
+	time.Sleep(1 * time.Second)
+
+	// TODO: stop replication
 	
 	ctx = context.Background()
-	primaryConn, err := pgx.Connect(ctx, fmt.Sprintf("postgres://postgres:password@127.0.0.1:%d/%s?sslmode=disable", 5432, database))
+	primaryConn, err := pgx.Connect(ctx, primaryDns)
 	require.NoError(t, err)
 	
 	t.Run(script.Name, func(t *testing.T) {
-		runReplicationScript(ctx, t, script, primaryConn, nil)
+		runReplicationScript(ctx, t, script, primaryConn, replicaConn)
 	})
 }
 
@@ -152,11 +161,23 @@ func runReplicationScript(ctx context.Context, t *testing.T, script ReplicationT
 
 	// Run the setup
 	for _, query := range script.SetUpScript {
+		target := getReplicaOrPrimary(query)
+		var conn *pgx.Conn
+		switch target {
+		case "primary":
+			conn = primaryConn
+		case "replica":
+			conn = replicaConn
+		default:
+			require.Fail(t, "Invalid target in setup script: ", target)
+		}
 		log.Println("Running setup query:", query)
-		_, err := primaryConn.Exec(ctx, query)
+		_, err := conn.Exec(ctx, query)
 		require.NoError(t, err)
-		time.Sleep(100 * time.Millisecond)
 	}
+	
+	// give replication time to catch up
+	time.Sleep(1 * time.Second)
 	
 	// Run the assertions
 	for _, assertion := range script.Assertions {
@@ -189,3 +210,19 @@ func runReplicationScript(ctx context.Context, t *testing.T, script ReplicationT
 	}
 }
 
+// getReplicaOrPrimary returns "replica" if the query is meant to be run on the replica, and "primary" if it's meant
+// to be run on the primary, based on the comment in the query. If not comment, the query runs on the primary
+func getReplicaOrPrimary(query string) string {
+	startCommentIdx := strings.Index(query, "/*")
+	endCommentIdx := strings.Index(query, "*/")
+	if startCommentIdx < 0 || endCommentIdx < 0 {
+		return "primary"
+	}
+
+	query = query[startCommentIdx+2 : endCommentIdx]
+	if strings.Index(query, "replica") >= 0 {
+		return "replica"
+	}
+	
+	return "primary"
+}
