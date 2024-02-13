@@ -66,6 +66,8 @@ func nodeResolvableTypeReference(typ tree.ResolvableTypeReference) (*vitess.Conv
 			columnTypeLength = vitess.NewIntVal([]byte(strconv.Itoa(int(columnType.Width()))))
 		case types.TimestampFamily:
 			columnTypeName = columnType.Name()
+		case types.UuidFamily:
+			resolvedType = pgtypes.Uuid
 		}
 	}
 
