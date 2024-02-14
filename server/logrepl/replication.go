@@ -30,9 +30,15 @@ import (
 
 const outputPlugin = "pgoutput"
 
+type rcvMsg struct {
+  msg pgproto3.BackendMessage
+	err error
+}
+
 type LogicalReplicator struct {
 	primaryDns      string
 	replicationConn *pgx.Conn
+	receiveMsgChan chan rcvMsg
 	stop chan struct{}
 }
 
@@ -46,6 +52,7 @@ func NewLogicalReplicator(primaryDns string, replicationDns string) (*LogicalRep
 		primaryDns: primaryDns,
 		replicationConn: conn,
 		stop: make(chan struct{}),
+		receiveMsgChan: make(chan rcvMsg),
 	}, nil
 }
 
@@ -124,11 +131,24 @@ func (r *LogicalReplicator) StartReplication(slotName string) error {
 		}
 
 		ctx, cancel := context.WithDeadline(context.Background(), nextStandbyMessageDeadline)
-		rawMsg, err := primaryConn.ReceiveMessage(ctx)
-		cancel()
+		go func() {
+			rawMsg, err := primaryConn.ReceiveMessage(ctx)
+			r.receiveMsgChan <- rcvMsg{msg: rawMsg, err: err}
+		}()
 		
-		if err != nil {
-			if pgconn.Timeout(err) {
+		var msgAndErr rcvMsg
+		select {
+		case <-r.stop:
+			cancel()
+			close(r.stop)
+			return nil
+		case <-ctx.Done():
+			continue
+		case msgAndErr = <-r.receiveMsgChan:
+		}
+
+		if msgAndErr.err != nil {
+			if pgconn.Timeout(msgAndErr.err) {
 				continue
 			} else {
 				connErrCnt++
@@ -140,9 +160,10 @@ func (r *LogicalReplicator) StartReplication(slotName string) error {
 				}
 			}
 
-			return err
+			return msgAndErr.err
 		}
-		
+
+		rawMsg := msgAndErr.msg
 		connErrCnt = 0
 		if errMsg, ok := rawMsg.(*pgproto3.ErrorResponse); ok {
 			return fmt.Errorf("received Postgres WAL error: %+v", errMsg)
@@ -198,7 +219,8 @@ func (r *LogicalReplicator) Stop() {
 	log.Printf("stopping replication...")
 	r.stop <- struct{}{}
 	log.Printf("stop sent")
-	<-r.stop
+	_, _ = <-r.stop
+	log.Printf("stop received")
 }
 
 func (r *LogicalReplicator) replicateQuery(query string) error {
