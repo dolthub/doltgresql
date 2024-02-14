@@ -19,6 +19,7 @@ import (
 	"fmt"
 	"log"
 	"net"
+	"os"
 	"strings"
 	"testing"
 	"time"
@@ -122,25 +123,25 @@ var replicationTests = []ReplicationTest{
 		},
 	},
 	{
-		Skip: true,
 		Name: "concurrent writes",
+		Focus: true,
 		SetUpScript: []string{
 			"/* replica */ drop table if exists test",
 			"/* replica */ create table test (id INT primary key, name varchar(100))",
 			"drop table if exists test",
 			"CREATE TABLE test (id INT primary key, name varchar(100))",
-			"INSERT INTO test VALUES (1, 'one')",
-			"INSERT INTO test VALUES (2, 'two')",
-			"UPDATE test SET name = 'three' WHERE id = 2",
-			"DELETE FROM test WHERE id = 1",
-			"INSERT INTO test VALUES (3, 'one')",
-			"INSERT INTO test VALUES (4, 'two')",
-			"UPDATE test SET name = 'five' WHERE id = 4",
-			"DELETE FROM test WHERE id = 3",
-			"INSERT INTO test VALUES (5, 'one')",
-			"INSERT INTO test VALUES (6, 'two')",
-			"UPDATE test SET name = 'six' WHERE id = 6",
-			"DELETE FROM test WHERE id = 5",
+			"/* primary a */ START TRANSACTION",
+			"/* primary a */ INSERT INTO test VALUES (1, 'one')",
+			"/* primary a */ INSERT INTO test VALUES (2, 'two')",
+			"/* primary b */ START TRANSACTION",
+			"/* primary b */ INSERT INTO test VALUES (3, 'one')",
+			"/* primary b */ INSERT INTO test VALUES (4, 'two')",
+			"/* primary a */ UPDATE test SET name = 'three' WHERE id > 0",
+			"/* primary a */ DELETE FROM test WHERE id = 1",
+			"/* primary b */ UPDATE test SET name = 'five' WHERE id > 0",
+			"/* primary b */ DELETE FROM test WHERE id = 3",
+			"/* primary b */ COMMIT",
+			"/* primary a */ COMMIT",
 		},
 		Assertions: []ReplicationTestAssertion{
 			{
@@ -150,7 +151,6 @@ var replicationTests = []ReplicationTest{
 					Expected: []sql.Row{
 						{int32(2), "three"},
 						{int32(4), "five"},
-						{int32(6), "six"},
 					},
 				},
 			},
@@ -184,8 +184,31 @@ var replicationTests = []ReplicationTest{
 }
 
 func TestReplication(t *testing.T) {
-	for _, test := range replicationTests {
-		RunReplicationScript(t, test)
+	RunReplicationScripts(t, replicationTests)
+}
+
+// RunScripts runs the given collection of scripts.
+func RunReplicationScripts(t *testing.T, scripts []ReplicationTest) {
+	// First, we'll run through the scripts to check for the Focus variable. If it's true, then append it to the new slice.
+	focusScripts := make([]ReplicationTest, 0, len(scripts))
+	for _, script := range scripts {
+		if script.Focus {
+			// If this is running in GitHub Actions, then we'll panic, because someone forgot to disable it before committing
+			if _, ok := os.LookupEnv("GITHUB_ACTION"); ok {
+				panic(fmt.Sprintf("The script `%s` has Focus set to `true`. GitHub Actions requires that "+
+						"all tests are run, which Focus circumvents, leading to this error. Please disable Focus on "+
+						"all tests.", script.Name))
+			}
+			focusScripts = append(focusScripts, script)
+		}
+	}
+	// If we have scripts with Focus set, then we replace the normal script slice with the new slice.
+	if len(focusScripts) > 0 {
+		scripts = focusScripts
+	}
+
+	for _, script := range scripts {
+		RunReplicationScript(t, script)
 	}
 }
 
@@ -233,12 +256,18 @@ func RunReplicationScript(t *testing.T, script ReplicationTest) {
 	require.NoError(t, err)
 	
 	t.Run(script.Name, func(t *testing.T) {
-		runReplicationScript(ctx, t, script, primaryConn, replicaConn)
+		runReplicationScript(ctx, t, script, primaryConn, replicaConn, primaryDns)
 	})
 }
 
 // runScript runs the script given on the postgres connection provided
-func runReplicationScript(ctx context.Context, t *testing.T, script ReplicationTest, primaryConn, replicaConn *pgx.Conn) {
+func runReplicationScript(
+		ctx context.Context,
+		t *testing.T,
+		script ReplicationTest,
+		primaryConn, replicaConn *pgx.Conn,
+		primaryDns string,
+) {
 	if script.Skip {
 		t.Skip("Skip has been set in the script")
 	}
@@ -254,6 +283,12 @@ func runReplicationScript(ctx context.Context, t *testing.T, script ReplicationT
 		switch target {
 		case "primary":
 			conn = primaryConnections[client]
+			if conn == nil {
+				var err error
+				conn, err = pgx.Connect(context.Background(), primaryDns)
+				require.NoError(t, err)
+				primaryConnections[client] = conn 
+			}
 		case "replica":
 			conn = replicaConn
 		default:

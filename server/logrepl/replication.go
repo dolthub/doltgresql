@@ -104,7 +104,7 @@ func (r *LogicalReplicator) StartReplication(slotName string) error {
 				r.shutdown()
 				return nil
 			default:
-				log.Printf("no stop signal found")
+				// continue
 		}
 		
 		if primaryConn == nil {
@@ -229,9 +229,7 @@ func (r *LogicalReplicator) shutdown() {
 func (r *LogicalReplicator) Stop() {
 	log.Printf("stopping replication...")
 	r.stop <- struct{}{}
-	log.Printf("stop sent")
 	_, _ = <-r.stop
-	log.Printf("stop received")
 }
 
 func (r *LogicalReplicator) replicateQuery(query string) error {
