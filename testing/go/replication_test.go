@@ -63,7 +63,7 @@ type ReplicationTestAssertion struct {
 
 var replicationTests = []ReplicationTest{
 	{
-		Name: "simple replication",
+		Name: "simple replication, strings and integers",
 		SetUpScript: []string{
 			"/* replica */ drop table if exists test",
 			"/* replica */ create table test (id INT primary key, name varchar(100))",
@@ -91,6 +91,90 @@ var replicationTests = []ReplicationTest{
 						{int32(2), "three"},
 						{int32(4), "five"},
 						{int32(6), "six"},
+					},
+				},
+			},
+		},
+	},
+	{
+		Name: "all supported types",
+		SetUpScript: []string{
+			"/* replica */ drop table if exists test",
+			"/* replica */ create table test (id INT primary key, name varchar(100), age INT, height FLOAT, birth_date DATE, birth_timestamp TIMESTAMP)",
+			"drop table if exists test",
+			"create table test (id INT primary key, name varchar(100), age INT, height FLOAT, birth_date DATE, birth_timestamp TIMESTAMP)",
+			"INSERT INTO test VALUES (1, 'one', 1, 1.1, '2021-01-01', '2021-01-01 12:00:00')",
+			"INSERT INTO test VALUES (2, 'two', 2, 2.2, '2021-02-02', '2021-02-02 13:00:00')",
+			"UPDATE test SET name = 'three' WHERE id = 2",
+			"DELETE FROM test WHERE id = 1",
+		},
+		Assertions: []ReplicationTestAssertion{
+			{
+				ReplicationTarget: ReplicationTargetReplica,
+				ScriptTestAssertion: ScriptTestAssertion{
+					Query: "SELECT * FROM test order by id",
+					Expected: []sql.Row{
+						// TODO: The DATE field should not return time in its output
+						{int32(2), "three", int32(2), 2.2, "2021-02-02 00:00:00", "2021-02-02 13:00:00"},
+					},
+				},
+			},
+		},
+	},
+	{
+		Name: "simple replication, strings and integers",
+		SetUpScript: []string{
+			"/* replica */ drop table if exists test",
+			"/* replica */ create table test (id INT primary key, name varchar(100))",
+			"drop table if exists test",
+			"CREATE TABLE test (id INT primary key, name varchar(100))",
+			"INSERT INTO test VALUES (1, 'one')",
+			"INSERT INTO test VALUES (2, 'two')",
+			"UPDATE test SET name = 'three' WHERE id = 2",
+			"DELETE FROM test WHERE id = 1",
+			"INSERT INTO test VALUES (3, 'one')",
+			"INSERT INTO test VALUES (4, 'two')",
+			"UPDATE test SET name = 'five' WHERE id = 4",
+			"DELETE FROM test WHERE id = 3",
+			"INSERT INTO test VALUES (5, 'one')",
+			"INSERT INTO test VALUES (6, 'two')",
+			"UPDATE test SET name = 'six' WHERE id = 6",
+			"DELETE FROM test WHERE id = 5",
+		},
+		Assertions: []ReplicationTestAssertion{
+			{
+				ReplicationTarget: ReplicationTargetReplica,
+				ScriptTestAssertion: ScriptTestAssertion{
+					Query: "SELECT * FROM test order by id",
+					Expected: []sql.Row{
+						{int32(2), "three"},
+						{int32(4), "five"},
+						{int32(6), "six"},
+					},
+				},
+			},
+		},
+	},
+	{
+		Name: "all types",
+		Skip: true, // some types don't work yet
+		SetUpScript: []string{
+			"/* replica */ drop table if exists test",
+			"/* replica */ create table test (id INT primary key, name varchar(100), age INT, is_cool BOOLEAN, height FLOAT, birth_date DATE, birth_timestamp TIMESTAMP)",
+			"drop table if exists test",
+			"create table test (id INT primary key, name varchar(100), age INT, is_cool BOOLEAN, height FLOAT, birth_date DATE, birth_timestamp TIMESTAMP)",
+			"INSERT INTO test VALUES (1, 'one', 1, true, 1.1, '2021-01-01', '2021-01-01 12:00:00')",
+			"INSERT INTO test VALUES (2, 'two', 2, false, 2.2, '2021-02-02', '2021-02-02 13:00:00')",
+			"UPDATE test SET name = 'three' WHERE id = 2",
+			"DELETE FROM test WHERE id = 1",
+		},
+		Assertions: []ReplicationTestAssertion{
+			{
+				ReplicationTarget: ReplicationTargetReplica,
+				ScriptTestAssertion: ScriptTestAssertion{
+					Query: "SELECT * FROM test order by id",
+					Expected: []sql.Row{
+						{int32(2), "three", int32(2), false, 2.2, "2021-02-02", "2021-02-02 13:00:00"},
 					},
 				},
 			},
@@ -159,13 +243,17 @@ func runReplicationScript(ctx context.Context, t *testing.T, script ReplicationT
 		t.Skip("Skip has been set in the script")
 	}
 
+	primaryConnections := map[string]*pgx.Conn{
+		"a": primaryConn,
+	}
+	
 	// Run the setup
 	for _, query := range script.SetUpScript {
-		target := getReplicaOrPrimary(query)
+		target, client := clientSpecFromQueryComment(query)
 		var conn *pgx.Conn
 		switch target {
 		case "primary":
-			conn = primaryConn
+			conn = primaryConnections[client]
 		case "replica":
 			conn = replicaConn
 		default:
@@ -210,19 +298,23 @@ func runReplicationScript(ctx context.Context, t *testing.T, script ReplicationT
 	}
 }
 
-// getReplicaOrPrimary returns "replica" if the query is meant to be run on the replica, and "primary" if it's meant
+// clientSpecFromQueryComment returns "replica" if the query is meant to be run on the replica, and "primary" if it's meant
 // to be run on the primary, based on the comment in the query. If not comment, the query runs on the primary
-func getReplicaOrPrimary(query string) string {
+func clientSpecFromQueryComment(query string) (string, string) {
 	startCommentIdx := strings.Index(query, "/*")
 	endCommentIdx := strings.Index(query, "*/")
 	if startCommentIdx < 0 || endCommentIdx < 0 {
-		return "primary"
+		return "primary", "a"
 	}
 
 	query = query[startCommentIdx+2 : endCommentIdx]
 	if strings.Index(query, "replica") >= 0 {
-		return "replica"
+		return "replica", "a"
 	}
 	
-	return "primary"
+	if i := strings.Index(query, "primary "); i > 0 && i +len("primary ") < len(query) {
+		return "primary", query[i + len("primary "):]
+	}
+	
+	return "primary", "a"
 }

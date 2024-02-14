@@ -427,18 +427,23 @@ func encodeColumnData(mi *pgtype.Map, data interface{}, dataType uint32) (string
 	var value string
 	if dt, ok := mi.TypeForOID(dataType); ok {
 		e := dt.Codec.PlanEncode(mi, dataType, pgtype.TextFormatCode, data)
-		encoded, err := e.Encode(data, nil)
-		if err != nil {
-			return "", err 
+		if e != nil {
+			encoded, err := e.Encode(data, nil)
+			if err != nil {
+				return "", err
+			}
+			value = string(encoded)
+		} else {
+			// TODO
+			value = fmt.Sprintf("%v", data)
 		}
-		value = string(encoded)
 	} else {
 		value = fmt.Sprintf("%v", data)
 	}
 
 	// Some types need additional quoting after encoding	
 	switch data.(type) {
-	case string:
+	case string, time.Time, pgtype.Time, bool:
 		return fmt.Sprintf("'%s'", value), nil
 	default:
 		return value, nil
