@@ -21,6 +21,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/dolthub/doltgresql/postgres/parser/uuid"
 	"github.com/jackc/pglogrepl"
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgconn"
@@ -484,7 +485,7 @@ func encodeColumnData(mi *pgtype.Map, data interface{}, dataType uint32) (string
 			}
 			value = string(encoded)
 		} else {
-			// TODO
+			// no encoder for this type, use the string representation
 			value = fmt.Sprintf("%v", data)
 		}
 	} else {
@@ -492,9 +493,13 @@ func encodeColumnData(mi *pgtype.Map, data interface{}, dataType uint32) (string
 	}
 
 	// Some types need additional quoting after encoding	
-	switch data.(type) {
+	switch data := data.(type) {
 	case string, time.Time, pgtype.Time, bool:
 		return fmt.Sprintf("'%s'", value), nil
+	case [16]byte:
+		// TODO: should we actually register an encoder for this type?
+		uid := uuid.UUID(data)
+		return fmt.Sprintf("'%s'", uid.String()), nil
 	default:
 		return value, nil
 	}

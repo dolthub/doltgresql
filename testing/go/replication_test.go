@@ -103,10 +103,11 @@ var replicationTests = []ReplicationTest{
 			"/* replica */ drop table if exists test",
 			"/* replica */ create table test (id INT primary key, name varchar(100), u_id uuid, age INT, height FLOAT, birth_date DATE, birth_timestamp TIMESTAMP)",
 			"drop table if exists test",
-			"create table test (id INT primary key, name varchar(100), age INT, height FLOAT, birth_date DATE, birth_timestamp TIMESTAMP)",
-			"INSERT INTO test VALUES (1, 'one', '' 1, 1.1, '2021-01-01', '2021-01-01 12:00:00')",
-			"INSERT INTO test VALUES (2, 'two', 2, 2.2, '2021-02-02', '2021-02-02 13:00:00')",
+			"create table test (id INT primary key, name varchar(100), u_id uuid, age INT, height FLOAT, birth_date DATE, birth_timestamp TIMESTAMP)",
+			"INSERT INTO test VALUES (1, 'one', '5ef34887-e635-4c9c-a994-97b1cb810786', 1, 1.1, '2021-01-01', '2021-01-01 12:00:00')",
+			"INSERT INTO test VALUES (2, 'two', '2de55648-76ec-4f66-9fae-bd3d853fb0da', 2, 2.2, '2021-02-02', '2021-02-02 13:00:00')",
 			"UPDATE test SET name = 'three' WHERE id = 2",
+			"update test set u_id = '3232abe7-560b-4714-a020-2b1a11a1ec65' where id = 2",
 			"DELETE FROM test WHERE id = 1",
 		},
 		Assertions: []ReplicationTestAssertion{
@@ -116,7 +117,7 @@ var replicationTests = []ReplicationTest{
 					Query: "SELECT * FROM test order by id",
 					Expected: []sql.Row{
 						// TODO: The DATE field should not return time in its output
-						{int32(2), "three", int32(2), 2.2, "2021-02-02 00:00:00", "2021-02-02 13:00:00"},
+						{int32(2), "three", "3232abe7-560b-4714-a020-2b1a11a1ec65", int32(2), 2.2, "2021-02-02 00:00:00", "2021-02-02 13:00:00"},
 					},
 				},
 			},
@@ -124,7 +125,6 @@ var replicationTests = []ReplicationTest{
 	},
 	{
 		Name: "concurrent writes",
-		Focus: true,
 		SetUpScript: []string{
 			"/* replica */ drop table if exists test",
 			"/* replica */ create table test (id INT primary key, name varchar(100))",
