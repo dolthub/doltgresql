@@ -1523,21 +1523,18 @@ func (node *InterleaveDef) doc(p *PrettyCfg) pretty.Doc {
 
 func (node *CreateIndex) doc(p *PrettyCfg) pretty.Doc {
 	// Final layout:
-	// CREATE [UNIQUE] [INVERTED] INDEX [name]
-	//    ON tbl (cols...)
-	//    [STORING ( ... )]
-	//    [INTERLEAVE ...]
-	//    [PARTITION BY ...]
+	// CREATE [UNIQUE] INDEX [CONCURRENTLY] [[IF NOT EXISTS] name]
+	//    ON [ONLY] tbl [USING ...] (cols...)
+	//    [INCLUDE (cols...)]
+	//    [NULLS [NOT] DISTINCT]
 	//    [WITH ...]
+	//    [TABLESPACE ...]
 	//    [WHERE ...]
 	//
 	title := make([]pretty.Doc, 0, 6)
 	title = append(title, pretty.Keyword("CREATE"))
 	if node.Unique {
 		title = append(title, pretty.Keyword("UNIQUE"))
-	}
-	if node.Inverted {
-		title = append(title, pretty.Keyword("INVERTED"))
 	}
 	title = append(title, pretty.Keyword("INDEX"))
 	if node.Concurrently {
@@ -1550,27 +1547,30 @@ func (node *CreateIndex) doc(p *PrettyCfg) pretty.Doc {
 		title = append(title, p.Doc(&node.Name))
 	}
 
-	clauses := make([]pretty.Doc, 0, 5)
-	clauses = append(clauses, pretty.Fold(pretty.ConcatSpace,
-		pretty.Keyword("ON"),
-		p.Doc(&node.Table),
-		p.bracket("(", p.Doc(&node.Columns), ")")))
-
-	if node.Sharded != nil {
-		clauses = append(clauses, p.Doc(node.Sharded))
+	onTable := make([]pretty.Doc, 0, 5)
+	onTable = append(onTable, pretty.Keyword("ON"))
+	if node.Only {
+		onTable = append(onTable, pretty.Keyword("ONLY"))
 	}
-	if len(node.Storing) > 0 {
+	onTable = append(onTable, p.Doc(&node.Table))
+	if node.Using != "" {
+		onTable = append(onTable, pretty.Keyword("USING"), p.Doc(&node.Name))
+	}
+	onTable = append(onTable, p.bracket("(", p.Doc(&node.Columns), ")"))
+
+	clauses := make([]pretty.Doc, 0, 5)
+	clauses = append(clauses, pretty.Fold(pretty.ConcatSpace, onTable...))
+	if node.Include != nil {
 		clauses = append(clauses, p.bracketKeyword(
-			"STORING", " (",
-			p.Doc(&node.Storing),
+			"INCLUDE", " (",
+			p.Doc(&node.Include),
 			")", "",
 		))
 	}
-	if node.Interleave != nil {
-		clauses = append(clauses, p.Doc(node.Interleave))
-	}
-	if node.PartitionBy != nil {
-		clauses = append(clauses, p.Doc(node.PartitionBy))
+	if node.NullsDistinct {
+		clauses = append(clauses, pretty.Keyword("NULLS DISTINCT"))
+	} else {
+		clauses = append(clauses, pretty.Keyword("NULLS NOT DISTINCT"))
 	}
 	if node.StorageParams != nil {
 		clauses = append(clauses, p.bracketKeyword(
@@ -1578,6 +1578,9 @@ func (node *CreateIndex) doc(p *PrettyCfg) pretty.Doc {
 			p.Doc(&node.StorageParams),
 			")", "",
 		))
+	}
+	if node.Tablespace != "" {
+		clauses = append(clauses, pretty.Keyword("TABLESPACE"), p.Doc(&node.Tablespace))
 	}
 	if node.Predicate != nil {
 		clauses = append(clauses, p.nestUnder(pretty.Keyword("WHERE"), p.Doc(node.Predicate)))

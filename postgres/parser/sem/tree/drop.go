@@ -72,6 +72,74 @@ func (node *DropDatabase) Format(ctx *FmtCtx) {
 	}
 }
 
+var _ Statement = &DropExtension{}
+
+// DropExtension represents a DROP EXTENSION statement.
+type DropExtension struct {
+	Names        NameList
+	IfExists     bool
+	DropBehavior DropBehavior
+}
+
+// Format implements the NodeFormatter interface.
+func (node *DropExtension) Format(ctx *FmtCtx) {
+	ctx.WriteString("DROP EXTENSION ")
+	if node.IfExists {
+		ctx.WriteString("IF EXISTS ")
+	}
+	ctx.FormatNode(&node.Names)
+	switch node.DropBehavior {
+	case DropDefault:
+	default:
+		ctx.WriteByte(' ')
+		ctx.WriteString(dropBehaviorName[node.DropBehavior])
+	}
+}
+
+var _ Statement = &DropFunction{}
+
+// DropFunction represents a DROP FUNCTION statement.
+type DropFunction struct {
+	Functions    []FunctionWithArgs
+	IfExists     bool
+	DropBehavior DropBehavior
+}
+
+// Format implements the NodeFormatter interface.
+func (node *DropFunction) Format(ctx *FmtCtx) {
+	ctx.WriteString("DROP FUNCTION ")
+	if node.IfExists {
+		ctx.WriteString("IF EXISTS ")
+	}
+	for i, f := range node.Functions {
+		if i != 0 {
+			ctx.WriteString(", ")
+		}
+		ctx.FormatNode(&f)
+	}
+	switch node.DropBehavior {
+	case DropDefault:
+	default:
+		ctx.WriteByte(' ')
+		ctx.WriteString(dropBehaviorName[node.DropBehavior])
+	}
+}
+
+// FunctionWithArgs represents the function name and its arguments, if any, for DROP FUNCTION statement.
+type FunctionWithArgs struct {
+	Name *UnresolvedObjectName
+	Args RoutineArgs
+}
+
+func (node *FunctionWithArgs) Format(ctx *FmtCtx) {
+	ctx.FormatNode(node.Name)
+	ctx.WriteString(" (")
+	if len(node.Args) != 0 {
+		node.Args.Format(ctx)
+	}
+	ctx.WriteString(" )")
+}
+
 // DropIndex represents a DROP INDEX statement.
 type DropIndex struct {
 	IndexList    TableIndexNames

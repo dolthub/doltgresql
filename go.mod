@@ -1,26 +1,21 @@
 module github.com/dolthub/doltgresql
 
-replace github.com/dolthub/dolt/go => ../dolt/go
-
-replace github.com/dolthub/go-mysql-server => ../go-mysql-server
-
 go 1.21
 
 require (
 	github.com/PuerkitoBio/goquery v1.8.1
 	github.com/cockroachdb/apd/v2 v2.0.3-0.20200518165714-d020e156310a
 	github.com/cockroachdb/errors v1.7.5
-	github.com/dolthub/dolt/go v0.40.5-0.20240118214900-3cbb73cafa3c
-	github.com/dolthub/dolt/go/gen/proto/dolt/services/eventsapi v0.0.0-20240207223915-ff3a9d543aed
-	github.com/dolthub/go-mysql-server v0.17.1-0.20240207124505-c0f397a6aaca
+	github.com/dolthub/dolt/go v0.40.5-0.20240209132845-d391bcf946e7
+	github.com/dolthub/dolt/go/gen/proto/dolt/services/eventsapi v0.0.0-20240209132845-d391bcf946e7
+	github.com/dolthub/go-mysql-server v0.17.1-0.20240209131710-527b791c74c0
 	github.com/dolthub/sqllogictest/go v0.0.0-20240118211725-a52e3f5697e3
-	github.com/dolthub/vitess v0.0.0-20240207121055-c057d2347007
+	github.com/dolthub/vitess v0.0.0-20240209125211-6c93b0341608
 	github.com/fatih/color v1.13.0
 	github.com/gogo/protobuf v1.3.2
 	github.com/golang/geo v0.0.0-20200730024412-e86565bf3f35
 	github.com/google/go-cmp v0.6.0
 	github.com/grpc-ecosystem/grpc-gateway v1.16.0
-	github.com/jackc/pglogrepl v0.0.0-20231111135425-1627ab1b5780
 	github.com/jackc/pgx/v4 v4.18.1
 	github.com/jackc/pgx/v5 v5.4.3
 	github.com/lib/pq v1.10.9

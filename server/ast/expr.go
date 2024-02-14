@@ -19,10 +19,14 @@ import (
 	"go/constant"
 	"strings"
 
+	"github.com/dolthub/go-mysql-server/sql"
 	"github.com/dolthub/go-mysql-server/sql/expression"
 	vitess "github.com/dolthub/vitess/go/vt/sqlparser"
 
 	"github.com/dolthub/doltgresql/postgres/parser/sem/tree"
+	"github.com/dolthub/doltgresql/postgres/parser/types"
+	pgexprs "github.com/dolthub/doltgresql/server/expression"
+	pgtypes "github.com/dolthub/doltgresql/server/types"
 )
 
 // nodeExprs handles tree.Exprs nodes.
@@ -96,7 +100,39 @@ func nodeExpr(node tree.Expr) (vitess.Expr, error) {
 	case *tree.AnnotateTypeExpr:
 		return nil, fmt.Errorf("ANNOTATE_TYPE is not yet supported")
 	case *tree.Array:
-		return nil, fmt.Errorf("arrays are not yet supported")
+		//TODO: right now, this only works with boolean array values for the sake of demonstration
+		var sqlChildren []sql.Expression
+		var unresolvedChildren []vitess.Expr
+		var unresolvedIndexes []int
+		if len(node.Exprs) == 0 {
+			if node.ResolvedType().Family() == types.ArrayFamily && node.ResolvedType().ArrayContents().Family() == types.BoolFamily {
+				sqlChildren = []sql.Expression{expression.NewLiteral([]bool{}, pgtypes.BoolArray)}
+			} else {
+				return nil, fmt.Errorf("arrays are generally not yet supported")
+			}
+		} else {
+			for _, arrayExpr := range node.Exprs {
+				if arrayVal, ok := arrayExpr.(*tree.DBool); ok && arrayVal != nil {
+					sqlChildren = append(sqlChildren, expression.NewLiteral(bool(*arrayVal), pgtypes.Bool))
+				} else {
+					unresolvedChild, err := nodeExpr(arrayExpr)
+					if err != nil {
+						return nil, err
+					}
+					unresolvedChildren = append(unresolvedChildren, unresolvedChild)
+					unresolvedIndexes = append(unresolvedIndexes, len(sqlChildren))
+					sqlChildren = append(sqlChildren, nil)
+				}
+			}
+		}
+		arrayExpr, err := pgexprs.NewArray(sqlChildren, unresolvedChildren, unresolvedIndexes, nil)
+		if err != nil {
+			return nil, err
+		}
+		return vitess.InjectedExpr{
+			Expression: arrayExpr,
+			Children:   unresolvedChildren,
+		}, nil
 	case *tree.ArrayFlatten:
 		return nil, fmt.Errorf("flattening arrays is not yet supported")
 	case *tree.BinaryExpr:
@@ -199,7 +235,7 @@ func nodeExpr(node tree.Expr) (vitess.Expr, error) {
 			return nil, fmt.Errorf("unknown cast syntax")
 		}
 
-		convertType, err := nodeResolvableTypeReference(node.Type)
+		convertType, _, err := nodeResolvableTypeReference(node.Type)
 		if err != nil {
 			return nil, err
 		}

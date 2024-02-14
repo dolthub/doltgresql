@@ -302,7 +302,7 @@ func runServer(ctx context.Context, dEnv *env.DoltEnv) error {
 	//
 	// We also emit a heartbeat event every 24 hours the server is running.
 	// All events will be tagged with the doltgresql app id.
-	go emitUsageEvent(dEnv)
+	go emitUsageEvent(ctx, dEnv)
 
 	controller, err := server.RunOnDisk(ctx, os.Args[1:], dEnv)
 
@@ -589,22 +589,22 @@ func redirectStdio(args []string) ([]string, error) {
 }
 
 // emitUsageEvent emits a usage event to the event server
-func emitUsageEvent(dEnv *env.DoltEnv) {
+func emitUsageEvent(ctx context.Context, dEnv *env.DoltEnv) {
 	metricsDisabled := dEnv.Config.GetStringOrDefault(config.MetricsDisabled, "false")
 	disabled, err := strconv.ParseBool(metricsDisabled)
 	if err != nil || disabled {
 		return
 	}
 
-	evt := events.NewEvent(sqlserver.SqlServerCmd{}.EventType())
-	evtCollector := events.NewCollector()
-	evtCollector.CloseEventAndAdd(evt)
-	clientEvents := evtCollector.Close()
-
 	emitter, err := commands.GRPCEmitterForConfig(dEnv)
 	if err != nil {
 		return
 	}
 
-	_ = emitter.LogEvents(server.Version, clientEvents)
+	evt := events.NewEvent(sqlserver.SqlServerCmd{}.EventType())
+	evtCollector := events.NewCollector(server.Version, emitter)
+	evtCollector.CloseEventAndAdd(evt)
+	clientEvents := evtCollector.Close()
+
+	_ = emitter.LogEvents(ctx, server.Version, clientEvents)
 }

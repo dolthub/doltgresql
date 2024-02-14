@@ -76,6 +76,8 @@ These are automatically included when releasing a new version of DoltgreSQL, so 
 3. `scripts`: Contains all of the non-build scripts and tools.
 4. `server`: The interface between the `postgres` directory and the underlying [GMS](https://github.com/dolthub/go-mysql-server) and [Dolt](https://github.com/dolthub/dolt) backends.
    1. `ast`: Specifically houses all transformations from the `postgres` AST to the [`vitess`](https://github.com/dolthub/vitess) AST.
+   2. `functions`: Contains all implementations of [PostgreSQL functions](https://www.postgresql.org/docs/15/functions.html).
+   3. `types`: Contains the implementations of all PostgreSQL types.
 5. `testing`: Contains all integration tests, and all things related to testing.
 This will not contain _all_ tests within the repository, as functions within other directories may declare their own unit tests.
    1. `bats`: Contains all of our [Bats](https://github.com/bats-core/bats-core) tests.
@@ -242,6 +244,10 @@ We should only handle statements that we know we can handle correctly.
 There are exceptions, as some statements we do not yet support, and cannot support for quite a while, however we still need to handle them, such as the default NULL order for indexes.
 In these cases, we must add a `//TODO:` comment stating what is missing and why it isn't an error.
 This will at least allow us to track all such instances where we deviate from the expected behavior, which we can also document elsewhere for users of DoltgreSQL.
+
+### `server/expression`
+
+TODO: FILL ME OUT BEFORE COMMITTING
 
 ### `server/functions`
 

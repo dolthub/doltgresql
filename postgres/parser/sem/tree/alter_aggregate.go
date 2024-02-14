@@ -24,8 +24,6 @@
 
 package tree
 
-import "strings"
-
 var _ Statement = &AlterAggregate{}
 
 // AlterAggregate represents a ALTER AGGREGATE statement.
@@ -41,7 +39,7 @@ type AlterAggregate struct {
 func (node *AlterAggregate) Format(ctx *FmtCtx) {
 	ctx.WriteString("ALTER AGGREGATE ")
 	ctx.FormatNode(&node.Name)
-	ctx.WriteString(" (")
+	ctx.WriteString(" ( ")
 	node.AggSig.Format(ctx)
 	ctx.WriteString(" )")
 
@@ -59,48 +57,22 @@ func (node *AlterAggregate) Format(ctx *FmtCtx) {
 
 // AggregateSignature represents an aggregate_signature clause.
 type AggregateSignature struct {
-	All     bool
-	Arg     *AggregateArg
-	OrderBy *AggregateArg
+	All         bool
+	Args        RoutineArgs
+	OrderByArgs RoutineArgs
 }
 
 // Format implements the NodeFormatter interface.
 func (node *AggregateSignature) Format(ctx *FmtCtx) {
 	if node.All {
-		ctx.WriteString(" * ")
+		ctx.WriteString("* ")
 	} else {
-		if node.Arg != nil {
-			ctx.WriteByte(' ')
-			node.Arg.Format(ctx)
+		if len(node.Args) != 0 {
+			node.Args.Format(ctx)
 		}
-		if node.OrderBy != nil {
-			ctx.WriteString(" ORDER BY ")
-			node.Arg.Format(ctx)
+		if len(node.OrderByArgs) != 0 {
+			ctx.WriteString("ORDER BY ")
+			node.OrderByArgs.Format(ctx)
 		}
-	}
-}
-
-// AggregateArg represents an aggregate argument(s).
-type AggregateArg struct {
-	Mode  string
-	Name  Name
-	Types []ResolvableTypeReference
-}
-
-// Format implements the NodeFormatter interface.
-func (node *AggregateArg) Format(ctx *FmtCtx) {
-	ctx.WriteString(node.Mode)
-	if node.Name != "" {
-		ctx.WriteByte(' ')
-		ctx.FormatNode(&node.Name)
-	}
-	types := make([]string, len(node.Types))
-	for i, t := range node.Types {
-		types[i] = t.SQLString()
-	}
-
-	if len(types) > 0 {
-		ctx.WriteByte(' ')
-		ctx.WriteString(strings.Join(types, ", "))
 	}
 }

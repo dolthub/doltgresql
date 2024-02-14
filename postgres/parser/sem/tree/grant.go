@@ -115,7 +115,7 @@ type TargetList struct {
 // Routine used for { FUNCTION | PROCEDURE | ROUTINE }
 type Routine struct {
 	Name Name
-	Args *AggregateArg
+	Args RoutineArgs
 }
 
 // Format implements the NodeFormatter interface.
@@ -162,7 +162,7 @@ func (tl *TargetList) Format(ctx *FmtCtx) {
 					ctx.WriteString(", ")
 				}
 				ctx.FormatNode(&r.Name)
-				if r.Args != nil {
+				if len(r.Args) != 0 {
 					ctx.WriteString(" ( ")
 					ctx.FormatNode(r.Args)
 					ctx.WriteString(" )")

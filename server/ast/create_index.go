@@ -16,6 +16,7 @@ package ast
 
 import (
 	"fmt"
+	"strings"
 
 	vitess "github.com/dolthub/vitess/go/vt/sqlparser"
 
@@ -30,14 +31,15 @@ func nodeCreateIndex(node *tree.CreateIndex) (*vitess.AlterTable, error) {
 	if node.Concurrently {
 		return nil, fmt.Errorf("concurrent indexes are not yet supported")
 	}
+	if node.Tablespace != "" {
+		return nil, fmt.Errorf("index tablespace is not yet supported")
+	}
+	if node.Using != "" && strings.ToLower(node.Using) != "btree" {
+		return nil, fmt.Errorf("index tablespace is not yet supported")
+	}
 	indexDef, err := nodeIndexTableDef(&tree.IndexTableDef{
 		Name:          node.Name,
 		Columns:       node.Columns,
-		Sharded:       node.Sharded,
-		Storing:       node.Storing,
-		Interleave:    node.Interleave,
-		Inverted:      node.Inverted,
-		PartitionBy:   node.PartitionBy,
 		StorageParams: node.StorageParams,
 		Predicate:     node.Predicate,
 	})
