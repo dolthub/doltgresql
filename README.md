@@ -176,27 +176,27 @@ a standard suite of Sysbench tests.
 
 We use these same Sysbench tests to benchmark DoltgreSQL and compare the results to PostgreSQL. 
 
-Here are the benchmarks for DoltgreSQL version `0.3.1`.
+Here are the benchmarks for DoltgreSQL version `0.4.0`.
 
 <!-- START_LATENCY_RESULTS_TABLE -->
 |       Read Tests        | PostgreSQL | DoltgreSQL | Multiple |
 |-------------------------|------------|------------|----------|
 | oltp\_point\_select     |       0.13 |       0.54 |      4.2 |
 | oltp\_read\_only        |       2.35 |      12.75 |      5.4 |
-| select\_random\_points  |        0.2 |       1.03 |      5.1 |
-| select\_random\_ranges  |       0.41 |       1.01 |      2.5 |
-| reads\_mean\_multiplier |            |            |      4.3 |
+| select\_random\_points  |        0.2 |       1.04 |      5.2 |
+| select\_random\_ranges  |        0.4 |       1.03 |      2.6 |
+| reads\_mean\_multiplier |            |            |      4.4 |
 
 |       Write Tests        | PostgreSQL | DoltgreSQL | Multiple |
 |--------------------------|------------|------------|----------|
-| oltp\_insert             |        0.8 |       3.02 |      3.8 |
-| oltp\_read\_write        |       3.96 |       20.0 |      5.1 |
-| oltp\_update\_index      |       0.86 |       3.19 |      3.7 |
-| oltp\_update\_non\_index |        0.8 |       3.07 |      3.8 |
+| oltp\_insert             |       0.78 |       3.02 |      3.9 |
+| oltp\_read\_write        |       3.89 |      20.37 |      5.2 |
+| oltp\_update\_index      |       0.81 |       3.19 |      3.9 |
+| oltp\_update\_non\_index |       0.78 |       3.13 |      4.0 |
 | oltp\_write\_only        |       1.37 |       7.56 |      5.5 |
-| writes\_mean\_multiplier |            |            |      4.4 |
+| writes\_mean\_multiplier |            |            |      4.5 |
 
-| Overall Mean Multiple | 4.3 |
+| Overall Mean Multiple | 4.4 |
 |-----------------------|-----|
 <!-- END_LATENCY_RESULTS_TABLE -->
 <br/>
