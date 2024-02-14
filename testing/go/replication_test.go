@@ -222,11 +222,10 @@ func RunReplicationScript(t *testing.T, script ReplicationTest) {
 		err := replicator.StartReplication(slotName)
 		require.NoError(t, err)
 	}()
-
+	defer replicator.Stop()
+	
 	// give replication time to begin before running scripts
 	time.Sleep(1 * time.Second)
-
-	// TODO: stop replication
 	
 	ctx = context.Background()
 	primaryConn, err := pgx.Connect(ctx, primaryDns)

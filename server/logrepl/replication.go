@@ -32,10 +32,10 @@ const outputPlugin = "pgoutput"
 
 type LogicalReplicator struct {
 	primaryDns      string
-	replicationConn *pgx.Conn	
+	replicationConn *pgx.Conn
+	stop chan struct{}
 }
 
-// TODO: change this to a connection string probably
 func NewLogicalReplicator(primaryDns string, replicationDns string) (*LogicalReplicator, error) {
 	conn, err := pgx.Connect(context.Background(), replicationDns)
 	if err != nil {
@@ -45,6 +45,7 @@ func NewLogicalReplicator(primaryDns string, replicationDns string) (*LogicalRep
 	return &LogicalReplicator{
 		primaryDns: primaryDns,
 		replicationConn: conn,
+		stop: make(chan struct{}),
 	}, nil
 }
 
@@ -82,6 +83,17 @@ func (r *LogicalReplicator) StartReplication(slotName string) error {
 	var primaryConn *pgconn.PgConn
 	var clientXLogPos pglogrepl.LSN
 	for {
+		
+		// Shutdown if requested
+		select {
+			case <-r.stop:
+				log.Printf("stop signal found")
+				close(r.stop)
+				return nil
+			default:
+				log.Printf("no stop signal found")
+		}
+		
 		if primaryConn == nil {
 			// TODO: not sure if this retry logic is correct, with some failures we appear to miss events that aren't 
 			//  sent again
@@ -113,8 +125,8 @@ func (r *LogicalReplicator) StartReplication(slotName string) error {
 
 		ctx, cancel := context.WithDeadline(context.Background(), nextStandbyMessageDeadline)
 		rawMsg, err := primaryConn.ReceiveMessage(ctx)
-
 		cancel()
+		
 		if err != nil {
 			if pgconn.Timeout(err) {
 				continue
@@ -180,6 +192,13 @@ func (r *LogicalReplicator) StartReplication(slotName string) error {
 			// conn = nil
 		}
 	}
+}
+
+func (r *LogicalReplicator) Stop() {
+	log.Printf("stopping replication...")
+	r.stop <- struct{}{}
+	log.Printf("stop sent")
+	<-r.stop
 }
 
 func (r *LogicalReplicator) replicateQuery(query string) error {
