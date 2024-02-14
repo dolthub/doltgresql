@@ -16,10 +16,10 @@ require (
 	github.com/golang/geo v0.0.0-20200730024412-e86565bf3f35
 	github.com/google/go-cmp v0.6.0
 	github.com/grpc-ecosystem/grpc-gateway v1.16.0
+	github.com/jackc/pglogrepl v0.0.0-20231111135425-1627ab1b5780
 	github.com/jackc/pgx/v4 v4.18.1
 	github.com/jackc/pgx/v5 v5.4.3
 	github.com/lib/pq v1.10.9
-	github.com/madflojo/testcerts v1.1.1
 	github.com/pierrre/geohash v1.0.0
 	github.com/sergi/go-diff v1.1.0
 	github.com/shopspring/decimal v1.2.0

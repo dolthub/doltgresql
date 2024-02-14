@@ -101,10 +101,10 @@ var replicationTests = []ReplicationTest{
 		Name: "all supported types",
 		SetUpScript: []string{
 			"/* replica */ drop table if exists test",
-			"/* replica */ create table test (id INT primary key, name varchar(100), age INT, height FLOAT, birth_date DATE, birth_timestamp TIMESTAMP)",
+			"/* replica */ create table test (id INT primary key, name varchar(100), u_id uuid, age INT, height FLOAT, birth_date DATE, birth_timestamp TIMESTAMP)",
 			"drop table if exists test",
 			"create table test (id INT primary key, name varchar(100), age INT, height FLOAT, birth_date DATE, birth_timestamp TIMESTAMP)",
-			"INSERT INTO test VALUES (1, 'one', 1, 1.1, '2021-01-01', '2021-01-01 12:00:00')",
+			"INSERT INTO test VALUES (1, 'one', '' 1, 1.1, '2021-01-01', '2021-01-01 12:00:00')",
 			"INSERT INTO test VALUES (2, 'two', 2, 2.2, '2021-02-02', '2021-02-02 13:00:00')",
 			"UPDATE test SET name = 'three' WHERE id = 2",
 			"DELETE FROM test WHERE id = 1",
