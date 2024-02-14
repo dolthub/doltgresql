@@ -16,7 +16,6 @@ package ast
 
 import (
 	"fmt"
-
 	vitess "github.com/dolthub/vitess/go/vt/sqlparser"
 
 	"github.com/dolthub/doltgresql/postgres/parser/sem/tree"
@@ -27,10 +26,13 @@ func nodeCreateTable(node *tree.CreateTable) (*vitess.DDL, error) {
 	if node == nil {
 		return nil, nil
 	}
-	if node.Interleave != nil {
-		return nil, fmt.Errorf("INTERLEAVE is not yet supported")
-	}
 	if node.PartitionBy != nil {
+		switch node.PartitionBy.Type {
+		case tree.PartitionByList:
+			if len(node.PartitionBy.Elems) != 1 {
+				return nil, fmt.Errorf("PARTITION BY LIST must have a single column or expression")
+			}
+		}
 		return nil, fmt.Errorf("PARTITION BY is not yet supported")
 	}
 	if len(node.StorageParams) > 0 {

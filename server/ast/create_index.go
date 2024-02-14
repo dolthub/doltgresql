@@ -31,17 +31,16 @@ func nodeCreateIndex(node *tree.CreateIndex) (*vitess.AlterTable, error) {
 	if node.Concurrently {
 		return nil, fmt.Errorf("concurrent indexes are not yet supported")
 	}
-	if node.Tablespace != "" {
-		return nil, fmt.Errorf("index tablespace is not yet supported")
-	}
 	if node.Using != "" && strings.ToLower(node.Using) != "btree" {
 		return nil, fmt.Errorf("index tablespace is not yet supported")
 	}
+	// TODO: use something else than IndexTableDef
 	indexDef, err := nodeIndexTableDef(&tree.IndexTableDef{
-		Name:          node.Name,
-		Columns:       node.Columns,
-		StorageParams: node.StorageParams,
-		Predicate:     node.Predicate,
+		Name:        node.Name,
+		Columns:     node.Columns,
+		IndexParams: node.IndexParams,
+		//StorageParams: node.StorageParams,
+		//Predicate:     node.Predicate,
 	})
 	if err != nil {
 		return nil, err

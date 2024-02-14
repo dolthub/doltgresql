@@ -56,8 +56,6 @@ func assignTableDef(node tree.TableDef, target *vitess.DDL) error {
 		}
 		target.TableSpec.Columns = append(target.TableSpec.Columns, columnDef)
 		return nil
-	case *tree.FamilyTableDef:
-		return fmt.Errorf("FAMILY is not yet supported")
 	case *tree.ForeignKeyConstraintTableDef:
 		if target.TableSpec == nil {
 			target.TableSpec = &vitess.TableSpec{}

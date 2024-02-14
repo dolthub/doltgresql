@@ -110,7 +110,7 @@ func (l *lexer) Lex(lval *sqlSymType) int {
 			}
 		case NOT:
 			switch nextID {
-			case BETWEEN, IN, LIKE, ILIKE, SIMILAR:
+			case BETWEEN, DEFERRABLE, IN, LIKE, ILIKE, SIMILAR:
 				lval.id = NOT_LA
 			}
 		case GENERATED:
@@ -118,7 +118,6 @@ func (l *lexer) Lex(lval *sqlSymType) int {
 			case ALWAYS:
 				lval.id = GENERATED_ALWAYS
 			}
-
 		case WITH:
 			switch nextID {
 			case TIME, ORDINALITY:

@@ -1136,6 +1136,7 @@ func (n *CreateFunction) String() string                 { return AsString(n) }
 func (n *CreateIndex) String() string                    { return AsString(n) }
 func (n *CreateRole) String() string                     { return AsString(n) }
 func (n *CreateTable) String() string                    { return AsString(n) }
+func (n *CreateType) String() string                     { return AsString(n) }
 func (n *CreateSchema) String() string                   { return AsString(n) }
 func (n *CreateSequence) String() string                 { return AsString(n) }
 func (n *CreateStats) String() string                    { return AsString(n) }

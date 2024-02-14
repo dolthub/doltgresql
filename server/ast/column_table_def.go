@@ -32,13 +32,6 @@ func nodeColumnTableDef(node *tree.ColumnTableDef) (_ *vitess.ColumnDefinition, 
 		len(node.UniqueConstraintName) > 0 {
 		return nil, fmt.Errorf("non-foreign key column constraint names are not yet supported")
 	}
-	if node.PrimaryKey.Sharded {
-		return nil, fmt.Errorf("sharded columns are not yet supported")
-	}
-	if node.Family.Create || len(node.Family.Name) > 0 {
-		return nil, fmt.Errorf("FAMILY is not yet supported")
-	}
-
 	convertType, resolvedType, err := nodeResolvableTypeReference(node.Type)
 	if err != nil {
 		return nil, err
