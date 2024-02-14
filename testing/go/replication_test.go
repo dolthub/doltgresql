@@ -121,66 +121,66 @@ var replicationTests = []ReplicationTest{
 			},
 		},
 	},
-	// {
-	// 	Skip: true,
-	// 	Name: "concurrent writes",
-	// 	SetUpScript: []string{
-	// 		"/* replica */ drop table if exists test",
-	// 		"/* replica */ create table test (id INT primary key, name varchar(100))",
-	// 		"drop table if exists test",
-	// 		"CREATE TABLE test (id INT primary key, name varchar(100))",
-	// 		"INSERT INTO test VALUES (1, 'one')",
-	// 		"INSERT INTO test VALUES (2, 'two')",
-	// 		"UPDATE test SET name = 'three' WHERE id = 2",
-	// 		"DELETE FROM test WHERE id = 1",
-	// 		"INSERT INTO test VALUES (3, 'one')",
-	// 		"INSERT INTO test VALUES (4, 'two')",
-	// 		"UPDATE test SET name = 'five' WHERE id = 4",
-	// 		"DELETE FROM test WHERE id = 3",
-	// 		"INSERT INTO test VALUES (5, 'one')",
-	// 		"INSERT INTO test VALUES (6, 'two')",
-	// 		"UPDATE test SET name = 'six' WHERE id = 6",
-	// 		"DELETE FROM test WHERE id = 5",
-	// 	},
-	// 	Assertions: []ReplicationTestAssertion{
-	// 		{
-	// 			ReplicationTarget: ReplicationTargetReplica,
-	// 			ScriptTestAssertion: ScriptTestAssertion{
-	// 				Query: "SELECT * FROM test order by id",
-	// 				Expected: []sql.Row{
-	// 					{int32(2), "three"},
-	// 					{int32(4), "five"},
-	// 					{int32(6), "six"},
-	// 				},
-	// 			},
-	// 		},
-	// 	},
-	// },
-	// {
-	// 	Name: "all types",
-	// 	Skip: true, // some types don't work yet
-	// 	SetUpScript: []string{
-	// 		"/* replica */ drop table if exists test",
-	// 		"/* replica */ create table test (id INT primary key, name varchar(100), age INT, is_cool BOOLEAN, height FLOAT, birth_date DATE, birth_timestamp TIMESTAMP)",
-	// 		"drop table if exists test",
-	// 		"create table test (id INT primary key, name varchar(100), age INT, is_cool BOOLEAN, height FLOAT, birth_date DATE, birth_timestamp TIMESTAMP)",
-	// 		"INSERT INTO test VALUES (1, 'one', 1, true, 1.1, '2021-01-01', '2021-01-01 12:00:00')",
-	// 		"INSERT INTO test VALUES (2, 'two', 2, false, 2.2, '2021-02-02', '2021-02-02 13:00:00')",
-	// 		"UPDATE test SET name = 'three' WHERE id = 2",
-	// 		"DELETE FROM test WHERE id = 1",
-	// 	},
-	// 	Assertions: []ReplicationTestAssertion{
-	// 		{
-	// 			ReplicationTarget: ReplicationTargetReplica,
-	// 			ScriptTestAssertion: ScriptTestAssertion{
-	// 				Query: "SELECT * FROM test order by id",
-	// 				Expected: []sql.Row{
-	// 					{int32(2), "three", int32(2), false, 2.2, "2021-02-02", "2021-02-02 13:00:00"},
-	// 				},
-	// 			},
-	// 		},
-	// 	},
-	// },
+	{
+		Skip: true,
+		Name: "concurrent writes",
+		SetUpScript: []string{
+			"/* replica */ drop table if exists test",
+			"/* replica */ create table test (id INT primary key, name varchar(100))",
+			"drop table if exists test",
+			"CREATE TABLE test (id INT primary key, name varchar(100))",
+			"INSERT INTO test VALUES (1, 'one')",
+			"INSERT INTO test VALUES (2, 'two')",
+			"UPDATE test SET name = 'three' WHERE id = 2",
+			"DELETE FROM test WHERE id = 1",
+			"INSERT INTO test VALUES (3, 'one')",
+			"INSERT INTO test VALUES (4, 'two')",
+			"UPDATE test SET name = 'five' WHERE id = 4",
+			"DELETE FROM test WHERE id = 3",
+			"INSERT INTO test VALUES (5, 'one')",
+			"INSERT INTO test VALUES (6, 'two')",
+			"UPDATE test SET name = 'six' WHERE id = 6",
+			"DELETE FROM test WHERE id = 5",
+		},
+		Assertions: []ReplicationTestAssertion{
+			{
+				ReplicationTarget: ReplicationTargetReplica,
+				ScriptTestAssertion: ScriptTestAssertion{
+					Query: "SELECT * FROM test order by id",
+					Expected: []sql.Row{
+						{int32(2), "three"},
+						{int32(4), "five"},
+						{int32(6), "six"},
+					},
+				},
+			},
+		},
+	},
+	{
+		Name: "all types",
+		Skip: true, // some types don't work yet
+		SetUpScript: []string{
+			"/* replica */ drop table if exists test",
+			"/* replica */ create table test (id INT primary key, name varchar(100), age INT, is_cool BOOLEAN, height FLOAT, birth_date DATE, birth_timestamp TIMESTAMP)",
+			"drop table if exists test",
+			"create table test (id INT primary key, name varchar(100), age INT, is_cool BOOLEAN, height FLOAT, birth_date DATE, birth_timestamp TIMESTAMP)",
+			"INSERT INTO test VALUES (1, 'one', 1, true, 1.1, '2021-01-01', '2021-01-01 12:00:00')",
+			"INSERT INTO test VALUES (2, 'two', 2, false, 2.2, '2021-02-02', '2021-02-02 13:00:00')",
+			"UPDATE test SET name = 'three' WHERE id = 2",
+			"DELETE FROM test WHERE id = 1",
+		},
+		Assertions: []ReplicationTestAssertion{
+			{
+				ReplicationTarget: ReplicationTargetReplica,
+				ScriptTestAssertion: ScriptTestAssertion{
+					Query: "SELECT * FROM test order by id",
+					Expected: []sql.Row{
+						{int32(2), "three", int32(2), false, 2.2, "2021-02-02", "2021-02-02 13:00:00"},
+					},
+				},
+			},
+		},
+	},
 }
 
 func TestReplication(t *testing.T) {

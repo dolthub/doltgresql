@@ -89,13 +89,19 @@ func (r *LogicalReplicator) StartReplication(slotName string) error {
 	i := 0
 	var primaryConn *pgconn.PgConn
 	var clientXLogPos pglogrepl.LSN
+	
+	defer func() {
+		if primaryConn != nil {
+			_ = primaryConn.Close(context.Background())
+		}
+	}()
+	
 	for {
 		
 		// Shutdown if requested
 		select {
 			case <-r.stop:
-				log.Printf("stop signal found")
-				close(r.stop)
+				r.shutdown()
 				return nil
 			default:
 				log.Printf("no stop signal found")
@@ -140,7 +146,7 @@ func (r *LogicalReplicator) StartReplication(slotName string) error {
 		select {
 		case <-r.stop:
 			cancel()
-			close(r.stop)
+			r.shutdown()
 			return nil
 		case <-ctx.Done():
 			continue
@@ -213,6 +219,11 @@ func (r *LogicalReplicator) StartReplication(slotName string) error {
 			// conn = nil
 		}
 	}
+}
+
+func (r *LogicalReplicator) shutdown() {
+	log.Printf("shutting down replicator")
+	close(r.stop)
 }
 
 func (r *LogicalReplicator) Stop() {
