@@ -151,10 +151,12 @@ func (r *LogicalReplicator) StartReplication(slotName string) error {
 			r.shutdown()
 			return nil
 		case <-ctx.Done():
+			cancel()
 			continue
 		case msgAndErr = <-r.receiveMsgChan:
+			cancel()
 		}
-
+		
 		if msgAndErr.err != nil {
 			if pgconn.Timeout(msgAndErr.err) {
 				continue
