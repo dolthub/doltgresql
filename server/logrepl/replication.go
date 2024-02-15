@@ -21,26 +21,27 @@ import (
 	"strings"
 	"time"
 
-	"github.com/dolthub/doltgresql/postgres/parser/uuid"
 	"github.com/jackc/pglogrepl"
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgconn"
 	"github.com/jackc/pgx/v5/pgproto3"
 	"github.com/jackc/pgx/v5/pgtype"
+
+	"github.com/dolthub/doltgresql/postgres/parser/uuid"
 )
 
 const outputPlugin = "pgoutput"
 
 type rcvMsg struct {
-  msg pgproto3.BackendMessage
+	msg pgproto3.BackendMessage
 	err error
 }
 
 type LogicalReplicator struct {
 	primaryDns      string
 	replicationConn *pgx.Conn
-	receiveMsgChan chan rcvMsg
-	stop chan struct{}
+	receiveMsgChan  chan rcvMsg
+	stop            chan struct{}
 }
 
 func NewLogicalReplicator(primaryDns string, replicationDns string) (*LogicalReplicator, error) {
@@ -48,12 +49,12 @@ func NewLogicalReplicator(primaryDns string, replicationDns string) (*LogicalRep
 	if err != nil {
 		return nil, err
 	}
-	
+
 	return &LogicalReplicator{
-		primaryDns: primaryDns,
+		primaryDns:      primaryDns,
 		replicationConn: conn,
-		stop: make(chan struct{}),
-		receiveMsgChan: make(chan rcvMsg),
+		stop:            make(chan struct{}),
+		receiveMsgChan:  make(chan rcvMsg),
 	}, nil
 }
 
@@ -90,26 +91,26 @@ func (r *LogicalReplicator) StartReplication(slotName string) error {
 	i := 0
 	var primaryConn *pgconn.PgConn
 	var clientXLogPos pglogrepl.LSN
-	
+
 	defer func() {
 		if primaryConn != nil {
 			_ = primaryConn.Close(context.Background())
 		}
 	}()
-	
+
 	for {
-		
+
 		// Shutdown if requested
 		select {
-			case <-r.stop:
-				r.shutdown()
-				return nil
-			default:
-				// continue
+		case <-r.stop:
+			r.shutdown()
+			return nil
+		default:
+			// continue
 		}
-		
+
 		if primaryConn == nil {
-			// TODO: not sure if this retry logic is correct, with some failures we appear to miss events that aren't 
+			// TODO: not sure if this retry logic is correct, with some failures we appear to miss events that aren't
 			//  sent again
 			var err error
 			primaryConn, clientXLogPos, err = r.beginReplication(slotName)
@@ -117,7 +118,7 @@ func (r *LogicalReplicator) StartReplication(slotName string) error {
 				return err
 			}
 		}
-		
+
 		if time.Now().After(nextStandbyMessageDeadline) {
 			err := pglogrepl.SendStandbyStatusUpdate(context.Background(), primaryConn, pglogrepl.StandbyStatusUpdate{WALWritePosition: clientXLogPos})
 			if err != nil {
@@ -131,7 +132,7 @@ func (r *LogicalReplicator) StartReplication(slotName string) error {
 
 				return err
 			}
-			
+
 			connErrCnt = 0
 			log.Printf("Sent Standby status message at %s\n", clientXLogPos.String())
 			nextStandbyMessageDeadline = time.Now().Add(standbyMessageTimeout)
@@ -142,7 +143,7 @@ func (r *LogicalReplicator) StartReplication(slotName string) error {
 			rawMsg, err := primaryConn.ReceiveMessage(ctx)
 			r.receiveMsgChan <- rcvMsg{msg: rawMsg, err: err}
 		}()
-		
+
 		var msgAndErr rcvMsg
 		select {
 		case <-r.stop:
@@ -277,7 +278,7 @@ func (r *LogicalReplicator) beginReplication(slotName string) (*pgconn.PgConn, p
 		return nil, 0, err
 	}
 	log.Println("Logical replication started on slot", slotName)
-	
+
 	return conn, sysident.XLogPos, nil
 }
 
@@ -291,7 +292,7 @@ func (r *LogicalReplicator) processMessage(walData []byte, relations map[uint32]
 	case *pglogrepl.RelationMessageV2:
 		relations[logicalMsg.RelationID] = logicalMsg
 	case *pglogrepl.BeginMessage:
-		// Indicates the beginning of a group of changes in a transaction. 
+		// Indicates the beginning of a group of changes in a transaction.
 		// This is only sent for committed transactions. You won't get any events from rolled back transactions.
 		log.Printf("BeginMessage: %d", logicalMsg.Xid)
 	case *pglogrepl.CommitMessage:
@@ -309,16 +310,16 @@ func (r *LogicalReplicator) processMessage(walData []byte, relations map[uint32]
 				columnStr.WriteString(", ")
 				valuesStr.WriteString(", ")
 			}
-			
+
 			colName := rel.Columns[idx].Name
 			columnStr.WriteString(colName)
-			
+
 			switch col.DataType {
 			case 'n': // null
 				valuesStr.WriteString("NULL")
 			case 't': // text
 
-			  // We have to round-trip the data through the encodings to get an accurate text rep back
+				// We have to round-trip the data through the encodings to get an accurate text rep back
 				val, err := decodeTextColumnData(typeMap, col.Data, rel.Columns[idx].DataType)
 				if err != nil {
 					log.Fatalln("error decoding column data:", err)
@@ -333,7 +334,7 @@ func (r *LogicalReplicator) processMessage(walData []byte, relations map[uint32]
 				log.Printf("unknown column data type: %c", col.DataType)
 			}
 		}
-		
+
 		log.Printf("insert for xid %d\n", logicalMsg.Xid)
 		err = r.replicateQuery(fmt.Sprintf("INSERT INTO %s.%s (%s) VALUES (%s)", rel.Namespace, rel.RelationName, columnStr.String(), valuesStr.String()))
 		if err != nil {
@@ -363,7 +364,7 @@ func (r *LogicalReplicator) processMessage(walData []byte, relations map[uint32]
 				if err != nil {
 					log.Fatalln("error decoding column data:", err)
 				}
-				
+
 				stringVal, err = encodeColumnData(typeMap, val, rel.Columns[idx].DataType)
 				if err != nil {
 					panic(err)
@@ -371,7 +372,7 @@ func (r *LogicalReplicator) processMessage(walData []byte, relations map[uint32]
 			default:
 				log.Printf("unknown column data type: %c", col.DataType)
 			}
-			
+
 			// TODO: quote column names?
 			if colFlags == 0 {
 				if updateStr.Len() > 0 {
@@ -385,7 +386,7 @@ func (r *LogicalReplicator) processMessage(walData []byte, relations map[uint32]
 				whereStr.WriteString(fmt.Sprintf("%s = %v", colName, stringVal))
 			}
 		}
-		
+
 		log.Printf("update for xid %d\n", logicalMsg.Xid)
 		err = r.replicateQuery(fmt.Sprintf("UPDATE %s.%s SET %s%s", rel.Namespace, rel.RelationName, updateStr.String(), whereClause(whereStr)))
 		if err != nil {
@@ -402,7 +403,7 @@ func (r *LogicalReplicator) processMessage(walData []byte, relations map[uint32]
 		for idx, col := range logicalMsg.OldTuple.Columns {
 			colName := rel.Columns[idx].Name
 			colFlags := rel.Columns[idx].Flags
-			
+
 			var stringVal string
 			switch col.DataType {
 			case 'n': // null
@@ -492,7 +493,7 @@ func encodeColumnData(mi *pgtype.Map, data interface{}, dataType uint32) (string
 		value = fmt.Sprintf("%v", data)
 	}
 
-	// Some types need additional quoting after encoding	
+	// Some types need additional quoting after encoding
 	switch data := data.(type) {
 	case string, time.Time, pgtype.Time, bool:
 		return fmt.Sprintf("'%s'", value), nil

@@ -24,14 +24,16 @@ import (
 	"testing"
 	"time"
 
-	"github.com/dolthub/doltgresql/server/logrepl"
 	"github.com/dolthub/go-mysql-server/sql"
 	"github.com/jackc/pgx/v5"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+
+	"github.com/dolthub/doltgresql/server/logrepl"
 )
 
 type ReplicationTarget byte
+
 const (
 	ReplicationTargetPrimary ReplicationTarget = iota
 	ReplicationTargetReplica
@@ -42,7 +44,7 @@ type ReplicationTest struct {
 	Name string
 	// The database to create and use. If not provided, then it defaults to "postgres".
 	Database string
-	// The SQL statements to execute as setup, in order. Results are not checked, but statements must not error. 
+	// The SQL statements to execute as setup, in order. Results are not checked, but statements must not error.
 	// An initial comment can be used to Setup is always run on the primary.
 	SetUpScript []string
 	// The set of assertions to make after setup, in order
@@ -196,8 +198,8 @@ func RunReplicationScripts(t *testing.T, scripts []ReplicationTest) {
 			// If this is running in GitHub Actions, then we'll panic, because someone forgot to disable it before committing
 			if _, ok := os.LookupEnv("GITHUB_ACTION"); ok {
 				panic(fmt.Sprintf("The script `%s` has Focus set to `true`. GitHub Actions requires that "+
-						"all tests are run, which Focus circumvents, leading to this error. Please disable Focus on "+
-						"all tests.", script.Name))
+					"all tests are run, which Focus circumvents, leading to this error. Please disable Focus on "+
+					"all tests.", script.Name))
 			}
 			focusScripts = append(focusScripts, script)
 		}
@@ -241,20 +243,20 @@ func RunReplicationScript(t *testing.T, script ReplicationTest) {
 	replicationDns := fmt.Sprintf("postgres://postgres:password@127.0.0.1:%s/", port)
 	replicator, err := logrepl.NewLogicalReplicator(primaryReplicationDns, replicationDns)
 	require.NoError(t, err)
-	
+
 	go func() {
 		err := replicator.StartReplication(slotName)
 		require.NoError(t, err)
 	}()
 	defer replicator.Stop()
-	
+
 	// give replication time to begin before running scripts
 	time.Sleep(1 * time.Second)
-	
+
 	ctx = context.Background()
 	primaryConn, err := pgx.Connect(ctx, primaryDns)
 	require.NoError(t, err)
-	
+
 	t.Run(script.Name, func(t *testing.T) {
 		runReplicationScript(ctx, t, script, primaryConn, replicaConn, primaryDns)
 	})
@@ -262,11 +264,11 @@ func RunReplicationScript(t *testing.T, script ReplicationTest) {
 
 // runScript runs the script given on the postgres connection provided
 func runReplicationScript(
-		ctx context.Context,
-		t *testing.T,
-		script ReplicationTest,
-		primaryConn, replicaConn *pgx.Conn,
-		primaryDns string,
+	ctx context.Context,
+	t *testing.T,
+	script ReplicationTest,
+	primaryConn, replicaConn *pgx.Conn,
+	primaryDns string,
 ) {
 	if script.Skip {
 		t.Skip("Skip has been set in the script")
@@ -275,7 +277,7 @@ func runReplicationScript(
 	primaryConnections := map[string]*pgx.Conn{
 		"a": primaryConn,
 	}
-	
+
 	// Run the setup
 	for _, query := range script.SetUpScript {
 		target, client := clientSpecFromQueryComment(query)
@@ -287,7 +289,7 @@ func runReplicationScript(
 				var err error
 				conn, err = pgx.Connect(context.Background(), primaryDns)
 				require.NoError(t, err)
-				primaryConnections[client] = conn 
+				primaryConnections[client] = conn
 			}
 		case "replica":
 			conn = replicaConn
@@ -298,22 +300,22 @@ func runReplicationScript(
 		_, err := conn.Exec(ctx, query)
 		require.NoError(t, err)
 	}
-	
+
 	// give replication time to catch up
 	time.Sleep(1 * time.Second)
-	
+
 	// Run the assertions
 	for _, assertion := range script.Assertions {
 		t.Run(assertion.Query, func(t *testing.T) {
 			if assertion.Skip {
 				t.Skip("Skip has been set in the assertion")
 			}
-			
+
 			conn := replicaConn
 			if assertion.ReplicationTarget == ReplicationTargetPrimary {
 				conn = primaryConn
 			}
-			
+
 			// If we're skipping the results check, then we call Execute, as it uses a simplified message model.
 			if assertion.SkipResultsCheck || assertion.ExpectedErr {
 				_, err := conn.Exec(ctx, assertion.Query, assertion.BindVars...)
@@ -346,10 +348,10 @@ func clientSpecFromQueryComment(query string) (string, string) {
 	if strings.Index(query, "replica") >= 0 {
 		return "replica", "a"
 	}
-	
-	if i := strings.Index(query, "primary "); i > 0 && i +len("primary ") < len(query) {
-		return "primary", query[i + len("primary "):]
+
+	if i := strings.Index(query, "primary "); i > 0 && i+len("primary ") < len(query) {
+		return "primary", query[i+len("primary "):]
 	}
-	
+
 	return "primary", "a"
 }

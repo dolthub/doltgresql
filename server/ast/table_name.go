@@ -28,7 +28,7 @@ func nodeTableName(node *tree.TableName) (vitess.TableName, error) {
 	if node == nil {
 		return vitess.TableName{}, nil
 	}
-	
+
 	if node.ExplicitCatalog || node.ExplicitSchema {
 		if strings.ToLower(string(node.SchemaName)) == "information_schema" {
 			return vitess.TableName{
@@ -44,7 +44,7 @@ func nodeTableName(node *tree.TableName) (vitess.TableName, error) {
 		}
 		return vitess.TableName{}, fmt.Errorf("referencing items outside the schema or database is not yet supported")
 	}
-	
+
 	return vitess.TableName{
 		Name:      vitess.NewTableIdent(string(node.ObjectName)),
 		Qualifier: vitess.NewTableIdent(string(node.SchemaName)),
