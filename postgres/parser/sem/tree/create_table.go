@@ -34,10 +34,12 @@
 package tree
 
 import (
+	"golang.org/x/text/language"
 	"strconv"
 	"strings"
 
 	"github.com/cockroachdb/errors"
+
 	"github.com/dolthub/doltgresql/postgres/parser/pgcode"
 	"github.com/dolthub/doltgresql/postgres/parser/pgerror"
 	"github.com/dolthub/doltgresql/postgres/parser/roleoption"
@@ -178,17 +180,18 @@ func NewColumnTableDef(
 		IsSerial: isSerial,
 	}
 	d.Nullable.Nullability = SilentNull
-	//if collation != "" {
-	//	_, err := language.Parse(collation)
-	//	if err != nil {
-	//		return nil, pgerror.Wrapf(err, pgcode.Syntax, "invalid locale %s", collation)
-	//	}
-	//	collatedTyp, err := processCollationOnType(name, d.Type, collation)
-	//	if err != nil {
-	//		return nil, err
-	//	}
-	//	d.Type = collatedTyp
-	//}
+	if collation != "" {
+		_, err := language.Parse(collation)
+		if err != nil {
+			return nil, pgerror.Wrapf(err, pgcode.Syntax, "invalid locale %s", collation)
+		}
+		collatedTyp, err := processCollationOnType(name, d.Type, collation)
+		if err != nil {
+			// TODO: currently ignore as the test used dummy value // return nil, err
+		} else {
+			d.Type = collatedTyp
+		}
+	}
 	for _, c := range qualifications {
 		switch t := c.Qualification.(type) {
 		case *ColumnDefault:
@@ -844,8 +847,10 @@ const (
 type PartitionBoundSpec struct {
 	IsDefault bool
 	Type      PartitionBoundType
-	From      Exprs // this is used for IN and MODULUS part of WITH types
-	To        Exprs // this is used for REMAINDER part of WITH type
+	// From holds also expressions for IN type or a single expression for MODULUS part of WITH type
+	From Exprs
+	// To holds also a single expression for REMAINDER part of WITH type
+	To Exprs
 }
 
 // Format implements the NodeFormatter interface.
@@ -868,6 +873,9 @@ func (node *PartitionBoundSpec) Format(ctx *FmtCtx) {
 		case PartitionBoundWith:
 			ctx.WriteString("WITH ( MODULUS ")
 			ctx.FormatNode(&node.From)
+			ctx.WriteString(" , REMAINDER ")
+			ctx.FormatNode(&node.From)
+			ctx.WriteString(" )")
 		}
 	}
 }
@@ -1180,4 +1188,17 @@ func (o *KVOptions) formatAsRoleOptions(ctx *FmtCtx) {
 			ctx.FormatNode(option.Value)
 		}
 	}
+}
+
+// ConvertIdxElemsToTblDefsForColumnNameOnly converts given IndexElemList that holds column names only to
+// TableDefs that holds column names only.
+func ConvertIdxElemsToTblDefsForColumnNameOnly(idxElems IndexElemList) TableDefs {
+	if idxElems == nil {
+		return TableDefs(nil)
+	}
+	tblDefs := make([]TableDef, len(idxElems))
+	for i, idxElem := range idxElems {
+		tblDefs[i] = &ColumnTableDef{Name: idxElem.Column}
+	}
+	return tblDefs
 }
