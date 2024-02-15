@@ -343,8 +343,7 @@ func (r *LogicalReplicator) processMessage(
 				if err != nil {
 					panic(err)
 				}
-				valuesStr.WriteString(fmt.Sprintf("%s", colData))
-				// valuesStr.WriteString(fmt.Sprintf("'%s'", val))
+				valuesStr.WriteString(colData)
 			default:
 				log.Printf("unknown column data type: %c", col.DataType)
 			}

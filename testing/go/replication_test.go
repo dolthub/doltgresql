@@ -345,7 +345,7 @@ func clientSpecFromQueryComment(query string) (string, string) {
 	}
 
 	query = query[startCommentIdx+2 : endCommentIdx]
-	if strings.Index(query, "replica") >= 0 {
+	if strings.Contains(query, "replica") {
 		return "replica", "a"
 	}
 
