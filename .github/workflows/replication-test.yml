@@ -1,4 +1,4 @@
-name: Test
+name: Test Replication
 on: [pull_request]
 
 concurrency:
@@ -10,8 +10,21 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        platform: [ubuntu-latest, macos-latest, windows-latest]
+        platform: [ubuntu-latest]
     runs-on: ${{ matrix.platform }}
+    services:
+      postgres:
+        image: postgres:15
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: password
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+        ports:
+          - 5432:5432
     steps:
     - name: Setup Go 1.x
       uses: actions/setup-go@v3
@@ -25,8 +38,4 @@ jobs:
       working-directory: ./postgres/parser
       shell: bash
     - name: Test
-      if: ${{ matrix.platform != 'ubuntu-latest' }}
-      run: go test ./...
-    - name: Test
-      if: ${{ matrix.platform == 'ubuntu-latest' }}
-      run: go test -race -skip="TestReplication" ./...
+      run: go test -run="TestReplication" ./...
