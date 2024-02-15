@@ -19,6 +19,7 @@ import (
 	"fmt"
 	"log"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/jackc/pglogrepl"
@@ -41,7 +42,9 @@ type LogicalReplicator struct {
 	primaryDns      string
 	replicationConn *pgx.Conn
 	receiveMsgChan  chan rcvMsg
+	running 			  bool
 	stop            chan struct{}
+	mu 							*sync.Mutex
 }
 
 // NewLogicalReplicator creates a new logical replicator instance which connects to the primary and replication
@@ -58,6 +61,7 @@ func NewLogicalReplicator(primaryDns string, replicationDns string) (*LogicalRep
 		replicationConn: conn,
 		stop:            make(chan struct{}),
 		receiveMsgChan:  make(chan rcvMsg),
+		mu:              &sync.Mutex{},
 	}, nil
 }
 
@@ -101,8 +105,15 @@ func (r *LogicalReplicator) StartReplication(slotName string) error {
 		if primaryConn != nil {
 			_ = primaryConn.Close(context.Background())
 		}
+		r.mu.Lock()
+		r.running = false
+		r.mu.Unlock()
 	}()
 
+	r.mu.Lock()
+	r.running = true
+	r.mu.Unlock()
+	
 	for {
 
 		// Shutdown if requested
@@ -230,6 +241,13 @@ func (r *LogicalReplicator) shutdown() {
 
 // Stop stops the replication process and blocks until clean shutdown occurs.
 func (r *LogicalReplicator) Stop() {
+	r.mu.Lock()
+	if !r.running {
+		r.mu.Unlock()
+		return
+	}
+	r.mu.Unlock()
+
 	log.Print("stopping replication...")
 	r.stop <- struct{}{}
 	// wait for the channel to be closed, acknowledging that the replicator has stopped
