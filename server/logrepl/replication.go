@@ -156,7 +156,7 @@ func (r *LogicalReplicator) StartReplication(slotName string) error {
 		case msgAndErr = <-r.receiveMsgChan:
 			cancel()
 		}
-		
+
 		if msgAndErr.err != nil {
 			if pgconn.Timeout(msgAndErr.err) {
 				continue
