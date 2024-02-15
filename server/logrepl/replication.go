@@ -42,9 +42,9 @@ type LogicalReplicator struct {
 	primaryDns      string
 	replicationConn *pgx.Conn
 	receiveMsgChan  chan rcvMsg
-	running 			  bool
+	running         bool
 	stop            chan struct{}
-	mu 							*sync.Mutex
+	mu              *sync.Mutex
 }
 
 // NewLogicalReplicator creates a new logical replicator instance which connects to the primary and replication
@@ -113,7 +113,7 @@ func (r *LogicalReplicator) StartReplication(slotName string) error {
 	r.mu.Lock()
 	r.running = true
 	r.mu.Unlock()
-	
+
 	for {
 
 		// Shutdown if requested
