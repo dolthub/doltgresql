@@ -832,6 +832,46 @@ const (
 	CreateTableOnCommitDrop
 )
 
+type PartitionBoundType int
+
+// The values for PartitionBoundType.
+const (
+	PartitionBoundIn PartitionBoundType = iota
+	PartitionBoundFromTo
+	PartitionBoundWith
+)
+
+type PartitionBoundSpec struct {
+	IsDefault bool
+	Type      PartitionBoundType
+	From      Exprs // this is used for IN and MODULUS part of WITH types
+	To        Exprs // this is used for REMAINDER part of WITH type
+}
+
+// Format implements the NodeFormatter interface.
+func (node *PartitionBoundSpec) Format(ctx *FmtCtx) {
+	if node.IsDefault {
+		ctx.WriteString("DEFAULT")
+	} else {
+		ctx.WriteString("FOR VALUES ")
+		switch node.Type {
+		case PartitionBoundIn:
+			ctx.WriteString("IN ( ")
+			ctx.FormatNode(&node.From)
+			ctx.WriteString(" )")
+		case PartitionBoundFromTo:
+			ctx.WriteString("FROM ( ")
+			ctx.FormatNode(&node.From)
+			ctx.WriteString(" ) TO ( ")
+			ctx.FormatNode(&node.To)
+			ctx.WriteString(" )")
+		case PartitionBoundWith:
+			ctx.WriteString("WITH ( MODULUS ")
+			ctx.FormatNode(&node.From)
+		}
+	}
+}
+
 // CreateTable represents a CREATE TABLE statement.
 type CreateTable struct {
 	IfNotExists   bool
@@ -849,6 +889,11 @@ type CreateTable struct {
 	Defs       TableDefs
 	AsSource   *Select
 	WithNoData bool
+	// Used for `CREATE TABLE ... OF type_name ...` statements.
+	OfType *UnresolvedObjectName
+	// Used for `CREATE TABLE ... PARTITION OF type_name ...` statements.
+	PartitionOf        TableName
+	PartitionBoundSpec PartitionBoundSpec
 }
 
 // As returns true if this table represents a CREATE TABLE ... AS statement,

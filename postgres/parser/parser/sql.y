@@ -597,8 +597,11 @@ func (u *sqlSymUnion) initiallyMode() tree.InitiallyMode {
 func (u *sqlSymUnion) constraintIdxParams() tree.IndexParams {
     return u.val.(tree.IndexParams)
 }
-func (u *sqlSymUnion) pbtype() tree.PartitionByType {
+func (u *sqlSymUnion) partitionByType() tree.PartitionByType {
     return u.val.(tree.PartitionByType)
+}
+func (u *sqlSymUnion) partitionBoundSpec() tree.PartitionBoundSpec {
+    return u.val.(tree.PartitionBoundSpec)
 }
 %}
 
@@ -673,7 +676,7 @@ func (u *sqlSymUnion) pbtype() tree.PartitionByType {
 %token <str> LINESTRING LINESTRINGM LINESTRINGZ LINESTRINGZM LIST
 %token <str> LOCAL LOCALE LOCALE_PROVIDER LOCALTIME LOCALTIMESTAMP LOCKED LOGIN LOOKUP LOW LSHIFT
 
-%token <str> MAIN MATCH MATERIALIZED MERGE MINVALUE MAXVALUE MINUTE MODIFYCLUSTERSETTING MONTH
+%token <str> MAIN MATCH MATERIALIZED MERGE MINVALUE MAXVALUE MINUTE MODIFYCLUSTERSETTING MODULUS MONTH
 %token <str> MULTILINESTRING MULTILINESTRINGM MULTILINESTRINGZ MULTILINESTRINGZM
 %token <str> MULTIPOINT MULTIPOINTM MULTIPOINTZ MULTIPOINTZM
 %token <str> MULTIPOLYGON MULTIPOLYGONM MULTIPOLYGONZ MULTIPOLYGONZM
@@ -693,7 +696,7 @@ func (u *sqlSymUnion) pbtype() tree.PartitionByType {
 %token <str> QUERIES QUERY
 
 %token <str> RANGE RANGES READ REAL RECURSIVE RECURRING REF REFERENCES REFRESH
-%token <str> REGCLASS REGPROC REGPROCEDURE REGNAMESPACE REGTYPE REINDEX RELEASE
+%token <str> REGCLASS REGPROC REGPROCEDURE REGNAMESPACE REGTYPE REINDEX RELEASE REMAINDER
 %token <str> REMOVE_PATH RENAME REPEATABLE REPLACE RESET RESTORE RESTRICT RESTRICTED RESUME
 %token <str> RETRY RETURN RETURNING RETURNS REVISION_HISTORY REVOKE RIGHT
 %token <str> ROLE ROLES ROUTINE ROUTINES ROLLBACK ROLLUP ROW ROWS RSHIFT RULE RUNNING
@@ -1035,7 +1038,7 @@ func (u *sqlSymUnion) pbtype() tree.PartitionByType {
 %type <tree.IsolationLevel> iso_level
 %type <tree.UserPriority> user_priority
 
-%type <tree.TableDefs> opt_table_elem_list table_elem_list
+%type <tree.TableDefs> opt_table_elem_list table_elem_list opt_table_of_elem_list table_of_elem_list
 %type <[]tree.LikeTableOption> like_table_option_list
 %type <tree.LikeTableOption> like_table_option
 %type <tree.CreateTableOnCommitSetting> opt_create_table_on_commit
@@ -1043,7 +1046,7 @@ func (u *sqlSymUnion) pbtype() tree.PartitionByType {
 %type <tree.PartitionByType> partition_by_type
 %type <str> partition opt_partition
 %type <empty> opt_all_clause
-%type <bool> distinct_clause opt_external definer_or_invoker opt_not
+%type <bool> distinct_clause opt_external definer_or_invoker opt_not opt_col_with_options
 %type <tree.DistinctOn> distinct_on_clause
 %type <tree.NameList> opt_column_list insert_column_list opt_stats_columns
 %type <tree.OrderBy> sort_clause single_sort_clause opt_sort_clause
@@ -1108,7 +1111,7 @@ func (u *sqlSymUnion) pbtype() tree.PartitionByType {
 %type <*tree.IndexElemOpClass> opt_opclass
 %type <[]tree.IndexElemOpClassOption> opclass_option_list
 %type <*tree.ColumnTableDef> alter_column_def create_table_column_def
-%type <tree.TableDef> table_elem
+%type <tree.TableDef> table_elem table_of_elem
 %type <tree.Expr> where_clause opt_where_clause where_clause_paren opt_where_clause_paren
 %type <*tree.ArraySubscript> array_subscript
 %type <tree.Expr> opt_slice_bound
@@ -1117,7 +1120,7 @@ func (u *sqlSymUnion) pbtype() tree.PartitionByType {
 %type <*tree.IndexFlags> index_flags_param_list
 %type <tree.Expr> a_expr b_expr c_expr d_expr typed_literal
 %type <tree.Expr> substr_from substr_for
-%type <tree.Expr> in_expr
+%type <tree.Expr> in_expr partition_bound_expr
 %type <tree.Expr> having_clause
 %type <tree.Expr> array_expr
 %type <tree.Expr> interval_value
@@ -1202,9 +1205,10 @@ func (u *sqlSymUnion) pbtype() tree.PartitionByType {
 %type <*tree.CTE> common_table_expr
 %type <bool> materialize_clause
 
+%type <tree.PartitionBoundSpec> partition_of partition_bound_spec
 %type <tree.Expr> within_group_clause
 %type <tree.Expr> filter_clause
-%type <tree.Exprs> opt_partition_clause
+%type <tree.Exprs> opt_partition_clause partition_bound_expr_list
 %type <tree.Window> window_clause window_definition_list
 %type <*tree.WindowDef> window_definition over_clause window_specification
 %type <str> opt_existing_window_name
@@ -1241,7 +1245,7 @@ func (u *sqlSymUnion) pbtype() tree.PartitionByType {
 %type <tree.ScheduledJobExecutorType> opt_schedule_executor_type
 
 // Precedence: lowest to highest
-%nonassoc  VALUES              // see value_clause
+%nonassoc  VALUES              // see values_clause
 %nonassoc  SET                 // see table_expr_opt_alias_idx
 %left      UNION EXCEPT
 %left      INTERSECT
@@ -3686,7 +3690,7 @@ create_ddl_stmt:
 create_ddl_stmt_schema_element:
   create_index_stmt    // EXTEND WITH HELP: CREATE INDEX
 | create_table_stmt    // EXTEND WITH HELP: CREATE TABLE
-| create_table_as_stmt // EXTEND WITH HELP: CREATE TABLE
+| create_table_as_stmt // EXTEND WITH HELP: CREATE TABLE ... AS
 // Error case for both CREATE TABLE and CREATE TABLE ... AS in one
 | CREATE opt_persistence_temp_table TABLE error   // SHOW HELP: CREATE TABLE
 | create_view_stmt     // EXTEND WITH HELP: CREATE VIEW
@@ -6352,6 +6356,149 @@ create_table_stmt:
       Tablespace: tree.Name($16),
     }
   }
+| CREATE opt_persistence_temp_table TABLE table_name OF type_name opt_table_of_elem_list opt_partition_by opt_using_method opt_table_with opt_create_table_on_commit opt_tablespace
+  {
+    $$.val = &tree.CreateTable{
+      Table: $4.unresolvedObjectName().ToTableName(),
+      IfNotExists: false,
+      OfType: $6.unresolvedObjectName(),
+      Defs: $7.tblDefs(),
+      PartitionBy: $8.partitionBy(),
+      Persistence: $2.persistence(),
+      Using: $9,
+      StorageParams: $10.storageParams(),
+      OnCommit: $11.createTableOnCommitSetting(),
+      Tablespace: tree.Name($12),
+    }
+  }
+| CREATE opt_persistence_temp_table TABLE IF NOT EXISTS table_name OF type_name opt_table_of_elem_list opt_partition_by opt_using_method opt_table_with opt_create_table_on_commit opt_tablespace
+  {
+    $$.val = &tree.CreateTable{
+      Table: $7.unresolvedObjectName().ToTableName(),
+      IfNotExists: true,
+      OfType: $9.unresolvedObjectName(),
+      Defs: $10.tblDefs(),
+      PartitionBy: $11.partitionBy(),
+      Persistence: $2.persistence(),
+      Using: $12,
+      StorageParams: $13.storageParams(),
+      OnCommit: $14.createTableOnCommitSetting(),
+      Tablespace: tree.Name($15),
+    }
+  }
+| CREATE opt_persistence_temp_table TABLE table_name PARTITION OF table_name opt_table_of_elem_list partition_of opt_partition_by opt_using_method opt_table_with opt_create_table_on_commit opt_tablespace
+  {
+    $$.val = &tree.CreateTable{
+      Table: $4.unresolvedObjectName().ToTableName(),
+      IfNotExists: false,
+      PartitionOf: $7.unresolvedObjectName().ToTableName(),
+      PartitionBoundSpec: $9.partitionBoundSpec(),
+      Defs: $8.tblDefs(),
+      PartitionBy: $10.partitionBy(),
+      Persistence: $2.persistence(),
+      Using: $11,
+      StorageParams: $12.storageParams(),
+      OnCommit: $13.createTableOnCommitSetting(),
+      Tablespace: tree.Name($14),
+    }
+  }
+| CREATE opt_persistence_temp_table TABLE IF NOT EXISTS table_name PARTITION OF table_name opt_table_of_elem_list partition_of opt_partition_by opt_using_method opt_table_with opt_create_table_on_commit opt_tablespace
+  {
+    $$.val = &tree.CreateTable{
+      Table: $7.unresolvedObjectName().ToTableName(),
+      IfNotExists: true,
+      PartitionOf: $10.unresolvedObjectName().ToTableName(),
+      PartitionBoundSpec: $12.partitionBoundSpec(),
+      Defs: $11.tblDefs(),
+      PartitionBy: $13.partitionBy(),
+      Persistence: $2.persistence(),
+      Using: $14,
+      StorageParams: $15.storageParams(),
+      OnCommit: $16.createTableOnCommitSetting(),
+      Tablespace: tree.Name($17),
+    }
+  }
+
+partition_of:
+  FOR VALUES partition_bound_spec
+  {
+    $$.val = $3.partitionBoundSpec()
+  }
+| DEFAULT
+  {
+    $$.val = tree.PartitionBoundSpec{IsDefault: true}
+  }
+
+partition_bound_spec:
+  IN '(' partition_bound_expr_list ')'
+  {
+    $$.val = tree.PartitionBoundSpec{Type: tree.PartitionBoundIn, From: $3.exprs()}
+  }
+| FROM '(' partition_bound_expr_list ')' TO '(' partition_bound_expr_list ')'
+  {
+    $$.val = tree.PartitionBoundSpec{Type: tree.PartitionBoundFromTo, From: $3.exprs(), To: $7.exprs()}
+  }
+| WITH '(' MODULUS ICONST ',' REMAINDER ICONST ')'
+  {
+    $$.val = tree.PartitionBoundSpec{Type: tree.PartitionBoundWith, From: tree.Exprs{$4.expr()}, To: tree.Exprs{$7.expr()}}
+  }
+
+partition_bound_expr_list:
+  partition_bound_expr
+  {
+    $$.val = tree.Exprs{$1.expr()}
+  }
+| partition_bound_expr_list ',' partition_bound_expr
+  {
+    $$.val = append($1.exprs(), $3.expr())
+  }
+
+partition_bound_expr:
+  a_expr
+
+opt_table_of_elem_list:
+  '(' table_of_elem_list ')'
+  {
+    $$.val = $2.tblDefs()
+  }
+| /* EMPTY */
+  {
+    $$.val = tree.TableDefs(nil)
+  }
+
+table_of_elem_list:
+  table_of_elem
+  {
+    $$.val = tree.TableDefs{$1.tblDef()}
+  }
+| table_of_elem_list ',' table_of_elem
+  {
+    $$.val = append($1.tblDefs(), $3.tblDef())
+  }
+
+table_of_elem:
+  column_name opt_col_with_options col_constraint_list
+  {
+    tableDef, err := tree.NewColumnTableDef(tree.Name($1), nil, "", "", $3.colQuals())
+    if err != nil {
+      return setErr(sqllex, err)
+    }
+    $$.val = tableDef
+  }
+| table_constraint
+  {
+    $$.val = $1.constraintDef()
+  }
+
+opt_col_with_options:
+  /* EMPTY */
+  {
+    $$.val = false
+  }
+| WITH OPTIONS
+  {
+    $$.val = true
+  }
 
 opt_inherits:
   /* EMPTY */
@@ -6594,7 +6741,7 @@ opt_partition_by:
 partition_by:
   PARTITION BY partition_by_type '(' partition_index_params ')'
   {
-    $$.val = &tree.PartitionBy{Type: $3.pbtype(), Elems: $5.idxElems()}
+    $$.val = &tree.PartitionBy{Type: $3.partitionByType(), Elems: $5.idxElems()}
   }
 
 partition_by_type:
@@ -12508,6 +12655,7 @@ unreserved_keyword:
 | MULTIPOLYGONM
 | MULTIPOLYGONZ
 | MULTIPOLYGONZM
+| MODULUS
 | MONTH
 | NAMES
 | NAN
@@ -12529,7 +12677,6 @@ unreserved_keyword:
 | NULLS
 | IGNORE_FOREIGN_KEYS
 | OBJECT
-| OF
 | OFF
 | OID
 | OIDS
@@ -12581,6 +12728,7 @@ unreserved_keyword:
 | REFRESH
 | REINDEX
 | RELEASE
+| REMAINDER
 | RENAME
 | REPEATABLE
 | REPLACE
@@ -12789,6 +12937,7 @@ type_func_name_no_crdb_extra_keyword:
 | NATURAL
 | NONE
 | NOTNULL
+| OF
 | OUTER
 | OVERLAPS
 | RIGHT
