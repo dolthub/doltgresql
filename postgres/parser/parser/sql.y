@@ -1010,7 +1010,7 @@ func (u *sqlSymUnion) partitionBoundSpec() tree.PartitionBoundSpec {
 %type <tree.IsolationLevel> transaction_iso_level
 %type <tree.UserPriority> transaction_user_priority
 %type <tree.ReadWriteMode> transaction_read_mode
-%type <tree.DeferrableMode> transaction_deferrable_mode
+%type <tree.DeferrableMode> deferrable_mode opt_deferrable_mode
 
 %type <str> name opt_name opt_name_parens
 %type <str> privilege savepoint_name
@@ -1194,7 +1194,6 @@ func (u *sqlSymUnion) partitionBoundSpec() tree.PartitionBoundSpec {
 %type <tree.CompositeKeyMatchMethod> key_match
 %type <tree.ReferenceActions> reference_actions
 %type <tree.RefAction> reference_action reference_on_delete reference_on_update
-%type <tree.DeferrableMode> opt_deferrable
 %type <tree.InitiallyMode> opt_initially
 
 %type <tree.Expr> func_application func_expr_common_subexpr special_function
@@ -6824,11 +6823,11 @@ col_constraint_list:
   }
 
 col_qualification:
-  CONSTRAINT constraint_name col_qualification_elem opt_deferrable opt_initially
+  CONSTRAINT constraint_name col_qualification_elem opt_deferrable_mode opt_initially
   {
     $$.val = tree.NamedColumnQualification{Name: tree.Name($2), Qualification: $3.colQualElem(), Deferrable: $4.deferrableMode(), Initially: $5.initiallyMode()}
   }
-| col_qualification_elem opt_deferrable opt_initially
+| col_qualification_elem opt_deferrable_mode opt_initially
   {
     $$.val = tree.NamedColumnQualification{Qualification: $1.colQualElem(), Deferrable: $2.deferrableMode(), Initially: $3.initiallyMode()}
   }
@@ -6940,12 +6939,12 @@ opt_no_inherit:
   }
 
 table_constraint:
-  CONSTRAINT constraint_name table_constraint_elem opt_deferrable opt_initially
+  CONSTRAINT constraint_name table_constraint_elem opt_deferrable_mode opt_initially
   {
     $$.val = $3.constraintDef()
     $$.val.(tree.ConstraintTableDef).SetName(tree.Name($2))
   }
-| table_constraint_elem opt_deferrable opt_initially
+| table_constraint_elem opt_deferrable_mode opt_initially
   {
     $$.val = $1.constraintDef()
   }
@@ -7052,19 +7051,12 @@ constraint_index_params:
     }
   }
 
-opt_deferrable:
+opt_deferrable_mode:
   /* EMPTY */
   {
     $$.val = tree.UnspecifiedDeferrableMode
   }
-| DEFERRABLE
-  {
-    $$.val = tree.Deferrable
-  }
-| NOT_LA DEFERRABLE
-  {
-    $$.val = tree.NotDeferrable
-  }
+| deferrable_mode
 
 opt_initially:
   /* EMPTY */
@@ -8006,7 +7998,7 @@ transaction_stmt:
 //
 // %SeeAlso: COMMIT, ROLLBACK, WEBDOCS/begin-transaction.html
 begin_stmt:
-  BEGIN opt_transaction begin_transaction
+  BEGIN opt_work_transaction begin_transaction
   {
     $$.val = $3.stmt()
   }
@@ -8024,12 +8016,12 @@ begin_stmt:
 // END [TRANSACTION]
 // %SeeAlso: BEGIN, ROLLBACK, WEBDOCS/commit-transaction.html
 commit_stmt:
-  COMMIT opt_transaction
+  COMMIT opt_work_transaction
   {
     $$.val = &tree.CommitTransaction{}
   }
 | COMMIT error // SHOW HELP: COMMIT
-| END opt_transaction
+| END opt_work_transaction
   {
     $$.val = &tree.CommitTransaction{}
   }
@@ -8058,18 +8050,19 @@ opt_abort_chain:
 // ROLLBACK [TRANSACTION] TO [SAVEPOINT] <savepoint name>
 // %SeeAlso: BEGIN, COMMIT, SAVEPOINT, WEBDOCS/rollback-transaction.html
 rollback_stmt:
-  ROLLBACK opt_transaction
+  ROLLBACK opt_work_transaction
   {
      $$.val = &tree.RollbackTransaction{}
   }
-| ROLLBACK opt_transaction TO savepoint_name
+| ROLLBACK opt_work_transaction TO savepoint_name
   {
      $$.val = &tree.RollbackToSavepoint{Savepoint: tree.Name($4)}
   }
 | ROLLBACK error // SHOW HELP: ROLLBACK
 
-opt_transaction:
+opt_work_transaction:
   TRANSACTION {}
+| WORK        {}
 | /* EMPTY */ {}
 
 savepoint_name:
@@ -8097,7 +8090,7 @@ transaction_mode_list:
   {
     $$.val = $1.transactionModes()
   }
-| transaction_mode_list opt_comma transaction_mode
+| transaction_mode_list ',' transaction_mode
   {
     a := $1.transactionModes()
     b := $3.transactionModes()
@@ -8133,7 +8126,7 @@ transaction_mode:
   {
     $$.val = tree.TransactionModes{AsOf: $1.asOfClause()}
   }
-| transaction_deferrable_mode
+| deferrable_mode
   {
     $$.val = tree.TransactionModes{Deferrable: $1.deferrableMode()}
   }
@@ -8160,12 +8153,12 @@ transaction_read_mode:
     $$.val = tree.ReadWrite
   }
 
-transaction_deferrable_mode:
+deferrable_mode:
   DEFERRABLE
   {
     $$.val = tree.Deferrable
   }
-| NOT DEFERRABLE
+| NOT_LA DEFERRABLE
   {
     $$.val = tree.NotDeferrable
   }

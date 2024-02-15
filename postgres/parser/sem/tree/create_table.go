@@ -847,6 +847,7 @@ const (
 type PartitionBoundSpec struct {
 	IsDefault bool
 	Type      PartitionBoundType
+	// NOTE: Values MINVALUE and MAXVALUE for FROM and TO expressions will be in string constant format.
 	// From holds also expressions for IN type or a single expression for MODULUS part of WITH type
 	From Exprs
 	// To holds also a single expression for REMAINDER part of WITH type
