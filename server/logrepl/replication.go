@@ -44,6 +44,9 @@ type LogicalReplicator struct {
 	stop            chan struct{}
 }
 
+// NewLogicalReplicator creates a new logical replicator instance which connects to the primary and replication 
+// databases using the connection strings provided. The connection to the replica is established immediately, and the
+// connection to the primary is established when StartReplication is called.
 func NewLogicalReplicator(primaryDns string, replicationDns string) (*LogicalReplicator, error) {
 	conn, err := pgx.Connect(context.Background(), replicationDns)
 	if err != nil {
@@ -58,9 +61,9 @@ func NewLogicalReplicator(primaryDns string, replicationDns string) (*LogicalRep
 	}, nil
 }
 
-// SetupReplication sets up the replication slot and publication for the given database
-func SetupReplication(connectionString string, publicationName string) error {
-	conn, err := pgconn.Connect(context.Background(), connectionString)
+// SetupReplication sets up the replication slot and publication for the given database. 
+func SetupReplication(primaryConnectionString string, publicationName string) error {
+	conn, err := pgconn.Connect(context.Background(), primaryConnectionString)
 	if err != nil {
 		return err
 	}
@@ -77,6 +80,8 @@ func SetupReplication(connectionString string, publicationName string) error {
 	return err
 }
 
+// StartReplication starts the replication process for the given slot name. This function blocks until replication is
+// stopped via the Stop method, or an error occurs.
 func (r *LogicalReplicator) StartReplication(slotName string) error {
 	standbyMessageTimeout := time.Second * 10
 	nextStandbyMessageDeadline := time.Now().Add(standbyMessageTimeout)
@@ -223,6 +228,7 @@ func (r *LogicalReplicator) shutdown() {
 	close(r.stop)
 }
 
+// Stop stops the replication process and blocks until clean shutdown occurs. 
 func (r *LogicalReplicator) Stop() {
 	log.Print("stopping replication...")
 	r.stop <- struct{}{}
@@ -230,12 +236,15 @@ func (r *LogicalReplicator) Stop() {
 	<-r.stop
 }
 
+// replicateQuery executes the query provided on the replica connection
 func (r *LogicalReplicator) replicateQuery(query string) error {
 	log.Printf("replicating query: %s", query)
 	_, err := r.replicationConn.Exec(context.Background(), query)
 	return err
 }
 
+// beginReplication starts a new replication connection to the primary server and returns it along with the current
+// log sequence number (LSN) for continued status updates to the primary.
 func (r *LogicalReplicator) beginReplication(slotName string) (*pgconn.PgConn, pglogrepl.LSN, error) {
 	conn, err := pgconn.Connect(context.Background(), r.primaryDns)
 	if err != nil {
@@ -278,7 +287,17 @@ func (r *LogicalReplicator) beginReplication(slotName string) (*pgconn.PgConn, p
 	return conn, sysident.XLogPos, nil
 }
 
-func (r *LogicalReplicator) processMessage(walData []byte, relations map[uint32]*pglogrepl.RelationMessageV2, typeMap *pgtype.Map, inStream *bool) {
+// processMessage processes a logical replication message as appropriate. A couple important aspects:
+// 1) Relation messages describe tables being replicated and are used to build a type map for decoding tuples
+// 2) INSERT/UPDATE/DELETE messages describe changes to rows that must be applied to the replica. 
+// 		These describe a row in the form of a tuple, and are used to construct a query to apply the change to the replica.
+// TODO: handle panics
+func (r *LogicalReplicator) processMessage(
+		walData []byte,
+		relations map[uint32]*pglogrepl.RelationMessageV2,
+		typeMap *pgtype.Map,
+		inStream *bool,
+) {
 	logicalMsg, err := pglogrepl.ParseV2(walData, *inStream)
 	if err != nil {
 		log.Fatalf("Parse logical replication message: %s", err)
@@ -457,6 +476,8 @@ func (r *LogicalReplicator) processMessage(walData []byte, relations map[uint32]
 	}
 }
 
+// whereClause returns a WHERE clause string with the contents of the builder if it's non-empty, or the empty
+// string otherwise
 func whereClause(str strings.Builder) string {
 	if str.Len() > 0 {
 		return " WHERE " + str.String()
@@ -464,6 +485,7 @@ func whereClause(str strings.Builder) string {
 	return ""
 }
 
+// decodeTextColumnData decodes the given data using the given data type OID and returns the result as a golang value
 func decodeTextColumnData(mi *pgtype.Map, data []byte, dataType uint32) (interface{}, error) {
 	if dt, ok := mi.TypeForOID(dataType); ok {
 		return dt.Codec.DecodeValue(mi, dataType, pgtype.TextFormatCode, data)
@@ -471,6 +493,8 @@ func decodeTextColumnData(mi *pgtype.Map, data []byte, dataType uint32) (interfa
 	return string(data), nil
 }
 
+// encodeColumnData encodes the given data using the given data type OID and returns the result as a string to be 
+// used in an INSERT or other DML query.
 func encodeColumnData(mi *pgtype.Map, data interface{}, dataType uint32) (string, error) {
 	var value string
 	if dt, ok := mi.TypeForOID(dataType); ok {
