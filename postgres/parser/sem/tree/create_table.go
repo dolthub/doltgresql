@@ -34,11 +34,11 @@
 package tree
 
 import (
-	"golang.org/x/text/language"
 	"strconv"
 	"strings"
 
 	"github.com/cockroachdb/errors"
+	"golang.org/x/text/language"
 
 	"github.com/dolthub/doltgresql/postgres/parser/pgcode"
 	"github.com/dolthub/doltgresql/postgres/parser/pgerror"
