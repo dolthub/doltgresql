@@ -1514,22 +1514,39 @@ func (node *IndexElemList) doc(p *PrettyCfg) pretty.Doc {
 	return p.commaSeparated(d...)
 }
 
+func (node *IndexParams) doc(p *PrettyCfg) pretty.Doc {
+	// Final layout:
+	// [ INCLUDE ( column_name [, ... ] ) ]
+	// [ WITH ( storage_parameter [= value] [, ... ] ) ]
+	// [ USING INDEX TABLESPACE tablespace_name ]
+	//
+	clauses := make([]pretty.Doc, 0, 5)
+	if node.IncludeColumns != nil {
+		clauses = append(clauses, pretty.ConcatSpace(pretty.Keyword("INCLUDE"), p.bracket("(", p.Doc(&node.IncludeColumns), ")")))
+	}
+	if node.StorageParams != nil {
+		clauses = append(clauses, pretty.ConcatSpace(pretty.Keyword("WITH"), p.bracket("(", p.Doc(&node.StorageParams), ")")))
+	}
+	if node.Tablespace != "" {
+		clauses = append(clauses, pretty.ConcatSpace(pretty.Keyword("USING INDEX TABLESPACE"), p.Doc(&node.Tablespace)))
+	}
+	return pretty.Group(pretty.Stack(clauses...))
+}
+
 func (node *UniqueConstraintTableDef) doc(p *PrettyCfg) pretty.Doc {
 	// Final layout:
-	// [CONSTRAINT name]
-	//    [PRIMARY KEY|UNIQUE] ( ... )
-	//    [STORING ( ... )]
-	//    [INTERLEAVE ...]
-	//    [PARTITION BY ...]
-	//    [WHERE ...]
+	// [ CONSTRAINT name ]
+	//    { UNIQUE [ NULLS [ NOT ] DISTINCT ] | PRIMARY KEY } ( column_name [, ... ] )
+	//    [ INCLUDE ( column_name [, ... ] ) ]
+	//    [ WITH ( storage_parameter [= value] [, ... ] ) ]
+	//    [ USING INDEX TABLESPACE tablespace_name ]
 	//
 	// or (no constraint name):
 	//
-	// [PRIMARY KEY|UNIQUE] ( ... )
-	//    [STORING ( ... )]
-	//    [INTERLEAVE ...]
-	//    [PARTITION BY ...]
-	//    [WHERE ...]
+	// { UNIQUE [ NULLS [ NOT ] DISTINCT ] | PRIMARY KEY } ( column_name [, ... ] )
+	//    [ INCLUDE ( column_name [, ... ] ) ]
+	//    [ WITH ( storage_parameter [= value] [, ... ] ) ]
+	//    [ USING INDEX TABLESPACE tablespace_name ]
 	//
 	clauses := make([]pretty.Doc, 0, 5)
 	var title pretty.Doc
@@ -1537,24 +1554,17 @@ func (node *UniqueConstraintTableDef) doc(p *PrettyCfg) pretty.Doc {
 		title = pretty.Keyword("PRIMARY KEY")
 	} else {
 		title = pretty.Keyword("UNIQUE")
+		if node.NullsNotDistinct {
+			title = pretty.ConcatSpace(title, pretty.Keyword("NULLS NOT DISTINCT"))
+		}
 	}
 	title = pretty.ConcatSpace(title, p.bracket("(", p.Doc(&node.Columns), ")"))
+	title = pretty.ConcatSpace(title, p.Doc(&node.IndexParams))
 	if node.Name != "" {
 		clauses = append(clauses, title)
 		title = pretty.ConcatSpace(pretty.Keyword("CONSTRAINT"), p.Doc(&node.Name))
 	}
-	//if node.Sharded != nil {
-	//	clauses = append(clauses, p.Doc(node.Sharded))
-	//}
-	//if node.Storing != nil {
-	//	clauses = append(clauses, p.bracketKeyword(
-	//		"STORING", "(",
-	//		p.Doc(&node.Storing),
-	//		")", ""))
-	//}
-	//if node.Interleave != nil {
-	//	clauses = append(clauses, p.Doc(node.Interleave))
-	//}
+	clauses = append(clauses, p.Doc(&node.IndexParams))
 
 	if len(clauses) == 0 {
 		return title
@@ -1764,6 +1774,7 @@ func (node *ReferenceActions) doc(p *PrettyCfg) pretty.Doc {
 	if node.Update.Action != NoAction {
 		docs = append(docs,
 			pretty.Keyword("ON UPDATE"),
+			p.Doc(&node.Update),
 		)
 	}
 	return pretty.Fold(pretty.ConcatSpace, docs...)

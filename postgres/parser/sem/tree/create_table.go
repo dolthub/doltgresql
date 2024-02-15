@@ -495,7 +495,7 @@ func (node *IndexParams) Format(ctx *FmtCtx) {
 	}
 	if node.StorageParams != nil {
 		ctx.WriteString(" WITH ( ")
-		ctx.FormatNode(&node.IncludeColumns)
+		ctx.FormatNode(&node.StorageParams)
 		ctx.WriteString(" )")
 	}
 	if node.Tablespace != "" {

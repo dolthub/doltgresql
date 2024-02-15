@@ -38,9 +38,6 @@ func nodeIndexTableDef(node *tree.IndexTableDef) (*vitess.IndexDefinition, error
 	if node.IndexParams.Tablespace != "" {
 		return nil, fmt.Errorf("tablespace is not yet supported")
 	}
-	//if node.Predicate != nil {
-	//	return nil, fmt.Errorf("WHERE is not yet supported")
-	//}
 	columns := make([]*vitess.IndexColumn, len(node.Columns))
 	for i, indexElem := range node.Columns {
 		if indexElem.Expr != nil {
