@@ -288,9 +288,10 @@ func (r *LogicalReplicator) beginReplication(slotName string) (*pgconn.PgConn, p
 }
 
 // processMessage processes a logical replication message as appropriate. A couple important aspects:
-// 1) Relation messages describe tables being replicated and are used to build a type map for decoding tuples
-// 2) INSERT/UPDATE/DELETE messages describe changes to rows that must be applied to the replica.
-// 		These describe a row in the form of a tuple, and are used to construct a query to apply the change to the replica.
+//  1. Relation messages describe tables being replicated and are used to build a type map for decoding tuples
+//  2. INSERT/UPDATE/DELETE messages describe changes to rows that must be applied to the replica.
+//     These describe a row in the form of a tuple, and are used to construct a query to apply the change to the replica.
+//
 // TODO: handle panics
 func (r *LogicalReplicator) processMessage(
 	walData []byte,
