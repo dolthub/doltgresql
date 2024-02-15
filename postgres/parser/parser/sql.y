@@ -8016,29 +8016,27 @@ begin_stmt:
 // END [TRANSACTION]
 // %SeeAlso: BEGIN, ROLLBACK, WEBDOCS/commit-transaction.html
 commit_stmt:
-  COMMIT opt_work_transaction
+  COMMIT opt_transaction_chain
   {
     $$.val = &tree.CommitTransaction{}
   }
 | COMMIT error // SHOW HELP: COMMIT
-| END opt_work_transaction
+| END opt_transaction_chain
   {
     $$.val = &tree.CommitTransaction{}
   }
 | END error // SHOW HELP: COMMIT
 
 abort_stmt:
-  ABORT opt_abort_mod
+  ABORT opt_transaction_chain
   {
     $$.val = &tree.RollbackTransaction{}
   }
 
-opt_abort_mod:
-  opt_abort_chain {}
-| TRANSACTION opt_abort_chain {}
-| WORK opt_abort_chain        {}
+opt_transaction_chain:
+  opt_work_transaction opt_chain {}
 
-opt_abort_chain:
+opt_chain:
   /* EMPTY */ {}
 | AND CHAIN {}
 | AND NO CHAIN {}
@@ -8050,7 +8048,7 @@ opt_abort_chain:
 // ROLLBACK [TRANSACTION] TO [SAVEPOINT] <savepoint name>
 // %SeeAlso: BEGIN, COMMIT, SAVEPOINT, WEBDOCS/rollback-transaction.html
 rollback_stmt:
-  ROLLBACK opt_work_transaction
+  ROLLBACK opt_transaction_chain
   {
      $$.val = &tree.RollbackTransaction{}
   }

@@ -19,14 +19,14 @@ import "testing"
 func TestRollback(t *testing.T) {
 	tests := []QueryParses{
 		Converts("ROLLBACK"),
-		Unimplemented("ROLLBACK WORK"),
+		Converts("ROLLBACK WORK"),
 		Converts("ROLLBACK TRANSACTION"),
-		Unimplemented("ROLLBACK AND CHAIN"),
-		Unimplemented("ROLLBACK WORK AND CHAIN"),
-		Unimplemented("ROLLBACK TRANSACTION AND CHAIN"),
-		Unimplemented("ROLLBACK AND NO CHAIN"),
-		Unimplemented("ROLLBACK WORK AND NO CHAIN"),
-		Unimplemented("ROLLBACK TRANSACTION AND NO CHAIN"),
+		Converts("ROLLBACK AND CHAIN"),
+		Converts("ROLLBACK WORK AND CHAIN"),
+		Converts("ROLLBACK TRANSACTION AND CHAIN"),
+		Converts("ROLLBACK AND NO CHAIN"),
+		Converts("ROLLBACK WORK AND NO CHAIN"),
+		Converts("ROLLBACK TRANSACTION AND NO CHAIN"),
 	}
 	RunTests(t, tests)
 }

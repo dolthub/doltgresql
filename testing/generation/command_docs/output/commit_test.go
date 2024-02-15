@@ -19,14 +19,14 @@ import "testing"
 func TestCommit(t *testing.T) {
 	tests := []QueryParses{
 		Converts("COMMIT"),
-		Unimplemented("COMMIT WORK"),
+		Converts("COMMIT WORK"),
 		Converts("COMMIT TRANSACTION"),
-		Unimplemented("COMMIT AND CHAIN"),
-		Unimplemented("COMMIT WORK AND CHAIN"),
-		Unimplemented("COMMIT TRANSACTION AND CHAIN"),
-		Unimplemented("COMMIT AND NO CHAIN"),
-		Unimplemented("COMMIT WORK AND NO CHAIN"),
-		Unimplemented("COMMIT TRANSACTION AND NO CHAIN"),
+		Converts("COMMIT AND CHAIN"),
+		Converts("COMMIT WORK AND CHAIN"),
+		Converts("COMMIT TRANSACTION AND CHAIN"),
+		Converts("COMMIT AND NO CHAIN"),
+		Converts("COMMIT WORK AND NO CHAIN"),
+		Converts("COMMIT TRANSACTION AND NO CHAIN"),
 	}
 	RunTests(t, tests)
 }
