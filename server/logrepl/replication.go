@@ -44,7 +44,7 @@ type LogicalReplicator struct {
 	stop            chan struct{}
 }
 
-// NewLogicalReplicator creates a new logical replicator instance which connects to the primary and replication 
+// NewLogicalReplicator creates a new logical replicator instance which connects to the primary and replication
 // databases using the connection strings provided. The connection to the replica is established immediately, and the
 // connection to the primary is established when StartReplication is called.
 func NewLogicalReplicator(primaryDns string, replicationDns string) (*LogicalReplicator, error) {
@@ -61,7 +61,7 @@ func NewLogicalReplicator(primaryDns string, replicationDns string) (*LogicalRep
 	}, nil
 }
 
-// SetupReplication sets up the replication slot and publication for the given database. 
+// SetupReplication sets up the replication slot and publication for the given database.
 func SetupReplication(primaryConnectionString string, publicationName string) error {
 	conn, err := pgconn.Connect(context.Background(), primaryConnectionString)
 	if err != nil {
@@ -92,7 +92,7 @@ func (r *LogicalReplicator) StartReplication(slotName string) error {
 	// on StreamStopMessage we set it back to false
 	inStream := false
 
-	// We fail after 3 consecutive network errors excluding timeouts. Any successful RPC resets the counter. 
+	// We fail after 3 consecutive network errors excluding timeouts. Any successful RPC resets the counter.
 	connErrCnt := 0
 	var primaryConn *pgconn.PgConn
 	var clientXLogPos pglogrepl.LSN
@@ -228,7 +228,7 @@ func (r *LogicalReplicator) shutdown() {
 	close(r.stop)
 }
 
-// Stop stops the replication process and blocks until clean shutdown occurs. 
+// Stop stops the replication process and blocks until clean shutdown occurs.
 func (r *LogicalReplicator) Stop() {
 	log.Print("stopping replication...")
 	r.stop <- struct{}{}
@@ -289,14 +289,14 @@ func (r *LogicalReplicator) beginReplication(slotName string) (*pgconn.PgConn, p
 
 // processMessage processes a logical replication message as appropriate. A couple important aspects:
 // 1) Relation messages describe tables being replicated and are used to build a type map for decoding tuples
-// 2) INSERT/UPDATE/DELETE messages describe changes to rows that must be applied to the replica. 
+// 2) INSERT/UPDATE/DELETE messages describe changes to rows that must be applied to the replica.
 // 		These describe a row in the form of a tuple, and are used to construct a query to apply the change to the replica.
 // TODO: handle panics
 func (r *LogicalReplicator) processMessage(
-		walData []byte,
-		relations map[uint32]*pglogrepl.RelationMessageV2,
-		typeMap *pgtype.Map,
-		inStream *bool,
+	walData []byte,
+	relations map[uint32]*pglogrepl.RelationMessageV2,
+	typeMap *pgtype.Map,
+	inStream *bool,
 ) {
 	logicalMsg, err := pglogrepl.ParseV2(walData, *inStream)
 	if err != nil {
@@ -493,7 +493,7 @@ func decodeTextColumnData(mi *pgtype.Map, data []byte, dataType uint32) (interfa
 	return string(data), nil
 }
 
-// encodeColumnData encodes the given data using the given data type OID and returns the result as a string to be 
+// encodeColumnData encodes the given data using the given data type OID and returns the result as a string to be
 // used in an INSERT or other DML query.
 func encodeColumnData(mi *pgtype.Map, data interface{}, dataType uint32) (string, error) {
 	var value string
