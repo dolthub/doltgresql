@@ -48,7 +48,7 @@ type ReplicationTest struct {
 	// An initial comment can be used to Setup is always run on the primary.
 	SetUpScript []string
 	// The set of assertions to make after setup, in order
-	Assertions []ReplicationTestAssertion
+	Assertions []ScriptTestAssertion
 	// When using RunScripts, setting this on one (or more) tests causes RunScripts to ignore all tests that have this
 	// set to false (which is the default value). This allows a developer to easily "focus" on a specific test without
 	// having to comment out other tests, pull it into a different function, etc. In addition, CI ensures that this is
@@ -57,11 +57,6 @@ type ReplicationTest struct {
 	Focus bool
 	// Skip is used to completely skip a test including setup
 	Skip bool
-}
-
-type ReplicationTestAssertion struct {
-	ReplicationTarget ReplicationTarget
-	ScriptTestAssertion
 }
 
 var replicationTests = []ReplicationTest{
@@ -85,16 +80,13 @@ var replicationTests = []ReplicationTest{
 			"UPDATE test SET name = 'six' WHERE id = 6",
 			"DELETE FROM test WHERE id = 5",
 		},
-		Assertions: []ReplicationTestAssertion{
+		Assertions: []ScriptTestAssertion{
 			{
-				ReplicationTarget: ReplicationTargetReplica,
-				ScriptTestAssertion: ScriptTestAssertion{
-					Query: "SELECT * FROM test order by id",
-					Expected: []sql.Row{
-						{int32(2), "three"},
-						{int32(4), "five"},
-						{int32(6), "six"},
-					},
+				Query: "/* replica */ SELECT * FROM test order by id",
+				Expected: []sql.Row{
+					{int32(2), "three"},
+					{int32(4), "five"},
+					{int32(6), "six"},
 				},
 			},
 		},
@@ -112,15 +104,12 @@ var replicationTests = []ReplicationTest{
 			"update test set u_id = '3232abe7-560b-4714-a020-2b1a11a1ec65' where id = 2",
 			"DELETE FROM test WHERE id = 1",
 		},
-		Assertions: []ReplicationTestAssertion{
+		Assertions: []ScriptTestAssertion{
 			{
-				ReplicationTarget: ReplicationTargetReplica,
-				ScriptTestAssertion: ScriptTestAssertion{
-					Query: "SELECT * FROM test order by id",
-					Expected: []sql.Row{
-						// TODO: The DATE field should not return time in its output
-						{int32(2), "three", "3232abe7-560b-4714-a020-2b1a11a1ec65", int32(2), 2.2, "2021-02-02 00:00:00", "2021-02-02 13:00:00"},
-					},
+				Query: "/* replica */ SELECT * FROM test order by id",
+				Expected: []sql.Row{
+					// TODO: The DATE field should not return time in its output
+					{int32(2), "three", "3232abe7-560b-4714-a020-2b1a11a1ec65", int32(2), 2.2, "2021-02-02 00:00:00", "2021-02-02 13:00:00"},
 				},
 			},
 		},
@@ -145,15 +134,12 @@ var replicationTests = []ReplicationTest{
 			"/* primary b */ COMMIT",
 			"/* primary a */ COMMIT",
 		},
-		Assertions: []ReplicationTestAssertion{
+		Assertions: []ScriptTestAssertion{
 			{
-				ReplicationTarget: ReplicationTargetReplica,
-				ScriptTestAssertion: ScriptTestAssertion{
-					Query: "SELECT * FROM test order by id",
-					Expected: []sql.Row{
-						{int32(2), "three"},
-						{int32(4), "five"},
-					},
+				Query: "/* replica */ SELECT * FROM test order by id",
+				Expected: []sql.Row{
+					{int32(2), "three"},
+					{int32(4), "five"},
 				},
 			},
 		},
@@ -171,14 +157,11 @@ var replicationTests = []ReplicationTest{
 			"UPDATE test SET name = 'three' WHERE id = 2",
 			"DELETE FROM test WHERE id = 1",
 		},
-		Assertions: []ReplicationTestAssertion{
+		Assertions: []ScriptTestAssertion{
 			{
-				ReplicationTarget: ReplicationTargetReplica,
-				ScriptTestAssertion: ScriptTestAssertion{
-					Query: "SELECT * FROM test order by id",
-					Expected: []sql.Row{
-						{int32(2), "three", int32(2), false, 2.2, "2021-02-02", "2021-02-02 13:00:00"},
-					},
+				Query: "/* replica */ SELECT * FROM test order by id",
+				Expected: []sql.Row{
+					{int32(2), "three", int32(2), false, 2.2, "2021-02-02", "2021-02-02 13:00:00"},
 				},
 			},
 		},
@@ -217,7 +200,7 @@ func RunReplicationScripts(t *testing.T, scripts []ReplicationTest) {
 const slotName = "doltgres_slot"
 const localPostgresPort = 5432
 
-// RunScript runs the given script.
+// RunReplicationScript runs the given ReplicationTest.
 func RunReplicationScript(t *testing.T, script ReplicationTest) {
 	scriptDatabase := script.Database
 	if len(scriptDatabase) == 0 {
@@ -267,7 +250,7 @@ func RunReplicationScript(t *testing.T, script ReplicationTest) {
 	})
 }
 
-// runScript runs the script given on the postgres connection provided
+// runReplicationScript runs the script given on the postgres connection provided
 func runReplicationScript(
 	ctx context.Context,
 	t *testing.T,
@@ -316,9 +299,21 @@ func runReplicationScript(
 				t.Skip("Skip has been set in the assertion")
 			}
 
-			conn := replicaConn
-			if assertion.ReplicationTarget == ReplicationTargetPrimary {
-				conn = primaryConn
+			target, client := clientSpecFromQueryComment(assertion.Query)
+			var conn *pgx.Conn
+			switch target {
+			case "primary":
+				conn = primaryConnections[client]
+				if conn == nil {
+					var err error
+					conn, err = pgx.Connect(context.Background(), primaryDns)
+					require.NoError(t, err)
+					primaryConnections[client] = conn
+				}
+			case "replica":
+				conn = replicaConn
+			default:
+				require.Fail(t, "Invalid target in setup script: ", target)
 			}
 
 			// If we're skipping the results check, then we call Execute, as it uses a simplified message model.
