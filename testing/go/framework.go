@@ -186,7 +186,6 @@ func RunScripts(t *testing.T, scripts []ScriptTest) {
 func CreateServer(t *testing.T, database string) (context.Context, *pgx.Conn, *svcs.Controller) {
 	require.NotEmpty(t, database)
 	port := GetUnusedPort(t)
-	// server.DefaultProtocolListenerFunc = dserver.NewLimitedListener
 	controller, err := dserver.RunInMemory([]string{fmt.Sprintf("--port=%d", port), "--host=127.0.0.1"})
 	require.NoError(t, err)
 

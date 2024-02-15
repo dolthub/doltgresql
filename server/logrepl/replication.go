@@ -1,4 +1,4 @@
-// Copyright 2023 Dolthub, Inc.
+// Copyright 2024 Dolthub, Inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -87,6 +87,7 @@ func (r *LogicalReplicator) StartReplication(slotName string) error {
 	// on StreamStopMessage we set it back to false
 	inStream := false
 
+	// We fail after 3 consecutive network errors excluding timeouts. Any successful RPC resets the counter. 
 	connErrCnt := 0
 	var primaryConn *pgconn.PgConn
 	var clientXLogPos pglogrepl.LSN

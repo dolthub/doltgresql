@@ -1,4 +1,4 @@
-// Copyright 2023 Dolthub, Inc.
+// Copyright 2024 Dolthub, Inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -215,6 +215,7 @@ func RunReplicationScripts(t *testing.T, scripts []ReplicationTest) {
 }
 
 const slotName = "doltgres_slot"
+const localPostgresPort = 5432
 
 // RunScript runs the given script.
 func RunReplicationScript(t *testing.T, script ReplicationTest) {
@@ -224,9 +225,10 @@ func RunReplicationScript(t *testing.T, script ReplicationTest) {
 	}
 
 	database := "postgres"
-	primaryDns := fmt.Sprintf("postgres://postgres:password@127.0.0.1:%d/%s?sslmode=disable", 5432, database)
-	primaryReplicationDns := fmt.Sprintf("postgres://postgres:password@127.0.0.1:%d/%s?replication=database", 5432, database)
-	require.NoError(t, logrepl.SetupReplication(primaryDns, slotName))
+	// primaryDns is the connection to the actual postgres (not doltgres) database, which is why we use port 5342.
+	// If you have postgres running on a different port, you'll need to change this. 
+	primaryDns := fmt.Sprintf("postgres://postgres:password@127.0.0.1:%d/%s?sslmode=disable", localPostgresPort, database)
+	primaryReplicationDns := fmt.Sprintf("postgres://postgres:password@127.0.0.1:%d/%s?replication=database", localPostgresPort, database)
 
 	ctx, replicaConn, controller := CreateServer(t, scriptDatabase)
 	defer func() {
@@ -241,6 +243,8 @@ func RunReplicationScript(t *testing.T, script ReplicationTest) {
 	require.NoError(t, err)
 
 	replicationDns := fmt.Sprintf("postgres://postgres:password@127.0.0.1:%s/", port)
+	require.NoError(t, logrepl.SetupReplication(primaryReplicationDns, slotName))
+	
 	replicator, err := logrepl.NewLogicalReplicator(primaryReplicationDns, replicationDns)
 	require.NoError(t, err)
 
@@ -256,6 +260,7 @@ func RunReplicationScript(t *testing.T, script ReplicationTest) {
 	ctx = context.Background()
 	primaryConn, err := pgx.Connect(ctx, primaryDns)
 	require.NoError(t, err)
+	defer primaryConn.Close(ctx)
 
 	t.Run(script.Name, func(t *testing.T) {
 		runReplicationScript(ctx, t, script, primaryConn, replicaConn, primaryDns)
