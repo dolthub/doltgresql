@@ -88,7 +88,6 @@ func (r *LogicalReplicator) StartReplication(slotName string) error {
 	inStream := false
 
 	connErrCnt := 0
-	i := 0
 	var primaryConn *pgconn.PgConn
 	var clientXLogPos pglogrepl.LSN
 
@@ -215,25 +214,19 @@ func (r *LogicalReplicator) StartReplication(slotName string) error {
 			// TODO: is this an error?
 			log.Printf("Received unexpected message: %T\n", rawMsg)
 		}
-
-		i++
-		if i%11 == 0 {
-			// log.Printf("simulating connection failure\n")
-			// _ = conn.Close(context.Background())
-			// conn = nil
-		}
 	}
 }
 
 func (r *LogicalReplicator) shutdown() {
-	log.Printf("shutting down replicator")
+	log.Print("shutting down replicator")
 	close(r.stop)
 }
 
 func (r *LogicalReplicator) Stop() {
-	log.Printf("stopping replication...")
+	log.Print("stopping replication...")
 	r.stop <- struct{}{}
-	_, _ = <-r.stop
+	// wait for the channel to be closed, acknowledging that the replicator has stopped
+	<-r.stop
 }
 
 func (r *LogicalReplicator) replicateQuery(query string) error {
