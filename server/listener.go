@@ -34,9 +34,9 @@ var (
 
 // Listener listens for connections to process PostgreSQL requests into Dolt requests.
 type Listener struct {
-	listener net.Listener
+	listener     net.Listener
 	certificates []tls.Certificate
-	cfg      mysql.ListenerConfig
+	cfg          mysql.ListenerConfig
 }
 
 var _ server.ProtocolListener = (*Listener)(nil)

@@ -28,7 +28,7 @@ func NewSslListener(listenerCfg mysql.ListenerConfig) (server.ProtocolListener, 
 	if err != nil {
 		panic(err)
 	}
-	
+
 	certificate, err := tls.X509KeyPair(cert, key)
 	if err != nil {
 		panic(err)
