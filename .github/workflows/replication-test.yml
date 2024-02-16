@@ -14,11 +14,11 @@ jobs:
     runs-on: ${{ matrix.platform }}
     services:
       postgres:
-        image: postgres:15
-        command: -c wal_level=logical
+        image: bitnami/postgresql:latest
         env:
           POSTGRES_USER: postgres
           POSTGRES_PASSWORD: password
+          POSTGRESQL_WAL_LEVEL: logical
         options: >-
           --health-cmd pg_isready
           --health-interval 10s
