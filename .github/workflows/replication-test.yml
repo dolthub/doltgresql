@@ -15,10 +15,10 @@ jobs:
     services:
       postgres:
         image: postgres:15
+        command: -c wal_level=logical
         env:
           POSTGRES_USER: postgres
           POSTGRES_PASSWORD: password
-          POSTGRES_INITDB_ARGS: '--set wal_level=logical'
         options: >-
           --health-cmd pg_isready
           --health-interval 10s
