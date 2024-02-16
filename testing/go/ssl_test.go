@@ -2,20 +2,51 @@ package _go
 
 import (
 	"context"
+	"crypto/tls"
 	"fmt"
 	"testing"
 	"time"
 
+	"github.com/dolthub/go-mysql-server/server"
 	"github.com/dolthub/go-mysql-server/sql"
+	"github.com/dolthub/vitess/go/mysql"
 	"github.com/jackc/pgx/v5"
+	"github.com/madflojo/testcerts"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
 	dserver "github.com/dolthub/doltgresql/server"
 )
 
+type SSLListener struct {
+	*dserver.Listener
+}
+
+func NewSslListener(listenerCfg mysql.ListenerConfig) (server.ProtocolListener, error) {
+	// Since this is intended for testing, we'll configure a test certificate so that we can test for SSL support
+	cert, key, err := testcerts.GenerateCerts()
+	if err != nil {
+		panic(err)
+	}
+	
+	certificate, err := tls.X509KeyPair(cert, key)
+	if err != nil {
+		panic(err)
+	}
+
+	listener, err := dserver.NewListenerWithOpts(listenerCfg, dserver.WithCertificate(certificate))
+	if err != nil {
+		return nil, err
+	}
+
+	return &SSLListener{
+		listener.(*dserver.Listener),
+	}, nil
+}
+
 func TestSSL(t *testing.T) {
 	port := GetUnusedPort(t)
+	server.DefaultProtocolListenerFunc = NewSslListener
 	controller, err := dserver.RunInMemory([]string{fmt.Sprintf("--port=%d", port), "--host=127.0.0.1"})
 	require.NoError(t, err)
 
