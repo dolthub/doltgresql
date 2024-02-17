@@ -1,10 +1,7 @@
-FROM postgres:latest
+FROM postgres:16
 
 ENV POSTGRES_PASSWORD=password
 ENV POSTGRES_USER=postgres
-
-# Set wal_level to logical
-RUN echo "wal_level = logical" >> /var/lib/postgresql/data/postgresql.conf
 
 ENV GO_VERSION=1.22.0
 
@@ -25,6 +22,9 @@ ENV PATH="${GOPATH}/bin:${PATH}"
 WORKDIR /root/building
 COPY ./ ./doltgresql
 
+# Get rid of the generated tests, since we aren't going to run them and they don't build without more work
+RUN rm -rf ./doltgresql/testing/generation/
+
 # Build the parser
 WORKDIR /root/building/doltgresql/postgres/parser
 RUN bash ./build.sh
@@ -32,4 +32,4 @@ RUN bash ./build.sh
 # Run the test script, which starts postgres and then runs the Go script
 WORKDIR /root/building/doltgresql
 ENTRYPOINT ["testing/replication-test-entrypoint.sh"]
-#CMD ["go", "test", "-run=TestReplication", "./..."]
+

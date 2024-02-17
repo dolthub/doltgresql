@@ -21,5 +21,3 @@ done
 
 # Run the Go test
 go test -run="TestReplication" ./...
-
-sleep 10000
