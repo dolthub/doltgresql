@@ -273,7 +273,7 @@ func (r *LogicalReplicator) beginReplication(slotName string) (*pgconn.PgConn, p
 	// we also need to set 'streaming' to 'true'
 	pluginArguments := []string{
 		"proto_version '2'",
-		"publication_names 'pglogrepl_demo'",
+		fmt.Sprintf("publication_names '%s'", slotName),
 		"messages 'true'",
 		"streaming 'true'",
 	}
