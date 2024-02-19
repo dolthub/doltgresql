@@ -1,9 +1,5 @@
 name: Replication Tests
-
-on:
-  pull_request:
-    paths:
-      - '*'
+on: [pull_request]
 
 concurrency:
   group: ci-replication-tests-${{ github.event.pull_request.number || github.ref }}
@@ -15,9 +11,9 @@ jobs:
     timeout-minutes: 10
     name: Run tests
     steps:
-      - name: Check out code
-        uses: actions/checkout@v3
-      - name: Build docker image
-        run: docker build -t local --file testing/ReplicationTestDockerfile .
-      - name: Run tests
-        run: docker run --detach=false local
+    - name: Check out code
+      uses: actions/checkout@v3
+    - name: Build docker image
+      run: docker build -t local --file testing/ReplicationTestDockerfile .
+    - name: Run tests
+      run: docker run --detach=false local
