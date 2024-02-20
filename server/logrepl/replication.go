@@ -99,6 +99,11 @@ func (r *LogicalReplicator) StartReplication(slotName string) error {
 	// We fail after 3 consecutive network errors excluding timeouts. Any successful RPC resets the counter.
 	connErrCnt := 0
 	var primaryConn *pgconn.PgConn
+	
+	// clientXLogPos is the last WAL position we have received from the server, which we send back to the server via 
+	// SendStandbyStatusUpdate after ever message we get. Postgres tracks this LSN for each slot, which allows us to 
+	// resume where we left off in the case of an interruption. We also send a Standby status message every 10 seconds
+	// to keep the connection alive.
 	var clientXLogPos pglogrepl.LSN
 
 	defer func() {
@@ -109,11 +114,31 @@ func (r *LogicalReplicator) StartReplication(slotName string) error {
 		r.running = false
 		r.mu.Unlock()
 	}()
-
+	
 	r.mu.Lock()
 	r.running = true
 	r.mu.Unlock()
 
+	sendStandbyStatusUpdate := func() error {
+		err := pglogrepl.SendStandbyStatusUpdate(context.Background(), primaryConn, pglogrepl.StandbyStatusUpdate{WALWritePosition: clientXLogPos})
+		if err != nil {
+			connErrCnt++
+			if connErrCnt < 3 {
+				// re-establish connection on next pass through the loop
+				_ = primaryConn.Close(context.Background())
+				primaryConn = nil
+				return nil
+			}
+
+			return err
+		}
+
+		connErrCnt = 0
+		log.Printf("Sent Standby status message at %s\n", clientXLogPos.String())
+		nextStandbyMessageDeadline = time.Now().Add(standbyMessageTimeout)
+		return nil
+	}
+	
 	for {
 
 		// Shutdown if requested
@@ -129,29 +154,17 @@ func (r *LogicalReplicator) StartReplication(slotName string) error {
 			// TODO: not sure if this retry logic is correct, with some failures we appear to miss events that aren't
 			//  sent again
 			var err error
-			primaryConn, clientXLogPos, err = r.beginReplication(slotName)
+			primaryConn, err = r.beginReplication(slotName)
 			if err != nil {
 				return err
 			}
 		}
 
 		if time.Now().After(nextStandbyMessageDeadline) {
-			err := pglogrepl.SendStandbyStatusUpdate(context.Background(), primaryConn, pglogrepl.StandbyStatusUpdate{WALWritePosition: clientXLogPos})
+			err := sendStandbyStatusUpdate()
 			if err != nil {
-				connErrCnt++
-				if connErrCnt < 3 {
-					// re-establish connection on next pass through the loop
-					_ = primaryConn.Close(context.Background())
-					primaryConn = nil
-					continue
-				}
-
 				return err
 			}
-
-			connErrCnt = 0
-			log.Printf("Sent Standby status message at %s\n", clientXLogPos.String())
-			nextStandbyMessageDeadline = time.Now().Add(standbyMessageTimeout)
 		}
 
 		ctx, cancel := context.WithDeadline(context.Background(), nextStandbyMessageDeadline)
@@ -212,9 +225,9 @@ func (r *LogicalReplicator) StartReplication(slotName string) error {
 				clientXLogPos = pkm.ServerWALEnd
 			}
 			if pkm.ReplyRequested {
+				// Send our reply the next time through the loop
 				nextStandbyMessageDeadline = time.Time{}
 			}
-
 		case pglogrepl.XLogDataByteID:
 			xld, err := pglogrepl.ParseXLogData(msg.Data[1:])
 			if err != nil {
@@ -224,11 +237,19 @@ func (r *LogicalReplicator) StartReplication(slotName string) error {
 			log.Printf("XLogData => WALStart %s ServerWALEnd %s ServerTime %s WALData:\n", xld.WALStart, xld.ServerWALEnd, xld.ServerTime)
 			r.processMessage(xld.WALData, relationsV2, typeMap, &inStream)
 
+			// TODO: we have a two-phase commit race here: if the call to update the standby fails and the process crashes,
+			//  we will receive a duplicate LSN the next time we start replication. We can mitigate this by writing the last
+			//  processed LSN to a file locally, but that suffers from the same problem (if the process dies before we update
+			//  the file). A better solution would be to write the LSN directly into the DoltCommit message, and then parsing
+			//  this message back out when we begin replication next.  
 			if xld.WALStart > clientXLogPos {
 				clientXLogPos = xld.WALStart
+				err := sendStandbyStatusUpdate()
+				if err != nil {
+					return err
+				}
 			}
 		default:
-			// TODO: is this an error?
 			log.Printf("Received unexpected message: %T\n", rawMsg)
 		}
 	}
@@ -263,10 +284,10 @@ func (r *LogicalReplicator) replicateQuery(query string) error {
 
 // beginReplication starts a new replication connection to the primary server and returns it along with the current
 // log sequence number (LSN) for continued status updates to the primary.
-func (r *LogicalReplicator) beginReplication(slotName string) (*pgconn.PgConn, pglogrepl.LSN, error) {
+func (r *LogicalReplicator) beginReplication(slotName string) (*pgconn.PgConn, error) {
 	conn, err := pgconn.Connect(context.Background(), r.primaryDns)
 	if err != nil {
-		return nil, 0, err
+		return nil, err
 	}
 
 	// streaming of large transactions is available since PG 14 (protocol version 2)
@@ -277,32 +298,68 @@ func (r *LogicalReplicator) beginReplication(slotName string) (*pgconn.PgConn, p
 		"messages 'true'",
 		"streaming 'true'",
 	}
-
-	sysident, err := pglogrepl.IdentifySystem(context.Background(), conn)
+	
+	// LSN(0) is used to use the last confirmed LSN for this slot
+	// TODO: pass this in instead
+	err = pglogrepl.StartReplication(context.Background(), conn, slotName, pglogrepl.LSN(0), pglogrepl.StartReplicationOptions{PluginArgs: pluginArguments})
 	if err != nil {
-		return nil, 0, err
-	}
-	log.Println("SystemID:", sysident.SystemID, "Timeline:", sysident.Timeline, "XLogPos:", sysident.XLogPos, "DBName:", sysident.DBName)
-
-	_ = pglogrepl.DropReplicationSlot(context.Background(), conn, slotName, pglogrepl.DropReplicationSlotOptions{})
-	_, err = pglogrepl.CreateReplicationSlot(context.Background(), conn, slotName, outputPlugin, pglogrepl.CreateReplicationSlotOptions{Temporary: true})
-	if err != nil {
-		pgErr, ok := err.(*pgconn.PgError)
-		if ok && pgErr.Code == "42710" {
-			// replication slot already exists, we can ignore this error
-		} else {
-			return nil, 0, err
-		}
-	}
-	log.Println("Created temporary replication slot:", slotName)
-
-	err = pglogrepl.StartReplication(context.Background(), conn, slotName, sysident.XLogPos, pglogrepl.StartReplicationOptions{PluginArgs: pluginArguments})
-	if err != nil {
-		return nil, 0, err
+		return nil, err
 	}
 	log.Println("Logical replication started on slot", slotName)
 
-	return conn, sysident.XLogPos, nil
+	return conn, nil
+}
+
+func (r *LogicalReplicator) DropReplicationSlot(slotName string) error {
+	conn, err := pgconn.Connect(context.Background(), r.primaryDns)
+	if err != nil {
+		return err
+	}
+
+	_ = pglogrepl.DropReplicationSlot(context.Background(), conn, slotName, pglogrepl.DropReplicationSlotOptions{})
+	return nil
+}
+
+func (r *LogicalReplicator) CreateReplicationSlotIfNecessary(slotName string) error {
+	conn, err := pgx.Connect(context.Background(), r.primaryDns)
+	if err != nil {
+		return err
+	}
+
+	rows, err := conn.Query(context.Background(), "select * from pg_replication_slots where slot_name = $1", slotName)
+	if err != nil {
+		return err
+	}
+	
+	slotExists := false
+	defer rows.Close()
+	for rows.Next() {
+		_, err := rows.Values()
+		if err != nil {
+			return err
+		}
+		slotExists = true
+	}
+	
+	if rows.Err() != nil {
+		return rows.Err()
+	}
+
+	if !slotExists {
+		_, err = pglogrepl.CreateReplicationSlot(context.Background(), conn.PgConn(), slotName, outputPlugin, pglogrepl.CreateReplicationSlotOptions{})
+		if err != nil {
+			pgErr, ok := err.(*pgconn.PgError)
+			if ok && pgErr.Code == "42710" {
+				// replication slot already exists, we can ignore this error
+			} else {
+				return err
+			}
+		}
+
+		log.Println("Created temporary replication slot:", slotName)
+	}
+	
+	return nil
 }
 
 // processMessage processes a logical replication message as appropriate. A couple important aspects:
