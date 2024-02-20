@@ -211,7 +211,6 @@ func RunReplicationScript(t *testing.T, script ReplicationTest) {
 	// primaryDns is the connection to the actual postgres (not doltgres) database, which is why we use port 5342.
 	// If you have postgres running on a different port, you'll need to change this.
 	primaryDns := fmt.Sprintf("postgres://postgres:password@127.0.0.1:%d/%s?sslmode=disable", localPostgresPort, database)
-	primaryReplicationDns := fmt.Sprintf("postgres://postgres:password@127.0.0.1:%d/%s?replication=database", localPostgresPort, database)
 
 	ctx, replicaConn, controller := CreateServer(t, scriptDatabase)
 	defer func() {
@@ -225,17 +224,20 @@ func RunReplicationScript(t *testing.T, script ReplicationTest) {
 	_, port, err := net.SplitHostPort(connString)
 	require.NoError(t, err)
 
-	replicationDns := fmt.Sprintf("postgres://postgres:password@127.0.0.1:%s/", port)
-	require.NoError(t, logrepl.SetupReplication(primaryReplicationDns, slotName))
-
-	replicator, err := logrepl.NewLogicalReplicator(primaryReplicationDns, replicationDns)
+	replicaDns := fmt.Sprintf("postgres://postgres:password@127.0.0.1:%s/", port)
+	
+	r, err := logrepl.NewLogicalReplicator(primaryDns, replicaDns)
 	require.NoError(t, err)
 
+	require.NoError(t, r.SetupReplication(slotName))
+	require.NoError(t, r.DropReplicationSlot(slotName))
+	require.NoError(t, r.CreateReplicationSlotIfNecessary(slotName))
+
 	go func() {
-		err := replicator.StartReplication(slotName)
+		err := r.StartReplication(slotName)
 		require.NoError(t, err)
 	}()
-	defer replicator.Stop()
+	defer r.Stop()
 
 	// give replication time to begin before running scripts
 	time.Sleep(1 * time.Second)

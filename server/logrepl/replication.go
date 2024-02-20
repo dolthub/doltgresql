@@ -65,9 +65,25 @@ func NewLogicalReplicator(primaryDns string, replicationDns string) (*LogicalRep
 	}, nil
 }
 
-// SetupReplication sets up the replication slot and publication for the given database.
-func SetupReplication(primaryConnectionString string, publicationName string) error {
-	conn, err := pgconn.Connect(context.Background(), primaryConnectionString)
+// PrimaryDns returns the DNS for the primary database. Not suitable for RPCs used in replication e.g.
+// StartReplication. See ReplicationDns.
+func (r *LogicalReplicator) PrimaryDns() string {
+	return r.primaryDns
+}
+
+// ReplicationDns returns the DNS for the primary database with the replication query parameter appended. Not suitable
+// for normal query RPCs.
+func (r *LogicalReplicator) ReplicationDns() string {
+	if strings.Contains(r.primaryDns, "?") {
+		return fmt.Sprintf("%s&replication=database", r.primaryDns)
+	}
+	return fmt.Sprintf("%s?replication=database", r.primaryDns)
+}
+
+// SetupReplication sets up a publication with the given name on the primary server. This is only required to be 
+// called once, and is most provided for convenience / testing.
+func (r *LogicalReplicator) SetupReplication(publicationName string) error {
+	conn, err := pgconn.Connect(context.Background(), r.ReplicationDns())
 	if err != nil {
 		return err
 	}
@@ -285,7 +301,7 @@ func (r *LogicalReplicator) replicateQuery(query string) error {
 // beginReplication starts a new replication connection to the primary server and returns it along with the current
 // log sequence number (LSN) for continued status updates to the primary.
 func (r *LogicalReplicator) beginReplication(slotName string) (*pgconn.PgConn, error) {
-	conn, err := pgconn.Connect(context.Background(), r.primaryDns)
+	conn, err := pgconn.Connect(context.Background(), r.ReplicationDns())
 	if err != nil {
 		return nil, err
 	}
@@ -310,8 +326,9 @@ func (r *LogicalReplicator) beginReplication(slotName string) (*pgconn.PgConn, e
 	return conn, nil
 }
 
+// DropReplicationSlot drops the replication slot with the given name. Any error from the slot not existing is ignored.
 func (r *LogicalReplicator) DropReplicationSlot(slotName string) error {
-	conn, err := pgconn.Connect(context.Background(), r.primaryDns)
+	conn, err := pgconn.Connect(context.Background(), r.ReplicationDns())
 	if err != nil {
 		return err
 	}
@@ -320,8 +337,9 @@ func (r *LogicalReplicator) DropReplicationSlot(slotName string) error {
 	return nil
 }
 
+// CreateReplicationSlotIfNecessary creates the replication slot named if it doesn't already exist.
 func (r *LogicalReplicator) CreateReplicationSlotIfNecessary(slotName string) error {
-	conn, err := pgx.Connect(context.Background(), r.primaryDns)
+	conn, err := pgx.Connect(context.Background(), r.PrimaryDns())
 	if err != nil {
 		return err
 	}
@@ -345,6 +363,12 @@ func (r *LogicalReplicator) CreateReplicationSlotIfNecessary(slotName string) er
 		return rows.Err()
 	}
 
+	// We need a different connection to create the replication slot
+	conn, err = pgx.Connect(context.Background(), r.ReplicationDns())
+	if err != nil {
+		return err
+	}
+	
 	if !slotExists {
 		_, err = pglogrepl.CreateReplicationSlot(context.Background(), conn.PgConn(), slotName, outputPlugin, pglogrepl.CreateReplicationSlotOptions{})
 		if err != nil {
