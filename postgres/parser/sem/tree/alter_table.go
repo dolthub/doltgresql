@@ -24,6 +24,8 @@
 
 package tree
 
+import "strings"
+
 // AlterTable represents an ALTER TABLE statement.
 type AlterTable struct {
 	IfExists bool
@@ -79,7 +81,7 @@ func (*AlterTableRenameColumn) alterTableCmd()         {}
 func (*AlterTableRenameConstraint) alterTableCmd()     {}
 func (*AlterTableSetDefault) alterTableCmd()           {}
 func (*AlterTableValidateConstraint) alterTableCmd()   {}
-func (*AlterTablePartitionBy) alterTableCmd()          {}
+func (*AlterTablePartition) alterTableCmd()            {}
 func (*AlterTableOwner) alterTableCmd()                {}
 func (*AlterTableConstraintUsingIndex) alterTableCmd() {}
 func (*AlterTableAlterConstraint) alterTableCmd()      {}
@@ -107,7 +109,7 @@ var _ AlterTableCmd = &AlterTableRenameColumn{}
 var _ AlterTableCmd = &AlterTableRenameConstraint{}
 var _ AlterTableCmd = &AlterTableSetDefault{}
 var _ AlterTableCmd = &AlterTableValidateConstraint{}
-var _ AlterTableCmd = &AlterTablePartitionBy{}
+var _ AlterTableCmd = &AlterTablePartition{}
 var _ AlterTableCmd = &AlterTableOwner{}
 var _ AlterTableCmd = &AlterTableConstraintUsingIndex{}
 var _ AlterTableCmd = &AlterTableAlterConstraint{}
@@ -644,15 +646,41 @@ func (node *AlterTableSetCompression) Format(ctx *FmtCtx) {
 	ctx.WriteString(node.Compression)
 }
 
-// AlterTablePartitionBy represents an ALTER TABLE PARTITION BY
+type DetachPartition int
+
+const (
+	DetachPartitionNone DetachPartition = iota
+	DetachPartitionConcurrently
+	DetachPartitionFinalize
+)
+
+// AlterTablePartition represents an ALTER TABLE { ATTACH | DETACH } PARTITION ...
 // command.
-type AlterTablePartitionBy struct {
-	*PartitionBy
+type AlterTablePartition struct {
+	Partition  Name
+	Spec       PartitionBoundSpec
+	IsDetach   bool
+	DetachType DetachPartition
 }
 
 // Format implements the NodeFormatter interface.
-func (node *AlterTablePartitionBy) Format(ctx *FmtCtx) {
-	ctx.FormatNode(node.PartitionBy)
+func (node *AlterTablePartition) Format(ctx *FmtCtx) {
+	if node.IsDetach {
+		ctx.WriteString(" DETACH PARTITION ")
+		ctx.FormatNode(&node.Partition)
+		switch node.DetachType {
+		case DetachPartitionNone:
+		case DetachPartitionConcurrently:
+			ctx.WriteString(" CONCURRENTLY")
+		case DetachPartitionFinalize:
+			ctx.WriteString(" FINALIZE")
+		}
+	} else {
+		ctx.WriteString(" ATTACH PARTITION ")
+		ctx.FormatNode(&node.Partition)
+		ctx.WriteByte(' ')
+		ctx.FormatNode(&node.Spec)
+	}
 }
 
 // AlterTableSetSchema represents an ALTER TABLE SET SCHEMA command.
@@ -684,6 +712,29 @@ func (node *AlterTableSetSchema) Format(ctx *FmtCtx) {
 	node.Name.Format(ctx)
 	ctx.WriteString(" SET SCHEMA ")
 	ctx.WriteString(node.Schema)
+}
+
+// AlterTableAllInTablespace represents an ALTER TABLE ALL IN TABLESPACE ... command.
+type AlterTableAllInTablespace struct {
+	Name       Name
+	OwnedBy    []string
+	Tablespace Name
+	NoWait     bool
+}
+
+// Format implements the NodeFormatter interface.
+func (node *AlterTableAllInTablespace) Format(ctx *FmtCtx) {
+	ctx.WriteString("ALTER TABLE ALL IN TABLESPACE ")
+	ctx.FormatNode(&node.Name)
+	if node.OwnedBy != nil {
+		ctx.WriteString(" OWNED BY ")
+		ctx.WriteString(strings.Join(node.OwnedBy, ", "))
+	}
+	ctx.WriteString(" SET TABLESPACE ")
+	ctx.FormatNode(&node.Tablespace)
+	if node.NoWait {
+		ctx.WriteString(" NOWAIT")
+	}
 }
 
 // AlterTableTrigger represents an ALTER TABLE {DISABLE|ENABLE} TRIGGER command.

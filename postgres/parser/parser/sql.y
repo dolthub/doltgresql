@@ -627,7 +627,7 @@ func (u *sqlSymUnion) storageType() tree.StorageType {
 // Ordinary key words in alphabetical order.
 %token <str> ABORT ACCESS ACTION ADD ADMIN AFTER AGGREGATE
 %token <str> ALL ALLOW_CONNECTIONS ALTER ALWAYS ANALYSE ANALYZE AND AND_AND ANY ANNOTATE_TYPE ARRAY AS ASC
-%token <str> ASYMMETRIC AT ATOMIC ATTRIBUTE AUTHORIZATION AUTOMATIC
+%token <str> ASYMMETRIC AT ATOMIC ATTACH ATTRIBUTE AUTHORIZATION AUTOMATIC
 
 %token <str> BACKUP BACKUPS BEFORE BEGIN BETWEEN BIGINT BIGSERIAL BINARY BIT
 %token <str> BUCKET_COUNT
@@ -644,7 +644,7 @@ func (u *sqlSymUnion) storageType() tree.StorageType {
 %token <str> CURRENT_USER CYCLE
 
 %token <str> DATA DATABASE DATABASES DATE DAY DEALLOCATE DEC DECIMAL DECLARE
-%token <str> DEFAULT DEFAULTS DEFERRABLE DEFERRED DEFINER DELETE DESC DESTINATION DETACHED
+%token <str> DEFAULT DEFAULTS DEFERRABLE DEFERRED DEFINER DELETE DESC DESTINATION DETACH DETACHED
 %token <str> DISABLE DISCARD DISTINCT DO DOMAIN DOUBLE DROP
 
 %token <str> ELSE ENABLE ENCODING ENCRYPTION_PASSPHRASE END ENUM ENUMS ESCAPE EXCEPT EXCLUDE EXCLUDING
@@ -654,7 +654,7 @@ func (u *sqlSymUnion) storageType() tree.StorageType {
 %token <str> EXTENDED EXTENSION EXTERNAL EXTRACT EXTRACT_DURATION
 
 %token <str> FALSE FAMILY FETCH FETCHVAL FETCHTEXT FETCHVAL_PATH FETCHTEXT_PATH
-%token <str> FILES FILTER FIRST FLOAT FLOAT4 FLOAT8 FLOORDIV
+%token <str> FILES FILTER FINALIZE FIRST FLOAT FLOAT4 FLOAT8 FLOORDIV
 %token <str> FOLLOWING FOR FORCE FORCE_INDEX FOREIGN FROM FULL FUNCTION FUNCTIONS
 
 %token <str> GENERATED GEOGRAPHY GEOMETRY GEOMETRYM GEOMETRYZ GEOMETRYZM
@@ -766,6 +766,8 @@ func (u *sqlSymUnion) storageType() tree.StorageType {
 %type <tree.Statement> alter_onetable_stmt
 %type <tree.Statement> alter_rename_table_stmt
 %type <tree.Statement> alter_table_set_schema_stmt
+%type <tree.Statement> alter_table_all_in_tablespace_stmt
+%type <tree.Statement> alter_table_parition_stmt
 
 // ALTER DATABASE
 %type <tree.Statement> alter_rename_database_stmt
@@ -983,7 +985,7 @@ func (u *sqlSymUnion) storageType() tree.StorageType {
 %type <tree.AlterIndexCmd> alter_index_cmd
 %type <tree.AlterIndexCmds> alter_index_cmds
 %type <tree.StorageType> col_storage_option
-%type <bool> unique_or_primary logged_or_unlogged
+%type <bool> unique_or_primary logged_or_unlogged opt_nowait
 %type <str> trigger_name trigger_option
 
 %type <tree.DropBehavior> opt_drop_behavior
@@ -1010,8 +1012,8 @@ func (u *sqlSymUnion) storageType() tree.StorageType {
 %type <*tree.UnresolvedObjectName> table_name standalone_index_name sequence_name type_name
 %type <*tree.UnresolvedObjectName> view_name db_object_name simple_db_object_name complex_db_object_name
 %type <[]*tree.UnresolvedObjectName> type_name_list
-%type <str> schema_name opt_schema_name opt_schema opt_version
-%type <[]string> schema_name_list role_spec_list opt_role_list
+%type <str> schema_name opt_schema_name opt_schema opt_version tablespace_name partition_name
+%type <[]string> schema_name_list role_spec_list opt_role_list opt_owned_by_list
 %type <*tree.UnresolvedName> table_pattern complex_table_pattern
 %type <*tree.UnresolvedName> column_path prefixed_column_path column_path_with_star
 %type <tree.TableExpr> insert_target create_stats_target analyze_target
@@ -1161,7 +1163,7 @@ func (u *sqlSymUnion) storageType() tree.StorageType {
 %type <str> unrestricted_name type_function_name type_function_name_no_crdb_extra
 %type <str> non_reserved_word
 %type <str> non_reserved_word_or_sconst
-%type <str> role_spec opt_owner_to opt_set_schema opt_role
+%type <str> role_spec opt_owner_to set_schema opt_role
 %type <tree.Expr> zone_value
 %type <tree.Expr> string_or_placeholder
 %type <tree.Expr> string_or_placeholder_list
@@ -1385,6 +1387,8 @@ alter_table_stmt:
   alter_onetable_stmt
 | alter_rename_table_stmt
 | alter_table_set_schema_stmt
+| alter_table_all_in_tablespace_stmt
+| alter_table_parition_stmt
 // ALTER TABLE has its error help token here because the ALTER TABLE
 // prefix is spread over multiple non-terminals.
 | ALTER TABLE error     // SHOW HELP: ALTER TABLE
@@ -1452,7 +1456,7 @@ opt_alter_database:
   {
     $$.val = &tree.AlterDatabase{Name: tree.Name($3), Options: $4.databaseOptionList()}
   }
-| ALTER DATABASE database_name SET TABLESPACE non_reserved_word
+| ALTER DATABASE database_name SET TABLESPACE tablespace_name
   {
     $$.val = &tree.AlterDatabase{Name: tree.Name($3), Tablespace: $5}
   }
@@ -1771,7 +1775,7 @@ alter_table_action:
   {
     $$.val = &tree.AlterTableSetAccessMethod{Method: $4}
   }
-| SET TABLESPACE non_reserved_word_or_sconst
+| SET TABLESPACE tablespace_name
   {
     $$.val = &tree.AlterTableSetTablespace{Tablespace: $3}
   }
@@ -2164,7 +2168,7 @@ alter_type_stmt:
       },
     }
   }
-| ALTER TYPE type_name opt_set_schema
+| ALTER TYPE type_name set_schema
   {
     $$.val = &tree.AlterType{
       Type: $3.unresolvedObjectName(),
@@ -2192,7 +2196,7 @@ alter_type_stmt:
   }
 | ALTER TYPE error // SHOW HELP: ALTER TYPE
 
-opt_set_schema:
+set_schema:
   SET SCHEMA schema_name
   {
     $$ = $3
@@ -2216,6 +2220,16 @@ opt_add_val_placement:
 | /* EMPTY */
   {
     $$.val = (*tree.AlterTypeAddValuePlacement)(nil)
+  }
+
+opt_owned_by_list:
+  /* EMPTY */
+  {
+    $$.val = []string(nil)
+  }
+| OWNED BY role_spec_list
+  {
+    $$.val = $3.strs()
   }
 
 role_spec_list:
@@ -2249,7 +2263,7 @@ alter_aggregate_stmt:
   {
     $$.val = &tree.AlterAggregate{Name: tree.Name($3), AggSig: $5.aggregateSignature(), Owner: $7}
   }
-| ALTER AGGREGATE unrestricted_name '(' aggregate_signature ')' opt_set_schema
+| ALTER AGGREGATE unrestricted_name '(' aggregate_signature ')' set_schema
   {
     $$.val = &tree.AlterAggregate{Name: tree.Name($3), AggSig: $5.aggregateSignature(), Schema: $7}
   }
@@ -2331,7 +2345,7 @@ alter_collation_stmt:
   {
     $$.val = &tree.AlterCollation{Name: tree.Name($3), Owner: $4}
   }
-| ALTER COLLATION unrestricted_name opt_set_schema
+| ALTER COLLATION unrestricted_name set_schema
   {
     $$.val = &tree.AlterCollation{Name: tree.Name($3), Schema: $4}
   }
@@ -2345,7 +2359,7 @@ alter_conversion_stmt:
   {
     $$.val = &tree.AlterConversion{Name: tree.Name($3), Owner: $4}
   }
-| ALTER CONVERSION unrestricted_name opt_set_schema
+| ALTER CONVERSION unrestricted_name set_schema
   {
     $$.val = &tree.AlterConversion{Name: tree.Name($3), Schema: $4}
   }
@@ -6691,7 +6705,7 @@ opt_using_index_tablespace:
   {
     $$ = ""
   }
-| USING INDEX TABLESPACE name
+| USING INDEX TABLESPACE tablespace_name
   {
     $$ = $4
   }
@@ -6905,7 +6919,7 @@ key_match:
   }
 | MATCH PARTIAL
   {
-    return unimplementedWithIssueDetail(sqllex, 20305, "match partial")
+    $$.val = tree.MatchPartial
   }
 | /* EMPTY */
   {
@@ -7519,27 +7533,75 @@ alter_rename_table_stmt:
   }
 
 alter_table_set_schema_stmt:
-  ALTER TABLE relation_expr opt_set_schema
-   {
-     $$.val = &tree.AlterTableSetSchema{
-       Name: $3.unresolvedObjectName(), Schema: $4, IfExists: false,
-     }
-   }
-| ALTER TABLE IF EXISTS relation_expr opt_set_schema
+  ALTER TABLE relation_expr set_schema
+  {
+    $$.val = &tree.AlterTableSetSchema{
+      Name: $3.unresolvedObjectName(), Schema: $4, IfExists: false,
+    }
+  }
+| ALTER TABLE IF EXISTS relation_expr set_schema
   {
     $$.val = &tree.AlterTableSetSchema{
       Name: $5.unresolvedObjectName(), Schema: $6, IfExists: true,
     }
   }
 
+alter_table_all_in_tablespace_stmt:
+  ALTER TABLE ALL IN TABLESPACE tablespace_name opt_owned_by_list SET TABLESPACE tablespace_name opt_nowait
+  {
+    $$.val = &tree.AlterTableAllInTablespace{
+      Name: tree.Name($6), OwnedBy: $7.strs(), Tablespace: tree.Name($10),
+    }
+  }
+
+alter_table_parition_stmt:
+  ALTER TABLE table_name ATTACH PARTITION partition_name partition_of
+  {
+    $$.val = &tree.AlterTableSetSchema{
+      Name: $3.unresolvedObjectName(), Schema: $4, IfExists: false,
+    }
+  }
+| ALTER TABLE IF EXISTS table_name ATTACH PARTITION partition_name partition_of
+  {
+    $$.val = &tree.AlterTableSetSchema{
+      Name: $5.unresolvedObjectName(), Schema: $6, IfExists: true,
+    }
+  }
+| ALTER TABLE table_name DETACH PARTITION partition_name concurrently_or_finalize
+  {
+    $$.val = &tree.AlterTableSetSchema{
+      Name: $3.unresolvedObjectName(), Schema: $4, IfExists: false,
+    }
+  }
+| ALTER TABLE IF EXISTS table_name DETACH PARTITION partition_name concurrently_or_finalize
+  {
+    $$.val = &tree.AlterTableSetSchema{
+      Name: $5.unresolvedObjectName(), Schema: $6, IfExists: true,
+    }
+  }
+
+opt_nowait:
+  /* EMPTY */
+  {
+    $$.val = false
+  }
+| NOWAIT
+  {
+    $$.val = true
+  }
+
+concurrently_or_finalize:
+  CONCURRENTLY
+| FINALIZE
+
 alter_view_set_schema_stmt:
-  ALTER VIEW relation_expr opt_set_schema
+  ALTER VIEW relation_expr set_schema
   {
     $$.val = &tree.AlterTableSetSchema{
       Name: $3.unresolvedObjectName(), Schema: $4, IfExists: false, IsView: true,
     }
   }
-| ALTER MATERIALIZED VIEW relation_expr opt_set_schema
+| ALTER MATERIALIZED VIEW relation_expr set_schema
   {
     $$.val = &tree.AlterTableSetSchema{
       Name: $4.unresolvedObjectName(),
@@ -7549,13 +7611,13 @@ alter_view_set_schema_stmt:
       IsMaterialized: true,
     }
   }
-| ALTER VIEW IF EXISTS relation_expr opt_set_schema
+| ALTER VIEW IF EXISTS relation_expr set_schema
   {
     $$.val = &tree.AlterTableSetSchema{
       Name: $5.unresolvedObjectName(), Schema: $6, IfExists: true, IsView: true,
     }
   }
-| ALTER MATERIALIZED VIEW IF EXISTS relation_expr opt_set_schema
+| ALTER MATERIALIZED VIEW IF EXISTS relation_expr set_schema
   {
     $$.val = &tree.AlterTableSetSchema{
       Name: $6.unresolvedObjectName(),
@@ -7567,13 +7629,13 @@ alter_view_set_schema_stmt:
   }
 
 alter_sequence_set_schema_stmt:
-  ALTER SEQUENCE relation_expr opt_set_schema
+  ALTER SEQUENCE relation_expr set_schema
   {
     $$.val = &tree.AlterTableSetSchema{
       Name: $3.unresolvedObjectName(), Schema: $4, IfExists: false, IsSequence: true,
     }
   }
-| ALTER SEQUENCE IF EXISTS relation_expr opt_set_schema
+| ALTER SEQUENCE IF EXISTS relation_expr set_schema
   {
     $$.val = &tree.AlterTableSetSchema{
       Name: $5.unresolvedObjectName(), Schema: $6, IfExists: true, IsSequence: true,
@@ -8094,7 +8156,7 @@ opt_collation_version:
   }
 
 opt_tablespace:
-  TABLESPACE opt_equal non_reserved_word_or_sconst
+  TABLESPACE opt_equal tablespace_name
   {
     $$ = $3
   }
@@ -12046,6 +12108,10 @@ explain_option_name:   non_reserved_word
 
 cursor_name:           name
 
+tablespace_name:       name
+
+partition_name:        name
+
 // Names for column references.
 // Accepted patterns:
 // <colname>
@@ -12252,6 +12318,7 @@ unreserved_keyword:
 | ALWAYS
 | AT
 | ATOMIC
+| ATTACH
 | ATTRIBUTE
 | AUTOMATIC
 | BACKUP
@@ -12310,6 +12377,7 @@ unreserved_keyword:
 | DEFERRED
 | DEFINER
 | DESTINATION
+| DETACH
 | DETACHED
 | DISABLE
 | DISCARD
@@ -12339,6 +12407,7 @@ unreserved_keyword:
 | EXTERNAL
 | FILES
 | FILTER
+| FINALIZE
 | FIRST
 | FOLLOWING
 | FORCE
