@@ -34,9 +34,14 @@ import (
 
 type ReplicationTarget byte
 
+// special pseudo-queries for orchestrating replication tests
 const (
-	ReplicationTargetPrimary ReplicationTarget = iota
-	ReplicationTargetReplica
+	startReplica = "startReplica"
+	stopReplica = "stopReplica"
+	createReplicationSlot = "createReplicationSlot"
+	dropReplicationSlot = "dropReplicationSlot"
+	stopReplication = "stopReplication"
+	startReplication = "startReplication"
 )
 
 type ReplicationTest struct {
@@ -63,6 +68,9 @@ var replicationTests = []ReplicationTest{
 	{
 		Name: "simple replication, strings and integers",
 		SetUpScript: []string{
+			dropReplicationSlot,
+			createReplicationSlot,
+			startReplication,
 			"/* replica */ drop table if exists test",
 			"/* replica */ create table test (id INT primary key, name varchar(100))",
 			"drop table if exists test",
@@ -94,6 +102,9 @@ var replicationTests = []ReplicationTest{
 	{
 		Name: "all supported types",
 		SetUpScript: []string{
+			dropReplicationSlot,
+			createReplicationSlot,
+			startReplication,
 			"/* replica */ drop table if exists test",
 			"/* replica */ create table test (id INT primary key, name varchar(100), u_id uuid, age INT, height FLOAT, birth_date DATE, birth_timestamp TIMESTAMP)",
 			"drop table if exists test",
@@ -117,6 +128,9 @@ var replicationTests = []ReplicationTest{
 	{
 		Name: "concurrent writes",
 		SetUpScript: []string{
+			dropReplicationSlot,
+			createReplicationSlot,
+			startReplication,
 			"/* replica */ drop table if exists test",
 			"/* replica */ create table test (id INT primary key, name varchar(100))",
 			"drop table if exists test",
@@ -228,48 +242,67 @@ func RunReplicationScript(t *testing.T, script ReplicationTest) {
 	
 	r, err := logrepl.NewLogicalReplicator(primaryDns, replicaDns)
 	require.NoError(t, err)
-
-	require.NoError(t, r.SetupReplication(slotName))
-	require.NoError(t, r.DropReplicationSlot(slotName))
-	require.NoError(t, r.CreateReplicationSlotIfNecessary(slotName))
-
-	go func() {
-		err := r.StartReplication(slotName)
-		require.NoError(t, err)
-	}()
-	defer r.Stop()
-
-	// give replication time to begin before running scripts
-	time.Sleep(1 * time.Second)
-
+	
 	ctx = context.Background()
-	primaryConn, err := pgx.Connect(ctx, primaryDns)
-	require.NoError(t, err)
-	defer primaryConn.Close(ctx)
-
 	t.Run(script.Name, func(t *testing.T) {
-		runReplicationScript(ctx, t, script, primaryConn, replicaConn, primaryDns)
+		runReplicationScript(ctx, t, script, r, replicaConn, primaryDns)
 	})
 }
 
 // runReplicationScript runs the script given on the postgres connection provided
 func runReplicationScript(
-	ctx context.Context,
-	t *testing.T,
-	script ReplicationTest,
-	primaryConn, replicaConn *pgx.Conn,
-	primaryDns string,
+		ctx context.Context,
+		t *testing.T,
+		script ReplicationTest,
+		r *logrepl.LogicalReplicator,
+		replicaConn *pgx.Conn,
+		primaryDns string,
 ) {
 	if script.Skip {
 		t.Skip("Skip has been set in the script")
 	}
 
-	primaryConnections := map[string]*pgx.Conn{
-		"a": primaryConn,
-	}
+	primaryConnections := make(map[string]*pgx.Conn)
+	defer func() {
+		for _, conn := range primaryConnections {
+			if conn != nil {
+				conn.Close(ctx)
+			}
+		}
+	}()
+
+	// TODO: this shouldn't happen on every test
+	require.NoError(t, r.SetupReplication(slotName))
+	defer r.Stop()
+
+	// give replication time to begin before running scripts
+	time.Sleep(1 * time.Second)
 
 	// Run the setup
 	for _, query := range script.SetUpScript {
+		// handle logic for special pseudo-queries
+		switch query {
+		case startReplica:
+			continue
+		case stopReplica:
+			continue
+		case createReplicationSlot:
+			require.NoError(t, r.CreateReplicationSlotIfNecessary(slotName))
+			continue
+		case dropReplicationSlot:
+			require.NoError(t, r.DropReplicationSlot(slotName))
+			continue
+		case startReplication:
+			go func() {
+				err := r.StartReplication(slotName)
+				require.NoError(t, err)
+			}()
+			continue
+		case stopReplication:
+			r.Stop()
+			continue
+		}
+		
 		target, client := clientSpecFromQueryComment(query)
 		var conn *pgx.Conn
 		switch target {
@@ -299,6 +332,29 @@ func runReplicationScript(
 		t.Run(assertion.Query, func(t *testing.T) {
 			if assertion.Skip {
 				t.Skip("Skip has been set in the assertion")
+			}
+
+			// handle logic for special pseudo-queries
+			switch assertion.Query {
+			case startReplica:
+				return
+			case stopReplica:
+				return
+			case createReplicationSlot:
+				require.NoError(t, r.CreateReplicationSlotIfNecessary(slotName))
+				return
+			case dropReplicationSlot:
+				require.NoError(t, r.DropReplicationSlot(slotName))
+				return
+			case startReplication:
+				go func() {
+					err := r.StartReplication(slotName)
+					require.NoError(t, err)
+				}()
+				return
+			case stopReplication:
+				r.Stop()
+				return
 			}
 
 			target, client := clientSpecFromQueryComment(assertion.Query)
