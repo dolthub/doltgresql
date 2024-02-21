@@ -121,6 +121,8 @@ func (l *IndexElemList) Format(ctx *FmtCtx) {
 	}
 }
 
+var _ Statement = &CreateIndex{}
+
 // CreateIndex represents a CREATE INDEX statement.
 type CreateIndex struct {
 	Name          Name

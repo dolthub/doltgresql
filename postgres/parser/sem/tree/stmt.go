@@ -257,6 +257,14 @@ func (*AlterTableAllInTablespace) StatementTag() string { return "ALTER TABLE AL
 func (*AlterTableAllInTablespace) hiddenFromShowQueries() {}
 
 // StatementType implements the Statement interface.
+func (*AlterTablePartition) StatementType() StatementType { return DDL }
+
+// StatementTag returns a short string identifying the type of statement.
+func (*AlterTablePartition) StatementTag() string { return "ALTER TABLE ... PARTITION" }
+
+func (*AlterTablePartition) hiddenFromShowQueries() {}
+
+// StatementType implements the Statement interface.
 func (*AlterSchema) StatementType() StatementType { return DDL }
 
 // StatementTag implements the Statement interface.
@@ -1084,6 +1092,7 @@ func (n *AlterSchema) String() string                    { return AsString(n) }
 func (n *AlterTable) String() string                     { return AsString(n) }
 func (n *AlterTableAllInTablespace) String() string      { return AsString(n) }
 func (n *AlterTableSetSchema) String() string            { return AsString(n) }
+func (n *AlterTablePartition) String() string            { return AsString(n) }
 func (n *AlterType) String() string                      { return AsString(n) }
 func (n *AlterRole) String() string                      { return AsString(n) }
 func (n *AlterSequence) String() string                  { return AsString(n) }

@@ -55,6 +55,8 @@ const (
 	Domain
 )
 
+var _ Statement = &CreateType{}
+
 // CreateType represents a CREATE TYPE statement.
 type CreateType struct {
 	TypeName *UnresolvedObjectName

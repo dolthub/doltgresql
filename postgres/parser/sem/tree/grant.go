@@ -40,6 +40,8 @@ import (
 	"github.com/dolthub/doltgresql/postgres/parser/privilege"
 )
 
+var _ Statement = &Grant{}
+
 // Grant represents a GRANT statement.
 type Grant struct {
 	Privileges      privilege.List
@@ -192,6 +194,8 @@ func (tl *TargetList) Format(ctx *FmtCtx) {
 		ctx.WriteString(strings.Join(tl.Names, ", "))
 	}
 }
+
+var _ Statement = &GrantRole{}
 
 // GrantRole represents a GRANT <role> statement.
 type GrantRole struct {

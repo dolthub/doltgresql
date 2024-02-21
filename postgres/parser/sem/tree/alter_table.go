@@ -145,7 +145,6 @@ func (*AlterTableDropExprIden) alterTableCmd()         {}
 func (*AlterTableInherit) alterTableCmd()              {}
 func (*AlterTableOfType) alterTableCmd()               {}
 func (*AlterTableOwner) alterTableCmd()                {}
-func (*AlterTablePartition) alterTableCmd()            {}
 func (*AlterTableRenameColumn) alterTableCmd()         {}
 func (*AlterTableRenameConstraint) alterTableCmd()     {}
 func (*AlterTableReplicaIdentity) alterTableCmd()      {}
@@ -178,7 +177,6 @@ var _ AlterTableCmd = &AlterTableDropExprIden{}
 var _ AlterTableCmd = &AlterTableInherit{}
 var _ AlterTableCmd = &AlterTableOfType{}
 var _ AlterTableCmd = &AlterTableOwner{}
-var _ AlterTableCmd = &AlterTablePartition{}
 var _ AlterTableCmd = &AlterTableRenameColumn{}
 var _ AlterTableCmd = &AlterTableRenameConstraint{}
 var _ AlterTableCmd = &AlterTableReplicaIdentity{}
@@ -574,35 +572,6 @@ const (
 	DetachPartitionFinalize
 )
 
-// AlterTablePartition represents an ALTER TABLE { ATTACH | DETACH } PARTITION ...
-// command.
-type AlterTablePartition struct {
-	Partition  Name
-	Spec       PartitionBoundSpec
-	IsDetach   bool
-	DetachType DetachPartition
-}
-
-// Format implements the NodeFormatter interface.
-func (node *AlterTablePartition) Format(ctx *FmtCtx) {
-	if node.IsDetach {
-		ctx.WriteString(" DETACH PARTITION ")
-		ctx.FormatNode(&node.Partition)
-		switch node.DetachType {
-		case DetachPartitionNone:
-		case DetachPartitionConcurrently:
-			ctx.WriteString(" CONCURRENTLY")
-		case DetachPartitionFinalize:
-			ctx.WriteString(" FINALIZE")
-		}
-	} else {
-		ctx.WriteString(" ATTACH PARTITION ")
-		ctx.FormatNode(&node.Partition)
-		ctx.WriteByte(' ')
-		ctx.FormatNode(&node.Spec)
-	}
-}
-
 // AlterTableRenameColumn represents an ALTER TABLE RENAME [COLUMN] command.
 type AlterTableRenameColumn struct {
 	Column  Name
@@ -967,5 +936,43 @@ func (node *AlterTableAllInTablespace) Format(ctx *FmtCtx) {
 	ctx.FormatNode(&node.Tablespace)
 	if node.NoWait {
 		ctx.WriteString(" NOWAIT")
+	}
+}
+
+var _ Statement = &AlterTablePartition{}
+
+// AlterTablePartition represents an ALTER TABLE { ATTACH | DETACH } PARTITION ...
+// command.
+type AlterTablePartition struct {
+	Table      *UnresolvedObjectName
+	IfExists   bool
+	Partition  Name
+	Spec       PartitionBoundSpec
+	IsDetach   bool
+	DetachType DetachPartition
+}
+
+// Format implements the NodeFormatter interface.
+func (node *AlterTablePartition) Format(ctx *FmtCtx) {
+	ctx.WriteString("ALTER TABLE ")
+	if node.IfExists {
+		ctx.WriteString("IF EXISTS ")
+	}
+	node.Table.Format(ctx)
+	if node.IsDetach {
+		ctx.WriteString(" DETACH PARTITION ")
+		ctx.FormatNode(&node.Partition)
+		switch node.DetachType {
+		case DetachPartitionNone:
+		case DetachPartitionConcurrently:
+			ctx.WriteString(" CONCURRENTLY")
+		case DetachPartitionFinalize:
+			ctx.WriteString(" FINALIZE")
+		}
+	} else {
+		ctx.WriteString(" ATTACH PARTITION ")
+		ctx.FormatNode(&node.Partition)
+		ctx.WriteByte(' ')
+		ctx.FormatNode(&node.Spec)
 	}
 }

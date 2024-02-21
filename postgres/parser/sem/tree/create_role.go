@@ -33,6 +33,8 @@
 
 package tree
 
+var _ Statement = &CreateRole{}
+
 // CreateRole represents a CREATE ROLE statement.
 type CreateRole struct {
 	Name        Expr

@@ -33,6 +33,8 @@
 
 package tree
 
+var _ Statement = &CreateSchema{}
+
 // CreateSchema represents a CREATE SCHEMA statement.
 type CreateSchema struct {
 	IfNotExists    bool

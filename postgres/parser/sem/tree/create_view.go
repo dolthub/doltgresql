@@ -33,6 +33,8 @@
 
 package tree
 
+var _ Statement = &CreateView{}
+
 // CreateView represents a CREATE VIEW statement.
 type CreateView struct {
 	Name         TableName
