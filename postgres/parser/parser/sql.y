@@ -12522,6 +12522,7 @@ unreserved_keyword:
 | NULLS
 | IGNORE_FOREIGN_KEYS
 | OBJECT
+| OF
 | OFF
 | OID
 | OIDS
@@ -12783,7 +12784,6 @@ type_func_name_no_crdb_extra_keyword:
 | NATURAL
 | NONE
 | NOTNULL
-| OF
 | OUTER
 | OVERLAPS
 | RIGHT

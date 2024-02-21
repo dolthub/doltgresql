@@ -67,63 +67,70 @@ type AlterTableCmd interface {
 func (*AlterTableAddColumn) alterTableCmd()            {}
 func (*AlterTableAddConstraint) alterTableCmd()        {}
 func (*AlterTableAlterColumnType) alterTableCmd()      {}
+func (*AlterTableAlterConstraint) alterTableCmd()      {}
+func (*AlterTableCluster) alterTableCmd()              {}
+func (*AlterTableColSetStorage) alterTableCmd()        {}
 func (*AlterTableComputed) alterTableCmd()             {}
+func (*AlterTableConstraintUsingIndex) alterTableCmd() {}
 func (*AlterTableDropColumn) alterTableCmd()           {}
 func (*AlterTableDropConstraint) alterTableCmd()       {}
 func (*AlterTableDropNotNull) alterTableCmd()          {}
 func (*AlterTableDropExprIden) alterTableCmd()         {}
-func (*AlterTableSetAttribution) alterTableCmd()       {}
-func (*AlterTableColSetStorage) alterTableCmd()        {}
-func (*AlterTableSetStatistics) alterTableCmd()        {}
-func (*AlterTableSetCompression) alterTableCmd()       {}
-func (*AlterTableSetNotNull) alterTableCmd()           {}
-func (*AlterTableRenameColumn) alterTableCmd()         {}
-func (*AlterTableRenameConstraint) alterTableCmd()     {}
-func (*AlterTableSetDefault) alterTableCmd()           {}
-func (*AlterTableValidateConstraint) alterTableCmd()   {}
-func (*AlterTablePartition) alterTableCmd()            {}
-func (*AlterTableOwner) alterTableCmd()                {}
-func (*AlterTableConstraintUsingIndex) alterTableCmd() {}
-func (*AlterTableAlterConstraint) alterTableCmd()      {}
-func (*AlterTableTrigger) alterTableCmd()              {}
-func (*AlterTableRule) alterTableCmd()                 {}
-func (*AlterTableReplicaIdentity) alterTableCmd()      {}
-func (*AlterTableRowLevelSecurity) alterTableCmd()     {}
-func (*AlterTableCluster) alterTableCmd()              {}
-func (*AlterTableSetAccessMethod) alterTableCmd()      {}
-func (*AlterTableSetTablespace) alterTableCmd()        {}
-func (*AlterTableSetLog) alterTableCmd()               {}
-func (*AlterTableSetStorage) alterTableCmd()           {}
 func (*AlterTableInherit) alterTableCmd()              {}
 func (*AlterTableOfType) alterTableCmd()               {}
+func (*AlterTableOwner) alterTableCmd()                {}
+func (*AlterTablePartition) alterTableCmd()            {}
+func (*AlterTableRenameColumn) alterTableCmd()         {}
+func (*AlterTableRenameConstraint) alterTableCmd()     {}
+func (*AlterTableReplicaIdentity) alterTableCmd()      {}
+func (*AlterTableRowLevelSecurity) alterTableCmd()     {}
+func (*AlterTableRule) alterTableCmd()                 {}
+func (*AlterTableSetAccessMethod) alterTableCmd()      {}
+func (*AlterTableSetAttribution) alterTableCmd()       {}
+func (*AlterTableSetCompression) alterTableCmd()       {}
+func (*AlterTableSetDefault) alterTableCmd()           {}
+func (*AlterTableSetLog) alterTableCmd()               {}
+func (*AlterTableSetNotNull) alterTableCmd()           {}
+func (*AlterTableSetSchema) alterTableCmd()            {}
+func (*AlterTableSetStatistics) alterTableCmd()        {}
+func (*AlterTableSetStorage) alterTableCmd()           {}
+func (*AlterTableSetTablespace) alterTableCmd()        {}
+func (*AlterTableTrigger) alterTableCmd()              {}
+func (*AlterTableValidateConstraint) alterTableCmd()   {}
 
 var _ AlterTableCmd = &AlterTableAddColumn{}
 var _ AlterTableCmd = &AlterTableAddConstraint{}
 var _ AlterTableCmd = &AlterTableAlterColumnType{}
+var _ AlterTableCmd = &AlterTableAlterConstraint{}
+var _ AlterTableCmd = &AlterTableCluster{}
+var _ AlterTableCmd = &AlterTableColSetStorage{}
+var _ AlterTableCmd = &AlterTableComputed{}
+var _ AlterTableCmd = &AlterTableConstraintUsingIndex{}
 var _ AlterTableCmd = &AlterTableDropColumn{}
 var _ AlterTableCmd = &AlterTableDropConstraint{}
 var _ AlterTableCmd = &AlterTableDropNotNull{}
 var _ AlterTableCmd = &AlterTableDropExprIden{}
-var _ AlterTableCmd = &AlterTableSetNotNull{}
-var _ AlterTableCmd = &AlterTableRenameColumn{}
-var _ AlterTableCmd = &AlterTableRenameConstraint{}
-var _ AlterTableCmd = &AlterTableSetDefault{}
-var _ AlterTableCmd = &AlterTableValidateConstraint{}
-var _ AlterTableCmd = &AlterTablePartition{}
-var _ AlterTableCmd = &AlterTableOwner{}
-var _ AlterTableCmd = &AlterTableConstraintUsingIndex{}
-var _ AlterTableCmd = &AlterTableAlterConstraint{}
-var _ AlterTableCmd = &AlterTableTrigger{}
-var _ AlterTableCmd = &AlterTableRule{}
-var _ AlterTableCmd = &AlterTableReplicaIdentity{}
-var _ AlterTableCmd = &AlterTableRowLevelSecurity{}
-var _ AlterTableCmd = &AlterTableCluster{}
-var _ AlterTableCmd = &AlterTableSetAccessMethod{}
-var _ AlterTableCmd = &AlterTableSetTablespace{}
-var _ AlterTableCmd = &AlterTableSetLog{}
-var _ AlterTableCmd = &AlterTableSetStorage{}
 var _ AlterTableCmd = &AlterTableInherit{}
 var _ AlterTableCmd = &AlterTableOfType{}
+var _ AlterTableCmd = &AlterTableOwner{}
+var _ AlterTableCmd = &AlterTablePartition{}
+var _ AlterTableCmd = &AlterTableRenameColumn{}
+var _ AlterTableCmd = &AlterTableRenameConstraint{}
+var _ AlterTableCmd = &AlterTableReplicaIdentity{}
+var _ AlterTableCmd = &AlterTableRowLevelSecurity{}
+var _ AlterTableCmd = &AlterTableRule{}
+var _ AlterTableCmd = &AlterTableSetAccessMethod{}
+var _ AlterTableCmd = &AlterTableSetAttribution{}
+var _ AlterTableCmd = &AlterTableSetCompression{}
+var _ AlterTableCmd = &AlterTableSetDefault{}
+var _ AlterTableCmd = &AlterTableSetLog{}
+var _ AlterTableCmd = &AlterTableSetNotNull{}
+var _ AlterTableCmd = &AlterTableSetSchema{}
+var _ AlterTableCmd = &AlterTableSetStatistics{}
+var _ AlterTableCmd = &AlterTableSetStorage{}
+var _ AlterTableCmd = &AlterTableSetTablespace{}
+var _ AlterTableCmd = &AlterTableTrigger{}
+var _ AlterTableCmd = &AlterTableValidateConstraint{}
 
 // ColumnMutationCmd is the subset of AlterTableCmds that modify an
 // existing column.

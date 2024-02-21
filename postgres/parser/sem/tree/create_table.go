@@ -230,6 +230,7 @@ func NewColumnTableDef(
 				ConstraintName: c.Name,
 			})
 		case *ColumnFKConstraint:
+			// TODO: this check needs to be done after parsing
 			//if d.HasFKConstraint() {
 			//	return nil, pgerror.Newf(pgcode.InvalidTableDefinition,
 			//		"multiple foreign key constraints specified for column %q", name)
