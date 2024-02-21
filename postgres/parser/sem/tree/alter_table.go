@@ -62,28 +62,38 @@ type AlterTableCmd interface {
 	alterTableCmd()
 }
 
-func (*AlterTableAddColumn) alterTableCmd()          {}
-func (*AlterTableAddConstraint) alterTableCmd()      {}
-func (*AlterTableAlterColumnType) alterTableCmd()    {}
-func (*AlterTableComputed) alterTableCmd()           {}
-func (*AlterTableAlterPrimaryKey) alterTableCmd()    {}
-func (*AlterTableDropColumn) alterTableCmd()         {}
-func (*AlterTableDropConstraint) alterTableCmd()     {}
-func (*AlterTableDropNotNull) alterTableCmd()        {}
-func (*AlterTableDropExprIden) alterTableCmd()       {}
-func (*AlterTableSetAttribution) alterTableCmd()     {}
-func (*AlterTableSetStorage) alterTableCmd()         {}
-func (*AlterTableSetStatistics) alterTableCmd()      {}
-func (*AlterTableSetCompression) alterTableCmd()     {}
-func (*AlterTableSetNotNull) alterTableCmd()         {}
-func (*AlterTableRenameColumn) alterTableCmd()       {}
-func (*AlterTableRenameConstraint) alterTableCmd()   {}
-func (*AlterTableSetAudit) alterTableCmd()           {}
-func (*AlterTableSetDefault) alterTableCmd()         {}
-func (*AlterTableValidateConstraint) alterTableCmd() {}
-func (*AlterTablePartitionBy) alterTableCmd()        {}
-func (*AlterTableInjectStats) alterTableCmd()        {}
-func (*AlterTableOwner) alterTableCmd()              {}
+func (*AlterTableAddColumn) alterTableCmd()            {}
+func (*AlterTableAddConstraint) alterTableCmd()        {}
+func (*AlterTableAlterColumnType) alterTableCmd()      {}
+func (*AlterTableComputed) alterTableCmd()             {}
+func (*AlterTableDropColumn) alterTableCmd()           {}
+func (*AlterTableDropConstraint) alterTableCmd()       {}
+func (*AlterTableDropNotNull) alterTableCmd()          {}
+func (*AlterTableDropExprIden) alterTableCmd()         {}
+func (*AlterTableSetAttribution) alterTableCmd()       {}
+func (*AlterTableColSetStorage) alterTableCmd()        {}
+func (*AlterTableSetStatistics) alterTableCmd()        {}
+func (*AlterTableSetCompression) alterTableCmd()       {}
+func (*AlterTableSetNotNull) alterTableCmd()           {}
+func (*AlterTableRenameColumn) alterTableCmd()         {}
+func (*AlterTableRenameConstraint) alterTableCmd()     {}
+func (*AlterTableSetDefault) alterTableCmd()           {}
+func (*AlterTableValidateConstraint) alterTableCmd()   {}
+func (*AlterTablePartitionBy) alterTableCmd()          {}
+func (*AlterTableOwner) alterTableCmd()                {}
+func (*AlterTableConstraintUsingIndex) alterTableCmd() {}
+func (*AlterTableAlterConstraint) alterTableCmd()      {}
+func (*AlterTableTrigger) alterTableCmd()              {}
+func (*AlterTableRule) alterTableCmd()                 {}
+func (*AlterTableReplicaIdentity) alterTableCmd()      {}
+func (*AlterTableRowLevelSecurity) alterTableCmd()     {}
+func (*AlterTableCluster) alterTableCmd()              {}
+func (*AlterTableSetAccessMethod) alterTableCmd()      {}
+func (*AlterTableSetTablespace) alterTableCmd()        {}
+func (*AlterTableSetLog) alterTableCmd()               {}
+func (*AlterTableSetStorage) alterTableCmd()           {}
+func (*AlterTableInherit) alterTableCmd()              {}
+func (*AlterTableOfType) alterTableCmd()               {}
 
 var _ AlterTableCmd = &AlterTableAddColumn{}
 var _ AlterTableCmd = &AlterTableAddConstraint{}
@@ -95,12 +105,23 @@ var _ AlterTableCmd = &AlterTableDropExprIden{}
 var _ AlterTableCmd = &AlterTableSetNotNull{}
 var _ AlterTableCmd = &AlterTableRenameColumn{}
 var _ AlterTableCmd = &AlterTableRenameConstraint{}
-var _ AlterTableCmd = &AlterTableSetAudit{}
 var _ AlterTableCmd = &AlterTableSetDefault{}
 var _ AlterTableCmd = &AlterTableValidateConstraint{}
 var _ AlterTableCmd = &AlterTablePartitionBy{}
-var _ AlterTableCmd = &AlterTableInjectStats{}
 var _ AlterTableCmd = &AlterTableOwner{}
+var _ AlterTableCmd = &AlterTableConstraintUsingIndex{}
+var _ AlterTableCmd = &AlterTableAlterConstraint{}
+var _ AlterTableCmd = &AlterTableTrigger{}
+var _ AlterTableCmd = &AlterTableRule{}
+var _ AlterTableCmd = &AlterTableReplicaIdentity{}
+var _ AlterTableCmd = &AlterTableRowLevelSecurity{}
+var _ AlterTableCmd = &AlterTableCluster{}
+var _ AlterTableCmd = &AlterTableSetAccessMethod{}
+var _ AlterTableCmd = &AlterTableSetTablespace{}
+var _ AlterTableCmd = &AlterTableSetLog{}
+var _ AlterTableCmd = &AlterTableSetStorage{}
+var _ AlterTableCmd = &AlterTableInherit{}
+var _ AlterTableCmd = &AlterTableOfType{}
 
 // ColumnMutationCmd is the subset of AlterTableCmds that modify an
 // existing column.
@@ -213,6 +234,71 @@ func (node *AlterTableAddConstraint) Format(ctx *FmtCtx) {
 	}
 }
 
+// AlterTableConstraintUsingIndex represents an ALTER TABLE ADD table_constraint USING INDEX command.
+type AlterTableConstraintUsingIndex struct {
+	Constraint Name
+	IsUnique   bool
+	Index      Name
+	Deferrable DeferrableMode
+	Initially  InitiallyMode
+}
+
+// Format implements the NodeFormatter interface.
+func (node *AlterTableConstraintUsingIndex) Format(ctx *FmtCtx) {
+	if node.Constraint != "" {
+		ctx.WriteString(" CONSTRAINT")
+		ctx.FormatNode(&node.Constraint)
+	}
+	if node.IsUnique {
+		ctx.WriteString(" UNIQUE")
+	} else {
+		ctx.WriteString(" PRIMARY KEY")
+	}
+	ctx.WriteString(" USING INDEX")
+	ctx.FormatNode(&node.Index)
+	switch node.Deferrable {
+	case Deferrable:
+		ctx.WriteString(" DEFERRABLE")
+		switch node.Initially {
+		case InitiallyImmediate:
+			ctx.WriteString(" INITIALLY IMMEDIATE")
+		case InitiallyDeferred:
+			ctx.WriteString(" INITIALLY DEFERRED")
+		default:
+		}
+	case NotDeferrable:
+		ctx.WriteString(" NOT DEFERRABLE")
+	default:
+	}
+}
+
+// AlterTableAlterConstraint represents an ALTER CONSTRAINT command.
+type AlterTableAlterConstraint struct {
+	Constraint Name
+	Deferrable DeferrableMode
+	Initially  InitiallyMode
+}
+
+// Format implements the NodeFormatter interface.
+func (node *AlterTableAlterConstraint) Format(ctx *FmtCtx) {
+	ctx.WriteString(" ALTER CONSTRAINT ")
+	ctx.FormatNode(&node.Constraint)
+	switch node.Deferrable {
+	case Deferrable:
+		ctx.WriteString(" DEFERRABLE")
+		switch node.Initially {
+		case InitiallyImmediate:
+			ctx.WriteString(" INITIALLY IMMEDIATE")
+		case InitiallyDeferred:
+			ctx.WriteString(" INITIALLY DEFERRED")
+		default:
+		}
+	case NotDeferrable:
+		ctx.WriteString(" NOT DEFERRABLE")
+	default:
+	}
+}
+
 // AlterTableAlterColumnType represents an ALTER TABLE ALTER COLUMN TYPE command.
 type AlterTableAlterColumnType struct {
 	Collation string
@@ -289,18 +375,6 @@ func (node *AlterTableComputed) Format(ctx *FmtCtx) {
 // GetColumn implements the ColumnMutationCmd interface.
 func (node *AlterTableComputed) GetColumn() Name {
 	return node.Column
-}
-
-// AlterTableAlterPrimaryKey represents an ALTER TABLE ALTER PRIMARY KEY command.
-type AlterTableAlterPrimaryKey struct {
-	Columns IndexElemList
-}
-
-// Format implements the NodeFormatter interface.
-func (node *AlterTableAlterPrimaryKey) Format(ctx *FmtCtx) {
-	ctx.WriteString(" ALTER PRIMARY KEY USING COLUMNS (")
-	ctx.FormatNode(&node.Columns)
-	ctx.WriteString(")")
 }
 
 // AlterTableDropColumn represents a DROP COLUMN command.
@@ -501,20 +575,20 @@ const (
 	StorageMain
 )
 
-// AlterTableSetStorage represents an ALTER COLUMN SET STORAGE command
+// AlterTableColSetStorage represents an ALTER COLUMN SET STORAGE command
 // to remove the computed-ness from a column.
-type AlterTableSetStorage struct {
+type AlterTableColSetStorage struct {
 	Column Name
 	Type   StorageType
 }
 
 // GetColumn implements the ColumnMutationCmd interface.
-func (node *AlterTableSetStorage) GetColumn() Name {
+func (node *AlterTableColSetStorage) GetColumn() Name {
 	return node.Column
 }
 
 // Format implements the NodeFormatter interface.
-func (node *AlterTableSetStorage) Format(ctx *FmtCtx) {
+func (node *AlterTableColSetStorage) Format(ctx *FmtCtx) {
 	ctx.WriteString(" ALTER COLUMN ")
 	ctx.FormatNode(&node.Column)
 	ctx.WriteString(" SET STORAGE ")
@@ -581,47 +655,6 @@ func (node *AlterTablePartitionBy) Format(ctx *FmtCtx) {
 	ctx.FormatNode(node.PartitionBy)
 }
 
-// AuditMode represents a table audit mode
-type AuditMode int
-
-const (
-	// AuditModeDisable is the default mode - no audit.
-	AuditModeDisable AuditMode = iota
-	// AuditModeReadWrite enables audit on read or write statements.
-	AuditModeReadWrite
-)
-
-var auditModeName = [...]string{
-	AuditModeDisable:   "OFF",
-	AuditModeReadWrite: "READ WRITE",
-}
-
-func (m AuditMode) String() string {
-	return auditModeName[m]
-}
-
-// AlterTableSetAudit represents an ALTER TABLE AUDIT SET statement.
-type AlterTableSetAudit struct {
-	Mode AuditMode
-}
-
-// Format implements the NodeFormatter interface.
-func (node *AlterTableSetAudit) Format(ctx *FmtCtx) {
-	ctx.WriteString(" EXPERIMENTAL_AUDIT SET ")
-	ctx.WriteString(node.Mode.String())
-}
-
-// AlterTableInjectStats represents an ALTER TABLE INJECT STATISTICS statement.
-type AlterTableInjectStats struct {
-	Stats Expr
-}
-
-// Format implements the NodeFormatter interface.
-func (node *AlterTableInjectStats) Format(ctx *FmtCtx) {
-	ctx.WriteString(" INJECT STATISTICS ")
-	ctx.FormatNode(node.Stats)
-}
-
 // AlterTableSetSchema represents an ALTER TABLE SET SCHEMA command.
 type AlterTableSetSchema struct {
 	Name           *UnresolvedObjectName
@@ -653,6 +686,186 @@ func (node *AlterTableSetSchema) Format(ctx *FmtCtx) {
 	ctx.WriteString(node.Schema)
 }
 
+// AlterTableTrigger represents an ALTER TABLE {DISABLE|ENABLE} TRIGGER command.
+type AlterTableTrigger struct {
+	Disable   bool
+	Trigger   string
+	IsReplica bool
+	IsAlways  bool
+}
+
+// Format implements the NodeFormatter interface.
+func (node *AlterTableTrigger) Format(ctx *FmtCtx) {
+	if node.Disable {
+		ctx.WriteString(" DISABLE")
+	} else {
+		ctx.WriteString(" ENABLE")
+	}
+	if node.IsReplica {
+		ctx.WriteString(" REPLICA")
+	} else if node.IsAlways {
+		ctx.WriteString(" ALWAYS")
+	}
+	ctx.WriteString(" TRIGGER")
+	ctx.FormatNameP(&node.Trigger)
+}
+
+// AlterTableRule represents an ALTER TABLE {DISABLE|ENABLE} RULE command.
+type AlterTableRule struct {
+	Disable   bool
+	Rule      string
+	IsReplica bool
+	IsAlways  bool
+}
+
+// Format implements the NodeFormatter interface.
+func (node *AlterTableRule) Format(ctx *FmtCtx) {
+	if node.Disable {
+		ctx.WriteString(" DISABLE")
+	} else {
+		ctx.WriteString(" ENABLE")
+	}
+	if node.IsReplica {
+		ctx.WriteString(" REPLICA")
+	} else if node.IsAlways {
+		ctx.WriteString(" ALWAYS")
+	}
+	ctx.WriteString(" RULE")
+	ctx.FormatNameP(&node.Rule)
+}
+
+type RowLevelSecurity int
+
+const (
+	RowLevelSecurityDisable RowLevelSecurity = iota
+	RowLevelSecurityEnable
+	RowLevelSecurityForce
+	RowLevelSecurityNoForce
+)
+
+// AlterTableRowLevelSecurity represents an ALTER TABLE ... ROW LEVEL SECURITY command.
+type AlterTableRowLevelSecurity struct {
+	Type RowLevelSecurity
+}
+
+// Format implements the NodeFormatter interface.
+func (node *AlterTableRowLevelSecurity) Format(ctx *FmtCtx) {
+	switch node.Type {
+	case RowLevelSecurityDisable:
+		ctx.WriteString(" DISABLE")
+	case RowLevelSecurityEnable:
+		ctx.WriteString(" ENABLE")
+	case RowLevelSecurityForce:
+		ctx.WriteString(" FORCE")
+	case RowLevelSecurityNoForce:
+		ctx.WriteString(" NO FORCE")
+	}
+	ctx.WriteString(" ROW LEVEL SECURITY")
+}
+
+// AlterTableCluster represents an ALTER TABLE { CLUSTER ON ... | WITHOUT CLUSTER } command.
+type AlterTableCluster struct {
+	OnIndex Name
+	Without bool
+}
+
+// Format implements the NodeFormatter interface.
+func (node *AlterTableCluster) Format(ctx *FmtCtx) {
+	if node.Without {
+		ctx.WriteString(" SET WITHOUT CLUSTER")
+	} else {
+		ctx.WriteString(" CLUSTER ON ")
+		ctx.FormatNode(&node.OnIndex)
+	}
+}
+
+// AlterTableSetAccessMethod represents an ALTER TABLE SET ACCESS METHOD ... command.
+type AlterTableSetAccessMethod struct {
+	Method string
+}
+
+// Format implements the NodeFormatter interface.
+func (node *AlterTableSetAccessMethod) Format(ctx *FmtCtx) {
+	ctx.WriteString(" SET ACCESS METHOD ")
+	ctx.WriteString(node.Method)
+}
+
+// AlterTableSetTablespace represents an ALTER TABLE SET TABLESPACE ... command.
+type AlterTableSetTablespace struct {
+	Tablespace string
+}
+
+// Format implements the NodeFormatter interface.
+func (node *AlterTableSetTablespace) Format(ctx *FmtCtx) {
+	ctx.WriteString(" SET TABLESPACE ")
+	ctx.WriteString(node.Tablespace)
+}
+
+// AlterTableSetLog represents an ALTER TABLE SET { LOGGED | UNLOGGED }command.
+type AlterTableSetLog struct {
+	Logged bool
+}
+
+// Format implements the NodeFormatter interface.
+func (node *AlterTableSetLog) Format(ctx *FmtCtx) {
+	ctx.WriteString(" SET ")
+	if node.Logged {
+		ctx.WriteString("LOGGED")
+	} else {
+		ctx.WriteString("UNLOGGED")
+	}
+}
+
+// AlterTableSetStorage represents an ALTER TABLE { SET | RESET } ( ... ) command.
+type AlterTableSetStorage struct {
+	Params  StorageParams
+	IsReset bool
+}
+
+// Format implements the NodeFormatter interface.
+func (node *AlterTableSetStorage) Format(ctx *FmtCtx) {
+	ctx.WriteString(" SET TABLESPACE")
+	if node.IsReset {
+		ctx.WriteString(" RESET ( ")
+	} else {
+		ctx.WriteString(" SET ( ")
+	}
+	ctx.FormatNode(&node.Params)
+	ctx.WriteString(" )")
+}
+
+// AlterTableInherit represents an ALTER TABLE { INHERIT | NO INHERIT } ... command.
+type AlterTableInherit struct {
+	Inherit bool
+	Table   TableName
+}
+
+// Format implements the NodeFormatter interface.
+func (node *AlterTableInherit) Format(ctx *FmtCtx) {
+	if node.Inherit {
+		ctx.WriteString(" INHERIT")
+	} else {
+		ctx.WriteString(" NO INHERIT")
+	}
+	ctx.FormatNode(&node.Table)
+}
+
+// AlterTableOfType represents an ALTER TABLE { OF type_name | NOT OF } command.
+type AlterTableOfType struct {
+	Type  ResolvableTypeReference
+	NotOf bool
+}
+
+// Format implements the NodeFormatter interface.
+func (node *AlterTableOfType) Format(ctx *FmtCtx) {
+	if node.NotOf {
+		ctx.WriteString(" NOT OF")
+	} else {
+		ctx.WriteString(" OF ")
+		ctx.WriteString(node.Type.SQLString())
+	}
+}
+
 // AlterTableOwner represents an ALTER TABLE OWNER TO command.
 type AlterTableOwner struct {
 	Owner string
@@ -662,4 +875,35 @@ type AlterTableOwner struct {
 func (node *AlterTableOwner) Format(ctx *FmtCtx) {
 	ctx.WriteString(" OWNER TO ")
 	ctx.FormatNameP(&node.Owner)
+}
+
+type ReplicaIdentity int
+
+const (
+	ReplicaIdentityDefault ReplicaIdentity = iota
+	ReplicaIdentityUsingIndex
+	ReplicaIdentityFull
+	ReplicaIdentityNothing
+)
+
+// AlterTableReplicaIdentity represents an ALTER TABLE REPLICA IDENTITY command.
+type AlterTableReplicaIdentity struct {
+	Type  ReplicaIdentity
+	Index Name
+}
+
+// Format implements the NodeFormatter interface.
+func (node *AlterTableReplicaIdentity) Format(ctx *FmtCtx) {
+	ctx.WriteString(" REPLICA IDENTITY")
+	switch node.Type {
+	case ReplicaIdentityDefault:
+		ctx.WriteString(" DEFAULT")
+	case ReplicaIdentityUsingIndex:
+		ctx.WriteString(" USING INDEX ")
+		ctx.FormatNode(&node.Index)
+	case ReplicaIdentityFull:
+		ctx.WriteString(" FULL")
+	case ReplicaIdentityNothing:
+		ctx.WriteString(" NOTHING")
+	}
 }

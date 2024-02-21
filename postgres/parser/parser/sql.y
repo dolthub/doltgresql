@@ -125,9 +125,6 @@ func (u *sqlSymUnion) strVal() *tree.StrVal {
 func (u *sqlSymUnion) placeholder() *tree.Placeholder {
     return u.val.(*tree.Placeholder)
 }
-func (u *sqlSymUnion) auditMode() tree.AuditMode {
-    return u.val.(tree.AuditMode)
-}
 func (u *sqlSymUnion) bool() bool {
     return u.val.(bool)
 }
@@ -628,7 +625,7 @@ func (u *sqlSymUnion) storageType() tree.StorageType {
 // below; search this file for "Keyword category lists".
 
 // Ordinary key words in alphabetical order.
-%token <str> ABORT ACTION ADD ADMIN AFTER AGGREGATE
+%token <str> ABORT ACCESS ACTION ADD ADMIN AFTER AGGREGATE
 %token <str> ALL ALLOW_CONNECTIONS ALTER ALWAYS ANALYSE ANALYZE AND AND_AND ANY ANNOTATE_TYPE ARRAY AS ASC
 %token <str> ASYMMETRIC AT ATOMIC ATTRIBUTE AUTHORIZATION AUTOMATIC
 
@@ -648,9 +645,9 @@ func (u *sqlSymUnion) storageType() tree.StorageType {
 
 %token <str> DATA DATABASE DATABASES DATE DAY DEALLOCATE DEC DECIMAL DECLARE
 %token <str> DEFAULT DEFAULTS DEFERRABLE DEFERRED DEFINER DELETE DESC DESTINATION DETACHED
-%token <str> DISCARD DISTINCT DO DOMAIN DOUBLE DROP
+%token <str> DISABLE DISCARD DISTINCT DO DOMAIN DOUBLE DROP
 
-%token <str> ELSE ENCODING ENCRYPTION_PASSPHRASE END ENUM ENUMS ESCAPE EXCEPT EXCLUDE EXCLUDING
+%token <str> ELSE ENABLE ENCODING ENCRYPTION_PASSPHRASE END ENUM ENUMS ESCAPE EXCEPT EXCLUDE EXCLUDING
 %token <str> EXISTS EXECUTE EXECUTION EXPERIMENTAL
 %token <str> EXPERIMENTAL_FINGERPRINTS EXPERIMENTAL_REPLICA
 %token <str> EXPERIMENTAL_AUDIT EXPIRATION EXPLAIN EXPORT EXPRESSION
@@ -680,9 +677,9 @@ func (u *sqlSymUnion) storageType() tree.StorageType {
 %token <str> LANGUAGE LARGE LAST LATERAL LATEST LC_CTYPE LC_COLLATE
 %token <str> LEADING LEAKPROOF LEASE LEAST LEFT LESS LEVEL LIKE LIMIT
 %token <str> LINESTRING LINESTRINGM LINESTRINGZ LINESTRINGZM LIST
-%token <str> LOCAL LOCALE LOCALE_PROVIDER LOCALTIME LOCALTIMESTAMP LOCKED LOGIN LOOKUP LOW LSHIFT
+%token <str> LOCAL LOCALE LOCALE_PROVIDER LOCALTIME LOCALTIMESTAMP LOCKED LOGGED LOGIN LOOKUP LOW LSHIFT
 
-%token <str> MAIN MATCH MATERIALIZED MERGE MINVALUE MAXVALUE MINUTE MODIFYCLUSTERSETTING MODULUS MONTH
+%token <str> MAIN MATCH MATERIALIZED MERGE METHOD MINVALUE MAXVALUE MINUTE MODIFYCLUSTERSETTING MODULUS MONTH
 %token <str> MULTILINESTRING MULTILINESTRINGM MULTILINESTRINGZ MULTILINESTRINGZM
 %token <str> MULTIPOINT MULTIPOINTM MULTIPOINTZ MULTIPOINTZM
 %token <str> MULTIPOLYGON MULTIPOLYGONM MULTIPOLYGONZ MULTIPOLYGONZM
@@ -703,7 +700,7 @@ func (u *sqlSymUnion) storageType() tree.StorageType {
 
 %token <str> RANGE RANGES READ REAL RECURSIVE RECURRING REF REFERENCES REFRESH
 %token <str> REGCLASS REGPROC REGPROCEDURE REGNAMESPACE REGTYPE REINDEX RELEASE REMAINDER
-%token <str> REMOVE_PATH RENAME REPEATABLE REPLACE RESET RESTART RESTORE RESTRICT RESTRICTED RESUME
+%token <str> REMOVE_PATH RENAME REPEATABLE REPLACE REPLICA RESET RESTART RESTORE RESTRICT RESTRICTED RESUME
 %token <str> RETRY RETURN RETURNING RETURNS REVISION_HISTORY REVOKE RIGHT
 %token <str> ROLE ROLES ROUTINE ROUTINES ROLLBACK ROLLUP ROW ROWS RSHIFT RULE RUNNING
 
@@ -767,10 +764,7 @@ func (u *sqlSymUnion) storageType() tree.StorageType {
 
 // ALTER TABLE
 %type <tree.Statement> alter_onetable_stmt
-%type <tree.Statement> alter_split_stmt
-%type <tree.Statement> alter_unsplit_stmt
 %type <tree.Statement> alter_rename_table_stmt
-%type <tree.Statement> alter_scatter_stmt
 %type <tree.Statement> alter_table_set_schema_stmt
 
 // ALTER DATABASE
@@ -783,9 +777,6 @@ func (u *sqlSymUnion) storageType() tree.StorageType {
 
 // ALTER INDEX
 %type <tree.Statement> alter_oneindex_stmt
-%type <tree.Statement> alter_scatter_index_stmt
-%type <tree.Statement> alter_split_index_stmt
-%type <tree.Statement> alter_unsplit_index_stmt
 %type <tree.Statement> alter_rename_index_stmt
 
 // ALTER VIEW
@@ -984,13 +975,16 @@ func (u *sqlSymUnion) storageType() tree.StorageType {
 %type <tree.DatabaseOption> opt_database_options
 %type <[]tree.DatabaseOption> opt_database_options_list opt_database_with_options
 
-%type <tree.AlterTableCmd> alter_table_action alter_opt_column_options
+%type <tree.AlterTableCmd> alter_table_action enable_or_disable_trigger enable_or_disable_rule alter_opt_column_options
+%type <tree.AlterTableCmd> row_level_security replica_identity_option
 %type <tree.AlterTableCmds> alter_table_actions alter_table_cmd
 %type <tree.AlterColComputed> alter_column_set_seq_elem
 %type <[]tree.AlterColComputed> alter_column_set_seq_elem_list
 %type <tree.AlterIndexCmd> alter_index_cmd
 %type <tree.AlterIndexCmds> alter_index_cmds
 %type <tree.StorageType> col_storage_option
+%type <bool> unique_or_primary logged_or_unlogged
+%type <str> trigger_name trigger_option
 
 %type <tree.DropBehavior> opt_drop_behavior
 %type <tree.ValidationBehavior> opt_validate_behavior
@@ -1013,7 +1007,8 @@ func (u *sqlSymUnion) storageType() tree.StorageType {
 %type <str> cursor_name database_name index_name opt_index_name column_name insert_column_item statistics_name window_name
 %type <str> table_alias_name constraint_name target_name collation_name
 %type <str> db_object_name_component
-%type <*tree.UnresolvedObjectName> table_name standalone_index_name sequence_name type_name view_name db_object_name simple_db_object_name complex_db_object_name
+%type <*tree.UnresolvedObjectName> table_name standalone_index_name sequence_name type_name
+%type <*tree.UnresolvedObjectName> view_name db_object_name simple_db_object_name complex_db_object_name
 %type <[]*tree.UnresolvedObjectName> type_name_list
 %type <str> schema_name opt_schema_name opt_schema opt_version
 %type <[]string> schema_name_list role_spec_list opt_role_list
@@ -1215,7 +1210,6 @@ func (u *sqlSymUnion) storageType() tree.StorageType {
 %type <tree.PrivForCols> privilege_for_cols
 %type <[]tree.PrivForCols> privilege_for_cols_list privileges_for_cols
 %type <[]tree.KVOption> opt_role_options role_options
-%type <tree.AuditMode> audit_mode
 %type <str> opt_grant_role_with admin_inherit_set option_true_false opt_granted_by
 
 %type <tree.Expr> opt_alter_column_using
@@ -1376,38 +1370,19 @@ alter_ddl_stmt:
 //   ALTER TABLE ... ALTER [COLUMN] <colname> DROP NOT NULL
 //   ALTER TABLE ... ALTER [COLUMN] <colname> DROP STORED
 //   ALTER TABLE ... ALTER [COLUMN] <colname> [SET DATA] TYPE <type> [COLLATE <collation>]
-//   ALTER TABLE ... ALTER PRIMARY KEY USING INDEX <name>
 //   ALTER TABLE ... RENAME TO <newname>
 //   ALTER TABLE ... RENAME [COLUMN] <colname> TO <newname>
 //   ALTER TABLE ... VALIDATE CONSTRAINT <constraintname>
-//   ALTER TABLE ... SPLIT AT <selectclause> [WITH EXPIRATION <expr>]
-//   ALTER TABLE ... UNSPLIT AT <selectclause>
-//   ALTER TABLE ... UNSPLIT ALL
-//   ALTER TABLE ... SCATTER [ FROM ( <exprs...> ) TO ( <exprs...> ) ]
-//   ALTER TABLE ... INJECT STATISTICS ...  (experimental)
-//   ALTER TABLE ... PARTITION BY RANGE ( <name...> ) ( <rangespec> )
-//   ALTER TABLE ... PARTITION BY LIST ( <name...> ) ( <listspec> )
-//   ALTER TABLE ... PARTITION BY NOTHING
 //   ALTER TABLE ... SET SCHEMA <newschemaname>
 //
 // Column qualifiers:
 //   [CONSTRAINT <constraintname>] {NULL | NOT NULL | UNIQUE | PRIMARY KEY | CHECK (<expr>) | DEFAULT <expr>}
-//   FAMILY <familyname>, CREATE [IF NOT EXISTS] FAMILY [<familyname>]
 //   REFERENCES <tablename> [( <colnames...> )]
 //   COLLATE <collationname>
-//
-// Zone configurations:
-//   DISCARD
-//   USING <var> = <expr> [, ...]
-//   USING <var> = COPY FROM PARENT [, ...]
-//   { TO | = } <expr>
 //
 // %SeeAlso: WEBDOCS/alter-table.html
 alter_table_stmt:
   alter_onetable_stmt
-| alter_split_stmt
-| alter_unsplit_stmt
-| alter_scatter_stmt
 | alter_rename_table_stmt
 | alter_table_set_schema_stmt
 // ALTER TABLE has its error help token here because the ALTER TABLE
@@ -1637,23 +1612,10 @@ opt_role:
 //
 // Commands:
 //   ALTER INDEX ... RENAME TO <newname>
-//   ALTER INDEX ... SPLIT AT <selectclause> [WITH EXPIRATION <expr>]
-//   ALTER INDEX ... UNSPLIT AT <selectclause>
-//   ALTER INDEX ... UNSPLIT ALL
-//   ALTER INDEX ... SCATTER [ FROM ( <exprs...> ) TO ( <exprs...> ) ]
-//
-// Zone configurations:
-//   DISCARD
-//   USING <var> = <expr> [, ...]
-//   USING <var> = COPY FROM PARENT [, ...]
-//   { TO | = } <expr>
 //
 // %SeeAlso: WEBDOCS/alter-index.html
 alter_index_stmt:
   alter_oneindex_stmt
-| alter_split_index_stmt
-| alter_unsplit_index_stmt
-| alter_scatter_index_stmt
 | alter_rename_index_stmt
 // ALTER INDEX has its error help token here because the ALTER INDEX
 // prefix is spread over multiple non-terminals.
@@ -1677,90 +1639,6 @@ alter_oneindex_stmt:
 | ALTER INDEX IF EXISTS table_index_name alter_index_cmds
   {
     $$.val = &tree.AlterIndex{Index: $5.tableIndexName(), IfExists: true, Cmds: $6.alterIndexCmds()}
-  }
-
-alter_split_stmt:
-  ALTER TABLE table_name SPLIT AT select_stmt
-  {
-    name := $3.unresolvedObjectName().ToTableName()
-    $$.val = &tree.Split{
-      TableOrIndex: tree.TableIndexName{Table: name},
-      Rows: $6.slct(),
-      ExpireExpr: tree.Expr(nil),
-    }
-  }
-| ALTER TABLE table_name SPLIT AT select_stmt WITH EXPIRATION a_expr
-  {
-    name := $3.unresolvedObjectName().ToTableName()
-    $$.val = &tree.Split{
-      TableOrIndex: tree.TableIndexName{Table: name},
-      Rows: $6.slct(),
-      ExpireExpr: $9.expr(),
-    }
-  }
-
-alter_split_index_stmt:
-  ALTER INDEX table_index_name SPLIT AT select_stmt
-  {
-    $$.val = &tree.Split{TableOrIndex: $3.tableIndexName(), Rows: $6.slct(), ExpireExpr: tree.Expr(nil)}
-  }
-| ALTER INDEX table_index_name SPLIT AT select_stmt WITH EXPIRATION a_expr
-  {
-    $$.val = &tree.Split{TableOrIndex: $3.tableIndexName(), Rows: $6.slct(), ExpireExpr: $9.expr()}
-  }
-
-alter_unsplit_stmt:
-  ALTER TABLE table_name UNSPLIT AT select_stmt
-  {
-    name := $3.unresolvedObjectName().ToTableName()
-    $$.val = &tree.Unsplit{
-      TableOrIndex: tree.TableIndexName{Table: name},
-      Rows: $6.slct(),
-    }
-  }
-| ALTER TABLE table_name UNSPLIT ALL
-  {
-    name := $3.unresolvedObjectName().ToTableName()
-    $$.val = &tree.Unsplit {
-      TableOrIndex: tree.TableIndexName{Table: name},
-      All: true,
-    }
-  }
-
-alter_unsplit_index_stmt:
-  ALTER INDEX table_index_name UNSPLIT AT select_stmt
-  {
-    $$.val = &tree.Unsplit{TableOrIndex: $3.tableIndexName(), Rows: $6.slct()}
-  }
-| ALTER INDEX table_index_name UNSPLIT ALL
-  {
-    $$.val = &tree.Unsplit{TableOrIndex: $3.tableIndexName(), All: true}
-  }
-
-alter_scatter_stmt:
-  ALTER TABLE table_name SCATTER
-  {
-    name := $3.unresolvedObjectName().ToTableName()
-    $$.val = &tree.Scatter{TableOrIndex: tree.TableIndexName{Table: name}}
-  }
-| ALTER TABLE table_name SCATTER FROM '(' expr_list ')' TO '(' expr_list ')'
-  {
-    name := $3.unresolvedObjectName().ToTableName()
-    $$.val = &tree.Scatter{
-      TableOrIndex: tree.TableIndexName{Table: name},
-      From: $7.exprs(),
-      To: $11.exprs(),
-    }
-  }
-
-alter_scatter_index_stmt:
-  ALTER INDEX table_index_name SCATTER
-  {
-    $$.val = &tree.Scatter{TableOrIndex: $3.tableIndexName()}
-  }
-| ALTER INDEX table_index_name SCATTER FROM '(' expr_list ')' TO '(' expr_list ')'
-  {
-    $$.val = &tree.Scatter{TableOrIndex: $3.tableIndexName(), From: $7.exprs(), To: $11.exprs()}
   }
 
 alter_table_cmd:
@@ -1837,14 +1715,15 @@ alter_table_action:
       ValidationBehavior: $3.validationBehavior(),
     }
   }
-  // ALTER TABLE <name> ALTER CONSTRAINT ...
-| ALTER CONSTRAINT constraint_name error { return unimplementedWithIssueDetail(sqllex, 31632, "alter constraint") }
-  // ALTER TABLE <name> ALTER PRIMARY KEY USING INDEX <name>
-| ALTER PRIMARY KEY USING COLUMNS '(' index_params ')'
+  // ALTER TABLE <name> ADD CONSTRAINT ... USING INDEX
+| ADD CONSTRAINT constraint_name unique_or_primary USING INDEX index_name opt_deferrable_mode opt_initially
   {
-    $$.val = &tree.AlterTableAlterPrimaryKey{
-      Columns: $7.idxElems(),
-    }
+    $$.val = tree.AlterTableConstraintUsingIndex{Constraint: tree.Name($3), IsUnique: $4.bool(), Index: tree.Name($7), Deferrable: $8.deferrableMode(), Initially: $9.initiallyMode()}
+  }
+  // ALTER TABLE <name> ALTER CONSTRAINT ...
+| ALTER CONSTRAINT constraint_name opt_deferrable_mode opt_initially
+  {
+    $$.val = &tree.AlterTableAlterConstraint{Constraint: tree.Name($3), Deferrable: $4.deferrableMode(), Initially: $5.initiallyMode()}
   }
   // ALTER TABLE <name> VALIDATE CONSTRAINT ...
 | VALIDATE CONSTRAINT constraint_name
@@ -1871,25 +1750,58 @@ alter_table_action:
       DropBehavior: $4.dropBehavior(),
     }
   }
-  // ALTER TABLE <name> EXPERIMENTAL_AUDIT SET <mode>
-| EXPERIMENTAL_AUDIT SET audit_mode
+  // ALTER TABLE <name> ... TRIGGER ...
+| enable_or_disable_trigger
+  // ALTER TABLE <name> ... RULE ...
+| enable_or_disable_rule
+  // ALTER TABLE <name> ... LEVEL SECURITY
+| row_level_security
+  // ALTER TABLE CLUSTER ON
+| CLUSTER ON index_name
   {
-    $$.val = &tree.AlterTableSetAudit{Mode: $3.auditMode()}
+    $$.val = &tree.AlterTableCluster{OnIndex: tree.Name($3)}
   }
-  // ALTER TABLE <name> PARTITION BY ...
-| partition_by
+  // ALTER TABLE <name> ... SET WITHOUT CLUSTER
+| SET WITHOUT CLUSTER
   {
-    $$.val = &tree.AlterTablePartitionBy{
-      PartitionBy: $1.partitionBy(),
-    }
+    $$.val = &tree.AlterTableCluster{Without: true}
   }
-  // ALTER TABLE <name> INJECT STATISTICS <json>
-| INJECT STATISTICS a_expr
+| SET WITHOUT OIDS { /* used for backward-compatibility, so no-op */ }
+| SET ACCESS METHOD non_reserved_word_or_sconst
   {
-    /* SKIP DOC */
-    $$.val = &tree.AlterTableInjectStats{
-      Stats: $3.expr(),
-    }
+    $$.val = &tree.AlterTableSetAccessMethod{Method: $4}
+  }
+| SET TABLESPACE non_reserved_word_or_sconst
+  {
+    $$.val = &tree.AlterTableSetTablespace{Tablespace: $3}
+  }
+| SET logged_or_unlogged
+  {
+    $$.val = &tree.AlterTableSetLog{Logged: $2.bool()}
+  }
+| SET '(' storage_parameter_list ')'
+  {
+    $$.val = &tree.AlterTableSetStorage{Params: $3.storageParams()}
+  }
+| RESET '(' storage_parameter_list ')'
+  {
+    $$.val = &tree.AlterTableSetStorage{Params: $3.storageParams(), IsReset: true}
+  }
+| INHERIT table_name
+  {
+    $$.val = &tree.AlterTableInherit{Inherit: true, Table: $2.unresolvedObjectName().ToTableName()}
+  }
+| NO INHERIT table_name
+  {
+    $$.val = &tree.AlterTableInherit{Table: $3.unresolvedObjectName().ToTableName()}
+  }
+| OF type_name
+  {
+    $$.val = &tree.AlterTableOfType{Type: $2.typeReference()}
+  }
+| NOT OF
+  {
+    $$.val = &tree.AlterTableOfType{NotOf: true}
   }
   // ALTER TABLE <name> OWNER TO <newowner>
 | opt_owner_to
@@ -1897,6 +1809,104 @@ alter_table_action:
     $$.val = &tree.AlterTableOwner{
       Owner: $1,
     }
+  }
+| replica_identity_option
+
+enable_or_disable_trigger:
+  DISABLE TRIGGER trigger_option
+  {
+    $$.val = &tree.AlterTableTrigger{Disable: true, Trigger: $3}
+  }
+| ENABLE TRIGGER trigger_option
+  {
+    $$.val = &tree.AlterTableTrigger{Trigger: $3}
+  }
+| ENABLE REPLICA TRIGGER trigger_name
+  {
+    $$.val = &tree.AlterTableTrigger{Trigger: $4, IsReplica: true}
+  }
+| ENABLE ALWAYS TRIGGER trigger_name
+  {
+    $$.val = &tree.AlterTableTrigger{Trigger: $4, IsAlways: true}
+  }
+
+enable_or_disable_rule:
+  DISABLE RULE name
+  {
+    $$.val = &tree.AlterTableRule{Disable: true, Rule: $3}
+  }
+| ENABLE RULE name
+  {
+    $$.val = &tree.AlterTableRule{Rule: $3}
+  }
+| ENABLE REPLICA RULE name
+  {
+    $$.val = &tree.AlterTableRule{Rule: $3, IsReplica: true}
+  }
+| ENABLE ALWAYS RULE name
+  {
+    $$.val = &tree.AlterTableRule{Rule: $3, IsAlways: true}
+  }
+
+replica_identity_option:
+  REPLICA IDENTITY DEFAULT
+  {
+    $$.val = &tree.AlterTableReplicaIdentity{Type: tree.ReplicaIdentityDefault}
+  }
+| REPLICA IDENTITY USING INDEX index_name
+  {
+    $$.val = &tree.AlterTableReplicaIdentity{Type: tree.ReplicaIdentityUsingIndex, Index: tree.Name($5)}
+  }
+| REPLICA IDENTITY FULL
+  {
+    $$.val = &tree.AlterTableReplicaIdentity{Type: tree.ReplicaIdentityFull}
+  }
+| REPLICA IDENTITY NOTHING
+  {
+    $$.val = &tree.AlterTableReplicaIdentity{Type: tree.ReplicaIdentityNothing}
+  }
+
+logged_or_unlogged:
+  LOGGED
+  {
+    $$.val = true
+  }
+| UNLOGGED
+  {
+    $$.val = false
+  }
+
+row_level_security:
+  DISABLE ROW LEVEL SECURITY
+  {
+    $$.val = &tree.AlterTableRowLevelSecurity{Type: tree.RowLevelSecurityDisable}
+  }
+| ENABLE
+  {
+    $$.val = &tree.AlterTableRowLevelSecurity{Type: tree.RowLevelSecurityEnable}
+  }
+| FORCE
+  {
+    $$.val = &tree.AlterTableRowLevelSecurity{Type: tree.RowLevelSecurityForce}
+  }
+| NO FORCE
+  {
+    $$.val = &tree.AlterTableRowLevelSecurity{Type: tree.RowLevelSecurityNoForce}
+  }
+
+trigger_option:
+  trigger_name
+| ALL
+| USER
+
+unique_or_primary:
+  UNIQUE
+  {
+    $$.val = true
+  }
+| PRIMARY
+  {
+    $$.val = false
   }
 
 alter_opt_column_options:
@@ -1959,7 +1969,7 @@ alter_opt_column_options:
   }
 | column_name SET STORAGE col_storage_option
   {
-    $$.val = &tree.AlterTableSetStorage{Column: tree.Name($1), Type: $4.storageType()}
+    $$.val = &tree.AlterTableColSetStorage{Column: tree.Name($1), Type: $4.storageType()}
   }
 | column_name SET COMPRESSION unrestricted_name
   {
@@ -2030,10 +2040,6 @@ opt_if_exists:
   {
     $$.val = true
   }
-
-audit_mode:
-  READ WRITE { $$.val = tree.AuditModeReadWrite }
-| OFF        { $$.val = tree.AuditModeDisable }
 
 alter_index_cmds:
   alter_index_cmd
@@ -12022,6 +12028,8 @@ window_name:           name
 
 view_name:             table_name
 
+trigger_name:          name
+
 type_name:             db_object_name
 
 sequence_name:         db_object_name
@@ -12233,6 +12241,7 @@ unrestricted_name:
 // "Unreserved" keywords --- available for use as any kind of name.
 unreserved_keyword:
   ABORT
+| ACCESS
 | ACTION
 | ADD
 | ADMIN
@@ -12302,10 +12311,12 @@ unreserved_keyword:
 | DEFINER
 | DESTINATION
 | DETACHED
+| DISABLE
 | DISCARD
 | DOMAIN
 | DOUBLE
 | DROP
+| ENABLE
 | ENCODING
 | ENCRYPTION_PASSPHRASE
 | ENUM
@@ -12395,6 +12406,7 @@ unreserved_keyword:
 | LOCALE
 | LOCALE_PROVIDER
 | LOCKED
+| LOGGED
 | LOGIN
 | LOOKUP
 | LOW
@@ -12403,6 +12415,7 @@ unreserved_keyword:
 | MATERIALIZED
 | MAXVALUE
 | MERGE
+| METHOD
 | MINUTE
 | MINVALUE
 | MODIFYCLUSTERSETTING
@@ -12495,6 +12508,7 @@ unreserved_keyword:
 | RENAME
 | REPEATABLE
 | REPLACE
+| REPLICA
 | RESET
 | RESTART
 | RESTORE
