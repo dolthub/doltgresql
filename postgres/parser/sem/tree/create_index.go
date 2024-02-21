@@ -96,10 +96,14 @@ func (node *IndexElem) Format(ctx *FmtCtx) {
 	}
 	if node.ExcludeOp != nil {
 		ctx.WriteString(" WITH ")
-		ctx.FormatNode(node.ExcludeOp)
-		node.ExcludeOp.
-		// TODO: get the operator
-		//ctx.WriteString(node.ExcludeOp.String())
+		switch op := node.ExcludeOp.(type) {
+		case UnaryOperator:
+			ctx.WriteString(op.String())
+		case BinaryOperator:
+			ctx.WriteString(op.String())
+		case ComparisonOperator:
+			ctx.WriteString(op.String())
+		}
 	}
 }
 
