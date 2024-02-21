@@ -46,6 +46,174 @@ import (
 	"github.com/dolthub/doltgresql/postgres/parser/types"
 )
 
+var _ Statement = &CreateTable{}
+
+// CreateTable represents a CREATE TABLE statement.
+type CreateTable struct {
+	IfNotExists   bool
+	Table         TableName
+	Inherits      TableNames
+	PartitionBy   *PartitionBy
+	Persistence   Persistence
+	StorageParams StorageParams
+	OnCommit      CreateTableOnCommitSetting
+	Using         string
+	Tablespace    Name
+	// In CREATE...AS queries, Defs represents a list of ColumnTableDefs, one for
+	// each column, and a ConstraintTableDef for each constraint on a subset of
+	// these columns.
+	Defs       TableDefs
+	AsSource   *Select
+	WithNoData bool
+	// Used for `CREATE TABLE ... OF type_name ...` statements.
+	OfType *UnresolvedObjectName
+	// Used for `CREATE TABLE ... PARTITION OF type_name ...` statements.
+	PartitionOf        TableName
+	PartitionBoundSpec PartitionBoundSpec
+}
+
+// As returns true if this table represents a CREATE TABLE ... AS statement,
+// false otherwise.
+func (node *CreateTable) As() bool {
+	return node.AsSource != nil
+}
+
+// AsHasUserSpecifiedPrimaryKey returns true if a CREATE TABLE ... AS statement
+// has a PRIMARY KEY constraint specified.
+func (node *CreateTable) AsHasUserSpecifiedPrimaryKey() bool {
+	if node.As() {
+		for _, def := range node.Defs {
+			if d, ok := def.(*ColumnTableDef); !ok {
+				return false
+			} else if d.PrimaryKey.IsPrimaryKey {
+				return true
+			}
+		}
+	}
+	return false
+}
+
+// Format implements the NodeFormatter interface.
+func (node *CreateTable) Format(ctx *FmtCtx) {
+	ctx.WriteString("CREATE ")
+	switch node.Persistence {
+	case PersistenceTemporary:
+		ctx.WriteString("TEMPORARY ")
+	case PersistenceUnlogged:
+		ctx.WriteString("UNLOGGED ")
+	}
+	ctx.WriteString("TABLE ")
+	if node.IfNotExists {
+		ctx.WriteString("IF NOT EXISTS ")
+	}
+	ctx.FormatNode(&node.Table)
+	node.FormatBody(ctx)
+}
+
+// FormatBody formats the "body" of the create table definition - everything
+// but the CREATE TABLE tableName part.
+func (node *CreateTable) FormatBody(ctx *FmtCtx) {
+	if node.As() {
+		if len(node.Defs) > 0 {
+			ctx.WriteString(" (")
+			ctx.FormatNode(&node.Defs)
+			ctx.WriteByte(')')
+		}
+		if node.Using != "" {
+			ctx.WriteString(" USING ")
+			ctx.WriteString(node.Using)
+		}
+		if node.StorageParams != nil {
+			ctx.FormatNode(&node.StorageParams)
+		}
+		switch node.OnCommit {
+		case CreateTableOnCommitPreserveRows:
+			ctx.WriteString(" ON COMMIT PRESERVE ROWS")
+		case CreateTableOnCommitDeleteRows:
+			ctx.WriteString(" ON COMMIT DELETE ROWS")
+		case CreateTableOnCommitDrop:
+			ctx.WriteString(" ON COMMIT DROP")
+		}
+		if node.Tablespace != "" {
+			ctx.WriteString(" TABLESPACE ")
+			ctx.FormatNode(&node.Tablespace)
+		}
+		ctx.WriteString(" AS ")
+		ctx.FormatNode(node.AsSource)
+		if node.WithNoData {
+			ctx.WriteString(" WITH NO DATA")
+		}
+	} else {
+		ctx.WriteString(" (")
+		ctx.FormatNode(&node.Defs)
+		ctx.WriteByte(')')
+
+		if node.PartitionBy != nil {
+			ctx.FormatNode(node.PartitionBy)
+		}
+		// No storage parameters are implemented, so we never list the storage
+		// parameters in the output format.
+	}
+}
+
+// HoistConstraints finds column check and foreign key constraints defined
+// inline with their columns and makes them table-level constraints, stored in
+// n.Defs. For example, the foreign key constraint in
+//
+//	CREATE TABLE foo (a INT REFERENCES bar(a))
+//
+// gets pulled into a top-level constraint like:
+//
+//	CREATE TABLE foo (a INT, FOREIGN KEY (a) REFERENCES bar(a))
+//
+// Similarly, the CHECK constraint in
+//
+//	CREATE TABLE foo (a INT CHECK (a < 1), b INT)
+//
+// gets pulled into a top-level constraint like:
+//
+//	CREATE TABLE foo (a INT, b INT, CHECK (a < 1))
+//
+// Note that some SQL databases require that a constraint attached to a column
+// to refer only to the column it is attached to. We follow Postgres' behavior,
+// however, in omitting this restriction by blindly hoisting all column
+// constraints. For example, the following table definition is accepted in
+// CockroachDB and Postgres, but not necessarily other SQL databases:
+//
+//	CREATE TABLE foo (a INT CHECK (a < b), b INT)
+//
+// Unique constraints are not hoisted.
+func (node *CreateTable) HoistConstraints() {
+	for _, d := range node.Defs {
+		if col, ok := d.(*ColumnTableDef); ok {
+			for _, checkExpr := range col.CheckExprs {
+				node.Defs = append(node.Defs,
+					&CheckConstraintTableDef{
+						Expr: checkExpr.Expr,
+						Name: checkExpr.ConstraintName,
+					},
+				)
+			}
+			col.CheckExprs = nil
+			if col.HasFKConstraint() {
+				var targetCol NameList
+				if col.References.Col != "" {
+					targetCol = append(targetCol, col.References.Col)
+				}
+				node.Defs = append(node.Defs, &ForeignKeyConstraintTableDef{
+					Table:    *col.References.Table,
+					FromCols: NameList{col.Name},
+					ToCols:   targetCol,
+					Name:     col.References.ConstraintName,
+					Actions:  col.References.Actions,
+					Match:    col.References.Match,
+				})
+				col.References.Table = nil
+			}
+		}
+	}
+}
+
 // TableDef represents a column, index or constraint definition within a CREATE
 // TABLE statement.
 type TableDef interface {
@@ -878,172 +1046,6 @@ func (node *PartitionBoundSpec) Format(ctx *FmtCtx) {
 			ctx.WriteString(" , REMAINDER ")
 			ctx.FormatNode(&node.From)
 			ctx.WriteString(" )")
-		}
-	}
-}
-
-// CreateTable represents a CREATE TABLE statement.
-type CreateTable struct {
-	IfNotExists   bool
-	Table         TableName
-	Inherits      TableNames
-	PartitionBy   *PartitionBy
-	Persistence   Persistence
-	StorageParams StorageParams
-	OnCommit      CreateTableOnCommitSetting
-	Using         string
-	Tablespace    Name
-	// In CREATE...AS queries, Defs represents a list of ColumnTableDefs, one for
-	// each column, and a ConstraintTableDef for each constraint on a subset of
-	// these columns.
-	Defs       TableDefs
-	AsSource   *Select
-	WithNoData bool
-	// Used for `CREATE TABLE ... OF type_name ...` statements.
-	OfType *UnresolvedObjectName
-	// Used for `CREATE TABLE ... PARTITION OF type_name ...` statements.
-	PartitionOf        TableName
-	PartitionBoundSpec PartitionBoundSpec
-}
-
-// As returns true if this table represents a CREATE TABLE ... AS statement,
-// false otherwise.
-func (node *CreateTable) As() bool {
-	return node.AsSource != nil
-}
-
-// AsHasUserSpecifiedPrimaryKey returns true if a CREATE TABLE ... AS statement
-// has a PRIMARY KEY constraint specified.
-func (node *CreateTable) AsHasUserSpecifiedPrimaryKey() bool {
-	if node.As() {
-		for _, def := range node.Defs {
-			if d, ok := def.(*ColumnTableDef); !ok {
-				return false
-			} else if d.PrimaryKey.IsPrimaryKey {
-				return true
-			}
-		}
-	}
-	return false
-}
-
-// Format implements the NodeFormatter interface.
-func (node *CreateTable) Format(ctx *FmtCtx) {
-	ctx.WriteString("CREATE ")
-	switch node.Persistence {
-	case PersistenceTemporary:
-		ctx.WriteString("TEMPORARY ")
-	case PersistenceUnlogged:
-		ctx.WriteString("UNLOGGED ")
-	}
-	ctx.WriteString("TABLE ")
-	if node.IfNotExists {
-		ctx.WriteString("IF NOT EXISTS ")
-	}
-	ctx.FormatNode(&node.Table)
-	node.FormatBody(ctx)
-}
-
-// FormatBody formats the "body" of the create table definition - everything
-// but the CREATE TABLE tableName part.
-func (node *CreateTable) FormatBody(ctx *FmtCtx) {
-	if node.As() {
-		if len(node.Defs) > 0 {
-			ctx.WriteString(" (")
-			ctx.FormatNode(&node.Defs)
-			ctx.WriteByte(')')
-		}
-		if node.Using != "" {
-			ctx.WriteString(" USING ")
-			ctx.WriteString(node.Using)
-		}
-		if node.StorageParams != nil {
-			ctx.FormatNode(&node.StorageParams)
-		}
-		switch node.OnCommit {
-		case CreateTableOnCommitPreserveRows:
-			ctx.WriteString(" ON COMMIT PRESERVE ROWS")
-		case CreateTableOnCommitDeleteRows:
-			ctx.WriteString(" ON COMMIT DELETE ROWS")
-		case CreateTableOnCommitDrop:
-			ctx.WriteString(" ON COMMIT DROP")
-		}
-		if node.Tablespace != "" {
-			ctx.WriteString(" TABLESPACE ")
-			ctx.FormatNode(&node.Tablespace)
-		}
-		ctx.WriteString(" AS ")
-		ctx.FormatNode(node.AsSource)
-		if node.WithNoData {
-			ctx.WriteString(" WITH NO DATA")
-		}
-	} else {
-		ctx.WriteString(" (")
-		ctx.FormatNode(&node.Defs)
-		ctx.WriteByte(')')
-
-		if node.PartitionBy != nil {
-			ctx.FormatNode(node.PartitionBy)
-		}
-		// No storage parameters are implemented, so we never list the storage
-		// parameters in the output format.
-	}
-}
-
-// HoistConstraints finds column check and foreign key constraints defined
-// inline with their columns and makes them table-level constraints, stored in
-// n.Defs. For example, the foreign key constraint in
-//
-//	CREATE TABLE foo (a INT REFERENCES bar(a))
-//
-// gets pulled into a top-level constraint like:
-//
-//	CREATE TABLE foo (a INT, FOREIGN KEY (a) REFERENCES bar(a))
-//
-// Similarly, the CHECK constraint in
-//
-//	CREATE TABLE foo (a INT CHECK (a < 1), b INT)
-//
-// gets pulled into a top-level constraint like:
-//
-//	CREATE TABLE foo (a INT, b INT, CHECK (a < 1))
-//
-// Note that some SQL databases require that a constraint attached to a column
-// to refer only to the column it is attached to. We follow Postgres' behavior,
-// however, in omitting this restriction by blindly hoisting all column
-// constraints. For example, the following table definition is accepted in
-// CockroachDB and Postgres, but not necessarily other SQL databases:
-//
-//	CREATE TABLE foo (a INT CHECK (a < b), b INT)
-//
-// Unique constraints are not hoisted.
-func (node *CreateTable) HoistConstraints() {
-	for _, d := range node.Defs {
-		if col, ok := d.(*ColumnTableDef); ok {
-			for _, checkExpr := range col.CheckExprs {
-				node.Defs = append(node.Defs,
-					&CheckConstraintTableDef{
-						Expr: checkExpr.Expr,
-						Name: checkExpr.ConstraintName,
-					},
-				)
-			}
-			col.CheckExprs = nil
-			if col.HasFKConstraint() {
-				var targetCol NameList
-				if col.References.Col != "" {
-					targetCol = append(targetCol, col.References.Col)
-				}
-				node.Defs = append(node.Defs, &ForeignKeyConstraintTableDef{
-					Table:    *col.References.Table,
-					FromCols: NameList{col.Name},
-					ToCols:   targetCol,
-					Name:     col.References.ConstraintName,
-					Actions:  col.References.Actions,
-					Match:    col.References.Match,
-				})
-				col.References.Table = nil
-			}
 		}
 	}
 }

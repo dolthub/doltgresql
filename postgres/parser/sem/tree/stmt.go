@@ -249,6 +249,14 @@ func (*AlterTableSetSchema) StatementTag() string { return "ALTER TABLE SET SCHE
 func (*AlterTableSetSchema) hiddenFromShowQueries() {}
 
 // StatementType implements the Statement interface.
+func (*AlterTableAllInTablespace) StatementType() StatementType { return DDL }
+
+// StatementTag returns a short string identifying the type of statement.
+func (*AlterTableAllInTablespace) StatementTag() string { return "ALTER TABLE ALL IN TABLESPACE" }
+
+func (*AlterTableAllInTablespace) hiddenFromShowQueries() {}
+
+// StatementType implements the Statement interface.
 func (*AlterSchema) StatementType() StatementType { return DDL }
 
 // StatementTag implements the Statement interface.
@@ -1074,36 +1082,8 @@ func (n *AlterDatabase) String() string                  { return AsString(n) }
 func (n *AlterDefaultPrivileges) String() string         { return AsString(n) }
 func (n *AlterSchema) String() string                    { return AsString(n) }
 func (n *AlterTable) String() string                     { return AsString(n) }
-func (n *AlterTableCmds) String() string                 { return AsString(n) }
-func (n *AlterTableAddColumn) String() string            { return AsString(n) }
-func (n *AlterTableAddConstraint) String() string        { return AsString(n) }
-func (n *AlterTableAlterColumnType) String() string      { return AsString(n) }
-func (n *AlterTableAlterConstraint) String() string      { return AsString(n) }
-func (n *AlterTableCluster) String() string              { return AsString(n) }
-func (n *AlterTableComputed) String() string             { return AsString(n) }
-func (n *AlterTableConstraintUsingIndex) String() string { return AsString(n) }
-func (n *AlterTableDropColumn) String() string           { return AsString(n) }
-func (n *AlterTableDropConstraint) String() string       { return AsString(n) }
-func (n *AlterTableDropNotNull) String() string          { return AsString(n) }
-func (n *AlterTableDropExprIden) String() string         { return AsString(n) }
-func (n *AlterTableInherit) String() string              { return AsString(n) }
-func (n *AlterTableOfType) String() string               { return AsString(n) }
-func (n *AlterTableOwner) String() string                { return AsString(n) }
-func (n *AlterTablePartition) String() string            { return AsString(n) }
-func (n *AlterTableRenameColumn) String() string         { return AsString(n) }
-func (n *AlterTableRenameConstraint) String() string     { return AsString(n) }
-func (n *AlterTableReplicaIdentity) String() string      { return AsString(n) }
-func (n *AlterTableRowLevelSecurity) String() string     { return AsString(n) }
-func (n *AlterTableRule) String() string                 { return AsString(n) }
-func (n *AlterTableSetAccessMethod) String() string      { return AsString(n) }
-func (n *AlterTableSetAttribution) String() string       { return AsString(n) }
-func (n *AlterTableSetCompression) String() string       { return AsString(n) }
-func (n *AlterTableSetDefault) String() string           { return AsString(n) }
-func (n *AlterTableSetLog) String() string               { return AsString(n) }
-func (n *AlterTableSetNotNull) String() string           { return AsString(n) }
+func (n *AlterTableAllInTablespace) String() string      { return AsString(n) }
 func (n *AlterTableSetSchema) String() string            { return AsString(n) }
-func (n *AlterTableSetStatistics) String() string        { return AsString(n) }
-func (n *AlterTableSetStorage) String() string           { return AsString(n) }
 func (n *AlterType) String() string                      { return AsString(n) }
 func (n *AlterRole) String() string                      { return AsString(n) }
 func (n *AlterSequence) String() string                  { return AsString(n) }
