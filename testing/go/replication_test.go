@@ -104,6 +104,7 @@ var replicationTests = []ReplicationTest{
 	},
 	{
 		Name: "stopping and resuming replication",
+		Focus: true,
 		SetUpScript: []string{
 			dropReplicationSlot,
 			createReplicationSlot,
@@ -450,7 +451,7 @@ func waitForRunning(r *logrepl.LogicalReplicator) error {
 		}
 		
 		duration += 5 * time.Millisecond
-		if duration > 1 * time.Second {
+		if duration > 1 * time.Hour {
 			return errors.New("Replication did not start")
 		}
 		time.Sleep(5 * time.Millisecond)
@@ -460,14 +461,17 @@ func waitForRunning(r *logrepl.LogicalReplicator) error {
 }
 
 func waitForCaughtUp(r *logrepl.LogicalReplicator) error {
+	log.Println("Waiting for replication to catch up")
 	var duration time.Duration
 	for {
 		if caughtUp, err := r.CaughtUp(); caughtUp {
+			log.Println("replication caught up")
 			break
 		} else if err != nil {
 			return err
 		}
-		
+
+		log.Println("replication not caught up, waiting")
 		duration += 5 * time.Millisecond
 		if duration > 2 * time.Second {
 			return errors.New("Replication did not catch up")

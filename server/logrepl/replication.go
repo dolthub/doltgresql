@@ -41,7 +41,6 @@ type rcvMsg struct {
 type LogicalReplicator struct {
 	primaryDns      string
 	replicationConn *pgx.Conn
-	receiveMsgChan  chan rcvMsg
 	lsn             pglogrepl.LSN
 	running         bool
 	stop            chan struct{}
@@ -60,7 +59,6 @@ func NewLogicalReplicator(primaryDns string, replicationDns string) (*LogicalRep
 	return &LogicalReplicator{
 		primaryDns:      primaryDns,
 		replicationConn: conn,
-		receiveMsgChan:  make(chan rcvMsg),
 		mu:              &sync.Mutex{},
 	}, nil
 }
@@ -107,6 +105,7 @@ func (r *LogicalReplicator) CaughtUp() (bool, error) {
 	r.mu.Lock()
 	if r.lsn == 0 {
 		r.mu.Unlock()
+		log.Printf("No replication messages received yet")
 		return false, nil
 	}
 	r.mu.Unlock()
@@ -130,9 +129,10 @@ func (r *LogicalReplicator) CaughtUp() (bool, error) {
 		}
 		
 		lag := row[0]
-		logInWALpos, ok := lag.(int64)
+		lagInWALpos, ok := lag.(int64)
 		if ok {
-			return logInWALpos == 0, nil
+			log.Printf("Replication lag: %d", lagInWALpos)
+			return lagInWALpos == 0, nil
 		}
 	}
 
@@ -144,10 +144,12 @@ func (r *LogicalReplicator) CaughtUp() (bool, error) {
 	return true, nil
 }
 
+const maxConsecutiveFailures = 10
+
 // StartReplication starts the replication process for the given slot name. This function blocks until replication is
 // stopped via the Stop method, or an error occurs.
 func (r *LogicalReplicator) StartReplication(slotName string) error {
-	standbyMessageTimeout := time.Second * 10
+	standbyMessageTimeout := 10 * time.Second
 	nextStandbyMessageDeadline := time.Now().Add(standbyMessageTimeout)
 	relationsV2 := map[uint32]*pglogrepl.RelationMessageV2{}
 	typeMap := pgtype.NewMap()
@@ -178,7 +180,7 @@ func (r *LogicalReplicator) StartReplication(slotName string) error {
 		err := pglogrepl.SendStandbyStatusUpdate(context.Background(), primaryConn, pglogrepl.StandbyStatusUpdate{WALWritePosition: lsn})
 		if err != nil {
 			connErrCnt++
-			if connErrCnt < 3 {
+			if connErrCnt < maxConsecutiveFailures {
 				// re-establish connection on next pass through the loop
 				_ = primaryConn.Close(context.Background())
 				primaryConn = nil
@@ -195,6 +197,7 @@ func (r *LogicalReplicator) StartReplication(slotName string) error {
 	}
 
 	r.mu.Lock()
+	r.lsn = 0
 	r.running = true
 	r.stop = make(chan struct{})
 	r.mu.Unlock()
@@ -229,22 +232,31 @@ func (r *LogicalReplicator) StartReplication(slotName string) error {
 			r.mu.Unlock()
 		}
 
+		log.Printf("attempting to receive message from primary server with time now = %s, deadline = %s", time.Now().String(), nextStandbyMessageDeadline.String())
 		ctx, cancel := context.WithDeadline(context.Background(), nextStandbyMessageDeadline)
+		receiveMsgChan := make(chan rcvMsg)
 		go func() {
 			rawMsg, err := primaryConn.ReceiveMessage(ctx)
-			r.receiveMsgChan <- rcvMsg{msg: rawMsg, err: err}
+			receiveMsgChan <- rcvMsg{msg: rawMsg, err: err}
 		}()
 
 		var msgAndErr rcvMsg
 		select {
 		case <-r.stop:
+			log.Println("Received stop signal")
 			cancel()
 			r.shutdown()
 			return nil
 		case <-ctx.Done():
+			log.Println("Context done")
 			cancel()
 			continue
-		case msgAndErr = <-r.receiveMsgChan:
+		case msgAndErr = <-receiveMsgChan:
+			if msgAndErr.msg != nil {
+				log.Println("Received message from primary server")
+			} else {
+				log.Printf("Error received from primary server: %s", msgAndErr.err.Error())
+			}
 			cancel()
 		}
 
@@ -253,7 +265,7 @@ func (r *LogicalReplicator) StartReplication(slotName string) error {
 				continue
 			} else {
 				connErrCnt++
-				if connErrCnt < 3 {
+				if connErrCnt < maxConsecutiveFailures {
 					// re-establish connection on next pass through the loop
 					_ = primaryConn.Close(context.Background())
 					primaryConn = nil
