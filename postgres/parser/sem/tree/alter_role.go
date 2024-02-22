@@ -33,6 +33,8 @@
 
 package tree
 
+var _ Statement = &AlterRole{}
+
 // AlterRole represents an ALTER ROLE statement.
 type AlterRole struct {
 	Name      Expr

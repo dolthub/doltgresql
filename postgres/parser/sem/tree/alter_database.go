@@ -44,6 +44,8 @@ type DatabaseOption struct {
 	Val Expr
 }
 
+var _ Statement = &AlterDatabase{}
+
 // AlterDatabase represents a ALTER DATABASE statement.
 type AlterDatabase struct {
 	Name    Name

@@ -39,6 +39,8 @@ import (
 	"github.com/dolthub/doltgresql/postgres/parser/privilege"
 )
 
+var _ Statement = &Revoke{}
+
 // Revoke represents a REVOKE statement.
 // PrivilegeList and TargetList are defined in grant.go
 type Revoke struct {
@@ -85,6 +87,8 @@ func (node *Revoke) Format(ctx *FmtCtx) {
 		ctx.WriteString(node.DropBehavior.String())
 	}
 }
+
+var _ Statement = &RevokeRole{}
 
 // RevokeRole represents a REVOKE <role> statement.
 type RevokeRole struct {

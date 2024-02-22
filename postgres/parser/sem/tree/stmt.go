@@ -249,6 +249,22 @@ func (*AlterTableSetSchema) StatementTag() string { return "ALTER TABLE SET SCHE
 func (*AlterTableSetSchema) hiddenFromShowQueries() {}
 
 // StatementType implements the Statement interface.
+func (*AlterTableAllInTablespace) StatementType() StatementType { return DDL }
+
+// StatementTag returns a short string identifying the type of statement.
+func (*AlterTableAllInTablespace) StatementTag() string { return "ALTER TABLE ALL IN TABLESPACE" }
+
+func (*AlterTableAllInTablespace) hiddenFromShowQueries() {}
+
+// StatementType implements the Statement interface.
+func (*AlterTablePartition) StatementType() StatementType { return DDL }
+
+// StatementTag returns a short string identifying the type of statement.
+func (*AlterTablePartition) StatementTag() string { return "ALTER TABLE ... PARTITION" }
+
+func (*AlterTablePartition) hiddenFromShowQueries() {}
+
+// StatementType implements the Statement interface.
 func (*AlterSchema) StatementType() StatementType { return DDL }
 
 // StatementTag implements the Statement interface.
@@ -808,12 +824,6 @@ func (*SetTracing) StatementTag() string { return "SET TRACING" }
 func (*SetTracing) observerStatement() {}
 
 // StatementType implements the Statement interface.
-func (*SetZoneConfig) StatementType() StatementType { return RowsAffected }
-
-// StatementTag returns a short string identifying the type of statement.
-func (*SetZoneConfig) StatementTag() string { return "CONFIGURE ZONE" }
-
-// StatementType implements the Statement interface.
 func (*SetSessionAuthorizationDefault) StatementType() StatementType { return Ack }
 
 // StatementTag returns a short string identifying the type of statement.
@@ -998,24 +1008,6 @@ func (*ShowRoles) StatementType() StatementType { return Rows }
 func (*ShowRoles) StatementTag() string { return "SHOW ROLES" }
 
 // StatementType implements the Statement interface.
-func (*ShowZoneConfig) StatementType() StatementType { return Rows }
-
-// StatementTag returns a short string identifying the type of statement.
-func (*ShowZoneConfig) StatementTag() string { return "SHOW ZONE CONFIGURATION" }
-
-// StatementType implements the Statement interface.
-func (*ShowRanges) StatementType() StatementType { return Rows }
-
-// StatementTag returns a short string identifying the type of statement.
-func (*ShowRanges) StatementTag() string { return "SHOW RANGES" }
-
-// StatementType implements the Statement interface.
-func (*ShowRangeForRow) StatementType() StatementType { return Rows }
-
-// StatementTag returns a short string identifying the type of statement.
-func (*ShowRangeForRow) StatementTag() string { return "SHOW RANGE FOR ROW" }
-
-// StatementType implements the Statement interface.
 func (*ShowFingerprints) StatementType() StatementType { return Rows }
 
 // StatementTag returns a short string identifying the type of statement.
@@ -1098,17 +1090,9 @@ func (n *AlterDatabase) String() string                  { return AsString(n) }
 func (n *AlterDefaultPrivileges) String() string         { return AsString(n) }
 func (n *AlterSchema) String() string                    { return AsString(n) }
 func (n *AlterTable) String() string                     { return AsString(n) }
-func (n *AlterTableCmds) String() string                 { return AsString(n) }
-func (n *AlterTableAddColumn) String() string            { return AsString(n) }
-func (n *AlterTableAddConstraint) String() string        { return AsString(n) }
-func (n *AlterTableAlterColumnType) String() string      { return AsString(n) }
-func (n *AlterTableDropColumn) String() string           { return AsString(n) }
-func (n *AlterTableDropConstraint) String() string       { return AsString(n) }
-func (n *AlterTableDropNotNull) String() string          { return AsString(n) }
-func (n *AlterTableDropStored) String() string           { return AsString(n) }
-func (n *AlterTableSetDefault) String() string           { return AsString(n) }
-func (n *AlterTableSetNotNull) String() string           { return AsString(n) }
+func (n *AlterTableAllInTablespace) String() string      { return AsString(n) }
 func (n *AlterTableSetSchema) String() string            { return AsString(n) }
+func (n *AlterTablePartition) String() string            { return AsString(n) }
 func (n *AlterType) String() string                      { return AsString(n) }
 func (n *AlterRole) String() string                      { return AsString(n) }
 func (n *AlterSequence) String() string                  { return AsString(n) }
@@ -1136,6 +1120,7 @@ func (n *CreateFunction) String() string                 { return AsString(n) }
 func (n *CreateIndex) String() string                    { return AsString(n) }
 func (n *CreateRole) String() string                     { return AsString(n) }
 func (n *CreateTable) String() string                    { return AsString(n) }
+func (n *CreateType) String() string                     { return AsString(n) }
 func (n *CreateSchema) String() string                   { return AsString(n) }
 func (n *CreateSequence) String() string                 { return AsString(n) }
 func (n *CreateStats) String() string                    { return AsString(n) }
@@ -1183,7 +1168,6 @@ func (n *Scrub) String() string                          { return AsString(n) }
 func (n *Select) String() string                         { return AsString(n) }
 func (n *SelectClause) String() string                   { return AsString(n) }
 func (n *SetClusterSetting) String() string              { return AsString(n) }
-func (n *SetZoneConfig) String() string                  { return AsString(n) }
 func (n *SetSessionAuthorizationDefault) String() string { return AsString(n) }
 func (n *SetSessionCharacteristics) String() string      { return AsString(n) }
 func (n *SetTransaction) String() string                 { return AsString(n) }
@@ -1205,8 +1189,6 @@ func (n *ShowIndexes) String() string                    { return AsString(n) }
 func (n *ShowPartitions) String() string                 { return AsString(n) }
 func (n *ShowJobs) String() string                       { return AsString(n) }
 func (n *ShowQueries) String() string                    { return AsString(n) }
-func (n *ShowRanges) String() string                     { return AsString(n) }
-func (n *ShowRangeForRow) String() string                { return AsString(n) }
 func (n *ShowRoleGrants) String() string                 { return AsString(n) }
 func (n *ShowRoles) String() string                      { return AsString(n) }
 func (n *ShowSavepointStatus) String() string            { return AsString(n) }
@@ -1223,7 +1205,6 @@ func (n *ShowTransactions) String() string               { return AsString(n) }
 func (n *ShowLastQueryStatistics) String() string        { return AsString(n) }
 func (n *ShowUsers) String() string                      { return AsString(n) }
 func (n *ShowVar) String() string                        { return AsString(n) }
-func (n *ShowZoneConfig) String() string                 { return AsString(n) }
 func (n *ShowFingerprints) String() string               { return AsString(n) }
 func (n *Split) String() string                          { return AsString(n) }
 func (n *Unsplit) String() string                        { return AsString(n) }

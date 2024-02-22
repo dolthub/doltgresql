@@ -33,6 +33,8 @@
 
 package tree
 
+var _ Statement = &Delete{}
+
 // Delete represents a DELETE statement.
 type Delete struct {
 	With      *With

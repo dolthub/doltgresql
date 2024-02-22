@@ -188,8 +188,6 @@ func Convert(postgresStmt parser.Statement) (vitess.Statement, error) {
 		return nodeSetTransaction(stmt)
 	case *tree.SetVar:
 		return nodeSetVar(stmt)
-	case *tree.SetZoneConfig:
-		return nodeSetZoneConfig(stmt)
 	case *tree.ShowBackup:
 		return nodeShowBackup(stmt)
 	case *tree.ShowClusterSetting:
@@ -224,10 +222,6 @@ func Convert(postgresStmt parser.Statement) (vitess.Statement, error) {
 		return nodeShowPartitions(stmt)
 	case *tree.ShowQueries:
 		return nodeShowQueries(stmt)
-	case *tree.ShowRangeForRow:
-		return nodeShowRangeForRow(stmt)
-	case *tree.ShowRanges:
-		return nodeShowRanges(stmt)
 	case *tree.ShowRoleGrants:
 		return nodeShowRoleGrants(stmt)
 	case *tree.ShowRoles:
@@ -260,8 +254,6 @@ func Convert(postgresStmt parser.Statement) (vitess.Statement, error) {
 		return nodeShowUsers(stmt)
 	case *tree.ShowVar:
 		return nodeShowVar(stmt)
-	case *tree.ShowZoneConfig:
-		return nodeShowZoneConfig(stmt)
 	case *tree.Split:
 		return nodeSplit(stmt)
 	case *tree.Truncate:

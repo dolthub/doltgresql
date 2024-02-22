@@ -39,6 +39,8 @@ import (
 	"github.com/cockroachdb/errors"
 )
 
+var _ Statement = &CreateStats{}
+
 // CreateStats represents a CREATE STATISTICS statement.
 type CreateStats struct {
 	Name        Name

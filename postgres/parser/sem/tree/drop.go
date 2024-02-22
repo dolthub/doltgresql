@@ -53,6 +53,8 @@ func (d DropBehavior) String() string {
 	return dropBehaviorName[d]
 }
 
+var _ Statement = &DropDatabase{}
+
 // DropDatabase represents a DROP DATABASE statement.
 type DropDatabase struct {
 	Name     Name
@@ -140,6 +142,8 @@ func (node *FunctionWithArgs) Format(ctx *FmtCtx) {
 	ctx.WriteString(" )")
 }
 
+var _ Statement = &DropIndex{}
+
 // DropIndex represents a DROP INDEX statement.
 type DropIndex struct {
 	IndexList    TableIndexNames
@@ -164,6 +168,8 @@ func (node *DropIndex) Format(ctx *FmtCtx) {
 	}
 }
 
+var _ Statement = &DropTable{}
+
 // DropTable represents a DROP TABLE statement.
 type DropTable struct {
 	Names        TableNames
@@ -183,6 +189,8 @@ func (node *DropTable) Format(ctx *FmtCtx) {
 		ctx.WriteString(node.DropBehavior.String())
 	}
 }
+
+var _ Statement = &DropView{}
 
 // DropView represents a DROP VIEW statement.
 type DropView struct {
@@ -209,6 +217,8 @@ func (node *DropView) Format(ctx *FmtCtx) {
 	}
 }
 
+var _ Statement = &DropSequence{}
+
 // DropSequence represents a DROP SEQUENCE statement.
 type DropSequence struct {
 	Names        TableNames
@@ -228,6 +238,8 @@ func (node *DropSequence) Format(ctx *FmtCtx) {
 		ctx.WriteString(node.DropBehavior.String())
 	}
 }
+
+var _ Statement = &DropRole{}
 
 // DropRole represents a DROP ROLE statement
 type DropRole struct {

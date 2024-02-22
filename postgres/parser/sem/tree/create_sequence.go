@@ -35,6 +35,8 @@ package tree
 
 import "github.com/cockroachdb/errors"
 
+var _ Statement = &CreateSequence{}
+
 // CreateSequence represents a CREATE SEQUENCE statement.
 type CreateSequence struct {
 	IfNotExists bool

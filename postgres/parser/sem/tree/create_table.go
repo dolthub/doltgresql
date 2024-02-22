@@ -40,915 +40,19 @@ import (
 	"github.com/cockroachdb/errors"
 	"golang.org/x/text/language"
 
-	"github.com/dolthub/doltgresql/postgres/parser/lex"
 	"github.com/dolthub/doltgresql/postgres/parser/pgcode"
 	"github.com/dolthub/doltgresql/postgres/parser/pgerror"
 	"github.com/dolthub/doltgresql/postgres/parser/roleoption"
 	"github.com/dolthub/doltgresql/postgres/parser/types"
 )
 
-// CreateTypeVariety represents a particular variety of user defined types.
-type CreateTypeVariety int
-
-//go:generate stringer -type=CreateTypeVariety
-const (
-	_ CreateTypeVariety = iota
-	// Enum represents an ENUM user defined type.
-	Enum
-	// Composite represents a composite user defined type.
-	Composite
-	// Range represents a RANGE user defined type.
-	Range
-	// Base represents a base user defined type.
-	Base
-	// Shell represents a shell user defined type.
-	Shell
-	// Domain represents a DOMAIN user defined type.
-	Domain
-)
-
-// CreateType represents a CREATE TYPE statement.
-type CreateType struct {
-	TypeName *UnresolvedObjectName
-	Variety  CreateTypeVariety
-	// EnumLabels is set when this represents a CREATE TYPE ... AS ENUM statement.
-	EnumLabels []string
-}
-
-var _ Statement = &CreateType{}
-
-// Format implements the NodeFormatter interface.
-func (node *CreateType) Format(ctx *FmtCtx) {
-	ctx.WriteString("CREATE TYPE ")
-	ctx.WriteString(node.TypeName.String())
-	ctx.WriteString(" ")
-	switch node.Variety {
-	case Enum:
-		ctx.WriteString("AS ENUM (")
-		for i := range node.EnumLabels {
-			if i > 0 {
-				ctx.WriteString(", ")
-			}
-			lex.EncodeSQLString(&ctx.Buffer, node.EnumLabels[i])
-		}
-		ctx.WriteString(")")
-	}
-}
-
-func (node *CreateType) String() string {
-	return AsString(node)
-}
-
-// TableDef represents a column, index or constraint definition within a CREATE
-// TABLE statement.
-type TableDef interface {
-	NodeFormatter
-	// Placeholder function to ensure that only desired types (*TableDef) conform
-	// to the TableDef interface.
-	tableDef()
-}
-
-func (*ColumnTableDef) tableDef()               {}
-func (*IndexTableDef) tableDef()                {}
-func (*FamilyTableDef) tableDef()               {}
-func (*ForeignKeyConstraintTableDef) tableDef() {}
-func (*CheckConstraintTableDef) tableDef()      {}
-func (*LikeTableDef) tableDef()                 {}
-
-// TableDefs represents a list of table definitions.
-type TableDefs []TableDef
-
-// Format implements the NodeFormatter interface.
-func (node *TableDefs) Format(ctx *FmtCtx) {
-	for i, n := range *node {
-		if i > 0 {
-			ctx.WriteString(", ")
-		}
-		ctx.FormatNode(n)
-	}
-}
-
-// Nullability represents either NULL, NOT NULL or an unspecified value (silent
-// NULL).
-type Nullability int
-
-// The values for NullType.
-const (
-	NotNull Nullability = iota
-	Null
-	SilentNull
-)
-
-// ColumnTableDef represents a column definition within a CREATE TABLE
-// statement.
-type ColumnTableDef struct {
-	Name     Name
-	Type     ResolvableTypeReference
-	IsSerial bool
-	Nullable struct {
-		Nullability    Nullability
-		ConstraintName Name
-	}
-	PrimaryKey struct {
-		IsPrimaryKey bool
-		Sharded      bool
-		ShardBuckets Expr
-	}
-	Unique               bool
-	UniqueConstraintName Name
-	DefaultExpr          struct {
-		Expr           Expr
-		ConstraintName Name
-	}
-	CheckExprs []ColumnTableDefCheckExpr
-	References struct {
-		Table          *TableName
-		Col            Name
-		ConstraintName Name
-		Actions        ReferenceActions
-		Match          CompositeKeyMatchMethod
-	}
-	Computed struct {
-		Computed bool
-		Expr     Expr
-	}
-	Family struct {
-		Name        Name
-		Create      bool
-		IfNotExists bool
-	}
-}
-
-// ColumnTableDefCheckExpr represents a check constraint on a column definition
-// within a CREATE TABLE statement.
-type ColumnTableDefCheckExpr struct {
-	Expr           Expr
-	ConstraintName Name
-}
-
-func processCollationOnType(
-	name Name, ref ResolvableTypeReference, c ColumnCollation,
-) (*types.T, error) {
-	// At the moment, only string types can be collated. User defined types
-	//  like enums don't support collations, so check this at parse time.
-	typ, ok := GetStaticallyKnownType(ref)
-	if !ok {
-		return nil, pgerror.Newf(pgcode.DatatypeMismatch,
-			"COLLATE declaration for non-string-typed column %q", name)
-	}
-	switch typ.Family() {
-	case types.StringFamily:
-		return types.MakeCollatedString(typ, string(c)), nil
-	case types.CollatedStringFamily:
-		return nil, pgerror.Newf(pgcode.Syntax,
-			"multiple COLLATE declarations for column %q", name)
-	case types.ArrayFamily:
-		elemTyp, err := processCollationOnType(name, typ.ArrayContents(), c)
-		if err != nil {
-			return nil, err
-		}
-		return types.MakeArray(elemTyp), nil
-	default:
-		return nil, pgerror.Newf(pgcode.DatatypeMismatch,
-			"COLLATE declaration for non-string-typed column %q", name)
-	}
-}
-
-// NewColumnTableDef constructs a column definition for a CreateTable statement.
-func NewColumnTableDef(
-	name Name,
-	typRef ResolvableTypeReference,
-	isSerial bool,
-	qualifications []NamedColumnQualification,
-) (*ColumnTableDef, error) {
-	d := &ColumnTableDef{
-		Name:     name,
-		Type:     typRef,
-		IsSerial: isSerial,
-	}
-	d.Nullable.Nullability = SilentNull
-	for _, c := range qualifications {
-		switch t := c.Qualification.(type) {
-		case ColumnCollation:
-			locale := string(t)
-			_, err := language.Parse(locale)
-			if err != nil {
-				return nil, pgerror.Wrapf(err, pgcode.Syntax, "invalid locale %s", locale)
-			}
-			collatedTyp, err := processCollationOnType(name, d.Type, t)
-			if err != nil {
-				return nil, err
-			}
-			d.Type = collatedTyp
-		case *ColumnDefault:
-			if d.HasDefaultExpr() {
-				return nil, pgerror.Newf(pgcode.Syntax,
-					"multiple default values specified for column %q", name)
-			}
-			d.DefaultExpr.Expr = t.Expr
-			d.DefaultExpr.ConstraintName = c.Name
-		case NotNullConstraint:
-			if d.Nullable.Nullability == Null {
-				return nil, pgerror.Newf(pgcode.Syntax,
-					"conflicting NULL/NOT NULL declarations for column %q", name)
-			}
-			d.Nullable.Nullability = NotNull
-			d.Nullable.ConstraintName = c.Name
-		case NullConstraint:
-			if d.Nullable.Nullability == NotNull {
-				return nil, pgerror.Newf(pgcode.Syntax,
-					"conflicting NULL/NOT NULL declarations for column %q", name)
-			}
-			d.Nullable.Nullability = Null
-			d.Nullable.ConstraintName = c.Name
-		case PrimaryKeyConstraint:
-			d.PrimaryKey.IsPrimaryKey = true
-			d.UniqueConstraintName = c.Name
-		case ShardedPrimaryKeyConstraint:
-			d.PrimaryKey.IsPrimaryKey = true
-			constraint := c.Qualification.(ShardedPrimaryKeyConstraint)
-			d.PrimaryKey.Sharded = true
-			d.PrimaryKey.ShardBuckets = constraint.ShardBuckets
-			d.UniqueConstraintName = c.Name
-		case UniqueConstraint:
-			d.Unique = true
-			d.UniqueConstraintName = c.Name
-		case *ColumnCheckConstraint:
-			d.CheckExprs = append(d.CheckExprs, ColumnTableDefCheckExpr{
-				Expr:           t.Expr,
-				ConstraintName: c.Name,
-			})
-		case *ColumnFKConstraint:
-			if d.HasFKConstraint() {
-				return nil, pgerror.Newf(pgcode.InvalidTableDefinition,
-					"multiple foreign key constraints specified for column %q", name)
-			}
-			d.References.Table = &t.Table
-			d.References.Col = t.Col
-			d.References.ConstraintName = c.Name
-			d.References.Actions = t.Actions
-			d.References.Match = t.Match
-		case *ColumnComputedDef:
-			d.Computed.Computed = true
-			d.Computed.Expr = t.Expr
-		case *ColumnFamilyConstraint:
-			if d.HasColumnFamily() {
-				return nil, pgerror.Newf(pgcode.InvalidTableDefinition,
-					"multiple column families specified for column %q", name)
-			}
-			d.Family.Name = t.Family
-			d.Family.Create = t.Create
-			d.Family.IfNotExists = t.IfNotExists
-		default:
-			return nil, errors.AssertionFailedf("unexpected column qualification: %T", c)
-		}
-	}
-	return d, nil
-}
-
-// HasDefaultExpr returns if the ColumnTableDef has a default expression.
-func (node *ColumnTableDef) HasDefaultExpr() bool {
-	return node.DefaultExpr.Expr != nil
-}
-
-// HasFKConstraint returns if the ColumnTableDef has a foreign key constraint.
-func (node *ColumnTableDef) HasFKConstraint() bool {
-	return node.References.Table != nil
-}
-
-// IsComputed returns if the ColumnTableDef is a computed column.
-func (node *ColumnTableDef) IsComputed() bool {
-	return node.Computed.Computed
-}
-
-// HasColumnFamily returns if the ColumnTableDef has a column family.
-func (node *ColumnTableDef) HasColumnFamily() bool {
-	return node.Family.Name != "" || node.Family.Create
-}
-
-// Format implements the NodeFormatter interface.
-func (node *ColumnTableDef) Format(ctx *FmtCtx) {
-	ctx.FormatNode(&node.Name)
-
-	// ColumnTableDef node type will not be specified if it represents a CREATE
-	// TABLE ... AS query.
-	if node.Type != nil {
-		ctx.WriteByte(' ')
-		ctx.WriteString(node.columnTypeString())
-	}
-
-	if node.Nullable.Nullability != SilentNull && node.Nullable.ConstraintName != "" {
-		ctx.WriteString(" CONSTRAINT ")
-		ctx.FormatNode(&node.Nullable.ConstraintName)
-	}
-	switch node.Nullable.Nullability {
-	case Null:
-		ctx.WriteString(" NULL")
-	case NotNull:
-		ctx.WriteString(" NOT NULL")
-	}
-	if node.PrimaryKey.IsPrimaryKey || node.Unique {
-		if node.UniqueConstraintName != "" {
-			ctx.WriteString(" CONSTRAINT ")
-			ctx.FormatNode(&node.UniqueConstraintName)
-		}
-		if node.PrimaryKey.IsPrimaryKey {
-			ctx.WriteString(" PRIMARY KEY")
-			if node.PrimaryKey.Sharded {
-				ctx.WriteString(" USING HASH WITH BUCKET_COUNT=")
-				ctx.FormatNode(node.PrimaryKey.ShardBuckets)
-			}
-		} else if node.Unique {
-			ctx.WriteString(" UNIQUE")
-		}
-	}
-	if node.HasDefaultExpr() {
-		if node.DefaultExpr.ConstraintName != "" {
-			ctx.WriteString(" CONSTRAINT ")
-			ctx.FormatNode(&node.DefaultExpr.ConstraintName)
-		}
-		ctx.WriteString(" DEFAULT ")
-		ctx.FormatNode(node.DefaultExpr.Expr)
-	}
-	for _, checkExpr := range node.CheckExprs {
-		if checkExpr.ConstraintName != "" {
-			ctx.WriteString(" CONSTRAINT ")
-			ctx.FormatNode(&checkExpr.ConstraintName)
-		}
-		ctx.WriteString(" CHECK (")
-		ctx.FormatNode(checkExpr.Expr)
-		ctx.WriteByte(')')
-	}
-	if node.HasFKConstraint() {
-		if node.References.ConstraintName != "" {
-			ctx.WriteString(" CONSTRAINT ")
-			ctx.FormatNode(&node.References.ConstraintName)
-		}
-		ctx.WriteString(" REFERENCES ")
-		ctx.FormatNode(node.References.Table)
-		if node.References.Col != "" {
-			ctx.WriteString(" (")
-			ctx.FormatNode(&node.References.Col)
-			ctx.WriteByte(')')
-		}
-		if node.References.Match != MatchSimple {
-			ctx.WriteByte(' ')
-			ctx.WriteString(node.References.Match.String())
-		}
-		ctx.FormatNode(&node.References.Actions)
-	}
-	if node.IsComputed() {
-		ctx.WriteString(" AS (")
-		ctx.FormatNode(node.Computed.Expr)
-		ctx.WriteString(") STORED")
-	}
-	if node.HasColumnFamily() {
-		if node.Family.Create {
-			ctx.WriteString(" CREATE")
-			if node.Family.IfNotExists {
-				ctx.WriteString(" IF NOT EXISTS")
-			}
-		}
-		ctx.WriteString(" FAMILY")
-		if len(node.Family.Name) > 0 {
-			ctx.WriteByte(' ')
-			ctx.FormatNode(&node.Family.Name)
-		}
-	}
-}
-
-func (node *ColumnTableDef) columnTypeString() string {
-	if node.IsSerial {
-		// Map INT types to SERIAL keyword.
-		// TODO (rohany): This should be pushed until type resolution occurs.
-		//  However, the argument is that we deal with serial at parse time only,
-		//  so we handle those cases here.
-		switch MustBeStaticallyKnownType(node.Type).Width() {
-		case 16:
-			return "SERIAL2"
-		case 32:
-			return "SERIAL4"
-		}
-		return "SERIAL8"
-	}
-	return node.Type.SQLString()
-}
-
-// String implements the fmt.Stringer interface.
-func (node *ColumnTableDef) String() string { return AsString(node) }
-
-// NamedColumnQualification wraps a NamedColumnQualification with a name.
-type NamedColumnQualification struct {
-	Name          Name
-	Qualification ColumnQualification
-}
-
-// ColumnQualification represents a constraint on a column.
-type ColumnQualification interface {
-	columnQualification()
-}
-
-func (ColumnCollation) columnQualification()             {}
-func (*ColumnDefault) columnQualification()              {}
-func (NotNullConstraint) columnQualification()           {}
-func (NullConstraint) columnQualification()              {}
-func (PrimaryKeyConstraint) columnQualification()        {}
-func (ShardedPrimaryKeyConstraint) columnQualification() {}
-func (UniqueConstraint) columnQualification()            {}
-func (*ColumnCheckConstraint) columnQualification()      {}
-func (*ColumnComputedDef) columnQualification()          {}
-func (*ColumnFKConstraint) columnQualification()         {}
-func (*ColumnFamilyConstraint) columnQualification()     {}
-
-// ColumnCollation represents a COLLATE clause for a column.
-type ColumnCollation string
-
-// ColumnDefault represents a DEFAULT clause for a column.
-type ColumnDefault struct {
-	Expr Expr
-}
-
-// NotNullConstraint represents NOT NULL on a column.
-type NotNullConstraint struct{}
-
-// NullConstraint represents NULL on a column.
-type NullConstraint struct{}
-
-// PrimaryKeyConstraint represents PRIMARY KEY on a column.
-type PrimaryKeyConstraint struct{}
-
-// ShardedPrimaryKeyConstraint represents `PRIMARY KEY .. USING HASH..`
-// on a column.
-type ShardedPrimaryKeyConstraint struct {
-	Sharded      bool
-	ShardBuckets Expr
-}
-
-// UniqueConstraint represents UNIQUE on a column.
-type UniqueConstraint struct{}
-
-// ColumnCheckConstraint represents either a check on a column.
-type ColumnCheckConstraint struct {
-	Expr Expr
-}
-
-// ColumnFKConstraint represents a FK-constaint on a column.
-type ColumnFKConstraint struct {
-	Table   TableName
-	Col     Name // empty-string means use PK
-	Actions ReferenceActions
-	Match   CompositeKeyMatchMethod
-}
-
-// ColumnComputedDef represents the description of a computed column.
-type ColumnComputedDef struct {
-	Expr Expr
-}
-
-// ColumnFamilyConstraint represents FAMILY on a column.
-type ColumnFamilyConstraint struct {
-	Family      Name
-	Create      bool
-	IfNotExists bool
-}
-
-// IndexTableDef represents an index definition within a CREATE TABLE
-// statement.
-type IndexTableDef struct {
-	Name          Name
-	Columns       IndexElemList
-	Sharded       *ShardedIndexDef
-	Storing       NameList
-	Interleave    *InterleaveDef
-	Inverted      bool
-	PartitionBy   *PartitionBy
-	StorageParams StorageParams
-	Predicate     Expr
-}
-
-// Format implements the NodeFormatter interface.
-func (node *IndexTableDef) Format(ctx *FmtCtx) {
-	if node.Inverted {
-		ctx.WriteString("INVERTED ")
-	}
-	ctx.WriteString("INDEX ")
-	if node.Name != "" {
-		ctx.FormatNode(&node.Name)
-		ctx.WriteByte(' ')
-	}
-	ctx.WriteByte('(')
-	ctx.FormatNode(&node.Columns)
-	ctx.WriteByte(')')
-	if node.Sharded != nil {
-		ctx.FormatNode(node.Sharded)
-	}
-	if node.Storing != nil {
-		ctx.WriteString(" STORING (")
-		ctx.FormatNode(&node.Storing)
-		ctx.WriteByte(')')
-	}
-	if node.Interleave != nil {
-		ctx.FormatNode(node.Interleave)
-	}
-	if node.PartitionBy != nil {
-		ctx.FormatNode(node.PartitionBy)
-	}
-	if node.StorageParams != nil {
-		ctx.WriteString(" WITH (")
-		ctx.FormatNode(&node.StorageParams)
-		ctx.WriteString(")")
-	}
-	if node.Predicate != nil {
-		ctx.WriteString(" WHERE ")
-		ctx.FormatNode(node.Predicate)
-	}
-}
-
-// ConstraintTableDef represents a constraint definition within a CREATE TABLE
-// statement.
-type ConstraintTableDef interface {
-	TableDef
-	// Placeholder function to ensure that only desired types
-	// (*ConstraintTableDef) conform to the ConstraintTableDef interface.
-	constraintTableDef()
-
-	// SetName replaces the name of the definition in-place. Used in the parser.
-	SetName(name Name)
-}
-
-func (*UniqueConstraintTableDef) constraintTableDef()     {}
-func (*ForeignKeyConstraintTableDef) constraintTableDef() {}
-func (*CheckConstraintTableDef) constraintTableDef()      {}
-
-// UniqueConstraintTableDef represents a unique constraint within a CREATE
-// TABLE statement.
-type UniqueConstraintTableDef struct {
-	IndexTableDef
-	PrimaryKey bool
-}
-
-// SetName implements the TableDef interface.
-func (node *UniqueConstraintTableDef) SetName(name Name) {
-	node.Name = name
-}
-
-// Format implements the NodeFormatter interface.
-func (node *UniqueConstraintTableDef) Format(ctx *FmtCtx) {
-	if node.Name != "" {
-		ctx.WriteString("CONSTRAINT ")
-		ctx.FormatNode(&node.Name)
-		ctx.WriteByte(' ')
-	}
-	if node.PrimaryKey {
-		ctx.WriteString("PRIMARY KEY ")
-	} else {
-		ctx.WriteString("UNIQUE ")
-	}
-	ctx.WriteByte('(')
-	ctx.FormatNode(&node.Columns)
-	ctx.WriteByte(')')
-	if node.Sharded != nil {
-		ctx.FormatNode(node.Sharded)
-	}
-	if node.Storing != nil {
-		ctx.WriteString(" STORING (")
-		ctx.FormatNode(&node.Storing)
-		ctx.WriteByte(')')
-	}
-	if node.Interleave != nil {
-		ctx.FormatNode(node.Interleave)
-	}
-	if node.PartitionBy != nil {
-		ctx.FormatNode(node.PartitionBy)
-	}
-	if node.Predicate != nil {
-		ctx.WriteString(" WHERE ")
-		ctx.FormatNode(node.Predicate)
-	}
-}
-
-// ReferenceAction is the method used to maintain referential integrity through
-// foreign keys.
-type ReferenceAction int
-
-// The values for ReferenceAction.
-const (
-	NoAction ReferenceAction = iota
-	Restrict
-	SetNull
-	SetDefault
-	Cascade
-)
-
-var referenceActionName = [...]string{
-	NoAction:   "NO ACTION",
-	Restrict:   "RESTRICT",
-	SetNull:    "SET NULL",
-	SetDefault: "SET DEFAULT",
-	Cascade:    "CASCADE",
-}
-
-func (ra ReferenceAction) String() string {
-	return referenceActionName[ra]
-}
-
-// ReferenceActions contains the actions specified to maintain referential
-// integrity through foreign keys for different operations.
-type ReferenceActions struct {
-	Delete ReferenceAction
-	Update ReferenceAction
-}
-
-// Format implements the NodeFormatter interface.
-func (node *ReferenceActions) Format(ctx *FmtCtx) {
-	if node.Delete != NoAction {
-		ctx.WriteString(" ON DELETE ")
-		ctx.WriteString(node.Delete.String())
-	}
-	if node.Update != NoAction {
-		ctx.WriteString(" ON UPDATE ")
-		ctx.WriteString(node.Update.String())
-	}
-}
-
-// CompositeKeyMatchMethod is the algorithm use when matching composite keys.
-// See https://github.com/cockroachdb/cockroach/issues/20305 or
-// https://www.postgresql.org/docs/11/sql-createtable.html for details on the
-// different composite foreign key matching methods.
-type CompositeKeyMatchMethod int
-
-// The values for CompositeKeyMatchMethod.
-const (
-	MatchSimple CompositeKeyMatchMethod = iota
-	MatchFull
-	MatchPartial // Note: PARTIAL not actually supported at this point.
-)
-
-var compositeKeyMatchMethodName = [...]string{
-	MatchSimple:  "MATCH SIMPLE",
-	MatchFull:    "MATCH FULL",
-	MatchPartial: "MATCH PARTIAL",
-}
-
-func (c CompositeKeyMatchMethod) String() string {
-	return compositeKeyMatchMethodName[c]
-}
-
-// ForeignKeyConstraintTableDef represents a FOREIGN KEY constraint in the AST.
-type ForeignKeyConstraintTableDef struct {
-	Name     Name
-	Table    TableName
-	FromCols NameList
-	ToCols   NameList
-	Actions  ReferenceActions
-	Match    CompositeKeyMatchMethod
-}
-
-// Format implements the NodeFormatter interface.
-func (node *ForeignKeyConstraintTableDef) Format(ctx *FmtCtx) {
-	if node.Name != "" {
-		ctx.WriteString("CONSTRAINT ")
-		ctx.FormatNode(&node.Name)
-		ctx.WriteByte(' ')
-	}
-	ctx.WriteString("FOREIGN KEY (")
-	ctx.FormatNode(&node.FromCols)
-	ctx.WriteString(") REFERENCES ")
-	ctx.FormatNode(&node.Table)
-
-	if len(node.ToCols) > 0 {
-		ctx.WriteByte(' ')
-		ctx.WriteByte('(')
-		ctx.FormatNode(&node.ToCols)
-		ctx.WriteByte(')')
-	}
-
-	if node.Match != MatchSimple {
-		ctx.WriteByte(' ')
-		ctx.WriteString(node.Match.String())
-	}
-
-	ctx.FormatNode(&node.Actions)
-}
-
-// SetName implements the ConstraintTableDef interface.
-func (node *ForeignKeyConstraintTableDef) SetName(name Name) {
-	node.Name = name
-}
-
-// CheckConstraintTableDef represents a check constraint within a CREATE
-// TABLE statement.
-type CheckConstraintTableDef struct {
-	Name Name
-	Expr Expr
-}
-
-// SetName implements the ConstraintTableDef interface.
-func (node *CheckConstraintTableDef) SetName(name Name) {
-	node.Name = name
-}
-
-// Format implements the NodeFormatter interface.
-func (node *CheckConstraintTableDef) Format(ctx *FmtCtx) {
-	if node.Name != "" {
-		ctx.WriteString("CONSTRAINT ")
-		ctx.FormatNode(&node.Name)
-		ctx.WriteByte(' ')
-	}
-	ctx.WriteString("CHECK (")
-	ctx.FormatNode(node.Expr)
-	ctx.WriteByte(')')
-}
-
-// FamilyTableDef represents a family definition within a CREATE TABLE
-// statement.
-type FamilyTableDef struct {
-	Name    Name
-	Columns NameList
-}
-
-// Format implements the NodeFormatter interface.
-func (node *FamilyTableDef) Format(ctx *FmtCtx) {
-	ctx.WriteString("FAMILY ")
-	if node.Name != "" {
-		ctx.FormatNode(&node.Name)
-		ctx.WriteByte(' ')
-	}
-	ctx.WriteByte('(')
-	ctx.FormatNode(&node.Columns)
-	ctx.WriteByte(')')
-}
-
-// ShardedIndexDef represents a hash sharded secondary index definition within a CREATE
-// TABLE or CREATE INDEX statement.
-type ShardedIndexDef struct {
-	ShardBuckets Expr
-}
-
-// Format implements the NodeFormatter interface.
-func (node *ShardedIndexDef) Format(ctx *FmtCtx) {
-	ctx.WriteString(" USING HASH WITH BUCKET_COUNT = ")
-	ctx.FormatNode(node.ShardBuckets)
-}
-
-// InterleaveDef represents an interleave definition within a CREATE TABLE
-// or CREATE INDEX statement.
-type InterleaveDef struct {
-	Parent       TableName
-	Fields       NameList
-	DropBehavior DropBehavior
-}
-
-// Format implements the NodeFormatter interface.
-func (node *InterleaveDef) Format(ctx *FmtCtx) {
-	ctx.WriteString(" INTERLEAVE IN PARENT ")
-	ctx.FormatNode(&node.Parent)
-	ctx.WriteString(" (")
-	for i := range node.Fields {
-		if i > 0 {
-			ctx.WriteString(", ")
-		}
-		ctx.FormatNode(&node.Fields[i])
-	}
-	ctx.WriteString(")")
-	if node.DropBehavior != DropDefault {
-		ctx.WriteString(" ")
-		ctx.WriteString(node.DropBehavior.String())
-	}
-}
-
-// PartitionByType is an enum of each type of partitioning (LIST/RANGE).
-type PartitionByType string
-
-const (
-	// PartitionByList indicates a PARTITION BY LIST clause.
-	PartitionByList PartitionByType = "LIST"
-	// PartitionByRange indicates a PARTITION BY LIST clause.
-	PartitionByRange PartitionByType = "RANGE"
-)
-
-// PartitionBy represents an PARTITION BY definition within a CREATE/ALTER
-// TABLE/INDEX statement.
-type PartitionBy struct {
-	Fields NameList
-	// Exactly one of List or Range is required to be non-empty.
-	List  []ListPartition
-	Range []RangePartition
-}
-
-// Format implements the NodeFormatter interface.
-func (node *PartitionBy) Format(ctx *FmtCtx) {
-	if node == nil {
-		ctx.WriteString(` PARTITION BY NOTHING`)
-		return
-	}
-	if len(node.List) > 0 {
-		ctx.WriteString(` PARTITION BY LIST (`)
-	} else if len(node.Range) > 0 {
-		ctx.WriteString(` PARTITION BY RANGE (`)
-	}
-	ctx.FormatNode(&node.Fields)
-	ctx.WriteString(`) (`)
-	for i := range node.List {
-		if i > 0 {
-			ctx.WriteString(", ")
-		}
-		ctx.FormatNode(&node.List[i])
-	}
-	for i := range node.Range {
-		if i > 0 {
-			ctx.WriteString(", ")
-		}
-		ctx.FormatNode(&node.Range[i])
-	}
-	ctx.WriteString(`)`)
-}
-
-// ListPartition represents a PARTITION definition within a PARTITION BY LIST.
-type ListPartition struct {
-	Name         UnrestrictedName
-	Exprs        Exprs
-	Subpartition *PartitionBy
-}
-
-// Format implements the NodeFormatter interface.
-func (node *ListPartition) Format(ctx *FmtCtx) {
-	ctx.WriteString(`PARTITION `)
-	ctx.FormatNode(&node.Name)
-	ctx.WriteString(` VALUES IN (`)
-	ctx.FormatNode(&node.Exprs)
-	ctx.WriteByte(')')
-	if node.Subpartition != nil {
-		ctx.FormatNode(node.Subpartition)
-	}
-}
-
-// RangePartition represents a PARTITION definition within a PARTITION BY RANGE.
-type RangePartition struct {
-	Name         UnrestrictedName
-	From         Exprs
-	To           Exprs
-	Subpartition *PartitionBy
-}
-
-// Format implements the NodeFormatter interface.
-func (node *RangePartition) Format(ctx *FmtCtx) {
-	ctx.WriteString(`PARTITION `)
-	ctx.FormatNode(&node.Name)
-	ctx.WriteString(` VALUES FROM (`)
-	ctx.FormatNode(&node.From)
-	ctx.WriteString(`) TO (`)
-	ctx.FormatNode(&node.To)
-	ctx.WriteByte(')')
-	if node.Subpartition != nil {
-		ctx.FormatNode(node.Subpartition)
-	}
-}
-
-// StorageParam is a key-value parameter for table storage.
-type StorageParam struct {
-	Key   Name
-	Value Expr
-}
-
-// StorageParams is a list of StorageParams.
-type StorageParams []StorageParam
-
-// Format implements the NodeFormatter interface.
-func (o *StorageParams) Format(ctx *FmtCtx) {
-	for i := range *o {
-		n := &(*o)[i]
-		if i > 0 {
-			ctx.WriteString(", ")
-		}
-		ctx.FormatNode(&n.Key)
-		if n.Value != nil {
-			ctx.WriteString(` = `)
-			ctx.FormatNode(n.Value)
-		}
-	}
-}
-
-// CreateTableOnCommitSetting represents the CREATE TABLE ... ON COMMIT <action>
-// parameters.
-type CreateTableOnCommitSetting uint32
-
-const (
-	// CreateTableOnCommitUnset indicates that ON COMMIT was unset.
-	CreateTableOnCommitUnset CreateTableOnCommitSetting = iota
-	// CreateTableOnCommitPreserveRows indicates that ON COMMIT PRESERVE ROWS was set.
-	CreateTableOnCommitPreserveRows
-	// CreateTableOnCommitDeleteRows indicates that ON COMMIT DELETE ROWS was set.
-	CreateTableOnCommitDeleteRows
-	// CreateTableOnCommitDrop indicates that ON COMMIT DROP was set.
-	CreateTableOnCommitDrop
-)
+var _ Statement = &CreateTable{}
 
 // CreateTable represents a CREATE TABLE statement.
 type CreateTable struct {
 	IfNotExists   bool
 	Table         TableName
-	Interleave    *InterleaveDef
+	Inherits      TableNames
 	PartitionBy   *PartitionBy
 	Persistence   Persistence
 	StorageParams StorageParams
@@ -961,6 +65,11 @@ type CreateTable struct {
 	Defs       TableDefs
 	AsSource   *Select
 	WithNoData bool
+	// Used for `CREATE TABLE ... OF type_name ...` statements.
+	OfType *UnresolvedObjectName
+	// Used for `CREATE TABLE ... PARTITION OF type_name ...` statements.
+	PartitionOf        TableName
+	PartitionBoundSpec PartitionBoundSpec
 }
 
 // As returns true if this table represents a CREATE TABLE ... AS statement,
@@ -1010,15 +119,35 @@ func (node *CreateTable) FormatBody(ctx *FmtCtx) {
 			ctx.FormatNode(&node.Defs)
 			ctx.WriteByte(')')
 		}
+		if node.Using != "" {
+			ctx.WriteString(" USING ")
+			ctx.WriteString(node.Using)
+		}
+		if node.StorageParams != nil {
+			ctx.FormatNode(&node.StorageParams)
+		}
+		switch node.OnCommit {
+		case CreateTableOnCommitPreserveRows:
+			ctx.WriteString(" ON COMMIT PRESERVE ROWS")
+		case CreateTableOnCommitDeleteRows:
+			ctx.WriteString(" ON COMMIT DELETE ROWS")
+		case CreateTableOnCommitDrop:
+			ctx.WriteString(" ON COMMIT DROP")
+		}
+		if node.Tablespace != "" {
+			ctx.WriteString(" TABLESPACE ")
+			ctx.FormatNode(&node.Tablespace)
+		}
 		ctx.WriteString(" AS ")
 		ctx.FormatNode(node.AsSource)
+		if node.WithNoData {
+			ctx.WriteString(" WITH NO DATA")
+		}
 	} else {
 		ctx.WriteString(" (")
 		ctx.FormatNode(&node.Defs)
 		ctx.WriteByte(')')
-		if node.Interleave != nil {
-			ctx.FormatNode(node.Interleave)
-		}
+
 		if node.PartitionBy != nil {
 			ctx.FormatNode(node.PartitionBy)
 		}
@@ -1081,6 +210,842 @@ func (node *CreateTable) HoistConstraints() {
 				})
 				col.References.Table = nil
 			}
+		}
+	}
+}
+
+// TableDef represents a column, index or constraint definition within a CREATE
+// TABLE statement.
+type TableDef interface {
+	NodeFormatter
+	// Placeholder function to ensure that only desired types (*TableDef) conform
+	// to the TableDef interface.
+	tableDef()
+}
+
+func (*ColumnTableDef) tableDef()               {}
+func (*IndexTableDef) tableDef()                {}
+func (*ForeignKeyConstraintTableDef) tableDef() {}
+func (*CheckConstraintTableDef) tableDef()      {}
+func (*ExcludeConstraintTableDef) tableDef()    {}
+func (*LikeTableDef) tableDef()                 {}
+
+// TableDefs represents a list of table definitions.
+type TableDefs []TableDef
+
+// Format implements the NodeFormatter interface.
+func (node *TableDefs) Format(ctx *FmtCtx) {
+	for i, n := range *node {
+		if i > 0 {
+			ctx.WriteString(", ")
+		}
+		ctx.FormatNode(n)
+	}
+}
+
+// Nullability represents either NULL, NOT NULL or an unspecified value (silent
+// NULL).
+type Nullability int
+
+// The values for NullType.
+const (
+	NotNull Nullability = iota
+	Null
+	SilentNull
+)
+
+// ColumnTableDef represents a column definition within a CREATE TABLE
+// statement.
+type ColumnTableDef struct {
+	Name        Name
+	Type        ResolvableTypeReference
+	Compression string
+	Collation   string
+	IsSerial    bool
+	Nullable    struct {
+		Nullability    Nullability
+		ConstraintName Name
+	}
+	// only UNIQUE, PRIMARY KEY, EXCLUDE, and REFERENCES (foreign key) constraints accept this clause
+	PrimaryKey struct {
+		IsPrimaryKey bool
+	}
+	Unique               bool
+	UniqueConstraintName Name
+	UniqueDeferrable     DeferrableMode
+	UniqueInitially      InitiallyMode
+	DefaultExpr          struct {
+		Expr           Expr
+		ConstraintName Name
+	}
+	CheckExprs []ColumnTableDefCheckExpr
+	References struct {
+		Table          *TableName
+		Col            Name
+		ConstraintName Name
+		Actions        ReferenceActions
+		Match          CompositeKeyMatchMethod
+		Deferrable     DeferrableMode
+		Initially      InitiallyMode
+	}
+	Computed struct {
+		Computed  bool
+		ByDefault bool
+		Expr      Expr
+		Options   SequenceOptions
+	}
+}
+
+// ColumnTableDefCheckExpr represents a check constraint on a column definition
+// within a CREATE TABLE statement.
+type ColumnTableDefCheckExpr struct {
+	Expr           Expr
+	ConstraintName Name
+	NoInherit      bool
+}
+
+func processCollationOnType(name Name, ref ResolvableTypeReference, c string) (*types.T, error) {
+	// At the moment, only string types can be collated. User defined types
+	//  like enums don't support collations, so check this at parse time.
+	typ, ok := GetStaticallyKnownType(ref)
+	if !ok {
+		return nil, pgerror.Newf(pgcode.DatatypeMismatch,
+			"COLLATE declaration for non-string-typed column %q", name)
+	}
+	switch typ.Family() {
+	case types.StringFamily:
+		return types.MakeCollatedString(typ, string(c)), nil
+	case types.CollatedStringFamily:
+		return nil, pgerror.Newf(pgcode.Syntax,
+			"multiple COLLATE declarations for column %q", name)
+	case types.ArrayFamily:
+		elemTyp, err := processCollationOnType(name, typ.ArrayContents(), c)
+		if err != nil {
+			return nil, err
+		}
+		return types.MakeArray(elemTyp), nil
+	default:
+		return nil, pgerror.Newf(pgcode.DatatypeMismatch,
+			"COLLATE declaration for non-string-typed column %q", name)
+	}
+}
+
+// NewColumnTableDef constructs a column definition for a CreateTable statement.
+func NewColumnTableDef(
+	name Name,
+	typRef ResolvableTypeReference,
+	compression string,
+	collation string,
+	qualifications []NamedColumnQualification,
+) (*ColumnTableDef, error) {
+	var isSerial bool
+	if typRef != nil {
+		isSerial = IsReferenceSerialType(typRef)
+	}
+	d := &ColumnTableDef{
+		Name:     name,
+		Type:     typRef,
+		IsSerial: isSerial,
+	}
+	d.Nullable.Nullability = SilentNull
+	if collation != "" {
+		_, err := language.Parse(collation)
+		if err != nil {
+			return nil, pgerror.Wrapf(err, pgcode.Syntax, "invalid locale %s", collation)
+		}
+		collatedTyp, err := processCollationOnType(name, d.Type, collation)
+		if err != nil {
+			// TODO: currently ignore as the test used dummy value // return nil, err
+		} else {
+			d.Type = collatedTyp
+		}
+	}
+	for _, c := range qualifications {
+		switch t := c.Qualification.(type) {
+		case *ColumnDefault:
+			if d.HasDefaultExpr() {
+				return nil, pgerror.Newf(pgcode.Syntax,
+					"multiple default values specified for column %q", name)
+			}
+			d.DefaultExpr.Expr = t.Expr
+			d.DefaultExpr.ConstraintName = c.Name
+		case NotNullConstraint:
+			if d.Nullable.Nullability == Null {
+				return nil, pgerror.Newf(pgcode.Syntax,
+					"conflicting NULL/NOT NULL declarations for column %q", name)
+			}
+			d.Nullable.Nullability = NotNull
+			d.Nullable.ConstraintName = c.Name
+		case NullConstraint:
+			if d.Nullable.Nullability == NotNull {
+				return nil, pgerror.Newf(pgcode.Syntax,
+					"conflicting NULL/NOT NULL declarations for column %q", name)
+			}
+			d.Nullable.Nullability = Null
+			d.Nullable.ConstraintName = c.Name
+		case UniqueConstraint:
+			if t.IsPrimary {
+				d.PrimaryKey.IsPrimaryKey = true
+			} else {
+				d.Unique = true
+			}
+			d.UniqueConstraintName = c.Name
+			d.UniqueDeferrable = c.Deferrable
+			d.UniqueInitially = c.Initially
+		case *ColumnCheckConstraint:
+			d.CheckExprs = append(d.CheckExprs, ColumnTableDefCheckExpr{
+				Expr:           t.Expr,
+				ConstraintName: c.Name,
+			})
+		case *ColumnFKConstraint:
+			// TODO: this check needs to be done after parsing
+			//if d.HasFKConstraint() {
+			//	return nil, pgerror.Newf(pgcode.InvalidTableDefinition,
+			//		"multiple foreign key constraints specified for column %q", name)
+			//}
+			d.References.Table = &t.Table
+			d.References.Col = t.Col
+			d.References.ConstraintName = c.Name
+			d.References.Actions = t.Actions
+			d.References.Match = t.Match
+			d.References.Deferrable = c.Deferrable
+			d.References.Initially = c.Initially
+		case *ColumnComputedDef:
+			d.Computed.Computed = true
+			d.Computed.ByDefault = t.ByDefault
+			d.Computed.Expr = t.Expr
+			d.Computed.Options = t.Options
+		default:
+			return nil, errors.AssertionFailedf("unexpected column qualification: %T", c)
+		}
+	}
+	return d, nil
+}
+
+// HasDefaultExpr returns if the ColumnTableDef has a default expression.
+func (node *ColumnTableDef) HasDefaultExpr() bool {
+	return node.DefaultExpr.Expr != nil
+}
+
+// HasFKConstraint returns if the ColumnTableDef has a foreign key constraint.
+func (node *ColumnTableDef) HasFKConstraint() bool {
+	return node.References.Table != nil
+}
+
+// IsComputed returns if the ColumnTableDef is a computed column.
+func (node *ColumnTableDef) IsComputed() bool {
+	return node.Computed.Computed
+}
+
+// Format implements the NodeFormatter interface.
+func (node *ColumnTableDef) Format(ctx *FmtCtx) {
+	ctx.FormatNode(&node.Name)
+
+	// ColumnTableDef node type will not be specified if it represents a CREATE
+	// TABLE ... AS query.
+	if node.Type != nil {
+		ctx.WriteByte(' ')
+		ctx.WriteString(node.columnTypeString())
+	}
+
+	if node.Nullable.Nullability != SilentNull && node.Nullable.ConstraintName != "" {
+		ctx.WriteString(" CONSTRAINT ")
+		ctx.FormatNode(&node.Nullable.ConstraintName)
+	}
+	switch node.Nullable.Nullability {
+	case Null:
+		ctx.WriteString(" NULL")
+	case NotNull:
+		ctx.WriteString(" NOT NULL")
+	default:
+	}
+	for _, checkExpr := range node.CheckExprs {
+		if checkExpr.ConstraintName != "" {
+			ctx.WriteString(" CONSTRAINT ")
+			ctx.FormatNode(&checkExpr.ConstraintName)
+		}
+		ctx.WriteString(" CHECK (")
+		ctx.FormatNode(checkExpr.Expr)
+		ctx.WriteByte(')')
+		if checkExpr.NoInherit {
+			ctx.WriteString(" NO INHERIT")
+		}
+	}
+	if node.HasDefaultExpr() {
+		if node.DefaultExpr.ConstraintName != "" {
+			ctx.WriteString(" CONSTRAINT ")
+			ctx.FormatNode(&node.DefaultExpr.ConstraintName)
+		}
+		ctx.WriteString(" DEFAULT ")
+		ctx.FormatNode(node.DefaultExpr.Expr)
+	}
+	if node.IsComputed() {
+		ctx.WriteString(" GENERATED")
+		if node.Computed.ByDefault {
+			ctx.WriteString(" BY DEFAULT")
+		} else {
+			ctx.WriteString(" ALWAYS")
+		}
+		ctx.WriteString(" AS")
+		if node.Computed.Expr != nil {
+			ctx.WriteString(" ( ")
+			ctx.FormatNode(node.Computed.Expr)
+			ctx.WriteString(" ) STORED")
+		} else {
+			ctx.WriteString(" IDENTITY")
+			if node.Computed.Options != nil {
+				ctx.WriteString(" ( ")
+				ctx.FormatNode(&node.Computed.Options)
+				ctx.WriteString(" )")
+			}
+		}
+	}
+	if node.PrimaryKey.IsPrimaryKey || node.Unique {
+		if node.UniqueConstraintName != "" {
+			ctx.WriteString(" CONSTRAINT ")
+			ctx.FormatNode(&node.UniqueConstraintName)
+		}
+		if node.PrimaryKey.IsPrimaryKey {
+			ctx.WriteString(" PRIMARY KEY")
+		} else if node.Unique {
+			ctx.WriteString(" UNIQUE")
+		}
+		switch node.UniqueDeferrable {
+		case Deferrable:
+			ctx.WriteString(" DEFERRABLE")
+			switch node.UniqueInitially {
+			case InitiallyImmediate:
+				ctx.WriteString(" INITIALLY IMMEDIATE")
+			case InitiallyDeferred:
+				ctx.WriteString(" INITIALLY DEFERRED")
+			default:
+			}
+		case NotDeferrable:
+			ctx.WriteString(" NOT DEFERRABLE")
+		default:
+		}
+	}
+	if node.HasFKConstraint() {
+		if node.References.ConstraintName != "" {
+			ctx.WriteString(" CONSTRAINT ")
+			ctx.FormatNode(&node.References.ConstraintName)
+		}
+		ctx.WriteString(" REFERENCES ")
+		ctx.FormatNode(node.References.Table)
+		if node.References.Col != "" {
+			ctx.WriteString(" (")
+			ctx.FormatNode(&node.References.Col)
+			ctx.WriteByte(')')
+		}
+		if node.References.Match != MatchSimple {
+			ctx.WriteByte(' ')
+			ctx.WriteString(node.References.Match.String())
+		}
+		ctx.FormatNode(&node.References.Actions)
+		switch node.UniqueDeferrable {
+		case Deferrable:
+			ctx.WriteString(" DEFERRABLE")
+			switch node.UniqueInitially {
+			case InitiallyImmediate:
+				ctx.WriteString(" INITIALLY IMMEDIATE")
+			case InitiallyDeferred:
+				ctx.WriteString(" INITIALLY DEFERRED")
+			default:
+			}
+		case NotDeferrable:
+			ctx.WriteString(" NOT DEFERRABLE")
+		default:
+		}
+	}
+}
+
+func (node *ColumnTableDef) columnTypeString() string {
+	if node.IsSerial {
+		// Map INT types to SERIAL keyword.
+		// TODO (rohany): This should be pushed until type resolution occurs.
+		//  However, the argument is that we deal with serial at parse time only,
+		//  so we handle those cases here.
+		switch MustBeStaticallyKnownType(node.Type).Width() {
+		case 16:
+			return "SERIAL2"
+		case 32:
+			return "SERIAL4"
+		}
+		return "SERIAL8"
+	}
+	return node.Type.SQLString()
+}
+
+// String implements the fmt.Stringer interface.
+func (node *ColumnTableDef) String() string { return AsString(node) }
+
+// NamedColumnQualification wraps a NamedColumnQualification with a name.
+type NamedColumnQualification struct {
+	Name          Name
+	Qualification ColumnQualification
+	Collation     string
+	Deferrable    DeferrableMode
+	Initially     InitiallyMode
+}
+
+type InitiallyMode int
+
+// InitiallyMode values.
+const (
+	UnspecifiedInitiallyMode InitiallyMode = iota
+	InitiallyDeferred
+	InitiallyImmediate
+)
+
+// ColumnQualification represents a constraint on a column.
+type ColumnQualification interface {
+	columnQualification()
+}
+
+func (NotNullConstraint) columnQualification()      {}
+func (NullConstraint) columnQualification()         {}
+func (*ColumnCheckConstraint) columnQualification() {}
+func (*ColumnDefault) columnQualification()         {}
+func (*ColumnComputedDef) columnQualification()     {}
+func (UniqueConstraint) columnQualification()       {}
+func (*ColumnFKConstraint) columnQualification()    {}
+
+// NotNullConstraint represents NOT NULL on a column.
+type NotNullConstraint struct{}
+
+// NullConstraint represents NULL on a column.
+type NullConstraint struct{}
+
+// ColumnCheckConstraint represents either a check on a column.
+type ColumnCheckConstraint struct {
+	Expr      Expr
+	NoInherit bool
+}
+
+// ColumnDefault represents a DEFAULT clause for a column.
+type ColumnDefault struct {
+	Expr Expr
+}
+
+// ColumnComputedDef represents the description of a computed column (GENERATED ... clause).
+type ColumnComputedDef struct {
+	Expr      Expr
+	ByDefault bool
+	Options   SequenceOptions
+}
+
+// UniqueConstraint represents UNIQUE and PRIMARY KEY on a column.
+type UniqueConstraint struct {
+	NullsDistinct bool
+	IndexParams   IndexParams
+	IsPrimary     bool
+}
+
+// ColumnFKConstraint represents a Foreign Key constaint on a column (REFERENCES ... clause).
+type ColumnFKConstraint struct {
+	Table   TableName
+	Col     Name // empty-string means use PK
+	Actions ReferenceActions
+	Match   CompositeKeyMatchMethod
+}
+
+// IndexParams is sub-clause used in UNIQUE, PRIMARY KEY, and EXCLUDE constraints.
+type IndexParams struct {
+	IncludeColumns IndexElemList // names only
+	StorageParams  StorageParams
+	Tablespace     Name
+}
+
+func (node *IndexParams) Format(ctx *FmtCtx) {
+	if node.IncludeColumns != nil {
+		ctx.WriteString(" INCLUDE ( ")
+		ctx.FormatNode(&node.IncludeColumns)
+		ctx.WriteString(" )")
+	}
+	if node.StorageParams != nil {
+		ctx.WriteString(" WITH ( ")
+		ctx.FormatNode(&node.StorageParams)
+		ctx.WriteString(" )")
+	}
+	if node.Tablespace != "" {
+		ctx.WriteString(" USING INDEX TABLESPACE ")
+		ctx.FormatNode(&node.Tablespace)
+	}
+}
+
+// IndexTableDef represents an index definition within a CREATE TABLE
+// statement.
+type IndexTableDef struct {
+	Name        Name
+	Columns     IndexElemList
+	IndexParams IndexParams
+}
+
+// Format implements the NodeFormatter interface.
+func (node *IndexTableDef) Format(ctx *FmtCtx) {
+	if node.Name != "" {
+		ctx.WriteString("CONSTRAINT ")
+		ctx.FormatNode(&node.Name)
+		ctx.WriteByte(' ')
+	}
+	ctx.WriteByte('(')
+	ctx.FormatNode(&node.Columns)
+	ctx.WriteByte(')')
+	ctx.FormatNode(&node.IndexParams)
+}
+
+// ConstraintTableDef represents a table constraint definition within a CREATE TABLE
+// statement.
+type ConstraintTableDef interface {
+	TableDef
+	// Placeholder function to ensure that only desired types
+	// (*ConstraintTableDef) conform to the ConstraintTableDef interface.
+	constraintTableDef()
+
+	// SetName replaces the name of the definition in-place. Used in the parser.
+	SetName(name Name)
+}
+
+func (*CheckConstraintTableDef) constraintTableDef()      {}
+func (*UniqueConstraintTableDef) constraintTableDef()     {}
+func (*ExcludeConstraintTableDef) constraintTableDef()    {}
+func (*ForeignKeyConstraintTableDef) constraintTableDef() {}
+
+// CheckConstraintTableDef represents a check constraint within a CREATE
+// TABLE statement.
+type CheckConstraintTableDef struct {
+	Name      Name
+	Expr      Expr
+	NoInherit bool
+}
+
+// SetName implements the ConstraintTableDef interface.
+func (node *CheckConstraintTableDef) SetName(name Name) {
+	node.Name = name
+}
+
+// Format implements the NodeFormatter interface.
+func (node *CheckConstraintTableDef) Format(ctx *FmtCtx) {
+	if node.Name != "" {
+		ctx.WriteString("CONSTRAINT ")
+		ctx.FormatNode(&node.Name)
+		ctx.WriteByte(' ')
+	}
+	ctx.WriteString("CHECK (")
+	ctx.FormatNode(node.Expr)
+	ctx.WriteByte(')')
+	if node.NoInherit {
+		ctx.WriteString(" NO INHERIT")
+	}
+}
+
+// UniqueConstraintTableDef represents a unique constraint within a CREATE
+// TABLE statement.
+type UniqueConstraintTableDef struct {
+	IndexTableDef
+	NullsNotDistinct bool
+	PrimaryKey       bool
+}
+
+// SetName implements the TableDef interface.
+func (node *UniqueConstraintTableDef) SetName(name Name) {
+	node.Name = name
+}
+
+// Format implements the NodeFormatter interface.
+func (node *UniqueConstraintTableDef) Format(ctx *FmtCtx) {
+	if node.Name != "" {
+		ctx.WriteString("CONSTRAINT ")
+		ctx.FormatNode(&node.Name)
+		ctx.WriteByte(' ')
+	}
+	if node.PrimaryKey {
+		ctx.WriteString("PRIMARY KEY ")
+	} else {
+		ctx.WriteString("UNIQUE ")
+	}
+	ctx.WriteByte('(')
+	ctx.FormatNode(&node.Columns)
+	ctx.WriteByte(')')
+	ctx.FormatNode(&node.IndexParams)
+}
+
+type ExcludeElement struct {
+	Elem IndexElem
+	With Operator
+}
+
+// ExcludeConstraintTableDef represents a FOREIGN KEY constraint in the AST.
+type ExcludeConstraintTableDef struct {
+	IndexTableDef
+	Using     string
+	Predicate Expr
+}
+
+// Format implements the NodeFormatter interface.
+func (node *ExcludeConstraintTableDef) Format(ctx *FmtCtx) {
+	if node.Name != "" {
+		ctx.WriteString("CONSTRAINT ")
+		ctx.FormatNode(&node.Name)
+		ctx.WriteByte(' ')
+	}
+	ctx.WriteString("EXCLUDE ")
+	if node.Using != "" {
+		ctx.WriteString("USING ")
+		ctx.WriteString(node.Using)
+	}
+	ctx.WriteString(" ( ")
+	ctx.FormatNode(&node.Columns)
+	ctx.WriteString(" )")
+	ctx.FormatNode(&node.IndexParams)
+	if node.Predicate != nil {
+		ctx.WriteByte(' ')
+		ctx.FormatNode(node.Predicate)
+	}
+}
+
+// SetName implements the ConstraintTableDef interface.
+func (node *ExcludeConstraintTableDef) SetName(name Name) {
+	node.Name = name
+}
+
+type RefAction struct {
+	Action  ReferenceAction
+	Columns NameList // used for SET NULL or SET DEFAULT
+}
+
+func (node *RefAction) Format(ctx *FmtCtx) {
+	ctx.WriteString(node.Action.String())
+	if node.Columns != nil {
+		ctx.WriteByte(' ')
+		ctx.FormatNode(&node.Columns)
+	}
+}
+
+// ReferenceAction is the method used to maintain referential integrity through
+// foreign keys.
+type ReferenceAction int
+
+// The values for ReferenceAction.
+const (
+	NoAction ReferenceAction = iota
+	Restrict
+	SetNull
+	SetDefault
+	Cascade
+)
+
+var referenceActionName = [...]string{
+	NoAction:   "NO ACTION",
+	Restrict:   "RESTRICT",
+	SetNull:    "SET NULL",
+	SetDefault: "SET DEFAULT",
+	Cascade:    "CASCADE",
+}
+
+func (ra ReferenceAction) String() string {
+	return referenceActionName[ra]
+}
+
+// ReferenceActions contains the actions specified to maintain referential
+// integrity through foreign keys for different operations.
+type ReferenceActions struct {
+	Delete RefAction
+	Update RefAction
+}
+
+// Format implements the NodeFormatter interface.
+func (node *ReferenceActions) Format(ctx *FmtCtx) {
+	if node.Delete.Action != NoAction {
+		ctx.WriteString(" ON DELETE ")
+		ctx.FormatNode(&node.Delete)
+	}
+	if node.Update.Action != NoAction {
+		ctx.WriteString(" ON UPDATE ")
+		ctx.FormatNode(&node.Update)
+	}
+}
+
+// CompositeKeyMatchMethod is the algorithm use when matching composite keys.
+// See https://github.com/cockroachdb/cockroach/issues/20305 or
+// https://www.postgresql.org/docs/11/sql-createtable.html for details on the
+// different composite foreign key matching methods.
+type CompositeKeyMatchMethod int
+
+// The values for CompositeKeyMatchMethod.
+const (
+	MatchSimple CompositeKeyMatchMethod = iota
+	MatchFull
+	MatchPartial // Note: PARTIAL not actually supported at this point.
+)
+
+var compositeKeyMatchMethodName = [...]string{
+	MatchSimple:  "MATCH SIMPLE",
+	MatchFull:    "MATCH FULL",
+	MatchPartial: "MATCH PARTIAL",
+}
+
+func (c CompositeKeyMatchMethod) String() string {
+	return compositeKeyMatchMethodName[c]
+}
+
+// ForeignKeyConstraintTableDef represents a FOREIGN KEY constraint in the AST.
+type ForeignKeyConstraintTableDef struct {
+	Name     Name
+	FromCols NameList
+	Table    TableName
+	ToCols   NameList
+	Actions  ReferenceActions
+	Match    CompositeKeyMatchMethod
+}
+
+// Format implements the NodeFormatter interface.
+func (node *ForeignKeyConstraintTableDef) Format(ctx *FmtCtx) {
+	if node.Name != "" {
+		ctx.WriteString("CONSTRAINT ")
+		ctx.FormatNode(&node.Name)
+		ctx.WriteByte(' ')
+	}
+	ctx.WriteString("FOREIGN KEY (")
+	ctx.FormatNode(&node.FromCols)
+	ctx.WriteString(") REFERENCES ")
+	ctx.FormatNode(&node.Table)
+
+	if len(node.ToCols) > 0 {
+		ctx.WriteByte(' ')
+		ctx.WriteByte('(')
+		ctx.FormatNode(&node.ToCols)
+		ctx.WriteByte(')')
+	}
+
+	if node.Match != MatchSimple {
+		ctx.WriteByte(' ')
+		ctx.WriteString(node.Match.String())
+	}
+
+	ctx.FormatNode(&node.Actions)
+}
+
+// SetName implements the ConstraintTableDef interface.
+func (node *ForeignKeyConstraintTableDef) SetName(name Name) {
+	node.Name = name
+}
+
+// PartitionByType is an enum of each type of partitioning (LIST/RANGE).
+type PartitionByType string
+
+const (
+	// PartitionByList indicates a PARTITION BY LIST clause.
+	PartitionByList PartitionByType = "LIST"
+	// PartitionByRange indicates a PARTITION BY RANGE clause.
+	PartitionByRange PartitionByType = "RANGE"
+	// PartitionByHash indicates a PARTITION BY HASH clause.
+	PartitionByHash PartitionByType = "HASH"
+)
+
+// PartitionBy represents an PARTITION BY definition within a CREATE/ALTER
+// TABLE/INDEX statement.
+type PartitionBy struct {
+	// Exactly one of List or Range or Hash is required to be non-empty.
+	Type  PartitionByType
+	Elems IndexElemList
+}
+
+// Format implements the NodeFormatter interface.
+func (node *PartitionBy) Format(ctx *FmtCtx) {
+	ctx.WriteString(` PARTITION BY `)
+	ctx.WriteString(string(node.Type))
+	ctx.WriteString(" ( ")
+	for i := range node.Elems {
+		if i > 0 {
+			ctx.WriteString(", ")
+		}
+		ctx.FormatNode(&node.Elems[i])
+	}
+	ctx.WriteString(" )")
+}
+
+// StorageParam is a key-value parameter for table storage.
+type StorageParam struct {
+	Key   Name
+	Value Expr
+}
+
+// StorageParams is a list of StorageParams.
+type StorageParams []StorageParam
+
+// Format implements the NodeFormatter interface.
+func (o *StorageParams) Format(ctx *FmtCtx) {
+	for i := range *o {
+		n := &(*o)[i]
+		if i > 0 {
+			ctx.WriteString(", ")
+		}
+		ctx.FormatNode(&n.Key)
+		if n.Value != nil {
+			ctx.WriteString(` = `)
+			ctx.FormatNode(n.Value)
+		}
+	}
+}
+
+// CreateTableOnCommitSetting represents the CREATE TABLE ... ON COMMIT <action>
+// parameters.
+type CreateTableOnCommitSetting uint32
+
+const (
+	// CreateTableOnCommitUnset indicates that ON COMMIT was unset.
+	CreateTableOnCommitUnset CreateTableOnCommitSetting = iota
+	// CreateTableOnCommitPreserveRows indicates that ON COMMIT PRESERVE ROWS was set.
+	CreateTableOnCommitPreserveRows
+	// CreateTableOnCommitDeleteRows indicates that ON COMMIT DELETE ROWS was set.
+	CreateTableOnCommitDeleteRows
+	// CreateTableOnCommitDrop indicates that ON COMMIT DROP was set.
+	CreateTableOnCommitDrop
+)
+
+type PartitionBoundType int
+
+// The values for PartitionBoundType.
+const (
+	PartitionBoundIn PartitionBoundType = iota
+	PartitionBoundFromTo
+	PartitionBoundWith
+)
+
+type PartitionBoundSpec struct {
+	IsDefault bool
+	Type      PartitionBoundType
+	// NOTE: Values MINVALUE and MAXVALUE for FROM and TO expressions will be in string constant format.
+	// From holds also expressions for IN type or a single expression for MODULUS part of WITH type
+	From Exprs
+	// To holds also a single expression for REMAINDER part of WITH type
+	To Exprs
+}
+
+// Format implements the NodeFormatter interface.
+func (node *PartitionBoundSpec) Format(ctx *FmtCtx) {
+	if node.IsDefault {
+		ctx.WriteString("DEFAULT")
+	} else {
+		ctx.WriteString("FOR VALUES ")
+		switch node.Type {
+		case PartitionBoundIn:
+			ctx.WriteString("IN ( ")
+			ctx.FormatNode(&node.From)
+			ctx.WriteString(" )")
+		case PartitionBoundFromTo:
+			ctx.WriteString("FROM ( ")
+			ctx.FormatNode(&node.From)
+			ctx.WriteString(" ) TO ( ")
+			ctx.FormatNode(&node.To)
+			ctx.WriteString(" )")
+		case PartitionBoundWith:
+			ctx.WriteString("WITH ( MODULUS ")
+			ctx.FormatNode(&node.From)
+			ctx.WriteString(" , REMAINDER ")
+			ctx.FormatNode(&node.From)
+			ctx.WriteString(" )")
 		}
 	}
 }
@@ -1227,4 +1192,17 @@ func (o *KVOptions) formatAsRoleOptions(ctx *FmtCtx) {
 			ctx.FormatNode(option.Value)
 		}
 	}
+}
+
+// ConvertIdxElemsToTblDefsForColumnNameOnly converts given IndexElemList that holds column names only to
+// TableDefs that holds column names only.
+func ConvertIdxElemsToTblDefsForColumnNameOnly(idxElems IndexElemList) TableDefs {
+	if idxElems == nil {
+		return TableDefs(nil)
+	}
+	tblDefs := make([]TableDef, len(idxElems))
+	for i, idxElem := range idxElems {
+		tblDefs[i] = &ColumnTableDef{Name: idxElem.Column}
+	}
+	return tblDefs
 }
