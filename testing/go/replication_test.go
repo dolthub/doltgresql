@@ -260,65 +260,32 @@ func runReplicationScript(
 		replicaConn *pgx.Conn,
 		primaryDns string,
 ) {
+	defer r.Stop()
+	
 	if script.Skip {
 		t.Skip("Skip has been set in the script")
 	}
 
-	primaryConnections := make(map[string]*pgx.Conn)
+	connections := map[string]*pgx.Conn {
+		"replica": replicaConn,	
+	}
+	
 	defer func() {
-		for _, conn := range primaryConnections {
+		for _, conn := range connections {
 			if conn != nil {
 				conn.Close(ctx)
 			}
 		}
 	}()
-
-	// TODO: this shouldn't happen on every test
-	require.NoError(t, r.SetupReplication(slotName))
-	defer r.Stop()
 	
 	// Run the setup
 	for _, query := range script.SetUpScript {
 		// handle logic for special pseudo-queries
-		switch query {
-		case startReplica:
-			continue
-		case stopReplica:
-			continue
-		case createReplicationSlot:
-			require.NoError(t, r.CreateReplicationSlotIfNecessary(slotName))
-			continue
-		case dropReplicationSlot:
-			require.NoError(t, r.DropReplicationSlot(slotName))
-			continue
-		case startReplication:
-			go func() {
-				err := r.StartReplication(slotName)
-				require.NoError(t, err)
-			}()
-			require.NoError(t, waitForRunning(r))
-			continue
-		case stopReplication:
-			r.Stop()
+		if handlePseudoQuery(t, query, r) {
 			continue
 		}
-		
-		target, client := clientSpecFromQueryComment(query)
-		var conn *pgx.Conn
-		switch target {
-		case "primary":
-			conn = primaryConnections[client]
-			if conn == nil {
-				var err error
-				conn, err = pgx.Connect(context.Background(), primaryDns)
-				require.NoError(t, err)
-				primaryConnections[client] = conn
-			}
-		case "replica":
-			conn = replicaConn
-		default:
-			require.Fail(t, "Invalid target in setup script: ", target)
-		}
+
+		conn := connectionForQuery(t, query, connections, primaryDns)
 		log.Println("Running setup query:", query)
 		_, err := conn.Exec(ctx, query)
 		require.NoError(t, err)
@@ -335,45 +302,11 @@ func runReplicationScript(
 			}
 
 			// handle logic for special pseudo-queries
-			switch assertion.Query {
-			case startReplica:
-				return
-			case stopReplica:
-				return
-			case createReplicationSlot:
-				require.NoError(t, r.CreateReplicationSlotIfNecessary(slotName))
-				return
-			case dropReplicationSlot:
-				require.NoError(t, r.DropReplicationSlot(slotName))
-				return
-			case startReplication:
-				go func() {
-					err := r.StartReplication(slotName)
-					require.NoError(t, err)
-				}()
-				require.NoError(t, waitForRunning(r))
-				return
-			case stopReplication:
-				r.Stop()
+			if handlePseudoQuery(t, assertion.Query, r) {
 				return
 			}
 
-			target, client := clientSpecFromQueryComment(assertion.Query)
-			var conn *pgx.Conn
-			switch target {
-			case "primary":
-				conn = primaryConnections[client]
-				if conn == nil {
-					var err error
-					conn, err = pgx.Connect(context.Background(), primaryDns)
-					require.NoError(t, err)
-					primaryConnections[client] = conn
-				}
-			case "replica":
-				conn = replicaConn
-			default:
-				require.Fail(t, "Invalid target in setup script: ", target)
-			}
+			conn := connectionForQuery(t, assertion.Query, connections, primaryDns)
 
 			// If we're skipping the results check, then we call Execute, as it uses a simplified message model.
 			if assertion.SkipResultsCheck || assertion.ExpectedErr {
@@ -392,6 +325,57 @@ func runReplicationScript(
 			}
 		})
 	}
+}
+
+// connectionForQuery returns the connection to use for the given query
+func connectionForQuery(t *testing.T, query string, connections map[string]*pgx.Conn, primaryDns string, ) *pgx.Conn {
+	target, client := clientSpecFromQueryComment(query)
+	var conn *pgx.Conn
+	switch target {
+	case "primary":
+		conn = connections[client]
+		if conn == nil {
+			var err error
+			conn, err = pgx.Connect(context.Background(), primaryDns)
+			require.NoError(t, err)
+			connections[client] = conn
+		}
+	case "replica":
+		conn = connections["replica"]
+	default:
+		require.Fail(t, "Invalid target in setup script: ", target)
+	}
+	return conn
+}
+
+// handlePseudoQuery handles special pseudo-queries that are used to orchestrate replication tests and returns whether 
+// one was handled.
+func handlePseudoQuery(t *testing.T, query string, r *logrepl.LogicalReplicator) bool {
+	switch query {
+	case startReplica:
+		return true
+	case stopReplica:
+		return true
+	case createReplicationSlot:
+		require.NoError(t, r.CreateReplicationSlotIfNecessary(slotName))
+		return true
+	case dropReplicationSlot:
+		require.NoError(t, r.DropReplicationSlot(slotName))
+		return true
+	case startReplication:
+		go func() {
+			require.NoError(t, r.StartReplication(slotName))
+		}()
+		require.NoError(t, waitForRunning(r))
+		return true
+	case stopReplication:
+		r.Stop()
+		return true
+	case waitForCatchup:
+		require.NoError(t, waitForCaughtUp(r))
+		return true
+	}
+	return false
 }
 
 // clientSpecFromQueryComment returns "replica" if the query is meant to be run on the replica, and "primary" if it's meant
