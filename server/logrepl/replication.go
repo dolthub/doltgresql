@@ -104,6 +104,14 @@ func (r *LogicalReplicator) SetupReplication(publicationName string) error {
 // CaughtUp returns true if the replication slot is caught up to the primary, and false otherwise. This only works if
 // there is only a single replication slot on the primary, so it's only suitable for testing.
 func (r *LogicalReplicator) CaughtUp() (bool, error) {
+	// if we haven't received any messages yet, we can't tell if we're caught up or not
+	r.mu.Lock()
+	if r.lsn == 0 {
+		r.mu.Unlock()
+		return false, nil
+	}
+	r.mu.Unlock()
+	
 	conn, err := pgx.Connect(context.Background(), r.PrimaryDns())
 	if err != nil {
 		return false, err
@@ -167,8 +175,8 @@ func (r *LogicalReplicator) StartReplication(slotName string) error {
 		r.mu.Unlock()
 	}()
 	
-	sendStandbyStatusUpdate := func() error {
-		err := pglogrepl.SendStandbyStatusUpdate(context.Background(), primaryConn, pglogrepl.StandbyStatusUpdate{WALWritePosition: r.lsn})
+	sendStandbyStatusUpdate := func(lsn pglogrepl.LSN) error {
+		err := pglogrepl.SendStandbyStatusUpdate(context.Background(), primaryConn, pglogrepl.StandbyStatusUpdate{WALWritePosition: lsn})
 		if err != nil {
 			connErrCnt++
 			if connErrCnt < 3 {
@@ -182,11 +190,15 @@ func (r *LogicalReplicator) StartReplication(slotName string) error {
 		}
 
 		connErrCnt = 0
-		log.Printf("Sent Standby status message at %s\n", r.lsn.String())
+		log.Printf("Sent Standby status message at %s\n", lsn.String())
 		nextStandbyMessageDeadline = time.Now().Add(standbyMessageTimeout)
 		return nil
 	}
-	
+
+	r.mu.Lock()
+	r.running = true
+	r.mu.Unlock()
+
 	for {
 		// Shutdown if requested
 		select {
@@ -206,16 +218,15 @@ func (r *LogicalReplicator) StartReplication(slotName string) error {
 				return err
 			}
 		}
-
-		r.mu.Lock()
-		r.running = true
-		r.mu.Unlock()
-
+		
 		if time.Now().After(nextStandbyMessageDeadline) {
-			err := sendStandbyStatusUpdate()
+			r.mu.Lock()
+			err := sendStandbyStatusUpdate(r.lsn)
 			if err != nil {
+				r.mu.Unlock()
 				return err
 			}
+			r.mu.Unlock()
 		}
 
 		ctx, cancel := context.WithDeadline(context.Background(), nextStandbyMessageDeadline)
@@ -272,9 +283,13 @@ func (r *LogicalReplicator) StartReplication(slotName string) error {
 				log.Fatalln("ParsePrimaryKeepaliveMessage failed:", err)
 			}
 			log.Println("Primary Keepalive Message =>", "ServerWALEnd:", pkm.ServerWALEnd, "ServerTime:", pkm.ServerTime, "ReplyRequested:", pkm.ReplyRequested)
+			
+			r.mu.Lock()
 			if pkm.ServerWALEnd > r.lsn {
 				r.lsn = pkm.ServerWALEnd
 			}
+			r.mu.Unlock()
+			
 			if pkm.ReplyRequested {
 				// Send our reply the next time through the loop
 				nextStandbyMessageDeadline = time.Time{}
@@ -292,14 +307,18 @@ func (r *LogicalReplicator) StartReplication(slotName string) error {
 			//  we will receive a duplicate LSN the next time we start replication. We can mitigate this by writing the last
 			//  processed LSN to a file locally, but that suffers from the same problem (if the process dies before we update
 			//  the file). A better solution would be to write the LSN directly into the DoltCommit message, and then parsing
-			//  this message back out when we begin replication next.  
+			//  this message back out when we begin replication next.
+			r.mu.Lock()
 			if xld.ServerWALEnd > r.lsn {
 				r.lsn = xld.ServerWALEnd
-				err := sendStandbyStatusUpdate()
+				err := sendStandbyStatusUpdate(r.lsn)
 				if err != nil {
+					r.mu.Unlock()
 					return err
 				}
 			}
+			r.mu.Unlock()
+			
 		default:
 			log.Printf("Received unexpected message: %T\n", rawMsg)
 		}
