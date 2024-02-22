@@ -89,6 +89,44 @@ var replicationTests = []ReplicationTest{
 			"INSERT INTO test VALUES (6, 'two')",
 			"UPDATE test SET name = 'six' WHERE id = 6",
 			"DELETE FROM test WHERE id = 5",
+			waitForCatchup,
+		},
+		Assertions: []ScriptTestAssertion{
+			{
+				Query: "/* replica */ SELECT * FROM test order by id",
+				Expected: []sql.Row{
+					{int32(2), "three"},
+					{int32(4), "five"},
+					{int32(6), "six"},
+				},
+			},
+		},
+	},
+	{
+		Name: "stopping and resuming replication",
+		SetUpScript: []string{
+			dropReplicationSlot,
+			createReplicationSlot,
+			startReplication,
+			"/* replica */ drop table if exists test",
+			"/* replica */ create table test (id INT primary key, name varchar(100))",
+			"drop table if exists test",
+			"CREATE TABLE test (id INT primary key, name varchar(100))",
+			"INSERT INTO test VALUES (1, 'one')",
+			"INSERT INTO test VALUES (2, 'two')",
+			stopReplication,
+			"UPDATE test SET name = 'three' WHERE id = 2",
+			"DELETE FROM test WHERE id = 1",
+			"INSERT INTO test VALUES (3, 'one')",
+			"INSERT INTO test VALUES (4, 'two')",
+			"UPDATE test SET name = 'five' WHERE id = 4",
+			"DELETE FROM test WHERE id = 3",
+			startReplication,
+			"INSERT INTO test VALUES (5, 'one')",
+			"INSERT INTO test VALUES (6, 'two')",
+			"UPDATE test SET name = 'six' WHERE id = 6",
+			"DELETE FROM test WHERE id = 5",
+			waitForCatchup,
 		},
 		Assertions: []ScriptTestAssertion{
 			{
@@ -116,6 +154,7 @@ var replicationTests = []ReplicationTest{
 			"UPDATE test SET name = 'three' WHERE id = 2",
 			"update test set u_id = '3232abe7-560b-4714-a020-2b1a11a1ec65' where id = 2",
 			"DELETE FROM test WHERE id = 1",
+			waitForCatchup,
 		},
 		Assertions: []ScriptTestAssertion{
 			{
@@ -149,6 +188,7 @@ var replicationTests = []ReplicationTest{
 			"/* primary b */ DELETE FROM test WHERE id = 3",
 			"/* primary b */ COMMIT",
 			"/* primary a */ COMMIT",
+			waitForCatchup,
 		},
 		Assertions: []ScriptTestAssertion{
 			{
@@ -164,6 +204,9 @@ var replicationTests = []ReplicationTest{
 		Name: "all types",
 		Skip: true, // some types don't work yet
 		SetUpScript: []string{
+			dropReplicationSlot,
+			createReplicationSlot,
+			startReplication,
 			"/* replica */ drop table if exists test",
 			"/* replica */ create table test (id INT primary key, name varchar(100), age INT, is_cool BOOLEAN, height FLOAT, birth_date DATE, birth_timestamp TIMESTAMP)",
 			"drop table if exists test",
@@ -172,6 +215,7 @@ var replicationTests = []ReplicationTest{
 			"INSERT INTO test VALUES (2, 'two', 2, false, 2.2, '2021-02-02', '2021-02-02 13:00:00')",
 			"UPDATE test SET name = 'three' WHERE id = 2",
 			"DELETE FROM test WHERE id = 1",
+			waitForCatchup,
 		},
 		Assertions: []ScriptTestAssertion{
 			{
@@ -290,10 +334,7 @@ func runReplicationScript(
 		_, err := conn.Exec(ctx, query)
 		require.NoError(t, err)
 	}
-
-	// give replication time to catch up
-	require.NoError(t, waitForCaughtUp(r))
-
+	
 	// Run the assertions
 	for _, assertion := range script.Assertions {
 		t.Run(assertion.Query, func(t *testing.T) {
@@ -353,8 +394,10 @@ func connectionForQuery(t *testing.T, query string, connections map[string]*pgx.
 func handlePseudoQuery(t *testing.T, query string, r *logrepl.LogicalReplicator) bool {
 	switch query {
 	case startReplica:
+		// TODO
 		return true
 	case stopReplica:
+		// TODO
 		return true
 	case createReplicationSlot:
 		require.NoError(t, r.CreateReplicationSlotIfNecessary(slotName))

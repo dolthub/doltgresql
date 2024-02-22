@@ -60,7 +60,6 @@ func NewLogicalReplicator(primaryDns string, replicationDns string) (*LogicalRep
 	return &LogicalReplicator{
 		primaryDns:      primaryDns,
 		replicationConn: conn,
-		stop:            make(chan struct{}),
 		receiveMsgChan:  make(chan rcvMsg),
 		mu:              &sync.Mutex{},
 	}, nil
@@ -197,6 +196,7 @@ func (r *LogicalReplicator) StartReplication(slotName string) error {
 
 	r.mu.Lock()
 	r.running = true
+	r.stop = make(chan struct{})
 	r.mu.Unlock()
 
 	for {
