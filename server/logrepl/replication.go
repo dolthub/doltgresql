@@ -42,6 +42,7 @@ type LogicalReplicator struct {
 	primaryDns      string
 	replicationConn *pgx.Conn
 	receiveMsgChan  chan rcvMsg
+	lsn             pglogrepl.LSN
 	running         bool
 	stop            chan struct{}
 	mu              *sync.Mutex
@@ -100,6 +101,42 @@ func (r *LogicalReplicator) SetupReplication(publicationName string) error {
 	return err
 }
 
+// CaughtUp returns true if the replication slot is caught up to the primary, and false otherwise. This only works if
+// there is only a single replication slot on the primary, so it's only suitable for testing.
+func (r *LogicalReplicator) CaughtUp() (bool, error) {
+	conn, err := pgx.Connect(context.Background(), r.PrimaryDns())
+	if err != nil {
+		return false, err
+	}
+
+	rows, err := conn.Query(context.Background(), "SELECT pg_wal_lsn_diff(write_lsn, sent_lsn) AS replication_lag FROM pg_stat_replication")
+	if err != nil {
+		return false, err
+	}
+
+	defer rows.Close()
+	
+	for rows.Next() {
+		row, err := rows.Values()
+		if err != nil {
+			return false, err
+		}
+		
+		lag := row[0]
+		logInWALpos, ok := lag.(int64)
+		if ok {
+			return logInWALpos == 0, nil
+		}
+	}
+
+	if rows.Err() != nil {
+		return false, rows.Err()
+	}
+	
+	// if we got this far, then there is no running replication thread, which we interpret as caught up
+	return true, nil
+}
+
 // StartReplication starts the replication process for the given slot name. This function blocks until replication is
 // stopped via the Stop method, or an error occurs.
 func (r *LogicalReplicator) StartReplication(slotName string) error {
@@ -120,7 +157,6 @@ func (r *LogicalReplicator) StartReplication(slotName string) error {
 	// SendStandbyStatusUpdate after ever message we get. Postgres tracks this LSN for each slot, which allows us to 
 	// resume where we left off in the case of an interruption. We also send a Standby status message every 10 seconds
 	// to keep the connection alive.
-	var clientXLogPos pglogrepl.LSN
 
 	defer func() {
 		if primaryConn != nil {
@@ -131,12 +167,8 @@ func (r *LogicalReplicator) StartReplication(slotName string) error {
 		r.mu.Unlock()
 	}()
 	
-	r.mu.Lock()
-	r.running = true
-	r.mu.Unlock()
-
 	sendStandbyStatusUpdate := func() error {
-		err := pglogrepl.SendStandbyStatusUpdate(context.Background(), primaryConn, pglogrepl.StandbyStatusUpdate{WALWritePosition: clientXLogPos})
+		err := pglogrepl.SendStandbyStatusUpdate(context.Background(), primaryConn, pglogrepl.StandbyStatusUpdate{WALWritePosition: r.lsn})
 		if err != nil {
 			connErrCnt++
 			if connErrCnt < 3 {
@@ -150,13 +182,12 @@ func (r *LogicalReplicator) StartReplication(slotName string) error {
 		}
 
 		connErrCnt = 0
-		log.Printf("Sent Standby status message at %s\n", clientXLogPos.String())
+		log.Printf("Sent Standby status message at %s\n", r.lsn.String())
 		nextStandbyMessageDeadline = time.Now().Add(standbyMessageTimeout)
 		return nil
 	}
 	
 	for {
-
 		// Shutdown if requested
 		select {
 		case <-r.stop:
@@ -175,6 +206,10 @@ func (r *LogicalReplicator) StartReplication(slotName string) error {
 				return err
 			}
 		}
+
+		r.mu.Lock()
+		r.running = true
+		r.mu.Unlock()
 
 		if time.Now().After(nextStandbyMessageDeadline) {
 			err := sendStandbyStatusUpdate()
@@ -237,8 +272,8 @@ func (r *LogicalReplicator) StartReplication(slotName string) error {
 				log.Fatalln("ParsePrimaryKeepaliveMessage failed:", err)
 			}
 			log.Println("Primary Keepalive Message =>", "ServerWALEnd:", pkm.ServerWALEnd, "ServerTime:", pkm.ServerTime, "ReplyRequested:", pkm.ReplyRequested)
-			if pkm.ServerWALEnd > clientXLogPos {
-				clientXLogPos = pkm.ServerWALEnd
+			if pkm.ServerWALEnd > r.lsn {
+				r.lsn = pkm.ServerWALEnd
 			}
 			if pkm.ReplyRequested {
 				// Send our reply the next time through the loop
@@ -258,8 +293,8 @@ func (r *LogicalReplicator) StartReplication(slotName string) error {
 			//  processed LSN to a file locally, but that suffers from the same problem (if the process dies before we update
 			//  the file). A better solution would be to write the LSN directly into the DoltCommit message, and then parsing
 			//  this message back out when we begin replication next.  
-			if xld.WALStart > clientXLogPos {
-				clientXLogPos = xld.WALStart
+			if xld.ServerWALEnd > r.lsn {
+				r.lsn = xld.ServerWALEnd
 				err := sendStandbyStatusUpdate()
 				if err != nil {
 					return err
@@ -274,6 +309,13 @@ func (r *LogicalReplicator) StartReplication(slotName string) error {
 func (r *LogicalReplicator) shutdown() {
 	log.Print("shutting down replicator")
 	close(r.stop)
+}
+
+// Running returns whether replication is currently running
+func (r *LogicalReplicator) Running() bool {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	return r.running
 }
 
 // Stop stops the replication process and blocks until clean shutdown occurs.

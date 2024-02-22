@@ -24,6 +24,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/cockroachdb/errors"
 	"github.com/dolthub/go-mysql-server/sql"
 	"github.com/jackc/pgx/v5"
 	"github.com/stretchr/testify/assert"
@@ -42,6 +43,7 @@ const (
 	dropReplicationSlot = "dropReplicationSlot"
 	stopReplication = "stopReplication"
 	startReplication = "startReplication"
+	waitForCatchup = "waitForCatchup"
 )
 
 type ReplicationTest struct {
@@ -274,10 +276,7 @@ func runReplicationScript(
 	// TODO: this shouldn't happen on every test
 	require.NoError(t, r.SetupReplication(slotName))
 	defer r.Stop()
-
-	// give replication time to begin before running scripts
-	time.Sleep(1 * time.Second)
-
+	
 	// Run the setup
 	for _, query := range script.SetUpScript {
 		// handle logic for special pseudo-queries
@@ -297,6 +296,7 @@ func runReplicationScript(
 				err := r.StartReplication(slotName)
 				require.NoError(t, err)
 			}()
+			require.NoError(t, waitForRunning(r))
 			continue
 		case stopReplication:
 			r.Stop()
@@ -325,7 +325,7 @@ func runReplicationScript(
 	}
 
 	// give replication time to catch up
-	time.Sleep(1 * time.Second)
+	require.NoError(t, waitForCaughtUp(r))
 
 	// Run the assertions
 	for _, assertion := range script.Assertions {
@@ -351,6 +351,7 @@ func runReplicationScript(
 					err := r.StartReplication(slotName)
 					require.NoError(t, err)
 				}()
+				require.NoError(t, waitForRunning(r))
 				return
 			case stopReplication:
 				r.Stop()
@@ -412,4 +413,40 @@ func clientSpecFromQueryComment(query string) (string, string) {
 	}
 
 	return "primary", "a"
+}
+
+func waitForRunning(r *logrepl.LogicalReplicator) error {
+	var duration time.Duration 
+	for {
+		if r.Running() {
+			break
+		}
+		
+		duration += 5 * time.Millisecond
+		if duration > 1 * time.Second {
+			return errors.New("Replication did not start")
+		}
+		time.Sleep(5 * time.Millisecond)
+	}
+	
+	return nil
+}
+
+func waitForCaughtUp(r *logrepl.LogicalReplicator) error {
+	var duration time.Duration
+	for {
+		if caughtUp, err := r.CaughtUp(); caughtUp {
+			break
+		} else if err != nil {
+			return err
+		}
+		
+		duration += 5 * time.Millisecond
+		if duration > 2 * time.Second {
+			return errors.New("Replication did not catch up")
+		}
+		time.Sleep(20 * time.Millisecond)
+	}
+
+	return nil
 }
