@@ -3,5 +3,5 @@ DROP AGGREGATE [ IF EXISTS ] { $name$ ( $aggregate_signature$ ) } [ , ... ] [ CA
 where $aggregate_signature$ is:
 
 * |
-    [ $argmode$ ] [ $argname$ ] $argtype$ [ , ... ] |
-    [ [ $argmode$ ] [ $argname$ ] $argtype$ [ , ... ] ] ORDER BY [ $argmode$ ] [ $argname$ ] $argtype$ [ , ... ]
+    { [ $argmode$ ] [ $argname$ ] $argtype$ } [ , ... ] |
+    [ { [ $argmode$ ] [ $argname$ ] $argtype$ } [ , ... ] ] ORDER BY { [ $argmode$ ] [ $argname$ ] $argtype$ } [ , ... ]

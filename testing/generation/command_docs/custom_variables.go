@@ -29,6 +29,7 @@ var GlobalCustomVariables = map[string]StatementGenerator{
 	"code":                customDefinition(`'code'`),
 	"collation":           customDefinition(`en_US`),
 	"column_definition":   customDefinition(`v1 INTEGER`),
+	"column_number":       customDefinition(`1`),
 	"connlimit":           customDefinition(`-1`),
 	"cycle_mark_default":  customDefinition(`'cycle_mark_default'`),
 	"cycle_mark_value":    customDefinition(`'cycle_mark_value'`),

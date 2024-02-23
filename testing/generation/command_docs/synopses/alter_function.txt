@@ -1,16 +1,16 @@
-ALTER FUNCTION $name$ [ ( [ [ $argmode$ ] [ $argname$ ] $argtype$ [ , ... ] ] ) ]
+ALTER FUNCTION $name$ [ ( [ { [ $argmode$ ] [ $argname$ ] $argtype$ } [ , ... ] ] ) ]
     $action$ [ ... ] [ RESTRICT ]
 
-ALTER FUNCTION $name$ [ ( [ [ $argmode$ ] [ $argname$ ] $argtype$ [ , ... ] ] ) ]
+ALTER FUNCTION $name$ [ ( [ { [ $argmode$ ] [ $argname$ ] $argtype$ } [ , ... ] ] ) ]
     RENAME TO $new_name$
 
-ALTER FUNCTION $name$ [ ( [ [ $argmode$ ] [ $argname$ ] $argtype$ [ , ... ] ] ) ]
+ALTER FUNCTION $name$ [ ( [ { [ $argmode$ ] [ $argname$ ] $argtype$ } [ , ... ] ] ) ]
     OWNER TO { $new_owner$ | CURRENT_ROLE | CURRENT_USER | SESSION_USER }
 
-ALTER FUNCTION $name$ [ ( [ [ $argmode$ ] [ $argname$ ] $argtype$ [ , ... ] ] ) ]
+ALTER FUNCTION $name$ [ ( [ { [ $argmode$ ] [ $argname$ ] $argtype$ } [ , ... ] ] ) ]
     SET SCHEMA $new_schema$
 
-ALTER FUNCTION $name$ [ ( [ [ $argmode$ ] [ $argname$ ] $argtype$ [ , ... ] ] ) ]
+ALTER FUNCTION $name$ [ ( [ { [ $argmode$ ] [ $argname$ ] $argtype$ } [ , ... ] ] ) ]
     [ NO ] DEPENDS ON EXTENSION $extension_name$
 
 where $action$ is:
