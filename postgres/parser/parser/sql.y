@@ -399,9 +399,6 @@ func (u *sqlSymUnion) alterTableCmds() tree.AlterTableCmds {
 func (u *sqlSymUnion) alterIndexCmd() tree.AlterIndexCmd {
     return u.val.(tree.AlterIndexCmd)
 }
-func (u *sqlSymUnion) alterIndexCmds() tree.AlterIndexCmds {
-    return u.val.(tree.AlterIndexCmds)
-}
 func (u *sqlSymUnion) isoLevel() tree.IsolationLevel {
     return u.val.(tree.IsolationLevel)
 }
@@ -644,7 +641,7 @@ func (u *sqlSymUnion) storageType() tree.StorageType {
 %token <str> CURRENT_USER CYCLE
 
 %token <str> DATA DATABASE DATABASES DATE DAY DEALLOCATE DEC DECIMAL DECLARE
-%token <str> DEFAULT DEFAULTS DEFERRABLE DEFERRED DEFINER DELETE DESC DESTINATION DETACH DETACHED
+%token <str> DEFAULT DEFAULTS DEFERRABLE DEFERRED DEFINER DELETE DEPENDS DESC DESTINATION DETACH DETACHED
 %token <str> DISABLE DISCARD DISTINCT DO DOMAIN DOUBLE DROP
 
 %token <str> ELSE ENABLE ENCODING ENCRYPTION_PASSPHRASE END ENUM ENUMS ESCAPE EXCEPT EXCLUDE EXCLUDING
@@ -780,6 +777,7 @@ func (u *sqlSymUnion) storageType() tree.StorageType {
 // ALTER INDEX
 %type <tree.Statement> alter_oneindex_stmt
 %type <tree.Statement> alter_rename_index_stmt
+%type <tree.Statement> alter_index_all_in_tablespace_stmt
 
 // ALTER VIEW
 %type <tree.Statement> alter_rename_view_stmt
@@ -983,9 +981,8 @@ func (u *sqlSymUnion) storageType() tree.StorageType {
 %type <tree.AlterColComputed> alter_column_set_seq_elem
 %type <[]tree.AlterColComputed> alter_column_set_seq_elem_list
 %type <tree.AlterIndexCmd> alter_index_cmd
-%type <tree.AlterIndexCmds> alter_index_cmds
 %type <tree.StorageType> col_storage_option
-%type <bool> unique_or_primary logged_or_unlogged opt_nowait
+%type <bool> unique_or_primary logged_or_unlogged opt_nowait opt_no
 %type <str> trigger_name trigger_option
 
 %type <tree.DropBehavior> opt_drop_behavior
@@ -1621,6 +1618,7 @@ opt_role:
 alter_index_stmt:
   alter_oneindex_stmt
 | alter_rename_index_stmt
+| alter_index_all_in_tablespace_stmt
 // ALTER INDEX has its error help token here because the ALTER INDEX
 // prefix is spread over multiple non-terminals.
 | ALTER INDEX error // SHOW HELP: ALTER INDEX
@@ -1636,13 +1634,39 @@ alter_onetable_stmt:
   }
 
 alter_oneindex_stmt:
-  ALTER INDEX table_index_name alter_index_cmds
+  ALTER INDEX table_index_name alter_index_cmd
   {
-    $$.val = &tree.AlterIndex{Index: $3.tableIndexName(), IfExists: false, Cmds: $4.alterIndexCmds()}
+    $$.val = &tree.AlterIndex{Index: $3.tableIndexName(), IfExists: false, Cmd: $4.alterIndexCmd()}
   }
-| ALTER INDEX IF EXISTS table_index_name alter_index_cmds
+| ALTER INDEX IF EXISTS table_index_name alter_index_cmd
   {
-    $$.val = &tree.AlterIndex{Index: $5.tableIndexName(), IfExists: true, Cmds: $6.alterIndexCmds()}
+    $$.val = &tree.AlterIndex{Index: $5.tableIndexName(), IfExists: true, Cmd: $6.alterIndexCmd()}
+  }
+| ALTER INDEX table_index_name ATTACH PARTITION index_name
+  {
+    $$.val = &tree.AlterIndex{Index: $3.tableIndexName(), Cmd: &tree.AlterIndexAttachPartition{Index: tree.UnrestrictedName($6)}}
+  }
+| ALTER INDEX table_index_name opt_no DEPENDS ON EXTENSION name
+  {
+    $$.val = &tree.AlterIndex{Index: $3.tableIndexName(), Cmd: &tree.AlterIndexExtension{No: $4.bool(), Extension: $8}}
+  }
+
+opt_no:
+  /* EMPTY */
+  {
+    $$.val = false
+  }
+| NO
+  {
+    $$.val = true
+  }
+
+alter_index_all_in_tablespace_stmt:
+  ALTER INDEX ALL IN TABLESPACE tablespace_name opt_owned_by_list SET TABLESPACE tablespace_name opt_nowait
+  {
+    $$.val = &tree.AlterIndexAllInTablespace{
+      Name: tree.Name($6), OwnedBy: $7.strs(), Tablespace: tree.Name($10),
+    }
   }
 
 alter_table_cmd:
@@ -2045,22 +2069,22 @@ opt_if_exists:
     $$.val = true
   }
 
-alter_index_cmds:
-  alter_index_cmd
-  {
-    $$.val = tree.AlterIndexCmds{$1.alterIndexCmd()}
-  }
-| alter_index_cmds ',' alter_index_cmd
-  {
-    $$.val = append($1.alterIndexCmds(), $3.alterIndexCmd())
-  }
-
 alter_index_cmd:
-  partition_by
+  SET TABLESPACE tablespace_name
   {
-    $$.val = &tree.AlterIndexPartitionBy{
-      PartitionBy: $1.partitionBy(),
-    }
+    $$.val = &tree.AlterIndexSetTablespace{Tablespace: tree.Name($3)}
+  }
+| SET '(' storage_parameter_list ')'
+  {
+    $$.val = &tree.AlterIndexSetStorage{Params: $3.storageParams()}
+  }
+| RESET '(' storage_parameter_list ')'
+  {
+    $$.val = &tree.AlterIndexSetStorage{IsReset: true, Params: $3.storageParams()}
+  }
+| ALTER opt_column iconst32 SET STATISTICS iconst32
+  {
+    $$.val = &tree.AlterIndexSetStatistics{ColumnIdx: $3.expr(), Stats: $6.expr()}
   }
 
 alter_column_default:
@@ -12372,10 +12396,11 @@ unreserved_keyword:
 | DAY
 | DEALLOCATE
 | DECLARE
-| DELETE
 | DEFAULTS
 | DEFERRED
 | DEFINER
+| DELETE
+| DEPENDS
 | DESTINATION
 | DETACH
 | DETACHED
