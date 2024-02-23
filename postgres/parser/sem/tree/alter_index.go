@@ -24,11 +24,13 @@
 
 package tree
 
+import "strings"
+
 // AlterIndex represents an ALTER INDEX statement.
 type AlterIndex struct {
 	IfExists bool
 	Index    TableIndexName
-	Cmds     AlterIndexCmds
+	Cmd      AlterIndexCmd
 }
 
 var _ Statement = &AlterIndex{}
@@ -40,19 +42,31 @@ func (node *AlterIndex) Format(ctx *FmtCtx) {
 		ctx.WriteString("IF EXISTS ")
 	}
 	ctx.FormatNode(&node.Index)
-	ctx.FormatNode(&node.Cmds)
+	ctx.FormatNode(node.Cmd)
 }
 
-// AlterIndexCmds represents a list of index alterations.
-type AlterIndexCmds []AlterIndexCmd
+var _ Statement = &AlterIndexAllInTablespace{}
+
+// AlterIndexAllInTablespace represents an ALTER INDEX ALL IN TABLESPACE statement.
+type AlterIndexAllInTablespace struct {
+	Name       Name
+	OwnedBy    []string
+	Tablespace Name
+	NoWait     bool
+}
 
 // Format implements the NodeFormatter interface.
-func (node *AlterIndexCmds) Format(ctx *FmtCtx) {
-	for i, n := range *node {
-		if i > 0 {
-			ctx.WriteString(",")
-		}
-		ctx.FormatNode(n)
+func (node *AlterIndexAllInTablespace) Format(ctx *FmtCtx) {
+	ctx.WriteString("ALTER INDEX ALL IN TABLESPACE ")
+	ctx.FormatNode(&node.Name)
+	if node.OwnedBy != nil {
+		ctx.WriteString(" OWNED BY ")
+		ctx.WriteString(strings.Join(node.OwnedBy, ", "))
+	}
+	ctx.WriteString(" SET TABLESPACE ")
+	ctx.FormatNode(&node.Tablespace)
+	if node.NoWait {
+		ctx.WriteString(" NOWAIT")
 	}
 }
 
@@ -64,17 +78,85 @@ type AlterIndexCmd interface {
 	alterIndexCmd()
 }
 
-func (*AlterIndexPartitionBy) alterIndexCmd() {}
+func (*AlterIndexAttachPartition) alterIndexCmd() {}
+func (*AlterIndexExtension) alterIndexCmd()       {}
+func (*AlterIndexSetStatistics) alterIndexCmd()   {}
+func (*AlterIndexSetStorage) alterIndexCmd()      {}
+func (*AlterIndexSetTablespace) alterIndexCmd()   {}
 
-var _ AlterIndexCmd = &AlterIndexPartitionBy{}
+var _ AlterIndexCmd = &AlterIndexAttachPartition{}
+var _ AlterIndexCmd = &AlterIndexExtension{}
+var _ AlterIndexCmd = &AlterIndexSetStatistics{}
+var _ AlterIndexCmd = &AlterIndexSetStorage{}
+var _ AlterIndexCmd = &AlterIndexSetTablespace{}
 
-// AlterIndexPartitionBy represents an ALTER INDEX PARTITION BY
-// command.
-type AlterIndexPartitionBy struct {
-	*PartitionBy
+// AlterIndexAttachPartition represents an ALTER INDEX ... ATTACH PARTITION statement.
+type AlterIndexAttachPartition struct {
+	Index UnrestrictedName
 }
 
 // Format implements the NodeFormatter interface.
-func (node *AlterIndexPartitionBy) Format(ctx *FmtCtx) {
-	ctx.FormatNode(node.PartitionBy)
+func (node *AlterIndexAttachPartition) Format(ctx *FmtCtx) {
+	ctx.WriteString(" ATTACH PARTITION ")
+	ctx.FormatNode(&node.Index)
+}
+
+// AlterIndexExtension represents an ALTER INDEX ... [NO] DEPENDS ON EXTENSION statement.
+type AlterIndexExtension struct {
+	No        bool
+	Extension string
+}
+
+// Format implements the NodeFormatter interface.
+func (node *AlterIndexExtension) Format(ctx *FmtCtx) {
+	if node.No {
+		ctx.WriteString(" NO")
+	}
+	ctx.WriteString(" DEPENDS ON EXTENSION ")
+	ctx.WriteString(node.Extension)
+}
+
+// AlterIndexSetStatistics represents an ALTER INDEX ... SET TABLESPACE
+// command.
+type AlterIndexSetStatistics struct {
+	ColumnIdx Expr
+	Stats     Expr
+}
+
+// Format implements the NodeFormatter interface.
+func (node *AlterIndexSetStatistics) Format(ctx *FmtCtx) {
+	ctx.WriteString(" ALTER COLUMN ")
+	ctx.FormatNode(node.ColumnIdx)
+	ctx.WriteString(" SET STATISTICS ")
+	ctx.FormatNode(node.Stats)
+}
+
+// AlterIndexSetStorage represents an ALTER INDEX ... SET TABLESPACE
+// command.
+type AlterIndexSetStorage struct {
+	Params  StorageParams
+	IsReset bool
+}
+
+// Format implements the NodeFormatter interface.
+func (node *AlterIndexSetStorage) Format(ctx *FmtCtx) {
+	if node.IsReset {
+		ctx.WriteString(" RESET ( ")
+	} else {
+		ctx.WriteString(" SET ( ")
+	}
+	ctx.FormatNode(&node.Params)
+	ctx.WriteString(" )")
+}
+
+// AlterIndexSetTablespace represents an ALTER INDEX ... SET TABLESPACE
+// command.
+type AlterIndexSetTablespace struct {
+	Tablespace Name
+}
+
+// Format implements the NodeFormatter interface.
+func (node *AlterIndexSetTablespace) Format(ctx *FmtCtx) {
+	ctx.WriteString(" SET TABLESPACE ")
+	ctx.FormatNode(&node.Tablespace)
 }
