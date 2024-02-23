@@ -193,13 +193,21 @@ func (r *LogicalReplicator) StartReplication(slotName string) error {
 		}
 
 		if primaryConn == nil {
-			// TODO: not sure if this retry logic is correct, with some failures we appear to miss events that aren't
-			//  sent again
 			var err error
 			primaryConn, err = r.beginReplication(slotName)
 			if err != nil {
-				return err
+				connErrCnt++
+				if connErrCnt < maxConsecutiveFailures {
+					// unlike other error cases, back off a little here, since we're likely to just get the same error again 
+					// on initial replication establishment
+					time.Sleep(250 * time.Millisecond)
+					continue
+				} else {
+					return err
+				}
 			}
+			
+			connErrCnt = 0
 		}
 		
 		if time.Now().After(nextStandbyMessageDeadline) {
@@ -210,6 +218,10 @@ func (r *LogicalReplicator) StartReplication(slotName string) error {
 				return err
 			}
 			r.mu.Unlock()
+			if primaryConn == nil {
+				// if we've lost the connection, we'll re-establish it on the next pass through the loop
+				continue
+			}
 		}
 
 		log.Printf("attempting to receive message from primary server with time now = %s, deadline = %s", time.Now().String(), nextStandbyMessageDeadline.String())
@@ -295,7 +307,14 @@ func (r *LogicalReplicator) StartReplication(slotName string) error {
 			log.Printf("XLogData => WALStart %s ServerWALEnd %s ServerTime %s WALData:\n", xld.WALStart, xld.ServerWALEnd, xld.ServerTime)
 			err = r.processMessage(xld.WALData, relationsV2, typeMap, &inStream)
 			if err != nil {
-				return err
+				connErrCnt++
+				// TODO: this logic isn't specific enough to keep us from looping forever on a single bad message
+				if connErrCnt < maxConsecutiveFailures {
+					// re-establish connection on next pass through the loop
+					_ = primaryConn.Close(context.Background())
+					primaryConn = nil
+					continue
+				}
 			}
 
 			// TODO: we have a two-phase commit race here: if the call to update the standby fails and the process crashes,
@@ -313,7 +332,11 @@ func (r *LogicalReplicator) StartReplication(slotName string) error {
 				}
 			}
 			r.mu.Unlock()
-			
+
+			if primaryConn == nil {
+				// if we've lost the connection, we'll re-establish it on the next pass through the loop
+				continue
+			}
 		default:
 			log.Printf("Received unexpected message: %T\n", rawMsg)
 		}

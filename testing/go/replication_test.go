@@ -226,10 +226,10 @@ var replicationTests = []ReplicationTest{
 			waitForCatchup,
 			stopReplication,
 			// below this point we don't expect to find any values replicated because replication was stopped
-			// "INSERT INTO test VALUES (15, 'one')",
-			// "INSERT INTO test VALUES (16, 'two')",
-			// "UPDATE test SET name = 'seventeen' WHERE id = 16",
-			// "DELETE FROM test WHERE id = 15",
+			"INSERT INTO test VALUES (15, 'one')",
+			"INSERT INTO test VALUES (16, 'two')",
+			"UPDATE test SET name = 'seventeen' WHERE id = 16",
+			"DELETE FROM test WHERE id = 15",
 		},
 		Assertions: []ScriptTestAssertion{
 			{
