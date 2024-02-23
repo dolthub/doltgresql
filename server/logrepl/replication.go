@@ -41,6 +41,9 @@ type rcvMsg struct {
 type LogicalReplicator struct {
 	primaryDns      string
 	replicationConn *pgx.Conn
+	// lsn is the last WAL position we have received from the server, which we send back to the server via 
+	// SendStandbyStatusUpdate after every message we get. Postgres tracks this LSN for each slot, which allows us to 
+	// resume where we left off in the case of an interruption.
 	lsn             pglogrepl.LSN
 	running         bool
 	stop            chan struct{}
@@ -76,26 +79,6 @@ func (r *LogicalReplicator) ReplicationDns() string {
 		return fmt.Sprintf("%s&replication=database", r.primaryDns)
 	}
 	return fmt.Sprintf("%s?replication=database", r.primaryDns)
-}
-
-// SetupReplication sets up a publication with the given name on the primary server. This is only required to be 
-// called once, and is most provided for convenience / testing.
-func (r *LogicalReplicator) SetupReplication(publicationName string) error {
-	conn, err := pgconn.Connect(context.Background(), r.ReplicationDns())
-	if err != nil {
-		return err
-	}
-	defer conn.Close(context.Background())
-
-	result := conn.Exec(context.Background(), fmt.Sprintf("DROP PUBLICATION IF EXISTS %s;", publicationName))
-	_, err = result.ReadAll()
-	if err != nil {
-		return err
-	}
-
-	result = conn.Exec(context.Background(), fmt.Sprintf("CREATE PUBLICATION %s FOR ALL TABLES;", publicationName))
-	_, err = result.ReadAll()
-	return err
 }
 
 // CaughtUp returns true if the replication slot is caught up to the primary, and false otherwise. This only works if
@@ -164,11 +147,6 @@ func (r *LogicalReplicator) StartReplication(slotName string) error {
 	connErrCnt := 0
 	var primaryConn *pgconn.PgConn
 	
-	// clientXLogPos is the last WAL position we have received from the server, which we send back to the server via 
-	// SendStandbyStatusUpdate after ever message we get. Postgres tracks this LSN for each slot, which allows us to 
-	// resume where we left off in the case of an interruption. We also send a Standby status message every 10 seconds
-	// to keep the connection alive.
-
 	defer func() {
 		if primaryConn != nil {
 			_ = primaryConn.Close(context.Background())

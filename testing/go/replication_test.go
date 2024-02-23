@@ -114,6 +114,7 @@ var replicationTests = []ReplicationTest{
 			"CREATE TABLE test (id INT primary key, name varchar(100))",
 			"INSERT INTO test VALUES (1, 'one')",
 			"INSERT INTO test VALUES (2, 'two')",
+			waitForCatchup,
 			stopReplication,
 			"UPDATE test SET name = 'three' WHERE id = 2",
 			"DELETE FROM test WHERE id = 1",
