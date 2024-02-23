@@ -22,25 +22,11 @@ import (
 	"github.com/dolthub/doltgresql/postgres/parser/sem/tree"
 )
 
-// nodeCreateFunction handles *tree.CreateFunction nodes.
-func nodeCreateFunction(node *tree.CreateFunction) (vitess.Statement, error) {
+// nodeAlterFunction handles *tree.AlterFunction nodes.
+func nodeAlterFunction(node *tree.AlterFunction) (vitess.Statement, error) {
 	err := verifyRedundantRoutineOption(node.Options)
 	if err != nil {
 		return nil, err
 	}
-	return nil, fmt.Errorf("CREATE FUNCTION statement is not yet supported")
-}
-
-// verifyRedundantRoutineOption checks for each option defined only once.
-// If there is multiple definition of the same option, it returns an error.
-func verifyRedundantRoutineOption(options []tree.RoutineOption) error {
-	var optDefined = make(map[tree.FunctionOption]struct{})
-	for _, opt := range options {
-		if _, ok := optDefined[opt.OptionType]; ok {
-			return fmt.Errorf("ERROR:  conflicting or redundant options")
-		} else {
-			optDefined[opt.OptionType] = struct{}{}
-		}
-	}
-	return nil
+	return nil, fmt.Errorf("ALTER FUNCTION statement is not yet supported")
 }

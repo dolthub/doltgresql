@@ -3444,7 +3444,7 @@ alter_function_option_list:
   }
 | alter_function_option_list alter_function_option
   {
-    $$.val = append($1.routineOptions(), $2.routineOption()) /* TODO: check for duplicate definition - "ERROR:  conflicting or redundant options" */
+    $$.val = append($1.routineOptions(), $2.routineOption())
   }
 
 alter_function_option:
@@ -3458,7 +3458,7 @@ create_function_option_list:
   }
 | create_function_option_list create_function_option
   {
-    $$.val = append($1.routineOptions(), $2.routineOption()) /* TODO: check for duplicate definition - "ERROR:  conflicting or redundant options" */
+    $$.val = append($1.routineOptions(), $2.routineOption())
   }
 
 create_function_option:
@@ -3530,7 +3530,7 @@ alter_procedure_option_list:
   }
 | alter_procedure_option_list alter_procedure_option
   {
-    $$.val = append($1.routineOptions(), $2.routineOption()) /* TODO: check for duplicate definition - "ERROR:  conflicting or redundant options" */
+    $$.val = append($1.routineOptions(), $2.routineOption())
   }
 
 alter_procedure_option:
@@ -3558,7 +3558,7 @@ create_procedure_option_list:
   }
 | create_procedure_option_list create_procedure_option
   {
-    $$.val = append($1.routineOptions(), $2.routineOption()) /* TODO: check for duplicate definition - "ERROR:  conflicting or redundant options" */
+    $$.val = append($1.routineOptions(), $2.routineOption())
   }
 
 create_procedure_option:
