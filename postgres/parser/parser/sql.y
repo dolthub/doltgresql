@@ -603,6 +603,12 @@ func (u *sqlSymUnion) alterColComputedList() []tree.AlterColComputed {
 func (u *sqlSymUnion) storageType() tree.StorageType {
     return u.val.(tree.StorageType)
 }
+func (u *sqlSymUnion) viewOptions() tree.ViewOptions {
+    return u.val.(tree.ViewOptions)
+}
+func (u *sqlSymUnion) viewCheckOption() tree.ViewCheckOption {
+    return u.val.(tree.ViewCheckOption)
+}
 %}
 
 // NB: the %token definitions must come before the %type definitions in this
@@ -630,7 +636,7 @@ func (u *sqlSymUnion) storageType() tree.StorageType {
 %token <str> BUCKET_COUNT
 %token <str> BOOLEAN BOTH BOX2D BUNDLE BY
 
-%token <str> CACHE CHAIN CALL CALLED CANCEL CANCELQUERY CASCADE CASE CAST CBRT CHANGEFEED CHAR
+%token <str> CACHE CHAIN CALL CALLED CANCEL CANCELQUERY CASCADE CASCADED CASE CAST CBRT CHANGEFEED CHAR
 %token <str> CHARACTER CHARACTERISTICS CHECK CLOSE
 %token <str> CLUSTER COALESCE COLLATE COLLATION COLLATION_VERSION COLUMN COLUMNS COMMENT COMMENTS COMMIT
 %token <str> COMMITTED COMPACT COMPLETE COMPRESSION CONCAT CONCURRENTLY CONFIGURATION CONFIGURATIONS CONFIGURE
@@ -831,6 +837,7 @@ func (u *sqlSymUnion) storageType() tree.StorageType {
 %type <tree.Statement> create_table_stmt
 %type <tree.Statement> create_table_as_stmt
 %type <tree.Statement> create_view_stmt
+%type <tree.Statement> create_materialized_view_stmt
 %type <tree.Statement> create_sequence_stmt
 %type <tree.Statement> create_trigger_stmt
 
@@ -987,7 +994,7 @@ func (u *sqlSymUnion) storageType() tree.StorageType {
 %type <[]tree.AlterColComputed> alter_column_set_seq_elem_list
 %type <tree.AlterIndexCmd> alter_index_cmd
 %type <tree.StorageType> col_storage_option
-%type <bool> unique_or_primary logged_or_unlogged opt_nowait opt_no
+%type <bool> unique_or_primary logged_or_unlogged opt_nowait opt_no opt_view_recursive
 %type <str> trigger_name trigger_option
 
 %type <tree.DropBehavior> opt_drop_behavior
@@ -1019,6 +1026,9 @@ func (u *sqlSymUnion) storageType() tree.StorageType {
 %type <*tree.UnresolvedName> table_pattern complex_table_pattern
 %type <*tree.UnresolvedName> column_path prefixed_column_path column_path_with_star
 %type <tree.TableExpr> insert_target create_stats_target analyze_target
+
+%type <tree.ViewOptions> view_options opt_with_view_options
+%type <tree.ViewCheckOption> opt_with_check_option
 
 %type <*tree.TableIndexName> table_index_name
 %type <tree.TableIndexNames> table_index_name_list
@@ -3764,6 +3774,7 @@ create_ddl_stmt_schema_element:
 // Error case for both CREATE TABLE and CREATE TABLE ... AS in one
 | CREATE opt_persistence_temp_table TABLE error   // SHOW HELP: CREATE TABLE
 | create_view_stmt     // EXTEND WITH HELP: CREATE VIEW
+| create_materialized_view_stmt // EXTEND WITH HELP: CREATE MATERIALIZED VIEW
 | create_sequence_stmt // EXTEND WITH HELP: CREATE SEQUENCE
 | create_trigger_stmt
 
@@ -7319,48 +7330,83 @@ role_or_user:
 
 // %Help: CREATE VIEW - create a new view
 // %Category: DDL
-// %Text: CREATE [TEMPORARY | TEMP] [MATERIALIZED] VIEW [IF NOT EXISTS] <viewname> [( <colnames...> )] AS <source>
+// %Text: CREATE [ OR REPLACE ] [ TEMP | TEMPORARY ] [ RECURSIVE ] VIEW name [ ( column_name [, ...] ) ]
+//    	  [ WITH ( view_option_name [= view_option_value] [, ... ] ) ]
+//    	  AS <source>
+//    	  [ WITH [ CASCADED | LOCAL ] CHECK OPTION ]
 // %SeeAlso: CREATE TABLE, SHOW CREATE, WEBDOCS/create-view.html
 create_view_stmt:
-  CREATE opt_temp opt_view_recursive VIEW view_name opt_column_list AS select_stmt
+  CREATE opt_temp opt_view_recursive VIEW view_name opt_column_list opt_with_view_options AS select_stmt opt_with_check_option
   {
     name := $5.unresolvedObjectName().ToTableName()
     $$.val = &tree.CreateView{
       Name: name,
-      ColumnNames: $6.nameList(),
-      AsSource: $8.slct(),
-      Persistence: $2.persistence(),
-      IfNotExists: false,
       Replace: false,
+      Persistence: $2.persistence(),
+      IsRecursive: $3.bool(),
+      ColumnNames: $6.nameList(),
+      Options: $7.viewOptions(),
+      AsSource: $9.slct(),
+      CheckOption: $10.viewCheckOption(),
     }
   }
 // We cannot use a rule like opt_or_replace here as that would cause a conflict
 // with the opt_temp rule.
-| CREATE OR REPLACE opt_temp opt_view_recursive VIEW view_name opt_column_list AS select_stmt
+| CREATE OR REPLACE opt_temp opt_view_recursive VIEW view_name opt_column_list opt_with_view_options AS select_stmt opt_with_check_option
   {
     name := $7.unresolvedObjectName().ToTableName()
     $$.val = &tree.CreateView{
       Name: name,
-      ColumnNames: $8.nameList(),
-      AsSource: $10.slct(),
-      Persistence: $4.persistence(),
-      IfNotExists: false,
       Replace: true,
-    }
-  }
-| CREATE opt_temp opt_view_recursive VIEW IF NOT EXISTS view_name opt_column_list AS select_stmt
-  {
-    name := $8.unresolvedObjectName().ToTableName()
-    $$.val = &tree.CreateView{
-      Name: name,
-      ColumnNames: $9.nameList(),
+      Persistence: $4.persistence(),
+      IsRecursive: $5.bool(),
+      ColumnNames: $8.nameList(),
+      Options: $9.viewOptions(),
       AsSource: $11.slct(),
-      Persistence: $2.persistence(),
-      IfNotExists: true,
-      Replace: false,
+      CheckOption: $12.viewCheckOption(),
     }
   }
-| CREATE MATERIALIZED VIEW view_name opt_column_list AS select_stmt
+
+opt_with_check_option:
+  /* EMPTY */
+  {
+    $$.val = tree.ViewCheckOptionUnspecified
+  }
+| WITH CHECK OPTION
+  {
+    $$.val = tree.ViewCheckOptionCascaded
+  }
+| WITH CASCADED CHECK OPTION
+  {
+    $$.val = tree.ViewCheckOptionCascaded
+  }
+| WITH LOCAL CHECK OPTION
+  {
+    $$.val = tree.ViewCheckOptionLocal
+  }
+
+opt_with_view_options:
+  /* EMPTY */
+  {
+    $$.val = tree.ViewOptions(nil)
+  }
+| WITH '(' view_options ')'
+  {
+    $$.val = $3.viewOptions()
+  }
+
+view_options:
+  name opt_var_value
+  {
+    $$.val = tree.ViewOptions{{Name: $1, Val: $2.expr()}}
+  }
+| view_options ',' name opt_var_value
+  {
+    $$.val = append($1.viewOptions(), tree.ViewOption{Name: $3, Val: $4.expr()})
+  }
+
+create_materialized_view_stmt:
+  CREATE MATERIALIZED VIEW view_name opt_column_list AS select_stmt
   {
     name := $4.unresolvedObjectName().ToTableName()
     $$.val = &tree.CreateView{
@@ -7381,7 +7427,6 @@ create_view_stmt:
       IfNotExists: true,
     }
   }
-| CREATE opt_temp opt_view_recursive VIEW error // SHOW HELP: CREATE VIEW
 
 role_option:
   CREATEROLE
@@ -7491,8 +7536,14 @@ valid_until_clause:
   }
 
 opt_view_recursive:
-  /* EMPTY */ { /* no error */ }
-| RECURSIVE { return unimplemented(sqllex, "create recursive view") }
+  /* EMPTY */
+  {
+    $$.val = false
+  }
+| RECURSIVE
+  {
+    $$.val = true
+  }
 
 
 // %Help: CREATE TYPE -- create a type
@@ -12514,6 +12565,7 @@ unreserved_keyword:
 | CANCEL
 | CANCELQUERY
 | CASCADE
+| CASCADED
 | CHANGEFEED
 | CLOSE
 | CLUSTER

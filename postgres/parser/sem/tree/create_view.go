@@ -37,13 +37,17 @@ var _ Statement = &CreateView{}
 
 // CreateView represents a CREATE VIEW statement.
 type CreateView struct {
-	Name         TableName
-	ColumnNames  NameList
-	AsSource     *Select
+	Name        TableName
+	Replace     bool
+	IsRecursive bool
+	ColumnNames NameList
+	Options     ViewOptions
+	AsSource    *Select
+	CheckOption ViewCheckOption
+
+	Materialized bool
 	IfNotExists  bool
 	Persistence  Persistence
-	Replace      bool
-	Materialized bool
 }
 
 // Format implements the NodeFormatter interface.
@@ -116,4 +120,34 @@ func (node *RefreshMaterializedView) Format(ctx *FmtCtx) {
 	case RefreshDataClear:
 		ctx.WriteString(" WITH NO DATA")
 	}
+}
+
+type ViewCheckOption int
+
+const (
+	ViewCheckOptionUnspecified ViewCheckOption = iota
+	ViewCheckOptionCascaded
+	ViewCheckOptionLocal
+)
+
+type ViewOptions []ViewOption
+
+type ViewOption struct {
+	Name string
+	Val  Expr
+}
+
+func (node ViewOptions) Format(ctx *FmtCtx) {
+	ctx.WriteString("( ")
+	for i, opt := range node {
+		if i != 0 {
+			ctx.WriteString(", ")
+		}
+		ctx.WriteString(opt.Name)
+		if opt.Val != nil {
+			ctx.WriteString(" = ")
+			ctx.FormatNode(opt.Val)
+		}
+	}
+	ctx.WriteString(" )")
 }
