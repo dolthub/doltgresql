@@ -115,29 +115,31 @@ func (r *LogicalReplicator) CaughtUp() (bool, error) {
 		return false, err
 	}
 
-	rows, err := conn.Query(context.Background(), "SELECT pg_wal_lsn_diff(write_lsn, sent_lsn) AS replication_lag FROM pg_stat_replication")
+	result, err := conn.Query(context.Background(), "SELECT pg_wal_lsn_diff(write_lsn, sent_lsn) AS replication_lag FROM pg_stat_replication")
 	if err != nil {
 		return false, err
 	}
 
-	defer rows.Close()
+	defer result.Close()
 	
-	for rows.Next() {
-		row, err := rows.Values()
+	for result.Next() {
+		rows, err := result.Values()
 		if err != nil {
 			return false, err
 		}
 		
-		lag := row[0]
-		lagInWALpos, ok := lag.(int64)
-		if ok {
-			log.Printf("Replication lag: %d", lagInWALpos)
-			return lagInWALpos == 0, nil
+		row := rows[0]
+		lag, ok := row.(pgtype.Numeric)
+		if ok && lag.Valid {
+			log.Printf("Replication lag: %d", lag.Int.Int64())
+			return lag.Int.Int64() == 0, nil
+		} else {
+			log.Printf("Replication lag unknown: %v", row)
 		}
 	}
 
-	if rows.Err() != nil {
-		return false, rows.Err()
+	if result.Err() != nil {
+		return false, result.Err()
 	}
 	
 	// if we got this far, then there is no running replication thread, which we interpret as caught up

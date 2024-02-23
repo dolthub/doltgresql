@@ -104,7 +104,6 @@ var replicationTests = []ReplicationTest{
 	},
 	{
 		Name: "stopping and resuming replication",
-		Focus: true,
 		SetUpScript: []string{
 			dropReplicationSlot,
 			createReplicationSlot,
