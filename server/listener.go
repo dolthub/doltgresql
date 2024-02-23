@@ -40,12 +40,30 @@ type Listener struct {
 
 var _ server.ProtocolListener = (*Listener)(nil)
 
+type ListenerOpt func(*Listener)
+
+func WithCertificate(cert tls.Certificate) ListenerOpt {
+	return func(l *Listener) {
+		certificate = cert
+	}
+}
+
 // NewListener creates a new Listener.
 func NewListener(listenerCfg mysql.ListenerConfig) (server.ProtocolListener, error) {
-	return &Listener{
+	return NewListenerWithOpts(listenerCfg)
+}
+
+func NewListenerWithOpts(listenerCfg mysql.ListenerConfig, opts ...ListenerOpt) (server.ProtocolListener, error) {
+	l := &Listener{
 		listener: listenerCfg.Listener,
 		cfg:      listenerCfg,
-	}, nil
+	}
+
+	for _, opt := range opts {
+		opt(l)
+	}
+
+	return l, nil
 }
 
 // Accept handles incoming connections.

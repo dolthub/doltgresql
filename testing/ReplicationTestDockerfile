@@ -1,0 +1,35 @@
+FROM postgres:16
+
+ENV POSTGRES_PASSWORD=password
+ENV POSTGRES_USER=postgres
+
+ENV GO_VERSION=1.22.0
+
+# Install Go
+RUN apt-get update && \
+    apt-get install -y wget && \
+    apt-get install -y sudo && \
+    wget https://go.dev/dl/go${GO_VERSION}.linux-amd64.tar.gz && \
+    tar -C /usr/local -xzf go${GO_VERSION}.linux-amd64.tar.gz && \
+    rm go${GO_VERSION}.linux-amd64.tar.gz
+
+# Set Go environment variables
+ENV PATH="/usr/local/go/bin:${PATH}"
+ENV GOPATH="/go"
+ENV PATH="${GOPATH}/bin:${PATH}"
+
+# Doltgres source
+WORKDIR /root/building
+COPY ./ ./doltgresql
+
+# Get rid of the generated tests, since we aren't going to run them and they don't build without more work
+RUN rm -rf ./doltgresql/testing/generation/
+
+# Build the parser
+WORKDIR /root/building/doltgresql/postgres/parser
+RUN bash ./build.sh
+
+# Run the test script, which starts postgres and then runs the Go script
+WORKDIR /root/building/doltgresql
+ENTRYPOINT ["testing/replication-test-entrypoint.sh"]
+

@@ -25,6 +25,7 @@ type serializationID byte
 const (
 	serializationID_Bool      serializationID = 1
 	serializationID_BoolArray serializationID = 2
+	serializationID_Uuid      serializationID = 3
 )
 
 // init sets the serialization and deserialization functions.
@@ -40,6 +41,8 @@ func SerializeType(extendedType types.ExtendedType) ([]byte, error) {
 		return []byte{byte(serializationID_Bool)}, nil
 	case BoolArrayType:
 		return []byte{byte(serializationID_BoolArray)}, nil
+	case UuidType:
+		return []byte{byte(serializationID_Uuid)}, nil
 	default:
 		return nil, fmt.Errorf("unknown type to serialize")
 	}
@@ -66,6 +69,8 @@ func DeserializeType(serializedType []byte) (types.ExtendedType, error) {
 		return Bool, nil
 	case serializationID_BoolArray:
 		return BoolArray, nil
+	case serializationID_Uuid:
+		return Uuid, nil
 	default:
 		return nil, fmt.Errorf("unknown type to deserialize")
 	}

@@ -78,6 +78,7 @@ These are automatically included when releasing a new version of DoltgreSQL, so 
    1. `ast`: Specifically houses all transformations from the `postgres` AST to the [`vitess`](https://github.com/dolthub/vitess) AST.
    2. `functions`: Contains all implementations of [PostgreSQL functions](https://www.postgresql.org/docs/15/functions.html).
    3. `types`: Contains the implementations of all PostgreSQL types.
+   4. `logrepl`: Contains the implementation for logical replication from a postgres primary.
 5. `testing`: Contains all integration tests, and all things related to testing.
 This will not contain _all_ tests within the repository, as functions within other directories may declare their own unit tests.
    1. `bats`: Contains all of our [Bats](https://github.com/bats-core/bats-core) tests.

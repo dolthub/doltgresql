@@ -16,6 +16,7 @@ require (
 	github.com/golang/geo v0.0.0-20200730024412-e86565bf3f35
 	github.com/google/go-cmp v0.6.0
 	github.com/grpc-ecosystem/grpc-gateway v1.16.0
+	github.com/jackc/pglogrepl v0.0.0-20231111135425-1627ab1b5780
 	github.com/jackc/pgx/v4 v4.18.1
 	github.com/jackc/pgx/v5 v5.4.3
 	github.com/lib/pq v1.10.9
@@ -96,7 +97,7 @@ require (
 	github.com/jpillora/backoff v1.0.0 // indirect
 	github.com/juju/gnuflag v0.0.0-20171113085948-2ce1bb71843d // indirect
 	github.com/kch42/buzhash v0.0.0-20160816060738-9bdec3dec7c6 // indirect
-	github.com/klauspost/compress v1.10.10 // indirect
+	github.com/klauspost/compress v1.10.5 // indirect
 	github.com/klauspost/cpuid/v2 v2.0.12 // indirect
 	github.com/kr/pretty v0.3.0 // indirect
 	github.com/kr/text v0.2.0 // indirect
@@ -140,7 +141,7 @@ require (
 	golang.org/x/mod v0.12.0 // indirect
 	golang.org/x/oauth2 v0.8.0 // indirect
 	golang.org/x/term v0.16.0 // indirect
-	golang.org/x/time v0.1.0 // indirect
+	golang.org/x/time v0.0.0-20191024005414-555d28b269f0 // indirect
 	golang.org/x/tools v0.13.0 // indirect
 	golang.org/x/xerrors v0.0.0-20220907171357-04be3eba64a2 // indirect
 	google.golang.org/api v0.126.0 // indirect

@@ -122,6 +122,19 @@ func (u *UUID) UnmarshalText(text []byte) error {
 	case 41, 45:
 		return u.decodeURN(text)
 	default:
+		// Postgres allows for an extended dash placement scheme. We'll eventually support those explicitly, but for
+		// now, we'll just "support" them all by removing the dashes so that the UUID is in a dash-less state.
+		shortenedText := bytes.ReplaceAll(text, []byte{'-'}, nil)
+		switch len(shortenedText) {
+		case 32:
+			return u.decodeHashLike(shortenedText)
+		case 34, 38:
+			return u.decodeBraced(shortenedText)
+		case 36:
+			return u.decodeCanonical(shortenedText)
+		case 41, 45:
+			return u.decodeURN(shortenedText)
+		}
 		return fmt.Errorf("uuid: incorrect UUID length: %s", text)
 	}
 }
