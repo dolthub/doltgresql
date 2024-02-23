@@ -102,7 +102,7 @@ var _ Statement = &DropFunction{}
 
 // DropFunction represents a DROP FUNCTION statement.
 type DropFunction struct {
-	Functions    []FunctionWithArgs
+	Functions    []RoutineWithArgs
 	IfExists     bool
 	DropBehavior DropBehavior
 }
@@ -127,13 +127,13 @@ func (node *DropFunction) Format(ctx *FmtCtx) {
 	}
 }
 
-// FunctionWithArgs represents the function name and its arguments, if any, for DROP FUNCTION statement.
-type FunctionWithArgs struct {
+// RoutineWithArgs represents the routine name and its arguments, if any, for DROP { FUNCTION | PROCEDURE } statement.
+type RoutineWithArgs struct {
 	Name *UnresolvedObjectName
 	Args RoutineArgs
 }
 
-func (node *FunctionWithArgs) Format(ctx *FmtCtx) {
+func (node *RoutineWithArgs) Format(ctx *FmtCtx) {
 	ctx.FormatNode(node.Name)
 	ctx.WriteString(" (")
 	if len(node.Args) != 0 {
@@ -165,6 +165,35 @@ func (node *DropIndex) Format(ctx *FmtCtx) {
 	if node.DropBehavior != DropDefault {
 		ctx.WriteByte(' ')
 		ctx.WriteString(node.DropBehavior.String())
+	}
+}
+
+var _ Statement = &DropProcedure{}
+
+// DropProcedure represents a DROP PROCEDURE statement.
+type DropProcedure struct {
+	Procedures   []RoutineWithArgs
+	IfExists     bool
+	DropBehavior DropBehavior
+}
+
+// Format implements the NodeFormatter interface.
+func (node *DropProcedure) Format(ctx *FmtCtx) {
+	ctx.WriteString("DROP PROCEDURE ")
+	if node.IfExists {
+		ctx.WriteString("IF EXISTS ")
+	}
+	for i, f := range node.Procedures {
+		if i != 0 {
+			ctx.WriteString(", ")
+		}
+		ctx.FormatNode(&f)
+	}
+	switch node.DropBehavior {
+	case DropDefault:
+	default:
+		ctx.WriteByte(' ')
+		ctx.WriteString(dropBehaviorName[node.DropBehavior])
 	}
 }
 

@@ -573,8 +573,8 @@ func (u *sqlSymUnion) routineOption() tree.RoutineOption {
 func (u *sqlSymUnion) routineOptions() []tree.RoutineOption {
   return u.val.([]tree.RoutineOption)
 }
-func (u *sqlSymUnion) functionWithArgs() []tree.FunctionWithArgs {
-  return u.val.([]tree.FunctionWithArgs)
+func (u *sqlSymUnion) routineWithArgs() []tree.RoutineWithArgs {
+  return u.val.([]tree.RoutineWithArgs)
 }
 func (u *sqlSymUnion) opClass() *tree.IndexElemOpClass {
   return u.val.(*tree.IndexElemOpClass)
@@ -752,6 +752,8 @@ func (u *sqlSymUnion) storageType() tree.StorageType {
 %type <tree.Statement> alter_ddl_stmt
 %type <tree.Statement> alter_table_stmt
 %type <tree.Statement> alter_index_stmt
+%type <tree.Statement> alter_function_stmt
+%type <tree.Statement> alter_procedure_stmt
 %type <tree.Statement> alter_view_stmt
 %type <tree.Statement> alter_sequence_stmt
 %type <tree.Statement> alter_database_stmt
@@ -824,6 +826,7 @@ func (u *sqlSymUnion) storageType() tree.StorageType {
 %type <tree.Statement> create_schedule_for_backup_stmt
 %type <tree.Statement> create_extension_stmt
 %type <tree.Statement> create_function_stmt
+%type <tree.Statement> create_procedure_stmt
 %type <tree.Statement> create_schema_stmt
 %type <tree.Statement> create_table_stmt
 %type <tree.Statement> create_table_as_stmt
@@ -852,6 +855,7 @@ func (u *sqlSymUnion) storageType() tree.StorageType {
 %type <tree.Statement> drop_sequence_stmt
 %type <tree.Statement> drop_extension_stmt
 %type <tree.Statement> drop_function_stmt
+%type <tree.Statement> drop_procedure_stmt
 
 %type <tree.Statement> analyze_stmt
 %type <tree.Statement> explain_stmt
@@ -959,15 +963,16 @@ func (u *sqlSymUnion) storageType() tree.StorageType {
 %type <tree.Expr> alter_column_default opt_arg_default
 %type <tree.Direction> opt_asc_desc
 %type <tree.NullsOrder> opt_nulls_order
-%type <[]tree.FunctionWithArgs> function_name_with_args_list
+%type <[]tree.RoutineWithArgs> function_name_with_args_list
 
 %type <*tree.AggregateSignature> aggregate_signature
 %type <*tree.RoutineArg> routine_arg routine_arg_with_default
-%type <[]*tree.RoutineArg> routine_arg_list opt_routine_args routine_arg_with_default_list opt_routine_arg_with_default_list
+%type <[]*tree.RoutineArg> routine_arg_list opt_routine_args opt_routine_args_with_paren
+%type <[]*tree.RoutineArg> routine_arg_with_default_list opt_routine_arg_with_default_list
 %type <tree.SimpleColumnDef> returns_table_col_def
 %type <[]tree.SimpleColumnDef> opt_returns_table_col_def_list
-%type <tree.RoutineOption> option_clause
-%type <[]tree.RoutineOption> option_clause_list
+%type <tree.RoutineOption> function_option create_function_option alter_function_option create_procedure_option alter_procedure_option
+%type <[]tree.RoutineOption> create_function_option_list alter_function_option_list create_procedure_option_list alter_procedure_option_list
 
 %type <tree.Routine> routine_with_args
 %type <[]tree.Routine> routine_with_args_list
@@ -1006,7 +1011,7 @@ func (u *sqlSymUnion) storageType() tree.StorageType {
 %type <str> cursor_name database_name index_name opt_index_name column_name insert_column_item statistics_name window_name
 %type <str> table_alias_name constraint_name target_name collation_name
 %type <str> db_object_name_component
-%type <*tree.UnresolvedObjectName> table_name standalone_index_name sequence_name type_name
+%type <*tree.UnresolvedObjectName> table_name standalone_index_name sequence_name type_name routine_name
 %type <*tree.UnresolvedObjectName> view_name db_object_name simple_db_object_name complex_db_object_name
 %type <[]*tree.UnresolvedObjectName> type_name_list
 %type <str> schema_name opt_schema_name opt_schema opt_version tablespace_name partition_name
@@ -1060,7 +1065,7 @@ func (u *sqlSymUnion) storageType() tree.StorageType {
 %type <[]tree.SequenceOption> sequence_option_list opt_sequence_option_list opt_sequence_option_list_with_parens
 %type <tree.SequenceOption> sequence_option_elem
 
-%type <bool> all_or_distinct opt_cascade opt_if_exists
+%type <bool> all_or_distinct opt_cascade opt_if_exists opt_restrict
 %type <bool> with_comment opt_with_force opt_create_as_with_data
 %type <empty> join_outer
 %type <tree.JoinCond> join_qual
@@ -1160,7 +1165,7 @@ func (u *sqlSymUnion) storageType() tree.StorageType {
 %type <str> unrestricted_name type_function_name type_function_name_no_crdb_extra
 %type <str> non_reserved_word
 %type <str> non_reserved_word_or_sconst
-%type <str> role_spec opt_owner_to set_schema opt_role
+%type <str> role_spec owner_to set_schema opt_role
 %type <tree.Expr> zone_value
 %type <tree.Expr> string_or_placeholder
 %type <tree.Expr> string_or_placeholder_list
@@ -1348,6 +1353,8 @@ alter_stmt:
 alter_ddl_stmt:
   alter_table_stmt              // EXTEND WITH HELP: ALTER TABLE
 | alter_index_stmt              // EXTEND WITH HELP: ALTER INDEX
+| alter_function_stmt           // EXTEND WITH HELP: ALTER FUNCTION
+| alter_procedure_stmt          // EXTEND WITH HELP: ALTER PROCEDURE
 | alter_view_stmt               // EXTEND WITH HELP: ALTER VIEW
 | alter_sequence_stmt           // EXTEND WITH HELP: ALTER SEQUENCE
 | alter_database_stmt           // EXTEND WITH HELP: ALTER DATABASE
@@ -1445,7 +1452,7 @@ alter_database_stmt:
 | ALTER DATABASE error // SHOW HELP: ALTER DATABASE
 
 opt_alter_database:
-  ALTER DATABASE database_name opt_owner_to
+  ALTER DATABASE database_name owner_to
   {
     $$.val = &tree.AlterDatabase{Name: tree.Name($3), Owner: $4}
   }
@@ -1622,6 +1629,60 @@ alter_index_stmt:
 // ALTER INDEX has its error help token here because the ALTER INDEX
 // prefix is spread over multiple non-terminals.
 | ALTER INDEX error // SHOW HELP: ALTER INDEX
+
+alter_function_stmt:
+  ALTER FUNCTION routine_name opt_routine_args_with_paren alter_function_option_list opt_restrict
+  {
+    $$.val = &tree.AlterFunction{Name: $3.unresolvedObjectName(), Args: $4.routineArgs(), Options: $5.routineOptions(), Restrict: $6.bool()}
+  }
+| ALTER FUNCTION routine_name opt_routine_args_with_paren RENAME TO routine_name
+  {
+    $$.val = &tree.AlterFunction{Name: $3.unresolvedObjectName(), Args: $4.routineArgs(), Rename: $7.unresolvedObjectName()}
+  }
+| ALTER FUNCTION routine_name opt_routine_args_with_paren owner_to
+  {
+    $$.val = &tree.AlterFunction{Name: $3.unresolvedObjectName(), Args: $4.routineArgs(), Owner: $5}
+  }
+| ALTER FUNCTION routine_name opt_routine_args_with_paren set_schema
+  {
+    $$.val = &tree.AlterFunction{Name: $3.unresolvedObjectName(), Args: $4.routineArgs(), Schema: $5}
+  }
+| ALTER FUNCTION routine_name opt_routine_args_with_paren opt_no DEPENDS ON EXTENSION name
+  {
+    $$.val = &tree.AlterFunction{Name: $3.unresolvedObjectName(), Args: $4.routineArgs(), No: $5.bool(), Extension: $9}
+  }
+
+opt_restrict:
+  /* EMPTY */
+  {
+    $$.val = false
+  }
+| RESTRICT
+  {
+    $$.val = true
+  }
+
+alter_procedure_stmt:
+  ALTER PROCEDURE routine_name opt_routine_args_with_paren alter_procedure_option_list opt_restrict
+  {
+    $$.val = &tree.AlterProcedure{Name: $3.unresolvedObjectName(), Args: $4.routineArgs(), Options: $5.routineOptions(), Restrict: $6.bool()}
+  }
+| ALTER PROCEDURE routine_name opt_routine_args_with_paren RENAME TO routine_name
+  {
+    $$.val = &tree.AlterProcedure{Name: $3.unresolvedObjectName(), Args: $4.routineArgs(), Rename: $7.unresolvedObjectName()}
+  }
+| ALTER PROCEDURE routine_name opt_routine_args_with_paren owner_to
+  {
+    $$.val = &tree.AlterProcedure{Name: $3.unresolvedObjectName(), Args: $4.routineArgs(), Owner: $5}
+  }
+| ALTER PROCEDURE routine_name opt_routine_args_with_paren set_schema
+  {
+    $$.val = &tree.AlterProcedure{Name: $3.unresolvedObjectName(), Args: $4.routineArgs(), Schema: $5}
+  }
+| ALTER PROCEDURE routine_name opt_routine_args_with_paren opt_no DEPENDS ON EXTENSION name
+  {
+    $$.val = &tree.AlterProcedure{Name: $3.unresolvedObjectName(), Args: $4.routineArgs(), No: $5.bool(), Extension: $9}
+  }
 
 alter_onetable_stmt:
   ALTER TABLE relation_expr alter_table_cmd
@@ -1832,7 +1893,7 @@ alter_table_action:
     $$.val = &tree.AlterTableOfType{NotOf: true}
   }
   // ALTER TABLE <name> OWNER TO <newowner>
-| opt_owner_to
+| owner_to
   {
     $$.val = &tree.AlterTableOwner{
       Owner: $1,
@@ -2201,7 +2262,7 @@ alter_type_stmt:
       },
     }
   }
-| ALTER TYPE type_name opt_owner_to
+| ALTER TYPE type_name owner_to
   {
     $$.val = &tree.AlterType{
       Type: $3.unresolvedObjectName(),
@@ -2272,7 +2333,7 @@ role_spec:
 | CURRENT_USER
 | SESSION_USER
 
-opt_owner_to:
+owner_to:
   OWNER TO role_spec
   {
     $$ = $3
@@ -2283,7 +2344,7 @@ alter_aggregate_stmt:
   {
     $$.val = &tree.AlterAggregate{Name: tree.Name($3), AggSig: $5.aggregateSignature(), Rename: tree.Name($9)}
   }
-| ALTER AGGREGATE unrestricted_name '(' aggregate_signature ')' opt_owner_to
+| ALTER AGGREGATE unrestricted_name '(' aggregate_signature ')' owner_to
   {
     $$.val = &tree.AlterAggregate{Name: tree.Name($3), AggSig: $5.aggregateSignature(), Owner: $7}
   }
@@ -2310,10 +2371,20 @@ aggregate_signature:
     $$.val = &tree.AggregateSignature{OrderByArgs: $3.routineArgs()}
   }
 
+opt_routine_args_with_paren:
+  /* EMPTY */
+  {
+    $$.val = []*tree.RoutineArg(nil)
+  }
+| '(' opt_routine_args ')'
+  {
+    $$.val = $2.routineArgs()
+  }
+
 opt_routine_args:
   /* EMPTY */
   {
-    $$.val = []*tree.RoutineArg{}
+    $$.val = []*tree.RoutineArg(nil)
   }
 | routine_arg_list
   {
@@ -2365,7 +2436,7 @@ alter_collation_stmt:
   {
     $$.val = &tree.AlterCollation{Name: tree.Name($3), Rename: tree.Name($6)}
   }
-| ALTER COLLATION unrestricted_name opt_owner_to
+| ALTER COLLATION unrestricted_name owner_to
   {
     $$.val = &tree.AlterCollation{Name: tree.Name($3), Owner: $4}
   }
@@ -2379,7 +2450,7 @@ alter_conversion_stmt:
   {
     $$.val = &tree.AlterConversion{Name: tree.Name($3), Rename: tree.Name($6)}
   }
-| ALTER CONVERSION unrestricted_name opt_owner_to
+| ALTER CONVERSION unrestricted_name owner_to
   {
     $$.val = &tree.AlterConversion{Name: tree.Name($3), Owner: $4}
   }
@@ -3237,6 +3308,7 @@ create_stmt:
 | create_stats_stmt    // EXTEND WITH HELP: CREATE STATISTICS
 | create_schedule_for_backup_stmt   // EXTEND WITH HELP: CREATE SCHEDULE FOR BACKUP
 | create_function_stmt // EXTEND WITH HELP: CREATE FUNCTION
+| create_procedure_stmt // EXTEND WITH HELP: CREATE PROCEDURE
 | create_extension_stmt // EXTEND WITH HELP: CREATE EXTENSION
 | create_unsupported   {}
 | CREATE error         // SHOW HELP: CREATE
@@ -3267,28 +3339,38 @@ create_extension_stmt:
     $$.val = &tree.CreateExtension{Name: tree.Name($6), IfNotExists: true, Schema: $8, Version: $9, Cascade: $10.bool()}
   }
 
+create_procedure_stmt:
+  CREATE PROCEDURE routine_name opt_routine_arg_with_default_list create_procedure_option_list
+  {
+    $$.val = &tree.CreateProcedure{Name: $3.unresolvedObjectName(), Args: $4.routineArgs(), Options: $5.routineOptions()}
+  }
+| CREATE OR REPLACE PROCEDURE routine_name opt_routine_arg_with_default_list create_procedure_option_list
+  {
+    $$.val = &tree.CreateProcedure{Name: $5.unresolvedObjectName(), Replace: true, Args: $6.routineArgs(), Options: $7.routineOptions()}
+  }
+
 create_function_stmt:
-  CREATE FUNCTION db_object_name opt_routine_arg_with_default_list option_clause_list
+  CREATE FUNCTION routine_name opt_routine_arg_with_default_list create_function_option_list
   {
     $$.val = &tree.CreateFunction{Name: $3.unresolvedObjectName(), Args: $4.routineArgs(), Options: $5.routineOptions()}
   }
-| CREATE FUNCTION db_object_name opt_routine_arg_with_default_list RETURNS typename option_clause_list
+| CREATE FUNCTION routine_name opt_routine_arg_with_default_list RETURNS typename create_function_option_list
   {
     $$.val = &tree.CreateFunction{Name: $3.unresolvedObjectName(), Args: $4.routineArgs(), RetType: []tree.SimpleColumnDef{tree.SimpleColumnDef{Type: $6.typeReference()}}, Options: $7.routineOptions()}
   }
-| CREATE FUNCTION db_object_name opt_routine_arg_with_default_list RETURNS TABLE '(' opt_returns_table_col_def_list ')' option_clause_list
+| CREATE FUNCTION routine_name opt_routine_arg_with_default_list RETURNS TABLE '(' opt_returns_table_col_def_list ')' create_function_option_list
   {
     $$.val = &tree.CreateFunction{Name: $3.unresolvedObjectName(), Args: $4.routineArgs(), RetType: $8.simpleColumnDefs(), Options: $10.routineOptions()}
   }
-| CREATE OR REPLACE FUNCTION db_object_name opt_routine_arg_with_default_list option_clause_list
+| CREATE OR REPLACE FUNCTION routine_name opt_routine_arg_with_default_list create_function_option_list
   {
     $$.val = &tree.CreateFunction{Name: $5.unresolvedObjectName(), Replace: true, Args: $6.routineArgs(), Options: $7.routineOptions()}
   }
-| CREATE OR REPLACE FUNCTION db_object_name opt_routine_arg_with_default_list RETURNS typename option_clause_list
+| CREATE OR REPLACE FUNCTION routine_name opt_routine_arg_with_default_list RETURNS typename create_function_option_list
   {
     $$.val = &tree.CreateFunction{Name: $5.unresolvedObjectName(), Replace: true, Args: $6.routineArgs(), RetType: []tree.SimpleColumnDef{tree.SimpleColumnDef{Type: $8.typeReference()}}, Options: $9.routineOptions()}
   }
-| CREATE OR REPLACE FUNCTION db_object_name opt_routine_arg_with_default_list RETURNS TABLE '(' opt_returns_table_col_def_list ')' option_clause_list
+| CREATE OR REPLACE FUNCTION routine_name opt_routine_arg_with_default_list RETURNS TABLE '(' opt_returns_table_col_def_list ')' create_function_option_list
   {
     $$.val = &tree.CreateFunction{Name: $5.unresolvedObjectName(), Replace: true, Args: $6.routineArgs(), RetType: $10.simpleColumnDefs(), Options: $12.routineOptions()}
   }
@@ -3355,30 +3437,40 @@ opt_default:
   DEFAULT {}
 | '=' {}
 
-option_clause_list:
-  option_clause
+alter_function_option_list:
+  alter_function_option
   {
     $$.val = []tree.RoutineOption{$1.routineOption()}
   }
-| option_clause_list option_clause
+| alter_function_option_list alter_function_option
   {
     $$.val = append($1.routineOptions(), $2.routineOption()) /* TODO: check for duplicate definition - "ERROR:  conflicting or redundant options" */
   }
 
-option_clause:
-  LANGUAGE name
+alter_function_option:
+  function_option
+| alter_procedure_option
+
+create_function_option_list:
+  create_function_option
   {
-    $$.val = tree.RoutineOption{OptionType: tree.OptionLanguage, Language: $2}
+    $$.val = []tree.RoutineOption{$1.routineOption()}
   }
-| TRANSFORM for_type_list
+| create_function_option_list create_function_option
   {
-    $$.val = tree.RoutineOption{OptionType: tree.OptionTransform, TransformTypes: $2.typeReferences()}
+    $$.val = append($1.routineOptions(), $2.routineOption()) /* TODO: check for duplicate definition - "ERROR:  conflicting or redundant options" */
   }
+
+create_function_option:
+  create_procedure_option
+| function_option
 | WINDOW
   {
     $$.val = tree.RoutineOption{OptionType: tree.OptionWindow}
   }
-| IMMUTABLE
+
+function_option:
+  IMMUTABLE
   {
     $$.val = tree.RoutineOption{OptionType: tree.OptionVolatility, Volatility: tree.VolatilityImmutable}
   }
@@ -3406,10 +3498,6 @@ option_clause:
   {
     $$.val = tree.RoutineOption{OptionType: tree.OptionNullInput, NullInput: tree.StrictNullInput}
   }
-| opt_external SECURITY definer_or_invoker
-  {
-    $$.val = tree.RoutineOption{OptionType: tree.OptionSecurity, External: $1.bool(), Definer: $3.bool()}
-  }
 | PARALLEL UNSAFE
   {
     $$.val = tree.RoutineOption{OptionType: tree.OptionParallel, Parallel: tree.ParallelUnsafe}
@@ -3433,6 +3521,58 @@ option_clause:
 | SUPPORT name
   {
     $$.val = tree.RoutineOption{OptionType: tree.OptionSupport, Support: $2}
+  }
+
+alter_procedure_option_list:
+  alter_procedure_option
+  {
+    $$.val = []tree.RoutineOption{$1.routineOption()}
+  }
+| alter_procedure_option_list alter_procedure_option
+  {
+    $$.val = append($1.routineOptions(), $2.routineOption()) /* TODO: check for duplicate definition - "ERROR:  conflicting or redundant options" */
+  }
+
+alter_procedure_option:
+ opt_external SECURITY definer_or_invoker
+  {
+    $$.val = tree.RoutineOption{OptionType: tree.OptionSecurity, External: $1.bool(), Definer: $3.bool()}
+  }
+| SET generic_set_single_config
+  {
+    $$.val = tree.RoutineOption{OptionType: tree.OptionSet, SetVar: $2.setVar()}
+  }
+| RESET name
+  {
+    $$.val = tree.RoutineOption{OptionType: tree.OptionReset, ResetParam: $2}
+  }
+| RESET ALL
+  {
+    $$.val = tree.RoutineOption{OptionType: tree.OptionReset, ResetAll: true}
+  }
+
+create_procedure_option_list:
+  create_procedure_option
+  {
+    $$.val = []tree.RoutineOption{$1.routineOption()}
+  }
+| create_procedure_option_list create_procedure_option
+  {
+    $$.val = append($1.routineOptions(), $2.routineOption()) /* TODO: check for duplicate definition - "ERROR:  conflicting or redundant options" */
+  }
+
+create_procedure_option:
+  LANGUAGE name
+  {
+    $$.val = tree.RoutineOption{OptionType: tree.OptionLanguage, Language: $2}
+  }
+| TRANSFORM for_type_list
+  {
+    $$.val = tree.RoutineOption{OptionType: tree.OptionTransform, TransformTypes: $2.typeReferences()}
+  }
+| opt_external SECURITY definer_or_invoker
+  {
+    $$.val = tree.RoutineOption{OptionType: tree.OptionSecurity, External: $1.bool(), Definer: $3.bool()}
   }
 | SET generic_set_single_config
   {
@@ -3580,24 +3720,34 @@ drop_extension_stmt:
     $$.val = &tree.DropExtension{Names: $5.nameList(), IfExists: true, DropBehavior: $6.dropBehavior()}
   }
 
+drop_procedure_stmt:
+  DROP PROCEDURE function_name_with_args_list opt_drop_behavior
+  {
+    $$.val = &tree.DropProcedure{Procedures: $3.routineWithArgs(), DropBehavior: $4.dropBehavior()}
+  }
+| DROP PROCEDURE IF EXISTS function_name_with_args_list opt_drop_behavior
+  {
+    $$.val = &tree.DropProcedure{Procedures: $5.routineWithArgs(), IfExists: true, DropBehavior: $6.dropBehavior()}
+  }
+
 drop_function_stmt:
   DROP FUNCTION function_name_with_args_list opt_drop_behavior
   {
-    $$.val = &tree.DropFunction{Functions: $3.functionWithArgs(), DropBehavior: $4.dropBehavior()}
+    $$.val = &tree.DropFunction{Functions: $3.routineWithArgs(), DropBehavior: $4.dropBehavior()}
   }
 | DROP FUNCTION IF EXISTS function_name_with_args_list opt_drop_behavior
   {
-    $$.val = &tree.DropFunction{Functions: $5.functionWithArgs(), IfExists: true, DropBehavior: $6.dropBehavior()}
+    $$.val = &tree.DropFunction{Functions: $5.routineWithArgs(), IfExists: true, DropBehavior: $6.dropBehavior()}
   }
 
 function_name_with_args_list:
   db_object_name opt_routine_arg_with_default_list
   {
-    $$.val = []tree.FunctionWithArgs{{Name: $1.unresolvedObjectName(), Args: $2.routineArgs()}}
+    $$.val = []tree.RoutineWithArgs{{Name: $1.unresolvedObjectName(), Args: $2.routineArgs()}}
   }
 | function_name_with_args_list ',' db_object_name opt_routine_arg_with_default_list
   {
-    $$.val = append($1.functionWithArgs(), tree.FunctionWithArgs{Name: $3.unresolvedObjectName(), Args: $4.routineArgs()})
+    $$.val = append($1.routineWithArgs(), tree.RoutineWithArgs{Name: $3.unresolvedObjectName(), Args: $4.routineArgs()})
   }
 
 create_ddl_stmt:
@@ -3810,8 +3960,9 @@ drop_stmt:
   drop_ddl_stmt      // help texts in sub-rule
 | drop_role_stmt     // EXTEND WITH HELP: DROP ROLE
 | drop_schedule_stmt // EXTEND WITH HELP: DROP SCHEDULES
-| drop_function_stmt
-| drop_extension_stmt
+| drop_function_stmt // EXTEND WITH HELP: DROP FUNCTION
+| drop_procedure_stmt // EXTEND WITH HELP: DROP PROCEDURE
+| drop_extension_stmt // EXTEND WITH HELP: DROP EXTENSION
 | drop_unsupported   {}
 | DROP error         // SHOW HELP: DROP
 
@@ -4827,6 +4978,7 @@ set_transaction_stmt:
 | SET SESSION TRANSACTION error // SHOW HELP: SET TRANSACTION
 
 generic_set_single_config:
+  // var_value includes DEFAULT expr
   name to_or_eq var_value
   {
     $$.val = &tree.SetVar{Name: $1, Values: tree.Exprs{$3.expr()}}
@@ -6104,7 +6256,7 @@ alter_schema_stmt:
       },
     }
   }
-| ALTER SCHEMA schema_name opt_owner_to
+| ALTER SCHEMA schema_name owner_to
   {
     $$.val = &tree.AlterSchema{
       Schema: $3,
@@ -12135,6 +12287,8 @@ cursor_name:           name
 tablespace_name:       name
 
 partition_name:        name
+
+routine_name:         db_object_name
 
 // Names for column references.
 // Accepted patterns:

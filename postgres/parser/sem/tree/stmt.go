@@ -225,6 +225,14 @@ func (*AlterDefaultPrivileges) StatementTag() string { return "ALTER DEFAULT PRI
 func (*AlterDefaultPrivileges) hiddenFromShowQueries() {}
 
 // StatementType implements the Statement interface.
+func (*AlterFunction) StatementType() StatementType { return DDL }
+
+// StatementTag returns a short string identifying the type of statement.
+func (*AlterFunction) StatementTag() string { return "ALTER FUNCTION" }
+
+func (*AlterFunction) hiddenFromShowQueries() {}
+
+// StatementType implements the Statement interface.
 func (*AlterIndex) StatementType() StatementType { return DDL }
 
 // StatementTag returns a short string identifying the type of statement.
@@ -239,6 +247,14 @@ func (*AlterIndexAllInTablespace) StatementType() StatementType { return DDL }
 func (*AlterIndexAllInTablespace) StatementTag() string { return "ALTER INDEX ALL IN TABLESPACE" }
 
 func (*AlterIndexAllInTablespace) hiddenFromShowQueries() {}
+
+// StatementType implements the Statement interface.
+func (*AlterProcedure) StatementType() StatementType { return DDL }
+
+// StatementTag returns a short string identifying the type of statement.
+func (*AlterProcedure) StatementTag() string { return "ALTER PROCEDURE" }
+
+func (*AlterProcedure) hiddenFromShowQueries() {}
 
 // StatementType implements the Statement interface.
 func (*AlterTable) StatementType() StatementType { return DDL }
@@ -464,6 +480,12 @@ func (*CreateIndex) StatementType() StatementType { return DDL }
 func (*CreateIndex) StatementTag() string { return "CREATE INDEX" }
 
 // StatementType implements the Statement interface.
+func (*CreateProcedure) StatementType() StatementType { return DDL }
+
+// StatementTag returns a short string identifying the type of statement.
+func (*CreateProcedure) StatementTag() string { return "CREATE VIEW" }
+
+// StatementType implements the Statement interface.
 func (n *CreateSchema) StatementType() StatementType { return DDL }
 
 // StatementTag returns a short string identifying the type of statement.
@@ -569,6 +591,12 @@ func (*DropIndex) StatementType() StatementType { return DDL }
 
 // StatementTag returns a short string identifying the type of statement.
 func (*DropIndex) StatementTag() string { return "DROP INDEX" }
+
+// StatementType implements the Statement interface.
+func (*DropProcedure) StatementType() StatementType { return DDL }
+
+// StatementTag returns a short string identifying the type of statement.
+func (*DropProcedure) StatementTag() string { return "DROP PROCEDURE" }
 
 // StatementType implements the Statement interface.
 func (*DropTable) StatementType() StatementType { return DDL }
@@ -1093,10 +1121,12 @@ func (*ValuesClause) StatementTag() string { return "VALUES" }
 func (n *AlterAggregate) String() string                 { return AsString(n) }
 func (n *AlterCollation) String() string                 { return AsString(n) }
 func (n *AlterConversion) String() string                { return AsString(n) }
-func (n *AlterIndex) String() string                     { return AsString(n) }
-func (n *AlterIndexAllInTablespace) String() string      { return AsString(n) }
 func (n *AlterDatabase) String() string                  { return AsString(n) }
 func (n *AlterDefaultPrivileges) String() string         { return AsString(n) }
+func (n *AlterFunction) String() string                  { return AsString(n) }
+func (n *AlterIndex) String() string                     { return AsString(n) }
+func (n *AlterIndexAllInTablespace) String() string      { return AsString(n) }
+func (n *AlterProcedure) String() string                 { return AsString(n) }
 func (n *AlterSchema) String() string                    { return AsString(n) }
 func (n *AlterTable) String() string                     { return AsString(n) }
 func (n *AlterTableAllInTablespace) String() string      { return AsString(n) }
@@ -1127,6 +1157,7 @@ func (n *CreateDatabase) String() string                 { return AsString(n) }
 func (n *CreateExtension) String() string                { return AsString(n) }
 func (n *CreateFunction) String() string                 { return AsString(n) }
 func (n *CreateIndex) String() string                    { return AsString(n) }
+func (n *CreateProcedure) String() string                { return AsString(n) }
 func (n *CreateRole) String() string                     { return AsString(n) }
 func (n *CreateTable) String() string                    { return AsString(n) }
 func (n *CreateType) String() string                     { return AsString(n) }
@@ -1140,6 +1171,7 @@ func (n *DropDatabase) String() string                   { return AsString(n) }
 func (n *DropExtension) String() string                  { return AsString(n) }
 func (n *DropFunction) String() string                   { return AsString(n) }
 func (n *DropIndex) String() string                      { return AsString(n) }
+func (n *DropProcedure) String() string                  { return AsString(n) }
 func (n *DropSchema) String() string                     { return AsString(n) }
 func (n *DropTable) String() string                      { return AsString(n) }
 func (n *DropType) String() string                       { return AsString(n) }

@@ -46,8 +46,9 @@ func (node *CreateFunction) Format(ctx *FmtCtx) {
 	ctx.WriteString("FUNCTION ")
 	ctx.FormatNode(node.Name)
 	if len(node.Args) != 0 {
-		ctx.WriteByte(' ')
+		ctx.WriteString(" (")
 		ctx.FormatNode(node.Args)
+		ctx.WriteString(" )")
 	}
 	if node.RetType != nil {
 		if len(node.RetType) == 1 && node.RetType[0].Name == "" {
@@ -124,6 +125,7 @@ const (
 	OptionAs1
 	OptionAs2
 	OptionSqlBody
+	OptionReset // For ALTER { FUNCTION | PROCEDURE } use only
 )
 
 type RoutineOption struct {
@@ -145,6 +147,10 @@ type RoutineOption struct {
 	ObjFile        string
 	LinkSymbol     string
 	SqlBody        Statement
+
+	// For ALTER { FUNCTION | PROCEDURE } use only
+	ResetParam string
+	ResetAll   bool
 }
 
 // Format implements the NodeFormatter interface.
@@ -216,6 +222,13 @@ func (node RoutineOption) Format(ctx *FmtCtx) {
 		ctx.WriteString(node.LinkSymbol)
 	case OptionSqlBody:
 		ctx.FormatNode(node.SqlBody)
+	case OptionReset:
+		ctx.WriteString("RESET ")
+		if node.ResetAll {
+			ctx.WriteString("ALL")
+		} else {
+			ctx.WriteString(node.ResetParam)
+		}
 	}
 }
 
