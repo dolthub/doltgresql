@@ -289,11 +289,14 @@ func (r *LogicalReplicator) StartReplication(slotName string) error {
 		case pglogrepl.XLogDataByteID:
 			xld, err := pglogrepl.ParseXLogData(msg.Data[1:])
 			if err != nil {
-				log.Fatalln("ParseXLogData failed:", err)
+				return err
 			}
 
 			log.Printf("XLogData => WALStart %s ServerWALEnd %s ServerTime %s WALData:\n", xld.WALStart, xld.ServerWALEnd, xld.ServerTime)
-			r.processMessage(xld.WALData, relationsV2, typeMap, &inStream)
+			err = r.processMessage(xld.WALData, relationsV2, typeMap, &inStream)
+			if err != nil {
+				return err
+			}
 
 			// TODO: we have a two-phase commit race here: if the call to update the standby fails and the process crashes,
 			//  we will receive a duplicate LSN the next time we start replication. We can mitigate this by writing the last
@@ -433,7 +436,7 @@ func (r *LogicalReplicator) CreateReplicationSlotIfNecessary(slotName string) er
 			}
 		}
 
-		log.Println("Created temporary replication slot:", slotName)
+		log.Println("Created replication slot:", slotName)
 	}
 	
 	return nil
@@ -443,14 +446,12 @@ func (r *LogicalReplicator) CreateReplicationSlotIfNecessary(slotName string) er
 //  1. Relation messages describe tables being replicated and are used to build a type map for decoding tuples
 //  2. INSERT/UPDATE/DELETE messages describe changes to rows that must be applied to the replica.
 //     These describe a row in the form of a tuple, and are used to construct a query to apply the change to the replica.
-//
-// TODO: handle panics
 func (r *LogicalReplicator) processMessage(
 	walData []byte,
 	relations map[uint32]*pglogrepl.RelationMessageV2,
 	typeMap *pgtype.Map,
 	inStream *bool,
-) {
+) error {
 	logicalMsg, err := pglogrepl.ParseV2(walData, *inStream)
 	if err != nil {
 		log.Fatalf("Parse logical replication message: %s", err)
@@ -494,7 +495,7 @@ func (r *LogicalReplicator) processMessage(
 				}
 				colData, err := encodeColumnData(typeMap, val, rel.Columns[idx].DataType)
 				if err != nil {
-					panic(err)
+					return err
 				}
 				valuesStr.WriteString(colData)
 			default:
@@ -505,7 +506,7 @@ func (r *LogicalReplicator) processMessage(
 		log.Printf("insert for xid %d\n", logicalMsg.Xid)
 		err = r.replicateQuery(fmt.Sprintf("INSERT INTO %s.%s (%s) VALUES (%s)", rel.Namespace, rel.RelationName, columnStr.String(), valuesStr.String()))
 		if err != nil {
-			panic(err)
+			return err
 		}
 	case *pglogrepl.UpdateMessageV2:
 		// TODO: this won't handle primary key changes correctly
@@ -534,7 +535,7 @@ func (r *LogicalReplicator) processMessage(
 
 				stringVal, err = encodeColumnData(typeMap, val, rel.Columns[idx].DataType)
 				if err != nil {
-					panic(err)
+					return err
 				}
 			default:
 				log.Printf("unknown column data type: %c", col.DataType)
@@ -557,7 +558,7 @@ func (r *LogicalReplicator) processMessage(
 		log.Printf("update for xid %d\n", logicalMsg.Xid)
 		err = r.replicateQuery(fmt.Sprintf("UPDATE %s.%s SET %s%s", rel.Namespace, rel.RelationName, updateStr.String(), whereClause(whereStr)))
 		if err != nil {
-			panic(err)
+			return err
 		}
 	case *pglogrepl.DeleteMessageV2:
 		// TODO: this probably doesn't work for unkeyed tables
@@ -584,7 +585,7 @@ func (r *LogicalReplicator) processMessage(
 
 				stringVal, err = encodeColumnData(typeMap, val, rel.Columns[idx].DataType)
 				if err != nil {
-					panic(err)
+					return err
 				}
 			default:
 				log.Printf("unknown column data type: %c", col.DataType)
@@ -603,7 +604,7 @@ func (r *LogicalReplicator) processMessage(
 		log.Printf("delete for xid %d\n", logicalMsg.Xid)
 		err = r.replicateQuery(fmt.Sprintf("DELETE FROM %s.%s WHERE %s", rel.Namespace, rel.RelationName, whereStr.String()))
 		if err != nil {
-			panic(err)
+			return err
 		}
 	case *pglogrepl.TruncateMessageV2:
 		log.Printf("truncate for xid %d\n", logicalMsg.Xid)
@@ -626,6 +627,8 @@ func (r *LogicalReplicator) processMessage(
 	default:
 		log.Printf("Unknown message type in pgoutput stream: %T", logicalMsg)
 	}
+	
+	return nil
 }
 
 // whereClause returns a WHERE clause string with the contents of the builder if it's non-empty, or the empty
