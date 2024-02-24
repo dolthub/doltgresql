@@ -37,8 +37,6 @@ type ReplicationTarget byte
 
 // special pseudo-queries for orchestrating replication tests
 const (
-	startReplica = "startReplica"
-	stopReplica = "stopReplica"
 	createReplicationSlot = "createReplicationSlot"
 	dropReplicationSlot = "dropReplicationSlot"
 	stopReplication = "stopReplication"
@@ -502,12 +500,6 @@ func connectionForQuery(t *testing.T, query string, connections map[string]*pgx.
 // one was handled.
 func handlePseudoQuery(t *testing.T, query string, r *logrepl.LogicalReplicator) bool {
 	switch query {
-	case startReplica:
-		// TODO
-		return true
-	case stopReplica:
-		// TODO
-		return true
 	case createReplicationSlot:
 		require.NoError(t, r.CreateReplicationSlotIfNecessary(slotName))
 		return true
