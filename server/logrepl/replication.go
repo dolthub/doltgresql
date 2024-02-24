@@ -16,6 +16,7 @@ package logrepl
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"log"
 	"strings"
@@ -130,6 +131,8 @@ func (r *LogicalReplicator) CaughtUp() (bool, error) {
 
 const maxConsecutiveFailures = 10
 
+var shutdownRequestedErr = errors.New("shutdown requested")
+
 // StartReplication starts the replication process for the given slot name. This function blocks until replication is
 // stopped via the Stop method, or an error occurs.
 func (r *LogicalReplicator) StartReplication(slotName string) error {
@@ -141,37 +144,42 @@ func (r *LogicalReplicator) StartReplication(slotName string) error {
 	// whenever we get StreamStartMessage we set inStream to true and then pass it to DecodeV2 function
 	// on StreamStopMessage we set it back to false
 	inStream := false
-
-	// We fail after 3 consecutive network errors excluding timeouts. Any successful RPC resets the counter.
-	connErrCnt := 0
-	var primaryConn *pgconn.PgConn
 	
+	var primaryConn *pgconn.PgConn
 	defer func() {
 		if primaryConn != nil {
 			_ = primaryConn.Close(context.Background())
 		}
 	}()
-	
-	sendStandbyStatusUpdate := func(lsn pglogrepl.LSN) error {
-		err := pglogrepl.SendStandbyStatusUpdate(context.Background(), primaryConn, pglogrepl.StandbyStatusUpdate{WALWritePosition: lsn})
+
+	// We fail after 3 consecutive network errors excluding timeouts. Any successful RPC resets the counter.
+	connErrCnt := 0
+	handleErrWithRetry := func(err error) error {
 		if err != nil {
 			connErrCnt++
 			if connErrCnt < maxConsecutiveFailures {
-				// re-establish connection on next pass through the loop
 				_ = primaryConn.Close(context.Background())
 				primaryConn = nil
 				return nil
 			}
+		} else {
+			connErrCnt = 0
+		}
+		
+		return err
+	}
 
-			return err
+	sendStandbyStatusUpdate := func(lsn pglogrepl.LSN) error {
+		err := pglogrepl.SendStandbyStatusUpdate(context.Background(), primaryConn, pglogrepl.StandbyStatusUpdate{WALWritePosition: lsn})
+		if err != nil {
+			return handleErrWithRetry(err)
 		}
 
-		connErrCnt = 0
 		log.Printf("Sent Standby status message at %s\n", lsn.String())
 		nextStandbyMessageDeadline = time.Now().Add(standbyMessageTimeout)
 		return nil
 	}
-
+	
 	log.Println("Starting replicator")
 	r.mu.Lock()
 	r.lsn = 0
@@ -180,154 +188,149 @@ func (r *LogicalReplicator) StartReplication(slotName string) error {
 	r.mu.Unlock()
 
 	for {
-		// Shutdown if requested
-		select {
-		case <-r.stop:
-			r.shutdown()
-			return nil
-		default:
-			// continue
-		}
+		err := func() error {
+			// Shutdown if requested
+			select {
+			case <-r.stop:
+				r.shutdown()
+				return shutdownRequestedErr
+			default:
+				// continue below
+			}
 
-		if primaryConn == nil {
-			var err error
-			primaryConn, err = r.beginReplication(slotName)
-			if err != nil {
-				connErrCnt++
-				if connErrCnt < maxConsecutiveFailures {
+			if primaryConn == nil {
+				var err error
+				primaryConn, err = r.beginReplication(slotName)
+				if err != nil {
 					// unlike other error cases, back off a little here, since we're likely to just get the same error again 
 					// on initial replication establishment
-					time.Sleep(250 * time.Millisecond)
-					continue
-				} else {
-					return err
-				}
-			}
-			
-			connErrCnt = 0
-		}
-		
-		if time.Now().After(nextStandbyMessageDeadline) {
-			r.mu.Lock()
-			err := sendStandbyStatusUpdate(r.lsn)
-			if err != nil {
-				r.mu.Unlock()
-				return err
-			}
-			r.mu.Unlock()
-			if primaryConn == nil {
-				// if we've lost the connection, we'll re-establish it on the next pass through the loop
-				continue
-			}
-		}
-
-		ctx, cancel := context.WithDeadline(context.Background(), nextStandbyMessageDeadline)
-		receiveMsgChan := make(chan rcvMsg)
-		go func() {
-			rawMsg, err := primaryConn.ReceiveMessage(ctx)
-			receiveMsgChan <- rcvMsg{msg: rawMsg, err: err}
-		}()
-
-		var msgAndErr rcvMsg
-		select {
-		case <-r.stop:
-			cancel()
-			r.shutdown()
-			return nil
-		case <-ctx.Done():
-			cancel()
-			continue
-		case msgAndErr = <-receiveMsgChan:
-			cancel()
-		}
-
-		if msgAndErr.err != nil {
-			if pgconn.Timeout(msgAndErr.err) {
-				continue
-			} else {
-				connErrCnt++
-				if connErrCnt < maxConsecutiveFailures {
-					// re-establish connection on next pass through the loop
-					_ = primaryConn.Close(context.Background())
-					primaryConn = nil
-					continue
+					time.Sleep(100 * time.Millisecond)
+					return handleErrWithRetry(err)
 				}
 			}
 
-			return msgAndErr.err
-		}
-
-		rawMsg := msgAndErr.msg
-		connErrCnt = 0
-		if errMsg, ok := rawMsg.(*pgproto3.ErrorResponse); ok {
-			return fmt.Errorf("received Postgres WAL error: %+v", errMsg)
-		}
-
-		msg, ok := rawMsg.(*pgproto3.CopyData)
-		if !ok {
-			log.Printf("Received unexpected message: %T\n", rawMsg)
-			continue
-		}
-
-		switch msg.Data[0] {
-		case pglogrepl.PrimaryKeepaliveMessageByteID:
-			pkm, err := pglogrepl.ParsePrimaryKeepaliveMessage(msg.Data[1:])
-			if err != nil {
-				log.Fatalln("ParsePrimaryKeepaliveMessage failed:", err)
-			}
-			log.Println("Primary Keepalive Message =>", "ServerWALEnd:", pkm.ServerWALEnd, "ServerTime:", pkm.ServerTime, "ReplyRequested:", pkm.ReplyRequested)
-			
-			r.mu.Lock()
-			if pkm.ServerWALEnd > r.lsn {
-				r.lsn = pkm.ServerWALEnd
-			}
-			r.mu.Unlock()
-			
-			if pkm.ReplyRequested {
-				// Send our reply the next time through the loop
-				nextStandbyMessageDeadline = time.Time{}
-			}
-		case pglogrepl.XLogDataByteID:
-			xld, err := pglogrepl.ParseXLogData(msg.Data[1:])
-			if err != nil {
-				return err
-			}
-
-			log.Printf("XLogData => WALStart %s ServerWALEnd %s ServerTime %s WALData:\n", xld.WALStart, xld.ServerWALEnd, xld.ServerTime)
-			err = r.processMessage(xld.WALData, relationsV2, typeMap, &inStream)
-			if err != nil {
-				connErrCnt++
-				// TODO: this logic isn't specific enough to keep us from looping forever on a single bad message
-				if connErrCnt < maxConsecutiveFailures {
-					// re-establish connection on next pass through the loop
-					_ = primaryConn.Close(context.Background())
-					primaryConn = nil
-					continue
-				}
-			}
-
-			// TODO: we have a two-phase commit race here: if the call to update the standby fails and the process crashes,
-			//  we will receive a duplicate LSN the next time we start replication. We can mitigate this by writing the last
-			//  processed LSN to a file locally, but that suffers from the same problem (if the process dies before we update
-			//  the file). A better solution would be to write the LSN directly into the DoltCommit message, and then parsing
-			//  this message back out when we begin replication next.
-			r.mu.Lock()
-			if xld.ServerWALEnd > r.lsn {
-				r.lsn = xld.ServerWALEnd
+			if time.Now().After(nextStandbyMessageDeadline) {
+				// lock for accessing r.lsn
+				r.mu.Lock()
 				err := sendStandbyStatusUpdate(r.lsn)
 				if err != nil {
 					r.mu.Unlock()
 					return err
 				}
+				r.mu.Unlock()
+				if primaryConn == nil {
+					// if we've lost the connection, we'll re-establish it on the next pass through the loop
+					return nil
+				}
 			}
-			r.mu.Unlock()
 
-			if primaryConn == nil {
-				// if we've lost the connection, we'll re-establish it on the next pass through the loop
-				continue
+			ctx, cancel := context.WithDeadline(context.Background(), nextStandbyMessageDeadline)
+			receiveMsgChan := make(chan rcvMsg)
+			go func() {
+				rawMsg, err := primaryConn.ReceiveMessage(ctx)
+				receiveMsgChan <- rcvMsg{msg: rawMsg, err: err}
+			}()
+
+			var msgAndErr rcvMsg
+			select {
+			case <-r.stop:
+				cancel()
+				r.shutdown()
+				return shutdownRequestedErr
+			case <-ctx.Done():
+				cancel()
+				return nil
+			case msgAndErr = <-receiveMsgChan:
+				cancel()
 			}
-		default:
-			log.Printf("Received unexpected message: %T\n", rawMsg)
+
+			if msgAndErr.err != nil {
+				if pgconn.Timeout(msgAndErr.err) {
+					return nil
+				} else {
+					return handleErrWithRetry(msgAndErr.err)
+				}
+
+				return msgAndErr.err
+			}
+
+			rawMsg := msgAndErr.msg
+			connErrCnt = 0
+			if errMsg, ok := rawMsg.(*pgproto3.ErrorResponse); ok {
+				return fmt.Errorf("received Postgres WAL error: %+v", errMsg)
+			}
+
+			msg, ok := rawMsg.(*pgproto3.CopyData)
+			if !ok {
+				log.Printf("Received unexpected message: %T\n", rawMsg)
+				return nil
+			}
+
+			switch msg.Data[0] {
+			case pglogrepl.PrimaryKeepaliveMessageByteID:
+				pkm, err := pglogrepl.ParsePrimaryKeepaliveMessage(msg.Data[1:])
+				if err != nil {
+					log.Fatalln("ParsePrimaryKeepaliveMessage failed:", err)
+				}
+				log.Println("Primary Keepalive Message =>", "ServerWALEnd:", pkm.ServerWALEnd, "ServerTime:", pkm.ServerTime, "ReplyRequested:", pkm.ReplyRequested)
+
+				r.mu.Lock()
+				if pkm.ServerWALEnd > r.lsn {
+					r.lsn = pkm.ServerWALEnd
+				}
+				r.mu.Unlock()
+
+				if pkm.ReplyRequested {
+					// Send our reply the next time through the loop
+					nextStandbyMessageDeadline = time.Time{}
+				}
+			case pglogrepl.XLogDataByteID:
+				xld, err := pglogrepl.ParseXLogData(msg.Data[1:])
+				if err != nil {
+					return err
+				}
+
+				log.Printf("XLogData => WALStart %s ServerWALEnd %s ServerTime %s WALData:\n", xld.WALStart, xld.ServerWALEnd, xld.ServerTime)
+				err = r.processMessage(xld.WALData, relationsV2, typeMap, &inStream)
+				if err != nil {
+					// TODO: do we need more than one handler, one for each connection?
+					return handleErrWithRetry(err)
+				}
+
+				// TODO: we have a two-phase commit race here: if the call to update the standby fails and the process crashes,
+				//  we will receive a duplicate LSN the next time we start replication. We can mitigate this by writing the last
+				//  processed LSN to a file locally, but that suffers from the same problem (if the process dies before we update
+				//  the file). A better solution would be to write the LSN directly into the DoltCommit message, and then parsing
+				//  this message back out when we begin replication next.
+				// lock for accessing r.lsn
+				r.mu.Lock()
+				if xld.ServerWALEnd > r.lsn {
+					r.lsn = xld.ServerWALEnd
+					err := sendStandbyStatusUpdate(r.lsn)
+					if err != nil {
+						r.mu.Unlock()
+						return err
+					}
+				}
+				r.mu.Unlock()
+
+				if primaryConn == nil {
+					// if we've lost the connection, we'll re-establish it on the next pass through the loop
+					return nil
+				}
+			default:
+				log.Printf("Received unexpected message: %T\n", rawMsg)
+			}
+			
+			return nil
+		}()
+		
+		if err != nil {
+			if errors.Is(err, shutdownRequestedErr) {
+				return nil
+			}
+			log.Println("Error during replication:", err)
+			return err
 		}
 	}
 }
