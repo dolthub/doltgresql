@@ -114,7 +114,6 @@ func (r *LogicalReplicator) CaughtUp() (bool, error) {
 		row := rows[0]
 		lag, ok := row.(pgtype.Numeric)
 		if ok && lag.Valid {
-			log.Printf("Replication lag: %d", lag.Int.Int64())
 			return lag.Int.Int64() == 0, nil
 		} else {
 			log.Printf("Replication lag unknown: %v", row)
@@ -151,9 +150,6 @@ func (r *LogicalReplicator) StartReplication(slotName string) error {
 		if primaryConn != nil {
 			_ = primaryConn.Close(context.Background())
 		}
-		r.mu.Lock()
-		r.running = false
-		r.mu.Unlock()
 	}()
 	
 	sendStandbyStatusUpdate := func(lsn pglogrepl.LSN) error {
@@ -176,6 +172,7 @@ func (r *LogicalReplicator) StartReplication(slotName string) error {
 		return nil
 	}
 
+	log.Println("Starting replicator")
 	r.mu.Lock()
 	r.lsn = 0
 	r.running = true
@@ -224,7 +221,6 @@ func (r *LogicalReplicator) StartReplication(slotName string) error {
 			}
 		}
 
-		log.Printf("attempting to receive message from primary server with time now = %s, deadline = %s", time.Now().String(), nextStandbyMessageDeadline.String())
 		ctx, cancel := context.WithDeadline(context.Background(), nextStandbyMessageDeadline)
 		receiveMsgChan := make(chan rcvMsg)
 		go func() {
@@ -235,20 +231,13 @@ func (r *LogicalReplicator) StartReplication(slotName string) error {
 		var msgAndErr rcvMsg
 		select {
 		case <-r.stop:
-			log.Println("Received stop signal")
 			cancel()
 			r.shutdown()
 			return nil
 		case <-ctx.Done():
-			log.Println("Context done")
 			cancel()
 			continue
 		case msgAndErr = <-receiveMsgChan:
-			if msgAndErr.msg != nil {
-				log.Println("Received message from primary server")
-			} else {
-				log.Printf("Error received from primary server: %s", msgAndErr.err.Error())
-			}
 			cancel()
 		}
 
@@ -344,7 +333,10 @@ func (r *LogicalReplicator) StartReplication(slotName string) error {
 }
 
 func (r *LogicalReplicator) shutdown() {
+	r.mu.Lock()
+	defer r.mu.Unlock()
 	log.Print("shutting down replicator")
+	r.running = false
 	close(r.stop)
 }
 
@@ -479,7 +471,7 @@ func (r *LogicalReplicator) processMessage(
 	if err != nil {
 		log.Fatalf("Parse logical replication message: %s", err)
 	}
-	log.Printf("Receive a logical replication message: %s", logicalMsg.Type())
+
 	switch logicalMsg := logicalMsg.(type) {
 	case *pglogrepl.RelationMessageV2:
 		relations[logicalMsg.RelationID] = logicalMsg
@@ -526,7 +518,6 @@ func (r *LogicalReplicator) processMessage(
 			}
 		}
 
-		log.Printf("insert for xid %d\n", logicalMsg.Xid)
 		err = r.replicateQuery(fmt.Sprintf("INSERT INTO %s.%s (%s) VALUES (%s)", rel.Namespace, rel.RelationName, columnStr.String(), valuesStr.String()))
 		if err != nil {
 			return err
@@ -578,7 +569,6 @@ func (r *LogicalReplicator) processMessage(
 			}
 		}
 
-		log.Printf("update for xid %d\n", logicalMsg.Xid)
 		err = r.replicateQuery(fmt.Sprintf("UPDATE %s.%s SET %s%s", rel.Namespace, rel.RelationName, updateStr.String(), whereClause(whereStr)))
 		if err != nil {
 			return err
@@ -624,7 +614,6 @@ func (r *LogicalReplicator) processMessage(
 			}
 		}
 
-		log.Printf("delete for xid %d\n", logicalMsg.Xid)
 		err = r.replicateQuery(fmt.Sprintf("DELETE FROM %s.%s WHERE %s", rel.Namespace, rel.RelationName, whereStr.String()))
 		if err != nil {
 			return err

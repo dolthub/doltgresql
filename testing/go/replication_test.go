@@ -180,7 +180,6 @@ var replicationTests = []ReplicationTest{
 	},
 	{
 		Name: "extended stop/start",
-		Focus: true,
 		SetUpScript: []string{
 			dropReplicationSlot,
 			createReplicationSlot,
@@ -242,41 +241,6 @@ var replicationTests = []ReplicationTest{
 					{int32(10), "eleven"},
 					{int32(12), "thirteen"},
 					{int32(14), "fifteen"},
-				},
-			},
-		},
-	},
-	{
-		Name: "extended stopping and resuming replication",
-		SetUpScript: []string{
-			dropReplicationSlot,
-			createReplicationSlot,
-			startReplication,
-			"/* replica */ drop table if exists test",
-			"/* replica */ create table test (id INT primary key, name varchar(100))",
-			"drop table if exists test",
-			"CREATE TABLE test (id INT primary key, name varchar(100))",
-			"INSERT INTO test VALUES (1, 'one')",
-			"INSERT INTO test VALUES (2, 'two')",
-			"UPDATE test SET name = 'three' WHERE id = 2",
-			"DELETE FROM test WHERE id = 1",
-			"INSERT INTO test VALUES (3, 'one')",
-			"INSERT INTO test VALUES (4, 'two')",
-			"UPDATE test SET name = 'five' WHERE id = 4",
-			"DELETE FROM test WHERE id = 3",
-			"INSERT INTO test VALUES (5, 'one')",
-			"INSERT INTO test VALUES (6, 'two')",
-			"UPDATE test SET name = 'six' WHERE id = 6",
-			"DELETE FROM test WHERE id = 5",
-			waitForCatchup,
-		},
-		Assertions: []ScriptTestAssertion{
-			{
-				Query: "/* replica */ SELECT * FROM test order by id",
-				Expected: []sql.Row{
-					{int32(2), "three"},
-					{int32(4), "five"},
-					{int32(6), "six"},
 				},
 			},
 		},
@@ -421,20 +385,23 @@ func RunReplicationScript(t *testing.T, script ReplicationTest) {
 		err := controller.WaitForStop()
 		require.NoError(t, err)
 	}()
+	
+	ctx = context.Background()
+	t.Run(script.Name, func(t *testing.T) {
+		runReplicationScript(ctx, t, script, replicaConn, primaryDns)
+	})
+}
 
+func newReplicator(t *testing.T, replicaConn *pgx.Conn, primaryDns string) *logrepl.LogicalReplicator {
 	connString := replicaConn.PgConn().Conn().RemoteAddr().String()
 	_, port, err := net.SplitHostPort(connString)
 	require.NoError(t, err)
 
 	replicaDns := fmt.Sprintf("postgres://postgres:password@127.0.0.1:%s/", port)
-	
+
 	r, err := logrepl.NewLogicalReplicator(primaryDns, replicaDns)
 	require.NoError(t, err)
-	
-	ctx = context.Background()
-	t.Run(script.Name, func(t *testing.T) {
-		runReplicationScript(ctx, t, script, r, replicaConn, primaryDns)
-	})
+	return r
 }
 
 // runReplicationScript runs the script given on the postgres connection provided
@@ -442,10 +409,10 @@ func runReplicationScript(
 		ctx context.Context,
 		t *testing.T,
 		script ReplicationTest,
-		r *logrepl.LogicalReplicator,
 		replicaConn *pgx.Conn,
 		primaryDns string,
 ) {
+	r := newReplicator(t, replicaConn, primaryDns)
 	defer r.Stop()
 	
 	if script.Skip {
