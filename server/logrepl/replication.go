@@ -131,7 +131,7 @@ func (r *LogicalReplicator) CaughtUp() (bool, error) {
 
 const maxConsecutiveFailures = 10
 
-var shutdownRequestedErr = errors.New("shutdown requested")
+var errShutdownRequested = errors.New("shutdown requested")
 
 // StartReplication starts the replication process for the given slot name. This function blocks until replication is
 // stopped via the Stop method, or an error occurs.
@@ -193,7 +193,7 @@ func (r *LogicalReplicator) StartReplication(slotName string) error {
 			select {
 			case <-r.stop:
 				r.shutdown()
-				return shutdownRequestedErr
+				return errShutdownRequested
 			default:
 				// continue below
 			}
@@ -236,7 +236,7 @@ func (r *LogicalReplicator) StartReplication(slotName string) error {
 			case <-r.stop:
 				cancel()
 				r.shutdown()
-				return shutdownRequestedErr
+				return errShutdownRequested
 			case <-ctx.Done():
 				cancel()
 				return nil
@@ -250,8 +250,6 @@ func (r *LogicalReplicator) StartReplication(slotName string) error {
 				} else {
 					return handleErrWithRetry(msgAndErr.err)
 				}
-
-				return msgAndErr.err
 			}
 
 			rawMsg := msgAndErr.msg
@@ -326,7 +324,7 @@ func (r *LogicalReplicator) StartReplication(slotName string) error {
 		}()
 
 		if err != nil {
-			if errors.Is(err, shutdownRequestedErr) {
+			if errors.Is(err, errShutdownRequested) {
 				return nil
 			}
 			log.Println("Error during replication:", err)
