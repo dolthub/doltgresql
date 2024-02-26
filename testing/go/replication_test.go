@@ -38,10 +38,10 @@ type ReplicationTarget byte
 // special pseudo-queries for orchestrating replication tests
 const (
 	createReplicationSlot = "createReplicationSlot"
-	dropReplicationSlot = "dropReplicationSlot"
-	stopReplication = "stopReplication"
-	startReplication = "startReplication"
-	waitForCatchup = "waitForCatchup"
+	dropReplicationSlot   = "dropReplicationSlot"
+	stopReplication       = "stopReplication"
+	startReplication      = "startReplication"
+	waitForCatchup        = "waitForCatchup"
 )
 
 type ReplicationTest struct {
@@ -383,7 +383,7 @@ func RunReplicationScript(t *testing.T, script ReplicationTest) {
 		err := controller.WaitForStop()
 		require.NoError(t, err)
 	}()
-	
+
 	ctx = context.Background()
 	t.Run(script.Name, func(t *testing.T) {
 		runReplicationScript(ctx, t, script, replicaConn, primaryDns)
@@ -404,23 +404,23 @@ func newReplicator(t *testing.T, replicaConn *pgx.Conn, primaryDns string) *logr
 
 // runReplicationScript runs the script given on the postgres connection provided
 func runReplicationScript(
-		ctx context.Context,
-		t *testing.T,
-		script ReplicationTest,
-		replicaConn *pgx.Conn,
-		primaryDns string,
+	ctx context.Context,
+	t *testing.T,
+	script ReplicationTest,
+	replicaConn *pgx.Conn,
+	primaryDns string,
 ) {
 	r := newReplicator(t, replicaConn, primaryDns)
 	defer r.Stop()
-	
+
 	if script.Skip {
 		t.Skip("Skip has been set in the script")
 	}
 
-	connections := map[string]*pgx.Conn {
-		"replica": replicaConn,	
+	connections := map[string]*pgx.Conn{
+		"replica": replicaConn,
 	}
-	
+
 	defer func() {
 		for _, conn := range connections {
 			if conn != nil {
@@ -428,7 +428,7 @@ func runReplicationScript(
 			}
 		}
 	}()
-	
+
 	// Run the setup
 	for _, query := range script.SetUpScript {
 		// handle logic for special pseudo-queries
@@ -441,7 +441,7 @@ func runReplicationScript(
 		_, err := conn.Exec(ctx, query)
 		require.NoError(t, err)
 	}
-	
+
 	// Run the assertions
 	for _, assertion := range script.Assertions {
 		t.Run(assertion.Query, func(t *testing.T) {
@@ -476,7 +476,7 @@ func runReplicationScript(
 }
 
 // connectionForQuery returns the connection to use for the given query
-func connectionForQuery(t *testing.T, query string, connections map[string]*pgx.Conn, primaryDns string, ) *pgx.Conn {
+func connectionForQuery(t *testing.T, query string, connections map[string]*pgx.Conn, primaryDns string) *pgx.Conn {
 	target, client := clientSpecFromQueryComment(query)
 	var conn *pgx.Conn
 	switch target {
@@ -496,7 +496,7 @@ func connectionForQuery(t *testing.T, query string, connections map[string]*pgx.
 	return conn
 }
 
-// handlePseudoQuery handles special pseudo-queries that are used to orchestrate replication tests and returns whether 
+// handlePseudoQuery handles special pseudo-queries that are used to orchestrate replication tests and returns whether
 // one was handled.
 func handlePseudoQuery(t *testing.T, query string, r *logrepl.LogicalReplicator) bool {
 	switch query {
@@ -544,19 +544,19 @@ func clientSpecFromQueryComment(query string) (string, string) {
 }
 
 func waitForRunning(r *logrepl.LogicalReplicator) error {
-	var duration time.Duration 
+	var duration time.Duration
 	for {
 		if r.Running() {
 			break
 		}
-		
+
 		duration += 5 * time.Millisecond
-		if duration > 1 * time.Hour {
+		if duration > 2*time.Second {
 			return errors.New("Replication did not start")
 		}
 		time.Sleep(5 * time.Millisecond)
 	}
-	
+
 	return nil
 }
 
@@ -573,7 +573,7 @@ func waitForCaughtUp(r *logrepl.LogicalReplicator) error {
 
 		log.Println("replication not caught up, waiting")
 		duration += 5 * time.Millisecond
-		if duration > 2 * time.Second {
+		if duration > 2*time.Second {
 			return errors.New("Replication did not catch up")
 		}
 		time.Sleep(20 * time.Millisecond)

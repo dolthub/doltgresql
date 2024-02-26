@@ -42,13 +42,13 @@ type rcvMsg struct {
 type LogicalReplicator struct {
 	primaryDns      string
 	replicationConn *pgx.Conn
-	// lsn is the last WAL position we have received from the server, which we send back to the server via 
-	// SendStandbyStatusUpdate after every message we get. Postgres tracks this LSN for each slot, which allows us to 
+	// lsn is the last WAL position we have received from the server, which we send back to the server via
+	// SendStandbyStatusUpdate after every message we get. Postgres tracks this LSN for each slot, which allows us to
 	// resume where we left off in the case of an interruption.
-	lsn             pglogrepl.LSN
-	running         bool
-	stop            chan struct{}
-	mu              *sync.Mutex
+	lsn     pglogrepl.LSN
+	running bool
+	stop    chan struct{}
+	mu      *sync.Mutex
 }
 
 // NewLogicalReplicator creates a new logical replicator instance which connects to the primary and replication
@@ -93,7 +93,7 @@ func (r *LogicalReplicator) CaughtUp() (bool, error) {
 		return false, nil
 	}
 	r.mu.Unlock()
-	
+
 	conn, err := pgx.Connect(context.Background(), r.PrimaryDns())
 	if err != nil {
 		return false, err
@@ -105,13 +105,13 @@ func (r *LogicalReplicator) CaughtUp() (bool, error) {
 	}
 
 	defer result.Close()
-	
+
 	for result.Next() {
 		rows, err := result.Values()
 		if err != nil {
 			return false, err
 		}
-		
+
 		row := rows[0]
 		lag, ok := row.(pgtype.Numeric)
 		if ok && lag.Valid {
@@ -124,7 +124,7 @@ func (r *LogicalReplicator) CaughtUp() (bool, error) {
 	if result.Err() != nil {
 		return false, result.Err()
 	}
-	
+
 	// if we got this far, then there is no running replication thread, which we interpret as caught up
 	return true, nil
 }
@@ -144,7 +144,7 @@ func (r *LogicalReplicator) StartReplication(slotName string) error {
 	// whenever we get StreamStartMessage we set inStream to true and then pass it to DecodeV2 function
 	// on StreamStopMessage we set it back to false
 	inStream := false
-	
+
 	var primaryConn *pgconn.PgConn
 	defer func() {
 		if primaryConn != nil {
@@ -165,7 +165,7 @@ func (r *LogicalReplicator) StartReplication(slotName string) error {
 		} else {
 			connErrCnt = 0
 		}
-		
+
 		return err
 	}
 
@@ -179,7 +179,7 @@ func (r *LogicalReplicator) StartReplication(slotName string) error {
 		nextStandbyMessageDeadline = time.Now().Add(standbyMessageTimeout)
 		return nil
 	}
-	
+
 	log.Println("Starting replicator")
 	r.mu.Lock()
 	r.lsn = 0
@@ -202,7 +202,7 @@ func (r *LogicalReplicator) StartReplication(slotName string) error {
 				var err error
 				primaryConn, err = r.beginReplication(slotName)
 				if err != nil {
-					// unlike other error cases, back off a little here, since we're likely to just get the same error again 
+					// unlike other error cases, back off a little here, since we're likely to just get the same error again
 					// on initial replication establishment
 					time.Sleep(100 * time.Millisecond)
 					return handleErrWithRetry(err)
@@ -321,10 +321,10 @@ func (r *LogicalReplicator) StartReplication(slotName string) error {
 			default:
 				log.Printf("Received unexpected message: %T\n", rawMsg)
 			}
-			
+
 			return nil
 		}()
-		
+
 		if err != nil {
 			if errors.Is(err, shutdownRequestedErr) {
 				return nil
@@ -388,7 +388,7 @@ func (r *LogicalReplicator) beginReplication(slotName string) (*pgconn.PgConn, e
 		"messages 'true'",
 		"streaming 'true'",
 	}
-	
+
 	// LSN(0) is used to use the last confirmed LSN for this slot
 	// TODO: pass this in instead
 	err = pglogrepl.StartReplication(context.Background(), conn, slotName, pglogrepl.LSN(0), pglogrepl.StartReplicationOptions{PluginArgs: pluginArguments})
@@ -422,7 +422,7 @@ func (r *LogicalReplicator) CreateReplicationSlotIfNecessary(slotName string) er
 	if err != nil {
 		return err
 	}
-	
+
 	slotExists := false
 	defer rows.Close()
 	for rows.Next() {
@@ -432,7 +432,7 @@ func (r *LogicalReplicator) CreateReplicationSlotIfNecessary(slotName string) er
 		}
 		slotExists = true
 	}
-	
+
 	if rows.Err() != nil {
 		return rows.Err()
 	}
@@ -442,7 +442,7 @@ func (r *LogicalReplicator) CreateReplicationSlotIfNecessary(slotName string) er
 	if err != nil {
 		return err
 	}
-	
+
 	if !slotExists {
 		_, err = pglogrepl.CreateReplicationSlot(context.Background(), conn.PgConn(), slotName, outputPlugin, pglogrepl.CreateReplicationSlotOptions{})
 		if err != nil {
@@ -456,7 +456,7 @@ func (r *LogicalReplicator) CreateReplicationSlotIfNecessary(slotName string) er
 
 		log.Println("Created replication slot:", slotName)
 	}
-	
+
 	return nil
 }
 
@@ -642,7 +642,7 @@ func (r *LogicalReplicator) processMessage(
 	default:
 		log.Printf("Unknown message type in pgoutput stream: %T", logicalMsg)
 	}
-	
+
 	return nil
 }
 
