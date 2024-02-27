@@ -400,11 +400,12 @@ func (r *LogicalReplicator) beginReplication(slotName string) (*pgconn.PgConn, e
 }
 
 // DropPublication drops the publication with the given name if it exists. Mostly useful for testing.
-func (r *LogicalReplicator) DropPublication(slotName string) error {
-	conn, err := pgconn.Connect(context.Background(), r.ReplicationDns())
+func DropPublication(primaryDns, slotName string) error {
+	conn, err := pgconn.Connect(context.Background(), primaryDns)
 	if err != nil {
 		return err
 	}
+	defer conn.Close(context.Background())
 
 	result := conn.Exec(context.Background(), fmt.Sprintf("DROP PUBLICATION IF EXISTS %s;", slotName))
 	_, err = result.ReadAll()
@@ -414,11 +415,12 @@ func (r *LogicalReplicator) DropPublication(slotName string) error {
 // CreatePublication creates a publication with the given name if it does not already exist. Mostly useful for testing.
 // Customers should run the CREATE PUBLICATION command on their primary server manually, specifying whichever tables 
 // they want to replicate.
-func (r *LogicalReplicator) CreatePublication(slotName string) error {
-	conn, err := pgconn.Connect(context.Background(), r.ReplicationDns())
+func CreatePublication(primaryDns, slotName string) error {
+	conn, err := pgconn.Connect(context.Background(), primaryDns)
 	if err != nil {
 		return err
 	}
+	defer conn.Close(context.Background())
 
 	result := conn.Exec(context.Background(), fmt.Sprintf("CREATE PUBLICATION %s FOR ALL TABLES;", slotName))
 	_, err = result.ReadAll()
