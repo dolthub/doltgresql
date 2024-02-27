@@ -98,6 +98,7 @@ func (r *LogicalReplicator) CaughtUp() (bool, error) {
 	if err != nil {
 		return false, err
 	}
+	defer conn.Close(context.Background())
 
 	result, err := conn.Query(context.Background(), "SELECT pg_wal_lsn_diff(write_lsn, sent_lsn) AS replication_lag FROM pg_stat_replication")
 	if err != nil {
@@ -115,8 +116,8 @@ func (r *LogicalReplicator) CaughtUp() (bool, error) {
 		row := rows[0]
 		lag, ok := row.(pgtype.Numeric)
 		if ok && lag.Valid {
-			log.Printf("Replication lag: %v", row)
-			return lag.Int.Int64() <= 0, nil
+			log.Printf("Current replication lag: %v", row)
+			return lag.Int.Int64() >= 0, nil
 		} else {
 			log.Printf("Replication lag unknown: %v", row)
 		}
@@ -277,14 +278,13 @@ func (r *LogicalReplicator) StartReplication(slotName string) error {
 					log.Fatalln("ParsePrimaryKeepaliveMessage failed:", err)
 				}
 				log.Println("Primary Keepalive Message =>", "ServerWALEnd:", pkm.ServerWALEnd, "ServerTime:", pkm.ServerTime, "ReplyRequested:", pkm.ReplyRequested)
-
-				r.mu.Lock()
-				if pkm.ServerWALEnd > r.lsn {
-					r.lsn = pkm.ServerWALEnd
-				}
-				r.mu.Unlock()
-
+				
 				if pkm.ReplyRequested {
+					r.mu.Lock()
+					if pkm.ServerWALEnd > r.lsn {
+						r.lsn = pkm.ServerWALEnd
+					}
+					r.mu.Unlock()
 					// Send our reply the next time through the loop
 					nextStandbyMessageDeadline = time.Time{}
 				}
@@ -315,6 +315,8 @@ func (r *LogicalReplicator) StartReplication(slotName string) error {
 						r.mu.Unlock()
 						return err
 					}
+				} else {
+					log.Printf("No update needed for LSN %s, r.lsn is %s\n", xld.ServerWALEnd.String(), r.lsn.String())
 				}
 				r.mu.Unlock()
 
@@ -522,6 +524,7 @@ func (r *LogicalReplicator) processMessage(
 		log.Printf("BeginMessage: %d", logicalMsg.Xid)
 	case *pglogrepl.CommitMessage:
 		log.Printf("CommitMessage: %v", logicalMsg.CommitTime)
+		return true, nil
 	case *pglogrepl.InsertMessageV2:
 		rel, ok := relations[logicalMsg.RelationID]
 		if !ok {

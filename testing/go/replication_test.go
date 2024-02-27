@@ -551,14 +551,13 @@ func clientSpecFromQueryComment(query string) (string, string) {
 }
 
 func waitForRunning(r *logrepl.LogicalReplicator) error {
-	var duration time.Duration
+	start := time.Now()
 	for {
 		if r.Running() {
 			break
 		}
 
-		duration += 5 * time.Millisecond
-		if duration > 2*time.Second {
+		if time.Now().Sub(start) > 500 * time.Millisecond {
 			return errors.New("Replication did not start")
 		}
 		time.Sleep(5 * time.Millisecond)
@@ -569,7 +568,7 @@ func waitForRunning(r *logrepl.LogicalReplicator) error {
 
 func waitForCaughtUp(r *logrepl.LogicalReplicator) error {
 	log.Println("Waiting for replication to catch up")
-	var duration time.Duration
+	start := time.Now()
 	for {
 		if caughtUp, err := r.CaughtUp(); caughtUp {
 			log.Println("replication caught up")
@@ -579,8 +578,7 @@ func waitForCaughtUp(r *logrepl.LogicalReplicator) error {
 		}
 
 		log.Println("replication not caught up, waiting")
-		duration += 5 * time.Millisecond
-		if duration > 2*time.Second {
+		if time.Now().Sub(start) >= 2*time.Second {
 			return errors.New("Replication did not catch up")
 		}
 		time.Sleep(20 * time.Millisecond)
