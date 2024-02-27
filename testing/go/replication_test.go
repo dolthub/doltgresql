@@ -416,6 +416,10 @@ func runReplicationScript(
 	if script.Skip {
 		t.Skip("Skip has been set in the script")
 	}
+	
+	// Every replication script should drop and re-create their publication slot, mostly in case it doesn't already exist.
+	require.NoError(t, r.DropPublication(slotName))
+	require.NoError(t, r.CreatePublication(slotName))
 
 	connections := map[string]*pgx.Conn{
 		"replica": replicaConn,

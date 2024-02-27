@@ -129,6 +129,8 @@ func (r *LogicalReplicator) CaughtUp() (bool, error) {
 	return true, nil
 }
 
+// maxConsecutiveFailures is the maximum number of consecutive RPC errors that can occur before we stop 
+// the replication thread
 const maxConsecutiveFailures = 10
 
 var errShutdownRequested = errors.New("shutdown requested")
@@ -150,14 +152,16 @@ func (r *LogicalReplicator) StartReplication(slotName string) error {
 		if primaryConn != nil {
 			_ = primaryConn.Close(context.Background())
 		}
+		// We always shut down here and only here, so we do the cleanup on thread exit in exactly one place
+		r.shutdown()
 	}()
 
-	// We fail after 3 consecutive network errors excluding timeouts. Any successful RPC resets the counter.
 	connErrCnt := 0
 	handleErrWithRetry := func(err error) error {
 		if err != nil {
 			connErrCnt++
 			if connErrCnt < maxConsecutiveFailures {
+				log.Printf("Error: %v. Retrying", err)
 				_ = primaryConn.Close(context.Background())
 				primaryConn = nil
 				return nil
@@ -192,7 +196,6 @@ func (r *LogicalReplicator) StartReplication(slotName string) error {
 			// Shutdown if requested
 			select {
 			case <-r.stop:
-				r.shutdown()
 				return errShutdownRequested
 			default:
 				// continue below
@@ -235,7 +238,6 @@ func (r *LogicalReplicator) StartReplication(slotName string) error {
 			select {
 			case <-r.stop:
 				cancel()
-				r.shutdown()
 				return errShutdownRequested
 			case <-ctx.Done():
 				cancel()
@@ -388,7 +390,6 @@ func (r *LogicalReplicator) beginReplication(slotName string) (*pgconn.PgConn, e
 	}
 
 	// LSN(0) is used to use the last confirmed LSN for this slot
-	// TODO: pass this in instead
 	err = pglogrepl.StartReplication(context.Background(), conn, slotName, pglogrepl.LSN(0), pglogrepl.StartReplicationOptions{PluginArgs: pluginArguments})
 	if err != nil {
 		return nil, err
@@ -396,6 +397,32 @@ func (r *LogicalReplicator) beginReplication(slotName string) (*pgconn.PgConn, e
 	log.Println("Logical replication started on slot", slotName)
 
 	return conn, nil
+}
+
+// DropPublication drops the publication with the given name if it exists. Mostly useful for testing.
+func (r *LogicalReplicator) DropPublication(slotName string) error {
+	conn, err := pgconn.Connect(context.Background(), r.ReplicationDns())
+	if err != nil {
+		return err
+	}
+
+	result := conn.Exec(context.Background(), fmt.Sprintf("DROP PUBLICATION IF EXISTS %s;", slotName))
+	_, err = result.ReadAll()
+	return err
+}
+
+// CreatePublication creates a publication with the given name if it does not already exist. Mostly useful for testing.
+// Customers should run the CREATE PUBLICATION command on their primary server manually, specifying whichever tables 
+// they want to replicate.
+func (r *LogicalReplicator) CreatePublication(slotName string) error {
+	conn, err := pgconn.Connect(context.Background(), r.ReplicationDns())
+	if err != nil {
+		return err
+	}
+
+	result := conn.Exec(context.Background(), fmt.Sprintf("CREATE PUBLICATION %s FOR ALL TABLES;", slotName))
+	_, err = result.ReadAll()
+	return err
 }
 
 // DropReplicationSlot drops the replication slot with the given name. Any error from the slot not existing is ignored.
