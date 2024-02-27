@@ -278,7 +278,7 @@ func (r *LogicalReplicator) StartReplication(slotName string) error {
 					log.Fatalln("ParsePrimaryKeepaliveMessage failed:", err)
 				}
 				log.Println("Primary Keepalive Message =>", "ServerWALEnd:", pkm.ServerWALEnd, "ServerTime:", pkm.ServerTime, "ReplyRequested:", pkm.ReplyRequested)
-				
+
 				if pkm.ReplyRequested {
 					r.mu.Lock()
 					if pkm.ServerWALEnd > r.lsn {

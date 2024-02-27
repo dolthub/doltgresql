@@ -176,7 +176,7 @@ var replicationTests = []ReplicationTest{
 		},
 	},
 	{
-		Name:  "extended stop/start",
+		Name: "extended stop/start",
 		SetUpScript: []string{
 			dropReplicationSlot,
 			createReplicationSlot,
@@ -557,7 +557,7 @@ func waitForRunning(r *logrepl.LogicalReplicator) error {
 			break
 		}
 
-		if time.Now().Sub(start) > 500 * time.Millisecond {
+		if time.Now().Sub(start) > 500*time.Millisecond {
 			return errors.New("Replication did not start")
 		}
 		time.Sleep(5 * time.Millisecond)
