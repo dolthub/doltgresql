@@ -290,8 +290,7 @@ func (r *LogicalReplicator) StartReplication(slotName string) error {
 					return err
 				}
 
-				log.Printf("XLogData => WALStart %s ServerWALEnd %s ServerTime %s WALData:\n", xld.WALStart, xld.ServerWALEnd, xld.ServerTime)
-				updateNeeded, err := r.processMessage(xld.WALData, relationsV2, typeMap, &inStream)
+				updateNeeded, err := r.processMessage(xld, relationsV2, typeMap, &inStream)
 				if err != nil {
 					// TODO: do we need more than one handler, one for each connection?
 					return handleErrWithRetry(err)
@@ -495,17 +494,15 @@ func (r *LogicalReplicator) CreateReplicationSlotIfNecessary(slotName string) er
 //     These describe a row in the form of a tuple, and are used to construct a query to apply the change to the replica.
 // Returns a boolean true if the message was a write that should be acknowledged to the server, and an error if one
 // occurred.
-func (r *LogicalReplicator) processMessage(
-		walData []byte,
-		relations map[uint32]*pglogrepl.RelationMessageV2,
-		typeMap *pgtype.Map,
-		inStream *bool,
-) (bool, error) {
+func (r *LogicalReplicator) processMessage(xld pglogrepl.XLogData, relations map[uint32]*pglogrepl.RelationMessageV2, typeMap *pgtype.Map, inStream *bool, ) (bool, error) {
+	walData := xld.WALData
 	logicalMsg, err := pglogrepl.ParseV2(walData, *inStream)
 	if err != nil {
-		log.Fatalf("Parse logical replication message: %s", err)
+		return false, err
 	}
 
+	log.Printf("XLogData (%T) => WALStart %s ServerWALEnd %s ServerTime %s WALData:\n", logicalMsg, xld.WALStart, xld.ServerWALEnd, xld.ServerTime)
+	
 	switch logicalMsg := logicalMsg.(type) {
 	case *pglogrepl.RelationMessageV2:
 		relations[logicalMsg.RelationID] = logicalMsg
