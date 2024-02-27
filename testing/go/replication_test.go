@@ -176,8 +176,7 @@ var replicationTests = []ReplicationTest{
 		},
 	},
 	{
-		Name: "extended stop/start",
-		Focus: true,
+		Name:  "extended stop/start",
 		SetUpScript: []string{
 			dropReplicationSlot,
 			createReplicationSlot,

@@ -115,7 +115,8 @@ func (r *LogicalReplicator) CaughtUp() (bool, error) {
 		row := rows[0]
 		lag, ok := row.(pgtype.Numeric)
 		if ok && lag.Valid {
-			return lag.Int.Int64() == 0, nil
+			log.Printf("Replication lag: %v", row)
+			return lag.Int.Int64() <= 0, nil
 		} else {
 			log.Printf("Replication lag unknown: %v", row)
 		}
@@ -173,8 +174,11 @@ func (r *LogicalReplicator) StartReplication(slotName string) error {
 		return err
 	}
 
-	sendStandbyStatusUpdate := func(lsn pglogrepl.LSN) error {
-		err := pglogrepl.SendStandbyStatusUpdate(context.Background(), primaryConn, pglogrepl.StandbyStatusUpdate{WALWritePosition: lsn})
+	sendStandbyStatusUpdate := func(currentLSN pglogrepl.LSN) error {
+		// The StatusUpdate message wants us to respond with the current position in the WAL + 1:
+		// https://www.postgresql.org/docs/current/protocol-replication.html
+		lsn := currentLSN + 1
+		err := pglogrepl.SendStandbyStatusUpdate(context.Background(), primaryConn, pglogrepl.StandbyStatusUpdate{WALWritePosition: lsn + 1})
 		if err != nil {
 			return handleErrWithRetry(err)
 		}
@@ -301,7 +305,7 @@ func (r *LogicalReplicator) StartReplication(slotName string) error {
 				//  processed LSN to a file locally, but that suffers from the same problem (if the process dies before we update
 				//  the file). A better solution would be to write the LSN directly into the DoltCommit message, and then parsing
 				//  this message back out when we begin replication next.
-				
+
 				// lock for accessing r.lsn
 				r.mu.Lock()
 				if updateNeeded && xld.ServerWALEnd > r.lsn {
@@ -492,9 +496,15 @@ func (r *LogicalReplicator) CreateReplicationSlotIfNecessary(slotName string) er
 //  1. Relation messages describe tables being replicated and are used to build a type map for decoding tuples
 //  2. INSERT/UPDATE/DELETE messages describe changes to rows that must be applied to the replica.
 //     These describe a row in the form of a tuple, and are used to construct a query to apply the change to the replica.
+//
 // Returns a boolean true if the message was a write that should be acknowledged to the server, and an error if one
 // occurred.
-func (r *LogicalReplicator) processMessage(xld pglogrepl.XLogData, relations map[uint32]*pglogrepl.RelationMessageV2, typeMap *pgtype.Map, inStream *bool, ) (bool, error) {
+func (r *LogicalReplicator) processMessage(
+	xld pglogrepl.XLogData,
+	relations map[uint32]*pglogrepl.RelationMessageV2,
+	typeMap *pgtype.Map,
+	inStream *bool,
+) (bool, error) {
 	walData := xld.WALData
 	logicalMsg, err := pglogrepl.ParseV2(walData, *inStream)
 	if err != nil {
@@ -502,7 +512,7 @@ func (r *LogicalReplicator) processMessage(xld pglogrepl.XLogData, relations map
 	}
 
 	log.Printf("XLogData (%T) => WALStart %s ServerWALEnd %s ServerTime %s WALData:\n", logicalMsg, xld.WALStart, xld.ServerWALEnd, xld.ServerTime)
-	
+
 	switch logicalMsg := logicalMsg.(type) {
 	case *pglogrepl.RelationMessageV2:
 		relations[logicalMsg.RelationID] = logicalMsg
@@ -512,7 +522,6 @@ func (r *LogicalReplicator) processMessage(xld pglogrepl.XLogData, relations map
 		log.Printf("BeginMessage: %d", logicalMsg.Xid)
 	case *pglogrepl.CommitMessage:
 		log.Printf("CommitMessage: %v", logicalMsg.CommitTime)
-		return true, nil
 	case *pglogrepl.InsertMessageV2:
 		rel, ok := relations[logicalMsg.RelationID]
 		if !ok {
@@ -654,7 +663,7 @@ func (r *LogicalReplicator) processMessage(xld pglogrepl.XLogData, relations map
 		if err != nil {
 			return false, err
 		}
-		
+
 		return true, nil
 	case *pglogrepl.TruncateMessageV2:
 		log.Printf("truncate for xid %d\n", logicalMsg.Xid)
@@ -677,7 +686,7 @@ func (r *LogicalReplicator) processMessage(xld pglogrepl.XLogData, relations map
 	default:
 		log.Printf("Unknown message type in pgoutput stream: %T", logicalMsg)
 	}
-	
+
 	return false, nil
 }
 
