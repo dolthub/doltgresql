@@ -557,7 +557,7 @@ func waitForRunning(r *logrepl.LogicalReplicator) error {
 			break
 		}
 
-		if time.Now().Sub(start) > 500*time.Millisecond {
+		if time.Since(start) > 500*time.Millisecond {
 			return errors.New("Replication did not start")
 		}
 		time.Sleep(5 * time.Millisecond)
@@ -578,7 +578,7 @@ func waitForCaughtUp(r *logrepl.LogicalReplicator) error {
 		}
 
 		log.Println("replication not caught up, waiting")
-		if time.Now().Sub(start) >= 2*time.Second {
+		if time.Since(start) >= 2*time.Second {
 			return errors.New("Replication did not catch up")
 		}
 		time.Sleep(20 * time.Millisecond)
