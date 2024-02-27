@@ -38,39 +38,25 @@ var _ Statement = &CreateView{}
 // CreateView represents a CREATE VIEW statement.
 type CreateView struct {
 	Name        TableName
+	Persistence Persistence
 	Replace     bool
 	IsRecursive bool
 	ColumnNames NameList
 	Options     ViewOptions
 	AsSource    *Select
 	CheckOption ViewCheckOption
-
-	Materialized bool
-	IfNotExists  bool
-	Persistence  Persistence
 }
 
 // Format implements the NodeFormatter interface.
 func (node *CreateView) Format(ctx *FmtCtx) {
 	ctx.WriteString("CREATE ")
-
 	if node.Replace {
 		ctx.WriteString("OR REPLACE ")
 	}
-
 	if node.Persistence == PersistenceTemporary {
 		ctx.WriteString("TEMPORARY ")
 	}
-
-	if node.Materialized {
-		ctx.WriteString("MATERIALIZED ")
-	}
-
 	ctx.WriteString("VIEW ")
-
-	if node.IfNotExists {
-		ctx.WriteString("IF NOT EXISTS ")
-	}
 	ctx.FormatNode(&node.Name)
 
 	if len(node.ColumnNames) > 0 {
@@ -82,44 +68,6 @@ func (node *CreateView) Format(ctx *FmtCtx) {
 
 	ctx.WriteString(" AS ")
 	ctx.FormatNode(node.AsSource)
-}
-
-// RefreshMaterializedView represents a REFRESH MATERIALIZED VIEW statement.
-type RefreshMaterializedView struct {
-	Name              *UnresolvedObjectName
-	Concurrently      bool
-	RefreshDataOption RefreshDataOption
-}
-
-// RefreshDataOption corresponds to arguments for the REFRESH MATERIALIZED VIEW
-// statement.
-type RefreshDataOption int
-
-const (
-	// RefreshDataDefault refers to no option provided to the REFRESH MATERIALIZED
-	// VIEW statement.
-	RefreshDataDefault RefreshDataOption = iota
-	// RefreshDataWithData refers to the WITH DATA option provided to the REFRESH
-	// MATERIALIZED VIEW statement.
-	RefreshDataWithData
-	// RefreshDataClear refers to the WITH NO DATA option provided to the REFRESH
-	// MATERIALIZED VIEW statement.
-	RefreshDataClear
-)
-
-// Format implements the NodeFormatter interface.
-func (node *RefreshMaterializedView) Format(ctx *FmtCtx) {
-	ctx.WriteString("REFRESH MATERIALIZED VIEW ")
-	if node.Concurrently {
-		ctx.WriteString("CONCURRENTLY ")
-	}
-	ctx.FormatNode(node.Name)
-	switch node.RefreshDataOption {
-	case RefreshDataWithData:
-		ctx.WriteString(" WITH DATA")
-	case RefreshDataClear:
-		ctx.WriteString(" WITH NO DATA")
-	}
 }
 
 type ViewCheckOption int

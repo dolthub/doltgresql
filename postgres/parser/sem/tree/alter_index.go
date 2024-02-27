@@ -51,7 +51,7 @@ var _ Statement = &AlterIndexAllInTablespace{}
 type AlterIndexAllInTablespace struct {
 	Name       Name
 	OwnedBy    []string
-	Tablespace Name
+	Tablespace string
 	NoWait     bool
 }
 
@@ -64,7 +64,7 @@ func (node *AlterIndexAllInTablespace) Format(ctx *FmtCtx) {
 		ctx.WriteString(strings.Join(node.OwnedBy, ", "))
 	}
 	ctx.WriteString(" SET TABLESPACE ")
-	ctx.FormatNode(&node.Tablespace)
+	ctx.WriteString(node.Tablespace)
 	if node.NoWait {
 		ctx.WriteString(" NOWAIT")
 	}
@@ -152,11 +152,11 @@ func (node *AlterIndexSetStorage) Format(ctx *FmtCtx) {
 // AlterIndexSetTablespace represents an ALTER INDEX ... SET TABLESPACE
 // command.
 type AlterIndexSetTablespace struct {
-	Tablespace Name
+	Tablespace string
 }
 
 // Format implements the NodeFormatter interface.
 func (node *AlterIndexSetTablespace) Format(ctx *FmtCtx) {
 	ctx.WriteString(" SET TABLESPACE ")
-	ctx.FormatNode(&node.Tablespace)
+	ctx.WriteString(node.Tablespace)
 }

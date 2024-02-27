@@ -603,11 +603,17 @@ func (u *sqlSymUnion) alterColComputedList() []tree.AlterColComputed {
 func (u *sqlSymUnion) storageType() tree.StorageType {
     return u.val.(tree.StorageType)
 }
+func (u *sqlSymUnion) detachPartition() tree.DetachPartition {
+    return u.val.(tree.DetachPartition)
+}
 func (u *sqlSymUnion) viewOptions() tree.ViewOptions {
     return u.val.(tree.ViewOptions)
 }
 func (u *sqlSymUnion) viewCheckOption() tree.ViewCheckOption {
     return u.val.(tree.ViewCheckOption)
+}
+func (u *sqlSymUnion) alterViewCmd() tree.AlterViewCmd {
+    return u.val.(tree.AlterViewCmd)
 }
 %}
 
@@ -758,6 +764,7 @@ func (u *sqlSymUnion) viewCheckOption() tree.ViewCheckOption {
 %type <tree.Statement> alter_ddl_stmt
 %type <tree.Statement> alter_table_stmt
 %type <tree.Statement> alter_index_stmt
+%type <tree.Statement> alter_materialized_view_stmt
 %type <tree.Statement> alter_function_stmt
 %type <tree.Statement> alter_procedure_stmt
 %type <tree.Statement> alter_view_stmt
@@ -787,9 +794,10 @@ func (u *sqlSymUnion) viewCheckOption() tree.ViewCheckOption {
 %type <tree.Statement> alter_rename_index_stmt
 %type <tree.Statement> alter_index_all_in_tablespace_stmt
 
-// ALTER VIEW
-%type <tree.Statement> alter_rename_view_stmt
-%type <tree.Statement> alter_view_set_schema_stmt
+// ALTER MATERIALIZED VIEW
+%type <tree.Statement> alter_materialized_view_rename_stmt
+%type <tree.Statement> alter_materialized_view_set_schema_stmt
+%type <tree.Statement> alter_materialized_view_all_in_tablespace_stmt
 
 // ALTER SEQUENCE
 %type <tree.Statement> alter_rename_sequence_stmt
@@ -987,15 +995,17 @@ func (u *sqlSymUnion) viewCheckOption() tree.ViewCheckOption {
 %type <tree.DatabaseOption> opt_database_options
 %type <[]tree.DatabaseOption> opt_database_options_list opt_database_with_options
 
-%type <tree.AlterTableCmd> alter_table_action enable_or_disable_trigger enable_or_disable_rule alter_opt_column_options
-%type <tree.AlterTableCmd> row_level_security replica_identity_option
-%type <tree.AlterTableCmds> alter_table_actions alter_table_cmd
+%type <tree.AlterTableCmd> alter_table_action enable_or_disable_trigger enable_or_disable_rule
+%type <tree.AlterTableCmd> alter_opt_column_options alter_materialized_view_opt_column_options
+%type <tree.AlterTableCmd> row_level_security replica_identity_option alter_materialized_view_action
+%type <tree.AlterTableCmds> alter_table_actions alter_table_cmd alter_materialized_view_cmd alter_materialized_view_actions
 %type <tree.AlterColComputed> alter_column_set_seq_elem
 %type <[]tree.AlterColComputed> alter_column_set_seq_elem_list
 %type <tree.AlterIndexCmd> alter_index_cmd
 %type <tree.StorageType> col_storage_option
 %type <bool> unique_or_primary logged_or_unlogged opt_nowait opt_no opt_view_recursive
 %type <str> trigger_name trigger_option
+%type <tree.AlterViewCmd> alter_view_cmd
 
 %type <tree.DropBehavior> opt_drop_behavior
 %type <tree.ValidationBehavior> opt_validate_behavior
@@ -1175,7 +1185,7 @@ func (u *sqlSymUnion) viewCheckOption() tree.ViewCheckOption {
 %type <str> unrestricted_name type_function_name type_function_name_no_crdb_extra
 %type <str> non_reserved_word
 %type <str> non_reserved_word_or_sconst
-%type <str> role_spec owner_to set_schema opt_role
+%type <str> role_spec owner_to set_schema opt_role set_tablespace
 %type <tree.Expr> zone_value
 %type <tree.Expr> string_or_placeholder
 %type <tree.Expr> string_or_placeholder_list
@@ -1203,6 +1213,7 @@ func (u *sqlSymUnion) viewCheckOption() tree.ViewCheckOption {
 %type <*tree.CTE> common_table_expr
 %type <bool> materialize_clause
 
+%type <tree.DetachPartition> detach_partition_type
 %type <tree.PartitionBoundSpec> partition_of partition_bound_spec
 %type <tree.Expr> within_group_clause
 %type <tree.Expr> filter_clause
@@ -1366,6 +1377,7 @@ alter_ddl_stmt:
 | alter_function_stmt           // EXTEND WITH HELP: ALTER FUNCTION
 | alter_procedure_stmt          // EXTEND WITH HELP: ALTER PROCEDURE
 | alter_view_stmt               // EXTEND WITH HELP: ALTER VIEW
+| alter_materialized_view_stmt  // EXTEND WITH HELP: ALTER MATERIALIZED VIEW
 | alter_sequence_stmt           // EXTEND WITH HELP: ALTER SEQUENCE
 | alter_database_stmt           // EXTEND WITH HELP: ALTER DATABASE
 | alter_default_privileges_stmt // EXTEND WITH HELP: ALTER DEFAULT PRIVILEGES
@@ -1414,11 +1426,47 @@ alter_table_stmt:
 // ALTER [MATERIALIZED] VIEW [IF EXISTS] <name> SET SCHEMA <newschemaname>
 // %SeeAlso: WEBDOCS/alter-view.html
 alter_view_stmt:
-  alter_rename_view_stmt
-| alter_view_set_schema_stmt
+  ALTER VIEW relation_expr alter_view_cmd
+  {
+    $$.val = &tree.AlterView{Name: $3.unresolvedObjectName(), IfExists: false, Cmd: $4.alterViewCmd()}
+  }
+| ALTER VIEW IF EXISTS relation_expr alter_view_cmd
+  {
+    $$.val = &tree.AlterView{Name: $5.unresolvedObjectName(), IfExists: true, Cmd: $6.alterViewCmd()}
+  }
 // ALTER VIEW has its error help token here because the ALTER VIEW
 // prefix is spread over multiple non-terminals.
 | ALTER VIEW error // SHOW HELP: ALTER VIEW
+
+alter_view_cmd:
+  ALTER opt_column column_name alter_column_default
+  {
+    $$.val = &tree.AlterViewSetDefault{Column: tree.Name($3), Default: $4.expr()}
+  }
+| owner_to
+  {
+    $$.val = &tree.AlterViewOwnerTo{Owner: $1}
+  }
+| RENAME opt_column column_name TO column_name
+  {
+    $$.val = &tree.AlterViewRenameColumn{Column: tree.Name($3), NewName: tree.Name($5)}
+  }
+| RENAME TO view_name
+  {
+    $$.val = &tree.AlterViewRenameTo{Rename: $3.unresolvedObjectName()}
+  }
+| set_schema
+  {
+    $$.val = &tree.AlterViewSetSchema{Schema: $1}
+  }
+| SET '(' view_options ')'
+  {
+    $$.val = &tree.AlterViewSetOption{Params: $3.viewOptions()}
+  }
+| RESET '(' view_options ')'
+  {
+    $$.val = &tree.AlterViewSetOption{Reset: true, Params: $3.viewOptions()}
+  }
 
 // %Help: ALTER SEQUENCE - change the definition of a sequence
 // %Category: DDL
@@ -1470,9 +1518,9 @@ opt_alter_database:
   {
     $$.val = &tree.AlterDatabase{Name: tree.Name($3), Options: $4.databaseOptionList()}
   }
-| ALTER DATABASE database_name SET TABLESPACE tablespace_name
+| ALTER DATABASE database_name set_tablespace
   {
-    $$.val = &tree.AlterDatabase{Name: tree.Name($3), Tablespace: $5}
+    $$.val = &tree.AlterDatabase{Name: tree.Name($3), Tablespace: $4}
   }
 | ALTER DATABASE database_name REFRESH COLLATION VERSION
   {
@@ -1733,10 +1781,10 @@ opt_no:
   }
 
 alter_index_all_in_tablespace_stmt:
-  ALTER INDEX ALL IN TABLESPACE tablespace_name opt_owned_by_list SET TABLESPACE tablespace_name opt_nowait
+  ALTER INDEX ALL IN TABLESPACE tablespace_name opt_owned_by_list set_tablespace opt_nowait
   {
     $$.val = &tree.AlterIndexAllInTablespace{
-      Name: tree.Name($6), OwnedBy: $7.strs(), Tablespace: tree.Name($10),
+      Name: tree.Name($6), OwnedBy: $7.strs(), Tablespace: $8, NoWait: $9.bool(),
     }
   }
 
@@ -1870,9 +1918,9 @@ alter_table_action:
   {
     $$.val = &tree.AlterTableSetAccessMethod{Method: $4}
   }
-| SET TABLESPACE tablespace_name
+| set_tablespace
   {
-    $$.val = &tree.AlterTableSetTablespace{Tablespace: $3}
+    $$.val = &tree.AlterTableSetTablespace{Tablespace: $1}
   }
 | SET logged_or_unlogged
   {
@@ -1910,6 +1958,52 @@ alter_table_action:
     }
   }
 | replica_identity_option
+
+alter_materialized_view_actions:
+  alter_materialized_view_action
+  {
+    $$.val = tree.AlterTableCmds{$1.alterTableCmd()}
+  }
+| alter_materialized_view_actions ',' alter_materialized_view_action
+  {
+    $$.val = append($1.alterTableCmds(), $3.alterTableCmd())
+  }
+
+alter_materialized_view_action:
+  ALTER opt_column alter_materialized_view_opt_column_options
+  {
+    $$.val = $3.alterTableCmd()
+  }
+| CLUSTER ON index_name
+  {
+    $$.val = &tree.AlterTableCluster{OnIndex: tree.Name($3)}
+  }
+| SET WITHOUT CLUSTER
+  {
+    $$.val = &tree.AlterTableCluster{Without: true}
+  }
+| SET ACCESS METHOD non_reserved_word_or_sconst
+  {
+    $$.val = &tree.AlterTableSetAccessMethod{Method: $4}
+  }
+| set_tablespace
+  {
+    $$.val = &tree.AlterTableSetTablespace{Tablespace: $1}
+  }
+| SET '(' storage_parameter_list ')'
+  {
+    $$.val = &tree.AlterTableSetStorage{Params: $3.storageParams()}
+  }
+| RESET '(' storage_parameter_list ')'
+  {
+    $$.val = &tree.AlterTableSetStorage{Params: $3.storageParams(), IsReset: true}
+  }
+| owner_to
+  {
+    $$.val = &tree.AlterTableOwner{
+      Owner: $1,
+    }
+  }
 
 enable_or_disable_trigger:
   DISABLE TRIGGER trigger_option
@@ -2054,7 +2148,10 @@ alter_opt_column_options:
   {
     $$.val = &tree.AlterTableDropExprIden{Column: tree.Name($1), IsIdentity: true, IfExists: $4.bool()}
   }
-| column_name SET STATISTICS signed_iconst
+| alter_materialized_view_opt_column_options
+
+alter_materialized_view_opt_column_options:
+  column_name SET STATISTICS signed_iconst
   {
     $$.val = &tree.AlterTableSetStatistics{Column: tree.Name($1), Num: $4.expr()}
   }
@@ -2141,9 +2238,9 @@ opt_if_exists:
   }
 
 alter_index_cmd:
-  SET TABLESPACE tablespace_name
+  set_tablespace
   {
-    $$.val = &tree.AlterIndexSetTablespace{Tablespace: tree.Name($3)}
+    $$.val = &tree.AlterIndexSetTablespace{Tablespace: $1}
   }
 | SET '(' storage_parameter_list ')'
   {
@@ -2293,6 +2390,12 @@ alter_type_stmt:
 
 set_schema:
   SET SCHEMA schema_name
+  {
+    $$ = $3
+  }
+
+set_tablespace:
+  SET TABLESPACE tablespace_name
   {
     $$ = $3
   }
@@ -7406,25 +7509,31 @@ view_options:
   }
 
 create_materialized_view_stmt:
-  CREATE MATERIALIZED VIEW view_name opt_column_list AS select_stmt
+  CREATE MATERIALIZED VIEW view_name opt_column_list opt_using_method opt_with_storage_parameter_list opt_tablespace AS select_stmt opt_create_as_with_data
   {
     name := $4.unresolvedObjectName().ToTableName()
-    $$.val = &tree.CreateView{
+    $$.val = &tree.CreateMaterializedView{
       Name: name,
       ColumnNames: $5.nameList(),
-      AsSource: $7.slct(),
-      Materialized: true,
+      AsSource: $10.slct(),
+      Using: $6,
+      Params: $7.storageParams(),
+      Tablespace: tree.Name($8),
+      WithNoData: $11.bool(),
     }
   }
-| CREATE MATERIALIZED VIEW IF NOT EXISTS view_name opt_column_list AS select_stmt
+| CREATE MATERIALIZED VIEW IF NOT EXISTS view_name opt_column_list opt_using_method opt_with_storage_parameter_list opt_tablespace AS select_stmt opt_create_as_with_data
   {
     name := $7.unresolvedObjectName().ToTableName()
-    $$.val = &tree.CreateView{
+    $$.val = &tree.CreateMaterializedView{
       Name: name,
       ColumnNames: $8.nameList(),
-      AsSource: $10.slct(),
-      Materialized: true,
+      AsSource: $13.slct(),
       IfNotExists: true,
+      Using: $9,
+      Params: $10.storageParams(),
+      Tablespace: tree.Name($11),
+      WithNoData: $14.bool(),
     }
   }
 
@@ -7750,13 +7859,13 @@ alter_rename_table_stmt:
   {
     name := $3.unresolvedObjectName()
     newName := $6.unresolvedObjectName()
-    $$.val = &tree.RenameTable{Name: name, NewName: newName, IfExists: false, IsView: false}
+    $$.val = &tree.RenameTable{Name: name, NewName: newName, IfExists: false}
   }
 | ALTER TABLE IF EXISTS relation_expr RENAME TO table_name
   {
     name := $5.unresolvedObjectName()
     newName := $8.unresolvedObjectName()
-    $$.val = &tree.RenameTable{Name: name, NewName: newName, IfExists: true, IsView: false}
+    $$.val = &tree.RenameTable{Name: name, NewName: newName, IfExists: true}
   }
 
 alter_table_set_schema_stmt:
@@ -7774,36 +7883,36 @@ alter_table_set_schema_stmt:
   }
 
 alter_table_all_in_tablespace_stmt:
-  ALTER TABLE ALL IN TABLESPACE tablespace_name opt_owned_by_list SET TABLESPACE tablespace_name opt_nowait
+  ALTER TABLE ALL IN TABLESPACE tablespace_name opt_owned_by_list set_tablespace opt_nowait
   {
     $$.val = &tree.AlterTableAllInTablespace{
-      Name: tree.Name($6), OwnedBy: $7.strs(), Tablespace: tree.Name($10),
+      Name: tree.Name($6), OwnedBy: $7.strs(), Tablespace: $8, NoWait: $9.bool(),
     }
   }
 
 alter_table_parition_stmt:
   ALTER TABLE table_name ATTACH PARTITION partition_name partition_of
   {
-    $$.val = &tree.AlterTableSetSchema{
-      Name: $3.unresolvedObjectName(), Schema: $4, IfExists: false,
+    $$.val = &tree.AlterTablePartition{
+      Name: $3.unresolvedObjectName(), IfExists: false, Partition: tree.Name($6), Spec: $7.partitionBoundSpec(),
     }
   }
 | ALTER TABLE IF EXISTS table_name ATTACH PARTITION partition_name partition_of
   {
-    $$.val = &tree.AlterTableSetSchema{
-      Name: $5.unresolvedObjectName(), Schema: $6, IfExists: true,
+    $$.val = &tree.AlterTablePartition{
+      Name: $5.unresolvedObjectName(), IfExists: true, Partition: tree.Name($8), Spec: $9.partitionBoundSpec(),
     }
   }
-| ALTER TABLE table_name DETACH PARTITION partition_name concurrently_or_finalize
+| ALTER TABLE table_name DETACH PARTITION partition_name detach_partition_type
   {
-    $$.val = &tree.AlterTableSetSchema{
-      Name: $3.unresolvedObjectName(), Schema: $4, IfExists: false,
+    $$.val = &tree.AlterTablePartition{
+      Name: $3.unresolvedObjectName(), IfExists: false, Partition: tree.Name($6), IsDetach: true, DetachType: $7.detachPartition(),
     }
   }
-| ALTER TABLE IF EXISTS table_name DETACH PARTITION partition_name concurrently_or_finalize
+| ALTER TABLE IF EXISTS table_name DETACH PARTITION partition_name detach_partition_type
   {
-    $$.val = &tree.AlterTableSetSchema{
-      Name: $5.unresolvedObjectName(), Schema: $6, IfExists: true,
+    $$.val = &tree.AlterTablePartition{
+      Name: $5.unresolvedObjectName(), IfExists: true, Partition: tree.Name($8), IsDetach: true, DetachType: $9.detachPartition(),
     }
   }
 
@@ -7817,42 +7926,18 @@ opt_nowait:
     $$.val = true
   }
 
-concurrently_or_finalize:
-  CONCURRENTLY
+detach_partition_type:
+  /* EMPTY */
+  {
+    $$.val = tree.DetachPartitionNone
+  }
+| CONCURRENTLY
+  {
+    $$.val = tree.DetachPartitionConcurrently
+  }
 | FINALIZE
-
-alter_view_set_schema_stmt:
-  ALTER VIEW relation_expr set_schema
   {
-    $$.val = &tree.AlterTableSetSchema{
-      Name: $3.unresolvedObjectName(), Schema: $4, IfExists: false, IsView: true,
-    }
-  }
-| ALTER MATERIALIZED VIEW relation_expr set_schema
-  {
-    $$.val = &tree.AlterTableSetSchema{
-      Name: $4.unresolvedObjectName(),
-      Schema: $5,
-      IfExists: false,
-      IsView: true,
-      IsMaterialized: true,
-    }
-  }
-| ALTER VIEW IF EXISTS relation_expr set_schema
-  {
-    $$.val = &tree.AlterTableSetSchema{
-      Name: $5.unresolvedObjectName(), Schema: $6, IfExists: true, IsView: true,
-    }
-  }
-| ALTER MATERIALIZED VIEW IF EXISTS relation_expr set_schema
-  {
-    $$.val = &tree.AlterTableSetSchema{
-      Name: $6.unresolvedObjectName(),
-      Schema: $7,
-      IfExists: true,
-      IsView: true,
-      IsMaterialized: true,
-    }
+    $$.val = tree.DetachPartitionFinalize
   }
 
 alter_sequence_set_schema_stmt:
@@ -7869,41 +7954,66 @@ alter_sequence_set_schema_stmt:
     }
   }
 
-alter_rename_view_stmt:
-  ALTER VIEW relation_expr RENAME TO view_name
+alter_materialized_view_stmt:
+  ALTER MATERIALIZED VIEW relation_expr alter_materialized_view_cmd
   {
-    name := $3.unresolvedObjectName()
-    newName := $6.unresolvedObjectName()
-    $$.val = &tree.RenameTable{Name: name, NewName: newName, IfExists: false, IsView: true}
+    $$.val = &tree.AlterMaterializedView{Name: $4.unresolvedObjectName(), IfExists: false, Cmds: $5.alterTableCmds()}
   }
-| ALTER MATERIALIZED VIEW relation_expr RENAME TO view_name
+| ALTER MATERIALIZED VIEW IF EXISTS relation_expr alter_materialized_view_cmd
+  {
+    $$.val = &tree.AlterMaterializedView{Name: $6.unresolvedObjectName(), IfExists: true, Cmds: $7.alterTableCmds()}
+  }
+| ALTER MATERIALIZED VIEW table_name opt_no DEPENDS ON EXTENSION name
+  {
+    $$.val = &tree.AlterMaterializedView{Name: $4.unresolvedObjectName(), No: $5.bool(), Extension: $9}
+  }
+| alter_materialized_view_rename_stmt
+| alter_materialized_view_set_schema_stmt
+| alter_materialized_view_all_in_tablespace_stmt
+
+alter_materialized_view_cmd:
+  alter_materialized_view_actions
+  {
+    $$.val = $1.alterTableCmds()
+  }
+| RENAME opt_column column_name TO column_name
+  {
+    $$.val = tree.AlterTableCmds{&tree.AlterTableRenameColumn{Column: tree.Name($3), NewName: tree.Name($5)}}
+  }
+
+alter_materialized_view_rename_stmt:
+  ALTER MATERIALIZED VIEW relation_expr RENAME TO view_name
   {
     name := $4.unresolvedObjectName()
     newName := $7.unresolvedObjectName()
-    $$.val = &tree.RenameTable{
-      Name: name,
-      NewName: newName,
-      IfExists: false,
-      IsView: true,
-      IsMaterialized: true,
-    }
-  }
-| ALTER VIEW IF EXISTS relation_expr RENAME TO view_name
-  {
-    name := $5.unresolvedObjectName()
-    newName := $8.unresolvedObjectName()
-    $$.val = &tree.RenameTable{Name: name, NewName: newName, IfExists: true, IsView: true}
+    $$.val = &tree.RenameTable{Name: name, NewName: newName, IfExists: false, IsMaterialized: true}
   }
 | ALTER MATERIALIZED VIEW IF EXISTS relation_expr RENAME TO view_name
   {
     name := $6.unresolvedObjectName()
     newName := $9.unresolvedObjectName()
-    $$.val = &tree.RenameTable{
-      Name: name,
-      NewName: newName,
-      IfExists: true,
-      IsView: true,
-      IsMaterialized: true,
+    $$.val = &tree.RenameTable{Name: name, NewName: newName, IfExists: false, IsMaterialized: true}
+  }
+
+alter_materialized_view_set_schema_stmt:
+  ALTER MATERIALIZED VIEW relation_expr set_schema
+  {
+    $$.val = &tree.AlterTableSetSchema{
+      Name: $4.unresolvedObjectName(), Schema: $5, IfExists: false, IsMaterialized: true,
+    }
+  }
+| ALTER MATERIALIZED VIEW IF EXISTS relation_expr set_schema
+  {
+    $$.val = &tree.AlterTableSetSchema{
+      Name: $6.unresolvedObjectName(), Schema: $7, IfExists: true, IsMaterialized: true,
+    }
+  }
+
+alter_materialized_view_all_in_tablespace_stmt:
+  ALTER MATERIALIZED VIEW ALL IN TABLESPACE tablespace_name opt_owned_by_list set_tablespace opt_nowait
+  {
+    $$.val = &tree.AlterTableAllInTablespace{
+      Name: tree.Name($7), OwnedBy: $8.strs(), Tablespace: $9, NoWait: $10.bool(), IsMaterialized: true,
     }
   }
 
