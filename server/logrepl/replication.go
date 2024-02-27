@@ -291,7 +291,7 @@ func (r *LogicalReplicator) StartReplication(slotName string) error {
 				}
 
 				log.Printf("XLogData => WALStart %s ServerWALEnd %s ServerTime %s WALData:\n", xld.WALStart, xld.ServerWALEnd, xld.ServerTime)
-				err = r.processMessage(xld.WALData, relationsV2, typeMap, &inStream)
+				updateNeeded, err := r.processMessage(xld.WALData, relationsV2, typeMap, &inStream)
 				if err != nil {
 					// TODO: do we need more than one handler, one for each connection?
 					return handleErrWithRetry(err)
@@ -302,9 +302,10 @@ func (r *LogicalReplicator) StartReplication(slotName string) error {
 				//  processed LSN to a file locally, but that suffers from the same problem (if the process dies before we update
 				//  the file). A better solution would be to write the LSN directly into the DoltCommit message, and then parsing
 				//  this message back out when we begin replication next.
+				
 				// lock for accessing r.lsn
 				r.mu.Lock()
-				if xld.ServerWALEnd > r.lsn {
+				if updateNeeded && xld.ServerWALEnd > r.lsn {
 					r.lsn = xld.ServerWALEnd
 					err := sendStandbyStatusUpdate(r.lsn)
 					if err != nil {
@@ -492,12 +493,14 @@ func (r *LogicalReplicator) CreateReplicationSlotIfNecessary(slotName string) er
 //  1. Relation messages describe tables being replicated and are used to build a type map for decoding tuples
 //  2. INSERT/UPDATE/DELETE messages describe changes to rows that must be applied to the replica.
 //     These describe a row in the form of a tuple, and are used to construct a query to apply the change to the replica.
+// Returns a boolean true if the message was a write that should be acknowledged to the server, and an error if one
+// occurred.
 func (r *LogicalReplicator) processMessage(
-	walData []byte,
-	relations map[uint32]*pglogrepl.RelationMessageV2,
-	typeMap *pgtype.Map,
-	inStream *bool,
-) error {
+		walData []byte,
+		relations map[uint32]*pglogrepl.RelationMessageV2,
+		typeMap *pgtype.Map,
+		inStream *bool,
+) (bool, error) {
 	logicalMsg, err := pglogrepl.ParseV2(walData, *inStream)
 	if err != nil {
 		log.Fatalf("Parse logical replication message: %s", err)
@@ -512,6 +515,7 @@ func (r *LogicalReplicator) processMessage(
 		log.Printf("BeginMessage: %d", logicalMsg.Xid)
 	case *pglogrepl.CommitMessage:
 		log.Printf("CommitMessage: %v", logicalMsg.CommitTime)
+		return true, nil
 	case *pglogrepl.InsertMessageV2:
 		rel, ok := relations[logicalMsg.RelationID]
 		if !ok {
@@ -541,7 +545,7 @@ func (r *LogicalReplicator) processMessage(
 				}
 				colData, err := encodeColumnData(typeMap, val, rel.Columns[idx].DataType)
 				if err != nil {
-					return err
+					return false, err
 				}
 				valuesStr.WriteString(colData)
 			default:
@@ -551,8 +555,10 @@ func (r *LogicalReplicator) processMessage(
 
 		err = r.replicateQuery(fmt.Sprintf("INSERT INTO %s.%s (%s) VALUES (%s)", rel.Namespace, rel.RelationName, columnStr.String(), valuesStr.String()))
 		if err != nil {
-			return err
+			return false, err
 		}
+
+		return true, nil
 	case *pglogrepl.UpdateMessageV2:
 		// TODO: this won't handle primary key changes correctly
 		// TODO: this probably doesn't work for unkeyed tables
@@ -580,7 +586,7 @@ func (r *LogicalReplicator) processMessage(
 
 				stringVal, err = encodeColumnData(typeMap, val, rel.Columns[idx].DataType)
 				if err != nil {
-					return err
+					return false, err
 				}
 			default:
 				log.Printf("unknown column data type: %c", col.DataType)
@@ -602,8 +608,10 @@ func (r *LogicalReplicator) processMessage(
 
 		err = r.replicateQuery(fmt.Sprintf("UPDATE %s.%s SET %s%s", rel.Namespace, rel.RelationName, updateStr.String(), whereClause(whereStr)))
 		if err != nil {
-			return err
+			return false, err
 		}
+
+		return true, nil
 	case *pglogrepl.DeleteMessageV2:
 		// TODO: this probably doesn't work for unkeyed tables
 		rel, ok := relations[logicalMsg.RelationID]
@@ -629,7 +637,7 @@ func (r *LogicalReplicator) processMessage(
 
 				stringVal, err = encodeColumnData(typeMap, val, rel.Columns[idx].DataType)
 				if err != nil {
-					return err
+					return false, err
 				}
 			default:
 				log.Printf("unknown column data type: %c", col.DataType)
@@ -647,8 +655,10 @@ func (r *LogicalReplicator) processMessage(
 
 		err = r.replicateQuery(fmt.Sprintf("DELETE FROM %s.%s WHERE %s", rel.Namespace, rel.RelationName, whereStr.String()))
 		if err != nil {
-			return err
+			return false, err
 		}
+		
+		return true, nil
 	case *pglogrepl.TruncateMessageV2:
 		log.Printf("truncate for xid %d\n", logicalMsg.Xid)
 	case *pglogrepl.TypeMessageV2:
@@ -670,8 +680,8 @@ func (r *LogicalReplicator) processMessage(
 	default:
 		log.Printf("Unknown message type in pgoutput stream: %T", logicalMsg)
 	}
-
-	return nil
+	
+	return false, nil
 }
 
 // whereClause returns a WHERE clause string with the contents of the builder if it's non-empty, or the empty
