@@ -390,7 +390,8 @@ func (r *LogicalReplicator) beginReplication(slotName string) (*pgconn.PgConn, e
 	}
 
 	// LSN(0) is used to use the last confirmed LSN for this slot
-	err = pglogrepl.StartReplication(context.Background(), conn, slotName, pglogrepl.LSN(0), pglogrepl.StartReplicationOptions{PluginArgs: pluginArguments})
+	log.Printf("Starting logical replication on slot %s from LSN %s", slotName, r.lsn)
+	err = pglogrepl.StartReplication(context.Background(), conn, slotName, r.lsn, pglogrepl.StartReplicationOptions{PluginArgs: pluginArguments})
 	if err != nil {
 		return nil, err
 	}
