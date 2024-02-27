@@ -358,7 +358,7 @@ func RunReplicationScripts(t *testing.T, scripts []ReplicationTest) {
 
 	primaryDns := fmt.Sprintf("postgres://postgres:password@127.0.0.1:%d/%s?sslmode=disable&replication=database", localPostgresPort, "postgres")
 
-	// We drop and recreate the replication slot once at the beginning of the test suite. Postgres seems to do a little 
+	// We drop and recreate the replication slot once at the beginning of the test suite. Postgres seems to do a little
 	// work in the background with a publication, so we need to wait a little bit before running any test scripts.
 	require.NoError(t, logrepl.DropPublication(primaryDns, slotName))
 	require.NoError(t, logrepl.CreatePublication(primaryDns, slotName))
@@ -424,7 +424,7 @@ func runReplicationScript(
 	if script.Skip {
 		t.Skip("Skip has been set in the script")
 	}
-	
+
 	connections := map[string]*pgx.Conn{
 		"replica": replicaConn,
 	}

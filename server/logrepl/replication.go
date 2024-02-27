@@ -129,7 +129,7 @@ func (r *LogicalReplicator) CaughtUp() (bool, error) {
 	return true, nil
 }
 
-// maxConsecutiveFailures is the maximum number of consecutive RPC errors that can occur before we stop 
+// maxConsecutiveFailures is the maximum number of consecutive RPC errors that can occur before we stop
 // the replication thread
 const maxConsecutiveFailures = 10
 
@@ -413,7 +413,7 @@ func DropPublication(primaryDns, slotName string) error {
 }
 
 // CreatePublication creates a publication with the given name if it does not already exist. Mostly useful for testing.
-// Customers should run the CREATE PUBLICATION command on their primary server manually, specifying whichever tables 
+// Customers should run the CREATE PUBLICATION command on their primary server manually, specifying whichever tables
 // they want to replicate.
 func CreatePublication(primaryDns, slotName string) error {
 	conn, err := pgconn.Connect(context.Background(), primaryDns)
