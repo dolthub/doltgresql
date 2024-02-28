@@ -273,7 +273,7 @@ var replicationTests = []ReplicationTest{
 		Name: "concurrent writes",
 		// postgres actually sends these updates out of order, which means we need to track the txid as well
 		// when deciding whether to process a message or not
-		Skip: true,
+		// Skip: true,
 		SetUpScript: []string{
 			dropReplicationSlot,
 			createReplicationSlot,

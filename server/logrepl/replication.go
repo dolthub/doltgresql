@@ -299,6 +299,8 @@ func (r *LogicalReplicator) StartReplication(slotName string) error {
 					return err
 				}
 
+				// TODO next: need to track whether we have yet received any message past the last LSN we wrote to the WAL, 
+				//  in order to handle the case where we get LSNs out of order 
 				updateNeeded, err := r.processMessage(lsn, xld, relationsV2, typeMap, &inStream)
 				if err != nil {
 					// TODO: do we need more than one handler, one for each connection?
@@ -518,7 +520,7 @@ func (r *LogicalReplicator) processMessage(
 		return false, err
 	}
 
-	log.Printf("XLogData (%T) => WALStart %s ServerWALEnd %s ServerTime %s WALData:\n", logicalMsg, xld.WALStart, xld.ServerWALEnd, xld.ServerTime)
+	log.Printf("XLogData (%T) => WALStart %s ServerWALEnd %s ServerTime %s", logicalMsg, xld.WALStart, xld.ServerWALEnd, xld.ServerTime)
 
 	switch logicalMsg := logicalMsg.(type) {
 	case *pglogrepl.RelationMessageV2:
@@ -526,9 +528,9 @@ func (r *LogicalReplicator) processMessage(
 	case *pglogrepl.BeginMessage:
 		// Indicates the beginning of a group of changes in a transaction.
 		// This is only sent for committed transactions. You won't get any events from rolled back transactions.
-		log.Printf("BeginMessage: %d", logicalMsg.Xid)
+		log.Printf("BeginMessage: %v", logicalMsg)
 	case *pglogrepl.CommitMessage:
-		log.Printf("CommitMessage: %v", logicalMsg.CommitTime)
+		log.Printf("CommitMessage: %v", logicalMsg)
 	case *pglogrepl.InsertMessageV2:
 		if lsn > xld.ServerWALEnd {
 			log.Printf("Received stale message, ignoring. Current LSN: %s Message LSN: %s", lsn, xld.ServerWALEnd)
