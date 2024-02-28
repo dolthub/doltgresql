@@ -315,13 +315,13 @@ func (r *LogicalReplicator) StartReplication(slotName string) error {
 					if err != nil {
 						return err
 					}
-
-					err = sendStandbyStatusUpdate(lsn)
-					if err != nil {
-						return err
-					}
 				} else {
 					log.Printf("No update needed for LSN %s, r.lsn is %s\n", xld.ServerWALEnd.String(), lsn.String())
+				}
+
+				err = sendStandbyStatusUpdate(xld.ServerWALEnd)
+				if err != nil {
+					return err
 				}
 
 				if primaryConn == nil {
@@ -520,11 +520,6 @@ func (r *LogicalReplicator) processMessage(
 
 	log.Printf("XLogData (%T) => WALStart %s ServerWALEnd %s ServerTime %s WALData:\n", logicalMsg, xld.WALStart, xld.ServerWALEnd, xld.ServerTime)
 
-	if lsn > xld.ServerWALEnd {
-		log.Printf("Received stale message, ignoring. Current LSN: %s Message LSN: %s", lsn, xld.ServerWALEnd)
-		return false, nil
-	}
-
 	switch logicalMsg := logicalMsg.(type) {
 	case *pglogrepl.RelationMessageV2:
 		relations[logicalMsg.RelationID] = logicalMsg
@@ -534,8 +529,12 @@ func (r *LogicalReplicator) processMessage(
 		log.Printf("BeginMessage: %d", logicalMsg.Xid)
 	case *pglogrepl.CommitMessage:
 		log.Printf("CommitMessage: %v", logicalMsg.CommitTime)
-		return true, nil
 	case *pglogrepl.InsertMessageV2:
+		if lsn > xld.ServerWALEnd {
+			log.Printf("Received stale message, ignoring. Current LSN: %s Message LSN: %s", lsn, xld.ServerWALEnd)
+			return false, nil
+		}
+
 		rel, ok := relations[logicalMsg.RelationID]
 		if !ok {
 			log.Fatalf("unknown relation ID %d", logicalMsg.RelationID)
@@ -579,6 +578,11 @@ func (r *LogicalReplicator) processMessage(
 
 		return true, nil
 	case *pglogrepl.UpdateMessageV2:
+		if lsn > xld.ServerWALEnd {
+			log.Printf("Received stale message, ignoring. Current LSN: %s Message LSN: %s", lsn, xld.ServerWALEnd)
+			return false, nil
+		}
+
 		// TODO: this won't handle primary key changes correctly
 		// TODO: this probably doesn't work for unkeyed tables
 		rel, ok := relations[logicalMsg.RelationID]
@@ -632,6 +636,11 @@ func (r *LogicalReplicator) processMessage(
 
 		return true, nil
 	case *pglogrepl.DeleteMessageV2:
+		if lsn > xld.ServerWALEnd {
+			log.Printf("Received stale message, ignoring. Current LSN: %s Message LSN: %s", lsn, xld.ServerWALEnd)
+			return false, nil
+		}
+
 		// TODO: this probably doesn't work for unkeyed tables
 		rel, ok := relations[logicalMsg.RelationID]
 		if !ok {
