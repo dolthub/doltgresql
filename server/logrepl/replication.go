@@ -93,7 +93,7 @@ func (r *LogicalReplicator) CaughtUp() (bool, error) {
 		return false, nil
 	}
 	r.mu.Unlock()
-	
+
 	conn, err := pgx.Connect(context.Background(), r.PrimaryDns())
 	if err != nil {
 		return false, err
@@ -306,7 +306,7 @@ func (r *LogicalReplicator) StartReplication(slotName string) error {
 				}
 
 				// TODO: we have a two-phase commit race here: if the WAL file update doesn't happen before the process crashes,
-				//  we will receive a duplicate LSN the next time we start replication. A better solution would be to write the 
+				//  we will receive a duplicate LSN the next time we start replication. A better solution would be to write the
 				//  LSN directly into the DoltCommit message, and then parsing this message back out when we begin replication
 				//  next.
 				if updateNeeded && xld.ServerWALEnd > lsn {
@@ -315,7 +315,7 @@ func (r *LogicalReplicator) StartReplication(slotName string) error {
 					if err != nil {
 						return err
 					}
-					
+
 					err = sendStandbyStatusUpdate(lsn)
 					if err != nil {
 						return err
@@ -697,7 +697,7 @@ func (r *LogicalReplicator) processMessage(
 	return false, nil
 }
 
-// readWALPosition reads the recorded WAL position from the WAL position file 
+// readWALPosition reads the recorded WAL position from the WAL position file
 func (r *LogicalReplicator) readWALPosition() (pglogrepl.LSN, error) {
 	walFileContents, err := os.ReadFile(r.walFilePath)
 	if err != nil {
@@ -706,16 +706,16 @@ func (r *LogicalReplicator) readWALPosition() (pglogrepl.LSN, error) {
 			return pglogrepl.LSN(0), nil
 		}
 		return 0, err
-	}	
-	
+	}
+
 	return pglogrepl.ParseLSN(string(walFileContents))
 }
 
-// writeWALPosition writes the recorded WAL position to the WAL position file 
+// writeWALPosition writes the recorded WAL position to the WAL position file
 func (r *LogicalReplicator) writeWALPosition(lsn pglogrepl.LSN) error {
 	// We write a single byte past the last LSN we flushed because our next startup will use that as our starting point.
 	// The LSN given to the StartReplication call is inclusive, so we need to exclude the last one we have processed.
-	writeLsn := lsn+1
+	writeLsn := lsn + 1
 	return os.WriteFile(r.walFilePath, []byte(writeLsn.String()), 0644)
 }
 
