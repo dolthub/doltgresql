@@ -305,12 +305,10 @@ func (r *LogicalReplicator) StartReplication(slotName string) error {
 					return handleErrWithRetry(err)
 				}
 
-				// TODO: we have a two-phase commit race here: if the call to update the standby fails and the process crashes,
-				//  we will receive a duplicate LSN the next time we start replication. We can mitigate this by writing the last
-				//  processed LSN to a file locally, but that suffers from the same problem (if the process dies before we update
-				//  the file). A better solution would be to write the LSN directly into the DoltCommit message, and then parsing
-				//  this message back out when we begin replication next.
-
+				// TODO: we have a two-phase commit race here: if the WAL file update doesn't happen before the process crashes,
+				//  we will receive a duplicate LSN the next time we start replication. A better solution would be to write the 
+				//  LSN directly into the DoltCommit message, and then parsing this message back out when we begin replication
+				//  next.
 				if updateNeeded && xld.ServerWALEnd > lsn {
 					lsn = xld.ServerWALEnd
 					err := r.writeWALPosition(lsn)
