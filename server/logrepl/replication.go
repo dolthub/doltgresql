@@ -299,7 +299,7 @@ func (r *LogicalReplicator) StartReplication(slotName string) error {
 					return err
 				}
 
-				updateNeeded, err := r.processMessage(xld, relationsV2, typeMap, &inStream)
+				updateNeeded, err := r.processMessage(lsn, xld, relationsV2, typeMap, &inStream)
 				if err != nil {
 					// TODO: do we need more than one handler, one for each connection?
 					return handleErrWithRetry(err)
@@ -506,10 +506,11 @@ func (r *LogicalReplicator) CreateReplicationSlotIfNecessary(slotName string) er
 // Returns a boolean true if the message was a write that should be acknowledged to the server, and an error if one
 // occurred.
 func (r *LogicalReplicator) processMessage(
-	xld pglogrepl.XLogData,
-	relations map[uint32]*pglogrepl.RelationMessageV2,
-	typeMap *pgtype.Map,
-	inStream *bool,
+		lsn pglogrepl.LSN,
+		xld pglogrepl.XLogData,
+		relations map[uint32]*pglogrepl.RelationMessageV2,
+		typeMap *pgtype.Map,
+		inStream *bool,
 ) (bool, error) {
 	walData := xld.WALData
 	logicalMsg, err := pglogrepl.ParseV2(walData, *inStream)
@@ -518,7 +519,12 @@ func (r *LogicalReplicator) processMessage(
 	}
 
 	log.Printf("XLogData (%T) => WALStart %s ServerWALEnd %s ServerTime %s WALData:\n", logicalMsg, xld.WALStart, xld.ServerWALEnd, xld.ServerTime)
-
+	
+	if lsn > xld.ServerWALEnd {
+		log.Printf("Received stale message, ignoring. Current LSN: %s Message LSN: %s", lsn, xld.ServerWALEnd)
+		return false, nil
+	} 
+	
 	switch logicalMsg := logicalMsg.(type) {
 	case *pglogrepl.RelationMessageV2:
 		relations[logicalMsg.RelationID] = logicalMsg
