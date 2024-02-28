@@ -19,6 +19,7 @@ import (
 	"errors"
 	"fmt"
 	"log"
+	"os"
 	"strings"
 	"sync"
 	"time"
@@ -42,13 +43,12 @@ type rcvMsg struct {
 type LogicalReplicator struct {
 	primaryDns      string
 	replicationConn *pgx.Conn
-	// lsn is the last WAL position we have received from the server, which we send back to the server via
-	// SendStandbyStatusUpdate after every message we get. Postgres tracks this LSN for each slot, which allows us to
-	// resume where we left off in the case of an interruption.
-	lsn     pglogrepl.LSN
-	running bool
-	stop    chan struct{}
-	mu      *sync.Mutex
+
+	walFile         os.File
+	running         bool
+	messageReceived bool
+	stop            chan struct{}
+	mu              *sync.Mutex
 }
 
 // NewLogicalReplicator creates a new logical replicator instance which connects to the primary and replication
@@ -85,15 +85,14 @@ func (r *LogicalReplicator) ReplicationDns() string {
 // CaughtUp returns true if the replication slot is caught up to the primary, and false otherwise. This only works if
 // there is only a single replication slot on the primary, so it's only suitable for testing.
 func (r *LogicalReplicator) CaughtUp() (bool, error) {
-	// if we haven't received any messages yet, we can't tell if we're caught up or not
 	r.mu.Lock()
-	if r.lsn == 0 {
+	if !r.messageReceived {
 		r.mu.Unlock()
-		log.Printf("No replication messages received yet")
+		// We can't query the replication state until after receiving our first message
 		return false, nil
 	}
 	r.mu.Unlock()
-
+	
 	conn, err := pgx.Connect(context.Background(), r.PrimaryDns())
 	if err != nil {
 		return false, err
@@ -149,6 +148,11 @@ func (r *LogicalReplicator) StartReplication(slotName string) error {
 	// on StreamStopMessage we set it back to false
 	inStream := false
 
+	// lsn is the last WAL position we have received from the server, which we send back to the server via
+	// SendStandbyStatusUpdate after every message we get. Postgres tracks this LSN for each slot, which allows us to
+	// resume where we left off in the case of an interruption.
+	var lsn pglogrepl.LSN
+
 	var primaryConn *pgconn.PgConn
 	defer func() {
 		if primaryConn != nil {
@@ -191,7 +195,6 @@ func (r *LogicalReplicator) StartReplication(slotName string) error {
 
 	log.Println("Starting replicator")
 	r.mu.Lock()
-	r.lsn = 0
 	r.running = true
 	r.stop = make(chan struct{})
 	r.mu.Unlock()
@@ -218,14 +221,10 @@ func (r *LogicalReplicator) StartReplication(slotName string) error {
 			}
 
 			if time.Now().After(nextStandbyMessageDeadline) {
-				// lock for accessing r.lsn
-				r.mu.Lock()
-				err := sendStandbyStatusUpdate(r.lsn)
+				err := sendStandbyStatusUpdate(lsn)
 				if err != nil {
-					r.mu.Unlock()
 					return err
 				}
-				r.mu.Unlock()
 				if primaryConn == nil {
 					// if we've lost the connection, we'll re-establish it on the next pass through the loop
 					return nil
@@ -259,8 +258,11 @@ func (r *LogicalReplicator) StartReplication(slotName string) error {
 				}
 			}
 
+			r.mu.Lock()
+			r.messageReceived = true
+			r.mu.Unlock()
+
 			rawMsg := msgAndErr.msg
-			connErrCnt = 0
 			if errMsg, ok := rawMsg.(*pgproto3.ErrorResponse); ok {
 				return fmt.Errorf("received Postgres WAL error: %+v", errMsg)
 			}
@@ -281,8 +283,8 @@ func (r *LogicalReplicator) StartReplication(slotName string) error {
 
 				if pkm.ReplyRequested {
 					r.mu.Lock()
-					if pkm.ServerWALEnd > r.lsn {
-						r.lsn = pkm.ServerWALEnd
+					if pkm.ServerWALEnd > lsn {
+						lsn = pkm.ServerWALEnd
 					}
 					r.mu.Unlock()
 					// Send our reply the next time through the loop
@@ -308,15 +310,15 @@ func (r *LogicalReplicator) StartReplication(slotName string) error {
 
 				// lock for accessing r.lsn
 				r.mu.Lock()
-				if updateNeeded && xld.ServerWALEnd > r.lsn {
-					r.lsn = xld.ServerWALEnd
-					err := sendStandbyStatusUpdate(r.lsn)
+				if updateNeeded && xld.ServerWALEnd > lsn {
+					lsn = xld.ServerWALEnd
+					err := sendStandbyStatusUpdate(lsn)
 					if err != nil {
 						r.mu.Unlock()
 						return err
 					}
 				} else {
-					log.Printf("No update needed for LSN %s, r.lsn is %s\n", xld.ServerWALEnd.String(), r.lsn.String())
+					log.Printf("No update needed for LSN %s, r.lsn is %s\n", xld.ServerWALEnd.String(), lsn.String())
 				}
 				r.mu.Unlock()
 
