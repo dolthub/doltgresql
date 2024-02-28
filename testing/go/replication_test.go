@@ -397,14 +397,14 @@ func RunReplicationScript(t *testing.T, script ReplicationTest) {
 	})
 }
 
-func newReplicator(t *testing.T, replicaConn *pgx.Conn, primaryDns string) *logrepl.LogicalReplicator {
+func newReplicator(t *testing.T, walFilePath string, replicaConn *pgx.Conn, primaryDns string) *logrepl.LogicalReplicator {
 	connString := replicaConn.PgConn().Conn().RemoteAddr().String()
 	_, port, err := net.SplitHostPort(connString)
 	require.NoError(t, err)
 
 	replicaDns := fmt.Sprintf("postgres://postgres:password@127.0.0.1:%s/", port)
 
-	r, err := logrepl.NewLogicalReplicator(primaryDns, replicaDns)
+	r, err := logrepl.NewLogicalReplicator(walFilePath, primaryDns, replicaDns)
 	require.NoError(t, err)
 	return r
 }
@@ -417,7 +417,8 @@ func runReplicationScript(
 	replicaConn *pgx.Conn,
 	primaryDns string,
 ) {
-	r := newReplicator(t, replicaConn, primaryDns)
+	walFile := fmt.Sprintf("%s/%s", t.TempDir(), "wal")
+	r := newReplicator(t, walFile, replicaConn, primaryDns)
 	defer r.Stop()
 
 	if script.Skip {

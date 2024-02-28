@@ -44,7 +44,7 @@ type LogicalReplicator struct {
 	primaryDns      string
 	replicationConn *pgx.Conn
 
-	walFile         os.File
+	walFilePath     string
 	running         bool
 	messageReceived bool
 	stop            chan struct{}
@@ -54,7 +54,7 @@ type LogicalReplicator struct {
 // NewLogicalReplicator creates a new logical replicator instance which connects to the primary and replication
 // databases using the connection strings provided. The connection to the replica is established immediately, and the
 // connection to the primary is established when StartReplication is called.
-func NewLogicalReplicator(primaryDns string, replicationDns string) (*LogicalReplicator, error) {
+func NewLogicalReplicator(walFilePath string, primaryDns string, replicationDns string) (*LogicalReplicator, error) {
 	conn, err := pgx.Connect(context.Background(), replicationDns)
 	if err != nil {
 		return nil, err
@@ -63,6 +63,7 @@ func NewLogicalReplicator(primaryDns string, replicationDns string) (*LogicalRep
 	return &LogicalReplicator{
 		primaryDns:      primaryDns,
 		replicationConn: conn,
+		walFilePath:     walFilePath,
 		mu:              &sync.Mutex{},
 	}, nil
 }
@@ -152,6 +153,10 @@ func (r *LogicalReplicator) StartReplication(slotName string) error {
 	// SendStandbyStatusUpdate after every message we get. Postgres tracks this LSN for each slot, which allows us to
 	// resume where we left off in the case of an interruption.
 	var lsn pglogrepl.LSN
+	lsn, err := r.readWALPosition()
+	if err != nil {
+		return err
+	}
 
 	var primaryConn *pgconn.PgConn
 	defer func() {
@@ -211,7 +216,7 @@ func (r *LogicalReplicator) StartReplication(slotName string) error {
 
 			if primaryConn == nil {
 				var err error
-				primaryConn, err = r.beginReplication(slotName)
+				primaryConn, err = r.beginReplication(slotName, lsn)
 				if err != nil {
 					// unlike other error cases, back off a little here, since we're likely to just get the same error again
 					// on initial replication establishment
@@ -282,11 +287,9 @@ func (r *LogicalReplicator) StartReplication(slotName string) error {
 				log.Println("Primary Keepalive Message =>", "ServerWALEnd:", pkm.ServerWALEnd, "ServerTime:", pkm.ServerTime, "ReplyRequested:", pkm.ReplyRequested)
 
 				if pkm.ReplyRequested {
-					r.mu.Lock()
 					if pkm.ServerWALEnd > lsn {
 						lsn = pkm.ServerWALEnd
 					}
-					r.mu.Unlock()
 					// Send our reply the next time through the loop
 					nextStandbyMessageDeadline = time.Time{}
 				}
@@ -308,19 +311,20 @@ func (r *LogicalReplicator) StartReplication(slotName string) error {
 				//  the file). A better solution would be to write the LSN directly into the DoltCommit message, and then parsing
 				//  this message back out when we begin replication next.
 
-				// lock for accessing r.lsn
-				r.mu.Lock()
 				if updateNeeded && xld.ServerWALEnd > lsn {
 					lsn = xld.ServerWALEnd
-					err := sendStandbyStatusUpdate(lsn)
+					err := r.writeWALPosition(lsn)
 					if err != nil {
-						r.mu.Unlock()
+						return err
+					}
+					
+					err = sendStandbyStatusUpdate(lsn)
+					if err != nil {
 						return err
 					}
 				} else {
 					log.Printf("No update needed for LSN %s, r.lsn is %s\n", xld.ServerWALEnd.String(), lsn.String())
 				}
-				r.mu.Unlock()
 
 				if primaryConn == nil {
 					// if we've lost the connection, we'll re-establish it on the next pass through the loop
@@ -382,7 +386,7 @@ func (r *LogicalReplicator) replicateQuery(query string) error {
 
 // beginReplication starts a new replication connection to the primary server and returns it along with the current
 // log sequence number (LSN) for continued status updates to the primary.
-func (r *LogicalReplicator) beginReplication(slotName string) (*pgconn.PgConn, error) {
+func (r *LogicalReplicator) beginReplication(slotName string, lsn pglogrepl.LSN) (*pgconn.PgConn, error) {
 	conn, err := pgconn.Connect(context.Background(), r.ReplicationDns())
 	if err != nil {
 		return nil, err
@@ -398,8 +402,8 @@ func (r *LogicalReplicator) beginReplication(slotName string) (*pgconn.PgConn, e
 	}
 
 	// LSN(0) is used to use the last confirmed LSN for this slot
-	log.Printf("Starting logical replication on slot %s", slotName)
-	err = pglogrepl.StartReplication(context.Background(), conn, slotName, pglogrepl.LSN(0), pglogrepl.StartReplicationOptions{PluginArgs: pluginArguments})
+	log.Printf("Starting logical replication on slot %s at WAL location %s", slotName, lsn)
+	err = pglogrepl.StartReplication(context.Background(), conn, slotName, lsn, pglogrepl.StartReplicationOptions{PluginArgs: pluginArguments})
 	if err != nil {
 		return nil, err
 	}
@@ -693,6 +697,28 @@ func (r *LogicalReplicator) processMessage(
 	}
 
 	return false, nil
+}
+
+// readWALPosition reads the recorded WAL position from the WAL position file 
+func (r *LogicalReplicator) readWALPosition() (pglogrepl.LSN, error) {
+	walFileContents, err := os.ReadFile(r.walFilePath)
+	if err != nil {
+		// if the file doesn't exist, consider this a cold start and return 0
+		if os.IsNotExist(err) {
+			return pglogrepl.LSN(0), nil
+		}
+		return 0, err
+	}	
+	
+	return pglogrepl.ParseLSN(string(walFileContents))
+}
+
+// writeWALPosition writes the recorded WAL position to the WAL position file 
+func (r *LogicalReplicator) writeWALPosition(lsn pglogrepl.LSN) error {
+	// We write a single byte past the last LSN we flushed because our next startup will use that as our starting point.
+	// The LSN given to the StartReplication call is inclusive, so we need to exclude the last one we have processed.
+	writeLsn := lsn+1
+	return os.WriteFile(r.walFilePath, []byte(writeLsn.String()), 0644)
 }
 
 // whereClause returns a WHERE clause string with the contents of the builder if it's non-empty, or the empty
