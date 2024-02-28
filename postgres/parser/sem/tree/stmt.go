@@ -533,6 +533,14 @@ func (n *CreateTable) StatementTag() string {
 func (*CreateTable) modifiesSchema() bool { return true }
 
 // StatementType implements the Statement interface.
+func (*CreateTrigger) StatementType() StatementType { return DDL }
+
+// StatementTag implements the Statement interface.
+func (*CreateTrigger) StatementTag() string { return "CREATE TRIGGER" }
+
+func (*CreateTrigger) modifiesSchema() bool { return true }
+
+// StatementType implements the Statement interface.
 func (*CreateType) StatementType() StatementType { return DDL }
 
 // StatementTag implements the Statement interface.
@@ -1185,6 +1193,7 @@ func (n *CreateMaterializedView) String() string         { return AsString(n) }
 func (n *CreateProcedure) String() string                { return AsString(n) }
 func (n *CreateRole) String() string                     { return AsString(n) }
 func (n *CreateTable) String() string                    { return AsString(n) }
+func (n *CreateTrigger) String() string                  { return AsString(n) }
 func (n *CreateType) String() string                     { return AsString(n) }
 func (n *CreateSchema) String() string                   { return AsString(n) }
 func (n *CreateSequence) String() string                 { return AsString(n) }
