@@ -564,14 +564,6 @@ func (node *AlterTableOwner) Format(ctx *FmtCtx) {
 	ctx.FormatNameP(&node.Owner)
 }
 
-type DetachPartition int
-
-const (
-	DetachPartitionNone DetachPartition = iota
-	DetachPartitionConcurrently
-	DetachPartitionFinalize
-)
-
 // AlterTableRenameColumn represents an ALTER TABLE RENAME [COLUMN] command.
 type AlterTableRenameColumn struct {
 	Column  Name
@@ -885,26 +877,23 @@ var _ Statement = &AlterTableSetSchema{}
 
 // AlterTableSetSchema represents an ALTER TABLE SET SCHEMA statement.
 type AlterTableSetSchema struct {
-	Name           *UnresolvedObjectName
-	Schema         string
-	IfExists       bool
-	IsView         bool
+	Name     *UnresolvedObjectName
+	Schema   string
+	IfExists bool
+
 	IsMaterialized bool
 	IsSequence     bool
 }
 
 // Format implements the NodeFormatter interface.
 func (node *AlterTableSetSchema) Format(ctx *FmtCtx) {
-	ctx.WriteString("ALTER")
-	if node.IsView {
-		if node.IsMaterialized {
-			ctx.WriteString(" MATERIALIZED")
-		}
-		ctx.WriteString(" VIEW ")
+	ctx.WriteString("ALTER ")
+	if node.IsMaterialized {
+		ctx.WriteString("MATERIALIZED VIEW")
 	} else if node.IsSequence {
 		ctx.WriteString(" SEQUENCE ")
 	} else {
-		ctx.WriteString(" TABLE ")
+		ctx.WriteString("TABLE")
 	}
 	if node.IfExists {
 		ctx.WriteString("IF EXISTS ")
@@ -916,35 +905,51 @@ func (node *AlterTableSetSchema) Format(ctx *FmtCtx) {
 
 var _ Statement = &AlterTableAllInTablespace{}
 
-// AlterTableAllInTablespace represents an ALTER TABLE ALL IN TABLESPACE ... statement.
+// AlterTableAllInTablespace represents an ALTER { TABLE | MATERIALIZED VIEW } ALL IN TABLESPACE ... statement.
 type AlterTableAllInTablespace struct {
 	Name       Name
 	OwnedBy    []string
-	Tablespace Name
+	Tablespace string
 	NoWait     bool
+
+	IsMaterialized bool
 }
 
 // Format implements the NodeFormatter interface.
 func (node *AlterTableAllInTablespace) Format(ctx *FmtCtx) {
-	ctx.WriteString("ALTER TABLE ALL IN TABLESPACE ")
+	ctx.WriteString("ALTER ")
+	if node.IsMaterialized {
+		ctx.WriteString("MATERIALIZED VIEW")
+	} else {
+		ctx.WriteString("TABLE")
+	}
+	ctx.WriteString(" ALL IN TABLESPACE ")
 	ctx.FormatNode(&node.Name)
 	if node.OwnedBy != nil {
 		ctx.WriteString(" OWNED BY ")
 		ctx.WriteString(strings.Join(node.OwnedBy, ", "))
 	}
 	ctx.WriteString(" SET TABLESPACE ")
-	ctx.FormatNode(&node.Tablespace)
+	ctx.WriteString(node.Tablespace)
 	if node.NoWait {
 		ctx.WriteString(" NOWAIT")
 	}
 }
+
+type DetachPartition int
+
+const (
+	DetachPartitionNone DetachPartition = iota
+	DetachPartitionConcurrently
+	DetachPartitionFinalize
+)
 
 var _ Statement = &AlterTablePartition{}
 
 // AlterTablePartition represents an ALTER TABLE { ATTACH | DETACH } PARTITION ...
 // command.
 type AlterTablePartition struct {
-	Table      *UnresolvedObjectName
+	Name       *UnresolvedObjectName
 	IfExists   bool
 	Partition  Name
 	Spec       PartitionBoundSpec
@@ -958,7 +963,7 @@ func (node *AlterTablePartition) Format(ctx *FmtCtx) {
 	if node.IfExists {
 		ctx.WriteString("IF EXISTS ")
 	}
-	node.Table.Format(ctx)
+	node.Name.Format(ctx)
 	if node.IsDetach {
 		ctx.WriteString(" DETACH PARTITION ")
 		ctx.FormatNode(&node.Partition)

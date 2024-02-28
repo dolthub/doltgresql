@@ -249,6 +249,14 @@ func (*AlterIndexAllInTablespace) StatementTag() string { return "ALTER INDEX AL
 func (*AlterIndexAllInTablespace) hiddenFromShowQueries() {}
 
 // StatementType implements the Statement interface.
+func (*AlterMaterializedView) StatementType() StatementType { return DDL }
+
+// StatementTag implements the Statement interface.
+func (*AlterMaterializedView) StatementTag() string { return "ALTER MATERIALIZED VIEW" }
+
+func (*AlterMaterializedView) hiddenFromShowQueries() {}
+
+// StatementType implements the Statement interface.
 func (*AlterProcedure) StatementType() StatementType { return DDL }
 
 // StatementTag returns a short string identifying the type of statement.
@@ -303,6 +311,14 @@ func (*AlterType) StatementType() StatementType { return DDL }
 func (*AlterType) StatementTag() string { return "ALTER TYPE" }
 
 func (*AlterType) hiddenFromShowQueries() {}
+
+// StatementType implements the Statement interface.
+func (*AlterView) StatementType() StatementType { return DDL }
+
+// StatementTag implements the Statement interface.
+func (*AlterView) StatementTag() string { return "ALTER VIEW" }
+
+func (*AlterView) hiddenFromShowQueries() {}
 
 // StatementType implements the Statement interface.
 func (*AlterSequence) StatementType() StatementType { return DDL }
@@ -478,6 +494,12 @@ func (*CreateIndex) StatementType() StatementType { return DDL }
 
 // StatementTag returns a short string identifying the type of statement.
 func (*CreateIndex) StatementTag() string { return "CREATE INDEX" }
+
+// StatementType implements the Statement interface.
+func (*CreateMaterializedView) StatementType() StatementType { return DDL }
+
+// StatementTag returns a short string identifying the type of statement.
+func (*CreateMaterializedView) StatementTag() string { return "CREATE MATERIALIZED VIEW" }
 
 // StatementType implements the Statement interface.
 func (*CreateProcedure) StatementType() StatementType { return DDL }
@@ -743,8 +765,8 @@ func (*RenameTable) StatementType() StatementType { return DDL }
 
 // StatementTag returns a short string identifying the type of statement.
 func (n *RenameTable) StatementTag() string {
-	if n.IsView {
-		return "RENAME VIEW"
+	if n.IsMaterialized {
+		return "RENAME MATERIALIZED VIEW"
 	} else if n.IsSequence {
 		return "RENAME SEQUENCE"
 	}
@@ -1126,6 +1148,7 @@ func (n *AlterDefaultPrivileges) String() string         { return AsString(n) }
 func (n *AlterFunction) String() string                  { return AsString(n) }
 func (n *AlterIndex) String() string                     { return AsString(n) }
 func (n *AlterIndexAllInTablespace) String() string      { return AsString(n) }
+func (n *AlterMaterializedView) String() string          { return AsString(n) }
 func (n *AlterProcedure) String() string                 { return AsString(n) }
 func (n *AlterSchema) String() string                    { return AsString(n) }
 func (n *AlterTable) String() string                     { return AsString(n) }
@@ -1133,6 +1156,7 @@ func (n *AlterTableAllInTablespace) String() string      { return AsString(n) }
 func (n *AlterTableSetSchema) String() string            { return AsString(n) }
 func (n *AlterTablePartition) String() string            { return AsString(n) }
 func (n *AlterType) String() string                      { return AsString(n) }
+func (n *AlterView) String() string                      { return AsString(n) }
 func (n *AlterRole) String() string                      { return AsString(n) }
 func (n *AlterSequence) String() string                  { return AsString(n) }
 func (n *Analyze) String() string                        { return AsString(n) }
@@ -1157,6 +1181,7 @@ func (n *CreateDatabase) String() string                 { return AsString(n) }
 func (n *CreateExtension) String() string                { return AsString(n) }
 func (n *CreateFunction) String() string                 { return AsString(n) }
 func (n *CreateIndex) String() string                    { return AsString(n) }
+func (n *CreateMaterializedView) String() string         { return AsString(n) }
 func (n *CreateProcedure) String() string                { return AsString(n) }
 func (n *CreateRole) String() string                     { return AsString(n) }
 func (n *CreateTable) String() string                    { return AsString(n) }

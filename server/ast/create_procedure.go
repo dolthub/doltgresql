@@ -1,4 +1,4 @@
-// Copyright 2023 Dolthub, Inc.
+// Copyright 2024 Dolthub, Inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -22,29 +22,11 @@ import (
 	"github.com/dolthub/doltgresql/postgres/parser/sem/tree"
 )
 
-// nodeRenameTable handles *tree.RenameTable nodes.
-func nodeRenameTable(node *tree.RenameTable) (*vitess.DDL, error) {
-	if node == nil {
-		return nil, nil
-	}
-	if node.IsSequence {
-		return nil, fmt.Errorf("RENAME SEQUENCE is not yet supported")
-	}
-	if node.IsMaterialized {
-		return nil, fmt.Errorf("RENAME MATERIALIZED VIEW is not yet supported")
-	}
-	fromName, err := nodeUnresolvedObjectName(node.Name)
+// nodeCreateProcedure handles *tree.CreateProcedure nodes.
+func nodeCreateProcedure(node *tree.CreateProcedure) (vitess.Statement, error) {
+	err := verifyRedundantRoutineOption(node.Options)
 	if err != nil {
 		return nil, err
 	}
-	toName, err := nodeUnresolvedObjectName(node.NewName)
-	if err != nil {
-		return nil, err
-	}
-	return &vitess.DDL{
-		Action:     vitess.RenameStr,
-		FromTables: vitess.TableNames{fromName},
-		ToTables:   vitess.TableNames{toName},
-		IfExists:   node.IfExists,
-	}, nil
+	return nil, fmt.Errorf("CREATE PROCEDURE statement is not yet supported")
 }

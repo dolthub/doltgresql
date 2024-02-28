@@ -28,8 +28,12 @@ func Convert(postgresStmt parser.Statement) (vitess.Statement, error) {
 	switch stmt := postgresStmt.AST.(type) {
 	case *tree.AlterDatabase:
 		return nodeAlterDatabase(stmt)
+	case *tree.AlterFunction:
+		return nodeAlterFunction(stmt)
 	case *tree.AlterIndex:
 		return nodeAlterIndex(stmt)
+	case *tree.AlterProcedure:
+		return nodeAlterProcedure(stmt)
 	case *tree.AlterRole:
 		return nodeAlterRole(stmt)
 	case *tree.AlterSchema:
@@ -82,6 +86,8 @@ func Convert(postgresStmt parser.Statement) (vitess.Statement, error) {
 		return nodeCreateFunction(stmt)
 	case *tree.CreateIndex:
 		return nodeCreateIndex(stmt)
+	case *tree.CreateProcedure:
+		return nodeCreateProcedure(stmt)
 	case *tree.CreateRole:
 		return nodeCreateRole(stmt)
 	case *tree.CreateSchema:

@@ -97,10 +97,10 @@ func (node RoutineArgs) Format(ctx *FmtCtx) {
 	}
 }
 
-type functionOption int8
+type FunctionOption int8
 
 const (
-	OptionLanguage functionOption = 1 + iota
+	OptionLanguage FunctionOption = 1 + iota
 	OptionTransform
 	OptionWindow
 	OptionVolatility
@@ -119,7 +119,7 @@ const (
 )
 
 type RoutineOption struct {
-	OptionType functionOption
+	OptionType FunctionOption
 	// these members cannot be defined more than once
 	Language       string
 	TransformTypes []ResolvableTypeReference
