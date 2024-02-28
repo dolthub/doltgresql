@@ -1,4 +1,4 @@
-// Copyright 2023 Dolthub, Inc.
+// Copyright 2024 Dolthub, Inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -12,15 +12,17 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-package output
+package ast
 
-import "testing"
+import (
+	"fmt"
 
-func TestAlterTrigger(t *testing.T) {
-	tests := []QueryParses{
-		Parses("ALTER TRIGGER name ON table_name RENAME TO new_name"),
-		Parses("ALTER TRIGGER name ON table_name DEPENDS ON EXTENSION extension_name"),
-		Parses("ALTER TRIGGER name ON table_name NO DEPENDS ON EXTENSION extension_name"),
-	}
-	RunTests(t, tests)
+	vitess "github.com/dolthub/vitess/go/vt/sqlparser"
+
+	"github.com/dolthub/doltgresql/postgres/parser/sem/tree"
+)
+
+// nodeCreateTrigger handles *tree.CreateFunction nodes.
+func nodeCreateTrigger(node *tree.CreateTrigger) (vitess.Statement, error) {
+	return nil, fmt.Errorf("CREATE TRIGGER statement is not yet supported")
 }

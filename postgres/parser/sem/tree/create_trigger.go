@@ -14,22 +14,6 @@
 
 package tree
 
-//CREATE [ OR REPLACE ] [ CONSTRAINT ] TRIGGER name { BEFORE | AFTER | INSTEAD OF } { event [ OR ... ] }
-//    ON table_name
-//    [ FROM referenced_table_name ]
-//    [ NOT DEFERRABLE | [ DEFERRABLE ] [ INITIALLY IMMEDIATE | INITIALLY DEFERRED ] ]
-//    [ REFERENCING { { OLD | NEW } TABLE [ AS ] transition_relation_name } [ ... ] ]
-//    [ FOR [ EACH ] { ROW | STATEMENT } ]
-//    [ WHEN ( condition ) ]
-//    EXECUTE { FUNCTION | PROCEDURE } function_name ( arguments )
-//
-//where event can be one of:
-//
-//    INSERT
-//    UPDATE [ OF column_name [, ... ] ]
-//    DELETE
-//    TRUNCATE
-
 var _ Statement = &CreateTrigger{}
 
 // CreateTrigger represents a CREATE TRIGGER statement.
@@ -50,8 +34,56 @@ type CreateTrigger struct {
 }
 
 func (node *CreateTrigger) Format(ctx *FmtCtx) {
-	//TODO implement me
-	panic("implement me")
+	ctx.WriteString("CREATE ")
+	if node.Replace {
+		ctx.WriteString("OR REPLACE ")
+	}
+	if node.Constraint {
+		ctx.WriteString("CONSTRAINT ")
+	}
+	ctx.WriteString("TRIGGER ")
+	ctx.FormatNode(&node.Name)
+	switch node.Time {
+	case TriggerTimeBefore:
+		ctx.WriteString(" BEFORE ")
+	case TriggerTimeAfter:
+		ctx.WriteString(" AFTER ")
+	case TriggerTimeInsteadOf:
+		ctx.WriteString(" INSTEAD OF ")
+	}
+	ctx.FormatNode(node.Events)
+	ctx.WriteString(" ON ")
+	ctx.FormatNode(&node.OnTable)
+	if node.RefTable != "" {
+		ctx.WriteString(" FROM ")
+		ctx.FormatNode(&node.RefTable)
+	}
+	switch node.Deferrable {
+	case TriggerDeferrable:
+		ctx.WriteString(" DEFERRABLE ")
+	case TriggerNotDeferrable:
+		ctx.WriteString(" NOT DEFERRABLE ")
+	case TriggerInitiallyDeferred:
+		ctx.WriteString(" INITIALLY DEFERRED ")
+	}
+	if node.Relations != nil {
+		ctx.FormatNode(node.Relations)
+		ctx.WriteByte(' ')
+	}
+	if node.ForEachRow || node.Constraint {
+		ctx.WriteString(" FOR EACH ROW ")
+	} else {
+		ctx.WriteString(" FOR EACH STATEMENT ")
+	}
+	if node.When != nil {
+		ctx.FormatNode(node.When)
+		ctx.WriteByte(' ')
+	}
+	ctx.WriteString("EXECUTE ")
+	ctx.FormatNode(node.FuncName)
+	ctx.WriteString(" ( ")
+	ctx.FormatNode(&node.Args)
+	ctx.WriteString(" )")
 }
 
 type TriggerTime int

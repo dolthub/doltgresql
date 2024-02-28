@@ -778,6 +778,7 @@ func (u *sqlSymUnion) triggerTime() tree.TriggerTime {
 %type <tree.Statement> alter_stmt
 %type <tree.Statement> alter_ddl_stmt
 %type <tree.Statement> alter_table_stmt
+%type <tree.Statement> alter_trigger_stmt
 %type <tree.Statement> alter_index_stmt
 %type <tree.Statement> alter_materialized_view_stmt
 %type <tree.Statement> alter_function_stmt
@@ -880,6 +881,7 @@ func (u *sqlSymUnion) triggerTime() tree.TriggerTime {
 %type <tree.Statement> drop_role_stmt
 %type <tree.Statement> drop_schema_stmt
 %type <tree.Statement> drop_table_stmt
+%type <tree.Statement> drop_trigger_stmt
 %type <tree.Statement> drop_type_stmt
 %type <tree.Statement> drop_view_stmt
 %type <tree.Statement> drop_sequence_stmt
@@ -1406,6 +1408,7 @@ alter_ddl_stmt:
 | alter_default_privileges_stmt // EXTEND WITH HELP: ALTER DEFAULT PRIVILEGES
 | alter_schema_stmt             // EXTEND WITH HELP: ALTER SCHEMA
 | alter_type_stmt               // EXTEND WITH HELP: ALTER TYPE
+| alter_trigger_stmt            // EXTEND WITH HELP: ALTER TRIGGER
 
 // %Help: ALTER TABLE - change the definition of a table
 // %Category: DDL
@@ -2473,6 +2476,16 @@ owner_to:
   OWNER TO role_spec
   {
     $$ = $3
+  }
+
+alter_trigger_stmt:
+  ALTER TRIGGER trigger_name ON table_name RENAME TO trigger_name
+  {
+    $$.val = &tree.AlterTrigger{Name: tree.Name($3), OnTable: $5.unresolvedObjectName().ToTableName(), NewName: tree.Name($8)}
+  }
+| ALTER TRIGGER trigger_name ON table_name opt_no DEPENDS ON EXTENSION name
+  {
+    $$.val = &tree.AlterTrigger{Name: tree.Name($3), OnTable: $5.unresolvedObjectName().ToTableName(), No: $6.bool(), Extension: $10}
   }
 
 alter_aggregate_stmt:
@@ -4106,6 +4119,7 @@ drop_ddl_stmt:
   drop_database_stmt // EXTEND WITH HELP: DROP DATABASE
 | drop_index_stmt    // EXTEND WITH HELP: DROP INDEX
 | drop_table_stmt    // EXTEND WITH HELP: DROP TABLE
+| drop_trigger_stmt  // EXTEND WITH HELP: DROP TRIGGER
 | drop_view_stmt     // EXTEND WITH HELP: DROP VIEW
 | drop_sequence_stmt // EXTEND WITH HELP: DROP SEQUENCE
 | drop_schema_stmt   // EXTEND WITH HELP: DROP SCHEMA
@@ -4173,6 +4187,16 @@ drop_table_stmt:
     $$.val = &tree.DropTable{Names: $5.tableNames(), IfExists: true, DropBehavior: $6.dropBehavior()}
   }
 | DROP TABLE error // SHOW HELP: DROP TABLE
+
+drop_trigger_stmt:
+  DROP TRIGGER trigger_name ON table_name opt_drop_behavior
+  {
+    $$.val = &tree.DropTrigger{Name: tree.Name($3), OnTable: $5.unresolvedObjectName().ToTableName(), DropBehavior: $6.dropBehavior()}
+  }
+| DROP TRIGGER IF EXISTS trigger_name ON table_name opt_drop_behavior
+  {
+    $$.val = &tree.DropTrigger{Name: tree.Name($5), OnTable: $7.unresolvedObjectName().ToTableName(), DropBehavior: $8.dropBehavior()}
+  }
 
 // %Help: DROP INDEX - remove an index
 // %Category: DDL
