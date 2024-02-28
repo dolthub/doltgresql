@@ -37,6 +37,8 @@ import (
 	"github.com/dolthub/doltgresql/postgres/parser/lex"
 )
 
+var _ Statement = &CreateDatabase{}
+
 // CreateDatabase represents a CREATE DATABASE statement.
 type CreateDatabase struct {
 	IfNotExists      bool

@@ -33,38 +33,30 @@
 
 package tree
 
+var _ Statement = &CreateView{}
+
 // CreateView represents a CREATE VIEW statement.
 type CreateView struct {
-	Name         TableName
-	ColumnNames  NameList
-	AsSource     *Select
-	IfNotExists  bool
-	Persistence  Persistence
-	Replace      bool
-	Materialized bool
+	Name        TableName
+	Persistence Persistence
+	Replace     bool
+	IsRecursive bool
+	ColumnNames NameList
+	Options     ViewOptions
+	AsSource    *Select
+	CheckOption ViewCheckOption
 }
 
 // Format implements the NodeFormatter interface.
 func (node *CreateView) Format(ctx *FmtCtx) {
 	ctx.WriteString("CREATE ")
-
 	if node.Replace {
 		ctx.WriteString("OR REPLACE ")
 	}
-
 	if node.Persistence == PersistenceTemporary {
 		ctx.WriteString("TEMPORARY ")
 	}
-
-	if node.Materialized {
-		ctx.WriteString("MATERIALIZED ")
-	}
-
 	ctx.WriteString("VIEW ")
-
-	if node.IfNotExists {
-		ctx.WriteString("IF NOT EXISTS ")
-	}
 	ctx.FormatNode(&node.Name)
 
 	if len(node.ColumnNames) > 0 {
@@ -78,40 +70,32 @@ func (node *CreateView) Format(ctx *FmtCtx) {
 	ctx.FormatNode(node.AsSource)
 }
 
-// RefreshMaterializedView represents a REFRESH MATERIALIZED VIEW statement.
-type RefreshMaterializedView struct {
-	Name              *UnresolvedObjectName
-	Concurrently      bool
-	RefreshDataOption RefreshDataOption
-}
-
-// RefreshDataOption corresponds to arguments for the REFRESH MATERIALIZED VIEW
-// statement.
-type RefreshDataOption int
+type ViewCheckOption int
 
 const (
-	// RefreshDataDefault refers to no option provided to the REFRESH MATERIALIZED
-	// VIEW statement.
-	RefreshDataDefault RefreshDataOption = iota
-	// RefreshDataWithData refers to the WITH DATA option provided to the REFRESH
-	// MATERIALIZED VIEW statement.
-	RefreshDataWithData
-	// RefreshDataClear refers to the WITH NO DATA option provided to the REFRESH
-	// MATERIALIZED VIEW statement.
-	RefreshDataClear
+	ViewCheckOptionUnspecified ViewCheckOption = iota
+	ViewCheckOptionCascaded
+	ViewCheckOptionLocal
 )
 
-// Format implements the NodeFormatter interface.
-func (node *RefreshMaterializedView) Format(ctx *FmtCtx) {
-	ctx.WriteString("REFRESH MATERIALIZED VIEW ")
-	if node.Concurrently {
-		ctx.WriteString("CONCURRENTLY ")
+type ViewOptions []ViewOption
+
+type ViewOption struct {
+	Name string
+	Val  Expr
+}
+
+func (node ViewOptions) Format(ctx *FmtCtx) {
+	ctx.WriteString("( ")
+	for i, opt := range node {
+		if i != 0 {
+			ctx.WriteString(", ")
+		}
+		ctx.WriteString(opt.Name)
+		if opt.Val != nil {
+			ctx.WriteString(" = ")
+			ctx.FormatNode(opt.Val)
+		}
 	}
-	ctx.FormatNode(node.Name)
-	switch node.RefreshDataOption {
-	case RefreshDataWithData:
-		ctx.WriteString(" WITH DATA")
-	case RefreshDataClear:
-		ctx.WriteString(" WITH NO DATA")
-	}
+	ctx.WriteString(" )")
 }

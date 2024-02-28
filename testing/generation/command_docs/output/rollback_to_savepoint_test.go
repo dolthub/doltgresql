@@ -19,10 +19,10 @@ import "testing"
 func TestRollbackToSavepoint(t *testing.T) {
 	tests := []QueryParses{
 		Converts("ROLLBACK TO savepoint_name"),
-		Unimplemented("ROLLBACK WORK TO savepoint_name"),
+		Converts("ROLLBACK WORK TO savepoint_name"),
 		Converts("ROLLBACK TRANSACTION TO savepoint_name"),
 		Converts("ROLLBACK TO SAVEPOINT savepoint_name"),
-		Unimplemented("ROLLBACK WORK TO SAVEPOINT savepoint_name"),
+		Converts("ROLLBACK WORK TO SAVEPOINT savepoint_name"),
 		Converts("ROLLBACK TRANSACTION TO SAVEPOINT savepoint_name"),
 	}
 	RunTests(t, tests)

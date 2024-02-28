@@ -29,26 +29,14 @@ func nodeIndexTableDef(node *tree.IndexTableDef) (*vitess.IndexDefinition, error
 	if node == nil {
 		return nil, nil
 	}
-	if node.Sharded != nil {
-		return nil, fmt.Errorf("sharding is not yet supported")
+	if node.IndexParams.IncludeColumns != nil {
+		return nil, fmt.Errorf("include columns is not yet supported")
 	}
-	if len(node.Storing) > 0 {
-		return nil, fmt.Errorf("INCLUDE is not yet supported")
+	if len(node.IndexParams.StorageParams) > 0 {
+		return nil, fmt.Errorf("storage parameters is not yet supported")
 	}
-	if node.Interleave != nil {
-		return nil, fmt.Errorf("INTERLEAVE is not yet supported")
-	}
-	if node.Inverted {
-		return nil, fmt.Errorf("inverted indexes are not yet supported")
-	}
-	if node.PartitionBy != nil {
-		return nil, fmt.Errorf("PARTITION BY is not yet supported")
-	}
-	if len(node.StorageParams) > 0 {
-		return nil, fmt.Errorf("storage parameters are not yet supported")
-	}
-	if node.Predicate != nil {
-		return nil, fmt.Errorf("WHERE is not yet supported")
+	if node.IndexParams.Tablespace != "" {
+		return nil, fmt.Errorf("tablespace is not yet supported")
 	}
 	columns := make([]*vitess.IndexColumn, len(node.Columns))
 	for i, indexElem := range node.Columns {
@@ -59,7 +47,7 @@ func nodeIndexTableDef(node *tree.IndexTableDef) (*vitess.IndexDefinition, error
 			return nil, fmt.Errorf("index attribute collation is not yet supported")
 		}
 		if indexElem.OpClass != nil {
-			return nil, fmt.Errorf("index attribute collation is not yet supported")
+			return nil, fmt.Errorf("index attribute operator class is not yet supported")
 		}
 		switch indexElem.Direction {
 		case tree.DefaultDirection:
@@ -84,6 +72,9 @@ func nodeIndexTableDef(node *tree.IndexTableDef) (*vitess.IndexDefinition, error
 			return nil, fmt.Errorf("NULLS LAST for indexes is not yet supported")
 		default:
 			return nil, fmt.Errorf("unknown NULL ordering for index")
+		}
+		if indexElem.ExcludeOp != nil {
+			return nil, fmt.Errorf("index attribute exclude operator is not yet supported")
 		}
 		columns[i] = &vitess.IndexColumn{
 			Column: vitess.NewColIdent(string(indexElem.Column)),

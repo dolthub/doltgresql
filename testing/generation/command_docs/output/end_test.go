@@ -19,14 +19,14 @@ import "testing"
 func TestEnd(t *testing.T) {
 	tests := []QueryParses{
 		Converts("END"),
-		Unimplemented("END WORK"),
+		Converts("END WORK"),
 		Converts("END TRANSACTION"),
-		Unimplemented("END AND CHAIN"),
-		Unimplemented("END WORK AND CHAIN"),
-		Unimplemented("END TRANSACTION AND CHAIN"),
-		Unimplemented("END AND NO CHAIN"),
-		Unimplemented("END WORK AND NO CHAIN"),
-		Unimplemented("END TRANSACTION AND NO CHAIN"),
+		Converts("END AND CHAIN"),
+		Converts("END WORK AND CHAIN"),
+		Converts("END TRANSACTION AND CHAIN"),
+		Converts("END AND NO CHAIN"),
+		Converts("END WORK AND NO CHAIN"),
+		Converts("END TRANSACTION AND NO CHAIN"),
 	}
 	RunTests(t, tests)
 }

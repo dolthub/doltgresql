@@ -24,6 +24,8 @@
 
 package tree
 
+var _ Statement = &Analyze{}
+
 // Analyze represents an ANALYZE statement.
 type Analyze struct {
 	Table TableExpr

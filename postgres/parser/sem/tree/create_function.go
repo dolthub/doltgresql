@@ -12,16 +12,6 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-// Copyright 2020 The Cockroach Authors.
-//
-// Use of this software is governed by the Business Source License
-// included in the file licenses/BSL.txt.
-//
-// As of the Change Date specified in that file, in accordance with
-// the Business Source License, use of this software will be governed
-// by the Apache License, Version 2.0, included in the file
-// licenses/APL.txt.
-
 package tree
 
 import "strings"
@@ -46,8 +36,9 @@ func (node *CreateFunction) Format(ctx *FmtCtx) {
 	ctx.WriteString("FUNCTION ")
 	ctx.FormatNode(node.Name)
 	if len(node.Args) != 0 {
-		ctx.WriteByte(' ')
+		ctx.WriteString(" (")
 		ctx.FormatNode(node.Args)
+		ctx.WriteString(" )")
 	}
 	if node.RetType != nil {
 		if len(node.RetType) == 1 && node.RetType[0].Name == "" {
@@ -106,10 +97,10 @@ func (node RoutineArgs) Format(ctx *FmtCtx) {
 	}
 }
 
-type functionOption int8
+type FunctionOption int8
 
 const (
-	OptionLanguage functionOption = 1 + iota
+	OptionLanguage FunctionOption = 1 + iota
 	OptionTransform
 	OptionWindow
 	OptionVolatility
@@ -124,10 +115,11 @@ const (
 	OptionAs1
 	OptionAs2
 	OptionSqlBody
+	OptionReset // For ALTER { FUNCTION | PROCEDURE } use only
 )
 
 type RoutineOption struct {
-	OptionType functionOption
+	OptionType FunctionOption
 	// these members cannot be defined more than once
 	Language       string
 	TransformTypes []ResolvableTypeReference
@@ -145,6 +137,10 @@ type RoutineOption struct {
 	ObjFile        string
 	LinkSymbol     string
 	SqlBody        Statement
+
+	// For ALTER { FUNCTION | PROCEDURE } use only
+	ResetParam string
+	ResetAll   bool
 }
 
 // Format implements the NodeFormatter interface.
@@ -216,6 +212,13 @@ func (node RoutineOption) Format(ctx *FmtCtx) {
 		ctx.WriteString(node.LinkSymbol)
 	case OptionSqlBody:
 		ctx.FormatNode(node.SqlBody)
+	case OptionReset:
+		ctx.WriteString("RESET ")
+		if node.ResetAll {
+			ctx.WriteString("ALL")
+		} else {
+			ctx.WriteString(node.ResetParam)
+		}
 	}
 }
 

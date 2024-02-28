@@ -61,6 +61,7 @@ func init() {
 	}
 	for _, s := range []string{
 		"between",
+		"deferrable",
 		"ilike",
 		"in",
 		"like",

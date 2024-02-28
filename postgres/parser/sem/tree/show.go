@@ -497,47 +497,6 @@ func (node *ShowRoles) Format(ctx *FmtCtx) {
 	ctx.WriteString("SHOW ROLES")
 }
 
-// ShowRanges represents a SHOW RANGES statement.
-type ShowRanges struct {
-	TableOrIndex TableIndexName
-	DatabaseName Name
-}
-
-// Format implements the NodeFormatter interface.
-func (node *ShowRanges) Format(ctx *FmtCtx) {
-	ctx.WriteString("SHOW RANGES FROM ")
-	if node.DatabaseName != "" {
-		ctx.WriteString("DATABASE ")
-		ctx.FormatNode(&node.DatabaseName)
-	} else if node.TableOrIndex.Index != "" {
-		ctx.WriteString("INDEX ")
-		ctx.FormatNode(&node.TableOrIndex)
-	} else {
-		ctx.WriteString("TABLE ")
-		ctx.FormatNode(&node.TableOrIndex)
-	}
-}
-
-// ShowRangeForRow represents a SHOW RANGE FOR ROW statement.
-type ShowRangeForRow struct {
-	TableOrIndex TableIndexName
-	Row          Exprs
-}
-
-// Format implements the NodeFormatter interface.
-func (node *ShowRangeForRow) Format(ctx *FmtCtx) {
-	ctx.WriteString("SHOW RANGE FROM ")
-	if node.TableOrIndex.Index != "" {
-		ctx.WriteString("INDEX ")
-	} else {
-		ctx.WriteString("TABLE ")
-	}
-	ctx.FormatNode(&node.TableOrIndex)
-	ctx.WriteString(" FOR ROW (")
-	ctx.FormatNode(&node.Row)
-	ctx.WriteString(")")
-}
-
 // ShowFingerprints represents a SHOW EXPERIMENTAL_FINGERPRINTS statement.
 type ShowFingerprints struct {
 	Table *UnresolvedObjectName

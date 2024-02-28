@@ -58,6 +58,8 @@ type IndexElem struct {
 	OpClass    *IndexElemOpClass
 	Direction  Direction
 	NullsOrder NullsOrder
+	// only used for EXCLUDE clause
+	ExcludeOp Operator
 }
 
 // Format implements the NodeFormatter interface.
@@ -92,6 +94,17 @@ func (node *IndexElem) Format(ctx *FmtCtx) {
 		ctx.WriteByte(' ')
 		ctx.WriteString(node.NullsOrder.String())
 	}
+	if node.ExcludeOp != nil {
+		ctx.WriteString(" WITH ")
+		switch op := node.ExcludeOp.(type) {
+		case UnaryOperator:
+			ctx.WriteString(op.String())
+		case BinaryOperator:
+			ctx.WriteString(op.String())
+		case ComparisonOperator:
+			ctx.WriteString(op.String())
+		}
+	}
 }
 
 // IndexElemList is list of IndexElem.
@@ -108,6 +121,8 @@ func (l *IndexElemList) Format(ctx *FmtCtx) {
 	}
 }
 
+var _ Statement = &CreateIndex{}
+
 // CreateIndex represents a CREATE INDEX statement.
 type CreateIndex struct {
 	Name          Name
@@ -118,10 +133,8 @@ type CreateIndex struct {
 	Only          bool
 	Using         string
 	Columns       IndexElemList
-	Include       NameList
 	NullsDistinct bool
-	StorageParams StorageParams
-	Tablespace    Name
+	IndexParams   IndexParams
 	Predicate     Expr
 }
 
@@ -154,9 +167,9 @@ func (node *CreateIndex) Format(ctx *FmtCtx) {
 	ctx.WriteString(" ( ")
 	ctx.FormatNode(&node.Columns)
 	ctx.WriteString(" )")
-	if node.Include != nil {
+	if node.IndexParams.IncludeColumns != nil {
 		ctx.WriteString(" INCLUDE ( ")
-		ctx.FormatNode(&node.Include)
+		ctx.FormatNode(&node.IndexParams.IncludeColumns)
 		ctx.WriteString(" )")
 	}
 	if node.NullsDistinct {
@@ -164,14 +177,14 @@ func (node *CreateIndex) Format(ctx *FmtCtx) {
 	} else {
 		ctx.WriteString(" NULLS NOT DISTINCT ")
 	}
-	if node.StorageParams != nil {
+	if node.IndexParams.StorageParams != nil {
 		ctx.WriteString(" WITH (")
-		ctx.FormatNode(&node.StorageParams)
+		ctx.FormatNode(&node.IndexParams.StorageParams)
 		ctx.WriteString(")")
 	}
-	if node.Tablespace != "" {
+	if node.IndexParams.Tablespace != "" {
 		ctx.WriteString(" TABLESPACE ")
-		ctx.FormatNode(&node.Tablespace)
+		ctx.FormatNode(&node.IndexParams.Tablespace)
 	}
 	if node.Predicate != nil {
 		ctx.WriteString(" WHERE ")

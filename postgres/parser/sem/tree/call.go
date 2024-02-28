@@ -14,12 +14,12 @@
 
 package tree
 
+var _ Statement = &Call{}
+
 // Call represents a CALL statement.
 type Call struct {
 	Procedure *FuncExpr
 }
-
-var _ Statement = (*Call)(nil)
 
 // StatementType implements the interface Statement.
 func (c *Call) StatementType() StatementType {

@@ -17,14 +17,14 @@ ACCESS METHOD $object_name$ |
     EVENT TRIGGER $object_name$ |
     FOREIGN DATA WRAPPER $object_name$ |
     FOREIGN TABLE $object_name$ |
-    FUNCTION $function_name$ [ ( [ [ $argmode$ ] [ $argname$ ] $argtype$ [ , ... ] ] ) ] |
+    FUNCTION $function_name$ [ ( [ { [ $argmode$ ] [ $argname$ ] $argtype$ } [ , ... ] ] ) ] |
     MATERIALIZED VIEW $object_name$ |
     OPERATOR $operator_name$ ($left_type$, $right_type$) |
     OPERATOR CLASS $object_name$ USING $index_method$ |
     OPERATOR FAMILY $object_name$ USING $index_method$ |
     [ PROCEDURAL ] LANGUAGE $object_name$ |
-    PROCEDURE $procedure_name$ [ ( [ [ $argmode$ ] [ $argname$ ] $argtype$ [ , ... ] ] ) ] |
-    ROUTINE $routine_name$ [ ( [ [ $argmode$ ] [ $argname$ ] $argtype$ [ , ... ] ] ) ] |
+    PROCEDURE $procedure_name$ [ ( [ { [ $argmode$ ] [ $argname$ ] $argtype$ } [ , ... ] ] ) ] |
+    ROUTINE $routine_name$ [ ( [ { [ $argmode$ ] [ $argname$ ] $argtype$ } [ , ... ] ] ) ] |
     SCHEMA $object_name$ |
     SEQUENCE $object_name$ |
     SERVER $object_name$ |
@@ -40,5 +40,5 @@ ACCESS METHOD $object_name$ |
 where $aggregate_signature$ is:
 
 * |
-    [ $argmode$ ] [ $argname$ ] $argtype$ [ , ... ] |
-    [ [ $argmode$ ] [ $argname$ ] $argtype$ [ , ... ] ] ORDER BY [ $argmode$ ] [ $argname$ ] $argtype$ [ , ... ]
+    { [ $argmode$ ] [ $argname$ ] $argtype$ } [ , ... ] |
+    [ { [ $argmode$ ] [ $argname$ ] $argtype$ } [ , ... ] ] ORDER BY { [ $argmode$ ] [ $argname$ ] $argtype$ } [ , ... ]

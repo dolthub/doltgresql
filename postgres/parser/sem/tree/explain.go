@@ -34,6 +34,8 @@ import (
 	"github.com/dolthub/doltgresql/postgres/parser/pgerror"
 )
 
+var _ Statement = &Explain{}
+
 // Explain represents an EXPLAIN statement.
 type Explain struct {
 	ExplainOptions

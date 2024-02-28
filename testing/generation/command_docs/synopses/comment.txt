@@ -13,7 +13,7 @@ COMMENT ON {
     EVENT TRIGGER $object_name$ |
     FOREIGN DATA WRAPPER $object_name$ |
     FOREIGN TABLE $object_name$ |
-    FUNCTION $function_name$ [ ( [ [ $argmode$ ] [ $argname$ ] $argtype$ [ , ... ] ] ) ] |
+    FUNCTION $function_name$ [ ( [ { [ $argmode$ ] [ $argname$ ] $argtype$ } [ , ... ] ] ) ] |
     INDEX $object_name$ |
     LARGE OBJECT $large_object_oid$ |
     MATERIALIZED VIEW $object_name$ |
@@ -22,10 +22,10 @@ COMMENT ON {
     OPERATOR FAMILY $object_name$ USING $index_method$ |
     POLICY $policy_name$ ON $table_name$ |
     [ PROCEDURAL ] LANGUAGE $object_name$ |
-    PROCEDURE $procedure_name$ [ ( [ [ $argmode$ ] [ $argname$ ] $argtype$ [ , ... ] ] ) ] |
+    PROCEDURE $procedure_name$ [ ( [ { [ $argmode$ ] [ $argname$ ] $argtype$ } [ , ... ] ] ) ] |
     PUBLICATION $object_name$ |
     ROLE $object_name$ |
-    ROUTINE $routine_name$ [ ( [ [ $argmode$ ] [ $argname$ ] $argtype$ [ , ... ] ] ) ] |
+    ROUTINE $routine_name$ [ ( [ { [ $argmode$ ] [ $argname$ ] $argtype$ } [ , ... ] ] ) ] |
     RULE $rule_name$ ON $table_name$ |
     SCHEMA $object_name$ |
     SEQUENCE $object_name$ |
@@ -46,5 +46,5 @@ COMMENT ON {
 where $aggregate_signature$ is:
 
 * |
-    [ $argmode$ ] [ $argname$ ] $argtype$ [ , ... ] |
-    [ [ $argmode$ ] [ $argname$ ] $argtype$ [ , ... ] ] ORDER BY [ $argmode$ ] [ $argname$ ] $argtype$ [ , ... ]
+    { [ $argmode$ ] [ $argname$ ] $argtype$ } [ , ... ] |
+    [ { [ $argmode$ ] [ $argname$ ] $argtype$ } [ , ... ] ] ORDER BY { [ $argmode$ ] [ $argname$ ] $argtype$ } [ , ... ]

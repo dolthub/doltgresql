@@ -1,2 +1,2 @@
-DROP FUNCTION [ IF EXISTS ] { $name$ [ ( [ [ $argmode$ ] [ $argname$ ] $argtype$ [ , ... ] ] ) ] } [ , ... ]
+DROP FUNCTION [ IF EXISTS ] { $name$ [ ( [ { [ $argmode$ ] [ $argname$ ] $argtype$ } [ , ... ] ] ) ] } [ , ... ]
     [ CASCADE | RESTRICT ]

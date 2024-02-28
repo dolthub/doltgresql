@@ -24,13 +24,13 @@
 
 package tree
 
+var _ Statement = &AlterSchema{}
+
 // AlterSchema represents an ALTER SCHEMA statement.
 type AlterSchema struct {
 	Schema string
 	Cmd    AlterSchemaCmd
 }
-
-var _ Statement = &AlterSchema{}
 
 // Format implements the NodeFormatter interface.
 func (node *AlterSchema) Format(ctx *FmtCtx) {

@@ -19,66 +19,47 @@ start_template='<!-- START_%s_RESULTS_TABLE -->'
 end_template='<!-- END_%s_RESULTS_TABLE -->'
 
 if [ "$#" -ne 3 ]; then
-  echo "Must supply version and type, eg update-perf.sh 'v0.39.0' 'latency|correctness' '/path/to/file'"
+  echo "usage: update-perf.sh <version> <perf-path> <correctness-path>"
   exit 1;
 fi
 
 version="$1"
-type="$2"
-new_table="$3"
+new_perf="$2"
+new_correctness="$3"
 
 if [[ "$OSTYPE" == "linux-gnu"* ]]; then
   os_type="linux"
 fi
 
 
-if [ "$type" == "latency" ]
+# update the version
+if [ "$os_type" == "linux" ]
 then
-  # update the version
-  if [ "$os_type" == "linux" ]
-  then
-    sed -i 's/Here are the benchmarks for DoltgreSQL version `'".*"'`/Here are the benchmarks for DoltgreSQL version `'"$version"'`/' "$dest_file"
-  else
-    sed -i '' "s/Here are the benchmarks for DoltgreSQL version \\\`.*\\\`/Here are the benchmarks for DoltgreSQL version \\\`$version\\\`/" "$dest_file"
-  fi
-
-  start_marker=$(printf "$start_template" "LATENCY")
-  end_marker=$(printf "$end_template" "LATENCY")
-
+  sed -i 's/Here are the benchmarks for DoltgreSQL version `'".*"'`/Here are the benchmarks for DoltgreSQL version `'"$version"'`/' "$dest_file"
+  sed -i 's/Here are DoltgreSQL'"'"'s sqllogictest results for version `'".*"'`./Here are DoltgreSQL'"'"'s sqllogictest results for version `'"$version"'`./' "$dest_file"
 else
-  # update the version
-  if [ "$os_type" == "linux" ]
-  then
-    sed -i 's/Here are DoltgreSQL'"'"'s sqllogictest results for version `'".*"'`./Here are DoltgreSQL'"'"'s sqllogictest results for version `'"$version"'`./' "$dest_file"
-  else
-    sed -i '' 's/Here are DoltgreSQL'"'"'s sqllogictest results for version `'".*"'`./Here are DoltgreSQL'"'"'s sqllogictest results for version `'"$version"'`./' "$dest_file"
-  fi
-
-  start_marker=$(printf "$start_template" "CORRECTNESS")
-  end_marker=$(printf "$end_template" "CORRECTNESS")
+  sed -i '' "s/Here are the benchmarks for DoltgreSQL version \\\`.*\\\`/Here are the benchmarks for DoltgreSQL version \\\`$version\\\`/" "$dest_file"
+  sed -i '' 's/Here are DoltgreSQL'"'"'s sqllogictest results for version `'".*"'`./Here are DoltgreSQL'"'"'s sqllogictest results for version `'"$version"'`./' "$dest_file"
 fi
+
+perf_start_marker=$(printf "$start_template" "LATENCY")
+perf_end_marker=$(printf "$end_template" "LATENCY")
+
+correctness_start_marker=$(printf "$start_template" "CORRECTNESS")
+correctness_end_marker=$(printf "$end_template" "CORRECTNESS")
 
 # store in variable
-updated=$(cat "$new_table")
-updated_with_markers=$(printf "$start_marker\n$updated\n$end_marker\n")
+updated_perf_with_markers=$(printf "$perf_start_marker\n$(cat $new_perf)\n$perf_end_marker\n")
+updated_correctness_with_markers=$(printf "$correctness_start_marker\n$(cat $new_correctness)\n$correctness_end_marker\n")
 
-echo "$updated_with_markers" > "$new_table"
+echo "$updated_perf_with_markers" > "$new_perf"
+echo "$updated_correctness_with_markers" > "$new_correctness"
 
-if [ "$type" == "latency" ]
+if [ "$os_type" == "linux" ]
 then
-  if [ "$os_type" == "linux" ]
-  then
-    sed -e '/<!-- END_LATENCY/r '"$new_table"'' -e '/<!-- START_LATENCY/,/<!-- END_LATENCY/d' "$dest_file" > temp.md
-  else
-    sed -e '/\<!-- END_LATENCY/r '"$new_table"'' -e '/\<!-- START_LATENCY/,/\<!-- END_LATENCY/d' "$dest_file" > temp.md
-  fi
+  sed -i '/<!-- END_LATENCY/r '"$new_perf"'' -e '/<!-- START_LATENCY/,/<!-- END_LATENCY/d' "$dest_file"
+  sed -i '/<!-- END_CORRECTNESS/r '"$new_correctness"'' -e '/<!-- START_CORRECTNESS/,/<!-- END_CORRECTNESS/d'  "$dest_file"
 else
-  if [ "$os_type" == "linux" ]
-  then
-    sed -e '/<!-- END_CORRECTNESS/r '"$new_table"'' -e '/<!-- START_CORRECTNESS/,/<!-- END_CORRECTNESS/d' "$dest_file" > temp.md
-  else
-    sed -e '/\<!-- END_CORRECTNESS/r '"$new_table"'' -e '/\<!-- START_CORRECTNESS/,/\<!-- END_CORRECTNESS/d' "$dest_file" > temp.md
-  fi
+  sed -i '/\<!-- END_LATENCY/r '"$new_perf"'' -e '/\<!-- START_LATENCY/,/\<!-- END_LATENCY/d' "$dest_file"
+  sed -i '/\<!-- END_CORRECTNESS/r '"$new_correctness"'' -e '/\<!-- START_CORRECTNESS/,/\<!-- END_CORRECTNESS/d' "$dest_file"
 fi
-
-mv temp.md "$dest_file"

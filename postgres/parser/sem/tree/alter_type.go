@@ -26,6 +26,8 @@ package tree
 
 import "github.com/dolthub/doltgresql/postgres/parser/lex"
 
+var _ Statement = &AlterType{}
+
 // AlterType represents an ALTER TYPE statement.
 type AlterType struct {
 	Type *UnresolvedObjectName
