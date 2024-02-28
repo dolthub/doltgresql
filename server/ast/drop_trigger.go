@@ -22,7 +22,7 @@ import (
 	"github.com/dolthub/doltgresql/postgres/parser/sem/tree"
 )
 
-// nodeDropTrigger handles *tree.DropTable nodes.
+// nodeDropTrigger handles *tree.DropTrigger nodes.
 func nodeDropTrigger(node *tree.DropTrigger) (*vitess.DDL, error) {
 	// NOTE: specific table that the trigger is on cannot be specified
 	switch node.DropBehavior {

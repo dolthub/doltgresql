@@ -22,7 +22,7 @@ import (
 	"github.com/dolthub/doltgresql/postgres/parser/sem/tree"
 )
 
-// nodeCreateTrigger handles *tree.CreateFunction nodes.
+// nodeCreateTrigger handles *tree.CreateTrigger nodes.
 func nodeCreateTrigger(node *tree.CreateTrigger) (vitess.Statement, error) {
 	return nil, fmt.Errorf("CREATE TRIGGER statement is not yet supported")
 }
