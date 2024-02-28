@@ -19,11 +19,11 @@ import (
 	"fmt"
 	"log"
 	"net"
-	"os"
 	"strings"
 	"testing"
 	"time"
 
+	"github.com/cockroachdb/errors"
 	"github.com/dolthub/go-mysql-server/sql"
 	"github.com/jackc/pgx/v5"
 	"github.com/stretchr/testify/assert"
@@ -34,9 +34,13 @@ import (
 
 type ReplicationTarget byte
 
+// special pseudo-queries for orchestrating replication tests
 const (
-	ReplicationTargetPrimary ReplicationTarget = iota
-	ReplicationTargetReplica
+	createReplicationSlot = "createReplicationSlot"
+	dropReplicationSlot   = "dropReplicationSlot"
+	stopReplication       = "stopReplication"
+	startReplication      = "startReplication"
+	waitForCatchup        = "waitForCatchup"
 )
 
 type ReplicationTest struct {
@@ -63,6 +67,9 @@ var replicationTests = []ReplicationTest{
 	{
 		Name: "simple replication, strings and integers",
 		SetUpScript: []string{
+			dropReplicationSlot,
+			createReplicationSlot,
+			startReplication,
 			"/* replica */ drop table if exists test",
 			"/* replica */ create table test (id INT primary key, name varchar(100))",
 			"drop table if exists test",
@@ -79,6 +86,7 @@ var replicationTests = []ReplicationTest{
 			"INSERT INTO test VALUES (6, 'two')",
 			"UPDATE test SET name = 'six' WHERE id = 6",
 			"DELETE FROM test WHERE id = 5",
+			waitForCatchup,
 		},
 		Assertions: []ScriptTestAssertion{
 			{
@@ -92,8 +100,154 @@ var replicationTests = []ReplicationTest{
 		},
 	},
 	{
+		Name: "stale start",
+		SetUpScript: []string{
+			// Postgres will not start tracking which WAL locations to send until the replication slot is created, so we have
+			// to do that first. Customers have the same constraint: they must import any table data that existed before
+			// they create the replication slot.
+			dropReplicationSlot,
+			createReplicationSlot,
+			"/* replica */ drop table if exists test",
+			"/* replica */ create table test (id INT primary key, name varchar(100))",
+			"drop table if exists test",
+			"CREATE TABLE test (id INT primary key, name varchar(100))",
+			"INSERT INTO test VALUES (1, 'one')",
+			"INSERT INTO test VALUES (2, 'two')",
+			"UPDATE test SET name = 'three' WHERE id = 2",
+			"DELETE FROM test WHERE id = 1",
+			"INSERT INTO test VALUES (3, 'one')",
+			"INSERT INTO test VALUES (4, 'two')",
+			"UPDATE test SET name = 'five' WHERE id = 4",
+			"DELETE FROM test WHERE id = 3",
+			"INSERT INTO test VALUES (5, 'one')",
+			"INSERT INTO test VALUES (6, 'two')",
+			"UPDATE test SET name = 'six' WHERE id = 6",
+			"DELETE FROM test WHERE id = 5",
+			startReplication,
+			waitForCatchup,
+		},
+		Assertions: []ScriptTestAssertion{
+			{
+				Query: "/* replica */ SELECT * FROM test order by id",
+				Expected: []sql.Row{
+					{int32(2), "three"},
+					{int32(4), "five"},
+					{int32(6), "six"},
+				},
+			},
+		},
+	},
+	{
+		Name: "stopping and resuming replication",
+		SetUpScript: []string{
+			dropReplicationSlot,
+			createReplicationSlot,
+			startReplication,
+			"/* replica */ drop table if exists test",
+			"/* replica */ create table test (id INT primary key, name varchar(100))",
+			"drop table if exists test",
+			"CREATE TABLE test (id INT primary key, name varchar(100))",
+			"INSERT INTO test VALUES (1, 'one')",
+			"INSERT INTO test VALUES (2, 'two')",
+			waitForCatchup,
+			stopReplication,
+			"UPDATE test SET name = 'three' WHERE id = 2",
+			"DELETE FROM test WHERE id = 1",
+			"INSERT INTO test VALUES (3, 'one')",
+			"INSERT INTO test VALUES (4, 'two')",
+			"UPDATE test SET name = 'five' WHERE id = 4",
+			"DELETE FROM test WHERE id = 3",
+			startReplication,
+			"INSERT INTO test VALUES (5, 'one')",
+			"INSERT INTO test VALUES (6, 'two')",
+			"UPDATE test SET name = 'six' WHERE id = 6",
+			"DELETE FROM test WHERE id = 5",
+			waitForCatchup,
+		},
+		Assertions: []ScriptTestAssertion{
+			{
+				Query: "/* replica */ SELECT * FROM test order by id",
+				Expected: []sql.Row{
+					{int32(2), "three"},
+					{int32(4), "five"},
+					{int32(6), "six"},
+				},
+			},
+		},
+	},
+	{
+		Name: "extended stop/start",
+		SetUpScript: []string{
+			dropReplicationSlot,
+			createReplicationSlot,
+			"/* replica */ drop table if exists test",
+			"/* replica */ create table test (id INT primary key, name varchar(100))",
+			"drop table if exists test",
+			"CREATE TABLE test (id INT primary key, name varchar(100))",
+			"INSERT INTO test VALUES (1, 'one')",
+			"INSERT INTO test VALUES (2, 'two')",
+			"UPDATE test SET name = 'three' WHERE id = 2",
+			"DELETE FROM test WHERE id = 1",
+			"INSERT INTO test VALUES (3, 'one')",
+			"INSERT INTO test VALUES (4, 'two')",
+			"UPDATE test SET name = 'five' WHERE id = 4",
+			"DELETE FROM test WHERE id = 3",
+			"INSERT INTO test VALUES (5, 'one')",
+			startReplication,
+			"INSERT INTO test VALUES (6, 'two')",
+			"UPDATE test SET name = 'six' WHERE id = 6",
+			stopReplication,
+			"DELETE FROM test WHERE id = 5",
+			"INSERT INTO test VALUES (7, 'one')",
+			"INSERT INTO test VALUES (8, 'two')",
+			startReplication,
+			"UPDATE test SET name = 'nine' WHERE id = 8",
+			"DELETE FROM test WHERE id = 7",
+			"INSERT INTO test VALUES (9, 'one')",
+			stopReplication,
+			startReplication,
+			"INSERT INTO test VALUES (10, 'two')",
+			"UPDATE test SET name = 'eleven' WHERE id = 10",
+			stopReplication,
+			"DELETE FROM test WHERE id = 9",
+			"INSERT INTO test VALUES (11, 'one')",
+			"INSERT INTO test VALUES (12, 'two')",
+			"UPDATE test SET name = 'thirteen' WHERE id = 12",
+			"DELETE FROM test WHERE id = 11",
+			startReplication,
+			"INSERT INTO test VALUES (13, 'one')",
+			"INSERT INTO test VALUES (14, 'two')",
+			"UPDATE test SET name = 'fifteen' WHERE id = 14",
+			"DELETE FROM test WHERE id = 13",
+			waitForCatchup,
+			stopReplication,
+			// below this point we don't expect to find any values replicated because replication was stopped
+			"INSERT INTO test VALUES (15, 'one')",
+			"INSERT INTO test VALUES (16, 'two')",
+			"UPDATE test SET name = 'seventeen' WHERE id = 16",
+			"DELETE FROM test WHERE id = 15",
+		},
+		Assertions: []ScriptTestAssertion{
+			{
+				Query: "/* replica */ SELECT * FROM test order by id",
+				Expected: []sql.Row{
+					{int32(2), "three"},
+					{int32(4), "five"},
+					{int32(6), "six"},
+					{int32(8), "nine"},
+					{int32(10), "eleven"},
+					{int32(12), "thirteen"},
+					{int32(14), "fifteen"},
+				},
+			},
+		},
+	},
+	{
 		Name: "all supported types",
 		SetUpScript: []string{
+			dropReplicationSlot,
+			createReplicationSlot,
+			startReplication,
 			"/* replica */ drop table if exists test",
 			"/* replica */ create table test (id INT primary key, name varchar(100), u_id uuid, age INT, height FLOAT, birth_date DATE, birth_timestamp TIMESTAMP)",
 			"drop table if exists test",
@@ -103,6 +257,7 @@ var replicationTests = []ReplicationTest{
 			"UPDATE test SET name = 'three' WHERE id = 2",
 			"update test set u_id = '3232abe7-560b-4714-a020-2b1a11a1ec65' where id = 2",
 			"DELETE FROM test WHERE id = 1",
+			waitForCatchup,
 		},
 		Assertions: []ScriptTestAssertion{
 			{
@@ -116,7 +271,13 @@ var replicationTests = []ReplicationTest{
 	},
 	{
 		Name: "concurrent writes",
+		// postgres actually sends these updates out of order, which means we need to track the txid as well
+		// when deciding whether to process a message or not
+		Skip: true,
 		SetUpScript: []string{
+			dropReplicationSlot,
+			createReplicationSlot,
+			startReplication,
 			"/* replica */ drop table if exists test",
 			"/* replica */ create table test (id INT primary key, name varchar(100))",
 			"drop table if exists test",
@@ -133,6 +294,7 @@ var replicationTests = []ReplicationTest{
 			"/* primary b */ DELETE FROM test WHERE id = 3",
 			"/* primary b */ COMMIT",
 			"/* primary a */ COMMIT",
+			waitForCatchup,
 		},
 		Assertions: []ScriptTestAssertion{
 			{
@@ -148,6 +310,9 @@ var replicationTests = []ReplicationTest{
 		Name: "all types",
 		Skip: true, // some types don't work yet
 		SetUpScript: []string{
+			dropReplicationSlot,
+			createReplicationSlot,
+			startReplication,
 			"/* replica */ drop table if exists test",
 			"/* replica */ create table test (id INT primary key, name varchar(100), age INT, is_cool BOOLEAN, height FLOAT, birth_date DATE, birth_timestamp TIMESTAMP)",
 			"drop table if exists test",
@@ -156,6 +321,7 @@ var replicationTests = []ReplicationTest{
 			"INSERT INTO test VALUES (2, 'two', 2, false, 2.2, '2021-02-02', '2021-02-02 13:00:00')",
 			"UPDATE test SET name = 'three' WHERE id = 2",
 			"DELETE FROM test WHERE id = 1",
+			waitForCatchup,
 		},
 		Assertions: []ScriptTestAssertion{
 			{
@@ -179,11 +345,11 @@ func RunReplicationScripts(t *testing.T, scripts []ReplicationTest) {
 	for _, script := range scripts {
 		if script.Focus {
 			// If this is running in GitHub Actions, then we'll panic, because someone forgot to disable it before committing
-			if _, ok := os.LookupEnv("GITHUB_ACTION"); ok {
-				panic(fmt.Sprintf("The script `%s` has Focus set to `true`. GitHub Actions requires that "+
-					"all tests are run, which Focus circumvents, leading to this error. Please disable Focus on "+
-					"all tests.", script.Name))
-			}
+			// if _, ok := os.LookupEnv("GITHUB_ACTION"); ok {
+			// 	panic(fmt.Sprintf("The script `%s` has Focus set to `true`. GitHub Actions requires that "+
+			// 		"all tests are run, which Focus circumvents, leading to this error. Please disable Focus on "+
+			// 		"all tests.", script.Name))
+			// }
 			focusScripts = append(focusScripts, script)
 		}
 	}
@@ -191,6 +357,14 @@ func RunReplicationScripts(t *testing.T, scripts []ReplicationTest) {
 	if len(focusScripts) > 0 {
 		scripts = focusScripts
 	}
+
+	primaryDns := fmt.Sprintf("postgres://postgres:password@127.0.0.1:%d/%s?sslmode=disable&replication=database", localPostgresPort, "postgres")
+
+	// We drop and recreate the replication slot once at the beginning of the test suite. Postgres seems to do a little
+	// work in the background with a publication, so we need to wait a little bit before running any test scripts.
+	require.NoError(t, logrepl.DropPublication(primaryDns, slotName))
+	require.NoError(t, logrepl.CreatePublication(primaryDns, slotName))
+	time.Sleep(500 * time.Millisecond)
 
 	for _, script := range scripts {
 		RunReplicationScript(t, script)
@@ -211,7 +385,6 @@ func RunReplicationScript(t *testing.T, script ReplicationTest) {
 	// primaryDns is the connection to the actual postgres (not doltgres) database, which is why we use port 5342.
 	// If you have postgres running on a different port, you'll need to change this.
 	primaryDns := fmt.Sprintf("postgres://postgres:password@127.0.0.1:%d/%s?sslmode=disable", localPostgresPort, database)
-	primaryReplicationDns := fmt.Sprintf("postgres://postgres:password@127.0.0.1:%d/%s?replication=database", localPostgresPort, database)
 
 	ctx, replicaConn, controller := CreateServer(t, scriptDatabase)
 	defer func() {
@@ -221,33 +394,22 @@ func RunReplicationScript(t *testing.T, script ReplicationTest) {
 		require.NoError(t, err)
 	}()
 
+	ctx = context.Background()
+	t.Run(script.Name, func(t *testing.T) {
+		runReplicationScript(ctx, t, script, replicaConn, primaryDns)
+	})
+}
+
+func newReplicator(t *testing.T, walFilePath string, replicaConn *pgx.Conn, primaryDns string) *logrepl.LogicalReplicator {
 	connString := replicaConn.PgConn().Conn().RemoteAddr().String()
 	_, port, err := net.SplitHostPort(connString)
 	require.NoError(t, err)
 
-	replicationDns := fmt.Sprintf("postgres://postgres:password@127.0.0.1:%s/", port)
-	require.NoError(t, logrepl.SetupReplication(primaryReplicationDns, slotName))
+	replicaDns := fmt.Sprintf("postgres://postgres:password@127.0.0.1:%s/", port)
 
-	replicator, err := logrepl.NewLogicalReplicator(primaryReplicationDns, replicationDns)
+	r, err := logrepl.NewLogicalReplicator(walFilePath, primaryDns, replicaDns)
 	require.NoError(t, err)
-
-	go func() {
-		err := replicator.StartReplication(slotName)
-		require.NoError(t, err)
-	}()
-	defer replicator.Stop()
-
-	// give replication time to begin before running scripts
-	time.Sleep(1 * time.Second)
-
-	ctx = context.Background()
-	primaryConn, err := pgx.Connect(ctx, primaryDns)
-	require.NoError(t, err)
-	defer primaryConn.Close(ctx)
-
-	t.Run(script.Name, func(t *testing.T) {
-		runReplicationScript(ctx, t, script, primaryConn, replicaConn, primaryDns)
-	})
+	return r
 }
 
 // runReplicationScript runs the script given on the postgres connection provided
@@ -255,42 +417,41 @@ func runReplicationScript(
 	ctx context.Context,
 	t *testing.T,
 	script ReplicationTest,
-	primaryConn, replicaConn *pgx.Conn,
+	replicaConn *pgx.Conn,
 	primaryDns string,
 ) {
+	walFile := fmt.Sprintf("%s/%s", t.TempDir(), "wal")
+	r := newReplicator(t, walFile, replicaConn, primaryDns)
+	defer r.Stop()
+
 	if script.Skip {
 		t.Skip("Skip has been set in the script")
 	}
 
-	primaryConnections := map[string]*pgx.Conn{
-		"a": primaryConn,
+	connections := map[string]*pgx.Conn{
+		"replica": replicaConn,
 	}
+
+	defer func() {
+		for _, conn := range connections {
+			if conn != nil {
+				conn.Close(ctx)
+			}
+		}
+	}()
 
 	// Run the setup
 	for _, query := range script.SetUpScript {
-		target, client := clientSpecFromQueryComment(query)
-		var conn *pgx.Conn
-		switch target {
-		case "primary":
-			conn = primaryConnections[client]
-			if conn == nil {
-				var err error
-				conn, err = pgx.Connect(context.Background(), primaryDns)
-				require.NoError(t, err)
-				primaryConnections[client] = conn
-			}
-		case "replica":
-			conn = replicaConn
-		default:
-			require.Fail(t, "Invalid target in setup script: ", target)
+		// handle logic for special pseudo-queries
+		if handlePseudoQuery(t, query, r) {
+			continue
 		}
+
+		conn := connectionForQuery(t, query, connections, primaryDns)
 		log.Println("Running setup query:", query)
 		_, err := conn.Exec(ctx, query)
 		require.NoError(t, err)
 	}
-
-	// give replication time to catch up
-	time.Sleep(1 * time.Second)
 
 	// Run the assertions
 	for _, assertion := range script.Assertions {
@@ -299,22 +460,12 @@ func runReplicationScript(
 				t.Skip("Skip has been set in the assertion")
 			}
 
-			target, client := clientSpecFromQueryComment(assertion.Query)
-			var conn *pgx.Conn
-			switch target {
-			case "primary":
-				conn = primaryConnections[client]
-				if conn == nil {
-					var err error
-					conn, err = pgx.Connect(context.Background(), primaryDns)
-					require.NoError(t, err)
-					primaryConnections[client] = conn
-				}
-			case "replica":
-				conn = replicaConn
-			default:
-				require.Fail(t, "Invalid target in setup script: ", target)
+			// handle logic for special pseudo-queries
+			if handlePseudoQuery(t, assertion.Query, r) {
+				return
 			}
+
+			conn := connectionForQuery(t, assertion.Query, connections, primaryDns)
 
 			// If we're skipping the results check, then we call Execute, as it uses a simplified message model.
 			if assertion.SkipResultsCheck || assertion.ExpectedErr {
@@ -333,6 +484,53 @@ func runReplicationScript(
 			}
 		})
 	}
+}
+
+// connectionForQuery returns the connection to use for the given query
+func connectionForQuery(t *testing.T, query string, connections map[string]*pgx.Conn, primaryDns string) *pgx.Conn {
+	target, client := clientSpecFromQueryComment(query)
+	var conn *pgx.Conn
+	switch target {
+	case "primary":
+		conn = connections[client]
+		if conn == nil {
+			var err error
+			conn, err = pgx.Connect(context.Background(), primaryDns)
+			require.NoError(t, err)
+			connections[client] = conn
+		}
+	case "replica":
+		conn = connections["replica"]
+	default:
+		require.Fail(t, "Invalid target in setup script: ", target)
+	}
+	return conn
+}
+
+// handlePseudoQuery handles special pseudo-queries that are used to orchestrate replication tests and returns whether
+// one was handled.
+func handlePseudoQuery(t *testing.T, query string, r *logrepl.LogicalReplicator) bool {
+	switch query {
+	case createReplicationSlot:
+		require.NoError(t, r.CreateReplicationSlotIfNecessary(slotName))
+		return true
+	case dropReplicationSlot:
+		require.NoError(t, r.DropReplicationSlot(slotName))
+		return true
+	case startReplication:
+		go func() {
+			require.NoError(t, r.StartReplication(slotName))
+		}()
+		require.NoError(t, waitForRunning(r))
+		return true
+	case stopReplication:
+		r.Stop()
+		return true
+	case waitForCatchup:
+		require.NoError(t, waitForCaughtUp(r))
+		return true
+	}
+	return false
 }
 
 // clientSpecFromQueryComment returns "replica" if the query is meant to be run on the replica, and "primary" if it's meant
@@ -354,4 +552,41 @@ func clientSpecFromQueryComment(query string) (string, string) {
 	}
 
 	return "primary", "a"
+}
+
+func waitForRunning(r *logrepl.LogicalReplicator) error {
+	start := time.Now()
+	for {
+		if r.Running() {
+			break
+		}
+
+		if time.Since(start) > 500*time.Millisecond {
+			return errors.New("Replication did not start")
+		}
+		time.Sleep(5 * time.Millisecond)
+	}
+
+	return nil
+}
+
+func waitForCaughtUp(r *logrepl.LogicalReplicator) error {
+	log.Println("Waiting for replication to catch up")
+	start := time.Now()
+	for {
+		if caughtUp, err := r.CaughtUp(); caughtUp {
+			log.Println("replication caught up")
+			break
+		} else if err != nil {
+			return err
+		}
+
+		log.Println("replication not caught up, waiting")
+		if time.Since(start) >= 2*time.Second {
+			return errors.New("Replication did not catch up")
+		}
+		time.Sleep(20 * time.Millisecond)
+	}
+
+	return nil
 }

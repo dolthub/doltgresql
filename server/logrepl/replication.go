@@ -16,8 +16,10 @@ package logrepl
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"log"
+	"os"
 	"strings"
 	"sync"
 	"time"
@@ -41,8 +43,10 @@ type rcvMsg struct {
 type LogicalReplicator struct {
 	primaryDns      string
 	replicationConn *pgx.Conn
-	receiveMsgChan  chan rcvMsg
+
+	walFilePath     string
 	running         bool
+	messageReceived bool
 	stop            chan struct{}
 	mu              *sync.Mutex
 }
@@ -50,7 +54,7 @@ type LogicalReplicator struct {
 // NewLogicalReplicator creates a new logical replicator instance which connects to the primary and replication
 // databases using the connection strings provided. The connection to the replica is established immediately, and the
 // connection to the primary is established when StartReplication is called.
-func NewLogicalReplicator(primaryDns string, replicationDns string) (*LogicalReplicator, error) {
+func NewLogicalReplicator(walFilePath string, primaryDns string, replicationDns string) (*LogicalReplicator, error) {
 	conn, err := pgx.Connect(context.Background(), replicationDns)
 	if err != nil {
 		return nil, err
@@ -59,35 +63,84 @@ func NewLogicalReplicator(primaryDns string, replicationDns string) (*LogicalRep
 	return &LogicalReplicator{
 		primaryDns:      primaryDns,
 		replicationConn: conn,
-		stop:            make(chan struct{}),
-		receiveMsgChan:  make(chan rcvMsg),
+		walFilePath:     walFilePath,
 		mu:              &sync.Mutex{},
 	}, nil
 }
 
-// SetupReplication sets up the replication slot and publication for the given database.
-func SetupReplication(primaryConnectionString string, publicationName string) error {
-	conn, err := pgconn.Connect(context.Background(), primaryConnectionString)
+// PrimaryDns returns the DNS for the primary database. Not suitable for RPCs used in replication e.g.
+// StartReplication. See ReplicationDns.
+func (r *LogicalReplicator) PrimaryDns() string {
+	return r.primaryDns
+}
+
+// ReplicationDns returns the DNS for the primary database with the replication query parameter appended. Not suitable
+// for normal query RPCs.
+func (r *LogicalReplicator) ReplicationDns() string {
+	if strings.Contains(r.primaryDns, "?") {
+		return fmt.Sprintf("%s&replication=database", r.primaryDns)
+	}
+	return fmt.Sprintf("%s?replication=database", r.primaryDns)
+}
+
+// CaughtUp returns true if the replication slot is caught up to the primary, and false otherwise. This only works if
+// there is only a single replication slot on the primary, so it's only suitable for testing.
+func (r *LogicalReplicator) CaughtUp() (bool, error) {
+	r.mu.Lock()
+	if !r.messageReceived {
+		r.mu.Unlock()
+		// We can't query the replication state until after receiving our first message
+		return false, nil
+	}
+	r.mu.Unlock()
+
+	conn, err := pgx.Connect(context.Background(), r.PrimaryDns())
 	if err != nil {
-		return err
+		return false, err
 	}
 	defer conn.Close(context.Background())
 
-	result := conn.Exec(context.Background(), fmt.Sprintf("DROP PUBLICATION IF EXISTS %s;", publicationName))
-	_, err = result.ReadAll()
+	result, err := conn.Query(context.Background(), "SELECT pg_wal_lsn_diff(write_lsn, sent_lsn) AS replication_lag FROM pg_stat_replication")
 	if err != nil {
-		return err
+		return false, err
 	}
 
-	result = conn.Exec(context.Background(), fmt.Sprintf("CREATE PUBLICATION %s FOR ALL TABLES;", publicationName))
-	_, err = result.ReadAll()
-	return err
+	defer result.Close()
+
+	for result.Next() {
+		rows, err := result.Values()
+		if err != nil {
+			return false, err
+		}
+
+		row := rows[0]
+		lag, ok := row.(pgtype.Numeric)
+		if ok && lag.Valid {
+			log.Printf("Current replication lag: %v", row)
+			return lag.Int.Int64() >= 0, nil
+		} else {
+			log.Printf("Replication lag unknown: %v", row)
+		}
+	}
+
+	if result.Err() != nil {
+		return false, result.Err()
+	}
+
+	// if we got this far, then there is no running replication thread, which we interpret as caught up
+	return true, nil
 }
+
+// maxConsecutiveFailures is the maximum number of consecutive RPC errors that can occur before we stop
+// the replication thread
+const maxConsecutiveFailures = 10
+
+var errShutdownRequested = errors.New("shutdown requested")
 
 // StartReplication starts the replication process for the given slot name. This function blocks until replication is
 // stopped via the Stop method, or an error occurs.
 func (r *LogicalReplicator) StartReplication(slotName string) error {
-	standbyMessageTimeout := time.Second * 10
+	standbyMessageTimeout := 10 * time.Second
 	nextStandbyMessageDeadline := time.Now().Add(standbyMessageTimeout)
 	relationsV2 := map[uint32]*pglogrepl.RelationMessageV2{}
 	typeMap := pgtype.NewMap()
@@ -96,147 +149,215 @@ func (r *LogicalReplicator) StartReplication(slotName string) error {
 	// on StreamStopMessage we set it back to false
 	inStream := false
 
-	// We fail after 3 consecutive network errors excluding timeouts. Any successful RPC resets the counter.
-	connErrCnt := 0
-	var primaryConn *pgconn.PgConn
-	var clientXLogPos pglogrepl.LSN
+	// lsn is the last WAL position we have received from the server, which we send back to the server via
+	// SendStandbyStatusUpdate after every message we get. Postgres tracks this LSN for each slot, which allows us to
+	// resume where we left off in the case of an interruption.
+	var lsn pglogrepl.LSN
+	lsn, err := r.readWALPosition()
+	if err != nil {
+		return err
+	}
 
+	var primaryConn *pgconn.PgConn
 	defer func() {
 		if primaryConn != nil {
 			_ = primaryConn.Close(context.Background())
 		}
-		r.mu.Lock()
-		r.running = false
-		r.mu.Unlock()
+		// We always shut down here and only here, so we do the cleanup on thread exit in exactly one place
+		r.shutdown()
 	}()
 
+	connErrCnt := 0
+	handleErrWithRetry := func(err error) error {
+		if err != nil {
+			connErrCnt++
+			if connErrCnt < maxConsecutiveFailures {
+				log.Printf("Error: %v. Retrying", err)
+				_ = primaryConn.Close(context.Background())
+				primaryConn = nil
+				return nil
+			}
+		} else {
+			connErrCnt = 0
+		}
+
+		return err
+	}
+
+	sendStandbyStatusUpdate := func(currentLSN pglogrepl.LSN) error {
+		// The StatusUpdate message wants us to respond with the current position in the WAL + 1:
+		// https://www.postgresql.org/docs/current/protocol-replication.html
+		lsn := currentLSN + 1
+		err := pglogrepl.SendStandbyStatusUpdate(context.Background(), primaryConn, pglogrepl.StandbyStatusUpdate{WALWritePosition: lsn + 1})
+		if err != nil {
+			return handleErrWithRetry(err)
+		}
+
+		log.Printf("Sent Standby status message at %s\n", lsn.String())
+		nextStandbyMessageDeadline = time.Now().Add(standbyMessageTimeout)
+		return nil
+	}
+
+	log.Println("Starting replicator")
 	r.mu.Lock()
 	r.running = true
+	r.stop = make(chan struct{})
 	r.mu.Unlock()
 
 	for {
-
-		// Shutdown if requested
-		select {
-		case <-r.stop:
-			r.shutdown()
-			return nil
-		default:
-			// continue
-		}
-
-		if primaryConn == nil {
-			// TODO: not sure if this retry logic is correct, with some failures we appear to miss events that aren't
-			//  sent again
-			var err error
-			primaryConn, clientXLogPos, err = r.beginReplication(slotName)
-			if err != nil {
-				return err
+		err := func() error {
+			// Shutdown if requested
+			select {
+			case <-r.stop:
+				return errShutdownRequested
+			default:
+				// continue below
 			}
-		}
 
-		if time.Now().After(nextStandbyMessageDeadline) {
-			err := pglogrepl.SendStandbyStatusUpdate(context.Background(), primaryConn, pglogrepl.StandbyStatusUpdate{WALWritePosition: clientXLogPos})
-			if err != nil {
-				connErrCnt++
-				if connErrCnt < 3 {
-					// re-establish connection on next pass through the loop
-					_ = primaryConn.Close(context.Background())
-					primaryConn = nil
-					continue
+			if primaryConn == nil {
+				var err error
+				primaryConn, err = r.beginReplication(slotName, lsn)
+				if err != nil {
+					// unlike other error cases, back off a little here, since we're likely to just get the same error again
+					// on initial replication establishment
+					time.Sleep(100 * time.Millisecond)
+					return handleErrWithRetry(err)
+				}
+			}
+
+			if time.Now().After(nextStandbyMessageDeadline) {
+				err := sendStandbyStatusUpdate(lsn)
+				if err != nil {
+					return err
+				}
+				if primaryConn == nil {
+					// if we've lost the connection, we'll re-establish it on the next pass through the loop
+					return nil
+				}
+			}
+
+			ctx, cancel := context.WithDeadline(context.Background(), nextStandbyMessageDeadline)
+			receiveMsgChan := make(chan rcvMsg)
+			go func() {
+				rawMsg, err := primaryConn.ReceiveMessage(ctx)
+				receiveMsgChan <- rcvMsg{msg: rawMsg, err: err}
+			}()
+
+			var msgAndErr rcvMsg
+			select {
+			case <-r.stop:
+				cancel()
+				return errShutdownRequested
+			case <-ctx.Done():
+				cancel()
+				return nil
+			case msgAndErr = <-receiveMsgChan:
+				cancel()
+			}
+
+			if msgAndErr.err != nil {
+				if pgconn.Timeout(msgAndErr.err) {
+					return nil
+				} else {
+					return handleErrWithRetry(msgAndErr.err)
+				}
+			}
+
+			r.mu.Lock()
+			r.messageReceived = true
+			r.mu.Unlock()
+
+			rawMsg := msgAndErr.msg
+			if errMsg, ok := rawMsg.(*pgproto3.ErrorResponse); ok {
+				return fmt.Errorf("received Postgres WAL error: %+v", errMsg)
+			}
+
+			msg, ok := rawMsg.(*pgproto3.CopyData)
+			if !ok {
+				log.Printf("Received unexpected message: %T\n", rawMsg)
+				return nil
+			}
+
+			switch msg.Data[0] {
+			case pglogrepl.PrimaryKeepaliveMessageByteID:
+				pkm, err := pglogrepl.ParsePrimaryKeepaliveMessage(msg.Data[1:])
+				if err != nil {
+					log.Fatalln("ParsePrimaryKeepaliveMessage failed:", err)
+				}
+				log.Println("Primary Keepalive Message =>", "ServerWALEnd:", pkm.ServerWALEnd, "ServerTime:", pkm.ServerTime, "ReplyRequested:", pkm.ReplyRequested)
+
+				if pkm.ReplyRequested {
+					if pkm.ServerWALEnd > lsn {
+						lsn = pkm.ServerWALEnd
+					}
+					// Send our reply the next time through the loop
+					nextStandbyMessageDeadline = time.Time{}
+				}
+			case pglogrepl.XLogDataByteID:
+				xld, err := pglogrepl.ParseXLogData(msg.Data[1:])
+				if err != nil {
+					return err
 				}
 
-				return err
+				updateNeeded, err := r.processMessage(lsn, xld, relationsV2, typeMap, &inStream)
+				if err != nil {
+					// TODO: do we need more than one handler, one for each connection?
+					return handleErrWithRetry(err)
+				}
+
+				// TODO: we have a two-phase commit race here: if the WAL file update doesn't happen before the process crashes,
+				//  we will receive a duplicate LSN the next time we start replication. A better solution would be to write the
+				//  LSN directly into the DoltCommit message, and then parsing this message back out when we begin replication
+				//  next.
+				if updateNeeded && xld.ServerWALEnd > lsn {
+					lsn = xld.ServerWALEnd
+					err := r.writeWALPosition(lsn)
+					if err != nil {
+						return err
+					}
+				} else {
+					log.Printf("No update needed for LSN %s, r.lsn is %s\n", xld.ServerWALEnd.String(), lsn.String())
+				}
+
+				err = sendStandbyStatusUpdate(xld.ServerWALEnd)
+				if err != nil {
+					return err
+				}
+
+				if primaryConn == nil {
+					// if we've lost the connection, we'll re-establish it on the next pass through the loop
+					return nil
+				}
+			default:
+				log.Printf("Received unexpected message: %T\n", rawMsg)
 			}
 
-			connErrCnt = 0
-			log.Printf("Sent Standby status message at %s\n", clientXLogPos.String())
-			nextStandbyMessageDeadline = time.Now().Add(standbyMessageTimeout)
-		}
-
-		ctx, cancel := context.WithDeadline(context.Background(), nextStandbyMessageDeadline)
-		go func() {
-			rawMsg, err := primaryConn.ReceiveMessage(ctx)
-			r.receiveMsgChan <- rcvMsg{msg: rawMsg, err: err}
+			return nil
 		}()
 
-		var msgAndErr rcvMsg
-		select {
-		case <-r.stop:
-			cancel()
-			r.shutdown()
-			return nil
-		case <-ctx.Done():
-			cancel()
-			continue
-		case msgAndErr = <-r.receiveMsgChan:
-			cancel()
-		}
-
-		if msgAndErr.err != nil {
-			if pgconn.Timeout(msgAndErr.err) {
-				continue
-			} else {
-				connErrCnt++
-				if connErrCnt < 3 {
-					// re-establish connection on next pass through the loop
-					_ = primaryConn.Close(context.Background())
-					primaryConn = nil
-					continue
-				}
+		if err != nil {
+			if errors.Is(err, errShutdownRequested) {
+				return nil
 			}
-
-			return msgAndErr.err
-		}
-
-		rawMsg := msgAndErr.msg
-		connErrCnt = 0
-		if errMsg, ok := rawMsg.(*pgproto3.ErrorResponse); ok {
-			return fmt.Errorf("received Postgres WAL error: %+v", errMsg)
-		}
-
-		msg, ok := rawMsg.(*pgproto3.CopyData)
-		if !ok {
-			log.Printf("Received unexpected message: %T\n", rawMsg)
-			continue
-		}
-
-		switch msg.Data[0] {
-		case pglogrepl.PrimaryKeepaliveMessageByteID:
-			pkm, err := pglogrepl.ParsePrimaryKeepaliveMessage(msg.Data[1:])
-			if err != nil {
-				log.Fatalln("ParsePrimaryKeepaliveMessage failed:", err)
-			}
-			log.Println("Primary Keepalive Message =>", "ServerWALEnd:", pkm.ServerWALEnd, "ServerTime:", pkm.ServerTime, "ReplyRequested:", pkm.ReplyRequested)
-			if pkm.ServerWALEnd > clientXLogPos {
-				clientXLogPos = pkm.ServerWALEnd
-			}
-			if pkm.ReplyRequested {
-				nextStandbyMessageDeadline = time.Time{}
-			}
-
-		case pglogrepl.XLogDataByteID:
-			xld, err := pglogrepl.ParseXLogData(msg.Data[1:])
-			if err != nil {
-				log.Fatalln("ParseXLogData failed:", err)
-			}
-
-			log.Printf("XLogData => WALStart %s ServerWALEnd %s ServerTime %s WALData:\n", xld.WALStart, xld.ServerWALEnd, xld.ServerTime)
-			r.processMessage(xld.WALData, relationsV2, typeMap, &inStream)
-
-			if xld.WALStart > clientXLogPos {
-				clientXLogPos = xld.WALStart
-			}
-		default:
-			// TODO: is this an error?
-			log.Printf("Received unexpected message: %T\n", rawMsg)
+			log.Println("Error during replication:", err)
+			return err
 		}
 	}
 }
 
 func (r *LogicalReplicator) shutdown() {
+	r.mu.Lock()
+	defer r.mu.Unlock()
 	log.Print("shutting down replicator")
+	r.running = false
 	close(r.stop)
+}
+
+// Running returns whether replication is currently running
+func (r *LogicalReplicator) Running() bool {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	return r.running
 }
 
 // Stop stops the replication process and blocks until clean shutdown occurs.
@@ -263,10 +384,10 @@ func (r *LogicalReplicator) replicateQuery(query string) error {
 
 // beginReplication starts a new replication connection to the primary server and returns it along with the current
 // log sequence number (LSN) for continued status updates to the primary.
-func (r *LogicalReplicator) beginReplication(slotName string) (*pgconn.PgConn, pglogrepl.LSN, error) {
-	conn, err := pgconn.Connect(context.Background(), r.primaryDns)
+func (r *LogicalReplicator) beginReplication(slotName string, lsn pglogrepl.LSN) (*pgconn.PgConn, error) {
+	conn, err := pgconn.Connect(context.Background(), r.ReplicationDns())
 	if err != nil {
-		return nil, 0, err
+		return nil, err
 	}
 
 	// streaming of large transactions is available since PG 14 (protocol version 2)
@@ -278,31 +399,103 @@ func (r *LogicalReplicator) beginReplication(slotName string) (*pgconn.PgConn, p
 		"streaming 'true'",
 	}
 
-	sysident, err := pglogrepl.IdentifySystem(context.Background(), conn)
+	// LSN(0) is used to use the last confirmed LSN for this slot
+	log.Printf("Starting logical replication on slot %s at WAL location %s", slotName, lsn)
+	err = pglogrepl.StartReplication(context.Background(), conn, slotName, lsn, pglogrepl.StartReplicationOptions{PluginArgs: pluginArguments})
 	if err != nil {
-		return nil, 0, err
-	}
-	log.Println("SystemID:", sysident.SystemID, "Timeline:", sysident.Timeline, "XLogPos:", sysident.XLogPos, "DBName:", sysident.DBName)
-
-	_ = pglogrepl.DropReplicationSlot(context.Background(), conn, slotName, pglogrepl.DropReplicationSlotOptions{})
-	_, err = pglogrepl.CreateReplicationSlot(context.Background(), conn, slotName, outputPlugin, pglogrepl.CreateReplicationSlotOptions{Temporary: true})
-	if err != nil {
-		pgErr, ok := err.(*pgconn.PgError)
-		if ok && pgErr.Code == "42710" {
-			// replication slot already exists, we can ignore this error
-		} else {
-			return nil, 0, err
-		}
-	}
-	log.Println("Created temporary replication slot:", slotName)
-
-	err = pglogrepl.StartReplication(context.Background(), conn, slotName, sysident.XLogPos, pglogrepl.StartReplicationOptions{PluginArgs: pluginArguments})
-	if err != nil {
-		return nil, 0, err
+		return nil, err
 	}
 	log.Println("Logical replication started on slot", slotName)
 
-	return conn, sysident.XLogPos, nil
+	return conn, nil
+}
+
+// DropPublication drops the publication with the given name if it exists. Mostly useful for testing.
+func DropPublication(primaryDns, slotName string) error {
+	conn, err := pgconn.Connect(context.Background(), primaryDns)
+	if err != nil {
+		return err
+	}
+	defer conn.Close(context.Background())
+
+	result := conn.Exec(context.Background(), fmt.Sprintf("DROP PUBLICATION IF EXISTS %s;", slotName))
+	_, err = result.ReadAll()
+	return err
+}
+
+// CreatePublication creates a publication with the given name if it does not already exist. Mostly useful for testing.
+// Customers should run the CREATE PUBLICATION command on their primary server manually, specifying whichever tables
+// they want to replicate.
+func CreatePublication(primaryDns, slotName string) error {
+	conn, err := pgconn.Connect(context.Background(), primaryDns)
+	if err != nil {
+		return err
+	}
+	defer conn.Close(context.Background())
+
+	result := conn.Exec(context.Background(), fmt.Sprintf("CREATE PUBLICATION %s FOR ALL TABLES;", slotName))
+	_, err = result.ReadAll()
+	return err
+}
+
+// DropReplicationSlot drops the replication slot with the given name. Any error from the slot not existing is ignored.
+func (r *LogicalReplicator) DropReplicationSlot(slotName string) error {
+	conn, err := pgconn.Connect(context.Background(), r.ReplicationDns())
+	if err != nil {
+		return err
+	}
+
+	_ = pglogrepl.DropReplicationSlot(context.Background(), conn, slotName, pglogrepl.DropReplicationSlotOptions{})
+	return nil
+}
+
+// CreateReplicationSlotIfNecessary creates the replication slot named if it doesn't already exist.
+func (r *LogicalReplicator) CreateReplicationSlotIfNecessary(slotName string) error {
+	conn, err := pgx.Connect(context.Background(), r.PrimaryDns())
+	if err != nil {
+		return err
+	}
+
+	rows, err := conn.Query(context.Background(), "select * from pg_replication_slots where slot_name = $1", slotName)
+	if err != nil {
+		return err
+	}
+
+	slotExists := false
+	defer rows.Close()
+	for rows.Next() {
+		_, err := rows.Values()
+		if err != nil {
+			return err
+		}
+		slotExists = true
+	}
+
+	if rows.Err() != nil {
+		return rows.Err()
+	}
+
+	// We need a different connection to create the replication slot
+	conn, err = pgx.Connect(context.Background(), r.ReplicationDns())
+	if err != nil {
+		return err
+	}
+
+	if !slotExists {
+		_, err = pglogrepl.CreateReplicationSlot(context.Background(), conn.PgConn(), slotName, outputPlugin, pglogrepl.CreateReplicationSlotOptions{})
+		if err != nil {
+			pgErr, ok := err.(*pgconn.PgError)
+			if ok && pgErr.Code == "42710" {
+				// replication slot already exists, we can ignore this error
+			} else {
+				return err
+			}
+		}
+
+		log.Println("Created replication slot:", slotName)
+	}
+
+	return nil
 }
 
 // processMessage processes a logical replication message as appropriate. A couple important aspects:
@@ -310,18 +503,23 @@ func (r *LogicalReplicator) beginReplication(slotName string) (*pgconn.PgConn, p
 //  2. INSERT/UPDATE/DELETE messages describe changes to rows that must be applied to the replica.
 //     These describe a row in the form of a tuple, and are used to construct a query to apply the change to the replica.
 //
-// TODO: handle panics
+// Returns a boolean true if the message was a write that should be acknowledged to the server, and an error if one
+// occurred.
 func (r *LogicalReplicator) processMessage(
-	walData []byte,
+	lsn pglogrepl.LSN,
+	xld pglogrepl.XLogData,
 	relations map[uint32]*pglogrepl.RelationMessageV2,
 	typeMap *pgtype.Map,
 	inStream *bool,
-) {
+) (bool, error) {
+	walData := xld.WALData
 	logicalMsg, err := pglogrepl.ParseV2(walData, *inStream)
 	if err != nil {
-		log.Fatalf("Parse logical replication message: %s", err)
+		return false, err
 	}
-	log.Printf("Receive a logical replication message: %s", logicalMsg.Type())
+
+	log.Printf("XLogData (%T) => WALStart %s ServerWALEnd %s ServerTime %s WALData:\n", logicalMsg, xld.WALStart, xld.ServerWALEnd, xld.ServerTime)
+
 	switch logicalMsg := logicalMsg.(type) {
 	case *pglogrepl.RelationMessageV2:
 		relations[logicalMsg.RelationID] = logicalMsg
@@ -332,6 +530,11 @@ func (r *LogicalReplicator) processMessage(
 	case *pglogrepl.CommitMessage:
 		log.Printf("CommitMessage: %v", logicalMsg.CommitTime)
 	case *pglogrepl.InsertMessageV2:
+		if lsn > xld.ServerWALEnd {
+			log.Printf("Received stale message, ignoring. Current LSN: %s Message LSN: %s", lsn, xld.ServerWALEnd)
+			return false, nil
+		}
+
 		rel, ok := relations[logicalMsg.RelationID]
 		if !ok {
 			log.Fatalf("unknown relation ID %d", logicalMsg.RelationID)
@@ -360,7 +563,7 @@ func (r *LogicalReplicator) processMessage(
 				}
 				colData, err := encodeColumnData(typeMap, val, rel.Columns[idx].DataType)
 				if err != nil {
-					panic(err)
+					return false, err
 				}
 				valuesStr.WriteString(colData)
 			default:
@@ -368,12 +571,18 @@ func (r *LogicalReplicator) processMessage(
 			}
 		}
 
-		log.Printf("insert for xid %d\n", logicalMsg.Xid)
 		err = r.replicateQuery(fmt.Sprintf("INSERT INTO %s.%s (%s) VALUES (%s)", rel.Namespace, rel.RelationName, columnStr.String(), valuesStr.String()))
 		if err != nil {
-			panic(err)
+			return false, err
 		}
+
+		return true, nil
 	case *pglogrepl.UpdateMessageV2:
+		if lsn > xld.ServerWALEnd {
+			log.Printf("Received stale message, ignoring. Current LSN: %s Message LSN: %s", lsn, xld.ServerWALEnd)
+			return false, nil
+		}
+
 		// TODO: this won't handle primary key changes correctly
 		// TODO: this probably doesn't work for unkeyed tables
 		rel, ok := relations[logicalMsg.RelationID]
@@ -400,7 +609,7 @@ func (r *LogicalReplicator) processMessage(
 
 				stringVal, err = encodeColumnData(typeMap, val, rel.Columns[idx].DataType)
 				if err != nil {
-					panic(err)
+					return false, err
 				}
 			default:
 				log.Printf("unknown column data type: %c", col.DataType)
@@ -420,12 +629,18 @@ func (r *LogicalReplicator) processMessage(
 			}
 		}
 
-		log.Printf("update for xid %d\n", logicalMsg.Xid)
 		err = r.replicateQuery(fmt.Sprintf("UPDATE %s.%s SET %s%s", rel.Namespace, rel.RelationName, updateStr.String(), whereClause(whereStr)))
 		if err != nil {
-			panic(err)
+			return false, err
 		}
+
+		return true, nil
 	case *pglogrepl.DeleteMessageV2:
+		if lsn > xld.ServerWALEnd {
+			log.Printf("Received stale message, ignoring. Current LSN: %s Message LSN: %s", lsn, xld.ServerWALEnd)
+			return false, nil
+		}
+
 		// TODO: this probably doesn't work for unkeyed tables
 		rel, ok := relations[logicalMsg.RelationID]
 		if !ok {
@@ -450,7 +665,7 @@ func (r *LogicalReplicator) processMessage(
 
 				stringVal, err = encodeColumnData(typeMap, val, rel.Columns[idx].DataType)
 				if err != nil {
-					panic(err)
+					return false, err
 				}
 			default:
 				log.Printf("unknown column data type: %c", col.DataType)
@@ -466,11 +681,12 @@ func (r *LogicalReplicator) processMessage(
 			}
 		}
 
-		log.Printf("delete for xid %d\n", logicalMsg.Xid)
 		err = r.replicateQuery(fmt.Sprintf("DELETE FROM %s.%s WHERE %s", rel.Namespace, rel.RelationName, whereStr.String()))
 		if err != nil {
-			panic(err)
+			return false, err
 		}
+
+		return true, nil
 	case *pglogrepl.TruncateMessageV2:
 		log.Printf("truncate for xid %d\n", logicalMsg.Xid)
 	case *pglogrepl.TypeMessageV2:
@@ -492,6 +708,30 @@ func (r *LogicalReplicator) processMessage(
 	default:
 		log.Printf("Unknown message type in pgoutput stream: %T", logicalMsg)
 	}
+
+	return false, nil
+}
+
+// readWALPosition reads the recorded WAL position from the WAL position file
+func (r *LogicalReplicator) readWALPosition() (pglogrepl.LSN, error) {
+	walFileContents, err := os.ReadFile(r.walFilePath)
+	if err != nil {
+		// if the file doesn't exist, consider this a cold start and return 0
+		if os.IsNotExist(err) {
+			return pglogrepl.LSN(0), nil
+		}
+		return 0, err
+	}
+
+	return pglogrepl.ParseLSN(string(walFileContents))
+}
+
+// writeWALPosition writes the recorded WAL position to the WAL position file
+func (r *LogicalReplicator) writeWALPosition(lsn pglogrepl.LSN) error {
+	// We write a single byte past the last LSN we flushed because our next startup will use that as our starting point.
+	// The LSN given to the StartReplication call is inclusive, so we need to exclude the last one we have processed.
+	writeLsn := lsn + 1
+	return os.WriteFile(r.walFilePath, []byte(writeLsn.String()), 0644)
 }
 
 // whereClause returns a WHERE clause string with the contents of the builder if it's non-empty, or the empty
