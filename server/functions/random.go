@@ -14,15 +14,25 @@
 
 package functions
 
-import "math/rand"
+import (
+	"math/rand"
 
-// random represents the PostgreSQL function of the same name.
-var random = Function{
-	Name:      "random",
-	Overloads: []interface{}{random_float},
+	"github.com/dolthub/doltgresql/server/functions/framework"
+
+	pgtypes "github.com/dolthub/doltgresql/server/types"
+)
+
+// init registers the functions to the catalog.
+func init() {
+	framework.RegisterFunction(random)
 }
 
-// random_float is one of the overloads of random.
-func random_float() (FloatType, error) {
-	return FloatType{Value: rand.Float64()}, nil
+// random represents the PostgreSQL function of the same name, taking the same parameters.
+var random = framework.Function0{
+	Name:       "random",
+	Return:     pgtypes.Float64,
+	Parameters: []pgtypes.DoltgresType{},
+	Callable: func(ctx framework.Context) (any, error) {
+		return rand.Float64(), nil
+	},
 }

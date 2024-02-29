@@ -24,6 +24,7 @@ import (
 	"github.com/dolthub/go-mysql-server/sql/types"
 	"github.com/dolthub/vitess/go/sqltypes"
 	"github.com/dolthub/vitess/go/vt/proto/query"
+	"github.com/lib/pq/oid"
 
 	"github.com/dolthub/doltgresql/utils"
 )
@@ -34,14 +35,19 @@ var BoolArray = BoolArrayType{}
 // BoolArrayType is the extended type implementation of the PostgreSQL boolean.
 type BoolArrayType struct{}
 
-var _ types.ExtendedType = BoolArrayType{}
+var _ DoltgresType = BoolArrayType{}
 
-// CollationCoercibility implements the types.ExtendedType interface.
+// BaseID implements the DoltgresType interface.
+func (b BoolArrayType) BaseID() DoltgresTypeBaseID {
+	return DoltgresTypeBaseID(SerializationID_BoolArray)
+}
+
+// CollationCoercibility implements the DoltgresType interface.
 func (b BoolArrayType) CollationCoercibility(ctx *sql.Context) (collation sql.CollationID, coercibility byte) {
 	return sql.Collation_binary, 5
 }
 
-// Compare implements the types.ExtendedType interface.
+// Compare implements the DoltgresType interface.
 func (b BoolArrayType) Compare(v1 any, v2 any) (int, error) {
 	if v1 == nil && v2 == nil {
 		return 0, nil
@@ -81,7 +87,7 @@ func (b BoolArrayType) Compare(v1 any, v2 any) (int, error) {
 	}
 }
 
-// Convert implements the types.ExtendedType interface.
+// Convert implements the DoltgresType interface.
 func (b BoolArrayType) Convert(val any) (any, sql.ConvertInRange, error) {
 	if val == nil {
 		return nil, sql.InRange, nil
@@ -95,7 +101,7 @@ func (b BoolArrayType) Convert(val any) (any, sql.ConvertInRange, error) {
 	}
 }
 
-// Equals implements the types.ExtendedType interface.
+// Equals implements the DoltgresType interface.
 func (b BoolArrayType) Equals(otherType sql.Type) bool {
 	if otherExtendedType, ok := otherType.(types.ExtendedType); ok {
 		return bytes.Equal(MustSerializeType(b), MustSerializeType(otherExtendedType))
@@ -103,7 +109,7 @@ func (b BoolArrayType) Equals(otherType sql.Type) bool {
 	return false
 }
 
-// FormatSerializedValue implements the types.ExtendedType interface.
+// FormatSerializedValue implements the DoltgresType interface.
 func (b BoolArrayType) FormatSerializedValue(val []byte) (string, error) {
 	deserialized, err := b.DeserializeValue(val)
 	if err != nil {
@@ -112,7 +118,7 @@ func (b BoolArrayType) FormatSerializedValue(val []byte) (string, error) {
 	return b.FormatValue(deserialized)
 }
 
-// FormatValue implements the types.ExtendedType interface.
+// FormatValue implements the DoltgresType interface.
 func (b BoolArrayType) FormatValue(val any) (string, error) {
 	if val == nil {
 		return "", nil
@@ -135,22 +141,27 @@ func (b BoolArrayType) FormatValue(val any) (string, error) {
 	return sb.String(), nil
 }
 
-// MaxSerializedWidth implements the types.ExtendedType interface.
+// MaxSerializedWidth implements the DoltgresType interface.
 func (b BoolArrayType) MaxSerializedWidth() types.ExtendedTypeSerializedWidth {
 	return types.ExtendedTypeSerializedWidth_Unbounded
 }
 
-// MaxTextResponseByteLength implements the types.ExtendedType interface.
+// MaxTextResponseByteLength implements the DoltgresType interface.
 func (b BoolArrayType) MaxTextResponseByteLength(ctx *sql.Context) uint32 {
 	return math.MaxUint32
 }
 
-// Promote implements the types.ExtendedType interface.
+// OID implements the DoltgresType interface.
+func (b BoolArrayType) OID() uint32 {
+	return uint32(oid.T__bool)
+}
+
+// Promote implements the DoltgresType interface.
 func (b BoolArrayType) Promote() sql.Type {
 	return b
 }
 
-// SerializedCompare implements the types.ExtendedType interface.
+// SerializedCompare implements the DoltgresType interface.
 func (b BoolArrayType) SerializedCompare(v1 []byte, v2 []byte) (int, error) {
 	if v1 == nil && v2 == nil {
 		return 0, nil
@@ -179,7 +190,7 @@ func (b BoolArrayType) SerializedCompare(v1 []byte, v2 []byte) (int, error) {
 	}
 }
 
-// SQL implements the types.ExtendedType interface.
+// SQL implements the DoltgresType interface.
 func (b BoolArrayType) SQL(ctx *sql.Context, dest []byte, v any) (sqltypes.Value, error) {
 	if v == nil {
 		return sqltypes.NULL, nil
@@ -208,30 +219,30 @@ func (b BoolArrayType) SQL(ctx *sql.Context, dest []byte, v any) (sqltypes.Value
 		}
 		valBytesIndex++
 	}
-	return sqltypes.MakeTrusted(b.Type(), types.AppendAndSliceBytes(dest, valBytes)), nil
+	return sqltypes.MakeTrusted(sqltypes.Text, types.AppendAndSliceBytes(dest, valBytes)), nil
 }
 
-// String implements the types.ExtendedType interface.
+// String implements the DoltgresType interface.
 func (b BoolArrayType) String() string {
 	return "boolean[]"
 }
 
-// Type implements the types.ExtendedType interface.
+// Type implements the DoltgresType interface.
 func (b BoolArrayType) Type() query.Type {
 	return sqltypes.Text
 }
 
-// ValueType implements the types.ExtendedType interface.
+// ValueType implements the DoltgresType interface.
 func (b BoolArrayType) ValueType() reflect.Type {
 	return reflect.TypeOf([]bool{})
 }
 
-// Zero implements the types.ExtendedType interface.
+// Zero implements the DoltgresType interface.
 func (b BoolArrayType) Zero() any {
 	return []bool{}
 }
 
-// SerializeValue implements the types.ExtendedType interface.
+// SerializeValue implements the DoltgresType interface.
 func (b BoolArrayType) SerializeValue(val any) ([]byte, error) {
 	if val == nil {
 		return nil, nil
@@ -252,7 +263,7 @@ func (b BoolArrayType) SerializeValue(val any) ([]byte, error) {
 	return output, nil
 }
 
-// DeserializeValue implements the types.ExtendedType interface.
+// DeserializeValue implements the DoltgresType interface.
 func (b BoolArrayType) DeserializeValue(val []byte) (any, error) {
 	if val == nil {
 		return nil, nil

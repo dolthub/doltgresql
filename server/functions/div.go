@@ -14,19 +14,31 @@
 
 package functions
 
-import "math"
+import (
+	"github.com/shopspring/decimal"
 
-// div represents the PostgreSQL function of the same name.
-var div = Function{
-	Name:      "div",
-	Overloads: []interface{}{div_num_num},
+	"github.com/dolthub/doltgresql/server/functions/framework"
+
+	pgtypes "github.com/dolthub/doltgresql/server/types"
+)
+
+// init registers the functions to the catalog.
+func init() {
+	framework.RegisterFunction(div_numeric)
 }
 
-// div_num_num is one of the overloads of div.
-func div_num_num(num1 NumericType, num2 NumericType) (NumericType, error) {
-	if num1.IsNull || num2.IsNull {
-		return NumericType{IsNull: true}, nil
-	}
-	val := num1.Value / num2.Value
-	return NumericType{Value: math.Trunc(val)}, nil
+// div_numeric represents the PostgreSQL function of the same name, taking the same parameters.
+var div_numeric = framework.Function2{
+	Name:       "div",
+	Return:     pgtypes.Numeric,
+	Parameters: []pgtypes.DoltgresType{pgtypes.Numeric, pgtypes.Numeric},
+	Callable: func(ctx framework.Context, val1Interface any, val2Interface any) (any, error) {
+		if val1Interface == nil || val2Interface == nil {
+			return nil, nil
+		}
+		val1 := val1Interface.(decimal.Decimal)
+		val2 := val2Interface.(decimal.Decimal)
+		val := val1.Div(val2)
+		return val.Truncate(0), nil
+	},
 }

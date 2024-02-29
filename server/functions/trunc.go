@@ -14,35 +14,58 @@
 
 package functions
 
-import "math"
+import (
+	"math"
 
-// trunc represents the PostgreSQL function of the same name.
-var trunc = Function{
-	Name:      "trunc",
-	Overloads: []interface{}{trunc_float, trunc_num, trunc_num_int},
+	"github.com/shopspring/decimal"
+
+	"github.com/dolthub/doltgresql/server/functions/framework"
+	pgtypes "github.com/dolthub/doltgresql/server/types"
+)
+
+// init registers the functions to the catalog.
+func init() {
+	framework.RegisterFunction(trunc_float64)
+	framework.RegisterFunction(trunc_numeric)
+	framework.RegisterFunction(trunc_numeric_int64)
 }
 
-// trunc_float is one of the overloads of trunc.
-func trunc_float(num FloatType) (FloatType, error) {
-	if num.IsNull {
-		return FloatType{IsNull: true}, nil
-	}
-	return FloatType{Value: math.Trunc(num.Value)}, nil
+// trunc_float64 represents the PostgreSQL function of the same name, taking the same parameters.
+var trunc_float64 = framework.Function1{
+	Name:       "trunc",
+	Return:     pgtypes.Float64,
+	Parameters: []pgtypes.DoltgresType{pgtypes.Float64},
+	Callable: func(ctx framework.Context, val1 any) (any, error) {
+		if val1 == nil {
+			return nil, nil
+		}
+		return math.Trunc(val1.(float64)), nil
+	},
 }
 
-// trunc_num is one of the overloads of trunc.
-func trunc_num(num NumericType) (NumericType, error) {
-	if num.IsNull {
-		return NumericType{IsNull: true}, nil
-	}
-	return NumericType{Value: math.Trunc(num.Value)}, nil
+// trunc_numeric represents the PostgreSQL function of the same name, taking the same parameters.
+var trunc_numeric = framework.Function1{
+	Name:       "trunc",
+	Return:     pgtypes.Numeric,
+	Parameters: []pgtypes.DoltgresType{pgtypes.Numeric},
+	Callable: func(ctx framework.Context, val1 any) (any, error) {
+		if val1 == nil {
+			return nil, nil
+		}
+		return decimal.NewFromInt(val1.(decimal.Decimal).IntPart()), nil
+	},
 }
 
-// trunc_num_int is one of the overloads of trunc.
-func trunc_num_int(num NumericType, places IntegerType) (NumericType, error) {
-	if num.IsNull || places.IsNull {
-		return NumericType{IsNull: true}, nil
-	}
-	power := math.Pow10(int(places.Value))
-	return NumericType{Value: math.Trunc(num.Value*power) / power}, nil
+// trunc_numeric_int64 represents the PostgreSQL function of the same name, taking the same parameters.
+var trunc_numeric_int64 = framework.Function2{
+	Name:       "trunc",
+	Return:     pgtypes.Numeric,
+	Parameters: []pgtypes.DoltgresType{pgtypes.Numeric, pgtypes.Int64},
+	Callable: func(ctx framework.Context, num any, places any) (any, error) {
+		if num == nil || places == nil {
+			return nil, nil
+		}
+		//TODO: test for negative values in places
+		return num.(decimal.Decimal).Truncate(int32(places.(int64))), nil
+	},
 }

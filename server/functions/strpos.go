@@ -14,22 +14,32 @@
 
 package functions
 
-import "strings"
+import (
+	"strings"
 
-// strpos represents the PostgreSQL function of the same name.
-var strpos = Function{
-	Name:      "strpos",
-	Overloads: []interface{}{strpos_string},
+	"github.com/dolthub/doltgresql/server/functions/framework"
+
+	pgtypes "github.com/dolthub/doltgresql/server/types"
+)
+
+// init registers the functions to the catalog.
+func init() {
+	framework.RegisterFunction(strpos_varchar)
 }
 
-// strpos_string is one of the overloads of strpos.
-func strpos_string(str StringType, substring StringType) (IntegerType, error) {
-	if str.IsNull || substring.IsNull {
-		return IntegerType{IsNull: true}, nil
-	}
-	idx := strings.Index(str.Value, substring.Value)
-	if idx == -1 {
-		idx = 0
-	}
-	return IntegerType{Value: int64(idx)}, nil
+// strpos_varchar represents the PostgreSQL function of the same name, taking the same parameters.
+var strpos_varchar = framework.Function2{
+	Name:       "strpos",
+	Return:     pgtypes.Int64,
+	Parameters: []pgtypes.DoltgresType{pgtypes.VarCharMax, pgtypes.VarCharMax},
+	Callable: func(ctx framework.Context, str any, substring any) (any, error) {
+		if str == nil || substring == nil {
+			return nil, nil
+		}
+		idx := strings.Index(str.(string), substring.(string))
+		if idx == -1 {
+			idx = 0
+		}
+		return int64(idx), nil
+	},
 }

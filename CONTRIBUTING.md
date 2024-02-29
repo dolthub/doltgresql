@@ -248,25 +248,42 @@ This will at least allow us to track all such instances where we deviate from th
 
 ### `server/expression`
 
-TODO: FILL ME OUT BEFORE COMMITTING
+The `expression` package contains all expressions that are specific to Doltgres.
+There may be expressions that seem redundant as they'll already have implementations within [GMS](https://github.com/dolthub/go-mysql-server), but [GMS](https://github.com/dolthub/go-mysql-server) is geared toward MySQL's intricacies, so we'll need to handle those in the PostgreSQL way.
+
+In addition, due to the current way that expressions are handled in [GMS](https://github.com/dolthub/go-mysql-server), most of these expressions will need to be injected via the `InjectableExpression` interface in [Vitess](https://github.com/dolthub/vitess).
+`InjectedExpr` implements `InjectableExpression`, and should be sufficient for embedding most expressions.
 
 ### `server/functions`
 
-The `functions` package contains the functions, along with an implementation to approximate the function overloading structure (and type coercion).
+The `functions` package contains most of the functions.
+The subpackage `framework` contains an implementation to approximate the function overloading structure (and type coercion).
 
-The function overloading structure is defined in all files that have the `zinternal_` prefix.
-Although not preferable, this was chosen as Go does not allow cyclical references between packages.
-Rather than have half of the implementation in `functions`, and the other half in another package, the decision was made to include both in the `functions` package with the added prefix for distinction.
-
-There's an `init` function in `server/functions/zinternal_catalog.go` (this is included in `server/listener.go`) that removes any conflicting GMS function names, and replaces them with the PostgreSQL equivalents.
+Each function file should declare an `init()` function that calls `framework.RegisterFunction` for each function in the file.
+Functions that have aliases must separately register those aliases as though they're different functions.
+Registration replaces any matching functions in [GMS](https://github.com/dolthub/go-mysql-server) with declared functions in DoltgreSQL.
 This means that the functions that we've added behave as expected, and for others to have _some_ sort of implementation rather than outright failing.
 We will eventually remove all GMS functions once all PostgreSQL functions have been implemented.
-The other internal files all contribute to the generation of functions, along with their proper handling.
 
 Each function (and all overloads) are contained in a single file.
 Overloads are named according to their parameters, and prefixed by their target function name.
-The set of overloads are then added to the `Catalog` within `server/functions/zinternal_catalog.go`.
-To add a new function, it is as simple as creating the `Function`, adding the overloads, and adding it to the `Catalog`.
+Functions use the `Function0`, `Function1`, etc. structs to explicitly declare the number of parameters, and they also declare the types of their parameters as well as the return type.
+There is a validation phase that ensures that functions have been properly declared.
+
+### `server/types`
+
+All PostgreSQL types are declared in this folder.
+In addition, all new types should use one of the pre-existing serialization IDs.
+If a serialization ID does not apply to some given type (which is very unlikely), only then can a new ID be created.
+Under _no circumstances_ should any of the pre-existing IDs change, as that is almost guaranteed to break databases.
+Type structs should not handle PostgreSQL types, even which is different compared to how [GMS](https://github.com/dolthub/go-mysql-server) handles types.
+For example `SMALLINT` and `INTEGER` are classified as two different types in DoltgreSQL, while they both fall under a generic `Number` type in [GMS](https://github.com/dolthub/go-mysql-server).
+This difference is due to how types are treated in PostgreSQL, with one such example being function overloading, where two different functions sharing the same name are differentiated only by their parameter types.
+
+When adding types, it is usually necessary to also add any relevant casts to `server/functions/framework/cast.go::init()`.
+You'll need to add casts that go from existing types to the new type, and also from the new type to existing types (casts are not bidirectional).
+
+TODO: adding operator functions
 
 ### `testing/bats`
 

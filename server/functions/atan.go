@@ -14,18 +14,28 @@
 
 package functions
 
-import "math"
+import (
+	"math"
 
-// atan represents the PostgreSQL function of the same name.
-var atan = Function{
-	Name:      "atan",
-	Overloads: []interface{}{atan_float},
+	"github.com/dolthub/doltgresql/server/functions/framework"
+
+	pgtypes "github.com/dolthub/doltgresql/server/types"
+)
+
+// init registers the functions to the catalog.
+func init() {
+	framework.RegisterFunction(atan_float64)
 }
 
-// atan_float is one of the overloads of atan.
-func atan_float(num FloatType) (FloatType, error) {
-	if num.IsNull {
-		return FloatType{IsNull: true}, nil
-	}
-	return FloatType{Value: math.Atan(num.Value)}, nil
+// atan_float64 represents the PostgreSQL function of the same name, taking the same parameters.
+var atan_float64 = framework.Function1{
+	Name:       "atan",
+	Return:     pgtypes.Float64,
+	Parameters: []pgtypes.DoltgresType{pgtypes.Float64},
+	Callable: func(ctx framework.Context, val1 any) (any, error) {
+		if val1 == nil {
+			return nil, nil
+		}
+		return math.Atan(val1.(float64)), nil
+	},
 }

@@ -14,26 +14,43 @@
 
 package functions
 
-import "math"
+import (
+	"math"
 
-// floor represents the PostgreSQL function of the same name.
-var floor = Function{
-	Name:      "floor",
-	Overloads: []interface{}{floor_float, floor_numeric},
+	"github.com/shopspring/decimal"
+
+	"github.com/dolthub/doltgresql/server/functions/framework"
+	pgtypes "github.com/dolthub/doltgresql/server/types"
+)
+
+// init registers the functions to the catalog.
+func init() {
+	framework.RegisterFunction(floor_float64)
+	framework.RegisterFunction(floor_numeric)
 }
 
-// floor_float is one of the overloads of floor.
-func floor_float(num FloatType) (FloatType, error) {
-	if num.IsNull {
-		return FloatType{IsNull: true}, nil
-	}
-	return FloatType{Value: math.Floor(num.Value)}, nil
+// floor_float64 represents the PostgreSQL function of the same name, taking the same parameters.
+var floor_float64 = framework.Function1{
+	Name:       "floor",
+	Return:     pgtypes.Float64,
+	Parameters: []pgtypes.DoltgresType{pgtypes.Float64},
+	Callable: func(ctx framework.Context, val1 any) (any, error) {
+		if val1 == nil {
+			return nil, nil
+		}
+		return math.Floor(val1.(float64)), nil
+	},
 }
 
-// floor_numeric is one of the overloads of floor.
-func floor_numeric(num NumericType) (NumericType, error) {
-	if num.IsNull {
-		return NumericType{IsNull: true}, nil
-	}
-	return NumericType{Value: math.Floor(num.Value)}, nil
+// floor_numeric represents the PostgreSQL function of the same name, taking the same parameters.
+var floor_numeric = framework.Function1{
+	Name:       "floor",
+	Return:     pgtypes.Numeric,
+	Parameters: []pgtypes.DoltgresType{pgtypes.Numeric},
+	Callable: func(ctx framework.Context, val1 any) (any, error) {
+		if val1 == nil {
+			return nil, nil
+		}
+		return val1.(decimal.Decimal).Floor(), nil
+	},
 }

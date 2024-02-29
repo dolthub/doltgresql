@@ -14,18 +14,28 @@
 
 package functions
 
-import "math"
+import (
+	"math"
 
-// cos represents the PostgreSQL function of the same name.
-var cos = Function{
-	Name:      "cos",
-	Overloads: []interface{}{cos_float},
+	"github.com/dolthub/doltgresql/server/functions/framework"
+
+	pgtypes "github.com/dolthub/doltgresql/server/types"
+)
+
+// init registers the functions to the catalog.
+func init() {
+	framework.RegisterFunction(cos_float64)
 }
 
-// cos_float is one of the overloads of cos.
-func cos_float(num FloatType) (FloatType, error) {
-	if num.IsNull {
-		return FloatType{IsNull: true}, nil
-	}
-	return FloatType{Value: math.Cos(num.Value)}, nil
+// cos_float64 represents the PostgreSQL function of the same name, taking the same parameters.
+var cos_float64 = framework.Function1{
+	Name:       "cos",
+	Return:     pgtypes.Float64,
+	Parameters: []pgtypes.DoltgresType{pgtypes.Float64},
+	Callable: func(ctx framework.Context, val1 any) (any, error) {
+		if val1 == nil {
+			return nil, nil
+		}
+		return math.Cos(val1.(float64)), nil
+	},
 }

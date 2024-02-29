@@ -15,31 +15,39 @@
 package functions
 
 import (
-	"strconv"
 	"strings"
+
+	"github.com/shopspring/decimal"
+
+	"github.com/dolthub/doltgresql/server/functions/framework"
+	pgtypes "github.com/dolthub/doltgresql/server/types"
 )
 
-// min_scale represents the PostgreSQL function of the same name.
-var min_scale = Function{
-	Name:      "min_scale",
-	Overloads: []interface{}{min_scale_numeric},
+// init registers the functions to the catalog.
+func init() {
+	framework.RegisterFunction(min_scale_numeric)
 }
 
-// min_scale_numeric is one of the overloads of min_scale.
-func min_scale_numeric(num NumericType) (NumericType, error) {
-	if num.IsNull {
-		return NumericType{IsNull: true}, nil
-	}
-	str := strconv.FormatFloat(num.Value, 'f', -1, 64)
-	if idx := strings.Index(str, "."); idx != -1 {
-		str = str[idx+1:]
-		i := len(str) - 1
-		for ; i >= 0; i-- {
-			if str[i] != '0' {
-				break
-			}
+// min_scale_numeric represents the PostgreSQL function of the same name, taking the same parameters.
+var min_scale_numeric = framework.Function1{
+	Name:       "min_scale",
+	Return:     pgtypes.Numeric,
+	Parameters: []pgtypes.DoltgresType{pgtypes.Numeric},
+	Callable: func(ctx framework.Context, val1 any) (any, error) {
+		if val1 == nil {
+			return nil, nil
 		}
-		return NumericType{Value: float64(i + 1)}, nil
-	}
-	return NumericType{Value: 0}, nil
+		str := val1.(decimal.Decimal).String()
+		if idx := strings.Index(str, "."); idx != -1 {
+			str = str[idx+1:]
+			i := len(str) - 1
+			for ; i >= 0; i-- {
+				if str[i] != '0' {
+					break
+				}
+			}
+			return decimal.NewFromInt(int64(i + 1)), nil
+		}
+		return decimal.Zero, nil
+	},
 }

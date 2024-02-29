@@ -578,14 +578,14 @@ var typesTests = []ScriptTest{
 		Name: "Real type",
 		SetUpScript: []string{
 			"CREATE TABLE t_real (id INTEGER primary key, v1 REAL);",
-			"INSERT INTO t_real VALUES (1, 123.45), (2, 67.89);",
+			"INSERT INTO t_real VALUES (1, 123.875), (2, 67.125);",
 		},
 		Assertions: []ScriptTestAssertion{
 			{
 				Query: "SELECT * FROM t_real ORDER BY id;",
 				Expected: []sql.Row{
-					{1, 123.45},
-					{2, 67.89},
+					{1, 123.875},
+					{2, 67.125},
 				},
 			},
 		},

@@ -14,36 +14,48 @@
 
 package functions
 
-// sign represents the PostgreSQL function of the same name.
-var sign = Function{
-	Name:      "sign",
-	Overloads: []interface{}{sign_float, sign_numeric},
+import (
+	"github.com/shopspring/decimal"
+
+	"github.com/dolthub/doltgresql/server/functions/framework"
+
+	pgtypes "github.com/dolthub/doltgresql/server/types"
+)
+
+// init registers the functions to the catalog.
+func init() {
+	framework.RegisterFunction(sign_float64)
+	framework.RegisterFunction(sign_numeric)
 }
 
-// sign_float is one of the overloads of sign.
-func sign_float(num FloatType) (FloatType, error) {
-	if num.IsNull {
-		return FloatType{IsNull: true}, nil
-	}
-	if num.Value < 0 {
-		return FloatType{Value: -1}, nil
-	} else if num.Value > 0 {
-		return FloatType{Value: 1}, nil
-	} else {
-		return FloatType{Value: 0}, nil
-	}
+// sign_float64 represents the PostgreSQL function of the same name, taking the same parameters.
+var sign_float64 = framework.Function1{
+	Name:       "sign",
+	Return:     pgtypes.Float64,
+	Parameters: []pgtypes.DoltgresType{pgtypes.Float64},
+	Callable: func(ctx framework.Context, val1 any) (any, error) {
+		if val1 == nil {
+			return nil, nil
+		}
+		if val1.(float64) < 0 {
+			return float64(-1), nil
+		} else if val1.(float64) > 0 {
+			return float64(1), nil
+		} else {
+			return float64(0), nil
+		}
+	},
 }
 
-// sign_numeric is one of the overloads of sign.
-func sign_numeric(num NumericType) (NumericType, error) {
-	if num.IsNull {
-		return NumericType{IsNull: true}, nil
-	}
-	if num.Value < 0 {
-		return NumericType{Value: -1}, nil
-	} else if num.Value > 0 {
-		return NumericType{Value: 1}, nil
-	} else {
-		return NumericType{Value: 0}, nil
-	}
+// sign_numeric represents the PostgreSQL function of the same name, taking the same parameters.
+var sign_numeric = framework.Function1{
+	Name:       "sign",
+	Return:     pgtypes.Numeric,
+	Parameters: []pgtypes.DoltgresType{pgtypes.Numeric},
+	Callable: func(ctx framework.Context, val1 any) (any, error) {
+		if val1 == nil {
+			return nil, nil
+		}
+		return val1.(decimal.Decimal).Cmp(decimal.Zero), nil
+	},
 }

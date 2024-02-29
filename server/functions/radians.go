@@ -14,18 +14,28 @@
 
 package functions
 
-import "math"
+import (
+	"math"
 
-// radians represents the PostgreSQL function of the same name.
-var radians = Function{
-	Name:      "radians",
-	Overloads: []interface{}{radians_float},
+	"github.com/dolthub/doltgresql/server/functions/framework"
+
+	pgtypes "github.com/dolthub/doltgresql/server/types"
+)
+
+// init registers the functions to the catalog.
+func init() {
+	framework.RegisterFunction(radians_float64)
 }
 
-// radians_float is one of the overloads of radians.
-func radians_float(num FloatType) (FloatType, error) {
-	if num.IsNull {
-		return FloatType{IsNull: true}, nil
-	}
-	return FloatType{Value: num.Value * (180.0 / math.Pi)}, nil
+// radians_float64 represents the PostgreSQL function of the same name, taking the same parameters.
+var radians_float64 = framework.Function1{
+	Name:       "radians",
+	Return:     pgtypes.Float64,
+	Parameters: []pgtypes.DoltgresType{pgtypes.Float64},
+	Callable: func(ctx framework.Context, val1 any) (any, error) {
+		if val1 == nil {
+			return nil, nil
+		}
+		return val1.(float64) * (180.0 / math.Pi), nil
+	},
 }

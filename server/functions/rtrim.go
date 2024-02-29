@@ -14,37 +14,51 @@
 
 package functions
 
-// rtrim represents the PostgreSQL function of the same name.
-var rtrim = Function{
-	Name:      "rtrim",
-	Overloads: []interface{}{rtrim_string, rtrim_string_string},
+import (
+	"github.com/dolthub/doltgresql/server/functions/framework"
+	pgtypes "github.com/dolthub/doltgresql/server/types"
+)
+
+// init registers the functions to the catalog.
+func init() {
+	framework.RegisterFunction(rtrim_varchar)
+	framework.RegisterFunction(rtrim_varchar_varchar)
 }
 
-// rtrim_string is one of the overloads of rtrim.
-func rtrim_string(str StringType) (StringType, error) {
-	return rtrim_string_string(str, StringType{
-		Value:        " ",
-		IsNull:       false,
-		OriginalType: ParameterType_String,
-		Source:       Source_Constant,
-	})
+// rtrim_varchar represents the PostgreSQL function of the same name, taking the same parameters.
+var rtrim_varchar = framework.Function1{
+	Name:       "rtrim",
+	Return:     pgtypes.VarCharMax,
+	Parameters: []pgtypes.DoltgresType{pgtypes.VarCharMax},
+	Callable: func(ctx framework.Context, val1 any) (any, error) {
+		return rtrim_varchar_varchar.Callable(framework.Context{
+			Context:       ctx.Context,
+			OriginalTypes: append(ctx.OriginalTypes, pgtypes.VarCharMax),
+			Sources:       append(ctx.Sources, framework.Source_Constant),
+		}, val1, " ")
+	},
 }
 
-// rtrim_string_string is one of the overloads of rtrim.
-func rtrim_string_string(str StringType, characters StringType) (StringType, error) {
-	if str.IsNull || characters.IsNull {
-		return StringType{IsNull: true}, nil
-	}
-	runes := []rune(str.Value)
-	trimChars := make(map[rune]struct{})
-	for _, c := range characters.Value {
-		trimChars[c] = struct{}{}
-	}
-	trimIdx := len(runes)
-	for ; trimIdx > 0; trimIdx-- {
-		if _, ok := trimChars[runes[trimIdx-1]]; !ok {
-			break
+// rtrim_varchar_varchar represents the PostgreSQL function of the same name, taking the same parameters.
+var rtrim_varchar_varchar = framework.Function2{
+	Name:       "rtrim",
+	Return:     pgtypes.VarCharMax,
+	Parameters: []pgtypes.DoltgresType{pgtypes.VarCharMax, pgtypes.VarCharMax},
+	Callable: func(ctx framework.Context, str any, characters any) (any, error) {
+		if str == nil || characters == nil {
+			return nil, nil
 		}
-	}
-	return StringType{Value: string(runes[:trimIdx])}, nil
+		runes := []rune(str.(string))
+		trimChars := make(map[rune]struct{})
+		for _, c := range characters.(string) {
+			trimChars[c] = struct{}{}
+		}
+		trimIdx := len(runes)
+		for ; trimIdx > 0; trimIdx-- {
+			if _, ok := trimChars[runes[trimIdx-1]]; !ok {
+				break
+			}
+		}
+		return string(runes[:trimIdx]), nil
+	},
 }

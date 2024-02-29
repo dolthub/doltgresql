@@ -17,30 +17,37 @@ package functions
 import (
 	"fmt"
 
+	"github.com/dolthub/doltgresql/server/functions/framework"
+	pgtypes "github.com/dolthub/doltgresql/server/types"
 	"github.com/dolthub/doltgresql/utils"
 )
 
-// lcm represents the PostgreSQL function of the same name.
-var lcm = Function{
-	Name:      "lcm",
-	Overloads: []interface{}{lcm_int_int},
+// init registers the functions to the catalog.
+func init() {
+	framework.RegisterFunction(lcm_int64_int64)
 }
 
-// lcm_int_int is one of the overloads of lcm.
-func lcm_int_int(num1 IntegerType, num2 IntegerType) (IntegerType, error) {
-	if num1.IsNull || num2.IsNull {
-		return IntegerType{IsNull: true}, nil
-	}
-	if num1.OriginalType == ParameterType_String || num2.OriginalType == ParameterType_String {
-		return IntegerType{}, fmt.Errorf("function lcm(%s, %s) does not exist",
-			num1.OriginalType.String(), num2.OriginalType.String())
-	}
-	gcdResult, err := gcd_int_int(num1, num2)
-	if err != nil {
-		return IntegerType{}, err
-	}
-	if gcdResult.Value == 0 {
-		return IntegerType{Value: 0}, nil
-	}
-	return IntegerType{Value: utils.Abs((num1.Value * num2.Value) / gcdResult.Value)}, nil
+// lcm_int64_int64 represents the PostgreSQL function of the same name, taking the same parameters.
+var lcm_int64_int64 = framework.Function2{
+	Name:       "lcm",
+	Return:     pgtypes.Int64,
+	Parameters: []pgtypes.DoltgresType{pgtypes.Int64, pgtypes.Int64},
+	Callable: func(ctx framework.Context, val1 any, val2 any) (any, error) {
+		if val1 == nil || val2 == nil {
+			return nil, nil
+		}
+		if framework.IsParameterType(ctx.OriginalTypes[0], framework.ParameterType_String) || framework.IsParameterType(ctx.OriginalTypes[1], framework.ParameterType_String) {
+			return nil, fmt.Errorf("function lcm(%s, %s) does not exist",
+				ctx.OriginalTypes[0].String(), ctx.OriginalTypes[1].String())
+		}
+		gcdResultInterface, err := gcd_int64_int64.Callable(ctx, val1, val2)
+		if err != nil {
+			return nil, err
+		}
+		gcdResult := gcdResultInterface.(int64)
+		if gcdResult == 0 {
+			return int64(0), nil
+		}
+		return utils.Abs((val1.(int64) * val2.(int64)) / gcdResult), nil
+	},
 }

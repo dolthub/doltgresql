@@ -14,26 +14,41 @@
 
 package functions
 
-// substr represents the PostgreSQL function of the same name.
-var substr = Function{
-	Name:      "substr",
-	Overloads: []interface{}{substr_string_int, substr_string_int_int},
+import (
+	"github.com/dolthub/doltgresql/server/functions/framework"
+	pgtypes "github.com/dolthub/doltgresql/server/types"
+)
+
+// init registers the functions to the catalog.
+func init() {
+	framework.RegisterFunction(substr_varchar_int64)
+	framework.RegisterFunction(substr_varchar_int64_int64)
 }
 
-// substr_string_int is one of the overloads of substr.
-func substr_string_int(str StringType, start IntegerType) (StringType, error) {
-	if str.IsNull || start.IsNull {
-		return StringType{IsNull: true}, nil
-	}
-	runes := []rune(str.Value)
-	return StringType{Value: string(runes[start.Value:])}, nil
+// substr_varchar_int64 represents the PostgreSQL function of the same name, taking the same parameters.
+var substr_varchar_int64 = framework.Function2{
+	Name:       "substr",
+	Return:     pgtypes.VarCharMax,
+	Parameters: []pgtypes.DoltgresType{pgtypes.VarCharMax, pgtypes.Int64},
+	Callable: func(ctx framework.Context, str any, start any) (any, error) {
+		if str == nil || start == nil {
+			return nil, nil
+		}
+		runes := []rune(str.(string))
+		return string(runes[start.(int64):]), nil
+	},
 }
 
-// substr_string_int_int is one of the overloads of substr.
-func substr_string_int_int(str StringType, start IntegerType, count IntegerType) (StringType, error) {
-	if str.IsNull || start.IsNull || count.IsNull {
-		return StringType{IsNull: true}, nil
-	}
-	runes := []rune(str.Value)
-	return StringType{Value: string(runes[start.Value : start.Value+count.Value])}, nil
+// substr_varchar_int64_int64 represents the PostgreSQL function of the same name, taking the same parameters.
+var substr_varchar_int64_int64 = framework.Function3{
+	Name:       "substr",
+	Return:     pgtypes.VarCharMax,
+	Parameters: []pgtypes.DoltgresType{pgtypes.VarCharMax, pgtypes.Int64, pgtypes.Int64},
+	Callable: func(ctx framework.Context, str any, start any, count any) (any, error) {
+		if str == nil || start == nil || count == nil {
+			return nil, nil
+		}
+		runes := []rune(str.(string))
+		return string(runes[start.(int64) : start.(int64)+count.(int64)]), nil
+	},
 }

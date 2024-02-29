@@ -24,7 +24,7 @@ import (
 
 var preparedStatementTests = []ScriptTest{
 	{
-		Name: "expressions without tables",
+		Name: "Expressions without tables",
 		Assertions: []ScriptTestAssertion{
 			{
 				Query:    "SELECT CONCAT($1::text, $2::text)",

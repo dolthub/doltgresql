@@ -16,12 +16,9 @@ package server
 
 import (
 	"crypto/tls"
-	"encoding/binary"
 	"fmt"
 	"io"
-	"math"
 	"net"
-	"strconv"
 	"strings"
 	"sync/atomic"
 
@@ -34,12 +31,15 @@ import (
 	"github.com/dolthub/vitess/go/sqltypes"
 	querypb "github.com/dolthub/vitess/go/vt/proto/query"
 	"github.com/dolthub/vitess/go/vt/sqlparser"
+	"github.com/jackc/pgx/v5/pgtype"
 	"github.com/sirupsen/logrus"
 
 	"github.com/dolthub/doltgresql/postgres/connection"
 	"github.com/dolthub/doltgresql/postgres/messages"
 	"github.com/dolthub/doltgresql/postgres/parser/parser"
 	"github.com/dolthub/doltgresql/server/ast"
+	pgexprs "github.com/dolthub/doltgresql/server/expression"
+	pgtypes "github.com/dolthub/doltgresql/server/types"
 )
 
 // ConnectionHandler is responsible for the entire lifecycle of a user connection: receiving messages they send,
@@ -49,6 +49,7 @@ type ConnectionHandler struct {
 	preparedStatements map[string]PreparedStatementData
 	portals            map[string]PortalData
 	handler            mysql.Handler
+	pgTypeMap          *pgtype.Map
 	waitForSync        bool
 }
 
@@ -72,6 +73,7 @@ func NewConnectionHandler(conn net.Conn, handler mysql.Handler) *ConnectionHandl
 		preparedStatements: preparedStatements,
 		portals:            portals,
 		handler:            handler,
+		pgTypeMap:          pgtype.NewMap(),
 	}
 }
 
@@ -439,7 +441,7 @@ func (h *ConnectionHandler) handleBind(message messages.Bind) error {
 		return connection.Send(h.Conn(), messages.BindComplete{})
 	}
 
-	bindVars, err := convertBindParameters(preparedData.BindVarTypes, message.ParameterValues)
+	bindVars, err := h.convertBindParameters(preparedData.BindVarTypes, message.ParameterFormatCodes, message.ParameterValues)
 	if err != nil {
 		return err
 	}
@@ -515,12 +517,54 @@ func extractBindVarTypes(queryPlan sql.Node) ([]int32, error) {
 		switch e := expr.(type) {
 		case *expression.BindVar:
 			var oid int32
-			oid, err = messages.VitessTypeToObjectID(e.Type().Type())
-			if err != nil {
-				err = fmt.Errorf("could not determine OID for placeholder %s: %w", e.Name, err)
-				return false
+			if doltgresType, ok := e.Type().(pgtypes.DoltgresType); ok {
+				oid = int32(doltgresType.OID())
+			} else {
+				oid, err = messages.VitessTypeToObjectID(e.Type().Type())
+				if err != nil {
+					err = fmt.Errorf("could not determine OID for placeholder %s: %w", e.Name, err)
+					return false
+				}
 			}
 			types = append(types, oid)
+		case *pgexprs.Addition:
+			// TODO: find a better way to do this as this is not scalable.
+			//  It seems like this shouldn't be necessary, but tests fail if this is removed
+			for _, child := range e.Children() {
+				castChild, ok := child.(*pgexprs.Cast)
+				if ok {
+					child = castChild.Child()
+				}
+				if bindVar, ok := child.(*expression.BindVar); ok {
+					var oid int32
+					if doltgresType, ok := bindVar.Type().(pgtypes.DoltgresType); ok {
+						oid = int32(doltgresType.OID())
+					} else {
+						oid, err = messages.VitessTypeToObjectID(e.Type().Type())
+						if err != nil {
+							err = fmt.Errorf("could not determine OID for placeholder %s: %w", bindVar.Name, err)
+							return false
+						}
+					}
+					types = append(types, oid)
+				}
+			}
+			return false
+		case *pgexprs.Cast:
+			if bindVar, ok := e.Child().(*expression.BindVar); ok {
+				var oid int32
+				if doltgresType, ok := bindVar.Type().(pgtypes.DoltgresType); ok {
+					oid = int32(doltgresType.OID())
+				} else {
+					oid, err = messages.VitessTypeToObjectID(e.Type().Type())
+					if err != nil {
+						err = fmt.Errorf("could not determine OID for placeholder %s: %w", bindVar.Name, err)
+						return false
+					}
+				}
+				types = append(types, oid)
+				return false
+			}
 		// $1::text and similar get converted to a Convert expression wrapping the bindvar
 		case *expression.Convert:
 			if bindVar, ok := e.Child.(*expression.BindVar); ok {
@@ -542,14 +586,20 @@ func extractBindVarTypes(queryPlan sql.Node) ([]int32, error) {
 	return types, err
 }
 
-func convertBindParameters(types []int32, values []messages.BindParameterValue) (map[string]*querypb.BindVariable, error) {
+// convertBindParameters handles the conversion from bind parameters to variable values.
+func (h *ConnectionHandler) convertBindParameters(types []int32, formatCodes []int32, values []messages.BindParameterValue) (map[string]*querypb.BindVariable, error) {
 	bindings := make(map[string]*querypb.BindVariable, len(values))
-	for i, value := range values {
+	for i := range values {
 		bindingName := fmt.Sprintf("v%d", i+1)
 		typ := convertType(types[i])
+		var bindVarString string
+		// We'll rely on a library to decode each format, which will deal with text and binary representations for us
+		if err := h.pgTypeMap.Scan(uint32(types[i]), int16(formatCodes[i]), values[i].Data, &bindVarString); err != nil {
+			return nil, err
+		}
 		bindVar := &querypb.BindVariable{
 			Type:   typ,
-			Value:  convertBindVarValue(typ, value),
+			Value:  []byte(bindVarString),
 			Values: nil, // TODO
 		}
 		bindings[bindingName] = bindVar
@@ -557,36 +607,14 @@ func convertBindParameters(types []int32, values []messages.BindParameterValue) 
 	return bindings, nil
 }
 
-func convertBindVarValue(typ querypb.Type, value messages.BindParameterValue) []byte {
-	switch typ {
-	case querypb.Type_INT8, querypb.Type_INT16, querypb.Type_INT24, querypb.Type_INT32, querypb.Type_UINT8, querypb.Type_UINT16, querypb.Type_UINT24, querypb.Type_UINT32:
-		// first convert the bytes in the payload to an integer, then convert that to its base 10 string representation
-		intVal := binary.BigEndian.Uint32(value.Data)
-		return []byte(strconv.FormatUint(uint64(intVal), 10))
-	case querypb.Type_INT64, querypb.Type_UINT64:
-		// first convert the bytes in the payload to an integer, then convert that to its base 10 string representation
-		intVal := binary.BigEndian.Uint64(value.Data)
-		return []byte(strconv.FormatUint(intVal, 10))
-	case querypb.Type_FLOAT32:
-		// first convert the bytes in the payload to a float, then convert that to its base 10 string representation
-		floatVal := binary.BigEndian.Uint32(value.Data)
-		return []byte(strconv.FormatFloat(float64(math.Float32frombits(floatVal)), 'f', -1, 64))
-	case querypb.Type_FLOAT64:
-		// first convert the bytes in the payload to a float, then convert that to its base 10 string representation
-		floatVal := binary.BigEndian.Uint64(value.Data)
-		return []byte(strconv.FormatFloat(math.Float64frombits(floatVal), 'f', -1, 64))
-	case querypb.Type_VARCHAR, querypb.Type_VARBINARY, querypb.Type_TEXT, querypb.Type_BLOB:
-		return value.Data
-	default:
-		panic(fmt.Sprintf("unhandled type %v", typ))
-	}
-}
-
+// TODO: we need to migrate this away from vitess types and deal strictly with OIDs which are compatible with Postgres types
 func convertType(oid int32) querypb.Type {
 	switch oid {
 	// TODO: this should never be 0
 	case 0:
 		return sqltypes.Int32
+	case messages.OidInt2:
+		return sqltypes.Int16
 	case messages.OidInt4:
 		return sqltypes.Int32
 	case messages.OidInt8:
@@ -595,6 +623,8 @@ func convertType(oid int32) querypb.Type {
 		return sqltypes.Float32
 	case messages.OidFloat8:
 		return sqltypes.Float64
+	case messages.OidNumeric:
+		return sqltypes.Decimal
 	case messages.OidText:
 		return sqltypes.Text
 	case messages.OidBool:
@@ -606,7 +636,7 @@ func convertType(oid int32) querypb.Type {
 	case messages.OidVarchar:
 		return sqltypes.Text
 	default:
-		panic(fmt.Sprintf("unhandled type %d", oid))
+		panic(fmt.Sprintf("convertType(oid): unhandled type %d", oid))
 	}
 }
 

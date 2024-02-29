@@ -17,28 +17,36 @@ package functions
 import (
 	"fmt"
 
+	"github.com/dolthub/doltgresql/server/functions/framework"
+	pgtypes "github.com/dolthub/doltgresql/server/types"
 	"github.com/dolthub/doltgresql/utils"
 )
 
-// gcd represents the PostgreSQL function of the same name.
-var gcd = Function{
-	Name:      "gcd",
-	Overloads: []interface{}{gcd_int_int},
+// init registers the functions to the catalog.
+func init() {
+	framework.RegisterFunction(gcd_int64_int64)
 }
 
-// gcd_int_int is one of the overloads of gcd.
-func gcd_int_int(num1 IntegerType, num2 IntegerType) (IntegerType, error) {
-	if num1.IsNull || num2.IsNull {
-		return IntegerType{IsNull: true}, nil
-	}
-	if num1.OriginalType == ParameterType_String || num2.OriginalType == ParameterType_String {
-		return IntegerType{}, fmt.Errorf("function gcd(%s, %s) does not exist",
-			num1.OriginalType.String(), num2.OriginalType.String())
-	}
-	for num2.Value != 0 {
-		temp := num2.Value
-		num2.Value = num1.Value % num2.Value
-		num1.Value = temp
-	}
-	return IntegerType{Value: utils.Abs(num1.Value)}, nil
+// gcd_int64_int64 represents the PostgreSQL function of the same name, taking the same parameters.
+var gcd_int64_int64 = framework.Function2{
+	Name:       "gcd",
+	Return:     pgtypes.Int64,
+	Parameters: []pgtypes.DoltgresType{pgtypes.Int64, pgtypes.Int64},
+	Callable: func(ctx framework.Context, val1Interface any, val2Interface any) (any, error) {
+		if val1Interface == nil || val2Interface == nil {
+			return nil, nil
+		}
+		if framework.IsParameterType(ctx.OriginalTypes[0], framework.ParameterType_String) || framework.IsParameterType(ctx.OriginalTypes[1], framework.ParameterType_String) {
+			return nil, fmt.Errorf("function gcd(%s, %s) does not exist",
+				ctx.OriginalTypes[0].String(), ctx.OriginalTypes[1].String())
+		}
+		val1 := val1Interface.(int64)
+		val2 := val2Interface.(int64)
+		for val2 != 0 {
+			temp := val2
+			val2 = val1 % val2
+			val1 = temp
+		}
+		return utils.Abs(val1), nil
+	},
 }

@@ -14,34 +14,48 @@
 
 package functions
 
-// rpad represents the PostgreSQL function of the same name.
-var rpad = Function{
-	Name:      "rpad",
-	Overloads: []interface{}{rpad_string_int, rpad_string_int_string},
+import (
+	"github.com/dolthub/doltgresql/server/functions/framework"
+	pgtypes "github.com/dolthub/doltgresql/server/types"
+)
+
+// init registers the functions to the catalog.
+func init() {
+	framework.RegisterFunction(rpad_varchar_int64)
+	framework.RegisterFunction(rpad_varchar_int64_varchar)
 }
 
-// rpad_string_int is one of the overloads of rpad.
-func rpad_string_int(str StringType, length IntegerType) (StringType, error) {
-	return rpad_string_int_string(str, length, StringType{
-		Value:        " ",
-		IsNull:       false,
-		OriginalType: ParameterType_String,
-		Source:       Source_Constant,
-	})
+// rpad_varchar_int64 represents the PostgreSQL function of the same name, taking the same parameters.
+var rpad_varchar_int64 = framework.Function2{
+	Name:       "rpad",
+	Return:     pgtypes.VarCharMax,
+	Parameters: []pgtypes.DoltgresType{pgtypes.VarCharMax, pgtypes.Int64},
+	Callable: func(ctx framework.Context, val1 any, val2 any) (any, error) {
+		return rpad_varchar_int64_varchar.Callable(framework.Context{
+			Context:       ctx.Context,
+			OriginalTypes: append(ctx.OriginalTypes, pgtypes.VarCharMax),
+			Sources:       append(ctx.Sources, framework.Source_Constant),
+		}, val1, val2, " ")
+	},
 }
 
-// rpad_string_int_string is one of the overloads of rpad.
-func rpad_string_int_string(str StringType, length IntegerType, fill StringType) (StringType, error) {
-	if str.IsNull || length.IsNull || fill.IsNull {
-		return StringType{IsNull: true}, nil
-	}
-	if length.Value <= 0 {
-		return StringType{Value: ""}, nil
-	}
-	runes := []rune(str.Value)
-	fillRunes := []rune(fill.Value)
-	for int64(len(runes)) < length.Value {
-		runes = append(runes, fillRunes...)
-	}
-	return StringType{Value: string(runes[:length.Value])}, nil
+// rpad_varchar_int64_varchar represents the PostgreSQL function of the same name, taking the same parameters.
+var rpad_varchar_int64_varchar = framework.Function3{
+	Name:       "rpad",
+	Return:     pgtypes.VarCharMax,
+	Parameters: []pgtypes.DoltgresType{pgtypes.VarCharMax, pgtypes.Int64, pgtypes.VarCharMax},
+	Callable: func(ctx framework.Context, str any, length any, fill any) (any, error) {
+		if str == nil || length == nil || fill == nil {
+			return nil, nil
+		}
+		if length.(int64) <= 0 {
+			return "", nil
+		}
+		runes := []rune(str.(string))
+		fillRunes := []rune(fill.(string))
+		for int64(len(runes)) < length.(int64) {
+			runes = append(runes, fillRunes...)
+		}
+		return string(runes[:length.(int64)]), nil
+	},
 }

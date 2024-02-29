@@ -8,32 +8,51 @@
 //
 // Unless required by applicable law or agreed to in writing, software
 // distributed under the License is distributed on an "AS IS" BASIS,
-// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either lnress or implied.
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
 package functions
 
-import "math"
+import (
+	"math"
 
-// ln represents the PostgreSQL function of the same name.
-var ln = Function{
-	Name:      "ln",
-	Overloads: []interface{}{ln_float, ln_numeric},
+	"github.com/shopspring/decimal"
+
+	"github.com/dolthub/doltgresql/server/functions/framework"
+	pgtypes "github.com/dolthub/doltgresql/server/types"
+)
+
+// init registers the functions to the catalog.
+func init() {
+	framework.RegisterFunction(ln_float64)
+	framework.RegisterFunction(ln_numeric)
 }
 
-// ln_float is one of the overloads of ln.
-func ln_float(num FloatType) (FloatType, error) {
-	if num.IsNull {
-		return FloatType{IsNull: true}, nil
-	}
-	return FloatType{Value: math.Log(num.Value)}, nil
+// ln_float64 represents the PostgreSQL function of the same name, taking the same parameters.
+var ln_float64 = framework.Function1{
+	Name:       "ln",
+	Return:     pgtypes.Float64,
+	Parameters: []pgtypes.DoltgresType{pgtypes.Float64},
+	Callable: func(ctx framework.Context, val1 any) (any, error) {
+		if val1 == nil {
+			return nil, nil
+		}
+		return math.Log(val1.(float64)), nil
+	},
 }
 
-// ln_numeric is one of the overloads of ln.
-func ln_numeric(num NumericType) (NumericType, error) {
-	if num.IsNull {
-		return NumericType{IsNull: true}, nil
-	}
-	return NumericType{Value: math.Log(num.Value)}, nil
+// ln_numeric represents the PostgreSQL function of the same name, taking the same parameters.
+var ln_numeric = framework.Function1{
+	Name:       "ln",
+	Return:     pgtypes.Numeric,
+	Parameters: []pgtypes.DoltgresType{pgtypes.Numeric},
+	Callable: func(ctx framework.Context, val1 any) (any, error) {
+		if val1 == nil {
+			return nil, nil
+		}
+		// TODO: add an actual ln for numerics rather than relying on float64
+		f, _ := val1.(decimal.Decimal).Float64()
+		return decimal.NewFromFloat(math.Log(f)), nil
+	},
 }

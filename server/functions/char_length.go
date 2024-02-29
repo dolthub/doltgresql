@@ -14,22 +14,29 @@
 
 package functions
 
-// char_length represents the PostgreSQL function of the same name.
-var char_length = Function{
-	Name:      "char_length",
-	Overloads: []interface{}{char_length_string},
+import (
+	"github.com/dolthub/doltgresql/server/functions/framework"
+	pgtypes "github.com/dolthub/doltgresql/server/types"
+)
+
+// init registers the functions to the catalog.
+func init() {
+	framework.RegisterFunction(char_length_varchar)
+	// Register alias
+	character_length_varchar := char_length_varchar
+	character_length_varchar.Name = "character_length"
+	framework.RegisterFunction(character_length_varchar)
 }
 
-// character_length represents the PostgreSQL function of the same name.
-var character_length = Function{
-	Name:      "character_length",
-	Overloads: []interface{}{char_length_string},
-}
-
-// char_length_string is one of the overloads of char_length.
-func char_length_string(text StringType) (IntegerType, error) {
-	if text.IsNull {
-		return IntegerType{IsNull: true}, nil
-	}
-	return IntegerType{Value: int64(len([]rune(text.Value)))}, nil
+// char_length_varchar represents the PostgreSQL function of the same name, taking the same parameters.
+var char_length_varchar = framework.Function1{
+	Name:       "char_length",
+	Return:     pgtypes.Int64,
+	Parameters: []pgtypes.DoltgresType{pgtypes.VarCharMax},
+	Callable: func(ctx framework.Context, val1 any) (any, error) {
+		if val1 == nil {
+			return nil, nil
+		}
+		return int64(len([]rune(val1.(string)))), nil
+	},
 }

@@ -14,23 +14,34 @@
 
 package functions
 
-import "fmt"
+import (
+	"fmt"
 
-// chr represents the PostgreSQL function of the same name.
-var chr = Function{
-	Name:      "chr",
-	Overloads: []interface{}{chr_string},
+	"github.com/dolthub/doltgresql/server/functions/framework"
+
+	pgtypes "github.com/dolthub/doltgresql/server/types"
+)
+
+// init registers the functions to the catalog.
+func init() {
+	framework.RegisterFunction(chr_int64)
 }
 
-// chr_string is one of the overloads of chr.
-func chr_string(num IntegerType) (StringType, error) {
-	if num.IsNull {
-		return StringType{IsNull: true}, nil
-	}
-	if num.Value == 0 {
-		return StringType{}, fmt.Errorf("null character not permitted")
-	} else if num.Value < 0 {
-		return StringType{}, fmt.Errorf("character number must be positive")
-	}
-	return StringType{Value: string(rune(num.Value))}, nil
+// chr_int64 represents the PostgreSQL function of the same name, taking the same parameters.
+var chr_int64 = framework.Function1{
+	Name:       "chr",
+	Return:     pgtypes.VarCharMax,
+	Parameters: []pgtypes.DoltgresType{pgtypes.Int64},
+	Callable: func(ctx framework.Context, val1Interface any) (any, error) {
+		if val1Interface == nil {
+			return nil, nil
+		}
+		val1 := val1Interface.(int64)
+		if val1 == 0 {
+			return nil, fmt.Errorf("null character not permitted")
+		} else if val1 < 0 {
+			return nil, fmt.Errorf("character number must be positive")
+		}
+		return string(rune(val1)), nil
+	},
 }

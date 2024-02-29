@@ -14,18 +14,28 @@
 
 package functions
 
-import "math"
+import (
+	"math"
 
-// acosd represents the PostgreSQL function of the same name.
-var acosd = Function{
-	Name:      "acosd",
-	Overloads: []interface{}{acosd_float},
+	"github.com/dolthub/doltgresql/server/functions/framework"
+
+	pgtypes "github.com/dolthub/doltgresql/server/types"
+)
+
+// init registers the functions to the catalog.
+func init() {
+	framework.RegisterFunction(acosd_float64)
 }
 
-// acosd_float is one of the overloads of acosd.
-func acosd_float(num FloatType) (FloatType, error) {
-	if num.IsNull {
-		return FloatType{IsNull: true}, nil
-	}
-	return FloatType{Value: toDegrees(math.Acos(num.Value))}, nil
+// acosd_float64 represents the PostgreSQL function of the same name, taking the same parameters.
+var acosd_float64 = framework.Function1{
+	Name:       "acosd",
+	Return:     pgtypes.Float64,
+	Parameters: []pgtypes.DoltgresType{pgtypes.Float64},
+	Callable: func(ctx framework.Context, val1 any) (any, error) {
+		if val1 == nil {
+			return nil, nil
+		}
+		return toDegrees(math.Acos(val1.(float64))), nil
+	},
 }

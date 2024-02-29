@@ -22,6 +22,7 @@ import (
 	"github.com/dolthub/go-mysql-server/sql/types"
 	"github.com/dolthub/vitess/go/sqltypes"
 	"github.com/dolthub/vitess/go/vt/proto/query"
+	"github.com/lib/pq/oid"
 
 	"github.com/dolthub/doltgresql/postgres/parser/uuid"
 )
@@ -32,14 +33,19 @@ var Uuid = UuidType{}
 // UuidType is the extended type implementation of the PostgreSQL UUID.
 type UuidType struct{}
 
-var _ types.ExtendedType = UuidType{}
+var _ DoltgresType = UuidType{}
 
-// CollationCoercibility implements the types.ExtendedType interface.
+// BaseID implements the DoltgresType interface.
+func (b UuidType) BaseID() DoltgresTypeBaseID {
+	return DoltgresTypeBaseID(SerializationID_Uuid)
+}
+
+// CollationCoercibility implements the DoltgresType interface.
 func (b UuidType) CollationCoercibility(ctx *sql.Context) (collation sql.CollationID, coercibility byte) {
 	return sql.Collation_binary, 5
 }
 
-// Compare implements the types.ExtendedType interface.
+// Compare implements the DoltgresType interface.
 func (b UuidType) Compare(v1 any, v2 any) (int, error) {
 	if v1 == nil && v2 == nil {
 		return 0, nil
@@ -63,7 +69,7 @@ func (b UuidType) Compare(v1 any, v2 any) (int, error) {
 	return bytes.Compare(ab.GetBytesMut(), bb.GetBytesMut()), nil
 }
 
-// Convert implements the types.ExtendedType interface.
+// Convert implements the DoltgresType interface.
 func (b UuidType) Convert(val any) (any, sql.ConvertInRange, error) {
 	if val == nil {
 		return nil, sql.InRange, nil
@@ -83,7 +89,7 @@ func (b UuidType) Convert(val any) (any, sql.ConvertInRange, error) {
 	}
 }
 
-// Equals implements the types.ExtendedType interface.
+// Equals implements the DoltgresType interface.
 func (b UuidType) Equals(otherType sql.Type) bool {
 	if otherExtendedType, ok := otherType.(types.ExtendedType); ok {
 		return bytes.Equal(MustSerializeType(b), MustSerializeType(otherExtendedType))
@@ -91,7 +97,7 @@ func (b UuidType) Equals(otherType sql.Type) bool {
 	return false
 }
 
-// FormatSerializedValue implements the types.ExtendedType interface.
+// FormatSerializedValue implements the DoltgresType interface.
 func (b UuidType) FormatSerializedValue(val []byte) (string, error) {
 	deserialized, err := b.DeserializeValue(val)
 	if err != nil {
@@ -100,7 +106,7 @@ func (b UuidType) FormatSerializedValue(val []byte) (string, error) {
 	return b.FormatValue(deserialized)
 }
 
-// FormatValue implements the types.ExtendedType interface.
+// FormatValue implements the DoltgresType interface.
 func (b UuidType) FormatValue(val any) (string, error) {
 	if val == nil {
 		return "", nil
@@ -112,22 +118,27 @@ func (b UuidType) FormatValue(val any) (string, error) {
 	return converted.(uuid.UUID).String(), nil
 }
 
-// MaxSerializedWidth implements the types.ExtendedType interface.
+// MaxSerializedWidth implements the DoltgresType interface.
 func (b UuidType) MaxSerializedWidth() types.ExtendedTypeSerializedWidth {
 	return types.ExtendedTypeSerializedWidth_64K
 }
 
-// MaxTextResponseByteLength implements the types.ExtendedType interface.
+// MaxTextResponseByteLength implements the DoltgresType interface.
 func (b UuidType) MaxTextResponseByteLength(ctx *sql.Context) uint32 {
 	return 16
 }
 
-// Promote implements the types.ExtendedType interface.
+// OID implements the DoltgresType interface.
+func (b UuidType) OID() uint32 {
+	return uint32(oid.T_uuid)
+}
+
+// Promote implements the DoltgresType interface.
 func (b UuidType) Promote() sql.Type {
 	return b
 }
 
-// SerializedCompare implements the types.ExtendedType interface.
+// SerializedCompare implements the DoltgresType interface.
 func (b UuidType) SerializedCompare(v1 []byte, v2 []byte) (int, error) {
 	if len(v1) == 0 && len(v2) == 0 {
 		return 0, nil
@@ -140,7 +151,7 @@ func (b UuidType) SerializedCompare(v1 []byte, v2 []byte) (int, error) {
 	return bytes.Compare(v1, v2), nil
 }
 
-// SQL implements the types.ExtendedType interface.
+// SQL implements the DoltgresType interface.
 func (b UuidType) SQL(ctx *sql.Context, dest []byte, v any) (sqltypes.Value, error) {
 	if v == nil {
 		return sqltypes.NULL, nil
@@ -149,30 +160,30 @@ func (b UuidType) SQL(ctx *sql.Context, dest []byte, v any) (sqltypes.Value, err
 	if err != nil {
 		return sqltypes.Value{}, err
 	}
-	return sqltypes.MakeTrusted(b.Type(), types.AppendAndSliceBytes(dest, []byte(value.(uuid.UUID).String()))), nil
+	return sqltypes.MakeTrusted(sqltypes.Text, types.AppendAndSliceBytes(dest, []byte(value.(uuid.UUID).String()))), nil
 }
 
-// String implements the types.ExtendedType interface.
+// String implements the DoltgresType interface.
 func (b UuidType) String() string {
 	return "uuid"
 }
 
-// Type implements the types.ExtendedType interface.
+// Type implements the DoltgresType interface.
 func (b UuidType) Type() query.Type {
 	return sqltypes.Text
 }
 
-// ValueType implements the types.ExtendedType interface.
+// ValueType implements the DoltgresType interface.
 func (b UuidType) ValueType() reflect.Type {
 	return reflect.TypeOf(uuid.UUID{})
 }
 
-// Zero implements the types.ExtendedType interface.
+// Zero implements the DoltgresType interface.
 func (b UuidType) Zero() any {
 	return uuid.UUID{}
 }
 
-// SerializeValue implements the types.ExtendedType interface.
+// SerializeValue implements the DoltgresType interface.
 func (b UuidType) SerializeValue(val any) ([]byte, error) {
 	if val == nil {
 		return nil, nil
@@ -184,7 +195,7 @@ func (b UuidType) SerializeValue(val any) ([]byte, error) {
 	return converted.(uuid.UUID).GetBytes(), nil
 }
 
-// DeserializeValue implements the types.ExtendedType interface.
+// DeserializeValue implements the DoltgresType interface.
 func (b UuidType) DeserializeValue(val []byte) (any, error) {
 	if len(val) == 0 {
 		return nil, nil

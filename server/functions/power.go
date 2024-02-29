@@ -14,26 +14,43 @@
 
 package functions
 
-import "math"
+import (
+	"math"
 
-// power represents the PostgreSQL function of the same name.
-var power = Function{
-	Name:      "power",
-	Overloads: []interface{}{power_float_float, power_num_num},
+	"github.com/shopspring/decimal"
+
+	"github.com/dolthub/doltgresql/server/functions/framework"
+	pgtypes "github.com/dolthub/doltgresql/server/types"
+)
+
+// init registers the functions to the catalog.
+func init() {
+	framework.RegisterFunction(power_float64_float64)
+	framework.RegisterFunction(power_numeric_numeric)
 }
 
-// power_float_float is one of the overloads of power.
-func power_float_float(num1 FloatType, num2 FloatType) (FloatType, error) {
-	if num1.IsNull || num2.IsNull {
-		return FloatType{IsNull: true}, nil
-	}
-	return FloatType{Value: math.Pow(num1.Value, num2.Value)}, nil
+// power_float64_float64 represents the PostgreSQL function of the same name, taking the same parameters.
+var power_float64_float64 = framework.Function2{
+	Name:       "power",
+	Return:     pgtypes.Float64,
+	Parameters: []pgtypes.DoltgresType{pgtypes.Float64, pgtypes.Float64},
+	Callable: func(ctx framework.Context, val1 any, val2 any) (any, error) {
+		if val1 == nil || val2 == nil {
+			return nil, nil
+		}
+		return math.Pow(val1.(float64), val2.(float64)), nil
+	},
 }
 
-// power_num_num is one of the overloads of power.
-func power_num_num(num1 NumericType, num2 NumericType) (NumericType, error) {
-	if num1.IsNull || num2.IsNull {
-		return NumericType{IsNull: true}, nil
-	}
-	return NumericType{Value: math.Pow(num1.Value, num2.Value)}, nil
+// power_numeric_numeric represents the PostgreSQL function of the same name, taking the same parameters.
+var power_numeric_numeric = framework.Function2{
+	Name:       "power",
+	Return:     pgtypes.Numeric,
+	Parameters: []pgtypes.DoltgresType{pgtypes.Numeric, pgtypes.Numeric},
+	Callable: func(ctx framework.Context, val1 any, val2 any) (any, error) {
+		if val1 == nil || val2 == nil {
+			return nil, nil
+		}
+		return val1.(decimal.Decimal).Pow(val2.(decimal.Decimal)), nil
+	},
 }

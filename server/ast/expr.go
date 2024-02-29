@@ -153,7 +153,10 @@ func nodeExpr(node tree.Expr) (vitess.Expr, error) {
 		case tree.Bitxor:
 			operator = vitess.BitXorStr
 		case tree.Plus:
-			operator = vitess.PlusStr
+			return vitess.InjectedExpr{
+				Expression: pgexprs.NewAddition(),
+				Children:   vitess.Exprs{left, right},
+			}, nil
 		case tree.Minus:
 			operator = vitess.MinusStr
 		case tree.Mult:
@@ -235,21 +238,33 @@ func nodeExpr(node tree.Expr) (vitess.Expr, error) {
 			return nil, fmt.Errorf("unknown cast syntax")
 		}
 
-		convertType, _, err := nodeResolvableTypeReference(node.Type)
+		convertType, resolvedType, err := nodeResolvableTypeReference(node.Type)
 		if err != nil {
 			return nil, err
 		}
 
-		convertType, err = translateConvertType(convertType)
-		if err != nil {
-			return nil, err
+		// If we have the resolved type, then we've got a Doltgres type instead of a GMS type
+		if resolvedType != nil {
+			cast, err := pgexprs.NewCast(resolvedType)
+			if err != nil {
+				return nil, err
+			}
+			return vitess.InjectedExpr{
+				Expression: cast,
+				Children:   vitess.Exprs{expr},
+			}, nil
+		} else {
+			convertType, err = translateConvertType(convertType)
+			if err != nil {
+				return nil, err
+			}
+			return &vitess.ConvertExpr{
+				Name: "CAST",
+				Expr: expr,
+				Type: convertType,
+			}, nil
 		}
 
-		return &vitess.ConvertExpr{
-			Name: "CAST",
-			Expr: expr,
-			Type: convertType,
-		}, nil
 	case *tree.CoalesceExpr:
 		exprs, err := nodeExprsToSelectExprs(node.Exprs)
 		if err != nil {

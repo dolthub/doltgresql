@@ -20,6 +20,7 @@ import (
 
 	"github.com/dolthub/go-mysql-server/sql"
 	vitess "github.com/dolthub/vitess/go/vt/sqlparser"
+	"github.com/lib/pq/oid"
 
 	"github.com/dolthub/doltgresql/postgres/parser/sem/tree"
 	"github.com/dolthub/doltgresql/postgres/parser/types"
@@ -57,13 +58,42 @@ func nodeResolvableTypeReference(typ tree.ResolvableTypeReference) (*vitess.Conv
 		case types.BoolFamily:
 			resolvedType = pgtypes.Bool
 		case types.DecimalFamily:
-			columnTypeName = "decimal"
-			columnTypeLength = vitess.NewIntVal([]byte(strconv.Itoa(int(columnType.Precision()))))
-			columnTypeScale = vitess.NewIntVal([]byte(strconv.Itoa(int(columnType.Scale()))))
+			if columnType.Precision() == 0 && columnType.Scale() == 0 {
+				resolvedType = pgtypes.Numeric
+			} else {
+				columnTypeName = "decimal"
+				columnTypeLength = vitess.NewIntVal([]byte(strconv.Itoa(int(columnType.Precision()))))
+				columnTypeScale = vitess.NewIntVal([]byte(strconv.Itoa(int(columnType.Scale()))))
+			}
+		case types.FloatFamily:
+			switch columnType.Oid() {
+			case oid.T_float4:
+				resolvedType = pgtypes.Float32
+			case oid.T_float8:
+				resolvedType = pgtypes.Float64
+			default:
+				return nil, nil, fmt.Errorf("unknown type in float familiy: %s", typ.SQLString())
+			}
+		case types.IntFamily:
+			switch columnType.Oid() {
+			case oid.T_int2:
+				resolvedType = pgtypes.Int16
+			case oid.T_int4:
+				resolvedType = pgtypes.Int32
+			case oid.T_int8:
+				resolvedType = pgtypes.Int64
+			default:
+				return nil, nil, fmt.Errorf("unknown type in integer familiy: %s", typ.SQLString())
+			}
 		case types.JsonFamily:
 			columnTypeName = "JSON"
 		case types.StringFamily:
-			columnTypeLength = vitess.NewIntVal([]byte(strconv.Itoa(int(columnType.Width()))))
+			switch columnType.Oid() {
+			case oid.T_varchar:
+				resolvedType = pgtypes.VarCharType{Length: uint32(columnType.Width())}
+			default:
+				columnTypeLength = vitess.NewIntVal([]byte(strconv.Itoa(int(columnType.Width()))))
+			}
 		case types.TimestampFamily:
 			columnTypeName = columnType.Name()
 		case types.UuidFamily:

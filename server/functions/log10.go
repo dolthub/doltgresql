@@ -14,8 +14,14 @@
 
 package functions
 
-// log10 represents the PostgreSQL function of the same name.
-var log10 = Function{
-	Name:      "log10",
-	Overloads: []interface{}{log_float, log_numeric},
+import "github.com/dolthub/doltgresql/server/functions/framework"
+
+// init registers the functions to the catalog.
+func init() {
+	log10_float64 := log_float64
+	log10_numeric := log_numeric
+	log10_float64.Name = "log10"
+	log10_numeric.Name = "log10"
+	framework.RegisterFunction(log10_float64)
+	framework.RegisterFunction(log10_numeric)
 }

@@ -14,25 +14,36 @@
 
 package functions
 
-import "fmt"
+import (
+	"fmt"
 
-// factorial represents the PostgreSQL function of the same name.
-var factorial = Function{
-	Name:      "factorial",
-	Overloads: []interface{}{factorial_int},
+	"github.com/dolthub/doltgresql/server/functions/framework"
+
+	pgtypes "github.com/dolthub/doltgresql/server/types"
+)
+
+// init registers the functions to the catalog.
+func init() {
+	framework.RegisterFunction(factorial_int64)
 }
 
-// factorial_int is one of the overloads of factorial.
-func factorial_int(num IntegerType) (IntegerType, error) {
-	if num.IsNull {
-		return IntegerType{IsNull: true}, nil
-	}
-	if num.Value < 0 {
-		return IntegerType{}, fmt.Errorf("factorial of a negative number is undefined")
-	}
-	total := int64(1)
-	for i := int64(2); i <= num.Value; i++ {
-		total *= i
-	}
-	return IntegerType{Value: total}, nil
+// factorial_int64 represents the PostgreSQL function of the same name, taking the same parameters.
+var factorial_int64 = framework.Function1{
+	Name:       "factorial",
+	Return:     pgtypes.Int64,
+	Parameters: []pgtypes.DoltgresType{pgtypes.Int64},
+	Callable: func(ctx framework.Context, val1Interface any) (any, error) {
+		if val1Interface == nil {
+			return nil, nil
+		}
+		val1 := val1Interface.(int64)
+		if val1 < 0 {
+			return nil, fmt.Errorf("factorial of a negative number is undefined")
+		}
+		total := int64(1)
+		for i := int64(2); i <= val1; i++ {
+			total *= i
+		}
+		return total, nil
+	},
 }

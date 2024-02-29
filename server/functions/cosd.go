@@ -14,18 +14,28 @@
 
 package functions
 
-import "math"
+import (
+	"math"
 
-// cosd represents the PostgreSQL function of the same name.
-var cosd = Function{
-	Name:      "cosd",
-	Overloads: []interface{}{cosd_float},
+	"github.com/dolthub/doltgresql/server/functions/framework"
+
+	pgtypes "github.com/dolthub/doltgresql/server/types"
+)
+
+// init registers the functions to the catalog.
+func init() {
+	framework.RegisterFunction(cosd_float64)
 }
 
-// cosd_float is one of the overloads of cosd.
-func cosd_float(num FloatType) (FloatType, error) {
-	if num.IsNull {
-		return FloatType{IsNull: true}, nil
-	}
-	return FloatType{Value: toDegrees(math.Cos(num.Value))}, nil
+// cos_float64 represents the PostgreSQL function of the same name, taking the same parameters.
+var cosd_float64 = framework.Function1{
+	Name:       "cosd",
+	Return:     pgtypes.Float64,
+	Parameters: []pgtypes.DoltgresType{pgtypes.Float64},
+	Callable: func(ctx framework.Context, val1 any) (any, error) {
+		if val1 == nil {
+			return nil, nil
+		}
+		return toDegrees(math.Cos(val1.(float64))), nil
+	},
 }
