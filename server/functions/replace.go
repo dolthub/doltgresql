@@ -14,18 +14,28 @@
 
 package functions
 
-import "strings"
+import (
+	"strings"
 
-// replace represents the PostgreSQL function of the same name.
-var replace = Function{
-	Name:      "replace",
-	Overloads: []interface{}{replace_string_string_string},
+	"github.com/dolthub/doltgresql/server/functions/framework"
+
+	pgtypes "github.com/dolthub/doltgresql/server/types"
+)
+
+// init registers the functions to the catalog.
+func init() {
+	framework.RegisterFunction(replace_varchar_varchar_varchar)
 }
 
-// replace_string is one of the overloads of replace.
-func replace_string_string_string(str StringType, from StringType, to StringType) (StringType, error) {
-	if str.IsNull || from.IsNull || to.IsNull {
-		return StringType{IsNull: true}, nil
-	}
-	return StringType{Value: strings.ReplaceAll(str.Value, from.Value, to.Value)}, nil
+// replace_varchar_varchar_varchar represents the PostgreSQL function of the same name, taking the same parameters.
+var replace_varchar_varchar_varchar = framework.Function3{
+	Name:       "replace",
+	Return:     pgtypes.VarCharMax,
+	Parameters: []pgtypes.DoltgresType{pgtypes.VarCharMax, pgtypes.VarCharMax, pgtypes.VarCharMax},
+	Callable: func(ctx framework.Context, str any, from any, to any) (any, error) {
+		if str == nil || from == nil || to == nil {
+			return nil, nil
+		}
+		return strings.ReplaceAll(str.(string), from.(string), to.(string)), nil
+	},
 }

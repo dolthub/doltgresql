@@ -14,35 +14,57 @@
 
 package functions
 
-import "math"
+import (
+	"math"
 
-// round represents the PostgreSQL function of the same name.
-var round = Function{
-	Name:      "round",
-	Overloads: []interface{}{round_num, round_float, round_num_dec},
+	"github.com/shopspring/decimal"
+
+	"github.com/dolthub/doltgresql/server/functions/framework"
+	pgtypes "github.com/dolthub/doltgresql/server/types"
+)
+
+// init registers the functions to the catalog.
+func init() {
+	framework.RegisterFunction(round_float64)
+	framework.RegisterFunction(round_numeric)
+	framework.RegisterFunction(round_numeric_int64)
 }
 
-// round_num is one of the overloads of round.
-func round_num(num NumericType) (NumericType, error) {
-	if num.IsNull {
-		return NumericType{IsNull: true}, nil
-	}
-	return NumericType{Value: math.Round(num.Value)}, nil
+// round_float64 represents the PostgreSQL function of the same name, taking the same parameters.
+var round_float64 = framework.Function1{
+	Name:       "round",
+	Return:     pgtypes.Float64,
+	Parameters: []pgtypes.DoltgresType{pgtypes.Float64},
+	Callable: func(ctx framework.Context, val1 any) (any, error) {
+		if val1 == nil {
+			return nil, nil
+		}
+		return math.RoundToEven(val1.(float64)), nil
+	},
 }
 
-// round_float is one of the overloads of round.
-func round_float(num FloatType) (FloatType, error) {
-	if num.IsNull {
-		return FloatType{IsNull: true}, nil
-	}
-	return FloatType{Value: math.RoundToEven(num.Value)}, nil
+// round_numeric represents the PostgreSQL function of the same name, taking the same parameters.
+var round_numeric = framework.Function1{
+	Name:       "round",
+	Return:     pgtypes.Numeric,
+	Parameters: []pgtypes.DoltgresType{pgtypes.Numeric},
+	Callable: func(ctx framework.Context, val1 any) (any, error) {
+		if val1 == nil {
+			return nil, nil
+		}
+		return val1.(decimal.Decimal).Round(0), nil
+	},
 }
 
-// round_num_dec is one of the overloads of round.
-func round_num_dec(num NumericType, decimalPlaces IntegerType) (NumericType, error) {
-	if num.IsNull || decimalPlaces.IsNull {
-		return NumericType{IsNull: true}, nil
-	}
-	ratio := math.Pow10(int(decimalPlaces.Value))
-	return NumericType{Value: math.Round(num.Value*ratio) / ratio}, nil
+// round_numeric_int64 represents the PostgreSQL function of the same name, taking the same parameters.
+var round_numeric_int64 = framework.Function2{
+	Name:       "round",
+	Return:     pgtypes.Numeric,
+	Parameters: []pgtypes.DoltgresType{pgtypes.Numeric, pgtypes.Int64},
+	Callable: func(ctx framework.Context, val1 any, val2 any) (any, error) {
+		if val1 == nil {
+			return nil, nil
+		}
+		return val1.(decimal.Decimal).Round(int32(val2.(int64))), nil
+	},
 }

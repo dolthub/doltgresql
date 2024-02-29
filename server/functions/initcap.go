@@ -17,18 +17,26 @@ package functions
 import (
 	"golang.org/x/text/cases"
 	"golang.org/x/text/language"
+
+	"github.com/dolthub/doltgresql/server/functions/framework"
+
+	pgtypes "github.com/dolthub/doltgresql/server/types"
 )
 
-// initcap represents the PostgreSQL function of the same name.
-var initcap = Function{
-	Name:      "initcap",
-	Overloads: []interface{}{initcap_string},
+// init registers the functions to the catalog.
+func init() {
+	framework.RegisterFunction(initcap_varchar)
 }
 
-// initcap_string is one of the overloads of initcap.
-func initcap_string(text StringType) (StringType, error) {
-	if text.IsNull {
-		return StringType{IsNull: true}, nil
-	}
-	return StringType{Value: cases.Title(language.English).String(text.Value)}, nil
+// initcap_varchar represents the PostgreSQL function of the same name, taking the same parameters.
+var initcap_varchar = framework.Function1{
+	Name:       "initcap",
+	Return:     pgtypes.VarCharMax,
+	Parameters: []pgtypes.DoltgresType{pgtypes.VarCharMax},
+	Callable: func(ctx framework.Context, val1 any) (any, error) {
+		if val1 == nil {
+			return nil, nil
+		}
+		return cases.Title(language.English).String(val1.(string)), nil
+	},
 }

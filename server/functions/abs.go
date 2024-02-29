@@ -15,35 +15,39 @@
 package functions
 
 import (
+	"github.com/dolthub/doltgresql/server/functions/framework"
+	pgtypes "github.com/dolthub/doltgresql/server/types"
 	"github.com/dolthub/doltgresql/utils"
 )
 
-// abs represents the PostgreSQL function of the same name.
-var abs = Function{
-	Name:      "abs",
-	Overloads: []interface{}{abs_int, abs_float, abs_numeric},
+// init registers the functions to the catalog.
+func init() {
+	framework.RegisterFunction(abs_int64)
+	framework.RegisterFunction(abs_float64)
 }
 
-// abs_int is one of the overloads of abs.
-func abs_int(num IntegerType) (IntegerType, error) {
-	if num.IsNull {
-		return IntegerType{IsNull: true}, nil
-	}
-	return IntegerType{Value: utils.Abs(num.Value)}, nil
+// abs_int64 represents the PostgreSQL function of the same name, taking the same parameters.
+var abs_int64 = framework.Function1{
+	Name:       "abs",
+	Return:     pgtypes.Int64,
+	Parameters: []pgtypes.DoltgresType{pgtypes.Int64},
+	Callable: func(ctx framework.Context, val1 any) (any, error) {
+		if val1 == nil {
+			return nil, nil
+		}
+		return utils.Abs(val1.(int64)), nil
+	},
 }
 
-// abs_float is one of the overloads of abs.
-func abs_float(num FloatType) (FloatType, error) {
-	if num.IsNull {
-		return FloatType{IsNull: true}, nil
-	}
-	return FloatType{Value: utils.Abs(num.Value)}, nil
-}
-
-// abs_numeric is one of the overloads of abs.
-func abs_numeric(num NumericType) (NumericType, error) {
-	if num.IsNull {
-		return NumericType{IsNull: true}, nil
-	}
-	return NumericType{Value: utils.Abs(num.Value)}, nil
+// abs_float64 represents the PostgreSQL function of the same name, taking the same parameters.
+var abs_float64 = framework.Function1{
+	Name:       "abs",
+	Return:     pgtypes.Float64,
+	Parameters: []pgtypes.DoltgresType{pgtypes.Float64},
+	Callable: func(ctx framework.Context, val1 any) (any, error) {
+		if val1 == nil {
+			return nil, nil
+		}
+		return utils.Abs(val1.(float64)), nil
+	},
 }

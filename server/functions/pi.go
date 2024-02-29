@@ -14,15 +14,25 @@
 
 package functions
 
-import "math"
+import (
+	"math"
 
-// pi represents the PostgreSQL function of the same name.
-var pi = Function{
-	Name:      "pi",
-	Overloads: []interface{}{pi_float},
+	"github.com/dolthub/doltgresql/server/functions/framework"
+
+	pgtypes "github.com/dolthub/doltgresql/server/types"
+)
+
+// init registers the functions to the catalog.
+func init() {
+	framework.RegisterFunction(pi)
 }
 
-// pi_float is one of the overloads of pi.
-func pi_float() (FloatType, error) {
-	return FloatType{Value: math.Pi}, nil
+// pi represents the PostgreSQL function of the same name, taking the same parameters.
+var pi = framework.Function0{
+	Name:       "pi",
+	Return:     pgtypes.Float64,
+	Parameters: []pgtypes.DoltgresType{},
+	Callable: func(ctx framework.Context) (any, error) {
+		return float64(math.Pi), nil
+	},
 }

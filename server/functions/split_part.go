@@ -18,30 +18,36 @@ import (
 	"fmt"
 	"strings"
 
+	"github.com/dolthub/doltgresql/server/functions/framework"
+	pgtypes "github.com/dolthub/doltgresql/server/types"
 	"github.com/dolthub/doltgresql/utils"
 )
 
-// split_part represents the PostgreSQL function of the same name.
-var split_part = Function{
-	Name:      "split_part",
-	Overloads: []interface{}{split_part_string_string_int},
+// init registers the functions to the catalog.
+func init() {
+	framework.RegisterFunction(split_part_varchar_varchar_int64)
 }
 
-// split_part_string is one of the overloads of split_part.
-func split_part_string_string_int(str StringType, delimiter StringType, n IntegerType) (StringType, error) {
-	if str.IsNull || delimiter.IsNull || n.IsNull {
-		return StringType{IsNull: true}, nil
-	}
-	if n.Value == 0 {
-		return StringType{}, fmt.Errorf("field position must not be zero")
-	}
-	parts := strings.Split(str.Value, delimiter.Value)
-	if int(utils.Abs(n.Value)) > len(parts) {
-		return StringType{Value: ""}, nil
-	}
-	if n.Value > 0 {
-		return StringType{Value: parts[n.Value-1]}, nil
-	} else {
-		return StringType{Value: parts[int64(len(parts))+n.Value]}, nil
-	}
+// split_part_varchar_varchar_int64 represents the PostgreSQL function of the same name, taking the same parameters.
+var split_part_varchar_varchar_int64 = framework.Function3{
+	Name:       "split_part",
+	Return:     pgtypes.VarCharMax,
+	Parameters: []pgtypes.DoltgresType{pgtypes.VarCharMax, pgtypes.VarCharMax, pgtypes.Int64},
+	Callable: func(ctx framework.Context, str any, delimiter any, n any) (any, error) {
+		if str == nil || delimiter == nil || n == nil {
+			return nil, nil
+		}
+		if n.(int64) == 0 {
+			return nil, fmt.Errorf("field position must not be zero")
+		}
+		parts := strings.Split(str.(string), delimiter.(string))
+		if int(utils.Abs(n.(int64))) > len(parts) {
+			return "", nil
+		}
+		if n.(int64) > 0 {
+			return parts[n.(int64)-1], nil
+		} else {
+			return parts[int64(len(parts))+n.(int64)], nil
+		}
+	},
 }

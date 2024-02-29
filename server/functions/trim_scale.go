@@ -14,17 +14,30 @@
 
 package functions
 
-// trim_scale represents the PostgreSQL function of the same name.
-var trim_scale = Function{
-	Name:      "trim_scale",
-	Overloads: []interface{}{trim_scale_numeric},
+import (
+	"github.com/shopspring/decimal"
+
+	"github.com/dolthub/doltgresql/server/functions/framework"
+
+	pgtypes "github.com/dolthub/doltgresql/server/types"
+)
+
+// init registers the functions to the catalog.
+func init() {
+	framework.RegisterFunction(trim_scale_numeric)
 }
 
-// trim_scale_numeric is one of the overloads of trim_scale.
-func trim_scale_numeric(num NumericType) (NumericType, error) {
-	//TODO: numeric is currently just a float, so we cannot modify the scale, therefore making this function incorrect
-	if num.IsNull {
-		return NumericType{IsNull: true}, nil
-	}
-	return NumericType{Value: num.Value}, nil
+// trim_scale_numeric represents the PostgreSQL function of the same name, taking the same parameters.
+var trim_scale_numeric = framework.Function1{
+	Name:       "trim_scale",
+	Return:     pgtypes.Numeric,
+	Parameters: []pgtypes.DoltgresType{pgtypes.Numeric},
+	Callable: func(ctx framework.Context, val1 any) (any, error) {
+		if val1 == nil {
+			return nil, nil
+		}
+		// We don't store the scale in the value, so I'm not sure if this is functionally correct.
+		// Seems like we'd need to modify the type of the return value (by trimming the scale), rather than the value itself.
+		return val1.(decimal.Decimal), nil
+	},
 }

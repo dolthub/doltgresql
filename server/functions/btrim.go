@@ -14,30 +14,29 @@
 
 package functions
 
-// btrim represents the PostgreSQL function of the same name.
-var btrim = Function{
-	Name:      "btrim",
-	Overloads: []interface{}{btrim_string, btrim_string_string},
+import (
+	"github.com/dolthub/doltgresql/server/functions/framework"
+	pgtypes "github.com/dolthub/doltgresql/server/types"
+)
+
+// init registers the functions to the catalog.
+func init() {
+	framework.RegisterFunction(btrim_varchar_varchar)
 }
 
-// btrim_string is one of the overloads of btrim.
-func btrim_string(str StringType) (StringType, error) {
-	return btrim_string_string(str, StringType{
-		Value:        " ",
-		IsNull:       false,
-		OriginalType: ParameterType_String,
-		Source:       Source_Constant,
-	})
-}
-
-// btrim_string_string is one of the overloads of btrim.
-func btrim_string_string(str StringType, characters StringType) (StringType, error) {
-	if str.IsNull || characters.IsNull {
-		return StringType{IsNull: true}, nil
-	}
-	result, err := ltrim_string_string(str, characters)
-	if err != nil {
-		return StringType{}, err
-	}
-	return rtrim_string_string(result, characters)
+// btrim_varchar_varchar represents the PostgreSQL function of the same name, taking the same parameters.
+var btrim_varchar_varchar = framework.Function2{
+	Name:       "btrim",
+	Return:     pgtypes.VarCharMax,
+	Parameters: []pgtypes.DoltgresType{pgtypes.VarCharMax, pgtypes.VarCharMax},
+	Callable: func(ctx framework.Context, str any, characters any) (any, error) {
+		if str == nil || characters == nil {
+			return nil, nil
+		}
+		result, err := ltrim_varchar_varchar.Callable(ctx, str, characters)
+		if err != nil {
+			return nil, err
+		}
+		return rtrim_varchar_varchar.Callable(ctx, result, characters)
+	},
 }

@@ -14,21 +14,32 @@
 
 package functions
 
-import "math"
+import (
+	"math"
 
-// cotd represents the PostgreSQL function of the same name.
-var cotd = Function{
-	Name:      "cotd",
-	Overloads: []interface{}{cotd_float},
+	"github.com/dolthub/doltgresql/server/functions/framework"
+
+	pgtypes "github.com/dolthub/doltgresql/server/types"
+)
+
+// init registers the functions to the catalog.
+func init() {
+	framework.RegisterFunction(cotd_float64)
 }
 
-// cotd_float is one of the overloads of cotd.
-func cotd_float(num FloatType) (FloatType, error) {
-	if num.IsNull {
-		return FloatType{IsNull: true}, nil
-	}
-	if num.Value == 0 {
-		return FloatType{Value: math.Inf(1)}, nil
-	}
-	return FloatType{Value: toDegrees(math.Cos(num.Value) / math.Sin(num.Value))}, nil
+// cot_float64 represents the PostgreSQL function of the same name, taking the same parameters.
+var cotd_float64 = framework.Function1{
+	Name:       "cotd",
+	Return:     pgtypes.Float64,
+	Parameters: []pgtypes.DoltgresType{pgtypes.Float64},
+	Callable: func(ctx framework.Context, val1Interface any) (any, error) {
+		if val1Interface == nil {
+			return nil, nil
+		}
+		val1 := val1Interface.(float64)
+		if val1 == 0 {
+			return math.Inf(1), nil
+		}
+		return toDegrees(math.Cos(val1) / math.Sin(val1)), nil
+	},
 }

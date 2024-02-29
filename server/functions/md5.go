@@ -17,18 +17,26 @@ package functions
 import (
 	md5_package "crypto/md5"
 	"fmt"
+
+	"github.com/dolthub/doltgresql/server/functions/framework"
+
+	pgtypes "github.com/dolthub/doltgresql/server/types"
 )
 
-// md5 represents the PostgreSQL function of the same name.
-var md5 = Function{
-	Name:      "md5",
-	Overloads: []interface{}{md5_string},
+// init registers the functions to the catalog.
+func init() {
+	framework.RegisterFunction(md5_varchar)
 }
 
-// md5_string is one of the overloads of md5.
-func md5_string(text StringType) (StringType, error) {
-	if text.IsNull {
-		return StringType{IsNull: true}, nil
-	}
-	return StringType{Value: fmt.Sprintf("%x", md5_package.Sum([]byte(text.Value)))}, nil
+// md5_varchar represents the PostgreSQL function of the same name, taking the same parameters.
+var md5_varchar = framework.Function1{
+	Name:       "md5",
+	Return:     pgtypes.VarCharMax,
+	Parameters: []pgtypes.DoltgresType{pgtypes.VarCharMax},
+	Callable: func(ctx framework.Context, val1 any) (any, error) {
+		if val1 == nil {
+			return nil, nil
+		}
+		return fmt.Sprintf("%x", md5_package.Sum([]byte(val1.(string)))), nil
+	},
 }

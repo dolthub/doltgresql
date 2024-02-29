@@ -64,7 +64,7 @@ func (array *Array) Children() []sql.Expression {
 }
 
 // Eval implements the sql.Expression interface.
-func (array *Array) Eval(ctx *sql.Context, row sql.Row) (interface{}, error) {
+func (array *Array) Eval(ctx *sql.Context, row sql.Row) (any, error) {
 	// TODO: make this an actual implementation instead of the mock boolean implementation
 	values := make([]bool, len(array.sqlChildren))
 	for i, expr := range array.sqlChildren {

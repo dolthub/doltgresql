@@ -14,18 +14,28 @@
 
 package functions
 
-import "math"
+import (
+	"math"
 
-// tanh represents the PostgreSQL function of the same name.
-var tanh = Function{
-	Name:      "tanh",
-	Overloads: []interface{}{tanh_float},
+	"github.com/dolthub/doltgresql/server/functions/framework"
+
+	pgtypes "github.com/dolthub/doltgresql/server/types"
+)
+
+// init registers the functions to the catalog.
+func init() {
+	framework.RegisterFunction(tanh_float64)
 }
 
-// tanh_float is one of the overloads of tanh.
-func tanh_float(num FloatType) (FloatType, error) {
-	if num.IsNull {
-		return FloatType{IsNull: true}, nil
-	}
-	return FloatType{Value: math.Tanh(num.Value)}, nil
+// tanh_float64 represents the PostgreSQL function of the same name, taking the same parameters.
+var tanh_float64 = framework.Function1{
+	Name:       "tanh",
+	Return:     pgtypes.Float64,
+	Parameters: []pgtypes.DoltgresType{pgtypes.Float64},
+	Callable: func(ctx framework.Context, val1 any) (any, error) {
+		if val1 == nil {
+			return nil, nil
+		}
+		return math.Tanh(val1.(float64)), nil
+	},
 }

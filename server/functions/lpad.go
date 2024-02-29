@@ -14,40 +14,54 @@
 
 package functions
 
-// lpad represents the PostgreSQL function of the same name.
-var lpad = Function{
-	Name:      "lpad",
-	Overloads: []interface{}{lpad_string_int, lpad_string_int_string},
+import (
+	"github.com/dolthub/doltgresql/server/functions/framework"
+	pgtypes "github.com/dolthub/doltgresql/server/types"
+)
+
+// init registers the functions to the catalog.
+func init() {
+	framework.RegisterFunction(lpad_varchar_int64)
+	framework.RegisterFunction(lpad_varchar_int64_varchar)
 }
 
-// lpad_string_int is one of the overloads of lpad.
-func lpad_string_int(str StringType, length IntegerType) (StringType, error) {
-	return lpad_string_int_string(str, length, StringType{
-		Value:        " ",
-		IsNull:       false,
-		OriginalType: ParameterType_String,
-		Source:       Source_Constant,
-	})
+// lpad_varchar_int64 represents the PostgreSQL function of the same name, taking the same parameters.
+var lpad_varchar_int64 = framework.Function2{
+	Name:       "lpad",
+	Return:     pgtypes.VarCharMax,
+	Parameters: []pgtypes.DoltgresType{pgtypes.VarCharMax, pgtypes.Int64},
+	Callable: func(ctx framework.Context, val1 any, val2 any) (any, error) {
+		return lpad_varchar_int64_varchar.Callable(framework.Context{
+			Context:       ctx.Context,
+			OriginalTypes: append(ctx.OriginalTypes, pgtypes.VarCharMax),
+			Sources:       append(ctx.Sources, framework.Source_Constant),
+		}, val1, val2, " ")
+	},
 }
 
-// lpad_string_int_string is one of the overloads of lpad.
-func lpad_string_int_string(str StringType, length IntegerType, fill StringType) (StringType, error) {
-	if str.IsNull || length.IsNull || fill.IsNull {
-		return StringType{IsNull: true}, nil
-	}
-	if length.Value <= 0 {
-		return StringType{Value: ""}, nil
-	}
-	runes := []rune(str.Value)
-	fillTarget := length.Value - int64(len(runes))
-	fillRunes := []rune(fill.Value)
-	var result []rune
-	if fillTarget > 0 {
-		for int64(len(result)) < fillTarget {
-			result = append(result, fillRunes...)
+// lpad_varchar_int64_varchar represents the PostgreSQL function of the same name, taking the same parameters.
+var lpad_varchar_int64_varchar = framework.Function3{
+	Name:       "lpad",
+	Return:     pgtypes.VarCharMax,
+	Parameters: []pgtypes.DoltgresType{pgtypes.VarCharMax, pgtypes.Int64, pgtypes.VarCharMax},
+	Callable: func(ctx framework.Context, str any, length any, fill any) (any, error) {
+		if str == nil || length == nil || fill == nil {
+			return nil, nil
 		}
-		result = result[:fillTarget]
-	}
-	result = append(result, runes...)
-	return StringType{Value: string(result[:length.Value])}, nil
+		if length.(int64) <= 0 {
+			return "", nil
+		}
+		runes := []rune(str.(string))
+		fillTarget := length.(int64) - int64(len(runes))
+		fillRunes := []rune(fill.(string))
+		var result []rune
+		if fillTarget > 0 {
+			for int64(len(result)) < fillTarget {
+				result = append(result, fillRunes...)
+			}
+			result = result[:fillTarget]
+		}
+		result = append(result, runes...)
+		return string(result[:length.(int64)]), nil
+	},
 }

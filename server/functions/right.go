@@ -14,20 +14,29 @@
 
 package functions
 
-// right represents the PostgreSQL function of the same name.
-var right = Function{
-	Name:      "right",
-	Overloads: []interface{}{right_string_int},
+import (
+	"github.com/dolthub/doltgresql/server/functions/framework"
+	pgtypes "github.com/dolthub/doltgresql/server/types"
+)
+
+// init registers the functions to the catalog.
+func init() {
+	framework.RegisterFunction(right_varchar)
 }
 
-// right_string is one of the overloads of right.
-func right_string_int(string StringType, n IntegerType) (StringType, error) {
-	if string.IsNull || n.IsNull {
-		return StringType{IsNull: true}, nil
-	}
-	if n.Value >= 0 {
-		return StringType{Value: string.Value[len(string.Value)-int(n.Value):]}, nil
-	} else {
-		return StringType{Value: string.Value[int(-n.Value):]}, nil
-	}
+// right_varchar represents the PostgreSQL function of the same name, taking the same parameters.
+var right_varchar = framework.Function2{
+	Name:       "right",
+	Return:     pgtypes.VarCharMax,
+	Parameters: []pgtypes.DoltgresType{pgtypes.VarCharMax, pgtypes.Int64},
+	Callable: func(ctx framework.Context, str any, n any) (any, error) {
+		if str == nil || n == nil {
+			return nil, nil
+		}
+		if n.(int64) >= 0 {
+			return str.(string)[len(str.(string))-int(n.(int64)):], nil
+		} else {
+			return str.(string)[int(-n.(int64)):], nil
+		}
+	},
 }

@@ -17,21 +17,29 @@ package functions
 import (
 	"fmt"
 	"math"
+
+	"github.com/dolthub/doltgresql/server/functions/framework"
+
+	pgtypes "github.com/dolthub/doltgresql/server/types"
 )
 
-// cbrt represents the PostgreSQL function of the same name.
-var cbrt = Function{
-	Name:      "cbrt",
-	Overloads: []interface{}{cbrt_float},
+// init registers the functions to the catalog.
+func init() {
+	framework.RegisterFunction(cbrt_float64)
 }
 
-// cbrt_float is one of the overloads of cbrt.
-func cbrt_float(num FloatType) (FloatType, error) {
-	if num.IsNull {
-		return FloatType{IsNull: true}, nil
-	}
-	if num.OriginalType == ParameterType_String {
-		return FloatType{}, fmt.Errorf("function cbrt(%s) does not exist", ParameterType_String.String())
-	}
-	return FloatType{Value: math.Cbrt(num.Value)}, nil
+// cbrt_float64 represents the PostgreSQL function of the same name, taking the same parameters.
+var cbrt_float64 = framework.Function1{
+	Name:       "cbrt",
+	Return:     pgtypes.Float64,
+	Parameters: []pgtypes.DoltgresType{pgtypes.Float64},
+	Callable: func(ctx framework.Context, val1 any) (any, error) {
+		if val1 == nil {
+			return nil, nil
+		}
+		if framework.IsParameterType(ctx.OriginalTypes[0], framework.ParameterType_String) {
+			return nil, fmt.Errorf("function cbrt(%s) does not exist", ctx.OriginalTypes[0].String())
+		}
+		return math.Cbrt(val1.(float64)), nil
+	},
 }

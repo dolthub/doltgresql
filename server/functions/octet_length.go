@@ -14,16 +14,25 @@
 
 package functions
 
-// octet_length represents the PostgreSQL function of the same name.
-var octet_length = Function{
-	Name:      "octet_length",
-	Overloads: []interface{}{octet_length_string},
+import (
+	"github.com/dolthub/doltgresql/server/functions/framework"
+	pgtypes "github.com/dolthub/doltgresql/server/types"
+)
+
+// init registers the functions to the catalog.
+func init() {
+	framework.RegisterFunction(octet_length_varchar)
 }
 
-// octet_length_string is one of the overloads of octet_length.
-func octet_length_string(text StringType) (IntegerType, error) {
-	if text.IsNull {
-		return IntegerType{IsNull: true}, nil
-	}
-	return IntegerType{Value: int64(len(text.Value))}, nil
+// octet_length_varchar represents the PostgreSQL function of the same name, taking the same parameters.
+var octet_length_varchar = framework.Function1{
+	Name:       "octet_length",
+	Return:     pgtypes.Int64,
+	Parameters: []pgtypes.DoltgresType{pgtypes.VarCharMax},
+	Callable: func(ctx framework.Context, val1 any) (any, error) {
+		if val1 == nil {
+			return nil, nil
+		}
+		return int64(len(val1.(string))), nil
+	},
 }

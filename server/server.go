@@ -20,6 +20,8 @@ import (
 	_ "net/http/pprof"
 	"strings"
 
+	"github.com/dolthub/doltgresql/server/functions/framework"
+
 	"github.com/dolthub/dolt/go/cmd/dolt/cli"
 	"github.com/dolthub/dolt/go/cmd/dolt/commands"
 	"github.com/dolthub/dolt/go/cmd/dolt/commands/sqlserver"
@@ -121,6 +123,7 @@ func init() {
 	server.DefaultProtocolListenerFunc = NewListener
 	sqlserver.ExternalDisableUsers = true
 	dfunctions.VersionString = Version
+	framework.Initialize()
 }
 
 // RunOnDisk starts the server based on the given args, while also using the local disk as the backing store.

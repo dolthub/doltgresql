@@ -14,20 +14,30 @@
 
 package functions
 
-// ascii represents the PostgreSQL function of the same name.
-var ascii = Function{
-	Name:      "ascii",
-	Overloads: []interface{}{ascii_string},
+import (
+	"github.com/dolthub/doltgresql/server/functions/framework"
+	pgtypes "github.com/dolthub/doltgresql/server/types"
+)
+
+// init registers the functions to the catalog.
+func init() {
+	framework.RegisterFunction(ascii_varchar)
 }
 
-// ascii_string is one of the overloads of ascii.
-func ascii_string(text StringType) (IntegerType, error) {
-	if text.IsNull {
-		return IntegerType{IsNull: true}, nil
-	}
-	if len(text.Value) == 0 {
-		return IntegerType{Value: 0}, nil
-	}
-	runes := []rune(text.Value)
-	return IntegerType{Value: int64(runes[0])}, nil
+// ascii_varchar represents the PostgreSQL function of the same name, taking the same parameters.
+var ascii_varchar = framework.Function1{
+	Name:       "ascii",
+	Return:     pgtypes.Int64,
+	Parameters: []pgtypes.DoltgresType{pgtypes.VarCharMax},
+	Callable: func(ctx framework.Context, val1Interface any) (any, error) {
+		if val1Interface == nil {
+			return nil, nil
+		}
+		val1 := val1Interface.(string)
+		if len(val1) == 0 {
+			return int64(0), nil
+		}
+		runes := []rune(val1)
+		return int64(runes[0]), nil
+	},
 }

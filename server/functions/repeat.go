@@ -14,18 +14,28 @@
 
 package functions
 
-import "strings"
+import (
+	"strings"
 
-// repeat represents the PostgreSQL function of the same name.
-var repeat = Function{
-	Name:      "repeat",
-	Overloads: []interface{}{repeat_string},
+	"github.com/dolthub/doltgresql/server/functions/framework"
+
+	pgtypes "github.com/dolthub/doltgresql/server/types"
+)
+
+// init registers the functions to the catalog.
+func init() {
+	framework.RegisterFunction(repeat_varchar_int64)
 }
 
-// repeat_string is one of the overloads of repeat.
-func repeat_string(str StringType, num IntegerType) (StringType, error) {
-	if str.IsNull || num.IsNull {
-		return StringType{IsNull: true}, nil
-	}
-	return StringType{Value: strings.Repeat(str.Value, int(num.Value))}, nil
+// repeat_varchar_int64 represents the PostgreSQL function of the same name, taking the same parameters.
+var repeat_varchar_int64 = framework.Function2{
+	Name:       "repeat",
+	Return:     pgtypes.VarCharMax,
+	Parameters: []pgtypes.DoltgresType{pgtypes.VarCharMax, pgtypes.Int64},
+	Callable: func(ctx framework.Context, str any, num any) (any, error) {
+		if str == nil || num == nil {
+			return nil, nil
+		}
+		return strings.Repeat(str.(string), int(num.(int64))), nil
+	},
 }

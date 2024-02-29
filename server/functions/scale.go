@@ -14,15 +14,29 @@
 
 package functions
 
-// scale represents the PostgreSQL function of the same name.
-var scale = Function{
-	Name:      "scale",
-	Overloads: []interface{}{scale_numeric},
+import (
+	"github.com/shopspring/decimal"
+
+	"github.com/dolthub/doltgresql/server/functions/framework"
+
+	pgtypes "github.com/dolthub/doltgresql/server/types"
+)
+
+// init registers the functions to the catalog.
+func init() {
+	framework.RegisterFunction(scale_numeric)
 }
 
-// scale_numeric is one of the overloads of scale.
-func scale_numeric(num NumericType) (IntegerType, error) {
-	//TODO: this is incorrect, as we process the numeric type as a float, which loses the scale
-	res, err := min_scale_numeric(num)
-	return IntegerType{Value: int64(res.Value)}, err
+// scale_numeric represents the PostgreSQL function of the same name, taking the same parameters.
+var scale_numeric = framework.Function1{
+	Name:       "scale",
+	Return:     pgtypes.Int64,
+	Parameters: []pgtypes.DoltgresType{pgtypes.Numeric},
+	Callable: func(ctx framework.Context, val1 any) (any, error) {
+		res, err := min_scale_numeric.Callable(ctx, val1)
+		if res != nil {
+			return res.(decimal.Decimal).IntPart(), err
+		}
+		return nil, err
+	},
 }

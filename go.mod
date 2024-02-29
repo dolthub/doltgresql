@@ -6,11 +6,11 @@ require (
 	github.com/PuerkitoBio/goquery v1.8.1
 	github.com/cockroachdb/apd/v2 v2.0.3-0.20200518165714-d020e156310a
 	github.com/cockroachdb/errors v1.7.5
-	github.com/dolthub/dolt/go v0.40.5-0.20240209132845-d391bcf946e7
-	github.com/dolthub/dolt/go/gen/proto/dolt/services/eventsapi v0.0.0-20240209132845-d391bcf946e7
-	github.com/dolthub/go-mysql-server v0.17.1-0.20240209131710-527b791c74c0
+	github.com/dolthub/dolt/go v0.40.5-0.20240228231039-f903736a64a8
+	github.com/dolthub/dolt/go/gen/proto/dolt/services/eventsapi v0.0.0-20240228231039-f903736a64a8
+	github.com/dolthub/go-mysql-server v0.17.1-0.20240228215628-8122f68747b6
 	github.com/dolthub/sqllogictest/go v0.0.0-20240118211725-a52e3f5697e3
-	github.com/dolthub/vitess v0.0.0-20240209125211-6c93b0341608
+	github.com/dolthub/vitess v0.0.0-20240228192915-d55088cef56a
 	github.com/fatih/color v1.13.0
 	github.com/gogo/protobuf v1.3.2
 	github.com/golang/geo v0.0.0-20200730024412-e86565bf3f35
@@ -23,7 +23,7 @@ require (
 	github.com/madflojo/testcerts v1.1.1
 	github.com/pierrre/geohash v1.0.0
 	github.com/sergi/go-diff v1.1.0
-	github.com/shopspring/decimal v1.2.0
+	github.com/shopspring/decimal v1.3.1
 	github.com/sirupsen/logrus v1.8.1
 	github.com/stretchr/testify v1.8.4
 	github.com/tidwall/gjson v1.14.4
@@ -62,7 +62,7 @@ require (
 	github.com/dolthub/fslock v0.0.3 // indirect
 	github.com/dolthub/go-icu-regex v0.0.0-20230524105445-af7e7991c97e // indirect
 	github.com/dolthub/ishell v0.0.0-20221214210346-d7db0b066488 // indirect
-	github.com/dolthub/jsonpath v0.0.2-0.20240201003050-392940944c15 // indirect
+	github.com/dolthub/jsonpath v0.0.2-0.20240227200619-19675ab05c71 // indirect
 	github.com/dolthub/maphash v0.0.0-20221220182448-74e1e1ea1577 // indirect
 	github.com/dolthub/swiss v0.1.0 // indirect
 	github.com/dustin/go-humanize v1.0.1 // indirect
@@ -107,7 +107,6 @@ require (
 	github.com/mattn/go-isatty v0.0.17 // indirect
 	github.com/mattn/go-runewidth v0.0.13 // indirect
 	github.com/matttproud/golang_protobuf_extensions v1.0.1 // indirect
-	github.com/mitchellh/hashstructure v1.1.0 // indirect
 	github.com/oracle/oci-go-sdk/v65 v65.55.0 // indirect
 	github.com/pierrec/lz4/v4 v4.1.6 // indirect
 	github.com/pkg/errors v0.9.1 // indirect

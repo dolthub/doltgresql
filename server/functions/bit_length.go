@@ -14,20 +14,29 @@
 
 package functions
 
-// bit_length represents the PostgreSQL function of the same name.
-var bit_length = Function{
-	Name:      "bit_length",
-	Overloads: []interface{}{bit_length_string},
+import (
+	"github.com/dolthub/doltgresql/server/functions/framework"
+	pgtypes "github.com/dolthub/doltgresql/server/types"
+)
+
+// init registers the functions to the catalog.
+func init() {
+	framework.RegisterFunction(bit_length_varchar)
 }
 
-// bit_length_string is one of the overloads of bit_length.
-func bit_length_string(text StringType) (IntegerType, error) {
-	if text.IsNull {
-		return IntegerType{IsNull: true}, nil
-	}
-	result, err := octet_length_string(text)
-	if err != nil {
-		return IntegerType{}, err
-	}
-	return IntegerType{Value: result.Value * 8}, nil
+// bit_length_varchar represents the PostgreSQL function of the same name, taking the same parameters.
+var bit_length_varchar = framework.Function1{
+	Name:       "bit_length",
+	Return:     pgtypes.Int64,
+	Parameters: []pgtypes.DoltgresType{pgtypes.Int64},
+	Callable: func(ctx framework.Context, val1 any) (any, error) {
+		if val1 == nil {
+			return nil, nil
+		}
+		result, err := octet_length_varchar.Callable(ctx, val1)
+		if err != nil {
+			return nil, err
+		}
+		return result.(int64) * 8, nil
+	},
 }

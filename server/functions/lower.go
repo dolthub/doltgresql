@@ -14,19 +14,29 @@
 
 package functions
 
-import "strings"
+import (
+	"strings"
 
-// lower represents the PostgreSQL function of the same name.
-var lower = Function{
-	Name:      "lower",
-	Overloads: []interface{}{lower_string},
+	"github.com/dolthub/doltgresql/server/functions/framework"
+
+	pgtypes "github.com/dolthub/doltgresql/server/types"
+)
+
+// init registers the functions to the catalog.
+func init() {
+	framework.RegisterFunction(lower_varchar)
 }
 
-// lower_string is one of the overloads of lower.
-func lower_string(text StringType) (StringType, error) {
-	if text.IsNull {
-		return StringType{IsNull: true}, nil
-	}
-	//TODO: this doesn't respect collations
-	return StringType{Value: strings.ToLower(text.Value)}, nil
+// lower_varchar represents the PostgreSQL function of the same name, taking the same parameters.
+var lower_varchar = framework.Function1{
+	Name:       "lower",
+	Return:     pgtypes.VarCharMax,
+	Parameters: []pgtypes.DoltgresType{pgtypes.VarCharMax},
+	Callable: func(ctx framework.Context, val1 any) (any, error) {
+		if val1 == nil {
+			return nil, nil
+		}
+		//TODO: this doesn't respect collations
+		return strings.ToLower(val1.(string)), nil
+	},
 }

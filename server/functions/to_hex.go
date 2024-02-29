@@ -14,18 +14,28 @@
 
 package functions
 
-import "fmt"
+import (
+	"fmt"
 
-// to_hex represents the PostgreSQL function of the same name.
-var to_hex = Function{
-	Name:      "to_hex",
-	Overloads: []interface{}{to_hex_string},
+	"github.com/dolthub/doltgresql/server/functions/framework"
+
+	pgtypes "github.com/dolthub/doltgresql/server/types"
+)
+
+// init registers the functions to the catalog.
+func init() {
+	framework.RegisterFunction(to_hex_int64)
 }
 
-// to_hex_string is one of the overloads of to_hex.
-func to_hex_string(num IntegerType) (StringType, error) {
-	if num.IsNull {
-		return StringType{IsNull: true}, nil
-	}
-	return StringType{Value: fmt.Sprintf("%x", num.Value)}, nil
+// to_hex_int64 represents the PostgreSQL function of the same name, taking the same parameters.
+var to_hex_int64 = framework.Function1{
+	Name:       "to_hex",
+	Return:     pgtypes.VarCharMax,
+	Parameters: []pgtypes.DoltgresType{pgtypes.Int64},
+	Callable: func(ctx framework.Context, val1 any) (any, error) {
+		if val1 == nil {
+			return nil, nil
+		}
+		return fmt.Sprintf("%x", val1.(int64)), nil
+	},
 }

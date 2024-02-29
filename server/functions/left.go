@@ -14,20 +14,29 @@
 
 package functions
 
-// left represents the PostgreSQL function of the same name.
-var left = Function{
-	Name:      "left",
-	Overloads: []interface{}{left_string_int},
+import (
+	"github.com/dolthub/doltgresql/server/functions/framework"
+	pgtypes "github.com/dolthub/doltgresql/server/types"
+)
+
+// init registers the functions to the catalog.
+func init() {
+	framework.RegisterFunction(left_varchar)
 }
 
-// left_string is one of the overloads of left.
-func left_string_int(string StringType, n IntegerType) (StringType, error) {
-	if string.IsNull || n.IsNull {
-		return StringType{IsNull: true}, nil
-	}
-	if n.Value >= 0 {
-		return StringType{Value: string.Value[:n.Value]}, nil
-	} else {
-		return StringType{Value: string.Value[:len(string.Value)+int(n.Value)]}, nil
-	}
+// left_varchar represents the PostgreSQL function of the same name, taking the same parameters.
+var left_varchar = framework.Function2{
+	Name:       "left",
+	Return:     pgtypes.VarCharMax,
+	Parameters: []pgtypes.DoltgresType{pgtypes.VarCharMax, pgtypes.Int64},
+	Callable: func(ctx framework.Context, str any, n any) (any, error) {
+		if str == nil || n == nil {
+			return nil, nil
+		}
+		if n.(int64) >= 0 {
+			return str.(string)[:n.(int64)], nil
+		} else {
+			return str.(string)[:len(str.(string))+int(n.(int64))], nil
+		}
+	},
 }

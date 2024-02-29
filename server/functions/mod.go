@@ -14,24 +14,42 @@
 
 package functions
 
-// mod represents the PostgreSQL function of the same name.
-var mod = Function{
-	Name:      "mod",
-	Overloads: []interface{}{mod_int_int, mod_num_num},
+import (
+	"github.com/shopspring/decimal"
+
+	"github.com/dolthub/doltgresql/server/functions/framework"
+
+	pgtypes "github.com/dolthub/doltgresql/server/types"
+)
+
+// init registers the functions to the catalog.
+func init() {
+	framework.RegisterFunction(mod_int64_int64)
+	framework.RegisterFunction(mod_numeric_numeric)
 }
 
-// mod_int_int is one of the overloads of mod.
-func mod_int_int(num1 IntegerType, num2 IntegerType) (IntegerType, error) {
-	if num1.IsNull || num2.IsNull {
-		return IntegerType{IsNull: true}, nil
-	}
-	return IntegerType{Value: num1.Value % num2.Value}, nil
+// mod_int64_int64 represents the PostgreSQL function of the same name, taking the same parameters.
+var mod_int64_int64 = framework.Function2{
+	Name:       "mod",
+	Return:     pgtypes.Int64,
+	Parameters: []pgtypes.DoltgresType{pgtypes.Int64, pgtypes.Int64},
+	Callable: func(ctx framework.Context, val1 any, val2 any) (any, error) {
+		if val1 == nil || val2 == nil {
+			return nil, nil
+		}
+		return val1.(int64) % val2.(int64), nil
+	},
 }
 
-// mod_num_num is one of the overloads of mod.
-func mod_num_num(num1 NumericType, num2 NumericType) (NumericType, error) {
-	if num1.IsNull || num2.IsNull {
-		return NumericType{IsNull: true}, nil
-	}
-	return NumericType{Value: float64(int64(num1.Value) % int64(num2.Value))}, nil
+// mod_numeric_numeric represents the PostgreSQL function of the same name, taking the same parameters.
+var mod_numeric_numeric = framework.Function2{
+	Name:       "mod",
+	Return:     pgtypes.Numeric,
+	Parameters: []pgtypes.DoltgresType{pgtypes.Numeric, pgtypes.Numeric},
+	Callable: func(ctx framework.Context, val1 any, val2 any) (any, error) {
+		if val1 == nil || val2 == nil {
+			return nil, nil
+		}
+		return val1.(decimal.Decimal).Mod(val2.(decimal.Decimal)), nil
+	},
 }

@@ -14,18 +14,28 @@
 
 package functions
 
-import "math"
+import (
+	"math"
 
-// atan2d represents the PostgreSQL function of the same name.
-var atan2d = Function{
-	Name:      "atan2d",
-	Overloads: []interface{}{atan2d_float},
+	"github.com/dolthub/doltgresql/server/functions/framework"
+
+	pgtypes "github.com/dolthub/doltgresql/server/types"
+)
+
+// init registers the functions to the catalog.
+func init() {
+	framework.RegisterFunction(atan2d_float64)
 }
 
-// atan2d_float is one of the overloads of atan2d.
-func atan2d_float(y FloatType, x FloatType) (FloatType, error) {
-	if y.IsNull || x.IsNull {
-		return FloatType{IsNull: true}, nil
-	}
-	return FloatType{Value: toDegrees(math.Atan2(y.Value, x.Value))}, nil
+// atan2_float64 represents the PostgreSQL function of the same name, taking the same parameters.
+var atan2d_float64 = framework.Function2{
+	Name:       "atan2d",
+	Return:     pgtypes.Float64,
+	Parameters: []pgtypes.DoltgresType{pgtypes.Float64, pgtypes.Float64},
+	Callable: func(ctx framework.Context, y any, x any) (any, error) {
+		if y == nil || x == nil {
+			return nil, nil
+		}
+		return toDegrees(math.Atan2(y.(float64), x.(float64))), nil
+	},
 }

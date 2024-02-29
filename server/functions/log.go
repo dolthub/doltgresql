@@ -17,49 +17,79 @@ package functions
 import (
 	"fmt"
 	"math"
+
+	"github.com/shopspring/decimal"
+
+	"github.com/dolthub/doltgresql/server/functions/framework"
+	pgtypes "github.com/dolthub/doltgresql/server/types"
 )
 
-// log represents the PostgreSQL function of the same name.
-var log = Function{
-	Name:      "log",
-	Overloads: []interface{}{log_float, log_numeric, log_numeric_numeric},
+// init registers the functions to the catalog.
+func init() {
+	framework.RegisterFunction(log_float64)
+	framework.RegisterFunction(log_numeric)
+	framework.RegisterFunction(log_numeric_numeric)
 }
 
-// log_float is one of the overloads of log.
-func log_float(num FloatType) (FloatType, error) {
-	if num.IsNull {
-		return FloatType{IsNull: true}, nil
-	}
-	if num.Value == 0 {
-		return FloatType{}, fmt.Errorf("cannot take logarithm of zero")
-	} else if num.Value < 0 {
-		return FloatType{}, fmt.Errorf("cannot take logarithm of a negative number")
-	}
-	return FloatType{Value: math.Log10(num.Value)}, nil
+// log_float64 represents the PostgreSQL function of the same name, taking the same parameters.
+var log_float64 = framework.Function1{
+	Name:       "log",
+	Return:     pgtypes.Float64,
+	Parameters: []pgtypes.DoltgresType{pgtypes.Float64},
+	Callable: func(ctx framework.Context, val1Interface any) (any, error) {
+		if val1Interface == nil {
+			return nil, nil
+		}
+		val1 := val1Interface.(float64)
+		if val1 == 0 {
+			return nil, fmt.Errorf("cannot take logarithm of zero")
+		} else if val1 < 0 {
+			return nil, fmt.Errorf("cannot take logarithm of a negative number")
+		}
+		return math.Log10(val1), nil
+	},
 }
 
-// log_numeric is one of the overloads of log.
-func log_numeric(num NumericType) (NumericType, error) {
-	if num.IsNull {
-		return NumericType{IsNull: true}, nil
-	}
-	if num.Value == 0 {
-		return NumericType{}, fmt.Errorf("cannot take logarithm of zero")
-	} else if num.Value < 0 {
-		return NumericType{}, fmt.Errorf("cannot take logarithm of a negative number")
-	}
-	return NumericType{Value: math.Log10(num.Value)}, nil
+// log_numeric represents the PostgreSQL function of the same name, taking the same parameters.
+var log_numeric = framework.Function1{
+	Name:       "log",
+	Return:     pgtypes.Numeric,
+	Parameters: []pgtypes.DoltgresType{pgtypes.Numeric},
+	Callable: func(ctx framework.Context, val1Interface any) (any, error) {
+		if val1Interface == nil {
+			return nil, nil
+		}
+		val1 := val1Interface.(decimal.Decimal)
+		if val1.Equal(decimal.Zero) {
+			return nil, fmt.Errorf("cannot take logarithm of zero")
+		} else if val1.LessThan(decimal.Zero) {
+			return nil, fmt.Errorf("cannot take logarithm of a negative number")
+		}
+		// TODO: implement log for numeric instead of relying on float64
+		f, _ := val1.Float64()
+		return decimal.NewFromFloat(math.Log10(f)), nil
+	},
 }
 
-// log_numeric_numeric is one of the overloads of log.
-func log_numeric_numeric(base NumericType, num NumericType) (NumericType, error) {
-	if base.IsNull || num.IsNull {
-		return NumericType{IsNull: true}, nil
-	}
-	if base.Value == 0 || num.Value == 0 {
-		return NumericType{}, fmt.Errorf("cannot take logarithm of zero")
-	} else if base.Value < 0 || num.Value < 0 {
-		return NumericType{}, fmt.Errorf("cannot take logarithm of a negative number")
-	}
-	return NumericType{Value: math.Log(num.Value) / math.Log(base.Value)}, nil
+// log_numeric_numeric represents the PostgreSQL function of the same name, taking the same parameters.
+var log_numeric_numeric = framework.Function2{
+	Name:       "log",
+	Return:     pgtypes.Numeric,
+	Parameters: []pgtypes.DoltgresType{pgtypes.Numeric, pgtypes.Numeric},
+	Callable: func(ctx framework.Context, val1Interface any, val2Interface any) (any, error) {
+		if val1Interface == nil || val2Interface == nil {
+			return nil, nil
+		}
+		val1 := val1Interface.(decimal.Decimal)
+		val2 := val2Interface.(decimal.Decimal)
+		if val1.Equal(decimal.Zero) || val2.Equal(decimal.Zero) {
+			return nil, fmt.Errorf("cannot take logarithm of zero")
+		} else if val1.LessThan(decimal.Zero) || val2.LessThan(decimal.Zero) {
+			return nil, fmt.Errorf("cannot take logarithm of a negative number")
+		}
+		// TODO: implement log for numeric instead of relying on float64
+		base, _ := val1.Float64()
+		num, _ := val2.Float64()
+		return decimal.NewFromFloat(math.Log(num) / math.Log(base)), nil
+	},
 }

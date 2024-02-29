@@ -16,32 +16,48 @@ package functions
 
 import (
 	"math"
+
+	"github.com/shopspring/decimal"
+
+	"github.com/dolthub/doltgresql/server/functions/framework"
+	pgtypes "github.com/dolthub/doltgresql/server/types"
 )
 
-// ceil represents the PostgreSQL function of the same name.
-var ceil = Function{
-	Name:      "ceil",
-	Overloads: []interface{}{ceil_float, ceil_numeric},
+// init registers the functions to the catalog.
+func init() {
+	framework.RegisterFunction(ceil_float64)
+	framework.RegisterFunction(ceil_numeric)
+	// Register aliases
+	ceiling_float64 := ceil_float64
+	ceiling_numeric := ceil_numeric
+	ceiling_float64.Name = "ceiling"
+	ceiling_numeric.Name = "ceiling"
+	framework.RegisterFunction(ceiling_float64)
+	framework.RegisterFunction(ceiling_numeric)
 }
 
-// ceiling represents the PostgreSQL function of the same name.
-var ceiling = Function{
-	Name:      "ceiling",
-	Overloads: []interface{}{ceil_float, ceil_numeric},
+// ceil_float64 represents the PostgreSQL function of the same name, taking the same parameters.
+var ceil_float64 = framework.Function1{
+	Name:       "ceil",
+	Return:     pgtypes.Float64,
+	Parameters: []pgtypes.DoltgresType{pgtypes.Float64},
+	Callable: func(ctx framework.Context, val1 any) (any, error) {
+		if val1 == nil {
+			return nil, nil
+		}
+		return math.Ceil(val1.(float64)), nil
+	},
 }
 
-// ceil_float is one of the overloads of ceil.
-func ceil_float(num FloatType) (FloatType, error) {
-	if num.IsNull {
-		return FloatType{IsNull: true}, nil
-	}
-	return FloatType{Value: math.Ceil(num.Value)}, nil
-}
-
-// ceil_numeric is one of the overloads of ceil.
-func ceil_numeric(num NumericType) (NumericType, error) {
-	if num.IsNull {
-		return NumericType{IsNull: true}, nil
-	}
-	return NumericType{Value: math.Ceil(num.Value)}, nil
+// ceil_numeric represents the PostgreSQL function of the same name, taking the same parameters.
+var ceil_numeric = framework.Function1{
+	Name:       "ceil",
+	Return:     pgtypes.Numeric,
+	Parameters: []pgtypes.DoltgresType{pgtypes.Numeric},
+	Callable: func(ctx framework.Context, val1 any) (any, error) {
+		if val1 == nil {
+			return nil, nil
+		}
+		return val1.(decimal.Decimal).Ceil(), nil
+	},
 }

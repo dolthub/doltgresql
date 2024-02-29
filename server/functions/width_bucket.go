@@ -17,34 +17,69 @@ package functions
 import (
 	"fmt"
 	"math"
+
+	"github.com/shopspring/decimal"
+
+	"github.com/dolthub/doltgresql/server/functions/framework"
+	pgtypes "github.com/dolthub/doltgresql/server/types"
 )
 
-// width_bucket represents the PostgreSQL function of the same name.
-var width_bucket = Function{
-	Name:      "width_bucket",
-	Overloads: []interface{}{width_bucket_float, width_bucket_numeric},
+// init registers the functions to the catalog.
+func init() {
+	framework.RegisterFunction(width_bucket_float64_float64_float64_int64)
+	framework.RegisterFunction(width_bucket_numeric_numeric_numeric_int64)
 }
 
-// width_bucket_float is one of the overloads of width_bucket.
-func width_bucket_float(operand FloatType, low FloatType, high FloatType, count IntegerType) (IntegerType, error) {
-	if operand.IsNull || low.IsNull || high.IsNull || count.IsNull {
-		return IntegerType{IsNull: true}, nil
-	}
-	if count.Value <= 0 {
-		return IntegerType{}, fmt.Errorf("count must be greater than zero")
-	}
-	bucket := (high.Value - low.Value) / float64(count.Value)
-	result := int64(math.Ceil((operand.Value - low.Value) / bucket))
-	if result < 0 {
-		result = 0
-	} else if result > count.Value+1 {
-		result = count.Value + 1
-	}
-	return IntegerType{Value: result}, nil
+// width_bucket_float64_float64_float64_int64 represents the PostgreSQL function of the same name, taking the same parameters.
+var width_bucket_float64_float64_float64_int64 = framework.Function4{
+	Name:       "width_bucket",
+	Return:     pgtypes.Int64,
+	Parameters: []pgtypes.DoltgresType{pgtypes.Float64, pgtypes.Float64, pgtypes.Float64, pgtypes.Int64},
+	Callable: func(ctx framework.Context, operandInterface any, lowInterface any, highInterface any, countInterface any) (any, error) {
+		if operandInterface == nil || lowInterface == nil || highInterface == nil || countInterface == nil {
+			return nil, nil
+		}
+		operand := operandInterface.(float64)
+		low := lowInterface.(float64)
+		high := highInterface.(float64)
+		count := countInterface.(int64)
+		if count <= 0 {
+			return nil, fmt.Errorf("count must be greater than zero")
+		}
+		bucket := (high - low) / float64(count)
+		result := int64(math.Ceil((operand - low) / bucket))
+		if result < 0 {
+			result = 0
+		} else if result > count+1 {
+			result = count + 1
+		}
+		return result, nil
+	},
 }
 
-// width_bucket_numeric is one of the overloads of width_bucket.
-func width_bucket_numeric(operand NumericType, low NumericType, high NumericType, count IntegerType) (IntegerType, error) {
-	//TODO: need to implement proper numeric support
-	return width_bucket_float(FloatType(operand), FloatType(low), FloatType(high), count)
+// width_bucket_numeric_numeric_numeric_int64 represents the PostgreSQL function of the same name, taking the same parameters.
+var width_bucket_numeric_numeric_numeric_int64 = framework.Function4{
+	Name:       "width_bucket",
+	Return:     pgtypes.Int64,
+	Parameters: []pgtypes.DoltgresType{pgtypes.Numeric, pgtypes.Numeric, pgtypes.Numeric, pgtypes.Int64},
+	Callable: func(ctx framework.Context, operandInterface any, lowInterface any, highInterface any, countInterface any) (any, error) {
+		if operandInterface == nil || lowInterface == nil || highInterface == nil || countInterface == nil {
+			return nil, nil
+		}
+		operand := operandInterface.(decimal.Decimal)
+		low := lowInterface.(decimal.Decimal)
+		high := highInterface.(decimal.Decimal)
+		count := countInterface.(int64)
+		if count <= 0 {
+			return nil, fmt.Errorf("count must be greater than zero")
+		}
+		bucket := high.Sub(low).Div(decimal.NewFromInt(count))
+		result := operand.Sub(low).Div(bucket).Ceil()
+		if result.LessThan(decimal.Zero) {
+			result = decimal.Zero
+		} else if result.GreaterThan(decimal.NewFromInt(count + 1)) {
+			result = decimal.NewFromInt(count + 1)
+		}
+		return result, nil
+	},
 }

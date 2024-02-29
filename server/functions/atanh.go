@@ -14,18 +14,28 @@
 
 package functions
 
-import "math"
+import (
+	"math"
 
-// atanh represents the PostgreSQL function of the same name.
-var atanh = Function{
-	Name:      "atanh",
-	Overloads: []interface{}{atanh_float},
+	"github.com/dolthub/doltgresql/server/functions/framework"
+
+	pgtypes "github.com/dolthub/doltgresql/server/types"
+)
+
+// init registers the functions to the catalog.
+func init() {
+	framework.RegisterFunction(atanh_float64)
 }
 
-// atanh_float is one of the overloads of atanh.
-func atanh_float(num FloatType) (FloatType, error) {
-	if num.IsNull {
-		return FloatType{IsNull: true}, nil
-	}
-	return FloatType{Value: math.Atanh(num.Value)}, nil
+// atanh_float64 represents the PostgreSQL function of the same name, taking the same parameters.
+var atanh_float64 = framework.Function1{
+	Name:       "atanh",
+	Return:     pgtypes.Float64,
+	Parameters: []pgtypes.DoltgresType{pgtypes.Float64},
+	Callable: func(ctx framework.Context, val1 any) (any, error) {
+		if val1 == nil {
+			return nil, nil
+		}
+		return math.Atanh(val1.(float64)), nil
+	},
 }
