@@ -137,18 +137,22 @@ const maxConsecutiveFailures = 10
 
 var errShutdownRequested = errors.New("shutdown requested")
 
-// StartReplication starts the replication process for the given slot name. This function blocks until replication is
-// stopped via the Stop method, or an error occurs.
-func (r *LogicalReplicator) StartReplication(slotName string) error {
-	standbyMessageTimeout := 10 * time.Second
-	nextStandbyMessageDeadline := time.Now().Add(standbyMessageTimeout)
-	relationsV2 := map[uint32]*pglogrepl.RelationMessageV2{}
-	typeMap := pgtype.NewMap()
+type replicationState struct {
+	// The LSN of the commit record of the last transaction that was successfully replicated to the database. 
+	// We rely on postgres sending transactions to us in the order they were written in the WAL, so that we can tell 
+	// which ones we've already processed if we get a duplicate on restart.
+	lastWrittenLSN pglogrepl.LSN
 
-	// whenever we get StreamStartMessage we set inStream to true and then pass it to DecodeV2 function
-	// on StreamStopMessage we set it back to false
-	inStream := false
-	
+	// lsn is the last WAL position we have received from the server, which we send back to the server via
+	// SendStandbyStatusUpdate after every message we get.
+	lastReceivedLSN pglogrepl.LSN
+
+	currentTransactionLSN pglogrepl.LSN
+
+	// inStream tracks the state of the replication stream. When we receive a StreamStartMessage, we set inStream to 
+	// true, and then back to false when we receive a StreamStopMessage.
+	inStream bool
+
 	// We selectively ignore messages that are from before our last flush, which can be resent by postgres in certain
 	// crash scenarios. Postgres sends messages in batches based on changes in a transaction, beginning with a Begin
 	// message that records the last WAL position of the transaction. The individual INSERT, UPDATE, DELETE messages are
@@ -156,15 +160,26 @@ func (r *LogicalReplicator) StartReplication(slotName string) error {
 	// in some cases. Whether we ignore them or not has nothing to do with the WAL position of any individual write, but 
 	// the final LSN of the transaction, as recorded in the Begin message. So for every Begin, we decide whether to
 	// process or ignore all messages until a corresponding Commit message. 
-	processMessages := false
+	processMessages bool
+	relations       map[uint32]*pglogrepl.RelationMessageV2
+	typeMap         *pgtype.Map
+} 
 
-	// lsn is the last WAL position we have received from the server, which we send back to the server via
-	// SendStandbyStatusUpdate after every message we get. Postgres tracks this LSN for each slot, which allows us to
-	// resume where we left off in the case of an interruption.
-	var lsn pglogrepl.LSN
+// StartReplication starts the replication process for the given slot name. This function blocks until replication is
+// stopped via the Stop method, or an error occurs.
+func (r *LogicalReplicator) StartReplication(slotName string) error {
+	standbyMessageTimeout := 10 * time.Second
+	nextStandbyMessageDeadline := time.Now().Add(standbyMessageTimeout)
+	
 	lsn, err := r.readWALPosition()
 	if err != nil {
 		return err
+	}
+	
+	state := &replicationState{
+		lastWrittenLSN: lsn,
+		relations: map[uint32]*pglogrepl.RelationMessageV2{},
+		typeMap: pgtype.NewMap(),
 	}
 
 	var primaryConn *pgconn.PgConn
@@ -310,7 +325,7 @@ func (r *LogicalReplicator) StartReplication(slotName string) error {
 
 				// TODO next: need to track whether we have yet received any message past the last LSN we wrote to the WAL, 
 				//  in order to handle the case where we get LSNs out of order 
-				updateNeeded, err := r.processMessage(lsn, xld, relationsV2, typeMap, &inStream, &processMessages)
+				updateNeeded, err := r.processMessage(xld, state)
 				if err != nil {
 					// TODO: do we need more than one handler, one for each connection?
 					return handleErrWithRetry(err)
@@ -514,18 +529,13 @@ func (r *LogicalReplicator) CreateReplicationSlotIfNecessary(slotName string) er
 //  2. INSERT/UPDATE/DELETE messages describe changes to rows that must be applied to the replica.
 //     These describe a row in the form of a tuple, and are used to construct a query to apply the change to the replica.
 //
-// Returns a boolean true if the message was a write that should be acknowledged to the server, and an error if one
-// occurred.
+// Returns a boolean true if the message was a commit that should be acknowledged, and an error if one occurred.
 func (r *LogicalReplicator) processMessage(
-		lsn pglogrepl.LSN,
 		xld pglogrepl.XLogData,
-		relations map[uint32]*pglogrepl.RelationMessageV2,
-		typeMap *pgtype.Map,
-		inStream *bool,
-		processMessages *bool,
+		state *replicationState,
 ) (bool, error) {
 	walData := xld.WALData
-	logicalMsg, err := pglogrepl.ParseV2(walData, *inStream)
+	logicalMsg, err := pglogrepl.ParseV2(walData, state.inStream)
 	if err != nil {
 		return false, err
 	}
@@ -534,18 +544,19 @@ func (r *LogicalReplicator) processMessage(
 
 	switch logicalMsg := logicalMsg.(type) {
 	case *pglogrepl.RelationMessageV2:
-		relations[logicalMsg.RelationID] = logicalMsg
+		state.relations[logicalMsg.RelationID] = logicalMsg
 	case *pglogrepl.BeginMessage:
 		// Indicates the beginning of a group of changes in a transaction.
 		// This is only sent for committed transactions. We won't get any events from rolled back transactions.
 		
-		if lsn > logicalMsg.FinalLSN {
-			log.Printf("Received stale message, ignoring. Current LSN: %s Message LSN: %s", lsn, logicalMsg.FinalLSN)
-			*processMessages = false
+		if state.lastWrittenLSN > logicalMsg.FinalLSN {
+			log.Printf("Received stale message, ignoring. Last written LSN: %s Message LSN: %s", state.lastWrittenLSN, logicalMsg.FinalLSN)
+			state.processMessages = false
 			return false, nil
 		}
 		
-		*processMessages = true
+		state.processMessages = true
+		state.currentTransactionLSN = logicalMsg.FinalLSN
 		log.Printf("BeginMessage: %v", logicalMsg)
 		err = r.replicateQuery("START TRANSACTION")
 		if err != nil {
@@ -557,14 +568,16 @@ func (r *LogicalReplicator) processMessage(
 		if err != nil {
 			return false, err
 		}
-		*processMessages = false
+		state.processMessages = false
+		
+		return true, nil
 	case *pglogrepl.InsertMessageV2:
-		if !*processMessages {
-			log.Printf("Received stale message, ignoring. Current LSN: %s Message LSN: %s", lsn, xld.ServerWALEnd)
+		if !state.processMessages {
+			log.Printf("Received stale message, ignoring. Last written LSN: %s Message LSN: %s", state.lastWrittenLSN, xld.ServerWALEnd)
 			return false, nil
 		}
 
-		rel, ok := relations[logicalMsg.RelationID]
+		rel, ok := state.relations[logicalMsg.RelationID]
 		if !ok {
 			log.Fatalf("unknown relation ID %d", logicalMsg.RelationID)
 		}
@@ -586,11 +599,11 @@ func (r *LogicalReplicator) processMessage(
 			case 't': // text
 
 				// We have to round-trip the data through the encodings to get an accurate text rep back
-				val, err := decodeTextColumnData(typeMap, col.Data, rel.Columns[idx].DataType)
+				val, err := decodeTextColumnData(state.typeMap, col.Data, rel.Columns[idx].DataType)
 				if err != nil {
 					log.Fatalln("error decoding column data:", err)
 				}
-				colData, err := encodeColumnData(typeMap, val, rel.Columns[idx].DataType)
+				colData, err := encodeColumnData(state.typeMap, val, rel.Columns[idx].DataType)
 				if err != nil {
 					return false, err
 				}
@@ -607,14 +620,14 @@ func (r *LogicalReplicator) processMessage(
 
 		return true, nil
 	case *pglogrepl.UpdateMessageV2:
-		if !*processMessages {
-			log.Printf("Received stale message, ignoring. Current LSN: %s Message LSN: %s", lsn, xld.ServerWALEnd)
+		if !state.processMessages {
+			log.Printf("Received stale message, ignoring. Last written LSN: %s Message LSN: %s", state.lastWrittenLSN, xld.ServerWALEnd)
 			return false, nil
 		}
 
 		// TODO: this won't handle primary key changes correctly
 		// TODO: this probably doesn't work for unkeyed tables
-		rel, ok := relations[logicalMsg.RelationID]
+		rel, ok := state.relations[logicalMsg.RelationID]
 		if !ok {
 			log.Fatalf("unknown relation ID %d", logicalMsg.RelationID)
 		}
@@ -631,12 +644,12 @@ func (r *LogicalReplicator) processMessage(
 				stringVal = "NULL"
 			case 'u': // unchanged toast
 			case 't': // text
-				val, err := decodeTextColumnData(typeMap, col.Data, rel.Columns[idx].DataType)
+				val, err := decodeTextColumnData(state.typeMap, col.Data, rel.Columns[idx].DataType)
 				if err != nil {
 					log.Fatalln("error decoding column data:", err)
 				}
 
-				stringVal, err = encodeColumnData(typeMap, val, rel.Columns[idx].DataType)
+				stringVal, err = encodeColumnData(state.typeMap, val, rel.Columns[idx].DataType)
 				if err != nil {
 					return false, err
 				}
@@ -665,13 +678,13 @@ func (r *LogicalReplicator) processMessage(
 
 		return true, nil
 	case *pglogrepl.DeleteMessageV2:
-		if !*processMessages {
-			log.Printf("Received stale message, ignoring. Current LSN: %s Message LSN: %s", lsn, xld.ServerWALEnd)
+		if !state.processMessages {
+			log.Printf("Received stale message, ignoring. Last written LSN: %s Message LSN: %s", state.lastWrittenLSN, xld.ServerWALEnd)
 			return false, nil
 		}
 
 		// TODO: this probably doesn't work for unkeyed tables
-		rel, ok := relations[logicalMsg.RelationID]
+		rel, ok := state.relations[logicalMsg.RelationID]
 		if !ok {
 			log.Fatalf("unknown relation ID %d", logicalMsg.RelationID)
 		}
@@ -687,12 +700,12 @@ func (r *LogicalReplicator) processMessage(
 				stringVal = "NULL"
 			case 'u': // unchanged toast
 			case 't': // text
-				val, err := decodeTextColumnData(typeMap, col.Data, rel.Columns[idx].DataType)
+				val, err := decodeTextColumnData(state.typeMap, col.Data, rel.Columns[idx].DataType)
 				if err != nil {
 					log.Fatalln("error decoding column data:", err)
 				}
 
-				stringVal, err = encodeColumnData(typeMap, val, rel.Columns[idx].DataType)
+				stringVal, err = encodeColumnData(state.typeMap, val, rel.Columns[idx].DataType)
 				if err != nil {
 					return false, err
 				}
@@ -725,10 +738,10 @@ func (r *LogicalReplicator) processMessage(
 	case *pglogrepl.LogicalDecodingMessageV2:
 		log.Printf("Logical decoding message: %q, %q, %d", logicalMsg.Prefix, logicalMsg.Content, logicalMsg.Xid)
 	case *pglogrepl.StreamStartMessageV2:
-		*inStream = true
+		state.inStream = true
 		log.Printf("Stream start message: xid %d, first segment? %d", logicalMsg.Xid, logicalMsg.FirstSegment)
 	case *pglogrepl.StreamStopMessageV2:
-		*inStream = false
+		state.inStream = false
 		log.Printf("Stream stop message")
 	case *pglogrepl.StreamCommitMessageV2:
 		log.Printf("Stream commit message: xid %d", logicalMsg.Xid)
