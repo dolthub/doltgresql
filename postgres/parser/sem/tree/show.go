@@ -50,38 +50,6 @@ func (node *ShowVar) Format(ctx *FmtCtx) {
 	})
 }
 
-// ShowClusterSetting represents a SHOW CLUSTER SETTING statement.
-type ShowClusterSetting struct {
-	Name string
-}
-
-// Format implements the NodeFormatter interface.
-func (node *ShowClusterSetting) Format(ctx *FmtCtx) {
-	ctx.WriteString("SHOW CLUSTER SETTING ")
-	// Cluster setting names never contain PII and should be distinguished
-	// for feature tracking purposes.
-	ctx.WithFlags(ctx.flags & ^FmtAnonymize, func() {
-		ctx.FormatNameP(&node.Name)
-	})
-}
-
-// ShowClusterSettingList represents a SHOW [ALL|PUBLIC] CLUSTER SETTINGS statement.
-type ShowClusterSettingList struct {
-	// All indicates whether to include non-public settings in the output.
-	All bool
-}
-
-// Format implements the NodeFormatter interface.
-func (node *ShowClusterSettingList) Format(ctx *FmtCtx) {
-	ctx.WriteString("SHOW ")
-	qual := "PUBLIC"
-	if node.All {
-		qual = "ALL"
-	}
-	ctx.WriteString(qual)
-	ctx.WriteString(" CLUSTER SETTINGS")
-}
-
 // BackupDetails represents the type of details to display for a SHOW BACKUP
 // statement.
 type BackupDetails int

@@ -728,7 +728,7 @@ func (u *sqlSymUnion) triggerTime() tree.TriggerTime {
 %token <str> RETRY RETURN RETURNING RETURNS REVISION_HISTORY REVOKE RIGHT
 %token <str> ROLE ROLES ROUTINE ROUTINES ROLLBACK ROLLUP ROW ROWS RSHIFT RULE RUNNING
 
-%token <str> SAFE SAVEPOINT SCATTER SCHEDULE SCHEDULES SCHEMA SCHEMAS SCRUB SEARCH SECOND SECURITY SELECT
+%token <str> SAFE SAVEPOINT SCATTER SCHEDULE SCHEDULES SCHEMA SCHEMAS SCRUB SEARCH SECOND SECURITY SEED SELECT
 %token <str> SERIALIZABLE SERVER SESSION SESSIONS SESSION_USER SET SETTING SETTINGS SEQUENCE SEQUENCES
 %token <str> SHARE SHOW SIMILAR SIMPLE SKIP SKIP_MISSING_FOREIGN_KEYS
 %token <str> SKIP_MISSING_SEQUENCES SKIP_MISSING_SEQUENCE_OWNERS SKIP_MISSING_VIEWS SMALLINT SMALLSERIAL SNAPSHOT SOME SPLIT SQL
@@ -903,7 +903,7 @@ func (u *sqlSymUnion) triggerTime() tree.TriggerTime {
 %type <tree.Statement> pause_stmt pause_jobs_stmt pause_schedules_stmt
 %type <*tree.Select>   for_schedules_clause
 %type <tree.Statement> release_stmt
-%type <tree.Statement> reset_stmt reset_session_stmt reset_csetting_stmt
+%type <tree.Statement> reset_stmt
 %type <tree.Statement> resume_stmt resume_jobs_stmt resume_schedules_stmt
 %type <tree.Statement> drop_schedule_stmt
 %type <tree.Statement> restore_stmt
@@ -920,12 +920,16 @@ func (u *sqlSymUnion) triggerTime() tree.TriggerTime {
 %type <[]tree.Statement> schema_element_list opt_schema_element_list stmt_list
 %type <tree.Statement> preparable_set_stmt nonpreparable_set_stmt
 %type <tree.Statement> set_session_stmt
-%type <tree.Statement> set_csetting_stmt
 %type <tree.Statement> set_transaction_stmt
+%type <tree.Statement> set_constraints_stmt
 %type <tree.Statement> set_exprs_internal
-%type <tree.Statement> generic_set_config generic_set_single_config
-%type <tree.Statement> set_rest_more
+%type <tree.Statement> generic_set_single_config
+%type <tree.Statement> set_session_or_local_cmd
+%type <tree.Statement> set_session_authorization
+%type <tree.Statement> set_var
+%type <tree.Statement> set_special_syntax
 %type <tree.Statement> set_names
+%type <tree.Statement> set_role
 %type <tree.Statement> begin_end_block
 %type <tree.Statement> sql_body
 
@@ -934,7 +938,6 @@ func (u *sqlSymUnion) triggerTime() tree.TriggerTime {
 %type <tree.Statement> show_columns_stmt
 %type <tree.Statement> show_constraints_stmt
 %type <tree.Statement> show_create_stmt
-%type <tree.Statement> show_csettings_stmt
 %type <tree.Statement> show_databases_stmt
 %type <tree.Statement> show_enums_stmt
 %type <tree.Statement> show_fingerprints_stmt
@@ -1095,7 +1098,6 @@ func (u *sqlSymUnion) triggerTime() tree.TriggerTime {
 %type <tree.TableNames> table_name_list opt_locked_rels opt_inherits
 %type <tree.Exprs> expr_list opt_expr_list tuple1_ambiguous_values tuple1_unambiguous_values
 %type <*tree.Tuple> expr_tuple1_ambiguous expr_tuple_unambiguous
-%type <tree.NameList> attrs
 %type <tree.SelectExprs> target_list
 %type <tree.UpdateExprs> set_clause_list
 %type <*tree.UpdateExpr> set_clause multiple_set_clause
@@ -1205,8 +1207,6 @@ func (u *sqlSymUnion) triggerTime() tree.TriggerTime {
 %type <int64> signed_iconst64
 %type <int64> iconst64
 %type <tree.Expr> var_value opt_var_value opt_restart
-%type <tree.Exprs> var_list
-%type <tree.NameList> var_name
 %type <str> unrestricted_name type_function_name type_function_name_no_crdb_extra
 %type <str> non_reserved_word
 %type <str> non_reserved_word_or_sconst
@@ -4904,35 +4904,33 @@ privilege:
     $$ = string($1) + " " + string($2)
   }
 
-reset_stmt:
-  reset_session_stmt  // EXTEND WITH HELP: RESET
-| reset_csetting_stmt // EXTEND WITH HELP: RESET CLUSTER SETTING
-
 // %Help: RESET - reset a session variable to its default value
 // %Category: Cfg
 // %Text: RESET [SESSION] <var>
-// %SeeAlso: RESET CLUSTER SETTING, WEBDOCS/set-vars.html
-reset_session_stmt:
-  RESET session_var
+reset_stmt:
+  RESET name
   {
-    $$.val = &tree.SetVar{Name: $2, Values:tree.Exprs{tree.DefaultVal{}}}
+    name := $2
+    if name == "role" {
+      $$.val = &tree.SetRole{Reset: true}
+    } else {
+      $$.val = &tree.SetVar{Name: $2, Values:tree.Exprs{tree.DefaultVal{}}}
+    }
   }
-| RESET SESSION session_var
+// TIME ZONE is special: it is two tokens, but is really the identifier "TIME ZONE".
+| RESET TIME ZONE
   {
-    $$.val = &tree.SetVar{Name: $3, Values:tree.Exprs{tree.DefaultVal{}}}
+    $$.val = &tree.SetVar{Name: "timezone", Values:tree.Exprs{tree.DefaultVal{}}}
+  }
+| RESET ALL
+  {
+    $$.val = &tree.ResetAll{}
+  }
+| RESET SESSION AUTHORIZATION
+  {
+    $$.val = &tree.SetSessionAuthorization{}
   }
 | RESET error // SHOW HELP: RESET
-
-// %Help: RESET CLUSTER SETTING - reset a cluster setting to its default value
-// %Category: Cfg
-// %Text: RESET CLUSTER SETTING <var>
-// %SeeAlso: SET CLUSTER SETTING, RESET
-reset_csetting_stmt:
-  RESET CLUSTER SETTING var_name
-  {
-    $$.val = &tree.SetClusterSetting{Name: strings.Join($4.strs(), "."), Value:tree.DefaultVal{}}
-  }
-| RESET CLUSTER error // SHOW HELP: RESET CLUSTER SETTING
 
 // USE is the MSSQL/MySQL equivalent of SET DATABASE. Alias it for convenience.
 // %Help: USE - set the current database
@@ -4951,14 +4949,16 @@ use_stmt:
 // SET remainder, e.g. SET TRANSACTION
 nonpreparable_set_stmt:
   set_transaction_stmt // EXTEND WITH HELP: SET TRANSACTION
+| set_constraints_stmt  // EXTEND WITH HELP: SET CONSTRAINTS
 | set_exprs_internal   { /* SKIP DOC */ }
-| SET CONSTRAINTS error { return unimplemented(sqllex, "set constraints") }
-| SET LOCAL error { return unimplementedWithIssue(sqllex, 32562) }
+| SET LOCAL set_session_or_local_cmd
+  {
+    $$.val = $3.stmt()
+  }
 
-// SET SESSION / SET CLUSTER SETTING
+// SET SESSION
 preparable_set_stmt:
   set_session_stmt     // EXTEND WITH HELP: SET SESSION
-| set_csetting_stmt    // EXTEND WITH HELP: SET CLUSTER SETTING
 | use_stmt             // EXTEND WITH HELP: USE
 
 // %Help: SCRUB - run checks against databases or tables
@@ -5063,18 +5063,6 @@ scrub_option:
     $$.val = &tree.ScrubOptionPhysical{}
   }
 
-// %Help: SET CLUSTER SETTING - change a cluster setting
-// %Category: Cfg
-// %Text: SET CLUSTER SETTING <var> { TO | = } <value>
-// %SeeAlso: SHOW CLUSTER SETTING, RESET CLUSTER SETTING, SET SESSION,
-// WEBDOCS/cluster-settings.html
-set_csetting_stmt:
-  SET CLUSTER SETTING var_name to_or_eq var_value
-  {
-    $$.val = &tree.SetClusterSetting{Name: strings.Join($4.strs(), "."), Value: $6.expr()}
-  }
-| SET CLUSTER error // SHOW HELP: SET CLUSTER SETTING
-
 to_or_eq:
   '='
 | TO
@@ -5092,24 +5080,17 @@ set_exprs_internal:
 // %Text:
 // SET [SESSION] <var> { TO | = } <values...>
 // SET [SESSION] TIME ZONE <tz>
-// SET [SESSION] CHARACTERISTICS AS TRANSACTION ISOLATION LEVEL { SNAPSHOT | SERIALIZABLE }
-// SET [SESSION] TRACING { TO | = } { on | off | cluster | local | kv | results } [,...]
 //
-// %SeeAlso: SHOW SESSION, RESET, DISCARD, SHOW, SET CLUSTER SETTING, SET TRANSACTION,
+// %SeeAlso: SET TRANSACTION
 // WEBDOCS/set-vars.html
 set_session_stmt:
-  SET SESSION set_rest_more
+  SET SESSION set_session_or_local_cmd
   {
     $$.val = $3.stmt()
   }
-| SET set_rest_more
+| SET set_session_or_local_cmd
   {
     $$.val = $2.stmt()
-  }
-// Special form for pg compatibility:
-| SET SESSION CHARACTERISTICS AS TRANSACTION transaction_mode_list
-  {
-    $$.val = &tree.SetSessionCharacteristics{Modes: $6.transactionModes()}
   }
 
 // %Help: SET TRANSACTION - configure the transaction settings
@@ -5135,7 +5116,30 @@ set_transaction_stmt:
   {
     $$.val = &tree.SetTransaction{Modes: $4.transactionModes()}
   }
+// Special form for pg compatibility:
+| SET SESSION CHARACTERISTICS AS TRANSACTION transaction_mode_list
+  {
+    $$.val = &tree.SetSessionCharacteristics{Modes: $6.transactionModes()}
+  }
 | SET SESSION TRANSACTION error // SHOW HELP: SET TRANSACTION
+
+set_constraints_stmt:
+  SET CONSTRAINTS ALL DEFERRED
+  {
+    $$.val = &tree.SetConstraints{All: true, Deferred: true}
+  }
+| SET CONSTRAINTS ALL IMMEDIATE
+  {
+    $$.val = &tree.SetConstraints{All: true, Deferred: false}
+  }
+| SET CONSTRAINTS name_list DEFERRED
+  {
+    $$.val = &tree.SetConstraints{Names: $3.nameList(), Deferred: true}
+  }
+| SET CONSTRAINTS name_list IMMEDIATE
+  {
+    $$.val = &tree.SetConstraints{Names: $3.nameList(), Deferred: false}
+  }
 
 generic_set_single_config:
   // var_value includes DEFAULT expr
@@ -5148,54 +5152,57 @@ generic_set_single_config:
     $$.val = &tree.SetVar{Name: $1, FromCurrent: true}
   }
 
-generic_set_config:
-  var_name to_or_eq var_list
-  {
-    // We need to recognize the "set tracing" specially here; couldn't make "set
-    // tracing" a different grammar rule because of ambiguity.
-    varName := $1.strs()
-    if len(varName) == 1 && varName[0] == "tracing" {
-      $$.val = &tree.SetTracing{Values: $3.exprs()}
-    } else {
-      $$.val = &tree.SetVar{Name: strings.Join($1.strs(), "."), Values: $3.exprs()}
-    }
-  }
-| var_name FROM CURRENT
-  {
-    $$.val = &tree.SetVar{Name: strings.Join($1.strs(), "."), FromCurrent: true}
-  }
+set_session_or_local_cmd:
+  set_session_authorization
+| set_var
+| set_role
+| error // SHOW HELP: SET SESSION
 
-set_rest_more:
-// Generic SET syntaxes:
-   generic_set_config
-// Special SET syntax forms in addition to the generic form.
-// See: https://www.postgresql.org/docs/10/static/sql-set.html
-//
+set_var:
+  generic_set_single_config
 // "SET TIME ZONE value is an alias for SET timezone TO value."
 | TIME ZONE zone_value
   {
-    /* SKIP DOC */
     $$.val = &tree.SetVar{Name: "timezone", Values: tree.Exprs{$3.expr()}}
   }
+| set_special_syntax
+
+set_special_syntax:
 // "SET SCHEMA 'value' is an alias for SET search_path TO value. Only
 // one schema can be specified using this syntax."
-| SCHEMA var_value
+  SCHEMA var_value
   {
-    /* SKIP DOC */
     $$.val = &tree.SetVar{Name: "search_path", Values: tree.Exprs{$2.expr()}}
-  }
-| SESSION AUTHORIZATION DEFAULT
-  {
-    /* SKIP DOC */
-    $$.val = &tree.SetSessionAuthorizationDefault{}
-  }
-| SESSION AUTHORIZATION non_reserved_word_or_sconst
-  {
-    return unimplementedWithIssue(sqllex, 40283)
   }
 // See comment for the non-terminal for SET NAMES below.
 | set_names
-| error // SHOW HELP: SET SESSION
+// "SET SEED 'value' is an alias for SET seed TO value. Sets the internal seed
+// for the random number generator (the function random)."
+| SEED signed_fconst
+  {
+    $$.val = &tree.SetVar{Name: "gepo_seed", Values: tree.Exprs{$2.expr()}}
+  }
+
+set_session_authorization:
+  SESSION AUTHORIZATION DEFAULT
+  {
+    $$.val = &tree.SetSessionAuthorization{}
+  }
+| SESSION AUTHORIZATION non_reserved_word_or_sconst
+  {
+    $$.val = &tree.SetSessionAuthorization{Username: $3}
+  }
+
+set_role:
+  ROLE non_reserved_word_or_sconst
+  {
+    name := $2
+    if name == "none" {
+      $$.val = &tree.SetRole{None: true}
+    } else {
+      $$.val = &tree.SetRole{Name: $2}
+    }
+  }
 
 // SET NAMES is the SQL standard syntax for SET client_encoding.
 // "SET NAMES value is an alias for SET client_encoding TO value."
@@ -5211,26 +5218,6 @@ set_names:
   {
     /* SKIP DOC */
     $$.val = &tree.SetVar{Name: "client_encoding", Values: tree.Exprs{tree.DefaultVal{}}}
-  }
-
-var_name:
-  name
-  {
-    $$.val = []string{$1}
-  }
-| name attrs
-  {
-    $$.val = append([]string{$1}, $2.strs()...)
-  }
-
-attrs:
-  '.' unrestricted_name
-  {
-    $$.val = []string{$2}
-  }
-| attrs '.' unrestricted_name
-  {
-    $$.val = append($1.strs(), $3)
   }
 
 var_value:
@@ -5254,16 +5241,6 @@ var_value:
 extra_var_value:
   ON
 | cockroachdb_extra_reserved_keyword
-
-var_list:
-  var_value
-  {
-    $$.val = tree.Exprs{$1.expr()}
-  }
-| var_list ',' var_value
-  {
-    $$.val = append($1.exprs(), $3.expr())
-  }
 
 iso_level:
   READ UNCOMMITTED
@@ -5343,7 +5320,6 @@ show_stmt:
 | show_columns_stmt         // EXTEND WITH HELP: SHOW COLUMNS
 | show_constraints_stmt     // EXTEND WITH HELP: SHOW CONSTRAINTS
 | show_create_stmt          // EXTEND WITH HELP: SHOW CREATE
-| show_csettings_stmt       // EXTEND WITH HELP: SHOW CLUSTER SETTING
 | show_databases_stmt       // EXTEND WITH HELP: SHOW DATABASES
 | show_enums_stmt           // EXTEND WITH HELP: SHOW ENUMS
 | show_types_stmt           // EXTEND WITH HELP: SHOW TYPES
@@ -5424,7 +5400,6 @@ session_var:
 | SESSION_USER
 // TIME ZONE is special: it is two tokens, but is really the identifier "TIME ZONE".
 | TIME ZONE { $$ = "timezone" }
-| TIME error // SHOW HELP: SHOW SESSION
 
 // %Help: SHOW STATISTICS - display table statistics (experimental)
 // %Category: Experimental
@@ -5523,37 +5498,6 @@ show_backup_stmt:
     }
   }
 | SHOW BACKUP error // SHOW HELP: SHOW BACKUP
-
-// %Help: SHOW CLUSTER SETTING - display cluster settings
-// %Category: Cfg
-// %Text:
-// SHOW CLUSTER SETTING <var>
-// SHOW [ PUBLIC | ALL ] CLUSTER SETTINGS
-// %SeeAlso: WEBDOCS/cluster-settings.html
-show_csettings_stmt:
-  SHOW CLUSTER SETTING var_name
-  {
-    $$.val = &tree.ShowClusterSetting{Name: strings.Join($4.strs(), ".")}
-  }
-| SHOW CLUSTER SETTING ALL
-  {
-    $$.val = &tree.ShowClusterSettingList{All: true}
-  }
-| SHOW CLUSTER error // SHOW HELP: SHOW CLUSTER SETTING
-| SHOW ALL CLUSTER SETTINGS
-  {
-    $$.val = &tree.ShowClusterSettingList{All: true}
-  }
-| SHOW ALL CLUSTER error // SHOW HELP: SHOW CLUSTER SETTING
-| SHOW CLUSTER SETTINGS
-  {
-    $$.val = &tree.ShowClusterSettingList{}
-  }
-| SHOW PUBLIC CLUSTER SETTINGS
-  {
-    $$.val = &tree.ShowClusterSettingList{}
-  }
-| SHOW PUBLIC CLUSTER error // SHOW HELP: SHOW CLUSTER SETTING
 
 // %Help: SHOW COLUMNS - list columns in relation
 // %Category: DDL
@@ -13211,6 +13155,7 @@ unreserved_keyword:
 | SEARCH
 | SECOND
 | SECURITY
+| SEED
 | SERIALIZABLE
 | SEQUENCE
 | SEQUENCES
