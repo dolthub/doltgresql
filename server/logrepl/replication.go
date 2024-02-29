@@ -42,8 +42,8 @@ type rcvMsg struct {
 }
 
 type LogicalReplicator struct {
-	primaryDns      string
-	replicationDns  string
+	primaryDns     string
+	replicationDns string
 
 	walFilePath     string
 	running         bool
@@ -57,10 +57,10 @@ type LogicalReplicator struct {
 // connection to the primary is established when StartReplication is called.
 func NewLogicalReplicator(walFilePath string, primaryDns string, replicationDns string) (*LogicalReplicator, error) {
 	return &LogicalReplicator{
-		primaryDns:      primaryDns,
-		replicationDns:  replicationDns,
-		walFilePath:     walFilePath,
-		mu:              &sync.Mutex{},
+		primaryDns:     primaryDns,
+		replicationDns: replicationDns,
+		walFilePath:    walFilePath,
+		mu:             &sync.Mutex{},
 	}, nil
 }
 
@@ -192,7 +192,7 @@ func (r *LogicalReplicator) StartReplication(slotName string) error {
 		relations:      map[uint32]*pglogrepl.RelationMessageV2{},
 		typeMap:        pgtype.NewMap(),
 	}
-	
+
 	var primaryConn *pgconn.PgConn
 	defer func() {
 		if primaryConn != nil {
