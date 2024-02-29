@@ -25,11 +25,12 @@ import (
 	"time"
 
 	"github.com/cockroachdb/errors"
-	"github.com/dolthub/doltgresql/server/logrepl"
 	"github.com/dolthub/go-mysql-server/sql"
 	"github.com/jackc/pgx/v5"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+
+	"github.com/dolthub/doltgresql/server/logrepl"
 )
 
 type ReplicationTarget byte
@@ -41,7 +42,7 @@ const (
 	stopReplication       = "stopReplication"
 	startReplication      = "startReplication"
 	waitForCatchup        = "waitForCatchup"
-	sleep								 = "sleep"
+	sleep                 = "sleep"
 )
 
 type ReplicationTest struct {
@@ -411,7 +412,7 @@ var replicationTests = []ReplicationTest{
 			waitForCatchup,
 			stopReplication,
 			startReplication,
-			// this tx includes several WAL locations before our last flush, but it must still be replicated 
+			// this tx includes several WAL locations before our last flush, but it must still be replicated
 			"/* primary a */ COMMIT",
 			waitForCatchup,
 		},
@@ -455,7 +456,7 @@ var replicationTests = []ReplicationTest{
 			waitForCatchup,
 			stopReplication,
 			startReplication,
-			// this tx includes several WAL locations before our last flush, but it must still be replicated 
+			// this tx includes several WAL locations before our last flush, but it must still be replicated
 			"/* primary a */ COMMIT",
 			waitForCatchup,
 		},
@@ -739,7 +740,7 @@ func waitForRunning(r *logrepl.LogicalReplicator) error {
 
 func waitForCaughtUp(r *logrepl.LogicalReplicator) error {
 	log.Println("Waiting for replication to catch up")
-	
+
 	start := time.Now()
 	for {
 		if caughtUp, err := r.CaughtUp(150); caughtUp {

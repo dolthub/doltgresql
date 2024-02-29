@@ -87,8 +87,8 @@ func (r *LogicalReplicator) ReplicationDns() string {
 // CaughtUp returns true if the replication slot is caught up to the primary, and false otherwise. This only works if
 // there is only a single replication slot on the primary, so it's only suitable for testing. This method uses a
 // threshold value to determine if the primary considers us caught up. This corresponds to the maximum number of bytes
-// that the primary is ahead of the replica's last flush position. This rarely is zero when caught up, since the 
-// primary often sends additional WAL records after the last WAL location that was flushed to the replica. These 
+// that the primary is ahead of the replica's last flush position. This rarely is zero when caught up, since the
+// primary often sends additional WAL records after the last WAL location that was flushed to the replica. These
 // additional WAL locations cannot be recorded as flushed since they don't result in writes to the replica, and could
 // result in the primary not sending us necessary records after a shutdown and restart.
 func (r *LogicalReplicator) CaughtUp(threshold int) (bool, error) {
@@ -144,8 +144,8 @@ const maxConsecutiveFailures = 10
 var errShutdownRequested = errors.New("shutdown requested")
 
 type replicationState struct {
-	// The LSN of the commit record of the last transaction that was successfully replicated to the database. 
-	// We rely on postgres sending transactions to us in the order they were written in the WAL, so that we can tell 
+	// The LSN of the commit record of the last transaction that was successfully replicated to the database.
+	// We rely on postgres sending transactions to us in the order they were written in the WAL, so that we can tell
 	// which ones we've already processed if we get a duplicate on restart.
 	lastWrittenLSN pglogrepl.LSN
 
@@ -155,37 +155,37 @@ type replicationState struct {
 
 	currentTransactionLSN pglogrepl.LSN
 
-	// inStream tracks the state of the replication stream. When we receive a StreamStartMessage, we set inStream to 
+	// inStream tracks the state of the replication stream. When we receive a StreamStartMessage, we set inStream to
 	// true, and then back to false when we receive a StreamStopMessage.
 	inStream bool
 
 	// We selectively ignore messages that are from before our last flush, which can be resent by postgres in certain
 	// crash scenarios. Postgres sends messages in batches based on changes in a transaction, beginning with a Begin
 	// message that records the last WAL position of the transaction. The individual INSERT, UPDATE, DELETE messages are
-	// sent, each tagged with the WAL position of that tuple write. This WAL position can be before the last flush LSN 
-	// in some cases. Whether we ignore them or not has nothing to do with the WAL position of any individual write, but 
+	// sent, each tagged with the WAL position of that tuple write. This WAL position can be before the last flush LSN
+	// in some cases. Whether we ignore them or not has nothing to do with the WAL position of any individual write, but
 	// the final LSN of the transaction, as recorded in the Begin message. So for every Begin, we decide whether to
-	// process or ignore all messages until a corresponding Commit message. 
+	// process or ignore all messages until a corresponding Commit message.
 	processMessages bool
 	relations       map[uint32]*pglogrepl.RelationMessageV2
 	typeMap         *pgtype.Map
-} 
+}
 
 // StartReplication starts the replication process for the given slot name. This function blocks until replication is
 // stopped via the Stop method, or an error occurs.
 func (r *LogicalReplicator) StartReplication(slotName string) error {
 	standbyMessageTimeout := 10 * time.Second
 	nextStandbyMessageDeadline := time.Now().Add(standbyMessageTimeout)
-	
+
 	lastWrittenLsn, err := r.readWALPosition()
 	if err != nil {
 		return err
 	}
-	
+
 	state := &replicationState{
 		lastWrittenLSN: lastWrittenLsn,
-		relations: map[uint32]*pglogrepl.RelationMessageV2{},
-		typeMap: pgtype.NewMap(),
+		relations:      map[uint32]*pglogrepl.RelationMessageV2{},
+		typeMap:        pgtype.NewMap(),
 	}
 
 	var primaryConn *pgconn.PgConn
@@ -318,10 +318,10 @@ func (r *LogicalReplicator) StartReplication(slotName string) error {
 				if err != nil {
 					log.Fatalln("ParsePrimaryKeepaliveMessage failed:", err)
 				}
-				
+
 				log.Println("Primary Keepalive Message =>", "ServerWALEnd:", pkm.ServerWALEnd, "ServerTime:", pkm.ServerTime, "ReplyRequested:", pkm.ReplyRequested)
 				state.lastReceivedLSN = pkm.ServerWALEnd
-				
+
 				if pkm.ReplyRequested {
 					// Send our reply the next time through the loop
 					nextStandbyMessageDeadline = time.Time{}
@@ -332,8 +332,8 @@ func (r *LogicalReplicator) StartReplication(slotName string) error {
 					return err
 				}
 
-				// TODO next: need to track whether we have yet received any message past the last LSN we wrote to the WAL, 
-				//  in order to handle the case where we get LSNs out of order 
+				// TODO next: need to track whether we have yet received any message past the last LSN we wrote to the WAL,
+				//  in order to handle the case where we get LSNs out of order
 				committed, err := r.processMessage(xld, state)
 				if err != nil {
 					// TODO: do we need more than one handler, one for each connection?
@@ -436,7 +436,7 @@ func (r *LogicalReplicator) beginReplication(slotName string, lastFlushLsn pglog
 	// The LSN is the position in the WAL where we want to start replication, but it can only be used to skip entries,
 	// not rewind to previous entries that we've already confirmed to the primary that we flushed. We still pass an LSN
 	// for the edge case where we have flushed an entry to disk, but crashed before the primary received confirmation.
-	// In that edge case, we want to "skip" entries (from the primary's perspective) that we have already flushed to disk. 
+	// In that edge case, we want to "skip" entries (from the primary's perspective) that we have already flushed to disk.
 	log.Printf("Starting logical replication on slot %s at WAL location %s", slotName, lastFlushLsn)
 	err = pglogrepl.StartReplication(context.Background(), conn, slotName, lastFlushLsn, pglogrepl.StartReplicationOptions{
 		PluginArgs: pluginArguments,
@@ -544,8 +544,8 @@ func (r *LogicalReplicator) CreateReplicationSlotIfNecessary(slotName string) er
 //
 // Returns a boolean true if the message was a commit that should be acknowledged, and an error if one occurred.
 func (r *LogicalReplicator) processMessage(
-		xld pglogrepl.XLogData,
-		state *replicationState,
+	xld pglogrepl.XLogData,
+	state *replicationState,
 ) (bool, error) {
 	walData := xld.WALData
 	logicalMsg, err := pglogrepl.ParseV2(walData, state.inStream)
@@ -555,23 +555,23 @@ func (r *LogicalReplicator) processMessage(
 
 	log.Printf("XLogData (%T) => WALStart %s ServerWALEnd %s ServerTime %s", logicalMsg, xld.WALStart, xld.ServerWALEnd, xld.ServerTime)
 	state.lastReceivedLSN = xld.ServerWALEnd
-	
+
 	switch logicalMsg := logicalMsg.(type) {
 	case *pglogrepl.RelationMessageV2:
 		state.relations[logicalMsg.RelationID] = logicalMsg
 	case *pglogrepl.BeginMessage:
 		// Indicates the beginning of a group of changes in a transaction.
 		// This is only sent for committed transactions. We won't get any events from rolled back transactions.
-		
+
 		if state.lastWrittenLSN > logicalMsg.FinalLSN {
 			log.Printf("Received stale message, ignoring. Last written LSN: %s Message LSN: %s", state.lastWrittenLSN, logicalMsg.FinalLSN)
 			state.processMessages = false
 			return false, nil
 		}
-		
+
 		state.processMessages = true
 		state.currentTransactionLSN = logicalMsg.FinalLSN
-		
+
 		log.Printf("BeginMessage: %v", logicalMsg)
 		err = r.replicateQuery("START TRANSACTION")
 		if err != nil {
@@ -584,7 +584,7 @@ func (r *LogicalReplicator) processMessage(
 			return false, err
 		}
 		state.processMessages = false
-		
+
 		return true, nil
 	case *pglogrepl.InsertMessageV2:
 		if !state.processMessages {
