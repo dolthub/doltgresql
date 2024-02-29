@@ -25,12 +25,11 @@ import (
 	"time"
 
 	"github.com/cockroachdb/errors"
+	"github.com/dolthub/doltgresql/server/logrepl"
 	"github.com/dolthub/go-mysql-server/sql"
 	"github.com/jackc/pgx/v5"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
-
-	"github.com/dolthub/doltgresql/server/logrepl"
 )
 
 type ReplicationTarget byte
@@ -272,9 +271,6 @@ var replicationTests = []ReplicationTest{
 	},
 	{
 		Name: "concurrent writes",
-		// postgres actually sends these updates out of order, which means we need to track the txid as well
-		// when deciding whether to process a message or not
-		// Skip: true,
 		SetUpScript: []string{
 			dropReplicationSlot,
 			createReplicationSlot,
@@ -303,6 +299,140 @@ var replicationTests = []ReplicationTest{
 				Expected: []sql.Row{
 					{int32(2), "three"},
 					{int32(4), "five"},
+				},
+			},
+		},
+	},
+	{
+		Name: "concurrent writes with restarts",
+		SetUpScript: []string{
+			dropReplicationSlot,
+			createReplicationSlot,
+			startReplication,
+			"/* replica */ drop table if exists test",
+			"/* replica */ create table test (id INT primary key, name varchar(100))",
+			"drop table if exists test",
+			"CREATE TABLE test (id INT primary key, name varchar(100))",
+			"/* primary a */ START TRANSACTION",
+			"/* primary a */ INSERT INTO test VALUES (1, 'one')",
+			"/* primary a */ INSERT INTO test VALUES (2, 'two')",
+			stopReplication,
+			"/* primary b */ START TRANSACTION",
+			"/* primary b */ INSERT INTO test VALUES (3, 'one')",
+			"/* primary b */ INSERT INTO test VALUES (4, 'two')",
+			"/* primary c */ START TRANSACTION",
+			"/* primary c */ INSERT INTO test VALUES (5, 'one')",
+			"/* primary c */ INSERT INTO test VALUES (6, 'two')",
+			"/* primary a */ UPDATE test SET name = 'three' WHERE id > 0",
+			startReplication,
+			"/* primary a */ DELETE FROM test WHERE id = 1",
+			"/* primary b */ UPDATE test SET name = 'five' WHERE id > 0",
+			"/* primary b */ DELETE FROM test WHERE id = 3",
+			"/* primary b */ COMMIT",
+			stopReplication,
+			"/* primary c */ UPDATE test SET name = 'seven' WHERE id > 0",
+			"/* primary c */ DELETE FROM test WHERE id = 5",
+			"/* primary a */ COMMIT",
+			startReplication,
+			"/* primary c */ COMMIT",
+			waitForCatchup,
+		},
+		Assertions: []ScriptTestAssertion{
+			{
+				Query: "/* replica */ SELECT * FROM test order by id",
+				Expected: []sql.Row{
+					{int32(2), "three"},
+					{int32(4), "seven"},
+					{int32(6), "seven"},
+				},
+			},
+		},
+	},
+	{
+		Name: "concurrent writes with rollbacks",
+		SetUpScript: []string{
+			dropReplicationSlot,
+			createReplicationSlot,
+			startReplication,
+			"/* replica */ drop table if exists test",
+			"/* replica */ create table test (id INT primary key, name varchar(100))",
+			"drop table if exists test",
+			"CREATE TABLE test (id INT primary key, name varchar(100))",
+			"/* primary a */ START TRANSACTION",
+			"/* primary a */ INSERT INTO test VALUES (1, 'one')",
+			"/* primary a */ INSERT INTO test VALUES (2, 'two')",
+			stopReplication,
+			"/* primary b */ START TRANSACTION",
+			"/* primary b */ INSERT INTO test VALUES (3, 'one')",
+			"/* primary b */ INSERT INTO test VALUES (4, 'two')",
+			"/* primary c */ START TRANSACTION",
+			"/* primary c */ INSERT INTO test VALUES (5, 'one')",
+			"/* primary c */ INSERT INTO test VALUES (6, 'two')",
+			"/* primary a */ UPDATE test SET name = 'three' WHERE id > 0",
+			startReplication,
+			"/* primary a */ DELETE FROM test WHERE id = 1",
+			"/* primary b */ UPDATE test SET name = 'five' WHERE id > 0",
+			"/* primary b */ DELETE FROM test WHERE id = 3",
+			"/* primary b */ COMMIT",
+			stopReplication,
+			"/* primary c */ UPDATE test SET name = 'seven' WHERE id > 0",
+			"/* primary c */ DELETE FROM test WHERE id = 5",
+			"/* primary a */ ROLLBACK",
+			startReplication,
+			"/* primary c */ COMMIT",
+			waitForCatchup,
+		},
+		Assertions: []ScriptTestAssertion{
+			{
+				Query: "/* replica */ SELECT * FROM test order by id",
+				Expected: []sql.Row{
+					{int32(4), "seven"},
+					{int32(6), "seven"},
+				},
+			},
+		},
+	},
+	{
+		Name: "concurrent writes, very stale commits",
+		Focus: true,
+		SetUpScript: []string{
+			dropReplicationSlot,
+			createReplicationSlot,
+			startReplication,
+			"/* replica */ drop table if exists test",
+			"/* replica */ create table test (id INT primary key, name varchar(100))",
+			"drop table if exists test",
+			"CREATE TABLE test (id INT primary key, name varchar(100))",
+			"/* primary a */ START TRANSACTION",
+			"/* primary a */ INSERT INTO test VALUES (1, 'one')",
+			"/* primary a */ INSERT INTO test VALUES (2, 'two')",
+			"/* primary a */ UPDATE test SET name = 'three' WHERE id > 0",
+			"/* primary a */ DELETE FROM test WHERE id = 1",
+			"/* primary b */ START TRANSACTION",
+			"/* primary b */ INSERT INTO test VALUES (3, 'one')",
+			"/* primary b */ INSERT INTO test VALUES (4, 'two')",
+			"/* primary c */ START TRANSACTION",
+			"/* primary c */ INSERT INTO test VALUES (5, 'one')",
+			"/* primary c */ INSERT INTO test VALUES (6, 'two')",
+			"/* primary c */ UPDATE test SET name = 'seven' WHERE id > 0",
+			"/* primary c */ DELETE FROM test WHERE id = 5",
+			"/* primary c */ COMMIT",
+			"/* primary b */ UPDATE test SET name = 'five' WHERE id > 0",
+			"/* primary b */ DELETE FROM test WHERE id = 3",
+			"/* primary b */ COMMIT",
+			waitForCatchup,
+			stopReplication,
+			startReplication,
+			// the commit from this tx includes WAL locations before our last flush, but it must still be replicated 
+			"/* primary a */ COMMIT",
+			waitForCatchup,
+		},
+		Assertions: []ScriptTestAssertion{
+			{
+				Query: "/* replica */ SELECT * FROM test order by id",
+				Expected: []sql.Row{
+					{int32(4), "five"},
+					{int32(6), "five"},
 				},
 			},
 		},
