@@ -18,12 +18,12 @@ import "testing"
 
 func TestDropTrigger(t *testing.T) {
 	tests := []QueryParses{
-		Unimplemented("DROP TRIGGER name ON table_name"),
-		Unimplemented("DROP TRIGGER IF EXISTS name ON table_name"),
-		Unimplemented("DROP TRIGGER name ON table_name CASCADE"),
-		Unimplemented("DROP TRIGGER IF EXISTS name ON table_name CASCADE"),
-		Unimplemented("DROP TRIGGER name ON table_name RESTRICT"),
-		Unimplemented("DROP TRIGGER IF EXISTS name ON table_name RESTRICT"),
+		Converts("DROP TRIGGER name ON table_name"),
+		Converts("DROP TRIGGER IF EXISTS name ON table_name"),
+		Parses("DROP TRIGGER name ON table_name CASCADE"),
+		Parses("DROP TRIGGER IF EXISTS name ON table_name CASCADE"),
+		Parses("DROP TRIGGER name ON table_name RESTRICT"),
+		Parses("DROP TRIGGER IF EXISTS name ON table_name RESTRICT"),
 	}
 	RunTests(t, tests)
 }

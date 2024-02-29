@@ -219,6 +219,33 @@ func (node *DropTable) Format(ctx *FmtCtx) {
 	}
 }
 
+var _ Statement = &DropTrigger{}
+
+// DropTrigger represents a DROP TRIGGER statement.
+type DropTrigger struct {
+	Name         Name
+	IfExists     bool
+	OnTable      TableName
+	DropBehavior DropBehavior
+}
+
+// Format implements the NodeFormatter interface.
+func (node *DropTrigger) Format(ctx *FmtCtx) {
+	ctx.WriteString("DROP TRIGGER ")
+	if node.IfExists {
+		ctx.WriteString("IF EXISTS ")
+	}
+	ctx.FormatNode(&node.Name)
+	ctx.WriteString(" ON ")
+	ctx.FormatNode(&node.OnTable)
+	switch node.DropBehavior {
+	case DropDefault:
+	default:
+		ctx.WriteByte(' ')
+		ctx.WriteString(dropBehaviorName[node.DropBehavior])
+	}
+}
+
 var _ Statement = &DropView{}
 
 // DropView represents a DROP VIEW statement.

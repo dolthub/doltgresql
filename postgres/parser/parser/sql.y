@@ -615,6 +615,21 @@ func (u *sqlSymUnion) viewCheckOption() tree.ViewCheckOption {
 func (u *sqlSymUnion) alterViewCmd() tree.AlterViewCmd {
     return u.val.(tree.AlterViewCmd)
 }
+func (u *sqlSymUnion) triggerDeferrableMode() tree.TriggerDeferrableMode {
+    return u.val.(tree.TriggerDeferrableMode)
+}
+func (u *sqlSymUnion) triggerRelations() tree.TriggerRelations {
+    return u.val.(tree.TriggerRelations)
+}
+func (u *sqlSymUnion) triggerEvent() tree.TriggerEvent {
+    return u.val.(tree.TriggerEvent)
+}
+func (u *sqlSymUnion) triggerEvents() tree.TriggerEvents {
+    return u.val.(tree.TriggerEvents)
+}
+func (u *sqlSymUnion) triggerTime() tree.TriggerTime {
+    return u.val.(tree.TriggerTime)
+}
 %}
 
 // NB: the %token definitions must come before the %type definitions in this
@@ -656,7 +671,7 @@ func (u *sqlSymUnion) alterViewCmd() tree.AlterViewCmd {
 %token <str> DEFAULT DEFAULTS DEFERRABLE DEFERRED DEFINER DELETE DEPENDS DESC DESTINATION DETACH DETACHED
 %token <str> DISABLE DISCARD DISTINCT DO DOMAIN DOUBLE DROP
 
-%token <str> ELSE ENABLE ENCODING ENCRYPTION_PASSPHRASE END ENUM ENUMS ESCAPE EXCEPT EXCLUDE EXCLUDING
+%token <str> EACH ELSE ENABLE ENCODING ENCRYPTION_PASSPHRASE END ENUM ENUMS ESCAPE EXCEPT EXCLUDE EXCLUDING
 %token <str> EXISTS EXECUTE EXECUTION EXPERIMENTAL
 %token <str> EXPERIMENTAL_FINGERPRINTS EXPERIMENTAL_REPLICA
 %token <str> EXPERIMENTAL_AUDIT EXPIRATION EXPLAIN EXPORT EXPRESSION
@@ -676,7 +691,7 @@ func (u *sqlSymUnion) alterViewCmd() tree.AlterViewCmd {
 %token <str> IF IFERROR IFNULL IGNORE_FOREIGN_KEYS ILIKE IMMEDIATE IMMUTABLE IMPORT
 %token <str> IN INCLUDE INCLUDING INCREMENT INCREMENTAL INET INET_CONTAINED_BY_OR_EQUALS
 %token <str> INET_CONTAINS_OR_EQUALS INDEX INDEXES INHERIT INHERITS INJECT INPUT INTERLEAVE INITIALLY
-%token <str> INNER INSERT INT INTEGER
+%token <str> INNER INSERT INSTEAD INT INTEGER
 %token <str> INTERSECT INTERVAL INTO INTO_DB INVERTED INVOKER IS ISERROR ISNULL ISOLATION IS_TEMPLATE
 
 %token <str> JOB JOBS JOIN JSON JSONB JSON_SOME_EXISTS JSON_ALL_EXISTS
@@ -693,11 +708,11 @@ func (u *sqlSymUnion) alterViewCmd() tree.AlterViewCmd {
 %token <str> MULTIPOINT MULTIPOINTM MULTIPOINTZ MULTIPOINTZM
 %token <str> MULTIPOLYGON MULTIPOLYGONM MULTIPOLYGONZ MULTIPOLYGONZM
 
-%token <str> NAN NAME NAMES NATURAL NEVER NEXT NO NOCANCELQUERY NOCONTROLCHANGEFEED NOCONTROLJOB
+%token <str> NAN NAME NAMES NATURAL NEVER NEW NEXT NO NOCANCELQUERY NOCONTROLCHANGEFEED NOCONTROLJOB
 %token <str> NOCREATEDB NOCREATELOGIN NOCREATEROLE NOLOGIN NOMODIFYCLUSTERSETTING NO_INDEX_JOIN
 %token <str> NONE NORMAL NOT NOTHING NOTNULL NOVIEWACTIVITY NOWAIT NULL NULLIF NULLS NUMERIC
 
-%token <str> OBJECT OF OFF OFFSET OID OIDS OIDVECTOR ON ONLY OPT OPTION OPTIONS OR
+%token <str> OBJECT OF OFF OFFSET OID OIDS OIDVECTOR OLD ON ONLY OPT OPTION OPTIONS OR
 %token <str> ORDER ORDINALITY OTHERS OUT OUTER OVER OVERLAPS OVERLAY OWNED OWNER OPERATOR
 
 %token <str> PARALLEL PARAMETER PARENT PARTIAL PARTITION PARTITIONS PASSWORD PAUSE PAUSED PHYSICAL PLACING
@@ -707,7 +722,7 @@ func (u *sqlSymUnion) alterViewCmd() tree.AlterViewCmd {
 
 %token <str> QUERIES QUERY
 
-%token <str> RANGE RANGES READ REAL RECURSIVE RECURRING REF REFERENCES REFRESH
+%token <str> RANGE RANGES READ REAL RECURSIVE RECURRING REF REFERENCES REFERENCING REFRESH
 %token <str> REGCLASS REGPROC REGPROCEDURE REGNAMESPACE REGTYPE REINDEX RELEASE REMAINDER
 %token <str> REMOVE_PATH RENAME REPEATABLE REPLACE REPLICA RESET RESTART RESTORE RESTRICT RESTRICTED RESUME
 %token <str> RETRY RETURN RETURNING RETURNS REVISION_HISTORY REVOKE RIGHT
@@ -717,7 +732,7 @@ func (u *sqlSymUnion) alterViewCmd() tree.AlterViewCmd {
 %token <str> SERIALIZABLE SERVER SESSION SESSIONS SESSION_USER SET SETTING SETTINGS SEQUENCE SEQUENCES
 %token <str> SHARE SHOW SIMILAR SIMPLE SKIP SKIP_MISSING_FOREIGN_KEYS
 %token <str> SKIP_MISSING_SEQUENCES SKIP_MISSING_SEQUENCE_OWNERS SKIP_MISSING_VIEWS SMALLINT SMALLSERIAL SNAPSHOT SOME SPLIT SQL
-%token <str> STABLE START STATISTICS STATUS STDIN STRATEGY STRICT STRING STORAGE STORE STORED SUBSTRING SUPPORT
+%token <str> STABLE START STATEMENT STATISTICS STATUS STDIN STRATEGY STRICT STRING STORAGE STORE STORED SUBSTRING SUPPORT
 %token <str> SYMMETRIC SYNTAX SYSTEM SQRT SUBSCRIPTION
 
 %token <str> TABLE TABLES TABLESPACE TEMP TEMPLATE TEMPORARY TEXT THEN
@@ -763,6 +778,7 @@ func (u *sqlSymUnion) alterViewCmd() tree.AlterViewCmd {
 %type <tree.Statement> alter_stmt
 %type <tree.Statement> alter_ddl_stmt
 %type <tree.Statement> alter_table_stmt
+%type <tree.Statement> alter_trigger_stmt
 %type <tree.Statement> alter_index_stmt
 %type <tree.Statement> alter_materialized_view_stmt
 %type <tree.Statement> alter_function_stmt
@@ -865,6 +881,7 @@ func (u *sqlSymUnion) alterViewCmd() tree.AlterViewCmd {
 %type <tree.Statement> drop_role_stmt
 %type <tree.Statement> drop_schema_stmt
 %type <tree.Statement> drop_table_stmt
+%type <tree.Statement> drop_trigger_stmt
 %type <tree.Statement> drop_type_stmt
 %type <tree.Statement> drop_view_stmt
 %type <tree.Statement> drop_sequence_stmt
@@ -1026,7 +1043,7 @@ func (u *sqlSymUnion) alterViewCmd() tree.AlterViewCmd {
 %type <str> opt_compression opt_collate
 
 %type <str> cursor_name database_name index_name opt_index_name column_name insert_column_item statistics_name window_name
-%type <str> table_alias_name constraint_name target_name collation_name
+%type <str> table_alias_name constraint_name target_name collation_name opt_from_ref_table
 %type <str> db_object_name_component
 %type <*tree.UnresolvedObjectName> table_name standalone_index_name sequence_name type_name routine_name
 %type <*tree.UnresolvedObjectName> view_name db_object_name simple_db_object_name complex_db_object_name
@@ -1039,6 +1056,14 @@ func (u *sqlSymUnion) alterViewCmd() tree.AlterViewCmd {
 
 %type <tree.ViewOptions> view_options opt_with_view_options
 %type <tree.ViewCheckOption> opt_with_check_option
+
+%type <tree.Expr> opt_when
+%type <bool> opt_for_each old_or_new opt_constraint
+%type <tree.TriggerDeferrableMode> opt_trigger_deferrable_mode
+%type <tree.TriggerRelations> trigger_relations opt_trigger_relations
+%type <tree.TriggerEvent> trigger_event
+%type <tree.TriggerEvents> trigger_events
+%type <tree.TriggerTime> trigger_time
 
 %type <*tree.TableIndexName> table_index_name
 %type <tree.TableIndexNames> table_index_name_list
@@ -1057,7 +1082,7 @@ func (u *sqlSymUnion) alterViewCmd() tree.AlterViewCmd {
 %type <empty> opt_all_clause
 %type <bool> distinct_clause opt_external definer_or_invoker opt_not opt_col_with_options
 %type <tree.DistinctOn> distinct_on_clause
-%type <tree.NameList> opt_column_list insert_column_list opt_stats_columns
+%type <tree.NameList> opt_column_list insert_column_list opt_stats_columns opt_of_cols
 %type <tree.OrderBy> sort_clause single_sort_clause opt_sort_clause
 %type <[]*tree.Order> sortby_list
 %type <tree.IndexParams> constraint_index_params
@@ -1383,6 +1408,7 @@ alter_ddl_stmt:
 | alter_default_privileges_stmt // EXTEND WITH HELP: ALTER DEFAULT PRIVILEGES
 | alter_schema_stmt             // EXTEND WITH HELP: ALTER SCHEMA
 | alter_type_stmt               // EXTEND WITH HELP: ALTER TYPE
+| alter_trigger_stmt            // EXTEND WITH HELP: ALTER TRIGGER
 
 // %Help: ALTER TABLE - change the definition of a table
 // %Category: DDL
@@ -2452,6 +2478,16 @@ owner_to:
     $$ = $3
   }
 
+alter_trigger_stmt:
+  ALTER TRIGGER trigger_name ON table_name RENAME TO trigger_name
+  {
+    $$.val = &tree.AlterTrigger{Name: tree.Name($3), OnTable: $5.unresolvedObjectName().ToTableName(), NewName: tree.Name($8)}
+  }
+| ALTER TRIGGER trigger_name ON table_name opt_no DEPENDS ON EXTENSION name
+  {
+    $$.val = &tree.AlterTrigger{Name: tree.Name($3), OnTable: $5.unresolvedObjectName().ToTableName(), No: $6.bool(), Extension: $10}
+  }
+
 alter_aggregate_stmt:
   ALTER AGGREGATE unrestricted_name '(' aggregate_signature ')' RENAME TO unrestricted_name
   {
@@ -3429,7 +3465,6 @@ create_stmt:
 create_unsupported:
   CREATE AGGREGATE error { return unimplemented(sqllex, "create aggregate") }
 | CREATE CAST error { return unimplemented(sqllex, "create cast") }
-| CREATE CONSTRAINT TRIGGER error { return unimplementedWithIssueDetail(sqllex, 28296, "create constraint") }
 | CREATE CONVERSION error { return unimplemented(sqllex, "create conversion") }
 | CREATE DEFAULT CONVERSION error { return unimplemented(sqllex, "create def conv") }
 | CREATE FOREIGN TABLE error { return unimplemented(sqllex, "create foreign table") }
@@ -4084,6 +4119,7 @@ drop_ddl_stmt:
   drop_database_stmt // EXTEND WITH HELP: DROP DATABASE
 | drop_index_stmt    // EXTEND WITH HELP: DROP INDEX
 | drop_table_stmt    // EXTEND WITH HELP: DROP TABLE
+| drop_trigger_stmt  // EXTEND WITH HELP: DROP TRIGGER
 | drop_view_stmt     // EXTEND WITH HELP: DROP VIEW
 | drop_sequence_stmt // EXTEND WITH HELP: DROP SEQUENCE
 | drop_schema_stmt   // EXTEND WITH HELP: DROP SCHEMA
@@ -4151,6 +4187,16 @@ drop_table_stmt:
     $$.val = &tree.DropTable{Names: $5.tableNames(), IfExists: true, DropBehavior: $6.dropBehavior()}
   }
 | DROP TABLE error // SHOW HELP: DROP TABLE
+
+drop_trigger_stmt:
+  DROP TRIGGER trigger_name ON table_name opt_drop_behavior
+  {
+    $$.val = &tree.DropTrigger{Name: tree.Name($3), OnTable: $5.unresolvedObjectName().ToTableName(), DropBehavior: $6.dropBehavior()}
+  }
+| DROP TRIGGER IF EXISTS trigger_name ON table_name opt_drop_behavior
+  {
+    $$.val = &tree.DropTrigger{Name: tree.Name($5), OnTable: $7.unresolvedObjectName().ToTableName(), DropBehavior: $8.dropBehavior()}
+  }
 
 // %Help: DROP INDEX - remove an index
 // %Category: DDL
@@ -7376,7 +7422,212 @@ password_clause:
   }
 
 create_trigger_stmt:
-  CREATE TRIGGER error { return unimplementedWithIssueDetail(sqllex, 28296, "create trigger") }
+  CREATE opt_constraint TRIGGER trigger_name trigger_time trigger_events ON table_name opt_from_ref_table
+  opt_trigger_deferrable_mode opt_trigger_relations opt_for_each opt_when EXECUTE function_or_procedure routine_name '(' name_list ')'
+  {
+    $$.val = &tree.CreateTrigger{
+      Replace: false,
+      Constraint: $2.bool(),
+      Name: tree.Name($4),
+      Time: $5.triggerTime(),
+      Events: $6.triggerEvents(),
+      OnTable: $8.unresolvedObjectName().ToTableName(),
+      RefTable: tree.Name($9),
+      Deferrable: $10.triggerDeferrableMode(),
+      Relations: $11.triggerRelations(),
+      ForEachRow: $12.bool(),
+      When: $13.expr(),
+      FuncName: $16.unresolvedObjectName(),
+      Args: $18.nameList(),
+    }
+  }
+| CREATE OR REPLACE opt_constraint TRIGGER trigger_name trigger_time trigger_events ON table_name opt_from_ref_table
+  opt_trigger_deferrable_mode opt_trigger_relations opt_for_each opt_when EXECUTE function_or_procedure routine_name '(' name_list ')'
+  {
+    $$.val = &tree.CreateTrigger{
+      Replace: true,
+      Constraint: $4.bool(),
+      Name: tree.Name($6),
+      Time: $7.triggerTime(),
+      Events: $8.triggerEvents(),
+      OnTable: $10.unresolvedObjectName().ToTableName(),
+      RefTable: tree.Name($11),
+      Deferrable: $12.triggerDeferrableMode(),
+      Relations: $13.triggerRelations(),
+      ForEachRow: $14.bool(),
+      When: $15.expr(),
+      FuncName: $18.unresolvedObjectName(),
+      Args: $20.nameList(),
+    }
+  }
+  
+function_or_procedure:
+  FUNCTION
+| PROCEDURE
+
+opt_when:
+  /* EMPTY */
+  {
+    $$.val = nil
+  }
+| WHEN '(' a_expr ')'
+  {
+    $$.val = $3.expr()
+  }
+
+opt_for_each:
+  /* EMPTY */
+  {
+    $$.val = false
+  }
+| FOR opt_each ROW
+  {
+    $$.val = true
+  }
+| FOR opt_each STATEMENT
+  {
+    $$.val = false
+  }
+
+opt_each:
+  /* EMPTY */
+| EACH
+
+opt_trigger_relations:
+  /* EMPTY */
+  {
+    $$.val = tree.TriggerRelations(nil)
+  }
+| REFERENCING trigger_relations
+  {
+    $$.val = $2.triggerRelations()
+  }
+
+trigger_relations:
+  old_or_new TABLE opt_as name
+  {
+    $$.val = tree.TriggerRelations{{IsOld: $1.bool(), Name: $4}}
+  }
+| trigger_relations old_or_new TABLE opt_as name
+  {
+    $$.val = append($1.triggerRelations(), tree.TriggerRelation{IsOld: $2.bool(), Name: $5})
+  }
+
+old_or_new:
+  OLD
+  {
+    $$.val = true
+  }
+| NEW
+  {
+    $$.val = false
+  }
+
+opt_as:
+  /* EMPTY */
+| AS
+
+opt_trigger_deferrable_mode:
+  /* EMPTY */
+  {
+    $$.val = tree.TriggerNotDeferrable
+  }
+| DEFERRABLE
+  {
+    $$.val = tree.TriggerDeferrable
+  }
+| INITIALLY IMMEDIATE
+  {
+    $$.val = tree.TriggerDeferrable
+  }
+| INITIALLY DEFERRED
+  {
+    $$.val = tree.TriggerInitiallyDeferred
+  }
+| NOT_LA DEFERRABLE
+  {
+    $$.val = tree.TriggerNotDeferrable
+  }
+| DEFERRABLE INITIALLY IMMEDIATE
+  {
+    $$.val = tree.TriggerDeferrable
+  }
+| DEFERRABLE INITIALLY DEFERRED
+  {
+    $$.val = tree.TriggerInitiallyDeferred
+  }
+
+opt_from_ref_table:
+  /* EMPTY */
+  {
+    $$ = ""
+  }
+| FROM name
+  {
+    $$ = $2
+  }
+
+trigger_events:
+  trigger_event
+  {
+    $$.val = tree.TriggerEvents{$1.triggerEvent()}
+  }
+| trigger_events OR trigger_event
+  {
+    $$.val = append($1.triggerEvents(), $3.triggerEvent())
+  }
+
+trigger_event:
+  INSERT
+  {
+    $$.val = tree.TriggerEvent{Type: tree.TriggerEventInsert}
+  }
+| UPDATE opt_of_cols
+  {
+    $$.val = tree.TriggerEvent{Type: tree.TriggerEventUpdate, Cols: $2.nameList()}
+  }
+| DELETE
+  {
+    $$.val = tree.TriggerEvent{Type: tree.TriggerEventDelete}
+  }
+| TRUNCATE
+  {
+    $$.val = tree.TriggerEvent{Type: tree.TriggerEventTruncate}
+  }
+
+opt_of_cols:
+  /* EMPTY */
+  {
+    $$.val = tree.NameList(nil)
+  }
+| OF name_list
+  {
+    $$.val = $2.nameList()
+  }
+
+trigger_time:
+  BEFORE
+  {
+    $$.val = tree.TriggerTimeBefore
+  }
+| AFTER
+  {
+    $$.val = tree.TriggerTimeAfter
+  }
+| INSTEAD OF
+  {
+    $$.val = tree.TriggerTimeInsteadOf
+  }
+
+opt_constraint:
+  /* EMPTY */
+  {
+    $$.val = false
+  }
+| CONSTRAINT
+  {
+    $$.val = true
+  }
 
 // %Help: CREATE ROLE - define a new role
 // %Category: Priv
@@ -12725,6 +12976,7 @@ unreserved_keyword:
 | DOMAIN
 | DOUBLE
 | DROP
+| EACH
 | ENABLE
 | ENCODING
 | ENCRYPTION_PASSPHRASE
@@ -12787,6 +13039,7 @@ unreserved_keyword:
 | INJECT
 | INPUT
 | INSERT
+| INSTEAD
 | INTERLEAVE
 | INTO_DB
 | INVERTED
@@ -12846,6 +13099,7 @@ unreserved_keyword:
 | NAMES
 | NAN
 | NEVER
+| NEW
 | NEXT
 | NO
 | NORMAL
@@ -12867,6 +13121,7 @@ unreserved_keyword:
 | OFF
 | OID
 | OIDS
+| OLD
 | OPERATOR
 | OPT
 | OPTION
@@ -12912,6 +13167,7 @@ unreserved_keyword:
 | RECURRING
 | RECURSIVE
 | REF
+| REFERENCING
 | REFRESH
 | REINDEX
 | RELEASE
@@ -12945,6 +13201,7 @@ unreserved_keyword:
 | SCHEDULES
 | SETTING
 | SETTINGS
+| STATEMENT
 | STATUS
 | SAVEPOINT
 | SCATTER

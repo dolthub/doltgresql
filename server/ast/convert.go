@@ -98,6 +98,8 @@ func Convert(postgresStmt parser.Statement) (vitess.Statement, error) {
 		return nodeCreateStats(stmt)
 	case *tree.CreateTable:
 		return nodeCreateTable(stmt)
+	case *tree.CreateTrigger:
+		return nodeCreateTrigger(stmt)
 	case *tree.CreateType:
 		return nodeCreateType(stmt)
 	case *tree.CreateView:
@@ -120,6 +122,8 @@ func Convert(postgresStmt parser.Statement) (vitess.Statement, error) {
 		return nodeDropSequence(stmt)
 	case *tree.DropTable:
 		return nodeDropTable(stmt)
+	case *tree.DropTrigger:
+		return nodeDropTrigger(stmt)
 	case *tree.DropType:
 		return nodeDropType(stmt)
 	case *tree.DropView:

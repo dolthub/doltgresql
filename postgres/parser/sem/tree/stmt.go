@@ -297,6 +297,14 @@ func (*AlterTablePartition) StatementTag() string { return "ALTER TABLE ... PART
 func (*AlterTablePartition) hiddenFromShowQueries() {}
 
 // StatementType implements the Statement interface.
+func (*AlterTrigger) StatementType() StatementType { return DDL }
+
+// StatementTag returns a short string identifying the type of statement.
+func (*AlterTrigger) StatementTag() string { return "ALTER TRIGGER" }
+
+func (*AlterTrigger) hiddenFromShowQueries() {}
+
+// StatementType implements the Statement interface.
 func (*AlterSchema) StatementType() StatementType { return DDL }
 
 // StatementTag implements the Statement interface.
@@ -533,6 +541,14 @@ func (n *CreateTable) StatementTag() string {
 func (*CreateTable) modifiesSchema() bool { return true }
 
 // StatementType implements the Statement interface.
+func (*CreateTrigger) StatementType() StatementType { return DDL }
+
+// StatementTag implements the Statement interface.
+func (*CreateTrigger) StatementTag() string { return "CREATE TRIGGER" }
+
+func (*CreateTrigger) modifiesSchema() bool { return true }
+
+// StatementType implements the Statement interface.
 func (*CreateType) StatementType() StatementType { return DDL }
 
 // StatementTag implements the Statement interface.
@@ -625,6 +641,12 @@ func (*DropTable) StatementType() StatementType { return DDL }
 
 // StatementTag returns a short string identifying the type of statement.
 func (*DropTable) StatementTag() string { return "DROP TABLE" }
+
+// StatementType implements the Statement interface.
+func (*DropTrigger) StatementType() StatementType { return DDL }
+
+// StatementTag returns a short string identifying the type of statement.
+func (*DropTrigger) StatementTag() string { return "DROP TRIGGER" }
 
 // StatementType implements the Statement interface.
 func (*DropView) StatementType() StatementType { return DDL }
@@ -1155,6 +1177,7 @@ func (n *AlterTable) String() string                     { return AsString(n) }
 func (n *AlterTableAllInTablespace) String() string      { return AsString(n) }
 func (n *AlterTableSetSchema) String() string            { return AsString(n) }
 func (n *AlterTablePartition) String() string            { return AsString(n) }
+func (n *AlterTrigger) String() string                   { return AsString(n) }
 func (n *AlterType) String() string                      { return AsString(n) }
 func (n *AlterView) String() string                      { return AsString(n) }
 func (n *AlterRole) String() string                      { return AsString(n) }
@@ -1185,6 +1208,7 @@ func (n *CreateMaterializedView) String() string         { return AsString(n) }
 func (n *CreateProcedure) String() string                { return AsString(n) }
 func (n *CreateRole) String() string                     { return AsString(n) }
 func (n *CreateTable) String() string                    { return AsString(n) }
+func (n *CreateTrigger) String() string                  { return AsString(n) }
 func (n *CreateType) String() string                     { return AsString(n) }
 func (n *CreateSchema) String() string                   { return AsString(n) }
 func (n *CreateSequence) String() string                 { return AsString(n) }
@@ -1199,6 +1223,7 @@ func (n *DropIndex) String() string                      { return AsString(n) }
 func (n *DropProcedure) String() string                  { return AsString(n) }
 func (n *DropSchema) String() string                     { return AsString(n) }
 func (n *DropTable) String() string                      { return AsString(n) }
+func (n *DropTrigger) String() string                    { return AsString(n) }
 func (n *DropType) String() string                       { return AsString(n) }
 func (n *DropView) String() string                       { return AsString(n) }
 func (n *DropSequence) String() string                   { return AsString(n) }
