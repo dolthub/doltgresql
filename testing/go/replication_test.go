@@ -222,7 +222,7 @@ var replicationTests = []ReplicationTest{
 			"UPDATE test SET name = 'fifteen' WHERE id = 14",
 			"DELETE FROM test WHERE id = 13",
 			waitForCatchup,
-			// since replication lag is a heuristic, this sleep is necessary to ensure that the replica has caught 
+			// since replication lag is a heuristic, this sleep is necessary to ensure that the replica has caught
 			// up in all cases before we shut it off
 			sleep,
 			stopReplication,
@@ -654,7 +654,7 @@ func runReplicationScript(
 					readRows, err := ReadRows(rows)
 					require.NoError(t, err)
 					normalizedRows := NormalizeRows(assertion.Expected)
-					
+
 					// For queries against the replica, whether or not replication is caught up is a heuristic that can be
 					// incorrect. So we retry queries with sleeps in between to give replication a chance to catch up when this
 					// happens.
