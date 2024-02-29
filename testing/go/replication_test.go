@@ -661,7 +661,7 @@ func runReplicationScript(
 					if !assert.ObjectsAreEqual(normalizedRows, readRows) {
 						if enableRetries && retries < numRetries-1 {
 							log.Println("Assertion failed, retrying")
-							time.Sleep(200 * time.Millisecond)
+							time.Sleep(500 * time.Millisecond)
 							continue
 						} else {
 							assert.Equal(t, normalizedRows, readRows)

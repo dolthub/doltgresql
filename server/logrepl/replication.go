@@ -43,7 +43,7 @@ type rcvMsg struct {
 
 type LogicalReplicator struct {
 	primaryDns      string
-	replicationConn *pgx.Conn
+	replicationDns  string
 
 	walFilePath     string
 	running         bool
@@ -56,14 +56,9 @@ type LogicalReplicator struct {
 // databases using the connection strings provided. The connection to the replica is established immediately, and the
 // connection to the primary is established when StartReplication is called.
 func NewLogicalReplicator(walFilePath string, primaryDns string, replicationDns string) (*LogicalReplicator, error) {
-	conn, err := pgx.Connect(context.Background(), replicationDns)
-	if err != nil {
-		return nil, err
-	}
-
 	return &LogicalReplicator{
 		primaryDns:      primaryDns,
-		replicationConn: conn,
+		replicationDns:  replicationDns,
 		walFilePath:     walFilePath,
 		mu:              &sync.Mutex{},
 	}, nil
@@ -144,6 +139,9 @@ const maxConsecutiveFailures = 10
 var errShutdownRequested = errors.New("shutdown requested")
 
 type replicationState struct {
+	// conn is the current connection to the replica database, which can be re-established if it fails
+	replicaConn *pgx.Conn
+
 	// The LSN of the commit record of the last transaction that was successfully replicated to the database.
 	// We rely on postgres sending transactions to us in the order they were written in the WAL, so that we can tell
 	// which ones we've already processed if we get a duplicate on restart.
@@ -182,16 +180,26 @@ func (r *LogicalReplicator) StartReplication(slotName string) error {
 		return err
 	}
 
+	// TODO: we need to be able to re-establish this connection if it goes bad
+	replicationConn, err := pgx.Connect(context.Background(), r.replicationDns)
+	if err != nil {
+		return err
+	}
+
 	state := &replicationState{
 		lastWrittenLSN: lastWrittenLsn,
+		replicaConn:    replicationConn,
 		relations:      map[uint32]*pglogrepl.RelationMessageV2{},
 		typeMap:        pgtype.NewMap(),
 	}
-
+	
 	var primaryConn *pgconn.PgConn
 	defer func() {
 		if primaryConn != nil {
 			_ = primaryConn.Close(context.Background())
+		}
+		if state.replicaConn != nil {
+			_ = state.replicaConn.Close(context.Background())
 		}
 		// We always shut down here and only here, so we do the cleanup on thread exit in exactly one place
 		r.shutdown()
@@ -410,9 +418,9 @@ func (r *LogicalReplicator) Stop() {
 }
 
 // replicateQuery executes the query provided on the replica connection
-func (r *LogicalReplicator) replicateQuery(query string) error {
+func (r *LogicalReplicator) replicateQuery(replicationConn *pgx.Conn, query string) error {
 	log.Printf("replicating query: %s", query)
-	_, err := r.replicationConn.Exec(context.Background(), query)
+	_, err := replicationConn.Exec(context.Background(), query)
 	return err
 }
 
@@ -573,13 +581,13 @@ func (r *LogicalReplicator) processMessage(
 		state.currentTransactionLSN = logicalMsg.FinalLSN
 
 		log.Printf("BeginMessage: %v", logicalMsg)
-		err = r.replicateQuery("START TRANSACTION")
+		err = r.replicateQuery(state.replicaConn, "START TRANSACTION")
 		if err != nil {
 			return false, err
 		}
 	case *pglogrepl.CommitMessage:
 		log.Printf("CommitMessage: %v", logicalMsg)
-		err = r.replicateQuery("COMMIT")
+		err = r.replicateQuery(state.replicaConn, "COMMIT")
 		if err != nil {
 			return false, err
 		}
@@ -628,7 +636,7 @@ func (r *LogicalReplicator) processMessage(
 			}
 		}
 
-		err = r.replicateQuery(fmt.Sprintf("INSERT INTO %s.%s (%s) VALUES (%s)", rel.Namespace, rel.RelationName, columnStr.String(), valuesStr.String()))
+		err = r.replicateQuery(state.replicaConn, fmt.Sprintf("INSERT INTO %s.%s (%s) VALUES (%s)", rel.Namespace, rel.RelationName, columnStr.String(), valuesStr.String()))
 		if err != nil {
 			return false, err
 		}
@@ -684,7 +692,7 @@ func (r *LogicalReplicator) processMessage(
 			}
 		}
 
-		err = r.replicateQuery(fmt.Sprintf("UPDATE %s.%s SET %s%s", rel.Namespace, rel.RelationName, updateStr.String(), whereClause(whereStr)))
+		err = r.replicateQuery(state.replicaConn, fmt.Sprintf("UPDATE %s.%s SET %s%s", rel.Namespace, rel.RelationName, updateStr.String(), whereClause(whereStr)))
 		if err != nil {
 			return false, err
 		}
@@ -734,7 +742,7 @@ func (r *LogicalReplicator) processMessage(
 			}
 		}
 
-		err = r.replicateQuery(fmt.Sprintf("DELETE FROM %s.%s WHERE %s", rel.Namespace, rel.RelationName, whereStr.String()))
+		err = r.replicateQuery(state.replicaConn, fmt.Sprintf("DELETE FROM %s.%s WHERE %s", rel.Namespace, rel.RelationName, whereStr.String()))
 		if err != nil {
 			return false, err
 		}
