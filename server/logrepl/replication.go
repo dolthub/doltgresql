@@ -148,6 +148,15 @@ func (r *LogicalReplicator) StartReplication(slotName string) error {
 	// whenever we get StreamStartMessage we set inStream to true and then pass it to DecodeV2 function
 	// on StreamStopMessage we set it back to false
 	inStream := false
+	
+	// We selectively ignore messages that are from before our last flush, which can be resent by postgres in certain
+	// crash scenarios. Postgres sends messages in batches based on changes in a transaction, beginning with a Begin
+	// message that records the last WAL position of the transaction. The individual INSERT, UPDATE, DELETE messages are
+	// sent, each tagged with the WAL position of that tuple write. This WAL position can be before the last flush LSN 
+	// in some cases. Whether we ignore them or not has nothing to do with the WAL position of any individual write, but 
+	// the final LSN of the transaction, as recorded in the Begin message. So for every Begin, we decide whether to
+	// process or ignore all messages until a corresponding Commit message. 
+	processMessages := false
 
 	// lsn is the last WAL position we have received from the server, which we send back to the server via
 	// SendStandbyStatusUpdate after every message we get. Postgres tracks this LSN for each slot, which allows us to
@@ -301,7 +310,7 @@ func (r *LogicalReplicator) StartReplication(slotName string) error {
 
 				// TODO next: need to track whether we have yet received any message past the last LSN we wrote to the WAL, 
 				//  in order to handle the case where we get LSNs out of order 
-				updateNeeded, err := r.processMessage(lsn, xld, relationsV2, typeMap, &inStream)
+				updateNeeded, err := r.processMessage(lsn, xld, relationsV2, typeMap, &inStream, &processMessages)
 				if err != nil {
 					// TODO: do we need more than one handler, one for each connection?
 					return handleErrWithRetry(err)
@@ -508,11 +517,12 @@ func (r *LogicalReplicator) CreateReplicationSlotIfNecessary(slotName string) er
 // Returns a boolean true if the message was a write that should be acknowledged to the server, and an error if one
 // occurred.
 func (r *LogicalReplicator) processMessage(
-	lsn pglogrepl.LSN,
-	xld pglogrepl.XLogData,
-	relations map[uint32]*pglogrepl.RelationMessageV2,
-	typeMap *pgtype.Map,
-	inStream *bool,
+		lsn pglogrepl.LSN,
+		xld pglogrepl.XLogData,
+		relations map[uint32]*pglogrepl.RelationMessageV2,
+		typeMap *pgtype.Map,
+		inStream *bool,
+		processMessages *bool,
 ) (bool, error) {
 	walData := xld.WALData
 	logicalMsg, err := pglogrepl.ParseV2(walData, *inStream)
@@ -527,12 +537,29 @@ func (r *LogicalReplicator) processMessage(
 		relations[logicalMsg.RelationID] = logicalMsg
 	case *pglogrepl.BeginMessage:
 		// Indicates the beginning of a group of changes in a transaction.
-		// This is only sent for committed transactions. You won't get any events from rolled back transactions.
+		// This is only sent for committed transactions. We won't get any events from rolled back transactions.
+		
+		if lsn > logicalMsg.FinalLSN {
+			log.Printf("Received stale message, ignoring. Current LSN: %s Message LSN: %s", lsn, logicalMsg.FinalLSN)
+			*processMessages = false
+			return false, nil
+		}
+		
+		*processMessages = true
 		log.Printf("BeginMessage: %v", logicalMsg)
+		err = r.replicateQuery("START TRANSACTION")
+		if err != nil {
+			return false, err
+		}
 	case *pglogrepl.CommitMessage:
 		log.Printf("CommitMessage: %v", logicalMsg)
+		err = r.replicateQuery("COMMIT")
+		if err != nil {
+			return false, err
+		}
+		*processMessages = false
 	case *pglogrepl.InsertMessageV2:
-		if lsn > xld.ServerWALEnd {
+		if !*processMessages {
 			log.Printf("Received stale message, ignoring. Current LSN: %s Message LSN: %s", lsn, xld.ServerWALEnd)
 			return false, nil
 		}
@@ -580,7 +607,7 @@ func (r *LogicalReplicator) processMessage(
 
 		return true, nil
 	case *pglogrepl.UpdateMessageV2:
-		if lsn > xld.ServerWALEnd {
+		if !*processMessages {
 			log.Printf("Received stale message, ignoring. Current LSN: %s Message LSN: %s", lsn, xld.ServerWALEnd)
 			return false, nil
 		}
@@ -638,7 +665,7 @@ func (r *LogicalReplicator) processMessage(
 
 		return true, nil
 	case *pglogrepl.DeleteMessageV2:
-		if lsn > xld.ServerWALEnd {
+		if !*processMessages {
 			log.Printf("Received stale message, ignoring. Current LSN: %s Message LSN: %s", lsn, xld.ServerWALEnd)
 			return false, nil
 		}

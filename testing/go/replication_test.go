@@ -19,6 +19,7 @@ import (
 	"fmt"
 	"log"
 	"net"
+	"os"
 	"strings"
 	"testing"
 	"time"
@@ -345,11 +346,11 @@ func RunReplicationScripts(t *testing.T, scripts []ReplicationTest) {
 	for _, script := range scripts {
 		if script.Focus {
 			// If this is running in GitHub Actions, then we'll panic, because someone forgot to disable it before committing
-			// if _, ok := os.LookupEnv("GITHUB_ACTION"); ok {
-			// 	panic(fmt.Sprintf("The script `%s` has Focus set to `true`. GitHub Actions requires that "+
-			// 		"all tests are run, which Focus circumvents, leading to this error. Please disable Focus on "+
-			// 		"all tests.", script.Name))
-			// }
+			if _, ok := os.LookupEnv("GITHUB_ACTION"); ok {
+				panic(fmt.Sprintf("The script `%s` has Focus set to `true`. GitHub Actions requires that "+
+					"all tests are run, which Focus circumvents, leading to this error. Please disable Focus on "+
+					"all tests.", script.Name))
+			}
 			focusScripts = append(focusScripts, script)
 		}
 	}
