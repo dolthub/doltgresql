@@ -437,8 +437,8 @@ func (r *LogicalReplicator) beginReplication(slotName string, lastFlushLsn pglog
 	// not rewind to previous entries that we've already confirmed to the primary that we flushed. We still pass an LSN
 	// for the edge case where we have flushed an entry to disk, but crashed before the primary received confirmation.
 	// In that edge case, we want to "skip" entries (from the primary's perspective) that we have already flushed to disk.
-	log.Printf("Starting logical replication on slot %s at WAL location %s", slotName, lastFlushLsn)
-	err = pglogrepl.StartReplication(context.Background(), conn, slotName, lastFlushLsn, pglogrepl.StartReplicationOptions{
+	log.Printf("Starting logical replication on slot %s at WAL location %s", slotName, lastFlushLsn+1)
+	err = pglogrepl.StartReplication(context.Background(), conn, slotName, lastFlushLsn+1, pglogrepl.StartReplicationOptions{
 		PluginArgs: pluginArguments,
 	})
 	if err != nil {
