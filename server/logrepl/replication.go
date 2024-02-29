@@ -133,7 +133,7 @@ func (r *LogicalReplicator) CaughtUp(threshold int) (bool, error) {
 		return false, result.Err()
 	}
 
-	// if we got this far, then there is no running replication thread, which we interpret as caught up
+	// If we didn't get any rows, that usually means that replication has stopped and we're caught up
 	return true, nil
 }
 

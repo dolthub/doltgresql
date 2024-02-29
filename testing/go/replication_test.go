@@ -222,12 +222,16 @@ var replicationTests = []ReplicationTest{
 			"UPDATE test SET name = 'fifteen' WHERE id = 14",
 			"DELETE FROM test WHERE id = 13",
 			waitForCatchup,
+			// since replication lag is a heuristic, this sleep is necessary to ensure that the replica has caught 
+			// up in all cases before we shut it off
+			sleep,
 			stopReplication,
 			// below this point we don't expect to find any values replicated because replication was stopped
 			"INSERT INTO test VALUES (15, 'one')",
 			"INSERT INTO test VALUES (16, 'two')",
 			"UPDATE test SET name = 'seventeen' WHERE id = 16",
 			"DELETE FROM test WHERE id = 15",
+			sleep, // final sleep to make sure that any replication events that will arrive have
 		},
 		Assertions: []ScriptTestAssertion{
 			{
@@ -630,22 +634,41 @@ func runReplicationScript(
 				return
 			}
 
+			target, _ := clientSpecFromQueryComment(assertion.Query)
+			enableRetries := target == "replica"
 			conn := connectionForQuery(t, assertion.Query, connections, primaryDns)
 
-			// If we're skipping the results check, then we call Execute, as it uses a simplified message model.
-			if assertion.SkipResultsCheck || assertion.ExpectedErr {
-				_, err := conn.Exec(ctx, assertion.Query, assertion.BindVars...)
-				if assertion.ExpectedErr {
-					require.Error(t, err)
+			numRetries := 3
+			for retries := 0; retries < numRetries; retries++ {
+				// If we're skipping the results check, then we call Execute, as it uses a simplified message model.
+				if assertion.SkipResultsCheck || assertion.ExpectedErr {
+					_, err := conn.Exec(ctx, assertion.Query, assertion.BindVars...)
+					if assertion.ExpectedErr {
+						require.Error(t, err)
+					} else {
+						require.NoError(t, err)
+					}
 				} else {
+					rows, err := conn.Query(ctx, assertion.Query, assertion.BindVars...)
 					require.NoError(t, err)
+					readRows, err := ReadRows(rows)
+					require.NoError(t, err)
+					normalizedRows := NormalizeRows(assertion.Expected)
+					
+					// For queries against the replica, whether or not replication is caught up is a heuristic that can be
+					// incorrect. So we retry queries with sleeps in between to give replication a chance to catch up when this
+					// happens.
+					if !assert.ObjectsAreEqual(normalizedRows, readRows) {
+						if enableRetries && retries < numRetries-1 {
+							log.Println("Assertion failed, retrying")
+							time.Sleep(200 * time.Millisecond)
+							continue
+						} else {
+							assert.Equal(t, normalizedRows, readRows)
+							break
+						}
+					}
 				}
-			} else {
-				rows, err := conn.Query(ctx, assertion.Query, assertion.BindVars...)
-				require.NoError(t, err)
-				readRows, err := ReadRows(rows)
-				require.NoError(t, err)
-				assert.Equal(t, NormalizeRows(assertion.Expected), readRows)
 			}
 		})
 	}
@@ -695,7 +718,7 @@ func handlePseudoQuery(t *testing.T, query string, r *logrepl.LogicalReplicator)
 		require.NoError(t, waitForCaughtUp(r))
 		return true
 	case sleep:
-		time.Sleep(500 * time.Millisecond)
+		time.Sleep(200 * time.Millisecond)
 		return true
 	}
 	return false
