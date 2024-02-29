@@ -171,13 +171,13 @@ func (r *LogicalReplicator) StartReplication(slotName string) error {
 	standbyMessageTimeout := 10 * time.Second
 	nextStandbyMessageDeadline := time.Now().Add(standbyMessageTimeout)
 	
-	lsn, err := r.readWALPosition()
+	lastWrittenLsn, err := r.readWALPosition()
 	if err != nil {
 		return err
 	}
 	
 	state := &replicationState{
-		lastWrittenLSN: lsn,
+		lastWrittenLSN: lastWrittenLsn,
 		relations: map[uint32]*pglogrepl.RelationMessageV2{},
 		typeMap: pgtype.NewMap(),
 	}
@@ -240,7 +240,7 @@ func (r *LogicalReplicator) StartReplication(slotName string) error {
 
 			if primaryConn == nil {
 				var err error
-				primaryConn, err = r.beginReplication(slotName, lsn)
+				primaryConn, err = r.beginReplication(slotName, state.lastWrittenLSN)
 				if err != nil {
 					// unlike other error cases, back off a little here, since we're likely to just get the same error again
 					// on initial replication establishment
@@ -250,7 +250,7 @@ func (r *LogicalReplicator) StartReplication(slotName string) error {
 			}
 
 			if time.Now().After(nextStandbyMessageDeadline) {
-				err := sendStandbyStatusUpdate(lsn)
+				err := sendStandbyStatusUpdate(state.lastReceivedLSN)
 				if err != nil {
 					return err
 				}
@@ -311,9 +311,6 @@ func (r *LogicalReplicator) StartReplication(slotName string) error {
 				log.Println("Primary Keepalive Message =>", "ServerWALEnd:", pkm.ServerWALEnd, "ServerTime:", pkm.ServerTime, "ReplyRequested:", pkm.ReplyRequested)
 
 				if pkm.ReplyRequested {
-					if pkm.ServerWALEnd > lsn {
-						lsn = pkm.ServerWALEnd
-					}
 					// Send our reply the next time through the loop
 					nextStandbyMessageDeadline = time.Time{}
 				}
@@ -325,7 +322,7 @@ func (r *LogicalReplicator) StartReplication(slotName string) error {
 
 				// TODO next: need to track whether we have yet received any message past the last LSN we wrote to the WAL, 
 				//  in order to handle the case where we get LSNs out of order 
-				updateNeeded, err := r.processMessage(xld, state)
+				committed, err := r.processMessage(xld, state)
 				if err != nil {
 					// TODO: do we need more than one handler, one for each connection?
 					return handleErrWithRetry(err)
@@ -335,17 +332,15 @@ func (r *LogicalReplicator) StartReplication(slotName string) error {
 				//  we will receive a duplicate LSN the next time we start replication. A better solution would be to write the
 				//  LSN directly into the DoltCommit message, and then parsing this message back out when we begin replication
 				//  next.
-				if updateNeeded && xld.ServerWALEnd > lsn {
-					lsn = xld.ServerWALEnd
-					err := r.writeWALPosition(lsn)
+				if committed {
+					state.lastWrittenLSN = state.currentTransactionLSN
+					err := r.writeWALPosition(state.lastWrittenLSN)
 					if err != nil {
 						return err
 					}
-				} else {
-					log.Printf("No update needed for LSN %s, r.lsn is %s\n", xld.ServerWALEnd.String(), lsn.String())
 				}
 
-				err = sendStandbyStatusUpdate(xld.ServerWALEnd)
+				err = sendStandbyStatusUpdate(state.lastReceivedLSN)
 				if err != nil {
 					return err
 				}
@@ -541,7 +536,8 @@ func (r *LogicalReplicator) processMessage(
 	}
 
 	log.Printf("XLogData (%T) => WALStart %s ServerWALEnd %s ServerTime %s", logicalMsg, xld.WALStart, xld.ServerWALEnd, xld.ServerTime)
-
+	state.lastReceivedLSN = xld.ServerWALEnd
+	
 	switch logicalMsg := logicalMsg.(type) {
 	case *pglogrepl.RelationMessageV2:
 		state.relations[logicalMsg.RelationID] = logicalMsg
@@ -557,6 +553,7 @@ func (r *LogicalReplicator) processMessage(
 		
 		state.processMessages = true
 		state.currentTransactionLSN = logicalMsg.FinalLSN
+		
 		log.Printf("BeginMessage: %v", logicalMsg)
 		err = r.replicateQuery("START TRANSACTION")
 		if err != nil {
@@ -617,8 +614,6 @@ func (r *LogicalReplicator) processMessage(
 		if err != nil {
 			return false, err
 		}
-
-		return true, nil
 	case *pglogrepl.UpdateMessageV2:
 		if !state.processMessages {
 			log.Printf("Received stale message, ignoring. Last written LSN: %s Message LSN: %s", state.lastWrittenLSN, xld.ServerWALEnd)
@@ -675,8 +670,6 @@ func (r *LogicalReplicator) processMessage(
 		if err != nil {
 			return false, err
 		}
-
-		return true, nil
 	case *pglogrepl.DeleteMessageV2:
 		if !state.processMessages {
 			log.Printf("Received stale message, ignoring. Last written LSN: %s Message LSN: %s", state.lastWrittenLSN, xld.ServerWALEnd)
@@ -727,8 +720,6 @@ func (r *LogicalReplicator) processMessage(
 		if err != nil {
 			return false, err
 		}
-
-		return true, nil
 	case *pglogrepl.TruncateMessageV2:
 		log.Printf("truncate for xid %d\n", logicalMsg.Xid)
 	case *pglogrepl.TypeMessageV2:
