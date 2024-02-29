@@ -41,6 +41,7 @@ const (
 	stopReplication       = "stopReplication"
 	startReplication      = "startReplication"
 	waitForCatchup        = "waitForCatchup"
+	sleep								 = "sleep"
 )
 
 type ReplicationTest struct {
@@ -393,8 +394,39 @@ var replicationTests = []ReplicationTest{
 		},
 	},
 	{
+		Name: "concurrent writes, stale commits",
+		SetUpScript: []string{
+			dropReplicationSlot,
+			createReplicationSlot,
+			startReplication,
+			"/* replica */ drop table if exists test",
+			"/* replica */ create table test (id INT primary key, name varchar(100))",
+			"drop table if exists test",
+			"CREATE TABLE test (id INT primary key, name varchar(100))",
+			"/* primary a */ START TRANSACTION",
+			"/* primary a */ INSERT INTO test VALUES (1, 'one')",
+			"/* primary b */ START TRANSACTION",
+			"/* primary b */ INSERT INTO test VALUES (2, 'two')",
+			"/* primary b */ COMMIT",
+			waitForCatchup,
+			stopReplication,
+			startReplication,
+			// this tx includes several WAL locations before our last flush, but it must still be replicated 
+			"/* primary a */ COMMIT",
+			waitForCatchup,
+		},
+		Assertions: []ScriptTestAssertion{
+			{
+				Query: "/* replica */ SELECT * FROM test order by id",
+				Expected: []sql.Row{
+					{int32(1), "one"},
+					{int32(2), "two"},
+				},
+			},
+		},
+	},
+	{
 		Name: "concurrent writes, very stale commits",
-		Focus: true,
 		SetUpScript: []string{
 			dropReplicationSlot,
 			createReplicationSlot,
@@ -423,7 +455,7 @@ var replicationTests = []ReplicationTest{
 			waitForCatchup,
 			stopReplication,
 			startReplication,
-			// the commit from this tx includes WAL locations before our last flush, but it must still be replicated 
+			// this tx includes several WAL locations before our last flush, but it must still be replicated 
 			"/* primary a */ COMMIT",
 			waitForCatchup,
 		},
@@ -431,6 +463,7 @@ var replicationTests = []ReplicationTest{
 			{
 				Query: "/* replica */ SELECT * FROM test order by id",
 				Expected: []sql.Row{
+					{int32(2), "three"},
 					{int32(4), "five"},
 					{int32(6), "five"},
 				},
@@ -660,6 +693,9 @@ func handlePseudoQuery(t *testing.T, query string, r *logrepl.LogicalReplicator)
 	case waitForCatchup:
 		require.NoError(t, waitForCaughtUp(r))
 		return true
+	case sleep:
+		time.Sleep(500 * time.Millisecond)
+		return true
 	}
 	return false
 }
@@ -703,9 +739,10 @@ func waitForRunning(r *logrepl.LogicalReplicator) error {
 
 func waitForCaughtUp(r *logrepl.LogicalReplicator) error {
 	log.Println("Waiting for replication to catch up")
+	
 	start := time.Now()
 	for {
-		if caughtUp, err := r.CaughtUp(); caughtUp {
+		if caughtUp, err := r.CaughtUp(150); caughtUp {
 			log.Println("replication caught up")
 			break
 		} else if err != nil {

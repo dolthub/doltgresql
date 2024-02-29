@@ -19,6 +19,7 @@ import (
 	"errors"
 	"fmt"
 	"log"
+	"math"
 	"os"
 	"strings"
 	"sync"
@@ -84,8 +85,13 @@ func (r *LogicalReplicator) ReplicationDns() string {
 }
 
 // CaughtUp returns true if the replication slot is caught up to the primary, and false otherwise. This only works if
-// there is only a single replication slot on the primary, so it's only suitable for testing.
-func (r *LogicalReplicator) CaughtUp() (bool, error) {
+// there is only a single replication slot on the primary, so it's only suitable for testing. This method uses a
+// threshold value to determine if the primary considers us caught up. This corresponds to the maximum number of bytes
+// that the primary is ahead of the replica's last flush position. This rarely is zero when caught up, since the 
+// primary often sends additional WAL records after the last WAL location that was flushed to the replica. These 
+// additional WAL locations cannot be recorded as flushed since they don't result in writes to the replica, and could
+// result in the primary not sending us necessary records after a shutdown and restart.
+func (r *LogicalReplicator) CaughtUp(threshold int) (bool, error) {
 	r.mu.Lock()
 	if !r.messageReceived {
 		r.mu.Unlock()
@@ -117,7 +123,7 @@ func (r *LogicalReplicator) CaughtUp() (bool, error) {
 		lag, ok := row.(pgtype.Numeric)
 		if ok && lag.Valid {
 			log.Printf("Current replication lag: %v", row)
-			return lag.Int.Int64() >= 0, nil
+			return int(math.Abs(float64(lag.Int.Int64()))) < threshold, nil
 		} else {
 			log.Printf("Replication lag unknown: %v", row)
 		}
@@ -208,16 +214,19 @@ func (r *LogicalReplicator) StartReplication(slotName string) error {
 		return err
 	}
 
-	sendStandbyStatusUpdate := func(currentLSN pglogrepl.LSN) error {
+	sendStandbyStatusUpdate := func(state *replicationState) error {
 		// The StatusUpdate message wants us to respond with the current position in the WAL + 1:
 		// https://www.postgresql.org/docs/current/protocol-replication.html
-		lsn := currentLSN + 1
-		err := pglogrepl.SendStandbyStatusUpdate(context.Background(), primaryConn, pglogrepl.StandbyStatusUpdate{WALWritePosition: lsn + 1})
+		err := pglogrepl.SendStandbyStatusUpdate(context.Background(), primaryConn, pglogrepl.StandbyStatusUpdate{
+			WALWritePosition: state.lastWrittenLSN + 1,
+			WALFlushPosition: state.lastWrittenLSN + 1,
+			WALApplyPosition: state.lastReceivedLSN + 1,
+		})
 		if err != nil {
 			return handleErrWithRetry(err)
 		}
 
-		log.Printf("Sent Standby status message at %s\n", lsn.String())
+		log.Printf("Sent Standby status message with WALWritePosition = %s, WALApplyPosition = %s\n", state.lastWrittenLSN+1, state.lastReceivedLSN+1)
 		nextStandbyMessageDeadline = time.Now().Add(standbyMessageTimeout)
 		return nil
 	}
@@ -225,6 +234,7 @@ func (r *LogicalReplicator) StartReplication(slotName string) error {
 	log.Println("Starting replicator")
 	r.mu.Lock()
 	r.running = true
+	r.messageReceived = false
 	r.stop = make(chan struct{})
 	r.mu.Unlock()
 
@@ -249,8 +259,8 @@ func (r *LogicalReplicator) StartReplication(slotName string) error {
 				}
 			}
 
-			if time.Now().After(nextStandbyMessageDeadline) {
-				err := sendStandbyStatusUpdate(state.lastReceivedLSN)
+			if time.Now().After(nextStandbyMessageDeadline) && state.lastReceivedLSN > 0 {
+				err := sendStandbyStatusUpdate(state)
 				if err != nil {
 					return err
 				}
@@ -308,8 +318,10 @@ func (r *LogicalReplicator) StartReplication(slotName string) error {
 				if err != nil {
 					log.Fatalln("ParsePrimaryKeepaliveMessage failed:", err)
 				}
+				
 				log.Println("Primary Keepalive Message =>", "ServerWALEnd:", pkm.ServerWALEnd, "ServerTime:", pkm.ServerTime, "ReplyRequested:", pkm.ReplyRequested)
-
+				state.lastReceivedLSN = pkm.ServerWALEnd
+				
 				if pkm.ReplyRequested {
 					// Send our reply the next time through the loop
 					nextStandbyMessageDeadline = time.Time{}
@@ -334,13 +346,14 @@ func (r *LogicalReplicator) StartReplication(slotName string) error {
 				//  next.
 				if committed {
 					state.lastWrittenLSN = state.currentTransactionLSN
+					log.Printf("Writing LSN %s to file\n", state.lastWrittenLSN.String())
 					err := r.writeWALPosition(state.lastWrittenLSN)
 					if err != nil {
 						return err
 					}
 				}
 
-				err = sendStandbyStatusUpdate(state.lastReceivedLSN)
+				err = sendStandbyStatusUpdate(state)
 				if err != nil {
 					return err
 				}
@@ -403,9 +416,9 @@ func (r *LogicalReplicator) replicateQuery(query string) error {
 	return err
 }
 
-// beginReplication starts a new replication connection to the primary server and returns it along with the current
-// log sequence number (LSN) for continued status updates to the primary.
-func (r *LogicalReplicator) beginReplication(slotName string, lsn pglogrepl.LSN) (*pgconn.PgConn, error) {
+// beginReplication starts a new replication connection to the primary server and returns it. The LSN provided is the
+// last one we have confirmed that we flushed to disk.
+func (r *LogicalReplicator) beginReplication(slotName string, lastFlushLsn pglogrepl.LSN) (*pgconn.PgConn, error) {
 	conn, err := pgconn.Connect(context.Background(), r.ReplicationDns())
 	if err != nil {
 		return nil, err
@@ -420,9 +433,14 @@ func (r *LogicalReplicator) beginReplication(slotName string, lsn pglogrepl.LSN)
 		"streaming 'true'",
 	}
 
-	// LSN(0) is used to use the last confirmed LSN for this slot
-	log.Printf("Starting logical replication on slot %s at WAL location %s", slotName, lsn)
-	err = pglogrepl.StartReplication(context.Background(), conn, slotName, lsn, pglogrepl.StartReplicationOptions{PluginArgs: pluginArguments})
+	// The LSN is the position in the WAL where we want to start replication, but it can only be used to skip entries,
+	// not rewind to previous entries that we've already confirmed to the primary that we flushed. We still pass an LSN
+	// for the edge case where we have flushed an entry to disk, but crashed before the primary received confirmation.
+	// In that edge case, we want to "skip" entries (from the primary's perspective) that we have already flushed to disk. 
+	log.Printf("Starting logical replication on slot %s at WAL location %s", slotName, lastFlushLsn)
+	err = pglogrepl.StartReplication(context.Background(), conn, slotName, lastFlushLsn, pglogrepl.StartReplicationOptions{
+		PluginArgs: pluginArguments,
+	})
 	if err != nil {
 		return nil, err
 	}
@@ -763,7 +781,7 @@ func (r *LogicalReplicator) readWALPosition() (pglogrepl.LSN, error) {
 func (r *LogicalReplicator) writeWALPosition(lsn pglogrepl.LSN) error {
 	// We write a single byte past the last LSN we flushed because our next startup will use that as our starting point.
 	// The LSN given to the StartReplication call is inclusive, so we need to exclude the last one we have processed.
-	writeLsn := lsn + 1
+	writeLsn := lsn
 	return os.WriteFile(r.walFilePath, []byte(writeLsn.String()), 0644)
 }
 
