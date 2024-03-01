@@ -787,10 +787,7 @@ func (r *LogicalReplicator) readWALPosition() (pglogrepl.LSN, error) {
 
 // writeWALPosition writes the recorded WAL position to the WAL position file
 func (r *LogicalReplicator) writeWALPosition(lsn pglogrepl.LSN) error {
-	// We write a single byte past the last LSN we flushed because our next startup will use that as our starting point.
-	// The LSN given to the StartReplication call is inclusive, so we need to exclude the last one we have processed.
-	writeLsn := lsn
-	return os.WriteFile(r.walFilePath, []byte(writeLsn.String()), 0644)
+	return os.WriteFile(r.walFilePath, []byte(lsn.String()), 0644)
 }
 
 // whereClause returns a WHERE clause string with the contents of the builder if it's non-empty, or the empty
