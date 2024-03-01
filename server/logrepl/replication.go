@@ -139,18 +139,19 @@ const maxConsecutiveFailures = 10
 var errShutdownRequested = errors.New("shutdown requested")
 
 type replicationState struct {
-	// conn is the current connection to the replica database, which can be re-established if it fails
+	// replicaConn is the current connection to the replica database, which can be re-established if it fails
 	replicaConn *pgx.Conn
 
-	// The LSN of the commit record of the last transaction that was successfully replicated to the database.
-	// We rely on postgres sending transactions to us in the order they were written in the WAL, so that we can tell
-	// which ones we've already processed if we get a duplicate on restart.
+	// lastWrittenLSN is the LSN of the commit record of the last transaction that was successfully replicated to the
+	// database.
 	lastWrittenLSN pglogrepl.LSN
 
-	// lsn is the last WAL position we have received from the server, which we send back to the server via
+	// lastReceivedLSN is the last WAL position we have received from the server, which we send back to the server via
 	// SendStandbyStatusUpdate after every message we get.
 	lastReceivedLSN pglogrepl.LSN
 
+	// currentTransactionLSN is the LSN of the current transaction we are processing. This becomes the lastWrittenLSN
+	// when we get a CommitMessage
 	currentTransactionLSN pglogrepl.LSN
 
 	// inStream tracks the state of the replication stream. When we receive a StreamStartMessage, we set inStream to
@@ -340,8 +341,6 @@ func (r *LogicalReplicator) StartReplication(slotName string) error {
 					return err
 				}
 
-				// TODO next: need to track whether we have yet received any message past the last LSN we wrote to the WAL,
-				//  in order to handle the case where we get LSNs out of order
 				committed, err := r.processMessage(xld, state)
 				if err != nil {
 					// TODO: do we need more than one handler, one for each connection?
@@ -361,15 +360,7 @@ func (r *LogicalReplicator) StartReplication(slotName string) error {
 					}
 				}
 
-				err = sendStandbyStatusUpdate(state)
-				if err != nil {
-					return err
-				}
-
-				if primaryConn == nil {
-					// if we've lost the connection, we'll re-establish it on the next pass through the loop
-					return nil
-				}
+				return sendStandbyStatusUpdate(state)
 			default:
 				log.Printf("Received unexpected message: %T\n", rawMsg)
 			}
