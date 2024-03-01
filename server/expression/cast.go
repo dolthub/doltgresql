@@ -146,6 +146,8 @@ func (c *Cast) Eval(ctx *sql.Context, row sql.Row) (any, error) {
 			if err != nil {
 				return nil, err
 			}
+		case query.Type_NULL_TYPE:
+			fromType = pgtypes.Null
 		default:
 			return nil, fmt.Errorf("encountered a GMS type that cannot be handled")
 		}

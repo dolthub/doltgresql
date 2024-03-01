@@ -130,5 +130,46 @@ func TestRegressions(t *testing.T) {
 				},
 			},
 		},
+		{
+			Name: "null as integer",
+			SetUpScript: []string{
+				`CREATE TABLE tab0(pk INTEGER PRIMARY KEY, col0 INTEGER, col1 FLOAT, col2 TEXT, col3 INTEGER, col4 FLOAT, col5 TEXT);`,
+				`INSERT INTO tab0 VALUES (0,698,169.42,'apdbu',431,316.15,'sqvis'), (1,538,676.36,'fuqeu',514,685.97,'bgwrq');`,
+			},
+			Assertions: []ScriptTestAssertion{
+				{
+					Query:    "SELECT ALL + 58 FROM tab0 WHERE NULL NOT BETWEEN + 71 * CAST ( NULL AS INTEGER ) AND col4",
+					Expected: []sql.Row{},
+				},
+			},
+		},
+		{
+			Name: "addition expression in prepared statement",
+			SetUpScript: []string{
+				`CREATE TABLE t1(x INTEGER);`,
+				`CREATE TABLE t2(y INTEGER PRIMARY KEY);`,
+			},
+			Assertions: []ScriptTestAssertion{
+				{
+					Query:    `SELECT 1 IN (SELECT x+y FROM t1, t2);`,
+					Expected: []sql.Row{{0}},
+				},
+			},
+		},
+		{
+			// TODO: returned values are in FLOAT type as types.Int64Type cannot be checked as NumberTypeImpl_ in GMS
+			Skip: true,
+			Name: "regression_prepared",
+			SetUpScript: []string{
+				`CREATE TABLE tab0(pk INTEGER PRIMARY KEY, col0 INTEGER, col1 FLOAT, col2 TEXT, col3 INTEGER, col4 FLOAT, col5 TEXT);`,
+				`INSERT INTO tab0 VALUES (0,698,169.42,'apdbu',431,316.15,'sqvis'), (1,538,676.36,'fuqeu',514,685.97,'bgwrq'), (2,90,205.26,'yrrzx',123,836.88,'kpuhc');`,
+			},
+			Assertions: []ScriptTestAssertion{
+				{
+					Query:    `SELECT DISTINCT - col0 AS col3 FROM tab0 WHERE NULL IS NULL;`,
+					Expected: []sql.Row{{-698}, {-538}, {-90}},
+				},
+			},
+		},
 	})
 }

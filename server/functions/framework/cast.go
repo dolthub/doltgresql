@@ -265,6 +265,41 @@ func init() {
 			return decimal.NewFromString(val.(string))
 		},
 	})
+	MustAddTypeCast(TypeCast{
+		FromType: pgtypes.Null,
+		ToType:   pgtypes.Bool,
+		Function: func(ctx Context, val any) (any, error) { return nil, nil },
+	})
+	MustAddTypeCast(TypeCast{
+		FromType: pgtypes.Null,
+		ToType:   pgtypes.Float32,
+		Function: func(ctx Context, val any) (any, error) { return nil, nil },
+	})
+	MustAddTypeCast(TypeCast{
+		FromType: pgtypes.Null,
+		ToType:   pgtypes.Float64,
+		Function: func(ctx Context, val any) (any, error) { return nil, nil },
+	})
+	MustAddTypeCast(TypeCast{
+		FromType: pgtypes.Null,
+		ToType:   pgtypes.Int16,
+		Function: func(ctx Context, val any) (any, error) { return nil, nil },
+	})
+	MustAddTypeCast(TypeCast{
+		FromType: pgtypes.Null,
+		ToType:   pgtypes.Int32,
+		Function: func(ctx Context, val any) (any, error) { return nil, nil },
+	})
+	MustAddTypeCast(TypeCast{
+		FromType: pgtypes.Null,
+		ToType:   pgtypes.Int64,
+		Function: func(ctx Context, val any) (any, error) { return nil, nil },
+	})
+	MustAddTypeCast(TypeCast{
+		FromType: pgtypes.Null,
+		ToType:   pgtypes.Numeric,
+		Function: func(ctx Context, val any) (any, error) { return nil, nil },
+	})
 }
 
 // identityCast simply returns the input.
