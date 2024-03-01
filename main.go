@@ -98,12 +98,16 @@ func main() {
 		args = append([]string{"sql-server"}, args...)
 	}
 
+	cli.Printf("args before: %v", args)
+
 	apr, args, subCommandName, err := parseGlobalArgsAndSubCommandName(globalConfig, args)
 	if err != nil {
 		cli.PrintErrln(err.Error())
 		os.Exit(1)
 	}
 
+	cli.Printf("args after: %v", args)
+	
 	// The sql-server command has special cased logic since it doesn't invoke a Dolt command directly, but runs a server
 	// and waits for it to finish
 	if subCommandName == "sql-server" {
