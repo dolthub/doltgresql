@@ -107,7 +107,7 @@ func main() {
 	// The sql-server command has special cased logic since it doesn't invoke a Dolt command directly, but runs a server
 	// and waits for it to finish
 	if subCommandName == "sql-server" {
-		err = runServer(ctx, dEnv)
+		err = runServer(ctx, dEnv, args)
 		if err != nil {
 			cli.PrintErrln(err.Error())
 			os.Exit(1)
@@ -294,7 +294,7 @@ func configureCliCtx(subcommand string, apr *argparser.ArgParseResults, fs files
 }
 
 // runServer launches a server on the env given and waits for it to finish
-func runServer(ctx context.Context, dEnv *env.DoltEnv) error {
+func runServer(ctx context.Context, dEnv *env.DoltEnv, args []string) error {
 	// Emit a usage event in the background while we start the server.
 	// Dolt is more permissive with events: it emits events even if the command fails in the earliest possible phase,
 	// we emit an event only if we got far enough to attempt to launch a server (and we may not emit it if the server
@@ -304,8 +304,7 @@ func runServer(ctx context.Context, dEnv *env.DoltEnv) error {
 	// All events will be tagged with the doltgresql app id.
 	go emitUsageEvent(ctx, dEnv)
 
-	controller, err := server.RunOnDisk(ctx, os.Args[1:], dEnv)
-
+	controller, err := server.RunOnDisk(ctx, args, dEnv)
 	if err != nil {
 		return err
 	}
