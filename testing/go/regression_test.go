@@ -157,17 +157,47 @@ func TestRegressions(t *testing.T) {
 			},
 		},
 		{
-			// TODO: returned values are in FLOAT type as types.Int64Type cannot be checked as NumberTypeImpl_ in GMS
-			Skip: true,
-			Name: "regression_prepared",
+			Name: "casting from float64 to int64 and float32",
 			SetUpScript: []string{
 				`CREATE TABLE tab0(pk INTEGER PRIMARY KEY, col0 INTEGER, col1 FLOAT, col2 TEXT, col3 INTEGER, col4 FLOAT, col5 TEXT);`,
-				`INSERT INTO tab0 VALUES (0,698,169.42,'apdbu',431,316.15,'sqvis'), (1,538,676.36,'fuqeu',514,685.97,'bgwrq'), (2,90,205.26,'yrrzx',123,836.88,'kpuhc');`,
+				`INSERT INTO tab0 VALUES (0,698,169.42,'apdbu',431,316.15,'sqvis'), (1,538,676.36,'fuqeu',514,685.97,'bgwrq'), (2,90,205.26,'yrrzx',123,836.88,'kpuhc'), 
+(3,620,864.8,'myrdv',877,820.98,'oxkuv'), (4,754,677.3,'iofrg',67,665.49,'bzqba'), (5,107,710.19,'lhfro',286,504.28,'kwwsg'), (6,904,193.16,'eozui',48,698.55,'ejyzs'), 
+(7,606,650.64,'ovmce',417,962.43,'dvkbh'), (8,535,18.11,'ijika',630,489.63,'hpnyu'), (9,501,776.40,'cvygg',725,75.5,'etlyv');`,
 			},
 			Assertions: []ScriptTestAssertion{
 				{
-					Query:    `SELECT DISTINCT - col0 AS col3 FROM tab0 WHERE NULL IS NULL;`,
-					Expected: []sql.Row{{-698}, {-538}, {-90}},
+					Query:    "SELECT ALL * FROM tab0 cor0 WHERE ( + CAST ( - col4 AS INTEGER ) ) IN ( - col1, + col3, col3 );",
+					Expected: []sql.Row{},
+				},
+				{
+					Query:    "SELECT * FROM tab0 WHERE - - col0 * + - col4 >= ( + CAST ( col1 AS REAL ) );",
+					Expected: []sql.Row{},
+				},
+			},
+		},
+		{
+			Skip: true,
+			Name: "typecheck fails to detect doltgres types in GMS ",
+			SetUpScript: []string{
+				`CREATE TABLE tab0(col0 INTEGER, col1 INTEGER, col2 INTEGER);`,
+				`INSERT INTO tab0 VALUES (97,1,99), (15,81,47), (87,21,10);`,
+				`CREATE TABLE tab1(col0 INTEGER, col1 INTEGER, col2 INTEGER);`,
+				`INSERT INTO tab1 VALUES (51,14,96), (85,5,59), (91,47,68);`,
+				`CREATE TABLE tab2(col0 INTEGER, col1 INTEGER, col2 INTEGER);`,
+				`INSERT INTO tab2 VALUES(64,77,40), (75,67,58), (46,51,23);`,
+			},
+			Assertions: []ScriptTestAssertion{
+				{
+					Query:    "SELECT ALL + col2 * + ( ( 43 ) ) - 47 + + col1 * CAST ( - ( + 63 ) / col0 AS INTEGER ) AS col0 FROM tab1 AS cor0;",
+					Expected: []sql.Row{{4067}, {2490}, {2877}},
+				},
+				{
+					Query:    "SELECT - COUNT ( * ) - 26 * + 96 AS col2 FROM tab0 WHERE + 2 * col0 NOT BETWEEN 33 * CAST ( + 7 / 91 AS REAL ) AND 52;",
+					Expected: []sql.Row{{-2498}},
+				},
+				{
+					Query:    "SELECT CAST ( + CAST ( 73 AS REAL ) AS INTEGER ) * 62 FROM tab2 WHERE NULL IS NULL;",
+					Expected: []sql.Row{{4526}, {4526}, {4526}},
 				},
 			},
 		},

@@ -101,6 +101,13 @@ func GetCast(fromType pgtypes.DoltgresTypeBaseID, toType pgtypes.DoltgresTypeBas
 func init() {
 	MustAddTypeCast(TypeCast{
 		FromType: pgtypes.Float32,
+		ToType:   pgtypes.Int64,
+		Function: func(ctx Context, val any) (any, error) {
+			return int64(val.(float32)), nil
+		},
+	})
+	MustAddTypeCast(TypeCast{
+		FromType: pgtypes.Float32,
 		ToType:   pgtypes.Float64,
 		Function: func(ctx Context, val any) (any, error) {
 			return float64(val.(float32)), nil
@@ -118,6 +125,20 @@ func init() {
 		ToType:   pgtypes.Numeric,
 		Function: func(ctx Context, val any) (any, error) {
 			return decimal.NewFromFloat(val.(float64)), nil
+		},
+	})
+	MustAddTypeCast(TypeCast{
+		FromType: pgtypes.Float64,
+		ToType:   pgtypes.Float32,
+		Function: func(ctx Context, val any) (any, error) {
+			return float32(val.(float64)), nil
+		},
+	})
+	MustAddTypeCast(TypeCast{
+		FromType: pgtypes.Float64,
+		ToType:   pgtypes.Int64,
+		Function: func(ctx Context, val any) (any, error) {
+			return int64(val.(float64)), nil
 		},
 	})
 	MustAddTypeCast(TypeCast{
@@ -202,6 +223,21 @@ func init() {
 		ToType:   pgtypes.Numeric,
 		Function: func(ctx Context, val any) (any, error) {
 			return decimal.NewFromInt(val.(int64)), nil
+		},
+	})
+	MustAddTypeCast(TypeCast{
+		FromType: pgtypes.Numeric,
+		ToType:   pgtypes.Int64,
+		Function: func(ctx Context, val any) (any, error) {
+			return val.(decimal.Decimal).IntPart(), nil
+		},
+	})
+	MustAddTypeCast(TypeCast{
+		FromType: pgtypes.Numeric,
+		ToType:   pgtypes.Float32,
+		Function: func(ctx Context, val any) (any, error) {
+			f64, _ := val.(decimal.Decimal).Float64()
+			return f64, nil
 		},
 	})
 	MustAddTypeCast(TypeCast{
