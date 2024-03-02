@@ -875,12 +875,7 @@ func (h *ConnectionHandler) getPlanAndFields(query ConvertedQuery) (sql.Node, []
 		return nil, nil, fmt.Errorf("cannot prepare a query that has not been parsed")
 	}
 
-	extendedHandler, ok := h.handler.(mysql.ExtendedHandler)
-	if !ok {
-		return nil, nil, fmt.Errorf("cannot prepare a query, error: expected: ExtendedHandler, got: %T", h.handler)
-	}
-
-	parsedQuery, fields, err := extendedHandler.ComPrepareParsed(h.mysqlConn, query.String, query.AST, &mysql.PrepareData{
+	parsedQuery, fields, err := h.handler.(mysql.ExtendedHandler).ComPrepareParsed(h.mysqlConn, query.String, query.AST, &mysql.PrepareData{
 		PrepareStmt: query.String,
 	})
 
