@@ -139,6 +139,9 @@ func (a *Addition) Resolved() bool {
 
 // String implements the sql.Expression interface.
 func (a *Addition) String() string {
+	if a.left == nil || a.right == nil {
+		return "? + ?"
+	}
 	return a.left.String() + " + " + a.right.String()
 }
 
