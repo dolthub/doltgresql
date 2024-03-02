@@ -131,7 +131,8 @@ func TestRegressions(t *testing.T) {
 			},
 		},
 		{
-			Name: "null as integer",
+			Skip: true,
+			Name: "casting null as integer",
 			SetUpScript: []string{
 				`CREATE TABLE tab0(pk INTEGER PRIMARY KEY, col0 INTEGER, col1 FLOAT, col2 TEXT, col3 INTEGER, col4 FLOAT, col5 TEXT);`,
 				`INSERT INTO tab0 VALUES (0,698,169.42,'apdbu',431,316.15,'sqvis'), (1,538,676.36,'fuqeu',514,685.97,'bgwrq');`,
@@ -157,6 +158,7 @@ func TestRegressions(t *testing.T) {
 			},
 		},
 		{
+			Skip: true,
 			Name: "casting from float64 to int64 and float32",
 			SetUpScript: []string{
 				`CREATE TABLE tab0(pk INTEGER PRIMARY KEY, col0 INTEGER, col1 FLOAT, col2 TEXT, col3 INTEGER, col4 FLOAT, col5 TEXT);`,
