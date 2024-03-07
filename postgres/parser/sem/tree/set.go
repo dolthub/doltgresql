@@ -37,10 +37,15 @@ var _ Statement = &SetVar{}
 
 // SetVar represents a SET or RESET <configuration_param> statement.
 type SetVar struct {
-	Name   string
-	Values Exprs
+	IsLocal bool
+	Name    string
+	Values  Exprs
 	// FromCurrent is used for SET clauses in CREATE statements only.
 	FromCurrent bool
+}
+
+func (node *SetVar) SetLocalSetStmt() {
+	node.IsLocal = true
 }
 
 // Format implements the NodeFormatter interface.
@@ -65,6 +70,76 @@ func (node *SetVar) Format(ctx *FmtCtx) {
 		}
 	}
 }
+
+var _ Statement = &SetSessionAuthorization{}
+
+// SetSessionAuthorization represents a SET SESSION AUTHORIZATION ... statement.
+type SetSessionAuthorization struct {
+	Username string
+	IsLocal  bool
+}
+
+// Format implements the NodeFormatter interface.
+func (node *SetSessionAuthorization) Format(ctx *FmtCtx) {
+	if node.Username == "" {
+		// equivalent to RESET SESSION AUTHORIZATION
+		ctx.WriteString("SET SESSION AUTHORIZATION DEFAULT")
+	} else {
+		ctx.WriteString("SET SESSION AUTHORIZATION ")
+		ctx.WriteString(node.Username)
+	}
+}
+
+func (node *SetSessionAuthorization) SetLocalSetStmt() {
+	node.IsLocal = true
+}
+
+var _ Statement = &SetRole{}
+
+// SetRole represents a SET ROLE ... and RESET ROLE statements.
+type SetRole struct {
+	IsLocal bool
+	Name    string
+	None    bool
+	Reset   bool
+}
+
+// Format implements the NodeFormatter interface.
+func (node *SetRole) Format(ctx *FmtCtx) {
+	if node.Reset {
+		ctx.WriteString("RESET ROLE")
+	} else {
+		ctx.WriteString("SET ")
+		if node.IsLocal {
+			ctx.WriteString("LOCAL")
+		} else {
+			ctx.WriteString("SESSION")
+		}
+		ctx.WriteString(" ROLE")
+		if node.None {
+			ctx.WriteString(" NONE")
+		} else {
+			ctx.WriteString(node.Name)
+		}
+	}
+}
+
+func (node *SetRole) SetLocalSetStmt() {
+	node.IsLocal = true
+}
+
+// SetStmt represents a set statement that has [ SESSION | LOCAL ] setting option.
+// It is used to set the |node.IsLocal| to true if LOCAL clause is defined.
+type SetStmt interface {
+	NodeFormatter
+	SetLocalSetStmt()
+}
+
+var _ SetStmt = &SetVar{}
+var _ SetStmt = &SetRole{}
+var _ SetStmt = &SetSessionAuthorization{}
+
+// The SET statements below here do not have [ SESSION | LOCAL ] setting.
 
 var _ Statement = &SetConstraints{}
 
@@ -101,54 +176,6 @@ type SetTransaction struct {
 func (node *SetTransaction) Format(ctx *FmtCtx) {
 	ctx.WriteString("SET TRANSACTION")
 	node.Modes.Format(ctx)
-}
-
-var _ Statement = &SetSessionAuthorization{}
-
-// SetSessionAuthorization represents a SET SESSION AUTHORIZATION ... statement.
-type SetSessionAuthorization struct {
-	Username string
-}
-
-// Format implements the NodeFormatter interface.
-func (node *SetSessionAuthorization) Format(ctx *FmtCtx) {
-	if node.Username == "" {
-		// equivalent to RESET SESSION AUTHORIZATION
-		ctx.WriteString("SET SESSION AUTHORIZATION DEFAULT")
-	} else {
-		ctx.WriteString("SET SESSION AUTHORIZATION ")
-		ctx.WriteString(node.Username)
-	}
-}
-
-var _ Statement = &SetRole{}
-
-// SetRole represents a SET ROLE ... and RESET ROLE statements.
-type SetRole struct {
-	Local bool
-	Name  string
-	None  bool
-	Reset bool
-}
-
-// Format implements the NodeFormatter interface.
-func (node *SetRole) Format(ctx *FmtCtx) {
-	if node.Reset {
-		ctx.WriteString("RESET ROLE")
-	} else {
-		ctx.WriteString("SET ")
-		if node.Local {
-			ctx.WriteString("LOCAL")
-		} else {
-			ctx.WriteString("SESSION")
-		}
-		ctx.WriteString(" ROLE")
-		if node.None {
-			ctx.WriteString(" NONE")
-		} else {
-			ctx.WriteString(node.Name)
-		}
-	}
 }
 
 // SetSessionCharacteristics represents a SET SESSION CHARACTERISTICS AS TRANSACTION statement.

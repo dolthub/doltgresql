@@ -918,8 +918,8 @@ func (u *sqlSymUnion) triggerTime() tree.TriggerTime {
 
 %type <tree.Statement> schema_element
 %type <[]tree.Statement> schema_element_list opt_schema_element_list stmt_list
-%type <tree.Statement> preparable_set_stmt nonpreparable_set_stmt
-%type <tree.Statement> set_session_stmt
+%type <tree.Statement> set_stmt
+%type <tree.Statement> set_session_or_local_stmt
 %type <tree.Statement> set_transaction_stmt
 %type <tree.Statement> set_constraints_stmt
 %type <tree.Statement> set_exprs_internal
@@ -1023,7 +1023,7 @@ func (u *sqlSymUnion) triggerTime() tree.TriggerTime {
 %type <[]tree.AlterColComputed> alter_column_set_seq_elem_list
 %type <tree.AlterIndexCmd> alter_index_cmd
 %type <tree.StorageType> col_storage_option
-%type <bool> unique_or_primary logged_or_unlogged opt_nowait opt_no opt_view_recursive
+%type <bool> unique_or_primary logged_or_unlogged opt_nowait opt_no opt_view_recursive opt_is_local
 %type <str> trigger_name trigger_option
 %type <tree.AlterViewCmd> alter_view_cmd
 
@@ -1370,7 +1370,7 @@ non_transaction_stmt:
 | savepoint_stmt    // EXTEND WITH HELP: SAVEPOINT
 | release_stmt      // EXTEND WITH HELP: RELEASE
 | refresh_stmt      // EXTEND WITH HELP: REFRESH
-| nonpreparable_set_stmt // help texts in sub-rule
+| set_stmt // help texts in sub-rule
 | close_cursor_stmt
 | declare_cursor_stmt
 | reindex_stmt
@@ -4471,7 +4471,6 @@ preparable_stmt:
   {
     $$.val = $1.slct()
   }
-| preparable_set_stmt // help texts in sub-rule
 | show_stmt         // help texts in sub-rule
 | truncate_stmt     // EXTEND WITH HELP: TRUNCATE
 | update_stmt       // EXTEND WITH HELP: UPDATE
@@ -4946,20 +4945,13 @@ use_stmt:
   }
 | USE error // SHOW HELP: USE
 
-// SET remainder, e.g. SET TRANSACTION
-nonpreparable_set_stmt:
+// SET statements including e.g. SET TRANSACTION
+set_stmt:
   set_transaction_stmt // EXTEND WITH HELP: SET TRANSACTION
 | set_constraints_stmt  // EXTEND WITH HELP: SET CONSTRAINTS
 | set_exprs_internal   { /* SKIP DOC */ }
-| SET LOCAL set_session_or_local_cmd
-  {
-    $$.val = $3.stmt()
-  }
-
-// SET SESSION
-preparable_set_stmt:
-  set_session_stmt     // EXTEND WITH HELP: SET SESSION
-| use_stmt             // EXTEND WITH HELP: USE
+| set_session_or_local_stmt
+| use_stmt
 
 // %Help: SCRUB - run checks against databases or tables
 // %Category: Experimental
@@ -5075,24 +5067,6 @@ set_exprs_internal:
     $$.val = &tree.SetVar{Values: $4.exprs()}
   }
 
-// %Help: SET SESSION - change a session variable
-// %Category: Cfg
-// %Text:
-// SET [SESSION] <var> { TO | = } <values...>
-// SET [SESSION] TIME ZONE <tz>
-//
-// %SeeAlso: SET TRANSACTION
-// WEBDOCS/set-vars.html
-set_session_stmt:
-  SET SESSION set_session_or_local_cmd
-  {
-    $$.val = $3.stmt()
-  }
-| SET set_session_or_local_cmd
-  {
-    $$.val = $2.stmt()
-  }
-
 // %Help: SET TRANSACTION - configure the transaction settings
 // %Category: Txn
 // %Text:
@@ -5103,26 +5077,24 @@ set_session_stmt:
 //    PRIORITY { LOW | NORMAL | HIGH }
 //    AS OF SYSTEM TIME <expr>
 //    [NOT] DEFERRABLE
-//
-// %SeeAlso: SHOW TRANSACTION, SET SESSION,
-// WEBDOCS/set-transaction.html
 set_transaction_stmt:
   SET TRANSACTION transaction_mode_list
   {
     $$.val = &tree.SetTransaction{Modes: $3.transactionModes()}
   }
-| SET TRANSACTION error // SHOW HELP: SET TRANSACTION
-| SET SESSION TRANSACTION transaction_mode_list
+| SET TRANSACTION SNAPSHOT transaction_mode_list
   {
     $$.val = &tree.SetTransaction{Modes: $4.transactionModes()}
   }
-// Special form for pg compatibility:
 | SET SESSION CHARACTERISTICS AS TRANSACTION transaction_mode_list
   {
     $$.val = &tree.SetSessionCharacteristics{Modes: $6.transactionModes()}
   }
-| SET SESSION TRANSACTION error // SHOW HELP: SET TRANSACTION
 
+// %Help: SET CONSTRAINTS - configure the constraints settings
+// %Category: Cfg
+// %Text:
+// SET CONSTRAINTS { ALL | name [, ...] } { DEFERRED | IMMEDIATE }
 set_constraints_stmt:
   SET CONSTRAINTS ALL DEFERRED
   {
@@ -5141,6 +5113,51 @@ set_constraints_stmt:
     $$.val = &tree.SetConstraints{Names: $3.nameList(), Deferred: false}
   }
 
+// %Help: SET SESSION - change a session variable
+// %Category: Cfg
+// %Text:
+// SET [ SESSION | LOCAL ] <var> { TO | = } <values...>
+// SET [ SESSION | LOCAL ] TIME ZONE <tz>
+// SET [ SESSION | LOCAL ] ROLE role_name
+// SET [ SESSION | LOCAL ] ROLE NONE
+//
+// %SeeAlso: SET TRANSACTION
+// WEBDOCS/set-vars.html
+set_session_or_local_stmt:
+  SET set_session_or_local_cmd
+  {
+    $$.val = $2.stmt()
+  }
+| SET SESSION set_session_or_local_cmd
+  {
+    $$.val = $3.stmt()
+  }
+| SET LOCAL set_session_or_local_cmd
+  {
+    setStmt := $3.stmt()
+    setStmt.(tree.SetStmt).SetLocalSetStmt()
+    $$.val = setStmt
+  }
+
+opt_is_local:
+  /* EMPTY */
+  {
+    $$.val = false
+  }
+| SESSION
+  {
+    $$.val = false
+  }
+| LOCAL
+  {
+    $$.val = true
+  }
+
+set_session_or_local_cmd:
+  set_var
+| set_session_authorization
+| set_role
+
 generic_set_single_config:
   // var_value includes DEFAULT expr
   name to_or_eq var_value
@@ -5151,12 +5168,6 @@ generic_set_single_config:
   {
     $$.val = &tree.SetVar{Name: $1, FromCurrent: true}
   }
-
-set_session_or_local_cmd:
-  set_session_authorization
-| set_var
-| set_role
-| error // SHOW HELP: SET SESSION
 
 set_var:
   generic_set_single_config
@@ -5178,9 +5189,9 @@ set_special_syntax:
 | set_names
 // "SET SEED 'value' is an alias for SET seed TO value. Sets the internal seed
 // for the random number generator (the function random)."
-| SEED signed_fconst
+| SEED numeric_only
   {
-    $$.val = &tree.SetVar{Name: "gepo_seed", Values: tree.Exprs{$2.expr()}}
+    $$.val = &tree.SetVar{Name: "geqo_seed", Values: tree.Exprs{$2.expr()}}
   }
 
 set_session_authorization:

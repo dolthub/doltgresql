@@ -421,8 +421,10 @@ func nodeExpr(node tree.Expr) (vitess.Expr, error) {
 		return nil, fmt.Errorf("the statement is not yet supported")
 	case *tree.DUuid:
 		return nil, fmt.Errorf("the statement is not yet supported")
-	case *tree.DefaultVal:
-		return nil, fmt.Errorf("default values are not yet supported")
+	case tree.DefaultVal:
+		// TODO: can we use this?
+		defVal := &vitess.Default{ColName: ""}
+		return defVal, nil
 	case *tree.FuncExpr:
 		return nodeFuncExpr(node)
 	case *tree.IfErrExpr:
