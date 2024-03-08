@@ -1,10 +1,11 @@
 package config
 
 import (
-	"github.com/dolthub/go-mysql-server/sql"
-	"github.com/dolthub/go-mysql-server/sql/types"
 	"strings"
 	"sync"
+
+	"github.com/dolthub/go-mysql-server/sql"
+	"github.com/dolthub/go-mysql-server/sql/types"
 )
 
 var _ sql.SystemVariableRegistry = (*sessionConfigParameters)(nil)

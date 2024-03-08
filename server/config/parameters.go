@@ -1,10 +1,11 @@
 package config
 
 import (
-	"github.com/dolthub/go-mysql-server/sql"
-	"github.com/dolthub/go-mysql-server/sql/types"
 	"math"
 	"sync"
+
+	"github.com/dolthub/go-mysql-server/sql"
+	"github.com/dolthub/go-mysql-server/sql/types"
 )
 
 var _ sql.SystemVariableInterface = (*Parameter)(nil)

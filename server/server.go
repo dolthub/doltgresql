@@ -17,11 +17,8 @@ package server
 import (
 	"context"
 	"fmt"
-	config2 "github.com/dolthub/doltgresql/server/config"
 	_ "net/http/pprof"
 	"strings"
-
-	"github.com/dolthub/doltgresql/server/functions/framework"
 
 	"github.com/dolthub/dolt/go/cmd/dolt/cli"
 	"github.com/dolthub/dolt/go/cmd/dolt/commands"
@@ -37,6 +34,9 @@ import (
 	"github.com/dolthub/dolt/go/store/util/tempfiles"
 	"github.com/dolthub/go-mysql-server/server"
 	"github.com/dolthub/go-mysql-server/sql"
+
+	config2 "github.com/dolthub/doltgresql/server/config"
+	"github.com/dolthub/doltgresql/server/functions/framework"
 )
 
 const (
