@@ -280,7 +280,7 @@ var setStmts = []ScriptTest{
 				Expected: []sql.Row{{}},
 			},
 			{
-				Query:    "SET data_directory_mode TO '0700'",
+				Query:    "SET data_directory_mode TO '448'",
 				Expected: []sql.Row{{}},
 			},
 			{
@@ -724,7 +724,7 @@ var setStmts = []ScriptTest{
 				Expected: []sql.Row{{}},
 			},
 			{
-				Query:    "SET log_file_mode TO '0600'",
+				Query:    "SET log_file_mode TO '384'",
 				Expected: []sql.Row{{}},
 			},
 			{
@@ -784,11 +784,11 @@ var setStmts = []ScriptTest{
 				Expected: []sql.Row{{}},
 			},
 			{
-				Query:    "SET log_rotation_age TO '1d'",
+				Query:    "SET log_rotation_age TO '1440'",
 				Expected: []sql.Row{{}},
 			},
 			{
-				Query:    "SET log_rotation_size TO '10000'",
+				Query:    "SET log_rotation_size TO '10240'",
 				Expected: []sql.Row{{}},
 			},
 			{
@@ -928,7 +928,7 @@ var setStmts = []ScriptTest{
 				Expected: []sql.Row{{}},
 			},
 			{
-				Query:    "SET max_wal_size TO '1GB'",
+				Query:    "SET max_wal_size TO '1000'",
 				Expected: []sql.Row{{}},
 			},
 			{
@@ -944,11 +944,11 @@ var setStmts = []ScriptTest{
 				Expected: []sql.Row{{}},
 			},
 			{
-				Query:    "SET min_parallel_table_scan_size TO '8MB'",
+				Query:    "SET min_parallel_table_scan_size TO '800'",
 				Expected: []sql.Row{{}},
 			},
 			{
-				Query:    "SET min_wal_size TO '80MB'",
+				Query:    "SET min_wal_size TO '8000'",
 				Expected: []sql.Row{{}},
 			},
 			{
@@ -1084,7 +1084,7 @@ var setStmts = []ScriptTest{
 				Expected: []sql.Row{{}},
 			},
 			{
-				Query:    "SET segment_size TO '1GB'",
+				Query:    "SET segment_size TO '131072'",
 				Expected: []sql.Row{{}},
 			},
 			{
@@ -1120,11 +1120,11 @@ var setStmts = []ScriptTest{
 				Expected: []sql.Row{{}},
 			},
 			{
-				Query:    "SET shared_buffers TO '128MB'",
+				Query:    "SET shared_buffers TO '128000'",
 				Expected: []sql.Row{{}},
 			},
 			{
-				Query:    "SET shared_memory_size TO '143MB'",
+				Query:    "SET shared_memory_size TO '143000'",
 				Expected: []sql.Row{{}},
 			},
 			{
@@ -1260,7 +1260,7 @@ var setStmts = []ScriptTest{
 				Expected: []sql.Row{{}},
 			},
 			{
-				Query:    "SET temp_buffers TO '8MB'",
+				Query:    "SET temp_buffers TO '8000'",
 				Expected: []sql.Row{{}},
 			},
 			{
@@ -1296,7 +1296,7 @@ var setStmts = []ScriptTest{
 				Expected: []sql.Row{{}},
 			},
 			{
-				Query:    "SET track_activity_query_size TO '1'",
+				Query:    "SET track_activity_query_size TO '1024'",
 				Expected: []sql.Row{{}},
 			},
 			{
@@ -1344,7 +1344,7 @@ var setStmts = []ScriptTest{
 				Expected: []sql.Row{{}},
 			},
 			{
-				Query:    "SET unix_socket_permissions TO '0777'",
+				Query:    "SET unix_socket_permissions TO '511'",
 				Expected: []sql.Row{{}},
 			},
 			{
@@ -1416,7 +1416,7 @@ var setStmts = []ScriptTest{
 				Expected: []sql.Row{{}},
 			},
 			{
-				Query:    "SET wal_decode_buffer_size TO '512'",
+				Query:    "SET wal_decode_buffer_size TO '524288'",
 				Expected: []sql.Row{{}},
 			},
 			{
@@ -1456,7 +1456,7 @@ var setStmts = []ScriptTest{
 				Expected: []sql.Row{{}},
 			},
 			{
-				Query:    "SET wal_segment_size TO '16000'",
+				Query:    "SET wal_segment_size TO '16777216'",
 				Expected: []sql.Row{{}},
 			},
 			{
