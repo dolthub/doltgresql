@@ -33,3 +33,28 @@ type DoltgresType interface {
 	// we've stabilized development.
 	OID() uint32
 }
+
+// FromBaseID returns a DoltgresType that matches the Base ID. This type will usually be the most permissive version of
+// the type, along with any default values.
+func FromBaseID(baseID DoltgresTypeBaseID) DoltgresType {
+	t, ok := typesFromBaseID[baseID]
+	if !ok {
+		panic("unknown Doltgres base id")
+	}
+	return t
+}
+
+// typesFromBaseID contains a map from a DoltgresTypeBaseID to its originating type.
+var typesFromBaseID = map[DoltgresTypeBaseID]DoltgresType{
+	Bool.BaseID():       Bool,
+	BoolArray.BaseID():  BoolArray,
+	Float32.BaseID():    Float32,
+	Float64.BaseID():    Float64,
+	Int16.BaseID():      Int16,
+	Int32.BaseID():      Int32,
+	Int64.BaseID():      Int64,
+	Null.BaseID():       Null,
+	Numeric.BaseID():    Numeric,
+	Uuid.BaseID():       Uuid,
+	VarCharMax.BaseID(): VarCharMax,
+}

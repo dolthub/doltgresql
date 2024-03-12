@@ -25,29 +25,29 @@ import (
 
 // init registers the functions to the catalog.
 func init() {
-	framework.RegisterFunction(split_part_varchar_varchar_int64)
+	framework.RegisterFunction(split_part_varchar_varchar_int32)
 }
 
-// split_part_varchar_varchar_int64 represents the PostgreSQL function of the same name, taking the same parameters.
-var split_part_varchar_varchar_int64 = framework.Function3{
+// split_part_varchar_varchar_int32 represents the PostgreSQL function of the same name, taking the same parameters.
+var split_part_varchar_varchar_int32 = framework.Function3{
 	Name:       "split_part",
 	Return:     pgtypes.VarCharMax,
-	Parameters: []pgtypes.DoltgresType{pgtypes.VarCharMax, pgtypes.VarCharMax, pgtypes.Int64},
+	Parameters: []pgtypes.DoltgresType{pgtypes.VarCharMax, pgtypes.VarCharMax, pgtypes.Int32},
 	Callable: func(ctx framework.Context, str any, delimiter any, n any) (any, error) {
 		if str == nil || delimiter == nil || n == nil {
 			return nil, nil
 		}
-		if n.(int64) == 0 {
+		if n.(int32) == 0 {
 			return nil, fmt.Errorf("field position must not be zero")
 		}
 		parts := strings.Split(str.(string), delimiter.(string))
-		if int(utils.Abs(n.(int64))) > len(parts) {
+		if int(utils.Abs(n.(int32))) > len(parts) {
 			return "", nil
 		}
-		if n.(int64) > 0 {
-			return parts[n.(int64)-1], nil
+		if n.(int32) > 0 {
+			return parts[n.(int32)-1], nil
 		} else {
-			return parts[int64(len(parts))+n.(int64)], nil
+			return parts[int32(len(parts))+n.(int32)], nil
 		}
 	},
 }

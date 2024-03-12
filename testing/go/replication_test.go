@@ -504,6 +504,9 @@ var replicationTests = []ReplicationTest{
 }
 
 func TestReplication(t *testing.T) {
+	if _, ok := os.LookupEnv("GITHUB_ACTION"); !ok {
+		t.Skip("Replication tests are only run from within GitHub Actions, so we're skipping for local testing")
+	}
 	RunReplicationScripts(t, replicationTests)
 }
 
@@ -651,7 +654,7 @@ func runReplicationScript(
 				} else {
 					rows, err := conn.Query(ctx, assertion.Query, assertion.BindVars...)
 					require.NoError(t, err)
-					readRows, err := ReadRows(rows)
+					readRows, err := ReadRows(rows, true)
 					require.NoError(t, err)
 					normalizedRows := NormalizeRows(assertion.Expected)
 

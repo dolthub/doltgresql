@@ -90,6 +90,11 @@ var log_numeric_numeric = framework.Function2{
 		// TODO: implement log for numeric instead of relying on float64
 		base, _ := val1.Float64()
 		num, _ := val2.Float64()
-		return decimal.NewFromFloat(math.Log(num) / math.Log(base)), nil
+		logNum := math.Log(num)
+		logBase := math.Log(base)
+		if logBase == 0 {
+			return nil, fmt.Errorf("division by zero")
+		}
+		return decimal.NewFromFloat(logNum / logBase), nil
 	},
 }

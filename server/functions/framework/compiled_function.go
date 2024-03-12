@@ -88,7 +88,11 @@ func (c *CompiledFunction) Type() sql.Type {
 	// resolveByType takes a slice of result types, so we need to create them here even though they're not used
 	resultTypes := make([]pgtypes.DoltgresType, len(parameters))
 	copy(resultTypes, parameters)
-	if resolvedFunction := c.Functions.resolveByType(parameters, resultTypes); resolvedFunction != nil {
+	sources := make([]Source, len(parameters))
+	for i := range sources {
+		sources[i] = Source_Constant
+	}
+	if resolvedFunction := c.Functions.resolveByType(parameters, resultTypes, sources); resolvedFunction != nil {
 		return resolvedFunction.Function.GetReturn()
 	}
 	// We can't resolve to a function before evaluation in this case, so we'll return something arbitrary
@@ -116,7 +120,7 @@ func (c *CompiledFunction) Eval(ctx *sql.Context, row sql.Row) (interface{}, err
 		Sources:       sources,
 	}
 	// Next we'll resolve the overload based on the parameters given.
-	overload, casts, err := c.Functions.Resolve(originalTypes)
+	overload, casts, err := c.Functions.Resolve(originalTypes, sources)
 	if err != nil {
 		return nil, err
 	}
@@ -136,10 +140,10 @@ func (c *CompiledFunction) Eval(ctx *sql.Context, row sql.Row) (interface{}, err
 			if err != nil {
 				return nil, err
 			}
+		} else {
+			return nil, fmt.Errorf("function %s is missing the appropriate implicit cast", c.OverloadString(originalTypes))
 		}
 	}
-	// Handle the interaction with strings representing integers
-	c.handleIntegerStrings(overload, originalTypes, sources)
 	// Pass the parameters to the function
 	switch f := overload.Function.(type) {
 	case Function0:
@@ -274,6 +278,9 @@ func (c *CompiledFunction) determineSource(expr sql.Expression) Source {
 	case *expression.Literal:
 		return Source_Constant
 	default:
+		if _, ok := expr.(LiteralInterface); ok {
+			return Source_Constant
+		}
 		return Source_Expression
 	}
 }
@@ -322,18 +329,4 @@ func (c *CompiledFunction) possibleParameterTypes() []pgtypes.DoltgresType {
 		}
 	}
 	return possibleParamTypes
-}
-
-// handleIntegerStrings handles the special interaction with strings that represent integers. It appears that PostgreSQL
-// treats string literals as native integer literals even though they're a cast.
-func (c *CompiledFunction) handleIntegerStrings(overload *OverloadDeduction, originalTypes []pgtypes.DoltgresType, sources []Source) {
-	functionParameters := overload.Function.GetParameters()
-	for i, originalType := range originalTypes {
-		if originalType.BaseID() == pgtypes.VarCharInline.BaseID() && sources[i] == Source_Constant {
-			switch functionParameters[i].BaseID() {
-			case pgtypes.Int16.BaseID(), pgtypes.Int32.BaseID(), pgtypes.Int64.BaseID(), pgtypes.Float32.BaseID(), pgtypes.Float64.BaseID(), pgtypes.Numeric.BaseID():
-				originalTypes[i] = functionParameters[i]
-			}
-		}
-	}
 }

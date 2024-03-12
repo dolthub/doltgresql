@@ -88,6 +88,7 @@ func Initialize() {
 	function.BuiltIns = newBuiltIns
 
 	for funcName, catalogFunctions := range Catalog {
+		funcName := funcName
 		// Verify that each function uses the correct Function overload
 		for _, functionOverload := range catalogFunctions {
 			if len(functionOverload.GetParameters()) != functionOverload.GetExpectedParameterCount() {

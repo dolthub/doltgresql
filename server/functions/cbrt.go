@@ -15,7 +15,6 @@
 package functions
 
 import (
-	"fmt"
 	"math"
 
 	"github.com/dolthub/doltgresql/server/functions/framework"
@@ -36,9 +35,6 @@ var cbrt_float64 = framework.Function1{
 	Callable: func(ctx framework.Context, val1 any) (any, error) {
 		if val1 == nil {
 			return nil, nil
-		}
-		if framework.IsParameterType(ctx.OriginalTypes[0], framework.ParameterType_String) {
-			return nil, fmt.Errorf("function cbrt(%s) does not exist", ctx.OriginalTypes[0].String())
 		}
 		return math.Cbrt(val1.(float64)), nil
 	},

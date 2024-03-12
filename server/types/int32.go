@@ -115,8 +115,7 @@ func (b Int32Type) Convert(val any) (any, sql.ConvertInRange, error) {
 		}
 		return b.Convert(val.Decimal)
 	case decimal.Decimal:
-		v, _ := val.Float64()
-		return int32(v), sql.InRange, nil
+		return int32(val.IntPart()), sql.InRange, nil
 	case string:
 		i, err := strconv.ParseInt(val, 10, 64)
 		if err != nil {

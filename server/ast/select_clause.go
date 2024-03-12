@@ -20,6 +20,7 @@ import (
 	vitess "github.com/dolthub/vitess/go/vt/sqlparser"
 
 	"github.com/dolthub/doltgresql/postgres/parser/sem/tree"
+	pgexprs "github.com/dolthub/doltgresql/server/expression"
 )
 
 // nodeSelectClause handles tree.SelectClause nodes.
@@ -57,6 +58,18 @@ func nodeSelectClause(node *tree.SelectClause) (*vitess.Select, error) {
 					if valuesStatement, ok := subquerySelect.From[0].(*vitess.ValuesStatement); ok {
 						if len(valuesStatement.Columns) == 0 && len(valuesStatement.Rows) == 1 && len(valuesStatement.Rows[0]) == 1 {
 							if funcExpr, ok := valuesStatement.Rows[0][0].(*vitess.FuncExpr); ok {
+								// It appears that GMS hardcodes the expectation of vitess literals here, so we have to
+								// convert from Doltgres literals to GMS literals. Eventually we need to remove this
+								// hardcoded behavior.
+								for _, fExpr := range funcExpr.Exprs {
+									if aliasedExpr, ok := fExpr.(*vitess.AliasedExpr); ok {
+										if injectedExpr, ok := aliasedExpr.Expr.(vitess.InjectedExpr); ok {
+											if literal, ok := injectedExpr.Expression.(*pgexprs.Literal); ok {
+												aliasedExpr.Expr = literal.ToVitessLiteral()
+											}
+										}
+									}
+								}
 								from[i] = &vitess.TableFuncExpr{
 									Name:  funcExpr.Name.String(),
 									Exprs: funcExpr.Exprs,
