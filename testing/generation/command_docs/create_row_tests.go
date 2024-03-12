@@ -17,20 +17,20 @@ package main
 import (
 	"context"
 	"fmt"
-	"os"
 	"strings"
 
 	"github.com/dolthub/go-mysql-server/sql"
 	"github.com/jackc/pgx/v5"
 
+	"github.com/dolthub/doltgresql/testing/generation/utils"
 	framework "github.com/dolthub/doltgresql/testing/go"
 )
 
 // GenerateRowTests uses the given StatementGenerator to return a random set of queries along with their results that
 // were retrieved from a Postgres instance. Uses the MaxTestCount to determine the number of tests to generate. The
 // returned map uses the query as the key, with the results being the value.
-func GenerateRowTests(stmtGen StatementGenerator) (map[string][]sql.Row, error) {
-	randomInts, err := GenerateRandomInts(MaxTestCount, stmtGen.Permutations())
+func GenerateRowTests(stmtGen utils.StatementGenerator) (map[string][]sql.Row, error) {
+	randomInts, err := utils.GenerateRandomInts(MaxTestCount, stmtGen.Permutations())
 	if err != nil {
 		return nil, err
 	}
@@ -50,22 +50,22 @@ func GenerateRowTests(stmtGen StatementGenerator) (map[string][]sql.Row, error) 
 // GetSynopsisStatementGenerator returns the StatementGenerator for the given synopsis. The synopsisData should be the
 // string that has been loaded from the synopses directory. includeRepetition states whether repetition is included in
 // the returned StatementGenerator.
-func GetSynopsisStatementGenerator(synopsisData string, prefix string, includeRepetition bool) (StatementGenerator, error) {
+func GetSynopsisStatementGenerator(synopsisData string, prefix string, includeRepetition bool) (utils.StatementGenerator, error) {
 	scanner := NewScanner(synopsisData)
 	tokens, err := scanner.Process()
 	if err != nil {
 		return nil, err
 	}
-	stmtGen, err := ParseTokens(tokens, includeRepetition)
+	stmtGen, err := utils.ParseTokens(tokens, includeRepetition)
 	if err != nil {
 		return nil, err
 	}
 	// Not all variables have their definitions set in the synopsis, so we'll handle them here
-	unsetVariables, err := UnsetVariables(stmtGen)
+	unsetVariables, err := utils.UnsetVariables(stmtGen)
 	if err != nil {
 		return nil, err
 	}
-	customVariableDefinitions := make(map[string]StatementGenerator)
+	customVariableDefinitions := make(map[string]utils.StatementGenerator)
 	for _, unsetVariable := range unsetVariables {
 		// Check for a specific definition first
 		if prefixVariables, ok := PrefixCustomVariables[prefix]; ok {
@@ -80,7 +80,7 @@ func GetSynopsisStatementGenerator(synopsisData string, prefix string, includeRe
 			continue
 		}
 	}
-	if err = ApplyVariableDefinition(stmtGen, customVariableDefinitions); err != nil {
+	if err = utils.ApplyVariableDefinition(stmtGen, customVariableDefinitions); err != nil {
 		return nil, err
 	}
 	return stmtGen, nil
@@ -105,7 +105,7 @@ func LoadSynopsis(synopsis string) (data string, prefix string, err error) {
 	if err != nil {
 		return "", "", err
 	}
-	dataBytes, err := os.ReadFile(fmt.Sprintf("%s/synopses/%s", parentFolder, fileName))
+	dataBytes, err := parentFolder.ReadFileFromDirectory("synopses", fileName)
 	if err != nil {
 		return "", "", err
 	}
@@ -127,5 +127,5 @@ func GetRowResults(query string) ([]sql.Row, error) {
 	if err != nil {
 		return nil, err
 	}
-	return framework.ReadRows(pgxRows)
+	return framework.ReadRows(pgxRows, true)
 }

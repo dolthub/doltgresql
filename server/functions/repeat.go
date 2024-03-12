@@ -24,18 +24,18 @@ import (
 
 // init registers the functions to the catalog.
 func init() {
-	framework.RegisterFunction(repeat_varchar_int64)
+	framework.RegisterFunction(repeat_varchar_int32)
 }
 
-// repeat_varchar_int64 represents the PostgreSQL function of the same name, taking the same parameters.
-var repeat_varchar_int64 = framework.Function2{
+// repeat_varchar_int32 represents the PostgreSQL function of the same name, taking the same parameters.
+var repeat_varchar_int32 = framework.Function2{
 	Name:       "repeat",
 	Return:     pgtypes.VarCharMax,
-	Parameters: []pgtypes.DoltgresType{pgtypes.VarCharMax, pgtypes.Int64},
+	Parameters: []pgtypes.DoltgresType{pgtypes.VarCharMax, pgtypes.Int32},
 	Callable: func(ctx framework.Context, str any, num any) (any, error) {
 		if str == nil || num == nil {
 			return nil, nil
 		}
-		return strings.Repeat(str.(string), int(num.(int64))), nil
+		return strings.Repeat(str.(string), int(num.(int32))), nil
 	},
 }

@@ -19,7 +19,6 @@ import (
 	"errors"
 	"fmt"
 	"math/big"
-	"os"
 	"regexp"
 	"strings"
 	"time"
@@ -32,6 +31,7 @@ import (
 
 	"github.com/dolthub/doltgresql/postgres/parser/parser"
 	"github.com/dolthub/doltgresql/server/ast"
+	"github.com/dolthub/doltgresql/testing/generation/utils"
 )
 
 const TestHeader = `// Copyright %d Dolthub, Inc.
@@ -69,7 +69,7 @@ func GenerateTestsFromSynopses(repetitionDisabled ...string) (err error) {
 	if err != nil {
 		return err
 	}
-	fileInfos, err := os.ReadDir(fmt.Sprintf("%s/synopses", parentFolder))
+	fileInfos, err := parentFolder.ReadDir("synopses")
 	if err != nil {
 		return err
 	}
@@ -88,8 +88,8 @@ FileLoop:
 				" ",
 			),
 		)
-		fmt.Println(SectionMarker(prefix, '+', 80))
-		data, nErr := os.ReadFile(fmt.Sprintf("%s/synopses/%s", parentFolder, fileInfo.Name()))
+		utils.PrintSectionMarker(prefix, '+', 80)
+		data, nErr := parentFolder.ReadFileFromDirectory("synopses", fileInfo.Name())
 		if nErr != nil {
 			err = errors.Join(err, nErr)
 			continue FileLoop
@@ -113,7 +113,7 @@ FileLoop:
 				}
 			}
 			if whitespaceOnly {
-				sb.WriteString(SectionMarker("Whitespace Differences", '-', 80))
+				sb.WriteString(utils.SectionMarker("Whitespace Differences", '-', 80))
 			} else {
 				sb.WriteString(dmp.DiffPrettyText(diffs))
 			}
@@ -128,18 +128,18 @@ FileLoop:
 				break
 			}
 		}
-		stmtGen, nErr := ParseTokens(tokens, includeRepetition)
+		stmtGen, nErr := utils.ParseTokens(tokens, includeRepetition)
 		if nErr != nil {
 			err = errors.Join(err, nErr)
 			continue FileLoop
 		}
 		// Not all variables have their definitions set in the synopsis, so we'll handle them here
-		unsetVariables, nErr := UnsetVariables(stmtGen)
+		unsetVariables, nErr := utils.UnsetVariables(stmtGen)
 		if nErr != nil {
 			err = errors.Join(err, nErr)
 			continue FileLoop
 		}
-		customVariableDefinitions := make(map[string]StatementGenerator)
+		customVariableDefinitions := make(map[string]utils.StatementGenerator)
 		for _, unsetVariable := range unsetVariables {
 			// Check for a specific definition first
 			if prefixVariables, ok := PrefixCustomVariables[prefix]; ok {
@@ -154,7 +154,7 @@ FileLoop:
 				continue
 			}
 		}
-		if nErr = ApplyVariableDefinition(stmtGen, customVariableDefinitions); nErr != nil {
+		if nErr = utils.ApplyVariableDefinition(stmtGen, customVariableDefinitions); nErr != nil {
 			err = errors.Join(err, nErr)
 			continue FileLoop
 		}
@@ -179,7 +179,7 @@ FileLoop:
 				sb.WriteString(result)
 			}
 		} else {
-			randomInts, nErr := GenerateRandomInts(MaxTestCount, permutations)
+			randomInts, nErr := utils.GenerateRandomInts(MaxTestCount, permutations)
 			if nErr != nil {
 				err = errors.Join(err, nErr)
 			}
@@ -196,119 +196,12 @@ FileLoop:
 
 		sb.WriteString(TestFooter)
 		outputFileName := strings.ToLower(strings.ReplaceAll(prefix, " ", "_"))
-		if nErr = os.WriteFile(fmt.Sprintf("%s/output/%s_test.go", parentFolder, outputFileName), []byte(sb.String()), 0644); nErr != nil {
+		if nErr = parentFolder.WriteFileToDirectory("output", outputFileName+"_test.go", []byte(sb.String()), 0644); nErr != nil {
 			err = errors.Join(err, nErr)
 			continue FileLoop
 		}
 	}
 	return err
-}
-
-// ParseTokens parses the given tokens into a StatementGenerator.
-func ParseTokens(tokens []Token, includeRepetition bool) (StatementGenerator, error) {
-	stack := NewStatementGeneratorStack()
-	var statements []StatementGenerator
-	variables := make(map[string]StatementGenerator)
-	currentVariable := ""
-	tokenReader := NewTokenReader(tokens)
-ForLoop:
-	for {
-		token, ok := tokenReader.Next()
-		if !ok {
-			break ForLoop
-		}
-		switch token.Type {
-		case TokenType_Text:
-			stack.AddText(token.Literal)
-		case TokenType_Variable:
-			stack.AddVariable(token.Literal)
-		case TokenType_VariableDefinition:
-			currentVariable = token.Literal
-			if token, _ = tokenReader.Next(); token.Type != TokenType_LongSpace {
-				return nil, fmt.Errorf("expected a long space after a variable definition declaration")
-			}
-		case TokenType_Or:
-			if err := stack.Or(); err != nil {
-				return nil, err
-			}
-		case TokenType_Repeat:
-			if includeRepetition {
-				if err := stack.Repeat(); err != nil {
-					return nil, err
-				}
-			}
-		case TokenType_OptionalRepeat:
-			if includeRepetition {
-				if err := stack.OptionalRepeat(token.Literal); err != nil {
-					return nil, err
-				}
-			}
-		case TokenType_ShortSpace, TokenType_MediumSpace:
-			return nil, fmt.Errorf("token reader should have removed all short and medium spaces")
-		case TokenType_LongSpace, TokenType_EOF:
-			newStatement, err := stack.Finish()
-			if err != nil {
-				return nil, err
-			}
-			if newStatement == nil {
-				return nil, fmt.Errorf("long space encountered before writing to the stack")
-			}
-			if len(currentVariable) > 0 {
-				if _, ok = variables[currentVariable]; ok {
-					return nil, fmt.Errorf("multiple definitions for the same variable: %s", currentVariable)
-				}
-				variables[currentVariable] = newStatement
-				currentVariable = ""
-			} else {
-				statements = append(statements, newStatement)
-			}
-			if token.Type == TokenType_EOF {
-				break ForLoop
-			} else {
-				stack = NewStatementGeneratorStack()
-			}
-		case TokenType_ParenOpen:
-			stack.NewParenScope()
-		case TokenType_ParenClose:
-			if err := stack.ExitParenScope(); err != nil {
-				return nil, err
-			}
-		case TokenType_OptionalOpen:
-			stack.NewOptionalScope()
-		case TokenType_OptionalClose:
-			if err := stack.ExitOptionalScope(); err != nil {
-				return nil, err
-			}
-		case TokenType_OneOfOpen:
-			stack.NewScope()
-		case TokenType_OneOfClose:
-			if err := stack.ExitScope(); err != nil {
-				return nil, err
-			}
-		default:
-			panic("unhandled token type")
-		}
-	}
-	finalStackContents, err := stack.Finish()
-	if err != nil {
-		return nil, err
-	}
-	if finalStackContents != nil {
-		return nil, fmt.Errorf("encountered an early EOF, as the stack was still processing")
-	}
-	if len(statements) == 0 {
-		return nil, fmt.Errorf("no statements were generated from the token stream")
-	}
-	var finalStatementGenerator StatementGenerator
-	if len(statements) == 1 {
-		finalStatementGenerator = statements[0]
-	} else {
-		finalStatementGenerator = Or(statements...)
-	}
-	if err = ApplyVariableDefinition(finalStatementGenerator, variables); err != nil {
-		return nil, err
-	}
-	return finalStatementGenerator, nil
 }
 
 var postgresVerificationConnection *pgx.Conn
@@ -359,21 +252,4 @@ func GetQueryResult(query string) (string, error) {
 		}
 	}
 	return fmt.Sprintf("\t\tConverts(\"%s\"),\n", formattedQuery), nil
-}
-
-// SectionMarker returns a marker that may be used to denote sections.
-//
-// For example, SectionMarker("abc", '-', 21) would return:
-//
-// -------- abc --------
-func SectionMarker(centeredText string, fillerCharacter rune, totalLength int) string {
-	fillerStr := string(fillerCharacter)
-	remainingLength := totalLength - (len(centeredText) + 2)
-	if remainingLength <= 0 {
-		return fmt.Sprintf(" %s ", centeredText)
-	}
-	left := remainingLength / 2
-	right := remainingLength - left // Integer division doesn't do fractions, so this will handle odd counts
-	return fmt.Sprintf("%s %s %s",
-		strings.Repeat(fillerStr, left), centeredText, strings.Repeat(fillerStr, right))
 }

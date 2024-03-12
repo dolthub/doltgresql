@@ -1,4 +1,4 @@
-// Copyright 2023 Dolthub, Inc.
+// Copyright 2023-2024 Dolthub, Inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -12,7 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-package main
+package utils
 
 import (
 	"crypto/rand"
@@ -22,22 +22,33 @@ import (
 )
 
 var (
-	bigIntZero      = big.NewInt(0)
-	bigIntOne       = big.NewInt(1)
-	bigIntTwo       = big.NewInt(2)
-	bigIntMaxInt64  = big.NewInt(math.MaxInt64)
-	bigIntMaxUint64 = new(big.Int).Add(new(big.Int).Mul(bigIntMaxInt64, bigIntTwo), bigIntOne)
+	BigIntZero      = big.NewInt(0)
+	BigIntOne       = big.NewInt(1)
+	BigIntTwo       = big.NewInt(2)
+	BigIntMaxInt64  = big.NewInt(math.MaxInt64)
+	BigIntMaxUint64 = new(big.Int).Add(new(big.Int).Mul(BigIntMaxInt64, BigIntTwo), BigIntOne)
 )
 
 // GenerateRandomInts generates a slice of random integers, with each integer ranging from [0, max). The returned slice
-// will be sorted from smallest to largest. If count <= 0 or max <= 0, then they will be set to 1.
+// will be sorted from smallest to largest. If count <= 0 or max <= 0, then they will be set to 1. If count >= max, then
+// the returned slice will contain all incrementing integers [0, max).
 func GenerateRandomInts(count int64, max *big.Int) (randInts []*big.Int, err error) {
 	if count <= 0 {
 		count = 1
 	}
-	if max.Cmp(bigIntZero) == -1 {
-		max = bigIntOne
+	if max.Cmp(BigIntZero) == -1 {
+		max = BigIntOne
 	}
+	// If count >= max, then we'll just shortcut and add incrementing integers up to the max (not including the max)
+	if big.NewInt(count).Cmp(max) >= 0 {
+		max64 := max.Int64()
+		randInts = make([]*big.Int, max64)
+		for i := int64(0); i < max64; i++ {
+			randInts[i] = big.NewInt(i)
+		}
+		return randInts, nil
+	}
+
 	randInts = make([]*big.Int, count)
 	randIntSet := make(map[string]struct{}, count*2)
 	for i := range randInts {

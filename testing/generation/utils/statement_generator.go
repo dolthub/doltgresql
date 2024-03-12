@@ -1,4 +1,4 @@
-// Copyright 2023 Dolthub, Inc.
+// Copyright 2023-2024 Dolthub, Inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -12,7 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-package main
+package utils
 
 import (
 	"fmt"
@@ -105,7 +105,7 @@ func (t *TextGen) SourceString() string {
 
 // Permutations implements the interface StatementGenerator.
 func (t *TextGen) Permutations() *big.Int {
-	return bigIntOne
+	return BigIntOne
 }
 
 // PermutationsUint64 implements the interface StatementGenerator.
@@ -157,7 +157,7 @@ func (o *OrGen) Consume() bool {
 // SetConsumeIterations implements the interface StatementGenerator.
 func (o *OrGen) SetConsumeIterations(count *big.Int) {
 	// If we're given zero, then we'll just call Reset
-	if count.Cmp(bigIntZero) <= 0 {
+	if count.Cmp(BigIntZero) <= 0 {
 		o.Reset()
 		return
 	}
@@ -168,7 +168,7 @@ func (o *OrGen) SetConsumeIterations(count *big.Int) {
 		childPermutations := child.Permutations()
 		if childPermutations.Cmp(count) > 0 {
 			// The child has more permutations than the count, so we'll stop here
-			if count.Cmp(bigIntMaxUint64) <= 0 {
+			if count.Cmp(BigIntMaxUint64) <= 0 {
 				child.SetConsumeIterationsFast(count.Uint64())
 			} else {
 				child.SetConsumeIterations(count)
@@ -362,7 +362,7 @@ func (v *VariableGen) Permutations() *big.Int {
 	if v.options != nil {
 		return v.options.Permutations()
 	} else {
-		return bigIntOne
+		return BigIntOne
 	}
 }
 
@@ -431,7 +431,7 @@ func (c *CollectionGen) SetConsumeIterations(count *big.Int) {
 		// We give the child the modulo of the count versus its permutation count, which will determine how many
 		// iterations it's supposed to simulate from the total.
 		childIterations := new(big.Int).Mod(count, childPermutations)
-		if childIterations.Cmp(bigIntMaxUint64) <= 0 {
+		if childIterations.Cmp(BigIntMaxUint64) <= 0 {
 			child.SetConsumeIterationsFast(childIterations.Uint64())
 		} else {
 			child.SetConsumeIterations(childIterations)
@@ -439,7 +439,7 @@ func (c *CollectionGen) SetConsumeIterations(count *big.Int) {
 		// We divide the count by this child's permutation count to move to the next "base".
 		count.Div(count, childPermutations)
 		// If we're at zero now, then this child used up the remaining count, so we'll stop here
-		if count.Cmp(bigIntZero) <= 0 {
+		if count.Cmp(BigIntZero) <= 0 {
 			break
 		}
 	}
@@ -506,7 +506,7 @@ func (c *CollectionGen) Permutations() *big.Int {
 	total := big.NewInt(1)
 	for _, child := range c.children {
 		childPermutations := child.Permutations()
-		if childPermutations.Cmp(bigIntZero) != 0 {
+		if childPermutations.Cmp(BigIntZero) != 0 {
 			total.Mul(total, childPermutations)
 		}
 	}
@@ -571,7 +571,7 @@ func (o *OptionalGen) Consume() bool {
 // SetConsumeIterations implements the interface StatementGenerator.
 func (o *OptionalGen) SetConsumeIterations(count *big.Int) {
 	// If we're given zero, then we'll just call Reset
-	if count.Cmp(bigIntZero) <= 0 {
+	if count.Cmp(BigIntZero) <= 0 {
 		o.Reset()
 		return
 	}
@@ -579,7 +579,7 @@ func (o *OptionalGen) SetConsumeIterations(count *big.Int) {
 	o.display = true
 	count = o.localInt.Mod(count, o.Permutations())
 	// Setting display to true uses a single Consume, so we subtract it before passing the count to the child
-	count.Sub(count, bigIntOne)
+	count.Sub(count, BigIntOne)
 	// We'll pass the rest of the remaining count to the child, which will be >= 0
 	o.children.SetConsumeIterations(count)
 }
@@ -628,7 +628,7 @@ func (o *OptionalGen) SourceString() string {
 
 // Permutations implements the interface StatementGenerator.
 func (o *OptionalGen) Permutations() *big.Int {
-	return new(big.Int).Add(bigIntOne, o.children.Permutations())
+	return new(big.Int).Add(BigIntOne, o.children.Permutations())
 }
 
 // PermutationsUint64 implements the interface StatementGenerator.
