@@ -19,6 +19,7 @@ import (
 	"fmt"
 	"log"
 	"net"
+	"os"
 	"strings"
 	"testing"
 	"time"
@@ -41,6 +42,7 @@ const (
 	stopReplication       = "stopReplication"
 	startReplication      = "startReplication"
 	waitForCatchup        = "waitForCatchup"
+	sleep                 = "sleep"
 )
 
 type ReplicationTest struct {
@@ -220,12 +222,16 @@ var replicationTests = []ReplicationTest{
 			"UPDATE test SET name = 'fifteen' WHERE id = 14",
 			"DELETE FROM test WHERE id = 13",
 			waitForCatchup,
+			// since replication lag is a heuristic, this sleep is necessary to ensure that the replica has caught
+			// up in all cases before we shut it off
+			sleep,
 			stopReplication,
 			// below this point we don't expect to find any values replicated because replication was stopped
 			"INSERT INTO test VALUES (15, 'one')",
 			"INSERT INTO test VALUES (16, 'two')",
 			"UPDATE test SET name = 'seventeen' WHERE id = 16",
 			"DELETE FROM test WHERE id = 15",
+			sleep, // final sleep to make sure that any replication events that will arrive have
 		},
 		Assertions: []ScriptTestAssertion{
 			{
@@ -271,9 +277,6 @@ var replicationTests = []ReplicationTest{
 	},
 	{
 		Name: "concurrent writes",
-		// postgres actually sends these updates out of order, which means we need to track the txid as well
-		// when deciding whether to process a message or not
-		Skip: true,
 		SetUpScript: []string{
 			dropReplicationSlot,
 			createReplicationSlot,
@@ -307,6 +310,172 @@ var replicationTests = []ReplicationTest{
 		},
 	},
 	{
+		Name: "concurrent writes with restarts",
+		SetUpScript: []string{
+			dropReplicationSlot,
+			createReplicationSlot,
+			startReplication,
+			"/* replica */ drop table if exists test",
+			"/* replica */ create table test (id INT primary key, name varchar(100))",
+			"drop table if exists test",
+			"CREATE TABLE test (id INT primary key, name varchar(100))",
+			"/* primary a */ START TRANSACTION",
+			"/* primary a */ INSERT INTO test VALUES (1, 'one')",
+			"/* primary a */ INSERT INTO test VALUES (2, 'two')",
+			stopReplication,
+			"/* primary b */ START TRANSACTION",
+			"/* primary b */ INSERT INTO test VALUES (3, 'one')",
+			"/* primary b */ INSERT INTO test VALUES (4, 'two')",
+			"/* primary c */ START TRANSACTION",
+			"/* primary c */ INSERT INTO test VALUES (5, 'one')",
+			"/* primary c */ INSERT INTO test VALUES (6, 'two')",
+			"/* primary a */ UPDATE test SET name = 'three' WHERE id > 0",
+			startReplication,
+			"/* primary a */ DELETE FROM test WHERE id = 1",
+			"/* primary b */ UPDATE test SET name = 'five' WHERE id > 0",
+			"/* primary b */ DELETE FROM test WHERE id = 3",
+			"/* primary b */ COMMIT",
+			stopReplication,
+			"/* primary c */ UPDATE test SET name = 'seven' WHERE id > 0",
+			"/* primary c */ DELETE FROM test WHERE id = 5",
+			"/* primary a */ COMMIT",
+			startReplication,
+			"/* primary c */ COMMIT",
+			waitForCatchup,
+		},
+		Assertions: []ScriptTestAssertion{
+			{
+				Query: "/* replica */ SELECT * FROM test order by id",
+				Expected: []sql.Row{
+					{int32(2), "three"},
+					{int32(4), "seven"},
+					{int32(6), "seven"},
+				},
+			},
+		},
+	},
+	{
+		Name: "concurrent writes with rollbacks",
+		SetUpScript: []string{
+			dropReplicationSlot,
+			createReplicationSlot,
+			startReplication,
+			"/* replica */ drop table if exists test",
+			"/* replica */ create table test (id INT primary key, name varchar(100))",
+			"drop table if exists test",
+			"CREATE TABLE test (id INT primary key, name varchar(100))",
+			"/* primary a */ START TRANSACTION",
+			"/* primary a */ INSERT INTO test VALUES (1, 'one')",
+			"/* primary a */ INSERT INTO test VALUES (2, 'two')",
+			stopReplication,
+			"/* primary b */ START TRANSACTION",
+			"/* primary b */ INSERT INTO test VALUES (3, 'one')",
+			"/* primary b */ INSERT INTO test VALUES (4, 'two')",
+			"/* primary c */ START TRANSACTION",
+			"/* primary c */ INSERT INTO test VALUES (5, 'one')",
+			"/* primary c */ INSERT INTO test VALUES (6, 'two')",
+			"/* primary a */ UPDATE test SET name = 'three' WHERE id > 0",
+			startReplication,
+			"/* primary a */ DELETE FROM test WHERE id = 1",
+			"/* primary b */ UPDATE test SET name = 'five' WHERE id > 0",
+			"/* primary b */ DELETE FROM test WHERE id = 3",
+			"/* primary b */ COMMIT",
+			stopReplication,
+			"/* primary c */ UPDATE test SET name = 'seven' WHERE id > 0",
+			"/* primary c */ DELETE FROM test WHERE id = 5",
+			"/* primary a */ ROLLBACK",
+			startReplication,
+			"/* primary c */ COMMIT",
+			waitForCatchup,
+		},
+		Assertions: []ScriptTestAssertion{
+			{
+				Query: "/* replica */ SELECT * FROM test order by id",
+				Expected: []sql.Row{
+					{int32(4), "seven"},
+					{int32(6), "seven"},
+				},
+			},
+		},
+	},
+	{
+		Name: "concurrent writes, stale commits",
+		SetUpScript: []string{
+			dropReplicationSlot,
+			createReplicationSlot,
+			startReplication,
+			"/* replica */ drop table if exists test",
+			"/* replica */ create table test (id INT primary key, name varchar(100))",
+			"drop table if exists test",
+			"CREATE TABLE test (id INT primary key, name varchar(100))",
+			"/* primary a */ START TRANSACTION",
+			"/* primary a */ INSERT INTO test VALUES (1, 'one')",
+			"/* primary b */ START TRANSACTION",
+			"/* primary b */ INSERT INTO test VALUES (2, 'two')",
+			"/* primary b */ COMMIT",
+			waitForCatchup,
+			stopReplication,
+			startReplication,
+			// this tx includes several WAL locations before our last flush, but it must still be replicated
+			"/* primary a */ COMMIT",
+			waitForCatchup,
+		},
+		Assertions: []ScriptTestAssertion{
+			{
+				Query: "/* replica */ SELECT * FROM test order by id",
+				Expected: []sql.Row{
+					{int32(1), "one"},
+					{int32(2), "two"},
+				},
+			},
+		},
+	},
+	{
+		Name: "concurrent writes, very stale commits",
+		SetUpScript: []string{
+			dropReplicationSlot,
+			createReplicationSlot,
+			startReplication,
+			"/* replica */ drop table if exists test",
+			"/* replica */ create table test (id INT primary key, name varchar(100))",
+			"drop table if exists test",
+			"CREATE TABLE test (id INT primary key, name varchar(100))",
+			"/* primary a */ START TRANSACTION",
+			"/* primary a */ INSERT INTO test VALUES (1, 'one')",
+			"/* primary a */ INSERT INTO test VALUES (2, 'two')",
+			"/* primary a */ UPDATE test SET name = 'three' WHERE id > 0",
+			"/* primary a */ DELETE FROM test WHERE id = 1",
+			"/* primary b */ START TRANSACTION",
+			"/* primary b */ INSERT INTO test VALUES (3, 'one')",
+			"/* primary b */ INSERT INTO test VALUES (4, 'two')",
+			"/* primary c */ START TRANSACTION",
+			"/* primary c */ INSERT INTO test VALUES (5, 'one')",
+			"/* primary c */ INSERT INTO test VALUES (6, 'two')",
+			"/* primary c */ UPDATE test SET name = 'seven' WHERE id > 0",
+			"/* primary c */ DELETE FROM test WHERE id = 5",
+			"/* primary c */ COMMIT",
+			"/* primary b */ UPDATE test SET name = 'five' WHERE id > 0",
+			"/* primary b */ DELETE FROM test WHERE id = 3",
+			"/* primary b */ COMMIT",
+			waitForCatchup,
+			stopReplication,
+			startReplication,
+			// this tx includes several WAL locations before our last flush, but it must still be replicated
+			"/* primary a */ COMMIT",
+			waitForCatchup,
+		},
+		Assertions: []ScriptTestAssertion{
+			{
+				Query: "/* replica */ SELECT * FROM test order by id",
+				Expected: []sql.Row{
+					{int32(2), "three"},
+					{int32(4), "five"},
+					{int32(6), "five"},
+				},
+			},
+		},
+	},
+	{
 		Name: "all types",
 		Skip: true, // some types don't work yet
 		SetUpScript: []string{
@@ -335,6 +504,9 @@ var replicationTests = []ReplicationTest{
 }
 
 func TestReplication(t *testing.T) {
+	if _, ok := os.LookupEnv("GITHUB_ACTION"); !ok {
+		t.Skip("Replication tests are only run from within GitHub Actions, so we're skipping for local testing")
+	}
 	RunReplicationScripts(t, replicationTests)
 }
 
@@ -345,11 +517,11 @@ func RunReplicationScripts(t *testing.T, scripts []ReplicationTest) {
 	for _, script := range scripts {
 		if script.Focus {
 			// If this is running in GitHub Actions, then we'll panic, because someone forgot to disable it before committing
-			// if _, ok := os.LookupEnv("GITHUB_ACTION"); ok {
-			// 	panic(fmt.Sprintf("The script `%s` has Focus set to `true`. GitHub Actions requires that "+
-			// 		"all tests are run, which Focus circumvents, leading to this error. Please disable Focus on "+
-			// 		"all tests.", script.Name))
-			// }
+			if _, ok := os.LookupEnv("GITHUB_ACTION"); ok {
+				panic(fmt.Sprintf("The script `%s` has Focus set to `true`. GitHub Actions requires that "+
+					"all tests are run, which Focus circumvents, leading to this error. Please disable Focus on "+
+					"all tests.", script.Name))
+			}
 			focusScripts = append(focusScripts, script)
 		}
 	}
@@ -465,22 +637,41 @@ func runReplicationScript(
 				return
 			}
 
+			target, _ := clientSpecFromQueryComment(assertion.Query)
+			enableRetries := target == "replica"
 			conn := connectionForQuery(t, assertion.Query, connections, primaryDns)
 
-			// If we're skipping the results check, then we call Execute, as it uses a simplified message model.
-			if assertion.SkipResultsCheck || assertion.ExpectedErr {
-				_, err := conn.Exec(ctx, assertion.Query, assertion.BindVars...)
-				if assertion.ExpectedErr {
-					require.Error(t, err)
+			numRetries := 3
+			for retries := 0; retries < numRetries; retries++ {
+				// If we're skipping the results check, then we call Execute, as it uses a simplified message model.
+				if assertion.SkipResultsCheck || assertion.ExpectedErr {
+					_, err := conn.Exec(ctx, assertion.Query, assertion.BindVars...)
+					if assertion.ExpectedErr {
+						require.Error(t, err)
+					} else {
+						require.NoError(t, err)
+					}
 				} else {
+					rows, err := conn.Query(ctx, assertion.Query, assertion.BindVars...)
 					require.NoError(t, err)
+					readRows, err := ReadRows(rows, true)
+					require.NoError(t, err)
+					normalizedRows := NormalizeRows(assertion.Expected)
+
+					// For queries against the replica, whether or not replication is caught up is a heuristic that can be
+					// incorrect. So we retry queries with sleeps in between to give replication a chance to catch up when this
+					// happens.
+					if !assert.ObjectsAreEqual(normalizedRows, readRows) {
+						if enableRetries && retries < numRetries-1 {
+							log.Println("Assertion failed, retrying")
+							time.Sleep(500 * time.Millisecond)
+							continue
+						} else {
+							assert.Equal(t, normalizedRows, readRows)
+							break
+						}
+					}
 				}
-			} else {
-				rows, err := conn.Query(ctx, assertion.Query, assertion.BindVars...)
-				require.NoError(t, err)
-				readRows, err := ReadRows(rows)
-				require.NoError(t, err)
-				assert.Equal(t, NormalizeRows(assertion.Expected), readRows)
 			}
 		})
 	}
@@ -529,6 +720,9 @@ func handlePseudoQuery(t *testing.T, query string, r *logrepl.LogicalReplicator)
 	case waitForCatchup:
 		require.NoError(t, waitForCaughtUp(r))
 		return true
+	case sleep:
+		time.Sleep(200 * time.Millisecond)
+		return true
 	}
 	return false
 }
@@ -572,9 +766,10 @@ func waitForRunning(r *logrepl.LogicalReplicator) error {
 
 func waitForCaughtUp(r *logrepl.LogicalReplicator) error {
 	log.Println("Waiting for replication to catch up")
+
 	start := time.Now()
 	for {
-		if caughtUp, err := r.CaughtUp(); caughtUp {
+		if caughtUp, err := r.CaughtUp(150); caughtUp {
 			log.Println("replication caught up")
 			break
 		} else if err != nil {

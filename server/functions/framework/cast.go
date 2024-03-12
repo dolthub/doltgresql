@@ -22,6 +22,7 @@ import (
 
 	"github.com/shopspring/decimal"
 
+	"github.com/dolthub/doltgresql/postgres/parser/uuid"
 	pgtypes "github.com/dolthub/doltgresql/server/types"
 )
 
@@ -98,6 +99,11 @@ func GetCast(fromType pgtypes.DoltgresTypeBaseID, toType pgtypes.DoltgresTypeBas
 	return nil
 }
 
+// GetIdentityCast returns the identity cast function.
+func GetIdentityCast() TypeCastFunction {
+	return identityCast
+}
+
 func init() {
 	MustAddTypeCast(TypeCast{
 		FromType: pgtypes.Float32,
@@ -108,9 +114,83 @@ func init() {
 	})
 	MustAddTypeCast(TypeCast{
 		FromType: pgtypes.Float32,
+		ToType:   pgtypes.Int16,
+		Function: func(ctx Context, val any) (any, error) {
+			if val.(float32) > 32767 || val.(float32) < -32768 {
+				return nil, fmt.Errorf("smallint out of range")
+			}
+			return int16(val.(float32)), nil
+		},
+	})
+	MustAddTypeCast(TypeCast{
+		FromType: pgtypes.Float32,
+		ToType:   pgtypes.Int32,
+		Function: func(ctx Context, val any) (any, error) {
+			if val.(float32) > 2147483647 || val.(float32) < -2147483648 {
+				return nil, fmt.Errorf("integer out of range")
+			}
+			return int32(val.(float32)), nil
+		},
+	})
+	MustAddTypeCast(TypeCast{
+		FromType: pgtypes.Float32,
+		ToType:   pgtypes.Int64,
+		Function: func(ctx Context, val any) (any, error) {
+			if val.(float32) > 9223372036854775807 || val.(float32) < -9223372036854775808 {
+				return nil, fmt.Errorf("bigint out of range")
+			}
+			return int64(val.(float32)), nil
+		},
+	})
+	MustAddTypeCast(TypeCast{
+		FromType: pgtypes.Float32,
 		ToType:   pgtypes.Numeric,
 		Function: func(ctx Context, val any) (any, error) {
 			return decimal.NewFromFloat(float64(val.(float32))), nil
+		},
+	})
+	MustAddTypeCast(TypeCast{
+		FromType: pgtypes.Float32,
+		ToType:   pgtypes.VarCharMax,
+		Function: func(ctx Context, val any) (any, error) {
+			return strconv.FormatFloat(float64(val.(float32)), 'g', -1, 32), nil
+		},
+	})
+	MustAddTypeCast(TypeCast{
+		FromType: pgtypes.Float64,
+		ToType:   pgtypes.Float32,
+		Function: func(ctx Context, val any) (any, error) {
+			return float32(val.(float64)), nil
+		},
+	})
+	MustAddTypeCast(TypeCast{
+		FromType: pgtypes.Float64,
+		ToType:   pgtypes.Int16,
+		Function: func(ctx Context, val any) (any, error) {
+			if val.(float64) > 32767 || val.(float64) < -32768 {
+				return nil, fmt.Errorf("smallint out of range")
+			}
+			return int16(val.(float64)), nil
+		},
+	})
+	MustAddTypeCast(TypeCast{
+		FromType: pgtypes.Float64,
+		ToType:   pgtypes.Int32,
+		Function: func(ctx Context, val any) (any, error) {
+			if val.(float64) > 2147483647 || val.(float64) < -2147483648 {
+				return nil, fmt.Errorf("integer out of range")
+			}
+			return int32(val.(float64)), nil
+		},
+	})
+	MustAddTypeCast(TypeCast{
+		FromType: pgtypes.Float64,
+		ToType:   pgtypes.Int64,
+		Function: func(ctx Context, val any) (any, error) {
+			if val.(float64) > 9223372036854775807 || val.(float64) < -9223372036854775808 {
+				return nil, fmt.Errorf("bigint out of range")
+			}
+			return int64(val.(float64)), nil
 		},
 	})
 	MustAddTypeCast(TypeCast{
@@ -121,17 +201,10 @@ func init() {
 		},
 	})
 	MustAddTypeCast(TypeCast{
-		FromType: pgtypes.Int16,
-		ToType:   pgtypes.Int32,
+		FromType: pgtypes.Float64,
+		ToType:   pgtypes.VarCharMax,
 		Function: func(ctx Context, val any) (any, error) {
-			return int32(val.(int16)), nil
-		},
-	})
-	MustAddTypeCast(TypeCast{
-		FromType: pgtypes.Int16,
-		ToType:   pgtypes.Int64,
-		Function: func(ctx Context, val any) (any, error) {
-			return int64(val.(int16)), nil
+			return strconv.FormatFloat(val.(float64), 'g', -1, 64), nil
 		},
 	})
 	MustAddTypeCast(TypeCast{
@@ -150,16 +223,30 @@ func init() {
 	})
 	MustAddTypeCast(TypeCast{
 		FromType: pgtypes.Int16,
+		ToType:   pgtypes.Int32,
+		Function: func(ctx Context, val any) (any, error) {
+			return int32(val.(int16)), nil
+		},
+	})
+	MustAddTypeCast(TypeCast{
+		FromType: pgtypes.Int16,
+		ToType:   pgtypes.Int64,
+		Function: func(ctx Context, val any) (any, error) {
+			return int64(val.(int16)), nil
+		},
+	})
+	MustAddTypeCast(TypeCast{
+		FromType: pgtypes.Int16,
 		ToType:   pgtypes.Numeric,
 		Function: func(ctx Context, val any) (any, error) {
 			return decimal.NewFromInt(int64(val.(int16))), nil
 		},
 	})
 	MustAddTypeCast(TypeCast{
-		FromType: pgtypes.Int32,
-		ToType:   pgtypes.Int64,
+		FromType: pgtypes.Int16,
+		ToType:   pgtypes.VarCharMax,
 		Function: func(ctx Context, val any) (any, error) {
-			return int64(val.(int32)), nil
+			return strconv.FormatInt(int64(val.(int16)), 10), nil
 		},
 	})
 	MustAddTypeCast(TypeCast{
@@ -178,9 +265,33 @@ func init() {
 	})
 	MustAddTypeCast(TypeCast{
 		FromType: pgtypes.Int32,
+		ToType:   pgtypes.Int16,
+		Function: func(ctx Context, val any) (any, error) {
+			if val.(int32) > 32767 || val.(int32) < -32768 {
+				return nil, fmt.Errorf("smallint out of range")
+			}
+			return int16(val.(int32)), nil
+		},
+	})
+	MustAddTypeCast(TypeCast{
+		FromType: pgtypes.Int32,
+		ToType:   pgtypes.Int64,
+		Function: func(ctx Context, val any) (any, error) {
+			return int64(val.(int32)), nil
+		},
+	})
+	MustAddTypeCast(TypeCast{
+		FromType: pgtypes.Int32,
 		ToType:   pgtypes.Numeric,
 		Function: func(ctx Context, val any) (any, error) {
 			return decimal.NewFromInt(int64(val.(int32))), nil
+		},
+	})
+	MustAddTypeCast(TypeCast{
+		FromType: pgtypes.Int32,
+		ToType:   pgtypes.VarCharMax,
+		Function: func(ctx Context, val any) (any, error) {
+			return strconv.FormatInt(int64(val.(int32)), 10), nil
 		},
 	})
 	MustAddTypeCast(TypeCast{
@@ -199,9 +310,92 @@ func init() {
 	})
 	MustAddTypeCast(TypeCast{
 		FromType: pgtypes.Int64,
+		ToType:   pgtypes.Int16,
+		Function: func(ctx Context, val any) (any, error) {
+			if val.(int64) > 32767 || val.(int64) < -32768 {
+				return nil, fmt.Errorf("smallint out of range")
+			}
+			return int16(val.(int64)), nil
+		},
+	})
+	MustAddTypeCast(TypeCast{
+		FromType: pgtypes.Int64,
+		ToType:   pgtypes.Int32,
+		Function: func(ctx Context, val any) (any, error) {
+			if val.(int64) > 2147483647 || val.(int64) < -2147483648 {
+				return nil, fmt.Errorf("integer out of range")
+			}
+			return int32(val.(int64)), nil
+		},
+	})
+	MustAddTypeCast(TypeCast{
+		FromType: pgtypes.Int64,
 		ToType:   pgtypes.Numeric,
 		Function: func(ctx Context, val any) (any, error) {
 			return decimal.NewFromInt(val.(int64)), nil
+		},
+	})
+	MustAddTypeCast(TypeCast{
+		FromType: pgtypes.Int64,
+		ToType:   pgtypes.VarCharMax,
+		Function: func(ctx Context, val any) (any, error) {
+			return strconv.FormatInt(val.(int64), 10), nil
+		},
+	})
+	MustAddTypeCast(TypeCast{
+		FromType: pgtypes.Numeric,
+		ToType:   pgtypes.Float32,
+		Function: func(ctx Context, val any) (any, error) {
+			f, _ := val.(decimal.Decimal).Float64()
+			return float32(f), nil
+		},
+	})
+	MustAddTypeCast(TypeCast{
+		FromType: pgtypes.Numeric,
+		ToType:   pgtypes.Float64,
+		Function: func(ctx Context, val any) (any, error) {
+			f, _ := val.(decimal.Decimal).Float64()
+			return f, nil
+		},
+	})
+	MustAddTypeCast(TypeCast{
+		FromType: pgtypes.Numeric,
+		ToType:   pgtypes.Int16,
+		Function: func(ctx Context, val any) (any, error) {
+			d := val.(decimal.Decimal)
+			if d.LessThan(pgtypes.NumericValueMinInt16) || d.GreaterThan(pgtypes.NumericValueMaxInt16) {
+				return nil, fmt.Errorf("smallint out of range")
+			}
+			return int16(d.IntPart()), nil
+		},
+	})
+	MustAddTypeCast(TypeCast{
+		FromType: pgtypes.Numeric,
+		ToType:   pgtypes.Int32,
+		Function: func(ctx Context, val any) (any, error) {
+			d := val.(decimal.Decimal)
+			if d.LessThan(pgtypes.NumericValueMinInt32) || d.GreaterThan(pgtypes.NumericValueMaxInt32) {
+				return nil, fmt.Errorf("integer out of range")
+			}
+			return int32(d.IntPart()), nil
+		},
+	})
+	MustAddTypeCast(TypeCast{
+		FromType: pgtypes.Numeric,
+		ToType:   pgtypes.Int64,
+		Function: func(ctx Context, val any) (any, error) {
+			d := val.(decimal.Decimal)
+			if d.LessThan(pgtypes.NumericValueMinInt64) || d.GreaterThan(pgtypes.NumericValueMaxInt64) {
+				return nil, fmt.Errorf("bigint out of range")
+			}
+			return int64(d.IntPart()), nil
+		},
+	})
+	MustAddTypeCast(TypeCast{
+		FromType: pgtypes.Numeric,
+		ToType:   pgtypes.VarCharMax,
+		Function: func(ctx Context, val any) (any, error) {
+			return val.(decimal.Decimal).String(), nil
 		},
 	})
 	MustAddTypeCast(TypeCast{
@@ -263,6 +457,13 @@ func init() {
 		ToType:   pgtypes.Numeric,
 		Function: func(ctx Context, val any) (any, error) {
 			return decimal.NewFromString(val.(string))
+		},
+	})
+	MustAddTypeCast(TypeCast{
+		FromType: pgtypes.VarCharMax,
+		ToType:   pgtypes.Uuid,
+		Function: func(ctx Context, val any) (any, error) {
+			return uuid.FromString(val.(string))
 		},
 	})
 }

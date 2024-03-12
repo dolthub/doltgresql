@@ -78,7 +78,7 @@ type ScriptTestAssertion struct {
 }
 
 // RunScript runs the given script.
-func RunScript(t *testing.T, script ScriptTest) {
+func RunScript(t *testing.T, script ScriptTest, normalizeRows bool) {
 	if runOnPostgres {
 		RunScriptOnPostgres(t, script)
 		return
@@ -98,12 +98,12 @@ func RunScript(t *testing.T, script ScriptTest) {
 	}()
 
 	t.Run(script.Name, func(t *testing.T) {
-		runScript(t, script, conn, ctx)
+		runScript(t, ctx, script, conn, normalizeRows)
 	})
 }
 
 // runScript runs the script given on the postgres connection provided
-func runScript(t *testing.T, script ScriptTest, conn *pgx.Conn, ctx context.Context) {
+func runScript(t *testing.T, ctx context.Context, script ScriptTest, conn *pgx.Conn, normalizeRows bool) {
 	if script.Skip {
 		t.Skip("Skip has been set in the script")
 	}
@@ -131,9 +131,13 @@ func runScript(t *testing.T, script ScriptTest, conn *pgx.Conn, ctx context.Cont
 			} else {
 				rows, err := conn.Query(ctx, assertion.Query, assertion.BindVars...)
 				require.NoError(t, err)
-				readRows, err := ReadRows(rows)
+				readRows, err := ReadRows(rows, normalizeRows)
 				require.NoError(t, err)
-				assert.Equal(t, NormalizeRows(assertion.Expected), readRows)
+				if normalizeRows {
+					assert.Equal(t, NormalizeRows(assertion.Expected), readRows)
+				} else {
+					assert.Equal(t, assertion.Expected, readRows)
+				}
 			}
 		})
 	}
@@ -151,12 +155,22 @@ func RunScriptOnPostgres(t *testing.T, script ScriptTest) {
 	require.NoError(t, err)
 
 	t.Run(script.Name, func(t *testing.T) {
-		runScript(t, script, conn, ctx)
+		runScript(t, ctx, script, conn, true)
 	})
 }
 
-// RunScripts runs the given collection of scripts.
+// RunScripts runs the given collection of scripts. This normalizes all rows before comparing them.
 func RunScripts(t *testing.T, scripts []ScriptTest) {
+	runScripts(t, scripts, true)
+}
+
+// RunScriptsWithoutNormalization runs the given collection of scripts, without normalizing any rows.
+func RunScriptsWithoutNormalization(t *testing.T, scripts []ScriptTest) {
+	runScripts(t, scripts, false)
+}
+
+// runScripts is the implementation of both RunScripts and RunScriptsWithoutNormalization.
+func runScripts(t *testing.T, scripts []ScriptTest, normalizeRows bool) {
 	// First, we'll run through the scripts to check for the Focus variable. If it's true, then append it to the new slice.
 	focusScripts := make([]ScriptTest, 0, len(scripts))
 	for _, script := range scripts {
@@ -176,7 +190,7 @@ func RunScripts(t *testing.T, scripts []ScriptTest) {
 	}
 
 	for _, script := range scripts {
-		RunScript(t, script)
+		RunScript(t, script, normalizeRows)
 	}
 }
 
@@ -220,8 +234,9 @@ func CreateServer(t *testing.T, database string) (context.Context, *pgx.Conn, *s
 	return ctx, conn, controller
 }
 
-// ReadRows reads all of the given rows into a slice, then closes the rows. This also normalizes all of the rows.
-func ReadRows(rows pgx.Rows) (readRows []sql.Row, err error) {
+// ReadRows reads all of the given rows into a slice, then closes the rows. If `normalizeRows` is true, then the rows
+// will be normalized such that all integers are int64, etc.
+func ReadRows(rows pgx.Rows, normalizeRows bool) (readRows []sql.Row, err error) {
 	defer func() {
 		err = errors.Join(err, rows.Err())
 	}()
@@ -233,7 +248,11 @@ func ReadRows(rows pgx.Rows) (readRows []sql.Row, err error) {
 		}
 		slice = append(slice, row)
 	}
-	return NormalizeRows(slice), nil
+	if normalizeRows {
+		return NormalizeRows(slice), nil
+	} else {
+		return slice, nil
+	}
 }
 
 // NormalizeRow normalizes each value's type, as the tests only want to compare values. Returns a new row.
@@ -314,4 +333,13 @@ func GetUnusedPort(t *testing.T) int {
 	port := listener.Addr().(*net.TCPAddr).Port
 	require.NoError(t, listener.Close())
 	return port
+}
+
+// Numeric creates a numeric value from a string.
+func Numeric(str string) pgtype.Numeric {
+	numeric := pgtype.Numeric{}
+	if err := numeric.Scan(str); err != nil {
+		panic(err)
+	}
+	return numeric
 }

@@ -33,8 +33,8 @@ func init() {
 // width_bucket_float64_float64_float64_int64 represents the PostgreSQL function of the same name, taking the same parameters.
 var width_bucket_float64_float64_float64_int64 = framework.Function4{
 	Name:       "width_bucket",
-	Return:     pgtypes.Int64,
-	Parameters: []pgtypes.DoltgresType{pgtypes.Float64, pgtypes.Float64, pgtypes.Float64, pgtypes.Int64},
+	Return:     pgtypes.Int32,
+	Parameters: []pgtypes.DoltgresType{pgtypes.Float64, pgtypes.Float64, pgtypes.Float64, pgtypes.Int32},
 	Callable: func(ctx framework.Context, operandInterface any, lowInterface any, highInterface any, countInterface any) (any, error) {
 		if operandInterface == nil || lowInterface == nil || highInterface == nil || countInterface == nil {
 			return nil, nil
@@ -42,12 +42,12 @@ var width_bucket_float64_float64_float64_int64 = framework.Function4{
 		operand := operandInterface.(float64)
 		low := lowInterface.(float64)
 		high := highInterface.(float64)
-		count := countInterface.(int64)
+		count := countInterface.(int32)
 		if count <= 0 {
 			return nil, fmt.Errorf("count must be greater than zero")
 		}
 		bucket := (high - low) / float64(count)
-		result := int64(math.Ceil((operand - low) / bucket))
+		result := int32(math.Ceil((operand - low) / bucket))
 		if result < 0 {
 			result = 0
 		} else if result > count+1 {
@@ -60,8 +60,8 @@ var width_bucket_float64_float64_float64_int64 = framework.Function4{
 // width_bucket_numeric_numeric_numeric_int64 represents the PostgreSQL function of the same name, taking the same parameters.
 var width_bucket_numeric_numeric_numeric_int64 = framework.Function4{
 	Name:       "width_bucket",
-	Return:     pgtypes.Int64,
-	Parameters: []pgtypes.DoltgresType{pgtypes.Numeric, pgtypes.Numeric, pgtypes.Numeric, pgtypes.Int64},
+	Return:     pgtypes.Int32,
+	Parameters: []pgtypes.DoltgresType{pgtypes.Numeric, pgtypes.Numeric, pgtypes.Numeric, pgtypes.Int32},
 	Callable: func(ctx framework.Context, operandInterface any, lowInterface any, highInterface any, countInterface any) (any, error) {
 		if operandInterface == nil || lowInterface == nil || highInterface == nil || countInterface == nil {
 			return nil, nil
@@ -69,17 +69,21 @@ var width_bucket_numeric_numeric_numeric_int64 = framework.Function4{
 		operand := operandInterface.(decimal.Decimal)
 		low := lowInterface.(decimal.Decimal)
 		high := highInterface.(decimal.Decimal)
-		count := countInterface.(int64)
+		if low.Cmp(high) == 0 {
+			return nil, fmt.Errorf("lower bound cannot equal upper bound")
+		}
+		count := countInterface.(int32)
 		if count <= 0 {
 			return nil, fmt.Errorf("count must be greater than zero")
 		}
-		bucket := high.Sub(low).Div(decimal.NewFromInt(count))
+		bucket := high.Sub(low).Div(decimal.NewFromInt(int64(count)))
 		result := operand.Sub(low).Div(bucket).Ceil()
 		if result.LessThan(decimal.Zero) {
 			result = decimal.Zero
-		} else if result.GreaterThan(decimal.NewFromInt(count + 1)) {
-			result = decimal.NewFromInt(count + 1)
+		} else if result.GreaterThan(decimal.NewFromInt(int64(count + 1))) {
+			result = decimal.NewFromInt(int64(count + 1))
 		}
-		return result, nil
+		i64 := result.IntPart()
+		return int32(i64), nil
 	},
 }

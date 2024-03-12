@@ -24,19 +24,19 @@ import (
 
 // init registers the functions to the catalog.
 func init() {
-	framework.RegisterFunction(chr_int64)
+	framework.RegisterFunction(chr_int32)
 }
 
-// chr_int64 represents the PostgreSQL function of the same name, taking the same parameters.
-var chr_int64 = framework.Function1{
+// chr_int32 represents the PostgreSQL function of the same name, taking the same parameters.
+var chr_int32 = framework.Function1{
 	Name:       "chr",
 	Return:     pgtypes.VarCharMax,
-	Parameters: []pgtypes.DoltgresType{pgtypes.Int64},
+	Parameters: []pgtypes.DoltgresType{pgtypes.Int32},
 	Callable: func(ctx framework.Context, val1Interface any) (any, error) {
 		if val1Interface == nil {
 			return nil, nil
 		}
-		val1 := val1Interface.(int64)
+		val1 := val1Interface.(int32)
 		if val1 == 0 {
 			return nil, fmt.Errorf("null character not permitted")
 		} else if val1 < 0 {

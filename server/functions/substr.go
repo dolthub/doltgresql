@@ -21,34 +21,44 @@ import (
 
 // init registers the functions to the catalog.
 func init() {
-	framework.RegisterFunction(substr_varchar_int64)
-	framework.RegisterFunction(substr_varchar_int64_int64)
+	framework.RegisterFunction(substr_varchar_int32)
+	framework.RegisterFunction(substr_varchar_int32_int32)
 }
 
-// substr_varchar_int64 represents the PostgreSQL function of the same name, taking the same parameters.
-var substr_varchar_int64 = framework.Function2{
+// substr_varchar_int32 represents the PostgreSQL function of the same name, taking the same parameters.
+var substr_varchar_int32 = framework.Function2{
 	Name:       "substr",
 	Return:     pgtypes.VarCharMax,
-	Parameters: []pgtypes.DoltgresType{pgtypes.VarCharMax, pgtypes.Int64},
+	Parameters: []pgtypes.DoltgresType{pgtypes.VarCharMax, pgtypes.Int32},
 	Callable: func(ctx framework.Context, str any, start any) (any, error) {
 		if str == nil || start == nil {
 			return nil, nil
 		}
 		runes := []rune(str.(string))
-		return string(runes[start.(int64):]), nil
+		if int(start.(int32)) > len(runes) {
+			return "", nil
+		}
+		return string(runes[start.(int32):]), nil
 	},
 }
 
-// substr_varchar_int64_int64 represents the PostgreSQL function of the same name, taking the same parameters.
-var substr_varchar_int64_int64 = framework.Function3{
+// substr_varchar_int32_int32 represents the PostgreSQL function of the same name, taking the same parameters.
+var substr_varchar_int32_int32 = framework.Function3{
 	Name:       "substr",
 	Return:     pgtypes.VarCharMax,
-	Parameters: []pgtypes.DoltgresType{pgtypes.VarCharMax, pgtypes.Int64, pgtypes.Int64},
-	Callable: func(ctx framework.Context, str any, start any, count any) (any, error) {
-		if str == nil || start == nil || count == nil {
+	Parameters: []pgtypes.DoltgresType{pgtypes.VarCharMax, pgtypes.Int32, pgtypes.Int32},
+	Callable: func(ctx framework.Context, str any, startInt any, countInt any) (any, error) {
+		if str == nil || startInt == nil || countInt == nil {
 			return nil, nil
 		}
+		start := startInt.(int32)
+		count := countInt.(int32)
 		runes := []rune(str.(string))
-		return string(runes[start.(int64) : start.(int64)+count.(int64)]), nil
+		if int(start) > len(runes) {
+			return "", nil
+		} else if int64(start)+int64(count) > int64(len(runes)) {
+			return string(runes[start:]), nil
+		}
+		return string(runes[start : start+count]), nil
 	},
 }

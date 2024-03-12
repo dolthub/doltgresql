@@ -388,7 +388,7 @@ func RunScriptN(t *testing.T, script ScriptTest, n int) {
 	for _, query := range script.SetUpScript {
 		rows, err := conn.Query(ctx, query)
 		require.NoError(t, err)
-		_, err = ReadRows(rows)
+		_, err = ReadRows(rows, true)
 		assert.NoError(t, err)
 	}
 
@@ -409,7 +409,7 @@ func RunScriptN(t *testing.T, script ScriptTest, n int) {
 						require.NoError(t, err)
 					}
 
-					foundRows, err := ReadRows(rows)
+					foundRows, err := ReadRows(rows, true)
 					if assertion.ExpectedErr {
 						require.Error(t, err)
 						return

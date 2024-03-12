@@ -28,7 +28,7 @@ func init() {
 var bit_length_varchar = framework.Function1{
 	Name:       "bit_length",
 	Return:     pgtypes.Int64,
-	Parameters: []pgtypes.DoltgresType{pgtypes.Int64},
+	Parameters: []pgtypes.DoltgresType{pgtypes.VarCharMax},
 	Callable: func(ctx framework.Context, val1 any) (any, error) {
 		if val1 == nil {
 			return nil, nil

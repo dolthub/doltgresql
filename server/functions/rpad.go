@@ -21,17 +21,17 @@ import (
 
 // init registers the functions to the catalog.
 func init() {
-	framework.RegisterFunction(rpad_varchar_int64)
-	framework.RegisterFunction(rpad_varchar_int64_varchar)
+	framework.RegisterFunction(rpad_varchar_int32)
+	framework.RegisterFunction(rpad_varchar_int32_varchar)
 }
 
-// rpad_varchar_int64 represents the PostgreSQL function of the same name, taking the same parameters.
-var rpad_varchar_int64 = framework.Function2{
+// rpad_varchar_int32 represents the PostgreSQL function of the same name, taking the same parameters.
+var rpad_varchar_int32 = framework.Function2{
 	Name:       "rpad",
 	Return:     pgtypes.VarCharMax,
-	Parameters: []pgtypes.DoltgresType{pgtypes.VarCharMax, pgtypes.Int64},
+	Parameters: []pgtypes.DoltgresType{pgtypes.VarCharMax, pgtypes.Int32},
 	Callable: func(ctx framework.Context, val1 any, val2 any) (any, error) {
-		return rpad_varchar_int64_varchar.Callable(framework.Context{
+		return rpad_varchar_int32_varchar.Callable(framework.Context{
 			Context:       ctx.Context,
 			OriginalTypes: append(ctx.OriginalTypes, pgtypes.VarCharMax),
 			Sources:       append(ctx.Sources, framework.Source_Constant),
@@ -39,23 +39,23 @@ var rpad_varchar_int64 = framework.Function2{
 	},
 }
 
-// rpad_varchar_int64_varchar represents the PostgreSQL function of the same name, taking the same parameters.
-var rpad_varchar_int64_varchar = framework.Function3{
+// rpad_varchar_int32_varchar represents the PostgreSQL function of the same name, taking the same parameters.
+var rpad_varchar_int32_varchar = framework.Function3{
 	Name:       "rpad",
 	Return:     pgtypes.VarCharMax,
-	Parameters: []pgtypes.DoltgresType{pgtypes.VarCharMax, pgtypes.Int64, pgtypes.VarCharMax},
+	Parameters: []pgtypes.DoltgresType{pgtypes.VarCharMax, pgtypes.Int32, pgtypes.VarCharMax},
 	Callable: func(ctx framework.Context, str any, length any, fill any) (any, error) {
 		if str == nil || length == nil || fill == nil {
 			return nil, nil
 		}
-		if length.(int64) <= 0 {
+		if length.(int32) <= 0 {
 			return "", nil
 		}
 		runes := []rune(str.(string))
 		fillRunes := []rune(fill.(string))
-		for int64(len(runes)) < length.(int64) {
+		for int32(len(runes)) < length.(int32) {
 			runes = append(runes, fillRunes...)
 		}
-		return string(runes[:length.(int64)]), nil
+		return string(runes[:length.(int32)]), nil
 	},
 }

@@ -21,22 +21,30 @@ import (
 
 // init registers the functions to the catalog.
 func init() {
-	framework.RegisterFunction(left_varchar)
+	framework.RegisterFunction(left_varchar_int32)
 }
 
-// left_varchar represents the PostgreSQL function of the same name, taking the same parameters.
-var left_varchar = framework.Function2{
+// left_varchar_int32 represents the PostgreSQL function of the same name, taking the same parameters.
+var left_varchar_int32 = framework.Function2{
 	Name:       "left",
 	Return:     pgtypes.VarCharMax,
-	Parameters: []pgtypes.DoltgresType{pgtypes.VarCharMax, pgtypes.Int64},
-	Callable: func(ctx framework.Context, str any, n any) (any, error) {
-		if str == nil || n == nil {
+	Parameters: []pgtypes.DoltgresType{pgtypes.VarCharMax, pgtypes.Int32},
+	Callable: func(ctx framework.Context, strInt any, nInt any) (any, error) {
+		if strInt == nil || nInt == nil {
 			return nil, nil
 		}
-		if n.(int64) >= 0 {
-			return str.(string)[:n.(int64)], nil
+		str := strInt.(string)
+		n := nInt.(int32)
+		if n >= 0 {
+			if int(n) > len(str) {
+				return str, nil
+			}
+			return str[:n], nil
 		} else {
-			return str.(string)[:len(str.(string))+int(n.(int64))], nil
+			if len(str)-int(n) < 0 {
+				return "", nil
+			}
+			return str[:len(str)-int(n)], nil
 		}
 	},
 }

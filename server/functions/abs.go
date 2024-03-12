@@ -15,6 +15,8 @@
 package functions
 
 import (
+	"github.com/shopspring/decimal"
+
 	"github.com/dolthub/doltgresql/server/functions/framework"
 	pgtypes "github.com/dolthub/doltgresql/server/types"
 	"github.com/dolthub/doltgresql/utils"
@@ -22,8 +24,37 @@ import (
 
 // init registers the functions to the catalog.
 func init() {
+	framework.RegisterFunction(abs_int16)
+	framework.RegisterFunction(abs_int32)
 	framework.RegisterFunction(abs_int64)
 	framework.RegisterFunction(abs_float64)
+	framework.RegisterFunction(abs_numeric)
+}
+
+// abs_int16 represents the PostgreSQL function of the same name, taking the same parameters.
+var abs_int16 = framework.Function1{
+	Name:       "abs",
+	Return:     pgtypes.Int16,
+	Parameters: []pgtypes.DoltgresType{pgtypes.Int16},
+	Callable: func(ctx framework.Context, val1 any) (any, error) {
+		if val1 == nil {
+			return nil, nil
+		}
+		return utils.Abs(val1.(int16)), nil
+	},
+}
+
+// abs_int32 represents the PostgreSQL function of the same name, taking the same parameters.
+var abs_int32 = framework.Function1{
+	Name:       "abs",
+	Return:     pgtypes.Int32,
+	Parameters: []pgtypes.DoltgresType{pgtypes.Int32},
+	Callable: func(ctx framework.Context, val1 any) (any, error) {
+		if val1 == nil {
+			return nil, nil
+		}
+		return utils.Abs(val1.(int32)), nil
+	},
 }
 
 // abs_int64 represents the PostgreSQL function of the same name, taking the same parameters.
@@ -49,5 +80,18 @@ var abs_float64 = framework.Function1{
 			return nil, nil
 		}
 		return utils.Abs(val1.(float64)), nil
+	},
+}
+
+// abs_numeric represents the PostgreSQL function of the same name, taking the same parameters.
+var abs_numeric = framework.Function1{
+	Name:       "abs",
+	Return:     pgtypes.Numeric,
+	Parameters: []pgtypes.DoltgresType{pgtypes.Numeric},
+	Callable: func(ctx framework.Context, val1 any) (any, error) {
+		if val1 == nil {
+			return nil, nil
+		}
+		return val1.(decimal.Decimal).Abs(), nil
 	},
 }
