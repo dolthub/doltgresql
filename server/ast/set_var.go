@@ -40,7 +40,7 @@ func nodeSetVar(node *tree.SetVar) (vitess.Statement, error) {
 	}
 	setStmt := &vitess.Set{
 		Exprs: vitess.SetVarExprs{&vitess.SetVarExpr{
-			Scope: vitess.SetScope_Session, // TODO: always SESSION scope until we support LOCAL scope
+			Scope: vitess.SetScope_Global, // TODO: always SESSION scope until we support LOCAL scope BUT postgres SESSION scope means it's GLOBAL for SystemVariableRegistry interface
 			Name: &vitess.ColName{
 				Name: vitess.NewColIdent(node.Name),
 				Qualifier: vitess.TableName{

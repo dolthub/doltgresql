@@ -1,14 +1,64 @@
+// Copyright 2024 Dolthub, Inc.
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//     http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
+
 package config
 
 import (
 	"math"
-	"sync"
+	"strings"
+	"time"
+
+	"gopkg.in/src-d/go-errors.v1"
 
 	"github.com/dolthub/go-mysql-server/sql"
 	"github.com/dolthub/go-mysql-server/sql/types"
+	"github.com/dolthub/go-mysql-server/sql/variables"
 )
 
-var _ sql.SystemVariableInterface = (*Parameter)(nil)
+// init initializes or appends to SystemVariables as it functions as a global variable.
+// TODO: get rid of me, use an integration point to define new sysvars
+func init() {
+	InitConfigParameters()
+}
+
+// InitConfigParameters resets the postgresConfigVariables singleton in the sql package.
+// Currently, we append all of postgres configuration parameters to sql.SystemVariables.
+// This means that all of mysql system variables and postgres config parameters will be stored together.
+// TODO: issue with this approach is that there are two postgres parameters
+//
+//	have the same name as mysql variables that will override the mysql variables.
+func InitConfigParameters() {
+	if sql.SystemVariables == nil {
+		// unlikely this would happen since gms package does init()
+		variables.InitSystemVariables()
+	}
+	params := make([]sql.SystemVariable, len(postgresConfigVariables))
+	i := 0
+	for _, sysVar := range postgresConfigVariables {
+		params[i] = sysVar
+		i++
+	}
+	sql.SystemVariables.AddSystemVariables(params)
+	//AddNecessaryMySQLSystemVariables()
+}
+
+var (
+	ErrInvalidValue          = errors.NewKind("ERROR:  invalid value for parameter \"%s\": \"%s\"")
+	ErrCannotChangeAtRuntime = errors.NewKind("ERROR:  parameter \"%s\" cannot be changed now")
+)
+
+var _ sql.SystemVariable = (*Parameter)(nil)
 
 type Parameter struct {
 	Name      string
@@ -20,13 +70,10 @@ type Parameter struct {
 	Source    ParameterSource
 	ResetVal  any
 	Scope     sql.SystemVariableScope
+	ValueFunc func(any) (any, bool)
 }
 
-func (p *Parameter) HasDefaultValue(a any) bool {
-	return p.Default == a
-}
-
-func (p *Parameter) VarName() string {
+func (p *Parameter) GetName() string {
 	return p.Name
 }
 
@@ -34,7 +81,7 @@ func (s *Parameter) SetName(n string) {
 	s.Name = n
 }
 
-func (p *Parameter) VarType() sql.Type {
+func (p *Parameter) GetType() sql.Type {
 	return p.Type
 }
 
@@ -46,18 +93,62 @@ func (p *Parameter) GetDefault() any {
 	return p.Default
 }
 
+func (p *Parameter) HasDefaultValue(a any) bool {
+	return p.Default == a
+}
+
+func (p *Parameter) AssignValue(val any) (sql.SystemVarValue, error) {
+	convertedVal, _, err := p.Type.Convert(val)
+	if err != nil {
+		return sql.SystemVarValue{}, err
+	}
+	if p.ValueFunc != nil {
+		v, ok := p.ValueFunc(convertedVal)
+		if !ok {
+			return sql.SystemVarValue{}, ErrInvalidValue.New(p.Name, convertedVal)
+		}
+		convertedVal = v
+	}
+	svv := sql.SystemVarValue{
+		Var: p,
+		Val: convertedVal,
+	}
+	return svv, nil
+}
+
+func (p *Parameter) SetValue(val any, global bool) (sql.SystemVarValue, error) {
+	switch p.Context {
+	case ParameterContextInternal, ParameterContextPostmaster, ParameterContextSighup:
+		return sql.SystemVarValue{}, ErrCannotChangeAtRuntime.New(p.Name)
+	case ParameterContextSuperUserBackend, ParameterContextBackend:
+		// Read the docs above the ParameterContext
+		// TODO: return error for now
+		return sql.SystemVarValue{}, ErrCannotChangeAtRuntime.New(p.Name)
+	case ParameterContextSuperUser, ParameterContextUser:
+		// TODO: need to check for 'superuser' and appropriate 'SET' privileges.
+		// Can be set from `postgresql.conf`, or within a session via the `SET` command.
+	}
+	// TODO: Maybe do parsing of units for memory and time parameters?
+	return p.AssignValue(val)
+}
+
+// ParameterContext sets level of difficulty of changing the parameter settings.
+// For more detailed description on how to change the settings of specific context,
+// https://www.postgresql.org/docs/current/view-pg-settings.html
 type ParameterContext string
 
+// The following consts are in order of decreasing difficulty of changing the setting.
 const (
-	ParameterContextPostmaster       ParameterContext = "postmaster"
-	ParameterContextSuperUserBackend ParameterContext = "superuser-backend"
-	ParameterContextUser             ParameterContext = "user"
 	ParameterContextInternal         ParameterContext = "internal"
-	ParameterContextBackend          ParameterContext = "backend"
+	ParameterContextPostmaster       ParameterContext = "postmaster"
 	ParameterContextSighup           ParameterContext = "sighup"
+	ParameterContextSuperUserBackend ParameterContext = "superuser-backend"
+	ParameterContextBackend          ParameterContext = "backend"
 	ParameterContextSuperUser        ParameterContext = "superuser"
+	ParameterContextUser             ParameterContext = "user"
 )
 
+// ParameterSource sets the source of the current parameter value.
 type ParameterSource string
 
 const (
@@ -66,38 +157,13 @@ const (
 	// its Default and ResetVal to what's defined in the given config file.
 	ParameterSourceConfigurationFile ParameterSource = "configuration file"
 	ParameterSourceDefault           ParameterSource = "default"
-	ParameterSourceOverride          ParameterSource = "override"
+	// ParameterSourceOverride means the default and reset value needs to be set at server start time
+	// TODO: currently the default and reset values are dummy values.
+	ParameterSourceOverride ParameterSource = "override"
 )
 
-// InitSystemVariables resets the systemVars singleton in the sql package
-func InitSystemVariables() {
-	vars := &sessionConfigParameters{
-		mutex:      &sync.RWMutex{},
-		sysVarVals: make(map[string]sql.SystemVarValue, len(systemVars)),
-	}
-	for _, sysVar := range systemVars {
-		vars.sysVarVals[sysVar.VarName()] = sql.SystemVarValue{
-			Var: sysVar,
-			Val: sysVar.GetDefault(),
-		}
-	}
-	sql.SystemVariables = vars
-	AddNecessaryMySQLSystemVariables()
-}
-
-// init initializes SystemVariables as it functions as a global variable.
-// TODO: get rid of me, make this construction the responsibility of the engine
-func init() {
-	// check if sql.SystemVariables is nil, so that it's not overwritten. This should not happen, but just in case.
-	if sql.SystemVariables == nil {
-		InitSystemVariables()
-	}
-}
-
-// systemVars is a list of configuration parameters that can be used in SET statement
-// This list tempoaraily is sql.SystemVariableInterface because it can also hold the sql.SystemVariable (for now, instead should be Parameter only)
-// TODO: maybe convert sql.SystemVariable to Parameter when adding new system variable?
-var systemVars = map[string]sql.SystemVariableInterface{
+// postgresConfigVariables is a list of configuration parameters that can be used in SET statement.
+var postgresConfigVariables = map[string]sql.SystemVariable{
 	"allow_in_place_tablespaces": &Parameter{
 		Name:      "allow_in_place_tablespaces",
 		Default:   int8(0),
@@ -139,7 +205,7 @@ var systemVars = map[string]sql.SystemVariableInterface{
 		Context:   ParameterContextSighup,
 		Type:      types.NewSystemStringType("archive_cleanup_command"),
 		Source:    ParameterSourceDefault,
-		ResetVal:  "psql",
+		ResetVal:  "",
 		Scope:     sql.PostgresConfigParamScope_Session,
 	},
 	"archive_command": &Parameter{
@@ -155,7 +221,7 @@ var systemVars = map[string]sql.SystemVariableInterface{
 	},
 	"archive_library": &Parameter{
 		Name:      "archive_library",
-		Default:   "off",
+		Default:   "",
 		Category:  "Write-Ahead Log / Archiving",
 		ShortDesc: "Sets the library that will be called to archive a WAL file.",
 		Context:   ParameterContextSighup,
@@ -629,7 +695,7 @@ var systemVars = map[string]sql.SystemVariableInterface{
 	},
 	"config_file": &Parameter{
 		Name:      "config_file",
-		Default:   "postgresql.conf", // TODO: gets set when db is created. Path to config file created in the dir.
+		Default:   "postgresql.conf",
 		Category:  "File Locations",
 		ShortDesc: "Sets the server's main configuration file.",
 		Context:   ParameterContextPostmaster,
@@ -692,6 +758,7 @@ var systemVars = map[string]sql.SystemVariableInterface{
 		Source:    ParameterSourceDefault,
 		ResetVal:  "",
 		Scope:     sql.PostgresConfigParamScope_Session,
+		// The value must be `set`, `inherit`, or a comma-separated list of these. The default value is an empty string, which disables the feature.
 	},
 	"cursor_tuple_fraction": &Parameter{
 		Name:      "cursor_tuple_fraction",
@@ -717,7 +784,7 @@ var systemVars = map[string]sql.SystemVariableInterface{
 	},
 	"data_directory": &Parameter{
 		Name:      "data_directory",
-		Default:   "postgres", // TODO: gets set when db is created. Path to config file created in the dir.
+		Default:   "postgres",
 		Category:  "File Locations",
 		ShortDesc: "Sets the server's data directory.",
 		Context:   ParameterContextPostmaster,
@@ -728,7 +795,7 @@ var systemVars = map[string]sql.SystemVariableInterface{
 	},
 	"data_directory_mode": &Parameter{
 		Name:      "data_directory_mode",
-		Default:   int64(448), // displays in octal, which is 0700
+		Default:   int64(448), // TODO: displays in octal, which is 0700
 		Category:  "Preset Options",
 		ShortDesc: "Shows the mode of the data directory.",
 		Context:   ParameterContextInternal,
@@ -773,14 +840,14 @@ var systemVars = map[string]sql.SystemVariableInterface{
 	},
 	"deadlock_timeout": &Parameter{
 		Name:    "deadlock_timeout",
-		Default: 1000,
+		Default: int64(1000),
 		// Unit: "ms",
 		Category:  "Lock Management",
 		ShortDesc: "Sets the time to wait on a lock before checking for deadlock.",
 		Context:   ParameterContextSuperUser,
 		Type:      types.NewSystemIntType("deadlock_timeout", 1, math.MaxInt32, false),
 		Source:    ParameterSourceDefault,
-		ResetVal:  1000,
+		ResetVal:  int64(1000),
 		Scope:     sql.PostgresConfigParamScope_Session,
 	},
 	"debug_assertions": &Parameter{
@@ -1227,7 +1294,7 @@ var systemVars = map[string]sql.SystemVariableInterface{
 	},
 	"enable_sort": &Parameter{
 		Name:      "enable_sort",
-		Default:   "",
+		Default:   int8(1),
 		Category:  "Query Tuning / Planner Method Configuration",
 		ShortDesc: "Enables the planner's use of explicit sort steps.",
 		Context:   ParameterContextUser,
@@ -1238,7 +1305,7 @@ var systemVars = map[string]sql.SystemVariableInterface{
 	},
 	"enable_tidscan": &Parameter{
 		Name:      "enable_tidscan",
-		Default:   "",
+		Default:   int8(1),
 		Category:  "Query Tuning / Planner Method Configuration",
 		ShortDesc: "Enables the planner's use of TID scan plans.",
 		Context:   ParameterContextUser,
@@ -2629,13 +2696,13 @@ var systemVars = map[string]sql.SystemVariableInterface{
 	},
 	"parallel_setup_cost": &Parameter{
 		Name:      "parallel_setup_cost",
-		Default:   int64(1000),
+		Default:   float64(1000),
 		Category:  "Query Tuning / Planner Cost Constants",
 		ShortDesc: "Sets the planner's estimate of the cost of starting up worker processes for parallel query.",
 		Context:   ParameterContextUser,
 		Type:      types.NewSystemDoubleType("parallel_setup_cost", 0, math.MaxFloat64),
 		Source:    ParameterSourceDefault,
-		ResetVal:  int64(1000),
+		ResetVal:  float64(1000),
 		Scope:     sql.PostgresConfigParamScope_Session,
 	},
 	"parallel_tuple_cost": &Parameter{
@@ -2985,7 +3052,7 @@ var systemVars = map[string]sql.SystemVariableInterface{
 	},
 	"send_abort_for_crash": &Parameter{
 		Name:      "send_abort_for_crash",
-		Default:   "",
+		Default:   int8(0),
 		Category:  "Developer Options",
 		ShortDesc: "Send SIGABRT not SIGQUIT to child processes after backend crash.",
 		Context:   ParameterContextSighup,
@@ -3324,7 +3391,7 @@ var systemVars = map[string]sql.SystemVariableInterface{
 		Category:  "Statistics / Cumulative Query and Index Statistics",
 		ShortDesc: "Sets the consistency of accesses to statistics data.",
 		Context:   ParameterContextUser,
-		Type:      types.NewSystemEnumType("stats_fetch_consistency", "none", "cache", "snapshot}"),
+		Type:      types.NewSystemEnumType("stats_fetch_consistency", "none", "cache", "snapshot"),
 		Source:    ParameterSourceDefault,
 		ResetVal:  "cache",
 		Scope:     sql.PostgresConfigParamScope_Session,
@@ -3510,6 +3577,27 @@ var systemVars = map[string]sql.SystemVariableInterface{
 		// BootVal: "GMT",
 		ResetVal: "America/Los_Angeles",
 		Scope:    sql.PostgresConfigParamScope_Session,
+		ValueFunc: func(a any) (any, bool) {
+			switch v := a.(type) {
+			case string:
+				if strings.ToLower(v) == "local" {
+					// TODO: fix this
+					//   https://pkg.go.dev/github.com/thlib/go-timezone-local/tzlocal seems useful in this case.
+					return "America/Los_Angeles", true
+				} else {
+					loc, err := time.LoadLocation(v)
+					if err == nil {
+						return loc.String(), true
+					}
+					_, err = MySQLOffsetToDuration(v)
+					if err == nil {
+						return v, true
+					}
+					return nil, false
+				}
+			}
+			return a, true
+		},
 	},
 	"timezone_abbreviations": &Parameter{
 		Name:      "timezone_abbreviations",
@@ -3846,13 +3934,13 @@ var systemVars = map[string]sql.SystemVariableInterface{
 	},
 	"vacuum_multixact_freeze_table_age": &Parameter{
 		Name:      "vacuum_multixact_freeze_table_age",
-		Default:   "",
+		Default:   int64(150000000),
 		Category:  "Client Connection Defaults / Statement Behavior",
 		ShortDesc: "Multixact age at which VACUUM should scan whole table to freeze tuples.",
 		Context:   ParameterContextUser,
 		Type:      types.NewSystemIntType("vacuum_multixact_freeze_table_age", 0, 2000000000, false),
 		Source:    ParameterSourceDefault,
-		ResetVal:  "",
+		ResetVal:  int64(150000000),
 		Scope:     sql.PostgresConfigParamScope_Session,
 	},
 	"wal_block_size": &Parameter{

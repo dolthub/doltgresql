@@ -35,7 +35,7 @@ import (
 	"github.com/dolthub/go-mysql-server/server"
 	"github.com/dolthub/go-mysql-server/sql"
 
-	config2 "github.com/dolthub/doltgresql/server/config"
+	_ "github.com/dolthub/doltgresql/server/config"
 	"github.com/dolthub/doltgresql/server/functions/framework"
 )
 
@@ -153,7 +153,7 @@ func RunInMemory(args []string) (*svcs.Controller, error) {
 // runServer starts the server based on the given args, using the provided file system as the backing store.
 // The returned WaitGroup may be used to wait for the server to close.
 func runServer(ctx context.Context, args []string, dEnv *env.DoltEnv) (*svcs.Controller, error) {
-	config2.InitSystemVariables()
+	//doltgresconfig.InitConfigParameters()
 
 	sqlServerCmd := sqlserver.SqlServerCmd{}
 	if serverArgs, err := sqlServerCmd.ArgParser().Parse(append([]string{"sql-server"}, args...)); err == nil {

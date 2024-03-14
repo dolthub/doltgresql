@@ -25,1475 +25,7327 @@ func TestSetStatements(t *testing.T) {
 }
 
 var setStmts = []ScriptTest{
+	//{
+	//	Name:        "special case for TIME ZONE",
+	//	SetUpScript: []string{},
+	//	Assertions: []ScriptTestAssertion{
+	//		{
+	//			Query:    "SHOW timezone",
+	//			Expected: []sql.Row{{"America/Los_Angeles"}},
+	//		},
+	//		{
+	//			Query:    "SET timezone TO '+00:00';",
+	//			Expected: []sql.Row{{}},
+	//		},
+	//		{
+	//			Query:    "SHOW timezone",
+	//			Expected: []sql.Row{{"+00:00"}},
+	//		},
+	//		{
+	//			Query:    "SET TIME ZONE LOCAL;",
+	//			Expected: []sql.Row{{}},
+	//		},
+	//		{
+	//			Query:    "SHOW timezone",
+	//			Expected: []sql.Row{{"America/Los_Angeles"}},
+	//		},
+	//		{
+	//			Query:    "SET TIME ZONE '+00:00';",
+	//			Expected: []sql.Row{{}},
+	//		},
+	//		{
+	//			Query:    "SHOW timezone",
+	//			Expected: []sql.Row{{"+00:00"}},
+	//		},
+	//		{
+	//			Query:    "SET TIME ZONE DEFAULT;",
+	//			Expected: []sql.Row{{}},
+	//		},
+	//		{
+	//			Query:    "SHOW timezone",
+	//			Expected: []sql.Row{{"America/Los_Angeles"}},
+	//		},
+	//	},
+	//},
+	//{
+	//	Name:        "special case for SCHEMA",
+	//	SetUpScript: []string{},
+	//	Assertions: []ScriptTestAssertion{
+	//		{
+	//			Query:    "SHOW search_path",
+	//			Expected: []sql.Row{{"\"$user\", public"}},
+	//		},
+	//		{
+	//			Query:    "SET SCHEMA 'postgres';",
+	//			Expected: []sql.Row{{}},
+	//		},
+	//		{
+	//			Query:    "SHOW search_path",
+	//			Expected: []sql.Row{{"postgres"}},
+	//		},
+	//	},
+	//},
+	//{
+	//	Name:        "special case for NAMES",
+	//	SetUpScript: []string{},
+	//	Assertions: []ScriptTestAssertion{
+	//		{
+	//			Query:    "SHOW client_encoding",
+	//			Expected: []sql.Row{{"UTF8"}},
+	//		},
+	//		{
+	//			Query:    "SET NAMES 'LATIN1';",
+	//			Expected: []sql.Row{{}},
+	//		},
+	//		{
+	//			Query:    "SHOW client_encoding;",
+	//			Expected: []sql.Row{{"LATIN1"}},
+	//		},
+	//		{
+	//			Query:    "SET NAMES DEFAULT;",
+	//			Expected: []sql.Row{{}},
+	//		},
+	//		{
+	//			Query:    "SHOW client_encoding;",
+	//			Expected: []sql.Row{{"UTF8"}},
+	//		},
+	//	},
+	//},
+	//{
+	//	Name:        "special case SEED",
+	//	SetUpScript: []string{},
+	//	Assertions: []ScriptTestAssertion{
+	//		{
+	//			Query:    "SHOW geqo_seed",
+	//			Expected: []sql.Row{{float64(0)}},
+	//		},
+	//		{
+	//			Query:    "SET SEED 1;",
+	//			Expected: []sql.Row{{}},
+	//		},
+	//		{
+	//			Query:    "SHOW geqo_seed",
+	//			Expected: []sql.Row{{float64(1)}},
+	//		},
+	//	},
+	//},
 	{
-		Name:        "special cases",
+		Name:        "set 'allow_in_place_tablespaces' configuration variable",
 		SetUpScript: []string{},
 		Assertions: []ScriptTestAssertion{
 			{
-				Query:    "SET TIME ZONE LOCAL;",
+				Query:    "SHOW allow_in_place_tablespaces",
+				Expected: []sql.Row{{int8(0)}},
+			},
+			{
+				Query:    "SET allow_in_place_tablespaces TO 'on'",
 				Expected: []sql.Row{{}},
 			},
 			{
-				Query:    "SET TIME ZONE DEFAULT;",
+				Query:    "SHOW allow_in_place_tablespaces",
+				Expected: []sql.Row{{int8(1)}},
+			},
+			{
+				Query:    "SET allow_in_place_tablespaces TO DEFAULT",
 				Expected: []sql.Row{{}},
 			},
 			{
-				Query:    "SET SCHEMA 'postgres';",
-				Expected: []sql.Row{{}},
-			},
-			{
-				Query:    "SET NAMES 'UTF8';",
-				Expected: []sql.Row{{}},
-			},
-			{
-				Query:    "SET SEED 1;",
-				Expected: []sql.Row{{}},
+				Query:    "SHOW allow_in_place_tablespaces",
+				Expected: []sql.Row{{int8(0)}},
 			},
 		},
 	},
 	{
-		Name:        "all configuration parameters",
+		Name:        "set 'allow_system_table_mods' configuration variable",
 		SetUpScript: []string{},
 		Assertions: []ScriptTestAssertion{
 			{
-				Query:    "SET allow_in_place_tablespaces TO 'off'",
-				Expected: []sql.Row{{}},
+				Query:    "SHOW allow_system_table_mods",
+				Expected: []sql.Row{{int8(0)}},
 			},
 			{
-				Query:    "SET allow_system_table_mods TO 'off'",
+				Query:    "SET allow_in_place_tablespaces TO 'on'",
 				Expected: []sql.Row{{}},
 			},
 			{
-				Query:    "SET application_name TO 'psql'",
-				Expected: []sql.Row{{}},
+				Query:    "SHOW allow_in_place_tablespaces",
+				Expected: []sql.Row{{int8(1)}},
 			},
 			{
-				Query:    "SET archive_cleanup_command TO ''",
+				Query:    "SET allow_in_place_tablespaces TO DEFAULT",
 				Expected: []sql.Row{{}},
 			},
 			{
-				Query:    "SET archive_command TO '0'",
-				Expected: []sql.Row{{}},
+				Query:    "SHOW allow_in_place_tablespaces",
+				Expected: []sql.Row{{int8(0)}},
 			},
+		},
+	},
+	{
+		Name:        "set 'application_name' configuration variable",
+		SetUpScript: []string{},
+		Assertions: []ScriptTestAssertion{
 			{
-				Query:    "SET archive_library TO ''",
-				Expected: []sql.Row{{}},
+				Query:    "SHOW application_name",
+				Expected: []sql.Row{{"psql"}},
 			},
 			{
-				Query:    "SET archive_mode TO 'off'",
+				Query:    "SET application_name TO 'postgresql'",
 				Expected: []sql.Row{{}},
 			},
 			{
-				Query:    "SET archive_timeout TO '0'",
-				Expected: []sql.Row{{}},
+				Query:    "SHOW application_name",
+				Expected: []sql.Row{{"postgresql"}},
 			},
 			{
-				Query:    "SET array_nulls TO 'on'",
+				Query:    "SET application_name TO DEFAULT",
 				Expected: []sql.Row{{}},
 			},
 			{
-				Query:    "SET authentication_timeout TO '120'",
-				Expected: []sql.Row{{}},
+				Query:    "SHOW application_name",
+				Expected: []sql.Row{{"psql"}},
 			},
+		},
+	},
+	{
+		Name:        "set 'archive_cleanup_command' configuration variable",
+		SetUpScript: []string{},
+		Assertions: []ScriptTestAssertion{
 			{
-				Query:    "SET autovacuum TO 'on'",
-				Expected: []sql.Row{{}},
+				Query:    "SHOW archive_cleanup_command",
+				Expected: []sql.Row{{""}},
 			},
 			{
-				Query:    "SET autovacuum_analyze_scale_factor TO '0.1'",
-				Expected: []sql.Row{{}},
+				Query:       "SET archive_cleanup_command TO ''",
+				ExpectedErr: true,
 			},
+		},
+	},
+	{
+		Name:        "set 'archive_command' configuration variable",
+		SetUpScript: []string{},
+		Assertions: []ScriptTestAssertion{
 			{
-				Query:    "SET autovacuum_analyze_threshold TO '50'",
-				Expected: []sql.Row{{}},
+				Query:    "SHOW archive_command",
+				Expected: []sql.Row{{"(disabled)"}},
 			},
 			{
-				Query:    "SET autovacuum_freeze_max_age TO '200000000'",
-				Expected: []sql.Row{{}},
+				Query:       "SET archive_command TO ''",
+				ExpectedErr: true,
 			},
+		},
+	},
+	{
+		Name:        "set 'archive_library' configuration variable",
+		SetUpScript: []string{},
+		Assertions: []ScriptTestAssertion{
 			{
-				Query:    "SET autovacuum_max_workers TO '3'",
-				Expected: []sql.Row{{}},
+				Query:    "SHOW archive_library",
+				Expected: []sql.Row{{""}},
 			},
 			{
-				Query:    "SET autovacuum_multixact_freeze_max_age TO '400000000'",
-				Expected: []sql.Row{{}},
+				Query:       "SET archive_library TO ''",
+				ExpectedErr: true,
+			},
+		},
+	},
+	{
+		Name:        "set 'archive_mode' configuration variable",
+		SetUpScript: []string{},
+		Assertions: []ScriptTestAssertion{
+			{
+				Query:    "SHOW archive_mode",
+				Expected: []sql.Row{{"off"}},
+			},
+			{
+				Query:       "SET archive_mode TO 'off'",
+				ExpectedErr: true,
+			},
+		},
+	},
+	{
+		Name:        "set 'archive_timeout' configuration variable",
+		SetUpScript: []string{},
+		Assertions: []ScriptTestAssertion{
+			{
+				Query:    "SHOW archive_timeout",
+				Expected: []sql.Row{{int64(0)}},
+			},
+			{
+				Query:       "SET archive_timeout TO '0'",
+				ExpectedErr: true,
 			},
+		},
+	},
+	{
+		Name:        "set 'array_nulls' configuration variable",
+		SetUpScript: []string{},
+		Assertions: []ScriptTestAssertion{
 			{
-				Query:    "SET autovacuum_naptime TO '60'",
+				Query:    "SHOW array_nulls",
+				Expected: []sql.Row{{int8(1)}},
+			},
+			{
+				Query:    "SET array_nulls TO 'off'",
 				Expected: []sql.Row{{}},
 			},
 			{
-				Query:    "SET autovacuum_vacuum_cost_delay TO '2'",
+				Query:    "SHOW array_nulls",
+				Expected: []sql.Row{{int8(0)}},
+			},
+			{
+				Query:    "SET array_nulls TO DEFAULT",
 				Expected: []sql.Row{{}},
+			},
+			{
+				Query:    "SHOW array_nulls",
+				Expected: []sql.Row{{int8(1)}},
+			},
+		},
+	},
+	{
+		Name:        "set 'authentication_timeout' configuration variable",
+		SetUpScript: []string{},
+		Assertions: []ScriptTestAssertion{
+			{
+				Query:    "SHOW authentication_timeout",
+				Expected: []sql.Row{{int64(60)}},
+			},
+			{
+				Query:       "SET authentication_timeout TO '120'",
+				ExpectedErr: true,
+			},
+		},
+	},
+	{
+		Name:        "set 'autovacuum' configuration variable",
+		SetUpScript: []string{},
+		Assertions: []ScriptTestAssertion{
+			{
+				Query:    "SHOW autovacuum",
+				Expected: []sql.Row{{int8(1)}},
+			},
+			{
+				Query:       "SET autovacuum TO 'on'",
+				ExpectedErr: true,
+			},
+		},
+	},
+	{
+		Name:        "set 'autovacuum_analyze_scale_factor' configuration variable",
+		SetUpScript: []string{},
+		Assertions: []ScriptTestAssertion{
+			{
+				Query:    "SHOW autovacuum_analyze_scale_factor",
+				Expected: []sql.Row{{0.1}},
+			},
+			{
+				Query:       "SET autovacuum_analyze_scale_factor TO '0.1'",
+				ExpectedErr: true,
+			},
+		},
+	},
+	{
+		Name:        "set 'autovacuum_analyze_threshold' configuration variable",
+		SetUpScript: []string{},
+		Assertions: []ScriptTestAssertion{
+			{
+				Query:    "SHOW autovacuum_analyze_threshold",
+				Expected: []sql.Row{{int64(50)}},
+			},
+			{
+				Query:       "SET autovacuum_analyze_threshold TO '50'",
+				ExpectedErr: true,
+			},
+		},
+	},
+	{
+		Name:        "set 'autovacuum_freeze_max_age' configuration variable",
+		SetUpScript: []string{},
+		Assertions: []ScriptTestAssertion{
+			{
+				Query:    "SHOW autovacuum_freeze_max_age",
+				Expected: []sql.Row{{int64(2000000000)}},
+			},
+			{
+				Query:       "SET autovacuum_freeze_max_age TO '200000000'",
+				ExpectedErr: true,
+			},
+		},
+	},
+	{
+		Name:        "set 'autovacuum_max_workers' configuration variable",
+		SetUpScript: []string{},
+		Assertions: []ScriptTestAssertion{
+			{
+				Query:    "SHOW autovacuum_max_workers",
+				Expected: []sql.Row{{int64(3)}},
+			},
+			{
+				Query:       "SET autovacuum_max_workers TO '3'",
+				ExpectedErr: true,
+			},
+		},
+	},
+	{
+		Name:        "set 'autovacuum_multixact_freeze_max_age' configuration variable",
+		SetUpScript: []string{},
+		Assertions: []ScriptTestAssertion{
+			{
+				Query:    "SHOW autovacuum_multixact_freeze_max_age",
+				Expected: []sql.Row{{int64(400000000)}},
+			},
+			{
+				Query:       "SET autovacuum_multixact_freeze_max_age TO '400000000'",
+				ExpectedErr: true,
+			},
+		},
+	},
+	{
+		Name:        "set 'autovacuum_naptime' configuration variable",
+		SetUpScript: []string{},
+		Assertions: []ScriptTestAssertion{
+			{
+				Query:    "SHOW autovacuum_naptime",
+				Expected: []sql.Row{{int64(60)}},
+			},
+			{
+				Query:       "SET autovacuum_naptime TO '60'",
+				ExpectedErr: true,
+			},
+		},
+	},
+	{
+		Name:        "set 'autovacuum_vacuum_cost_delay' configuration variable",
+		SetUpScript: []string{},
+		Assertions: []ScriptTestAssertion{
+			{
+				Query:    "SHOW autovacuum_vacuum_cost_delay",
+				Expected: []sql.Row{{float64(2)}},
+			},
+			{
+				Query:       "SET autovacuum_vacuum_cost_delay TO '2'",
+				ExpectedErr: true,
+			},
+		},
+	},
+	{
+		Name:        "set 'autovacuum_vacuum_cost_limit' configuration variable",
+		SetUpScript: []string{},
+		Assertions: []ScriptTestAssertion{
+			{
+				Query:    "SHOW autovacuum_vacuum_cost_limit",
+				Expected: []sql.Row{{int64(-1)}},
+			},
+			{
+				Query:       "SET autovacuum_vacuum_cost_limit TO '-1'",
+				ExpectedErr: true,
+			},
+		},
+	},
+	{
+		Name:        "set 'autovacuum_vacuum_insert_scale_factor' configuration variable",
+		SetUpScript: []string{},
+		Assertions: []ScriptTestAssertion{
+			{
+				Query:    "SHOW autovacuum_vacuum_insert_scale_factor",
+				Expected: []sql.Row{{float64(0.2)}},
+			},
+			{
+				Query:       "SET autovacuum_vacuum_insert_scale_factor TO '0.2'",
+				ExpectedErr: true,
+			},
+		},
+	},
+	{
+		Name:        "set 'autovacuum_vacuum_insert_threshold' configuration variable",
+		SetUpScript: []string{},
+		Assertions: []ScriptTestAssertion{
+			{
+				Query:    "SHOW autovacuum_vacuum_insert_threshold",
+				Expected: []sql.Row{{int64(1000)}},
+			},
+			{
+				Query:       "SET autovacuum_vacuum_insert_threshold TO '1000'",
+				ExpectedErr: true,
+			},
+		},
+	},
+	{
+		Name:        "set 'autovacuum_vacuum_scale_factor' configuration variable",
+		SetUpScript: []string{},
+		Assertions: []ScriptTestAssertion{
+			{
+				Query:    "SHOW autovacuum_vacuum_scale_factor",
+				Expected: []sql.Row{{float64(0.2)}},
+			},
+			{
+				Query:       "SET autovacuum_vacuum_scale_factor TO '0.2'",
+				ExpectedErr: true,
+			},
+		},
+	},
+	{
+		Name:        "set 'autovacuum_vacuum_threshold' configuration variable",
+		SetUpScript: []string{},
+		Assertions: []ScriptTestAssertion{
+			{
+				Query:    "SHOW autovacuum_vacuum_threshold",
+				Expected: []sql.Row{{int64(50)}},
+			},
+			{
+				Query:       "SET autovacuum_vacuum_threshold TO '50'",
+				ExpectedErr: true,
 			},
+		},
+	},
+	{
+		Name:        "set 'autovacuum_work_mem' configuration variable",
+		SetUpScript: []string{},
+		Assertions: []ScriptTestAssertion{
 			{
-				Query:    "SET autovacuum_vacuum_cost_limit TO '-1'",
+				Query:    "SHOW autovacuum_work_mem",
+				Expected: []sql.Row{{int64(-1)}},
+			},
+			{
+				Query:       "SET autovacuum_work_mem TO '-1'",
+				ExpectedErr: true,
+			},
+		},
+	},
+	{
+		Name:        "set 'backend_flush_after' configuration variable",
+		SetUpScript: []string{},
+		Assertions: []ScriptTestAssertion{
+			{
+				Query:    "SHOW backend_flush_after",
+				Expected: []sql.Row{{int64(0)}},
+			},
+			{
+				Query:    "SET backend_flush_after TO '256'",
 				Expected: []sql.Row{{}},
+			},
+			{
+				Query:    "SHOW backend_flush_after",
+				Expected: []sql.Row{{int64(256)}},
 			},
 			{
-				Query:    "SET autovacuum_vacuum_insert_scale_factor TO '0.2'",
+				Query:    "SET backend_flush_after TO DEFAULT",
 				Expected: []sql.Row{{}},
+			},
+			{
+				Query:    "SHOW backend_flush_after",
+				Expected: []sql.Row{{int64(0)}},
 			},
+		},
+	},
+	{
+		Name:        "set 'backslash_quote' configuration variable",
+		SetUpScript: []string{},
+		Assertions: []ScriptTestAssertion{
 			{
-				Query:    "SET autovacuum_vacuum_insert_threshold TO '1000'",
+				Query:    "SHOW backslash_quote",
+				Expected: []sql.Row{{"safe_encoding"}},
+			},
+			{
+				Query:    "SET backslash_quote TO 'on'",
 				Expected: []sql.Row{{}},
 			},
 			{
-				Query:    "SET autovacuum_vacuum_scale_factor TO '0.2'",
+				Query:    "SHOW backslash_quote",
+				Expected: []sql.Row{{"on"}},
+			},
+			{
+				Query:    "SET backslash_quote TO DEFAULT",
 				Expected: []sql.Row{{}},
+			},
+			{
+				Query:    "SHOW backslash_quote",
+				Expected: []sql.Row{{"safe_encoding"}},
+			},
+		},
+	},
+	{
+		Name:        "set 'backtrace_functions' configuration variable",
+		SetUpScript: []string{},
+		Assertions: []ScriptTestAssertion{
+			{
+				Query:    "SHOW backtrace_functions",
+				Expected: []sql.Row{{""}},
 			},
 			{
-				Query:    "SET autovacuum_vacuum_threshold TO '50'",
+				Query:    "SET backtrace_functions TO 'default'",
 				Expected: []sql.Row{{}},
+			},
+			{
+				Query:    "SHOW backtrace_functions",
+				Expected: []sql.Row{{"default"}},
 			},
 			{
-				Query:    "SET autovacuum_work_mem TO '-1'",
+				Query:    "SET backtrace_functions TO DEFAULT",
 				Expected: []sql.Row{{}},
+			},
+			{
+				Query:    "SHOW backtrace_functions",
+				Expected: []sql.Row{{""}},
+			},
+		},
+	},
+	{
+		Name:        "set 'bgwriter_delay' configuration variable",
+		SetUpScript: []string{},
+		Assertions: []ScriptTestAssertion{
+			{
+				Query:    "SHOW bgwriter_delay",
+				Expected: []sql.Row{{int64(200)}},
+			},
+			{
+				Query:       "SET bgwriter_delay TO '200'",
+				ExpectedErr: true,
+			},
+		},
+	},
+	{
+		Name:        "set 'bgwriter_flush_after' configuration variable",
+		SetUpScript: []string{},
+		Assertions: []ScriptTestAssertion{
+			{
+				Query:    "SHOW bgwriter_flush_after",
+				Expected: []sql.Row{{int64(0)}},
+			},
+			{
+				Query:       "SET bgwriter_flush_after TO '0'",
+				ExpectedErr: true,
+			},
+		},
+	},
+	{
+		Name:        "set 'bgwriter_lru_maxpages' configuration variable",
+		SetUpScript: []string{},
+		Assertions: []ScriptTestAssertion{
+			{
+				Query:    "SHOW bgwriter_lru_maxpages",
+				Expected: []sql.Row{{int64(100)}},
+			},
+			{
+				Query:       "SET bgwriter_lru_maxpages TO '100'",
+				ExpectedErr: true,
+			},
+		},
+	},
+	{
+		Name:        "set 'bgwriter_lru_multiplier' configuration variable",
+		SetUpScript: []string{},
+		Assertions: []ScriptTestAssertion{
+			{
+				Query:    "SHOW bgwriter_lru_multiplier",
+				Expected: []sql.Row{{float64(2)}},
+			},
+			{
+				Query:       "SET bgwriter_lru_multiplier TO '2'",
+				ExpectedErr: true,
+			},
+		},
+	},
+	{
+		Name:        "set 'block_size' configuration variable",
+		SetUpScript: []string{},
+		Assertions: []ScriptTestAssertion{
+			{
+				Query:    "SHOW block_size",
+				Expected: []sql.Row{{int64(8192)}},
+			},
+			{
+				Query:       "SET block_size TO '8192'",
+				ExpectedErr: true,
+			},
+		},
+	},
+	{
+		Name:        "set 'bonjour' configuration variable",
+		SetUpScript: []string{},
+		Assertions: []ScriptTestAssertion{
+			{
+				Query:    "SHOW bonjour",
+				Expected: []sql.Row{{int8(0)}},
+			},
+			{
+				Query:       "SET bonjour TO 'off'",
+				ExpectedErr: true,
+			},
+		},
+	},
+	{
+		Name:        "set 'bonjour_name' configuration variable",
+		SetUpScript: []string{},
+		Assertions: []ScriptTestAssertion{
+			{
+				Query:    "SHOW bonjour_name",
+				Expected: []sql.Row{{""}},
+			},
+			{
+				Query:       "SET bonjour_name TO ''",
+				ExpectedErr: true,
+			},
+		},
+	},
+	{
+		Name:        "set 'bytea_output' configuration variable",
+		SetUpScript: []string{},
+		Assertions: []ScriptTestAssertion{
+			{
+				Query:    "SHOW bytea_output",
+				Expected: []sql.Row{{"hex"}},
 			},
 			{
-				Query:    "SET backend_flush_after TO '0'",
+				Query:    "SET bytea_output TO 'escape'",
 				Expected: []sql.Row{{}},
+			},
+			{
+				Query:    "SHOW bytea_output",
+				Expected: []sql.Row{{"escape"}},
 			},
 			{
-				Query:    "SET backslash_quote TO 'safe_encoding'",
+				Query:    "SET bytea_output TO DEFAULT",
 				Expected: []sql.Row{{}},
+			},
+			{
+				Query:    "SHOW bytea_output",
+				Expected: []sql.Row{{"hex"}},
 			},
+		},
+	},
+	{
+		Name:        "set 'check_function_bodies' configuration variable",
+		SetUpScript: []string{},
+		Assertions: []ScriptTestAssertion{
 			{
-				Query:    "SET backtrace_functions TO ''",
+				Query:    "SHOW check_function_bodies",
+				Expected: []sql.Row{{int8(1)}},
+			},
+			{
+				Query:    "SET check_function_bodies TO 'off'",
 				Expected: []sql.Row{{}},
 			},
 			{
-				Query:    "SET bgwriter_delay TO '200'",
+				Query:    "SHOW check_function_bodies",
+				Expected: []sql.Row{{int8(0)}},
+			},
+			{
+				Query:    "SET check_function_bodies TO DEFAULT",
 				Expected: []sql.Row{{}},
+			},
+			{
+				Query:    "SHOW check_function_bodies",
+				Expected: []sql.Row{{int8(1)}},
+			},
+		},
+	},
+	{
+		Name:        "set 'checkpoint_completion_target' configuration variable",
+		SetUpScript: []string{},
+		Assertions: []ScriptTestAssertion{
+			{
+				Query:    "SHOW checkpoint_completion_target",
+				Expected: []sql.Row{{float64(0.9)}},
+			},
+			{
+				Query:       "SET checkpoint_completion_target TO '0.9'",
+				ExpectedErr: true,
+			},
+		},
+	},
+	{
+		Name:        "set 'checkpoint_flush_after' configuration variable",
+		SetUpScript: []string{},
+		Assertions: []ScriptTestAssertion{
+			{
+				Query:    "SHOW checkpoint_flush_after",
+				Expected: []sql.Row{{int64(0)}},
+			},
+			{
+				Query:       "SET checkpoint_flush_after TO '0'",
+				ExpectedErr: true,
+			},
+		},
+	},
+	{
+		Name:        "set 'checkpoint_timeout' configuration variable",
+		SetUpScript: []string{},
+		Assertions: []ScriptTestAssertion{
+			{
+				Query:    "SHOW checkpoint_timeout",
+				Expected: []sql.Row{{int64(300)}},
+			},
+			{
+				Query:       "SET checkpoint_timeout TO '300'",
+				ExpectedErr: true,
+			},
+		},
+	},
+	{
+		Name:        "set 'checkpoint_warning' configuration variable",
+		SetUpScript: []string{},
+		Assertions: []ScriptTestAssertion{
+			{
+				Query:    "SHOW checkpoint_warning",
+				Expected: []sql.Row{{int64(30)}},
 			},
 			{
-				Query:    "SET bgwriter_flush_after TO '0'",
+				Query:       "SET checkpoint_warning TO '30'",
+				ExpectedErr: true,
+			},
+		},
+	},
+	{
+		Name:        "set 'client_connection_check_interval' configuration variable",
+		SetUpScript: []string{},
+		Assertions: []ScriptTestAssertion{
+			{
+				Query:    "SHOW client_connection_check_interval",
+				Expected: []sql.Row{{int64(0)}},
+			},
+			{
+				Query:    "SET client_connection_check_interval TO 10",
 				Expected: []sql.Row{{}},
+			},
+			{
+				Query:    "SHOW client_connection_check_interval",
+				Expected: []sql.Row{{int64(10)}},
 			},
 			{
-				Query:    "SET bgwriter_lru_maxpages TO '100'",
+				Query:    "SET client_connection_check_interval TO DEFAULT",
 				Expected: []sql.Row{{}},
 			},
 			{
-				Query:    "SET bgwriter_lru_multiplier TO '2'",
+				Query:    "SHOW client_connection_check_interval",
+				Expected: []sql.Row{{int64(0)}},
+			},
+		},
+	},
+	{
+		Name:        "set 'client_encoding' configuration variable",
+		SetUpScript: []string{},
+		Assertions: []ScriptTestAssertion{
+			{
+				Query:    "SHOW client_encoding",
+				Expected: []sql.Row{{"UTF8"}},
+			},
+			{
+				Query:    "SET client_encoding TO 'LATIN1'",
 				Expected: []sql.Row{{}},
+			},
+			{
+				Query:    "SHOW client_encoding",
+				Expected: []sql.Row{{"LATIN1"}},
 			},
 			{
-				Query:    "SET block_size TO '8192'",
+				Query:    "SET client_encoding TO DEFAULT",
 				Expected: []sql.Row{{}},
+			},
+			{
+				Query:    "SHOW client_encoding",
+				Expected: []sql.Row{{"UTF8"}},
+			},
+		},
+	},
+	{
+		Name:        "set 'client_min_messages' configuration variable",
+		SetUpScript: []string{},
+		Assertions: []ScriptTestAssertion{
+			{
+				Query:    "SHOW client_min_messages",
+				Expected: []sql.Row{{"notice"}},
 			},
 			{
-				Query:    "SET bonjour TO 'off'",
+				Query:    "SET client_min_messages TO 'log'",
 				Expected: []sql.Row{{}},
 			},
 			{
-				Query:    "SET bonjour_name TO ''",
+				Query:    "SHOW client_min_messages",
+				Expected: []sql.Row{{"log"}},
+			},
+			{
+				Query:    "SET client_min_messages TO DEFAULT",
 				Expected: []sql.Row{{}},
+			},
+			{
+				Query:    "SHOW client_min_messages",
+				Expected: []sql.Row{{"notice"}},
+			},
+		},
+	},
+	{
+		Name:        "set 'cluster_name' configuration variable",
+		SetUpScript: []string{},
+		Assertions: []ScriptTestAssertion{
+			{
+				Query:    "SHOW cluster_name",
+				Expected: []sql.Row{{""}},
+			},
+			{
+				Query:       "SET cluster_name TO ''",
+				ExpectedErr: true,
+			},
+		},
+	},
+	{
+		Name:        "set 'commit_delay' configuration variable",
+		SetUpScript: []string{},
+		Assertions: []ScriptTestAssertion{
+			{
+				Query:    "SHOW commit_delay",
+				Expected: []sql.Row{{int64(0)}},
 			},
 			{
-				Query:    "SET bytea_output TO 'hex'",
+				Query:    "SET commit_delay TO 100000",
 				Expected: []sql.Row{{}},
 			},
 			{
-				Query:    "SET check_function_bodies TO 'on'",
+				Query:    "SHOW commit_delay",
+				Expected: []sql.Row{{int64(100000)}},
+			},
+			{
+				Query:    "SET commit_delay TO DEFAULT",
 				Expected: []sql.Row{{}},
+			},
+			{
+				Query:    "SHOW commit_delay",
+				Expected: []sql.Row{{int64(0)}},
+			},
+		},
+	},
+	{
+		Name:        "set 'commit_siblings' configuration variable",
+		SetUpScript: []string{},
+		Assertions: []ScriptTestAssertion{
+			{
+				Query:    "SHOW commit_siblings",
+				Expected: []sql.Row{{int64(5)}},
 			},
 			{
-				Query:    "SET checkpoint_completion_target TO '0.9'",
+				Query:    "SET commit_siblings TO '1000'",
 				Expected: []sql.Row{{}},
+			},
+			{
+				Query:    "SHOW commit_siblings",
+				Expected: []sql.Row{{int64(1000)}},
 			},
 			{
-				Query:    "SET checkpoint_flush_after TO '0'",
+				Query:    "SET commit_siblings TO DEFAULT",
 				Expected: []sql.Row{{}},
+			},
+			{
+				Query:    "SHOW commit_siblings",
+				Expected: []sql.Row{{int64(5)}},
 			},
+		},
+	},
+	{
+		Name:        "set 'compute_query_id' configuration variable",
+		SetUpScript: []string{},
+		Assertions: []ScriptTestAssertion{
 			{
-				Query:    "SET checkpoint_timeout TO '300'",
+				Query:    "SHOW compute_query_id",
+				Expected: []sql.Row{{"auto"}},
+			},
+			{
+				Query:    "SET compute_query_id TO 'on'",
 				Expected: []sql.Row{{}},
 			},
 			{
-				Query:    "SET checkpoint_warning TO '30'",
+				Query:    "SHOW compute_query_id",
+				Expected: []sql.Row{{"on"}},
+			},
+			{
+				Query:    "SET compute_query_id TO DEFAULT",
 				Expected: []sql.Row{{}},
+			},
+			{
+				Query:    "SHOW compute_query_id",
+				Expected: []sql.Row{{"auto"}},
+			},
+		},
+	},
+	{
+		Name:        "set 'config_file' configuration variable",
+		SetUpScript: []string{},
+		Assertions: []ScriptTestAssertion{
+			{
+				Query:    "SHOW config_file",
+				Expected: []sql.Row{{"postgresql.conf"}},
+			},
+			{
+				Query:       "SET config_file TO '/Users/postgres/postgresql.conf'",
+				ExpectedErr: true,
+			},
+		},
+	},
+	{
+		Name:        "set 'constraint_exclusion' configuration variable",
+		SetUpScript: []string{},
+		Assertions: []ScriptTestAssertion{
+			{
+				Query:    "SHOW constraint_exclusion",
+				Expected: []sql.Row{{"partition"}},
 			},
 			{
-				Query:    "SET client_connection_check_interval TO '0'",
+				Query:    "SET constraint_exclusion TO 'on'",
 				Expected: []sql.Row{{}},
+			},
+			{
+				Query:    "SHOW constraint_exclusion",
+				Expected: []sql.Row{{"on"}},
 			},
 			{
-				Query:    "SET client_encoding TO 'UTF8'",
+				Query:    "SET constraint_exclusion TO DEFAULT",
 				Expected: []sql.Row{{}},
+			},
+			{
+				Query:    "SHOW constraint_exclusion",
+				Expected: []sql.Row{{"partition"}},
 			},
+		},
+	},
+	{
+		Name:        "set 'cpu_index_tuple_cost' configuration variable",
+		SetUpScript: []string{},
+		Assertions: []ScriptTestAssertion{
 			{
-				Query:    "SET client_min_messages TO 'notice'",
+				Query:    "SHOW cpu_index_tuple_cost",
+				Expected: []sql.Row{{float64(0.005)}},
+			},
+			{
+				Query:    "SET cpu_index_tuple_cost TO '0.01'",
 				Expected: []sql.Row{{}},
 			},
 			{
-				Query:    "SET cluster_name TO ''",
+				Query:    "SHOW cpu_index_tuple_cost",
+				Expected: []sql.Row{{float64(0.01)}},
+			},
+			{
+				Query:    "SET cpu_index_tuple_cost TO DEFAULT",
 				Expected: []sql.Row{{}},
+			},
+			{
+				Query:    "SHOW cpu_index_tuple_cost",
+				Expected: []sql.Row{{float64(0.005)}},
+			},
+		},
+	},
+	{
+		Name:        "set 'cpu_operator_cost' configuration variable",
+		SetUpScript: []string{},
+		Assertions: []ScriptTestAssertion{
+			{
+				Query:    "SHOW cpu_operator_cost",
+				Expected: []sql.Row{{float64(0.0025)}},
 			},
 			{
-				Query:    "SET commit_delay TO '0'",
+				Query:    "SET cpu_operator_cost TO '0.005'",
 				Expected: []sql.Row{{}},
+			},
+			{
+				Query:    "SHOW cpu_operator_cost",
+				Expected: []sql.Row{{float64(0.005)}},
 			},
 			{
-				Query:    "SET commit_siblings TO '5'",
+				Query:    "SET cpu_operator_cost TO DEFAULT",
 				Expected: []sql.Row{{}},
 			},
 			{
-				Query:    "SET compute_query_id TO 'auto'",
+				Query:    "SHOW cpu_operator_cost",
+				Expected: []sql.Row{{float64(0.0025)}},
+			},
+		},
+	},
+	{
+		Name:        "set 'cpu_tuple_cost' configuration variable",
+		SetUpScript: []string{},
+		Assertions: []ScriptTestAssertion{
+			{
+				Query:    "SHOW cpu_tuple_cost",
+				Expected: []sql.Row{{float64(0.01)}},
+			},
+			{
+				Query:    "SET cpu_tuple_cost TO '0.02'",
 				Expected: []sql.Row{{}},
+			},
+			{
+				Query:    "SHOW cpu_tuple_cost",
+				Expected: []sql.Row{{float64(0.02)}},
 			},
 			{
-				Query:    "SET config_file TO '/Users/postgres/postgresql.conf'",
+				Query:    "SET cpu_tuple_cost TO DEFAULT",
 				Expected: []sql.Row{{}},
+			},
+			{
+				Query:    "SHOW cpu_tuple_cost",
+				Expected: []sql.Row{{float64(0.01)}},
+			},
+		},
+	},
+	{
+		Name:        "set 'createrole_self_grant' configuration variable",
+		SetUpScript: []string{},
+		Assertions: []ScriptTestAssertion{
+			{
+				Query:    "SHOW createrole_self_grant",
+				Expected: []sql.Row{{""}},
 			},
 			{
-				Query:    "SET constraint_exclusion TO 'partition'",
+				Query:    "SET createrole_self_grant TO 'inherit'",
 				Expected: []sql.Row{{}},
 			},
 			{
-				Query:    "SET cpu_index_tuple_cost TO '0.005'",
+				Query:    "SHOW createrole_self_grant",
+				Expected: []sql.Row{{"inherit"}},
+			},
+			{
+				Query:    "SET createrole_self_grant TO DEFAULT",
 				Expected: []sql.Row{{}},
+			},
+			{
+				Query:    "SHOW createrole_self_grant",
+				Expected: []sql.Row{{""}},
+			},
+		},
+	},
+	{
+		Name:        "set 'cursor_tuple_fraction' configuration variable",
+		SetUpScript: []string{},
+		Assertions: []ScriptTestAssertion{
+			{
+				Query:    "SHOW cursor_tuple_fraction",
+				Expected: []sql.Row{{float64(0.1)}},
 			},
 			{
-				Query:    "SET cpu_operator_cost TO '0.0025'",
+				Query:    "SET cursor_tuple_fraction TO '0.2'",
 				Expected: []sql.Row{{}},
+			},
+			{
+				Query:    "SHOW cursor_tuple_fraction",
+				Expected: []sql.Row{{float64(0.2)}},
 			},
 			{
-				Query:    "SET cpu_tuple_cost TO '0.01'",
+				Query:    "SET cursor_tuple_fraction TO DEFAULT",
 				Expected: []sql.Row{{}},
+			},
+			{
+				Query:    "SHOW cursor_tuple_fraction",
+				Expected: []sql.Row{{float64(0.1)}},
+			},
+		},
+	},
+	{
+		Name:        "set 'data_checksums' configuration variable",
+		SetUpScript: []string{},
+		Assertions: []ScriptTestAssertion{
+			{
+				Query:    "SHOW data_checksums",
+				Expected: []sql.Row{{int8(0)}},
+			},
+			{
+				Query:       "SET data_checksums TO 'off'",
+				ExpectedErr: true,
+			},
+		},
+	},
+	{
+		Name:        "set 'data_directory' configuration variable",
+		SetUpScript: []string{},
+		Assertions: []ScriptTestAssertion{
+			{
+				Query:    "SHOW data_directory",
+				Expected: []sql.Row{{"postgres"}},
 			},
 			{
-				Query:    "SET createrole_self_grant TO ''",
+				Query:       "SET data_directory TO '/Users/postgres'",
+				ExpectedErr: true,
+			},
+		},
+	},
+	{
+		Name:        "set 'data_directory_mode' configuration variable",
+		SetUpScript: []string{},
+		Assertions: []ScriptTestAssertion{
+			{
+				Query:    "SHOW data_directory_mode",
+				Expected: []sql.Row{{int64(448)}},
+			},
+			{
+				Query:       "SET data_directory_mode TO '448'",
+				ExpectedErr: true,
+			},
+		},
+	},
+	{
+		Name:        "set 'data_sync_retry' configuration variable",
+		SetUpScript: []string{},
+		Assertions: []ScriptTestAssertion{
+			{
+				Query:    "SHOW data_sync_retry",
+				Expected: []sql.Row{{int8(0)}},
+			},
+			{
+				Query:       "SET data_sync_retry TO 'off'",
+				ExpectedErr: true,
+			},
+		},
+	},
+	{
+		Name:        "set 'DateStyle' configuration variable",
+		SetUpScript: []string{},
+		Assertions: []ScriptTestAssertion{
+			{
+				Query:    "SHOW DateStyle",
+				Expected: []sql.Row{{"ISO, MDY"}},
+			},
+			{
+				Query:    "SET DateStyle TO 'ISO, DMY'",
 				Expected: []sql.Row{{}},
 			},
 			{
-				Query:    "SET cursor_tuple_fraction TO '0.1'",
+				Query:    "SHOW DateStyle",
+				Expected: []sql.Row{{"ISO, DMY"}},
+			},
+			{
+				Query:    "SET DateStyle TO DEFAULT",
 				Expected: []sql.Row{{}},
+			},
+			{
+				Query:    "SHOW DateStyle",
+				Expected: []sql.Row{{"ISO, MDY"}},
+			},
+		},
+	},
+	{
+		Name:        "set 'db_user_namespace' configuration variable",
+		SetUpScript: []string{},
+		Assertions: []ScriptTestAssertion{
+			{
+				Query:    "SHOW db_user_namespace",
+				Expected: []sql.Row{{int8(0)}},
+			},
+			{
+				Query:       "SET db_user_namespace TO 'off'",
+				ExpectedErr: true,
 			},
+		},
+	},
+	{
+		Name:        "set 'deadlock_timeout' configuration variable",
+		SetUpScript: []string{},
+		Assertions: []ScriptTestAssertion{
 			{
-				Query:    "SET data_checksums TO 'off'",
+				Query:    "SHOW deadlock_timeout",
+				Expected: []sql.Row{{int64(1000)}},
+			},
+			{
+				Query:    "SET deadlock_timeout TO '2000'",
 				Expected: []sql.Row{{}},
 			},
 			{
-				Query:    "SET data_directory TO '/Users/postgres'",
+				Query:    "SHOW deadlock_timeout",
+				Expected: []sql.Row{{int64(2000)}},
+			},
+			{
+				Query:    "SET deadlock_timeout TO DEFAULT",
 				Expected: []sql.Row{{}},
+			},
+			{
+				Query:    "SHOW deadlock_timeout",
+				Expected: []sql.Row{{int64(1000)}},
+			},
+		},
+	},
+	{
+		Name:        "set 'debug_assertions' configuration variable",
+		SetUpScript: []string{},
+		Assertions: []ScriptTestAssertion{
+			{
+				Query:    "SHOW debug_assertions",
+				Expected: []sql.Row{{int8(0)}},
+			},
+			{
+				Query:       "SET debug_assertions TO 'off'",
+				ExpectedErr: true,
 			},
+		},
+	},
+	{
+		Name:        "set 'debug_discard_caches' configuration variable",
+		SetUpScript: []string{},
+		Assertions: []ScriptTestAssertion{
 			{
-				Query:    "SET data_directory_mode TO '448'",
+				Query:    "SHOW debug_discard_caches",
+				Expected: []sql.Row{{int64(0)}},
+			},
+			{
+				Query:    "SET debug_discard_caches TO '0'", // cannot set it to anything other than 0
 				Expected: []sql.Row{{}},
+			},
+			{
+				Query:    "SHOW debug_discard_caches",
+				Expected: []sql.Row{{int64(0)}},
+			},
+		},
+	},
+	{
+		Name:        "set 'debug_io_direct' configuration variable",
+		SetUpScript: []string{},
+		Assertions: []ScriptTestAssertion{
+			{
+				Query:    "SHOW debug_io_direct",
+				Expected: []sql.Row{{""}},
+			},
+			{
+				Query:       "SET debug_io_direct TO ''",
+				ExpectedErr: true,
 			},
+		},
+	},
+	{
+		Name:        "set 'debug_logical_replication_streaming' configuration variable",
+		SetUpScript: []string{},
+		Assertions: []ScriptTestAssertion{
 			{
-				Query:    "SET data_sync_retry TO 'off'",
+				Query:    "SHOW debug_logical_replication_streaming",
+				Expected: []sql.Row{{"buffered"}},
+			},
+			{
+				Query:    "SET debug_logical_replication_streaming TO 'immediate'",
 				Expected: []sql.Row{{}},
+			},
+			{
+				Query:    "SHOW debug_logical_replication_streaming",
+				Expected: []sql.Row{{"immediate"}},
 			},
 			{
-				Query:    "SET DateStyle TO 'ISO, MDY'",
+				Query:    "SET debug_logical_replication_streaming TO DEFAULT",
 				Expected: []sql.Row{{}},
+			},
+			{
+				Query:    "SHOW debug_logical_replication_streaming",
+				Expected: []sql.Row{{"buffered"}},
+			},
+		},
+	},
+	{
+		Name:        "set 'debug_parallel_query' configuration variable",
+		SetUpScript: []string{},
+		Assertions: []ScriptTestAssertion{
+			{
+				Query:    "SHOW debug_parallel_query",
+				Expected: []sql.Row{{"off"}},
 			},
 			{
-				Query:    "SET db_user_namespace TO 'off'",
+				Query:    "SET debug_parallel_query TO 'regress'",
 				Expected: []sql.Row{{}},
 			},
 			{
-				Query:    "SET deadlock_timeout TO '1'",
+				Query:    "SHOW debug_parallel_query",
+				Expected: []sql.Row{{"regress"}},
+			},
+			{
+				Query:    "SET debug_parallel_query TO DEFAULT",
 				Expected: []sql.Row{{}},
+			},
+			{
+				Query:    "SHOW debug_parallel_query",
+				Expected: []sql.Row{{"off"}},
+			},
+		},
+	},
+	{
+		Name:        "set 'debug_pretty_print' configuration variable",
+		SetUpScript: []string{},
+		Assertions: []ScriptTestAssertion{
+			{
+				Query:    "SHOW debug_pretty_print",
+				Expected: []sql.Row{{int8(1)}},
 			},
 			{
-				Query:    "SET debug_assertions TO 'off'",
+				Query:    "SET debug_pretty_print TO 'off'",
 				Expected: []sql.Row{{}},
+			},
+			{
+				Query:    "SHOW debug_pretty_print",
+				Expected: []sql.Row{{int8(0)}},
 			},
 			{
-				Query:    "SET debug_discard_caches TO '0'",
+				Query:    "SET debug_pretty_print TO DEFAULT",
 				Expected: []sql.Row{{}},
+			},
+			{
+				Query:    "SHOW debug_pretty_print",
+				Expected: []sql.Row{{int8(1)}},
 			},
+		},
+	},
+	{
+		Name:        "set 'debug_print_parse' configuration variable",
+		SetUpScript: []string{},
+		Assertions: []ScriptTestAssertion{
 			{
-				Query:    "SET debug_io_direct TO ''",
+				Query:    "SHOW debug_print_parse",
+				Expected: []sql.Row{{int8(0)}},
+			},
+			{
+				Query:    "SET debug_print_parse TO 'on'",
 				Expected: []sql.Row{{}},
 			},
 			{
-				Query:    "SET debug_logical_replication_streaming TO 'buffered'",
+				Query:    "SHOW debug_print_parse",
+				Expected: []sql.Row{{int8(1)}},
+			},
+			{
+				Query:    "SET debug_print_parse TO DEFAULT",
 				Expected: []sql.Row{{}},
+			},
+			{
+				Query:    "SHOW debug_print_parse",
+				Expected: []sql.Row{{int8(0)}},
+			},
+		},
+	},
+	{
+		Name:        "set 'debug_print_plan' configuration variable",
+		SetUpScript: []string{},
+		Assertions: []ScriptTestAssertion{
+			{
+				Query:    "SHOW debug_print_plan",
+				Expected: []sql.Row{{int8(0)}},
 			},
 			{
-				Query:    "SET debug_parallel_query TO 'off'",
+				Query:    "SET debug_print_plan TO 'on'",
 				Expected: []sql.Row{{}},
+			},
+			{
+				Query:    "SHOW debug_print_plan",
+				Expected: []sql.Row{{int8(1)}},
 			},
 			{
-				Query:    "SET debug_pretty_print TO 'on'",
+				Query:    "SET debug_print_plan TO DEFAULT",
 				Expected: []sql.Row{{}},
 			},
 			{
-				Query:    "SET debug_print_parse TO 'off'",
+				Query:    "SHOW debug_print_plan",
+				Expected: []sql.Row{{int8(0)}},
+			},
+		},
+	},
+	{
+		Name:        "set 'debug_print_rewritten' configuration variable",
+		SetUpScript: []string{},
+		Assertions: []ScriptTestAssertion{
+			{
+				Query:    "SHOW debug_print_rewritten",
+				Expected: []sql.Row{{int8(0)}},
+			},
+			{
+				Query:    "SET debug_print_rewritten TO 'on'",
 				Expected: []sql.Row{{}},
+			},
+			{
+				Query:    "SHOW debug_print_rewritten",
+				Expected: []sql.Row{{int8(1)}},
 			},
 			{
-				Query:    "SET debug_print_plan TO 'off'",
+				Query:    "SET debug_print_rewritten TO DEFAULT",
 				Expected: []sql.Row{{}},
+			},
+			{
+				Query:    "SHOW debug_print_rewritten",
+				Expected: []sql.Row{{int8(0)}},
+			},
+		},
+	},
+	{
+		Name:        "set 'default_statistics_target' configuration variable",
+		SetUpScript: []string{},
+		Assertions: []ScriptTestAssertion{
+			{
+				Query:    "SHOW default_statistics_target",
+				Expected: []sql.Row{{int64(100)}},
 			},
 			{
-				Query:    "SET debug_print_rewritten TO 'off'",
+				Query:    "SET default_statistics_target TO '10000'",
 				Expected: []sql.Row{{}},
 			},
 			{
-				Query:    "SET default_statistics_target TO '100'",
+				Query:    "SHOW default_statistics_target",
+				Expected: []sql.Row{{int64(10000)}},
+			},
+			{
+				Query:    "SET default_statistics_target TO DEFAULT",
 				Expected: []sql.Row{{}},
+			},
+			{
+				Query:    "SHOW default_statistics_target",
+				Expected: []sql.Row{{int64(100)}},
+			},
+		},
+	},
+	{
+		Name:        "set 'default_table_access_method' configuration variable",
+		SetUpScript: []string{},
+		Assertions: []ScriptTestAssertion{
+			{
+				Query:    "SHOW default_table_access_method",
+				Expected: []sql.Row{{"heap"}},
 			},
 			{
 				Query:    "SET default_table_access_method TO 'heap'",
 				Expected: []sql.Row{{}},
 			},
 			{
-				Query:    "SET default_tablespace TO ''",
+				Query:    "SHOW default_table_access_method",
+				Expected: []sql.Row{{"heap"}},
+			},
+		},
+	},
+	{
+		Name:        "set 'default_tablespace' configuration variable",
+		SetUpScript: []string{},
+		Assertions: []ScriptTestAssertion{
+			{
+				Query:    "SHOW default_tablespace",
+				Expected: []sql.Row{{""}},
+			},
+			{
+				Query:    "SET default_tablespace TO 'pg_default'",
 				Expected: []sql.Row{{}},
 			},
 			{
-				Query:    "SET default_text_search_config TO 'pg_catalog.english'",
+				Query:    "SHOW default_tablespace",
+				Expected: []sql.Row{{"pg_default"}},
+			},
+			{
+				Query:    "SET default_tablespace TO DEFAULT",
 				Expected: []sql.Row{{}},
 			},
 			{
-				Query:    "SET default_toast_compression TO 'pglz'",
+				Query:    "SHOW default_tablespace",
+				Expected: []sql.Row{{""}},
+			},
+		},
+	},
+	{
+		Name:        "set 'default_text_search_config' configuration variable",
+		SetUpScript: []string{},
+		Assertions: []ScriptTestAssertion{
+			{
+				Query:    "SHOW default_text_search_config",
+				Expected: []sql.Row{{"pg_catalog.english"}},
+			},
+			{
+				Query:    "SET default_text_search_config TO 'pg_catalog.spanish'",
 				Expected: []sql.Row{{}},
 			},
 			{
-				Query:    "SET default_transaction_deferrable TO 'off'",
+				Query:    "SHOW default_text_search_config",
+				Expected: []sql.Row{{"pg_catalog.spanish"}},
+			},
+			{
+				Query:    "SET default_text_search_config TO DEFAULT",
 				Expected: []sql.Row{{}},
 			},
 			{
-				Query:    "SET default_transaction_isolation TO 'read committed'",
+				Query:    "SHOW default_text_search_config",
+				Expected: []sql.Row{{"pg_catalog.english"}},
+			},
+		},
+	},
+	{
+		Name:        "set 'default_toast_compression' configuration variable",
+		SetUpScript: []string{},
+		Assertions: []ScriptTestAssertion{
+			{
+				Query:    "SHOW default_toast_compression",
+				Expected: []sql.Row{{"pglz"}},
+			},
+			{
+				Query:    "SET default_toast_compression TO 'lz4'",
 				Expected: []sql.Row{{}},
 			},
 			{
-				Query:    "SET default_transaction_read_only TO 'off'",
+				Query:    "SHOW default_toast_compression",
+				Expected: []sql.Row{{"lz4"}},
+			},
+			{
+				Query:    "SET default_toast_compression TO DEFAULT",
 				Expected: []sql.Row{{}},
 			},
 			{
-				Query:    "SET dynamic_library_path TO '$libdir'",
+				Query:    "SHOW default_toast_compression",
+				Expected: []sql.Row{{"pglz"}},
+			},
+		},
+	},
+	{
+		Name:        "set 'default_transaction_deferrable' configuration variable",
+		SetUpScript: []string{},
+		Assertions: []ScriptTestAssertion{
+			{
+				Query:    "SHOW default_transaction_deferrable",
+				Expected: []sql.Row{{int8(0)}},
+			},
+			{
+				Query:    "SET default_transaction_deferrable TO 'on'",
 				Expected: []sql.Row{{}},
 			},
 			{
-				Query:    "SET dynamic_shared_memory_type TO 'posix'",
+				Query:    "SHOW default_transaction_deferrable",
+				Expected: []sql.Row{{int8(1)}},
+			},
+			{
+				Query:    "SET default_transaction_deferrable TO DEFAULT",
 				Expected: []sql.Row{{}},
+			},
+			{
+				Query:    "SHOW default_transaction_deferrable",
+				Expected: []sql.Row{{int8(0)}},
+			},
+		},
+	},
+	{
+		Name:        "set 'default_transaction_isolation' configuration variable",
+		SetUpScript: []string{},
+		Assertions: []ScriptTestAssertion{
+			{
+				Query:    "SHOW default_transaction_isolation",
+				Expected: []sql.Row{{"read committed"}},
+			},
+			{
+				Query:    "SET default_transaction_isolation TO 'serializable'",
+				Expected: []sql.Row{{}},
+			},
+			{
+				Query:    "SHOW default_transaction_isolation",
+				Expected: []sql.Row{{"serializable"}},
+			},
+			{
+				Query:    "SET default_transaction_isolation TO DEFAULT",
+				Expected: []sql.Row{{}},
+			},
+			{
+				Query:    "SHOW default_transaction_isolation",
+				Expected: []sql.Row{{"read committed"}},
+			},
+		},
+	},
+	{
+		Name:        "set 'default_transaction_read_only' configuration variable",
+		SetUpScript: []string{},
+		Assertions: []ScriptTestAssertion{
+			{
+				Query:    "SHOW default_transaction_read_only",
+				Expected: []sql.Row{{int8(0)}},
+			},
+			{
+				Query:    "SET default_transaction_read_only TO 'on'",
+				Expected: []sql.Row{{}},
+			},
+			{
+				Query:    "SHOW default_transaction_read_only",
+				Expected: []sql.Row{{int8(1)}},
+			},
+			{
+				Query:    "SET default_transaction_read_only TO DEFAULT",
+				Expected: []sql.Row{{}},
+			},
+			{
+				Query:    "SHOW default_transaction_read_only",
+				Expected: []sql.Row{{int8(0)}},
+			},
+		},
+	},
+	{
+		Name:        "set 'dynamic_library_path' configuration variable",
+		SetUpScript: []string{},
+		Assertions: []ScriptTestAssertion{
+			{
+				Query:    "SHOW dynamic_library_path",
+				Expected: []sql.Row{{"$libdir"}},
+			},
+			{
+				Query:    "SET dynamic_library_path TO ''",
+				Expected: []sql.Row{{}},
+			},
+			{
+				Query:    "SHOW dynamic_library_path",
+				Expected: []sql.Row{{""}},
+			},
+			{
+				Query:    "SET dynamic_library_path TO DEFAULT",
+				Expected: []sql.Row{{}},
+			},
+			{
+				Query:    "SHOW dynamic_library_path",
+				Expected: []sql.Row{{"$libdir"}},
+			},
+		},
+	},
+	{
+		Name:        "set 'dynamic_shared_memory_type' configuration variable",
+		SetUpScript: []string{},
+		Assertions: []ScriptTestAssertion{
+			{
+				Query:    "SHOW dynamic_shared_memory_type",
+				Expected: []sql.Row{{"posix"}},
+			},
+			{
+				Query:       "SET dynamic_shared_memory_type TO 'posix'",
+				ExpectedErr: true,
+			},
+		},
+	},
+	{
+		Name:        "set 'effective_cache_size' configuration variable",
+		SetUpScript: []string{},
+		Assertions: []ScriptTestAssertion{
+			{
+				Query:    "SHOW effective_cache_size",
+				Expected: []sql.Row{{int64(524288)}},
 			},
 			{
 				Query:    "SET effective_cache_size TO '400000'",
 				Expected: []sql.Row{{}},
 			},
 			{
-				Query:    "SET effective_io_concurrency TO '0'",
+				Query:    "SHOW effective_cache_size",
+				Expected: []sql.Row{{int64(400000)}},
+			},
+			{
+				Query:    "SET effective_cache_size TO DEFAULT",
 				Expected: []sql.Row{{}},
 			},
 			{
-				Query:    "SET enable_async_append TO 'on'",
+				Query:    "SHOW effective_cache_size",
+				Expected: []sql.Row{{int64(524288)}},
+			},
+		},
+	},
+	{
+		Name:        "set 'effective_io_concurrency' configuration variable",
+		SetUpScript: []string{},
+		Assertions: []ScriptTestAssertion{
+			{
+				Query:    "SHOW effective_io_concurrency",
+				Expected: []sql.Row{{int64(0)}},
+			},
+			{
+				Query:    "SET effective_io_concurrency TO '100'",
 				Expected: []sql.Row{{}},
 			},
 			{
-				Query:    "SET enable_bitmapscan TO 'on'",
+				Query:    "SHOW effective_io_concurrency",
+				Expected: []sql.Row{{int64(100)}},
+			},
+			{
+				Query:    "SET effective_io_concurrency TO DEFAULT",
 				Expected: []sql.Row{{}},
 			},
 			{
-				Query:    "SET enable_gathermerge TO 'on'",
+				Query:    "SHOW effective_io_concurrency",
+				Expected: []sql.Row{{int64(0)}},
+			},
+		},
+	},
+	{
+		Name:        "set 'enable_async_append' configuration variable",
+		SetUpScript: []string{},
+		Assertions: []ScriptTestAssertion{
+			{
+				Query:    "SHOW enable_async_append",
+				Expected: []sql.Row{{int8(1)}},
+			},
+			{
+				Query:    "SET enable_async_append TO 'off'",
 				Expected: []sql.Row{{}},
 			},
 			{
-				Query:    "SET enable_hashagg TO 'on'",
+				Query:    "SHOW enable_async_append",
+				Expected: []sql.Row{{int8(0)}},
+			},
+			{
+				Query:    "SET enable_async_append TO DEFAULT",
 				Expected: []sql.Row{{}},
 			},
 			{
-				Query:    "SET enable_hashjoin TO 'on'",
+				Query:    "SHOW enable_async_append",
+				Expected: []sql.Row{{int8(1)}},
+			},
+		},
+	},
+	{
+		Name:        "set 'enable_bitmapscan' configuration variable",
+		SetUpScript: []string{},
+		Assertions: []ScriptTestAssertion{
+			{
+				Query:    "SHOW enable_bitmapscan",
+				Expected: []sql.Row{{int8(1)}},
+			},
+			{
+				Query:    "SET enable_bitmapscan TO 'off'",
 				Expected: []sql.Row{{}},
 			},
 			{
-				Query:    "SET enable_incremental_sort TO 'on'",
+				Query:    "SHOW enable_bitmapscan",
+				Expected: []sql.Row{{int8(0)}},
+			},
+			{
+				Query:    "SET enable_bitmapscan TO DEFAULT",
 				Expected: []sql.Row{{}},
 			},
 			{
-				Query:    "SET enable_indexonlyscan TO 'on'",
+				Query:    "SHOW enable_bitmapscan",
+				Expected: []sql.Row{{int8(1)}},
+			},
+		},
+	},
+	{
+		Name:        "set 'enable_gathermerge' configuration variable",
+		SetUpScript: []string{},
+		Assertions: []ScriptTestAssertion{
+			{
+				Query:    "SHOW enable_gathermerge",
+				Expected: []sql.Row{{int8(1)}},
+			},
+			{
+				Query:    "SET enable_gathermerge TO 'off'",
 				Expected: []sql.Row{{}},
 			},
 			{
-				Query:    "SET enable_indexscan TO 'on'",
+				Query:    "SHOW enable_gathermerge",
+				Expected: []sql.Row{{int8(0)}},
+			},
+			{
+				Query:    "SET enable_gathermerge TO DEFAULT",
 				Expected: []sql.Row{{}},
 			},
 			{
-				Query:    "SET enable_material TO 'on'",
+				Query:    "SHOW enable_gathermerge",
+				Expected: []sql.Row{{int8(1)}},
+			},
+		},
+	},
+	{
+		Name:        "set 'enable_hashagg' configuration variable",
+		SetUpScript: []string{},
+		Assertions: []ScriptTestAssertion{
+			{
+				Query:    "SHOW enable_hashagg",
+				Expected: []sql.Row{{int8(1)}},
+			},
+			{
+				Query:    "SET enable_hashagg TO 'off'",
 				Expected: []sql.Row{{}},
 			},
 			{
-				Query:    "SET enable_memoize TO 'on'",
+				Query:    "SHOW enable_hashagg",
+				Expected: []sql.Row{{int8(0)}},
+			},
+			{
+				Query:    "SET enable_hashagg TO DEFAULT",
 				Expected: []sql.Row{{}},
 			},
 			{
-				Query:    "SET enable_mergejoin TO 'on'",
+				Query:    "SHOW enable_hashagg",
+				Expected: []sql.Row{{int8(1)}},
+			},
+		},
+	},
+	{
+		Name:        "set 'enable_hashjoin' configuration variable",
+		SetUpScript: []string{},
+		Assertions: []ScriptTestAssertion{
+			{
+				Query:    "SHOW enable_hashjoin",
+				Expected: []sql.Row{{int8(1)}},
+			},
+			{
+				Query:    "SET enable_hashjoin TO 'off'",
 				Expected: []sql.Row{{}},
 			},
 			{
-				Query:    "SET enable_nestloop TO 'on'",
+				Query:    "SHOW enable_hashjoin",
+				Expected: []sql.Row{{int8(0)}},
+			},
+			{
+				Query:    "SET enable_hashjoin TO DEFAULT",
 				Expected: []sql.Row{{}},
 			},
 			{
-				Query:    "SET enable_parallel_append TO 'on'",
+				Query:    "SHOW enable_hashjoin",
+				Expected: []sql.Row{{int8(1)}},
+			},
+		},
+	},
+	{
+		Name:        "set 'enable_incremental_sort' configuration variable",
+		SetUpScript: []string{},
+		Assertions: []ScriptTestAssertion{
+			{
+				Query:    "SHOW enable_incremental_sort",
+				Expected: []sql.Row{{int8(1)}},
+			},
+			{
+				Query:    "SET enable_incremental_sort TO 'off'",
 				Expected: []sql.Row{{}},
 			},
 			{
-				Query:    "SET enable_parallel_hash TO 'on'",
+				Query:    "SHOW enable_incremental_sort",
+				Expected: []sql.Row{{int8(0)}},
+			},
+			{
+				Query:    "SET enable_incremental_sort TO DEFAULT",
 				Expected: []sql.Row{{}},
 			},
 			{
-				Query:    "SET enable_partition_pruning TO 'on'",
+				Query:    "SHOW enable_incremental_sort",
+				Expected: []sql.Row{{int8(1)}},
+			},
+		},
+	},
+	{
+		Name:        "set 'enable_indexonlyscan' configuration variable",
+		SetUpScript: []string{},
+		Assertions: []ScriptTestAssertion{
+			{
+				Query:    "SHOW enable_indexonlyscan",
+				Expected: []sql.Row{{int8(1)}},
+			},
+			{
+				Query:    "SET enable_indexonlyscan TO 'off'",
 				Expected: []sql.Row{{}},
 			},
 			{
-				Query:    "SET enable_partitionwise_aggregate TO 'off'",
+				Query:    "SHOW enable_indexonlyscan",
+				Expected: []sql.Row{{int8(0)}},
+			},
+			{
+				Query:    "SET enable_indexonlyscan TO DEFAULT",
 				Expected: []sql.Row{{}},
 			},
 			{
-				Query:    "SET enable_partitionwise_join TO 'off'",
+				Query:    "SHOW enable_indexonlyscan",
+				Expected: []sql.Row{{int8(1)}},
+			},
+		},
+	},
+	{
+		Name:        "set 'enable_indexscan' configuration variable",
+		SetUpScript: []string{},
+		Assertions: []ScriptTestAssertion{
+			{
+				Query:    "SHOW enable_indexscan",
+				Expected: []sql.Row{{int8(1)}},
+			},
+			{
+				Query:    "SET enable_indexscan TO 'off'",
 				Expected: []sql.Row{{}},
 			},
 			{
-				Query:    "SET enable_presorted_aggregate TO 'on'",
+				Query:    "SHOW enable_indexscan",
+				Expected: []sql.Row{{int8(0)}},
+			},
+			{
+				Query:    "SET enable_indexscan TO DEFAULT",
 				Expected: []sql.Row{{}},
 			},
 			{
-				Query:    "SET enable_seqscan TO 'on'",
+				Query:    "SHOW enable_indexscan",
+				Expected: []sql.Row{{int8(1)}},
+			},
+		},
+	},
+	{
+		Name:        "set 'enable_material' configuration variable",
+		SetUpScript: []string{},
+		Assertions: []ScriptTestAssertion{
+			{
+				Query:    "SHOW enable_material",
+				Expected: []sql.Row{{int8(1)}},
+			},
+			{
+				Query:    "SET enable_material TO 'off'",
 				Expected: []sql.Row{{}},
 			},
 			{
-				Query:    "SET enable_sort TO 'on'",
+				Query:    "SHOW enable_material",
+				Expected: []sql.Row{{int8(0)}},
+			},
+			{
+				Query:    "SET enable_material TO DEFAULT",
 				Expected: []sql.Row{{}},
 			},
 			{
-				Query:    "SET enable_tidscan TO 'on'",
+				Query:    "SHOW enable_material",
+				Expected: []sql.Row{{int8(1)}},
+			},
+		},
+	},
+	{
+		Name:        "set 'enable_memoize' configuration variable",
+		SetUpScript: []string{},
+		Assertions: []ScriptTestAssertion{
+			{
+				Query:    "SHOW enable_memoize",
+				Expected: []sql.Row{{int8(1)}},
+			},
+			{
+				Query:    "SET enable_memoize TO 'off'",
 				Expected: []sql.Row{{}},
 			},
 			{
-				Query:    "SET escape_string_warning TO 'on'",
+				Query:    "SHOW enable_memoize",
+				Expected: []sql.Row{{int8(0)}},
+			},
+			{
+				Query:    "SET enable_memoize TO DEFAULT",
 				Expected: []sql.Row{{}},
 			},
 			{
-				Query:    "SET event_source TO 'PostgreSQL'",
+				Query:    "SHOW enable_memoize",
+				Expected: []sql.Row{{int8(1)}},
+			},
+		},
+	},
+	{
+		Name:        "set 'enable_mergejoin' configuration variable",
+		SetUpScript: []string{},
+		Assertions: []ScriptTestAssertion{
+			{
+				Query:    "SHOW enable_mergejoin",
+				Expected: []sql.Row{{int8(1)}},
+			},
+			{
+				Query:    "SET enable_mergejoin TO 'off'",
 				Expected: []sql.Row{{}},
 			},
 			{
-				Query:    "SET exit_on_error TO 'off'",
+				Query:    "SHOW enable_mergejoin",
+				Expected: []sql.Row{{int8(0)}},
+			},
+			{
+				Query:    "SET enable_mergejoin TO DEFAULT",
 				Expected: []sql.Row{{}},
 			},
 			{
-				Query:    "SET external_pid_file TO ''",
+				Query:    "SHOW enable_mergejoin",
+				Expected: []sql.Row{{int8(1)}},
+			},
+		},
+	},
+	{
+		Name:        "set 'enable_nestloop' configuration variable",
+		SetUpScript: []string{},
+		Assertions: []ScriptTestAssertion{
+			{
+				Query:    "SHOW enable_nestloop",
+				Expected: []sql.Row{{int8(1)}},
+			},
+			{
+				Query:    "SET enable_nestloop TO 'off'",
 				Expected: []sql.Row{{}},
 			},
 			{
-				Query:    "SET extra_float_digits TO '1'",
+				Query:    "SHOW enable_nestloop",
+				Expected: []sql.Row{{int8(0)}},
+			},
+			{
+				Query:    "SET enable_nestloop TO DEFAULT",
 				Expected: []sql.Row{{}},
 			},
 			{
-				Query:    "SET from_collapse_limit TO '8'",
+				Query:    "SHOW enable_nestloop",
+				Expected: []sql.Row{{int8(1)}},
+			},
+		},
+	},
+	{
+		Name:        "set 'enable_parallel_append' configuration variable",
+		SetUpScript: []string{},
+		Assertions: []ScriptTestAssertion{
+			{
+				Query:    "SHOW enable_parallel_append",
+				Expected: []sql.Row{{int8(1)}},
+			},
+			{
+				Query:    "SET enable_parallel_append TO 'off'",
 				Expected: []sql.Row{{}},
 			},
 			{
-				Query:    "SET fsync TO 'on'",
+				Query:    "SHOW enable_parallel_append",
+				Expected: []sql.Row{{int8(0)}},
+			},
+			{
+				Query:    "SET enable_parallel_append TO DEFAULT",
 				Expected: []sql.Row{{}},
 			},
 			{
-				Query:    "SET full_page_writes TO 'on'",
+				Query:    "SHOW enable_parallel_append",
+				Expected: []sql.Row{{int8(1)}},
+			},
+		},
+	},
+	{
+		Name:        "set 'enable_parallel_hash' configuration variable",
+		SetUpScript: []string{},
+		Assertions: []ScriptTestAssertion{
+			{
+				Query:    "SHOW enable_parallel_hash",
+				Expected: []sql.Row{{int8(1)}},
+			},
+			{
+				Query:    "SET enable_parallel_hash TO 'off'",
 				Expected: []sql.Row{{}},
 			},
 			{
-				Query:    "SET geqo TO 'on'",
+				Query:    "SHOW enable_parallel_hash",
+				Expected: []sql.Row{{int8(0)}},
+			},
+			{
+				Query:    "SET enable_parallel_hash TO DEFAULT",
 				Expected: []sql.Row{{}},
 			},
 			{
-				Query:    "SET geqo_effort TO '5'",
+				Query:    "SHOW enable_parallel_hash",
+				Expected: []sql.Row{{int8(1)}},
+			},
+		},
+	},
+	{
+		Name:        "set 'enable_partition_pruning' configuration variable",
+		SetUpScript: []string{},
+		Assertions: []ScriptTestAssertion{
+			{
+				Query:    "SHOW enable_partition_pruning",
+				Expected: []sql.Row{{int8(1)}},
+			},
+			{
+				Query:    "SET enable_partition_pruning TO 'off'",
 				Expected: []sql.Row{{}},
 			},
 			{
-				Query:    "SET geqo_generations TO '0'",
+				Query:    "SHOW enable_partition_pruning",
+				Expected: []sql.Row{{int8(0)}},
+			},
+			{
+				Query:    "SET enable_partition_pruning TO DEFAULT",
 				Expected: []sql.Row{{}},
 			},
 			{
-				Query:    "SET geqo_pool_size TO '0'",
+				Query:    "SHOW enable_partition_pruning",
+				Expected: []sql.Row{{int8(1)}},
+			},
+		},
+	},
+	{
+		Name:        "set 'enable_partitionwise_aggregate' configuration variable",
+		SetUpScript: []string{},
+		Assertions: []ScriptTestAssertion{
+			{
+				Query:    "SHOW enable_partitionwise_aggregate",
+				Expected: []sql.Row{{int8(0)}},
+			},
+			{
+				Query:    "SET enable_partitionwise_aggregate TO 'on'",
 				Expected: []sql.Row{{}},
 			},
 			{
-				Query:    "SET geqo_seed TO '0'",
+				Query:    "SHOW enable_partitionwise_aggregate",
+				Expected: []sql.Row{{int8(1)}},
+			},
+			{
+				Query:    "SET enable_partitionwise_aggregate TO DEFAULT",
 				Expected: []sql.Row{{}},
 			},
 			{
-				Query:    "SET geqo_selection_bias TO '2'",
+				Query:    "SHOW enable_partitionwise_aggregate",
+				Expected: []sql.Row{{int8(0)}},
+			},
+		},
+	},
+	{
+		Name:        "set 'enable_partitionwise_join' configuration variable",
+		SetUpScript: []string{},
+		Assertions: []ScriptTestAssertion{
+			{
+				Query:    "SHOW enable_partitionwise_join",
+				Expected: []sql.Row{{int8(0)}},
+			},
+			{
+				Query:    "SET enable_partitionwise_join TO 'on'",
 				Expected: []sql.Row{{}},
 			},
 			{
-				Query:    "SET geqo_threshold TO '12'",
+				Query:    "SHOW enable_partitionwise_join",
+				Expected: []sql.Row{{int8(1)}},
+			},
+			{
+				Query:    "SET enable_partitionwise_join TO DEFAULT",
 				Expected: []sql.Row{{}},
 			},
 			{
-				Query:    "SET gin_fuzzy_search_limit TO '0'",
+				Query:    "SHOW enable_partitionwise_join",
+				Expected: []sql.Row{{int8(0)}},
+			},
+		},
+	},
+	{
+		Name:        "set 'enable_presorted_aggregate' configuration variable",
+		SetUpScript: []string{},
+		Assertions: []ScriptTestAssertion{
+			{
+				Query:    "SHOW enable_presorted_aggregate",
+				Expected: []sql.Row{{int8(1)}},
+			},
+			{
+				Query:    "SET enable_presorted_aggregate TO 'off'",
 				Expected: []sql.Row{{}},
+			},
+			{
+				Query:    "SHOW enable_presorted_aggregate",
+				Expected: []sql.Row{{int8(0)}},
+			},
+			{
+				Query:    "SET enable_presorted_aggregate TO DEFAULT",
+				Expected: []sql.Row{{}},
+			},
+			{
+				Query:    "SHOW enable_presorted_aggregate",
+				Expected: []sql.Row{{int8(1)}},
+			},
+		},
+	},
+	{
+		Name:        "set 'enable_seqscan' configuration variable",
+		SetUpScript: []string{},
+		Assertions: []ScriptTestAssertion{
+			{
+				Query:    "SHOW enable_seqscan",
+				Expected: []sql.Row{{int8(1)}},
+			},
+			{
+				Query:    "SET enable_seqscan TO 'off'",
+				Expected: []sql.Row{{}},
+			},
+			{
+				Query:    "SHOW enable_seqscan",
+				Expected: []sql.Row{{int8(0)}},
+			},
+			{
+				Query:    "SET enable_seqscan TO DEFAULT",
+				Expected: []sql.Row{{}},
+			},
+			{
+				Query:    "SHOW enable_seqscan",
+				Expected: []sql.Row{{int8(1)}},
+			},
+		},
+	},
+	{
+		Name:        "set 'enable_sort' configuration variable",
+		SetUpScript: []string{},
+		Assertions: []ScriptTestAssertion{
+			{
+				Query:    "SHOW enable_sort",
+				Expected: []sql.Row{{int8(1)}},
+			},
+			{
+				Query:    "SET enable_sort TO 'off'",
+				Expected: []sql.Row{{}},
+			},
+			{
+				Query:    "SHOW enable_sort",
+				Expected: []sql.Row{{int8(0)}},
+			},
+			{
+				Query:    "SET enable_sort TO DEFAULT",
+				Expected: []sql.Row{{}},
+			},
+			{
+				Query:    "SHOW enable_sort",
+				Expected: []sql.Row{{int8(1)}},
+			},
+		},
+	},
+	{
+		Name:        "set 'enable_tidscan' configuration variable",
+		SetUpScript: []string{},
+		Assertions: []ScriptTestAssertion{
+			{
+				Query:    "SHOW enable_tidscan",
+				Expected: []sql.Row{{int8(1)}},
+			},
+			{
+				Query:    "SET enable_tidscan TO 'off'",
+				Expected: []sql.Row{{}},
+			},
+			{
+				Query:    "SHOW enable_tidscan",
+				Expected: []sql.Row{{int8(0)}},
+			},
+			{
+				Query:    "SET enable_tidscan TO DEFAULT",
+				Expected: []sql.Row{{}},
+			},
+			{
+				Query:    "SHOW enable_tidscan",
+				Expected: []sql.Row{{int8(1)}},
+			},
+		},
+	},
+	{
+		Name:        "set 'escape_string_warning' configuration variable",
+		SetUpScript: []string{},
+		Assertions: []ScriptTestAssertion{
+			{
+				Query:    "SHOW escape_string_warning",
+				Expected: []sql.Row{{int8(1)}},
+			},
+			{
+				Query:    "SET escape_string_warning TO 'off'",
+				Expected: []sql.Row{{}},
+			},
+			{
+				Query:    "SHOW escape_string_warning",
+				Expected: []sql.Row{{int8(0)}},
+			},
+			{
+				Query:    "SET escape_string_warning TO DEFAULT",
+				Expected: []sql.Row{{}},
+			},
+			{
+				Query:    "SHOW escape_string_warning",
+				Expected: []sql.Row{{int8(1)}},
+			},
+		},
+	},
+	{
+		Name:        "set 'event_source' configuration variable",
+		SetUpScript: []string{},
+		Assertions: []ScriptTestAssertion{
+			{
+				Query:    "SHOW event_source",
+				Expected: []sql.Row{{"PostgreSQL"}},
+			},
+			{
+				Query:       "SET event_source TO 'PostgreSQL'",
+				ExpectedErr: true,
+			},
+		},
+	},
+	{
+		Name:        "set 'exit_on_error' configuration variable",
+		SetUpScript: []string{},
+		Assertions: []ScriptTestAssertion{
+			{
+				Query:    "SHOW exit_on_error",
+				Expected: []sql.Row{{int8(0)}},
+			},
+			{
+				Query:    "SET exit_on_error TO 'on'",
+				Expected: []sql.Row{{}},
+			},
+			{
+				Query:    "SHOW exit_on_error",
+				Expected: []sql.Row{{int8(1)}},
+			},
+			{
+				Query:    "SET exit_on_error TO DEFAULT",
+				Expected: []sql.Row{{}},
+			},
+			{
+				Query:    "SHOW exit_on_error",
+				Expected: []sql.Row{{int8(0)}},
+			},
+		},
+	},
+	{
+		Name:        "set 'external_pid_file' configuration variable",
+		SetUpScript: []string{},
+		Assertions: []ScriptTestAssertion{
+			{
+				Query:    "SHOW external_pid_file",
+				Expected: []sql.Row{{""}},
+			},
+			{
+				Query:       "SET external_pid_file TO ''",
+				ExpectedErr: true,
+			},
+		},
+	},
+	{
+		Name:        "set 'extra_float_digits' configuration variable",
+		SetUpScript: []string{},
+		Assertions: []ScriptTestAssertion{
+			{
+				Query:    "SHOW extra_float_digits",
+				Expected: []sql.Row{{int64(1)}},
+			},
+			{
+				Query:    "SET extra_float_digits TO -10",
+				Expected: []sql.Row{{}},
+			},
+			{
+				Query:    "SHOW extra_float_digits",
+				Expected: []sql.Row{{int64(-10)}},
+			},
+			{
+				Query:    "SET extra_float_digits TO DEFAULT",
+				Expected: []sql.Row{{}},
+			},
+			{
+				Query:    "SHOW extra_float_digits",
+				Expected: []sql.Row{{int64(1)}},
+			},
+		},
+	},
+	{
+		Name:        "set 'from_collapse_limit' configuration variable",
+		SetUpScript: []string{},
+		Assertions: []ScriptTestAssertion{
+			{
+				Query:    "SHOW from_collapse_limit",
+				Expected: []sql.Row{{int64(8)}},
+			},
+			{
+				Query:    "SET from_collapse_limit TO 100",
+				Expected: []sql.Row{{}},
+			},
+			{
+				Query:    "SHOW from_collapse_limit",
+				Expected: []sql.Row{{int64(100)}},
+			},
+			{
+				Query:    "SET from_collapse_limit TO DEFAULT",
+				Expected: []sql.Row{{}},
+			},
+			{
+				Query:    "SHOW from_collapse_limit",
+				Expected: []sql.Row{{int64(8)}},
+			},
+		},
+	},
+	{
+		Name:        "set 'fsync' configuration variable",
+		SetUpScript: []string{},
+		Assertions: []ScriptTestAssertion{
+			{
+				Query:    "SHOW fsync",
+				Expected: []sql.Row{{int8(1)}},
+			},
+			{
+				Query:       "SET fsync TO 'on'",
+				ExpectedErr: true,
+			},
+		},
+	},
+	{
+		Name:        "set 'full_page_writes' configuration variable",
+		SetUpScript: []string{},
+		Assertions: []ScriptTestAssertion{
+			{
+				Query:    "SHOW full_page_writes",
+				Expected: []sql.Row{{int8(1)}},
+			},
+			{
+				Query:       "SET full_page_writes TO 'on'",
+				ExpectedErr: true,
+			},
+		},
+	},
+	{
+		Name:        "set 'geqo' configuration variable",
+		SetUpScript: []string{},
+		Assertions: []ScriptTestAssertion{
+			{
+				Query:    "SHOW geqo",
+				Expected: []sql.Row{{int8(1)}},
+			},
+			{
+				Query:    "SET geqo TO 'off'",
+				Expected: []sql.Row{{}},
+			},
+			{
+				Query:    "SHOW geqo",
+				Expected: []sql.Row{{int8(0)}},
+			},
+			{
+				Query:    "SET geqo TO DEFAULT",
+				Expected: []sql.Row{{}},
+			},
+			{
+				Query:    "SHOW geqo",
+				Expected: []sql.Row{{int8(1)}},
+			},
+		},
+	},
+	{
+		Name:        "set 'geqo_effort' configuration variable",
+		SetUpScript: []string{},
+		Assertions: []ScriptTestAssertion{
+			{
+				Query:    "SHOW geqo_effort",
+				Expected: []sql.Row{{int64(5)}},
+			},
+			{
+				Query:    "SET geqo_effort TO 10",
+				Expected: []sql.Row{{}},
+			},
+			{
+				Query:    "SHOW geqo_effort",
+				Expected: []sql.Row{{int64(10)}},
+			},
+			{
+				Query:    "SET geqo_effort TO DEFAULT",
+				Expected: []sql.Row{{}},
+			},
+			{
+				Query:    "SHOW geqo_effort",
+				Expected: []sql.Row{{int64(5)}},
+			},
+		},
+	},
+	{
+		Name:        "set 'geqo_generations' configuration variable",
+		SetUpScript: []string{},
+		Assertions: []ScriptTestAssertion{
+			{
+				Query:    "SHOW geqo_generations",
+				Expected: []sql.Row{{int64(0)}},
+			},
+			{
+				Query:    "SET geqo_generations TO '100'",
+				Expected: []sql.Row{{}},
+			},
+			{
+				Query:    "SHOW geqo_generations",
+				Expected: []sql.Row{{int64(100)}},
+			},
+			{
+				Query:    "SET geqo_generations TO DEFAULT",
+				Expected: []sql.Row{{}},
+			},
+			{
+				Query:    "SHOW geqo_generations",
+				Expected: []sql.Row{{int64(0)}},
+			},
+		},
+	},
+	{
+		Name:        "set 'geqo_pool_size' configuration variable",
+		SetUpScript: []string{},
+		Assertions: []ScriptTestAssertion{
+			{
+				Query:    "SHOW geqo_pool_size",
+				Expected: []sql.Row{{int64(0)}},
+			},
+			{
+				Query:    "SET geqo_pool_size TO 1",
+				Expected: []sql.Row{{}},
+			},
+			{
+				Query:    "SHOW geqo_pool_size",
+				Expected: []sql.Row{{int64(1)}},
+			},
+			{
+				Query:    "SET geqo_pool_size TO DEFAULT",
+				Expected: []sql.Row{{}},
+			},
+			{
+				Query:    "SHOW geqo_pool_size",
+				Expected: []sql.Row{{int64(0)}},
+			},
+		},
+	},
+	{
+		Name:        "set 'geqo_seed' configuration variable",
+		SetUpScript: []string{},
+		Assertions: []ScriptTestAssertion{
+			{
+				Query:    "SHOW geqo_seed",
+				Expected: []sql.Row{{float64(0)}},
+			},
+			{
+				Query:    "SET geqo_seed TO 0.2",
+				Expected: []sql.Row{{}},
+			},
+			{
+				Query:    "SHOW geqo_seed",
+				Expected: []sql.Row{{float64(0.2)}},
+			},
+			{
+				Query:    "SET geqo_seed TO DEFAULT",
+				Expected: []sql.Row{{}},
+			},
+			{
+				Query:    "SHOW geqo_seed",
+				Expected: []sql.Row{{float64(0)}},
+			},
+		},
+	},
+	{
+		Name:        "set 'geqo_selection_bias' configuration variable",
+		SetUpScript: []string{},
+		Assertions: []ScriptTestAssertion{
+			{
+				Query:    "SHOW geqo_selection_bias",
+				Expected: []sql.Row{{float64(2)}},
+			},
+			{
+				Query:    "SET geqo_selection_bias TO 1.7",
+				Expected: []sql.Row{{}},
+			},
+			{
+				Query:    "SHOW geqo_selection_bias",
+				Expected: []sql.Row{{float64(1.7)}},
+			},
+			{
+				Query:    "SET geqo_selection_bias TO DEFAULT",
+				Expected: []sql.Row{{}},
+			},
+			{
+				Query:    "SHOW geqo_selection_bias",
+				Expected: []sql.Row{{float64(2)}},
+			},
+		},
+	},
+	{
+		Name:        "set 'geqo_threshold' configuration variable",
+		SetUpScript: []string{},
+		Assertions: []ScriptTestAssertion{
+			{
+				Query:    "SHOW geqo_threshold",
+				Expected: []sql.Row{{int64(12)}},
+			},
+			{
+				Query:    "SET geqo_threshold TO 22",
+				Expected: []sql.Row{{}},
+			},
+			{
+				Query:    "SHOW geqo_threshold",
+				Expected: []sql.Row{{int64(22)}},
+			},
+			{
+				Query:    "SET geqo_threshold TO DEFAULT",
+				Expected: []sql.Row{{}},
+			},
+			{
+				Query:    "SHOW geqo_threshold",
+				Expected: []sql.Row{{int64(12)}},
+			},
+		},
+	},
+	{
+		Name:        "set 'gin_fuzzy_search_limit' configuration variable",
+		SetUpScript: []string{},
+		Assertions: []ScriptTestAssertion{
+			{
+				Query:    "SHOW gin_fuzzy_search_limit",
+				Expected: []sql.Row{{int64(0)}},
+			},
+			{
+				Query:    "SET gin_fuzzy_search_limit TO 2",
+				Expected: []sql.Row{{}},
+			},
+			{
+				Query:    "SHOW gin_fuzzy_search_limit",
+				Expected: []sql.Row{{int64(2)}},
+			},
+			{
+				Query:    "SET gin_fuzzy_search_limit TO DEFAULT",
+				Expected: []sql.Row{{}},
+			},
+			{
+				Query:    "SHOW gin_fuzzy_search_limit",
+				Expected: []sql.Row{{int64(0)}},
+			},
+		},
+	},
+	{
+		Name:        "set 'gin_pending_list_limit' configuration variable",
+		SetUpScript: []string{},
+		Assertions: []ScriptTestAssertion{
+			{
+				Query:    "SHOW gin_pending_list_limit",
+				Expected: []sql.Row{{int64(4096)}},
 			},
 			{
 				Query:    "SET gin_pending_list_limit TO '4000'",
 				Expected: []sql.Row{{}},
 			},
 			{
-				Query:    "SET gss_accept_delegation TO 'off'",
+				Query:    "SHOW gin_pending_list_limit",
+				Expected: []sql.Row{{int64(4000)}},
+			},
+			{
+				Query:    "SET gin_pending_list_limit TO DEFAULT",
+				Expected: []sql.Row{{}},
+			},
+			{
+				Query:    "SHOW gin_pending_list_limit",
+				Expected: []sql.Row{{int64(4096)}},
+			},
+		},
+	},
+	{
+		Name:        "set 'gss_accept_delegation' configuration variable",
+		SetUpScript: []string{},
+		Assertions: []ScriptTestAssertion{
+			{
+				Query:    "SHOW gss_accept_delegation",
+				Expected: []sql.Row{{int8(0)}},
+			},
+			{
+				Query:       "SET gss_accept_delegation TO 'on'",
+				ExpectedErr: true,
+			},
+		},
+	},
+	{
+		Name:        "set 'hash_mem_multiplier' configuration variable",
+		SetUpScript: []string{},
+		Assertions: []ScriptTestAssertion{
+			{
+				Query:    "SHOW hash_mem_multiplier",
+				Expected: []sql.Row{{float64(2)}},
+			},
+			{
+				Query:    "SET hash_mem_multiplier TO 20.1",
+				Expected: []sql.Row{{}},
+			},
+			{
+				Query:    "SHOW hash_mem_multiplier",
+				Expected: []sql.Row{{float64(20.1)}},
+			},
+			{
+				Query:    "SET hash_mem_multiplier TO DEFAULT",
+				Expected: []sql.Row{{}},
+			},
+			{
+				Query:    "SHOW hash_mem_multiplier",
+				Expected: []sql.Row{{float64(2)}},
+			},
+		},
+	},
+	{
+		Name:        "set 'hba_file' configuration variable",
+		SetUpScript: []string{},
+		Assertions: []ScriptTestAssertion{
+			{
+				Query:    "SHOW hba_file",
+				Expected: []sql.Row{{"pg_hba.conf"}},
+			},
+			{
+				Query:       "SET hba_file TO '/Users/postgres/pg_hba.conf'",
+				ExpectedErr: true,
+			},
+		},
+	},
+	{
+		Name:        "set 'hot_standby' configuration variable",
+		SetUpScript: []string{},
+		Assertions: []ScriptTestAssertion{
+			{
+				Query:    "SHOW hot_standby",
+				Expected: []sql.Row{{int8(1)}},
+			},
+			{
+				Query:       "SET hot_standby TO 'on'",
+				ExpectedErr: true,
+			},
+		},
+	},
+	{
+		Name:        "set 'hot_standby_feedback' configuration variable",
+		SetUpScript: []string{},
+		Assertions: []ScriptTestAssertion{
+			{
+				Query:    "SHOW hot_standby_feedback",
+				Expected: []sql.Row{{int8(0)}},
+			},
+			{
+				Query:       "SET hot_standby_feedback TO 'off'",
+				ExpectedErr: true,
+			},
+		},
+	},
+	{
+		Name:        "set 'huge_page_size' configuration variable",
+		SetUpScript: []string{},
+		Assertions: []ScriptTestAssertion{
+			{
+				Query:    "SHOW huge_page_size",
+				Expected: []sql.Row{{int64(0)}},
+			},
+			{
+				Query:       "SET huge_page_size TO '0'",
+				ExpectedErr: true,
+			},
+		},
+	},
+	{
+		Name:        "set 'huge_pages' configuration variable",
+		SetUpScript: []string{},
+		Assertions: []ScriptTestAssertion{
+			{
+				Query:    "SHOW huge_pages",
+				Expected: []sql.Row{{"try"}},
+			},
+			{
+				Query:       "SET huge_pages TO 'off'",
+				ExpectedErr: true,
+			},
+		},
+	},
+	{
+		Name:        "set 'icu_validation_level' configuration variable",
+		SetUpScript: []string{},
+		Assertions: []ScriptTestAssertion{
+			{
+				Query:    "SHOW icu_validation_level",
+				Expected: []sql.Row{{"warning"}},
+			},
+			{
+				Query:    "SET icu_validation_level TO 'disabled'",
+				Expected: []sql.Row{{}},
+			},
+			{
+				Query:    "SHOW icu_validation_level",
+				Expected: []sql.Row{{"disabled"}},
+			},
+			{
+				Query:    "SET icu_validation_level TO DEFAULT",
+				Expected: []sql.Row{{}},
+			},
+			{
+				Query:    "SHOW icu_validation_level",
+				Expected: []sql.Row{{"warning"}},
+			},
+		},
+	},
+	{
+		Name:        "set 'ident_file' configuration variable",
+		SetUpScript: []string{},
+		Assertions: []ScriptTestAssertion{
+			{
+				Query:    "SHOW ident_file",
+				Expected: []sql.Row{{"pg_ident.conf"}},
+			},
+			{
+				Query:       "SET ident_file TO '/Users/postgres/pg_ident.conf'",
+				ExpectedErr: true,
+			},
+		},
+	},
+	{
+		Name:        "set 'idle_in_transaction_session_timeout' configuration variable",
+		SetUpScript: []string{},
+		Assertions: []ScriptTestAssertion{
+			{
+				Query:    "SHOW idle_in_transaction_session_timeout",
+				Expected: []sql.Row{{int64(0)}},
+			},
+			{
+				Query:    "SET idle_in_transaction_session_timeout TO 2",
 				Expected: []sql.Row{{}},
 			},
 			{
-				Query:    "SET hash_mem_multiplier TO '2'",
+				Query:    "SHOW idle_in_transaction_session_timeout",
+				Expected: []sql.Row{{int64(2)}},
+			},
+			{
+				Query:    "SET idle_in_transaction_session_timeout TO DEFAULT",
+				Expected: []sql.Row{{}},
+			},
+			{
+				Query:    "SHOW idle_in_transaction_session_timeout",
+				Expected: []sql.Row{{int64(0)}},
+			},
+		},
+	},
+	{
+		Name:        "set 'idle_session_timeout' configuration variable",
+		SetUpScript: []string{},
+		Assertions: []ScriptTestAssertion{
+			{
+				Query:    "SHOW idle_session_timeout",
+				Expected: []sql.Row{{int64(0)}},
+			},
+			{
+				Query:    "SET idle_session_timeout TO '3'",
 				Expected: []sql.Row{{}},
 			},
 			{
-				Query:    "SET hba_file TO '/Users/postgres/pg_hba.conf'",
+				Query:    "SHOW idle_session_timeout",
+				Expected: []sql.Row{{int64(3)}},
+			},
+			{
+				Query:    "SET idle_session_timeout TO DEFAULT",
 				Expected: []sql.Row{{}},
+			},
+			{
+				Query:    "SHOW idle_session_timeout",
+				Expected: []sql.Row{{int64(0)}},
+			},
+		},
+	},
+	{
+		Name:        "set 'ignore_checksum_failure' configuration variable",
+		SetUpScript: []string{},
+		Assertions: []ScriptTestAssertion{
+			{
+				Query:    "SHOW ignore_checksum_failure",
+				Expected: []sql.Row{{int8(0)}},
 			},
 			{
-				Query:    "SET hot_standby TO 'on'",
+				Query:    "SET ignore_checksum_failure TO 'on'",
 				Expected: []sql.Row{{}},
 			},
 			{
-				Query:    "SET hot_standby_feedback TO 'off'",
+				Query:    "SHOW ignore_checksum_failure",
+				Expected: []sql.Row{{int8(1)}},
+			},
+			{
+				Query:    "SET ignore_checksum_failure TO DEFAULT",
 				Expected: []sql.Row{{}},
+			},
+			{
+				Query:    "SHOW ignore_checksum_failure",
+				Expected: []sql.Row{{int8(0)}},
+			},
+		},
+	},
+	{
+		Name:        "set 'ignore_invalid_pages' configuration variable",
+		SetUpScript: []string{},
+		Assertions: []ScriptTestAssertion{
+			{
+				Query:    "SHOW ignore_invalid_pages",
+				Expected: []sql.Row{{int8(0)}},
+			},
+			{
+				Query:       "SET ignore_invalid_pages TO 'off'",
+				ExpectedErr: true,
+			},
+		},
+	},
+	{
+		Name:        "set 'ignore_system_indexes' configuration variable",
+		SetUpScript: []string{},
+		Assertions: []ScriptTestAssertion{
+			{
+				Query:    "SHOW ignore_system_indexes",
+				Expected: []sql.Row{{int8(0)}},
+			},
+			{
+				Query:       "SET ignore_system_indexes TO 'off'",
+				ExpectedErr: true,
+			},
+		},
+	},
+	{
+		Name:        "set 'in_hot_standby' configuration variable",
+		SetUpScript: []string{},
+		Assertions: []ScriptTestAssertion{
+			{
+				Query:    "SHOW in_hot_standby",
+				Expected: []sql.Row{{int8(0)}},
+			},
+			{
+				Query:       "SET in_hot_standby TO 'on'",
+				ExpectedErr: true,
+			},
+		},
+	},
+	{
+		Name:        "set 'integer_datetimes' configuration variable",
+		SetUpScript: []string{},
+		Assertions: []ScriptTestAssertion{
+			{
+				Query:    "SHOW integer_datetimes",
+				Expected: []sql.Row{{int8(1)}},
+			},
+			{
+				Query:       "SET integer_datetimes TO 'off'",
+				ExpectedErr: true,
+			},
+		},
+	},
+	{
+		Name:        "set 'IntervalStyle' configuration variable",
+		SetUpScript: []string{},
+		Assertions: []ScriptTestAssertion{
+			{
+				Query:    "SHOW IntervalStyle",
+				Expected: []sql.Row{{"postgres"}},
 			},
 			{
-				Query:    "SET huge_page_size TO '0'",
+				Query:    "SET IntervalStyle TO 'sql_standard'",
 				Expected: []sql.Row{{}},
 			},
 			{
-				Query:    "SET huge_pages TO 'try'",
+				Query:    "SHOW IntervalStyle",
+				Expected: []sql.Row{{"sql_standard"}},
+			},
+			{
+				Query:    "SET IntervalStyle TO DEFAULT",
 				Expected: []sql.Row{{}},
+			},
+			{
+				Query:    "SHOW IntervalStyle",
+				Expected: []sql.Row{{"postgres"}},
+			},
+		},
+	},
+	{
+		Name:        "set 'jit' configuration variable",
+		SetUpScript: []string{},
+		Assertions: []ScriptTestAssertion{
+			{
+				Query:    "SHOW jit",
+				Expected: []sql.Row{{int8(1)}},
 			},
 			{
-				Query:    "SET icu_validation_level TO 'warning'",
+				Query:    "SET jit TO 'off'",
 				Expected: []sql.Row{{}},
 			},
 			{
-				Query:    "SET ident_file TO '/Users/postgres/pg_ident.conf'",
+				Query:    "SHOW jit",
+				Expected: []sql.Row{{int8(0)}},
+			},
+			{
+				Query:    "SET jit TO DEFAULT",
 				Expected: []sql.Row{{}},
+			},
+			{
+				Query:    "SHOW jit",
+				Expected: []sql.Row{{int8(1)}},
+			},
+		},
+	},
+	{
+		Name:        "set 'jit_above_cost' configuration variable",
+		SetUpScript: []string{},
+		Assertions: []ScriptTestAssertion{
+			{
+				Query:    "SHOW jit_above_cost",
+				Expected: []sql.Row{{float64(100000)}},
 			},
 			{
-				Query:    "SET idle_in_transaction_session_timeout TO '0'",
+				Query:    "SET jit_above_cost TO '100'",
 				Expected: []sql.Row{{}},
 			},
 			{
-				Query:    "SET idle_session_timeout TO '0'",
+				Query:    "SHOW jit_above_cost",
+				Expected: []sql.Row{{float64(100)}},
+			},
+			{
+				Query:    "SET jit_above_cost TO DEFAULT",
 				Expected: []sql.Row{{}},
+			},
+			{
+				Query:    "SHOW jit_above_cost",
+				Expected: []sql.Row{{float64(100000)}},
+			},
+		},
+	},
+	{
+		Name:        "set 'jit_debugging_support' configuration variable",
+		SetUpScript: []string{},
+		Assertions: []ScriptTestAssertion{
+			{
+				Query:    "SHOW jit_debugging_support",
+				Expected: []sql.Row{{int8(0)}},
 			},
 			{
-				Query:    "SET ignore_checksum_failure TO 'off'",
+				Query:       "SET jit_debugging_support TO 'off'",
+				ExpectedErr: true,
+			},
+		},
+	},
+	{
+		Name:        "set 'jit_dump_bitcode' configuration variable",
+		SetUpScript: []string{},
+		Assertions: []ScriptTestAssertion{
+			{
+				Query:    "SHOW jit_dump_bitcode",
+				Expected: []sql.Row{{int8(0)}},
+			},
+			{
+				Query:    "SET jit_dump_bitcode TO 'on'",
 				Expected: []sql.Row{{}},
+			},
+			{
+				Query:    "SHOW jit_dump_bitcode",
+				Expected: []sql.Row{{int8(1)}},
 			},
 			{
-				Query:    "SET ignore_invalid_pages TO 'off'",
+				Query:    "SET jit_dump_bitcode TO DEFAULT",
 				Expected: []sql.Row{{}},
 			},
 			{
-				Query:    "SET ignore_system_indexes TO 'off'",
+				Query:    "SHOW jit_dump_bitcode",
+				Expected: []sql.Row{{int8(0)}},
+			},
+		},
+	},
+	{
+		Name:        "set 'jit_expressions' configuration variable",
+		SetUpScript: []string{},
+		Assertions: []ScriptTestAssertion{
+			{
+				Query:    "SHOW jit_expressions",
+				Expected: []sql.Row{{int8(1)}},
+			},
+			{
+				Query:    "SET jit_expressions TO 'off'",
 				Expected: []sql.Row{{}},
+			},
+			{
+				Query:    "SHOW jit_expressions",
+				Expected: []sql.Row{{int8(0)}},
 			},
 			{
-				Query:    "SET in_hot_standby TO 'off'",
+				Query:    "SET jit_expressions TO DEFAULT",
 				Expected: []sql.Row{{}},
 			},
 			{
-				Query:    "SET integer_datetimes TO 'on'",
+				Query:    "SHOW jit_expressions",
+				Expected: []sql.Row{{int8(1)}},
+			},
+		},
+	},
+	{
+		Name:        "set 'jit_inline_above_cost' configuration variable",
+		SetUpScript: []string{},
+		Assertions: []ScriptTestAssertion{
+			{
+				Query:    "SHOW jit_inline_above_cost",
+				Expected: []sql.Row{{float64(500000)}},
+			},
+			{
+				Query:    "SET jit_inline_above_cost TO '5000'",
 				Expected: []sql.Row{{}},
+			},
+			{
+				Query:    "SHOW jit_inline_above_cost",
+				Expected: []sql.Row{{float64(5000)}},
 			},
 			{
-				Query:    "SET IntervalStyle TO 'postgres'",
+				Query:    "SET jit_inline_above_cost TO DEFAULT",
 				Expected: []sql.Row{{}},
 			},
 			{
-				Query:    "SET jit TO 'on'",
+				Query:    "SHOW jit_inline_above_cost",
+				Expected: []sql.Row{{float64(500000)}},
+			},
+		},
+	},
+	{
+		Name:        "set 'jit_optimize_above_cost' configuration variable",
+		SetUpScript: []string{},
+		Assertions: []ScriptTestAssertion{
+			{
+				Query:    "SHOW jit_optimize_above_cost",
+				Expected: []sql.Row{{float64(500000)}},
+			},
+			{
+				Query:    "SET jit_optimize_above_cost TO '5000'",
 				Expected: []sql.Row{{}},
+			},
+			{
+				Query:    "SHOW jit_optimize_above_cost",
+				Expected: []sql.Row{{float64(5000)}},
 			},
 			{
-				Query:    "SET jit_above_cost TO '100000'",
+				Query:    "SET jit_optimize_above_cost TO DEFAULT",
 				Expected: []sql.Row{{}},
+			},
+			{
+				Query:    "SHOW jit_optimize_above_cost",
+				Expected: []sql.Row{{float64(500000)}},
+			},
+		},
+	},
+	{
+		Name:        "set 'jit_profiling_support' configuration variable",
+		SetUpScript: []string{},
+		Assertions: []ScriptTestAssertion{
+			{
+				Query:    "SHOW jit_profiling_support",
+				Expected: []sql.Row{{int8(0)}},
+			},
+			{
+				Query:       "SET jit_profiling_support TO 'off'",
+				ExpectedErr: true,
+			},
+		},
+	},
+	{
+		Name:        "set 'jit_provider' configuration variable",
+		SetUpScript: []string{},
+		Assertions: []ScriptTestAssertion{
+			{
+				Query:    "SHOW jit_provider",
+				Expected: []sql.Row{{"llvmjit"}},
+			},
+			{
+				Query:       "SET jit_provider TO 'llvmjit'",
+				ExpectedErr: true,
 			},
+		},
+	},
+	{
+		Name:        "set 'jit_tuple_deforming' configuration variable",
+		SetUpScript: []string{},
+		Assertions: []ScriptTestAssertion{
 			{
-				Query:    "SET jit_debugging_support TO 'off'",
+				Query:    "SHOW jit_tuple_deforming",
+				Expected: []sql.Row{{int8(1)}},
+			},
+			{
+				Query:    "SET jit_tuple_deforming TO 'off'",
 				Expected: []sql.Row{{}},
+			},
+			{
+				Query:    "SHOW jit_tuple_deforming",
+				Expected: []sql.Row{{int8(0)}},
 			},
 			{
-				Query:    "SET jit_dump_bitcode TO 'off'",
+				Query:    "SET jit_tuple_deforming TO DEFAULT",
 				Expected: []sql.Row{{}},
+			},
+			{
+				Query:    "SHOW jit_tuple_deforming",
+				Expected: []sql.Row{{int8(1)}},
 			},
+		},
+	},
+	{
+		Name:        "set 'join_collapse_limit' configuration variable",
+		SetUpScript: []string{},
+		Assertions: []ScriptTestAssertion{
 			{
-				Query:    "SET jit_expressions TO 'on'",
+				Query:    "SHOW join_collapse_limit",
+				Expected: []sql.Row{{int64(8)}},
+			},
+			{
+				Query:    "SET join_collapse_limit TO '100'",
 				Expected: []sql.Row{{}},
+			},
+			{
+				Query:    "SHOW join_collapse_limit",
+				Expected: []sql.Row{{int64(100)}},
 			},
 			{
-				Query:    "SET jit_inline_above_cost TO '500000'",
+				Query:    "SET join_collapse_limit TO DEFAULT",
 				Expected: []sql.Row{{}},
+			},
+			{
+				Query:    "SHOW join_collapse_limit",
+				Expected: []sql.Row{{int64(8)}},
+			},
+		},
+	},
+	{
+		Name:        "set 'krb_caseins_users' configuration variable",
+		SetUpScript: []string{},
+		Assertions: []ScriptTestAssertion{
+			{
+				Query:    "SHOW krb_caseins_users",
+				Expected: []sql.Row{{int8(0)}},
+			},
+			{
+				Query:       "SET krb_caseins_users TO 'on'",
+				ExpectedErr: true,
+			},
+		},
+	},
+	{
+		Name:        "set 'krb_server_keyfile' configuration variable",
+		SetUpScript: []string{},
+		Assertions: []ScriptTestAssertion{
+			{
+				Query:    "SHOW krb_server_keyfile",
+				Expected: []sql.Row{{"FILE:/usr/local/etc/postgresql/krb5.keytab"}},
+			},
+			{
+				Query:       "SET krb_server_keyfile TO 'FILE:'",
+				ExpectedErr: true,
+			},
+		},
+	},
+	{
+		Name:        "set 'lc_messages' configuration variable",
+		SetUpScript: []string{},
+		Assertions: []ScriptTestAssertion{
+			{
+				Query:    "SHOW lc_messages",
+				Expected: []sql.Row{{"en_US.UTF-8"}},
 			},
 			{
-				Query:    "SET jit_optimize_above_cost TO '500000'",
+				Query:    "SET lc_messages TO 'en_US'",
 				Expected: []sql.Row{{}},
 			},
 			{
-				Query:    "SET jit_profiling_support TO 'off'",
+				Query:    "SHOW lc_messages",
+				Expected: []sql.Row{{"en_US"}},
+			},
+			{
+				Query:    "SET lc_messages TO DEFAULT",
 				Expected: []sql.Row{{}},
+			},
+			{
+				Query:    "SHOW lc_messages",
+				Expected: []sql.Row{{"en_US.UTF-8"}},
+			},
+		},
+	},
+	{
+		Name:        "set 'lc_monetary' configuration variable",
+		SetUpScript: []string{},
+		Assertions: []ScriptTestAssertion{
+			{
+				Query:    "SHOW lc_monetary",
+				Expected: []sql.Row{{"en_US.UTF-8"}},
 			},
 			{
-				Query:    "SET jit_provider TO 'llvmjit'",
+				Query:    "SET lc_monetary TO 'en_US'",
 				Expected: []sql.Row{{}},
 			},
 			{
-				Query:    "SET jit_tuple_deforming TO 'on'",
+				Query:    "SHOW lc_monetary",
+				Expected: []sql.Row{{"en_US"}},
+			},
+			{
+				Query:    "SET lc_monetary TO DEFAULT",
 				Expected: []sql.Row{{}},
+			},
+			{
+				Query:    "SHOW lc_monetary",
+				Expected: []sql.Row{{"en_US.UTF-8"}},
+			},
+		},
+	},
+	{
+		Name:        "set 'lc_numeric' configuration variable",
+		SetUpScript: []string{},
+		Assertions: []ScriptTestAssertion{
+			{
+				Query:    "SHOW lc_numeric",
+				Expected: []sql.Row{{"en_US.UTF-8"}},
 			},
 			{
-				Query:    "SET join_collapse_limit TO '8'",
+				Query:    "SET lc_numeric TO 'en_US'",
 				Expected: []sql.Row{{}},
 			},
 			{
-				Query:    "SET krb_caseins_users TO 'off'",
+				Query:    "SHOW lc_numeric",
+				Expected: []sql.Row{{"en_US"}},
+			},
+			{
+				Query:    "SET lc_numeric TO DEFAULT",
 				Expected: []sql.Row{{}},
+			},
+			{
+				Query:    "SHOW lc_numeric",
+				Expected: []sql.Row{{"en_US.UTF-8"}},
+			},
+		},
+	},
+	{
+		Name:        "set 'lc_time' configuration variable",
+		SetUpScript: []string{},
+		Assertions: []ScriptTestAssertion{
+			{
+				Query:    "SHOW lc_time",
+				Expected: []sql.Row{{"en_US.UTF-8"}},
 			},
 			{
-				Query:    "SET krb_server_keyfile TO 'FILE:'",
+				Query:    "SET lc_time TO 'en_US'",
 				Expected: []sql.Row{{}},
 			},
 			{
-				Query:    "SET lc_messages TO 'en_US.UTF-8'",
+				Query:    "SHOW lc_time",
+				Expected: []sql.Row{{"en_US"}},
+			},
+			{
+				Query:    "SET lc_time TO DEFAULT",
 				Expected: []sql.Row{{}},
+			},
+			{
+				Query:    "SHOW lc_time",
+				Expected: []sql.Row{{"en_US.UTF-8"}},
+			},
+		},
+	},
+	{
+		Name:        "set 'listen_addresses' configuration variable",
+		SetUpScript: []string{},
+		Assertions: []ScriptTestAssertion{
+			{
+				Query:    "SHOW listen_addresses",
+				Expected: []sql.Row{{"localhost"}},
+			},
+			{
+				Query:       "SET listen_addresses TO 'localhost'",
+				ExpectedErr: true,
+			},
+		},
+	},
+	{
+		Name:        "set 'lo_compat_privileges' configuration variable",
+		SetUpScript: []string{},
+		Assertions: []ScriptTestAssertion{
+			{
+				Query:    "SHOW lo_compat_privileges",
+				Expected: []sql.Row{{int8(0)}},
 			},
 			{
-				Query:    "SET lc_monetary TO 'en_US.UTF-8'",
+				Query:    "SET lo_compat_privileges TO 'on'",
 				Expected: []sql.Row{{}},
 			},
 			{
-				Query:    "SET lc_numeric TO 'en_US.UTF-8'",
+				Query:    "SHOW lo_compat_privileges",
+				Expected: []sql.Row{{int8(1)}},
+			},
+			{
+				Query:    "SET lo_compat_privileges TO DEFAULT",
 				Expected: []sql.Row{{}},
+			},
+			{
+				Query:    "SHOW lo_compat_privileges",
+				Expected: []sql.Row{{int8(0)}},
+			},
+		},
+	},
+	{
+		Name:        "set 'local_preload_libraries' configuration variable",
+		SetUpScript: []string{},
+		Assertions: []ScriptTestAssertion{
+			{
+				Query:    "SHOW local_preload_libraries",
+				Expected: []sql.Row{{""}},
 			},
 			{
-				Query:    "SET lc_time TO 'en_US.UTF-8'",
+				Query:    "SET local_preload_libraries TO '/'",
 				Expected: []sql.Row{{}},
 			},
 			{
-				Query:    "SET listen_addresses TO 'localhost'",
+				Query:    "SHOW local_preload_libraries",
+				Expected: []sql.Row{{"/"}},
+			},
+			{
+				Query:    "SET local_preload_libraries TO DEFAULT",
 				Expected: []sql.Row{{}},
+			},
+			{
+				Query:    "SHOW local_preload_libraries",
+				Expected: []sql.Row{{""}},
+			},
+		},
+	},
+	{
+		Name:        "set 'lock_timeout' configuration variable",
+		SetUpScript: []string{},
+		Assertions: []ScriptTestAssertion{
+			{
+				Query:    "SHOW lock_timeout",
+				Expected: []sql.Row{{int64(0)}},
 			},
 			{
-				Query:    "SET lo_compat_privileges TO 'off'",
+				Query:    "SET lock_timeout TO 20",
 				Expected: []sql.Row{{}},
 			},
 			{
-				Query:    "SET local_preload_libraries TO ''",
+				Query:    "SHOW lock_timeout",
+				Expected: []sql.Row{{int64(20)}},
+			},
+			{
+				Query:    "SET lock_timeout TO DEFAULT",
 				Expected: []sql.Row{{}},
+			},
+			{
+				Query:    "SHOW lock_timeout",
+				Expected: []sql.Row{{int64(0)}},
+			},
+		},
+	},
+	{
+		Name:        "set 'log_autovacuum_min_duration' configuration variable",
+		SetUpScript: []string{},
+		Assertions: []ScriptTestAssertion{
+			{
+				Query:    "SHOW log_autovacuum_min_duration",
+				Expected: []sql.Row{{int64(-1)}},
+			},
+			{
+				Query:       "SET log_autovacuum_min_duration TO '600'",
+				ExpectedErr: true,
+			},
+		},
+	},
+	{
+		Name:        "set 'log_checkpoints' configuration variable",
+		SetUpScript: []string{},
+		Assertions: []ScriptTestAssertion{
+			{
+				Query:    "SHOW log_checkpoints",
+				Expected: []sql.Row{{int8(1)}},
+			},
+			{
+				Query:       "SET log_checkpoints TO 'on'",
+				ExpectedErr: true,
+			},
+		},
+	},
+	{
+		Name:        "set 'log_connections' configuration variable",
+		SetUpScript: []string{},
+		Assertions: []ScriptTestAssertion{
+			{
+				Query:    "SHOW log_connections",
+				Expected: []sql.Row{{int8(0)}},
+			},
+			{
+				Query:       "SET log_connections TO 'off'",
+				ExpectedErr: true,
+			},
+		},
+	},
+	{
+		Name:        "set 'log_destination' configuration variable",
+		SetUpScript: []string{},
+		Assertions: []ScriptTestAssertion{
+			{
+				Query:    "SHOW log_destination",
+				Expected: []sql.Row{{"stderr"}},
+			},
+			{
+				Query:       "SET log_destination TO 'jsonlog'",
+				ExpectedErr: true,
+			},
+		},
+	},
+	{
+		Name:        "set 'log_directory' configuration variable",
+		SetUpScript: []string{},
+		Assertions: []ScriptTestAssertion{
+			{
+				Query:    "SHOW log_directory",
+				Expected: []sql.Row{{"log"}},
+			},
+			{
+				Query:       "SET log_directory TO 'log'",
+				ExpectedErr: true,
+			},
+		},
+	},
+	{
+		Name:        "set 'log_disconnections' configuration variable",
+		SetUpScript: []string{},
+		Assertions: []ScriptTestAssertion{
+			{
+				Query:    "SHOW log_disconnections",
+				Expected: []sql.Row{{int8(0)}},
+			},
+			{
+				Query:       "SET log_disconnections TO 'off'",
+				ExpectedErr: true,
+			},
+		},
+	},
+	{
+		Name:        "set 'log_duration' configuration variable",
+		SetUpScript: []string{},
+		Assertions: []ScriptTestAssertion{
+			{
+				Query:    "SHOW log_duration",
+				Expected: []sql.Row{{int8(0)}},
 			},
 			{
-				Query:    "SET lock_timeout TO '0'",
+				Query:    "SET log_duration TO 'on'",
 				Expected: []sql.Row{{}},
 			},
 			{
-				Query:    "SET log_autovacuum_min_duration TO '600'",
+				Query:    "SHOW log_duration",
+				Expected: []sql.Row{{int8(1)}},
+			},
+			{
+				Query:    "SET log_duration TO DEFAULT",
 				Expected: []sql.Row{{}},
+			},
+			{
+				Query:    "SHOW log_duration",
+				Expected: []sql.Row{{int8(0)}},
 			},
+		},
+	},
+	{
+		Name:        "set 'log_error_verbosity' configuration variable",
+		SetUpScript: []string{},
+		Assertions: []ScriptTestAssertion{
 			{
-				Query:    "SET log_checkpoints TO 'on'",
+				Query:    "SHOW log_error_verbosity",
+				Expected: []sql.Row{{"default"}},
+			},
+			{
+				Query:    "SET log_error_verbosity TO 'verbose'",
 				Expected: []sql.Row{{}},
+			},
+			{
+				Query:    "SHOW log_error_verbosity",
+				Expected: []sql.Row{{"verbose"}},
 			},
 			{
-				Query:    "SET log_connections TO 'off'",
+				Query:    "SET log_error_verbosity TO DEFAULT",
 				Expected: []sql.Row{{}},
+			},
+			{
+				Query:    "SHOW log_error_verbosity",
+				Expected: []sql.Row{{"default"}},
 			},
+		},
+	},
+	{
+		Name:        "set 'log_executor_stats' configuration variable",
+		SetUpScript: []string{},
+		Assertions: []ScriptTestAssertion{
 			{
-				Query:    "SET log_destination TO 'stderr'",
+				Query:    "SHOW log_executor_stats",
+				Expected: []sql.Row{{int8(0)}},
+			},
+			{
+				Query:    "SET log_executor_stats TO 'on'",
 				Expected: []sql.Row{{}},
+			},
+			{
+				Query:    "SHOW log_executor_stats",
+				Expected: []sql.Row{{int8(1)}},
 			},
 			{
-				Query:    "SET log_directory TO 'log'",
+				Query:    "SET log_executor_stats TO DEFAULT",
 				Expected: []sql.Row{{}},
+			},
+			{
+				Query:    "SHOW log_executor_stats",
+				Expected: []sql.Row{{int8(0)}},
+			},
+		},
+	},
+	{
+		Name:        "set 'log_file_mode' configuration variable",
+		SetUpScript: []string{},
+		Assertions: []ScriptTestAssertion{
+			{
+				Query:    "SHOW log_file_mode",
+				Expected: []sql.Row{{int64(384)}},
+			},
+			{
+				Query:       "SET log_file_mode TO '384'",
+				ExpectedErr: true,
+			},
+		},
+	},
+	{
+		Name:        "set 'log_filename' configuration variable",
+		SetUpScript: []string{},
+		Assertions: []ScriptTestAssertion{
+			{
+				Query:    "SHOW log_filename",
+				Expected: []sql.Row{{"postgresql-%Y-%m-%d_%H%M%S.log"}},
+			},
+			{
+				Query:       "SET log_filename TO 'postgresql-%Y-%m-%d_%H%M%S.log'",
+				ExpectedErr: true,
+			},
+		},
+	},
+	{
+		Name:        "set 'log_hostname' configuration variable",
+		SetUpScript: []string{},
+		Assertions: []ScriptTestAssertion{
+			{
+				Query:    "SHOW log_hostname",
+				Expected: []sql.Row{{int8(0)}},
+			},
+			{
+				Query:       "SET log_hostname TO 'off'",
+				ExpectedErr: true,
 			},
+		},
+	},
+	{
+		Name:        "set 'log_line_prefix' configuration variable",
+		SetUpScript: []string{},
+		Assertions: []ScriptTestAssertion{
 			{
-				Query:    "SET log_disconnections TO 'off'",
+				Query:    "SHOW log_line_prefix",
+				Expected: []sql.Row{{"%m [%p]"}},
+			},
+			{
+				Query:       "SET log_line_prefix TO '%m [%p]'",
+				ExpectedErr: true,
+			},
+		},
+	},
+	{
+		Name:        "set 'log_lock_waits' configuration variable",
+		SetUpScript: []string{},
+		Assertions: []ScriptTestAssertion{
+			{
+				Query:    "SHOW log_lock_waits",
+				Expected: []sql.Row{{int8(0)}},
+			},
+			{
+				Query:    "SET log_lock_waits TO 'on'",
 				Expected: []sql.Row{{}},
 			},
 			{
-				Query:    "SET log_duration TO 'off'",
+				Query:    "SHOW log_lock_waits",
+				Expected: []sql.Row{{int8(1)}},
+			},
+			{
+				Query:    "SET log_lock_waits TO DEFAULT",
 				Expected: []sql.Row{{}},
+			},
+			{
+				Query:    "SHOW log_lock_waits",
+				Expected: []sql.Row{{int8(0)}},
+			},
+		},
+	},
+	{
+		Name:        "set 'log_min_duration_sample' configuration variable",
+		SetUpScript: []string{},
+		Assertions: []ScriptTestAssertion{
+			{
+				Query:    "SHOW log_min_duration_sample",
+				Expected: []sql.Row{{int64(-1)}},
 			},
 			{
-				Query:    "SET log_error_verbosity TO 'default'",
+				Query:    "SET log_min_duration_sample TO 1",
 				Expected: []sql.Row{{}},
 			},
 			{
-				Query:    "SET log_executor_stats TO 'off'",
+				Query:    "SHOW log_min_duration_sample",
+				Expected: []sql.Row{{int64(1)}},
+			},
+			{
+				Query:    "SET log_min_duration_sample TO DEFAULT",
 				Expected: []sql.Row{{}},
+			},
+			{
+				Query:    "SHOW log_min_duration_sample",
+				Expected: []sql.Row{{int64(-1)}},
+			},
+		},
+	},
+	{
+		Name:        "set 'log_min_duration_statement' configuration variable",
+		SetUpScript: []string{},
+		Assertions: []ScriptTestAssertion{
+			{
+				Query:    "SHOW log_min_duration_statement",
+				Expected: []sql.Row{{int64(-1)}},
 			},
 			{
-				Query:    "SET log_file_mode TO '384'",
+				Query:    "SET log_min_duration_statement TO 10",
 				Expected: []sql.Row{{}},
 			},
 			{
-				Query:    "SET log_filename TO 'postgresql-%Y-%m-%d_%H%M%S.log'",
+				Query:    "SHOW log_min_duration_statement",
+				Expected: []sql.Row{{int64(10)}},
+			},
+			{
+				Query:    "SET log_min_duration_statement TO DEFAULT",
 				Expected: []sql.Row{{}},
+			},
+			{
+				Query:    "SHOW log_min_duration_statement",
+				Expected: []sql.Row{{int64(-1)}},
+			},
+		},
+	},
+	{
+		Name:        "set 'log_min_error_statement' configuration variable",
+		SetUpScript: []string{},
+		Assertions: []ScriptTestAssertion{
+			{
+				Query:    "SHOW log_min_error_statement",
+				Expected: []sql.Row{{"error"}},
 			},
 			{
-				Query:    "SET log_hostname TO 'off'",
+				Query:    "SET log_min_error_statement TO 'debug5'",
 				Expected: []sql.Row{{}},
+			},
+			{
+				Query:    "SHOW log_min_error_statement",
+				Expected: []sql.Row{{"debug5"}},
 			},
 			{
-				Query:    "SET log_line_prefix TO '%m [%p]'",
+				Query:    "SET log_min_error_statement TO DEFAULT",
 				Expected: []sql.Row{{}},
+			},
+			{
+				Query:    "SHOW log_min_error_statement",
+				Expected: []sql.Row{{"error"}},
 			},
+		},
+	},
+	{
+		Name:        "set 'log_min_messages' configuration variable",
+		SetUpScript: []string{},
+		Assertions: []ScriptTestAssertion{
 			{
-				Query:    "SET log_lock_waits TO 'off'",
+				Query:    "SHOW log_min_messages",
+				Expected: []sql.Row{{"warning"}},
+			},
+			{
+				Query:    "SET log_min_messages TO 'info'",
 				Expected: []sql.Row{{}},
+			},
+			{
+				Query:    "SHOW log_min_messages",
+				Expected: []sql.Row{{"info"}},
 			},
 			{
-				Query:    "SET log_min_duration_sample TO '-1'",
+				Query:    "SET log_min_messages TO DEFAULT",
 				Expected: []sql.Row{{}},
+			},
+			{
+				Query:    "SHOW log_min_messages",
+				Expected: []sql.Row{{"warning"}},
 			},
+		},
+	},
+	{
+		Name:        "set 'log_parameter_max_length' configuration variable",
+		SetUpScript: []string{},
+		Assertions: []ScriptTestAssertion{
 			{
-				Query:    "SET log_min_duration_statement TO '-1'",
+				Query:    "SHOW log_parameter_max_length",
+				Expected: []sql.Row{{int64(-1)}},
+			},
+			{
+				Query:    "SET log_parameter_max_length TO '10'",
 				Expected: []sql.Row{{}},
+			},
+			{
+				Query:    "SHOW log_parameter_max_length",
+				Expected: []sql.Row{{int64(10)}},
 			},
 			{
-				Query:    "SET log_min_error_statement TO 'error'",
+				Query:    "SET log_parameter_max_length TO DEFAULT",
 				Expected: []sql.Row{{}},
+			},
+			{
+				Query:    "SHOW log_parameter_max_length",
+				Expected: []sql.Row{{int64(-1)}},
 			},
+		},
+	},
+	{
+		Name:        "set 'log_parameter_max_length_on_error' configuration variable",
+		SetUpScript: []string{},
+		Assertions: []ScriptTestAssertion{
 			{
-				Query:    "SET log_min_messages TO 'warning'",
+				Query:    "SHOW log_parameter_max_length_on_error",
+				Expected: []sql.Row{{int64(0)}},
+			},
+			{
+				Query:    "SET log_parameter_max_length_on_error TO '1'",
 				Expected: []sql.Row{{}},
+			},
+			{
+				Query:    "SHOW log_parameter_max_length_on_error",
+				Expected: []sql.Row{{int64(1)}},
 			},
 			{
-				Query:    "SET log_parameter_max_length TO '-1'",
+				Query:    "SET log_parameter_max_length_on_error TO DEFAULT",
 				Expected: []sql.Row{{}},
+			},
+			{
+				Query:    "SHOW log_parameter_max_length_on_error",
+				Expected: []sql.Row{{int64(0)}},
 			},
+		},
+	},
+	{
+		Name:        "set 'log_parser_stats' configuration variable",
+		SetUpScript: []string{},
+		Assertions: []ScriptTestAssertion{
 			{
-				Query:    "SET log_parameter_max_length_on_error TO '0'",
+				Query:    "SHOW log_parser_stats",
+				Expected: []sql.Row{{int8(0)}},
+			},
+			{
+				Query:    "SET log_parser_stats TO 'on'",
 				Expected: []sql.Row{{}},
+			},
+			{
+				Query:    "SHOW log_parser_stats",
+				Expected: []sql.Row{{int8(1)}},
 			},
 			{
-				Query:    "SET log_parser_stats TO 'off'",
+				Query:    "SET log_parser_stats TO DEFAULT",
 				Expected: []sql.Row{{}},
+			},
+			{
+				Query:    "SHOW log_parser_stats",
+				Expected: []sql.Row{{int8(0)}},
 			},
+		},
+	},
+	{
+		Name:        "set 'log_planner_stats' configuration variable",
+		SetUpScript: []string{},
+		Assertions: []ScriptTestAssertion{
 			{
-				Query:    "SET log_planner_stats TO 'off'",
+				Query:    "SHOW log_planner_stats",
+				Expected: []sql.Row{{int8(0)}},
+			},
+			{
+				Query:    "SET log_planner_stats TO 'on'",
 				Expected: []sql.Row{{}},
+			},
+			{
+				Query:    "SHOW log_planner_stats",
+				Expected: []sql.Row{{int8(1)}},
 			},
 			{
-				Query:    "SET log_recovery_conflict_waits TO 'off'",
+				Query:    "SET log_planner_stats TO DEFAULT",
 				Expected: []sql.Row{{}},
+			},
+			{
+				Query:    "SHOW log_planner_stats",
+				Expected: []sql.Row{{int8(0)}},
+			},
+		},
+	},
+	{
+		Name:        "set 'log_recovery_conflict_waits' configuration variable",
+		SetUpScript: []string{},
+		Assertions: []ScriptTestAssertion{
+			{
+				Query:    "SHOW log_recovery_conflict_waits",
+				Expected: []sql.Row{{int8(0)}},
+			},
+			{
+				Query:       "SET log_recovery_conflict_waits TO 'on'",
+				ExpectedErr: true,
+			},
+		},
+	},
+	{
+		Name:        "set 'log_replication_commands' configuration variable",
+		SetUpScript: []string{},
+		Assertions: []ScriptTestAssertion{
+			{
+				Query:    "SHOW log_replication_commands",
+				Expected: []sql.Row{{int8(0)}},
 			},
 			{
-				Query:    "SET log_replication_commands TO 'off'",
+				Query:    "SET log_replication_commands TO 'on'",
 				Expected: []sql.Row{{}},
 			},
 			{
-				Query:    "SET log_rotation_age TO '1440'",
+				Query:    "SHOW log_replication_commands",
+				Expected: []sql.Row{{int8(1)}},
+			},
+			{
+				Query:    "SET log_replication_commands TO DEFAULT",
 				Expected: []sql.Row{{}},
+			},
+			{
+				Query:    "SHOW log_replication_commands",
+				Expected: []sql.Row{{int8(0)}},
+			},
+		},
+	},
+	{
+		Name:        "set 'log_rotation_age' configuration variable",
+		SetUpScript: []string{},
+		Assertions: []ScriptTestAssertion{
+			{
+				Query:    "SHOW log_rotation_age",
+				Expected: []sql.Row{{int64(1440)}},
+			},
+			{
+				Query:       "SET log_rotation_age TO '1440'",
+				ExpectedErr: true,
+			},
+		},
+	},
+	{
+		Name:        "set 'log_rotation_size' configuration variable",
+		SetUpScript: []string{},
+		Assertions: []ScriptTestAssertion{
+			{
+				Query:    "SHOW log_rotation_size",
+				Expected: []sql.Row{{int64(10240)}},
 			},
 			{
-				Query:    "SET log_rotation_size TO '10240'",
+				Query:       "SET log_rotation_size TO '10240'",
+				ExpectedErr: true,
+			},
+		},
+	},
+	{
+		Name:        "set 'log_startup_progress_interval' configuration variable",
+		SetUpScript: []string{},
+		Assertions: []ScriptTestAssertion{
+			{
+				Query:    "SHOW log_startup_progress_interval",
+				Expected: []sql.Row{{int64(10000)}},
+			},
+			{
+				Query:       "SET log_startup_progress_interval TO '10'",
+				ExpectedErr: true,
+			},
+		},
+	},
+	{
+		Name:        "set 'log_statement' configuration variable",
+		SetUpScript: []string{},
+		Assertions: []ScriptTestAssertion{
+			{
+				Query:    "SHOW log_statement",
+				Expected: []sql.Row{{"none"}},
+			},
+			{
+				Query:    "SET log_statement TO 'ddl'",
 				Expected: []sql.Row{{}},
+			},
+			{
+				Query:    "SHOW log_statement",
+				Expected: []sql.Row{{"ddl"}},
 			},
 			{
-				Query:    "SET log_startup_progress_interval TO '10'",
+				Query:    "SET log_statement TO DEFAULT",
 				Expected: []sql.Row{{}},
+			},
+			{
+				Query:    "SHOW log_statement",
+				Expected: []sql.Row{{"none"}},
 			},
+		},
+	},
+	{
+		Name:        "set 'log_statement_sample_rate' configuration variable",
+		SetUpScript: []string{},
+		Assertions: []ScriptTestAssertion{
 			{
-				Query:    "SET log_statement TO 'none'",
+				Query:    "SHOW log_statement_sample_rate",
+				Expected: []sql.Row{{float64(1)}},
+			},
+			{
+				Query:    "SET log_statement_sample_rate TO 0.5",
 				Expected: []sql.Row{{}},
+			},
+			{
+				Query:    "SHOW log_statement_sample_rate",
+				Expected: []sql.Row{{float64(0.5)}},
 			},
 			{
-				Query:    "SET log_statement_sample_rate TO '1'",
+				Query:    "SET log_statement_sample_rate TO DEFAULT",
 				Expected: []sql.Row{{}},
+			},
+			{
+				Query:    "SHOW log_statement_sample_rate",
+				Expected: []sql.Row{{float64(1)}},
 			},
+		},
+	},
+	{
+		Name:        "set 'log_statement_stats' configuration variable",
+		SetUpScript: []string{},
+		Assertions: []ScriptTestAssertion{
 			{
-				Query:    "SET log_statement_stats TO 'off'",
+				Query:    "SHOW log_statement_stats",
+				Expected: []sql.Row{{int8(0)}},
+			},
+			{
+				Query:    "SET log_statement_stats TO 'on'",
 				Expected: []sql.Row{{}},
+			},
+			{
+				Query:    "SHOW log_statement_stats",
+				Expected: []sql.Row{{int8(1)}},
 			},
 			{
-				Query:    "SET log_temp_files TO '-1'",
+				Query:    "SET log_statement_stats TO DEFAULT",
 				Expected: []sql.Row{{}},
+			},
+			{
+				Query:    "SHOW log_statement_stats",
+				Expected: []sql.Row{{int8(0)}},
+			},
+		},
+	},
+	{
+		Name:        "set 'log_temp_files' configuration variable",
+		SetUpScript: []string{},
+		Assertions: []ScriptTestAssertion{
+			{
+				Query:    "SHOW log_temp_files",
+				Expected: []sql.Row{{int64(-1)}},
 			},
 			{
-				Query:    "SET log_timezone TO 'America/Los_Angeles'",
+				Query:    "SET log_temp_files TO '100'",
 				Expected: []sql.Row{{}},
+			},
+			{
+				Query:    "SHOW log_temp_files",
+				Expected: []sql.Row{{int64(100)}},
 			},
 			{
-				Query:    "SET log_transaction_sample_rate TO '0'",
+				Query:    "SET log_temp_files TO DEFAULT",
 				Expected: []sql.Row{{}},
+			},
+			{
+				Query:    "SHOW log_temp_files",
+				Expected: []sql.Row{{int64(-1)}},
+			},
+		},
+	},
+	{
+		Name:        "set 'log_timezone' configuration variable",
+		SetUpScript: []string{},
+		Assertions: []ScriptTestAssertion{
+			{
+				Query:    "SHOW log_timezone",
+				Expected: []sql.Row{{"America/Los_Angeles"}},
+			},
+			{
+				Query:       "SET log_timezone TO 'America/Los_Angeles'",
+				ExpectedErr: true,
 			},
+		},
+	},
+	{
+		Name:        "set 'log_transaction_sample_rate' configuration variable",
+		SetUpScript: []string{},
+		Assertions: []ScriptTestAssertion{
 			{
-				Query:    "SET log_truncate_on_rotation TO 'off'",
+				Query:    "SHOW log_transaction_sample_rate",
+				Expected: []sql.Row{{float64(0)}},
+			},
+			{
+				Query:    "SET log_transaction_sample_rate TO '0.5'",
 				Expected: []sql.Row{{}},
+			},
+			{
+				Query:    "SHOW log_transaction_sample_rate",
+				Expected: []sql.Row{{float64(0.5)}},
 			},
 			{
-				Query:    "SET logging_collector TO 'off'",
+				Query:    "SET log_transaction_sample_rate TO DEFAULT",
 				Expected: []sql.Row{{}},
+			},
+			{
+				Query:    "SHOW log_transaction_sample_rate",
+				Expected: []sql.Row{{float64(0)}},
+			},
+		},
+	},
+	{
+		Name:        "set 'log_truncate_on_rotation' configuration variable",
+		SetUpScript: []string{},
+		Assertions: []ScriptTestAssertion{
+			{
+				Query:    "SHOW log_truncate_on_rotation",
+				Expected: []sql.Row{{int8(0)}},
+			},
+			{
+				Query:       "SET log_truncate_on_rotation TO 'off'",
+				ExpectedErr: true,
+			},
+		},
+	},
+	{
+		Name:        "set 'logging_collector' configuration variable",
+		SetUpScript: []string{},
+		Assertions: []ScriptTestAssertion{
+			{
+				Query:    "SHOW logging_collector",
+				Expected: []sql.Row{{int8(0)}},
+			},
+			{
+				Query:       "SET logging_collector TO 'off'",
+				ExpectedErr: true,
+			},
+		},
+	},
+	{
+		Name:        "set 'logical_decoding_work_mem' configuration variable",
+		SetUpScript: []string{},
+		Assertions: []ScriptTestAssertion{
+			{
+				Query:    "SHOW logical_decoding_work_mem",
+				Expected: []sql.Row{{int64(65536)}},
 			},
 			{
 				Query:    "SET logical_decoding_work_mem TO '64000'",
 				Expected: []sql.Row{{}},
 			},
 			{
-				Query:    "SET maintenance_io_concurrency TO '0'",
+				Query:    "SHOW logical_decoding_work_mem",
+				Expected: []sql.Row{{int64(64000)}},
+			},
+			{
+				Query:    "SET logical_decoding_work_mem TO DEFAULT",
 				Expected: []sql.Row{{}},
+			},
+			{
+				Query:    "SHOW logical_decoding_work_mem",
+				Expected: []sql.Row{{int64(65536)}},
+			},
+		},
+	},
+	{
+		Name:        "set 'maintenance_io_concurrency' configuration variable",
+		SetUpScript: []string{},
+		Assertions: []ScriptTestAssertion{
+			{
+				Query:    "SHOW maintenance_io_concurrency",
+				Expected: []sql.Row{{int64(0)}},
+			},
+			{
+				Query:    "SET maintenance_io_concurrency TO '1'",
+				Expected: []sql.Row{{}},
+			},
+			{
+				Query:    "SHOW maintenance_io_concurrency",
+				Expected: []sql.Row{{int64(1)}},
+			},
+			{
+				Query:    "SET maintenance_io_concurrency TO DEFAULT",
+				Expected: []sql.Row{{}},
+			},
+			{
+				Query:    "SHOW maintenance_io_concurrency",
+				Expected: []sql.Row{{int64(0)}},
+			},
+		},
+	},
+	{
+		Name:        "set 'maintenance_work_mem' configuration variable",
+		SetUpScript: []string{},
+		Assertions: []ScriptTestAssertion{
+			{
+				Query:    "SHOW maintenance_work_mem",
+				Expected: []sql.Row{{int64(65536)}},
 			},
 			{
 				Query:    "SET maintenance_work_mem TO '64000'",
 				Expected: []sql.Row{{}},
 			},
 			{
-				Query:    "SET max_connections TO '100'",
+				Query:    "SHOW maintenance_work_mem",
+				Expected: []sql.Row{{int64(64000)}},
+			},
+			{
+				Query:    "SET maintenance_work_mem TO DEFAULT",
 				Expected: []sql.Row{{}},
 			},
 			{
-				Query:    "SET max_files_per_process TO '1000'",
+				Query:    "SHOW maintenance_work_mem",
+				Expected: []sql.Row{{int64(65536)}},
+			},
+		},
+	},
+	{
+		Name:        "set 'max_connections' configuration variable",
+		SetUpScript: []string{},
+		Assertions: []ScriptTestAssertion{
+			{
+				Query:    "SHOW max_connections",
+				Expected: []sql.Row{{int64(100)}},
+			},
+			{
+				Query:       "SET max_connections TO '150'",
+				ExpectedErr: true,
+			},
+		},
+	},
+	{
+		Name:        "set 'max_files_per_process' configuration variable",
+		SetUpScript: []string{},
+		Assertions: []ScriptTestAssertion{
+			{
+				Query:    "SHOW max_files_per_process",
+				Expected: []sql.Row{{int64(1000)}},
+			},
+			{
+				Query:       "SET max_files_per_process TO '1000'",
+				ExpectedErr: true,
+			},
+		},
+	},
+	{
+		Name:        "set 'max_function_args' configuration variable",
+		SetUpScript: []string{},
+		Assertions: []ScriptTestAssertion{
+			{
+				Query:    "SHOW max_function_args",
+				Expected: []sql.Row{{int64(100)}},
+			},
+			{
+				Query:       "SET max_function_args TO '100'",
+				ExpectedErr: true,
+			},
+		},
+	},
+	{
+		Name:        "set 'max_identifier_length' configuration variable",
+		SetUpScript: []string{},
+		Assertions: []ScriptTestAssertion{
+			{
+				Query:    "SHOW max_identifier_length",
+				Expected: []sql.Row{{int64(63)}},
+			},
+			{
+				Query:       "SET max_identifier_length TO '63'",
+				ExpectedErr: true,
+			},
+		},
+	},
+	{
+		Name:        "set 'max_index_keys' configuration variable",
+		SetUpScript: []string{},
+		Assertions: []ScriptTestAssertion{
+			{
+				Query:    "SHOW max_index_keys",
+				Expected: []sql.Row{{int64(32)}},
+			},
+			{
+				Query:       "SET max_index_keys TO '32'",
+				ExpectedErr: true,
+			},
+		},
+	},
+	{
+		Name:        "set 'max_locks_per_transaction' configuration variable",
+		SetUpScript: []string{},
+		Assertions: []ScriptTestAssertion{
+			{
+				Query:    "SHOW max_locks_per_transaction",
+				Expected: []sql.Row{{int64(64)}},
+			},
+			{
+				Query:       "SET max_locks_per_transaction TO '64'",
+				ExpectedErr: true,
+			},
+		},
+	},
+	{
+		Name:        "set 'max_logical_replication_workers' configuration variable",
+		SetUpScript: []string{},
+		Assertions: []ScriptTestAssertion{
+			{
+				Query:    "SHOW max_logical_replication_workers",
+				Expected: []sql.Row{{int64(4)}},
+			},
+			{
+				Query:       "SET max_logical_replication_workers TO '4'",
+				ExpectedErr: true,
+			},
+		},
+	},
+	{
+		Name:        "set 'max_parallel_apply_workers_per_subscription' configuration variable",
+		SetUpScript: []string{},
+		Assertions: []ScriptTestAssertion{
+			{
+				Query:    "SHOW max_parallel_apply_workers_per_subscription",
+				Expected: []sql.Row{{int64(2)}},
+			},
+			{
+				Query:       "SET max_parallel_apply_workers_per_subscription TO '2'",
+				ExpectedErr: true,
+			},
+		},
+	},
+	{
+		Name:        "set 'max_parallel_maintenance_workers' configuration variable",
+		SetUpScript: []string{},
+		Assertions: []ScriptTestAssertion{
+			{
+				Query:    "SHOW max_parallel_maintenance_workers",
+				Expected: []sql.Row{{int64(2)}},
+			},
+			{
+				Query:    "SET max_parallel_maintenance_workers TO '3'",
 				Expected: []sql.Row{{}},
 			},
 			{
-				Query:    "SET max_function_args TO '100'",
+				Query:    "SHOW max_parallel_maintenance_workers",
+				Expected: []sql.Row{{int64(3)}},
+			},
+			{
+				Query:    "SET max_parallel_maintenance_workers TO DEFAULT",
 				Expected: []sql.Row{{}},
 			},
 			{
-				Query:    "SET max_identifier_length TO '63'",
+				Query:    "SHOW max_parallel_maintenance_workers",
+				Expected: []sql.Row{{int64(2)}},
+			},
+		},
+	},
+	{
+		Name:        "set 'max_parallel_workers' configuration variable",
+		SetUpScript: []string{},
+		Assertions: []ScriptTestAssertion{
+			{
+				Query:    "SHOW max_parallel_workers",
+				Expected: []sql.Row{{int64(8)}},
+			},
+			{
+				Query:    "SET max_parallel_workers TO 11",
 				Expected: []sql.Row{{}},
 			},
 			{
-				Query:    "SET max_index_keys TO '32'",
+				Query:    "SHOW max_parallel_workers",
+				Expected: []sql.Row{{int64(11)}},
+			},
+			{
+				Query:    "SET max_parallel_workers TO DEFAULT",
 				Expected: []sql.Row{{}},
 			},
 			{
-				Query:    "SET max_locks_per_transaction TO '64'",
+				Query:    "SHOW max_parallel_workers",
+				Expected: []sql.Row{{int64(8)}},
+			},
+		},
+	},
+	{
+		Name:        "set 'max_parallel_workers_per_gather' configuration variable",
+		SetUpScript: []string{},
+		Assertions: []ScriptTestAssertion{
+			{
+				Query:    "SHOW max_parallel_workers_per_gather",
+				Expected: []sql.Row{{int64(2)}},
+			},
+			{
+				Query:    "SET max_parallel_workers_per_gather TO 3",
 				Expected: []sql.Row{{}},
 			},
 			{
-				Query:    "SET max_logical_replication_workers TO '4'",
+				Query:    "SHOW max_parallel_workers_per_gather",
+				Expected: []sql.Row{{int64(3)}},
+			},
+			{
+				Query:    "SET max_parallel_workers_per_gather TO DEFAULT",
 				Expected: []sql.Row{{}},
 			},
 			{
-				Query:    "SET max_parallel_apply_workers_per_subscription TO '2'",
-				Expected: []sql.Row{{}},
+				Query:    "SHOW max_parallel_workers_per_gather",
+				Expected: []sql.Row{{int64(2)}},
+			},
+		},
+	},
+	{
+		Name:        "set 'max_pred_locks_per_page' configuration variable",
+		SetUpScript: []string{},
+		Assertions: []ScriptTestAssertion{
+			{
+				Query:    "SHOW max_pred_locks_per_page",
+				Expected: []sql.Row{{int64(2)}},
 			},
 			{
-				Query:    "SET max_parallel_maintenance_workers TO '2'",
-				Expected: []sql.Row{{}},
+				Query:       "SET max_pred_locks_per_page TO '2'",
+				ExpectedErr: true,
+			},
+		},
+	},
+	{
+		Name:        "set 'max_pred_locks_per_relation' configuration variable",
+		SetUpScript: []string{},
+		Assertions: []ScriptTestAssertion{
+			{
+				Query:    "SHOW max_pred_locks_per_relation",
+				Expected: []sql.Row{{int64(-2)}},
 			},
 			{
-				Query:    "SET max_parallel_workers TO '8'",
-				Expected: []sql.Row{{}},
+				Query:       "SET max_pred_locks_per_relation TO '-2'",
+				ExpectedErr: true,
+			},
+		},
+	},
+	{
+		Name:        "set 'max_pred_locks_per_transaction' configuration variable",
+		SetUpScript: []string{},
+		Assertions: []ScriptTestAssertion{
+			{
+				Query:    "SHOW max_pred_locks_per_transaction",
+				Expected: []sql.Row{{int64(64)}},
 			},
 			{
-				Query:    "SET max_parallel_workers_per_gather TO '2'",
-				Expected: []sql.Row{{}},
+				Query:       "SET max_pred_locks_per_transaction TO '64'",
+				ExpectedErr: true,
+			},
+		},
+	},
+	{
+		Name:        "set 'max_prepared_transactions' configuration variable",
+		SetUpScript: []string{},
+		Assertions: []ScriptTestAssertion{
+			{
+				Query:    "SHOW max_prepared_transactions",
+				Expected: []sql.Row{{int64(0)}},
 			},
 			{
-				Query:    "SET max_pred_locks_per_page TO '2'",
-				Expected: []sql.Row{{}},
+				Query:       "SET max_prepared_transactions TO '0'",
+				ExpectedErr: true,
+			},
+		},
+	},
+	{
+		Name:        "set 'max_replication_slots' configuration variable",
+		SetUpScript: []string{},
+		Assertions: []ScriptTestAssertion{
+			{
+				Query:    "SHOW max_replication_slots",
+				Expected: []sql.Row{{int64(10)}},
 			},
 			{
-				Query:    "SET max_pred_locks_per_relation TO '-2'",
-				Expected: []sql.Row{{}},
+				Query:       "SET max_replication_slots TO '10'",
+				ExpectedErr: true,
+			},
+		},
+	},
+	{
+		Name:        "set 'max_slot_wal_keep_size' configuration variable",
+		SetUpScript: []string{},
+		Assertions: []ScriptTestAssertion{
+			{
+				Query:    "SHOW max_slot_wal_keep_size",
+				Expected: []sql.Row{{int64(-1)}},
 			},
 			{
-				Query:    "SET max_pred_locks_per_transaction TO '64'",
-				Expected: []sql.Row{{}},
+				Query:       "SET max_slot_wal_keep_size TO '-1'",
+				ExpectedErr: true,
 			},
+		},
+	},
+	{
+		Name:        "set 'max_stack_depth' configuration variable",
+		SetUpScript: []string{},
+		Assertions: []ScriptTestAssertion{
 			{
-				Query:    "SET max_prepared_transactions TO '0'",
-				Expected: []sql.Row{{}},
-			},
-			{
-				Query:    "SET max_replication_slots TO '10'",
-				Expected: []sql.Row{{}},
-			},
-			{
-				Query:    "SET max_slot_wal_keep_size TO '-1'",
-				Expected: []sql.Row{{}},
+				Query:    "SHOW max_stack_depth",
+				Expected: []sql.Row{{int64(2048)}},
 			},
 			{
 				Query:    "SET max_stack_depth TO '2000'",
 				Expected: []sql.Row{{}},
 			},
 			{
-				Query:    "SET max_standby_archive_delay TO '30'",
+				Query:    "SHOW max_stack_depth",
+				Expected: []sql.Row{{int64(2000)}},
+			},
+			{
+				Query:    "SET max_stack_depth TO DEFAULT",
 				Expected: []sql.Row{{}},
 			},
 			{
-				Query:    "SET max_standby_streaming_delay TO '30'",
-				Expected: []sql.Row{{}},
+				Query:    "SHOW max_stack_depth",
+				Expected: []sql.Row{{int64(2048)}},
+			},
+		},
+	},
+	{
+		Name:        "set 'max_standby_archive_delay' configuration variable",
+		SetUpScript: []string{},
+		Assertions: []ScriptTestAssertion{
+			{
+				Query:    "SHOW max_standby_archive_delay",
+				Expected: []sql.Row{{int64(30000)}},
 			},
 			{
-				Query:    "SET max_sync_workers_per_subscription TO '2'",
-				Expected: []sql.Row{{}},
+				Query:       "SET max_standby_archive_delay TO '30'",
+				ExpectedErr: true,
+			},
+		},
+	},
+	{
+		Name:        "set 'max_standby_streaming_delay' configuration variable",
+		SetUpScript: []string{},
+		Assertions: []ScriptTestAssertion{
+			{
+				Query:    "SHOW max_standby_streaming_delay",
+				Expected: []sql.Row{{int64(30000)}},
 			},
 			{
-				Query:    "SET max_wal_senders TO '10'",
-				Expected: []sql.Row{{}},
+				Query:       "SET max_standby_streaming_delay TO '30'",
+				ExpectedErr: true,
+			},
+		},
+	},
+	{
+		Name:        "set 'max_sync_workers_per_subscription' configuration variable",
+		SetUpScript: []string{},
+		Assertions: []ScriptTestAssertion{
+			{
+				Query:    "SHOW max_sync_workers_per_subscription",
+				Expected: []sql.Row{{int64(2)}},
 			},
 			{
-				Query:    "SET max_wal_size TO '1000'",
-				Expected: []sql.Row{{}},
+				Query:       "SET max_sync_workers_per_subscription TO '2'",
+				ExpectedErr: true,
+			},
+		},
+	},
+	{
+		Name:        "set 'max_wal_senders' configuration variable",
+		SetUpScript: []string{},
+		Assertions: []ScriptTestAssertion{
+			{
+				Query:    "SHOW max_wal_senders",
+				Expected: []sql.Row{{int64(10)}},
 			},
 			{
-				Query:    "SET max_worker_processes TO '8'",
-				Expected: []sql.Row{{}},
+				Query:       "SET max_wal_senders TO '10'",
+				ExpectedErr: true,
+			},
+		},
+	},
+	{
+		Name:        "set 'max_wal_size' configuration variable",
+		SetUpScript: []string{},
+		Assertions: []ScriptTestAssertion{
+			{
+				Query:    "SHOW max_wal_size",
+				Expected: []sql.Row{{int64(1024)}},
 			},
 			{
-				Query:    "SET min_dynamic_shared_memory TO '0'",
-				Expected: []sql.Row{{}},
+				Query:       "SET max_wal_size TO '1000'",
+				ExpectedErr: true,
+			},
+		},
+	},
+	{
+		Name:        "set 'max_worker_processes' configuration variable",
+		SetUpScript: []string{},
+		Assertions: []ScriptTestAssertion{
+			{
+				Query:    "SHOW max_worker_processes",
+				Expected: []sql.Row{{int64(8)}},
+			},
+			{
+				Query:       "SET max_worker_processes TO '8'",
+				ExpectedErr: true,
+			},
+		},
+	},
+	{
+		Name:        "set 'min_dynamic_shared_memory' configuration variable",
+		SetUpScript: []string{},
+		Assertions: []ScriptTestAssertion{
+			{
+				Query:    "SHOW min_dynamic_shared_memory",
+				Expected: []sql.Row{{int64(0)}},
+			},
+			{
+				Query:       "SET min_dynamic_shared_memory TO '0'",
+				ExpectedErr: true,
+			},
+		},
+	},
+	{
+		Name:        "set 'min_parallel_index_scan_size' configuration variable",
+		SetUpScript: []string{},
+		Assertions: []ScriptTestAssertion{
+			{
+				Query:    "SHOW min_parallel_index_scan_size",
+				Expected: []sql.Row{{int64(1024)}},
 			},
 			{
 				Query:    "SET min_parallel_index_scan_size TO '512'",
 				Expected: []sql.Row{{}},
 			},
 			{
+				Query:    "SHOW min_parallel_index_scan_size",
+				Expected: []sql.Row{{int64(512)}},
+			},
+			{
+				Query:    "SET min_parallel_index_scan_size TO DEFAULT",
+				Expected: []sql.Row{{}},
+			},
+			{
+				Query:    "SHOW min_parallel_index_scan_size",
+				Expected: []sql.Row{{int64(1024)}},
+			},
+		},
+	},
+	{
+		Name:        "set 'min_parallel_table_scan_size' configuration variable",
+		SetUpScript: []string{},
+		Assertions: []ScriptTestAssertion{
+			{
+				Query:    "SHOW min_parallel_table_scan_size",
+				Expected: []sql.Row{{int64(1024)}},
+			},
+			{
 				Query:    "SET min_parallel_table_scan_size TO '800'",
 				Expected: []sql.Row{{}},
 			},
 			{
-				Query:    "SET min_wal_size TO '8000'",
+				Query:    "SHOW min_parallel_table_scan_size",
+				Expected: []sql.Row{{int64(800)}},
+			},
+			{
+				Query:    "SET min_parallel_table_scan_size TO DEFAULT",
 				Expected: []sql.Row{{}},
 			},
 			{
-				Query:    "SET old_snapshot_threshold TO '-1'",
+				Query:    "SHOW min_parallel_table_scan_size",
+				Expected: []sql.Row{{int64(1024)}},
+			},
+		},
+	},
+	{
+		Name:        "set 'min_wal_size' configuration variable",
+		SetUpScript: []string{},
+		Assertions: []ScriptTestAssertion{
+			{
+				Query:    "SHOW min_wal_size",
+				Expected: []sql.Row{{int64(80)}},
+			},
+			{
+				Query:       "SET min_wal_size TO '8000'",
+				ExpectedErr: true,
+			},
+		},
+	},
+	{
+		Name:        "set 'old_snapshot_threshold' configuration variable",
+		SetUpScript: []string{},
+		Assertions: []ScriptTestAssertion{
+			{
+				Query:    "SHOW old_snapshot_threshold",
+				Expected: []sql.Row{{int64(-1)}},
+			},
+			{
+				Query:       "SET old_snapshot_threshold TO '-1'",
+				ExpectedErr: true,
+			},
+		},
+	},
+	{
+		Name:        "set 'parallel_leader_participation' configuration variable",
+		SetUpScript: []string{},
+		Assertions: []ScriptTestAssertion{
+			{
+				Query:    "SHOW parallel_leader_participation",
+				Expected: []sql.Row{{int8(1)}},
+			},
+			{
+				Query:    "SET parallel_leader_participation TO 'off'",
 				Expected: []sql.Row{{}},
 			},
 			{
-				Query:    "SET parallel_leader_participation TO 'on'",
+				Query:    "SHOW parallel_leader_participation",
+				Expected: []sql.Row{{int8(0)}},
+			},
+			{
+				Query:    "SET parallel_leader_participation TO DEFAULT",
 				Expected: []sql.Row{{}},
 			},
 			{
-				Query:    "SET parallel_setup_cost TO '1000'",
+				Query:    "SHOW parallel_leader_participation",
+				Expected: []sql.Row{{int8(1)}},
+			},
+		},
+	},
+	{
+		Name:        "set 'parallel_setup_cost' configuration variable",
+		SetUpScript: []string{},
+		Assertions: []ScriptTestAssertion{
+			{
+				Query:    "SHOW parallel_setup_cost",
+				Expected: []sql.Row{{float64(1000)}},
+			},
+			{
+				Query:    "SET parallel_setup_cost TO '10000'",
 				Expected: []sql.Row{{}},
 			},
 			{
-				Query:    "SET parallel_tuple_cost TO '0.1'",
+				Query:    "SHOW parallel_setup_cost",
+				Expected: []sql.Row{{float64(10000)}},
+			},
+			{
+				Query:    "SET parallel_setup_cost TO DEFAULT",
 				Expected: []sql.Row{{}},
+			},
+			{
+				Query:    "SHOW parallel_setup_cost",
+				Expected: []sql.Row{{float64(1000)}},
+			},
+		},
+	},
+	{
+		Name:        "set 'parallel_tuple_cost' configuration variable",
+		SetUpScript: []string{},
+		Assertions: []ScriptTestAssertion{
+			{
+				Query:    "SHOW parallel_tuple_cost",
+				Expected: []sql.Row{{float64(0.1)}},
+			},
+			{
+				Query:    "SET parallel_tuple_cost TO '0.2'",
+				Expected: []sql.Row{{}},
+			},
+			{
+				Query:    "SHOW parallel_tuple_cost",
+				Expected: []sql.Row{{float64(0.2)}},
+			},
+			{
+				Query:    "SET parallel_tuple_cost TO DEFAULT",
+				Expected: []sql.Row{{}},
+			},
+			{
+				Query:    "SHOW parallel_tuple_cost",
+				Expected: []sql.Row{{float64(0.1)}},
+			},
+		},
+	},
+	{
+		Name:        "set 'password_encryption' configuration variable",
+		SetUpScript: []string{},
+		Assertions: []ScriptTestAssertion{
+			{
+				Query:    "SHOW password_encryption",
+				Expected: []sql.Row{{"scram-sha-256"}},
+			},
+			{
+				Query:    "SET password_encryption TO 'md5'",
+				Expected: []sql.Row{{}},
+			},
+			{
+				Query:    "SHOW password_encryption",
+				Expected: []sql.Row{{"md5"}},
 			},
 			{
 				Query:    "SET password_encryption TO 'scram-sha-256'",
 				Expected: []sql.Row{{}},
 			},
 			{
-				Query:    "SET plan_cache_mode TO 'auto'",
+				Query:    "SHOW password_encryption",
+				Expected: []sql.Row{{"scram-sha-256"}},
+			},
+		},
+	},
+	{
+		Name:        "set 'plan_cache_mode' configuration variable",
+		SetUpScript: []string{},
+		Assertions: []ScriptTestAssertion{
+			{
+				Query:    "SHOW plan_cache_mode",
+				Expected: []sql.Row{{"auto"}},
+			},
+			{
+				Query:    "SET plan_cache_mode TO 'force_generic_plan'",
 				Expected: []sql.Row{{}},
 			},
 			{
-				Query:    "SET port TO '5432'",
+				Query:    "SHOW plan_cache_mode",
+				Expected: []sql.Row{{"force_generic_plan"}},
+			},
+			{
+				Query:    "SET plan_cache_mode TO DEFAULT",
 				Expected: []sql.Row{{}},
 			},
 			{
-				Query:    "SET post_auth_delay TO '0'",
+				Query:    "SHOW plan_cache_mode",
+				Expected: []sql.Row{{"auto"}},
+			},
+		},
+	},
+	{
+		Name:        "set 'port' configuration variable",
+		SetUpScript: []string{},
+		Assertions: []ScriptTestAssertion{
+			{
+				Query:    "SHOW port",
+				Expected: []sql.Row{{int64(5432)}},
+			},
+			{
+				Query:       "SET port TO '5432'",
+				ExpectedErr: true,
+			},
+		},
+	},
+	{
+		Name:        "set 'post_auth_delay' configuration variable",
+		SetUpScript: []string{},
+		Assertions: []ScriptTestAssertion{
+			{
+				Query:    "SHOW post_auth_delay",
+				Expected: []sql.Row{{int64(0)}},
+			},
+			{
+				Query:       "SET post_auth_delay TO '0'",
+				ExpectedErr: true,
+			},
+		},
+	},
+	{
+		Name:        "set 'pre_auth_delay' configuration variable",
+		SetUpScript: []string{},
+		Assertions: []ScriptTestAssertion{
+			{
+				Query:    "SHOW pre_auth_delay",
+				Expected: []sql.Row{{int64(0)}},
+			},
+			{
+				Query:       "SET pre_auth_delay TO '0'",
+				ExpectedErr: true,
+			},
+		},
+	},
+	{
+		Name:        "set 'primary_conninfo' configuration variable",
+		SetUpScript: []string{},
+		Assertions: []ScriptTestAssertion{
+			{
+				Query:    "SHOW primary_conninfo",
+				Expected: []sql.Row{{""}},
+			},
+			{
+				Query:       "SET primary_conninfo TO ''",
+				ExpectedErr: true,
+			},
+		},
+	},
+	{
+		Name:        "set 'primary_slot_name' configuration variable",
+		SetUpScript: []string{},
+		Assertions: []ScriptTestAssertion{
+			{
+				Query:    "SHOW primary_slot_name",
+				Expected: []sql.Row{{""}},
+			},
+			{
+				Query:       "SET primary_slot_name TO ''",
+				ExpectedErr: true,
+			},
+		},
+	},
+	{
+		Name:        "set 'quote_all_identifiers' configuration variable",
+		SetUpScript: []string{},
+		Assertions: []ScriptTestAssertion{
+			{
+				Query:    "SHOW quote_all_identifiers",
+				Expected: []sql.Row{{int8(0)}},
+			},
+			{
+				Query:    "SET quote_all_identifiers TO 'on'",
 				Expected: []sql.Row{{}},
 			},
 			{
-				Query:    "SET pre_auth_delay TO '0'",
+				Query:    "SHOW quote_all_identifiers",
+				Expected: []sql.Row{{int8(1)}},
+			},
+			{
+				Query:    "SET quote_all_identifiers TO DEFAULT",
 				Expected: []sql.Row{{}},
 			},
 			{
-				Query:    "SET primary_conninfo TO ''",
+				Query:    "SHOW quote_all_identifiers",
+				Expected: []sql.Row{{int8(0)}},
+			},
+		},
+	},
+	{
+		Name:        "set 'random_page_cost' configuration variable",
+		SetUpScript: []string{},
+		Assertions: []ScriptTestAssertion{
+			{
+				Query:    "SHOW random_page_cost",
+				Expected: []sql.Row{{float64(4)}},
+			},
+			{
+				Query:    "SET random_page_cost TO 2.5",
 				Expected: []sql.Row{{}},
 			},
 			{
-				Query:    "SET primary_slot_name TO ''",
+				Query:    "SHOW random_page_cost",
+				Expected: []sql.Row{{float64(2.5)}},
+			},
+			{
+				Query:    "SET random_page_cost TO DEFAULT",
 				Expected: []sql.Row{{}},
 			},
 			{
-				Query:    "SET quote_all_identifiers TO 'off'",
+				Query:    "SHOW random_page_cost",
+				Expected: []sql.Row{{float64(4)}},
+			},
+		},
+	},
+	{
+		Name:        "set 'recovery_end_command' configuration variable",
+		SetUpScript: []string{},
+		Assertions: []ScriptTestAssertion{
+			{
+				Query:    "SHOW recovery_end_command",
+				Expected: []sql.Row{{""}},
+			},
+			{
+				Query:       "SET recovery_end_command TO ''",
+				ExpectedErr: true,
+			},
+		},
+	},
+	{
+		Name:        "set 'recovery_init_sync_method' configuration variable",
+		SetUpScript: []string{},
+		Assertions: []ScriptTestAssertion{
+			{
+				Query:    "SHOW recovery_init_sync_method",
+				Expected: []sql.Row{{"fsync"}},
+			},
+			{
+				Query:       "SET recovery_init_sync_method TO 'fsync'",
+				ExpectedErr: true,
+			},
+		},
+	},
+	{
+		Name:        "set 'recovery_min_apply_delay' configuration variable",
+		SetUpScript: []string{},
+		Assertions: []ScriptTestAssertion{
+			{
+				Query:    "SHOW recovery_min_apply_delay",
+				Expected: []sql.Row{{int64(0)}},
+			},
+			{
+				Query:       "SET recovery_min_apply_delay TO '0'",
+				ExpectedErr: true,
+			},
+		},
+	},
+	{
+		Name:        "set 'recovery_prefetch' configuration variable",
+		SetUpScript: []string{},
+		Assertions: []ScriptTestAssertion{
+			{
+				Query:    "SHOW recovery_prefetch",
+				Expected: []sql.Row{{"try"}},
+			},
+			{
+				Query:       "SET recovery_prefetch TO 'try'",
+				ExpectedErr: true,
+			},
+		},
+	},
+	{
+		Name:        "set 'recovery_target' configuration variable",
+		SetUpScript: []string{},
+		Assertions: []ScriptTestAssertion{
+			{
+				Query:    "SHOW recovery_target",
+				Expected: []sql.Row{{""}},
+			},
+			{
+				Query:       "SET recovery_target TO ''",
+				ExpectedErr: true,
+			},
+		},
+	},
+	{
+		Name:        "set 'recovery_target_action' configuration variable",
+		SetUpScript: []string{},
+		Assertions: []ScriptTestAssertion{
+			{
+				Query:    "SHOW recovery_target_action",
+				Expected: []sql.Row{{"pause"}},
+			},
+			{
+				Query:       "SET recovery_target_action TO 'pause'",
+				ExpectedErr: true,
+			},
+		},
+	},
+	{
+		Name:        "set 'recovery_target_inclusive' configuration variable",
+		SetUpScript: []string{},
+		Assertions: []ScriptTestAssertion{
+			{
+				Query:    "SHOW recovery_target_inclusive",
+				Expected: []sql.Row{{int8(1)}},
+			},
+			{
+				Query:       "SET recovery_target_inclusive TO 'on'",
+				ExpectedErr: true,
+			},
+		},
+	},
+	{
+		Name:        "set 'recovery_target_lsn' configuration variable",
+		SetUpScript: []string{},
+		Assertions: []ScriptTestAssertion{
+			{
+				Query:    "SHOW recovery_target_lsn",
+				Expected: []sql.Row{{""}},
+			},
+			{
+				Query:       "SET recovery_target_lsn TO ''",
+				ExpectedErr: true,
+			},
+		},
+	},
+	{
+		Name:        "set 'recovery_target_name' configuration variable",
+		SetUpScript: []string{},
+		Assertions: []ScriptTestAssertion{
+			{
+				Query:    "SHOW recovery_target_name",
+				Expected: []sql.Row{{""}},
+			},
+			{
+				Query:       "SET recovery_target_name TO ''",
+				ExpectedErr: true,
+			},
+		},
+	},
+	{
+		Name:        "set 'recovery_target_time' configuration variable",
+		SetUpScript: []string{},
+		Assertions: []ScriptTestAssertion{
+			{
+				Query:    "SHOW recovery_target_time",
+				Expected: []sql.Row{{""}},
+			},
+			{
+				Query:       "SET recovery_target_time TO ''",
+				ExpectedErr: true,
+			},
+		},
+	},
+	{
+		Name:        "set 'recovery_target_timeline' configuration variable",
+		SetUpScript: []string{},
+		Assertions: []ScriptTestAssertion{
+			{
+				Query:    "SHOW recovery_target_timeline",
+				Expected: []sql.Row{{"latest"}},
+			},
+			{
+				Query:       "SET recovery_target_timeline TO 'latest'",
+				ExpectedErr: true,
+			},
+		},
+	},
+	{
+		Name:        "set 'recovery_target_xid' configuration variable",
+		SetUpScript: []string{},
+		Assertions: []ScriptTestAssertion{
+			{
+				Query:    "SHOW recovery_target_xid",
+				Expected: []sql.Row{{""}},
+			},
+			{
+				Query:       "SET recovery_target_xid TO ''",
+				ExpectedErr: true,
+			},
+		},
+	},
+	{
+		Name:        "set 'recursive_worktable_factor' configuration variable",
+		SetUpScript: []string{},
+		Assertions: []ScriptTestAssertion{
+			{
+				Query:    "SHOW recursive_worktable_factor",
+				Expected: []sql.Row{{float64(10)}},
+			},
+			{
+				Query:    "SET recursive_worktable_factor TO '1'",
 				Expected: []sql.Row{{}},
 			},
 			{
-				Query:    "SET random_page_cost TO '4'",
+				Query:    "SHOW recursive_worktable_factor",
+				Expected: []sql.Row{{float64(1)}},
+			},
+			{
+				Query:    "SET recursive_worktable_factor TO DEFAULT",
 				Expected: []sql.Row{{}},
 			},
 			{
-				Query:    "SET recovery_end_command TO ''",
+				Query:    "SHOW recursive_worktable_factor",
+				Expected: []sql.Row{{float64(10)}},
+			},
+		},
+	},
+	{
+		Name:        "set 'remove_temp_files_after_crash' configuration variable",
+		SetUpScript: []string{},
+		Assertions: []ScriptTestAssertion{
+			{
+				Query:    "SHOW remove_temp_files_after_crash",
+				Expected: []sql.Row{{int8(0)}},
+			},
+			{
+				Query:       "SET remove_temp_files_after_crash TO 'on'",
+				ExpectedErr: true,
+			},
+		},
+	},
+	{
+		Name:        "set 'reserved_connections' configuration variable",
+		SetUpScript: []string{},
+		Assertions: []ScriptTestAssertion{
+			{
+				Query:    "SHOW reserved_connections",
+				Expected: []sql.Row{{int64(0)}},
+			},
+			{
+				Query:       "SET reserved_connections TO '0'",
+				ExpectedErr: true,
+			},
+		},
+	},
+	{
+		Name:        "set 'restart_after_crash' configuration variable",
+		SetUpScript: []string{},
+		Assertions: []ScriptTestAssertion{
+			{
+				Query:    "SHOW restart_after_crash",
+				Expected: []sql.Row{{int8(1)}},
+			},
+			{
+				Query:       "SET restart_after_crash TO 'on'",
+				ExpectedErr: true,
+			},
+		},
+	},
+	{
+		Name:        "set 'restore_command' configuration variable",
+		SetUpScript: []string{},
+		Assertions: []ScriptTestAssertion{
+			{
+				Query:    "SHOW restore_command",
+				Expected: []sql.Row{{""}},
+			},
+			{
+				Query:       "SET restore_command TO ''",
+				ExpectedErr: true,
+			},
+		},
+	},
+	{
+		Name:        "set 'row_security' configuration variable",
+		SetUpScript: []string{},
+		Assertions: []ScriptTestAssertion{
+			{
+				Query:    "SHOW row_security",
+				Expected: []sql.Row{{int8(1)}},
+			},
+			{
+				Query:    "SET row_security TO 'off'",
 				Expected: []sql.Row{{}},
 			},
 			{
-				Query:    "SET recovery_init_sync_method TO 'fsync'",
+				Query:    "SHOW row_security",
+				Expected: []sql.Row{{int8(0)}},
+			},
+			{
+				Query:    "SET row_security TO DEFAULT",
 				Expected: []sql.Row{{}},
 			},
 			{
-				Query:    "SET recovery_min_apply_delay TO '0'",
+				Query:    "SHOW row_security",
+				Expected: []sql.Row{{int8(1)}},
+			},
+		},
+	},
+	{
+		Name:        "set 'scram_iterations' configuration variable",
+		SetUpScript: []string{},
+		Assertions: []ScriptTestAssertion{
+			{
+				Query:    "SHOW scram_iterations",
+				Expected: []sql.Row{{int64(4096)}},
+			},
+			{
+				Query:    "SET scram_iterations TO '4000'",
 				Expected: []sql.Row{{}},
 			},
 			{
-				Query:    "SET recovery_prefetch TO 'try'",
+				Query:    "SHOW scram_iterations",
+				Expected: []sql.Row{{int64(4000)}},
+			},
+			{
+				Query:    "SET scram_iterations TO DEFAULT",
 				Expected: []sql.Row{{}},
 			},
 			{
-				Query:    "SET recovery_target TO ''",
+				Query:    "SHOW scram_iterations",
+				Expected: []sql.Row{{int64(4096)}},
+			},
+		},
+	},
+	{
+		Name:        "set 'search_path' configuration variable",
+		SetUpScript: []string{},
+		Assertions: []ScriptTestAssertion{
+			{
+				Query:    "SHOW search_path",
+				Expected: []sql.Row{{"\"$user\", public"}},
+			},
+			{
+				Query:    "SET search_path TO 'postgres'",
 				Expected: []sql.Row{{}},
 			},
 			{
-				Query:    "SET recovery_target_action TO 'pause'",
+				Query:    "SHOW search_path",
+				Expected: []sql.Row{{"postgres"}},
+			},
+			{
+				Query:    "SET search_path TO DEFAULT",
 				Expected: []sql.Row{{}},
 			},
 			{
-				Query:    "SET recovery_target_inclusive TO 'on'",
+				Query:    "SHOW search_path",
+				Expected: []sql.Row{{"\"$user\", public"}},
+			},
+		},
+	},
+	{
+		Name:        "set 'segment_size' configuration variable",
+		SetUpScript: []string{},
+		Assertions: []ScriptTestAssertion{
+			{
+				Query:    "SHOW segment_size",
+				Expected: []sql.Row{{int64(131072)}},
+			},
+			{
+				Query:       "SET segment_size TO '131072'",
+				ExpectedErr: true,
+			},
+		},
+	},
+	{
+		Name:        "set 'send_abort_for_crash' configuration variable",
+		SetUpScript: []string{},
+		Assertions: []ScriptTestAssertion{
+			{
+				Query:    "SHOW send_abort_for_crash",
+				Expected: []sql.Row{{int8(0)}},
+			},
+			{
+				Query:       "SET send_abort_for_crash TO 'off'",
+				ExpectedErr: true,
+			},
+		},
+	},
+	{
+		Name:        "set 'send_abort_for_kill' configuration variable",
+		SetUpScript: []string{},
+		Assertions: []ScriptTestAssertion{
+			{
+				Query:    "SHOW send_abort_for_kill",
+				Expected: []sql.Row{{int8(0)}},
+			},
+			{
+				Query:       "SET send_abort_for_kill TO 'off'",
+				ExpectedErr: true,
+			},
+		},
+	},
+	{
+		Name:        "set 'seq_page_cost' configuration variable",
+		SetUpScript: []string{},
+		Assertions: []ScriptTestAssertion{
+			{
+				Query:    "SHOW seq_page_cost",
+				Expected: []sql.Row{{float64(1)}},
+			},
+			{
+				Query:       "SET seq_page_cost TO '1'",
+				ExpectedErr: true,
+			},
+		},
+	},
+	{
+		Name:        "set 'server_encoding' configuration variable",
+		SetUpScript: []string{},
+		Assertions: []ScriptTestAssertion{
+			{
+				Query:    "SHOW server_encoding",
+				Expected: []sql.Row{{"UTF8"}},
+			},
+			{
+				Query:       "SET server_encoding TO 'UTF8'",
+				ExpectedErr: true,
+			},
+		},
+	},
+	{
+		Name:        "set 'server_version' configuration variable",
+		SetUpScript: []string{},
+		Assertions: []ScriptTestAssertion{
+			{
+				Query:    "SHOW server_version",
+				Expected: []sql.Row{{"16.1 (Homebrew)"}},
+			},
+			{
+				Query:       "SET server_version TO '16.1 (Homebrew)'",
+				ExpectedErr: true,
+			},
+		},
+	},
+	{
+		Name:        "set 'server_version_num' configuration variable",
+		SetUpScript: []string{},
+		Assertions: []ScriptTestAssertion{
+			{
+				Query:    "SHOW server_version_num",
+				Expected: []sql.Row{{int64(160001)}},
+			},
+			{
+				Query:       "SET server_version_num TO '160001'",
+				ExpectedErr: true,
+			},
+		},
+	},
+	{
+		Name:        "set 'session_preload_libraries' configuration variable",
+		SetUpScript: []string{},
+		Assertions: []ScriptTestAssertion{
+			{
+				Query:    "SHOW session_preload_libraries",
+				Expected: []sql.Row{{""}},
+			},
+			{
+				Query:    "SET session_preload_libraries TO '/'",
 				Expected: []sql.Row{{}},
 			},
 			{
-				Query:    "SET recovery_target_lsn TO ''",
+				Query:    "SHOW session_preload_libraries",
+				Expected: []sql.Row{{"/"}},
+			},
+			{
+				Query:    "SET session_preload_libraries TO DEFAULT",
 				Expected: []sql.Row{{}},
 			},
 			{
-				Query:    "SET recovery_target_name TO ''",
+				Query:    "SHOW session_preload_libraries",
+				Expected: []sql.Row{{""}},
+			},
+		},
+	},
+	{
+		Name:        "set 'session_replication_role' configuration variable",
+		SetUpScript: []string{},
+		Assertions: []ScriptTestAssertion{
+			{
+				Query:    "SHOW session_replication_role",
+				Expected: []sql.Row{{"origin"}},
+			},
+			{
+				Query:    "SET session_replication_role TO 'local'",
 				Expected: []sql.Row{{}},
 			},
 			{
-				Query:    "SET recovery_target_time TO ''",
+				Query:    "SHOW session_replication_role",
+				Expected: []sql.Row{{"local"}},
+			},
+			{
+				Query:    "SET session_replication_role TO DEFAULT",
 				Expected: []sql.Row{{}},
 			},
 			{
-				Query:    "SET recovery_target_timeline TO 'latest'",
+				Query:    "SHOW session_replication_role",
+				Expected: []sql.Row{{"origin"}},
+			},
+		},
+	},
+	{
+		Name:        "set 'shared_buffers' configuration variable",
+		SetUpScript: []string{},
+		Assertions: []ScriptTestAssertion{
+			{
+				Query:    "SHOW shared_buffers",
+				Expected: []sql.Row{{int64(16384)}},
+			},
+			{
+				Query:       "SET shared_buffers TO '128000'",
+				ExpectedErr: true,
+			},
+		},
+	},
+	{
+		Name:        "set 'shared_memory_size' configuration variable",
+		SetUpScript: []string{},
+		Assertions: []ScriptTestAssertion{
+			{
+				Query:    "SHOW shared_memory_size",
+				Expected: []sql.Row{{int64(143)}},
+			},
+			{
+				Query:       "SET shared_memory_size TO '143000'",
+				ExpectedErr: true,
+			},
+		},
+	},
+	{
+		Name:        "set 'shared_memory_size_in_huge_pages' configuration variable",
+		SetUpScript: []string{},
+		Assertions: []ScriptTestAssertion{
+			{
+				Query:    "SHOW shared_memory_size_in_huge_pages",
+				Expected: []sql.Row{{int64(-1)}},
+			},
+			{
+				Query:       "SET shared_memory_size_in_huge_pages TO '-1'",
+				ExpectedErr: true,
+			},
+		},
+	},
+	{
+		Name:        "set 'shared_memory_type' configuration variable",
+		SetUpScript: []string{},
+		Assertions: []ScriptTestAssertion{
+			{
+				Query:    "SHOW shared_memory_type",
+				Expected: []sql.Row{{"mmap"}},
+			},
+			{
+				Query:       "SET shared_memory_type TO 'mmap'",
+				ExpectedErr: true,
+			},
+		},
+	},
+	{
+		Name:        "set 'shared_preload_libraries' configuration variable",
+		SetUpScript: []string{},
+		Assertions: []ScriptTestAssertion{
+			{
+				Query:    "SHOW shared_preload_libraries",
+				Expected: []sql.Row{{""}},
+			},
+			{
+				Query:       "SET shared_preload_libraries TO ''",
+				ExpectedErr: true,
+			},
+		},
+	},
+	{
+		Name:        "set 'ssl' configuration variable",
+		SetUpScript: []string{},
+		Assertions: []ScriptTestAssertion{
+			{
+				Query:    "SHOW ssl",
+				Expected: []sql.Row{{int8(0)}},
+			},
+			{
+				Query:       "SET ssl TO 'off'",
+				ExpectedErr: true,
+			},
+		},
+	},
+	{
+		Name:        "set 'ssl_ca_file' configuration variable",
+		SetUpScript: []string{},
+		Assertions: []ScriptTestAssertion{
+			{
+				Query:    "SHOW ssl_ca_file",
+				Expected: []sql.Row{{""}},
+			},
+			{
+				Query:       "SET ssl_ca_file TO ''",
+				ExpectedErr: true,
+			},
+		},
+	},
+	{
+		Name:        "set 'ssl_cert_file' configuration variable",
+		SetUpScript: []string{},
+		Assertions: []ScriptTestAssertion{
+			{
+				Query:    "SHOW ssl_cert_file",
+				Expected: []sql.Row{{"server.crt"}},
+			},
+			{
+				Query:       "SET ssl_cert_file TO 'server.crt'",
+				ExpectedErr: true,
+			},
+		},
+	},
+	{
+		Name:        "set 'ssl_ciphers' configuration variable",
+		SetUpScript: []string{},
+		Assertions: []ScriptTestAssertion{
+			{
+				Query:    "SHOW ssl_ciphers",
+				Expected: []sql.Row{{"HIGH:MEDIUM:+3DES:!aNULL"}},
+			},
+			{
+				Query:       "SET ssl_ciphers TO 'HIGH:MEDIUM:'",
+				ExpectedErr: true,
+			},
+		},
+	},
+	{
+		Name:        "set 'ssl_crl_dir' configuration variable",
+		SetUpScript: []string{},
+		Assertions: []ScriptTestAssertion{
+			{
+				Query:    "SHOW ssl_crl_dir",
+				Expected: []sql.Row{{""}},
+			},
+			{
+				Query:       "SET ssl_crl_dir TO ''",
+				ExpectedErr: true,
+			},
+		},
+	},
+	{
+		Name:        "set 'ssl_crl_file' configuration variable",
+		SetUpScript: []string{},
+		Assertions: []ScriptTestAssertion{
+			{
+				Query:    "SHOW ssl_crl_file",
+				Expected: []sql.Row{{""}},
+			},
+			{
+				Query:       "SET ssl_crl_file TO ''",
+				ExpectedErr: true,
+			},
+		},
+	},
+	{
+		Name:        "set 'ssl_dh_params_file' configuration variable",
+		SetUpScript: []string{},
+		Assertions: []ScriptTestAssertion{
+			{
+				Query:    "SHOW ssl_dh_params_file",
+				Expected: []sql.Row{{""}},
+			},
+			{
+				Query:       "SET ssl_dh_params_file TO ''",
+				ExpectedErr: true,
+			},
+		},
+	},
+	{
+		Name:        "set 'ssl_ecdh_curve' configuration variable",
+		SetUpScript: []string{},
+		Assertions: []ScriptTestAssertion{
+			{
+				Query:    "SHOW ssl_ecdh_curve",
+				Expected: []sql.Row{{"prime256v1"}},
+			},
+			{
+				Query:       "SET ssl_ecdh_curve TO 'prime256v1'",
+				ExpectedErr: true,
+			},
+		},
+	},
+	{
+		Name:        "set 'ssl_key_file' configuration variable",
+		SetUpScript: []string{},
+		Assertions: []ScriptTestAssertion{
+			{
+				Query:    "SHOW ssl_key_file",
+				Expected: []sql.Row{{"server.key"}},
+			},
+			{
+				Query:       "SET ssl_key_file TO 'server.key'",
+				ExpectedErr: true,
+			},
+		},
+	},
+	{
+		Name:        "set 'ssl_library' configuration variable",
+		SetUpScript: []string{},
+		Assertions: []ScriptTestAssertion{
+			{
+				Query:    "SHOW ssl_library",
+				Expected: []sql.Row{{"OpenSSL"}},
+			},
+			{
+				Query:       "SET ssl_library TO 'OpenSSL'",
+				ExpectedErr: true,
+			},
+		},
+	},
+	{
+		Name:        "set 'ssl_max_protocol_version' configuration variable",
+		SetUpScript: []string{},
+		Assertions: []ScriptTestAssertion{
+			{
+				Query:    "SHOW ssl_max_protocol_version",
+				Expected: []sql.Row{{""}},
+			},
+			{
+				Query:       "SET ssl_max_protocol_version TO ''",
+				ExpectedErr: true,
+			},
+		},
+	},
+	{
+		Name:        "set 'ssl_min_protocol_version' configuration variable",
+		SetUpScript: []string{},
+		Assertions: []ScriptTestAssertion{
+			{
+				Query:    "SHOW ssl_min_protocol_version",
+				Expected: []sql.Row{{"TLSv1.2"}},
+			},
+			{
+				Query:       "SET ssl_min_protocol_version TO 'TLSv1.2'",
+				ExpectedErr: true,
+			},
+		},
+	},
+	{
+		Name:        "set 'ssl_passphrase_command' configuration variable",
+		SetUpScript: []string{},
+		Assertions: []ScriptTestAssertion{
+			{
+				Query:    "SHOW ssl_passphrase_command",
+				Expected: []sql.Row{{""}},
+			},
+			{
+				Query:       "SET ssl_passphrase_command TO ''",
+				ExpectedErr: true,
+			},
+		},
+	},
+	{
+		Name:        "set 'ssl_passphrase_command_supports_reload' configuration variable",
+		SetUpScript: []string{},
+		Assertions: []ScriptTestAssertion{
+			{
+				Query:    "SHOW ssl_passphrase_command_supports_reload",
+				Expected: []sql.Row{{int8(0)}},
+			},
+			{
+				Query:       "SET ssl_passphrase_command_supports_reload TO 'off'",
+				ExpectedErr: true,
+			},
+		},
+	},
+	{
+		Name:        "set 'ssl_prefer_server_ciphers' configuration variable",
+		SetUpScript: []string{},
+		Assertions: []ScriptTestAssertion{
+			{
+				Query:    "SHOW ssl_prefer_server_ciphers",
+				Expected: []sql.Row{{int8(1)}},
+			},
+			{
+				Query:       "SET ssl_prefer_server_ciphers TO 'on'",
+				ExpectedErr: true,
+			},
+		},
+	},
+	{
+		Name:        "set 'standard_conforming_strings' configuration variable",
+		SetUpScript: []string{},
+		Assertions: []ScriptTestAssertion{
+			{
+				Query:    "SHOW standard_conforming_strings",
+				Expected: []sql.Row{{int8(1)}},
+			},
+			{
+				Query:    "SET standard_conforming_strings TO 'off'",
 				Expected: []sql.Row{{}},
 			},
 			{
-				Query:    "SET recovery_target_xid TO ''",
+				Query:    "SHOW standard_conforming_strings",
+				Expected: []sql.Row{{int8(0)}},
+			},
+			{
+				Query:    "SET standard_conforming_strings TO DEFAULT",
 				Expected: []sql.Row{{}},
 			},
 			{
-				Query:    "SET recursive_worktable_factor TO '10'",
+				Query:    "SHOW standard_conforming_strings",
+				Expected: []sql.Row{{int8(1)}},
+			},
+		},
+	},
+	{
+		Name:        "set 'statement_timeout' configuration variable",
+		SetUpScript: []string{},
+		Assertions: []ScriptTestAssertion{
+			{
+				Query:    "SHOW statement_timeout",
+				Expected: []sql.Row{{int64(0)}},
+			},
+			{
+				Query:       "SET statement_timeout TO '0'",
+				ExpectedErr: true,
+			},
+		},
+	},
+	{
+		Name:        "set 'stats_fetch_consistency' configuration variable",
+		SetUpScript: []string{},
+		Assertions: []ScriptTestAssertion{
+			{
+				Query:    "SHOW stats_fetch_consistency",
+				Expected: []sql.Row{{"cache"}},
+			},
+			{
+				Query:    "SET stats_fetch_consistency TO 'snapshot'",
 				Expected: []sql.Row{{}},
 			},
 			{
-				Query:    "SET remove_temp_files_after_crash TO 'on'",
+				Query:    "SHOW stats_fetch_consistency",
+				Expected: []sql.Row{{"snapshot"}},
+			},
+			{
+				Query:    "SET stats_fetch_consistency TO DEFAULT",
 				Expected: []sql.Row{{}},
 			},
 			{
-				Query:    "SET reserved_connections TO '0'",
+				Query:    "SHOW stats_fetch_consistency",
+				Expected: []sql.Row{{"cache"}},
+			},
+		},
+	},
+	{
+		Name:        "set 'superuser_reserved_connections' configuration variable",
+		SetUpScript: []string{},
+		Assertions: []ScriptTestAssertion{
+			{
+				Query:    "SHOW superuser_reserved_connections",
+				Expected: []sql.Row{{int64(3)}},
+			},
+			{
+				Query:       "SET superuser_reserved_connections TO '3'",
+				ExpectedErr: true,
+			},
+		},
+	},
+	{
+		Name:        "set 'synchronize_seqscans' configuration variable",
+		SetUpScript: []string{},
+		Assertions: []ScriptTestAssertion{
+			{
+				Query:    "SHOW synchronize_seqscans",
+				Expected: []sql.Row{{int8(1)}},
+			},
+			{
+				Query:    "SET synchronize_seqscans TO 'off'",
 				Expected: []sql.Row{{}},
 			},
 			{
-				Query:    "SET restart_after_crash TO 'on'",
+				Query:    "SHOW synchronize_seqscans",
+				Expected: []sql.Row{{int8(0)}},
+			},
+			{
+				Query:    "SET synchronize_seqscans TO DEFAULT",
 				Expected: []sql.Row{{}},
 			},
 			{
-				Query:    "SET restore_command TO ''",
+				Query:    "SHOW synchronize_seqscans",
+				Expected: []sql.Row{{int8(1)}},
+			},
+		},
+	},
+	{
+		Name:        "set 'synchronous_commit' configuration variable",
+		SetUpScript: []string{},
+		Assertions: []ScriptTestAssertion{
+			{
+				Query:    "SHOW synchronous_commit",
+				Expected: []sql.Row{{"on"}},
+			},
+			{
+				Query:    "SET synchronous_commit TO 'local'",
 				Expected: []sql.Row{{}},
 			},
 			{
-				Query:    "SET row_security TO 'on'",
-				Expected: []sql.Row{{}},
-			},
-			{
-				Query:    "SET scram_iterations TO '4096'",
-				Expected: []sql.Row{{}},
-			},
-			{
-				Query:    "SET search_path TO '\"$user\", public'",
-				Expected: []sql.Row{{}},
-			},
-			{
-				Query:    "SET segment_size TO '131072'",
-				Expected: []sql.Row{{}},
-			},
-			{
-				Query:    "SET send_abort_for_crash TO 'off'",
-				Expected: []sql.Row{{}},
-			},
-			{
-				Query:    "SET send_abort_for_kill TO 'off'",
-				Expected: []sql.Row{{}},
-			},
-			{
-				Query:    "SET seq_page_cost TO '1'",
-				Expected: []sql.Row{{}},
-			},
-			{
-				Query:    "SET server_encoding TO 'UTF8'",
-				Expected: []sql.Row{{}},
-			},
-			{
-				Query:    "SET server_version TO '16.1 (Homebrew)'",
-				Expected: []sql.Row{{}},
-			},
-			{
-				Query:    "SET server_version_num TO '160001'",
-				Expected: []sql.Row{{}},
-			},
-			{
-				Query:    "SET session_preload_libraries TO ''",
-				Expected: []sql.Row{{}},
-			},
-			{
-				Query:    "SET session_replication_role TO 'origin'",
-				Expected: []sql.Row{{}},
-			},
-			{
-				Query:    "SET shared_buffers TO '128000'",
-				Expected: []sql.Row{{}},
-			},
-			{
-				Query:    "SET shared_memory_size TO '143000'",
-				Expected: []sql.Row{{}},
-			},
-			{
-				Query:    "SET shared_memory_size_in_huge_pages TO '-1'",
-				Expected: []sql.Row{{}},
-			},
-			{
-				Query:    "SET shared_memory_type TO 'mmap'",
-				Expected: []sql.Row{{}},
-			},
-			{
-				Query:    "SET shared_preload_libraries TO ''",
-				Expected: []sql.Row{{}},
-			},
-			{
-				Query:    "SET ssl TO 'off'",
-				Expected: []sql.Row{{}},
-			},
-			{
-				Query:    "SET ssl_ca_file TO ''",
-				Expected: []sql.Row{{}},
-			},
-			{
-				Query:    "SET ssl_cert_file TO 'server.crt'",
-				Expected: []sql.Row{{}},
-			},
-			{
-				Query:    "SET ssl_ciphers TO 'HIGH:MEDIUM:'",
-				Expected: []sql.Row{{}},
-			},
-			{
-				Query:    "SET ssl_crl_dir TO ''",
-				Expected: []sql.Row{{}},
-			},
-			{
-				Query:    "SET ssl_crl_file TO ''",
-				Expected: []sql.Row{{}},
-			},
-			{
-				Query:    "SET ssl_dh_params_file TO ''",
-				Expected: []sql.Row{{}},
-			},
-			{
-				Query:    "SET ssl_ecdh_curve TO 'prime256v1'",
-				Expected: []sql.Row{{}},
-			},
-			{
-				Query:    "SET ssl_key_file TO 'server.key'",
-				Expected: []sql.Row{{}},
-			},
-			{
-				Query:    "SET ssl_library TO 'OpenSSL'",
-				Expected: []sql.Row{{}},
-			},
-			{
-				Query:    "SET ssl_max_protocol_version TO ''",
-				Expected: []sql.Row{{}},
-			},
-			{
-				Query:    "SET ssl_min_protocol_version TO 'TLSv1.2'",
-				Expected: []sql.Row{{}},
-			},
-			{
-				Query:    "SET ssl_passphrase_command TO ''",
-				Expected: []sql.Row{{}},
-			},
-			{
-				Query:    "SET ssl_passphrase_command_supports_reload TO 'off'",
-				Expected: []sql.Row{{}},
-			},
-			{
-				Query:    "SET ssl_prefer_server_ciphers TO 'on'",
-				Expected: []sql.Row{{}},
-			},
-			{
-				Query:    "SET standard_conforming_strings TO 'on'",
-				Expected: []sql.Row{{}},
-			},
-			{
-				Query:    "SET statement_timeout TO '0'",
-				Expected: []sql.Row{{}},
-			},
-			{
-				Query:    "SET stats_fetch_consistency TO 'cache'",
-				Expected: []sql.Row{{}},
-			},
-			{
-				Query:    "SET superuser_reserved_connections TO '3'",
-				Expected: []sql.Row{{}},
-			},
-			{
-				Query:    "SET synchronize_seqscans TO 'on'",
-				Expected: []sql.Row{{}},
+				Query:    "SHOW synchronous_commit",
+				Expected: []sql.Row{{"local"}},
 			},
 			{
 				Query:    "SET synchronous_commit TO 'on'",
 				Expected: []sql.Row{{}},
 			},
 			{
-				Query:    "SET synchronous_standby_names TO ''",
+				Query:    "SHOW synchronous_commit",
+				Expected: []sql.Row{{"on"}},
+			},
+		},
+	},
+	{
+		Name:        "set 'synchronous_standby_names' configuration variable",
+		SetUpScript: []string{},
+		Assertions: []ScriptTestAssertion{
+			{
+				Query:    "SHOW synchronous_standby_names",
+				Expected: []sql.Row{{""}},
+			},
+			{
+				Query:       "SET synchronous_standby_names TO ''",
+				ExpectedErr: true,
+			},
+		},
+	},
+	{
+		Name:        "set 'syslog_facility' configuration variable",
+		SetUpScript: []string{},
+		Assertions: []ScriptTestAssertion{
+			{
+				Query:    "SHOW syslog_facility",
+				Expected: []sql.Row{{"local0"}},
+			},
+			{
+				Query:       "SET syslog_facility TO 'local0'",
+				ExpectedErr: true,
+			},
+		},
+	},
+	{
+		Name:        "set 'syslog_ident' configuration variable",
+		SetUpScript: []string{},
+		Assertions: []ScriptTestAssertion{
+			{
+				Query:    "SHOW syslog_ident",
+				Expected: []sql.Row{{"postgres"}},
+			},
+			{
+				Query:       "SET syslog_ident TO 'postgres'",
+				ExpectedErr: true,
+			},
+		},
+	},
+	{
+		Name:        "set 'syslog_sequence_numbers' configuration variable",
+		SetUpScript: []string{},
+		Assertions: []ScriptTestAssertion{
+			{
+				Query:    "SHOW syslog_sequence_numbers",
+				Expected: []sql.Row{{int8(1)}},
+			},
+			{
+				Query:       "SET syslog_sequence_numbers TO 'on'",
+				ExpectedErr: true,
+			},
+		},
+	},
+	{
+		Name:        "set 'syslog_split_messages' configuration variable",
+		SetUpScript: []string{},
+		Assertions: []ScriptTestAssertion{
+			{
+				Query:    "SHOW syslog_split_messages",
+				Expected: []sql.Row{{int8(1)}},
+			},
+			{
+				Query:       "SET syslog_split_messages TO 'on'",
+				ExpectedErr: true,
+			},
+		},
+	},
+	{
+		Name:        "set 'tcp_keepalives_count' configuration variable",
+		SetUpScript: []string{},
+		Assertions: []ScriptTestAssertion{
+			{
+				Query:    "SHOW tcp_keepalives_count",
+				Expected: []sql.Row{{int64(0)}},
+			},
+			{
+				Query:    "SET tcp_keepalives_count TO 100",
 				Expected: []sql.Row{{}},
 			},
 			{
-				Query:    "SET syslog_facility TO 'local0'",
+				Query:    "SHOW tcp_keepalives_count",
+				Expected: []sql.Row{{int64(100)}},
+			},
+			{
+				Query:    "SET tcp_keepalives_count TO DEFAULT",
 				Expected: []sql.Row{{}},
 			},
 			{
-				Query:    "SET syslog_ident TO 'postgres'",
+				Query:    "SHOW tcp_keepalives_count",
+				Expected: []sql.Row{{int64(0)}},
+			},
+		},
+	},
+	{
+		Name:        "set 'tcp_keepalives_idle' configuration variable",
+		SetUpScript: []string{},
+		Assertions: []ScriptTestAssertion{
+			{
+				Query:    "SHOW tcp_keepalives_idle",
+				Expected: []sql.Row{{int64(0)}},
+			},
+			{
+				Query:    "SET tcp_keepalives_idle TO 1",
 				Expected: []sql.Row{{}},
 			},
 			{
-				Query:    "SET syslog_sequence_numbers TO 'on'",
+				Query:    "SHOW tcp_keepalives_idle",
+				Expected: []sql.Row{{int64(1)}},
+			},
+			{
+				Query:    "SET tcp_keepalives_idle TO DEFAULT",
 				Expected: []sql.Row{{}},
 			},
 			{
-				Query:    "SET syslog_split_messages TO 'on'",
+				Query:    "SHOW tcp_keepalives_idle",
+				Expected: []sql.Row{{int64(0)}},
+			},
+		},
+	},
+	{
+		Name:        "set 'tcp_keepalives_interval' configuration variable",
+		SetUpScript: []string{},
+		Assertions: []ScriptTestAssertion{
+			{
+				Query:    "SHOW tcp_keepalives_interval",
+				Expected: []sql.Row{{int64(0)}},
+			},
+			{
+				Query:    "SET tcp_keepalives_interval TO 1",
 				Expected: []sql.Row{{}},
 			},
 			{
-				Query:    "SET tcp_keepalives_count TO '0'",
+				Query:    "SHOW tcp_keepalives_interval",
+				Expected: []sql.Row{{int64(1)}},
+			},
+			{
+				Query:    "SET tcp_keepalives_interval TO DEFAULT",
 				Expected: []sql.Row{{}},
 			},
 			{
-				Query:    "SET tcp_keepalives_idle TO '0'",
+				Query:    "SHOW tcp_keepalives_interval",
+				Expected: []sql.Row{{int64(0)}},
+			},
+		},
+	},
+	{
+		Name:        "set 'tcp_user_timeout' configuration variable",
+		SetUpScript: []string{},
+		Assertions: []ScriptTestAssertion{
+			{
+				Query:    "SHOW tcp_user_timeout",
+				Expected: []sql.Row{{int64(0)}},
+			},
+			{
+				Query:    "SET tcp_user_timeout TO '100000'",
 				Expected: []sql.Row{{}},
 			},
 			{
-				Query:    "SET tcp_keepalives_interval TO '0'",
+				Query:    "SHOW tcp_user_timeout",
+				Expected: []sql.Row{{int64(100000)}},
+			},
+			{
+				Query:    "SET tcp_user_timeout TO DEFAULT",
 				Expected: []sql.Row{{}},
 			},
 			{
-				Query:    "SET tcp_user_timeout TO '0'",
-				Expected: []sql.Row{{}},
+				Query:    "SHOW tcp_user_timeout",
+				Expected: []sql.Row{{int64(0)}},
+			},
+		},
+	},
+	{
+		Name:        "set 'temp_buffers' configuration variable",
+		SetUpScript: []string{},
+		Assertions: []ScriptTestAssertion{
+			{
+				Query:    "SHOW temp_buffers",
+				Expected: []sql.Row{{int64(1024)}},
 			},
 			{
 				Query:    "SET temp_buffers TO '8000'",
 				Expected: []sql.Row{{}},
 			},
 			{
-				Query:    "SET temp_file_limit TO '-1'",
+				Query:    "SHOW temp_buffers",
+				Expected: []sql.Row{{int64(8000)}},
+			},
+			{
+				Query:    "SET temp_buffers TO DEFAULT",
 				Expected: []sql.Row{{}},
 			},
 			{
-				Query:    "SET temp_tablespaces TO ''",
+				Query:    "SHOW temp_buffers",
+				Expected: []sql.Row{{int64(1024)}},
+			},
+		},
+	},
+	{
+		Name:        "set 'temp_file_limit' configuration variable",
+		SetUpScript: []string{},
+		Assertions: []ScriptTestAssertion{
+			{
+				Query:    "SHOW temp_file_limit",
+				Expected: []sql.Row{{int64(-1)}},
+			},
+			{
+				Query:    "SET temp_file_limit TO 100",
 				Expected: []sql.Row{{}},
 			},
 			{
-				Query:    "SET TimeZone TO 'America/Los_Angeles'",
+				Query:    "SHOW temp_file_limit",
+				Expected: []sql.Row{{int64(100)}},
+			},
+			{
+				Query:    "SET temp_file_limit TO DEFAULT",
 				Expected: []sql.Row{{}},
+			},
+			{
+				Query:    "SHOW temp_file_limit",
+				Expected: []sql.Row{{int64(-1)}},
+			},
+		},
+	},
+	{
+		Name:        "set 'temp_tablespaces' configuration variable",
+		SetUpScript: []string{},
+		Assertions: []ScriptTestAssertion{
+			{
+				Query:    "SHOW temp_tablespaces",
+				Expected: []sql.Row{{""}},
+			},
+			{
+				Query:    "SET temp_tablespaces TO 'pg_default'",
+				Expected: []sql.Row{{}},
+			},
+			{
+				Query:    "SHOW temp_tablespaces",
+				Expected: []sql.Row{{"pg_default"}},
+			},
+			{
+				Query:    "SET temp_tablespaces TO DEFAULT",
+				Expected: []sql.Row{{}},
+			},
+			{
+				Query:    "SHOW temp_tablespaces",
+				Expected: []sql.Row{{""}},
+			},
+		},
+	},
+	{
+		Name:        "set 'TimeZone' configuration variable",
+		SetUpScript: []string{},
+		Assertions: []ScriptTestAssertion{
+			{
+				Query:    "SHOW TimeZone",
+				Expected: []sql.Row{{"America/Los_Angeles"}},
+			},
+			{
+				Query:    "SET TimeZone TO 'UTC'",
+				Expected: []sql.Row{{}},
+			},
+			{
+				Query:    "SHOW TimeZone",
+				Expected: []sql.Row{{"UTC"}},
+			},
+			{
+				Query:    "SET TimeZone TO DEFAULT",
+				Expected: []sql.Row{{}},
+			},
+			{
+				Query:    "SHOW TimeZone",
+				Expected: []sql.Row{{"America/Los_Angeles"}},
+			},
+		},
+	},
+	{
+		Name:        "set 'timezone_abbreviations' configuration variable",
+		SetUpScript: []string{},
+		Assertions: []ScriptTestAssertion{
+			{
+				Query:    "SHOW timezone_abbreviations",
+				Expected: []sql.Row{{"Default"}},
+			},
+			{
+				Query:    "SET timezone_abbreviations TO ''",
+				Expected: []sql.Row{{}},
+			},
+			{
+				Query:    "SHOW timezone_abbreviations",
+				Expected: []sql.Row{{""}},
 			},
 			{
 				Query:    "SET timezone_abbreviations TO 'Default'",
 				Expected: []sql.Row{{}},
 			},
 			{
-				Query:    "SET trace_notify TO 'off'",
+				Query:    "SHOW timezone_abbreviations",
+				Expected: []sql.Row{{"Default"}},
+			},
+		},
+	},
+	{
+		Name:        "set 'trace_notify' configuration variable",
+		SetUpScript: []string{},
+		Assertions: []ScriptTestAssertion{
+			{
+				Query:    "SHOW trace_notify",
+				Expected: []sql.Row{{int8(0)}},
+			},
+			{
+				Query:    "SET trace_notify TO 'on'",
 				Expected: []sql.Row{{}},
 			},
 			{
-				Query:    "SET trace_recovery_messages TO 'log'",
+				Query:    "SHOW trace_notify",
+				Expected: []sql.Row{{int8(1)}},
+			},
+			{
+				Query:    "SET trace_notify TO DEFAULT",
 				Expected: []sql.Row{{}},
 			},
 			{
-				Query:    "SET trace_sort TO 'off'",
+				Query:    "SHOW trace_notify",
+				Expected: []sql.Row{{int8(0)}},
+			},
+		},
+	},
+	{
+		Name:        "set 'trace_recovery_messages' configuration variable",
+		SetUpScript: []string{},
+		Assertions: []ScriptTestAssertion{
+			{
+				Query:    "SHOW trace_recovery_messages",
+				Expected: []sql.Row{{"log"}},
+			},
+			{
+				Query:       "SET trace_recovery_messages TO 'log'",
+				ExpectedErr: true,
+			},
+		},
+	},
+	{
+		Name:        "set 'trace_sort' configuration variable",
+		SetUpScript: []string{},
+		Assertions: []ScriptTestAssertion{
+			{
+				Query:    "SHOW trace_sort",
+				Expected: []sql.Row{{int8(0)}},
+			},
+			{
+				Query:    "SET trace_sort TO 'on'",
 				Expected: []sql.Row{{}},
+			},
+			{
+				Query:    "SHOW trace_sort",
+				Expected: []sql.Row{{int8(1)}},
+			},
+			{
+				Query:    "SET trace_sort TO DEFAULT",
+				Expected: []sql.Row{{}},
+			},
+			{
+				Query:    "SHOW trace_sort",
+				Expected: []sql.Row{{int8(0)}},
+			},
+		},
+	},
+	{
+		Name:        "set 'track_activities' configuration variable",
+		SetUpScript: []string{},
+		Assertions: []ScriptTestAssertion{
+			{
+				Query:    "SHOW track_activities",
+				Expected: []sql.Row{{int8(1)}},
+			},
+			{
+				Query:    "SET track_activities TO 'off'",
+				Expected: []sql.Row{{}},
+			},
+			{
+				Query:    "SHOW track_activities",
+				Expected: []sql.Row{{int8(0)}},
 			},
 			{
 				Query:    "SET track_activities TO 'on'",
 				Expected: []sql.Row{{}},
 			},
 			{
-				Query:    "SET track_activity_query_size TO '1024'",
+				Query:    "SHOW track_activities",
+				Expected: []sql.Row{{int8(1)}},
+			},
+		},
+	},
+	{
+		Name:        "set 'track_activity_query_size' configuration variable",
+		SetUpScript: []string{},
+		Assertions: []ScriptTestAssertion{
+			{
+				Query:    "SHOW track_activity_query_size",
+				Expected: []sql.Row{{int64(1024)}},
+			},
+			{
+				Query:       "SET track_activity_query_size TO '1024'",
+				ExpectedErr: true,
+			},
+		},
+	},
+	{
+		Name:        "set 'track_commit_timestamp' configuration variable",
+		SetUpScript: []string{},
+		Assertions: []ScriptTestAssertion{
+			{
+				Query:    "SHOW track_commit_timestamp",
+				Expected: []sql.Row{{int8(0)}},
+			},
+			{
+				Query:       "SET track_commit_timestamp TO 'off'",
+				ExpectedErr: true,
+			},
+		},
+	},
+	{
+		Name:        "set 'track_counts' configuration variable",
+		SetUpScript: []string{},
+		Assertions: []ScriptTestAssertion{
+			{
+				Query:    "SHOW track_counts",
+				Expected: []sql.Row{{int8(1)}},
+			},
+			{
+				Query:    "SET track_counts TO 'off'",
 				Expected: []sql.Row{{}},
 			},
 			{
-				Query:    "SET track_commit_timestamp TO 'off'",
+				Query:    "SHOW track_counts",
+				Expected: []sql.Row{{int8(0)}},
+			},
+			{
+				Query:    "SET track_counts TO DEFAULT",
 				Expected: []sql.Row{{}},
 			},
 			{
-				Query:    "SET track_counts TO 'on'",
+				Query:    "SHOW track_counts",
+				Expected: []sql.Row{{int8(1)}},
+			},
+		},
+	},
+	{
+		Name:        "set 'track_functions' configuration variable",
+		SetUpScript: []string{},
+		Assertions: []ScriptTestAssertion{
+			{
+				Query:    "SHOW track_functions",
+				Expected: []sql.Row{{"none"}},
+			},
+			{
+				Query:    "SET track_functions TO 'all'",
 				Expected: []sql.Row{{}},
 			},
 			{
-				Query:    "SET track_functions TO 'none'",
+				Query:    "SHOW track_functions",
+				Expected: []sql.Row{{"all"}},
+			},
+			{
+				Query:    "SET track_functions TO DEFAULT",
 				Expected: []sql.Row{{}},
 			},
 			{
-				Query:    "SET track_io_timing TO 'off'",
+				Query:    "SHOW track_functions",
+				Expected: []sql.Row{{"none"}},
+			},
+		},
+	},
+	{
+		Name:        "set 'track_io_timing' configuration variable",
+		SetUpScript: []string{},
+		Assertions: []ScriptTestAssertion{
+			{
+				Query:    "SHOW track_io_timing",
+				Expected: []sql.Row{{int8(0)}},
+			},
+			{
+				Query:    "SET track_io_timing TO 'on'",
 				Expected: []sql.Row{{}},
 			},
 			{
-				Query:    "SET track_wal_io_timing TO 'off'",
+				Query:    "SHOW track_io_timing",
+				Expected: []sql.Row{{int8(1)}},
+			},
+			{
+				Query:    "SET track_io_timing TO DEFAULT",
 				Expected: []sql.Row{{}},
 			},
 			{
-				Query:    "SET transaction_deferrable TO 'off'",
+				Query:    "SHOW track_io_timing",
+				Expected: []sql.Row{{int8(0)}},
+			},
+		},
+	},
+	{
+		Name:        "set 'track_wal_io_timing' configuration variable",
+		SetUpScript: []string{},
+		Assertions: []ScriptTestAssertion{
+			{
+				Query:    "SHOW track_wal_io_timing",
+				Expected: []sql.Row{{int8(0)}},
+			},
+			{
+				Query:    "SET track_wal_io_timing TO 'on'",
 				Expected: []sql.Row{{}},
 			},
 			{
-				Query:    "SET transaction_isolation TO 'read committed'",
+				Query:    "SHOW track_wal_io_timing",
+				Expected: []sql.Row{{int8(1)}},
+			},
+			{
+				Query:    "SET track_wal_io_timing TO DEFAULT",
 				Expected: []sql.Row{{}},
 			},
 			{
-				Query:    "SET transaction_read_only TO 'off'",
+				Query:    "SHOW track_wal_io_timing",
+				Expected: []sql.Row{{int8(0)}},
+			},
+		},
+	},
+	{
+		Name:        "set 'transaction_deferrable' configuration variable",
+		SetUpScript: []string{},
+		Assertions: []ScriptTestAssertion{
+			{
+				Query:    "SHOW transaction_deferrable",
+				Expected: []sql.Row{{int8(0)}},
+			},
+			{
+				Query:    "SET transaction_deferrable TO 'on'",
 				Expected: []sql.Row{{}},
 			},
 			{
-				Query:    "SET transform_null_equals TO 'off'",
+				Query:    "SHOW transaction_deferrable",
+				Expected: []sql.Row{{int8(1)}},
+			},
+			{
+				Query:    "SET transaction_deferrable TO DEFAULT",
 				Expected: []sql.Row{{}},
 			},
 			{
-				Query:    "SET unix_socket_directories TO '/tmp'",
+				Query:    "SHOW transaction_deferrable",
+				Expected: []sql.Row{{int8(0)}},
+			},
+		},
+	},
+	{
+		Name:        "set 'transaction_isolation' configuration variable",
+		SetUpScript: []string{},
+		Assertions: []ScriptTestAssertion{
+			{
+				Query:    "SHOW transaction_isolation",
+				Expected: []sql.Row{{"read committed"}},
+			},
+			{
+				Query:    "SET transaction_isolation TO 'serializable'",
 				Expected: []sql.Row{{}},
 			},
 			{
-				Query:    "SET unix_socket_group TO ''",
+				Query:    "SHOW transaction_isolation",
+				Expected: []sql.Row{{"serializable"}},
+			},
+			{
+				Query:    "SET transaction_isolation TO DEFAULT",
 				Expected: []sql.Row{{}},
 			},
 			{
-				Query:    "SET unix_socket_permissions TO '511'",
+				Query:    "SHOW transaction_isolation",
+				Expected: []sql.Row{{"read committed"}},
+			},
+		},
+	},
+	{
+		Name:        "set 'transaction_read_only' configuration variable",
+		SetUpScript: []string{},
+		Assertions: []ScriptTestAssertion{
+			{
+				Query:    "SHOW transaction_read_only",
+				Expected: []sql.Row{{int8(0)}},
+			},
+			{
+				Query:    "SET transaction_read_only TO 'on'",
 				Expected: []sql.Row{{}},
 			},
 			{
-				Query:    "SET update_process_title TO 'on'",
+				Query:    "SHOW transaction_read_only",
+				Expected: []sql.Row{{int8(1)}},
+			},
+			{
+				Query:    "SET transaction_read_only TO DEFAULT",
 				Expected: []sql.Row{{}},
 			},
 			{
-				Query:    "SET vacuum_buffer_usage_limit TO '256'",
+				Query:    "SHOW transaction_read_only",
+				Expected: []sql.Row{{int8(0)}},
+			},
+		},
+	},
+	{
+		Name:        "set 'transform_null_equals' configuration variable",
+		SetUpScript: []string{},
+		Assertions: []ScriptTestAssertion{
+			{
+				Query:    "SHOW transform_null_equals",
+				Expected: []sql.Row{{int8(0)}},
+			},
+			{
+				Query:    "SET transform_null_equals TO 'on'",
 				Expected: []sql.Row{{}},
 			},
 			{
-				Query:    "SET vacuum_cost_delay TO '0'",
+				Query:    "SHOW transform_null_equals",
+				Expected: []sql.Row{{int8(1)}},
+			},
+			{
+				Query:    "SET transform_null_equals TO DEFAULT",
 				Expected: []sql.Row{{}},
 			},
 			{
-				Query:    "SET vacuum_cost_limit TO '200'",
+				Query:    "SHOW transform_null_equals",
+				Expected: []sql.Row{{int8(0)}},
+			},
+		},
+	},
+	{
+		Name:        "set 'unix_socket_directories' configuration variable",
+		SetUpScript: []string{},
+		Assertions: []ScriptTestAssertion{
+			{
+				Query:    "SHOW unix_socket_directories",
+				Expected: []sql.Row{{"/tmp"}},
+			},
+			{
+				Query:       "SET unix_socket_directories TO '/tmp'",
+				ExpectedErr: true,
+			},
+		},
+	},
+	{
+		Name:        "set 'unix_socket_group' configuration variable",
+		SetUpScript: []string{},
+		Assertions: []ScriptTestAssertion{
+			{
+				Query:    "SHOW unix_socket_group",
+				Expected: []sql.Row{{""}},
+			},
+			{
+				Query:       "SET unix_socket_group TO ''",
+				ExpectedErr: true,
+			},
+		},
+	},
+	{
+		Name:        "set 'unix_socket_permissions' configuration variable",
+		SetUpScript: []string{},
+		Assertions: []ScriptTestAssertion{
+			{
+				Query:    "SHOW unix_socket_permissions",
+				Expected: []sql.Row{{int64(511)}},
+			},
+			{
+				Query:       "SET unix_socket_permissions TO '511'",
+				ExpectedErr: true,
+			},
+		},
+	},
+	{
+		Name:        "set 'update_process_title' configuration variable",
+		SetUpScript: []string{},
+		Assertions: []ScriptTestAssertion{
+			{
+				Query:    "SHOW update_process_title",
+				Expected: []sql.Row{{int8(1)}},
+			},
+			{
+				Query:    "SET update_process_title TO 'off'",
 				Expected: []sql.Row{{}},
 			},
 			{
-				Query:    "SET vacuum_cost_page_dirty TO '20'",
+				Query:    "SHOW update_process_title",
+				Expected: []sql.Row{{int8(0)}},
+			},
+			{
+				Query:    "SET update_process_title TO DEFAULT",
 				Expected: []sql.Row{{}},
 			},
 			{
-				Query:    "SET vacuum_cost_page_hit TO '1'",
+				Query:    "SHOW update_process_title",
+				Expected: []sql.Row{{int8(1)}},
+			},
+		},
+	},
+	{
+		Name:        "set 'vacuum_buffer_usage_limit' configuration variable",
+		SetUpScript: []string{},
+		Assertions: []ScriptTestAssertion{
+			{
+				Query:    "SHOW vacuum_buffer_usage_limit",
+				Expected: []sql.Row{{int64(256)}},
+			},
+			{
+				Query:    "SET vacuum_buffer_usage_limit TO '512'",
 				Expected: []sql.Row{{}},
 			},
 			{
-				Query:    "SET vacuum_cost_page_miss TO '2'",
+				Query:    "SHOW vacuum_buffer_usage_limit",
+				Expected: []sql.Row{{int64(512)}},
+			},
+			{
+				Query:    "SET vacuum_buffer_usage_limit TO DEFAULT",
 				Expected: []sql.Row{{}},
 			},
 			{
-				Query:    "SET vacuum_failsafe_age TO '1600000000'",
+				Query:    "SHOW vacuum_buffer_usage_limit",
+				Expected: []sql.Row{{int64(256)}},
+			},
+		},
+	},
+	{
+		Name:        "set 'vacuum_cost_delay' configuration variable",
+		SetUpScript: []string{},
+		Assertions: []ScriptTestAssertion{
+			{
+				Query:    "SHOW vacuum_cost_delay",
+				Expected: []sql.Row{{float64(0)}},
+			},
+			{
+				Query:    "SET vacuum_cost_delay TO '0.2'",
 				Expected: []sql.Row{{}},
 			},
 			{
-				Query:    "SET vacuum_freeze_min_age TO '50000000'",
+				Query:    "SHOW vacuum_cost_delay",
+				Expected: []sql.Row{{float64(0.2)}},
+			},
+			{
+				Query:    "SET vacuum_cost_delay TO DEFAULT",
 				Expected: []sql.Row{{}},
 			},
 			{
-				Query:    "SET vacuum_freeze_table_age TO '150000000'",
+				Query:    "SHOW vacuum_cost_delay",
+				Expected: []sql.Row{{float64(0)}},
+			},
+		},
+	},
+	{
+		Name:        "set 'vacuum_cost_limit' configuration variable",
+		SetUpScript: []string{},
+		Assertions: []ScriptTestAssertion{
+			{
+				Query:    "SHOW vacuum_cost_limit",
+				Expected: []sql.Row{{int64(200)}},
+			},
+			{
+				Query:    "SET vacuum_cost_limit TO '400'",
 				Expected: []sql.Row{{}},
 			},
 			{
-				Query:    "SET vacuum_multixact_failsafe_age TO '1600000000'",
+				Query:    "SHOW vacuum_cost_limit",
+				Expected: []sql.Row{{int64(400)}},
+			},
+			{
+				Query:    "SET vacuum_cost_limit TO DEFAULT",
 				Expected: []sql.Row{{}},
 			},
 			{
-				Query:    "SET vacuum_multixact_freeze_min_age TO '5000000'",
+				Query:    "SHOW vacuum_cost_limit",
+				Expected: []sql.Row{{int64(200)}},
+			},
+		},
+	},
+	{
+		Name:        "set 'vacuum_cost_page_dirty' configuration variable",
+		SetUpScript: []string{},
+		Assertions: []ScriptTestAssertion{
+			{
+				Query:    "SHOW vacuum_cost_page_dirty",
+				Expected: []sql.Row{{int64(20)}},
+			},
+			{
+				Query:    "SET vacuum_cost_page_dirty TO '200'",
 				Expected: []sql.Row{{}},
 			},
 			{
-				Query:    "SET vacuum_multixact_freeze_table_age TO '150000000'",
+				Query:    "SHOW vacuum_cost_page_dirty",
+				Expected: []sql.Row{{int64(200)}},
+			},
+			{
+				Query:    "SET vacuum_cost_page_dirty TO DEFAULT",
 				Expected: []sql.Row{{}},
 			},
 			{
-				Query:    "SET wal_block_size TO '8192'",
+				Query:    "SHOW vacuum_cost_page_dirty",
+				Expected: []sql.Row{{int64(20)}},
+			},
+		},
+	},
+	{
+		Name:        "set 'vacuum_cost_page_hit' configuration variable",
+		SetUpScript: []string{},
+		Assertions: []ScriptTestAssertion{
+			{
+				Query:    "SHOW vacuum_cost_page_hit",
+				Expected: []sql.Row{{int64(1)}},
+			},
+			{
+				Query:    "SET vacuum_cost_page_hit TO '100'",
 				Expected: []sql.Row{{}},
 			},
 			{
-				Query:    "SET wal_buffers TO '4000'",
+				Query:    "SHOW vacuum_cost_page_hit",
+				Expected: []sql.Row{{int64(100)}},
+			},
+			{
+				Query:    "SET vacuum_cost_page_hit TO DEFAULT",
 				Expected: []sql.Row{{}},
+			},
+			{
+				Query:    "SHOW vacuum_cost_page_hit",
+				Expected: []sql.Row{{int64(1)}},
+			},
+		},
+	},
+	{
+		Name:        "set 'vacuum_cost_page_miss' configuration variable",
+		SetUpScript: []string{},
+		Assertions: []ScriptTestAssertion{
+			{
+				Query:    "SHOW vacuum_cost_page_miss",
+				Expected: []sql.Row{{int64(2)}},
+			},
+			{
+				Query:    "SET vacuum_cost_page_miss TO '20'",
+				Expected: []sql.Row{{}},
+			},
+			{
+				Query:    "SHOW vacuum_cost_page_miss",
+				Expected: []sql.Row{{int64(20)}},
+			},
+			{
+				Query:    "SET vacuum_cost_page_miss TO DEFAULT",
+				Expected: []sql.Row{{}},
+			},
+			{
+				Query:    "SHOW vacuum_cost_page_miss",
+				Expected: []sql.Row{{int64(2)}},
+			},
+		},
+	},
+	{
+		Name:        "set 'vacuum_failsafe_age' configuration variable",
+		SetUpScript: []string{},
+		Assertions: []ScriptTestAssertion{
+			{
+				Query:    "SHOW vacuum_failsafe_age",
+				Expected: []sql.Row{{int64(1600000000)}},
+			},
+			{
+				Query:    "SET vacuum_failsafe_age TO '2100000000'",
+				Expected: []sql.Row{{}},
+			},
+			{
+				Query:    "SHOW vacuum_failsafe_age",
+				Expected: []sql.Row{{int64(2100000000)}},
+			},
+			{
+				Query:    "SET vacuum_failsafe_age TO DEFAULT",
+				Expected: []sql.Row{{}},
+			},
+			{
+				Query:    "SHOW vacuum_failsafe_age",
+				Expected: []sql.Row{{int64(1600000000)}},
+			},
+		},
+	},
+	{
+		Name:        "set 'vacuum_freeze_min_age' configuration variable",
+		SetUpScript: []string{},
+		Assertions: []ScriptTestAssertion{
+			{
+				Query:    "SHOW vacuum_freeze_min_age",
+				Expected: []sql.Row{{int64(50000000)}},
+			},
+			{
+				Query:    "SET vacuum_freeze_min_age TO '20000000'",
+				Expected: []sql.Row{{}},
+			},
+			{
+				Query:    "SHOW vacuum_freeze_min_age",
+				Expected: []sql.Row{{int64(20000000)}},
+			},
+			{
+				Query:    "SET vacuum_freeze_min_age TO DEFAULT",
+				Expected: []sql.Row{{}},
+			},
+			{
+				Query:    "SHOW vacuum_freeze_min_age",
+				Expected: []sql.Row{{int64(50000000)}},
+			},
+		},
+	},
+	{
+		Name:        "set 'vacuum_freeze_table_age' configuration variable",
+		SetUpScript: []string{},
+		Assertions: []ScriptTestAssertion{
+			{
+				Query:    "SHOW vacuum_freeze_table_age",
+				Expected: []sql.Row{{int64(150000000)}},
+			},
+			{
+				Query:    "SET vacuum_freeze_table_age TO '100000000'",
+				Expected: []sql.Row{{}},
+			},
+			{
+				Query:    "SHOW vacuum_freeze_table_age",
+				Expected: []sql.Row{{int64(100000000)}},
+			},
+			{
+				Query:    "SET vacuum_freeze_table_age TO DEFAULT",
+				Expected: []sql.Row{{}},
+			},
+			{
+				Query:    "SHOW vacuum_freeze_table_age",
+				Expected: []sql.Row{{int64(150000000)}},
+			},
+		},
+	},
+	{
+		Name:        "set 'vacuum_multixact_failsafe_age' configuration variable",
+		SetUpScript: []string{},
+		Assertions: []ScriptTestAssertion{
+			{
+				Query:    "SHOW vacuum_multixact_failsafe_age",
+				Expected: []sql.Row{{int64(1600000000)}},
+			},
+			{
+				Query:    "SET vacuum_multixact_failsafe_age TO '1000000000'",
+				Expected: []sql.Row{{}},
+			},
+			{
+				Query:    "SHOW vacuum_multixact_failsafe_age",
+				Expected: []sql.Row{{int64(1000000000)}},
+			},
+			{
+				Query:    "SET vacuum_multixact_failsafe_age TO DEFAULT",
+				Expected: []sql.Row{{}},
+			},
+			{
+				Query:    "SHOW vacuum_multixact_failsafe_age",
+				Expected: []sql.Row{{int64(1600000000)}},
+			},
+		},
+	},
+	{
+		Name:        "set 'vacuum_multixact_freeze_min_age' configuration variable",
+		SetUpScript: []string{},
+		Assertions: []ScriptTestAssertion{
+			{
+				Query:    "SHOW vacuum_multixact_freeze_min_age",
+				Expected: []sql.Row{{int64(5000000)}},
+			},
+			{
+				Query:    "SET vacuum_multixact_freeze_min_age TO '2000000'",
+				Expected: []sql.Row{{}},
+			},
+			{
+				Query:    "SHOW vacuum_multixact_freeze_min_age",
+				Expected: []sql.Row{{int64(2000000)}},
+			},
+			{
+				Query:    "SET vacuum_multixact_freeze_min_age TO DEFAULT",
+				Expected: []sql.Row{{}},
+			},
+			{
+				Query:    "SHOW vacuum_multixact_freeze_min_age",
+				Expected: []sql.Row{{int64(5000000)}},
+			},
+		},
+	},
+	{
+		Name:        "set 'vacuum_multixact_freeze_table_age' configuration variable",
+		SetUpScript: []string{},
+		Assertions: []ScriptTestAssertion{
+			{
+				Query:    "SHOW vacuum_multixact_freeze_table_age",
+				Expected: []sql.Row{{int64(150000000)}},
+			},
+			{
+				Query:    "SET vacuum_multixact_freeze_table_age TO '120000000'",
+				Expected: []sql.Row{{}},
+			},
+			{
+				Query:    "SHOW vacuum_multixact_freeze_table_age",
+				Expected: []sql.Row{{int64(120000000)}},
+			},
+			{
+				Query:    "SET vacuum_multixact_freeze_table_age TO DEFAULT",
+				Expected: []sql.Row{{}},
+			},
+			{
+				Query:    "SHOW vacuum_multixact_freeze_table_age",
+				Expected: []sql.Row{{int64(150000000)}},
+			},
+		},
+	},
+	{
+		Name:        "set 'wal_block_size' configuration variable",
+		SetUpScript: []string{},
+		Assertions: []ScriptTestAssertion{
+			{
+				Query:    "SHOW wal_block_size",
+				Expected: []sql.Row{{int64(8192)}},
+			},
+			{
+				Query:       "SET wal_block_size TO '8192'",
+				ExpectedErr: true,
+			},
+		},
+	},
+	{
+		Name:        "set 'wal_buffers' configuration variable",
+		SetUpScript: []string{},
+		Assertions: []ScriptTestAssertion{
+			{
+				Query:    "SHOW wal_buffers",
+				Expected: []sql.Row{{int64(512)}},
+			},
+			{
+				Query:       "SET wal_buffers TO '4000'",
+				ExpectedErr: true,
+			},
+		},
+	},
+	{
+		Name:        "set 'wal_compression' configuration variable",
+		SetUpScript: []string{},
+		Assertions: []ScriptTestAssertion{
+			{
+				Query:    "SHOW wal_compression",
+				Expected: []sql.Row{{"off"}},
+			},
+			{
+				Query:    "SET wal_compression TO 'lz4'",
+				Expected: []sql.Row{{}},
+			},
+			{
+				Query:    "SHOW wal_compression",
+				Expected: []sql.Row{{"lz4"}},
 			},
 			{
 				Query:    "SET wal_compression TO 'off'",
 				Expected: []sql.Row{{}},
 			},
 			{
-				Query:    "SET wal_consistency_checking TO ''",
+				Query:    "SHOW wal_compression",
+				Expected: []sql.Row{{"off"}},
+			},
+		},
+	},
+	{
+		Name:        "set 'wal_consistency_checking' configuration variable",
+		SetUpScript: []string{},
+		Assertions: []ScriptTestAssertion{
+			{
+				Query:    "SHOW wal_consistency_checking",
+				Expected: []sql.Row{{""}},
+			},
+			{
+				Query:    "SET wal_consistency_checking TO 'generic'",
 				Expected: []sql.Row{{}},
 			},
 			{
-				Query:    "SET wal_decode_buffer_size TO '524288'",
+				Query:    "SHOW wal_consistency_checking",
+				Expected: []sql.Row{{"generic"}},
+			},
+			{
+				Query:    "SET wal_consistency_checking TO DEFAULT",
 				Expected: []sql.Row{{}},
 			},
 			{
-				Query:    "SET wal_init_zero TO 'on'",
+				Query:    "SHOW wal_consistency_checking",
+				Expected: []sql.Row{{""}},
+			},
+		},
+	},
+	{
+		Name:        "set 'wal_decode_buffer_size' configuration variable",
+		SetUpScript: []string{},
+		Assertions: []ScriptTestAssertion{
+			{
+				Query:    "SHOW wal_decode_buffer_size",
+				Expected: []sql.Row{{int64(524288)}},
+			},
+			{
+				Query:       "SET wal_decode_buffer_size TO '524288'",
+				ExpectedErr: true,
+			},
+		},
+	},
+	{
+		Name:        "set 'wal_init_zero' configuration variable",
+		SetUpScript: []string{},
+		Assertions: []ScriptTestAssertion{
+			{
+				Query:    "SHOW wal_init_zero",
+				Expected: []sql.Row{{int8(1)}},
+			},
+			{
+				Query:    "SET wal_init_zero TO 'off'",
 				Expected: []sql.Row{{}},
 			},
 			{
-				Query:    "SET wal_keep_size TO '0'",
+				Query:    "SHOW wal_init_zero",
+				Expected: []sql.Row{{int8(0)}},
+			},
+			{
+				Query:    "SET wal_init_zero TO DEFAULT",
 				Expected: []sql.Row{{}},
 			},
 			{
-				Query:    "SET wal_level TO 'replica'",
+				Query:    "SHOW wal_init_zero",
+				Expected: []sql.Row{{int8(1)}},
+			},
+		},
+	},
+	{
+		Name:        "set 'wal_keep_size' configuration variable",
+		SetUpScript: []string{},
+		Assertions: []ScriptTestAssertion{
+			{
+				Query:    "SHOW wal_keep_size",
+				Expected: []sql.Row{{int64(0)}},
+			},
+			{
+				Query:       "SET wal_keep_size TO '0'",
+				ExpectedErr: true,
+			},
+		},
+	},
+	{
+		Name:        "set 'wal_level' configuration variable",
+		SetUpScript: []string{},
+		Assertions: []ScriptTestAssertion{
+			{
+				Query:    "SHOW wal_level",
+				Expected: []sql.Row{{"replica"}},
+			},
+			{
+				Query:       "SET wal_level TO 'replica'",
+				ExpectedErr: true,
+			},
+		},
+	},
+	{
+		Name:        "set 'wal_log_hints' configuration variable",
+		SetUpScript: []string{},
+		Assertions: []ScriptTestAssertion{
+			{
+				Query:    "SHOW wal_log_hints",
+				Expected: []sql.Row{{int8(0)}},
+			},
+			{
+				Query:       "SET wal_log_hints TO 'off'",
+				ExpectedErr: true,
+			},
+		},
+	},
+	{
+		Name:        "set 'wal_receiver_create_temp_slot' configuration variable",
+		SetUpScript: []string{},
+		Assertions: []ScriptTestAssertion{
+			{
+				Query:    "SHOW wal_receiver_create_temp_slot",
+				Expected: []sql.Row{{int8(0)}},
+			},
+			{
+				Query:       "SET wal_receiver_create_temp_slot TO 'off'",
+				ExpectedErr: true,
+			},
+		},
+	},
+	{
+		Name:        "set 'wal_receiver_status_interval' configuration variable",
+		SetUpScript: []string{},
+		Assertions: []ScriptTestAssertion{
+			{
+				Query:    "SHOW wal_receiver_status_interval",
+				Expected: []sql.Row{{int64(10)}},
+			},
+			{
+				Query:       "SET wal_receiver_status_interval TO '10'",
+				ExpectedErr: true,
+			},
+		},
+	},
+	{
+		Name:        "set 'wal_receiver_timeout' configuration variable",
+		SetUpScript: []string{},
+		Assertions: []ScriptTestAssertion{
+			{
+				Query:    "SHOW wal_receiver_timeout",
+				Expected: []sql.Row{{int64(60000)}},
+			},
+			{
+				Query:       "SET wal_receiver_timeout TO '60'",
+				ExpectedErr: true,
+			},
+		},
+	},
+	{
+		Name:        "set 'wal_recycle' configuration variable",
+		SetUpScript: []string{},
+		Assertions: []ScriptTestAssertion{
+			{
+				Query:    "SHOW wal_recycle",
+				Expected: []sql.Row{{int8(1)}},
+			},
+			{
+				Query:    "SET wal_recycle TO 'off'",
 				Expected: []sql.Row{{}},
 			},
 			{
-				Query:    "SET wal_log_hints TO 'off'",
+				Query:    "SHOW wal_recycle",
+				Expected: []sql.Row{{int8(0)}},
+			},
+			{
+				Query:    "SET wal_recycle TO DEFAULT",
 				Expected: []sql.Row{{}},
 			},
 			{
-				Query:    "SET wal_receiver_create_temp_slot TO 'off'",
+				Query:    "SHOW wal_recycle",
+				Expected: []sql.Row{{int8(1)}},
+			},
+		},
+	},
+	{
+		Name:        "set 'wal_retrieve_retry_interval' configuration variable",
+		SetUpScript: []string{},
+		Assertions: []ScriptTestAssertion{
+			{
+				Query:    "SHOW wal_retrieve_retry_interval",
+				Expected: []sql.Row{{int64(5000)}},
+			},
+			{
+				Query:       "SET wal_retrieve_retry_interval TO '5'",
+				ExpectedErr: true,
+			},
+		},
+	},
+	{
+		Name:        "set 'wal_segment_size' configuration variable",
+		SetUpScript: []string{},
+		Assertions: []ScriptTestAssertion{
+			{
+				Query:    "SHOW wal_segment_size",
+				Expected: []sql.Row{{int64(16777216)}},
+			},
+			{
+				Query:       "SET wal_segment_size TO '16777216'",
+				ExpectedErr: true,
+			},
+		},
+	},
+	{
+		Name:        "set 'wal_sender_timeout' configuration variable",
+		SetUpScript: []string{},
+		Assertions: []ScriptTestAssertion{
+			{
+				Query:    "SHOW wal_sender_timeout",
+				Expected: []sql.Row{{int64(60000)}},
+			},
+			{
+				Query:    "SET wal_sender_timeout TO '100000'",
 				Expected: []sql.Row{{}},
 			},
 			{
-				Query:    "SET wal_receiver_status_interval TO '10'",
+				Query:    "SHOW wal_sender_timeout",
+				Expected: []sql.Row{{int64(100000)}},
+			},
+			{
+				Query:    "SET wal_sender_timeout TO DEFAULT",
 				Expected: []sql.Row{{}},
 			},
 			{
-				Query:    "SET wal_receiver_timeout TO '60'",
-				Expected: []sql.Row{{}},
+				Query:    "SHOW wal_sender_timeout",
+				Expected: []sql.Row{{int64(60000)}},
 			},
+		},
+	},
+	{
+		Name:        "set 'wal_skip_threshold' configuration variable",
+		SetUpScript: []string{},
+		Assertions: []ScriptTestAssertion{
 			{
-				Query:    "SET wal_recycle TO 'on'",
-				Expected: []sql.Row{{}},
-			},
-			{
-				Query:    "SET wal_retrieve_retry_interval TO '5'",
-				Expected: []sql.Row{{}},
-			},
-			{
-				Query:    "SET wal_segment_size TO '16777216'",
-				Expected: []sql.Row{{}},
-			},
-			{
-				Query:    "SET wal_sender_timeout TO '60'",
-				Expected: []sql.Row{{}},
+				Query:    "SHOW wal_skip_threshold",
+				Expected: []sql.Row{{int64(2048)}},
 			},
 			{
 				Query:    "SET wal_skip_threshold TO '2000'",
 				Expected: []sql.Row{{}},
 			},
 			{
-				Query:    "SET wal_sync_method TO 'open_datasync'",
+				Query:    "SHOW wal_skip_threshold",
+				Expected: []sql.Row{{int64(2000)}},
+			},
+			{
+				Query:    "SET wal_skip_threshold TO DEFAULT",
 				Expected: []sql.Row{{}},
 			},
 			{
-				Query:    "SET wal_writer_delay TO '200'",
-				Expected: []sql.Row{{}},
+				Query:    "SHOW wal_skip_threshold",
+				Expected: []sql.Row{{int64(2048)}},
+			},
+		},
+	},
+	{
+		Name:        "set 'wal_sync_method' configuration variable",
+		SetUpScript: []string{},
+		Assertions: []ScriptTestAssertion{
+			{
+				Query:    "SHOW wal_sync_method",
+				Expected: []sql.Row{{"open_datasync"}},
 			},
 			{
-				Query:    "SET wal_writer_flush_after TO '1000'",
-				Expected: []sql.Row{{}},
+				Query:       "SET wal_sync_method TO 'open_datasync'",
+				ExpectedErr: true,
+			},
+		},
+	},
+	{
+		Name:        "set 'wal_writer_delay' configuration variable",
+		SetUpScript: []string{},
+		Assertions: []ScriptTestAssertion{
+			{
+				Query:    "SHOW wal_writer_delay",
+				Expected: []sql.Row{{int64(200)}},
+			},
+			{
+				Query:       "SET wal_writer_delay TO '200'",
+				ExpectedErr: true,
+			},
+		},
+	},
+	{
+		Name:        "set 'wal_writer_flush_after' configuration variable",
+		SetUpScript: []string{},
+		Assertions: []ScriptTestAssertion{
+			{
+				Query:    "SHOW wal_writer_flush_after",
+				Expected: []sql.Row{{int64(128)}},
+			},
+			{
+				Query:       "SET wal_writer_flush_after TO '1000'",
+				ExpectedErr: true,
+			},
+		},
+	},
+	{
+		Name:        "set 'work_mem' configuration variable",
+		SetUpScript: []string{},
+		Assertions: []ScriptTestAssertion{
+			{
+				Query:    "SHOW work_mem",
+				Expected: []sql.Row{{int64(4096)}},
 			},
 			{
 				Query:    "SET work_mem TO '4000'",
 				Expected: []sql.Row{{}},
 			},
 			{
-				Query:    "SET xmlbinary TO 'base64'",
+				Query:    "SHOW work_mem",
+				Expected: []sql.Row{{int64(4000)}},
+			},
+			{
+				Query:    "SET work_mem TO DEFAULT",
 				Expected: []sql.Row{{}},
 			},
 			{
-				Query:    "SET xmloption TO 'content'",
+				Query:    "SHOW work_mem",
+				Expected: []sql.Row{{int64(4096)}},
+			},
+		},
+	},
+	{
+		Name:        "set 'xmlbinary' configuration variable",
+		SetUpScript: []string{},
+		Assertions: []ScriptTestAssertion{
+			{
+				Query:    "SHOW xmlbinary",
+				Expected: []sql.Row{{"base64"}},
+			},
+			{
+				Query:    "SET xmlbinary TO 'hex'",
 				Expected: []sql.Row{{}},
 			},
 			{
-				Query:    "SET zero_damaged_pages TO 'off'",
+				Query:    "SHOW xmlbinary",
+				Expected: []sql.Row{{"hex"}},
+			},
+			{
+				Query:    "SET xmlbinary TO DEFAULT",
 				Expected: []sql.Row{{}},
+			},
+			{
+				Query:    "SHOW xmlbinary",
+				Expected: []sql.Row{{"base64"}},
+			},
+		},
+	},
+	{
+		Name:        "set 'xmloption' configuration variable",
+		SetUpScript: []string{},
+		Assertions: []ScriptTestAssertion{
+			{
+				Query:    "SHOW xmloption",
+				Expected: []sql.Row{{"content"}},
+			},
+			{
+				Query:    "SET xmloption TO 'document'",
+				Expected: []sql.Row{{}},
+			},
+			{
+				Query:    "SHOW xmloption",
+				Expected: []sql.Row{{"document"}},
+			},
+			{
+				Query:    "SET xmloption TO DEFAULT",
+				Expected: []sql.Row{{}},
+			},
+			{
+				Query:    "SHOW xmloption",
+				Expected: []sql.Row{{"content"}},
+			},
+		},
+	},
+	{
+		Name:        "set 'zero_damaged_pages' configuration variable",
+		SetUpScript: []string{},
+		Assertions: []ScriptTestAssertion{
+			{
+				Query:    "SHOW zero_damaged_pages",
+				Expected: []sql.Row{{int8(0)}},
+			},
+			{
+				Query:    "SET zero_damaged_pages TO 'on'",
+				Expected: []sql.Row{{}},
+			},
+			{
+				Query:    "SHOW zero_damaged_pages",
+				Expected: []sql.Row{{int8(1)}},
+			},
+			{
+				Query:    "SET zero_damaged_pages TO DEFAULT",
+				Expected: []sql.Row{{}},
+			},
+			{
+				Query:    "SHOW zero_damaged_pages",
+				Expected: []sql.Row{{int8(0)}},
 			},
 		},
 	},

@@ -24,7 +24,6 @@ import (
 
 	"github.com/dolthub/go-mysql-server/sql"
 	"github.com/dolthub/go-mysql-server/sql/expression"
-	"github.com/dolthub/go-mysql-server/sql/mysql_db"
 	"github.com/dolthub/go-mysql-server/sql/plan"
 	"github.com/dolthub/go-mysql-server/sql/transform"
 	"github.com/dolthub/vitess/go/mysql"
@@ -655,13 +654,13 @@ func (h *ConnectionHandler) sendClientStartupMessages(startupMessage messages.St
 		}
 
 		h.mysqlConn.User = user
-		h.mysqlConn.UserData = mysql_db.MysqlConnectionUser{
+		h.mysqlConn.UserData = sql.MysqlConnectionUser{
 			User: user,
 			Host: host,
 		}
 	} else {
 		h.mysqlConn.User = "doltgres"
-		h.mysqlConn.UserData = mysql_db.MysqlConnectionUser{
+		h.mysqlConn.UserData = sql.MysqlConnectionUser{
 			User: "doltgres",
 			Host: "localhost",
 		}

@@ -15,8 +15,6 @@
 package ast
 
 import (
-	"fmt"
-
 	vitess "github.com/dolthub/vitess/go/vt/sqlparser"
 
 	"github.com/dolthub/doltgresql/postgres/parser/sem/tree"
@@ -27,5 +25,21 @@ func nodeShowVar(node *tree.ShowVar) (vitess.Statement, error) {
 	if node == nil {
 		return nil, nil
 	}
-	return nil, fmt.Errorf("SHOW is not yet supported")
+
+	// TODO: this is a hacky way to get the param value for the current implementation
+	//   need better way to get these info
+	s := &vitess.Select{
+		SelectExprs: vitess.SelectExprs{
+			&vitess.AliasedExpr{
+				Expr: &vitess.ColName{
+					Name:      vitess.NewColIdent("@@global." + node.Name),
+					Qualifier: vitess.TableName{},
+				},
+				StartParsePos: 7,
+				EndParsePos:   16 + len(node.Name),
+				As:            vitess.NewColIdent(node.Name),
+			},
+		},
+	}
+	return s, nil
 }
