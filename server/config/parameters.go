@@ -98,6 +98,12 @@ func (p *Parameter) GetDefault() any {
 	return p.Default
 }
 
+// GetValue implements sql.SystemVariable.
+func (p *Parameter) GetValue(a any) (any, bool) {
+	// TODO: might need some validation or conversion for some parameters.
+	return a, true
+}
+
 // HasDefaultValue implements sql.SystemVariable.
 func (p *Parameter) HasDefaultValue(a any) bool {
 	return p.Default == a
@@ -125,19 +131,43 @@ func (p *Parameter) AssignValue(val any) (sql.SystemVarValue, error) {
 
 // SetValue implements sql.SystemVariable.
 func (p *Parameter) SetValue(val any, global bool) (sql.SystemVarValue, error) {
-	switch p.Context {
-	case ParameterContextInternal, ParameterContextPostmaster, ParameterContextSighup:
+	if p.IsReadOnly() {
 		return sql.SystemVarValue{}, ErrCannotChangeAtRuntime.New(p.Name)
-	case ParameterContextSuperUserBackend, ParameterContextBackend:
-		// Read the docs above the ParameterContext
-		// TODO: return error for now
-		return sql.SystemVarValue{}, ErrCannotChangeAtRuntime.New(p.Name)
-	case ParameterContextSuperUser, ParameterContextUser:
-		// TODO: need to check for 'superuser' and appropriate 'SET' privileges.
-		// Can be set from `postgresql.conf`, or within a session via the `SET` command.
 	}
 	// TODO: Maybe do parsing of units for memory and time parameters?
 	return p.AssignValue(val)
+}
+
+// IsReadOnly implements SystemVariable.
+func (p *Parameter) IsReadOnly() bool {
+	switch strings.ToLower(p.Name) {
+	case "server_version", "server_encoding", "lc_collate", "lc_ctype", "is_superuser":
+		return true
+	}
+	switch p.Context {
+	case ParameterContextInternal, ParameterContextPostmaster, ParameterContextSighup,
+		ParameterContextSuperUserBackend, ParameterContextBackend:
+		// Read the docs above the ParameterContext
+		// TODO: some of above contexts need support, return error for now
+		return true
+	case ParameterContextSuperUser, ParameterContextUser:
+		// TODO: need to check for 'superuser' and appropriate 'SET' privileges.
+		// Can be set from `postgresql.conf`, or within a session via the `SET` command.
+		return false
+	}
+	return false
+}
+
+// IsGlobalOnly implements SystemVariable.
+func (p *Parameter) IsGlobalOnly() bool {
+	// TODO: fix - postgres SESSION parameters are considered as GLOBAL in gms for now.
+	return true
+}
+
+// GetNotifyChanged implements SystemVariable.
+func (p *Parameter) GetNotifyChanged() func(sql.SystemVariableScope, sql.SystemVarValue) error {
+	// TODO: fix - some parameters might need them, but return nil for now.
+	return nil
 }
 
 // ParameterContext sets level of difficulty of changing the parameter settings.

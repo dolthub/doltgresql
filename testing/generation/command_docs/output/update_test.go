@@ -263,7 +263,7 @@ func TestUpdate(t *testing.T) {
 		Unimplemented("WITH RECURSIVE queryname AS ( select ) , queryname AS ( select ) UPDATE table_name * SET ( column_name ) = ROW ( DEFAULT ) , ( column_name , column_name ) = ROW ( expression ) WHERE condition"),
 		Unimplemented("WITH RECURSIVE queryname AS ( select ) UPDATE table_name * AS alias SET ( column_name , column_name ) = ( SELECT 1 ) , ( column_name , column_name ) = ROW ( expression ) WHERE condition"),
 		Unimplemented("WITH queryname AS ( select ) , queryname AS ( select ) UPDATE table_name * AS alias SET ( column_name , column_name ) = ROW ( expression , expression ) , ( column_name ) = ( DEFAULT ) WHERE condition"),
-		Parses("UPDATE table_name SET ( column_name ) = ( DEFAULT , DEFAULT ) , ( column_name ) = ( DEFAULT ) WHERE condition"),
+		Converts("UPDATE table_name SET ( column_name ) = ( DEFAULT , DEFAULT ) , ( column_name ) = ( DEFAULT ) WHERE condition"),
 		Unimplemented("WITH RECURSIVE queryname AS ( select ) , queryname AS ( select ) UPDATE table_name SET ( column_name , column_name ) = ( SELECT 1 ) , ( column_name , column_name ) = ( DEFAULT ) WHERE condition"),
 		Unimplemented("UPDATE table_name SET ( column_name ) = ( expression ) , ( column_name ) = ROW ( DEFAULT ) WHERE condition"),
 		Unimplemented("UPDATE ONLY table_name AS alias SET ( column_name ) = ( expression , expression ) , ( column_name ) = ROW ( DEFAULT ) WHERE condition"),
