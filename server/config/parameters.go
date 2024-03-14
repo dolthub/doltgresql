@@ -73,30 +73,37 @@ type Parameter struct {
 	ValueFunc func(any) (any, bool)
 }
 
+// GetName implements sql.SystemVariable.
 func (p *Parameter) GetName() string {
 	return p.Name
 }
 
+// SetName implements sql.SystemVariable.
 func (s *Parameter) SetName(n string) {
 	s.Name = n
 }
 
+// GetType implements sql.SystemVariable.
 func (p *Parameter) GetType() sql.Type {
 	return p.Type
 }
 
+// SetDefault implements sql.SystemVariable.
 func (p *Parameter) SetDefault(a any) {
 	p.Default = a
 }
 
+// GetDefault implements sql.SystemVariable.
 func (p *Parameter) GetDefault() any {
 	return p.Default
 }
 
+// HasDefaultValue implements sql.SystemVariable.
 func (p *Parameter) HasDefaultValue(a any) bool {
 	return p.Default == a
 }
 
+// AssignValue implements sql.SystemVariable.
 func (p *Parameter) AssignValue(val any) (sql.SystemVarValue, error) {
 	convertedVal, _, err := p.Type.Convert(val)
 	if err != nil {
@@ -116,6 +123,7 @@ func (p *Parameter) AssignValue(val any) (sql.SystemVarValue, error) {
 	return svv, nil
 }
 
+// SetValue implements sql.SystemVariable.
 func (p *Parameter) SetValue(val any, global bool) (sql.SystemVarValue, error) {
 	switch p.Context {
 	case ParameterContextInternal, ParameterContextPostmaster, ParameterContextSighup:
@@ -137,7 +145,7 @@ func (p *Parameter) SetValue(val any, global bool) (sql.SystemVarValue, error) {
 // https://www.postgresql.org/docs/current/view-pg-settings.html
 type ParameterContext string
 
-// The following consts are in order of decreasing difficulty of changing the setting.
+// The following constants are in order of decreasing difficulty of changing the setting.
 const (
 	ParameterContextInternal         ParameterContext = "internal"
 	ParameterContextPostmaster       ParameterContext = "postmaster"

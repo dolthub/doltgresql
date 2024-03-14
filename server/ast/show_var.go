@@ -15,7 +15,9 @@
 package ast
 
 import (
+	"fmt"
 	vitess "github.com/dolthub/vitess/go/vt/sqlparser"
+	"strings"
 
 	"github.com/dolthub/doltgresql/postgres/parser/sem/tree"
 )
@@ -26,7 +28,14 @@ func nodeShowVar(node *tree.ShowVar) (vitess.Statement, error) {
 		return nil, nil
 	}
 
-	// TODO: this is a hacky way to get the param value for the current implementation
+	if strings.ToLower(node.Name) == "is_superuser" {
+		return nil, fmt.Errorf("SHOW IS_SUPERUSER is not yet supported")
+	} else if strings.ToLower(node.Name) == "all" {
+		// TODO: need this soon
+		return nil, fmt.Errorf("SHOW ALL is not yet supported")
+	}
+
+	// TODO: this is a temporary way to get the param value for the current implementation
 	//   need better way to get these info
 	s := &vitess.Select{
 		SelectExprs: vitess.SelectExprs{
