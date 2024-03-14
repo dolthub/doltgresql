@@ -17,8 +17,9 @@ package functions
 import (
 	"fmt"
 
-	"github.com/dolthub/doltgresql/server/functions/framework"
+	"github.com/shopspring/decimal"
 
+	"github.com/dolthub/doltgresql/server/functions/framework"
 	pgtypes "github.com/dolthub/doltgresql/server/types"
 )
 
@@ -30,7 +31,7 @@ func init() {
 // factorial_int64 represents the PostgreSQL function of the same name, taking the same parameters.
 var factorial_int64 = framework.Function1{
 	Name:       "factorial",
-	Return:     pgtypes.Int64,
+	Return:     pgtypes.Numeric,
 	Parameters: []pgtypes.DoltgresType{pgtypes.Int64},
 	Callable: func(ctx framework.Context, val1Interface any) (any, error) {
 		if val1Interface == nil {
@@ -44,6 +45,6 @@ var factorial_int64 = framework.Function1{
 		for i := int64(2); i <= val1; i++ {
 			total *= i
 		}
-		return total, nil
+		return decimal.NewFromInt(total), nil
 	},
 }

@@ -15,8 +15,6 @@
 package functions
 
 import (
-	"fmt"
-
 	"github.com/dolthub/doltgresql/server/functions/framework"
 	pgtypes "github.com/dolthub/doltgresql/server/types"
 	"github.com/dolthub/doltgresql/utils"
@@ -35,10 +33,6 @@ var lcm_int64_int64 = framework.Function2{
 	Callable: func(ctx framework.Context, val1 any, val2 any) (any, error) {
 		if val1 == nil || val2 == nil {
 			return nil, nil
-		}
-		if framework.IsParameterType(ctx.OriginalTypes[0], framework.ParameterType_String) || framework.IsParameterType(ctx.OriginalTypes[1], framework.ParameterType_String) {
-			return nil, fmt.Errorf("function lcm(%s, %s) does not exist",
-				ctx.OriginalTypes[0].String(), ctx.OriginalTypes[1].String())
 		}
 		gcdResultInterface, err := gcd_int64_int64.Callable(ctx, val1, val2)
 		if err != nil {

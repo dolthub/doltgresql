@@ -1,4 +1,4 @@
-// Copyright 2023 Dolthub, Inc.
+// Copyright 2023-2024 Dolthub, Inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -12,7 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-package main
+package utils
 
 // TokenReader may be used to easily read through a collection of tokens generated from a synopsis. Of note, a
 // TokenReader will skip all short and medium spaces, as clients of a reader will only care about statement boundaries.

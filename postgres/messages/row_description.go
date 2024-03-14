@@ -227,13 +227,13 @@ func VitessTypeToObjectID(typ query.Type) (int32, error) {
 		// Postgres doesn't make use of a small integer type for integer returns, which presents a bit of a conundrum.
 		// GMS defines boolean operations as the smallest integer type, while Postgres has an explicit bool type.
 		// We can't always assume that `INT8` means bool, since it could just be a small integer. As a result, we'll
-		// always return this as though it's an `INT32`, which also means that we can't support bools right now.
+		// always return this as though it's an `INT16`, which also means that we can't support bools right now.
 		// OIDs 16 (bool) and 18 (char, ASCII only?) are the only single-byte types as far as I'm aware.
-		return OidInt4, nil
+		return OidInt2, nil
 	case query.Type_INT16:
 		// The technically correct OID is 21 (2-byte integer), however it seems like some clients don't actually expect
 		// this, so I'm not sure when it's actually used by Postgres. Because of this, we'll just pretend it's an `INT32`.
-		return OidInt4, nil
+		return OidInt2, nil
 	case query.Type_INT24:
 		// Postgres doesn't have a 3-byte integer type, so just pretend it's `INT32`.
 		return OidInt4, nil
@@ -241,6 +241,18 @@ func VitessTypeToObjectID(typ query.Type) (int32, error) {
 		return OidInt4, nil
 	case query.Type_INT64:
 		return OidInt8, nil
+	case query.Type_UINT8:
+		return OidInt4, nil
+	case query.Type_UINT16:
+		return OidInt4, nil
+	case query.Type_UINT24:
+		return OidInt4, nil
+	case query.Type_UINT32:
+		// Since this has an upperbound greater than `INT32`, we'll treat it as `INT64`
+		return OidInt8, nil
+	case query.Type_UINT64:
+		// Since this has an upperbound greater than `INT64`, we'll treat it as `NUMERIC`
+		return OidNumeric, nil
 	case query.Type_FLOAT32:
 		return OidFloat4, nil
 	case query.Type_FLOAT64:
@@ -281,6 +293,18 @@ func VitessFieldToDataTypeSize(field *query.Field) (int16, error) {
 		return 4, nil
 	case query.Type_INT64:
 		return 8, nil
+	case query.Type_UINT8:
+		return 4, nil
+	case query.Type_UINT16:
+		return 4, nil
+	case query.Type_UINT24:
+		return 4, nil
+	case query.Type_UINT32:
+		// Since this has an upperbound greater than `INT32`, we'll treat it as `INT64`
+		return 8, nil
+	case query.Type_UINT64:
+		// Since this has an upperbound greater than `INT64`, we'll treat it as `NUMERIC`
+		return -1, nil
 	case query.Type_FLOAT32:
 		return 4, nil
 	case query.Type_FLOAT64:
@@ -319,6 +343,17 @@ func VitessFieldToDataTypeModifier(field *query.Field) (int32, error) {
 		return -1, nil
 	case query.Type_INT64:
 		return -1, nil
+	case query.Type_UINT8:
+		return -1, nil
+	case query.Type_UINT16:
+		return -1, nil
+	case query.Type_UINT24:
+		return -1, nil
+	case query.Type_UINT32:
+		return -1, nil
+	case query.Type_UINT64:
+		// Since we're encoding this as `NUMERIC`, we emulate a `NUMERIC` type with a precision of 19 and a scale of 0
+		return (19 << 16) + 4, nil
 	case query.Type_FLOAT32:
 		return -1, nil
 	case query.Type_FLOAT64:

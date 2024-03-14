@@ -15,8 +15,6 @@
 package functions
 
 import (
-	"fmt"
-
 	"github.com/dolthub/doltgresql/server/functions/framework"
 	pgtypes "github.com/dolthub/doltgresql/server/types"
 	"github.com/dolthub/doltgresql/utils"
@@ -35,10 +33,6 @@ var gcd_int64_int64 = framework.Function2{
 	Callable: func(ctx framework.Context, val1Interface any, val2Interface any) (any, error) {
 		if val1Interface == nil || val2Interface == nil {
 			return nil, nil
-		}
-		if framework.IsParameterType(ctx.OriginalTypes[0], framework.ParameterType_String) || framework.IsParameterType(ctx.OriginalTypes[1], framework.ParameterType_String) {
-			return nil, fmt.Errorf("function gcd(%s, %s) does not exist",
-				ctx.OriginalTypes[0].String(), ctx.OriginalTypes[1].String())
 		}
 		val1 := val1Interface.(int64)
 		val2 := val2Interface.(int64)

@@ -483,9 +483,15 @@ func nodeExpr(node tree.Expr) (vitess.Expr, error) {
 	case *tree.NumVal:
 		switch node.Kind() {
 		case constant.Int:
-			return vitess.NewIntVal([]byte(node.FormattedString())), nil
+			intLiteral, err := pgexprs.NewIntegerLiteral(node.FormattedString())
+			return vitess.InjectedExpr{
+				Expression: intLiteral,
+			}, err
 		case constant.Float:
-			return vitess.NewFloatVal([]byte(node.FormattedString())), nil
+			numericLiteral, err := pgexprs.NewFloatLiteral(node.FormattedString())
+			return vitess.InjectedExpr{
+				Expression: numericLiteral,
+			}, err
 		default:
 			return nil, fmt.Errorf("unknown number format")
 		}
@@ -560,10 +566,10 @@ func nodeExpr(node tree.Expr) (vitess.Expr, error) {
 		}
 	case *tree.StrVal:
 		//TODO: determine what to do when node.WasScannedAsBytes() is true
-		return &vitess.SQLVal{
-			Type: vitess.StrVal,
-			Val:  []byte(node.RawString()),
-		}, nil
+		stringLiteral, err := pgexprs.NewStringLiteral(node.RawString())
+		return vitess.InjectedExpr{
+			Expression: stringLiteral,
+		}, err
 	case *tree.Subquery:
 		return nodeSubquery(node)
 	case *tree.Tuple:

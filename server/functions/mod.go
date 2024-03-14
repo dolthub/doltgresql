@@ -15,10 +15,11 @@
 package functions
 
 import (
+	"fmt"
+
 	"github.com/shopspring/decimal"
 
 	"github.com/dolthub/doltgresql/server/functions/framework"
-
 	pgtypes "github.com/dolthub/doltgresql/server/types"
 )
 
@@ -37,6 +38,9 @@ var mod_int64_int64 = framework.Function2{
 		if val1 == nil || val2 == nil {
 			return nil, nil
 		}
+		if val2.(int64) == 0 {
+			return nil, fmt.Errorf("division by zero")
+		}
 		return val1.(int64) % val2.(int64), nil
 	},
 }
@@ -49,6 +53,9 @@ var mod_numeric_numeric = framework.Function2{
 	Callable: func(ctx framework.Context, val1 any, val2 any) (any, error) {
 		if val1 == nil || val2 == nil {
 			return nil, nil
+		}
+		if val2.(decimal.Decimal).Cmp(decimal.Zero) == 0 {
+			return nil, fmt.Errorf("division by zero")
 		}
 		return val1.(decimal.Decimal).Mod(val2.(decimal.Decimal)), nil
 	},

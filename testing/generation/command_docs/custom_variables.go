@@ -16,11 +16,13 @@ package main
 
 import (
 	"strings"
+
+	"github.com/dolthub/doltgresql/testing/generation/utils"
 )
 
 // GlobalCustomVariables are variable definitions that are used when a synopsis does not define the definition itself,
 // and there isn't a more specific definition in PrefixCustomVariables.
-var GlobalCustomVariables = map[string]StatementGenerator{
+var GlobalCustomVariables = map[string]utils.StatementGenerator{
 	"access_method_type":  customDefinition(`TABLE | INDEX`),
 	"argmode":             customDefinition(`IN | VARIADIC`),
 	"argtype":             customDefinition(`FLOAT8`),
@@ -78,7 +80,7 @@ var GlobalCustomVariables = map[string]StatementGenerator{
 	"with_query":          customDefinition(`queryname AS (select)`),
 }
 
-var PrefixCustomVariables = map[string]map[string]StatementGenerator{
+var PrefixCustomVariables = map[string]map[string]utils.StatementGenerator{
 	"ALTER FOREIGN TABLE": {
 		"index_parameters": customDefinition(`USING INDEX TABLESPACE tablespace_name`),
 	},
@@ -116,14 +118,14 @@ var PrefixCustomVariables = map[string]map[string]StatementGenerator{
 
 // customDefinition returns a StatementGenerator for a custom variable definition. The variable definition should follow
 // the same layout format as synopses.
-func customDefinition(str string) StatementGenerator {
+func customDefinition(str string) utils.StatementGenerator {
 	str = strings.TrimSpace(str)
 	scanner := NewScanner(str)
 	tokens, err := scanner.Process()
 	if err != nil {
 		panic(err)
 	}
-	stmtGen, err := ParseTokens(tokens, true)
+	stmtGen, err := utils.ParseTokens(tokens, true)
 	if err != nil {
 		panic(err)
 	}

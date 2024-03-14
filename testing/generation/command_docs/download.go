@@ -17,10 +17,9 @@ package main
 import (
 	"fmt"
 	"net/http"
-	"os"
-	"path/filepath"
-	"runtime"
 	"strings"
+
+	"github.com/dolthub/doltgresql/testing/generation/utils"
 
 	"github.com/PuerkitoBio/goquery"
 	"golang.org/x/net/html"
@@ -75,7 +74,7 @@ func DownloadAllSynopses() {
 			}
 			fileName := strings.ToLower(strings.ReplaceAll(link.CommandName, " ", "_"))
 			data := []byte(synopsis.Text())
-			if err = os.WriteFile(fmt.Sprintf("%s/synopses/%s.txt", fileLocation, fileName), data, 0644); err != nil {
+			if err = fileLocation.WriteFileToDirectory("synopses/%s.txt", fileName+".txt", data, 0644); err != nil {
 				fmt.Println(err.Error())
 			}
 			fmt.Printf("Downloaded: %s\n", link.Link)
@@ -97,12 +96,12 @@ func FetchDocument(link string) (*goquery.Document, error) {
 	return goquery.NewDocumentFromNode(node), nil
 }
 
-// GetCommandDocsFolder returns the location of this particular Go file: download.go. This is useful to locate relative
+// GetCommandDocsFolder returns the directory of this particular Go file: download.go. This is useful to locate relative
 // directories, such as the synopses folder. It is assumed that this will always be called from within an IDE.
-func GetCommandDocsFolder() (string, error) {
-	_, currentFileLocation, _, ok := runtime.Caller(0)
-	if !ok {
-		return "", fmt.Errorf("failed to fetch the location of the current file")
+func GetCommandDocsFolder() (utils.RootFolderLocation, error) {
+	root, err := utils.GetRootFolder()
+	if err != nil {
+		return utils.RootFolderLocation{}, err
 	}
-	return filepath.ToSlash(filepath.Dir(currentFileLocation)), nil
+	return root.MoveRoot("testing/generation/command_docs"), nil
 }

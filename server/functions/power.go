@@ -51,6 +51,10 @@ var power_numeric_numeric = framework.Function2{
 		if val1 == nil || val2 == nil {
 			return nil, nil
 		}
+		one := decimal.NewFromInt(1)
+		if val1.(decimal.Decimal).Cmp(one) == 0 {
+			return one, nil
+		}
 		return val1.(decimal.Decimal).Pow(val2.(decimal.Decimal)), nil
 	},
 }

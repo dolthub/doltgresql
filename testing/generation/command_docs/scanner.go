@@ -17,12 +17,14 @@ package main
 import (
 	"fmt"
 	"strings"
+
+	"github.com/dolthub/doltgresql/testing/generation/utils"
 )
 
 // Scanner allows for scanning through the synopsis to generate tokens.
 type Scanner struct {
 	source     []rune
-	tokens     []Token
+	tokens     []utils.Token
 	sourceIdx  int
 	isFinished bool
 	savedErr   error
@@ -103,7 +105,7 @@ func (scanner *Scanner) AdvanceBy(n int) {
 }
 
 // Process processes the synopsis and returns the generated tokens.
-func (scanner *Scanner) Process() ([]Token, error) {
+func (scanner *Scanner) Process() ([]utils.Token, error) {
 	if scanner.isFinished || scanner.savedErr != nil {
 		return scanner.tokens, scanner.savedErr
 	}
@@ -125,8 +127,8 @@ ScannerLoop:
 				break ScannerLoop
 			}
 			scanner.Advance()
-			scanner.tokens = append(scanner.tokens, Token{
-				Type:    TokenType_Variable,
+			scanner.tokens = append(scanner.tokens, utils.Token{
+				Type:    utils.TokenType_Variable,
 				Literal: string(name),
 			})
 		case '\t':
@@ -176,13 +178,13 @@ ScannerLoop:
 				break ScannerLoop
 			}
 			if spaceCount == 1 && lineCount == 0 {
-				scanner.tokens = append(scanner.tokens, Token{Type: TokenType_ShortSpace})
+				scanner.tokens = append(scanner.tokens, utils.Token{Type: utils.TokenType_ShortSpace})
 			} else if spaceCount > 1 && lineCount <= 1 {
-				scanner.tokens = append(scanner.tokens, Token{Type: TokenType_MediumSpace})
+				scanner.tokens = append(scanner.tokens, utils.Token{Type: utils.TokenType_MediumSpace})
 			} else {
 				// This will match the case where spaceCount == 0 and lineCount == 1.
 				// This may seem counter-intuitive, however it's consistent with how new statements are defined.
-				scanner.tokens = append(scanner.tokens, Token{Type: TokenType_LongSpace})
+				scanner.tokens = append(scanner.tokens, utils.Token{Type: utils.TokenType_LongSpace})
 			}
 		case '.':
 			dotCount := 1
@@ -197,10 +199,10 @@ ScannerLoop:
 					scanner.AdvanceBy(n - 1)
 					// If the dot count is different from 3, then we'll treat it as a string
 					if dotCount == 3 {
-						scanner.tokens = append(scanner.tokens, Token{Type: TokenType_Repeat})
+						scanner.tokens = append(scanner.tokens, utils.Token{Type: utils.TokenType_Repeat})
 					} else {
-						scanner.tokens = append(scanner.tokens, Token{
-							Type:    TokenType_Text,
+						scanner.tokens = append(scanner.tokens, utils.Token{
+							Type:    utils.TokenType_Text,
 							Literal: strings.Repeat(".", dotCount),
 						})
 					}
@@ -208,50 +210,50 @@ ScannerLoop:
 				}
 			}
 		case ',':
-			scanner.tokens = append(scanner.tokens, Token{
-				Type:    TokenType_Text,
+			scanner.tokens = append(scanner.tokens, utils.Token{
+				Type:    utils.TokenType_Text,
 				Literal: ",",
 			})
 		case '[':
 			if scanner.PeekMatchOffset("[ ... ]", 0) {
 				scanner.AdvanceBy(6)
-				scanner.tokens = append(scanner.tokens, Token{
-					Type:    TokenType_OptionalRepeat,
+				scanner.tokens = append(scanner.tokens, utils.Token{
+					Type:    utils.TokenType_OptionalRepeat,
 					Literal: "",
 				})
 			} else if scanner.PeekMatchOffset("[ , ... ]", 0) {
 				scanner.AdvanceBy(8)
-				scanner.tokens = append(scanner.tokens, Token{
-					Type:    TokenType_OptionalRepeat,
+				scanner.tokens = append(scanner.tokens, utils.Token{
+					Type:    utils.TokenType_OptionalRepeat,
 					Literal: ",",
 				})
 			} else if scanner.PeekMatchOffset("[ AND ... ]", 0) {
 				scanner.AdvanceBy(10)
-				scanner.tokens = append(scanner.tokens, Token{
-					Type:    TokenType_OptionalRepeat,
+				scanner.tokens = append(scanner.tokens, utils.Token{
+					Type:    utils.TokenType_OptionalRepeat,
 					Literal: "AND",
 				})
 			} else if scanner.PeekMatchOffset("[ OR ... ]", 0) {
 				scanner.AdvanceBy(9)
-				scanner.tokens = append(scanner.tokens, Token{
-					Type:    TokenType_OptionalRepeat,
+				scanner.tokens = append(scanner.tokens, utils.Token{
+					Type:    utils.TokenType_OptionalRepeat,
 					Literal: "OR",
 				})
 			} else {
-				scanner.tokens = append(scanner.tokens, Token{Type: TokenType_OptionalOpen})
+				scanner.tokens = append(scanner.tokens, utils.Token{Type: utils.TokenType_OptionalOpen})
 			}
 		case ']':
-			scanner.tokens = append(scanner.tokens, Token{Type: TokenType_OptionalClose})
+			scanner.tokens = append(scanner.tokens, utils.Token{Type: utils.TokenType_OptionalClose})
 		case '{':
-			scanner.tokens = append(scanner.tokens, Token{Type: TokenType_OneOfOpen})
+			scanner.tokens = append(scanner.tokens, utils.Token{Type: utils.TokenType_OneOfOpen})
 		case '}':
-			scanner.tokens = append(scanner.tokens, Token{Type: TokenType_OneOfClose})
+			scanner.tokens = append(scanner.tokens, utils.Token{Type: utils.TokenType_OneOfClose})
 		case '(':
-			scanner.tokens = append(scanner.tokens, Token{Type: TokenType_ParenOpen})
+			scanner.tokens = append(scanner.tokens, utils.Token{Type: utils.TokenType_ParenOpen})
 		case ')':
-			scanner.tokens = append(scanner.tokens, Token{Type: TokenType_ParenClose})
+			scanner.tokens = append(scanner.tokens, utils.Token{Type: utils.TokenType_ParenClose})
 		case '|':
-			scanner.tokens = append(scanner.tokens, Token{Type: TokenType_Or})
+			scanner.tokens = append(scanner.tokens, utils.Token{Type: utils.TokenType_Or})
 		default:
 			if scanner.PeekMatchOffset("where $", 0) {
 				// Skip past what we peeked at
@@ -261,8 +263,8 @@ ScannerLoop:
 				for r, ok = scanner.Peek(); ok; r, ok = scanner.Peek() {
 					switch r {
 					case '$':
-						scanner.tokens = append(scanner.tokens, Token{
-							Type:    TokenType_VariableDefinition,
+						scanner.tokens = append(scanner.tokens, utils.Token{
+							Type:    utils.TokenType_VariableDefinition,
 							Literal: string(varName),
 						})
 						if !scanner.PeekMatch("$ is:") {
@@ -283,8 +285,8 @@ ScannerLoop:
 				for r, ok = scanner.Peek(); ok; r, ok = scanner.Peek() {
 					switch r {
 					case '$', ' ', '\t', '\n', '.', ',', '[', ']', '{', '}', '(', ')', '|':
-						scanner.tokens = append(scanner.tokens, Token{
-							Type:    TokenType_Text,
+						scanner.tokens = append(scanner.tokens, utils.Token{
+							Type:    utils.TokenType_Text,
 							Literal: string(text),
 						})
 						break TextLoop
@@ -295,8 +297,8 @@ ScannerLoop:
 				}
 				// If we hit EOF, then we haven't added the word yet, so we'll do it here
 				if !ok {
-					scanner.tokens = append(scanner.tokens, Token{
-						Type:    TokenType_Text,
+					scanner.tokens = append(scanner.tokens, utils.Token{
+						Type:    utils.TokenType_Text,
 						Literal: string(text),
 					})
 				}
@@ -308,7 +310,7 @@ ScannerLoop:
 		scanner.tokens = scanner.tokens[:len(scanner.tokens)-1]
 	}
 	// Add an EOF
-	scanner.tokens = append(scanner.tokens, Token{Type: TokenType_EOF})
+	scanner.tokens = append(scanner.tokens, utils.Token{Type: utils.TokenType_EOF})
 	// Set that we're finished now (we'll also finish on errors)
 	scanner.isFinished = true
 	return scanner.tokens, scanner.savedErr
