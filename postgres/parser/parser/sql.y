@@ -1023,7 +1023,7 @@ func (u *sqlSymUnion) triggerTime() tree.TriggerTime {
 %type <[]tree.AlterColComputed> alter_column_set_seq_elem_list
 %type <tree.AlterIndexCmd> alter_index_cmd
 %type <tree.StorageType> col_storage_option
-%type <bool> unique_or_primary logged_or_unlogged opt_nowait opt_no opt_view_recursive opt_is_local
+%type <bool> unique_or_primary logged_or_unlogged opt_nowait opt_no opt_view_recursive
 %type <str> trigger_name trigger_option
 %type <tree.AlterViewCmd> alter_view_cmd
 
@@ -1110,7 +1110,8 @@ func (u *sqlSymUnion) triggerTime() tree.TriggerTime {
 %type <tree.RefreshDataOption> opt_clear_data
 
 %type <[]tree.SequenceOption> sequence_option_list opt_sequence_option_list opt_sequence_option_list_with_parens
-%type <tree.SequenceOption> sequence_option_elem
+%type <tree.SequenceOption> sequence_option_elem seq_as_type seq_increment
+%type <tree.SequenceOption> seq_minvalue seq_maxvalue seq_start seq_cache seq_cycle seq_owned_by
 
 %type <bool> all_or_distinct opt_cascade opt_if_exists opt_restrict
 %type <bool> with_comment opt_with_force opt_create_as_with_data
@@ -1264,8 +1265,7 @@ func (u *sqlSymUnion) triggerTime() tree.TriggerTime {
 
 %type <tree.Expr> opt_alter_column_using
 
-%type <tree.Persistence> opt_temp
-%type <tree.Persistence> opt_persistence_temp_table
+%type <tree.Persistence> opt_temp opt_persistence_temp_table opt_persistence_sequence
 %type <bool> role_or_group_or_user role_or_user opt_with_grant_option opt_grant_option_for
 
 %type <tree.Expr>  cron_expr opt_description sconst_or_placeholder
@@ -5139,20 +5139,6 @@ set_session_or_local_stmt:
     $$.val = setStmt
   }
 
-opt_is_local:
-  /* EMPTY */
-  {
-    $$.val = false
-  }
-| SESSION
-  {
-    $$.val = false
-  }
-| LOCAL
-  {
-    $$.val = true
-  }
-
 set_session_or_local_cmd:
   set_var
 | set_session_authorization
@@ -6743,13 +6729,16 @@ opt_create_as_with_data:
 | TEMP              { $$.val = tree.PersistenceTemporary }
 | /*EMPTY*/         { $$.val = tree.PersistencePermanent }
 
-opt_persistence_temp_table:
+opt_persistence_sequence:
   opt_temp
+| UNLOGGED          { $$.val = tree.PersistenceUnlogged }
+
+opt_persistence_temp_table:
+  opt_persistence_sequence
 | LOCAL TEMPORARY   { $$.val = tree.PersistenceTemporary }
 | LOCAL TEMP        { $$.val = tree.PersistenceTemporary }
 | GLOBAL TEMPORARY  { $$.val = tree.PersistenceTemporary }
 | GLOBAL TEMP       { $$.val = tree.PersistenceTemporary }
-| UNLOGGED          { $$.val = tree.PersistenceUnlogged }
 
 opt_table_elem_list:
   table_elem_list
@@ -7281,18 +7270,16 @@ reference_action:
 // %Help: CREATE SEQUENCE - create a new sequence
 // %Category: DDL
 // %Text:
-// CREATE [TEMPORARY | TEMP] SEQUENCE <seqname>
-//   [INCREMENT <increment>]
-//   [MINVALUE <minvalue> | NO MINVALUE]
-//   [MAXVALUE <maxvalue> | NO MAXVALUE]
-//   [START [WITH] <start>]
-//   [CACHE <cache>]
-//   [NO CYCLE]
-//   [VIRTUAL]
+// CREATE [ { TEMPORARY | TEMP } | UNLOGGED ] SEQUENCE [ IF NOT EXISTS ] name
+//    [ AS data_type ]
+//    [ INCREMENT [ BY ] increment ]
+//    [ MINVALUE minvalue | NO MINVALUE ] [ MAXVALUE maxvalue | NO MAXVALUE ]
+//    [ START [ WITH ] start ] [ CACHE cache ] [ [ NO ] CYCLE ]
+//    [ OWNED BY { table_name.column_name | NONE } ]
 //
 // %SeeAlso: CREATE TABLE
 create_sequence_stmt:
-  CREATE opt_temp SEQUENCE sequence_name opt_sequence_option_list
+  CREATE opt_persistence_sequence SEQUENCE sequence_name opt_sequence_option_list
   {
     name := $4.unresolvedObjectName().ToTableName()
     $$.val = &tree.CreateSequence {
@@ -7301,59 +7288,126 @@ create_sequence_stmt:
       Options: $5.seqOpts(),
     }
   }
-| CREATE opt_temp SEQUENCE IF NOT EXISTS sequence_name opt_sequence_option_list
+| CREATE opt_persistence_sequence SEQUENCE IF NOT EXISTS sequence_name opt_sequence_option_list
   {
     name := $7.unresolvedObjectName().ToTableName()
     $$.val = &tree.CreateSequence {
-      Name: name, Options: $8.seqOpts(),
+      Name: name,
       Persistence: $2.persistence(),
       IfNotExists: true,
+      Options: $8.seqOpts(),
     }
   }
-| CREATE opt_temp SEQUENCE error // SHOW HELP: CREATE SEQUENCE
 
 opt_sequence_option_list:
   sequence_option_list
-| /* EMPTY */          { $$.val = []tree.SequenceOption(nil) }
+| /* EMPTY */
+  {
+    $$.val = []tree.SequenceOption(nil)
+  }
 
 sequence_option_list:
-  sequence_option_elem                       { $$.val = []tree.SequenceOption{$1.seqOpt()} }
-| sequence_option_list sequence_option_elem  { $$.val = append($1.seqOpts(), $2.seqOpt()) }
+  sequence_option_elem
+  {
+    $$.val = []tree.SequenceOption{$1.seqOpt()}
+  }
+| sequence_option_list sequence_option_elem
+  {
+    $$.val = append($1.seqOpts(), $2.seqOpt())
+  }
 
 sequence_option_elem:
-  AS typename                  { return unimplementedWithIssueDetail(sqllex, 25110, $2.typeReference().SQLString()) }
-| CYCLE                        { /* SKIP DOC */
-                                 $$.val = tree.SequenceOption{Name: tree.SeqOptCycle} }
-| NO CYCLE                     { $$.val = tree.SequenceOption{Name: tree.SeqOptNoCycle} }
-| OWNED BY NONE                { $$.val = tree.SequenceOption{Name: tree.SeqOptOwnedBy, ColumnItemVal: nil} }
-| OWNED BY column_path         { varName, err := $3.unresolvedName().NormalizeVarName()
-                                     if err != nil {
-                                       return setErr(sqllex, err)
-                                     }
-                                     columnItem, ok := varName.(*tree.ColumnItem)
-                                     if !ok {
-                                       sqllex.Error(fmt.Sprintf("invalid column name: %q", tree.ErrString($3.unresolvedName())))
-                                             return 1
-                                     }
-                                 $$.val = tree.SequenceOption{Name: tree.SeqOptOwnedBy, ColumnItemVal: columnItem} }
-| CACHE signed_iconst64        { /* SKIP DOC */
-                                 x := $2.int64()
-                                 $$.val = tree.SequenceOption{Name: tree.SeqOptCache, IntVal: &x} }
-| INCREMENT signed_iconst64    { x := $2.int64()
-                                 $$.val = tree.SequenceOption{Name: tree.SeqOptIncrement, IntVal: &x} }
-| INCREMENT BY signed_iconst64 { x := $3.int64()
-                                 $$.val = tree.SequenceOption{Name: tree.SeqOptIncrement, IntVal: &x, OptionalWord: true} }
-| MINVALUE signed_iconst64     { x := $2.int64()
-                                 $$.val = tree.SequenceOption{Name: tree.SeqOptMinValue, IntVal: &x} }
-| NO MINVALUE                  { $$.val = tree.SequenceOption{Name: tree.SeqOptMinValue} }
-| MAXVALUE signed_iconst64     { x := $2.int64()
-                                 $$.val = tree.SequenceOption{Name: tree.SeqOptMaxValue, IntVal: &x} }
-| NO MAXVALUE                  { $$.val = tree.SequenceOption{Name: tree.SeqOptMaxValue} }
-| START signed_iconst64        { x := $2.int64()
-                                 $$.val = tree.SequenceOption{Name: tree.SeqOptStart, IntVal: &x} }
-| START WITH signed_iconst64   { x := $3.int64()
-                                 $$.val = tree.SequenceOption{Name: tree.SeqOptStart, IntVal: &x, OptionalWord: true} }
-| VIRTUAL                      { $$.val = tree.SequenceOption{Name: tree.SeqOptVirtual} }
+  seq_as_type
+| seq_increment
+| seq_minvalue
+| seq_maxvalue
+| seq_start
+| seq_cache
+| seq_cycle
+| seq_owned_by
+
+seq_as_type:
+  AS typename
+  {
+    $$.val = tree.SequenceOption{Name: tree.SeqOptAs, AsType: $2.typeReference()}
+  }
+
+seq_increment:
+  INCREMENT signed_iconst64
+  {
+    x := $2.int64()
+    $$.val = tree.SequenceOption{Name: tree.SeqOptIncrementBy, IntVal: &x}
+  }
+| INCREMENT BY signed_iconst64
+  {
+    x := $3.int64()
+    $$.val = tree.SequenceOption{Name: tree.SeqOptIncrementBy, IntVal: &x}
+  }
+
+seq_minvalue:
+  MINVALUE signed_iconst64
+  {
+    x := $2.int64()
+    $$.val = tree.SequenceOption{Name: tree.SeqOptMinValue, IntVal: &x}
+  }
+| NO MINVALUE
+  {
+    $$.val = tree.SequenceOption{Name: tree.SeqOptMinValue}
+  }
+
+seq_maxvalue:
+  MAXVALUE signed_iconst64
+  {
+    x := $2.int64()
+    $$.val = tree.SequenceOption{Name: tree.SeqOptMaxValue, IntVal: &x}
+  }
+| NO MAXVALUE
+  {
+    $$.val = tree.SequenceOption{Name: tree.SeqOptMaxValue}
+  }
+
+seq_start:
+  START opt_with signed_iconst64
+  {
+    x := $3.int64()
+    $$.val = tree.SequenceOption{Name: tree.SeqOptStartWith, IntVal: &x}
+  }
+
+seq_cache:
+  CACHE signed_iconst64
+  {
+    x := $2.int64()
+    $$.val = tree.SequenceOption{Name: tree.SeqOptCache, IntVal: &x}
+  }
+
+seq_cycle:
+  CYCLE
+  {
+    $$.val = tree.SequenceOption{Name: tree.SeqOptCycle}
+  }
+| NO CYCLE
+  {
+    $$.val = tree.SequenceOption{Name: tree.SeqOptNoCycle}
+  }
+
+seq_owned_by:
+  OWNED BY column_path
+  {
+    varName, err := $3.unresolvedName().NormalizeVarName()
+    if err != nil {
+      return setErr(sqllex, err)
+    }
+    columnItem, ok := varName.(*tree.ColumnItem)
+    if !ok {
+      sqllex.Error(fmt.Sprintf("invalid column name: %q", tree.ErrString($3.unresolvedName())))
+            return 1
+    }
+    $$.val = tree.SequenceOption{Name: tree.SeqOptOwnedBy, ColumnItemVal: columnItem}
+  }
+| OWNED BY NONE
+  {
+    $$.val = tree.SequenceOption{Name: tree.SeqOptOwnedBy, ColumnItemVal: nil}
+  }
 
 // %Help: TRUNCATE - empty one or more tables
 // %Category: DML

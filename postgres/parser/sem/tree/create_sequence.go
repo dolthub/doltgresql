@@ -51,6 +51,8 @@ func (node *CreateSequence) Format(ctx *FmtCtx) {
 
 	if node.Persistence == PersistenceTemporary {
 		ctx.WriteString("TEMPORARY ")
+	} else if node.Persistence == PersistenceUnlogged {
+		ctx.WriteString("UNCLOGGED ")
 	}
 
 	ctx.WriteString("SEQUENCE ")
@@ -71,9 +73,11 @@ func (node *SequenceOptions) Format(ctx *FmtCtx) {
 		option := &(*node)[i]
 		ctx.WriteByte(' ')
 		switch option.Name {
-		case SeqOptCycle, SeqOptNoCycle:
+		case SeqOptAs:
 			ctx.WriteString(option.Name)
-		case SeqOptCache:
+			ctx.WriteByte(' ')
+			ctx.WriteString(option.AsType.SQLString())
+		case SeqOptIncrementBy, SeqOptStartWith, SeqOptCache:
 			ctx.WriteString(option.Name)
 			ctx.WriteByte(' ')
 			ctx.Printf("%d", *option.IntVal)
@@ -86,29 +90,14 @@ func (node *SequenceOptions) Format(ctx *FmtCtx) {
 				ctx.WriteByte(' ')
 				ctx.Printf("%d", *option.IntVal)
 			}
-		case SeqOptStart:
-			ctx.WriteString(option.Name)
-			ctx.WriteByte(' ')
-			if option.OptionalWord {
-				ctx.WriteString("WITH ")
-			}
-			ctx.Printf("%d", *option.IntVal)
-		case SeqOptIncrement:
-			ctx.WriteString(option.Name)
-			ctx.WriteByte(' ')
-			if option.OptionalWord {
-				ctx.WriteString("BY ")
-			}
-			ctx.Printf("%d", *option.IntVal)
-		case SeqOptVirtual:
+		case SeqOptCycle, SeqOptNoCycle:
 			ctx.WriteString(option.Name)
 		case SeqOptOwnedBy:
 			ctx.WriteString(option.Name)
 			ctx.WriteByte(' ')
-			switch option.ColumnItemVal {
-			case nil:
+			if option.ColumnItemVal == nil {
 				ctx.WriteString("NONE")
-			default:
+			} else {
 				ctx.FormatNode(option.ColumnItemVal)
 			}
 		default:
@@ -119,28 +108,22 @@ func (node *SequenceOptions) Format(ctx *FmtCtx) {
 
 // SequenceOption represents an option on a CREATE SEQUENCE statement.
 type SequenceOption struct {
-	Name string
-
-	IntVal *int64
-
-	OptionalWord bool
-
+	Name          string
+	IntVal        *int64
+	OptionalWord  bool
 	ColumnItemVal *ColumnItem
+	AsType        ResolvableTypeReference
 }
 
 // Names of options on CREATE SEQUENCE.
 const (
-	SeqOptAs        = "AS"
-	SeqOptCycle     = "CYCLE"
-	SeqOptNoCycle   = "NO CYCLE"
-	SeqOptOwnedBy   = "OWNED BY"
-	SeqOptCache     = "CACHE"
-	SeqOptIncrement = "INCREMENT"
-	SeqOptMinValue  = "MINVALUE"
-	SeqOptMaxValue  = "MAXVALUE"
-	SeqOptStart     = "START"
-	SeqOptVirtual   = "VIRTUAL"
-
-	// Avoid unused warning for constants.
-	_ = SeqOptAs
+	SeqOptAs          = "AS"
+	SeqOptCycle       = "CYCLE"
+	SeqOptNoCycle     = "NO CYCLE"
+	SeqOptOwnedBy     = "OWNED BY"
+	SeqOptCache       = "CACHE"
+	SeqOptIncrementBy = "INCREMENT BY"
+	SeqOptMinValue    = "MINVALUE"
+	SeqOptMaxValue    = "MAXVALUE"
+	SeqOptStartWith   = "START WITH"
 )
