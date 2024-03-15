@@ -77,7 +77,7 @@ func (node *SequenceOptions) Format(ctx *FmtCtx) {
 			ctx.WriteString(option.Name)
 			ctx.WriteByte(' ')
 			ctx.WriteString(option.AsType.SQLString())
-		case SeqOptIncrementBy, SeqOptStartWith, SeqOptCache:
+		case SeqOptIncrement, SeqOptStart, SeqOptCache:
 			ctx.WriteString(option.Name)
 			ctx.WriteByte(' ')
 			ctx.Printf("%d", *option.IntVal)
@@ -100,13 +100,19 @@ func (node *SequenceOptions) Format(ctx *FmtCtx) {
 			} else {
 				ctx.FormatNode(option.ColumnItemVal)
 			}
+		case SeqOptRestart:
+			ctx.WriteString(option.Name)
+			if option.IntVal != nil {
+				ctx.WriteString(" WITH ")
+				ctx.Printf("%d", *option.IntVal)
+			}
 		default:
 			panic(errors.AssertionFailedf("unexpected SequenceOption: %v", option))
 		}
 	}
 }
 
-// SequenceOption represents an option on a CREATE SEQUENCE statement.
+// SequenceOption represents an option on a CREATE/ALTER SEQUENCE statement.
 type SequenceOption struct {
 	Name          string
 	IntVal        *int64
@@ -117,13 +123,16 @@ type SequenceOption struct {
 
 // Names of options on CREATE SEQUENCE.
 const (
-	SeqOptAs          = "AS"
-	SeqOptCycle       = "CYCLE"
-	SeqOptNoCycle     = "NO CYCLE"
-	SeqOptOwnedBy     = "OWNED BY"
-	SeqOptCache       = "CACHE"
-	SeqOptIncrementBy = "INCREMENT BY"
-	SeqOptMinValue    = "MINVALUE"
-	SeqOptMaxValue    = "MAXVALUE"
-	SeqOptStartWith   = "START WITH"
+	SeqOptAs        = "AS"
+	SeqOptCycle     = "CYCLE"
+	SeqOptNoCycle   = "NO CYCLE"
+	SeqOptOwnedBy   = "OWNED BY"
+	SeqOptCache     = "CACHE"
+	SeqOptIncrement = "INCREMENT BY"
+	SeqOptMinValue  = "MINVALUE"
+	SeqOptMaxValue  = "MAXVALUE"
+	SeqOptStart     = "START WITH"
+
+	// SeqOptRestart is used for ALTER sequence option only
+	SeqOptRestart = "RESTART"
 )
