@@ -10411,11 +10411,11 @@ opt_numeric_modifiers:
 numeric:
   INT
   {
-    $$.val = sqllex.(*lexer).nakedIntType
+    $$.val = types.Int4
   }
 | INTEGER
   {
-    $$.val = sqllex.(*lexer).nakedIntType
+    $$.val = types.Int4
   }
 | SMALLINT
   {
