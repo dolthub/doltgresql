@@ -20,8 +20,6 @@ import (
 	_ "net/http/pprof"
 	"strings"
 
-	"github.com/dolthub/doltgresql/server/functions/framework"
-
 	"github.com/dolthub/dolt/go/cmd/dolt/cli"
 	"github.com/dolthub/dolt/go/cmd/dolt/commands"
 	"github.com/dolthub/dolt/go/cmd/dolt/commands/sqlserver"
@@ -34,6 +32,8 @@ import (
 	"github.com/dolthub/dolt/go/libraries/utils/filesys"
 	"github.com/dolthub/dolt/go/libraries/utils/svcs"
 	"github.com/dolthub/dolt/go/store/util/tempfiles"
+	"github.com/dolthub/doltgresql/server/functions/framework"
+	"github.com/dolthub/doltgresql/server/logrepl"
 	"github.com/dolthub/go-mysql-server/server"
 	"github.com/dolthub/go-mysql-server/sql"
 )
@@ -179,7 +179,12 @@ func runServer(ctx context.Context, args []string, dEnv *env.DoltEnv) (*svcs.Con
 	ap := sqlserver.SqlServerCmd{}.ArgParser()
 	help, _ := cli.HelpAndUsagePrinters(cli.CommandDocsForCommandString("sql-server", sqlServerDocs, ap))
 
-	serverConfig, err := sqlserver.ServerConfigFromArgs(ap, help, args, dEnv)
+	serverConfig, err := sqlserver.ServerConfigFromArgsWithReader(ap, help, args, dEnv, DoltgresConfigReader{})
+	if err != nil {
+		return nil, err
+	}
+
+	err = sqlserver.ApplySystemVariables(serverConfig)
 	if err != nil {
 		return nil, err
 	}
@@ -249,7 +254,58 @@ func runServer(ctx context.Context, args []string, dEnv *env.DoltEnv) (*svcs.Con
 
 	sqlserver.ConfigureServices(serverConfig, controller, Version, dEnv)
 	go controller.Start(newCtx)
-	return controller, controller.WaitForStart()
+	
+	err = controller.WaitForStart()
+	if err != nil {
+		return nil, err
+	}
+	
+	// TODO: shutdown replication cleanly when we stop the server
+	_, err = startReplication(ctx, dEnv, controller, serverConfig)
+	if err != nil {
+		return nil, err
+	}
+	
+	return controller, nil
+}
+
+var walFilePath = "pg_wal"
+
+// startReplication begins the background thread that replicates from Postgres, if one is configured.  
+func startReplication(ctx context.Context, dEnv *env.DoltEnv, controller *svcs.Controller, serverConfig sqlserver.ServerConfig) (*logrepl.LogicalReplicator, error) {
+	cfg, ok := serverConfig.(DoltgresServerConfig)
+	if !ok {
+		return nil, fmt.Errorf("serverConfig is not a DoltgresServerConfig, got %T", serverConfig)
+	}
+	
+	if cfg.PostgresReplicationConfig == nil {
+		return nil, nil
+	}
+	
+	primaryDns := fmt.Sprintf(
+		"postgres://%s:%s@127.0.0.1:%d/%s",
+		cfg.PostgresReplicationConfig.PostgresUser,
+		cfg.PostgresReplicationConfig.PostgresPassword,
+		cfg.PostgresReplicationConfig.PostgresPort,
+		cfg.PostgresReplicationConfig.PostgresDatabase,
+	)
+	
+	replicationDns := fmt.Sprintf(
+		"postgres://%s:%s@localhost:%d/%s",
+		cfg.User(),
+		cfg.Password(),
+		cfg.Port(),
+		"doltgres",
+	)
+
+	replicator, err := logrepl.NewLogicalReplicator(walFilePath, primaryDns, replicationDns)
+	if err != nil {
+		return nil, err
+	}
+	
+	go replicator.StartReplication(cfg.PostgresReplicationConfig.SlotName)
+	
+	return replicator, nil
 }
 
 // configCliContext is a minimal implementation of CliContext that only supports Config()

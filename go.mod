@@ -1,5 +1,7 @@
 module github.com/dolthub/doltgresql
 
+replace github.com/dolthub/dolt/go => ../dolt/go
+
 go 1.21
 
 require (
@@ -8,9 +10,9 @@ require (
 	github.com/cockroachdb/errors v1.7.5
 	github.com/dolthub/dolt/go v0.40.5-0.20240228231039-f903736a64a8
 	github.com/dolthub/dolt/go/gen/proto/dolt/services/eventsapi v0.0.0-20240228231039-f903736a64a8
-	github.com/dolthub/go-mysql-server v0.17.1-0.20240228215628-8122f68747b6
+	github.com/dolthub/go-mysql-server v0.18.1-0.20240313225114-4a2f2300d770
 	github.com/dolthub/sqllogictest/go v0.0.0-20240118211725-a52e3f5697e3
-	github.com/dolthub/vitess v0.0.0-20240228192915-d55088cef56a
+	github.com/dolthub/vitess v0.0.0-20240312232959-8ee510931c7b
 	github.com/fatih/color v1.13.0
 	github.com/gogo/protobuf v1.3.2
 	github.com/golang/geo v0.0.0-20200730024412-e86565bf3f35
