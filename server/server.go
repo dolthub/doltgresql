@@ -18,6 +18,7 @@ import (
 	"context"
 	"fmt"
 	_ "net/http/pprof"
+	"path/filepath"
 	"strings"
 
 	"github.com/dolthub/dolt/go/cmd/dolt/cli"
@@ -269,8 +270,6 @@ func runServer(ctx context.Context, args []string, dEnv *env.DoltEnv) (*svcs.Con
 	return controller, nil
 }
 
-var walFilePath = "pg_wal"
-
 // startReplication begins the background thread that replicates from Postgres, if one is configured.  
 func startReplication(serverConfig sqlserver.ServerConfig) (*logrepl.LogicalReplicator, error) {
 	cfg, ok := serverConfig.(*DoltgresServerConfig)
@@ -283,6 +282,7 @@ func startReplication(serverConfig sqlserver.ServerConfig) (*logrepl.LogicalRepl
 		return nil, nil
 	}
 	
+	walFilePath := filepath.Join(cfg.CfgDir(), "pg_wal_location")
 	primaryDns := fmt.Sprintf(
 		"postgres://%s:%s@127.0.0.1:%d/%s",
 		cfg.PostgresReplicationConfig.PostgresUser,
@@ -305,7 +305,6 @@ func startReplication(serverConfig sqlserver.ServerConfig) (*logrepl.LogicalRepl
 	}
 	
 	go replicator.StartReplication(cfg.PostgresReplicationConfig.SlotName)
-	
 	return replicator, nil
 }
 
