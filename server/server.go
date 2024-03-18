@@ -261,7 +261,7 @@ func runServer(ctx context.Context, args []string, dEnv *env.DoltEnv) (*svcs.Con
 	}
 	
 	// TODO: shutdown replication cleanly when we stop the server
-	_, err = startReplication(ctx, dEnv, controller, serverConfig)
+	_, err = startReplication(serverConfig)
 	if err != nil {
 		return nil, err
 	}
@@ -272,10 +272,11 @@ func runServer(ctx context.Context, args []string, dEnv *env.DoltEnv) (*svcs.Con
 var walFilePath = "pg_wal"
 
 // startReplication begins the background thread that replicates from Postgres, if one is configured.  
-func startReplication(ctx context.Context, dEnv *env.DoltEnv, controller *svcs.Controller, serverConfig sqlserver.ServerConfig) (*logrepl.LogicalReplicator, error) {
+func startReplication(serverConfig sqlserver.ServerConfig) (*logrepl.LogicalReplicator, error) {
 	cfg, ok := serverConfig.(DoltgresServerConfig)
 	if !ok {
-		return nil, fmt.Errorf("serverConfig is not a DoltgresServerConfig, got %T", serverConfig)
+		// no config file specified, so no replication
+		return nil, nil
 	}
 	
 	if cfg.PostgresReplicationConfig == nil {
