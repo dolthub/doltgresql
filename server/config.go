@@ -25,7 +25,7 @@ import (
 
 type DoltgresServerConfig struct {
 	*sqlserver.YAMLConfig
-	PostgresReplicationConfig *PostgresReplicationConfig `yaml:"postgres_replication,omitempty"`
+		PostgresReplicationConfig *PostgresReplicationConfig `yaml:"postgres_replication,omitempty"`
 }
 
 type PostgresReplicationConfig struct {
@@ -33,7 +33,7 @@ type PostgresReplicationConfig struct {
 	PostgresUser          string `yaml:"postgres_user"`
 	PostgresPassword      string `yaml:"postgres_password"`
 	PostgresDatabase      string `yaml:"postgres_database"`
-	PostgresPort          string `yaml:"postgres_port"`
+	PostgresPort          int    `yaml:"postgres_port"`
 	SlotName 							string `yaml:"slot_name"`
 }
 

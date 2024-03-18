@@ -273,7 +273,7 @@ var walFilePath = "pg_wal"
 
 // startReplication begins the background thread that replicates from Postgres, if one is configured.  
 func startReplication(serverConfig sqlserver.ServerConfig) (*logrepl.LogicalReplicator, error) {
-	cfg, ok := serverConfig.(DoltgresServerConfig)
+	cfg, ok := serverConfig.(*DoltgresServerConfig)
 	if !ok {
 		// no config file specified, so no replication
 		return nil, nil
