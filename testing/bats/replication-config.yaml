@@ -1,0 +1,36 @@
+log_level: info
+
+behavior:
+  read_only: false
+  autocommit: true
+  persistence_behavior: load
+  disable_client_multi_statements: false
+  dolt_transaction_commit: false
+
+user:
+  name: "doltgres"
+  password: "password"
+
+listener:
+  host: localhost
+  port: 5433
+  max_connections: 100
+  read_timeout_millis: 28800000
+  write_timeout_millis: 28800000
+
+data_dir: .
+
+cfg_dir: .doltcfg
+
+metrics:
+  labels: {}
+  host: null
+  port: -1
+
+postgres_replication:
+  postgres_server_address: 127.0.0.1
+  postgres_user: postgres
+  postgres_password: password
+  postgres_database: postgres
+  postgres_port: 5432
+  slot_name: doltgres_slot
