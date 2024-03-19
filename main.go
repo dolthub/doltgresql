@@ -82,13 +82,7 @@ func main() {
 	defer restoreIO()
 
 	warnIfMaxFilesTooLow()
-
-	args, err = configureDataDir(args)
-	if err != nil {
-		cli.PrintErrln(err.Error())
-		os.Exit(1)
-	}
-
+	
 	fs := filesys.LocalFS
 	dEnv := env.Load(ctx, env.GetCurrentUserHomeDir, fs, doltdb.LocalDirDoltDB, server.Version)
 
@@ -99,7 +93,11 @@ func main() {
 		args = append([]string{"sql-server"}, args...)
 	}
 
-	cli.Printf("args before: %v", args)
+	args, err = configureDataDir(args)
+	if err != nil {
+		cli.PrintErrln(err.Error())
+		os.Exit(1)
+	}
 
 	apr, args, subCommandName, err := parseGlobalArgsAndSubCommandName(globalConfig, args)
 	if err != nil {
@@ -107,8 +105,6 @@ func main() {
 		os.Exit(1)
 	}
 
-	cli.Printf("args after: %v", args)
-	
 	// The sql-server command has special cased logic since it doesn't invoke a Dolt command directly, but runs a server
 	// and waits for it to finish
 	if subCommandName == "sql-server" {
@@ -154,46 +150,44 @@ func configureDataDir(args []string) (outArgs []string, err error) {
 		return args, nil
 	}
 
-	if !hasDataDirArgument {
-		// We should use the directory as pointed to by "DOLTGRES_DATA_DIR", if has been set, otherwise we'll use the default
-		var dbDir string
-		if envDir := os.Getenv(server.DOLTGRES_DATA_DIR); len(envDir) > 0 {
-			dbDir = envDir
-			fileInfo, err := os.Stat(dbDir)
-			if os.IsNotExist(err) {
-				if err = os.MkdirAll(dbDir, 0755); err != nil {
-					return args, err
-				}
-			} else if err != nil {
-				return args, err
-			} else if !fileInfo.IsDir() {
-				return args, fmt.Errorf("Attempted to use the directory `%s` as the DoltgreSQL database directory, "+
-						"however the preceding is a file and not a directory. Please change the environment variable `%s` so "+
-						"that it points to a directory.", dbDir, server.DOLTGRES_DATA_DIR)
-			}
-		} else {
-			homeDir, err := env.GetCurrentUserHomeDir()
-			if err != nil {
+	// We should use the directory as pointed to by "DOLTGRES_DATA_DIR", if has been set, otherwise we'll use the default
+	var dbDir string
+	if envDir := os.Getenv(server.DOLTGRES_DATA_DIR); len(envDir) > 0 {
+		dbDir = envDir
+		fileInfo, err := os.Stat(dbDir)
+		if os.IsNotExist(err) {
+			if err = os.MkdirAll(dbDir, 0755); err != nil {
 				return args, err
 			}
-			dbDir = filepath.Join(homeDir, server.DOLTGRES_DATA_DIR_DEFAULT)
-			fileInfo, err := os.Stat(dbDir)
-			if os.IsNotExist(err) {
-				if err = os.MkdirAll(dbDir, 0755); err != nil {
-					return args, err
-				}
-			} else if err != nil {
-				return args, err
-			} else if !fileInfo.IsDir() {
-				return args, fmt.Errorf("Attempted to use the directory `%s` as the DoltgreSQL database directory, "+
-						"however the preceding is a file and not a directory. Please change the environment variable `%s` so "+
-						"that it points to a directory.", dbDir, server.DOLTGRES_DATA_DIR)
-			}
+		} else if err != nil {
+			return args, err
+		} else if !fileInfo.IsDir() {
+			return args, fmt.Errorf("Attempted to use the directory `%s` as the DoltgreSQL database directory, "+
+					"however the preceding is a file and not a directory. Please change the environment variable `%s` so "+
+					"that it points to a directory.", dbDir, server.DOLTGRES_DATA_DIR)
 		}
-
-		// alter the data dir argument provided to dolt arg processing
-		args = append(args, "--data-dir", dbDir)
+	} else {
+		homeDir, err := env.GetCurrentUserHomeDir()
+		if err != nil {
+			return args, err
+		}
+		dbDir = filepath.Join(homeDir, server.DOLTGRES_DATA_DIR_DEFAULT)
+		fileInfo, err := os.Stat(dbDir)
+		if os.IsNotExist(err) {
+			if err = os.MkdirAll(dbDir, 0755); err != nil {
+				return args, err
+			}
+		} else if err != nil {
+			return args, err
+		} else if !fileInfo.IsDir() {
+			return args, fmt.Errorf("Attempted to use the directory `%s` as the DoltgreSQL database directory, "+
+					"however the preceding is a file and not a directory. Please change the environment variable `%s` so "+
+					"that it points to a directory.", dbDir, server.DOLTGRES_DATA_DIR)
+		}
 	}
+
+	// alter the data dir argument provided to dolt arg processing
+	args = append([]string{"--data-dir", dbDir}, args...)
 	
 	return args, nil
 }
@@ -228,12 +222,10 @@ func configureCliCtx(subcommand string, apr *argparser.ArgParseResults, fs files
 
 	defer tempfiles.MovableTempFileProvider.Clean()
 
-	cwdFS := dEnv.FS
 	dataDirFS, err := dEnv.FS.WithWorkingDir(dataDir)
 	if err != nil {
 		return nil, fmt.Errorf("failed to set the data directory: %w", err)
 	}
-	dEnv.FS = dataDirFS
 
 	mrEnv, err := env.MultiEnvForDirectory(ctx, dEnv.Config.WriteableConfig(), dataDirFS, dEnv.Version, dEnv)
 	if err != nil {
@@ -256,7 +248,7 @@ func configureCliCtx(subcommand string, apr *argparser.ArgParseResults, fs files
 		return nil, fmt.Errorf("failed to parse credentials: %w", err)
 	}
 
-	lateBind, err := buildLateBinder(ctx, cwdFS, dEnv, mrEnv, creds, apr, subcommand, false)
+	lateBind, err := buildLateBinder(ctx, dEnv.FS, dEnv, mrEnv, creds, apr, subcommand, false)
 	if err != nil {
 		return nil, err
 	}

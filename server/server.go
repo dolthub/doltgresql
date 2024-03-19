@@ -275,6 +275,7 @@ func startReplication(serverConfig sqlserver.ServerConfig) (*logrepl.LogicalRepl
 	cfg, ok := serverConfig.(*DoltgresServerConfig)
 	if !ok {
 		// no config file specified, so no replication
+		cli.Println("No config file specified, so no replication")
 		return nil, nil
 	}
 	
@@ -298,12 +299,13 @@ func startReplication(serverConfig sqlserver.ServerConfig) (*logrepl.LogicalRepl
 		cfg.Port(),
 		"doltgres",
 	)
-
+	
 	replicator, err := logrepl.NewLogicalReplicator(walFilePath, primaryDns, replicationDns)
 	if err != nil {
 		return nil, err
 	}
-	
+
+	cli.Println("Starting replication")
 	go replicator.StartReplication(cfg.PostgresReplicationConfig.SlotName)
 	return replicator, nil
 }
