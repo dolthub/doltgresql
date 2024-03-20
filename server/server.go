@@ -297,7 +297,7 @@ func startReplication(serverConfig sqlserver.ServerConfig) (*logrepl.LogicalRepl
 		cfg.User(),
 		cfg.Password(),
 		cfg.Port(),
-		"doltgres",
+		"doltgres", // TODO: this needs to come from config
 	)
 	
 	replicator, err := logrepl.NewLogicalReplicator(walFilePath, primaryDns, replicationDns)

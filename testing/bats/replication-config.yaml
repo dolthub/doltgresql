@@ -1,4 +1,4 @@
-log_level: info
+log_level: debug
 
 behavior:
   read_only: false
