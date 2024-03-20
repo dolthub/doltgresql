@@ -205,36 +205,39 @@ func runServer(ctx context.Context, args []string, dEnv *env.DoltEnv) (*svcs.Con
 		config.UserEmailKey: DefUserEmail,
 	})
 
-	// Automatically initialize a doltgres database if necessary
-	if !dEnv.HasDoltDir() {
-		// Need to make sure that there isn't a doltgres item in the path.
-		if exists, isDirectory := dEnv.FS.Exists(DoltgresDir); !exists {
-			err := dEnv.FS.MkDirs(DoltgresDir)
-			if err != nil {
-				return nil, err
-			}
-			subdirectoryFS, err := dEnv.FS.WithWorkingDir(DoltgresDir)
-			if err != nil {
-				return nil, err
-			}
+	dataDirFs, err := filesys.LocalFS.WithWorkingDir(serverConfig.DataDir())
+	if err != nil {
+		return nil, err
+	}
 
-			// We'll use a temporary environment to instantiate the subdirectory
-			tempDEnv := env.Load(ctx, env.GetCurrentUserHomeDir, subdirectoryFS, dEnv.UrlStr(), Version)
-			// username and user email is needed to create a new database.
-			name := tempDEnv.Config.GetStringOrDefault(config.UserNameKey, DefUserName)
-			email := tempDEnv.Config.GetStringOrDefault(config.UserEmailKey, DefUserEmail)
-			res := commands.InitCmd{}.Exec(ctx, "init", []string{"--name", name, "--email", email}, tempDEnv, configCliContext{tempDEnv})
-			if res != 0 {
-				return nil, fmt.Errorf("failed to initialize doltgres database")
-			}
-		} else if !isDirectory {
-			workingDir, _ := dEnv.FS.Abs(".")
-			// The else branch means that there's a Doltgres item, so we need to error if it's a file since we
-			// enforce the creation of a Doltgres database/directory, which would create a name conflict with the file
-			return nil, fmt.Errorf("Attempted to create the default `doltgres` database at `%s`, but a file with "+
+	// Automatically initialize a doltgres database if necessary
+	// TODO: probably should only do this if there are no databases in the data dir already
+	if exists, isDirectory := dataDirFs.Exists(DoltgresDir); !exists {
+		err := dataDirFs.MkDirs(DoltgresDir)
+		if err != nil {
+			return nil, err
+		}
+		subdirectoryFS, err := dataDirFs.WithWorkingDir(DoltgresDir)
+		if err != nil {
+			return nil, err
+		}
+
+		// We'll use a temporary environment to instantiate the subdirectory
+		tempDEnv := env.Load(ctx, env.GetCurrentUserHomeDir, subdirectoryFS, dEnv.UrlStr(), Version)
+		// username and user email is needed to create a new database.
+		name := tempDEnv.Config.GetStringOrDefault(config.UserNameKey, DefUserName)
+		email := tempDEnv.Config.GetStringOrDefault(config.UserEmailKey, DefUserEmail)
+		res := commands.InitCmd{}.Exec(ctx, "init", []string{"--name", name, "--email", email}, tempDEnv, configCliContext{tempDEnv})
+		if res != 0 {
+			return nil, fmt.Errorf("failed to initialize doltgres database")
+		}
+	} else if !isDirectory {
+		workingDir, _ := dataDirFs.Abs(".")
+		// The else branch means that there's a Doltgres item, so we need to error if it's a file since we
+		// enforce the creation of a Doltgres database/directory, which would create a name conflict with the file
+		return nil, fmt.Errorf("Attempted to create the default `doltgres` database at `%s`, but a file with "+
 				"the same name was found. Either remove the file, change the directory using the `--data-dir` argument, "+
 				"or change the environment variable `%s` so that it points to a different directory.", workingDir, DOLTGRES_DATA_DIR)
-		}
 	}
 
 	controller := svcs.NewController()

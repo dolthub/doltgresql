@@ -33,8 +33,6 @@ import (
 	"github.com/dolthub/doltgresql/server/logrepl"
 )
 
-type ReplicationTarget byte
-
 // special pseudo-queries for orchestrating replication tests
 const (
 	createReplicationSlot = "createReplicationSlot"

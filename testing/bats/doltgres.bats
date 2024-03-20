@@ -35,7 +35,7 @@ teardown() {
 
     export DOLTGRES_DATA_DIR="$(pwd)"
     export SQL_USER="doltgres"
-    start_sql_server_with_args "--host 0.0.0.0" "--user doltgres" "--data-dir=./test" > log.txt 2>&1
+    start_sql_server_with_args "--host 0.0.0.0" "--user doltgres" "--data-dir=./test" #> log.txt 2>&1
 
     run cat log.txt
     [[ ! "$output" =~ "Author identity unknown" ]] || false
