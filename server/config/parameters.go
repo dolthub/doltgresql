@@ -16,10 +16,11 @@ package config
 
 import (
 	"fmt"
-	"gopkg.in/src-d/go-errors.v1"
 	"regexp"
 	"strings"
 	"time"
+
+	"gopkg.in/src-d/go-errors.v1"
 
 	"github.com/dolthub/go-mysql-server/sql"
 	"github.com/dolthub/go-mysql-server/sql/variables"

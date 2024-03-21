@@ -16,11 +16,11 @@ package ast
 
 import (
 	"fmt"
-	"github.com/dolthub/doltgresql/server/config"
 
 	vitess "github.com/dolthub/vitess/go/vt/sqlparser"
 
 	"github.com/dolthub/doltgresql/postgres/parser/sem/tree"
+	"github.com/dolthub/doltgresql/server/config"
 )
 
 // nodeSetVar handles *tree.SetVar nodes.
