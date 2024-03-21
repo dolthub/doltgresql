@@ -25,8 +25,11 @@ func TestSetStatements(t *testing.T) {
 }
 
 // setStmts test on simple cases on setting and showing the config parameters.
-// This includes setting the parameters successfully if they are of context, `user` or `superuser`, for now.
-// If the parameters are of context
+// This includes setting the parameters successfully and
+// showing the updated value if they are of context, `user` or `superuser`.
+// If the parameters are of any other context (e.g. `sighup` or `postmaster`),
+// it returns an error as those parameters can only be updated
+// through configuration file and/or SIGHUP signal and/or having appropriate roles.
 var setStmts = []ScriptTest{
 	{
 		Name:        "special case for TIME ZONE",

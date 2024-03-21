@@ -251,13 +251,13 @@ const (
 	PsqlScopeLocal
 )
 
-// offsetRegex is a regex for matching MySQL offsets (e.g. +01:00).
-var offsetRegex = regexp.MustCompile(`(?m)^([+\-])(\d{2}):(\d{2})$`)
+// tzOffsetRegex is a regex for matching timezone offsets (e.g. +01:00).
+var tzOffsetRegex = regexp.MustCompile(`(?m)^([+\-])(\d{2}):(\d{2})$`)
 
 // TzOffsetToDuration takes in a timezone offset (e.g. "+01:00") and returns it as a time.Duration.
 // If any problems are encountered, an error is returned.
 func TzOffsetToDuration(d string) (time.Duration, error) {
-	matches := offsetRegex.FindStringSubmatch(d)
+	matches := tzOffsetRegex.FindStringSubmatch(d)
 	if len(matches) == 4 {
 		symbol := matches[1]
 		hours := matches[2]
