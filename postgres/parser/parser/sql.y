@@ -630,6 +630,9 @@ func (u *sqlSymUnion) triggerEvents() tree.TriggerEvents {
 func (u *sqlSymUnion) triggerTime() tree.TriggerTime {
     return u.val.(tree.TriggerTime)
 }
+func (u *sqlSymUnion) languageHandler() *tree.LanguageHandler {
+    return u.val.(*tree.LanguageHandler)
+}
 %}
 
 // NB: the %token definitions must come before the %type definitions in this
@@ -685,12 +688,12 @@ func (u *sqlSymUnion) triggerTime() tree.TriggerTime {
 %token <str> GEOMETRYCOLLECTION GEOMETRYCOLLECTIONM GEOMETRYCOLLECTIONZ GEOMETRYCOLLECTIONZM
 %token <str> GLOBAL GRANT GRANTED GRANTS GREATEST GROUP GROUPING GROUPS
 
-%token <str> HAVING HASH HIGH HISTOGRAM HOUR
+%token <str> HANDLER HASH HAVING HIGH HISTOGRAM HOUR
 
 %token <str> ICU_LOCALE ICU_RULES IDENTITY
 %token <str> IF IFERROR IFNULL IGNORE_FOREIGN_KEYS ILIKE IMMEDIATE IMMUTABLE IMPORT
 %token <str> IN INCLUDE INCLUDING INCREMENT INCREMENTAL INET INET_CONTAINED_BY_OR_EQUALS
-%token <str> INET_CONTAINS_OR_EQUALS INDEX INDEXES INHERIT INHERITS INJECT INPUT INTERLEAVE INITIALLY
+%token <str> INET_CONTAINS_OR_EQUALS INDEX INDEXES INHERIT INHERITS INLINE INJECT INPUT INTERLEAVE INITIALLY
 %token <str> INNER INSERT INSTEAD INT INTEGER
 %token <str> INTERSECT INTERVAL INTO INTO_DB INVERTED INVOKER IS ISERROR ISNULL ISOLATION IS_TEMPLATE
 
@@ -744,7 +747,7 @@ func (u *sqlSymUnion) triggerTime() tree.TriggerTime {
 %token <str> UNBOUNDED UNCOMMITTED UNION UNIQUE UNKNOWN UNLOGGED UNSAFE UNSPLIT
 %token <str> UPDATE UPSERT UNTIL USAGE USE USER USERS USING UUID
 
-%token <str> VALID VALIDATE VALUE VALUES VARBIT VARCHAR VARIADIC VARYING VERSION VIEW VIEWACTIVITY VIRTUAL VOLATILE
+%token <str> VALID VALIDATE VALIDATOR VALUE VALUES VARBIT VARCHAR VARIADIC VARYING VERSION VIEW VIEWACTIVITY VIRTUAL VOLATILE
 
 %token <str> WHEN WHERE WINDOW WITH WITHIN WITHOUT WORK WRAPPER WRITE
 
@@ -782,6 +785,7 @@ func (u *sqlSymUnion) triggerTime() tree.TriggerTime {
 %type <tree.Statement> alter_index_stmt
 %type <tree.Statement> alter_materialized_view_stmt
 %type <tree.Statement> alter_function_stmt
+%type <tree.Statement> alter_language_stmt
 %type <tree.Statement> alter_procedure_stmt
 %type <tree.Statement> alter_view_stmt
 %type <tree.Statement> alter_sequence_stmt
@@ -858,6 +862,7 @@ func (u *sqlSymUnion) triggerTime() tree.TriggerTime {
 %type <tree.Statement> create_schedule_for_backup_stmt
 %type <tree.Statement> create_extension_stmt
 %type <tree.Statement> create_function_stmt
+%type <tree.Statement> create_language_stmt
 %type <tree.Statement> create_procedure_stmt
 %type <tree.Statement> create_schema_stmt
 %type <tree.Statement> create_table_stmt
@@ -888,6 +893,7 @@ func (u *sqlSymUnion) triggerTime() tree.TriggerTime {
 %type <tree.Statement> drop_view_stmt
 %type <tree.Statement> drop_sequence_stmt
 %type <tree.Statement> drop_extension_stmt
+%type <tree.Statement> drop_language_stmt
 %type <tree.Statement> drop_function_stmt
 %type <tree.Statement> drop_procedure_stmt
 
@@ -1059,6 +1065,9 @@ func (u *sqlSymUnion) triggerTime() tree.TriggerTime {
 %type <*tree.UnresolvedName> column_path prefixed_column_path column_path_with_star
 %type <tree.TableExpr> insert_target create_stats_target analyze_target
 
+%type <*tree.UnresolvedObjectName> opt_handler_inline opt_handler_validator
+%type <*tree.LanguageHandler> opt_language_handler
+
 %type <tree.ViewOptions> view_options opt_with_view_options
 %type <tree.ViewCheckOption> opt_with_check_option
 
@@ -1116,7 +1125,7 @@ func (u *sqlSymUnion) triggerTime() tree.TriggerTime {
 %type <tree.SequenceOption> create_seq_option_elem alter_seq_option_elem seq_as_type seq_increment
 %type <tree.SequenceOption> seq_minvalue seq_maxvalue seq_start seq_cache seq_cycle seq_owned_by seq_restart
 
-%type <bool> all_or_distinct opt_cascade opt_if_exists opt_restrict
+%type <bool> all_or_distinct opt_cascade opt_if_exists opt_restrict opt_trusted opt_procedural
 %type <bool> with_comment opt_with_force opt_create_as_with_data
 %type <empty> join_outer
 %type <tree.JoinCond> join_qual
@@ -1412,6 +1421,7 @@ alter_ddl_stmt:
 | alter_schema_stmt             // EXTEND WITH HELP: ALTER SCHEMA
 | alter_type_stmt               // EXTEND WITH HELP: ALTER TYPE
 | alter_trigger_stmt            // EXTEND WITH HELP: ALTER TRIGGER
+| alter_language_stmt           // EXTEND WITH HELP: ALTER LANGUAGE
 
 // %Help: ALTER TABLE - change the definition of a table
 // %Category: DDL
@@ -1733,6 +1743,16 @@ alter_index_stmt:
 // ALTER INDEX has its error help token here because the ALTER INDEX
 // prefix is spread over multiple non-terminals.
 | ALTER INDEX error // SHOW HELP: ALTER INDEX
+
+alter_language_stmt:
+  ALTER opt_procedural LANGUAGE name RENAME TO name
+  {
+    $$.val = &tree.AlterLanguage{Name: tree.Name($4), Procedural: $2.bool(), NewName: tree.Name($7)}
+  }
+| ALTER opt_procedural LANGUAGE name owner_to
+  {
+    $$.val = &tree.AlterLanguage{Name: tree.Name($4), Procedural: $2.bool(), Owner: $5}
+  }
 
 alter_function_stmt:
   ALTER FUNCTION routine_name opt_routine_args_with_paren alter_function_option_list opt_restrict
@@ -3479,6 +3499,7 @@ create_stmt:
 | create_function_stmt // EXTEND WITH HELP: CREATE FUNCTION
 | create_procedure_stmt // EXTEND WITH HELP: CREATE PROCEDURE
 | create_extension_stmt // EXTEND WITH HELP: CREATE EXTENSION
+| create_language_stmt  // EXTEND WITH HELP: CREATE LANGUAGE
 | create_unsupported   {}
 | CREATE error         // SHOW HELP: CREATE
 
@@ -3488,14 +3509,56 @@ create_unsupported:
 | CREATE CONVERSION error { return unimplemented(sqllex, "create conversion") }
 | CREATE DEFAULT CONVERSION error { return unimplemented(sqllex, "create def conv") }
 | CREATE FOREIGN TABLE error { return unimplemented(sqllex, "create foreign table") }
-| CREATE OR REPLACE FUNCTION error { return unimplementedWithIssueDetail(sqllex, 17511, "create function") }
-| CREATE opt_or_replace opt_trusted opt_procedural LANGUAGE name error { return unimplementedWithIssueDetail(sqllex, 17511, "create language " + $6) }
 | CREATE OPERATOR error { return unimplemented(sqllex, "create operator") }
 | CREATE PUBLICATION error { return unimplemented(sqllex, "create publication") }
 | CREATE opt_or_replace RULE error { return unimplemented(sqllex, "create rule") }
 | CREATE SERVER error { return unimplemented(sqllex, "create server") }
 | CREATE SUBSCRIPTION error { return unimplemented(sqllex, "create subscription") }
 | CREATE TEXT error { return unimplementedWithIssueDetail(sqllex, 7821, "create text") }
+
+create_language_stmt:
+  CREATE opt_trusted opt_procedural LANGUAGE name opt_language_handler
+  {
+    $$.val = &tree.CreateLanguage{Name: tree.Name($5), Replace: false, Trusted: $2.bool(), Procedural: $3.bool(), Handler: $6.languageHandler()}
+  }
+| CREATE OR REPLACE opt_trusted opt_procedural LANGUAGE name opt_language_handler
+  {
+    $$.val = &tree.CreateLanguage{Name: tree.Name($7), Replace: true, Trusted: $4.bool(), Procedural: $5.bool(), Handler: $8.languageHandler()}
+  }
+
+opt_language_handler:
+  /* EMPTY */
+  {
+    $$.val = (*tree.LanguageHandler)(nil)
+  }
+| HANDLER routine_name opt_handler_inline opt_handler_validator
+  {
+    $$.val = &tree.LanguageHandler{
+      Handler: $2.unresolvedObjectName(),
+      Inline: $3.unresolvedObjectName(),
+      Validator: $4.unresolvedObjectName(),
+    }
+  }
+
+opt_handler_inline:
+  /* EMPTY */
+  {
+    $$.val = (*tree.UnresolvedObjectName)(nil)
+  }
+| INLINE routine_name
+  {
+    $$.val = $2.unresolvedObjectName()
+  }
+
+opt_handler_validator:
+  /* EMPTY */
+  {
+    $$.val = (*tree.UnresolvedObjectName)(nil)
+  }
+| VALIDATOR routine_name
+  {
+    $$.val = $2.unresolvedObjectName()
+  }
 
 create_extension_stmt:
   CREATE EXTENSION name opt_with opt_schema opt_version opt_cascade
@@ -3854,12 +3917,24 @@ opt_or_replace:
 | /* EMPTY */ {}
 
 opt_trusted:
-  TRUSTED {}
-| /* EMPTY */ {}
+  /* EMPTY */
+  {
+    $$.val = false
+  }
+| TRUSTED
+  {
+    $$.val = true
+  }
 
 opt_procedural:
-  PROCEDURAL {}
-| /* EMPTY */ {}
+  /* EMPTY */
+  {
+    $$.val = false
+  }
+| PROCEDURAL
+  {
+    $$.val = true
+  }
 
 drop_unsupported:
   DROP AGGREGATE error { return unimplemented(sqllex, "drop aggregate") }
@@ -3869,14 +3944,22 @@ drop_unsupported:
 | DROP DOMAIN error { return unimplementedWithIssueDetail(sqllex, 27796, "drop") }
 | DROP FOREIGN TABLE error { return unimplemented(sqllex, "drop foreign table") }
 | DROP FOREIGN DATA error { return unimplemented(sqllex, "drop fdw") }
-| DROP opt_procedural LANGUAGE name error { return unimplementedWithIssueDetail(sqllex, 17511, "drop language " + $4) }
 | DROP OPERATOR error { return unimplemented(sqllex, "drop operator") }
 | DROP PUBLICATION error { return unimplemented(sqllex, "drop publication") }
 | DROP RULE error { return unimplemented(sqllex, "drop rule") }
 | DROP SERVER error { return unimplemented(sqllex, "drop server") }
 | DROP SUBSCRIPTION error { return unimplemented(sqllex, "drop subscription") }
 | DROP TEXT error { return unimplementedWithIssueDetail(sqllex, 7821, "drop text") }
-| DROP TRIGGER error { return unimplementedWithIssueDetail(sqllex, 28296, "drop") }
+
+drop_language_stmt:
+  DROP opt_procedural LANGUAGE name opt_drop_behavior
+  {
+    $$.val = &tree.DropLanguage{Name: tree.Name($4), Procedural: $2.bool(), IfExists: false, DropBehavior: $5.dropBehavior()}
+  }
+| DROP opt_procedural LANGUAGE IF EXISTS name opt_drop_behavior
+  {
+    $$.val = &tree.DropLanguage{Name: tree.Name($6), Procedural: $2.bool(), IfExists: true, DropBehavior: $7.dropBehavior()}
+  }
 
 drop_extension_stmt:
   DROP EXTENSION name_list opt_drop_behavior
@@ -4132,6 +4215,7 @@ drop_stmt:
 | drop_function_stmt // EXTEND WITH HELP: DROP FUNCTION
 | drop_procedure_stmt // EXTEND WITH HELP: DROP PROCEDURE
 | drop_extension_stmt // EXTEND WITH HELP: DROP EXTENSION
+| drop_language_stmt // EXTEND WITH HELP: DROP LANGUAGE
 | drop_unsupported   {}
 | DROP error         // SHOW HELP: DROP
 
@@ -13080,6 +13164,7 @@ unreserved_keyword:
 | GRANTED
 | GRANTS
 | GROUPS
+| HANDLER
 | HASH
 | HIGH
 | HISTOGRAM
@@ -13098,6 +13183,7 @@ unreserved_keyword:
 | INHERIT
 | INHERITS
 | INJECT
+| INLINE
 | INPUT
 | INSERT
 | INSTEAD
@@ -13216,6 +13302,7 @@ unreserved_keyword:
 | PRESERVE
 | PRIORITY
 | PRIVILEGES
+| PROCEDURAL
 | PROCEDURE
 | PROCEDURES
 | PUBLIC
@@ -13335,6 +13422,7 @@ unreserved_keyword:
 | USERS
 | VALID
 | VALIDATE
+| VALIDATOR
 | VALUE
 | VARYING
 | VERSION
