@@ -42,11 +42,11 @@ func nodeShowVar(node *tree.ShowVar) (vitess.Statement, error) {
 		SelectExprs: vitess.SelectExprs{
 			&vitess.AliasedExpr{
 				Expr: &vitess.ColName{
-					Name:      vitess.NewColIdent("@@global." + node.Name),
+					Name:      vitess.NewColIdent("@@session." + node.Name),
 					Qualifier: vitess.TableName{},
 				},
 				StartParsePos: 7,
-				EndParsePos:   16 + len(node.Name),
+				EndParsePos:   17 + len(node.Name),
 				As:            vitess.NewColIdent(node.Name),
 			},
 		},

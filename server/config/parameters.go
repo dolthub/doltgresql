@@ -16,41 +16,33 @@ package config
 
 import (
 	"fmt"
+	"gopkg.in/src-d/go-errors.v1"
 	"regexp"
 	"strings"
 	"time"
-
-	"gopkg.in/src-d/go-errors.v1"
 
 	"github.com/dolthub/go-mysql-server/sql"
 	"github.com/dolthub/go-mysql-server/sql/variables"
 )
 
 // init initializes or appends to SystemVariables as it functions as a global variable.
-// TODO: get rid of me, use an integration point to define new sysvars
-func init() {
-	InitConfigParameters()
-}
-
-// InitConfigParameters resets the postgresConfigVariables singleton in the sql package.
 // Currently, we append all of postgres configuration parameters to sql.SystemVariables.
 // This means that all of mysql system variables and postgres config parameters will be stored together.
-// TODO: issue with this approach is that there are two postgres parameters
-//
-//	have the same name as mysql variables that will override the mysql variables.
-func InitConfigParameters() {
+// TODO: get rid of me, use an integration point to define new sysvars
+func init() {
+	// There are two postgres parameters have the same name as mysql variables
+	// TODO: issue with this approach is that those parameters will override the mysql variables.
 	if sql.SystemVariables == nil {
-		// unlikely this would happen since gms package does init()
+		// unlikely this would happen since init() in gms package is executed first
 		variables.InitSystemVariables()
 	}
-	params := make([]sql.SystemVariable, len(postgresConfigVariables))
+	params := make([]sql.SystemVariable, len(postgresConfigParameters))
 	i := 0
-	for _, sysVar := range postgresConfigVariables {
+	for _, sysVar := range postgresConfigParameters {
 		params[i] = sysVar
 		i++
 	}
 	sql.SystemVariables.AddSystemVariables(params)
-	//AddNecessaryMySQLSystemVariables()
 }
 
 var (
@@ -61,16 +53,16 @@ var (
 var _ sql.SystemVariable = (*Parameter)(nil)
 
 type Parameter struct {
-	Name      string
-	Default   any
-	Category  string
-	ShortDesc string
-	Context   ParameterContext
-	Type      sql.Type
-	Source    ParameterSource
-	ResetVal  any
-	Scope     sql.SystemVariableScope
-	ValueFunc func(any) (any, bool)
+	Name         string
+	Default      any
+	Category     string
+	ShortDesc    string
+	Context      ParameterContext
+	Type         sql.Type
+	Source       ParameterSource
+	ResetVal     any
+	Scope        sql.SystemVariableScope
+	ValidateFunc func(any) (any, bool)
 }
 
 // GetName implements sql.SystemVariable.
@@ -78,14 +70,14 @@ func (p *Parameter) GetName() string {
 	return p.Name
 }
 
-// SetName implements sql.SystemVariable.
-func (s *Parameter) SetName(n string) {
-	s.Name = n
-}
-
 // GetType implements sql.SystemVariable.
 func (p *Parameter) GetType() sql.Type {
 	return p.Type
+}
+
+// GetSessionScope implements sql.SystemVariable.
+func (p *Parameter) GetSessionScope() sql.SystemVariableScope {
+	return GetPgsqlScope(PsqlScopeSession)
 }
 
 // SetDefault implements sql.SystemVariable.
@@ -98,25 +90,18 @@ func (p *Parameter) GetDefault() any {
 	return p.Default
 }
 
-// GetValue implements sql.SystemVariable.
-func (p *Parameter) GetValue(a any) (any, bool) {
-	// TODO: might need some validation or conversion for some parameters.
-	return a, true
-}
-
-// HasDefaultValue implements sql.SystemVariable.
-func (p *Parameter) HasDefaultValue(a any) bool {
-	return p.Default == a
-}
-
-// AssignValue implements sql.SystemVariable.
-func (p *Parameter) AssignValue(val any) (sql.SystemVarValue, error) {
+// InitValue implements sql.SystemVariable.
+func (p *Parameter) InitValue(val any, global bool) (sql.SystemVarValue, error) {
+	if global {
+		// This shouldn't happen, but sanity check
+		return sql.SystemVarValue{}, sql.ErrSystemVariableSessionOnly.New(p.Name)
+	}
 	convertedVal, _, err := p.Type.Convert(val)
 	if err != nil {
 		return sql.SystemVarValue{}, err
 	}
-	if p.ValueFunc != nil {
-		v, ok := p.ValueFunc(convertedVal)
+	if p.ValidateFunc != nil {
+		v, ok := p.ValidateFunc(convertedVal)
 		if !ok {
 			return sql.SystemVarValue{}, ErrInvalidValue.New(p.Name, convertedVal)
 		}
@@ -131,14 +116,18 @@ func (p *Parameter) AssignValue(val any) (sql.SystemVarValue, error) {
 
 // SetValue implements sql.SystemVariable.
 func (p *Parameter) SetValue(val any, global bool) (sql.SystemVarValue, error) {
+	if global {
+		// This shouldn't happen, but sanity check
+		return sql.SystemVarValue{}, sql.ErrSystemVariableSessionOnly.New(p.Name)
+	}
 	if p.IsReadOnly() {
 		return sql.SystemVarValue{}, ErrCannotChangeAtRuntime.New(p.Name)
 	}
-	// TODO: Maybe do parsing of units for memory and time parameters?
-	return p.AssignValue(val)
+	// TODO: Do parsing of units for memory and time parameters
+	return p.InitValue(val, global)
 }
 
-// IsReadOnly implements SystemVariable.
+// IsReadOnly implements sql.SystemVariable.
 func (p *Parameter) IsReadOnly() bool {
 	switch strings.ToLower(p.Name) {
 	case "server_version", "server_encoding", "lc_collate", "lc_ctype", "is_superuser":
@@ -158,16 +147,14 @@ func (p *Parameter) IsReadOnly() bool {
 	return false
 }
 
-// IsGlobalOnly implements SystemVariable.
+// IsGlobalOnly implements sql.SystemVariable.
 func (p *Parameter) IsGlobalOnly() bool {
-	// TODO: fix - postgres SESSION parameters are considered as GLOBAL in gms for now.
-	return true
+	return false
 }
 
-// GetNotifyChanged implements SystemVariable.
-func (p *Parameter) GetNotifyChanged() func(sql.SystemVariableScope, sql.SystemVarValue) error {
-	// TODO: fix - some parameters might need them, but return nil for now.
-	return nil
+// DisplayString implements sql.SystemVariable.
+func (p *Parameter) DisplayString(_ string) string {
+	return p.Name
 }
 
 // ParameterContext sets level of difficulty of changing the parameter settings.
@@ -200,12 +187,75 @@ const (
 	ParameterSourceOverride ParameterSource = "override"
 )
 
+var _ sql.SystemVariableScope = (*PgsqlScope)(nil)
+
+// PgsqlScope represents the scope of a PostgreSQL configuration parameter.
+type PgsqlScope struct {
+	Type PgsqlScopeType
+}
+
+func GetPgsqlScope(t PgsqlScopeType) sql.SystemVariableScope {
+	return &PgsqlScope{Type: t}
+}
+
+// SetValue implements sql.SystemVariableScope.
+func (p *PgsqlScope) SetValue(ctx *sql.Context, name string, val any) error {
+	switch p.Type {
+	case PsqlScopeSession:
+		err := ctx.SetSessionVariable(ctx, name, val)
+		return err
+	case PsqlScopeLocal:
+		// TODO: support LOCAL scope
+		return nil
+	default:
+		return fmt.Errorf("unable to set `%s` due to unknown scope `%v`", name, p.Type)
+	}
+}
+
+// GetValue implements sql.SystemVariableScope.
+func (p *PgsqlScope) GetValue(ctx *sql.Context, name string, _ sql.CollationID) (any, error) {
+	switch p.Type {
+	case PsqlScopeSession:
+		val, err := ctx.GetSessionVariable(ctx, name)
+		if err != nil {
+			return nil, err
+		}
+		return val, nil
+	case PsqlScopeLocal:
+		// TODO: support LOCAL scope
+		return nil, fmt.Errorf("unsupported scope `%v` on system variable `%s`", p.Type, name)
+	default:
+		return nil, fmt.Errorf("unknown scope `%v` on system variable `%s`", p.Type, name)
+	}
+}
+
+// IsGlobalOnly implements sql.SystemVariableScope.
+func (p *PgsqlScope) IsGlobalOnly() bool {
+	// In Postgres, there is no GLOBAL scope.
+	return false
+}
+
+// IsSessionOnly implements sql.SystemVariableScope.
+func (p *PgsqlScope) IsSessionOnly() bool {
+	return p.Type == PsqlScopeSession
+}
+
+// PgsqlScopeType represents the scope of a configuration parameter.
+type PgsqlScopeType byte
+
+const (
+	// PsqlScopeSession is set when the system variable exists only in the session context.
+	PsqlScopeSession PgsqlScopeType = iota
+	// PsqlScopeLocal is set when the system variable exists only in the local context.
+	PsqlScopeLocal
+)
+
 // offsetRegex is a regex for matching MySQL offsets (e.g. +01:00).
 var offsetRegex = regexp.MustCompile(`(?m)^([+\-])(\d{2}):(\d{2})$`)
 
-// MySQLOffsetToDuration takes in a MySQL timezone offset (e.g. "+01:00") and returns it as a time.Duration.
+// TzOffsetToDuration takes in a timezone offset (e.g. "+01:00") and returns it as a time.Duration.
 // If any problems are encountered, an error is returned.
-func MySQLOffsetToDuration(d string) (time.Duration, error) {
+func TzOffsetToDuration(d string) (time.Duration, error) {
 	matches := offsetRegex.FindStringSubmatch(d)
 	if len(matches) == 4 {
 		symbol := matches[1]

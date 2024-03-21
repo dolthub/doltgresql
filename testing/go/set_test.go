@@ -24,111 +24,114 @@ func TestSetStatements(t *testing.T) {
 	RunScripts(t, setStmts)
 }
 
+// setStmts test on simple cases on setting and showing the config parameters.
+// This includes setting the parameters successfully if they are of context, `user` or `superuser`, for now.
+// If the parameters are of context
 var setStmts = []ScriptTest{
-	//{
-	//	Name:        "special case for TIME ZONE",
-	//	SetUpScript: []string{},
-	//	Assertions: []ScriptTestAssertion{
-	//		{
-	//			Query:    "SHOW timezone",
-	//			Expected: []sql.Row{{"America/Los_Angeles"}},
-	//		},
-	//		{
-	//			Query:    "SET timezone TO '+00:00';",
-	//			Expected: []sql.Row{{}},
-	//		},
-	//		{
-	//			Query:    "SHOW timezone",
-	//			Expected: []sql.Row{{"+00:00"}},
-	//		},
-	//		{
-	//			Query:    "SET TIME ZONE LOCAL;",
-	//			Expected: []sql.Row{{}},
-	//		},
-	//		{
-	//			Query:    "SHOW timezone",
-	//			Expected: []sql.Row{{"America/Los_Angeles"}},
-	//		},
-	//		{
-	//			Query:    "SET TIME ZONE '+00:00';",
-	//			Expected: []sql.Row{{}},
-	//		},
-	//		{
-	//			Query:    "SHOW timezone",
-	//			Expected: []sql.Row{{"+00:00"}},
-	//		},
-	//		{
-	//			Query:    "SET TIME ZONE DEFAULT;",
-	//			Expected: []sql.Row{{}},
-	//		},
-	//		{
-	//			Query:    "SHOW timezone",
-	//			Expected: []sql.Row{{"America/Los_Angeles"}},
-	//		},
-	//	},
-	//},
-	//{
-	//	Name:        "special case for SCHEMA",
-	//	SetUpScript: []string{},
-	//	Assertions: []ScriptTestAssertion{
-	//		{
-	//			Query:    "SHOW search_path",
-	//			Expected: []sql.Row{{"\"$user\", public"}},
-	//		},
-	//		{
-	//			Query:    "SET SCHEMA 'postgres';",
-	//			Expected: []sql.Row{{}},
-	//		},
-	//		{
-	//			Query:    "SHOW search_path",
-	//			Expected: []sql.Row{{"postgres"}},
-	//		},
-	//	},
-	//},
-	//{
-	//	Name:        "special case for NAMES",
-	//	SetUpScript: []string{},
-	//	Assertions: []ScriptTestAssertion{
-	//		{
-	//			Query:    "SHOW client_encoding",
-	//			Expected: []sql.Row{{"UTF8"}},
-	//		},
-	//		{
-	//			Query:    "SET NAMES 'LATIN1';",
-	//			Expected: []sql.Row{{}},
-	//		},
-	//		{
-	//			Query:    "SHOW client_encoding;",
-	//			Expected: []sql.Row{{"LATIN1"}},
-	//		},
-	//		{
-	//			Query:    "SET NAMES DEFAULT;",
-	//			Expected: []sql.Row{{}},
-	//		},
-	//		{
-	//			Query:    "SHOW client_encoding;",
-	//			Expected: []sql.Row{{"UTF8"}},
-	//		},
-	//	},
-	//},
-	//{
-	//	Name:        "special case SEED",
-	//	SetUpScript: []string{},
-	//	Assertions: []ScriptTestAssertion{
-	//		{
-	//			Query:    "SHOW geqo_seed",
-	//			Expected: []sql.Row{{float64(0)}},
-	//		},
-	//		{
-	//			Query:    "SET SEED 1;",
-	//			Expected: []sql.Row{{}},
-	//		},
-	//		{
-	//			Query:    "SHOW geqo_seed",
-	//			Expected: []sql.Row{{float64(1)}},
-	//		},
-	//	},
-	//},
+	{
+		Name:        "special case for TIME ZONE",
+		SetUpScript: []string{},
+		Assertions: []ScriptTestAssertion{
+			{
+				Query:    "SHOW timezone",
+				Expected: []sql.Row{{"America/Los_Angeles"}},
+			},
+			{
+				Query:    "SET timezone TO '+00:00';",
+				Expected: []sql.Row{{}},
+			},
+			{
+				Query:    "SHOW timezone",
+				Expected: []sql.Row{{"+00:00"}},
+			},
+			{
+				Query:    "SET TIME ZONE LOCAL;",
+				Expected: []sql.Row{{}},
+			},
+			{
+				Query:    "SHOW timezone",
+				Expected: []sql.Row{{"America/Los_Angeles"}},
+			},
+			{
+				Query:    "SET TIME ZONE '+00:00';",
+				Expected: []sql.Row{{}},
+			},
+			{
+				Query:    "SHOW timezone",
+				Expected: []sql.Row{{"+00:00"}},
+			},
+			{
+				Query:    "SET TIME ZONE DEFAULT;",
+				Expected: []sql.Row{{}},
+			},
+			{
+				Query:    "SHOW timezone",
+				Expected: []sql.Row{{"America/Los_Angeles"}},
+			},
+		},
+	},
+	{
+		Name:        "special case for SCHEMA",
+		SetUpScript: []string{},
+		Assertions: []ScriptTestAssertion{
+			{
+				Query:    "SHOW search_path",
+				Expected: []sql.Row{{"\"$user\", public"}},
+			},
+			{
+				Query:    "SET SCHEMA 'postgres';",
+				Expected: []sql.Row{{}},
+			},
+			{
+				Query:    "SHOW search_path",
+				Expected: []sql.Row{{"postgres"}},
+			},
+		},
+	},
+	{
+		Name:        "special case for NAMES",
+		SetUpScript: []string{},
+		Assertions: []ScriptTestAssertion{
+			{
+				Query:    "SHOW client_encoding",
+				Expected: []sql.Row{{"UTF8"}},
+			},
+			{
+				Query:    "SET NAMES 'LATIN1';",
+				Expected: []sql.Row{{}},
+			},
+			{
+				Query:    "SHOW client_encoding;",
+				Expected: []sql.Row{{"LATIN1"}},
+			},
+			{
+				Query:    "SET NAMES DEFAULT;",
+				Expected: []sql.Row{{}},
+			},
+			{
+				Query:    "SHOW client_encoding;",
+				Expected: []sql.Row{{"UTF8"}},
+			},
+		},
+	},
+	{
+		Name:        "special case SEED",
+		SetUpScript: []string{},
+		Assertions: []ScriptTestAssertion{
+			{
+				Query:    "SHOW geqo_seed",
+				Expected: []sql.Row{{float64(0)}},
+			},
+			{
+				Query:    "SET SEED 1;",
+				Expected: []sql.Row{{}},
+			},
+			{
+				Query:    "SHOW geqo_seed",
+				Expected: []sql.Row{{float64(1)}},
+			},
+		},
+	},
 	{
 		Name:        "set 'allow_in_place_tablespaces' configuration variable",
 		SetUpScript: []string{},
