@@ -207,7 +207,7 @@ func (p *PgsqlScope) SetValue(ctx *sql.Context, name string, val any) error {
 		return err
 	case PsqlScopeLocal:
 		// TODO: support LOCAL scope
-		return nil
+		return fmt.Errorf("unsupported scope `%v` on configuration parameter `%s`", p.Type, name)
 	default:
 		return fmt.Errorf("unable to set `%s` due to unknown scope `%v`", name, p.Type)
 	}
@@ -224,9 +224,9 @@ func (p *PgsqlScope) GetValue(ctx *sql.Context, name string, _ sql.CollationID) 
 		return val, nil
 	case PsqlScopeLocal:
 		// TODO: support LOCAL scope
-		return nil, fmt.Errorf("unsupported scope `%v` on system variable `%s`", p.Type, name)
+		return nil, fmt.Errorf("unsupported scope `%v` on configuration parameter `%s`", p.Type, name)
 	default:
-		return nil, fmt.Errorf("unknown scope `%v` on system variable `%s`", p.Type, name)
+		return nil, fmt.Errorf("unknown scope `%v` on configuration parameter `%s`", p.Type, name)
 	}
 }
 
@@ -245,9 +245,9 @@ func (p *PgsqlScope) IsSessionOnly() bool {
 type PgsqlScopeType byte
 
 const (
-	// PsqlScopeSession is set when the system variable exists only in the session context.
+	// PsqlScopeSession is set when the configuration parameter exists only in the session context.
 	PsqlScopeSession PgsqlScopeType = iota
-	// PsqlScopeLocal is set when the system variable exists only in the local context.
+	// PsqlScopeLocal is set when the configuration parameter exists only in the local context.
 	PsqlScopeLocal
 )
 
