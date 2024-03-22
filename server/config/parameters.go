@@ -249,7 +249,7 @@ const (
 	PsqlScopeSession PgsqlScopeType = iota
 	// PsqlScopeLocal is set when the configuration parameter exists only in the local context.
 	PsqlScopeLocal
-)
+)<<<
 
 // tzOffsetRegex is a regex for matching timezone offsets (e.g. +01:00).
 var tzOffsetRegex = regexp.MustCompile(`(?m)^([+\-])(\d{2}):(\d{2})$`)
