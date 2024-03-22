@@ -186,24 +186,16 @@ func Convert(postgresStmt parser.Statement) (vitess.Statement, error) {
 		return nodeSelect(stmt)
 	case *tree.SelectClause:
 		return nodeSelectClause(stmt)
-	case *tree.SetClusterSetting:
-		return nodeSetClusterSetting(stmt)
-	case *tree.SetSessionAuthorizationDefault:
-		return nodeSetSessionAuthorizationDefault(stmt)
+	case *tree.SetSessionAuthorization:
+		return nodeSetSessionAuthorization(stmt)
 	case *tree.SetSessionCharacteristics:
 		return nodeSetSessionCharacteristics(stmt)
-	case *tree.SetTracing:
-		return nodeSetTracing(stmt)
 	case *tree.SetTransaction:
 		return nodeSetTransaction(stmt)
 	case *tree.SetVar:
 		return nodeSetVar(stmt)
 	case *tree.ShowBackup:
 		return nodeShowBackup(stmt)
-	case *tree.ShowClusterSetting:
-		return nodeShowClusterSetting(stmt)
-	case *tree.ShowClusterSettingList:
-		return nodeShowClusterSettingList(stmt)
 	case *tree.ShowColumns:
 		return nodeShowColumns(stmt)
 	case *tree.ShowConstraints:

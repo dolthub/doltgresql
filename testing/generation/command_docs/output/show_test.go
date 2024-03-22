@@ -18,12 +18,12 @@ import "testing"
 
 func TestShow(t *testing.T) {
 	tests := []QueryParses{
-		Parses("SHOW SERVER_VERSION"),
-		Parses("SHOW SERVER_ENCODING"),
+		Converts("SHOW SERVER_VERSION"),
+		Converts("SHOW SERVER_ENCODING"),
 		Unimplemented("SHOW LC_COLLATE"),
 		Unimplemented("SHOW LC_CTYPE"),
 		Parses("SHOW IS_SUPERUSER"),
-		Parses("SHOW DateStyle"),
+		Converts("SHOW DateStyle"),
 		Parses("SHOW ALL"),
 	}
 	RunTests(t, tests)

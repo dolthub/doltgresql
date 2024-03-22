@@ -18,12 +18,12 @@ import "testing"
 
 func TestSetConstraints(t *testing.T) {
 	tests := []QueryParses{
-		Unimplemented("SET CONSTRAINTS ALL DEFERRED"),
-		Unimplemented("SET CONSTRAINTS name DEFERRED"),
-		Unimplemented("SET CONSTRAINTS name , name DEFERRED"),
-		Unimplemented("SET CONSTRAINTS ALL IMMEDIATE"),
-		Unimplemented("SET CONSTRAINTS name IMMEDIATE"),
-		Unimplemented("SET CONSTRAINTS name , name IMMEDIATE"),
+		Parses("SET CONSTRAINTS ALL DEFERRED"),
+		Parses("SET CONSTRAINTS name DEFERRED"),
+		Parses("SET CONSTRAINTS name , name DEFERRED"),
+		Parses("SET CONSTRAINTS ALL IMMEDIATE"),
+		Parses("SET CONSTRAINTS name IMMEDIATE"),
+		Parses("SET CONSTRAINTS name , name IMMEDIATE"),
 	}
 	RunTests(t, tests)
 }

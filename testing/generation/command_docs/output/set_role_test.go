@@ -18,13 +18,13 @@ import "testing"
 
 func TestSetRole(t *testing.T) {
 	tests := []QueryParses{
-		Unimplemented("SET ROLE role_name"),
-		Unimplemented("SET SESSION ROLE role_name"),
-		Unimplemented("SET LOCAL ROLE role_name"),
-		Unimplemented("SET ROLE NONE"),
-		Unimplemented("SET SESSION ROLE NONE"),
-		Unimplemented("SET LOCAL ROLE NONE"),
-		Unimplemented("RESET ROLE"),
+		Parses("SET ROLE role_name"),
+		Parses("SET SESSION ROLE role_name"),
+		Parses("SET LOCAL ROLE role_name"),
+		Parses("SET ROLE NONE"),
+		Parses("SET SESSION ROLE NONE"),
+		Parses("SET LOCAL ROLE NONE"),
+		Parses("RESET ROLE"),
 	}
 	RunTests(t, tests)
 }
