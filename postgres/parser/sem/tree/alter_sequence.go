@@ -31,6 +31,9 @@ type AlterSequence struct {
 	IfExists bool
 	Name     *UnresolvedObjectName
 	Options  SequenceOptions
+	SetLog   bool
+	Logged   bool
+	Owner    string
 }
 
 // Format implements the NodeFormatter interface.
@@ -40,5 +43,17 @@ func (node *AlterSequence) Format(ctx *FmtCtx) {
 		ctx.WriteString("IF EXISTS ")
 	}
 	ctx.FormatNode(node.Name)
-	ctx.FormatNode(&node.Options)
+	if node.Owner != "" {
+		ctx.WriteString(" OWNER TO ")
+		ctx.WriteString(node.Owner)
+	} else if node.SetLog {
+		if node.Logged {
+			ctx.WriteString(" SET LOGGED")
+		} else {
+			ctx.WriteString(" SET UNLOGGED")
+		}
+	} else {
+		ctx.FormatNode(&node.Options)
+	}
+
 }
