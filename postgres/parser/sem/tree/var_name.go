@@ -86,7 +86,7 @@ func (UnqualifiedStar) ResolvedType() *types.T {
 func (UnqualifiedStar) Variable() {}
 
 // UnresolvedName is defined in name_part.go. It also implements the
-// GetName interface, and thus TypedExpr too.
+// VarName interface, and thus TypedExpr too.
 
 // ResolvedType implements the TypedExpr interface.
 func (*UnresolvedName) ResolvedType() *types.T {

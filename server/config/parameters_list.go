@@ -23,8 +23,13 @@ import (
 	"github.com/dolthub/go-mysql-server/sql/types"
 )
 
-// postgresConfigVariables is a list of configuration parameters that can be used in SET statement.
-var postgresConfigVariables = map[string]sql.SystemVariable{
+func IsValidPostgresConfigParameter(name string) bool {
+	_, ok := postgresConfigParameters[strings.ToLower(name)]
+	return ok
+}
+
+// postgresConfigParameters is a list of configuration parameters that can be used in SET statement.
+var postgresConfigParameters = map[string]sql.SystemVariable{
 	"allow_in_place_tablespaces": &Parameter{
 		Name:      "allow_in_place_tablespaces",
 		Default:   int8(0),
@@ -34,7 +39,7 @@ var postgresConfigVariables = map[string]sql.SystemVariable{
 		Type:      types.NewSystemBoolType("allow_in_place_tablespaces"),
 		Source:    ParameterSourceDefault,
 		ResetVal:  int8(0),
-		Scope:     sql.PostgresConfigParamScope_Session,
+		Scope:     GetPgsqlScope(PsqlScopeSession),
 	},
 	"allow_system_table_mods": &Parameter{
 		Name:      "allow_system_table_mods",
@@ -45,7 +50,7 @@ var postgresConfigVariables = map[string]sql.SystemVariable{
 		Type:      types.NewSystemBoolType("allow_system_table_mods"),
 		Source:    ParameterSourceDefault,
 		ResetVal:  int8(0),
-		Scope:     sql.PostgresConfigParamScope_Session,
+		Scope:     GetPgsqlScope(PsqlScopeSession),
 	},
 	"application_name": &Parameter{
 		Name:      "application_name",
@@ -56,7 +61,7 @@ var postgresConfigVariables = map[string]sql.SystemVariable{
 		Type:      types.NewSystemStringType("application_name"),
 		Source:    ParameterSourceClient,
 		ResetVal:  "psql",
-		Scope:     sql.PostgresConfigParamScope_Session,
+		Scope:     GetPgsqlScope(PsqlScopeSession),
 	},
 	"archive_cleanup_command": &Parameter{
 		Name:      "archive_cleanup_command",
@@ -67,7 +72,7 @@ var postgresConfigVariables = map[string]sql.SystemVariable{
 		Type:      types.NewSystemStringType("archive_cleanup_command"),
 		Source:    ParameterSourceDefault,
 		ResetVal:  "",
-		Scope:     sql.PostgresConfigParamScope_Session,
+		Scope:     GetPgsqlScope(PsqlScopeSession),
 	},
 	"archive_command": &Parameter{
 		Name:      "archive_command",
@@ -78,7 +83,7 @@ var postgresConfigVariables = map[string]sql.SystemVariable{
 		Type:      types.NewSystemStringType("archive_command"),
 		Source:    ParameterSourceDefault,
 		ResetVal:  "",
-		Scope:     sql.PostgresConfigParamScope_Session,
+		Scope:     GetPgsqlScope(PsqlScopeSession),
 	},
 	"archive_library": &Parameter{
 		Name:      "archive_library",
@@ -89,7 +94,7 @@ var postgresConfigVariables = map[string]sql.SystemVariable{
 		Type:      types.NewSystemStringType("archive_library"),
 		Source:    ParameterSourceDefault,
 		ResetVal:  "",
-		Scope:     sql.PostgresConfigParamScope_Session,
+		Scope:     GetPgsqlScope(PsqlScopeSession),
 	},
 	"archive_mode": &Parameter{
 		Name:      "archive_mode",
@@ -100,7 +105,7 @@ var postgresConfigVariables = map[string]sql.SystemVariable{
 		Type:      types.NewSystemEnumType("archive_mode", "always", "on", "off"),
 		Source:    ParameterSourceDefault,
 		ResetVal:  "off",
-		Scope:     sql.PostgresConfigParamScope_Session,
+		Scope:     GetPgsqlScope(PsqlScopeSession),
 	},
 	"archive_timeout": &Parameter{
 		Name:    "archive_timeout",
@@ -112,7 +117,7 @@ var postgresConfigVariables = map[string]sql.SystemVariable{
 		Type:      types.NewSystemIntType("archive_timeout", 0, 1073741823, false),
 		Source:    ParameterSourceDefault,
 		ResetVal:  int64(0),
-		Scope:     sql.PostgresConfigParamScope_Session,
+		Scope:     GetPgsqlScope(PsqlScopeSession),
 	},
 	"array_nulls": &Parameter{
 		Name:      "array_nulls",
@@ -123,7 +128,7 @@ var postgresConfigVariables = map[string]sql.SystemVariable{
 		Type:      types.NewSystemBoolType("array_nulls"),
 		Source:    ParameterSourceDefault,
 		ResetVal:  int8(1),
-		Scope:     sql.PostgresConfigParamScope_Session,
+		Scope:     GetPgsqlScope(PsqlScopeSession),
 	},
 	"authentication_timeout": &Parameter{
 		Name:    "authentication_timeout",
@@ -135,7 +140,7 @@ var postgresConfigVariables = map[string]sql.SystemVariable{
 		Type:      types.NewSystemIntType("authentication_timeout", 1, 600, false),
 		Source:    ParameterSourceDefault,
 		ResetVal:  int64(60),
-		Scope:     sql.PostgresConfigParamScope_Session,
+		Scope:     GetPgsqlScope(PsqlScopeSession),
 	},
 	"autovacuum": &Parameter{
 		Name:      "autovacuum",
@@ -146,7 +151,7 @@ var postgresConfigVariables = map[string]sql.SystemVariable{
 		Type:      types.NewSystemBoolType("autovacuum"),
 		Source:    ParameterSourceDefault,
 		ResetVal:  int8(1),
-		Scope:     sql.PostgresConfigParamScope_Session,
+		Scope:     GetPgsqlScope(PsqlScopeSession),
 	},
 	"autovacuum_analyze_scale_factor": &Parameter{
 		Name:      "autovacuum_analyze_scale_factor",
@@ -157,7 +162,7 @@ var postgresConfigVariables = map[string]sql.SystemVariable{
 		Type:      types.NewSystemDoubleType("autovacuum_analyze_scale_factor", 0, 100),
 		Source:    ParameterSourceDefault,
 		ResetVal:  0.1,
-		Scope:     sql.PostgresConfigParamScope_Session,
+		Scope:     GetPgsqlScope(PsqlScopeSession),
 	},
 	"autovacuum_analyze_threshold": &Parameter{
 		Name:      "autovacuum_analyze_threshold",
@@ -168,7 +173,7 @@ var postgresConfigVariables = map[string]sql.SystemVariable{
 		Type:      types.NewSystemIntType("autovacuum_analyze_threshold", 0, math.MaxInt32, false),
 		Source:    ParameterSourceDefault,
 		ResetVal:  int64(50),
-		Scope:     sql.PostgresConfigParamScope_Session,
+		Scope:     GetPgsqlScope(PsqlScopeSession),
 	},
 	"autovacuum_freeze_max_age": &Parameter{
 		Name:      "autovacuum_freeze_max_age",
@@ -179,7 +184,7 @@ var postgresConfigVariables = map[string]sql.SystemVariable{
 		Type:      types.NewSystemIntType("autovacuum_freeze_max_age", 100000, 2000000000, false),
 		Source:    ParameterSourceDefault,
 		ResetVal:  int64(2000000000),
-		Scope:     sql.PostgresConfigParamScope_Session,
+		Scope:     GetPgsqlScope(PsqlScopeSession),
 	},
 	"autovacuum_max_workers": &Parameter{
 		Name:      "autovacuum_max_workers",
@@ -190,7 +195,7 @@ var postgresConfigVariables = map[string]sql.SystemVariable{
 		Type:      types.NewSystemIntType("autovacuum_max_workers", 1, 262143, false),
 		Source:    ParameterSourceDefault,
 		ResetVal:  int64(3),
-		Scope:     sql.PostgresConfigParamScope_Session,
+		Scope:     GetPgsqlScope(PsqlScopeSession),
 	},
 	"autovacuum_multixact_freeze_max_age": &Parameter{
 		Name:      "autovacuum_multixact_freeze_max_age",
@@ -201,7 +206,7 @@ var postgresConfigVariables = map[string]sql.SystemVariable{
 		Type:      types.NewSystemIntType("autovacuum_multixact_freeze_max_age", 10000, 2000000000, false),
 		Source:    ParameterSourceDefault,
 		ResetVal:  int64(400000000),
-		Scope:     sql.PostgresConfigParamScope_Session,
+		Scope:     GetPgsqlScope(PsqlScopeSession),
 	},
 	"autovacuum_naptime": &Parameter{
 		Name:    "autovacuum_naptime",
@@ -213,7 +218,7 @@ var postgresConfigVariables = map[string]sql.SystemVariable{
 		Type:      types.NewSystemIntType("autovacuum_naptime", 1, 2147483, false),
 		Source:    ParameterSourceDefault,
 		ResetVal:  int64(60),
-		Scope:     sql.PostgresConfigParamScope_Session,
+		Scope:     GetPgsqlScope(PsqlScopeSession),
 	},
 	"autovacuum_vacuum_cost_delay": &Parameter{
 		Name:    "autovacuum_vacuum_cost_delay",
@@ -225,7 +230,7 @@ var postgresConfigVariables = map[string]sql.SystemVariable{
 		Type:      types.NewSystemDoubleType("autovacuum_vacuum_cost_delay", -1, 100),
 		Source:    ParameterSourceDefault,
 		ResetVal:  float64(2),
-		Scope:     sql.PostgresConfigParamScope_Session,
+		Scope:     GetPgsqlScope(PsqlScopeSession),
 	},
 	"autovacuum_vacuum_cost_limit": &Parameter{
 		Name:      "autovacuum_vacuum_cost_limit",
@@ -236,7 +241,7 @@ var postgresConfigVariables = map[string]sql.SystemVariable{
 		Type:      types.NewSystemIntType("autovacuum_vacuum_cost_limit", -1, 10000, true),
 		Source:    ParameterSourceDefault,
 		ResetVal:  int64(-1),
-		Scope:     sql.PostgresConfigParamScope_Session,
+		Scope:     GetPgsqlScope(PsqlScopeSession),
 	},
 	"autovacuum_vacuum_insert_scale_factor": &Parameter{
 		Name:      "autovacuum_vacuum_insert_scale_factor",
@@ -247,7 +252,7 @@ var postgresConfigVariables = map[string]sql.SystemVariable{
 		Type:      types.NewSystemDoubleType("autovacuum_vacuum_insert_scale_factor", 0, 100),
 		Source:    ParameterSourceDefault,
 		ResetVal:  float64(0.2),
-		Scope:     sql.PostgresConfigParamScope_Session,
+		Scope:     GetPgsqlScope(PsqlScopeSession),
 	},
 	"autovacuum_vacuum_insert_threshold": &Parameter{
 		Name:      "autovacuum_vacuum_insert_threshold",
@@ -258,7 +263,7 @@ var postgresConfigVariables = map[string]sql.SystemVariable{
 		Type:      types.NewSystemIntType("autovacuum_vacuum_insert_threshold", -1, math.MaxInt32, true),
 		Source:    ParameterSourceDefault,
 		ResetVal:  int64(1000),
-		Scope:     sql.PostgresConfigParamScope_Session,
+		Scope:     GetPgsqlScope(PsqlScopeSession),
 	},
 	"autovacuum_vacuum_scale_factor": &Parameter{
 		Name:      "autovacuum_vacuum_scale_factor",
@@ -269,7 +274,7 @@ var postgresConfigVariables = map[string]sql.SystemVariable{
 		Type:      types.NewSystemDoubleType("autovacuum_vacuum_scale_factor", 0, 100),
 		Source:    ParameterSourceDefault,
 		ResetVal:  float64(0.2),
-		Scope:     sql.PostgresConfigParamScope_Session,
+		Scope:     GetPgsqlScope(PsqlScopeSession),
 	},
 	"autovacuum_vacuum_threshold": &Parameter{
 		Name:      "autovacuum_vacuum_threshold",
@@ -280,7 +285,7 @@ var postgresConfigVariables = map[string]sql.SystemVariable{
 		Type:      types.NewSystemIntType("autovacuum_vacuum_threshold", 0, math.MaxInt32, false),
 		Source:    ParameterSourceDefault,
 		ResetVal:  int64(50),
-		Scope:     sql.PostgresConfigParamScope_Session,
+		Scope:     GetPgsqlScope(PsqlScopeSession),
 	},
 	"autovacuum_work_mem": &Parameter{
 		Name:    "autovacuum_work_mem",
@@ -292,7 +297,7 @@ var postgresConfigVariables = map[string]sql.SystemVariable{
 		Type:      types.NewSystemIntType("autovacuum_work_mem", -1, math.MaxInt32, true),
 		Source:    ParameterSourceDefault,
 		ResetVal:  int64(-1),
-		Scope:     sql.PostgresConfigParamScope_Session,
+		Scope:     GetPgsqlScope(PsqlScopeSession),
 	},
 	"backend_flush_after": &Parameter{
 		Name:    "backend_flush_after",
@@ -304,7 +309,7 @@ var postgresConfigVariables = map[string]sql.SystemVariable{
 		Type:      types.NewSystemIntType("backend_flush_after", 0, 256, false),
 		Source:    ParameterSourceDefault,
 		ResetVal:  int64(0),
-		Scope:     sql.PostgresConfigParamScope_Session,
+		Scope:     GetPgsqlScope(PsqlScopeSession),
 	},
 	"backslash_quote": &Parameter{
 		Name:      "backslash_quote",
@@ -315,7 +320,7 @@ var postgresConfigVariables = map[string]sql.SystemVariable{
 		Type:      types.NewSystemEnumType("backslash_quote", "safe_encoding", "on", "ff"),
 		Source:    ParameterSourceDefault,
 		ResetVal:  "safe_encoding",
-		Scope:     sql.PostgresConfigParamScope_Session,
+		Scope:     GetPgsqlScope(PsqlScopeSession),
 	},
 	"backtrace_functions": &Parameter{
 		Name:      "backtrace_functions",
@@ -326,7 +331,7 @@ var postgresConfigVariables = map[string]sql.SystemVariable{
 		Type:      types.NewSystemStringType("backtrace_functions"),
 		Source:    ParameterSourceDefault,
 		ResetVal:  "",
-		Scope:     sql.PostgresConfigParamScope_Session,
+		Scope:     GetPgsqlScope(PsqlScopeSession),
 	},
 	"bgwriter_delay": &Parameter{
 		Name:      "bgwriter_delay",
@@ -337,7 +342,7 @@ var postgresConfigVariables = map[string]sql.SystemVariable{
 		Type:      types.NewSystemIntType("bgwriter_delay", 10, 10000, false),
 		Source:    ParameterSourceDefault,
 		ResetVal:  int64(200),
-		Scope:     sql.PostgresConfigParamScope_Session,
+		Scope:     GetPgsqlScope(PsqlScopeSession),
 	},
 	"bgwriter_flush_after": &Parameter{
 		Name:    "bgwriter_flush_after",
@@ -349,7 +354,7 @@ var postgresConfigVariables = map[string]sql.SystemVariable{
 		Type:      types.NewSystemIntType("bgwriter_flush_after", 0, 256, false),
 		Source:    ParameterSourceDefault,
 		ResetVal:  int64(0),
-		Scope:     sql.PostgresConfigParamScope_Session,
+		Scope:     GetPgsqlScope(PsqlScopeSession),
 	},
 	"bgwriter_lru_maxpages": &Parameter{
 		Name:      "bgwriter_lru_maxpages",
@@ -360,7 +365,7 @@ var postgresConfigVariables = map[string]sql.SystemVariable{
 		Type:      types.NewSystemIntType("bgwriter_lru_maxpages", 0, 1073741823, false),
 		Source:    ParameterSourceDefault,
 		ResetVal:  int64(100),
-		Scope:     sql.PostgresConfigParamScope_Session,
+		Scope:     GetPgsqlScope(PsqlScopeSession),
 	},
 	"bgwriter_lru_multiplier": &Parameter{
 		Name:      "bgwriter_lru_multiplier",
@@ -371,7 +376,7 @@ var postgresConfigVariables = map[string]sql.SystemVariable{
 		Type:      types.NewSystemDoubleType("bgwriter_lru_multiplier", 0, 10),
 		Source:    ParameterSourceDefault,
 		ResetVal:  float64(2),
-		Scope:     sql.PostgresConfigParamScope_Session,
+		Scope:     GetPgsqlScope(PsqlScopeSession),
 	},
 	"block_size": &Parameter{
 		Name:      "block_size",
@@ -382,7 +387,7 @@ var postgresConfigVariables = map[string]sql.SystemVariable{
 		Type:      types.NewSystemIntType("block_size", 8192, 8192, false),
 		Source:    ParameterSourceDefault,
 		ResetVal:  int64(8192),
-		Scope:     sql.PostgresConfigParamScope_Session,
+		Scope:     GetPgsqlScope(PsqlScopeSession),
 	},
 	"bonjour": &Parameter{
 		Name:      "bonjour",
@@ -393,7 +398,7 @@ var postgresConfigVariables = map[string]sql.SystemVariable{
 		Type:      types.NewSystemBoolType("bonjour"),
 		Source:    ParameterSourceDefault,
 		ResetVal:  int8(0),
-		Scope:     sql.PostgresConfigParamScope_Session,
+		Scope:     GetPgsqlScope(PsqlScopeSession),
 	},
 	"bonjour_name": &Parameter{
 		Name:      "bonjour_name",
@@ -404,7 +409,7 @@ var postgresConfigVariables = map[string]sql.SystemVariable{
 		Type:      types.NewSystemStringType("bonjour_name"),
 		Source:    ParameterSourceDefault,
 		ResetVal:  "",
-		Scope:     sql.PostgresConfigParamScope_Session,
+		Scope:     GetPgsqlScope(PsqlScopeSession),
 	},
 	"bytea_output": &Parameter{
 		Name:      "bytea_output",
@@ -415,7 +420,7 @@ var postgresConfigVariables = map[string]sql.SystemVariable{
 		Type:      types.NewSystemEnumType("bytea_output", "escape", "hex"),
 		Source:    ParameterSourceDefault,
 		ResetVal:  "hex",
-		Scope:     sql.PostgresConfigParamScope_Session,
+		Scope:     GetPgsqlScope(PsqlScopeSession),
 	},
 	"check_function_bodies": &Parameter{
 		Name:      "check_function_bodies",
@@ -426,7 +431,7 @@ var postgresConfigVariables = map[string]sql.SystemVariable{
 		Type:      types.NewSystemBoolType("check_function_bodies"),
 		Source:    ParameterSourceDefault,
 		ResetVal:  int8(1),
-		Scope:     sql.PostgresConfigParamScope_Session,
+		Scope:     GetPgsqlScope(PsqlScopeSession),
 	},
 	"checkpoint_completion_target": &Parameter{
 		Name:      "checkpoint_completion_target",
@@ -437,7 +442,7 @@ var postgresConfigVariables = map[string]sql.SystemVariable{
 		Type:      types.NewSystemDoubleType("checkpoint_completion_target", 0, 1),
 		Source:    ParameterSourceDefault,
 		ResetVal:  float64(0.9),
-		Scope:     sql.PostgresConfigParamScope_Session,
+		Scope:     GetPgsqlScope(PsqlScopeSession),
 	},
 	"checkpoint_flush_after": &Parameter{
 		Name:    "checkpoint_flush_after",
@@ -449,7 +454,7 @@ var postgresConfigVariables = map[string]sql.SystemVariable{
 		Type:      types.NewSystemIntType("checkpoint_flush_after", 0, 256, false),
 		Source:    ParameterSourceDefault,
 		ResetVal:  int64(0),
-		Scope:     sql.PostgresConfigParamScope_Session,
+		Scope:     GetPgsqlScope(PsqlScopeSession),
 	},
 	"checkpoint_timeout": &Parameter{
 		Name:    "checkpoint_timeout",
@@ -461,7 +466,7 @@ var postgresConfigVariables = map[string]sql.SystemVariable{
 		Type:      types.NewSystemIntType("checkpoint_timeout", 30, 86400, false),
 		Source:    ParameterSourceDefault,
 		ResetVal:  int64(300),
-		Scope:     sql.PostgresConfigParamScope_Session,
+		Scope:     GetPgsqlScope(PsqlScopeSession),
 	},
 	"checkpoint_warning": &Parameter{
 		Name:    "checkpoint_warning",
@@ -473,7 +478,7 @@ var postgresConfigVariables = map[string]sql.SystemVariable{
 		Type:      types.NewSystemIntType("checkpoint_warning", 0, math.MaxInt32, false),
 		Source:    ParameterSourceDefault,
 		ResetVal:  int64(30),
-		Scope:     sql.PostgresConfigParamScope_Session,
+		Scope:     GetPgsqlScope(PsqlScopeSession),
 	},
 	"client_connection_check_interval": &Parameter{
 		Name:    "client_connection_check_interval",
@@ -485,7 +490,7 @@ var postgresConfigVariables = map[string]sql.SystemVariable{
 		Type:      types.NewSystemIntType("client_connection_check_interval", 0, math.MaxInt32, false),
 		Source:    ParameterSourceDefault,
 		ResetVal:  int64(0),
-		Scope:     sql.PostgresConfigParamScope_Session,
+		Scope:     GetPgsqlScope(PsqlScopeSession),
 	},
 	"client_encoding": &Parameter{
 		Name:      "client_encoding",
@@ -497,7 +502,7 @@ var postgresConfigVariables = map[string]sql.SystemVariable{
 		Source:    ParameterSourceClient,
 		// BootVal: "SQL_ASCII",
 		ResetVal: "UTF8",
-		Scope:    sql.PostgresConfigParamScope_Session,
+		Scope:    GetPgsqlScope(PsqlScopeSession),
 	},
 	"client_min_messages": &Parameter{
 		Name:      "client_min_messages",
@@ -508,7 +513,7 @@ var postgresConfigVariables = map[string]sql.SystemVariable{
 		Type:      types.NewSystemEnumType("client_min_messages", "debug5", "debug4", "debug3", "debug2", "debug1", "log", "notice", "warning", "error"),
 		Source:    ParameterSourceDefault,
 		ResetVal:  "notice",
-		Scope:     sql.PostgresConfigParamScope_Session,
+		Scope:     GetPgsqlScope(PsqlScopeSession),
 	},
 	"cluster_name": &Parameter{
 		Name:      "cluster_name",
@@ -519,7 +524,7 @@ var postgresConfigVariables = map[string]sql.SystemVariable{
 		Type:      types.NewSystemStringType("cluster_name"),
 		Source:    ParameterSourceDefault,
 		ResetVal:  "",
-		Scope:     sql.PostgresConfigParamScope_Session,
+		Scope:     GetPgsqlScope(PsqlScopeSession),
 	},
 	"commit_delay": &Parameter{
 		Name:      "commit_delay",
@@ -530,7 +535,7 @@ var postgresConfigVariables = map[string]sql.SystemVariable{
 		Type:      types.NewSystemIntType("commit_delay", 0, 100000, false),
 		Source:    ParameterSourceDefault,
 		ResetVal:  int64(0),
-		Scope:     sql.PostgresConfigParamScope_Session,
+		Scope:     GetPgsqlScope(PsqlScopeSession),
 	},
 	"commit_siblings": &Parameter{
 		Name:      "commit_siblings",
@@ -541,7 +546,7 @@ var postgresConfigVariables = map[string]sql.SystemVariable{
 		Type:      types.NewSystemIntType("commit_siblings", 0, 1000, false),
 		Source:    ParameterSourceDefault,
 		ResetVal:  int64(5),
-		Scope:     sql.PostgresConfigParamScope_Session,
+		Scope:     GetPgsqlScope(PsqlScopeSession),
 	},
 	"compute_query_id": &Parameter{
 		Name:      "compute_query_id",
@@ -552,7 +557,7 @@ var postgresConfigVariables = map[string]sql.SystemVariable{
 		Type:      types.NewSystemEnumType("compute_query_id", "auto", "regress", "on", "off"),
 		Source:    ParameterSourceDefault,
 		ResetVal:  "auto",
-		Scope:     sql.PostgresConfigParamScope_Session,
+		Scope:     GetPgsqlScope(PsqlScopeSession),
 	},
 	"config_file": &Parameter{
 		Name:      "config_file",
@@ -563,7 +568,7 @@ var postgresConfigVariables = map[string]sql.SystemVariable{
 		Type:      types.NewSystemStringType("config_file"),
 		Source:    ParameterSourceOverride,
 		ResetVal:  "postgresql.conf",
-		Scope:     sql.PostgresConfigParamScope_Session,
+		Scope:     GetPgsqlScope(PsqlScopeSession),
 	},
 	"constraint_exclusion": &Parameter{
 		Name:      "constraint_exclusion",
@@ -574,7 +579,7 @@ var postgresConfigVariables = map[string]sql.SystemVariable{
 		Type:      types.NewSystemEnumType("constraint_exclusion", "partition", "on", "off"),
 		Source:    ParameterSourceDefault,
 		ResetVal:  "partition",
-		Scope:     sql.PostgresConfigParamScope_Session,
+		Scope:     GetPgsqlScope(PsqlScopeSession),
 	},
 	"cpu_index_tuple_cost": &Parameter{
 		Name:      "cpu_index_tuple_cost",
@@ -585,7 +590,7 @@ var postgresConfigVariables = map[string]sql.SystemVariable{
 		Type:      types.NewSystemDoubleType("cpu_index_tuple_cost", 0, math.MaxFloat64),
 		Source:    ParameterSourceDefault,
 		ResetVal:  float64(0.005),
-		Scope:     sql.PostgresConfigParamScope_Session,
+		Scope:     GetPgsqlScope(PsqlScopeSession),
 	},
 	"cpu_operator_cost": &Parameter{
 		Name:      "cpu_operator_cost",
@@ -596,7 +601,7 @@ var postgresConfigVariables = map[string]sql.SystemVariable{
 		Type:      types.NewSystemDoubleType("cpu_operator_cost", 0, math.MaxFloat64),
 		Source:    ParameterSourceDefault,
 		ResetVal:  float64(0.0025),
-		Scope:     sql.PostgresConfigParamScope_Session,
+		Scope:     GetPgsqlScope(PsqlScopeSession),
 	},
 	"cpu_tuple_cost": &Parameter{
 		Name:      "cpu_tuple_cost",
@@ -607,7 +612,7 @@ var postgresConfigVariables = map[string]sql.SystemVariable{
 		Type:      types.NewSystemDoubleType("cpu_tuple_cost", 0, math.MaxFloat64),
 		Source:    ParameterSourceDefault,
 		ResetVal:  float64(0.01),
-		Scope:     sql.PostgresConfigParamScope_Session,
+		Scope:     GetPgsqlScope(PsqlScopeSession),
 	},
 	"createrole_self_grant": &Parameter{
 		Name:      "createrole_self_grant",
@@ -618,7 +623,7 @@ var postgresConfigVariables = map[string]sql.SystemVariable{
 		Type:      types.NewSystemStringType("createrole_self_grant"),
 		Source:    ParameterSourceDefault,
 		ResetVal:  "",
-		Scope:     sql.PostgresConfigParamScope_Session,
+		Scope:     GetPgsqlScope(PsqlScopeSession),
 		// The value must be `set`, `inherit`, or a comma-separated list of these. The default value is an empty string, which disables the feature.
 	},
 	"cursor_tuple_fraction": &Parameter{
@@ -630,7 +635,7 @@ var postgresConfigVariables = map[string]sql.SystemVariable{
 		Type:      types.NewSystemDoubleType("cursor_tuple_fraction", 0, 1),
 		Source:    ParameterSourceDefault,
 		ResetVal:  float64(0.1),
-		Scope:     sql.PostgresConfigParamScope_Session,
+		Scope:     GetPgsqlScope(PsqlScopeSession),
 	},
 	"data_checksums": &Parameter{
 		Name:      "data_checksums",
@@ -641,7 +646,7 @@ var postgresConfigVariables = map[string]sql.SystemVariable{
 		Type:      types.NewSystemBoolType("data_checksums"),
 		Source:    ParameterSourceDefault,
 		ResetVal:  int8(0),
-		Scope:     sql.PostgresConfigParamScope_Session,
+		Scope:     GetPgsqlScope(PsqlScopeSession),
 	},
 	"data_directory": &Parameter{
 		Name:      "data_directory",
@@ -652,7 +657,7 @@ var postgresConfigVariables = map[string]sql.SystemVariable{
 		Type:      types.NewSystemStringType("data_directory"),
 		Source:    ParameterSourceOverride,
 		ResetVal:  "postgres",
-		Scope:     sql.PostgresConfigParamScope_Session,
+		Scope:     GetPgsqlScope(PsqlScopeSession),
 	},
 	"data_directory_mode": &Parameter{
 		Name:      "data_directory_mode",
@@ -663,7 +668,7 @@ var postgresConfigVariables = map[string]sql.SystemVariable{
 		Type:      types.NewSystemIntType("data_directory_mode", 0, 511, false),
 		Source:    ParameterSourceDefault,
 		ResetVal:  int64(448),
-		Scope:     sql.PostgresConfigParamScope_Session,
+		Scope:     GetPgsqlScope(PsqlScopeSession),
 	},
 	"data_sync_retry": &Parameter{
 		Name:      "data_sync_retry",
@@ -674,7 +679,7 @@ var postgresConfigVariables = map[string]sql.SystemVariable{
 		Type:      types.NewSystemBoolType("data_sync_retry"),
 		Source:    ParameterSourceDefault,
 		ResetVal:  int8(0),
-		Scope:     sql.PostgresConfigParamScope_Session,
+		Scope:     GetPgsqlScope(PsqlScopeSession),
 	},
 	"datestyle": &Parameter{
 		Name:      "DateStyle",
@@ -686,7 +691,7 @@ var postgresConfigVariables = map[string]sql.SystemVariable{
 		Source:    ParameterSourceConfigurationFile,
 		ResetVal:  "ISO, MDY",
 		// Sourcefile: postgresql.conf
-		Scope: sql.PostgresConfigParamScope_Session,
+		Scope: GetPgsqlScope(PsqlScopeSession),
 	},
 	"db_user_namespace": &Parameter{
 		Name:      "db_user_namespace",
@@ -697,7 +702,7 @@ var postgresConfigVariables = map[string]sql.SystemVariable{
 		Type:      types.NewSystemBoolType("db_user_namespace"),
 		Source:    ParameterSourceDefault,
 		ResetVal:  int8(0),
-		Scope:     sql.PostgresConfigParamScope_Session,
+		Scope:     GetPgsqlScope(PsqlScopeSession),
 	},
 	"deadlock_timeout": &Parameter{
 		Name:    "deadlock_timeout",
@@ -709,7 +714,7 @@ var postgresConfigVariables = map[string]sql.SystemVariable{
 		Type:      types.NewSystemIntType("deadlock_timeout", 1, math.MaxInt32, false),
 		Source:    ParameterSourceDefault,
 		ResetVal:  int64(1000),
-		Scope:     sql.PostgresConfigParamScope_Session,
+		Scope:     GetPgsqlScope(PsqlScopeSession),
 	},
 	"debug_assertions": &Parameter{
 		Name:      "debug_assertions",
@@ -720,7 +725,7 @@ var postgresConfigVariables = map[string]sql.SystemVariable{
 		Type:      types.NewSystemBoolType("debug_assertions"),
 		Source:    ParameterSourceDefault,
 		ResetVal:  int8(0),
-		Scope:     sql.PostgresConfigParamScope_Session,
+		Scope:     GetPgsqlScope(PsqlScopeSession),
 	},
 	"debug_discard_caches": &Parameter{
 		Name:      "debug_discard_caches",
@@ -731,7 +736,7 @@ var postgresConfigVariables = map[string]sql.SystemVariable{
 		Type:      types.NewSystemIntType("debug_discard_caches", 0, 0, false),
 		Source:    ParameterSourceDefault,
 		ResetVal:  int64(0),
-		Scope:     sql.PostgresConfigParamScope_Session,
+		Scope:     GetPgsqlScope(PsqlScopeSession),
 	},
 	"debug_io_direct": &Parameter{
 		Name:      "debug_io_direct",
@@ -742,7 +747,7 @@ var postgresConfigVariables = map[string]sql.SystemVariable{
 		Type:      types.NewSystemStringType("debug_io_direct"),
 		Source:    ParameterSourceDefault,
 		ResetVal:  "",
-		Scope:     sql.PostgresConfigParamScope_Session,
+		Scope:     GetPgsqlScope(PsqlScopeSession),
 	},
 	"debug_logical_replication_streaming": &Parameter{
 		Name:      "debug_logical_replication_streaming",
@@ -753,7 +758,7 @@ var postgresConfigVariables = map[string]sql.SystemVariable{
 		Type:      types.NewSystemEnumType("debug_logical_replication_streaming", "buffered", "immediate"),
 		Source:    ParameterSourceDefault,
 		ResetVal:  "buffered",
-		Scope:     sql.PostgresConfigParamScope_Session,
+		Scope:     GetPgsqlScope(PsqlScopeSession),
 	},
 	"debug_parallel_query": &Parameter{
 		Name:      "debug_parallel_query",
@@ -764,7 +769,7 @@ var postgresConfigVariables = map[string]sql.SystemVariable{
 		Type:      types.NewSystemEnumType("debug_parallel_query", "off", "on", "regress"),
 		Source:    ParameterSourceDefault,
 		ResetVal:  "off",
-		Scope:     sql.PostgresConfigParamScope_Session,
+		Scope:     GetPgsqlScope(PsqlScopeSession),
 	},
 	"debug_pretty_print": &Parameter{
 		Name:      "debug_pretty_print",
@@ -775,7 +780,7 @@ var postgresConfigVariables = map[string]sql.SystemVariable{
 		Type:      types.NewSystemBoolType("debug_pretty_print"),
 		Source:    ParameterSourceDefault,
 		ResetVal:  int8(1),
-		Scope:     sql.PostgresConfigParamScope_Session,
+		Scope:     GetPgsqlScope(PsqlScopeSession),
 	},
 	"debug_print_parse": &Parameter{
 		Name:      "debug_print_parse",
@@ -786,7 +791,7 @@ var postgresConfigVariables = map[string]sql.SystemVariable{
 		Type:      types.NewSystemBoolType("debug_print_parse"),
 		Source:    ParameterSourceDefault,
 		ResetVal:  int8(0),
-		Scope:     sql.PostgresConfigParamScope_Session,
+		Scope:     GetPgsqlScope(PsqlScopeSession),
 	},
 	"debug_print_plan": &Parameter{
 		Name:      "debug_print_plan",
@@ -797,7 +802,7 @@ var postgresConfigVariables = map[string]sql.SystemVariable{
 		Type:      types.NewSystemBoolType("debug_print_plan"),
 		Source:    ParameterSourceDefault,
 		ResetVal:  int8(0),
-		Scope:     sql.PostgresConfigParamScope_Session,
+		Scope:     GetPgsqlScope(PsqlScopeSession),
 	},
 	"debug_print_rewritten": &Parameter{
 		Name:      "debug_print_rewritten",
@@ -808,7 +813,7 @@ var postgresConfigVariables = map[string]sql.SystemVariable{
 		Type:      types.NewSystemBoolType("debug_print_rewritten"),
 		Source:    ParameterSourceDefault,
 		ResetVal:  int8(0),
-		Scope:     sql.PostgresConfigParamScope_Session,
+		Scope:     GetPgsqlScope(PsqlScopeSession),
 	},
 	"default_statistics_target": &Parameter{
 		Name:      "default_statistics_target",
@@ -819,7 +824,7 @@ var postgresConfigVariables = map[string]sql.SystemVariable{
 		Type:      types.NewSystemIntType("default_statistics_target", 1, 10000, false),
 		Source:    ParameterSourceDefault,
 		ResetVal:  int64(100),
-		Scope:     sql.PostgresConfigParamScope_Session,
+		Scope:     GetPgsqlScope(PsqlScopeSession),
 	},
 	"default_table_access_method": &Parameter{
 		Name:      "default_table_access_method",
@@ -830,7 +835,7 @@ var postgresConfigVariables = map[string]sql.SystemVariable{
 		Type:      types.NewSystemStringType("default_table_access_method"),
 		Source:    ParameterSourceDefault,
 		ResetVal:  "heap",
-		Scope:     sql.PostgresConfigParamScope_Session,
+		Scope:     GetPgsqlScope(PsqlScopeSession),
 	},
 	"default_tablespace": &Parameter{
 		Name:      "default_tablespace",
@@ -841,7 +846,7 @@ var postgresConfigVariables = map[string]sql.SystemVariable{
 		Type:      types.NewSystemStringType("default_tablespace"),
 		Source:    ParameterSourceDefault,
 		ResetVal:  "",
-		Scope:     sql.PostgresConfigParamScope_Session,
+		Scope:     GetPgsqlScope(PsqlScopeSession),
 	},
 	"default_text_search_config": &Parameter{
 		Name:      "default_text_search_config",
@@ -853,7 +858,7 @@ var postgresConfigVariables = map[string]sql.SystemVariable{
 		Source:    ParameterSourceConfigurationFile,
 		// BootVal: "pg_catalog.simple",
 		ResetVal: "pg_catalog.english",
-		Scope:    sql.PostgresConfigParamScope_Session,
+		Scope:    GetPgsqlScope(PsqlScopeSession),
 	},
 	"default_toast_compression": &Parameter{
 		Name:      "default_toast_compression",
@@ -864,7 +869,7 @@ var postgresConfigVariables = map[string]sql.SystemVariable{
 		Type:      types.NewSystemEnumType("default_toast_compression", "pglz", "lz4"),
 		Source:    ParameterSourceDefault,
 		ResetVal:  "pglz",
-		Scope:     sql.PostgresConfigParamScope_Session,
+		Scope:     GetPgsqlScope(PsqlScopeSession),
 	},
 	"default_transaction_deferrable": &Parameter{
 		Name:      "default_transaction_deferrable",
@@ -875,7 +880,7 @@ var postgresConfigVariables = map[string]sql.SystemVariable{
 		Type:      types.NewSystemBoolType("default_transaction_deferrable"),
 		Source:    ParameterSourceDefault,
 		ResetVal:  int8(0),
-		Scope:     sql.PostgresConfigParamScope_Session,
+		Scope:     GetPgsqlScope(PsqlScopeSession),
 	},
 	"default_transaction_isolation": &Parameter{
 		Name:      "default_transaction_isolation",
@@ -886,7 +891,7 @@ var postgresConfigVariables = map[string]sql.SystemVariable{
 		Type:      types.NewSystemEnumType("default_transaction_isolation", "serializable", "repeatable read", "read committed", "read uncommitted"),
 		Source:    ParameterSourceDefault,
 		ResetVal:  "read committed",
-		Scope:     sql.PostgresConfigParamScope_Session,
+		Scope:     GetPgsqlScope(PsqlScopeSession),
 	},
 	"default_transaction_read_only": &Parameter{
 		Name:      "default_transaction_read_only",
@@ -897,7 +902,7 @@ var postgresConfigVariables = map[string]sql.SystemVariable{
 		Type:      types.NewSystemBoolType("default_transaction_read_only"),
 		Source:    ParameterSourceDefault,
 		ResetVal:  int8(0),
-		Scope:     sql.PostgresConfigParamScope_Session,
+		Scope:     GetPgsqlScope(PsqlScopeSession),
 	},
 	"dynamic_library_path": &Parameter{
 		Name:      "dynamic_library_path",
@@ -908,7 +913,7 @@ var postgresConfigVariables = map[string]sql.SystemVariable{
 		Type:      types.NewSystemStringType("dynamic_library_path"),
 		Source:    ParameterSourceDefault,
 		ResetVal:  "$libdir",
-		Scope:     sql.PostgresConfigParamScope_Session,
+		Scope:     GetPgsqlScope(PsqlScopeSession),
 	},
 	"dynamic_shared_memory_type": &Parameter{
 		Name:      "dynamic_shared_memory_type",
@@ -919,7 +924,7 @@ var postgresConfigVariables = map[string]sql.SystemVariable{
 		Type:      types.NewSystemEnumType("dynamic_shared_memory_type", "posix", "sysv", "mmap"),
 		Source:    ParameterSourceConfigurationFile,
 		ResetVal:  "posix",
-		Scope:     sql.PostgresConfigParamScope_Session,
+		Scope:     GetPgsqlScope(PsqlScopeSession),
 	},
 	"effective_cache_size": &Parameter{
 		Name:    "effective_cache_size",
@@ -931,7 +936,7 @@ var postgresConfigVariables = map[string]sql.SystemVariable{
 		Type:      types.NewSystemIntType("effective_cache_size", 1, math.MaxInt32, false),
 		Source:    ParameterSourceDefault,
 		ResetVal:  int64(524288),
-		Scope:     sql.PostgresConfigParamScope_Session,
+		Scope:     GetPgsqlScope(PsqlScopeSession),
 	},
 	"effective_io_concurrency": &Parameter{
 		Name:      "effective_io_concurrency",
@@ -942,7 +947,7 @@ var postgresConfigVariables = map[string]sql.SystemVariable{
 		Type:      types.NewSystemIntType("effective_io_concurrency", 0, 1000, false),
 		Source:    ParameterSourceDefault,
 		ResetVal:  int64(0),
-		Scope:     sql.PostgresConfigParamScope_Session,
+		Scope:     GetPgsqlScope(PsqlScopeSession),
 	},
 	"enable_async_append": &Parameter{
 		Name:      "enable_async_append",
@@ -953,7 +958,7 @@ var postgresConfigVariables = map[string]sql.SystemVariable{
 		Type:      types.NewSystemBoolType("enable_async_append"),
 		Source:    ParameterSourceDefault,
 		ResetVal:  int8(1),
-		Scope:     sql.PostgresConfigParamScope_Session,
+		Scope:     GetPgsqlScope(PsqlScopeSession),
 	},
 	"enable_bitmapscan": &Parameter{
 		Name:      "enable_bitmapscan",
@@ -964,7 +969,7 @@ var postgresConfigVariables = map[string]sql.SystemVariable{
 		Type:      types.NewSystemBoolType("enable_bitmapscan"),
 		Source:    ParameterSourceDefault,
 		ResetVal:  int8(1),
-		Scope:     sql.PostgresConfigParamScope_Session,
+		Scope:     GetPgsqlScope(PsqlScopeSession),
 	},
 	"enable_gathermerge": &Parameter{
 		Name:      "enable_gathermerge",
@@ -975,7 +980,7 @@ var postgresConfigVariables = map[string]sql.SystemVariable{
 		Type:      types.NewSystemBoolType("enable_gathermerge"),
 		Source:    ParameterSourceDefault,
 		ResetVal:  int8(1),
-		Scope:     sql.PostgresConfigParamScope_Session,
+		Scope:     GetPgsqlScope(PsqlScopeSession),
 	},
 	"enable_hashagg": &Parameter{
 		Name:      "enable_hashagg",
@@ -986,7 +991,7 @@ var postgresConfigVariables = map[string]sql.SystemVariable{
 		Type:      types.NewSystemBoolType("enable_hashagg"),
 		Source:    ParameterSourceDefault,
 		ResetVal:  int8(1),
-		Scope:     sql.PostgresConfigParamScope_Session,
+		Scope:     GetPgsqlScope(PsqlScopeSession),
 	},
 	"enable_hashjoin": &Parameter{
 		Name:      "enable_hashjoin",
@@ -997,7 +1002,7 @@ var postgresConfigVariables = map[string]sql.SystemVariable{
 		Type:      types.NewSystemBoolType("enable_hashjoin"),
 		Source:    ParameterSourceDefault,
 		ResetVal:  "",
-		Scope:     sql.PostgresConfigParamScope_Session,
+		Scope:     GetPgsqlScope(PsqlScopeSession),
 	},
 	"enable_incremental_sort": &Parameter{
 		Name:      "enable_incremental_sort",
@@ -1008,7 +1013,7 @@ var postgresConfigVariables = map[string]sql.SystemVariable{
 		Type:      types.NewSystemBoolType("enable_incremental_sort"),
 		Source:    ParameterSourceDefault,
 		ResetVal:  int8(1),
-		Scope:     sql.PostgresConfigParamScope_Session,
+		Scope:     GetPgsqlScope(PsqlScopeSession),
 	},
 	"enable_indexonlyscan": &Parameter{
 		Name:      "enable_indexonlyscan",
@@ -1019,7 +1024,7 @@ var postgresConfigVariables = map[string]sql.SystemVariable{
 		Type:      types.NewSystemBoolType("enable_indexonlyscan"),
 		Source:    ParameterSourceDefault,
 		ResetVal:  int8(1),
-		Scope:     sql.PostgresConfigParamScope_Session,
+		Scope:     GetPgsqlScope(PsqlScopeSession),
 	},
 	"enable_indexscan": &Parameter{
 		Name:      "enable_indexscan",
@@ -1030,7 +1035,7 @@ var postgresConfigVariables = map[string]sql.SystemVariable{
 		Type:      types.NewSystemBoolType("enable_indexscan"),
 		Source:    ParameterSourceDefault,
 		ResetVal:  int8(1),
-		Scope:     sql.PostgresConfigParamScope_Session,
+		Scope:     GetPgsqlScope(PsqlScopeSession),
 	},
 	"enable_material": &Parameter{
 		Name:      "enable_material",
@@ -1041,7 +1046,7 @@ var postgresConfigVariables = map[string]sql.SystemVariable{
 		Type:      types.NewSystemBoolType("enable_material"),
 		Source:    ParameterSourceDefault,
 		ResetVal:  int8(1),
-		Scope:     sql.PostgresConfigParamScope_Session,
+		Scope:     GetPgsqlScope(PsqlScopeSession),
 	},
 	"enable_memoize": &Parameter{
 		Name:      "enable_memoize",
@@ -1052,7 +1057,7 @@ var postgresConfigVariables = map[string]sql.SystemVariable{
 		Type:      types.NewSystemBoolType("enable_memoize"),
 		Source:    ParameterSourceDefault,
 		ResetVal:  int8(1),
-		Scope:     sql.PostgresConfigParamScope_Session,
+		Scope:     GetPgsqlScope(PsqlScopeSession),
 	},
 	"enable_mergejoin": &Parameter{
 		Name:      "enable_mergejoin",
@@ -1063,7 +1068,7 @@ var postgresConfigVariables = map[string]sql.SystemVariable{
 		Type:      types.NewSystemBoolType("enable_mergejoin"),
 		Source:    ParameterSourceDefault,
 		ResetVal:  int8(1),
-		Scope:     sql.PostgresConfigParamScope_Session,
+		Scope:     GetPgsqlScope(PsqlScopeSession),
 	},
 	"enable_nestloop": &Parameter{
 		Name:      "enable_nestloop",
@@ -1074,7 +1079,7 @@ var postgresConfigVariables = map[string]sql.SystemVariable{
 		Type:      types.NewSystemBoolType("enable_nestloop"),
 		Source:    ParameterSourceDefault,
 		ResetVal:  int8(1),
-		Scope:     sql.PostgresConfigParamScope_Session,
+		Scope:     GetPgsqlScope(PsqlScopeSession),
 	},
 	"enable_parallel_append": &Parameter{
 		Name:      "enable_parallel_append",
@@ -1085,7 +1090,7 @@ var postgresConfigVariables = map[string]sql.SystemVariable{
 		Type:      types.NewSystemBoolType("enable_parallel_append"),
 		Source:    ParameterSourceDefault,
 		ResetVal:  int8(1),
-		Scope:     sql.PostgresConfigParamScope_Session,
+		Scope:     GetPgsqlScope(PsqlScopeSession),
 	},
 	"enable_parallel_hash": &Parameter{
 		Name:      "enable_parallel_hash",
@@ -1096,7 +1101,7 @@ var postgresConfigVariables = map[string]sql.SystemVariable{
 		Type:      types.NewSystemBoolType("enable_parallel_hash"),
 		Source:    ParameterSourceDefault,
 		ResetVal:  int8(1),
-		Scope:     sql.PostgresConfigParamScope_Session,
+		Scope:     GetPgsqlScope(PsqlScopeSession),
 	},
 	"enable_partition_pruning": &Parameter{
 		Name:      "enable_partition_pruning",
@@ -1107,7 +1112,7 @@ var postgresConfigVariables = map[string]sql.SystemVariable{
 		Type:      types.NewSystemBoolType("enable_partition_pruning"),
 		Source:    ParameterSourceDefault,
 		ResetVal:  int8(1),
-		Scope:     sql.PostgresConfigParamScope_Session,
+		Scope:     GetPgsqlScope(PsqlScopeSession),
 	},
 	"enable_partitionwise_aggregate": &Parameter{
 		Name:      "enable_partitionwise_aggregate",
@@ -1118,7 +1123,7 @@ var postgresConfigVariables = map[string]sql.SystemVariable{
 		Type:      types.NewSystemBoolType("enable_partitionwise_aggregate"),
 		Source:    ParameterSourceDefault,
 		ResetVal:  int8(0),
-		Scope:     sql.PostgresConfigParamScope_Session,
+		Scope:     GetPgsqlScope(PsqlScopeSession),
 	},
 	"enable_partitionwise_join": &Parameter{
 		Name:      "enable_partitionwise_join",
@@ -1129,7 +1134,7 @@ var postgresConfigVariables = map[string]sql.SystemVariable{
 		Type:      types.NewSystemBoolType("enable_partitionwise_join"),
 		Source:    ParameterSourceDefault,
 		ResetVal:  int8(0),
-		Scope:     sql.PostgresConfigParamScope_Session,
+		Scope:     GetPgsqlScope(PsqlScopeSession),
 	},
 	"enable_presorted_aggregate": &Parameter{
 		Name:      "enable_presorted_aggregate",
@@ -1140,7 +1145,7 @@ var postgresConfigVariables = map[string]sql.SystemVariable{
 		Type:      types.NewSystemBoolType("enable_presorted_aggregate"),
 		Source:    ParameterSourceDefault,
 		ResetVal:  int8(1),
-		Scope:     sql.PostgresConfigParamScope_Session,
+		Scope:     GetPgsqlScope(PsqlScopeSession),
 	},
 	"enable_seqscan": &Parameter{
 		Name:      "enable_seqscan",
@@ -1151,7 +1156,7 @@ var postgresConfigVariables = map[string]sql.SystemVariable{
 		Type:      types.NewSystemBoolType("enable_seqscan"),
 		Source:    ParameterSourceDefault,
 		ResetVal:  int8(1),
-		Scope:     sql.PostgresConfigParamScope_Session,
+		Scope:     GetPgsqlScope(PsqlScopeSession),
 	},
 	"enable_sort": &Parameter{
 		Name:      "enable_sort",
@@ -1162,7 +1167,7 @@ var postgresConfigVariables = map[string]sql.SystemVariable{
 		Type:      types.NewSystemBoolType("enable_sort"),
 		Source:    ParameterSourceDefault,
 		ResetVal:  int8(1),
-		Scope:     sql.PostgresConfigParamScope_Session,
+		Scope:     GetPgsqlScope(PsqlScopeSession),
 	},
 	"enable_tidscan": &Parameter{
 		Name:      "enable_tidscan",
@@ -1173,7 +1178,7 @@ var postgresConfigVariables = map[string]sql.SystemVariable{
 		Type:      types.NewSystemBoolType("enable_tidscan"),
 		Source:    ParameterSourceDefault,
 		ResetVal:  int8(1),
-		Scope:     sql.PostgresConfigParamScope_Session,
+		Scope:     GetPgsqlScope(PsqlScopeSession),
 	},
 	"escape_string_warning": &Parameter{
 		Name:      "escape_string_warning",
@@ -1184,7 +1189,7 @@ var postgresConfigVariables = map[string]sql.SystemVariable{
 		Type:      types.NewSystemBoolType("escape_string_warning"),
 		Source:    ParameterSourceDefault,
 		ResetVal:  int8(1),
-		Scope:     sql.PostgresConfigParamScope_Session,
+		Scope:     GetPgsqlScope(PsqlScopeSession),
 	},
 	"event_source": &Parameter{
 		Name:      "event_source",
@@ -1195,7 +1200,7 @@ var postgresConfigVariables = map[string]sql.SystemVariable{
 		Type:      types.NewSystemStringType("event_source"),
 		Source:    ParameterSourceDefault,
 		ResetVal:  "PostgreSQL",
-		Scope:     sql.PostgresConfigParamScope_Session,
+		Scope:     GetPgsqlScope(PsqlScopeSession),
 	},
 	"exit_on_error": &Parameter{
 		Name:      "exit_on_error",
@@ -1206,7 +1211,7 @@ var postgresConfigVariables = map[string]sql.SystemVariable{
 		Type:      types.NewSystemBoolType("exit_on_error"),
 		Source:    ParameterSourceDefault,
 		ResetVal:  int8(0),
-		Scope:     sql.PostgresConfigParamScope_Session,
+		Scope:     GetPgsqlScope(PsqlScopeSession),
 	},
 	"external_pid_file": &Parameter{
 		Name:      "external_pid_file",
@@ -1217,7 +1222,7 @@ var postgresConfigVariables = map[string]sql.SystemVariable{
 		Type:      types.NewSystemStringType("external_pid_file"),
 		Source:    ParameterSourceDefault,
 		ResetVal:  "",
-		Scope:     sql.PostgresConfigParamScope_Session,
+		Scope:     GetPgsqlScope(PsqlScopeSession),
 	},
 	"extra_float_digits": &Parameter{
 		Name:      "extra_float_digits",
@@ -1228,7 +1233,7 @@ var postgresConfigVariables = map[string]sql.SystemVariable{
 		Type:      types.NewSystemIntType("extra_float_digits", -15, 3, false),
 		Source:    ParameterSourceDefault,
 		ResetVal:  int64(1),
-		Scope:     sql.PostgresConfigParamScope_Session,
+		Scope:     GetPgsqlScope(PsqlScopeSession),
 	},
 	"from_collapse_limit": &Parameter{
 		Name:      "from_collapse_limit",
@@ -1239,7 +1244,7 @@ var postgresConfigVariables = map[string]sql.SystemVariable{
 		Type:      types.NewSystemIntType("from_collapse_limit", 1, math.MaxInt32, false),
 		Source:    ParameterSourceDefault,
 		ResetVal:  int64(8),
-		Scope:     sql.PostgresConfigParamScope_Session,
+		Scope:     GetPgsqlScope(PsqlScopeSession),
 	},
 	"fsync": &Parameter{
 		Name:      "fsync",
@@ -1250,7 +1255,7 @@ var postgresConfigVariables = map[string]sql.SystemVariable{
 		Type:      types.NewSystemBoolType("fsync"),
 		Source:    ParameterSourceDefault,
 		ResetVal:  int8(1),
-		Scope:     sql.PostgresConfigParamScope_Session,
+		Scope:     GetPgsqlScope(PsqlScopeSession),
 	},
 	"full_page_writes": &Parameter{
 		Name:      "full_page_writes",
@@ -1261,7 +1266,7 @@ var postgresConfigVariables = map[string]sql.SystemVariable{
 		Type:      types.NewSystemBoolType("full_page_writes"),
 		Source:    ParameterSourceDefault,
 		ResetVal:  int8(1),
-		Scope:     sql.PostgresConfigParamScope_Session,
+		Scope:     GetPgsqlScope(PsqlScopeSession),
 	},
 	"geqo": &Parameter{
 		Name:      "geqo",
@@ -1272,7 +1277,7 @@ var postgresConfigVariables = map[string]sql.SystemVariable{
 		Type:      types.NewSystemBoolType("geqo"),
 		Source:    ParameterSourceDefault,
 		ResetVal:  int8(1),
-		Scope:     sql.PostgresConfigParamScope_Session,
+		Scope:     GetPgsqlScope(PsqlScopeSession),
 	},
 	"geqo_effort": &Parameter{
 		Name:      "geqo_effort",
@@ -1283,7 +1288,7 @@ var postgresConfigVariables = map[string]sql.SystemVariable{
 		Type:      types.NewSystemIntType("geqo_effort", 1, 10, false),
 		Source:    ParameterSourceDefault,
 		ResetVal:  int64(5),
-		Scope:     sql.PostgresConfigParamScope_Session,
+		Scope:     GetPgsqlScope(PsqlScopeSession),
 	},
 	"geqo_generations": &Parameter{
 		Name:      "geqo_generations",
@@ -1294,7 +1299,7 @@ var postgresConfigVariables = map[string]sql.SystemVariable{
 		Type:      types.NewSystemIntType("geqo_generations", 0, math.MaxInt32, false),
 		Source:    ParameterSourceDefault,
 		ResetVal:  int64(0),
-		Scope:     sql.PostgresConfigParamScope_Session,
+		Scope:     GetPgsqlScope(PsqlScopeSession),
 	},
 	"geqo_pool_size": &Parameter{
 		Name:      "geqo_pool_size",
@@ -1305,7 +1310,7 @@ var postgresConfigVariables = map[string]sql.SystemVariable{
 		Type:      types.NewSystemIntType("geqo_pool_size", 0, math.MaxInt32, false),
 		Source:    ParameterSourceDefault,
 		ResetVal:  int64(0),
-		Scope:     sql.PostgresConfigParamScope_Session,
+		Scope:     GetPgsqlScope(PsqlScopeSession),
 	},
 	"geqo_seed": &Parameter{
 		Name:      "geqo_seed",
@@ -1316,7 +1321,7 @@ var postgresConfigVariables = map[string]sql.SystemVariable{
 		Type:      types.NewSystemDoubleType("geqo_seed", 0, 1),
 		Source:    ParameterSourceDefault,
 		ResetVal:  float64(0),
-		Scope:     sql.PostgresConfigParamScope_Session,
+		Scope:     GetPgsqlScope(PsqlScopeSession),
 	},
 	"geqo_selection_bias": &Parameter{
 		Name:      "geqo_selection_bias",
@@ -1327,7 +1332,7 @@ var postgresConfigVariables = map[string]sql.SystemVariable{
 		Type:      types.NewSystemDoubleType("geqo_selection_bias", 1.5, 2),
 		Source:    ParameterSourceDefault,
 		ResetVal:  float64(2),
-		Scope:     sql.PostgresConfigParamScope_Session,
+		Scope:     GetPgsqlScope(PsqlScopeSession),
 	},
 	"geqo_threshold": &Parameter{
 		Name:      "geqo_threshold",
@@ -1338,7 +1343,7 @@ var postgresConfigVariables = map[string]sql.SystemVariable{
 		Type:      types.NewSystemIntType("geqo_threshold", 2, math.MaxInt32, false),
 		Source:    ParameterSourceDefault,
 		ResetVal:  int64(12),
-		Scope:     sql.PostgresConfigParamScope_Session,
+		Scope:     GetPgsqlScope(PsqlScopeSession),
 	},
 	"gin_fuzzy_search_limit": &Parameter{
 		Name:      "gin_fuzzy_search_limit",
@@ -1349,7 +1354,7 @@ var postgresConfigVariables = map[string]sql.SystemVariable{
 		Type:      types.NewSystemIntType("gin_fuzzy_search_limit", 0, math.MaxInt32, false),
 		Source:    ParameterSourceDefault,
 		ResetVal:  int64(0),
-		Scope:     sql.PostgresConfigParamScope_Session,
+		Scope:     GetPgsqlScope(PsqlScopeSession),
 	},
 	"gin_pending_list_limit": &Parameter{
 		Name:    "gin_pending_list_limit",
@@ -1361,7 +1366,7 @@ var postgresConfigVariables = map[string]sql.SystemVariable{
 		Type:      types.NewSystemIntType("gin_pending_list_limit", 64, math.MaxInt32, false),
 		Source:    ParameterSourceDefault,
 		ResetVal:  int64(4096),
-		Scope:     sql.PostgresConfigParamScope_Session,
+		Scope:     GetPgsqlScope(PsqlScopeSession),
 	},
 	"gss_accept_delegation": &Parameter{
 		Name:      "gss_accept_delegation",
@@ -1372,7 +1377,7 @@ var postgresConfigVariables = map[string]sql.SystemVariable{
 		Type:      types.NewSystemBoolType("gss_accept_delegation"),
 		Source:    ParameterSourceDefault,
 		ResetVal:  int8(0),
-		Scope:     sql.PostgresConfigParamScope_Session,
+		Scope:     GetPgsqlScope(PsqlScopeSession),
 	},
 	"hash_mem_multiplier": &Parameter{
 		Name:      "hash_mem_multiplier",
@@ -1383,7 +1388,7 @@ var postgresConfigVariables = map[string]sql.SystemVariable{
 		Type:      types.NewSystemDoubleType("hash_mem_multiplier", 1, 1000),
 		Source:    ParameterSourceDefault,
 		ResetVal:  float64(2),
-		Scope:     sql.PostgresConfigParamScope_Session,
+		Scope:     GetPgsqlScope(PsqlScopeSession),
 	},
 	"hba_file": &Parameter{
 		Name:      "hba_file",
@@ -1394,7 +1399,7 @@ var postgresConfigVariables = map[string]sql.SystemVariable{
 		Type:      types.NewSystemStringType("hba_file"),
 		Source:    ParameterSourceOverride,
 		ResetVal:  "pg_hba.conf",
-		Scope:     sql.PostgresConfigParamScope_Session,
+		Scope:     GetPgsqlScope(PsqlScopeSession),
 	},
 	"hot_standby": &Parameter{
 		Name:      "hot_standby",
@@ -1405,7 +1410,7 @@ var postgresConfigVariables = map[string]sql.SystemVariable{
 		Type:      types.NewSystemBoolType("hot_standby"),
 		Source:    ParameterSourceDefault,
 		ResetVal:  int8(1),
-		Scope:     sql.PostgresConfigParamScope_Session,
+		Scope:     GetPgsqlScope(PsqlScopeSession),
 	},
 	"hot_standby_feedback": &Parameter{
 		Name:      "hot_standby_feedback",
@@ -1416,7 +1421,7 @@ var postgresConfigVariables = map[string]sql.SystemVariable{
 		Type:      types.NewSystemBoolType("hot_standby_feedback"),
 		Source:    ParameterSourceDefault,
 		ResetVal:  int8(0),
-		Scope:     sql.PostgresConfigParamScope_Session,
+		Scope:     GetPgsqlScope(PsqlScopeSession),
 	},
 	"huge_page_size": &Parameter{
 		Name:    "huge_page_size",
@@ -1428,7 +1433,7 @@ var postgresConfigVariables = map[string]sql.SystemVariable{
 		Type:      types.NewSystemIntType("huge_page_size", 0, math.MaxInt32, false),
 		Source:    ParameterSourceDefault,
 		ResetVal:  int64(0),
-		Scope:     sql.PostgresConfigParamScope_Session,
+		Scope:     GetPgsqlScope(PsqlScopeSession),
 	},
 	"huge_pages": &Parameter{
 		Name:      "huge_pages",
@@ -1439,7 +1444,7 @@ var postgresConfigVariables = map[string]sql.SystemVariable{
 		Type:      types.NewSystemEnumType("huge_pages", "off", "on", "try"),
 		Source:    ParameterSourceDefault,
 		ResetVal:  "try",
-		Scope:     sql.PostgresConfigParamScope_Session,
+		Scope:     GetPgsqlScope(PsqlScopeSession),
 	},
 	"icu_validation_level": &Parameter{
 		Name:      "icu_validation_level",
@@ -1450,7 +1455,7 @@ var postgresConfigVariables = map[string]sql.SystemVariable{
 		Type:      types.NewSystemEnumType("icu_validation_level", "disabled", "debug5", "debug4", "debug3", "debug2", "debug1", "log", "notice", "warning", "error"),
 		Source:    ParameterSourceDefault,
 		ResetVal:  "warning",
-		Scope:     sql.PostgresConfigParamScope_Session,
+		Scope:     GetPgsqlScope(PsqlScopeSession),
 	},
 	"ident_file": &Parameter{
 		Name:      "ident_file",
@@ -1461,7 +1466,7 @@ var postgresConfigVariables = map[string]sql.SystemVariable{
 		Type:      types.NewSystemStringType("ident_file"),
 		Source:    ParameterSourceOverride,
 		ResetVal:  "pg_ident.conf",
-		Scope:     sql.PostgresConfigParamScope_Session,
+		Scope:     GetPgsqlScope(PsqlScopeSession),
 	},
 	"idle_in_transaction_session_timeout": &Parameter{
 		Name:    "idle_in_transaction_session_timeout",
@@ -1473,7 +1478,7 @@ var postgresConfigVariables = map[string]sql.SystemVariable{
 		Type:      types.NewSystemIntType("idle_in_transaction_session_timeout", 0, math.MaxInt32, false),
 		Source:    ParameterSourceDefault,
 		ResetVal:  int64(0),
-		Scope:     sql.PostgresConfigParamScope_Session,
+		Scope:     GetPgsqlScope(PsqlScopeSession),
 	},
 	"idle_session_timeout": &Parameter{
 		Name:    "idle_session_timeout",
@@ -1485,7 +1490,7 @@ var postgresConfigVariables = map[string]sql.SystemVariable{
 		Type:      types.NewSystemIntType("idle_session_timeout", 0, math.MaxInt32, false),
 		Source:    ParameterSourceDefault,
 		ResetVal:  int64(0),
-		Scope:     sql.PostgresConfigParamScope_Session,
+		Scope:     GetPgsqlScope(PsqlScopeSession),
 	},
 	"ignore_checksum_failure": &Parameter{
 		Name:      "ignore_checksum_failure",
@@ -1496,7 +1501,7 @@ var postgresConfigVariables = map[string]sql.SystemVariable{
 		Type:      types.NewSystemBoolType("ignore_checksum_failure"),
 		Source:    ParameterSourceDefault,
 		ResetVal:  int8(0),
-		Scope:     sql.PostgresConfigParamScope_Session,
+		Scope:     GetPgsqlScope(PsqlScopeSession),
 	},
 	"ignore_invalid_pages": &Parameter{
 		Name:      "ignore_invalid_pages",
@@ -1507,7 +1512,7 @@ var postgresConfigVariables = map[string]sql.SystemVariable{
 		Type:      types.NewSystemBoolType("ignore_invalid_pages"),
 		Source:    ParameterSourceDefault,
 		ResetVal:  int8(0),
-		Scope:     sql.PostgresConfigParamScope_Session,
+		Scope:     GetPgsqlScope(PsqlScopeSession),
 	},
 	"ignore_system_indexes": &Parameter{
 		Name:      "ignore_system_indexes",
@@ -1518,7 +1523,7 @@ var postgresConfigVariables = map[string]sql.SystemVariable{
 		Type:      types.NewSystemBoolType("ignore_system_indexes"),
 		Source:    ParameterSourceDefault,
 		ResetVal:  int8(0),
-		Scope:     sql.PostgresConfigParamScope_Session,
+		Scope:     GetPgsqlScope(PsqlScopeSession),
 	},
 	"in_hot_standby": &Parameter{
 		Name:      "in_hot_standby",
@@ -1529,7 +1534,7 @@ var postgresConfigVariables = map[string]sql.SystemVariable{
 		Type:      types.NewSystemBoolType("in_hot_standby"),
 		Source:    ParameterSourceDefault,
 		ResetVal:  int8(0),
-		Scope:     sql.PostgresConfigParamScope_Session,
+		Scope:     GetPgsqlScope(PsqlScopeSession),
 	},
 	"integer_datetimes": &Parameter{
 		Name:      "integer_datetimes",
@@ -1540,7 +1545,7 @@ var postgresConfigVariables = map[string]sql.SystemVariable{
 		Type:      types.NewSystemBoolType("integer_datetimes"),
 		Source:    ParameterSourceDefault,
 		ResetVal:  int8(1),
-		Scope:     sql.PostgresConfigParamScope_Session,
+		Scope:     GetPgsqlScope(PsqlScopeSession),
 	},
 	"intervalstyle": &Parameter{
 		Name:      "IntervalStyle",
@@ -1551,7 +1556,7 @@ var postgresConfigVariables = map[string]sql.SystemVariable{
 		Type:      types.NewSystemEnumType("intervalstyle", "postgres", "postgres_verbose", "sql_standard", "iso_8601"),
 		Source:    ParameterSourceDefault,
 		ResetVal:  "postgres",
-		Scope:     sql.PostgresConfigParamScope_Session,
+		Scope:     GetPgsqlScope(PsqlScopeSession),
 	},
 	"jit": &Parameter{
 		Name:      "jit",
@@ -1562,7 +1567,7 @@ var postgresConfigVariables = map[string]sql.SystemVariable{
 		Type:      types.NewSystemBoolType("jit"),
 		Source:    ParameterSourceDefault,
 		ResetVal:  int8(1),
-		Scope:     sql.PostgresConfigParamScope_Session,
+		Scope:     GetPgsqlScope(PsqlScopeSession),
 	},
 	"jit_above_cost": &Parameter{
 		Name:      "jit_above_cost",
@@ -1573,7 +1578,7 @@ var postgresConfigVariables = map[string]sql.SystemVariable{
 		Type:      types.NewSystemDoubleType("jit_above_cost", -1, math.MaxFloat64),
 		Source:    ParameterSourceDefault,
 		ResetVal:  float64(100000),
-		Scope:     sql.PostgresConfigParamScope_Session,
+		Scope:     GetPgsqlScope(PsqlScopeSession),
 	},
 	"jit_debugging_support": &Parameter{
 		Name:      "jit_debugging_support",
@@ -1584,7 +1589,7 @@ var postgresConfigVariables = map[string]sql.SystemVariable{
 		Type:      types.NewSystemBoolType("jit_debugging_support"),
 		Source:    ParameterSourceDefault,
 		ResetVal:  int8(0),
-		Scope:     sql.PostgresConfigParamScope_Session,
+		Scope:     GetPgsqlScope(PsqlScopeSession),
 	},
 	"jit_dump_bitcode": &Parameter{
 		Name:      "jit_dump_bitcode",
@@ -1595,7 +1600,7 @@ var postgresConfigVariables = map[string]sql.SystemVariable{
 		Type:      types.NewSystemBoolType("jit_dump_bitcode"),
 		Source:    ParameterSourceDefault,
 		ResetVal:  int8(0),
-		Scope:     sql.PostgresConfigParamScope_Session,
+		Scope:     GetPgsqlScope(PsqlScopeSession),
 	},
 	"jit_expressions": &Parameter{
 		Name:      "jit_expressions",
@@ -1606,7 +1611,7 @@ var postgresConfigVariables = map[string]sql.SystemVariable{
 		Type:      types.NewSystemBoolType("jit_expressions"),
 		Source:    ParameterSourceDefault,
 		ResetVal:  int8(1),
-		Scope:     sql.PostgresConfigParamScope_Session,
+		Scope:     GetPgsqlScope(PsqlScopeSession),
 	},
 	"jit_inline_above_cost": &Parameter{
 		Name:      "jit_inline_above_cost",
@@ -1617,7 +1622,7 @@ var postgresConfigVariables = map[string]sql.SystemVariable{
 		Type:      types.NewSystemDoubleType("jit_inline_above_cost", -1, math.MaxFloat64),
 		Source:    ParameterSourceDefault,
 		ResetVal:  float64(500000),
-		Scope:     sql.PostgresConfigParamScope_Session,
+		Scope:     GetPgsqlScope(PsqlScopeSession),
 	},
 	"jit_optimize_above_cost": &Parameter{
 		Name:      "jit_optimize_above_cost",
@@ -1628,7 +1633,7 @@ var postgresConfigVariables = map[string]sql.SystemVariable{
 		Type:      types.NewSystemDoubleType("jit_optimize_above_cost", -1, math.MaxFloat64),
 		Source:    ParameterSourceDefault,
 		ResetVal:  float64(500000),
-		Scope:     sql.PostgresConfigParamScope_Session,
+		Scope:     GetPgsqlScope(PsqlScopeSession),
 	},
 	"jit_profiling_support": &Parameter{
 		Name:      "jit_profiling_support",
@@ -1639,7 +1644,7 @@ var postgresConfigVariables = map[string]sql.SystemVariable{
 		Type:      types.NewSystemBoolType("jit_profiling_support"),
 		Source:    ParameterSourceDefault,
 		ResetVal:  int8(0),
-		Scope:     sql.PostgresConfigParamScope_Session,
+		Scope:     GetPgsqlScope(PsqlScopeSession),
 	},
 	"jit_provider": &Parameter{
 		Name:      "jit_provider",
@@ -1650,7 +1655,7 @@ var postgresConfigVariables = map[string]sql.SystemVariable{
 		Type:      types.NewSystemStringType("jit_provider"),
 		Source:    ParameterSourceDefault,
 		ResetVal:  "llvmjit",
-		Scope:     sql.PostgresConfigParamScope_Session,
+		Scope:     GetPgsqlScope(PsqlScopeSession),
 	},
 	"jit_tuple_deforming": &Parameter{
 		Name:      "jit_tuple_deforming",
@@ -1661,7 +1666,7 @@ var postgresConfigVariables = map[string]sql.SystemVariable{
 		Type:      types.NewSystemBoolType("jit_tuple_deforming"),
 		Source:    ParameterSourceDefault,
 		ResetVal:  int8(1),
-		Scope:     sql.PostgresConfigParamScope_Session,
+		Scope:     GetPgsqlScope(PsqlScopeSession),
 	},
 	"join_collapse_limit": &Parameter{
 		Name:      "join_collapse_limit",
@@ -1672,7 +1677,7 @@ var postgresConfigVariables = map[string]sql.SystemVariable{
 		Type:      types.NewSystemIntType("join_collapse_limit", 1, math.MaxInt32, false),
 		Source:    ParameterSourceDefault,
 		ResetVal:  int64(8),
-		Scope:     sql.PostgresConfigParamScope_Session,
+		Scope:     GetPgsqlScope(PsqlScopeSession),
 	},
 	"krb_caseins_users": &Parameter{
 		Name:      "krb_caseins_users",
@@ -1683,7 +1688,7 @@ var postgresConfigVariables = map[string]sql.SystemVariable{
 		Type:      types.NewSystemBoolType("krb_caseins_users"),
 		Source:    ParameterSourceDefault,
 		ResetVal:  int8(0),
-		Scope:     sql.PostgresConfigParamScope_Session,
+		Scope:     GetPgsqlScope(PsqlScopeSession),
 	},
 	"krb_server_keyfile": &Parameter{
 		Name:      "krb_server_keyfile",
@@ -1694,7 +1699,7 @@ var postgresConfigVariables = map[string]sql.SystemVariable{
 		Type:      types.NewSystemStringType("krb_server_keyfile"),
 		Source:    ParameterSourceDefault,
 		ResetVal:  "FILE:/usr/local/etc/postgresql/krb5.keytab",
-		Scope:     sql.PostgresConfigParamScope_Session,
+		Scope:     GetPgsqlScope(PsqlScopeSession),
 	},
 	"lc_messages": &Parameter{
 		Name:      "lc_messages",
@@ -1705,7 +1710,7 @@ var postgresConfigVariables = map[string]sql.SystemVariable{
 		Type:      types.NewSystemStringType("lc_messages"),
 		Source:    ParameterSourceConfigurationFile,
 		ResetVal:  "en_US.UTF-8",
-		Scope:     sql.PostgresConfigParamScope_Session,
+		Scope:     GetPgsqlScope(PsqlScopeSession),
 	},
 	"lc_monetary": &Parameter{
 		Name:      "lc_monetary",
@@ -1717,7 +1722,7 @@ var postgresConfigVariables = map[string]sql.SystemVariable{
 		Source:    ParameterSourceConfigurationFile,
 		// BootVal: "C",
 		ResetVal: "en_US.UTF-8",
-		Scope:    sql.PostgresConfigParamScope_Session,
+		Scope:    GetPgsqlScope(PsqlScopeSession),
 	},
 	"lc_numeric": &Parameter{
 		Name:      "lc_numeric",
@@ -1729,7 +1734,7 @@ var postgresConfigVariables = map[string]sql.SystemVariable{
 		Source:    ParameterSourceConfigurationFile,
 		// BootVal: "C",
 		ResetVal: "en_US.UTF-8",
-		Scope:    sql.PostgresConfigParamScope_Session,
+		Scope:    GetPgsqlScope(PsqlScopeSession),
 	},
 	"lc_time": &Parameter{
 		Name:      "lc_time",
@@ -1741,7 +1746,7 @@ var postgresConfigVariables = map[string]sql.SystemVariable{
 		Source:    ParameterSourceConfigurationFile,
 		// BootVal: "C",
 		ResetVal: "en_US.UTF-8",
-		Scope:    sql.PostgresConfigParamScope_Session,
+		Scope:    GetPgsqlScope(PsqlScopeSession),
 	},
 	"listen_addresses": &Parameter{
 		Name:      "listen_addresses",
@@ -1752,7 +1757,7 @@ var postgresConfigVariables = map[string]sql.SystemVariable{
 		Type:      types.NewSystemStringType("listen_addresses"),
 		Source:    ParameterSourceDefault,
 		ResetVal:  "localhost",
-		Scope:     sql.PostgresConfigParamScope_Session,
+		Scope:     GetPgsqlScope(PsqlScopeSession),
 	},
 	"lo_compat_privileges": &Parameter{
 		Name:      "lo_compat_privileges",
@@ -1763,7 +1768,7 @@ var postgresConfigVariables = map[string]sql.SystemVariable{
 		Type:      types.NewSystemBoolType("lo_compat_privileges"),
 		Source:    ParameterSourceDefault,
 		ResetVal:  int8(0),
-		Scope:     sql.PostgresConfigParamScope_Session,
+		Scope:     GetPgsqlScope(PsqlScopeSession),
 	},
 	"local_preload_libraries": &Parameter{
 		Name:      "local_preload_libraries",
@@ -1774,7 +1779,7 @@ var postgresConfigVariables = map[string]sql.SystemVariable{
 		Type:      types.NewSystemStringType("local_preload_libraries"),
 		Source:    ParameterSourceDefault,
 		ResetVal:  "",
-		Scope:     sql.PostgresConfigParamScope_Session,
+		Scope:     GetPgsqlScope(PsqlScopeSession),
 	},
 	"lock_timeout": &Parameter{
 		Name:    "lock_timeout",
@@ -1786,7 +1791,7 @@ var postgresConfigVariables = map[string]sql.SystemVariable{
 		Type:      types.NewSystemIntType("lock_timeout", 0, math.MaxInt32, false),
 		Source:    ParameterSourceDefault,
 		ResetVal:  int64(0),
-		Scope:     sql.PostgresConfigParamScope_Session,
+		Scope:     GetPgsqlScope(PsqlScopeSession),
 	},
 	"log_autovacuum_min_duration": &Parameter{
 		Name:      "log_autovacuum_min_duration",
@@ -1797,7 +1802,7 @@ var postgresConfigVariables = map[string]sql.SystemVariable{
 		Type:      types.NewSystemIntType("log_autovacuum_min_duration", -1, math.MaxInt32, true),
 		Source:    ParameterSourceDefault,
 		ResetVal:  int64(-1),
-		Scope:     sql.PostgresConfigParamScope_Session,
+		Scope:     GetPgsqlScope(PsqlScopeSession),
 	},
 	"log_checkpoints": &Parameter{
 		Name:      "log_checkpoints",
@@ -1808,7 +1813,7 @@ var postgresConfigVariables = map[string]sql.SystemVariable{
 		Type:      types.NewSystemBoolType("log_checkpoints"),
 		Source:    ParameterSourceDefault,
 		ResetVal:  int8(1),
-		Scope:     sql.PostgresConfigParamScope_Session,
+		Scope:     GetPgsqlScope(PsqlScopeSession),
 	},
 	"log_connections": &Parameter{
 		Name:      "log_connections",
@@ -1819,7 +1824,7 @@ var postgresConfigVariables = map[string]sql.SystemVariable{
 		Type:      types.NewSystemBoolType("log_connections"),
 		Source:    ParameterSourceDefault,
 		ResetVal:  int8(0),
-		Scope:     sql.PostgresConfigParamScope_Session,
+		Scope:     GetPgsqlScope(PsqlScopeSession),
 	},
 	"log_destination": &Parameter{
 		Name:      "log_destination",
@@ -1831,7 +1836,7 @@ var postgresConfigVariables = map[string]sql.SystemVariable{
 		Type:     types.NewSystemStringType("log_destination"),
 		Source:   ParameterSourceDefault,
 		ResetVal: "stderr",
-		Scope:    sql.PostgresConfigParamScope_Session,
+		Scope:    GetPgsqlScope(PsqlScopeSession),
 	},
 	"log_directory": &Parameter{
 		Name:      "log_directory",
@@ -1842,7 +1847,7 @@ var postgresConfigVariables = map[string]sql.SystemVariable{
 		Type:      types.NewSystemStringType("log_directory"),
 		Source:    ParameterSourceDefault,
 		ResetVal:  "log",
-		Scope:     sql.PostgresConfigParamScope_Session,
+		Scope:     GetPgsqlScope(PsqlScopeSession),
 	},
 	"log_disconnections": &Parameter{
 		Name:      "log_disconnections",
@@ -1853,7 +1858,7 @@ var postgresConfigVariables = map[string]sql.SystemVariable{
 		Type:      types.NewSystemBoolType("log_disconnections"),
 		Source:    ParameterSourceDefault,
 		ResetVal:  int8(0),
-		Scope:     sql.PostgresConfigParamScope_Session,
+		Scope:     GetPgsqlScope(PsqlScopeSession),
 	},
 	"log_duration": &Parameter{
 		Name:      "log_duration",
@@ -1864,7 +1869,7 @@ var postgresConfigVariables = map[string]sql.SystemVariable{
 		Type:      types.NewSystemBoolType("log_duration"),
 		Source:    ParameterSourceDefault,
 		ResetVal:  int8(0),
-		Scope:     sql.PostgresConfigParamScope_Session,
+		Scope:     GetPgsqlScope(PsqlScopeSession),
 	},
 	"log_error_verbosity": &Parameter{
 		Name:      "log_error_verbosity",
@@ -1875,7 +1880,7 @@ var postgresConfigVariables = map[string]sql.SystemVariable{
 		Type:      types.NewSystemEnumType("log_error_verbosity", "terse", "default", "verbose"),
 		Source:    ParameterSourceDefault,
 		ResetVal:  "default",
-		Scope:     sql.PostgresConfigParamScope_Session,
+		Scope:     GetPgsqlScope(PsqlScopeSession),
 	},
 	"log_executor_stats": &Parameter{
 		Name:      "log_executor_stats",
@@ -1886,7 +1891,7 @@ var postgresConfigVariables = map[string]sql.SystemVariable{
 		Type:      types.NewSystemBoolType("log_executor_stats"),
 		Source:    ParameterSourceDefault,
 		ResetVal:  int8(0),
-		Scope:     sql.PostgresConfigParamScope_Session,
+		Scope:     GetPgsqlScope(PsqlScopeSession),
 	},
 	"log_file_mode": &Parameter{
 		Name:      "log_file_mode",
@@ -1897,7 +1902,7 @@ var postgresConfigVariables = map[string]sql.SystemVariable{
 		Type:      types.NewSystemIntType("log_file_mode", 0, 511, false),
 		Source:    ParameterSourceDefault,
 		ResetVal:  int64(384),
-		Scope:     sql.PostgresConfigParamScope_Session,
+		Scope:     GetPgsqlScope(PsqlScopeSession),
 	},
 	"log_filename": &Parameter{
 		Name:      "log_filename",
@@ -1908,7 +1913,7 @@ var postgresConfigVariables = map[string]sql.SystemVariable{
 		Type:      types.NewSystemStringType("log_filename"),
 		Source:    ParameterSourceDefault,
 		ResetVal:  "postgresql-%Y-%m-%d_%H%M%S.log",
-		Scope:     sql.PostgresConfigParamScope_Session,
+		Scope:     GetPgsqlScope(PsqlScopeSession),
 	},
 	"log_hostname": &Parameter{
 		Name:      "log_hostname",
@@ -1919,7 +1924,7 @@ var postgresConfigVariables = map[string]sql.SystemVariable{
 		Type:      types.NewSystemBoolType("log_hostname"),
 		Source:    ParameterSourceDefault,
 		ResetVal:  int8(0),
-		Scope:     sql.PostgresConfigParamScope_Session,
+		Scope:     GetPgsqlScope(PsqlScopeSession),
 	},
 	"log_line_prefix": &Parameter{
 		Name:      "log_line_prefix",
@@ -1930,7 +1935,7 @@ var postgresConfigVariables = map[string]sql.SystemVariable{
 		Type:      types.NewSystemStringType("log_line_prefix"),
 		Source:    ParameterSourceDefault,
 		ResetVal:  "%m [%p]",
-		Scope:     sql.PostgresConfigParamScope_Session,
+		Scope:     GetPgsqlScope(PsqlScopeSession),
 	},
 	"log_lock_waits": &Parameter{
 		Name:      "log_lock_waits",
@@ -1941,7 +1946,7 @@ var postgresConfigVariables = map[string]sql.SystemVariable{
 		Type:      types.NewSystemBoolType("log_lock_waits"),
 		Source:    ParameterSourceDefault,
 		ResetVal:  int8(0),
-		Scope:     sql.PostgresConfigParamScope_Session,
+		Scope:     GetPgsqlScope(PsqlScopeSession),
 	},
 	"log_min_duration_sample": &Parameter{
 		Name:    "log_min_duration_sample",
@@ -1953,7 +1958,7 @@ var postgresConfigVariables = map[string]sql.SystemVariable{
 		Type:      types.NewSystemIntType("log_min_duration_sample", -1, math.MaxInt32, true),
 		Source:    ParameterSourceDefault,
 		ResetVal:  int64(-1),
-		Scope:     sql.PostgresConfigParamScope_Session,
+		Scope:     GetPgsqlScope(PsqlScopeSession),
 	},
 	"log_min_duration_statement": &Parameter{
 		Name:    "log_min_duration_statement",
@@ -1965,7 +1970,7 @@ var postgresConfigVariables = map[string]sql.SystemVariable{
 		Type:      types.NewSystemIntType("log_min_duration_statement", -1, math.MaxInt32, true),
 		Source:    ParameterSourceDefault,
 		ResetVal:  int64(-1),
-		Scope:     sql.PostgresConfigParamScope_Session,
+		Scope:     GetPgsqlScope(PsqlScopeSession),
 	},
 	"log_min_error_statement": &Parameter{
 		Name:      "log_min_error_statement",
@@ -1976,7 +1981,7 @@ var postgresConfigVariables = map[string]sql.SystemVariable{
 		Type:      types.NewSystemEnumType("log_min_error_statement", "debug5", "debug4", "debug3", "debug2", "debug1", "info", "notice", "warning", "error", "log", "fatal", "panic"),
 		Source:    ParameterSourceDefault,
 		ResetVal:  "error",
-		Scope:     sql.PostgresConfigParamScope_Session,
+		Scope:     GetPgsqlScope(PsqlScopeSession),
 	},
 	"log_min_messages": &Parameter{
 		Name:      "log_min_messages",
@@ -1987,7 +1992,7 @@ var postgresConfigVariables = map[string]sql.SystemVariable{
 		Type:      types.NewSystemEnumType("log_min_messages", "debug5", "debug4", "debug3", "debug2", "debug1", "info", "notice", "warning", "error", "log", "fatal", "panic"),
 		Source:    ParameterSourceDefault,
 		ResetVal:  "warning",
-		Scope:     sql.PostgresConfigParamScope_Session,
+		Scope:     GetPgsqlScope(PsqlScopeSession),
 	},
 	"log_parameter_max_length": &Parameter{
 		Name:    "log_parameter_max_length",
@@ -1999,7 +2004,7 @@ var postgresConfigVariables = map[string]sql.SystemVariable{
 		Type:      types.NewSystemIntType("log_parameter_max_length", -1, 1073741823, true),
 		Source:    ParameterSourceDefault,
 		ResetVal:  int64(-1),
-		Scope:     sql.PostgresConfigParamScope_Session,
+		Scope:     GetPgsqlScope(PsqlScopeSession),
 	},
 	"log_parameter_max_length_on_error": &Parameter{
 		Name:    "log_parameter_max_length_on_error",
@@ -2011,7 +2016,7 @@ var postgresConfigVariables = map[string]sql.SystemVariable{
 		Type:      types.NewSystemIntType("log_parameter_max_length_on_error", -1, 1073741823, true),
 		Source:    ParameterSourceDefault,
 		ResetVal:  int64(0),
-		Scope:     sql.PostgresConfigParamScope_Session,
+		Scope:     GetPgsqlScope(PsqlScopeSession),
 	},
 	"log_parser_stats": &Parameter{
 		Name:      "log_parser_stats",
@@ -2022,7 +2027,7 @@ var postgresConfigVariables = map[string]sql.SystemVariable{
 		Type:      types.NewSystemBoolType("log_parser_stats"),
 		Source:    ParameterSourceDefault,
 		ResetVal:  int8(0),
-		Scope:     sql.PostgresConfigParamScope_Session,
+		Scope:     GetPgsqlScope(PsqlScopeSession),
 	},
 	"log_planner_stats": &Parameter{
 		Name:      "log_planner_stats",
@@ -2033,7 +2038,7 @@ var postgresConfigVariables = map[string]sql.SystemVariable{
 		Type:      types.NewSystemBoolType("log_planner_stats"),
 		Source:    ParameterSourceDefault,
 		ResetVal:  int8(0),
-		Scope:     sql.PostgresConfigParamScope_Session,
+		Scope:     GetPgsqlScope(PsqlScopeSession),
 	},
 	"log_recovery_conflict_waits": &Parameter{
 		Name:      "log_recovery_conflict_waits",
@@ -2044,7 +2049,7 @@ var postgresConfigVariables = map[string]sql.SystemVariable{
 		Type:      types.NewSystemBoolType("log_recovery_conflict_waits"),
 		Source:    ParameterSourceDefault,
 		ResetVal:  int8(0),
-		Scope:     sql.PostgresConfigParamScope_Session,
+		Scope:     GetPgsqlScope(PsqlScopeSession),
 	},
 	"log_replication_commands": &Parameter{
 		Name:      "log_replication_commands",
@@ -2055,7 +2060,7 @@ var postgresConfigVariables = map[string]sql.SystemVariable{
 		Type:      types.NewSystemBoolType("log_replication_commands"),
 		Source:    ParameterSourceDefault,
 		ResetVal:  int8(0),
-		Scope:     sql.PostgresConfigParamScope_Session,
+		Scope:     GetPgsqlScope(PsqlScopeSession),
 	},
 	"log_rotation_age": &Parameter{
 		Name:    "log_rotation_age",
@@ -2067,7 +2072,7 @@ var postgresConfigVariables = map[string]sql.SystemVariable{
 		Type:      types.NewSystemIntType("log_rotation_age", 0, 35791394, false),
 		Source:    ParameterSourceDefault,
 		ResetVal:  int64(1440),
-		Scope:     sql.PostgresConfigParamScope_Session,
+		Scope:     GetPgsqlScope(PsqlScopeSession),
 	},
 	"log_rotation_size": &Parameter{
 		Name:    "log_rotation_size",
@@ -2079,7 +2084,7 @@ var postgresConfigVariables = map[string]sql.SystemVariable{
 		Type:      types.NewSystemIntType("log_rotation_size", 0, 2097151, false),
 		Source:    ParameterSourceDefault,
 		ResetVal:  int64(10240),
-		Scope:     sql.PostgresConfigParamScope_Session,
+		Scope:     GetPgsqlScope(PsqlScopeSession),
 	},
 	"log_startup_progress_interval": &Parameter{
 		Name:      "log_startup_progress_interval",
@@ -2090,7 +2095,7 @@ var postgresConfigVariables = map[string]sql.SystemVariable{
 		Type:      types.NewSystemIntType("log_startup_progress_interval", 1, math.MaxInt32, false),
 		Source:    ParameterSourceDefault,
 		ResetVal:  int64(10000),
-		Scope:     sql.PostgresConfigParamScope_Session,
+		Scope:     GetPgsqlScope(PsqlScopeSession),
 	},
 	"log_statement": &Parameter{
 		Name:      "log_statement",
@@ -2101,7 +2106,7 @@ var postgresConfigVariables = map[string]sql.SystemVariable{
 		Type:      types.NewSystemEnumType("log_statement", "none", "ddl", "mod", "all"),
 		Source:    ParameterSourceDefault,
 		ResetVal:  "none",
-		Scope:     sql.PostgresConfigParamScope_Session,
+		Scope:     GetPgsqlScope(PsqlScopeSession),
 	},
 	"log_statement_sample_rate": &Parameter{
 		Name:      "log_statement_sample_rate",
@@ -2112,7 +2117,7 @@ var postgresConfigVariables = map[string]sql.SystemVariable{
 		Type:      types.NewSystemDoubleType("log_statement_sample_rate", 0, 1),
 		Source:    ParameterSourceDefault,
 		ResetVal:  float64(1),
-		Scope:     sql.PostgresConfigParamScope_Session,
+		Scope:     GetPgsqlScope(PsqlScopeSession),
 	},
 	"log_statement_stats": &Parameter{
 		Name:      "log_statement_stats",
@@ -2123,7 +2128,7 @@ var postgresConfigVariables = map[string]sql.SystemVariable{
 		Type:      types.NewSystemBoolType("log_statement_stats"),
 		Source:    ParameterSourceDefault,
 		ResetVal:  int8(0),
-		Scope:     sql.PostgresConfigParamScope_Session,
+		Scope:     GetPgsqlScope(PsqlScopeSession),
 	},
 	"log_temp_files": &Parameter{
 		Name:    "log_temp_files",
@@ -2135,7 +2140,7 @@ var postgresConfigVariables = map[string]sql.SystemVariable{
 		Type:      types.NewSystemIntType("log_temp_files", -1, math.MaxInt32, true),
 		Source:    ParameterSourceDefault,
 		ResetVal:  int64(-1),
-		Scope:     sql.PostgresConfigParamScope_Session,
+		Scope:     GetPgsqlScope(PsqlScopeSession),
 	},
 	"log_timezone": &Parameter{
 		Name:      "log_timezone",
@@ -2147,7 +2152,7 @@ var postgresConfigVariables = map[string]sql.SystemVariable{
 		Source:    ParameterSourceConfigurationFile,
 		// BootVal: "GMT",
 		ResetVal: "America/Los_Angeles",
-		Scope:    sql.PostgresConfigParamScope_Session,
+		Scope:    GetPgsqlScope(PsqlScopeSession),
 	},
 	"log_transaction_sample_rate": &Parameter{
 		Name:      "log_transaction_sample_rate",
@@ -2158,7 +2163,7 @@ var postgresConfigVariables = map[string]sql.SystemVariable{
 		Type:      types.NewSystemDoubleType("log_transaction_sample_rate", 0, 1),
 		Source:    ParameterSourceDefault,
 		ResetVal:  float64(0),
-		Scope:     sql.PostgresConfigParamScope_Session,
+		Scope:     GetPgsqlScope(PsqlScopeSession),
 	},
 	"log_truncate_on_rotation": &Parameter{
 		Name:      "log_truncate_on_rotation",
@@ -2169,7 +2174,7 @@ var postgresConfigVariables = map[string]sql.SystemVariable{
 		Type:      types.NewSystemBoolType("log_truncate_on_rotation"),
 		Source:    ParameterSourceDefault,
 		ResetVal:  int8(0),
-		Scope:     sql.PostgresConfigParamScope_Session,
+		Scope:     GetPgsqlScope(PsqlScopeSession),
 	},
 	"logging_collector": &Parameter{
 		Name:      "logging_collector",
@@ -2180,7 +2185,7 @@ var postgresConfigVariables = map[string]sql.SystemVariable{
 		Type:      types.NewSystemBoolType("logging_collector"),
 		Source:    ParameterSourceDefault,
 		ResetVal:  int8(0),
-		Scope:     sql.PostgresConfigParamScope_Session,
+		Scope:     GetPgsqlScope(PsqlScopeSession),
 	},
 	"logical_decoding_work_mem": &Parameter{
 		Name:    "logical_decoding_work_mem",
@@ -2192,7 +2197,7 @@ var postgresConfigVariables = map[string]sql.SystemVariable{
 		Type:      types.NewSystemIntType("logical_decoding_work_mem", 64, math.MaxInt32, false),
 		Source:    ParameterSourceDefault,
 		ResetVal:  int64(65536),
-		Scope:     sql.PostgresConfigParamScope_Session,
+		Scope:     GetPgsqlScope(PsqlScopeSession),
 	},
 	"maintenance_io_concurrency": &Parameter{
 		Name:      "maintenance_io_concurrency",
@@ -2203,7 +2208,7 @@ var postgresConfigVariables = map[string]sql.SystemVariable{
 		Type:      types.NewSystemIntType("maintenance_io_concurrency", 0, 1000, false),
 		Source:    ParameterSourceDefault,
 		ResetVal:  int64(0),
-		Scope:     sql.PostgresConfigParamScope_Session,
+		Scope:     GetPgsqlScope(PsqlScopeSession),
 	},
 	"maintenance_work_mem": &Parameter{
 		Name:    "maintenance_work_mem",
@@ -2215,7 +2220,7 @@ var postgresConfigVariables = map[string]sql.SystemVariable{
 		Type:      types.NewSystemIntType("maintenance_work_mem", 1024, math.MaxInt32, false),
 		Source:    ParameterSourceDefault,
 		ResetVal:  int64(65536),
-		Scope:     sql.PostgresConfigParamScope_Session,
+		Scope:     GetPgsqlScope(PsqlScopeSession),
 	},
 	"max_connections": &Parameter{
 		Name:      "max_connections",
@@ -2226,7 +2231,7 @@ var postgresConfigVariables = map[string]sql.SystemVariable{
 		Type:      types.NewSystemIntType("max_connections", 64, math.MaxInt32, false),
 		Source:    ParameterSourceConfigurationFile,
 		ResetVal:  int64(100),
-		Scope:     sql.PostgresConfigParamScope_Session,
+		Scope:     GetPgsqlScope(PsqlScopeSession),
 	},
 	"max_files_per_process": &Parameter{
 		Name:      "max_files_per_process",
@@ -2237,7 +2242,7 @@ var postgresConfigVariables = map[string]sql.SystemVariable{
 		Type:      types.NewSystemIntType("max_files_per_process", 64, math.MaxInt32, false),
 		Source:    ParameterSourceDefault,
 		ResetVal:  int64(1000),
-		Scope:     sql.PostgresConfigParamScope_Session,
+		Scope:     GetPgsqlScope(PsqlScopeSession),
 	},
 	"max_function_args": &Parameter{
 		Name:      "max_function_args",
@@ -2248,7 +2253,7 @@ var postgresConfigVariables = map[string]sql.SystemVariable{
 		Type:      types.NewSystemIntType("max_function_args", 100, 100, false),
 		Source:    ParameterSourceDefault,
 		ResetVal:  int64(100),
-		Scope:     sql.PostgresConfigParamScope_Session,
+		Scope:     GetPgsqlScope(PsqlScopeSession),
 	},
 	"max_identifier_length": &Parameter{
 		Name:      "max_identifier_length",
@@ -2259,7 +2264,7 @@ var postgresConfigVariables = map[string]sql.SystemVariable{
 		Type:      types.NewSystemIntType("max_identifier_length", 63, 63, false),
 		Source:    ParameterSourceDefault,
 		ResetVal:  int64(63),
-		Scope:     sql.PostgresConfigParamScope_Session,
+		Scope:     GetPgsqlScope(PsqlScopeSession),
 	},
 	"max_index_keys": &Parameter{
 		Name:      "max_index_keys",
@@ -2270,7 +2275,7 @@ var postgresConfigVariables = map[string]sql.SystemVariable{
 		Type:      types.NewSystemIntType("max_index_keys", 32, 32, false),
 		Source:    ParameterSourceDefault,
 		ResetVal:  int64(32),
-		Scope:     sql.PostgresConfigParamScope_Session,
+		Scope:     GetPgsqlScope(PsqlScopeSession),
 	},
 	"max_locks_per_transaction": &Parameter{
 		Name:      "max_locks_per_transaction",
@@ -2281,7 +2286,7 @@ var postgresConfigVariables = map[string]sql.SystemVariable{
 		Type:      types.NewSystemIntType("max_locks_per_transaction", 10, math.MaxInt32, false),
 		Source:    ParameterSourceDefault,
 		ResetVal:  int64(64),
-		Scope:     sql.PostgresConfigParamScope_Session,
+		Scope:     GetPgsqlScope(PsqlScopeSession),
 	},
 	"max_logical_replication_workers": &Parameter{
 		Name:      "max_logical_replication_workers",
@@ -2292,7 +2297,7 @@ var postgresConfigVariables = map[string]sql.SystemVariable{
 		Type:      types.NewSystemIntType("max_logical_replication_workers", 0, 262143, false),
 		Source:    ParameterSourceDefault,
 		ResetVal:  int64(4),
-		Scope:     sql.PostgresConfigParamScope_Session,
+		Scope:     GetPgsqlScope(PsqlScopeSession),
 	},
 	"max_parallel_apply_workers_per_subscription": &Parameter{
 		Name:      "max_parallel_apply_workers_per_subscription",
@@ -2303,7 +2308,7 @@ var postgresConfigVariables = map[string]sql.SystemVariable{
 		Type:      types.NewSystemIntType("max_parallel_apply_workers_per_subscription", 0, 1024, false),
 		Source:    ParameterSourceDefault,
 		ResetVal:  int64(2),
-		Scope:     sql.PostgresConfigParamScope_Session,
+		Scope:     GetPgsqlScope(PsqlScopeSession),
 	},
 	"max_parallel_maintenance_workers": &Parameter{
 		Name:      "max_parallel_maintenance_workers",
@@ -2314,7 +2319,7 @@ var postgresConfigVariables = map[string]sql.SystemVariable{
 		Type:      types.NewSystemIntType("max_parallel_maintenance_workers", 0, 1024, false),
 		Source:    ParameterSourceDefault,
 		ResetVal:  int64(2),
-		Scope:     sql.PostgresConfigParamScope_Session,
+		Scope:     GetPgsqlScope(PsqlScopeSession),
 	},
 	"max_parallel_workers": &Parameter{
 		Name:      "max_parallel_workers",
@@ -2325,7 +2330,7 @@ var postgresConfigVariables = map[string]sql.SystemVariable{
 		Type:      types.NewSystemIntType("max_parallel_workers", 0, 1024, false),
 		Source:    ParameterSourceDefault,
 		ResetVal:  int64(8),
-		Scope:     sql.PostgresConfigParamScope_Session,
+		Scope:     GetPgsqlScope(PsqlScopeSession),
 	},
 	"max_parallel_workers_per_gather": &Parameter{
 		Name:      "max_parallel_workers_per_gather",
@@ -2336,7 +2341,7 @@ var postgresConfigVariables = map[string]sql.SystemVariable{
 		Type:      types.NewSystemIntType("max_parallel_workers_per_gather", 0, 1024, false),
 		Source:    ParameterSourceDefault,
 		ResetVal:  int64(2),
-		Scope:     sql.PostgresConfigParamScope_Session,
+		Scope:     GetPgsqlScope(PsqlScopeSession),
 	},
 	"max_pred_locks_per_page": &Parameter{
 		Name:      "max_pred_locks_per_page",
@@ -2347,7 +2352,7 @@ var postgresConfigVariables = map[string]sql.SystemVariable{
 		Type:      types.NewSystemIntType("max_pred_locks_per_page", 0, math.MaxInt32, false),
 		Source:    ParameterSourceDefault,
 		ResetVal:  int64(2),
-		Scope:     sql.PostgresConfigParamScope_Session,
+		Scope:     GetPgsqlScope(PsqlScopeSession),
 	},
 	"max_pred_locks_per_relation": &Parameter{
 		Name:      "max_pred_locks_per_relation",
@@ -2358,7 +2363,7 @@ var postgresConfigVariables = map[string]sql.SystemVariable{
 		Type:      types.NewSystemIntType("max_pred_locks_per_relation", math.MinInt32, math.MaxInt32, false),
 		Source:    ParameterSourceDefault,
 		ResetVal:  int64(-2),
-		Scope:     sql.PostgresConfigParamScope_Session,
+		Scope:     GetPgsqlScope(PsqlScopeSession),
 	},
 	"max_pred_locks_per_transaction": &Parameter{
 		Name:      "max_pred_locks_per_transaction",
@@ -2369,7 +2374,7 @@ var postgresConfigVariables = map[string]sql.SystemVariable{
 		Type:      types.NewSystemIntType("max_pred_locks_per_transaction", 10, math.MaxInt32, false),
 		Source:    ParameterSourceDefault,
 		ResetVal:  int64(64),
-		Scope:     sql.PostgresConfigParamScope_Session,
+		Scope:     GetPgsqlScope(PsqlScopeSession),
 	},
 	"max_prepared_transactions": &Parameter{
 		Name:      "max_prepared_transactions",
@@ -2380,7 +2385,7 @@ var postgresConfigVariables = map[string]sql.SystemVariable{
 		Type:      types.NewSystemIntType("max_prepared_transactions", 0, 262143, false),
 		Source:    ParameterSourceDefault,
 		ResetVal:  int64(0),
-		Scope:     sql.PostgresConfigParamScope_Session,
+		Scope:     GetPgsqlScope(PsqlScopeSession),
 	},
 	"max_replication_slots": &Parameter{
 		Name:      "max_replication_slots",
@@ -2391,7 +2396,7 @@ var postgresConfigVariables = map[string]sql.SystemVariable{
 		Type:      types.NewSystemIntType("max_replication_slots", 0, 262143, false),
 		Source:    ParameterSourceDefault,
 		ResetVal:  int64(10),
-		Scope:     sql.PostgresConfigParamScope_Session,
+		Scope:     GetPgsqlScope(PsqlScopeSession),
 	},
 	"max_slot_wal_keep_size": &Parameter{
 		Name:    "max_slot_wal_keep_size",
@@ -2403,7 +2408,7 @@ var postgresConfigVariables = map[string]sql.SystemVariable{
 		Type:      types.NewSystemIntType("max_slot_wal_keep_size", -1, math.MaxInt32, true),
 		Source:    ParameterSourceDefault,
 		ResetVal:  int64(-1),
-		Scope:     sql.PostgresConfigParamScope_Session,
+		Scope:     GetPgsqlScope(PsqlScopeSession),
 	},
 	"max_stack_depth": &Parameter{
 		Name:    "max_stack_depth",
@@ -2415,7 +2420,7 @@ var postgresConfigVariables = map[string]sql.SystemVariable{
 		Type:      types.NewSystemIntType("max_stack_depth", 100, math.MaxInt32, false),
 		Source:    ParameterSourceDefault,
 		ResetVal:  int64(2048),
-		Scope:     sql.PostgresConfigParamScope_Session,
+		Scope:     GetPgsqlScope(PsqlScopeSession),
 	},
 	"max_standby_archive_delay": &Parameter{
 		Name:    "max_standby_archive_delay",
@@ -2427,7 +2432,7 @@ var postgresConfigVariables = map[string]sql.SystemVariable{
 		Type:      types.NewSystemIntType("max_standby_archive_delay", -1, math.MaxInt32, true),
 		Source:    ParameterSourceDefault,
 		ResetVal:  int64(30000),
-		Scope:     sql.PostgresConfigParamScope_Session,
+		Scope:     GetPgsqlScope(PsqlScopeSession),
 	},
 	"max_standby_streaming_delay": &Parameter{
 		Name:    "max_standby_streaming_delay",
@@ -2439,7 +2444,7 @@ var postgresConfigVariables = map[string]sql.SystemVariable{
 		Type:      types.NewSystemIntType("max_standby_streaming_delay", -1, math.MaxInt32, true),
 		Source:    ParameterSourceDefault,
 		ResetVal:  int64(30000),
-		Scope:     sql.PostgresConfigParamScope_Session,
+		Scope:     GetPgsqlScope(PsqlScopeSession),
 	},
 	"max_sync_workers_per_subscription": &Parameter{
 		Name:      "max_sync_workers_per_subscription",
@@ -2450,7 +2455,7 @@ var postgresConfigVariables = map[string]sql.SystemVariable{
 		Type:      types.NewSystemIntType("max_sync_workers_per_subscription", 0, 262143, false),
 		Source:    ParameterSourceDefault,
 		ResetVal:  int64(2),
-		Scope:     sql.PostgresConfigParamScope_Session,
+		Scope:     GetPgsqlScope(PsqlScopeSession),
 	},
 	"max_wal_senders": &Parameter{
 		Name:      "max_wal_senders",
@@ -2461,7 +2466,7 @@ var postgresConfigVariables = map[string]sql.SystemVariable{
 		Type:      types.NewSystemIntType("max_wal_senders", 0, 262143, false),
 		Source:    ParameterSourceDefault,
 		ResetVal:  int64(10),
-		Scope:     sql.PostgresConfigParamScope_Session,
+		Scope:     GetPgsqlScope(PsqlScopeSession),
 	},
 	"max_wal_size": &Parameter{
 		Name:    "max_wal_size",
@@ -2473,7 +2478,7 @@ var postgresConfigVariables = map[string]sql.SystemVariable{
 		Type:      types.NewSystemIntType("max_wal_size", 2, math.MaxInt32, false),
 		Source:    ParameterSourceConfigurationFile,
 		ResetVal:  int64(1024),
-		Scope:     sql.PostgresConfigParamScope_Session,
+		Scope:     GetPgsqlScope(PsqlScopeSession),
 	},
 	"max_worker_processes": &Parameter{
 		Name:      "max_worker_processes",
@@ -2484,7 +2489,7 @@ var postgresConfigVariables = map[string]sql.SystemVariable{
 		Type:      types.NewSystemIntType("max_worker_processes", 0, 262143, false),
 		Source:    ParameterSourceDefault,
 		ResetVal:  int64(8),
-		Scope:     sql.PostgresConfigParamScope_Session,
+		Scope:     GetPgsqlScope(PsqlScopeSession),
 	},
 	"min_dynamic_shared_memory": &Parameter{
 		Name:      "min_dynamic_shared_memory",
@@ -2495,7 +2500,7 @@ var postgresConfigVariables = map[string]sql.SystemVariable{
 		Type:      types.NewSystemIntType("min_dynamic_shared_memory", 0, math.MaxInt32, false),
 		Source:    ParameterSourceDefault,
 		ResetVal:  int64(0),
-		Scope:     sql.PostgresConfigParamScope_Session,
+		Scope:     GetPgsqlScope(PsqlScopeSession),
 	},
 	"min_parallel_index_scan_size": &Parameter{
 		Name:    "min_parallel_index_scan_size",
@@ -2507,7 +2512,7 @@ var postgresConfigVariables = map[string]sql.SystemVariable{
 		Type:      types.NewSystemIntType("min_parallel_index_scan_size", 0, 715827882, false),
 		Source:    ParameterSourceDefault,
 		ResetVal:  int64(1024),
-		Scope:     sql.PostgresConfigParamScope_Session,
+		Scope:     GetPgsqlScope(PsqlScopeSession),
 	},
 	"min_parallel_table_scan_size": &Parameter{
 		Name:    "min_parallel_table_scan_size",
@@ -2519,7 +2524,7 @@ var postgresConfigVariables = map[string]sql.SystemVariable{
 		Type:      types.NewSystemIntType("min_parallel_table_scan_size", 0, 715827882, false),
 		Source:    ParameterSourceDefault,
 		ResetVal:  int64(1024),
-		Scope:     sql.PostgresConfigParamScope_Session,
+		Scope:     GetPgsqlScope(PsqlScopeSession),
 	},
 	"min_wal_size": &Parameter{
 		Name:    "min_wal_size",
@@ -2531,7 +2536,7 @@ var postgresConfigVariables = map[string]sql.SystemVariable{
 		Type:      types.NewSystemIntType("min_wal_size", 2, math.MaxInt32, false),
 		Source:    ParameterSourceConfigurationFile,
 		ResetVal:  int64(80),
-		Scope:     sql.PostgresConfigParamScope_Session,
+		Scope:     GetPgsqlScope(PsqlScopeSession),
 	},
 	"old_snapshot_threshold": &Parameter{
 		Name:      "old_snapshot_threshold",
@@ -2542,7 +2547,7 @@ var postgresConfigVariables = map[string]sql.SystemVariable{
 		Type:      types.NewSystemIntType("old_snapshot_threshold", -1, 86400, true),
 		Source:    ParameterSourceDefault,
 		ResetVal:  int64(-1),
-		Scope:     sql.PostgresConfigParamScope_Session,
+		Scope:     GetPgsqlScope(PsqlScopeSession),
 	},
 	"parallel_leader_participation": &Parameter{
 		Name:      "parallel_leader_participation",
@@ -2553,7 +2558,7 @@ var postgresConfigVariables = map[string]sql.SystemVariable{
 		Type:      types.NewSystemBoolType("parallel_leader_participation"),
 		Source:    ParameterSourceDefault,
 		ResetVal:  int8(1),
-		Scope:     sql.PostgresConfigParamScope_Session,
+		Scope:     GetPgsqlScope(PsqlScopeSession),
 	},
 	"parallel_setup_cost": &Parameter{
 		Name:      "parallel_setup_cost",
@@ -2564,7 +2569,7 @@ var postgresConfigVariables = map[string]sql.SystemVariable{
 		Type:      types.NewSystemDoubleType("parallel_setup_cost", 0, math.MaxFloat64),
 		Source:    ParameterSourceDefault,
 		ResetVal:  float64(1000),
-		Scope:     sql.PostgresConfigParamScope_Session,
+		Scope:     GetPgsqlScope(PsqlScopeSession),
 	},
 	"parallel_tuple_cost": &Parameter{
 		Name:      "parallel_tuple_cost",
@@ -2575,7 +2580,7 @@ var postgresConfigVariables = map[string]sql.SystemVariable{
 		Type:      types.NewSystemDoubleType("parallel_tuple_cost", 0, math.MaxFloat64),
 		Source:    ParameterSourceDefault,
 		ResetVal:  float64(0.1),
-		Scope:     sql.PostgresConfigParamScope_Session,
+		Scope:     GetPgsqlScope(PsqlScopeSession),
 	},
 	"password_encryption": &Parameter{
 		Name:      "password_encryption",
@@ -2586,7 +2591,7 @@ var postgresConfigVariables = map[string]sql.SystemVariable{
 		Type:      types.NewSystemEnumType("password_encryption", "md5", "scram-sha-256"),
 		Source:    ParameterSourceDefault,
 		ResetVal:  "scram-sha-256",
-		Scope:     sql.PostgresConfigParamScope_Session,
+		Scope:     GetPgsqlScope(PsqlScopeSession),
 	},
 	"plan_cache_mode": &Parameter{
 		Name:      "plan_cache_mode",
@@ -2597,7 +2602,7 @@ var postgresConfigVariables = map[string]sql.SystemVariable{
 		Type:      types.NewSystemEnumType("plan_cache_mode", "auto", "force_generic_plan", "force_custom_plan"),
 		Source:    ParameterSourceDefault,
 		ResetVal:  "auto",
-		Scope:     sql.PostgresConfigParamScope_Session,
+		Scope:     GetPgsqlScope(PsqlScopeSession),
 	},
 	"port": &Parameter{
 		Name:      "port",
@@ -2608,7 +2613,7 @@ var postgresConfigVariables = map[string]sql.SystemVariable{
 		Type:      types.NewSystemIntType("port", 1, 65535, false),
 		Source:    ParameterSourceDefault,
 		ResetVal:  int64(5432),
-		Scope:     sql.PostgresConfigParamScope_Session,
+		Scope:     GetPgsqlScope(PsqlScopeSession),
 	},
 	"post_auth_delay": &Parameter{
 		Name:    "post_auth_delay",
@@ -2620,7 +2625,7 @@ var postgresConfigVariables = map[string]sql.SystemVariable{
 		Type:      types.NewSystemIntType("post_auth_delay", 0, 2147, false),
 		Source:    ParameterSourceDefault,
 		ResetVal:  int64(0),
-		Scope:     sql.PostgresConfigParamScope_Session,
+		Scope:     GetPgsqlScope(PsqlScopeSession),
 	},
 	"pre_auth_delay": &Parameter{
 		Name:    "pre_auth_delay",
@@ -2632,7 +2637,7 @@ var postgresConfigVariables = map[string]sql.SystemVariable{
 		Type:      types.NewSystemIntType("pre_auth_delay", 0, 60, false),
 		Source:    ParameterSourceDefault,
 		ResetVal:  int64(0),
-		Scope:     sql.PostgresConfigParamScope_Session,
+		Scope:     GetPgsqlScope(PsqlScopeSession),
 	},
 	"primary_conninfo": &Parameter{
 		Name:      "primary_conninfo",
@@ -2643,7 +2648,7 @@ var postgresConfigVariables = map[string]sql.SystemVariable{
 		Type:      types.NewSystemStringType("primary_conninfo"),
 		Source:    ParameterSourceDefault,
 		ResetVal:  "",
-		Scope:     sql.PostgresConfigParamScope_Session,
+		Scope:     GetPgsqlScope(PsqlScopeSession),
 	},
 	"primary_slot_name": &Parameter{
 		Name:      "primary_slot_name",
@@ -2654,7 +2659,7 @@ var postgresConfigVariables = map[string]sql.SystemVariable{
 		Type:      types.NewSystemStringType("primary_slot_name"),
 		Source:    ParameterSourceDefault,
 		ResetVal:  "",
-		Scope:     sql.PostgresConfigParamScope_Session,
+		Scope:     GetPgsqlScope(PsqlScopeSession),
 	},
 	"quote_all_identifiers": &Parameter{
 		Name:      "quote_all_identifiers",
@@ -2665,7 +2670,7 @@ var postgresConfigVariables = map[string]sql.SystemVariable{
 		Type:      types.NewSystemBoolType("quote_all_identifiers"),
 		Source:    ParameterSourceDefault,
 		ResetVal:  int8(0),
-		Scope:     sql.PostgresConfigParamScope_Session,
+		Scope:     GetPgsqlScope(PsqlScopeSession),
 	},
 	"random_page_cost": &Parameter{
 		Name:      "random_page_cost",
@@ -2676,7 +2681,7 @@ var postgresConfigVariables = map[string]sql.SystemVariable{
 		Type:      types.NewSystemDoubleType("random_page_cost", 0, math.MaxFloat64),
 		Source:    ParameterSourceDefault,
 		ResetVal:  float64(4),
-		Scope:     sql.PostgresConfigParamScope_Session,
+		Scope:     GetPgsqlScope(PsqlScopeSession),
 	},
 	"recovery_end_command": &Parameter{
 		Name:      "recovery_end_command",
@@ -2687,7 +2692,7 @@ var postgresConfigVariables = map[string]sql.SystemVariable{
 		Type:      types.NewSystemStringType("recovery_end_command"),
 		Source:    ParameterSourceDefault,
 		ResetVal:  "",
-		Scope:     sql.PostgresConfigParamScope_Session,
+		Scope:     GetPgsqlScope(PsqlScopeSession),
 	},
 	"recovery_init_sync_method": &Parameter{
 		Name:      "recovery_init_sync_method",
@@ -2698,7 +2703,7 @@ var postgresConfigVariables = map[string]sql.SystemVariable{
 		Type:      types.NewSystemEnumType("recovery_init_sync_method", "fsync"),
 		Source:    ParameterSourceDefault,
 		ResetVal:  "fsync",
-		Scope:     sql.PostgresConfigParamScope_Session,
+		Scope:     GetPgsqlScope(PsqlScopeSession),
 	},
 	"recovery_min_apply_delay": &Parameter{
 		Name:    "recovery_min_apply_delay",
@@ -2710,7 +2715,7 @@ var postgresConfigVariables = map[string]sql.SystemVariable{
 		Type:      types.NewSystemIntType("recovery_min_apply_delay", 0, math.MaxInt32, false),
 		Source:    ParameterSourceDefault,
 		ResetVal:  int64(0),
-		Scope:     sql.PostgresConfigParamScope_Session,
+		Scope:     GetPgsqlScope(PsqlScopeSession),
 	},
 	"recovery_prefetch": &Parameter{
 		Name:      "recovery_prefetch",
@@ -2721,7 +2726,7 @@ var postgresConfigVariables = map[string]sql.SystemVariable{
 		Type:      types.NewSystemEnumType("recovery_prefetch", "off", "on", "try"),
 		Source:    ParameterSourceDefault,
 		ResetVal:  "try",
-		Scope:     sql.PostgresConfigParamScope_Session,
+		Scope:     GetPgsqlScope(PsqlScopeSession),
 	},
 	"recovery_target": &Parameter{
 		Name:      "recovery_target",
@@ -2732,7 +2737,7 @@ var postgresConfigVariables = map[string]sql.SystemVariable{
 		Type:      types.NewSystemStringType("recovery_target"),
 		Source:    ParameterSourceDefault,
 		ResetVal:  "",
-		Scope:     sql.PostgresConfigParamScope_Session,
+		Scope:     GetPgsqlScope(PsqlScopeSession),
 	},
 	"recovery_target_action": &Parameter{
 		Name:      "recovery_target_action",
@@ -2743,7 +2748,7 @@ var postgresConfigVariables = map[string]sql.SystemVariable{
 		Type:      types.NewSystemEnumType("recovery_target_action", "pause", "promote", "shutdown"),
 		Source:    ParameterSourceDefault,
 		ResetVal:  "pause",
-		Scope:     sql.PostgresConfigParamScope_Session,
+		Scope:     GetPgsqlScope(PsqlScopeSession),
 	},
 	"recovery_target_inclusive": &Parameter{
 		Name:      "recovery_target_inclusive",
@@ -2754,7 +2759,7 @@ var postgresConfigVariables = map[string]sql.SystemVariable{
 		Type:      types.NewSystemBoolType("recovery_target_inclusive"),
 		Source:    ParameterSourceDefault,
 		ResetVal:  int8(1),
-		Scope:     sql.PostgresConfigParamScope_Session,
+		Scope:     GetPgsqlScope(PsqlScopeSession),
 	},
 	"recovery_target_lsn": &Parameter{
 		Name:      "recovery_target_lsn",
@@ -2765,7 +2770,7 @@ var postgresConfigVariables = map[string]sql.SystemVariable{
 		Type:      types.NewSystemStringType("recovery_target_lsn"),
 		Source:    ParameterSourceDefault,
 		ResetVal:  "",
-		Scope:     sql.PostgresConfigParamScope_Session,
+		Scope:     GetPgsqlScope(PsqlScopeSession),
 	},
 	"recovery_target_name": &Parameter{
 		Name:      "recovery_target_name",
@@ -2776,7 +2781,7 @@ var postgresConfigVariables = map[string]sql.SystemVariable{
 		Type:      types.NewSystemStringType("recovery_target_name"),
 		Source:    ParameterSourceDefault,
 		ResetVal:  "",
-		Scope:     sql.PostgresConfigParamScope_Session,
+		Scope:     GetPgsqlScope(PsqlScopeSession),
 	},
 	"recovery_target_time": &Parameter{
 		Name:      "recovery_target_time",
@@ -2787,7 +2792,7 @@ var postgresConfigVariables = map[string]sql.SystemVariable{
 		Type:      types.NewSystemStringType("recovery_target_time"),
 		Source:    ParameterSourceDefault,
 		ResetVal:  "",
-		Scope:     sql.PostgresConfigParamScope_Session,
+		Scope:     GetPgsqlScope(PsqlScopeSession),
 	},
 	"recovery_target_timeline": &Parameter{
 		Name:      "recovery_target_timeline",
@@ -2798,7 +2803,7 @@ var postgresConfigVariables = map[string]sql.SystemVariable{
 		Type:      types.NewSystemStringType("recovery_target_timeline"),
 		Source:    ParameterSourceDefault,
 		ResetVal:  "latest",
-		Scope:     sql.PostgresConfigParamScope_Session,
+		Scope:     GetPgsqlScope(PsqlScopeSession),
 	},
 	"recovery_target_xid": &Parameter{
 		Name:      "recovery_target_xid",
@@ -2809,7 +2814,7 @@ var postgresConfigVariables = map[string]sql.SystemVariable{
 		Type:      types.NewSystemStringType("recovery_target_xid"),
 		Source:    ParameterSourceDefault,
 		ResetVal:  "",
-		Scope:     sql.PostgresConfigParamScope_Session,
+		Scope:     GetPgsqlScope(PsqlScopeSession),
 	},
 	"recursive_worktable_factor": &Parameter{
 		Name:      "recursive_worktable_factor",
@@ -2820,7 +2825,7 @@ var postgresConfigVariables = map[string]sql.SystemVariable{
 		Type:      types.NewSystemDoubleType("recursive_worktable_factor", 0.001, 1000000),
 		Source:    ParameterSourceDefault,
 		ResetVal:  float64(10),
-		Scope:     sql.PostgresConfigParamScope_Session,
+		Scope:     GetPgsqlScope(PsqlScopeSession),
 	},
 	"remove_temp_files_after_crash": &Parameter{
 		Name:      "remove_temp_files_after_crash",
@@ -2831,7 +2836,7 @@ var postgresConfigVariables = map[string]sql.SystemVariable{
 		Type:      types.NewSystemBoolType("remove_temp_files_after_crash"),
 		Source:    ParameterSourceDefault,
 		ResetVal:  int8(0),
-		Scope:     sql.PostgresConfigParamScope_Session,
+		Scope:     GetPgsqlScope(PsqlScopeSession),
 	},
 	"reserved_connections": &Parameter{
 		Name:      "reserved_connections",
@@ -2842,7 +2847,7 @@ var postgresConfigVariables = map[string]sql.SystemVariable{
 		Type:      types.NewSystemIntType("reserved_connections", 0, 262143, false),
 		Source:    ParameterSourceDefault,
 		ResetVal:  int64(0),
-		Scope:     sql.PostgresConfigParamScope_Session,
+		Scope:     GetPgsqlScope(PsqlScopeSession),
 	},
 	"restart_after_crash": &Parameter{
 		Name:      "restart_after_crash",
@@ -2853,7 +2858,7 @@ var postgresConfigVariables = map[string]sql.SystemVariable{
 		Type:      types.NewSystemBoolType("restart_after_crash"),
 		Source:    ParameterSourceDefault,
 		ResetVal:  int8(1),
-		Scope:     sql.PostgresConfigParamScope_Session,
+		Scope:     GetPgsqlScope(PsqlScopeSession),
 	},
 	"restore_command": &Parameter{
 		Name:      "restore_command",
@@ -2864,7 +2869,7 @@ var postgresConfigVariables = map[string]sql.SystemVariable{
 		Type:      types.NewSystemStringType("restore_command"),
 		Source:    ParameterSourceDefault,
 		ResetVal:  "",
-		Scope:     sql.PostgresConfigParamScope_Session,
+		Scope:     GetPgsqlScope(PsqlScopeSession),
 	},
 	"row_security": &Parameter{
 		Name:      "row_security",
@@ -2875,7 +2880,7 @@ var postgresConfigVariables = map[string]sql.SystemVariable{
 		Type:      types.NewSystemBoolType("row_security"),
 		Source:    ParameterSourceDefault,
 		ResetVal:  int8(1),
-		Scope:     sql.PostgresConfigParamScope_Session,
+		Scope:     GetPgsqlScope(PsqlScopeSession),
 	},
 	"scram_iterations": &Parameter{
 		Name:      "scram_iterations",
@@ -2886,7 +2891,7 @@ var postgresConfigVariables = map[string]sql.SystemVariable{
 		Type:      types.NewSystemIntType("scram_iterations", 1, math.MaxInt32, false),
 		Source:    ParameterSourceDefault,
 		ResetVal:  int64(4096),
-		Scope:     sql.PostgresConfigParamScope_Session,
+		Scope:     GetPgsqlScope(PsqlScopeSession),
 	},
 	"search_path": &Parameter{
 		Name:      "search_path",
@@ -2897,7 +2902,7 @@ var postgresConfigVariables = map[string]sql.SystemVariable{
 		Type:      types.NewSystemStringType("search_path"),
 		Source:    ParameterSourceDefault,
 		ResetVal:  "\"$user\", public",
-		Scope:     sql.PostgresConfigParamScope_Session,
+		Scope:     GetPgsqlScope(PsqlScopeSession),
 	},
 	"segment_size": &Parameter{
 		Name:    "segment_size",
@@ -2909,7 +2914,7 @@ var postgresConfigVariables = map[string]sql.SystemVariable{
 		Type:      types.NewSystemIntType("segment_size", 131072, 131072, false),
 		Source:    ParameterSourceDefault,
 		ResetVal:  int64(131072),
-		Scope:     sql.PostgresConfigParamScope_Session,
+		Scope:     GetPgsqlScope(PsqlScopeSession),
 	},
 	"send_abort_for_crash": &Parameter{
 		Name:      "send_abort_for_crash",
@@ -2920,7 +2925,7 @@ var postgresConfigVariables = map[string]sql.SystemVariable{
 		Type:      types.NewSystemBoolType("send_abort_for_crash"),
 		Source:    ParameterSourceDefault,
 		ResetVal:  int8(0),
-		Scope:     sql.PostgresConfigParamScope_Session,
+		Scope:     GetPgsqlScope(PsqlScopeSession),
 	},
 	"send_abort_for_kill": &Parameter{
 		Name:      "send_abort_for_kill",
@@ -2931,7 +2936,7 @@ var postgresConfigVariables = map[string]sql.SystemVariable{
 		Type:      types.NewSystemBoolType("send_abort_for_kill"),
 		Source:    ParameterSourceDefault,
 		ResetVal:  int8(0),
-		Scope:     sql.PostgresConfigParamScope_Session,
+		Scope:     GetPgsqlScope(PsqlScopeSession),
 	},
 	"seq_page_cost": &Parameter{
 		Name:      "seq_page_cost",
@@ -2942,7 +2947,7 @@ var postgresConfigVariables = map[string]sql.SystemVariable{
 		Type:      types.NewSystemDoubleType("seq_page_cost", 0, math.MaxFloat64),
 		Source:    ParameterSourceDefault,
 		ResetVal:  float64(1),
-		Scope:     sql.PostgresConfigParamScope_Session,
+		Scope:     GetPgsqlScope(PsqlScopeSession),
 	},
 	"server_encoding": &Parameter{
 		Name:      "server_encoding",
@@ -2954,7 +2959,7 @@ var postgresConfigVariables = map[string]sql.SystemVariable{
 		Source:    ParameterSourceDefault,
 		// BootVal: "SQL_ASCII",
 		ResetVal: "UTF8",
-		Scope:    sql.PostgresConfigParamScope_Session,
+		Scope:    GetPgsqlScope(PsqlScopeSession),
 	},
 	"server_version": &Parameter{
 		Name:      "server_version",
@@ -2965,7 +2970,7 @@ var postgresConfigVariables = map[string]sql.SystemVariable{
 		Type:      types.NewSystemStringType("server_version"),
 		Source:    ParameterSourceDefault,
 		ResetVal:  "16.1 (Homebrew)",
-		Scope:     sql.PostgresConfigParamScope_Session,
+		Scope:     GetPgsqlScope(PsqlScopeSession),
 	},
 	"server_version_num": &Parameter{
 		Name:      "server_version_num",
@@ -2976,7 +2981,7 @@ var postgresConfigVariables = map[string]sql.SystemVariable{
 		Type:      types.NewSystemIntType("server_version_num", 160001, 160001, false),
 		Source:    ParameterSourceDefault,
 		ResetVal:  int64(160001),
-		Scope:     sql.PostgresConfigParamScope_Session,
+		Scope:     GetPgsqlScope(PsqlScopeSession),
 	},
 	"session_preload_libraries": &Parameter{
 		Name:      "session_preload_libraries",
@@ -2987,7 +2992,7 @@ var postgresConfigVariables = map[string]sql.SystemVariable{
 		Type:      types.NewSystemStringType("session_preload_libraries"),
 		Source:    ParameterSourceDefault,
 		ResetVal:  "",
-		Scope:     sql.PostgresConfigParamScope_Session,
+		Scope:     GetPgsqlScope(PsqlScopeSession),
 	},
 	"session_replication_role": &Parameter{
 		Name:      "session_replication_role",
@@ -2998,7 +3003,7 @@ var postgresConfigVariables = map[string]sql.SystemVariable{
 		Type:      types.NewSystemEnumType("session_replication_role", "origin", "replica", "local"),
 		Source:    ParameterSourceDefault,
 		ResetVal:  "origin",
-		Scope:     sql.PostgresConfigParamScope_Session,
+		Scope:     GetPgsqlScope(PsqlScopeSession),
 	},
 	"shared_buffers": &Parameter{
 		Name:    "shared_buffers",
@@ -3010,7 +3015,7 @@ var postgresConfigVariables = map[string]sql.SystemVariable{
 		Type:      types.NewSystemIntType("shared_buffers", 16, 1073741823, false),
 		Source:    ParameterSourceConfigurationFile,
 		ResetVal:  int64(16384),
-		Scope:     sql.PostgresConfigParamScope_Session,
+		Scope:     GetPgsqlScope(PsqlScopeSession),
 	},
 	"shared_memory_size": &Parameter{
 		Name:    "shared_memory_size",
@@ -3023,7 +3028,7 @@ var postgresConfigVariables = map[string]sql.SystemVariable{
 		Source:    ParameterSourceDefault,
 		// BootVal: int64(0);
 		ResetVal: int64(143),
-		Scope:    sql.PostgresConfigParamScope_Session,
+		Scope:    GetPgsqlScope(PsqlScopeSession),
 	},
 	"shared_memory_size_in_huge_pages": &Parameter{
 		Name:      "shared_memory_size_in_huge_pages",
@@ -3034,7 +3039,7 @@ var postgresConfigVariables = map[string]sql.SystemVariable{
 		Type:      types.NewSystemIntType("shared_memory_size_in_huge_pages", -1, math.MaxInt32, true),
 		Source:    ParameterSourceDefault,
 		ResetVal:  int64(-1),
-		Scope:     sql.PostgresConfigParamScope_Session,
+		Scope:     GetPgsqlScope(PsqlScopeSession),
 	},
 	"shared_memory_type": &Parameter{
 		Name:      "shared_memory_type",
@@ -3045,7 +3050,7 @@ var postgresConfigVariables = map[string]sql.SystemVariable{
 		Type:      types.NewSystemEnumType("shared_memory_type", "sysv", "mmap"),
 		Source:    ParameterSourceDefault,
 		ResetVal:  "mmap",
-		Scope:     sql.PostgresConfigParamScope_Session,
+		Scope:     GetPgsqlScope(PsqlScopeSession),
 	},
 	"shared_preload_libraries": &Parameter{
 		Name:      "shared_preload_libraries",
@@ -3056,7 +3061,7 @@ var postgresConfigVariables = map[string]sql.SystemVariable{
 		Type:      types.NewSystemStringType("shared_preload_libraries"),
 		Source:    ParameterSourceDefault,
 		ResetVal:  "",
-		Scope:     sql.PostgresConfigParamScope_Session,
+		Scope:     GetPgsqlScope(PsqlScopeSession),
 	},
 	"ssl": &Parameter{
 		Name:      "ssl",
@@ -3067,7 +3072,7 @@ var postgresConfigVariables = map[string]sql.SystemVariable{
 		Type:      types.NewSystemBoolType("ssl"),
 		Source:    ParameterSourceDefault,
 		ResetVal:  int8(0),
-		Scope:     sql.PostgresConfigParamScope_Session,
+		Scope:     GetPgsqlScope(PsqlScopeSession),
 	},
 	"ssl_ca_file": &Parameter{
 		Name:      "ssl_ca_file",
@@ -3078,7 +3083,7 @@ var postgresConfigVariables = map[string]sql.SystemVariable{
 		Type:      types.NewSystemStringType("ssl_ca_file"),
 		Source:    ParameterSourceDefault,
 		ResetVal:  "",
-		Scope:     sql.PostgresConfigParamScope_Session,
+		Scope:     GetPgsqlScope(PsqlScopeSession),
 	},
 	"ssl_cert_file": &Parameter{
 		Name:      "ssl_cert_file",
@@ -3089,7 +3094,7 @@ var postgresConfigVariables = map[string]sql.SystemVariable{
 		Type:      types.NewSystemStringType("ssl_cert_file"),
 		Source:    ParameterSourceDefault,
 		ResetVal:  "server.crt",
-		Scope:     sql.PostgresConfigParamScope_Session,
+		Scope:     GetPgsqlScope(PsqlScopeSession),
 	},
 	"ssl_ciphers": &Parameter{
 		Name:      "ssl_ciphers",
@@ -3100,7 +3105,7 @@ var postgresConfigVariables = map[string]sql.SystemVariable{
 		Type:      types.NewSystemStringType("ssl_ciphers"),
 		Source:    ParameterSourceDefault,
 		ResetVal:  "HIGH:MEDIUM:+3DES:!aNULL",
-		Scope:     sql.PostgresConfigParamScope_Session,
+		Scope:     GetPgsqlScope(PsqlScopeSession),
 	},
 	"ssl_crl_dir": &Parameter{
 		Name:      "ssl_crl_dir",
@@ -3111,7 +3116,7 @@ var postgresConfigVariables = map[string]sql.SystemVariable{
 		Type:      types.NewSystemStringType("ssl_crl_dir"),
 		Source:    ParameterSourceDefault,
 		ResetVal:  "",
-		Scope:     sql.PostgresConfigParamScope_Session,
+		Scope:     GetPgsqlScope(PsqlScopeSession),
 	},
 	"ssl_crl_file": &Parameter{
 		Name:      "ssl_crl_file",
@@ -3122,7 +3127,7 @@ var postgresConfigVariables = map[string]sql.SystemVariable{
 		Type:      types.NewSystemStringType("ssl_crl_file"),
 		Source:    ParameterSourceDefault,
 		ResetVal:  "",
-		Scope:     sql.PostgresConfigParamScope_Session,
+		Scope:     GetPgsqlScope(PsqlScopeSession),
 	},
 	"ssl_dh_params_file": &Parameter{
 		Name:      "ssl_dh_params_file",
@@ -3133,7 +3138,7 @@ var postgresConfigVariables = map[string]sql.SystemVariable{
 		Type:      types.NewSystemStringType("ssl_dh_params_file"),
 		Source:    ParameterSourceDefault,
 		ResetVal:  "",
-		Scope:     sql.PostgresConfigParamScope_Session,
+		Scope:     GetPgsqlScope(PsqlScopeSession),
 	},
 	"ssl_ecdh_curve": &Parameter{
 		Name:      "ssl_ecdh_curve",
@@ -3144,7 +3149,7 @@ var postgresConfigVariables = map[string]sql.SystemVariable{
 		Type:      types.NewSystemStringType("ssl_ecdh_curve"),
 		Source:    ParameterSourceDefault,
 		ResetVal:  "prime256v1",
-		Scope:     sql.PostgresConfigParamScope_Session,
+		Scope:     GetPgsqlScope(PsqlScopeSession),
 	},
 	"ssl_key_file": &Parameter{
 		Name:      "ssl_key_file",
@@ -3155,7 +3160,7 @@ var postgresConfigVariables = map[string]sql.SystemVariable{
 		Type:      types.NewSystemStringType("ssl_key_file"),
 		Source:    ParameterSourceDefault,
 		ResetVal:  "server.key",
-		Scope:     sql.PostgresConfigParamScope_Session,
+		Scope:     GetPgsqlScope(PsqlScopeSession),
 	},
 	"ssl_library": &Parameter{
 		Name:      "ssl_library",
@@ -3166,7 +3171,7 @@ var postgresConfigVariables = map[string]sql.SystemVariable{
 		Type:      types.NewSystemStringType("ssl_library"),
 		Source:    ParameterSourceDefault,
 		ResetVal:  "OpenSSL",
-		Scope:     sql.PostgresConfigParamScope_Session,
+		Scope:     GetPgsqlScope(PsqlScopeSession),
 	},
 	"ssl_max_protocol_version": &Parameter{
 		Name:      "ssl_max_protocol_version",
@@ -3177,7 +3182,7 @@ var postgresConfigVariables = map[string]sql.SystemVariable{
 		Type:      types.NewSystemEnumType("ssl_max_protocol_version", "", "TLSv1", "TLSv1.1", "TLSv1.2", "TLSv1.3"),
 		Source:    ParameterSourceDefault,
 		ResetVal:  "",
-		Scope:     sql.PostgresConfigParamScope_Session,
+		Scope:     GetPgsqlScope(PsqlScopeSession),
 	},
 	"ssl_min_protocol_version": &Parameter{
 		Name:      "ssl_min_protocol_version",
@@ -3188,7 +3193,7 @@ var postgresConfigVariables = map[string]sql.SystemVariable{
 		Type:      types.NewSystemEnumType("ssl_min_protocol_version", "TLSv1", "TLSv1.1", "TLSv1.2", "TLSv1.3"),
 		Source:    ParameterSourceDefault,
 		ResetVal:  "TLSv1.2",
-		Scope:     sql.PostgresConfigParamScope_Session,
+		Scope:     GetPgsqlScope(PsqlScopeSession),
 	},
 	"ssl_passphrase_command": &Parameter{
 		Name:      "ssl_passphrase_command",
@@ -3199,7 +3204,7 @@ var postgresConfigVariables = map[string]sql.SystemVariable{
 		Type:      types.NewSystemStringType("ssl_passphrase_command"),
 		Source:    ParameterSourceDefault,
 		ResetVal:  "",
-		Scope:     sql.PostgresConfigParamScope_Session,
+		Scope:     GetPgsqlScope(PsqlScopeSession),
 	},
 	"ssl_passphrase_command_supports_reload": &Parameter{
 		Name:      "ssl_passphrase_command_supports_reload",
@@ -3210,7 +3215,7 @@ var postgresConfigVariables = map[string]sql.SystemVariable{
 		Type:      types.NewSystemBoolType("ssl_passphrase_command_supports_reload"),
 		Source:    ParameterSourceDefault,
 		ResetVal:  int8(0),
-		Scope:     sql.PostgresConfigParamScope_Session,
+		Scope:     GetPgsqlScope(PsqlScopeSession),
 	},
 	"ssl_prefer_server_ciphers": &Parameter{
 		Name:      "ssl_prefer_server_ciphers",
@@ -3221,7 +3226,7 @@ var postgresConfigVariables = map[string]sql.SystemVariable{
 		Type:      types.NewSystemBoolType("ssl_prefer_server_ciphers"),
 		Source:    ParameterSourceDefault,
 		ResetVal:  int8(1),
-		Scope:     sql.PostgresConfigParamScope_Session,
+		Scope:     GetPgsqlScope(PsqlScopeSession),
 	},
 	"standard_conforming_strings": &Parameter{
 		Name:      "standard_conforming_strings",
@@ -3232,7 +3237,7 @@ var postgresConfigVariables = map[string]sql.SystemVariable{
 		Type:      types.NewSystemBoolType("standard_conforming_strings"),
 		Source:    ParameterSourceDefault,
 		ResetVal:  int8(1),
-		Scope:     sql.PostgresConfigParamScope_Session,
+		Scope:     GetPgsqlScope(PsqlScopeSession),
 	},
 	"statement_timeout": &Parameter{
 		Name:    "statement_timeout",
@@ -3244,7 +3249,7 @@ var postgresConfigVariables = map[string]sql.SystemVariable{
 		Type:      types.NewSystemIntType("statement_timeout", 0, math.MaxInt32, false),
 		Source:    ParameterSourceDefault,
 		ResetVal:  int64(0),
-		Scope:     sql.PostgresConfigParamScope_Session,
+		Scope:     GetPgsqlScope(PsqlScopeSession),
 	},
 	"stats_fetch_consistency": &Parameter{
 		Name:      "stats_fetch_consistency",
@@ -3255,7 +3260,7 @@ var postgresConfigVariables = map[string]sql.SystemVariable{
 		Type:      types.NewSystemEnumType("stats_fetch_consistency", "none", "cache", "snapshot"),
 		Source:    ParameterSourceDefault,
 		ResetVal:  "cache",
-		Scope:     sql.PostgresConfigParamScope_Session,
+		Scope:     GetPgsqlScope(PsqlScopeSession),
 	},
 	"superuser_reserved_connections": &Parameter{
 		Name:      "superuser_reserved_connections",
@@ -3266,7 +3271,7 @@ var postgresConfigVariables = map[string]sql.SystemVariable{
 		Type:      types.NewSystemIntType("superuser_reserved_connections", 0, 262143, false),
 		Source:    ParameterSourceDefault,
 		ResetVal:  int64(3),
-		Scope:     sql.PostgresConfigParamScope_Session,
+		Scope:     GetPgsqlScope(PsqlScopeSession),
 	},
 	"synchronize_seqscans": &Parameter{
 		Name:      "synchronize_seqscans",
@@ -3277,7 +3282,7 @@ var postgresConfigVariables = map[string]sql.SystemVariable{
 		Type:      types.NewSystemBoolType("synchronize_seqscans"),
 		Source:    ParameterSourceDefault,
 		ResetVal:  int8(1),
-		Scope:     sql.PostgresConfigParamScope_Session,
+		Scope:     GetPgsqlScope(PsqlScopeSession),
 	},
 	"synchronous_commit": &Parameter{
 		Name:      "synchronous_commit",
@@ -3288,7 +3293,7 @@ var postgresConfigVariables = map[string]sql.SystemVariable{
 		Type:      types.NewSystemEnumType("synchronous_commit", "local", "remote_write", "remote_apply", "on", "off"),
 		Source:    ParameterSourceDefault,
 		ResetVal:  "on",
-		Scope:     sql.PostgresConfigParamScope_Session,
+		Scope:     GetPgsqlScope(PsqlScopeSession),
 	},
 	"synchronous_standby_names": &Parameter{
 		Name:      "synchronous_standby_names",
@@ -3299,7 +3304,7 @@ var postgresConfigVariables = map[string]sql.SystemVariable{
 		Type:      types.NewSystemStringType("synchronous_standby_names"),
 		Source:    ParameterSourceDefault,
 		ResetVal:  "",
-		Scope:     sql.PostgresConfigParamScope_Session,
+		Scope:     GetPgsqlScope(PsqlScopeSession),
 	},
 	"syslog_facility": &Parameter{
 		Name:      "syslog_facility",
@@ -3310,7 +3315,7 @@ var postgresConfigVariables = map[string]sql.SystemVariable{
 		Type:      types.NewSystemEnumType("syslog_facility", "local0", "local1", "local2", "local3", "local4", "local5", "local6", "local7"),
 		Source:    ParameterSourceDefault,
 		ResetVal:  "local0",
-		Scope:     sql.PostgresConfigParamScope_Session,
+		Scope:     GetPgsqlScope(PsqlScopeSession),
 	},
 	"syslog_ident": &Parameter{
 		Name:      "syslog_ident",
@@ -3321,7 +3326,7 @@ var postgresConfigVariables = map[string]sql.SystemVariable{
 		Type:      types.NewSystemStringType("syslog_ident"),
 		Source:    ParameterSourceDefault,
 		ResetVal:  "postgres",
-		Scope:     sql.PostgresConfigParamScope_Session,
+		Scope:     GetPgsqlScope(PsqlScopeSession),
 	},
 	"syslog_sequence_numbers": &Parameter{
 		Name:      "syslog_sequence_numbers",
@@ -3332,7 +3337,7 @@ var postgresConfigVariables = map[string]sql.SystemVariable{
 		Type:      types.NewSystemBoolType("syslog_sequence_numbers"),
 		Source:    ParameterSourceDefault,
 		ResetVal:  int8(1),
-		Scope:     sql.PostgresConfigParamScope_Session,
+		Scope:     GetPgsqlScope(PsqlScopeSession),
 	},
 	"syslog_split_messages": &Parameter{
 		Name:      "syslog_split_messages",
@@ -3343,7 +3348,7 @@ var postgresConfigVariables = map[string]sql.SystemVariable{
 		Type:      types.NewSystemBoolType("syslog_split_messages"),
 		Source:    ParameterSourceDefault,
 		ResetVal:  int8(1),
-		Scope:     sql.PostgresConfigParamScope_Session,
+		Scope:     GetPgsqlScope(PsqlScopeSession),
 	},
 	"tcp_keepalives_count": &Parameter{
 		Name:      "tcp_keepalives_count",
@@ -3354,7 +3359,7 @@ var postgresConfigVariables = map[string]sql.SystemVariable{
 		Type:      types.NewSystemIntType("tcp_keepalives_count", 0, math.MaxInt32, false),
 		Source:    ParameterSourceDefault,
 		ResetVal:  int64(0),
-		Scope:     sql.PostgresConfigParamScope_Session,
+		Scope:     GetPgsqlScope(PsqlScopeSession),
 	},
 	"tcp_keepalives_idle": &Parameter{
 		Name:    "tcp_keepalives_idle",
@@ -3366,7 +3371,7 @@ var postgresConfigVariables = map[string]sql.SystemVariable{
 		Type:      types.NewSystemIntType("tcp_keepalives_idle", 0, math.MaxInt32, false),
 		Source:    ParameterSourceDefault,
 		ResetVal:  int64(0),
-		Scope:     sql.PostgresConfigParamScope_Session,
+		Scope:     GetPgsqlScope(PsqlScopeSession),
 	},
 	"tcp_keepalives_interval": &Parameter{
 		Name:    "tcp_keepalives_interval",
@@ -3378,7 +3383,7 @@ var postgresConfigVariables = map[string]sql.SystemVariable{
 		Type:      types.NewSystemIntType("tcp_keepalives_interval", 0, math.MaxInt32, false),
 		Source:    ParameterSourceDefault,
 		ResetVal:  int64(0),
-		Scope:     sql.PostgresConfigParamScope_Session,
+		Scope:     GetPgsqlScope(PsqlScopeSession),
 	},
 	"tcp_user_timeout": &Parameter{
 		Name:    "tcp_user_timeout",
@@ -3390,7 +3395,7 @@ var postgresConfigVariables = map[string]sql.SystemVariable{
 		Type:      types.NewSystemIntType("tcp_user_timeout", 0, math.MaxInt32, false),
 		Source:    ParameterSourceDefault,
 		ResetVal:  int64(0),
-		Scope:     sql.PostgresConfigParamScope_Session,
+		Scope:     GetPgsqlScope(PsqlScopeSession),
 	},
 	"temp_buffers": &Parameter{
 		Name:    "temp_buffers",
@@ -3402,7 +3407,7 @@ var postgresConfigVariables = map[string]sql.SystemVariable{
 		Type:      types.NewSystemIntType("temp_buffers", 100, 1073741823, false),
 		Source:    ParameterSourceDefault,
 		ResetVal:  int64(1024),
-		Scope:     sql.PostgresConfigParamScope_Session,
+		Scope:     GetPgsqlScope(PsqlScopeSession),
 	},
 	"temp_file_limit": &Parameter{
 		Name:    "temp_file_limit",
@@ -3414,7 +3419,7 @@ var postgresConfigVariables = map[string]sql.SystemVariable{
 		Type:      types.NewSystemIntType("temp_file_limit", -1, math.MaxInt32, true),
 		Source:    ParameterSourceDefault,
 		ResetVal:  int64(-1),
-		Scope:     sql.PostgresConfigParamScope_Session,
+		Scope:     GetPgsqlScope(PsqlScopeSession),
 	},
 	"temp_tablespaces": &Parameter{
 		Name:      "temp_tablespaces",
@@ -3425,7 +3430,7 @@ var postgresConfigVariables = map[string]sql.SystemVariable{
 		Type:      types.NewSystemStringType("temp_tablespaces"),
 		Source:    ParameterSourceDefault,
 		ResetVal:  "",
-		Scope:     sql.PostgresConfigParamScope_Session,
+		Scope:     GetPgsqlScope(PsqlScopeSession),
 	},
 	"timezone": &Parameter{
 		Name:      "TimeZone",
@@ -3437,8 +3442,8 @@ var postgresConfigVariables = map[string]sql.SystemVariable{
 		Source:    ParameterSourceConfigurationFile,
 		// BootVal: "GMT",
 		ResetVal: "America/Los_Angeles",
-		Scope:    sql.PostgresConfigParamScope_Session,
-		ValueFunc: func(a any) (any, bool) {
+		Scope:    GetPgsqlScope(PsqlScopeSession),
+		ValidateFunc: func(a any) (any, bool) {
 			switch v := a.(type) {
 			case string:
 				if strings.ToLower(v) == "local" {
@@ -3450,7 +3455,7 @@ var postgresConfigVariables = map[string]sql.SystemVariable{
 					if err == nil {
 						return loc.String(), true
 					}
-					_, err = MySQLOffsetToDuration(v)
+					_, err = TzOffsetToDuration(v)
 					if err == nil {
 						return v, true
 					}
@@ -3469,7 +3474,7 @@ var postgresConfigVariables = map[string]sql.SystemVariable{
 		Type:      types.NewSystemStringType("timezone_abbreviations"),
 		Source:    ParameterSourceDefault,
 		ResetVal:  "Default",
-		Scope:     sql.PostgresConfigParamScope_Session,
+		Scope:     GetPgsqlScope(PsqlScopeSession),
 	},
 	"trace_notify": &Parameter{
 		Name:      "trace_notify",
@@ -3480,7 +3485,7 @@ var postgresConfigVariables = map[string]sql.SystemVariable{
 		Type:      types.NewSystemBoolType("trace_notify"),
 		Source:    ParameterSourceDefault,
 		ResetVal:  int8(0),
-		Scope:     sql.PostgresConfigParamScope_Session,
+		Scope:     GetPgsqlScope(PsqlScopeSession),
 	},
 	"trace_recovery_messages": &Parameter{
 		Name:      "trace_recovery_messages",
@@ -3491,7 +3496,7 @@ var postgresConfigVariables = map[string]sql.SystemVariable{
 		Type:      types.NewSystemEnumType("trace_recovery_messages", "debug5", "debug4", "debug3", "debug2", "debug1", "log", "notice", "warning", "error"),
 		Source:    ParameterSourceDefault,
 		ResetVal:  "log",
-		Scope:     sql.PostgresConfigParamScope_Session,
+		Scope:     GetPgsqlScope(PsqlScopeSession),
 	},
 	"trace_sort": &Parameter{
 		Name:      "trace_sort",
@@ -3502,7 +3507,7 @@ var postgresConfigVariables = map[string]sql.SystemVariable{
 		Type:      types.NewSystemBoolType("trace_sort"),
 		Source:    ParameterSourceDefault,
 		ResetVal:  int8(0),
-		Scope:     sql.PostgresConfigParamScope_Session,
+		Scope:     GetPgsqlScope(PsqlScopeSession),
 	},
 	"track_activities": &Parameter{
 		Name:      "track_activities",
@@ -3513,7 +3518,7 @@ var postgresConfigVariables = map[string]sql.SystemVariable{
 		Type:      types.NewSystemBoolType("track_activities"),
 		Source:    ParameterSourceDefault,
 		ResetVal:  int8(1),
-		Scope:     sql.PostgresConfigParamScope_Session,
+		Scope:     GetPgsqlScope(PsqlScopeSession),
 	},
 	"track_activity_query_size": &Parameter{
 		Name:    "track_activity_query_size",
@@ -3525,7 +3530,7 @@ var postgresConfigVariables = map[string]sql.SystemVariable{
 		Type:      types.NewSystemIntType("track_activity_query_size", 100, 1048576, false),
 		Source:    ParameterSourceDefault,
 		ResetVal:  int64(1024),
-		Scope:     sql.PostgresConfigParamScope_Session,
+		Scope:     GetPgsqlScope(PsqlScopeSession),
 	},
 	"track_commit_timestamp": &Parameter{
 		Name:      "track_commit_timestamp",
@@ -3536,7 +3541,7 @@ var postgresConfigVariables = map[string]sql.SystemVariable{
 		Type:      types.NewSystemBoolType("track_commit_timestamp"),
 		Source:    ParameterSourceDefault,
 		ResetVal:  int8(0),
-		Scope:     sql.PostgresConfigParamScope_Session,
+		Scope:     GetPgsqlScope(PsqlScopeSession),
 	},
 	"track_counts": &Parameter{
 		Name:      "track_counts",
@@ -3547,7 +3552,7 @@ var postgresConfigVariables = map[string]sql.SystemVariable{
 		Type:      types.NewSystemBoolType("track_counts"),
 		Source:    ParameterSourceDefault,
 		ResetVal:  int8(1),
-		Scope:     sql.PostgresConfigParamScope_Session,
+		Scope:     GetPgsqlScope(PsqlScopeSession),
 	},
 	"track_functions": &Parameter{
 		Name:      "track_functions",
@@ -3558,7 +3563,7 @@ var postgresConfigVariables = map[string]sql.SystemVariable{
 		Type:      types.NewSystemEnumType("track_functions", "none", "pl", "all"),
 		Source:    ParameterSourceDefault,
 		ResetVal:  "none",
-		Scope:     sql.PostgresConfigParamScope_Session,
+		Scope:     GetPgsqlScope(PsqlScopeSession),
 	},
 	"track_io_timing": &Parameter{
 		Name:      "track_io_timing",
@@ -3569,7 +3574,7 @@ var postgresConfigVariables = map[string]sql.SystemVariable{
 		Type:      types.NewSystemBoolType("track_io_timing"),
 		Source:    ParameterSourceDefault,
 		ResetVal:  int8(0),
-		Scope:     sql.PostgresConfigParamScope_Session,
+		Scope:     GetPgsqlScope(PsqlScopeSession),
 	},
 	"track_wal_io_timing": &Parameter{
 		Name:      "track_wal_io_timing",
@@ -3580,7 +3585,7 @@ var postgresConfigVariables = map[string]sql.SystemVariable{
 		Type:      types.NewSystemBoolType("track_wal_io_timing"),
 		Source:    ParameterSourceDefault,
 		ResetVal:  int8(0),
-		Scope:     sql.PostgresConfigParamScope_Session,
+		Scope:     GetPgsqlScope(PsqlScopeSession),
 	},
 	"transaction_deferrable": &Parameter{
 		Name:      "transaction_deferrable",
@@ -3591,7 +3596,7 @@ var postgresConfigVariables = map[string]sql.SystemVariable{
 		Type:      types.NewSystemBoolType("transaction_deferrable"),
 		Source:    ParameterSourceOverride,
 		ResetVal:  int8(0),
-		Scope:     sql.PostgresConfigParamScope_Session,
+		Scope:     GetPgsqlScope(PsqlScopeSession),
 	},
 	"transaction_isolation": &Parameter{
 		Name:      "transaction_isolation",
@@ -3602,7 +3607,7 @@ var postgresConfigVariables = map[string]sql.SystemVariable{
 		Type:      types.NewSystemEnumType("transaction_isolation", "serializable", "repeatable read", "read committed", "read uncommitted"),
 		Source:    ParameterSourceOverride,
 		ResetVal:  "read committed",
-		Scope:     sql.PostgresConfigParamScope_Session,
+		Scope:     GetPgsqlScope(PsqlScopeSession),
 	},
 	"transaction_read_only": &Parameter{
 		Name:      "transaction_read_only",
@@ -3613,7 +3618,7 @@ var postgresConfigVariables = map[string]sql.SystemVariable{
 		Type:      types.NewSystemBoolType("transaction_read_only"),
 		Source:    ParameterSourceOverride,
 		ResetVal:  int8(0),
-		Scope:     sql.PostgresConfigParamScope_Session,
+		Scope:     GetPgsqlScope(PsqlScopeSession),
 	},
 	"transform_null_equals": &Parameter{
 		Name:      "transform_null_equals",
@@ -3624,7 +3629,7 @@ var postgresConfigVariables = map[string]sql.SystemVariable{
 		Type:      types.NewSystemBoolType("transform_null_equals"),
 		Source:    ParameterSourceDefault,
 		ResetVal:  int8(0),
-		Scope:     sql.PostgresConfigParamScope_Session,
+		Scope:     GetPgsqlScope(PsqlScopeSession),
 	},
 	"unix_socket_directories": &Parameter{
 		Name:      "unix_socket_directories",
@@ -3635,7 +3640,7 @@ var postgresConfigVariables = map[string]sql.SystemVariable{
 		Type:      types.NewSystemStringType("unix_socket_directories"),
 		Source:    ParameterSourceDefault,
 		ResetVal:  "/tmp",
-		Scope:     sql.PostgresConfigParamScope_Session,
+		Scope:     GetPgsqlScope(PsqlScopeSession),
 	},
 	"unix_socket_group": &Parameter{
 		Name:      "unix_socket_group",
@@ -3646,7 +3651,7 @@ var postgresConfigVariables = map[string]sql.SystemVariable{
 		Type:      types.NewSystemStringType("unix_socket_group"),
 		Source:    ParameterSourceDefault,
 		ResetVal:  "",
-		Scope:     sql.PostgresConfigParamScope_Session,
+		Scope:     GetPgsqlScope(PsqlScopeSession),
 	},
 	"unix_socket_permissions": &Parameter{
 		Name:      "unix_socket_permissions",
@@ -3657,7 +3662,7 @@ var postgresConfigVariables = map[string]sql.SystemVariable{
 		Type:      types.NewSystemIntType("unix_socket_permissions", 0, 511, false),
 		Source:    ParameterSourceDefault,
 		ResetVal:  int64(511),
-		Scope:     sql.PostgresConfigParamScope_Session,
+		Scope:     GetPgsqlScope(PsqlScopeSession),
 	},
 	"update_process_title": &Parameter{
 		Name:      "update_process_title",
@@ -3668,7 +3673,7 @@ var postgresConfigVariables = map[string]sql.SystemVariable{
 		Type:      types.NewSystemBoolType("update_process_title"),
 		Source:    ParameterSourceDefault,
 		ResetVal:  int8(1),
-		Scope:     sql.PostgresConfigParamScope_Session,
+		Scope:     GetPgsqlScope(PsqlScopeSession),
 	},
 	"vacuum_buffer_usage_limit": &Parameter{
 		Name:    "vacuum_buffer_usage_limit",
@@ -3680,7 +3685,7 @@ var postgresConfigVariables = map[string]sql.SystemVariable{
 		Type:      types.NewSystemIntType("vacuum_buffer_usage_limit", 0, 16777216, false),
 		Source:    ParameterSourceDefault,
 		ResetVal:  int64(256),
-		Scope:     sql.PostgresConfigParamScope_Session,
+		Scope:     GetPgsqlScope(PsqlScopeSession),
 	},
 	"vacuum_cost_delay": &Parameter{
 		Name:    "vacuum_cost_delay",
@@ -3692,7 +3697,7 @@ var postgresConfigVariables = map[string]sql.SystemVariable{
 		Type:      types.NewSystemDoubleType("vacuum_cost_delay", 0, 100),
 		Source:    ParameterSourceDefault,
 		ResetVal:  float64(0),
-		Scope:     sql.PostgresConfigParamScope_Session,
+		Scope:     GetPgsqlScope(PsqlScopeSession),
 	},
 	"vacuum_cost_limit": &Parameter{
 		Name:      "vacuum_cost_limit",
@@ -3703,7 +3708,7 @@ var postgresConfigVariables = map[string]sql.SystemVariable{
 		Type:      types.NewSystemIntType("vacuum_cost_limit", 1, 10000, false),
 		Source:    ParameterSourceDefault,
 		ResetVal:  int64(200),
-		Scope:     sql.PostgresConfigParamScope_Session,
+		Scope:     GetPgsqlScope(PsqlScopeSession),
 	},
 	"vacuum_cost_page_dirty": &Parameter{
 		Name:      "vacuum_cost_page_dirty",
@@ -3714,7 +3719,7 @@ var postgresConfigVariables = map[string]sql.SystemVariable{
 		Type:      types.NewSystemIntType("vacuum_cost_page_dirty", 0, 10000, false),
 		Source:    ParameterSourceDefault,
 		ResetVal:  int64(20),
-		Scope:     sql.PostgresConfigParamScope_Session,
+		Scope:     GetPgsqlScope(PsqlScopeSession),
 	},
 	"vacuum_cost_page_hit": &Parameter{
 		Name:      "vacuum_cost_page_hit",
@@ -3725,7 +3730,7 @@ var postgresConfigVariables = map[string]sql.SystemVariable{
 		Type:      types.NewSystemIntType("vacuum_cost_page_hit", 0, 10000, false),
 		Source:    ParameterSourceDefault,
 		ResetVal:  int64(1),
-		Scope:     sql.PostgresConfigParamScope_Session,
+		Scope:     GetPgsqlScope(PsqlScopeSession),
 	},
 	"vacuum_cost_page_miss": &Parameter{
 		Name:      "vacuum_cost_page_miss",
@@ -3736,7 +3741,7 @@ var postgresConfigVariables = map[string]sql.SystemVariable{
 		Type:      types.NewSystemIntType("vacuum_cost_page_miss", 0, 10000, false),
 		Source:    ParameterSourceDefault,
 		ResetVal:  int64(2),
-		Scope:     sql.PostgresConfigParamScope_Session,
+		Scope:     GetPgsqlScope(PsqlScopeSession),
 	},
 	"vacuum_failsafe_age": &Parameter{
 		Name:      "vacuum_failsafe_age",
@@ -3747,7 +3752,7 @@ var postgresConfigVariables = map[string]sql.SystemVariable{
 		Type:      types.NewSystemIntType("vacuum_failsafe_age", 0, 2100000000, false),
 		Source:    ParameterSourceDefault,
 		ResetVal:  int64(1600000000),
-		Scope:     sql.PostgresConfigParamScope_Session,
+		Scope:     GetPgsqlScope(PsqlScopeSession),
 	},
 	"vacuum_freeze_min_age": &Parameter{
 		Name:      "vacuum_freeze_min_age",
@@ -3758,7 +3763,7 @@ var postgresConfigVariables = map[string]sql.SystemVariable{
 		Type:      types.NewSystemIntType("vacuum_freeze_min_age", 0, 1000000000, false),
 		Source:    ParameterSourceDefault,
 		ResetVal:  int64(50000000),
-		Scope:     sql.PostgresConfigParamScope_Session,
+		Scope:     GetPgsqlScope(PsqlScopeSession),
 	},
 	"vacuum_freeze_table_age": &Parameter{
 		Name:      "vacuum_freeze_table_age",
@@ -3769,7 +3774,7 @@ var postgresConfigVariables = map[string]sql.SystemVariable{
 		Type:      types.NewSystemIntType("vacuum_freeze_table_age", 0, 2000000000, false),
 		Source:    ParameterSourceDefault,
 		ResetVal:  int64(150000000),
-		Scope:     sql.PostgresConfigParamScope_Session,
+		Scope:     GetPgsqlScope(PsqlScopeSession),
 	},
 	"vacuum_multixact_failsafe_age": &Parameter{
 		Name:      "vacuum_multixact_failsafe_age",
@@ -3780,7 +3785,7 @@ var postgresConfigVariables = map[string]sql.SystemVariable{
 		Type:      types.NewSystemIntType("vacuum_multixact_failsafe_age", 0, 2100000000, false),
 		Source:    ParameterSourceDefault,
 		ResetVal:  int64(1600000000),
-		Scope:     sql.PostgresConfigParamScope_Session,
+		Scope:     GetPgsqlScope(PsqlScopeSession),
 	},
 	"vacuum_multixact_freeze_min_age": &Parameter{
 		Name:      "vacuum_multixact_freeze_min_age",
@@ -3791,7 +3796,7 @@ var postgresConfigVariables = map[string]sql.SystemVariable{
 		Type:      types.NewSystemIntType("vacuum_multixact_freeze_min_age", 0, 1000000000, false),
 		Source:    ParameterSourceDefault,
 		ResetVal:  int64(5000000),
-		Scope:     sql.PostgresConfigParamScope_Session,
+		Scope:     GetPgsqlScope(PsqlScopeSession),
 	},
 	"vacuum_multixact_freeze_table_age": &Parameter{
 		Name:      "vacuum_multixact_freeze_table_age",
@@ -3802,7 +3807,7 @@ var postgresConfigVariables = map[string]sql.SystemVariable{
 		Type:      types.NewSystemIntType("vacuum_multixact_freeze_table_age", 0, 2000000000, false),
 		Source:    ParameterSourceDefault,
 		ResetVal:  int64(150000000),
-		Scope:     sql.PostgresConfigParamScope_Session,
+		Scope:     GetPgsqlScope(PsqlScopeSession),
 	},
 	"wal_block_size": &Parameter{
 		Name:      "wal_block_size",
@@ -3813,7 +3818,7 @@ var postgresConfigVariables = map[string]sql.SystemVariable{
 		Type:      types.NewSystemIntType("wal_block_size", 8192, 8192, false),
 		Source:    ParameterSourceDefault,
 		ResetVal:  int64(8192),
-		Scope:     sql.PostgresConfigParamScope_Session,
+		Scope:     GetPgsqlScope(PsqlScopeSession),
 	},
 	"wal_buffers": &Parameter{
 		Name:    "wal_buffers",
@@ -3826,7 +3831,7 @@ var postgresConfigVariables = map[string]sql.SystemVariable{
 		Source:    ParameterSourceDefault,
 		// BootVal: int64(-1),
 		ResetVal: int64(512),
-		Scope:    sql.PostgresConfigParamScope_Session,
+		Scope:    GetPgsqlScope(PsqlScopeSession),
 	},
 	"wal_compression": &Parameter{
 		Name:      "wal_compression",
@@ -3837,7 +3842,7 @@ var postgresConfigVariables = map[string]sql.SystemVariable{
 		Type:      types.NewSystemEnumType("wal_compression", "pglz", "lz4", "on", "off"),
 		Source:    ParameterSourceDefault,
 		ResetVal:  "off",
-		Scope:     sql.PostgresConfigParamScope_Session,
+		Scope:     GetPgsqlScope(PsqlScopeSession),
 	},
 	"wal_consistency_checking": &Parameter{
 		Name:      "wal_consistency_checking",
@@ -3848,7 +3853,7 @@ var postgresConfigVariables = map[string]sql.SystemVariable{
 		Type:      types.NewSystemStringType("wal_consistency_checking"),
 		Source:    ParameterSourceDefault,
 		ResetVal:  "",
-		Scope:     sql.PostgresConfigParamScope_Session,
+		Scope:     GetPgsqlScope(PsqlScopeSession),
 	},
 	"wal_decode_buffer_size": &Parameter{
 		Name:    "wal_decode_buffer_size",
@@ -3860,7 +3865,7 @@ var postgresConfigVariables = map[string]sql.SystemVariable{
 		Type:      types.NewSystemIntType("wal_decode_buffer_size", math.MaxUint16, 1073741823, false),
 		Source:    ParameterSourceDefault,
 		ResetVal:  int64(524288),
-		Scope:     sql.PostgresConfigParamScope_Session,
+		Scope:     GetPgsqlScope(PsqlScopeSession),
 	},
 	"wal_init_zero": &Parameter{
 		Name:      "wal_init_zero",
@@ -3871,7 +3876,7 @@ var postgresConfigVariables = map[string]sql.SystemVariable{
 		Type:      types.NewSystemBoolType("wal_init_zero"),
 		Source:    ParameterSourceDefault,
 		ResetVal:  int8(1),
-		Scope:     sql.PostgresConfigParamScope_Session,
+		Scope:     GetPgsqlScope(PsqlScopeSession),
 	},
 	"wal_keep_size": &Parameter{
 		Name:    "wal_keep_size",
@@ -3883,7 +3888,7 @@ var postgresConfigVariables = map[string]sql.SystemVariable{
 		Type:      types.NewSystemIntType("wal_keep_size", 0, math.MaxInt32, false),
 		Source:    ParameterSourceDefault,
 		ResetVal:  int64(0),
-		Scope:     sql.PostgresConfigParamScope_Session,
+		Scope:     GetPgsqlScope(PsqlScopeSession),
 	},
 	"wal_level": &Parameter{
 		Name:      "wal_level",
@@ -3894,7 +3899,7 @@ var postgresConfigVariables = map[string]sql.SystemVariable{
 		Type:      types.NewSystemEnumType("wal_level", "minimal", "replica", "logical"),
 		Source:    ParameterSourceDefault,
 		ResetVal:  "replica",
-		Scope:     sql.PostgresConfigParamScope_Session,
+		Scope:     GetPgsqlScope(PsqlScopeSession),
 	},
 	"wal_log_hints": &Parameter{
 		Name:      "wal_log_hints",
@@ -3905,7 +3910,7 @@ var postgresConfigVariables = map[string]sql.SystemVariable{
 		Type:      types.NewSystemBoolType("wal_log_hints"),
 		Source:    ParameterSourceDefault,
 		ResetVal:  int8(0),
-		Scope:     sql.PostgresConfigParamScope_Session,
+		Scope:     GetPgsqlScope(PsqlScopeSession),
 	},
 	"wal_receiver_create_temp_slot": &Parameter{
 		Name:      "wal_receiver_create_temp_slot",
@@ -3916,7 +3921,7 @@ var postgresConfigVariables = map[string]sql.SystemVariable{
 		Type:      types.NewSystemBoolType("wal_receiver_create_temp_slot"),
 		Source:    ParameterSourceDefault,
 		ResetVal:  int8(0),
-		Scope:     sql.PostgresConfigParamScope_Session,
+		Scope:     GetPgsqlScope(PsqlScopeSession),
 	},
 	"wal_receiver_status_interval": &Parameter{
 		Name:    "wal_receiver_status_interval",
@@ -3928,7 +3933,7 @@ var postgresConfigVariables = map[string]sql.SystemVariable{
 		Type:      types.NewSystemIntType("wal_receiver_status_interval", 0, 2147483, false),
 		Source:    ParameterSourceDefault,
 		ResetVal:  int64(10),
-		Scope:     sql.PostgresConfigParamScope_Session,
+		Scope:     GetPgsqlScope(PsqlScopeSession),
 	},
 	"wal_receiver_timeout": &Parameter{
 		Name:      "wal_receiver_timeout",
@@ -3939,7 +3944,7 @@ var postgresConfigVariables = map[string]sql.SystemVariable{
 		Type:      types.NewSystemIntType("wal_receiver_timeout", 0, math.MaxInt32, false),
 		Source:    ParameterSourceDefault,
 		ResetVal:  int64(60000),
-		Scope:     sql.PostgresConfigParamScope_Session,
+		Scope:     GetPgsqlScope(PsqlScopeSession),
 	},
 	"wal_recycle": &Parameter{
 		Name:      "wal_recycle",
@@ -3950,7 +3955,7 @@ var postgresConfigVariables = map[string]sql.SystemVariable{
 		Type:      types.NewSystemBoolType("wal_recycle"),
 		Source:    ParameterSourceDefault,
 		ResetVal:  int8(1),
-		Scope:     sql.PostgresConfigParamScope_Session,
+		Scope:     GetPgsqlScope(PsqlScopeSession),
 	},
 	"wal_retrieve_retry_interval": &Parameter{
 		Name:      "wal_retrieve_retry_interval",
@@ -3961,7 +3966,7 @@ var postgresConfigVariables = map[string]sql.SystemVariable{
 		Type:      types.NewSystemIntType("wal_retrieve_retry_interval", 1, math.MaxInt32, false),
 		Source:    ParameterSourceDefault,
 		ResetVal:  int64(5000),
-		Scope:     sql.PostgresConfigParamScope_Session,
+		Scope:     GetPgsqlScope(PsqlScopeSession),
 	},
 	"wal_segment_size": &Parameter{
 		Name:    "wal_segment_size",
@@ -3973,7 +3978,7 @@ var postgresConfigVariables = map[string]sql.SystemVariable{
 		Type:      types.NewSystemIntType("wal_segment_size", 1048576, 1073741824, false),
 		Source:    ParameterSourceDefault,
 		ResetVal:  int64(16777216),
-		Scope:     sql.PostgresConfigParamScope_Session,
+		Scope:     GetPgsqlScope(PsqlScopeSession),
 	},
 	"wal_sender_timeout": &Parameter{
 		Name:    "wal_sender_timeout",
@@ -3985,7 +3990,7 @@ var postgresConfigVariables = map[string]sql.SystemVariable{
 		Type:      types.NewSystemIntType("wal_sender_timeout", 0, math.MaxInt32, false),
 		Source:    ParameterSourceDefault,
 		ResetVal:  int64(60000),
-		Scope:     sql.PostgresConfigParamScope_Session,
+		Scope:     GetPgsqlScope(PsqlScopeSession),
 	},
 	"wal_skip_threshold": &Parameter{
 		Name:    "wal_skip_threshold",
@@ -3997,7 +4002,7 @@ var postgresConfigVariables = map[string]sql.SystemVariable{
 		Type:      types.NewSystemIntType("wal_skip_threshold", 0, math.MaxInt32, false),
 		Source:    ParameterSourceDefault,
 		ResetVal:  int64(2048),
-		Scope:     sql.PostgresConfigParamScope_Session,
+		Scope:     GetPgsqlScope(PsqlScopeSession),
 	},
 	"wal_sync_method": &Parameter{
 		Name:      "wal_sync_method",
@@ -4008,7 +4013,7 @@ var postgresConfigVariables = map[string]sql.SystemVariable{
 		Type:      types.NewSystemEnumType("wal_sync_method", "fsync", "fsync_writethrough", "fdatasync", "open_sync", "open_datasync"),
 		Source:    ParameterSourceDefault,
 		ResetVal:  "open_datasync",
-		Scope:     sql.PostgresConfigParamScope_Session,
+		Scope:     GetPgsqlScope(PsqlScopeSession),
 	},
 	"wal_writer_delay": &Parameter{
 		Name:    "wal_writer_delay",
@@ -4020,7 +4025,7 @@ var postgresConfigVariables = map[string]sql.SystemVariable{
 		Type:      types.NewSystemIntType("wal_writer_delay", 1, 10000, false),
 		Source:    ParameterSourceDefault,
 		ResetVal:  int64(200),
-		Scope:     sql.PostgresConfigParamScope_Session,
+		Scope:     GetPgsqlScope(PsqlScopeSession),
 	},
 	"wal_writer_flush_after": &Parameter{
 		Name:    "wal_writer_flush_after",
@@ -4032,7 +4037,7 @@ var postgresConfigVariables = map[string]sql.SystemVariable{
 		Type:      types.NewSystemIntType("wal_writer_flush_after", 0, math.MaxInt32, false),
 		Source:    ParameterSourceDefault,
 		ResetVal:  int64(128),
-		Scope:     sql.PostgresConfigParamScope_Session,
+		Scope:     GetPgsqlScope(PsqlScopeSession),
 	},
 	"work_mem": &Parameter{
 		Name:    "work_mem",
@@ -4044,7 +4049,7 @@ var postgresConfigVariables = map[string]sql.SystemVariable{
 		Type:      types.NewSystemIntType("work_mem", 64, math.MaxInt32, false),
 		Source:    ParameterSourceDefault,
 		ResetVal:  int64(4096),
-		Scope:     sql.PostgresConfigParamScope_Session,
+		Scope:     GetPgsqlScope(PsqlScopeSession),
 	},
 	"xmlbinary": &Parameter{
 		Name:      "xmlbinary",
@@ -4055,7 +4060,7 @@ var postgresConfigVariables = map[string]sql.SystemVariable{
 		Type:      types.NewSystemEnumType("xmlbinary", "base64", "hex"),
 		Source:    ParameterSourceDefault,
 		ResetVal:  "base64",
-		Scope:     sql.PostgresConfigParamScope_Session,
+		Scope:     GetPgsqlScope(PsqlScopeSession),
 	},
 	"xmloption": &Parameter{
 		Name:      "xmloption",
@@ -4066,7 +4071,7 @@ var postgresConfigVariables = map[string]sql.SystemVariable{
 		Type:      types.NewSystemEnumType("xmloption", "content", "document"),
 		Source:    ParameterSourceDefault,
 		ResetVal:  "content",
-		Scope:     sql.PostgresConfigParamScope_Session,
+		Scope:     GetPgsqlScope(PsqlScopeSession),
 	},
 	"zero_damaged_pages": &Parameter{
 		Name:      "zero_damaged_pages",
@@ -4077,6 +4082,6 @@ var postgresConfigVariables = map[string]sql.SystemVariable{
 		Type:      types.NewSystemBoolType("zero_damaged_pages"),
 		Source:    ParameterSourceDefault,
 		ResetVal:  int8(0),
-		Scope:     sql.PostgresConfigParamScope_Session,
+		Scope:     GetPgsqlScope(PsqlScopeSession),
 	},
 }
