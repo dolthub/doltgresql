@@ -18,16 +18,16 @@ import "testing"
 
 func TestAlterLanguage(t *testing.T) {
 	tests := []QueryParses{
-		Unimplemented("ALTER LANGUAGE name RENAME TO new_name"),
-		Unimplemented("ALTER PROCEDURAL LANGUAGE name RENAME TO new_name"),
-		Unimplemented("ALTER LANGUAGE name OWNER TO new_owner"),
-		Unimplemented("ALTER PROCEDURAL LANGUAGE name OWNER TO new_owner"),
-		Unimplemented("ALTER LANGUAGE name OWNER TO CURRENT_ROLE"),
-		Unimplemented("ALTER PROCEDURAL LANGUAGE name OWNER TO CURRENT_ROLE"),
-		Unimplemented("ALTER LANGUAGE name OWNER TO CURRENT_USER"),
-		Unimplemented("ALTER PROCEDURAL LANGUAGE name OWNER TO CURRENT_USER"),
-		Unimplemented("ALTER LANGUAGE name OWNER TO SESSION_USER"),
-		Unimplemented("ALTER PROCEDURAL LANGUAGE name OWNER TO SESSION_USER"),
+		Parses("ALTER LANGUAGE name RENAME TO new_name"),
+		Parses("ALTER PROCEDURAL LANGUAGE name RENAME TO new_name"),
+		Parses("ALTER LANGUAGE name OWNER TO new_owner"),
+		Parses("ALTER PROCEDURAL LANGUAGE name OWNER TO new_owner"),
+		Parses("ALTER LANGUAGE name OWNER TO CURRENT_ROLE"),
+		Parses("ALTER PROCEDURAL LANGUAGE name OWNER TO CURRENT_ROLE"),
+		Parses("ALTER LANGUAGE name OWNER TO CURRENT_USER"),
+		Parses("ALTER PROCEDURAL LANGUAGE name OWNER TO CURRENT_USER"),
+		Parses("ALTER LANGUAGE name OWNER TO SESSION_USER"),
+		Parses("ALTER PROCEDURAL LANGUAGE name OWNER TO SESSION_USER"),
 	}
 	RunTests(t, tests)
 }

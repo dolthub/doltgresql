@@ -249,6 +249,14 @@ func (*AlterIndexAllInTablespace) StatementTag() string { return "ALTER INDEX AL
 func (*AlterIndexAllInTablespace) hiddenFromShowQueries() {}
 
 // StatementType implements the Statement interface.
+func (*AlterLanguage) StatementType() StatementType { return DDL }
+
+// StatementTag returns a short string identifying the type of statement.
+func (*AlterLanguage) StatementTag() string { return "ALTER LANGUAGE" }
+
+func (*AlterLanguage) hiddenFromShowQueries() {}
+
+// StatementType implements the Statement interface.
 func (*AlterMaterializedView) StatementType() StatementType { return DDL }
 
 // StatementTag implements the Statement interface.
@@ -504,6 +512,12 @@ func (*CreateIndex) StatementType() StatementType { return DDL }
 func (*CreateIndex) StatementTag() string { return "CREATE INDEX" }
 
 // StatementType implements the Statement interface.
+func (*CreateLanguage) StatementType() StatementType { return DDL }
+
+// StatementTag returns a short string identifying the type of statement.
+func (*CreateLanguage) StatementTag() string { return "CREATE LANGUAGE" }
+
+// StatementType implements the Statement interface.
 func (*CreateMaterializedView) StatementType() StatementType { return DDL }
 
 // StatementTag returns a short string identifying the type of statement.
@@ -629,6 +643,12 @@ func (*DropIndex) StatementType() StatementType { return DDL }
 
 // StatementTag returns a short string identifying the type of statement.
 func (*DropIndex) StatementTag() string { return "DROP INDEX" }
+
+// StatementType implements the Statement interface.
+func (*DropLanguage) StatementType() StatementType { return DDL }
+
+// StatementTag returns a short string identifying the type of statement.
+func (*DropLanguage) StatementTag() string { return "DROP LANGUAGE" }
 
 // StatementType implements the Statement interface.
 func (*DropProcedure) StatementType() StatementType { return DDL }
@@ -1161,6 +1181,7 @@ func (n *AlterDefaultPrivileges) String() string    { return AsString(n) }
 func (n *AlterFunction) String() string             { return AsString(n) }
 func (n *AlterIndex) String() string                { return AsString(n) }
 func (n *AlterIndexAllInTablespace) String() string { return AsString(n) }
+func (n *AlterLanguage) String() string             { return AsString(n) }
 func (n *AlterMaterializedView) String() string     { return AsString(n) }
 func (n *AlterProcedure) String() string            { return AsString(n) }
 func (n *AlterSchema) String() string               { return AsString(n) }
@@ -1195,6 +1216,7 @@ func (n *CreateDatabase) String() string            { return AsString(n) }
 func (n *CreateExtension) String() string           { return AsString(n) }
 func (n *CreateFunction) String() string            { return AsString(n) }
 func (n *CreateIndex) String() string               { return AsString(n) }
+func (n *CreateLanguage) String() string            { return AsString(n) }
 func (n *CreateMaterializedView) String() string    { return AsString(n) }
 func (n *CreateProcedure) String() string           { return AsString(n) }
 func (n *CreateRole) String() string                { return AsString(n) }
@@ -1211,6 +1233,7 @@ func (n *DropDatabase) String() string              { return AsString(n) }
 func (n *DropExtension) String() string             { return AsString(n) }
 func (n *DropFunction) String() string              { return AsString(n) }
 func (n *DropIndex) String() string                 { return AsString(n) }
+func (n *DropLanguage) String() string              { return AsString(n) }
 func (n *DropProcedure) String() string             { return AsString(n) }
 func (n *DropSchema) String() string                { return AsString(n) }
 func (n *DropTable) String() string                 { return AsString(n) }

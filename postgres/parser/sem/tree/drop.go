@@ -168,6 +168,33 @@ func (node *DropIndex) Format(ctx *FmtCtx) {
 	}
 }
 
+var _ Statement = &DropLanguage{}
+
+// DropLanguage represents a DROP LANGUAGE statement.
+type DropLanguage struct {
+	Name         Name
+	Procedural   bool
+	IfExists     bool
+	DropBehavior DropBehavior
+}
+
+// Format implements the NodeFormatter interface.
+func (node *DropLanguage) Format(ctx *FmtCtx) {
+	ctx.WriteString("DROP ")
+	if node.Procedural {
+		ctx.WriteString("PROCEDURAL ")
+	}
+	ctx.WriteString("LANGUAGE ")
+	if node.IfExists {
+		ctx.WriteString("IF EXISTS ")
+	}
+	ctx.FormatNode(&node.Name)
+	if node.DropBehavior != DropDefault {
+		ctx.WriteByte(' ')
+		ctx.WriteString(node.DropBehavior.String())
+	}
+}
+
 var _ Statement = &DropProcedure{}
 
 // DropProcedure represents a DROP PROCEDURE statement.
