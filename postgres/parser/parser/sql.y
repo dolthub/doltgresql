@@ -633,6 +633,21 @@ func (u *sqlSymUnion) triggerTime() tree.TriggerTime {
 func (u *sqlSymUnion) languageHandler() *tree.LanguageHandler {
     return u.val.(*tree.LanguageHandler)
 }
+func (u *sqlSymUnion) compositeTypeElems() []tree.CompositeTypeElem {
+    return u.val.([]tree.CompositeTypeElem)
+}
+func (u *sqlSymUnion) rangeTypeOption() tree.RangeTypeOption {
+    return u.val.(tree.RangeTypeOption)
+}
+func (u *sqlSymUnion) rangeTypeOptions() []tree.RangeTypeOption {
+    return u.val.([]tree.RangeTypeOption)
+}
+func (u *sqlSymUnion) baseTypeOption() tree.BaseTypeOption {
+    return u.val.(tree.BaseTypeOption)
+}
+func (u *sqlSymUnion) baseTypeOptions() []tree.BaseTypeOption {
+    return u.val.([]tree.BaseTypeOption)
+}
 %}
 
 // NB: the %token definitions must come before the %type definitions in this
@@ -653,16 +668,16 @@ func (u *sqlSymUnion) languageHandler() *tree.LanguageHandler {
 
 // Ordinary key words in alphabetical order.
 %token <str> ABORT ACCESS ACTION ADD ADMIN AFTER AGGREGATE
-%token <str> ALL ALLOW_CONNECTIONS ALTER ALWAYS ANALYSE ANALYZE AND AND_AND ANY ANNOTATE_TYPE ARRAY AS ASC
+%token <str> ALIGNMENT ALL ALLOW_CONNECTIONS ALTER ALWAYS ANALYSE ANALYZE AND AND_AND ANY ANNOTATE_TYPE ARRAY AS ASC
 %token <str> ASYMMETRIC AT ATOMIC ATTACH ATTRIBUTE AUTHORIZATION AUTOMATIC
 
 %token <str> BACKUP BACKUPS BEFORE BEGIN BETWEEN BIGINT BIGSERIAL BINARY BIT
 %token <str> BUCKET_COUNT
 %token <str> BOOLEAN BOTH BOX2D BUNDLE BY
 
-%token <str> CACHE CHAIN CALL CALLED CANCEL CANCELQUERY CASCADE CASCADED CASE CAST CBRT CHANGEFEED CHAR
-%token <str> CHARACTER CHARACTERISTICS CHECK CLOSE
-%token <str> CLUSTER COALESCE COLLATE COLLATION COLLATION_VERSION COLUMN COLUMNS COMMENT COMMENTS COMMIT
+%token <str> CACHE CHAIN CALL CALLED CANCEL CANCELQUERY CANONICAL CASCADE CASCADED CASE CAST CATEGORY CBRT
+%token <str> CHANGEFEED CHAR CHARACTER CHARACTERISTICS CHECK CLOSE
+%token <str> CLUSTER COALESCE COLLATABLE COLLATE COLLATION COLLATION_VERSION COLUMN COLUMNS COMMENT COMMENTS COMMIT
 %token <str> COMMITTED COMPACT COMPLETE COMPRESSION CONCAT CONCURRENTLY CONFIGURATION CONFIGURATIONS CONFIGURE
 %token <str> CONFLICT CONNECT CONNECTION CONSTRAINT CONSTRAINTS CONTAINS CONTROLCHANGEFEED
 %token <str> CONTROLJOB CONVERSION CONVERT COPY COST CREATE CREATEDB CREATELOGIN CREATEROLE
@@ -671,11 +686,11 @@ func (u *sqlSymUnion) languageHandler() *tree.LanguageHandler {
 %token <str> CURRENT_USER CYCLE
 
 %token <str> DATA DATABASE DATABASES DATE DAY DEALLOCATE DEC DECIMAL DECLARE
-%token <str> DEFAULT DEFAULTS DEFERRABLE DEFERRED DEFINER DELETE DEPENDS DESC DESTINATION DETACH DETACHED
+%token <str> DEFAULT DEFAULTS DEFERRABLE DEFERRED DEFINER DELETE DELIMITER DEPENDS DESC DESTINATION DETACH DETACHED
 %token <str> DISABLE DISCARD DISTINCT DO DOMAIN DOUBLE DROP
 
-%token <str> EACH ELSE ENABLE ENCODING ENCRYPTION_PASSPHRASE END ENUM ENUMS ESCAPE EXCEPT EXCLUDE EXCLUDING
-%token <str> EXISTS EXECUTE EXECUTION EXPERIMENTAL
+%token <str> EACH ELEMENT ELSE ENABLE ENCODING ENCRYPTION_PASSPHRASE END ENUM ENUMS ESCAPE
+%token <str> EXCEPT EXCLUDE EXCLUDING EXISTS EXECUTE EXECUTION EXPERIMENTAL
 %token <str> EXPERIMENTAL_FINGERPRINTS EXPERIMENTAL_REPLICA
 %token <str> EXPERIMENTAL_AUDIT EXPIRATION EXPLAIN EXPORT EXPRESSION
 %token <str> EXTENDED EXTENSION EXTERNAL EXTRACT EXTRACT_DURATION
@@ -694,7 +709,7 @@ func (u *sqlSymUnion) languageHandler() *tree.LanguageHandler {
 %token <str> IF IFERROR IFNULL IGNORE_FOREIGN_KEYS ILIKE IMMEDIATE IMMUTABLE IMPORT
 %token <str> IN INCLUDE INCLUDING INCREMENT INCREMENTAL INET INET_CONTAINED_BY_OR_EQUALS
 %token <str> INET_CONTAINS_OR_EQUALS INDEX INDEXES INHERIT INHERITS INLINE INJECT INPUT INTERLEAVE INITIALLY
-%token <str> INNER INSERT INSTEAD INT INTEGER
+%token <str> INNER INSERT INSTEAD INT INTEGER INTERNALLENGTH
 %token <str> INTERSECT INTERVAL INTO INTO_DB INVERTED INVOKER IS ISERROR ISNULL ISOLATION IS_TEMPLATE
 
 %token <str> JOB JOBS JOIN JSON JSONB JSON_SOME_EXISTS JSON_ALL_EXISTS
@@ -709,45 +724,45 @@ func (u *sqlSymUnion) languageHandler() *tree.LanguageHandler {
 %token <str> MAIN MATCH MATERIALIZED MERGE METHOD MINVALUE MAXVALUE MINUTE MODIFYCLUSTERSETTING MODULUS MONTH
 %token <str> MULTILINESTRING MULTILINESTRINGM MULTILINESTRINGZ MULTILINESTRINGZM
 %token <str> MULTIPOINT MULTIPOINTM MULTIPOINTZ MULTIPOINTZM
-%token <str> MULTIPOLYGON MULTIPOLYGONM MULTIPOLYGONZ MULTIPOLYGONZM
+%token <str> MULTIPOLYGON MULTIPOLYGONM MULTIPOLYGONZ MULTIPOLYGONZM MULTIRANGE_TYPE_NAME
 
 %token <str> NAN NAME NAMES NATURAL NEVER NEW NEXT NO NOCANCELQUERY NOCONTROLCHANGEFEED NOCONTROLJOB
 %token <str> NOCREATEDB NOCREATELOGIN NOCREATEROLE NOLOGIN NOMODIFYCLUSTERSETTING NO_INDEX_JOIN
 %token <str> NONE NORMAL NOT NOTHING NOTNULL NOVIEWACTIVITY NOWAIT NULL NULLIF NULLS NUMERIC
 
 %token <str> OBJECT OF OFF OFFSET OID OIDS OIDVECTOR OLD ON ONLY OPT OPTION OPTIONS OR
-%token <str> ORDER ORDINALITY OTHERS OUT OUTER OVER OVERLAPS OVERLAY OWNED OWNER OPERATOR
+%token <str> ORDER ORDINALITY OTHERS OUT OUTER OUTPUT OVER OVERLAPS OVERLAY OWNED OWNER OPERATOR
 
-%token <str> PARALLEL PARAMETER PARENT PARTIAL PARTITION PARTITIONS PASSWORD PAUSE PAUSED PHYSICAL PLACING
-%token <str> PLAIN PLAN PLANS POINT POINTM POINTZ POINTZM POLYGON POLYGONM POLYGONZ POLYGONZM
-%token <str> POSITION PRECEDING PRECISION PREPARE PRESERVE PRIMARY PRIORITY PRIVILEGES
+%token <str> PARALLEL PARAMETER PARENT PARTIAL PARTITION PARTITIONS PASSEDBYVALUE PASSWORD PAUSE PAUSED PHYSICAL
+%token <str> PLACING PLAIN PLAN PLANS POINT POINTM POINTZ POINTZM POLYGON POLYGONM POLYGONZ POLYGONZM
+%token <str> POSITION PRECEDING PRECISION PREFERRED PREPARE PRESERVE PRIMARY PRIORITY PRIVILEGES
 %token <str> PROCEDURAL PROCEDURE PROCEDURES PUBLIC PUBLICATION
 
 %token <str> QUERIES QUERY
 
-%token <str> RANGE RANGES READ REAL RECURSIVE RECURRING REF REFERENCES REFERENCING REFRESH
+%token <str> RANGE RANGES READ REAL RECEIVE RECURSIVE RECURRING REF REFERENCES REFERENCING REFRESH
 %token <str> REGCLASS REGPROC REGPROCEDURE REGNAMESPACE REGTYPE REINDEX RELEASE REMAINDER
 %token <str> REMOVE_PATH RENAME REPEATABLE REPLACE REPLICA RESET RESTART RESTORE RESTRICT RESTRICTED RESUME
 %token <str> RETRY RETURN RETURNING RETURNS REVISION_HISTORY REVOKE RIGHT
 %token <str> ROLE ROLES ROUTINE ROUTINES ROLLBACK ROLLUP ROW ROWS RSHIFT RULE RUNNING
 
-%token <str> SAFE SAVEPOINT SCATTER SCHEDULE SCHEDULES SCHEMA SCHEMAS SCRUB SEARCH SECOND SECURITY SEED SELECT
+%token <str> SAFE SAVEPOINT SCATTER SCHEDULE SCHEDULES SCHEMA SCHEMAS SCRUB SEARCH SECOND SECURITY SEED SELECT SEND
 %token <str> SERIALIZABLE SERVER SESSION SESSIONS SESSION_USER SET SETTING SETTINGS SEQUENCE SEQUENCES
 %token <str> SHARE SHOW SIMILAR SIMPLE SKIP SKIP_MISSING_FOREIGN_KEYS
 %token <str> SKIP_MISSING_SEQUENCES SKIP_MISSING_SEQUENCE_OWNERS SKIP_MISSING_VIEWS SMALLINT SMALLSERIAL SNAPSHOT SOME SPLIT SQL
-%token <str> STABLE START STATEMENT STATISTICS STATUS STDIN STRATEGY STRICT STRING STORAGE STORE STORED SUBSTRING SUPPORT
-%token <str> SYMMETRIC SYNTAX SYSTEM SQRT SUBSCRIPTION
+%token <str> STABLE START STATEMENT STATISTICS STATUS STDIN STRATEGY STRICT STRING STORAGE STORE STORED
+%token <str> SUBSCRIPT SUBSCRIPTION SUBSTRING SUBTYPE SUBTYPE_DIFF SUBTYPE_OPCLASS SUPPORT SYMMETRIC SYNTAX SYSTEM SQRT
 
 %token <str> TABLE TABLES TABLESPACE TEMP TEMPLATE TEMPORARY TEXT THEN
-%token <str> TIES TIME TIMETZ TIMESTAMP TIMESTAMPTZ TO THROTTLING TRAILING TRACE
+%token <str> TIES TIME TIMETZ TIMESTAMP TIMESTAMPTZ TO THROTTLING TRAILING TRACE TRACING
 %token <str> TRANSACTION TRANSACTIONS TRANSFORM TREAT TRIGGER TRIM TRUE
-%token <str> TRUNCATE TRUSTED TYPE TYPES
-%token <str> TRACING
+%token <str> TRUNCATE TRUSTED TYPE TYPES TYPMOD_IN TYPMOD_OUT
 
 %token <str> UNBOUNDED UNCOMMITTED UNION UNIQUE UNKNOWN UNLOGGED UNSAFE UNSPLIT
 %token <str> UPDATE UPSERT UNTIL USAGE USE USER USERS USING UUID
 
-%token <str> VALID VALIDATE VALIDATOR VALUE VALUES VARBIT VARCHAR VARIADIC VARYING VERSION VIEW VIEWACTIVITY VIRTUAL VOLATILE
+%token <str> VALID VALIDATE VALIDATOR VALUE VALUES
+%token <str> VARBIT VARCHAR VARIABLE VARIADIC VARYING VERSION VIEW VIEWACTIVITY VIRTUAL VOLATILE
 
 %token <str> WHEN WHERE WINDOW WITH WITHIN WITHOUT WORK WRAPPER WRITE
 
@@ -1052,6 +1067,12 @@ func (u *sqlSymUnion) languageHandler() *tree.LanguageHandler {
 %type <tree.Operator> subquery_op
 %type <*tree.UnresolvedName> func_name func_name_no_crdb_extra
 %type <str> opt_compression opt_collate
+
+%type <[]tree.CompositeTypeElem> type_composite_list opt_type_composite_list
+%type <tree.RangeTypeOption> type_range_option
+%type <[]tree.RangeTypeOption> type_range_optional_list
+%type <tree.BaseTypeOption> type_base_option
+%type <[]tree.BaseTypeOption> type_base_optional_list
 
 %type <str> cursor_name database_name index_name opt_index_name column_name insert_column_item statistics_name window_name
 %type <str> table_alias_name constraint_name target_name collation_name opt_from_ref_table
@@ -8050,31 +8071,172 @@ opt_view_recursive:
     $$.val = true
   }
 
-
 // %Help: CREATE TYPE -- create a type
 // %Category: DDL
 // %Text: CREATE TYPE <type_name> AS ENUM (...)
 create_type_stmt:
+  // Record/Composite types.
+  CREATE TYPE type_name AS '(' opt_type_composite_list ')'
+  {
+    $$.val = &tree.CreateType{
+      TypeName: $3.unresolvedObjectName(),
+      Variety: tree.Composite,
+      Composite: tree.CompositeType{Types: $6.compositeTypeElems()},
+    }
+  }
   // Enum types.
-  CREATE TYPE type_name AS ENUM '(' opt_enum_val_list ')'
+| CREATE TYPE type_name AS ENUM '(' opt_enum_val_list ')'
   {
     $$.val = &tree.CreateType{
       TypeName: $3.unresolvedObjectName(),
       Variety: tree.Enum,
-      EnumLabels: $7.strs(),
+      Enum: tree.EnumType{Labels: $7.strs()},
     }
   }
-| CREATE TYPE error // SHOW HELP: CREATE TYPE
-  // Record/Composite types.
-| CREATE TYPE type_name AS '(' error      { return unimplementedWithIssue(sqllex, 27792) }
   // Range types.
-| CREATE TYPE type_name AS RANGE error    { return unimplementedWithIssue(sqllex, 27791) }
+| CREATE TYPE type_name AS RANGE '(' SUBTYPE '=' typename type_range_optional_list ')'
+  {
+    $$.val = &tree.CreateType{
+      TypeName: $3.unresolvedObjectName(),
+      Variety: tree.Range,
+      Range: tree.RangeType{
+        Subtype: $9.typeReference(),
+        Options: $10.rangeTypeOptions(),
+      },
+    }
+  }
   // Base (primitive) types.
-| CREATE TYPE type_name '(' error         { return unimplementedWithIssueDetail(sqllex, 27793, "base") }
+| CREATE TYPE type_name '(' INPUT '=' name ',' OUTPUT '=' name type_base_optional_list ')'
+  {
+    $$.val = &tree.CreateType{
+      TypeName: $3.unresolvedObjectName(),
+      Variety: tree.Base,
+      Base: tree.BaseType{
+        Input: $7,
+        Output: $11,
+	Options: $12.baseTypeOptions(),
+      },
+    }
+  }
   // Shell types, gateway to define base types using the previous syntax.
-| CREATE TYPE type_name                   { return unimplementedWithIssueDetail(sqllex, 27793, "shell") }
+| CREATE TYPE type_name
+  {
+    $$.val = &tree.CreateType{
+      TypeName: $3.unresolvedObjectName(),
+      Variety: tree.Shell,
+    }
+  }
   // Domain types.
 | CREATE DOMAIN type_name error           { return unimplementedWithIssueDetail(sqllex, 27796, "create") }
+
+opt_type_composite_list:
+  /* EMPTY */
+  {
+    $$.val = []tree.CompositeTypeElem{}
+  }
+| type_composite_list
+  {
+    $$.val = $1.compositeTypeElems()
+  }
+
+type_composite_list:
+  name typename opt_collate
+  {
+    $$.val = []tree.CompositeTypeElem{{AttrName: $1, Type: $2.typeReference(), Collate: $3}}
+  }
+| type_composite_list ',' name typename opt_collate
+  {
+    $$.val = append($1.compositeTypeElems(), tree.CompositeTypeElem{AttrName: $3, Type: $4.typeReference(), Collate: $5})
+  }
+
+type_range_optional_list:
+  /* EMPTY */
+  {
+    $$.val = []tree.RangeTypeOption(nil)
+  }
+| type_range_option
+  {
+    $$.val = []tree.RangeTypeOption{$1.rangeTypeOption()}
+  }
+| type_range_optional_list ',' type_range_option
+  {
+    $$.val = append($1.rangeTypeOptions(), $3.rangeTypeOption())
+  }
+
+type_range_option:
+  SUBTYPE_OPCLASS '=' name
+  { $$.val = tree.RangeTypeOption{Option: tree.RangeTypeSubtypeOpClass, StrVal: $3} }
+| COLLATION '=' collation_name
+  { $$.val = tree.RangeTypeOption{Option: tree.RangeTypeCollation, StrVal: $3} }
+| CANONICAL '=' name
+  { $$.val = tree.RangeTypeOption{Option: tree.RangeTypeCanonical, StrVal: $3} }
+| SUBTYPE_DIFF '=' name
+  { $$.val = tree.RangeTypeOption{Option: tree.RangeTypeSubtypeDiff, StrVal: $3} }
+| MULTIRANGE_TYPE_NAME '=' type_name
+  { $$.val = tree.RangeTypeOption{Option: tree.RangeTypeMultiRangeTypeName, MRTypeName: $3.unresolvedObjectName()} }
+
+type_base_optional_list:
+  /* EMPTY */
+  {
+    $$.val = []tree.BaseTypeOption(nil)
+  }
+| type_base_option
+  {
+    $$.val = []tree.BaseTypeOption{$1.baseTypeOption()}
+  }
+| type_base_optional_list ',' type_base_option
+  {
+    $$.val = append($1.baseTypeOptions(), $3.baseTypeOption())
+  }
+
+type_base_option:
+  RECEIVE '=' name
+  { $$.val = tree.BaseTypeOption{Option: tree.BaseTypeReceive, StrVal: $3} }
+| SEND '=' name
+  { $$.val = tree.BaseTypeOption{Option: tree.BaseTypeSend, StrVal: $3} }
+| TYPMOD_IN '=' name
+  { $$.val = tree.BaseTypeOption{Option: tree.BaseTypeTypModIn, StrVal: $3} }
+| TYPMOD_OUT '=' name
+  { $$.val = tree.BaseTypeOption{Option: tree.BaseTypeTypeModOut, StrVal: $3} }
+| ANALYZE '=' name
+  { $$.val = tree.BaseTypeOption{Option: tree.BaseTypeAnalyze, StrVal: $3} }
+| SUBSCRIPT '=' name
+  { $$.val = tree.BaseTypeOption{Option: tree.BaseTypeSubscript, StrVal: $3} }
+| INTERNALLENGTH '=' signed_iconst64
+  {
+    $$.val = tree.BaseTypeOption{Option: tree.BaseTypeInternalLength, InternalLength: $3.int64()}
+  }
+| INTERNALLENGTH '=' VARIABLE
+  {
+    $$.val = tree.BaseTypeOption{
+      Option: tree.BaseTypeInternalLength,
+      InternalLength: -1,
+    }
+  }
+| PASSEDBYVALUE
+  { $$.val = tree.BaseTypeOption{Option: tree.BaseTypePassedByValue} }
+| ALIGNMENT '=' name
+  { $$.val = tree.BaseTypeOption{Option: tree.BaseTypeAlignment, StrVal: $3} }
+| STORAGE '=' name
+  { $$.val = tree.BaseTypeOption{Option: tree.BaseTypeStorage, StrVal: $3} }
+| LIKE '=' typename
+  { $$.val = tree.BaseTypeOption{Option: tree.BaseTypeLikeType, TypeVal: $3.typeReference()} }
+| CATEGORY '=' name
+  { $$.val = tree.BaseTypeOption{Option: tree.BaseTypeCategory, StrVal: $3} }
+| PREFERRED '=' TRUE
+  { $$.val = tree.BaseTypeOption{Option: tree.BaseTypePreferred, BoolVal: true} }
+| PREFERRED '=' FALSE
+  { $$.val = tree.BaseTypeOption{Option: tree.BaseTypePreferred, BoolVal: false} }
+| DEFAULT '=' a_expr
+  { $$.val = tree.BaseTypeOption{Option: tree.BaseTypeDefault, Default: $3.expr()} }
+| ELEMENT '=' typename
+  { $$.val = tree.BaseTypeOption{Option: tree.BaseTypeElement, TypeVal: $3.typeReference()} }
+| DELIMITER '=' non_reserved_word_or_sconst
+  { $$.val = tree.BaseTypeOption{Option: tree.BaseTypeDelimiter, StrVal: $3} }
+| COLLATABLE '=' TRUE
+  { $$.val = tree.BaseTypeOption{Option: tree.BaseTypeCollatable, BoolVal: true} }
+| COLLATABLE '=' FALSE
+  { $$.val = tree.BaseTypeOption{Option: tree.BaseTypeCollatable, BoolVal: false} }
 
 opt_enum_val_list:
   enum_val_list
@@ -13048,6 +13210,7 @@ unreserved_keyword:
 | ADMIN
 | AFTER
 | AGGREGATE
+| ALIGNMENT
 | ALLOW_CONNECTIONS
 | ALTER
 | ALWAYS
@@ -13070,11 +13233,14 @@ unreserved_keyword:
 | CALLED
 | CANCEL
 | CANCELQUERY
+| CANONICAL
 | CASCADE
 | CASCADED
+| CATEGORY
 | CHANGEFEED
 | CLOSE
 | CLUSTER
+| COLLATABLE
 | COLLATION_VERSION
 | COLUMNS
 | COMMENT
@@ -13112,6 +13278,7 @@ unreserved_keyword:
 | DEFERRED
 | DEFINER
 | DELETE
+| DELIMITER
 | DEPENDS
 | DESTINATION
 | DETACH
@@ -13188,6 +13355,7 @@ unreserved_keyword:
 | INSERT
 | INSTEAD
 | INTERLEAVE
+| INTERNALLENGTH
 | INTO_DB
 | INVERTED
 | INVOKER
@@ -13241,6 +13409,7 @@ unreserved_keyword:
 | MULTIPOLYGONM
 | MULTIPOLYGONZ
 | MULTIPOLYGONZM
+| MULTIRANGE_TYPE_NAME
 | MODULUS
 | MONTH
 | NAMES
@@ -13275,6 +13444,7 @@ unreserved_keyword:
 | OPTIONS
 | ORDINALITY
 | OTHERS
+| OUTPUT
 | OVER
 | OWNED
 | OWNER
@@ -13284,6 +13454,7 @@ unreserved_keyword:
 | PARTIAL
 | PARTITION
 | PARTITIONS
+| PASSEDBYVALUE
 | PASSWORD
 | PAUSE
 | PAUSED
@@ -13298,6 +13469,7 @@ unreserved_keyword:
 | POLYGONZ
 | POLYGONZM
 | PRECEDING
+| PREFERRED
 | PREPARE
 | PRESERVE
 | PRIORITY
@@ -13312,6 +13484,7 @@ unreserved_keyword:
 | RANGE
 | RANGES
 | READ
+| RECEIVE
 | RECURRING
 | RECURSIVE
 | REF
@@ -13347,6 +13520,7 @@ unreserved_keyword:
 | SAFE
 | SCHEDULE
 | SCHEDULES
+| SEND
 | SETTING
 | SETTINGS
 | STATEMENT
@@ -13387,7 +13561,11 @@ unreserved_keyword:
 | STORED
 | STRATEGY
 | STRICT
+| SUBSCRIPT
 | SUBSCRIPTION
+| SUBTYPE
+| SUBTYPE_DIFF
+| SUBTYPE_OPCLASS
 | SUPPORT
 | SYNTAX
 | SYSTEM
@@ -13407,6 +13585,8 @@ unreserved_keyword:
 | TRUSTED
 | TYPE
 | TYPES
+| TYPMOD_IN
+| TYPMOD_OUT
 | THROTTLING
 | UNBOUNDED
 | UNCOMMITTED
@@ -13424,6 +13604,7 @@ unreserved_keyword:
 | VALIDATE
 | VALIDATOR
 | VALUE
+| VARIABLE
 | VARYING
 | VERSION
 | VIEW
@@ -13589,6 +13770,7 @@ reserved_keyword:
 | DESC
 | DISTINCT
 | DO
+| ELEMENT
 | ELSE
 | END
 | EXCEPT
