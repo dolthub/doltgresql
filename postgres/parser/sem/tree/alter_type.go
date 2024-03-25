@@ -26,6 +26,21 @@ package tree
 
 import "github.com/dolthub/doltgresql/postgres/parser/lex"
 
+//ALTER TYPE name OWNER TO { new_owner | CURRENT_ROLE | CURRENT_USER | SESSION_USER }
+//ALTER TYPE name RENAME TO new_name
+//ALTER TYPE name SET SCHEMA new_schema
+//ALTER TYPE name RENAME ATTRIBUTE attribute_name TO new_attribute_name [ CASCADE | RESTRICT ]
+//ALTER TYPE name action [, ... ]
+//ALTER TYPE name ADD VALUE [ IF NOT EXISTS ] new_enum_value [ { BEFORE | AFTER } neighbor_enum_value ]
+//ALTER TYPE name RENAME VALUE existing_enum_value TO new_enum_value
+//ALTER TYPE name SET ( property = value [, ... ] )
+//
+//where action is one of:
+//
+//ADD ATTRIBUTE attribute_name data_type [ COLLATE collation ] [ CASCADE | RESTRICT ]
+//DROP ATTRIBUTE [ IF EXISTS ] attribute_name [ CASCADE | RESTRICT ]
+//ALTER ATTRIBUTE attribute_name [ SET DATA ] TYPE data_type [ COLLATE collation ] [ CASCADE | RESTRICT ]
+
 var _ Statement = &AlterType{}
 
 // AlterType represents an ALTER TYPE statement.
@@ -47,17 +62,127 @@ type AlterTypeCmd interface {
 	alterTypeCmd()
 }
 
-func (*AlterTypeAddValue) alterTypeCmd()    {}
-func (*AlterTypeRenameValue) alterTypeCmd() {}
-func (*AlterTypeRename) alterTypeCmd()      {}
-func (*AlterTypeSetSchema) alterTypeCmd()   {}
-func (*AlterTypeOwner) alterTypeCmd()       {}
+func (*AlterTypeOwner) alterTypeCmd()           {}
+func (*AlterTypeRename) alterTypeCmd()          {}
+func (*AlterTypeSetSchema) alterTypeCmd()       {}
+func (*AlterTypeRenameAttribute) alterTypeCmd() {}
+func (*AlterTypeAlterAttribute) alterTypeCmd()  {}
+func (*AlterTypeAddValue) alterTypeCmd()        {}
+func (*AlterTypeRenameValue) alterTypeCmd()     {}
+func (*AlterTypeSetProperty) alterTypeCmd()     {}
 
-var _ AlterTypeCmd = &AlterTypeAddValue{}
-var _ AlterTypeCmd = &AlterTypeRenameValue{}
+var _ AlterTypeCmd = &AlterTypeOwner{}
 var _ AlterTypeCmd = &AlterTypeRename{}
 var _ AlterTypeCmd = &AlterTypeSetSchema{}
-var _ AlterTypeCmd = &AlterTypeOwner{}
+var _ AlterTypeCmd = &AlterTypeRenameAttribute{}
+var _ AlterTypeCmd = &AlterTypeAlterAttribute{}
+var _ AlterTypeCmd = &AlterTypeAddValue{}
+var _ AlterTypeCmd = &AlterTypeRenameValue{}
+var _ AlterTypeCmd = &AlterTypeSetProperty{}
+
+// AlterTypeOwner represents an ALTER TYPE OWNER TO command.
+type AlterTypeOwner struct {
+	Owner string
+}
+
+// Format implements the NodeFormatter interface.
+func (node *AlterTypeOwner) Format(ctx *FmtCtx) {
+	ctx.WriteString(" OWNER TO ")
+	ctx.FormatNameP(&node.Owner)
+}
+
+// AlterTypeRename represents an ALTER TYPE RENAME command.
+type AlterTypeRename struct {
+	NewName string
+}
+
+// Format implements the NodeFormatter interface.
+func (node *AlterTypeRename) Format(ctx *FmtCtx) {
+	ctx.WriteString(" RENAME TO ")
+	ctx.WriteString(node.NewName)
+}
+
+// AlterTypeSetSchema represents an ALTER TYPE SET SCHEMA command.
+type AlterTypeSetSchema struct {
+	Schema string
+}
+
+// Format implements the NodeFormatter interface.
+func (node *AlterTypeSetSchema) Format(ctx *FmtCtx) {
+	ctx.WriteString(" SET SCHEMA ")
+	ctx.WriteString(node.Schema)
+}
+
+// AlterTypeRenameAttribute represents an ALTER TYPE RENAME ATTRIBUTE command.
+type AlterTypeRenameAttribute struct {
+	ColName      Name
+	NewColName   Name
+	DropBehavior DropBehavior
+}
+
+// Format implements the NodeFormatter interface.
+func (node *AlterTypeRenameAttribute) Format(ctx *FmtCtx) {
+	ctx.WriteString(" RENAME ATTRIBUTE ")
+	ctx.FormatNode(&node.ColName)
+	ctx.WriteString(" TO ")
+	ctx.FormatNode(&node.NewColName)
+	ctx.WriteByte(' ')
+	ctx.WriteString(node.DropBehavior.String())
+}
+
+// AlterTypeAlterAttribute represents an ALTER TYPE ADD/DROP/ALTER ATTRIBUTE command.
+type AlterTypeAlterAttribute struct {
+	Actions []AlterAttributeAction
+}
+
+// AlterAttributeAction represents ADD/DROP/ALTER ATTRIBUTE action.
+type AlterAttributeAction struct {
+	Action       string
+	ColName      Name
+	IfExists     bool
+	TypeName     ResolvableTypeReference
+	Collate      string
+	DropBehavior DropBehavior
+}
+
+// Format implements the NodeFormatter interface.
+func (node *AlterTypeAlterAttribute) Format(ctx *FmtCtx) {
+	for i, action := range node.Actions {
+		if i > 0 {
+			ctx.WriteString(" , ")
+		}
+		switch action.Action {
+		case "add":
+			ctx.WriteString(" ADD ATTRIBUTE ")
+			ctx.FormatNode(&action.ColName)
+			ctx.WriteByte(' ')
+			ctx.WriteString(action.TypeName.SQLString())
+			if action.Collate != "" {
+				ctx.WriteString(" COLLATE")
+				ctx.WriteString(action.Collate)
+			}
+		case "drop":
+			ctx.WriteString(" DROP ATTRIBUTE ")
+			if action.IfExists {
+				ctx.WriteString("IF EXISTS ")
+			}
+			ctx.FormatNode(&action.ColName)
+		case "alter":
+			ctx.WriteString(" ALTER ATTRIBUTE ")
+			ctx.FormatNode(&action.ColName)
+			ctx.WriteString(" SET DATA TYPE ")
+			ctx.WriteString(action.TypeName.SQLString())
+			if action.Collate != "" {
+				ctx.WriteString(" COLLATE")
+				ctx.WriteString(action.Collate)
+			}
+		}
+		if db := action.DropBehavior.String(); db != "" {
+			ctx.WriteByte(' ')
+			ctx.WriteString(db)
+		}
+	}
+}
 
 // AlterTypeAddValue represents an ALTER TYPE ADD VALUE command.
 type AlterTypeAddValue struct {
@@ -66,7 +191,6 @@ type AlterTypeAddValue struct {
 	Placement   *AlterTypeAddValuePlacement
 }
 
-// Format implements the NodeFormatter interface.
 func (node *AlterTypeAddValue) Format(ctx *FmtCtx) {
 	ctx.WriteString(" ADD VALUE ")
 	if node.IfNotExists {
@@ -104,35 +228,14 @@ func (node *AlterTypeRenameValue) Format(ctx *FmtCtx) {
 	lex.EncodeSQLString(&ctx.Buffer, node.NewVal)
 }
 
-// AlterTypeRename represents an ALTER TYPE RENAME command.
-type AlterTypeRename struct {
-	NewName string
+// AlterTypeSetProperty represents an ALTER TYPE SET <properties> command.
+type AlterTypeSetProperty struct {
+	Properties BaseTypeOptions
 }
 
 // Format implements the NodeFormatter interface.
-func (node *AlterTypeRename) Format(ctx *FmtCtx) {
-	ctx.WriteString(" RENAME TO ")
-	ctx.WriteString(node.NewName)
-}
-
-// AlterTypeSetSchema represents an ALTER TYPE SET SCHEMA command.
-type AlterTypeSetSchema struct {
-	Schema string
-}
-
-// Format implements the NodeFormatter interface.
-func (node *AlterTypeSetSchema) Format(ctx *FmtCtx) {
-	ctx.WriteString(" SET SCHEMA ")
-	ctx.WriteString(node.Schema)
-}
-
-// AlterTypeOwner represents an ALTER TYPE OWNER TO command.
-type AlterTypeOwner struct {
-	Owner string
-}
-
-// Format implements the NodeFormatter interface.
-func (node *AlterTypeOwner) Format(ctx *FmtCtx) {
-	ctx.WriteString(" OWNER TO ")
-	ctx.FormatNameP(&node.Owner)
+func (node *AlterTypeSetProperty) Format(ctx *FmtCtx) {
+	ctx.WriteString(" SET ( ")
+	ctx.FormatNode(&node.Properties)
+	ctx.WriteString(" )")
 }

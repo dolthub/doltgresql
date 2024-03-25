@@ -648,6 +648,12 @@ func (u *sqlSymUnion) baseTypeOption() tree.BaseTypeOption {
 func (u *sqlSymUnion) baseTypeOptions() []tree.BaseTypeOption {
     return u.val.([]tree.BaseTypeOption)
 }
+func (u *sqlSymUnion) alterAttributeAction() tree.AlterAttributeAction {
+    return u.val.(tree.AlterAttributeAction)
+}
+func (u *sqlSymUnion) alterAttributeActions() []tree.AlterAttributeAction {
+    return u.val.([]tree.AlterAttributeAction)
+}
 %}
 
 // NB: the %token definitions must come before the %type definitions in this
@@ -1071,8 +1077,10 @@ func (u *sqlSymUnion) baseTypeOptions() []tree.BaseTypeOption {
 %type <[]tree.CompositeTypeElem> type_composite_list opt_type_composite_list
 %type <tree.RangeTypeOption> type_range_option
 %type <[]tree.RangeTypeOption> type_range_optional_list
-%type <tree.BaseTypeOption> type_base_option
-%type <[]tree.BaseTypeOption> type_base_optional_list
+%type <tree.BaseTypeOption> type_base_option type_property
+%type <[]tree.BaseTypeOption> type_base_optional_list type_property_list
+%type <tree.AlterAttributeAction> alter_attribute_action
+%type <[]tree.AlterAttributeAction> alter_attribute_action_list
 
 %type <str> cursor_name database_name index_name opt_index_name column_name insert_column_item statistics_name window_name
 %type <str> table_alias_name constraint_name target_name collation_name opt_from_ref_table
@@ -2406,7 +2414,54 @@ opt_validate_behavior:
 //
 // %SeeAlso: WEBDOCS/alter-type.html
 alter_type_stmt:
-  ALTER TYPE type_name ADD VALUE SCONST opt_add_val_placement
+  ALTER TYPE type_name owner_to
+  {
+    $$.val = &tree.AlterType{
+      Type: $3.unresolvedObjectName(),
+      Cmd: &tree.AlterTypeOwner{
+        Owner: $4,
+      },
+    }
+  }
+| ALTER TYPE type_name RENAME TO name
+  {
+    $$.val = &tree.AlterType{
+      Type: $3.unresolvedObjectName(),
+      Cmd: &tree.AlterTypeRename{
+        NewName: $6,
+      },
+    }
+  }
+| ALTER TYPE type_name set_schema
+  {
+    $$.val = &tree.AlterType{
+      Type: $3.unresolvedObjectName(),
+      Cmd: &tree.AlterTypeSetSchema{
+        Schema: $4,
+      },
+    }
+  }
+| ALTER TYPE type_name RENAME ATTRIBUTE column_name TO column_name opt_drop_behavior
+  {
+    $$.val = &tree.AlterType{
+      Type: $3.unresolvedObjectName(),
+      Cmd: &tree.AlterTypeRenameAttribute{
+        ColName: tree.Name($6),
+        NewColName: tree.Name($8),
+        DropBehavior: $9.dropBehavior(),
+      },
+    }
+  }
+| ALTER TYPE type_name alter_attribute_action_list
+  {
+    $$.val = &tree.AlterType{
+      Type: $3.unresolvedObjectName(),
+      Cmd: &tree.AlterTypeAlterAttribute{
+        Actions: $4.alterAttributeActions(),
+      },
+    }
+  }
+| ALTER TYPE type_name ADD VALUE SCONST opt_add_val_placement
   {
     $$.val = &tree.AlterType{
       Type: $3.unresolvedObjectName(),
@@ -2438,42 +2493,84 @@ alter_type_stmt:
       },
     }
   }
-| ALTER TYPE type_name RENAME TO name
+| ALTER TYPE type_name SET '(' type_property_list ')'
   {
     $$.val = &tree.AlterType{
       Type: $3.unresolvedObjectName(),
-      Cmd: &tree.AlterTypeRename{
-        NewName: $6,
+      Cmd: &tree.AlterTypeSetProperty{
+        Properties: $6.baseTypeOptions(),
       },
     }
   }
-| ALTER TYPE type_name set_schema
+
+alter_attribute_action_list:
+  alter_attribute_action
   {
-    $$.val = &tree.AlterType{
-      Type: $3.unresolvedObjectName(),
-      Cmd: &tree.AlterTypeSetSchema{
-        Schema: $4,
-      },
+    $$.val = []tree.AlterAttributeAction{$1.alterAttributeAction()}
+  }
+| alter_attribute_action_list ',' alter_attribute_action
+  {
+    $$.val = append($1.alterAttributeActions(), $3.alterAttributeAction())
+  }
+
+alter_attribute_action:
+  ADD ATTRIBUTE column_name type_name opt_collate opt_drop_behavior
+  {
+    $$.val = tree.AlterAttributeAction{
+      Action: "add",
+      ColName: tree.Name($3),
+      TypeName: $4.typeReference(),
+      Collate: $5,
+      DropBehavior: $6.dropBehavior(),
     }
   }
-| ALTER TYPE type_name owner_to
+| DROP ATTRIBUTE column_name opt_drop_behavior
   {
-    $$.val = &tree.AlterType{
-      Type: $3.unresolvedObjectName(),
-      Cmd: &tree.AlterTypeOwner{
-        Owner: $4,
-      },
+    $$.val = tree.AlterAttributeAction{
+      Action: "drop",
+      ColName: tree.Name($3),
+      DropBehavior: $4.dropBehavior(),
     }
   }
-| ALTER TYPE type_name RENAME ATTRIBUTE column_name TO column_name opt_drop_behavior
+| DROP ATTRIBUTE IF EXISTS column_name opt_drop_behavior
   {
-    return unimplementedWithIssueDetail(sqllex, 48701, "ALTER TYPE ATTRIBUTE")
+    $$.val = tree.AlterAttributeAction{
+      Action: "drop",
+      ColName: tree.Name($3),
+      IfExists: true,
+      DropBehavior: $6.dropBehavior(),
+    }
   }
-| ALTER TYPE type_name alter_attribute_action_list
+| ALTER ATTRIBUTE column_name TYPE type_name opt_collate opt_drop_behavior
   {
-    return unimplementedWithIssueDetail(sqllex, 48701, "ALTER TYPE ATTRIBUTE")
+    $$.val = tree.AlterAttributeAction{
+      Action: "alter",
+      ColName: tree.Name($3),
+      TypeName: $5.typeReference(),
+      Collate: $6,
+      DropBehavior: $7.dropBehavior(),
+    }
   }
-| ALTER TYPE error // SHOW HELP: ALTER TYPE
+| ALTER ATTRIBUTE column_name SET DATA TYPE type_name opt_collate opt_drop_behavior
+  {
+    $$.val = tree.AlterAttributeAction{
+      Action: "alter",
+      ColName: tree.Name($3),
+      TypeName: $7.typeReference(),
+      Collate: $8,
+      DropBehavior: $9.dropBehavior(),
+    }
+  }
+
+type_property_list:
+  type_property
+  {
+    $$.val = []tree.BaseTypeOption{$1.baseTypeOption()}
+  }
+| type_property_list ',' type_property
+  {
+    $$.val = append($1.baseTypeOptions(), $3.baseTypeOption())
+  }
 
 set_schema:
   SET SCHEMA schema_name
@@ -2668,17 +2765,6 @@ alter_conversion_stmt:
   {
     $$.val = &tree.AlterConversion{Name: tree.Name($3), Schema: $4}
   }
-
-alter_attribute_action_list:
-  alter_attribute_action
-| alter_attribute_action_list ',' alter_attribute_action
-
-alter_attribute_action:
-  ADD ATTRIBUTE column_name type_name opt_collate opt_drop_behavior
-| DROP ATTRIBUTE column_name opt_drop_behavior
-| DROP ATTRIBUTE IF EXISTS column_name opt_drop_behavior
-| ALTER ATTRIBUTE column_name TYPE type_name opt_collate opt_drop_behavior
-| ALTER ATTRIBUTE column_name SET DATA TYPE type_name opt_collate opt_drop_behavior
 
 // %Help: REFRESH - recalculate a materialized view
 // %Category: Misc
@@ -8190,18 +8276,7 @@ type_base_optional_list:
   }
 
 type_base_option:
-  RECEIVE '=' name
-  { $$.val = tree.BaseTypeOption{Option: tree.BaseTypeReceive, StrVal: $3} }
-| SEND '=' name
-  { $$.val = tree.BaseTypeOption{Option: tree.BaseTypeSend, StrVal: $3} }
-| TYPMOD_IN '=' name
-  { $$.val = tree.BaseTypeOption{Option: tree.BaseTypeTypModIn, StrVal: $3} }
-| TYPMOD_OUT '=' name
-  { $$.val = tree.BaseTypeOption{Option: tree.BaseTypeTypeModOut, StrVal: $3} }
-| ANALYZE '=' name
-  { $$.val = tree.BaseTypeOption{Option: tree.BaseTypeAnalyze, StrVal: $3} }
-| SUBSCRIPT '=' name
-  { $$.val = tree.BaseTypeOption{Option: tree.BaseTypeSubscript, StrVal: $3} }
+  type_property
 | INTERNALLENGTH '=' signed_iconst64
   {
     $$.val = tree.BaseTypeOption{Option: tree.BaseTypeInternalLength, InternalLength: $3.int64()}
@@ -8217,8 +8292,6 @@ type_base_option:
   { $$.val = tree.BaseTypeOption{Option: tree.BaseTypePassedByValue} }
 | ALIGNMENT '=' name
   { $$.val = tree.BaseTypeOption{Option: tree.BaseTypeAlignment, StrVal: $3} }
-| STORAGE '=' name
-  { $$.val = tree.BaseTypeOption{Option: tree.BaseTypeStorage, StrVal: $3} }
 | LIKE '=' typename
   { $$.val = tree.BaseTypeOption{Option: tree.BaseTypeLikeType, TypeVal: $3.typeReference()} }
 | CATEGORY '=' name
@@ -8237,6 +8310,22 @@ type_base_option:
   { $$.val = tree.BaseTypeOption{Option: tree.BaseTypeCollatable, BoolVal: true} }
 | COLLATABLE '=' FALSE
   { $$.val = tree.BaseTypeOption{Option: tree.BaseTypeCollatable, BoolVal: false} }
+
+type_property:
+  RECEIVE '=' name
+  { $$.val = tree.BaseTypeOption{Option: tree.BaseTypeReceive, StrVal: $3} }
+| SEND '=' name
+  { $$.val = tree.BaseTypeOption{Option: tree.BaseTypeSend, StrVal: $3} }
+| TYPMOD_IN '=' name
+  { $$.val = tree.BaseTypeOption{Option: tree.BaseTypeTypModIn, StrVal: $3} }
+| TYPMOD_OUT '=' name
+  { $$.val = tree.BaseTypeOption{Option: tree.BaseTypeTypeModOut, StrVal: $3} }
+| ANALYZE '=' name
+  { $$.val = tree.BaseTypeOption{Option: tree.BaseTypeAnalyze, StrVal: $3} }
+| SUBSCRIPT '=' name
+  { $$.val = tree.BaseTypeOption{Option: tree.BaseTypeSubscript, StrVal: $3} }
+| STORAGE '=' name
+  { $$.val = tree.BaseTypeOption{Option: tree.BaseTypeStorage, StrVal: $3} }
 
 opt_enum_val_list:
   enum_val_list

@@ -206,6 +206,8 @@ const (
 	BaseTypeCollatable
 )
 
+type BaseTypeOptions []BaseTypeOption
+
 type BaseTypeOption struct {
 	Option         BaseTypeOptionType
 	StrVal         string
@@ -215,19 +217,8 @@ type BaseTypeOption struct {
 	TypeVal        ResolvableTypeReference
 }
 
-// BaseType represents a `CREATE TYPE <name> ( INPUT = input_function, OUTPUT = output_function, ... )` statement.
-type BaseType struct {
-	Input   string
-	Output  string
-	Options []BaseTypeOption
-}
-
-func (node *BaseType) Format(ctx *FmtCtx) {
-	ctx.WriteString(" ( INPUT = ")
-	ctx.WriteString(node.Input)
-	ctx.WriteString(", OUTPUT = ")
-	ctx.WriteString(node.Output)
-	for i, opt := range node.Options {
+func (node *BaseTypeOptions) Format(ctx *FmtCtx) {
+	for i, opt := range *node {
 		if i > 0 {
 			ctx.WriteString(" , ")
 		}
@@ -293,5 +284,21 @@ func (node *BaseType) Format(ctx *FmtCtx) {
 			}
 		}
 	}
+}
+
+// BaseType represents a `CREATE TYPE <name> ( INPUT = input_function, OUTPUT = output_function, ... )` statement.
+type BaseType struct {
+	Input   string
+	Output  string
+	Options BaseTypeOptions
+}
+
+func (node *BaseType) Format(ctx *FmtCtx) {
+	ctx.WriteString(" ( INPUT = ")
+	ctx.WriteString(node.Input)
+	ctx.WriteString(", OUTPUT = ")
+	ctx.WriteString(node.Output)
+	ctx.WriteByte(' ')
+	ctx.FormatNode(&node.Options)
 	ctx.WriteString(" )")
 }
