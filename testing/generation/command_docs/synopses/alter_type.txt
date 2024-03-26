@@ -12,10 +12,19 @@ ALTER TYPE $name$ ADD VALUE [ IF NOT EXISTS ] $new_enum_value$ [ { BEFORE | AFTE
 
 ALTER TYPE $name$ RENAME VALUE $existing_enum_value$ TO $new_enum_value$
 
-ALTER TYPE $name$ SET ( { $property$ = $value$ } [ , ... ] )
+ALTER TYPE $name$ SET ( $property_value$ [ , ... ] )
 
 where $action$ is:
 
 ADD ATTRIBUTE $attribute_name$ $data_type$ [ COLLATE $collation$ ] [ CASCADE | RESTRICT ] |
     DROP ATTRIBUTE [ IF EXISTS ] $attribute_name$ [ CASCADE | RESTRICT ] |
     ALTER ATTRIBUTE $attribute_name$ [ SET DATA ] TYPE $data_type$ [ COLLATE $collation$ ] [ CASCADE | RESTRICT ]
+
+where $property_value$ is:
+
+RECEIVE = $receive_function$ |
+    SEND = $send_function$ |
+    TYPMOD_IN = $type_modifier_input_function$ |
+    TYPMOD_OUT = $type_modifier_output_function$ |
+    ANALYZE = $analyze_function$ |
+    SUBSCRIPT = $subscript_function$
