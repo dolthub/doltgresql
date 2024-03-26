@@ -15,6 +15,8 @@
 package functions
 
 import (
+	"fmt"
+
 	"github.com/dolthub/doltgresql/server/functions/framework"
 	pgtypes "github.com/dolthub/doltgresql/server/types"
 	"github.com/dolthub/doltgresql/utils"
@@ -30,9 +32,14 @@ var lcm_int64_int64 = framework.Function2{
 	Name:       "lcm",
 	Return:     pgtypes.Int64,
 	Parameters: []pgtypes.DoltgresType{pgtypes.Int64, pgtypes.Int64},
-	Callable: func(ctx framework.Context, val1 any, val2 any) (any, error) {
-		if val1 == nil || val2 == nil {
+	Callable: func(ctx framework.Context, val1Int any, val2Int any) (any, error) {
+		if val1Int == nil || val2Int == nil {
 			return nil, nil
+		}
+		val1 := val1Int.(int64)
+		val2 := val2Int.(int64)
+		if val1 == val2 {
+			return utils.Abs(val1), nil
 		}
 		gcdResultInterface, err := gcd_int64_int64.Callable(ctx, val1, val2)
 		if err != nil {
@@ -42,6 +49,11 @@ var lcm_int64_int64 = framework.Function2{
 		if gcdResult == 0 {
 			return int64(0), nil
 		}
-		return utils.Abs((val1.(int64) * val2.(int64)) / gcdResult), nil
+		// Check for overflow
+		result := val1 * val2
+		if val2 != 0 && result/val2 != val1 {
+			return nil, fmt.Errorf("bigint out of range")
+		}
+		return utils.Abs(result / gcdResult), nil
 	},
 }

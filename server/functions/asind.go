@@ -15,6 +15,7 @@
 package functions
 
 import (
+	"fmt"
 	"math"
 
 	"github.com/dolthub/doltgresql/server/functions/framework"
@@ -36,6 +37,10 @@ var asind_float64 = framework.Function1{
 		if val1 == nil {
 			return nil, nil
 		}
-		return toDegrees(math.Asin(val1.(float64))), nil
+		r := math.Asin(val1.(float64))
+		if math.IsNaN(r) {
+			return nil, fmt.Errorf("input is out of range")
+		}
+		return toDegrees(r), nil
 	},
 }

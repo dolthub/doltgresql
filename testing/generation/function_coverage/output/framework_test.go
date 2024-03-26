@@ -20,6 +20,8 @@ import (
 	"fmt"
 	"math"
 	"os"
+	"reflect"
+	"strconv"
 	"testing"
 	"time"
 
@@ -27,14 +29,27 @@ import (
 	"github.com/dolthub/go-mysql-server/sql"
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgtype"
+	"github.com/shopspring/decimal"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
 	dserver "github.com/dolthub/doltgresql/server"
 	framework "github.com/dolthub/doltgresql/testing/go"
+	"github.com/dolthub/doltgresql/utils"
 )
 
-var Inf = math.Inf(0)
+var (
+	// Inf represent positive infinity as a float64
+	Inf = math.Inf(0)
+	// EquivalenceThresholdFloat64 represents the allowable delta for values to be considered equivalent.
+	// For now, we do not expect all non-integer values to be exactly equivalent due to small computational differences
+	// between Go and C/C++, so this threshold allows us to check that non-integer values are close enough. Over time,
+	// we may reduce or remove this value as we become more accurate.
+	EquivalenceThresholdFloat64 = 0.001
+	// EquivalenceThresholdNumeric represents the allowable delta for values to be considered equivalent.
+	// This is computed using the float64 variant so that they're equivalent.
+	EquivalenceThresholdNumeric = decimal.RequireFromString(strconv.FormatFloat(EquivalenceThresholdFloat64, 'f', -1, 64))
+)
 
 // ScriptTest defines a consistent structure for testing queries.
 type ScriptTest struct {
@@ -69,7 +84,6 @@ type ScriptTestAssertion struct {
 
 // RunScript runs the given script.
 func RunScript(t *testing.T, script ScriptTest) {
-	t.Skip("need to make a few parser changes, but most tests pass")
 	scriptDatabase := script.Database
 	if len(scriptDatabase) == 0 {
 		scriptDatabase = "postgres"
@@ -119,7 +133,10 @@ func runScript(t *testing.T, script ScriptTest, conn *pgx.Conn, ctx context.Cont
 				require.NoError(t, err)
 				readRows, _, err := ReadRows(rows)
 				require.NoError(t, err)
-				assert.Equal(t, assertion.Expected, readRows)
+				if !CompareResults(t, assertion.Expected, readRows) {
+					// We know it will fail, but this will print a prettier message
+					assert.Equal(t, assertion.Expected, readRows)
+				}
 			}
 		})
 	}
@@ -215,7 +232,65 @@ func Numeric(str string) pgtype.Numeric {
 	return numeric
 }
 
+// NumericToDecimal converts a pgtype.Numeric value to a decimal.Decimal value.
+func NumericToDecimal(val pgtype.Numeric) decimal.Decimal {
+	strVal, err := val.Value()
+	if err != nil {
+		panic(err)
+	}
+	return decimal.RequireFromString(strVal.(string))
+}
+
 // GetUnusedPort returns an unused port.
 func GetUnusedPort(t *testing.T) int {
 	return framework.GetUnusedPort(t)
+}
+
+// CompareResults compares two sets of results, taking the equivalence thresholds into account when making the
+// comparisons.
+func CompareResults(t *testing.T, a []sql.Row, b []sql.Row) bool {
+	if len(a) != len(b) {
+		return false
+	}
+	for i := range a {
+		if !CompareRows(t, a[i], b[i]) {
+			return false
+		}
+	}
+	return true
+}
+
+// CompareRows compares two rows, taking the equivalence thresholds into account when making the comparisons.
+func CompareRows(t *testing.T, a sql.Row, b sql.Row) bool {
+	if len(a) != len(b) {
+		return false
+	}
+	for i := range a {
+		aVal := a[i]
+		bVal := b[i]
+		if aVal != bVal {
+			if reflect.TypeOf(aVal) != reflect.TypeOf(bVal) {
+				return false
+			}
+			switch aVal.(type) {
+			case float32:
+				if utils.Abs(aVal.(float32)-bVal.(float32)) > float32(EquivalenceThresholdFloat64) {
+					return false
+				}
+			case float64:
+				if utils.Abs(aVal.(float64)-bVal.(float64)) > EquivalenceThresholdFloat64 {
+					return false
+				}
+			case pgtype.Numeric:
+				delta := NumericToDecimal(aVal.(pgtype.Numeric)).Sub(NumericToDecimal(bVal.(pgtype.Numeric))).Abs()
+				if delta.Cmp(EquivalenceThresholdNumeric) == 1 {
+					return false
+				}
+			default:
+				return false
+			}
+			t.Log("values are not equal but fall within equivalence threshold")
+		}
+	}
+	return true
 }

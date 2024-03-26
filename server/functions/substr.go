@@ -15,6 +15,8 @@
 package functions
 
 import (
+	"fmt"
+
 	"github.com/dolthub/doltgresql/server/functions/framework"
 	pgtypes "github.com/dolthub/doltgresql/server/types"
 )
@@ -35,7 +37,12 @@ var substr_varchar_int32 = framework.Function2{
 			return nil, nil
 		}
 		runes := []rune(str.(string))
-		if int(start.(int32)) > len(runes) {
+		if start.(int32) < 1 {
+			start = int32(1)
+		}
+		// start is 1-indexed
+		start = start.(int32) - int32(1)
+		if int(start.(int32)) >= len(runes) {
 			return "", nil
 		}
 		return string(runes[start.(int32):]), nil
@@ -54,7 +61,19 @@ var substr_varchar_int32_int32 = framework.Function3{
 		start := startInt.(int32)
 		count := countInt.(int32)
 		runes := []rune(str.(string))
-		if int(start) > len(runes) {
+		if count < 0 {
+			return nil, fmt.Errorf("negative substring length not allowed")
+		}
+		// start is 1-indexed
+		start--
+		if start < 0 {
+			count += start
+			start = 0
+		}
+		if count <= 0 {
+			return "", nil
+		}
+		if int(start) >= len(runes) {
 			return "", nil
 		} else if int64(start)+int64(count) > int64(len(runes)) {
 			return string(runes[start:]), nil

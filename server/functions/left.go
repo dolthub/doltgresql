@@ -41,10 +41,10 @@ var left_varchar_int32 = framework.Function2{
 			}
 			return str[:n], nil
 		} else {
-			if len(str)-int(n) < 0 {
+			if len(str)+int(n) <= 0 {
 				return "", nil
 			}
-			return str[:len(str)-int(n)], nil
+			return str[:len(str)+int(n)], nil
 		}
 	},
 }

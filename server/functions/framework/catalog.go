@@ -116,21 +116,7 @@ func Initialize() {
 		// Build the overloads
 		baseOverload := &OverloadDeduction{Parameter: make(map[pgtypes.DoltgresTypeBaseID]*OverloadDeduction)}
 		for _, functionOverload := range catalogFunctions {
-			// Loop through all of the parameters
-			currentOverload := baseOverload
-			for _, param := range functionOverload.GetParameters() {
-				nextOverload := currentOverload.Parameter[param.BaseID()]
-				if nextOverload == nil {
-					nextOverload = &OverloadDeduction{Parameter: make(map[pgtypes.DoltgresTypeBaseID]*OverloadDeduction)}
-					currentOverload.Parameter[param.BaseID()] = nextOverload
-				}
-				currentOverload = nextOverload
-			}
-			// This should never happen, but we'll check anyway to be safe
-			if currentOverload.Function != nil {
-				panic(fmt.Errorf("function `%s` somehow has duplicate overloads that weren't caught earlier", funcName))
-			}
-			currentOverload.Function = functionOverload
+			buildOverload(funcName, baseOverload, functionOverload)
 		}
 
 		// Store the compiled function into the engine's built-in functions
@@ -145,4 +131,44 @@ func Initialize() {
 			},
 		})
 	}
+
+	// Build the overload for all unary and binary functions based on their operator. This will be used for fallback if
+	// an exact match is not found. Compiled functions (which wrap the overload deducer) handle upcasting and other
+	// special rules, so it's far more efficient to reuse it for operators. Operators are also a special case since they
+	// all have different names, while standard overload deducers work on a function-name basis.
+	for signature, functionOverload := range unaryFunctions {
+		baseOverload, ok := unaryAggregateDeducers[signature.Operator]
+		if !ok {
+			baseOverload = &OverloadDeduction{Parameter: make(map[pgtypes.DoltgresTypeBaseID]*OverloadDeduction)}
+			unaryAggregateDeducers[signature.Operator] = baseOverload
+		}
+		buildOverload("internal_unary_aggregate_function", baseOverload, functionOverload)
+	}
+	for signature, functionOverload := range binaryFunctions {
+		baseOverload, ok := binaryAggregateDeducers[signature.Operator]
+		if !ok {
+			baseOverload = &OverloadDeduction{Parameter: make(map[pgtypes.DoltgresTypeBaseID]*OverloadDeduction)}
+			binaryAggregateDeducers[signature.Operator] = baseOverload
+		}
+		buildOverload("internal_binary_aggregate_function", baseOverload, functionOverload)
+	}
+}
+
+// buildOverload is used by Initialize to add the given function to the base overload deducer.
+func buildOverload(funcName string, baseOverload *OverloadDeduction, functionOverload FunctionInterface) {
+	// Loop through all of the parameters
+	currentOverload := baseOverload
+	for _, param := range functionOverload.GetParameters() {
+		nextOverload := currentOverload.Parameter[param.BaseID()]
+		if nextOverload == nil {
+			nextOverload = &OverloadDeduction{Parameter: make(map[pgtypes.DoltgresTypeBaseID]*OverloadDeduction)}
+			currentOverload.Parameter[param.BaseID()] = nextOverload
+		}
+		currentOverload = nextOverload
+	}
+	// This should never happen, but we'll check anyway to be safe
+	if currentOverload.Function != nil {
+		panic(fmt.Errorf("function `%s` somehow has duplicate overloads that weren't caught earlier", funcName))
+	}
+	currentOverload.Function = functionOverload
 }

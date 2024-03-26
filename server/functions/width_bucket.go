@@ -42,18 +42,26 @@ var width_bucket_float64_float64_float64_int64 = framework.Function4{
 		operand := operandInterface.(float64)
 		low := lowInterface.(float64)
 		high := highInterface.(float64)
+		if low == high {
+			return nil, fmt.Errorf("lower bound cannot equal upper bound")
+		}
 		count := countInterface.(int32)
 		if count <= 0 {
 			return nil, fmt.Errorf("count must be greater than zero")
 		}
+		if operand == high {
+			return count + 1, nil
+		} else if operand == low {
+			return int32(1), nil
+		}
 		bucket := (high - low) / float64(count)
-		result := int32(math.Ceil((operand - low) / bucket))
+		result := math.Ceil((operand - low) / bucket)
 		if result < 0 {
 			result = 0
-		} else if result > count+1 {
-			result = count + 1
+		} else if result > float64(count+1) {
+			result = float64(count + 1)
 		}
-		return result, nil
+		return int32(result), nil
 	},
 }
 
@@ -75,6 +83,11 @@ var width_bucket_numeric_numeric_numeric_int64 = framework.Function4{
 		count := countInterface.(int32)
 		if count <= 0 {
 			return nil, fmt.Errorf("count must be greater than zero")
+		}
+		if operand.Equal(high) {
+			return count + 1, nil
+		} else if operand.Equal(low) {
+			return int32(1), nil
 		}
 		bucket := high.Sub(low).Div(decimal.NewFromInt(int64(count)))
 		result := operand.Sub(low).Div(bucket).Ceil()

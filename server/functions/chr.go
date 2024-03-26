@@ -16,6 +16,7 @@ package functions
 
 import (
 	"fmt"
+	"unicode/utf8"
 
 	"github.com/dolthub/doltgresql/server/functions/framework"
 
@@ -42,6 +43,10 @@ var chr_int32 = framework.Function1{
 		} else if val1 < 0 {
 			return nil, fmt.Errorf("character number must be positive")
 		}
-		return string(rune(val1)), nil
+		r := rune(val1)
+		if !utf8.ValidRune(r) {
+			return nil, fmt.Errorf("requested character too large for encoding")
+		}
+		return string(r), nil
 	},
 }

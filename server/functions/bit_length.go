@@ -27,7 +27,7 @@ func init() {
 // bit_length_varchar represents the PostgreSQL function of the same name, taking the same parameters.
 var bit_length_varchar = framework.Function1{
 	Name:       "bit_length",
-	Return:     pgtypes.Int64,
+	Return:     pgtypes.Int32,
 	Parameters: []pgtypes.DoltgresType{pgtypes.VarCharMax},
 	Callable: func(ctx framework.Context, val1 any) (any, error) {
 		if val1 == nil {
@@ -37,6 +37,6 @@ var bit_length_varchar = framework.Function1{
 		if err != nil {
 			return nil, err
 		}
-		return result.(int64) * 8, nil
+		return result.(int32) * 8, nil
 	},
 }

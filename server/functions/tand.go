@@ -36,6 +36,6 @@ var tand_float64 = framework.Function1{
 		if val1 == nil {
 			return nil, nil
 		}
-		return toDegrees(math.Tan(val1.(float64))), nil
+		return math.Tan(toRadians(val1.(float64))), nil
 	},
 }

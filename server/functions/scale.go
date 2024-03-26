@@ -15,8 +15,6 @@
 package functions
 
 import (
-	"github.com/shopspring/decimal"
-
 	"github.com/dolthub/doltgresql/server/functions/framework"
 
 	pgtypes "github.com/dolthub/doltgresql/server/types"
@@ -30,12 +28,12 @@ func init() {
 // scale_numeric represents the PostgreSQL function of the same name, taking the same parameters.
 var scale_numeric = framework.Function1{
 	Name:       "scale",
-	Return:     pgtypes.Int64,
+	Return:     pgtypes.Int32,
 	Parameters: []pgtypes.DoltgresType{pgtypes.Numeric},
 	Callable: func(ctx framework.Context, val1 any) (any, error) {
 		res, err := min_scale_numeric.Callable(ctx, val1)
 		if res != nil {
-			return res.(decimal.Decimal).IntPart(), err
+			return res.(int32), err
 		}
 		return nil, err
 	},

@@ -40,7 +40,12 @@ var split_part_varchar_varchar_int32 = framework.Function3{
 		if n.(int32) == 0 {
 			return nil, fmt.Errorf("field position must not be zero")
 		}
-		parts := strings.Split(str.(string), delimiter.(string))
+		var parts []string
+		if len(delimiter.(string)) > 0 {
+			parts = strings.Split(str.(string), delimiter.(string))
+		} else {
+			parts = []string{str.(string)}
+		}
 		if int(utils.Abs(n.(int32))) > len(parts) {
 			return "", nil
 		}
