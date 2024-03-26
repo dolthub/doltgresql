@@ -21,3 +21,7 @@ done
 
 # Run the Go test
 go test -run="TestReplication" ./...
+
+# Run the bats test
+cd bats
+bats replication.bats
