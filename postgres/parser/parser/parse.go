@@ -101,11 +101,8 @@ type Parser struct {
 	stmtBuf    [1]Statement
 }
 
-// INT8 is the historical interpretation of INT. This should be left
-// alone in the future, since there are many sql fragments stored
-// in various descriptors.  Any user input that was created after
-// INT := INT4 will simply use INT4 in any resulting code.
-var defaultNakedIntType = types.Int
+// This is the default integer type when no integer type is explicitly specified.
+var defaultNakedIntType = types.Int4
 
 // Parse parses the sql and returns a list of statements.
 func (p *Parser) Parse(sql string) (Statements, error) {

@@ -22,10 +22,10 @@ import (
 	"github.com/dolthub/doltgresql/postgres/parser/sem/tree"
 )
 
-// nodeSetSessionAuthorizationDefault handles *tree.SetSessionAuthorizationDefault nodes.
-func nodeSetSessionAuthorizationDefault(node *tree.SetSessionAuthorizationDefault) (vitess.Statement, error) {
+// nodeSetSessionAuthorization handles *tree.SetSessionAuthorization nodes.
+func nodeSetSessionAuthorization(node *tree.SetSessionAuthorization) (vitess.Statement, error) {
 	if node == nil {
 		return nil, nil
 	}
-	return nil, fmt.Errorf("SET SESSION AUTHORIZATION DEFAULT is not yet supported")
+	return nil, fmt.Errorf("SET SESSION AUTHORIZATION is not yet supported")
 }

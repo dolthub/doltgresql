@@ -51,7 +51,7 @@ func (c *CompiledFunction) Resolved() bool {
 			return false
 		}
 	}
-	return true
+	return c.Functions != nil
 }
 
 // String implements the interface sql.Expression.
@@ -101,9 +101,7 @@ func (c *CompiledFunction) Type() sql.Type {
 
 // IsNullable implements the interface sql.Expression.
 func (c *CompiledFunction) IsNullable() bool {
-	// We'll always return true, since it does not seem to have a truly negative impact if we return true for a function
-	// that will never return NULL, however there is a negative impact for returning false when a function does return
-	// NULL.
+	// All functions seem to return NULL when given a NULL value
 	return true
 }
 

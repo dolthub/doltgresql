@@ -15,6 +15,7 @@
 package functions
 
 import (
+	"fmt"
 	"math"
 
 	"github.com/dolthub/doltgresql/server/functions/framework"
@@ -36,6 +37,10 @@ var atan2d_float64 = framework.Function2{
 		if y == nil || x == nil {
 			return nil, nil
 		}
-		return toDegrees(math.Atan2(y.(float64), x.(float64))), nil
+		r := math.Atan2(y.(float64), x.(float64))
+		if math.IsNaN(r) {
+			return nil, fmt.Errorf("input is out of range")
+		}
+		return toDegrees(r), nil
 	},
 }

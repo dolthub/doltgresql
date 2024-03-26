@@ -36,6 +36,9 @@ var replace_varchar_varchar_varchar = framework.Function3{
 		if str == nil || from == nil || to == nil {
 			return nil, nil
 		}
+		if len(from.(string)) == 0 {
+			return str, nil
+		}
 		return strings.ReplaceAll(str.(string), from.(string), to.(string)), nil
 	},
 }

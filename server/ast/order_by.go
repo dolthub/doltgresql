@@ -20,6 +20,7 @@ import (
 	vitess "github.com/dolthub/vitess/go/vt/sqlparser"
 
 	"github.com/dolthub/doltgresql/postgres/parser/sem/tree"
+	pgexprs "github.com/dolthub/doltgresql/server/expression"
 )
 
 // nodeOrderBy handles *tree.OrderBy nodes.
@@ -62,6 +63,15 @@ func nodeOrderBy(node tree.OrderBy) (vitess.OrderBy, error) {
 		expr, err := nodeExpr(node[i].Expr)
 		if err != nil {
 			return nil, err
+		}
+		// GMS order by is hardcoded to expect vitess.SQLVal for expressions such as `ORDER BY 1`.
+		// In addition, there is the requirement that columns in the order by also need to be referenced somewhere in
+		// the query, which is not a requirement for Postgres. Whenever we add that functionality, we also need to
+		// remove the dependency on vitess.SQLVal. For now, we'll just convert our literals to a vitess.SQLVal.
+		if injectedExpr, ok := expr.(vitess.InjectedExpr); ok {
+			if literal, ok := injectedExpr.Expression.(*pgexprs.Literal); ok {
+				expr = literal.ToVitessLiteral()
+			}
 		}
 		orderBys[i] = &vitess.Order{
 			Expr:      expr,

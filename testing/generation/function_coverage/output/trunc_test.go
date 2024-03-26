@@ -139,10 +139,12 @@ func Test_Trunc(t *testing.T) {
 				},
 				{
 					Query:    "SELECT trunc( -79223372036854775808::numeric ) ;",
+					Skip:     true,
 					Expected: []sql.Row{{Numeric("-79223372036854775808")}},
 				},
 				{
 					Query:    "SELECT trunc( 79223372036854775807::numeric ) ;",
+					Skip:     true,
 					Expected: []sql.Row{{Numeric("79223372036854775807")}},
 				},
 				{

@@ -33,11 +33,19 @@
 
 package tree
 
-// SetVar represents a SET or RESET statement.
+var _ Statement = &SetVar{}
+
+// SetVar represents a SET or RESET <configuration_param> statement.
 type SetVar struct {
-	Name        string
-	Values      Exprs
+	IsLocal bool
+	Name    string
+	Values  Exprs
+	// FromCurrent is used for SET clauses in CREATE statements only.
 	FromCurrent bool
+}
+
+func (node *SetVar) SetLocalSetStmt() {
+	node.IsLocal = true
 }
 
 // Format implements the NodeFormatter interface.
@@ -63,24 +71,101 @@ func (node *SetVar) Format(ctx *FmtCtx) {
 	}
 }
 
-// SetClusterSetting represents a SET CLUSTER SETTING statement.
-type SetClusterSetting struct {
-	Name  string
-	Value Expr
+var _ Statement = &SetSessionAuthorization{}
+
+// SetSessionAuthorization represents a SET SESSION AUTHORIZATION ... statement.
+type SetSessionAuthorization struct {
+	Username string
+	IsLocal  bool
 }
 
 // Format implements the NodeFormatter interface.
-func (node *SetClusterSetting) Format(ctx *FmtCtx) {
-	ctx.WriteString("SET CLUSTER SETTING ")
-	// Cluster setting names never contain PII and should be distinguished
-	// for feature tracking purposes.
-	ctx.WithFlags(ctx.flags & ^FmtAnonymize, func() {
-		ctx.FormatNameP(&node.Name)
-	})
-
-	ctx.WriteString(" = ")
-	ctx.FormatNode(node.Value)
+func (node *SetSessionAuthorization) Format(ctx *FmtCtx) {
+	if node.Username == "" {
+		// equivalent to RESET SESSION AUTHORIZATION
+		ctx.WriteString("SET SESSION AUTHORIZATION DEFAULT")
+	} else {
+		ctx.WriteString("SET SESSION AUTHORIZATION ")
+		ctx.WriteString(node.Username)
+	}
 }
+
+func (node *SetSessionAuthorization) SetLocalSetStmt() {
+	node.IsLocal = true
+}
+
+var _ Statement = &SetRole{}
+
+// SetRole represents a SET ROLE ... and RESET ROLE statements.
+type SetRole struct {
+	IsLocal bool
+	Name    string
+	None    bool
+	Reset   bool
+}
+
+// Format implements the NodeFormatter interface.
+func (node *SetRole) Format(ctx *FmtCtx) {
+	if node.Reset {
+		ctx.WriteString("RESET ROLE")
+	} else {
+		ctx.WriteString("SET ")
+		if node.IsLocal {
+			ctx.WriteString("LOCAL")
+		} else {
+			ctx.WriteString("SESSION")
+		}
+		ctx.WriteString(" ROLE")
+		if node.None {
+			ctx.WriteString(" NONE")
+		} else {
+			ctx.WriteString(node.Name)
+		}
+	}
+}
+
+func (node *SetRole) SetLocalSetStmt() {
+	node.IsLocal = true
+}
+
+// SetStmt represents a set statement that has [ SESSION | LOCAL ] setting option.
+// It is used to set the |node.IsLocal| to true if LOCAL clause is defined.
+type SetStmt interface {
+	NodeFormatter
+	SetLocalSetStmt()
+}
+
+var _ SetStmt = &SetVar{}
+var _ SetStmt = &SetRole{}
+var _ SetStmt = &SetSessionAuthorization{}
+
+// The SET statements below here do not have [ SESSION | LOCAL ] setting.
+
+var _ Statement = &SetConstraints{}
+
+// SetConstraints represents a SET CONSTRAINTS statement.
+type SetConstraints struct {
+	Names    NameList
+	All      bool
+	Deferred bool
+}
+
+// Format implements the NodeFormatter interface.
+func (node *SetConstraints) Format(ctx *FmtCtx) {
+	ctx.WriteString("SET CONSTRAINTS ")
+	if node.All {
+		ctx.WriteString("ALL")
+	} else {
+		ctx.FormatNode(&node.Names)
+	}
+	if node.Deferred {
+		ctx.WriteString(" DEFERRED")
+	} else {
+		ctx.WriteString(" IMMEDIATE")
+	}
+}
+
+var _ Statement = &SetTransaction{}
 
 // SetTransaction represents a SET TRANSACTION statement.
 type SetTransaction struct {
@@ -91,16 +176,6 @@ type SetTransaction struct {
 func (node *SetTransaction) Format(ctx *FmtCtx) {
 	ctx.WriteString("SET TRANSACTION")
 	node.Modes.Format(ctx)
-}
-
-// SetSessionAuthorizationDefault represents a SET SESSION AUTHORIZATION DEFAULT
-// statement. This can be extended (and renamed) if we ever support names in the
-// last position.
-type SetSessionAuthorizationDefault struct{}
-
-// Format implements the NodeFormatter interface.
-func (node *SetSessionAuthorizationDefault) Format(ctx *FmtCtx) {
-	ctx.WriteString("SET SESSION AUTHORIZATION DEFAULT")
 }
 
 // SetSessionCharacteristics represents a SET SESSION CHARACTERISTICS AS TRANSACTION statement.
@@ -114,13 +189,11 @@ func (node *SetSessionCharacteristics) Format(ctx *FmtCtx) {
 	node.Modes.Format(ctx)
 }
 
-// SetTracing represents a SET TRACING statement.
-type SetTracing struct {
-	Values Exprs
-}
+var _ Statement = &ResetAll{}
+
+type ResetAll struct{}
 
 // Format implements the NodeFormatter interface.
-func (node *SetTracing) Format(ctx *FmtCtx) {
-	ctx.WriteString("SET TRACING = ")
-	ctx.FormatNode(&node.Values)
+func (node *ResetAll) Format(ctx *FmtCtx) {
+	ctx.WriteString("RESET ALL")
 }

@@ -16,6 +16,7 @@ package ast
 
 import (
 	"fmt"
+	"strings"
 
 	vitess "github.com/dolthub/vitess/go/vt/sqlparser"
 
@@ -27,5 +28,28 @@ func nodeShowVar(node *tree.ShowVar) (vitess.Statement, error) {
 	if node == nil {
 		return nil, nil
 	}
-	return nil, fmt.Errorf("SHOW is not yet supported")
+
+	if strings.ToLower(node.Name) == "is_superuser" {
+		return nil, fmt.Errorf("SHOW IS_SUPERUSER is not yet supported")
+	} else if strings.ToLower(node.Name) == "all" {
+		// TODO: need this soon
+		return nil, fmt.Errorf("SHOW ALL is not yet supported")
+	}
+
+	// TODO: this is a temporary way to get the param value for the current implementation
+	//   need better way to get these info
+	s := &vitess.Select{
+		SelectExprs: vitess.SelectExprs{
+			&vitess.AliasedExpr{
+				Expr: &vitess.ColName{
+					Name:      vitess.NewColIdent("@@session." + node.Name),
+					Qualifier: vitess.TableName{},
+				},
+				StartParsePos: 7,
+				EndParsePos:   17 + len(node.Name),
+				As:            vitess.NewColIdent(node.Name),
+			},
+		},
+	}
+	return s, nil
 }

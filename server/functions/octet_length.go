@@ -27,12 +27,12 @@ func init() {
 // octet_length_varchar represents the PostgreSQL function of the same name, taking the same parameters.
 var octet_length_varchar = framework.Function1{
 	Name:       "octet_length",
-	Return:     pgtypes.Int64,
+	Return:     pgtypes.Int32,
 	Parameters: []pgtypes.DoltgresType{pgtypes.VarCharMax},
 	Callable: func(ctx framework.Context, val1 any) (any, error) {
 		if val1 == nil {
 			return nil, nil
 		}
-		return int64(len(val1.(string))), nil
+		return int32(len(val1.(string))), nil
 	},
 }

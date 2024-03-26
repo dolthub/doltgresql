@@ -36,6 +36,6 @@ var sind_float64 = framework.Function1{
 		if val1 == nil {
 			return nil, nil
 		}
-		return toDegrees(math.Sin(val1.(float64))), nil
+		return math.Sin(toRadians(val1.(float64))), nil
 	},
 }

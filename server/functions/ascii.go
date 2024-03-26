@@ -27,7 +27,7 @@ func init() {
 // ascii_varchar represents the PostgreSQL function of the same name, taking the same parameters.
 var ascii_varchar = framework.Function1{
 	Name:       "ascii",
-	Return:     pgtypes.Int64,
+	Return:     pgtypes.Int32,
 	Parameters: []pgtypes.DoltgresType{pgtypes.VarCharMax},
 	Callable: func(ctx framework.Context, val1Interface any) (any, error) {
 		if val1Interface == nil {
@@ -35,9 +35,9 @@ var ascii_varchar = framework.Function1{
 		}
 		val1 := val1Interface.(string)
 		if len(val1) == 0 {
-			return int64(0), nil
+			return int32(0), nil
 		}
 		runes := []rune(val1)
-		return int64(runes[0]), nil
+		return int32(runes[0]), nil
 	},
 }

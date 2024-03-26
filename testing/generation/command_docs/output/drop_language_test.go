@@ -18,18 +18,18 @@ import "testing"
 
 func TestDropLanguage(t *testing.T) {
 	tests := []QueryParses{
-		Unimplemented("DROP LANGUAGE name"),
-		Unimplemented("DROP PROCEDURAL LANGUAGE name"),
-		Unimplemented("DROP LANGUAGE IF EXISTS name"),
-		Unimplemented("DROP PROCEDURAL LANGUAGE IF EXISTS name"),
-		Unimplemented("DROP LANGUAGE name CASCADE"),
-		Unimplemented("DROP PROCEDURAL LANGUAGE name CASCADE"),
-		Unimplemented("DROP LANGUAGE IF EXISTS name CASCADE"),
-		Unimplemented("DROP PROCEDURAL LANGUAGE IF EXISTS name CASCADE"),
-		Unimplemented("DROP LANGUAGE name RESTRICT"),
-		Unimplemented("DROP PROCEDURAL LANGUAGE name RESTRICT"),
-		Unimplemented("DROP LANGUAGE IF EXISTS name RESTRICT"),
-		Unimplemented("DROP PROCEDURAL LANGUAGE IF EXISTS name RESTRICT"),
+		Parses("DROP LANGUAGE name"),
+		Parses("DROP PROCEDURAL LANGUAGE name"),
+		Parses("DROP LANGUAGE IF EXISTS name"),
+		Parses("DROP PROCEDURAL LANGUAGE IF EXISTS name"),
+		Parses("DROP LANGUAGE name CASCADE"),
+		Parses("DROP PROCEDURAL LANGUAGE name CASCADE"),
+		Parses("DROP LANGUAGE IF EXISTS name CASCADE"),
+		Parses("DROP PROCEDURAL LANGUAGE IF EXISTS name CASCADE"),
+		Parses("DROP LANGUAGE name RESTRICT"),
+		Parses("DROP PROCEDURAL LANGUAGE name RESTRICT"),
+		Parses("DROP LANGUAGE IF EXISTS name RESTRICT"),
+		Parses("DROP PROCEDURAL LANGUAGE IF EXISTS name RESTRICT"),
 	}
 	RunTests(t, tests)
 }

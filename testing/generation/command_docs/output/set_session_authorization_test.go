@@ -18,13 +18,13 @@ import "testing"
 
 func TestSetSessionAuthorization(t *testing.T) {
 	tests := []QueryParses{
-		Unimplemented("SET SESSION AUTHORIZATION user_name"),
-		Unimplemented("SET SESSION SESSION AUTHORIZATION user_name"),
-		Unimplemented("SET LOCAL SESSION AUTHORIZATION user_name"),
+		Parses("SET SESSION AUTHORIZATION user_name"),
+		Parses("SET SESSION SESSION AUTHORIZATION user_name"),
+		Parses("SET LOCAL SESSION AUTHORIZATION user_name"),
 		Parses("SET SESSION AUTHORIZATION DEFAULT"),
 		Parses("SET SESSION SESSION AUTHORIZATION DEFAULT"),
-		Unimplemented("SET LOCAL SESSION AUTHORIZATION DEFAULT"),
-		Unimplemented("RESET SESSION AUTHORIZATION"),
+		Parses("SET LOCAL SESSION AUTHORIZATION DEFAULT"),
+		Parses("RESET SESSION AUTHORIZATION"),
 	}
 	RunTests(t, tests)
 }

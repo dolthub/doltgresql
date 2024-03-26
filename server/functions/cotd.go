@@ -36,10 +36,10 @@ var cotd_float64 = framework.Function1{
 		if val1Interface == nil {
 			return nil, nil
 		}
-		val1 := val1Interface.(float64)
+		val1 := toRadians(val1Interface.(float64))
 		if val1 == 0 {
 			return math.Inf(1), nil
 		}
-		return toDegrees(math.Cos(val1) / math.Sin(val1)), nil
+		return math.Cos(val1) / math.Sin(val1), nil
 	},
 }

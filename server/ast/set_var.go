@@ -20,6 +20,7 @@ import (
 	vitess "github.com/dolthub/vitess/go/vt/sqlparser"
 
 	"github.com/dolthub/doltgresql/postgres/parser/sem/tree"
+	"github.com/dolthub/doltgresql/server/config"
 )
 
 // nodeSetVar handles *tree.SetVar nodes.
@@ -27,6 +28,25 @@ func nodeSetVar(node *tree.SetVar) (vitess.Statement, error) {
 	if node == nil {
 		return nil, nil
 	}
-	//TODO: For some reason, the parser does not actually implement SET, so we need to add that
-	return nil, fmt.Errorf("SET is not yet supported")
+	if !config.IsValidPostgresConfigParameter(node.Name) {
+		return nil, fmt.Errorf(`ERROR: syntax error at or near "%s"'`, node.Name)
+	}
+	if node.IsLocal {
+		// TODO: takes effect for only the current transaction rather than the current session.
+		return nil, fmt.Errorf("SET LOCAL is not yet supported")
+	}
+	expr, err := nodeExpr(node.Values[0])
+	if err != nil {
+		return nil, err
+	}
+	setStmt := &vitess.Set{
+		Exprs: vitess.SetVarExprs{&vitess.SetVarExpr{
+			Scope: vitess.SetScope_Session,
+			Name: &vitess.ColName{
+				Name: vitess.NewColIdent(node.Name),
+			},
+			Expr: expr,
+		}},
+	}
+	return setStmt, nil
 }

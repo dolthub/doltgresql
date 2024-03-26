@@ -36,6 +36,6 @@ var cosd_float64 = framework.Function1{
 		if val1 == nil {
 			return nil, nil
 		}
-		return toDegrees(math.Cos(val1.(float64))), nil
+		return math.Cos(toRadians(val1.(float64))), nil
 	},
 }

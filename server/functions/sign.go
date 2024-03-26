@@ -56,6 +56,6 @@ var sign_numeric = framework.Function1{
 		if val1 == nil {
 			return nil, nil
 		}
-		return val1.(decimal.Decimal).Cmp(decimal.Zero), nil
+		return decimal.NewFromInt(int64(val1.(decimal.Decimal).Cmp(decimal.Zero))), nil
 	},
 }

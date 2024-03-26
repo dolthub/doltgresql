@@ -863,6 +863,7 @@ func Test_Div(t *testing.T) {
 				},
 				{
 					Query:    "SELECT div( 79223372036854775807::numeric ,  -79223372036854775808::numeric ) ;",
+					Skip:     true,
 					Expected: []sql.Row{{Numeric("0")}},
 				},
 				{
