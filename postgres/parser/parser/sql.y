@@ -1088,9 +1088,9 @@ func (u *sqlSymUnion) alterDomainCmd() tree.AlterDomainCmd {
 
 %type <[]tree.CompositeTypeElem> type_composite_list opt_type_composite_list
 %type <tree.RangeTypeOption> type_range_option
-%type <[]tree.RangeTypeOption> type_range_optional_list
+%type <[]tree.RangeTypeOption> type_range_optional_list opt_type_range_optional_list
 %type <tree.BaseTypeOption> type_base_option type_property
-%type <[]tree.BaseTypeOption> type_base_optional_list type_property_list
+%type <[]tree.BaseTypeOption> type_base_optional_list opt_type_base_optional_list type_property_list
 %type <tree.AlterAttributeAction> alter_attribute_action
 %type <[]tree.AlterAttributeAction> alter_attribute_action_list
 
@@ -8356,7 +8356,7 @@ create_type_stmt:
     }
   }
   // Range types.
-| CREATE TYPE type_name AS RANGE '(' SUBTYPE '=' typename type_range_optional_list ')'
+| CREATE TYPE type_name AS RANGE '(' SUBTYPE '=' typename opt_type_range_optional_list ')'
   {
     $$.val = &tree.CreateType{
       TypeName: $3.unresolvedObjectName(),
@@ -8368,7 +8368,7 @@ create_type_stmt:
     }
   }
   // Base (primitive) types.
-| CREATE TYPE type_name '(' INPUT '=' name ',' OUTPUT '=' name type_base_optional_list ')'
+| CREATE TYPE type_name '(' INPUT '=' name ',' OUTPUT '=' name opt_type_base_optional_list ')'
   {
     $$.val = &tree.CreateType{
       TypeName: $3.unresolvedObjectName(),
@@ -8409,12 +8409,18 @@ type_composite_list:
     $$.val = append($1.compositeTypeElems(), tree.CompositeTypeElem{AttrName: $3, Type: $4.typeReference(), Collate: $5})
   }
 
-type_range_optional_list:
+opt_type_range_optional_list:
   /* EMPTY */
   {
     $$.val = []tree.RangeTypeOption(nil)
   }
-| type_range_option
+| ',' type_range_optional_list
+  {
+    $$.val = $2.rangeTypeOptions()
+  }
+
+type_range_optional_list:
+  type_range_option
   {
     $$.val = []tree.RangeTypeOption{$1.rangeTypeOption()}
   }
@@ -8435,12 +8441,18 @@ type_range_option:
 | MULTIRANGE_TYPE_NAME '=' type_name
   { $$.val = tree.RangeTypeOption{Option: tree.RangeTypeMultiRangeTypeName, MRTypeName: $3.unresolvedObjectName()} }
 
-type_base_optional_list:
+opt_type_base_optional_list:
   /* EMPTY */
   {
     $$.val = []tree.BaseTypeOption(nil)
   }
-| type_base_option
+| ',' type_base_optional_list
+  {
+    $$.val = $2.baseTypeOptions()
+  }
+
+type_base_optional_list:
+  type_base_option
   {
     $$.val = []tree.BaseTypeOption{$1.baseTypeOption()}
   }
