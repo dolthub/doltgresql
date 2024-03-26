@@ -654,6 +654,15 @@ func (u *sqlSymUnion) alterAttributeAction() tree.AlterAttributeAction {
 func (u *sqlSymUnion) alterAttributeActions() []tree.AlterAttributeAction {
     return u.val.([]tree.AlterAttributeAction)
 }
+func (u *sqlSymUnion) domainConstraint() tree.DomainConstraint {
+    return u.val.(tree.DomainConstraint)
+}
+func (u *sqlSymUnion) domainConstraints() []tree.DomainConstraint {
+    return u.val.([]tree.DomainConstraint)
+}
+func (u *sqlSymUnion) alterDomainCmd() tree.AlterDomainCmd {
+    return u.val.(tree.AlterDomainCmd)
+}
 %}
 
 // NB: the %token definitions must come before the %type definitions in this
@@ -814,6 +823,7 @@ func (u *sqlSymUnion) alterAttributeActions() []tree.AlterAttributeAction {
 %type <tree.Statement> alter_role_stmt
 %type <tree.Statement> alter_type_stmt
 %type <tree.Statement> alter_schema_stmt
+%type <tree.Statement> alter_domain_stmt
 
 // ALTER TABLE
 %type <tree.Statement> alter_onetable_stmt
@@ -892,6 +902,7 @@ func (u *sqlSymUnion) alterAttributeActions() []tree.AlterAttributeAction {
 %type <tree.Statement> create_materialized_view_stmt
 %type <tree.Statement> create_sequence_stmt
 %type <tree.Statement> create_trigger_stmt
+%type <tree.Statement> create_domain_stmt
 
 %type <tree.Statement> create_stats_stmt
 %type <*tree.CreateStatsOptions> opt_create_stats_options
@@ -912,6 +923,7 @@ func (u *sqlSymUnion) alterAttributeActions() []tree.AlterAttributeAction {
 %type <tree.Statement> drop_trigger_stmt
 %type <tree.Statement> drop_type_stmt
 %type <tree.Statement> drop_view_stmt
+%type <tree.Statement> drop_domain_stmt
 %type <tree.Statement> drop_sequence_stmt
 %type <tree.Statement> drop_extension_stmt
 %type <tree.Statement> drop_language_stmt
@@ -1082,6 +1094,10 @@ func (u *sqlSymUnion) alterAttributeActions() []tree.AlterAttributeAction {
 %type <tree.AlterAttributeAction> alter_attribute_action
 %type <[]tree.AlterAttributeAction> alter_attribute_action_list
 
+%type <tree.DomainConstraint> domain_constraint
+%type <[]tree.DomainConstraint> domain_constraint_list opt_domain_constraint_list
+%type <tree.AlterDomainCmd> alter_domain_cmd
+
 %type <str> cursor_name database_name index_name opt_index_name column_name insert_column_item statistics_name window_name
 %type <str> table_alias_name constraint_name target_name collation_name opt_from_ref_table
 %type <str> db_object_name_component
@@ -1101,7 +1117,7 @@ func (u *sqlSymUnion) alterAttributeActions() []tree.AlterAttributeAction {
 %type <tree.ViewCheckOption> opt_with_check_option
 
 %type <tree.Expr> opt_when
-%type <bool> opt_for_each old_or_new opt_constraint
+%type <bool> opt_for_each old_or_new opt_constraint opt_not_valid
 %type <tree.TriggerDeferrableMode> opt_trigger_deferrable_mode
 %type <tree.TriggerRelations> trigger_relations opt_trigger_relations
 %type <tree.TriggerEvent> trigger_event
@@ -1451,6 +1467,7 @@ alter_ddl_stmt:
 | alter_type_stmt               // EXTEND WITH HELP: ALTER TYPE
 | alter_trigger_stmt            // EXTEND WITH HELP: ALTER TRIGGER
 | alter_language_stmt           // EXTEND WITH HELP: ALTER LANGUAGE
+| alter_domain_stmt             // EXTEND WITH HELP: ALTER DOMAIN
 
 // %Help: ALTER TABLE - change the definition of a table
 // %Category: DDL
@@ -1781,6 +1798,96 @@ alter_language_stmt:
 | ALTER opt_procedural LANGUAGE name owner_to
   {
     $$.val = &tree.AlterLanguage{Name: tree.Name($4), Procedural: $2.bool(), Owner: $5}
+  }
+
+alter_domain_stmt:
+  ALTER DOMAIN type_name alter_domain_cmd
+  {
+    $$.val = &tree.AlterDomain{
+      Name: $3.unresolvedObjectName(),
+      Cmd: $4.alterDomainCmd(),
+    }
+  }
+
+alter_domain_cmd:
+  SET DEFAULT a_expr
+  {
+    $$.val = &tree.AlterDomainSetDrop{IsSet: true, Default: $3.expr()}
+  }
+| DROP DEFAULT
+  {
+    $$.val = &tree.AlterDomainSetDrop{IsSet: false}
+  }
+| SET NOT NULL
+  {
+    $$.val = &tree.AlterDomainSetDrop{IsSet: true, NotNull: true}
+  }
+| DROP NOT NULL
+  {
+    $$.val = &tree.AlterDomainSetDrop{IsSet: false, NotNull: true}
+  }
+| ADD domain_constraint opt_not_valid
+  {
+    $$.val = &tree.AlterDomainConstraint{
+      Action: tree.AlterDomainAddConstraint,
+      Constraint: $2.domainConstraint(),
+      NotValid: $3.bool(),
+    }
+  }
+| DROP CONSTRAINT constraint_name opt_drop_behavior
+  {
+    $$.val = &tree.AlterDomainConstraint{
+      Action: tree.AlterDomainDropConstraint,
+      IfExists: false,
+      ConstraintName: tree.Name($3),
+      DropBehavior: $4.dropBehavior(),
+    }
+  }
+| DROP CONSTRAINT IF EXISTS constraint_name opt_drop_behavior
+  {
+    $$.val = &tree.AlterDomainConstraint{
+      Action: tree.AlterDomainDropConstraint,
+      IfExists: true,
+      ConstraintName: tree.Name($5),
+      DropBehavior: $6.dropBehavior(),
+    }
+  }
+| RENAME CONSTRAINT constraint_name TO constraint_name
+  {
+    $$.val = &tree.AlterDomainConstraint{
+      Action: tree.AlterDomainRenameConstraint,
+      ConstraintName: tree.Name($3),
+      NewName: tree.Name($5),
+    }
+  }
+| VALIDATE CONSTRAINT constraint_name
+  {
+    $$.val = &tree.AlterDomainConstraint{
+      Action: tree.AlterDomainValidateConstraint,
+      ConstraintName: tree.Name($3),
+    }
+  }
+| owner_to
+  {
+    $$.val = &tree.AlterDomainOwner{Owner: $1}
+  }
+| RENAME TO name
+  {
+    $$.val = &tree.AlterDomainRename{NewName: $3}
+  }
+| set_schema
+  {
+    $$.val = &tree.AlterDomainSetSchema{Schema: $1}
+  }
+
+opt_not_valid:
+  /* EMPTY */
+  {
+    $$.val = false
+  }
+| NOT VALID
+  {
+    $$.val = true
   }
 
 alter_function_stmt:
@@ -3623,6 +3730,64 @@ create_unsupported:
 | CREATE SUBSCRIPTION error { return unimplemented(sqllex, "create subscription") }
 | CREATE TEXT error { return unimplementedWithIssueDetail(sqllex, 7821, "create text") }
 
+create_domain_stmt:
+  CREATE DOMAIN type_name opt_as typename opt_collate opt_arg_default opt_domain_constraint_list
+  {
+    $$.val = &tree.CreateDomain{
+      TypeName: $3.unresolvedObjectName(),
+      DataType: $5.typeReference(),
+      Collate: $6,
+      Default: $7.expr(),
+      Constraints: $8.domainConstraints(),
+    }
+  }
+
+opt_domain_constraint_list:
+  /* EMPTY */
+  {
+    $$.val = []tree.DomainConstraint(nil)
+  }
+| domain_constraint_list
+  {
+    $$.val = $1.domainConstraints()
+  }
+
+domain_constraint_list:
+  domain_constraint
+  {
+    $$.val = []tree.DomainConstraint{$1.domainConstraint()}
+  }
+| domain_constraint_list domain_constraint
+  {
+    $$.val = append($1.domainConstraints(), $2.domainConstraint())
+  }
+
+domain_constraint:
+  NOT NULL
+  {
+    $$.val = tree.DomainConstraint{NotNull: true}
+  }
+| NULL
+  {
+    $$.val = tree.DomainConstraint{}
+  }
+| CHECK '(' a_expr ')'
+  {
+    $$.val = tree.DomainConstraint{Check: $3.expr()}
+  }
+| CONSTRAINT constraint_name NOT NULL
+  {
+    $$.val = tree.DomainConstraint{Constraint: tree.Name($2), NotNull: true}
+  }
+| CONSTRAINT constraint_name NULL
+  {
+    $$.val = tree.DomainConstraint{Constraint: tree.Name($2)}
+  }
+| CONSTRAINT constraint_name CHECK '(' a_expr ')'
+  {
+    $$.val = tree.DomainConstraint{Constraint: tree.Name($2), Check: $5.expr()}
+  }
+
 create_language_stmt:
   CREATE opt_trusted opt_procedural LANGUAGE name opt_language_handler
   {
@@ -4048,7 +4213,6 @@ drop_unsupported:
 | DROP CAST error { return unimplemented(sqllex, "drop cast") }
 | DROP COLLATION error { return unimplemented(sqllex, "drop collation") }
 | DROP CONVERSION error { return unimplemented(sqllex, "drop conversion") }
-| DROP DOMAIN error { return unimplementedWithIssueDetail(sqllex, 27796, "drop") }
 | DROP FOREIGN TABLE error { return unimplemented(sqllex, "drop foreign table") }
 | DROP FOREIGN DATA error { return unimplemented(sqllex, "drop fdw") }
 | DROP OPERATOR error { return unimplemented(sqllex, "drop operator") }
@@ -4057,6 +4221,16 @@ drop_unsupported:
 | DROP SERVER error { return unimplemented(sqllex, "drop server") }
 | DROP SUBSCRIPTION error { return unimplemented(sqllex, "drop subscription") }
 | DROP TEXT error { return unimplementedWithIssueDetail(sqllex, 7821, "drop text") }
+
+drop_domain_stmt:
+  DROP DOMAIN name_list opt_drop_behavior
+  {
+    $$.val = &tree.DropDomain{Names: $3.nameList(), DropBehavior: $4.dropBehavior()}
+  }
+| DROP DOMAIN IF EXISTS name_list opt_drop_behavior
+  {
+    $$.val = &tree.DropDomain{Names: $5.nameList(), IfExists: true, DropBehavior: $6.dropBehavior()}
+  }
 
 drop_language_stmt:
   DROP opt_procedural LANGUAGE name opt_drop_behavior
@@ -4113,6 +4287,7 @@ create_ddl_stmt:
 | create_database_stmt // EXTEND WITH HELP: CREATE DATABASE
 | create_schema_stmt   // EXTEND WITH HELP: CREATE SCHEMA
 | create_type_stmt     // EXTEND WITH HELP: CREATE TYPE
+| create_domain_stmt    // EXTEND WITH HELP: CREATE DOMAIN
 | create_ddl_stmt_schema_element // help texts in sub-rule
 
 create_ddl_stmt_schema_element:
@@ -4124,7 +4299,7 @@ create_ddl_stmt_schema_element:
 | create_view_stmt     // EXTEND WITH HELP: CREATE VIEW
 | create_materialized_view_stmt // EXTEND WITH HELP: CREATE MATERIALIZED VIEW
 | create_sequence_stmt // EXTEND WITH HELP: CREATE SEQUENCE
-| create_trigger_stmt
+| create_trigger_stmt  // EXTEND WITH HELP: CREATE TRIGGER
 
 // %Help: CREATE STATISTICS - create a new table statistic
 // %Category: Misc
@@ -4321,6 +4496,7 @@ drop_stmt:
 | drop_schedule_stmt // EXTEND WITH HELP: DROP SCHEDULES
 | drop_function_stmt // EXTEND WITH HELP: DROP FUNCTION
 | drop_procedure_stmt // EXTEND WITH HELP: DROP PROCEDURE
+| drop_domain_stmt   // EXTEND WITH HELP: DROP DOMAIN
 | drop_extension_stmt // EXTEND WITH HELP: DROP EXTENSION
 | drop_language_stmt // EXTEND WITH HELP: DROP LANGUAGE
 | drop_unsupported   {}
@@ -8212,8 +8388,6 @@ create_type_stmt:
       Variety: tree.Shell,
     }
   }
-  // Domain types.
-| CREATE DOMAIN type_name error           { return unimplementedWithIssueDetail(sqllex, 27796, "create") }
 
 opt_type_composite_list:
   /* EMPTY */

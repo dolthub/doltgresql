@@ -18,18 +18,18 @@ import "testing"
 
 func TestDropDomain(t *testing.T) {
 	tests := []QueryParses{
-		Unimplemented("DROP DOMAIN name"),
-		Unimplemented("DROP DOMAIN IF EXISTS name"),
-		Unimplemented("DROP DOMAIN name , name"),
-		Unimplemented("DROP DOMAIN IF EXISTS name , name"),
-		Unimplemented("DROP DOMAIN name CASCADE"),
-		Unimplemented("DROP DOMAIN IF EXISTS name CASCADE"),
-		Unimplemented("DROP DOMAIN name , name CASCADE"),
-		Unimplemented("DROP DOMAIN IF EXISTS name , name CASCADE"),
-		Unimplemented("DROP DOMAIN name RESTRICT"),
-		Unimplemented("DROP DOMAIN IF EXISTS name RESTRICT"),
-		Unimplemented("DROP DOMAIN name , name RESTRICT"),
-		Unimplemented("DROP DOMAIN IF EXISTS name , name RESTRICT"),
+		Parses("DROP DOMAIN name"),
+		Parses("DROP DOMAIN IF EXISTS name"),
+		Parses("DROP DOMAIN name , name"),
+		Parses("DROP DOMAIN IF EXISTS name , name"),
+		Parses("DROP DOMAIN name CASCADE"),
+		Parses("DROP DOMAIN IF EXISTS name CASCADE"),
+		Parses("DROP DOMAIN name , name CASCADE"),
+		Parses("DROP DOMAIN IF EXISTS name , name CASCADE"),
+		Parses("DROP DOMAIN name RESTRICT"),
+		Parses("DROP DOMAIN IF EXISTS name RESTRICT"),
+		Parses("DROP DOMAIN name , name RESTRICT"),
+		Parses("DROP DOMAIN IF EXISTS name , name RESTRICT"),
 	}
 	RunTests(t, tests)
 }

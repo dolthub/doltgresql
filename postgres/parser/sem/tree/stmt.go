@@ -217,6 +217,14 @@ func (*AlterDatabase) StatementTag() string { return "ALTER DATABASE" }
 func (*AlterDatabase) hiddenFromShowQueries() {}
 
 // StatementType implements the Statement interface.
+func (*AlterDomain) StatementType() StatementType { return DDL }
+
+// StatementTag returns a short string identifying the type of statement.
+func (*AlterDomain) StatementTag() string { return "ALTER DOMAIN" }
+
+func (*AlterDomain) hiddenFromShowQueries() {}
+
+// StatementType implements the Statement interface.
 func (*AlterDefaultPrivileges) StatementType() StatementType { return DDL }
 
 // StatementTag returns a short string identifying the type of statement.
@@ -494,6 +502,12 @@ func (*CreateDatabase) StatementType() StatementType { return DDL }
 func (*CreateDatabase) StatementTag() string { return "CREATE DATABASE" }
 
 // StatementType implements the Statement interface.
+func (*CreateDomain) StatementType() StatementType { return DDL }
+
+// StatementTag returns a short string identifying the type of statement.
+func (*CreateDomain) StatementTag() string { return "CREATE DOMAIN" }
+
+// StatementType implements the Statement interface.
 func (*CreateExtension) StatementType() StatementType { return DDL }
 
 // StatementTag returns a short string identifying the type of statement.
@@ -625,6 +639,12 @@ func (*DropDatabase) StatementType() StatementType { return DDL }
 
 // StatementTag returns a short string identifying the type of statement.
 func (*DropDatabase) StatementTag() string { return "DROP DATABASE" }
+
+// StatementType implements the Statement interface.
+func (*DropDomain) StatementType() StatementType { return DDL }
+
+// StatementTag returns a short string identifying the type of statement.
+func (*DropDomain) StatementTag() string { return "DROP DOMAIN" }
 
 // StatementType implements the Statement interface.
 func (*DropExtension) StatementType() StatementType { return DDL }
@@ -1177,6 +1197,7 @@ func (n *AlterAggregate) String() string            { return AsString(n) }
 func (n *AlterCollation) String() string            { return AsString(n) }
 func (n *AlterConversion) String() string           { return AsString(n) }
 func (n *AlterDatabase) String() string             { return AsString(n) }
+func (n *AlterDomain) String() string               { return AsString(n) }
 func (n *AlterDefaultPrivileges) String() string    { return AsString(n) }
 func (n *AlterFunction) String() string             { return AsString(n) }
 func (n *AlterIndex) String() string                { return AsString(n) }
@@ -1213,6 +1234,7 @@ func (n *CommitTransaction) String() string         { return AsString(n) }
 func (n *CopyFrom) String() string                  { return AsString(n) }
 func (n *CreateChangefeed) String() string          { return AsString(n) }
 func (n *CreateDatabase) String() string            { return AsString(n) }
+func (n *CreateDomain) String() string              { return AsString(n) }
 func (n *CreateExtension) String() string           { return AsString(n) }
 func (n *CreateFunction) String() string            { return AsString(n) }
 func (n *CreateIndex) String() string               { return AsString(n) }
@@ -1230,6 +1252,7 @@ func (n *CreateView) String() string                { return AsString(n) }
 func (n *Deallocate) String() string                { return AsString(n) }
 func (n *Delete) String() string                    { return AsString(n) }
 func (n *DropDatabase) String() string              { return AsString(n) }
+func (n *DropDomain) String() string                { return AsString(n) }
 func (n *DropExtension) String() string             { return AsString(n) }
 func (n *DropFunction) String() string              { return AsString(n) }
 func (n *DropIndex) String() string                 { return AsString(n) }

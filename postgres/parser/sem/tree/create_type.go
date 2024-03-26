@@ -67,8 +67,6 @@ type CreateType struct {
 	Base      BaseType
 }
 
-var _ Statement = &CreateType{}
-
 // Format implements the NodeFormatter interface.
 func (node *CreateType) Format(ctx *FmtCtx) {
 	ctx.WriteString("CREATE TYPE ")
@@ -83,10 +81,7 @@ func (node *CreateType) Format(ctx *FmtCtx) {
 	case Base:
 		ctx.FormatNode(&node.Base)
 	case Shell:
-	case Domain:
-		// Do it separate?
 	}
-
 }
 
 // CompositeType represents a `CREATE TYPE <name> AS ( <type>, ... )` statement.
@@ -101,6 +96,7 @@ type CompositeTypeElem struct {
 	Collate string
 }
 
+// Format implements the NodeFormatter interface.
 func (node *CompositeType) Format(ctx *FmtCtx) {
 	ctx.WriteString(" AS ( ")
 	for i, t := range node.Types {
@@ -123,6 +119,7 @@ type EnumType struct {
 	Labels []string
 }
 
+// Format implements the NodeFormatter interface.
 func (node *EnumType) Format(ctx *FmtCtx) {
 	ctx.WriteString(" AS ENUM ( ")
 	for i := range node.Labels {
@@ -156,6 +153,7 @@ type RangeTypeOption struct {
 	MRTypeName *UnresolvedObjectName
 }
 
+// Format implements the NodeFormatter interface.
 func (node *RangeType) Format(ctx *FmtCtx) {
 	ctx.WriteString(" AS RANGE ( SUBTYPE ")
 	ctx.WriteString(node.Subtype.SQLString())
@@ -217,6 +215,7 @@ type BaseTypeOption struct {
 	TypeVal        ResolvableTypeReference
 }
 
+// Format implements the NodeFormatter interface.
 func (node *BaseTypeOptions) Format(ctx *FmtCtx) {
 	for i, opt := range *node {
 		if i > 0 {

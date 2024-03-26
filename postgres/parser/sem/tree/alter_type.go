@@ -115,7 +115,7 @@ func (node *AlterTypeRenameAttribute) Format(ctx *FmtCtx) {
 	ctx.WriteString(node.DropBehavior.String())
 }
 
-// AlterTypeAlterAttribute represents an ALTER TYPE ADD/DROP/ALTER ATTRIBUTE command.
+// AlterTypeAlterAttribute represents an ALTER TYPE {ADD|DROP|ALTER} ATTRIBUTE command.
 type AlterTypeAlterAttribute struct {
 	Actions []AlterAttributeAction
 }
@@ -176,6 +176,7 @@ type AlterTypeAddValue struct {
 	Placement   *AlterTypeAddValuePlacement
 }
 
+// Format implements the NodeFormatter interface.
 func (node *AlterTypeAddValue) Format(ctx *FmtCtx) {
 	ctx.WriteString(" ADD VALUE ")
 	if node.IfNotExists {

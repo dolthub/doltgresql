@@ -74,6 +74,30 @@ func (node *DropDatabase) Format(ctx *FmtCtx) {
 	}
 }
 
+var _ Statement = &DropDomain{}
+
+// DropDomain represents a DROP DOMAIN statement.
+type DropDomain struct {
+	Names        NameList
+	IfExists     bool
+	DropBehavior DropBehavior
+}
+
+// Format implements the NodeFormatter interface.
+func (node *DropDomain) Format(ctx *FmtCtx) {
+	ctx.WriteString("DROP DATABASE ")
+	if node.IfExists {
+		ctx.WriteString("IF EXISTS ")
+	}
+	ctx.FormatNode(&node.Names)
+	switch node.DropBehavior {
+	case DropDefault:
+	default:
+		ctx.WriteByte(' ')
+		ctx.WriteString(dropBehaviorName[node.DropBehavior])
+	}
+}
+
 var _ Statement = &DropExtension{}
 
 // DropExtension represents a DROP EXTENSION statement.
