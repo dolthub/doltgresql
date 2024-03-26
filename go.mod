@@ -6,11 +6,11 @@ require (
 	github.com/PuerkitoBio/goquery v1.8.1
 	github.com/cockroachdb/apd/v2 v2.0.3-0.20200518165714-d020e156310a
 	github.com/cockroachdb/errors v1.7.5
-	github.com/dolthub/dolt/go v0.40.5-0.20240321180531-8a0c996ca2c3
+	github.com/dolthub/dolt/go v0.40.5-0.20240326182628-9d43ca67ab53
 	github.com/dolthub/dolt/go/gen/proto/dolt/services/eventsapi v0.0.0-20240228231039-f903736a64a8
-	github.com/dolthub/go-mysql-server v0.18.1-0.20240321173856-d25aa31467ad
+	github.com/dolthub/go-mysql-server v0.18.1-0.20240326173717-f57423646998
 	github.com/dolthub/sqllogictest/go v0.0.0-20240118211725-a52e3f5697e3
-	github.com/dolthub/vitess v0.0.0-20240321165217-ad95f0dd1119
+	github.com/dolthub/vitess v0.0.0-20240325235243-65f4774a8706
 	github.com/fatih/color v1.13.0
 	github.com/gogo/protobuf v1.3.2
 	github.com/golang/geo v0.0.0-20200730024412-e86565bf3f35
@@ -34,6 +34,7 @@ require (
 	golang.org/x/sys v0.16.0
 	golang.org/x/text v0.14.0
 	gopkg.in/src-d/go-errors.v1 v1.0.0
+	gopkg.in/yaml.v2 v2.4.0
 )
 
 require (
@@ -152,6 +153,5 @@ require (
 	google.golang.org/grpc v1.57.1 // indirect
 	google.golang.org/protobuf v1.31.0 // indirect
 	gopkg.in/square/go-jose.v2 v2.5.1 // indirect
-	gopkg.in/yaml.v2 v2.4.0 // indirect
 	gopkg.in/yaml.v3 v3.0.1 // indirect
 )
