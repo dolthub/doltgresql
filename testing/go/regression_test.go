@@ -22,42 +22,43 @@ import (
 
 func TestRegressions(t *testing.T) {
 	RunScripts(t, []ScriptTest{
-		// {
-		// 	Name:        "nullif",
-		// 	SetUpScript: []string{},
-		// 	Assertions: []ScriptTestAssertion{
-		// 		{
-		// 			Query:    "select nullif(1, 1);",
-		// 			Expected: []sql.Row{{nil}},
-		// 		},
-		// 		{
-		// 			Query:    "select nullif('', null);",
-		// 			Expected: []sql.Row{{""}},
-		// 		},
-		// 		{
-		// 			Query:    "select nullif(10, 'a');",
-		// 			Expected: []sql.Row{{10}},
-		// 		},
-		// 	},
-		// },
-		// {
-		// 	Name:        "coalesce",
-		// 	SetUpScript: []string{},
-		// 	Assertions: []ScriptTestAssertion{
-		// 		{
-		// 			Query:    "select coalesce(null + 5, 100);",
-		// 			Expected: []sql.Row{{100.0}}, // TODO: this should be an integer
-		// 		},
-		// 		{
-		// 			Query:    "select coalesce(null, null, 'abc');",
-		// 			Expected: []sql.Row{{"abc"}},
-		// 		},
-		// 		{
-		// 			Query:    "select coalesce(null, null);",
-		// 			Expected: []sql.Row{{nil}},
-		// 		},
-		// 	},
-		// },
+		{
+			Name:        "nullif",
+			SetUpScript: []string{},
+			Assertions: []ScriptTestAssertion{
+				{
+					Query:    "select nullif(1, 1);",
+					Expected: []sql.Row{{nil}},
+				},
+				{
+					Query:    "select nullif('', null);",
+					Expected: []sql.Row{{""}},
+				},
+				{
+					Query:    "select nullif(10, 'a');",
+					Expected: []sql.Row{{10}},
+				},
+			},
+		},
+		{
+			Name:        "coalesce",
+			SetUpScript: []string{},
+			Assertions: []ScriptTestAssertion{
+				{
+					Query:    "select coalesce(null + 5, 100);",
+					Skip:     true, // TODO: GMS coalesce has issues with Doltgres types
+					Expected: []sql.Row{{100}},
+				},
+				{
+					Query:    "select coalesce(null, null, 'abc');",
+					Expected: []sql.Row{{"abc"}},
+				},
+				{
+					Query:    "select coalesce(null, null);",
+					Expected: []sql.Row{{nil}},
+				},
+			},
+		},
 		{
 			Name:        "case / when",
 			SetUpScript: []string{},
@@ -131,7 +132,6 @@ func TestRegressions(t *testing.T) {
 			},
 		},
 		{
-			Skip: true,
 			Name: "casting null as integer",
 			SetUpScript: []string{
 				`CREATE TABLE tab0(pk INTEGER PRIMARY KEY, col0 INTEGER, col1 FLOAT, col2 TEXT, col3 INTEGER, col4 FLOAT, col5 TEXT);`,
@@ -140,6 +140,7 @@ func TestRegressions(t *testing.T) {
 			Assertions: []ScriptTestAssertion{
 				{
 					Query:    "SELECT ALL + 58 FROM tab0 WHERE NULL NOT BETWEEN + 71 * CAST ( NULL AS INTEGER ) AND col4",
+					Skip:     true, // TODO: need to implement casting NULL to a type with a CAST expression
 					Expected: []sql.Row{},
 				},
 			},
@@ -153,12 +154,12 @@ func TestRegressions(t *testing.T) {
 			Assertions: []ScriptTestAssertion{
 				{
 					Query:    `SELECT 1 IN (SELECT x+y FROM t1, t2);`,
-					Expected: []sql.Row{{0}},
+					Skip:     true, // Returns "int64(0)" instead of "false", need to implement "IN" as a Doltgres expression
+					Expected: []sql.Row{{false}},
 				},
 			},
 		},
 		{
-			Skip: true,
 			Name: "casting from float64 to int64 and float32",
 			SetUpScript: []string{
 				`CREATE TABLE tab0(pk INTEGER PRIMARY KEY, col0 INTEGER, col1 FLOAT, col2 TEXT, col3 INTEGER, col4 FLOAT, col5 TEXT);`,
@@ -178,7 +179,6 @@ func TestRegressions(t *testing.T) {
 			},
 		},
 		{
-			Skip: true,
 			Name: "typecheck fails to detect doltgres types in GMS ",
 			SetUpScript: []string{
 				`CREATE TABLE tab0(col0 INTEGER, col1 INTEGER, col2 INTEGER);`,
@@ -191,7 +191,7 @@ func TestRegressions(t *testing.T) {
 			Assertions: []ScriptTestAssertion{
 				{
 					Query:    "SELECT ALL + col2 * + ( ( 43 ) ) - 47 + + col1 * CAST ( - ( + 63 ) / col0 AS INTEGER ) AS col0 FROM tab1 AS cor0;",
-					Expected: []sql.Row{{4067}, {2490}, {2877}},
+					Expected: []sql.Row{{2490}, {4067}, {2877}},
 				},
 				{
 					Query:    "SELECT - COUNT ( * ) - 26 * + 96 AS col2 FROM tab0 WHERE + 2 * col0 NOT BETWEEN 33 * CAST ( + 7 / 91 AS REAL ) AND 52;",

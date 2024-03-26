@@ -26,6 +26,7 @@ import (
 	"github.com/dolthub/doltgresql/postgres/parser/sem/tree"
 	"github.com/dolthub/doltgresql/postgres/parser/types"
 	pgexprs "github.com/dolthub/doltgresql/server/expression"
+	"github.com/dolthub/doltgresql/server/functions/framework"
 	pgtypes "github.com/dolthub/doltgresql/server/types"
 )
 
@@ -144,30 +145,27 @@ func nodeExpr(node tree.Expr) (vitess.Expr, error) {
 		if err != nil {
 			return nil, err
 		}
-		var operator string
+		var operator framework.Operator
 		switch node.Operator {
 		case tree.Bitand:
-			operator = vitess.BitAndStr
+			operator = framework.Operator_BinaryBitAnd
 		case tree.Bitor:
-			operator = vitess.BitOrStr
+			operator = framework.Operator_BinaryBitOr
 		case tree.Bitxor:
-			operator = vitess.BitXorStr
+			operator = framework.Operator_BinaryBitXor
 		case tree.Plus:
-			return vitess.InjectedExpr{
-				Expression: pgexprs.NewAddition(),
-				Children:   vitess.Exprs{left, right},
-			}, nil
+			operator = framework.Operator_BinaryPlus
 		case tree.Minus:
-			operator = vitess.MinusStr
+			operator = framework.Operator_BinaryMinus
 		case tree.Mult:
-			operator = vitess.MultStr
+			operator = framework.Operator_BinaryMultiply
 		case tree.Div:
-			operator = vitess.DivStr
+			operator = framework.Operator_BinaryDivide
 		case tree.FloorDiv:
 			//TODO: replace with floor divide function
 			return nil, fmt.Errorf("the floor divide operator is not yet supported")
 		case tree.Mod:
-			operator = vitess.ModStr
+			operator = framework.Operator_BinaryMod
 		case tree.Pow:
 			//TODO: replace with power function
 			return nil, fmt.Errorf("the power operator is not yet supported")
@@ -175,9 +173,9 @@ func nodeExpr(node tree.Expr) (vitess.Expr, error) {
 			//TODO: replace with concat function
 			return nil, fmt.Errorf("the concat operator is not yet supported")
 		case tree.LShift:
-			operator = vitess.ShiftLeftStr
+			operator = framework.Operator_BinaryShiftLeft
 		case tree.RShift:
-			operator = vitess.ShiftRightStr
+			operator = framework.Operator_BinaryShiftRight
 		case tree.JSONFetchVal:
 			return nil, fmt.Errorf("JSON operators are not yet supported")
 		case tree.JSONFetchText:
@@ -189,10 +187,9 @@ func nodeExpr(node tree.Expr) (vitess.Expr, error) {
 		default:
 			return nil, fmt.Errorf("the binary operator used is not yet supported")
 		}
-		return &vitess.BinaryExpr{
-			Operator: operator,
-			Left:     left,
-			Right:    right,
+		return vitess.InjectedExpr{
+			Expression: pgexprs.NewBinaryOperator(operator),
+			Children:   vitess.Exprs{left, right},
 		}, nil
 	case *tree.CaseExpr:
 		expr, err := nodeExpr(node.Expr)
@@ -594,12 +591,11 @@ func nodeExpr(node tree.Expr) (vitess.Expr, error) {
 		if err != nil {
 			return nil, err
 		}
+		var operator framework.Operator
 		switch node.Operator {
+		//TODO: need to add UnaryPlus, it's like a no-op but Postgres actually implements it and it affects coercion
 		case tree.UnaryMinus:
-			return &vitess.UnaryExpr{
-				Operator: vitess.UMinusStr,
-				Expr:     expr,
-			}, nil
+			operator = framework.Operator_UnaryMinus
 		case tree.UnaryComplement:
 			return &vitess.UnaryExpr{
 				Operator: vitess.TildaStr,
@@ -614,6 +610,10 @@ func nodeExpr(node tree.Expr) (vitess.Expr, error) {
 		default:
 			return nil, fmt.Errorf("the unary operator used is not yet supported")
 		}
+		return vitess.InjectedExpr{
+			Expression: pgexprs.NewUnaryOperator(operator),
+			Children:   vitess.Exprs{expr},
+		}, nil
 	case tree.UnqualifiedStar:
 		return nil, fmt.Errorf("* syntax is not yet supported in this context")
 	case *tree.UnresolvedName:

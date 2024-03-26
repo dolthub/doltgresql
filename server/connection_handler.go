@@ -526,29 +526,6 @@ func extractBindVarTypes(queryPlan sql.Node) ([]int32, error) {
 				}
 			}
 			types = append(types, oid)
-		case *pgexprs.Addition:
-			// TODO: find a better way to do this as this is not scalable.
-			//  It seems like this shouldn't be necessary, but tests fail if this is removed
-			for _, child := range e.Children() {
-				castChild, ok := child.(*pgexprs.Cast)
-				if ok {
-					child = castChild.Child()
-				}
-				if bindVar, ok := child.(*expression.BindVar); ok {
-					var oid int32
-					if doltgresType, ok := bindVar.Type().(pgtypes.DoltgresType); ok {
-						oid = int32(doltgresType.OID())
-					} else {
-						oid, err = messages.VitessTypeToObjectID(e.Type().Type())
-						if err != nil {
-							err = fmt.Errorf("could not determine OID for placeholder %s: %w", bindVar.Name, err)
-							return false
-						}
-					}
-					types = append(types, oid)
-				}
-			}
-			return false
 		case *pgexprs.Cast:
 			if bindVar, ok := e.Child().(*expression.BindVar); ok {
 				var oid int32

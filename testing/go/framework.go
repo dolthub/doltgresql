@@ -29,6 +29,7 @@ import (
 	"github.com/dolthub/go-mysql-server/sql"
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgtype"
+	"github.com/shopspring/decimal"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
@@ -79,23 +80,32 @@ type ScriptTestAssertion struct {
 
 // RunScript runs the given script.
 func RunScript(t *testing.T, script ScriptTest, normalizeRows bool) {
-	if runOnPostgres {
-		RunScriptOnPostgres(t, script)
-		return
-	}
-
 	scriptDatabase := script.Database
 	if len(scriptDatabase) == 0 {
 		scriptDatabase = "postgres"
 	}
 
-	ctx, conn, controller := CreateServer(t, scriptDatabase)
-	defer func() {
-		conn.Close(ctx)
-		controller.Stop()
-		err := controller.WaitForStop()
+	var ctx context.Context
+	var conn *pgx.Conn
+
+	if runOnPostgres {
+		var err error
+		ctx = context.Background()
+		conn, err = pgx.Connect(ctx, fmt.Sprintf("postgres://postgres:password@127.0.0.1:%d/%s?sslmode=disable", 5432, scriptDatabase))
 		require.NoError(t, err)
-	}()
+		defer func() {
+			_ = conn.Close(ctx)
+		}()
+	} else {
+		var controller *svcs.Controller
+		ctx, conn, controller = CreateServer(t, scriptDatabase)
+		defer func() {
+			_ = conn.Close(ctx)
+			controller.Stop()
+			err := controller.WaitForStop()
+			require.NoError(t, err)
+		}()
+	}
 
 	t.Run(script.Name, func(t *testing.T) {
 		runScript(t, ctx, script, conn, normalizeRows)
@@ -141,22 +151,6 @@ func runScript(t *testing.T, ctx context.Context, script ScriptTest, conn *pgx.C
 			}
 		})
 	}
-}
-
-// RunScriptOnPostgres runs the given script on a local postgres database called "testing".
-func RunScriptOnPostgres(t *testing.T, script ScriptTest) {
-	scriptDatabase := script.Database
-	if len(scriptDatabase) == 0 {
-		scriptDatabase = "postgres"
-	}
-
-	ctx := context.Background()
-	conn, err := pgx.Connect(ctx, fmt.Sprintf("postgres://postgres:password@127.0.0.1:%d/%s?sslmode=disable", 5432, "testing"))
-	require.NoError(t, err)
-
-	t.Run(script.Name, func(t *testing.T) {
-		runScript(t, ctx, script, conn, true)
-	})
 }
 
 // RunScripts runs the given collection of scripts. This normalizes all rows before comparing them.
@@ -251,7 +245,8 @@ func ReadRows(rows pgx.Rows, normalizeRows bool) (readRows []sql.Row, err error)
 	if normalizeRows {
 		return NormalizeRows(slice), nil
 	} else {
-		return slice, nil
+		// We must always normalize Numeric values, as they have an infinite number of ways to represent the same value
+		return NormalizeRowsOnlyNumeric(slice), nil
 	}
 }
 
@@ -322,6 +317,29 @@ func NormalizeRows(rows []sql.Row) []sql.Row {
 	newRows := make([]sql.Row, len(rows))
 	for i := range rows {
 		newRows[i] = NormalizeRow(rows[i])
+	}
+	return newRows
+}
+
+// NormalizeRowsOnlyNumeric normalizes Numeric values only. There are an infinite number of ways to represent the same
+// value in-memory, so we must at least normalize Numeric values.
+func NormalizeRowsOnlyNumeric(rows []sql.Row) []sql.Row {
+	newRows := make([]sql.Row, len(rows))
+	for rowIdx, row := range rows {
+		newRow := make(sql.Row, len(row))
+		copy(newRow, row)
+		for colIdx := range newRow {
+			if numericValue, ok := newRow[colIdx].(pgtype.Numeric); ok {
+				val, err := numericValue.Value()
+				if err != nil {
+					panic(err) // Should never happen
+				}
+				// Using decimal as an intermediate value will remove all differences between the string formatting
+				d := decimal.RequireFromString(val.(string))
+				newRow[colIdx] = Numeric(d.String())
+			}
+		}
+		newRows[rowIdx] = newRow
 	}
 	return newRows
 }
