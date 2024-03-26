@@ -25,8 +25,42 @@ import (
 
 // init registers the functions to the catalog.
 func init() {
+	framework.RegisterFunction(mod_int16_int16)
+	framework.RegisterFunction(mod_int32_int32)
 	framework.RegisterFunction(mod_int64_int64)
 	framework.RegisterFunction(mod_numeric_numeric)
+}
+
+// mod_int16_int16 represents the PostgreSQL function of the same name, taking the same parameters.
+var mod_int16_int16 = framework.Function2{
+	Name:       "mod",
+	Return:     pgtypes.Int16,
+	Parameters: []pgtypes.DoltgresType{pgtypes.Int16, pgtypes.Int16},
+	Callable: func(ctx framework.Context, val1 any, val2 any) (any, error) {
+		if val1 == nil || val2 == nil {
+			return nil, nil
+		}
+		if val2.(int16) == 0 {
+			return nil, fmt.Errorf("division by zero")
+		}
+		return val1.(int16) % val2.(int16), nil
+	},
+}
+
+// mod_int32_int32 represents the PostgreSQL function of the same name, taking the same parameters.
+var mod_int32_int32 = framework.Function2{
+	Name:       "mod",
+	Return:     pgtypes.Int32,
+	Parameters: []pgtypes.DoltgresType{pgtypes.Int32, pgtypes.Int32},
+	Callable: func(ctx framework.Context, val1 any, val2 any) (any, error) {
+		if val1 == nil || val2 == nil {
+			return nil, nil
+		}
+		if val2.(int32) == 0 {
+			return nil, fmt.Errorf("division by zero")
+		}
+		return val1.(int32) % val2.(int32), nil
+	},
 }
 
 // mod_int64_int64 represents the PostgreSQL function of the same name, taking the same parameters.

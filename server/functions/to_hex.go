@@ -36,6 +36,6 @@ var to_hex_int64 = framework.Function1{
 		if val1 == nil {
 			return nil, nil
 		}
-		return fmt.Sprintf("%x", val1.(int64)), nil
+		return fmt.Sprintf("%x", uint64(val1.(int64))), nil
 	},
 }

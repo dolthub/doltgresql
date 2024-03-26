@@ -41,6 +41,8 @@ var ln_float64 = framework.Function1{
 		}
 		if val1.(float64) == 0 {
 			return nil, fmt.Errorf("cannot take logarithm of zero")
+		} else if val1.(float64) < 0 {
+			return nil, fmt.Errorf("cannot take logarithm of a negative number")
 		}
 		return math.Log(val1.(float64)), nil
 	},
@@ -59,6 +61,8 @@ var ln_numeric = framework.Function1{
 		f, _ := val1.(decimal.Decimal).Float64()
 		if f == 0 {
 			return nil, fmt.Errorf("cannot take logarithm of zero")
+		} else if f < 0 {
+			return nil, fmt.Errorf("cannot take logarithm of a negative number")
 		}
 		return decimal.NewFromFloat(math.Log(f)), nil
 	},

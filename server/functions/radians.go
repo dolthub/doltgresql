@@ -36,6 +36,11 @@ var radians_float64 = framework.Function1{
 		if val1 == nil {
 			return nil, nil
 		}
-		return val1.(float64) * (180.0 / math.Pi), nil
+		return toRadians(val1.(float64)), nil
 	},
+}
+
+// toRadians converts the given degrees to radians.
+func toRadians(degrees float64) float64 {
+	return degrees * (math.Pi / 180.0)
 }

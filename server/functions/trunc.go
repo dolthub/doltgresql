@@ -60,12 +60,12 @@ var trunc_numeric = framework.Function1{
 var trunc_numeric_int64 = framework.Function2{
 	Name:       "trunc",
 	Return:     pgtypes.Numeric,
-	Parameters: []pgtypes.DoltgresType{pgtypes.Numeric, pgtypes.Int64},
+	Parameters: []pgtypes.DoltgresType{pgtypes.Numeric, pgtypes.Int32},
 	Callable: func(ctx framework.Context, num any, places any) (any, error) {
 		if num == nil || places == nil {
 			return nil, nil
 		}
 		//TODO: test for negative values in places
-		return num.(decimal.Decimal).Truncate(int32(places.(int64))), nil
+		return num.(decimal.Decimal).Truncate(places.(int32)), nil
 	},
 }

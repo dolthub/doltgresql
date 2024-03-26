@@ -30,7 +30,7 @@ func init() {
 // strpos_varchar represents the PostgreSQL function of the same name, taking the same parameters.
 var strpos_varchar = framework.Function2{
 	Name:       "strpos",
-	Return:     pgtypes.Int64,
+	Return:     pgtypes.Int32,
 	Parameters: []pgtypes.DoltgresType{pgtypes.VarCharMax, pgtypes.VarCharMax},
 	Callable: func(ctx framework.Context, str any, substring any) (any, error) {
 		if str == nil || substring == nil {
@@ -38,8 +38,8 @@ var strpos_varchar = framework.Function2{
 		}
 		idx := strings.Index(str.(string), substring.(string))
 		if idx == -1 {
-			idx = 0
+			return int32(0), nil
 		}
-		return int64(idx), nil
+		return int32(idx + 1), nil
 	},
 }

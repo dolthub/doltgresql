@@ -15,6 +15,7 @@
 package functions
 
 import (
+	"fmt"
 	"math"
 
 	"github.com/shopspring/decimal"
@@ -38,6 +39,9 @@ var sqrt_float64 = framework.Function1{
 		if val1 == nil {
 			return nil, nil
 		}
+		if val1.(float64) < 0 {
+			return nil, fmt.Errorf("cannot take square root of a negative number")
+		}
 		return math.Sqrt(val1.(float64)), nil
 	},
 }
@@ -51,6 +55,10 @@ var sqrt_numeric = framework.Function1{
 		if val1 == nil {
 			return nil, nil
 		}
-		return val1.(decimal.Decimal).Pow(decimal.NewFromFloat(0.5)), nil
+		if val1.(decimal.Decimal).Cmp(decimal.Zero) == -1 {
+			return nil, fmt.Errorf("cannot take square root of a negative number")
+		}
+		// TODO: decimal's Pow function does not work correctly using an exponent of 0.5, need to fix
+		return decimal.NewFromFloat(math.Sqrt(val1.(decimal.Decimal).InexactFloat64())), nil
 	},
 }

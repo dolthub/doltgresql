@@ -31,7 +31,7 @@ func init() {
 // min_scale_numeric represents the PostgreSQL function of the same name, taking the same parameters.
 var min_scale_numeric = framework.Function1{
 	Name:       "min_scale",
-	Return:     pgtypes.Numeric,
+	Return:     pgtypes.Int32,
 	Parameters: []pgtypes.DoltgresType{pgtypes.Numeric},
 	Callable: func(ctx framework.Context, val1 any) (any, error) {
 		if val1 == nil {
@@ -46,8 +46,8 @@ var min_scale_numeric = framework.Function1{
 					break
 				}
 			}
-			return decimal.NewFromInt(int64(i + 1)), nil
+			return int32(i + 1), nil
 		}
-		return decimal.Zero, nil
+		return int32(0), nil
 	},
 }
