@@ -22,8 +22,6 @@ ENV PATH="/root/bin/:${PATH}"
 
 # Set Go environment variables
 ENV PATH="/usr/local/go/bin:${PATH}"
-ENV GOPATH="/go"
-ENV PATH="${GOPATH}/bin:${PATH}"
 
 # Doltgres source
 WORKDIR /root/building
@@ -36,7 +34,15 @@ RUN rm -rf ./doltgresql/testing/generation/
 WORKDIR /root/building/doltgresql/postgres/parser
 RUN bash ./build.sh
 
-# Run the test script, which starts postgres and then runs the Go script
+# Build the doltgresql binary, which we will need for bats, and put it on PATH
 WORKDIR /root/building/doltgresql
+RUN go build .
+RUN cp ./doltgresql /root/bin
+RUN cp ./doltgresql /root/bin/doltgres
+
+# This env var is required to run the GO replication tests
+ENV RUN_DOLTGRES_REPLICATION_TESTS=true
+
+# Run the test script, which starts postgres and then runs the Go script
 ENTRYPOINT ["testing/replication-test-entrypoint.sh"]
 

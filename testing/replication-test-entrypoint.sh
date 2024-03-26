@@ -23,5 +23,5 @@ done
 go test -run="TestReplication" ./...
 
 # Run the bats test
-cd bats
+cd testing/bats
 bats replication.bats
