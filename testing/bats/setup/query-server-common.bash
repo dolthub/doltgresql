@@ -57,14 +57,13 @@ start_sql_server_with_args() {
         fi
     done
 
-    args="$@"
     if [[ -z "$portFound" && -z "$PORT" ]]; then
         PORT=$( definePORT )
-        args="$args --port $PORT"
+        set -- "$@" "--port" "$PORT"
     fi
 
-    echo "running doltgresql $args"
-    doltgresql "$args" &
+    echo "running doltgresql $@"
+    doltgresql "$@" &
     SERVER_PID=$!
     wait_for_connection $PORT 7500
 }

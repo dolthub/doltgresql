@@ -19,7 +19,7 @@ teardown() {
     export SQL_USER="doltgres"
 
     PORT=$( definePORT )
-    echo > config.yaml <<EOF
+    cat > config.yaml <<EOF
 behavior:
   read_only: false
   autocommit: true
@@ -36,8 +36,9 @@ listener:
   port: $PORT
 EOF
 
-    start_sql_server_with_args # > log.txt 2>&1
-
+    cat config.yaml
+    start_sql_server_with_args --config config.yaml > log.txt 2>&1
+    
     run cat log.txt
     [[ ! "$output" =~ "Author identity unknown" ]] || false
     [ -d "doltgres" ]
