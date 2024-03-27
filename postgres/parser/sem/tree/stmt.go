@@ -483,6 +483,12 @@ func (*CopyFrom) StatementType() StatementType { return CopyIn }
 func (*CopyFrom) StatementTag() string { return "COPY" }
 
 // StatementType implements the Statement interface.
+func (*CreateAggregate) StatementType() StatementType { return DDL }
+
+// StatementTag returns a short string identifying the type of statement.
+func (*CreateAggregate) StatementTag() string { return "CREATE AGGREGATE" }
+
+// StatementType implements the Statement interface.
 func (*CreateChangefeed) StatementType() StatementType { return Rows }
 
 // StatementTag returns a short string identifying the type of statement.
@@ -1232,6 +1238,7 @@ func (n *CommentOnIndex) String() string            { return AsString(n) }
 func (n *CommentOnTable) String() string            { return AsString(n) }
 func (n *CommitTransaction) String() string         { return AsString(n) }
 func (n *CopyFrom) String() string                  { return AsString(n) }
+func (n *CreateAggregate) String() string           { return AsString(n) }
 func (n *CreateChangefeed) String() string          { return AsString(n) }
 func (n *CreateDatabase) String() string            { return AsString(n) }
 func (n *CreateDomain) String() string              { return AsString(n) }
