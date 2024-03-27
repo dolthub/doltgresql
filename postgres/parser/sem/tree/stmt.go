@@ -641,6 +641,12 @@ func (n *Delete) StatementType() StatementType { return n.Returning.statementTyp
 func (*Delete) StatementTag() string { return "DELETE" }
 
 // StatementType implements the Statement interface.
+func (*DropAggregate) StatementType() StatementType { return DDL }
+
+// StatementTag returns a short string identifying the type of statement.
+func (*DropAggregate) StatementTag() string { return "DROP AGGREGATE" }
+
+// StatementType implements the Statement interface.
 func (*DropDatabase) StatementType() StatementType { return DDL }
 
 // StatementTag returns a short string identifying the type of statement.
@@ -1258,6 +1264,7 @@ func (n *CreateStats) String() string               { return AsString(n) }
 func (n *CreateView) String() string                { return AsString(n) }
 func (n *Deallocate) String() string                { return AsString(n) }
 func (n *Delete) String() string                    { return AsString(n) }
+func (n *DropAggregate) String() string             { return AsString(n) }
 func (n *DropDatabase) String() string              { return AsString(n) }
 func (n *DropDomain) String() string                { return AsString(n) }
 func (n *DropExtension) String() string             { return AsString(n) }

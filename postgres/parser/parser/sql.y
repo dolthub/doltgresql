@@ -669,6 +669,9 @@ func (u *sqlSymUnion) createAggOption() tree.CreateAggOption {
 func (u *sqlSymUnion) createAggOptions() []tree.CreateAggOption {
     return u.val.([]tree.CreateAggOption)
 }
+func (u *sqlSymUnion) aggregatesToDrop() []tree.AggregateToDrop {
+    return u.val.([]tree.AggregateToDrop)
+}
 %}
 
 // NB: the %token definitions must come before the %type definitions in this
@@ -941,6 +944,7 @@ func (u *sqlSymUnion) createAggOptions() []tree.CreateAggOption {
 %type <tree.Statement> drop_language_stmt
 %type <tree.Statement> drop_function_stmt
 %type <tree.Statement> drop_procedure_stmt
+%type <tree.Statement> drop_aggregate_stmt
 
 %type <tree.Statement> analyze_stmt
 %type <tree.Statement> explain_stmt
@@ -1068,6 +1072,7 @@ func (u *sqlSymUnion) createAggOptions() []tree.CreateAggOption {
 %type <tree.CreateAggOption> create_agg_args_only_option create_agg_order_by_args_option
 %type <tree.CreateAggOption> create_agg_old_syntax_option create_agg_common_option create_agg_parallel_option
 %type <[]tree.CreateAggOption> create_agg_args_only_option_list create_agg_order_by_args_option_list create_agg_old_syntax_option_list
+%type <[]tree.AggregateToDrop> drop_aggregates
 
 %type <tree.DatabaseOption> opt_database_options
 %type <[]tree.DatabaseOption> opt_database_options_list opt_database_with_options
@@ -4341,8 +4346,7 @@ opt_procedural:
   }
 
 drop_unsupported:
-  DROP AGGREGATE error { return unimplemented(sqllex, "drop aggregate") }
-| DROP CAST error { return unimplemented(sqllex, "drop cast") }
+  DROP CAST error { return unimplemented(sqllex, "drop cast") }
 | DROP COLLATION error { return unimplemented(sqllex, "drop collation") }
 | DROP CONVERSION error { return unimplemented(sqllex, "drop conversion") }
 | DROP FOREIGN TABLE error { return unimplemented(sqllex, "drop foreign table") }
@@ -4353,6 +4357,26 @@ drop_unsupported:
 | DROP SERVER error { return unimplemented(sqllex, "drop server") }
 | DROP SUBSCRIPTION error { return unimplemented(sqllex, "drop subscription") }
 | DROP TEXT error { return unimplementedWithIssueDetail(sqllex, 7821, "drop text") }
+
+drop_aggregate_stmt:
+  DROP AGGREGATE drop_aggregates opt_drop_behavior
+  {
+    $$.val = &tree.DropAggregate{Aggregates: $3.aggregatesToDrop(), DropBehavior: $4.dropBehavior()}
+  }
+| DROP AGGREGATE IF EXISTS drop_aggregates opt_drop_behavior
+  {
+    $$.val = &tree.DropAggregate{Aggregates: $5.aggregatesToDrop(), IfExists: true, DropBehavior: $6.dropBehavior()}
+  }
+
+drop_aggregates:
+  name '(' aggregate_signature ')'
+  {
+    $$.val = []tree.AggregateToDrop{{Name: tree.Name($1), AggSig: $3.aggregateSignature()}}
+  }
+| drop_aggregates ',' name '(' aggregate_signature ')'
+  {
+    $$.val = append($1.aggregatesToDrop(), tree.AggregateToDrop{Name: tree.Name($3), AggSig: $5.aggregateSignature()})
+  }
 
 drop_domain_stmt:
   DROP DOMAIN name_list opt_drop_behavior
@@ -4631,6 +4655,7 @@ drop_stmt:
 | drop_domain_stmt   // EXTEND WITH HELP: DROP DOMAIN
 | drop_extension_stmt // EXTEND WITH HELP: DROP EXTENSION
 | drop_language_stmt // EXTEND WITH HELP: DROP LANGUAGE
+| drop_aggregate_stmt // EXTEND WITH HELP: DROP AGGREGATE
 | drop_unsupported   {}
 | DROP error         // SHOW HELP: DROP
 

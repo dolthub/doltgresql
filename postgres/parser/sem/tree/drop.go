@@ -53,6 +53,43 @@ func (d DropBehavior) String() string {
 	return dropBehaviorName[d]
 }
 
+var _ Statement = &DropAggregate{}
+
+// DropAggregate represents a DROP AGGREGATE statement.
+type DropAggregate struct {
+	Aggregates   []AggregateToDrop
+	IfExists     bool
+	DropBehavior DropBehavior
+}
+
+type AggregateToDrop struct {
+	Name   Name
+	AggSig *AggregateSignature
+}
+
+// Format implements the NodeFormatter interface.
+func (node *DropAggregate) Format(ctx *FmtCtx) {
+	ctx.WriteString("DROP AGGREGATE ")
+	if node.IfExists {
+		ctx.WriteString("IF EXISTS ")
+	}
+	for i, agg := range node.Aggregates {
+		if i != 0 {
+			ctx.WriteString(" , ")
+		}
+		ctx.FormatNode(&agg.Name)
+		ctx.WriteString(" ( ")
+		ctx.FormatNode(agg.AggSig)
+		ctx.WriteString(" ) ")
+	}
+	switch node.DropBehavior {
+	case DropDefault:
+	default:
+		ctx.WriteByte(' ')
+		ctx.WriteString(dropBehaviorName[node.DropBehavior])
+	}
+}
+
 var _ Statement = &DropDatabase{}
 
 // DropDatabase represents a DROP DATABASE statement.
