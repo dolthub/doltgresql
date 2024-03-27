@@ -8,17 +8,17 @@ func _() {
 	// An "invalid array index" compiler error signifies that the constant values have changed.
 	// Re-run the stringer command to generate them again.
 	var x [1]struct{}
-	_ = x[Enum-1]
-	_ = x[Composite-2]
+	_ = x[Composite-1]
+	_ = x[Enum-2]
 	_ = x[Range-3]
 	_ = x[Base-4]
 	_ = x[Shell-5]
 	_ = x[Domain-6]
 }
 
-const _CreateTypeVariety_name = "EnumCompositeRangeBaseShellDomain"
+const _CreateTypeVariety_name = "CompositeEnumRangeBaseShellDomain"
 
-var _CreateTypeVariety_index = [...]uint8{0, 4, 13, 18, 22, 27, 33}
+var _CreateTypeVariety_index = [...]uint8{0, 9, 13, 18, 22, 27, 33}
 
 func (i CreateTypeVariety) String() string {
 	i -= 1
