@@ -14,7 +14,6 @@ user:
 listener:
   host: localhost
   port: 5433
-#  max_connections: 100
   read_timeout_millis: 28800000
   write_timeout_millis: 28800000
 
