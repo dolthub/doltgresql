@@ -9,14 +9,19 @@ ENV GO_VERSION=1.22.0
 RUN apt-get update && \
     apt-get install -y wget && \
     apt-get install -y sudo && \
+    apt-get install -y git && \
     wget https://go.dev/dl/go${GO_VERSION}.linux-amd64.tar.gz && \
     tar -C /usr/local -xzf go${GO_VERSION}.linux-amd64.tar.gz && \
     rm go${GO_VERSION}.linux-amd64.tar.gz
 
+# Install bats
+RUN git clone https://github.com/bats-core/bats-core.git
+WORKDIR bats-core
+RUN ./install.sh $HOME
+ENV PATH="/root/bin/:${PATH}"
+
 # Set Go environment variables
 ENV PATH="/usr/local/go/bin:${PATH}"
-ENV GOPATH="/go"
-ENV PATH="${GOPATH}/bin:${PATH}"
 
 # Doltgres source
 WORKDIR /root/building
@@ -29,7 +34,17 @@ RUN rm -rf ./doltgresql/testing/generation/
 WORKDIR /root/building/doltgresql/postgres/parser
 RUN bash ./build.sh
 
-# Run the test script, which starts postgres and then runs the Go script
+# Build the doltgresql binary, which we will need for bats, and put it on PATH
 WORKDIR /root/building/doltgresql
+RUN go build .
+RUN cp ./doltgresql /root/bin
+RUN cp ./doltgresql /root/bin/doltgres
+
+# This env var is required to run the bats replication tests
+ENV RUN_DOLTGRES_REPLICATION_TESTS=true
+# This should be set in the github env, but set it here for local testing as well
+ENV GITHUB_ACTION=true
+
+# Run the test script, which starts postgres and then runs the Go script
 ENTRYPOINT ["testing/replication-test-entrypoint.sh"]
 

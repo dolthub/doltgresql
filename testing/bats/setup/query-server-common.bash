@@ -42,75 +42,28 @@ start_sql_server() {
     wait_for_connection $PORT 7500
 }
 
-# like start_sql_server, but the second argument is a string with all
-# arguments to doltgres (excluding --port, which is defined in
-# this func)
+# like start_sql_server, but the second argument is a string with all arguments to doltgres. The
+# port argument is handled separately: if the variable $PORT is not defined and the --port argument
+# is not included in the argument list, a random port is chosen for $PORT and the argument --port is
+# appended to the argument list.
 start_sql_server_with_args() {
     DEFAULT_DB=""
     nativevar DEFAULT_DB "$DEFAULT_DB" /w
-    PORT=$( definePORT )
-    doltgresql "$@" --port=$PORT &
-    SERVER_PID=$!
-    wait_for_connection $PORT 7500
-}
 
-start_sql_server_with_config() {
-    DEFAULT_DB="$1"
-    DEFAULT_DB="${DEFAULT_DB:=postgres}"
-    nativevar DEFAULT_DB "$DEFAULT_DB" /w
-    nativevar DOLTGRES_DATA_DIR "$(pwd)" /p
-    PORT=$( definePORT )
-    echo "
-log_level: debug
+    portFound=
+    for arg in "$@"; do
+        if [[ "$arg" == "--port" ]]; then
+            portFound=1
+        fi
+    done
 
-user:
-  name: postgres
+    if [[ -z "$portFound" && -z "$PORT" ]]; then
+        PORT=$( definePORT )
+        set -- "$@" "--port" "$PORT"
+    fi
 
-listener:
-  host: 0.0.0.0
-  port: $PORT
-  max_connections: 10
-
-behavior:
-  autocommit: false
-" > .cliconfig.yaml
-    cat "$2" >> .cliconfig.yaml
-    doltgresql --config .cliconfig.yaml &
-    SERVER_PID=$!
-    wait_for_connection $PORT 7500
-}
-
-start_sql_multi_user_server() {
-    DEFAULT_DB="$1"
-    DEFAULT_DB="${DEFAULT_DB:=postgres}"
-    nativevar DEFAULT_DB "$DEFAULT_DB" /w
-    nativevar DOLTGRES_DATA_DIR "$(pwd)" /p
-    PORT=$( definePORT )
-    echo "
-log_level: debug
-
-user:
-  name: postgres
-
-listener:
-  host: 0.0.0.0
-  port: $PORT
-  max_connections: 10
-
-behavior:
-  autocommit: false
-" > .cliconfig.yaml
-    doltgresql --config .cliconfig.yaml &
-    SERVER_PID=$!
-    wait_for_connection $PORT 7500
-}
-
-start_multi_db_server() {
-    DEFAULT_DB="$1"
-    DEFAULT_DB="${DEFAULT_DB:=postgres}"
-    nativevar DEFAULT_DB "$DEFAULT_DB" /w
-    PORT=$( definePORT )
-    doltgresql --host 0.0.0.0 --port=$PORT --user postgres --data-dir ./ &
+    echo "running doltgresql $@"
+    doltgresql "$@" &
     SERVER_PID=$!
     wait_for_connection $PORT 7500
 }
@@ -136,6 +89,7 @@ stop_sql_server() {
         fi;
     fi
     SERVER_PID=
+    PORT=
 }
 
 definePORT() {
