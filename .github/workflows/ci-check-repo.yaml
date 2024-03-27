@@ -22,7 +22,6 @@ jobs:
         uses: actions/setup-go@v5
         with:
           go-version-file: go.mod
-          check-latest: true
       - name: Check all
         id: should_format
         run: |
