@@ -212,7 +212,9 @@ func (r *LogicalReplicator) StartReplication(slotName string) error {
 			connErrCnt++
 			if connErrCnt < maxConsecutiveFailures {
 				log.Printf("Error: %v. Retrying", err)
-				_ = primaryConn.Close(context.Background())
+				if primaryConn != nil {
+					_ = primaryConn.Close(context.Background())
+				}
 				primaryConn = nil
 				return nil
 			}

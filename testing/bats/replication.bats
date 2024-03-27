@@ -18,11 +18,14 @@ teardown() {
        skip "RUN_DOLTGRES_REPLICATION_TESTS not set, skipping"
     fi
 
+    # setup the postgres primary
     postgres_primary_query "drop table if exists t1"
     postgres_primary_query "create table t1 (a int primary key, b int)"
     postgres_primary_query "DROP PUBLICATION IF EXISTS doltgres_slot"
     postgres_primary_query "CREATE PUBLICATION doltgres_slot FOR TABLE t1"
-
+    run postgres_primary_query "DROP_REPLICATION_SLOT doltgres_slot" # ignore errors if the slot doesn't exist
+    postgres_primary_query "CREATE_REPLICATION_SLOT doltgres_slot LOGICAL pgoutput"
+    
     # This host may have a history, and we don't want to start replicating from the beginning of
     # history, just from the current WAL position. So seed that state here.
     LSN=$(postgres_primary_query "SELECT pg_current_wal_lsn()" -t)
@@ -35,14 +38,9 @@ teardown() {
     cat ./.doltcfg/pg_wal_location  
     
     cp "$BATS_TEST_DIRNAME/replication-config.yaml" "$BATS_TMPDIR/dolt-repo-$$" 
-    start_sql_server_with_config_file "--host 0.0.0.0" "--config=replication-config.yaml"
     PORT=5433
-    
-    cat log.txt
-    run cat log.txt
-    [[ ! "$output" =~ "Author identity unknown" ]] || false
-    [ -d "doltgres" ]
-
+    start_sql_server_with_args "--config=replication-config.yaml"
+        
     # Create the table that already exists on the primary before doing any inserts on the primary
     query_server doltgres -c "create table t1 (a int primary key, b int)"
 
@@ -50,7 +48,6 @@ teardown() {
     postgres_primary_query "insert into t1 values (1, 2)"
     sleep 1
 
-    cat log.txt
     query_server doltgres -c "select * from t1" -t
     run query_server doltgres -c "select * from t1" -t
     [ "$status" -eq 0 ]
@@ -60,13 +57,5 @@ teardown() {
 }
 
 postgres_primary_query() {
-    PGPASSWORD=password psql -U "postgres" -h 127.0.0.1 -p 5432 postgres -c "$@"
-}
-
-start_sql_server_with_config_file() {
-    DEFAULT_DB=""
-    nativevar DEFAULT_DB "$DEFAULT_DB" /w
-    doltgresql "$@" > log.txt 2>&1 &
-    SERVER_PID=$!
-    wait_for_connection 5433 3000
+    PGPASSWORD=password psql -U "postgres" -h 127.0.0.1 -p 5432 "dbname=postgres replication=database" -c "$@"
 }

@@ -40,8 +40,10 @@ RUN go build .
 RUN cp ./doltgresql /root/bin
 RUN cp ./doltgresql /root/bin/doltgres
 
-# This env var is required to run the GO replication tests
+# This env var is required to run the bats replication tests
 ENV RUN_DOLTGRES_REPLICATION_TESTS=true
+# This should be set in the github env, but set it here for local testing as well
+ENV GITHUB_ACTION=true
 
 # Run the test script, which starts postgres and then runs the Go script
 ENTRYPOINT ["testing/replication-test-entrypoint.sh"]
