@@ -3678,13 +3678,25 @@ cancel_sessions_stmt:
 | CANCEL SESSIONS error // SHOW HELP: CANCEL SESSIONS
 
 comment_stmt:
-  COMMENT ON DATABASE database_name IS comment_text
+  COMMENT ON ACCESS METHOD db_object_name
   {
-    $$.val = &tree.CommentOnDatabase{Name: tree.Name($4), Comment: $6.strPtr()}
+    $$.val = &tree.Comment{ObjectType: tree.CommentOnAccessMethod, ObjName: $5.unresolvedObjectName()}
+  }
+| COMMENT ON AGGREGATE name '(' aggregate_signature ')'
+  {
+    $$.val = &tree.Comment{ObjectType: tree.CommentOnAggregate, Name: tree.Name($4), AggSig: $6.aggregateSignature()}
+  }
+| COMMENT ON CAST '(' typename AS type_name ')'
+  {
+
+  }
+| COMMENT ON DATABASE database_name IS comment_text
+  {
+    $$.val = &tree.Comment{ObjectType: tree.CommentOnDatabase, Name: tree.Name($4), Comment: $6.strPtr()}
   }
 | COMMENT ON TABLE table_name IS comment_text
   {
-    $$.val = &tree.CommentOnTable{Table: $4.unresolvedObjectName(), Comment: $6.strPtr()}
+    $$.val = &tree.Comment{ObjectType: tree.CommentOnTable, Table: $4.unresolvedObjectName(), Comment: $6.strPtr()}
   }
 | COMMENT ON COLUMN column_path IS comment_text
   {
@@ -3697,15 +3709,15 @@ comment_stmt:
       sqllex.Error(fmt.Sprintf("invalid column name: %q", tree.ErrString($4.unresolvedName())))
             return 1
     }
-    $$.val = &tree.CommentOnColumn{ColumnItem: columnItem, Comment: $6.strPtr()}
+    $$.val = &tree.Comment{ObjectType: tree.CommentOnColumn, ColumnItem: columnItem, Comment: $6.strPtr()}
   }
 | COMMENT ON INDEX table_index_name IS comment_text
   {
-    $$.val = &tree.CommentOnIndex{Index: $4.tableIndexName(), Comment: $6.strPtr()}
+    $$.val = &tree.Comment{ObjectType: tree.CommentOnIndex, Index: $4.tableIndexName(), Comment: $6.strPtr()}
   }
 | COMMENT ON EXTENSION name IS comment_text
   {
-    $$.val = &tree.CommentOnExtension{Name: tree.Name($4), Comment: $6.strPtr()}
+    $$.val = &tree.Comment{ObjectType: tree.CommentOnExtension, Name: tree.Name($4), Comment: $6.strPtr()}
   }
 
 comment_text:
