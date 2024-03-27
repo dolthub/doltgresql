@@ -25,7 +25,7 @@ import (
 
 type DoltgresServerConfig struct {
 	*sqlserver.YAMLConfig
-		PostgresReplicationConfig *PostgresReplicationConfig `yaml:"postgres_replication,omitempty"`
+	PostgresReplicationConfig *PostgresReplicationConfig `yaml:"postgres_replication,omitempty"`
 }
 
 type PostgresReplicationConfig struct {
@@ -34,33 +34,33 @@ type PostgresReplicationConfig struct {
 	PostgresPassword      string `yaml:"postgres_password"`
 	PostgresDatabase      string `yaml:"postgres_database"`
 	PostgresPort          int    `yaml:"postgres_port"`
-	SlotName 							string `yaml:"slot_name"`
+	SlotName              string `yaml:"slot_name"`
 }
 
 var _ sqlserver.ServerConfig = (*DoltgresServerConfig)(nil)
 
-type DoltgresConfigReader struct {}
+type DoltgresConfigReader struct{}
 
 func (d DoltgresConfigReader) ReadConfigFile(fs filesys.Filesys, file string) (sqlserver.ServerConfig, error) {
 	data, err := fs.ReadFile(file)
 	if err != nil {
 		return nil, fmt.Errorf("Failed to read file '%s'. Error: %w", file, err)
 	}
-	
-	// TODO: we lose the ability to unmarshal strict here, because our YAMLConfig has fields the Dolt implementation 
-	//  doesn't recognize. Maybe worthwhile to use a generic map first? 
+
+	// TODO: we lose the ability to unmarshal strict here, because our YAMLConfig has fields the Dolt implementation
+	//  doesn't recognize. Maybe worthwhile to use a generic map first?
 	var cfg sqlserver.YAMLConfig
 	err = yaml.Unmarshal(data, &cfg)
 	if err != nil {
 		return nil, fmt.Errorf("Failed to parse yaml file '%s'. Error: %w", file, err)
 	}
-	
+
 	var doltgresCfg DoltgresServerConfig
 	err = yaml.Unmarshal(data, &doltgresCfg)
 	if err != nil {
 		return nil, fmt.Errorf("Failed to parse yaml file '%s'. Error: %w", file, err)
 	}
-	
+
 	doltgresCfg.YAMLConfig = &cfg
 	return &doltgresCfg, nil
 }

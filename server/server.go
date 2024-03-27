@@ -33,12 +33,12 @@ import (
 	"github.com/dolthub/dolt/go/libraries/utils/filesys"
 	"github.com/dolthub/dolt/go/libraries/utils/svcs"
 	"github.com/dolthub/dolt/go/store/util/tempfiles"
-	"github.com/dolthub/doltgresql/server/logrepl"
 	"github.com/dolthub/go-mysql-server/server"
 	"github.com/dolthub/go-mysql-server/sql"
 
 	_ "github.com/dolthub/doltgresql/server/config"
 	"github.com/dolthub/doltgresql/server/functions/framework"
+	"github.com/dolthub/doltgresql/server/logrepl"
 )
 
 const (
@@ -240,8 +240,8 @@ func runServer(ctx context.Context, args []string, dEnv *env.DoltEnv) (*svcs.Con
 		// The else branch means that there's a Doltgres item, so we need to error if it's a file since we
 		// enforce the creation of a Doltgres database/directory, which would create a name conflict with the file
 		return nil, fmt.Errorf("Attempted to create the default `doltgres` database at `%s`, but a file with "+
-				"the same name was found. Either remove the file, change the directory using the `--data-dir` argument, "+
-				"or change the environment variable `%s` so that it points to a different directory.", workingDir, DOLTGRES_DATA_DIR)
+			"the same name was found. Either remove the file, change the directory using the `--data-dir` argument, "+
+			"or change the environment variable `%s` so that it points to a different directory.", workingDir, DOLTGRES_DATA_DIR)
 	}
 
 	controller := svcs.NewController()
@@ -262,22 +262,22 @@ func runServer(ctx context.Context, args []string, dEnv *env.DoltEnv) (*svcs.Con
 
 	sqlserver.ConfigureServices(serverConfig, controller, Version, dEnv)
 	go controller.Start(newCtx)
-	
+
 	err = controller.WaitForStart()
 	if err != nil {
 		return nil, err
 	}
-	
+
 	// TODO: shutdown replication cleanly when we stop the server
 	_, err = startReplication(serverConfig)
 	if err != nil {
 		return nil, err
 	}
-	
+
 	return controller, nil
 }
 
-// startReplication begins the background thread that replicates from Postgres, if one is configured.  
+// startReplication begins the background thread that replicates from Postgres, if one is configured.
 func startReplication(serverConfig sqlserver.ServerConfig) (*logrepl.LogicalReplicator, error) {
 	cfg, ok := serverConfig.(*DoltgresServerConfig)
 	if !ok {
@@ -285,11 +285,11 @@ func startReplication(serverConfig sqlserver.ServerConfig) (*logrepl.LogicalRepl
 		cli.Println("No config file specified, so no replication")
 		return nil, nil
 	}
-	
+
 	if cfg.PostgresReplicationConfig == nil {
 		return nil, nil
 	}
-	
+
 	walFilePath := filepath.Join(cfg.CfgDir(), "pg_wal_location")
 	primaryDns := fmt.Sprintf(
 		"postgres://%s:%s@127.0.0.1:%d/%s",
@@ -298,7 +298,7 @@ func startReplication(serverConfig sqlserver.ServerConfig) (*logrepl.LogicalRepl
 		cfg.PostgresReplicationConfig.PostgresPort,
 		cfg.PostgresReplicationConfig.PostgresDatabase,
 	)
-	
+
 	replicationDns := fmt.Sprintf(
 		"postgres://%s:%s@localhost:%d/%s",
 		cfg.User(),
@@ -306,7 +306,7 @@ func startReplication(serverConfig sqlserver.ServerConfig) (*logrepl.LogicalRepl
 		cfg.Port(),
 		"doltgres", // TODO: this needs to come from config
 	)
-	
+
 	replicator, err := logrepl.NewLogicalReplicator(walFilePath, primaryDns, replicationDns)
 	if err != nil {
 		return nil, err

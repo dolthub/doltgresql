@@ -82,7 +82,7 @@ func main() {
 	defer restoreIO()
 
 	warnIfMaxFilesTooLow()
-	
+
 	fs := filesys.LocalFS
 	dEnv := env.Load(ctx, env.GetCurrentUserHomeDir, fs, doltdb.LocalDirDoltDB, server.Version)
 
@@ -109,7 +109,7 @@ func main() {
 	// and waits for it to finish
 	if subCommandName == "sql-server" {
 		err = runServer(ctx, dEnv, args[1:])
-		if err != nil {	
+		if err != nil {
 			cli.PrintErrln(err.Error())
 			os.Exit(1)
 		}
@@ -145,7 +145,7 @@ func configureDataDir(args []string) (outArgs []string, err error) {
 			hasDataDirArgument = true
 		}
 	}
-	
+
 	if hasDataDirArgument {
 		return args, nil
 	}
@@ -163,8 +163,8 @@ func configureDataDir(args []string) (outArgs []string, err error) {
 			return args, err
 		} else if !fileInfo.IsDir() {
 			return args, fmt.Errorf("Attempted to use the directory `%s` as the DoltgreSQL database directory, "+
-					"however the preceding is a file and not a directory. Please change the environment variable `%s` so "+
-					"that it points to a directory.", dbDir, server.DOLTGRES_DATA_DIR)
+				"however the preceding is a file and not a directory. Please change the environment variable `%s` so "+
+				"that it points to a directory.", dbDir, server.DOLTGRES_DATA_DIR)
 		}
 	} else {
 		homeDir, err := env.GetCurrentUserHomeDir()
@@ -181,14 +181,14 @@ func configureDataDir(args []string) (outArgs []string, err error) {
 			return args, err
 		} else if !fileInfo.IsDir() {
 			return args, fmt.Errorf("Attempted to use the directory `%s` as the DoltgreSQL database directory, "+
-					"however the preceding is a file and not a directory. Please change the environment variable `%s` so "+
-					"that it points to a directory.", dbDir, server.DOLTGRES_DATA_DIR)
+				"however the preceding is a file and not a directory. Please change the environment variable `%s` so "+
+				"that it points to a directory.", dbDir, server.DOLTGRES_DATA_DIR)
 		}
 	}
 
 	// alter the data dir argument provided to dolt arg processing
 	args = append([]string{"--data-dir", dbDir}, args...)
-	
+
 	return args, nil
 }
 
