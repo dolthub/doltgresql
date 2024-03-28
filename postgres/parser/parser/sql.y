@@ -663,6 +663,15 @@ func (u *sqlSymUnion) domainConstraints() []tree.DomainConstraint {
 func (u *sqlSymUnion) alterDomainCmd() tree.AlterDomainCmd {
     return u.val.(tree.AlterDomainCmd)
 }
+func (u *sqlSymUnion) createAggOption() tree.CreateAggOption {
+    return u.val.(tree.CreateAggOption)
+}
+func (u *sqlSymUnion) createAggOptions() []tree.CreateAggOption {
+    return u.val.([]tree.CreateAggOption)
+}
+func (u *sqlSymUnion) aggregatesToDrop() []tree.AggregateToDrop {
+    return u.val.([]tree.AggregateToDrop)
+}
 %}
 
 // NB: the %token definitions must come before the %type definitions in this
@@ -686,14 +695,14 @@ func (u *sqlSymUnion) alterDomainCmd() tree.AlterDomainCmd {
 %token <str> ALIGNMENT ALL ALLOW_CONNECTIONS ALTER ALWAYS ANALYSE ANALYZE AND AND_AND ANY ANNOTATE_TYPE ARRAY AS ASC
 %token <str> ASYMMETRIC AT ATOMIC ATTACH ATTRIBUTE AUTHORIZATION AUTOMATIC
 
-%token <str> BACKUP BACKUPS BEFORE BEGIN BETWEEN BIGINT BIGSERIAL BINARY BIT
+%token <str> BACKUP BACKUPS BASETYPE BEFORE BEGIN BETWEEN BIGINT BIGSERIAL BINARY BIT
 %token <str> BUCKET_COUNT
 %token <str> BOOLEAN BOTH BOX2D BUNDLE BY
 
 %token <str> CACHE CHAIN CALL CALLED CANCEL CANCELQUERY CANONICAL CASCADE CASCADED CASE CAST CATEGORY CBRT
 %token <str> CHANGEFEED CHAR CHARACTER CHARACTERISTICS CHECK CLOSE
-%token <str> CLUSTER COALESCE COLLATABLE COLLATE COLLATION COLLATION_VERSION COLUMN COLUMNS COMMENT COMMENTS COMMIT
-%token <str> COMMITTED COMPACT COMPLETE COMPRESSION CONCAT CONCURRENTLY CONFIGURATION CONFIGURATIONS CONFIGURE
+%token <str> CLUSTER COALESCE COLLATABLE COLLATE COLLATION COLLATION_VERSION COLUMN COLUMNS COMBINEFUNC COMMENT COMMENTS
+%token <str> COMMIT COMMITTED COMPACT COMPLETE COMPRESSION CONCAT CONCURRENTLY CONFIGURATION CONFIGURATIONS CONFIGURE
 %token <str> CONFLICT CONNECT CONNECTION CONSTRAINT CONSTRAINTS CONTAINS CONTROLCHANGEFEED
 %token <str> CONTROLJOB CONVERSION CONVERT COPY COST CREATE CREATEDB CREATELOGIN CREATEROLE
 %token <str> CROSS CUBE CURRENT CURRENT_CATALOG CURRENT_DATE CURRENT_SCHEMA
@@ -701,8 +710,8 @@ func (u *sqlSymUnion) alterDomainCmd() tree.AlterDomainCmd {
 %token <str> CURRENT_USER CYCLE
 
 %token <str> DATA DATABASE DATABASES DATE DAY DEALLOCATE DEC DECIMAL DECLARE
-%token <str> DEFAULT DEFAULTS DEFERRABLE DEFERRED DEFINER DELETE DELIMITER DEPENDS DESC DESTINATION DETACH DETACHED
-%token <str> DISABLE DISCARD DISTINCT DO DOMAIN DOUBLE DROP
+%token <str> DEFAULT DEFAULTS DEFERRABLE DEFERRED DEFINER DELETE DELIMITER DEPENDS DESC DESERIALFUNC DESTINATION
+%token <str> DETACH DETACHED DISABLE DISCARD DISTINCT DO DOMAIN DOUBLE DROP
 
 %token <str> EACH ELEMENT ELSE ENABLE ENCODING ENCRYPTION_PASSPHRASE END ENUM ENUMS ESCAPE
 %token <str> EXCEPT EXCLUDE EXCLUDING EXISTS EXECUTE EXECUTION EXPERIMENTAL
@@ -711,19 +720,19 @@ func (u *sqlSymUnion) alterDomainCmd() tree.AlterDomainCmd {
 %token <str> EXTENDED EXTENSION EXTERNAL EXTRACT EXTRACT_DURATION
 
 %token <str> FALSE FAMILY FETCH FETCHVAL FETCHTEXT FETCHVAL_PATH FETCHTEXT_PATH
-%token <str> FILES FILTER FINALIZE FIRST FLOAT FLOAT4 FLOAT8 FLOORDIV
+%token <str> FILES FILTER FINALFUNC FINALFUNC_EXTRA FINALFUNC_MODIFY FINALIZE FIRST FLOAT FLOAT4 FLOAT8 FLOORDIV
 %token <str> FOLLOWING FOR FORCE FORCE_INDEX FOREIGN FROM FULL FUNCTION FUNCTIONS
 
 %token <str> GENERATED GEOGRAPHY GEOMETRY GEOMETRYM GEOMETRYZ GEOMETRYZM
 %token <str> GEOMETRYCOLLECTION GEOMETRYCOLLECTIONM GEOMETRYCOLLECTIONZ GEOMETRYCOLLECTIONZM
 %token <str> GLOBAL GRANT GRANTED GRANTS GREATEST GROUP GROUPING GROUPS
 
-%token <str> HANDLER HASH HAVING HIGH HISTOGRAM HOUR
+%token <str> HANDLER HASH HAVING HIGH HISTOGRAM HOUR HYPOTHETICAL
 
 %token <str> ICU_LOCALE ICU_RULES IDENTITY
 %token <str> IF IFERROR IFNULL IGNORE_FOREIGN_KEYS ILIKE IMMEDIATE IMMUTABLE IMPORT
 %token <str> IN INCLUDE INCLUDING INCREMENT INCREMENTAL INET INET_CONTAINED_BY_OR_EQUALS
-%token <str> INET_CONTAINS_OR_EQUALS INDEX INDEXES INHERIT INHERITS INLINE INJECT INPUT INTERLEAVE INITIALLY
+%token <str> INET_CONTAINS_OR_EQUALS INDEX INDEXES INHERIT INHERITS INITCOND INJECT INLINE INPUT INTERLEAVE INITIALLY
 %token <str> INNER INSERT INSTEAD INT INTEGER INTERNALLENGTH
 %token <str> INTERSECT INTERVAL INTO INTO_DB INVERTED INVOKER IS ISERROR ISNULL ISOLATION IS_TEMPLATE
 
@@ -736,10 +745,10 @@ func (u *sqlSymUnion) alterDomainCmd() tree.AlterDomainCmd {
 %token <str> LINESTRING LINESTRINGM LINESTRINGZ LINESTRINGZM LIST
 %token <str> LOCAL LOCALE LOCALE_PROVIDER LOCALTIME LOCALTIMESTAMP LOCKED LOGGED LOGIN LOOKUP LOW LSHIFT
 
-%token <str> MAIN MATCH MATERIALIZED MERGE METHOD MINVALUE MAXVALUE MINUTE MODIFYCLUSTERSETTING MODULUS MONTH
-%token <str> MULTILINESTRING MULTILINESTRINGM MULTILINESTRINGZ MULTILINESTRINGZM
-%token <str> MULTIPOINT MULTIPOINTM MULTIPOINTZ MULTIPOINTZM
-%token <str> MULTIPOLYGON MULTIPOLYGONM MULTIPOLYGONZ MULTIPOLYGONZM MULTIRANGE_TYPE_NAME
+%token <str> MAIN MATCH MATERIALIZED MAXVALUE MERGE METHOD MFINALFUNC MFINALFUNC_EXTRA MFINALFUNC_MODIFY
+%token <str> MINITCOND MINUTE MINVALUE MINVFUNC MODIFYCLUSTERSETTING MODULUS MONTH MSFUNC MSPACE MSSPACE MSTYPE
+%token <str> MULTILINESTRING MULTILINESTRINGM MULTILINESTRINGZ MULTILINESTRINGZM MULTIPOINT MULTIPOINTM
+%token <str> MULTIPOINTZ MULTIPOINTZM MULTIPOLYGON MULTIPOLYGONM MULTIPOLYGONZ MULTIPOLYGONZM MULTIRANGE_TYPE_NAME
 
 %token <str> NAN NAME NAMES NATURAL NEVER NEW NEXT NO NOCANCELQUERY NOCONTROLCHANGEFEED NOCONTROLJOB
 %token <str> NOCREATEDB NOCREATELOGIN NOCREATEROLE NOLOGIN NOMODIFYCLUSTERSETTING NO_INDEX_JOIN
@@ -755,18 +764,19 @@ func (u *sqlSymUnion) alterDomainCmd() tree.AlterDomainCmd {
 
 %token <str> QUERIES QUERY
 
-%token <str> RANGE RANGES READ REAL RECEIVE RECURSIVE RECURRING REF REFERENCES REFERENCING REFRESH
+%token <str> RANGE RANGES READ READ_ONLY READ_WRITE REAL RECEIVE RECURSIVE RECURRING REF REFERENCES REFERENCING REFRESH
 %token <str> REGCLASS REGPROC REGPROCEDURE REGNAMESPACE REGTYPE REINDEX RELEASE REMAINDER
 %token <str> REMOVE_PATH RENAME REPEATABLE REPLACE REPLICA RESET RESTART RESTORE RESTRICT RESTRICTED RESUME
 %token <str> RETRY RETURN RETURNING RETURNS REVISION_HISTORY REVOKE RIGHT
 %token <str> ROLE ROLES ROUTINE ROUTINES ROLLBACK ROLLUP ROW ROWS RSHIFT RULE RUNNING
 
 %token <str> SAFE SAVEPOINT SCATTER SCHEDULE SCHEDULES SCHEMA SCHEMAS SCRUB SEARCH SECOND SECURITY SEED SELECT SEND
-%token <str> SERIALIZABLE SERVER SESSION SESSIONS SESSION_USER SET SETTING SETTINGS SEQUENCE SEQUENCES
-%token <str> SHARE SHOW SIMILAR SIMPLE SKIP SKIP_MISSING_FOREIGN_KEYS
-%token <str> SKIP_MISSING_SEQUENCES SKIP_MISSING_SEQUENCE_OWNERS SKIP_MISSING_VIEWS SMALLINT SMALLSERIAL SNAPSHOT SOME SPLIT SQL
-%token <str> STABLE START STATEMENT STATISTICS STATUS STDIN STRATEGY STRICT STRING STORAGE STORE STORED
-%token <str> SUBSCRIPT SUBSCRIPTION SUBSTRING SUBTYPE SUBTYPE_DIFF SUBTYPE_OPCLASS SUPPORT SYMMETRIC SYNTAX SYSTEM SQRT
+%token <str> SERIALFUNC SERIALIZABLE SERVER SESSION SESSIONS SESSION_USER SET SETTING SETTINGS SEQUENCE SEQUENCES SFUNC
+%token <str> SHARE SHAREABLE SHOW SIMILAR SIMPLE SKIP SKIP_MISSING_FOREIGN_KEYS
+%token <str> SKIP_MISSING_SEQUENCES SKIP_MISSING_SEQUENCE_OWNERS SKIP_MISSING_VIEWS SMALLINT SMALLSERIAL SNAPSHOT SOME
+%token <str> SORTOP SPLIT SQL SQRT SSPACE STABLE START STATEMENT STATISTICS STATUS STDIN STRATEGY STRICT STRING
+%token <str> STORAGE STORE STORED STYPE SUBSCRIPT SUBSCRIPTION SUBSTRING SUBTYPE SUBTYPE_DIFF SUBTYPE_OPCLASS SUPPORT
+%token <str> SYMMETRIC SYNTAX SYSTEM
 
 %token <str> TABLE TABLES TABLESPACE TEMP TEMPLATE TEMPORARY TEXT THEN
 %token <str> TIES TIME TIMETZ TIMESTAMP TIMESTAMPTZ TO THROTTLING TRAILING TRACE TRACING
@@ -903,6 +913,11 @@ func (u *sqlSymUnion) alterDomainCmd() tree.AlterDomainCmd {
 %type <tree.Statement> create_sequence_stmt
 %type <tree.Statement> create_trigger_stmt
 %type <tree.Statement> create_domain_stmt
+%type <tree.Statement> create_aggregate_stmt
+
+%type <tree.Statement> create_aggregate_args_only_stmt
+%type <tree.Statement> create_aggregate_order_by_args_stmt
+%type <tree.Statement> create_aggregate_old_syntax_stmt
 
 %type <tree.Statement> create_stats_stmt
 %type <*tree.CreateStatsOptions> opt_create_stats_options
@@ -929,6 +944,7 @@ func (u *sqlSymUnion) alterDomainCmd() tree.AlterDomainCmd {
 %type <tree.Statement> drop_language_stmt
 %type <tree.Statement> drop_function_stmt
 %type <tree.Statement> drop_procedure_stmt
+%type <tree.Statement> drop_aggregate_stmt
 
 %type <tree.Statement> analyze_stmt
 %type <tree.Statement> explain_stmt
@@ -1052,6 +1068,11 @@ func (u *sqlSymUnion) alterDomainCmd() tree.AlterDomainCmd {
 
 %type <tree.Routine> routine_with_args
 %type <[]tree.Routine> routine_with_args_list
+
+%type <tree.CreateAggOption> create_agg_args_only_option create_agg_order_by_args_option
+%type <tree.CreateAggOption> create_agg_old_syntax_option create_agg_common_option create_agg_parallel_option
+%type <[]tree.CreateAggOption> create_agg_args_only_option_list create_agg_order_by_args_option_list create_agg_old_syntax_option_list
+%type <[]tree.AggregateToDrop> drop_aggregates
 
 %type <tree.DatabaseOption> opt_database_options
 %type <[]tree.DatabaseOption> opt_database_options_list opt_database_with_options
@@ -3714,12 +3735,12 @@ create_stmt:
 | create_procedure_stmt // EXTEND WITH HELP: CREATE PROCEDURE
 | create_extension_stmt // EXTEND WITH HELP: CREATE EXTENSION
 | create_language_stmt  // EXTEND WITH HELP: CREATE LANGUAGE
+| create_aggregate_stmt // EXTEND WITH HELP: CREATE AGGREGATE
 | create_unsupported   {}
 | CREATE error         // SHOW HELP: CREATE
 
 create_unsupported:
-  CREATE AGGREGATE error { return unimplemented(sqllex, "create aggregate") }
-| CREATE CAST error { return unimplemented(sqllex, "create cast") }
+  CREATE CAST error { return unimplemented(sqllex, "create cast") }
 | CREATE CONVERSION error { return unimplemented(sqllex, "create conversion") }
 | CREATE DEFAULT CONVERSION error { return unimplemented(sqllex, "create def conv") }
 | CREATE FOREIGN TABLE error { return unimplemented(sqllex, "create foreign table") }
@@ -3729,6 +3750,122 @@ create_unsupported:
 | CREATE SERVER error { return unimplemented(sqllex, "create server") }
 | CREATE SUBSCRIPTION error { return unimplemented(sqllex, "create subscription") }
 | CREATE TEXT error { return unimplementedWithIssueDetail(sqllex, 7821, "create text") }
+
+create_aggregate_stmt:
+  create_aggregate_args_only_stmt
+| create_aggregate_order_by_args_stmt
+| create_aggregate_old_syntax_stmt
+
+create_aggregate_args_only_stmt:
+  CREATE AGGREGATE name '(' opt_routine_args ')' '(' SFUNC '=' name ',' STYPE '=' type_name create_agg_args_only_option_list ')'
+  { $$.val = &tree.CreateAggregate{Name: tree.Name($3), Args: $5.routineArgs(), SFunc: $10, SType: $14.typeReference(), AggOptions: $15.createAggOptions()} }
+| CREATE OR REPLACE AGGREGATE name '(' opt_routine_args ')' '(' SFUNC '=' name ',' STYPE '=' type_name create_agg_args_only_option_list ')'
+  { $$.val = &tree.CreateAggregate{Name: tree.Name($5), Replace: true, Args: $7.routineArgs(), SFunc: $12, SType: $16.typeReference(), AggOptions: $17.createAggOptions()} }
+
+create_agg_args_only_option_list:
+  /* EMPTY */
+  { $$.val = []tree.CreateAggOption(nil) }
+| create_agg_args_only_option
+  { $$.val = []tree.CreateAggOption{$1.createAggOption()} }
+| create_agg_args_only_option_list ',' create_agg_args_only_option
+  { $$.val = append($1.createAggOptions(), $3.createAggOption()) }
+
+create_agg_args_only_option:
+  create_agg_old_syntax_option
+| create_agg_parallel_option
+
+create_aggregate_order_by_args_stmt:
+  CREATE AGGREGATE name '(' opt_routine_args ORDER BY routine_arg_list ')' '(' SFUNC '=' name ',' STYPE '=' type_name create_agg_order_by_args_option_list ')'
+  { $$.val = &tree.CreateAggregate{Name: tree.Name($3), Args: $5.routineArgs(), OrderByArgs: $8.routineArgs(), SFunc: $13, SType: $17.typeReference(), AggOptions: $18.createAggOptions()} }
+| CREATE OR REPLACE AGGREGATE name '(' opt_routine_args ORDER BY routine_arg_list ')' '(' SFUNC '=' name ',' STYPE '=' type_name create_agg_order_by_args_option_list ')'
+  { $$.val = &tree.CreateAggregate{Name: tree.Name($5), Replace: true, Args: $7.routineArgs(), OrderByArgs: $10.routineArgs(), SFunc: $15, SType: $19.typeReference(), AggOptions: $20.createAggOptions()} }
+
+create_agg_order_by_args_option_list:
+  /* EMPTY */
+  { $$.val = []tree.CreateAggOption(nil) }
+| create_agg_order_by_args_option
+  { $$.val = []tree.CreateAggOption{$1.createAggOption()} }
+| create_agg_order_by_args_option_list ',' create_agg_order_by_args_option
+  { $$.val = append($1.createAggOptions(), $3.createAggOption()) }
+
+create_agg_order_by_args_option:
+  create_agg_common_option
+| create_agg_parallel_option
+| HYPOTHETICAL
+  { $$.val = tree.CreateAggOption{Option: tree.AggOptTypeHypothetical} }
+
+create_aggregate_old_syntax_stmt:
+  CREATE AGGREGATE name '(' BASETYPE '=' type_name ',' SFUNC '=' name ',' STYPE '=' type_name create_agg_old_syntax_option_list ')'
+  { $$.val = &tree.CreateAggregate{Name: tree.Name($3), BaseType: $7.typeReference(), SFunc: $11, SType: $15.typeReference(), AggOptions: $16.createAggOptions()} }
+| CREATE OR REPLACE AGGREGATE name '(' BASETYPE '=' type_name ',' SFUNC '=' name ',' STYPE '=' type_name create_agg_old_syntax_option_list ')'
+  { $$.val = &tree.CreateAggregate{Name: tree.Name($5), Replace: true, BaseType: $9.typeReference(), SFunc: $13, SType: $17.typeReference(), AggOptions: $18.createAggOptions()} }
+
+create_agg_old_syntax_option_list:
+  /* EMPTY */
+  { $$.val = []tree.CreateAggOption(nil) }
+| create_agg_old_syntax_option
+  { $$.val = []tree.CreateAggOption{$1.createAggOption()} }
+| create_agg_old_syntax_option_list ',' create_agg_old_syntax_option
+  { $$.val = append($1.createAggOptions(), $3.createAggOption()) }
+
+create_agg_old_syntax_option:
+  create_agg_common_option
+| COMBINEFUNC '=' name
+  { $$.val = tree.CreateAggOption{Option: tree.AggOptTypeCombineFunc, StrVal: $3} }
+| SERIALFUNC '=' name
+  { $$.val = tree.CreateAggOption{Option: tree.AggOptTypeSerialFunc, StrVal: $3} }
+| DESERIALFUNC '=' name
+  { $$.val = tree.CreateAggOption{Option: tree.AggOptTypeDeserialFunc, StrVal: $3} }
+| MSFUNC '=' name
+  { $$.val = tree.CreateAggOption{Option: tree.AggOptTypeMSFunc, StrVal: $3} }
+| MINVFUNC '=' name
+  { $$.val = tree.CreateAggOption{Option: tree.AggOptTypeMInvFunc, StrVal: $3} }
+| MSTYPE '=' type_name
+  { $$.val = tree.CreateAggOption{Option: tree.AggOptTypeMSType, TypeVal: $3.typeReference()} }
+| MSSPACE '=' iconst64
+  { $$.val = tree.CreateAggOption{Option: tree.AggOptTypeMSSpace, IntVal: $3.expr()} }
+| MFINALFUNC '=' name
+  { $$.val = tree.CreateAggOption{Option: tree.AggOptTypeMFinalFunc, StrVal: $3} }
+| MFINALFUNC_EXTRA '=' TRUE
+  { $$.val = tree.CreateAggOption{Option: tree.AggOptTypeMFinalFuncExtra, BoolVal: true} }
+| MFINALFUNC_EXTRA '=' FALSE
+  { $$.val = tree.CreateAggOption{Option: tree.AggOptTypeMFinalFuncExtra, BoolVal: false} }
+| MFINALFUNC_MODIFY '=' READ_ONLY
+  { $$.val = tree.CreateAggOption{Option: tree.AggOptTypeMFinalFuncModify, FinalFuncModify: tree.FinalFuncModifyReadOnly} }
+| MFINALFUNC_MODIFY '=' SHAREABLE
+  { $$.val = tree.CreateAggOption{Option: tree.AggOptTypeMFinalFuncModify, FinalFuncModify: tree.FinalFuncModifyShareable} }
+| MFINALFUNC_MODIFY '=' READ_WRITE
+  { $$.val = tree.CreateAggOption{Option: tree.AggOptTypeMFinalFuncModify, FinalFuncModify: tree.FinalFuncModifyReadWrite} }
+| MINITCOND '=' a_expr
+  { $$.val = tree.CreateAggOption{Option: tree.AggOptTypeMInitCond, CondVal: $3.expr()} }
+| SORTOP '=' math_op
+  { $$.val = tree.CreateAggOption{Option: tree.AggOptTypeSortOp, SortOp: $3.op()} }
+
+create_agg_common_option:
+  SSPACE '=' iconst64
+  { $$.val = tree.CreateAggOption{Option: tree.AggOptTypeSSpace, IntVal: $3.expr()} }
+| FINALFUNC '=' name
+  { $$.val = tree.CreateAggOption{Option: tree.AggOptTypeFinalFunc, StrVal: $3} }
+| FINALFUNC_EXTRA '=' TRUE
+  { $$.val = tree.CreateAggOption{Option: tree.AggOptTypeFinalFuncExtra, BoolVal: true} }
+| FINALFUNC_EXTRA '=' FALSE
+  { $$.val = tree.CreateAggOption{Option: tree.AggOptTypeFinalFuncExtra, BoolVal: false} }
+| FINALFUNC_MODIFY '=' READ_ONLY
+  { $$.val = tree.CreateAggOption{Option: tree.AggOptTypeFinalFuncModify, FinalFuncModify: tree.FinalFuncModifyReadOnly} }
+| FINALFUNC_MODIFY '=' SHAREABLE
+  { $$.val = tree.CreateAggOption{Option: tree.AggOptTypeFinalFuncModify, FinalFuncModify: tree.FinalFuncModifyShareable} }
+| FINALFUNC_MODIFY '=' READ_WRITE
+  { $$.val = tree.CreateAggOption{Option: tree.AggOptTypeFinalFuncModify, FinalFuncModify: tree.FinalFuncModifyReadWrite} }
+| INITCOND '=' a_expr
+  { $$.val = tree.CreateAggOption{Option: tree.AggOptTypeInitCond, CondVal: $3.expr()} }
+
+create_agg_parallel_option:
+  PARALLEL '=' SAFE
+  { $$.val = tree.CreateAggOption{Option: tree.AggOptTypeParallel, Parallel: tree.ParallelUnsafe} }
+| PARALLEL '=' RESTRICTED
+  { $$.val = tree.CreateAggOption{Option: tree.AggOptTypeParallel, Parallel: tree.ParallelRestricted} }
+| PARALLEL '=' UNSAFE
+  { $$.val = tree.CreateAggOption{Option: tree.AggOptTypeParallel, Parallel: tree.ParallelSafe} }
 
 create_domain_stmt:
   CREATE DOMAIN type_name opt_as typename opt_collate opt_arg_default opt_domain_constraint_list
@@ -4209,8 +4346,7 @@ opt_procedural:
   }
 
 drop_unsupported:
-  DROP AGGREGATE error { return unimplemented(sqllex, "drop aggregate") }
-| DROP CAST error { return unimplemented(sqllex, "drop cast") }
+  DROP CAST error { return unimplemented(sqllex, "drop cast") }
 | DROP COLLATION error { return unimplemented(sqllex, "drop collation") }
 | DROP CONVERSION error { return unimplemented(sqllex, "drop conversion") }
 | DROP FOREIGN TABLE error { return unimplemented(sqllex, "drop foreign table") }
@@ -4221,6 +4357,26 @@ drop_unsupported:
 | DROP SERVER error { return unimplemented(sqllex, "drop server") }
 | DROP SUBSCRIPTION error { return unimplemented(sqllex, "drop subscription") }
 | DROP TEXT error { return unimplementedWithIssueDetail(sqllex, 7821, "drop text") }
+
+drop_aggregate_stmt:
+  DROP AGGREGATE drop_aggregates opt_drop_behavior
+  {
+    $$.val = &tree.DropAggregate{Aggregates: $3.aggregatesToDrop(), DropBehavior: $4.dropBehavior()}
+  }
+| DROP AGGREGATE IF EXISTS drop_aggregates opt_drop_behavior
+  {
+    $$.val = &tree.DropAggregate{Aggregates: $5.aggregatesToDrop(), IfExists: true, DropBehavior: $6.dropBehavior()}
+  }
+
+drop_aggregates:
+  name '(' aggregate_signature ')'
+  {
+    $$.val = []tree.AggregateToDrop{{Name: tree.Name($1), AggSig: $3.aggregateSignature()}}
+  }
+| drop_aggregates ',' name '(' aggregate_signature ')'
+  {
+    $$.val = append($1.aggregatesToDrop(), tree.AggregateToDrop{Name: tree.Name($3), AggSig: $5.aggregateSignature()})
+  }
 
 drop_domain_stmt:
   DROP DOMAIN name_list opt_drop_behavior
@@ -4499,6 +4655,7 @@ drop_stmt:
 | drop_domain_stmt   // EXTEND WITH HELP: DROP DOMAIN
 | drop_extension_stmt // EXTEND WITH HELP: DROP EXTENSION
 | drop_language_stmt // EXTEND WITH HELP: DROP LANGUAGE
+| drop_aggregate_stmt // EXTEND WITH HELP: DROP AGGREGATE
 | drop_unsupported   {}
 | DROP error         // SHOW HELP: DROP
 
@@ -13484,6 +13641,7 @@ unreserved_keyword:
 | AUTOMATIC
 | BACKUP
 | BACKUPS
+| BASETYPE
 | BEFORE
 | BEGIN
 | BINARY
@@ -13506,6 +13664,7 @@ unreserved_keyword:
 | COLLATABLE
 | COLLATION_VERSION
 | COLUMNS
+| COMBINEFUNC
 | COMMENT
 | COMMENTS
 | COMMIT
@@ -13543,6 +13702,7 @@ unreserved_keyword:
 | DELETE
 | DELIMITER
 | DEPENDS
+| DESERIALFUNC
 | DESTINATION
 | DETACH
 | DETACHED
@@ -13575,6 +13735,9 @@ unreserved_keyword:
 | EXTERNAL
 | FILES
 | FILTER
+| FINALFUNC
+| FINALFUNC_EXTRA
+| FINALFUNC_MODIFY
 | FINALIZE
 | FIRST
 | FOLLOWING
@@ -13599,6 +13762,7 @@ unreserved_keyword:
 | HIGH
 | HISTOGRAM
 | HOUR
+| HYPOTHETICAL
 | ICU_LOCALE
 | ICU_RULES
 | IDENTITY
@@ -13612,6 +13776,7 @@ unreserved_keyword:
 | INDEXES
 | INHERIT
 | INHERITS
+| INITCOND
 | INJECT
 | INLINE
 | INPUT
@@ -13657,9 +13822,20 @@ unreserved_keyword:
 | MAXVALUE
 | MERGE
 | METHOD
+| MFINALFUNC
+| MFINALFUNC_EXTRA
+| MFINALFUNC_MODIFY
+| MINITCOND
 | MINUTE
 | MINVALUE
+| MINVFUNC
 | MODIFYCLUSTERSETTING
+| MODULUS
+| MONTH
+| MSFUNC
+| MSPACE
+| MSSPACE
+| MSTYPE
 | MULTILINESTRING
 | MULTILINESTRINGM
 | MULTILINESTRINGZ
@@ -13673,8 +13849,6 @@ unreserved_keyword:
 | MULTIPOLYGONZ
 | MULTIPOLYGONZM
 | MULTIRANGE_TYPE_NAME
-| MODULUS
-| MONTH
 | NAMES
 | NAN
 | NEVER
@@ -13747,6 +13921,8 @@ unreserved_keyword:
 | RANGE
 | RANGES
 | READ
+| READ_ONLY
+| READ_WRITE
 | RECEIVE
 | RECURRING
 | RECURSIVE
@@ -13781,15 +13957,10 @@ unreserved_keyword:
 | RULE
 | RUNNING
 | SAFE
-| SCHEDULE
-| SCHEDULES
-| SEND
-| SETTING
-| SETTINGS
-| STATEMENT
-| STATUS
 | SAVEPOINT
 | SCATTER
+| SCHEDULE
+| SCHEDULES
 | SCHEMA
 | SCHEMAS
 | SCRUB
@@ -13797,6 +13968,8 @@ unreserved_keyword:
 | SECOND
 | SECURITY
 | SEED
+| SEND
+| SERIALFUNC
 | SERIALIZABLE
 | SEQUENCE
 | SEQUENCES
@@ -13804,7 +13977,11 @@ unreserved_keyword:
 | SESSION
 | SESSIONS
 | SET
+| SETTING
+| SETTINGS
+| SFUNC
 | SHARE
+| SHAREABLE
 | SHOW
 | SIMPLE
 | SKIP
@@ -13813,17 +13990,22 @@ unreserved_keyword:
 | SKIP_MISSING_SEQUENCE_OWNERS
 | SKIP_MISSING_VIEWS
 | SNAPSHOT
+| SORTOP
 | SPLIT
 | SQL
+| SSPACE
 | STABLE
 | START
+| STATEMENT
 | STATISTICS
+| STATUS
 | STDIN
 | STORAGE
 | STORE
 | STORED
 | STRATEGY
 | STRICT
+| STYPE
 | SUBSCRIPT
 | SUBSCRIPTION
 | SUBTYPE
