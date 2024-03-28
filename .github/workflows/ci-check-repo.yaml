@@ -15,13 +15,13 @@ jobs:
     outputs:
       format: ${{ steps.should_format.outputs.format }}
     steps:
-      - name: Setup Go 1.x
-        uses: actions/setup-go@v3
-        with:
-          go-version: ^1.21
       - uses: actions/checkout@v3
         with:
           submodules: true
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
       - name: Check all
         id: should_format
         run: |

@@ -13,13 +13,13 @@ jobs:
         platform: [ubuntu-latest, macos-latest, windows-latest]
     runs-on: ${{ matrix.platform }}
     steps:
-    - name: Setup Go 1.x
-      uses: actions/setup-go@v3
-      with:
-        go-version: ^1.21
-      id: go
     - name: Checkout code
       uses: actions/checkout@v3
+    - name: Set up Go
+      uses: actions/setup-go@v5
+      with:
+        go-version-file: go.mod
+      id: go
     - name: Build SQL Syntax
       run: ./build.sh
       working-directory: ./postgres/parser
