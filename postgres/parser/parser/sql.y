@@ -684,6 +684,7 @@ func (u *sqlSymUnion) aggregatesToDrop() []tree.AggregateToDrop {
 %token <str> TYPECAST TYPEANNOTATE DOT_DOT
 %token <str> LESS_EQUALS GREATER_EQUALS NOT_EQUALS
 %token <str> NOT_REGMATCH REGIMATCH NOT_REGIMATCH
+%token <str> TEXTSEARCHMATCH
 %token <str> ERROR
 
 // If you want to make any keyword changes, add the new keyword here as well as
@@ -700,7 +701,7 @@ func (u *sqlSymUnion) aggregatesToDrop() []tree.AggregateToDrop {
 %token <str> BOOLEAN BOTH BOX2D BUNDLE BY
 
 %token <str> CACHE CHAIN CALL CALLED CANCEL CANCELQUERY CANONICAL CASCADE CASCADED CASE CAST CATEGORY CBRT
-%token <str> CHANGEFEED CHAR CHARACTER CHARACTERISTICS CHECK CLOSE
+%token <str> CHANGEFEED CHAR CHARACTER CHARACTERISTICS CHECK CLASS CLOSE
 %token <str> CLUSTER COALESCE COLLATABLE COLLATE COLLATION COLLATION_VERSION COLUMN COLUMNS COMBINEFUNC COMMENT COMMENTS
 %token <str> COMMIT COMMITTED COMPACT COMPLETE COMPRESSION CONCAT CONCURRENTLY CONFIGURATION CONFIGURATIONS CONFIGURE
 %token <str> CONFLICT CONNECT CONNECTION CONSTRAINT CONSTRAINTS CONTAINS CONTROLCHANGEFEED
@@ -711,9 +712,9 @@ func (u *sqlSymUnion) aggregatesToDrop() []tree.AggregateToDrop {
 
 %token <str> DATA DATABASE DATABASES DATE DAY DEALLOCATE DEC DECIMAL DECLARE
 %token <str> DEFAULT DEFAULTS DEFERRABLE DEFERRED DEFINER DELETE DELIMITER DEPENDS DESC DESERIALFUNC DESTINATION
-%token <str> DETACH DETACHED DISABLE DISCARD DISTINCT DO DOMAIN DOUBLE DROP
+%token <str> DETACH DETACHED DICTIONARY DISABLE DISCARD DISTINCT DO DOMAIN DOUBLE DROP
 
-%token <str> EACH ELEMENT ELSE ENABLE ENCODING ENCRYPTION_PASSPHRASE END ENUM ENUMS ESCAPE
+%token <str> EACH ELEMENT ELSE ENABLE ENCODING ENCRYPTION_PASSPHRASE END ENUM ENUMS ESCAPE EVENT
 %token <str> EXCEPT EXCLUDE EXCLUDING EXISTS EXECUTE EXECUTION EXPERIMENTAL
 %token <str> EXPERIMENTAL_FINGERPRINTS EXPERIMENTAL_REPLICA
 %token <str> EXPERIMENTAL_AUDIT EXPIRATION EXPLAIN EXPORT EXPRESSION
@@ -757,8 +758,8 @@ func (u *sqlSymUnion) aggregatesToDrop() []tree.AggregateToDrop {
 %token <str> OBJECT OF OFF OFFSET OID OIDS OIDVECTOR OLD ON ONLY OPT OPTION OPTIONS OR
 %token <str> ORDER ORDINALITY OTHERS OUT OUTER OUTPUT OVER OVERLAPS OVERLAY OWNED OWNER OPERATOR
 
-%token <str> PARALLEL PARAMETER PARENT PARTIAL PARTITION PARTITIONS PASSEDBYVALUE PASSWORD PAUSE PAUSED PHYSICAL
-%token <str> PLACING PLAIN PLAN PLANS POINT POINTM POINTZ POINTZM POLYGON POLYGONM POLYGONZ POLYGONZM
+%token <str> PARALLEL PARAMETER PARENT PARSER PARTIAL PARTITION PARTITIONS PASSEDBYVALUE PASSWORD PAUSE PAUSED PHYSICAL
+%token <str> PLACING PLAIN PLAN PLANS POINT POINTM POINTZ POINTZM POLICY POLYGON POLYGONM POLYGONZ POLYGONZM
 %token <str> POSITION PRECEDING PRECISION PREFERRED PREPARE PRESERVE PRIMARY PRIORITY PRIVILEGES
 %token <str> PROCEDURAL PROCEDURE PROCEDURES PUBLIC PUBLICATION
 
@@ -1148,7 +1149,7 @@ func (u *sqlSymUnion) aggregatesToDrop() []tree.AggregateToDrop {
 %type <*tree.TableIndexName> table_index_name
 %type <tree.TableIndexNames> table_index_name_list
 
-%type <tree.Operator> math_op
+%type <tree.Operator> math_op operator
 
 %type <tree.IsolationLevel> iso_level
 %type <tree.UserPriority> user_priority
@@ -1361,7 +1362,7 @@ func (u *sqlSymUnion) aggregatesToDrop() []tree.AggregateToDrop {
 %right     NOT
 %nonassoc  IS ISNULL NOTNULL   // IS sets precedence for IS NULL, etc
 %nonassoc  '<' '>' '=' LESS_EQUALS GREATER_EQUALS NOT_EQUALS
-%nonassoc  '~' BETWEEN DEFERRABLE IN LIKE ILIKE SIMILAR NOT_REGMATCH REGIMATCH NOT_REGIMATCH NOT_LA
+%nonassoc  '~' BETWEEN DEFERRABLE IN LIKE ILIKE SIMILAR NOT_REGMATCH REGIMATCH NOT_REGIMATCH NOT_LA TEXTSEARCHMATCH
 %nonassoc  ESCAPE              // ESCAPE must be just above LIKE/ILIKE/SIMILAR
 %nonassoc  CONTAINS CONTAINED_BY '?' JSON_SOME_EXISTS JSON_ALL_EXISTS
 %nonassoc  OVERLAPS
@@ -1396,6 +1397,7 @@ func (u *sqlSymUnion) aggregatesToDrop() []tree.AggregateToDrop {
 %left      '#'
 %left      '&'
 %left      LSHIFT RSHIFT INET_CONTAINS_OR_EQUALS INET_CONTAINED_BY_OR_EQUALS AND_AND SQRT CBRT
+%left      '@'
 %left      '+' '-'
 %left      '*' '/' FLOORDIV '%'
 %left      '^'
@@ -3678,13 +3680,30 @@ cancel_sessions_stmt:
 | CANCEL SESSIONS error // SHOW HELP: CANCEL SESSIONS
 
 comment_stmt:
-  COMMENT ON DATABASE database_name IS comment_text
+  COMMENT ON ACCESS METHOD db_object_name IS comment_text
   {
-    $$.val = &tree.CommentOnDatabase{Name: tree.Name($4), Comment: $6.strPtr()}
+    $$.val = &tree.Comment{
+      Object: &tree.CommentOnAccessMethod{Name: $5.unresolvedObjectName()},
+      Comment: $7.strPtr(),
+    }
   }
-| COMMENT ON TABLE table_name IS comment_text
+| COMMENT ON AGGREGATE name '(' aggregate_signature ')' IS comment_text
   {
-    $$.val = &tree.CommentOnTable{Table: $4.unresolvedObjectName(), Comment: $6.strPtr()}
+    $$.val = &tree.Comment{
+      Object: &tree.CommentOnAggregate{Name: tree.Name($4), AggSig: $6.aggregateSignature()},
+      Comment: $9.strPtr(),
+    }
+  }
+| COMMENT ON CAST '(' typename AS typename ')' IS comment_text
+  {
+    $$.val = &tree.Comment{
+      Object: &tree.CommentOnCast{Source: $5.typeReference(), Target: $7.typeReference()},
+      Comment: $10.strPtr(),
+    }
+  }
+| COMMENT ON COLLATION collation_name IS comment_text
+  {
+    $$.val = &tree.Comment{Object: &tree.CommentOnCollation{Name: $4}, Comment: $6.strPtr()}
   }
 | COMMENT ON COLUMN column_path IS comment_text
   {
@@ -3697,15 +3716,172 @@ comment_stmt:
       sqllex.Error(fmt.Sprintf("invalid column name: %q", tree.ErrString($4.unresolvedName())))
             return 1
     }
-    $$.val = &tree.CommentOnColumn{ColumnItem: columnItem, Comment: $6.strPtr()}
+    $$.val = &tree.Comment{
+      Object: &tree.CommentOnColumn{ColumnItem: columnItem},
+      Comment: $6.strPtr(),
+    }
   }
-| COMMENT ON INDEX table_index_name IS comment_text
+| COMMENT ON CONSTRAINT constraint_name ON table_name IS comment_text
   {
-    $$.val = &tree.CommentOnIndex{Index: $4.tableIndexName(), Comment: $6.strPtr()}
+    $$.val = &tree.Comment{
+      Object: &tree.CommentOnConstraintOnTable{Constraint: tree.Name($4), Table: $6.unresolvedObjectName()},
+      Comment: $8.strPtr(),
+    }
+  }
+| COMMENT ON CONSTRAINT constraint_name ON DOMAIN type_name IS comment_text
+  {
+    $$.val = &tree.Comment{
+      Object: &tree.CommentOnConstraintOnDomain{Constraint: tree.Name($4), Domain: $7.unresolvedObjectName()},
+      Comment: $9.strPtr(),
+    }
+  }
+| COMMENT ON CONVERSION name IS comment_text
+  {
+    $$.val = &tree.Comment{Object: &tree.CommentOnConversion{Name: tree.Name($4)}, Comment: $6.strPtr()}
+  }
+| COMMENT ON DATABASE database_name IS comment_text
+  {
+    $$.val = &tree.Comment{Object: &tree.CommentOnDatabase{Name: tree.Name($4)}, Comment: $6.strPtr()}
+  }
+| COMMENT ON DOMAIN type_name IS comment_text
+  {
+    $$.val = &tree.Comment{Object: &tree.CommentOnDomain{Name: $4.unresolvedObjectName()}, Comment: $6.strPtr()}
   }
 | COMMENT ON EXTENSION name IS comment_text
   {
-    $$.val = &tree.CommentOnExtension{Name: tree.Name($4), Comment: $6.strPtr()}
+    $$.val = &tree.Comment{Object: &tree.CommentOnExtension{Name: tree.Name($4)}, Comment: $6.strPtr()}
+  }
+| COMMENT ON EVENT TRIGGER name IS comment_text
+  {
+    $$.val = &tree.Comment{Object: &tree.CommentOnEventTrigger{Name: tree.Name($5)}, Comment: $7.strPtr()}
+  }
+| COMMENT ON FOREIGN DATA WRAPPER name IS comment_text
+  {
+    $$.val = &tree.Comment{Object: &tree.CommentOnForeignDataWrapper{Name: tree.Name($6)}, Comment: $8.strPtr()}
+  }
+| COMMENT ON FOREIGN TABLE name IS comment_text
+  {
+    $$.val = &tree.Comment{Object: &tree.CommentOnForeignTable{Name: tree.Name($5)}, Comment: $7.strPtr()}
+  }
+| COMMENT ON FUNCTION routine_name opt_routine_args_with_paren IS comment_text
+  {
+    $$.val = &tree.Comment{Object: &tree.CommentOnFunction{Name: $4.unresolvedObjectName(), Args: $5.routineArgs()}, Comment: $7.strPtr()}
+  }
+| COMMENT ON INDEX table_index_name IS comment_text
+  {
+    $$.val = &tree.Comment{Object: &tree.CommentOnIndex{Index: $4.tableIndexName()}, Comment: $6.strPtr()}
+  }
+| COMMENT ON LARGE OBJECT signed_iconst IS comment_text
+  {
+    $$.val = &tree.Comment{Object: &tree.CommentOnLargeObject{Oid: $5.expr()}, Comment: $7.strPtr()}
+  }
+| COMMENT ON MATERIALIZED VIEW relation_expr IS comment_text
+  {
+    $$.val = &tree.Comment{Object: &tree.CommentOnMaterializedView{Name: $5.unresolvedObjectName()}, Comment: $7.strPtr()}
+  }
+| COMMENT ON OPERATOR operator '(' typename ',' typename ')' IS comment_text
+  {
+    $$.val = &tree.Comment{Object: &tree.CommentOnOperator{Op: $4.op(), Left: $6.typeReference(), Right: $8.typeReference()}, Comment: $11.strPtr()}
+  }
+| COMMENT ON OPERATOR CLASS name USING name IS comment_text
+  {
+    $$.val = &tree.Comment{Object: &tree.CommentOnOperatorClass{Name: tree.Name($5), IdxMethod: $7}, Comment: $9.strPtr()}
+  }
+| COMMENT ON OPERATOR FAMILY name USING name IS comment_text
+  {
+    $$.val = &tree.Comment{Object: &tree.CommentOnOperatorFamily{Name: tree.Name($5), IdxMethod: $7}, Comment: $9.strPtr()}
+  }
+| COMMENT ON POLICY name ON table_name IS comment_text
+  {
+    $$.val = &tree.Comment{Object: &tree.CommentOnPolicy{Policy: tree.Name($4), Table: $6.unresolvedObjectName()}, Comment: $8.strPtr()}
+  }
+| COMMENT ON LANGUAGE name IS comment_text
+  {
+    $$.val = &tree.Comment{Object: &tree.CommentOnLanguage{Name: tree.Name($4)}, Comment: $6.strPtr()}
+  }
+| COMMENT ON PROCEDURAL LANGUAGE name IS comment_text
+  {
+    $$.val = &tree.Comment{Object: &tree.CommentOnLanguage{Name: tree.Name($5), Procedural: true}, Comment: $7.strPtr()}
+  }
+| COMMENT ON PROCEDURE routine_name opt_routine_args_with_paren IS comment_text
+  {
+    $$.val = &tree.Comment{Object: &tree.CommentOnProcedure{Name: $4.unresolvedObjectName(), Args: $5.routineArgs()}, Comment: $7.strPtr()}
+  }
+| COMMENT ON PUBLICATION name IS comment_text
+  {
+    $$.val = &tree.Comment{Object: &tree.CommentOnPublication{Name: tree.Name($4)}, Comment: $6.strPtr()}
+  }
+| COMMENT ON ROLE role_spec IS comment_text
+  {
+    $$.val = &tree.Comment{Object: &tree.CommentOnRole{Name: $4}, Comment: $6.strPtr()}
+  }
+| COMMENT ON ROUTINE routine_name opt_routine_args_with_paren IS comment_text
+  {
+    $$.val = &tree.Comment{Object: &tree.CommentOnRoutine{Name: $4.unresolvedObjectName(), Args: $5.routineArgs()}, Comment: $7.strPtr()}
+  }
+| COMMENT ON RULE name ON table_name IS comment_text
+  {
+    $$.val = &tree.Comment{Object: &tree.CommentOnRule{Rule: tree.Name($4), Table: $6.unresolvedObjectName()}, Comment: $8.strPtr()}
+  }
+| COMMENT ON SCHEMA schema_name IS comment_text
+  {
+    $$.val = &tree.Comment{Object: &tree.CommentOnSchema{Name: $4}, Comment: $6.strPtr()}
+  }
+| COMMENT ON SEQUENCE sequence_name IS comment_text
+  {
+    $$.val = &tree.Comment{Object: &tree.CommentOnSequence{Name: $4.unresolvedObjectName()}, Comment: $6.strPtr()}
+  }
+| COMMENT ON SERVER name IS comment_text
+  {
+    $$.val = &tree.Comment{Object: &tree.CommentOnServer{Name: tree.Name($4)}, Comment: $6.strPtr()}
+  }
+| COMMENT ON STATISTICS name IS comment_text
+  {
+    $$.val = &tree.Comment{Object: &tree.CommentOnStatistics{Name: tree.Name($4)}, Comment: $6.strPtr()}
+  }
+| COMMENT ON SUBSCRIPTION name IS comment_text
+  {
+    $$.val = &tree.Comment{Object: &tree.CommentOnSubscription{Name: tree.Name($4)}, Comment: $6.strPtr()}
+  }
+| COMMENT ON TABLE table_name IS comment_text
+  {
+    $$.val = &tree.Comment{Object: &tree.CommentOnTable{Name: $4.unresolvedObjectName()}, Comment: $6.strPtr()}
+  }
+| COMMENT ON TABLESPACE tablespace_name IS comment_text
+  {
+    $$.val = &tree.Comment{Object: &tree.CommentOnTablespace{Name: tree.Name($4)}, Comment: $6.strPtr()}
+  }
+| COMMENT ON TEXT SEARCH CONFIGURATION name IS comment_text
+  {
+    $$.val = &tree.Comment{Object: &tree.CommentOnTextSearchConfiguration{Name: tree.Name($6)}, Comment: $8.strPtr()}
+  }
+| COMMENT ON TEXT SEARCH DICTIONARY name IS comment_text
+  {
+    $$.val = &tree.Comment{Object: &tree.CommentOnTextSearchDictionary{Name: tree.Name($6)}, Comment: $8.strPtr()}
+  }
+| COMMENT ON TEXT SEARCH PARSER name IS comment_text
+  {
+    $$.val = &tree.Comment{Object: &tree.CommentOnTextSearchParser{Name: tree.Name($6)}, Comment: $8.strPtr()}
+  }
+| COMMENT ON TEXT SEARCH TEMPLATE name IS comment_text
+  {
+    $$.val = &tree.Comment{Object: &tree.CommentOnTextSearchTemplate{Name: tree.Name($6)}, Comment: $8.strPtr()}
+  }
+| COMMENT ON TRANSFORM FOR typename LANGUAGE name IS comment_text
+  {
+    $$.val = &tree.Comment{Object: &tree.CommentOnTransformFor{Type: $5.typeReference(), Language: tree.Name($7)}, Comment: $9.strPtr()}
+  }
+| COMMENT ON TRIGGER trigger_name ON table_name IS comment_text
+  {
+    $$.val = &tree.Comment{Object: &tree.CommentOnTrigger{Trigger: tree.Name($4), Table: $6.unresolvedObjectName()}, Comment: $8.strPtr()}
+  }
+| COMMENT ON TYPE type_name IS comment_text
+  {
+    $$.val = &tree.Comment{Object: &tree.CommentOnType{Name: $4.unresolvedObjectName()}, Comment: $6.strPtr()}
+  }
+| COMMENT ON VIEW view_name IS comment_text
+  {
+    $$.val = &tree.Comment{Object: &tree.CommentOnView{Name: $4.unresolvedObjectName()}, Comment: $6.strPtr()}
   }
 
 comment_text:
@@ -11580,6 +11756,10 @@ a_expr:
   {
     $$.val = &tree.UnaryExpr{Operator: tree.UnaryCbrt, Expr: $2.expr()}
   }
+| '@' a_expr
+  {
+    $$.val = absolute($2.expr())
+  }
 | a_expr '+' a_expr
   {
     $$.val = &tree.BinaryExpr{Operator: tree.Plus, Left: $1.expr(), Right: $3.expr()}
@@ -11787,6 +11967,10 @@ a_expr:
 | a_expr NOT_REGIMATCH a_expr
   {
     $$.val = &tree.ComparisonExpr{Operator: tree.NotRegIMatch, Left: $1.expr(), Right: $3.expr()}
+  }
+| a_expr TEXTSEARCHMATCH a_expr
+  {
+    $$.val = &tree.ComparisonExpr{Operator: tree.TextSearchMatch, Left: $1.expr(), Right: $3.expr()}
   }
 | a_expr IS NAN %prec IS
   {
@@ -12123,15 +12307,6 @@ d_expr:
 | column_path_with_star
   {
     $$.val = tree.Expr($1.unresolvedName())
-  }
-| '@' iconst64
-  {
-    colNum := $2.int64()
-    if colNum < 1 || colNum > int64(MaxInt) {
-      sqllex.Error(fmt.Sprintf("invalid column ordinal: @%d", colNum))
-      return 1
-    }
-    $$.val = tree.NewOrdinalReference(int(colNum-1))
   }
 | PLACEHOLDER
   {
@@ -12773,6 +12948,27 @@ sub_type:
     $$.val = tree.All
   }
 
+/* TODO: not all operators are included */
+operator:
+  subquery_op
+| '~' { $$.val = tree.RegMatch }
+| SQRT { $$.val = tree.UnarySqrt }
+| CBRT { $$.val = tree.UnaryCbrt }
+| '?' { $$.val = tree.JSONExists }
+| JSON_SOME_EXISTS { $$.val = tree.JSONSomeExists }
+| JSON_ALL_EXISTS { $$.val = tree.JSONAllExists }
+| CONTAINS { $$.val = tree.Contains }
+| CONTAINED_BY { $$.val = tree.ContainedBy }
+| CONCAT { $$.val = tree.Concat }
+| LSHIFT { $$.val = tree.LShift }
+| RSHIFT { $$.val = tree.RShift }
+| FETCHVAL { $$.val = tree.JSONFetchVal }
+| FETCHTEXT { $$.val = tree.JSONFetchText }
+| FETCHVAL_PATH { $$.val = tree.JSONFetchValPath }
+| FETCHTEXT_PATH { $$.val = tree.JSONFetchTextPath }
+| AND_AND { $$.val = tree.Overlaps }
+| TEXTSEARCHMATCH { $$.val = tree.TextSearchMatch }
+
 math_op:
   '+' { $$.val = tree.Plus  }
 | '-' { $$.val = tree.Minus }
@@ -12790,6 +12986,7 @@ math_op:
 | LESS_EQUALS    { $$.val = tree.LE }
 | GREATER_EQUALS { $$.val = tree.GE }
 | NOT_EQUALS     { $$.val = tree.NE }
+| '@' { $$.val = tree.UnaryAbsolute }
 
 subquery_op:
   math_op
@@ -13659,6 +13856,7 @@ unreserved_keyword:
 | CASCADED
 | CATEGORY
 | CHANGEFEED
+| CLASS
 | CLOSE
 | CLUSTER
 | COLLATABLE
@@ -13706,6 +13904,7 @@ unreserved_keyword:
 | DESTINATION
 | DETACH
 | DETACHED
+| DICTIONARY
 | DISABLE
 | DISCARD
 | DOMAIN
@@ -13718,6 +13917,7 @@ unreserved_keyword:
 | ENUM
 | ENUMS
 | ESCAPE
+| EVENT
 | EXCLUDE
 | EXCLUDING
 | EXECUTE
@@ -13888,6 +14088,7 @@ unreserved_keyword:
 | PARALLEL
 | PARAMETER
 | PARENT
+| PARSER
 | PARTIAL
 | PARTITION
 | PARTITIONS
@@ -13902,6 +14103,7 @@ unreserved_keyword:
 | POINTM
 | POINTZ
 | POINTZM
+| POLICY
 | POLYGONM
 | POLYGONZ
 | POLYGONZM

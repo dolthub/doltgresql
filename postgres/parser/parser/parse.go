@@ -231,6 +231,16 @@ func unaryNegation(e tree.Expr) tree.Expr {
 	return &tree.UnaryExpr{Operator: tree.UnaryMinus, Expr: e}
 }
 
+func absolute(e tree.Expr) tree.Expr {
+	if cst, ok := e.(*tree.NumVal); ok {
+		cst.Absolute()
+		return cst
+	}
+
+	// Common case.
+	return &tree.UnaryExpr{Operator: tree.UnaryAbsolute, Expr: e}
+}
+
 // Parse parses a sql statement string and returns a list of Statements.
 func Parse(sql string) (Statements, error) {
 	var p Parser
