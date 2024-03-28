@@ -31,8 +31,36 @@ type CreateAggregate struct {
 }
 
 // Format implements the NodeFormatter interface.
-func (n *CreateAggregate) Format(ctx *FmtCtx) {
-
+func (node *CreateAggregate) Format(ctx *FmtCtx) {
+	ctx.WriteString("CREATE ")
+	if node.Replace {
+		ctx.WriteString("OR REPLACE ")
+	}
+	ctx.WriteString("AGGREGATE ")
+	ctx.FormatNode(&node.Name)
+	ctx.WriteString(" ( ")
+	if node.OrderByArgs != nil {
+		if node.Args != nil {
+			ctx.FormatNode(node.Args)
+		}
+		ctx.WriteString(" ORDER BY ")
+		ctx.FormatNode(node.OrderByArgs)
+		ctx.WriteString(" ) ( ")
+	} else if node.Args != nil {
+		ctx.FormatNode(node.Args)
+		ctx.WriteString(" ) ( ")
+	} else {
+		ctx.WriteString("BASETYPE = ")
+		ctx.WriteString(node.BaseType.SQLString())
+		ctx.WriteString(" , ")
+	}
+	ctx.WriteString("SFUNC = ")
+	ctx.WriteString(node.SFunc)
+	ctx.WriteString(" , STYPE = ")
+	ctx.WriteString(node.BaseType.SQLString())
+	if node.AggOptions != nil {
+		ctx.FormatNode(&node.AggOptions)
+	}
 }
 
 type FinalFuncModifyType string
@@ -47,10 +75,8 @@ type CreateAggOptions []CreateAggOption
 
 // Format implements the NodeFormatter interface.
 func (node *CreateAggOptions) Format(ctx *FmtCtx) {
-	for i, option := range *node {
-		if i != 0 {
-			ctx.WriteString(" , ")
-		}
+	for _, option := range *node {
+		ctx.WriteString(" , ")
 		ctx.FormatNode(&option)
 	}
 }
