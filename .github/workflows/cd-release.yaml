@@ -51,6 +51,10 @@ jobs:
         run: gh pr merge --merge --auto "cd-release"
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      - name: Install Go
+        uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
       - name: Build SQL Syntax
         run: ./build.sh
         working-directory: ./postgres/parser
@@ -60,7 +64,7 @@ jobs:
         run: |
           latest=$(git rev-parse HEAD)
           echo "commitish=$latest" >> $GITHUB_OUTPUT
-          GO_BUILD_VERSION=1.21 scripts/build_binaries.sh
+          GO_BUILD_VERSION=1.22 scripts/build_binaries.sh
       - name: Create Release
         id: create_release
         uses: dolthub/create-release@v1
