@@ -1207,6 +1207,7 @@ func (u *sqlSymUnion) aggregatesToDrop() []tree.AggregateToDrop {
 %type <tree.Exprs> execute_param_clause
 %type <types.IntervalTypeMetadata> opt_interval_qualifier interval_qualifier interval_second
 %type <tree.Expr> overlay_placing
+%type <tree.Exprs> var_list
 
 %type <bool> opt_unique opt_concurrently opt_cluster
 %type <str> opt_using_method
@@ -5866,13 +5867,23 @@ set_session_or_local_cmd:
 
 generic_set_single_config:
   // var_value includes DEFAULT expr
-  name to_or_eq var_value
+  name to_or_eq var_list
   {
-    $$.val = &tree.SetVar{Name: $1, Values: tree.Exprs{$3.expr()}}
+    $$.val = &tree.SetVar{Name: $1, Values: $3.exprs()}
   }
 | name FROM CURRENT
   {
     $$.val = &tree.SetVar{Name: $1, FromCurrent: true}
+  }
+
+var_list:
+  var_value
+  {
+    $$.val = tree.Exprs{$1.expr()}
+  }
+| var_list ',' var_value
+  {
+    $$.val = append($1.exprs(), $3.expr())
   }
 
 set_var:

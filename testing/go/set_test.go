@@ -82,12 +82,20 @@ var setStmts = []ScriptTest{
 				Expected: []sql.Row{{"\"$user\", public"}},
 			},
 			{
-				Query:    "SET SCHEMA 'postgres';",
+				Query:    "SET SCHEMA postgres;",
 				Expected: []sql.Row{{}},
 			},
 			{
 				Query:    "SHOW search_path",
 				Expected: []sql.Row{{"postgres"}},
+			},
+			{
+				Query:    "SET search_path = public, pg_catalog;",
+				Expected: []sql.Row{{}},
+			},
+			{
+				Query:    "SHOW search_path",
+				Expected: []sql.Row{{"public, pg_catalog"}},
 			},
 		},
 	},

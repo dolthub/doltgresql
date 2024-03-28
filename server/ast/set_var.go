@@ -16,6 +16,7 @@ package ast
 
 import (
 	"fmt"
+	"strings"
 
 	vitess "github.com/dolthub/vitess/go/vt/sqlparser"
 
@@ -35,9 +36,24 @@ func nodeSetVar(node *tree.SetVar) (vitess.Statement, error) {
 		// TODO: takes effect for only the current transaction rather than the current session.
 		return nil, fmt.Errorf("SET LOCAL is not yet supported")
 	}
-	expr, err := nodeExpr(node.Values[0])
-	if err != nil {
-		return nil, err
+	var expr vitess.Expr
+	var err error
+	if len(node.Values) == 0 {
+		// sanity check
+		return nil, fmt.Errorf(`ERROR: syntax error at or near ";"'`)
+	} else if len(node.Values) > 1 {
+		vals := make([]string, len(node.Values))
+		for i, val := range node.Values {
+			vals[i] = val.String()
+		}
+		expr = &vitess.ColName{
+			Name: vitess.NewColIdent(strings.Join(vals, ", ")),
+		}
+	} else {
+		expr, err = nodeExpr(node.Values[0])
+		if err != nil {
+			return nil, err
+		}
 	}
 	setStmt := &vitess.Set{
 		Exprs: vitess.SetVarExprs{&vitess.SetVarExpr{
