@@ -5898,9 +5898,9 @@ set_var:
 set_special_syntax:
 // "SET SCHEMA 'value' is an alias for SET search_path TO value. Only
 // one schema can be specified using this syntax."
-  SCHEMA var_value
+  SCHEMA SCONST
   {
-    $$.val = &tree.SetVar{Name: "search_path", Values: tree.Exprs{$2.expr()}}
+    $$.val = &tree.SetVar{Name: "search_path", Values: tree.Exprs{tree.NewStrVal($2)}}
   }
 // See comment for the non-terminal for SET NAMES below.
 | set_names
@@ -5937,10 +5937,10 @@ set_role:
 // See https://www.postgresql.org/docs/10/static/sql-set.html
 // Also see https://www.postgresql.org/docs/9.6/static/multibyte.html#AEN39236
 set_names:
-  NAMES var_value
+  NAMES SCONST
   {
     /* SKIP DOC */
-    $$.val = &tree.SetVar{Name: "client_encoding", Values: tree.Exprs{$2.expr()}}
+    $$.val = &tree.SetVar{Name: "client_encoding", Values: tree.Exprs{tree.NewStrVal($2)}}
   }
 | NAMES
   {

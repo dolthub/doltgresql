@@ -82,7 +82,7 @@ var setStmts = []ScriptTest{
 				Expected: []sql.Row{{"\"$user\", public"}},
 			},
 			{
-				Query:    "SET SCHEMA postgres;",
+				Query:    "SET SCHEMA 'postgres';",
 				Expected: []sql.Row{{}},
 			},
 			{
@@ -96,6 +96,14 @@ var setStmts = []ScriptTest{
 			{
 				Query:    "SHOW search_path",
 				Expected: []sql.Row{{"public, pg_catalog"}},
+			},
+			{
+				Query:    "SET search_path = postgres;",
+				Expected: []sql.Row{{}},
+			},
+			{
+				Query:    "SHOW search_path",
+				Expected: []sql.Row{{"postgres"}},
 			},
 		},
 	},
@@ -116,7 +124,7 @@ var setStmts = []ScriptTest{
 				Expected: []sql.Row{{"LATIN1"}},
 			},
 			{
-				Query:    "SET NAMES DEFAULT;",
+				Query:    "SET client_encoding = DEFAULT;",
 				Expected: []sql.Row{{}},
 			},
 			{
