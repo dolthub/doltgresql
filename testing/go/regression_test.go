@@ -203,5 +203,14 @@ func TestRegressions(t *testing.T) {
 				},
 			},
 		},
+		{
+			Name: "SERIAL type column definition",
+			Assertions: []ScriptTestAssertion{
+				{
+					Query:    "CREATE TABLE sbtest1(id SERIAL, k INTEGER DEFAULT '0' NOT NULL, c CHAR(120) DEFAULT '' NOT NULL, pad CHAR(60) DEFAULT '' NOT NULL);",
+					Expected: []sql.Row{},
+				},
+			},
+		},
 	})
 }
