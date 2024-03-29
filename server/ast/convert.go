@@ -60,14 +60,8 @@ func Convert(postgresStmt parser.Statement) (vitess.Statement, error) {
 		return nodeCancelSessions(stmt)
 	case *tree.CannedOptPlan:
 		return nodeCannedOptPlan(stmt)
-	case *tree.CommentOnColumn:
-		return nodeCommentOnColumn(stmt)
-	case *tree.CommentOnDatabase:
-		return nodeCommentOnDatabase(stmt)
-	case *tree.CommentOnIndex:
-		return nodeCommentOnIndex(stmt)
-	case *tree.CommentOnTable:
-		return nodeCommentOnTable(stmt)
+	case *tree.Comment:
+		return nodeComment(stmt)
 	case *tree.CommitTransaction:
 		return nodeCommitTransaction(stmt)
 	case *tree.ControlJobs:

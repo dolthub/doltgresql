@@ -383,6 +383,7 @@ const (
 	NotRegMatch
 	RegIMatch
 	NotRegIMatch
+	TextSearchMatch
 	IsDistinctFrom
 	IsNotDistinctFrom
 	Contains
@@ -434,6 +435,7 @@ var comparisonOpName = [...]string{
 	NotRegMatch:       "!~",
 	RegIMatch:         "~*",
 	NotRegIMatch:      "!~*",
+	TextSearchMatch:   "@@",
 	IsDistinctFrom:    "IS DISTINCT FROM",
 	IsNotDistinctFrom: "IS NOT DISTINCT FROM",
 	Contains:          "@>",
@@ -1216,6 +1218,7 @@ const (
 	UnaryComplement
 	UnarySqrt
 	UnaryCbrt
+	UnaryAbsolute
 
 	NumUnaryOperators
 )
@@ -1227,6 +1230,7 @@ var unaryOpName = [...]string{
 	UnaryComplement: "~",
 	UnarySqrt:       "|/",
 	UnaryCbrt:       "||/",
+	UnaryAbsolute:   "@",
 }
 
 func (i UnaryOperator) String() string {

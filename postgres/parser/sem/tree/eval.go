@@ -147,6 +147,29 @@ var UnaryOps = unaryOpFixups(map[UnaryOperator]unaryOpOverload{
 			Volatility: VolatilityImmutable,
 		},
 	},
+
+	UnaryAbsolute: {
+		&UnaryOp{
+			Typ:        types.Int,
+			ReturnType: types.Int,
+			Volatility: VolatilityImmutable,
+		},
+		&UnaryOp{
+			Typ:        types.Float,
+			ReturnType: types.Float,
+			Volatility: VolatilityImmutable,
+		},
+		&UnaryOp{
+			Typ:        types.Decimal,
+			ReturnType: types.Decimal,
+			Volatility: VolatilityImmutable,
+		},
+		&UnaryOp{
+			Typ:        types.Interval,
+			ReturnType: types.Interval,
+			Volatility: VolatilityImmutable,
+		},
+	},
 })
 
 // BinOp is a binary operator.

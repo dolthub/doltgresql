@@ -337,6 +337,8 @@ func nodeExpr(node tree.Expr) (vitess.Expr, error) {
 			return nil, fmt.Errorf("~* is not yet supported")
 		case tree.NotRegIMatch:
 			return nil, fmt.Errorf("~* is not yet supported")
+		case tree.TextSearchMatch:
+			return nil, fmt.Errorf("@@ is not yet supported")
 		case tree.IsDistinctFrom:
 			return nil, fmt.Errorf("IS DISTINCT FROM is not yet supported")
 		case tree.IsNotDistinctFrom:
@@ -607,6 +609,9 @@ func nodeExpr(node tree.Expr) (vitess.Expr, error) {
 		case tree.UnaryCbrt:
 			//TODO: replace with a function
 			return nil, fmt.Errorf("cube root operator is not yet supported")
+		case tree.UnaryAbsolute:
+			//TODO: replace with a function
+			return nil, fmt.Errorf("absolute operator is not yet supported")
 		default:
 			return nil, fmt.Errorf("the unary operator used is not yet supported")
 		}

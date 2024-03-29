@@ -441,34 +441,10 @@ func (*CannedOptPlan) StatementType() StatementType { return Rows }
 func (*CannedOptPlan) StatementTag() string { return "PREPARE AS OPT PLAN" }
 
 // StatementType implements the Statement interface.
-func (*CommentOnColumn) StatementType() StatementType { return DDL }
+func (*Comment) StatementType() StatementType { return DDL }
 
 // StatementTag returns a short string identifying the type of statement.
-func (*CommentOnColumn) StatementTag() string { return "COMMENT ON COLUMN" }
-
-// StatementType implements the Statement interface.
-func (*CommentOnDatabase) StatementType() StatementType { return DDL }
-
-// StatementTag returns a short string identifying the type of statement.
-func (*CommentOnDatabase) StatementTag() string { return "COMMENT ON DATABASE" }
-
-// StatementType implements the Statement interface.
-func (*CommentOnExtension) StatementType() StatementType { return DDL }
-
-// StatementTag returns a short string identifying the type of statement.
-func (*CommentOnExtension) StatementTag() string { return "COMMENT ON EXTENSION" }
-
-// StatementType implements the Statement interface.
-func (*CommentOnIndex) StatementType() StatementType { return DDL }
-
-// StatementTag returns a short string identifying the type of statement.
-func (*CommentOnIndex) StatementTag() string { return "COMMENT ON INDEX" }
-
-// StatementType implements the Statement interface.
-func (*CommentOnTable) StatementType() StatementType { return DDL }
-
-// StatementTag returns a short string identifying the type of statement.
-func (*CommentOnTable) StatementTag() string { return "COMMENT ON TABLE" }
+func (*Comment) StatementTag() string { return "COMMENT" }
 
 // StatementType implements the Statement interface.
 func (*CommitTransaction) StatementType() StatementType { return Ack }
@@ -1237,11 +1213,7 @@ func (n *ControlJobsForSchedules) String() string   { return AsString(n) }
 func (n *CancelQueries) String() string             { return AsString(n) }
 func (n *CancelSessions) String() string            { return AsString(n) }
 func (n *CannedOptPlan) String() string             { return AsString(n) }
-func (n *CommentOnColumn) String() string           { return AsString(n) }
-func (n *CommentOnDatabase) String() string         { return AsString(n) }
-func (n *CommentOnExtension) String() string        { return AsString(n) }
-func (n *CommentOnIndex) String() string            { return AsString(n) }
-func (n *CommentOnTable) String() string            { return AsString(n) }
+func (n *Comment) String() string                   { return AsString(n) }
 func (n *CommitTransaction) String() string         { return AsString(n) }
 func (n *CopyFrom) String() string                  { return AsString(n) }
 func (n *CreateAggregate) String() string           { return AsString(n) }

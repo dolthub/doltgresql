@@ -352,6 +352,9 @@ func (s *scanner) scan(lval *sqlSymType) {
 			s.pos++
 			lval.id = CONTAINS
 			return
+		case '@': //@@
+			s.pos++
+			lval.id = TEXTSEARCHMATCH
 		}
 		return
 
