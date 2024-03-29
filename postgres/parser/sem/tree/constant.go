@@ -179,12 +179,6 @@ func (expr *NumVal) Negate() {
 	expr.negative = !expr.negative
 }
 
-// Absolute sets the negative field to false.
-// The parser calls this to simplify absolute expressions.
-func (expr *NumVal) Absolute() {
-	expr.negative = false
-}
-
 // Format implements the NodeFormatter interface.
 func (expr *NumVal) Format(ctx *FmtCtx) {
 	s := expr.origString
