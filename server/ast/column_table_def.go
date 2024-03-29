@@ -94,6 +94,8 @@ func nodeColumnTableDef(node *tree.ColumnTableDef) (_ *vitess.ColumnDefinition, 
 		//TODO: need to add support for VIRTUAL in the parser
 		generatedStored = true
 	}
+	// TODO: need to add support for SEQUENCE.
+	//  Unable use auto_increment using node.IsSerial value.
 	return &vitess.ColumnDefinition{
 		Name: vitess.NewColIdent(string(node.Name)),
 		Type: vitess.ColumnType{
@@ -101,7 +103,7 @@ func nodeColumnTableDef(node *tree.ColumnTableDef) (_ *vitess.ColumnDefinition, 
 			ResolvedType:  resolvedType,
 			Null:          isNull,
 			NotNull:       isNotNull,
-			Autoincrement: vitess.BoolVal(node.IsSerial),
+			Autoincrement: false,
 			Default:       defaultExpr,
 			Length:        convertType.Length,
 			Scale:         convertType.Scale,
