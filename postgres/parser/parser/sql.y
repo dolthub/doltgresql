@@ -1207,6 +1207,7 @@ func (u *sqlSymUnion) aggregatesToDrop() []tree.AggregateToDrop {
 %type <tree.Exprs> execute_param_clause
 %type <types.IntervalTypeMetadata> opt_interval_qualifier interval_qualifier interval_second
 %type <tree.Expr> overlay_placing
+%type <tree.Exprs> var_list
 
 %type <bool> opt_unique opt_concurrently opt_cluster
 %type <str> opt_using_method
@@ -5866,13 +5867,23 @@ set_session_or_local_cmd:
 
 generic_set_single_config:
   // var_value includes DEFAULT expr
-  name to_or_eq var_value
+  name to_or_eq var_list
   {
-    $$.val = &tree.SetVar{Name: $1, Values: tree.Exprs{$3.expr()}}
+    $$.val = &tree.SetVar{Name: $1, Values: $3.exprs()}
   }
 | name FROM CURRENT
   {
     $$.val = &tree.SetVar{Name: $1, FromCurrent: true}
+  }
+
+var_list:
+  var_value
+  {
+    $$.val = tree.Exprs{$1.expr()}
+  }
+| var_list ',' var_value
+  {
+    $$.val = append($1.exprs(), $3.expr())
   }
 
 set_var:
@@ -5887,9 +5898,9 @@ set_var:
 set_special_syntax:
 // "SET SCHEMA 'value' is an alias for SET search_path TO value. Only
 // one schema can be specified using this syntax."
-  SCHEMA var_value
+  SCHEMA SCONST
   {
-    $$.val = &tree.SetVar{Name: "search_path", Values: tree.Exprs{$2.expr()}}
+    $$.val = &tree.SetVar{Name: "search_path", Values: tree.Exprs{tree.NewStrVal($2)}}
   }
 // See comment for the non-terminal for SET NAMES below.
 | set_names
@@ -5926,10 +5937,10 @@ set_role:
 // See https://www.postgresql.org/docs/10/static/sql-set.html
 // Also see https://www.postgresql.org/docs/9.6/static/multibyte.html#AEN39236
 set_names:
-  NAMES var_value
+  NAMES SCONST
   {
     /* SKIP DOC */
-    $$.val = &tree.SetVar{Name: "client_encoding", Values: tree.Exprs{$2.expr()}}
+    $$.val = &tree.SetVar{Name: "client_encoding", Values: tree.Exprs{tree.NewStrVal($2)}}
   }
 | NAMES
   {
