@@ -11769,7 +11769,7 @@ a_expr:
   }
 | '@' a_expr
   {
-    $$.val = absolute($2.expr())
+    $$.val = &tree.UnaryExpr{Operator: tree.UnaryAbsolute, Expr: $2.expr()}
   }
 | a_expr '+' a_expr
   {
