@@ -207,7 +207,11 @@ func TestRegressions(t *testing.T) {
 			Name: "SERIAL type column definition",
 			Assertions: []ScriptTestAssertion{
 				{
-					Query:    "CREATE TABLE sbtest1(id SERIAL, k INTEGER DEFAULT '0' NOT NULL, c CHAR(120) DEFAULT '' NOT NULL, pad CHAR(60) DEFAULT '' NOT NULL);",
+					Query:    "CREATE TABLE sbtest1(id SERIAL, k INTEGER DEFAULT '0' NOT NULL, c CHAR(120) DEFAULT '' NOT NULL, pad CHAR(60) DEFAULT '' NOT NULL, PRIMARY KEY (id));",
+					Expected: []sql.Row{},
+				},
+				{
+					Query:    "INSERT INTO sbtest1(k, c, pad) VALUES(4284, '8386864191', '67847967371'),(9261, '339736817', '3861551598704');",
 					Expected: []sql.Row{},
 				},
 			},
