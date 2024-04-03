@@ -19,12 +19,10 @@ import (
 	"go/constant"
 	"strings"
 
-	"github.com/dolthub/go-mysql-server/sql"
 	"github.com/dolthub/go-mysql-server/sql/expression"
 	vitess "github.com/dolthub/vitess/go/vt/sqlparser"
 
 	"github.com/dolthub/doltgresql/postgres/parser/sem/tree"
-	"github.com/dolthub/doltgresql/postgres/parser/types"
 	pgexprs "github.com/dolthub/doltgresql/server/expression"
 	"github.com/dolthub/doltgresql/server/functions/framework"
 	pgtypes "github.com/dolthub/doltgresql/server/types"
@@ -101,32 +99,27 @@ func nodeExpr(node tree.Expr) (vitess.Expr, error) {
 	case *tree.AnnotateTypeExpr:
 		return nil, fmt.Errorf("ANNOTATE_TYPE is not yet supported")
 	case *tree.Array:
-		//TODO: right now, this only works with boolean array values for the sake of demonstration
-		var sqlChildren []sql.Expression
-		var unresolvedChildren []vitess.Expr
-		var unresolvedIndexes []int
-		if len(node.Exprs) == 0 {
-			if node.ResolvedType().Family() == types.ArrayFamily && node.ResolvedType().ArrayContents().Family() == types.BoolFamily {
-				sqlChildren = []sql.Expression{expression.NewLiteral([]bool{}, pgtypes.BoolArray)}
-			} else {
-				return nil, fmt.Errorf("arrays are generally not yet supported")
+		unresolvedChildren := make([]vitess.Expr, len(node.Exprs))
+		var coercedType pgtypes.DoltgresType
+		if node.HasResolvedType() {
+			_, resolvedType, err := nodeResolvableTypeReference(node.ResolvedType())
+			if err != nil {
+				return nil, err
 			}
-		} else {
-			for _, arrayExpr := range node.Exprs {
-				if arrayVal, ok := arrayExpr.(*tree.DBool); ok && arrayVal != nil {
-					sqlChildren = append(sqlChildren, expression.NewLiteral(bool(*arrayVal), pgtypes.Bool))
-				} else {
-					unresolvedChild, err := nodeExpr(arrayExpr)
-					if err != nil {
-						return nil, err
-					}
-					unresolvedChildren = append(unresolvedChildren, unresolvedChild)
-					unresolvedIndexes = append(unresolvedIndexes, len(sqlChildren))
-					sqlChildren = append(sqlChildren, nil)
-				}
+			if arrayType, ok := resolvedType.(pgtypes.DoltgresArrayType); ok {
+				coercedType = arrayType
+			} else {
+				return nil, fmt.Errorf("array has invalid resolved type")
 			}
 		}
-		arrayExpr, err := pgexprs.NewArray(sqlChildren, unresolvedChildren, unresolvedIndexes, nil)
+		for i, arrayExpr := range node.Exprs {
+			var err error
+			unresolvedChildren[i], err = nodeExpr(arrayExpr)
+			if err != nil {
+				return nil, err
+			}
+		}
+		arrayExpr, err := pgexprs.NewArray(coercedType)
 		if err != nil {
 			return nil, err
 		}
@@ -375,7 +368,9 @@ func nodeExpr(node tree.Expr) (vitess.Expr, error) {
 	case *tree.DBitArray:
 		return nil, fmt.Errorf("the statement is not yet supported")
 	case *tree.DBool:
-		return nil, fmt.Errorf("the statement is not yet supported")
+		return vitess.InjectedExpr{
+			Expression: pgexprs.NewBoolLiteral(bool(*node)),
+		}, nil
 	case *tree.DBox2D:
 		return nil, fmt.Errorf("the statement is not yet supported")
 	case *tree.DBytes:

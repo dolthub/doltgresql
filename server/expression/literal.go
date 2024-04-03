@@ -36,6 +36,23 @@ var _ vitess.InjectableExpression = (*Literal)(nil)
 var _ sql.Expression = (*Literal)(nil)
 var _ framework.LiteralInterface = (*Literal)(nil)
 
+// NewBoolLiteral returns a new *Literal containing a boolean value.
+func NewBoolLiteral(val bool) *Literal {
+	return &Literal{
+		value: val,
+		typ:   pgtypes.Bool,
+	}
+}
+
+// NewFloatLiteral returns a new *Literal containing a NUMERIC value.
+func NewFloatLiteral(numericValue string) (*Literal, error) {
+	d, err := decimal.NewFromString(numericValue)
+	return &Literal{
+		value: d,
+		typ:   pgtypes.Numeric,
+	}, err
+}
+
 // NewIntegerLiteral returns a new *Literal containing an integer (INT2/4/8 or NUMERIC) value.
 func NewIntegerLiteral(integerValue string) (*Literal, error) {
 	i, err := strconv.ParseInt(integerValue, 10, 64)
@@ -60,15 +77,6 @@ func NewIntegerLiteral(integerValue string) (*Literal, error) {
 			typ:   pgtypes.Numeric,
 		}, err
 	}
-}
-
-// NewFloatLiteral returns a new *Literal containing a NUMERIC value.
-func NewFloatLiteral(numericValue string) (*Literal, error) {
-	d, err := decimal.NewFromString(numericValue)
-	return &Literal{
-		value: d,
-		typ:   pgtypes.Numeric,
-	}, err
 }
 
 // NewStringLiteral returns a new *Literal containing a VARCHAR value.
@@ -117,6 +125,12 @@ func (l *Literal) String() string {
 // equivalent functionality should be built into Doltgres (recommend the second approach).
 func (l *Literal) ToVitessLiteral() *vitess.SQLVal {
 	switch l.typ.BaseID() {
+	case pgtypes.Bool.BaseID():
+		if l.value.(bool) {
+			return vitess.NewIntVal([]byte("1"))
+		} else {
+			return vitess.NewIntVal([]byte("0"))
+		}
 	case pgtypes.Int32.BaseID():
 		return vitess.NewIntVal([]byte(strconv.FormatInt(int64(l.value.(int32)), 10)))
 	case pgtypes.Int64.BaseID():

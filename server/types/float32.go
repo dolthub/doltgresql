@@ -196,6 +196,11 @@ func (b Float32Type) SerializedCompare(v1 []byte, v2 []byte) (int, error) {
 	return bytes.Compare(v1, v2), nil
 }
 
+// SerializeType implements the DoltgresType interface.
+func (b Float32Type) SerializeType() ([]byte, error) {
+	return SerializationID_Float32.ToByteSlice(), nil
+}
+
 // SQL implements the DoltgresType interface.
 func (b Float32Type) SQL(ctx *sql.Context, dest []byte, v any) (sqltypes.Value, error) {
 	if v == nil {
@@ -211,6 +216,11 @@ func (b Float32Type) SQL(ctx *sql.Context, dest []byte, v any) (sqltypes.Value, 
 // String implements the DoltgresType interface.
 func (b Float32Type) String() string {
 	return "real"
+}
+
+// ToArrayType implements the DoltgresType interface.
+func (b Float32Type) ToArrayType() DoltgresArrayType {
+	return Float32Array
 }
 
 // Type implements the DoltgresType interface.

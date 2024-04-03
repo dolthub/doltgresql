@@ -16,8 +16,10 @@ package types
 
 import (
 	"bytes"
+	"encoding/binary"
 	"fmt"
 	"reflect"
+	"unicode/utf8"
 
 	"github.com/lib/pq/oid"
 
@@ -28,17 +30,19 @@ import (
 )
 
 const (
-	// varCharMax is the maximum number of characters (not bytes) that a VarChar may contain.
-	varCharMax = 10485760
+	// VarCharMaxLength is the maximum number of characters (not bytes) that a VarChar may contain.
+	VarCharMaxLength = 10485760
 	// varCharInline is the maximum number of characters (not bytes) that are "guaranteed" to fit inline.
 	varCharInline = 16383
 )
 
 // VarCharInline is a varchar that has the max inline length automatically set.
+// TODO: probably delete me
 var VarCharInline = VarCharType{Length: varCharInline}
 
 // VarCharMax is a varchar that has the max length.
-var VarCharMax = VarCharType{Length: varCharMax}
+// TODO: rename me
+var VarCharMax = VarCharType{Length: VarCharMaxLength}
 
 // VarCharType is the extended type implementation of the PostgreSQL varchar.
 type VarCharType struct {
@@ -89,10 +93,37 @@ func (b VarCharType) Compare(v1 any, v2 any) (int, error) {
 
 // Convert implements the DoltgresType interface.
 func (b VarCharType) Convert(val any) (any, sql.ConvertInRange, error) {
+	// TODO: need to check if this always truncates for values that are too large, or if it's just the default behavior
 	switch val := val.(type) {
 	case string:
+		// First we'll do a byte-length check since it's always >= the rune-count check, and it's far faster
+		if uint32(len(val)) > b.Length {
+			// The byte-length is greater, so now we'll do a rune-count
+			if uint32(utf8.RuneCountInString(val)) > b.Length {
+				// TODO: figure out if there's a faster way to truncate based on rune count
+				startString := val
+				for i := uint32(0); i < b.Length; i++ {
+					_, size := utf8.DecodeRuneInString(val)
+					val = val[size:]
+				}
+				return startString[:len(startString)-len(val)], sql.InRange, nil
+			}
+		}
 		return val, sql.InRange, nil
 	case []byte:
+		// First we'll do a byte-length check since it's always >= the rune-count check, and it's far faster
+		if uint32(len(val)) > b.Length {
+			// The byte-length is greater, so now we'll do a rune-count
+			if uint32(utf8.RuneCount(val)) > b.Length {
+				// TODO: figure out if there's a faster way to truncate based on rune count
+				startBytes := val
+				for i := uint32(0); i < b.Length; i++ {
+					_, size := utf8.DecodeRune(val)
+					val = val[size:]
+				}
+				return string(startBytes[:len(startBytes)-len(val)]), sql.InRange, nil
+			}
+		}
 		return string(val), sql.InRange, nil
 	case nil:
 		return nil, sql.InRange, nil
@@ -164,8 +195,16 @@ func (b VarCharType) SerializedCompare(v1 []byte, v2 []byte) (int, error) {
 		return -1, nil
 	}
 
-	//TODO: can be byte-compare unicode strings like this?
+	//TODO: can we byte-compare unicode strings like this?
 	return bytes.Compare(v1, v2), nil
+}
+
+// SerializeType implements the DoltgresType interface.
+func (b VarCharType) SerializeType() ([]byte, error) {
+	t := make([]byte, 6)
+	copy(t, SerializationID_VarChar.ToByteSlice())
+	binary.LittleEndian.PutUint32(t[2:], b.Length)
+	return t, nil
 }
 
 // SQL implements the DoltgresType interface.
@@ -182,7 +221,17 @@ func (b VarCharType) SQL(ctx *sql.Context, dest []byte, v any) (sqltypes.Value, 
 
 // String implements the DoltgresType interface.
 func (b VarCharType) String() string {
+	if b.Length == VarCharMaxLength {
+		return "varchar"
+	}
 	return fmt.Sprintf("varchar(%d)", b.Length)
+}
+
+// ToArrayType implements the DoltgresType interface.
+func (b VarCharType) ToArrayType() DoltgresArrayType {
+	return createArrayTypeWithFuncs(b, SerializationID_VarCharArray, oid.T__varchar, arrayContainerFunctions{
+		SQL: varCharArraySQL,
+	})
 }
 
 // Type implements the DoltgresType interface.

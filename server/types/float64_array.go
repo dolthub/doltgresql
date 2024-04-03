@@ -14,9 +14,7 @@
 
 package types
 
-import (
-	"github.com/lib/pq/oid"
-)
+import "github.com/lib/pq/oid"
 
-// BoolArray is the array variant of Bool.
-var BoolArray = createArrayType(Bool, SerializationID_BoolArray, oid.T__bool)
+// Float64Array is the array variant of Float64.
+var Float64Array = createArrayType(Float64, SerializationID_Float64Array, oid.T__float8)

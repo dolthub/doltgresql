@@ -205,6 +205,11 @@ func (b BoolType) SerializedCompare(v1 []byte, v2 []byte) (int, error) {
 	}
 }
 
+// SerializeType implements the DoltgresType interface.
+func (b BoolType) SerializeType() ([]byte, error) {
+	return SerializationID_Bool.ToByteSlice(), nil
+}
+
 // SQL implements the DoltgresType interface.
 func (b BoolType) SQL(ctx *sql.Context, dest []byte, v any) (sqltypes.Value, error) {
 	if v == nil {
@@ -227,6 +232,11 @@ func (b BoolType) SQL(ctx *sql.Context, dest []byte, v any) (sqltypes.Value, err
 // String implements the DoltgresType interface.
 func (b BoolType) String() string {
 	return "boolean"
+}
+
+// ToArrayType implements the DoltgresType interface.
+func (b BoolType) ToArrayType() DoltgresArrayType {
+	return BoolArray
 }
 
 // Type implements the DoltgresType interface.
