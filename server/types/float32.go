@@ -51,8 +51,12 @@ func (b Float32Type) CollationCoercibility(ctx *sql.Context) (collation sql.Coll
 
 // Compare implements the DoltgresType interface.
 func (b Float32Type) Compare(v1 any, v2 any) (int, error) {
-	if hasNulls, res := types.CompareNulls(v1, v2); hasNulls {
-		return res, nil
+	if v1 == nil && v2 == nil {
+		return 0, nil
+	} else if v1 != nil && v2 == nil {
+		return 1, nil
+	} else if v1 == nil && v2 != nil {
+		return -1, nil
 	}
 
 	ac, _, err := b.Convert(v1)

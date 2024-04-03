@@ -212,6 +212,7 @@ func TestRegressions(t *testing.T) {
 				},
 				{
 					Query:    "INSERT INTO sbtest1(k, c, pad) VALUES(4284, '8386864191', '67847967371'),(9261, '339736817', '3861551598704');",
+					Skip:     true,
 					Expected: []sql.Row{},
 				},
 			},

@@ -49,8 +49,12 @@ func (b Int16Type) CollationCoercibility(ctx *sql.Context) (collation sql.Collat
 
 // Compare implements the DoltgresType interface.
 func (b Int16Type) Compare(v1 any, v2 any) (int, error) {
-	if hasNulls, res := types.CompareNulls(v1, v2); hasNulls {
-		return res, nil
+	if v1 == nil && v2 == nil {
+		return 0, nil
+	} else if v1 != nil && v2 == nil {
+		return 1, nil
+	} else if v1 == nil && v2 != nil {
+		return -1, nil
 	}
 
 	ac, _, err := b.Convert(v1)
