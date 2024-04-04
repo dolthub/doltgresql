@@ -224,7 +224,7 @@ func (array *Array) handleEvaluationCast(ctx *sql.Context, baseResultTypeID pgty
 		case query.Type_DATE, query.Type_DATETIME, query.Type_TIMESTAMP:
 			return nil, fmt.Errorf("need to add DoltgresType equivalents to DATETIME")
 		case query.Type_CHAR, query.Type_VARCHAR, query.Type_TEXT:
-			paramType = pgtypes.VarCharMax
+			paramType = pgtypes.VarChar
 		case query.Type_ENUM:
 			paramType = pgtypes.Int16
 		case query.Type_SET:
@@ -313,7 +313,7 @@ func (array *Array) typeRequiresCasting() (pgtypes.DoltgresArrayType, bool) {
 					// TODO: add the Doltgres equivalents for these
 					return pgtypes.AnyArray, false
 				case query.Type_CHAR, query.Type_VARCHAR, query.Type_TEXT:
-					childType = pgtypes.VarCharMax
+					childType = pgtypes.VarChar
 				case query.Type_ENUM:
 					childType = pgtypes.Int16
 				case query.Type_SET:

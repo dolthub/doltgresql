@@ -177,7 +177,7 @@ func init() {
 	})
 	MustAddTypeCast(TypeCast{
 		FromType: pgtypes.Float32,
-		ToType:   pgtypes.VarCharMax,
+		ToType:   pgtypes.VarChar,
 		Function: func(ctx Context, val any) (any, error) {
 			return strconv.FormatFloat(float64(val.(float32)), 'g', -1, 32), nil
 		},
@@ -228,7 +228,7 @@ func init() {
 	})
 	MustAddTypeCast(TypeCast{
 		FromType: pgtypes.Float64,
-		ToType:   pgtypes.VarCharMax,
+		ToType:   pgtypes.VarChar,
 		Function: func(ctx Context, val any) (any, error) {
 			return strconv.FormatFloat(val.(float64), 'g', -1, 64), nil
 		},
@@ -270,7 +270,7 @@ func init() {
 	})
 	MustAddTypeCast(TypeCast{
 		FromType: pgtypes.Int16,
-		ToType:   pgtypes.VarCharMax,
+		ToType:   pgtypes.VarChar,
 		Function: func(ctx Context, val any) (any, error) {
 			return strconv.FormatInt(int64(val.(int16)), 10), nil
 		},
@@ -315,7 +315,7 @@ func init() {
 	})
 	MustAddTypeCast(TypeCast{
 		FromType: pgtypes.Int32,
-		ToType:   pgtypes.VarCharMax,
+		ToType:   pgtypes.VarChar,
 		Function: func(ctx Context, val any) (any, error) {
 			return strconv.FormatInt(int64(val.(int32)), 10), nil
 		},
@@ -363,7 +363,7 @@ func init() {
 	})
 	MustAddTypeCast(TypeCast{
 		FromType: pgtypes.Int64,
-		ToType:   pgtypes.VarCharMax,
+		ToType:   pgtypes.VarChar,
 		Function: func(ctx Context, val any) (any, error) {
 			return strconv.FormatInt(val.(int64), 10), nil
 		},
@@ -419,13 +419,13 @@ func init() {
 	})
 	MustAddTypeCast(TypeCast{
 		FromType: pgtypes.Numeric,
-		ToType:   pgtypes.VarCharMax,
+		ToType:   pgtypes.VarChar,
 		Function: func(ctx Context, val any) (any, error) {
 			return val.(decimal.Decimal).String(), nil
 		},
 	})
 	MustAddTypeCast(TypeCast{
-		FromType: pgtypes.VarCharMax,
+		FromType: pgtypes.VarChar,
 		ToType:   pgtypes.Bool,
 		Function: func(ctx Context, val any) (any, error) {
 			lowerVal := strings.TrimSpace(strings.ToLower(val.(string)))
@@ -439,7 +439,7 @@ func init() {
 		},
 	})
 	MustAddTypeCast(TypeCast{
-		FromType: pgtypes.VarCharMax,
+		FromType: pgtypes.VarChar,
 		ToType:   pgtypes.Float32,
 		Function: func(ctx Context, val any) (any, error) {
 			out, err := strconv.ParseFloat(val.(string), 32)
@@ -447,7 +447,7 @@ func init() {
 		},
 	})
 	MustAddTypeCast(TypeCast{
-		FromType: pgtypes.VarCharMax,
+		FromType: pgtypes.VarChar,
 		ToType:   pgtypes.Float64,
 		Function: func(ctx Context, val any) (any, error) {
 			out, err := strconv.ParseFloat(val.(string), 64)
@@ -455,7 +455,7 @@ func init() {
 		},
 	})
 	MustAddTypeCast(TypeCast{
-		FromType: pgtypes.VarCharMax,
+		FromType: pgtypes.VarChar,
 		ToType:   pgtypes.Int16,
 		Function: func(ctx Context, val any) (any, error) {
 			out, err := strconv.ParseInt(val.(string), 10, 16)
@@ -463,7 +463,7 @@ func init() {
 		},
 	})
 	MustAddTypeCast(TypeCast{
-		FromType: pgtypes.VarCharMax,
+		FromType: pgtypes.VarChar,
 		ToType:   pgtypes.Int32,
 		Function: func(ctx Context, val any) (any, error) {
 			out, err := strconv.ParseInt(val.(string), 10, 32)
@@ -471,7 +471,7 @@ func init() {
 		},
 	})
 	MustAddTypeCast(TypeCast{
-		FromType: pgtypes.VarCharMax,
+		FromType: pgtypes.VarChar,
 		ToType:   pgtypes.Int64,
 		Function: func(ctx Context, val any) (any, error) {
 			out, err := strconv.ParseInt(val.(string), 10, 64)
@@ -479,14 +479,14 @@ func init() {
 		},
 	})
 	MustAddTypeCast(TypeCast{
-		FromType: pgtypes.VarCharMax,
+		FromType: pgtypes.VarChar,
 		ToType:   pgtypes.Numeric,
 		Function: func(ctx Context, val any) (any, error) {
 			return decimal.NewFromString(val.(string))
 		},
 	})
 	MustAddTypeCast(TypeCast{
-		FromType: pgtypes.VarCharMax,
+		FromType: pgtypes.VarChar,
 		ToType:   pgtypes.Uuid,
 		Function: func(ctx Context, val any) (any, error) {
 			return uuid.FromString(val.(string))

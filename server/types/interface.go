@@ -76,6 +76,6 @@ var typesFromBaseID = map[DoltgresTypeBaseID]DoltgresType{
 	Uuid.BaseID():         Uuid,
 	UuidArray.BaseID():    UuidArray,
 	Unknown.BaseID():      Unknown,
-	VarCharMax.BaseID():   VarCharMax,
+	VarChar.BaseID():      VarChar,
 	VarCharArray.BaseID(): VarCharArray,
 }

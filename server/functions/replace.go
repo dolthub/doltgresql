@@ -30,8 +30,8 @@ func init() {
 // replace_varchar_varchar_varchar represents the PostgreSQL function of the same name, taking the same parameters.
 var replace_varchar_varchar_varchar = framework.Function3{
 	Name:       "replace",
-	Return:     pgtypes.VarCharMax,
-	Parameters: []pgtypes.DoltgresType{pgtypes.VarCharMax, pgtypes.VarCharMax, pgtypes.VarCharMax},
+	Return:     pgtypes.VarChar,
+	Parameters: []pgtypes.DoltgresType{pgtypes.VarChar, pgtypes.VarChar, pgtypes.VarChar},
 	Callable: func(ctx framework.Context, str any, from any, to any) (any, error) {
 		if str == nil || from == nil || to == nil {
 			return nil, nil

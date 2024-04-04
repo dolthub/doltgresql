@@ -30,8 +30,8 @@ func init() {
 // substr_varchar_int32 represents the PostgreSQL function of the same name, taking the same parameters.
 var substr_varchar_int32 = framework.Function2{
 	Name:       "substr",
-	Return:     pgtypes.VarCharMax,
-	Parameters: []pgtypes.DoltgresType{pgtypes.VarCharMax, pgtypes.Int32},
+	Return:     pgtypes.VarChar,
+	Parameters: []pgtypes.DoltgresType{pgtypes.VarChar, pgtypes.Int32},
 	Callable: func(ctx framework.Context, str any, start any) (any, error) {
 		if str == nil || start == nil {
 			return nil, nil
@@ -52,8 +52,8 @@ var substr_varchar_int32 = framework.Function2{
 // substr_varchar_int32_int32 represents the PostgreSQL function of the same name, taking the same parameters.
 var substr_varchar_int32_int32 = framework.Function3{
 	Name:       "substr",
-	Return:     pgtypes.VarCharMax,
-	Parameters: []pgtypes.DoltgresType{pgtypes.VarCharMax, pgtypes.Int32, pgtypes.Int32},
+	Return:     pgtypes.VarChar,
+	Parameters: []pgtypes.DoltgresType{pgtypes.VarChar, pgtypes.Int32, pgtypes.Int32},
 	Callable: func(ctx framework.Context, str any, startInt any, countInt any) (any, error) {
 		if str == nil || startInt == nil || countInt == nil {
 			return nil, nil

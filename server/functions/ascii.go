@@ -28,7 +28,7 @@ func init() {
 var ascii_varchar = framework.Function1{
 	Name:       "ascii",
 	Return:     pgtypes.Int32,
-	Parameters: []pgtypes.DoltgresType{pgtypes.VarCharMax},
+	Parameters: []pgtypes.DoltgresType{pgtypes.VarChar},
 	Callable: func(ctx framework.Context, val1Interface any) (any, error) {
 		if val1Interface == nil {
 			return nil, nil

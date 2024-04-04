@@ -83,7 +83,7 @@ func NewIntegerLiteral(integerValue string) (*Literal, error) {
 func NewStringLiteral(stringValue string) (*Literal, error) {
 	return &Literal{
 		value: stringValue,
-		typ:   pgtypes.VarCharMax,
+		typ:   pgtypes.VarChar,
 	}, nil
 }
 
@@ -137,7 +137,7 @@ func (l *Literal) ToVitessLiteral() *vitess.SQLVal {
 		return vitess.NewIntVal([]byte(strconv.FormatInt(l.value.(int64), 10)))
 	case pgtypes.Numeric.BaseID():
 		return vitess.NewFloatVal([]byte(l.value.(decimal.Decimal).String()))
-	case pgtypes.VarCharMax.BaseID():
+	case pgtypes.VarChar.BaseID():
 		return vitess.NewStrVal([]byte(l.value.(string)))
 	default:
 		panic("unhandled type in temporary literal conversion: " + l.typ.String())

@@ -32,7 +32,7 @@ func init() {
 var char_length_varchar = framework.Function1{
 	Name:       "char_length",
 	Return:     pgtypes.Int32,
-	Parameters: []pgtypes.DoltgresType{pgtypes.VarCharMax},
+	Parameters: []pgtypes.DoltgresType{pgtypes.VarChar},
 	Callable: func(ctx framework.Context, val1 any) (any, error) {
 		if val1 == nil {
 			return nil, nil
