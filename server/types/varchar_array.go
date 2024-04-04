@@ -52,20 +52,26 @@ func varCharArraySQL(ctx *sql.Context, ac arrayContainer, dest []byte, valInterf
 			bb.WriteString("NULL")
 			continue
 		}
-		val := vals[i].(string)
-		containsDoubleQuote := strings.Contains(val, `"`)
-		if containsDoubleQuote {
-			val = strings.ReplaceAll(val, `"`, `\"`)
-		}
-		if containsDoubleQuote || strings.Contains(val, `,`) ||
-			strings.Contains(val, `{`) || strings.Contains(val, `}`) {
-			bb.WriteRune('"')
-			bb.WriteString(val)
-			bb.WriteRune('"')
-		} else {
-			bb.WriteString(val)
-		}
+		sqlStringQuote(&bb, vals[i].(string))
 	}
 	bb.WriteRune('}')
 	return sqltypes.MakeTrusted(sqltypes.Text, types.AppendAndSliceBytes(dest, bb.Bytes())), nil
+}
+
+// sqlStringQuote returns a string that has been quoted according to the rules defined by Postgres. Not all strings will
+// result in quoting, therefore this function takes care of all situations where a string does or does not need to be
+// quoted. Writes the result to the buffer.
+func sqlStringQuote(bb *bytes.Buffer, val string) {
+	containsDoubleQuote := strings.Contains(val, `"`)
+	if containsDoubleQuote {
+		val = strings.ReplaceAll(val, `"`, `\"`)
+	}
+	if containsDoubleQuote || strings.Contains(val, `,`) ||
+		strings.Contains(val, `{`) || strings.Contains(val, `}`) {
+		bb.WriteRune('"')
+		bb.WriteString(val)
+		bb.WriteRune('"')
+	} else {
+		bb.WriteString(val)
+	}
 }

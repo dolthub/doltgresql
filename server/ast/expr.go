@@ -484,7 +484,7 @@ func nodeExpr(node tree.Expr) (vitess.Expr, error) {
 				Expression: intLiteral,
 			}, err
 		case constant.Float:
-			numericLiteral, err := pgexprs.NewFloatLiteral(node.FormattedString())
+			numericLiteral, err := pgexprs.NewNumericLiteral(node.FormattedString())
 			return vitess.InjectedExpr{
 				Expression: numericLiteral,
 			}, err

@@ -44,8 +44,8 @@ func NewBoolLiteral(val bool) *Literal {
 	}
 }
 
-// NewFloatLiteral returns a new *Literal containing a NUMERIC value.
-func NewFloatLiteral(numericValue string) (*Literal, error) {
+// NewNumericLiteral returns a new *Literal containing a NUMERIC value.
+func NewNumericLiteral(numericValue string) (*Literal, error) {
 	d, err := decimal.NewFromString(numericValue)
 	return &Literal{
 		value: d,

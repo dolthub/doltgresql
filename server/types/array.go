@@ -286,6 +286,8 @@ func (ac arrayContainer) SerializeValue(valInterface any) ([]byte, error) {
 	arrayBuffer := bytes.Buffer{}
 	innerSerializedWidth := ac.innerType.MaxSerializedWidth()
 	// Write the total length to a buffer. We'll reuse this buffer for all uint-to-bytes operations.
+	// This does not seem to require the use of a pool, as it remains on the stack and does not escape to the heap.
+	// I am unsure of what changes could modify this behavior.
 	lengthBuffer := make([]byte, 8)
 	binary.BigEndian.PutUint64(lengthBuffer, uint64(len(vals)))
 	arrayBuffer.Write(lengthBuffer)

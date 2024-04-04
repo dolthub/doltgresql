@@ -272,7 +272,7 @@ var typesTests = []ScriptTest{
 		},
 	},
 	{
-		Name:  "Character varying array type, with length",
+		Name: "Character varying array type, with length",
 		SetUpScript: []string{
 			"CREATE TABLE t_varchar1 (v1 CHARACTER VARYING[]);",
 			"CREATE TABLE t_varchar2 (v1 CHARACTER VARYING(1)[]);",
