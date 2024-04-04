@@ -96,7 +96,7 @@ func (c *CompiledFunction) Type() sql.Type {
 		return resolvedFunction.Function.GetReturn()
 	}
 	// We can't resolve to a function before evaluation in this case, so we'll return something arbitrary
-	return pgtypes.VarCharMax
+	return pgtypes.VarChar
 }
 
 // IsNullable implements the interface sql.Expression.
@@ -204,9 +204,9 @@ func (c *CompiledFunction) evalParameters(ctx *sql.Context, row sql.Row) ([]any,
 			case query.Type_DATE, query.Type_DATETIME, query.Type_TIMESTAMP:
 				return nil, fmt.Errorf("need to add DoltgresType equivalents to DATETIME")
 			case query.Type_CHAR, query.Type_VARCHAR:
-				parameters[i], _, _ = pgtypes.VarCharMax.Convert(parameters[i])
+				parameters[i], _, _ = pgtypes.VarChar.Convert(parameters[i])
 			case query.Type_TEXT:
-				parameters[i], _, _ = pgtypes.VarCharMax.Convert(parameters[i])
+				parameters[i], _, _ = pgtypes.VarChar.Convert(parameters[i])
 			case query.Type_ENUM:
 				parameters[i], _, _ = pgtypes.Int16.Convert(parameters[i])
 			case query.Type_SET:
@@ -250,9 +250,9 @@ func (c *CompiledFunction) analyzeParameters() (originalTypes []pgtypes.Doltgres
 			case query.Type_DATE, query.Type_DATETIME, query.Type_TIMESTAMP:
 				return nil, nil, fmt.Errorf("need to add DoltgresType equivalents to DATETIME")
 			case query.Type_CHAR, query.Type_VARCHAR:
-				originalTypes[i] = pgtypes.VarCharMax
+				originalTypes[i] = pgtypes.VarChar
 			case query.Type_TEXT:
-				originalTypes[i] = pgtypes.VarCharMax
+				originalTypes[i] = pgtypes.VarChar
 			case query.Type_ENUM:
 				originalTypes[i] = pgtypes.Int16
 			case query.Type_SET:
@@ -314,9 +314,9 @@ func (c *CompiledFunction) possibleParameterTypes() []pgtypes.DoltgresType {
 				// TODO: need to add DoltgresType equivalents to DATETIME
 				possibleParamTypes[i] = pgtypes.Null
 			case query.Type_CHAR, query.Type_VARCHAR:
-				possibleParamTypes[i] = pgtypes.VarCharMax
+				possibleParamTypes[i] = pgtypes.VarChar
 			case query.Type_TEXT:
-				possibleParamTypes[i] = pgtypes.VarCharMax
+				possibleParamTypes[i] = pgtypes.VarChar
 			case query.Type_ENUM:
 				possibleParamTypes[i] = pgtypes.Int16
 			case query.Type_SET:

@@ -28,12 +28,12 @@ func init() {
 // rpad_varchar_int32 represents the PostgreSQL function of the same name, taking the same parameters.
 var rpad_varchar_int32 = framework.Function2{
 	Name:       "rpad",
-	Return:     pgtypes.VarCharMax,
-	Parameters: []pgtypes.DoltgresType{pgtypes.VarCharMax, pgtypes.Int32},
+	Return:     pgtypes.VarChar,
+	Parameters: []pgtypes.DoltgresType{pgtypes.VarChar, pgtypes.Int32},
 	Callable: func(ctx framework.Context, val1 any, val2 any) (any, error) {
 		return rpad_varchar_int32_varchar.Callable(framework.Context{
 			Context:       ctx.Context,
-			OriginalTypes: append(ctx.OriginalTypes, pgtypes.VarCharMax),
+			OriginalTypes: append(ctx.OriginalTypes, pgtypes.VarChar),
 			Sources:       append(ctx.Sources, framework.Source_Constant),
 		}, val1, val2, " ")
 	},
@@ -42,8 +42,8 @@ var rpad_varchar_int32 = framework.Function2{
 // rpad_varchar_int32_varchar represents the PostgreSQL function of the same name, taking the same parameters.
 var rpad_varchar_int32_varchar = framework.Function3{
 	Name:       "rpad",
-	Return:     pgtypes.VarCharMax,
-	Parameters: []pgtypes.DoltgresType{pgtypes.VarCharMax, pgtypes.Int32, pgtypes.VarCharMax},
+	Return:     pgtypes.VarChar,
+	Parameters: []pgtypes.DoltgresType{pgtypes.VarChar, pgtypes.Int32, pgtypes.VarChar},
 	Callable: func(ctx framework.Context, str any, length any, fill any) (any, error) {
 		if str == nil || length == nil || fill == nil {
 			return nil, nil

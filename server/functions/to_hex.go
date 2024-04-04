@@ -30,7 +30,7 @@ func init() {
 // to_hex_int64 represents the PostgreSQL function of the same name, taking the same parameters.
 var to_hex_int64 = framework.Function1{
 	Name:       "to_hex",
-	Return:     pgtypes.VarCharMax,
+	Return:     pgtypes.VarChar,
 	Parameters: []pgtypes.DoltgresType{pgtypes.Int64},
 	Callable: func(ctx framework.Context, val1 any) (any, error) {
 		if val1 == nil {

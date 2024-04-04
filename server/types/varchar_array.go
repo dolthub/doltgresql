@@ -25,7 +25,7 @@ import (
 )
 
 // VarCharArray is the array variant of VarChar.
-var VarCharArray = createArrayTypeWithFuncs(VarCharMax, SerializationID_VarCharArray, oid.T__varchar, arrayContainerFunctions{
+var VarCharArray = createArrayTypeWithFuncs(VarChar, SerializationID_VarCharArray, oid.T__varchar, arrayContainerFunctions{
 	SQL: varCharArraySQL,
 })
 

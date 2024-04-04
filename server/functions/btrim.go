@@ -27,8 +27,8 @@ func init() {
 // btrim_varchar_varchar represents the PostgreSQL function of the same name, taking the same parameters.
 var btrim_varchar_varchar = framework.Function2{
 	Name:       "btrim",
-	Return:     pgtypes.VarCharMax,
-	Parameters: []pgtypes.DoltgresType{pgtypes.VarCharMax, pgtypes.VarCharMax},
+	Return:     pgtypes.VarChar,
+	Parameters: []pgtypes.DoltgresType{pgtypes.VarChar, pgtypes.VarChar},
 	Callable: func(ctx framework.Context, str any, characters any) (any, error) {
 		if str == nil || characters == nil {
 			return nil, nil

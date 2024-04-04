@@ -36,13 +36,8 @@ const (
 	varCharInline = 16383
 )
 
-// VarCharInline is a varchar that has the max inline length automatically set.
-// TODO: probably delete me
-var VarCharInline = VarCharType{Length: varCharInline}
-
-// VarCharMax is a varchar that has the max length.
-// TODO: rename me
-var VarCharMax = VarCharType{Length: VarCharMaxLength}
+// VarChar is a varchar that has the max length.
+var VarChar = VarCharType{Length: VarCharMaxLength}
 
 // VarCharType is the extended type implementation of the PostgreSQL varchar.
 type VarCharType struct {
@@ -182,7 +177,7 @@ func (b VarCharType) OID() uint32 {
 
 // Promote implements the DoltgresType interface.
 func (b VarCharType) Promote() sql.Type {
-	return VarCharMax
+	return VarChar
 }
 
 // SerializedCompare implements the DoltgresType interface.

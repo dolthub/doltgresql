@@ -31,7 +31,7 @@ func init() {
 var strpos_varchar = framework.Function2{
 	Name:       "strpos",
 	Return:     pgtypes.Int32,
-	Parameters: []pgtypes.DoltgresType{pgtypes.VarCharMax, pgtypes.VarCharMax},
+	Parameters: []pgtypes.DoltgresType{pgtypes.VarChar, pgtypes.VarChar},
 	Callable: func(ctx framework.Context, str any, substring any) (any, error) {
 		if str == nil || substring == nil {
 			return nil, nil

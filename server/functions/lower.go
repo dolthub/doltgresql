@@ -30,8 +30,8 @@ func init() {
 // lower_varchar represents the PostgreSQL function of the same name, taking the same parameters.
 var lower_varchar = framework.Function1{
 	Name:       "lower",
-	Return:     pgtypes.VarCharMax,
-	Parameters: []pgtypes.DoltgresType{pgtypes.VarCharMax},
+	Return:     pgtypes.VarChar,
+	Parameters: []pgtypes.DoltgresType{pgtypes.VarChar},
 	Callable: func(ctx framework.Context, val1 any) (any, error) {
 		if val1 == nil {
 			return nil, nil

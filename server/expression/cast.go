@@ -123,14 +123,14 @@ func (c *Cast) Eval(ctx *sql.Context, row sql.Row) (any, error) {
 		case query.Type_DATE, query.Type_DATETIME, query.Type_TIMESTAMP:
 			return nil, fmt.Errorf("need to add DoltgresType equivalents to DATETIME")
 		case query.Type_CHAR, query.Type_VARCHAR:
-			fromType = pgtypes.VarCharMax
-			val, _, err = pgtypes.VarCharMax.Convert(val)
+			fromType = pgtypes.VarChar
+			val, _, err = pgtypes.VarChar.Convert(val)
 			if err != nil {
 				return nil, err
 			}
 		case query.Type_TEXT:
-			fromType = pgtypes.VarCharMax
-			val, _, err = pgtypes.VarCharMax.Convert(val)
+			fromType = pgtypes.VarChar
+			val, _, err = pgtypes.VarChar.Convert(val)
 			if err != nil {
 				return nil, err
 			}

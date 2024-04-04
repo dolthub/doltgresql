@@ -78,7 +78,7 @@ func (overload *OverloadDeduction) resolveByType(originalTypes []pgtypes.Doltgre
 	if sources[0] == Source_Constant {
 		castMap = specialOverloadCasts
 		switch t.BaseID() {
-		case pgtypes.VarCharMax.BaseID():
+		case pgtypes.VarChar.BaseID():
 			sourceStringLiteral = true
 		}
 	} else {

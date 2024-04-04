@@ -30,8 +30,8 @@ func init() {
 // repeat_varchar_int32 represents the PostgreSQL function of the same name, taking the same parameters.
 var repeat_varchar_int32 = framework.Function2{
 	Name:       "repeat",
-	Return:     pgtypes.VarCharMax,
-	Parameters: []pgtypes.DoltgresType{pgtypes.VarCharMax, pgtypes.Int32},
+	Return:     pgtypes.VarChar,
+	Parameters: []pgtypes.DoltgresType{pgtypes.VarChar, pgtypes.Int32},
 	Callable: func(ctx framework.Context, str any, num any) (any, error) {
 		if str == nil || num == nil {
 			return nil, nil
