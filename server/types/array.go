@@ -272,6 +272,18 @@ func (ac arrayContainer) Zero() any {
 
 // SerializeValue implements the DoltgresType interface.
 func (ac arrayContainer) SerializeValue(valInterface any) ([]byte, error) {
+	// The binary format is as follows:
+	// The first value is always the number of serialized elements (uint32).
+	// The next section contains offsets to the start of each element (uint32). There are N+1 offsets to elements.
+	// The last offset contains the length of the slice.
+	// The last section is the data section, where all elements store their data.
+	// Each element comprises two values: a single byte stating if it's null, and the data itself.
+	// You may determine the length of the data by using the following offset, as the data occupies all bytes up to the next offset.
+	// The last element is a special case, as its data simply occupies all bytes up to the end of the slice.
+	// The data may have a length of zero, which is distinct from null for some types.
+	// In addition, a null value will always have a data length of zero.
+	// This format allows for O(1) point lookups.
+
 	// Check for a nil value and convert to the expected type
 	if valInterface == nil {
 		return nil, nil
@@ -282,108 +294,75 @@ func (ac arrayContainer) SerializeValue(valInterface any) ([]byte, error) {
 	}
 	vals := converted.([]any)
 
-	// Create the buffer that we'll write the array's contents to
-	arrayBuffer := bytes.Buffer{}
-	innerSerializedWidth := ac.innerType.MaxSerializedWidth()
-	// Write the total length to a buffer. We'll reuse this buffer for all uint-to-bytes operations.
-	// This does not seem to require the use of a pool, as it remains on the stack and does not escape to the heap.
-	// I am unsure of what changes could modify this behavior.
-	lengthBuffer := make([]byte, 8)
-	binary.BigEndian.PutUint64(lengthBuffer, uint64(len(vals)))
-	arrayBuffer.Write(lengthBuffer)
-
-	// Each value is serialized as the following: IsNull, Size, Data
-	// IsNull is one byte that represents whether the value is null. If this is true/1, then Size and Data are absent.
-	// Size is 2 or 8 bytes and states the size of the Data. It is valid for this to equal zero for some types (like strings).
-	// Data contains the actual data representing a value.
+	bb := bytes.Buffer{}
+	// Write the element count to a buffer. We're using an array since it's stack-allocated, so no need for pooling.
+	var elementCount [4]byte
+	binary.LittleEndian.PutUint32(elementCount[:], uint32(len(vals)))
+	bb.Write(elementCount[:])
+	// Create an array that contains the offsets for each value. Since we can't update the offset portion of the buffer
+	// as we determine the offsets, we have to track them outside the buffer. We'll overwrite the buffer later with the
+	// correct offsets. The last offset represents the end of the slice, which simplifies the logic for reading elements
+	// using the "current offset to next offset" strategy. We use a byte slice since the buffer only works with byte
+	// slices.
+	offsets := make([]byte, (len(vals)+1)*4)
+	bb.Write(offsets)
+	// The starting offset for the first element is Count(uint32) + (NumberOfElementOffsets * sizeof(uint32))
+	currentOffset := uint32(4 + (len(vals)+1)*4)
 	for i := range vals {
-		val, err := ac.innerType.SerializeValue(vals[i])
+		// Write the current offset
+		binary.LittleEndian.PutUint32(offsets[i*4:], currentOffset)
+		// Handle serialization of the value
+		// TODO: ARRAYs may be multidimensional, such as ARRAY[[4,2],[6,3]], which isn't accounted for here
+		serializedVal, err := ac.innerType.SerializeValue(vals[i])
 		if err != nil {
 			return nil, err
 		}
-
-		if val == nil {
-			arrayBuffer.WriteByte(1)
+		// Handle the nil case and non-nil case
+		if serializedVal == nil {
+			bb.WriteByte(1)
+			currentOffset += 1
 		} else {
-			arrayBuffer.WriteByte(0)
-			switch innerSerializedWidth {
-			case types.ExtendedTypeSerializedWidth_64K:
-				binary.BigEndian.PutUint16(lengthBuffer, uint16(len(val)))
-				arrayBuffer.Write(lengthBuffer[:2])
-			case types.ExtendedTypeSerializedWidth_Unbounded:
-				binary.BigEndian.PutUint64(lengthBuffer, uint64(len(val)))
-				arrayBuffer.Write(lengthBuffer)
-			default:
-				return nil, fmt.Errorf("array type encountered unexpected serializable width")
-			}
-			arrayBuffer.Write(val)
+			bb.WriteByte(0)
+			bb.Write(serializedVal)
+			currentOffset += 1 + uint32(len(serializedVal))
 		}
 	}
-	return arrayBuffer.Bytes(), nil
+	// Write the final offset, which will equal the length of the serialized slice
+	binary.LittleEndian.PutUint32(offsets[len(offsets)-4:], currentOffset)
+	// Get the final output, and write the updated offsets to it
+	outputBytes := bb.Bytes()
+	copy(outputBytes[4:], offsets)
+	return outputBytes, nil
 }
 
 // DeserializeValue implements the DoltgresType interface.
-func (ac arrayContainer) DeserializeValue(val []byte) (any, error) {
+func (ac arrayContainer) DeserializeValue(serializedVals []byte) (_ any, err error) {
 	// Check for the nil value, then ensure the minimum length of the slice
-	if val == nil {
+	if serializedVals == nil {
 		return nil, nil
 	}
-	if len(val) < 8 {
-		return nil, fmt.Errorf("deserializing non-nil array value has invalid length of %d", len(val))
+	if len(serializedVals) < 4 {
+		return nil, fmt.Errorf("deserializing non-nil array value has invalid length of %d", len(serializedVals))
 	}
-	// Read the length and construct the output slice
-	length := binary.BigEndian.Uint64(val)
-	val = val[8:]
-	output := make([]any, length)
-	innerSerializedWidth := ac.innerType.MaxSerializedWidth()
-	// TODO: faster/better to remove length checks and defer-recover for panics?
-	for i := range output {
-		// Check if the value is null
-		if len(val) < 1 {
-			return nil, fmt.Errorf("deserializing array encountered missing null check for value")
-		}
-		if val[0] == 1 {
-			// output is filled with nil values on initialization, so we only need to move the val slice forward
-			val = val[1:]
+	// Grab the number of elements and construct an output slice of the appropriate size
+	elementCount := binary.LittleEndian.Uint32(serializedVals)
+	output := make([]any, elementCount)
+	// Read all elements
+	for i := uint32(0); i < elementCount; i++ {
+		// We read from i+1 to account for the element count at the beginning
+		offset := binary.LittleEndian.Uint32(serializedVals[(i+1)*4:])
+		// If the value is null, then we can skip it, since the output slice default initializes all values to nil
+		if serializedVals[offset] == 1 {
 			continue
 		}
-		val = val[1:]
-
-		// Read the length of the data for this value
-		var dataLength uint64
-		switch innerSerializedWidth {
-		case types.ExtendedTypeSerializedWidth_64K:
-			if len(val) < 2 {
-				return nil, fmt.Errorf("deserializing array encountered missing size for value")
-			}
-			dataLength = uint64(binary.BigEndian.Uint16(val))
-			val = val[2:]
-		case types.ExtendedTypeSerializedWidth_Unbounded:
-			if len(val) < 8 {
-				return nil, fmt.Errorf("deserializing array encountered missing size for value")
-			}
-			dataLength = binary.BigEndian.Uint64(val)
-			val = val[8:]
-		default:
-			return nil, fmt.Errorf("array type encountered unexpected serializable width")
-		}
-		if uint64(len(val)) < dataLength {
-			return nil, fmt.Errorf("deserializing array encountered size too large for data")
-		}
-
-		// Read the data using the length from the previous step
-		deserializedValue, err := ac.innerType.DeserializeValue(val[:dataLength])
+		// The element data is everything from the offset to the next offset, excluding the null determinant
+		nextOffset := binary.LittleEndian.Uint32(serializedVals[(i+2)*4:])
+		output[i], err = ac.innerType.DeserializeValue(serializedVals[offset+1 : nextOffset])
 		if err != nil {
 			return nil, err
 		}
-		val = val[dataLength:]
-		output[i] = deserializedValue
 	}
-
-	// Make sure that we read everything
-	if len(val) > 0 {
-		return nil, fmt.Errorf("deserialized array has extra data at the end")
-	}
+	// Returns all of the read elements
 	return output, nil
 }
 
