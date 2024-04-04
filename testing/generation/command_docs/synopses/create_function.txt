@@ -1,5 +1,5 @@
 CREATE [ OR REPLACE ] FUNCTION
-    $name$ ( [ { [ $argmode$ ] [ $argname$ ] $argtype$ [ { DEFAULT | = } $default_expr$ ] } [ , ... ] ] )
+    $name$ ( [ { [ $routine_argmode$ ] [ $argname$ ] $argtype$ [ { DEFAULT | = } $default_expr$ ] } [ , ... ] ] )
     [ RETURNS $rettype$
     | RETURNS TABLE ( { $column_name$ $column_type$ } [ , ... ] ) ]
     { LANGUAGE $lang_name$

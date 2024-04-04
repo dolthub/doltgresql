@@ -734,7 +734,7 @@ func (u *sqlSymUnion) aggregatesToDrop() []tree.AggregateToDrop {
 %token <str> IF IFERROR IFNULL IGNORE_FOREIGN_KEYS ILIKE IMMEDIATE IMMUTABLE IMPORT
 %token <str> IN INCLUDE INCLUDING INCREMENT INCREMENTAL INET INET_CONTAINED_BY_OR_EQUALS
 %token <str> INET_CONTAINS_OR_EQUALS INDEX INDEXES INHERIT INHERITS INITCOND INJECT INLINE INPUT INTERLEAVE INITIALLY
-%token <str> INNER INSERT INSTEAD INT INTEGER INTERNALLENGTH
+%token <str> INNER INOUT INSERT INSTEAD INT INTEGER INTERNALLENGTH
 %token <str> INTERSECT INTERVAL INTO INTO_DB INVERTED INVOKER IS ISERROR ISNULL ISOLATION IS_TEMPLATE
 
 %token <str> JOB JOBS JOIN JSON JSONB JSON_SOME_EXISTS JSON_ALL_EXISTS
@@ -1296,7 +1296,7 @@ func (u *sqlSymUnion) aggregatesToDrop() []tree.AggregateToDrop {
 %type <tree.Expr> string_or_placeholder
 %type <tree.Expr> string_or_placeholder_list
 
-%type <str> unreserved_keyword type_func_name_keyword type_func_name_no_crdb_extra_keyword type_func_name_crdb_extra_keyword
+%type <str> unreserved_keyword type_func_name_keyword type_func_name_no_crdb_extra_keyword
 %type <str> col_name_keyword reserved_keyword cockroachdb_extra_reserved_keyword extra_var_value
 
 %type <tree.ResolvableTypeReference> complex_type_name
@@ -2842,27 +2842,43 @@ routine_arg_list:
 routine_arg:
   typename
   {
-    $$.val = &tree.RoutineArg{Mode: "IN", Type: $1.typeReference()}
+    $$.val = &tree.RoutineArg{Mode: tree.RoutineArgModeIn, Type: $1.typeReference()}
   }
 | type_function_name typename
   {
-    $$.val = &tree.RoutineArg{Mode: "IN", Name: tree.Name($1), Type: $2.typeReference()}
+    $$.val = &tree.RoutineArg{Mode: tree.RoutineArgModeIn, Name: tree.Name($1), Type: $2.typeReference()}
   }
 | IN typename
   {
-    $$.val = &tree.RoutineArg{Mode: $1, Type: $2.typeReference()}
-  }
-| VARIADIC typename
-  {
-    $$.val = &tree.RoutineArg{Mode: $1, Type: $2.typeReference()}
+    $$.val = &tree.RoutineArg{Mode: tree.RoutineArgModeIn, Type: $2.typeReference()}
   }
 | IN type_function_name typename
   {
-    $$.val = &tree.RoutineArg{Mode: $1, Name: tree.Name($2), Type: $3.typeReference()}
+    $$.val = &tree.RoutineArg{Mode: tree.RoutineArgModeIn, Name: tree.Name($2), Type: $3.typeReference()}
+  }
+| VARIADIC typename
+  {
+    $$.val = &tree.RoutineArg{Mode: tree.RoutineArgModeVariadic, Type: $2.typeReference()}
   }
 | VARIADIC type_function_name typename
   {
-    $$.val = &tree.RoutineArg{Mode: $1, Name: tree.Name($2), Type: $3.typeReference()}
+    $$.val = &tree.RoutineArg{Mode: tree.RoutineArgModeVariadic, Name: tree.Name($2), Type: $3.typeReference()}
+  }
+| OUT typename
+  {
+    $$.val = &tree.RoutineArg{Mode: tree.RoutineArgModeOut, Type: $2.typeReference()}
+  }
+| OUT type_function_name typename
+  {
+    $$.val = &tree.RoutineArg{Mode: tree.RoutineArgModeOut, Name: tree.Name($2), Type: $3.typeReference()}
+  }
+| INOUT typename
+  {
+    $$.val = &tree.RoutineArg{Mode: tree.RoutineArgModeInout, Type: $2.typeReference()}
+  }
+| INOUT type_function_name typename
+  {
+    $$.val = &tree.RoutineArg{Mode: tree.RoutineArgModeInout, Name: tree.Name($2), Type: $3.typeReference()}
   }
 
 alter_collation_stmt:
@@ -13760,7 +13776,6 @@ complex_db_object_name:
 // trying to gain them back here.
 db_object_name_component:
   name
-| type_func_name_crdb_extra_keyword
 | cockroachdb_extra_reserved_keyword
 
 // General name --- names that can be column, table, etc names.
@@ -13944,6 +13959,7 @@ unreserved_keyword:
 | EXTENDED
 | EXTENSION
 | EXTERNAL
+| FAMILY
 | FILES
 | FILTER
 | FINALFUNC
@@ -14306,6 +14322,7 @@ col_name_keyword:
 | IF
 | IFERROR
 | IFNULL
+| INOUT
 | INT
 | INTEGER
 | INTERVAL
@@ -14341,7 +14358,6 @@ col_name_keyword:
 // type_func_name_keyword's along with the set of CRDB extensions.
 type_func_name_keyword:
   type_func_name_no_crdb_extra_keyword
-| type_func_name_crdb_extra_keyword
 
 // Type/function identifier --- keywords that can be type or function names.
 //
@@ -14354,8 +14370,6 @@ type_func_name_keyword:
 // - thomas 2000-11-28
 //
 // *** DO NOT ADD COCKROACHDB-SPECIFIC KEYWORDS HERE ***
-//
-// See type_func_name_crdb_extra_keyword below.
 type_func_name_no_crdb_extra_keyword:
   AUTHORIZATION
 | COLLATION
@@ -14375,17 +14389,6 @@ type_func_name_no_crdb_extra_keyword:
 | OVERLAPS
 | RIGHT
 | SIMILAR
-
-// CockroachDB-specific keywords that can be used in type/function
-// identifiers.
-//
-// *** REFRAIN FROM ADDING KEYWORDS HERE ***
-//
-// Adding keywords here creates non-resolvable incompatibilities with
-// postgres clients.
-//
-type_func_name_crdb_extra_keyword:
-  FAMILY
 
 // Reserved keyword --- these keywords are usable only as a unrestricted_name.
 //

@@ -39,7 +39,7 @@ GRANT { USAGE | ALL [ PRIVILEGES ] }
     [ GRANTED BY $role_specification$ ]
 
 GRANT { EXECUTE | ALL [ PRIVILEGES ] }
-    ON { { FUNCTION | PROCEDURE | ROUTINE } { $routine_name$ [ ( [ [ $argmode$ ] [ $arg_name$ ] $arg_type$ [ , ... ] ] ) ] } [ , ... ]
+    ON { { FUNCTION | PROCEDURE | ROUTINE } { $routine_name$ [ ( [ [ $routine_argmode$ ] [ $arg_name$ ] $arg_type$ [ , ... ] ] ) ] } [ , ... ]
     | ALL { FUNCTIONS | PROCEDURES | ROUTINES } IN SCHEMA $schema_name$ [ , ... ] }
     TO $role_specification$ [ , ... ] [ WITH GRANT OPTION ]
     [ GRANTED BY $role_specification$ ]

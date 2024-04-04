@@ -1,2 +1,2 @@
-DROP PROCEDURE [ IF EXISTS ] { $name$ [ ( [ { [ $argmode$ ] [ $argname$ ] $argtype$ } [ , ... ] ] ) ] } [ , ... ]
+DROP PROCEDURE [ IF EXISTS ] { $name$ [ ( [ { [ $routine_argmode$ ] [ $argname$ ] $argtype$ } [ , ... ] ] ) ] } [ , ... ]
     [ CASCADE | RESTRICT ]

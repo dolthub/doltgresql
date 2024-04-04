@@ -24,7 +24,8 @@ import (
 // and there isn't a more specific definition in PrefixCustomVariables.
 var GlobalCustomVariables = map[string]utils.StatementGenerator{
 	"access_method_type":  customDefinition(`TABLE | INDEX`),
-	"argmode":             customDefinition(`IN | VARIADIC`),
+	"agg_argmode":         customDefinition(`IN | VARIADIC`),
+	"routine_argmode":     customDefinition(`IN | VARIADIC | OUT | INOUT`),
 	"argtype":             customDefinition(`FLOAT8`),
 	"boolean":             customDefinition(`true`),
 	"cache":               customDefinition(`1`),

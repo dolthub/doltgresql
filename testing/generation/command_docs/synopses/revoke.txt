@@ -54,7 +54,7 @@ REVOKE [ GRANT OPTION FOR ]
 
 REVOKE [ GRANT OPTION FOR ]
     { EXECUTE | ALL [ PRIVILEGES ] }
-    ON { { FUNCTION | PROCEDURE | ROUTINE } { $function_name$ [ ( [ [ $argmode$ ] [ $arg_name$ ] $arg_type$ [ , ... ] ] ) ] } [ , ... ]
+    ON { { FUNCTION | PROCEDURE | ROUTINE } { $function_name$ [ ( [ [ $routine_argmode$ ] [ $arg_name$ ] $arg_type$ [ , ... ] ] ) ] } [ , ... ]
     | ALL { FUNCTIONS | PROCEDURES | ROUTINES } IN SCHEMA $schema_name$ [ , ... ] }
     FROM $role_specification$ [ , ... ]
     [ GRANTED BY $role_specification$ ]
