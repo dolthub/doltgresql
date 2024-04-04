@@ -143,14 +143,14 @@ func (node *CommentOnAccessMethod) Format(ctx *FmtCtx) {
 
 // CommentOnAggregate represents COMMENT ON AGGREGATE command.
 type CommentOnAggregate struct {
-	Name   Name
+	Name   *UnresolvedObjectName
 	AggSig *AggregateSignature
 }
 
 // Format implements the NodeFormatter interface.
 func (node *CommentOnAggregate) Format(ctx *FmtCtx) {
 	ctx.WriteString("AGGREGATE ")
-	ctx.FormatNode(&node.Name)
+	ctx.FormatNode(node.Name)
 	ctx.WriteString(" ( ")
 	ctx.FormatNode(node.AggSig)
 	ctx.WriteString(" )")

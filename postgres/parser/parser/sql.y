@@ -772,7 +772,7 @@ func (u *sqlSymUnion) aggregatesToDrop() []tree.AggregateToDrop {
 %token <str> ROLE ROLES ROUTINE ROUTINES ROLLBACK ROLLUP ROW ROWS RSHIFT RULE RUNNING
 
 %token <str> SAFE SAVEPOINT SCATTER SCHEDULE SCHEDULES SCHEMA SCHEMAS SCRUB SEARCH SECOND SECURITY SEED SELECT SEND
-%token <str> SERIALFUNC SERIALIZABLE SERVER SESSION SESSIONS SESSION_USER SET SETTING SETTINGS SEQUENCE SEQUENCES SFUNC
+%token <str> SERIALFUNC SERIALIZABLE SERVER SESSION SESSIONS SESSION_USER SET SETOF SETTING SETTINGS SEQUENCE SEQUENCES SFUNC
 %token <str> SHARE SHAREABLE SHOW SIMILAR SIMPLE SKIP SKIP_MISSING_FOREIGN_KEYS
 %token <str> SKIP_MISSING_SEQUENCES SKIP_MISSING_SEQUENCE_OWNERS SKIP_MISSING_VIEWS SMALLINT SMALLSERIAL SNAPSHOT SOME
 %token <str> SORTOP SPLIT SQL SQRT SSPACE STABLE START STATEMENT STATISTICS STATUS STDIN STRATEGY STRICT STRING
@@ -1123,7 +1123,7 @@ func (u *sqlSymUnion) aggregatesToDrop() []tree.AggregateToDrop {
 %type <str> cursor_name database_name index_name opt_index_name column_name insert_column_item statistics_name window_name
 %type <str> table_alias_name constraint_name target_name collation_name opt_from_ref_table
 %type <str> db_object_name_component
-%type <*tree.UnresolvedObjectName> table_name standalone_index_name sequence_name type_name routine_name
+%type <*tree.UnresolvedObjectName> table_name standalone_index_name sequence_name type_name routine_name aggregate_name
 %type <*tree.UnresolvedObjectName> view_name db_object_name simple_db_object_name complex_db_object_name
 %type <[]*tree.UnresolvedObjectName> type_name_list
 %type <str> schema_name opt_schema_name opt_schema opt_version tablespace_name partition_name
@@ -2778,17 +2778,17 @@ alter_trigger_stmt:
   }
 
 alter_aggregate_stmt:
-  ALTER AGGREGATE unrestricted_name '(' aggregate_signature ')' RENAME TO unrestricted_name
+  ALTER AGGREGATE aggregate_name '(' aggregate_signature ')' RENAME TO unrestricted_name
   {
-    $$.val = &tree.AlterAggregate{Name: tree.Name($3), AggSig: $5.aggregateSignature(), Rename: tree.Name($9)}
+    $$.val = &tree.AlterAggregate{Name: $3.unresolvedObjectName(), AggSig: $5.aggregateSignature(), Rename: tree.Name($9)}
   }
-| ALTER AGGREGATE unrestricted_name '(' aggregate_signature ')' owner_to
+| ALTER AGGREGATE aggregate_name '(' aggregate_signature ')' owner_to
   {
-    $$.val = &tree.AlterAggregate{Name: tree.Name($3), AggSig: $5.aggregateSignature(), Owner: $7}
+    $$.val = &tree.AlterAggregate{Name: $3.unresolvedObjectName(), AggSig: $5.aggregateSignature(), Owner: $7}
   }
-| ALTER AGGREGATE unrestricted_name '(' aggregate_signature ')' set_schema
+| ALTER AGGREGATE aggregate_name '(' aggregate_signature ')' set_schema
   {
-    $$.val = &tree.AlterAggregate{Name: tree.Name($3), AggSig: $5.aggregateSignature(), Schema: $7}
+    $$.val = &tree.AlterAggregate{Name: $3.unresolvedObjectName(), AggSig: $5.aggregateSignature(), Schema: $7}
   }
 
 aggregate_signature:
@@ -3704,10 +3704,10 @@ comment_stmt:
       Comment: $7.strPtr(),
     }
   }
-| COMMENT ON AGGREGATE name '(' aggregate_signature ')' IS comment_text
+| COMMENT ON AGGREGATE aggregate_name '(' aggregate_signature ')' IS comment_text
   {
     $$.val = &tree.Comment{
-      Object: &tree.CommentOnAggregate{Name: tree.Name($4), AggSig: $6.aggregateSignature()},
+      Object: &tree.CommentOnAggregate{Name: $4.unresolvedObjectName(), AggSig: $6.aggregateSignature()},
       Comment: $9.strPtr(),
     }
   }
@@ -3950,10 +3950,10 @@ create_aggregate_stmt:
 | create_aggregate_old_syntax_stmt
 
 create_aggregate_args_only_stmt:
-  CREATE AGGREGATE name '(' opt_routine_args ')' '(' SFUNC '=' name ',' STYPE '=' type_name create_agg_args_only_option_list ')'
-  { $$.val = &tree.CreateAggregate{Name: tree.Name($3), Args: $5.routineArgs(), SFunc: $10, SType: $14.typeReference(), AggOptions: $15.createAggOptions()} }
-| CREATE OR REPLACE AGGREGATE name '(' opt_routine_args ')' '(' SFUNC '=' name ',' STYPE '=' type_name create_agg_args_only_option_list ')'
-  { $$.val = &tree.CreateAggregate{Name: tree.Name($5), Replace: true, Args: $7.routineArgs(), SFunc: $12, SType: $16.typeReference(), AggOptions: $17.createAggOptions()} }
+  CREATE AGGREGATE aggregate_name '(' opt_routine_args ')' '(' SFUNC '=' name ',' STYPE '=' type_name create_agg_args_only_option_list ')'
+  { $$.val = &tree.CreateAggregate{Name: $3.unresolvedObjectName(), Args: $5.routineArgs(), SFunc: $10, SType: $14.typeReference(), AggOptions: $15.createAggOptions()} }
+| CREATE OR REPLACE AGGREGATE aggregate_name '(' opt_routine_args ')' '(' SFUNC '=' name ',' STYPE '=' type_name create_agg_args_only_option_list ')'
+  { $$.val = &tree.CreateAggregate{Name: $5.unresolvedObjectName(), Replace: true, Args: $7.routineArgs(), SFunc: $12, SType: $16.typeReference(), AggOptions: $17.createAggOptions()} }
 
 create_agg_args_only_option_list:
   /* EMPTY */
@@ -3968,10 +3968,10 @@ create_agg_args_only_option:
 | create_agg_parallel_option
 
 create_aggregate_order_by_args_stmt:
-  CREATE AGGREGATE name '(' opt_routine_args ORDER BY routine_arg_list ')' '(' SFUNC '=' name ',' STYPE '=' type_name create_agg_order_by_args_option_list ')'
-  { $$.val = &tree.CreateAggregate{Name: tree.Name($3), Args: $5.routineArgs(), OrderByArgs: $8.routineArgs(), SFunc: $13, SType: $17.typeReference(), AggOptions: $18.createAggOptions()} }
-| CREATE OR REPLACE AGGREGATE name '(' opt_routine_args ORDER BY routine_arg_list ')' '(' SFUNC '=' name ',' STYPE '=' type_name create_agg_order_by_args_option_list ')'
-  { $$.val = &tree.CreateAggregate{Name: tree.Name($5), Replace: true, Args: $7.routineArgs(), OrderByArgs: $10.routineArgs(), SFunc: $15, SType: $19.typeReference(), AggOptions: $20.createAggOptions()} }
+  CREATE AGGREGATE aggregate_name '(' opt_routine_args ORDER BY routine_arg_list ')' '(' SFUNC '=' name ',' STYPE '=' type_name create_agg_order_by_args_option_list ')'
+  { $$.val = &tree.CreateAggregate{Name: $3.unresolvedObjectName(), Args: $5.routineArgs(), OrderByArgs: $8.routineArgs(), SFunc: $13, SType: $17.typeReference(), AggOptions: $18.createAggOptions()} }
+| CREATE OR REPLACE AGGREGATE aggregate_name '(' opt_routine_args ORDER BY routine_arg_list ')' '(' SFUNC '=' name ',' STYPE '=' type_name create_agg_order_by_args_option_list ')'
+  { $$.val = &tree.CreateAggregate{Name: $5.unresolvedObjectName(), Replace: true, Args: $7.routineArgs(), OrderByArgs: $10.routineArgs(), SFunc: $15, SType: $19.typeReference(), AggOptions: $20.createAggOptions()} }
 
 create_agg_order_by_args_option_list:
   /* EMPTY */
@@ -3988,10 +3988,10 @@ create_agg_order_by_args_option:
   { $$.val = tree.CreateAggOption{Option: tree.AggOptTypeHypothetical} }
 
 create_aggregate_old_syntax_stmt:
-  CREATE AGGREGATE name '(' BASETYPE '=' type_name ',' SFUNC '=' name ',' STYPE '=' type_name create_agg_old_syntax_option_list ')'
-  { $$.val = &tree.CreateAggregate{Name: tree.Name($3), BaseType: $7.typeReference(), SFunc: $11, SType: $15.typeReference(), AggOptions: $16.createAggOptions()} }
-| CREATE OR REPLACE AGGREGATE name '(' BASETYPE '=' type_name ',' SFUNC '=' name ',' STYPE '=' type_name create_agg_old_syntax_option_list ')'
-  { $$.val = &tree.CreateAggregate{Name: tree.Name($5), Replace: true, BaseType: $9.typeReference(), SFunc: $13, SType: $17.typeReference(), AggOptions: $18.createAggOptions()} }
+  CREATE AGGREGATE aggregate_name '(' BASETYPE '=' type_name ',' SFUNC '=' name ',' STYPE '=' type_name create_agg_old_syntax_option_list ')'
+  { $$.val = &tree.CreateAggregate{Name: $3.unresolvedObjectName(), BaseType: $7.typeReference(), SFunc: $11, SType: $15.typeReference(), AggOptions: $16.createAggOptions()} }
+| CREATE OR REPLACE AGGREGATE aggregate_name '(' BASETYPE '=' type_name ',' SFUNC '=' name ',' STYPE '=' type_name create_agg_old_syntax_option_list ')'
+  { $$.val = &tree.CreateAggregate{Name: $5.unresolvedObjectName(), Replace: true, BaseType: $9.typeReference(), SFunc: $13, SType: $17.typeReference(), AggOptions: $18.createAggOptions()} }
 
 create_agg_old_syntax_option_list:
   /* EMPTY */
@@ -4191,6 +4191,10 @@ create_function_stmt:
   {
     $$.val = &tree.CreateFunction{Name: $3.unresolvedObjectName(), Args: $4.routineArgs(), RetType: []tree.SimpleColumnDef{tree.SimpleColumnDef{Type: $6.typeReference()}}, Options: $7.routineOptions()}
   }
+| CREATE FUNCTION routine_name opt_routine_arg_with_default_list RETURNS SETOF typename create_function_option_list
+  {
+    $$.val = &tree.CreateFunction{Name: $3.unresolvedObjectName(), Args: $4.routineArgs(), SetOf: true, RetType: []tree.SimpleColumnDef{tree.SimpleColumnDef{Type: $7.typeReference()}}, Options: $8.routineOptions()}
+  }
 | CREATE FUNCTION routine_name opt_routine_arg_with_default_list RETURNS TABLE '(' opt_returns_table_col_def_list ')' create_function_option_list
   {
     $$.val = &tree.CreateFunction{Name: $3.unresolvedObjectName(), Args: $4.routineArgs(), RetType: $8.simpleColumnDefs(), Options: $10.routineOptions()}
@@ -4202,6 +4206,10 @@ create_function_stmt:
 | CREATE OR REPLACE FUNCTION routine_name opt_routine_arg_with_default_list RETURNS typename create_function_option_list
   {
     $$.val = &tree.CreateFunction{Name: $5.unresolvedObjectName(), Replace: true, Args: $6.routineArgs(), RetType: []tree.SimpleColumnDef{tree.SimpleColumnDef{Type: $8.typeReference()}}, Options: $9.routineOptions()}
+  }
+| CREATE OR REPLACE FUNCTION routine_name opt_routine_arg_with_default_list RETURNS SETOF typename create_function_option_list
+  {
+    $$.val = &tree.CreateFunction{Name: $5.unresolvedObjectName(), Replace: true, Args: $6.routineArgs(), SetOf: true, RetType: []tree.SimpleColumnDef{tree.SimpleColumnDef{Type: $9.typeReference()}}, Options: $10.routineOptions()}
   }
 | CREATE OR REPLACE FUNCTION routine_name opt_routine_arg_with_default_list RETURNS TABLE '(' opt_returns_table_col_def_list ')' create_function_option_list
   {
@@ -4562,13 +4570,13 @@ drop_aggregate_stmt:
   }
 
 drop_aggregates:
-  name '(' aggregate_signature ')'
+  aggregate_name '(' aggregate_signature ')'
   {
-    $$.val = []tree.AggregateToDrop{{Name: tree.Name($1), AggSig: $3.aggregateSignature()}}
+    $$.val = []tree.AggregateToDrop{{Name: $1.unresolvedObjectName(), AggSig: $3.aggregateSignature()}}
   }
-| drop_aggregates ',' name '(' aggregate_signature ')'
+| drop_aggregates ',' aggregate_name '(' aggregate_signature ')'
   {
-    $$.val = append($1.aggregatesToDrop(), tree.AggregateToDrop{Name: tree.Name($3), AggSig: $5.aggregateSignature()})
+    $$.val = append($1.aggregatesToDrop(), tree.AggregateToDrop{Name: $3.unresolvedObjectName(), AggSig: $5.aggregateSignature()})
   }
 
 drop_domain_stmt:
@@ -13653,6 +13661,8 @@ partition_name:        name
 
 routine_name:         db_object_name
 
+aggregate_name:       db_object_name
+
 // Names for column references.
 // Accepted patterns:
 // <colname>
@@ -14338,6 +14348,7 @@ col_name_keyword:
 | PRECISION
 | REAL
 | ROW
+| SETOF
 | SMALLINT
 | STRING
 | SUBSTRING

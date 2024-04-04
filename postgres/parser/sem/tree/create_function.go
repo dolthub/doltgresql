@@ -23,6 +23,7 @@ type CreateFunction struct {
 	Name    *UnresolvedObjectName
 	Replace bool
 	Args    RoutineArgs
+	SetOf   bool
 	RetType []SimpleColumnDef
 	Options []RoutineOption
 }
@@ -43,6 +44,9 @@ func (node *CreateFunction) Format(ctx *FmtCtx) {
 	if node.RetType != nil {
 		if len(node.RetType) == 1 && node.RetType[0].Name == "" {
 			ctx.WriteString("RETURNS ")
+			if node.SetOf {
+				ctx.WriteString("SETOF ")
+			}
 			ctx.WriteString(node.RetType[0].Type.SQLString())
 		} else {
 			ctx.WriteString("RETURNS TABLE ")
