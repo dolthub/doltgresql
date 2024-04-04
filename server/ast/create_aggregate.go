@@ -39,11 +39,9 @@ func validateAggArgMode(args, orderByArgs tree.RoutineArgs) error {
 			return fmt.Errorf("aggregate functions do not support OUT arguments")
 		}
 	}
-	if orderByArgs != nil {
-		for _, sig := range orderByArgs {
-			if sig.Mode == tree.RoutineArgModeOut || sig.Mode == tree.RoutineArgModeInout {
-				return fmt.Errorf("aggregate functions do not support OUT arguments")
-			}
+	for _, sig := range orderByArgs {
+		if sig.Mode == tree.RoutineArgModeOut || sig.Mode == tree.RoutineArgModeInout {
+			return fmt.Errorf("aggregate functions do not support OUT arguments")
 		}
 	}
 	return nil
