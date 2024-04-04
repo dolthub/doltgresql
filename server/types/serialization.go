@@ -144,40 +144,22 @@ func init() {
 // SerializeType is able to serialize the given extended type into a byte slice. All extended types will be defined
 // by DoltgreSQL.
 func SerializeType(extendedType types.ExtendedType) ([]byte, error) {
-	switch extendedType := extendedType.(type) {
-	case BoolType:
-		return SerializationID_Bool.ToByteSlice(), nil
-	case BoolArrayType:
-		return SerializationID_BoolArray.ToByteSlice(), nil
-	case Float32Type:
-		return SerializationID_Float32.ToByteSlice(), nil
-	case Float64Type:
-		return SerializationID_Float64.ToByteSlice(), nil
-	case Int16Type:
-		return SerializationID_Int16.ToByteSlice(), nil
-	case Int32Type:
-		return SerializationID_Int32.ToByteSlice(), nil
-	case Int64Type:
-		return SerializationID_Int64.ToByteSlice(), nil
-	case NullType:
-		return SerializationID_Null.ToByteSlice(), nil
-	case NumericType:
-		return SerializationID_Numeric.ToByteSlice(), nil
-	case UuidType:
-		return SerializationID_Uuid.ToByteSlice(), nil
-	case VarCharType:
-		t := make([]byte, 6)
-		copy(t, SerializationID_VarChar.ToByteSlice())
-		binary.LittleEndian.PutUint32(t[2:], extendedType.Length)
-		return t, nil
-	default:
-		return nil, fmt.Errorf("unknown type to serialize")
+	if doltgresType, ok := extendedType.(DoltgresType); ok {
+		return doltgresType.SerializeType()
 	}
+	return nil, fmt.Errorf("unknown type to serialize")
 }
 
 // MustSerializeType internally calls SerializeType and panics on error. In general, panics should only occur when a
 // type has not yet had its Serialization implemented yet.
 func MustSerializeType(extendedType types.ExtendedType) []byte {
+	// MustSerializeType is often used to efficiently compare any two types, so we'll make a special exception for types
+	// that cannot be normally serialized. This is okay since these types cannot be deserialized, preventing them from
+	// being used outside of comparisons.
+	switch extendedType.(type) {
+	case AnyArrayType:
+		return []byte{0}
+	}
 	serializedType, err := SerializeType(extendedType)
 	if err != nil {
 		panic(err)
@@ -195,25 +177,41 @@ func DeserializeType(serializedType []byte) (types.ExtendedType, error) {
 	case SerializationID_Bool:
 		return Bool, nil
 	case SerializationID_BoolArray:
-		return BoolArray, nil
+		return BoolArray.withInnerDeserialization(serializedType)
 	case SerializationID_Float32:
 		return Float32, nil
+	case SerializationID_Float32Array:
+		return Float32Array.withInnerDeserialization(serializedType)
 	case SerializationID_Float64:
 		return Float64, nil
+	case SerializationID_Float64Array:
+		return Float64Array.withInnerDeserialization(serializedType)
 	case SerializationID_Int16:
 		return Int16, nil
+	case SerializationID_Int16Array:
+		return Int16Array.withInnerDeserialization(serializedType)
 	case SerializationID_Int32:
 		return Int32, nil
+	case SerializationID_Int32Array:
+		return Int32Array.withInnerDeserialization(serializedType)
 	case SerializationID_Int64:
 		return Int64, nil
+	case SerializationID_Int64Array:
+		return Int64Array.withInnerDeserialization(serializedType)
 	case SerializationID_Null:
 		return Null, nil
 	case SerializationID_Numeric:
 		return Numeric, nil
+	case SerializationID_NumericArray:
+		return NumericArray.withInnerDeserialization(serializedType)
 	case SerializationID_VarChar:
 		return VarCharType{Length: binary.LittleEndian.Uint32(serializedType[2:])}, nil
+	case SerializationID_VarCharArray:
+		return VarCharArray.withInnerDeserialization(serializedType)
 	case SerializationID_Uuid:
 		return Uuid, nil
+	case SerializationID_UuidArray:
+		return UuidArray.withInnerDeserialization(serializedType)
 	default:
 		return nil, fmt.Errorf("unknown type to deserialize")
 	}

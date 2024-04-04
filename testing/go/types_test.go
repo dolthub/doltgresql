@@ -38,6 +38,23 @@ var typesTests = []ScriptTest{
 		},
 	},
 	{
+		Name: "Bigint array type",
+		SetUpScript: []string{
+			"CREATE TABLE t_bigint (id INTEGER primary key, v1 BIGINT[]);",
+			"INSERT INTO t_bigint VALUES (1, ARRAY[123456789012345, NULL]), (2, ARRAY[987654321098765, 5]), (3, ARRAY[4, 5]);",
+		},
+		Assertions: []ScriptTestAssertion{
+			{
+				Query: "SELECT * FROM t_bigint ORDER BY id;",
+				Expected: []sql.Row{
+					{1, "{123456789012345,NULL}"},
+					{2, "{987654321098765,5}"},
+					{3, "{4,5}"},
+				},
+			},
+		},
+	},
+	{
 		Name: "Bit type",
 		Skip: true,
 		SetUpScript: []string{
@@ -58,7 +75,7 @@ var typesTests = []ScriptTest{
 		Name: "Boolean type",
 		SetUpScript: []string{
 			"CREATE TABLE t_boolean (id INTEGER primary key, v1 BOOLEAN);",
-			"INSERT INTO t_boolean VALUES (1, 'true'), (2, 'false'), (3, NULL);", //TODO: "INSERT INTO t_boolean VALUES (1, true), (2, false), (3, NULL);",
+			"INSERT INTO t_boolean VALUES (1, true), (2, 'false'), (3, NULL);",
 		},
 		Assertions: []ScriptTestAssertion{
 			{
@@ -255,8 +272,30 @@ var typesTests = []ScriptTest{
 		},
 	},
 	{
+		Name: "Character varying array type, with length",
+		SetUpScript: []string{
+			"CREATE TABLE t_varchar1 (v1 CHARACTER VARYING[]);",
+			"CREATE TABLE t_varchar2 (v1 CHARACTER VARYING(1)[]);",
+			"INSERT INTO t_varchar1 VALUES (ARRAY['ab''cdef', 'what', 'is,hi', 'wh\"at']);",
+			"INSERT INTO t_varchar2 VALUES (ARRAY['ab''cdef', 'what', 'is,hi', 'wh\"at']);",
+		},
+		Assertions: []ScriptTestAssertion{
+			{
+				Query: `SELECT v1::varchar(1)[] FROM t_varchar1;`,
+				Expected: []sql.Row{
+					{"{a,w,i,w}"},
+				},
+			},
+			{
+				Query: `SELECT * FROM t_varchar2;`,
+				Expected: []sql.Row{
+					{"{a,w,i,w}"},
+				},
+			},
+		},
+	},
+	{
 		Name: "Character varying type, no length",
-		Skip: true, // no length param not correctly handled yet
 		SetUpScript: []string{
 			"CREATE TABLE t_varchar (id INTEGER primary key, v1 CHARACTER VARYING);",
 			"INSERT INTO t_varchar VALUES (1, 'abcdefghij'), (2, 'klmnopqrst');",
@@ -267,6 +306,22 @@ var typesTests = []ScriptTest{
 				Expected: []sql.Row{
 					{1, "abcdefghij"},
 					{2, "klmnopqrst"},
+				},
+			},
+		},
+	},
+	{
+		Name: "Character varying array type, no length",
+		SetUpScript: []string{
+			"CREATE TABLE t_varchar (id INTEGER primary key, v1 CHARACTER VARYING[]);",
+			"INSERT INTO t_varchar VALUES (1, ARRAY['abcdefghij', NULL]), (2, ARRAY['ab''cdef', 'what', 'is,hi', 'wh\"at', '}', '{', '{}']);",
+		},
+		Assertions: []ScriptTestAssertion{
+			{
+				Query: "SELECT * FROM t_varchar ORDER BY id;",
+				Expected: []sql.Row{
+					{1, "{abcdefghij,NULL}"},
+					{2, `{ab'cdef,what,"is,hi","wh\"at","}","{","{}"}`},
 				},
 			},
 		},
@@ -340,6 +395,22 @@ var typesTests = []ScriptTest{
 		},
 	},
 	{
+		Name: "Double precision array type",
+		SetUpScript: []string{
+			"CREATE TABLE t_double_precision (id INTEGER primary key, v1 DOUBLE PRECISION[]);",
+			"INSERT INTO t_double_precision VALUES (1, ARRAY[123.456, NULL]), (2, ARRAY[789.012, 125.125]);",
+		},
+		Assertions: []ScriptTestAssertion{
+			{
+				Query: "SELECT * FROM t_double_precision ORDER BY id;",
+				Expected: []sql.Row{
+					{1, "{123.456,NULL}"},
+					{2, "{789.012,125.125}"},
+				},
+			},
+		},
+	},
+	{
 		Name: "Inet type",
 		Skip: true,
 		SetUpScript: []string{
@@ -368,6 +439,22 @@ var typesTests = []ScriptTest{
 				Expected: []sql.Row{
 					{1, 123},
 					{2, 456},
+				},
+			},
+		},
+	},
+	{
+		Name: "Integer array type",
+		SetUpScript: []string{
+			"CREATE TABLE t_integer (id INTEGER primary key, v1 INTEGER[]);",
+			"INSERT INTO t_integer VALUES (1, ARRAY[123,NULL]), (2, ARRAY[456,823753913]);",
+		},
+		Assertions: []ScriptTestAssertion{
+			{
+				Query: "SELECT * FROM t_integer ORDER BY id;",
+				Expected: []sql.Row{
+					{1, "{123,NULL}"},
+					{2, "{456,823753913}"},
 				},
 			},
 		},
@@ -507,6 +594,38 @@ var typesTests = []ScriptTest{
 		},
 	},
 	{
+		Name: "Numeric type, no scale or precision",
+		SetUpScript: []string{
+			"CREATE TABLE t_numeric (id INTEGER primary key, v1 NUMERIC);",
+			"INSERT INTO t_numeric VALUES (1, 123.45), (2, 67.875);",
+		},
+		Assertions: []ScriptTestAssertion{
+			{
+				Query: "SELECT * FROM t_numeric ORDER BY id;",
+				Expected: []sql.Row{
+					{1, 123.45},
+					{2, 67.875},
+				},
+			},
+		},
+	},
+	{
+		Name: "Numeric array type, no scale or precision",
+		SetUpScript: []string{
+			"CREATE TABLE t_numeric (id INTEGER primary key, v1 NUMERIC[]);",
+			"INSERT INTO t_numeric VALUES (1, ARRAY[NULL,123.45]), (2, ARRAY[67.89,572903.1468]);",
+		},
+		Assertions: []ScriptTestAssertion{
+			{
+				Query: "SELECT * FROM t_numeric ORDER BY id;",
+				Expected: []sql.Row{
+					{1, "{NULL,123.45}"},
+					{2, "{67.89,572903.1468}"},
+				},
+			},
+		},
+	},
+	{
 		Name: "Path type",
 		Skip: true,
 		SetUpScript: []string{
@@ -591,6 +710,22 @@ var typesTests = []ScriptTest{
 		},
 	},
 	{
+		Name: "Real array type",
+		SetUpScript: []string{
+			"CREATE TABLE t_real (id INTEGER primary key, v1 REAL[]);",
+			"INSERT INTO t_real VALUES (1, ARRAY[NULL,123.875]), (2, ARRAY[67.125, 84256]);",
+		},
+		Assertions: []ScriptTestAssertion{
+			{
+				Query: "SELECT * FROM t_real ORDER BY id;",
+				Expected: []sql.Row{
+					{1, "{NULL,123.875}"},
+					{2, "{67.125,84256}"},
+				},
+			},
+		},
+	},
+	{
 		Name: "Smallint type",
 		SetUpScript: []string{
 			"CREATE TABLE t_smallint (id INTEGER primary key, v1 SMALLINT);",
@@ -602,6 +737,22 @@ var typesTests = []ScriptTest{
 				Expected: []sql.Row{
 					{1, 42},
 					{2, 99},
+				},
+			},
+		},
+	},
+	{
+		Name: "Smallint array type",
+		SetUpScript: []string{
+			"CREATE TABLE t_smallint (id INTEGER primary key, v1 SMALLINT[]);",
+			"INSERT INTO t_smallint VALUES (1, ARRAY[42,NULL]), (2, ARRAY[99,126]);",
+		},
+		Assertions: []ScriptTestAssertion{
+			{
+				Query: "SELECT * FROM t_smallint ORDER BY id;",
+				Expected: []sql.Row{
+					{1, "{42,NULL}"},
+					{2, "{99,126}"},
 				},
 			},
 		},
@@ -770,6 +921,22 @@ var typesTests = []ScriptTest{
 				Expected: []sql.Row{
 					{1, "a0eebc99-9c0b-4ef8-bb6d-6bb9bd380a11"},
 					{2, "f47ac10b-58cc-4372-a567-0e02b2c3d479"},
+				},
+			},
+		},
+	},
+	{
+		Name: "Uuid array type",
+		SetUpScript: []string{
+			"CREATE TABLE t_uuid (id INTEGER primary key, v1 UUID[]);",
+			"INSERT INTO t_uuid VALUES (1, ARRAY['a0eebc99-9c0b-4ef8-bb6d-6bb9bd380a11'::uuid, NULL]), (2, ARRAY[NULL, 'f47ac10b58cc4372a567-0e02b2c3d479'::uuid]);",
+		},
+		Assertions: []ScriptTestAssertion{
+			{
+				Query: "SELECT * FROM t_uuid ORDER BY id;",
+				Expected: []sql.Row{
+					{1, "{a0eebc99-9c0b-4ef8-bb6d-6bb9bd380a11,NULL}"},
+					{2, "{NULL,f47ac10b-58cc-4372-a567-0e02b2c3d479}"},
 				},
 			},
 		},

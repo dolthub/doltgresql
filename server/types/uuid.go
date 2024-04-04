@@ -151,6 +151,11 @@ func (b UuidType) SerializedCompare(v1 []byte, v2 []byte) (int, error) {
 	return bytes.Compare(v1, v2), nil
 }
 
+// SerializeType implements the DoltgresType interface.
+func (b UuidType) SerializeType() ([]byte, error) {
+	return SerializationID_Uuid.ToByteSlice(), nil
+}
+
 // SQL implements the DoltgresType interface.
 func (b UuidType) SQL(ctx *sql.Context, dest []byte, v any) (sqltypes.Value, error) {
 	if v == nil {
@@ -166,6 +171,11 @@ func (b UuidType) SQL(ctx *sql.Context, dest []byte, v any) (sqltypes.Value, err
 // String implements the DoltgresType interface.
 func (b UuidType) String() string {
 	return "uuid"
+}
+
+// ToArrayType implements the DoltgresType interface.
+func (b UuidType) ToArrayType() DoltgresArrayType {
+	return UuidArray
 }
 
 // Type implements the DoltgresType interface.

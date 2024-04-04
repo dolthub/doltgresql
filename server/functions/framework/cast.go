@@ -96,6 +96,32 @@ func GetCast(fromType pgtypes.DoltgresTypeBaseID, toType pgtypes.DoltgresTypeBas
 			return f
 		}
 	}
+	// If there isn't a direct mapping, then we need to check if the types are array variants.
+	// As long as the base types are convertable, the array variants are also convertable.
+	if fromArrayType, ok := pgtypes.IsBaseIDArrayType(fromType); ok {
+		if toArrayType, ok := pgtypes.IsBaseIDArrayType(toType); ok {
+			if toMap, ok := typeCastsMap[fromArrayType.BaseType().BaseID()]; ok {
+				if f, ok := toMap[toArrayType.BaseType().BaseID()]; ok {
+					// We use a closure that can unwrap the slice, since conversion functions expect a singular non-nil value
+					return func(ctx Context, vals any) (any, error) {
+						var err error
+						oldVals := vals.([]any)
+						newVals := make([]any, len(oldVals))
+						for i, oldVal := range oldVals {
+							if oldVal == nil {
+								continue
+							}
+							newVals[i], err = f(ctx, oldVal)
+							if err != nil {
+								return nil, err
+							}
+						}
+						return newVals, nil
+					}
+				}
+			}
+		}
+	}
 	return nil
 }
 

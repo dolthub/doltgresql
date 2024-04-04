@@ -50,8 +50,12 @@ func nodeResolvableTypeReference(typ tree.ResolvableTypeReference) (*vitess.Conv
 		columnTypeName = columnType.SQLStandardName()
 		switch columnType.Family() {
 		case types.ArrayFamily:
-			if columnType.ArrayContents().Family() == types.BoolFamily {
-				resolvedType = pgtypes.BoolArray
+			_, baseResolvedType, err := nodeResolvableTypeReference(columnType.ArrayContents())
+			if err != nil {
+				return nil, nil, err
+			}
+			if doltgresType, ok := baseResolvedType.(pgtypes.DoltgresType); ok {
+				resolvedType = doltgresType.ToArrayType()
 			} else {
 				return nil, nil, fmt.Errorf("the given array type is not yet supported")
 			}
@@ -72,7 +76,7 @@ func nodeResolvableTypeReference(typ tree.ResolvableTypeReference) (*vitess.Conv
 			case oid.T_float8:
 				resolvedType = pgtypes.Float64
 			default:
-				return nil, nil, fmt.Errorf("unknown type in float familiy: %s", typ.SQLString())
+				return nil, nil, fmt.Errorf("unknown type in float family: %s", typ.SQLString())
 			}
 		case types.IntFamily:
 			switch columnType.Oid() {
@@ -83,14 +87,22 @@ func nodeResolvableTypeReference(typ tree.ResolvableTypeReference) (*vitess.Conv
 			case oid.T_int8:
 				resolvedType = pgtypes.Int64
 			default:
-				return nil, nil, fmt.Errorf("unknown type in integer familiy: %s", typ.SQLString())
+				return nil, nil, fmt.Errorf("unknown type in integer family: %s", typ.SQLString())
 			}
 		case types.JsonFamily:
 			columnTypeName = "JSON"
 		case types.StringFamily:
 			switch columnType.Oid() {
 			case oid.T_varchar:
-				resolvedType = pgtypes.VarCharType{Length: uint32(columnType.Width())}
+				width := uint32(columnType.Width())
+				if width > pgtypes.VarCharMaxLength {
+					return nil, nil, fmt.Errorf("length for type varchar cannot exceed %d", pgtypes.VarCharMaxLength)
+				}
+				// Handle varchars that do not declare a length, as they will set the width at zero
+				if width == 0 {
+					width = pgtypes.VarCharMaxLength
+				}
+				resolvedType = pgtypes.VarCharType{Length: width}
 			default:
 				columnTypeLength = vitess.NewIntVal([]byte(strconv.Itoa(int(columnType.Width()))))
 			}

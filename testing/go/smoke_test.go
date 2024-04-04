@@ -156,23 +156,56 @@ func TestSmokeTests(t *testing.T) {
 		{
 			Name: "ARRAY expression",
 			SetUpScript: []string{
-				"CREATE TABLE test (id INTEGER primary key, v1 BOOLEAN);",
-				"INSERT INTO test VALUES (1, 'true'), (2, 'false');",
+				"CREATE TABLE test1 (id INTEGER primary key, v1 BOOLEAN);",
+				"INSERT INTO test1 VALUES (1, 'true'), (2, 'false');",
 			},
 			Assertions: []ScriptTestAssertion{
 				{
-					Query: "SELECT ARRAY[v1] FROM test ORDER BY id;",
+					Query: "SELECT ARRAY[v1]::boolean[] FROM test1 ORDER BY id;",
 					Expected: []sql.Row{
 						{"{t}"},
 						{"{f}"},
 					},
 				},
 				{
-					Query: "SELECT ARRAY[v1, true, v1] FROM test ORDER BY id;",
+					Query: "SELECT ARRAY[v1] FROM test1 ORDER BY id;",
+					Expected: []sql.Row{
+						{"{t}"},
+						{"{f}"},
+					},
+				},
+				{
+					Query: "SELECT ARRAY[v1, true, v1] FROM test1 ORDER BY id;",
 					Expected: []sql.Row{
 						{"{t,t,t}"},
 						{"{f,t,f}"},
 					},
+				},
+				{
+					Query: "SELECT ARRAY[1::float8, 2::numeric];",
+					Expected: []sql.Row{
+						{"{1,2}"},
+					},
+				},
+				{
+					Query: "SELECT ARRAY[1::float8, NULL];",
+					Expected: []sql.Row{
+						{"{1,NULL}"},
+					},
+				},
+				{
+					Query: "SELECT ARRAY[1::int2, 2::int4, 3::int8]::varchar[];",
+					Expected: []sql.Row{
+						{"{1,2,3}"},
+					},
+				},
+				{
+					Query:       "SELECT ARRAY[1::int8]::int;",
+					ExpectedErr: true,
+				},
+				{
+					Query:       "SELECT ARRAY[1::int8, 2::varchar];",
+					ExpectedErr: true,
 				},
 			},
 		},
