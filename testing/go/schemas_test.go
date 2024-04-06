@@ -71,6 +71,10 @@ var SchemaTests = []ScriptTest{
 				Query: "CREATE TABLE mySchema.test (pk BIGINT PRIMARY KEY, v1 BIGINT);",
 			},
 			{
+				Query:    "insert into mySchema.test values (1,1), (2,2)",
+				Expected: []sql.Row{},
+			},
+			{
 				Query: "SELECT * FROM mySchema.test;",
 				Expected: []sql.Row{
 					{1, 1},
