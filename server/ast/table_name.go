@@ -15,9 +15,6 @@
 package ast
 
 import (
-	"fmt"
-	"strings"
-
 	vitess "github.com/dolthub/vitess/go/vt/sqlparser"
 
 	"github.com/dolthub/doltgresql/postgres/parser/sem/tree"
@@ -29,24 +26,19 @@ func nodeTableName(node *tree.TableName) (vitess.TableName, error) {
 		return vitess.TableName{}, nil
 	}
 
-	if node.ExplicitCatalog || node.ExplicitSchema {
-		if strings.ToLower(string(node.SchemaName)) == "information_schema" {
-			return vitess.TableName{
-				Name:        vitess.NewTableIdent(string(node.ObjectName)),
-				DbQualifier: vitess.NewTableIdent(string(node.SchemaName)),
-			}, nil
-		} else if !node.ExplicitCatalog && node.ExplicitSchema && strings.ToLower(string(node.SchemaName)) == "public" {
-			// the "public" schema is the default schema in PostgreSQL, so treat it as if it were not explicitly specified
-			return vitess.TableName{
-				Name:        vitess.NewTableIdent(string(node.ObjectName)),
-				DbQualifier: vitess.NewTableIdent(""),
-			}, nil
-		}
-		return vitess.TableName{}, fmt.Errorf("referencing items outside the schema or database is not yet supported")
+	var dbName, schemaName vitess.TableIdent
+	
+	if node.ExplicitCatalog {
+		dbName = vitess.NewTableIdent(string(node.CatalogName))
+	}
+	
+	if node.ExplicitSchema {
+		schemaName = vitess.NewTableIdent(string(node.SchemaName))
 	}
 
 	return vitess.TableName{
-		Name:        vitess.NewTableIdent(string(node.ObjectName)),
-		DbQualifier: vitess.NewTableIdent(string(node.SchemaName)),
+		Name:            vitess.NewTableIdent(string(node.ObjectName)),
+		DbQualifier:     dbName,
+		SchemaQualifier: schemaName,
 	}, nil
 }
