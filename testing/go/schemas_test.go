@@ -60,7 +60,8 @@ var SchemaTests = []ScriptTest{
 		},
 	},
 	{
-		Name: "create new schema", 
+		Name: "create new schema",
+		Focus: true,
 		Assertions: []ScriptTestAssertion{
 			{
 				Query:    "create schema mySchema",
@@ -102,6 +103,8 @@ var SchemaTests = []ScriptTest{
 	// More tests:
 	// * table name resolution among different schemas
 	// * revision qualifiers
+	// * drop tests
+	// * table name resolution in more statements
 }
 
 func TestSchemas(t *testing.T) {

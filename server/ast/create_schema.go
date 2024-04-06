@@ -15,8 +15,6 @@
 package ast
 
 import (
-	"fmt"
-
 	vitess "github.com/dolthub/vitess/go/vt/sqlparser"
 
 	"github.com/dolthub/doltgresql/postgres/parser/sem/tree"
@@ -27,5 +25,12 @@ func nodeCreateSchema(node *tree.CreateSchema) (vitess.Statement, error) {
 	if node == nil {
 		return nil, nil
 	}
-	return nil, fmt.Errorf("CREATE SCHEMA is not yet supported")
+	
+	return &vitess.DBDDL{
+		Action:         "CREATE",
+		SchemaOrDatabase: "schema",
+		DBName:         node.Schema,
+		IfNotExists:    node.IfNotExists,
+		CharsetCollate: nil, // TODO
+	}, nil
 }
