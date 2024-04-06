@@ -47,11 +47,11 @@ var SchemaTests = []ScriptTest{
 		},
 		Assertions: []ScriptTestAssertion{
 			{
-				Query:    "INSERT INTO mydb.public.test VALUES (1, 1), (2, 2);",
+				Query:    "INSERT INTO postgres.public.test VALUES (1, 1), (2, 2);",
 				Expected: []sql.Row{},
 			},
 			{
-				Query: "SELECT * FROM mydb.public.test;",
+				Query: "SELECT * FROM postgres.public.test;",
 				Expected: []sql.Row{
 					{1, 1},
 					{2, 2},
@@ -82,9 +82,9 @@ var SchemaTests = []ScriptTest{
 		Name: "create new database and new schema",
 		SetUpScript: []string{
 			"CREATE DATABASE db2;",
-			"USE db2;",
+			"USE db2;", // TODO: not a real postgres statement
 			"create schema schema2;",
-			"use doltgres",
+			"use postgres",
 		},
 		Assertions: []ScriptTestAssertion{
 			{
