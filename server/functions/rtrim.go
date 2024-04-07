@@ -31,11 +31,7 @@ var rtrim_varchar = framework.Function1{
 	Return:     pgtypes.VarChar,
 	Parameters: []pgtypes.DoltgresType{pgtypes.VarChar},
 	Callable: func(ctx framework.Context, val1 any) (any, error) {
-		return rtrim_varchar_varchar.Callable(framework.Context{
-			Context:       ctx.Context,
-			OriginalTypes: append(ctx.OriginalTypes, pgtypes.VarChar),
-			Sources:       append(ctx.Sources, framework.Source_Constant),
-		}, val1, " ")
+		return rtrim_varchar_varchar.Callable(ctx, val1, " ")
 	},
 }
 

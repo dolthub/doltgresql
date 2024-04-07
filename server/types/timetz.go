@@ -16,39 +16,40 @@ package types
 
 import (
 	"bytes"
-	"encoding/binary"
 	"fmt"
 	"reflect"
-	"strconv"
+	"time"
 
 	"github.com/dolthub/go-mysql-server/sql"
 	"github.com/dolthub/go-mysql-server/sql/types"
 	"github.com/dolthub/vitess/go/sqltypes"
 	"github.com/dolthub/vitess/go/vt/proto/query"
 	"github.com/lib/pq/oid"
-	"github.com/shopspring/decimal"
 )
 
-// Int16 is an int16.
-var Int16 = Int16Type{}
+// TimeTZ is the time with a time zone. Precision is unbounded.
+var TimeTZ = TimeTZType{-1}
 
-// Int16Type is the extended type implementation of the PostgreSQL smallint.
-type Int16Type struct{}
+// TimeTZType is the extended type implementation of the PostgreSQL time with time zone.
+type TimeTZType struct {
+	// TODO: implement precision
+	Precision int8
+}
 
-var _ DoltgresType = Int16Type{}
+var _ DoltgresType = TimeTZType{}
 
 // BaseID implements the DoltgresType interface.
-func (b Int16Type) BaseID() DoltgresTypeBaseID {
-	return DoltgresTypeBaseID_Int16
+func (b TimeTZType) BaseID() DoltgresTypeBaseID {
+	return DoltgresTypeBaseID_TimeTZ
 }
 
 // CollationCoercibility implements the DoltgresType interface.
-func (b Int16Type) CollationCoercibility(ctx *sql.Context) (collation sql.CollationID, coercibility byte) {
+func (b TimeTZType) CollationCoercibility(ctx *sql.Context) (collation sql.CollationID, coercibility byte) {
 	return sql.Collation_binary, 5
 }
 
 // Compare implements the DoltgresType interface.
-func (b Int16Type) Compare(v1 any, v2 any) (int, error) {
+func (b TimeTZType) Compare(v1 any, v2 any) (int, error) {
 	if v1 == nil && v2 == nil {
 		return 0, nil
 	} else if v1 != nil && v2 == nil {
@@ -66,74 +67,36 @@ func (b Int16Type) Compare(v1 any, v2 any) (int, error) {
 		return 0, err
 	}
 
-	ab := ac.(int16)
-	bb := bc.(int16)
-	if ab == bb {
-		return 0, nil
-	} else if ab < bb {
-		return -1, nil
-	} else {
-		return 1, nil
-	}
+	ab := ac.(time.Time)
+	bb := bc.(time.Time)
+	return ab.Compare(bb), nil
 }
 
 // Convert implements the DoltgresType interface.
-func (b Int16Type) Convert(val any) (any, sql.ConvertInRange, error) {
-	switch val := val.(type) {
-	case bool:
-		if val {
-			return int16(1), sql.InRange, nil
-		}
-		return int16(0), sql.InRange, nil
-	case int:
-		return int16(val), sql.InRange, nil
-	case uint:
-		return int16(val), sql.InRange, nil
-	case int8:
-		return int16(val), sql.InRange, nil
-	case uint8:
-		return int16(val), sql.InRange, nil
-	case int16:
-		return int16(val), sql.InRange, nil
-	case uint16:
-		return int16(val), sql.InRange, nil
-	case int32:
-		return int16(val), sql.InRange, nil
-	case uint32:
-		return int16(val), sql.InRange, nil
-	case int64:
-		return int16(val), sql.InRange, nil
-	case uint64:
-		return int16(val), sql.InRange, nil
-	case float32:
-		return int16(val), sql.InRange, nil
-	case float64:
-		return int16(val), sql.InRange, nil
-	case decimal.NullDecimal:
-		if !val.Valid {
-			return nil, sql.InRange, nil
-		}
-		return b.Convert(val.Decimal)
-	case decimal.Decimal:
-		v, _ := val.Float64()
-		return int16(v), sql.InRange, nil
-	case string:
-		i, err := strconv.ParseInt(val, 10, 64)
-		if err != nil {
-			return nil, sql.OutOfRange, err
-		}
-		return int16(i), sql.InRange, nil
-	case []byte:
-		return b.Convert(string(val))
-	case nil:
+func (b TimeTZType) Convert(val any) (any, sql.ConvertInRange, error) {
+	if val == nil {
 		return nil, sql.InRange, nil
+	}
+
+	switch val := val.(type) {
+	case string:
+		if t, err := time.Parse("15:04:05-0700", val); err == nil {
+			return t, sql.InRange, nil
+		} else if t, err = time.Parse("15:04:05-07:00", val); err == nil {
+			return t, sql.InRange, nil
+		} else if t, err = time.Parse("15:04:05-07", val); err == nil {
+			return t, sql.InRange, nil
+		}
+		return nil, sql.OutOfRange, fmt.Errorf("invalid format for timetz")
+	case time.Time:
+		return val, sql.InRange, nil
 	default:
-		return nil, sql.OutOfRange, fmt.Errorf("%s: unhandled type: %T", b.String(), val)
+		return nil, sql.OutOfRange, sql.ErrInvalidType.New(b)
 	}
 }
 
 // Equals implements the DoltgresType interface.
-func (b Int16Type) Equals(otherType sql.Type) bool {
+func (b TimeTZType) Equals(otherType sql.Type) bool {
 	if otherExtendedType, ok := otherType.(types.ExtendedType); ok {
 		return bytes.Equal(MustSerializeType(b), MustSerializeType(otherExtendedType))
 	}
@@ -141,7 +104,7 @@ func (b Int16Type) Equals(otherType sql.Type) bool {
 }
 
 // FormatSerializedValue implements the DoltgresType interface.
-func (b Int16Type) FormatSerializedValue(val []byte) (string, error) {
+func (b TimeTZType) FormatSerializedValue(val []byte) (string, error) {
 	deserialized, err := b.DeserializeValue(val)
 	if err != nil {
 		return "", err
@@ -150,7 +113,7 @@ func (b Int16Type) FormatSerializedValue(val []byte) (string, error) {
 }
 
 // FormatValue implements the DoltgresType interface.
-func (b Int16Type) FormatValue(val any) (string, error) {
+func (b TimeTZType) FormatValue(val any) (string, error) {
 	if val == nil {
 		return "", nil
 	}
@@ -158,41 +121,42 @@ func (b Int16Type) FormatValue(val any) (string, error) {
 	if err != nil {
 		return "", err
 	}
-	return strconv.FormatInt(int64(converted.(int16)), 10), nil
+	// TODO: this always displays the time with an offset relevant to the server location
+	return converted.(time.Time).Format("15:04:05-07"), nil
 }
 
 // GetSerializationID implements the DoltgresType interface.
-func (b Int16Type) GetSerializationID() SerializationID {
-	return SerializationID_Int16
+func (b TimeTZType) GetSerializationID() SerializationID {
+	return SerializationID_TimeTZ
 }
 
 // IsUnbounded implements the DoltgresType interface.
-func (b Int16Type) IsUnbounded() bool {
+func (b TimeTZType) IsUnbounded() bool {
 	return false
 }
 
 // MaxSerializedWidth implements the DoltgresType interface.
-func (b Int16Type) MaxSerializedWidth() types.ExtendedTypeSerializedWidth {
+func (b TimeTZType) MaxSerializedWidth() types.ExtendedTypeSerializedWidth {
 	return types.ExtendedTypeSerializedWidth_64K
 }
 
 // MaxTextResponseByteLength implements the DoltgresType interface.
-func (b Int16Type) MaxTextResponseByteLength(ctx *sql.Context) uint32 {
-	return 2
+func (b TimeTZType) MaxTextResponseByteLength(ctx *sql.Context) uint32 {
+	return 32
 }
 
 // OID implements the DoltgresType interface.
-func (b Int16Type) OID() uint32 {
-	return uint32(oid.T_int2)
+func (b TimeTZType) OID() uint32 {
+	return uint32(oid.T_timetz)
 }
 
 // Promote implements the DoltgresType interface.
-func (b Int16Type) Promote() sql.Type {
-	return b
+func (b TimeTZType) Promote() sql.Type {
+	return TimeTZ
 }
 
 // SerializedCompare implements the DoltgresType interface.
-func (b Int16Type) SerializedCompare(v1 []byte, v2 []byte) (int, error) {
+func (b TimeTZType) SerializedCompare(v1 []byte, v2 []byte) (int, error) {
 	if len(v1) == 0 && len(v2) == 0 {
 		return 0, nil
 	} else if len(v1) > 0 && len(v2) == 0 {
@@ -201,11 +165,12 @@ func (b Int16Type) SerializedCompare(v1 []byte, v2 []byte) (int, error) {
 		return -1, nil
 	}
 
+	// The marshalled time format is byte-comparable
 	return bytes.Compare(v1, v2), nil
 }
 
 // SQL implements the DoltgresType interface.
-func (b Int16Type) SQL(ctx *sql.Context, dest []byte, v any) (sqltypes.Value, error) {
+func (b TimeTZType) SQL(ctx *sql.Context, dest []byte, v any) (sqltypes.Value, error) {
 	if v == nil {
 		return sqltypes.NULL, nil
 	}
@@ -217,47 +182,55 @@ func (b Int16Type) SQL(ctx *sql.Context, dest []byte, v any) (sqltypes.Value, er
 }
 
 // String implements the DoltgresType interface.
-func (b Int16Type) String() string {
-	return "smallint"
+func (b TimeTZType) String() string {
+	if b.Precision == -1 {
+		return "timetz"
+	}
+	return fmt.Sprintf("timetz(%d)", b.Precision)
 }
 
 // ToArrayType implements the DoltgresType interface.
-func (b Int16Type) ToArrayType() DoltgresArrayType {
-	return Int16Array
+func (b TimeTZType) ToArrayType() DoltgresArrayType {
+	return createArrayType(b, SerializationID_TimeTZArray, oid.T__timetz)
 }
 
 // Type implements the DoltgresType interface.
-func (b Int16Type) Type() query.Type {
-	return sqltypes.Int16
+func (b TimeTZType) Type() query.Type {
+	return sqltypes.Text
 }
 
 // ValueType implements the DoltgresType interface.
-func (b Int16Type) ValueType() reflect.Type {
-	return reflect.TypeOf(int16(0))
+func (b TimeTZType) ValueType() reflect.Type {
+	return reflect.TypeOf(time.Time{})
 }
 
 // Zero implements the DoltgresType interface.
-func (b Int16Type) Zero() any {
-	return int16(0)
+func (b TimeTZType) Zero() any {
+	return time.Time{}
 }
 
 // SerializeType implements the DoltgresType interface.
-func (b Int16Type) SerializeType() ([]byte, error) {
-	return SerializationID_Int16.ToByteSlice(0), nil
+func (b TimeTZType) SerializeType() ([]byte, error) {
+	t := make([]byte, serializationIDHeaderSize+1)
+	copy(t, SerializationID_TimeTZ.ToByteSlice(0))
+	t[serializationIDHeaderSize] = byte(b.Precision)
+	return t, nil
 }
 
 // deserializeType implements the DoltgresType interface.
-func (b Int16Type) deserializeType(version uint16, metadata []byte) (DoltgresType, error) {
+func (b TimeTZType) deserializeType(version uint16, metadata []byte) (DoltgresType, error) {
 	switch version {
 	case 0:
-		return Int16, nil
+		return TimeTZType{
+			Precision: int8(metadata[0]),
+		}, nil
 	default:
 		return nil, fmt.Errorf("version %d is not yet supported for %s", version, b.String())
 	}
 }
 
 // SerializeValue implements the DoltgresType interface.
-func (b Int16Type) SerializeValue(val any) ([]byte, error) {
+func (b TimeTZType) SerializeValue(val any) ([]byte, error) {
 	if val == nil {
 		return nil, nil
 	}
@@ -265,15 +238,17 @@ func (b Int16Type) SerializeValue(val any) ([]byte, error) {
 	if err != nil {
 		return nil, err
 	}
-	retVal := make([]byte, 2)
-	binary.BigEndian.PutUint16(retVal, uint16(converted.(int16))+(1<<15))
-	return retVal, nil
+	return converted.(time.Time).MarshalBinary()
 }
 
 // DeserializeValue implements the DoltgresType interface.
-func (b Int16Type) DeserializeValue(val []byte) (any, error) {
+func (b TimeTZType) DeserializeValue(val []byte) (any, error) {
 	if len(val) == 0 {
 		return nil, nil
 	}
-	return int16(binary.BigEndian.Uint16(val) - (1 << 15)), nil
+	t := time.Time{}
+	if err := t.UnmarshalBinary(val); err != nil {
+		return nil, err
+	}
+	return t, nil
 }

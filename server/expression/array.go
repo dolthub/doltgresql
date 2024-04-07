@@ -71,13 +71,13 @@ func (array *Array) Eval(ctx *sql.Context, row sql.Row) (any, error) {
 	}
 	// The ARRAY expression may require automatic casting, so this handles that
 	if requiresCasting {
-		baseResultTypeID := resultArrayType.BaseType().BaseID()
+		baseResultType := resultArrayType.BaseType()
 		var err error
 		for i := range values {
 			if values[i] == nil {
 				continue
 			}
-			values[i], err = array.handleEvaluationCast(ctx, baseResultTypeID, array.children[i].Type(), &values[i])
+			values[i], err = array.handleEvaluationCast(ctx, baseResultType, array.children[i].Type(), &values[i])
 			if err != nil {
 				return nil, err
 			}
@@ -163,8 +163,8 @@ func (array *Array) castable(t1, t2 pgtypes.DoltgresType) (pgtypes.DoltgresType,
 	for i, baseID := range []pgtypes.DoltgresTypeBaseID{t1BaseID, t2BaseID} {
 		switch baseID {
 		// TODO: fill out the remaining convertable groups
-		case pgtypes.Float32.BaseID(), pgtypes.Float64.BaseID(), pgtypes.Int16.BaseID(), pgtypes.Int32.BaseID(),
-			pgtypes.Int64.BaseID(), pgtypes.Numeric.BaseID():
+		case pgtypes.DoltgresTypeBaseID_Float32, pgtypes.DoltgresTypeBaseID_Float64, pgtypes.DoltgresTypeBaseID_Int16,
+			pgtypes.DoltgresTypeBaseID_Int32, pgtypes.DoltgresTypeBaseID_Int64, pgtypes.DoltgresTypeBaseID_Numeric:
 			generalTyping[i] = 1
 		}
 	}
@@ -184,7 +184,7 @@ func (array *Array) castable(t1, t2 pgtypes.DoltgresType) (pgtypes.DoltgresType,
 }
 
 // handleEvaluationCast handles the casts performed during evaluation. This is only called if casting is required.
-func (array *Array) handleEvaluationCast(ctx *sql.Context, baseResultTypeID pgtypes.DoltgresTypeBaseID, paramSqlType sql.Type, val *any) (any, error) {
+func (array *Array) handleEvaluationCast(ctx *sql.Context, baseResultType pgtypes.DoltgresType, paramSqlType sql.Type, val *any) (any, error) {
 	var paramType pgtypes.DoltgresType
 	if doltgresType, ok := paramSqlType.(pgtypes.DoltgresType); ok {
 		paramType = doltgresType
@@ -224,7 +224,7 @@ func (array *Array) handleEvaluationCast(ctx *sql.Context, baseResultTypeID pgty
 		case query.Type_DATE, query.Type_DATETIME, query.Type_TIMESTAMP:
 			return nil, fmt.Errorf("need to add DoltgresType equivalents to DATETIME")
 		case query.Type_CHAR, query.Type_VARCHAR, query.Type_TEXT:
-			paramType = pgtypes.VarChar
+			paramType = pgtypes.Text
 		case query.Type_ENUM:
 			paramType = pgtypes.Int16
 		case query.Type_SET:
@@ -235,13 +235,13 @@ func (array *Array) handleEvaluationCast(ctx *sql.Context, baseResultTypeID pgty
 			return nil, fmt.Errorf("encountered an unknown GMS type")
 		}
 	}
-	castFunc := framework.GetCast(paramType.BaseID(), baseResultTypeID)
+	castFunc := framework.GetExplicitCast(paramType.BaseID(), baseResultType.BaseID())
 	if castFunc == nil {
 		// This should never happen, but we'll check here just to be safe
 		resultType, _ := array.typeRequiresCasting()
 		return nil, fmt.Errorf("cannot cast type %s to %s", resultType.BaseType().String(), paramType.String())
 	}
-	return castFunc(framework.Context{Context: ctx}, *val)
+	return castFunc(framework.Context{Context: ctx}, *val, baseResultType)
 }
 
 // isNullType returns whether the given type is a NULL type.
@@ -253,20 +253,20 @@ func (array *Array) isNullType(t sql.Type) bool {
 // the higher the priority.
 func (array *Array) numberCastGroupPriority(t pgtypes.DoltgresTypeBaseID) int {
 	switch t {
-	case pgtypes.Float64.BaseID():
+	case pgtypes.DoltgresTypeBaseID_Float64:
 		return 1
-	case pgtypes.Float32.BaseID():
+	case pgtypes.DoltgresTypeBaseID_Float32:
 		return 2
-	case pgtypes.Numeric.BaseID():
+	case pgtypes.DoltgresTypeBaseID_Numeric:
 		return 3
-	case pgtypes.Int64.BaseID():
+	case pgtypes.DoltgresTypeBaseID_Int64:
 		return 4
-	case pgtypes.Int32.BaseID():
+	case pgtypes.DoltgresTypeBaseID_Int32:
 		return 5
-	case pgtypes.Int16.BaseID():
+	case pgtypes.DoltgresTypeBaseID_Int16:
 		return 6
 	default:
-		return 8
+		return 7
 	}
 }
 
@@ -313,7 +313,7 @@ func (array *Array) typeRequiresCasting() (pgtypes.DoltgresArrayType, bool) {
 					// TODO: add the Doltgres equivalents for these
 					return pgtypes.AnyArray, false
 				case query.Type_CHAR, query.Type_VARCHAR, query.Type_TEXT:
-					childType = pgtypes.VarChar
+					childType = pgtypes.Text
 				case query.Type_ENUM:
 					childType = pgtypes.Int16
 				case query.Type_SET:

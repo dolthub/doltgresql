@@ -41,7 +41,7 @@ var _ DoltgresType = Float32Type{}
 
 // BaseID implements the DoltgresType interface.
 func (b Float32Type) BaseID() DoltgresTypeBaseID {
-	return DoltgresTypeBaseID(SerializationID_Float32)
+	return DoltgresTypeBaseID_Float32
 }
 
 // CollationCoercibility implements the DoltgresType interface.
@@ -163,6 +163,16 @@ func (b Float32Type) FormatValue(val any) (string, error) {
 	return strconv.FormatFloat(float64(converted.(float32)), 'g', -1, 32), nil
 }
 
+// GetSerializationID implements the DoltgresType interface.
+func (b Float32Type) GetSerializationID() SerializationID {
+	return SerializationID_Float32
+}
+
+// IsUnbounded implements the DoltgresType interface.
+func (b Float32Type) IsUnbounded() bool {
+	return false
+}
+
 // MaxSerializedWidth implements the DoltgresType interface.
 func (b Float32Type) MaxSerializedWidth() types.ExtendedTypeSerializedWidth {
 	return types.ExtendedTypeSerializedWidth_64K
@@ -180,7 +190,7 @@ func (b Float32Type) OID() uint32 {
 
 // Promote implements the DoltgresType interface.
 func (b Float32Type) Promote() sql.Type {
-	return Float64
+	return b
 }
 
 // SerializedCompare implements the DoltgresType interface.
@@ -194,11 +204,6 @@ func (b Float32Type) SerializedCompare(v1 []byte, v2 []byte) (int, error) {
 	}
 
 	return bytes.Compare(v1, v2), nil
-}
-
-// SerializeType implements the DoltgresType interface.
-func (b Float32Type) SerializeType() ([]byte, error) {
-	return SerializationID_Float32.ToByteSlice(), nil
 }
 
 // SQL implements the DoltgresType interface.
@@ -236,6 +241,21 @@ func (b Float32Type) ValueType() reflect.Type {
 // Zero implements the DoltgresType interface.
 func (b Float32Type) Zero() any {
 	return float32(0)
+}
+
+// SerializeType implements the DoltgresType interface.
+func (b Float32Type) SerializeType() ([]byte, error) {
+	return SerializationID_Float32.ToByteSlice(0), nil
+}
+
+// deserializeType implements the DoltgresType interface.
+func (b Float32Type) deserializeType(version uint16, metadata []byte) (DoltgresType, error) {
+	switch version {
+	case 0:
+		return Float32, nil
+	default:
+		return nil, fmt.Errorf("version %d is not yet supported for %s", version, b.String())
+	}
 }
 
 // SerializeValue implements the DoltgresType interface.

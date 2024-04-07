@@ -16,6 +16,7 @@ package types
 
 import (
 	"bytes"
+	"fmt"
 	"reflect"
 
 	"github.com/dolthub/go-mysql-server/sql"
@@ -34,7 +35,7 @@ var _ DoltgresType = NullType{}
 
 // BaseID implements the DoltgresType interface.
 func (b NullType) BaseID() DoltgresTypeBaseID {
-	return DoltgresTypeBaseID(SerializationID_Null)
+	return DoltgresTypeBaseID_Null
 }
 
 // CollationCoercibility implements the DoltgresType interface.
@@ -79,6 +80,16 @@ func (b NullType) FormatValue(val any) (string, error) {
 	return "NULL", nil
 }
 
+// GetSerializationID implements the DoltgresType interface.
+func (b NullType) GetSerializationID() SerializationID {
+	return SerializationID_Null
+}
+
+// IsUnbounded implements the DoltgresType interface.
+func (b NullType) IsUnbounded() bool {
+	return false
+}
+
 // MaxSerializedWidth implements the DoltgresType interface.
 func (b NullType) MaxSerializedWidth() types.ExtendedTypeSerializedWidth {
 	return types.ExtendedTypeSerializedWidth_64K
@@ -102,11 +113,6 @@ func (b NullType) Promote() sql.Type {
 // SerializedCompare implements the DoltgresType interface.
 func (b NullType) SerializedCompare(v1 []byte, v2 []byte) (int, error) {
 	return 0, nil
-}
-
-// SerializeType implements the DoltgresType interface.
-func (b NullType) SerializeType() ([]byte, error) {
-	return SerializationID_Null.ToByteSlice(), nil
 }
 
 // SQL implements the DoltgresType interface.
@@ -137,6 +143,21 @@ func (b NullType) ValueType() reflect.Type {
 // Zero implements the DoltgresType interface.
 func (b NullType) Zero() any {
 	return nil
+}
+
+// SerializeType implements the DoltgresType interface.
+func (b NullType) SerializeType() ([]byte, error) {
+	return SerializationID_Null.ToByteSlice(0), nil
+}
+
+// deserializeType implements the DoltgresType interface.
+func (b NullType) deserializeType(version uint16, metadata []byte) (DoltgresType, error) {
+	switch version {
+	case 0:
+		return Null, nil
+	default:
+		return nil, fmt.Errorf("version %d is not yet supported for %s", version, b.String())
+	}
 }
 
 // SerializeValue implements the DoltgresType interface.

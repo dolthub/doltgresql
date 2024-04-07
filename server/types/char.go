@@ -20,50 +20,41 @@ import (
 	"fmt"
 	"math"
 	"reflect"
+	"strings"
 	"unicode/utf8"
-
-	"github.com/lib/pq/oid"
 
 	"github.com/dolthub/go-mysql-server/sql"
 	"github.com/dolthub/go-mysql-server/sql/types"
 	"github.com/dolthub/vitess/go/sqltypes"
 	"github.com/dolthub/vitess/go/vt/proto/query"
+	"github.com/lib/pq/oid"
 )
 
-const (
-	// StringMaxLength is the maximum number of characters (not bytes) that a Char, VarChar, or BpChar may contain.
-	StringMaxLength = 10485760
-	// stringInline is the maximum number of characters (not bytes) that are "guaranteed" to fit inline.
-	stringInline = 16383
-	// stringUnbounded is used to represent that a type does not define a limit on the strings that it accepts. Values
-	// are still limited by the field size limit, but it won't be enforced by the type.
-	stringUnbounded = 0
-)
+// BpChar is a char that has an unbounded length. "bpchar" and "char" are the same type, distinguished by the length
+// being bounded or unbounded.
+var BpChar = CharType{Length: stringUnbounded}
 
-// VarChar is a varchar that has an unbounded length.
-var VarChar = VarCharType{Length: stringUnbounded}
-
-// VarCharType is the extended type implementation of the PostgreSQL varchar.
-type VarCharType struct {
+// CharType is the extended type implementation of the PostgreSQL char and bpchar, which are the same type internally.
+type CharType struct {
 	// Length represents the maximum number of characters that the type may hold.
-	// When this is zero, we treat it as completely unbounded (which is still limited by the field size limit).
+	// When this is set to unbounded, then it becomes recognized as bpchar.
 	Length uint32
 }
 
-var _ DoltgresType = VarCharType{}
+var _ DoltgresType = CharType{}
 
 // BaseID implements the DoltgresType interface.
-func (b VarCharType) BaseID() DoltgresTypeBaseID {
-	return DoltgresTypeBaseID_VarChar
+func (b CharType) BaseID() DoltgresTypeBaseID {
+	return DoltgresTypeBaseID_Char
 }
 
 // CollationCoercibility implements the DoltgresType interface.
-func (b VarCharType) CollationCoercibility(ctx *sql.Context) (collation sql.CollationID, coercibility byte) {
+func (b CharType) CollationCoercibility(ctx *sql.Context) (collation sql.CollationID, coercibility byte) {
 	return sql.Collation_binary, 5
 }
 
 // Compare implements the DoltgresType interface.
-func (b VarCharType) Compare(v1 any, v2 any) (int, error) {
+func (b CharType) Compare(v1 any, v2 any) (int, error) {
 	if v1 == nil && v2 == nil {
 		return 0, nil
 	} else if v1 != nil && v2 == nil {
@@ -81,8 +72,8 @@ func (b VarCharType) Compare(v1 any, v2 any) (int, error) {
 		return 0, err
 	}
 
-	ab := ac.(string)
-	bb := bc.(string)
+	ab := strings.TrimRight(ac.(string), " ")
+	bb := strings.TrimRight(bc.(string), " ")
 	if ab == bb {
 		return 0, nil
 	} else if ab < bb {
@@ -93,27 +84,37 @@ func (b VarCharType) Compare(v1 any, v2 any) (int, error) {
 }
 
 // Convert implements the DoltgresType interface.
-func (b VarCharType) Convert(val any) (any, sql.ConvertInRange, error) {
-	// TODO: need to check if this always truncates for values that are too large, or if it's just the default behavior
+func (b CharType) Convert(val any) (any, sql.ConvertInRange, error) {
+	// If the length is unbounded, then the conversion behaves the exact same as text
+	if b.Length == stringUnbounded {
+		return Text.Convert(val)
+	}
+
 	switch val := val.(type) {
 	case string:
-		// First we'll do a byte-length check since it's always >= the rune-count check, and it's far faster
-		if b.Length != stringUnbounded && uint32(len(val)) > b.Length {
-			// The byte-length is greater, so now we'll do a rune-count
-			if uint32(utf8.RuneCountInString(val)) > b.Length {
-				// TODO: figure out if there's a faster way to truncate based on rune count
-				startString := val
-				for i := uint32(0); i < b.Length; i++ {
-					_, size := utf8.DecodeRuneInString(val)
-					val = val[size:]
-				}
-				return startString[:len(startString)-len(val)], sql.InRange, nil
+		// We have to pad if the length is less than the length, and trim spaces if it's greater, so we always need to read it
+		runeLength := uint32(utf8.RuneCountInString(val))
+		if runeLength > b.Length {
+			// TODO: figure out if there's a faster way to truncate based on rune count
+			startString := val
+			for i := uint32(0); i < b.Length; i++ {
+				_, size := utf8.DecodeRuneInString(val)
+				val = val[size:]
 			}
+			for _, r := range val {
+				if r != ' ' {
+					return nil, sql.OutOfRange, fmt.Errorf("value too long for type %s", b.String())
+				}
+			}
+			return startString[:len(startString)-len(val)], sql.InRange, nil
+		} else if runeLength < b.Length {
+			return val + strings.Repeat(" ", int(b.Length-runeLength)), sql.InRange, nil
 		}
 		return val, sql.InRange, nil
 	case []byte:
-		// First we'll do a byte-length check since it's always >= the rune-count check, and it's far faster
-		if b.Length != stringUnbounded && uint32(len(val)) > b.Length {
+		// We have to pad if the length is less than the length, and trim spaces if it's greater, so we always need to read it
+		runeLength := uint32(utf8.RuneCount(val))
+		if runeLength > b.Length {
 			// The byte-length is greater, so now we'll do a rune-count
 			if uint32(utf8.RuneCount(val)) > b.Length {
 				// TODO: figure out if there's a faster way to truncate based on rune count
@@ -122,8 +123,15 @@ func (b VarCharType) Convert(val any) (any, sql.ConvertInRange, error) {
 					_, size := utf8.DecodeRune(val)
 					val = val[size:]
 				}
+				for _, r := range val {
+					if r != ' ' {
+						return nil, sql.OutOfRange, fmt.Errorf("value too long for type %s", b.String())
+					}
+				}
 				return string(startBytes[:len(startBytes)-len(val)]), sql.InRange, nil
 			}
+		} else if runeLength < b.Length {
+			return string(val) + strings.Repeat(" ", int(b.Length-runeLength)), sql.InRange, nil
 		}
 		return string(val), sql.InRange, nil
 	case nil:
@@ -134,7 +142,7 @@ func (b VarCharType) Convert(val any) (any, sql.ConvertInRange, error) {
 }
 
 // Equals implements the DoltgresType interface.
-func (b VarCharType) Equals(otherType sql.Type) bool {
+func (b CharType) Equals(otherType sql.Type) bool {
 	if otherExtendedType, ok := otherType.(types.ExtendedType); ok {
 		return bytes.Equal(MustSerializeType(b), MustSerializeType(otherExtendedType))
 	}
@@ -142,7 +150,7 @@ func (b VarCharType) Equals(otherType sql.Type) bool {
 }
 
 // FormatSerializedValue implements the DoltgresType interface.
-func (b VarCharType) FormatSerializedValue(val []byte) (string, error) {
+func (b CharType) FormatSerializedValue(val []byte) (string, error) {
 	deserialized, err := b.DeserializeValue(val)
 	if err != nil {
 		return "", err
@@ -151,7 +159,7 @@ func (b VarCharType) FormatSerializedValue(val []byte) (string, error) {
 }
 
 // FormatValue implements the DoltgresType interface.
-func (b VarCharType) FormatValue(val any) (string, error) {
+func (b CharType) FormatValue(val any) (string, error) {
 	if val == nil {
 		return "", nil
 	}
@@ -163,17 +171,17 @@ func (b VarCharType) FormatValue(val any) (string, error) {
 }
 
 // GetSerializationID implements the DoltgresType interface.
-func (b VarCharType) GetSerializationID() SerializationID {
-	return SerializationID_VarChar
+func (b CharType) GetSerializationID() SerializationID {
+	return SerializationID_Char
 }
 
 // IsUnbounded implements the DoltgresType interface.
-func (b VarCharType) IsUnbounded() bool {
+func (b CharType) IsUnbounded() bool {
 	return b.Length == stringUnbounded
 }
 
 // MaxSerializedWidth implements the DoltgresType interface.
-func (b VarCharType) MaxSerializedWidth() types.ExtendedTypeSerializedWidth {
+func (b CharType) MaxSerializedWidth() types.ExtendedTypeSerializedWidth {
 	if b.Length != stringUnbounded && b.Length <= stringInline {
 		return types.ExtendedTypeSerializedWidth_64K
 	} else {
@@ -182,7 +190,7 @@ func (b VarCharType) MaxSerializedWidth() types.ExtendedTypeSerializedWidth {
 }
 
 // MaxTextResponseByteLength implements the DoltgresType interface.
-func (b VarCharType) MaxTextResponseByteLength(ctx *sql.Context) uint32 {
+func (b CharType) MaxTextResponseByteLength(ctx *sql.Context) uint32 {
 	if b.Length == stringUnbounded {
 		return math.MaxUint32
 	} else {
@@ -191,17 +199,21 @@ func (b VarCharType) MaxTextResponseByteLength(ctx *sql.Context) uint32 {
 }
 
 // OID implements the DoltgresType interface.
-func (b VarCharType) OID() uint32 {
-	return uint32(oid.T_varchar)
+func (b CharType) OID() uint32 {
+	if b.Length == stringUnbounded {
+		return uint32(oid.T_bpchar)
+	} else {
+		return uint32(oid.T_char)
+	}
 }
 
 // Promote implements the DoltgresType interface.
-func (b VarCharType) Promote() sql.Type {
-	return VarChar
+func (b CharType) Promote() sql.Type {
+	return BpChar
 }
 
 // SerializedCompare implements the DoltgresType interface.
-func (b VarCharType) SerializedCompare(v1 []byte, v2 []byte) (int, error) {
+func (b CharType) SerializedCompare(v1 []byte, v2 []byte) (int, error) {
 	if len(v1) == 0 && len(v2) == 0 {
 		return 0, nil
 	} else if len(v1) > 0 && len(v2) == 0 {
@@ -213,7 +225,7 @@ func (b VarCharType) SerializedCompare(v1 []byte, v2 []byte) (int, error) {
 }
 
 // SQL implements the DoltgresType interface.
-func (b VarCharType) SQL(ctx *sql.Context, dest []byte, v any) (sqltypes.Value, error) {
+func (b CharType) SQL(ctx *sql.Context, dest []byte, v any) (sqltypes.Value, error) {
 	if v == nil {
 		return sqltypes.NULL, nil
 	}
@@ -225,48 +237,51 @@ func (b VarCharType) SQL(ctx *sql.Context, dest []byte, v any) (sqltypes.Value, 
 }
 
 // String implements the DoltgresType interface.
-func (b VarCharType) String() string {
-	if b.Length == stringUnbounded {
-		return "varchar"
-	}
-	return fmt.Sprintf("varchar(%d)", b.Length)
+func (b CharType) String() string {
+	return fmt.Sprintf("character(%d)", b.Length)
 }
 
 // ToArrayType implements the DoltgresType interface.
-func (b VarCharType) ToArrayType() DoltgresArrayType {
-	return createArrayTypeWithFuncs(b, SerializationID_VarCharArray, oid.T__varchar, arrayContainerFunctions{
-		SQL: stringArraySQL,
-	})
+func (b CharType) ToArrayType() DoltgresArrayType {
+	if b.Length == stringUnbounded {
+		return createArrayTypeWithFuncs(b, SerializationID_CharArray, oid.T__bpchar, arrayContainerFunctions{
+			SQL: stringArraySQL,
+		})
+	} else {
+		return createArrayTypeWithFuncs(b, SerializationID_CharArray, oid.T__char, arrayContainerFunctions{
+			SQL: stringArraySQL,
+		})
+	}
 }
 
 // Type implements the DoltgresType interface.
-func (b VarCharType) Type() query.Type {
+func (b CharType) Type() query.Type {
 	return sqltypes.Text
 }
 
 // ValueType implements the DoltgresType interface.
-func (b VarCharType) ValueType() reflect.Type {
+func (b CharType) ValueType() reflect.Type {
 	return reflect.TypeOf("")
 }
 
 // Zero implements the DoltgresType interface.
-func (b VarCharType) Zero() any {
+func (b CharType) Zero() any {
 	return ""
 }
 
 // SerializeType implements the DoltgresType interface.
-func (b VarCharType) SerializeType() ([]byte, error) {
+func (b CharType) SerializeType() ([]byte, error) {
 	t := make([]byte, serializationIDHeaderSize+4)
-	copy(t, SerializationID_VarChar.ToByteSlice(0))
+	copy(t, SerializationID_Char.ToByteSlice(0))
 	binary.LittleEndian.PutUint32(t[serializationIDHeaderSize:], b.Length)
 	return t, nil
 }
 
 // deserializeType implements the DoltgresType interface.
-func (b VarCharType) deserializeType(version uint16, metadata []byte) (DoltgresType, error) {
+func (b CharType) deserializeType(version uint16, metadata []byte) (DoltgresType, error) {
 	switch version {
 	case 0:
-		return VarCharType{
+		return CharType{
 			Length: binary.LittleEndian.Uint32(metadata),
 		}, nil
 	default:
@@ -275,7 +290,7 @@ func (b VarCharType) deserializeType(version uint16, metadata []byte) (DoltgresT
 }
 
 // SerializeValue implements the DoltgresType interface.
-func (b VarCharType) SerializeValue(val any) ([]byte, error) {
+func (b CharType) SerializeValue(val any) ([]byte, error) {
 	if val == nil {
 		return nil, nil
 	}
@@ -287,7 +302,7 @@ func (b VarCharType) SerializeValue(val any) ([]byte, error) {
 }
 
 // DeserializeValue implements the DoltgresType interface.
-func (b VarCharType) DeserializeValue(val []byte) (any, error) {
+func (b CharType) DeserializeValue(val []byte) (any, error) {
 	if len(val) == 0 {
 		return nil, nil
 	}

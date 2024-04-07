@@ -122,23 +122,22 @@ const (
 	SerializationID_XmlArray              SerializationID = 89
 )
 
-// ToByteSlice returns the ID as a byte slice.
-func (id SerializationID) ToByteSlice() []byte {
-	b := make([]byte, 2)
-	binary.LittleEndian.PutUint16(b, uint16(id))
-	return b
-}
-
-// ToByteArray returns the ID as a 2-byte array.
-func (id SerializationID) ToByteArray() [2]byte {
-	var b [2]byte
-	binary.LittleEndian.PutUint16(b[:], uint16(id))
-	return b
-}
+// serializationIDToType is a map from each SerializationID to its matching DoltgresType.
+var serializationIDToType = map[SerializationID]DoltgresType{}
 
 // init sets the serialization and deserialization functions.
 func init() {
 	types.SetExtendedTypeSerializers(SerializeType, DeserializeType)
+	for _, t := range typesFromBaseID {
+		sID := t.GetSerializationID()
+		if sID == SerializationID_Invalid {
+			continue
+		}
+		if _, ok := serializationIDToType[sID]; ok {
+			panic("duplicate serialization IDs in use")
+		}
+		serializationIDToType[sID] = t
+	}
 }
 
 // SerializeType is able to serialize the given extended type into a byte slice. All extended types will be defined
@@ -159,6 +158,8 @@ func MustSerializeType(extendedType types.ExtendedType) []byte {
 	switch extendedType.(type) {
 	case AnyArrayType:
 		return []byte{0}
+	case UnknownType:
+		return []byte{1}
 	}
 	serializedType, err := SerializeType(extendedType)
 	if err != nil {
@@ -170,56 +171,31 @@ func MustSerializeType(extendedType types.ExtendedType) []byte {
 // DeserializeType is able to deserialize the given serialized type into an appropriate extended type. All extended
 // types will be defined by DoltgreSQL.
 func DeserializeType(serializedType []byte) (types.ExtendedType, error) {
-	if len(serializedType) < 2 {
+	if len(serializedType) < serializationIDHeaderSize {
 		return nil, fmt.Errorf("cannot deserialize an empty type")
 	}
-	switch SerializationIDFromBytes(serializedType) {
-	case SerializationID_Bool:
-		return Bool, nil
-	case SerializationID_BoolArray:
-		return BoolArray.withInnerDeserialization(serializedType)
-	case SerializationID_Float32:
-		return Float32, nil
-	case SerializationID_Float32Array:
-		return Float32Array.withInnerDeserialization(serializedType)
-	case SerializationID_Float64:
-		return Float64, nil
-	case SerializationID_Float64Array:
-		return Float64Array.withInnerDeserialization(serializedType)
-	case SerializationID_Int16:
-		return Int16, nil
-	case SerializationID_Int16Array:
-		return Int16Array.withInnerDeserialization(serializedType)
-	case SerializationID_Int32:
-		return Int32, nil
-	case SerializationID_Int32Array:
-		return Int32Array.withInnerDeserialization(serializedType)
-	case SerializationID_Int64:
-		return Int64, nil
-	case SerializationID_Int64Array:
-		return Int64Array.withInnerDeserialization(serializedType)
-	case SerializationID_Null:
-		return Null, nil
-	case SerializationID_Numeric:
-		return Numeric, nil
-	case SerializationID_NumericArray:
-		return NumericArray.withInnerDeserialization(serializedType)
-	case SerializationID_VarChar:
-		return VarCharType{Length: binary.LittleEndian.Uint32(serializedType[2:])}, nil
-	case SerializationID_VarCharArray:
-		return VarCharArray.withInnerDeserialization(serializedType)
-	case SerializationID_Uuid:
-		return Uuid, nil
-	case SerializationID_UuidArray:
-		return UuidArray.withInnerDeserialization(serializedType)
-	default:
-		return nil, fmt.Errorf("unknown type to deserialize")
+	serializationID, version := SerializationIDFromBytes(serializedType)
+	targetType, ok := serializationIDToType[serializationID]
+	if !ok {
+		return nil, fmt.Errorf("serialization ID %d does not have a matching type for deserialization", serializationID)
 	}
+	return targetType.deserializeType(version, serializedType[serializationIDHeaderSize:])
 }
 
-// SerializationIDFromBytes reads a SerializationID from the given byte slice. The slice must have a length of at least
-// 2 bytes. This function does not perform any validation, and is merely a convenience to ensure that the ID is
-// read correctly.
-func SerializationIDFromBytes(b []byte) SerializationID {
-	return SerializationID(binary.LittleEndian.Uint16(b))
+// serializationIDHeaderSize is the size of the header that applies to all serialization IDs.
+const serializationIDHeaderSize = 4
+
+// ToByteSlice returns the ID as a byte slice.
+func (id SerializationID) ToByteSlice(version uint16) []byte {
+	b := make([]byte, serializationIDHeaderSize)
+	binary.LittleEndian.PutUint16(b, uint16(id))
+	binary.LittleEndian.PutUint16(b[2:], version)
+	return b
+}
+
+// SerializationIDFromBytes reads a SerializationID and version from the given byte slice. The slice must have a length
+// of at least 4 bytes. This function does not perform any validation, and is merely a convenience to ensure that the
+// ID is read correctly.
+func SerializationIDFromBytes(b []byte) (SerializationID, uint16) {
+	return SerializationID(binary.LittleEndian.Uint16(b)), binary.LittleEndian.Uint16(b[2:])
 }
