@@ -1,5 +1,5 @@
 CREATE [ OR REPLACE ] PROCEDURE
-    $name$ ( [ { [ $argmode$ ] [ $argname$ ] $argtype$ [ { DEFAULT | = } $default_expr$ ] } [ , ... ] ] )
+    $name$ ( [ { [ $routine_argmode$ ] [ $argname$ ] $argtype$ [ { DEFAULT | = } $default_expr$ ] } [ , ... ] ] )
     { LANGUAGE $lang_name$
     | TRANSFORM { FOR TYPE $type_name$ } [ , ... ]
     | [ EXTERNAL ] SECURITY INVOKER | [ EXTERNAL ] SECURITY DEFINER

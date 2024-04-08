@@ -23,6 +23,7 @@ type CreateFunction struct {
 	Name    *UnresolvedObjectName
 	Replace bool
 	Args    RoutineArgs
+	SetOf   bool
 	RetType []SimpleColumnDef
 	Options []RoutineOption
 }
@@ -43,6 +44,9 @@ func (node *CreateFunction) Format(ctx *FmtCtx) {
 	if node.RetType != nil {
 		if len(node.RetType) == 1 && node.RetType[0].Name == "" {
 			ctx.WriteString("RETURNS ")
+			if node.SetOf {
+				ctx.WriteString("SETOF ")
+			}
 			ctx.WriteString(node.RetType[0].Type.SQLString())
 		} else {
 			ctx.WriteString("RETURNS TABLE ")
@@ -73,7 +77,7 @@ type RoutineArgs []*RoutineArg
 
 // RoutineArg represents a routine argument. It can be used by FUNCTIONs and PROCEDUREs.
 type RoutineArg struct {
-	Mode    string
+	Mode    RoutineArgMode
 	Name    Name
 	Type    ResolvableTypeReference
 	Default Expr
@@ -85,15 +89,35 @@ func (node RoutineArgs) Format(ctx *FmtCtx) {
 		if i != 0 {
 			ctx.WriteString(", ")
 		}
-		if t.Mode != "" {
-			ctx.WriteString(t.Mode)
-			ctx.WriteByte(' ')
-		}
+		ctx.FormatNode(&t.Mode)
+		ctx.WriteByte(' ')
 		if t.Name != "" {
 			ctx.FormatNode(&t.Name)
 			ctx.WriteByte(' ')
 		}
 		t.Type.SQLString()
+	}
+}
+
+type RoutineArgMode int8
+
+const (
+	RoutineArgModeIn RoutineArgMode = iota
+	RoutineArgModeVariadic
+	RoutineArgModeOut
+	RoutineArgModeInout
+)
+
+func (node *RoutineArgMode) Format(ctx *FmtCtx) {
+	switch *node {
+	case RoutineArgModeIn:
+		ctx.WriteString("IN")
+	case RoutineArgModeVariadic:
+		ctx.WriteString("VARIADIC")
+	case RoutineArgModeOut:
+		ctx.WriteString("OUT")
+	case RoutineArgModeInout:
+		ctx.WriteString("INOUT")
 	}
 }
 

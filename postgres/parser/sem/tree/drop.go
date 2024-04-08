@@ -63,7 +63,7 @@ type DropAggregate struct {
 }
 
 type AggregateToDrop struct {
-	Name   Name
+	Name   *UnresolvedObjectName
 	AggSig *AggregateSignature
 }
 
@@ -77,7 +77,7 @@ func (node *DropAggregate) Format(ctx *FmtCtx) {
 		if i != 0 {
 			ctx.WriteString(" , ")
 		}
-		ctx.FormatNode(&agg.Name)
+		ctx.FormatNode(agg.Name)
 		ctx.WriteString(" ( ")
 		ctx.FormatNode(agg.AggSig)
 		ctx.WriteString(" ) ")

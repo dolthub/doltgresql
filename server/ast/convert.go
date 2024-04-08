@@ -26,6 +26,8 @@ import (
 // Convert converts a Postgres AST into a Vitess AST.
 func Convert(postgresStmt parser.Statement) (vitess.Statement, error) {
 	switch stmt := postgresStmt.AST.(type) {
+	case *tree.AlterAggregate:
+		return nodeAlterAggregate(stmt)
 	case *tree.AlterDatabase:
 		return nodeAlterDatabase(stmt)
 	case *tree.AlterFunction:
@@ -72,6 +74,8 @@ func Convert(postgresStmt parser.Statement) (vitess.Statement, error) {
 		return nodeControlSchedules(stmt)
 	case *tree.CopyFrom:
 		return nodeCopyFrom(stmt)
+	case *tree.CreateAggregate:
+		return nodeCreateAggregate(stmt)
 	case *tree.CreateChangefeed:
 		return nodeCreateChangefeed(stmt)
 	case *tree.CreateDatabase:
@@ -104,6 +108,8 @@ func Convert(postgresStmt parser.Statement) (vitess.Statement, error) {
 		return nodeDelete(stmt)
 	case *tree.Discard:
 		return nodeDiscard(stmt)
+	case *tree.DropAggregate:
+		return nodeDropAggregate(stmt)
 	case *tree.DropDatabase:
 		return nodeDropDatabase(stmt)
 	case *tree.DropIndex:

@@ -18,7 +18,7 @@ var _ Statement = &AlterAggregate{}
 
 // AlterAggregate represents a ALTER AGGREGATE statement.
 type AlterAggregate struct {
-	Name   Name
+	Name   *UnresolvedObjectName
 	AggSig *AggregateSignature
 	Rename Name
 	Owner  string
@@ -28,7 +28,7 @@ type AlterAggregate struct {
 // Format implements the NodeFormatter interface.
 func (node *AlterAggregate) Format(ctx *FmtCtx) {
 	ctx.WriteString("ALTER AGGREGATE ")
-	ctx.FormatNode(&node.Name)
+	ctx.FormatNode(node.Name)
 	ctx.WriteString(" ( ")
 	node.AggSig.Format(ctx)
 	ctx.WriteString(" )")

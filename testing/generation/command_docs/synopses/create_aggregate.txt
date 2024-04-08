@@ -1,4 +1,4 @@
-CREATE [ OR REPLACE ] AGGREGATE $name$ ( [ $argmode$ ] [ $argname$ ] $arg_data_type$ [ , ... ] ) (
+CREATE [ OR REPLACE ] AGGREGATE $name$ ( [ $agg_argmode$ ] [ $argname$ ] $arg_data_type$ [ , ... ] ) (
     SFUNC = $sfunc$,
     STYPE = $state_data_type$
     [ , SSPACE = $state_data_size$ ]
@@ -20,8 +20,8 @@ CREATE [ OR REPLACE ] AGGREGATE $name$ ( [ $argmode$ ] [ $argname$ ] $arg_data_t
     [ , SORTOP = $sort_operator$ ]
     [ , PARALLEL = { SAFE | RESTRICTED | UNSAFE } ] )
 
-CREATE [ OR REPLACE ] AGGREGATE $name$ ( [ [ $argmode$ ] [ $argname$ ] $arg_data_type$ [ , ... ] ]
-    ORDER BY [ $argmode$ ] [ $argname$ ] $arg_data_type$ [ , ... ] ) (
+CREATE [ OR REPLACE ] AGGREGATE $name$ ( [ [ $agg_argmode$ ] [ $argname$ ] $arg_data_type$ [ , ... ] ]
+    ORDER BY [ $agg_argmode$ ] [ $argname$ ] $arg_data_type$ [ , ... ] ) (
     SFUNC = $sfunc$,
     STYPE = $state_data_type$
     [ , SSPACE = $state_data_size$ ]
