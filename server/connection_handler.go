@@ -445,7 +445,7 @@ func (h *ConnectionHandler) handleBind(message messages.Bind) error {
 		return err
 	}
 
-	boundPlan, fields, err := h.bindParams(message.SourcePreparedStatement, preparedData.Query.AST, bindVars)
+	boundPlan, fields, err := h.bindParams(preparedData.Query.String, preparedData.Query.AST, bindVars)
 	if err != nil {
 		return err
 	}

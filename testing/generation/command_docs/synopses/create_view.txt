@@ -1,4 +1,10 @@
 CREATE [ OR REPLACE ] [ TEMP | TEMPORARY ] { RECURSIVE VIEW $name$ ( $column_name$ [ , ... ] ) | VIEW $name$ [ ( $column_name$ [ , ... ] ) ] }
-    [ WITH ( { $view_option_name$ [ = $view_option_value$ ] } [ , ... ] ) ]
+    [ WITH ( $view_option_value$ [ , ... ] ) ]
     AS $query$
     [ WITH [ CASCADED | LOCAL ] CHECK OPTION ]
+
+where $view_option_value$ is:
+
+check_option [ = $string_literal$ ] |
+    security_barrier [ = $boolean$ ] |
+    security_invoker [ = $boolean$ ]

@@ -16,6 +16,7 @@ package ast
 
 import (
 	"fmt"
+	"strings"
 
 	vitess "github.com/dolthub/vitess/go/vt/sqlparser"
 
@@ -27,7 +28,83 @@ func nodeCreateView(node *tree.CreateView) (*vitess.DDL, error) {
 	if node == nil {
 		return nil, nil
 	}
-	//TODO: AFAICT, CREATE VIEW uses a substring of the original string, which won't necessarily work for us.
-	// Although it takes a parsed definition, this definition isn't sent to integrators.
-	return nil, fmt.Errorf("CREATE VIEW is not yet supported")
+	if node.Persistence.IsTemporary() {
+		return nil, fmt.Errorf("CREATE TEMPORARY VIEW is not yet supported")
+	}
+	if node.IsRecursive {
+		return nil, fmt.Errorf("CREATE RECURSIVE VIEW is not yet supported")
+	}
+	var checkOption = tree.ViewCheckOptionUnspecified
+	var sqlSecurity string
+	if node.Options != nil {
+		for _, opt := range node.Options {
+			switch strings.ToLower(opt.Name) {
+			case "check_option":
+				switch strings.ToLower(opt.CheckOpt) {
+				case "local":
+					checkOption = tree.ViewCheckOptionLocal
+				case "cascaded":
+					checkOption = tree.ViewCheckOptionCascaded
+				default:
+					return nil, fmt.Errorf(`"ERROR:  syntax error at or near "%s"`, opt.Name)
+				}
+			case "security_barrier":
+				return nil, fmt.Errorf("CREATE VIEW '%s' option is not yet supported", opt.Name)
+			case "security_invoker":
+				if opt.Security {
+					sqlSecurity = "invoker"
+				} else {
+					sqlSecurity = "definer"
+				}
+			default:
+				return nil, fmt.Errorf(`"ERROR:  syntax error at or near "%s"`, opt.Name)
+			}
+		}
+	}
+	if checkOption == tree.ViewCheckOptionLocal {
+		return nil, fmt.Errorf("CREATE VIEW ... WITH LOCAL CHECK OPTION is not yet supported")
+	}
+
+	tableName, err := nodeTableName(&node.Name)
+	if err != nil {
+		return nil, err
+	}
+	selectStmt, err := nodeSelectStatement(node.AsSource.Select)
+	if err != nil {
+		return nil, err
+	}
+	var cols = make(vitess.Columns, len(node.ColumnNames))
+	for i, col := range node.ColumnNames {
+		cols[i] = vitess.NewColIdent(col.String())
+	}
+
+	// TODO: need a way to get this information in better way?
+	stmtStr := "CREATE "
+	if node.Replace {
+		stmtStr = fmt.Sprintf("%sOR REPLACE ", stmtStr)
+	}
+	if sqlSecurity != "" {
+		stmtStr = fmt.Sprintf("%sSQL SECURITY %s ", stmtStr, sqlSecurity)
+	}
+	stmtStr = fmt.Sprintf("%sVIEW %s", stmtStr, tableName.String())
+	if node.ColumnNames != nil {
+		stmtStr = fmt.Sprintf("%s(%s)", stmtStr, strings.Join(node.ColumnNames.ToStrings(), ", "))
+	}
+	stmtStr = fmt.Sprintf("%s AS ", stmtStr)
+	posStart := len(stmtStr)
+	posEnd := posStart + len(node.AsSource.Select.String())
+
+	stmt := &vitess.DDL{
+		Action:    vitess.CreateStr,
+		OrReplace: node.Replace,
+		ViewSpec: &vitess.ViewSpec{
+			ViewName: tableName,
+			ViewExpr: selectStmt,
+			Columns:  cols,
+			Security: sqlSecurity,
+		},
+		SubStatementPositionStart: posStart,
+		SubStatementPositionEnd:   posEnd,
+	}
+	return stmt, nil
 }
