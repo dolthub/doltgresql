@@ -265,6 +265,8 @@ func VitessTypeToObjectID(typ query.Type) (int32, error) {
 		return OidVarchar, nil
 	case query.Type_TEXT:
 		return OidText, nil
+	case query.Type_BLOB:
+		return OidBytea, nil
 	case query.Type_JSON:
 		return OidJson, nil
 	case query.Type_TIMESTAMP, query.Type_DATETIME:
@@ -316,6 +318,8 @@ func VitessFieldToDataTypeSize(field *query.Field) (int16, error) {
 	case query.Type_VARCHAR:
 		return -1, nil
 	case query.Type_TEXT:
+		return -1, nil
+	case query.Type_BLOB:
 		return -1, nil
 	case query.Type_JSON:
 		return -1, nil
@@ -374,6 +378,8 @@ func VitessFieldToDataTypeModifier(field *query.Field) (int32, error) {
 		// PostgreSQL adds 4 to the length for an unknown reason
 		return int32(int64(field.ColumnLength)/sql.CharacterSetID(field.Charset).MaxLength()) + 4, nil
 	case query.Type_TEXT:
+		return -1, nil
+	case query.Type_BLOB:
 		return -1, nil
 	case query.Type_JSON:
 		return -1, nil

@@ -16,6 +16,7 @@ package types
 
 import (
 	"bytes"
+	"encoding/binary"
 	"fmt"
 	"math/big"
 	"reflect"
@@ -39,16 +40,20 @@ var (
 )
 
 // Numeric is a precise and unbounded decimal value.
-var Numeric = NumericType{}
+var Numeric = NumericType{-1, -1}
 
 // NumericType is the extended type implementation of the PostgreSQL numeric.
-type NumericType struct{}
+type NumericType struct {
+	// TODO: implement precision and scale
+	Precision int32
+	Scale     int32
+}
 
 var _ DoltgresType = NumericType{}
 
 // BaseID implements the DoltgresType interface.
 func (b NumericType) BaseID() DoltgresTypeBaseID {
-	return DoltgresTypeBaseID(SerializationID_Numeric)
+	return DoltgresTypeBaseID_Numeric
 }
 
 // CollationCoercibility implements the DoltgresType interface.
@@ -160,9 +165,19 @@ func (b NumericType) FormatValue(val any) (string, error) {
 	return converted.(decimal.Decimal).String(), nil
 }
 
+// GetSerializationID implements the DoltgresType interface.
+func (b NumericType) GetSerializationID() SerializationID {
+	return SerializationID_Numeric
+}
+
+// IsUnbounded implements the DoltgresType interface.
+func (b NumericType) IsUnbounded() bool {
+	return false
+}
+
 // MaxSerializedWidth implements the DoltgresType interface.
 func (b NumericType) MaxSerializedWidth() types.ExtendedTypeSerializedWidth {
-	return types.ExtendedTypeSerializedWidth_64K //TODO: probably should have inline and ref versions
+	return types.ExtendedTypeSerializedWidth_Unbounded
 }
 
 // MaxTextResponseByteLength implements the DoltgresType interface.
@@ -203,11 +218,6 @@ func (b NumericType) SerializedCompare(v1 []byte, v2 []byte) (int, error) {
 	return ab.Cmp(bb), nil
 }
 
-// SerializeType implements the DoltgresType interface.
-func (b NumericType) SerializeType() ([]byte, error) {
-	return SerializationID_Numeric.ToByteSlice(), nil
-}
-
 // SQL implements the DoltgresType interface.
 func (b NumericType) SQL(ctx *sql.Context, dest []byte, v any) (sqltypes.Value, error) {
 	if v == nil {
@@ -243,6 +253,28 @@ func (b NumericType) ValueType() reflect.Type {
 // Zero implements the DoltgresType interface.
 func (b NumericType) Zero() any {
 	return decimal.Zero
+}
+
+// SerializeType implements the DoltgresType interface.
+func (b NumericType) SerializeType() ([]byte, error) {
+	t := make([]byte, serializationIDHeaderSize+8)
+	copy(t, SerializationID_Numeric.ToByteSlice(0))
+	binary.LittleEndian.PutUint32(t[serializationIDHeaderSize:], uint32(b.Precision))
+	binary.LittleEndian.PutUint32(t[serializationIDHeaderSize+4:], uint32(b.Scale))
+	return t, nil
+}
+
+// deserializeType implements the DoltgresType interface.
+func (b NumericType) deserializeType(version uint16, metadata []byte) (DoltgresType, error) {
+	switch version {
+	case 0:
+		return NumericType{
+			Precision: int32(binary.LittleEndian.Uint32(metadata)),
+			Scale:     int32(binary.LittleEndian.Uint32(metadata[4:])),
+		}, nil
+	default:
+		return nil, fmt.Errorf("version %d is not yet supported for %s", version, b.String())
+	}
 }
 
 // SerializeValue implements the DoltgresType interface.

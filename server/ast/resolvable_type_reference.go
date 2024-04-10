@@ -16,7 +16,6 @@ package ast
 
 import (
 	"fmt"
-	"strconv"
 
 	"github.com/dolthub/go-mysql-server/sql"
 	vitess "github.com/dolthub/vitess/go/vt/sqlparser"
@@ -48,8 +47,7 @@ func nodeResolvableTypeReference(typ tree.ResolvableTypeReference) (*vitess.Conv
 		return nil, nil, fmt.Errorf("geometry types are not yet supported")
 	case *types.T:
 		columnTypeName = columnType.SQLStandardName()
-		switch columnType.Family() {
-		case types.ArrayFamily:
+		if columnType.Family() == types.ArrayFamily {
 			_, baseResolvedType, err := nodeResolvableTypeReference(columnType.ArrayContents())
 			if err != nil {
 				return nil, nil, err
@@ -59,57 +57,77 @@ func nodeResolvableTypeReference(typ tree.ResolvableTypeReference) (*vitess.Conv
 			} else {
 				return nil, nil, fmt.Errorf("the given array type is not yet supported")
 			}
-		case types.BoolFamily:
-			resolvedType = pgtypes.Bool
-		case types.DecimalFamily:
-			if columnType.Precision() == 0 && columnType.Scale() == 0 {
-				resolvedType = pgtypes.Numeric
-			} else {
-				columnTypeName = "decimal"
-				columnTypeLength = vitess.NewIntVal([]byte(strconv.Itoa(int(columnType.Precision()))))
-				columnTypeScale = vitess.NewIntVal([]byte(strconv.Itoa(int(columnType.Scale()))))
-			}
-		case types.FloatFamily:
+		} else {
 			switch columnType.Oid() {
+			case oid.T_bool:
+				resolvedType = pgtypes.Bool
+			case oid.T_bytea:
+				resolvedType = pgtypes.Bytea
+			case oid.T_bpchar:
+				width := uint32(columnType.Width())
+				if width > pgtypes.StringMaxLength {
+					return nil, nil, fmt.Errorf("length for type bpchar cannot exceed %d", pgtypes.StringMaxLength)
+				}
+				if width == 0 {
+					resolvedType = pgtypes.BpChar
+				} else {
+					resolvedType = pgtypes.CharType{Length: width}
+				}
+			case oid.T_char:
+				width := uint32(columnType.Width())
+				if width > pgtypes.StringMaxLength {
+					return nil, nil, fmt.Errorf("length for type char cannot exceed %d", pgtypes.StringMaxLength)
+				}
+				if width == 0 {
+					width = 1
+				}
+				resolvedType = pgtypes.CharType{Length: width}
+			case oid.T_date:
+				resolvedType = pgtypes.Date
 			case oid.T_float4:
 				resolvedType = pgtypes.Float32
 			case oid.T_float8:
 				resolvedType = pgtypes.Float64
-			default:
-				return nil, nil, fmt.Errorf("unknown type in float family: %s", typ.SQLString())
-			}
-		case types.IntFamily:
-			switch columnType.Oid() {
 			case oid.T_int2:
 				resolvedType = pgtypes.Int16
 			case oid.T_int4:
 				resolvedType = pgtypes.Int32
 			case oid.T_int8:
 				resolvedType = pgtypes.Int64
-			default:
-				return nil, nil, fmt.Errorf("unknown type in integer family: %s", typ.SQLString())
-			}
-		case types.JsonFamily:
-			columnTypeName = "JSON"
-		case types.StringFamily:
-			switch columnType.Oid() {
+			case oid.T_json:
+				columnTypeName = "JSON"
+			case oid.T_jsonb:
+				columnTypeName = "JSON"
+			case oid.T_numeric:
+				if columnType.Precision() == 0 && columnType.Scale() == 0 {
+					resolvedType = pgtypes.Numeric
+				} else {
+					resolvedType = pgtypes.NumericType{
+						Precision: columnType.Precision(),
+						Scale:     columnType.Scale(),
+					}
+				}
+			case oid.T_text:
+				resolvedType = pgtypes.Text
+			case oid.T_time:
+				resolvedType = pgtypes.Time
+			case oid.T_timestamp:
+				resolvedType = pgtypes.Timestamp
+			case oid.T_timestamptz:
+				resolvedType = pgtypes.TimestampTZ
+			case oid.T_timetz:
+				resolvedType = pgtypes.TimeTZ
+			case oid.T_uuid:
+				resolvedType = pgtypes.Uuid
 			case oid.T_varchar:
 				width := uint32(columnType.Width())
-				if width > pgtypes.VarCharMaxLength {
-					return nil, nil, fmt.Errorf("length for type varchar cannot exceed %d", pgtypes.VarCharMaxLength)
-				}
-				// Handle varchars that do not declare a length, as they will set the width at zero
-				if width == 0 {
-					width = pgtypes.VarCharMaxLength
+				if width > pgtypes.StringMaxLength {
+					return nil, nil, fmt.Errorf("length for type varchar cannot exceed %d", pgtypes.StringMaxLength)
 				}
 				resolvedType = pgtypes.VarCharType{Length: width}
 			default:
-				columnTypeLength = vitess.NewIntVal([]byte(strconv.Itoa(int(columnType.Width()))))
+				return nil, nil, fmt.Errorf("unknown type with oid: %d", uint32(columnType.Oid()))
 			}
-		case types.TimestampFamily:
-			columnTypeName = columnType.Name()
-		case types.UuidFamily:
-			resolvedType = pgtypes.Uuid
 		}
 	}
 

@@ -31,11 +31,7 @@ var lpad_varchar_int32 = framework.Function2{
 	Return:     pgtypes.VarChar,
 	Parameters: []pgtypes.DoltgresType{pgtypes.VarChar, pgtypes.Int32},
 	Callable: func(ctx framework.Context, val1 any, val2 any) (any, error) {
-		return lpad_varchar_int32_varchar.Callable(framework.Context{
-			Context:       ctx.Context,
-			OriginalTypes: append(ctx.OriginalTypes, pgtypes.VarChar),
-			Sources:       append(ctx.Sources, framework.Source_Constant),
-		}, val1, val2, " ")
+		return lpad_varchar_int32_varchar.Callable(ctx, val1, val2, " ")
 	},
 }
 
