@@ -85,6 +85,7 @@ var GlobalCustomVariables = map[string]utils.StatementGenerator{
 	"uid":                 customDefinition(`1`),
 	"update":              customDefinition(`UPDATE tablename SET x = 1`),
 	"values":              customDefinition(`VALUES (1)`),
+	"view_option_name":    customDefinition(`check_option | security_barrier | security_invoker`),
 	"with_query":          customDefinition(`queryname AS (select)`),
 }
 
