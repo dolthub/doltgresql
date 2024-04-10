@@ -65,7 +65,9 @@ var SchemaTests = []ScriptTest{
 		Assertions: []ScriptTestAssertion{
 			{
 				Query:    "create schema mySchema",
-				Expected: []sql.Row{},
+			},
+			{
+				Query:    "create schema otherSchema",
 			},
 			{
 				Query: "CREATE TABLE mySchema.test (pk BIGINT PRIMARY KEY, v1 BIGINT);",
@@ -75,7 +77,21 @@ var SchemaTests = []ScriptTest{
 				Expected: []sql.Row{},
 			},
 			{
+				Query: "CREATE TABLE otherSchema.test (pk BIGINT PRIMARY KEY, v1 BIGINT);",
+			},
+			{
+				Query:    "insert into otherSchema.test values (3,3), (4,4)",
+				Expected: []sql.Row{},
+			},
+			{
 				Query: "SELECT * FROM mySchema.test;",
+				Expected: []sql.Row{
+					{1, 1},
+					{2, 2},
+				},
+			},
+			{
+				Query: "SELECT * FROM otherSchema.test;",
 				Expected: []sql.Row{
 					{1, 1},
 					{2, 2},
