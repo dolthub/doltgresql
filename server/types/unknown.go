@@ -76,6 +76,16 @@ func (u UnknownType) FormatValue(val any) (string, error) {
 	return "", fmt.Errorf("%s cannot format values", u.String())
 }
 
+// GetSerializationID implements the DoltgresType interface.
+func (u UnknownType) GetSerializationID() SerializationID {
+	return SerializationID_Invalid
+}
+
+// IsUnbounded implements the DoltgresType interface.
+func (u UnknownType) IsUnbounded() bool {
+	return false
+}
+
 // MaxSerializedWidth implements the DoltgresType interface.
 func (u UnknownType) MaxSerializedWidth() types.ExtendedTypeSerializedWidth {
 	return types.ExtendedTypeSerializedWidth_Unbounded
@@ -99,11 +109,6 @@ func (u UnknownType) Promote() sql.Type {
 // SerializedCompare implements the DoltgresType interface.
 func (u UnknownType) SerializedCompare(v1 []byte, v2 []byte) (int, error) {
 	return 0, fmt.Errorf("%s cannot compare serialized values", u.String())
-}
-
-// SerializeType implements the DoltgresType interface.
-func (u UnknownType) SerializeType() ([]byte, error) {
-	return nil, fmt.Errorf("%s cannot be serialized", u.String())
 }
 
 // SQL implements the DoltgresType interface.
@@ -136,6 +141,16 @@ func (u UnknownType) Zero() any {
 	return any(nil)
 }
 
+// SerializeType implements the DoltgresType interface.
+func (u UnknownType) SerializeType() ([]byte, error) {
+	return nil, fmt.Errorf("%s cannot be serialized", u.String())
+}
+
+// deserializeType implements the DoltgresType interface.
+func (u UnknownType) deserializeType(version uint16, metadata []byte) (DoltgresType, error) {
+	return nil, fmt.Errorf("%s cannot be deserialized", u.String())
+}
+
 // SerializeValue implements the DoltgresType interface.
 func (u UnknownType) SerializeValue(val any) ([]byte, error) {
 	return nil, fmt.Errorf("%s cannot serialize values", u.String())
@@ -144,9 +159,4 @@ func (u UnknownType) SerializeValue(val any) ([]byte, error) {
 // DeserializeValue implements the DoltgresType interface.
 func (u UnknownType) DeserializeValue(val []byte) (any, error) {
 	return nil, fmt.Errorf("%s cannot deserialize values", u.String())
-}
-
-// withInnerDeserialization implements the DoltgresArrayType interface.
-func (u UnknownType) withInnerDeserialization(innerSerializedType []byte) (types.ExtendedType, error) {
-	return nil, fmt.Errorf("%s cannot be deserialized", u.String())
 }

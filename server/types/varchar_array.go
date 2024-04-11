@@ -26,11 +26,11 @@ import (
 
 // VarCharArray is the array variant of VarChar.
 var VarCharArray = createArrayTypeWithFuncs(VarChar, SerializationID_VarCharArray, oid.T__varchar, arrayContainerFunctions{
-	SQL: varCharArraySQL,
+	SQL: stringArraySQL,
 })
 
-// varCharArraySQL is the SQL implementation for VarCharArray.
-func varCharArraySQL(ctx *sql.Context, ac arrayContainer, dest []byte, valInterface any) (sqltypes.Value, error) {
+// stringArraySQL is the SQL implementation for all string array types.
+func stringArraySQL(ctx *sql.Context, ac arrayContainer, dest []byte, valInterface any) (sqltypes.Value, error) {
 	if valInterface == nil {
 		return sqltypes.NULL, nil
 	}

@@ -14,7 +14,11 @@
 
 package types
 
-import "testing"
+import (
+	"testing"
+
+	"github.com/stretchr/testify/require"
+)
 
 // TestSerialization operates as a line of defense to prevent accidental changes to pre-existing serialization IDs.
 // If this test fails, then a SerializationID was changed that should not have been changed.
@@ -128,5 +132,25 @@ func TestSerialization(t *testing.T) {
 		} else {
 			allIds[id.ID] = id.Name
 		}
+	}
+}
+
+// TestSerializationIDConsistency checks that all types use the same SerializationID that they report in
+// GetSerializationID and output in SerializeType.
+func TestSerializationIDConsistency(t *testing.T) {
+	for _, typ := range typesFromBaseID {
+		t.Run(typ.String(), func(t *testing.T) {
+			sID := typ.GetSerializationID()
+			if sID == SerializationID_Invalid {
+				_, err := typ.SerializeType()
+				require.Error(t, err)
+			} else {
+				serializedType, err := typ.SerializeType()
+				require.NoError(t, err)
+				require.True(t, len(serializedType) >= serializationIDHeaderSize)
+				idPrefix := sID.ToByteSlice(0)[:2]
+				require.Equal(t, idPrefix, serializedType[:2])
+			}
+		})
 	}
 }

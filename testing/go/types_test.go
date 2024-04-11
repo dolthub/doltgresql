@@ -223,10 +223,9 @@ var typesTests = []ScriptTest{
 	},
 	{
 		Name: "Bytea type",
-		Skip: true,
 		SetUpScript: []string{
 			"CREATE TABLE t_bytea (id INTEGER primary key, v1 BYTEA);",
-			"INSERT INTO t_bytea VALUES (1, E'\\\\xDEADBEEF'), (2, E'\\\\xC0FFEE');",
+			"INSERT INTO t_bytea VALUES (1, E'\\\\xDEADBEEF'), (2, '\\xC0FFEE');",
 		},
 		Assertions: []ScriptTestAssertion{
 			{
@@ -242,7 +241,7 @@ var typesTests = []ScriptTest{
 		Name: "Character type",
 		SetUpScript: []string{
 			"CREATE TABLE t_character (id INTEGER primary key, v1 CHARACTER(5));",
-			"INSERT INTO t_character VALUES (1, 'abcde'), (2, 'vwxyz');",
+			"INSERT INTO t_character VALUES (1, 'abcde'), (2, 'vwxyz'), (3, 'ghi');",
 		},
 		Assertions: []ScriptTestAssertion{
 			{
@@ -250,8 +249,8 @@ var typesTests = []ScriptTest{
 				Expected: []sql.Row{
 					{1, "abcde"},
 					{2, "vwxyz"},
+					{3, "ghi  "},
 				},
-				Skip: true, // getting spurious 'invalid length for "char": 5' error
 			},
 		},
 	},
@@ -369,7 +368,6 @@ var typesTests = []ScriptTest{
 		},
 		Assertions: []ScriptTestAssertion{
 			{
-				Skip:  true, // TODO: these are coming back as date time objects, not dates
 				Query: "SELECT * FROM t_date ORDER BY id;",
 				Expected: []sql.Row{
 					{1, "2023-01-01"},
@@ -809,7 +807,6 @@ var typesTests = []ScriptTest{
 	},
 	{
 		Name: "Time without time zone type",
-		Skip: true,
 		SetUpScript: []string{
 			"CREATE TABLE t_time_without_zone (id INTEGER primary key, v1 TIME);",
 			"INSERT INTO t_time_without_zone VALUES (1, '12:34:56'), (2, '23:45:01');",
@@ -824,7 +821,7 @@ var typesTests = []ScriptTest{
 			},
 		},
 	},
-	{
+	{ // TODO: timezone representation is reported via local time, need to account for that in testing?
 		Name: "Time with time zone type",
 		Skip: true,
 		SetUpScript: []string{
@@ -857,7 +854,7 @@ var typesTests = []ScriptTest{
 			},
 		},
 	},
-	{
+	{ // TODO: timezone representation is reported via local time, need to account for that in testing?
 		Name: "Timestamp with time zone type",
 		Skip: true,
 		SetUpScript: []string{
@@ -1057,7 +1054,7 @@ func TestSameTypes(t *testing.T) {
 				{
 					Query: "SELECT * FROM test ORDER BY 1;",
 					Expected: []sql.Row{
-						{"1986-08-02 17:04:22", "2023-09-03 00:00:00"},
+						{"1986-08-02 17:04:22", "2023-09-03"},
 					},
 				},
 			},

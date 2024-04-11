@@ -194,6 +194,16 @@ func (ac arrayContainer) FormatValue(val any) (string, error) {
 	return sb.String(), nil
 }
 
+// GetSerializationID implements the DoltgresType interface.
+func (ac arrayContainer) GetSerializationID() SerializationID {
+	return ac.serializationID
+}
+
+// IsUnbounded implements the DoltgresType interface.
+func (ac arrayContainer) IsUnbounded() bool {
+	return true
+}
+
 // MaxSerializedWidth implements the DoltgresType interface.
 func (ac arrayContainer) MaxSerializedWidth() types.ExtendedTypeSerializedWidth {
 	return types.ExtendedTypeSerializedWidth_Unbounded
@@ -228,18 +238,6 @@ func (ac arrayContainer) SerializedCompare(v1 []byte, v2 []byte) (int, error) {
 	return ac.Compare(dv1, dv2)
 }
 
-// SerializeType implements the DoltgresType interface.
-func (ac arrayContainer) SerializeType() ([]byte, error) {
-	innerSerialized, err := ac.innerType.SerializeType()
-	if err != nil {
-		return nil, err
-	}
-	serialized := make([]byte, len(innerSerialized)+2)
-	binary.LittleEndian.PutUint16(serialized, uint16(ac.serializationID))
-	copy(serialized[2:], innerSerialized)
-	return serialized, nil
-}
-
 // SQL implements the DoltgresType interface.
 func (ac arrayContainer) SQL(ctx *sql.Context, dest []byte, valInterface any) (sqltypes.Value, error) {
 	return ac.funcs.SQL(ctx, ac, dest, valInterface)
@@ -268,6 +266,32 @@ func (ac arrayContainer) ValueType() reflect.Type {
 // Zero implements the DoltgresType interface.
 func (ac arrayContainer) Zero() any {
 	return []any{}
+}
+
+// SerializeType implements the DoltgresType interface.
+func (ac arrayContainer) SerializeType() ([]byte, error) {
+	innerSerialized, err := ac.innerType.SerializeType()
+	if err != nil {
+		return nil, err
+	}
+	serialized := make([]byte, serializationIDHeaderSize+len(innerSerialized))
+	copy(serialized, ac.serializationID.ToByteSlice(0))
+	copy(serialized[serializationIDHeaderSize:], innerSerialized)
+	return serialized, nil
+}
+
+// deserializeType implements the DoltgresType interface.
+func (ac arrayContainer) deserializeType(version uint16, metadata []byte) (DoltgresType, error) {
+	switch version {
+	case 0:
+		innerType, err := DeserializeType(metadata)
+		if err != nil {
+			return nil, err
+		}
+		return innerType.(DoltgresType).ToArrayType(), nil
+	default:
+		return nil, fmt.Errorf("version %d is not yet supported for arrays", version)
+	}
 }
 
 // SerializeValue implements the DoltgresType interface.
@@ -364,20 +388,6 @@ func (ac arrayContainer) DeserializeValue(serializedVals []byte) (_ any, err err
 	}
 	// Returns all of the read elements
 	return output, nil
-}
-
-// withInnerDeserialization implements the DoltgresArrayType interface.
-func (ac arrayContainer) withInnerDeserialization(innerSerializedType []byte) (types.ExtendedType, error) {
-	innerType, err := DeserializeType(innerSerializedType[2:])
-	if err != nil {
-		return nil, err
-	}
-	return arrayContainer{
-		innerType:       innerType.(DoltgresType),
-		serializationID: ac.serializationID,
-		oid:             ac.oid,
-		funcs:           ac.funcs,
-	}, nil
 }
 
 // arrayContainerSQL implements the default SQL function for arrayContainer.

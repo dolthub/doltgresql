@@ -28,13 +28,10 @@ type OverloadDeduction struct {
 }
 
 // Resolve returns an overload that either matches the given parameters exactly, or is a viable match after casting.
-// This will modify the parameter slice in-place. Returns a nil OverloadDeduction if a viable match is not found.
+// Returns a nil OverloadDeduction if a viable match is not found.
 func (overload *OverloadDeduction) Resolve(parameters []pgtypes.DoltgresType, sources []Source) (*OverloadDeduction, []TypeCastFunction, error) {
-	// Create a slice of types that will be modified in-place to contain the resulting types that the function requires.
-	resultTypes := make([]pgtypes.DoltgresType, len(parameters))
-	copy(resultTypes, parameters)
 	// Call the recursive type resolver
-	resultOverload := overload.resolveByType(parameters, resultTypes, sources)
+	resultOverload := overload.resolveByType(parameters, sources)
 	// If we receive a nil overload, then no valid overloads were found
 	if resultOverload == nil {
 		return nil, nil, nil
@@ -42,8 +39,8 @@ func (overload *OverloadDeduction) Resolve(parameters []pgtypes.DoltgresType, so
 	// If any of the result types are different from their originals, then we need to cast them to their resulting types
 	// if it's possible.
 	casts := make([]TypeCastFunction, len(parameters))
-	for i := range resultTypes {
-		casts[i] = GetCast(parameters[i].BaseID(), resultTypes[i].BaseID())
+	for i, resultType := range resultOverload.Function.GetParameters() {
+		casts[i] = GetExplicitCast(parameters[i].BaseID(), resultType.BaseID())
 	}
 	return resultOverload, casts, nil
 }
@@ -51,7 +48,7 @@ func (overload *OverloadDeduction) Resolve(parameters []pgtypes.DoltgresType, so
 // resolveByType returns the best matching overload for the given types. The result types represent the actual types
 // used by the overload, which may differ from the calling types. It is up to the caller to cast the parameters to match
 // the types expected by the returned overload. Returns a nil OverloadDeduction if a viable match is not found.
-func (overload *OverloadDeduction) resolveByType(originalTypes []pgtypes.DoltgresType, resultTypes []pgtypes.DoltgresType, sources []Source) *OverloadDeduction {
+func (overload *OverloadDeduction) resolveByType(originalTypes []pgtypes.DoltgresType, sources []Source) *OverloadDeduction {
 	if overload == nil {
 		return nil
 	}
@@ -64,34 +61,29 @@ func (overload *OverloadDeduction) resolveByType(originalTypes []pgtypes.Doltgre
 
 	// Check if we're able to resolve the original type
 	t := originalTypes[0]
-	resultOverload := overload.Parameter[t.BaseID()].resolveByType(originalTypes[1:], resultTypes[1:], sources[1:])
+	resultOverload := overload.Parameter[t.BaseID()].resolveByType(originalTypes[1:], sources[1:])
 	if resultOverload != nil {
-		resultTypes[0] = t
 		return resultOverload
 	}
 
 	// We did not find a resolution for the original type, so we'll look through each type to find a possible cast.
 	// Constants have a different set of considerations compared to other types of expressions, and string constants
 	// are further specialized.
-	var castMap map[specialOverloadCast]struct{}
+	var castFunc func(pgtypes.DoltgresTypeBaseID, pgtypes.DoltgresTypeBaseID) bool
 	sourceStringLiteral := false
 	if sources[0] == Source_Constant {
-		castMap = specialOverloadCasts
+		castFunc = implicitOverloadCasts
 		switch t.BaseID() {
-		case pgtypes.VarChar.BaseID():
+		case pgtypes.DoltgresTypeBaseID_Char, pgtypes.DoltgresTypeBaseID_Text, pgtypes.DoltgresTypeBaseID_VarChar:
 			sourceStringLiteral = true
 		}
 	} else {
-		castMap = numericUpcasts
+		castFunc = numericUpcasts
 	}
 	for _, priority := range overload.castPriority(sourceStringLiteral) {
-		if _, ok := castMap[specialOverloadCast{
-			Parameter:  priority,
-			Expression: t.BaseID(),
-		}]; ok {
-			resultOverload = overload.Parameter[priority].resolveByType(originalTypes[1:], resultTypes[1:], sources[1:])
+		if castFunc(priority, t.BaseID()) {
+			resultOverload = overload.Parameter[priority].resolveByType(originalTypes[1:], sources[1:])
 			if resultOverload != nil {
-				resultTypes[0] = pgtypes.FromBaseID(priority)
 				return resultOverload
 			}
 		}

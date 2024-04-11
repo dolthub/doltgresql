@@ -79,11 +79,11 @@ func NewIntegerLiteral(integerValue string) (*Literal, error) {
 	}
 }
 
-// NewStringLiteral returns a new *Literal containing a VARCHAR value.
+// NewStringLiteral returns a new *Literal containing a TEXT value.
 func NewStringLiteral(stringValue string) (*Literal, error) {
 	return &Literal{
 		value: stringValue,
-		typ:   pgtypes.VarChar,
+		typ:   pgtypes.Text,
 	}, nil
 }
 
@@ -125,19 +125,19 @@ func (l *Literal) String() string {
 // equivalent functionality should be built into Doltgres (recommend the second approach).
 func (l *Literal) ToVitessLiteral() *vitess.SQLVal {
 	switch l.typ.BaseID() {
-	case pgtypes.Bool.BaseID():
+	case pgtypes.DoltgresTypeBaseID_Bool:
 		if l.value.(bool) {
 			return vitess.NewIntVal([]byte("1"))
 		} else {
 			return vitess.NewIntVal([]byte("0"))
 		}
-	case pgtypes.Int32.BaseID():
+	case pgtypes.DoltgresTypeBaseID_Int32:
 		return vitess.NewIntVal([]byte(strconv.FormatInt(int64(l.value.(int32)), 10)))
-	case pgtypes.Int64.BaseID():
+	case pgtypes.DoltgresTypeBaseID_Int64:
 		return vitess.NewIntVal([]byte(strconv.FormatInt(l.value.(int64), 10)))
-	case pgtypes.Numeric.BaseID():
+	case pgtypes.DoltgresTypeBaseID_Numeric:
 		return vitess.NewFloatVal([]byte(l.value.(decimal.Decimal).String()))
-	case pgtypes.VarChar.BaseID():
+	case pgtypes.DoltgresTypeBaseID_Text:
 		return vitess.NewStrVal([]byte(l.value.(string)))
 	default:
 		panic("unhandled type in temporary literal conversion: " + l.typ.String())

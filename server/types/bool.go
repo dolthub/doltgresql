@@ -39,7 +39,7 @@ var _ DoltgresType = BoolType{}
 
 // BaseID implements the DoltgresType interface.
 func (b BoolType) BaseID() DoltgresTypeBaseID {
-	return DoltgresTypeBaseID(SerializationID_Bool)
+	return DoltgresTypeBaseID_Bool
 }
 
 // CollationCoercibility implements the DoltgresType interface.
@@ -166,6 +166,16 @@ func (b BoolType) FormatValue(val any) (string, error) {
 	}
 }
 
+// GetSerializationID implements the DoltgresType interface.
+func (b BoolType) GetSerializationID() SerializationID {
+	return SerializationID_Bool
+}
+
+// IsUnbounded implements the DoltgresType interface.
+func (b BoolType) IsUnbounded() bool {
+	return false
+}
+
 // MaxSerializedWidth implements the DoltgresType interface.
 func (b BoolType) MaxSerializedWidth() types.ExtendedTypeSerializedWidth {
 	return types.ExtendedTypeSerializedWidth_64K
@@ -203,11 +213,6 @@ func (b BoolType) SerializedCompare(v1 []byte, v2 []byte) (int, error) {
 	} else {
 		return 1, nil
 	}
-}
-
-// SerializeType implements the DoltgresType interface.
-func (b BoolType) SerializeType() ([]byte, error) {
-	return SerializationID_Bool.ToByteSlice(), nil
 }
 
 // SQL implements the DoltgresType interface.
@@ -252,6 +257,21 @@ func (b BoolType) ValueType() reflect.Type {
 // Zero implements the DoltgresType interface.
 func (b BoolType) Zero() any {
 	return false
+}
+
+// SerializeType implements the DoltgresType interface.
+func (b BoolType) SerializeType() ([]byte, error) {
+	return SerializationID_Bool.ToByteSlice(0), nil
+}
+
+// deserializeType implements the DoltgresType interface.
+func (b BoolType) deserializeType(version uint16, metadata []byte) (DoltgresType, error) {
+	switch version {
+	case 0:
+		return Bool, nil
+	default:
+		return nil, fmt.Errorf("version %d is not yet supported for %s", version, b.String())
+	}
 }
 
 // SerializeValue implements the DoltgresType interface.
