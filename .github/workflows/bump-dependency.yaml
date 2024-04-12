@@ -104,8 +104,6 @@ jobs:
         run: |
           go get github.com/dolthub/${{ github.event.client_payload.dependency }}/go@${{ github.event.client_payload.head_commit_sha }}
           go mod tidy
-      - name: Update repos
-        run: ./postgres/parser/build.sh
       - name: Get short hash
         id: short-sha
         run: |
