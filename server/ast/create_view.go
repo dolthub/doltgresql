@@ -61,8 +61,20 @@ func nodeCreateView(node *tree.CreateView) (*vitess.DDL, error) {
 			}
 		}
 	}
-	if checkOption == tree.ViewCheckOptionLocal {
-		return nil, fmt.Errorf("CREATE VIEW ... WITH LOCAL CHECK OPTION is not yet supported")
+
+	if checkOption != tree.ViewCheckOptionUnspecified && node.CheckOption != tree.ViewCheckOptionUnspecified {
+		return nil, fmt.Errorf(`ERROR:  parameter "check_option" specified more than once`)
+	} else {
+		checkOption = node.CheckOption
+	}
+
+	vCheckOpt := vitess.ViewCheckOptionUnspecified
+	switch checkOption {
+	case tree.ViewCheckOptionCascaded:
+		vCheckOpt = vitess.ViewCheckOptionCascaded
+	case tree.ViewCheckOptionLocal:
+		vCheckOpt = vitess.ViewCheckOptionLocal
+	default:
 	}
 
 	tableName, err := nodeTableName(&node.Name)
@@ -78,33 +90,17 @@ func nodeCreateView(node *tree.CreateView) (*vitess.DDL, error) {
 		cols[i] = vitess.NewColIdent(col.String())
 	}
 
-	// TODO: need a way to get this information in better way?
-	stmtStr := "CREATE "
-	if node.Replace {
-		stmtStr = fmt.Sprintf("%sOR REPLACE ", stmtStr)
-	}
-	if sqlSecurity != "" {
-		stmtStr = fmt.Sprintf("%sSQL SECURITY %s ", stmtStr, sqlSecurity)
-	}
-	stmtStr = fmt.Sprintf("%sVIEW %s", stmtStr, tableName.String())
-	if node.ColumnNames != nil {
-		stmtStr = fmt.Sprintf("%s(%s)", stmtStr, strings.Join(node.ColumnNames.ToStrings(), ", "))
-	}
-	stmtStr = fmt.Sprintf("%s AS ", stmtStr)
-	posStart := len(stmtStr)
-	posEnd := posStart + len(node.AsSource.Select.String())
-
 	stmt := &vitess.DDL{
 		Action:    vitess.CreateStr,
 		OrReplace: node.Replace,
 		ViewSpec: &vitess.ViewSpec{
-			ViewName: tableName,
-			ViewExpr: selectStmt,
-			Columns:  cols,
-			Security: sqlSecurity,
+			ViewName:    tableName,
+			ViewExpr:    selectStmt,
+			Columns:     cols,
+			Security:    sqlSecurity,
+			CheckOption: vCheckOpt,
 		},
-		SubStatementPositionStart: posStart,
-		SubStatementPositionEnd:   posEnd,
+		SubStatementStr: node.AsSource.Select.String(),
 	}
 	return stmt, nil
 }
