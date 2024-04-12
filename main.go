@@ -558,7 +558,8 @@ func emitUsageEvent(ctx context.Context, dEnv *env.DoltEnv) {
 		return
 	}
 
-	emitter, err := commands.GRPCEmitterForConfig(dEnv)
+	emitter, closer, err := commands.GRPCEmitterForConfig(dEnv)
+	defer closer()
 	if err != nil {
 		return
 	}
