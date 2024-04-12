@@ -19,9 +19,6 @@ jobs:
           if [ "$REPO" == "dolt" ]
           then
             echo "label=dolt-bump" >> $GITHUB_OUTPUT
-          elif [ "$REPO" == "bounties" ]
-          then
-            echo "label=bounties-bump" >> $GITHUB_OUTPUT
           else
             echo "$REPO is unsupported"
             exit 1
