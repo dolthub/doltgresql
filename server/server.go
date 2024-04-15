@@ -155,8 +155,6 @@ func RunInMemory(args []string) (*svcs.Controller, error) {
 // runServer starts the server based on the given args, using the provided file system as the backing store.
 // The returned WaitGroup may be used to wait for the server to close.
 func runServer(ctx context.Context, args []string, dEnv *env.DoltEnv) (*svcs.Controller, error) {
-	//doltgresconfig.InitConfigParameters()
-
 	sqlServerCmd := sqlserver.SqlServerCmd{}
 	if serverArgs, err := sqlServerCmd.ArgParser().Parse(append([]string{"sql-server"}, args...)); err == nil {
 		if _, ok := serverArgs.GetValue("port"); !ok {
