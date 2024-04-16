@@ -151,6 +151,162 @@ const (
 	PgUserMappingTableName = "pg_user_mapping"
 )
 
+// Below are VIEWs
+const (
+	// PgAvailableExtensionVersionsTableName is the name of the pg_available_extension_versions table.
+	PgAvailableExtensionVersionsTableName = "pg_available_extension_versions"
+	// PgAvailableExtensionsTableName is the name of the pg_available_extensions table.
+	PgAvailableExtensionsTableName = "pg_available_extensions"
+	// PgBackendMemoryContextsTableName is the name of the pg_backend_memory_contexts table.
+	PgBackendMemoryContextsTableName = "pg_backend_memory_contexts"
+	// PgConfigTableName is the name of the pg_config table.
+	PgConfigTableName = "pg_config"
+	// PgCursorsTableName is the name of the pg_cursors table.
+	PgCursorsTableName = "pg_cursors"
+	// PgFileSettingsTableName is the name of the pg_file_settings table.
+	PgFileSettingsTableName = "pg_file_settings"
+	// PgGroupTableName is the name of the pg_group table.
+	PgGroupTableName = "pg_group"
+	// PgHbaFileRulesTableName is the name of the pg_hba_file_rules table.
+	PgHbaFileRulesTableName = "pg_hba_file_rules"
+	// PgIdentFileMappingsTableName is the name of the pg_ident_file_mappings table.
+	PgIdentFileMappingsTableName = "pg_ident_file_mappings"
+	// PgIndexesTableName is the name of the pg_indexes table.
+	PgIndexesTableName = "pg_indexes"
+	// PgLocksTableName is the name of the pg_locks table.
+	PgLocksTableName = "pg_locks"
+	// PgMatViewsTableName is the name of the pg_matviews table.
+	PgMatViewsTableName = "pg_matviews"
+	// PgPoliciesTableName is the name of the pg_policies table.
+	PgPoliciesTableName = "pg_policies"
+	// PgPreparedStatementsTableName is the name of the pg_prepared_statements table.
+	PgPreparedStatementsTableName = "pg_prepared_statements"
+	// PgPreparedXactsTableName is the name of the pg_prepared_xacts table.
+	PgPreparedXactsTableName = "pg_prepared_xacts"
+	// PgPublicationTablesTableName is the name of the pg_publication_tables table.
+	PgPublicationTablesTableName = "pg_publication_tables"
+	// PgReplicationOriginStatusTableName is the name of the pg_replication_origin_status table.
+	PgReplicationOriginStatusTableName = "pg_replication_origin_status"
+	// PgReplicationSlotsTableName is the name of the pg_replication_slots table.
+	PgReplicationSlotsTableName = "pg_replication_slots"
+	// PgRolesTableName is the name of the pg_roles table.
+	PgRolesTableName = "pg_roles"
+	// PgRulesTableName is the name of the pg_rules table.
+	PgRulesTableName = "pg_rules"
+	// PgSecLabelsTableName is the name of the pg_seclabels table.
+	PgSecLabelsTableName = "pg_seclabels"
+	// PgSequencesTableName is the name of the pg_sequences table.
+	PgSequencesTableName = "pg_sequences"
+	// PgSettingsTableName is the name of the pg_settings table.
+	PgSettingsTableName = "pg_settings"
+	// PgShadowTableName is the name of the pg_shadow table.
+	PgShadowTableName = "pg_shadow"
+	// PgShMemAllocationsTableName is the name of the pg_shmem_allocations table.
+	PgShMemAllocationsTableName = "pg_shmem_allocations"
+	// PgStatActivityTableName is the name of the pg_stat_activity table.
+	PgStatActivityTableName = "pg_stat_activity"
+	// PgStatAllIndexesTableName is the name of the pg_stat_all_indexes table.
+	PgStatAllIndexesTableName = "pg_stat_all_indexes"
+	// PgStatAllTablesTableName is the name of the pg_stat_all_tables table.
+	PgStatAllTablesTableName = "pg_stat_all_tables"
+	// PgStatArchiverTableName is the name of the pg_stat_archiver table.
+	PgStatArchiverTableName = "pg_stat_archiver"
+	// PgStatBgWriterTableName is the name of the pg_stat_bgwriter table.
+	PgStatBgWriterTableName = "pg_stat_bgwriter"
+	// PgStatDatabaseTableName is the name of the pg_stat_database table.
+	PgStatDatabaseTableName = "pg_stat_database"
+	// PgStatDatabaseConflictsTableName is the name of the pg_stat_database_conflicts table.
+	PgStatDatabaseConflictsTableName = "pg_stat_database_conflicts"
+	// PgStatGssapiTableName is the name of the pg_stat_gssapi table.
+	PgStatGssapiTableName = "pg_stat_gssapi"
+	// PgStatIoTableName is the name of the pg_stat_io table.
+	PgStatIoTableName = "pg_stat_io"
+	// PgStatProgressAnalyzeTableName is the name of the pg_stat_progress_analyze table.
+	PgStatProgressAnalyzeTableName = "pg_stat_progress_analyze"
+	// PgStatProgressBaseBackupTableName is the name of the pg_stat_progress_basebackup table.
+	PgStatProgressBaseBackupTableName = "pg_stat_progress_basebackup"
+	// PgStatProgressClusterTableName is the name of the pg_stat_progress_cluster table.
+	PgStatProgressClusterTableName = "pg_stat_progress_cluster"
+	// PgStatProgressCopyTableName is the name of the pg_stat_progress_copy table.
+	PgStatProgressCopyTableName = "pg_stat_progress_copy"
+	// PgStatProgressCreateIndexTableName is the name of the pg_stat_progress_create_index table.
+	PgStatProgressCreateIndexTableName = "pg_stat_progress_create_index"
+	// PgStatProgressVacuumTableName is the name of the pg_stat_progress_vacuum table.
+	PgStatProgressVacuumTableName = "pg_stat_progress_vacuum"
+	// PgStatRecoveryPrefetchTableName is the name of the pg_stat_recovery_prefetch table.
+	PgStatRecoveryPrefetchTableName = "pg_stat_recovery_prefetch"
+	// PgStatReplicationTableName is the name of the pg_stat_replication table.
+	PgStatReplicationTableName = "pg_stat_replication"
+	// PgStatReplicationSlotsTableName is the name of the pg_stat_replication_slots table.
+	PgStatReplicationSlotsTableName = "pg_stat_replication_slots"
+	// PgStatSlruTableName is the name of the pg_stat_slru table.
+	PgStatSlruTableName = "pg_stat_slru"
+	// PgStatSslTableName is the name of the pg_stat_ssl table.
+	PgStatSslTableName = "pg_stat_ssl"
+	// PgStatSubscriptionTableName is the name of the pg_stat_subscription table.
+	PgStatSubscriptionTableName = "pg_stat_subscription"
+	// PgStatSubscriptionStatsTableName is the name of the pg_stat_subscription_stats table.
+	PgStatSubscriptionStatsTableName = "pg_stat_subscription_stats"
+	// PgStatSysIndexesTableName is the name of the pg_stat_sys_indexes table.
+	PgStatSysIndexesTableName = "pg_stat_sys_indexes"
+	// PgStatSysTablesTableName is the name of the pg_stat_sys_tables table.
+	PgStatSysTablesTableName = "pg_stat_sys_tables"
+	// PgStatUserFunctionsTableName is the name of the pg_stat_user_functions table.
+	PgStatUserFunctionsTableName = "pg_stat_user_functions"
+	// PgStatUserIndexesTableName is the name of the pg_stat_user_indexes table.
+	PgStatUserIndexesTableName = "pg_stat_user_indexes"
+	// PgStatUserTablesTableName is the name of the pg_stat_user_tables table.
+	PgStatUserTablesTableName = "pg_stat_user_tables"
+	// PgStatWalTableName is the name of the pg_stat_wal table.
+	PgStatWalTableName = "pg_stat_wal"
+	// PgStatWalReceiverTableName is the name of the pg_stat_wal_receiver table.
+	PgStatWalReceiverTableName = "pg_stat_wal_receiver"
+	// PgStatXactAllTablesTableName is the name of the pg_stat_xact_all_tables table.
+	PgStatXactAllTablesTableName = "pg_stat_xact_all_tables"
+	// PgStatXactSysTablesTableName is the name of the pg_stat_xact_sys_tables table.
+	PgStatXactSysTablesTableName = "pg_stat_xact_sys_tables"
+	// PgStatXactUserFunctionsTableName is the name of the pg_stat_xact_user_functions table.
+	PgStatXactUserFunctionsTableName = "pg_stat_xact_user_functions"
+	// PgStatXactUserTablesTableName is the name of the pg_stat_xact_user_tables table.
+	PgStatXactUserTablesTableName = "pg_stat_xact_user_tables"
+	// PgStatIoAllIndexesTableName is the name of the pg_statio_all_indexes table.
+	PgStatIoAllIndexesTableName = "pg_statio_all_indexes"
+	// PgStatIoAllSequencesTableName is the name of the pg_statio_all_sequences table.
+	PgStatIoAllSequencesTableName = "pg_statio_all_sequences"
+	// PgStatIoAllTablesTableName is the name of the pg_statio_all_tables table.
+	PgStatIoAllTablesTableName = "pg_statio_all_tables"
+	// PgStatIoSysIndexesTableName is the name of the pg_statio_sys_indexes table.
+	PgStatIoSysIndexesTableName = "pg_statio_sys_indexes"
+	// PgStatIoSysSequencesTableName is the name of the pg_statio_sys_sequences table.
+	PgStatIoSysSequencesTableName = "pg_statio_sys_sequences"
+	// PgStatIoSysTablesTableName is the name of the pg_statio_sys_tables table.
+	PgStatIoSysTablesTableName = "pg_statio_sys_tables"
+	// PgStatIoUserIndexesTableName is the name of the pg_statio_user_indexes table.
+	PgStatIoUserIndexesTableName = "pg_statio_user_indexes"
+	// PgStatIoUserSequencesTableName is the name of the pg_statio_user_sequences table.
+	PgStatIoUserSequencesTableName = "pg_statio_user_sequences"
+	// PgStatIoUserTablesTableName is the name of the pg_statio_user_tables table.
+	PgStatIoUserTablesTableName = "pg_statio_user_tables"
+	// PgStatsTableName is the name of the pg_stats table.
+	PgStatsTableName = "pg_stats"
+	// PgStatsExtTableName is the name of the pg_stats_ext table.
+	PgStatsExtTableName = "pg_stats_ext"
+	// PgStatsExtExprsTableName is the name of the pg_stats_ext_exprs table.
+	PgStatsExtExprsTableName = "pg_stats_ext_exprs"
+	// PgTablesTableName is the name of the pg_tables table.
+	PgTablesTableName = "pg_tables"
+	// PgTimezoneAbbrevsTableName is the name of the pg_timezone_abbrevs table.
+	PgTimezoneAbbrevsTableName = "pg_timezone_abbrevs"
+	// PgTimezoneNamesTableName is the name of the pg_timezone_names table.
+	PgTimezoneNamesTableName = "pg_timezone_names"
+	// PgUserTableName is the name of the pg_user table.
+	PgUserTableName = "pg_user"
+	// PgUserMappingsTableName is the name of the pg_user_mappings table.
+	PgUserMappingsTableName = "pg_user_mappings"
+	// PgViewsTableName is the name of the pg_views table.
+	PgViewsTableName = "pg_views"
+)
+
 // Oid is an Object Identifier Type.
 var Oid = types.Int64
 
@@ -365,7 +521,7 @@ var pgTypeSchema = sql.Schema{
 var pgUserMappingSchema = sql.Schema{}
 
 var pgCatalogDb = &pgCatalogDatabase{
-	name: PgCatalogDatabaseName,
+	name: PgCatalogName,
 	tables: map[string]sql.Table{
 		PgAggregateTableName: &pgCatalogTable{
 			name:   PgAggregateTableName,

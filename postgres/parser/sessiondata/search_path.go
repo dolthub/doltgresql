@@ -25,14 +25,12 @@
 package sessiondata
 
 import (
+	"github.com/dolthub/doltgresql/server/pg_catalog"
 	"strings"
 
 	"github.com/dolthub/doltgresql/postgres/parser/pgcode"
 	"github.com/dolthub/doltgresql/postgres/parser/pgerror"
 )
-
-// PgCatalogName is the name of the pg_catalog system schema.
-const PgCatalogName = "pg_catalog"
 
 // PublicSchemaName is the name of the pg_catalog system schema.
 const PublicSchemaName = "public"
@@ -65,7 +63,7 @@ func MakeSearchPath(paths []string) SearchPath {
 	containsPgTempSchema := false
 	for _, e := range paths {
 		switch e {
-		case PgCatalogName:
+		case pg_catalog.PgCatalogName:
 			containsPgCatalog = true
 		case PgTempSchemaName:
 			containsPgTempSchema = true
@@ -233,7 +231,7 @@ func (iter *SearchPathIter) Next() (path string, ok bool) {
 	}
 	if iter.implicitPgCatalog {
 		iter.implicitPgCatalog = false
-		return PgCatalogName, true
+		return pg_catalog.PgCatalogName, true
 	}
 
 	if iter.i < len(iter.paths) {

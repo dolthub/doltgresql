@@ -27,6 +27,7 @@ package tree
 import (
 	"context"
 	"fmt"
+	"github.com/dolthub/doltgresql/server/pg_catalog"
 	"strings"
 
 	"github.com/dolthub/doltgresql/postgres/parser/pgcode"
@@ -521,7 +522,7 @@ func (n *UnresolvedName) ResolveFunction(
 
 	fullName := function
 
-	if prefix == sessiondata.PgCatalogName {
+	if prefix == pg_catalog.PgCatalogName {
 		// If the user specified e.g. `pg_catalog.max()` we want to find
 		// it in the global namespace.
 		prefix = ""

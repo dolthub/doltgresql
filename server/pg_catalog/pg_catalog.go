@@ -22,8 +22,8 @@ import (
 )
 
 const (
-	// PgCatalogDatabaseName is the name of the pg_catalog database.
-	PgCatalogDatabaseName = "pg_catalog"
+	// PgCatalogName is the name of the pg_catalog system schema.
+	PgCatalogName = "pg_catalog"
 )
 
 var (
@@ -100,7 +100,7 @@ func (pt *pgCatalogTable) PartitionRows(ctx *sql.Context, partition sql.Partitio
 
 // Database implements the sql.Databaseable interface.
 func (pt *pgCatalogTable) Database() string {
-	return PgCatalogDatabaseName
+	return PgCatalogName
 }
 
 func (pt *pgCatalogTable) AssignCatalog(cat sql.Catalog) sql.Table {
@@ -161,5 +161,5 @@ func printTable(name string, tableSchema sql.Schema) string {
 }
 
 func partitionKey(tableName string) []byte {
-	return []byte(PgCatalogDatabaseName + "." + tableName)
+	return []byte(PgCatalogName + "." + tableName)
 }
