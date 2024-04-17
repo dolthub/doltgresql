@@ -97,10 +97,8 @@ jobs:
       - name: Set up Go 1.x
         uses: actions/setup-go@v5
         with:
-          go-version-file: go/go.mod
-          check-latest: true
+          go-version-file: go.mod
       - name: Bump dependency
-        working-directory: go
         run: |
           go get github.com/dolthub/${{ github.event.client_payload.dependency }}/go@${{ github.event.client_payload.head_commit_sha }}
           go mod tidy
