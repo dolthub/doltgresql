@@ -24,7 +24,7 @@ var SchemaTests = []ScriptTest{
 	{
 		Name: "public schema qualifier",
 		SetUpScript: []string{
-			"CREATE TABLE test (pk BIGINT PRIMARY KEY, v1 BIGINT);",
+			"CREATE TABLE public.test (pk BIGINT PRIMARY KEY, v1 BIGINT);",
 		},
 		Assertions: []ScriptTestAssertion{
 			{
@@ -43,7 +43,7 @@ var SchemaTests = []ScriptTest{
 	{
 		Name: "public db and schema qualifier",
 		SetUpScript: []string{
-			"CREATE TABLE test (pk BIGINT PRIMARY KEY, v1 BIGINT);",
+			"CREATE TABLE postgres.public.test (pk BIGINT PRIMARY KEY, v1 BIGINT);",
 		},
 		Assertions: []ScriptTestAssertion{
 			{
