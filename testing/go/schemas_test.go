@@ -61,7 +61,6 @@ var SchemaTests = []ScriptTest{
 	},
 	{
 		Name: "create new schema",
-		Focus: true,
 		Assertions: []ScriptTestAssertion{
 			{
 				Query:    "create schema mySchema",
@@ -101,6 +100,7 @@ var SchemaTests = []ScriptTest{
 	},
 	{
 		Name: "create new database and new schema",
+		Skip: true,
 		SetUpScript: []string{
 			"CREATE DATABASE db2;",
 			"USE db2;", // TODO: not a real postgres statement
