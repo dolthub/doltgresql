@@ -21,6 +21,7 @@ import (
 	"github.com/dolthub/vitess/go/vt/proto/query"
 	vitess "github.com/dolthub/vitess/go/vt/sqlparser"
 
+	_ "github.com/dolthub/doltgresql/server/cast"
 	"github.com/dolthub/doltgresql/server/functions/framework"
 	pgtypes "github.com/dolthub/doltgresql/server/types"
 )
@@ -122,15 +123,9 @@ func (c *Cast) Eval(ctx *sql.Context, row sql.Row) (any, error) {
 			}
 		case query.Type_DATE, query.Type_DATETIME, query.Type_TIMESTAMP:
 			return nil, fmt.Errorf("need to add DoltgresType equivalents to DATETIME")
-		case query.Type_CHAR, query.Type_VARCHAR:
-			fromType = pgtypes.VarCharMax
-			val, _, err = pgtypes.VarCharMax.Convert(val)
-			if err != nil {
-				return nil, err
-			}
-		case query.Type_TEXT:
-			fromType = pgtypes.VarCharMax
-			val, _, err = pgtypes.VarCharMax.Convert(val)
+		case query.Type_CHAR, query.Type_VARCHAR, query.Type_TEXT:
+			fromType = pgtypes.Text
+			val, _, err = pgtypes.Text.Convert(val)
 			if err != nil {
 				return nil, err
 			}
@@ -152,11 +147,11 @@ func (c *Cast) Eval(ctx *sql.Context, row sql.Row) (any, error) {
 			return nil, fmt.Errorf("encountered a GMS type that cannot be handled")
 		}
 	}
-	castFunction := framework.GetCast(fromType.BaseID(), c.castToType.BaseID())
+	castFunction := framework.GetExplicitCast(fromType.BaseID(), c.castToType.BaseID())
 	if castFunction == nil {
 		return nil, fmt.Errorf("cast from `%s` to `%s` does not exist", fromType.String(), c.castToType.String())
 	}
-	return castFunction(framework.Context{Context: ctx}, val)
+	return castFunction(framework.Context{Context: ctx}, val, c.castToType)
 }
 
 // IsNullable implements the sql.Expression interface.

@@ -31,8 +31,8 @@ func init() {
 // split_part_varchar_varchar_int32 represents the PostgreSQL function of the same name, taking the same parameters.
 var split_part_varchar_varchar_int32 = framework.Function3{
 	Name:       "split_part",
-	Return:     pgtypes.VarCharMax,
-	Parameters: []pgtypes.DoltgresType{pgtypes.VarCharMax, pgtypes.VarCharMax, pgtypes.Int32},
+	Return:     pgtypes.VarChar,
+	Parameters: []pgtypes.DoltgresType{pgtypes.VarChar, pgtypes.VarChar, pgtypes.Int32},
 	Callable: func(ctx framework.Context, str any, delimiter any, n any) (any, error) {
 		if str == nil || delimiter == nil || n == nil {
 			return nil, nil

@@ -16,6 +16,7 @@ package types
 
 import (
 	"bytes"
+	"fmt"
 	"reflect"
 
 	"github.com/dolthub/go-mysql-server/sql"
@@ -37,7 +38,7 @@ var _ DoltgresType = UuidType{}
 
 // BaseID implements the DoltgresType interface.
 func (b UuidType) BaseID() DoltgresTypeBaseID {
-	return DoltgresTypeBaseID(SerializationID_Uuid)
+	return DoltgresTypeBaseID_Uuid
 }
 
 // CollationCoercibility implements the DoltgresType interface.
@@ -118,6 +119,16 @@ func (b UuidType) FormatValue(val any) (string, error) {
 	return converted.(uuid.UUID).String(), nil
 }
 
+// GetSerializationID implements the DoltgresType interface.
+func (b UuidType) GetSerializationID() SerializationID {
+	return SerializationID_Uuid
+}
+
+// IsUnbounded implements the DoltgresType interface.
+func (b UuidType) IsUnbounded() bool {
+	return false
+}
+
 // MaxSerializedWidth implements the DoltgresType interface.
 func (b UuidType) MaxSerializedWidth() types.ExtendedTypeSerializedWidth {
 	return types.ExtendedTypeSerializedWidth_64K
@@ -168,6 +179,11 @@ func (b UuidType) String() string {
 	return "uuid"
 }
 
+// ToArrayType implements the DoltgresType interface.
+func (b UuidType) ToArrayType() DoltgresArrayType {
+	return UuidArray
+}
+
 // Type implements the DoltgresType interface.
 func (b UuidType) Type() query.Type {
 	return sqltypes.Text
@@ -181,6 +197,21 @@ func (b UuidType) ValueType() reflect.Type {
 // Zero implements the DoltgresType interface.
 func (b UuidType) Zero() any {
 	return uuid.UUID{}
+}
+
+// SerializeType implements the DoltgresType interface.
+func (b UuidType) SerializeType() ([]byte, error) {
+	return SerializationID_Uuid.ToByteSlice(0), nil
+}
+
+// deserializeType implements the DoltgresType interface.
+func (b UuidType) deserializeType(version uint16, metadata []byte) (DoltgresType, error) {
+	switch version {
+	case 0:
+		return Uuid, nil
+	default:
+		return nil, fmt.Errorf("version %d is not yet supported for %s", version, b.String())
+	}
 }
 
 // SerializeValue implements the DoltgresType interface.

@@ -141,6 +141,10 @@ type typeAnnotation struct {
 	typ *types.T
 }
 
+func (ta typeAnnotation) HasResolvedType() bool {
+	return ta.typ != nil
+}
+
 func (ta typeAnnotation) ResolvedType() *types.T {
 	ta.assertTyped()
 	return ta.typ

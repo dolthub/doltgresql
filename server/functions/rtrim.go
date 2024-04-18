@@ -28,22 +28,18 @@ func init() {
 // rtrim_varchar represents the PostgreSQL function of the same name, taking the same parameters.
 var rtrim_varchar = framework.Function1{
 	Name:       "rtrim",
-	Return:     pgtypes.VarCharMax,
-	Parameters: []pgtypes.DoltgresType{pgtypes.VarCharMax},
+	Return:     pgtypes.VarChar,
+	Parameters: []pgtypes.DoltgresType{pgtypes.VarChar},
 	Callable: func(ctx framework.Context, val1 any) (any, error) {
-		return rtrim_varchar_varchar.Callable(framework.Context{
-			Context:       ctx.Context,
-			OriginalTypes: append(ctx.OriginalTypes, pgtypes.VarCharMax),
-			Sources:       append(ctx.Sources, framework.Source_Constant),
-		}, val1, " ")
+		return rtrim_varchar_varchar.Callable(ctx, val1, " ")
 	},
 }
 
 // rtrim_varchar_varchar represents the PostgreSQL function of the same name, taking the same parameters.
 var rtrim_varchar_varchar = framework.Function2{
 	Name:       "rtrim",
-	Return:     pgtypes.VarCharMax,
-	Parameters: []pgtypes.DoltgresType{pgtypes.VarCharMax, pgtypes.VarCharMax},
+	Return:     pgtypes.VarChar,
+	Parameters: []pgtypes.DoltgresType{pgtypes.VarChar, pgtypes.VarChar},
 	Callable: func(ctx framework.Context, str any, characters any) (any, error) {
 		if str == nil || characters == nil {
 			return nil, nil

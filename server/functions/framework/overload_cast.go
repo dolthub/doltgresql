@@ -22,77 +22,44 @@ type specialOverloadCast struct {
 	Expression pgtypes.DoltgresTypeBaseID
 }
 
-// specialOverloadCasts holds all valid automatic casts between a parameter and a given expression.
-var specialOverloadCasts = map[specialOverloadCast]struct{}{
-	{Parameter: pgtypes.Bool.BaseID(), Expression: pgtypes.VarCharMax.BaseID()}:    {},
-	{Parameter: pgtypes.Float32.BaseID(), Expression: pgtypes.Float32.BaseID()}:    {},
-	{Parameter: pgtypes.Float32.BaseID(), Expression: pgtypes.Float64.BaseID()}:    {},
-	{Parameter: pgtypes.Float32.BaseID(), Expression: pgtypes.Int16.BaseID()}:      {},
-	{Parameter: pgtypes.Float32.BaseID(), Expression: pgtypes.Int32.BaseID()}:      {},
-	{Parameter: pgtypes.Float32.BaseID(), Expression: pgtypes.Int64.BaseID()}:      {},
-	{Parameter: pgtypes.Float32.BaseID(), Expression: pgtypes.Numeric.BaseID()}:    {},
-	{Parameter: pgtypes.Float32.BaseID(), Expression: pgtypes.VarCharMax.BaseID()}: {},
-	{Parameter: pgtypes.Float64.BaseID(), Expression: pgtypes.Float32.BaseID()}:    {},
-	{Parameter: pgtypes.Float64.BaseID(), Expression: pgtypes.Float64.BaseID()}:    {},
-	{Parameter: pgtypes.Float64.BaseID(), Expression: pgtypes.Int16.BaseID()}:      {},
-	{Parameter: pgtypes.Float64.BaseID(), Expression: pgtypes.Int32.BaseID()}:      {},
-	{Parameter: pgtypes.Float64.BaseID(), Expression: pgtypes.Int64.BaseID()}:      {},
-	{Parameter: pgtypes.Float64.BaseID(), Expression: pgtypes.Numeric.BaseID()}:    {},
-	{Parameter: pgtypes.Float64.BaseID(), Expression: pgtypes.VarCharMax.BaseID()}: {},
-	{Parameter: pgtypes.Int16.BaseID(), Expression: pgtypes.Float32.BaseID()}:      {},
-	{Parameter: pgtypes.Int16.BaseID(), Expression: pgtypes.Float64.BaseID()}:      {},
-	{Parameter: pgtypes.Int16.BaseID(), Expression: pgtypes.Int16.BaseID()}:        {},
-	{Parameter: pgtypes.Int16.BaseID(), Expression: pgtypes.Int32.BaseID()}:        {},
-	{Parameter: pgtypes.Int16.BaseID(), Expression: pgtypes.Int64.BaseID()}:        {},
-	{Parameter: pgtypes.Int16.BaseID(), Expression: pgtypes.Numeric.BaseID()}:      {},
-	{Parameter: pgtypes.Int16.BaseID(), Expression: pgtypes.VarCharMax.BaseID()}:   {},
-	{Parameter: pgtypes.Int32.BaseID(), Expression: pgtypes.Float32.BaseID()}:      {},
-	{Parameter: pgtypes.Int32.BaseID(), Expression: pgtypes.Float64.BaseID()}:      {},
-	{Parameter: pgtypes.Int32.BaseID(), Expression: pgtypes.Int16.BaseID()}:        {},
-	{Parameter: pgtypes.Int32.BaseID(), Expression: pgtypes.Int32.BaseID()}:        {},
-	{Parameter: pgtypes.Int32.BaseID(), Expression: pgtypes.Int64.BaseID()}:        {},
-	{Parameter: pgtypes.Int32.BaseID(), Expression: pgtypes.Numeric.BaseID()}:      {},
-	{Parameter: pgtypes.Int32.BaseID(), Expression: pgtypes.VarCharMax.BaseID()}:   {},
-	{Parameter: pgtypes.Int64.BaseID(), Expression: pgtypes.Float32.BaseID()}:      {},
-	{Parameter: pgtypes.Int64.BaseID(), Expression: pgtypes.Float64.BaseID()}:      {},
-	{Parameter: pgtypes.Int64.BaseID(), Expression: pgtypes.Int16.BaseID()}:        {},
-	{Parameter: pgtypes.Int64.BaseID(), Expression: pgtypes.Int32.BaseID()}:        {},
-	{Parameter: pgtypes.Int64.BaseID(), Expression: pgtypes.Int64.BaseID()}:        {},
-	{Parameter: pgtypes.Int64.BaseID(), Expression: pgtypes.Numeric.BaseID()}:      {},
-	{Parameter: pgtypes.Int64.BaseID(), Expression: pgtypes.VarCharMax.BaseID()}:   {},
-	{Parameter: pgtypes.Numeric.BaseID(), Expression: pgtypes.Float32.BaseID()}:    {},
-	{Parameter: pgtypes.Numeric.BaseID(), Expression: pgtypes.Float64.BaseID()}:    {},
-	{Parameter: pgtypes.Numeric.BaseID(), Expression: pgtypes.Int16.BaseID()}:      {},
-	{Parameter: pgtypes.Numeric.BaseID(), Expression: pgtypes.Int32.BaseID()}:      {},
-	{Parameter: pgtypes.Numeric.BaseID(), Expression: pgtypes.Int64.BaseID()}:      {},
-	{Parameter: pgtypes.Numeric.BaseID(), Expression: pgtypes.Numeric.BaseID()}:    {},
-	{Parameter: pgtypes.Numeric.BaseID(), Expression: pgtypes.VarCharMax.BaseID()}: {},
-	{Parameter: pgtypes.Uuid.BaseID(), Expression: pgtypes.VarCharMax.BaseID()}:    {},
+// numericUpcastsMap holds all valid automatic upcasts from an expression to the parameter.
+var numericUpcastsMap = map[specialOverloadCast]struct{}{
+	{Expression: pgtypes.DoltgresTypeBaseID_Float32, Parameter: pgtypes.DoltgresTypeBaseID_Float32}: {},
+	{Expression: pgtypes.DoltgresTypeBaseID_Float32, Parameter: pgtypes.DoltgresTypeBaseID_Float64}: {},
+	{Expression: pgtypes.DoltgresTypeBaseID_Float32, Parameter: pgtypes.DoltgresTypeBaseID_Numeric}: {},
+	{Expression: pgtypes.DoltgresTypeBaseID_Float64, Parameter: pgtypes.DoltgresTypeBaseID_Float64}: {},
+	{Expression: pgtypes.DoltgresTypeBaseID_Float64, Parameter: pgtypes.DoltgresTypeBaseID_Numeric}: {},
+	{Expression: pgtypes.DoltgresTypeBaseID_Int16, Parameter: pgtypes.DoltgresTypeBaseID_Float32}:   {},
+	{Expression: pgtypes.DoltgresTypeBaseID_Int16, Parameter: pgtypes.DoltgresTypeBaseID_Float64}:   {},
+	{Expression: pgtypes.DoltgresTypeBaseID_Int16, Parameter: pgtypes.DoltgresTypeBaseID_Int16}:     {},
+	{Expression: pgtypes.DoltgresTypeBaseID_Int16, Parameter: pgtypes.DoltgresTypeBaseID_Int32}:     {},
+	{Expression: pgtypes.DoltgresTypeBaseID_Int16, Parameter: pgtypes.DoltgresTypeBaseID_Int64}:     {},
+	{Expression: pgtypes.DoltgresTypeBaseID_Int16, Parameter: pgtypes.DoltgresTypeBaseID_Numeric}:   {},
+	{Expression: pgtypes.DoltgresTypeBaseID_Int32, Parameter: pgtypes.DoltgresTypeBaseID_Float32}:   {},
+	{Expression: pgtypes.DoltgresTypeBaseID_Int32, Parameter: pgtypes.DoltgresTypeBaseID_Float64}:   {},
+	{Expression: pgtypes.DoltgresTypeBaseID_Int32, Parameter: pgtypes.DoltgresTypeBaseID_Int32}:     {},
+	{Expression: pgtypes.DoltgresTypeBaseID_Int32, Parameter: pgtypes.DoltgresTypeBaseID_Int64}:     {},
+	{Expression: pgtypes.DoltgresTypeBaseID_Int32, Parameter: pgtypes.DoltgresTypeBaseID_Numeric}:   {},
+	{Expression: pgtypes.DoltgresTypeBaseID_Int64, Parameter: pgtypes.DoltgresTypeBaseID_Float32}:   {},
+	{Expression: pgtypes.DoltgresTypeBaseID_Int64, Parameter: pgtypes.DoltgresTypeBaseID_Float64}:   {},
+	{Expression: pgtypes.DoltgresTypeBaseID_Int64, Parameter: pgtypes.DoltgresTypeBaseID_Int64}:     {},
+	{Expression: pgtypes.DoltgresTypeBaseID_Int64, Parameter: pgtypes.DoltgresTypeBaseID_Numeric}:   {},
+	{Expression: pgtypes.DoltgresTypeBaseID_Numeric, Parameter: pgtypes.DoltgresTypeBaseID_Numeric}: {},
 }
 
-// numericUpcasts holds all valid automatic upcasts from an expression to the parameter.
-var numericUpcasts = map[specialOverloadCast]struct{}{
-	{Parameter: pgtypes.Float32.BaseID(), Expression: pgtypes.Float32.BaseID()}: {},
-	{Parameter: pgtypes.Float32.BaseID(), Expression: pgtypes.Int16.BaseID()}:   {},
-	{Parameter: pgtypes.Float32.BaseID(), Expression: pgtypes.Int32.BaseID()}:   {},
-	{Parameter: pgtypes.Float32.BaseID(), Expression: pgtypes.Int64.BaseID()}:   {},
-	{Parameter: pgtypes.Float64.BaseID(), Expression: pgtypes.Float32.BaseID()}: {},
-	{Parameter: pgtypes.Float64.BaseID(), Expression: pgtypes.Float64.BaseID()}: {},
-	{Parameter: pgtypes.Float64.BaseID(), Expression: pgtypes.Int16.BaseID()}:   {},
-	{Parameter: pgtypes.Float64.BaseID(), Expression: pgtypes.Int32.BaseID()}:   {},
-	{Parameter: pgtypes.Float64.BaseID(), Expression: pgtypes.Int64.BaseID()}:   {},
-	{Parameter: pgtypes.Int16.BaseID(), Expression: pgtypes.Int16.BaseID()}:     {},
-	{Parameter: pgtypes.Int32.BaseID(), Expression: pgtypes.Int16.BaseID()}:     {},
-	{Parameter: pgtypes.Int32.BaseID(), Expression: pgtypes.Int32.BaseID()}:     {},
-	{Parameter: pgtypes.Int64.BaseID(), Expression: pgtypes.Int16.BaseID()}:     {},
-	{Parameter: pgtypes.Int64.BaseID(), Expression: pgtypes.Int32.BaseID()}:     {},
-	{Parameter: pgtypes.Int64.BaseID(), Expression: pgtypes.Int64.BaseID()}:     {},
-	{Parameter: pgtypes.Numeric.BaseID(), Expression: pgtypes.Float32.BaseID()}: {},
-	{Parameter: pgtypes.Numeric.BaseID(), Expression: pgtypes.Float64.BaseID()}: {},
-	{Parameter: pgtypes.Numeric.BaseID(), Expression: pgtypes.Int16.BaseID()}:   {},
-	{Parameter: pgtypes.Numeric.BaseID(), Expression: pgtypes.Int32.BaseID()}:   {},
-	{Parameter: pgtypes.Numeric.BaseID(), Expression: pgtypes.Int64.BaseID()}:   {},
-	{Parameter: pgtypes.Numeric.BaseID(), Expression: pgtypes.Numeric.BaseID()}: {},
+// implicitOverloadCasts uses the collection of implicit casts for overload resolution.
+func implicitOverloadCasts(param pgtypes.DoltgresTypeBaseID, expr pgtypes.DoltgresTypeBaseID) bool {
+	f := GetImplicitCast(expr, param)
+	return f != nil
+}
+
+// numericUpcasts uses the map of numeric upcasts for overload resolution.
+func numericUpcasts(param pgtypes.DoltgresTypeBaseID, expr pgtypes.DoltgresTypeBaseID) bool {
+	_, ok := numericUpcastsMap[specialOverloadCast{
+		Parameter:  param,
+		Expression: expr,
+	}]
+	return ok
 }
 
 // castPriorityForType returns the priority for the given type. The lower the value, the higher the priority. The
@@ -103,21 +70,25 @@ func castPriorityForType(t pgtypes.DoltgresTypeBaseID, sourceStringLiteral bool)
 		stringAdjustment = 1
 	}
 	switch t {
-	case pgtypes.Numeric.BaseID():
+	case pgtypes.DoltgresTypeBaseID_Numeric:
 		return 1 + (2 * stringAdjustment)
-	case pgtypes.Float64.BaseID():
+	case pgtypes.DoltgresTypeBaseID_Float64:
 		return 2 - stringAdjustment
-	case pgtypes.Float32.BaseID():
+	case pgtypes.DoltgresTypeBaseID_Float32:
 		return 3 - (2 * stringAdjustment)
-	case pgtypes.Int64.BaseID():
+	case pgtypes.DoltgresTypeBaseID_Int64:
 		return 4
-	case pgtypes.Int32.BaseID():
+	case pgtypes.DoltgresTypeBaseID_Int32:
 		return 5
-	case pgtypes.Int16.BaseID():
+	case pgtypes.DoltgresTypeBaseID_Int16:
 		return 6
-	case pgtypes.VarCharMax.BaseID():
+	case pgtypes.DoltgresTypeBaseID_Text:
 		return 7
-	default:
+	case pgtypes.DoltgresTypeBaseID_VarChar:
 		return 8
+	case pgtypes.DoltgresTypeBaseID_Char:
+		return 9
+	default:
+		return 10
 	}
 }

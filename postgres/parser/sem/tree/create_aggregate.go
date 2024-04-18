@@ -20,7 +20,7 @@ var _ Statement = &CreateAggregate{}
 
 // CreateAggregate represents a CREATE AGGREGATE statement.
 type CreateAggregate struct {
-	Name        Name
+	Name        *UnresolvedObjectName
 	Replace     bool
 	Args        RoutineArgs
 	SFunc       string
@@ -37,7 +37,7 @@ func (node *CreateAggregate) Format(ctx *FmtCtx) {
 		ctx.WriteString("OR REPLACE ")
 	}
 	ctx.WriteString("AGGREGATE ")
-	ctx.FormatNode(&node.Name)
+	ctx.FormatNode(node.Name)
 	ctx.WriteString(" ( ")
 	if node.OrderByArgs != nil {
 		if node.Args != nil {

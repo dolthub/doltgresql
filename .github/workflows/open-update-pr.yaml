@@ -9,7 +9,7 @@ jobs:
     runs-on: ubuntu-22.04
     steps:
      - name: Checkout code
-       uses: actions/checkout@v3
+       uses: actions/checkout@v4
        with:
          ref: main
          token: ${{ secrets.REPO_ACCESS_TOKEN || secrets.GITHUB_TOKEN }}

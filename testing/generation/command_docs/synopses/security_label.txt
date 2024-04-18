@@ -6,14 +6,14 @@ SECURITY LABEL [ FOR $provider$ ] ON {
     DOMAIN $object_name$ |
     EVENT TRIGGER $object_name$ |
     FOREIGN TABLE $object_name$ |
-    FUNCTION $function_name$ [ ( [ { [ $argmode$ ] [ $argname$ ] $argtype$ } [ , ... ] ] ) ] |
+    FUNCTION $function_name$ [ ( [ { [ $routine_argmode$ ] [ $argname$ ] $argtype$ } [ , ... ] ] ) ] |
     LARGE OBJECT $large_object_oid$ |
     MATERIALIZED VIEW $object_name$ |
     [ PROCEDURAL ] LANGUAGE $object_name$ |
-    PROCEDURE $procedure_name$ [ ( [ { [ $argmode$ ] [ $argname$ ] $argtype$ } [ , ... ] ] ) ] |
+    PROCEDURE $procedure_name$ [ ( [ { [ $routine_argmode$ ] [ $argname$ ] $argtype$ } [ , ... ] ] ) ] |
     PUBLICATION $object_name$ |
     ROLE $object_name$ |
-    ROUTINE $routine_name$ [ ( [ { [ $argmode$ ] [ $argname$ ] $argtype$ } [ , ... ] ] ) ] |
+    ROUTINE $routine_name$ [ ( [ { [ $routine_argmode$ ] [ $argname$ ] $argtype$ } [ , ... ] ] ) ] |
     SCHEMA $object_name$ |
     SEQUENCE $object_name$ |
     SUBSCRIPTION $object_name$ |
@@ -24,5 +24,5 @@ SECURITY LABEL [ FOR $provider$ ] ON {
 where $aggregate_signature$ is:
 
 * |
-    { [ $argmode$ ] [ $argname$ ] $argtype$ } [ , ... ] |
-    [ { [ $argmode$ ] [ $argname$ ] $argtype$ } [ , ... ] ] ORDER BY { [ $argmode$ ] [ $argname$ ] $argtype$ } [ , ... ]
+    { [ $agg_argmode$ ] [ $argname$ ] $argtype$ } [ , ... ] |
+    [ { [ $agg_argmode$ ] [ $argname$ ] $argtype$ } [ , ... ] ] ORDER BY { [ $agg_argmode$ ] [ $argname$ ] $argtype$ } [ , ... ]

@@ -40,7 +40,7 @@ var _ DoltgresType = Float64Type{}
 
 // BaseID implements the DoltgresType interface.
 func (b Float64Type) BaseID() DoltgresTypeBaseID {
-	return DoltgresTypeBaseID(SerializationID_Float64)
+	return DoltgresTypeBaseID_Float64
 }
 
 // CollationCoercibility implements the DoltgresType interface.
@@ -162,6 +162,16 @@ func (b Float64Type) FormatValue(val any) (string, error) {
 	return strconv.FormatFloat(converted.(float64), 'g', -1, 64), nil
 }
 
+// GetSerializationID implements the DoltgresType interface.
+func (b Float64Type) GetSerializationID() SerializationID {
+	return SerializationID_Float64
+}
+
+// IsUnbounded implements the DoltgresType interface.
+func (b Float64Type) IsUnbounded() bool {
+	return false
+}
+
 // MaxSerializedWidth implements the DoltgresType interface.
 func (b Float64Type) MaxSerializedWidth() types.ExtendedTypeSerializedWidth {
 	return types.ExtendedTypeSerializedWidth_64K
@@ -212,6 +222,11 @@ func (b Float64Type) String() string {
 	return "double precision"
 }
 
+// ToArrayType implements the DoltgresType interface.
+func (b Float64Type) ToArrayType() DoltgresArrayType {
+	return Float64Array
+}
+
 // Type implements the DoltgresType interface.
 func (b Float64Type) Type() query.Type {
 	return sqltypes.Float64
@@ -225,6 +240,21 @@ func (b Float64Type) ValueType() reflect.Type {
 // Zero implements the DoltgresType interface.
 func (b Float64Type) Zero() any {
 	return float64(0)
+}
+
+// SerializeType implements the DoltgresType interface.
+func (b Float64Type) SerializeType() ([]byte, error) {
+	return SerializationID_Float64.ToByteSlice(0), nil
+}
+
+// deserializeType implements the DoltgresType interface.
+func (b Float64Type) deserializeType(version uint16, metadata []byte) (DoltgresType, error) {
+	switch version {
+	case 0:
+		return Float64, nil
+	default:
+		return nil, fmt.Errorf("version %d is not yet supported for %s", version, b.String())
+	}
 }
 
 // SerializeValue implements the DoltgresType interface.

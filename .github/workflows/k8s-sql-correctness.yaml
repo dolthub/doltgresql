@@ -14,11 +14,11 @@ jobs:
     name: Dolt SQL Correctness
     steps:
       - uses: actions/checkout@v3
-      - uses: azure/setup-kubectl@v3.0
+      - uses: azure/setup-kubectl@v4
         with:
           version: 'v1.23.6'
       - name: Configure AWS Credentials
-        uses: aws-actions/configure-aws-credentials@v2.2.0
+        uses: aws-actions/configure-aws-credentials@v4
         with:
           role-session-name: GitHub_to_AWS_via_FederatedOIDC
           role-to-assume: ${{ secrets.AWS_ROLE_TO_ASSUME_CORP }}

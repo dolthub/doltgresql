@@ -23,8 +23,6 @@ import (
 // Context is a context that PostgreSQL functions will use.
 type Context struct {
 	*sql.Context
-	OriginalTypes []pgtypes.DoltgresType
-	Sources       []Source
 }
 
 // FunctionInterface is an interface for PostgreSQL functions.

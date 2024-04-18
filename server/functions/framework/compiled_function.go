@@ -85,18 +85,15 @@ func (c *CompiledFunction) OverloadString(types []pgtypes.DoltgresType) string {
 // Type implements the interface sql.Expression.
 func (c *CompiledFunction) Type() sql.Type {
 	parameters := c.possibleParameterTypes()
-	// resolveByType takes a slice of result types, so we need to create them here even though they're not used
-	resultTypes := make([]pgtypes.DoltgresType, len(parameters))
-	copy(resultTypes, parameters)
 	sources := make([]Source, len(parameters))
 	for i := range sources {
 		sources[i] = Source_Constant
 	}
-	if resolvedFunction := c.Functions.resolveByType(parameters, resultTypes, sources); resolvedFunction != nil {
+	if resolvedFunction := c.Functions.resolveByType(parameters, sources); resolvedFunction != nil {
 		return resolvedFunction.Function.GetReturn()
 	}
 	// We can't resolve to a function before evaluation in this case, so we'll return something arbitrary
-	return pgtypes.VarCharMax
+	return pgtypes.Unknown
 }
 
 // IsNullable implements the interface sql.Expression.
@@ -112,11 +109,7 @@ func (c *CompiledFunction) Eval(ctx *sql.Context, row sql.Row) (interface{}, err
 	if err != nil {
 		return nil, err
 	}
-	pgctx := Context{
-		Context:       ctx,
-		OriginalTypes: originalTypes,
-		Sources:       sources,
-	}
+	pgctx := Context{Context: ctx}
 	// Next we'll resolve the overload based on the parameters given.
 	overload, casts, err := c.Functions.Resolve(originalTypes, sources)
 	if err != nil {
@@ -132,9 +125,10 @@ func (c *CompiledFunction) Eval(ctx *sql.Context, row sql.Row) (interface{}, err
 		return nil, err
 	}
 	// Convert the parameter values into their correct types
+	resultTypes := overload.Function.GetParameters()
 	for i := range parameters {
 		if casts[i] != nil {
-			parameters[i], err = casts[i](pgctx, parameters[i])
+			parameters[i], err = casts[i](pgctx, parameters[i], resultTypes[i])
 			if err != nil {
 				return nil, err
 			}
@@ -203,10 +197,8 @@ func (c *CompiledFunction) evalParameters(ctx *sql.Context, row sql.Row) ([]any,
 				parameters[i], _, _ = pgtypes.Numeric.Convert(parameters[i])
 			case query.Type_DATE, query.Type_DATETIME, query.Type_TIMESTAMP:
 				return nil, fmt.Errorf("need to add DoltgresType equivalents to DATETIME")
-			case query.Type_CHAR, query.Type_VARCHAR:
-				parameters[i], _, _ = pgtypes.VarCharMax.Convert(parameters[i])
-			case query.Type_TEXT:
-				parameters[i], _, _ = pgtypes.VarCharMax.Convert(parameters[i])
+			case query.Type_CHAR, query.Type_VARCHAR, query.Type_TEXT:
+				parameters[i], _, _ = pgtypes.Text.Convert(parameters[i])
 			case query.Type_ENUM:
 				parameters[i], _, _ = pgtypes.Int16.Convert(parameters[i])
 			case query.Type_SET:
@@ -249,10 +241,8 @@ func (c *CompiledFunction) analyzeParameters() (originalTypes []pgtypes.Doltgres
 				originalTypes[i] = pgtypes.Numeric
 			case query.Type_DATE, query.Type_DATETIME, query.Type_TIMESTAMP:
 				return nil, nil, fmt.Errorf("need to add DoltgresType equivalents to DATETIME")
-			case query.Type_CHAR, query.Type_VARCHAR:
-				originalTypes[i] = pgtypes.VarCharMax
-			case query.Type_TEXT:
-				originalTypes[i] = pgtypes.VarCharMax
+			case query.Type_CHAR, query.Type_VARCHAR, query.Type_TEXT:
+				originalTypes[i] = pgtypes.Text
 			case query.Type_ENUM:
 				originalTypes[i] = pgtypes.Int16
 			case query.Type_SET:
@@ -314,9 +304,7 @@ func (c *CompiledFunction) possibleParameterTypes() []pgtypes.DoltgresType {
 				// TODO: need to add DoltgresType equivalents to DATETIME
 				possibleParamTypes[i] = pgtypes.Null
 			case query.Type_CHAR, query.Type_VARCHAR:
-				possibleParamTypes[i] = pgtypes.VarCharMax
-			case query.Type_TEXT:
-				possibleParamTypes[i] = pgtypes.VarCharMax
+				possibleParamTypes[i] = pgtypes.Text
 			case query.Type_ENUM:
 				possibleParamTypes[i] = pgtypes.Int16
 			case query.Type_SET:

@@ -12,7 +12,7 @@ jobs:
     outputs:
       valid: ${{ steps.set_valid.outputs.valid }}
     steps:
-      - uses: actions/checkout@v3
+      - uses: actions/checkout@v4
       - name: Validate Commentor
         id: set_valid
         run: ./.github/scripts/performance-benchmarking/validate-commentor.sh "$ACTOR"
@@ -47,12 +47,12 @@ jobs:
     if: ${{ needs.check-comments.outputs.benchmark == 'true' }}
     name: Trigger Benchmark Latency K8s Workflow
     steps:
-      - uses: dolthub/pull-request-comment-branch@v3
+      - uses: dolthub/pull-request-comment-branch@v4
         id: comment-branch
         with:
           repo_token: ${{ secrets.GITHUB_TOKEN }}
       - name: Get pull number
-        uses: actions/github-script@v6
+        uses: actions/github-script@v7
         id: get_pull_number
         with:
           github-token: ${{ secrets.GITHUB_TOKEN }}

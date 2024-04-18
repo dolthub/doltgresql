@@ -36,6 +36,23 @@ var _ vitess.InjectableExpression = (*Literal)(nil)
 var _ sql.Expression = (*Literal)(nil)
 var _ framework.LiteralInterface = (*Literal)(nil)
 
+// NewBoolLiteral returns a new *Literal containing a boolean value.
+func NewBoolLiteral(val bool) *Literal {
+	return &Literal{
+		value: val,
+		typ:   pgtypes.Bool,
+	}
+}
+
+// NewNumericLiteral returns a new *Literal containing a NUMERIC value.
+func NewNumericLiteral(numericValue string) (*Literal, error) {
+	d, err := decimal.NewFromString(numericValue)
+	return &Literal{
+		value: d,
+		typ:   pgtypes.Numeric,
+	}, err
+}
+
 // NewIntegerLiteral returns a new *Literal containing an integer (INT2/4/8 or NUMERIC) value.
 func NewIntegerLiteral(integerValue string) (*Literal, error) {
 	i, err := strconv.ParseInt(integerValue, 10, 64)
@@ -62,20 +79,11 @@ func NewIntegerLiteral(integerValue string) (*Literal, error) {
 	}
 }
 
-// NewFloatLiteral returns a new *Literal containing a NUMERIC value.
-func NewFloatLiteral(numericValue string) (*Literal, error) {
-	d, err := decimal.NewFromString(numericValue)
-	return &Literal{
-		value: d,
-		typ:   pgtypes.Numeric,
-	}, err
-}
-
-// NewStringLiteral returns a new *Literal containing a VARCHAR value.
+// NewStringLiteral returns a new *Literal containing a TEXT value.
 func NewStringLiteral(stringValue string) (*Literal, error) {
 	return &Literal{
 		value: stringValue,
-		typ:   pgtypes.VarCharMax,
+		typ:   pgtypes.Text,
 	}, nil
 }
 
@@ -117,13 +125,19 @@ func (l *Literal) String() string {
 // equivalent functionality should be built into Doltgres (recommend the second approach).
 func (l *Literal) ToVitessLiteral() *vitess.SQLVal {
 	switch l.typ.BaseID() {
-	case pgtypes.Int32.BaseID():
+	case pgtypes.DoltgresTypeBaseID_Bool:
+		if l.value.(bool) {
+			return vitess.NewIntVal([]byte("1"))
+		} else {
+			return vitess.NewIntVal([]byte("0"))
+		}
+	case pgtypes.DoltgresTypeBaseID_Int32:
 		return vitess.NewIntVal([]byte(strconv.FormatInt(int64(l.value.(int32)), 10)))
-	case pgtypes.Int64.BaseID():
+	case pgtypes.DoltgresTypeBaseID_Int64:
 		return vitess.NewIntVal([]byte(strconv.FormatInt(l.value.(int64), 10)))
-	case pgtypes.Numeric.BaseID():
+	case pgtypes.DoltgresTypeBaseID_Numeric:
 		return vitess.NewFloatVal([]byte(l.value.(decimal.Decimal).String()))
-	case pgtypes.VarCharMax.BaseID():
+	case pgtypes.DoltgresTypeBaseID_Text:
 		return vitess.NewStrVal([]byte(l.value.(string)))
 	default:
 		panic("unhandled type in temporary literal conversion: " + l.typ.String())
