@@ -22,8 +22,8 @@ import (
 	pgtypes "github.com/dolthub/doltgresql/server/types"
 )
 
-// init registers the functions to the catalog.
-func init() {
+// initRepeat registers the functions to the catalog.
+func initRepeat() {
 	framework.RegisterFunction(repeat_varchar_int32)
 }
 

@@ -22,8 +22,8 @@ import (
 	pgtypes "github.com/dolthub/doltgresql/server/types"
 )
 
-// init registers the functions to the catalog.
-func init() {
+// initTrimScale registers the functions to the catalog.
+func initTrimScale() {
 	framework.RegisterFunction(trim_scale_numeric)
 }
 

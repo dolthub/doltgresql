@@ -36,8 +36,7 @@ import (
 	"github.com/dolthub/go-mysql-server/server"
 	"github.com/dolthub/go-mysql-server/sql"
 
-	_ "github.com/dolthub/doltgresql/server/config"
-	"github.com/dolthub/doltgresql/server/functions/framework"
+	"github.com/dolthub/doltgresql/server/initialization"
 	"github.com/dolthub/doltgresql/server/logrepl"
 )
 
@@ -126,7 +125,6 @@ func init() {
 	server.DefaultProtocolListenerFunc = NewListener
 	sqlserver.ExternalDisableUsers = true
 	dfunctions.VersionString = Version
-	framework.Initialize()
 }
 
 // RunOnDisk starts the server based on the given args, while also using the local disk as the backing store.
@@ -155,7 +153,7 @@ func RunInMemory(args []string) (*svcs.Controller, error) {
 // runServer starts the server based on the given args, using the provided file system as the backing store.
 // The returned WaitGroup may be used to wait for the server to close.
 func runServer(ctx context.Context, args []string, dEnv *env.DoltEnv) (*svcs.Controller, error) {
-	//doltgresconfig.InitConfigParameters()
+	initialization.Initialize()
 
 	sqlServerCmd := sqlserver.SqlServerCmd{}
 	if serverArgs, err := sqlServerCmd.ArgParser().Parse(append([]string{"sql-server"}, args...)); err == nil {

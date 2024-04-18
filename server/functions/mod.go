@@ -23,8 +23,8 @@ import (
 	pgtypes "github.com/dolthub/doltgresql/server/types"
 )
 
-// init registers the functions to the catalog.
-func init() {
+// initMod registers the functions to the catalog.
+func initMod() {
 	framework.RegisterFunction(mod_int16_int16)
 	framework.RegisterFunction(mod_int32_int32)
 	framework.RegisterFunction(mod_int64_int64)

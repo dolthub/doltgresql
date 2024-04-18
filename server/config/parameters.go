@@ -26,11 +26,11 @@ import (
 	"github.com/dolthub/go-mysql-server/sql/variables"
 )
 
-// init initializes or appends to SystemVariables as it functions as a global variable.
+// Init initializes or appends to SystemVariables as it functions as a global variable.
 // Currently, we append all of postgres configuration parameters to sql.SystemVariables.
 // This means that all of mysql system variables and postgres config parameters will be stored together.
 // TODO: get rid of me, use an integration point to define new sysvars
-func init() {
+func Init() {
 	// There are two postgres parameters have the same name as mysql variables
 	// TODO: issue with this approach is that those parameters will override the mysql variables.
 	if sql.SystemVariables == nil {

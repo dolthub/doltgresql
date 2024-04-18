@@ -23,8 +23,8 @@ import (
 	pgtypes "github.com/dolthub/doltgresql/server/types"
 )
 
-// init registers the functions to the catalog.
-func init() {
+// initAsinh registers the functions to the catalog.
+func initAsinh() {
 	framework.RegisterFunction(asinh_float64)
 }
 

@@ -19,8 +19,8 @@ import (
 	pgtypes "github.com/dolthub/doltgresql/server/types"
 )
 
-// init registers the functions to the catalog.
-func init() {
+// initAscii registers the functions to the catalog.
+func initAscii() {
 	framework.RegisterFunction(ascii_varchar)
 }
 
