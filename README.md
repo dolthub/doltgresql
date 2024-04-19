@@ -208,19 +208,21 @@ standard suite of correctness tests called `sqllogictest`.
 
 We use these same tests to measure the correctness of DoltgreSQL.
 
-Here are DoltgreSQL's sqllogictest results for version `0.4.0`.  Tests that
+Here are DoltgreSQL's sqllogictest results for version `0.5.0`.  Tests that
 did not run could not complete due to a timeout earlier in the run.
 
 <!-- START_CORRECTNESS_RESULTS_TABLE -->
-| Results |  Count  |
-|---------|---------|
-| not ok  |  767635 |
-| ok      | 4912120 |
+|     Results |  Count  |
+|-------------|---------|
+| did not run |    1415 |
+|      timeout|  767635 |
+|      not ok | 3915370 |
+|           ok| 1762969 |
 
 | Total Tests | 5679755 |
 |-------------|---------|
 
-| Correctness Percentage | 86.484716 |
+| Correctness Percentage | 31.039525 |
 |------------------------|-----------|
 <!-- END_CORRECTNESS_RESULTS_TABLE -->
 <br/>
