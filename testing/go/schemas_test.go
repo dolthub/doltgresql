@@ -41,6 +41,37 @@ var SchemaTests = []ScriptTest{
 		},
 	},
 	{
+		Name: "public schema qualifier, multiple tables",
+		SetUpScript: []string{
+			"CREATE TABLE public.test (pk BIGINT PRIMARY KEY, v1 BIGINT);",
+			"CREATE TABLE public.test2 (pk BIGINT PRIMARY KEY, v1 BIGINT);",
+		},
+		Assertions: []ScriptTestAssertion{
+			{
+				Query:    "INSERT INTO public.test VALUES (1, 1), (2, 2);",
+				Expected: []sql.Row{},
+			},
+			{
+				Query:    "INSERT INTO public.test2 VALUES (3, 3), (4, 4);",
+				Expected: []sql.Row{},
+			},
+			{
+				Query: "SELECT * FROM public.test;",
+				Expected: []sql.Row{
+					{1, 1},
+					{2, 2},
+				},
+			},
+			{
+				Query: "SELECT * FROM public.test2;",
+				Expected: []sql.Row{
+					{3, 3},
+					{4, 4},
+				},
+			},
+		},
+	},
+	{
 		Name: "public db and schema qualifier",
 		SetUpScript: []string{
 			"CREATE TABLE postgres.public.test (pk BIGINT PRIMARY KEY, v1 BIGINT);",
@@ -72,14 +103,44 @@ var SchemaTests = []ScriptTest{
 				Query: "CREATE TABLE mySchema.test (pk BIGINT PRIMARY KEY, v1 BIGINT);",
 			},
 			{
+				Query:    "insert into mySchema.test values (1,1), (2,2)",
+			},
+			{
 				Query: "CREATE TABLE otherSchema.test (pk BIGINT PRIMARY KEY, v1 BIGINT);",
 			},
 			{
-				Query:    "insert into mySchema.test values (1,1), (2,2)",
-				Expected: []sql.Row{},
+				Query:    "insert into otherSchema.test values (3,3), (4,4)",
 			},
 			{
-				Query:    "insert into otherSchema.test values (3,3), (4,4)",
+				Query: "SELECT * FROM mySchema.test;",
+				Expected: []sql.Row{
+					{1, 1},
+					{2, 2},
+				},
+			},
+			{
+				Query: "SELECT * FROM otherSchema.test;",
+				Expected: []sql.Row{
+					{3, 3},
+					{4, 4},
+				},
+			},
+		},
+	},
+	{
+		Name: "create new schema (diff order)",
+		Assertions: []ScriptTestAssertion{
+			{
+				Query:    "create schema mySchema",
+			},
+			{
+				Query:    "create schema otherSchema",
+			},
+			{
+				Query: "CREATE TABLE mySchema.test (pk BIGINT PRIMARY KEY, v1 BIGINT);",
+			},
+			{
+				Query:    "insert into mySchema.test values (1,1), (2,2)",
 				Expected: []sql.Row{},
 			},
 			{
@@ -88,6 +149,13 @@ var SchemaTests = []ScriptTest{
 					{1, 1},
 					{2, 2},
 				},
+			},
+			{
+				Query: "CREATE TABLE otherSchema.test (pk BIGINT PRIMARY KEY, v1 BIGINT);",
+			},
+			{
+				Query:    "insert into otherSchema.test values (3,3), (4,4)",
+				Expected: []sql.Row{},
 			},
 			{
 				Query: "SELECT * FROM otherSchema.test;",
