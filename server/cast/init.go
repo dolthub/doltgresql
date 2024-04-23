@@ -12,27 +12,20 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-package functions
+package cast
 
-import (
-	"math"
-
-	"github.com/dolthub/doltgresql/server/functions/framework"
-
-	pgtypes "github.com/dolthub/doltgresql/server/types"
-)
-
-// initPi registers the functions to the catalog.
-func initPi() {
-	framework.RegisterFunction(pi)
-}
-
-// pi represents the PostgreSQL function of the same name, taking the same parameters.
-var pi = framework.Function0{
-	Name:       "pi",
-	Return:     pgtypes.Float64,
-	Parameters: []pgtypes.DoltgresType{},
-	Callable: func(ctx framework.Context) (any, error) {
-		return float64(math.Pi), nil
-	},
+// Init initializes all casts in this package.
+func Init() {
+	initBool()
+	initBytea()
+	initChar()
+	initFloat32()
+	initFloat64()
+	initInt16()
+	initInt32()
+	initInt64()
+	initNumeric()
+	initText()
+	initUuid()
+	initVarChar()
 }

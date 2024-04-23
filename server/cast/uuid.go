@@ -20,8 +20,8 @@ import (
 	pgtypes "github.com/dolthub/doltgresql/server/types"
 )
 
-// init handles all explicit and implicit casts that are built-in. This comprises only the "From" types.
-func init() {
+// initUuid handles all explicit and implicit casts that are built-in. This comprises only the "From" types.
+func initUuid() {
 	uuidExplicit()
 	uuidImplicit()
 }

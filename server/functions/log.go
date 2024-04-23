@@ -24,8 +24,8 @@ import (
 	pgtypes "github.com/dolthub/doltgresql/server/types"
 )
 
-// init registers the functions to the catalog.
-func init() {
+// initLog registers the functions to the catalog.
+func initLog() {
 	framework.RegisterFunction(log_float64)
 	framework.RegisterFunction(log_numeric)
 	framework.RegisterFunction(log_numeric_numeric)

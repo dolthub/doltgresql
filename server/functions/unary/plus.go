@@ -22,8 +22,8 @@ import (
 // These functions can be gathered using the following query from a Postgres 15 instance:
 // SELECT * FROM pg_operator o WHERE o.oprname = '+' AND o.oprleft = 0 ORDER BY o.oprcode::varchar;
 
-// init registers the functions to the catalog.
-func init() {
+// initUnaryPlus registers the functions to the catalog.
+func initUnaryPlus() {
 	framework.RegisterUnaryFunction(framework.Operator_UnaryPlus, float4up)
 	framework.RegisterUnaryFunction(framework.Operator_UnaryPlus, float8up)
 	framework.RegisterUnaryFunction(framework.Operator_UnaryPlus, int2up)

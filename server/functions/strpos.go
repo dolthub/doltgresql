@@ -22,8 +22,8 @@ import (
 	pgtypes "github.com/dolthub/doltgresql/server/types"
 )
 
-// init registers the functions to the catalog.
-func init() {
+// initStrpos registers the functions to the catalog.
+func initStrpos() {
 	framework.RegisterFunction(strpos_varchar)
 }
 

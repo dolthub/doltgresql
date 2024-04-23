@@ -23,8 +23,8 @@ import (
 	pgtypes "github.com/dolthub/doltgresql/server/types"
 )
 
-// init registers the functions to the catalog.
-func init() {
+// initAtan2d registers the functions to the catalog.
+func initAtan2d() {
 	framework.RegisterFunction(atan2d_float64)
 }
 

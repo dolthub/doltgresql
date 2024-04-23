@@ -26,8 +26,8 @@ import (
 // These functions can be gathered using the following query from a Postgres 15 instance:
 // SELECT * FROM pg_operator o WHERE o.oprname = '/' ORDER BY o.oprcode::varchar;
 
-// init registers the functions to the catalog.
-func init() {
+// initBinaryDivide registers the functions to the catalog.
+func initBinaryDivide() {
 	framework.RegisterBinaryFunction(framework.Operator_BinaryDivide, float4div)
 	framework.RegisterBinaryFunction(framework.Operator_BinaryDivide, float48div)
 	framework.RegisterBinaryFunction(framework.Operator_BinaryDivide, float8div)

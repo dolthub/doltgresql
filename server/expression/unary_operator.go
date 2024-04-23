@@ -21,7 +21,6 @@ import (
 	vitess "github.com/dolthub/vitess/go/vt/sqlparser"
 
 	"github.com/dolthub/doltgresql/server/functions/framework"
-	_ "github.com/dolthub/doltgresql/server/functions/unary"
 )
 
 // UnaryOperator represents a VALUE OPERATOR VALUE expression.

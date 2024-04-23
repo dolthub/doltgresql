@@ -20,8 +20,8 @@ import (
 
 	"github.com/dolthub/go-mysql-server/sql"
 
-	_ "github.com/dolthub/doltgresql/server/functions"
 	"github.com/dolthub/doltgresql/server/functions/framework"
+	"github.com/dolthub/doltgresql/server/initialization"
 	"github.com/dolthub/doltgresql/testing/generation/utils"
 )
 
@@ -33,7 +33,7 @@ type Assertion struct {
 }
 
 func main() {
-	framework.Initialize()
+	initialization.Initialize()
 	rootFolder, err := utils.GetRootFolder()
 	if err != nil {
 		fmt.Printf("%s\n", err.Error())

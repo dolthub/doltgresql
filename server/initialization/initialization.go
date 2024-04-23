@@ -12,29 +12,31 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-package functions
+package initialization
 
 import (
-	"github.com/dolthub/doltgresql/server/functions/framework"
+	"sync"
 
+	"github.com/dolthub/doltgresql/server/cast"
+	"github.com/dolthub/doltgresql/server/config"
+	"github.com/dolthub/doltgresql/server/functions"
+	"github.com/dolthub/doltgresql/server/functions/binary"
+	"github.com/dolthub/doltgresql/server/functions/framework"
+	"github.com/dolthub/doltgresql/server/functions/unary"
 	pgtypes "github.com/dolthub/doltgresql/server/types"
 )
 
-// initScale registers the functions to the catalog.
-func initScale() {
-	framework.RegisterFunction(scale_numeric)
-}
+var once = &sync.Once{}
 
-// scale_numeric represents the PostgreSQL function of the same name, taking the same parameters.
-var scale_numeric = framework.Function1{
-	Name:       "scale",
-	Return:     pgtypes.Int32,
-	Parameters: []pgtypes.DoltgresType{pgtypes.Numeric},
-	Callable: func(ctx framework.Context, val1 any) (any, error) {
-		res, err := min_scale_numeric.Callable(ctx, val1)
-		if res != nil {
-			return res.(int32), err
-		}
-		return nil, err
-	},
+// Initialize initializes each package across the project. This function should be used instead of an init() function.
+func Initialize() {
+	once.Do(func() {
+		config.Init()
+		pgtypes.InitBaseIDs()
+		binary.Init()
+		unary.Init()
+		functions.Init()
+		cast.Init()
+		framework.Initialize()
+	})
 }

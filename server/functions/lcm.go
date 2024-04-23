@@ -22,8 +22,8 @@ import (
 	"github.com/dolthub/doltgresql/utils"
 )
 
-// init registers the functions to the catalog.
-func init() {
+// initLcm registers the functions to the catalog.
+func initLcm() {
 	framework.RegisterFunction(lcm_int64_int64)
 }
 

@@ -25,8 +25,8 @@ import (
 	pgtypes "github.com/dolthub/doltgresql/server/types"
 )
 
-// init handles all explicit and implicit casts that are built-in. This comprises only the "From" types.
-func init() {
+// initFloat32 handles all explicit and implicit casts that are built-in. This comprises only the "From" types.
+func initFloat32() {
 	float32Explicit()
 	float32Implicit()
 }

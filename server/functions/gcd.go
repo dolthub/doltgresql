@@ -20,8 +20,8 @@ import (
 	"github.com/dolthub/doltgresql/utils"
 )
 
-// init registers the functions to the catalog.
-func init() {
+// initGcd registers the functions to the catalog.
+func initGcd() {
 	framework.RegisterFunction(gcd_int64_int64)
 }
 

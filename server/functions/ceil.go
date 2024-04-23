@@ -23,8 +23,8 @@ import (
 	pgtypes "github.com/dolthub/doltgresql/server/types"
 )
 
-// init registers the functions to the catalog.
-func init() {
+// initCeil registers the functions to the catalog.
+func initCeil() {
 	framework.RegisterFunction(ceil_float64)
 	framework.RegisterFunction(ceil_numeric)
 	// Register aliases
