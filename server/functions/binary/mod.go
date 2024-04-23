@@ -26,8 +26,8 @@ import (
 // These functions can be gathered using the following query from a Postgres 15 instance:
 // SELECT * FROM pg_operator o WHERE o.oprname = '%' ORDER BY o.oprcode::varchar;
 
-// init registers the functions to the catalog.
-func init() {
+// initBinaryMod registers the functions to the catalog.
+func initBinaryMod() {
 	framework.RegisterBinaryFunction(framework.Operator_BinaryMod, int2mod)
 	framework.RegisterBinaryFunction(framework.Operator_BinaryMod, int4mod)
 	framework.RegisterBinaryFunction(framework.Operator_BinaryMod, int8mod)

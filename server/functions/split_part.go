@@ -23,8 +23,8 @@ import (
 	"github.com/dolthub/doltgresql/utils"
 )
 
-// init registers the functions to the catalog.
-func init() {
+// initSplitPart registers the functions to the catalog.
+func initSplitPart() {
 	framework.RegisterFunction(split_part_varchar_varchar_int32)
 }
 

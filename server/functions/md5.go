@@ -23,8 +23,8 @@ import (
 	pgtypes "github.com/dolthub/doltgresql/server/types"
 )
 
-// init registers the functions to the catalog.
-func init() {
+// initMd5 registers the functions to the catalog.
+func initMd5() {
 	framework.RegisterFunction(md5_varchar)
 }
 

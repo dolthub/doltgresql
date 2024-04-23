@@ -23,8 +23,8 @@ import (
 	pgtypes "github.com/dolthub/doltgresql/server/types"
 )
 
-// init registers the functions to the catalog.
-func init() {
+// initTrunc registers the functions to the catalog.
+func initTrunc() {
 	framework.RegisterFunction(trunc_float64)
 	framework.RegisterFunction(trunc_numeric)
 	framework.RegisterFunction(trunc_numeric_int64)

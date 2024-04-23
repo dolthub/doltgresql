@@ -25,6 +25,7 @@ import (
 	"github.com/dolthub/dolt/go/cmd/dolt/cli"
 	"github.com/dolthub/dolt/go/cmd/dolt/commands"
 	"github.com/dolthub/dolt/go/cmd/dolt/commands/sqlserver"
+	"github.com/dolthub/dolt/go/cmd/dolt/doltversion"
 	eventsapi "github.com/dolthub/dolt/go/gen/proto/dolt/services/eventsapi/v1alpha1"
 	"github.com/dolthub/dolt/go/libraries/doltcore/doltdb"
 	"github.com/dolthub/dolt/go/libraries/doltcore/env"
@@ -40,15 +41,22 @@ import (
 	"github.com/fatih/color"
 	"github.com/tidwall/gjson"
 
+	dgcommands "github.com/dolthub/doltgresql/commands"
 	"github.com/dolthub/doltgresql/server"
 )
 
 var doltgresCommands = cli.NewSubCommandHandler("doltgresql", "it's git for data", []cli.Command{
 	commands.InitCmd{},
 	commands.ConfigCmd{},
-	commands.VersionCmd{VersionStr: server.Version},
+	dgcommands.DoltgresVersionCmd{VersionCmd: &commands.VersionCmd{
+		BinaryName: "doltgresql",
+		VersionStr: server.Version,
+	},
+		DoltVersionStr: doltversion.Version,
+	},
 	sqlserver.SqlServerCmd{VersionStr: server.Version},
 })
+
 var globalArgParser = cli.CreateGlobalArgParser("doltgresql")
 
 func init() {
@@ -558,10 +566,11 @@ func emitUsageEvent(ctx context.Context, dEnv *env.DoltEnv) {
 		return
 	}
 
-	emitter, err := commands.GRPCEmitterForConfig(dEnv)
+	emitter, closeFunc, err := commands.GRPCEmitterForConfig(dEnv)
 	if err != nil {
 		return
 	}
+	defer closeFunc()
 
 	evt := events.NewEvent(sqlserver.SqlServerCmd{}.EventType())
 	evtCollector := events.NewCollector(server.Version, emitter)

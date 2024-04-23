@@ -23,8 +23,8 @@ import (
 	pgtypes "github.com/dolthub/doltgresql/server/types"
 )
 
-// init registers the functions to the catalog.
-func init() {
+// initPower registers the functions to the catalog.
+func initPower() {
 	framework.RegisterFunction(power_float64_float64)
 	framework.RegisterFunction(power_numeric_numeric)
 }

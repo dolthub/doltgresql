@@ -20,8 +20,8 @@ import (
 	pgtypes "github.com/dolthub/doltgresql/server/types"
 )
 
-// init registers the functions to the catalog.
-func init() {
+// initScale registers the functions to the catalog.
+func initScale() {
 	framework.RegisterFunction(scale_numeric)
 }
 

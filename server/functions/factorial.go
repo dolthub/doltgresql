@@ -23,8 +23,8 @@ import (
 	pgtypes "github.com/dolthub/doltgresql/server/types"
 )
 
-// init registers the functions to the catalog.
-func init() {
+// initFactorial registers the functions to the catalog.
+func initFactorial() {
 	framework.RegisterFunction(factorial_int64)
 }
 

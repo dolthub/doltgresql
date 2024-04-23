@@ -19,8 +19,8 @@ import (
 	pgtypes "github.com/dolthub/doltgresql/server/types"
 )
 
-// init registers the functions to the catalog.
-func init() {
+// initReverse registers the functions to the catalog.
+func initReverse() {
 	framework.RegisterFunction(reverse_varchar)
 }
 

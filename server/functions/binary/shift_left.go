@@ -22,8 +22,8 @@ import (
 // These functions can be gathered using the following query from a Postgres 15 instance:
 // SELECT * FROM pg_operator o WHERE o.oprname = '<<' ORDER BY o.oprcode::varchar;
 
-// init registers the functions to the catalog.
-func init() {
+// initBinaryShiftLeft registers the functions to the catalog.
+func initBinaryShiftLeft() {
 	framework.RegisterBinaryFunction(framework.Operator_BinaryShiftLeft, int2shl)
 	framework.RegisterBinaryFunction(framework.Operator_BinaryShiftLeft, int4shl)
 	framework.RegisterBinaryFunction(framework.Operator_BinaryShiftLeft, int8shl)
