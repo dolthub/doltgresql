@@ -167,7 +167,7 @@ var SchemaTests = []ScriptTest{
 		},
 	},
 	{
-		Name: "insert, update, delete, alter table with schema",
+		Name: "insert, update, delete with schema",
 		Assertions: []ScriptTestAssertion{
 			{
 				Query:    "create schema mySchema",
@@ -271,9 +271,10 @@ var SchemaTests = []ScriptTest{
 	},
 	// More tests:
 	// * table name resolution among different schemas
+	// * alter table statements, when they work better
 	// * revision qualifiers
-	// * drop tests
-	// * table name resolution in more statements
+	// * drop schema
+	// * more statement types
 }
 
 func TestSchemas(t *testing.T) {

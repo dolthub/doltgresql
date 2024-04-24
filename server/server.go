@@ -126,7 +126,6 @@ func init() {
 	server.DefaultProtocolListenerFunc = NewListener
 	sqlserver.ExternalDisableUsers = true
 	dfunctions.VersionString = Version
-	doltdb.DefaultSchemaName = "public"
 	framework.Initialize()
 }
 
