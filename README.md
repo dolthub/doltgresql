@@ -234,5 +234,5 @@ did not run could not complete due to a timeout earlier in the run.
 Doltgres emulates a Postgres server, including parsing Postgres SQL into an Abstract Syntax Tree (AST). This AST is
 converted to a form that can be interpreted by the Dolt engine. Doltgres uses the same SQL engine and storage format as Dolt.
 
-[Dolt has a unique architecure](https://docs.dolthub.com/architecture/architecture) that allows for version control
+[Dolt has a unique architecture](https://docs.dolthub.com/architecture/architecture) that allows for version control
 features at OLTP database performance. Doltgres uses the same architecture.
