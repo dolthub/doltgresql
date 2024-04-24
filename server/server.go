@@ -38,6 +38,7 @@ import (
 
 	"github.com/dolthub/doltgresql/server/initialization"
 	"github.com/dolthub/doltgresql/server/logrepl"
+	"github.com/dolthub/doltgresql/server/pg_catalog"
 )
 
 const (
@@ -258,7 +259,9 @@ func runServer(ctx context.Context, args []string, dEnv *env.DoltEnv) (*svcs.Con
 		}
 	}()
 
-	sqlserver.ConfigureServices(serverConfig, controller, Version, dEnv)
+	systemSchemaConfig := newSystemSchemaConfig()
+
+	sqlserver.ConfigureServices(serverConfig, controller, Version, dEnv, systemSchemaConfig)
 	go controller.Start(newCtx)
 
 	err = controller.WaitForStart()
@@ -273,6 +276,15 @@ func runServer(ctx context.Context, args []string, dEnv *env.DoltEnv) (*svcs.Con
 	}
 
 	return controller, nil
+}
+
+func newSystemSchemaConfig() *sql.SystemSchemaConfig {
+	return &sql.SystemSchemaConfig{
+		SystemSchema: pg_catalog.NewPgCatalogDatabase(),
+		IsSystemSchemaDatabase: func(db string) bool {
+			return db == pg_catalog.PgCatalogName
+		},
+	}
 }
 
 // startReplication begins the background thread that replicates from Postgres, if one is configured.

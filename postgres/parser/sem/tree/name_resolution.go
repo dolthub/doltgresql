@@ -27,8 +27,9 @@ package tree
 import (
 	"context"
 	"fmt"
-	"github.com/dolthub/doltgresql/server/pg_catalog"
 	"strings"
+
+	"github.com/dolthub/doltgresql/server/pg_catalog"
 
 	"github.com/dolthub/doltgresql/postgres/parser/pgcode"
 	"github.com/dolthub/doltgresql/postgres/parser/pgerror"

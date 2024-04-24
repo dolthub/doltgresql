@@ -15,8 +15,9 @@
 package pg_catalog
 
 import (
-	"github.com/dolthub/doltgresql/server/types"
 	"github.com/dolthub/go-mysql-server/sql"
+
+	"github.com/dolthub/doltgresql/server/types"
 )
 
 // Below are BASE TABLEs
@@ -385,7 +386,25 @@ var pgConstraintSchema = sql.Schema{}
 
 var pgConversionSchema = sql.Schema{}
 
-var pgDatabaseSchema = sql.Schema{}
+var pgDatabaseSchema = sql.Schema{
+	// {Name: "oid", Type: Oid, Default: nil, Nullable: false, Source: PgDatabaseTableName},
+	{Name: "datname", Type: Name, Default: nil, Nullable: false, Source: PgDatabaseTableName},
+	// {Name: "datdba", Type: Oid, Default: nil, Nullable: false, Source: PgDatabaseTableName},
+	// {Name: "encoding", Type: types.Int32, Default: nil, Nullable: false, Source: PgDatabaseTableName},
+	// {Name: "datlocprovider", Type: Char, Default: nil, Nullable: false, Source: PgDatabaseTableName},
+	// {Name: "datistemplate", Type: types.Bool, Default: nil, Nullable: false, Source: PgDatabaseTableName},
+	// {Name: "datallowconn", Type: types.Bool, Default: nil, Nullable: false, Source: PgDatabaseTableName},
+	// {Name: "datconnlimit", Type: types.Int32, Default: nil, Nullable: false, Source: PgDatabaseTableName},
+	// {Name: "datfrozenxid", Type: Xid, Default: nil, Nullable: false, Source: PgDatabaseTableName},
+	// {Name: "datminmxid", Type: Xid, Default: nil, Nullable: false, Source: PgDatabaseTableName},
+	// {Name: "dattablespace", Type: Oid, Default: nil, Nullable: false, Source: PgDatabaseTableName},
+	// {Name: "datcollate", Type: types.Text, Default: nil, Nullable: false, Source: PgDatabaseTableName},
+	// {Name: "datctype", Type: types.Text, Default: nil, Nullable: false, Source: PgDatabaseTableName},
+	// {Name: "daticulocale", Type: types.Text, Default: nil, Nullable: false, Source: PgDatabaseTableName},
+	// {Name: "daticurules", Type: types.Text, Default: nil, Nullable: false, Source: PgDatabaseTableName},
+	// {Name: "datcollversion", Type: types.Text, Default: nil, Nullable: false, Source: PgDatabaseTableName},
+	// {Name: "datacl", Type: []aclitem, Default: nil, Nullable: false, Source: PgDatabaseTableName},
+}
 
 var pgDbRoleSettingSchema = sql.Schema{}
 
@@ -591,7 +610,7 @@ var pgCatalogDb = &pgCatalogDatabase{
 		PgDatabaseTableName: &pgCatalogTable{
 			name:   PgDatabaseTableName,
 			schema: pgDatabaseSchema,
-			reader: emptyRowIter,
+			reader: databaseRowIter,
 		},
 		PgDbRoleSettingTableName: &pgCatalogTable{
 			name:   PgDbRoleSettingTableName,

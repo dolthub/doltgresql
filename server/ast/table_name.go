@@ -30,7 +30,7 @@ func nodeTableName(node *tree.TableName) (vitess.TableName, error) {
 	}
 
 	if node.ExplicitCatalog || node.ExplicitSchema {
-		if strings.ToLower(string(node.SchemaName)) == "information_schema" {
+		if strings.ToLower(string(node.SchemaName)) == "information_schema" || strings.ToLower(string(node.SchemaName)) == "pg_catalog" {
 			return vitess.TableName{
 				Name:      vitess.NewTableIdent(string(node.ObjectName)),
 				Qualifier: vitess.NewTableIdent(string(node.SchemaName)),

@@ -17,8 +17,9 @@ package pg_catalog
 import (
 	"bytes"
 	"fmt"
-	"github.com/dolthub/go-mysql-server/sql"
 	"io"
+
+	"github.com/dolthub/go-mysql-server/sql"
 )
 
 const (
@@ -162,4 +163,22 @@ func printTable(name string, tableSchema sql.Schema) string {
 
 func partitionKey(tableName string) []byte {
 	return []byte(PgCatalogName + "." + tableName)
+}
+
+// databaseRowIter implements the sql.RowIter for the pg_catalog.pg_database table.
+func databaseRowIter(ctx *sql.Context, c sql.Catalog) (sql.RowIter, error) {
+	dbs := c.AllDatabases(ctx)
+
+	var rows []sql.Row
+	for _, db := range dbs {
+		name := db.Name()
+		if name == "information_schema" || name == "pg_catalog" {
+			continue
+		}
+		rows = append(rows, sql.Row{
+			name, // datname
+		})
+	}
+
+	return sql.RowsToRowIter(rows...), nil
 }

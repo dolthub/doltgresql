@@ -9,7 +9,6 @@ setup() {
     CREATE TABLE test2 (pk BIGINT PRIMARY KEY, v1 INTEGER, v2 SMALLINT);
     INSERT INTO test1 VALUES (1, 2), (6, 7);
     INSERT INTO test2 VALUES (3, 4, 5), (8, 9, 0);
-    CREATE VIEW testview AS SELECT * FROM test1;
 SQL
 }
 
@@ -23,6 +22,7 @@ teardown() {
     [[ "$output" =~ "information_schema" ]] || false
     [[ "$output" =~ "postgres" ]] || false
     [[ "$output" =~ "doltgres" ]] || false
+    [[ "$output" =~ "pg_catalog" ]] || false
 }
 
 @test 'psql-commands: \dt' {
