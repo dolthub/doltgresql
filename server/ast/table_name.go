@@ -27,11 +27,11 @@ func nodeTableName(node *tree.TableName) (vitess.TableName, error) {
 	}
 
 	var dbName, schemaName vitess.TableIdent
-	
+
 	if node.ExplicitCatalog {
 		dbName = vitess.NewTableIdent(string(node.CatalogName))
 	}
-	
+
 	if node.ExplicitSchema {
 		schemaName = vitess.NewTableIdent(string(node.SchemaName))
 	}

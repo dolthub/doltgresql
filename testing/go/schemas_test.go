@@ -94,22 +94,22 @@ var SchemaTests = []ScriptTest{
 		Name: "create new schema",
 		Assertions: []ScriptTestAssertion{
 			{
-				Query:    "create schema mySchema",
+				Query: "create schema mySchema",
 			},
 			{
-				Query:    "create schema otherSchema",
+				Query: "create schema otherSchema",
 			},
 			{
 				Query: "CREATE TABLE mySchema.test (pk BIGINT PRIMARY KEY, v1 BIGINT);",
 			},
 			{
-				Query:    "insert into mySchema.test values (1,1), (2,2)",
+				Query: "insert into mySchema.test values (1,1), (2,2)",
 			},
 			{
 				Query: "CREATE TABLE otherSchema.test (pk BIGINT PRIMARY KEY, v1 BIGINT);",
 			},
 			{
-				Query:    "insert into otherSchema.test values (3,3), (4,4)",
+				Query: "insert into otherSchema.test values (3,3), (4,4)",
 			},
 			{
 				Query: "SELECT * FROM mySchema.test;",
@@ -131,10 +131,10 @@ var SchemaTests = []ScriptTest{
 		Name: "create new schema (diff order)",
 		Assertions: []ScriptTestAssertion{
 			{
-				Query:    "create schema mySchema",
+				Query: "create schema mySchema",
 			},
 			{
-				Query:    "create schema otherSchema",
+				Query: "create schema otherSchema",
 			},
 			{
 				Query: "CREATE TABLE mySchema.test (pk BIGINT PRIMARY KEY, v1 BIGINT);",
@@ -170,10 +170,10 @@ var SchemaTests = []ScriptTest{
 		Name: "insert, update, delete with schema",
 		Assertions: []ScriptTestAssertion{
 			{
-				Query:    "create schema mySchema",
+				Query: "create schema mySchema",
 			},
 			{
-				Query:    "create schema otherSchema",
+				Query: "create schema otherSchema",
 			},
 			{
 				Query: "CREATE TABLE mySchema.test (pk BIGINT PRIMARY KEY, v1 BIGINT);",
@@ -182,23 +182,23 @@ var SchemaTests = []ScriptTest{
 				Query: "CREATE TABLE otherSchema.test (pk BIGINT PRIMARY KEY, v1 BIGINT);",
 			},
 			{
-				Query:    "insert into mySchema.test values (1,1), (2,2)",
+				Query: "insert into mySchema.test values (1,1), (2,2)",
 			},
 			{
 				Query:    "insert into otherSchema.test values (3,3), (4,4)",
 				Expected: []sql.Row{},
 			},
 			{
-				Query:    "update mySchema.test set v1 = 3 where pk = 1",
+				Query: "update mySchema.test set v1 = 3 where pk = 1",
 			},
 			{
-				Query:    "update otherSchema.test set v1 = 4 where pk = 3",
+				Query: "update otherSchema.test set v1 = 4 where pk = 3",
 			},
 			{
-				Query:    "delete from mySchema.test where pk = 2",
+				Query: "delete from mySchema.test where pk = 2",
 			},
 			{
-				Query:    "delete from otherSchema.test where pk = 4",
+				Query: "delete from otherSchema.test where pk = 4",
 			},
 			{
 				Query: "SELECT * FROM mySchema.test;",
@@ -218,20 +218,20 @@ var SchemaTests = []ScriptTest{
 		Name: "schema does not exist",
 		Assertions: []ScriptTestAssertion{
 			{
-				Query:    "create schema mySchema",
+				Query: "create schema mySchema",
 			},
 			{
 				Query: "CREATE TABLE mySchema.test (pk BIGINT PRIMARY KEY, v1 BIGINT);",
 			},
 			{
-				Query: "CREATE TABLE otherSchema.test (pk BIGINT PRIMARY KEY, v1 BIGINT);",
+				Query:       "CREATE TABLE otherSchema.test (pk BIGINT PRIMARY KEY, v1 BIGINT);",
 				ExpectedErr: true,
 			},
 			{
-				Query:    "insert into mySchema.test values (1,1), (2,2)",
+				Query: "insert into mySchema.test values (1,1), (2,2)",
 			},
 			{
-				Query:    "insert into otherSchema.test values (3,3), (4,4)",
+				Query:       "insert into otherSchema.test values (3,3), (4,4)",
 				ExpectedErr: true,
 			},
 			{
@@ -242,7 +242,7 @@ var SchemaTests = []ScriptTest{
 				},
 			},
 			{
-				Query: "SELECT * FROM otherSchema.test;",
+				Query:       "SELECT * FROM otherSchema.test;",
 				ExpectedErr: true,
 			},
 		},

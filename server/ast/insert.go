@@ -73,12 +73,12 @@ func nodeInsert(node *tree.Insert) (*vitess.Insert, error) {
 	if err != nil {
 		return nil, err
 	}
-	
+
 	// GMS For a ValuesStatement with simple rows, GMS expects AliasedValues
 	if vSelect, ok := rows.(*vitess.Select); ok && len(vSelect.From) == 1 {
 		if valsStmt, ok := vSelect.From[0].(*vitess.ValuesStatement); ok {
 			rows = &vitess.AliasedValues{
-				Values:  valsStmt.Rows,
+				Values: valsStmt.Rows,
 			}
 		}
 	}
