@@ -114,4 +114,46 @@ var createViewStmts = []ScriptTest{
 			},
 		},
 	},
+	{
+		Name: "postgres-specific syntax",
+		SetUpScript: []string{
+			"create table t1 (pk int);",
+			"insert into t1 values (1), (2), (3), (4);",
+		},
+		Assertions: []ScriptTestAssertion{
+			{
+				Query:    "CREATE VIEW v AS SELECT pk::INT2 FROM t1 ORDER BY pk;",
+				Expected: []sql.Row{},
+			},
+			{
+				Query:    "select * from v;",
+				Expected: []sql.Row{{1}, {2}, {3}, {4}},
+			},
+		},
+	},
+	{
+		Name: "not yet supported create view queries",
+		Assertions: []ScriptTestAssertion{
+			{
+				Query:       "CREATE TEMPORARY VIEW v AS SELECT 1;",
+				ExpectedErr: true,
+			},
+			{
+				Query:       "CREATE RECURSIVE VIEW v AS SELECT 1;",
+				ExpectedErr: true,
+			},
+			{
+				Query:       "CREATE VIEW v AS SELECT 1 WITH LOCAL CHECK OPTION;",
+				ExpectedErr: true,
+			},
+			{
+				Query:       "CREATE VIEW v WITH check_option = 'local' AS SELECT 1;",
+				ExpectedErr: true,
+			},
+			{
+				Query:       "CREATE VIEW v WITH security_barrier = true AS SELECT 1;",
+				ExpectedErr: true,
+			},
+		},
+	},
 }
