@@ -22,6 +22,12 @@ func TestPgCatalog(t *testing.T) {
 						{"test"},
 					},
 				},
+				{
+					Query: "SELECT datname FROM pg_catalog.pg_database WHERE datname='test';",
+					Expected: []sql.Row{
+						{"test"},
+					},
+				},
 			},
 		},
 	})

@@ -344,6 +344,7 @@ var pgAuthIdSchema = sql.Schema{}
 
 var pgCastSchema = sql.Schema{}
 
+// TODO: Not all types are accurate
 var pgClassSchema = sql.Schema{
 	{Name: "oid", Type: Oid, Default: nil, Nullable: false, Source: PgClassTableName},
 	{Name: "relname", Type: Name, Default: nil, Nullable: false, Source: PgClassTableName},
@@ -386,6 +387,7 @@ var pgConstraintSchema = sql.Schema{}
 
 var pgConversionSchema = sql.Schema{}
 
+// TODO: Implement the rest of pg_database
 var pgDatabaseSchema = sql.Schema{
 	// {Name: "oid", Type: Oid, Default: nil, Nullable: false, Source: PgDatabaseTableName},
 	{Name: "datname", Type: Name, Default: nil, Nullable: false, Source: PgDatabaseTableName},
@@ -502,6 +504,7 @@ var pgTsParserSchema = sql.Schema{}
 
 var pgTsTemplateSchema = sql.Schema{}
 
+// TODO: Not all types are accurate
 var pgTypeSchema = sql.Schema{
 	{Name: "oid", Type: Oid, Default: nil, Nullable: false, Source: PgTypeTableName},
 	{Name: "typname", Type: types.Int32, Default: nil, Nullable: false, Source: PgTypeTableName},
