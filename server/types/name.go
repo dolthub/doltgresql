@@ -154,7 +154,7 @@ func (b NameType) FormatValue(val any) (string, error) {
 
 // GetSerializationID implements the DoltgresType interface.
 func (b NameType) GetSerializationID() SerializationID {
-	return SerializationID_VarChar
+	return SerializationID_Name
 }
 
 // IsUnbounded implements the DoltgresType interface.
@@ -234,7 +234,7 @@ func (b NameType) Zero() any {
 // SerializeType implements the DoltgresType interface.
 func (b NameType) SerializeType() ([]byte, error) {
 	t := make([]byte, serializationIDHeaderSize+4)
-	copy(t, SerializationID_VarChar.ToByteSlice(0))
+	copy(t, SerializationID_Name.ToByteSlice(0))
 	binary.LittleEndian.PutUint32(t[serializationIDHeaderSize:], b.Length)
 	return t, nil
 }

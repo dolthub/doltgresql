@@ -17,6 +17,6 @@ package types
 import "github.com/lib/pq/oid"
 
 // NameArray is the array variant of Name.
-var NameArray = createArrayTypeWithFuncs(Name, SerializationID_VarCharArray, oid.T__name, arrayContainerFunctions{
+var NameArray = createArrayTypeWithFuncs(Name, SerializationID_NameArray, oid.T__name, arrayContainerFunctions{
 	SQL: stringArraySQL,
 })
