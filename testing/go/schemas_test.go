@@ -279,7 +279,7 @@ var SchemaTests = []ScriptTest{
 	// * INSERT INTO schema1 SELECT FROM schema2
 	// * Subqueries accessing different schemas in the same SELECT
 	// * Joins across schemas
-	// * Table names matching schema names. For example, test1.test1, test1.test2, test2.test1, test2.test2 
+	// * Table names matching schema names. For example, test1.test1, test1.test2, test2.test1, test2.test2
 }
 
 func TestSchemas(t *testing.T) {

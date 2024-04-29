@@ -25,7 +25,7 @@ func nodeCreateSchema(node *tree.CreateSchema) (vitess.Statement, error) {
 	if node == nil {
 		return nil, nil
 	}
-	
+
 	return &vitess.DBDDL{
 		Action:           "CREATE",
 		SchemaOrDatabase: "schema",
