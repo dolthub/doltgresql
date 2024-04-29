@@ -123,6 +123,8 @@ func nodeResolvableTypeReference(typ tree.ResolvableTypeReference) (*vitess.Conv
 				resolvedType = pgtypes.TimeTZ
 			case oid.T_uuid:
 				resolvedType = pgtypes.Uuid
+			case oid.T_xid:
+				resolvedType = pgtypes.Xid
 			case oid.T_varchar:
 				width := uint32(columnType.Width())
 				if width > pgtypes.StringMaxLength {
