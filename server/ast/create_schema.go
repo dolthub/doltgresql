@@ -25,12 +25,13 @@ func nodeCreateSchema(node *tree.CreateSchema) (vitess.Statement, error) {
 	if node == nil {
 		return nil, nil
 	}
-
+	
 	return &vitess.DBDDL{
 		Action:           "CREATE",
 		SchemaOrDatabase: "schema",
 		DBName:           node.Schema,
 		IfNotExists:      node.IfNotExists,
 		CharsetCollate:   nil, // TODO
+		// TODO: AuthRole
 	}, nil
 }
