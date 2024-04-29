@@ -24,8 +24,8 @@ import (
 	pgtypes "github.com/dolthub/doltgresql/server/types"
 )
 
-// init registers the functions to the catasqrt.
-func init() {
+// initSqrt registers the functions to the catasqrt.
+func initSqrt() {
 	framework.RegisterFunction(sqrt_float64)
 	framework.RegisterFunction(sqrt_numeric)
 }

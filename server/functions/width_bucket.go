@@ -24,8 +24,8 @@ import (
 	pgtypes "github.com/dolthub/doltgresql/server/types"
 )
 
-// init registers the functions to the catalog.
-func init() {
+// initWidthBucket registers the functions to the catalog.
+func initWidthBucket() {
 	framework.RegisterFunction(width_bucket_float64_float64_float64_int64)
 	framework.RegisterFunction(width_bucket_numeric_numeric_numeric_int64)
 }

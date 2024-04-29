@@ -23,8 +23,8 @@ import (
 	pgtypes "github.com/dolthub/doltgresql/server/types"
 )
 
-// init registers the functions to the catalog.
-func init() {
+// initInitcap registers the functions to the catalog.
+func initInitcap() {
 	framework.RegisterFunction(initcap_varchar)
 }
 

@@ -23,8 +23,8 @@ import (
 	pgtypes "github.com/dolthub/doltgresql/server/types"
 )
 
-// init registers the functions to the catalog.
-func init() {
+// initRound registers the functions to the catalog.
+func initRound() {
 	framework.RegisterFunction(round_float64)
 	framework.RegisterFunction(round_numeric)
 	framework.RegisterFunction(round_numeric_int64)

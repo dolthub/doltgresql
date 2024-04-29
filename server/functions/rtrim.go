@@ -19,8 +19,8 @@ import (
 	pgtypes "github.com/dolthub/doltgresql/server/types"
 )
 
-// init registers the functions to the catalog.
-func init() {
+// initRtrim registers the functions to the catalog.
+func initRtrim() {
 	framework.RegisterFunction(rtrim_varchar)
 	framework.RegisterFunction(rtrim_varchar_varchar)
 }

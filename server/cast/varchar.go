@@ -27,8 +27,8 @@ import (
 	pgtypes "github.com/dolthub/doltgresql/server/types"
 )
 
-// init handles all explicit and implicit casts that are built-in. This comprises only the "From" types.
-func init() {
+// initVarChar handles all explicit and implicit casts that are built-in. This comprises only the "From" types.
+func initVarChar() {
 	varcharExplicit()
 	varcharImplicit()
 }

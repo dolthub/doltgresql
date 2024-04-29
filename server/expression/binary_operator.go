@@ -21,7 +21,6 @@ import (
 	"github.com/dolthub/go-mysql-server/sql/expression"
 	vitess "github.com/dolthub/vitess/go/vt/sqlparser"
 
-	_ "github.com/dolthub/doltgresql/server/functions/binary"
 	"github.com/dolthub/doltgresql/server/functions/framework"
 )
 

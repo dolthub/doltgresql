@@ -22,8 +22,6 @@ import (
 
 	"github.com/dolthub/go-mysql-server/server"
 	"github.com/dolthub/vitess/go/mysql"
-
-	_ "github.com/dolthub/doltgresql/server/functions"
 )
 
 var (

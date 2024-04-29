@@ -22,8 +22,8 @@ import (
 	pgtypes "github.com/dolthub/doltgresql/server/types"
 )
 
-// init registers the functions to the catalog.
-func init() {
+// initRandom registers the functions to the catalog.
+func initRandom() {
 	framework.RegisterFunction(random)
 }
 

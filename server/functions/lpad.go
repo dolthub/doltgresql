@@ -19,8 +19,8 @@ import (
 	pgtypes "github.com/dolthub/doltgresql/server/types"
 )
 
-// init registers the functions to the catalog.
-func init() {
+// initLpad registers the functions to the catalog.
+func initLpad() {
 	framework.RegisterFunction(lpad_varchar_int32)
 	framework.RegisterFunction(lpad_varchar_int32_varchar)
 }

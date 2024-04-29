@@ -73,8 +73,8 @@ const (
 // baseIDArrayTypes contains a map of all base IDs that represent array variants.
 var baseIDArrayTypes = map[DoltgresTypeBaseID]DoltgresArrayType{}
 
-// init reads the list of all types and creates a mapping of the base ID for each array variant.
-func init() {
+// InitBaseIDs reads the list of all types and creates a mapping of the base ID for each array variant.
+func InitBaseIDs() {
 	for _, t := range typesFromBaseID {
 		if dat, ok := t.(DoltgresArrayType); ok {
 			baseIDArrayTypes[t.BaseID()] = dat

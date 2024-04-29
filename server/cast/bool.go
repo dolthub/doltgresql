@@ -19,8 +19,8 @@ import (
 	pgtypes "github.com/dolthub/doltgresql/server/types"
 )
 
-// init handles all explicit and implicit casts that are built-in. This comprises only the "From" types.
-func init() {
+// initBool handles all explicit and implicit casts that are built-in. This comprises only the "From" types.
+func initBool() {
 	boolExplicit()
 	boolImplicit()
 }
