@@ -44,7 +44,7 @@ var _ DoltgresType = NameType{}
 
 // BaseID implements the DoltgresType interface.
 func (b NameType) BaseID() DoltgresTypeBaseID {
-	return DoltgresTypeBaseID_VarChar
+	return DoltgresTypeBaseID_Name
 }
 
 // CollationCoercibility implements the DoltgresType interface.

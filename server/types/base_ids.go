@@ -47,6 +47,7 @@ const (
 	DoltgresTypeBaseID_PG_DDL_Command
 	DoltgresTypeBaseID_Void
 	DoltgresTypeBaseID_Unknown
+	DoltgresTypeBaseID_Name
 )
 
 const (
