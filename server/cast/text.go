@@ -141,6 +141,20 @@ func textExplicit() {
 	})
 	framework.MustAddExplicitTypeCast(framework.TypeCast{
 		FromType: pgtypes.Text,
+		ToType:   pgtypes.Oid,
+		Function: func(ctx framework.Context, val any, targetType pgtypes.DoltgresType) (any, error) {
+			out, err := strconv.ParseInt(strings.TrimSpace(val.(string)), 10, 32)
+			if err != nil {
+				return nil, fmt.Errorf("invalid input syntax for type %s: %q", targetType.String(), val.(string))
+			}
+			if out > 2147483647 || out < -2147483648 {
+				return nil, fmt.Errorf("value %q is out of range for type %s", val.(string), targetType.String())
+			}
+			return int32(out), nil
+		},
+	})
+	framework.MustAddExplicitTypeCast(framework.TypeCast{
+		FromType: pgtypes.Text,
 		ToType:   pgtypes.Text,
 		Function: func(ctx framework.Context, val any, targetType pgtypes.DoltgresType) (any, error) {
 			return val, nil
@@ -270,6 +284,20 @@ func textImplicit() {
 				return nil, fmt.Errorf("invalid input syntax for type %s: %q", targetType.String(), val.(string))
 			}
 			return d, nil
+		},
+	})
+	framework.MustAddImplicitTypeCast(framework.TypeCast{
+		FromType: pgtypes.Text,
+		ToType:   pgtypes.Oid,
+		Function: func(ctx framework.Context, val any, targetType pgtypes.DoltgresType) (any, error) {
+			out, err := strconv.ParseInt(strings.TrimSpace(val.(string)), 10, 32)
+			if err != nil {
+				return nil, fmt.Errorf("invalid input syntax for type %s: %q", targetType.String(), val.(string))
+			}
+			if out > 2147483647 || out < -2147483648 {
+				return nil, fmt.Errorf("value %q is out of range for type %s", val.(string), targetType.String())
+			}
+			return int32(out), nil
 		},
 	})
 	framework.MustAddImplicitTypeCast(framework.TypeCast{

@@ -25,6 +25,7 @@ func Init() {
 	initInt32()
 	initInt64()
 	initNumeric()
+	initOid()
 	initText()
 	initUuid()
 	initVarChar()

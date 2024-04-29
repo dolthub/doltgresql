@@ -24,177 +24,165 @@ import (
 	pgtypes "github.com/dolthub/doltgresql/server/types"
 )
 
-// initInt64 handles all explicit and implicit casts that are built-in. This comprises only the "From" types.
-func initInt64() {
-	int64Explicit()
-	int64Implicit()
+// initOid handles all explicit and implicit casts that are built-in. This comprises only the "From" types.
+func initOid() {
+	oidExplicit()
+	oidImplicit()
 }
 
-// int64Explicit registers all explicit casts. This comprises only the "From" types.
-func int64Explicit() {
+// oidExplicit registers all explicit casts. This comprises only the "From" types.
+func oidExplicit() {
 	framework.MustAddExplicitTypeCast(framework.TypeCast{
-		FromType: pgtypes.Int64,
+		FromType: pgtypes.Oid,
 		ToType:   pgtypes.BpChar,
 		Function: func(ctx framework.Context, val any, targetType pgtypes.DoltgresType) (any, error) {
-			str := strconv.FormatInt(val.(int64), 10)
+			str := strconv.FormatInt(int64(val.(int32)), 10)
 			return handleCharExplicitCast(str, targetType)
 		},
 	})
 	framework.MustAddExplicitTypeCast(framework.TypeCast{
-		FromType: pgtypes.Int64,
+		FromType: pgtypes.Oid,
 		ToType:   pgtypes.Float32,
 		Function: func(ctx framework.Context, val any, targetType pgtypes.DoltgresType) (any, error) {
-			return float32(val.(int64)), nil
+			return float32(val.(int32)), nil
 		},
 	})
 	framework.MustAddExplicitTypeCast(framework.TypeCast{
-		FromType: pgtypes.Int64,
+		FromType: pgtypes.Oid,
 		ToType:   pgtypes.Float64,
 		Function: func(ctx framework.Context, val any, targetType pgtypes.DoltgresType) (any, error) {
-			return float64(val.(int64)), nil
+			return float64(val.(int32)), nil
 		},
 	})
 	framework.MustAddExplicitTypeCast(framework.TypeCast{
-		FromType: pgtypes.Int64,
+		FromType: pgtypes.Oid,
 		ToType:   pgtypes.Int16,
 		Function: func(ctx framework.Context, val any, targetType pgtypes.DoltgresType) (any, error) {
-			if val.(int64) > 32767 || val.(int64) < -32768 {
+			if val.(int32) > 32767 || val.(int32) < -32768 {
 				return nil, fmt.Errorf("smallint out of range")
 			}
-			return int16(val.(int64)), nil
+			return int16(val.(int32)), nil
 		},
 	})
 	framework.MustAddExplicitTypeCast(framework.TypeCast{
-		FromType: pgtypes.Int64,
+		FromType: pgtypes.Oid,
 		ToType:   pgtypes.Int32,
-		Function: func(ctx framework.Context, val any, targetType pgtypes.DoltgresType) (any, error) {
-			if val.(int64) > 2147483647 || val.(int64) < -2147483648 {
-				return nil, fmt.Errorf("integer out of range")
-			}
-			return int32(val.(int64)), nil
-		},
-	})
-	framework.MustAddExplicitTypeCast(framework.TypeCast{
-		FromType: pgtypes.Int64,
-		ToType:   pgtypes.Int64,
 		Function: func(ctx framework.Context, val any, targetType pgtypes.DoltgresType) (any, error) {
 			return val, nil
 		},
 	})
 	framework.MustAddExplicitTypeCast(framework.TypeCast{
-		FromType: pgtypes.Int64,
+		FromType: pgtypes.Oid,
+		ToType:   pgtypes.Int64,
+		Function: func(ctx framework.Context, val any, targetType pgtypes.DoltgresType) (any, error) {
+			return int64(val.(int32)), nil
+		},
+	})
+	framework.MustAddExplicitTypeCast(framework.TypeCast{
+		FromType: pgtypes.Oid,
 		ToType:   pgtypes.Numeric,
 		Function: func(ctx framework.Context, val any, targetType pgtypes.DoltgresType) (any, error) {
-			return decimal.NewFromInt(val.(int64)), nil
+			return decimal.NewFromInt(int64(val.(int32))), nil
 		},
 	})
 	framework.MustAddExplicitTypeCast(framework.TypeCast{
-		FromType: pgtypes.Int64,
+		FromType: pgtypes.Oid,
 		ToType:   pgtypes.Oid,
 		Function: func(ctx framework.Context, val any, targetType pgtypes.DoltgresType) (any, error) {
-			if val.(int64) > 2147483647 || val.(int64) < -2147483648 {
-				return nil, fmt.Errorf("oid out of range")
-			}
-			return int32(val.(int64)), nil
+			return val, nil
 		},
 	})
 	framework.MustAddExplicitTypeCast(framework.TypeCast{
-		FromType: pgtypes.Int64,
+		FromType: pgtypes.Oid,
 		ToType:   pgtypes.Text,
 		Function: func(ctx framework.Context, val any, targetType pgtypes.DoltgresType) (any, error) {
-			return strconv.FormatInt(val.(int64), 10), nil
+			return strconv.FormatInt(int64(val.(int32)), 10), nil
 		},
 	})
 	framework.MustAddExplicitTypeCast(framework.TypeCast{
-		FromType: pgtypes.Int64,
+		FromType: pgtypes.Oid,
 		ToType:   pgtypes.VarChar,
 		Function: func(ctx framework.Context, val any, targetType pgtypes.DoltgresType) (any, error) {
-			str := strconv.FormatInt(val.(int64), 10)
+			str := strconv.FormatInt(int64(val.(int32)), 10)
 			return handleCharExplicitCast(str, targetType)
 		},
 	})
 }
 
-// int64Implicit registers all implicit casts. This comprises only the "From" types.
-func int64Implicit() {
+// oidImplicit registers all implicit casts. This comprises only the "From" types.
+func oidImplicit() {
 	framework.MustAddImplicitTypeCast(framework.TypeCast{
-		FromType: pgtypes.Int64,
+		FromType: pgtypes.Oid,
 		ToType:   pgtypes.BpChar,
 		Function: func(ctx framework.Context, val any, targetType pgtypes.DoltgresType) (any, error) {
-			str := strconv.FormatInt(val.(int64), 10)
+			str := strconv.FormatInt(int64(val.(int32)), 10)
 			return handleCharImplicitCast(str, targetType)
 		},
 	})
 	framework.MustAddImplicitTypeCast(framework.TypeCast{
-		FromType: pgtypes.Int64,
+		FromType: pgtypes.Oid,
 		ToType:   pgtypes.Float32,
 		Function: func(ctx framework.Context, val any, targetType pgtypes.DoltgresType) (any, error) {
-			return float32(val.(int64)), nil
+			return float32(val.(int32)), nil
 		},
 	})
 	framework.MustAddImplicitTypeCast(framework.TypeCast{
-		FromType: pgtypes.Int64,
+		FromType: pgtypes.Oid,
 		ToType:   pgtypes.Float64,
 		Function: func(ctx framework.Context, val any, targetType pgtypes.DoltgresType) (any, error) {
-			return float64(val.(int64)), nil
+			return float64(val.(int32)), nil
 		},
 	})
 	framework.MustAddImplicitTypeCast(framework.TypeCast{
-		FromType: pgtypes.Int64,
+		FromType: pgtypes.Oid,
 		ToType:   pgtypes.Int16,
 		Function: func(ctx framework.Context, val any, targetType pgtypes.DoltgresType) (any, error) {
-			if val.(int64) > 32767 || val.(int64) < -32768 {
+			if val.(int32) > 32767 || val.(int32) < -32768 {
 				return nil, fmt.Errorf("smallint out of range")
 			}
-			return int16(val.(int64)), nil
+			return int16(val.(int32)), nil
 		},
 	})
 	framework.MustAddImplicitTypeCast(framework.TypeCast{
-		FromType: pgtypes.Int64,
+		FromType: pgtypes.Oid,
 		ToType:   pgtypes.Int32,
-		Function: func(ctx framework.Context, val any, targetType pgtypes.DoltgresType) (any, error) {
-			if val.(int64) > 2147483647 || val.(int64) < -2147483648 {
-				return nil, fmt.Errorf("integer out of range")
-			}
-			return int32(val.(int64)), nil
-		},
-	})
-	framework.MustAddImplicitTypeCast(framework.TypeCast{
-		FromType: pgtypes.Int64,
-		ToType:   pgtypes.Int64,
 		Function: func(ctx framework.Context, val any, targetType pgtypes.DoltgresType) (any, error) {
 			return val, nil
 		},
 	})
 	framework.MustAddImplicitTypeCast(framework.TypeCast{
-		FromType: pgtypes.Int64,
+		FromType: pgtypes.Oid,
+		ToType:   pgtypes.Int64,
+		Function: func(ctx framework.Context, val any, targetType pgtypes.DoltgresType) (any, error) {
+			return int64(val.(int32)), nil
+		},
+	})
+	framework.MustAddImplicitTypeCast(framework.TypeCast{
+		FromType: pgtypes.Oid,
 		ToType:   pgtypes.Numeric,
 		Function: func(ctx framework.Context, val any, targetType pgtypes.DoltgresType) (any, error) {
-			return decimal.NewFromInt(val.(int64)), nil
+			return decimal.NewFromInt(int64(val.(int32))), nil
 		},
 	})
 	framework.MustAddImplicitTypeCast(framework.TypeCast{
-		FromType: pgtypes.Int64,
+		FromType: pgtypes.Oid,
 		ToType:   pgtypes.Oid,
 		Function: func(ctx framework.Context, val any, targetType pgtypes.DoltgresType) (any, error) {
-			if val.(int64) > 2147483647 || val.(int64) < -2147483648 {
-				return nil, fmt.Errorf("oid out of range")
-			}
-			return int32(val.(int64)), nil
+			return val, nil
 		},
 	})
 	framework.MustAddImplicitTypeCast(framework.TypeCast{
-		FromType: pgtypes.Int64,
+		FromType: pgtypes.Oid,
 		ToType:   pgtypes.Text,
 		Function: func(ctx framework.Context, val any, targetType pgtypes.DoltgresType) (any, error) {
-			return strconv.FormatInt(val.(int64), 10), nil
+			return strconv.FormatInt(int64(val.(int32)), 10), nil
 		},
 	})
 	framework.MustAddImplicitTypeCast(framework.TypeCast{
-		FromType: pgtypes.Int64,
+		FromType: pgtypes.Oid,
 		ToType:   pgtypes.VarChar,
 		Function: func(ctx framework.Context, val any, targetType pgtypes.DoltgresType) (any, error) {
-			str := strconv.FormatInt(val.(int64), 10)
+			str := strconv.FormatInt(int64(val.(int32)), 10)
 			return handleCharImplicitCast(str, targetType)
 		},
 	})

@@ -75,6 +75,8 @@ var typesFromBaseID = map[DoltgresTypeBaseID]DoltgresType{
 	Int64Array.BaseID():       Int64Array,
 	Null.BaseID():             Null,
 	Numeric.BaseID():          Numeric,
+	Oid.BaseID():              Oid,
+	OidArray.BaseID():         OidArray,
 	NumericArray.BaseID():     NumericArray,
 	Text.BaseID():             Text,
 	TextArray.BaseID():        TextArray,

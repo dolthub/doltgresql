@@ -17,4 +17,4 @@ package types
 import "github.com/lib/pq/oid"
 
 // OidArray is the array variant of Oid.
-var OidArray = createArrayType(Oid, SerializationID_Int32Array, oid.T__oid)
+var OidArray = createArrayType(Oid, SerializationID_OidArray, oid.T__oid)

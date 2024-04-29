@@ -118,6 +118,10 @@ func TestSerialization(t *testing.T) {
 		{SerializationID_VarCharArray, 87, "VarCharArray"},
 		{SerializationID_Xml, 88, "Xml"},
 		{SerializationID_XmlArray, 89, "XmlArray"},
+		{SerializationID_Name, 90, "Name"},
+		{SerializationID_NameArray, 91, "NameArray"},
+		{SerializationID_Oid, 92, "Oid"},
+		{SerializationID_OidArray, 93, "OidArray"},
 	}
 	allIds := make(map[uint16]string)
 	for _, id := range ids {
