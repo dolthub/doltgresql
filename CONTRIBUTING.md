@@ -16,7 +16,7 @@ In addition, it is worthwhile to have a local PostgreSQL instance installed to c
 5. **Build the parser**: Run the `doltgresql/postgres/parser/build.sh` script.
 This creates a few files within the `doltgresql/postgres/parser/parser` directory that are necessary for parsing PostgreSQL statements.
 It is recommended to run this file every time you pull changes into your local repository, as these generated files are not included since they would cause near guaranteed merge conflicts.
-6. **Run Go tests**: Before building the project, you should always run all of the tests, which can be done by running `go run test ./... --count=1` from the source root directory.
+6. **Run Go tests**: Before building the project, you should always run all of the tests, which can be done by running `go test ./... --count=1` from the source root directory.
 This ensures that all Go tests pass, which also ensures that your Go environment is installed and configured correctly.
 7. **Build the binary**: From the source root directory, run `go build -o <bin_name> .`, where `<bin_name>` is the name of the binary (usually `doltgres` or `doltgres.exe`).
    To run the program without creating an executable, run `go run .`.

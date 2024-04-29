@@ -97,10 +97,8 @@ jobs:
       - name: Set up Go 1.x
         uses: actions/setup-go@v5
         with:
-          go-version-file: go/go.mod
-          check-latest: true
+          go-version-file: go.mod
       - name: Bump dependency
-        working-directory: go
         run: |
           go get github.com/dolthub/${{ github.event.client_payload.dependency }}/go@${{ github.event.client_payload.head_commit_sha }}
           go mod tidy
@@ -113,26 +111,35 @@ jobs:
       - name: Get Assignee and Reviewer
         id: get_reviewer
         run: |
+          if [ "${{ github.event.client_payload.assignee }}" == "github-actions[bot]" ]
+          then
+            echo "assignee=zachmu" >> $GITHUB_OUTPUT
+          else
+            assignee="${{ github.event.client_payload.assignee }}"
+            echo "assignee=$assignee" >> $GITHUB_OUTPUT
+          fi
+  
           if [ "${{ github.event.client_payload.assignee }}" == "zachmu" ]
           then
             echo "reviewer=Hydrocharged" >> $GITHUB_OUTPUT
           else
             echo "reviewer=zachmu" >> $GITHUB_OUTPUT
           fi
+
       - name: Create and Push new branch
         run: |
-          git config --global --add user.name "${{ steps.get_assignee.outputs.assignee }}"
+          git config --global --add user.name "${{ steps.get_reviewer.outputs.assignee }}"
           git config --global --add user.email "${{ github.event.client_payload.assignee_email }}"
-          branchname=${{ format('{0}-{1}', steps.get_assignee.outputs.assignee, steps.short-sha.outputs.short) }}
+          branchname=${{ format('{0}-{1}', steps.get_reviewer.outputs.assignee, steps.short-sha.outputs.short) }}
           git checkout -b "$branchname"
           git add .
-          git commit -m "${{ format('[ga-bump-dep] Bump dependency in Doltgres by {0}', steps.get_assignee.outputs.assignee) }}"
+          git commit -m "${{ format('[ga-bump-dep] Bump dependency in Doltgres by {0}', steps.get_reviewer.outputs.assignee) }}"
           git push origin "$branchname"
       - name: pull-request
         uses: repo-sync/pull-request@v2
         id: latest-pr
         with:
-          source_branch: ${{ format('{0}-{1}', steps.get_assignee.outputs.assignee, steps.short-sha.outputs.short ) }}
+          source_branch: ${{ format('{0}-{1}', steps.get_reviewer.outputs.assignee, steps.short-sha.outputs.short ) }}
           destination_branch: "main"
           github_token: ${{ secrets.GITHUB_TOKEN }}
           pr_title: "[auto-bump] [no-release-notes] dependency by ${{ github.event.client_payload.assignee }}"

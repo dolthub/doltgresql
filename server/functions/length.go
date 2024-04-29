@@ -19,8 +19,8 @@ import (
 	pgtypes "github.com/dolthub/doltgresql/server/types"
 )
 
-// init registers the functions to the catalog.
-func init() {
+// initLength registers the functions to the catalog.
+func initLength() {
 	framework.RegisterFunction(length_varchar)
 }
 

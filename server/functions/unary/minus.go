@@ -24,8 +24,8 @@ import (
 // These functions can be gathered using the following query from a Postgres 15 instance:
 // SELECT * FROM pg_operator o WHERE o.oprname = '-' AND o.oprleft = 0 ORDER BY o.oprcode::varchar;
 
-// init registers the functions to the catalog.
-func init() {
+// initUnaryMinus registers the functions to the catalog.
+func initUnaryMinus() {
 	framework.RegisterUnaryFunction(framework.Operator_UnaryMinus, float4um)
 	framework.RegisterUnaryFunction(framework.Operator_UnaryMinus, float8um)
 	framework.RegisterUnaryFunction(framework.Operator_UnaryMinus, int2um)

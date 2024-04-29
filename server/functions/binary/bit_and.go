@@ -22,8 +22,8 @@ import (
 // These functions can be gathered using the following query from a Postgres 15 instance:
 // SELECT * FROM pg_operator o WHERE o.oprname = '&' ORDER BY o.oprcode::varchar;
 
-// init registers the functions to the catalog.
-func init() {
+// InitBinaryBitAnd registers the functions to the catalog.
+func InitBinaryBitAnd() {
 	framework.RegisterBinaryFunction(framework.Operator_BinaryBitAnd, int2and)
 	framework.RegisterBinaryFunction(framework.Operator_BinaryBitAnd, int4and)
 	framework.RegisterBinaryFunction(framework.Operator_BinaryBitAnd, int8and)

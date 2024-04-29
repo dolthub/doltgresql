@@ -1,10 +1,14 @@
 # DoltgreSQL is Dolt for Postgres!
 
 From the creators of [Dolt](https://www.doltdb.com), the world's first version controlled SQL database,
-DoltgreSQL (aka Doltgres) is a Postgres-flavored version of Dolt. Doltgres offers all the Git-style log, 
+DoltgreSQL (aka [Doltgres](https://www.doltgres.com)) is a Postgres-flavored version of Dolt. Doltgres offers all the Git-style log, 
 diff, branch, and merge functionality of Dolt on your Postgres database schema and data. Instead of 
 connecting with a MySQL client and using MySQL SQL, you connect to Doltgres with a Postgres client and 
 use Postgres SQL. Doltgres is like Git and Postgres had a baby.
+
+# Documentation
+
+Doltgres has a [documentation website](https://docs.doltgres.com) with more extensive documentation.
 
 # Motivation
 
@@ -230,5 +234,5 @@ did not run could not complete due to a timeout earlier in the run.
 Doltgres emulates a Postgres server, including parsing Postgres SQL into an Abstract Syntax Tree (AST). This AST is
 converted to a form that can be interpreted by the Dolt engine. Doltgres uses the same SQL engine and storage format as Dolt.
 
-[Dolt has a unique architecure](https://docs.dolthub.com/architecture/architecture) that allows for version control
+[Dolt has a unique architecture](https://docs.dolthub.com/architecture/architecture) that allows for version control
 features at OLTP database performance. Doltgres uses the same architecture.

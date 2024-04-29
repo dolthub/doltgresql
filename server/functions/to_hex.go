@@ -22,8 +22,8 @@ import (
 	pgtypes "github.com/dolthub/doltgresql/server/types"
 )
 
-// init registers the functions to the catalog.
-func init() {
+// initToHex registers the functions to the catalog.
+func initToHex() {
 	framework.RegisterFunction(to_hex_int64)
 }
 

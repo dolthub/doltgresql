@@ -22,8 +22,8 @@ import (
 	pgtypes "github.com/dolthub/doltgresql/server/types"
 )
 
-// init registers the functions to the catalog.
-func init() {
+// initReplace registers the functions to the catalog.
+func initReplace() {
 	framework.RegisterFunction(replace_varchar_varchar_varchar)
 }
 

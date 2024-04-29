@@ -22,8 +22,8 @@ import (
 	pgtypes "github.com/dolthub/doltgresql/server/types"
 )
 
-// init registers the functions to the catalog.
-func init() {
+// initTanh registers the functions to the catalog.
+func initTanh() {
 	framework.RegisterFunction(tanh_float64)
 }
 

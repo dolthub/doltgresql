@@ -21,8 +21,8 @@ import (
 	pgtypes "github.com/dolthub/doltgresql/server/types"
 )
 
-// init registers the functions to the catalog.
-func init() {
+// initSubstr registers the functions to the catalog.
+func initSubstr() {
 	framework.RegisterFunction(substr_varchar_int32)
 	framework.RegisterFunction(substr_varchar_int32_int32)
 }

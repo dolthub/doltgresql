@@ -22,8 +22,8 @@ import (
 	pgtypes "github.com/dolthub/doltgresql/server/types"
 )
 
-// init registers the functions to the catalog.
-func init() {
+// initRadians registers the functions to the catalog.
+func initRadians() {
 	framework.RegisterFunction(radians_float64)
 }
 

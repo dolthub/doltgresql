@@ -22,8 +22,8 @@ import (
 	"github.com/dolthub/doltgresql/utils"
 )
 
-// init registers the functions to the catalog.
-func init() {
+// initAbs registers the functions to the catalog.
+func initAbs() {
 	framework.RegisterFunction(abs_int16)
 	framework.RegisterFunction(abs_int32)
 	framework.RegisterFunction(abs_int64)
