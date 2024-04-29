@@ -97,6 +97,17 @@ func float64Explicit() {
 	})
 	framework.MustAddExplicitTypeCast(framework.TypeCast{
 		FromType: pgtypes.Float64,
+		ToType:   pgtypes.Oid,
+		Function: func(ctx framework.Context, valInterface any, targetType pgtypes.DoltgresType) (any, error) {
+			val := math.RoundToEven(valInterface.(float64))
+			if val > 2147483647 || val < -2147483648 {
+				return nil, fmt.Errorf("oid out of range")
+			}
+			return int32(val), nil
+		},
+	})
+	framework.MustAddExplicitTypeCast(framework.TypeCast{
+		FromType: pgtypes.Float64,
 		ToType:   pgtypes.Text,
 		Function: func(ctx framework.Context, val any, targetType pgtypes.DoltgresType) (any, error) {
 			return strconv.FormatFloat(val.(float64), 'g', -1, 64), nil
@@ -174,6 +185,17 @@ func float64Implicit() {
 		ToType:   pgtypes.Numeric,
 		Function: func(ctx framework.Context, val any, targetType pgtypes.DoltgresType) (any, error) {
 			return decimal.NewFromFloat(val.(float64)), nil
+		},
+	})
+	framework.MustAddImplicitTypeCast(framework.TypeCast{
+		FromType: pgtypes.Float64,
+		ToType:   pgtypes.Oid,
+		Function: func(ctx framework.Context, valInterface any, targetType pgtypes.DoltgresType) (any, error) {
+			val := math.RoundToEven(valInterface.(float64))
+			if val > 2147483647 || val < -2147483648 {
+				return nil, fmt.Errorf("oid out of range")
+			}
+			return int32(val), nil
 		},
 	})
 	framework.MustAddImplicitTypeCast(framework.TypeCast{

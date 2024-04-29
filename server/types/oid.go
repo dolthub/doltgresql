@@ -39,7 +39,7 @@ var _ DoltgresType = OidType{}
 
 // BaseID implements the DoltgresType interface.
 func (b OidType) BaseID() DoltgresTypeBaseID {
-	return DoltgresTypeBaseID_Int32
+	return DoltgresTypeBaseID_Oid
 }
 
 // CollationCoercibility implements the DoltgresType interface.
