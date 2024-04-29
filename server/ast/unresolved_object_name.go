@@ -31,7 +31,7 @@ func nodeUnresolvedObjectName(node *tree.UnresolvedObjectName) (vitess.TableName
 		return vitess.TableName{}, fmt.Errorf("referencing items outside the schema or database is not yet supported")
 	}
 	return vitess.TableName{
-		Name:      vitess.NewTableIdent(node.Parts[0]),
-		Qualifier: vitess.TableIdent{},
+		Name:        vitess.NewTableIdent(node.Parts[0]),
+		DbQualifier: vitess.TableIdent{},
 	}, nil
 }

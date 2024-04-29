@@ -78,8 +78,9 @@ func nodeCreateDatabase(node *tree.CreateDatabase) (*vitess.DBDDL, error) {
 	}
 
 	return &vitess.DBDDL{
-		Action:      vitess.CreateStr,
-		DBName:      node.Name.String(),
-		IfNotExists: node.IfNotExists,
+		Action:           vitess.CreateStr,
+		SchemaOrDatabase: "database",
+		DBName:           node.Name.String(),
+		IfNotExists:      node.IfNotExists,
 	}, nil
 }
