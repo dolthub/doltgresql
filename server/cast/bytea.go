@@ -47,6 +47,14 @@ func byteaExplicit() {
 	})
 	framework.MustAddExplicitTypeCast(framework.TypeCast{
 		FromType: pgtypes.Bytea,
+		ToType:   pgtypes.Name,
+		Function: func(ctx framework.Context, val any, targetType pgtypes.DoltgresType) (any, error) {
+			str := `\x` + hex.EncodeToString(val.([]byte))
+			return handleCharExplicitCast(str, targetType)
+		},
+	})
+	framework.MustAddExplicitTypeCast(framework.TypeCast{
+		FromType: pgtypes.Bytea,
 		ToType:   pgtypes.Text,
 		Function: func(ctx framework.Context, val any, targetType pgtypes.DoltgresType) (any, error) {
 			return `\x` + hex.EncodeToString(val.([]byte)), nil
@@ -77,6 +85,14 @@ func byteaImplicit() {
 		ToType:   pgtypes.Bytea,
 		Function: func(ctx framework.Context, val any, targetType pgtypes.DoltgresType) (any, error) {
 			return val, nil
+		},
+	})
+	framework.MustAddImplicitTypeCast(framework.TypeCast{
+		FromType: pgtypes.Bytea,
+		ToType:   pgtypes.Name,
+		Function: func(ctx framework.Context, val any, targetType pgtypes.DoltgresType) (any, error) {
+			str := `\x` + hex.EncodeToString(val.([]byte))
+			return handleCharImplicitCast(str, targetType)
 		},
 	})
 	framework.MustAddImplicitTypeCast(framework.TypeCast{
