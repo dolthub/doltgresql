@@ -162,7 +162,7 @@ func (b XidType) FormatValue(val any) (string, error) {
 
 // GetSerializationID implements the DoltgresType interface.
 func (b XidType) GetSerializationID() SerializationID {
-	return SerializationID_Int32
+	return SerializationID_Xid
 }
 
 // IsUnbounded implements the DoltgresType interface.
@@ -242,7 +242,7 @@ func (b XidType) Zero() any {
 
 // SerializeType implements the DoltgresType interface.
 func (b XidType) SerializeType() ([]byte, error) {
-	return SerializationID_Int32.ToByteSlice(0), nil
+	return SerializationID_Xid.ToByteSlice(0), nil
 }
 
 // deserializeType implements the DoltgresType interface.

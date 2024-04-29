@@ -118,17 +118,17 @@ func float64Explicit() {
 			return handleCharExplicitCast(str, targetType)
 		},
 	})
-	framework.MustAddExplicitTypeCast(framework.TypeCast{
-		FromType: pgtypes.Float64,
-		ToType:   pgtypes.Xid,
-		Function: func(ctx framework.Context, valInterface any, targetType pgtypes.DoltgresType) (any, error) {
-			val := math.RoundToEven(valInterface.(float64))
-			if val > 2147483647 || val < -2147483648 {
-				return nil, fmt.Errorf("xid out of range")
-			}
-			return int32(val), nil
-		},
-	})
+	// framework.MustAddExplicitTypeCast(framework.TypeCast{
+	// 	FromType: pgtypes.Float64,
+	// 	ToType:   pgtypes.Xid,
+	// 	Function: func(ctx framework.Context, valInterface any, targetType pgtypes.DoltgresType) (any, error) {
+	// 		val := math.RoundToEven(valInterface.(float64))
+	// 		if val > 2147483647 || val < -2147483648 {
+	// 			return nil, fmt.Errorf("xid out of range")
+	// 		}
+	// 		return int32(val), nil
+	// 	},
+	// })
 }
 
 // float64Implicit registers all implicit casts. This comprises only the "From" types.
@@ -218,15 +218,15 @@ func float64Implicit() {
 			return handleCharImplicitCast(str, targetType)
 		},
 	})
-	framework.MustAddImplicitTypeCast(framework.TypeCast{
-		FromType: pgtypes.Float64,
-		ToType:   pgtypes.Xid,
-		Function: func(ctx framework.Context, valInterface any, targetType pgtypes.DoltgresType) (any, error) {
-			val := math.RoundToEven(valInterface.(float64))
-			if val > 2147483647 || val < -2147483648 {
-				return nil, fmt.Errorf("xid out of range")
-			}
-			return int32(val), nil
-		},
-	})
+	// framework.MustAddImplicitTypeCast(framework.TypeCast{
+	// 	FromType: pgtypes.Float64,
+	// 	ToType:   pgtypes.Xid,
+	// 	Function: func(ctx framework.Context, valInterface any, targetType pgtypes.DoltgresType) (any, error) {
+	// 		val := math.RoundToEven(valInterface.(float64))
+	// 		if val > 2147483647 || val < -2147483648 {
+	// 			return nil, fmt.Errorf("xid out of range")
+	// 		}
+	// 		return int32(val), nil
+	// 	},
+	// })
 }

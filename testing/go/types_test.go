@@ -1284,6 +1284,70 @@ var typesTests = []ScriptTest{
 		},
 	},
 	{
+		Name: "Xid type",
+		SetUpScript: []string{
+			"CREATE TABLE t_xid (id INTEGER primary key, v1 XID);",
+		},
+		Assertions: []ScriptTestAssertion{
+			// {
+			// 	Query:       "INSERT INTO t_xid VALUES (1, 1234), (2, 5678);",
+			// 	ExpectedErr: true,
+			// },
+			{
+				Query:    "SELECT * FROM t_xid ORDER BY id;",
+				Expected: []sql.Row{},
+			},
+			// {
+			// 	Query: "SELECT * FROM t_xid ORDER BY v1 DESC;",
+			// 	Expected: []sql.Row{
+			// 		{2, 5678},
+			// 		{1, 1234},
+			// 	},
+			// },
+			// {
+			// 	Query: "SELECT v1::char(1) FROM t_xid WHERE v1=5678;",
+			// 	Expected: []sql.Row{
+			// 		{"5"},
+			// 	},
+			// },
+			// {
+			// 	Query:    "UPDATE t_xid SET v1=9012 WHERE id=2;",
+			// 	Expected: []sql.Row{},
+			// },
+			// {
+			// 	Query:    "DELETE FROM t_xid WHERE v1=1234;",
+			// 	Expected: []sql.Row{},
+			// },
+			// {
+			// 	Query: "SELECT * FROM t_xid ORDER BY id;",
+			// 	Expected: []sql.Row{
+			// 		{2, 9012},
+			// 	},
+			// },
+		},
+	},
+	// {
+	// 	Name: "Xid array type",
+	// 	SetUpScript: []string{
+	// 		"CREATE TABLE t_xid (id INTEGER primary key, v1 OID[], v2 CHARACTER(100), v3 BOOLEAN);",
+	// 		"INSERT INTO t_xid VALUES (1, ARRAY[123, 456, 789, 101], '1234567890', true);",
+	// 	},
+	// 	Assertions: []ScriptTestAssertion{
+	// 		{
+	// 			Query: `SELECT v1::varchar(1)[] FROM t_xid;`,
+	// 			Expected: []sql.Row{
+	// 				{"{1,4,7,1}"},
+	// 			},
+	// 		},
+	// 		{
+	// 			Query: `SELECT v2::oid, v3::oid FROM t_xid;`,
+	// 			Expected: []sql.Row{
+	// 				{1234567890, 1},
+	// 			},
+	// 		},
+	// 	},
+	// },
+	{
 		Name: "Xml type",
 		Skip: true,
 		SetUpScript: []string{
