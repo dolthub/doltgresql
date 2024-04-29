@@ -576,6 +576,70 @@ var typesTests = []ScriptTest{
 		},
 	},
 	{
+		Name: "Name type",
+		SetUpScript: []string{
+			"CREATE TABLE t_name (id INTEGER primary key, v1 NAME);",
+			"INSERT INTO t_name VALUES (1, 'abcdefghij'), (2, 'klmnopqrst');",
+		},
+		Assertions: []ScriptTestAssertion{
+			{
+				Query: "SELECT * FROM t_name ORDER BY id;",
+				Expected: []sql.Row{
+					{1, "abcdefghij"},
+					{2, "klmnopqrst"},
+				},
+			},
+			{
+				Query: "SELECT * FROM t_name ORDER BY v1 DESC;",
+				Expected: []sql.Row{
+					{2, "klmnopqrst"},
+					{1, "abcdefghij"},
+				},
+			},
+			{
+				Query: "SELECT v1::char(1) FROM t_name WHERE v1='klmnopqrst';",
+				Expected: []sql.Row{
+					{"k"},
+				},
+			},
+			{
+				Query:    "UPDATE t_name SET v1='tuvwxyz' WHERE id=2;",
+				Expected: []sql.Row{},
+			},
+			{
+				Query:    "DELETE FROM t_name WHERE v1='abcdefghij';",
+				Expected: []sql.Row{},
+			},
+			{
+				Query: "SELECT * FROM t_name ORDER BY id;",
+				Expected: []sql.Row{
+					{2, "tuvwxyz"},
+				},
+			},
+		},
+	},
+	{
+		Name: "Name array type",
+		SetUpScript: []string{
+			"CREATE TABLE t_name (id INTEGER primary key, v1 NAME[], v2 CHARACTER(100), v3 BOOLEAN);",
+			"INSERT INTO t_name VALUES (1, ARRAY['ab''cdef', 'what', 'is,hi', 'wh\"at'], '1234567890123456789012345678901234567890123456789012345678901234567890', true);",
+		},
+		Assertions: []ScriptTestAssertion{
+			{
+				Query: `SELECT v1::varchar(1)[] FROM t_name;`,
+				Expected: []sql.Row{
+					{"{a,w,i,w}"},
+				},
+			},
+			{
+				Query: `SELECT v2::name, v3::name FROM t_name;`,
+				Expected: []sql.Row{
+					{"123456789012345678901234567890123456789012345678901234567890123", "true"},
+				},
+			},
+		},
+	},
+	{
 		Name: "Numeric type",
 		SetUpScript: []string{
 			"CREATE TABLE t_numeric (id INTEGER primary key, v1 NUMERIC(5,2));",
