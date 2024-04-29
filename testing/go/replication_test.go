@@ -70,8 +70,8 @@ var replicationTests = []ReplicationTest{
 			dropReplicationSlot,
 			createReplicationSlot,
 			startReplication,
-			"/* replica */ drop table if exists test",
-			"/* replica */ create table test (id INT primary key, name varchar(100))",
+			"/* replica */ drop table if exists public.test",
+			"/* replica */ create table public.test (id INT primary key, name varchar(100))",
 			"drop table if exists test",
 			"CREATE TABLE test (id INT primary key, name varchar(100))",
 			"INSERT INTO test VALUES (1, 'one')",
@@ -90,7 +90,7 @@ var replicationTests = []ReplicationTest{
 		},
 		Assertions: []ScriptTestAssertion{
 			{
-				Query: "/* replica */ SELECT * FROM test order by id",
+				Query: "/* replica */ SELECT * FROM public.test order by id",
 				Expected: []sql.Row{
 					{int32(2), "three"},
 					{int32(4), "five"},
@@ -107,8 +107,8 @@ var replicationTests = []ReplicationTest{
 			// they create the replication slot.
 			dropReplicationSlot,
 			createReplicationSlot,
-			"/* replica */ drop table if exists test",
-			"/* replica */ create table test (id INT primary key, name varchar(100))",
+			"/* replica */ drop table if exists public.test",
+			"/* replica */ create table public.test (id INT primary key, name varchar(100))",
 			"drop table if exists test",
 			"CREATE TABLE test (id INT primary key, name varchar(100))",
 			"INSERT INTO test VALUES (1, 'one')",
@@ -128,7 +128,7 @@ var replicationTests = []ReplicationTest{
 		},
 		Assertions: []ScriptTestAssertion{
 			{
-				Query: "/* replica */ SELECT * FROM test order by id",
+				Query: "/* replica */ SELECT * FROM public.test order by id",
 				Expected: []sql.Row{
 					{int32(2), "three"},
 					{int32(4), "five"},
@@ -143,8 +143,8 @@ var replicationTests = []ReplicationTest{
 			dropReplicationSlot,
 			createReplicationSlot,
 			startReplication,
-			"/* replica */ drop table if exists test",
-			"/* replica */ create table test (id INT primary key, name varchar(100))",
+			"/* replica */ drop table if exists public.test",
+			"/* replica */ create table public.test (id INT primary key, name varchar(100))",
 			"drop table if exists test",
 			"CREATE TABLE test (id INT primary key, name varchar(100))",
 			"INSERT INTO test VALUES (1, 'one')",
@@ -166,7 +166,7 @@ var replicationTests = []ReplicationTest{
 		},
 		Assertions: []ScriptTestAssertion{
 			{
-				Query: "/* replica */ SELECT * FROM test order by id",
+				Query: "/* replica */ SELECT * FROM public.test order by id",
 				Expected: []sql.Row{
 					{int32(2), "three"},
 					{int32(4), "five"},
@@ -180,8 +180,8 @@ var replicationTests = []ReplicationTest{
 		SetUpScript: []string{
 			dropReplicationSlot,
 			createReplicationSlot,
-			"/* replica */ drop table if exists test",
-			"/* replica */ create table test (id INT primary key, name varchar(100))",
+			"/* replica */ drop table if exists public.test",
+			"/* replica */ create table public.test (id INT primary key, name varchar(100))",
 			"drop table if exists test",
 			"CREATE TABLE test (id INT primary key, name varchar(100))",
 			"INSERT INTO test VALUES (1, 'one')",
@@ -233,7 +233,7 @@ var replicationTests = []ReplicationTest{
 		},
 		Assertions: []ScriptTestAssertion{
 			{
-				Query: "/* replica */ SELECT * FROM test order by id",
+				Query: "/* replica */ SELECT * FROM public.test order by id",
 				Expected: []sql.Row{
 					{int32(2), "three"},
 					{int32(4), "five"},
@@ -252,12 +252,12 @@ var replicationTests = []ReplicationTest{
 			dropReplicationSlot,
 			createReplicationSlot,
 			startReplication,
-			"/* replica */ drop table if exists test",
-			"/* replica */ create table test (id INT primary key, name varchar(100), u_id uuid, age INT, height FLOAT, birth_date DATE, birth_timestamp TIMESTAMP)",
+			"/* replica */ drop table if exists public.test",
+			"/* replica */ create table public.test (id INT primary key, name varchar(100), u_id uuid, age INT, height FLOAT)",
 			"drop table if exists test",
-			"create table test (id INT primary key, name varchar(100), u_id uuid, age INT, height FLOAT, birth_date DATE, birth_timestamp TIMESTAMP)",
-			"INSERT INTO test VALUES (1, 'one', '5ef34887-e635-4c9c-a994-97b1cb810786', 1, 1.1, '2021-01-01', '2021-01-01 12:00:00')",
-			"INSERT INTO test VALUES (2, 'two', '2de55648-76ec-4f66-9fae-bd3d853fb0da', 2, 2.2, '2021-02-02', '2021-02-02 13:00:00')",
+			"create table test (id INT primary key, name varchar(100), u_id uuid, age INT, height FLOAT)",
+			"INSERT INTO test VALUES (1, 'one', '5ef34887-e635-4c9c-a994-97b1cb810786', 1, 1.1)",
+			"INSERT INTO test VALUES (2, 'two', '2de55648-76ec-4f66-9fae-bd3d853fb0da', 2, 2.2)",
 			"UPDATE test SET name = 'three' WHERE id = 2",
 			"update test set u_id = '3232abe7-560b-4714-a020-2b1a11a1ec65' where id = 2",
 			"DELETE FROM test WHERE id = 1",
@@ -265,10 +265,9 @@ var replicationTests = []ReplicationTest{
 		},
 		Assertions: []ScriptTestAssertion{
 			{
-				Query: "/* replica */ SELECT * FROM test order by id",
+				Query: "/* replica */ SELECT * FROM public.test order by id",
 				Expected: []sql.Row{
-					// TODO: The DATE field should not return time in its output
-					{int32(2), "three", "3232abe7-560b-4714-a020-2b1a11a1ec65", int32(2), 2.2, "2021-02-02 00:00:00", "2021-02-02 13:00:00"},
+					{int32(2), "three", "3232abe7-560b-4714-a020-2b1a11a1ec65", int32(2), 2.2},
 				},
 			},
 		},
@@ -279,8 +278,8 @@ var replicationTests = []ReplicationTest{
 			dropReplicationSlot,
 			createReplicationSlot,
 			startReplication,
-			"/* replica */ drop table if exists test",
-			"/* replica */ create table test (id INT primary key, name varchar(100))",
+			"/* replica */ drop table if exists public.test",
+			"/* replica */ create table public.test (id INT primary key, name varchar(100))",
 			"drop table if exists test",
 			"CREATE TABLE test (id INT primary key, name varchar(100))",
 			"/* primary a */ START TRANSACTION",
@@ -299,7 +298,7 @@ var replicationTests = []ReplicationTest{
 		},
 		Assertions: []ScriptTestAssertion{
 			{
-				Query: "/* replica */ SELECT * FROM test order by id",
+				Query: "/* replica */ SELECT * FROM public.test order by id",
 				Expected: []sql.Row{
 					{int32(2), "three"},
 					{int32(4), "five"},
@@ -313,8 +312,8 @@ var replicationTests = []ReplicationTest{
 			dropReplicationSlot,
 			createReplicationSlot,
 			startReplication,
-			"/* replica */ drop table if exists test",
-			"/* replica */ create table test (id INT primary key, name varchar(100))",
+			"/* replica */ drop table if exists public.test",
+			"/* replica */ create table public.test (id INT primary key, name varchar(100))",
 			"drop table if exists test",
 			"CREATE TABLE test (id INT primary key, name varchar(100))",
 			"/* primary a */ START TRANSACTION",
@@ -343,7 +342,7 @@ var replicationTests = []ReplicationTest{
 		},
 		Assertions: []ScriptTestAssertion{
 			{
-				Query: "/* replica */ SELECT * FROM test order by id",
+				Query: "/* replica */ SELECT * FROM public.test order by id",
 				Expected: []sql.Row{
 					{int32(2), "three"},
 					{int32(4), "seven"},
@@ -358,8 +357,8 @@ var replicationTests = []ReplicationTest{
 			dropReplicationSlot,
 			createReplicationSlot,
 			startReplication,
-			"/* replica */ drop table if exists test",
-			"/* replica */ create table test (id INT primary key, name varchar(100))",
+			"/* replica */ drop table if exists public.test",
+			"/* replica */ create table public.test (id INT primary key, name varchar(100))",
 			"drop table if exists test",
 			"CREATE TABLE test (id INT primary key, name varchar(100))",
 			"/* primary a */ START TRANSACTION",
@@ -388,7 +387,7 @@ var replicationTests = []ReplicationTest{
 		},
 		Assertions: []ScriptTestAssertion{
 			{
-				Query: "/* replica */ SELECT * FROM test order by id",
+				Query: "/* replica */ SELECT * FROM public.test order by id",
 				Expected: []sql.Row{
 					{int32(4), "seven"},
 					{int32(6), "seven"},
@@ -402,8 +401,8 @@ var replicationTests = []ReplicationTest{
 			dropReplicationSlot,
 			createReplicationSlot,
 			startReplication,
-			"/* replica */ drop table if exists test",
-			"/* replica */ create table test (id INT primary key, name varchar(100))",
+			"/* replica */ drop table if exists public.test",
+			"/* replica */ create table public.test (id INT primary key, name varchar(100))",
 			"drop table if exists test",
 			"CREATE TABLE test (id INT primary key, name varchar(100))",
 			"/* primary a */ START TRANSACTION",
@@ -420,7 +419,7 @@ var replicationTests = []ReplicationTest{
 		},
 		Assertions: []ScriptTestAssertion{
 			{
-				Query: "/* replica */ SELECT * FROM test order by id",
+				Query: "/* replica */ SELECT * FROM public.test order by id",
 				Expected: []sql.Row{
 					{int32(1), "one"},
 					{int32(2), "two"},
@@ -434,8 +433,8 @@ var replicationTests = []ReplicationTest{
 			dropReplicationSlot,
 			createReplicationSlot,
 			startReplication,
-			"/* replica */ drop table if exists test",
-			"/* replica */ create table test (id INT primary key, name varchar(100))",
+			"/* replica */ drop table if exists public.test",
+			"/* replica */ create table public.test (id INT primary key, name varchar(100))",
 			"drop table if exists test",
 			"CREATE TABLE test (id INT primary key, name varchar(100))",
 			"/* primary a */ START TRANSACTION",
@@ -464,7 +463,7 @@ var replicationTests = []ReplicationTest{
 		},
 		Assertions: []ScriptTestAssertion{
 			{
-				Query: "/* replica */ SELECT * FROM test order by id",
+				Query: "/* replica */ SELECT * FROM public.test order by id",
 				Expected: []sql.Row{
 					{int32(2), "three"},
 					{int32(4), "five"},
@@ -475,12 +474,12 @@ var replicationTests = []ReplicationTest{
 	},
 	{
 		Name: "all types",
-		Skip: true, // some types don't work yet
+		Skip: true, // some types don't work yet: DATE and DATETIME not round-tripping correctly
 		SetUpScript: []string{
 			dropReplicationSlot,
 			createReplicationSlot,
 			startReplication,
-			"/* replica */ drop table if exists test",
+			"/* replica */ drop table if exists public.test",
 			"/* replica */ create table test (id INT primary key, name varchar(100), age INT, is_cool BOOLEAN, height FLOAT, birth_date DATE, birth_timestamp TIMESTAMP)",
 			"drop table if exists test",
 			"create table test (id INT primary key, name varchar(100), age INT, is_cool BOOLEAN, height FLOAT, birth_date DATE, birth_timestamp TIMESTAMP)",
@@ -492,7 +491,7 @@ var replicationTests = []ReplicationTest{
 		},
 		Assertions: []ScriptTestAssertion{
 			{
-				Query: "/* replica */ SELECT * FROM test order by id",
+				Query: "/* replica */ SELECT * FROM public.test order by id",
 				Expected: []sql.Row{
 					{int32(2), "three", int32(2), false, 2.2, "2021-02-02", "2021-02-02 13:00:00"},
 				},

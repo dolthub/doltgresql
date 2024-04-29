@@ -84,7 +84,7 @@ func (b DateType) Convert(val any) (any, sql.ConvertInRange, error) {
 		} else if t, err = time.Parse("2006-Jan-02", val); err == nil {
 			return t.UTC(), sql.InRange, nil
 		}
-		return nil, sql.OutOfRange, fmt.Errorf("invalid format for time")
+		return nil, sql.OutOfRange, fmt.Errorf("invalid format for date")
 	case time.Time:
 		return val.UTC(), sql.InRange, nil
 	default:
