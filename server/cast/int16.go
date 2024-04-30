@@ -76,6 +76,14 @@ func int16Explicit() {
 	})
 	framework.MustAddExplicitTypeCast(framework.TypeCast{
 		FromType: pgtypes.Int16,
+		ToType:   pgtypes.Name,
+		Function: func(ctx framework.Context, val any, targetType pgtypes.DoltgresType) (any, error) {
+			str := strconv.FormatInt(int64(val.(int16)), 10)
+			return handleCharExplicitCast(str, targetType)
+		},
+	})
+	framework.MustAddExplicitTypeCast(framework.TypeCast{
+		FromType: pgtypes.Int16,
 		ToType:   pgtypes.Numeric,
 		Function: func(ctx framework.Context, val any, targetType pgtypes.DoltgresType) (any, error) {
 			return decimal.NewFromInt(int64(val.(int16))), nil
@@ -141,6 +149,14 @@ func int16Implicit() {
 		ToType:   pgtypes.Int64,
 		Function: func(ctx framework.Context, val any, targetType pgtypes.DoltgresType) (any, error) {
 			return int64(val.(int16)), nil
+		},
+	})
+	framework.MustAddImplicitTypeCast(framework.TypeCast{
+		FromType: pgtypes.Int16,
+		ToType:   pgtypes.Name,
+		Function: func(ctx framework.Context, val any, targetType pgtypes.DoltgresType) (any, error) {
+			str := strconv.FormatInt(int64(val.(int16)), 10)
+			return handleCharImplicitCast(str, targetType)
 		},
 	})
 	framework.MustAddImplicitTypeCast(framework.TypeCast{

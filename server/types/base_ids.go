@@ -59,6 +59,7 @@ const (
 	DoltgresTypeBaseID_Int16       = DoltgresTypeBaseID(SerializationID_Int16)
 	DoltgresTypeBaseID_Int32       = DoltgresTypeBaseID(SerializationID_Int32)
 	DoltgresTypeBaseID_Int64       = DoltgresTypeBaseID(SerializationID_Int64)
+	DoltgresTypeBaseID_Name        = DoltgresTypeBaseID(SerializationID_Name)
 	DoltgresTypeBaseID_Null        = DoltgresTypeBaseID(SerializationID_Null)
 	DoltgresTypeBaseID_Numeric     = DoltgresTypeBaseID(SerializationID_Numeric)
 	DoltgresTypeBaseID_Text        = DoltgresTypeBaseID(SerializationID_Text)

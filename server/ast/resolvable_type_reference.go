@@ -98,6 +98,8 @@ func nodeResolvableTypeReference(typ tree.ResolvableTypeReference) (*vitess.Conv
 				columnTypeName = "JSON"
 			case oid.T_jsonb:
 				columnTypeName = "JSON"
+			case oid.T_name:
+				resolvedType = pgtypes.Name
 			case oid.T_numeric:
 				if columnType.Precision() == 0 && columnType.Scale() == 0 {
 					resolvedType = pgtypes.Numeric

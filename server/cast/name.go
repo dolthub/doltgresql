@@ -27,16 +27,16 @@ import (
 	pgtypes "github.com/dolthub/doltgresql/server/types"
 )
 
-// initText handles all explicit and implicit casts that are built-in. This comprises only the "From" types.
-func initText() {
-	textExplicit()
-	textImplicit()
+// initName handles all explicit and implicit casts that are built-in. This comprises only the "From" types.
+func initName() {
+	nameExplicit()
+	nameImplicit()
 }
 
-// textExplicit registers all explicit casts. This comprises only the "From" types.
-func textExplicit() {
+// nameExplicit registers all explicit casts. This comprises only the "From" types.
+func nameExplicit() {
 	framework.MustAddExplicitTypeCast(framework.TypeCast{
-		FromType: pgtypes.Text,
+		FromType: pgtypes.Name,
 		ToType:   pgtypes.Bool,
 		Function: func(ctx framework.Context, val any, targetType pgtypes.DoltgresType) (any, error) {
 			switch strings.TrimSpace(strings.ToLower(val.(string))) {
@@ -50,14 +50,14 @@ func textExplicit() {
 		},
 	})
 	framework.MustAddExplicitTypeCast(framework.TypeCast{
-		FromType: pgtypes.Text,
+		FromType: pgtypes.Name,
 		ToType:   pgtypes.BpChar,
 		Function: func(ctx framework.Context, val any, targetType pgtypes.DoltgresType) (any, error) {
 			return handleCharExplicitCast(val.(string), targetType)
 		},
 	})
 	framework.MustAddExplicitTypeCast(framework.TypeCast{
-		FromType: pgtypes.Text,
+		FromType: pgtypes.Name,
 		ToType:   pgtypes.Bytea,
 		Function: func(ctx framework.Context, val any, targetType pgtypes.DoltgresType) (any, error) {
 			if strings.HasPrefix(val.(string), `\x`) {
@@ -68,7 +68,7 @@ func textExplicit() {
 		},
 	})
 	framework.MustAddExplicitTypeCast(framework.TypeCast{
-		FromType: pgtypes.Text,
+		FromType: pgtypes.Name,
 		ToType:   pgtypes.Float32,
 		Function: func(ctx framework.Context, val any, targetType pgtypes.DoltgresType) (any, error) {
 			out, err := strconv.ParseFloat(strings.TrimSpace(val.(string)), 32)
@@ -79,7 +79,7 @@ func textExplicit() {
 		},
 	})
 	framework.MustAddExplicitTypeCast(framework.TypeCast{
-		FromType: pgtypes.Text,
+		FromType: pgtypes.Name,
 		ToType:   pgtypes.Float64,
 		Function: func(ctx framework.Context, val any, targetType pgtypes.DoltgresType) (any, error) {
 			out, err := strconv.ParseFloat(strings.TrimSpace(val.(string)), 64)
@@ -90,7 +90,7 @@ func textExplicit() {
 		},
 	})
 	framework.MustAddExplicitTypeCast(framework.TypeCast{
-		FromType: pgtypes.Text,
+		FromType: pgtypes.Name,
 		ToType:   pgtypes.Int16,
 		Function: func(ctx framework.Context, val any, targetType pgtypes.DoltgresType) (any, error) {
 			out, err := strconv.ParseInt(strings.TrimSpace(val.(string)), 10, 16)
@@ -104,7 +104,7 @@ func textExplicit() {
 		},
 	})
 	framework.MustAddExplicitTypeCast(framework.TypeCast{
-		FromType: pgtypes.Text,
+		FromType: pgtypes.Name,
 		ToType:   pgtypes.Int32,
 		Function: func(ctx framework.Context, val any, targetType pgtypes.DoltgresType) (any, error) {
 			out, err := strconv.ParseInt(strings.TrimSpace(val.(string)), 10, 32)
@@ -118,7 +118,7 @@ func textExplicit() {
 		},
 	})
 	framework.MustAddExplicitTypeCast(framework.TypeCast{
-		FromType: pgtypes.Text,
+		FromType: pgtypes.Name,
 		ToType:   pgtypes.Int64,
 		Function: func(ctx framework.Context, val any, targetType pgtypes.DoltgresType) (any, error) {
 			out, err := strconv.ParseInt(strings.TrimSpace(val.(string)), 10, 64)
@@ -129,14 +129,14 @@ func textExplicit() {
 		},
 	})
 	framework.MustAddExplicitTypeCast(framework.TypeCast{
-		FromType: pgtypes.Text,
+		FromType: pgtypes.Name,
 		ToType:   pgtypes.Name,
 		Function: func(ctx framework.Context, val any, targetType pgtypes.DoltgresType) (any, error) {
 			return handleCharExplicitCast(val.(string), targetType)
 		},
 	})
 	framework.MustAddExplicitTypeCast(framework.TypeCast{
-		FromType: pgtypes.Text,
+		FromType: pgtypes.Name,
 		ToType:   pgtypes.Numeric,
 		Function: func(ctx framework.Context, val any, targetType pgtypes.DoltgresType) (any, error) {
 			d, err := decimal.NewFromString(strings.TrimSpace(val.(string)))
@@ -147,14 +147,14 @@ func textExplicit() {
 		},
 	})
 	framework.MustAddExplicitTypeCast(framework.TypeCast{
-		FromType: pgtypes.Text,
+		FromType: pgtypes.Name,
 		ToType:   pgtypes.Text,
 		Function: func(ctx framework.Context, val any, targetType pgtypes.DoltgresType) (any, error) {
 			return val, nil
 		},
 	})
 	framework.MustAddExplicitTypeCast(framework.TypeCast{
-		FromType: pgtypes.Text,
+		FromType: pgtypes.Name,
 		ToType:   pgtypes.Uuid,
 		Function: func(ctx framework.Context, val any, targetType pgtypes.DoltgresType) (any, error) {
 			u, err := uuid.FromString(strings.TrimSpace(val.(string)))
@@ -165,7 +165,7 @@ func textExplicit() {
 		},
 	})
 	framework.MustAddExplicitTypeCast(framework.TypeCast{
-		FromType: pgtypes.Text,
+		FromType: pgtypes.Name,
 		ToType:   pgtypes.VarChar,
 		Function: func(ctx framework.Context, val any, targetType pgtypes.DoltgresType) (any, error) {
 			return handleCharExplicitCast(val.(string), targetType)
@@ -173,10 +173,10 @@ func textExplicit() {
 	})
 }
 
-// textImplicit registers all implicit casts. This comprises only the "From" types.
-func textImplicit() {
+// nameImplicit registers all implicit casts. This comprises only the "From" types.
+func nameImplicit() {
 	framework.MustAddImplicitTypeCast(framework.TypeCast{
-		FromType: pgtypes.Text,
+		FromType: pgtypes.Name,
 		ToType:   pgtypes.Bool,
 		Function: func(ctx framework.Context, val any, targetType pgtypes.DoltgresType) (any, error) {
 			switch strings.TrimSpace(strings.ToLower(val.(string))) {
@@ -190,14 +190,14 @@ func textImplicit() {
 		},
 	})
 	framework.MustAddImplicitTypeCast(framework.TypeCast{
-		FromType: pgtypes.Text,
+		FromType: pgtypes.Name,
 		ToType:   pgtypes.BpChar,
 		Function: func(ctx framework.Context, val any, targetType pgtypes.DoltgresType) (any, error) {
 			return handleCharImplicitCast(val.(string), targetType)
 		},
 	})
 	framework.MustAddImplicitTypeCast(framework.TypeCast{
-		FromType: pgtypes.Text,
+		FromType: pgtypes.Name,
 		ToType:   pgtypes.Bytea,
 		Function: func(ctx framework.Context, val any, targetType pgtypes.DoltgresType) (any, error) {
 			if strings.HasPrefix(val.(string), `\x`) {
@@ -208,7 +208,7 @@ func textImplicit() {
 		},
 	})
 	framework.MustAddImplicitTypeCast(framework.TypeCast{
-		FromType: pgtypes.Text,
+		FromType: pgtypes.Name,
 		ToType:   pgtypes.Float32,
 		Function: func(ctx framework.Context, val any, targetType pgtypes.DoltgresType) (any, error) {
 			out, err := strconv.ParseFloat(strings.TrimSpace(val.(string)), 32)
@@ -219,7 +219,7 @@ func textImplicit() {
 		},
 	})
 	framework.MustAddImplicitTypeCast(framework.TypeCast{
-		FromType: pgtypes.Text,
+		FromType: pgtypes.Name,
 		ToType:   pgtypes.Float64,
 		Function: func(ctx framework.Context, val any, targetType pgtypes.DoltgresType) (any, error) {
 			out, err := strconv.ParseFloat(strings.TrimSpace(val.(string)), 64)
@@ -230,7 +230,7 @@ func textImplicit() {
 		},
 	})
 	framework.MustAddImplicitTypeCast(framework.TypeCast{
-		FromType: pgtypes.Text,
+		FromType: pgtypes.Name,
 		ToType:   pgtypes.Int16,
 		Function: func(ctx framework.Context, val any, targetType pgtypes.DoltgresType) (any, error) {
 			out, err := strconv.ParseInt(strings.TrimSpace(val.(string)), 10, 16)
@@ -244,7 +244,7 @@ func textImplicit() {
 		},
 	})
 	framework.MustAddImplicitTypeCast(framework.TypeCast{
-		FromType: pgtypes.Text,
+		FromType: pgtypes.Name,
 		ToType:   pgtypes.Int32,
 		Function: func(ctx framework.Context, val any, targetType pgtypes.DoltgresType) (any, error) {
 			out, err := strconv.ParseInt(strings.TrimSpace(val.(string)), 10, 32)
@@ -258,7 +258,7 @@ func textImplicit() {
 		},
 	})
 	framework.MustAddImplicitTypeCast(framework.TypeCast{
-		FromType: pgtypes.Text,
+		FromType: pgtypes.Name,
 		ToType:   pgtypes.Int64,
 		Function: func(ctx framework.Context, val any, targetType pgtypes.DoltgresType) (any, error) {
 			out, err := strconv.ParseInt(strings.TrimSpace(val.(string)), 10, 64)
@@ -269,14 +269,14 @@ func textImplicit() {
 		},
 	})
 	framework.MustAddImplicitTypeCast(framework.TypeCast{
-		FromType: pgtypes.Text,
+		FromType: pgtypes.Name,
 		ToType:   pgtypes.Name,
 		Function: func(ctx framework.Context, val any, targetType pgtypes.DoltgresType) (any, error) {
 			return handleCharImplicitCast(val.(string), targetType)
 		},
 	})
 	framework.MustAddImplicitTypeCast(framework.TypeCast{
-		FromType: pgtypes.Text,
+		FromType: pgtypes.Name,
 		ToType:   pgtypes.Numeric,
 		Function: func(ctx framework.Context, val any, targetType pgtypes.DoltgresType) (any, error) {
 			d, err := decimal.NewFromString(strings.TrimSpace(val.(string)))
@@ -287,14 +287,14 @@ func textImplicit() {
 		},
 	})
 	framework.MustAddImplicitTypeCast(framework.TypeCast{
-		FromType: pgtypes.Text,
+		FromType: pgtypes.Name,
 		ToType:   pgtypes.Text,
 		Function: func(ctx framework.Context, val any, targetType pgtypes.DoltgresType) (any, error) {
 			return val, nil
 		},
 	})
 	framework.MustAddImplicitTypeCast(framework.TypeCast{
-		FromType: pgtypes.Text,
+		FromType: pgtypes.Name,
 		ToType:   pgtypes.Uuid,
 		Function: func(ctx framework.Context, val any, targetType pgtypes.DoltgresType) (any, error) {
 			u, err := uuid.FromString(strings.TrimSpace(val.(string)))
@@ -305,7 +305,7 @@ func textImplicit() {
 		},
 	})
 	framework.MustAddImplicitTypeCast(framework.TypeCast{
-		FromType: pgtypes.Text,
+		FromType: pgtypes.Name,
 		ToType:   pgtypes.VarChar,
 		Function: func(ctx framework.Context, val any, targetType pgtypes.DoltgresType) (any, error) {
 			return handleCharImplicitCast(val.(string), targetType)

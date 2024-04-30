@@ -12,21 +12,11 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-package cast
+package types
 
-// Init initializes all casts in this package.
-func Init() {
-	initBool()
-	initBytea()
-	initChar()
-	initFloat32()
-	initFloat64()
-	initInt16()
-	initInt32()
-	initInt64()
-	initName()
-	initNumeric()
-	initText()
-	initUuid()
-	initVarChar()
-}
+import "github.com/lib/pq/oid"
+
+// NameArray is the array variant of Name.
+var NameArray = createArrayTypeWithFuncs(Name, SerializationID_NameArray, oid.T__name, arrayContainerFunctions{
+	SQL: stringArraySQL,
+})

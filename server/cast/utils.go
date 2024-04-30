@@ -34,6 +34,9 @@ func handleCharExplicitCast(str string, targetType pgtypes.DoltgresType) (string
 			return str + strings.Repeat(" ", int(targetType.Length-runeCount)), nil
 		}
 		return str, nil
+	case pgtypes.NameType:
+		str, _ = truncateString(str, targetType.Length)
+		return str, nil
 	case pgtypes.VarCharType:
 		if targetType.IsUnbounded() {
 			return str, nil
@@ -60,6 +63,12 @@ func handleCharImplicitCast(str string, targetType pgtypes.DoltgresType) (string
 			} else {
 				return str, nil
 			}
+		}
+	case pgtypes.NameType:
+		if uint32(utf8.RuneCountInString(str)) > targetType.Length {
+			return "", fmt.Errorf("value too long for type %s", targetType.String())
+		} else {
+			return str, nil
 		}
 	case pgtypes.VarCharType:
 		if !targetType.IsUnbounded() && uint32(utf8.RuneCountInString(str)) > targetType.Length {
