@@ -280,7 +280,7 @@ Type structs should not handle PostgreSQL types, even which is different compare
 For example `SMALLINT` and `INTEGER` are classified as two different types in DoltgreSQL, while they both fall under a generic `Number` type in [GMS](https://github.com/dolthub/go-mysql-server).
 This difference is due to how types are treated in PostgreSQL, with one such example being function overloading, where two different functions sharing the same name are differentiated only by their parameter types.
 
-When adding types, it is usually necessary to also add any relevant casts to `server/functions/framework/cast.go::init()`.
+When adding types, it is usually necessary to also add any relevant casts to `server/cast/init.go::Init()`.
 You'll need to add casts that go from existing types to the new type, and also from the new type to existing types (casts are not bidirectional).
 
 TODO: adding operator functions

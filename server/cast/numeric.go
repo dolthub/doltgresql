@@ -89,6 +89,13 @@ func numericExplicit() {
 	})
 	framework.MustAddExplicitTypeCast(framework.TypeCast{
 		FromType: pgtypes.Numeric,
+		ToType:   pgtypes.Name,
+		Function: func(ctx framework.Context, val any, targetType pgtypes.DoltgresType) (any, error) {
+			return handleCharExplicitCast(val.(decimal.Decimal).String(), targetType)
+		},
+	})
+	framework.MustAddExplicitTypeCast(framework.TypeCast{
+		FromType: pgtypes.Numeric,
 		ToType:   pgtypes.Numeric,
 		Function: func(ctx framework.Context, val any, targetType pgtypes.DoltgresType) (any, error) {
 			return val, nil
@@ -177,6 +184,13 @@ func numericImplicit() {
 				return nil, fmt.Errorf("bigint out of range")
 			}
 			return d.IntPart(), nil
+		},
+	})
+	framework.MustAddImplicitTypeCast(framework.TypeCast{
+		FromType: pgtypes.Numeric,
+		ToType:   pgtypes.Name,
+		Function: func(ctx framework.Context, val any, targetType pgtypes.DoltgresType) (any, error) {
+			return handleCharImplicitCast(val.(decimal.Decimal).String(), targetType)
 		},
 	})
 	framework.MustAddImplicitTypeCast(framework.TypeCast{
