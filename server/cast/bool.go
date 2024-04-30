@@ -61,9 +61,9 @@ func boolExplicit() {
 		ToType:   pgtypes.Oid,
 		Function: func(ctx framework.Context, val any, targetType pgtypes.DoltgresType) (any, error) {
 			if val.(bool) {
-				return int32(1), nil
+				return uint32(1), nil
 			} else {
-				return int32(0), nil
+				return uint32(0), nil
 			}
 		},
 	})

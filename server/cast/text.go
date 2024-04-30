@@ -147,10 +147,10 @@ func textExplicit() {
 			if err != nil {
 				return nil, fmt.Errorf("invalid input syntax for type %s: %q", targetType.String(), val.(string))
 			}
-			if out > 2147483647 || out < -2147483648 {
+			if out > 2147483647 || out < 0 {
 				return nil, fmt.Errorf("value %q is out of range for type %s", val.(string), targetType.String())
 			}
-			return int32(out), nil
+			return uint32(out), nil
 		},
 	})
 	framework.MustAddExplicitTypeCast(framework.TypeCast{
@@ -294,10 +294,10 @@ func textImplicit() {
 			if err != nil {
 				return nil, fmt.Errorf("invalid input syntax for type %s: %q", targetType.String(), val.(string))
 			}
-			if out > 2147483647 || out < -2147483648 {
+			if out > 2147483647 || out < 0 {
 				return nil, fmt.Errorf("value %q is out of range for type %s", val.(string), targetType.String())
 			}
-			return int32(out), nil
+			return uint32(out), nil
 		},
 	})
 	framework.MustAddImplicitTypeCast(framework.TypeCast{

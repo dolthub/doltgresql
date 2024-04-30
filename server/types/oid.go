@@ -66,8 +66,8 @@ func (b OidType) Compare(v1 any, v2 any) (int, error) {
 		return 0, err
 	}
 
-	ab := ac.(int32)
-	bb := bc.(int32)
+	ab := ac.(uint32)
+	bb := bc.(uint32)
 	if ab == bb {
 		return 0, nil
 	} else if ab < bb {
@@ -82,46 +82,46 @@ func (b OidType) Convert(val any) (any, sql.ConvertInRange, error) {
 	switch val := val.(type) {
 	case bool:
 		if val {
-			return int32(1), sql.InRange, nil
+			return uint32(1), sql.InRange, nil
 		}
-		return int32(0), sql.InRange, nil
+		return uint32(0), sql.InRange, nil
 	case int:
-		return int32(val), sql.InRange, nil
+		return uint32(val), sql.InRange, nil
 	case uint:
-		return int32(val), sql.InRange, nil
+		return uint32(val), sql.InRange, nil
 	case int8:
-		return int32(val), sql.InRange, nil
+		return uint32(val), sql.InRange, nil
 	case uint8:
-		return int32(val), sql.InRange, nil
+		return uint32(val), sql.InRange, nil
 	case int16:
-		return int32(val), sql.InRange, nil
+		return uint32(val), sql.InRange, nil
 	case uint16:
-		return int32(val), sql.InRange, nil
+		return uint32(val), sql.InRange, nil
 	case int32:
-		return int32(val), sql.InRange, nil
+		return uint32(val), sql.InRange, nil
 	case uint32:
-		return int32(val), sql.InRange, nil
+		return uint32(val), sql.InRange, nil
 	case int64:
-		return int32(val), sql.InRange, nil
+		return uint32(val), sql.InRange, nil
 	case uint64:
-		return int32(val), sql.InRange, nil
+		return uint32(val), sql.InRange, nil
 	case float32:
-		return int32(val), sql.InRange, nil
+		return uint32(val), sql.InRange, nil
 	case float64:
-		return int32(val), sql.InRange, nil
+		return uint32(val), sql.InRange, nil
 	case decimal.NullDecimal:
 		if !val.Valid {
 			return nil, sql.InRange, nil
 		}
 		return b.Convert(val.Decimal)
 	case decimal.Decimal:
-		return int32(val.IntPart()), sql.InRange, nil
+		return uint32(val.IntPart()), sql.InRange, nil
 	case string:
 		i, err := strconv.ParseInt(val, 10, 64)
 		if err != nil {
 			return nil, sql.OutOfRange, err
 		}
-		return int32(i), sql.InRange, nil
+		return uint32(i), sql.InRange, nil
 	case []byte:
 		return b.Convert(string(val))
 	case nil:
@@ -157,7 +157,7 @@ func (b OidType) FormatValue(val any) (string, error) {
 	if err != nil {
 		return "", err
 	}
-	return strconv.FormatInt(int64(converted.(int32)), 10), nil
+	return strconv.FormatInt(int64(converted.(uint32)), 10), nil
 }
 
 // GetSerializationID implements the DoltgresType interface.
@@ -232,12 +232,12 @@ func (b OidType) Type() query.Type {
 
 // ValueType implements the DoltgresType interface.
 func (b OidType) ValueType() reflect.Type {
-	return reflect.TypeOf(int32(0))
+	return reflect.TypeOf(uint32(0))
 }
 
 // Zero implements the DoltgresType interface.
 func (b OidType) Zero() any {
-	return int32(0)
+	return uint32(0)
 }
 
 // SerializeType implements the DoltgresType interface.
@@ -265,7 +265,7 @@ func (b OidType) SerializeValue(val any) ([]byte, error) {
 		return nil, err
 	}
 	retVal := make([]byte, 4)
-	binary.BigEndian.PutUint32(retVal, uint32(converted.(int32))+(1<<31))
+	binary.BigEndian.PutUint32(retVal, uint32(converted.(uint32))+(1<<31))
 	return retVal, nil
 }
 
@@ -274,5 +274,5 @@ func (b OidType) DeserializeValue(val []byte) (any, error) {
 	if len(val) == 0 {
 		return nil, nil
 	}
-	return int32(binary.BigEndian.Uint32(val) - (1 << 31)), nil
+	return uint32(binary.BigEndian.Uint32(val) - (1 << 31)), nil
 }

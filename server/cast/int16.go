@@ -15,6 +15,7 @@
 package cast
 
 import (
+	"fmt"
 	"strconv"
 
 	"github.com/shopspring/decimal"
@@ -85,7 +86,10 @@ func int16Explicit() {
 		FromType: pgtypes.Int16,
 		ToType:   pgtypes.Oid,
 		Function: func(ctx framework.Context, val any, targetType pgtypes.DoltgresType) (any, error) {
-			return int32(val.(int16)), nil
+			if val.(int16) < 0 {
+				return nil, fmt.Errorf("OID out of range")
+			}
+			return uint32(val.(int16)), nil
 		},
 	})
 	framework.MustAddExplicitTypeCast(framework.TypeCast{
@@ -161,7 +165,10 @@ func int16Implicit() {
 		FromType: pgtypes.Int16,
 		ToType:   pgtypes.Oid,
 		Function: func(ctx framework.Context, val any, targetType pgtypes.DoltgresType) (any, error) {
-			return int32(val.(int16)), nil
+			if val.(int16) < 0 {
+				return nil, fmt.Errorf("OID out of range")
+			}
+			return uint32(val.(int16)), nil
 		},
 	})
 	framework.MustAddImplicitTypeCast(framework.TypeCast{

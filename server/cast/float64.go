@@ -100,10 +100,10 @@ func float64Explicit() {
 		ToType:   pgtypes.Oid,
 		Function: func(ctx framework.Context, valInterface any, targetType pgtypes.DoltgresType) (any, error) {
 			val := math.RoundToEven(valInterface.(float64))
-			if val > 2147483647 || val < -2147483648 {
-				return nil, fmt.Errorf("oid out of range")
+			if val > 2147483647 || val < 0 {
+				return nil, fmt.Errorf("OID out of range")
 			}
-			return int32(val), nil
+			return uint32(val), nil
 		},
 	})
 	framework.MustAddExplicitTypeCast(framework.TypeCast{
@@ -192,10 +192,10 @@ func float64Implicit() {
 		ToType:   pgtypes.Oid,
 		Function: func(ctx framework.Context, valInterface any, targetType pgtypes.DoltgresType) (any, error) {
 			val := math.RoundToEven(valInterface.(float64))
-			if val > 2147483647 || val < -2147483648 {
-				return nil, fmt.Errorf("oid out of range")
+			if val > 2147483647 || val < 0 {
+				return nil, fmt.Errorf("OID out of range")
 			}
-			return int32(val), nil
+			return uint32(val), nil
 		},
 	})
 	framework.MustAddImplicitTypeCast(framework.TypeCast{

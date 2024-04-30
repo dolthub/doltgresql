@@ -92,10 +92,10 @@ func int64Explicit() {
 		FromType: pgtypes.Int64,
 		ToType:   pgtypes.Oid,
 		Function: func(ctx framework.Context, val any, targetType pgtypes.DoltgresType) (any, error) {
-			if val.(int64) > 2147483647 || val.(int64) < -2147483648 {
-				return nil, fmt.Errorf("oid out of range")
+			if val.(int64) > 2147483647 || val.(int64) < 0 {
+				return nil, fmt.Errorf("OID out of range")
 			}
-			return int32(val.(int64)), nil
+			return uint32(val.(int64)), nil
 		},
 	})
 	framework.MustAddExplicitTypeCast(framework.TypeCast{
@@ -177,10 +177,10 @@ func int64Implicit() {
 		FromType: pgtypes.Int64,
 		ToType:   pgtypes.Oid,
 		Function: func(ctx framework.Context, val any, targetType pgtypes.DoltgresType) (any, error) {
-			if val.(int64) > 2147483647 || val.(int64) < -2147483648 {
-				return nil, fmt.Errorf("oid out of range")
+			if val.(int64) > 2147483647 || val.(int64) < 0 {
+				return nil, fmt.Errorf("OID out of range")
 			}
-			return int32(val.(int64)), nil
+			return uint32(val.(int64)), nil
 		},
 	})
 	framework.MustAddImplicitTypeCast(framework.TypeCast{
