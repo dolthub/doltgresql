@@ -6,7 +6,7 @@ require (
 	github.com/PuerkitoBio/goquery v1.8.1
 	github.com/cockroachdb/apd/v2 v2.0.3-0.20200518165714-d020e156310a
 	github.com/cockroachdb/errors v1.7.5
-	github.com/dolthub/dolt/go v0.40.5-0.20240429221409-bf82c4809507
+	github.com/dolthub/dolt/go v0.40.5-0.20240430183338-5ad4d29cea57
 	github.com/dolthub/dolt/go/gen/proto/dolt/services/eventsapi v0.0.0-20240228231039-f903736a64a8
 	github.com/dolthub/go-mysql-server v0.18.2-0.20240429214844-6feb67867355
 	github.com/dolthub/sqllogictest/go v0.0.0-20240118211725-a52e3f5697e3
