@@ -611,9 +611,34 @@ var typesTests = []ScriptTest{
 				Expected: []sql.Row{},
 			},
 			{
+				Query: "SELECT id::name, v1::text FROM t_name ORDER BY id;",
+				Expected: []sql.Row{
+					{"2", "tuvwxyz"},
+				},
+			},
+			{
+				Query:    "INSERT INTO t_name VALUES (3, '0123456789012345678901234567890123456789012345678901234567890123456789');",
+				Expected: []sql.Row{},
+			},
+			{
 				Query: "SELECT * FROM t_name ORDER BY id;",
 				Expected: []sql.Row{
 					{2, "tuvwxyz"},
+					{3, "012345678901234567890123456789012345678901234567890123456789012"},
+				},
+			},
+			{
+				Query:    "INSERT INTO t_name VALUES (4, 12345);",
+				Skip:     true, // TODO: Cannot insert number into name column
+				Expected: []sql.Row{},
+			},
+			{
+				Query: "SELECT * FROM t_name ORDER BY id;",
+				Skip:  true, // TODO: Cannot insert number into name column
+				Expected: []sql.Row{
+					{2, "tuvwxyz"},
+					{3, "012345678901234567890123456789012345678901234567890123456789012"},
+					{4, "12345"},
 				},
 			},
 		},

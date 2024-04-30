@@ -19,7 +19,6 @@ import (
 	"encoding/binary"
 	"fmt"
 	"reflect"
-	"unicode/utf8"
 
 	"github.com/lib/pq/oid"
 
@@ -54,73 +53,12 @@ func (b NameType) CollationCoercibility(ctx *sql.Context) (collation sql.Collati
 
 // Compare implements the DoltgresType interface.
 func (b NameType) Compare(v1 any, v2 any) (int, error) {
-	if v1 == nil && v2 == nil {
-		return 0, nil
-	} else if v1 != nil && v2 == nil {
-		return 1, nil
-	} else if v1 == nil && v2 != nil {
-		return -1, nil
-	}
-
-	ac, _, err := b.Convert(v1)
-	if err != nil {
-		return 0, err
-	}
-	bc, _, err := b.Convert(v2)
-	if err != nil {
-		return 0, err
-	}
-
-	ab := ac.(string)
-	bb := bc.(string)
-	if ab == bb {
-		return 0, nil
-	} else if ab < bb {
-		return -1, nil
-	} else {
-		return 1, nil
-	}
+	return compareVarChar(b, v1, v2)
 }
 
 // Convert implements the DoltgresType interface.
 func (b NameType) Convert(val any) (any, sql.ConvertInRange, error) {
-	// TODO: need to check if this always truncates for values that are too large, or if it's just the default behavior
-	switch val := val.(type) {
-	case string:
-		// First we'll do a byte-length check since it's always >= the rune-count check, and it's far faster
-		if b.Length != stringUnbounded && uint32(len(val)) > b.Length {
-			// The byte-length is greater, so now we'll do a rune-count
-			if uint32(utf8.RuneCountInString(val)) > b.Length {
-				// TODO: figure out if there's a faster way to truncate based on rune count
-				startString := val
-				for i := uint32(0); i < b.Length; i++ {
-					_, size := utf8.DecodeRuneInString(val)
-					val = val[size:]
-				}
-				return startString[:len(startString)-len(val)], sql.InRange, nil
-			}
-		}
-		return val, sql.InRange, nil
-	case []byte:
-		// First we'll do a byte-length check since it's always >= the rune-count check, and it's far faster
-		if b.Length != stringUnbounded && uint32(len(val)) > b.Length {
-			// The byte-length is greater, so now we'll do a rune-count
-			if uint32(utf8.RuneCount(val)) > b.Length {
-				// TODO: figure out if there's a faster way to truncate based on rune count
-				startBytes := val
-				for i := uint32(0); i < b.Length; i++ {
-					_, size := utf8.DecodeRune(val)
-					val = val[size:]
-				}
-				return string(startBytes[:len(startBytes)-len(val)]), sql.InRange, nil
-			}
-		}
-		return string(val), sql.InRange, nil
-	case nil:
-		return nil, sql.InRange, nil
-	default:
-		return nil, sql.OutOfRange, sql.ErrInvalidType.New(b)
-	}
+	return convertVarChar(b, b.Length, val)
 }
 
 // Equals implements the DoltgresType interface.
