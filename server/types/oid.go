@@ -227,7 +227,7 @@ func (b OidType) ToArrayType() DoltgresArrayType {
 
 // Type implements the DoltgresType interface.
 func (b OidType) Type() query.Type {
-	return sqltypes.Int32
+	return sqltypes.Uint32
 }
 
 // ValueType implements the DoltgresType interface.
