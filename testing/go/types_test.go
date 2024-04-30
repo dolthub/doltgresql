@@ -626,28 +626,34 @@ var typesTests = []ScriptTest{
 	{
 		Name: "Oid type",
 		SetUpScript: []string{
-			"CREATE TABLE t_oid (id INTEGER primary key, v1 OID);",
-			"INSERT INTO t_oid VALUES (1, 1234), (2, 5678);",
+			"CREATE TABLE t_oid (id INTEGER primary key, v1 OID, v2 INTEGER);",
+			"INSERT INTO t_oid VALUES (1, 1234, 100), (2, 5678, -100);",
 		},
 		Assertions: []ScriptTestAssertion{
 			{
 				Query: "SELECT * FROM t_oid ORDER BY id;",
 				Expected: []sql.Row{
-					{1, 1234},
-					{2, 5678},
+					{1, 1234, 100},
+					{2, 5678, -100},
 				},
 			},
 			{
 				Query: "SELECT * FROM t_oid ORDER BY v1 DESC;",
 				Expected: []sql.Row{
-					{2, 5678},
-					{1, 1234},
+					{2, 5678, -100},
+					{1, 1234, 100},
 				},
 			},
 			{
 				Query: "SELECT v1::char(1) FROM t_oid WHERE v1=5678;",
 				Expected: []sql.Row{
 					{"5"},
+				},
+			},
+			{
+				Query: "SELECT v1::smallint FROM t_oid WHERE v1=5678;",
+				Expected: []sql.Row{
+					{5678},
 				},
 			},
 			{
@@ -661,7 +667,30 @@ var typesTests = []ScriptTest{
 			{
 				Query: "SELECT * FROM t_oid ORDER BY id;",
 				Expected: []sql.Row{
-					{2, 9012},
+					{2, 9012, -100},
+				},
+			},
+			{
+				Query: "SELECT v2::oid FROM t_oid ORDER BY id;",
+				Skip:  true, // TODO: Cast currently returns error for negative values
+				Expected: []sql.Row{
+					{4294967196},
+				},
+			},
+			{
+				Query:       "INSERT INTO t_oid VALUES (3, 2147483647000, 100);",
+				Skip:        true, // TODO: Should return an OID out of range error
+				ExpectedErr: true,
+			},
+			{
+				Query:    "INSERT INTO t_oid VALUES (3, '2345', 100);",
+				Expected: []sql.Row{},
+			},
+			{
+				Query: "SELECT * FROM t_oid ORDER BY id;",
+				Expected: []sql.Row{
+					{2, 9012, -100},
+					{3, 2345, 100},
 				},
 			},
 		},
