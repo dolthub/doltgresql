@@ -82,13 +82,13 @@ func oidExplicit() {
 			return handleCharExplicitCast(str, targetType)
 		},
 	})
-	framework.MustAddExplicitTypeCast(framework.TypeCast{
-		FromType: pgtypes.Oid,
-		ToType:   pgtypes.Xid,
-		Function: func(ctx framework.Context, val any, targetType pgtypes.DoltgresType) (any, error) {
-			return val, nil
-		},
-	})
+	// framework.MustAddExplicitTypeCast(framework.TypeCast{
+	// 	FromType: pgtypes.Oid,
+	// 	ToType:   pgtypes.Xid,
+	// 	Function: func(ctx framework.Context, val any, targetType pgtypes.DoltgresType) (any, error) {
+	// 		return val, nil
+	// 	},
+	// })
 }
 
 // oidImplicit registers all implicit casts. This comprises only the "From" types.
@@ -146,11 +146,11 @@ func oidImplicit() {
 			return handleCharImplicitCast(str, targetType)
 		},
 	})
-	framework.MustAddImplicitTypeCast(framework.TypeCast{
-		FromType: pgtypes.Oid,
-		ToType:   pgtypes.Xid,
-		Function: func(ctx framework.Context, val any, targetType pgtypes.DoltgresType) (any, error) {
-			return val, nil
-		},
-	})
+	// framework.MustAddImplicitTypeCast(framework.TypeCast{
+	// 	FromType: pgtypes.Oid,
+	// 	ToType:   pgtypes.Xid,
+	// 	Function: func(ctx framework.Context, val any, targetType pgtypes.DoltgresType) (any, error) {
+	// 		return val, nil
+	// 	},
+	// })
 }

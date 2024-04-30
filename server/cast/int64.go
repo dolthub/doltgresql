@@ -125,10 +125,7 @@ func int64Explicit() {
 		FromType: pgtypes.Int64,
 		ToType:   pgtypes.Xid,
 		Function: func(ctx framework.Context, val any, targetType pgtypes.DoltgresType) (any, error) {
-			if val.(int64) > 2147483647 || val.(int64) < 0 {
-				return nil, fmt.Errorf("XID out of range")
-			}
-			return uint32(val.(int64)), nil
+			return nil, fmt.Errorf("cannot cast type %s to %s", pgtypes.Int64.String(), pgtypes.Xid.String())
 		},
 	})
 }
@@ -224,14 +221,14 @@ func int64Implicit() {
 			return handleCharImplicitCast(str, targetType)
 		},
 	})
-	framework.MustAddImplicitTypeCast(framework.TypeCast{
-		FromType: pgtypes.Int64,
-		ToType:   pgtypes.Xid,
-		Function: func(ctx framework.Context, val any, targetType pgtypes.DoltgresType) (any, error) {
-			if val.(int64) > 2147483647 || val.(int64) < 0 {
-				return nil, fmt.Errorf("XID out of range")
-			}
-			return uint32(val.(int64)), nil
-		},
-	})
+	// framework.MustAddImplicitTypeCast(framework.TypeCast{
+	// 	FromType: pgtypes.Int64,
+	// 	ToType:   pgtypes.Xid,
+	// 	Function: func(ctx framework.Context, val any, targetType pgtypes.DoltgresType) (any, error) {
+	// 		if val.(int64) > 2147483647 || val.(int64) < 0 {
+	// 			return nil, fmt.Errorf("XID out of range")
+	// 		}
+	// 		return uint32(val.(int64)), nil
+	// 	},
+	// })
 }

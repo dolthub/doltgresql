@@ -115,17 +115,17 @@ func numericExplicit() {
 			return handleCharExplicitCast(val.(decimal.Decimal).String(), targetType)
 		},
 	})
-	framework.MustAddExplicitTypeCast(framework.TypeCast{
-		FromType: pgtypes.Numeric,
-		ToType:   pgtypes.Xid,
-		Function: func(ctx framework.Context, val any, targetType pgtypes.DoltgresType) (any, error) {
-			d := val.(decimal.Decimal)
-			if d.LessThan(decimal.NewFromInt(0)) || d.GreaterThan(pgtypes.NumericValueMaxInt32) {
-				return nil, fmt.Errorf("XID out of range")
-			}
-			return uint32(d.IntPart()), nil
-		},
-	})
+	// framework.MustAddExplicitTypeCast(framework.TypeCast{
+	// 	FromType: pgtypes.Numeric,
+	// 	ToType:   pgtypes.Xid,
+	// 	Function: func(ctx framework.Context, val any, targetType pgtypes.DoltgresType) (any, error) {
+	// 		d := val.(decimal.Decimal)
+	// 		if d.LessThan(decimal.NewFromInt(0)) || d.GreaterThan(pgtypes.NumericValueMaxInt32) {
+	// 			return nil, fmt.Errorf("XID out of range")
+	// 		}
+	// 		return uint32(d.IntPart()), nil
+	// 	},
+	// })
 }
 
 // numericImplicit registers all implicit casts. This comprises only the "From" types.
@@ -214,15 +214,15 @@ func numericImplicit() {
 			return handleCharImplicitCast(val.(decimal.Decimal).String(), targetType)
 		},
 	})
-	framework.MustAddImplicitTypeCast(framework.TypeCast{
-		FromType: pgtypes.Numeric,
-		ToType:   pgtypes.Xid,
-		Function: func(ctx framework.Context, val any, targetType pgtypes.DoltgresType) (any, error) {
-			d := val.(decimal.Decimal)
-			if d.LessThan(decimal.NewFromInt(0)) || d.GreaterThan(pgtypes.NumericValueMaxInt32) {
-				return nil, fmt.Errorf("XID out of range")
-			}
-			return uint32(d.IntPart()), nil
-		},
-	})
+	// framework.MustAddImplicitTypeCast(framework.TypeCast{
+	// 	FromType: pgtypes.Numeric,
+	// 	ToType:   pgtypes.Xid,
+	// 	Function: func(ctx framework.Context, val any, targetType pgtypes.DoltgresType) (any, error) {
+	// 		d := val.(decimal.Decimal)
+	// 		if d.LessThan(decimal.NewFromInt(0)) || d.GreaterThan(pgtypes.NumericValueMaxInt32) {
+	// 			return nil, fmt.Errorf("XID out of range")
+	// 		}
+	// 		return uint32(d.IntPart()), nil
+	// 	},
+	// })
 }

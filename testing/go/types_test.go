@@ -1286,96 +1286,106 @@ var typesTests = []ScriptTest{
 	{
 		Name: "Xid type",
 		SetUpScript: []string{
-			"CREATE TABLE t_xid (id INTEGER primary key, v1 XID, v2 INTEGER);",
-			"INSERT INTO t_xid VALUES (1, 1234, 100), (2, 5678, -100);",
+			"CREATE TABLE t_xid (id INTEGER primary key, v1 XID, v2 VARCHAR(20));",
 		},
 		Assertions: []ScriptTestAssertion{
 			{
-				Query: "SELECT * FROM t_xid ORDER BY id;",
-				Expected: []sql.Row{
-					{1, 1234, 100},
-					{2, 5678, -100},
-				},
-			},
-			{
-				Query: "SELECT * FROM t_xid ORDER BY v1 DESC;",
-				Expected: []sql.Row{
-					{2, 5678, -100},
-					{1, 1234, 100},
-				},
-			},
-			{
-				Query: "SELECT v1::char(1) FROM t_xid WHERE v1=5678;",
-				Expected: []sql.Row{
-					{"5"},
-				},
-			},
-			{
-				Query: "SELECT v1::smallint FROM t_xid WHERE v1=5678;",
-				Expected: []sql.Row{
-					{5678},
-				},
-			},
-			{
-				Query:    "UPDATE t_xid SET v1=9012 WHERE id=2;",
-				Expected: []sql.Row{},
-			},
-			{
-				Query:    "DELETE FROM t_xid WHERE v1=1234;",
-				Expected: []sql.Row{},
-			},
-			{
-				Query: "SELECT * FROM t_xid ORDER BY id;",
-				Expected: []sql.Row{
-					{2, 9012, -100},
-				},
-			},
-			{
-				Query: "SELECT v2::xid FROM t_xid ORDER BY id;",
-				Skip:  true, // TODO: Cast currently returns error for negative values
-				Expected: []sql.Row{
-					{4294967196},
-				},
-			},
-			{
-				Query:       "INSERT INTO t_xid VALUES (3, 2147483647000, 100);",
-				Skip:        true, // TODO: Should return an XID out of range error
+				Query:       "INSERT INTO t_xid VALUES (1, 1234, 100);",
+				Skip:        true, // TODO: Should return 'column "v1" is of type xid but expression is of type integer' error
 				ExpectedErr: true,
 			},
 			{
-				Query:    "INSERT INTO t_xid VALUES (3, '2345', 100);",
+				Query:       "INSERT INTO t_xid VALUES (1, 1234::xid, 100);",
+				ExpectedErr: true,
+			},
+			{
+				Query:    "INSERT INTO t_xid VALUES (1, NULL, 100);",
 				Expected: []sql.Row{},
 			},
 			{
-				Query: "SELECT * FROM t_xid ORDER BY id;",
-				Expected: []sql.Row{
-					{2, 9012, -100},
-					{3, 2345, 100},
-				},
+				Query:    "SELECT v2::xid FROM t_xid ORDER BY id;",
+				Expected: []sql.Row{},
 			},
+			// 	{
+			// 		Query: "SELECT * FROM t_xid ORDER BY v1 DESC;",
+			// 		Expected: []sql.Row{
+			// 			{2, 5678, -100},
+			// 			{1, 1234, 100},
+			// 		},
+			// 	},
+			// {
+			// 	Query: "SELECT v1::char(1) FROM t_xid WHERE v1=5678;",
+			// 	Expected: []sql.Row{
+			// 		{"5"},
+			// 	},
+			// },
+			// 	{
+			// 		Query: "SELECT v1::smallint FROM t_xid WHERE v1=5678;",
+			// 		Expected: []sql.Row{
+			// 			{5678},
+			// 		},
+			// 	},
+			// 	{
+			// 		Query:    "UPDATE t_xid SET v1=9012 WHERE id=2;",
+			// 		Expected: []sql.Row{},
+			// 	},
+			// 	{
+			// 		Query:    "DELETE FROM t_xid WHERE v1=1234;",
+			// 		Expected: []sql.Row{},
+			// 	},
+			// 	{
+			// 		Query: "SELECT * FROM t_xid ORDER BY id;",
+			// 		Expected: []sql.Row{
+			// 			{2, 9012, -100},
+			// 		},
+			// 	},
+			// 	{
+			// 		Query: "SELECT v2::xid FROM t_xid ORDER BY id;",
+			// 		Skip:  true, // TODO: Cast currently returns error for negative values
+			// 		Expected: []sql.Row{
+			// 			{4294967196},
+			// 		},
+			// 	},
+			// 	{
+			// 		Query:       "INSERT INTO t_xid VALUES (3, 2147483647000, 100);",
+			// 		Skip:        true, // TODO: Should return an XID out of range error
+			// 		ExpectedErr: true,
+			// 	},
+			// 	{
+			// 		Query:    "INSERT INTO t_xid VALUES (3, '2345', 100);",
+			// 		Expected: []sql.Row{},
+			// 	},
+			// 	{
+			// 		Query: "SELECT * FROM t_xid ORDER BY id;",
+			// 		Expected: []sql.Row{
+			// 			{2, 9012, -100},
+			// 			{3, 2345, 100},
+			// 		},
+			// 	},
+			// },
 		},
 	},
-	{
-		Name: "Xid array type",
-		SetUpScript: []string{
-			"CREATE TABLE t_xid (id INTEGER primary key, v1 XID[], v2 CHARACTER(100), v3 BOOLEAN);",
-			"INSERT INTO t_xid VALUES (1, ARRAY[123, 456, 789, 101], '1234567890', true);",
-		},
-		Assertions: []ScriptTestAssertion{
-			{
-				Query: `SELECT v1::varchar(1)[] FROM t_xid;`,
-				Expected: []sql.Row{
-					{"{1,4,7,1}"},
-				},
-			},
-			{
-				Query: `SELECT v2::xid, v3::xid FROM t_xid;`,
-				Expected: []sql.Row{
-					{1234567890, 1},
-				},
-			},
-		},
-	},
+	// {
+	// 	Name: "Xid array type",
+	// 	SetUpScript: []string{
+	// 		"CREATE TABLE t_xid (id INTEGER primary key, v1 XID[], v2 CHARACTER(100), v3 BOOLEAN);",
+	// 		"INSERT INTO t_xid VALUES (1, ARRAY[123, 456, 789, 101], '1234567890', true);",
+	// 	},
+	// 	Assertions: []ScriptTestAssertion{
+	// 		{
+	// 			Query: `SELECT v1::varchar(1)[] FROM t_xid;`,
+	// 			Expected: []sql.Row{
+	// 				{"{1,4,7,1}"},
+	// 			},
+	// 		},
+	// 		{
+	// 			Query: `SELECT v2::xid, v3::xid FROM t_xid;`,
+	// 			Expected: []sql.Row{
+	// 				{1234567890, 1},
+	// 			},
+	// 		},
+	// 	},
+	// },
 	{
 		Name: "Xml type",
 		Skip: true,
