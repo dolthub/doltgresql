@@ -115,13 +115,16 @@ func int32Explicit() {
 			return handleCharExplicitCast(str, targetType)
 		},
 	})
-	// framework.MustAddExplicitTypeCast(framework.TypeCast{
-	// 	FromType: pgtypes.Int32,
-	// 	ToType:   pgtypes.Xid,
-	// 	Function: func(ctx framework.Context, val any, targetType pgtypes.DoltgresType) (any, error) {
-	// 		return val, nil
-	// 	},
-	// })
+	framework.MustAddExplicitTypeCast(framework.TypeCast{
+		FromType: pgtypes.Int32,
+		ToType:   pgtypes.Xid,
+		Function: func(ctx framework.Context, val any, targetType pgtypes.DoltgresType) (any, error) {
+			if val.(int32) < 0 {
+				return nil, fmt.Errorf("XID out of range")
+			}
+			return uint32(val.(int32)), nil
+		},
+	})
 }
 
 // int32Implicit registers all implicit casts. This comprises only the "From" types.
@@ -209,11 +212,14 @@ func int32Implicit() {
 			return handleCharImplicitCast(str, targetType)
 		},
 	})
-	// framework.MustAddImplicitTypeCast(framework.TypeCast{
-	// 	FromType: pgtypes.Int32,
-	// 	ToType:   pgtypes.Xid,
-	// 	Function: func(ctx framework.Context, val any, targetType pgtypes.DoltgresType) (any, error) {
-	// 		return val, nil
-	// 	},
-	// })
+	framework.MustAddImplicitTypeCast(framework.TypeCast{
+		FromType: pgtypes.Int32,
+		ToType:   pgtypes.Xid,
+		Function: func(ctx framework.Context, val any, targetType pgtypes.DoltgresType) (any, error) {
+			if val.(int32) < 0 {
+				return nil, fmt.Errorf("XID out of range")
+			}
+			return uint32(val.(int32)), nil
+		},
+	})
 }

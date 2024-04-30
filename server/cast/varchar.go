@@ -185,6 +185,20 @@ func varcharExplicit() {
 			return handleCharExplicitCast(val.(string), targetType)
 		},
 	})
+	framework.MustAddExplicitTypeCast(framework.TypeCast{
+		FromType: pgtypes.VarChar,
+		ToType:   pgtypes.Xid,
+		Function: func(ctx framework.Context, val any, targetType pgtypes.DoltgresType) (any, error) {
+			out, err := strconv.ParseInt(strings.TrimSpace(val.(string)), 10, 32)
+			if err != nil {
+				return nil, fmt.Errorf("invalid input syntax for type %s: %q", targetType.String(), val.(string))
+			}
+			if out > 2147483647 || out < 0 {
+				return nil, fmt.Errorf("value %q is out of range for type %s", val.(string), targetType.String())
+			}
+			return uint32(out), nil
+		},
+	})
 }
 
 // varcharImplicit registers all implicit casts. This comprises only the "From" types.
@@ -337,6 +351,20 @@ func varcharImplicit() {
 		ToType:   pgtypes.VarChar,
 		Function: func(ctx framework.Context, val any, targetType pgtypes.DoltgresType) (any, error) {
 			return handleCharImplicitCast(val.(string), targetType)
+		},
+	})
+	framework.MustAddImplicitTypeCast(framework.TypeCast{
+		FromType: pgtypes.VarChar,
+		ToType:   pgtypes.Xid,
+		Function: func(ctx framework.Context, val any, targetType pgtypes.DoltgresType) (any, error) {
+			out, err := strconv.ParseInt(strings.TrimSpace(val.(string)), 10, 32)
+			if err != nil {
+				return nil, fmt.Errorf("invalid input syntax for type %s: %q", targetType.String(), val.(string))
+			}
+			if out > 2147483647 || out < 0 {
+				return nil, fmt.Errorf("value %q is out of range for type %s", val.(string), targetType.String())
+			}
+			return uint32(out), nil
 		},
 	})
 }

@@ -49,6 +49,10 @@ func (b OidType) CollationCoercibility(ctx *sql.Context) (collation sql.Collatio
 
 // Compare implements the DoltgresType interface.
 func (b OidType) Compare(v1 any, v2 any) (int, error) {
+	return compareUint32(b, v1, v2)
+}
+
+func compareUint32(b DoltgresType, v1, v2 any) (int, error) {
 	if v1 == nil && v2 == nil {
 		return 0, nil
 	} else if v1 != nil && v2 == nil {
@@ -79,6 +83,10 @@ func (b OidType) Compare(v1 any, v2 any) (int, error) {
 
 // Convert implements the DoltgresType interface.
 func (b OidType) Convert(val any) (any, sql.ConvertInRange, error) {
+	return convertUint32(b, val)
+}
+
+func convertUint32(b DoltgresType, val any) (any, sql.ConvertInRange, error) {
 	switch val := val.(type) {
 	case bool:
 		if val {

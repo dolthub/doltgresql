@@ -30,4 +30,5 @@ func Init() {
 	initText()
 	initUuid()
 	initVarChar()
+	initXid()
 }

@@ -100,17 +100,17 @@ func boolExplicit() {
 			return handleCharExplicitCast(str, targetType)
 		},
 	})
-	// framework.MustAddExplicitTypeCast(framework.TypeCast{
-	// 	FromType: pgtypes.Bool,
-	// 	ToType:   pgtypes.Xid,
-	// 	Function: func(ctx framework.Context, val any, targetType pgtypes.DoltgresType) (any, error) {
-	// 		if val.(bool) {
-	// 			return int32(1), nil
-	// 		} else {
-	// 			return int32(0), nil
-	// 		}
-	// 	},
-	// })
+	framework.MustAddExplicitTypeCast(framework.TypeCast{
+		FromType: pgtypes.Bool,
+		ToType:   pgtypes.Xid,
+		Function: func(ctx framework.Context, val any, targetType pgtypes.DoltgresType) (any, error) {
+			if val.(bool) {
+				return uint32(1), nil
+			} else {
+				return uint32(0), nil
+			}
+		},
+	})
 }
 
 // boolImplicit registers all implicit casts. This comprises only the "From" types.
