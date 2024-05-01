@@ -19,8 +19,9 @@ import (
 	"strings"
 	"unicode/utf8"
 
-	pgtypes "github.com/dolthub/doltgresql/server/types"
 	"gopkg.in/src-d/go-errors.v1"
+
+	pgtypes "github.com/dolthub/doltgresql/server/types"
 )
 
 var (
