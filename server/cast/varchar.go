@@ -24,7 +24,6 @@ import (
 
 	"github.com/dolthub/doltgresql/postgres/parser/uuid"
 	"github.com/dolthub/doltgresql/server/functions/framework"
-	"github.com/dolthub/doltgresql/server/types"
 	pgtypes "github.com/dolthub/doltgresql/server/types"
 )
 
@@ -155,7 +154,7 @@ func varcharExplicit() {
 			if err != nil {
 				return nil, fmt.Errorf("invalid input syntax for type %s: %q", targetType.String(), val.(string))
 			}
-			if out > pgtypes.MaxUint32 || out < 0 {
+			if out > pgtypes.MaxUint32 {
 				return nil, fmt.Errorf("value %q is out of range for type %s", val.(string), targetType.String())
 			}
 			return uint32(out), nil
@@ -309,7 +308,7 @@ func varcharImplicit() {
 			if err != nil {
 				return nil, fmt.Errorf("invalid input syntax for type %s: %q", targetType.String(), val.(string))
 			}
-			if out > types.MaxUint32 || out < 0 {
+			if out > pgtypes.MaxUint32 {
 				return nil, fmt.Errorf("value %q is out of range for type %s", val.(string), targetType.String())
 			}
 			return uint32(out), nil

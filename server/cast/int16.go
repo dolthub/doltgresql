@@ -15,7 +15,6 @@
 package cast
 
 import (
-	"fmt"
 	"strconv"
 
 	"github.com/shopspring/decimal"
@@ -94,9 +93,6 @@ func int16Explicit() {
 		FromType: pgtypes.Int16,
 		ToType:   pgtypes.Oid,
 		Function: func(ctx framework.Context, val any, targetType pgtypes.DoltgresType) (any, error) {
-			if val.(int16) < 0 {
-				return nil, fmt.Errorf("OID out of range")
-			}
 			return uint32(val.(int16)), nil
 		},
 	})

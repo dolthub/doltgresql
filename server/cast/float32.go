@@ -107,11 +107,7 @@ func float32Explicit() {
 		FromType: pgtypes.Float32,
 		ToType:   pgtypes.Oid,
 		Function: func(ctx framework.Context, valInterface any, targetType pgtypes.DoltgresType) (any, error) {
-			val := float32(math.RoundToEven(float64(valInterface.(float32))))
-			if val > pgtypes.MaxUint32 || val < 0 {
-				return nil, fmt.Errorf("OID out of range")
-			}
-			return uint32(val), nil
+			return nil, errCannotCast.New(pgtypes.Float32.String(), targetType.String())
 		},
 	})
 	framework.MustAddExplicitTypeCast(framework.TypeCast{
@@ -207,11 +203,7 @@ func float32Implicit() {
 		FromType: pgtypes.Float32,
 		ToType:   pgtypes.Oid,
 		Function: func(ctx framework.Context, valInterface any, targetType pgtypes.DoltgresType) (any, error) {
-			val := float32(math.RoundToEven(float64(valInterface.(float32))))
-			if val > pgtypes.MaxUint32 || val < 0 {
-				return nil, fmt.Errorf("OID out of range")
-			}
-			return uint32(val), nil
+			return nil, errCannotCast.New(pgtypes.Float32.String(), targetType.String())
 		},
 	})
 	framework.MustAddImplicitTypeCast(framework.TypeCast{

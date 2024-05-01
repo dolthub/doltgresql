@@ -733,18 +733,6 @@ var typesTests = []ScriptTest{
 					{1, 1234},
 				},
 			},
-			// {
-			// 	Query: "SELECT v1::char(1) FROM t_oid WHERE v1=5678;",
-			// 	Expected: []sql.Row{
-			// 		{"5"},
-			// 	},
-			// },
-			// {
-			// 	Query: "SELECT v1::smallint FROM t_oid WHERE v1=5678;",
-			// 	Expected: []sql.Row{
-			// 		{5678},
-			// 	},
-			// },
 			{
 				Query:    "UPDATE t_oid SET v1=9012 WHERE id=2;",
 				Expected: []sql.Row{},
@@ -802,111 +790,117 @@ var typesTests = []ScriptTest{
 	{
 		Name: "Oid type, explicit casts",
 		SetUpScript: []string{
-			"CREATE TABLE t_oid (id INTEGER primary key, v1 OID, v2 INTEGER, v3 DOUBLE PRECISION, v4 DECIMAL(10, 1), v5 CHARACTER(3), v6 TEXT, v7 BIGINT);",
-			"INSERT INTO t_oid VALUES (1, 1234, 10, 1.1, 1.1, '123', '123', 100), (2, 4294967295, -100, -1.1, -1.1, 'abc', 'abc', 922337203685477580);",
+			"CREATE TABLE t_oid (id INTEGER primary key, coid OID, cint INTEGER, cbigint BIGINT, cdbl DOUBLE PRECISION, cdec DECIMAL(10, 1), cchar CHARACTER(3), ctext TEXT, cvarchar CHARACTER VARYING);",
+			"INSERT INTO t_oid VALUES (1, 1234, 10, 100, 1.1, 1.1, '123', '123', '0'), (2, 4294967295, -100,922337203685477580, -1.1, -1.1, 'abc', '922337203685477580', '-1');",
 		},
 		Assertions: []ScriptTestAssertion{
 			{
 				Query: "SELECT * FROM t_oid ORDER BY id;",
 				Expected: []sql.Row{
-					{1, 1234, 10, 1.1, 1.1, "123", "123", 100},
-					{2, 4294967295, -100, -1.1, -1.1, "abc", "abc", 922337203685477580},
+					{1, 1234, 10, 100, 1.1, 1.1, "123", "123", "0"},
+					{2, 4294967295, -100, 922337203685477580, -1.1, -1.1, "abc", "922337203685477580", "-1"},
 				},
 			},
 			// Cast from OID to types
 			{
-				Query: "SELECT v1::char(1) FROM t_oid WHERE id=1;",
+				Query: "SELECT coid::char(1) FROM t_oid WHERE id=1;",
 				Expected: []sql.Row{
 					{"1"},
 				},
 			},
 			{
-				Query: "SELECT v1::varchar(2) FROM t_oid WHERE id=1;",
+				Query: "SELECT coid::varchar(2) FROM t_oid WHERE id=1;",
 				Expected: []sql.Row{
 					{"12"},
 				},
 			},
 			{
-				Query: "SELECT v1::text FROM t_oid WHERE id=1;",
+				Query: "SELECT coid::text FROM t_oid WHERE id=1;",
 				Expected: []sql.Row{
 					{"1234"},
 				},
 			},
 			{
-				Query:       "SELECT v1::smallint FROM t_oid WHERE id=1;",
+				Query:       "SELECT coid::smallint FROM t_oid WHERE id=1;",
 				ExpectedErr: true,
 			},
 			{
-				Query:       "SELECT v1::smallint FROM t_oid WHERE id=2;",
+				Query:       "SELECT coid::smallint FROM t_oid WHERE id=2;",
 				ExpectedErr: true,
 			},
 			{
-				Query: "SELECT v1::integer FROM t_oid WHERE id=1;",
+				Query: "SELECT coid::integer FROM t_oid WHERE id=1;",
 				Expected: []sql.Row{
 					{1234},
 				},
 			},
 			{
-				Query: "SELECT v1::integer FROM t_oid WHERE id=2;",
+				Query: "SELECT coid::integer FROM t_oid WHERE id=2;",
 				Expected: []sql.Row{
 					{-1},
 				},
 			},
 			{
-				Query: "SELECT v1::bigint FROM t_oid WHERE id=1;",
+				Query: "SELECT coid::bigint FROM t_oid WHERE id=1;",
 				Expected: []sql.Row{
 					{1234},
 				},
 			},
 			{
-				Query: "SELECT v1::bigint FROM t_oid WHERE id=2;",
+				Query: "SELECT coid::name FROM t_oid WHERE id=1;",
+				Expected: []sql.Row{
+					{"1234"},
+				},
+			},
+			{
+				Query: "SELECT coid::bigint FROM t_oid WHERE id=2;",
 				Expected: []sql.Row{
 					{4294967295},
 				},
 			},
 			{
-				Query:       "SELECT v1::float4 FROM t_oid WHERE id=1;",
+				Query:       "SELECT coid::float4 FROM t_oid WHERE id=1;",
 				ExpectedErr: true,
 			},
 			{
-				Query:       "SELECT v1::float8 FROM t_oid WHERE id=1;",
+				Query:       "SELECT coid::float8 FROM t_oid WHERE id=1;",
 				ExpectedErr: true,
 			},
 			{
-				Query:       "SELECT v1::numeric FROM t_oid WHERE id=1;",
+				Query:       "SELECT coid::numeric FROM t_oid WHERE id=1;",
 				ExpectedErr: true,
 			},
 			// Cast to OID from types
 			{
-				Query: "SELECT v2::oid, v5::oid, v6::oid, v7::oid FROM t_oid WHERE id=1;",
+				Query: "SELECT cint::oid, cchar::oid, ctext::oid, cbigint::oid, cvarchar::oid FROM t_oid WHERE id=1;",
 				Expected: []sql.Row{
-					{10, 123, 123, 100},
+					{10, 123, 123, 100, 0},
 				},
 			},
 			{
-				Query: "SELECT v2::oid FROM t_oid WHERE id=2;",
+				Query: "SELECT cint::oid, cvarchar::oid FROM t_oid WHERE id=2;",
 				Expected: []sql.Row{
-					{4294967196},
+					{4294967196, 4294967295},
 				},
 			},
 			{
-				Query:       "SELECT v3::oid FROM t_oid WHERE id=1;",
+				Query:       "SELECT cdbl::oid FROM t_oid WHERE id=1;",
 				ExpectedErr: true,
 			},
 			{
-				Query:       "SELECT v4::oid FROM t_oid WHERE id=1;",
+				Query:       "SELECT cdec::oid FROM t_oid WHERE id=1;",
 				ExpectedErr: true,
 			},
 			{
-				Query:       "SELECT v5::oid FROM t_oid WHERE id=2;",
+				Query:       "SELECT cchar::oid FROM t_oid WHERE id=2;",
 				ExpectedErr: true,
 			},
 			{
-				Query:       "SELECT v6::oid FROM t_oid WHERE id=2;",
+				Query:       "SELECT ctext::oid FROM t_oid WHERE id=2;",
 				ExpectedErr: true,
 			},
 			{
-				Query:       "SELECT v7::oid FROM t_oid WHERE id=2;",
+				Query:       "SELECT cbigint::oid FROM t_oid WHERE id=2;",
 				ExpectedErr: true,
 			},
 		},
