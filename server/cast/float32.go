@@ -108,7 +108,7 @@ func float32Explicit() {
 		ToType:   pgtypes.Oid,
 		Function: func(ctx framework.Context, valInterface any, targetType pgtypes.DoltgresType) (any, error) {
 			val := float32(math.RoundToEven(float64(valInterface.(float32))))
-			if val > 2147483647 || val < 0 {
+			if val > pgtypes.MaxUint32 || val < 0 {
 				return nil, fmt.Errorf("OID out of range")
 			}
 			return uint32(val), nil
@@ -208,7 +208,7 @@ func float32Implicit() {
 		ToType:   pgtypes.Oid,
 		Function: func(ctx framework.Context, valInterface any, targetType pgtypes.DoltgresType) (any, error) {
 			val := float32(math.RoundToEven(float64(valInterface.(float32))))
-			if val > 2147483647 || val < 0 {
+			if val > pgtypes.MaxUint32 || val < 0 {
 				return nil, fmt.Errorf("OID out of range")
 			}
 			return uint32(val), nil

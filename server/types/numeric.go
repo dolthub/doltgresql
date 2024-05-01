@@ -30,13 +30,19 @@ import (
 	"github.com/shopspring/decimal"
 )
 
+const (
+	MaxUint32 = 4294967295 // MaxUint32 is the largest possible value of Uint32
+)
+
 var (
-	NumericValueMaxInt16 = decimal.NewFromInt(32767)                // NumericValueMaxInt16 is the max Int16 value for NUMERIC types
-	NumericValueMaxInt32 = decimal.NewFromInt(2147483647)           // NumericValueMaxInt16 is the max Int32 value for NUMERIC types
-	NumericValueMaxInt64 = decimal.NewFromInt(9223372036854775807)  // NumericValueMaxInt16 is the max Int64 value for NUMERIC types
-	NumericValueMinInt16 = decimal.NewFromInt(-32768)               // NumericValueMaxInt16 is the min Int16 value for NUMERIC types
-	NumericValueMinInt32 = decimal.NewFromInt(-2147483648)          // NumericValueMaxInt16 is the min Int32 value for NUMERIC types
-	NumericValueMinInt64 = decimal.NewFromInt(-9223372036854775808) // NumericValueMaxInt16 is the min Int64 value for NUMERIC types
+	NumericValueMaxInt16  = decimal.NewFromInt(32767)                // NumericValueMaxInt16 is the max Int16 value for NUMERIC types
+	NumericValueMaxInt32  = decimal.NewFromInt(2147483647)           // NumericValueMaxInt16 is the max Int32 value for NUMERIC types
+	NumericValueMaxInt64  = decimal.NewFromInt(9223372036854775807)  // NumericValueMaxInt16 is the max Int64 value for NUMERIC types
+	NumericValueMinInt16  = decimal.NewFromInt(-32768)               // NumericValueMaxInt16 is the min Int16 value for NUMERIC types
+	NumericValueMinInt32  = decimal.NewFromInt(-2147483648)          // NumericValueMaxInt16 is the min Int32 value for NUMERIC types
+	NumericValueMinInt64  = decimal.NewFromInt(-9223372036854775808) // NumericValueMaxInt16 is the min Int64 value for NUMERIC types
+	NumericValueMinUint32 = decimal.NewFromInt(0)                    // NumericValueMaxInt32 is the min Uint32 value for NUMERIC types
+	NumericValueMaxUint32 = decimal.NewFromInt(MaxUint32)            // NumericValueMaxInt16 is the max Uint32 value for NUMERIC types
 )
 
 // Numeric is a precise and unbounded decimal value.

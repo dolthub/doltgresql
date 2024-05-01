@@ -97,9 +97,6 @@ func int32Explicit() {
 		FromType: pgtypes.Int32,
 		ToType:   pgtypes.Oid,
 		Function: func(ctx framework.Context, val any, targetType pgtypes.DoltgresType) (any, error) {
-			if val.(int32) < 0 {
-				return nil, fmt.Errorf("OID out of range")
-			}
 			return uint32(val.(int32)), nil
 		},
 	})

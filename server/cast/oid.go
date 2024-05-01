@@ -15,10 +15,7 @@
 package cast
 
 import (
-	"fmt"
 	"strconv"
-
-	"github.com/shopspring/decimal"
 
 	"github.com/dolthub/doltgresql/server/functions/framework"
 	pgtypes "github.com/dolthub/doltgresql/server/types"
@@ -44,24 +41,21 @@ func oidExplicit() {
 		FromType: pgtypes.Oid,
 		ToType:   pgtypes.Float32,
 		Function: func(ctx framework.Context, val any, targetType pgtypes.DoltgresType) (any, error) {
-			return float32(val.(uint32)), nil
+			return nil, errCannotCast.New(pgtypes.Oid.String(), targetType.String())
 		},
 	})
 	framework.MustAddExplicitTypeCast(framework.TypeCast{
 		FromType: pgtypes.Oid,
 		ToType:   pgtypes.Float64,
 		Function: func(ctx framework.Context, val any, targetType pgtypes.DoltgresType) (any, error) {
-			return float64(val.(uint32)), nil
+			return nil, errCannotCast.New(pgtypes.Oid.String(), targetType.String())
 		},
 	})
 	framework.MustAddExplicitTypeCast(framework.TypeCast{
 		FromType: pgtypes.Oid,
 		ToType:   pgtypes.Int16,
 		Function: func(ctx framework.Context, val any, targetType pgtypes.DoltgresType) (any, error) {
-			if val.(uint32) > 32767 {
-				return nil, fmt.Errorf("smallint out of range")
-			}
-			return int16(val.(uint32)), nil
+			return nil, errCannotCast.New(pgtypes.Oid.String(), targetType.String())
 		},
 	})
 	framework.MustAddExplicitTypeCast(framework.TypeCast{
@@ -82,7 +76,7 @@ func oidExplicit() {
 		FromType: pgtypes.Oid,
 		ToType:   pgtypes.Numeric,
 		Function: func(ctx framework.Context, val any, targetType pgtypes.DoltgresType) (any, error) {
-			return decimal.NewFromInt(int64(val.(uint32))), nil
+			return nil, errCannotCast.New(pgtypes.Oid.String(), targetType.String())
 		},
 	})
 	framework.MustAddExplicitTypeCast(framework.TypeCast{
@@ -123,30 +117,30 @@ func oidImplicit() {
 		FromType: pgtypes.Oid,
 		ToType:   pgtypes.Float32,
 		Function: func(ctx framework.Context, val any, targetType pgtypes.DoltgresType) (any, error) {
-			return float32(val.(uint32)), nil
+			return nil, errCannotCast.New(pgtypes.Oid.String(), targetType.String())
 		},
 	})
 	framework.MustAddImplicitTypeCast(framework.TypeCast{
 		FromType: pgtypes.Oid,
 		ToType:   pgtypes.Float64,
 		Function: func(ctx framework.Context, val any, targetType pgtypes.DoltgresType) (any, error) {
-			return float64(val.(uint32)), nil
+			return nil, errCannotCast.New(pgtypes.Oid.String(), targetType.String())
 		},
 	})
 	framework.MustAddImplicitTypeCast(framework.TypeCast{
 		FromType: pgtypes.Oid,
 		ToType:   pgtypes.Int16,
 		Function: func(ctx framework.Context, val any, targetType pgtypes.DoltgresType) (any, error) {
-			if val.(uint32) > 32767 {
-				return nil, fmt.Errorf("smallint out of range")
-			}
-			return int16(val.(uint32)), nil
+			return nil, errCannotCast.New(pgtypes.Oid.String(), targetType.String())
 		},
 	})
 	framework.MustAddImplicitTypeCast(framework.TypeCast{
 		FromType: pgtypes.Oid,
 		ToType:   pgtypes.Int32,
 		Function: func(ctx framework.Context, val any, targetType pgtypes.DoltgresType) (any, error) {
+			if val.(uint32) > 2147483647 {
+				return nil, errOutOfRange.New(targetType.String())
+			}
 			return int32(val.(uint32)), nil
 		},
 	})
@@ -161,7 +155,7 @@ func oidImplicit() {
 		FromType: pgtypes.Oid,
 		ToType:   pgtypes.Numeric,
 		Function: func(ctx framework.Context, val any, targetType pgtypes.DoltgresType) (any, error) {
-			return decimal.NewFromInt(int64(val.(uint32))), nil
+			return nil, errCannotCast.New(pgtypes.Oid.String(), targetType.String())
 		},
 	})
 	framework.MustAddImplicitTypeCast(framework.TypeCast{

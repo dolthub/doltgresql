@@ -24,6 +24,7 @@ import (
 
 	"github.com/dolthub/doltgresql/postgres/parser/uuid"
 	"github.com/dolthub/doltgresql/server/functions/framework"
+	"github.com/dolthub/doltgresql/server/types"
 	pgtypes "github.com/dolthub/doltgresql/server/types"
 )
 
@@ -150,11 +151,11 @@ func varcharExplicit() {
 		FromType: pgtypes.VarChar,
 		ToType:   pgtypes.Oid,
 		Function: func(ctx framework.Context, val any, targetType pgtypes.DoltgresType) (any, error) {
-			out, err := strconv.ParseInt(strings.TrimSpace(val.(string)), 10, 32)
+			out, err := strconv.ParseInt(strings.TrimSpace(val.(string)), 10, 64)
 			if err != nil {
 				return nil, fmt.Errorf("invalid input syntax for type %s: %q", targetType.String(), val.(string))
 			}
-			if out > 2147483647 || out < 0 {
+			if out > pgtypes.MaxUint32 || out < 0 {
 				return nil, fmt.Errorf("value %q is out of range for type %s", val.(string), targetType.String())
 			}
 			return uint32(out), nil
@@ -304,11 +305,11 @@ func varcharImplicit() {
 		FromType: pgtypes.VarChar,
 		ToType:   pgtypes.Oid,
 		Function: func(ctx framework.Context, val any, targetType pgtypes.DoltgresType) (any, error) {
-			out, err := strconv.ParseInt(strings.TrimSpace(val.(string)), 10, 32)
+			out, err := strconv.ParseInt(strings.TrimSpace(val.(string)), 10, 64)
 			if err != nil {
 				return nil, fmt.Errorf("invalid input syntax for type %s: %q", targetType.String(), val.(string))
 			}
-			if out > 2147483647 || out < 0 {
+			if out > types.MaxUint32 || out < 0 {
 				return nil, fmt.Errorf("value %q is out of range for type %s", val.(string), targetType.String())
 			}
 			return uint32(out), nil

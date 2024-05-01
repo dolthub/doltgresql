@@ -265,7 +265,7 @@ func (b OidType) SerializeValue(val any) ([]byte, error) {
 		return nil, err
 	}
 	retVal := make([]byte, 4)
-	binary.BigEndian.PutUint32(retVal, uint32(converted.(uint32))+(1<<31))
+	binary.BigEndian.PutUint32(retVal, converted.(uint32))
 	return retVal, nil
 }
 
@@ -274,5 +274,5 @@ func (b OidType) DeserializeValue(val []byte) (any, error) {
 	if len(val) == 0 {
 		return nil, nil
 	}
-	return uint32(binary.BigEndian.Uint32(val) - (1 << 31)), nil
+	return binary.BigEndian.Uint32(val), nil
 }

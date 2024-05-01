@@ -84,7 +84,7 @@ func numericExplicit() {
 			if d.LessThan(pgtypes.NumericValueMinInt64) || d.GreaterThan(pgtypes.NumericValueMaxInt64) {
 				return nil, fmt.Errorf("bigint out of range")
 			}
-			return d.IntPart(), nil
+			return int64(d.IntPart()), nil
 		},
 	})
 	framework.MustAddExplicitTypeCast(framework.TypeCast{
@@ -105,11 +105,7 @@ func numericExplicit() {
 		FromType: pgtypes.Numeric,
 		ToType:   pgtypes.Oid,
 		Function: func(ctx framework.Context, val any, targetType pgtypes.DoltgresType) (any, error) {
-			d := val.(decimal.Decimal)
-			if d.LessThan(decimal.NewFromInt(0)) || d.GreaterThan(pgtypes.NumericValueMaxInt32) {
-				return nil, fmt.Errorf("OID out of range")
-			}
-			return uint32(d.IntPart()), nil
+			return nil, errCannotCast.New(pgtypes.Numeric.String(), targetType.String())
 		},
 	})
 	framework.MustAddExplicitTypeCast(framework.TypeCast{
@@ -183,7 +179,7 @@ func numericImplicit() {
 			if d.LessThan(pgtypes.NumericValueMinInt64) || d.GreaterThan(pgtypes.NumericValueMaxInt64) {
 				return nil, fmt.Errorf("bigint out of range")
 			}
-			return d.IntPart(), nil
+			return int64(d.IntPart()), nil
 		},
 	})
 	framework.MustAddImplicitTypeCast(framework.TypeCast{
@@ -204,11 +200,7 @@ func numericImplicit() {
 		FromType: pgtypes.Numeric,
 		ToType:   pgtypes.Oid,
 		Function: func(ctx framework.Context, val any, targetType pgtypes.DoltgresType) (any, error) {
-			d := val.(decimal.Decimal)
-			if d.LessThan(decimal.NewFromInt(0)) || d.GreaterThan(pgtypes.NumericValueMaxInt32) {
-				return nil, fmt.Errorf("OID out of range")
-			}
-			return uint32(d.IntPart()), nil
+			return nil, errCannotCast.New(pgtypes.Numeric.String(), targetType.String())
 		},
 	})
 	framework.MustAddImplicitTypeCast(framework.TypeCast{
