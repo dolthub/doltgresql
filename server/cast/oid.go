@@ -62,9 +62,7 @@ func oidExplicit() {
 		FromType: pgtypes.Oid,
 		ToType:   pgtypes.Int32,
 		Function: func(ctx framework.Context, val any, targetType pgtypes.DoltgresType) (any, error) {
-			if val.(uint32) > 2147483647 {
-				return nil, errOutOfRange.New(targetType.String())
-			}
+			// Will return -1 for uint32 values greater than 2147483647
 			return int32(val.(uint32)), nil
 		},
 	})
@@ -149,9 +147,7 @@ func oidImplicit() {
 		FromType: pgtypes.Oid,
 		ToType:   pgtypes.Int32,
 		Function: func(ctx framework.Context, val any, targetType pgtypes.DoltgresType) (any, error) {
-			if val.(uint32) > 2147483647 {
-				return nil, errOutOfRange.New(targetType.String())
-			}
+			// Will return -1 for uint32 values greater than 2147483647
 			return int32(val.(uint32)), nil
 		},
 	})
