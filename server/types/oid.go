@@ -83,10 +83,6 @@ func compareUint32(b DoltgresType, v1, v2 any) (int, error) {
 
 // Convert implements the DoltgresType interface.
 func (b OidType) Convert(val any) (any, sql.ConvertInRange, error) {
-	return convertUint32(b, val)
-}
-
-func convertUint32(b DoltgresType, val any) (any, sql.ConvertInRange, error) {
 	switch val := val.(type) {
 	case bool:
 		if val {
