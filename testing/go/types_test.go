@@ -713,6 +713,262 @@ var typesTests = []ScriptTest{
 		},
 	},
 	{
+		Name: "Oid type",
+		SetUpScript: []string{
+			"CREATE TABLE t_oid (id INTEGER primary key, v1 OID);",
+			"INSERT INTO t_oid VALUES (1, 1234), (2, 5678);",
+		},
+		Assertions: []ScriptTestAssertion{
+			{
+				Query: "SELECT * FROM t_oid ORDER BY id;",
+				Expected: []sql.Row{
+					{1, 1234},
+					{2, 5678},
+				},
+			},
+			{
+				Query: "SELECT * FROM t_oid ORDER BY v1 DESC;",
+				Expected: []sql.Row{
+					{2, 5678},
+					{1, 1234},
+				},
+			},
+			{
+				Query:    "UPDATE t_oid SET v1=9012 WHERE id=2;",
+				Expected: []sql.Row{},
+			},
+			{
+				Query:    "DELETE FROM t_oid WHERE v1=1234;",
+				Expected: []sql.Row{},
+			},
+			{
+				Query: "SELECT * FROM t_oid ORDER BY id;",
+				Expected: []sql.Row{
+					{2, 9012},
+				},
+			},
+			{
+				Query:    "INSERT INTO t_oid VALUES (3, '2345');",
+				Expected: []sql.Row{},
+			},
+			{
+				Query: "SELECT * FROM t_oid ORDER BY id;",
+				Expected: []sql.Row{
+					{2, 9012},
+					{3, 2345},
+				},
+			},
+			{
+				Query:    "INSERT INTO t_oid VALUES (4, 4294967295);",
+				Expected: []sql.Row{},
+			},
+			{
+				Query:       "INSERT INTO t_oid VALUES (5, 4294967296);",
+				Skip:        true, // TODO: Should return an OID out of range error
+				ExpectedErr: true,
+			},
+			{
+				Query:    "INSERT INTO t_oid VALUES (6, 0);",
+				Expected: []sql.Row{},
+			},
+			{
+				Query:    "INSERT INTO t_oid VALUES (7, -1);",
+				Expected: []sql.Row{},
+			},
+			{
+				Query: "SELECT * FROM t_oid ORDER BY id;",
+				Expected: []sql.Row{
+					{2, 9012},
+					{3, 2345},
+					{4, 4294967295},
+					{6, 0},
+					{7, 4294967295},
+				},
+			},
+		},
+	},
+	{
+		Name: "Oid type, explicit casts",
+		SetUpScript: []string{
+			"CREATE TABLE t_oid (id INTEGER primary key, coid OID);",
+			"INSERT INTO t_oid VALUES (1, 1234), (2, 4294967295);",
+		},
+		Assertions: []ScriptTestAssertion{
+			{
+				Query: "SELECT * FROM t_oid ORDER BY id;",
+				Expected: []sql.Row{
+					{1, 1234},
+					{2, 4294967295},
+				},
+			},
+			// Cast from OID to types
+			{
+				Query: "SELECT coid::char(1) FROM t_oid WHERE id=1;",
+				Expected: []sql.Row{
+					{"1"},
+				},
+			},
+			{
+				Query: "SELECT coid::varchar(2) FROM t_oid WHERE id=1;",
+				Expected: []sql.Row{
+					{"12"},
+				},
+			},
+			{
+				Query: "SELECT coid::text FROM t_oid WHERE id=1;",
+				Expected: []sql.Row{
+					{"1234"},
+				},
+			},
+			{
+				Query:       "SELECT coid::smallint FROM t_oid WHERE id=1;",
+				ExpectedErr: true,
+			},
+			{
+				Query:       "SELECT coid::smallint FROM t_oid WHERE id=2;",
+				ExpectedErr: true,
+			},
+			{
+				Query: "SELECT coid::integer FROM t_oid WHERE id=1;",
+				Expected: []sql.Row{
+					{1234},
+				},
+			},
+			{
+				Query: "SELECT coid::integer FROM t_oid WHERE id=2;",
+				Expected: []sql.Row{
+					{-1},
+				},
+			},
+			{
+				Query: "SELECT coid::bigint FROM t_oid WHERE id=1;",
+				Expected: []sql.Row{
+					{1234},
+				},
+			},
+			{
+				Query: "SELECT coid::name FROM t_oid WHERE id=1;",
+				Expected: []sql.Row{
+					{"1234"},
+				},
+			},
+			{
+				Query: "SELECT coid::bigint FROM t_oid WHERE id=2;",
+				Expected: []sql.Row{
+					{4294967295},
+				},
+			},
+			{
+				Query:       "SELECT coid::float4 FROM t_oid WHERE id=1;",
+				ExpectedErr: true,
+			},
+			{
+				Query:       "SELECT coid::float8 FROM t_oid WHERE id=1;",
+				ExpectedErr: true,
+			},
+			{
+				Query:       "SELECT coid::numeric FROM t_oid WHERE id=1;",
+				ExpectedErr: true,
+			},
+			// Cast to OID from types
+			{
+				Query: "SELECT ('123'::char(3))::oid, ('123'::varchar)::oid, ('0'::text)::oid, ('400'::name)::oid;",
+				Expected: []sql.Row{
+					{123, 123, 0, 400},
+				},
+			},
+			{
+				Query: "SELECT ('-1'::char(3))::oid, ('-1'::varchar)::oid, ('-1'::text)::oid, ('-1'::name)::oid;",
+				Expected: []sql.Row{
+					{4294967295, 4294967295, 4294967295, 4294967295},
+				},
+			},
+			{
+				Query: "SELECT ('-2147483648'::char(11))::oid, ('-2147483648'::varchar)::oid, ('-2147483648'::text)::oid, ('-2147483648'::name)::oid;",
+				Expected: []sql.Row{
+					{2147483648, 2147483648, 2147483648, 2147483648},
+				},
+			},
+			{
+				Query: "SELECT (10::int2)::oid, (10::int4)::oid, (100::int8)::oid;",
+				Expected: []sql.Row{
+					{10, 10, 100},
+				},
+			},
+			{
+				Query: "SELECT (-1::int2)::oid, (-1::int4)::oid;",
+				Expected: []sql.Row{
+					{4294967295, 4294967295},
+				},
+			},
+			{
+				Query:       "SELECT (-1::int8)::oid;",
+				ExpectedErr: true,
+			},
+			{
+				Query:       "SELECT (922337203685477580::int8)::oid;",
+				ExpectedErr: true,
+			},
+			{
+				Query:       "SELECT (1.1::float4)::oid;",
+				ExpectedErr: true,
+			},
+			{
+				Query:       "SELECT (1.1::float8)::oid;",
+				ExpectedErr: true,
+			},
+			{
+				Query:       "SELECT (1.1::decimal)::oid;",
+				ExpectedErr: true,
+			},
+			{
+				Query:       "SELECT ('922337203685477580'::text)::oid;",
+				ExpectedErr: true,
+			},
+			{
+				Query:       "SELECT ('abc'::char(3))::oid;",
+				ExpectedErr: true,
+			},
+			{
+				Query:       "SELECT ('-2147483649'::char(11))::oid;",
+				ExpectedErr: true,
+			},
+			{
+				Query:       "SELECT ('-2147483649'::varchar)::oid;",
+				ExpectedErr: true,
+			},
+			{
+				Query:       "SELECT ('-2147483649'::text)::oid;",
+				ExpectedErr: true,
+			},
+			{
+				Query:       "SELECT ('-2147483649'::name)::oid;",
+				ExpectedErr: true,
+			},
+		},
+	},
+	{
+		Name: "Oid array type",
+		SetUpScript: []string{
+			"CREATE TABLE t_oid (id INTEGER primary key, v1 OID[], v2 CHARACTER(100), v3 BOOLEAN);",
+			"INSERT INTO t_oid VALUES (1, ARRAY[123, 456, 789, 101], '1234567890', true);",
+		},
+		Assertions: []ScriptTestAssertion{
+			{
+				Query: `SELECT v1::varchar(1)[] FROM t_oid;`,
+				Expected: []sql.Row{
+					{"{1,4,7,1}"},
+				},
+			},
+			{
+				Query: `SELECT v2::oid, v3::oid FROM t_oid;`,
+				Expected: []sql.Row{
+					{1234567890, 1},
+				},
+			},
+		},
+	},
+	{
 		Name: "Path type",
 		Skip: true,
 		SetUpScript: []string{

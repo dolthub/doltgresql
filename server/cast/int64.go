@@ -98,6 +98,16 @@ func int64Explicit() {
 	})
 	framework.MustAddExplicitTypeCast(framework.TypeCast{
 		FromType: pgtypes.Int64,
+		ToType:   pgtypes.Oid,
+		Function: func(ctx framework.Context, val any, targetType pgtypes.DoltgresType) (any, error) {
+			if val.(int64) > pgtypes.MaxUint32 || val.(int64) < 0 {
+				return nil, errOutOfRange.New(targetType.String())
+			}
+			return uint32(val.(int64)), nil
+		},
+	})
+	framework.MustAddExplicitTypeCast(framework.TypeCast{
+		FromType: pgtypes.Int64,
 		ToType:   pgtypes.Text,
 		Function: func(ctx framework.Context, val any, targetType pgtypes.DoltgresType) (any, error) {
 			return strconv.FormatInt(val.(int64), 10), nil
@@ -177,6 +187,16 @@ func int64Implicit() {
 		ToType:   pgtypes.Numeric,
 		Function: func(ctx framework.Context, val any, targetType pgtypes.DoltgresType) (any, error) {
 			return decimal.NewFromInt(val.(int64)), nil
+		},
+	})
+	framework.MustAddImplicitTypeCast(framework.TypeCast{
+		FromType: pgtypes.Int64,
+		ToType:   pgtypes.Oid,
+		Function: func(ctx framework.Context, val any, targetType pgtypes.DoltgresType) (any, error) {
+			if val.(int64) > pgtypes.MaxUint32 || val.(int64) < 0 {
+				return nil, errOutOfRange.New(targetType.String())
+			}
+			return uint32(val.(int64)), nil
 		},
 	})
 	framework.MustAddImplicitTypeCast(framework.TypeCast{

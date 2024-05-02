@@ -109,6 +109,8 @@ func nodeResolvableTypeReference(typ tree.ResolvableTypeReference) (*vitess.Conv
 						Scale:     columnType.Scale(),
 					}
 				}
+			case oid.T_oid:
+				resolvedType = pgtypes.Oid
 			case oid.T_text:
 				resolvedType = pgtypes.Text
 			case oid.T_time:

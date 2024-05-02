@@ -19,8 +19,13 @@ import (
 	"strings"
 	"unicode/utf8"
 
+	"gopkg.in/src-d/go-errors.v1"
+
 	pgtypes "github.com/dolthub/doltgresql/server/types"
 )
+
+// errOutOfRange is returned when a value is out of range for a given type.
+var errOutOfRange = errors.NewKind("%s out of range")
 
 // handleCharExplicitCast handles explicit casts to Char and VarChar types. Returns an error if other types are passed in.
 func handleCharExplicitCast(str string, targetType pgtypes.DoltgresType) (string, error) {

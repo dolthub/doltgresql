@@ -62,6 +62,7 @@ const (
 	DoltgresTypeBaseID_Name        = DoltgresTypeBaseID(SerializationID_Name)
 	DoltgresTypeBaseID_Null        = DoltgresTypeBaseID(SerializationID_Null)
 	DoltgresTypeBaseID_Numeric     = DoltgresTypeBaseID(SerializationID_Numeric)
+	DoltgresTypeBaseID_Oid         = DoltgresTypeBaseID(SerializationID_Oid)
 	DoltgresTypeBaseID_Text        = DoltgresTypeBaseID(SerializationID_Text)
 	DoltgresTypeBaseID_Time        = DoltgresTypeBaseID(SerializationID_Time)
 	DoltgresTypeBaseID_Timestamp   = DoltgresTypeBaseID(SerializationID_Timestamp)

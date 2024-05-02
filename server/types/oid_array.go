@@ -12,22 +12,9 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-package cast
+package types
 
-// Init initializes all casts in this package.
-func Init() {
-	initBool()
-	initBytea()
-	initChar()
-	initFloat32()
-	initFloat64()
-	initInt16()
-	initInt32()
-	initInt64()
-	initName()
-	initNumeric()
-	initOid()
-	initText()
-	initUuid()
-	initVarChar()
-}
+import "github.com/lib/pq/oid"
+
+// OidArray is the array variant of Oid.
+var OidArray = createArrayType(Oid, SerializationID_OidArray, oid.T__oid)

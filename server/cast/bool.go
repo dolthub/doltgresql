@@ -69,6 +69,17 @@ func boolExplicit() {
 	})
 	framework.MustAddExplicitTypeCast(framework.TypeCast{
 		FromType: pgtypes.Bool,
+		ToType:   pgtypes.Oid,
+		Function: func(ctx framework.Context, val any, targetType pgtypes.DoltgresType) (any, error) {
+			if val.(bool) {
+				return uint32(1), nil
+			} else {
+				return uint32(0), nil
+			}
+		},
+	})
+	framework.MustAddExplicitTypeCast(framework.TypeCast{
+		FromType: pgtypes.Bool,
 		ToType:   pgtypes.Text,
 		Function: func(ctx framework.Context, val any, targetType pgtypes.DoltgresType) (any, error) {
 			if val.(bool) {

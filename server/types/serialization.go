@@ -122,6 +122,8 @@ const (
 	SerializationID_XmlArray              SerializationID = 89
 	SerializationID_Name                  SerializationID = 90
 	SerializationID_NameArray             SerializationID = 91
+	SerializationID_Oid                   SerializationID = 92
+	SerializationID_OidArray              SerializationID = 93
 )
 
 // serializationIDToType is a map from each SerializationID to its matching DoltgresType.
