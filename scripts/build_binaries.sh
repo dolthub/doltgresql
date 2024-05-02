@@ -72,7 +72,7 @@ for tuple in $OS_ARCH_TUPLES; do
       AS="${platform_as[${tuple}]}" \
       CGO_LDFLAGS="${platform_cgo_ldflags[${tuple}]}" \
       cd cmd/doltgres
-      go build -buildvcs=false -trimpath -ldflags="${platform_go_ldflags[${tuple}]}" -o "$o/bin/$obin" .
+      go build -buildvcs=false -trimpath -ldflags="${platform_go_ldflags[${tuple}]}" -o "../../$o/bin/$obin" .
       cd ../..
   done
   if [ "$os" = windows ]; then
