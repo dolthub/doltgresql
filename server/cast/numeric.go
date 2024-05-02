@@ -103,13 +103,6 @@ func numericExplicit() {
 	})
 	framework.MustAddExplicitTypeCast(framework.TypeCast{
 		FromType: pgtypes.Numeric,
-		ToType:   pgtypes.Oid,
-		Function: func(ctx framework.Context, val any, targetType pgtypes.DoltgresType) (any, error) {
-			return nil, errCannotCast.New(pgtypes.Numeric.String(), targetType.String())
-		},
-	})
-	framework.MustAddExplicitTypeCast(framework.TypeCast{
-		FromType: pgtypes.Numeric,
 		ToType:   pgtypes.Text,
 		Function: func(ctx framework.Context, val any, targetType pgtypes.DoltgresType) (any, error) {
 			return val.(decimal.Decimal).String(), nil
@@ -194,13 +187,6 @@ func numericImplicit() {
 		ToType:   pgtypes.Numeric,
 		Function: func(ctx framework.Context, val any, targetType pgtypes.DoltgresType) (any, error) {
 			return val, nil
-		},
-	})
-	framework.MustAddImplicitTypeCast(framework.TypeCast{
-		FromType: pgtypes.Numeric,
-		ToType:   pgtypes.Oid,
-		Function: func(ctx framework.Context, val any, targetType pgtypes.DoltgresType) (any, error) {
-			return nil, errCannotCast.New(pgtypes.Numeric.String(), targetType.String())
 		},
 	})
 	framework.MustAddImplicitTypeCast(framework.TypeCast{

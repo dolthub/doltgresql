@@ -790,15 +790,15 @@ var typesTests = []ScriptTest{
 	{
 		Name: "Oid type, explicit casts",
 		SetUpScript: []string{
-			"CREATE TABLE t_oid (id INTEGER primary key, coid OID, cint INTEGER, cbigint BIGINT, cdbl DOUBLE PRECISION, cdec DECIMAL(10, 1), cchar CHARACTER(3), ctext TEXT, cvarchar CHARACTER VARYING);",
-			"INSERT INTO t_oid VALUES (1, 1234, 10, 100, 1.1, 1.1, '123', '123', '0'), (2, 4294967295, -100,922337203685477580, -1.1, -1.1, 'abc', '922337203685477580', '-1');",
+			"CREATE TABLE t_oid (id INTEGER primary key, coid OID);",
+			"INSERT INTO t_oid VALUES (1, 1234), (2, 4294967295);",
 		},
 		Assertions: []ScriptTestAssertion{
 			{
 				Query: "SELECT * FROM t_oid ORDER BY id;",
 				Expected: []sql.Row{
-					{1, 1234, 10, 100, 1.1, 1.1, "123", "123", "0"},
-					{2, 4294967295, -100, 922337203685477580, -1.1, -1.1, "abc", "922337203685477580", "-1"},
+					{1, 1234},
+					{2, 4294967295},
 				},
 			},
 			// Cast from OID to types
@@ -872,35 +872,77 @@ var typesTests = []ScriptTest{
 			},
 			// Cast to OID from types
 			{
-				Query: "SELECT cint::oid, cchar::oid, ctext::oid, cbigint::oid, cvarchar::oid FROM t_oid WHERE id=1;",
+				Query: "SELECT ('123'::char(3))::oid, ('123'::varchar)::oid, ('0'::text)::oid, ('400'::name)::oid;",
 				Expected: []sql.Row{
-					{10, 123, 123, 100, 0},
+					{123, 123, 0, 400},
 				},
 			},
 			{
-				Query: "SELECT cint::oid, cvarchar::oid FROM t_oid WHERE id=2;",
+				Query: "SELECT ('-1'::char(3))::oid, ('-1'::varchar)::oid, ('-1'::text)::oid, ('-1'::name)::oid;",
 				Expected: []sql.Row{
-					{4294967196, 4294967295},
+					{4294967295, 4294967295, 4294967295, 4294967295},
 				},
 			},
 			{
-				Query:       "SELECT cdbl::oid FROM t_oid WHERE id=1;",
+				Query: "SELECT ('-2147483648'::char(11))::oid, ('-2147483648'::varchar)::oid, ('-2147483648'::text)::oid, ('-2147483648'::name)::oid;",
+				Expected: []sql.Row{
+					{2147483648, 2147483648, 2147483648, 2147483648},
+				},
+			},
+			{
+				Query: "SELECT (10::int2)::oid, (10::int4)::oid, (100::int8)::oid;",
+				Expected: []sql.Row{
+					{10, 10, 100},
+				},
+			},
+			{
+				Query: "SELECT (-1::int2)::oid, (-1::int4)::oid;",
+				Expected: []sql.Row{
+					{4294967295, 4294967295},
+				},
+			},
+			{
+				Query:       "SELECT (-1::int8)::oid;",
 				ExpectedErr: true,
 			},
 			{
-				Query:       "SELECT cdec::oid FROM t_oid WHERE id=1;",
+				Query:       "SELECT (922337203685477580::int8)::oid;",
 				ExpectedErr: true,
 			},
 			{
-				Query:       "SELECT cchar::oid FROM t_oid WHERE id=2;",
+				Query:       "SELECT (1.1::float4)::oid;",
 				ExpectedErr: true,
 			},
 			{
-				Query:       "SELECT ctext::oid FROM t_oid WHERE id=2;",
+				Query:       "SELECT (1.1::float8)::oid;",
 				ExpectedErr: true,
 			},
 			{
-				Query:       "SELECT cbigint::oid FROM t_oid WHERE id=2;",
+				Query:       "SELECT (1.1::decimal)::oid;",
+				ExpectedErr: true,
+			},
+			{
+				Query:       "SELECT ('922337203685477580'::text)::oid;",
+				ExpectedErr: true,
+			},
+			{
+				Query:       "SELECT ('abc'::char(3))::oid;",
+				ExpectedErr: true,
+			},
+			{
+				Query:       "SELECT ('-2147483649'::char(11))::oid;",
+				ExpectedErr: true,
+			},
+			{
+				Query:       "SELECT ('-2147483649'::varchar)::oid;",
+				ExpectedErr: true,
+			},
+			{
+				Query:       "SELECT ('-2147483649'::text)::oid;",
+				ExpectedErr: true,
+			},
+			{
+				Query:       "SELECT ('-2147483649'::name)::oid;",
 				ExpectedErr: true,
 			},
 		},

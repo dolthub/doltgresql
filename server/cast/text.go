@@ -154,7 +154,7 @@ func textExplicit() {
 			if err != nil {
 				return nil, fmt.Errorf("invalid input syntax for type %s: %q", targetType.String(), val.(string))
 			}
-			if out > pgtypes.MaxUint32 {
+			if out > pgtypes.MaxUint32 || out < pgtypes.MinInt32 {
 				return nil, fmt.Errorf("value %q is out of range for type %s", val.(string), targetType.String())
 			}
 			return uint32(out), nil
@@ -308,7 +308,7 @@ func textImplicit() {
 			if err != nil {
 				return nil, fmt.Errorf("invalid input syntax for type %s: %q", targetType.String(), val.(string))
 			}
-			if out > pgtypes.MaxUint32 {
+			if out > pgtypes.MaxUint32 || out < pgtypes.MinInt32 {
 				return nil, fmt.Errorf("value %q is out of range for type %s", val.(string), targetType.String())
 			}
 			return uint32(out), nil

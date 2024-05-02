@@ -105,13 +105,6 @@ func float64Explicit() {
 	})
 	framework.MustAddExplicitTypeCast(framework.TypeCast{
 		FromType: pgtypes.Float64,
-		ToType:   pgtypes.Oid,
-		Function: func(ctx framework.Context, valInterface any, targetType pgtypes.DoltgresType) (any, error) {
-			return nil, errCannotCast.New(pgtypes.Float64.String(), targetType.String())
-		},
-	})
-	framework.MustAddExplicitTypeCast(framework.TypeCast{
-		FromType: pgtypes.Float64,
 		ToType:   pgtypes.Text,
 		Function: func(ctx framework.Context, val any, targetType pgtypes.DoltgresType) (any, error) {
 			return strconv.FormatFloat(val.(float64), 'g', -1, 64), nil
@@ -197,13 +190,6 @@ func float64Implicit() {
 		ToType:   pgtypes.Numeric,
 		Function: func(ctx framework.Context, val any, targetType pgtypes.DoltgresType) (any, error) {
 			return decimal.NewFromFloat(val.(float64)), nil
-		},
-	})
-	framework.MustAddImplicitTypeCast(framework.TypeCast{
-		FromType: pgtypes.Float64,
-		ToType:   pgtypes.Oid,
-		Function: func(ctx framework.Context, valInterface any, targetType pgtypes.DoltgresType) (any, error) {
-			return nil, errCannotCast.New(pgtypes.Float64.String(), targetType.String())
 		},
 	})
 	framework.MustAddImplicitTypeCast(framework.TypeCast{

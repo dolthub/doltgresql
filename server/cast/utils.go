@@ -24,13 +24,8 @@ import (
 	pgtypes "github.com/dolthub/doltgresql/server/types"
 )
 
-var (
-	// errCannotCast is returned when a cast from one type to another is not possible.
-	errCannotCast = errors.NewKind("cannot cast type %s to %s")
-
-	// errOutOfRange is returned when a value is out of range for a given type.
-	errOutOfRange = errors.NewKind("%s out of range")
-)
+// errOutOfRange is returned when a value is out of range for a given type.
+var errOutOfRange = errors.NewKind("%s out of range")
 
 // handleCharExplicitCast handles explicit casts to Char and VarChar types. Returns an error if other types are passed in.
 func handleCharExplicitCast(str string, targetType pgtypes.DoltgresType) (string, error) {

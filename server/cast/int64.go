@@ -100,7 +100,7 @@ func int64Explicit() {
 		FromType: pgtypes.Int64,
 		ToType:   pgtypes.Oid,
 		Function: func(ctx framework.Context, val any, targetType pgtypes.DoltgresType) (any, error) {
-			if val.(int64) > pgtypes.MaxUint32 {
+			if val.(int64) > pgtypes.MaxUint32 || val.(int64) < 0 {
 				return nil, errOutOfRange.New(targetType.String())
 			}
 			return uint32(val.(int64)), nil
@@ -193,7 +193,7 @@ func int64Implicit() {
 		FromType: pgtypes.Int64,
 		ToType:   pgtypes.Oid,
 		Function: func(ctx framework.Context, val any, targetType pgtypes.DoltgresType) (any, error) {
-			if val.(int64) > pgtypes.MaxUint32 {
+			if val.(int64) > pgtypes.MaxUint32 || val.(int64) < 0 {
 				return nil, errOutOfRange.New(targetType.String())
 			}
 			return uint32(val.(int64)), nil
