@@ -1417,6 +1417,10 @@ var typesTests = []ScriptTest{
 				Query:       "SELECT v1::numeric FROM t_xid WHERE id=1;",
 				ExpectedErr: true,
 			},
+			{
+				Query:       "SELECT v1::boolean FROM t_xid WHERE id=1;",
+				ExpectedErr: true,
+			},
 			// Cast to XID from types
 			{
 				Query: "SELECT ('123'::char(3))::xid, ('123'::varchar)::xid, ('0'::text)::xid, ('400'::name)::xid;",
@@ -1438,6 +1442,10 @@ var typesTests = []ScriptTest{
 			},
 			{
 				Query:       "SELECT (10::int2)::xid;",
+				ExpectedErr: true,
+			},
+			{
+				Query:       "SELECT (10::boolean)::xid;",
 				ExpectedErr: true,
 			},
 			{
@@ -1547,23 +1555,6 @@ var typesTests = []ScriptTest{
 			},
 		},
 	},
-}
-
-func TestXid(t *testing.T) {
-	RunScripts(t, []ScriptTest{
-		{
-			Name: "Xid type",
-			SetUpScript: []string{
-				"CREATE TABLE t_xid (id INTEGER primary key, v1 XID, v2 VARCHAR(20));",
-			},
-			Assertions: []ScriptTestAssertion{
-				{
-					Query:    "INSERT INTO t_xid VALUES (8, 'abc', 'd');",
-					Expected: []sql.Row{},
-				},
-			},
-		},
-	})
 }
 
 func TestTypes(t *testing.T) {
