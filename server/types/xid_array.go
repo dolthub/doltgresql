@@ -12,23 +12,9 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-package cast
+package types
 
-// Init initializes all casts in this package.
-func Init() {
-	initBool()
-	initBytea()
-	initChar()
-	initFloat32()
-	initFloat64()
-	initInt16()
-	initInt32()
-	initInt64()
-	initName()
-	initNumeric()
-	initOid()
-	initText()
-	initUuid()
-	initVarChar()
-	initXid()
-}
+import "github.com/lib/pq/oid"
+
+// XidArray is the array variant of Xid.
+var XidArray = createArrayType(Xid, SerializationID_XidArray, oid.T__xid)

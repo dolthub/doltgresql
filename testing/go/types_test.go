@@ -870,6 +870,10 @@ var typesTests = []ScriptTest{
 				Query:       "SELECT coid::numeric FROM t_oid WHERE id=1;",
 				ExpectedErr: true,
 			},
+			{
+				Query:       "SELECT coid::xid FROM t_oid WHERE id=1;",
+				ExpectedErr: true,
+			},
 			// Cast to OID from types
 			{
 				Query: "SELECT ('123'::char(3))::oid, ('123'::varchar)::oid, ('0'::text)::oid, ('400'::name)::oid;",
@@ -1280,6 +1284,251 @@ var typesTests = []ScriptTest{
 					{1, "{a0eebc99-9c0b-4ef8-bb6d-6bb9bd380a11,NULL}"},
 					{2, "{NULL,f47ac10b-58cc-4372-a567-0e02b2c3d479}"},
 				},
+			},
+		},
+	},
+	{
+		Name: "Xid type",
+		SetUpScript: []string{
+			"CREATE TABLE t_xid (id INTEGER primary key, v1 XID, v2 VARCHAR(20));",
+		},
+		Assertions: []ScriptTestAssertion{
+			{
+				Query:       "INSERT INTO t_xid VALUES (1, 1234, '100');",
+				Skip:        true, // TODO: Should return 'column "v1" is of type xid but expression is of type integer' error
+				ExpectedErr: true,
+			},
+			{
+				Query:       "INSERT INTO t_xid VALUES (1, 1234::xid, '100');",
+				ExpectedErr: true,
+			},
+			{
+				Query:    "INSERT INTO t_xid VALUES (1, NULL, '100');",
+				Expected: []sql.Row{},
+			},
+			{
+				Query: "SELECT * FROM t_xid ORDER BY id;",
+				Expected: []sql.Row{
+					{1, nil, "100"},
+				},
+			},
+			{
+				Query:    "INSERT INTO t_xid VALUES (2, '100', '101');",
+				Expected: []sql.Row{},
+			},
+			{
+				Query: "SELECT * FROM t_xid WHERE v1 IS NOT NULL;",
+				Expected: []sql.Row{
+					{2, 100, "101"},
+				},
+			},
+			{
+				Query:    "UPDATE t_xid SET v1='9012' WHERE id=1;",
+				Expected: []sql.Row{},
+			},
+			{
+				Query:    "DELETE FROM t_xid WHERE v1=100;",
+				Expected: []sql.Row{},
+			},
+			{
+				Query:       "SELECT * FROM t_xid ORDER BY v1 DESC;",
+				Skip:        true, // TODO: should error with "could not identify an ordering operator for type xid"
+				ExpectedErr: true,
+			},
+			{
+				Query:    "INSERT INTO t_xid VALUES (4, '4294967295', 'a');",
+				Expected: []sql.Row{},
+			},
+			{
+				Query:    "INSERT INTO t_xid VALUES (5, '4294967296', 'b');",
+				Expected: []sql.Row{},
+			},
+			{
+				Query:    "INSERT INTO t_xid VALUES (6, '0', 'c');",
+				Expected: []sql.Row{},
+			},
+			{
+				Query:    "INSERT INTO t_xid VALUES (7, '-1', 'd');",
+				Expected: []sql.Row{},
+			},
+			{
+				Query:    "INSERT INTO t_xid VALUES (8, 'abc', 'd');",
+				Expected: []sql.Row{},
+			},
+			{
+				Query: "SELECT * FROM t_xid ORDER BY id;",
+				Expected: []sql.Row{
+					{1, 9012, "100"},
+					{4, 4294967295, "a"},
+					{5, 0, "b"},
+					{6, 0, "c"},
+					{7, 4294967295, "d"},
+					{8, 0, "d"},
+				},
+			},
+		},
+	},
+	{
+		Name: "Xid type, explicit casts",
+		SetUpScript: []string{
+			"CREATE TABLE t_xid (id INTEGER primary key, v1 XID);",
+			"INSERT INTO t_xid VALUES (1, '1234'), (2, '4294967295');",
+		},
+		Assertions: []ScriptTestAssertion{
+			{
+				Query: "SELECT * FROM t_xid ORDER BY id;",
+				Expected: []sql.Row{
+					{1, 1234},
+					{2, 4294967295},
+				},
+			},
+			// Cast from XID to types
+			{
+				Query: "SELECT v1::char(1), v1::varchar(2), v1::text, v1::name FROM t_xid WHERE id=1;",
+				Expected: []sql.Row{
+					{"1", "12", "1234", "1234"},
+				},
+			},
+			{
+				Query:       "SELECT v1::smallint FROM t_xid WHERE id=1;",
+				ExpectedErr: true,
+			},
+			{
+				Query:       "SELECT v1::integer FROM t_xid WHERE id=1;",
+				ExpectedErr: true,
+			},
+			{
+				Query:       "SELECT v1::bigint FROM t_xid WHERE id=1;",
+				ExpectedErr: true,
+			},
+			{
+				Query:       "SELECT v1::oid FROM t_xid WHERE id=1;",
+				ExpectedErr: true,
+			},
+			{
+				Query:       "SELECT v1::float4 FROM t_xid WHERE id=1;",
+				ExpectedErr: true,
+			},
+			{
+				Query:       "SELECT v1::float8 FROM t_xid WHERE id=1;",
+				ExpectedErr: true,
+			},
+			{
+				Query:       "SELECT v1::numeric FROM t_xid WHERE id=1;",
+				ExpectedErr: true,
+			},
+			{
+				Query:       "SELECT v1::boolean FROM t_xid WHERE id=1;",
+				ExpectedErr: true,
+			},
+			// Cast to XID from types
+			{
+				Query: "SELECT ('123'::char(3))::xid, ('123'::varchar)::xid, ('0'::text)::xid, ('400'::name)::xid;",
+				Expected: []sql.Row{
+					{123, 123, 0, 400},
+				},
+			},
+			{
+				Query: "SELECT ('-1'::char(3))::xid, ('-1'::varchar)::xid, ('-1'::text)::xid, ('-1'::name)::xid;",
+				Expected: []sql.Row{
+					{4294967295, 4294967295, 4294967295, 4294967295},
+				},
+			},
+			{
+				Query: "SELECT ('-2147483648'::char(11))::xid, ('-2147483648'::varchar)::xid, ('-2147483648'::text)::xid, ('-2147483648'::name)::xid;",
+				Expected: []sql.Row{
+					{2147483648, 2147483648, 2147483648, 2147483648},
+				},
+			},
+			{
+				Query:       "SELECT (10::int2)::xid;",
+				ExpectedErr: true,
+			},
+			{
+				Query:       "SELECT (10::boolean)::xid;",
+				ExpectedErr: true,
+			},
+			{
+				Query:       "SELECT (10::int4)::xid;",
+				ExpectedErr: true,
+			},
+			{
+				Query:       "SELECT (10::int8)::xid;",
+				ExpectedErr: true,
+			},
+			{
+				Query:       "SELECT (1.1::float4)::xid;",
+				ExpectedErr: true,
+			},
+			{
+				Query:       "SELECT (1.1::float8)::xid;",
+				ExpectedErr: true,
+			},
+			{
+				Query:       "SELECT (1.1::decimal)::xid;",
+				ExpectedErr: true,
+			},
+			{
+				Query: "SELECT ('4294967295'::text)::xid, ('4294967297'::text)::xid;",
+				Expected: []sql.Row{
+					{4294967295, 1},
+				},
+			},
+			{
+				Query: "SELECT ('-4294967295'::text)::xid, ('-4294967297'::text)::xid;",
+				Expected: []sql.Row{
+					{1, 4294967295},
+				},
+			},
+			{
+				Query: "SELECT ('4294967295'::varchar)::xid, ('4294967296232'::varchar)::xid;",
+				Expected: []sql.Row{
+					{4294967295, 232},
+				},
+			},
+			{
+				Query: "SELECT ('-4294967295'::varchar)::xid, ('-4294967296232'::varchar)::xid;",
+				Expected: []sql.Row{
+					{1, 4294967064},
+				},
+			},
+			{
+				Query: "SELECT ('4294967295'::char(11))::xid, ('4294967296'::char(11))::xid;",
+				Expected: []sql.Row{
+					{4294967295, 0},
+				},
+			},
+			{
+				Query: "SELECT ('4294967295'::name)::xid, ('4294967296'::name)::xid;",
+				Expected: []sql.Row{
+					{4294967295, 0},
+				},
+			},
+			{
+				Query: "SELECT ('abc'::text)::xid, ('abc'::char(3))::xid, ('abc'::varchar)::xid, ('abc'::name)::xid;",
+				Expected: []sql.Row{
+					{0, 0, 0, 0},
+				},
+			},
+		},
+	},
+	{
+		Name: "Xid array type",
+		Skip: true, // TODO: Insert to XID[] column not working (invalid type: xid[]), will be fixed when Convert is removed
+		SetUpScript: []string{
+			"CREATE TABLE t_xid (id INTEGER primary key, v1 XID[], v2 CHARACTER(100), v3 BOOLEAN);",
+			"INSERT INTO t_xid VALUES (2, '{123, 456, 789, 101}', '1234567890', true);",
+		},
+		Assertions: []ScriptTestAssertion{
+			{
+				Query: `SELECT v1::varchar(1)[] FROM t_xid;`,
+				Expected: []sql.Row{
+					{"{1,4,7,1}"},
+				},
+			},
+			{
+				Query:       `INSERT INTO t_xid VALUES (2, ARRAY[123, 456, 789, 101], '1234567890', true);`,
+				ExpectedErr: true,
 			},
 		},
 	},

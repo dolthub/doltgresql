@@ -29,60 +29,31 @@ import (
 	"github.com/shopspring/decimal"
 )
 
-// Oid is a data type used for identifying internal objects. It is implemented as an unsigned 32 bit integer.
-var Oid = OidType{}
+// Xid is a data type used for internal transaction IDs. It is implemented as an unsigned 32 bit integer.
+var Xid = XidType{}
 
-// OidType is the extended type implementation of the PostgreSQL oid.
-type OidType struct{}
+// XidType is the extended type implementation of the PostgreSQL xid.
+type XidType struct{}
 
-var _ DoltgresType = OidType{}
+var _ DoltgresType = XidType{}
 
 // BaseID implements the DoltgresType interface.
-func (b OidType) BaseID() DoltgresTypeBaseID {
-	return DoltgresTypeBaseID_Oid
+func (b XidType) BaseID() DoltgresTypeBaseID {
+	return DoltgresTypeBaseID_Xid
 }
 
 // CollationCoercibility implements the DoltgresType interface.
-func (b OidType) CollationCoercibility(ctx *sql.Context) (collation sql.CollationID, coercibility byte) {
+func (b XidType) CollationCoercibility(ctx *sql.Context) (collation sql.CollationID, coercibility byte) {
 	return sql.Collation_binary, 5
 }
 
 // Compare implements the DoltgresType interface.
-func (b OidType) Compare(v1 any, v2 any) (int, error) {
+func (b XidType) Compare(v1 any, v2 any) (int, error) {
 	return compareUint32(b, v1, v2)
 }
 
-func compareUint32(b DoltgresType, v1, v2 any) (int, error) {
-	if v1 == nil && v2 == nil {
-		return 0, nil
-	} else if v1 != nil && v2 == nil {
-		return 1, nil
-	} else if v1 == nil && v2 != nil {
-		return -1, nil
-	}
-
-	ac, _, err := b.Convert(v1)
-	if err != nil {
-		return 0, err
-	}
-	bc, _, err := b.Convert(v2)
-	if err != nil {
-		return 0, err
-	}
-
-	ab := ac.(uint32)
-	bb := bc.(uint32)
-	if ab == bb {
-		return 0, nil
-	} else if ab < bb {
-		return -1, nil
-	} else {
-		return 1, nil
-	}
-}
-
 // Convert implements the DoltgresType interface.
-func (b OidType) Convert(val any) (any, sql.ConvertInRange, error) {
+func (b XidType) Convert(val any) (any, sql.ConvertInRange, error) {
 	switch val := val.(type) {
 	case bool:
 		if val {
@@ -123,7 +94,7 @@ func (b OidType) Convert(val any) (any, sql.ConvertInRange, error) {
 	case string:
 		i, err := strconv.ParseInt(val, 10, 64)
 		if err != nil {
-			return nil, sql.OutOfRange, err
+			return 0, sql.InRange, nil
 		}
 		return uint32(i), sql.InRange, nil
 	case []byte:
@@ -136,7 +107,7 @@ func (b OidType) Convert(val any) (any, sql.ConvertInRange, error) {
 }
 
 // Equals implements the DoltgresType interface.
-func (b OidType) Equals(otherType sql.Type) bool {
+func (b XidType) Equals(otherType sql.Type) bool {
 	if otherExtendedType, ok := otherType.(types.ExtendedType); ok {
 		return bytes.Equal(MustSerializeType(b), MustSerializeType(otherExtendedType))
 	}
@@ -144,7 +115,7 @@ func (b OidType) Equals(otherType sql.Type) bool {
 }
 
 // FormatSerializedValue implements the DoltgresType interface.
-func (b OidType) FormatSerializedValue(val []byte) (string, error) {
+func (b XidType) FormatSerializedValue(val []byte) (string, error) {
 	deserialized, err := b.DeserializeValue(val)
 	if err != nil {
 		return "", err
@@ -153,7 +124,7 @@ func (b OidType) FormatSerializedValue(val []byte) (string, error) {
 }
 
 // FormatValue implements the DoltgresType interface.
-func (b OidType) FormatValue(val any) (string, error) {
+func (b XidType) FormatValue(val any) (string, error) {
 	if val == nil {
 		return "", nil
 	}
@@ -165,37 +136,37 @@ func (b OidType) FormatValue(val any) (string, error) {
 }
 
 // GetSerializationID implements the DoltgresType interface.
-func (b OidType) GetSerializationID() SerializationID {
-	return SerializationID_Oid
+func (b XidType) GetSerializationID() SerializationID {
+	return SerializationID_Xid
 }
 
 // IsUnbounded implements the DoltgresType interface.
-func (b OidType) IsUnbounded() bool {
+func (b XidType) IsUnbounded() bool {
 	return false
 }
 
 // MaxSerializedWidth implements the DoltgresType interface.
-func (b OidType) MaxSerializedWidth() types.ExtendedTypeSerializedWidth {
+func (b XidType) MaxSerializedWidth() types.ExtendedTypeSerializedWidth {
 	return types.ExtendedTypeSerializedWidth_64K
 }
 
 // MaxTextResponseByteLength implements the DoltgresType interface.
-func (b OidType) MaxTextResponseByteLength(ctx *sql.Context) uint32 {
+func (b XidType) MaxTextResponseByteLength(ctx *sql.Context) uint32 {
 	return 4
 }
 
 // OID implements the DoltgresType interface.
-func (b OidType) OID() uint32 {
-	return uint32(oid.T_oid)
+func (b XidType) OID() uint32 {
+	return uint32(oid.T_xid)
 }
 
 // Promote implements the DoltgresType interface.
-func (b OidType) Promote() sql.Type {
+func (b XidType) Promote() sql.Type {
 	return b
 }
 
 // SerializedCompare implements the DoltgresType interface.
-func (b OidType) SerializedCompare(v1 []byte, v2 []byte) (int, error) {
+func (b XidType) SerializedCompare(v1 []byte, v2 []byte) (int, error) {
 	if len(v1) == 0 && len(v2) == 0 {
 		return 0, nil
 	} else if len(v1) > 0 && len(v2) == 0 {
@@ -208,7 +179,7 @@ func (b OidType) SerializedCompare(v1 []byte, v2 []byte) (int, error) {
 }
 
 // SQL implements the DoltgresType interface.
-func (b OidType) SQL(ctx *sql.Context, dest []byte, v any) (sqltypes.Value, error) {
+func (b XidType) SQL(ctx *sql.Context, dest []byte, v any) (sqltypes.Value, error) {
 	if v == nil {
 		return sqltypes.NULL, nil
 	}
@@ -220,47 +191,47 @@ func (b OidType) SQL(ctx *sql.Context, dest []byte, v any) (sqltypes.Value, erro
 }
 
 // String implements the DoltgresType interface.
-func (b OidType) String() string {
-	return "oid"
+func (b XidType) String() string {
+	return "xid"
 }
 
 // ToArrayType implements the DoltgresType interface.
-func (b OidType) ToArrayType() DoltgresArrayType {
-	return OidArray
+func (b XidType) ToArrayType() DoltgresArrayType {
+	return XidArray
 }
 
 // Type implements the DoltgresType interface.
-func (b OidType) Type() query.Type {
+func (b XidType) Type() query.Type {
 	return sqltypes.Uint32
 }
 
 // ValueType implements the DoltgresType interface.
-func (b OidType) ValueType() reflect.Type {
+func (b XidType) ValueType() reflect.Type {
 	return reflect.TypeOf(uint32(0))
 }
 
 // Zero implements the DoltgresType interface.
-func (b OidType) Zero() any {
+func (b XidType) Zero() any {
 	return uint32(0)
 }
 
 // SerializeType implements the DoltgresType interface.
-func (b OidType) SerializeType() ([]byte, error) {
-	return SerializationID_Oid.ToByteSlice(0), nil
+func (b XidType) SerializeType() ([]byte, error) {
+	return SerializationID_Xid.ToByteSlice(0), nil
 }
 
 // deserializeType implements the DoltgresType interface.
-func (b OidType) deserializeType(version uint16, metadata []byte) (DoltgresType, error) {
+func (b XidType) deserializeType(version uint16, metadata []byte) (DoltgresType, error) {
 	switch version {
 	case 0:
-		return Oid, nil
+		return Xid, nil
 	default:
 		return nil, fmt.Errorf("version %d is not yet supported for %s", version, b.String())
 	}
 }
 
 // SerializeValue implements the DoltgresType interface.
-func (b OidType) SerializeValue(val any) ([]byte, error) {
+func (b XidType) SerializeValue(val any) ([]byte, error) {
 	if val == nil {
 		return nil, nil
 	}
@@ -269,14 +240,14 @@ func (b OidType) SerializeValue(val any) ([]byte, error) {
 		return nil, err
 	}
 	retVal := make([]byte, 4)
-	binary.BigEndian.PutUint32(retVal, converted.(uint32))
+	binary.BigEndian.PutUint32(retVal, uint32(converted.(uint32)))
 	return retVal, nil
 }
 
 // DeserializeValue implements the DoltgresType interface.
-func (b OidType) DeserializeValue(val []byte) (any, error) {
+func (b XidType) DeserializeValue(val []byte) (any, error) {
 	if len(val) == 0 {
 		return nil, nil
 	}
-	return binary.BigEndian.Uint32(val), nil
+	return uint32(binary.BigEndian.Uint32(val)), nil
 }
