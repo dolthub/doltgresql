@@ -18,6 +18,7 @@ import (
 	"github.com/dolthub/go-mysql-server/sql"
 
 	"github.com/dolthub/doltgresql/server/types"
+	pgtypes "github.com/dolthub/doltgresql/server/types"
 )
 
 // Below are BASE TABLEs
@@ -316,7 +317,13 @@ const (
 
 var pgAggregateSchema = sql.Schema{}
 
-var pgAmSchema = sql.Schema{}
+// TODO: Implement pg_am
+var pgAmSchema = sql.Schema{
+	{Name: "oid", Type: types.Oid, Default: nil, Nullable: false, Source: PgAmTableName},
+	{Name: "amname", Type: types.Name, Default: nil, Nullable: false, Source: PgAmTableName},
+	{Name: "amhandler", Type: types.Text, Default: nil, Nullable: false, Source: PgAmTableName}, // TODO: type regproc
+	{Name: "amtype", Type: types.BpChar, Default: nil, Nullable: false, Source: PgAmTableName},
+}
 
 var pgAmOpSchema = sql.Schema{}
 
@@ -324,7 +331,35 @@ var pgAmProcSchema = sql.Schema{}
 
 var pgAttrDefSchema = sql.Schema{}
 
-var pgAttributeSchema = sql.Schema{}
+// TODO: Implement the rest of pg_attribute
+var pgAttributeSchema = sql.Schema{
+	// {	Name: "attrelid", Type: types.Oid, Default: nil, Nullable: false, Source: PgAttributeTableName},
+	{Name: "attname", Type: types.Name, Default: nil, Nullable: false, Source: PgAttributeTableName},
+	// {	Name: "atttypid", Type: types.Oid, Default: nil, Nullable: false, Source: PgAttributeTableName},
+	// {	Name: "attlen", Type: types.Int16, Default: nil, Nullable: false, Source: PgAttributeTableName},
+	// {Name: "attnum", Type: types.Int16, Default: nil, Nullable: false, Source: PgAttributeTableName},
+	// {Name: "attcacheoff", Type: types.Int32, Default: nil, Nullable: false, Source: PgAttributeTableName},
+	// {Name: "atttypmod", Type: types.Int32, Default: nil, Nullable: false, Source: PgAttributeTableName},
+	{Name: "attndims", Type: types.Int16, Default: nil, Nullable: false, Source: PgAttributeTableName},
+	// {Name: "attbyval", Type: types.Bool, Default: nil, Nullable: false, Source: PgAttributeTableName},
+	// {Name: "attalign", Type: types.BpChar, Default: nil, Nullable: false, Source: PgAttributeTableName},
+	// {Name: "attstorage", Type: types.BpChar, Default: nil, Nullable: false, Source: PgAttributeTableName},
+	// {Name: "attcompression", Type: types.BpChar, Default: nil, Nullable: false, Source: PgAttributeTableName},
+	{Name: "attnotnull", Type: types.Bool, Default: nil, Nullable: false, Source: PgAttributeTableName},
+	{Name: "atthasdef", Type: types.Bool, Default: nil, Nullable: false, Source: PgAttributeTableName},
+	// {Name: "atthasmissing", Type: types.Bool, Default: nil, Nullable: false, Source: PgAttributeTableName},
+	// {Name: "attidentity", Type: types.BpChar, Default: nil, Nullable: false, Source: PgAttributeTableName},
+	{Name: "attgenerated", Type: types.BpChar, Default: nil, Nullable: false, Source: PgAttributeTableName},
+	// {Name: "attisdropped", Type: types.Bool, Default: nil, Nullable: false, Source: PgAttributeTableName},
+	// {Name: "attislocal", Type: types.Bool, Default: nil, Nullable: false, Source: PgAttributeTableName},
+	// {Name: "attinhcount", Type: types.Int16, Default: nil, Nullable: false, Source: PgAttributeTableName},
+	// {Name: "attstattarget", Type: types.Int16, Default: nil, Nullable: false, Source: PgAttributeTableName},
+	// {Name: "attcollation", Type: types.Oid, Default: nil, Nullable: false, Source: PgAttributeTableName},
+	// {Name: "attacl", Type: types.TextArray, Default: nil, Nullable: true, Source: PgAttributeTableName}, // TODO: type aclitem[]
+	// {Name: "attoptions", Type: types.TextArray, Default: nil, Nullable: true, Source: PgAttributeTableName}, // TODO: collation C
+	// {Name: "attfdwoptions", Type: types.TextArray, Default: nil, Nullable: true, Source: PgAttributeTableName}, // TODO: collation C
+	// {Name: "attmissingval", Type: types.AnyArray, Default: nil, Nullable: true, Source: PgAttributeTableName},
+}
 
 var pgAuthMembersSchema = sql.Schema{}
 
@@ -332,68 +367,96 @@ var pgAuthIdSchema = sql.Schema{}
 
 var pgCastSchema = sql.Schema{}
 
-// TODO: Not all types are accurate
+// TODO: Implement the rest of pg_class
 var pgClassSchema = sql.Schema{
-	{Name: "oid", Type: types.Oid, Default: nil, Nullable: false, Source: PgClassTableName},
+	// {Name: "oid", Type: types.Oid, Default: nil, Nullable: false, Source: PgClassTableName},
 	{Name: "relname", Type: types.Name, Default: nil, Nullable: false, Source: PgClassTableName},
-	{Name: "relnamespace", Type: types.Oid, Default: nil, Nullable: false, Source: PgClassTableName},
-	{Name: "reltype", Type: types.Oid, Default: nil, Nullable: false, Source: PgClassTableName},
-	{Name: "reloftype", Type: types.Oid, Default: nil, Nullable: false, Source: PgClassTableName},
-	{Name: "relowner", Type: types.Oid, Default: nil, Nullable: false, Source: PgClassTableName},
-	{Name: "relam", Type: types.Oid, Default: nil, Nullable: false, Source: PgClassTableName},
-	{Name: "relfilenode", Type: types.Oid, Default: nil, Nullable: false, Source: PgClassTableName},
-	{Name: "reltablespace", Type: types.Oid, Default: nil, Nullable: false, Source: PgClassTableName},
-	{Name: "relpages", Type: types.Int32, Default: nil, Nullable: false, Source: PgClassTableName},
-	{Name: "reltuples", Type: types.Float32, Default: nil, Nullable: false, Source: PgClassTableName},
-	{Name: "relallvisible", Type: types.Int32, Default: nil, Nullable: false, Source: PgClassTableName},
-	{Name: "reltoastrelid", Type: types.Oid, Default: nil, Nullable: false, Source: PgClassTableName},
+	// {Name: "relnamespace", Type: types.Oid, Default: nil, Nullable: false, Source: PgClassTableName},
+	// {Name: "reltype", Type: types.Oid, Default: nil, Nullable: false, Source: PgClassTableName},
+	// {Name: "reloftype", Type: types.Oid, Default: nil, Nullable: false, Source: PgClassTableName},
+	// {Name: "relowner", Type: types.Oid, Default: nil, Nullable: false, Source: PgClassTableName},
+	// {Name: "relam", Type: types.Oid, Default: nil, Nullable: false, Source: PgClassTableName},
+	// {Name: "relfilenode", Type: types.Oid, Default: nil, Nullable: false, Source: PgClassTableName},
+	// {Name: "reltablespace", Type: types.Oid, Default: nil, Nullable: false, Source: PgClassTableName},
+	// {Name: "relpages", Type: types.Int32, Default: nil, Nullable: false, Source: PgClassTableName},
+	// {Name: "reltuples", Type: types.Float32, Default: nil, Nullable: false, Source: PgClassTableName},
+	// {Name: "relallvisible", Type: types.Int32, Default: nil, Nullable: false, Source: PgClassTableName},
+	// {Name: "reltoastrelid", Type: types.Oid, Default: nil, Nullable: false, Source: PgClassTableName},
 	{Name: "relhasindex", Type: types.Bool, Default: nil, Nullable: false, Source: PgClassTableName},
-	{Name: "relisshared", Type: types.Bool, Default: nil, Nullable: false, Source: PgClassTableName},
-	{Name: "relpersistence", Type: types.BpChar, Default: nil, Nullable: false, Source: PgClassTableName},
+	// {Name: "relisshared", Type: types.Bool, Default: nil, Nullable: false, Source: PgClassTableName},
+	// {Name: "relpersistence", Type: types.BpChar, Default: nil, Nullable: false, Source: PgClassTableName},
 	{Name: "relkind", Type: types.BpChar, Default: nil, Nullable: false, Source: PgClassTableName},
-	{Name: "relnatts", Type: types.Int16, Default: nil, Nullable: false, Source: PgClassTableName},
-	{Name: "relchecks", Type: types.Int16, Default: nil, Nullable: false, Source: PgClassTableName},
-	{Name: "relhasrules", Type: types.Bool, Default: nil, Nullable: false, Source: PgClassTableName},
-	{Name: "relhastriggers", Type: types.Bool, Default: nil, Nullable: false, Source: PgClassTableName},
-	{Name: "relhassubclass", Type: types.Bool, Default: nil, Nullable: false, Source: PgClassTableName},
-	{Name: "relrowsecurity", Type: types.Bool, Default: nil, Nullable: false, Source: PgClassTableName},
-	{Name: "relforcerowsecurity", Type: types.Bool, Default: nil, Nullable: false, Source: PgClassTableName},
-	{Name: "relispopulated", Type: types.Bool, Default: nil, Nullable: false, Source: PgClassTableName},
-	{Name: "relreplident", Type: types.BpChar, Default: nil, Nullable: false, Source: PgClassTableName},
-	{Name: "relispartition", Type: types.Bool, Default: nil, Nullable: false, Source: PgClassTableName},
-	{Name: "relrewrite", Type: types.Oid, Default: nil, Nullable: false, Source: PgClassTableName},
-	{Name: "relfrozenxid", Type: types.Xid, Default: nil, Nullable: false, Source: PgClassTableName},
-	{Name: "relminmxid", Type: types.Xid, Default: nil, Nullable: false, Source: PgClassTableName},
-	{Name: "relacl", Type: types.Int16, Default: nil, Nullable: true, Source: PgClassTableName},
-	{Name: "reloptions", Type: types.Int16, Default: nil, Nullable: true, Source: PgClassTableName},
-	{Name: "relpartbound", Type: types.Int16, Default: nil, Nullable: true, Source: PgClassTableName},
+	// {Name: "relnatts", Type: types.Int16, Default: nil, Nullable: false, Source: PgClassTableName},
+	// {Name: "relchecks", Type: types.Int16, Default: nil, Nullable: false, Source: PgClassTableName},
+	// {Name: "relhasrules", Type: types.Bool, Default: nil, Nullable: false, Source: PgClassTableName},
+	// {Name: "relhastriggers", Type: types.Bool, Default: nil, Nullable: false, Source: PgClassTableName},
+	// {Name: "relhassubclass", Type: types.Bool, Default: nil, Nullable: false, Source: PgClassTableName},
+	// {Name: "relrowsecurity", Type: types.Bool, Default: nil, Nullable: false, Source: PgClassTableName},
+	// {Name: "relforcerowsecurity", Type: types.Bool, Default: nil, Nullable: false, Source: PgClassTableName},
+	// {Name: "relispopulated", Type: types.Bool, Default: nil, Nullable: false, Source: PgClassTableName},
+	// {Name: "relreplident", Type: types.BpChar, Default: nil, Nullable: false, Source: PgClassTableName},
+	// {Name: "relispartition", Type: types.Bool, Default: nil, Nullable: false, Source: PgClassTableName},
+	// {Name: "relrewrite", Type: types.Oid, Default: nil, Nullable: false, Source: PgClassTableName},
+	// {Name: "relfrozenxid", Type: Xid, Default: nil, Nullable: false, Source: PgClassTableName},
+	// {Name: "relminmxid", Type: Xid, Default: nil, Nullable: false, Source: PgClassTableName},
+	// {Name: "relacl", Type: types.TextArray, Default: nil, Nullable: true, Source: PgClassTableName}, // TODO: type aclitem[]
+	// {Name: "reloptions", Type: types.TextArray, Default: nil, Nullable: true, Source: PgClassTableName}, // TODO: collation C
+	// {Name: "relpartbound", Type: types.Text, Default: nil, Nullable: true, Source: PgClassTableName}, // TODO: type pg_node_tree, collation C
 }
 
 var pgCollationSchema = sql.Schema{}
 
-var pgConstraintSchema = sql.Schema{}
+// TODO: Implement pg_constraint
+var pgConstraintSchema = sql.Schema{
+	{Name: "oid", Type: types.Oid, Default: nil, Nullable: false, Source: PgConstraintTableName},
+	{Name: "conname", Type: types.Name, Default: nil, Nullable: false, Source: PgConstraintTableName},
+	{Name: "connamespace", Type: types.Oid, Default: nil, Nullable: false, Source: PgConstraintTableName},
+	{Name: "contype", Type: types.BpChar, Default: nil, Nullable: false, Source: PgConstraintTableName},
+	{Name: "condeferrable", Type: types.Bool, Default: nil, Nullable: false, Source: PgConstraintTableName},
+	{Name: "condeferred", Type: types.Bool, Default: nil, Nullable: false, Source: PgConstraintTableName},
+	{Name: "convalidated", Type: types.Bool, Default: nil, Nullable: false, Source: PgConstraintTableName},
+	{Name: "conrelid", Type: types.Oid, Default: nil, Nullable: false, Source: PgConstraintTableName},
+	{Name: "contypid", Type: types.Oid, Default: nil, Nullable: false, Source: PgConstraintTableName},
+	{Name: "conindid", Type: types.Oid, Default: nil, Nullable: false, Source: PgConstraintTableName},
+	{Name: "conparentid", Type: types.Oid, Default: nil, Nullable: false, Source: PgConstraintTableName},
+	{Name: "confrelid", Type: types.Oid, Default: nil, Nullable: false, Source: PgConstraintTableName},
+	{Name: "confupdtype", Type: types.BpChar, Default: nil, Nullable: false, Source: PgConstraintTableName},
+	{Name: "confdeltype", Type: types.BpChar, Default: nil, Nullable: false, Source: PgConstraintTableName},
+	{Name: "confmatchtype", Type: types.BpChar, Default: nil, Nullable: false, Source: PgConstraintTableName},
+	{Name: "conislocal", Type: types.Bool, Default: nil, Nullable: false, Source: PgConstraintTableName},
+	{Name: "coninhcount", Type: types.Int16, Default: nil, Nullable: false, Source: PgConstraintTableName},
+	{Name: "connoinherit", Type: types.Bool, Default: nil, Nullable: false, Source: PgConstraintTableName},
+	{Name: "conkey", Type: types.Int16Array, Default: nil, Nullable: true, Source: PgConstraintTableName},
+	{Name: "confkey", Type: types.Int16Array, Default: nil, Nullable: true, Source: PgConstraintTableName},
+	{Name: "conpfeqop", Type: types.OidArray, Default: nil, Nullable: true, Source: PgConstraintTableName},
+	{Name: "conppeqop", Type: types.OidArray, Default: nil, Nullable: true, Source: PgConstraintTableName},
+	{Name: "conffeqop", Type: types.OidArray, Default: nil, Nullable: true, Source: PgConstraintTableName},
+	{Name: "confdelsetcols", Type: types.Int16Array, Default: nil, Nullable: true, Source: PgConstraintTableName},
+	{Name: "conexclop", Type: types.OidArray, Default: nil, Nullable: true, Source: PgConstraintTableName},
+	{Name: "conbin", Type: types.Text, Default: nil, Nullable: true, Source: PgConstraintTableName}, // TODO: type pg_node_tree, collation C
+}
 
 var pgConversionSchema = sql.Schema{}
 
 // TODO: Implement the rest of pg_database
 var pgDatabaseSchema = sql.Schema{
-	// {Name: "oid", Type: types.Oid, Default: nil, Nullable: false, Source: PgDatabaseTableName},
+	// {Name: "oid", Type: types.types.Oid, Default: nil, Nullable: false, Source: PgDatabaseTableName},
 	{Name: "datname", Type: types.Name, Default: nil, Nullable: false, Source: PgDatabaseTableName},
-	// {Name: "datdba", Type: types.Oid, Default: nil, Nullable: false, Source: PgDatabaseTableName},
+	// {Name: "datdba", Type: types.types.Oid, Default: nil, Nullable: false, Source: PgDatabaseTableName},
 	// {Name: "encoding", Type: types.Int32, Default: nil, Nullable: false, Source: PgDatabaseTableName},
-	// {Name: "datlocprovider", Type: types.BpChar, Default: nil, Nullable: false, Source: PgDatabaseTableName},
+	// {Name: "datlocprovider", Type: types.Bptypes.BpChar, Default: nil, Nullable: false, Source: PgDatabaseTableName},
 	// {Name: "datistemplate", Type: types.Bool, Default: nil, Nullable: false, Source: PgDatabaseTableName},
 	// {Name: "datallowconn", Type: types.Bool, Default: nil, Nullable: false, Source: PgDatabaseTableName},
 	// {Name: "datconnlimit", Type: types.Int32, Default: nil, Nullable: false, Source: PgDatabaseTableName},
-	// {Name: "datfrozenxid", Type: types.Xid, Default: nil, Nullable: false, Source: PgDatabaseTableName},
-	// {Name: "datminmxid", Type: types.Xid, Default: nil, Nullable: false, Source: PgDatabaseTableName},
+	// {Name: "datfrozenxid", Type: Xid, Default: nil, Nullable: false, Source: PgDatabaseTableName},
+	// {Name: "datminmxid", Type: Xid, Default: nil, Nullable: false, Source: PgDatabaseTableName},
 	// {Name: "dattablespace", Type: types.Oid, Default: nil, Nullable: false, Source: PgDatabaseTableName},
-	// {Name: "datcollate", Type: types.Text, Default: nil, Nullable: false, Source: PgDatabaseTableName},
-	// {Name: "datctype", Type: types.Text, Default: nil, Nullable: false, Source: PgDatabaseTableName},
-	// {Name: "daticulocale", Type: types.Text, Default: nil, Nullable: false, Source: PgDatabaseTableName},
+	// {Name: "datcollate", Type: types.Text, Default: nil, Nullable: false, Source: PgDatabaseTableName}, // TODO: collation C
+	// {Name: "datctype", Type: types.Text, Default: nil, Nullable: false, Source: PgDatabaseTableName}, // TODO: collation C
+	// {Name: "daticulocale", Type: types.Text, Default: nil, Nullable: true, Source: PgDatabaseTableName}, // TODO: collation C
 	// {Name: "daticurules", Type: types.Text, Default: nil, Nullable: false, Source: PgDatabaseTableName},
-	// {Name: "datcollversion", Type: types.Text, Default: nil, Nullable: false, Source: PgDatabaseTableName},
-	// {Name: "datacl", Type: []aclitem, Default: nil, Nullable: false, Source: PgDatabaseTableName},
+	// {Name: "datcollversion", Type: types.Text, Default: nil, Nullable: true, Source: PgDatabaseTableName}, // TODO: collation C
+	// {Name: "datacl", Type: types.TextArray, Default: nil, Nullable: true, Source: PgDatabaseTableName}, // TODO: type aclitem[]
 }
 
 var pgDbRoleSettingSchema = sql.Schema{}
@@ -406,7 +469,16 @@ var pgDescriptionSchema = sql.Schema{}
 
 var pgEnumSchema = sql.Schema{}
 
-var pgEventTriggerSchema = sql.Schema{}
+// TODO: Implement pg_event_trigger
+var pgEventTriggerSchema = sql.Schema{
+	{Name: "oid", Type: types.Oid, Default: nil, Nullable: false, Source: PgEventTriggerTableName},
+	{Name: "evtname", Type: types.Name, Default: nil, Nullable: false, Source: PgEventTriggerTableName},
+	{Name: "evtevent", Type: types.Name, Default: nil, Nullable: false, Source: PgEventTriggerTableName},
+	{Name: "evtowner", Type: types.Oid, Default: nil, Nullable: false, Source: PgEventTriggerTableName},
+	{Name: "evtfoid", Type: types.Oid, Default: nil, Nullable: false, Source: PgEventTriggerTableName},
+	{Name: "evtenabled", Type: types.BpChar, Default: nil, Nullable: false, Source: PgEventTriggerTableName},
+	{Name: "evttags", Type: types.TextArray, Default: nil, Nullable: true, Source: PgEventTriggerTableName}, // TODO: collation C
+}
 
 var pgExtensionSchema = sql.Schema{}
 
@@ -416,7 +488,30 @@ var pgForeignServerSchema = sql.Schema{}
 
 var pgForeignTableSchema = sql.Schema{}
 
-var pgIndexSchema = sql.Schema{}
+// TODO: Implement pg_index
+var pgIndexSchema = sql.Schema{
+	{Name: "indexrelid", Type: types.Oid, Default: nil, Nullable: false, Source: PgIndexTableName},
+	{Name: "indrelid", Type: types.Oid, Default: nil, Nullable: false, Source: PgIndexTableName},
+	{Name: "indnatts", Type: types.Int16, Default: nil, Nullable: false, Source: PgIndexTableName},
+	{Name: "indnkeyatts", Type: types.Int16, Default: nil, Nullable: false, Source: PgIndexTableName},
+	{Name: "indisunique", Type: types.Bool, Default: nil, Nullable: false, Source: PgIndexTableName},
+	{Name: "indnullsnotdistinct", Type: types.Bool, Default: nil, Nullable: false, Source: PgIndexTableName},
+	{Name: "indisprimary", Type: types.Bool, Default: nil, Nullable: false, Source: PgIndexTableName},
+	{Name: "indisexclusion", Type: types.Bool, Default: nil, Nullable: false, Source: PgIndexTableName},
+	{Name: "indimmediate", Type: types.Bool, Default: nil, Nullable: false, Source: PgIndexTableName},
+	{Name: "indisclustered", Type: types.Bool, Default: nil, Nullable: false, Source: PgIndexTableName},
+	{Name: "indisvalid", Type: types.Bool, Default: nil, Nullable: false, Source: PgIndexTableName},
+	{Name: "indcheckxmin", Type: types.Bool, Default: nil, Nullable: false, Source: PgIndexTableName},
+	{Name: "indisready", Type: types.Bool, Default: nil, Nullable: false, Source: PgIndexTableName},
+	{Name: "indislive", Type: types.Bool, Default: nil, Nullable: false, Source: PgIndexTableName},
+	{Name: "indisreplident", Type: types.Bool, Default: nil, Nullable: false, Source: PgIndexTableName},
+	{Name: "indkey", Type: types.Int16Array, Default: nil, Nullable: false, Source: PgIndexTableName},     // TODO: type int2vector
+	{Name: "indcollation", Type: types.OidArray, Default: nil, Nullable: false, Source: PgIndexTableName}, // TODO: type oidvector
+	{Name: "indclass", Type: types.OidArray, Default: nil, Nullable: false, Source: PgIndexTableName},     // TODO: type oidvector
+	{Name: "indoption", Type: types.Int16Array, Default: nil, Nullable: false, Source: PgIndexTableName},  // TODO: type int2vector
+	{Name: "indexprs", Type: types.Text, Default: nil, Nullable: true, Source: PgIndexTableName},          // TODO: type pg_node_tree, collation C
+	{Name: "indpred", Type: types.Text, Default: nil, Nullable: true, Source: PgIndexTableName},           // TODO: type pg_node_tree, collation C
+}
 
 var pgInheritsSchema = sql.Schema{}
 
@@ -428,7 +523,13 @@ var pgLargeObjectSchema = sql.Schema{}
 
 var pgLargeObjectMetadataSchema = sql.Schema{}
 
-var pgNamespaceSchema = sql.Schema{}
+// TODO: Implement pg_namespace
+var pgNamespaceSchema = sql.Schema{
+	{Name: "oid", Type: types.Oid, Default: nil, Nullable: false, Source: PgNamespaceTableName},
+	{Name: "nspname", Type: types.Name, Default: nil, Nullable: false, Source: PgNamespaceTableName},
+	{Name: "nspowner", Type: types.Oid, Default: nil, Nullable: false, Source: PgNamespaceTableName},
+	{Name: "nspacl", Type: types.TextArray, Default: nil, Nullable: true, Source: PgNamespaceTableName}, // TODO: type aclitem[]
+}
 
 var pgOpClassSchema = sql.Schema{}
 
@@ -442,7 +543,39 @@ var pgPartitionedTableSchema = sql.Schema{}
 
 var pgPolicySchema = sql.Schema{}
 
-var pgProcSchema = sql.Schema{}
+// TODO: Implement pg_proc
+var pgProcSchema = sql.Schema{
+	{Name: "oid", Type: types.Oid, Default: nil, Nullable: false, Source: PgProcTableName},
+	{Name: "proname", Type: types.Name, Default: nil, Nullable: false, Source: PgProcTableName},
+	{Name: "pronamespace", Type: types.Oid, Default: nil, Nullable: false, Source: PgProcTableName},
+	{Name: "proowner", Type: types.Oid, Default: nil, Nullable: false, Source: PgProcTableName},
+	{Name: "prolang", Type: types.Oid, Default: nil, Nullable: false, Source: PgProcTableName},
+	{Name: "procost", Type: types.Float32, Default: nil, Nullable: false, Source: PgProcTableName},
+	{Name: "prorows", Type: types.Float32, Default: nil, Nullable: false, Source: PgProcTableName},
+	{Name: "provariadic", Type: types.Oid, Default: nil, Nullable: false, Source: PgProcTableName},
+	{Name: "prosupport", Type: types.Text, Default: nil, Nullable: false, Source: PgProcTableName}, // TODO: type regproc
+	{Name: "prokind", Type: types.BpChar, Default: nil, Nullable: false, Source: PgProcTableName},
+	{Name: "prosecdef", Type: types.Bool, Default: nil, Nullable: false, Source: PgProcTableName},
+	{Name: "proleakproof", Type: types.Bool, Default: nil, Nullable: false, Source: PgProcTableName},
+	{Name: "proisstrict", Type: types.Bool, Default: nil, Nullable: false, Source: PgProcTableName},
+	{Name: "proretset", Type: types.Bool, Default: nil, Nullable: false, Source: PgProcTableName},
+	{Name: "provolatile", Type: types.BpChar, Default: nil, Nullable: false, Source: PgProcTableName},
+	{Name: "proparallel", Type: types.BpChar, Default: nil, Nullable: false, Source: PgProcTableName},
+	{Name: "pronargs", Type: types.Int16, Default: nil, Nullable: false, Source: PgProcTableName},
+	{Name: "pronargdefaults", Type: types.Int16, Default: nil, Nullable: false, Source: PgProcTableName},
+	{Name: "prorettype", Type: types.Oid, Default: nil, Nullable: false, Source: PgProcTableName},
+	{Name: "proargtypes", Type: types.OidArray, Default: nil, Nullable: false, Source: PgProcTableName}, // TODO: type oidvector
+	{Name: "proallargtypes", Type: types.OidArray, Default: nil, Nullable: true, Source: PgProcTableName},
+	{Name: "proargmodes", Type: types.TextArray, Default: nil, Nullable: true, Source: PgProcTableName}, // TODO: type char[]
+	{Name: "proargnames", Type: types.TextArray, Default: nil, Nullable: true, Source: PgProcTableName}, // TODO: collation C
+	{Name: "proargdefaults", Type: types.Text, Default: nil, Nullable: true, Source: PgProcTableName},   // TODO: type pg_node_tree, collation C
+	{Name: "protrftypes", Type: types.OidArray, Default: nil, Nullable: true, Source: PgProcTableName},
+	{Name: "prosrc", Type: types.Text, Default: nil, Nullable: false, Source: PgProcTableName}, // TODO: collation C
+	{Name: "probin", Type: types.Text, Default: nil, Nullable: true, Source: PgProcTableName},
+	{Name: "prosqlbody", Type: types.Text, Default: nil, Nullable: true, Source: PgProcTableName},     // TODO: type pg_node_tree, collation C
+	{Name: "proconfig", Type: types.TextArray, Default: nil, Nullable: true, Source: PgProcTableName}, // TODO: collation C
+	{Name: "proacl", Type: types.TextArray, Default: nil, Nullable: true, Source: PgProcTableName},    // TODO: type aclitem[]
+}
 
 var pgPublicationSchema = sql.Schema{}
 
@@ -480,7 +613,28 @@ var pgTablespaceSchema = sql.Schema{}
 
 var pgTransformSchema = sql.Schema{}
 
-var pgTriggerSchema = sql.Schema{}
+// TODO: Implement pg_trigger
+var pgTriggerSchema = sql.Schema{
+	{Name: "oid", Type: types.Oid, Default: nil, Nullable: false, Source: PgTriggerTableName},
+	{Name: "tgrelid", Type: types.Oid, Default: nil, Nullable: false, Source: PgTriggerTableName},
+	{Name: "tgparentid", Type: types.Oid, Default: nil, Nullable: false, Source: PgTriggerTableName},
+	{Name: "tgname", Type: types.Name, Default: nil, Nullable: false, Source: PgTriggerTableName},
+	{Name: "tgfoid", Type: types.Oid, Default: nil, Nullable: false, Source: PgTriggerTableName},
+	{Name: "tgtype", Type: types.Int16, Default: nil, Nullable: false, Source: PgTriggerTableName},
+	{Name: "tgenabled", Type: types.BpChar, Default: nil, Nullable: false, Source: PgTriggerTableName},
+	{Name: "tgisinternal", Type: types.Bool, Default: nil, Nullable: false, Source: PgTriggerTableName},
+	{Name: "tgconstrrelid", Type: types.Oid, Default: nil, Nullable: false, Source: PgTriggerTableName},
+	{Name: "tgconstrindid", Type: types.Oid, Default: nil, Nullable: false, Source: PgTriggerTableName},
+	{Name: "tgconstraint", Type: types.Oid, Default: nil, Nullable: false, Source: PgTriggerTableName},
+	{Name: "tgdeferrable", Type: types.Bool, Default: nil, Nullable: false, Source: PgTriggerTableName},
+	{Name: "tginitdeferred", Type: types.Bool, Default: nil, Nullable: false, Source: PgTriggerTableName},
+	{Name: "tgnargs", Type: types.Int16, Default: nil, Nullable: false, Source: PgTriggerTableName},
+	{Name: "tgattr", Type: types.Int16, Default: nil, Nullable: false, Source: PgTriggerTableName}, // TODO: type int2vector
+	{Name: "tgargs", Type: pgtypes.Bytea, Default: nil, Nullable: false, Source: PgTriggerTableName},
+	{Name: "tgqual", Type: types.Text, Default: nil, Nullable: true, Source: PgTriggerTableName}, // TODO: type pg_node_tree, collation C
+	{Name: "tgoldtable", Type: types.Name, Default: nil, Nullable: true, Source: PgTriggerTableName},
+	{Name: "tgnewtable", Type: types.Name, Default: nil, Nullable: true, Source: PgTriggerTableName},
+}
 
 var pgTsConfigSchema = sql.Schema{}
 
@@ -492,40 +646,40 @@ var pgTsParserSchema = sql.Schema{}
 
 var pgTsTemplateSchema = sql.Schema{}
 
-// TODO: Not all types are accurate
+// TODO: Implement pg_type
 var pgTypeSchema = sql.Schema{
 	{Name: "oid", Type: types.Oid, Default: nil, Nullable: false, Source: PgTypeTableName},
-	{Name: "typname", Type: types.Int32, Default: nil, Nullable: false, Source: PgTypeTableName},
+	{Name: "typname", Type: types.Name, Default: nil, Nullable: false, Source: PgTypeTableName},
 	{Name: "typnamespace", Type: types.Oid, Default: nil, Nullable: false, Source: PgTypeTableName},
 	{Name: "typowner", Type: types.Oid, Default: nil, Nullable: false, Source: PgTypeTableName},
-	{Name: "typlen", Type: types.Int32, Default: nil, Nullable: false, Source: PgTypeTableName},
-	{Name: "typbyval", Type: types.Int32, Default: nil, Nullable: false, Source: PgTypeTableName},
-	{Name: "typtype", Type: types.Int32, Default: nil, Nullable: false, Source: PgTypeTableName},
-	{Name: "typcategory", Type: types.Int32, Default: nil, Nullable: false, Source: PgTypeTableName},
-	{Name: "typispreferred", Type: types.Int32, Default: nil, Nullable: false, Source: PgTypeTableName},
-	{Name: "typisdefined", Type: types.Int32, Default: nil, Nullable: false, Source: PgTypeTableName},
-	{Name: "typdelim", Type: types.Int32, Default: nil, Nullable: false, Source: PgTypeTableName},
+	{Name: "typlen", Type: types.Int16, Default: nil, Nullable: false, Source: PgTypeTableName},
+	{Name: "typbyval", Type: types.Bool, Default: nil, Nullable: false, Source: PgTypeTableName},
+	{Name: "typtype", Type: types.BpChar, Default: nil, Nullable: false, Source: PgTypeTableName},
+	{Name: "typcategory", Type: types.BpChar, Default: nil, Nullable: false, Source: PgTypeTableName},
+	{Name: "typispreferred", Type: types.Bool, Default: nil, Nullable: false, Source: PgTypeTableName},
+	{Name: "typisdefined", Type: types.Bool, Default: nil, Nullable: false, Source: PgTypeTableName},
+	{Name: "typdelim", Type: types.BpChar, Default: nil, Nullable: false, Source: PgTypeTableName},
 	{Name: "typrelid", Type: types.Oid, Default: nil, Nullable: false, Source: PgTypeTableName},
-	{Name: "typsubscript", Type: types.Int32, Default: nil, Nullable: false, Source: PgTypeTableName},
+	{Name: "typsubscript", Type: types.Text, Default: nil, Nullable: false, Source: PgTypeTableName}, // TODO: type regproc
 	{Name: "typelem", Type: types.Oid, Default: nil, Nullable: false, Source: PgTypeTableName},
 	{Name: "typarray", Type: types.Oid, Default: nil, Nullable: false, Source: PgTypeTableName},
-	{Name: "typinput", Type: types.Int32, Default: nil, Nullable: false, Source: PgTypeTableName},
-	{Name: "typoutput", Type: types.Int32, Default: nil, Nullable: false, Source: PgTypeTableName},
-	{Name: "typreceive", Type: types.Int32, Default: nil, Nullable: false, Source: PgTypeTableName},
-	{Name: "typsend", Type: types.Int32, Default: nil, Nullable: false, Source: PgTypeTableName},
-	{Name: "typmodin", Type: types.Int32, Default: nil, Nullable: false, Source: PgTypeTableName},
-	{Name: "typmodout", Type: types.Int32, Default: nil, Nullable: false, Source: PgTypeTableName},
-	{Name: "typanalyze", Type: types.Int32, Default: nil, Nullable: false, Source: PgTypeTableName},
-	{Name: "typalign", Type: types.Int32, Default: nil, Nullable: false, Source: PgTypeTableName},
-	{Name: "typstorage", Type: types.Int32, Default: nil, Nullable: false, Source: PgTypeTableName},
-	{Name: "typnotnull", Type: types.Int32, Default: nil, Nullable: false, Source: PgTypeTableName},
+	{Name: "typinput", Type: types.Text, Default: nil, Nullable: false, Source: PgTypeTableName},   // TODO: type regproc
+	{Name: "typoutput", Type: types.Text, Default: nil, Nullable: false, Source: PgTypeTableName},  // TODO: type regproc
+	{Name: "typreceive", Type: types.Text, Default: nil, Nullable: false, Source: PgTypeTableName}, // TODO: type regproc
+	{Name: "typsend", Type: types.Text, Default: nil, Nullable: false, Source: PgTypeTableName},    // TODO: type regproc
+	{Name: "typmodin", Type: types.Text, Default: nil, Nullable: false, Source: PgTypeTableName},   // TODO: type regproc
+	{Name: "typmodout", Type: types.Text, Default: nil, Nullable: false, Source: PgTypeTableName},  // TODO: type regproc
+	{Name: "typanalyze", Type: types.Text, Default: nil, Nullable: false, Source: PgTypeTableName}, // TODO: type regproc
+	{Name: "typalign", Type: types.BpChar, Default: nil, Nullable: false, Source: PgTypeTableName},
+	{Name: "typstorage", Type: types.BpChar, Default: nil, Nullable: false, Source: PgTypeTableName},
+	{Name: "typnotnull", Type: types.Bool, Default: nil, Nullable: false, Source: PgTypeTableName},
 	{Name: "typbasetype", Type: types.Oid, Default: nil, Nullable: false, Source: PgTypeTableName},
 	{Name: "typtypmod", Type: types.Int32, Default: nil, Nullable: false, Source: PgTypeTableName},
 	{Name: "typndims", Type: types.Int32, Default: nil, Nullable: false, Source: PgTypeTableName},
 	{Name: "typcollation", Type: types.Oid, Default: nil, Nullable: false, Source: PgTypeTableName},
-	{Name: "typdefaultbin", Type: types.Int32, Default: nil, Nullable: true, Source: PgTypeTableName},
-	{Name: "typdefault", Type: types.Int32, Default: nil, Nullable: true, Source: PgTypeTableName},
-	{Name: "typacl", Type: types.Int32, Default: nil, Nullable: true, Source: PgTypeTableName},
+	{Name: "typdefaultbin", Type: types.Text, Default: nil, Nullable: true, Source: PgTypeTableName}, // TODO: type pg_node_tree, collation C
+	{Name: "typdefault", Type: types.Text, Default: nil, Nullable: true, Source: PgTypeTableName},    // TODO: collation C
+	{Name: "typacl", Type: types.TextArray, Default: nil, Nullable: true, Source: PgTypeTableName},   // TODO: type aclitem[]
 }
 
 var pgUserMappingSchema = sql.Schema{}
@@ -561,7 +715,7 @@ var pgCatalogDb = &pgCatalogDatabase{
 		PgAttributeTableName: &pgCatalogTable{
 			name:   PgAttributeTableName,
 			schema: pgAttributeSchema,
-			reader: emptyRowIter,
+			reader: pgAttributeRowIter,
 		},
 		PgAuthMembersTableName: &pgCatalogTable{
 			name:   PgAuthMembersTableName,
@@ -581,7 +735,7 @@ var pgCatalogDb = &pgCatalogDatabase{
 		PgClassTableName: &pgCatalogTable{
 			name:   PgClassTableName,
 			schema: pgClassSchema,
-			reader: emptyRowIter,
+			reader: pgClassRowIter,
 		},
 		PgCollationTableName: &pgCatalogTable{
 			name:   PgCollationTableName,
@@ -601,7 +755,7 @@ var pgCatalogDb = &pgCatalogDatabase{
 		PgDatabaseTableName: &pgCatalogTable{
 			name:   PgDatabaseTableName,
 			schema: pgDatabaseSchema,
-			reader: databaseRowIter,
+			reader: pgDatabaseRowIter,
 		},
 		PgDbRoleSettingTableName: &pgCatalogTable{
 			name:   PgDbRoleSettingTableName,

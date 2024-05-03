@@ -28,6 +28,13 @@ func TestPgCatalog(t *testing.T) {
 						{"test"},
 					},
 				},
+				// {
+				// 	Query: `SELECT col_attr.attname FROM "information_schema"."columns" LEFT JOIN "pg_catalog"."pg_attribute" AS "col_attr" ON "col_attr"."attname" = "columns"."column_name" WHERE ("table_schema" = 'postgres');`,
+				// 	Expected: []sql.Row{
+				// 		{"pk"},
+				// 		{"v1"},
+				// 	},
+				// },
 			},
 		},
 	})

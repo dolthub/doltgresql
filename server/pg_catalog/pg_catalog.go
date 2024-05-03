@@ -165,8 +165,8 @@ func partitionKey(tableName string) []byte {
 	return []byte(PgCatalogName + "." + tableName)
 }
 
-// databaseRowIter implements the sql.RowIter for the pg_catalog.pg_database table.
-func databaseRowIter(ctx *sql.Context, c sql.Catalog) (sql.RowIter, error) {
+// pgDatabaseRowIter implements the sql.RowIter for the pg_catalog.pg_database table.
+func pgDatabaseRowIter(ctx *sql.Context, c sql.Catalog) (sql.RowIter, error) {
 	dbs := c.AllDatabases(ctx)
 
 	var rows []sql.Row
@@ -175,10 +175,80 @@ func databaseRowIter(ctx *sql.Context, c sql.Catalog) (sql.RowIter, error) {
 		if name == "information_schema" || name == "pg_catalog" {
 			continue
 		}
+		// TODO: Add the rest of the columns
 		rows = append(rows, sql.Row{
 			name, // datname
 		})
 	}
+
+	return sql.RowsToRowIter(rows...), nil
+}
+
+// pgAttributeRowIter implements the sql.RowIter for the pg_catalog.pg_attribute table.
+func pgAttributeRowIter(ctx *sql.Context, c sql.Catalog) (sql.RowIter, error) {
+	var rows []sql.Row
+	for _, db := range c.AllDatabases(ctx) {
+		err := sql.DBTableIter(ctx, db, func(t sql.Table) (cont bool, err error) {
+			for _, col := range t.Schema() {
+				generated := ""
+				if col.Generated != nil {
+					generated = "s"
+				}
+
+				dimensions := 0
+				s, ok := col.Type.(sql.SetType)
+				if ok {
+					dimensions = int(s.NumberOfElements())
+				}
+
+				hasDefault := col.Default != nil
+
+				rows = append(rows, sql.Row{
+					col.Name,     // attname
+					dimensions,   // attndims
+					col.Nullable, // attnotnull
+					hasDefault,   // atthasdef
+					generated,    // attgenerated
+				})
+			}
+			return true, nil
+		})
+		if err != nil {
+			return nil, err
+		}
+	}
+
+	return sql.RowsToRowIter(rows...), nil
+}
+
+// pgClassRowIter implements the sql.RowIter for the pg_catalog.pg_class table.
+func pgClassRowIter(ctx *sql.Context, c sql.Catalog) (sql.RowIter, error) {
+	var rows []sql.Row
+	for _, db := range c.AllDatabases(ctx) {
+		err := sql.DBTableIter(ctx, db, func(t sql.Table) (cont bool, err error) {
+			indexTable, ok := t.(sql.IndexAddressable)
+			hasIndex := false
+			if ok {
+				indexes, err := indexTable.GetIndexes(ctx)
+				if err != nil {
+					return false, err
+				}
+				hasIndex = len(indexes) > 0
+			}
+
+			rows = append(rows, sql.Row{
+				t.Name(), // relname
+				hasIndex, // relhasindex
+				"r",      // relkind
+			})
+			return true, nil
+		})
+		if err != nil {
+			return nil, err
+		}
+	}
+
+	// TODO: Include indexes, sequences, views, materialized views, composite types, TOAST tables
 
 	return sql.RowsToRowIter(rows...), nil
 }
