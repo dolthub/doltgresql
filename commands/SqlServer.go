@@ -2,17 +2,18 @@ package commands
 
 import (
 	"context"
-	"github.com/dolthub/dolt/go/cmd/dolt/commands"
-	"github.com/dolthub/dolt/go/cmd/dolt/commands/sqlserver"
-	"github.com/dolthub/dolt/go/libraries/events"
-	"github.com/dolthub/dolt/go/libraries/utils/config"
-	"github.com/dolthub/doltgresql/server"
-	"github.com/fatih/color"
 	"strconv"
 
 	"github.com/dolthub/dolt/go/cmd/dolt/cli"
+	"github.com/dolthub/dolt/go/cmd/dolt/commands"
+	"github.com/dolthub/dolt/go/cmd/dolt/commands/sqlserver"
 	"github.com/dolthub/dolt/go/libraries/doltcore/env"
+	"github.com/dolthub/dolt/go/libraries/events"
 	"github.com/dolthub/dolt/go/libraries/utils/argparser"
+	"github.com/dolthub/dolt/go/libraries/utils/config"
+	"github.com/fatih/color"
+
+	"github.com/dolthub/doltgresql/server"
 )
 
 var sqlServerDocs = cli.CommandDocumentationContent{
