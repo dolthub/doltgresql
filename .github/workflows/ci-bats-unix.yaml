@@ -47,11 +47,11 @@ jobs:
       - name: Install DoltgreSQL
         working-directory: ./
         run: |
-          go build -mod=readonly -o .ci_bin/doltgresql .
+          go build -mod=readonly -o .ci_bin/doltgres .
       - name: Setup DoltgreSQL Config
         run: |
-          doltgresql config --global --add user.name 'Dolthub Actions'
-          doltgresql config --global --add user.email 'actions@dolthub.com'
+          doltgres config --global --add user.name 'Dolthub Actions'
+          doltgres config --global --add user.email 'actions@dolthub.com'
       - name: Install PSQL Ubuntu
         if: matrix.os == 'ubuntu-22.04'
         run: |
