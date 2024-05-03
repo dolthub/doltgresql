@@ -60,9 +60,9 @@ func boolExplicit() {
 		FromType: pgtypes.Bool,
 		ToType:   pgtypes.Name,
 		Function: func(ctx framework.Context, val any, targetType pgtypes.DoltgresType) (any, error) {
-			str := "false"
+			str := "f"
 			if val.(bool) {
-				str = "true"
+				str = "t"
 			}
 			return handleCharExplicitCast(str, targetType)
 		},
@@ -126,9 +126,9 @@ func boolImplicit() {
 		FromType: pgtypes.Bool,
 		ToType:   pgtypes.Name,
 		Function: func(ctx framework.Context, val any, targetType pgtypes.DoltgresType) (any, error) {
-			str := "false"
+			str := "f"
 			if val.(bool) {
-				str = "true"
+				str = "t"
 			}
 			return handleCharImplicitCast(str, targetType)
 		},
