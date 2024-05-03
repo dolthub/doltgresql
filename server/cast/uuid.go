@@ -37,6 +37,13 @@ func uuidExplicit() {
 	})
 	framework.MustAddExplicitTypeCast(framework.TypeCast{
 		FromType: pgtypes.Uuid,
+		ToType:   pgtypes.Name,
+		Function: func(ctx framework.Context, val any, targetType pgtypes.DoltgresType) (any, error) {
+			return handleCharExplicitCast(val.(uuid.UUID).String(), targetType)
+		},
+	})
+	framework.MustAddExplicitTypeCast(framework.TypeCast{
+		FromType: pgtypes.Uuid,
 		ToType:   pgtypes.Text,
 		Function: func(ctx framework.Context, val any, targetType pgtypes.DoltgresType) (any, error) {
 			return val.(uuid.UUID).String(), nil
@@ -63,6 +70,13 @@ func uuidImplicit() {
 	framework.MustAddImplicitTypeCast(framework.TypeCast{
 		FromType: pgtypes.Uuid,
 		ToType:   pgtypes.BpChar,
+		Function: func(ctx framework.Context, val any, targetType pgtypes.DoltgresType) (any, error) {
+			return handleCharImplicitCast(val.(uuid.UUID).String(), targetType)
+		},
+	})
+	framework.MustAddImplicitTypeCast(framework.TypeCast{
+		FromType: pgtypes.Uuid,
+		ToType:   pgtypes.Name,
 		Function: func(ctx framework.Context, val any, targetType pgtypes.DoltgresType) (any, error) {
 			return handleCharImplicitCast(val.(uuid.UUID).String(), targetType)
 		},

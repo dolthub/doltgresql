@@ -15,99 +15,96 @@
 package cast
 
 import (
-	"encoding/hex"
+	"strconv"
 
 	"github.com/dolthub/doltgresql/server/functions/framework"
 	pgtypes "github.com/dolthub/doltgresql/server/types"
 )
 
-// initBytea handles all explicit and implicit casts that are built-in. This comprises only the "From" types.
-func initBytea() {
-	// TODO: handle the different output formats?
-	byteaExplicit()
-	byteaImplicit()
+// initXid handles all explicit and implicit casts that are built-in. This comprises only the "From" types.
+func initXid() {
+	xidExplicit()
+	xidImplicit()
 }
 
-// byteaExplicit registers all explicit casts. This comprises only the "From" types.
-func byteaExplicit() {
+// xidExplicit registers all explicit casts. This comprises only the "From" types.
+func xidExplicit() {
 	framework.MustAddExplicitTypeCast(framework.TypeCast{
-		FromType: pgtypes.Bytea,
+		FromType: pgtypes.Xid,
 		ToType:   pgtypes.BpChar,
 		Function: func(ctx framework.Context, val any, targetType pgtypes.DoltgresType) (any, error) {
-			str := `\x` + hex.EncodeToString(val.([]byte))
+			str := strconv.FormatInt(int64(val.(uint32)), 10)
 			return handleCharExplicitCast(str, targetType)
 		},
 	})
 	framework.MustAddExplicitTypeCast(framework.TypeCast{
-		FromType: pgtypes.Bytea,
-		ToType:   pgtypes.Bytea,
+		FromType: pgtypes.Xid,
+		ToType:   pgtypes.Name,
+		Function: func(ctx framework.Context, val any, targetType pgtypes.DoltgresType) (any, error) {
+			return strconv.FormatInt(int64(val.(uint32)), 10), nil
+		},
+	})
+	framework.MustAddExplicitTypeCast(framework.TypeCast{
+		FromType: pgtypes.Xid,
+		ToType:   pgtypes.Text,
+		Function: func(ctx framework.Context, val any, targetType pgtypes.DoltgresType) (any, error) {
+			return strconv.FormatInt(int64(val.(uint32)), 10), nil
+		},
+	})
+	framework.MustAddExplicitTypeCast(framework.TypeCast{
+		FromType: pgtypes.Xid,
+		ToType:   pgtypes.VarChar,
+		Function: func(ctx framework.Context, val any, targetType pgtypes.DoltgresType) (any, error) {
+			str := strconv.FormatInt(int64(val.(uint32)), 10)
+			return handleCharExplicitCast(str, targetType)
+		},
+	})
+	framework.MustAddExplicitTypeCast(framework.TypeCast{
+		FromType: pgtypes.Xid,
+		ToType:   pgtypes.Xid,
 		Function: func(ctx framework.Context, val any, targetType pgtypes.DoltgresType) (any, error) {
 			return val, nil
 		},
 	})
-	framework.MustAddExplicitTypeCast(framework.TypeCast{
-		FromType: pgtypes.Bytea,
-		ToType:   pgtypes.Name,
-		Function: func(ctx framework.Context, val any, targetType pgtypes.DoltgresType) (any, error) {
-			str := `\x` + hex.EncodeToString(val.([]byte))
-			return handleCharExplicitCast(str, targetType)
-		},
-	})
-	framework.MustAddExplicitTypeCast(framework.TypeCast{
-		FromType: pgtypes.Bytea,
-		ToType:   pgtypes.Text,
-		Function: func(ctx framework.Context, val any, targetType pgtypes.DoltgresType) (any, error) {
-			return `\x` + hex.EncodeToString(val.([]byte)), nil
-		},
-	})
-	framework.MustAddExplicitTypeCast(framework.TypeCast{
-		FromType: pgtypes.Bytea,
-		ToType:   pgtypes.VarChar,
-		Function: func(ctx framework.Context, val any, targetType pgtypes.DoltgresType) (any, error) {
-			str := `\x` + hex.EncodeToString(val.([]byte))
-			return handleCharExplicitCast(str, targetType)
-		},
-	})
 }
 
-// byteaImplicit registers all implicit casts. This comprises only the "From" types.
-func byteaImplicit() {
+// xidImplicit registers all implicit casts. This comprises only the "From" types.
+func xidImplicit() {
 	framework.MustAddImplicitTypeCast(framework.TypeCast{
-		FromType: pgtypes.Bytea,
+		FromType: pgtypes.Xid,
 		ToType:   pgtypes.BpChar,
 		Function: func(ctx framework.Context, val any, targetType pgtypes.DoltgresType) (any, error) {
-			str := `\x` + hex.EncodeToString(val.([]byte))
+			str := strconv.FormatInt(int64(val.(uint32)), 10)
 			return handleCharImplicitCast(str, targetType)
 		},
 	})
 	framework.MustAddImplicitTypeCast(framework.TypeCast{
-		FromType: pgtypes.Bytea,
-		ToType:   pgtypes.Bytea,
-		Function: func(ctx framework.Context, val any, targetType pgtypes.DoltgresType) (any, error) {
-			return val, nil
-		},
-	})
-	framework.MustAddImplicitTypeCast(framework.TypeCast{
-		FromType: pgtypes.Bytea,
+		FromType: pgtypes.Xid,
 		ToType:   pgtypes.Name,
 		Function: func(ctx framework.Context, val any, targetType pgtypes.DoltgresType) (any, error) {
-			str := `\x` + hex.EncodeToString(val.([]byte))
-			return handleCharImplicitCast(str, targetType)
+			return strconv.FormatInt(int64(val.(uint32)), 10), nil
 		},
 	})
 	framework.MustAddImplicitTypeCast(framework.TypeCast{
-		FromType: pgtypes.Bytea,
+		FromType: pgtypes.Xid,
 		ToType:   pgtypes.Text,
 		Function: func(ctx framework.Context, val any, targetType pgtypes.DoltgresType) (any, error) {
-			return `\x` + hex.EncodeToString(val.([]byte)), nil
+			return strconv.FormatInt(int64(val.(uint32)), 10), nil
 		},
 	})
 	framework.MustAddImplicitTypeCast(framework.TypeCast{
-		FromType: pgtypes.Bytea,
+		FromType: pgtypes.Xid,
 		ToType:   pgtypes.VarChar,
 		Function: func(ctx framework.Context, val any, targetType pgtypes.DoltgresType) (any, error) {
-			str := `\x` + hex.EncodeToString(val.([]byte))
+			str := strconv.FormatInt(int64(val.(uint32)), 10)
 			return handleCharImplicitCast(str, targetType)
+		},
+	})
+	framework.MustAddImplicitTypeCast(framework.TypeCast{
+		FromType: pgtypes.Xid,
+		ToType:   pgtypes.Xid,
+		Function: func(ctx framework.Context, val any, targetType pgtypes.DoltgresType) (any, error) {
+			return val, nil
 		},
 	})
 }

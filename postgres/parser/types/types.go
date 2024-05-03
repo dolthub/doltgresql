@@ -1521,6 +1521,8 @@ func (t *T) SQLStandardNameWithTypmod(haveTypmod bool, typmod int) string {
 			return "regprocedure"
 		case oid.T_regtype:
 			return "regtype"
+		case oid.T_xid:
+			return "xid"
 		default:
 			panic(errors.AssertionFailedf("unexpected Oid: %v", errors.Safe(t.Oid())))
 		}

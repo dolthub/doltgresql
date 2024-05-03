@@ -37,6 +37,10 @@ var (
 	Oid = &T{InternalType: InternalType{
 		Family: OidFamily, Oid: oid.T_oid, Locale: &emptyLocale}}
 
+	// Xid is the type of a Postgres internal transaction ID value.
+	Xid = &T{InternalType: InternalType{
+		Family: OidFamily, Oid: oid.T_xid, Locale: &emptyLocale}}
+
 	// Regclass is the type of a Postgres regclass OID variant (T_regclass).
 	RegClass = &T{InternalType: InternalType{
 		Family: OidFamily, Oid: oid.T_regclass, Locale: &emptyLocale}}
@@ -105,6 +109,7 @@ var OidToType = map[oid.Oid]*T{
 	oid.T_uuid:         Uuid,
 	oid.T_varbit:       VarBit,
 	oid.T_varchar:      VarChar,
+	oid.T_xid:          Xid,
 
 	oidext.T_geometry:  Geometry,
 	oidext.T_geography: Geography,
@@ -147,6 +152,7 @@ var oidToArrayOid = map[oid.Oid]oid.Oid{
 	oid.T_uuid:         oid.T__uuid,
 	oid.T_varbit:       oid.T__varbit,
 	oid.T_varchar:      oid.T__varchar,
+	oid.T_xid:          oid.T__xid,
 
 	oidext.T_geometry:  oidext.T__geometry,
 	oidext.T_geography: oidext.T__geography,
