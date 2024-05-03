@@ -308,18 +308,6 @@ const (
 	PgViewsTableName = "pg_views"
 )
 
-// Oid is an Object Identifier Type.
-var Oid = types.Int64
-
-// Xid is a Transaction Identifier Type.
-var Xid = types.Int64
-
-// Name is an internal type for object names. The length, max_identifier_length, is defined from NAMEDATALEN - 1.
-var Name = types.VarCharType{Length: 63}
-
-// Char is a single-byte internal type.
-var Char = types.VarCharType{Length: 1}
-
 // ==================================
 //
 // 		pg_catalog table schemas
@@ -346,23 +334,23 @@ var pgCastSchema = sql.Schema{}
 
 // TODO: Not all types are accurate
 var pgClassSchema = sql.Schema{
-	{Name: "oid", Type: Oid, Default: nil, Nullable: false, Source: PgClassTableName},
-	{Name: "relname", Type: Name, Default: nil, Nullable: false, Source: PgClassTableName},
-	{Name: "relnamespace", Type: Oid, Default: nil, Nullable: false, Source: PgClassTableName},
-	{Name: "reltype", Type: Oid, Default: nil, Nullable: false, Source: PgClassTableName},
-	{Name: "reloftype", Type: Oid, Default: nil, Nullable: false, Source: PgClassTableName},
-	{Name: "relowner", Type: Oid, Default: nil, Nullable: false, Source: PgClassTableName},
-	{Name: "relam", Type: Oid, Default: nil, Nullable: false, Source: PgClassTableName},
-	{Name: "relfilenode", Type: Oid, Default: nil, Nullable: false, Source: PgClassTableName},
-	{Name: "reltablespace", Type: Oid, Default: nil, Nullable: false, Source: PgClassTableName},
+	{Name: "oid", Type: types.Oid, Default: nil, Nullable: false, Source: PgClassTableName},
+	{Name: "relname", Type: types.Name, Default: nil, Nullable: false, Source: PgClassTableName},
+	{Name: "relnamespace", Type: types.Oid, Default: nil, Nullable: false, Source: PgClassTableName},
+	{Name: "reltype", Type: types.Oid, Default: nil, Nullable: false, Source: PgClassTableName},
+	{Name: "reloftype", Type: types.Oid, Default: nil, Nullable: false, Source: PgClassTableName},
+	{Name: "relowner", Type: types.Oid, Default: nil, Nullable: false, Source: PgClassTableName},
+	{Name: "relam", Type: types.Oid, Default: nil, Nullable: false, Source: PgClassTableName},
+	{Name: "relfilenode", Type: types.Oid, Default: nil, Nullable: false, Source: PgClassTableName},
+	{Name: "reltablespace", Type: types.Oid, Default: nil, Nullable: false, Source: PgClassTableName},
 	{Name: "relpages", Type: types.Int32, Default: nil, Nullable: false, Source: PgClassTableName},
 	{Name: "reltuples", Type: types.Float32, Default: nil, Nullable: false, Source: PgClassTableName},
 	{Name: "relallvisible", Type: types.Int32, Default: nil, Nullable: false, Source: PgClassTableName},
-	{Name: "reltoastrelid", Type: Oid, Default: nil, Nullable: false, Source: PgClassTableName},
+	{Name: "reltoastrelid", Type: types.Oid, Default: nil, Nullable: false, Source: PgClassTableName},
 	{Name: "relhasindex", Type: types.Bool, Default: nil, Nullable: false, Source: PgClassTableName},
 	{Name: "relisshared", Type: types.Bool, Default: nil, Nullable: false, Source: PgClassTableName},
-	{Name: "relpersistence", Type: Char, Default: nil, Nullable: false, Source: PgClassTableName},
-	{Name: "relkind", Type: Char, Default: nil, Nullable: false, Source: PgClassTableName},
+	{Name: "relpersistence", Type: types.BpChar, Default: nil, Nullable: false, Source: PgClassTableName},
+	{Name: "relkind", Type: types.BpChar, Default: nil, Nullable: false, Source: PgClassTableName},
 	{Name: "relnatts", Type: types.Int16, Default: nil, Nullable: false, Source: PgClassTableName},
 	{Name: "relchecks", Type: types.Int16, Default: nil, Nullable: false, Source: PgClassTableName},
 	{Name: "relhasrules", Type: types.Bool, Default: nil, Nullable: false, Source: PgClassTableName},
@@ -371,11 +359,11 @@ var pgClassSchema = sql.Schema{
 	{Name: "relrowsecurity", Type: types.Bool, Default: nil, Nullable: false, Source: PgClassTableName},
 	{Name: "relforcerowsecurity", Type: types.Bool, Default: nil, Nullable: false, Source: PgClassTableName},
 	{Name: "relispopulated", Type: types.Bool, Default: nil, Nullable: false, Source: PgClassTableName},
-	{Name: "relreplident", Type: Char, Default: nil, Nullable: false, Source: PgClassTableName},
+	{Name: "relreplident", Type: types.BpChar, Default: nil, Nullable: false, Source: PgClassTableName},
 	{Name: "relispartition", Type: types.Bool, Default: nil, Nullable: false, Source: PgClassTableName},
-	{Name: "relrewrite", Type: Oid, Default: nil, Nullable: false, Source: PgClassTableName},
-	{Name: "relfrozenxid", Type: Xid, Default: nil, Nullable: false, Source: PgClassTableName},
-	{Name: "relminmxid", Type: Xid, Default: nil, Nullable: false, Source: PgClassTableName},
+	{Name: "relrewrite", Type: types.Oid, Default: nil, Nullable: false, Source: PgClassTableName},
+	{Name: "relfrozenxid", Type: types.Xid, Default: nil, Nullable: false, Source: PgClassTableName},
+	{Name: "relminmxid", Type: types.Xid, Default: nil, Nullable: false, Source: PgClassTableName},
 	{Name: "relacl", Type: types.Int16, Default: nil, Nullable: true, Source: PgClassTableName},
 	{Name: "reloptions", Type: types.Int16, Default: nil, Nullable: true, Source: PgClassTableName},
 	{Name: "relpartbound", Type: types.Int16, Default: nil, Nullable: true, Source: PgClassTableName},
@@ -389,17 +377,17 @@ var pgConversionSchema = sql.Schema{}
 
 // TODO: Implement the rest of pg_database
 var pgDatabaseSchema = sql.Schema{
-	// {Name: "oid", Type: Oid, Default: nil, Nullable: false, Source: PgDatabaseTableName},
-	{Name: "datname", Type: Name, Default: nil, Nullable: false, Source: PgDatabaseTableName},
-	// {Name: "datdba", Type: Oid, Default: nil, Nullable: false, Source: PgDatabaseTableName},
+	// {Name: "oid", Type: types.Oid, Default: nil, Nullable: false, Source: PgDatabaseTableName},
+	{Name: "datname", Type: types.Name, Default: nil, Nullable: false, Source: PgDatabaseTableName},
+	// {Name: "datdba", Type: types.Oid, Default: nil, Nullable: false, Source: PgDatabaseTableName},
 	// {Name: "encoding", Type: types.Int32, Default: nil, Nullable: false, Source: PgDatabaseTableName},
-	// {Name: "datlocprovider", Type: Char, Default: nil, Nullable: false, Source: PgDatabaseTableName},
+	// {Name: "datlocprovider", Type: types.BpChar, Default: nil, Nullable: false, Source: PgDatabaseTableName},
 	// {Name: "datistemplate", Type: types.Bool, Default: nil, Nullable: false, Source: PgDatabaseTableName},
 	// {Name: "datallowconn", Type: types.Bool, Default: nil, Nullable: false, Source: PgDatabaseTableName},
 	// {Name: "datconnlimit", Type: types.Int32, Default: nil, Nullable: false, Source: PgDatabaseTableName},
-	// {Name: "datfrozenxid", Type: Xid, Default: nil, Nullable: false, Source: PgDatabaseTableName},
-	// {Name: "datminmxid", Type: Xid, Default: nil, Nullable: false, Source: PgDatabaseTableName},
-	// {Name: "dattablespace", Type: Oid, Default: nil, Nullable: false, Source: PgDatabaseTableName},
+	// {Name: "datfrozenxid", Type: types.Xid, Default: nil, Nullable: false, Source: PgDatabaseTableName},
+	// {Name: "datminmxid", Type: types.Xid, Default: nil, Nullable: false, Source: PgDatabaseTableName},
+	// {Name: "dattablespace", Type: types.Oid, Default: nil, Nullable: false, Source: PgDatabaseTableName},
 	// {Name: "datcollate", Type: types.Text, Default: nil, Nullable: false, Source: PgDatabaseTableName},
 	// {Name: "datctype", Type: types.Text, Default: nil, Nullable: false, Source: PgDatabaseTableName},
 	// {Name: "daticulocale", Type: types.Text, Default: nil, Nullable: false, Source: PgDatabaseTableName},
@@ -506,10 +494,10 @@ var pgTsTemplateSchema = sql.Schema{}
 
 // TODO: Not all types are accurate
 var pgTypeSchema = sql.Schema{
-	{Name: "oid", Type: Oid, Default: nil, Nullable: false, Source: PgTypeTableName},
+	{Name: "oid", Type: types.Oid, Default: nil, Nullable: false, Source: PgTypeTableName},
 	{Name: "typname", Type: types.Int32, Default: nil, Nullable: false, Source: PgTypeTableName},
-	{Name: "typnamespace", Type: Oid, Default: nil, Nullable: false, Source: PgTypeTableName},
-	{Name: "typowner", Type: Oid, Default: nil, Nullable: false, Source: PgTypeTableName},
+	{Name: "typnamespace", Type: types.Oid, Default: nil, Nullable: false, Source: PgTypeTableName},
+	{Name: "typowner", Type: types.Oid, Default: nil, Nullable: false, Source: PgTypeTableName},
 	{Name: "typlen", Type: types.Int32, Default: nil, Nullable: false, Source: PgTypeTableName},
 	{Name: "typbyval", Type: types.Int32, Default: nil, Nullable: false, Source: PgTypeTableName},
 	{Name: "typtype", Type: types.Int32, Default: nil, Nullable: false, Source: PgTypeTableName},
@@ -517,10 +505,10 @@ var pgTypeSchema = sql.Schema{
 	{Name: "typispreferred", Type: types.Int32, Default: nil, Nullable: false, Source: PgTypeTableName},
 	{Name: "typisdefined", Type: types.Int32, Default: nil, Nullable: false, Source: PgTypeTableName},
 	{Name: "typdelim", Type: types.Int32, Default: nil, Nullable: false, Source: PgTypeTableName},
-	{Name: "typrelid", Type: Oid, Default: nil, Nullable: false, Source: PgTypeTableName},
+	{Name: "typrelid", Type: types.Oid, Default: nil, Nullable: false, Source: PgTypeTableName},
 	{Name: "typsubscript", Type: types.Int32, Default: nil, Nullable: false, Source: PgTypeTableName},
-	{Name: "typelem", Type: Oid, Default: nil, Nullable: false, Source: PgTypeTableName},
-	{Name: "typarray", Type: Oid, Default: nil, Nullable: false, Source: PgTypeTableName},
+	{Name: "typelem", Type: types.Oid, Default: nil, Nullable: false, Source: PgTypeTableName},
+	{Name: "typarray", Type: types.Oid, Default: nil, Nullable: false, Source: PgTypeTableName},
 	{Name: "typinput", Type: types.Int32, Default: nil, Nullable: false, Source: PgTypeTableName},
 	{Name: "typoutput", Type: types.Int32, Default: nil, Nullable: false, Source: PgTypeTableName},
 	{Name: "typreceive", Type: types.Int32, Default: nil, Nullable: false, Source: PgTypeTableName},
@@ -531,10 +519,10 @@ var pgTypeSchema = sql.Schema{
 	{Name: "typalign", Type: types.Int32, Default: nil, Nullable: false, Source: PgTypeTableName},
 	{Name: "typstorage", Type: types.Int32, Default: nil, Nullable: false, Source: PgTypeTableName},
 	{Name: "typnotnull", Type: types.Int32, Default: nil, Nullable: false, Source: PgTypeTableName},
-	{Name: "typbasetype", Type: Oid, Default: nil, Nullable: false, Source: PgTypeTableName},
+	{Name: "typbasetype", Type: types.Oid, Default: nil, Nullable: false, Source: PgTypeTableName},
 	{Name: "typtypmod", Type: types.Int32, Default: nil, Nullable: false, Source: PgTypeTableName},
 	{Name: "typndims", Type: types.Int32, Default: nil, Nullable: false, Source: PgTypeTableName},
-	{Name: "typcollation", Type: Oid, Default: nil, Nullable: false, Source: PgTypeTableName},
+	{Name: "typcollation", Type: types.Oid, Default: nil, Nullable: false, Source: PgTypeTableName},
 	{Name: "typdefaultbin", Type: types.Int32, Default: nil, Nullable: true, Source: PgTypeTableName},
 	{Name: "typdefault", Type: types.Int32, Default: nil, Nullable: true, Source: PgTypeTableName},
 	{Name: "typacl", Type: types.Int32, Default: nil, Nullable: true, Source: PgTypeTableName},
