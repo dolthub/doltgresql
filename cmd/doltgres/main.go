@@ -19,7 +19,6 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
-	"strconv"
 	"strings"
 
 	"github.com/dolthub/dolt/go/cmd/dolt/cli"
@@ -48,16 +47,17 @@ import (
 var doltgresCommands = cli.NewSubCommandHandler("doltgresql", "it's git for data", []cli.Command{
 	commands.InitCmd{},
 	commands.ConfigCmd{},
-	dgcommands.DoltgresVersionCmd{VersionCmd: &commands.VersionCmd{
-		BinaryName: "doltgresql",
-		VersionStr: server.Version,
-	},
+	dgcommands.DoltgresVersionCmd{
+		VersionCmd: &commands.VersionCmd{
+			BinaryName: "doltgres",
+			VersionStr: server.Version,
+		},
 		DoltVersionStr: doltversion.Version,
 	},
-	sqlserver.SqlServerCmd{VersionStr: server.Version},
+	dgcommands.SqlServerCmd{},
 })
 
-var globalArgParser = cli.CreateGlobalArgParser("doltgresql")
+var globalArgParser = cli.CreateGlobalArgParser("doltgres")
 
 func init() {
 	events.Application = eventsapi.AppID_APP_DOLTGRES
@@ -111,17 +111,6 @@ func main() {
 	if err != nil {
 		cli.PrintErrln(err.Error())
 		os.Exit(1)
-	}
-
-	// The sql-server command has special cased logic since it doesn't invoke a Dolt command directly, but runs a server
-	// and waits for it to finish
-	if subCommandName == "sql-server" {
-		err = runServer(ctx, dEnv, args[1:])
-		if err != nil {
-			cli.PrintErrln(err.Error())
-			os.Exit(1)
-		}
-		os.Exit(0)
 	}
 
 	// Otherwise, attempt to run the command indicated
@@ -262,25 +251,6 @@ func configureCliCtx(subcommand string, apr *argparser.ArgParseResults, fs files
 	}
 
 	return cli.NewCliContext(apr, dEnv.Config, lateBind)
-}
-
-// runServer launches a server on the env given and waits for it to finish
-func runServer(ctx context.Context, dEnv *env.DoltEnv, args []string) error {
-	// Emit a usage event in the background while we start the server.
-	// Dolt is more permissive with events: it emits events even if the command fails in the earliest possible phase,
-	// we emit an event only if we got far enough to attempt to launch a server (and we may not emit it if the server
-	// dies quickly enough).
-	//
-	// We also emit a heartbeat event every 24 hours the server is running.
-	// All events will be tagged with the doltgresql app id.
-	go emitUsageEvent(ctx, dEnv)
-
-	controller, err := server.RunOnDisk(ctx, args, dEnv)
-	if err != nil {
-		return err
-	}
-
-	return controller.WaitForStop()
 }
 
 // parseGlobalArgsAndSubCommandName parses the global arguments, including a profile if given or a default profile if exists. Also returns the subcommand name.
@@ -556,26 +526,4 @@ func redirectStdio(args []string) ([]string, error) {
 		}
 	}
 	return args, nil
-}
-
-// emitUsageEvent emits a usage event to the event server
-func emitUsageEvent(ctx context.Context, dEnv *env.DoltEnv) {
-	metricsDisabled := dEnv.Config.GetStringOrDefault(config.MetricsDisabled, "false")
-	disabled, err := strconv.ParseBool(metricsDisabled)
-	if err != nil || disabled {
-		return
-	}
-
-	emitter, closeFunc, err := commands.GRPCEmitterForConfig(dEnv)
-	if err != nil {
-		return
-	}
-	defer closeFunc()
-
-	evt := events.NewEvent(sqlserver.SqlServerCmd{}.EventType())
-	evtCollector := events.NewCollector(server.Version, emitter)
-	evtCollector.CloseEventAndAdd(evt)
-	clientEvents := evtCollector.Close()
-
-	_ = emitter.LogEvents(ctx, server.Version, clientEvents)
 }
