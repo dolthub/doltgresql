@@ -47,7 +47,7 @@ jobs:
       - name: Install DoltgreSQL
         working-directory: ./
         run: |
-          go build -mod=readonly -o .ci_bin/doltgres .
+          go build -mod=readonly -o .ci_bin/doltgres ./cmd/doltgres
       - name: Setup DoltgreSQL Config
         run: |
           doltgres config --global --add user.name 'Dolthub Actions'
