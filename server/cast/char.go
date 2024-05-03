@@ -130,6 +130,13 @@ func charExplicit() {
 	})
 	framework.MustAddExplicitTypeCast(framework.TypeCast{
 		FromType: pgtypes.BpChar,
+		ToType:   pgtypes.Name,
+		Function: func(ctx framework.Context, val any, targetType pgtypes.DoltgresType) (any, error) {
+			return handleCharExplicitCast(val.(string), targetType)
+		},
+	})
+	framework.MustAddExplicitTypeCast(framework.TypeCast{
+		FromType: pgtypes.BpChar,
 		ToType:   pgtypes.Numeric,
 		Function: func(ctx framework.Context, val any, targetType pgtypes.DoltgresType) (any, error) {
 			d, err := decimal.NewFromString(strings.TrimSpace(val.(string)))
@@ -137,6 +144,21 @@ func charExplicit() {
 				return nil, fmt.Errorf("invalid input syntax for type %s: %q", targetType.String(), val.(string))
 			}
 			return d, nil
+		},
+	})
+	framework.MustAddExplicitTypeCast(framework.TypeCast{
+		FromType: pgtypes.BpChar,
+		ToType:   pgtypes.Oid,
+		Function: func(ctx framework.Context, val any, targetType pgtypes.DoltgresType) (any, error) {
+			out, err := strconv.ParseInt(strings.TrimSpace(val.(string)), 10, 64)
+			if err != nil {
+				return nil, fmt.Errorf("invalid input syntax for type %s: %q", targetType.String(), val.(string))
+			}
+			// Note: This minimum is different (-4294967295) for Postgres 15.4 compiled by Visual C++
+			if out > pgtypes.MaxUint32 || out < pgtypes.MinInt32 {
+				return nil, fmt.Errorf("value %q is out of range for type %s", val.(string), targetType.String())
+			}
+			return uint32(out), nil
 		},
 	})
 	framework.MustAddExplicitTypeCast(framework.TypeCast{
@@ -162,6 +184,17 @@ func charExplicit() {
 		ToType:   pgtypes.VarChar,
 		Function: func(ctx framework.Context, val any, targetType pgtypes.DoltgresType) (any, error) {
 			return handleCharExplicitCast(val.(string), targetType)
+		},
+	})
+	framework.MustAddExplicitTypeCast(framework.TypeCast{
+		FromType: pgtypes.BpChar,
+		ToType:   pgtypes.Xid,
+		Function: func(ctx framework.Context, val any, targetType pgtypes.DoltgresType) (any, error) {
+			out, err := strconv.ParseInt(strings.TrimSpace(val.(string)), 10, 64)
+			if err != nil {
+				return 0, nil
+			}
+			return uint32(out), nil
 		},
 	})
 }
@@ -263,6 +296,13 @@ func charImplicit() {
 	})
 	framework.MustAddImplicitTypeCast(framework.TypeCast{
 		FromType: pgtypes.BpChar,
+		ToType:   pgtypes.Name,
+		Function: func(ctx framework.Context, val any, targetType pgtypes.DoltgresType) (any, error) {
+			return handleCharImplicitCast(val.(string), targetType)
+		},
+	})
+	framework.MustAddImplicitTypeCast(framework.TypeCast{
+		FromType: pgtypes.BpChar,
 		ToType:   pgtypes.Numeric,
 		Function: func(ctx framework.Context, val any, targetType pgtypes.DoltgresType) (any, error) {
 			d, err := decimal.NewFromString(strings.TrimSpace(val.(string)))
@@ -270,6 +310,21 @@ func charImplicit() {
 				return nil, fmt.Errorf("invalid input syntax for type %s: %q", targetType.String(), val.(string))
 			}
 			return d, nil
+		},
+	})
+	framework.MustAddImplicitTypeCast(framework.TypeCast{
+		FromType: pgtypes.BpChar,
+		ToType:   pgtypes.Oid,
+		Function: func(ctx framework.Context, val any, targetType pgtypes.DoltgresType) (any, error) {
+			out, err := strconv.ParseInt(strings.TrimSpace(val.(string)), 10, 64)
+			if err != nil {
+				return nil, fmt.Errorf("invalid input syntax for type %s: %q", targetType.String(), val.(string))
+			}
+			// Note: This minimum is different (-4294967295) for Postgres 15.4 compiled by Visual C++
+			if out > pgtypes.MaxUint32 || out < pgtypes.MinInt32 {
+				return nil, fmt.Errorf("value %q is out of range for type %s", val.(string), targetType.String())
+			}
+			return uint32(out), nil
 		},
 	})
 	framework.MustAddImplicitTypeCast(framework.TypeCast{
@@ -295,6 +350,17 @@ func charImplicit() {
 		ToType:   pgtypes.VarChar,
 		Function: func(ctx framework.Context, val any, targetType pgtypes.DoltgresType) (any, error) {
 			return handleCharImplicitCast(val.(string), targetType)
+		},
+	})
+	framework.MustAddImplicitTypeCast(framework.TypeCast{
+		FromType: pgtypes.BpChar,
+		ToType:   pgtypes.Xid,
+		Function: func(ctx framework.Context, val any, targetType pgtypes.DoltgresType) (any, error) {
+			out, err := strconv.ParseInt(strings.TrimSpace(val.(string)), 10, 64)
+			if err != nil {
+				return 0, nil
+			}
+			return uint32(out), nil
 		},
 	})
 }

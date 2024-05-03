@@ -64,6 +64,10 @@ func (b VarCharType) CollationCoercibility(ctx *sql.Context) (collation sql.Coll
 
 // Compare implements the DoltgresType interface.
 func (b VarCharType) Compare(v1 any, v2 any) (int, error) {
+	return compareVarChar(b, v1, v2)
+}
+
+func compareVarChar(b DoltgresType, v1 any, v2 any) (int, error) {
 	if v1 == nil && v2 == nil {
 		return 0, nil
 	} else if v1 != nil && v2 == nil {
@@ -94,16 +98,20 @@ func (b VarCharType) Compare(v1 any, v2 any) (int, error) {
 
 // Convert implements the DoltgresType interface.
 func (b VarCharType) Convert(val any) (any, sql.ConvertInRange, error) {
+	return convertVarChar(b, b.Length, val)
+}
+
+func convertVarChar(b DoltgresType, length uint32, val any) (any, sql.ConvertInRange, error) {
 	// TODO: need to check if this always truncates for values that are too large, or if it's just the default behavior
 	switch val := val.(type) {
 	case string:
 		// First we'll do a byte-length check since it's always >= the rune-count check, and it's far faster
-		if b.Length != stringUnbounded && uint32(len(val)) > b.Length {
+		if length != stringUnbounded && uint32(len(val)) > length {
 			// The byte-length is greater, so now we'll do a rune-count
-			if uint32(utf8.RuneCountInString(val)) > b.Length {
+			if uint32(utf8.RuneCountInString(val)) > length {
 				// TODO: figure out if there's a faster way to truncate based on rune count
 				startString := val
-				for i := uint32(0); i < b.Length; i++ {
+				for i := uint32(0); i < length; i++ {
 					_, size := utf8.DecodeRuneInString(val)
 					val = val[size:]
 				}
@@ -113,12 +121,12 @@ func (b VarCharType) Convert(val any) (any, sql.ConvertInRange, error) {
 		return val, sql.InRange, nil
 	case []byte:
 		// First we'll do a byte-length check since it's always >= the rune-count check, and it's far faster
-		if b.Length != stringUnbounded && uint32(len(val)) > b.Length {
+		if length != stringUnbounded && uint32(len(val)) > length {
 			// The byte-length is greater, so now we'll do a rune-count
-			if uint32(utf8.RuneCount(val)) > b.Length {
+			if uint32(utf8.RuneCount(val)) > length {
 				// TODO: figure out if there's a faster way to truncate based on rune count
 				startBytes := val
-				for i := uint32(0); i < b.Length; i++ {
+				for i := uint32(0); i < length; i++ {
 					_, size := utf8.DecodeRune(val)
 					val = val[size:]
 				}

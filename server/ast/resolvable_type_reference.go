@@ -98,6 +98,8 @@ func nodeResolvableTypeReference(typ tree.ResolvableTypeReference) (*vitess.Conv
 				columnTypeName = "JSON"
 			case oid.T_jsonb:
 				columnTypeName = "JSON"
+			case oid.T_name:
+				resolvedType = pgtypes.Name
 			case oid.T_numeric:
 				if columnType.Precision() == 0 && columnType.Scale() == 0 {
 					resolvedType = pgtypes.Numeric
@@ -107,6 +109,8 @@ func nodeResolvableTypeReference(typ tree.ResolvableTypeReference) (*vitess.Conv
 						Scale:     columnType.Scale(),
 					}
 				}
+			case oid.T_oid:
+				resolvedType = pgtypes.Oid
 			case oid.T_text:
 				resolvedType = pgtypes.Text
 			case oid.T_time:
@@ -125,6 +129,8 @@ func nodeResolvableTypeReference(typ tree.ResolvableTypeReference) (*vitess.Conv
 					return nil, nil, fmt.Errorf("length for type varchar cannot exceed %d", pgtypes.StringMaxLength)
 				}
 				resolvedType = pgtypes.VarCharType{Length: width}
+			case oid.T_xid:
+				resolvedType = pgtypes.Xid
 			default:
 				return nil, nil, fmt.Errorf("unknown type with oid: %d", uint32(columnType.Oid()))
 			}

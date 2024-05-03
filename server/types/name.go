@@ -16,84 +16,53 @@ package types
 
 import (
 	"bytes"
+	"encoding/binary"
 	"fmt"
 	"reflect"
-	"time"
+
+	"github.com/lib/pq/oid"
 
 	"github.com/dolthub/go-mysql-server/sql"
 	"github.com/dolthub/go-mysql-server/sql/types"
 	"github.com/dolthub/vitess/go/sqltypes"
 	"github.com/dolthub/vitess/go/vt/proto/query"
-	"github.com/lib/pq/oid"
 )
 
-// Date is the day, month, and year.
-var Date = DateType{}
+const NameLength = 63
 
-// DateType is the extended type implementation of the PostgreSQL date.
-type DateType struct{}
+// Name is a 63-byte internal type for object names.
+var Name = NameType{Length: NameLength}
 
-var _ DoltgresType = DateType{}
+// NameType is the extended type implementation of the PostgreSQL name.
+type NameType struct {
+	// Length represents the maximum number of characters that the type may hold.
+	Length uint32
+}
+
+var _ DoltgresType = NameType{}
 
 // BaseID implements the DoltgresType interface.
-func (b DateType) BaseID() DoltgresTypeBaseID {
-	return DoltgresTypeBaseID_Date
+func (b NameType) BaseID() DoltgresTypeBaseID {
+	return DoltgresTypeBaseID_Name
 }
 
 // CollationCoercibility implements the DoltgresType interface.
-func (b DateType) CollationCoercibility(ctx *sql.Context) (collation sql.CollationID, coercibility byte) {
+func (b NameType) CollationCoercibility(ctx *sql.Context) (collation sql.CollationID, coercibility byte) {
 	return sql.Collation_binary, 5
 }
 
 // Compare implements the DoltgresType interface.
-func (b DateType) Compare(v1 any, v2 any) (int, error) {
-	if v1 == nil && v2 == nil {
-		return 0, nil
-	} else if v1 != nil && v2 == nil {
-		return 1, nil
-	} else if v1 == nil && v2 != nil {
-		return -1, nil
-	}
-
-	ac, _, err := b.Convert(v1)
-	if err != nil {
-		return 0, err
-	}
-	bc, _, err := b.Convert(v2)
-	if err != nil {
-		return 0, err
-	}
-
-	ab := ac.(time.Time)
-	bb := bc.(time.Time)
-	return ab.Compare(bb), nil
+func (b NameType) Compare(v1 any, v2 any) (int, error) {
+	return compareVarChar(b, v1, v2)
 }
 
 // Convert implements the DoltgresType interface.
-func (b DateType) Convert(val any) (any, sql.ConvertInRange, error) {
-	if val == nil {
-		return nil, sql.InRange, nil
-	}
-
-	switch val := val.(type) {
-	case string:
-		if t, err := time.Parse("2006-01-02", val); err == nil {
-			return t.UTC(), sql.InRange, nil
-		} else if t, err = time.Parse("January 02, 2006", val); err == nil {
-			return t.UTC(), sql.InRange, nil
-		} else if t, err = time.Parse("2006-Jan-02", val); err == nil {
-			return t.UTC(), sql.InRange, nil
-		}
-		return nil, sql.OutOfRange, fmt.Errorf("invalid format for date")
-	case time.Time:
-		return val.UTC(), sql.InRange, nil
-	default:
-		return nil, sql.OutOfRange, sql.ErrInvalidType.New(b)
-	}
+func (b NameType) Convert(val any) (any, sql.ConvertInRange, error) {
+	return convertVarChar(b, b.Length, val)
 }
 
 // Equals implements the DoltgresType interface.
-func (b DateType) Equals(otherType sql.Type) bool {
+func (b NameType) Equals(otherType sql.Type) bool {
 	if otherExtendedType, ok := otherType.(types.ExtendedType); ok {
 		return bytes.Equal(MustSerializeType(b), MustSerializeType(otherExtendedType))
 	}
@@ -101,7 +70,7 @@ func (b DateType) Equals(otherType sql.Type) bool {
 }
 
 // FormatSerializedValue implements the DoltgresType interface.
-func (b DateType) FormatSerializedValue(val []byte) (string, error) {
+func (b NameType) FormatSerializedValue(val []byte) (string, error) {
 	deserialized, err := b.DeserializeValue(val)
 	if err != nil {
 		return "", err
@@ -110,7 +79,7 @@ func (b DateType) FormatSerializedValue(val []byte) (string, error) {
 }
 
 // FormatValue implements the DoltgresType interface.
-func (b DateType) FormatValue(val any) (string, error) {
+func (b NameType) FormatValue(val any) (string, error) {
 	if val == nil {
 		return "", nil
 	}
@@ -118,41 +87,41 @@ func (b DateType) FormatValue(val any) (string, error) {
 	if err != nil {
 		return "", err
 	}
-	return converted.(time.Time).Format("2006-01-02"), nil
+	return converted.(string), nil
 }
 
 // GetSerializationID implements the DoltgresType interface.
-func (b DateType) GetSerializationID() SerializationID {
-	return SerializationID_Date
+func (b NameType) GetSerializationID() SerializationID {
+	return SerializationID_Name
 }
 
 // IsUnbounded implements the DoltgresType interface.
-func (b DateType) IsUnbounded() bool {
+func (b NameType) IsUnbounded() bool {
 	return false
 }
 
 // MaxSerializedWidth implements the DoltgresType interface.
-func (b DateType) MaxSerializedWidth() types.ExtendedTypeSerializedWidth {
+func (b NameType) MaxSerializedWidth() types.ExtendedTypeSerializedWidth {
 	return types.ExtendedTypeSerializedWidth_64K
 }
 
 // MaxTextResponseByteLength implements the DoltgresType interface.
-func (b DateType) MaxTextResponseByteLength(ctx *sql.Context) uint32 {
-	return 32
+func (b NameType) MaxTextResponseByteLength(ctx *sql.Context) uint32 {
+	return b.Length * 4
 }
 
 // OID implements the DoltgresType interface.
-func (b DateType) OID() uint32 {
-	return uint32(oid.T_date)
+func (b NameType) OID() uint32 {
+	return uint32(oid.T_name)
 }
 
 // Promote implements the DoltgresType interface.
-func (b DateType) Promote() sql.Type {
-	return Date
+func (b NameType) Promote() sql.Type {
+	return Name
 }
 
 // SerializedCompare implements the DoltgresType interface.
-func (b DateType) SerializedCompare(v1 []byte, v2 []byte) (int, error) {
+func (b NameType) SerializedCompare(v1 []byte, v2 []byte) (int, error) {
 	if len(v1) == 0 && len(v2) == 0 {
 		return 0, nil
 	} else if len(v1) > 0 && len(v2) == 0 {
@@ -160,13 +129,11 @@ func (b DateType) SerializedCompare(v1 []byte, v2 []byte) (int, error) {
 	} else if len(v1) == 0 && len(v2) > 0 {
 		return -1, nil
 	}
-
-	// The marshalled time format is byte-comparable
 	return bytes.Compare(v1, v2), nil
 }
 
 // SQL implements the DoltgresType interface.
-func (b DateType) SQL(ctx *sql.Context, dest []byte, v any) (sqltypes.Value, error) {
+func (b NameType) SQL(ctx *sql.Context, dest []byte, v any) (sqltypes.Value, error) {
 	if v == nil {
 		return sqltypes.NULL, nil
 	}
@@ -178,47 +145,52 @@ func (b DateType) SQL(ctx *sql.Context, dest []byte, v any) (sqltypes.Value, err
 }
 
 // String implements the DoltgresType interface.
-func (b DateType) String() string {
-	return "date"
+func (b NameType) String() string {
+	return "name"
 }
 
 // ToArrayType implements the DoltgresType interface.
-func (b DateType) ToArrayType() DoltgresArrayType {
-	return DateArray
+func (b NameType) ToArrayType() DoltgresArrayType {
+	return NameArray
 }
 
 // Type implements the DoltgresType interface.
-func (b DateType) Type() query.Type {
+func (b NameType) Type() query.Type {
 	return sqltypes.Text
 }
 
 // ValueType implements the DoltgresType interface.
-func (b DateType) ValueType() reflect.Type {
-	return reflect.TypeOf(time.Time{})
+func (b NameType) ValueType() reflect.Type {
+	return reflect.TypeOf("")
 }
 
 // Zero implements the DoltgresType interface.
-func (b DateType) Zero() any {
-	return time.Time{}
+func (b NameType) Zero() any {
+	return ""
 }
 
 // SerializeType implements the DoltgresType interface.
-func (b DateType) SerializeType() ([]byte, error) {
-	return SerializationID_Date.ToByteSlice(0), nil
+func (b NameType) SerializeType() ([]byte, error) {
+	t := make([]byte, serializationIDHeaderSize+4)
+	copy(t, SerializationID_Name.ToByteSlice(0))
+	binary.LittleEndian.PutUint32(t[serializationIDHeaderSize:], b.Length)
+	return t, nil
 }
 
 // deserializeType implements the DoltgresType interface.
-func (b DateType) deserializeType(version uint16, metadata []byte) (DoltgresType, error) {
+func (b NameType) deserializeType(version uint16, metadata []byte) (DoltgresType, error) {
 	switch version {
 	case 0:
-		return Date, nil
+		return NameType{
+			Length: binary.LittleEndian.Uint32(metadata),
+		}, nil
 	default:
 		return nil, fmt.Errorf("version %d is not yet supported for %s", version, b.String())
 	}
 }
 
 // SerializeValue implements the DoltgresType interface.
-func (b DateType) SerializeValue(val any) ([]byte, error) {
+func (b NameType) SerializeValue(val any) ([]byte, error) {
 	if val == nil {
 		return nil, nil
 	}
@@ -226,17 +198,13 @@ func (b DateType) SerializeValue(val any) ([]byte, error) {
 	if err != nil {
 		return nil, err
 	}
-	return converted.(time.Time).MarshalBinary()
+	return []byte(converted.(string)), nil
 }
 
 // DeserializeValue implements the DoltgresType interface.
-func (b DateType) DeserializeValue(val []byte) (any, error) {
+func (b NameType) DeserializeValue(val []byte) (any, error) {
 	if len(val) == 0 {
 		return nil, nil
 	}
-	t := time.Time{}
-	if err := t.UnmarshalBinary(val); err != nil {
-		return nil, err
-	}
-	return t, nil
+	return string(val), nil
 }

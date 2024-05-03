@@ -59,8 +59,10 @@ const (
 	DoltgresTypeBaseID_Int16       = DoltgresTypeBaseID(SerializationID_Int16)
 	DoltgresTypeBaseID_Int32       = DoltgresTypeBaseID(SerializationID_Int32)
 	DoltgresTypeBaseID_Int64       = DoltgresTypeBaseID(SerializationID_Int64)
+	DoltgresTypeBaseID_Name        = DoltgresTypeBaseID(SerializationID_Name)
 	DoltgresTypeBaseID_Null        = DoltgresTypeBaseID(SerializationID_Null)
 	DoltgresTypeBaseID_Numeric     = DoltgresTypeBaseID(SerializationID_Numeric)
+	DoltgresTypeBaseID_Oid         = DoltgresTypeBaseID(SerializationID_Oid)
 	DoltgresTypeBaseID_Text        = DoltgresTypeBaseID(SerializationID_Text)
 	DoltgresTypeBaseID_Time        = DoltgresTypeBaseID(SerializationID_Time)
 	DoltgresTypeBaseID_Timestamp   = DoltgresTypeBaseID(SerializationID_Timestamp)
@@ -68,6 +70,7 @@ const (
 	DoltgresTypeBaseID_TimeTZ      = DoltgresTypeBaseID(SerializationID_TimeTZ)
 	DoltgresTypeBaseID_Uuid        = DoltgresTypeBaseID(SerializationID_Uuid)
 	DoltgresTypeBaseID_VarChar     = DoltgresTypeBaseID(SerializationID_VarChar)
+	DoltgresTypeBaseID_Xid         = DoltgresTypeBaseID(SerializationID_Xid)
 )
 
 // baseIDArrayTypes contains a map of all base IDs that represent array variants.

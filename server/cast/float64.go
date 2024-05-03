@@ -90,6 +90,14 @@ func float64Explicit() {
 	})
 	framework.MustAddExplicitTypeCast(framework.TypeCast{
 		FromType: pgtypes.Float64,
+		ToType:   pgtypes.Name,
+		Function: func(ctx framework.Context, val any, targetType pgtypes.DoltgresType) (any, error) {
+			str := strconv.FormatFloat(val.(float64), 'g', -1, 64)
+			return handleCharExplicitCast(str, targetType)
+		},
+	})
+	framework.MustAddExplicitTypeCast(framework.TypeCast{
+		FromType: pgtypes.Float64,
 		ToType:   pgtypes.Numeric,
 		Function: func(ctx framework.Context, val any, targetType pgtypes.DoltgresType) (any, error) {
 			return decimal.NewFromFloat(val.(float64)), nil
@@ -167,6 +175,14 @@ func float64Implicit() {
 				return nil, fmt.Errorf("bigint out of range")
 			}
 			return int64(val), nil
+		},
+	})
+	framework.MustAddImplicitTypeCast(framework.TypeCast{
+		FromType: pgtypes.Float64,
+		ToType:   pgtypes.Name,
+		Function: func(ctx framework.Context, val any, targetType pgtypes.DoltgresType) (any, error) {
+			str := strconv.FormatFloat(val.(float64), 'g', -1, 64)
+			return handleCharImplicitCast(str, targetType)
 		},
 	})
 	framework.MustAddImplicitTypeCast(framework.TypeCast{

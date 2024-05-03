@@ -16,84 +16,98 @@ package types
 
 import (
 	"bytes"
+	"encoding/binary"
 	"fmt"
 	"reflect"
-	"time"
+	"strconv"
 
 	"github.com/dolthub/go-mysql-server/sql"
 	"github.com/dolthub/go-mysql-server/sql/types"
 	"github.com/dolthub/vitess/go/sqltypes"
 	"github.com/dolthub/vitess/go/vt/proto/query"
 	"github.com/lib/pq/oid"
+	"github.com/shopspring/decimal"
 )
 
-// Date is the day, month, and year.
-var Date = DateType{}
+// Xid is a data type used for internal transaction IDs. It is implemented as an unsigned 32 bit integer.
+var Xid = XidType{}
 
-// DateType is the extended type implementation of the PostgreSQL date.
-type DateType struct{}
+// XidType is the extended type implementation of the PostgreSQL xid.
+type XidType struct{}
 
-var _ DoltgresType = DateType{}
+var _ DoltgresType = XidType{}
 
 // BaseID implements the DoltgresType interface.
-func (b DateType) BaseID() DoltgresTypeBaseID {
-	return DoltgresTypeBaseID_Date
+func (b XidType) BaseID() DoltgresTypeBaseID {
+	return DoltgresTypeBaseID_Xid
 }
 
 // CollationCoercibility implements the DoltgresType interface.
-func (b DateType) CollationCoercibility(ctx *sql.Context) (collation sql.CollationID, coercibility byte) {
+func (b XidType) CollationCoercibility(ctx *sql.Context) (collation sql.CollationID, coercibility byte) {
 	return sql.Collation_binary, 5
 }
 
 // Compare implements the DoltgresType interface.
-func (b DateType) Compare(v1 any, v2 any) (int, error) {
-	if v1 == nil && v2 == nil {
-		return 0, nil
-	} else if v1 != nil && v2 == nil {
-		return 1, nil
-	} else if v1 == nil && v2 != nil {
-		return -1, nil
-	}
-
-	ac, _, err := b.Convert(v1)
-	if err != nil {
-		return 0, err
-	}
-	bc, _, err := b.Convert(v2)
-	if err != nil {
-		return 0, err
-	}
-
-	ab := ac.(time.Time)
-	bb := bc.(time.Time)
-	return ab.Compare(bb), nil
+func (b XidType) Compare(v1 any, v2 any) (int, error) {
+	return compareUint32(b, v1, v2)
 }
 
 // Convert implements the DoltgresType interface.
-func (b DateType) Convert(val any) (any, sql.ConvertInRange, error) {
-	if val == nil {
-		return nil, sql.InRange, nil
-	}
-
+func (b XidType) Convert(val any) (any, sql.ConvertInRange, error) {
 	switch val := val.(type) {
-	case string:
-		if t, err := time.Parse("2006-01-02", val); err == nil {
-			return t.UTC(), sql.InRange, nil
-		} else if t, err = time.Parse("January 02, 2006", val); err == nil {
-			return t.UTC(), sql.InRange, nil
-		} else if t, err = time.Parse("2006-Jan-02", val); err == nil {
-			return t.UTC(), sql.InRange, nil
+	case bool:
+		if val {
+			return uint32(1), sql.InRange, nil
 		}
-		return nil, sql.OutOfRange, fmt.Errorf("invalid format for date")
-	case time.Time:
-		return val.UTC(), sql.InRange, nil
+		return uint32(0), sql.InRange, nil
+	case int:
+		return uint32(val), sql.InRange, nil
+	case uint:
+		return uint32(val), sql.InRange, nil
+	case int8:
+		return uint32(val), sql.InRange, nil
+	case uint8:
+		return uint32(val), sql.InRange, nil
+	case int16:
+		return uint32(val), sql.InRange, nil
+	case uint16:
+		return uint32(val), sql.InRange, nil
+	case int32:
+		return uint32(val), sql.InRange, nil
+	case uint32:
+		return uint32(val), sql.InRange, nil
+	case int64:
+		return uint32(val), sql.InRange, nil
+	case uint64:
+		return uint32(val), sql.InRange, nil
+	case float32:
+		return uint32(val), sql.InRange, nil
+	case float64:
+		return uint32(val), sql.InRange, nil
+	case decimal.NullDecimal:
+		if !val.Valid {
+			return nil, sql.InRange, nil
+		}
+		return b.Convert(val.Decimal)
+	case decimal.Decimal:
+		return uint32(val.IntPart()), sql.InRange, nil
+	case string:
+		i, err := strconv.ParseInt(val, 10, 64)
+		if err != nil {
+			return 0, sql.InRange, nil
+		}
+		return uint32(i), sql.InRange, nil
+	case []byte:
+		return b.Convert(string(val))
+	case nil:
+		return nil, sql.InRange, nil
 	default:
-		return nil, sql.OutOfRange, sql.ErrInvalidType.New(b)
+		return nil, sql.OutOfRange, fmt.Errorf("%s: unhandled type: %T", b.String(), val)
 	}
 }
 
 // Equals implements the DoltgresType interface.
-func (b DateType) Equals(otherType sql.Type) bool {
+func (b XidType) Equals(otherType sql.Type) bool {
 	if otherExtendedType, ok := otherType.(types.ExtendedType); ok {
 		return bytes.Equal(MustSerializeType(b), MustSerializeType(otherExtendedType))
 	}
@@ -101,7 +115,7 @@ func (b DateType) Equals(otherType sql.Type) bool {
 }
 
 // FormatSerializedValue implements the DoltgresType interface.
-func (b DateType) FormatSerializedValue(val []byte) (string, error) {
+func (b XidType) FormatSerializedValue(val []byte) (string, error) {
 	deserialized, err := b.DeserializeValue(val)
 	if err != nil {
 		return "", err
@@ -110,7 +124,7 @@ func (b DateType) FormatSerializedValue(val []byte) (string, error) {
 }
 
 // FormatValue implements the DoltgresType interface.
-func (b DateType) FormatValue(val any) (string, error) {
+func (b XidType) FormatValue(val any) (string, error) {
 	if val == nil {
 		return "", nil
 	}
@@ -118,41 +132,41 @@ func (b DateType) FormatValue(val any) (string, error) {
 	if err != nil {
 		return "", err
 	}
-	return converted.(time.Time).Format("2006-01-02"), nil
+	return strconv.FormatInt(int64(converted.(uint32)), 10), nil
 }
 
 // GetSerializationID implements the DoltgresType interface.
-func (b DateType) GetSerializationID() SerializationID {
-	return SerializationID_Date
+func (b XidType) GetSerializationID() SerializationID {
+	return SerializationID_Xid
 }
 
 // IsUnbounded implements the DoltgresType interface.
-func (b DateType) IsUnbounded() bool {
+func (b XidType) IsUnbounded() bool {
 	return false
 }
 
 // MaxSerializedWidth implements the DoltgresType interface.
-func (b DateType) MaxSerializedWidth() types.ExtendedTypeSerializedWidth {
+func (b XidType) MaxSerializedWidth() types.ExtendedTypeSerializedWidth {
 	return types.ExtendedTypeSerializedWidth_64K
 }
 
 // MaxTextResponseByteLength implements the DoltgresType interface.
-func (b DateType) MaxTextResponseByteLength(ctx *sql.Context) uint32 {
-	return 32
+func (b XidType) MaxTextResponseByteLength(ctx *sql.Context) uint32 {
+	return 4
 }
 
 // OID implements the DoltgresType interface.
-func (b DateType) OID() uint32 {
-	return uint32(oid.T_date)
+func (b XidType) OID() uint32 {
+	return uint32(oid.T_xid)
 }
 
 // Promote implements the DoltgresType interface.
-func (b DateType) Promote() sql.Type {
-	return Date
+func (b XidType) Promote() sql.Type {
+	return b
 }
 
 // SerializedCompare implements the DoltgresType interface.
-func (b DateType) SerializedCompare(v1 []byte, v2 []byte) (int, error) {
+func (b XidType) SerializedCompare(v1 []byte, v2 []byte) (int, error) {
 	if len(v1) == 0 && len(v2) == 0 {
 		return 0, nil
 	} else if len(v1) > 0 && len(v2) == 0 {
@@ -161,12 +175,11 @@ func (b DateType) SerializedCompare(v1 []byte, v2 []byte) (int, error) {
 		return -1, nil
 	}
 
-	// The marshalled time format is byte-comparable
 	return bytes.Compare(v1, v2), nil
 }
 
 // SQL implements the DoltgresType interface.
-func (b DateType) SQL(ctx *sql.Context, dest []byte, v any) (sqltypes.Value, error) {
+func (b XidType) SQL(ctx *sql.Context, dest []byte, v any) (sqltypes.Value, error) {
 	if v == nil {
 		return sqltypes.NULL, nil
 	}
@@ -178,47 +191,47 @@ func (b DateType) SQL(ctx *sql.Context, dest []byte, v any) (sqltypes.Value, err
 }
 
 // String implements the DoltgresType interface.
-func (b DateType) String() string {
-	return "date"
+func (b XidType) String() string {
+	return "xid"
 }
 
 // ToArrayType implements the DoltgresType interface.
-func (b DateType) ToArrayType() DoltgresArrayType {
-	return DateArray
+func (b XidType) ToArrayType() DoltgresArrayType {
+	return XidArray
 }
 
 // Type implements the DoltgresType interface.
-func (b DateType) Type() query.Type {
-	return sqltypes.Text
+func (b XidType) Type() query.Type {
+	return sqltypes.Uint32
 }
 
 // ValueType implements the DoltgresType interface.
-func (b DateType) ValueType() reflect.Type {
-	return reflect.TypeOf(time.Time{})
+func (b XidType) ValueType() reflect.Type {
+	return reflect.TypeOf(uint32(0))
 }
 
 // Zero implements the DoltgresType interface.
-func (b DateType) Zero() any {
-	return time.Time{}
+func (b XidType) Zero() any {
+	return uint32(0)
 }
 
 // SerializeType implements the DoltgresType interface.
-func (b DateType) SerializeType() ([]byte, error) {
-	return SerializationID_Date.ToByteSlice(0), nil
+func (b XidType) SerializeType() ([]byte, error) {
+	return SerializationID_Xid.ToByteSlice(0), nil
 }
 
 // deserializeType implements the DoltgresType interface.
-func (b DateType) deserializeType(version uint16, metadata []byte) (DoltgresType, error) {
+func (b XidType) deserializeType(version uint16, metadata []byte) (DoltgresType, error) {
 	switch version {
 	case 0:
-		return Date, nil
+		return Xid, nil
 	default:
 		return nil, fmt.Errorf("version %d is not yet supported for %s", version, b.String())
 	}
 }
 
 // SerializeValue implements the DoltgresType interface.
-func (b DateType) SerializeValue(val any) ([]byte, error) {
+func (b XidType) SerializeValue(val any) ([]byte, error) {
 	if val == nil {
 		return nil, nil
 	}
@@ -226,17 +239,15 @@ func (b DateType) SerializeValue(val any) ([]byte, error) {
 	if err != nil {
 		return nil, err
 	}
-	return converted.(time.Time).MarshalBinary()
+	retVal := make([]byte, 4)
+	binary.BigEndian.PutUint32(retVal, uint32(converted.(uint32)))
+	return retVal, nil
 }
 
 // DeserializeValue implements the DoltgresType interface.
-func (b DateType) DeserializeValue(val []byte) (any, error) {
+func (b XidType) DeserializeValue(val []byte) (any, error) {
 	if len(val) == 0 {
 		return nil, nil
 	}
-	t := time.Time{}
-	if err := t.UnmarshalBinary(val); err != nil {
-		return nil, err
-	}
-	return t, nil
+	return uint32(binary.BigEndian.Uint32(val)), nil
 }
