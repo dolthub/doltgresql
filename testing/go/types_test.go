@@ -1514,28 +1514,22 @@ var typesTests = []ScriptTest{
 	},
 	{
 		Name: "Xid array type",
+		Skip: true, // TODO: Insert to XID[] column not working (invalid type: xid[]), will be fixed when Convert is removed
 		SetUpScript: []string{
 			"CREATE TABLE t_xid (id INTEGER primary key, v1 XID[], v2 CHARACTER(100), v3 BOOLEAN);",
-			// TODO: Insert to XID[] column not working (invalid type: xid[])
-			// "INSERT INTO t_xid VALUES (2, '{123, 456, 789, 101}', '1234567890', true);",
+			"INSERT INTO t_xid VALUES (2, '{123, 456, 789, 101}', '1234567890', true);",
 		},
 		Assertions: []ScriptTestAssertion{
-			// {
-			// 	Query: `SELECT v1::varchar(1)[] FROM t_xid;`,
-			// 	Expected: []sql.Row{
-			// 		{"{1,4,7,1}"},
-			// 	},
-			// },
-			// {
-			// 	Query: `SELECT v2::xid, v3::xid FROM t_xid;`,
-			// 	Expected: []sql.Row{
-			// 		{1234567890, 1},
-			// 	},
-			// },
-			// {
-			// 	Query:       `INSERT INTO t_xid VALUES (2, ARRAY[123, 456, 789, 101], '1234567890', true);`,
-			// 	ExpectedErr: true,
-			// },
+			{
+				Query: `SELECT v1::varchar(1)[] FROM t_xid;`,
+				Expected: []sql.Row{
+					{"{1,4,7,1}"},
+				},
+			},
+			{
+				Query:       `INSERT INTO t_xid VALUES (2, ARRAY[123, 456, 789, 101], '1234567890', true);`,
+				ExpectedErr: true,
+			},
 		},
 	},
 	{

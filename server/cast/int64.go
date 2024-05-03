@@ -121,13 +121,6 @@ func int64Explicit() {
 			return handleCharExplicitCast(str, targetType)
 		},
 	})
-	framework.MustAddExplicitTypeCast(framework.TypeCast{
-		FromType: pgtypes.Int64,
-		ToType:   pgtypes.Xid,
-		Function: func(ctx framework.Context, val any, targetType pgtypes.DoltgresType) (any, error) {
-			return nil, fmt.Errorf("cannot cast type %s to %s", pgtypes.Int64.String(), pgtypes.Xid.String())
-		},
-	})
 }
 
 // int64Implicit registers all implicit casts. This comprises only the "From" types.
