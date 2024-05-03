@@ -34,11 +34,12 @@ RUN rm -rf ./doltgresql/testing/generation/
 WORKDIR /root/building/doltgresql/postgres/parser
 RUN bash ./build.sh
 
-# Build the doltgresql binary, which we will need for bats, and put it on PATH
+# Build the doltgres binary, which we will need for bats, and put it on PATH
 WORKDIR /root/building/doltgresql/cmd/doltgres
 RUN go build .
 RUN cp ./doltgres /root/bin
-RUN cp ./doltgres /root/bin/doltgres
+
+WORKDIR /root/building/doltgresql/
 
 # This env var is required to run the bats replication tests
 ENV RUN_DOLTGRES_REPLICATION_TESTS=true
