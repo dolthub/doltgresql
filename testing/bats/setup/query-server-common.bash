@@ -34,9 +34,9 @@ start_sql_server() {
     PORT=$( definePORT )
     if [[ $logFile ]]
     then
-        doltgresql --host 0.0.0.0 --port=$PORT --data-dir=. --user "${SQL_USER:-postgres}" > $logFile 2>&1 &
+        doltgres --host 0.0.0.0 --port=$PORT --data-dir=. --user "${SQL_USER:-postgres}" > $logFile 2>&1 &
     else
-        doltgresql --host 0.0.0.0 --port=$PORT --data-dir=. --user "${SQL_USER:-postgres}" &
+        doltgres --host 0.0.0.0 --port=$PORT --data-dir=. --user "${SQL_USER:-postgres}" &
     fi
     SERVER_PID=$!
     wait_for_connection $PORT 7500
@@ -62,8 +62,8 @@ start_sql_server_with_args() {
         set -- "$@" "--port" "$PORT"
     fi
 
-    echo "running doltgresql $@"
-    doltgresql "$@" &
+    echo "running doltgres $@"
+    doltgres "$@" &
     SERVER_PID=$!
     wait_for_connection $PORT 7500
 }
