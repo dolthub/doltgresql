@@ -18,12 +18,6 @@ import (
 	"context"
 	"flag"
 	"fmt"
-	"github.com/dolthub/dolt/go/libraries/utils/config"
-	"os"
-	"path/filepath"
-	"strconv"
-	"strings"
-
 	"github.com/dolthub/dolt/go/cmd/dolt/cli"
 	"github.com/dolthub/dolt/go/cmd/dolt/commands"
 	"github.com/dolthub/dolt/go/cmd/dolt/commands/sqlserver"
@@ -31,10 +25,14 @@ import (
 	"github.com/dolthub/dolt/go/libraries/doltcore/doltdb"
 	"github.com/dolthub/dolt/go/libraries/doltcore/env"
 	"github.com/dolthub/dolt/go/libraries/events"
+	"github.com/dolthub/dolt/go/libraries/utils/config"
 	"github.com/dolthub/dolt/go/libraries/utils/filesys"
 	"github.com/dolthub/dolt/go/store/nbs"
 	"github.com/dolthub/doltgresql/server"
 	"github.com/fatih/color"
+	"os"
+	"path/filepath"
+	"strconv"
 )
 
 func init() {
@@ -51,20 +49,24 @@ const (
 	stdOutParam       = "stdout"
 	stdErrParam       = "stderr"
 	stdOutAndErrParam = "out-and-err"
+	configParam       = "config"
+	dataDirParam      = "data-dir"
 
-	configParam = "config"
+	versionFlag = "version"
 )
 
 func parseArgs() (flags map[string]*bool, params map[string]*string) {
 	flags = make(map[string]*bool)
 	params = make(map[string]*string)
 
-	params[chdirParam] = flag.String(chdirParam, "", "set the working directory for instancemgr")
-	params[stdInParam] = flag.String(stdInParam, "", "directory where applications are installed. This is the directory where subdirectories for the dolt and doltgress applications are located")
-	params[stdOutParam] = flag.String(stdOutParam, "", "path where logs are stored")
-	params[stdErrParam] = flag.String(stdErrParam, "", "path where systemd services are installed")
-	params[stdOutAndErrParam] = flag.String(stdOutAndErrParam, "", "if using the cloudwatch agent, the directory where it is installed")
-	params[configParam] = flag.String(configParam, "config.yaml", "Where the scraped metrics should be sent. Valid values are 'null', or 'cloudwatch'")
+	params[chdirParam] = flag.String(chdirParam, "", "set the working directory for doltgres")
+	params[stdInParam] = flag.String(stdInParam, "", "file to use as stdin")
+	params[stdOutParam] = flag.String(stdOutParam, "", "file to use as stdout")
+	params[stdErrParam] = flag.String(stdErrParam, "", "file to use as stderr")
+	params[stdOutAndErrParam] = flag.String(stdOutAndErrParam, "", "file to use as stdout and stderr")
+	params[configParam] = flag.String(configParam, "config.yaml", "path to the config file")
+
+	flags[versionFlag] = flag.Bool(versionFlag, false, "print the version")
 
 	flag.Parse()
 
@@ -73,9 +75,12 @@ func parseArgs() (flags map[string]*bool, params map[string]*string) {
 
 func main() {
 	ctx := context.Background()
-	args := os.Args[1:]
+	flags, params := parseArgs()
 
-	_, params := parseArgs()
+	if *flags[versionFlag] {
+		cli.Println("Doltgres version", server.Version)
+		os.Exit(0)
+	}
 
 	err := redirectStdio(params)
 	if err != nil {
@@ -91,19 +96,23 @@ func main() {
 	fs := filesys.LocalFS
 	dEnv := env.Load(ctx, env.GetCurrentUserHomeDir, fs, doltdb.LocalDirDoltDB, server.Version)
 
-	args, err = configureDataDir(args)
+	err = configureDataDir(fs, params)
 	if err != nil {
 		cli.PrintErrln(err.Error())
 		os.Exit(1)
 	}
 
-	config, err := server.ReadConfigFromYamlFile(*params[configParam])
+	overrides := map[string]string{
+		server.OverrideDataDirKey: *params[dataDirParam],
+	}
+
+	cfg, err := server.ReadConfigFromYamlFile(fs, *params[configParam], overrides)
 	if err != nil {
 		cli.PrintErrln(err.Error())
 		os.Exit(1)
 	}
 
-	err = runServer(ctx, dEnv, config)
+	err = runServer(ctx, dEnv, cfg)
 	if err != nil {
 		cli.PrintErrln(err.Error())
 		os.Exit(1)
@@ -112,72 +121,50 @@ func main() {
 }
 
 // configureDataDir sets the --data-dir argument as appropriate if it isn't specified
-func configureDataDir(args []string) (outArgs []string, err error) {
-	// We can't use the argument parser yet since it relies on the environment, so we'll handle the data directory
-	// argument here. This will also remove it from the args, so that the Dolt layer doesn't try to move the directory
-	// again (in the case of relative paths).
-	var hasDataDirArgument bool
-	for i, arg := range args {
-		arg = strings.ToLower(arg)
-		if arg == "--data-dir" {
-			if len(args) <= i+1 {
-				return args, fmt.Errorf("--data-dir is missing the directory")
-			}
-			hasDataDirArgument = true
-			break
-		} else if strings.HasPrefix(arg, "--data-dir=") {
-			hasDataDirArgument = true
-		}
-	}
-
-	if hasDataDirArgument {
-		return args, nil
+func configureDataDir(fs filesys.Filesys, params map[string]*string) error {
+	_, ok := paramVal(params, dataDirParam)
+	if ok {
+		return nil
 	}
 
 	// We should use the directory as pointed to by "DOLTGRES_DATA_DIR", if has been set, otherwise we'll use the default
 	var dbDir string
 	if envDir := os.Getenv(server.DOLTGRES_DATA_DIR); len(envDir) > 0 {
 		dbDir = envDir
-		fileInfo, err := os.Stat(dbDir)
-		if os.IsNotExist(err) {
-			if err = os.MkdirAll(dbDir, 0755); err != nil {
-				return args, err
+		exists, isDir := fs.Exists(dbDir)
+		if !exists {
+			if err := fs.MkDirs(dbDir); err != nil {
+				return fmt.Errorf("failed to make dir '%s': %w", dbDir, err)
 			}
-		} else if err != nil {
-			return args, err
-		} else if !fileInfo.IsDir() {
-			return args, fmt.Errorf("Attempted to use the directory `%s` as the DoltgreSQL database directory, "+
+		} else if !isDir {
+			return fmt.Errorf("Attempted to use the directory `%s` as the DoltgreSQL database directory, "+
 				"however the preceding is a file and not a directory. Please change the environment variable `%s` so "+
 				"that it points to a directory.", dbDir, server.DOLTGRES_DATA_DIR)
 		}
 	} else {
 		homeDir, err := env.GetCurrentUserHomeDir()
 		if err != nil {
-			return args, err
+			return fmt.Errorf("failed to get current user's home directory: %w", err)
 		}
+
 		dbDir = filepath.Join(homeDir, server.DOLTGRES_DATA_DIR_DEFAULT)
-		fileInfo, err := os.Stat(dbDir)
-		if os.IsNotExist(err) {
-			if err = os.MkdirAll(dbDir, 0755); err != nil {
-				return args, err
+		if exists, isDir := fs.Exists(dbDir); !exists {
+			if err = fs.MkDirs(dbDir); err != nil {
+				return fmt.Errorf("failed to make dir '%s': %w", dbDir, err)
 			}
-		} else if err != nil {
-			return args, err
-		} else if !fileInfo.IsDir() {
-			return args, fmt.Errorf("Attempted to use the directory `%s` as the DoltgreSQL database directory, "+
+		} else if !isDir {
+			return fmt.Errorf("Attempted to use the directory `%s` as the DoltgreSQL database directory, "+
 				"however the preceding is a file and not a directory. Please change the environment variable `%s` so "+
 				"that it points to a directory.", dbDir, server.DOLTGRES_DATA_DIR)
 		}
 	}
 
-	// alter the data dir argument provided to dolt arg processing
-	args = append([]string{"--data-dir", dbDir}, args...)
-
-	return args, nil
+	params[dataDirParam] = &dbDir
+	return nil
 }
 
 // runServer launches a server on the env given and waits for it to finish
-func runServer(ctx context.Context, dEnv *env.DoltEnv, cfg *server.Config) error {
+func runServer(ctx context.Context, dEnv *env.DoltEnv, cfg *server.DoltgresConfig) error {
 	// Emit a usage event in the background while we start the server.
 	// Dolt is more permissive with events: it emits events even if the command fails in the earliest possible phase,
 	// we emit an event only if we got far enough to attempt to launch a server (and we may not emit it if the server

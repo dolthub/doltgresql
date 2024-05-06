@@ -129,13 +129,13 @@ func init() {
 
 // RunOnDisk starts the server based on the given args, while also using the local disk as the backing store.
 // The returned WaitGroup may be used to wait for the server to close.
-func RunOnDisk(ctx context.Context, cfg *Config, dEnv *env.DoltEnv) (*svcs.Controller, error) {
+func RunOnDisk(ctx context.Context, cfg *DoltgresConfig, dEnv *env.DoltEnv) (*svcs.Controller, error) {
 	return runServer(ctx, cfg, dEnv)
 }
 
 // RunInMemory starts the server based on the given args, while also using RAM as the backing store.
 // The returned WaitGroup may be used to wait for the server to close.
-func RunInMemory(cfg *Config) (*svcs.Controller, error) {
+func RunInMemory(cfg *DoltgresConfig) (*svcs.Controller, error) {
 	ctx := context.Background()
 	fs := filesys.EmptyInMemFS("")
 	dEnv := env.Load(ctx, env.GetCurrentUserHomeDir, fs, doltdb.InMemDoltDB, Version)
@@ -152,7 +152,7 @@ func RunInMemory(cfg *Config) (*svcs.Controller, error) {
 
 // runServer starts the server based on the given args, using the provided file system as the backing store.
 // The returned WaitGroup may be used to wait for the server to close.
-func runServer(ctx context.Context, cfg *Config, dEnv *env.DoltEnv) (*svcs.Controller, error) {
+func runServer(ctx context.Context, cfg *DoltgresConfig, dEnv *env.DoltEnv) (*svcs.Controller, error) {
 	initialization.Initialize()
 
 	if dEnv.HasDoltDataDir() {
@@ -258,18 +258,28 @@ func runServer(ctx context.Context, cfg *Config, dEnv *env.DoltEnv) (*svcs.Contr
 }
 
 // startReplication begins the background thread that replicates from Postgres, if one is configured.
-func startReplication(cfg *Config, ssCfg sqlserver.ServerConfig) (*logrepl.LogicalReplicator, error) {
+func startReplication(cfg *DoltgresConfig, ssCfg sqlserver.ServerConfig) (*logrepl.LogicalReplicator, error) {
 	if cfg.PostgresReplicationConfig == nil {
 		return nil, nil
+	} else if cfg.PostgresReplicationConfig.PostgresDatabase == nil || *cfg.PostgresReplicationConfig.PostgresDatabase == "" {
+		return nil, fmt.Errorf("postgres replication database must be specified and not empty for replication")
+	} else if cfg.PostgresReplicationConfig.PostgresUser == nil || *cfg.PostgresReplicationConfig.PostgresUser == "" {
+		return nil, fmt.Errorf("postgres replication user must be specified and not empty for replication")
+	} else if cfg.PostgresReplicationConfig.PostgresPassword == nil || *cfg.PostgresReplicationConfig.PostgresPassword == "" {
+		return nil, fmt.Errorf("postgres replication password must be specified and not empty for replication")
+	} else if cfg.PostgresReplicationConfig.PostgresPort == nil || *cfg.PostgresReplicationConfig.PostgresPort == 0 {
+		return nil, fmt.Errorf("postgres replication port must be specified and non-zero for replication")
+	} else if cfg.PostgresReplicationConfig.SlotName == nil || *cfg.PostgresReplicationConfig.SlotName == "" {
+		return nil, fmt.Errorf("postgres replication slot name must be specified and not empty for replication")
 	}
 
 	walFilePath := filepath.Join(ssCfg.CfgDir(), "pg_wal_location")
 	primaryDns := fmt.Sprintf(
 		"postgres://%s:%s@127.0.0.1:%d/%s",
-		cfg.PostgresReplicationConfig.PostgresUser,
-		cfg.PostgresReplicationConfig.PostgresPassword,
-		cfg.PostgresReplicationConfig.PostgresPort,
-		cfg.PostgresReplicationConfig.PostgresDatabase,
+		*cfg.PostgresReplicationConfig.PostgresUser,
+		*cfg.PostgresReplicationConfig.PostgresPassword,
+		*cfg.PostgresReplicationConfig.PostgresPort,
+		*cfg.PostgresReplicationConfig.PostgresDatabase,
 	)
 
 	replicationDns := fmt.Sprintf(
@@ -286,7 +296,7 @@ func startReplication(cfg *Config, ssCfg sqlserver.ServerConfig) (*logrepl.Logic
 	}
 
 	cli.Println("Starting replication")
-	go replicator.StartReplication(cfg.PostgresReplicationConfig.SlotName)
+	go replicator.StartReplication(*cfg.PostgresReplicationConfig.SlotName)
 	return replicator, nil
 }
 
