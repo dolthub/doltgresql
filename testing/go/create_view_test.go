@@ -116,7 +116,7 @@ var createViewStmts = []ScriptTest{
 		},
 	},
 	{
-		Name: "postgres-specific syntax",
+		Name: "cast (postgres-specific syntax)",
 		SetUpScript: []string{
 			"create table t1 (pk int);",
 			"insert into t1 values (1), (2), (3), (4);",
@@ -129,6 +129,14 @@ var createViewStmts = []ScriptTest{
 			{
 				Query:    "select * from v order by pk;",
 				Expected: []sql.Row{{1}, {2}, {3}, {4}},
+			},
+			{
+				Query:    "CREATE VIEW v_text AS SELECT pk::int2, (pk)::text AS pk_text FROM t1;",
+				Expected: []sql.Row{},
+			},
+			{
+				Query:    "select pk_text from v_text order by pk;",
+				Expected: []sql.Row{{"1"}, {"2"}, {"3"}, {"4"}},
 			},
 		},
 	},
