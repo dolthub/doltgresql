@@ -52,10 +52,17 @@ const (
 	configParam       = "config"
 	dataDirParam      = "data-dir"
 
-	versionFlag = "version"
+	versionFlag    = "version"
+	configHelpFlag = "config-help"
 )
 
 func parseArgs() (flags map[string]*bool, params map[string]*string) {
+	flag.Usage = func() {
+		cli.Println("Usage: doltgres [options]")
+		cli.Println("Options:")
+		flag.PrintDefaults()
+	}
+
 	flags = make(map[string]*bool)
 	params = make(map[string]*string)
 
@@ -67,6 +74,7 @@ func parseArgs() (flags map[string]*bool, params map[string]*string) {
 	params[configParam] = flag.String(configParam, "config.yaml", "path to the config file")
 
 	flags[versionFlag] = flag.Bool(versionFlag, false, "print the version")
+	flags[configHelpFlag] = flag.Bool(configHelpFlag, false, "print the config file help")
 
 	flag.Parse()
 
@@ -79,6 +87,9 @@ func main() {
 
 	if *flags[versionFlag] {
 		cli.Println("Doltgres version", server.Version)
+		os.Exit(0)
+	} else if *flags[configHelpFlag] {
+		cli.Println(server.ConfigHelp)
 		os.Exit(0)
 	}
 

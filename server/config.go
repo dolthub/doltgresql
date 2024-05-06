@@ -32,6 +32,8 @@ const (
 	OverrideDataDirKey = "data_dir"
 )
 
+var ConfigHelp = `Place holder. This will be replaced with details on config.yaml options`
+
 type PostgresReplicationConfig struct {
 	PostgresServerAddress *string `yaml:"postgres_server_address,omitempty" minver:"TBD"`
 	PostgresUser          *string `yaml:"postgres_user,omitempty" minver:"TBD"`
