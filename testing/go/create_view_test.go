@@ -127,7 +127,6 @@ var createViewStmts = []ScriptTest{
 				Expected: []sql.Row{},
 			},
 			{
-				Skip:     true, // TODO: need to fix column naming
 				Query:    "select * from v order by pk;",
 				Expected: []sql.Row{{1}, {2}, {3}, {4}},
 			},
