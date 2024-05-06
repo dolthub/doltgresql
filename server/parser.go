@@ -2,10 +2,12 @@ package server
 
 import (
 	"fmt"
-	"github.com/dolthub/doltgresql/postgres/parser/parser"
-	"github.com/dolthub/doltgresql/server/ast"
+
 	"github.com/dolthub/go-mysql-server/sql"
 	vitess "github.com/dolthub/vitess/go/vt/sqlparser"
+
+	"github.com/dolthub/doltgresql/postgres/parser/parser"
+	"github.com/dolthub/doltgresql/server/ast"
 )
 
 var _ sql.Parser = &PostgresParser{}
@@ -44,7 +46,7 @@ func (p *PostgresParser) ParseWithOptions(query string, delimiter rune, _ bool, 
 		return nil, "", "", err
 	}
 	if vitessAST == nil {
-		query = stmts[0].AST.String()
+		q = stmts[0].AST.String()
 	}
 
 	return vitessAST, q, "", nil
