@@ -16,12 +16,17 @@ package server
 
 import (
 	"fmt"
+
 	"github.com/dolthub/dolt/go/cmd/dolt/commands/engine"
 	"github.com/dolthub/dolt/go/cmd/dolt/commands/sqlserver"
 	"github.com/dolthub/dolt/go/libraries/doltcore/sqle/cluster"
 	"github.com/dolthub/dolt/go/libraries/utils/filesys"
 	"gopkg.in/yaml.v2"
 )
+
+func Ptr[T any](v T) *T {
+	return &v
+}
 
 const (
 	maxConnectionsKey = "max_connections"
@@ -426,14 +431,15 @@ func (cfg *DoltgresConfig) EventSchedulerStatus() string {
 func (cfg *DoltgresConfig) ValueSet(value string) bool {
 	switch value {
 	case readTimeoutKey:
-		return cfg.ListenerConfig.ReadTimeoutMillis != nil
+		return cfg.ListenerConfig != nil && cfg.ListenerConfig.ReadTimeoutMillis != nil
 	case writeTimeoutKey:
-		return cfg.ListenerConfig.WriteTimeoutMillis != nil
+		return cfg.ListenerConfig != nil && cfg.ListenerConfig.WriteTimeoutMillis != nil
 	case maxConnectionsKey:
-		return cfg.ListenerConfig.MaxConnections != nil
+		return cfg.ListenerConfig != nil && cfg.ListenerConfig.MaxConnections != nil
 	case eventSchedulerKey:
-		return cfg.BehaviorConfig.EventSchedulerStatus != nil
+		return cfg.BehaviorConfig != nil && cfg.BehaviorConfig.EventSchedulerStatus != nil
 	}
+
 	return false
 }
 

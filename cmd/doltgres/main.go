@@ -18,6 +18,10 @@ import (
 	"context"
 	"flag"
 	"fmt"
+	"os"
+	"path/filepath"
+	"strconv"
+
 	"github.com/dolthub/dolt/go/cmd/dolt/cli"
 	"github.com/dolthub/dolt/go/cmd/dolt/commands"
 	"github.com/dolthub/dolt/go/cmd/dolt/commands/sqlserver"
@@ -28,11 +32,9 @@ import (
 	"github.com/dolthub/dolt/go/libraries/utils/config"
 	"github.com/dolthub/dolt/go/libraries/utils/filesys"
 	"github.com/dolthub/dolt/go/store/nbs"
-	"github.com/dolthub/doltgresql/server"
 	"github.com/fatih/color"
-	"os"
-	"path/filepath"
-	"strconv"
+
+	"github.com/dolthub/doltgresql/server"
 )
 
 func init() {
