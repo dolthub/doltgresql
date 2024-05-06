@@ -129,13 +129,13 @@ func init() {
 
 // RunOnDisk starts the server based on the given args, while also using the local disk as the backing store.
 // The returned WaitGroup may be used to wait for the server to close.
-func RunOnDisk(ctx context.Context, args []string, dEnv *env.DoltEnv) (*svcs.Controller, error) {
-	return runServer(ctx, args, dEnv)
+func RunOnDisk(ctx context.Context, cfg *Config, dEnv *env.DoltEnv) (*svcs.Controller, error) {
+	return runServer(ctx, cfg, dEnv)
 }
 
 // RunInMemory starts the server based on the given args, while also using RAM as the backing store.
 // The returned WaitGroup may be used to wait for the server to close.
-func RunInMemory(args []string) (*svcs.Controller, error) {
+func RunInMemory(cfg *Config) (*svcs.Controller, error) {
 	ctx := context.Background()
 	fs := filesys.EmptyInMemFS("")
 	dEnv := env.Load(ctx, env.GetCurrentUserHomeDir, fs, doltdb.InMemDoltDB, Version)
@@ -147,24 +147,13 @@ func RunInMemory(args []string) (*svcs.Controller, error) {
 		})
 	}
 
-	return runServer(ctx, args, dEnv)
+	return runServer(ctx, cfg, dEnv)
 }
 
 // runServer starts the server based on the given args, using the provided file system as the backing store.
 // The returned WaitGroup may be used to wait for the server to close.
-func runServer(ctx context.Context, args []string, dEnv *env.DoltEnv) (*svcs.Controller, error) {
+func runServer(ctx context.Context, cfg *Config, dEnv *env.DoltEnv) (*svcs.Controller, error) {
 	initialization.Initialize()
-
-	sqlServerCmd := sqlserver.SqlServerCmd{}
-	if serverArgs, err := sqlServerCmd.ArgParser().Parse(append([]string{"sql-server"}, args...)); err == nil {
-		if _, ok := serverArgs.GetValue("port"); !ok {
-			args = append(args, "--port=5432")
-		}
-	}
-
-	if dEnv.CfgLoadErr != nil {
-		return nil, fmt.Errorf("failed to load the global config: %w", dEnv.CfgLoadErr)
-	}
 
 	if dEnv.HasDoltDataDir() {
 		cwd, _ := dEnv.FS.Abs(".")
@@ -179,20 +168,13 @@ func runServer(ctx context.Context, args []string, dEnv *env.DoltEnv) (*svcs.Con
 		return nil, fmt.Errorf("failed to load persisted system variables: %w", err)
 	}
 
-	ap := sqlserver.SqlServerCmd{}.ArgParser()
-	help, _ := cli.HelpAndUsagePrinters(cli.CommandDocsForCommandString("sql-server", sqlServerDocs, ap))
-
-	serverConfig, err := sqlserver.ServerConfigFromArgsWithReader(ap, help, args, dEnv, DoltgresConfigReader{})
+	ssCfg := cfg.ToSqlServerConfig()
+	err = sqlserver.ApplySystemVariables(ssCfg)
 	if err != nil {
 		return nil, err
 	}
 
-	err = sqlserver.ApplySystemVariables(serverConfig)
-	if err != nil {
-		return nil, err
-	}
-
-	tlsConfig, err := sqlserver.LoadTLSConfig(serverConfig)
+	tlsConfig, err := sqlserver.LoadTLSConfig(ssCfg)
 	if err != nil {
 		return nil, err
 	}
@@ -207,7 +189,7 @@ func runServer(ctx context.Context, args []string, dEnv *env.DoltEnv) (*svcs.Con
 		config.UserEmailKey: DefUserEmail,
 	})
 
-	dataDirFs, err := filesys.LocalFS.WithWorkingDir(serverConfig.DataDir())
+	dataDirFs, err := filesys.LocalFS.WithWorkingDir(ssCfg.DataDir())
 	if err != nil {
 		return nil, err
 	}
@@ -258,7 +240,7 @@ func runServer(ctx context.Context, args []string, dEnv *env.DoltEnv) (*svcs.Con
 		}
 	}()
 
-	sqlserver.ConfigureServices(serverConfig, controller, Version, dEnv)
+	sqlserver.ConfigureServices(ssCfg, controller, Version, dEnv)
 	go controller.Start(newCtx)
 
 	err = controller.WaitForStart()
@@ -267,7 +249,7 @@ func runServer(ctx context.Context, args []string, dEnv *env.DoltEnv) (*svcs.Con
 	}
 
 	// TODO: shutdown replication cleanly when we stop the server
-	_, err = startReplication(serverConfig)
+	_, err = startReplication(cfg, ssCfg)
 	if err != nil {
 		return nil, err
 	}
@@ -276,19 +258,12 @@ func runServer(ctx context.Context, args []string, dEnv *env.DoltEnv) (*svcs.Con
 }
 
 // startReplication begins the background thread that replicates from Postgres, if one is configured.
-func startReplication(serverConfig sqlserver.ServerConfig) (*logrepl.LogicalReplicator, error) {
-	cfg, ok := serverConfig.(*DoltgresServerConfig)
-	if !ok {
-		// no config file specified, so no replication
-		cli.Println("No config file specified, so no replication")
-		return nil, nil
-	}
-
+func startReplication(cfg *Config, ssCfg sqlserver.ServerConfig) (*logrepl.LogicalReplicator, error) {
 	if cfg.PostgresReplicationConfig == nil {
 		return nil, nil
 	}
 
-	walFilePath := filepath.Join(cfg.CfgDir(), "pg_wal_location")
+	walFilePath := filepath.Join(ssCfg.CfgDir(), "pg_wal_location")
 	primaryDns := fmt.Sprintf(
 		"postgres://%s:%s@127.0.0.1:%d/%s",
 		cfg.PostgresReplicationConfig.PostgresUser,
@@ -299,9 +274,9 @@ func startReplication(serverConfig sqlserver.ServerConfig) (*logrepl.LogicalRepl
 
 	replicationDns := fmt.Sprintf(
 		"postgres://%s:%s@localhost:%d/%s",
-		cfg.User(),
-		cfg.Password(),
-		cfg.Port(),
+		ssCfg.User(),
+		ssCfg.Password(),
+		ssCfg.Port(),
 		"doltgres", // TODO: this needs to come from config
 	)
 

@@ -16,17 +16,16 @@ package server
 
 import (
 	"fmt"
-
 	"github.com/dolthub/dolt/go/cmd/dolt/commands/sqlserver"
-	"github.com/dolthub/dolt/go/libraries/utils/argparser"
-	"github.com/dolthub/dolt/go/libraries/utils/filesys"
+	"os"
+
 	"gopkg.in/yaml.v2"
 )
 
-type DoltgresServerConfig struct {
+/* type DoltgresServerConfig struct {
 	*sqlserver.YAMLConfig
 	PostgresReplicationConfig *PostgresReplicationConfig `yaml:"postgres_replication,omitempty"`
-}
+}*/
 
 type PostgresReplicationConfig struct {
 	PostgresServerAddress string `yaml:"postgres_server_address"`
@@ -37,36 +36,27 @@ type PostgresReplicationConfig struct {
 	SlotName              string `yaml:"slot_name"`
 }
 
-var _ sqlserver.ServerConfig = (*DoltgresServerConfig)(nil)
-
-type DoltgresConfigReader struct{}
-
-func (d DoltgresConfigReader) ReadConfigFile(fs filesys.Filesys, file string) (sqlserver.ServerConfig, error) {
-	data, err := fs.ReadFile(file)
-	if err != nil {
-		return nil, fmt.Errorf("Failed to read file '%s'. Error: %w", file, err)
-	}
-
-	// TODO: we lose the ability to unmarshal strict here, because our YAMLConfig has fields the Dolt implementation
-	//  doesn't recognize. Maybe worthwhile to use a generic map first?
-	var cfg sqlserver.YAMLConfig
-	err = yaml.Unmarshal(data, &cfg)
-	if err != nil {
-		return nil, fmt.Errorf("Failed to parse yaml file '%s'. Error: %w", file, err)
-	}
-
-	var doltgresCfg DoltgresServerConfig
-	err = yaml.Unmarshal(data, &doltgresCfg)
-	if err != nil {
-		return nil, fmt.Errorf("Failed to parse yaml file '%s'. Error: %w", file, err)
-	}
-
-	doltgresCfg.YAMLConfig = &cfg
-	return &doltgresCfg, nil
+type Config struct {
+	PostgresReplicationConfig *PostgresReplicationConfig `yaml:"postgres_replication,omitempty" minver:"TBD"`
 }
 
-func (d DoltgresConfigReader) ReadConfigArgs(args *argparser.ArgParseResults) (sqlserver.ServerConfig, error) {
-	return sqlserver.NewCommandLineConfig(nil, args)
+func (cfg *Config) ToSqlServerConfig() sqlserver.ServerConfig {
+	return &sqlserver.YAMLConfig{}
 }
 
-var _ sqlserver.ServerConfigReader = (*DoltgresConfigReader)(nil)
+func ReadConfigFromYamlFile(configFilePath string) (*Config, error) {
+	configFileData, err := os.ReadFile(configFilePath)
+	if err != nil {
+		return nil, fmt.Errorf("error reading config file '%s': %w", configFilePath, err)
+	}
+	return ConfigFromYamlData(configFileData)
+}
+
+func ConfigFromYamlData(configFileData []byte) (*Config, error) {
+	var cfg Config
+	err := yaml.UnmarshalStrict(configFileData, &cfg)
+	if err != nil {
+		return nil, fmt.Errorf("error unmarshalling config data: %w", err)
+	}
+	return &cfg, err
+}
