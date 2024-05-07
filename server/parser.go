@@ -2,8 +2,6 @@ package server
 
 import (
 	"fmt"
-	"strings"
-
 	"github.com/dolthub/go-mysql-server/sql"
 	vitess "github.com/dolthub/vitess/go/vt/sqlparser"
 
@@ -34,13 +32,6 @@ func (p *PostgresParser) Parse(_ *sql.Context, query string, multi bool) (vitess
 // ParseWithOptions implements sql.Parser interface.
 func (p *PostgresParser) ParseWithOptions(query string, delimiter rune, _ bool, _ vitess.ParserOptions) (vitess.Statement, string, string, error) {
 	q := sql.RemoveSpaceAndDelimiter(query, delimiter)
-	// TODO: need support for `USE` statement
-	if strings.HasPrefix(strings.ToLower(q), "use") {
-		vitessStmt, err := vitess.Parse(q)
-		if err == nil {
-			return vitessStmt, q, "", err
-		}
-	}
 	stmts, err := parser.Parse(q)
 	if err != nil {
 		return nil, "", "", err
