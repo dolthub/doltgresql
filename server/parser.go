@@ -2,6 +2,7 @@ package server
 
 import (
 	"fmt"
+
 	"github.com/dolthub/go-mysql-server/sql"
 	vitess "github.com/dolthub/vitess/go/vt/sqlparser"
 
