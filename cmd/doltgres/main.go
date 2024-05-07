@@ -74,6 +74,7 @@ func parseArgs() (flags map[string]*bool, params map[string]*string) {
 	params[stdErrParam] = flag.String(stdErrParam, "", "file to use as stderr")
 	params[stdOutAndErrParam] = flag.String(stdOutAndErrParam, "", "file to use as stdout and stderr")
 	params[configParam] = flag.String(configParam, "config.yaml", "path to the config file")
+	params[dataDirParam] = flag.String(dataDirParam, "", "path to the directory where doltgres databases are stored")
 
 	flags[versionFlag] = flag.Bool(versionFlag, false, "print the version")
 	flags[configHelpFlag] = flag.Bool(configHelpFlag, false, "print the config file help")

@@ -14,7 +14,7 @@ wait_for_connection() {
   end_time=$((SECONDS+($timeout/1000)))
 
   while [ $SECONDS -lt $end_time ]; do
-    run psql -U $user -h localhost -p $port -c "SELECT 1;"
+    run psql -U $user -h localhost -p $port -c "SELECT 1;" doltgres
     if [ $status -eq 0 ]; then
       echo "Connected successfully!"
       return 0
@@ -28,15 +28,17 @@ wait_for_connection() {
 
 start_sql_server() {
     DEFAULT_DB="$1"
-    DEFAULT_DB="${DEFAULT_DB:=postgres}"
+    DEFAULT_DB="${DEFAULT_DB:=doltgres}"
     nativevar DEFAULT_DB "$DEFAULT_DB" /w
     logFile="$2"
     PORT=$( definePORT )
+    CONFIG=$( defineCONFIG $PORT )
+    echo "$CONFIG" > config.yaml
     if [[ $logFile ]]
     then
-        doltgres --host 0.0.0.0 --port=$PORT --data-dir=. --user "${SQL_USER:-postgres}" > $logFile 2>&1 &
+        doltgres -data-dir=. -config=config.yaml> $logFile 2>&1 &
     else
-        doltgres --host 0.0.0.0 --port=$PORT --data-dir=. --user "${SQL_USER:-postgres}" &
+        doltgres -data-dir=. -config=config.yaml &
     fi
     SERVER_PID=$!
     wait_for_connection $PORT 7500
@@ -49,18 +51,6 @@ start_sql_server() {
 start_sql_server_with_args() {
     DEFAULT_DB=""
     nativevar DEFAULT_DB "$DEFAULT_DB" /w
-
-    portFound=
-    for arg in "$@"; do
-        if [[ "$arg" == "--port" ]]; then
-            portFound=1
-        fi
-    done
-
-    if [[ -z "$portFound" && -z "$PORT" ]]; then
-        PORT=$( definePORT )
-        set -- "$@" "--port" "$PORT"
-    fi
 
     echo "running doltgres $@"
     doltgres "$@" &
@@ -103,4 +93,24 @@ definePORT() {
       break
     fi
   done
+}
+
+defineCONFIG() {
+    PORT=$1
+    cat <<EOF
+    behavior:
+      read_only: false
+      autocommit: true
+      persistence_behavior: load
+      disable_client_multi_statements: false
+      dolt_transaction_commit: false
+
+    user:
+      name: "doltgres"
+      password: "password"
+
+    listener:
+      host: localhost
+      port: $PORT
+EOF
 }

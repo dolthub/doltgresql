@@ -4,12 +4,9 @@ load $BATS_TEST_DIRNAME/setup/common.bash
 setup() {
     setup_common
     # tests are run without setting doltgres config user.name and user.email
-    stash_current_dolt_user
-    unset_dolt_user
 }
 
 teardown() {
-    restore_stashed_dolt_user
     teardown_common
 }
 
@@ -39,7 +36,7 @@ teardown() {
     
     cp "$BATS_TEST_DIRNAME/replication-config.yaml" "$BATS_TMPDIR/dolt-repo-$$" 
     PORT=5433
-    start_sql_server_with_args "--config=replication-config.yaml"
+    start_sql_server_with_args "-config=replication-config.yaml"
         
     # Create the table that already exists on the primary before doing any inserts on the primary
     query_server doltgres -c "create table public.t1 (a int primary key, b int)"
@@ -57,5 +54,5 @@ teardown() {
 }
 
 postgres_primary_query() {
-    PGPASSWORD=password psql -U "postgres" -h 127.0.0.1 -p 5432 "dbname=postgres replication=database" -c "$@"
+    PGPASSWORD=password psql -U "postgres" -h 127.0.0.1 -p 5432 "dbname=postgres replication=database" -c "$@" doltgres
 }

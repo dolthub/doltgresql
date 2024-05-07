@@ -3,37 +3,19 @@ load $BATS_TEST_DIRNAME/setup/common.bash
 
 setup() {
     setup_common
-    # tests are run without setting doltgres config user.name and user.email
-    stash_current_dolt_user
-    unset_dolt_user
 }
 
 teardown() {
-    restore_stashed_dolt_user
     teardown_common
 }
 
 @test 'doltgres: config file' {
     PORT=$( definePORT )
-    cat > config.yaml <<EOF
-behavior:
-  read_only: false
-  autocommit: true
-  persistence_behavior: load
-  disable_client_multi_statements: false
-  dolt_transaction_commit: false
-
-user:
-  name: "doltgres"
-  password: "password"
-
-listener:
-  host: localhost
-  port: $PORT
-EOF
+    CONFIG=$( defineCONFIG $PORT )
+    echo "$CONFIG" > config.yaml
 
     cat config.yaml
-    start_sql_server_with_args --config config.yaml > log.txt 2>&1
+    start_sql_server_with_args -config config.yaml > log.txt 2>&1
     
     run cat log.txt
     [[ ! "$output" =~ "Author identity unknown" ]] || false
@@ -67,7 +49,6 @@ user:
 listener:
   host: localhost
   port: $PORT
-  max_connections: 100
   read_timeout_millis: 28800000
   write_timeout_millis: 28800000
   tls_key: null
@@ -100,9 +81,7 @@ EOF
 
     cat config.yaml
 
-    skip "Bad error: Variable 'max_connections' is a SESSION variable and can't be used with SET GLOBAL"
-    
-    start_sql_server_with_args --config config.yaml
+    start_sql_server_with_args -config config.yaml
 
     query_server -c "create table t1 (a int primary key, b int)"
     query_server -c "insert into t1 values (1,2)"
@@ -115,8 +94,7 @@ EOF
 @test 'doltgres: DOLTGRES_DATA_DIR set to current dir' {
     [ ! -d "doltgres" ]
     export DOLTGRES_DATA_DIR="$(pwd)"
-    export SQL_USER="doltgres"
-    start_sql_server_with_args "--host 0.0.0.0" "--user doltgres" > log.txt 2>&1
+    start_sql_server > log.txt 2>&1
 
     run cat log.txt
     [[ ! "$output" =~ "Author identity unknown" ]] || false
@@ -134,7 +112,11 @@ EOF
 
     export DOLTGRES_DATA_DIR="$(pwd)"
     export SQL_USER="doltgres"
-    start_sql_server_with_args "--host 0.0.0.0" "--user doltgres" "--data-dir=./test" #> log.txt 2>&1
+    mkdir test
+    PORT=$( definePORT )
+    CONFIG=$( defineCONFIG $PORT )
+    echo "$CONFIG" > config.yaml
+    start_sql_server_with_args -config=config.yaml "-data-dir=./test" #> log.txt 2>&1
 
     run cat log.txt
     [[ ! "$output" =~ "Author identity unknown" ]] || false

@@ -77,7 +77,6 @@ type DoltgresUserConfig struct {
 type DoltgresListenerConfig struct {
 	HostStr            *string `yaml:"host,omitempty" minver:"TBD"`
 	PortNumber         *int    `yaml:"port,omitempty" minver:"TBD"`
-	MaxConnections     *uint64 `yaml:"max_connections,omitempty" minver:"TBD"`
 	ReadTimeoutMillis  *uint64 `yaml:"read_timeout_millis,omitempty" minver:"TBD"`
 	WriteTimeoutMillis *uint64 `yaml:"write_timeout_millis,omitempty" minver:"TBD"`
 	// TLSKey is a file system path to an unencrypted private TLS key in PEM format.
@@ -249,11 +248,7 @@ func (cfg *DoltgresConfig) LogLevel() sqlserver.LogLevel {
 }
 
 func (cfg *DoltgresConfig) MaxConnections() uint64 {
-	if cfg.ListenerConfig == nil || cfg.ListenerConfig.MaxConnections == nil {
-		return 0
-	}
-
-	return *cfg.ListenerConfig.MaxConnections
+	return 0
 }
 
 func (cfg *DoltgresConfig) QueryParallelism() int {
@@ -435,7 +430,7 @@ func (cfg *DoltgresConfig) ValueSet(value string) bool {
 	case writeTimeoutKey:
 		return cfg.ListenerConfig != nil && cfg.ListenerConfig.WriteTimeoutMillis != nil
 	case maxConnectionsKey:
-		return cfg.ListenerConfig != nil && cfg.ListenerConfig.MaxConnections != nil
+		return false
 	case eventSchedulerKey:
 		return cfg.BehaviorConfig != nil && cfg.BehaviorConfig.EventSchedulerStatus != nil
 	}
