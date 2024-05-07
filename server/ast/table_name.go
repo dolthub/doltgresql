@@ -15,6 +15,9 @@
 package ast
 
 import (
+	"strings"
+
+	"github.com/dolthub/go-mysql-server/sql"
 	vitess "github.com/dolthub/vitess/go/vt/sqlparser"
 
 	"github.com/dolthub/doltgresql/postgres/parser/sem/tree"
@@ -34,6 +37,11 @@ func nodeTableName(node *tree.TableName) (vitess.TableName, error) {
 
 	if node.ExplicitSchema {
 		schemaName = vitess.NewTableIdent(string(node.SchemaName))
+	}
+
+	if strings.ToLower(string(node.SchemaName)) == sql.InformationSchemaDatabaseName {
+		dbName = vitess.NewTableIdent(string(node.SchemaName))
+		schemaName = vitess.NewTableIdent("")
 	}
 
 	return vitess.TableName{

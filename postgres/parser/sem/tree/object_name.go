@@ -215,10 +215,10 @@ func (u *UnresolvedObjectName) ToTableName() TableName {
 	return TableName{objName{
 		ObjectName: Name(u.Parts[0]),
 		ObjectNamePrefix: ObjectNamePrefix{
-			CatalogName:     Name(u.Parts[1]),
-			SchemaName:      Name(u.Parts[2]),
-			ExplicitCatalog: u.NumParts >= 2,
-			ExplicitSchema:  u.NumParts >= 3,
+			SchemaName:      Name(u.Parts[1]),
+			CatalogName:     Name(u.Parts[2]),
+			ExplicitSchema:  u.NumParts >= 2,
+			ExplicitCatalog: u.NumParts >= 3,
 		},
 	}}
 }
