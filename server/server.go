@@ -17,6 +17,9 @@ package server
 import (
 	"context"
 	"fmt"
+	_ "net/http/pprof"
+	"path/filepath"
+
 	"github.com/dolthub/dolt/go/cmd/dolt/cli"
 	"github.com/dolthub/dolt/go/cmd/dolt/commands"
 	"github.com/dolthub/dolt/go/cmd/dolt/commands/sqlserver"
@@ -31,8 +34,6 @@ import (
 	"github.com/dolthub/dolt/go/store/util/tempfiles"
 	"github.com/dolthub/go-mysql-server/server"
 	"github.com/dolthub/go-mysql-server/sql"
-	_ "net/http/pprof"
-	"path/filepath"
 
 	"github.com/dolthub/doltgresql/server/initialization"
 	"github.com/dolthub/doltgresql/server/logrepl"
