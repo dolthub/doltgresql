@@ -2,6 +2,7 @@ package server
 
 import (
 	"fmt"
+	"strings"
 
 	"github.com/dolthub/go-mysql-server/sql"
 	vitess "github.com/dolthub/vitess/go/vt/sqlparser"
@@ -12,22 +13,33 @@ import (
 
 var _ sql.Parser = &PostgresParser{}
 
+// PostgresParser is a postgres syntax parser.
+// This parser is used as parser in the engine for Doltgres.
 type PostgresParser struct{}
 
+// NewPostgresParser creates new PostgresParser.
 func NewPostgresParser() *PostgresParser { return &PostgresParser{} }
 
+// ParseSimple implements sql.Parser interface.
 func (p *PostgresParser) ParseSimple(query string) (vitess.Statement, error) {
 	stmt, _, _, err := p.ParseWithOptions(query, ';', false, vitess.ParserOptions{})
 	return stmt, err
 }
 
+// Parse implements sql.Parser interface.
 func (p *PostgresParser) Parse(_ *sql.Context, query string, multi bool) (vitess.Statement, string, string, error) {
 	return p.ParseWithOptions(query, ';', multi, vitess.ParserOptions{})
 }
 
+// ParseWithOptions implements sql.Parser interface.
 func (p *PostgresParser) ParseWithOptions(query string, delimiter rune, _ bool, _ vitess.ParserOptions) (vitess.Statement, string, string, error) {
 	q := sql.RemoveSpaceAndDelimiter(query, delimiter)
-	if vitessStmt, err := vitess.Parse(q); err == nil {
+	// TODO: need support for `USE` statement
+	if strings.HasPrefix(strings.ToLower(q), "use") {
+		vitessStmt, err := vitess.Parse(q)
+		if err != nil {
+			return nil, "", "", err
+		}
 		return vitessStmt, q, "", err
 	}
 	stmts, err := parser.Parse(q)
@@ -52,6 +64,7 @@ func (p *PostgresParser) ParseWithOptions(query string, delimiter rune, _ bool, 
 	return vitessAST, q, "", nil
 }
 
+// ParseOneWithOptions implements sql.Parser interface.
 func (p *PostgresParser) ParseOneWithOptions(query string, _ vitess.ParserOptions) (vitess.Statement, int, error) {
 	stmt, err := parser.ParseOne(query)
 	if err != nil {

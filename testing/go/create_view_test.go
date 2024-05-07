@@ -37,7 +37,7 @@ var createViewStmts = []ScriptTest{
 				Expected: []sql.Row{},
 			},
 			{
-				Query:    "select * from v;",
+				Query:    "select * from v order by pk;",
 				Expected: []sql.Row{{1}, {1}, {2}, {3}},
 			},
 		},
@@ -55,7 +55,7 @@ var createViewStmts = []ScriptTest{
 				Expected: []sql.Row{},
 			},
 			{
-				Query:    "select * from v1;",
+				Query:    "select * from v1 order by pk;",
 				Expected: []sql.Row{{2}, {3}},
 			},
 		},
