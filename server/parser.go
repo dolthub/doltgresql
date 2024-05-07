@@ -37,10 +37,9 @@ func (p *PostgresParser) ParseWithOptions(query string, delimiter rune, _ bool, 
 	// TODO: need support for `USE` statement
 	if strings.HasPrefix(strings.ToLower(q), "use") {
 		vitessStmt, err := vitess.Parse(q)
-		if err != nil {
-			return nil, "", "", err
+		if err == nil {
+			return vitessStmt, q, "", err
 		}
-		return vitessStmt, q, "", err
 	}
 	stmts, err := parser.Parse(q)
 	if err != nil {
