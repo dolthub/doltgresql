@@ -6,9 +6,9 @@ require (
 	github.com/PuerkitoBio/goquery v1.8.1
 	github.com/cockroachdb/apd/v2 v2.0.3-0.20200518165714-d020e156310a
 	github.com/cockroachdb/errors v1.7.5
-	github.com/dolthub/dolt/go v0.40.5-0.20240429221409-bf82c4809507
+	github.com/dolthub/dolt/go v0.40.5-0.20240507231540-1f9df06440a9
 	github.com/dolthub/dolt/go/gen/proto/dolt/services/eventsapi v0.0.0-20240228231039-f903736a64a8
-	github.com/dolthub/go-mysql-server v0.18.2-0.20240429214844-6feb67867355
+	github.com/dolthub/go-mysql-server v0.18.2-0.20240506205942-6f757d28ad30
 	github.com/dolthub/sqllogictest/go v0.0.0-20240118211725-a52e3f5697e3
 	github.com/dolthub/vitess v0.0.0-20240429213844-e8e1b4cd75c4
 	github.com/fatih/color v1.13.0
@@ -79,6 +79,7 @@ require (
 	github.com/golang/groupcache v0.0.0-20210331224755-41bb18bfe9da // indirect
 	github.com/golang/protobuf v1.5.3 // indirect
 	github.com/golang/snappy v0.0.4 // indirect
+	github.com/google/btree v1.1.2 // indirect
 	github.com/google/go-github/v57 v57.0.0 // indirect
 	github.com/google/go-querystring v1.1.0 // indirect
 	github.com/google/s2a-go v0.1.4 // indirect
