@@ -527,7 +527,7 @@ func RunReplicationScripts(t *testing.T, scripts []ReplicationTest) {
 		scripts = focusScripts
 	}
 
-	primaryDns := fmt.Sprintf("postgres://postgres:password@127.0.0.1:%d/%s?sslmode=disable&replication=database", localPostgresPort, "doltgres")
+	primaryDns := fmt.Sprintf("postgres://postgres:password@127.0.0.1:%d/%s?sslmode=disable&replication=database", localPostgresPort, "postgres")
 
 	// We drop and recreate the replication slot once at the beginning of the test suite. Postgres seems to do a little
 	// work in the background with a publication, so we need to wait a little bit before running any test scripts.
@@ -547,10 +547,10 @@ const localPostgresPort = 5432
 func RunReplicationScript(t *testing.T, script ReplicationTest) {
 	scriptDatabase := script.Database
 	if len(scriptDatabase) == 0 {
-		scriptDatabase = "doltgres"
+		scriptDatabase = "postgres"
 	}
 
-	database := "doltgres"
+	database := "postgres"
 	// primaryDns is the connection to the actual postgres (not doltgres) database, which is why we use port 5342.
 	// If you have postgres running on a different port, you'll need to change this.
 	primaryDns := fmt.Sprintf("postgres://postgres:password@127.0.0.1:%d/%s?sslmode=disable", localPostgresPort, database)
