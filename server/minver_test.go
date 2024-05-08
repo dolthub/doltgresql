@@ -1,12 +1,3 @@
-package server
-
-import (
-	"github.com/dolthub/dolt/go/libraries/utils/minver"
-	"github.com/dolthub/dolt/go/libraries/utils/structwalk"
-	"github.com/stretchr/testify/require"
-	"testing"
-)
-
 // Copyright 2024 Dolthub, Inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
@@ -20,6 +11,16 @@ import (
 // WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 // See the License for the specific language governing permissions and
 // limitations under the License.
+
+package server
+
+import (
+	"testing"
+
+	"github.com/dolthub/dolt/go/libraries/utils/minver"
+	"github.com/dolthub/dolt/go/libraries/utils/structwalk"
+	"github.com/stretchr/testify/require"
+)
 
 func TestMinVer(t *testing.T) {
 	err := structwalk.Walk(&DoltgresConfig{}, minver.ValidateMinVerFunc)

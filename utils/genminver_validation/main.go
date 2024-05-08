@@ -20,6 +20,7 @@ import (
 	"os"
 
 	"github.com/dolthub/dolt/go/libraries/utils/minver"
+
 	"github.com/dolthub/doltgresql/server"
 )
 
