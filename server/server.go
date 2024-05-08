@@ -258,7 +258,7 @@ func runServer(ctx context.Context, args []string, dEnv *env.DoltEnv) (*svcs.Con
 		}
 	}()
 
-	sqlserver.ConfigureServices(serverConfig, controller, Version, dEnv, NewPostgresParser())
+	sqlserver.ConfigureServices(serverConfig, controller, Version, dEnv)
 	go controller.Start(newCtx)
 
 	err = controller.WaitForStart()
