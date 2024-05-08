@@ -7,9 +7,7 @@ ENV GO_VERSION=1.22.0
 
 # Install Go
 RUN apt-get update && \
-    apt-get install -y wget && \
-    apt-get install -y sudo && \
-    apt-get install -y git && \
+    apt-get install -y wget sudo git build-essentials &&
     wget https://go.dev/dl/go${GO_VERSION}.linux-amd64.tar.gz && \
     tar -C /usr/local -xzf go${GO_VERSION}.linux-amd64.tar.gz && \
     rm go${GO_VERSION}.linux-amd64.tar.gz
