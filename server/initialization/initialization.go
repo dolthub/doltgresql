@@ -17,6 +17,7 @@ package initialization
 import (
 	"sync"
 
+	"github.com/dolthub/doltgresql/core"
 	"github.com/dolthub/doltgresql/server/cast"
 	"github.com/dolthub/doltgresql/server/config"
 	"github.com/dolthub/doltgresql/server/functions"
@@ -31,6 +32,7 @@ var once = &sync.Once{}
 // Initialize initializes each package across the project. This function should be used instead of an init() function.
 func Initialize() {
 	once.Do(func() {
+		core.Init()
 		config.Init()
 		pgtypes.InitBaseIDs()
 		binary.Init()

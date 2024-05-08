@@ -252,6 +252,18 @@ var typesTests = []ScriptTest{
 					{3, "ghi  "},
 				},
 			},
+			{
+				Query: "SELECT true::char, false::char;",
+				Expected: []sql.Row{
+					{"t", "f"},
+				},
+			},
+			{
+				Query: "SELECT true::character(5), false::character(5);",
+				Expected: []sql.Row{
+					{"true ", "false"},
+				},
+			},
 		},
 	},
 	{
@@ -266,6 +278,12 @@ var typesTests = []ScriptTest{
 				Expected: []sql.Row{
 					{1, "abcdefghij"},
 					{2, "klmnopqrst"},
+				},
+			},
+			{
+				Query: "SELECT true::character varying(10), false::character varying(10);",
+				Expected: []sql.Row{
+					{"true", "false"},
 				},
 			},
 		},
@@ -644,22 +662,139 @@ var typesTests = []ScriptTest{
 		},
 	},
 	{
-		Name: "Name array type",
+		Name: "Name type, explicit casts",
 		SetUpScript: []string{
-			"CREATE TABLE t_name (id INTEGER primary key, v1 NAME[], v2 CHARACTER(100), v3 BOOLEAN);",
-			"INSERT INTO t_name VALUES (1, ARRAY['ab''cdef', 'what', 'is,hi', 'wh\"at'], '1234567890123456789012345678901234567890123456789012345678901234567890', true);",
+			"CREATE TABLE t_name (id INTEGER primary key, v1 NAME);",
+			"INSERT INTO t_name VALUES (1, 'abcdefghij'), (2, '12345');",
 		},
 		Assertions: []ScriptTestAssertion{
 			{
-				Query: `SELECT v1::varchar(1)[] FROM t_name;`,
+				Query: "SELECT * FROM t_name ORDER BY id;",
+				Expected: []sql.Row{
+					{1, "abcdefghij"},
+					{2, "12345"},
+				},
+			},
+			// Cast from Name to types
+			{
+				Query: "SELECT v1::char(1), v1::varchar(2), v1::text FROM t_name WHERE id=1;",
+				Expected: []sql.Row{
+					{"a", "ab", "abcdefghij"},
+				},
+			},
+			{
+				Query: "SELECT v1::smallint, v1::integer, v1::bigint, v1::float4, v1::float8, v1::numeric FROM t_name WHERE id=2;",
+				Expected: []sql.Row{
+					{12345, 12345, 12345, float64(12345), float64(12345), float64(12345)},
+				},
+			},
+			{
+				Query: "SELECT v1::oid, v1::xid FROM t_name WHERE id=2;",
+				Expected: []sql.Row{
+					{12345, 12345},
+				},
+			},
+			{
+				Query: "SELECT v1::xid FROM t_name WHERE id=1;",
+				Expected: []sql.Row{
+					{0},
+				},
+			},
+			{
+				Query: "SELECT ('0'::name)::boolean, ('1'::name)::boolean;",
+				Expected: []sql.Row{
+					{"f", "t"},
+				},
+			},
+			{
+				Query:       "SELECT v1::smallint FROM t_name WHERE id=1;",
+				ExpectedErr: true,
+			},
+			{
+				Query:       "SELECT v1::integer FROM t_name WHERE id=1;",
+				ExpectedErr: true,
+			},
+			{
+				Query:       "SELECT v1::bigint FROM t_name WHERE id=1;",
+				ExpectedErr: true,
+			},
+			{
+				Query:       "SELECT v1::float4 FROM t_name WHERE id=1;",
+				ExpectedErr: true,
+			},
+			{
+				Query:       "SELECT v1::float8 FROM t_name WHERE id=1;",
+				ExpectedErr: true,
+			},
+			{
+				Query:       "SELECT v1::numeric FROM t_name WHERE id=1;",
+				ExpectedErr: true,
+			},
+			{
+				Query:       "SELECT v1::boolean FROM t_name WHERE id=1;",
+				ExpectedErr: true,
+			},
+			{
+				Query:       "SELECT v1::oid FROM t_name WHERE id=1;",
+				ExpectedErr: true,
+			},
+			// Cast to Name from types
+			{
+				Query: "SELECT ('abc'::char(3))::name, ('abc'::varchar)::name, ('abc'::text)::name;",
+				Expected: []sql.Row{
+					{"abc", "abc", "abc"},
+				},
+			},
+			{
+				Query: "SELECT (10::int2)::name, (100::int4)::name, (1000::int8)::name;",
+				Expected: []sql.Row{
+					{"10", "100", "1000"},
+				},
+			},
+			{
+				Query: "SELECT (1.1::float4)::name, (10.1::float8)::name;",
+				Expected: []sql.Row{
+					{"1.1", "10.1"},
+				},
+			},
+			{
+				Query: "SELECT (100.0::numeric)::name;",
+				Skip:  true, // TODO: Should return 100.0 instead of 100
+				Expected: []sql.Row{
+					{"100.0"},
+				},
+			},
+			{
+				Query: "SELECT false::name, true::name, ('0'::boolean)::name, ('1'::boolean)::name;",
+				Expected: []sql.Row{
+					{"f", "t", "f", "t"},
+				},
+			},
+			{
+				Query: "SELECT ('123'::xid)::name, (123::oid)::name;",
+				Expected: []sql.Row{
+					{"123", "123"},
+				},
+			},
+		},
+	},
+	{
+		Name: "Name array type",
+		SetUpScript: []string{
+			"CREATE TABLE t_namea (id INTEGER primary key, v1 NAME[], v2 CHARACTER(100), v3 BOOLEAN);",
+			"INSERT INTO t_namea VALUES (1, ARRAY['ab''cdef', 'what', 'is,hi', 'wh\"at'], '1234567890123456789012345678901234567890123456789012345678901234567890', true);",
+		},
+		Assertions: []ScriptTestAssertion{
+			{
+				Query: `SELECT v1::varchar(1)[] FROM t_namea;`,
 				Expected: []sql.Row{
 					{"{a,w,i,w}"},
 				},
 			},
 			{
-				Query: `SELECT v2::name, v3::name FROM t_name;`,
+				Query: `SELECT v2::name, v3::name FROM t_namea;`,
 				Expected: []sql.Row{
-					{"123456789012345678901234567890123456789012345678901234567890123", "true"},
+					{"123456789012345678901234567890123456789012345678901234567890123", "t"},
 				},
 			},
 		},
