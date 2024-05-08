@@ -54,6 +54,12 @@ func TestSmokeTests(t *testing.T) {
 						{4, 4},
 					},
 				},
+				{
+					Query: "SELECT * FROM test ORDER BY 1 LIMIT 1 OFFSET 1;",
+					Expected: []sql.Row{
+						{2, 2},
+					},
+				},
 			},
 		},
 		{
