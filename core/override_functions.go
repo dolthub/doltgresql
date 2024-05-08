@@ -12,7 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-package rootvalue
+package core
 
 import (
 	"context"
@@ -49,7 +49,7 @@ func emptyRootValue(ctx context.Context, vrw types.ValueReadWriter, ns tree.Node
 		serial.RootValueAddCollation(builder, serial.Collationutf8mb4_0900_bin)
 		serial.RootValueAddTables(builder, tablesoff)
 		serial.RootValueAddForeignKeyAddr(builder, fkoff)
-		bs := doltserial.FinishMessage(builder, serial.RootValueEnd(builder), []byte(doltserial.RootValueFileID))
+		bs := doltserial.FinishMessage(builder, serial.RootValueEnd(builder), []byte(doltserial.DoltgresRootValueFileID))
 		return newRootValue(ctx, vrw, ns, types.SerialMessage(bs))
 	}
 
@@ -74,7 +74,7 @@ func emptyRootValue(ctx context.Context, vrw types.ValueReadWriter, ns tree.Node
 
 // newRootValue is Doltgres' implementation of doltdb.NewRootValue.
 func newRootValue(ctx context.Context, vrw types.ValueReadWriter, ns tree.NodeStore, v types.Value) (doltdb.RootValue, error) {
-	var storage fbRvStorage
+	var storage rootStorage
 
 	if !vrw.Format().UsesFlatbuffers() {
 		return nil, fmt.Errorf("unsupported vrw")
@@ -83,17 +83,12 @@ func newRootValue(ctx context.Context, vrw types.ValueReadWriter, ns tree.NodeSt
 	if err != nil {
 		return nil, err
 	}
-	storage = fbRvStorage{srv}
-	ver, ok, err := storage.GetFeatureVersion()
-	if err != nil {
-		return nil, err
-	}
-	if ok {
-		if DoltgresFeatureVersion < ver {
-			return nil, doltdb.ErrClientOutOfDate{
-				ClientVer: DoltgresFeatureVersion,
-				RepoVer:   ver,
-			}
+	storage = rootStorage{srv}
+	ver := storage.GetFeatureVersion()
+	if DoltgresFeatureVersion < ver {
+		return nil, doltdb.ErrClientOutOfDate{
+			ClientVer: DoltgresFeatureVersion,
+			RepoVer:   ver,
 		}
 	}
 
@@ -101,7 +96,7 @@ func newRootValue(ctx context.Context, vrw types.ValueReadWriter, ns tree.NodeSt
 }
 
 // rootValueHumanReadableStringAtIndentationLevel is Doltgres' implementation of
-// types.RootValueHumanReadableStringAtIndentationLevel.
+// types.DoltgresRootValueHumanReadableStringAtIndentationLevel.
 func rootValueHumanReadableStringAtIndentationLevel(sm types.SerialMessage, level int) string {
 	msg, _ := serial.TryGetRootAsRootValue(sm, doltserial.MessagePrefixSz)
 	ret := &strings.Builder{}
@@ -114,14 +109,14 @@ func rootValueHumanReadableStringAtIndentationLevel(sm types.SerialMessage, leve
 	return ret.String()
 }
 
-// rootValueWalkAddrs is Doltgres' implementation of types.RootValueWalkAddrs.
-func rootValueWalkAddrs(sm types.SerialMessage, nbf *types.NomsBinFormat, cb func(addr hash.Hash) error) error {
+// rootValueWalkAddrs is Doltgres' implementation of types.DoltgresRootValueWalkAddrs.
+func rootValueWalkAddrs(sm types.SerialMessage, cb func(addr hash.Hash) error) error {
 	var msg serial.RootValue
 	err := serial.InitRootValueRoot(&msg, []byte(sm), doltserial.MessagePrefixSz)
 	if err != nil {
 		return err
 	}
-	err = types.SerialMessage(msg.TablesBytes()).WalkAddrs(nbf, cb)
+	err = types.SerialMessage(msg.TablesBytes()).WalkAddrs(types.Format_DOLT, cb)
 	if err != nil {
 		return err
 	}

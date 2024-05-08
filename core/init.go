@@ -12,17 +12,17 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-package rootvalue
+package core
 
 import (
 	"github.com/dolthub/dolt/go/libraries/doltcore/doltdb"
 	"github.com/dolthub/dolt/go/store/types"
 )
 
-// Init initializes everything necessary for the usage of Doltgres' RootValue.
+// Init initializes this package.
 func Init() {
 	doltdb.EmptyRootValue = emptyRootValue
 	doltdb.NewRootValue = newRootValue
-	types.RootValueHumanReadableStringAtIndentationLevel = rootValueHumanReadableStringAtIndentationLevel
-	types.RootValueWalkAddrs = rootValueWalkAddrs
+	types.DoltgresRootValueHumanReadableStringAtIndentationLevel = rootValueHumanReadableStringAtIndentationLevel
+	types.DoltgresRootValueWalkAddrs = rootValueWalkAddrs
 }

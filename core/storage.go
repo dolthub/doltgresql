@@ -12,7 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-package rootvalue
+package core
 
 import (
 	"context"
@@ -31,32 +31,22 @@ import (
 	"github.com/dolthub/doltgresql/flatbuffers/gen/serial"
 )
 
-type fbRvStorage struct {
+// rootStorage is the FlatBuffer interface for the storage format.
+type rootStorage struct {
 	srv *serial.RootValue
 }
 
-type tableMap interface {
-	Get(ctx context.Context, name string) (hash.Hash, error)
-	Iter(ctx context.Context, cb func(name string, addr hash.Hash) (bool, error)) error
-}
-
-func tmIterAll(ctx context.Context, tm tableMap, cb func(name string, addr hash.Hash)) error {
-	return tm.Iter(ctx, func(name string, addr hash.Hash) (bool, error) {
-		cb(name, addr)
-		return false, nil
-	})
-}
-
-func (r fbRvStorage) SetForeignKeyMap(ctx context.Context, vrw types.ValueReadWriter, v types.Value) (fbRvStorage, error) {
+// SetForeignKeyMap sets the foreign key and returns a new storage object.
+func (r rootStorage) SetForeignKeyMap(ctx context.Context, vrw types.ValueReadWriter, v types.Value) (rootStorage, error) {
 	var h hash.Hash
 	isempty, err := doltdb.EmptyForeignKeyCollection(v.(types.SerialMessage))
 	if err != nil {
-		return fbRvStorage{}, err
+		return rootStorage{}, err
 	}
 	if !isempty {
 		ref, err := vrw.WriteValue(ctx, v)
 		if err != nil {
-			return fbRvStorage{}, err
+			return rootStorage{}, err
 		}
 		h = ref.TargetHash()
 	}
@@ -65,19 +55,22 @@ func (r fbRvStorage) SetForeignKeyMap(ctx context.Context, vrw types.ValueReadWr
 	return ret, nil
 }
 
-func (r fbRvStorage) SetFeatureVersion(v doltdb.FeatureVersion) (fbRvStorage, error) {
+// SetFeatureVersion sets the feature version and returns a new storage object.
+func (r rootStorage) SetFeatureVersion(v doltdb.FeatureVersion) (rootStorage, error) {
 	ret := r.clone()
 	ret.srv.MutateFeatureVersion(int64(v))
 	return ret, nil
 }
 
-func (r fbRvStorage) SetCollation(ctx context.Context, collation schema.Collation) (fbRvStorage, error) {
+// SetCollation sets the collation and returns a new storage object.
+func (r rootStorage) SetCollation(ctx context.Context, collation schema.Collation) (rootStorage, error) {
 	ret := r.clone()
 	ret.srv.MutateCollation(serial.Collation(collation))
 	return ret, nil
 }
 
-func (r fbRvStorage) GetSchemas(ctx context.Context) ([]schema.DatabaseSchema, error) {
+// GetSchemas returns all schemas.
+func (r rootStorage) GetSchemas(ctx context.Context) ([]schema.DatabaseSchema, error) {
 	numSchemas := r.srv.SchemasLength()
 	schemas := make([]schema.DatabaseSchema, numSchemas)
 	for i := 0; i < numSchemas; i++ {
@@ -95,38 +88,44 @@ func (r fbRvStorage) GetSchemas(ctx context.Context) ([]schema.DatabaseSchema, e
 	return schemas, nil
 }
 
-func (r fbRvStorage) SetSchemas(ctx context.Context, dbSchemas []schema.DatabaseSchema) (fbRvStorage, error) {
+// SetSchemas sets the given schemas and returns a new storage object.
+func (r rootStorage) SetSchemas(ctx context.Context, dbSchemas []schema.DatabaseSchema) (rootStorage, error) {
 	msg, err := r.serializeRootValue(r.srv.TablesBytes(), dbSchemas)
 	if err != nil {
-		return fbRvStorage{}, err
+		return rootStorage{}, err
 	}
-	return fbRvStorage{msg}, nil
+	return rootStorage{msg}, nil
 }
 
-func (r fbRvStorage) clone() fbRvStorage {
+// clone returns a clone of the calling storage.
+func (r rootStorage) clone() rootStorage {
 	bs := make([]byte, len(r.srv.Table().Bytes))
 	copy(bs, r.srv.Table().Bytes)
 	var ret serial.RootValue
 	ret.Init(bs, r.srv.Table().Pos)
-	return fbRvStorage{&ret}
+	return rootStorage{&ret}
 }
 
-func (r fbRvStorage) DebugString(ctx context.Context) string {
-	return fmt.Sprintf("fbRvStorage[%d, %s, %s]",
+// DebugString returns the storage as a printable string.
+func (r rootStorage) DebugString(ctx context.Context) string {
+	return fmt.Sprintf("rootStorage[%d, %s, %s]",
 		r.srv.FeatureVersion(),
 		"...", // TODO: Print out tables map
 		hash.New(r.srv.ForeignKeyAddrBytes()).String())
 }
 
-func (r fbRvStorage) nomsValue() types.Value {
+// nomsValue returns the storage as a noms value.
+func (r rootStorage) nomsValue() types.Value {
 	return types.SerialMessage(r.srv.Table().Bytes)
 }
 
-func (r fbRvStorage) GetFeatureVersion() (doltdb.FeatureVersion, bool, error) {
-	return doltdb.FeatureVersion(r.srv.FeatureVersion()), true, nil
+// GetFeatureVersion returns the feature version for this storage object.
+func (r rootStorage) GetFeatureVersion() doltdb.FeatureVersion {
+	return doltdb.FeatureVersion(r.srv.FeatureVersion())
 }
 
-func (r fbRvStorage) getAddressMap(vrw types.ValueReadWriter, ns tree.NodeStore) (prolly.AddressMap, error) {
+// getAddressMap returns the address map from within this storage object.
+func (r rootStorage) getAddressMap(vrw types.ValueReadWriter, ns tree.NodeStore) (prolly.AddressMap, error) {
 	tbytes := r.srv.TablesBytes()
 	node, err := shim.NodeFromValue(types.SerialMessage(tbytes))
 	if err != nil {
@@ -135,15 +134,17 @@ func (r fbRvStorage) getAddressMap(vrw types.ValueReadWriter, ns tree.NodeStore)
 	return prolly.NewAddressMap(node, ns)
 }
 
-func (r fbRvStorage) GetTablesMap(ctx context.Context, vrw types.ValueReadWriter, ns tree.NodeStore, databaseSchema string) (tableMap, error) {
+// GetTablesMap returns the tables map from within this storage object.
+func (r rootStorage) GetTablesMap(ctx context.Context, vrw types.ValueReadWriter, ns tree.NodeStore, databaseSchema string) (rootTableMap, error) {
 	am, err := r.getAddressMap(vrw, ns)
 	if err != nil {
-		return nil, err
+		return rootTableMap{}, err
 	}
-	return fbTableMap{AddressMap: am, schemaName: databaseSchema}, nil
+	return rootTableMap{AddressMap: am, schemaName: databaseSchema}, nil
 }
 
-func (r fbRvStorage) GetForeignKeys(ctx context.Context, vr types.ValueReader) (types.Value, bool, error) {
+// GetForeignKeys returns the types.SerialMessage representing the foreign keys.
+func (r rootStorage) GetForeignKeys(ctx context.Context, vr types.ValueReader) (types.Value, bool, error) {
 	addr := hash.New(r.srv.ForeignKeyAddrBytes())
 	if addr.IsEmpty() {
 		return types.SerialMessage{}, false, nil
@@ -155,7 +156,8 @@ func (r fbRvStorage) GetForeignKeys(ctx context.Context, vr types.ValueReader) (
 	return v.(types.SerialMessage), true, nil
 }
 
-func (r fbRvStorage) GetCollation(ctx context.Context) (schema.Collation, error) {
+// GetCollation returns the collation declared within storage.
+func (r rootStorage) GetCollation(ctx context.Context) (schema.Collation, error) {
 	collation := r.srv.Collation()
 	// Pre-existing repositories will return invalid here
 	if collation == serial.Collationinvalid {
@@ -164,69 +166,71 @@ func (r fbRvStorage) GetCollation(ctx context.Context) (schema.Collation, error)
 	return schema.Collation(collation), nil
 }
 
-func (r fbRvStorage) EditTablesMap(ctx context.Context, vrw types.ValueReadWriter, ns tree.NodeStore, edits []tableEdit) (fbRvStorage, error) {
+// EditTablesMap edits the table map within storage.
+func (r rootStorage) EditTablesMap(ctx context.Context, vrw types.ValueReadWriter, ns tree.NodeStore, edits []tableEdit) (rootStorage, error) {
 	am, err := r.getAddressMap(vrw, ns)
 	if err != nil {
-		return fbRvStorage{}, err
+		return rootStorage{}, err
 	}
 	ae := am.Editor()
 	for _, e := range edits {
 		if e.old_name != "" {
 			oldaddr, err := am.Get(ctx, e.old_name)
 			if err != nil {
-				return fbRvStorage{}, err
+				return rootStorage{}, err
 			}
 			newaddr, err := am.Get(ctx, encodeTableNameForAddressMap(e.name))
 			if err != nil {
-				return fbRvStorage{}, err
+				return rootStorage{}, err
 			}
 			if oldaddr.IsEmpty() {
-				return fbRvStorage{}, doltdb.ErrTableNotFound
+				return rootStorage{}, doltdb.ErrTableNotFound
 			}
 			if !newaddr.IsEmpty() {
-				return fbRvStorage{}, doltdb.ErrTableExists
+				return rootStorage{}, doltdb.ErrTableExists
 			}
 			err = ae.Delete(ctx, e.old_name)
 			if err != nil {
-				return fbRvStorage{}, err
+				return rootStorage{}, err
 			}
 			err = ae.Update(ctx, encodeTableNameForAddressMap(e.name), oldaddr)
 			if err != nil {
-				return fbRvStorage{}, err
+				return rootStorage{}, err
 			}
 		} else {
 			if e.ref == nil {
 				err := ae.Delete(ctx, encodeTableNameForAddressMap(e.name))
 				if err != nil {
-					return fbRvStorage{}, err
+					return rootStorage{}, err
 				}
 			} else {
 				err := ae.Update(ctx, encodeTableNameForAddressMap(e.name), e.ref.TargetHash())
 				if err != nil {
-					return fbRvStorage{}, err
+					return rootStorage{}, err
 				}
 			}
 		}
 	}
 	am, err = ae.Flush(ctx)
 	if err != nil {
-		return fbRvStorage{}, err
+		return rootStorage{}, err
 	}
 
 	ambytes := []byte(tree.ValueFromNode(am.Node()).(types.SerialMessage))
 	dbSchemas, err := r.GetSchemas(ctx)
 	if err != nil {
-		return fbRvStorage{}, err
+		return rootStorage{}, err
 	}
 
 	msg, err := r.serializeRootValue(ambytes, dbSchemas)
 	if err != nil {
-		return fbRvStorage{}, err
+		return rootStorage{}, err
 	}
-	return fbRvStorage{msg}, nil
+	return rootStorage{msg}, nil
 }
 
-func (r fbRvStorage) serializeRootValue(addressMapBytes []byte, dbSchemas []schema.DatabaseSchema) (*serial.RootValue, error) {
+// serializeRootValue serializes a new serial.RootValue object.
+func (r rootStorage) serializeRootValue(addressMapBytes []byte, dbSchemas []schema.DatabaseSchema) (*serial.RootValue, error) {
 	builder := flatbuffers.NewBuilder(80)
 	tablesoff := builder.CreateByteVector(addressMapBytes)
 	schemasOff := serializeDatabaseSchemas(builder, dbSchemas)
@@ -241,7 +245,7 @@ func (r fbRvStorage) serializeRootValue(addressMapBytes []byte, dbSchemas []sche
 		serial.RootValueAddSchemas(builder, schemasOff)
 	}
 
-	bs := doltserial.FinishMessage(builder, serial.RootValueEnd(builder), []byte(doltserial.RootValueFileID))
+	bs := doltserial.FinishMessage(builder, serial.RootValueEnd(builder), []byte(doltserial.DoltgresRootValueFileID))
 	msg, err := serial.TryGetRootAsRootValue(bs, doltserial.MessagePrefixSz)
 	if err != nil {
 		return nil, err
@@ -249,6 +253,7 @@ func (r fbRvStorage) serializeRootValue(addressMapBytes []byte, dbSchemas []sche
 	return msg, nil
 }
 
+// serializeDatabaseSchemas serialzes the schemas into an offset within the given builder.
 func serializeDatabaseSchemas(b *flatbuffers.Builder, dbSchemas []schema.DatabaseSchema) flatbuffers.UOffsetT {
 	// if we have no schemas, do not serialize an empty vector
 	if len(dbSchemas) == 0 {
@@ -272,6 +277,7 @@ func serializeDatabaseSchemas(b *flatbuffers.Builder, dbSchemas []schema.Databas
 	return b.EndVector(len(offsets))
 }
 
+// encodeTableNameForAddressMap encodes the given table name for writing into storage.
 func encodeTableNameForAddressMap(name doltdb.TableName) string {
 	if name.Schema == "" {
 		return name.Name
@@ -279,6 +285,7 @@ func encodeTableNameForAddressMap(name doltdb.TableName) string {
 	return fmt.Sprintf("\000%s\000%s", name.Schema, name.Name)
 }
 
+// decodeTableNameForAddressMap decodes a previously-encoded table name from storage.
 func decodeTableNameForAddressMap(encodedName, schemaName string) (string, bool) {
 	if schemaName == "" && encodedName[0] != 0 {
 		return encodedName, true
@@ -290,16 +297,19 @@ func decodeTableNameForAddressMap(encodedName, schemaName string) (string, bool)
 	return "", false
 }
 
-type fbTableMap struct {
+// rootTableMap is an address map alongside a schema name.
+type rootTableMap struct {
 	prolly.AddressMap
 	schemaName string
 }
 
-func (m fbTableMap) Get(ctx context.Context, name string) (hash.Hash, error) {
+// Get returns the hash of the table with the given case-sensitive name.
+func (m rootTableMap) Get(ctx context.Context, name string) (hash.Hash, error) {
 	return m.AddressMap.Get(ctx, encodeTableNameForAddressMap(doltdb.TableName{Name: name, Schema: m.schemaName}))
 }
 
-func (m fbTableMap) Iter(ctx context.Context, cb func(string, hash.Hash) (bool, error)) error {
+// Iter calls the given callback for each table and hash contained in the map.
+func (m rootTableMap) Iter(ctx context.Context, cb func(string, hash.Hash) (bool, error)) error {
 	var stop bool
 	return m.AddressMap.IterAll(ctx, func(n string, a hash.Hash) error {
 		n, ok := decodeTableNameForAddressMap(n, m.schemaName)

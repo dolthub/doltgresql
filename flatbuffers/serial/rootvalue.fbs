@@ -33,7 +33,7 @@ table DatabaseSchema {
   name:string;
 }
 
-// This should be equivalent to the identifier for Dolt's root value
-file_identifier "RTVL";
+// This should be set within Dolt's file identifier.
+file_identifier "DGRV";
 
 root_type RootValue;
