@@ -39,6 +39,16 @@ jobs:
         env:
           FILE: ${{ format('{0}/server/server.go', github.workspace) }}
           NEW_VERSION: ${{ needs.format-version.outputs.version }}
+      - name: Set minver TBD to version
+        run: sed -i -e 's/minver:"TBD"/minver:"'"$NEW_VERSION"'"/' "$FILE"
+        env:
+          FILE: ${{ format('{0}/server/config.go', github.workspace) }}
+          NEW_VERSION: ${{ needs.format-version.outputs.version }}
+      - name: update minver_validation.txt
+        working-directory: ./
+        run: go run -mod=readonly ./utils/genminver_validation/ $FILE
+        env:
+          FILE: ${{ format('{0}/server/testdata/minver_validation.txt', github.workspace) }}
       - uses: EndBug/add-and-commit@v9.1.1
         with:
           message: ${{ format('Update DoltgreSQL version to {0}', needs.format-version.outputs.version) }}

@@ -29,8 +29,6 @@ setup_common() {
     cd "dolt-repo-$$"
     nativevar DOLTGRES_DATA_DIR "$(pwd)" /p
 
-    mkdir "postgres"
-
     if [ -z "$DOLT_TEST_RETRIES" ]; then
         export BATS_TEST_RETRIES="$DOLT_TEST_RETRIES"
     fi
