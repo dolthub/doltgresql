@@ -22,6 +22,57 @@ import (
 
 var SchemaTests = []ScriptTest{
 	{
+		Name: "table gets created in public schema by default",
+		SetUpScript: []string{
+			"CREATE TABLE test (pk BIGINT PRIMARY KEY, v1 BIGINT);",
+		},
+		Assertions: []ScriptTestAssertion{
+			{
+				Query:    "INSERT INTO public.test VALUES (1, 1), (2, 2);",
+				Expected: []sql.Row{},
+			},
+			{
+				Query: "SELECT * FROM public.test;",
+				Expected: []sql.Row{
+					{1, 1},
+					{2, 2},
+				},
+			},
+		},
+	},
+	{
+		Name: "search path returns user table before public table",
+		SetUpScript: []string{
+			"create schema doltgres",
+			"CREATE TABLE public.test (pk BIGINT PRIMARY KEY, v1 BIGINT);",
+		},
+		Assertions: []ScriptTestAssertion{
+			{
+				Query:    "INSERT INTO public.test VALUES (1, 1);",
+				Expected: []sql.Row{},
+			},
+			{
+				Query: "SELECT * FROM test;",
+				Expected: []sql.Row{
+					{1, 1},
+				},
+			},
+			{
+				Query: "CREATE TABLE doltgres.test (pk BIGINT PRIMARY KEY, v1 BIGINT);",
+			},
+			{
+				Query:    "INSERT INTO doltgres.test VALUES (2, 2);",
+				Expected: []sql.Row{},
+			},
+			{
+				Query: "SELECT * FROM test;",
+				Expected: []sql.Row{
+					{2, 2},
+				},
+			},
+		},
+	},
+	{
 		Name: "public schema qualifier",
 		SetUpScript: []string{
 			"CREATE TABLE public.test (pk BIGINT PRIMARY KEY, v1 BIGINT);",
