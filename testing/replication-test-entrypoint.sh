@@ -1,5 +1,8 @@
 #!/bin/bash
 
+# exit if any command exits wtih non-zero
+set -e
+
 # run the original postgres setup
 /usr/local/bin/docker-ensure-initdb.sh -c wal_level=logical
 
