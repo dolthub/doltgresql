@@ -33,6 +33,8 @@
 
 package tree
 
+import "strings"
+
 var _ Statement = &CreateView{}
 
 // CreateView represents a CREATE VIEW statement.
@@ -81,8 +83,9 @@ const (
 type ViewOptions []ViewOption
 
 type ViewOption struct {
-	Name string
-	Val  Expr
+	Name     string
+	CheckOpt string
+	Security bool
 }
 
 func (node ViewOptions) Format(ctx *FmtCtx) {
@@ -91,10 +94,20 @@ func (node ViewOptions) Format(ctx *FmtCtx) {
 		if i != 0 {
 			ctx.WriteString(", ")
 		}
-		ctx.WriteString(opt.Name)
-		if opt.Val != nil {
-			ctx.WriteString(" = ")
-			ctx.FormatNode(opt.Val)
+		switch strings.ToLower(opt.Name) {
+		case "check_option":
+			ctx.WriteString(opt.Name)
+			if opt.CheckOpt != "" {
+				ctx.WriteString(" = ")
+				ctx.WriteString(opt.CheckOpt)
+			}
+		case "security_barrier", "security_invoker":
+			ctx.WriteString(opt.Name)
+			if opt.Security {
+				ctx.WriteString(" = TRUE")
+			} else {
+				ctx.WriteString(" = FALSE")
+			}
 		}
 	}
 	ctx.WriteString(" )")
