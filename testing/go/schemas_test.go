@@ -43,13 +43,12 @@ var SchemaTests = []ScriptTest{
 	{
 		Name: "search path returns user table before public table",
 		SetUpScript: []string{
-			"create schema doltgres",
+			"create schema postgres",
 			"CREATE TABLE public.test (pk BIGINT PRIMARY KEY, v1 BIGINT);",
 		},
 		Assertions: []ScriptTestAssertion{
 			{
 				Query:    "INSERT INTO public.test VALUES (1, 1);",
-				Expected: []sql.Row{},
 			},
 			{
 				Query: "SELECT * FROM test;",
@@ -58,16 +57,38 @@ var SchemaTests = []ScriptTest{
 				},
 			},
 			{
-				Query: "CREATE TABLE doltgres.test (pk BIGINT PRIMARY KEY, v1 BIGINT);",
+				Query: "CREATE TABLE postgres.test (pk BIGINT PRIMARY KEY, v1 BIGINT);",
 			},
 			{
-				Query:    "INSERT INTO doltgres.test VALUES (2, 2);",
+				Query:    "INSERT INTO postgres.test VALUES (2, 2);",
 				Expected: []sql.Row{},
 			},
 			{
 				Query: "SELECT * FROM test;",
 				Expected: []sql.Row{
 					{2, 2},
+				},
+			},
+		},
+	},
+	{
+		Name: "empty search path will not resolve tables",
+		SetUpScript: []string{
+			"CREATE TABLE public.test (pk BIGINT PRIMARY KEY, v1 BIGINT);",
+			"set search_path to ''",
+		},
+		Assertions: []ScriptTestAssertion{
+			{
+				Query:    "INSERT INTO public.test VALUES (1, 1);",
+			},
+			{
+				Query: "SELECT * FROM test;",
+				ExpectedErr: true,
+			},
+			{
+				Query: "SELECT * FROM public.test;",
+				Expected: []sql.Row{
+					{1, 1},
 				},
 			},
 		},
