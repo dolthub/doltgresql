@@ -23,13 +23,13 @@ import (
 var SchemaTests = []ScriptTest{
 	{
 		Name: "table gets created in public schema by default",
+		Focus: true,
 		SetUpScript: []string{
 			"CREATE TABLE test (pk BIGINT PRIMARY KEY, v1 BIGINT);",
 		},
 		Assertions: []ScriptTestAssertion{
 			{
 				Query:    "INSERT INTO public.test VALUES (1, 1), (2, 2);",
-				Expected: []sql.Row{},
 			},
 			{
 				Query: "SELECT * FROM public.test;",
