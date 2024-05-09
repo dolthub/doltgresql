@@ -606,6 +606,9 @@ func (u *sqlSymUnion) storageType() tree.StorageType {
 func (u *sqlSymUnion) detachPartition() tree.DetachPartition {
     return u.val.(tree.DetachPartition)
 }
+func (u *sqlSymUnion) viewOption() tree.ViewOption {
+    return u.val.(tree.ViewOption)
+}
 func (u *sqlSymUnion) viewOptions() tree.ViewOptions {
     return u.val.(tree.ViewOptions)
 }
@@ -701,7 +704,7 @@ func (u *sqlSymUnion) aggregatesToDrop() []tree.AggregateToDrop {
 %token <str> BOOLEAN BOTH BOX2D BUNDLE BY
 
 %token <str> CACHE CHAIN CALL CALLED CANCEL CANCELQUERY CANONICAL CASCADE CASCADED CASE CAST CATEGORY CBRT
-%token <str> CHANGEFEED CHAR CHARACTER CHARACTERISTICS CHECK CLASS CLOSE
+%token <str> CHANGEFEED CHAR CHARACTER CHARACTERISTICS CHECK CHECK_OPTION CLASS CLOSE
 %token <str> CLUSTER COALESCE COLLATABLE COLLATE COLLATION COLLATION_VERSION COLUMN COLUMNS COMBINEFUNC COMMENT COMMENTS
 %token <str> COMMIT COMMITTED COMPACT COMPLETE COMPRESSION CONCAT CONCURRENTLY CONFIGURATION CONFIGURATIONS CONFIGURE
 %token <str> CONFLICT CONNECT CONNECTION CONSTRAINT CONSTRAINTS CONTAINS CONTROLCHANGEFEED
@@ -771,7 +774,8 @@ func (u *sqlSymUnion) aggregatesToDrop() []tree.AggregateToDrop {
 %token <str> RETRY RETURN RETURNING RETURNS REVISION_HISTORY REVOKE RIGHT
 %token <str> ROLE ROLES ROUTINE ROUTINES ROLLBACK ROLLUP ROW ROWS RSHIFT RULE RUNNING
 
-%token <str> SAFE SAVEPOINT SCATTER SCHEDULE SCHEDULES SCHEMA SCHEMAS SCRUB SEARCH SECOND SECURITY SEED SELECT SEND
+%token <str> SAFE SAVEPOINT SCATTER SCHEDULE SCHEDULES SCHEMA SCHEMAS SCRUB SEARCH SECOND SECURITY
+%token <str> SECURITY_BARRIER SECURITY_INVOKER SEED SELECT SEND
 %token <str> SERIALFUNC SERIALIZABLE SERVER SESSION SESSIONS SESSION_USER SET SETOF SETTING SETTINGS SEQUENCE SEQUENCES SFUNC
 %token <str> SHARE SHAREABLE SHOW SIMILAR SIMPLE SKIP SKIP_MISSING_FOREIGN_KEYS
 %token <str> SKIP_MISSING_SEQUENCES SKIP_MISSING_SEQUENCE_OWNERS SKIP_MISSING_VIEWS SMALLINT SMALLSERIAL SNAPSHOT SOME
@@ -1136,6 +1140,7 @@ func (u *sqlSymUnion) aggregatesToDrop() []tree.AggregateToDrop {
 %type <*tree.LanguageHandler> opt_language_handler
 
 %type <tree.ViewOptions> view_options opt_with_view_options
+%type <tree.ViewOption> view_option
 %type <tree.ViewCheckOption> opt_with_check_option
 
 %type <tree.Expr> opt_when
@@ -8546,14 +8551,24 @@ opt_with_view_options:
   }
 
 view_options:
-  name opt_var_value
+  view_option
   {
-    $$.val = tree.ViewOptions{{Name: $1, Val: $2.expr()}}
+    $$.val = tree.ViewOptions{$1.viewOption()}
   }
-| view_options ',' name opt_var_value
+| view_options ',' view_option
   {
-    $$.val = append($1.viewOptions(), tree.ViewOption{Name: $3, Val: $4.expr()})
+    $$.val = append($1.viewOptions(), $3.viewOption())
   }
+
+view_option:
+  CHECK_OPTION { $$.val = tree.ViewOption{Name: $1, CheckOpt: "cascaded"} }
+| CHECK_OPTION '=' SCONST { $$.val = tree.ViewOption{Name: $1, CheckOpt: $3} }
+| SECURITY_BARRIER { $$.val = tree.ViewOption{Name: $1, Security: false} }
+| SECURITY_BARRIER '=' TRUE { $$.val = tree.ViewOption{Name: $1, Security: true} }
+| SECURITY_BARRIER '=' FALSE { $$.val = tree.ViewOption{Name: $1, Security: false} }
+| SECURITY_INVOKER { $$.val = tree.ViewOption{Name: $1, Security: false} }
+| SECURITY_INVOKER '=' TRUE { $$.val = tree.ViewOption{Name: $1, Security: true} }
+| SECURITY_INVOKER '=' FALSE { $$.val = tree.ViewOption{Name: $1, Security: false} }
 
 create_materialized_view_stmt:
   CREATE MATERIALIZED VIEW view_name opt_column_list opt_using_method opt_with_storage_parameter_list opt_tablespace AS select_stmt opt_create_as_with_data
@@ -13883,6 +13898,7 @@ unreserved_keyword:
 | BY
 | CACHE
 | CHAIN
+| CHECK_OPTION
 | CALL
 | CALLED
 | CANCEL
@@ -14206,6 +14222,8 @@ unreserved_keyword:
 | SEARCH
 | SECOND
 | SECURITY
+| SECURITY_BARRIER
+| SECURITY_INVOKER
 | SEED
 | SEND
 | SERIALFUNC

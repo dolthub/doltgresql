@@ -17,7 +17,10 @@ package initialization
 import (
 	"sync"
 
+	"github.com/dolthub/go-mysql-server/sql"
+
 	"github.com/dolthub/doltgresql/core"
+	"github.com/dolthub/doltgresql/server/ast"
 	"github.com/dolthub/doltgresql/server/cast"
 	"github.com/dolthub/doltgresql/server/config"
 	"github.com/dolthub/doltgresql/server/functions"
@@ -40,5 +43,6 @@ func Initialize() {
 		functions.Init()
 		cast.Init()
 		framework.Initialize()
+		func() { sql.GlobalParser = ast.NewPostgresParser() }()
 	})
 }
