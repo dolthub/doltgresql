@@ -697,17 +697,19 @@ func (h *ConnectionHandler) query(query ConvertedQuery) error {
 // each row in the result set.
 func spoolRowsCallback(conn net.Conn, commandComplete messages.CommandComplete) mysql.ResultSpoolFn {
 	return func(res *sqltypes.Result, more bool) error {
-		if err := connection.Send(conn, messages.RowDescription{
-			Fields: res.Fields,
-		}); err != nil {
-			return err
-		}
-
-		for _, row := range res.Rows {
-			if err := connection.Send(conn, messages.DataRow{
-				Values: row,
+		if commandComplete.IsSelectOrFetch() {
+			if err := connection.Send(conn, messages.RowDescription{
+				Fields: res.Fields,
 			}); err != nil {
 				return err
+			}
+
+			for _, row := range res.Rows {
+				if err := connection.Send(conn, messages.DataRow{
+					Values: row,
+				}); err != nil {
+					return err
+				}
 			}
 		}
 

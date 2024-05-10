@@ -69,6 +69,17 @@ func (m CommandComplete) IsIUD() bool {
 	}
 }
 
+// IsSelectOrFetch returns whether the query is either a SELECT, or a FETCH query.
+func (m CommandComplete) IsSelectOrFetch() bool {
+	query := strings.TrimSpace(strings.ToLower(m.Query))
+	if strings.HasPrefix(query, "select") ||
+		strings.HasPrefix(query, "fetch") {
+		return true
+	} else {
+		return false
+	}
+}
+
 // Encode implements the interface connection.Message.
 func (m CommandComplete) Encode() (connection.MessageFormat, error) {
 	outputMessage := m.DefaultMessage().Copy()
@@ -82,8 +93,15 @@ func (m CommandComplete) Encode() (connection.MessageFormat, error) {
 	} else if strings.HasPrefix(query, "delete") {
 		outputMessage.Field("CommandTag").MustWrite(fmt.Sprintf("DELETE %d", m.Rows))
 	} else {
-		// We'll just default to SELECT since that seems to be the return value for a lot of query types.
-		outputMessage.Field("CommandTag").MustWrite(fmt.Sprintf("SELECT %d", m.Rows))
+		// TODO: the command tag should use `StatementTag()` for queries other than above. E.g. "SET", "CREATE DATABASE"
+		if strings.HasPrefix(query, "set") {
+			outputMessage.Field("CommandTag").MustWrite("SET")
+		} else if strings.HasPrefix(query, "create database") {
+			outputMessage.Field("CommandTag").MustWrite("CREATE DATABASE")
+		} else {
+			// We'll just default to SELECT since that seems to be the return value for a lot of query types.
+			outputMessage.Field("CommandTag").MustWrite("")
+		}
 	}
 	return outputMessage, nil
 }
