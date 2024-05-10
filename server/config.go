@@ -50,8 +50,7 @@ type PostgresReplicationConfig struct {
 
 // BehaviorYAMLConfig contains server configuration regarding how the server should behave
 type DoltgresBehaviorConfig struct {
-	ReadOnly   *bool `yaml:"read_only,omitempty" minver:"TBD"`
-	AutoCommit *bool `yaml:"autocommit,omitempty" minver:"TBD"`
+	ReadOnly *bool `yaml:"read_only,omitempty" minver:"TBD"`
 	// PersistenceBehavior regulates loading persisted system variable configuration.
 	PersistenceBehavior *string `yaml:"persistence_behavior,omitempty" minver:"TBD"`
 	// Disable processing CLIENT_MULTI_STATEMENTS support on the
@@ -137,11 +136,7 @@ type DoltgresConfig struct {
 }
 
 func (cfg *DoltgresConfig) AutoCommit() bool {
-	if cfg.BehaviorConfig == nil || cfg.BehaviorConfig.AutoCommit == nil {
-		return false
-	}
-
-	return *cfg.BehaviorConfig.AutoCommit
+	return true
 }
 
 func (cfg *DoltgresConfig) DoltTransactionCommit() bool {
