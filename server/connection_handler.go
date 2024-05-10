@@ -697,7 +697,7 @@ func (h *ConnectionHandler) query(query ConvertedQuery) error {
 // each row in the result set.
 func spoolRowsCallback(conn net.Conn, commandComplete messages.CommandComplete) mysql.ResultSpoolFn {
 	return func(res *sqltypes.Result, more bool) error {
-		if commandComplete.IsSelectOrFetch() {
+		if commandComplete.ReturnsRow() {
 			if err := connection.Send(conn, messages.RowDescription{
 				Fields: res.Fields,
 			}); err != nil {
