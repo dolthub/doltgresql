@@ -51,8 +51,6 @@ type PostgresReplicationConfig struct {
 // BehaviorYAMLConfig contains server configuration regarding how the server should behave
 type DoltgresBehaviorConfig struct {
 	ReadOnly *bool `yaml:"read_only,omitempty" minver:"TBD"`
-	// PersistenceBehavior regulates loading persisted system variable configuration.
-	PersistenceBehavior *string `yaml:"persistence_behavior,omitempty" minver:"TBD"`
 	// Disable processing CLIENT_MULTI_STATEMENTS support on the
 	// sql server.  Dolt's handling of CLIENT_MULTI_STATEMENTS is currently
 	// broken. If a client advertises to support it (mysql cli client
@@ -63,8 +61,6 @@ type DoltgresBehaviorConfig struct {
 	// DoltTransactionCommit enables the @@dolt_transaction_commit system variable, which
 	// automatically creates a Dolt commit when any SQL transaction is committed.
 	DoltTransactionCommit *bool `yaml:"dolt_transaction_commit,omitempty" minver:"TBD"`
-
-	EventSchedulerStatus *string `yaml:"event_scheduler,omitempty" minver:"TBD"`
 }
 
 type DoltgresUserConfig struct {
@@ -295,11 +291,7 @@ func (cfg *DoltgresConfig) ShouldEncodeLoggedQuery() bool {
 }
 
 func (cfg *DoltgresConfig) PersistenceBehavior() string {
-	if cfg.BehaviorConfig == nil || cfg.BehaviorConfig.PersistenceBehavior == nil {
-		return "load"
-	}
-
-	return *cfg.BehaviorConfig.PersistenceBehavior
+	return "load"
 }
 
 func (cfg *DoltgresConfig) DisableClientMultiStatements() bool {
@@ -411,11 +403,7 @@ func (cfg *DoltgresConfig) ClusterConfig() cluster.Config {
 }
 
 func (cfg *DoltgresConfig) EventSchedulerStatus() string {
-	if cfg.BehaviorConfig == nil || cfg.BehaviorConfig.EventSchedulerStatus == nil {
-		return "OFF"
-	}
-
-	return *cfg.BehaviorConfig.EventSchedulerStatus
+	return "OFF"
 }
 
 func (cfg *DoltgresConfig) ValueSet(value string) bool {
@@ -427,7 +415,7 @@ func (cfg *DoltgresConfig) ValueSet(value string) bool {
 	case maxConnectionsKey:
 		return false
 	case eventSchedulerKey:
-		return cfg.BehaviorConfig != nil && cfg.BehaviorConfig.EventSchedulerStatus != nil
+		return false
 	}
 
 	return false

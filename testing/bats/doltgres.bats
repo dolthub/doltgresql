@@ -36,11 +36,8 @@ log_level: info
 
 behavior:
   read_only: false
-  autocommit: true
-  persistence_behavior: load
   disable_client_multi_statements: false
   dolt_transaction_commit: false
-  event_scheduler: "ON"
 
 user:
   name: ""

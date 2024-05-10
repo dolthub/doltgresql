@@ -35,7 +35,6 @@ setup_common() {
 }
 
 teardown_common() {
-    echo $output
     # rm -rf can fail with a "directory not empty" error in some cases. This seems to be a misleading
     # error message; the real error is that a file is still in use. Instead of waiting longer for
     # any processes to finish, we just ignore any error removing temp files and use 'true' as the last
