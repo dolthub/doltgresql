@@ -474,6 +474,7 @@ func (h *ConnectionHandler) handleExecute(message messages.Execute) error {
 	// we need the CommandComplete message defined here because it's altered by the callback below
 	complete := messages.CommandComplete{
 		Query: query.String,
+		Tag:   query.StatementTag,
 	}
 
 	if !portalData.IsEmptyQuery {
