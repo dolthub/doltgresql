@@ -194,7 +194,12 @@ func runScripts(t *testing.T, scripts []ScriptTest, normalizeRows bool) {
 func CreateServer(t *testing.T, database string) (context.Context, *pgx.Conn, *svcs.Controller) {
 	require.NotEmpty(t, database)
 	port := GetUnusedPort(t)
-	controller, err := dserver.RunInMemory([]string{fmt.Sprintf("--port=%d", port), "--host=127.0.0.1"})
+	controller, err := dserver.RunInMemory(&dserver.DoltgresConfig{
+		ListenerConfig: &dserver.DoltgresListenerConfig{
+			PortNumber: &port,
+			HostStr:    dserver.Ptr("127.0.0.1"),
+		},
+	})
 	require.NoError(t, err)
 
 	fmt.Printf("port is %d\n", port)
