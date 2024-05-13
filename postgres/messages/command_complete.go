@@ -72,13 +72,10 @@ func (m CommandComplete) IsIUD() bool {
 
 // ReturnsRow returns whether the query returns set or rows such as SELECT and FETCH statements.
 func (m CommandComplete) ReturnsRow() bool {
-	query := strings.TrimSpace(strings.ToLower(m.Query))
-	if strings.HasPrefix(query, "select") ||
-		strings.HasPrefix(query, " select") ||
-		strings.HasPrefix(query, "show") ||
-		strings.HasPrefix(query, "fetch") {
+	switch m.Tag {
+	case "SELECT", "SHOW", "FETCH":
 		return true
-	} else {
+	default:
 		return false
 	}
 }
