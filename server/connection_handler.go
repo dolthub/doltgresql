@@ -495,6 +495,7 @@ func (h *ConnectionHandler) deallocatePreparedStatement(name string, preparedSta
 
 	commandComplete := messages.CommandComplete{
 		Query: query.String,
+		Tag:   query.StatementTag,
 	}
 
 	return connection.Send(conn, commandComplete)
@@ -675,6 +676,7 @@ func (h *ConnectionHandler) sendClientStartupMessages(startupMessage messages.St
 func (h *ConnectionHandler) query(query ConvertedQuery) error {
 	commandComplete := messages.CommandComplete{
 		Query: query.String,
+		Tag:   query.StatementTag,
 	}
 
 	err := h.comQuery(query, spoolRowsCallback(h.Conn(), commandComplete))
@@ -835,15 +837,20 @@ func (h *ConnectionHandler) convertQuery(query string) (ConvertedQuery, error) {
 		return ConvertedQuery{String: query}, nil
 	}
 	vitessAST, err := ast.Convert(s[0])
+	stmtTag := s[0].AST.StatementTag()
 	if err != nil {
 		return ConvertedQuery{}, err
 	}
 	if vitessAST == nil {
-		return ConvertedQuery{String: s[0].AST.String()}, nil
+		return ConvertedQuery{
+			String:       s[0].AST.String(),
+			StatementTag: stmtTag,
+		}, nil
 	}
 	return ConvertedQuery{
-		String: query,
-		AST:    vitessAST,
+		String:       query,
+		AST:          vitessAST,
+		StatementTag: stmtTag,
 	}, nil
 }
 

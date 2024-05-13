@@ -30,6 +30,7 @@ func init() {
 type CommandComplete struct {
 	Query string
 	Rows  int32
+	Tag   string
 }
 
 var commandCompleteDefault = connection.MessageFormat{
@@ -86,24 +87,16 @@ func (m CommandComplete) ReturnsRow() bool {
 func (m CommandComplete) Encode() (connection.MessageFormat, error) {
 	outputMessage := m.DefaultMessage().Copy()
 	query := strings.TrimSpace(strings.ToLower(m.Query))
-	if strings.HasPrefix(query, "select") {
+	if strings.HasPrefix(query, "select") || m.Tag == "SELECT" {
 		outputMessage.Field("CommandTag").MustWrite(fmt.Sprintf("SELECT %d", m.Rows))
-	} else if strings.HasPrefix(query, "insert") {
+	} else if strings.HasPrefix(query, "insert") || m.Tag == "INSERT" {
 		outputMessage.Field("CommandTag").MustWrite(fmt.Sprintf("INSERT 0 %d", m.Rows))
-	} else if strings.HasPrefix(query, "update") {
+	} else if strings.HasPrefix(query, "update") || m.Tag == "UPDATE" {
 		outputMessage.Field("CommandTag").MustWrite(fmt.Sprintf("UPDATE %d", m.Rows))
-	} else if strings.HasPrefix(query, "delete") {
+	} else if strings.HasPrefix(query, "delete") || m.Tag == "DELETE" {
 		outputMessage.Field("CommandTag").MustWrite(fmt.Sprintf("DELETE %d", m.Rows))
 	} else {
-		// TODO: the command tag should use `StatementTag()` for queries other than above. E.g. "SET", "CREATE DATABASE"
-		if strings.HasPrefix(query, "set") {
-			outputMessage.Field("CommandTag").MustWrite("SET")
-		} else if strings.HasPrefix(query, "create database") {
-			outputMessage.Field("CommandTag").MustWrite("CREATE DATABASE")
-		} else {
-			// We'll just default to SELECT since that seems to be the return value for a lot of query types.
-			outputMessage.Field("CommandTag").MustWrite("")
-		}
+		outputMessage.Field("CommandTag").MustWrite(m.Tag)
 	}
 	return outputMessage, nil
 }
@@ -122,6 +115,7 @@ func (m CommandComplete) Decode(s connection.MessageFormat) (connection.Message,
 	return CommandComplete{
 		Query: query,
 		Rows:  int32(rows),
+		Tag:   m.Tag,
 	}, nil
 }
 
