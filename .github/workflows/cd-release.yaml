@@ -56,7 +56,7 @@ jobs:
       - uses: EndBug/add-and-commit@v9.1.1
         with:
           message: ${{ format('Update DoltgreSQL version to {0}', needs.format-version.outputs.version) }}
-          add: ${{ format('{0}/server/server.go', github.workspace) }}
+          add: ${{ format('["{0}/server/server.go", "{0}/server/testdata/minver_validation.txt"]', github.workspace) }}
           cwd: "."
           new_branch: cd-release
       - name: Create Pull Request
