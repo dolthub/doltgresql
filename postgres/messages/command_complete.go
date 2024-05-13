@@ -86,16 +86,15 @@ func (m CommandComplete) ReturnsRow() bool {
 // Encode implements the interface connection.Message.
 func (m CommandComplete) Encode() (connection.MessageFormat, error) {
 	outputMessage := m.DefaultMessage().Copy()
-	query := strings.TrimSpace(strings.ToLower(m.Query))
-	if strings.HasPrefix(query, "select") || m.Tag == "SELECT" {
-		outputMessage.Field("CommandTag").MustWrite(fmt.Sprintf("SELECT %d", m.Rows))
-	} else if strings.HasPrefix(query, "insert") || m.Tag == "INSERT" {
-		outputMessage.Field("CommandTag").MustWrite(fmt.Sprintf("INSERT 0 %d", m.Rows))
-	} else if strings.HasPrefix(query, "update") || m.Tag == "UPDATE" {
-		outputMessage.Field("CommandTag").MustWrite(fmt.Sprintf("UPDATE %d", m.Rows))
-	} else if strings.HasPrefix(query, "delete") || m.Tag == "DELETE" {
-		outputMessage.Field("CommandTag").MustWrite(fmt.Sprintf("DELETE %d", m.Rows))
-	} else {
+	// https://www.postgresql.org/docs/current/protocol-message-formats.html#PROTOCOL-MESSAGE-FORMATS-COMMANDCOMPLETE
+	switch m.Tag {
+	case "INSERT", "DELETE", "UPDATE", "MERGE", "SELECT", "CREATE TABLE AS", "MOVE", "FETCH", "COPY":
+		tag := m.Tag
+		if tag == "INSERT" {
+			tag = "INSERT 0"
+		}
+		outputMessage.Field("CommandTag").MustWrite(fmt.Sprintf("%s %d", tag, m.Rows))
+	default:
 		outputMessage.Field("CommandTag").MustWrite(m.Tag)
 	}
 	return outputMessage, nil
