@@ -40,66 +40,66 @@ const (
 var ConfigHelp = `Place holder. This will be replaced with details on config.yaml options`
 
 type PostgresReplicationConfig struct {
-	PostgresServerAddress *string `yaml:"postgres_server_address,omitempty" minver:"TBD"`
-	PostgresUser          *string `yaml:"postgres_user,omitempty" minver:"TBD"`
-	PostgresPassword      *string `yaml:"postgres_password,omitempty" minver:"TBD"`
-	PostgresDatabase      *string `yaml:"postgres_database,omitempty" minver:"TBD"`
-	PostgresPort          *int    `yaml:"postgres_port,omitempty" minver:"TBD"`
-	SlotName              *string `yaml:"slot_name,omitempty" minver:"TBD"`
+	PostgresServerAddress *string `yaml:"postgres_server_address,omitempty" minver:"0.7.4"`
+	PostgresUser          *string `yaml:"postgres_user,omitempty" minver:"0.7.4"`
+	PostgresPassword      *string `yaml:"postgres_password,omitempty" minver:"0.7.4"`
+	PostgresDatabase      *string `yaml:"postgres_database,omitempty" minver:"0.7.4"`
+	PostgresPort          *int    `yaml:"postgres_port,omitempty" minver:"0.7.4"`
+	SlotName              *string `yaml:"slot_name,omitempty" minver:"0.7.4"`
 }
 
 // BehaviorYAMLConfig contains server configuration regarding how the server should behave
 type DoltgresBehaviorConfig struct {
-	ReadOnly *bool `yaml:"read_only,omitempty" minver:"TBD"`
+	ReadOnly *bool `yaml:"read_only,omitempty" minver:"0.7.4"`
 	// Disable processing CLIENT_MULTI_STATEMENTS support on the
 	// sql server.  Dolt's handling of CLIENT_MULTI_STATEMENTS is currently
 	// broken. If a client advertises to support it (mysql cli client
 	// does), and then sends statements that contain embedded unquoted ';'s
 	// (such as a CREATE TRIGGER), then those incoming queries will be
 	// misprocessed.
-	DisableClientMultiStatements *bool `yaml:"disable_client_multi_statements,omitempty" minver:"TBD"`
+	DisableClientMultiStatements *bool `yaml:"disable_client_multi_statements,omitempty" minver:"0.7.4"`
 	// DoltTransactionCommit enables the @@dolt_transaction_commit system variable, which
 	// automatically creates a Dolt commit when any SQL transaction is committed.
-	DoltTransactionCommit *bool `yaml:"dolt_transaction_commit,omitempty" minver:"TBD"`
+	DoltTransactionCommit *bool `yaml:"dolt_transaction_commit,omitempty" minver:"0.7.4"`
 }
 
 type DoltgresUserConfig struct {
-	Name     *string `yaml:"name,omitempty" minver:"TBD"`
-	Password *string `yaml:"password,omitempty" minver:"TBD"`
+	Name     *string `yaml:"name,omitempty" minver:"0.7.4"`
+	Password *string `yaml:"password,omitempty" minver:"0.7.4"`
 }
 
 // DoltgresListenerConfig contains information on the network connection that the server will open
 type DoltgresListenerConfig struct {
-	HostStr            *string `yaml:"host,omitempty" minver:"TBD"`
-	PortNumber         *int    `yaml:"port,omitempty" minver:"TBD"`
-	ReadTimeoutMillis  *uint64 `yaml:"read_timeout_millis,omitempty" minver:"TBD"`
-	WriteTimeoutMillis *uint64 `yaml:"write_timeout_millis,omitempty" minver:"TBD"`
+	HostStr            *string `yaml:"host,omitempty" minver:"0.7.4"`
+	PortNumber         *int    `yaml:"port,omitempty" minver:"0.7.4"`
+	ReadTimeoutMillis  *uint64 `yaml:"read_timeout_millis,omitempty" minver:"0.7.4"`
+	WriteTimeoutMillis *uint64 `yaml:"write_timeout_millis,omitempty" minver:"0.7.4"`
 	// TLSKey is a file system path to an unencrypted private TLS key in PEM format.
-	TLSKey *string `yaml:"tls_key,omitempty" minver:"TBD"`
+	TLSKey *string `yaml:"tls_key,omitempty" minver:"0.7.4"`
 	// TLSCert is a file system path to a TLS certificate chain in PEM format.
-	TLSCert *string `yaml:"tls_cert,omitempty" minver:"TBD"`
+	TLSCert *string `yaml:"tls_cert,omitempty" minver:"0.7.4"`
 	// RequireSecureTransport can enable a mode where non-TLS connections are turned away.
-	RequireSecureTransport *bool `yaml:"require_secure_transport,omitempty" minver:"TBD"`
+	RequireSecureTransport *bool `yaml:"require_secure_transport,omitempty" minver:"0.7.4"`
 	// AllowCleartextPasswords enables use of cleartext passwords.
-	AllowCleartextPasswords *bool `yaml:"allow_cleartext_passwords,omitempty" minver:"TBD"`
+	AllowCleartextPasswords *bool `yaml:"allow_cleartext_passwords,omitempty" minver:"0.7.4"`
 	// Socket is unix socket file path
-	Socket *string `yaml:"socket,omitempty" minver:"TBD"`
+	Socket *string `yaml:"socket,omitempty" minver:"0.7.4"`
 }
 
 // DoltgresPerformanceConfig contains configuration parameters for performance tweaking
 type DoltgresPerformanceConfig struct {
-	QueryParallelism *int `yaml:"query_parallelism,omitempty" minver:"TBD"`
+	QueryParallelism *int `yaml:"query_parallelism,omitempty" minver:"0.7.4"`
 }
 
 type DoltgesMetricsConfig struct {
-	Labels map[string]string `yaml:"labels,omitempty" minver:"TBD"`
-	Host   *string           `yaml:"host,omitempty" minver:"TBD"`
-	Port   *int              `yaml:"port,omitempty" minver:"TBD"`
+	Labels map[string]string `yaml:"labels,omitempty" minver:"0.7.4"`
+	Host   *string           `yaml:"host,omitempty" minver:"0.7.4"`
+	Port   *int              `yaml:"port,omitempty" minver:"0.7.4"`
 }
 
 type DoltgresRemotesapiConfig struct {
-	Port     *int  `yaml:"port,omitempty" minver:"TBD"`
-	ReadOnly *bool `yaml:"read_only,omitempty" minver:"TBD"`
+	Port     *int  `yaml:"port,omitempty" minver:"0.7.4"`
+	ReadOnly *bool `yaml:"read_only,omitempty" minver:"0.7.4"`
 }
 
 type DoltgresUserSessionVars struct {
@@ -108,27 +108,27 @@ type DoltgresUserSessionVars struct {
 }
 
 type DoltgresConfig struct {
-	LogLevelStr       *string                    `yaml:"log_level,omitempty" minver:"TBD"`
-	MaxLenInLogs      *int                       `yaml:"max_query_len_in_logs,omitempty" minver:"TBD"`
-	EncodeLoggedQuery *bool                      `yaml:"encode_logged_query,omitempty" minver:"TBD"`
-	BehaviorConfig    *DoltgresBehaviorConfig    `yaml:"behavior,omitempty" minver:"TBD"`
-	UserConfig        *DoltgresUserConfig        `yaml:"user,omitempty" minver:"TBD"`
-	ListenerConfig    *DoltgresListenerConfig    `yaml:"listener,omitempty" minver:"TBD"`
-	PerformanceConfig *DoltgresPerformanceConfig `yaml:"performance,omitempty" minver:"TBD"`
-	DataDirStr        *string                    `yaml:"data_dir,omitempty" minver:"TBD"`
-	CfgDirStr         *string                    `yaml:"cfg_dir,omitempty" minver:"TBD"`
-	MetricsConfig     *DoltgesMetricsConfig      `yaml:"metrics,omitempty" minver:"TBD"`
-	RemotesapiConfig  *DoltgresRemotesapiConfig  `yaml:"remotesapi,omitempty" minver:"TBD"`
-	PrivilegeFile     *string                    `yaml:"privilege_file,omitempty" minver:"TBD"`
-	BranchControlFile *string                    `yaml:"branch_control_file,omitempty" minver:"TBD"`
+	LogLevelStr       *string                    `yaml:"log_level,omitempty" minver:"0.7.4"`
+	MaxLenInLogs      *int                       `yaml:"max_query_len_in_logs,omitempty" minver:"0.7.4"`
+	EncodeLoggedQuery *bool                      `yaml:"encode_logged_query,omitempty" minver:"0.7.4"`
+	BehaviorConfig    *DoltgresBehaviorConfig    `yaml:"behavior,omitempty" minver:"0.7.4"`
+	UserConfig        *DoltgresUserConfig        `yaml:"user,omitempty" minver:"0.7.4"`
+	ListenerConfig    *DoltgresListenerConfig    `yaml:"listener,omitempty" minver:"0.7.4"`
+	PerformanceConfig *DoltgresPerformanceConfig `yaml:"performance,omitempty" minver:"0.7.4"`
+	DataDirStr        *string                    `yaml:"data_dir,omitempty" minver:"0.7.4"`
+	CfgDirStr         *string                    `yaml:"cfg_dir,omitempty" minver:"0.7.4"`
+	MetricsConfig     *DoltgesMetricsConfig      `yaml:"metrics,omitempty" minver:"0.7.4"`
+	RemotesapiConfig  *DoltgresRemotesapiConfig  `yaml:"remotesapi,omitempty" minver:"0.7.4"`
+	PrivilegeFile     *string                    `yaml:"privilege_file,omitempty" minver:"0.7.4"`
+	BranchControlFile *string                    `yaml:"branch_control_file,omitempty" minver:"0.7.4"`
 
 	// TODO: Rename to UserVars_
-	Vars            []DoltgresUserSessionVars `yaml:"user_session_vars,omitempty" minver:"TBD"`
-	SystemVariables *engine.SystemVariables   `yaml:"system_variables,omitempty" minver:"TBD"`
-	Jwks            []engine.JwksConfig       `yaml:"jwks,omitempty" minver:"TBD"`
-	GoldenMysqlConn *string                   `yaml:"golden_mysql_conn,omitempty" minver:"TBD"`
+	Vars            []DoltgresUserSessionVars `yaml:"user_session_vars,omitempty" minver:"0.7.4"`
+	SystemVariables *engine.SystemVariables   `yaml:"system_variables,omitempty" minver:"0.7.4"`
+	Jwks            []engine.JwksConfig       `yaml:"jwks,omitempty" minver:"0.7.4"`
+	GoldenMysqlConn *string                   `yaml:"golden_mysql_conn,omitempty" minver:"0.7.4"`
 
-	PostgresReplicationConfig *PostgresReplicationConfig `yaml:"postgres_replication,omitempty" minver:"TBD"`
+	PostgresReplicationConfig *PostgresReplicationConfig `yaml:"postgres_replication,omitempty" minver:"0.7.4"`
 }
 
 func (cfg *DoltgresConfig) AutoCommit() bool {

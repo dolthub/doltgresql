@@ -40,7 +40,7 @@ import (
 )
 
 const (
-	Version = "0.7.0"
+	Version = "0.7.4"
 
 	// DOLTGRES_DATA_DIR is an environment variable that defines the location of DoltgreSQL databases
 	DOLTGRES_DATA_DIR = "DOLTGRES_DATA_DIR"
