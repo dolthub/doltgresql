@@ -477,11 +477,13 @@ func (h *ConnectionHandler) handleExecute(message messages.Execute) error {
 		Tag:   query.StatementTag,
 	}
 
-	if !portalData.IsEmptyQuery {
-		err := h.handler.(mysql.ExtendedHandler).ComExecuteBound(h.mysqlConn, query.String, portalData.BoundPlan, spoolRowsCallback(h.Conn(), complete))
-		if err != nil {
-			return err
-		}
+	if portalData.IsEmptyQuery {
+		return connection.Send(h.Conn(), messages.EmptyQueryResponse{})
+	}
+
+	err := h.handler.(mysql.ExtendedHandler).ComExecuteBound(h.mysqlConn, query.String, portalData.BoundPlan, spoolRowsCallback(h.Conn(), &complete))
+	if err != nil {
+		return err
 	}
 
 	return connection.Send(h.Conn(), complete)
@@ -680,7 +682,7 @@ func (h *ConnectionHandler) query(query ConvertedQuery) error {
 		Tag:   query.StatementTag,
 	}
 
-	err := h.comQuery(query, spoolRowsCallback(h.Conn(), commandComplete))
+	err := h.comQuery(query, spoolRowsCallback(h.Conn(), &commandComplete))
 
 	if err != nil {
 		if strings.HasPrefix(err.Error(), "syntax error at position") {
@@ -698,7 +700,7 @@ func (h *ConnectionHandler) query(query ConvertedQuery) error {
 
 // spoolRowsCallback returns a callback function that will send RowDescription message, then a DataRow message for
 // each row in the result set.
-func spoolRowsCallback(conn net.Conn, commandComplete messages.CommandComplete) mysql.ResultSpoolFn {
+func spoolRowsCallback(conn net.Conn, commandComplete *messages.CommandComplete) mysql.ResultSpoolFn {
 	return func(res *sqltypes.Result, more bool) error {
 		if commandComplete.ReturnsRow() {
 			if err := connection.Send(conn, messages.RowDescription{
