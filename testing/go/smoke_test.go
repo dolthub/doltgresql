@@ -207,11 +207,11 @@ func TestSmokeTests(t *testing.T) {
 				},
 				{
 					Query:       "SELECT ARRAY[1::int8]::int;",
-					ExpectedErr: "abc",
+					ExpectedErr: "cast from `bigint[]` to `integer` does not exist",
 				},
 				{
 					Query:       "SELECT ARRAY[1::int8, 2::varchar];",
-					ExpectedErr: "abc",
+					ExpectedErr: "ARRAY types cannot be matched",
 				},
 			},
 		},
@@ -229,7 +229,7 @@ func TestSmokeTests(t *testing.T) {
 			Assertions: []ScriptTestAssertion{
 				{
 					Query:       "SHOW CREATE TABLE;",
-					ExpectedErr: "abc",
+					ExpectedErr: "syntax error",
 				},
 			},
 		},

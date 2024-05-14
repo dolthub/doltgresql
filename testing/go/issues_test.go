@@ -27,7 +27,7 @@ func TestIssues(t *testing.T) {
 			Assertions: []ScriptTestAssertion{
 				{
 					Query:       `call dolt_add(".");`,
-					ExpectedErr: "abc",
+					ExpectedErr: "could not be found in any table in scope",
 				},
 				{
 					Query:            `call dolt_add('.');`,
@@ -35,7 +35,7 @@ func TestIssues(t *testing.T) {
 				},
 				{
 					Query:       `call dolt_commit("-m", "look ma");`,
-					ExpectedErr: "abc",
+					ExpectedErr: "could not be found in any table in scope",
 				},
 				{
 					Query:            `call dolt_commit('-m', 'look ma');`,
@@ -43,7 +43,7 @@ func TestIssues(t *testing.T) {
 				},
 				{
 					Query:       `call dolt_branch("br1");`,
-					ExpectedErr: "abc",
+					ExpectedErr: "could not be found in any table in scope",
 				},
 				{
 					Query:            `call dolt_branch('br1');`,

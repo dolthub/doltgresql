@@ -330,7 +330,7 @@ func TestPreparedErrorHandling(t *testing.T) {
 		Assertions: []ScriptTestAssertion{
 			{
 				Query:       "select v1 from doesNotExist where pk = 1;",
-				ExpectedErr: "abc",
+				ExpectedErr: "table not found",
 			},
 			{
 				Query:    "select v1 from test where pk = 1;",
