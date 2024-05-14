@@ -207,11 +207,11 @@ func TestSmokeTests(t *testing.T) {
 				},
 				{
 					Query:       "SELECT ARRAY[1::int8]::int;",
-					ExpectedErr: true,
+					ExpectedErr: "abc",
 				},
 				{
 					Query:       "SELECT ARRAY[1::int8, 2::varchar];",
-					ExpectedErr: true,
+					ExpectedErr: "abc",
 				},
 			},
 		},
@@ -229,7 +229,7 @@ func TestSmokeTests(t *testing.T) {
 			Assertions: []ScriptTestAssertion{
 				{
 					Query:       "SHOW CREATE TABLE;",
-					ExpectedErr: true,
+					ExpectedErr: "abc",
 				},
 			},
 		},

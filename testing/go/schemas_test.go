@@ -61,14 +61,13 @@ var SchemaTests = []ScriptTest{
 	},
 	{
 		Name:  "table creation fails with no schema available",
-		Focus: true,
 		SetUpScript: []string{
 			"set search_path to ''",
 		},
 		Assertions: []ScriptTestAssertion{
 			{
 				Query:       "CREATE TABLE test (pk BIGINT PRIMARY KEY, v1 BIGINT);",
-				ExpectedErr: true,
+				ExpectedErr: "no schema has been selected to create in",
 			},
 			{
 				Query:       `set search_path to '"$user"'`,
@@ -77,7 +76,7 @@ var SchemaTests = []ScriptTest{
 			{
 				// only available schema doesn't exist
 				Query:       "CREATE TABLE test (pk BIGINT PRIMARY KEY, v1 BIGINT);",
-				ExpectedErr: true,
+				ExpectedErr: "no schema has been selected to create in",
 			},
 			{
 				Query:       `create schema postgres`,
@@ -130,7 +129,7 @@ var SchemaTests = []ScriptTest{
 			},
 			{
 				Query: "SELECT * FROM test;",
-				ExpectedErr: true,
+				ExpectedErr: "table not found",
 			},
 			{
 				Query: "SELECT * FROM public.test;",
@@ -247,6 +246,18 @@ var SchemaTests = []ScriptTest{
 		},
 	},
 	{
+		Name: "schema already exists",
+		Assertions: []ScriptTestAssertion{
+			{
+				Query: "create schema mySchema",
+			},
+			{
+				Query:       "create schema MYSCHEMA",
+				ExpectedErr: "can't create schema myschema; schema exists",
+			},
+		},
+	},
+	{
 		Name: "create new schema (diff order)",
 		Assertions: []ScriptTestAssertion{
 			{
@@ -344,14 +355,14 @@ var SchemaTests = []ScriptTest{
 			},
 			{
 				Query:       "CREATE TABLE otherSchema.test (pk BIGINT PRIMARY KEY, v1 BIGINT);",
-				ExpectedErr: true,
+				ExpectedErr: "abc",
 			},
 			{
 				Query: "insert into mySchema.test values (1,1), (2,2)",
 			},
 			{
 				Query:       "insert into otherSchema.test values (3,3), (4,4)",
-				ExpectedErr: true,
+				ExpectedErr: "abc",
 			},
 			{
 				Query: "SELECT * FROM mySchema.test;",
@@ -362,7 +373,7 @@ var SchemaTests = []ScriptTest{
 			},
 			{
 				Query:       "SELECT * FROM otherSchema.test;",
-				ExpectedErr: true,
+				ExpectedErr: "abc",
 			},
 		},
 	},

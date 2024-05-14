@@ -750,7 +750,7 @@ func TestOperators(t *testing.T) {
 				},
 				{
 					Query:       `SELECT 5::int2 << 2::int8;`,
-					ExpectedErr: true,
+					ExpectedErr: "abc",
 				},
 				{
 					Query:    `SELECT 5::int4 << 2::int2;`,
@@ -762,7 +762,7 @@ func TestOperators(t *testing.T) {
 				},
 				{
 					Query:       `SELECT 5::int4 << 2::int8;`,
-					ExpectedErr: true,
+					ExpectedErr: "abc",
 				},
 				{
 					Query:    `SELECT 5::int8 << 2::int2;`,
@@ -774,7 +774,7 @@ func TestOperators(t *testing.T) {
 				},
 				{
 					Query:       `SELECT 5::int8 << 2::int8;`,
-					ExpectedErr: true,
+					ExpectedErr: "abc",
 				},
 			},
 		},
@@ -791,7 +791,7 @@ func TestOperators(t *testing.T) {
 				},
 				{
 					Query:       `SELECT 17::int2 >> 2::int8;`,
-					ExpectedErr: true,
+					ExpectedErr: "abc",
 				},
 				{
 					Query:    `SELECT 17::int4 >> 2::int2;`,
@@ -803,7 +803,7 @@ func TestOperators(t *testing.T) {
 				},
 				{
 					Query:       `SELECT 17::int4 >> 2::int8;`,
-					ExpectedErr: true,
+					ExpectedErr: "abc",
 				},
 				{
 					Query:    `SELECT 17::int8 >> 2::int2;`,
@@ -815,7 +815,7 @@ func TestOperators(t *testing.T) {
 				},
 				{
 					Query:       `SELECT 17::int8 >> 2::int8;`,
-					ExpectedErr: true,
+					ExpectedErr: "abc",
 				},
 			},
 		},

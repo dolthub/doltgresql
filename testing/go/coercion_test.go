@@ -116,7 +116,7 @@ func TestCoercion(t *testing.T) {
 				},
 				{
 					Query:       `SELECT factorial('1.5')`,
-					ExpectedErr: true,
+					ExpectedErr: "abc",
 				},
 			},
 		},

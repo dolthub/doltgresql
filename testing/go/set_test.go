@@ -239,7 +239,7 @@ var setStmts = []ScriptTest{
 			},
 			{
 				Query:       "SET archive_cleanup_command TO ''",
-				ExpectedErr: true,
+				ExpectedErr: "abc",
 			},
 		},
 	},
@@ -253,7 +253,7 @@ var setStmts = []ScriptTest{
 			},
 			{
 				Query:       "SET archive_command TO ''",
-				ExpectedErr: true,
+				ExpectedErr: "abc",
 			},
 		},
 	},
@@ -267,7 +267,7 @@ var setStmts = []ScriptTest{
 			},
 			{
 				Query:       "SET archive_library TO ''",
-				ExpectedErr: true,
+				ExpectedErr: "abc",
 			},
 		},
 	},
@@ -281,7 +281,7 @@ var setStmts = []ScriptTest{
 			},
 			{
 				Query:       "SET archive_mode TO 'off'",
-				ExpectedErr: true,
+				ExpectedErr: "abc",
 			},
 		},
 	},
@@ -295,7 +295,7 @@ var setStmts = []ScriptTest{
 			},
 			{
 				Query:       "SET archive_timeout TO '0'",
-				ExpectedErr: true,
+				ExpectedErr: "abc",
 			},
 		},
 	},
@@ -335,7 +335,7 @@ var setStmts = []ScriptTest{
 			},
 			{
 				Query:       "SET authentication_timeout TO '120'",
-				ExpectedErr: true,
+				ExpectedErr: "abc",
 			},
 		},
 	},
@@ -349,7 +349,7 @@ var setStmts = []ScriptTest{
 			},
 			{
 				Query:       "SET autovacuum TO 'on'",
-				ExpectedErr: true,
+				ExpectedErr: "abc",
 			},
 		},
 	},
@@ -363,7 +363,7 @@ var setStmts = []ScriptTest{
 			},
 			{
 				Query:       "SET autovacuum_analyze_scale_factor TO '0.1'",
-				ExpectedErr: true,
+				ExpectedErr: "abc",
 			},
 		},
 	},
@@ -377,7 +377,7 @@ var setStmts = []ScriptTest{
 			},
 			{
 				Query:       "SET autovacuum_analyze_threshold TO '50'",
-				ExpectedErr: true,
+				ExpectedErr: "abc",
 			},
 		},
 	},
@@ -391,7 +391,7 @@ var setStmts = []ScriptTest{
 			},
 			{
 				Query:       "SET autovacuum_freeze_max_age TO '200000000'",
-				ExpectedErr: true,
+				ExpectedErr: "abc",
 			},
 		},
 	},
@@ -405,7 +405,7 @@ var setStmts = []ScriptTest{
 			},
 			{
 				Query:       "SET autovacuum_max_workers TO '3'",
-				ExpectedErr: true,
+				ExpectedErr: "abc",
 			},
 		},
 	},
@@ -419,7 +419,7 @@ var setStmts = []ScriptTest{
 			},
 			{
 				Query:       "SET autovacuum_multixact_freeze_max_age TO '400000000'",
-				ExpectedErr: true,
+				ExpectedErr: "abc",
 			},
 		},
 	},
@@ -433,7 +433,7 @@ var setStmts = []ScriptTest{
 			},
 			{
 				Query:       "SET autovacuum_naptime TO '60'",
-				ExpectedErr: true,
+				ExpectedErr: "abc",
 			},
 		},
 	},
@@ -447,7 +447,7 @@ var setStmts = []ScriptTest{
 			},
 			{
 				Query:       "SET autovacuum_vacuum_cost_delay TO '2'",
-				ExpectedErr: true,
+				ExpectedErr: "abc",
 			},
 		},
 	},
@@ -461,7 +461,7 @@ var setStmts = []ScriptTest{
 			},
 			{
 				Query:       "SET autovacuum_vacuum_cost_limit TO '-1'",
-				ExpectedErr: true,
+				ExpectedErr: "abc",
 			},
 		},
 	},
@@ -475,7 +475,7 @@ var setStmts = []ScriptTest{
 			},
 			{
 				Query:       "SET autovacuum_vacuum_insert_scale_factor TO '0.2'",
-				ExpectedErr: true,
+				ExpectedErr: "abc",
 			},
 		},
 	},
@@ -489,7 +489,7 @@ var setStmts = []ScriptTest{
 			},
 			{
 				Query:       "SET autovacuum_vacuum_insert_threshold TO '1000'",
-				ExpectedErr: true,
+				ExpectedErr: "abc",
 			},
 		},
 	},
@@ -503,7 +503,7 @@ var setStmts = []ScriptTest{
 			},
 			{
 				Query:       "SET autovacuum_vacuum_scale_factor TO '0.2'",
-				ExpectedErr: true,
+				ExpectedErr: "abc",
 			},
 		},
 	},
@@ -517,7 +517,7 @@ var setStmts = []ScriptTest{
 			},
 			{
 				Query:       "SET autovacuum_vacuum_threshold TO '50'",
-				ExpectedErr: true,
+				ExpectedErr: "abc",
 			},
 		},
 	},
@@ -531,7 +531,7 @@ var setStmts = []ScriptTest{
 			},
 			{
 				Query:       "SET autovacuum_work_mem TO '-1'",
-				ExpectedErr: true,
+				ExpectedErr: "abc",
 			},
 		},
 	},
@@ -623,7 +623,7 @@ var setStmts = []ScriptTest{
 			},
 			{
 				Query:       "SET bgwriter_delay TO '200'",
-				ExpectedErr: true,
+				ExpectedErr: "abc",
 			},
 		},
 	},
@@ -637,7 +637,7 @@ var setStmts = []ScriptTest{
 			},
 			{
 				Query:       "SET bgwriter_flush_after TO '0'",
-				ExpectedErr: true,
+				ExpectedErr: "abc",
 			},
 		},
 	},
@@ -651,7 +651,7 @@ var setStmts = []ScriptTest{
 			},
 			{
 				Query:       "SET bgwriter_lru_maxpages TO '100'",
-				ExpectedErr: true,
+				ExpectedErr: "abc",
 			},
 		},
 	},
@@ -665,7 +665,7 @@ var setStmts = []ScriptTest{
 			},
 			{
 				Query:       "SET bgwriter_lru_multiplier TO '2'",
-				ExpectedErr: true,
+				ExpectedErr: "abc",
 			},
 		},
 	},
@@ -679,7 +679,7 @@ var setStmts = []ScriptTest{
 			},
 			{
 				Query:       "SET block_size TO '8192'",
-				ExpectedErr: true,
+				ExpectedErr: "abc",
 			},
 		},
 	},
@@ -693,7 +693,7 @@ var setStmts = []ScriptTest{
 			},
 			{
 				Query:       "SET bonjour TO 'off'",
-				ExpectedErr: true,
+				ExpectedErr: "abc",
 			},
 		},
 	},
@@ -707,7 +707,7 @@ var setStmts = []ScriptTest{
 			},
 			{
 				Query:       "SET bonjour_name TO ''",
-				ExpectedErr: true,
+				ExpectedErr: "abc",
 			},
 		},
 	},
@@ -773,7 +773,7 @@ var setStmts = []ScriptTest{
 			},
 			{
 				Query:       "SET checkpoint_completion_target TO '0.9'",
-				ExpectedErr: true,
+				ExpectedErr: "abc",
 			},
 		},
 	},
@@ -787,7 +787,7 @@ var setStmts = []ScriptTest{
 			},
 			{
 				Query:       "SET checkpoint_flush_after TO '0'",
-				ExpectedErr: true,
+				ExpectedErr: "abc",
 			},
 		},
 	},
@@ -801,7 +801,7 @@ var setStmts = []ScriptTest{
 			},
 			{
 				Query:       "SET checkpoint_timeout TO '300'",
-				ExpectedErr: true,
+				ExpectedErr: "abc",
 			},
 		},
 	},
@@ -815,7 +815,7 @@ var setStmts = []ScriptTest{
 			},
 			{
 				Query:       "SET checkpoint_warning TO '30'",
-				ExpectedErr: true,
+				ExpectedErr: "abc",
 			},
 		},
 	},
@@ -907,7 +907,7 @@ var setStmts = []ScriptTest{
 			},
 			{
 				Query:       "SET cluster_name TO ''",
-				ExpectedErr: true,
+				ExpectedErr: "abc",
 			},
 		},
 	},
@@ -999,7 +999,7 @@ var setStmts = []ScriptTest{
 			},
 			{
 				Query:       "SET config_file TO '/Users/postgres/postgresql.conf'",
-				ExpectedErr: true,
+				ExpectedErr: "abc",
 			},
 		},
 	},
@@ -1169,7 +1169,7 @@ var setStmts = []ScriptTest{
 			},
 			{
 				Query:       "SET data_checksums TO 'off'",
-				ExpectedErr: true,
+				ExpectedErr: "abc",
 			},
 		},
 	},
@@ -1183,7 +1183,7 @@ var setStmts = []ScriptTest{
 			},
 			{
 				Query:       "SET data_directory TO '/Users/postgres'",
-				ExpectedErr: true,
+				ExpectedErr: "abc",
 			},
 		},
 	},
@@ -1197,7 +1197,7 @@ var setStmts = []ScriptTest{
 			},
 			{
 				Query:       "SET data_directory_mode TO '448'",
-				ExpectedErr: true,
+				ExpectedErr: "abc",
 			},
 		},
 	},
@@ -1211,7 +1211,7 @@ var setStmts = []ScriptTest{
 			},
 			{
 				Query:       "SET data_sync_retry TO 'off'",
-				ExpectedErr: true,
+				ExpectedErr: "abc",
 			},
 		},
 	},
@@ -1251,7 +1251,7 @@ var setStmts = []ScriptTest{
 			},
 			{
 				Query:       "SET db_user_namespace TO 'off'",
-				ExpectedErr: true,
+				ExpectedErr: "abc",
 			},
 		},
 	},
@@ -1291,7 +1291,7 @@ var setStmts = []ScriptTest{
 			},
 			{
 				Query:       "SET debug_assertions TO 'off'",
-				ExpectedErr: true,
+				ExpectedErr: "abc",
 			},
 		},
 	},
@@ -1323,7 +1323,7 @@ var setStmts = []ScriptTest{
 			},
 			{
 				Query:       "SET debug_io_direct TO ''",
-				ExpectedErr: true,
+				ExpectedErr: "abc",
 			},
 		},
 	},
@@ -1719,7 +1719,7 @@ var setStmts = []ScriptTest{
 			},
 			{
 				Query:       "SET dynamic_shared_memory_type TO 'posix'",
-				ExpectedErr: true,
+				ExpectedErr: "abc",
 			},
 		},
 	},
@@ -2357,7 +2357,7 @@ var setStmts = []ScriptTest{
 			},
 			{
 				Query:       "SET event_source TO 'PostgreSQL'",
-				ExpectedErr: true,
+				ExpectedErr: "abc",
 			},
 		},
 	},
@@ -2397,7 +2397,7 @@ var setStmts = []ScriptTest{
 			},
 			{
 				Query:       "SET external_pid_file TO ''",
-				ExpectedErr: true,
+				ExpectedErr: "abc",
 			},
 		},
 	},
@@ -2463,7 +2463,7 @@ var setStmts = []ScriptTest{
 			},
 			{
 				Query:       "SET fsync TO 'on'",
-				ExpectedErr: true,
+				ExpectedErr: "abc",
 			},
 		},
 	},
@@ -2477,7 +2477,7 @@ var setStmts = []ScriptTest{
 			},
 			{
 				Query:       "SET full_page_writes TO 'on'",
-				ExpectedErr: true,
+				ExpectedErr: "abc",
 			},
 		},
 	},
@@ -2725,7 +2725,7 @@ var setStmts = []ScriptTest{
 			},
 			{
 				Query:       "SET gss_accept_delegation TO 'on'",
-				ExpectedErr: true,
+				ExpectedErr: "abc",
 			},
 		},
 	},
@@ -2765,7 +2765,7 @@ var setStmts = []ScriptTest{
 			},
 			{
 				Query:       "SET hba_file TO '/Users/postgres/pg_hba.conf'",
-				ExpectedErr: true,
+				ExpectedErr: "abc",
 			},
 		},
 	},
@@ -2779,7 +2779,7 @@ var setStmts = []ScriptTest{
 			},
 			{
 				Query:       "SET hot_standby TO 'on'",
-				ExpectedErr: true,
+				ExpectedErr: "abc",
 			},
 		},
 	},
@@ -2793,7 +2793,7 @@ var setStmts = []ScriptTest{
 			},
 			{
 				Query:       "SET hot_standby_feedback TO 'off'",
-				ExpectedErr: true,
+				ExpectedErr: "abc",
 			},
 		},
 	},
@@ -2807,7 +2807,7 @@ var setStmts = []ScriptTest{
 			},
 			{
 				Query:       "SET huge_page_size TO '0'",
-				ExpectedErr: true,
+				ExpectedErr: "abc",
 			},
 		},
 	},
@@ -2821,7 +2821,7 @@ var setStmts = []ScriptTest{
 			},
 			{
 				Query:       "SET huge_pages TO 'off'",
-				ExpectedErr: true,
+				ExpectedErr: "abc",
 			},
 		},
 	},
@@ -2861,7 +2861,7 @@ var setStmts = []ScriptTest{
 			},
 			{
 				Query:       "SET ident_file TO '/Users/postgres/pg_ident.conf'",
-				ExpectedErr: true,
+				ExpectedErr: "abc",
 			},
 		},
 	},
@@ -2953,7 +2953,7 @@ var setStmts = []ScriptTest{
 			},
 			{
 				Query:       "SET ignore_invalid_pages TO 'off'",
-				ExpectedErr: true,
+				ExpectedErr: "abc",
 			},
 		},
 	},
@@ -2967,7 +2967,7 @@ var setStmts = []ScriptTest{
 			},
 			{
 				Query:       "SET ignore_system_indexes TO 'off'",
-				ExpectedErr: true,
+				ExpectedErr: "abc",
 			},
 		},
 	},
@@ -2981,7 +2981,7 @@ var setStmts = []ScriptTest{
 			},
 			{
 				Query:       "SET in_hot_standby TO 'on'",
-				ExpectedErr: true,
+				ExpectedErr: "abc",
 			},
 		},
 	},
@@ -2995,7 +2995,7 @@ var setStmts = []ScriptTest{
 			},
 			{
 				Query:       "SET integer_datetimes TO 'off'",
-				ExpectedErr: true,
+				ExpectedErr: "abc",
 			},
 		},
 	},
@@ -3087,7 +3087,7 @@ var setStmts = []ScriptTest{
 			},
 			{
 				Query:       "SET jit_debugging_support TO 'off'",
-				ExpectedErr: true,
+				ExpectedErr: "abc",
 			},
 		},
 	},
@@ -3205,7 +3205,7 @@ var setStmts = []ScriptTest{
 			},
 			{
 				Query:       "SET jit_profiling_support TO 'off'",
-				ExpectedErr: true,
+				ExpectedErr: "abc",
 			},
 		},
 	},
@@ -3219,7 +3219,7 @@ var setStmts = []ScriptTest{
 			},
 			{
 				Query:       "SET jit_provider TO 'llvmjit'",
-				ExpectedErr: true,
+				ExpectedErr: "abc",
 			},
 		},
 	},
@@ -3285,7 +3285,7 @@ var setStmts = []ScriptTest{
 			},
 			{
 				Query:       "SET krb_caseins_users TO 'on'",
-				ExpectedErr: true,
+				ExpectedErr: "abc",
 			},
 		},
 	},
@@ -3299,7 +3299,7 @@ var setStmts = []ScriptTest{
 			},
 			{
 				Query:       "SET krb_server_keyfile TO 'FILE:'",
-				ExpectedErr: true,
+				ExpectedErr: "abc",
 			},
 		},
 	},
@@ -3417,7 +3417,7 @@ var setStmts = []ScriptTest{
 			},
 			{
 				Query:       "SET listen_addresses TO 'localhost'",
-				ExpectedErr: true,
+				ExpectedErr: "abc",
 			},
 		},
 	},
@@ -3509,7 +3509,7 @@ var setStmts = []ScriptTest{
 			},
 			{
 				Query:       "SET log_autovacuum_min_duration TO '600'",
-				ExpectedErr: true,
+				ExpectedErr: "abc",
 			},
 		},
 	},
@@ -3523,7 +3523,7 @@ var setStmts = []ScriptTest{
 			},
 			{
 				Query:       "SET log_checkpoints TO 'on'",
-				ExpectedErr: true,
+				ExpectedErr: "abc",
 			},
 		},
 	},
@@ -3537,7 +3537,7 @@ var setStmts = []ScriptTest{
 			},
 			{
 				Query:       "SET log_connections TO 'off'",
-				ExpectedErr: true,
+				ExpectedErr: "abc",
 			},
 		},
 	},
@@ -3551,7 +3551,7 @@ var setStmts = []ScriptTest{
 			},
 			{
 				Query:       "SET log_destination TO 'jsonlog'",
-				ExpectedErr: true,
+				ExpectedErr: "abc",
 			},
 		},
 	},
@@ -3565,7 +3565,7 @@ var setStmts = []ScriptTest{
 			},
 			{
 				Query:       "SET log_directory TO 'log'",
-				ExpectedErr: true,
+				ExpectedErr: "abc",
 			},
 		},
 	},
@@ -3579,7 +3579,7 @@ var setStmts = []ScriptTest{
 			},
 			{
 				Query:       "SET log_disconnections TO 'off'",
-				ExpectedErr: true,
+				ExpectedErr: "abc",
 			},
 		},
 	},
@@ -3671,7 +3671,7 @@ var setStmts = []ScriptTest{
 			},
 			{
 				Query:       "SET log_file_mode TO '384'",
-				ExpectedErr: true,
+				ExpectedErr: "abc",
 			},
 		},
 	},
@@ -3685,7 +3685,7 @@ var setStmts = []ScriptTest{
 			},
 			{
 				Query:       "SET log_filename TO 'postgresql-%Y-%m-%d_%H%M%S.log'",
-				ExpectedErr: true,
+				ExpectedErr: "abc",
 			},
 		},
 	},
@@ -3699,7 +3699,7 @@ var setStmts = []ScriptTest{
 			},
 			{
 				Query:       "SET log_hostname TO 'off'",
-				ExpectedErr: true,
+				ExpectedErr: "abc",
 			},
 		},
 	},
@@ -3713,7 +3713,7 @@ var setStmts = []ScriptTest{
 			},
 			{
 				Query:       "SET log_line_prefix TO '%m [%p]'",
-				ExpectedErr: true,
+				ExpectedErr: "abc",
 			},
 		},
 	},
@@ -3961,7 +3961,7 @@ var setStmts = []ScriptTest{
 			},
 			{
 				Query:       "SET log_recovery_conflict_waits TO 'on'",
-				ExpectedErr: true,
+				ExpectedErr: "abc",
 			},
 		},
 	},
@@ -4001,7 +4001,7 @@ var setStmts = []ScriptTest{
 			},
 			{
 				Query:       "SET log_rotation_age TO '1440'",
-				ExpectedErr: true,
+				ExpectedErr: "abc",
 			},
 		},
 	},
@@ -4015,7 +4015,7 @@ var setStmts = []ScriptTest{
 			},
 			{
 				Query:       "SET log_rotation_size TO '10240'",
-				ExpectedErr: true,
+				ExpectedErr: "abc",
 			},
 		},
 	},
@@ -4029,7 +4029,7 @@ var setStmts = []ScriptTest{
 			},
 			{
 				Query:       "SET log_startup_progress_interval TO '10'",
-				ExpectedErr: true,
+				ExpectedErr: "abc",
 			},
 		},
 	},
@@ -4147,7 +4147,7 @@ var setStmts = []ScriptTest{
 			},
 			{
 				Query:       "SET log_timezone TO 'America/Los_Angeles'",
-				ExpectedErr: true,
+				ExpectedErr: "abc",
 			},
 		},
 	},
@@ -4187,7 +4187,7 @@ var setStmts = []ScriptTest{
 			},
 			{
 				Query:       "SET log_truncate_on_rotation TO 'off'",
-				ExpectedErr: true,
+				ExpectedErr: "abc",
 			},
 		},
 	},
@@ -4201,7 +4201,7 @@ var setStmts = []ScriptTest{
 			},
 			{
 				Query:       "SET logging_collector TO 'off'",
-				ExpectedErr: true,
+				ExpectedErr: "abc",
 			},
 		},
 	},
@@ -4293,7 +4293,7 @@ var setStmts = []ScriptTest{
 			},
 			{
 				Query:       "SET max_connections TO '150'",
-				ExpectedErr: true,
+				ExpectedErr: "abc",
 			},
 		},
 	},
@@ -4307,7 +4307,7 @@ var setStmts = []ScriptTest{
 			},
 			{
 				Query:       "SET max_files_per_process TO '1000'",
-				ExpectedErr: true,
+				ExpectedErr: "abc",
 			},
 		},
 	},
@@ -4321,7 +4321,7 @@ var setStmts = []ScriptTest{
 			},
 			{
 				Query:       "SET max_function_args TO '100'",
-				ExpectedErr: true,
+				ExpectedErr: "abc",
 			},
 		},
 	},
@@ -4335,7 +4335,7 @@ var setStmts = []ScriptTest{
 			},
 			{
 				Query:       "SET max_identifier_length TO '63'",
-				ExpectedErr: true,
+				ExpectedErr: "abc",
 			},
 		},
 	},
@@ -4349,7 +4349,7 @@ var setStmts = []ScriptTest{
 			},
 			{
 				Query:       "SET max_index_keys TO '32'",
-				ExpectedErr: true,
+				ExpectedErr: "abc",
 			},
 		},
 	},
@@ -4363,7 +4363,7 @@ var setStmts = []ScriptTest{
 			},
 			{
 				Query:       "SET max_locks_per_transaction TO '64'",
-				ExpectedErr: true,
+				ExpectedErr: "abc",
 			},
 		},
 	},
@@ -4377,7 +4377,7 @@ var setStmts = []ScriptTest{
 			},
 			{
 				Query:       "SET max_logical_replication_workers TO '4'",
-				ExpectedErr: true,
+				ExpectedErr: "abc",
 			},
 		},
 	},
@@ -4391,7 +4391,7 @@ var setStmts = []ScriptTest{
 			},
 			{
 				Query:       "SET max_parallel_apply_workers_per_subscription TO '2'",
-				ExpectedErr: true,
+				ExpectedErr: "abc",
 			},
 		},
 	},
@@ -4483,7 +4483,7 @@ var setStmts = []ScriptTest{
 			},
 			{
 				Query:       "SET max_pred_locks_per_page TO '2'",
-				ExpectedErr: true,
+				ExpectedErr: "abc",
 			},
 		},
 	},
@@ -4497,7 +4497,7 @@ var setStmts = []ScriptTest{
 			},
 			{
 				Query:       "SET max_pred_locks_per_relation TO '-2'",
-				ExpectedErr: true,
+				ExpectedErr: "abc",
 			},
 		},
 	},
@@ -4511,7 +4511,7 @@ var setStmts = []ScriptTest{
 			},
 			{
 				Query:       "SET max_pred_locks_per_transaction TO '64'",
-				ExpectedErr: true,
+				ExpectedErr: "abc",
 			},
 		},
 	},
@@ -4525,7 +4525,7 @@ var setStmts = []ScriptTest{
 			},
 			{
 				Query:       "SET max_prepared_transactions TO '0'",
-				ExpectedErr: true,
+				ExpectedErr: "abc",
 			},
 		},
 	},
@@ -4539,7 +4539,7 @@ var setStmts = []ScriptTest{
 			},
 			{
 				Query:       "SET max_replication_slots TO '10'",
-				ExpectedErr: true,
+				ExpectedErr: "abc",
 			},
 		},
 	},
@@ -4553,7 +4553,7 @@ var setStmts = []ScriptTest{
 			},
 			{
 				Query:       "SET max_slot_wal_keep_size TO '-1'",
-				ExpectedErr: true,
+				ExpectedErr: "abc",
 			},
 		},
 	},
@@ -4593,7 +4593,7 @@ var setStmts = []ScriptTest{
 			},
 			{
 				Query:       "SET max_standby_archive_delay TO '30'",
-				ExpectedErr: true,
+				ExpectedErr: "abc",
 			},
 		},
 	},
@@ -4607,7 +4607,7 @@ var setStmts = []ScriptTest{
 			},
 			{
 				Query:       "SET max_standby_streaming_delay TO '30'",
-				ExpectedErr: true,
+				ExpectedErr: "abc",
 			},
 		},
 	},
@@ -4621,7 +4621,7 @@ var setStmts = []ScriptTest{
 			},
 			{
 				Query:       "SET max_sync_workers_per_subscription TO '2'",
-				ExpectedErr: true,
+				ExpectedErr: "abc",
 			},
 		},
 	},
@@ -4635,7 +4635,7 @@ var setStmts = []ScriptTest{
 			},
 			{
 				Query:       "SET max_wal_senders TO '10'",
-				ExpectedErr: true,
+				ExpectedErr: "abc",
 			},
 		},
 	},
@@ -4649,7 +4649,7 @@ var setStmts = []ScriptTest{
 			},
 			{
 				Query:       "SET max_wal_size TO '1000'",
-				ExpectedErr: true,
+				ExpectedErr: "abc",
 			},
 		},
 	},
@@ -4663,7 +4663,7 @@ var setStmts = []ScriptTest{
 			},
 			{
 				Query:       "SET max_worker_processes TO '8'",
-				ExpectedErr: true,
+				ExpectedErr: "abc",
 			},
 		},
 	},
@@ -4677,7 +4677,7 @@ var setStmts = []ScriptTest{
 			},
 			{
 				Query:       "SET min_dynamic_shared_memory TO '0'",
-				ExpectedErr: true,
+				ExpectedErr: "abc",
 			},
 		},
 	},
@@ -4743,7 +4743,7 @@ var setStmts = []ScriptTest{
 			},
 			{
 				Query:       "SET min_wal_size TO '8000'",
-				ExpectedErr: true,
+				ExpectedErr: "abc",
 			},
 		},
 	},
@@ -4757,7 +4757,7 @@ var setStmts = []ScriptTest{
 			},
 			{
 				Query:       "SET old_snapshot_threshold TO '-1'",
-				ExpectedErr: true,
+				ExpectedErr: "abc",
 			},
 		},
 	},
@@ -4901,7 +4901,7 @@ var setStmts = []ScriptTest{
 			},
 			{
 				Query:       "SET port TO '5432'",
-				ExpectedErr: true,
+				ExpectedErr: "abc",
 			},
 		},
 	},
@@ -4915,7 +4915,7 @@ var setStmts = []ScriptTest{
 			},
 			{
 				Query:       "SET post_auth_delay TO '0'",
-				ExpectedErr: true,
+				ExpectedErr: "abc",
 			},
 		},
 	},
@@ -4929,7 +4929,7 @@ var setStmts = []ScriptTest{
 			},
 			{
 				Query:       "SET pre_auth_delay TO '0'",
-				ExpectedErr: true,
+				ExpectedErr: "abc",
 			},
 		},
 	},
@@ -4943,7 +4943,7 @@ var setStmts = []ScriptTest{
 			},
 			{
 				Query:       "SET primary_conninfo TO ''",
-				ExpectedErr: true,
+				ExpectedErr: "abc",
 			},
 		},
 	},
@@ -4957,7 +4957,7 @@ var setStmts = []ScriptTest{
 			},
 			{
 				Query:       "SET primary_slot_name TO ''",
-				ExpectedErr: true,
+				ExpectedErr: "abc",
 			},
 		},
 	},
@@ -5023,7 +5023,7 @@ var setStmts = []ScriptTest{
 			},
 			{
 				Query:       "SET recovery_end_command TO ''",
-				ExpectedErr: true,
+				ExpectedErr: "abc",
 			},
 		},
 	},
@@ -5037,7 +5037,7 @@ var setStmts = []ScriptTest{
 			},
 			{
 				Query:       "SET recovery_init_sync_method TO 'fsync'",
-				ExpectedErr: true,
+				ExpectedErr: "abc",
 			},
 		},
 	},
@@ -5051,7 +5051,7 @@ var setStmts = []ScriptTest{
 			},
 			{
 				Query:       "SET recovery_min_apply_delay TO '0'",
-				ExpectedErr: true,
+				ExpectedErr: "abc",
 			},
 		},
 	},
@@ -5065,7 +5065,7 @@ var setStmts = []ScriptTest{
 			},
 			{
 				Query:       "SET recovery_prefetch TO 'try'",
-				ExpectedErr: true,
+				ExpectedErr: "abc",
 			},
 		},
 	},
@@ -5079,7 +5079,7 @@ var setStmts = []ScriptTest{
 			},
 			{
 				Query:       "SET recovery_target TO ''",
-				ExpectedErr: true,
+				ExpectedErr: "abc",
 			},
 		},
 	},
@@ -5093,7 +5093,7 @@ var setStmts = []ScriptTest{
 			},
 			{
 				Query:       "SET recovery_target_action TO 'pause'",
-				ExpectedErr: true,
+				ExpectedErr: "abc",
 			},
 		},
 	},
@@ -5107,7 +5107,7 @@ var setStmts = []ScriptTest{
 			},
 			{
 				Query:       "SET recovery_target_inclusive TO 'on'",
-				ExpectedErr: true,
+				ExpectedErr: "abc",
 			},
 		},
 	},
@@ -5121,7 +5121,7 @@ var setStmts = []ScriptTest{
 			},
 			{
 				Query:       "SET recovery_target_lsn TO ''",
-				ExpectedErr: true,
+				ExpectedErr: "abc",
 			},
 		},
 	},
@@ -5135,7 +5135,7 @@ var setStmts = []ScriptTest{
 			},
 			{
 				Query:       "SET recovery_target_name TO ''",
-				ExpectedErr: true,
+				ExpectedErr: "abc",
 			},
 		},
 	},
@@ -5149,7 +5149,7 @@ var setStmts = []ScriptTest{
 			},
 			{
 				Query:       "SET recovery_target_time TO ''",
-				ExpectedErr: true,
+				ExpectedErr: "abc",
 			},
 		},
 	},
@@ -5163,7 +5163,7 @@ var setStmts = []ScriptTest{
 			},
 			{
 				Query:       "SET recovery_target_timeline TO 'latest'",
-				ExpectedErr: true,
+				ExpectedErr: "abc",
 			},
 		},
 	},
@@ -5177,7 +5177,7 @@ var setStmts = []ScriptTest{
 			},
 			{
 				Query:       "SET recovery_target_xid TO ''",
-				ExpectedErr: true,
+				ExpectedErr: "abc",
 			},
 		},
 	},
@@ -5217,7 +5217,7 @@ var setStmts = []ScriptTest{
 			},
 			{
 				Query:       "SET remove_temp_files_after_crash TO 'on'",
-				ExpectedErr: true,
+				ExpectedErr: "abc",
 			},
 		},
 	},
@@ -5231,7 +5231,7 @@ var setStmts = []ScriptTest{
 			},
 			{
 				Query:       "SET reserved_connections TO '0'",
-				ExpectedErr: true,
+				ExpectedErr: "abc",
 			},
 		},
 	},
@@ -5245,7 +5245,7 @@ var setStmts = []ScriptTest{
 			},
 			{
 				Query:       "SET restart_after_crash TO 'on'",
-				ExpectedErr: true,
+				ExpectedErr: "abc",
 			},
 		},
 	},
@@ -5259,7 +5259,7 @@ var setStmts = []ScriptTest{
 			},
 			{
 				Query:       "SET restore_command TO ''",
-				ExpectedErr: true,
+				ExpectedErr: "abc",
 			},
 		},
 	},
@@ -5351,7 +5351,7 @@ var setStmts = []ScriptTest{
 			},
 			{
 				Query:       "SET segment_size TO '131072'",
-				ExpectedErr: true,
+				ExpectedErr: "abc",
 			},
 		},
 	},
@@ -5365,7 +5365,7 @@ var setStmts = []ScriptTest{
 			},
 			{
 				Query:       "SET send_abort_for_crash TO 'off'",
-				ExpectedErr: true,
+				ExpectedErr: "abc",
 			},
 		},
 	},
@@ -5379,7 +5379,7 @@ var setStmts = []ScriptTest{
 			},
 			{
 				Query:       "SET send_abort_for_kill TO 'off'",
-				ExpectedErr: true,
+				ExpectedErr: "abc",
 			},
 		},
 	},
@@ -5393,7 +5393,7 @@ var setStmts = []ScriptTest{
 			},
 			{
 				Query:       "SET seq_page_cost TO '1'",
-				ExpectedErr: true,
+				ExpectedErr: "abc",
 			},
 		},
 	},
@@ -5407,7 +5407,7 @@ var setStmts = []ScriptTest{
 			},
 			{
 				Query:       "SET server_encoding TO 'UTF8'",
-				ExpectedErr: true,
+				ExpectedErr: "abc",
 			},
 		},
 	},
@@ -5421,7 +5421,7 @@ var setStmts = []ScriptTest{
 			},
 			{
 				Query:       "SET server_version TO '16.1 (Homebrew)'",
-				ExpectedErr: true,
+				ExpectedErr: "abc",
 			},
 		},
 	},
@@ -5435,7 +5435,7 @@ var setStmts = []ScriptTest{
 			},
 			{
 				Query:       "SET server_version_num TO '160001'",
-				ExpectedErr: true,
+				ExpectedErr: "abc",
 			},
 		},
 	},
@@ -5501,7 +5501,7 @@ var setStmts = []ScriptTest{
 			},
 			{
 				Query:       "SET shared_buffers TO '128000'",
-				ExpectedErr: true,
+				ExpectedErr: "abc",
 			},
 		},
 	},
@@ -5515,7 +5515,7 @@ var setStmts = []ScriptTest{
 			},
 			{
 				Query:       "SET shared_memory_size TO '143000'",
-				ExpectedErr: true,
+				ExpectedErr: "abc",
 			},
 		},
 	},
@@ -5529,7 +5529,7 @@ var setStmts = []ScriptTest{
 			},
 			{
 				Query:       "SET shared_memory_size_in_huge_pages TO '-1'",
-				ExpectedErr: true,
+				ExpectedErr: "abc",
 			},
 		},
 	},
@@ -5543,7 +5543,7 @@ var setStmts = []ScriptTest{
 			},
 			{
 				Query:       "SET shared_memory_type TO 'mmap'",
-				ExpectedErr: true,
+				ExpectedErr: "abc",
 			},
 		},
 	},
@@ -5557,7 +5557,7 @@ var setStmts = []ScriptTest{
 			},
 			{
 				Query:       "SET shared_preload_libraries TO ''",
-				ExpectedErr: true,
+				ExpectedErr: "abc",
 			},
 		},
 	},
@@ -5571,7 +5571,7 @@ var setStmts = []ScriptTest{
 			},
 			{
 				Query:       "SET ssl TO 'off'",
-				ExpectedErr: true,
+				ExpectedErr: "abc",
 			},
 		},
 	},
@@ -5585,7 +5585,7 @@ var setStmts = []ScriptTest{
 			},
 			{
 				Query:       "SET ssl_ca_file TO ''",
-				ExpectedErr: true,
+				ExpectedErr: "abc",
 			},
 		},
 	},
@@ -5599,7 +5599,7 @@ var setStmts = []ScriptTest{
 			},
 			{
 				Query:       "SET ssl_cert_file TO 'server.crt'",
-				ExpectedErr: true,
+				ExpectedErr: "abc",
 			},
 		},
 	},
@@ -5613,7 +5613,7 @@ var setStmts = []ScriptTest{
 			},
 			{
 				Query:       "SET ssl_ciphers TO 'HIGH:MEDIUM:'",
-				ExpectedErr: true,
+				ExpectedErr: "abc",
 			},
 		},
 	},
@@ -5627,7 +5627,7 @@ var setStmts = []ScriptTest{
 			},
 			{
 				Query:       "SET ssl_crl_dir TO ''",
-				ExpectedErr: true,
+				ExpectedErr: "abc",
 			},
 		},
 	},
@@ -5641,7 +5641,7 @@ var setStmts = []ScriptTest{
 			},
 			{
 				Query:       "SET ssl_crl_file TO ''",
-				ExpectedErr: true,
+				ExpectedErr: "abc",
 			},
 		},
 	},
@@ -5655,7 +5655,7 @@ var setStmts = []ScriptTest{
 			},
 			{
 				Query:       "SET ssl_dh_params_file TO ''",
-				ExpectedErr: true,
+				ExpectedErr: "abc",
 			},
 		},
 	},
@@ -5669,7 +5669,7 @@ var setStmts = []ScriptTest{
 			},
 			{
 				Query:       "SET ssl_ecdh_curve TO 'prime256v1'",
-				ExpectedErr: true,
+				ExpectedErr: "abc",
 			},
 		},
 	},
@@ -5683,7 +5683,7 @@ var setStmts = []ScriptTest{
 			},
 			{
 				Query:       "SET ssl_key_file TO 'server.key'",
-				ExpectedErr: true,
+				ExpectedErr: "abc",
 			},
 		},
 	},
@@ -5697,7 +5697,7 @@ var setStmts = []ScriptTest{
 			},
 			{
 				Query:       "SET ssl_library TO 'OpenSSL'",
-				ExpectedErr: true,
+				ExpectedErr: "abc",
 			},
 		},
 	},
@@ -5711,7 +5711,7 @@ var setStmts = []ScriptTest{
 			},
 			{
 				Query:       "SET ssl_max_protocol_version TO ''",
-				ExpectedErr: true,
+				ExpectedErr: "abc",
 			},
 		},
 	},
@@ -5725,7 +5725,7 @@ var setStmts = []ScriptTest{
 			},
 			{
 				Query:       "SET ssl_min_protocol_version TO 'TLSv1.2'",
-				ExpectedErr: true,
+				ExpectedErr: "abc",
 			},
 		},
 	},
@@ -5739,7 +5739,7 @@ var setStmts = []ScriptTest{
 			},
 			{
 				Query:       "SET ssl_passphrase_command TO ''",
-				ExpectedErr: true,
+				ExpectedErr: "abc",
 			},
 		},
 	},
@@ -5753,7 +5753,7 @@ var setStmts = []ScriptTest{
 			},
 			{
 				Query:       "SET ssl_passphrase_command_supports_reload TO 'off'",
-				ExpectedErr: true,
+				ExpectedErr: "abc",
 			},
 		},
 	},
@@ -5767,7 +5767,7 @@ var setStmts = []ScriptTest{
 			},
 			{
 				Query:       "SET ssl_prefer_server_ciphers TO 'on'",
-				ExpectedErr: true,
+				ExpectedErr: "abc",
 			},
 		},
 	},
@@ -5807,7 +5807,7 @@ var setStmts = []ScriptTest{
 			},
 			{
 				Query:       "SET statement_timeout TO '0'",
-				ExpectedErr: true,
+				ExpectedErr: "abc",
 			},
 		},
 	},
@@ -5847,7 +5847,7 @@ var setStmts = []ScriptTest{
 			},
 			{
 				Query:       "SET superuser_reserved_connections TO '3'",
-				ExpectedErr: true,
+				ExpectedErr: "abc",
 			},
 		},
 	},
@@ -5913,7 +5913,7 @@ var setStmts = []ScriptTest{
 			},
 			{
 				Query:       "SET synchronous_standby_names TO ''",
-				ExpectedErr: true,
+				ExpectedErr: "abc",
 			},
 		},
 	},
@@ -5927,7 +5927,7 @@ var setStmts = []ScriptTest{
 			},
 			{
 				Query:       "SET syslog_facility TO 'local0'",
-				ExpectedErr: true,
+				ExpectedErr: "abc",
 			},
 		},
 	},
@@ -5941,7 +5941,7 @@ var setStmts = []ScriptTest{
 			},
 			{
 				Query:       "SET syslog_ident TO 'postgres'",
-				ExpectedErr: true,
+				ExpectedErr: "abc",
 			},
 		},
 	},
@@ -5955,7 +5955,7 @@ var setStmts = []ScriptTest{
 			},
 			{
 				Query:       "SET syslog_sequence_numbers TO 'on'",
-				ExpectedErr: true,
+				ExpectedErr: "abc",
 			},
 		},
 	},
@@ -5969,7 +5969,7 @@ var setStmts = []ScriptTest{
 			},
 			{
 				Query:       "SET syslog_split_messages TO 'on'",
-				ExpectedErr: true,
+				ExpectedErr: "abc",
 			},
 		},
 	},
@@ -6243,7 +6243,7 @@ var setStmts = []ScriptTest{
 			},
 			{
 				Query:       "SET trace_recovery_messages TO 'log'",
-				ExpectedErr: true,
+				ExpectedErr: "abc",
 			},
 		},
 	},
@@ -6309,7 +6309,7 @@ var setStmts = []ScriptTest{
 			},
 			{
 				Query:       "SET track_activity_query_size TO '1024'",
-				ExpectedErr: true,
+				ExpectedErr: "abc",
 			},
 		},
 	},
@@ -6323,7 +6323,7 @@ var setStmts = []ScriptTest{
 			},
 			{
 				Query:       "SET track_commit_timestamp TO 'off'",
-				ExpectedErr: true,
+				ExpectedErr: "abc",
 			},
 		},
 	},
@@ -6545,7 +6545,7 @@ var setStmts = []ScriptTest{
 			},
 			{
 				Query:       "SET unix_socket_directories TO '/tmp'",
-				ExpectedErr: true,
+				ExpectedErr: "abc",
 			},
 		},
 	},
@@ -6559,7 +6559,7 @@ var setStmts = []ScriptTest{
 			},
 			{
 				Query:       "SET unix_socket_group TO ''",
-				ExpectedErr: true,
+				ExpectedErr: "abc",
 			},
 		},
 	},
@@ -6573,7 +6573,7 @@ var setStmts = []ScriptTest{
 			},
 			{
 				Query:       "SET unix_socket_permissions TO '511'",
-				ExpectedErr: true,
+				ExpectedErr: "abc",
 			},
 		},
 	},
@@ -6925,7 +6925,7 @@ var setStmts = []ScriptTest{
 			},
 			{
 				Query:       "SET wal_block_size TO '8192'",
-				ExpectedErr: true,
+				ExpectedErr: "abc",
 			},
 		},
 	},
@@ -6939,7 +6939,7 @@ var setStmts = []ScriptTest{
 			},
 			{
 				Query:       "SET wal_buffers TO '4000'",
-				ExpectedErr: true,
+				ExpectedErr: "abc",
 			},
 		},
 	},
@@ -7005,7 +7005,7 @@ var setStmts = []ScriptTest{
 			},
 			{
 				Query:       "SET wal_decode_buffer_size TO '524288'",
-				ExpectedErr: true,
+				ExpectedErr: "abc",
 			},
 		},
 	},
@@ -7045,7 +7045,7 @@ var setStmts = []ScriptTest{
 			},
 			{
 				Query:       "SET wal_keep_size TO '0'",
-				ExpectedErr: true,
+				ExpectedErr: "abc",
 			},
 		},
 	},
@@ -7059,7 +7059,7 @@ var setStmts = []ScriptTest{
 			},
 			{
 				Query:       "SET wal_level TO 'replica'",
-				ExpectedErr: true,
+				ExpectedErr: "abc",
 			},
 		},
 	},
@@ -7073,7 +7073,7 @@ var setStmts = []ScriptTest{
 			},
 			{
 				Query:       "SET wal_log_hints TO 'off'",
-				ExpectedErr: true,
+				ExpectedErr: "abc",
 			},
 		},
 	},
@@ -7087,7 +7087,7 @@ var setStmts = []ScriptTest{
 			},
 			{
 				Query:       "SET wal_receiver_create_temp_slot TO 'off'",
-				ExpectedErr: true,
+				ExpectedErr: "abc",
 			},
 		},
 	},
@@ -7101,7 +7101,7 @@ var setStmts = []ScriptTest{
 			},
 			{
 				Query:       "SET wal_receiver_status_interval TO '10'",
-				ExpectedErr: true,
+				ExpectedErr: "abc",
 			},
 		},
 	},
@@ -7115,7 +7115,7 @@ var setStmts = []ScriptTest{
 			},
 			{
 				Query:       "SET wal_receiver_timeout TO '60'",
-				ExpectedErr: true,
+				ExpectedErr: "abc",
 			},
 		},
 	},
@@ -7155,7 +7155,7 @@ var setStmts = []ScriptTest{
 			},
 			{
 				Query:       "SET wal_retrieve_retry_interval TO '5'",
-				ExpectedErr: true,
+				ExpectedErr: "abc",
 			},
 		},
 	},
@@ -7169,7 +7169,7 @@ var setStmts = []ScriptTest{
 			},
 			{
 				Query:       "SET wal_segment_size TO '16777216'",
-				ExpectedErr: true,
+				ExpectedErr: "abc",
 			},
 		},
 	},
@@ -7235,7 +7235,7 @@ var setStmts = []ScriptTest{
 			},
 			{
 				Query:       "SET wal_sync_method TO 'open_datasync'",
-				ExpectedErr: true,
+				ExpectedErr: "abc",
 			},
 		},
 	},
@@ -7249,7 +7249,7 @@ var setStmts = []ScriptTest{
 			},
 			{
 				Query:       "SET wal_writer_delay TO '200'",
-				ExpectedErr: true,
+				ExpectedErr: "abc",
 			},
 		},
 	},
@@ -7263,7 +7263,7 @@ var setStmts = []ScriptTest{
 			},
 			{
 				Query:       "SET wal_writer_flush_after TO '1000'",
-				ExpectedErr: true,
+				ExpectedErr: "abc",
 			},
 		},
 	},

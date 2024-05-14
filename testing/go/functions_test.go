@@ -49,7 +49,7 @@ func TestFunctionsMath(t *testing.T) {
 				},
 				{
 					Query:       `SELECT cbrt(v4) FROM test ORDER BY pk;`,
-					ExpectedErr: true,
+					ExpectedErr: "abc",
 				},
 				{
 					Query: `SELECT cbrt('64');`,
@@ -82,11 +82,11 @@ func TestFunctionsMath(t *testing.T) {
 				},
 				{
 					Query:       `SELECT gcd(v3, 10) FROM test ORDER BY pk;`,
-					ExpectedErr: true,
+					ExpectedErr: "abc",
 				},
 				{
 					Query:       `SELECT gcd(v4, 10) FROM test ORDER BY pk;`,
-					ExpectedErr: true,
+					ExpectedErr: "abc",
 				},
 				{
 					Query: `SELECT gcd(36, '48');`,
@@ -125,11 +125,11 @@ func TestFunctionsMath(t *testing.T) {
 				},
 				{
 					Query:       `SELECT lcm(v3, 10) FROM test ORDER BY pk;`,
-					ExpectedErr: true,
+					ExpectedErr: "abc",
 				},
 				{
 					Query:       `SELECT lcm(v4, 10) FROM test ORDER BY pk;`,
-					ExpectedErr: true,
+					ExpectedErr: "abc",
 				},
 				{
 					Query: `SELECT lcm(36, '48');`,

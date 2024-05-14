@@ -330,7 +330,7 @@ func TestPreparedErrorHandling(t *testing.T) {
 		Assertions: []ScriptTestAssertion{
 			{
 				Query:       "select v1 from doesNotExist where pk = 1;",
-				ExpectedErr: true,
+				ExpectedErr: "abc",
 			},
 			{
 				Query:    "select v1 from test where pk = 1;",
@@ -401,22 +401,30 @@ func RunScriptN(t *testing.T, script ScriptTest, n int) {
 						t.Skip("Skip has been set in the assertion")
 					}
 					rows, err := conn.Query(ctx, assertion.Query)
-					if assertion.ExpectedErr {
-						rows.Close()
-						require.Error(t, err)
-						return
-					} else {
+					defer rows.Close()
+
+					var errorSeen string 
+					
+					if assertion.ExpectedErr == "" {
 						require.NoError(t, err)
+					} else if err != nil {
+						errorSeen = err.Error()
 					}
 
-					foundRows, err := ReadRows(rows, true)
-					if assertion.ExpectedErr {
-						require.Error(t, err)
-						return
-					} else {
-						require.NoError(t, err)
+					if errorSeen == "" {
+						foundRows, err := ReadRows(rows, true)
+						if assertion.ExpectedErr == "" {
+							require.NoError(t, err)
+							assert.Equal(t, NormalizeRows(assertion.Expected), foundRows)
+						} else if err != nil {
+							errorSeen = err.Error()
+						}
 					}
-					assert.Equal(t, NormalizeRows(assertion.Expected), foundRows)
+					
+					if assertion.ExpectedErr != "" {
+						require.False(t, errorSeen == "", "Expected error but got none")
+						assert.Contains(t, errorSeen, assertion.ExpectedErr)
+					}
 				})
 			}
 		})
