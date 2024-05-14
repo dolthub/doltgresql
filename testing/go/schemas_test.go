@@ -23,7 +23,6 @@ import (
 var SchemaTests = []ScriptTest{
 	{
 		Name: "table gets created in public schema by default",
-		Focus: true,
 		SetUpScript: []string{
 			"CREATE TABLE test (pk BIGINT PRIMARY KEY, v1 BIGINT);",
 		},
@@ -37,6 +36,54 @@ var SchemaTests = []ScriptTest{
 					{1, 1},
 					{2, 2},
 				},
+			},
+		},
+	},
+	{
+		Name: "table creation respects search_path",
+		SetUpScript: []string{
+			"create schema postgres",
+			// "$user" comes before public by default
+			"CREATE TABLE test (pk BIGINT PRIMARY KEY, v1 BIGINT);",
+		},
+		Assertions: []ScriptTestAssertion{
+			{
+				Query:    "INSERT INTO postgres.test VALUES (1, 1), (2, 2);",
+			},
+			{
+				Query: "SELECT * FROM postgres.test;",
+				Expected: []sql.Row{
+					{1, 1},
+					{2, 2},
+				},
+			},
+		},
+	},
+	{
+		Name:  "table creation fails with no schema available",
+		Focus: true,
+		SetUpScript: []string{
+			"set search_path to ''",
+		},
+		Assertions: []ScriptTestAssertion{
+			{
+				Query:       "CREATE TABLE test (pk BIGINT PRIMARY KEY, v1 BIGINT);",
+				ExpectedErr: true,
+			},
+			{
+				Query:       `set search_path to '"$user"'`,
+				Expected: []sql.Row{sql.Row(nil)}, // TODO: this return value is wrong
+			},
+			{
+				// only available schema doesn't exist
+				Query:       "CREATE TABLE test (pk BIGINT PRIMARY KEY, v1 BIGINT);",
+				ExpectedErr: true,
+			},
+			{
+				Query:       `create schema postgres`,
+			},
+			{
+				Query:       "CREATE TABLE test (pk BIGINT PRIMARY KEY, v1 BIGINT);",
 			},
 		},
 	},
