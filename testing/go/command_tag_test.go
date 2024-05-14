@@ -113,6 +113,6 @@ var CommandTagTests = []ScriptTest{
 	},
 }
 
-func TestServerMessages(t *testing.T) {
+func TestCommandTag(t *testing.T) {
 	RunScripts(t, CommandTagTests)
 }
