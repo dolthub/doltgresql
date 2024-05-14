@@ -142,7 +142,12 @@ func runScript(t *testing.T, ctx context.Context, script ScriptTest, conn *pgx.C
 				} else {
 					require.NoError(t, err)
 				}
-			} else if assertion.Expected != nil {
+			} else if assertion.ExpectedTag != "" {
+				// check for command tag
+				commandTag, err := conn.Exec(ctx, assertion.Query)
+				require.NoError(t, err)
+				assert.Equal(t, assertion.ExpectedTag, commandTag.String())
+			} else {
 				rows, err := conn.Query(ctx, assertion.Query, assertion.BindVars...)
 				require.NoError(t, err)
 				readRows, err := ReadRows(rows, normalizeRows)
@@ -152,11 +157,6 @@ func runScript(t *testing.T, ctx context.Context, script ScriptTest, conn *pgx.C
 				} else {
 					assert.Equal(t, assertion.Expected, readRows)
 				}
-			} else {
-				// check for command tag
-				commandTag, err := conn.Exec(ctx, assertion.Query)
-				require.NoError(t, err)
-				assert.Equal(t, assertion.ExpectedTag, commandTag.String())
 			}
 		})
 	}

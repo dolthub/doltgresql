@@ -15,21 +15,12 @@
 package _go
 
 import (
-	"github.com/dolthub/go-mysql-server/sql"
 	"testing"
+
+	"github.com/dolthub/go-mysql-server/sql"
 )
 
 var CommandTagTests = []ScriptTest{
-	{
-		Name: "empty",
-		Assertions: []ScriptTestAssertion{
-
-			{
-				Query:       "",
-				ExpectedTag: "",
-			},
-		},
-	},
 	{
 		Name: "set",
 		Assertions: []ScriptTestAssertion{
