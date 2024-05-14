@@ -19,7 +19,6 @@ import (
 	"fmt"
 	_ "net/http/pprof"
 	"path/filepath"
-	"strings"
 
 	"github.com/dolthub/dolt/go/cmd/dolt/cli"
 	"github.com/dolthub/dolt/go/cmd/dolt/commands"
@@ -42,7 +41,7 @@ import (
 )
 
 const (
-	Version = "0.6.0"
+	Version = "0.7.4"
 
 	// DOLTGRES_DATA_DIR is an environment variable that defines the location of DoltgreSQL databases
 	DOLTGRES_DATA_DIR = "DOLTGRES_DATA_DIR"
@@ -54,74 +53,6 @@ const (
 	DoltgresDir  = "doltgres"
 )
 
-var sqlServerDocs = cli.CommandDocumentationContent{
-	ShortDesc: "Start a PostgreSQL-compatible server.",
-	LongDesc: "By default, starts a PostgreSQL-compatible server on the dolt database in the current directory. " +
-		"Databases are named after the directories they appear in" +
-		"Parameters can be specified using a yaml configuration file passed to the server via " +
-		"{{.EmphasisLeft}}--config <file>{{.EmphasisRight}}, or by using the supported switches and flags to configure " +
-		"the server directly on the command line. If {{.EmphasisLeft}}--config <file>{{.EmphasisRight}} is provided all" +
-		" other command line arguments are ignored.\n\nThis is an example yaml configuration file showing all supported" +
-		" items and their default values:\n\n" +
-		indentLines(sqlserver.ServerConfigAsYAMLConfig(sqlserver.DefaultServerConfig()).String()) + "\n\n" + `
-SUPPORTED CONFIG FILE FIELDS:
-
-{{.EmphasisLeft}}data_dir{{.EmphasisRight}}: A directory where the server will load dolt databases to serve, and create new ones. Defaults to the DOLTGRES_DATA_DIR environment variable, or {{.EmphasisLeft}}~/doltgres/databases{{.EmphasisRight}}.
-
-{{.EmphasisLeft}}cfg_dir{{.EmphasisRight}}: A directory where the server will load and store non-database configuration data, such as permission information. Defaults {{.EmphasisLeft}}$data_dir/.doltcfg{{.EmphasisRight}}.
-
-{{.EmphasisLeft}}log_level{{.EmphasisRight}}: Level of logging provided. Options are: {{.EmphasisLeft}}trace{{.EmphasisRight}}, {{.EmphasisLeft}}debug{{.EmphasisRight}}, {{.EmphasisLeft}}info{{.EmphasisRight}}, {{.EmphasisLeft}}warning{{.EmphasisRight}}, {{.EmphasisLeft}}error{{.EmphasisRight}}, and {{.EmphasisLeft}}fatal{{.EmphasisRight}}.
-
-{{.EmphasisLeft}}privilege_file{{.EmphasisRight}}: "Path to a file to load and store users and grants. Defaults to {{.EmphasisLeft}}$doltcfg-dir/privileges.db{{.EmphasisRight}}. Will be created as needed.
-
-{{.EmphasisLeft}}branch_control_file{{.EmphasisRight}}: Path to a file to load and store branch control permissions. Defaults to {{.EmphasisLeft}}$doltcfg-dir/branch_control.db{{.EmphasisRight}}. Will be created as needed.
-
-{{.EmphasisLeft}}max_logged_query_len{{.EmphasisRight}}: If greater than zero, truncates query strings in logging to the number of characters given.
-
-{{.EmphasisLeft}}behavior.read_only{{.EmphasisRight}}: If true database modification is disabled. Defaults to false.
-
-{{.EmphasisLeft}}behavior.autocommit{{.EmphasisRight}}: If true every statement is committed automatically. Defaults to true. @@autocommit can also be specified in each session.
-
-{{.EmphasisLeft}}behavior.dolt_transaction_commit{{.EmphasisRight}}: If true all SQL transaction commits will automatically create a Dolt commit, with a generated commit message. This is useful when a system working with Dolt wants to create versioned data, but doesn't want to directly use Dolt features such as dolt_commit(). 
-
-{{.EmphasisLeft}}user.name{{.EmphasisRight}}: The username that connections should use for authentication
-
-{{.EmphasisLeft}}user.password{{.EmphasisRight}}: The password that connections should use for authentication.
-
-{{.EmphasisLeft}}listener.host{{.EmphasisRight}}: The host address that the server will run on.  This may be {{.EmphasisLeft}}localhost{{.EmphasisRight}} or an IPv4 or IPv6 address
-
-{{.EmphasisLeft}}listener.port{{.EmphasisRight}}: The port that the server should listen on
-
-{{.EmphasisLeft}}listener.max_connections{{.EmphasisRight}}: The number of simultaneous connections that the server will accept
-
-{{.EmphasisLeft}}listener.read_timeout_millis{{.EmphasisRight}}: The number of milliseconds that the server will wait for a read operation
-
-{{.EmphasisLeft}}listener.write_timeout_millis{{.EmphasisRight}}: The number of milliseconds that the server will wait for a write operation
-
-{{.EmphasisLeft}}remotesapi.port{{.EmphasisRight}}: A port to listen for remote API operations on. If set to a positive integer, this server will accept connections from clients to clone, pull, etc. databases being served.
-
-{{.EmphasisLeft}}user_session_vars{{.EmphasisRight}}: A map of user name to a map of session variables to set on connection for each session.
-
-{{.EmphasisLeft}}cluster{{.EmphasisRight}}: Settings related to running this server in a replicated cluster. For information on setting these values, see https://docs.dolthub.com/sql-reference/server/replication
-
-If a config file is not provided many of these settings may be configured on the command line.`,
-	Synopsis: []string{
-		"--config {{.LessThan}}file{{.GreaterThan}}",
-		"[-H {{.LessThan}}host{{.GreaterThan}}] [-P {{.LessThan}}port{{.GreaterThan}}] [-u {{.LessThan}}user{{.GreaterThan}}] [-p {{.LessThan}}password{{.GreaterThan}}] [-t {{.LessThan}}timeout{{.GreaterThan}}] [-l {{.LessThan}}loglevel{{.GreaterThan}}] [--data-dir {{.LessThan}}directory{{.GreaterThan}}] [-r]",
-	},
-}
-
-func indentLines(s string) string {
-	sb := strings.Builder{}
-	lines := strings.Split(s, "\n")
-	for _, line := range lines {
-		sb.WriteRune('\t')
-		sb.WriteString(line)
-		sb.WriteRune('\n')
-	}
-	return sb.String()
-}
-
 func init() {
 	server.DefaultProtocolListenerFunc = NewListener
 	sqlserver.ExternalDisableUsers = true
@@ -131,13 +62,13 @@ func init() {
 
 // RunOnDisk starts the server based on the given args, while also using the local disk as the backing store.
 // The returned WaitGroup may be used to wait for the server to close.
-func RunOnDisk(ctx context.Context, args []string, dEnv *env.DoltEnv) (*svcs.Controller, error) {
-	return runServer(ctx, args, dEnv)
+func RunOnDisk(ctx context.Context, cfg *DoltgresConfig, dEnv *env.DoltEnv) (*svcs.Controller, error) {
+	return runServer(ctx, cfg, dEnv)
 }
 
 // RunInMemory starts the server based on the given args, while also using RAM as the backing store.
 // The returned WaitGroup may be used to wait for the server to close.
-func RunInMemory(args []string) (*svcs.Controller, error) {
+func RunInMemory(cfg *DoltgresConfig) (*svcs.Controller, error) {
 	ctx := context.Background()
 	fs := filesys.EmptyInMemFS("")
 	dEnv := env.Load(ctx, env.GetCurrentUserHomeDir, fs, doltdb.InMemDoltDB, Version)
@@ -149,24 +80,13 @@ func RunInMemory(args []string) (*svcs.Controller, error) {
 		})
 	}
 
-	return runServer(ctx, args, dEnv)
+	return runServer(ctx, cfg, dEnv)
 }
 
 // runServer starts the server based on the given args, using the provided file system as the backing store.
 // The returned WaitGroup may be used to wait for the server to close.
-func runServer(ctx context.Context, args []string, dEnv *env.DoltEnv) (*svcs.Controller, error) {
+func runServer(ctx context.Context, cfg *DoltgresConfig, dEnv *env.DoltEnv) (*svcs.Controller, error) {
 	initialization.Initialize()
-
-	sqlServerCmd := sqlserver.SqlServerCmd{}
-	if serverArgs, err := sqlServerCmd.ArgParser().Parse(append([]string{"sql-server"}, args...)); err == nil {
-		if _, ok := serverArgs.GetValue("port"); !ok {
-			args = append(args, "--port=5432")
-		}
-	}
-
-	if dEnv.CfgLoadErr != nil {
-		return nil, fmt.Errorf("failed to load the global config: %w", dEnv.CfgLoadErr)
-	}
 
 	if dEnv.HasDoltDataDir() {
 		cwd, _ := dEnv.FS.Abs(".")
@@ -181,20 +101,13 @@ func runServer(ctx context.Context, args []string, dEnv *env.DoltEnv) (*svcs.Con
 		return nil, fmt.Errorf("failed to load persisted system variables: %w", err)
 	}
 
-	ap := sqlserver.SqlServerCmd{}.ArgParser()
-	help, _ := cli.HelpAndUsagePrinters(cli.CommandDocsForCommandString("sql-server", sqlServerDocs, ap))
-
-	serverConfig, err := sqlserver.ServerConfigFromArgsWithReader(ap, help, args, dEnv, DoltgresConfigReader{})
+	ssCfg := cfg.ToSqlServerConfig()
+	err = sqlserver.ApplySystemVariables(ssCfg)
 	if err != nil {
 		return nil, err
 	}
 
-	err = sqlserver.ApplySystemVariables(serverConfig)
-	if err != nil {
-		return nil, err
-	}
-
-	tlsConfig, err := sqlserver.LoadTLSConfig(serverConfig)
+	tlsConfig, err := sqlserver.LoadTLSConfig(ssCfg)
 	if err != nil {
 		return nil, err
 	}
@@ -209,7 +122,7 @@ func runServer(ctx context.Context, args []string, dEnv *env.DoltEnv) (*svcs.Con
 		config.UserEmailKey: DefUserEmail,
 	})
 
-	dataDirFs, err := filesys.LocalFS.WithWorkingDir(serverConfig.DataDir())
+	dataDirFs, err := filesys.LocalFS.WithWorkingDir(ssCfg.DataDir())
 	if err != nil {
 		return nil, err
 	}
@@ -260,7 +173,7 @@ func runServer(ctx context.Context, args []string, dEnv *env.DoltEnv) (*svcs.Con
 		}
 	}()
 
-	sqlserver.ConfigureServices(serverConfig, controller, Version, dEnv)
+	sqlserver.ConfigureServices(ssCfg, controller, Version, dEnv)
 	go controller.Start(newCtx)
 
 	err = controller.WaitForStart()
@@ -269,7 +182,7 @@ func runServer(ctx context.Context, args []string, dEnv *env.DoltEnv) (*svcs.Con
 	}
 
 	// TODO: shutdown replication cleanly when we stop the server
-	_, err = startReplication(serverConfig)
+	_, err = startReplication(cfg, ssCfg)
 	if err != nil {
 		return nil, err
 	}
@@ -278,32 +191,35 @@ func runServer(ctx context.Context, args []string, dEnv *env.DoltEnv) (*svcs.Con
 }
 
 // startReplication begins the background thread that replicates from Postgres, if one is configured.
-func startReplication(serverConfig sqlserver.ServerConfig) (*logrepl.LogicalReplicator, error) {
-	cfg, ok := serverConfig.(*DoltgresServerConfig)
-	if !ok {
-		// no config file specified, so no replication
-		cli.Println("No config file specified, so no replication")
-		return nil, nil
-	}
-
+func startReplication(cfg *DoltgresConfig, ssCfg sqlserver.ServerConfig) (*logrepl.LogicalReplicator, error) {
 	if cfg.PostgresReplicationConfig == nil {
 		return nil, nil
+	} else if cfg.PostgresReplicationConfig.PostgresDatabase == nil || *cfg.PostgresReplicationConfig.PostgresDatabase == "" {
+		return nil, fmt.Errorf("postgres replication database must be specified and not empty for replication")
+	} else if cfg.PostgresReplicationConfig.PostgresUser == nil || *cfg.PostgresReplicationConfig.PostgresUser == "" {
+		return nil, fmt.Errorf("postgres replication user must be specified and not empty for replication")
+	} else if cfg.PostgresReplicationConfig.PostgresPassword == nil || *cfg.PostgresReplicationConfig.PostgresPassword == "" {
+		return nil, fmt.Errorf("postgres replication password must be specified and not empty for replication")
+	} else if cfg.PostgresReplicationConfig.PostgresPort == nil || *cfg.PostgresReplicationConfig.PostgresPort == 0 {
+		return nil, fmt.Errorf("postgres replication port must be specified and non-zero for replication")
+	} else if cfg.PostgresReplicationConfig.SlotName == nil || *cfg.PostgresReplicationConfig.SlotName == "" {
+		return nil, fmt.Errorf("postgres replication slot name must be specified and not empty for replication")
 	}
 
-	walFilePath := filepath.Join(cfg.CfgDir(), "pg_wal_location")
+	walFilePath := filepath.Join(ssCfg.CfgDir(), "pg_wal_location")
 	primaryDns := fmt.Sprintf(
 		"postgres://%s:%s@127.0.0.1:%d/%s",
-		cfg.PostgresReplicationConfig.PostgresUser,
-		cfg.PostgresReplicationConfig.PostgresPassword,
-		cfg.PostgresReplicationConfig.PostgresPort,
-		cfg.PostgresReplicationConfig.PostgresDatabase,
+		*cfg.PostgresReplicationConfig.PostgresUser,
+		*cfg.PostgresReplicationConfig.PostgresPassword,
+		*cfg.PostgresReplicationConfig.PostgresPort,
+		*cfg.PostgresReplicationConfig.PostgresDatabase,
 	)
 
 	replicationDns := fmt.Sprintf(
 		"postgres://%s:%s@localhost:%d/%s",
-		cfg.User(),
-		cfg.Password(),
-		cfg.Port(),
+		ssCfg.User(),
+		ssCfg.Password(),
+		ssCfg.Port(),
 		"doltgres", // TODO: this needs to come from config
 	)
 
@@ -313,7 +229,7 @@ func startReplication(serverConfig sqlserver.ServerConfig) (*logrepl.LogicalRepl
 	}
 
 	cli.Println("Starting replication")
-	go replicator.StartReplication(cfg.PostgresReplicationConfig.SlotName)
+	go replicator.StartReplication(*cfg.PostgresReplicationConfig.SlotName)
 	return replicator, nil
 }
 

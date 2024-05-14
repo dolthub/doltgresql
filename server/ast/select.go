@@ -153,6 +153,10 @@ func nodeSelectExpr(node tree.SelectExpr) (vitess.SelectExpr, error) {
 		if err != nil {
 			return nil, err
 		}
+		// cast part is not part of column name, e.g. `id::INT2` should create column name as `id`.
+		if ce, ok := expr.(*tree.CastExpr); ok && node.As == "" {
+			node.As = tree.UnrestrictedName(tree.AsString(ce.Expr))
+		}
 		return &vitess.AliasedExpr{
 			Expr:            vitessExpr,
 			As:              vitess.NewColIdent(string(node.As)),

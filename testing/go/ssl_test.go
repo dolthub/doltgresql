@@ -47,7 +47,12 @@ func NewSslListener(listenerCfg mysql.ListenerConfig) (server.ProtocolListener, 
 func TestSSL(t *testing.T) {
 	port := GetUnusedPort(t)
 	server.DefaultProtocolListenerFunc = NewSslListener
-	controller, err := dserver.RunInMemory([]string{fmt.Sprintf("--port=%d", port), "--host=127.0.0.1"})
+	controller, err := dserver.RunInMemory(&dserver.DoltgresConfig{
+		ListenerConfig: &dserver.DoltgresListenerConfig{
+			PortNumber: &port,
+			HostStr:    dserver.Ptr("127.0.0.1"),
+		},
+	})
 	require.NoError(t, err)
 
 	defer func() {
