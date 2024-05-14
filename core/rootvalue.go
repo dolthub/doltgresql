@@ -48,6 +48,11 @@ type rootValue struct {
 	hash hash.Hash                    // cache first load
 }
 
+func (root *rootValue) HandlePostMerge(ctx context.Context, ourRoot, theirRoot, ancRoot doltdb.RootValue) (doltdb.RootValue, error) {
+	// TODO implement me
+	panic("implement me")
+}
+
 type tableEdit struct {
 	name doltdb.TableName
 	ref  *types.Ref
