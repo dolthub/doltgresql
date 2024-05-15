@@ -20,11 +20,6 @@ import (
 	pgtypes "github.com/dolthub/doltgresql/server/types"
 )
 
-// Context is a context that PostgreSQL functions will use.
-type Context struct {
-	*sql.Context
-}
-
 // FunctionInterface is an interface for PostgreSQL functions.
 type FunctionInterface interface {
 	// GetName returns the name of the function. The name is case-insensitive, so the casing does not matter.
@@ -44,7 +39,7 @@ type Function0 struct {
 	Name       string
 	Return     pgtypes.DoltgresType
 	Parameters []pgtypes.DoltgresType
-	Callable   func(ctx Context) (any, error)
+	Callable   func(ctx *sql.Context) (any, error)
 }
 
 // Function1 is a function that takes one parameter.
@@ -52,7 +47,7 @@ type Function1 struct {
 	Name       string
 	Return     pgtypes.DoltgresType
 	Parameters []pgtypes.DoltgresType
-	Callable   func(ctx Context, val1 any) (any, error)
+	Callable   func(ctx *sql.Context, val1 any) (any, error)
 }
 
 // Function2 is a function that takes two parameters.
@@ -60,7 +55,7 @@ type Function2 struct {
 	Name       string
 	Return     pgtypes.DoltgresType
 	Parameters []pgtypes.DoltgresType
-	Callable   func(ctx Context, val1 any, val2 any) (any, error)
+	Callable   func(ctx *sql.Context, val1 any, val2 any) (any, error)
 }
 
 // Function3 is a function that takes three parameters.
@@ -68,7 +63,7 @@ type Function3 struct {
 	Name       string
 	Return     pgtypes.DoltgresType
 	Parameters []pgtypes.DoltgresType
-	Callable   func(ctx Context, val1 any, val2 any, val3 any) (any, error)
+	Callable   func(ctx *sql.Context, val1 any, val2 any, val3 any) (any, error)
 }
 
 // Function4 is a function that takes four parameters.
@@ -76,7 +71,7 @@ type Function4 struct {
 	Name       string
 	Return     pgtypes.DoltgresType
 	Parameters []pgtypes.DoltgresType
-	Callable   func(ctx Context, val1 any, val2 any, val3 any, val4 any) (any, error)
+	Callable   func(ctx *sql.Context, val1 any, val2 any, val3 any, val4 any) (any, error)
 }
 
 var _ FunctionInterface = Function0{}

@@ -18,6 +18,7 @@ import (
 	"fmt"
 	"math"
 
+	"github.com/dolthub/go-mysql-server/sql"
 	"github.com/shopspring/decimal"
 
 	"github.com/dolthub/doltgresql/server/functions/framework"
@@ -35,7 +36,7 @@ var width_bucket_float64_float64_float64_int64 = framework.Function4{
 	Name:       "width_bucket",
 	Return:     pgtypes.Int32,
 	Parameters: []pgtypes.DoltgresType{pgtypes.Float64, pgtypes.Float64, pgtypes.Float64, pgtypes.Int32},
-	Callable: func(ctx framework.Context, operandInterface any, lowInterface any, highInterface any, countInterface any) (any, error) {
+	Callable: func(ctx *sql.Context, operandInterface any, lowInterface any, highInterface any, countInterface any) (any, error) {
 		if operandInterface == nil || lowInterface == nil || highInterface == nil || countInterface == nil {
 			return nil, nil
 		}
@@ -70,7 +71,7 @@ var width_bucket_numeric_numeric_numeric_int64 = framework.Function4{
 	Name:       "width_bucket",
 	Return:     pgtypes.Int32,
 	Parameters: []pgtypes.DoltgresType{pgtypes.Numeric, pgtypes.Numeric, pgtypes.Numeric, pgtypes.Int32},
-	Callable: func(ctx framework.Context, operandInterface any, lowInterface any, highInterface any, countInterface any) (any, error) {
+	Callable: func(ctx *sql.Context, operandInterface any, lowInterface any, highInterface any, countInterface any) (any, error) {
 		if operandInterface == nil || lowInterface == nil || highInterface == nil || countInterface == nil {
 			return nil, nil
 		}

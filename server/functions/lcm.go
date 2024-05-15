@@ -17,6 +17,8 @@ package functions
 import (
 	"fmt"
 
+	"github.com/dolthub/go-mysql-server/sql"
+
 	"github.com/dolthub/doltgresql/server/functions/framework"
 	pgtypes "github.com/dolthub/doltgresql/server/types"
 	"github.com/dolthub/doltgresql/utils"
@@ -32,7 +34,7 @@ var lcm_int64_int64 = framework.Function2{
 	Name:       "lcm",
 	Return:     pgtypes.Int64,
 	Parameters: []pgtypes.DoltgresType{pgtypes.Int64, pgtypes.Int64},
-	Callable: func(ctx framework.Context, val1Int any, val2Int any) (any, error) {
+	Callable: func(ctx *sql.Context, val1Int any, val2Int any) (any, error) {
 		if val1Int == nil || val2Int == nil {
 			return nil, nil
 		}

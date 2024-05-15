@@ -17,6 +17,7 @@ package expression
 import (
 	"fmt"
 	"strconv"
+	"time"
 
 	"github.com/dolthub/go-mysql-server/sql"
 	vitess "github.com/dolthub/vitess/go/vt/sqlparser"
@@ -35,14 +36,6 @@ type Literal struct {
 var _ vitess.InjectableExpression = (*Literal)(nil)
 var _ sql.Expression = (*Literal)(nil)
 var _ framework.LiteralInterface = (*Literal)(nil)
-
-// NewBoolLiteral returns a new *Literal containing a boolean value.
-func NewBoolLiteral(val bool) *Literal {
-	return &Literal{
-		value: val,
-		typ:   pgtypes.Bool,
-	}
-}
 
 // NewNumericLiteral returns a new *Literal containing a NUMERIC value.
 func NewNumericLiteral(numericValue string) (*Literal, error) {
@@ -79,12 +72,60 @@ func NewIntegerLiteral(integerValue string) (*Literal, error) {
 	}
 }
 
+// NewNullLiteral returns a new *Literal containing a null value.
+func NewNullLiteral() *Literal {
+	return &Literal{
+		value: nil,
+		typ:   pgtypes.Null,
+	}
+}
+
 // NewStringLiteral returns a new *Literal containing a TEXT value.
-func NewStringLiteral(stringValue string) (*Literal, error) {
+func NewStringLiteral(stringValue string) *Literal {
 	return &Literal{
 		value: stringValue,
 		typ:   pgtypes.Text,
-	}, nil
+	}
+}
+
+// NewRawLiteralBool returns a new *Literal containing a boolean value.
+func NewRawLiteralBool(val bool) *Literal {
+	return &Literal{
+		value: val,
+		typ:   pgtypes.Bool,
+	}
+}
+
+// NewRawLiteralInt64 returns a new *Literal containing an int64 value.
+func NewRawLiteralInt64(val int64) *Literal {
+	return &Literal{
+		value: val,
+		typ:   pgtypes.Int64,
+	}
+}
+
+// NewRawLiteralFloat64 returns a new *Literal containing a float64 value.
+func NewRawLiteralFloat64(val float64) *Literal {
+	return &Literal{
+		value: val,
+		typ:   pgtypes.Float64,
+	}
+}
+
+// NewRawLiteralNumeric returns a new *Literal containing a decimal.Decimal value.
+func NewRawLiteralNumeric(val decimal.Decimal) *Literal {
+	return &Literal{
+		value: val,
+		typ:   pgtypes.Numeric,
+	}
+}
+
+// NewRawLiteralTimestamp returns a new *Literal containing a time.Time value. This is the variant without a time zone.
+func NewRawLiteralTimestamp(val time.Time) *Literal {
+	return &Literal{
+		value: val,
+		typ:   pgtypes.Timestamp,
+	}
 }
 
 // Children implements the sql.Expression interface.

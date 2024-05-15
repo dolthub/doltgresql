@@ -17,8 +17,9 @@ package functions
 import (
 	"strings"
 
-	"github.com/dolthub/doltgresql/server/functions/framework"
+	"github.com/dolthub/go-mysql-server/sql"
 
+	"github.com/dolthub/doltgresql/server/functions/framework"
 	pgtypes "github.com/dolthub/doltgresql/server/types"
 )
 
@@ -32,7 +33,7 @@ var replace_varchar_varchar_varchar = framework.Function3{
 	Name:       "replace",
 	Return:     pgtypes.VarChar,
 	Parameters: []pgtypes.DoltgresType{pgtypes.VarChar, pgtypes.VarChar, pgtypes.VarChar},
-	Callable: func(ctx framework.Context, str any, from any, to any) (any, error) {
+	Callable: func(ctx *sql.Context, str any, from any, to any) (any, error) {
 		if str == nil || from == nil || to == nil {
 			return nil, nil
 		}

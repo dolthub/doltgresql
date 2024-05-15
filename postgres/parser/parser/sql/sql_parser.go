@@ -12,15 +12,16 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-package ast
+package sql
 
 import (
 	"fmt"
 
+	"github.com/dolthub/doltgresql/postgres/parser/parser"
+	"github.com/dolthub/doltgresql/server/ast"
+
 	"github.com/dolthub/go-mysql-server/sql"
 	vitess "github.com/dolthub/vitess/go/vt/sqlparser"
-
-	"github.com/dolthub/doltgresql/postgres/parser/parser"
 )
 
 var _ sql.Parser = &PostgresParser{}
@@ -57,7 +58,7 @@ func (p *PostgresParser) ParseWithOptions(query string, delimiter rune, _ bool, 
 		return nil, q, "", nil
 	}
 
-	vitessAST, err := Convert(stmts[0])
+	vitessAST, err := ast.Convert(stmts[0])
 	if err != nil {
 		return nil, "", "", err
 	}
@@ -74,7 +75,7 @@ func (p *PostgresParser) ParseOneWithOptions(query string, _ vitess.ParserOption
 	if err != nil {
 		return nil, 0, err
 	}
-	vitessAST, err := Convert(stmt)
+	vitessAST, err := ast.Convert(stmt)
 	if err != nil {
 		return nil, 0, err
 	}

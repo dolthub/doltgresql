@@ -17,8 +17,9 @@ package functions
 import (
 	"strings"
 
-	"github.com/dolthub/doltgresql/server/functions/framework"
+	"github.com/dolthub/go-mysql-server/sql"
 
+	"github.com/dolthub/doltgresql/server/functions/framework"
 	pgtypes "github.com/dolthub/doltgresql/server/types"
 )
 
@@ -32,7 +33,7 @@ var upper_varchar = framework.Function1{
 	Name:       "upper",
 	Return:     pgtypes.VarChar,
 	Parameters: []pgtypes.DoltgresType{pgtypes.VarChar},
-	Callable: func(ctx framework.Context, val1 any) (any, error) {
+	Callable: func(ctx *sql.Context, val1 any) (any, error) {
 		if val1 == nil {
 			return nil, nil
 		}

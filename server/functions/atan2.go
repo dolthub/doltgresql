@@ -18,8 +18,9 @@ import (
 	"fmt"
 	"math"
 
-	"github.com/dolthub/doltgresql/server/functions/framework"
+	"github.com/dolthub/go-mysql-server/sql"
 
+	"github.com/dolthub/doltgresql/server/functions/framework"
 	pgtypes "github.com/dolthub/doltgresql/server/types"
 )
 
@@ -33,7 +34,7 @@ var atan2_float64 = framework.Function2{
 	Name:       "atan2",
 	Return:     pgtypes.Float64,
 	Parameters: []pgtypes.DoltgresType{pgtypes.Float64, pgtypes.Float64},
-	Callable: func(ctx framework.Context, y any, x any) (any, error) {
+	Callable: func(ctx *sql.Context, y any, x any) (any, error) {
 		if y == nil || x == nil {
 			return nil, nil
 		}

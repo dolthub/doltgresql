@@ -15,6 +15,8 @@
 package functions
 
 import (
+	"github.com/dolthub/go-mysql-server/sql"
+
 	"github.com/dolthub/doltgresql/server/functions/framework"
 	pgtypes "github.com/dolthub/doltgresql/server/types"
 	"github.com/dolthub/doltgresql/utils"
@@ -30,7 +32,7 @@ var gcd_int64_int64 = framework.Function2{
 	Name:       "gcd",
 	Return:     pgtypes.Int64,
 	Parameters: []pgtypes.DoltgresType{pgtypes.Int64, pgtypes.Int64},
-	Callable: func(ctx framework.Context, val1Interface any, val2Interface any) (any, error) {
+	Callable: func(ctx *sql.Context, val1Interface any, val2Interface any) (any, error) {
 		if val1Interface == nil || val2Interface == nil {
 			return nil, nil
 		}

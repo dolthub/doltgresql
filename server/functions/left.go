@@ -15,6 +15,8 @@
 package functions
 
 import (
+	"github.com/dolthub/go-mysql-server/sql"
+
 	"github.com/dolthub/doltgresql/server/functions/framework"
 	pgtypes "github.com/dolthub/doltgresql/server/types"
 )
@@ -29,7 +31,7 @@ var left_varchar_int32 = framework.Function2{
 	Name:       "left",
 	Return:     pgtypes.VarChar,
 	Parameters: []pgtypes.DoltgresType{pgtypes.VarChar, pgtypes.Int32},
-	Callable: func(ctx framework.Context, strInt any, nInt any) (any, error) {
+	Callable: func(ctx *sql.Context, strInt any, nInt any) (any, error) {
 		if strInt == nil || nInt == nil {
 			return nil, nil
 		}

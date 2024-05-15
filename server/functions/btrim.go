@@ -15,6 +15,8 @@
 package functions
 
 import (
+	"github.com/dolthub/go-mysql-server/sql"
+
 	"github.com/dolthub/doltgresql/server/functions/framework"
 	pgtypes "github.com/dolthub/doltgresql/server/types"
 )
@@ -29,7 +31,7 @@ var btrim_varchar_varchar = framework.Function2{
 	Name:       "btrim",
 	Return:     pgtypes.VarChar,
 	Parameters: []pgtypes.DoltgresType{pgtypes.VarChar, pgtypes.VarChar},
-	Callable: func(ctx framework.Context, str any, characters any) (any, error) {
+	Callable: func(ctx *sql.Context, str any, characters any) (any, error) {
 		if str == nil || characters == nil {
 			return nil, nil
 		}

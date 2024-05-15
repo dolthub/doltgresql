@@ -369,7 +369,7 @@ func nodeExpr(node tree.Expr) (vitess.Expr, error) {
 		return nil, fmt.Errorf("the statement is not yet supported")
 	case *tree.DBool:
 		return vitess.InjectedExpr{
-			Expression: pgexprs.NewBoolLiteral(bool(*node)),
+			Expression: pgexprs.NewRawLiteralBool(bool(*node)),
 		}, nil
 	case *tree.DBox2D:
 		return nil, fmt.Errorf("the statement is not yet supported")
@@ -562,10 +562,10 @@ func nodeExpr(node tree.Expr) (vitess.Expr, error) {
 		}
 	case *tree.StrVal:
 		//TODO: determine what to do when node.WasScannedAsBytes() is true
-		stringLiteral, err := pgexprs.NewStringLiteral(node.RawString())
+		stringLiteral := pgexprs.NewStringLiteral(node.RawString())
 		return vitess.InjectedExpr{
 			Expression: stringLiteral,
-		}, err
+		}, nil
 	case *tree.Subquery:
 		return nodeSubquery(node)
 	case *tree.Tuple:

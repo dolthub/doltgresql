@@ -36,6 +36,25 @@ type rootStorage struct {
 	srv *serial.RootValue
 }
 
+// SetSequences sets the sequence hash and returns a new storage object.
+func (r rootStorage) SetSequences(ctx context.Context, h hash.Hash) (rootStorage, error) {
+	if len(r.srv.SequencesBytes()) > 0 {
+		ret := r.clone()
+		copy(ret.srv.SequencesBytes(), h[:])
+		return ret, nil
+	} else {
+		dbSchemas, err := r.GetSchemas(ctx)
+		if err != nil {
+			return rootStorage{}, err
+		}
+		msg, err := r.serializeRootValue(r.srv.TablesBytes(), dbSchemas, h[:])
+		if err != nil {
+			return rootStorage{}, err
+		}
+		return rootStorage{msg}, nil
+	}
+}
+
 // SetForeignKeyMap sets the foreign key and returns a new storage object.
 func (r rootStorage) SetForeignKeyMap(ctx context.Context, vrw types.ValueReadWriter, v types.Value) (rootStorage, error) {
 	var h hash.Hash
@@ -90,11 +109,20 @@ func (r rootStorage) GetSchemas(ctx context.Context) ([]schema.DatabaseSchema, e
 
 // SetSchemas sets the given schemas and returns a new storage object.
 func (r rootStorage) SetSchemas(ctx context.Context, dbSchemas []schema.DatabaseSchema) (rootStorage, error) {
-	msg, err := r.serializeRootValue(r.srv.TablesBytes(), dbSchemas)
+	msg, err := r.serializeRootValue(r.srv.TablesBytes(), dbSchemas, r.srv.SequencesBytes())
 	if err != nil {
 		return rootStorage{}, err
 	}
 	return rootStorage{msg}, nil
+}
+
+// GetSequences returns the sequence hash.
+func (r rootStorage) GetSequences() hash.Hash {
+	hashBytes := r.srv.SequencesBytes()
+	if len(hashBytes) == 0 {
+		return hash.Hash{}
+	}
+	return hash.New(hashBytes)
 }
 
 // clone returns a clone of the calling storage.
@@ -222,7 +250,7 @@ func (r rootStorage) EditTablesMap(ctx context.Context, vrw types.ValueReadWrite
 		return rootStorage{}, err
 	}
 
-	msg, err := r.serializeRootValue(ambytes, dbSchemas)
+	msg, err := r.serializeRootValue(ambytes, dbSchemas, r.srv.SequencesBytes())
 	if err != nil {
 		return rootStorage{}, err
 	}
@@ -230,19 +258,21 @@ func (r rootStorage) EditTablesMap(ctx context.Context, vrw types.ValueReadWrite
 }
 
 // serializeRootValue serializes a new serial.RootValue object.
-func (r rootStorage) serializeRootValue(addressMapBytes []byte, dbSchemas []schema.DatabaseSchema) (*serial.RootValue, error) {
+func (r rootStorage) serializeRootValue(addressMapBytes []byte, dbSchemas []schema.DatabaseSchema, seqHash []byte) (*serial.RootValue, error) {
 	builder := flatbuffers.NewBuilder(80)
-	tablesoff := builder.CreateByteVector(addressMapBytes)
-	schemasOff := serializeDatabaseSchemas(builder, dbSchemas)
+	tablesOffset := builder.CreateByteVector(addressMapBytes)
+	schemasOffset := serializeDatabaseSchemas(builder, dbSchemas)
+	fkOffset := builder.CreateByteVector(r.srv.ForeignKeyAddrBytes())
+	seqOffset := builder.CreateByteVector(seqHash)
 
-	fkoff := builder.CreateByteVector(r.srv.ForeignKeyAddrBytes())
 	serial.RootValueStart(builder)
 	serial.RootValueAddFeatureVersion(builder, r.srv.FeatureVersion())
 	serial.RootValueAddCollation(builder, r.srv.Collation())
-	serial.RootValueAddTables(builder, tablesoff)
-	serial.RootValueAddForeignKeyAddr(builder, fkoff)
-	if schemasOff > 0 {
-		serial.RootValueAddSchemas(builder, schemasOff)
+	serial.RootValueAddTables(builder, tablesOffset)
+	serial.RootValueAddForeignKeyAddr(builder, fkOffset)
+	serial.RootValueAddSequences(builder, seqOffset)
+	if schemasOffset > 0 {
+		serial.RootValueAddSchemas(builder, schemasOffset)
 	}
 
 	bs := doltserial.FinishMessage(builder, serial.RootValueEnd(builder), []byte(doltserial.DoltgresRootValueFileID))
