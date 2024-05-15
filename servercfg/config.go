@@ -12,14 +12,12 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-package server
+package servercfg
 
 import (
 	"fmt"
 
-	"github.com/dolthub/dolt/go/cmd/dolt/commands/engine"
-	"github.com/dolthub/dolt/go/cmd/dolt/commands/sqlserver"
-	"github.com/dolthub/dolt/go/libraries/doltcore/sqle/cluster"
+	"github.com/dolthub/dolt/go/libraries/doltcore/servercfg"
 	"github.com/dolthub/dolt/go/libraries/utils/filesys"
 	"gopkg.in/yaml.v2"
 )
@@ -124,8 +122,8 @@ type DoltgresConfig struct {
 
 	// TODO: Rename to UserVars_
 	Vars            []DoltgresUserSessionVars `yaml:"user_session_vars,omitempty" minver:"0.7.4"`
-	SystemVariables *engine.SystemVariables   `yaml:"system_variables,omitempty" minver:"0.7.4"`
-	Jwks            []engine.JwksConfig       `yaml:"jwks,omitempty" minver:"0.7.4"`
+	SystemVariables map[string]interface{}    `yaml:"system_variables,omitempty" minver:"0.7.4"`
+	Jwks            []servercfg.JwksConfig    `yaml:"jwks,omitempty" minver:"0.7.4"`
 	GoldenMysqlConn *string                   `yaml:"golden_mysql_conn,omitempty" minver:"0.7.4"`
 
 	PostgresReplicationConfig *PostgresReplicationConfig `yaml:"postgres_replication,omitempty" minver:"0.7.4"`
@@ -215,26 +213,26 @@ func (cfg *DoltgresConfig) ReadOnly() bool {
 	return *cfg.BehaviorConfig.ReadOnly
 }
 
-func (cfg *DoltgresConfig) LogLevel() sqlserver.LogLevel {
+func (cfg *DoltgresConfig) LogLevel() servercfg.LogLevel {
 	if cfg.LogLevelStr == nil {
-		return sqlserver.LogLevel_Info
+		return servercfg.LogLevel_Info
 	}
 
 	switch *cfg.LogLevelStr {
 	case "trace":
-		return sqlserver.LogLevel_Trace
+		return servercfg.LogLevel_Trace
 	case "debug":
-		return sqlserver.LogLevel_Debug
+		return servercfg.LogLevel_Debug
 	case "info":
-		return sqlserver.LogLevel_Info
+		return servercfg.LogLevel_Info
 	case "warn":
-		return sqlserver.LogLevel_Warning
+		return servercfg.LogLevel_Warning
 	case "error":
-		return sqlserver.LogLevel_Error
+		return servercfg.LogLevel_Error
 	case "fatal":
-		return sqlserver.LogLevel_Fatal
+		return servercfg.LogLevel_Fatal
 	default:
-		return sqlserver.LogLevel_Info
+		return servercfg.LogLevel_Info
 	}
 }
 
@@ -342,10 +340,10 @@ func (cfg *DoltgresConfig) BranchControlFilePath() string {
 	return *cfg.BranchControlFile
 }
 
-func (cfg *DoltgresConfig) UserVars() []sqlserver.UserSessionVars {
-	var userVars []sqlserver.UserSessionVars
+func (cfg *DoltgresConfig) UserVars() []servercfg.UserSessionVars {
+	var userVars []servercfg.UserSessionVars
 	for _, uv := range cfg.Vars {
-		userVars = append(userVars, sqlserver.UserSessionVars{
+		userVars = append(userVars, servercfg.UserSessionVars{
 			Name: uv.Name,
 			Vars: uv.Vars,
 		})
@@ -354,15 +352,15 @@ func (cfg *DoltgresConfig) UserVars() []sqlserver.UserSessionVars {
 	return userVars
 }
 
-func (cfg *DoltgresConfig) SystemVars() engine.SystemVariables {
+func (cfg *DoltgresConfig) SystemVars() map[string]interface{} {
 	if cfg.SystemVariables == nil {
-		return engine.SystemVariables{}
+		return map[string]interface{}{}
 	}
 
-	return *cfg.SystemVariables
+	return cfg.SystemVariables
 }
 
-func (cfg *DoltgresConfig) JwksConfig() []engine.JwksConfig {
+func (cfg *DoltgresConfig) JwksConfig() []servercfg.JwksConfig {
 	return cfg.Jwks
 }
 
@@ -398,7 +396,7 @@ func (cfg *DoltgresConfig) RemotesapiReadOnly() *bool {
 	return cfg.RemotesapiConfig.ReadOnly
 }
 
-func (cfg *DoltgresConfig) ClusterConfig() cluster.Config {
+func (cfg *DoltgresConfig) ClusterConfig() servercfg.ClusterConfig {
 	return nil
 }
 
@@ -421,7 +419,7 @@ func (cfg *DoltgresConfig) ValueSet(value string) bool {
 	return false
 }
 
-func (cfg *DoltgresConfig) ToSqlServerConfig() sqlserver.ServerConfig {
+func (cfg *DoltgresConfig) ToSqlServerConfig() servercfg.ServerConfig {
 	return cfg
 }
 

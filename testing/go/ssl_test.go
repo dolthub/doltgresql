@@ -4,6 +4,7 @@ import (
 	"context"
 	"crypto/tls"
 	"fmt"
+	"github.com/dolthub/doltgresql/servercfg"
 	"testing"
 	"time"
 
@@ -47,10 +48,10 @@ func NewSslListener(listenerCfg mysql.ListenerConfig) (server.ProtocolListener, 
 func TestSSL(t *testing.T) {
 	port := GetUnusedPort(t)
 	server.DefaultProtocolListenerFunc = NewSslListener
-	controller, err := dserver.RunInMemory(&dserver.DoltgresConfig{
-		ListenerConfig: &dserver.DoltgresListenerConfig{
+	controller, err := dserver.RunInMemory(&servercfg.DoltgresConfig{
+		ListenerConfig: &servercfg.DoltgresListenerConfig{
 			PortNumber: &port,
-			HostStr:    dserver.Ptr("127.0.0.1"),
+			HostStr:    ptr("127.0.0.1"),
 		},
 	})
 	require.NoError(t, err)
