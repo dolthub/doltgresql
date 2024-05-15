@@ -15,6 +15,7 @@
 package functions
 
 import (
+	"github.com/dolthub/go-mysql-server/sql"
 	"github.com/shopspring/decimal"
 
 	"github.com/dolthub/doltgresql/server/functions/framework"
@@ -36,7 +37,7 @@ var abs_int16 = framework.Function1{
 	Name:       "abs",
 	Return:     pgtypes.Int16,
 	Parameters: []pgtypes.DoltgresType{pgtypes.Int16},
-	Callable: func(ctx framework.Context, val1 any) (any, error) {
+	Callable: func(ctx *sql.Context, val1 any) (any, error) {
 		if val1 == nil {
 			return nil, nil
 		}
@@ -49,7 +50,7 @@ var abs_int32 = framework.Function1{
 	Name:       "abs",
 	Return:     pgtypes.Int32,
 	Parameters: []pgtypes.DoltgresType{pgtypes.Int32},
-	Callable: func(ctx framework.Context, val1 any) (any, error) {
+	Callable: func(ctx *sql.Context, val1 any) (any, error) {
 		if val1 == nil {
 			return nil, nil
 		}
@@ -62,7 +63,7 @@ var abs_int64 = framework.Function1{
 	Name:       "abs",
 	Return:     pgtypes.Int64,
 	Parameters: []pgtypes.DoltgresType{pgtypes.Int64},
-	Callable: func(ctx framework.Context, val1 any) (any, error) {
+	Callable: func(ctx *sql.Context, val1 any) (any, error) {
 		if val1 == nil {
 			return nil, nil
 		}
@@ -75,7 +76,7 @@ var abs_float64 = framework.Function1{
 	Name:       "abs",
 	Return:     pgtypes.Float64,
 	Parameters: []pgtypes.DoltgresType{pgtypes.Float64},
-	Callable: func(ctx framework.Context, val1 any) (any, error) {
+	Callable: func(ctx *sql.Context, val1 any) (any, error) {
 		if val1 == nil {
 			return nil, nil
 		}
@@ -88,7 +89,7 @@ var abs_numeric = framework.Function1{
 	Name:       "abs",
 	Return:     pgtypes.Numeric,
 	Parameters: []pgtypes.DoltgresType{pgtypes.Numeric},
-	Callable: func(ctx framework.Context, val1 any) (any, error) {
+	Callable: func(ctx *sql.Context, val1 any) (any, error) {
 		if val1 == nil {
 			return nil, nil
 		}

@@ -15,6 +15,8 @@
 package functions
 
 import (
+	"github.com/dolthub/go-mysql-server/sql"
+
 	"github.com/dolthub/doltgresql/server/functions/framework"
 	pgtypes "github.com/dolthub/doltgresql/server/types"
 )
@@ -30,7 +32,7 @@ var lpad_varchar_int32 = framework.Function2{
 	Name:       "lpad",
 	Return:     pgtypes.VarChar,
 	Parameters: []pgtypes.DoltgresType{pgtypes.VarChar, pgtypes.Int32},
-	Callable: func(ctx framework.Context, val1 any, val2 any) (any, error) {
+	Callable: func(ctx *sql.Context, val1 any, val2 any) (any, error) {
 		return lpad_varchar_int32_varchar.Callable(ctx, val1, val2, " ")
 	},
 }
@@ -40,7 +42,7 @@ var lpad_varchar_int32_varchar = framework.Function3{
 	Name:       "lpad",
 	Return:     pgtypes.VarChar,
 	Parameters: []pgtypes.DoltgresType{pgtypes.VarChar, pgtypes.Int32, pgtypes.VarChar},
-	Callable: func(ctx framework.Context, str any, length any, fill any) (any, error) {
+	Callable: func(ctx *sql.Context, str any, length any, fill any) (any, error) {
 		if str == nil || length == nil || fill == nil {
 			return nil, nil
 		}

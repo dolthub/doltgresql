@@ -17,7 +17,6 @@ package ast
 import (
 	"fmt"
 
-	"github.com/dolthub/go-mysql-server/sql"
 	vitess "github.com/dolthub/vitess/go/vt/sqlparser"
 	"github.com/lib/pq/oid"
 
@@ -27,7 +26,7 @@ import (
 )
 
 // nodeResolvableTypeReference handles tree.ResolvableTypeReference nodes.
-func nodeResolvableTypeReference(typ tree.ResolvableTypeReference) (*vitess.ConvertType, sql.Type, error) {
+func nodeResolvableTypeReference(typ tree.ResolvableTypeReference) (*vitess.ConvertType, pgtypes.DoltgresType, error) {
 	if typ == nil {
 		return nil, nil, nil
 	}
@@ -35,7 +34,7 @@ func nodeResolvableTypeReference(typ tree.ResolvableTypeReference) (*vitess.Conv
 	var columnTypeName string
 	var columnTypeLength *vitess.SQLVal
 	var columnTypeScale *vitess.SQLVal
-	var resolvedType sql.Type
+	var resolvedType pgtypes.DoltgresType
 	switch columnType := typ.(type) {
 	case *tree.ArrayTypeReference:
 		return nil, nil, fmt.Errorf("the given array type is not yet supported")
@@ -52,11 +51,7 @@ func nodeResolvableTypeReference(typ tree.ResolvableTypeReference) (*vitess.Conv
 			if err != nil {
 				return nil, nil, err
 			}
-			if doltgresType, ok := baseResolvedType.(pgtypes.DoltgresType); ok {
-				resolvedType = doltgresType.ToArrayType()
-			} else {
-				return nil, nil, fmt.Errorf("the given array type is not yet supported")
-			}
+			resolvedType = baseResolvedType.ToArrayType()
 		} else {
 			switch columnType.Oid() {
 			case oid.T_bool:

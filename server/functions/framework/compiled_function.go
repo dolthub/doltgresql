@@ -109,7 +109,6 @@ func (c *CompiledFunction) Eval(ctx *sql.Context, row sql.Row) (interface{}, err
 	if err != nil {
 		return nil, err
 	}
-	pgctx := Context{Context: ctx}
 	// Next we'll resolve the overload based on the parameters given.
 	overload, casts, err := c.Functions.Resolve(originalTypes, sources)
 	if err != nil {
@@ -128,7 +127,7 @@ func (c *CompiledFunction) Eval(ctx *sql.Context, row sql.Row) (interface{}, err
 	resultTypes := overload.Function.GetParameters()
 	for i := range parameters {
 		if casts[i] != nil {
-			parameters[i], err = casts[i](pgctx, parameters[i], resultTypes[i])
+			parameters[i], err = casts[i](ctx, parameters[i], resultTypes[i])
 			if err != nil {
 				return nil, err
 			}
@@ -139,15 +138,15 @@ func (c *CompiledFunction) Eval(ctx *sql.Context, row sql.Row) (interface{}, err
 	// Pass the parameters to the function
 	switch f := overload.Function.(type) {
 	case Function0:
-		return f.Callable(pgctx)
+		return f.Callable(ctx)
 	case Function1:
-		return f.Callable(pgctx, parameters[0])
+		return f.Callable(ctx, parameters[0])
 	case Function2:
-		return f.Callable(pgctx, parameters[0], parameters[1])
+		return f.Callable(ctx, parameters[0], parameters[1])
 	case Function3:
-		return f.Callable(pgctx, parameters[0], parameters[1], parameters[2])
+		return f.Callable(ctx, parameters[0], parameters[1], parameters[2])
 	case Function4:
-		return f.Callable(pgctx, parameters[0], parameters[1], parameters[2], parameters[3])
+		return f.Callable(ctx, parameters[0], parameters[1], parameters[2], parameters[3])
 	default:
 		return nil, fmt.Errorf("unknown function type in CompiledFunction::Eval")
 	}

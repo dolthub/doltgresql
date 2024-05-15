@@ -15,6 +15,8 @@
 package binary
 
 import (
+	"github.com/dolthub/go-mysql-server/sql"
+
 	"github.com/dolthub/doltgresql/server/functions/framework"
 	pgtypes "github.com/dolthub/doltgresql/server/types"
 )
@@ -22,8 +24,8 @@ import (
 // These functions can be gathered using the following query from a Postgres 15 instance:
 // SELECT * FROM pg_operator o WHERE o.oprname = '&' ORDER BY o.oprcode::varchar;
 
-// InitBinaryBitAnd registers the functions to the catalog.
-func InitBinaryBitAnd() {
+// initBinaryBitAnd registers the functions to the catalog.
+func initBinaryBitAnd() {
 	framework.RegisterBinaryFunction(framework.Operator_BinaryBitAnd, int2and)
 	framework.RegisterBinaryFunction(framework.Operator_BinaryBitAnd, int4and)
 	framework.RegisterBinaryFunction(framework.Operator_BinaryBitAnd, int8and)
@@ -34,7 +36,7 @@ var int2and = framework.Function2{
 	Name:       "int2and",
 	Return:     pgtypes.Int16,
 	Parameters: []pgtypes.DoltgresType{pgtypes.Int16, pgtypes.Int16},
-	Callable: func(ctx framework.Context, val1 any, val2 any) (any, error) {
+	Callable: func(ctx *sql.Context, val1 any, val2 any) (any, error) {
 		if val1 == nil || val2 == nil {
 			return nil, nil
 		}
@@ -47,7 +49,7 @@ var int4and = framework.Function2{
 	Name:       "int4and",
 	Return:     pgtypes.Int32,
 	Parameters: []pgtypes.DoltgresType{pgtypes.Int32, pgtypes.Int32},
-	Callable: func(ctx framework.Context, val1 any, val2 any) (any, error) {
+	Callable: func(ctx *sql.Context, val1 any, val2 any) (any, error) {
 		if val1 == nil || val2 == nil {
 			return nil, nil
 		}
@@ -60,7 +62,7 @@ var int8and = framework.Function2{
 	Name:       "int8and",
 	Return:     pgtypes.Int64,
 	Parameters: []pgtypes.DoltgresType{pgtypes.Int64, pgtypes.Int64},
-	Callable: func(ctx framework.Context, val1 any, val2 any) (any, error) {
+	Callable: func(ctx *sql.Context, val1 any, val2 any) (any, error) {
 		if val1 == nil || val2 == nil {
 			return nil, nil
 		}

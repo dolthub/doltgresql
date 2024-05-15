@@ -20,7 +20,8 @@ import (
 	"github.com/dolthub/go-mysql-server/sql"
 
 	"github.com/dolthub/doltgresql/core"
-	"github.com/dolthub/doltgresql/server/ast"
+	"github.com/dolthub/doltgresql/core/procedures"
+	pgsql "github.com/dolthub/doltgresql/postgres/parser/parser/sql"
 	"github.com/dolthub/doltgresql/server/cast"
 	"github.com/dolthub/doltgresql/server/config"
 	"github.com/dolthub/doltgresql/server/functions"
@@ -36,6 +37,7 @@ var once = &sync.Once{}
 func Initialize() {
 	once.Do(func() {
 		core.Init()
+		procedures.Init()
 		config.Init()
 		pgtypes.InitBaseIDs()
 		binary.Init()
@@ -43,6 +45,6 @@ func Initialize() {
 		functions.Init()
 		cast.Init()
 		framework.Initialize()
-		func() { sql.GlobalParser = ast.NewPostgresParser() }()
+		sql.GlobalParser = pgsql.NewPostgresParser()
 	})
 }

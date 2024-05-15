@@ -17,6 +17,7 @@ package functions
 import (
 	"fmt"
 
+	"github.com/dolthub/go-mysql-server/sql"
 	"github.com/shopspring/decimal"
 
 	"github.com/dolthub/doltgresql/server/functions/framework"
@@ -33,7 +34,7 @@ var factorial_int64 = framework.Function1{
 	Name:       "factorial",
 	Return:     pgtypes.Numeric,
 	Parameters: []pgtypes.DoltgresType{pgtypes.Int64},
-	Callable: func(ctx framework.Context, val1Interface any) (any, error) {
+	Callable: func(ctx *sql.Context, val1Interface any) (any, error) {
 		if val1Interface == nil {
 			return nil, nil
 		}

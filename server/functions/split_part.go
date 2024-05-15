@@ -18,6 +18,8 @@ import (
 	"fmt"
 	"strings"
 
+	"github.com/dolthub/go-mysql-server/sql"
+
 	"github.com/dolthub/doltgresql/server/functions/framework"
 	pgtypes "github.com/dolthub/doltgresql/server/types"
 	"github.com/dolthub/doltgresql/utils"
@@ -33,7 +35,7 @@ var split_part_varchar_varchar_int32 = framework.Function3{
 	Name:       "split_part",
 	Return:     pgtypes.VarChar,
 	Parameters: []pgtypes.DoltgresType{pgtypes.VarChar, pgtypes.VarChar, pgtypes.Int32},
-	Callable: func(ctx framework.Context, str any, delimiter any, n any) (any, error) {
+	Callable: func(ctx *sql.Context, str any, delimiter any, n any) (any, error) {
 		if str == nil || delimiter == nil || n == nil {
 			return nil, nil
 		}

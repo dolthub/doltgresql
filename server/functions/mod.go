@@ -17,6 +17,7 @@ package functions
 import (
 	"fmt"
 
+	"github.com/dolthub/go-mysql-server/sql"
 	"github.com/shopspring/decimal"
 
 	"github.com/dolthub/doltgresql/server/functions/framework"
@@ -36,7 +37,7 @@ var mod_int16_int16 = framework.Function2{
 	Name:       "mod",
 	Return:     pgtypes.Int16,
 	Parameters: []pgtypes.DoltgresType{pgtypes.Int16, pgtypes.Int16},
-	Callable: func(ctx framework.Context, val1 any, val2 any) (any, error) {
+	Callable: func(ctx *sql.Context, val1 any, val2 any) (any, error) {
 		if val1 == nil || val2 == nil {
 			return nil, nil
 		}
@@ -52,7 +53,7 @@ var mod_int32_int32 = framework.Function2{
 	Name:       "mod",
 	Return:     pgtypes.Int32,
 	Parameters: []pgtypes.DoltgresType{pgtypes.Int32, pgtypes.Int32},
-	Callable: func(ctx framework.Context, val1 any, val2 any) (any, error) {
+	Callable: func(ctx *sql.Context, val1 any, val2 any) (any, error) {
 		if val1 == nil || val2 == nil {
 			return nil, nil
 		}
@@ -68,7 +69,7 @@ var mod_int64_int64 = framework.Function2{
 	Name:       "mod",
 	Return:     pgtypes.Int64,
 	Parameters: []pgtypes.DoltgresType{pgtypes.Int64, pgtypes.Int64},
-	Callable: func(ctx framework.Context, val1 any, val2 any) (any, error) {
+	Callable: func(ctx *sql.Context, val1 any, val2 any) (any, error) {
 		if val1 == nil || val2 == nil {
 			return nil, nil
 		}
@@ -84,7 +85,7 @@ var mod_numeric_numeric = framework.Function2{
 	Name:       "mod",
 	Return:     pgtypes.Numeric,
 	Parameters: []pgtypes.DoltgresType{pgtypes.Numeric, pgtypes.Numeric},
-	Callable: func(ctx framework.Context, val1 any, val2 any) (any, error) {
+	Callable: func(ctx *sql.Context, val1 any, val2 any) (any, error) {
 		if val1 == nil || val2 == nil {
 			return nil, nil
 		}
