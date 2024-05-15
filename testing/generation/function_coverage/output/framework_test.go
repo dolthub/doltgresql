@@ -18,7 +18,6 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"github.com/dolthub/doltgresql/servercfg"
 	"math"
 	"os"
 	"reflect"
@@ -35,6 +34,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	dserver "github.com/dolthub/doltgresql/server"
+	"github.com/dolthub/doltgresql/servercfg"
 	framework "github.com/dolthub/doltgresql/testing/go"
 	"github.com/dolthub/doltgresql/utils"
 )

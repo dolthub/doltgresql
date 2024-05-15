@@ -4,7 +4,6 @@ import (
 	"context"
 	"crypto/tls"
 	"fmt"
-	"github.com/dolthub/doltgresql/servercfg"
 	"testing"
 	"time"
 
@@ -17,6 +16,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	dserver "github.com/dolthub/doltgresql/server"
+	"github.com/dolthub/doltgresql/servercfg"
 )
 
 type SSLListener struct {

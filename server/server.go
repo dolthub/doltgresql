@@ -17,7 +17,6 @@ package server
 import (
 	"context"
 	"fmt"
-	"github.com/dolthub/doltgresql/servercfg"
 	_ "net/http/pprof"
 	"path/filepath"
 
@@ -39,6 +38,7 @@ import (
 
 	"github.com/dolthub/doltgresql/server/initialization"
 	"github.com/dolthub/doltgresql/server/logrepl"
+	"github.com/dolthub/doltgresql/servercfg"
 )
 
 const (

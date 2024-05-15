@@ -18,7 +18,6 @@ import (
 	"context"
 	"flag"
 	"fmt"
-	"github.com/dolthub/doltgresql/servercfg"
 	"os"
 	"path/filepath"
 	"strconv"
@@ -36,6 +35,7 @@ import (
 	"github.com/fatih/color"
 
 	"github.com/dolthub/doltgresql/server"
+	"github.com/dolthub/doltgresql/servercfg"
 )
 
 func init() {

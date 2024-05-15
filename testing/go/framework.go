@@ -19,7 +19,6 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"github.com/dolthub/doltgresql/servercfg"
 	"math"
 	"net"
 	"os"
@@ -35,6 +34,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	dserver "github.com/dolthub/doltgresql/server"
+	"github.com/dolthub/doltgresql/servercfg"
 )
 
 // runOnPostgres is a debug setting to redirect the test framework to a local running postgres server,
