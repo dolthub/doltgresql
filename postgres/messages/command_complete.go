@@ -70,16 +70,6 @@ func (m CommandComplete) IsIUD() bool {
 	}
 }
 
-// ReturnsRow returns whether the query returns set or rows such as SELECT and FETCH statements.
-func (m CommandComplete) ReturnsRow() bool {
-	switch m.Tag {
-	case "SELECT", "SHOW", "FETCH":
-		return true
-	default:
-		return false
-	}
-}
-
 // Encode implements the interface connection.Message.
 func (m CommandComplete) Encode() (connection.MessageFormat, error) {
 	outputMessage := m.DefaultMessage().Copy()
@@ -118,4 +108,14 @@ func (m CommandComplete) Decode(s connection.MessageFormat) (connection.Message,
 // DefaultMessage implements the interface connection.Message.
 func (m CommandComplete) DefaultMessage() *connection.MessageFormat {
 	return &commandCompleteDefault
+}
+
+// ReturnsRow returns whether the query returns set of rows such as SELECT and FETCH statements.
+func ReturnsRow(tag string) bool {
+	switch tag {
+	case "SELECT", "SHOW", "FETCH":
+		return true
+	default:
+		return false
+	}
 }
