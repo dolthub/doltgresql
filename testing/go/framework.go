@@ -76,6 +76,10 @@ type ScriptTestAssertion struct {
 	// Skip is used to completely skip a test, not execute its query at all, and record it as a skipped test
 	// in the test suite results.
 	Skip bool
+
+	// ExpectedTag is used to check the command tag returned from the server.
+	// This is checked only if no Expected is defined
+	ExpectedTag string
 }
 
 // RunScript runs the given script.
@@ -138,6 +142,11 @@ func runScript(t *testing.T, ctx context.Context, script ScriptTest, conn *pgx.C
 				} else {
 					require.NoError(t, err)
 				}
+			} else if assertion.ExpectedTag != "" {
+				// check for command tag
+				commandTag, err := conn.Exec(ctx, assertion.Query)
+				require.NoError(t, err)
+				assert.Equal(t, assertion.ExpectedTag, commandTag.String())
 			} else {
 				rows, err := conn.Query(ctx, assertion.Query, assertion.BindVars...)
 				require.NoError(t, err)

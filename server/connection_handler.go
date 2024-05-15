@@ -474,13 +474,16 @@ func (h *ConnectionHandler) handleExecute(message messages.Execute) error {
 	// we need the CommandComplete message defined here because it's altered by the callback below
 	complete := messages.CommandComplete{
 		Query: query.String,
+		Tag:   query.StatementTag,
 	}
 
-	if !portalData.IsEmptyQuery {
-		err := h.handler.(mysql.ExtendedHandler).ComExecuteBound(h.mysqlConn, query.String, portalData.BoundPlan, spoolRowsCallback(h.Conn(), complete))
-		if err != nil {
-			return err
-		}
+	if portalData.IsEmptyQuery {
+		return connection.Send(h.Conn(), messages.EmptyQueryResponse{})
+	}
+
+	err := h.handler.(mysql.ExtendedHandler).ComExecuteBound(h.mysqlConn, query.String, portalData.BoundPlan, spoolRowsCallback(h.Conn(), &complete))
+	if err != nil {
+		return err
 	}
 
 	return connection.Send(h.Conn(), complete)
@@ -495,6 +498,7 @@ func (h *ConnectionHandler) deallocatePreparedStatement(name string, preparedSta
 
 	commandComplete := messages.CommandComplete{
 		Query: query.String,
+		Tag:   query.StatementTag,
 	}
 
 	return connection.Send(conn, commandComplete)
@@ -675,9 +679,10 @@ func (h *ConnectionHandler) sendClientStartupMessages(startupMessage messages.St
 func (h *ConnectionHandler) query(query ConvertedQuery) error {
 	commandComplete := messages.CommandComplete{
 		Query: query.String,
+		Tag:   query.StatementTag,
 	}
 
-	err := h.comQuery(query, spoolRowsCallback(h.Conn(), commandComplete))
+	err := h.comQuery(query, spoolRowsCallback(h.Conn(), &commandComplete))
 
 	if err != nil {
 		if strings.HasPrefix(err.Error(), "syntax error at position") {
@@ -695,19 +700,21 @@ func (h *ConnectionHandler) query(query ConvertedQuery) error {
 
 // spoolRowsCallback returns a callback function that will send RowDescription message, then a DataRow message for
 // each row in the result set.
-func spoolRowsCallback(conn net.Conn, commandComplete messages.CommandComplete) mysql.ResultSpoolFn {
+func spoolRowsCallback(conn net.Conn, commandComplete *messages.CommandComplete) mysql.ResultSpoolFn {
 	return func(res *sqltypes.Result, more bool) error {
-		if err := connection.Send(conn, messages.RowDescription{
-			Fields: res.Fields,
-		}); err != nil {
-			return err
-		}
-
-		for _, row := range res.Rows {
-			if err := connection.Send(conn, messages.DataRow{
-				Values: row,
+		if commandComplete.ReturnsRow() {
+			if err := connection.Send(conn, messages.RowDescription{
+				Fields: res.Fields,
 			}); err != nil {
 				return err
+			}
+
+			for _, row := range res.Rows {
+				if err := connection.Send(conn, messages.DataRow{
+					Values: row,
+				}); err != nil {
+					return err
+				}
 			}
 		}
 
@@ -746,23 +753,38 @@ func (h *ConnectionHandler) handledPSQLCommands(statement string) (bool, error) 
 	statement = strings.ToLower(statement)
 	// Command: \l
 	if statement == "select d.datname as \"name\",\n       pg_catalog.pg_get_userbyid(d.datdba) as \"owner\",\n       pg_catalog.pg_encoding_to_char(d.encoding) as \"encoding\",\n       d.datcollate as \"collate\",\n       d.datctype as \"ctype\",\n       d.daticulocale as \"icu locale\",\n       case d.datlocprovider when 'c' then 'libc' when 'i' then 'icu' end as \"locale provider\",\n       pg_catalog.array_to_string(d.datacl, e'\\n') as \"access privileges\"\nfrom pg_catalog.pg_database d\norder by 1;" {
-		return true, h.query(ConvertedQuery{String: `SELECT SCHEMA_NAME AS 'Name', 'postgres' AS 'Owner', 'UTF8' AS 'Encoding', 'English_United States.1252' AS 'Collate', 'English_United States.1252' AS 'Ctype', '' AS 'ICU Locale', 'libc' AS 'Locale Provider', '' AS 'Access privileges' FROM INFORMATION_SCHEMA.SCHEMATA ORDER BY 1;`})
+		return true, h.query(ConvertedQuery{
+			String:       `SELECT SCHEMA_NAME AS 'Name', 'postgres' AS 'Owner', 'UTF8' AS 'Encoding', 'English_United States.1252' AS 'Collate', 'English_United States.1252' AS 'Ctype', '' AS 'ICU Locale', 'libc' AS 'Locale Provider', '' AS 'Access privileges' FROM INFORMATION_SCHEMA.SCHEMATA ORDER BY 1;`,
+			StatementTag: "SELECT",
+		})
 	}
 	// Command: \l on psql 16
 	if statement == "select\n  d.datname as \"name\",\n  pg_catalog.pg_get_userbyid(d.datdba) as \"owner\",\n  pg_catalog.pg_encoding_to_char(d.encoding) as \"encoding\",\n  case d.datlocprovider when 'c' then 'libc' when 'i' then 'icu' end as \"locale provider\",\n  d.datcollate as \"collate\",\n  d.datctype as \"ctype\",\n  d.daticulocale as \"icu locale\",\n  null as \"icu rules\",\n  pg_catalog.array_to_string(d.datacl, e'\\n') as \"access privileges\"\nfrom pg_catalog.pg_database d\norder by 1;" {
-		return true, h.query(ConvertedQuery{String: `SELECT SCHEMA_NAME AS 'Name', 'postgres' AS 'Owner', 'UTF8' AS 'Encoding', 'English_United States.1252' AS 'Collate', 'English_United States.1252' AS 'Ctype', '' AS 'ICU Locale', 'libc' AS 'Locale Provider', '' AS 'Access privileges' FROM INFORMATION_SCHEMA.SCHEMATA ORDER BY 1;`})
+		return true, h.query(ConvertedQuery{
+			String:       `SELECT SCHEMA_NAME AS 'Name', 'postgres' AS 'Owner', 'UTF8' AS 'Encoding', 'English_United States.1252' AS 'Collate', 'English_United States.1252' AS 'Ctype', '' AS 'ICU Locale', 'libc' AS 'Locale Provider', '' AS 'Access privileges' FROM INFORMATION_SCHEMA.SCHEMATA ORDER BY 1;`,
+			StatementTag: "SELECT",
+		})
 	}
 	// Command: \dt
 	if statement == "select n.nspname as \"schema\",\n  c.relname as \"name\",\n  case c.relkind when 'r' then 'table' when 'v' then 'view' when 'm' then 'materialized view' when 'i' then 'index' when 's' then 'sequence' when 't' then 'toast table' when 'f' then 'foreign table' when 'p' then 'partitioned table' when 'i' then 'partitioned index' end as \"type\",\n  pg_catalog.pg_get_userbyid(c.relowner) as \"owner\"\nfrom pg_catalog.pg_class c\n     left join pg_catalog.pg_namespace n on n.oid = c.relnamespace\n     left join pg_catalog.pg_am am on am.oid = c.relam\nwhere c.relkind in ('r','p','')\n      and n.nspname <> 'pg_catalog'\n      and n.nspname !~ '^pg_toast'\n      and n.nspname <> 'information_schema'\n  and pg_catalog.pg_table_is_visible(c.oid)\norder by 1,2;" {
-		return true, h.query(ConvertedQuery{String: `SELECT 'public' AS 'Schema', TABLE_NAME AS 'Name', 'table' AS 'Type', 'postgres' AS 'Owner' FROM INFORMATION_SCHEMA.TABLES WHERE TABLE_SCHEMA = database() AND TABLE_TYPE = 'BASE TABLE' ORDER BY 2;`})
+		return true, h.query(ConvertedQuery{
+			String:       `SELECT 'public' AS 'Schema', TABLE_NAME AS 'Name', 'table' AS 'Type', 'postgres' AS 'Owner' FROM INFORMATION_SCHEMA.TABLES WHERE TABLE_SCHEMA = database() AND TABLE_TYPE = 'BASE TABLE' ORDER BY 2;`,
+			StatementTag: "SELECT",
+		})
 	}
 	// Command: \d
 	if statement == "select n.nspname as \"schema\",\n  c.relname as \"name\",\n  case c.relkind when 'r' then 'table' when 'v' then 'view' when 'm' then 'materialized view' when 'i' then 'index' when 's' then 'sequence' when 't' then 'toast table' when 'f' then 'foreign table' when 'p' then 'partitioned table' when 'i' then 'partitioned index' end as \"type\",\n  pg_catalog.pg_get_userbyid(c.relowner) as \"owner\"\nfrom pg_catalog.pg_class c\n     left join pg_catalog.pg_namespace n on n.oid = c.relnamespace\n     left join pg_catalog.pg_am am on am.oid = c.relam\nwhere c.relkind in ('r','p','v','m','s','f','')\n      and n.nspname <> 'pg_catalog'\n      and n.nspname !~ '^pg_toast'\n      and n.nspname <> 'information_schema'\n  and pg_catalog.pg_table_is_visible(c.oid)\norder by 1,2;" {
-		return true, h.query(ConvertedQuery{String: `SELECT 'public' AS 'Schema', TABLE_NAME AS 'Name', 'table' AS 'Type', 'postgres' AS 'Owner' FROM INFORMATION_SCHEMA.TABLES WHERE TABLE_SCHEMA = database() AND TABLE_TYPE = 'BASE TABLE' ORDER BY 2;`})
+		return true, h.query(ConvertedQuery{
+			String:       `SELECT 'public' AS 'Schema', TABLE_NAME AS 'Name', 'table' AS 'Type', 'postgres' AS 'Owner' FROM INFORMATION_SCHEMA.TABLES WHERE TABLE_SCHEMA = database() AND TABLE_TYPE = 'BASE TABLE' ORDER BY 2;`,
+			StatementTag: "SELECT",
+		})
 	}
 	// Alternate \d for psql 14
 	if statement == "select n.nspname as \"schema\",\n  c.relname as \"name\",\n  case c.relkind when 'r' then 'table' when 'v' then 'view' when 'm' then 'materialized view' when 'i' then 'index' when 's' then 'sequence' when 's' then 'special' when 't' then 'toast table' when 'f' then 'foreign table' when 'p' then 'partitioned table' when 'i' then 'partitioned index' end as \"type\",\n  pg_catalog.pg_get_userbyid(c.relowner) as \"owner\"\nfrom pg_catalog.pg_class c\n     left join pg_catalog.pg_namespace n on n.oid = c.relnamespace\n     left join pg_catalog.pg_am am on am.oid = c.relam\nwhere c.relkind in ('r','p','v','m','s','f','')\n      and n.nspname <> 'pg_catalog'\n      and n.nspname !~ '^pg_toast'\n      and n.nspname <> 'information_schema'\n  and pg_catalog.pg_table_is_visible(c.oid)\norder by 1,2;" {
-		return true, h.query(ConvertedQuery{String: `SELECT 'public' AS 'Schema', TABLE_NAME AS 'Name', 'table' AS 'Type', 'postgres' AS 'Owner' FROM INFORMATION_SCHEMA.TABLES WHERE TABLE_SCHEMA = database() AND TABLE_TYPE = 'BASE TABLE' ORDER BY 2;`})
+		return true, h.query(ConvertedQuery{
+			String:       `SELECT 'public' AS 'Schema', TABLE_NAME AS 'Name', 'table' AS 'Type', 'postgres' AS 'Owner' FROM INFORMATION_SCHEMA.TABLES WHERE TABLE_SCHEMA = database() AND TABLE_TYPE = 'BASE TABLE' ORDER BY 2;`,
+			StatementTag: "SELECT",
+		})
 	}
 	// Command: \d table_name
 	if strings.HasPrefix(statement, "select c.oid,\n  n.nspname,\n  c.relname\nfrom pg_catalog.pg_class c\n     left join pg_catalog.pg_namespace n on n.oid = c.relnamespace\nwhere c.relname operator(pg_catalog.~) '^(") && strings.HasSuffix(statement, ")$' collate pg_catalog.default\n  and pg_catalog.pg_table_is_visible(c.oid)\norder by 2, 3;") {
@@ -772,20 +794,32 @@ func (h *ConnectionHandler) handledPSQLCommands(statement string) (bool, error) 
 	}
 	// Command: \dn
 	if statement == "select n.nspname as \"name\",\n  pg_catalog.pg_get_userbyid(n.nspowner) as \"owner\"\nfrom pg_catalog.pg_namespace n\nwhere n.nspname !~ '^pg_' and n.nspname <> 'information_schema'\norder by 1;" {
-		return true, h.query(ConvertedQuery{String: `SELECT 'public' AS 'Name', 'pg_database_owner' AS 'Owner';`})
+		return true, h.query(ConvertedQuery{
+			String:       `SELECT 'public' AS 'Name', 'pg_database_owner' AS 'Owner';`,
+			StatementTag: "SELECT",
+		})
 	}
 	// Command: \df
 	if statement == "select n.nspname as \"schema\",\n  p.proname as \"name\",\n  pg_catalog.pg_get_function_result(p.oid) as \"result data type\",\n  pg_catalog.pg_get_function_arguments(p.oid) as \"argument data types\",\n case p.prokind\n  when 'a' then 'agg'\n  when 'w' then 'window'\n  when 'p' then 'proc'\n  else 'func'\n end as \"type\"\nfrom pg_catalog.pg_proc p\n     left join pg_catalog.pg_namespace n on n.oid = p.pronamespace\nwhere pg_catalog.pg_function_is_visible(p.oid)\n      and n.nspname <> 'pg_catalog'\n      and n.nspname <> 'information_schema'\norder by 1, 2, 4;" {
-		return true, h.query(ConvertedQuery{String: `SELECT '' AS 'Schema', '' AS 'Name', '' AS 'Result data type', '' AS 'Argument data types', '' AS 'Type' FROM dual LIMIT 0;`})
+		return true, h.query(ConvertedQuery{
+			String:       `SELECT '' AS 'Schema', '' AS 'Name', '' AS 'Result data type', '' AS 'Argument data types', '' AS 'Type' FROM dual LIMIT 0;`,
+			StatementTag: "SELECT",
+		})
 	}
 	// Command: \dv
 	if statement == "select n.nspname as \"schema\",\n  c.relname as \"name\",\n  case c.relkind when 'r' then 'table' when 'v' then 'view' when 'm' then 'materialized view' when 'i' then 'index' when 's' then 'sequence' when 't' then 'toast table' when 'f' then 'foreign table' when 'p' then 'partitioned table' when 'i' then 'partitioned index' end as \"type\",\n  pg_catalog.pg_get_userbyid(c.relowner) as \"owner\"\nfrom pg_catalog.pg_class c\n     left join pg_catalog.pg_namespace n on n.oid = c.relnamespace\nwhere c.relkind in ('v','')\n      and n.nspname <> 'pg_catalog'\n      and n.nspname !~ '^pg_toast'\n      and n.nspname <> 'information_schema'\n  and pg_catalog.pg_table_is_visible(c.oid)\norder by 1,2;" {
-		return true, h.query(ConvertedQuery{String: `SELECT 'public' AS 'Schema', TABLE_NAME AS 'Name', 'view' AS 'Type', 'postgres' AS 'Owner' FROM INFORMATION_SCHEMA.TABLES WHERE TABLE_SCHEMA = database() AND TABLE_TYPE = 'VIEW' ORDER BY 2;`})
+		return true, h.query(ConvertedQuery{
+			String:       `SELECT 'public' AS 'Schema', TABLE_NAME AS 'Name', 'view' AS 'Type', 'postgres' AS 'Owner' FROM INFORMATION_SCHEMA.TABLES WHERE TABLE_SCHEMA = database() AND TABLE_TYPE = 'VIEW' ORDER BY 2;`,
+			StatementTag: "SELECT",
+		})
 	}
 	// Command: \du
 	if statement == "select r.rolname, r.rolsuper, r.rolinherit,\n  r.rolcreaterole, r.rolcreatedb, r.rolcanlogin,\n  r.rolconnlimit, r.rolvaliduntil,\n  array(select b.rolname\n        from pg_catalog.pg_auth_members m\n        join pg_catalog.pg_roles b on (m.roleid = b.oid)\n        where m.member = r.oid) as memberof\n, r.rolreplication\n, r.rolbypassrls\nfrom pg_catalog.pg_roles r\nwhere r.rolname !~ '^pg_'\norder by 1;" {
 		// We don't support users yet, so we'll just return nothing for now
-		return true, h.query(ConvertedQuery{String: `SELECT '' FROM dual LIMIT 0;`})
+		return true, h.query(ConvertedQuery{
+			String:       `SELECT '' FROM dual LIMIT 0;`,
+			StatementTag: "SELECT",
+		})
 	}
 	return false, nil
 }
@@ -833,15 +867,20 @@ func (h *ConnectionHandler) convertQuery(query string) (ConvertedQuery, error) {
 		return ConvertedQuery{String: query}, nil
 	}
 	vitessAST, err := ast.Convert(s[0])
+	stmtTag := s[0].AST.StatementTag()
 	if err != nil {
 		return ConvertedQuery{}, err
 	}
 	if vitessAST == nil {
-		return ConvertedQuery{String: s[0].AST.String()}, nil
+		return ConvertedQuery{
+			String:       s[0].AST.String(),
+			StatementTag: stmtTag,
+		}, nil
 	}
 	return ConvertedQuery{
-		String: query,
-		AST:    vitessAST,
+		String:       query,
+		AST:          vitessAST,
+		StatementTag: stmtTag,
 	}, nil
 }
 

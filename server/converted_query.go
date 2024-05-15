@@ -25,8 +25,9 @@ import (
 // version of the converted query, and is the recommended form to use. If AST is nil, then use the String version,
 // otherwise always prefer to AST.
 type ConvertedQuery struct {
-	String string
-	AST    vitess.Statement
+	String       string
+	AST          vitess.Statement
+	StatementTag string
 }
 
 type PreparedStatementData struct {

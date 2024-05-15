@@ -30,6 +30,7 @@ func init() {
 type CommandComplete struct {
 	Query string
 	Rows  int32
+	Tag   string
 }
 
 var commandCompleteDefault = connection.MessageFormat{
@@ -69,21 +70,29 @@ func (m CommandComplete) IsIUD() bool {
 	}
 }
 
+// ReturnsRow returns whether the query returns set or rows such as SELECT and FETCH statements.
+func (m CommandComplete) ReturnsRow() bool {
+	switch m.Tag {
+	case "SELECT", "SHOW", "FETCH":
+		return true
+	default:
+		return false
+	}
+}
+
 // Encode implements the interface connection.Message.
 func (m CommandComplete) Encode() (connection.MessageFormat, error) {
 	outputMessage := m.DefaultMessage().Copy()
-	query := strings.TrimSpace(strings.ToLower(m.Query))
-	if strings.HasPrefix(query, "select") {
-		outputMessage.Field("CommandTag").MustWrite(fmt.Sprintf("SELECT %d", m.Rows))
-	} else if strings.HasPrefix(query, "insert") {
-		outputMessage.Field("CommandTag").MustWrite(fmt.Sprintf("INSERT 0 %d", m.Rows))
-	} else if strings.HasPrefix(query, "update") {
-		outputMessage.Field("CommandTag").MustWrite(fmt.Sprintf("UPDATE %d", m.Rows))
-	} else if strings.HasPrefix(query, "delete") {
-		outputMessage.Field("CommandTag").MustWrite(fmt.Sprintf("DELETE %d", m.Rows))
-	} else {
-		// We'll just default to SELECT since that seems to be the return value for a lot of query types.
-		outputMessage.Field("CommandTag").MustWrite(fmt.Sprintf("SELECT %d", m.Rows))
+	// https://www.postgresql.org/docs/current/protocol-message-formats.html#PROTOCOL-MESSAGE-FORMATS-COMMANDCOMPLETE
+	switch m.Tag {
+	case "INSERT", "DELETE", "UPDATE", "MERGE", "SELECT", "CREATE TABLE AS", "MOVE", "FETCH", "COPY":
+		tag := m.Tag
+		if tag == "INSERT" {
+			tag = "INSERT 0"
+		}
+		outputMessage.Field("CommandTag").MustWrite(fmt.Sprintf("%s %d", tag, m.Rows))
+	default:
+		outputMessage.Field("CommandTag").MustWrite(m.Tag)
 	}
 	return outputMessage, nil
 }
@@ -102,6 +111,7 @@ func (m CommandComplete) Decode(s connection.MessageFormat) (connection.Message,
 	return CommandComplete{
 		Query: query,
 		Rows:  int32(rows),
+		Tag:   m.Tag,
 	}, nil
 }
 
