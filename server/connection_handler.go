@@ -397,6 +397,7 @@ func (h *ConnectionHandler) handleParse(message messages.Parse) error {
 func (h *ConnectionHandler) handleDescribe(message messages.Describe) error {
 	var fields []*querypb.Field
 	var bindvarTypes []int32
+	var tag string
 
 	h.waitForSync = true
 	if message.IsPrepared {
@@ -407,6 +408,7 @@ func (h *ConnectionHandler) handleDescribe(message messages.Describe) error {
 
 		fields = preparedStatementData.ReturnFields
 		bindvarTypes = preparedStatementData.BindVarTypes
+		tag = preparedStatementData.Query.StatementTag
 	} else {
 		portalData, ok := h.portals[message.Target]
 		if !ok {
@@ -414,9 +416,10 @@ func (h *ConnectionHandler) handleDescribe(message messages.Describe) error {
 		}
 
 		fields = portalData.Fields
+		tag = portalData.Query.StatementTag
 	}
 
-	return h.sendDescribeResponse(h.Conn(), fields, bindvarTypes)
+	return h.sendDescribeResponse(h.Conn(), fields, bindvarTypes, tag)
 }
 
 // handleBind handles a bind message, returning any error that occurs
@@ -481,7 +484,7 @@ func (h *ConnectionHandler) handleExecute(message messages.Execute) error {
 		return connection.Send(h.Conn(), messages.EmptyQueryResponse{})
 	}
 
-	err := h.handler.(mysql.ExtendedHandler).ComExecuteBound(h.mysqlConn, query.String, portalData.BoundPlan, spoolRowsCallback(h.Conn(), &complete))
+	err := h.handler.(mysql.ExtendedHandler).ComExecuteBound(h.mysqlConn, query.String, portalData.BoundPlan, spoolRowsCallback(h.Conn(), &complete, true))
 	if err != nil {
 		return err
 	}
@@ -682,7 +685,7 @@ func (h *ConnectionHandler) query(query ConvertedQuery) error {
 		Tag:   query.StatementTag,
 	}
 
-	err := h.comQuery(query, spoolRowsCallback(h.Conn(), &commandComplete))
+	err := h.comQuery(query, spoolRowsCallback(h.Conn(), &commandComplete, false))
 
 	if err != nil {
 		if strings.HasPrefix(err.Error(), "syntax error at position") {
@@ -700,13 +703,16 @@ func (h *ConnectionHandler) query(query ConvertedQuery) error {
 
 // spoolRowsCallback returns a callback function that will send RowDescription message, then a DataRow message for
 // each row in the result set.
-func spoolRowsCallback(conn net.Conn, commandComplete *messages.CommandComplete) mysql.ResultSpoolFn {
+func spoolRowsCallback(conn net.Conn, commandComplete *messages.CommandComplete, isExecute bool) mysql.ResultSpoolFn {
 	return func(res *sqltypes.Result, more bool) error {
-		if commandComplete.ReturnsRow() {
-			if err := connection.Send(conn, messages.RowDescription{
-				Fields: res.Fields,
-			}); err != nil {
-				return err
+		if messages.ReturnsRow(commandComplete.Tag) {
+			// EXECUTE does not send RowDescription; instead it should be sent from DESCRIBE prior to it
+			if !isExecute {
+				if err := connection.Send(conn, messages.RowDescription{
+					Fields: res.Fields,
+				}); err != nil {
+					return err
+				}
 			}
 
 			for _, row := range res.Rows {
@@ -728,7 +734,7 @@ func spoolRowsCallback(conn net.Conn, commandComplete *messages.CommandComplete)
 }
 
 // sendDescribeResponse sends a response message for a Describe message
-func (h *ConnectionHandler) sendDescribeResponse(conn net.Conn, fields []*querypb.Field, types []int32) (err error) {
+func (h *ConnectionHandler) sendDescribeResponse(conn net.Conn, fields []*querypb.Field, types []int32, tag string) (err error) {
 	// The prepared statement variant of the describe command returns the OIDs of the parameters.
 	if types != nil {
 		if err := connection.Send(conn, messages.ParameterDescription{
@@ -738,14 +744,14 @@ func (h *ConnectionHandler) sendDescribeResponse(conn net.Conn, fields []*queryp
 		}
 	}
 
-	// Both variants finish with a row description.
-	if err := connection.Send(conn, messages.RowDescription{
-		Fields: fields,
-	}); err != nil {
-		return err
+	if messages.ReturnsRow(tag) {
+		// Both variants finish with a row description.
+		return connection.Send(conn, messages.RowDescription{
+			Fields: fields,
+		})
+	} else {
+		return connection.Send(conn, messages.NoData{})
 	}
-
-	return nil
 }
 
 // handledPSQLCommands handles the special PSQL commands, such as \l and \dt.
