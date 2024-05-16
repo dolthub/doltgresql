@@ -400,7 +400,6 @@ var SchemaTests = []ScriptTest{
 		},
 	},
 	// More tests:
-	// * table name resolution among different schemas
 	// * alter table statements, when they work better
 	// * AS OF (when supported)
 	// * revision qualifiers
