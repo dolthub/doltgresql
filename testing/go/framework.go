@@ -34,6 +34,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	dserver "github.com/dolthub/doltgresql/server"
+	"github.com/dolthub/doltgresql/servercfg"
 )
 
 // runOnPostgres is a debug setting to redirect the test framework to a local running postgres server,
@@ -197,16 +198,20 @@ func runScripts(t *testing.T, scripts []ScriptTest, normalizeRows bool) {
 	}
 }
 
+func ptr[T any](val T) *T {
+	return &val
+}
+
 // CreateServer creates a server with the given database, returning a connection to the server. The server will close
 // when the connection is closed (or loses its connection to the server). The accompanying WaitGroup may be used to wait
 // until the server has closed.
 func CreateServer(t *testing.T, database string) (context.Context, *pgx.Conn, *svcs.Controller) {
 	require.NotEmpty(t, database)
 	port := GetUnusedPort(t)
-	controller, err := dserver.RunInMemory(&dserver.DoltgresConfig{
-		ListenerConfig: &dserver.DoltgresListenerConfig{
+	controller, err := dserver.RunInMemory(&servercfg.DoltgresConfig{
+		ListenerConfig: &servercfg.DoltgresListenerConfig{
 			PortNumber: &port,
-			HostStr:    dserver.Ptr("127.0.0.1"),
+			HostStr:    ptr("127.0.0.1"),
 		},
 	})
 	require.NoError(t, err)

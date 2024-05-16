@@ -25,6 +25,7 @@ import (
 	"github.com/dolthub/dolt/go/cmd/dolt/commands/sqlserver"
 	"github.com/dolthub/dolt/go/libraries/doltcore/doltdb"
 	"github.com/dolthub/dolt/go/libraries/doltcore/env"
+	doltservercfg "github.com/dolthub/dolt/go/libraries/doltcore/servercfg"
 	"github.com/dolthub/dolt/go/libraries/doltcore/sqle/dfunctions"
 	"github.com/dolthub/dolt/go/libraries/doltcore/sqle/dsess"
 	"github.com/dolthub/dolt/go/libraries/utils/argparser"
@@ -37,6 +38,7 @@ import (
 
 	"github.com/dolthub/doltgresql/server/initialization"
 	"github.com/dolthub/doltgresql/server/logrepl"
+	"github.com/dolthub/doltgresql/servercfg"
 )
 
 const (
@@ -60,13 +62,13 @@ func init() {
 
 // RunOnDisk starts the server based on the given args, while also using the local disk as the backing store.
 // The returned WaitGroup may be used to wait for the server to close.
-func RunOnDisk(ctx context.Context, cfg *DoltgresConfig, dEnv *env.DoltEnv) (*svcs.Controller, error) {
+func RunOnDisk(ctx context.Context, cfg *servercfg.DoltgresConfig, dEnv *env.DoltEnv) (*svcs.Controller, error) {
 	return runServer(ctx, cfg, dEnv)
 }
 
 // RunInMemory starts the server based on the given args, while also using RAM as the backing store.
 // The returned WaitGroup may be used to wait for the server to close.
-func RunInMemory(cfg *DoltgresConfig) (*svcs.Controller, error) {
+func RunInMemory(cfg *servercfg.DoltgresConfig) (*svcs.Controller, error) {
 	ctx := context.Background()
 	fs := filesys.EmptyInMemFS("")
 	dEnv := env.Load(ctx, env.GetCurrentUserHomeDir, fs, doltdb.InMemDoltDB, Version)
@@ -83,7 +85,7 @@ func RunInMemory(cfg *DoltgresConfig) (*svcs.Controller, error) {
 
 // runServer starts the server based on the given args, using the provided file system as the backing store.
 // The returned WaitGroup may be used to wait for the server to close.
-func runServer(ctx context.Context, cfg *DoltgresConfig, dEnv *env.DoltEnv) (*svcs.Controller, error) {
+func runServer(ctx context.Context, cfg *servercfg.DoltgresConfig, dEnv *env.DoltEnv) (*svcs.Controller, error) {
 	initialization.Initialize()
 
 	if dEnv.HasDoltDataDir() {
@@ -100,12 +102,12 @@ func runServer(ctx context.Context, cfg *DoltgresConfig, dEnv *env.DoltEnv) (*sv
 	}
 
 	ssCfg := cfg.ToSqlServerConfig()
-	err = sqlserver.ApplySystemVariables(ssCfg)
+	err = doltservercfg.ApplySystemVariables(ssCfg, sql.SystemVariables)
 	if err != nil {
 		return nil, err
 	}
 
-	tlsConfig, err := sqlserver.LoadTLSConfig(ssCfg)
+	tlsConfig, err := doltservercfg.LoadTLSConfig(ssCfg)
 	if err != nil {
 		return nil, err
 	}
@@ -189,7 +191,7 @@ func runServer(ctx context.Context, cfg *DoltgresConfig, dEnv *env.DoltEnv) (*sv
 }
 
 // startReplication begins the background thread that replicates from Postgres, if one is configured.
-func startReplication(cfg *DoltgresConfig, ssCfg sqlserver.ServerConfig) (*logrepl.LogicalReplicator, error) {
+func startReplication(cfg *servercfg.DoltgresConfig, ssCfg doltservercfg.ServerConfig) (*logrepl.LogicalReplicator, error) {
 	if cfg.PostgresReplicationConfig == nil {
 		return nil, nil
 	} else if cfg.PostgresReplicationConfig.PostgresDatabase == nil || *cfg.PostgresReplicationConfig.PostgresDatabase == "" {

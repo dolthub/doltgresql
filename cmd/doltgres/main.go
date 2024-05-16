@@ -35,6 +35,7 @@ import (
 	"github.com/fatih/color"
 
 	"github.com/dolthub/doltgresql/server"
+	"github.com/dolthub/doltgresql/servercfg"
 )
 
 func init() {
@@ -92,7 +93,7 @@ func main() {
 		cli.Println("Doltgres version", server.Version)
 		os.Exit(0)
 	} else if *flags[configHelpFlag] {
-		cli.Println(server.ConfigHelp)
+		cli.Println(servercfg.ConfigHelp)
 		os.Exit(0)
 	}
 
@@ -117,10 +118,10 @@ func main() {
 	}
 
 	overrides := map[string]string{
-		server.OverrideDataDirKey: *params[dataDirParam],
+		servercfg.OverrideDataDirKey: *params[dataDirParam],
 	}
 
-	cfg, err := server.ReadConfigFromYamlFile(fs, *params[configParam], overrides)
+	cfg, err := servercfg.ReadConfigFromYamlFile(fs, *params[configParam], overrides)
 	if err != nil {
 		cli.PrintErrln(err.Error())
 		os.Exit(1)
@@ -178,7 +179,7 @@ func configureDataDir(fs filesys.Filesys, params map[string]*string) error {
 }
 
 // runServer launches a server on the env given and waits for it to finish
-func runServer(ctx context.Context, dEnv *env.DoltEnv, cfg *server.DoltgresConfig) error {
+func runServer(ctx context.Context, dEnv *env.DoltEnv, cfg *servercfg.DoltgresConfig) error {
 	// Emit a usage event in the background while we start the server.
 	// Dolt is more permissive with events: it emits events even if the command fails in the earliest possible phase,
 	// we emit an event only if we got far enough to attempt to launch a server (and we may not emit it if the server
