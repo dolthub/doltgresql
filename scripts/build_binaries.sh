@@ -71,9 +71,7 @@ for tuple in $OS_ARCH_TUPLES; do
       CC="${platform_cc[${tuple}]}" \
       AS="${platform_as[${tuple}]}" \
       CGO_LDFLAGS="${platform_cgo_ldflags[${tuple}]}" \
-      cd cmd/doltgres
-      go build -buildvcs=false -trimpath -ldflags="${platform_go_ldflags[${tuple}]}" -o "../../$o/bin/$obin" .
-      cd ../..
+      go build -buildvcs=false -trimpath -ldflags="${platform_go_ldflags[${tuple}]}" -o "$o/bin/$obin" ./cmd/doltgres
   done
   if [ "$os" = windows ]; then
     (cd out && 7z a "doltgresql-$os-$arch.zip" "doltgresql-$os-$arch" && 7z a "doltgresql-$os-$arch.7z" "doltgresql-$os-$arch")
