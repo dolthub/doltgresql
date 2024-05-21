@@ -138,7 +138,7 @@ func (r rootStorage) clone() rootStorage {
 func (r rootStorage) DebugString(ctx context.Context) string {
 	return fmt.Sprintf("rootStorage[%d, %s, %s]",
 		r.srv.FeatureVersion(),
-		"...", // TODO: Print out tables map
+		"...",
 		hash.New(r.srv.ForeignKeyAddrBytes()).String())
 }
 

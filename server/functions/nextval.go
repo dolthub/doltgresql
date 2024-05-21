@@ -29,25 +29,19 @@ func initNextVal() {
 
 // nextval_text represents the PostgreSQL function of the same name, taking the same parameters.
 var nextval_text = framework.Function1{
-	Name:       "nextval",
-	Return:     pgtypes.Int64,
-	Parameters: []pgtypes.DoltgresType{pgtypes.Text},
+	Name:               "nextval",
+	Return:             pgtypes.Int64,
+	Parameters:         []pgtypes.DoltgresType{pgtypes.Text},
+	IsNonDeterministic: true,
 	Callable: func(ctx *sql.Context, val1 any) (any, error) {
 		if val1 == nil {
 			return nil, nil
 		}
-		var outVal int64
-		err := core.UseRootInSession(ctx, func(ctx *sql.Context, root *core.RootValue) (*core.RootValue, error) {
-			collection, err := root.GetSequences(ctx)
-			if err != nil {
-				return nil, err
-			}
-			outVal, err = collection.NextVal(core.GetCurrentSchema(ctx), val1.(string))
-			if err != nil {
-				return nil, err
-			}
-			return root.PutSequences(ctx, collection)
-		})
-		return outVal, err
+		collection, err := core.GetCollectionFromContext(ctx)
+		if err != nil {
+			return nil, err
+		}
+		// TODO: this should take a regclass as the parameter to determine the schema
+		return collection.NextVal(core.GetCurrentSchema(ctx), val1.(string))
 	},
 }

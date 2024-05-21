@@ -30,48 +30,55 @@ type FunctionInterface interface {
 	GetParameters() []pgtypes.DoltgresType
 	// GetExpectedParameterCount returns the number of paramters that are valid for this function.
 	GetExpectedParameterCount() int
+	// GetIsNonDeterministic returns whether the function is non-deterministic.
+	GetIsNonDeterministic() bool
 	// enforceInterfaceInheritance is a special function that ensures only the expected types inherit this interface.
 	enforceInterfaceInheritance(error)
 }
 
 // Function0 is a function that does not take any parameters.
 type Function0 struct {
-	Name       string
-	Return     pgtypes.DoltgresType
-	Parameters []pgtypes.DoltgresType
-	Callable   func(ctx *sql.Context) (any, error)
+	Name               string
+	Return             pgtypes.DoltgresType
+	Parameters         []pgtypes.DoltgresType
+	IsNonDeterministic bool
+	Callable           func(ctx *sql.Context) (any, error)
 }
 
 // Function1 is a function that takes one parameter.
 type Function1 struct {
-	Name       string
-	Return     pgtypes.DoltgresType
-	Parameters []pgtypes.DoltgresType
-	Callable   func(ctx *sql.Context, val1 any) (any, error)
+	Name               string
+	Return             pgtypes.DoltgresType
+	Parameters         []pgtypes.DoltgresType
+	IsNonDeterministic bool
+	Callable           func(ctx *sql.Context, val1 any) (any, error)
 }
 
 // Function2 is a function that takes two parameters.
 type Function2 struct {
-	Name       string
-	Return     pgtypes.DoltgresType
-	Parameters []pgtypes.DoltgresType
-	Callable   func(ctx *sql.Context, val1 any, val2 any) (any, error)
+	Name               string
+	Return             pgtypes.DoltgresType
+	Parameters         []pgtypes.DoltgresType
+	IsNonDeterministic bool
+	Callable           func(ctx *sql.Context, val1 any, val2 any) (any, error)
 }
 
 // Function3 is a function that takes three parameters.
 type Function3 struct {
-	Name       string
-	Return     pgtypes.DoltgresType
-	Parameters []pgtypes.DoltgresType
-	Callable   func(ctx *sql.Context, val1 any, val2 any, val3 any) (any, error)
+	Name               string
+	Return             pgtypes.DoltgresType
+	Parameters         []pgtypes.DoltgresType
+	IsNonDeterministic bool
+	Callable           func(ctx *sql.Context, val1 any, val2 any, val3 any) (any, error)
 }
 
 // Function4 is a function that takes four parameters.
 type Function4 struct {
-	Name       string
-	Return     pgtypes.DoltgresType
-	Parameters []pgtypes.DoltgresType
-	Callable   func(ctx *sql.Context, val1 any, val2 any, val3 any, val4 any) (any, error)
+	Name               string
+	Return             pgtypes.DoltgresType
+	Parameters         []pgtypes.DoltgresType
+	IsNonDeterministic bool
+	Callable           func(ctx *sql.Context, val1 any, val2 any, val3 any, val4 any) (any, error)
 }
 
 var _ FunctionInterface = Function0{}
@@ -92,6 +99,9 @@ func (f Function0) GetParameters() []pgtypes.DoltgresType { return f.Parameters 
 // GetExpectedParameterCount implements the FunctionInterface interface.
 func (f Function0) GetExpectedParameterCount() int { return 0 }
 
+// GetIsNonDeterministic implements the FunctionInterface interface.
+func (f Function0) GetIsNonDeterministic() bool { return f.IsNonDeterministic }
+
 // enforceInterfaceInheritance implements the FunctionInterface interface.
 func (f Function0) enforceInterfaceInheritance(error) {}
 
@@ -106,6 +116,9 @@ func (f Function1) GetParameters() []pgtypes.DoltgresType { return f.Parameters 
 
 // GetExpectedParameterCount implements the FunctionInterface interface.
 func (f Function1) GetExpectedParameterCount() int { return 1 }
+
+// GetIsNonDeterministic implements the FunctionInterface interface.
+func (f Function1) GetIsNonDeterministic() bool { return f.IsNonDeterministic }
 
 // enforceInterfaceInheritance implements the FunctionInterface interface.
 func (f Function1) enforceInterfaceInheritance(error) {}
@@ -122,6 +135,9 @@ func (f Function2) GetParameters() []pgtypes.DoltgresType { return f.Parameters 
 // GetExpectedParameterCount implements the FunctionInterface interface.
 func (f Function2) GetExpectedParameterCount() int { return 2 }
 
+// GetIsNonDeterministic implements the FunctionInterface interface.
+func (f Function2) GetIsNonDeterministic() bool { return f.IsNonDeterministic }
+
 // enforceInterfaceInheritance implements the FunctionInterface interface.
 func (f Function2) enforceInterfaceInheritance(error) {}
 
@@ -137,6 +153,9 @@ func (f Function3) GetParameters() []pgtypes.DoltgresType { return f.Parameters 
 // GetExpectedParameterCount implements the FunctionInterface interface.
 func (f Function3) GetExpectedParameterCount() int { return 3 }
 
+// GetIsNonDeterministic implements the FunctionInterface interface.
+func (f Function3) GetIsNonDeterministic() bool { return f.IsNonDeterministic }
+
 // enforceInterfaceInheritance implements the FunctionInterface interface.
 func (f Function3) enforceInterfaceInheritance(error) {}
 
@@ -151,6 +170,9 @@ func (f Function4) GetParameters() []pgtypes.DoltgresType { return f.Parameters 
 
 // GetExpectedParameterCount implements the FunctionInterface interface.
 func (f Function4) GetExpectedParameterCount() int { return 4 }
+
+// GetIsNonDeterministic implements the FunctionInterface interface.
+func (f Function4) GetIsNonDeterministic() bool { return f.IsNonDeterministic }
 
 // enforceInterfaceInheritance implements the FunctionInterface interface.
 func (f Function4) enforceInterfaceInheritance(error) {}

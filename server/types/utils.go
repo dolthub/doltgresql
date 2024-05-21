@@ -12,11 +12,17 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-package procedures
+package types
 
-import "github.com/dolthub/dolt/go/libraries/doltcore/sqle/dprocedures"
+import "strings"
 
-// Init initializes this package.
-func Init() {
-	dprocedures.DoltProcedures = append(dprocedures.DoltProcedures, createSequence, dropSequence)
+// QuoteString will quote the string according to the type given. This means that some types will quote, and others will
+// not, or they may quote in a special way that is unique to that type.
+func QuoteString(baseID DoltgresTypeBaseID, str string) string {
+	switch baseID {
+	case DoltgresTypeBaseID_Char, DoltgresTypeBaseID_Name, DoltgresTypeBaseID_Text, DoltgresTypeBaseID_VarChar:
+		return `'` + strings.ReplaceAll(str, `'`, `''`) + `'`
+	default:
+		return str
+	}
 }

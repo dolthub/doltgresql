@@ -18,6 +18,8 @@ import (
 	"fmt"
 	"math"
 	"sync"
+
+	"github.com/dolthub/dolt/go/libraries/doltcore/doltdb"
 )
 
 // Collection contains a collection of sequences.
@@ -53,16 +55,39 @@ type Sequence struct {
 	OwnerColumn string
 }
 
-// HasSequence returns whether the sequence is present.
-func (pgs *Collection) HasSequence(schema, name string) bool {
+// GetSequence returns the sequence with the given schema and name. Returns nil if the sequence cannot be found.
+func (pgs *Collection) GetSequence(name doltdb.TableName) *Sequence {
 	pgs.mutex.Lock()
 	defer pgs.mutex.Unlock()
 
-	if nameMap, ok := pgs.schemaMap[schema]; ok {
-		_, ok = nameMap[name]
-		return ok
+	if nameMap, ok := pgs.schemaMap[name.Schema]; ok {
+		if seq, ok := nameMap[name.Name]; ok {
+			return seq
+		}
 	}
-	return false
+	return nil
+}
+
+// GetSequencesWithTable returns all sequences with the given table as the owner.
+func (pgs *Collection) GetSequencesWithTable(name doltdb.TableName) []*Sequence {
+	pgs.mutex.Lock()
+	defer pgs.mutex.Unlock()
+
+	if nameMap, ok := pgs.schemaMap[name.Schema]; ok {
+		var seqs []*Sequence
+		for _, seq := range nameMap {
+			if seq.OwnerTable == name.Name {
+				seqs = append(seqs, seq)
+			}
+		}
+		return seqs
+	}
+	return nil
+}
+
+// HasSequence returns whether the sequence is present.
+func (pgs *Collection) HasSequence(name doltdb.TableName) bool {
+	return pgs.GetSequence(name) != nil
 }
 
 // CreateSequence creates a new sequence.
@@ -83,18 +108,32 @@ func (pgs *Collection) CreateSequence(schema string, seq *Sequence) error {
 }
 
 // DropSequence drops an existing sequence.
-func (pgs *Collection) DropSequence(schema, name string) error {
+func (pgs *Collection) DropSequence(name doltdb.TableName) error {
 	pgs.mutex.Lock()
 	defer pgs.mutex.Unlock()
 
-	// TODO: handle cascading
-	if nameMap, ok := pgs.schemaMap[schema]; ok {
-		if _, ok = nameMap[name]; ok {
-			delete(nameMap, name)
+	if nameMap, ok := pgs.schemaMap[name.Schema]; ok {
+		if _, ok = nameMap[name.Name]; ok {
+			delete(nameMap, name.Name)
 			return nil
 		}
 	}
 	return fmt.Errorf(`sequence "%s" does not exist`, name)
+}
+
+// IterateSequences iterates over all sequences in the collection.
+func (pgs *Collection) IterateSequences(f func(schema string, seq *Sequence) error) error {
+	pgs.mutex.Lock()
+	defer pgs.mutex.Unlock()
+
+	for schema, nameMap := range pgs.schemaMap {
+		for _, seq := range nameMap {
+			if err := f(schema, seq); err != nil {
+				return err
+			}
+		}
+	}
+	return nil
 }
 
 // NextVal returns the next value in the sequence.
@@ -131,6 +170,29 @@ func (pgs *Collection) SetVal(schema, name string, newValue int64, autoAdvance b
 		}
 	}
 	return fmt.Errorf(`relation "%s" does not exist`, name)
+}
+
+// Clone returns a new *Collection with the same contents as the original.
+func (pgs *Collection) Clone() *Collection {
+	pgs.mutex.Lock()
+	defer pgs.mutex.Unlock()
+
+	newCollection := &Collection{
+		schemaMap: make(map[string]map[string]*Sequence),
+		mutex:     &sync.Mutex{},
+	}
+	for schema, nameMap := range pgs.schemaMap {
+		if len(nameMap) == 0 {
+			continue
+		}
+		clonedNameMap := make(map[string]*Sequence)
+		for key, seq := range nameMap {
+			newSeq := *seq
+			clonedNameMap[key] = &newSeq
+		}
+		newCollection.schemaMap[schema] = clonedNameMap
+	}
+	return newCollection
 }
 
 // nextValForSequence increments the calling sequence. Called from other functions that hold locks.

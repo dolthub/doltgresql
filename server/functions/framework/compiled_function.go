@@ -33,6 +33,7 @@ type CompiledFunction struct {
 }
 
 var _ sql.FunctionExpression = (*CompiledFunction)(nil)
+var _ sql.NonDeterministicExpression = (*CompiledFunction)(nil)
 
 // FunctionName implements the interface sql.Expression.
 func (c *CompiledFunction) FunctionName() string {
@@ -59,10 +60,18 @@ func (c *CompiledFunction) String() string {
 	sb := strings.Builder{}
 	sb.WriteString(c.Name + "(")
 	for i, param := range c.Parameters {
+		// Aliases will output the string "x as x", which is an artifact of how we build the AST, so we'll bypass it
+		if alias, ok := param.(*expression.Alias); ok {
+			param = alias.Child
+		}
 		if i > 0 {
 			sb.WriteString(", ")
 		}
-		sb.WriteString(param.String())
+		if doltgresType, ok := param.Type().(pgtypes.DoltgresType); ok {
+			sb.WriteString(pgtypes.QuoteString(doltgresType.BaseID(), param.String()))
+		} else {
+			sb.WriteString(param.String())
+		}
 	}
 	sb.WriteString(")")
 	return sb.String()
@@ -99,6 +108,21 @@ func (c *CompiledFunction) Type() sql.Type {
 // IsNullable implements the interface sql.Expression.
 func (c *CompiledFunction) IsNullable() bool {
 	// All functions seem to return NULL when given a NULL value
+	return true
+}
+
+// IsNonDeterministic implements the interface sql.NonDeterministicExpression.
+func (c *CompiledFunction) IsNonDeterministic() bool {
+	// TODO: determine if this needs to inspect the parameters as well
+	parameters := c.possibleParameterTypes()
+	sources := make([]Source, len(parameters))
+	for i := range sources {
+		sources[i] = Source_Constant
+	}
+	if resolvedFunction := c.Functions.resolveByType(parameters, sources); resolvedFunction != nil {
+		return resolvedFunction.Function.GetIsNonDeterministic()
+	}
+	// We can't resolve to a function before evaluation in this case, so we'll return true to be on the safe side
 	return true
 }
 
