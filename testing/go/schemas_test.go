@@ -22,6 +22,31 @@ import (
 
 var SchemaTests = []ScriptTest{
 	{
+		Name: "implicit schema",
+		SetUpScript: []string{
+			"CREATE TABLE test (pk BIGINT PRIMARY KEY, v1 BIGINT);",
+		},
+		Assertions: []ScriptTestAssertion{
+			{
+				Query: "INSERT INTO test VALUES (1, 1), (2, 2);",
+			},
+			{
+				Query: "SELECT * FROM test;",
+				Expected: []sql.Row{
+					{1, 1},
+					{2, 2},
+				},
+			},
+			{
+				Query: "SELECT * FROM public.test;",
+				Expected: []sql.Row{
+					{1, 1},
+					{2, 2},
+				},
+			},
+		},
+	},
+	{
 		Name: "table gets created in public schema by default",
 		SetUpScript: []string{
 			"CREATE TABLE test (pk BIGINT PRIMARY KEY, v1 BIGINT);",
@@ -71,7 +96,6 @@ var SchemaTests = []ScriptTest{
 			},
 			{
 				Query:       `set search_path to '"$user"'`,
-				Expected: []sql.Row{sql.Row(nil)}, // TODO: this return value is wrong
 			},
 			{
 				// only available schema doesn't exist
