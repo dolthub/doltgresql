@@ -1,0 +1,5 @@
+name: 'Doltgres PostgreSQL client integration tests'
+description: 'Smoke tests for postgres client integrations'
+runs:
+  using: 'docker'
+  image: '../../../testing/PostgresDockerfile'

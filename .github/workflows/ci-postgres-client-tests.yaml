@@ -1,0 +1,17 @@
+name: Test PostgreSQL Client integrations
+on: [pull_request]
+
+concurrency:
+  group: ci-postgres-client-tests-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  postgres_client_integrations_job:
+    runs-on: ubuntu-22.04
+    timeout-minutes: 45
+    name: Run tests
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+      - name: Test postgres client integrations
+        uses: ./.github/actions/postgres-client-tests
