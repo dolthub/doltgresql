@@ -31,7 +31,7 @@ type Cast struct {
 	castToType pgtypes.DoltgresType
 }
 
-var _ vitess.InjectableExpression = (*Cast)(nil)
+var _ vitess.Injectable = (*Cast)(nil)
 var _ sql.Expression = (*Cast)(nil)
 
 // NewCast returns a new *Cast.

@@ -365,6 +365,82 @@ func TestSequences(t *testing.T) {
 			},
 		},
 		{
+			Name: "nextval() over multiple rows/columns",
+			Assertions: []ScriptTestAssertion{
+				{
+					Query:    "CREATE TABLE test (v1 INTEGER, v2 INTEGER);",
+					Expected: []sql.Row{},
+				},
+				{
+					Query:    "CREATE SEQUENCE seq1;",
+					Expected: []sql.Row{},
+				},
+				{
+					Query:    "INSERT INTO test VALUES (nextval('seq1'), 7), (nextval('seq1'), 11), (nextval('seq1'), 17);",
+					Expected: []sql.Row{},
+				},
+				{
+					Query: "SELECT * FROM test ORDER BY v1;",
+					Expected: []sql.Row{
+						{1, 7},
+						{2, 11},
+						{3, 17},
+					},
+				},
+				{
+					Query:    "INSERT INTO test VALUES (nextval('seq1'), nextval('seq1')), (nextval('seq1'), nextval('seq1'));",
+					Expected: []sql.Row{},
+				},
+				{
+					Query: "SELECT * FROM test ORDER BY v1;",
+					Expected: []sql.Row{
+						{1, 7},
+						{2, 11},
+						{3, 17},
+						{4, 5},
+						{6, 7},
+					},
+				},
+			},
+		},
+		{
+			Name: "nextval() in filter",
+			Skip: true, // GMS seems to call nextval once and cache the value, which is incorrect here
+			SetUpScript: []string{
+				"CREATE TABLE test_serial (v1 SERIAL, v2 INTEGER);",
+				"INSERT INTO test_serial (v2) VALUES (4), (5), (6);",
+				"CREATE TABLE test_seq (v1 INTEGER, v2 INTEGER);",
+				"CREATE SEQUENCE test_sequence OWNED BY test_seq.v1;",
+				"INSERT INTO test_seq VALUES (nextval('test_sequence'), 4), (nextval('test_sequence'), 5), (nextval('test_sequence'), 6);",
+			},
+			Assertions: []ScriptTestAssertion{
+				{
+					Query: "SELECT * FROM test_serial WHERE nextval('test_serial_v1_seq') = v2 ORDER BY v1;",
+					Expected: []sql.Row{
+						{1, 4},
+						{2, 5},
+						{3, 6},
+					},
+				},
+				{
+					Query:    "SELECT nextval('test_serial_v1_seq');",
+					Expected: []sql.Row{{7}},
+				},
+				{
+					Query: "SELECT * FROM test_seq WHERE nextval('test_sequence') = v2 ORDER BY v1;",
+					Expected: []sql.Row{
+						{1, 4},
+						{2, 5},
+						{3, 6},
+					},
+				},
+				{
+					Query:    "SELECT nextval('test_sequence');",
+					Expected: []sql.Row{{7}},
+				},
+			},
+		},
+		{
 			Name: "setval()",
 			Assertions: []ScriptTestAssertion{
 				{
@@ -462,6 +538,92 @@ func TestSequences(t *testing.T) {
 				{
 					Query:    "SELECT nextval('test4');",
 					Expected: []sql.Row{{7}},
+				},
+			},
+		},
+		{
+			Name: "SERIAL",
+			Assertions: []ScriptTestAssertion{
+				{
+					Query:    "CREATE TABLE test (pk SERIAL PRIMARY KEY, v1 INTEGER);",
+					Expected: []sql.Row{},
+				},
+				{
+					Query:    "CREATE TABLE test_small (pk SMALLSERIAL PRIMARY KEY, v1 INTEGER);",
+					Expected: []sql.Row{},
+				},
+				{
+					Query:    "CREATE TABLE test_big (pk BIGSERIAL PRIMARY KEY, v1 INTEGER);",
+					Expected: []sql.Row{},
+				},
+				{
+					Query:    "INSERT INTO test (v1) VALUES (2), (3), (5), (7), (11);",
+					Expected: []sql.Row{},
+				},
+				{
+					Query:    "INSERT INTO test_small (v1) VALUES (2), (3), (5), (7), (11);",
+					Expected: []sql.Row{},
+				},
+				{
+					Query:    "INSERT INTO test_big (v1) VALUES (2), (3), (5), (7), (11);",
+					Expected: []sql.Row{},
+				},
+				{
+					Query: "SELECT * FROM test;",
+					Expected: []sql.Row{
+						{1, 2},
+						{2, 3},
+						{3, 5},
+						{4, 7},
+						{5, 11},
+					},
+				},
+				{
+					Query: "SELECT * FROM test_small;",
+					Expected: []sql.Row{
+						{1, 2},
+						{2, 3},
+						{3, 5},
+						{4, 7},
+						{5, 11},
+					},
+				},
+				{
+					Query: "SELECT * FROM test_big;",
+					Expected: []sql.Row{
+						{1, 2},
+						{2, 3},
+						{3, 5},
+						{4, 7},
+						{5, 11},
+					},
+				},
+			},
+		},
+		{
+			Name: "Default emulating SERIAL",
+			Assertions: []ScriptTestAssertion{
+				{
+					Query:    "CREATE SEQUENCE seq1;",
+					Expected: []sql.Row{},
+				},
+				{
+					Query:    "CREATE TABLE test (pk INTEGER DEFAULT (nextval('seq1')), v1 INTEGER);",
+					Expected: []sql.Row{},
+				},
+				{
+					Query:    "INSERT INTO test (v1) VALUES (2), (3), (5), (7), (11);",
+					Expected: []sql.Row{},
+				},
+				{
+					Query: "SELECT * FROM test ORDER BY v1;",
+					Expected: []sql.Row{
+						{1, 2},
+						{2, 3},
+						{3, 5},
+						{4, 7},
+						{5, 11},
+					},
 				},
 			},
 		},

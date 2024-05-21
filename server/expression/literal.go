@@ -33,7 +33,7 @@ type Literal struct {
 	typ   pgtypes.DoltgresType
 }
 
-var _ vitess.InjectableExpression = (*Literal)(nil)
+var _ vitess.Injectable = (*Literal)(nil)
 var _ sql.Expression = (*Literal)(nil)
 var _ framework.LiteralInterface = (*Literal)(nil)
 

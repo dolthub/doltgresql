@@ -22,14 +22,15 @@ import (
 	"sort"
 	"strings"
 
-	"github.com/dolthub/doltgresql/core/sequences"
-
 	"github.com/dolthub/dolt/go/libraries/doltcore/doltdb"
 	"github.com/dolthub/dolt/go/libraries/doltcore/doltdb/durable"
 	"github.com/dolthub/dolt/go/libraries/doltcore/schema"
 	"github.com/dolthub/dolt/go/store/hash"
 	"github.com/dolthub/dolt/go/store/prolly/tree"
 	"github.com/dolthub/dolt/go/store/types"
+	"github.com/dolthub/go-mysql-server/sql"
+
+	"github.com/dolthub/doltgresql/core/sequences"
 )
 
 const (
@@ -48,9 +49,10 @@ type RootValue struct {
 	ns   tree.NodeStore
 	st   rootStorage
 	fkc  *doltdb.ForeignKeyCollection // cache the first load
-	seq  *sequences.Collection        // cache the first load
 	hash hash.Hash                    // cache the first load
 }
+
+var _ doltdb.RootValue = (*RootValue)(nil)
 
 type tableEdit struct {
 	name doltdb.TableName
@@ -148,31 +150,25 @@ func (root *RootValue) GetForeignKeyCollection(ctx context.Context) (*doltdb.For
 
 // GetSequences returns all sequences that are on the root.
 func (root *RootValue) GetSequences(ctx context.Context) (*sequences.Collection, error) {
-	if root.seq == nil {
-		h := root.st.GetSequences()
-		if h.IsEmpty() {
-			return sequences.Deserialize(ctx, nil)
-		}
-		dataValue, err := root.vrw.ReadValue(ctx, h)
-		if err != nil {
-			return nil, err
-		}
-		dataBlob := dataValue.(types.Blob)
-		dataBlobLength := dataBlob.Len()
-		data := make([]byte, dataBlobLength)
-		n, err := dataBlob.ReadAt(context.Background(), data, 0)
-		if err != nil && err != io.EOF {
-			return nil, err
-		}
-		if uint64(n) != dataBlobLength {
-			return nil, fmt.Errorf("wanted %d bytes from blob for sequences, got %d", dataBlobLength, n)
-		}
-		root.seq, err = sequences.Deserialize(ctx, data)
-		if err != nil {
-			return nil, err
-		}
+	h := root.st.GetSequences()
+	if h.IsEmpty() {
+		return sequences.Deserialize(ctx, nil)
 	}
-	return root.seq, nil
+	dataValue, err := root.vrw.ReadValue(ctx, h)
+	if err != nil {
+		return nil, err
+	}
+	dataBlob := dataValue.(types.Blob)
+	dataBlobLength := dataBlob.Len()
+	data := make([]byte, dataBlobLength)
+	n, err := dataBlob.ReadAt(context.Background(), data, 0)
+	if err != nil && err != io.EOF {
+		return nil, err
+	}
+	if uint64(n) != dataBlobLength {
+		return nil, fmt.Errorf("wanted %d bytes from blob for sequences, got %d", dataBlobLength, n)
+	}
+	return sequences.Deserialize(ctx, data)
 }
 
 // GetTable implements the interface doltdb.RootValue.
@@ -341,6 +337,7 @@ func (root *RootValue) PutSequences(ctx context.Context, seq *sequences.Collecti
 
 // PutTable implements the interface doltdb.RootValue.
 func (root *RootValue) PutTable(ctx context.Context, tName doltdb.TableName, table *doltdb.Table) (doltdb.RootValue, error) {
+	// TODO: modify owned sequences based on schema changes
 	err := doltdb.ValidateTagUniqueness(ctx, root, tName.Name, table)
 	if err != nil {
 		return nil, err
@@ -380,23 +377,38 @@ func (root *RootValue) RemoveTables(ctx context.Context, skipFKHandling bool, al
 	if err != nil {
 		return nil, err
 	}
-
 	newRoot := root.withStorage(newStorage)
-	if skipFKHandling {
-		return newRoot, nil
-	}
 
-	fkc, err := newRoot.GetForeignKeyCollection(ctx)
+	// TODO: determine the correct schema
+	sequenceSchema := GetCurrentSchema(ctx.(*sql.Context))
+	collection, err := newRoot.GetSequences(ctx)
+	if err != nil {
+		return nil, err
+	}
+	for _, tableName := range tables {
+		for _, seq := range collection.GetSequencesWithTable(doltdb.TableName{Name: tableName, Schema: sequenceSchema}) {
+			if err = collection.DropSequence(doltdb.TableName{Name: seq.Name, Schema: sequenceSchema}); err != nil {
+				return nil, err
+			}
+		}
+	}
+	newRoot, err = newRoot.PutSequences(ctx, collection)
 	if err != nil {
 		return nil, err
 	}
 
+	if skipFKHandling {
+		return newRoot, nil
+	}
+	fkc, err := newRoot.GetForeignKeyCollection(ctx)
+	if err != nil {
+		return nil, err
+	}
 	if allowDroppingFKReferenced {
 		err = fkc.RemoveAndUnresolveTables(ctx, root, tables...)
 	} else {
 		err = fkc.RemoveTables(ctx, tables...)
 	}
-
 	if err != nil {
 		return nil, err
 	}
@@ -410,7 +422,23 @@ func (root *RootValue) RenameTable(ctx context.Context, oldName, newName string)
 	if err != nil {
 		return nil, err
 	}
-	return root.withStorage(newStorage), nil
+	newRoot := root.withStorage(newStorage)
+
+	// TODO: determine the correct schema
+	sequenceSchema := GetCurrentSchema(ctx.(*sql.Context))
+	collection, err := newRoot.GetSequences(ctx)
+	if err != nil {
+		return nil, err
+	}
+	for _, seq := range collection.GetSequencesWithTable(doltdb.TableName{Name: oldName, Schema: sequenceSchema}) {
+		seq.OwnerTable = newName
+	}
+	newRoot, err = newRoot.PutSequences(ctx, collection)
+	if err != nil {
+		return nil, err
+	}
+
+	return newRoot, nil
 }
 
 // ResolveRootValue implements the interface doltdb.RootValue.
@@ -512,5 +540,5 @@ func (root *RootValue) putTable(ctx context.Context, tName doltdb.TableName, ref
 
 // withStorage returns a new root value with the given storage.
 func (root *RootValue) withStorage(st rootStorage) *RootValue {
-	return &RootValue{root.vrw, root.ns, st, nil, root.seq, hash.Hash{}}
+	return &RootValue{root.vrw, root.ns, st, nil, hash.Hash{}}
 }

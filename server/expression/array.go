@@ -32,7 +32,7 @@ type Array struct {
 	coercedType pgtypes.DoltgresArrayType
 }
 
-var _ vitess.InjectableExpression = (*Array)(nil)
+var _ vitess.Injectable = (*Array)(nil)
 var _ sql.Expression = (*Array)(nil)
 
 // NewArray returns a new *Array.

@@ -20,9 +20,9 @@ import (
 
 	vitess "github.com/dolthub/vitess/go/vt/sqlparser"
 
-	"github.com/dolthub/doltgresql/core/procedures"
+	"github.com/dolthub/doltgresql/core/sequences"
 	"github.com/dolthub/doltgresql/postgres/parser/sem/tree"
-	pgexprs "github.com/dolthub/doltgresql/server/expression"
+	pgnodes "github.com/dolthub/doltgresql/server/node"
 	pgtypes "github.com/dolthub/doltgresql/server/types"
 )
 
@@ -176,45 +176,23 @@ func nodeCreateSequence(node *tree.CreateSequence) (vitess.Statement, error) {
 		dataType = pgtypes.Int64
 	}
 	// Returns the stored procedure call with all of the options
-	return &vitess.Call{
-		ProcName: vitess.ProcedureName{
-			Name:      vitess.NewColIdent(procedures.CreateSequenceName),
-			Qualifier: vitess.NewTableIdent(""),
-		},
-		Params: vitess.Exprs{
-			vitess.InjectedExpr{
-				Expression: pgexprs.NewRawLiteralBool(node.IfNotExists),
-			},
-			vitess.InjectedExpr{
-				Expression: pgexprs.NewStringLiteral(name.SchemaQualifier.String()),
-			},
-			vitess.InjectedExpr{
-				Expression: pgexprs.NewStringLiteral(name.Name.String()),
-			},
-			vitess.InjectedExpr{
-				Expression: pgexprs.NewRawLiteralInt64(int64(dataType.OID())),
-			},
-			vitess.InjectedExpr{
-				Expression: pgexprs.NewRawLiteralInt64(minValue),
-			},
-			vitess.InjectedExpr{
-				Expression: pgexprs.NewRawLiteralInt64(maxValue),
-			},
-			vitess.InjectedExpr{
-				Expression: pgexprs.NewRawLiteralInt64(start),
-			},
-			vitess.InjectedExpr{
-				Expression: pgexprs.NewRawLiteralInt64(increment),
-			},
-			vitess.InjectedExpr{
-				Expression: pgexprs.NewRawLiteralBool(cycle),
-			},
-			vitess.InjectedExpr{
-				Expression: pgexprs.NewStringLiteral(ownerTableName),
-			},
-			vitess.InjectedExpr{
-				Expression: pgexprs.NewStringLiteral(ownerColumnName),
-			},
-		},
+	return vitess.InjectedStatement{
+		Statement: pgnodes.NewCreateSequence(node.IfNotExists, name.SchemaQualifier.String(), &sequences.Sequence{
+			Name:        name.Name.String(),
+			DataTypeOID: dataType.OID(),
+			Persistence: sequences.Persistence_Permanent,
+			Start:       start,
+			Current:     start,
+			Increment:   increment,
+			Minimum:     minValue,
+			Maximum:     maxValue,
+			Cache:       1,
+			Cycle:       cycle,
+			IsAtEnd:     false,
+			OwnerUser:   "",
+			OwnerTable:  ownerTableName,
+			OwnerColumn: ownerColumnName,
+		}),
+		Children: nil,
 	}, nil
 }

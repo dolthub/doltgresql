@@ -120,16 +120,18 @@ func Initialize() {
 		}
 
 		// Store the compiled function into the engine's built-in functions
+		createFunc := func(params ...sql.Expression) (sql.Expression, error) {
+			return &CompiledFunction{
+				Name:       funcName,
+				Parameters: params,
+				Functions:  baseOverload,
+			}, nil
+		}
 		function.BuiltIns = append(function.BuiltIns, sql.FunctionN{
 			Name: funcName,
-			Fn: func(params ...sql.Expression) (sql.Expression, error) {
-				return &CompiledFunction{
-					Name:       funcName,
-					Parameters: params,
-					Functions:  baseOverload,
-				}, nil
-			},
+			Fn:   createFunc,
 		})
+		compiledCatalog[funcName] = createFunc
 	}
 
 	// Build the overload for all unary and binary functions based on their operator. This will be used for fallback if
