@@ -18,16 +18,16 @@ import "testing"
 
 func TestDropSequence(t *testing.T) {
 	tests := []QueryParses{
-		Parses("DROP SEQUENCE name"),
-		Parses("DROP SEQUENCE IF EXISTS name"),
+		Converts("DROP SEQUENCE name"),
+		Converts("DROP SEQUENCE IF EXISTS name"),
 		Parses("DROP SEQUENCE name , name"),
 		Parses("DROP SEQUENCE IF EXISTS name , name"),
-		Parses("DROP SEQUENCE name CASCADE"),
-		Parses("DROP SEQUENCE IF EXISTS name CASCADE"),
+		Converts("DROP SEQUENCE name CASCADE"),
+		Converts("DROP SEQUENCE IF EXISTS name CASCADE"),
 		Parses("DROP SEQUENCE name , name CASCADE"),
 		Parses("DROP SEQUENCE IF EXISTS name , name CASCADE"),
-		Parses("DROP SEQUENCE name RESTRICT"),
-		Parses("DROP SEQUENCE IF EXISTS name RESTRICT"),
+		Converts("DROP SEQUENCE name RESTRICT"),
+		Converts("DROP SEQUENCE IF EXISTS name RESTRICT"),
 		Parses("DROP SEQUENCE name , name RESTRICT"),
 		Parses("DROP SEQUENCE IF EXISTS name , name RESTRICT"),
 	}

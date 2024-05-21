@@ -15,6 +15,7 @@
 package functions
 
 import (
+	"github.com/dolthub/go-mysql-server/sql"
 	"golang.org/x/text/cases"
 	"golang.org/x/text/language"
 
@@ -33,7 +34,7 @@ var initcap_varchar = framework.Function1{
 	Name:       "initcap",
 	Return:     pgtypes.VarChar,
 	Parameters: []pgtypes.DoltgresType{pgtypes.VarChar},
-	Callable: func(ctx framework.Context, val1 any) (any, error) {
+	Callable: func(ctx *sql.Context, val1 any) (any, error) {
 		if val1 == nil {
 			return nil, nil
 		}

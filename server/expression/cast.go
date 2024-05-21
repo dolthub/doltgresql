@@ -31,7 +31,7 @@ type Cast struct {
 	castToType pgtypes.DoltgresType
 }
 
-var _ vitess.InjectableExpression = (*Cast)(nil)
+var _ vitess.Injectable = (*Cast)(nil)
 var _ sql.Expression = (*Cast)(nil)
 
 // NewCast returns a new *Cast.
@@ -150,7 +150,7 @@ func (c *Cast) Eval(ctx *sql.Context, row sql.Row) (any, error) {
 	if castFunction == nil {
 		return nil, fmt.Errorf("cast from `%s` to `%s` does not exist", fromType.String(), c.castToType.String())
 	}
-	return castFunction(framework.Context{Context: ctx}, val, c.castToType)
+	return castFunction(ctx, val, c.castToType)
 }
 
 // IsNullable implements the sql.Expression interface.

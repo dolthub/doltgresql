@@ -17,6 +17,7 @@ package functions
 import (
 	"math"
 
+	"github.com/dolthub/go-mysql-server/sql"
 	"github.com/shopspring/decimal"
 
 	"github.com/dolthub/doltgresql/server/functions/framework"
@@ -41,7 +42,7 @@ var ceil_float64 = framework.Function1{
 	Name:       "ceil",
 	Return:     pgtypes.Float64,
 	Parameters: []pgtypes.DoltgresType{pgtypes.Float64},
-	Callable: func(ctx framework.Context, val1 any) (any, error) {
+	Callable: func(ctx *sql.Context, val1 any) (any, error) {
 		if val1 == nil {
 			return nil, nil
 		}
@@ -54,7 +55,7 @@ var ceil_numeric = framework.Function1{
 	Name:       "ceil",
 	Return:     pgtypes.Numeric,
 	Parameters: []pgtypes.DoltgresType{pgtypes.Numeric},
-	Callable: func(ctx framework.Context, val1 any) (any, error) {
+	Callable: func(ctx *sql.Context, val1 any) (any, error) {
 		if val1 == nil {
 			return nil, nil
 		}

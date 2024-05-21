@@ -17,6 +17,7 @@ package functions
 import (
 	"fmt"
 
+	"github.com/dolthub/go-mysql-server/sql"
 	"github.com/shopspring/decimal"
 
 	"github.com/dolthub/doltgresql/server/functions/framework"
@@ -33,7 +34,7 @@ var div_numeric = framework.Function2{
 	Name:       "div",
 	Return:     pgtypes.Numeric,
 	Parameters: []pgtypes.DoltgresType{pgtypes.Numeric, pgtypes.Numeric},
-	Callable: func(ctx framework.Context, val1Interface any, val2Interface any) (any, error) {
+	Callable: func(ctx *sql.Context, val1Interface any, val2Interface any) (any, error) {
 		if val1Interface == nil || val2Interface == nil {
 			return nil, nil
 		}

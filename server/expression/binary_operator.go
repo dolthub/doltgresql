@@ -30,7 +30,7 @@ type BinaryOperator struct {
 	compiledFunc *framework.CompiledFunction
 }
 
-var _ vitess.InjectableExpression = (*BinaryOperator)(nil)
+var _ vitess.Injectable = (*BinaryOperator)(nil)
 var _ sql.Expression = (*BinaryOperator)(nil)
 var _ expression.BinaryExpression = (*BinaryOperator)(nil)
 

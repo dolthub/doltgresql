@@ -20,6 +20,7 @@ import (
 	vitess "github.com/dolthub/vitess/go/vt/sqlparser"
 
 	"github.com/dolthub/doltgresql/postgres/parser/sem/tree"
+	pgtypes "github.com/dolthub/doltgresql/server/types"
 )
 
 // nodeColumnTableDef handles *tree.ColumnTableDef nodes.
@@ -94,7 +95,24 @@ func nodeColumnTableDef(node *tree.ColumnTableDef) (_ *vitess.ColumnDefinition, 
 		//TODO: need to add support for VIRTUAL in the parser
 		generatedStored = true
 	}
-	// TODO: need to add support for SEQUENCE.
+	if node.IsSerial {
+		if resolvedType == nil {
+			return nil, fmt.Errorf("serial type was not resolvable")
+		}
+		switch resolvedType.BaseID() {
+		case pgtypes.DoltgresTypeBaseID_Int16:
+			resolvedType = pgtypes.Int16Serial
+		case pgtypes.DoltgresTypeBaseID_Int32:
+			resolvedType = pgtypes.Int32Serial
+		case pgtypes.DoltgresTypeBaseID_Int64:
+			resolvedType = pgtypes.Int64Serial
+		default:
+			return nil, fmt.Errorf(`type "%s" cannot be serial`, resolvedType.String())
+		}
+		if defaultExpr != nil {
+			return nil, fmt.Errorf(`multiple default values specified for column "%s"`, node.Name)
+		}
+	}
 	return &vitess.ColumnDefinition{
 		Name: vitess.NewColIdent(string(node.Name)),
 		Type: vitess.ColumnType{
@@ -102,7 +120,7 @@ func nodeColumnTableDef(node *tree.ColumnTableDef) (_ *vitess.ColumnDefinition, 
 			ResolvedType:  resolvedType,
 			Null:          isNull,
 			NotNull:       isNotNull,
-			Autoincrement: vitess.BoolVal(node.IsSerial),
+			Autoincrement: false,
 			Default:       defaultExpr,
 			Length:        convertType.Length,
 			Scale:         convertType.Scale,

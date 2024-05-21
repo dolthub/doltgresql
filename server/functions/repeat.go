@@ -17,8 +17,9 @@ package functions
 import (
 	"strings"
 
-	"github.com/dolthub/doltgresql/server/functions/framework"
+	"github.com/dolthub/go-mysql-server/sql"
 
+	"github.com/dolthub/doltgresql/server/functions/framework"
 	pgtypes "github.com/dolthub/doltgresql/server/types"
 )
 
@@ -32,7 +33,7 @@ var repeat_varchar_int32 = framework.Function2{
 	Name:       "repeat",
 	Return:     pgtypes.VarChar,
 	Parameters: []pgtypes.DoltgresType{pgtypes.VarChar, pgtypes.Int32},
-	Callable: func(ctx framework.Context, str any, num any) (any, error) {
+	Callable: func(ctx *sql.Context, str any, num any) (any, error) {
 		if str == nil || num == nil {
 			return nil, nil
 		}

@@ -32,7 +32,7 @@ type Array struct {
 	coercedType pgtypes.DoltgresArrayType
 }
 
-var _ vitess.InjectableExpression = (*Array)(nil)
+var _ vitess.Injectable = (*Array)(nil)
 var _ sql.Expression = (*Array)(nil)
 
 // NewArray returns a new *Array.
@@ -241,7 +241,7 @@ func (array *Array) handleEvaluationCast(ctx *sql.Context, baseResultType pgtype
 		resultType, _ := array.typeRequiresCasting()
 		return nil, fmt.Errorf("cannot cast type %s to %s", resultType.BaseType().String(), paramType.String())
 	}
-	return castFunc(framework.Context{Context: ctx}, *val, baseResultType)
+	return castFunc(ctx, *val, baseResultType)
 }
 
 // isNullType returns whether the given type is a NULL type.

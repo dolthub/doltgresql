@@ -46,17 +46,17 @@ jobs:
       - name: Set minver TBD to version
         run: sed -i -e 's/minver:"TBD"/minver:"'"$NEW_VERSION"'"/' "$FILE"
         env:
-          FILE: ${{ format('{0}/server/config.go', github.workspace) }}
+          FILE: ${{ format('{0}/servercfg/config.go', github.workspace) }}
           NEW_VERSION: ${{ needs.format-version.outputs.version }}
       - name: update minver_validation.txt
         working-directory: ./
         run: go run -mod=readonly ./utils/genminver_validation/ $FILE
         env:
-          FILE: ${{ format('{0}/server/testdata/minver_validation.txt', github.workspace) }}
+          FILE: ${{ format('{0}/servercfg/testdata/minver_validation.txt', github.workspace) }}
       - uses: EndBug/add-and-commit@v9.1.1
         with:
           message: ${{ format('Update DoltgreSQL version to {0}', needs.format-version.outputs.version) }}
-          add: ${{ format('["{0}/server/server.go", "{0}/server/config.go", "{0}/server/testdata/minver_validation.txt"]', github.workspace) }}
+          add: ${{ format('["{0}/server/server.go", "{0}/servercfg/config.go", "{0}/servercfg/testdata/minver_validation.txt"]', github.workspace) }}
           cwd: "."
           new_branch: cd-release
       - name: Create Pull Request

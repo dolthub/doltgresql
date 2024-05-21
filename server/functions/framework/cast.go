@@ -18,6 +18,8 @@ import (
 	"fmt"
 	"sync"
 
+	"github.com/dolthub/go-mysql-server/sql"
+
 	pgtypes "github.com/dolthub/doltgresql/server/types"
 )
 
@@ -25,7 +27,7 @@ import (
 
 // TypeCastFunction is a function that takes a value of a particular kind of type, and returns it as another kind of type.
 // The targetType given should match the "To" type used to obtain the cast.
-type TypeCastFunction func(ctx Context, val any, targetType pgtypes.DoltgresType) (any, error)
+type TypeCastFunction func(ctx *sql.Context, val any, targetType pgtypes.DoltgresType) (any, error)
 
 // TypeCast is used to cast from one type to another.
 type TypeCast struct {
@@ -148,7 +150,7 @@ func getCast(mutex *sync.RWMutex,
 			if toMap, ok := castMap[fromArrayType.BaseType().BaseID()]; ok {
 				if f, ok := toMap[toArrayType.BaseType().BaseID()]; ok {
 					// We use a closure that can unwrap the slice, since conversion functions expect a singular non-nil value
-					return func(ctx Context, vals any, targetType pgtypes.DoltgresType) (any, error) {
+					return func(ctx *sql.Context, vals any, targetType pgtypes.DoltgresType) (any, error) {
 						var err error
 						oldVals := vals.([]any)
 						newVals := make([]any, len(oldVals))

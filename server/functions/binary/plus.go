@@ -18,6 +18,7 @@ import (
 	"fmt"
 	"math"
 
+	"github.com/dolthub/go-mysql-server/sql"
 	"github.com/shopspring/decimal"
 
 	"github.com/dolthub/doltgresql/server/functions/framework"
@@ -50,7 +51,7 @@ var float4pl = framework.Function2{
 	Name:       "float4pl",
 	Return:     pgtypes.Float32,
 	Parameters: []pgtypes.DoltgresType{pgtypes.Float32, pgtypes.Float32},
-	Callable: func(ctx framework.Context, val1 any, val2 any) (any, error) {
+	Callable: func(ctx *sql.Context, val1 any, val2 any) (any, error) {
 		if val1 == nil || val2 == nil {
 			return nil, nil
 		}
@@ -63,7 +64,7 @@ var float48pl = framework.Function2{
 	Name:       "float48pl",
 	Return:     pgtypes.Float64,
 	Parameters: []pgtypes.DoltgresType{pgtypes.Float32, pgtypes.Float64},
-	Callable: func(ctx framework.Context, val1 any, val2 any) (any, error) {
+	Callable: func(ctx *sql.Context, val1 any, val2 any) (any, error) {
 		if val1 == nil || val2 == nil {
 			return nil, nil
 		}
@@ -76,7 +77,7 @@ var float8pl = framework.Function2{
 	Name:       "float8pl",
 	Return:     pgtypes.Float64,
 	Parameters: []pgtypes.DoltgresType{pgtypes.Float64, pgtypes.Float64},
-	Callable: func(ctx framework.Context, val1 any, val2 any) (any, error) {
+	Callable: func(ctx *sql.Context, val1 any, val2 any) (any, error) {
 		if val1 == nil || val2 == nil {
 			return nil, nil
 		}
@@ -89,7 +90,7 @@ var float84pl = framework.Function2{
 	Name:       "float84pl",
 	Return:     pgtypes.Float64,
 	Parameters: []pgtypes.DoltgresType{pgtypes.Float64, pgtypes.Float32},
-	Callable: func(ctx framework.Context, val1 any, val2 any) (any, error) {
+	Callable: func(ctx *sql.Context, val1 any, val2 any) (any, error) {
 		if val1 == nil || val2 == nil {
 			return nil, nil
 		}
@@ -102,7 +103,7 @@ var int2pl = framework.Function2{
 	Name:       "int2pl",
 	Return:     pgtypes.Int16,
 	Parameters: []pgtypes.DoltgresType{pgtypes.Int16, pgtypes.Int16},
-	Callable: func(ctx framework.Context, val1 any, val2 any) (any, error) {
+	Callable: func(ctx *sql.Context, val1 any, val2 any) (any, error) {
 		if val1 == nil || val2 == nil {
 			return nil, nil
 		}
@@ -119,7 +120,7 @@ var int24pl = framework.Function2{
 	Name:       "int24pl",
 	Return:     pgtypes.Int32,
 	Parameters: []pgtypes.DoltgresType{pgtypes.Int16, pgtypes.Int32},
-	Callable: func(ctx framework.Context, val1 any, val2 any) (any, error) {
+	Callable: func(ctx *sql.Context, val1 any, val2 any) (any, error) {
 		if val1 == nil || val2 == nil {
 			return nil, nil
 		}
@@ -136,7 +137,7 @@ var int28pl = framework.Function2{
 	Name:       "int28pl",
 	Return:     pgtypes.Int64,
 	Parameters: []pgtypes.DoltgresType{pgtypes.Int16, pgtypes.Int64},
-	Callable: func(ctx framework.Context, val1 any, val2 any) (any, error) {
+	Callable: func(ctx *sql.Context, val1 any, val2 any) (any, error) {
 		if val1 == nil || val2 == nil {
 			return nil, nil
 		}
@@ -149,7 +150,7 @@ var int4pl = framework.Function2{
 	Name:       "int4pl",
 	Return:     pgtypes.Int32,
 	Parameters: []pgtypes.DoltgresType{pgtypes.Int32, pgtypes.Int32},
-	Callable: func(ctx framework.Context, val1 any, val2 any) (any, error) {
+	Callable: func(ctx *sql.Context, val1 any, val2 any) (any, error) {
 		if val1 == nil || val2 == nil {
 			return nil, nil
 		}
@@ -166,7 +167,7 @@ var int42pl = framework.Function2{
 	Name:       "int42pl",
 	Return:     pgtypes.Int32,
 	Parameters: []pgtypes.DoltgresType{pgtypes.Int32, pgtypes.Int16},
-	Callable: func(ctx framework.Context, val1 any, val2 any) (any, error) {
+	Callable: func(ctx *sql.Context, val1 any, val2 any) (any, error) {
 		if val1 == nil || val2 == nil {
 			return nil, nil
 		}
@@ -183,7 +184,7 @@ var int48pl = framework.Function2{
 	Name:       "int48pl",
 	Return:     pgtypes.Int64,
 	Parameters: []pgtypes.DoltgresType{pgtypes.Int32, pgtypes.Int64},
-	Callable: func(ctx framework.Context, val1 any, val2 any) (any, error) {
+	Callable: func(ctx *sql.Context, val1 any, val2 any) (any, error) {
 		if val1 == nil || val2 == nil {
 			return nil, nil
 		}
@@ -196,7 +197,7 @@ var int8pl = framework.Function2{
 	Name:       "int8pl",
 	Return:     pgtypes.Int64,
 	Parameters: []pgtypes.DoltgresType{pgtypes.Int64, pgtypes.Int64},
-	Callable: func(ctx framework.Context, val1 any, val2 any) (any, error) {
+	Callable: func(ctx *sql.Context, val1 any, val2 any) (any, error) {
 		if val1 == nil || val2 == nil {
 			return nil, nil
 		}
@@ -209,7 +210,7 @@ var int82pl = framework.Function2{
 	Name:       "int82pl",
 	Return:     pgtypes.Int64,
 	Parameters: []pgtypes.DoltgresType{pgtypes.Int64, pgtypes.Int16},
-	Callable: func(ctx framework.Context, val1 any, val2 any) (any, error) {
+	Callable: func(ctx *sql.Context, val1 any, val2 any) (any, error) {
 		if val1 == nil || val2 == nil {
 			return nil, nil
 		}
@@ -222,7 +223,7 @@ var int84pl = framework.Function2{
 	Name:       "int84pl",
 	Return:     pgtypes.Int64,
 	Parameters: []pgtypes.DoltgresType{pgtypes.Int64, pgtypes.Int32},
-	Callable: func(ctx framework.Context, val1 any, val2 any) (any, error) {
+	Callable: func(ctx *sql.Context, val1 any, val2 any) (any, error) {
 		if val1 == nil || val2 == nil {
 			return nil, nil
 		}
@@ -235,7 +236,7 @@ var numeric_add = framework.Function2{
 	Name:       "numeric_add",
 	Return:     pgtypes.Numeric,
 	Parameters: []pgtypes.DoltgresType{pgtypes.Numeric, pgtypes.Numeric},
-	Callable: func(ctx framework.Context, val1 any, val2 any) (any, error) {
+	Callable: func(ctx *sql.Context, val1 any, val2 any) (any, error) {
 		if val1 == nil || val2 == nil {
 			return nil, nil
 		}

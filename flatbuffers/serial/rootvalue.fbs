@@ -27,6 +27,8 @@ table RootValue {
   
   // Schemas records the schemas in this database, which may be empty for a database with a single default schema
   schemas:[DatabaseSchema];
+
+  sequences:[ubyte];
 }
 
 table DatabaseSchema {

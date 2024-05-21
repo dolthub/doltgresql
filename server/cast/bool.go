@@ -15,6 +15,8 @@
 package cast
 
 import (
+	"github.com/dolthub/go-mysql-server/sql"
+
 	"github.com/dolthub/doltgresql/server/functions/framework"
 	pgtypes "github.com/dolthub/doltgresql/server/types"
 )
@@ -30,14 +32,14 @@ func boolExplicit() {
 	framework.MustAddExplicitTypeCast(framework.TypeCast{
 		FromType: pgtypes.Bool,
 		ToType:   pgtypes.Bool,
-		Function: func(ctx framework.Context, val any, targetType pgtypes.DoltgresType) (any, error) {
+		Function: func(ctx *sql.Context, val any, targetType pgtypes.DoltgresType) (any, error) {
 			return val, nil
 		},
 	})
 	framework.MustAddExplicitTypeCast(framework.TypeCast{
 		FromType: pgtypes.Bool,
 		ToType:   pgtypes.BpChar,
-		Function: func(ctx framework.Context, val any, targetType pgtypes.DoltgresType) (any, error) {
+		Function: func(ctx *sql.Context, val any, targetType pgtypes.DoltgresType) (any, error) {
 			str := "false"
 			if val.(bool) {
 				str = "true"
@@ -48,7 +50,7 @@ func boolExplicit() {
 	framework.MustAddExplicitTypeCast(framework.TypeCast{
 		FromType: pgtypes.Bool,
 		ToType:   pgtypes.Int32,
-		Function: func(ctx framework.Context, val any, targetType pgtypes.DoltgresType) (any, error) {
+		Function: func(ctx *sql.Context, val any, targetType pgtypes.DoltgresType) (any, error) {
 			if val.(bool) {
 				return int32(1), nil
 			} else {
@@ -59,7 +61,7 @@ func boolExplicit() {
 	framework.MustAddExplicitTypeCast(framework.TypeCast{
 		FromType: pgtypes.Bool,
 		ToType:   pgtypes.Name,
-		Function: func(ctx framework.Context, val any, targetType pgtypes.DoltgresType) (any, error) {
+		Function: func(ctx *sql.Context, val any, targetType pgtypes.DoltgresType) (any, error) {
 			str := "f"
 			if val.(bool) {
 				str = "t"
@@ -70,7 +72,7 @@ func boolExplicit() {
 	framework.MustAddExplicitTypeCast(framework.TypeCast{
 		FromType: pgtypes.Bool,
 		ToType:   pgtypes.Oid,
-		Function: func(ctx framework.Context, val any, targetType pgtypes.DoltgresType) (any, error) {
+		Function: func(ctx *sql.Context, val any, targetType pgtypes.DoltgresType) (any, error) {
 			if val.(bool) {
 				return uint32(1), nil
 			} else {
@@ -81,7 +83,7 @@ func boolExplicit() {
 	framework.MustAddExplicitTypeCast(framework.TypeCast{
 		FromType: pgtypes.Bool,
 		ToType:   pgtypes.Text,
-		Function: func(ctx framework.Context, val any, targetType pgtypes.DoltgresType) (any, error) {
+		Function: func(ctx *sql.Context, val any, targetType pgtypes.DoltgresType) (any, error) {
 			if val.(bool) {
 				return "true", nil
 			} else {
@@ -92,7 +94,7 @@ func boolExplicit() {
 	framework.MustAddExplicitTypeCast(framework.TypeCast{
 		FromType: pgtypes.Bool,
 		ToType:   pgtypes.VarChar,
-		Function: func(ctx framework.Context, val any, targetType pgtypes.DoltgresType) (any, error) {
+		Function: func(ctx *sql.Context, val any, targetType pgtypes.DoltgresType) (any, error) {
 			str := "false"
 			if val.(bool) {
 				str = "true"
@@ -107,14 +109,14 @@ func boolImplicit() {
 	framework.MustAddImplicitTypeCast(framework.TypeCast{
 		FromType: pgtypes.Bool,
 		ToType:   pgtypes.Bool,
-		Function: func(ctx framework.Context, val any, targetType pgtypes.DoltgresType) (any, error) {
+		Function: func(ctx *sql.Context, val any, targetType pgtypes.DoltgresType) (any, error) {
 			return val, nil
 		},
 	})
 	framework.MustAddImplicitTypeCast(framework.TypeCast{
 		FromType: pgtypes.Bool,
 		ToType:   pgtypes.BpChar,
-		Function: func(ctx framework.Context, val any, targetType pgtypes.DoltgresType) (any, error) {
+		Function: func(ctx *sql.Context, val any, targetType pgtypes.DoltgresType) (any, error) {
 			str := "false"
 			if val.(bool) {
 				str = "true"
@@ -125,7 +127,7 @@ func boolImplicit() {
 	framework.MustAddImplicitTypeCast(framework.TypeCast{
 		FromType: pgtypes.Bool,
 		ToType:   pgtypes.Name,
-		Function: func(ctx framework.Context, val any, targetType pgtypes.DoltgresType) (any, error) {
+		Function: func(ctx *sql.Context, val any, targetType pgtypes.DoltgresType) (any, error) {
 			str := "f"
 			if val.(bool) {
 				str = "t"
@@ -136,7 +138,7 @@ func boolImplicit() {
 	framework.MustAddImplicitTypeCast(framework.TypeCast{
 		FromType: pgtypes.Bool,
 		ToType:   pgtypes.Text,
-		Function: func(ctx framework.Context, val any, targetType pgtypes.DoltgresType) (any, error) {
+		Function: func(ctx *sql.Context, val any, targetType pgtypes.DoltgresType) (any, error) {
 			if val.(bool) {
 				return "true", nil
 			} else {
@@ -147,7 +149,7 @@ func boolImplicit() {
 	framework.MustAddImplicitTypeCast(framework.TypeCast{
 		FromType: pgtypes.Bool,
 		ToType:   pgtypes.VarChar,
-		Function: func(ctx framework.Context, val any, targetType pgtypes.DoltgresType) (any, error) {
+		Function: func(ctx *sql.Context, val any, targetType pgtypes.DoltgresType) (any, error) {
 			str := "false"
 			if val.(bool) {
 				str = "true"

@@ -18,8 +18,9 @@ import (
 	"fmt"
 	"unicode/utf8"
 
-	"github.com/dolthub/doltgresql/server/functions/framework"
+	"github.com/dolthub/go-mysql-server/sql"
 
+	"github.com/dolthub/doltgresql/server/functions/framework"
 	pgtypes "github.com/dolthub/doltgresql/server/types"
 )
 
@@ -33,7 +34,7 @@ var chr_int32 = framework.Function1{
 	Name:       "chr",
 	Return:     pgtypes.VarChar,
 	Parameters: []pgtypes.DoltgresType{pgtypes.Int32},
-	Callable: func(ctx framework.Context, val1Interface any) (any, error) {
+	Callable: func(ctx *sql.Context, val1Interface any) (any, error) {
 		if val1Interface == nil {
 			return nil, nil
 		}

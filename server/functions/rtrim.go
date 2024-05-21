@@ -15,6 +15,8 @@
 package functions
 
 import (
+	"github.com/dolthub/go-mysql-server/sql"
+
 	"github.com/dolthub/doltgresql/server/functions/framework"
 	pgtypes "github.com/dolthub/doltgresql/server/types"
 )
@@ -30,7 +32,7 @@ var rtrim_varchar = framework.Function1{
 	Name:       "rtrim",
 	Return:     pgtypes.VarChar,
 	Parameters: []pgtypes.DoltgresType{pgtypes.VarChar},
-	Callable: func(ctx framework.Context, val1 any) (any, error) {
+	Callable: func(ctx *sql.Context, val1 any) (any, error) {
 		return rtrim_varchar_varchar.Callable(ctx, val1, " ")
 	},
 }
@@ -40,7 +42,7 @@ var rtrim_varchar_varchar = framework.Function2{
 	Name:       "rtrim",
 	Return:     pgtypes.VarChar,
 	Parameters: []pgtypes.DoltgresType{pgtypes.VarChar, pgtypes.VarChar},
-	Callable: func(ctx framework.Context, str any, characters any) (any, error) {
+	Callable: func(ctx *sql.Context, str any, characters any) (any, error) {
 		if str == nil || characters == nil {
 			return nil, nil
 		}

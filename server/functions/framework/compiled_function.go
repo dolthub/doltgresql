@@ -33,6 +33,7 @@ type CompiledFunction struct {
 }
 
 var _ sql.FunctionExpression = (*CompiledFunction)(nil)
+var _ sql.NonDeterministicExpression = (*CompiledFunction)(nil)
 
 // FunctionName implements the interface sql.Expression.
 func (c *CompiledFunction) FunctionName() string {
@@ -59,10 +60,18 @@ func (c *CompiledFunction) String() string {
 	sb := strings.Builder{}
 	sb.WriteString(c.Name + "(")
 	for i, param := range c.Parameters {
+		// Aliases will output the string "x as x", which is an artifact of how we build the AST, so we'll bypass it
+		if alias, ok := param.(*expression.Alias); ok {
+			param = alias.Child
+		}
 		if i > 0 {
 			sb.WriteString(", ")
 		}
-		sb.WriteString(param.String())
+		if doltgresType, ok := param.Type().(pgtypes.DoltgresType); ok {
+			sb.WriteString(pgtypes.QuoteString(doltgresType.BaseID(), param.String()))
+		} else {
+			sb.WriteString(param.String())
+		}
 	}
 	sb.WriteString(")")
 	return sb.String()
@@ -102,6 +111,21 @@ func (c *CompiledFunction) IsNullable() bool {
 	return true
 }
 
+// IsNonDeterministic implements the interface sql.NonDeterministicExpression.
+func (c *CompiledFunction) IsNonDeterministic() bool {
+	// TODO: determine if this needs to inspect the parameters as well
+	parameters := c.possibleParameterTypes()
+	sources := make([]Source, len(parameters))
+	for i := range sources {
+		sources[i] = Source_Constant
+	}
+	if resolvedFunction := c.Functions.resolveByType(parameters, sources); resolvedFunction != nil {
+		return resolvedFunction.Function.GetIsNonDeterministic()
+	}
+	// We can't resolve to a function before evaluation in this case, so we'll return true to be on the safe side
+	return true
+}
+
 // Eval implements the interface sql.Expression.
 func (c *CompiledFunction) Eval(ctx *sql.Context, row sql.Row) (interface{}, error) {
 	// First we'll analyze all of the parameters.
@@ -109,7 +133,6 @@ func (c *CompiledFunction) Eval(ctx *sql.Context, row sql.Row) (interface{}, err
 	if err != nil {
 		return nil, err
 	}
-	pgctx := Context{Context: ctx}
 	// Next we'll resolve the overload based on the parameters given.
 	overload, casts, err := c.Functions.Resolve(originalTypes, sources)
 	if err != nil {
@@ -128,7 +151,7 @@ func (c *CompiledFunction) Eval(ctx *sql.Context, row sql.Row) (interface{}, err
 	resultTypes := overload.Function.GetParameters()
 	for i := range parameters {
 		if casts[i] != nil {
-			parameters[i], err = casts[i](pgctx, parameters[i], resultTypes[i])
+			parameters[i], err = casts[i](ctx, parameters[i], resultTypes[i])
 			if err != nil {
 				return nil, err
 			}
@@ -139,15 +162,15 @@ func (c *CompiledFunction) Eval(ctx *sql.Context, row sql.Row) (interface{}, err
 	// Pass the parameters to the function
 	switch f := overload.Function.(type) {
 	case Function0:
-		return f.Callable(pgctx)
+		return f.Callable(ctx)
 	case Function1:
-		return f.Callable(pgctx, parameters[0])
+		return f.Callable(ctx, parameters[0])
 	case Function2:
-		return f.Callable(pgctx, parameters[0], parameters[1])
+		return f.Callable(ctx, parameters[0], parameters[1])
 	case Function3:
-		return f.Callable(pgctx, parameters[0], parameters[1], parameters[2])
+		return f.Callable(ctx, parameters[0], parameters[1], parameters[2])
 	case Function4:
-		return f.Callable(pgctx, parameters[0], parameters[1], parameters[2], parameters[3])
+		return f.Callable(ctx, parameters[0], parameters[1], parameters[2], parameters[3])
 	default:
 		return nil, fmt.Errorf("unknown function type in CompiledFunction::Eval")
 	}

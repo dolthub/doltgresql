@@ -18,6 +18,7 @@ import (
 	"fmt"
 	"math"
 
+	"github.com/dolthub/go-mysql-server/sql"
 	"github.com/shopspring/decimal"
 
 	"github.com/dolthub/doltgresql/server/functions/framework"
@@ -36,7 +37,7 @@ var log_float64 = framework.Function1{
 	Name:       "log",
 	Return:     pgtypes.Float64,
 	Parameters: []pgtypes.DoltgresType{pgtypes.Float64},
-	Callable: func(ctx framework.Context, val1Interface any) (any, error) {
+	Callable: func(ctx *sql.Context, val1Interface any) (any, error) {
 		if val1Interface == nil {
 			return nil, nil
 		}
@@ -55,7 +56,7 @@ var log_numeric = framework.Function1{
 	Name:       "log",
 	Return:     pgtypes.Numeric,
 	Parameters: []pgtypes.DoltgresType{pgtypes.Numeric},
-	Callable: func(ctx framework.Context, val1Interface any) (any, error) {
+	Callable: func(ctx *sql.Context, val1Interface any) (any, error) {
 		if val1Interface == nil {
 			return nil, nil
 		}
@@ -76,7 +77,7 @@ var log_numeric_numeric = framework.Function2{
 	Name:       "log",
 	Return:     pgtypes.Numeric,
 	Parameters: []pgtypes.DoltgresType{pgtypes.Numeric, pgtypes.Numeric},
-	Callable: func(ctx framework.Context, val1Interface any, val2Interface any) (any, error) {
+	Callable: func(ctx *sql.Context, val1Interface any, val2Interface any) (any, error) {
 		if val1Interface == nil || val2Interface == nil {
 			return nil, nil
 		}

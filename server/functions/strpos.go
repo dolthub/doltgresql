@@ -17,8 +17,9 @@ package functions
 import (
 	"strings"
 
-	"github.com/dolthub/doltgresql/server/functions/framework"
+	"github.com/dolthub/go-mysql-server/sql"
 
+	"github.com/dolthub/doltgresql/server/functions/framework"
 	pgtypes "github.com/dolthub/doltgresql/server/types"
 )
 
@@ -32,7 +33,7 @@ var strpos_varchar = framework.Function2{
 	Name:       "strpos",
 	Return:     pgtypes.Int32,
 	Parameters: []pgtypes.DoltgresType{pgtypes.VarChar, pgtypes.VarChar},
-	Callable: func(ctx framework.Context, str any, substring any) (any, error) {
+	Callable: func(ctx *sql.Context, str any, substring any) (any, error) {
 		if str == nil || substring == nil {
 			return nil, nil
 		}
