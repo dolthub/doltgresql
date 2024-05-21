@@ -370,7 +370,6 @@ var SchemaTests = []ScriptTest{
 	},
 	{
 		Name: "schema does not exist",
-		Focus: true,
 		Assertions: []ScriptTestAssertion{
 			{
 				Query: "create schema mySchema",

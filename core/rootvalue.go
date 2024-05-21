@@ -447,24 +447,25 @@ func (root *RootValue) ResolveRootValue(ctx context.Context) (doltdb.RootValue, 
 }
 
 // ResolveTableName implements the interface doltdb.RootValue.
-func (root *RootValue) ResolveTableName(ctx context.Context, tName string) (string, bool, error) {
-	tableMap, err := root.getTableMap(ctx, doltdb.DefaultSchemaName)
+func (root *RootValue) ResolveTableName(ctx context.Context, tName doltdb.TableName) (string, bool, error) {
+	tableMap, err := root.getTableMap(ctx, tName.Schema)
 	if err != nil {
 		return "", false, err
 	}
 
-	a, err := tableMap.Get(ctx, tName)
+	a, err := tableMap.Get(ctx, tName.Name)
 	if err != nil {
 		return "", false, err
 	}
 	if !a.IsEmpty() {
-		return tName, true, nil
+		return tName.Name, true, nil
 	}
 
 	found := false
+	resolvedName := tName.Name
 	err = tableMap.Iter(ctx, func(name string, addr hash.Hash) (bool, error) {
-		if !found && strings.EqualFold(tName, name) {
-			tName = name
+		if !found && strings.EqualFold(tName.Name, name) {
+			resolvedName = name
 			found = true
 		}
 		return false, nil
@@ -472,7 +473,7 @@ func (root *RootValue) ResolveTableName(ctx context.Context, tName string) (stri
 	if err != nil {
 		return "", false, nil
 	}
-	return tName, found, nil
+	return resolvedName, found, nil
 }
 
 // SetCollation implements the interface doltdb.RootValue.
