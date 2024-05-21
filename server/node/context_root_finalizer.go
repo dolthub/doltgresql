@@ -88,6 +88,10 @@ func (rf *ContextRootFinalizer) String() string {
 	return rf.child.String()
 }
 
+func (rf *ContextRootFinalizer) DebugString() string {
+	return sql.DebugString(rf.child)
+}
+
 // WithChildren implements the interface sql.ExecSourceRel.
 func (rf *ContextRootFinalizer) WithChildren(children ...sql.Node) (sql.Node, error) {
 	newChild, err := rf.child.WithChildren(children...)

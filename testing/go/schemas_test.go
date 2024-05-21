@@ -22,26 +22,26 @@ import (
 
 var SchemaTests = []ScriptTest{
 	{
-		Name: "implicit schema",
+		Name: "implicit schema with index gets created in public schema",
 		SetUpScript: []string{
-			"CREATE TABLE test (pk BIGINT PRIMARY KEY, v1 BIGINT);",
+			"create table employees (id int, last_name varchar(255), first_name varchar(255), primary key(id));",
 		},
 		Assertions: []ScriptTestAssertion{
 			{
-				Query: "INSERT INTO test VALUES (1, 1), (2, 2);",
+				Query: "INSERT INTO employees VALUES (1, 'John', 'Doe'), (2, 'Jane', 'Doe');",
 			},
 			{
-				Query: "SELECT * FROM test;",
+				Query: "SELECT * FROM employees;",
 				Expected: []sql.Row{
-					{1, 1},
-					{2, 2},
+					{1, "John", "Doe"},
+					{2, "Jane", "Doe"},
 				},
 			},
 			{
-				Query: "SELECT * FROM public.test;",
+				Query: "SELECT * FROM public.employees;",
 				Expected: []sql.Row{
-					{1, 1},
-					{2, 2},
+					{1, "John", "Doe"},
+					{2, "Jane", "Doe"},
 				},
 			},
 		},
@@ -370,6 +370,7 @@ var SchemaTests = []ScriptTest{
 	},
 	{
 		Name: "schema does not exist",
+		Focus: true,
 		Assertions: []ScriptTestAssertion{
 			{
 				Query: "create schema mySchema",
@@ -379,14 +380,14 @@ var SchemaTests = []ScriptTest{
 			},
 			{
 				Query:       "CREATE TABLE otherSchema.test (pk BIGINT PRIMARY KEY, v1 BIGINT);",
-				ExpectedErr: "abc",
+				ExpectedErr: "database schema not found",
 			},
 			{
 				Query: "insert into mySchema.test values (1,1), (2,2)",
 			},
 			{
 				Query:       "insert into otherSchema.test values (3,3), (4,4)",
-				ExpectedErr: "abc",
+				ExpectedErr: "database schema not found",
 			},
 			{
 				Query: "SELECT * FROM mySchema.test;",
@@ -397,7 +398,7 @@ var SchemaTests = []ScriptTest{
 			},
 			{
 				Query:       "SELECT * FROM otherSchema.test;",
-				ExpectedErr: "abc",
+				ExpectedErr: "database schema not found",
 			},
 		},
 	},
