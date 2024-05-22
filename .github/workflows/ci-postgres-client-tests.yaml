@@ -14,6 +14,6 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
       - name: Build docker image
-        run: docker build -t postgres-client-tests --file testing/ReplicationTestDockerfile .
+        run: docker build -t postgres-client-tests --file testing/PostgresDockerfile .
       - name: Run tests
         run: docker run --detach=false postgres-client-tests

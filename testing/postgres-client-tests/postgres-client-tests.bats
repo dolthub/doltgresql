@@ -23,7 +23,7 @@ teardown() {
     fi
 }
 
-@test "mysql-connector-java client" {
+@test "postgres-connector-java client" {
     javac $BATS_TEST_DIRNAME/java/PostgresTest.java
     java -cp $BATS_TEST_DIRNAME/java:/postgres-client-tests/java/postgresql-42.7.3.jar PostgresTest $USER $PORT
 }
