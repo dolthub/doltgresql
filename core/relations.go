@@ -55,7 +55,7 @@ func GetRelationType(ctx *sql.Context, schema string, relation string) (Relation
 // the working session's root.
 func GetRelationTypeFromRoot(ctx *sql.Context, schema string, relation string, root *RootValue) (RelationType, error) {
 	// Check tables first
-	ok, err := root.HasTable(ctx, relation)
+	ok, err := root.HasTable(ctx, doltdb.TableName{Schema: schema, Name: relation})
 	if err != nil {
 		return RelationType_DoesNotExist, err
 	}
