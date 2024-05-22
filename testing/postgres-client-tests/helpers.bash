@@ -1,39 +1,32 @@
 setup_doltgres_repo() {
-    run psql --version
-    if [[ ! "$output" =~ "(PostgreSQL) 15" ]] && [[ ! "$output" =~ "(PostgreSQL) 16" ]]; then
-        echo "PSQL must be version 15"
-        return 1
-    fi
+  run psql --version
+  if [[ ! "$output" =~ "(PostgreSQL) 15" ]] && [[ ! "$output" =~ "(PostgreSQL) 16" ]]; then
+    echo "PSQL must be version 15"
+    return 1
+  fi
 
-    REPO_NAME="doltgres_repo_$$"
-    mkdir $REPO_NAME
-    cd $REPO_NAME
+  REPO_NAME="doltgres_repo_$$"
+  mkdir $REPO_NAME
+  cd $REPO_NAME
 
-    USER="doltgres"
-    PORT=$( definePORT )
-    CONFIG=$( defineCONFIG $PORT )
-    echo "$CONFIG" > config.yaml
+  SQL_USER="doltgres"
+  PORT=$( definePORT )
+  CONFIG=$( defineCONFIG $PORT )
+  echo "$CONFIG" > config.yaml
 
-    doltgres sql-server --data-dir=.  --socket "dolt.$PORT.sock" -config=config.yaml &
-    SERVER_PID=$!
-    # Give the server a chance to start
-    sleep 2
-
-#    export PGSQL_PWD=""
+  doltgres sql-server --data-dir=.  -config=config.yaml &
+  SERVER_PID=$!
+  # Give the server a chance to start
+  sleep 2
 }
 
 teardown_doltgres_repo() {
-    # Clean up any mysql.sock file in the default, global location
-    if [ -f "/tmp/mysql.sock" ]; then rm -f /tmp/mysql.sock; fi
-    if [ -f "/tmp/postgres.sock" ]; then rm -f /tmp/mysql.sock; fi
-    if [ -f "/tmp/dolt.$PORT.sock" ]; then rm -f /tmp/dolt.$PORT.sock; fi
-
-    kill $SERVER_PID
-    rm -rf $REPO_NAME
+  kill $SERVER_PID
+  rm -rf $REPO_NAME
 }
 
 query_server() {
-    psql -U "${SQL_USER:-postgres}" -h localhost -p $PORT "$@" doltgres
+  psql -U "${SQL_USER:-postgres}" -h localhost -p $PORT "$@" doltgres
 }
 
 definePORT() {
@@ -51,19 +44,19 @@ definePORT() {
 }
 
 defineCONFIG() {
-    PORT=$1
-    cat <<EOF
-    behavior:
-      read_only: false
-      disable_client_multi_statements: false
-      dolt_transaction_commit: false
+  PORT=$1
+  cat <<EOF
+  behavior:
+    read_only: false
+    disable_client_multi_statements: false
+    dolt_transaction_commit: false
 
-    user:
-      name: "doltgres"
-      password: "password"
+  user:
+    name: "doltgres"
+    password: "password"
 
-    listener:
-      host: localhost
-      port: $PORT
+  listener:
+    host: localhost
+    port: $PORT
 EOF
 }
