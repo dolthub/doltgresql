@@ -9,7 +9,7 @@ setup_doltgres_repo() {
   mkdir $REPO_NAME
   cd $REPO_NAME
 
-  SQL_USER="doltgres"
+  USER="doltgres"
   PORT=$( definePORT )
   CONFIG=$( defineCONFIG $PORT )
   echo "$CONFIG" > config.yaml
@@ -26,7 +26,7 @@ teardown_doltgres_repo() {
 }
 
 query_server() {
-  psql -U "${SQL_USER:-postgres}" -h localhost -p $PORT "$@" doltgres
+  psql -U "${USER:-postgres}" -h localhost -p $PORT "$@" doltgres
 }
 
 definePORT() {
