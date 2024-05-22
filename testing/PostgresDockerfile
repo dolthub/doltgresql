@@ -67,9 +67,6 @@ RUN service postgresql start
 WORKDIR /root/building
 COPY ./ ./doltgresql
 
-# Get rid of the generated tests, since we aren't going to run them and they don't build without more work
-RUN rm -rf ./doltgresql/testing/generation/
-
 # Build the parser
 WORKDIR /root/building/doltgresql/postgres/parser
 RUN bash ./build.sh
@@ -78,5 +75,8 @@ RUN bash ./build.sh
 WORKDIR /root/building/doltgresql/cmd/doltgres
 RUN go build -o /usr/local/bin/doltgres .
 
-WORKDIR /root/building/
-ENTRYPOINT ["doltgresql/testing/postgres-client-tests/postgres-client-tests-entrypoint.sh"]
+COPY ./testing/postgres-client-tests /postgres-client-tests
+COPY ./testing/postgres-client-tests/postgres-client-tests-entrypoint.sh /postgres-client-tests/entrypoint.sh
+
+WORKDIR /postgres-client-tests
+ENTRYPOINT ["/postgres-client-tests/entrypoint.sh"]
