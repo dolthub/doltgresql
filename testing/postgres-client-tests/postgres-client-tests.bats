@@ -7,9 +7,9 @@ load $BATS_TEST_DIRNAME/helpers.bash
 setup() {
     setup_doltgres_repo
 
-    query_server -c "CREATE TABLE IF NOT EXISTS mysqldump_table(pk int)" -t
-    query_server -c "DELETE FROM mysqldump_table" -t
-    query_server -c "INSERT INTO mysqldump_table VALUES (1)" -t
+    query_server -c "CREATE TABLE IF NOT EXISTS test_table(pk int)" -t
+    query_server -c "DELETE FROM test_table" -t
+    query_server -c "INSERT INTO test_table VALUES (1)" -t
 }
 
 teardown() {

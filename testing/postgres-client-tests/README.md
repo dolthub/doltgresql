@@ -1,4 +1,4 @@
-## MySQL Client Tests
+## PostgreSQL Client Tests
 We created smoke tests for Doltgres's PostgreSQL client integrations, and we run these tests through GitHub Actions
 on pull requests.
 
@@ -14,7 +14,7 @@ The `docker build` step will take a few minutes to complete as it needs to insta
 Running the built container will produce output like:
 ```bash
 $ docker run postgres-client-tests:latest                                 
-Running mysql-client-tests:
+Running postgres-client-tests:
 1..1
-ok 1 mysql-connector-java client
+ok 1 postgres-connector-java client
 ```
