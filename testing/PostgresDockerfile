@@ -71,12 +71,9 @@ COPY ./ ./doltgresql
 RUN rm -rf ./doltgresql/testing/generation/
 
 # Build the parser
-WORKDIR /root/building/doltgresql/postgres/parser
-RUN bash ./build.sh
+RUN bash ./doltgresql/postgres/parser/build.sh
 
 # Build the doltgres binary, which we will need for bats, and put it on PATH
-WORKDIR /root/building/doltgresql/cmd/doltgres
-RUN go build -o /usr/local/bin/doltgres .
+RUN go build -o /usr/local/bin/doltgres ./doltgresql/cmd/doltgres
 
-WORKDIR /root/building/
 ENTRYPOINT ["doltgresql/testing/postgres-client-tests/postgres-client-tests-entrypoint.sh"]

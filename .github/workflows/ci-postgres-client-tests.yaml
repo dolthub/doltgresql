@@ -13,5 +13,7 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v4
-      - name: Test postgres client integrations
-        uses: ./.github/actions/postgres-client-tests
+      - name: Build docker image
+        run: docker build -t postgres-client-tests --file testing/ReplicationTestDockerfile .
+      - name: Run tests
+        run: docker run --detach=false postgres-client-tests
