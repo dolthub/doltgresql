@@ -385,6 +385,10 @@ func (root *RootValue) RemoveTables(
 		allowDroppingFKReferenced bool,
 		tables ...doltdb.TableName,
 ) (doltdb.RootValue, error) {
+	if len(tables) == 0 {
+		return root, nil
+	}
+	
 	// TODO: support multiple schemas in the same set
 	tableMap, err := root.getTableMap(ctx, tables[0].Schema)
 	if err != nil {
