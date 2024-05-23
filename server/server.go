@@ -26,9 +26,9 @@ import (
 	"github.com/dolthub/dolt/go/libraries/doltcore/doltdb"
 	"github.com/dolthub/dolt/go/libraries/doltcore/env"
 	doltservercfg "github.com/dolthub/dolt/go/libraries/doltcore/servercfg"
-	"github.com/dolthub/dolt/go/libraries/doltcore/sqle"
 	"github.com/dolthub/dolt/go/libraries/doltcore/sqle/dfunctions"
 	"github.com/dolthub/dolt/go/libraries/doltcore/sqle/dsess"
+	"github.com/dolthub/dolt/go/libraries/doltcore/sqle/search_path"
 	"github.com/dolthub/dolt/go/libraries/utils/argparser"
 	"github.com/dolthub/dolt/go/libraries/utils/config"
 	"github.com/dolthub/dolt/go/libraries/utils/filesys"
@@ -59,7 +59,7 @@ func init() {
 	server.DefaultProtocolListenerFunc = NewListener
 	sqlserver.ExternalDisableUsers = true
 	dfunctions.VersionString = Version
-	sqle.UseSearchPath = true
+	search_path.UseSearchPath = true
 }
 
 // RunOnDisk starts the server based on the given args, while also using the local disk as the backing store.
