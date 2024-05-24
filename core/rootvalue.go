@@ -186,13 +186,13 @@ func (root *RootValue) GetTable(ctx context.Context, tName doltdb.TableName) (*d
 }
 
 // GetTableHash implements the interface doltdb.RootValue.
-func (root *RootValue) GetTableHash(ctx context.Context, tName string) (hash.Hash, bool, error) {
-	tableMap, err := root.getTableMap(ctx, doltdb.DefaultSchemaName)
+func (root *RootValue) GetTableHash(ctx context.Context, tName doltdb.TableName) (hash.Hash, bool, error) {
+	tableMap, err := root.getTableMap(ctx, tName.Schema)
 	if err != nil {
 		return hash.Hash{}, false, err
 	}
 
-	tVal, err := tableMap.Get(ctx, tName)
+	tVal, err := tableMap.Get(ctx, tName.Name)
 	if err != nil {
 		return hash.Hash{}, false, err
 	}

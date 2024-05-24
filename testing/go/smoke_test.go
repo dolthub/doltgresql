@@ -64,7 +64,6 @@ func TestSmokeTests(t *testing.T) {
 		},
 		{
 			Name: "Dolt Getting Started example", /* https://docs.dolthub.com/introduction/getting-started/database */
-			Focus: true,
 			SetUpScript: []string{
 				"create table employees (id int, last_name varchar(255), first_name varchar(255), primary key(id));",
 				"create table teams (id int, team_name varchar(255), primary key(id));",
