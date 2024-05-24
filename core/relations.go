@@ -38,8 +38,13 @@ const (
 func GetRelationType(ctx *sql.Context, schema string, relation string) (RelationType, error) {
 	// TODO: the schema isn't actually being used
 	if len(schema) == 0 {
-		schema = GetCurrentSchema(ctx)
+		var err error
+		schema, err = GetCurrentSchema(ctx)
+		if err != nil {
+			return RelationType_DoesNotExist, err
+		}
 	}
+	
 	session := dsess.DSessFromSess(ctx.Session)
 	state, ok, err := session.LookupDbState(ctx, ctx.GetCurrentDatabase())
 	if err != nil {

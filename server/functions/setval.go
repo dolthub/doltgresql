@@ -54,6 +54,11 @@ var setval_text_int64_boolean = framework.Function3{
 			return nil, err
 		}
 		// TODO: this should take a regclass as the parameter to determine the schema
-		return val2.(int64), collection.SetVal(core.GetCurrentSchema(ctx), val1.(string), val2.(int64), val3.(bool))
+		schema, err := core.GetCurrentSchema(ctx)
+		if err != nil {
+			return nil, err
+		}
+		
+		return val2.(int64), collection.SetVal(schema, val1.(string), val2.(int64), val3.(bool))
 	},
 }

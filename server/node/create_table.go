@@ -64,8 +64,13 @@ func (c *CreateTable) RowIter(ctx *sql.Context, r sql.Row) (sql.RowIter, error) 
 	if err != nil {
 		return nil, err
 	}
-	// TODO: the schema should be the same as the table's schema, but how do we get that?
-	schemaName := core.GetCurrentSchema(ctx)
+	
+	// TODO: get the schema from the table, not the current schema
+	schemaName, err := core.GetCurrentSchema(ctx)
+	if err != nil {
+		return nil, err
+	}
+	
 	for _, sequence := range c.sequences {
 		sequence.schema = schemaName
 		_, err = sequence.RowIter(ctx, r)

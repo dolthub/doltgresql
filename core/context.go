@@ -19,6 +19,7 @@ import (
 
 	"github.com/dolthub/dolt/go/libraries/doltcore/doltdb"
 	"github.com/dolthub/dolt/go/libraries/doltcore/sqle/dsess"
+	"github.com/dolthub/dolt/go/libraries/doltcore/sqle/resolve"
 	"github.com/dolthub/go-mysql-server/sql"
 
 	"github.com/dolthub/doltgresql/core/sequences"
@@ -59,19 +60,27 @@ func getRootFromContext(ctx *sql.Context) (*dsess.DoltSession, *RootValue, error
 }
 
 // GetTableFromContext returns the table from the context. Returns nil if no table was found.
-func GetTableFromContext(ctx *sql.Context, schema string, tableName string) (*doltdb.Table, error) {
+func GetTableFromContext(ctx *sql.Context, tableName doltdb.TableName) (*doltdb.Table, error) {
 	_, root, err := getRootFromContext(ctx)
 	if err != nil {
 		return nil, err
 	}
-	table, _, err := root.GetTable(ctx, doltdb.TableName{
-		Name:   tableName,
-		Schema: schema,
-	})
+	
+	var table *doltdb.Table
+	if tableName.Schema == "" {
+		_, table, _, err = resolve.Table(ctx, root, tableName.Name)
+		if err != nil {
+			return nil, err
+		}
+	} else {
+		table, _, err = root.GetTable(ctx, tableName)
+	}
+	
 	if err != nil {
 		return nil, err
 	}
-	return table, err
+	
+	return table, nil
 }
 
 // GetCollectionFromContext returns the given sequence collection from the context. Will always return a collection if
