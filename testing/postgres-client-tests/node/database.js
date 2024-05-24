@@ -1,17 +1,15 @@
-import mysql from "mysql2";
-
-// import * as pg from 'pg'
-// const { Pool } = pg
+import pkg from 'pg';
+const { Client } = pkg;
 
 export class Database {
   constructor(config) {
-    this.connection = mysql.createConnection(config);
-    this.connection.connect();
+    this.client = new Client(config);
+    this.client.connect();
   }
 
   query(sql, args) {
     return new Promise((resolve, reject) => {
-      this.connection.query(sql, args, (err, rows) => {
+      this.client.query(sql, args, (err, rows) => {
         if (err) return reject(err);
         return resolve(rows);
       });
@@ -19,7 +17,7 @@ export class Database {
   }
 
   close() {
-    this.connection.end((err) => {
+    this.client.end((err) => {
       if (err) {
         console.error(err);
       } else {

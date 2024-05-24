@@ -12,5 +12,6 @@ To run the node tests, you must make sure you have Doltgres installed on your co
 have run `npm install`. Then update your Doltgres config by running:
 
 ```shell
-sh ../mysql-client-tests-entrypoint.sh
+node index.js $USER $PORT
+node knex.js $USER $PORT
 ```

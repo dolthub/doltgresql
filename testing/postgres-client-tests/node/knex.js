@@ -4,7 +4,7 @@ import { Socket } from "net";
 import { getConfig } from "./helpers.js";
 
 const db = knex({
-  client: "mysql2",
+  client: "pg",
   connection: getConfig(),
 });
 

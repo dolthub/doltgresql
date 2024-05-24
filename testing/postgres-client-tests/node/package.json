@@ -10,10 +10,9 @@
   "author": "",
   "license": "ISC",
   "dependencies": {
-    "knex": "^2.4.0",
-    "mysql": "^2.18.1",
-    "mysql2": "^3.9.7",
-    "wtfnode": "^0.9.1",
-    "yesql": "^5.0.0"
+    "knex": "^2.5.1",
+    "pg": "^8.11.5",
+    "pg-promise": "^11.6.0",
+    "wtfnode": "^0.9.2"
   }
 }

@@ -27,3 +27,8 @@ teardown() {
     javac $BATS_TEST_DIRNAME/java/PostgresTest.java
     java -cp $BATS_TEST_DIRNAME/java:$BATS_TEST_DIRNAME/java/postgresql-42.7.3.jar PostgresTest $USER $PORT
 }
+
+@test "node postgres client" {
+    node $BATS_TEST_DIRNAME/node/index.js $USER $PORT
+    node $BATS_TEST_DIRNAME/node/knex.js $USER $PORT
+}
