@@ -401,6 +401,7 @@ func RunScriptN(t *testing.T, script ScriptTest, n int) {
 						t.Skip("Skip has been set in the assertion")
 					}
 					rows, err := conn.Query(ctx, assertion.Query)
+					require.NoError(t, err)
 					defer rows.Close()
 
 					var errorSeen string
