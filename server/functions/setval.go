@@ -58,7 +58,7 @@ var setval_text_int64_boolean = framework.Function3{
 		if err != nil {
 			return nil, err
 		}
-		
+
 		return val2.(int64), collection.SetVal(schema, val1.(string), val2.(int64), val3.(bool))
 	},
 }

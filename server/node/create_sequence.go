@@ -80,7 +80,7 @@ func (c *CreateSequence) RowIter(ctx *sql.Context, r sql.Row) (sql.RowIter, erro
 			return nil, err
 		}
 	}
-	
+
 	// Check that the sequence name is free
 	relationType, err := core.GetRelationType(ctx, schema, c.sequence.Name)
 	if err != nil {
@@ -104,7 +104,7 @@ func (c *CreateSequence) RowIter(ctx *sql.Context, r sql.Row) (sql.RowIter, erro
 		} else if relationType != core.RelationType_Table {
 			return nil, fmt.Errorf(`sequence cannot be owned by relation "%s"`, c.sequence.OwnerTable)
 		}
-		
+
 		table, err := core.GetTableFromContext(ctx, doltdb.TableName{Name: c.sequence.OwnerTable})
 		if err != nil {
 			return nil, err

@@ -28,7 +28,7 @@ import (
 	"github.com/dolthub/dolt/go/store/hash"
 	"github.com/dolthub/dolt/go/store/prolly/tree"
 	"github.com/dolthub/dolt/go/store/types"
-	
+
 	"github.com/dolthub/doltgresql/core/sequences"
 )
 
@@ -380,15 +380,15 @@ func (root *RootValue) PutTable(ctx context.Context, tName doltdb.TableName, tab
 
 // RemoveTables implements the interface doltdb.RootValue.
 func (root *RootValue) RemoveTables(
-		ctx context.Context,
-		skipFKHandling bool,
-		allowDroppingFKReferenced bool,
-		tables ...doltdb.TableName,
+	ctx context.Context,
+	skipFKHandling bool,
+	allowDroppingFKReferenced bool,
+	tables ...doltdb.TableName,
 ) (doltdb.RootValue, error) {
 	if len(tables) == 0 {
 		return root, nil
 	}
-	
+
 	// TODO: support multiple schemas in the same set
 	tableMap, err := root.getTableMap(ctx, tables[0].Schema)
 	if err != nil {

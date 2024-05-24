@@ -44,7 +44,7 @@ func GetRelationType(ctx *sql.Context, schema string, relation string) (Relation
 			return RelationType_DoesNotExist, err
 		}
 	}
-	
+
 	session := dsess.DSessFromSess(ctx.Session)
 	state, ok, err := session.LookupDbState(ctx, ctx.GetCurrentDatabase())
 	if err != nil {

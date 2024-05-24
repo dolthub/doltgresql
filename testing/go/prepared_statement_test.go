@@ -403,8 +403,8 @@ func RunScriptN(t *testing.T, script ScriptTest, n int) {
 					rows, err := conn.Query(ctx, assertion.Query)
 					defer rows.Close()
 
-					var errorSeen string 
-					
+					var errorSeen string
+
 					if assertion.ExpectedErr == "" {
 						require.NoError(t, err)
 					} else if err != nil {
@@ -420,7 +420,7 @@ func RunScriptN(t *testing.T, script ScriptTest, n int) {
 							errorSeen = err.Error()
 						}
 					}
-					
+
 					if assertion.ExpectedErr != "" {
 						require.False(t, errorSeen == "", "Expected error but got none")
 						assert.Contains(t, errorSeen, assertion.ExpectedErr)

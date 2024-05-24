@@ -65,7 +65,7 @@ func GetTableFromContext(ctx *sql.Context, tableName doltdb.TableName) (*doltdb.
 	if err != nil {
 		return nil, err
 	}
-	
+
 	var table *doltdb.Table
 	if tableName.Schema == "" {
 		_, table, _, err = resolve.Table(ctx, root, tableName.Name)
@@ -75,11 +75,11 @@ func GetTableFromContext(ctx *sql.Context, tableName doltdb.TableName) (*doltdb.
 	} else {
 		table, _, err = root.GetTable(ctx, tableName)
 	}
-	
+
 	if err != nil {
 		return nil, err
 	}
-	
+
 	return table, nil
 }
 

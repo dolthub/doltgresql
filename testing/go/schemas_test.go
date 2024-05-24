@@ -53,7 +53,7 @@ var SchemaTests = []ScriptTest{
 		},
 		Assertions: []ScriptTestAssertion{
 			{
-				Query:    "INSERT INTO public.test VALUES (1, 1), (2, 2);",
+				Query: "INSERT INTO public.test VALUES (1, 1), (2, 2);",
 			},
 			{
 				Query: "SELECT * FROM public.test;",
@@ -73,7 +73,7 @@ var SchemaTests = []ScriptTest{
 		},
 		Assertions: []ScriptTestAssertion{
 			{
-				Query:    "INSERT INTO postgres.test VALUES (1, 1), (2, 2);",
+				Query: "INSERT INTO postgres.test VALUES (1, 1), (2, 2);",
 			},
 			{
 				Query: "SELECT * FROM postgres.test;",
@@ -85,7 +85,7 @@ var SchemaTests = []ScriptTest{
 		},
 	},
 	{
-		Name:  "table creation fails with no schema available",
+		Name: "table creation fails with no schema available",
 		SetUpScript: []string{
 			"set search_path to ''",
 		},
@@ -95,7 +95,7 @@ var SchemaTests = []ScriptTest{
 				ExpectedErr: "no schema has been selected to create in",
 			},
 			{
-				Query:       `set search_path to '"$user"'`,
+				Query: `set search_path to '"$user"'`,
 			},
 			{
 				// only available schema doesn't exist
@@ -103,10 +103,10 @@ var SchemaTests = []ScriptTest{
 				ExpectedErr: "no schema has been selected to create in",
 			},
 			{
-				Query:       `create schema postgres`,
+				Query: `create schema postgres`,
 			},
 			{
-				Query:       "CREATE TABLE test (pk BIGINT PRIMARY KEY, v1 BIGINT);",
+				Query: "CREATE TABLE test (pk BIGINT PRIMARY KEY, v1 BIGINT);",
 			},
 		},
 	},
@@ -118,7 +118,7 @@ var SchemaTests = []ScriptTest{
 		},
 		Assertions: []ScriptTestAssertion{
 			{
-				Query:    "INSERT INTO public.test VALUES (1, 1);",
+				Query: "INSERT INTO public.test VALUES (1, 1);",
 			},
 			{
 				Query: "SELECT * FROM test;",
@@ -149,10 +149,10 @@ var SchemaTests = []ScriptTest{
 		},
 		Assertions: []ScriptTestAssertion{
 			{
-				Query:    "INSERT INTO public.test VALUES (1, 1);",
+				Query: "INSERT INTO public.test VALUES (1, 1);",
 			},
 			{
-				Query: "SELECT * FROM test;",
+				Query:       "SELECT * FROM test;",
 				ExpectedErr: "table not found",
 			},
 			{
