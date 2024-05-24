@@ -10,9 +10,9 @@ export function getConfig() {
   const { user, port } = getArgs();
   return {
     host: 'localhost',
-    port: '5432',
+    port: port,
     database: 'doltgres',
-    user: 'doltgres',
+    user: user,
   };
 }
 
