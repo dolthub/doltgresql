@@ -1,10 +1,11 @@
 import knex from "knex";
 import wtfnode from "wtfnode";
 import { Socket } from "net";
-import { getConfig } from "./helpers.js";
+import { getConfig, getDoltgresVersion } from "./helpers.js";
 
 const db = knex({
   client: "pg",
+  version: getDoltgresVersion(),
   connection: getConfig(),
 });
 
@@ -16,8 +17,14 @@ async function createTable() {
   return val;
 }
 
+// upsert runs INSERT ... ON CONFLICT UPDATE statement, which is not yet supported in Doltgres.
 async function upsert(table, data) {
   const val = await db(table).insert(data).onConflict().merge();
+  return val;
+}
+
+async function insert(table, data) {
+  const val = await db(table).insert(data);
   return val;
 }
 
@@ -29,8 +36,8 @@ async function select() {
 async function main() {
   await createTable();
   await Promise.all([
-    upsert("test2", { id: 1, foo: 1 }),
-    upsert("test2", { id: 2, foo: 2 }),
+    insert("test2", { id: 1, foo: 1 }),
+    insert("test2", { id: 2, foo: 2 }),
   ]);
 
   const expectedResult = JSON.stringify([

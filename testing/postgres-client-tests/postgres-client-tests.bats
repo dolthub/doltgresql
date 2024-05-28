@@ -30,5 +30,10 @@ teardown() {
 
 @test "node postgres client" {
     node $BATS_TEST_DIRNAME/node/index.js $USER $PORT
-    node $BATS_TEST_DIRNAME/node/knex.js $USER $PORT
+}
+
+@test "knex node postgres client" {
+    DOLTGRES_VERSION=$( doltgres --version | sed -nre 's/^[^0-9]*(([0-9]+\.)*[0-9]+).*/\1/p' )
+    echo $DOLTGRES_VERSION
+    node $BATS_TEST_DIRNAME/node/knex.js $USER $PORT $DOLTGRES_VERSION
 }

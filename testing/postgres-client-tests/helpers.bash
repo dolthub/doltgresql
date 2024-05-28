@@ -14,7 +14,7 @@ setup_doltgres_repo() {
   CONFIG=$( defineCONFIG $PORT )
   echo "$CONFIG" > config.yaml
 
-  doltgres sql-server --data-dir=.  -config=config.yaml &
+  doltgres --data-dir=. -config=config.yaml &
   SERVER_PID=$!
   # Give the server a chance to start
   sleep 2

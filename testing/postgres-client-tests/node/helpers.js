@@ -1,9 +1,14 @@
-const args = process.argv.slice(1);
+const args = process.argv.slice(2);
 const user = args[0];
 const port = args[1];
+const version = args[2];
 
 export function getArgs() {
   return { user, port };
+}
+
+export function getDoltgresVersion() {
+  return version;
 }
 
 export function getConfig() {
