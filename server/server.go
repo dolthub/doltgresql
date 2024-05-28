@@ -166,7 +166,7 @@ func runServer(ctx context.Context, cfg *servercfg.DoltgresConfig, dEnv *env.Dol
 	if err != nil {
 		return nil, err
 	}
-	
+
 	if createDoltgresDatabase {
 		err = createDatabase(ssCfg, "doltgres")
 		if err != nil {
@@ -199,7 +199,7 @@ func createDatabase(cfg doltservercfg.ServerConfig, dbName string) error {
 	if err != nil {
 		return err
 	}
-	
+
 	defer conn.Close(ctx)
 	_, err = conn.Exec(ctx, fmt.Sprintf("create database %s", dbName))
 	return err

@@ -404,7 +404,7 @@ func RunScriptN(t *testing.T, script ScriptTest, n int) {
 					if err == nil {
 						defer rows.Close()
 					}
-					
+
 					var errorSeen string
 
 					if assertion.ExpectedErr == "" {
