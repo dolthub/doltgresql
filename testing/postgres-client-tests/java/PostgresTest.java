@@ -6,14 +6,9 @@ import java.sql.ResultSet;
 
 public class PostgresTest {
     public String query;
-
-    // for queries that don't return set of results
-    public Integer expectedUpdateCount;
-
-    // fieldAccessor can be String (i.e column name), Integer (i.e. field position) and `null` for no result set queries.
-    public Object fieldAccessor;
+    public Integer expectedUpdateCount; // for queries that don't return set of results
+    public Object fieldAccessor; // can be String (i.e column name), Integer (i.e. field position) and `null` for no result set queries.
     public String[] expectedResults;
-
 
     // Parameterized constructor
     public PostgresTest(String query, Integer expectedUpdateCount, Object fieldAccessor, String[] expectedResults) {

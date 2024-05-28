@@ -17,7 +17,7 @@ async function createTable() {
   return val;
 }
 
-// upsert runs INSERT ... ON CONFLICT UPDATE statement, which is not yet supported in Doltgres.
+// upsert runs INSERT ... ON CONFLICT UPDATE statement, which is not yet supported in Doltgres. (TODO)
 async function upsert(table, data) {
   const val = await db(table).insert(data).onConflict().merge();
   return val;
