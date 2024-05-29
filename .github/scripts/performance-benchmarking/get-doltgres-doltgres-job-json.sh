@@ -80,7 +80,7 @@ echo '
             ],
             "imagePullPolicy": "Always",
             "args": [
-              "--schema=/schema.sql",
+              "--schema=/app/schema.sql",
               "--useDoltHubLuaScriptsRepo",
               "--repo=doltgresql",
               "--output='$format'",
