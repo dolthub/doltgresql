@@ -124,6 +124,102 @@ func JsonValueCopy(value JsonValue) JsonValue {
 	}
 }
 
+// jsonValueCompare compares two values.
+func jsonValueCompare(v1 JsonValue, v2 JsonValue) int {
+	// Some types sort before others, so we'll check those first
+	v1TypeSortOrder := jsonValueTypeSortOrder(v1)
+	v2TypeSortOrder := jsonValueTypeSortOrder(v2)
+	if v1TypeSortOrder < v2TypeSortOrder {
+		return -1
+	} else if v1TypeSortOrder > v2TypeSortOrder {
+		return 1
+	}
+
+	// TODO: these should use the actual comparison operator functions for their respective types
+	switch v1 := v1.(type) {
+	case JsonValueObject:
+		v2 := v2.(JsonValueObject)
+		if len(v1.Items) < len(v2.Items) {
+			return -1
+		} else if len(v1.Items) > len(v2.Items) {
+			return 1
+		}
+		// Items in an object are already sorted, so we can simply iterate over the items
+		for i := 0; i < len(v1.Items); i++ {
+			if v1.Items[i].Key < v2.Items[i].Key {
+				return -1
+			} else if v1.Items[i].Key > v2.Items[i].Key {
+				return 1
+			} else {
+				innerCmp := jsonValueCompare(v1.Items[i].Value, v2.Items[i].Value)
+				if innerCmp != 0 {
+					return innerCmp
+				}
+			}
+		}
+		return 0
+	case JsonValueArray:
+		v2 := v2.(JsonValueArray)
+		if len(v1) < len(v2) {
+			return -1
+		} else if len(v1) > len(v2) {
+			return 1
+		}
+		for i := 0; i < len(v1); i++ {
+			innerCmp := jsonValueCompare(v1[i], v2[i])
+			if innerCmp != 0 {
+				return innerCmp
+			}
+		}
+		return 0
+	case JsonValueString:
+		v2 := v2.(JsonValueString)
+		if v1 == v2 {
+			return 0
+		} else if v1 < v2 {
+			return -1
+		} else {
+			return 1
+		}
+	case JsonValueNumber:
+		return decimal.Decimal(v1).Cmp(decimal.Decimal(v2.(JsonValueNumber)))
+	case JsonValueBoolean:
+		v2 := v2.(JsonValueBoolean)
+		if v1 == v2 {
+			return 0
+		} else if !v1 {
+			return -1
+		} else {
+			return 1
+		}
+	case JsonValueNull:
+		return 0
+	default:
+		return 0
+	}
+}
+
+// jsonValueTypeSortOrder returns the relative sorting order based on the JsonValueType of the JsonValue. This should
+// only be used from within jsonValueCompare. Lower values sort before larger values.
+func jsonValueTypeSortOrder(value JsonValue) int {
+	switch value.(type) {
+	case JsonValueObject:
+		return 5
+	case JsonValueArray:
+		return 4
+	case JsonValueString:
+		return 1
+	case JsonValueNumber:
+		return 2
+	case JsonValueBoolean:
+		return 3
+	case JsonValueNull:
+		return 0
+	default:
+		return 6
+	}
+}
+
 // jsonValueSerialize is the recursive serializer for JSON values.
 func jsonValueSerialize(writer *utils.Writer, value JsonValue) {
 	switch value := value.(type) {
