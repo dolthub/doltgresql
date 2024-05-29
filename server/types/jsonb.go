@@ -53,7 +53,6 @@ func (b JsonBType) CollationCoercibility(ctx *sql.Context) (collation sql.Collat
 
 // Compare implements the DoltgresType interface.
 func (b JsonBType) Compare(v1 any, v2 any) (int, error) {
-	// JSON does not have any default ordering operators (ORDER BY does not work, etc.), so this is strictly for GMS/Dolt
 	if v1 == nil && v2 == nil {
 		return 0, nil
 	} else if v1 != nil && v2 == nil {
@@ -62,16 +61,18 @@ func (b JsonBType) Compare(v1 any, v2 any) (int, error) {
 		return -1, nil
 	}
 
-	as, err := b.SerializeValue(v1)
+	ac, _, err := b.Convert(v1)
 	if err != nil {
 		return 0, err
 	}
-	bs, err := b.SerializeValue(v2)
+	bc, _, err := b.Convert(v2)
 	if err != nil {
 		return 0, err
 	}
+	ab := ac.(JsonDocument)
+	bb := bc.(JsonDocument)
 
-	return b.SerializedCompare(as, bs)
+	return jsonValueCompare(ab.Value, bb.Value), nil
 }
 
 // Convert implements the DoltgresType interface.
@@ -171,7 +172,15 @@ func (b JsonBType) SerializedCompare(v1 []byte, v2 []byte) (int, error) {
 		return -1, nil
 	}
 
-	return bytes.Compare(v1, v2), nil
+	v1Doc, err := b.DeserializeValue(v1)
+	if err != nil {
+		return 0, err
+	}
+	v2Doc, err := b.DeserializeValue(v2)
+	if err != nil {
+		return 0, err
+	}
+	return b.Compare(v1Doc, v2Doc)
 }
 
 // SQL implements the DoltgresType interface.
