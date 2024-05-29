@@ -98,8 +98,8 @@ func Initialize() {
 		}
 		// Verify that all overloads are unique
 		for functionIndex, f1 := range catalogFunctions {
-			sameCount := 0
 			for _, f2 := range catalogFunctions[functionIndex+1:] {
+				sameCount := 0
 				if f1.GetExpectedParameterCount() == f2.GetExpectedParameterCount() {
 					f2Parameters := f2.GetParameters()
 					for parameterIndex, f1Parameter := range f1.GetParameters() {
@@ -108,9 +108,9 @@ func Initialize() {
 						}
 					}
 				}
-			}
-			if sameCount == f1.GetExpectedParameterCount() && f1.GetExpectedParameterCount() > 0 {
-				panic(fmt.Errorf("duplicate function overloads on `%s`", funcName))
+				if sameCount == f1.GetExpectedParameterCount() && f1.GetExpectedParameterCount() > 0 {
+					panic(fmt.Errorf("duplicate function overloads on `%s`", funcName))
+				}
 			}
 		}
 		// Build the overloads

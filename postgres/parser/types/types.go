@@ -410,6 +410,11 @@ var (
 		IntervalDurationField: &IntervalDurationField{},
 	}}
 
+	// Json is the type of a JavaScript Object Notation (JSON) value that is
+	// stored in its original string format.
+	Json = &T{InternalType: InternalType{
+		Family: JsonFamily, Oid: oid.T_json, Locale: &emptyLocale}}
+
 	// Jsonb is the type of a JavaScript Object Notation (JSON) value that is
 	// stored in a decomposed binary format (hence the "b" in jsonb).
 	Jsonb = &T{InternalType: InternalType{
@@ -2578,7 +2583,7 @@ var unreservedTypeTokens = map[string]*T{
 	"int8":       Int,
 	"int64":      Int,
 	"int2vector": Int2Vector,
-	"json":       Jsonb,
+	"json":       Json,
 	"jsonb":      Jsonb,
 	"name":       Name,
 	"oid":        Oid,

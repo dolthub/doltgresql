@@ -12,19 +12,9 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-package binary
+package types
 
-// Init initializes all binary operators in this package.
-func Init() {
-	initBinaryBitAnd()
-	initBinaryBitOr()
-	initBinaryBitXor()
-	initBinaryDivide()
-	initJSON()
-	initBinaryMinus()
-	initBinaryMod()
-	initBinaryMultiply()
-	initBinaryPlus()
-	initBinaryShiftLeft()
-	initBinaryShiftRight()
-}
+import "github.com/lib/pq/oid"
+
+// JsonBArray is the array variant of JsonB.
+var JsonBArray = createArrayType(JsonB, SerializationID_JsonBArray, oid.T__jsonb)

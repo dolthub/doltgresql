@@ -1010,6 +1010,113 @@ func TestOperators(t *testing.T) {
 			},
 		},
 		{
+			Name: "Binary JSON",
+			Assertions: []ScriptTestAssertion{
+				{
+					Query:    `SELECT '[{"a":"foo"},{"b":"bar"},{"c":"baz"}]'::json -> 2;`,
+					Expected: []sql.Row{{`{"c": "baz"}`}},
+				},
+				{
+					Query:    `SELECT '[{"a":"foo"},{"b":"bar"},{"c":"baz"}]'::jsonb -> 2;`,
+					Expected: []sql.Row{{`{"c": "baz"}`}},
+				},
+				{
+					Query:    `SELECT '[{"a":"foo"},{"b":"bar"},{"c":"baz"}]'::json -> -3;`,
+					Expected: []sql.Row{{`{"a": "foo"}`}},
+				},
+				{
+					Query:    `SELECT '[{"a":"foo"},{"b":"bar"},{"c":"baz"}]'::jsonb -> -3;`,
+					Expected: []sql.Row{{`{"a": "foo"}`}},
+				},
+				{
+					Query:    `SELECT '{"a": {"b":"foo"}}'::json -> 'a';`,
+					Expected: []sql.Row{{`{"b": "foo"}`}},
+				},
+				{
+					Query:    `SELECT '{"a": {"b":"foo"}}'::jsonb -> 'a';`,
+					Expected: []sql.Row{{`{"b": "foo"}`}},
+				},
+				{
+					Query:    `SELECT '[1,2,3]'::json ->> 2;`,
+					Expected: []sql.Row{{`3`}},
+				},
+				{
+					Query:    `SELECT '[1,2,3]'::jsonb ->> 2;`,
+					Expected: []sql.Row{{`3`}},
+				},
+				{
+					Query:    `SELECT '{"a":1,"b":2}'::json ->> 'b';`,
+					Expected: []sql.Row{{`2`}},
+				},
+				{
+					Query:    `SELECT '{"a":1,"b":2}'::jsonb ->> 'b';`,
+					Expected: []sql.Row{{`2`}},
+				},
+				{ // ARRAY['a','b','1']
+					Query:    `SELECT '{"a": {"b": ["foo","bar"]}}'::json #> ARRAY['a','b','1']::text[];`,
+					Expected: []sql.Row{{`"bar"`}},
+				},
+				{
+					Query:    `SELECT '{"a": {"b": ["foo","bar"]}}'::jsonb #> ARRAY['a','b','1']::text[];`,
+					Expected: []sql.Row{{`"bar"`}},
+				},
+				{
+					Query:    `SELECT '{"a": {"b": ["foo","bar"]}}'::json #>> ARRAY['a','b','1']::text[];`,
+					Expected: []sql.Row{{`bar`}},
+				},
+				{
+					Query:    `SELECT '{"a": {"b": ["foo","bar"]}}'::jsonb #>> ARRAY['a','b','1']::text[];`,
+					Expected: []sql.Row{{`bar`}},
+				},
+				{
+					Query:    `SELECT '{"a":1, "b":2}'::jsonb @> '{"b":2}'::jsonb;`,
+					Skip:     true,
+					Expected: []sql.Row{{"t"}},
+				},
+				{
+					Query:    `SELECT '{"b":2}'::jsonb <@ '{"a":1, "b":2}'::jsonb;`,
+					Skip:     true,
+					Expected: []sql.Row{{"t"}},
+				},
+				{
+					Query:    `SELECT '{"a":1, "b":2}'::jsonb ? 'b';`,
+					Expected: []sql.Row{{"t"}},
+				},
+				{
+					Query:    `SELECT '["a", "b", "c"]'::jsonb ? 'b';`,
+					Expected: []sql.Row{{"t"}},
+				},
+				{
+					Query:    `SELECT '{"a":1, "b":2, "c":3}'::jsonb ?| ARRAY['b','d']::text[];`,
+					Expected: []sql.Row{{"t"}},
+				},
+				{
+					Query:    `SELECT '["a", "b", "c"]'::jsonb ?& ARRAY['a','b']::text[];`,
+					Expected: []sql.Row{{"t"}},
+				},
+				{
+					Query:    `SELECT '["a", "b", "c"]'::jsonb ?& ARRAY['d','b']::text[];`,
+					Expected: []sql.Row{{"f"}},
+				},
+				{
+					Query:    `SELECT '["a", "b"]'::jsonb || '["a", "d"]'::jsonb;`,
+					Expected: []sql.Row{{`["a", "b", "a", "d"]`}},
+				},
+				{
+					Query:    `SELECT '{"a": "b"}'::jsonb || '{"c": "d"}'::jsonb;`,
+					Expected: []sql.Row{{`{"a": "b", "c": "d"}`}},
+				},
+				{
+					Query:    `SELECT '[1, 2]'::jsonb || '3'::jsonb;`,
+					Expected: []sql.Row{{`[1, 2, 3]`}},
+				},
+				{
+					Query:    `SELECT '{"a": "b"}'::jsonb || '42'::jsonb;`,
+					Expected: []sql.Row{{`[{"a": "b"}, 42]`}},
+				},
+			},
+		},
+		{
 			Name: "Table Columns",
 			SetUpScript: []string{
 				`DROP TABLE IF EXISTS table_col_checks;`,

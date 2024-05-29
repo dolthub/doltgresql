@@ -24,18 +24,28 @@ import (
 type Operator byte
 
 const (
-	Operator_BinaryPlus Operator = iota
-	Operator_BinaryMinus
-	Operator_BinaryMultiply
-	Operator_BinaryDivide
-	Operator_BinaryMod
-	Operator_BinaryShiftLeft
-	Operator_BinaryShiftRight
-	Operator_BinaryBitAnd
-	Operator_BinaryBitOr
-	Operator_BinaryBitXor
-	Operator_UnaryPlus
-	Operator_UnaryMinus
+	Operator_BinaryPlus                Operator = iota // +
+	Operator_BinaryMinus                               // -
+	Operator_BinaryMultiply                            // *
+	Operator_BinaryDivide                              // /
+	Operator_BinaryMod                                 // %
+	Operator_BinaryShiftLeft                           // <<
+	Operator_BinaryShiftRight                          // >>
+	Operator_BinaryBitAnd                              // &
+	Operator_BinaryBitOr                               // |
+	Operator_BinaryBitXor                              // ^
+	Operator_BinaryConcatenate                         // ||
+	Operator_BinaryJSONExtractJson                     // ->
+	Operator_BinaryJSONExtractText                     // ->>
+	Operator_BinaryJSONExtractPathJson                 // #>
+	Operator_BinaryJSONExtractPathText                 // #>>
+	Operator_BinaryJSONContainsRight                   // @>
+	Operator_BinaryJSONContainsLeft                    // <@
+	Operator_BinaryJSONTopLevel                        // ?
+	Operator_BinaryJSONTopLevelAny                     // ?|
+	Operator_BinaryJSONTopLevelAll                     // ?&
+	Operator_UnaryPlus                                 // +
+	Operator_UnaryMinus                                // -
 )
 
 // unaryFunction represents the signature for a unary function.

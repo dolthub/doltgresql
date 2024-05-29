@@ -24,6 +24,8 @@ func Init() {
 	initInt16()
 	initInt32()
 	initInt64()
+	initJson()
+	initJsonB()
 	initName()
 	initNumeric()
 	initOid()

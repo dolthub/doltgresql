@@ -22,12 +22,13 @@ import (
 	"reflect"
 	"unicode/utf8"
 
-	"github.com/lib/pq/oid"
-
 	"github.com/dolthub/go-mysql-server/sql"
 	"github.com/dolthub/go-mysql-server/sql/types"
 	"github.com/dolthub/vitess/go/sqltypes"
 	"github.com/dolthub/vitess/go/vt/proto/query"
+	"github.com/lib/pq/oid"
+
+	"github.com/dolthub/doltgresql/utils"
 )
 
 const (
@@ -217,7 +218,7 @@ func (b VarCharType) SerializedCompare(v1 []byte, v2 []byte) (int, error) {
 	} else if len(v1) == 0 && len(v2) > 0 {
 		return -1, nil
 	}
-	return bytes.Compare(v1, v2), nil
+	return serializedStringCompare(v1, v2), nil
 }
 
 // SQL implements the DoltgresType interface.
@@ -291,7 +292,10 @@ func (b VarCharType) SerializeValue(val any) ([]byte, error) {
 	if err != nil {
 		return nil, err
 	}
-	return []byte(converted.(string)), nil
+	str := converted.(string)
+	writer := utils.NewWriter(uint64(len(str) + 4))
+	writer.String(str)
+	return writer.Data(), nil
 }
 
 // DeserializeValue implements the DoltgresType interface.
@@ -299,5 +303,6 @@ func (b VarCharType) DeserializeValue(val []byte) (any, error) {
 	if len(val) == 0 {
 		return nil, nil
 	}
-	return string(val), nil
+	reader := utils.NewReader(val)
+	return reader.String(), nil
 }

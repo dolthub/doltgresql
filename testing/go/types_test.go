@@ -20,6 +20,10 @@ import (
 	"github.com/dolthub/go-mysql-server/sql"
 )
 
+func TestTypes(t *testing.T) {
+	RunScripts(t, typesTests)
+}
+
 var typesTests = []ScriptTest{
 	{
 		Name: "Bigint type",
@@ -225,7 +229,7 @@ var typesTests = []ScriptTest{
 		Name: "Bytea type",
 		SetUpScript: []string{
 			"CREATE TABLE t_bytea (id INTEGER primary key, v1 BYTEA);",
-			"INSERT INTO t_bytea VALUES (1, E'\\\\xDEADBEEF'), (2, '\\xC0FFEE');",
+			"INSERT INTO t_bytea VALUES (1, E'\\\\xDEADBEEF'), (2, '\\xC0FFEE'), (3, ''), (4, NULL);",
 		},
 		Assertions: []ScriptTestAssertion{
 			{
@@ -233,6 +237,8 @@ var typesTests = []ScriptTest{
 				Expected: []sql.Row{
 					{1, []byte{0xDE, 0xAD, 0xBE, 0xEF}},
 					{2, []byte{0xC0, 0xFF, 0xEE}},
+					{3, []byte{}},
+					{4, nil},
 				},
 			},
 		},
@@ -241,7 +247,7 @@ var typesTests = []ScriptTest{
 		Name: "Character type",
 		SetUpScript: []string{
 			"CREATE TABLE t_character (id INTEGER primary key, v1 CHARACTER(5));",
-			"INSERT INTO t_character VALUES (1, 'abcde'), (2, 'vwxyz'), (3, 'ghi');",
+			"INSERT INTO t_character VALUES (1, 'abcde'), (2, 'vwxyz'), (3, 'ghi'), (4, ''), (5, NULL);",
 		},
 		Assertions: []ScriptTestAssertion{
 			{
@@ -250,6 +256,8 @@ var typesTests = []ScriptTest{
 					{1, "abcde"},
 					{2, "vwxyz"},
 					{3, "ghi  "},
+					{4, "     "},
+					{5, nil},
 				},
 			},
 			{
@@ -270,7 +278,7 @@ var typesTests = []ScriptTest{
 		Name: "Character varying type",
 		SetUpScript: []string{
 			"CREATE TABLE t_varchar (id INTEGER primary key, v1 CHARACTER VARYING(10));",
-			"INSERT INTO t_varchar VALUES (1, 'abcdefghij'), (2, 'klmnopqrst');",
+			"INSERT INTO t_varchar VALUES (1, 'abcdefghij'), (2, 'klmnopqrst'), (3, ''), (4, NULL);",
 		},
 		Assertions: []ScriptTestAssertion{
 			{
@@ -278,6 +286,8 @@ var typesTests = []ScriptTest{
 				Expected: []sql.Row{
 					{1, "abcdefghij"},
 					{2, "klmnopqrst"},
+					{3, ""},
+					{4, nil},
 				},
 			},
 			{
@@ -497,14 +507,44 @@ var typesTests = []ScriptTest{
 		Name: "JSON type",
 		SetUpScript: []string{
 			"CREATE TABLE t_json (id INTEGER primary key, v1 JSON);",
-			"INSERT INTO t_json VALUES (1, '{\"key\": \"value\"}'), (2, '{\"num\": 42}');",
+			"INSERT INTO t_json VALUES (1, '{\"key\": \"value\"}'), (2, '{\"num\":42}');",
 		},
 		Assertions: []ScriptTestAssertion{
 			{
 				Query: "SELECT * FROM t_json ORDER BY id;",
 				Expected: []sql.Row{
-					{1, `{"key":"value"}`},
+					{1, `{"key": "value"}`},
 					{2, `{"num":42}`},
+				},
+			},
+			{
+				Query: "SELECT '5'::json;",
+				Expected: []sql.Row{
+					{`5`},
+				},
+			},
+			{
+				Query: "SELECT 'false'::json;",
+				Expected: []sql.Row{
+					{`false`},
+				},
+			},
+			{
+				Query: `SELECT '"hi"'::json;`,
+				Expected: []sql.Row{
+					{`"hi"`},
+				},
+			},
+			{
+				Query: `SELECT 'null'::json;`,
+				Expected: []sql.Row{
+					{`null`},
+				},
+			},
+			{
+				Query: `SELECT '{"reading": 1.230e-5}'::json;`,
+				Expected: []sql.Row{
+					{`{"reading": 1.230e-5}`},
 				},
 			},
 		},
@@ -519,8 +559,26 @@ var typesTests = []ScriptTest{
 			{
 				Query: "SELECT * FROM t_jsonb ORDER BY id;",
 				Expected: []sql.Row{
-					{1, `{"key":"value"}`},
-					{2, `{"num":42}`},
+					{1, `{"key": "value"}`},
+					{2, `{"num": 42}`},
+				},
+			},
+			{
+				Query: `SELECT '{"bar": "baz", "balance": 7.77, "active":false}'::jsonb;`,
+				Expected: []sql.Row{
+					{`{"bar": "baz", "active": false, "balance": 7.77}`},
+				},
+			},
+			{
+				Query: `SELECT '{"active": "baz", "active":false, "balance": 7.77}'::jsonb;`,
+				Expected: []sql.Row{
+					{`{"active": false, "balance": 7.77}`},
+				},
+			},
+			{
+				Query: `SELECT '{"active":false, "balance": 7.77, "bar": "baz"}'::jsonb;`,
+				Expected: []sql.Row{
+					{`{"bar": "baz", "active": false, "balance": 7.77}`},
 				},
 			},
 		},
@@ -1277,7 +1335,7 @@ var typesTests = []ScriptTest{
 		Name: "Text type",
 		SetUpScript: []string{
 			"CREATE TABLE t_text (id INTEGER primary key, v1 TEXT);",
-			"INSERT INTO t_text VALUES (1, 'Hello'), (2, 'World');",
+			"INSERT INTO t_text VALUES (1, 'Hello'), (2, 'World'), (3, ''), (4, NULL);",
 		},
 		Assertions: []ScriptTestAssertion{
 			{
@@ -1285,6 +1343,8 @@ var typesTests = []ScriptTest{
 				Expected: []sql.Row{
 					{1, "Hello"},
 					{2, "World"},
+					{3, ""},
+					{4, nil},
 				},
 			},
 		},
@@ -1686,10 +1746,6 @@ var typesTests = []ScriptTest{
 	},
 }
 
-func TestTypes(t *testing.T) {
-	RunScripts(t, typesTests)
-}
-
 func TestSameTypes(t *testing.T) {
 	RunScripts(t, []ScriptTest{
 		{
@@ -1818,17 +1874,17 @@ func TestSameTypes(t *testing.T) {
 				{
 					Query: "SELECT * FROM test ORDER BY 1;",
 					Expected: []sql.Row{
-						{1, `{"key1":{"key":"value"}}`},
-						{2, `{"key1":"value1","key2":"value2"}`},
-						{3, `{"key1":{"key":[2,3]}}`},
+						{1, `{"key1": {"key": "value"}}`},
+						{2, `{"key1": "value1", "key2": "value2"}`},
+						{3, `{"key1": {"key": [2,3]}}`},
 					},
 				},
 				{
 					Query: "SELECT * FROM test ORDER BY v1;",
 					Expected: []sql.Row{
-						{1, `{"key1":{"key":"value"}}`},
-						{2, `{"key1":"value1","key2":"value2"}`},
-						{3, `{"key1":{"key":[2,3]}}`},
+						{1, `{"key1": {"key": "value"}}`},
+						{2, `{"key1": "value1", "key2": "value2"}`},
+						{3, `{"key1": {"key": [2,3]}}`},
 					},
 				},
 			},
