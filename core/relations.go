@@ -38,8 +38,13 @@ const (
 func GetRelationType(ctx *sql.Context, schema string, relation string) (RelationType, error) {
 	// TODO: the schema isn't actually being used
 	if len(schema) == 0 {
-		schema = GetCurrentSchema(ctx)
+		var err error
+		schema, err = GetCurrentSchema(ctx)
+		if err != nil {
+			return RelationType_DoesNotExist, err
+		}
 	}
+
 	session := dsess.DSessFromSess(ctx.Session)
 	state, ok, err := session.LookupDbState(ctx, ctx.GetCurrentDatabase())
 	if err != nil {
@@ -55,7 +60,7 @@ func GetRelationType(ctx *sql.Context, schema string, relation string) (Relation
 // the working session's root.
 func GetRelationTypeFromRoot(ctx *sql.Context, schema string, relation string, root *RootValue) (RelationType, error) {
 	// Check tables first
-	ok, err := root.HasTable(ctx, relation)
+	ok, err := root.HasTable(ctx, doltdb.TableName{Schema: schema, Name: relation})
 	if err != nil {
 		return RelationType_DoesNotExist, err
 	}

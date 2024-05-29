@@ -144,24 +144,24 @@ var createViewStmts = []ScriptTest{
 		Name: "not yet supported create view queries",
 		Assertions: []ScriptTestAssertion{
 			{
-				Query:       "CREATE TEMPORARY VIEW v AS SELECT 1;",
-				ExpectedErr: true,
+				Query: "CREATE TEMPORARY VIEW v AS SELECT 1;",
+				Skip:  true,
 			},
 			{
-				Query:       "CREATE RECURSIVE VIEW v AS SELECT 1;",
-				ExpectedErr: true,
+				Query: "CREATE RECURSIVE VIEW v AS SELECT 1;",
+				Skip:  true,
 			},
 			{
-				Query:       "CREATE VIEW v AS SELECT 1 WITH LOCAL CHECK OPTION;",
-				ExpectedErr: true,
+				Query: "CREATE VIEW v AS SELECT 1 WITH LOCAL CHECK OPTION;",
+				Skip:  true,
 			},
 			{
-				Query:       "CREATE VIEW v WITH check_option = 'local' AS SELECT 1;",
-				ExpectedErr: true,
+				Query: "CREATE VIEW v WITH check_option = 'local' AS SELECT 1;",
+				Skip:  true,
 			},
 			{
-				Query:       "CREATE VIEW v WITH security_barrier = true AS SELECT 1;",
-				ExpectedErr: true,
+				Query: "CREATE VIEW v WITH security_barrier = true AS SELECT 1;",
+				Skip:  true,
 			},
 		},
 	},

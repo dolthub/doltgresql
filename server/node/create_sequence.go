@@ -18,6 +18,7 @@ import (
 	"fmt"
 	"strings"
 
+	"github.com/dolthub/dolt/go/libraries/doltcore/doltdb"
 	"github.com/dolthub/go-mysql-server/sql"
 	"github.com/dolthub/go-mysql-server/sql/plan"
 	vitess "github.com/dolthub/vitess/go/vt/sqlparser"
@@ -72,10 +73,14 @@ func (c *CreateSequence) RowIter(ctx *sql.Context, r sql.Row) (sql.RowIter, erro
 		return nil, fmt.Errorf("sequences cannot be prefixed with 'dolt'")
 	}
 	schema := c.schema
-	// TODO: if the search path is empty, then we won't actually get a schema, so this will fail
 	if len(c.schema) == 0 {
-		schema = core.GetCurrentSchema(ctx)
+		var err error
+		schema, err = core.GetCurrentSchema(ctx)
+		if err != nil {
+			return nil, err
+		}
 	}
+
 	// Check that the sequence name is free
 	relationType, err := core.GetRelationType(ctx, schema, c.sequence.Name)
 	if err != nil {
@@ -99,8 +104,8 @@ func (c *CreateSequence) RowIter(ctx *sql.Context, r sql.Row) (sql.RowIter, erro
 		} else if relationType != core.RelationType_Table {
 			return nil, fmt.Errorf(`sequence cannot be owned by relation "%s"`, c.sequence.OwnerTable)
 		}
-		// TODO: Since schemas aren't quite implemented yet, we'll pass an empty schema for now
-		table, err := core.GetTableFromContext(ctx, "", c.sequence.OwnerTable)
+
+		table, err := core.GetTableFromContext(ctx, doltdb.TableName{Name: c.sequence.OwnerTable})
 		if err != nil {
 			return nil, err
 		}

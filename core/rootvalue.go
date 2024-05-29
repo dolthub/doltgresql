@@ -28,7 +28,6 @@ import (
 	"github.com/dolthub/dolt/go/store/hash"
 	"github.com/dolthub/dolt/go/store/prolly/tree"
 	"github.com/dolthub/dolt/go/store/types"
-	"github.com/dolthub/go-mysql-server/sql"
 
 	"github.com/dolthub/doltgresql/core/sequences"
 )
@@ -59,7 +58,7 @@ type tableEdit struct {
 	ref  *types.Ref
 
 	// Used for rename.
-	old_name string
+	old_name doltdb.TableName
 }
 
 // CreateDatabaseSchema implements the interface doltdb.RootValue.
@@ -95,9 +94,9 @@ func (root *RootValue) DebugString(ctx context.Context, transitive bool) string 
 
 	if transitive {
 		buf.WriteString("\nTables:")
-		root.IterTables(ctx, func(name string, table *doltdb.Table, sch schema.Schema) (stop bool, err error) {
+		root.IterTables(ctx, func(name doltdb.TableName, table *doltdb.Table, sch schema.Schema) (stop bool, err error) {
 			buf.WriteString("\nTable ")
-			buf.WriteString(name)
+			buf.WriteString(name.Name)
 			buf.WriteString(":\n")
 
 			buf.WriteString(table.DebugString(ctx, root.ns))
@@ -187,13 +186,13 @@ func (root *RootValue) GetTable(ctx context.Context, tName doltdb.TableName) (*d
 }
 
 // GetTableHash implements the interface doltdb.RootValue.
-func (root *RootValue) GetTableHash(ctx context.Context, tName string) (hash.Hash, bool, error) {
-	tableMap, err := root.getTableMap(ctx, doltdb.DefaultSchemaName)
+func (root *RootValue) GetTableHash(ctx context.Context, tName doltdb.TableName) (hash.Hash, bool, error) {
+	tableMap, err := root.getTableMap(ctx, tName.Schema)
 	if err != nil {
 		return hash.Hash{}, false, err
 	}
 
-	tVal, err := tableMap.Get(ctx, tName)
+	tVal, err := tableMap.Get(ctx, tName.Name)
 	if err != nil {
 		return hash.Hash{}, false, err
 	}
@@ -255,12 +254,12 @@ func (root *RootValue) HashOf() (hash.Hash, error) {
 }
 
 // HasTable implements the interface doltdb.RootValue.
-func (root *RootValue) HasTable(ctx context.Context, tName string) (bool, error) {
-	tableMap, err := root.st.GetTablesMap(ctx, root.vrw, root.ns, doltdb.DefaultSchemaName)
+func (root *RootValue) HasTable(ctx context.Context, tName doltdb.TableName) (bool, error) {
+	tableMap, err := root.st.GetTablesMap(ctx, root.vrw, root.ns, tName.Schema)
 	if err != nil {
 		return false, err
 	}
-	a, err := tableMap.Get(ctx, tName)
+	a, err := tableMap.Get(ctx, tName.Name)
 	if err != nil {
 		return false, err
 	}
@@ -268,27 +267,55 @@ func (root *RootValue) HasTable(ctx context.Context, tName string) (bool, error)
 }
 
 // IterTables implements the interface doltdb.RootValue.
-func (root *RootValue) IterTables(ctx context.Context, cb func(name string, table *doltdb.Table, sch schema.Schema) (stop bool, err error)) error {
-	// TODO: schema name
-	tm, err := root.getTableMap(ctx, doltdb.DefaultSchemaName)
+func (root *RootValue) IterTables(ctx context.Context, cb func(name doltdb.TableName, table *doltdb.Table, sch schema.Schema) (stop bool, err error)) error {
+	schemaNames, err := schemaNames(ctx, root)
 	if err != nil {
 		return err
 	}
 
-	return tm.Iter(ctx, func(name string, addr hash.Hash) (bool, error) {
-		nt, err := durable.TableFromAddr(ctx, root.VRW(), root.ns, addr)
+	for _, schemaName := range schemaNames {
+		tm, err := root.getTableMap(ctx, schemaName)
 		if err != nil {
-			return true, err
-		}
-		tbl := doltdb.NewTableFromDurable(nt)
-
-		sch, err := tbl.GetSchema(ctx)
-		if err != nil {
-			return true, err
+			return err
 		}
 
-		return cb(name, tbl, sch)
-	})
+		err = tm.Iter(ctx, func(name string, addr hash.Hash) (bool, error) {
+			nt, err := durable.TableFromAddr(ctx, root.VRW(), root.ns, addr)
+			if err != nil {
+				return true, err
+			}
+			tbl := doltdb.NewTableFromDurable(nt)
+
+			sch, err := tbl.GetSchema(ctx)
+			if err != nil {
+				return true, err
+			}
+
+			return cb(doltdb.TableName{
+				Name:   name,
+				Schema: schemaName,
+			}, tbl, sch)
+		})
+		if err != nil {
+			return err
+		}
+	}
+
+	return nil
+}
+
+// schemaNames returns all names of all schemas which may have tables
+func schemaNames(ctx context.Context, root doltdb.RootValue) ([]string, error) {
+	dbSchemas, err := root.GetDatabaseSchemas(ctx)
+	if err != nil {
+		return nil, err
+	}
+
+	schemaNames := make([]string, len(dbSchemas)+1)
+	for i, dbSchema := range dbSchemas {
+		schemaNames[i] = dbSchema.Name
+	}
+	return schemaNames, nil
 }
 
 // NodeStore implements the interface doltdb.RootValue.
@@ -352,25 +379,32 @@ func (root *RootValue) PutTable(ctx context.Context, tName doltdb.TableName, tab
 }
 
 // RemoveTables implements the interface doltdb.RootValue.
-func (root *RootValue) RemoveTables(ctx context.Context, skipFKHandling bool, allowDroppingFKReferenced bool, tables ...string) (doltdb.RootValue, error) {
-	// TODO: schema name
-	tableMap, err := root.getTableMap(ctx, doltdb.DefaultSchemaName)
+func (root *RootValue) RemoveTables(
+	ctx context.Context,
+	skipFKHandling bool,
+	allowDroppingFKReferenced bool,
+	tables ...doltdb.TableName,
+) (doltdb.RootValue, error) {
+	if len(tables) == 0 {
+		return root, nil
+	}
+
+	// TODO: support multiple schemas in the same set
+	tableMap, err := root.getTableMap(ctx, tables[0].Schema)
 	if err != nil {
 		return nil, err
 	}
 
 	edits := make([]tableEdit, len(tables))
 	for i, name := range tables {
-		a, err := tableMap.Get(ctx, name)
+		a, err := tableMap.Get(ctx, name.Name)
 		if err != nil {
 			return nil, err
 		}
 		if a.IsEmpty() {
 			return nil, fmt.Errorf("%w: '%s'", doltdb.ErrTableNotFound, name)
 		}
-		edits[i].name = doltdb.TableName{
-			Name: name,
-		}
+		edits[i].name = name
 	}
 
 	newStorage, err := root.st.EditTablesMap(ctx, root.vrw, root.ns, edits)
@@ -379,15 +413,13 @@ func (root *RootValue) RemoveTables(ctx context.Context, skipFKHandling bool, al
 	}
 	newRoot := root.withStorage(newStorage)
 
-	// TODO: determine the correct schema
-	sequenceSchema := GetCurrentSchema(ctx.(*sql.Context))
 	collection, err := newRoot.GetSequences(ctx)
 	if err != nil {
 		return nil, err
 	}
 	for _, tableName := range tables {
-		for _, seq := range collection.GetSequencesWithTable(doltdb.TableName{Name: tableName, Schema: sequenceSchema}) {
-			if err = collection.DropSequence(doltdb.TableName{Name: seq.Name, Schema: sequenceSchema}); err != nil {
+		for _, seq := range collection.GetSequencesWithTable(tableName) {
+			if err = collection.DropSequence(doltdb.TableName{Name: seq.Name, Schema: tableName.Schema}); err != nil {
 				return nil, err
 			}
 		}
@@ -417,21 +449,19 @@ func (root *RootValue) RemoveTables(ctx context.Context, skipFKHandling bool, al
 }
 
 // RenameTable implements the interface doltdb.RootValue.
-func (root *RootValue) RenameTable(ctx context.Context, oldName, newName string) (doltdb.RootValue, error) {
-	newStorage, err := root.st.EditTablesMap(ctx, root.vrw, root.ns, []tableEdit{{old_name: oldName, name: doltdb.TableName{Name: newName}}})
+func (root *RootValue) RenameTable(ctx context.Context, oldName, newName doltdb.TableName) (doltdb.RootValue, error) {
+	newStorage, err := root.st.EditTablesMap(ctx, root.vrw, root.ns, []tableEdit{{old_name: oldName, name: newName}})
 	if err != nil {
 		return nil, err
 	}
 	newRoot := root.withStorage(newStorage)
 
-	// TODO: determine the correct schema
-	sequenceSchema := GetCurrentSchema(ctx.(*sql.Context))
 	collection, err := newRoot.GetSequences(ctx)
 	if err != nil {
 		return nil, err
 	}
-	for _, seq := range collection.GetSequencesWithTable(doltdb.TableName{Name: oldName, Schema: sequenceSchema}) {
-		seq.OwnerTable = newName
+	for _, seq := range collection.GetSequencesWithTable(oldName) {
+		seq.OwnerTable = newName.Name
 	}
 	newRoot, err = newRoot.PutSequences(ctx, collection)
 	if err != nil {
@@ -447,24 +477,25 @@ func (root *RootValue) ResolveRootValue(ctx context.Context) (doltdb.RootValue, 
 }
 
 // ResolveTableName implements the interface doltdb.RootValue.
-func (root *RootValue) ResolveTableName(ctx context.Context, tName string) (string, bool, error) {
-	tableMap, err := root.getTableMap(ctx, doltdb.DefaultSchemaName)
+func (root *RootValue) ResolveTableName(ctx context.Context, tName doltdb.TableName) (string, bool, error) {
+	tableMap, err := root.getTableMap(ctx, tName.Schema)
 	if err != nil {
 		return "", false, err
 	}
 
-	a, err := tableMap.Get(ctx, tName)
+	a, err := tableMap.Get(ctx, tName.Name)
 	if err != nil {
 		return "", false, err
 	}
 	if !a.IsEmpty() {
-		return tName, true, nil
+		return tName.Name, true, nil
 	}
 
 	found := false
+	resolvedName := tName.Name
 	err = tableMap.Iter(ctx, func(name string, addr hash.Hash) (bool, error) {
-		if !found && strings.EqualFold(tName, name) {
-			tName = name
+		if !found && strings.EqualFold(tName.Name, name) {
+			resolvedName = name
 			found = true
 		}
 		return false, nil
@@ -472,7 +503,7 @@ func (root *RootValue) ResolveTableName(ctx context.Context, tName string) (stri
 	if err != nil {
 		return "", false, nil
 	}
-	return tName, found, nil
+	return resolvedName, found, nil
 }
 
 // SetCollation implements the interface doltdb.RootValue.

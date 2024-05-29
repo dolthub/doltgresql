@@ -42,6 +42,10 @@ var nextval_text = framework.Function1{
 			return nil, err
 		}
 		// TODO: this should take a regclass as the parameter to determine the schema
-		return collection.NextVal(core.GetCurrentSchema(ctx), val1.(string))
+		schema, err := core.GetCurrentSchema(ctx)
+		if err != nil {
+			return nil, err
+		}
+		return collection.NextVal(schema, val1.(string))
 	},
 }

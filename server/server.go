@@ -21,13 +21,13 @@ import (
 	"path/filepath"
 
 	"github.com/dolthub/dolt/go/cmd/dolt/cli"
-	"github.com/dolthub/dolt/go/cmd/dolt/commands"
 	"github.com/dolthub/dolt/go/cmd/dolt/commands/sqlserver"
 	"github.com/dolthub/dolt/go/libraries/doltcore/doltdb"
 	"github.com/dolthub/dolt/go/libraries/doltcore/env"
 	doltservercfg "github.com/dolthub/dolt/go/libraries/doltcore/servercfg"
 	"github.com/dolthub/dolt/go/libraries/doltcore/sqle/dfunctions"
 	"github.com/dolthub/dolt/go/libraries/doltcore/sqle/dsess"
+	"github.com/dolthub/dolt/go/libraries/doltcore/sqle/resolve"
 	"github.com/dolthub/dolt/go/libraries/utils/argparser"
 	"github.com/dolthub/dolt/go/libraries/utils/config"
 	"github.com/dolthub/dolt/go/libraries/utils/filesys"
@@ -35,6 +35,7 @@ import (
 	"github.com/dolthub/dolt/go/store/util/tempfiles"
 	"github.com/dolthub/go-mysql-server/server"
 	"github.com/dolthub/go-mysql-server/sql"
+	"github.com/jackc/pgx/v5"
 
 	"github.com/dolthub/doltgresql/server/initialization"
 	"github.com/dolthub/doltgresql/server/logrepl"
@@ -58,6 +59,7 @@ func init() {
 	server.DefaultProtocolListenerFunc = NewListener
 	sqlserver.ExternalDisableUsers = true
 	dfunctions.VersionString = Version
+	resolve.UseSearchPath = true
 }
 
 // RunOnDisk starts the server based on the given args, while also using the local disk as the backing store.
@@ -129,25 +131,9 @@ func runServer(ctx context.Context, cfg *servercfg.DoltgresConfig, dEnv *env.Dol
 
 	// Automatically initialize a doltgres database if necessary
 	// TODO: probably should only do this if there are no databases in the data dir already
+	createDoltgresDatabase := false
 	if exists, isDirectory := dataDirFs.Exists(DoltgresDir); !exists {
-		err := dataDirFs.MkDirs(DoltgresDir)
-		if err != nil {
-			return nil, err
-		}
-		subdirectoryFS, err := dataDirFs.WithWorkingDir(DoltgresDir)
-		if err != nil {
-			return nil, err
-		}
-
-		// We'll use a temporary environment to instantiate the subdirectory
-		tempDEnv := env.Load(ctx, env.GetCurrentUserHomeDir, subdirectoryFS, dEnv.UrlStr(), Version)
-		// username and user email is needed to create a new database.
-		name := tempDEnv.Config.GetStringOrDefault(config.UserNameKey, DefUserName)
-		email := tempDEnv.Config.GetStringOrDefault(config.UserEmailKey, DefUserEmail)
-		res := commands.InitCmd{}.Exec(ctx, "init", []string{"--name", name, "--email", email}, tempDEnv, configCliContext{tempDEnv})
-		if res != 0 {
-			return nil, fmt.Errorf("failed to initialize doltgres database")
-		}
+		createDoltgresDatabase = true
 	} else if !isDirectory {
 		workingDir, _ := dataDirFs.Abs(".")
 		// The else branch means that there's a Doltgres item, so we need to error if it's a file since we
@@ -181,6 +167,13 @@ func runServer(ctx context.Context, cfg *servercfg.DoltgresConfig, dEnv *env.Dol
 		return nil, err
 	}
 
+	if createDoltgresDatabase {
+		err = createDatabase(ssCfg, "doltgres")
+		if err != nil {
+			return nil, err
+		}
+	}
+
 	// TODO: shutdown replication cleanly when we stop the server
 	_, err = startReplication(cfg, ssCfg)
 	if err != nil {
@@ -188,6 +181,28 @@ func runServer(ctx context.Context, cfg *servercfg.DoltgresConfig, dEnv *env.Dol
 	}
 
 	return controller, nil
+}
+
+// createDatabase creates the database named on the local server using the configuration values to connect, returning
+// any error
+func createDatabase(cfg doltservercfg.ServerConfig, dbName string) error {
+	dns := fmt.Sprintf(
+		"postgres://%s:%s@localhost:%d",
+		cfg.User(),
+		cfg.Password(),
+		cfg.Port(),
+	)
+
+	// connect to the DB and run "create database doltgres"
+	ctx := context.Background()
+	conn, err := pgx.Connect(ctx, dns)
+	if err != nil {
+		return err
+	}
+
+	defer conn.Close(ctx)
+	_, err = conn.Exec(ctx, fmt.Sprintf("create database %s", dbName))
+	return err
 }
 
 // startReplication begins the background thread that replicates from Postgres, if one is configured.

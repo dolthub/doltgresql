@@ -708,35 +708,35 @@ var typesTests = []ScriptTest{
 			},
 			{
 				Query:       "SELECT v1::smallint FROM t_name WHERE id=1;",
-				ExpectedErr: true,
+				ExpectedErr: "invalid input syntax for type",
 			},
 			{
 				Query:       "SELECT v1::integer FROM t_name WHERE id=1;",
-				ExpectedErr: true,
+				ExpectedErr: "invalid input syntax for type",
 			},
 			{
 				Query:       "SELECT v1::bigint FROM t_name WHERE id=1;",
-				ExpectedErr: true,
+				ExpectedErr: "invalid input syntax for type",
 			},
 			{
 				Query:       "SELECT v1::float4 FROM t_name WHERE id=1;",
-				ExpectedErr: true,
+				ExpectedErr: "invalid input syntax for type",
 			},
 			{
 				Query:       "SELECT v1::float8 FROM t_name WHERE id=1;",
-				ExpectedErr: true,
+				ExpectedErr: "invalid input syntax for type",
 			},
 			{
 				Query:       "SELECT v1::numeric FROM t_name WHERE id=1;",
-				ExpectedErr: true,
+				ExpectedErr: "invalid input syntax for type",
 			},
 			{
 				Query:       "SELECT v1::boolean FROM t_name WHERE id=1;",
-				ExpectedErr: true,
+				ExpectedErr: "invalid input syntax for type",
 			},
 			{
 				Query:       "SELECT v1::oid FROM t_name WHERE id=1;",
-				ExpectedErr: true,
+				ExpectedErr: "invalid input syntax for type",
 			},
 			// Cast to Name from types
 			{
@@ -900,7 +900,7 @@ var typesTests = []ScriptTest{
 			{
 				Query:       "INSERT INTO t_oid VALUES (5, 4294967296);",
 				Skip:        true, // TODO: Should return an OID out of range error
-				ExpectedErr: true,
+				ExpectedErr: "does not exist",
 			},
 			{
 				Query:    "INSERT INTO t_oid VALUES (6, 0);",
@@ -957,11 +957,11 @@ var typesTests = []ScriptTest{
 			},
 			{
 				Query:       "SELECT coid::smallint FROM t_oid WHERE id=1;",
-				ExpectedErr: true,
+				ExpectedErr: "does not exist",
 			},
 			{
 				Query:       "SELECT coid::smallint FROM t_oid WHERE id=2;",
-				ExpectedErr: true,
+				ExpectedErr: "does not exist",
 			},
 			{
 				Query: "SELECT coid::integer FROM t_oid WHERE id=1;",
@@ -995,19 +995,19 @@ var typesTests = []ScriptTest{
 			},
 			{
 				Query:       "SELECT coid::float4 FROM t_oid WHERE id=1;",
-				ExpectedErr: true,
+				ExpectedErr: "does not exist",
 			},
 			{
 				Query:       "SELECT coid::float8 FROM t_oid WHERE id=1;",
-				ExpectedErr: true,
+				ExpectedErr: "does not exist",
 			},
 			{
 				Query:       "SELECT coid::numeric FROM t_oid WHERE id=1;",
-				ExpectedErr: true,
+				ExpectedErr: "does not exist",
 			},
 			{
 				Query:       "SELECT coid::xid FROM t_oid WHERE id=1;",
-				ExpectedErr: true,
+				ExpectedErr: "does not exist",
 			},
 			// Cast to OID from types
 			{
@@ -1042,47 +1042,47 @@ var typesTests = []ScriptTest{
 			},
 			{
 				Query:       "SELECT (-1::int8)::oid;",
-				ExpectedErr: true,
+				ExpectedErr: "out of range",
 			},
 			{
 				Query:       "SELECT (922337203685477580::int8)::oid;",
-				ExpectedErr: true,
+				ExpectedErr: "out of range",
 			},
 			{
 				Query:       "SELECT (1.1::float4)::oid;",
-				ExpectedErr: true,
+				ExpectedErr: "does not exist",
 			},
 			{
 				Query:       "SELECT (1.1::float8)::oid;",
-				ExpectedErr: true,
+				ExpectedErr: "does not exist",
 			},
 			{
 				Query:       "SELECT (1.1::decimal)::oid;",
-				ExpectedErr: true,
+				ExpectedErr: "does not exist",
 			},
 			{
 				Query:       "SELECT ('922337203685477580'::text)::oid;",
-				ExpectedErr: true,
+				ExpectedErr: "out of range",
 			},
 			{
 				Query:       "SELECT ('abc'::char(3))::oid;",
-				ExpectedErr: true,
+				ExpectedErr: "invalid input syntax",
 			},
 			{
 				Query:       "SELECT ('-2147483649'::char(11))::oid;",
-				ExpectedErr: true,
+				ExpectedErr: "out of range",
 			},
 			{
 				Query:       "SELECT ('-2147483649'::varchar)::oid;",
-				ExpectedErr: true,
+				ExpectedErr: "out of range",
 			},
 			{
 				Query:       "SELECT ('-2147483649'::text)::oid;",
-				ExpectedErr: true,
+				ExpectedErr: "out of range",
 			},
 			{
 				Query:       "SELECT ('-2147483649'::name)::oid;",
-				ExpectedErr: true,
+				ExpectedErr: "out of range",
 			},
 		},
 	},
@@ -1431,11 +1431,11 @@ var typesTests = []ScriptTest{
 			{
 				Query:       "INSERT INTO t_xid VALUES (1, 1234, '100');",
 				Skip:        true, // TODO: Should return 'column "v1" is of type xid but expression is of type integer' error
-				ExpectedErr: true,
+				ExpectedErr: "does not exist",
 			},
 			{
 				Query:       "INSERT INTO t_xid VALUES (1, 1234::xid, '100');",
-				ExpectedErr: true,
+				ExpectedErr: "does not exist",
 			},
 			{
 				Query:    "INSERT INTO t_xid VALUES (1, NULL, '100');",
@@ -1468,7 +1468,7 @@ var typesTests = []ScriptTest{
 			{
 				Query:       "SELECT * FROM t_xid ORDER BY v1 DESC;",
 				Skip:        true, // TODO: should error with "could not identify an ordering operator for type xid"
-				ExpectedErr: true,
+				ExpectedErr: "does not exist",
 			},
 			{
 				Query:    "INSERT INTO t_xid VALUES (4, '4294967295', 'a');",
@@ -1526,35 +1526,35 @@ var typesTests = []ScriptTest{
 			},
 			{
 				Query:       "SELECT v1::smallint FROM t_xid WHERE id=1;",
-				ExpectedErr: true,
+				ExpectedErr: "does not exist",
 			},
 			{
 				Query:       "SELECT v1::integer FROM t_xid WHERE id=1;",
-				ExpectedErr: true,
+				ExpectedErr: "does not exist",
 			},
 			{
 				Query:       "SELECT v1::bigint FROM t_xid WHERE id=1;",
-				ExpectedErr: true,
+				ExpectedErr: "does not exist",
 			},
 			{
 				Query:       "SELECT v1::oid FROM t_xid WHERE id=1;",
-				ExpectedErr: true,
+				ExpectedErr: "does not exist",
 			},
 			{
 				Query:       "SELECT v1::float4 FROM t_xid WHERE id=1;",
-				ExpectedErr: true,
+				ExpectedErr: "does not exist",
 			},
 			{
 				Query:       "SELECT v1::float8 FROM t_xid WHERE id=1;",
-				ExpectedErr: true,
+				ExpectedErr: "does not exist",
 			},
 			{
 				Query:       "SELECT v1::numeric FROM t_xid WHERE id=1;",
-				ExpectedErr: true,
+				ExpectedErr: "does not exist",
 			},
 			{
 				Query:       "SELECT v1::boolean FROM t_xid WHERE id=1;",
-				ExpectedErr: true,
+				ExpectedErr: "does not exist",
 			},
 			// Cast to XID from types
 			{
@@ -1577,31 +1577,31 @@ var typesTests = []ScriptTest{
 			},
 			{
 				Query:       "SELECT (10::int2)::xid;",
-				ExpectedErr: true,
+				ExpectedErr: "does not exist",
 			},
 			{
 				Query:       "SELECT (10::boolean)::xid;",
-				ExpectedErr: true,
+				ExpectedErr: "does not exist",
 			},
 			{
 				Query:       "SELECT (10::int4)::xid;",
-				ExpectedErr: true,
+				ExpectedErr: "does not exist",
 			},
 			{
 				Query:       "SELECT (10::int8)::xid;",
-				ExpectedErr: true,
+				ExpectedErr: "does not exist",
 			},
 			{
 				Query:       "SELECT (1.1::float4)::xid;",
-				ExpectedErr: true,
+				ExpectedErr: "does not exist",
 			},
 			{
 				Query:       "SELECT (1.1::float8)::xid;",
-				ExpectedErr: true,
+				ExpectedErr: "does not exist",
 			},
 			{
 				Query:       "SELECT (1.1::decimal)::xid;",
-				ExpectedErr: true,
+				ExpectedErr: "does not exist",
 			},
 			{
 				Query: "SELECT ('4294967295'::text)::xid, ('4294967297'::text)::xid;",
@@ -1663,7 +1663,7 @@ var typesTests = []ScriptTest{
 			},
 			{
 				Query:       `INSERT INTO t_xid VALUES (2, ARRAY[123, 456, 789, 101], '1234567890', true);`,
-				ExpectedErr: true,
+				ExpectedErr: "does not exist",
 			},
 		},
 	},
@@ -1800,7 +1800,7 @@ func TestSameTypes(t *testing.T) {
 				{
 					Query: "SELECT * FROM test ORDER BY 1;",
 					Expected: []sql.Row{
-						{"abc", "def", "ghi"},
+						{"does not exist", "def", "ghi"},
 						{"jkl", "mno", "pqr"},
 					},
 					Skip: true, // type length info is not being passed correctly to the engine, which causes the

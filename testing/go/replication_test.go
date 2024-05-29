@@ -641,10 +641,11 @@ func runReplicationScript(
 			numRetries := 3
 			for retries := 0; retries < numRetries; retries++ {
 				// If we're skipping the results check, then we call Execute, as it uses a simplified message model.
-				if assertion.SkipResultsCheck || assertion.ExpectedErr {
+				if assertion.SkipResultsCheck || assertion.ExpectedErr != "" {
 					_, err := conn.Exec(ctx, assertion.Query, assertion.BindVars...)
-					if assertion.ExpectedErr {
+					if assertion.ExpectedErr != "" {
 						require.Error(t, err)
+						assert.Contains(t, err.Error(), assertion.ExpectedErr)
 					} else {
 						require.NoError(t, err)
 					}

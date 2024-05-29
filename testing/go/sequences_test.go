@@ -47,7 +47,7 @@ func TestSequences(t *testing.T) {
 				},
 				{
 					Query:       "SELECT nextval('test');",
-					ExpectedErr: true,
+					ExpectedErr: "does not exist",
 				},
 			},
 		},
@@ -60,7 +60,7 @@ func TestSequences(t *testing.T) {
 				},
 				{
 					Query:       "CREATE SEQUENCE test1;",
-					ExpectedErr: true,
+					ExpectedErr: "already exists",
 				},
 				{
 					Query:    "SELECT nextval('test1');",
@@ -117,7 +117,7 @@ func TestSequences(t *testing.T) {
 				},
 				{
 					Query:       "DROP SEQUENCE test1;",
-					ExpectedErr: true,
+					ExpectedErr: "does not exist",
 				},
 				{
 					Query:    "DROP SEQUENCE IF EXISTS test1;",
@@ -125,7 +125,7 @@ func TestSequences(t *testing.T) {
 				},
 				{
 					Query:       "SELECT nextval('test1');",
-					ExpectedErr: true,
+					ExpectedErr: "does not exist",
 				},
 				{
 					Query:    "SELECT nextval('test2');",
@@ -137,7 +137,7 @@ func TestSequences(t *testing.T) {
 				},
 				{
 					Query:       "SELECT nextval('test2');",
-					ExpectedErr: true,
+					ExpectedErr: "does not exist",
 				},
 				{
 					Query:    "DROP SEQUENCE IF EXISTS test2;",
@@ -154,7 +154,7 @@ func TestSequences(t *testing.T) {
 				},
 				{
 					Query:       "CREATE SEQUENCE test2 AS SMALLINT MINVALUE -32769;",
-					ExpectedErr: true,
+					ExpectedErr: "out of range",
 				},
 				{
 					Query:    "CREATE SEQUENCE test3 AS SMALLINT MAXVALUE 32767;",
@@ -162,7 +162,7 @@ func TestSequences(t *testing.T) {
 				},
 				{
 					Query:       "CREATE SEQUENCE test4 AS SMALLINT MINVALUE 32768;",
-					ExpectedErr: true,
+					ExpectedErr: "out of range",
 				},
 				{
 					Query:    "CREATE SEQUENCE test5 AS INTEGER MINVALUE -2147483648;",
@@ -170,7 +170,7 @@ func TestSequences(t *testing.T) {
 				},
 				{
 					Query:       "CREATE SEQUENCE test6 AS INTEGER MINVALUE -2147483649;",
-					ExpectedErr: true,
+					ExpectedErr: "out of range",
 				},
 				{
 					Query:    "CREATE SEQUENCE test7 AS INTEGER MAXVALUE 2147483647;",
@@ -178,7 +178,7 @@ func TestSequences(t *testing.T) {
 				},
 				{
 					Query:       "CREATE SEQUENCE test8 AS INTEGER MINVALUE 2147483648;",
-					ExpectedErr: true,
+					ExpectedErr: "out of range",
 				},
 				{
 					Query:    "CREATE SEQUENCE test9 AS BIGINT MINVALUE -9223372036854775808;",
@@ -186,7 +186,7 @@ func TestSequences(t *testing.T) {
 				},
 				{
 					Query:       "CREATE SEQUENCE test10 AS BIGINT MINVALUE -9223372036854775809;",
-					ExpectedErr: true,
+					ExpectedErr: "out of int64 range",
 				},
 				{
 					Query:    "CREATE SEQUENCE test11 AS BIGINT MAXVALUE 9223372036854775807;",
@@ -194,7 +194,7 @@ func TestSequences(t *testing.T) {
 				},
 				{
 					Query:       "CREATE SEQUENCE test12 AS BIGINT MINVALUE 9223372036854775808;",
-					ExpectedErr: true,
+					ExpectedErr: "out of int64 range",
 				},
 			},
 		},
@@ -211,7 +211,7 @@ func TestSequences(t *testing.T) {
 				},
 				{
 					Query:       "CREATE SEQUENCE test2 START 0;",
-					ExpectedErr: true,
+					ExpectedErr: "cannot be less than",
 				},
 				{
 					Query:    "CREATE SEQUENCE test2 MINVALUE 0 START 0;",
@@ -231,7 +231,7 @@ func TestSequences(t *testing.T) {
 				},
 				{
 					Query:       "CREATE SEQUENCE test4 START -5 INCREMENT 1;",
-					ExpectedErr: true,
+					ExpectedErr: "cannot be less than",
 				},
 				{
 					Query:    "CREATE SEQUENCE test4 START -5 INCREMENT -1;",
@@ -243,7 +243,7 @@ func TestSequences(t *testing.T) {
 				},
 				{
 					Query:       "CREATE SEQUENCE test5 START 25 INCREMENT -1;",
-					ExpectedErr: true,
+					ExpectedErr: "cannot be greater than",
 				},
 				{
 					Query:    "CREATE SEQUENCE test5 START 25 MAXVALUE 25 INCREMENT -1;",
@@ -276,7 +276,7 @@ func TestSequences(t *testing.T) {
 				},
 				{
 					Query:       "SELECT nextval('test1');",
-					ExpectedErr: true,
+					ExpectedErr: "reached maximum value",
 				},
 				{
 					Query:    "CREATE SEQUENCE test2 MINVALUE 0 MAXVALUE 3 START 2 INCREMENT 1 CYCLE;",
@@ -308,7 +308,7 @@ func TestSequences(t *testing.T) {
 				},
 				{
 					Query:       "SELECT nextval('test3');",
-					ExpectedErr: true,
+					ExpectedErr: "reached minimum value",
 				},
 				{
 					Query:    "CREATE SEQUENCE test4 MINVALUE 0 MAXVALUE 3 START 1 INCREMENT -1 CYCLE;",
@@ -465,7 +465,7 @@ func TestSequences(t *testing.T) {
 				},
 				{
 					Query:       "SELECT nextval('test1');",
-					ExpectedErr: true,
+					ExpectedErr: "reached maximum value",
 				},
 				{
 					Query:    "SELECT setval('test1', 10, false);",
@@ -481,7 +481,7 @@ func TestSequences(t *testing.T) {
 				},
 				{
 					Query:       "SELECT nextval('test1');",
-					ExpectedErr: true,
+					ExpectedErr: "reached maximum value",
 				},
 				{
 					Query:    "SELECT setval('test2', 9);",
@@ -497,7 +497,7 @@ func TestSequences(t *testing.T) {
 				},
 				{
 					Query:       "SELECT nextval('test2');",
-					ExpectedErr: true,
+					ExpectedErr: "reached minimum value",
 				},
 				{
 					Query:    "SELECT setval('test2', 1, false);",
@@ -513,7 +513,7 @@ func TestSequences(t *testing.T) {
 				},
 				{
 					Query:       "SELECT nextval('test2');",
-					ExpectedErr: true,
+					ExpectedErr: "reached minimum value",
 				},
 				{
 					Query:    "CREATE SEQUENCE test3 MINVALUE 3 MAXVALUE 7 START 5 INCREMENT 1 CYCLE;",

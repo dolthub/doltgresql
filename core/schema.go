@@ -14,11 +14,18 @@
 
 package core
 
-import "github.com/dolthub/go-mysql-server/sql"
+import (
+	"github.com/dolthub/dolt/go/libraries/doltcore/sqle/resolve"
+	"github.com/dolthub/go-mysql-server/sql"
+)
 
 // GetCurrentSchema returns the current schema used by the context. Defaults to "public" if the context does not specify
 // a schema.
-func GetCurrentSchema(ctx *sql.Context) string {
-	// TODO: grab the current schema from the context
-	return "public"
+func GetCurrentSchema(ctx *sql.Context) (string, error) {
+	_, root, err := getRootFromContext(ctx)
+	if err != nil {
+		return "", nil
+	}
+
+	return resolve.FirstExistingSchemaOnSearchPath(ctx, root)
 }
