@@ -132,8 +132,9 @@ func buildBinaries(ctx context.Context, tempDir, repoDir, doltgresBinDir, commit
 	}
 
 	parserScriptPath := filepath.Join(checkoutDir, "postgres", "parser", "build.sh")
+	doltgresCommandPath := filepath.Join(checkoutDir, "cmd", "doltgres")
 
-	command, err := goBuild(ctx, parserScriptPath, checkoutDir, commitDir)
+	command, err := goBuild(ctx, parserScriptPath, doltgresCommandPath, checkoutDir, commitDir)
 	if err != nil {
 		return err
 	}
@@ -142,7 +143,7 @@ func buildBinaries(ctx context.Context, tempDir, repoDir, doltgresBinDir, commit
 }
 
 // goBuild builds the doltgres parser and doltgres binary and returns the filename for the doltgres binary
-func goBuild(ctx context.Context, parserScriptPath, source, dest string) (string, error) {
+func goBuild(ctx context.Context, parserScriptPath, doltgresCommandPath, source, dest string) (string, error) {
 	buildParser := builder.ExecCommand(ctx, "/bin/bash", "-c", parserScriptPath)
 	err := buildParser.Run()
 	if err != nil {
@@ -154,7 +155,8 @@ func goBuild(ctx context.Context, parserScriptPath, source, dest string) (string
 		doltgresFileName = "doltgres.exe"
 	}
 	toBuild := filepath.Join(dest, doltgresFileName)
-	build := builder.ExecCommand(ctx, "go", "build", "-o", toBuild, ".")
+
+	build := builder.ExecCommand(ctx, "go", "build", "-o", toBuild, doltgresCommandPath)
 	build.Dir = source
 	err = build.Run()
 	if err != nil {
@@ -165,7 +167,7 @@ func goBuild(ctx context.Context, parserScriptPath, source, dest string) (string
 
 // doltgresVersion prints doltgres version of binary
 func doltgresVersion(ctx context.Context, dir, command string) error {
-	doltgresVersion := builder.ExecCommand(ctx, command, "version")
+	doltgresVersion := builder.ExecCommand(ctx, command, "-version")
 	doltgresVersion.Stderr = os.Stderr
 	doltgresVersion.Stdout = os.Stdout
 	doltgresVersion.Dir = dir
