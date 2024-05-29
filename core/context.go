@@ -30,18 +30,19 @@ type contextValues struct {
 	collection *sequences.Collection
 }
 
-// cvMap is a temporary map that holds context values, simply to get around the race condition of updating the context.
-// TODO: remove this and add an actual construct to the context
-var cvMap = map[*sql.Context]*contextValues{}
-
 // getContextValues accesses the contextValues in the given context. If the context does not have a contextValues, then
 // it creates one and adds it to the context.
 func getContextValues(ctx *sql.Context) (*contextValues, error) {
-	if cv, ok := cvMap[ctx]; ok {
+	sess := dsess.DSessFromSess(ctx.Session)
+	if sess.DoltgresSessObj == nil {
+		cv := &contextValues{}
+		sess.DoltgresSessObj = cv
 		return cv, nil
 	}
-	cv := &contextValues{}
-	cvMap[ctx] = cv
+	cv, ok := sess.DoltgresSessObj.(*contextValues)
+	if !ok {
+		return nil, fmt.Errorf("context contains an unknown values struct of type: %T", sess.DoltgresSessObj)
+	}
 	return cv, nil
 }
 
@@ -106,7 +107,11 @@ func GetCollectionFromContext(ctx *sql.Context) (*sequences.Collection, error) {
 // CloseContextRootFinalizer finalizes any changes persisted within the context by writing them to the working root.
 // This should ONLY be called by the ContextRootFinalizer node.
 func CloseContextRootFinalizer(ctx *sql.Context) error {
-	cv, ok := cvMap[ctx]
+	sess := dsess.DSessFromSess(ctx.Session)
+	if sess.DoltgresSessObj == nil {
+		return nil
+	}
+	cv, ok := sess.DoltgresSessObj.(*contextValues)
 	if !ok {
 		return nil
 	}

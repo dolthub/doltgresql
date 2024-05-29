@@ -270,3 +270,8 @@ func (writer *Writer) StringSlice(vals []string) {
 func (writer *Writer) Data() []byte {
 	return writer.buf.Bytes()
 }
+
+// Reset resets the Writer to be empty, but it retains the underlying storage for use by future writes.
+func (writer *Writer) Reset() {
+	writer.buf.Reset()
+}

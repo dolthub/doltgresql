@@ -163,20 +163,19 @@ func nodeExpr(node tree.Expr) (vitess.Expr, error) {
 			//TODO: replace with power function
 			return nil, fmt.Errorf("the power operator is not yet supported")
 		case tree.Concat:
-			//TODO: replace with concat function
-			return nil, fmt.Errorf("the concat operator is not yet supported")
+			operator = framework.Operator_BinaryConcatenate
 		case tree.LShift:
 			operator = framework.Operator_BinaryShiftLeft
 		case tree.RShift:
 			operator = framework.Operator_BinaryShiftRight
 		case tree.JSONFetchVal:
-			return nil, fmt.Errorf("JSON operators are not yet supported")
+			operator = framework.Operator_BinaryJSONExtractJson
 		case tree.JSONFetchText:
-			return nil, fmt.Errorf("JSON operators are not yet supported")
+			operator = framework.Operator_BinaryJSONExtractText
 		case tree.JSONFetchValPath:
-			return nil, fmt.Errorf("JSON operators are not yet supported")
+			operator = framework.Operator_BinaryJSONExtractPathJson
 		case tree.JSONFetchTextPath:
-			return nil, fmt.Errorf("JSON operators are not yet supported")
+			operator = framework.Operator_BinaryJSONExtractPathText
 		default:
 			return nil, fmt.Errorf("the binary operator used is not yet supported")
 		}
@@ -337,15 +336,30 @@ func nodeExpr(node tree.Expr) (vitess.Expr, error) {
 		case tree.IsNotDistinctFrom:
 			return nil, fmt.Errorf("IS NOT DISTINCT FROM is not yet supported")
 		case tree.Contains:
-			return nil, fmt.Errorf("@> is not yet supported")
+			return vitess.InjectedExpr{
+				Expression: pgexprs.NewBinaryOperator(framework.Operator_BinaryJSONContainsRight),
+				Children:   vitess.Exprs{left, right},
+			}, nil
 		case tree.ContainedBy:
-			return nil, fmt.Errorf("<@ is not yet supported")
+			return vitess.InjectedExpr{
+				Expression: pgexprs.NewBinaryOperator(framework.Operator_BinaryJSONContainsLeft),
+				Children:   vitess.Exprs{left, right},
+			}, nil
 		case tree.JSONExists:
-			return nil, fmt.Errorf("? is not yet supported")
+			return vitess.InjectedExpr{
+				Expression: pgexprs.NewBinaryOperator(framework.Operator_BinaryJSONTopLevel),
+				Children:   vitess.Exprs{left, right},
+			}, nil
 		case tree.JSONSomeExists:
-			return nil, fmt.Errorf("?| is not yet supported")
+			return vitess.InjectedExpr{
+				Expression: pgexprs.NewBinaryOperator(framework.Operator_BinaryJSONTopLevelAny),
+				Children:   vitess.Exprs{left, right},
+			}, nil
 		case tree.JSONAllExists:
-			return nil, fmt.Errorf("?& is not yet supported")
+			return vitess.InjectedExpr{
+				Expression: pgexprs.NewBinaryOperator(framework.Operator_BinaryJSONTopLevelAll),
+				Children:   vitess.Exprs{left, right},
+			}, nil
 		case tree.Overlaps:
 			return nil, fmt.Errorf("&& is not yet supported")
 		case tree.Any:

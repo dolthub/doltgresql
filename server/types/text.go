@@ -20,6 +20,8 @@ import (
 	"math"
 	"reflect"
 
+	"github.com/dolthub/doltgresql/utils"
+
 	"github.com/dolthub/go-mysql-server/sql"
 	"github.com/dolthub/go-mysql-server/sql/types"
 	"github.com/dolthub/vitess/go/sqltypes"
@@ -157,7 +159,7 @@ func (b TextType) SerializedCompare(v1 []byte, v2 []byte) (int, error) {
 	} else if len(v1) == 0 && len(v2) > 0 {
 		return -1, nil
 	}
-	return bytes.Compare(v1, v2), nil
+	return serializedStringCompare(v1, v2), nil
 }
 
 // SQL implements the DoltgresType interface.
@@ -221,7 +223,10 @@ func (b TextType) SerializeValue(val any) ([]byte, error) {
 	if err != nil {
 		return nil, err
 	}
-	return []byte(converted.(string)), nil
+	str := converted.(string)
+	writer := utils.NewWriter(uint64(len(str) + 4))
+	writer.String(str)
+	return writer.Data(), nil
 }
 
 // DeserializeValue implements the DoltgresType interface.
@@ -229,5 +234,18 @@ func (b TextType) DeserializeValue(val []byte) (any, error) {
 	if len(val) == 0 {
 		return nil, nil
 	}
-	return string(val), nil
+	reader := utils.NewReader(val)
+	return reader.String(), nil
+}
+
+// serializedStringCompare handles the efficient comparison of two strings that have been serialized using utils.Writer.
+// The writer writes the string by prepending the string length, which prevents direct comparison of the byte slices. We
+// thus read the string length manually, and extract the byte slices without converting to a string. This function
+// assumes that neither byte slice is nil or empty.
+func serializedStringCompare(v1 []byte, v2 []byte) int {
+	readerV1 := utils.NewReader(v1)
+	readerV2 := utils.NewReader(v2)
+	v1Bytes := utils.UnsafeAdvanceReader(readerV1, readerV1.VariableUint())
+	v2Bytes := utils.UnsafeAdvanceReader(readerV2, readerV2.VariableUint())
+	return bytes.Compare(v1Bytes, v2Bytes)
 }

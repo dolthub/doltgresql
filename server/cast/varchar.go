@@ -131,6 +131,24 @@ func varcharExplicit() {
 	})
 	framework.MustAddExplicitTypeCast(framework.TypeCast{
 		FromType: pgtypes.VarChar,
+		ToType:   pgtypes.Json,
+		Function: func(ctx *sql.Context, val any, targetType pgtypes.DoltgresType) (any, error) {
+			// TODO: move the logic from Convert to here in the Convert-to-cast PR
+			doc, _, err := pgtypes.Json.Convert(val)
+			return doc, err
+		},
+	})
+	framework.MustAddExplicitTypeCast(framework.TypeCast{
+		FromType: pgtypes.VarChar,
+		ToType:   pgtypes.JsonB,
+		Function: func(ctx *sql.Context, val any, targetType pgtypes.DoltgresType) (any, error) {
+			// TODO: move the logic from Convert to here in the Convert-to-cast PR
+			doc, _, err := pgtypes.JsonB.Convert(val)
+			return doc, err
+		},
+	})
+	framework.MustAddExplicitTypeCast(framework.TypeCast{
+		FromType: pgtypes.VarChar,
 		ToType:   pgtypes.Name,
 		Function: func(ctx *sql.Context, val any, targetType pgtypes.DoltgresType) (any, error) {
 			return handleCharExplicitCast(val.(string), targetType)

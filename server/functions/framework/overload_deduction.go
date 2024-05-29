@@ -40,7 +40,7 @@ func (overload *OverloadDeduction) Resolve(parameters []pgtypes.DoltgresType, so
 	// if it's possible.
 	casts := make([]TypeCastFunction, len(parameters))
 	for i, resultType := range resultOverload.Function.GetParameters() {
-		casts[i] = GetExplicitCast(parameters[i].BaseID(), resultType.BaseID())
+		casts[i] = GetImplicitCast(parameters[i].BaseID(), resultType.BaseID())
 	}
 	return resultOverload, casts, nil
 }
