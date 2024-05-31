@@ -36,10 +36,12 @@ import (
 )
 
 const (
-	dsn            = "postgresql://postgres:password@localhost:5432/sqllogictest?sslmode=disable"
-	doltgresDBDir  = "doltgresDatabases"
-	serverLogFile  = "server.log"
-	harnessLogFile = "harness.log"
+	dsn               = "postgresql://postgres:password@localhost:5432/sqllogictest?sslmode=disable"
+	doltgresNoDbDsn   = "postgresql://doltgres:password@127.0.0.1:5432/?sslmode=disable"
+	doltgresWithDbDsn = "postgresql://doltgres:password@0.0.0.0:5432/sqllogictest?sslmode=disable"
+	doltgresDBDir     = "doltgresDatabases"
+	serverLogFile     = "server.log"
+	harnessLogFile    = "harness.log"
 )
 
 var _ logictest.Harness = &DoltgresHarness{}
@@ -52,6 +54,7 @@ type DoltgresHarness struct {
 	serverDir        string
 	timeout          int64 // in seconds
 	harnessLog       *os.File
+	configFile       string
 	stashedLogOutput io.Writer
 }
 
@@ -81,12 +84,48 @@ func (h *DoltgresHarness) EngineStr() string {
 }
 
 func (h *DoltgresHarness) Init() error {
+	config, err := h.createTempConfigFile()
+	if err != nil {
+		return err
+	}
+
+	h.configFile = config
+
 	h.startNewDoltgresServer(context.Background(), logictest.GetCurrentFileName())
-	db, err := sql.Open("pgx", dsn)
+	db, err := sql.Open("pgx", doltgresNoDbDsn)
 	if err != nil {
 		logErr(err, "opening connection to pgx")
 		return err
 	}
+	err = db.Ping()
+	if err != nil {
+		return err
+	}
+
+	// create database if not exists
+	//_, err = db.ExecContext(context.Background(), "\\c sqllogictest;")
+	_, err = db.ExecContext(context.Background(), "CREATE DATABASE sqllogictest")
+	if err != nil {
+		logErr(err, "creating database")
+		return err
+	}
+
+	err = db.Close()
+	if err != nil {
+		logErr(err, "closing database connection")
+		return err
+	}
+
+	db, err = sql.Open("pgx", doltgresWithDbDsn)
+	if err != nil {
+		logErr(err, "opening connection to pgx")
+		return err
+	}
+	err = db.Ping()
+	if err != nil {
+		return err
+	}
+
 	h.db = db
 
 	if err := h.dropAllTables(); err != nil {
@@ -219,6 +258,29 @@ func (h *DoltgresHarness) dropAllViews() error {
 	return nil
 }
 
+var configTemplate = `log_level: info
+
+behavior:
+  read_only: false
+
+listener:
+  host: %s
+  port: %d
+  read_timeout_millis: 28800000
+  write_timeout_millis: 28800000
+`
+
+func (h *DoltgresHarness) createTempConfigFile() (string, error) {
+	content := fmt.Sprintf(configTemplate, "127.0.0.1", 5432)
+	file, err := os.CreateTemp("", "doltgres_config.yaml")
+	if err != nil {
+		return "", err
+	}
+	defer file.Close()
+	_, err = io.Copy(file, strings.NewReader(content))
+	return file.Name(), err
+}
+
 // startNewDoltgresServer stops the existing server if exists.
 // It starts a new server and update the |server| of the harness.
 func (h *DoltgresHarness) startNewDoltgresServer(ctx context.Context, newTestFile string) {
@@ -227,7 +289,7 @@ func (h *DoltgresHarness) startNewDoltgresServer(ctx context.Context, newTestFil
 	withKeyCtx, cancel := context.WithCancel(ctx)
 	gServer, serverCtx := errgroup.WithContext(withKeyCtx)
 
-	server := exec.CommandContext(serverCtx, h.doltgresExec, "--data-dir=.")
+	server := exec.CommandContext(serverCtx, h.doltgresExec, "--data-dir=.", fmt.Sprintf("--config=%s", h.configFile))
 	server.Dir = h.serverDir
 
 	// open log file for server output
@@ -293,6 +355,7 @@ func prepareSqlLogicTestDBAndGetServerDir(ctx context.Context, doltgresExec stri
 		logErr(err, "running `RemoveAll`")
 	}
 
+	// todo: this no longer creates the db sqllogictest
 	// this creates db named 'sqllogictest'
 	logicTestDbDir := filepath.Join(serverDir, "sqllogictest")
 	err = os.MkdirAll(logicTestDbDir, os.ModePerm)
@@ -300,12 +363,12 @@ func prepareSqlLogicTestDBAndGetServerDir(ctx context.Context, doltgresExec stri
 		logErr(err, "running `MkdirAll`")
 	}
 
-	testInit := exec.CommandContext(ctx, doltgresExec, "init")
-	testInit.Dir = logicTestDbDir
-	err = testInit.Run()
-	if err != nil {
-		logErr(err, "running `doltgres init`")
-	}
+	//testInit := exec.CommandContext(ctx, doltgresExec, "init")
+	//testInit.Dir = logicTestDbDir
+	//err = testInit.Run()
+	//if err != nil {
+	//	logErr(err, "running `doltgres init`")
+	//}
 
 	return serverDir
 }
