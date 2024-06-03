@@ -228,13 +228,9 @@ func (b CharType) String() string {
 // ToArrayType implements the DoltgresType interface.
 func (b CharType) ToArrayType() DoltgresArrayType {
 	if b.Length == stringUnbounded {
-		return createArrayTypeWithFuncs(b, SerializationID_CharArray, oid.T__bpchar, arrayContainerFunctions{
-			SQL: stringArraySQL,
-		})
+		return createArrayType(b, SerializationID_CharArray, oid.T__bpchar)
 	} else {
-		return createArrayTypeWithFuncs(b, SerializationID_CharArray, oid.T__char, arrayContainerFunctions{
-			SQL: stringArraySQL,
-		})
+		return createArrayType(b, SerializationID_CharArray, oid.T__char)
 	}
 }
 

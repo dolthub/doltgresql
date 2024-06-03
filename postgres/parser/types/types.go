@@ -33,7 +33,6 @@ import (
 	"github.com/cockroachdb/errors"
 	"github.com/lib/pq/oid"
 
-	"github.com/dolthub/doltgresql/postgres/parser/errorutil/unimplemented"
 	"github.com/dolthub/doltgresql/postgres/parser/geo/geopb"
 	"github.com/dolthub/doltgresql/postgres/parser/lex"
 	"github.com/dolthub/doltgresql/postgres/parser/oidext"
@@ -2392,28 +2391,6 @@ func IsStringType(t *T) bool {
 	default:
 		return false
 	}
-}
-
-// IsValidArrayElementType returns true if the given type can be used as the
-// element type of an ArrayFamily-typed column. If the valid return is false,
-// the issue number should be included in the error report to inform the user.
-func IsValidArrayElementType(t *T) (valid bool, issueNum int) {
-	switch t.Family() {
-	case JsonFamily:
-		return false, 23468
-	default:
-		return true, 0
-	}
-}
-
-// CheckArrayElementType ensures that the given type can be used as the element
-// type of an ArrayFamily-typed column. If not, it returns an error.
-func CheckArrayElementType(t *T) error {
-	if ok, issueNum := IsValidArrayElementType(t); !ok {
-		return unimplemented.NewWithIssueDetailf(issueNum, t.String(),
-			"arrays of %s not allowed", t)
-	}
-	return nil
 }
 
 // IsDateTimeType returns true if the given type is a date or time-related type.
