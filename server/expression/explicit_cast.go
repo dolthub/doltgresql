@@ -90,7 +90,8 @@ func (c *ExplicitCast) Eval(ctx *sql.Context, row sql.Row) (any, error) {
 		if arrayType, ok := c.castToType.BaseID().IsBaseIDArrayType(); ok {
 			baseID = arrayType.BaseType().BaseID()
 		}
-		if baseID.GetTypeCategory() != pgtypes.TypeCategory_StringTypes {
+		// A nil result will be returned if there's a critical error, which we should never ignore.
+		if baseID.GetTypeCategory() != pgtypes.TypeCategory_StringTypes || castResult == nil {
 			return nil, err
 		}
 	}

@@ -130,23 +130,14 @@ func (ac arrayContainer) Compare(v1 any, v2 any) (int, error) {
 
 // Convert implements the DoltgresType interface.
 func (ac arrayContainer) Convert(val any) (any, sql.ConvertInRange, error) {
-	if val == nil {
+	switch val := val.(type) {
+	case []any:
+		return val, sql.InRange, nil
+	case nil:
 		return nil, sql.InRange, nil
-	}
-	valSlice, ok := val.([]any)
-	if !ok {
+	default:
 		return nil, sql.OutOfRange, fmt.Errorf("%s: unhandled type: %T", ac.String(), val)
 	}
-	// TODO: should we create a new slice or update the current slice? New slice every time seems wasteful
-	newSlice := make([]any, len(valSlice))
-	for i := range valSlice {
-		var err error
-		newSlice[i], _, err = ac.innerType.Convert(valSlice[i])
-		if err != nil {
-			return nil, sql.OutOfRange, err
-		}
-	}
-	return newSlice, sql.InRange, nil
 }
 
 // Equals implements the DoltgresType interface.
@@ -172,26 +163,7 @@ func (ac arrayContainer) FormatValue(val any) (string, error) {
 	if val == nil {
 		return "", nil
 	}
-	converted, _, err := ac.Convert(val)
-	if err != nil {
-		return "", err
-	}
-	sb := strings.Builder{}
-	for i, v := range converted.([]any) {
-		if i > 0 {
-			sb.WriteString(", ")
-		}
-		if v != nil {
-			str, err := ac.innerType.FormatValue(v)
-			if err != nil {
-				return "", err
-			}
-			sb.WriteString(str)
-		} else {
-			sb.WriteString("NULL")
-		}
-	}
-	return sb.String(), nil
+	return ac.IoOutput(val)
 }
 
 // GetSerializationID implements the DoltgresType interface.
@@ -201,7 +173,97 @@ func (ac arrayContainer) GetSerializationID() SerializationID {
 
 // IoInput implements the DoltgresType interface.
 func (ac arrayContainer) IoInput(input string) (any, error) {
-	return nil, fmt.Errorf("I/O input for arrays is not yet supported")
+	if len(input) < 2 || input[0] != '{' || input[len(input)-1] != '}' {
+		// This error is regarded as a critical error, and thus we immediately return the error alongside a nil
+		// value. Returning a nil value is a signal to not ignore the error.
+		return nil, fmt.Errorf(`malformed array literal: "%s"`, input)
+	}
+	// We'll remove the surrounding braces since we've already verified that they're there
+	input = input[1 : len(input)-1]
+	var values []any
+	var err error
+	sb := strings.Builder{}
+	quoteStartCount := 0
+	quoteEndCount := 0
+	escaped := false
+	// Iterate over each rune in the input to collect and process the rune elements
+	for _, r := range input {
+		if escaped {
+			sb.WriteRune(r)
+			escaped = false
+		} else if quoteStartCount > quoteEndCount {
+			switch r {
+			case '\\':
+				escaped = true
+			case '"':
+				quoteEndCount++
+			default:
+				sb.WriteRune(r)
+			}
+		} else {
+			switch r {
+			case ' ', '\t', '\n', '\r':
+				continue
+			case '\\':
+				escaped = true
+			case '"':
+				quoteStartCount++
+			case ',':
+				if quoteStartCount >= 2 {
+					// This is a malformed string, thus we treat it as a critical error.
+					return nil, fmt.Errorf(`malformed array literal: "%s"`, input)
+				}
+				str := sb.String()
+				var innerValue any
+				if quoteStartCount == 0 && strings.EqualFold(str, "null") {
+					// An unquoted case-insensitive NULL is treated as an actual null value
+					innerValue = nil
+				} else {
+					var nErr error
+					innerValue, nErr = ac.innerType.IoInput(str)
+					if nErr != nil && err == nil {
+						// This is a non-critical error, therefore the error may be ignored at a higher layer (such as
+						// an explicit cast) and the inner type will still return a valid result, so we must allow the
+						// values to propagate.
+						err = nErr
+					}
+				}
+				values = append(values, innerValue)
+				sb.Reset()
+				quoteStartCount = 0
+				quoteEndCount = 0
+			default:
+				sb.WriteRune(r)
+			}
+		}
+	}
+	// Use anything remaining in the buffer as the last element
+	if sb.Len() > 0 {
+		if escaped || quoteStartCount > quoteEndCount || quoteStartCount >= 2 {
+			// These errors are regarded as critical errors, and thus we immediately return the error alongside a nil
+			// value. Returning a nil value is a signal to not ignore the error.
+			return nil, fmt.Errorf(`malformed array literal: "%s"`, input)
+		} else {
+			str := sb.String()
+			var innerValue any
+			if quoteStartCount == 0 && strings.EqualFold(str, "NULL") {
+				// An unquoted case-insensitive NULL is treated as an actual null value
+				innerValue = nil
+			} else {
+				var nErr error
+				innerValue, nErr = ac.innerType.IoInput(str)
+				if nErr != nil && err == nil {
+					// This is a non-critical error, therefore the error may be ignored at a higher layer (such as
+					// an explicit cast) and the inner type will still return a valid result, so we must allow the
+					// values to propagate.
+					err = nErr
+				}
+			}
+			values = append(values, innerValue)
+		}
+	}
+
+	return values, err
 }
 
 // IoOutput implements the DoltgresType interface.
@@ -214,14 +276,27 @@ func (ac arrayContainer) IoOutput(output any) (string, error) {
 	sb.WriteRune('{')
 	for i, v := range converted.([]any) {
 		if i > 0 {
-			sb.WriteString(", ")
+			sb.WriteString(",")
 		}
 		if v != nil {
 			str, err := ac.innerType.IoOutput(v)
 			if err != nil {
 				return "", err
 			}
-			sb.WriteString(QuoteString(ac.innerType.BaseID(), str))
+			shouldQuote := false
+			for _, r := range str {
+				switch r {
+				case ' ', ',', '{', '}', '\\', '"':
+					shouldQuote = true
+				}
+			}
+			if shouldQuote || strings.EqualFold(str, "NULL") {
+				sb.WriteRune('"')
+				sb.WriteString(strings.ReplaceAll(str, `"`, `\"`))
+				sb.WriteRune('"')
+			} else {
+				sb.WriteString(str)
+			}
 		} else {
 			sb.WriteString("NULL")
 		}
@@ -422,34 +497,10 @@ func (ac arrayContainer) DeserializeValue(serializedVals []byte) (_ any, err err
 }
 
 // arrayContainerSQL implements the default SQL function for arrayContainer.
-func arrayContainerSQL(ctx *sql.Context, ac arrayContainer, dest []byte, valInterface any) (sqltypes.Value, error) {
-	if valInterface == nil {
-		return sqltypes.NULL, nil
-	}
-	converted, _, err := ac.Convert(valInterface)
+func arrayContainerSQL(ctx *sql.Context, ac arrayContainer, dest []byte, value any) (sqltypes.Value, error) {
+	str, err := ac.FormatValue(value)
 	if err != nil {
 		return sqltypes.Value{}, err
 	}
-	vals := converted.([]any)
-	if len(vals) == 0 {
-		return sqltypes.MakeTrusted(ac.Type(), types.AppendAndSliceBytes(dest, []byte{'{', '}'})), nil
-	}
-	bb := bytes.Buffer{}
-	bb.WriteRune('{')
-	for i := range vals {
-		if i > 0 {
-			bb.WriteRune(',')
-		}
-		if vals[i] == nil {
-			bb.WriteString("NULL")
-			continue
-		}
-		valBytes, err := ac.innerType.SQL(ctx, nil, vals[i])
-		if err != nil {
-			return sqltypes.Value{}, err
-		}
-		bb.Write(valBytes.Raw())
-	}
-	bb.WriteRune('}')
-	return sqltypes.MakeTrusted(sqltypes.Text, types.AppendAndSliceBytes(dest, bb.Bytes())), nil
+	return sqltypes.MakeTrusted(sqltypes.Text, types.AppendAndSliceBytes(dest, []byte(str))), nil
 }

@@ -993,8 +993,16 @@ func TestOperators(t *testing.T) {
 					Query:    `SELECT '{"a":1,"b":2}'::jsonb ->> 'b';`,
 					Expected: []sql.Row{{`2`}},
 				},
-				{ // ARRAY['a','b','1']
+				{
 					Query:    `SELECT '{"a": {"b": ["foo","bar"]}}'::json #> ARRAY['a','b','1']::text[];`,
+					Expected: []sql.Row{{`"bar"`}},
+				},
+				{
+					Query:    `SELECT '{"a": {"b": ["foo","bar"]}}'::json #> ARRAY['a','b','1'];`,
+					Expected: []sql.Row{{`"bar"`}},
+				},
+				{
+					Query:    `SELECT '{"a": {"b": ["foo","bar"]}}'::json #> '{a,b,1}';`,
 					Expected: []sql.Row{{`"bar"`}},
 				},
 				{
@@ -1002,11 +1010,35 @@ func TestOperators(t *testing.T) {
 					Expected: []sql.Row{{`"bar"`}},
 				},
 				{
+					Query:    `SELECT '{"a": {"b": ["foo","bar"]}}'::jsonb #> ARRAY['a','b','1'];`,
+					Expected: []sql.Row{{`"bar"`}},
+				},
+				{
+					Query:    `SELECT '{"a": {"b": ["foo","bar"]}}'::jsonb #> '{a,b,1}';`,
+					Expected: []sql.Row{{`"bar"`}},
+				},
+				{
 					Query:    `SELECT '{"a": {"b": ["foo","bar"]}}'::json #>> ARRAY['a','b','1']::text[];`,
 					Expected: []sql.Row{{`bar`}},
 				},
 				{
+					Query:    `SELECT '{"a": {"b": ["foo","bar"]}}'::json #>> ARRAY['a','b','1'];`,
+					Expected: []sql.Row{{`bar`}},
+				},
+				{
+					Query:    `SELECT '{"a": {"b": ["foo","bar"]}}'::json #>> '{a,b,1}';`,
+					Expected: []sql.Row{{`bar`}},
+				},
+				{
 					Query:    `SELECT '{"a": {"b": ["foo","bar"]}}'::jsonb #>> ARRAY['a','b','1']::text[];`,
+					Expected: []sql.Row{{`bar`}},
+				},
+				{
+					Query:    `SELECT '{"a": {"b": ["foo","bar"]}}'::jsonb #>> ARRAY['a','b','1'];`,
+					Expected: []sql.Row{{`bar`}},
+				},
+				{
+					Query:    `SELECT '{"a": {"b": ["foo","bar"]}}'::jsonb #>> '{a,b,1}';`,
 					Expected: []sql.Row{{`bar`}},
 				},
 				{
@@ -1032,11 +1064,23 @@ func TestOperators(t *testing.T) {
 					Expected: []sql.Row{{"t"}},
 				},
 				{
+					Query:    `SELECT '{"a":1, "b":2, "c":3}'::jsonb ?| ARRAY['b','d'];`,
+					Expected: []sql.Row{{"t"}},
+				},
+				{
 					Query:    `SELECT '["a", "b", "c"]'::jsonb ?& ARRAY['a','b']::text[];`,
 					Expected: []sql.Row{{"t"}},
 				},
 				{
+					Query:    `SELECT '["a", "b", "c"]'::jsonb ?& ARRAY['a','b'];`,
+					Expected: []sql.Row{{"t"}},
+				},
+				{
 					Query:    `SELECT '["a", "b", "c"]'::jsonb ?& ARRAY['d','b']::text[];`,
+					Expected: []sql.Row{{"f"}},
+				},
+				{
+					Query:    `SELECT '["a", "b", "c"]'::jsonb ?& ARRAY['d','b'];`,
 					Expected: []sql.Row{{"f"}},
 				},
 				{

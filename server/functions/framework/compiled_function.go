@@ -184,6 +184,7 @@ func (c *CompiledFunction) WithChildren(children ...sql.Expression) (sql.Express
 		Parameters:   children,
 		Functions:    c.Functions,
 		AllOverloads: c.AllOverloads,
+		IsOperator:   c.IsOperator,
 	}, nil
 }
 
@@ -310,7 +311,7 @@ func (c *CompiledFunction) resolveFunction(parameters []pgtypes.DoltgresType, so
 }
 
 // resolveOperator resolves an operator according to the rules defined by Postgres.
-// https://www.postgresql.org/docs/16/typeconv-oper.html
+// https://www.postgresql.org/docs/15/typeconv-oper.html
 func (c *CompiledFunction) resolveOperator(parameters []pgtypes.DoltgresType, sources []Source) (*OverloadDeduction, []TypeCastFunction, error) {
 	// Binary operators treat string literals as the other type, so we'll account for that here to see if we can find an
 	// "exact" match.
@@ -327,8 +328,8 @@ func (c *CompiledFunction) resolveOperator(parameters []pgtypes.DoltgresType, so
 				casts[1] = stringLiteralCast
 				baseID = parameters[0].BaseID()
 			}
-			if _, ok := c.Functions.Parameter[baseID]; ok {
-				if exactMatch, ok := c.Functions.Parameter[baseID]; ok {
+			if exactMatch, ok := c.Functions.Parameter[baseID]; ok {
+				if exactMatch, ok = exactMatch.Parameter[baseID]; ok {
 					return exactMatch, casts, nil
 				}
 			}

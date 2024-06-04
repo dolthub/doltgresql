@@ -231,9 +231,7 @@ func (b VarCharType) String() string {
 
 // ToArrayType implements the DoltgresType interface.
 func (b VarCharType) ToArrayType() DoltgresArrayType {
-	return createArrayTypeWithFuncs(b, SerializationID_VarCharArray, oid.T__varchar, arrayContainerFunctions{
-		SQL: stringArraySQL,
-	})
+	return createArrayType(b, SerializationID_VarCharArray, oid.T__varchar)
 }
 
 // Type implements the DoltgresType interface.

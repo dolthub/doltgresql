@@ -17,9 +17,7 @@ package types
 import "github.com/lib/pq/oid"
 
 // BpCharArray is the array variant of BpChar.
-var BpCharArray = createArrayTypeWithFuncs(BpChar, SerializationID_CharArray, oid.T__bpchar, arrayContainerFunctions{
-	SQL: stringArraySQL,
-})
+var BpCharArray = createArrayType(BpChar, SerializationID_CharArray, oid.T__bpchar)
 
 // CharArray is the array variant of BpChar. This is an alias of BpCharArray, since the documentation references "char"
 // more so than "bpchar" in PostgreSQL 15. They're the same type with different characteristics depending on the length.

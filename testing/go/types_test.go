@@ -347,7 +347,7 @@ var typesTests = []ScriptTest{
 		Name: "Character varying array type, no length",
 		SetUpScript: []string{
 			"CREATE TABLE t_varchar (id INTEGER primary key, v1 CHARACTER VARYING[]);",
-			"INSERT INTO t_varchar VALUES (1, ARRAY['abcdefghij', NULL]), (2, ARRAY['ab''cdef', 'what', 'is,hi', 'wh\"at', '}', '{', '{}']);",
+			"INSERT INTO t_varchar VALUES (1, '{abcdefghij, NULL}'), (2, ARRAY['ab''cdef', 'what', 'is,hi', 'wh\"at', '}', '{', '{}']);",
 		},
 		Assertions: []ScriptTestAssertion{
 			{
@@ -1923,7 +1923,6 @@ var typesTests = []ScriptTest{
 	},
 	{
 		Name: "Xid array type",
-		Skip: true, // TODO: need to implement array I/O input
 		SetUpScript: []string{
 			"CREATE TABLE t_xid (id INTEGER primary key, v1 XID[], v2 CHARACTER(100), v3 BOOLEAN);",
 			"INSERT INTO t_xid VALUES (2, '{123, 456, 789, 101}', '1234567890', true);",
@@ -1937,7 +1936,7 @@ var typesTests = []ScriptTest{
 			},
 			{
 				Query:       `INSERT INTO t_xid VALUES (2, ARRAY[123, 456, 789, 101], '1234567890', true);`,
-				ExpectedErr: "does not exist",
+				ExpectedErr: "is of type",
 			},
 		},
 	},
