@@ -9,6 +9,24 @@ teardown() {
     teardown_common
 }
 
+@test 'doltgres: no arguments' {
+    PORT=5432
+    doltgres > server.out 2>&1 &
+    SERVER_PID=$!
+    run wait_for_connection $PORT 7500
+
+    cat server.out
+    echo "$output"
+    [ "$status" -eq 0 ]
+    
+    query_server -c "create table t1 (a int primary key, b int)"
+    query_server -c "insert into t1 values (1,2)"
+
+    run query_server -c "select * from t1" -t
+    [ "$status" -eq 0 ]
+    [[ "$output" =~ "1 | 2" ]] || false
+}
+
 @test 'doltgres: config file' {
     PORT=$( definePORT )
     CONFIG=$( defineCONFIG $PORT )
