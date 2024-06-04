@@ -26,7 +26,6 @@ import (
 	"github.com/dolthub/go-mysql-server/sql/types"
 	"github.com/dolthub/vitess/go/sqltypes"
 	"github.com/dolthub/vitess/go/vt/proto/query"
-	"github.com/shopspring/decimal"
 )
 
 // Bool is the standard boolean.
@@ -79,57 +78,13 @@ func (b BoolType) Compare(v1 any, v2 any) (int, error) {
 
 // Convert implements the DoltgresType interface.
 func (b BoolType) Convert(val any) (any, sql.ConvertInRange, error) {
-	if val == nil {
-		return nil, sql.InRange, nil
-	}
-
 	switch val := val.(type) {
 	case bool:
 		return val, sql.InRange, nil
-	case int:
-		return val != 0, sql.InRange, nil
-	case uint:
-		return val != 0, sql.InRange, nil
-	case int8:
-		return val != 0, sql.InRange, nil
-	case uint8:
-		return val != 0, sql.InRange, nil
-	case int16:
-		return val != 0, sql.InRange, nil
-	case uint16:
-		return val != 0, sql.InRange, nil
-	case int32:
-		return val != 0, sql.InRange, nil
-	case uint32:
-		return val != 0, sql.InRange, nil
-	case int64:
-		return val != 0, sql.InRange, nil
-	case uint64:
-		return val != 0, sql.InRange, nil
-	case float32:
-		return val != 0, sql.InRange, nil
-	case float64:
-		return val != 0, sql.InRange, nil
-	case decimal.NullDecimal:
-		if !val.Valid {
-			return nil, sql.InRange, nil
-		}
-		return b.Convert(val.Decimal)
-	case decimal.Decimal:
-		return !val.Equal(decimal.NewFromInt(0)), sql.InRange, nil
-	case string:
-		val = strings.TrimSpace(strings.ToLower(val))
-		if val == "true" || val == "yes" || val == "on" || val == "1" {
-			return true, sql.InRange, nil
-		} else if val == "false" || val == "no" || val == "off" || val == "0" {
-			return false, sql.InRange, nil
-		} else {
-			return nil, sql.OutOfRange, fmt.Errorf("invalid string value for boolean: %q", val)
-		}
-	case []byte:
-		return b.Convert(string(val))
+	case nil:
+		return nil, sql.InRange, nil
 	default:
-		return nil, sql.OutOfRange, sql.ErrInvalidType.New(b)
+		return nil, sql.OutOfRange, fmt.Errorf("%s: unhandled type: %T", b.String(), val)
 	}
 }
 
@@ -155,7 +110,29 @@ func (b BoolType) FormatValue(val any) (string, error) {
 	if val == nil {
 		return "", nil
 	}
-	converted, _, err := b.Convert(val)
+	return b.IoOutput(val)
+}
+
+// GetSerializationID implements the DoltgresType interface.
+func (b BoolType) GetSerializationID() SerializationID {
+	return SerializationID_Bool
+}
+
+// IoInput implements the DoltgresType interface.
+func (b BoolType) IoInput(input string) (any, error) {
+	input = strings.TrimSpace(strings.ToLower(input))
+	if input == "true" || input == "t" || input == "yes" || input == "on" || input == "1" {
+		return true, nil
+	} else if input == "false" || input == "f" || input == "no" || input == "off" || input == "0" {
+		return false, nil
+	} else {
+		return nil, fmt.Errorf("invalid input syntax for type %s: %q", b.String(), input)
+	}
+}
+
+// IoOutput implements the DoltgresType interface.
+func (b BoolType) IoOutput(output any) (string, error) {
+	converted, _, err := b.Convert(output)
 	if err != nil {
 		return "", err
 	}
@@ -164,11 +141,6 @@ func (b BoolType) FormatValue(val any) (string, error) {
 	} else {
 		return "false", nil
 	}
-}
-
-// GetSerializationID implements the DoltgresType interface.
-func (b BoolType) GetSerializationID() SerializationID {
-	return SerializationID_Bool
 }
 
 // IsUnbounded implements the DoltgresType interface.

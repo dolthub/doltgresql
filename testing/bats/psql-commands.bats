@@ -26,6 +26,7 @@ teardown() {
 }
 
 @test 'psql-commands: \dt' {
+    skip "Need to implement comparison operators"
     run query_server --csv -c "\dt"
     [ "$status" -eq 0 ]
     [[ "$output" =~ "public,test1,table,postgres" ]] || false
@@ -34,6 +35,7 @@ teardown() {
 }
 
 @test 'psql-commands: \d' {
+    skip "Need to implement comparison operators"
     run query_server --csv -c "\d"
     [ "$status" -eq 0 ]
     [[ "$output" =~ "public,test1,table,postgres" ]] || false

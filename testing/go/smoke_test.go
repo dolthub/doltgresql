@@ -63,6 +63,96 @@ func TestSmokeTests(t *testing.T) {
 			},
 		},
 		{
+			Name: "Insert statements",
+			SetUpScript: []string{
+				"CREATE TABLE test (pk INT8 PRIMARY KEY, v1 INT4, v2 INT2);",
+			},
+			Assertions: []ScriptTestAssertion{
+				{
+					Query:    "INSERT INTO test VALUES (1, 2, 3);",
+					Expected: []sql.Row{},
+				},
+				{
+					Query:    "INSERT INTO test (v1, pk) VALUES (5, 4);",
+					Expected: []sql.Row{},
+				},
+				{
+					Query:    "INSERT INTO test (pk, v2) SELECT pk + 5, v2 + 10 FROM test WHERE v2 IS NOT NULL;",
+					Expected: []sql.Row{},
+				},
+				{
+					Query: "SELECT * FROM test;",
+					Expected: []sql.Row{
+						{1, 2, 3},
+						{4, 5, nil},
+						{6, nil, 13},
+					},
+				},
+			},
+		},
+		{
+			Name: "Update statements",
+			SetUpScript: []string{
+				"CREATE TABLE test (pk INT8 PRIMARY KEY, v1 INT4, v2 INT2);",
+				"INSERT INTO test VALUES (1, 2, 3), (4, 5, 6), (7, 8, 9);",
+			},
+			Assertions: []ScriptTestAssertion{
+				{
+					Query:    "UPDATE test SET v2 = 10;",
+					Expected: []sql.Row{},
+				},
+				{
+					Query:    "UPDATE test SET v1 = pk + v2;",
+					Expected: []sql.Row{},
+				},
+				{
+					Query: "SELECT * FROM test;",
+					Expected: []sql.Row{
+						{1, 11, 10},
+						{4, 14, 10},
+						{7, 17, 10},
+					},
+				},
+				{
+					Query:    "UPDATE test SET pk = subquery.val FROM (SELECT 22 as val) AS subquery WHERE pk >= 7;",
+					Skip:     true, // FROM not yet supported
+					Expected: []sql.Row{},
+				},
+				{
+					Query: "SELECT * FROM test;",
+					Skip:  true, // Above query doesn't run yet
+					Expected: []sql.Row{
+						{1, 11, 10},
+						{4, 14, 10},
+						{22, 17, 10},
+					},
+				},
+			},
+		},
+		{
+			Name: "Delete statements",
+			SetUpScript: []string{
+				"CREATE TABLE test (pk INT8 PRIMARY KEY, v1 INT4, v2 INT2);",
+				"INSERT INTO test VALUES (1, 1, 1), (2, 3, 4), (5, 7, 9);",
+			},
+			Assertions: []ScriptTestAssertion{
+				{
+					Query:    "DELETE FROM test WHERE v2 = 9;",
+					Expected: []sql.Row{},
+				},
+				{
+					Query:    "DELETE FROM test WHERE v1 = pk;",
+					Expected: []sql.Row{},
+				},
+				{
+					Query: "SELECT * FROM test;",
+					Expected: []sql.Row{
+						{2, 3, 4},
+					},
+				},
+			},
+		},
+		{
 			Name: "Dolt Getting Started example", /* https://docs.dolthub.com/introduction/getting-started/database */
 			SetUpScript: []string{
 				"create table employees (id int, last_name varchar(255), first_name varchar(255), primary key(id));",
@@ -99,13 +189,13 @@ func TestSmokeTests(t *testing.T) {
 				{
 					Query: "SELECT 1 IN (2);",
 					Expected: []sql.Row{
-						{0},
+						{"f"},
 					},
 				},
 				{
 					Query: "SELECT 2 IN (2);",
 					Expected: []sql.Row{
-						{1},
+						{"t"},
 					},
 				},
 			},

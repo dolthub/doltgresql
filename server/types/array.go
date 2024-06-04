@@ -102,11 +102,11 @@ func (ac arrayContainer) Compare(v1 any, v2 any) (int, error) {
 
 	ab, ok := v1.([]any)
 	if !ok {
-		return 0, sql.ErrInvalidType.New(ac)
+		return 0, fmt.Errorf("%s: unhandled type: %T", ac.String(), v1)
 	}
 	bb, ok := v2.([]any)
 	if !ok {
-		return 0, sql.ErrInvalidType.New(ac)
+		return 0, fmt.Errorf("%s: unhandled type: %T", ac.String(), v2)
 	}
 
 	minLength := utils.Min(len(ab), len(bb))
@@ -135,7 +135,7 @@ func (ac arrayContainer) Convert(val any) (any, sql.ConvertInRange, error) {
 	}
 	valSlice, ok := val.([]any)
 	if !ok {
-		return nil, sql.OutOfRange, sql.ErrInvalidType.New(ac)
+		return nil, sql.OutOfRange, fmt.Errorf("%s: unhandled type: %T", ac.String(), val)
 	}
 	// TODO: should we create a new slice or update the current slice? New slice every time seems wasteful
 	newSlice := make([]any, len(valSlice))
@@ -197,6 +197,37 @@ func (ac arrayContainer) FormatValue(val any) (string, error) {
 // GetSerializationID implements the DoltgresType interface.
 func (ac arrayContainer) GetSerializationID() SerializationID {
 	return ac.serializationID
+}
+
+// IoInput implements the DoltgresType interface.
+func (ac arrayContainer) IoInput(input string) (any, error) {
+	return nil, fmt.Errorf("I/O input for arrays is not yet supported")
+}
+
+// IoOutput implements the DoltgresType interface.
+func (ac arrayContainer) IoOutput(output any) (string, error) {
+	converted, _, err := ac.Convert(output)
+	if err != nil {
+		return "", err
+	}
+	sb := strings.Builder{}
+	sb.WriteRune('{')
+	for i, v := range converted.([]any) {
+		if i > 0 {
+			sb.WriteString(", ")
+		}
+		if v != nil {
+			str, err := ac.innerType.IoOutput(v)
+			if err != nil {
+				return "", err
+			}
+			sb.WriteString(QuoteString(ac.innerType.BaseID(), str))
+		} else {
+			sb.WriteString("NULL")
+		}
+	}
+	sb.WriteRune('}')
+	return sb.String(), nil
 }
 
 // IsUnbounded implements the DoltgresType interface.

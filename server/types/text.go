@@ -82,12 +82,10 @@ func (b TextType) Convert(val any) (any, sql.ConvertInRange, error) {
 	switch val := val.(type) {
 	case string:
 		return val, sql.InRange, nil
-	case []byte:
-		return string(val), sql.InRange, nil
 	case nil:
 		return nil, sql.InRange, nil
 	default:
-		return nil, sql.OutOfRange, sql.ErrInvalidType.New(b)
+		return nil, sql.OutOfRange, fmt.Errorf("%s: unhandled type: %T", b.String(), val)
 	}
 }
 
@@ -113,16 +111,26 @@ func (b TextType) FormatValue(val any) (string, error) {
 	if val == nil {
 		return "", nil
 	}
-	converted, _, err := b.Convert(val)
-	if err != nil {
-		return "", err
-	}
-	return converted.(string), nil
+	return b.IoOutput(val)
 }
 
 // GetSerializationID implements the DoltgresType interface.
 func (b TextType) GetSerializationID() SerializationID {
 	return SerializationID_Text
+}
+
+// IoInput implements the DoltgresType interface.
+func (b TextType) IoInput(input string) (any, error) {
+	return input, nil
+}
+
+// IoOutput implements the DoltgresType interface.
+func (b TextType) IoOutput(output any) (string, error) {
+	converted, _, err := b.Convert(output)
+	if err != nil {
+		return "", err
+	}
+	return converted.(string), nil
 }
 
 // IsUnbounded implements the DoltgresType interface.

@@ -20,7 +20,6 @@ import (
 	"fmt"
 	"math"
 	"reflect"
-	"unicode/utf8"
 
 	"github.com/dolthub/go-mysql-server/sql"
 	"github.com/dolthub/go-mysql-server/sql/types"
@@ -99,46 +98,13 @@ func compareVarChar(b DoltgresType, v1 any, v2 any) (int, error) {
 
 // Convert implements the DoltgresType interface.
 func (b VarCharType) Convert(val any) (any, sql.ConvertInRange, error) {
-	return convertVarChar(b, b.Length, val)
-}
-
-func convertVarChar(b DoltgresType, length uint32, val any) (any, sql.ConvertInRange, error) {
-	// TODO: need to check if this always truncates for values that are too large, or if it's just the default behavior
 	switch val := val.(type) {
 	case string:
-		// First we'll do a byte-length check since it's always >= the rune-count check, and it's far faster
-		if length != stringUnbounded && uint32(len(val)) > length {
-			// The byte-length is greater, so now we'll do a rune-count
-			if uint32(utf8.RuneCountInString(val)) > length {
-				// TODO: figure out if there's a faster way to truncate based on rune count
-				startString := val
-				for i := uint32(0); i < length; i++ {
-					_, size := utf8.DecodeRuneInString(val)
-					val = val[size:]
-				}
-				return startString[:len(startString)-len(val)], sql.InRange, nil
-			}
-		}
 		return val, sql.InRange, nil
-	case []byte:
-		// First we'll do a byte-length check since it's always >= the rune-count check, and it's far faster
-		if length != stringUnbounded && uint32(len(val)) > length {
-			// The byte-length is greater, so now we'll do a rune-count
-			if uint32(utf8.RuneCount(val)) > length {
-				// TODO: figure out if there's a faster way to truncate based on rune count
-				startBytes := val
-				for i := uint32(0); i < length; i++ {
-					_, size := utf8.DecodeRune(val)
-					val = val[size:]
-				}
-				return string(startBytes[:len(startBytes)-len(val)]), sql.InRange, nil
-			}
-		}
-		return string(val), sql.InRange, nil
 	case nil:
 		return nil, sql.InRange, nil
 	default:
-		return nil, sql.OutOfRange, sql.ErrInvalidType.New(b)
+		return nil, sql.OutOfRange, fmt.Errorf("%s: unhandled type: %T", b.String(), val)
 	}
 }
 
@@ -164,16 +130,38 @@ func (b VarCharType) FormatValue(val any) (string, error) {
 	if val == nil {
 		return "", nil
 	}
-	converted, _, err := b.Convert(val)
-	if err != nil {
-		return "", err
-	}
-	return converted.(string), nil
+	return b.IoOutput(val)
 }
 
 // GetSerializationID implements the DoltgresType interface.
 func (b VarCharType) GetSerializationID() SerializationID {
 	return SerializationID_VarChar
+}
+
+// IoInput implements the DoltgresType interface.
+func (b VarCharType) IoInput(input string) (any, error) {
+	if b.IsUnbounded() {
+		return input, nil
+	}
+	input, runeLength := truncateString(input, b.Length)
+	if runeLength > b.Length {
+		return input, fmt.Errorf("value too long for type %s", b.String())
+	} else {
+		return input, nil
+	}
+}
+
+// IoOutput implements the DoltgresType interface.
+func (b VarCharType) IoOutput(output any) (string, error) {
+	converted, _, err := b.Convert(output)
+	if err != nil {
+		return "", err
+	}
+	if b.IsUnbounded() {
+		return converted.(string), nil
+	}
+	str, _ := truncateString(converted.(string), b.Length)
+	return str, nil
 }
 
 // IsUnbounded implements the DoltgresType interface.

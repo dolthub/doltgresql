@@ -533,7 +533,7 @@ func extractBindVarTypes(queryPlan sql.Node) ([]int32, error) {
 				}
 			}
 			types = append(types, oid)
-		case *pgexprs.Cast:
+		case *pgexprs.ExplicitCast:
 			if bindVar, ok := e.Child().(*expression.BindVar); ok {
 				var oid int32
 				if doltgresType, ok := bindVar.Type().(pgtypes.DoltgresType); ok {

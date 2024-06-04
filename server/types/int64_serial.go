@@ -74,6 +74,16 @@ func (b Int64TypeSerial) GetSerializationID() SerializationID {
 	return SerializationID_Invalid
 }
 
+// IoInput implements the DoltgresType interface.
+func (b Int64TypeSerial) IoInput(input string) (any, error) {
+	return "", fmt.Errorf("SERIAL types cannot receive I/O input")
+}
+
+// IoOutput implements the DoltgresType interface.
+func (b Int64TypeSerial) IoOutput(output any) (string, error) {
+	return "", fmt.Errorf("SERIAL types cannot produce I/O output")
+}
+
 // IsUnbounded implements the DoltgresType interface.
 func (b Int64TypeSerial) IsUnbounded() bool {
 	return false

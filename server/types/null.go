@@ -54,7 +54,7 @@ func (b NullType) Convert(val any) (any, sql.ConvertInRange, error) {
 	case nil:
 		return nil, sql.InRange, nil
 	default:
-		return nil, sql.OutOfRange, sql.ErrInvalidType.New(b)
+		return nil, sql.OutOfRange, fmt.Errorf("%s: unhandled type: %T", b.String(), val)
 	}
 }
 
@@ -83,6 +83,16 @@ func (b NullType) FormatValue(val any) (string, error) {
 // GetSerializationID implements the DoltgresType interface.
 func (b NullType) GetSerializationID() SerializationID {
 	return SerializationID_Null
+}
+
+// IoInput implements the DoltgresType interface.
+func (b NullType) IoInput(input string) (any, error) {
+	return "", fmt.Errorf("%s cannot receive I/O input", b.String())
+}
+
+// IoOutput implements the DoltgresType interface.
+func (b NullType) IoOutput(output any) (string, error) {
+	return "", fmt.Errorf("%s cannot produce I/O output", b.String())
 }
 
 // IsUnbounded implements the DoltgresType interface.

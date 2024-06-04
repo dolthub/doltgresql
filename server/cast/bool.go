@@ -21,32 +21,14 @@ import (
 	pgtypes "github.com/dolthub/doltgresql/server/types"
 )
 
-// initBool handles all explicit and implicit casts that are built-in. This comprises only the "From" types.
+// initBool handles all casts that are built-in. This comprises only the "From" types.
 func initBool() {
 	boolExplicit()
-	boolImplicit()
+	boolAssignment()
 }
 
 // boolExplicit registers all explicit casts. This comprises only the "From" types.
 func boolExplicit() {
-	framework.MustAddExplicitTypeCast(framework.TypeCast{
-		FromType: pgtypes.Bool,
-		ToType:   pgtypes.Bool,
-		Function: func(ctx *sql.Context, val any, targetType pgtypes.DoltgresType) (any, error) {
-			return val, nil
-		},
-	})
-	framework.MustAddExplicitTypeCast(framework.TypeCast{
-		FromType: pgtypes.Bool,
-		ToType:   pgtypes.BpChar,
-		Function: func(ctx *sql.Context, val any, targetType pgtypes.DoltgresType) (any, error) {
-			str := "false"
-			if val.(bool) {
-				str = "true"
-			}
-			return handleCharExplicitCast(str, targetType)
-		},
-	})
 	framework.MustAddExplicitTypeCast(framework.TypeCast{
 		FromType: pgtypes.Bool,
 		ToType:   pgtypes.Int32,
@@ -58,62 +40,11 @@ func boolExplicit() {
 			}
 		},
 	})
-	framework.MustAddExplicitTypeCast(framework.TypeCast{
-		FromType: pgtypes.Bool,
-		ToType:   pgtypes.Name,
-		Function: func(ctx *sql.Context, val any, targetType pgtypes.DoltgresType) (any, error) {
-			str := "f"
-			if val.(bool) {
-				str = "t"
-			}
-			return handleCharExplicitCast(str, targetType)
-		},
-	})
-	framework.MustAddExplicitTypeCast(framework.TypeCast{
-		FromType: pgtypes.Bool,
-		ToType:   pgtypes.Oid,
-		Function: func(ctx *sql.Context, val any, targetType pgtypes.DoltgresType) (any, error) {
-			if val.(bool) {
-				return uint32(1), nil
-			} else {
-				return uint32(0), nil
-			}
-		},
-	})
-	framework.MustAddExplicitTypeCast(framework.TypeCast{
-		FromType: pgtypes.Bool,
-		ToType:   pgtypes.Text,
-		Function: func(ctx *sql.Context, val any, targetType pgtypes.DoltgresType) (any, error) {
-			if val.(bool) {
-				return "true", nil
-			} else {
-				return "false", nil
-			}
-		},
-	})
-	framework.MustAddExplicitTypeCast(framework.TypeCast{
-		FromType: pgtypes.Bool,
-		ToType:   pgtypes.VarChar,
-		Function: func(ctx *sql.Context, val any, targetType pgtypes.DoltgresType) (any, error) {
-			str := "false"
-			if val.(bool) {
-				str = "true"
-			}
-			return handleCharExplicitCast(str, targetType)
-		},
-	})
 }
 
-// boolImplicit registers all implicit casts. This comprises only the "From" types.
-func boolImplicit() {
-	framework.MustAddImplicitTypeCast(framework.TypeCast{
-		FromType: pgtypes.Bool,
-		ToType:   pgtypes.Bool,
-		Function: func(ctx *sql.Context, val any, targetType pgtypes.DoltgresType) (any, error) {
-			return val, nil
-		},
-	})
-	framework.MustAddImplicitTypeCast(framework.TypeCast{
+// boolAssignment registers all assignment casts. This comprises only the "From" types.
+func boolAssignment() {
+	framework.MustAddAssignmentTypeCast(framework.TypeCast{
 		FromType: pgtypes.Bool,
 		ToType:   pgtypes.BpChar,
 		Function: func(ctx *sql.Context, val any, targetType pgtypes.DoltgresType) (any, error) {
@@ -121,10 +52,10 @@ func boolImplicit() {
 			if val.(bool) {
 				str = "true"
 			}
-			return handleCharImplicitCast(str, targetType)
+			return handleStringCast(str, targetType)
 		},
 	})
-	framework.MustAddImplicitTypeCast(framework.TypeCast{
+	framework.MustAddAssignmentTypeCast(framework.TypeCast{
 		FromType: pgtypes.Bool,
 		ToType:   pgtypes.Name,
 		Function: func(ctx *sql.Context, val any, targetType pgtypes.DoltgresType) (any, error) {
@@ -132,10 +63,10 @@ func boolImplicit() {
 			if val.(bool) {
 				str = "t"
 			}
-			return handleCharImplicitCast(str, targetType)
+			return handleStringCast(str, targetType)
 		},
 	})
-	framework.MustAddImplicitTypeCast(framework.TypeCast{
+	framework.MustAddAssignmentTypeCast(framework.TypeCast{
 		FromType: pgtypes.Bool,
 		ToType:   pgtypes.Text,
 		Function: func(ctx *sql.Context, val any, targetType pgtypes.DoltgresType) (any, error) {
@@ -146,7 +77,7 @@ func boolImplicit() {
 			}
 		},
 	})
-	framework.MustAddImplicitTypeCast(framework.TypeCast{
+	framework.MustAddAssignmentTypeCast(framework.TypeCast{
 		FromType: pgtypes.Bool,
 		ToType:   pgtypes.VarChar,
 		Function: func(ctx *sql.Context, val any, targetType pgtypes.DoltgresType) (any, error) {
@@ -154,7 +85,7 @@ func boolImplicit() {
 			if val.(bool) {
 				str = "true"
 			}
-			return handleCharImplicitCast(str, targetType)
+			return handleStringCast(str, targetType)
 		},
 	})
 }

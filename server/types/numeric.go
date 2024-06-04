@@ -18,8 +18,8 @@ import (
 	"bytes"
 	"encoding/binary"
 	"fmt"
-	"math/big"
 	"reflect"
+	"strings"
 
 	"github.com/lib/pq/oid"
 
@@ -94,47 +94,8 @@ func (b NumericType) Compare(v1 any, v2 any) (int, error) {
 // Convert implements the DoltgresType interface.
 func (b NumericType) Convert(val any) (any, sql.ConvertInRange, error) {
 	switch val := val.(type) {
-	case bool:
-		if val {
-			return decimal.NewFromInt(1), sql.InRange, nil
-		}
-		return decimal.NewFromInt(0), sql.InRange, nil
-	case int:
-		return decimal.NewFromInt(int64(val)), sql.InRange, nil
-	case uint:
-		return decimal.NewFromInt(int64(val)), sql.InRange, nil
-	case int8:
-		return decimal.NewFromInt(int64(val)), sql.InRange, nil
-	case uint8:
-		return decimal.NewFromInt(int64(val)), sql.InRange, nil
-	case int16:
-		return decimal.NewFromInt(int64(val)), sql.InRange, nil
-	case uint16:
-		return decimal.NewFromInt(int64(val)), sql.InRange, nil
-	case int32:
-		return decimal.NewFromInt(int64(val)), sql.InRange, nil
-	case uint32:
-		return decimal.NewFromInt(int64(val)), sql.InRange, nil
-	case int64:
-		return decimal.NewFromInt(val), sql.InRange, nil
-	case uint64:
-		return decimal.NewFromBigInt(new(big.Int).SetUint64(val), 1), sql.InRange, nil
-	case float32:
-		return decimal.NewFromFloat(float64(val)), sql.InRange, nil
-	case float64:
-		return decimal.NewFromFloat(val), sql.InRange, nil
-	case decimal.NullDecimal:
-		if !val.Valid {
-			return nil, sql.InRange, nil
-		}
-		return val.Decimal, sql.InRange, nil
 	case decimal.Decimal:
 		return val, sql.InRange, nil
-	case string:
-		d, err := decimal.NewFromString(val)
-		return d, sql.InRange, err
-	case []byte:
-		return b.Convert(string(val))
 	case nil:
 		return nil, sql.InRange, nil
 	default:
@@ -164,16 +125,30 @@ func (b NumericType) FormatValue(val any) (string, error) {
 	if val == nil {
 		return "", nil
 	}
-	converted, _, err := b.Convert(val)
-	if err != nil {
-		return "", err
-	}
-	return converted.(decimal.Decimal).String(), nil
+	return b.IoOutput(val)
 }
 
 // GetSerializationID implements the DoltgresType interface.
 func (b NumericType) GetSerializationID() SerializationID {
 	return SerializationID_Numeric
+}
+
+// IoInput implements the DoltgresType interface.
+func (b NumericType) IoInput(input string) (any, error) {
+	val, err := decimal.NewFromString(strings.TrimSpace(input))
+	if err != nil {
+		return nil, fmt.Errorf("invalid input syntax for type %s: %q", b.String(), input)
+	}
+	return val, nil
+}
+
+// IoOutput implements the DoltgresType interface.
+func (b NumericType) IoOutput(output any) (string, error) {
+	converted, _, err := b.Convert(output)
+	if err != nil {
+		return "", err
+	}
+	return converted.(decimal.Decimal).String(), nil
 }
 
 // IsUnbounded implements the DoltgresType interface.

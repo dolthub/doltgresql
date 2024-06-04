@@ -88,6 +88,14 @@ func NewStringLiteral(stringValue string) *Literal {
 	}
 }
 
+// NewJSONLiteral returns a new *Literal containing a JSON value. This is different from JSONB.
+func NewJSONLiteral(jsonValue string) *Literal {
+	return &Literal{
+		value: jsonValue,
+		typ:   pgtypes.Json,
+	}
+}
+
 // NewRawLiteralBool returns a new *Literal containing a boolean value.
 func NewRawLiteralBool(val bool) *Literal {
 	return &Literal{
@@ -197,8 +205,8 @@ func (l *Literal) Value() any {
 
 // WithChildren implements the sql.Expression interface.
 func (l *Literal) WithChildren(children ...sql.Expression) (sql.Expression, error) {
-	if len(children) != 1 {
-		return nil, sql.ErrInvalidChildrenNumber.New(l, len(children), 1)
+	if len(children) != 0 {
+		return nil, sql.ErrInvalidChildrenNumber.New(l, len(children), 0)
 	}
 	return l, nil
 }

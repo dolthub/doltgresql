@@ -14,7 +14,10 @@
 
 package types
 
-import "strings"
+import (
+	"strings"
+	"unicode/utf8"
+)
 
 // QuoteString will quote the string according to the type given. This means that some types will quote, and others will
 // not, or they may quote in a special way that is unique to that type.
@@ -25,4 +28,20 @@ func QuoteString(baseID DoltgresTypeBaseID, str string) string {
 	default:
 		return str
 	}
+}
+
+// truncateString returns a string that has been truncated to the given length. Uses the rune count rather than the
+// byte count. Returns the input string if it's smaller than the length. Also returns the rune count of the string.
+func truncateString(val string, runeLimit uint32) (string, uint32) {
+	runeLength := uint32(utf8.RuneCountInString(val))
+	if runeLength > runeLimit {
+		// TODO: figure out if there's a faster way to truncate based on rune count
+		startString := val
+		for i := uint32(0); i < runeLimit; i++ {
+			_, size := utf8.DecodeRuneInString(val)
+			val = val[size:]
+		}
+		return startString[:len(startString)-len(val)], runeLength
+	}
+	return val, runeLength
 }
