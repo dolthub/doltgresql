@@ -118,26 +118,26 @@ var SchemaTests = []ScriptTest{
 				Query: "drop table if exists public.t4",
 			},
 			{
-				Query: "INSERT INTO t1 VALUES (1, 1), (2, 2);",
+				Query:       "INSERT INTO t1 VALUES (1, 1), (2, 2);",
 				ExpectedErr: "not found",
 			},
 			{
-				Query: "INSERT INTO t2 VALUES (3, 3), (4, 4);",
+				Query:       "INSERT INTO t2 VALUES (3, 3), (4, 4);",
 				ExpectedErr: "not found",
 			},
 			{
-				Query: "INSERT INTO t3 VALUES (1, 1), (2, 2);",
+				Query:       "INSERT INTO t3 VALUES (1, 1), (2, 2);",
 				ExpectedErr: "not found",
 			},
 			{
-				Query: "INSERT INTO t4 VALUES (3, 3), (4, 4);",
+				Query:       "INSERT INTO t4 VALUES (3, 3), (4, 4);",
 				ExpectedErr: "not found",
 			},
 			{
 				Query: "drop table if exists t1",
 			},
 			{
-				Query: "drop table t1",
+				Query:       "drop table t1",
 				ExpectedErr: "not found",
 			},
 		},
