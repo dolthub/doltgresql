@@ -63,8 +63,8 @@ var json_array_element = framework.Function2{
 		if val1 == nil || val2 == nil {
 			return nil, nil
 		}
-		// TODO: make a bespoke implementation that preserves whitespace, use cast instead of Convert
-		newVal, _, err := pgtypes.JsonB.Convert(val1)
+		// TODO: make a bespoke implementation that preserves whitespace
+		newVal, err := pgtypes.JsonB.IoInput(val1.(string))
 		if err != nil {
 			return nil, err
 		}
@@ -109,8 +109,8 @@ var json_object_field = framework.Function2{
 		if val1 == nil || val2 == nil {
 			return nil, nil
 		}
-		// TODO: make a bespoke implementation that preserves whitespace, use cast instead of Convert
-		newVal, _, err := pgtypes.JsonB.Convert(val1)
+		// TODO: make a bespoke implementation that preserves whitespace
+		newVal, err := pgtypes.JsonB.IoInput(val1.(string))
 		if err != nil {
 			return nil, err
 		}
@@ -155,8 +155,8 @@ var json_array_element_text = framework.Function2{
 		if val1 == nil || val2 == nil {
 			return nil, nil
 		}
-		// TODO: make a bespoke implementation that preserves whitespace, use cast instead of Convert
-		newVal, _, err := pgtypes.JsonB.Convert(val1)
+		// TODO: make a bespoke implementation that preserves whitespace
+		newVal, err := pgtypes.JsonB.IoInput(val1.(string))
 		if err != nil {
 			return nil, err
 		}
@@ -195,8 +195,8 @@ var json_object_field_text = framework.Function2{
 		if val1 == nil || val2 == nil {
 			return nil, nil
 		}
-		// TODO: make a bespoke implementation that preserves whitespace, use cast instead of Convert
-		newVal, _, err := pgtypes.JsonB.Convert(val1)
+		// TODO: make a bespoke implementation that preserves whitespace
+		newVal, err := pgtypes.JsonB.IoInput(val1.(string))
 		if err != nil {
 			return nil, err
 		}
@@ -235,8 +235,8 @@ var json_extract_path = framework.Function2{
 		if val1 == nil || val2 == nil {
 			return nil, nil
 		}
-		// TODO: make a bespoke implementation that preserves whitespace, use cast instead of Convert
-		newVal, _, err := pgtypes.JsonB.Convert(val1)
+		// TODO: make a bespoke implementation that preserves whitespace
+		newVal, err := pgtypes.JsonB.IoInput(val1.(string))
 		if err != nil {
 			return nil, err
 		}
@@ -295,8 +295,8 @@ var json_extract_path_text = framework.Function2{
 		if val1 == nil || val2 == nil {
 			return nil, nil
 		}
-		// TODO: make a bespoke implementation that preserves whitespace, use cast instead of Convert
-		newVal, _, err := pgtypes.JsonB.Convert(val1)
+		// TODO: make a bespoke implementation that preserves whitespace
+		newVal, err := pgtypes.JsonB.IoInput(val1.(string))
 		if err != nil {
 			return nil, err
 		}

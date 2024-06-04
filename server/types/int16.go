@@ -20,13 +20,13 @@ import (
 	"fmt"
 	"reflect"
 	"strconv"
+	"strings"
 
 	"github.com/dolthub/go-mysql-server/sql"
 	"github.com/dolthub/go-mysql-server/sql/types"
 	"github.com/dolthub/vitess/go/sqltypes"
 	"github.com/dolthub/vitess/go/vt/proto/query"
 	"github.com/lib/pq/oid"
-	"github.com/shopspring/decimal"
 )
 
 // Int16 is an int16.
@@ -80,51 +80,8 @@ func (b Int16Type) Compare(v1 any, v2 any) (int, error) {
 // Convert implements the DoltgresType interface.
 func (b Int16Type) Convert(val any) (any, sql.ConvertInRange, error) {
 	switch val := val.(type) {
-	case bool:
-		if val {
-			return int16(1), sql.InRange, nil
-		}
-		return int16(0), sql.InRange, nil
-	case int:
-		return int16(val), sql.InRange, nil
-	case uint:
-		return int16(val), sql.InRange, nil
-	case int8:
-		return int16(val), sql.InRange, nil
-	case uint8:
-		return int16(val), sql.InRange, nil
 	case int16:
-		return int16(val), sql.InRange, nil
-	case uint16:
-		return int16(val), sql.InRange, nil
-	case int32:
-		return int16(val), sql.InRange, nil
-	case uint32:
-		return int16(val), sql.InRange, nil
-	case int64:
-		return int16(val), sql.InRange, nil
-	case uint64:
-		return int16(val), sql.InRange, nil
-	case float32:
-		return int16(val), sql.InRange, nil
-	case float64:
-		return int16(val), sql.InRange, nil
-	case decimal.NullDecimal:
-		if !val.Valid {
-			return nil, sql.InRange, nil
-		}
-		return b.Convert(val.Decimal)
-	case decimal.Decimal:
-		v, _ := val.Float64()
-		return int16(v), sql.InRange, nil
-	case string:
-		i, err := strconv.ParseInt(val, 10, 64)
-		if err != nil {
-			return nil, sql.OutOfRange, err
-		}
-		return int16(i), sql.InRange, nil
-	case []byte:
-		return b.Convert(string(val))
+		return val, sql.InRange, nil
 	case nil:
 		return nil, sql.InRange, nil
 	default:
@@ -154,16 +111,33 @@ func (b Int16Type) FormatValue(val any) (string, error) {
 	if val == nil {
 		return "", nil
 	}
-	converted, _, err := b.Convert(val)
-	if err != nil {
-		return "", err
-	}
-	return strconv.FormatInt(int64(converted.(int16)), 10), nil
+	return b.IoOutput(val)
 }
 
 // GetSerializationID implements the DoltgresType interface.
 func (b Int16Type) GetSerializationID() SerializationID {
 	return SerializationID_Int16
+}
+
+// IoInput implements the DoltgresType interface.
+func (b Int16Type) IoInput(input string) (any, error) {
+	val, err := strconv.ParseInt(strings.TrimSpace(input), 10, 16)
+	if err != nil {
+		return nil, fmt.Errorf("invalid input syntax for type %s: %q", b.String(), input)
+	}
+	if val > 32767 || val < -32768 {
+		return nil, fmt.Errorf("value %q is out of range for type %s", input, b.String())
+	}
+	return int16(val), nil
+}
+
+// IoOutput implements the DoltgresType interface.
+func (b Int16Type) IoOutput(output any) (string, error) {
+	converted, _, err := b.Convert(output)
+	if err != nil {
+		return "", err
+	}
+	return strconv.FormatInt(int64(converted.(int16)), 10), nil
 }
 
 // IsUnbounded implements the DoltgresType interface.

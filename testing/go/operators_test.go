@@ -75,12 +75,10 @@ func TestOperators(t *testing.T) {
 				},
 				{
 					Query:    `SELECT 1::int2 + 2::float4;`,
-					Skip:     true,
 					Expected: []sql.Row{{float64(3)}},
 				},
 				{
 					Query:    `SELECT 1::int2 + 2::float8;`,
-					Skip:     true,
 					Expected: []sql.Row{{float64(3)}},
 				},
 				{
@@ -97,17 +95,14 @@ func TestOperators(t *testing.T) {
 				},
 				{
 					Query:    `SELECT 1::int2 + 2::numeric;`,
-					Skip:     true,
 					Expected: []sql.Row{{Numeric("3")}},
 				},
 				{
 					Query:    `SELECT 1::int4 + 2::float4;`,
-					Skip:     true,
 					Expected: []sql.Row{{float64(3)}},
 				},
 				{
 					Query:    `SELECT 1::int4 + 2::float8;`,
-					Skip:     true,
 					Expected: []sql.Row{{float64(3)}},
 				},
 				{
@@ -124,17 +119,14 @@ func TestOperators(t *testing.T) {
 				},
 				{
 					Query:    `SELECT 1::int4 + 2::numeric;`,
-					Skip:     true,
 					Expected: []sql.Row{{Numeric("3")}},
 				},
 				{
 					Query:    `SELECT 1::int8 + 2::float4;`,
-					Skip:     true,
 					Expected: []sql.Row{{float64(3)}},
 				},
 				{
 					Query:    `SELECT 1::int8 + 2::float8;`,
-					Skip:     true,
 					Expected: []sql.Row{{float64(3)}},
 				},
 				{
@@ -151,17 +143,14 @@ func TestOperators(t *testing.T) {
 				},
 				{
 					Query:    `SELECT 1::int8 + 2::numeric;`,
-					Skip:     true,
 					Expected: []sql.Row{{Numeric("3")}},
 				},
 				{
 					Query:    `SELECT 1::numeric + 2::float4;`,
-					Skip:     true,
 					Expected: []sql.Row{{float64(3)}},
 				},
 				{
 					Query:    `SELECT 1::numeric + 2::float8;`,
-					Skip:     true,
 					Expected: []sql.Row{{float64(3)}},
 				},
 				{
@@ -235,12 +224,10 @@ func TestOperators(t *testing.T) {
 				},
 				{
 					Query:    `SELECT 1::int2 - 2::float4;`,
-					Skip:     true,
 					Expected: []sql.Row{{float64(-1)}},
 				},
 				{
 					Query:    `SELECT 1::int2 - 2::float8;`,
-					Skip:     true,
 					Expected: []sql.Row{{float64(-1)}},
 				},
 				{
@@ -257,17 +244,14 @@ func TestOperators(t *testing.T) {
 				},
 				{
 					Query:    `SELECT 1::int2 - 2::numeric;`,
-					Skip:     true,
 					Expected: []sql.Row{{Numeric("-1")}},
 				},
 				{
 					Query:    `SELECT 1::int4 - 2::float4;`,
-					Skip:     true,
 					Expected: []sql.Row{{float64(-1)}},
 				},
 				{
 					Query:    `SELECT 1::int4 - 2::float8;`,
-					Skip:     true,
 					Expected: []sql.Row{{float64(-1)}},
 				},
 				{
@@ -284,17 +268,14 @@ func TestOperators(t *testing.T) {
 				},
 				{
 					Query:    `SELECT 1::int4 - 2::numeric;`,
-					Skip:     true,
 					Expected: []sql.Row{{Numeric("-1")}},
 				},
 				{
 					Query:    `SELECT 1::int8 - 2::float4;`,
-					Skip:     true,
 					Expected: []sql.Row{{float64(-1)}},
 				},
 				{
 					Query:    `SELECT 1::int8 - 2::float8;`,
-					Skip:     true,
 					Expected: []sql.Row{{float64(-1)}},
 				},
 				{
@@ -311,17 +292,14 @@ func TestOperators(t *testing.T) {
 				},
 				{
 					Query:    `SELECT 1::int8 - 2::numeric;`,
-					Skip:     true,
 					Expected: []sql.Row{{Numeric("-1")}},
 				},
 				{
 					Query:    `SELECT 1::numeric - 2::float4;`,
-					Skip:     true,
 					Expected: []sql.Row{{float64(-1)}},
 				},
 				{
 					Query:    `SELECT 1::numeric - 2::float8;`,
-					Skip:     true,
 					Expected: []sql.Row{{float64(-1)}},
 				},
 				{
@@ -395,12 +373,10 @@ func TestOperators(t *testing.T) {
 				},
 				{
 					Query:    `SELECT 1::int2 * 2::float4;`,
-					Skip:     true,
 					Expected: []sql.Row{{float64(2)}},
 				},
 				{
 					Query:    `SELECT 1::int2 * 2::float8;`,
-					Skip:     true,
 					Expected: []sql.Row{{float64(2)}},
 				},
 				{
@@ -417,17 +393,14 @@ func TestOperators(t *testing.T) {
 				},
 				{
 					Query:    `SELECT 1::int2 * 2::numeric;`,
-					Skip:     true,
 					Expected: []sql.Row{{Numeric("2")}},
 				},
 				{
 					Query:    `SELECT 1::int4 * 2::float4;`,
-					Skip:     true,
 					Expected: []sql.Row{{float64(2)}},
 				},
 				{
 					Query:    `SELECT 1::int4 * 2::float8;`,
-					Skip:     true,
 					Expected: []sql.Row{{float64(2)}},
 				},
 				{
@@ -444,17 +417,14 @@ func TestOperators(t *testing.T) {
 				},
 				{
 					Query:    `SELECT 1::int4 * 2::numeric;`,
-					Skip:     true,
 					Expected: []sql.Row{{Numeric("2")}},
 				},
 				{
 					Query:    `SELECT 1::int8 * 2::float4;`,
-					Skip:     true,
 					Expected: []sql.Row{{float64(2)}},
 				},
 				{
 					Query:    `SELECT 1::int8 * 2::float8;`,
-					Skip:     true,
 					Expected: []sql.Row{{float64(2)}},
 				},
 				{
@@ -471,17 +441,14 @@ func TestOperators(t *testing.T) {
 				},
 				{
 					Query:    `SELECT 1::int8 * 2::numeric;`,
-					Skip:     true,
 					Expected: []sql.Row{{Numeric("2")}},
 				},
 				{
 					Query:    `SELECT 1::numeric * 2::float4;`,
-					Skip:     true,
 					Expected: []sql.Row{{float64(2)}},
 				},
 				{
 					Query:    `SELECT 1::numeric * 2::float8;`,
-					Skip:     true,
 					Expected: []sql.Row{{float64(2)}},
 				},
 				{
@@ -555,12 +522,10 @@ func TestOperators(t *testing.T) {
 				},
 				{
 					Query:    `SELECT 8::int2 / 2::float4;`,
-					Skip:     true,
 					Expected: []sql.Row{{float64(4)}},
 				},
 				{
 					Query:    `SELECT 8::int2 / 2::float8;`,
-					Skip:     true,
 					Expected: []sql.Row{{float64(4)}},
 				},
 				{
@@ -577,17 +542,14 @@ func TestOperators(t *testing.T) {
 				},
 				{
 					Query:    `SELECT 8::int2 / 2::numeric;`,
-					Skip:     true,
 					Expected: []sql.Row{{Numeric("4")}},
 				},
 				{
 					Query:    `SELECT 8::int4 / 2::float4;`,
-					Skip:     true,
 					Expected: []sql.Row{{float64(4)}},
 				},
 				{
 					Query:    `SELECT 8::int4 / 2::float8;`,
-					Skip:     true,
 					Expected: []sql.Row{{float64(4)}},
 				},
 				{
@@ -604,17 +566,14 @@ func TestOperators(t *testing.T) {
 				},
 				{
 					Query:    `SELECT 8::int4 / 2::numeric;`,
-					Skip:     true,
 					Expected: []sql.Row{{Numeric("4")}},
 				},
 				{
 					Query:    `SELECT 8::int8 / 2::float4;`,
-					Skip:     true,
 					Expected: []sql.Row{{float64(4)}},
 				},
 				{
 					Query:    `SELECT 8::int8 / 2::float8;`,
-					Skip:     true,
 					Expected: []sql.Row{{float64(4)}},
 				},
 				{
@@ -631,17 +590,14 @@ func TestOperators(t *testing.T) {
 				},
 				{
 					Query:    `SELECT 8::int8 / 2::numeric;`,
-					Skip:     true,
 					Expected: []sql.Row{{Numeric("4")}},
 				},
 				{
 					Query:    `SELECT 8::numeric / 2::float4;`,
-					Skip:     true,
 					Expected: []sql.Row{{float64(4)}},
 				},
 				{
 					Query:    `SELECT 8::numeric / 2::float8;`,
-					Skip:     true,
 					Expected: []sql.Row{{float64(4)}},
 				},
 				{
@@ -671,17 +627,14 @@ func TestOperators(t *testing.T) {
 				},
 				{
 					Query:    `SELECT 11::int2 % 3::int4;`,
-					Skip:     true,
 					Expected: []sql.Row{{int32(2)}},
 				},
 				{
 					Query:    `SELECT 11::int2 % 3::int8;`,
-					Skip:     true,
 					Expected: []sql.Row{{int64(2)}},
 				},
 				{
 					Query:    `SELECT 11::int2 % 3::numeric;`,
-					Skip:     true,
 					Expected: []sql.Row{{Numeric("2")}},
 				},
 				{
@@ -694,12 +647,10 @@ func TestOperators(t *testing.T) {
 				},
 				{
 					Query:    `SELECT 11::int4 % 3::int8;`,
-					Skip:     true,
 					Expected: []sql.Row{{int64(2)}},
 				},
 				{
 					Query:    `SELECT 11::int4 % 3::numeric;`,
-					Skip:     true,
 					Expected: []sql.Row{{Numeric("2")}},
 				},
 				{
@@ -716,7 +667,6 @@ func TestOperators(t *testing.T) {
 				},
 				{
 					Query:    `SELECT 11::int8 % 3::numeric;`,
-					Skip:     true,
 					Expected: []sql.Row{{Numeric("2")}},
 				},
 				{
@@ -828,12 +778,10 @@ func TestOperators(t *testing.T) {
 				},
 				{
 					Query:    `SELECT 13::int2 & 7::int4;`,
-					Skip:     true,
 					Expected: []sql.Row{{int32(5)}},
 				},
 				{
 					Query:    `SELECT 13::int2 & 7::int8;`,
-					Skip:     true,
 					Expected: []sql.Row{{int64(5)}},
 				},
 				{
@@ -846,7 +794,6 @@ func TestOperators(t *testing.T) {
 				},
 				{
 					Query:    `SELECT 13::int4 & 7::int8;`,
-					Skip:     true,
 					Expected: []sql.Row{{int64(5)}},
 				},
 				{
@@ -872,12 +819,10 @@ func TestOperators(t *testing.T) {
 				},
 				{
 					Query:    `SELECT 13::int2 | 7::int4;`,
-					Skip:     true,
 					Expected: []sql.Row{{int32(15)}},
 				},
 				{
 					Query:    `SELECT 13::int2 | 7::int8;`,
-					Skip:     true,
 					Expected: []sql.Row{{int64(15)}},
 				},
 				{
@@ -890,7 +835,6 @@ func TestOperators(t *testing.T) {
 				},
 				{
 					Query:    `SELECT 13::int4 | 7::int8;`,
-					Skip:     true,
 					Expected: []sql.Row{{int64(15)}},
 				},
 				{
@@ -916,12 +860,10 @@ func TestOperators(t *testing.T) {
 				},
 				{
 					Query:    `SELECT 13::int2 # 7::int4;`,
-					Skip:     true,
 					Expected: []sql.Row{{int32(10)}},
 				},
 				{
 					Query:    `SELECT 13::int2 # 7::int8;`,
-					Skip:     true,
 					Expected: []sql.Row{{int64(10)}},
 				},
 				{
@@ -934,7 +876,6 @@ func TestOperators(t *testing.T) {
 				},
 				{
 					Query:    `SELECT 13::int4 # 7::int8;`,
-					Skip:     true,
 					Expected: []sql.Row{{int64(10)}},
 				},
 				{

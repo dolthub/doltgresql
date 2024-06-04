@@ -29,6 +29,7 @@ import (
 	"github.com/dolthub/doltgresql/utils"
 )
 
+// NameLength is the constant length of Name in Postgres 15.
 const NameLength = 63
 
 // Name is a 63-byte internal type for object names.
@@ -59,7 +60,14 @@ func (b NameType) Compare(v1 any, v2 any) (int, error) {
 
 // Convert implements the DoltgresType interface.
 func (b NameType) Convert(val any) (any, sql.ConvertInRange, error) {
-	return convertVarChar(b, b.Length, val)
+	switch val := val.(type) {
+	case string:
+		return val, sql.InRange, nil
+	case nil:
+		return nil, sql.InRange, nil
+	default:
+		return nil, sql.OutOfRange, fmt.Errorf("%s: unhandled type: %T", b.String(), val)
+	}
 }
 
 // Equals implements the DoltgresType interface.
@@ -84,16 +92,29 @@ func (b NameType) FormatValue(val any) (string, error) {
 	if val == nil {
 		return "", nil
 	}
-	converted, _, err := b.Convert(val)
-	if err != nil {
-		return "", err
-	}
-	return converted.(string), nil
+	return b.IoOutput(val)
 }
 
 // GetSerializationID implements the DoltgresType interface.
 func (b NameType) GetSerializationID() SerializationID {
 	return SerializationID_Name
+}
+
+// IoInput implements the DoltgresType interface.
+func (b NameType) IoInput(input string) (any, error) {
+	// Name seems to never throw an error, regardless of the context or how long the input is
+	input, _ = truncateString(input, b.Length)
+	return input, nil
+}
+
+// IoOutput implements the DoltgresType interface.
+func (b NameType) IoOutput(output any) (string, error) {
+	converted, _, err := b.Convert(output)
+	if err != nil {
+		return "", err
+	}
+	str, _ := truncateString(converted.(string), b.Length)
+	return str, nil
 }
 
 // IsUnbounded implements the DoltgresType interface.

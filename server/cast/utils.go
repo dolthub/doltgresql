@@ -27,42 +27,17 @@ import (
 // errOutOfRange is returned when a value is out of range for a given type.
 var errOutOfRange = errors.NewKind("%s out of range")
 
-// handleCharExplicitCast handles explicit casts to Char and VarChar types. Returns an error if other types are passed in.
-func handleCharExplicitCast(str string, targetType pgtypes.DoltgresType) (string, error) {
-	switch targetType := targetType.(type) {
-	case pgtypes.CharType:
-		if targetType.IsUnbounded() {
-			return str, nil
-		}
-		str, runeCount := truncateString(str, targetType.Length)
-		if runeCount < targetType.Length {
-			return str + strings.Repeat(" ", int(targetType.Length-runeCount)), nil
-		}
-		return str, nil
-	case pgtypes.NameType:
-		str, _ = truncateString(str, targetType.Length)
-		return str, nil
-	case pgtypes.VarCharType:
-		if targetType.IsUnbounded() {
-			return str, nil
-		}
-		str, _ = truncateString(str, targetType.Length)
-		return str, nil
-	default:
-		return "", fmt.Errorf("explicit cast called to handle non-char type")
-	}
-}
-
-// handleCharImplicitCast handles implicit casts to Char and VarChar types. Returns an error if other types are passed in.
-func handleCharImplicitCast(str string, targetType pgtypes.DoltgresType) (string, error) {
+// handleStringCast handles casts to the string types that may have length restrictions. Returns an error if other types
+// are passed in. Will always return the correct string, even on error, as some contexts may ignore the error.
+func handleStringCast(str string, targetType pgtypes.DoltgresType) (string, error) {
 	switch targetType := targetType.(type) {
 	case pgtypes.CharType:
 		if targetType.IsUnbounded() {
 			return str, nil
 		} else {
-			runeLength := uint32(utf8.RuneCountInString(str))
+			str, runeLength := truncateString(str, targetType.Length)
 			if runeLength > targetType.Length {
-				return "", fmt.Errorf("value too long for type %s", targetType.String())
+				return str, fmt.Errorf("value too long for type %s", targetType.String())
 			} else if runeLength < targetType.Length {
 				return str + strings.Repeat(" ", int(targetType.Length-runeLength)), nil
 			} else {
@@ -70,19 +45,21 @@ func handleCharImplicitCast(str string, targetType pgtypes.DoltgresType) (string
 			}
 		}
 	case pgtypes.NameType:
-		if uint32(utf8.RuneCountInString(str)) > targetType.Length {
-			return "", fmt.Errorf("value too long for type %s", targetType.String())
-		} else {
+		// Name seems to never throw an error, regardless of the context or how long the input is
+		str, _ := truncateString(str, targetType.Length)
+		return str, nil
+	case pgtypes.VarCharType:
+		if targetType.IsUnbounded() {
 			return str, nil
 		}
-	case pgtypes.VarCharType:
-		if !targetType.IsUnbounded() && uint32(utf8.RuneCountInString(str)) > targetType.Length {
-			return "", fmt.Errorf("value too long for type %s", targetType.String())
+		str, runeLength := truncateString(str, targetType.Length)
+		if runeLength > targetType.Length {
+			return str, fmt.Errorf("value too long for type %s", targetType.String())
 		} else {
 			return str, nil
 		}
 	default:
-		return "", fmt.Errorf("implicit cast called to handle non-char type")
+		return "", fmt.Errorf("internal cast called to handle non-string type")
 	}
 }
 
@@ -97,7 +74,7 @@ func truncateString(val string, runeLimit uint32) (string, uint32) {
 			_, size := utf8.DecodeRuneInString(val)
 			val = val[size:]
 		}
-		return startString[:len(startString)-len(val)], runeLimit
+		return startString[:len(startString)-len(val)], runeLength
 	}
 	return val, runeLength
 }

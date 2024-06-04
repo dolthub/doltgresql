@@ -74,30 +74,13 @@ func (b TimestampTZType) Compare(v1 any, v2 any) (int, error) {
 
 // Convert implements the DoltgresType interface.
 func (b TimestampTZType) Convert(val any) (any, sql.ConvertInRange, error) {
-	if val == nil {
-		return nil, sql.InRange, nil
-	}
-
 	switch val := val.(type) {
-	case string:
-		if t, err := time.Parse("2006-01-02 15:04:05-0700", val); err == nil {
-			return t, sql.InRange, nil
-		} else if t, err = time.Parse("2006-01-02 15:04:05-07:00", val); err == nil {
-			return t, sql.InRange, nil
-		} else if t, err = time.Parse("2006-01-02 15:04:05-07", val); err == nil {
-			return t, sql.InRange, nil
-		} else if t, err = time.Parse("January 01 15:04:05 2006 -0700", val); err == nil {
-			return t, sql.InRange, nil
-		} else if t, err = time.Parse("January 01 15:04:05 2006 -07:00", val); err == nil {
-			return t, sql.InRange, nil
-		} else if t, err = time.Parse("January 01 15:04:05 2006 -07", val); err == nil {
-			return t, sql.InRange, nil
-		}
-		return nil, sql.OutOfRange, fmt.Errorf("invalid format for timestamptz")
 	case time.Time:
 		return val, sql.InRange, nil
+	case nil:
+		return nil, sql.InRange, nil
 	default:
-		return nil, sql.OutOfRange, sql.ErrInvalidType.New(b)
+		return nil, sql.OutOfRange, fmt.Errorf("%s: unhandled type: %T", b.String(), val)
 	}
 }
 
@@ -134,6 +117,33 @@ func (b TimestampTZType) FormatValue(val any) (string, error) {
 // GetSerializationID implements the DoltgresType interface.
 func (b TimestampTZType) GetSerializationID() SerializationID {
 	return SerializationID_TimestampTZ
+}
+
+// IoInput implements the DoltgresType interface.
+func (b TimestampTZType) IoInput(input string) (any, error) {
+	if t, err := time.Parse("2006-01-02 15:04:05-0700", input); err == nil {
+		return t, nil
+	} else if t, err = time.Parse("2006-01-02 15:04:05-07:00", input); err == nil {
+		return t, nil
+	} else if t, err = time.Parse("2006-01-02 15:04:05-07", input); err == nil {
+		return t, nil
+	} else if t, err = time.Parse("January 01 15:04:05 2006 -0700", input); err == nil {
+		return t, nil
+	} else if t, err = time.Parse("January 01 15:04:05 2006 -07:00", input); err == nil {
+		return t, nil
+	} else if t, err = time.Parse("January 01 15:04:05 2006 -07", input); err == nil {
+		return t, nil
+	}
+	return nil, fmt.Errorf("invalid format for timestamptz")
+}
+
+// IoOutput implements the DoltgresType interface.
+func (b TimestampTZType) IoOutput(output any) (string, error) {
+	converted, _, err := b.Convert(output)
+	if err != nil {
+		return "", err
+	}
+	return converted.(time.Time).Format("2006-01-02 15:04:05-07"), nil
 }
 
 // IsUnbounded implements the DoltgresType interface.

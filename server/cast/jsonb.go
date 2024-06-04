@@ -24,10 +24,10 @@ import (
 	pgtypes "github.com/dolthub/doltgresql/server/types"
 )
 
-// initJsonB handles all explicit and implicit casts that are built-in. This comprises only the "From" types.
+// initJsonB handles all casts that are built-in. This comprises only the "From" types.
 func initJsonB() {
 	jsonbExplicit()
-	jsonbImplicit()
+	jsonbAssignment()
 }
 
 // jsonbExplicit registers all explicit casts. This comprises only the "From" types.
@@ -52,17 +52,6 @@ func jsonbExplicit() {
 			default:
 				return nil, fmt.Errorf("")
 			}
-		},
-	})
-	framework.MustAddExplicitTypeCast(framework.TypeCast{
-		FromType: pgtypes.JsonB,
-		ToType:   pgtypes.BpChar,
-		Function: func(ctx *sql.Context, val any, targetType pgtypes.DoltgresType) (any, error) {
-			str, err := pgtypes.JsonB.FormatValue(val)
-			if err != nil {
-				return nil, err
-			}
-			return handleCharExplicitCast(str, targetType)
 		},
 	})
 	framework.MustAddExplicitTypeCast(framework.TypeCast{
@@ -191,31 +180,6 @@ func jsonbExplicit() {
 	})
 	framework.MustAddExplicitTypeCast(framework.TypeCast{
 		FromType: pgtypes.JsonB,
-		ToType:   pgtypes.Json,
-		Function: func(ctx *sql.Context, val any, targetType pgtypes.DoltgresType) (any, error) {
-			return pgtypes.JsonB.FormatValue(val)
-		},
-	})
-	framework.MustAddExplicitTypeCast(framework.TypeCast{
-		FromType: pgtypes.JsonB,
-		ToType:   pgtypes.JsonB,
-		Function: func(ctx *sql.Context, val any, targetType pgtypes.DoltgresType) (any, error) {
-			return val, nil
-		},
-	})
-	framework.MustAddExplicitTypeCast(framework.TypeCast{
-		FromType: pgtypes.JsonB,
-		ToType:   pgtypes.Name,
-		Function: func(ctx *sql.Context, val any, targetType pgtypes.DoltgresType) (any, error) {
-			str, err := pgtypes.JsonB.FormatValue(val)
-			if err != nil {
-				return nil, err
-			}
-			return handleCharExplicitCast(str, targetType)
-		},
-	})
-	framework.MustAddExplicitTypeCast(framework.TypeCast{
-		FromType: pgtypes.JsonB,
 		ToType:   pgtypes.Numeric,
 		Function: func(ctx *sql.Context, val any, targetType pgtypes.DoltgresType) (any, error) {
 			switch value := val.(pgtypes.JsonDocument).Value.(type) {
@@ -236,88 +200,15 @@ func jsonbExplicit() {
 			}
 		},
 	})
-	framework.MustAddExplicitTypeCast(framework.TypeCast{
-		FromType: pgtypes.JsonB,
-		ToType:   pgtypes.Text,
-		Function: func(ctx *sql.Context, val any, targetType pgtypes.DoltgresType) (any, error) {
-			str, err := pgtypes.JsonB.FormatValue(val)
-			if err != nil {
-				return nil, err
-			}
-			return str, nil
-		},
-	})
-	framework.MustAddExplicitTypeCast(framework.TypeCast{
-		FromType: pgtypes.JsonB,
-		ToType:   pgtypes.VarChar,
-		Function: func(ctx *sql.Context, val any, targetType pgtypes.DoltgresType) (any, error) {
-			str, err := pgtypes.JsonB.FormatValue(val)
-			if err != nil {
-				return nil, err
-			}
-			return handleCharExplicitCast(str, targetType)
-		},
-	})
 }
 
-// jsonbImplicit registers all implicit casts. This comprises only the "From" types.
-func jsonbImplicit() {
-	framework.MustAddImplicitTypeCast(framework.TypeCast{
-		FromType: pgtypes.JsonB,
-		ToType:   pgtypes.BpChar,
-		Function: func(ctx *sql.Context, val any, targetType pgtypes.DoltgresType) (any, error) {
-			str, err := pgtypes.JsonB.FormatValue(val)
-			if err != nil {
-				return nil, err
-			}
-			return handleCharImplicitCast(str, targetType)
-		},
-	})
-	framework.MustAddImplicitTypeCast(framework.TypeCast{
+// jsonbAssignment registers all assignment casts. This comprises only the "From" types.
+func jsonbAssignment() {
+	framework.MustAddAssignmentTypeCast(framework.TypeCast{
 		FromType: pgtypes.JsonB,
 		ToType:   pgtypes.Json,
 		Function: func(ctx *sql.Context, val any, targetType pgtypes.DoltgresType) (any, error) {
-			return pgtypes.JsonB.FormatValue(val)
-		},
-	})
-	framework.MustAddImplicitTypeCast(framework.TypeCast{
-		FromType: pgtypes.JsonB,
-		ToType:   pgtypes.JsonB,
-		Function: func(ctx *sql.Context, val any, targetType pgtypes.DoltgresType) (any, error) {
-			return val, nil
-		},
-	})
-	framework.MustAddImplicitTypeCast(framework.TypeCast{
-		FromType: pgtypes.JsonB,
-		ToType:   pgtypes.Name,
-		Function: func(ctx *sql.Context, val any, targetType pgtypes.DoltgresType) (any, error) {
-			str, err := pgtypes.JsonB.FormatValue(val)
-			if err != nil {
-				return nil, err
-			}
-			return handleCharImplicitCast(str, targetType)
-		},
-	})
-	framework.MustAddImplicitTypeCast(framework.TypeCast{
-		FromType: pgtypes.JsonB,
-		ToType:   pgtypes.Text,
-		Function: func(ctx *sql.Context, val any, targetType pgtypes.DoltgresType) (any, error) {
-			str, err := pgtypes.JsonB.FormatValue(val)
-			if err != nil {
-				return nil, err
-			}
-			return str, nil
-		},
-	})
-	framework.MustAddImplicitTypeCast(framework.TypeCast{
-		FromType: pgtypes.JsonB,
-		ToType:   pgtypes.VarChar,
-		Function: func(ctx *sql.Context, val any, targetType pgtypes.DoltgresType) (any, error) {
-			str, err := pgtypes.JsonB.FormatValue(val)
-			if err != nil {
-				return nil, err
-			}
-			return handleCharImplicitCast(str, targetType)
+			return pgtypes.JsonB.IoOutput(val)
 		},
 	})
 }

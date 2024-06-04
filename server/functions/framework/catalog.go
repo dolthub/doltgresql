@@ -122,9 +122,11 @@ func Initialize() {
 		// Store the compiled function into the engine's built-in functions
 		createFunc := func(params ...sql.Expression) (sql.Expression, error) {
 			return &CompiledFunction{
-				Name:       funcName,
-				Parameters: params,
-				Functions:  baseOverload,
+				Name:         funcName,
+				Parameters:   params,
+				Functions:    baseOverload,
+				AllOverloads: baseOverload.collectOverloadPermutations(),
+				IsOperator:   false,
 			}, nil
 		}
 		function.BuiltIns = append(function.BuiltIns, sql.FunctionN{
@@ -153,6 +155,13 @@ func Initialize() {
 			binaryAggregateDeducers[signature.Operator] = baseOverload
 		}
 		buildOverload("internal_binary_aggregate_function", baseOverload, functionOverload)
+	}
+	// Add all permutations for the unary and binary operators
+	for operator, baseOverload := range unaryAggregateDeducers {
+		unaryAggregatePermutations[operator] = baseOverload.collectOverloadPermutations()
+	}
+	for operator, baseOverload := range binaryAggregateDeducers {
+		binaryAggregatePermutations[operator] = baseOverload.collectOverloadPermutations()
 	}
 }
 

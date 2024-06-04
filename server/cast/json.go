@@ -21,104 +21,18 @@ import (
 	pgtypes "github.com/dolthub/doltgresql/server/types"
 )
 
-// initJson handles all explicit and implicit casts that are built-in. This comprises only the "From" types.
+// initJson handles all casts that are built-in. This comprises only the "From" types.
 func initJson() {
-	jsonExplicit()
-	jsonImplicit()
+	jsonAssignment()
 }
 
-// jsonExplicit registers all explicit casts. This comprises only the "From" types.
-func jsonExplicit() {
-	framework.MustAddExplicitTypeCast(framework.TypeCast{
-		FromType: pgtypes.Json,
-		ToType:   pgtypes.BpChar,
-		Function: func(ctx *sql.Context, val any, targetType pgtypes.DoltgresType) (any, error) {
-			return handleCharExplicitCast(val.(string), targetType)
-		},
-	})
-	framework.MustAddExplicitTypeCast(framework.TypeCast{
-		FromType: pgtypes.Json,
-		ToType:   pgtypes.Json,
-		Function: func(ctx *sql.Context, val any, targetType pgtypes.DoltgresType) (any, error) {
-			return val, nil
-		},
-	})
-	framework.MustAddExplicitTypeCast(framework.TypeCast{
+// jsonAssignment registers all assignment casts. This comprises only the "From" types.
+func jsonAssignment() {
+	framework.MustAddAssignmentTypeCast(framework.TypeCast{
 		FromType: pgtypes.Json,
 		ToType:   pgtypes.JsonB,
 		Function: func(ctx *sql.Context, val any, targetType pgtypes.DoltgresType) (any, error) {
-			// TODO: move the logic from Convert to here in the Convert-to-cast PR
-			doc, _, err := pgtypes.JsonB.Convert(val)
-			return doc, err
-		},
-	})
-	framework.MustAddExplicitTypeCast(framework.TypeCast{
-		FromType: pgtypes.Json,
-		ToType:   pgtypes.Name,
-		Function: func(ctx *sql.Context, val any, targetType pgtypes.DoltgresType) (any, error) {
-			return handleCharExplicitCast(val.(string), targetType)
-		},
-	})
-	framework.MustAddExplicitTypeCast(framework.TypeCast{
-		FromType: pgtypes.Json,
-		ToType:   pgtypes.Text,
-		Function: func(ctx *sql.Context, val any, targetType pgtypes.DoltgresType) (any, error) {
-			return val.(string), nil
-		},
-	})
-	framework.MustAddExplicitTypeCast(framework.TypeCast{
-		FromType: pgtypes.Json,
-		ToType:   pgtypes.VarChar,
-		Function: func(ctx *sql.Context, val any, targetType pgtypes.DoltgresType) (any, error) {
-			return handleCharExplicitCast(val.(string), targetType)
-		},
-	})
-}
-
-// jsonImplicit registers all implicit casts. This comprises only the "From" types.
-func jsonImplicit() {
-	framework.MustAddImplicitTypeCast(framework.TypeCast{
-		FromType: pgtypes.Json,
-		ToType:   pgtypes.BpChar,
-		Function: func(ctx *sql.Context, val any, targetType pgtypes.DoltgresType) (any, error) {
-			return handleCharImplicitCast(val.(string), targetType)
-		},
-	})
-	framework.MustAddImplicitTypeCast(framework.TypeCast{
-		FromType: pgtypes.Json,
-		ToType:   pgtypes.Json,
-		Function: func(ctx *sql.Context, val any, targetType pgtypes.DoltgresType) (any, error) {
-			return val, nil
-		},
-	})
-	framework.MustAddImplicitTypeCast(framework.TypeCast{
-		FromType: pgtypes.Json,
-		ToType:   pgtypes.JsonB,
-		Function: func(ctx *sql.Context, val any, targetType pgtypes.DoltgresType) (any, error) {
-			// TODO: move the logic from Convert to here in the Convert-to-cast PR
-			doc, _, err := pgtypes.JsonB.Convert(val)
-			return doc, err
-		},
-	})
-	framework.MustAddImplicitTypeCast(framework.TypeCast{
-		FromType: pgtypes.Json,
-		ToType:   pgtypes.Name,
-		Function: func(ctx *sql.Context, val any, targetType pgtypes.DoltgresType) (any, error) {
-			return handleCharImplicitCast(val.(string), targetType)
-		},
-	})
-	framework.MustAddImplicitTypeCast(framework.TypeCast{
-		FromType: pgtypes.Json,
-		ToType:   pgtypes.Text,
-		Function: func(ctx *sql.Context, val any, targetType pgtypes.DoltgresType) (any, error) {
-			return val.(string), nil
-		},
-	})
-	framework.MustAddImplicitTypeCast(framework.TypeCast{
-		FromType: pgtypes.Json,
-		ToType:   pgtypes.VarChar,
-		Function: func(ctx *sql.Context, val any, targetType pgtypes.DoltgresType) (any, error) {
-			return handleCharImplicitCast(val.(string), targetType)
+			return targetType.IoInput(val.(string))
 		},
 	})
 }

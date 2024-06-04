@@ -19,6 +19,7 @@ import (
 	"fmt"
 	"math"
 	"reflect"
+	"unsafe"
 
 	"github.com/dolthub/go-mysql-server/sql"
 	"github.com/dolthub/go-mysql-server/sql/types"
@@ -81,19 +82,11 @@ func (b JsonType) Compare(v1 any, v2 any) (int, error) {
 func (b JsonType) Convert(val any) (any, sql.ConvertInRange, error) {
 	switch val := val.(type) {
 	case string:
-		if json.Valid([]byte(val)) {
-			return val, sql.InRange, nil
-		}
-		return nil, sql.OutOfRange, fmt.Errorf("invalid input syntax for type json")
-	case []byte:
-		if json.Valid(val) {
-			return string(val), sql.InRange, nil
-		}
-		return nil, sql.OutOfRange, fmt.Errorf("invalid input syntax for type json")
+		return val, sql.InRange, nil
 	case nil:
 		return nil, sql.InRange, nil
 	default:
-		return nil, sql.OutOfRange, sql.ErrInvalidType.New(b)
+		return nil, sql.OutOfRange, fmt.Errorf("%s: unhandled type: %T", b.String(), val)
 	}
 }
 
@@ -119,16 +112,29 @@ func (b JsonType) FormatValue(val any) (string, error) {
 	if val == nil {
 		return "", nil
 	}
-	converted, _, err := b.Convert(val)
-	if err != nil {
-		return "", err
-	}
-	return converted.(string), nil
+	return b.IoOutput(val)
 }
 
 // GetSerializationID implements the DoltgresType interface.
 func (b JsonType) GetSerializationID() SerializationID {
 	return SerializationID_Json
+}
+
+// IoInput implements the DoltgresType interface.
+func (b JsonType) IoInput(input string) (any, error) {
+	if json.Valid(unsafe.Slice(unsafe.StringData(input), len(input))) {
+		return input, nil
+	}
+	return nil, fmt.Errorf("invalid input syntax for type json")
+}
+
+// IoOutput implements the DoltgresType interface.
+func (b JsonType) IoOutput(output any) (string, error) {
+	converted, _, err := b.Convert(output)
+	if err != nil {
+		return "", err
+	}
+	return converted.(string), nil
 }
 
 // IsUnbounded implements the DoltgresType interface.
