@@ -25,6 +25,133 @@ teardown() {
     run query_server -c "select * from t1" -t
     [ "$status" -eq 0 ]
     [[ "$output" =~ "1 | 2" ]] || false
+
+    [ -d ~/doltgres ]
+}
+
+@test 'doltgres: data-dir param' {
+    PORT=5432
+    doltgres --data-dir test > server.out 2>&1 &
+    SERVER_PID=$!
+    run wait_for_connection $PORT 7500
+
+    cat server.out
+    echo "$output"
+    [ "$status" -eq 0 ]
+    
+    query_server -c "create table t1 (a int primary key, b int)"
+    query_server -c "insert into t1 values (1,2)"
+
+    run query_server -c "select * from t1" -t
+    [ "$status" -eq 0 ]
+    [[ "$output" =~ "1 | 2" ]] || false
+
+    [ -d test/doltgres ]
+}
+
+@test 'doltgres: data dir in env var' {
+    PORT=5432
+    DOLTGRES_DATA_DIR=test doltgres --data-dir test > server.out 2>&1 &
+    SERVER_PID=$!
+    run wait_for_connection $PORT 7500
+
+    cat server.out
+    echo "$output"
+    [ "$status" -eq 0 ]
+    
+    query_server -c "create table t1 (a int primary key, b int)"
+    query_server -c "insert into t1 values (1,2)"
+
+    run query_server -c "select * from t1" -t
+    [ "$status" -eq 0 ]
+    [[ "$output" =~ "1 | 2" ]] || false
+
+    [ -d test/doltgres ]
+}
+
+@test 'doltgres: default config file' {
+    PORT=5434
+
+    cat > config.yaml <<EOF
+log_level: info
+
+behavior:
+  read_only: false
+  disable_client_multi_statements: false
+  dolt_transaction_commit: false
+
+user:
+  name: ""
+  password: ""
+
+listener:
+  host: localhost
+  port: $PORT
+  read_timeout_millis: 28800000
+  write_timeout_millis: 28800000
+
+data_dir: test
+EOF
+
+    doltgres > server.out 2>&1 &
+    SERVER_PID=$!
+    run wait_for_connection $PORT 7500
+
+    cat server.out
+    echo "$output"
+    [ "$status" -eq 0 ]
+    
+    query_server -c "create table t1 (a int primary key, b int)"
+    query_server -c "insert into t1 values (1,2)"
+
+    run query_server -c "select * from t1" -t
+    [ "$status" -eq 0 ]
+    [[ "$output" =~ "1 | 2" ]] || false
+
+    [ -d test/doltgres ]
+}
+
+@test 'doltgres: config file overrides' {
+    PORT=5434
+
+    cat > config.yaml <<EOF
+log_level: info
+
+behavior:
+  read_only: false
+  disable_client_multi_statements: false
+  dolt_transaction_commit: false
+
+user:
+  name: ""
+  password: ""
+
+listener:
+  host: localhost
+  port: $PORT
+  read_timeout_millis: 28800000
+  write_timeout_millis: 28800000
+
+data_dir: test
+EOF
+
+    doltgres --data-dir local-override > server.out 2>&1 &
+    SERVER_PID=$!
+    run wait_for_connection $PORT 7500
+
+    cat server.out
+    echo "$output"
+    [ "$status" -eq 0 ]
+    
+    query_server -c "create table t1 (a int primary key, b int)"
+    query_server -c "insert into t1 values (1,2)"
+
+    run query_server -c "select * from t1" -t
+    [ "$status" -eq 0 ]
+    [[ "$output" =~ "1 | 2" ]] || false
+
+    [ ! -d test/doltgres ]
+    [ ! -d local-override/doltgres ]
 }
 
 @test 'doltgres: config file' {

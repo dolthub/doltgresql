@@ -50,13 +50,12 @@ const (
 
 const (
 	DefaultHost                    = "localhost"
-	DefaultPort                    = 3306
+	DefaultPort                    = 5432
 	DefaultUser                    = ""
 	DefaultPass                    = ""
 	DefaultTimeout                 = 8 * 60 * 60 * 1000 // 8 hours, same as MySQL
 	DefaultReadOnly                = false
 	DefaultLogLevel                = LogLevel_Info
-	DefaultAutoCommit              = true
 	DefaultDoltTransactionCommit   = false
 	DefaultMaxConnections          = 100
 	DefaultQueryParallelism        = 0

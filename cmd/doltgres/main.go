@@ -173,21 +173,21 @@ func setupDataDir(params map[string]*string, cfg *servercfg.DoltgresConfig, fs f
 // 2. If the default config file config.yaml exists, attempts to load it, but doesn't return an error if it doesn't exist.
 // 3. If neither of the above are successful, returns the default config server config.
 func loadServerConfig(params map[string]*string, fs filesys.Filesys) (*servercfg.DoltgresConfig, error) {
-	configFilePath, cfgPathProvided := params[configParam]
+	configFilePath, configFilePathSpecified := paramVal(params, configParam)
 	
-	if cfgPathProvided {
-		cfgPathExists, isDir := fs.Exists(*configFilePath)
+	if configFilePathSpecified {
+		cfgPathExists, isDir := fs.Exists(configFilePath)
 		if !cfgPathExists {
-			return nil, fmt.Errorf("config file not found at %s", *configFilePath)
+			return nil, fmt.Errorf("config file not found at %s", configFilePath)
 		} else if isDir {
-			return nil, fmt.Errorf("cannot use directory %s for config file", *configFilePath)
+			return nil, fmt.Errorf("cannot use directory %s for config file", configFilePath)
 		}
 
-		return servercfg.ReadConfigFromYamlFile(fs, *configFilePath)
+		return servercfg.ReadConfigFromYamlFile(fs, configFilePath)
 	} else {
 		cfgPathExists, isDir := fs.Exists(defaultCfgFile)
 		if cfgPathExists && !isDir {
-			return servercfg.ReadConfigFromYamlFile(fs, *configFilePath)
+			return servercfg.ReadConfigFromYamlFile(fs, configFilePath)
 		}
 	}
 
