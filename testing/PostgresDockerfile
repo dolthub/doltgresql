@@ -60,6 +60,12 @@ RUN mkdir -p /postgres-client-tests/java
 RUN curl -L -o /postgres-client-tests/java/postgresql-42.7.3.jar \
   https://jdbc.postgresql.org/download/postgresql-42.7.3.jar
 
+# install node deps
+COPY ./testing/postgres-client-tests/node/package.json /postgres-client-tests/node/
+COPY ./testing/postgres-client-tests/node/package-lock.json /postgres-client-tests/node/
+WORKDIR /postgres-client-tests/node
+RUN npm install
+
 # install postgres and psql
 RUN service postgresql start
 

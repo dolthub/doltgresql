@@ -27,3 +27,13 @@ teardown() {
     javac $BATS_TEST_DIRNAME/java/PostgresTest.java
     java -cp $BATS_TEST_DIRNAME/java:$BATS_TEST_DIRNAME/java/postgresql-42.7.3.jar PostgresTest $USER $PORT
 }
+
+@test "node postgres client" {
+    node $BATS_TEST_DIRNAME/node/index.js $USER $PORT
+}
+
+@test "knex node postgres client" {
+    DOLTGRES_VERSION=$( doltgres --version | sed -nre 's/^[^0-9]*(([0-9]+\.)*[0-9]+).*/\1/p' )
+    echo $DOLTGRES_VERSION
+    node $BATS_TEST_DIRNAME/node/knex.js $USER $PORT $DOLTGRES_VERSION
+}
