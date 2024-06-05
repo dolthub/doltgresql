@@ -27,6 +27,7 @@ teardown() {
     [ "$status" -eq 0 ]
     [[ "$output" =~ "1 | 2" ]] || false
 
+    # databases should get created in home/doltgres/databases by default
     [ -d test-home/doltgres/databases/doltgres ]
 }
 
@@ -70,7 +71,7 @@ teardown() {
     [ -d test/doltgres ]
 }
 
-@test 'doltgres: default config file' {
+@test 'doltgres: implicit config.yaml' {
     PORT=5434
 
     cat > config.yaml <<EOF
@@ -110,6 +111,47 @@ EOF
     [[ "$output" =~ "1 | 2" ]] || false
 
     [ -d test/doltgres ]
+}
+
+@test 'doltgres: config.yaml without data dir' {
+    PORT=5434
+
+    cat > config.yaml <<EOF
+log_level: info
+
+behavior:
+  read_only: false
+  disable_client_multi_statements: false
+  dolt_transaction_commit: false
+
+user:
+  name: ""
+  password: ""
+
+listener:
+  host: localhost
+  port: $PORT
+  read_timeout_millis: 28800000
+  write_timeout_millis: 28800000
+
+EOF
+
+    HOME=test-home doltgres > server.out 2>&1 &
+    SERVER_PID=$!
+    run wait_for_connection $PORT 7500
+
+    cat server.out
+    echo "$output"
+    [ "$status" -eq 0 ]
+    
+    query_server -c "create table t1 (a int primary key, b int)"
+    query_server -c "insert into t1 values (1,2)"
+
+    run query_server -c "select * from t1" -t
+    [ "$status" -eq 0 ]
+    [[ "$output" =~ "1 | 2" ]] || false
+
+    [ -d test-home/doltgres/databases/doltgres ]
 }
 
 @test 'doltgres: config file override with explicit config.yaml' {
