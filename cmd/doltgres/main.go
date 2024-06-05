@@ -137,41 +137,16 @@ func main() {
 		overrides[servercfg.OverrideDataDirKey] = dataDir
 	}
 
-	var cfg *servercfg.DoltgresConfig
-	configFilePath, cfgPathProvided := params[configParam]
-	if cfgPathProvided {
-		cfgPathExists, isDir := fs.Exists(*configFilePath)
-		if !cfgPathExists {
-			cli.PrintErrln("Config file not found at", *configFilePath)
-			cli.PrintErrln("Use the --config flag to specify the path to a config file.")
-			os.Exit(1)
-		} else if isDir {
-			cli.PrintErrln("Cannot use directory %s for config file", *configFilePath)
-			os.Exit(1)
-		}
-		
-	} else {
-		cfgPathExists, isDir := fs.Exists(defaultCfgFile)
-		if cfgPathExists && !isDir {
-			cli.PrintErrln("Config file not found at", *configFilePath)
-			cli.PrintErrln("Use the --config flag to specify the path to a config file.")
-			os.Exit(1)
-		} else if err != nil {
-			cli.PrintErrln("Error checking for config file:", err)
-			os.Exit(1)
-		}
-	}
-	
-	cfg, err := servercfg.ReadConfigFromYamlFile(fs, *configFilePath)
+	cfg, err := loadServerConfig(params, fs)
 	if err != nil {
-		cli.PrintErrln(err.Error())
+		cli.PrintErr(err)
 		os.Exit(1)
 	}
 
 	for k, v := range overrides {
 		switch k {
 		case servercfg.OverrideDataDirKey:
-		cfg.DataDirStr = &v
+			cfg.DataDirStr = &v
 		default:
 			// this only happens if code to add an override is added but code to handle the override is not.
 			panic(fmt.Sprintf("unknown override key: %s", k))
@@ -184,6 +159,32 @@ func main() {
 		os.Exit(1)
 	}
 	os.Exit(0)
+}
+
+// loadServerConfig loads server configuration in the following order:
+// 1. If the --config flag is provided, loads the config from the file at the path provided, or returns an errors if it cannot.
+// 2. If the default config files config.yaml exists, attempts to load it.
+// 3. If neither of the above are successful, returns the default config server config.
+func loadServerConfig(params map[string]*string, fs filesys.Filesys) (*servercfg.DoltgresConfig, error) {
+	configFilePath, cfgPathProvided := params[configParam]
+	
+	if cfgPathProvided {
+		cfgPathExists, isDir := fs.Exists(*configFilePath)
+		if !cfgPathExists {
+			return nil, fmt.Errorf("config file not found at %s", *configFilePath)
+		} else if isDir {
+			return nil, fmt.Errorf("cannot use directory %s for config file", *configFilePath)
+		}
+
+		return servercfg.ReadConfigFromYamlFile(fs, *configFilePath)
+	} else {
+		cfgPathExists, isDir := fs.Exists(defaultCfgFile)
+		if cfgPathExists && !isDir {
+			return servercfg.ReadConfigFromYamlFile(fs, *configFilePath)
+		}
+	}
+
+	return servercfg.DefaultServerConfig(), nil
 }
 
 // getDataDirFromParams returns the dataDir to be used by the server, along with whether it was explicitly set.
