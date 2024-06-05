@@ -501,7 +501,7 @@ func ptr[T any](t T) *T {
 	return &t
 }
 
-func ReadConfigFromYamlFile(fs filesys.Filesys, configFilePath string, overrides map[string]string) (*DoltgresConfig, error) {
+func ReadConfigFromYamlFile(fs filesys.Filesys, configFilePath string) (*DoltgresConfig, error) {
 	configFileData, err := fs.ReadFile(configFilePath)
 	if err != nil {
 		absPath, absErr := fs.Abs(configFilePath)
@@ -511,25 +511,15 @@ func ReadConfigFromYamlFile(fs filesys.Filesys, configFilePath string, overrides
 			return nil, fmt.Errorf("error reading config file '%s': %w", absPath, err)
 		}
 	}
-	return ConfigFromYamlData(configFileData, overrides)
+	return ConfigFromYamlData(configFileData)
 }
 
-func ConfigFromYamlData(configFileData []byte, overrides map[string]string) (*DoltgresConfig, error) {
+func ConfigFromYamlData(configFileData []byte) (*DoltgresConfig, error) {
 	var cfg DoltgresConfig
 	err := yaml.UnmarshalStrict(configFileData, &cfg)
 	if err != nil {
 		return nil, fmt.Errorf("error unmarshalling config data: %w", err)
 	}
-
-	for k, v := range overrides {
-		switch k {
-		case OverrideDataDirKey:
-			cfg.DataDirStr = &v
-		default:
-			// this only happens if code to add an override is added but code to handle the override is not.
-			panic(fmt.Sprintf("unknown override key: %s", k))
-		}
-	}
-
+	
 	return &cfg, err
 }

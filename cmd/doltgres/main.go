@@ -53,11 +53,11 @@ const (
 	stdErrParam       = "stderr"
 	stdOutAndErrParam = "out-and-err"
 	configParam       = "config"
-	dataDirParam      = "data-dir"
+	dataDirParam   = "data-dir"
+	defaultCfgFile = "config.yaml"
 
 	versionFlag    = "version"
 	configHelpFlag = "config-help"
-	configFileDefault = "config.yaml"
 )
 
 func parseArgs() (flags map[string]*bool, params map[string]*string) {
@@ -112,17 +112,71 @@ func main() {
 	fs := filesys.LocalFS
 	dEnv := env.Load(ctx, env.GetCurrentUserHomeDir, fs, doltdb.LocalDirDoltDB, server.Version)
 
-	err = configureDataDir(fs, params)
+	dataDir, dataDirExplicit, err := getDataDirFromParams(params)
 	if err != nil {
 		cli.PrintErrln(err.Error())
 		os.Exit(1)
 	}
 
-	overrides := map[string]string{
-		servercfg.OverrideDataDirKey: *params[dataDirParam],
+	dataDirExists, isDir := fs.Exists(dataDir)
+	if !dataDirExists {
+		if err := fs.MkDirs(dataDir); err != nil {
+			cli.PrintErr(fmt.Errorf("failed to make dir '%s': %w", dataDir, err))
+			os.Exit(1)
+		}
+	} else if !isDir {
+		cli.PrintErrf("Attempted to use the directory `%s` as the DoltgreSQL database directory, "+
+				"however the preceding is a file and not a directory. Please choose a directory for the data directory, " +
+			"either with the `%s` environment variable, or the -data-dir commane line parameter.", dataDir, server.DOLTGRES_DATA_DIR)
+		os.Exit(1)
 	}
 
-	cfg, err := getServerConfig(params, fs, overrides)
+	var overrides map[string]string
+	if dataDirExplicit {
+		overrides = make(map[string]string)
+		overrides[servercfg.OverrideDataDirKey] = dataDir
+	}
+
+	var cfg *servercfg.DoltgresConfig
+	configFilePath, cfgPathProvided := params[configParam]
+	if cfgPathProvided {
+		cfgPathExists, isDir := fs.Exists(*configFilePath)
+		if !cfgPathExists {
+			cli.PrintErrln("Config file not found at", *configFilePath)
+			cli.PrintErrln("Use the --config flag to specify the path to a config file.")
+			os.Exit(1)
+		} else if isDir {
+			cli.PrintErrln("Cannot use directory %s for config file", *configFilePath)
+			os.Exit(1)
+		}
+		
+	} else {
+		cfgPathExists, isDir := fs.Exists(defaultCfgFile)
+		if cfgPathExists && !isDir {
+			cli.PrintErrln("Config file not found at", *configFilePath)
+			cli.PrintErrln("Use the --config flag to specify the path to a config file.")
+			os.Exit(1)
+		} else if err != nil {
+			cli.PrintErrln("Error checking for config file:", err)
+			os.Exit(1)
+		}
+	}
+	
+	cfg, err := servercfg.ReadConfigFromYamlFile(fs, *configFilePath)
+	if err != nil {
+		cli.PrintErrln(err.Error())
+		os.Exit(1)
+	}
+
+	for k, v := range overrides {
+		switch k {
+		case servercfg.OverrideDataDirKey:
+		cfg.DataDirStr = &v
+		default:
+			// this only happens if code to add an override is added but code to handle the override is not.
+			panic(fmt.Sprintf("unknown override key: %s", k))
+		}
+	}
 
 	err = runServer(ctx, dEnv, cfg)
 	if err != nil {
@@ -132,73 +186,25 @@ func main() {
 	os.Exit(0)
 }
 
-// TODO: fill in overrides with any args provided
-func getServerConfig(params map[string]*string, fs filesys.Filesys, overrides map[string]string) (*servercfg.DoltgresConfig, error) {
-	cfgFilePath, configFileSet := params[configParam]
-	var cfg *servercfg.DoltgresConfig
-	if !configFileSet {
-		cfg = servercfg.DefaultServerConfig()
-	}
-
-	_, err := os.Stat(*cfgFilePath)
-	if os.IsNotExist(err) {
-		cli.PrintErrln("Config file not found at", *cfgFilePath)
-		cli.PrintErrln("Use the --config flag to specify the path to a config file.")
-		os.Exit(1)
-	} else if err != nil {
-		cli.PrintErrln("Error checking for config file:", err)
-		os.Exit(1)
-	}
-
-	cfg, err = servercfg.ReadConfigFromYamlFile(fs, *cfgFilePath, overrides)
-	if err != nil {
-		cli.PrintErrln(err.Error())
-		os.Exit(1)
-	}
-	return cfg, err
-}
-
-// configureDataDir sets the --data-dir argument as appropriate if it isn't specified
-func configureDataDir(fs filesys.Filesys, params map[string]*string) error {
-	_, ok := paramVal(params, dataDirParam)
-	if ok {
-		return nil
+// getDataDirFromParams returns the dataDir to be used by the server, along with whether it was explicitly set.
+func getDataDirFromParams(params map[string]*string) (string, bool, error) {
+	if dataDir, ok := paramVal(params, dataDirParam); ok {
+		return dataDir, true, nil
 	}
 
 	// We should use the directory as pointed to by "DOLTGRES_DATA_DIR", if has been set, otherwise we'll use the default
-	var dbDir string
+	// TODO: pull out file system code here
 	if envDir := os.Getenv(server.DOLTGRES_DATA_DIR); len(envDir) > 0 {
-		dbDir = envDir
-		exists, isDir := fs.Exists(dbDir)
-		if !exists {
-			if err := fs.MkDirs(dbDir); err != nil {
-				return fmt.Errorf("failed to make dir '%s': %w", dbDir, err)
-			}
-		} else if !isDir {
-			return fmt.Errorf("Attempted to use the directory `%s` as the DoltgreSQL database directory, "+
-				"however the preceding is a file and not a directory. Please change the environment variable `%s` so "+
-				"that it points to a directory.", dbDir, server.DOLTGRES_DATA_DIR)
-		}
+		return envDir, false, nil
 	} else {
 		homeDir, err := env.GetCurrentUserHomeDir()
 		if err != nil {
-			return fmt.Errorf("failed to get current user's home directory: %w", err)
+			return "", false, fmt.Errorf("failed to get current user's home directory: %w", err)
 		}
 
-		dbDir = filepath.Join(homeDir, server.DOLTGRES_DATA_DIR_DEFAULT)
-		if exists, isDir := fs.Exists(dbDir); !exists {
-			if err = fs.MkDirs(dbDir); err != nil {
-				return fmt.Errorf("failed to make dir '%s': %w", dbDir, err)
-			}
-		} else if !isDir {
-			return fmt.Errorf("Attempted to use the directory `%s` as the DoltgreSQL database directory, "+
-				"however the preceding is a file and not a directory. Please change the environment variable `%s` so "+
-				"that it points to a directory.", dbDir, server.DOLTGRES_DATA_DIR)
-		}
+		dbDir := filepath.Join(homeDir, server.DOLTGRES_DATA_DIR_DEFAULT)
+		return dbDir, false, nil
 	}
-
-	params[dataDirParam] = &dbDir
-	return nil
 }
 
 // runServer launches a server on the env given and waits for it to finish
