@@ -325,6 +325,11 @@ func (h *ConnectionHandler) handleQuery(message messages.Query) error {
 		return err
 	}
 
+	handled, err = h.handledWorkbenchCommands(message.String)
+	if handled || err != nil {
+		return err
+	}
+
 	query, err := h.convertQuery(message.String)
 	if err != nil {
 		return err
@@ -825,6 +830,62 @@ func (h *ConnectionHandler) handledPSQLCommands(statement string) (bool, error) 
 		return true, h.query(ConvertedQuery{
 			String:       `SELECT '' FROM dual LIMIT 0;`,
 			StatementTag: "SELECT",
+		})
+	}
+	return false, nil
+}
+
+// handledWorkbenchCommands handles commands used by some workbenches, such as dolt-workbench.
+func (h *ConnectionHandler) handledWorkbenchCommands(statement string) (bool, error) {
+	if statement == "SELECT * FROM current_schema()" {
+		return true, h.query(ConvertedQuery{
+			String:       `SELECT 'public' AS 'current_schema';`,
+			StatementTag: "SELECT",
+		})
+	}
+	if statement == "SELECT * FROM current_database()" {
+		return true, h.query(ConvertedQuery{
+			String:       `SELECT DATABASE() AS 'current_database';`,
+			StatementTag: "SELECT",
+		})
+	}
+	if statement == "SELECT version();" {
+		return true, h.query(ConvertedQuery{
+			String:       `SELECT 'PostgreSQL 15.5 on aarch64-apple-darwin21.6.0, compiled by Apple clang version 14.0.0 (clang-1400.0.29.102), 64-bit' AS 'version';`,
+			StatementTag: "SELECT",
+		})
+	}
+	if statement == "SELECT datname FROM pg_database;" {
+		return true, h.query(ConvertedQuery{
+			String:       `SELECT SCHEMA_NAME AS 'datname' FROM INFORMATION_SCHEMA.SCHEMATA;`,
+			StatementTag: "SELECT",
+		})
+	}
+	if statement == "SELECT tablename, schemaname FROM pg_catalog.pg_tables;" {
+		return true, h.query(ConvertedQuery{
+			String:       `SELECT TABLE_NAME AS 'tablename', 'public' AS 'schemaname' FROM INFORMATION_SCHEMA.TABLES WHERE TABLE_SCHEMA != 'information_schema';`,
+			StatementTag: "SELECT",
+		})
+	}
+	if strings.HasPrefix(statement, `SELECT "table_schema", "table_name", obj_description(('"' || "table_schema" || '"."' || "table_name" || '"')::regclass, 'pg_class') AS table_comment FROM "information_schema"."tables" WHERE ("table_schema" =`) {
+		// Define the regex pattern to match table_name
+		// pattern := `\"table_name\" = '([^']+)'`
+
+		// // Compile the regex
+		// re, err := regexp.Compile(pattern)
+		// if err != nil {
+		// 	return false, err
+		// }
+
+		// // Find the matches
+		// matches := re.FindStringSubmatch(statement)
+		// if len(matches) < 2 {
+		// 	return false, fmt.Errorf("no matches found")
+		// }
+		// tableName := matches[1]
+
+		return true, h.query(ConvertedQuery{
+			String: fmt.Sprintf(`SELECT 'public' AS 'table_schema', TABLE_NAME AS 'table_name', TABLE_COMMENT AS 'table_comment' FROM INFORMATION_SCHEMA.TABLES;`),
 		})
 	}
 	return false, nil
