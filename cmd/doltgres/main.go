@@ -100,8 +100,7 @@ func main() {
 
 	err := redirectStdio(params)
 	if err != nil {
-		cli.PrintErrln(err.Error())
-		os.Exit(1)
+		handleErrAndExitCode(err)
 	}
 
 	restoreIO := cli.InitIO()
@@ -110,60 +109,68 @@ func main() {
 	warnIfMaxFilesTooLow()
 
 	fs := filesys.LocalFS
+	// dEnv will be reloaded at server start to point to the data dir on the server config
 	dEnv := env.Load(ctx, env.GetCurrentUserHomeDir, fs, doltdb.LocalDirDoltDB, server.Version)
-
-	dataDir, dataDirExplicit, err := getDataDirFromParams(params)
-	if err != nil {
-		cli.PrintErrln(err.Error())
-		os.Exit(1)
-	}
-
-	dataDirExists, isDir := fs.Exists(dataDir)
-	if !dataDirExists {
-		if err := fs.MkDirs(dataDir); err != nil {
-			cli.PrintErr(fmt.Errorf("failed to make dir '%s': %w", dataDir, err))
-			os.Exit(1)
-		}
-	} else if !isDir {
-		cli.PrintErrf("Attempted to use the directory `%s` as the DoltgreSQL database directory, "+
-				"however the preceding is a file and not a directory. Please choose a directory for the data directory, " +
-			"either with the `%s` environment variable, or the -data-dir commane line parameter.", dataDir, server.DOLTGRES_DATA_DIR)
-		os.Exit(1)
-	}
-
-	var overrides map[string]string
-	if dataDirExplicit {
-		overrides = make(map[string]string)
-		overrides[servercfg.OverrideDataDirKey] = dataDir
-	}
-
+	
 	cfg, err := loadServerConfig(params, fs)
 	if err != nil {
-		cli.PrintErr(err)
-		os.Exit(1)
+		handleErrAndExitCode(err)
 	}
 
-	for k, v := range overrides {
-		switch k {
-		case servercfg.OverrideDataDirKey:
-			cfg.DataDirStr = &v
-		default:
-			// this only happens if code to add an override is added but code to handle the override is not.
-			panic(fmt.Sprintf("unknown override key: %s", k))
-		}
+	err = setupDataDir(params, cfg, fs)
+	if err != nil {
+		handleErrAndExitCode(err)
 	}
-
+	
+	// TODO: override other aspects of cfg with command line params
+	
 	err = runServer(ctx, dEnv, cfg)
+	handleErrAndExitCode(err)
+}
+
+func handleErrAndExitCode(err error) {
 	if err != nil {
 		cli.PrintErrln(err.Error())
 		os.Exit(1)
 	}
+
 	os.Exit(0)
+}
+
+// setupDataDir sets the appropriate data dir for the config given based on parameters and env, and creates the data
+// dir as necessary.
+func setupDataDir(params map[string]*string, cfg *servercfg.DoltgresConfig, fs filesys.Filesys) error {
+	dataDir, dataDirType, err := getDataDirFromParams(params)
+	if err != nil {
+		return err
+	}
+
+	// determine the data dir to use, in order of preference: 1) explicit flag, 2) env var, 3) default
+	if dataDirType == dataDirExplicitParam {
+		cfg.DataDirStr = &dataDir
+	} else if dataDirType == dataDirEnv && (cfg.DataDirStr == nil || *cfg.DataDirStr == servercfg.DefaultDataDir) {
+		cfg.DataDirStr = &dataDir
+	} else {
+		def := servercfg.DefaultDataDir
+		cfg.DataDirStr = &def
+	}
+
+	dataDirPath := cfg.DataDir()
+	dataDirExists, isDir := fs.Exists(dataDirPath)
+	if !dataDirExists {
+		if err := fs.MkDirs(dataDirPath); err != nil {
+			return fmt.Errorf("failed to make dir '%s': %w", dataDirPath, err)
+		}
+	} else if !isDir {
+		return fmt.Errorf("cannot use file %s as doltgres data directory", dataDirPath)
+	}
+	
+	return nil
 }
 
 // loadServerConfig loads server configuration in the following order:
 // 1. If the --config flag is provided, loads the config from the file at the path provided, or returns an errors if it cannot.
-// 2. If the default config files config.yaml exists, attempts to load it.
+// 2. If the default config file config.yaml exists, attempts to load it, but doesn't return an error if it doesn't exist.
 // 3. If neither of the above are successful, returns the default config server config.
 func loadServerConfig(params map[string]*string, fs filesys.Filesys) (*servercfg.DoltgresConfig, error) {
 	configFilePath, cfgPathProvided := params[configParam]
@@ -187,24 +194,30 @@ func loadServerConfig(params map[string]*string, fs filesys.Filesys) (*servercfg
 	return servercfg.DefaultServerConfig(), nil
 }
 
+type dataDirType byte
+const (
+	dataDirExplicitParam dataDirType = iota
+	dataDirEnv
+	dataDirDefault
+)
+
 // getDataDirFromParams returns the dataDir to be used by the server, along with whether it was explicitly set.
-func getDataDirFromParams(params map[string]*string) (string, bool, error) {
+func getDataDirFromParams(params map[string]*string) (string, dataDirType, error) {
 	if dataDir, ok := paramVal(params, dataDirParam); ok {
-		return dataDir, true, nil
+		return dataDir, dataDirExplicitParam, nil
 	}
 
 	// We should use the directory as pointed to by "DOLTGRES_DATA_DIR", if has been set, otherwise we'll use the default
-	// TODO: pull out file system code here
 	if envDir := os.Getenv(server.DOLTGRES_DATA_DIR); len(envDir) > 0 {
-		return envDir, false, nil
+		return envDir, dataDirEnv, nil
 	} else {
 		homeDir, err := env.GetCurrentUserHomeDir()
 		if err != nil {
-			return "", false, fmt.Errorf("failed to get current user's home directory: %w", err)
+			return "", dataDirDefault, fmt.Errorf("failed to get current user's home directory: %w", err)
 		}
 
 		dbDir := filepath.Join(homeDir, server.DOLTGRES_DATA_DIR_DEFAULT)
-		return dbDir, false, nil
+		return dbDir, dataDirDefault, nil
 	}
 }
 
