@@ -17,48 +17,32 @@ package cast
 import (
 	"fmt"
 	"math"
-	"strconv"
 
+	"github.com/dolthub/go-mysql-server/sql"
 	"github.com/shopspring/decimal"
 
 	"github.com/dolthub/doltgresql/server/functions/framework"
 	pgtypes "github.com/dolthub/doltgresql/server/types"
 )
 
-// initFloat64 handles all explicit and implicit casts that are built-in. This comprises only the "From" types.
+// initFloat64 handles all casts that are built-in. This comprises only the "From" types.
 func initFloat64() {
-	float64Explicit()
-	float64Implicit()
+	float64Assignment()
 }
 
-// float64Explicit registers all explicit casts. This comprises only the "From" types.
-func float64Explicit() {
-	framework.MustAddExplicitTypeCast(framework.TypeCast{
-		FromType: pgtypes.Float64,
-		ToType:   pgtypes.BpChar,
-		Function: func(ctx framework.Context, val any, targetType pgtypes.DoltgresType) (any, error) {
-			str := strconv.FormatFloat(val.(float64), 'g', -1, 64)
-			return handleCharExplicitCast(str, targetType)
-		},
-	})
-	framework.MustAddExplicitTypeCast(framework.TypeCast{
+// float64Assignment registers all assignment casts. This comprises only the "From" types.
+func float64Assignment() {
+	framework.MustAddAssignmentTypeCast(framework.TypeCast{
 		FromType: pgtypes.Float64,
 		ToType:   pgtypes.Float32,
-		Function: func(ctx framework.Context, val any, targetType pgtypes.DoltgresType) (any, error) {
+		Function: func(ctx *sql.Context, val any, targetType pgtypes.DoltgresType) (any, error) {
 			return float32(val.(float64)), nil
 		},
 	})
-	framework.MustAddExplicitTypeCast(framework.TypeCast{
-		FromType: pgtypes.Float64,
-		ToType:   pgtypes.Float64,
-		Function: func(ctx framework.Context, val any, targetType pgtypes.DoltgresType) (any, error) {
-			return val, nil
-		},
-	})
-	framework.MustAddExplicitTypeCast(framework.TypeCast{
+	framework.MustAddAssignmentTypeCast(framework.TypeCast{
 		FromType: pgtypes.Float64,
 		ToType:   pgtypes.Int16,
-		Function: func(ctx framework.Context, valInterface any, targetType pgtypes.DoltgresType) (any, error) {
+		Function: func(ctx *sql.Context, valInterface any, targetType pgtypes.DoltgresType) (any, error) {
 			val := math.RoundToEven(valInterface.(float64))
 			if val > 32767 || val < -32768 {
 				return nil, fmt.Errorf("smallint out of range")
@@ -66,10 +50,10 @@ func float64Explicit() {
 			return int16(val), nil
 		},
 	})
-	framework.MustAddExplicitTypeCast(framework.TypeCast{
+	framework.MustAddAssignmentTypeCast(framework.TypeCast{
 		FromType: pgtypes.Float64,
 		ToType:   pgtypes.Int32,
-		Function: func(ctx framework.Context, valInterface any, targetType pgtypes.DoltgresType) (any, error) {
+		Function: func(ctx *sql.Context, valInterface any, targetType pgtypes.DoltgresType) (any, error) {
 			val := math.RoundToEven(valInterface.(float64))
 			if val > 2147483647 || val < -2147483648 {
 				return nil, fmt.Errorf("integer out of range")
@@ -77,10 +61,10 @@ func float64Explicit() {
 			return int32(val), nil
 		},
 	})
-	framework.MustAddExplicitTypeCast(framework.TypeCast{
+	framework.MustAddAssignmentTypeCast(framework.TypeCast{
 		FromType: pgtypes.Float64,
 		ToType:   pgtypes.Int64,
-		Function: func(ctx framework.Context, valInterface any, targetType pgtypes.DoltgresType) (any, error) {
+		Function: func(ctx *sql.Context, valInterface any, targetType pgtypes.DoltgresType) (any, error) {
 			val := math.RoundToEven(valInterface.(float64))
 			if val > 9223372036854775807 || val < -9223372036854775808 {
 				return nil, fmt.Errorf("bigint out of range")
@@ -88,123 +72,11 @@ func float64Explicit() {
 			return int64(val), nil
 		},
 	})
-	framework.MustAddExplicitTypeCast(framework.TypeCast{
-		FromType: pgtypes.Float64,
-		ToType:   pgtypes.Name,
-		Function: func(ctx framework.Context, val any, targetType pgtypes.DoltgresType) (any, error) {
-			str := strconv.FormatFloat(val.(float64), 'g', -1, 64)
-			return handleCharExplicitCast(str, targetType)
-		},
-	})
-	framework.MustAddExplicitTypeCast(framework.TypeCast{
+	framework.MustAddAssignmentTypeCast(framework.TypeCast{
 		FromType: pgtypes.Float64,
 		ToType:   pgtypes.Numeric,
-		Function: func(ctx framework.Context, val any, targetType pgtypes.DoltgresType) (any, error) {
+		Function: func(ctx *sql.Context, val any, targetType pgtypes.DoltgresType) (any, error) {
 			return decimal.NewFromFloat(val.(float64)), nil
-		},
-	})
-	framework.MustAddExplicitTypeCast(framework.TypeCast{
-		FromType: pgtypes.Float64,
-		ToType:   pgtypes.Text,
-		Function: func(ctx framework.Context, val any, targetType pgtypes.DoltgresType) (any, error) {
-			return strconv.FormatFloat(val.(float64), 'g', -1, 64), nil
-		},
-	})
-	framework.MustAddExplicitTypeCast(framework.TypeCast{
-		FromType: pgtypes.Float64,
-		ToType:   pgtypes.VarChar,
-		Function: func(ctx framework.Context, val any, targetType pgtypes.DoltgresType) (any, error) {
-			str := strconv.FormatFloat(val.(float64), 'g', -1, 64)
-			return handleCharExplicitCast(str, targetType)
-		},
-	})
-}
-
-// float64Implicit registers all implicit casts. This comprises only the "From" types.
-func float64Implicit() {
-	framework.MustAddImplicitTypeCast(framework.TypeCast{
-		FromType: pgtypes.Float64,
-		ToType:   pgtypes.BpChar,
-		Function: func(ctx framework.Context, val any, targetType pgtypes.DoltgresType) (any, error) {
-			str := strconv.FormatFloat(val.(float64), 'g', -1, 64)
-			return handleCharImplicitCast(str, targetType)
-		},
-	})
-	framework.MustAddImplicitTypeCast(framework.TypeCast{
-		FromType: pgtypes.Float64,
-		ToType:   pgtypes.Float32,
-		Function: func(ctx framework.Context, val any, targetType pgtypes.DoltgresType) (any, error) {
-			return float32(val.(float64)), nil
-		},
-	})
-	framework.MustAddImplicitTypeCast(framework.TypeCast{
-		FromType: pgtypes.Float64,
-		ToType:   pgtypes.Float64,
-		Function: func(ctx framework.Context, val any, targetType pgtypes.DoltgresType) (any, error) {
-			return val, nil
-		},
-	})
-	framework.MustAddImplicitTypeCast(framework.TypeCast{
-		FromType: pgtypes.Float64,
-		ToType:   pgtypes.Int16,
-		Function: func(ctx framework.Context, valInterface any, targetType pgtypes.DoltgresType) (any, error) {
-			val := math.RoundToEven(valInterface.(float64))
-			if val > 32767 || val < -32768 {
-				return nil, fmt.Errorf("smallint out of range")
-			}
-			return int16(val), nil
-		},
-	})
-	framework.MustAddImplicitTypeCast(framework.TypeCast{
-		FromType: pgtypes.Float64,
-		ToType:   pgtypes.Int32,
-		Function: func(ctx framework.Context, valInterface any, targetType pgtypes.DoltgresType) (any, error) {
-			val := math.RoundToEven(valInterface.(float64))
-			if val > 2147483647 || val < -2147483648 {
-				return nil, fmt.Errorf("integer out of range")
-			}
-			return int32(val), nil
-		},
-	})
-	framework.MustAddImplicitTypeCast(framework.TypeCast{
-		FromType: pgtypes.Float64,
-		ToType:   pgtypes.Int64,
-		Function: func(ctx framework.Context, valInterface any, targetType pgtypes.DoltgresType) (any, error) {
-			val := math.RoundToEven(valInterface.(float64))
-			if val > 9223372036854775807 || val < -9223372036854775808 {
-				return nil, fmt.Errorf("bigint out of range")
-			}
-			return int64(val), nil
-		},
-	})
-	framework.MustAddImplicitTypeCast(framework.TypeCast{
-		FromType: pgtypes.Float64,
-		ToType:   pgtypes.Name,
-		Function: func(ctx framework.Context, val any, targetType pgtypes.DoltgresType) (any, error) {
-			str := strconv.FormatFloat(val.(float64), 'g', -1, 64)
-			return handleCharImplicitCast(str, targetType)
-		},
-	})
-	framework.MustAddImplicitTypeCast(framework.TypeCast{
-		FromType: pgtypes.Float64,
-		ToType:   pgtypes.Numeric,
-		Function: func(ctx framework.Context, val any, targetType pgtypes.DoltgresType) (any, error) {
-			return decimal.NewFromFloat(val.(float64)), nil
-		},
-	})
-	framework.MustAddImplicitTypeCast(framework.TypeCast{
-		FromType: pgtypes.Float64,
-		ToType:   pgtypes.Text,
-		Function: func(ctx framework.Context, val any, targetType pgtypes.DoltgresType) (any, error) {
-			return strconv.FormatFloat(val.(float64), 'g', -1, 64), nil
-		},
-	})
-	framework.MustAddImplicitTypeCast(framework.TypeCast{
-		FromType: pgtypes.Float64,
-		ToType:   pgtypes.VarChar,
-		Function: func(ctx framework.Context, val any, targetType pgtypes.DoltgresType) (any, error) {
-			str := strconv.FormatFloat(val.(float64), 'g', -1, 64)
-			return handleCharImplicitCast(str, targetType)
 		},
 	})
 }

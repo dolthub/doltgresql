@@ -17,6 +17,11 @@ package initialization
 import (
 	"sync"
 
+	"github.com/dolthub/go-mysql-server/sql"
+
+	"github.com/dolthub/doltgresql/core"
+	pgsql "github.com/dolthub/doltgresql/postgres/parser/parser/sql"
+	"github.com/dolthub/doltgresql/server/analyzer"
 	"github.com/dolthub/doltgresql/server/cast"
 	"github.com/dolthub/doltgresql/server/config"
 	"github.com/dolthub/doltgresql/server/functions"
@@ -31,6 +36,8 @@ var once = &sync.Once{}
 // Initialize initializes each package across the project. This function should be used instead of an init() function.
 func Initialize() {
 	once.Do(func() {
+		core.Init()
+		analyzer.Init()
 		config.Init()
 		pgtypes.InitBaseIDs()
 		binary.Init()
@@ -38,5 +45,6 @@ func Initialize() {
 		functions.Init()
 		cast.Init()
 		framework.Initialize()
+		sql.GlobalParser = pgsql.NewPostgresParser()
 	})
 }

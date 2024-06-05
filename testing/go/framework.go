@@ -34,6 +34,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	dserver "github.com/dolthub/doltgresql/server"
+	"github.com/dolthub/doltgresql/servercfg"
 )
 
 // runOnPostgres is a debug setting to redirect the test framework to a local running postgres server,
@@ -64,7 +65,7 @@ type ScriptTest struct {
 type ScriptTestAssertion struct {
 	Query       string
 	Expected    []sql.Row
-	ExpectedErr bool
+	ExpectedErr string
 
 	BindVars []any
 
@@ -76,6 +77,10 @@ type ScriptTestAssertion struct {
 	// Skip is used to completely skip a test, not execute its query at all, and record it as a skipped test
 	// in the test suite results.
 	Skip bool
+
+	// ExpectedTag is used to check the command tag returned from the server.
+	// This is checked only if no Expected is defined
+	ExpectedTag string
 }
 
 // RunScript runs the given script.
@@ -131,13 +136,19 @@ func runScript(t *testing.T, ctx context.Context, script ScriptTest, conn *pgx.C
 				t.Skip("Skip has been set in the assertion")
 			}
 			// If we're skipping the results check, then we call Execute, as it uses a simplified message model.
-			if assertion.SkipResultsCheck || assertion.ExpectedErr {
+			if assertion.SkipResultsCheck || assertion.ExpectedErr != "" {
 				_, err := conn.Exec(ctx, assertion.Query, assertion.BindVars...)
-				if assertion.ExpectedErr {
+				if assertion.ExpectedErr != "" {
 					require.Error(t, err)
+					assert.Contains(t, err.Error(), assertion.ExpectedErr)
 				} else {
 					require.NoError(t, err)
 				}
+			} else if assertion.ExpectedTag != "" {
+				// check for command tag
+				commandTag, err := conn.Exec(ctx, assertion.Query)
+				require.NoError(t, err)
+				assert.Equal(t, assertion.ExpectedTag, commandTag.String())
 			} else {
 				rows, err := conn.Query(ctx, assertion.Query, assertion.BindVars...)
 				require.NoError(t, err)
@@ -188,13 +199,22 @@ func runScripts(t *testing.T, scripts []ScriptTest, normalizeRows bool) {
 	}
 }
 
+func ptr[T any](val T) *T {
+	return &val
+}
+
 // CreateServer creates a server with the given database, returning a connection to the server. The server will close
 // when the connection is closed (or loses its connection to the server). The accompanying WaitGroup may be used to wait
 // until the server has closed.
 func CreateServer(t *testing.T, database string) (context.Context, *pgx.Conn, *svcs.Controller) {
 	require.NotEmpty(t, database)
 	port := GetUnusedPort(t)
-	controller, err := dserver.RunInMemory([]string{fmt.Sprintf("--port=%d", port), "--host=127.0.0.1"})
+	controller, err := dserver.RunInMemory(&servercfg.DoltgresConfig{
+		ListenerConfig: &servercfg.DoltgresListenerConfig{
+			PortNumber: &port,
+			HostStr:    ptr("127.0.0.1"),
+		},
+	})
 	require.NoError(t, err)
 
 	fmt.Printf("port is %d\n", port)

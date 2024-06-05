@@ -29,7 +29,7 @@ type UnaryOperator struct {
 	compiledFunc *framework.CompiledFunction
 }
 
-var _ vitess.InjectableExpression = (*UnaryOperator)(nil)
+var _ vitess.Injectable = (*UnaryOperator)(nil)
 var _ sql.Expression = (*UnaryOperator)(nil)
 
 // NewUnaryOperator returns a new *UnaryOperator.

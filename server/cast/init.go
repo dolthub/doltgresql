@@ -17,18 +17,17 @@ package cast
 // Init initializes all casts in this package.
 func Init() {
 	initBool()
-	initBytea()
 	initChar()
 	initFloat32()
 	initFloat64()
 	initInt16()
 	initInt32()
 	initInt64()
+	initJson()
+	initJsonB()
 	initName()
 	initNumeric()
 	initOid()
 	initText()
-	initUuid()
 	initVarChar()
-	initXid()
 }

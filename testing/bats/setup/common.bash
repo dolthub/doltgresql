@@ -9,35 +9,6 @@ fi
 nativebatsdir() { echo `nativepath $BATS_TEST_DIRNAME/$1`; }
 batshelper() { echo `nativebatsdir helper/$1`; }
 
-stash_current_dolt_user() {
-    export STASHED_DOLT_USER_NAME=`doltgresql config --global --get user.name`
-    export STASHED_DOLT_USER_EMAIL=`doltgresql config --global --get user.email`
-}
-
-restore_stashed_dolt_user() {
-    doltgresql config --global --add user.name "$STASHED_DOLT_USER_NAME"
-    doltgresql config --global --add user.email "$STASHED_DOLT_USER_EMAIL"
-    unset STASHED_DOLT_USER_NAME STASHED_DOLT_USER_EMAIL
-}
-
-set_dolt_user() {
-    doltgresql config --global --add user.name "$1" > /dev/null 2>&1
-    doltgresql config --global --add user.email "$2" > /dev/null 2>&1
-}
-
-unset_dolt_user() {
-    doltgresql config --global --unset user.name
-    doltgresql config --global --unset user.email
-}
-
-current_dolt_user_name() {
-    doltgresql config --global --get user.name
-}
-
-current_dolt_user_email() {
-    doltgresql config --global --get user.email
-}
-
 setup_common() {
     run psql --version
     if [[ ! "$output" =~ "(PostgreSQL) 15" ]] && [[ ! "$output" =~ "(PostgreSQL) 16" ]]; then
@@ -58,11 +29,6 @@ setup_common() {
     cd "dolt-repo-$$"
     nativevar DOLTGRES_DATA_DIR "$(pwd)" /p
 
-    mkdir "postgres"
-    cd "postgres"
-    doltgresql init
-    cd ..
-
     if [ -z "$DOLT_TEST_RETRIES" ]; then
         export BATS_TEST_RETRIES="$DOLT_TEST_RETRIES"
     fi
@@ -80,7 +46,7 @@ teardown_common() {
 }
 
 query_server() {
-    psql -U "${SQL_USER:-postgres}" -h localhost -p $PORT "$@"
+    psql -U "${SQL_USER:-postgres}" -h localhost -p $PORT "$@" doltgres
 }
 
 log_status_eq() {
@@ -100,5 +66,3 @@ log_output_has() {
 }
 
 nativevar DOLT_ROOT_PATH $BATS_TMPDIR/config-$$ /p
-doltgresql config --global --add metrics.disabled true > /dev/null 2>&1
-set_dolt_user "Bats Tests" "bats@email.fake" 

@@ -20,6 +20,7 @@ import (
 	vitess "github.com/dolthub/vitess/go/vt/sqlparser"
 
 	"github.com/dolthub/doltgresql/postgres/parser/sem/tree"
+	pgnodes "github.com/dolthub/doltgresql/server/node"
 )
 
 // nodeDropSequence handles *tree.DropSequence nodes.
@@ -27,5 +28,19 @@ func nodeDropSequence(node *tree.DropSequence) (vitess.Statement, error) {
 	if node == nil {
 		return nil, nil
 	}
-	return nil, fmt.Errorf("DROP SEQUENCE is not yet supported")
+	if len(node.Names) != 1 {
+		return nil, fmt.Errorf("dropping multiple sequences in DROP SEQUENCE is not yet supported")
+	}
+	name, err := nodeTableName(&node.Names[0])
+	if err != nil {
+		return nil, err
+	}
+	if len(name.DbQualifier.String()) > 0 {
+		return nil, fmt.Errorf("DROP SEQUENCE is currently only supported for the current database")
+	}
+	return vitess.InjectedStatement{
+		Statement: pgnodes.NewDropSequence(node.IfExists, name.SchemaQualifier.String(), name.Name.String(),
+			node.DropBehavior == tree.DropCascade),
+		Children: nil,
+	}, nil
 }

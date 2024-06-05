@@ -22,6 +22,8 @@ import (
 	"reflect"
 	"strings"
 
+	"github.com/dolthub/doltgresql/utils"
+
 	"github.com/dolthub/go-mysql-server/sql"
 	"github.com/dolthub/go-mysql-server/sql/types"
 	"github.com/dolthub/vitess/go/sqltypes"
@@ -74,19 +76,12 @@ func (b ByteaType) Compare(v1 any, v2 any) (int, error) {
 // Convert implements the DoltgresType interface.
 func (b ByteaType) Convert(val any) (any, sql.ConvertInRange, error) {
 	switch val := val.(type) {
-	case string:
-		if strings.HasPrefix(val, `\x`) {
-			h, err := hex.DecodeString(val[2:])
-			return h, sql.InRange, err
-		} else {
-			return []byte(val), sql.InRange, nil
-		}
 	case []byte:
 		return val, sql.InRange, nil
 	case nil:
 		return nil, sql.InRange, nil
 	default:
-		return nil, sql.OutOfRange, sql.ErrInvalidType.New(b)
+		return nil, sql.OutOfRange, fmt.Errorf("%s: unhandled type: %T", b.String(), val)
 	}
 }
 
@@ -112,17 +107,30 @@ func (b ByteaType) FormatValue(val any) (string, error) {
 	if val == nil {
 		return "", nil
 	}
-	converted, _, err := b.Convert(val)
-	if err != nil {
-		return "", err
-	}
-
-	return `\x` + hex.EncodeToString(converted.([]byte)), nil
+	return b.IoOutput(val)
 }
 
 // GetSerializationID implements the DoltgresType interface.
 func (b ByteaType) GetSerializationID() SerializationID {
 	return SerializationID_Bytea
+}
+
+// IoInput implements the DoltgresType interface.
+func (b ByteaType) IoInput(input string) (any, error) {
+	if strings.HasPrefix(input, `\x`) {
+		return hex.DecodeString(input[2:])
+	} else {
+		return []byte(input), nil
+	}
+}
+
+// IoOutput implements the DoltgresType interface.
+func (b ByteaType) IoOutput(output any) (string, error) {
+	converted, _, err := b.Convert(output)
+	if err != nil {
+		return "", err
+	}
+	return `\x` + hex.EncodeToString(converted.([]byte)), nil
 }
 
 // IsUnbounded implements the DoltgresType interface.
@@ -159,7 +167,7 @@ func (b ByteaType) SerializedCompare(v1 []byte, v2 []byte) (int, error) {
 	} else if len(v1) == 0 && len(v2) > 0 {
 		return -1, nil
 	}
-	return bytes.Compare(v1, v2), nil
+	return serializedStringCompare(v1, v2), nil
 }
 
 // SQL implements the DoltgresType interface.
@@ -223,7 +231,10 @@ func (b ByteaType) SerializeValue(val any) ([]byte, error) {
 	if err != nil {
 		return nil, err
 	}
-	return converted.([]byte), nil
+	str := converted.([]byte)
+	writer := utils.NewWriter(uint64(len(str) + 4))
+	writer.ByteSlice(str)
+	return writer.Data(), nil
 }
 
 // DeserializeValue implements the DoltgresType interface.
@@ -231,5 +242,6 @@ func (b ByteaType) DeserializeValue(val []byte) (any, error) {
 	if len(val) == 0 {
 		return nil, nil
 	}
-	return val, nil
+	reader := utils.NewReader(val)
+	return reader.ByteSlice(), nil
 }

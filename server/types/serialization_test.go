@@ -160,3 +160,34 @@ func TestSerializationIDConsistency(t *testing.T) {
 		})
 	}
 }
+
+// TestJsonValueType operates as a line of defense to prevent accidental changes to JSON type values. If this test
+// fails, then a JsonValueType was changed that should not have been changed.
+func TestJsonValueType(t *testing.T) {
+	types := []struct {
+		JsonValueType
+		Value byte
+		Name  string
+	}{
+		{JsonValueType_Object, 0, "Object"},
+		{JsonValueType_Array, 1, "Array"},
+		{JsonValueType_String, 2, "String"},
+		{JsonValueType_Number, 3, "Number"},
+		{JsonValueType_Boolean, 4, "Boolean"},
+		{JsonValueType_Null, 5, "Null"},
+	}
+	allValues := make(map[byte]string)
+	for _, typ := range types {
+		if byte(typ.JsonValueType) != typ.Value {
+			t.Logf("JSON value type `%s` has been changed from its permanent value of `%d` to `%d`",
+				typ.Name, typ.Value, byte(typ.JsonValueType))
+			t.Fail()
+		} else if existingName, ok := allValues[typ.Value]; ok {
+			t.Logf("JSON value type `%s` has the same value as `%s`: `%d`",
+				typ.Name, existingName, typ.Value)
+			t.Fail()
+		} else {
+			allValues[typ.Value] = typ.Name
+		}
+	}
+}

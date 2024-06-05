@@ -17,6 +17,8 @@ package functions
 import (
 	"fmt"
 
+	"github.com/dolthub/go-mysql-server/sql"
+
 	"github.com/dolthub/doltgresql/server/functions/framework"
 	pgtypes "github.com/dolthub/doltgresql/server/types"
 )
@@ -32,7 +34,7 @@ var substr_varchar_int32 = framework.Function2{
 	Name:       "substr",
 	Return:     pgtypes.VarChar,
 	Parameters: []pgtypes.DoltgresType{pgtypes.VarChar, pgtypes.Int32},
-	Callable: func(ctx framework.Context, str any, start any) (any, error) {
+	Callable: func(ctx *sql.Context, str any, start any) (any, error) {
 		if str == nil || start == nil {
 			return nil, nil
 		}
@@ -54,7 +56,7 @@ var substr_varchar_int32_int32 = framework.Function3{
 	Name:       "substr",
 	Return:     pgtypes.VarChar,
 	Parameters: []pgtypes.DoltgresType{pgtypes.VarChar, pgtypes.Int32, pgtypes.Int32},
-	Callable: func(ctx framework.Context, str any, startInt any, countInt any) (any, error) {
+	Callable: func(ctx *sql.Context, str any, startInt any, countInt any) (any, error) {
 		if str == nil || startInt == nil || countInt == nil {
 			return nil, nil
 		}

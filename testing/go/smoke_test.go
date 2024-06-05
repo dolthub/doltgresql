@@ -54,6 +54,102 @@ func TestSmokeTests(t *testing.T) {
 						{4, 4},
 					},
 				},
+				{
+					Query: "SELECT * FROM test ORDER BY 1 LIMIT 1 OFFSET 1;",
+					Expected: []sql.Row{
+						{2, 2},
+					},
+				},
+			},
+		},
+		{
+			Name: "Insert statements",
+			SetUpScript: []string{
+				"CREATE TABLE test (pk INT8 PRIMARY KEY, v1 INT4, v2 INT2);",
+			},
+			Assertions: []ScriptTestAssertion{
+				{
+					Query:    "INSERT INTO test VALUES (1, 2, 3);",
+					Expected: []sql.Row{},
+				},
+				{
+					Query:    "INSERT INTO test (v1, pk) VALUES (5, 4);",
+					Expected: []sql.Row{},
+				},
+				{
+					Query:    "INSERT INTO test (pk, v2) SELECT pk + 5, v2 + 10 FROM test WHERE v2 IS NOT NULL;",
+					Expected: []sql.Row{},
+				},
+				{
+					Query: "SELECT * FROM test;",
+					Expected: []sql.Row{
+						{1, 2, 3},
+						{4, 5, nil},
+						{6, nil, 13},
+					},
+				},
+			},
+		},
+		{
+			Name: "Update statements",
+			SetUpScript: []string{
+				"CREATE TABLE test (pk INT8 PRIMARY KEY, v1 INT4, v2 INT2);",
+				"INSERT INTO test VALUES (1, 2, 3), (4, 5, 6), (7, 8, 9);",
+			},
+			Assertions: []ScriptTestAssertion{
+				{
+					Query:    "UPDATE test SET v2 = 10;",
+					Expected: []sql.Row{},
+				},
+				{
+					Query:    "UPDATE test SET v1 = pk + v2;",
+					Expected: []sql.Row{},
+				},
+				{
+					Query: "SELECT * FROM test;",
+					Expected: []sql.Row{
+						{1, 11, 10},
+						{4, 14, 10},
+						{7, 17, 10},
+					},
+				},
+				{
+					Query:    "UPDATE test SET pk = subquery.val FROM (SELECT 22 as val) AS subquery WHERE pk >= 7;",
+					Skip:     true, // FROM not yet supported
+					Expected: []sql.Row{},
+				},
+				{
+					Query: "SELECT * FROM test;",
+					Skip:  true, // Above query doesn't run yet
+					Expected: []sql.Row{
+						{1, 11, 10},
+						{4, 14, 10},
+						{22, 17, 10},
+					},
+				},
+			},
+		},
+		{
+			Name: "Delete statements",
+			SetUpScript: []string{
+				"CREATE TABLE test (pk INT8 PRIMARY KEY, v1 INT4, v2 INT2);",
+				"INSERT INTO test VALUES (1, 1, 1), (2, 3, 4), (5, 7, 9);",
+			},
+			Assertions: []ScriptTestAssertion{
+				{
+					Query:    "DELETE FROM test WHERE v2 = 9;",
+					Expected: []sql.Row{},
+				},
+				{
+					Query:    "DELETE FROM test WHERE v1 = pk;",
+					Expected: []sql.Row{},
+				},
+				{
+					Query: "SELECT * FROM test;",
+					Expected: []sql.Row{
+						{2, 3, 4},
+					},
+				},
 			},
 		},
 		{
@@ -93,13 +189,13 @@ func TestSmokeTests(t *testing.T) {
 				{
 					Query: "SELECT 1 IN (2);",
 					Expected: []sql.Row{
-						{0},
+						{"f"},
 					},
 				},
 				{
 					Query: "SELECT 2 IN (2);",
 					Expected: []sql.Row{
-						{1},
+						{"t"},
 					},
 				},
 			},
@@ -201,11 +297,164 @@ func TestSmokeTests(t *testing.T) {
 				},
 				{
 					Query:       "SELECT ARRAY[1::int8]::int;",
-					ExpectedErr: true,
+					ExpectedErr: "cast from `bigint[]` to `integer` does not exist",
 				},
 				{
 					Query:       "SELECT ARRAY[1::int8, 2::varchar];",
-					ExpectedErr: true,
+					ExpectedErr: "ARRAY types cannot be matched",
+				},
+			},
+		},
+		{
+			Name: "Array casting",
+			Assertions: []ScriptTestAssertion{
+				{
+					Query: `SELECT '{true,false,true}'::boolean[];`,
+					Expected: []sql.Row{
+						{`{t,f,t}`},
+					},
+				},
+				{
+					Query: `SELECT '{"\\x68656c6c6f", "\\x776f726c64", "\\x6578616d706c65"}'::bytea[]::text[];`,
+					Expected: []sql.Row{
+						{`{"\x68656c6c6f","\x776f726c64","\x6578616d706c65"}`},
+					},
+				},
+				{
+					Query: `SELECT '{"abcd", "efgh", "ijkl"}'::char(3)[];`,
+					Expected: []sql.Row{
+						{`{abc,efg,ijk}`},
+					},
+				},
+				{
+					Query: `SELECT '{"2020-02-03", "2020-04-05", "2020-06-06"}'::date[];`,
+					Expected: []sql.Row{
+						{`{2020-02-03,2020-04-05,2020-06-06}`},
+					},
+				},
+				{
+					Query: `SELECT '{1.25,2.5,3.75}'::float4[];`,
+					Expected: []sql.Row{
+						{`{1.25,2.5,3.75}`},
+					},
+				},
+				{
+					Query: `SELECT '{4.25,5.5,6.75}'::float8[];`,
+					Expected: []sql.Row{
+						{`{4.25,5.5,6.75}`},
+					},
+				},
+				{
+					Query: `SELECT '{1,2,3}'::int2[];`,
+					Expected: []sql.Row{
+						{`{1,2,3}`},
+					},
+				},
+				{
+					Query: `SELECT '{4,5,6}'::int4[];`,
+					Expected: []sql.Row{
+						{`{4,5,6}`},
+					},
+				},
+				{
+					Query: `SELECT '{7,8,9}'::int8[];`,
+					Expected: []sql.Row{
+						{`{7,8,9}`},
+					},
+				},
+				{
+					Query: `SELECT '{"{\"a\":\"val1\"}", "{\"b\":\"value2\"}", "{\"c\": \"object_value3\"}"}'::json[];`,
+					Expected: []sql.Row{
+						{`{"{\"a\":\"val1\"}","{\"b\":\"value2\"}","{\"c\": \"object_value3\"}"}`},
+					},
+				},
+				{
+					Query: `SELECT '{"{\"d\":\"val1\"}", "{\"e\":\"value2\"}", "{\"f\": \"object_value3\"}"}'::jsonb[];`,
+					Expected: []sql.Row{
+						{`{"{\"d\": \"val1\"}","{\"e\": \"value2\"}","{\"f\": \"object_value3\"}"}`},
+					},
+				},
+				{
+					Query: `SELECT '{"the", "legendary", "formula"}'::name[];`,
+					Expected: []sql.Row{
+						{`{the,legendary,formula}`},
+					},
+				},
+				{
+					Query: `SELECT '{10.01,20.02,30.03}'::numeric[];`,
+					Expected: []sql.Row{
+						{`{10.01,20.02,30.03}`},
+					},
+				},
+				{
+					Query: `SELECT '{1,10,100}'::oid[];`,
+					Expected: []sql.Row{
+						{`{1,10,100}`},
+					},
+				},
+				{
+					Query: `SELECT '{"this", "is", "some", "text"}'::text[], '{text,without,quotes}'::text[], '{null,NULL,"NULL","quoted"}'::text[];`,
+					Expected: []sql.Row{
+						{`{this,is,some,text}`, `{text,without,quotes}`, `{NULL,NULL,"NULL",quoted}`},
+					},
+				},
+				{
+					Query: `SELECT '{"12:12:13", "14:14:15", "16:16:17"}'::time[];`,
+					Expected: []sql.Row{
+						{`{12:12:13,14:14:15,16:16:17}`},
+					},
+				},
+				{
+					Query: `SELECT '{"2020-02-03 12:13:14", "2020-04-05 15:16:17", "2020-06-06 18:19:20"}'::timestamp[];`,
+					Expected: []sql.Row{
+						{`{"2020-02-03 12:13:14","2020-04-05 15:16:17","2020-06-06 18:19:20"}`},
+					},
+				},
+				{
+					Query: `SELECT '{"3920fd79-7b53-437c-b647-d450b58b4532", "a594c217-4c63-4669-96ec-40eed180b7cf", "4367b70d-8d8b-4969-a1aa-bf59536455fb"}'::uuid[];`,
+					Expected: []sql.Row{
+						{`{3920fd79-7b53-437c-b647-d450b58b4532,a594c217-4c63-4669-96ec-40eed180b7cf,4367b70d-8d8b-4969-a1aa-bf59536455fb}`},
+					},
+				},
+				{
+					Query: `SELECT '{"somewhere", "over", "the", "rainbow"}'::varchar(5)[];`,
+					Expected: []sql.Row{
+						{`{somew,over,the,rainb}`},
+					},
+				},
+				{
+					Query: `SELECT '{1,2,3}'::xid[];`,
+					Expected: []sql.Row{
+						{`{1,2,3}`},
+					},
+				},
+				{
+					Query:       `SELECT '{"abc""","def"}'::text[];`,
+					ExpectedErr: "malformed",
+				},
+				{
+					Query:       `SELECT '{a,b,c'::text[];`,
+					ExpectedErr: "malformed",
+				},
+				{
+					Query:       `SELECT 'a,b,c}'::text[];`,
+					ExpectedErr: "malformed",
+				},
+				{
+					Query:       `SELECT '{"a,b,c}'::text[];`,
+					ExpectedErr: "malformed",
+				},
+				{
+					Query:       `SELECT '{a",b,c}'::text[];`,
+					ExpectedErr: "malformed",
+				},
+				{
+					Query:       `SELECT '{a,b,"c}'::text[];`,
+					ExpectedErr: "malformed",
+				},
+				{
+					Query:       `SELECT '{a,b,c"}'::text[];`,
+					ExpectedErr: "malformed",
 				},
 			},
 		},
@@ -223,7 +472,7 @@ func TestSmokeTests(t *testing.T) {
 			Assertions: []ScriptTestAssertion{
 				{
 					Query:       "SHOW CREATE TABLE;",
-					ExpectedErr: true,
+					ExpectedErr: "syntax error",
 				},
 			},
 		},

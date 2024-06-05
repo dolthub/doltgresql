@@ -16,6 +16,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	dserver "github.com/dolthub/doltgresql/server"
+	"github.com/dolthub/doltgresql/servercfg"
 )
 
 type SSLListener struct {
@@ -47,7 +48,12 @@ func NewSslListener(listenerCfg mysql.ListenerConfig) (server.ProtocolListener, 
 func TestSSL(t *testing.T) {
 	port := GetUnusedPort(t)
 	server.DefaultProtocolListenerFunc = NewSslListener
-	controller, err := dserver.RunInMemory([]string{fmt.Sprintf("--port=%d", port), "--host=127.0.0.1"})
+	controller, err := dserver.RunInMemory(&servercfg.DoltgresConfig{
+		ListenerConfig: &servercfg.DoltgresListenerConfig{
+			PortNumber: &port,
+			HostStr:    ptr("127.0.0.1"),
+		},
+	})
 	require.NoError(t, err)
 
 	defer func() {

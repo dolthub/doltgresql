@@ -418,9 +418,6 @@ func arrayOf(
 	// If the reference is a statically known type, then return an array type,
 	// rather than an array type reference.
 	if typ, ok := tree.GetStaticallyKnownType(ref); ok {
-		if err := types.CheckArrayElementType(typ); err != nil {
-			return nil, err
-		}
 		return types.MakeArray(typ), nil
 	}
 	return &tree.ArrayTypeReference{ElementType: ref}, nil

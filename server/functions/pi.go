@@ -17,8 +17,9 @@ package functions
 import (
 	"math"
 
-	"github.com/dolthub/doltgresql/server/functions/framework"
+	"github.com/dolthub/go-mysql-server/sql"
 
+	"github.com/dolthub/doltgresql/server/functions/framework"
 	pgtypes "github.com/dolthub/doltgresql/server/types"
 )
 
@@ -32,7 +33,7 @@ var pi = framework.Function0{
 	Name:       "pi",
 	Return:     pgtypes.Float64,
 	Parameters: []pgtypes.DoltgresType{},
-	Callable: func(ctx framework.Context) (any, error) {
+	Callable: func(ctx *sql.Context) (any, error) {
 		return float64(math.Pi), nil
 	},
 }

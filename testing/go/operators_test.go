@@ -75,12 +75,10 @@ func TestOperators(t *testing.T) {
 				},
 				{
 					Query:    `SELECT 1::int2 + 2::float4;`,
-					Skip:     true,
 					Expected: []sql.Row{{float64(3)}},
 				},
 				{
 					Query:    `SELECT 1::int2 + 2::float8;`,
-					Skip:     true,
 					Expected: []sql.Row{{float64(3)}},
 				},
 				{
@@ -97,17 +95,14 @@ func TestOperators(t *testing.T) {
 				},
 				{
 					Query:    `SELECT 1::int2 + 2::numeric;`,
-					Skip:     true,
 					Expected: []sql.Row{{Numeric("3")}},
 				},
 				{
 					Query:    `SELECT 1::int4 + 2::float4;`,
-					Skip:     true,
 					Expected: []sql.Row{{float64(3)}},
 				},
 				{
 					Query:    `SELECT 1::int4 + 2::float8;`,
-					Skip:     true,
 					Expected: []sql.Row{{float64(3)}},
 				},
 				{
@@ -124,17 +119,14 @@ func TestOperators(t *testing.T) {
 				},
 				{
 					Query:    `SELECT 1::int4 + 2::numeric;`,
-					Skip:     true,
 					Expected: []sql.Row{{Numeric("3")}},
 				},
 				{
 					Query:    `SELECT 1::int8 + 2::float4;`,
-					Skip:     true,
 					Expected: []sql.Row{{float64(3)}},
 				},
 				{
 					Query:    `SELECT 1::int8 + 2::float8;`,
-					Skip:     true,
 					Expected: []sql.Row{{float64(3)}},
 				},
 				{
@@ -151,17 +143,14 @@ func TestOperators(t *testing.T) {
 				},
 				{
 					Query:    `SELECT 1::int8 + 2::numeric;`,
-					Skip:     true,
 					Expected: []sql.Row{{Numeric("3")}},
 				},
 				{
 					Query:    `SELECT 1::numeric + 2::float4;`,
-					Skip:     true,
 					Expected: []sql.Row{{float64(3)}},
 				},
 				{
 					Query:    `SELECT 1::numeric + 2::float8;`,
-					Skip:     true,
 					Expected: []sql.Row{{float64(3)}},
 				},
 				{
@@ -235,12 +224,10 @@ func TestOperators(t *testing.T) {
 				},
 				{
 					Query:    `SELECT 1::int2 - 2::float4;`,
-					Skip:     true,
 					Expected: []sql.Row{{float64(-1)}},
 				},
 				{
 					Query:    `SELECT 1::int2 - 2::float8;`,
-					Skip:     true,
 					Expected: []sql.Row{{float64(-1)}},
 				},
 				{
@@ -257,17 +244,14 @@ func TestOperators(t *testing.T) {
 				},
 				{
 					Query:    `SELECT 1::int2 - 2::numeric;`,
-					Skip:     true,
 					Expected: []sql.Row{{Numeric("-1")}},
 				},
 				{
 					Query:    `SELECT 1::int4 - 2::float4;`,
-					Skip:     true,
 					Expected: []sql.Row{{float64(-1)}},
 				},
 				{
 					Query:    `SELECT 1::int4 - 2::float8;`,
-					Skip:     true,
 					Expected: []sql.Row{{float64(-1)}},
 				},
 				{
@@ -284,17 +268,14 @@ func TestOperators(t *testing.T) {
 				},
 				{
 					Query:    `SELECT 1::int4 - 2::numeric;`,
-					Skip:     true,
 					Expected: []sql.Row{{Numeric("-1")}},
 				},
 				{
 					Query:    `SELECT 1::int8 - 2::float4;`,
-					Skip:     true,
 					Expected: []sql.Row{{float64(-1)}},
 				},
 				{
 					Query:    `SELECT 1::int8 - 2::float8;`,
-					Skip:     true,
 					Expected: []sql.Row{{float64(-1)}},
 				},
 				{
@@ -311,17 +292,14 @@ func TestOperators(t *testing.T) {
 				},
 				{
 					Query:    `SELECT 1::int8 - 2::numeric;`,
-					Skip:     true,
 					Expected: []sql.Row{{Numeric("-1")}},
 				},
 				{
 					Query:    `SELECT 1::numeric - 2::float4;`,
-					Skip:     true,
 					Expected: []sql.Row{{float64(-1)}},
 				},
 				{
 					Query:    `SELECT 1::numeric - 2::float8;`,
-					Skip:     true,
 					Expected: []sql.Row{{float64(-1)}},
 				},
 				{
@@ -395,12 +373,10 @@ func TestOperators(t *testing.T) {
 				},
 				{
 					Query:    `SELECT 1::int2 * 2::float4;`,
-					Skip:     true,
 					Expected: []sql.Row{{float64(2)}},
 				},
 				{
 					Query:    `SELECT 1::int2 * 2::float8;`,
-					Skip:     true,
 					Expected: []sql.Row{{float64(2)}},
 				},
 				{
@@ -417,17 +393,14 @@ func TestOperators(t *testing.T) {
 				},
 				{
 					Query:    `SELECT 1::int2 * 2::numeric;`,
-					Skip:     true,
 					Expected: []sql.Row{{Numeric("2")}},
 				},
 				{
 					Query:    `SELECT 1::int4 * 2::float4;`,
-					Skip:     true,
 					Expected: []sql.Row{{float64(2)}},
 				},
 				{
 					Query:    `SELECT 1::int4 * 2::float8;`,
-					Skip:     true,
 					Expected: []sql.Row{{float64(2)}},
 				},
 				{
@@ -444,17 +417,14 @@ func TestOperators(t *testing.T) {
 				},
 				{
 					Query:    `SELECT 1::int4 * 2::numeric;`,
-					Skip:     true,
 					Expected: []sql.Row{{Numeric("2")}},
 				},
 				{
 					Query:    `SELECT 1::int8 * 2::float4;`,
-					Skip:     true,
 					Expected: []sql.Row{{float64(2)}},
 				},
 				{
 					Query:    `SELECT 1::int8 * 2::float8;`,
-					Skip:     true,
 					Expected: []sql.Row{{float64(2)}},
 				},
 				{
@@ -471,17 +441,14 @@ func TestOperators(t *testing.T) {
 				},
 				{
 					Query:    `SELECT 1::int8 * 2::numeric;`,
-					Skip:     true,
 					Expected: []sql.Row{{Numeric("2")}},
 				},
 				{
 					Query:    `SELECT 1::numeric * 2::float4;`,
-					Skip:     true,
 					Expected: []sql.Row{{float64(2)}},
 				},
 				{
 					Query:    `SELECT 1::numeric * 2::float8;`,
-					Skip:     true,
 					Expected: []sql.Row{{float64(2)}},
 				},
 				{
@@ -555,12 +522,10 @@ func TestOperators(t *testing.T) {
 				},
 				{
 					Query:    `SELECT 8::int2 / 2::float4;`,
-					Skip:     true,
 					Expected: []sql.Row{{float64(4)}},
 				},
 				{
 					Query:    `SELECT 8::int2 / 2::float8;`,
-					Skip:     true,
 					Expected: []sql.Row{{float64(4)}},
 				},
 				{
@@ -577,17 +542,14 @@ func TestOperators(t *testing.T) {
 				},
 				{
 					Query:    `SELECT 8::int2 / 2::numeric;`,
-					Skip:     true,
 					Expected: []sql.Row{{Numeric("4")}},
 				},
 				{
 					Query:    `SELECT 8::int4 / 2::float4;`,
-					Skip:     true,
 					Expected: []sql.Row{{float64(4)}},
 				},
 				{
 					Query:    `SELECT 8::int4 / 2::float8;`,
-					Skip:     true,
 					Expected: []sql.Row{{float64(4)}},
 				},
 				{
@@ -604,17 +566,14 @@ func TestOperators(t *testing.T) {
 				},
 				{
 					Query:    `SELECT 8::int4 / 2::numeric;`,
-					Skip:     true,
 					Expected: []sql.Row{{Numeric("4")}},
 				},
 				{
 					Query:    `SELECT 8::int8 / 2::float4;`,
-					Skip:     true,
 					Expected: []sql.Row{{float64(4)}},
 				},
 				{
 					Query:    `SELECT 8::int8 / 2::float8;`,
-					Skip:     true,
 					Expected: []sql.Row{{float64(4)}},
 				},
 				{
@@ -631,17 +590,14 @@ func TestOperators(t *testing.T) {
 				},
 				{
 					Query:    `SELECT 8::int8 / 2::numeric;`,
-					Skip:     true,
 					Expected: []sql.Row{{Numeric("4")}},
 				},
 				{
 					Query:    `SELECT 8::numeric / 2::float4;`,
-					Skip:     true,
 					Expected: []sql.Row{{float64(4)}},
 				},
 				{
 					Query:    `SELECT 8::numeric / 2::float8;`,
-					Skip:     true,
 					Expected: []sql.Row{{float64(4)}},
 				},
 				{
@@ -671,17 +627,14 @@ func TestOperators(t *testing.T) {
 				},
 				{
 					Query:    `SELECT 11::int2 % 3::int4;`,
-					Skip:     true,
 					Expected: []sql.Row{{int32(2)}},
 				},
 				{
 					Query:    `SELECT 11::int2 % 3::int8;`,
-					Skip:     true,
 					Expected: []sql.Row{{int64(2)}},
 				},
 				{
 					Query:    `SELECT 11::int2 % 3::numeric;`,
-					Skip:     true,
 					Expected: []sql.Row{{Numeric("2")}},
 				},
 				{
@@ -694,12 +647,10 @@ func TestOperators(t *testing.T) {
 				},
 				{
 					Query:    `SELECT 11::int4 % 3::int8;`,
-					Skip:     true,
 					Expected: []sql.Row{{int64(2)}},
 				},
 				{
 					Query:    `SELECT 11::int4 % 3::numeric;`,
-					Skip:     true,
 					Expected: []sql.Row{{Numeric("2")}},
 				},
 				{
@@ -716,7 +667,6 @@ func TestOperators(t *testing.T) {
 				},
 				{
 					Query:    `SELECT 11::int8 % 3::numeric;`,
-					Skip:     true,
 					Expected: []sql.Row{{Numeric("2")}},
 				},
 				{
@@ -750,7 +700,7 @@ func TestOperators(t *testing.T) {
 				},
 				{
 					Query:       `SELECT 5::int2 << 2::int8;`,
-					ExpectedErr: true,
+					ExpectedErr: "does not exist",
 				},
 				{
 					Query:    `SELECT 5::int4 << 2::int2;`,
@@ -762,7 +712,7 @@ func TestOperators(t *testing.T) {
 				},
 				{
 					Query:       `SELECT 5::int4 << 2::int8;`,
-					ExpectedErr: true,
+					ExpectedErr: "does not exist",
 				},
 				{
 					Query:    `SELECT 5::int8 << 2::int2;`,
@@ -774,7 +724,7 @@ func TestOperators(t *testing.T) {
 				},
 				{
 					Query:       `SELECT 5::int8 << 2::int8;`,
-					ExpectedErr: true,
+					ExpectedErr: "does not exist",
 				},
 			},
 		},
@@ -791,7 +741,7 @@ func TestOperators(t *testing.T) {
 				},
 				{
 					Query:       `SELECT 17::int2 >> 2::int8;`,
-					ExpectedErr: true,
+					ExpectedErr: "does not exist",
 				},
 				{
 					Query:    `SELECT 17::int4 >> 2::int2;`,
@@ -803,7 +753,7 @@ func TestOperators(t *testing.T) {
 				},
 				{
 					Query:       `SELECT 17::int4 >> 2::int8;`,
-					ExpectedErr: true,
+					ExpectedErr: "does not exist",
 				},
 				{
 					Query:    `SELECT 17::int8 >> 2::int2;`,
@@ -815,7 +765,7 @@ func TestOperators(t *testing.T) {
 				},
 				{
 					Query:       `SELECT 17::int8 >> 2::int8;`,
-					ExpectedErr: true,
+					ExpectedErr: "does not exist",
 				},
 			},
 		},
@@ -828,12 +778,10 @@ func TestOperators(t *testing.T) {
 				},
 				{
 					Query:    `SELECT 13::int2 & 7::int4;`,
-					Skip:     true,
 					Expected: []sql.Row{{int32(5)}},
 				},
 				{
 					Query:    `SELECT 13::int2 & 7::int8;`,
-					Skip:     true,
 					Expected: []sql.Row{{int64(5)}},
 				},
 				{
@@ -846,7 +794,6 @@ func TestOperators(t *testing.T) {
 				},
 				{
 					Query:    `SELECT 13::int4 & 7::int8;`,
-					Skip:     true,
 					Expected: []sql.Row{{int64(5)}},
 				},
 				{
@@ -872,12 +819,10 @@ func TestOperators(t *testing.T) {
 				},
 				{
 					Query:    `SELECT 13::int2 | 7::int4;`,
-					Skip:     true,
 					Expected: []sql.Row{{int32(15)}},
 				},
 				{
 					Query:    `SELECT 13::int2 | 7::int8;`,
-					Skip:     true,
 					Expected: []sql.Row{{int64(15)}},
 				},
 				{
@@ -890,7 +835,6 @@ func TestOperators(t *testing.T) {
 				},
 				{
 					Query:    `SELECT 13::int4 | 7::int8;`,
-					Skip:     true,
 					Expected: []sql.Row{{int64(15)}},
 				},
 				{
@@ -916,12 +860,10 @@ func TestOperators(t *testing.T) {
 				},
 				{
 					Query:    `SELECT 13::int2 # 7::int4;`,
-					Skip:     true,
 					Expected: []sql.Row{{int32(10)}},
 				},
 				{
 					Query:    `SELECT 13::int2 # 7::int8;`,
-					Skip:     true,
 					Expected: []sql.Row{{int64(10)}},
 				},
 				{
@@ -934,7 +876,6 @@ func TestOperators(t *testing.T) {
 				},
 				{
 					Query:    `SELECT 13::int4 # 7::int8;`,
-					Skip:     true,
 					Expected: []sql.Row{{int64(10)}},
 				},
 				{
@@ -1006,6 +947,157 @@ func TestOperators(t *testing.T) {
 				{
 					Query:    `SELECT +(7::numeric);`,
 					Expected: []sql.Row{{Numeric("7")}},
+				},
+			},
+		},
+		{
+			Name: "Binary JSON",
+			Assertions: []ScriptTestAssertion{
+				{
+					Query:    `SELECT '[{"a":"foo"},{"b":"bar"},{"c":"baz"}]'::json -> 2;`,
+					Expected: []sql.Row{{`{"c": "baz"}`}},
+				},
+				{
+					Query:    `SELECT '[{"a":"foo"},{"b":"bar"},{"c":"baz"}]'::jsonb -> 2;`,
+					Expected: []sql.Row{{`{"c": "baz"}`}},
+				},
+				{
+					Query:    `SELECT '[{"a":"foo"},{"b":"bar"},{"c":"baz"}]'::json -> -3;`,
+					Expected: []sql.Row{{`{"a": "foo"}`}},
+				},
+				{
+					Query:    `SELECT '[{"a":"foo"},{"b":"bar"},{"c":"baz"}]'::jsonb -> -3;`,
+					Expected: []sql.Row{{`{"a": "foo"}`}},
+				},
+				{
+					Query:    `SELECT '{"a": {"b":"foo"}}'::json -> 'a';`,
+					Expected: []sql.Row{{`{"b": "foo"}`}},
+				},
+				{
+					Query:    `SELECT '{"a": {"b":"foo"}}'::jsonb -> 'a';`,
+					Expected: []sql.Row{{`{"b": "foo"}`}},
+				},
+				{
+					Query:    `SELECT '[1,2,3]'::json ->> 2;`,
+					Expected: []sql.Row{{`3`}},
+				},
+				{
+					Query:    `SELECT '[1,2,3]'::jsonb ->> 2;`,
+					Expected: []sql.Row{{`3`}},
+				},
+				{
+					Query:    `SELECT '{"a":1,"b":2}'::json ->> 'b';`,
+					Expected: []sql.Row{{`2`}},
+				},
+				{
+					Query:    `SELECT '{"a":1,"b":2}'::jsonb ->> 'b';`,
+					Expected: []sql.Row{{`2`}},
+				},
+				{
+					Query:    `SELECT '{"a": {"b": ["foo","bar"]}}'::json #> ARRAY['a','b','1']::text[];`,
+					Expected: []sql.Row{{`"bar"`}},
+				},
+				{
+					Query:    `SELECT '{"a": {"b": ["foo","bar"]}}'::json #> ARRAY['a','b','1'];`,
+					Expected: []sql.Row{{`"bar"`}},
+				},
+				{
+					Query:    `SELECT '{"a": {"b": ["foo","bar"]}}'::json #> '{a,b,1}';`,
+					Expected: []sql.Row{{`"bar"`}},
+				},
+				{
+					Query:    `SELECT '{"a": {"b": ["foo","bar"]}}'::jsonb #> ARRAY['a','b','1']::text[];`,
+					Expected: []sql.Row{{`"bar"`}},
+				},
+				{
+					Query:    `SELECT '{"a": {"b": ["foo","bar"]}}'::jsonb #> ARRAY['a','b','1'];`,
+					Expected: []sql.Row{{`"bar"`}},
+				},
+				{
+					Query:    `SELECT '{"a": {"b": ["foo","bar"]}}'::jsonb #> '{a,b,1}';`,
+					Expected: []sql.Row{{`"bar"`}},
+				},
+				{
+					Query:    `SELECT '{"a": {"b": ["foo","bar"]}}'::json #>> ARRAY['a','b','1']::text[];`,
+					Expected: []sql.Row{{`bar`}},
+				},
+				{
+					Query:    `SELECT '{"a": {"b": ["foo","bar"]}}'::json #>> ARRAY['a','b','1'];`,
+					Expected: []sql.Row{{`bar`}},
+				},
+				{
+					Query:    `SELECT '{"a": {"b": ["foo","bar"]}}'::json #>> '{a,b,1}';`,
+					Expected: []sql.Row{{`bar`}},
+				},
+				{
+					Query:    `SELECT '{"a": {"b": ["foo","bar"]}}'::jsonb #>> ARRAY['a','b','1']::text[];`,
+					Expected: []sql.Row{{`bar`}},
+				},
+				{
+					Query:    `SELECT '{"a": {"b": ["foo","bar"]}}'::jsonb #>> ARRAY['a','b','1'];`,
+					Expected: []sql.Row{{`bar`}},
+				},
+				{
+					Query:    `SELECT '{"a": {"b": ["foo","bar"]}}'::jsonb #>> '{a,b,1}';`,
+					Expected: []sql.Row{{`bar`}},
+				},
+				{
+					Query:    `SELECT '{"a":1, "b":2}'::jsonb @> '{"b":2}'::jsonb;`,
+					Skip:     true,
+					Expected: []sql.Row{{"t"}},
+				},
+				{
+					Query:    `SELECT '{"b":2}'::jsonb <@ '{"a":1, "b":2}'::jsonb;`,
+					Skip:     true,
+					Expected: []sql.Row{{"t"}},
+				},
+				{
+					Query:    `SELECT '{"a":1, "b":2}'::jsonb ? 'b';`,
+					Expected: []sql.Row{{"t"}},
+				},
+				{
+					Query:    `SELECT '["a", "b", "c"]'::jsonb ? 'b';`,
+					Expected: []sql.Row{{"t"}},
+				},
+				{
+					Query:    `SELECT '{"a":1, "b":2, "c":3}'::jsonb ?| ARRAY['b','d']::text[];`,
+					Expected: []sql.Row{{"t"}},
+				},
+				{
+					Query:    `SELECT '{"a":1, "b":2, "c":3}'::jsonb ?| ARRAY['b','d'];`,
+					Expected: []sql.Row{{"t"}},
+				},
+				{
+					Query:    `SELECT '["a", "b", "c"]'::jsonb ?& ARRAY['a','b']::text[];`,
+					Expected: []sql.Row{{"t"}},
+				},
+				{
+					Query:    `SELECT '["a", "b", "c"]'::jsonb ?& ARRAY['a','b'];`,
+					Expected: []sql.Row{{"t"}},
+				},
+				{
+					Query:    `SELECT '["a", "b", "c"]'::jsonb ?& ARRAY['d','b']::text[];`,
+					Expected: []sql.Row{{"f"}},
+				},
+				{
+					Query:    `SELECT '["a", "b", "c"]'::jsonb ?& ARRAY['d','b'];`,
+					Expected: []sql.Row{{"f"}},
+				},
+				{
+					Query:    `SELECT '["a", "b"]'::jsonb || '["a", "d"]'::jsonb;`,
+					Expected: []sql.Row{{`["a", "b", "a", "d"]`}},
+				},
+				{
+					Query:    `SELECT '{"a": "b"}'::jsonb || '{"c": "d"}'::jsonb;`,
+					Expected: []sql.Row{{`{"a": "b", "c": "d"}`}},
+				},
+				{
+					Query:    `SELECT '[1, 2]'::jsonb || '3'::jsonb;`,
+					Expected: []sql.Row{{`[1, 2, 3]`}},
+				},
+				{
+					Query:    `SELECT '{"a": "b"}'::jsonb || '42'::jsonb;`,
+					Expected: []sql.Row{{`[{"a": "b"}, 42]`}},
 				},
 			},
 		},

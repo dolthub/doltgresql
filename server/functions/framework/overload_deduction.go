@@ -15,8 +15,6 @@
 package framework
 
 import (
-	"sort"
-
 	pgtypes "github.com/dolthub/doltgresql/server/types"
 )
 
@@ -27,85 +25,31 @@ type OverloadDeduction struct {
 	Parameter map[pgtypes.DoltgresTypeBaseID]*OverloadDeduction
 }
 
-// Resolve returns an overload that either matches the given parameters exactly, or is a viable match after casting.
-// Returns a nil OverloadDeduction if a viable match is not found.
-func (overload *OverloadDeduction) Resolve(parameters []pgtypes.DoltgresType, sources []Source) (*OverloadDeduction, []TypeCastFunction, error) {
-	// Call the recursive type resolver
-	resultOverload := overload.resolveByType(parameters, sources)
-	// If we receive a nil overload, then no valid overloads were found
-	if resultOverload == nil {
-		return nil, nil, nil
-	}
-	// If any of the result types are different from their originals, then we need to cast them to their resulting types
-	// if it's possible.
-	casts := make([]TypeCastFunction, len(parameters))
-	for i, resultType := range resultOverload.Function.GetParameters() {
-		casts[i] = GetExplicitCast(parameters[i].BaseID(), resultType.BaseID())
-	}
-	return resultOverload, casts, nil
+// collectOverloadPermutations collects all parameters, starting from the caller, such that we have a collection of
+// slices containing all possible parameter combinations that lead to functions. For example, let's say we have the
+// following function overloads:
+//
+// example(int4, int4)
+//
+// example(text, int8, int8)
+//
+// This would return two slices. The first would contain [int4, int4] while the second would contain [text, int8, int8].
+func (overload *OverloadDeduction) collectOverloadPermutations() [][]pgtypes.DoltgresTypeBaseID {
+	var permutations [][]pgtypes.DoltgresTypeBaseID
+	overload.traverseOverloadTree([]pgtypes.DoltgresTypeBaseID{}, &permutations)
+	return permutations
 }
 
-// resolveByType returns the best matching overload for the given types. The result types represent the actual types
-// used by the overload, which may differ from the calling types. It is up to the caller to cast the parameters to match
-// the types expected by the returned overload. Returns a nil OverloadDeduction if a viable match is not found.
-func (overload *OverloadDeduction) resolveByType(originalTypes []pgtypes.DoltgresType, sources []Source) *OverloadDeduction {
-	if overload == nil {
-		return nil
+// traverseOverloadTree walks the tree of overloads, persisting any paths that resolve to a function.
+func (overload *OverloadDeduction) traverseOverloadTree(currentPermutation []pgtypes.DoltgresTypeBaseID, permutations *[][]pgtypes.DoltgresTypeBaseID) {
+	// If we've hit a function, then we should persist the progress we've made so far
+	if overload.Function != nil {
+		pathCopy := make([]pgtypes.DoltgresTypeBaseID, len(currentPermutation))
+		copy(pathCopy, currentPermutation)
+		*permutations = append(*permutations, pathCopy)
 	}
-	if len(originalTypes) == 0 {
-		if overload.Function != nil {
-			return overload
-		}
-		return nil
+	// Continue to walk the tree
+	for baseID, child := range overload.Parameter {
+		child.traverseOverloadTree(append(currentPermutation, baseID), permutations)
 	}
-
-	// Check if we're able to resolve the original type
-	t := originalTypes[0]
-	resultOverload := overload.Parameter[t.BaseID()].resolveByType(originalTypes[1:], sources[1:])
-	if resultOverload != nil {
-		return resultOverload
-	}
-
-	// We did not find a resolution for the original type, so we'll look through each type to find a possible cast.
-	// Constants have a different set of considerations compared to other types of expressions, and string constants
-	// are further specialized.
-	var castFunc func(pgtypes.DoltgresTypeBaseID, pgtypes.DoltgresTypeBaseID) bool
-	sourceStringLiteral := false
-	if sources[0] == Source_Constant {
-		castFunc = implicitOverloadCasts
-		switch t.BaseID() {
-		case pgtypes.DoltgresTypeBaseID_Char, pgtypes.DoltgresTypeBaseID_Text, pgtypes.DoltgresTypeBaseID_VarChar:
-			sourceStringLiteral = true
-		}
-	} else {
-		castFunc = numericUpcasts
-	}
-	for _, priority := range overload.castPriority(sourceStringLiteral) {
-		if castFunc(priority, t.BaseID()) {
-			resultOverload = overload.Parameter[priority].resolveByType(originalTypes[1:], sources[1:])
-			if resultOverload != nil {
-				return resultOverload
-			}
-		}
-	}
-
-	// We did not find any potential matches, so we'll return nil
-	return nil
-}
-
-// castPriority returns the available types for the current overload position. These types are ordered by priority,
-// which we try to match to the observed behavior of Postgres. The priorities are slightly different if we're casting
-// from a string literal.
-func (overload *OverloadDeduction) castPriority(sourceStringLiteral bool) []pgtypes.DoltgresTypeBaseID {
-	// TODO: this should be precalculated during the overload construction
-	types := make([]pgtypes.DoltgresTypeBaseID, len(overload.Parameter))
-	idx := 0
-	for k := range overload.Parameter {
-		types[idx] = k
-		idx++
-	}
-	sort.Slice(types, func(i, j int) bool {
-		return castPriorityForType(types[i], sourceStringLiteral) < castPriorityForType(types[j], sourceStringLiteral)
-	})
-	return types
 }

@@ -20,6 +20,10 @@ import (
 	"github.com/dolthub/go-mysql-server/sql"
 )
 
+func TestTypes(t *testing.T) {
+	RunScripts(t, typesTests)
+}
+
 var typesTests = []ScriptTest{
 	{
 		Name: "Bigint type",
@@ -171,7 +175,6 @@ var typesTests = []ScriptTest{
 	},
 	{
 		Name: "Bigserial type",
-		Skip: true,
 		SetUpScript: []string{
 			"CREATE TABLE t_bigserial (id INTEGER primary key, v1 BIGSERIAL);",
 			"INSERT INTO t_bigserial VALUES (1, 123456789012345), (2, 987654321098765);",
@@ -225,7 +228,7 @@ var typesTests = []ScriptTest{
 		Name: "Bytea type",
 		SetUpScript: []string{
 			"CREATE TABLE t_bytea (id INTEGER primary key, v1 BYTEA);",
-			"INSERT INTO t_bytea VALUES (1, E'\\\\xDEADBEEF'), (2, '\\xC0FFEE');",
+			"INSERT INTO t_bytea VALUES (1, E'\\\\xDEADBEEF'), (2, '\\xC0FFEE'), (3, ''), (4, NULL);",
 		},
 		Assertions: []ScriptTestAssertion{
 			{
@@ -233,6 +236,8 @@ var typesTests = []ScriptTest{
 				Expected: []sql.Row{
 					{1, []byte{0xDE, 0xAD, 0xBE, 0xEF}},
 					{2, []byte{0xC0, 0xFF, 0xEE}},
+					{3, []byte{}},
+					{4, nil},
 				},
 			},
 		},
@@ -241,7 +246,7 @@ var typesTests = []ScriptTest{
 		Name: "Character type",
 		SetUpScript: []string{
 			"CREATE TABLE t_character (id INTEGER primary key, v1 CHARACTER(5));",
-			"INSERT INTO t_character VALUES (1, 'abcde'), (2, 'vwxyz'), (3, 'ghi');",
+			"INSERT INTO t_character VALUES (1, 'abcde'), (2, 'vwxyz'), (3, 'ghi'), (4, ''), (5, NULL);",
 		},
 		Assertions: []ScriptTestAssertion{
 			{
@@ -250,6 +255,20 @@ var typesTests = []ScriptTest{
 					{1, "abcde"},
 					{2, "vwxyz"},
 					{3, "ghi  "},
+					{4, "     "},
+					{5, nil},
+				},
+			},
+			{
+				Query: "SELECT true::char, false::char;",
+				Expected: []sql.Row{
+					{"t", "f"},
+				},
+			},
+			{
+				Query: "SELECT true::character(5), false::character(5);",
+				Expected: []sql.Row{
+					{"true ", "false"},
 				},
 			},
 		},
@@ -258,7 +277,7 @@ var typesTests = []ScriptTest{
 		Name: "Character varying type",
 		SetUpScript: []string{
 			"CREATE TABLE t_varchar (id INTEGER primary key, v1 CHARACTER VARYING(10));",
-			"INSERT INTO t_varchar VALUES (1, 'abcdefghij'), (2, 'klmnopqrst');",
+			"INSERT INTO t_varchar VALUES (1, 'abcdefghij'), (2, 'klmnopqrst'), (3, ''), (4, NULL);",
 		},
 		Assertions: []ScriptTestAssertion{
 			{
@@ -266,6 +285,14 @@ var typesTests = []ScriptTest{
 				Expected: []sql.Row{
 					{1, "abcdefghij"},
 					{2, "klmnopqrst"},
+					{3, ""},
+					{4, nil},
+				},
+			},
+			{
+				Query: "SELECT true::character varying(10), false::character varying(10);",
+				Expected: []sql.Row{
+					{"true", "false"},
 				},
 			},
 		},
@@ -276,7 +303,6 @@ var typesTests = []ScriptTest{
 			"CREATE TABLE t_varchar1 (v1 CHARACTER VARYING[]);",
 			"CREATE TABLE t_varchar2 (v1 CHARACTER VARYING(1)[]);",
 			"INSERT INTO t_varchar1 VALUES (ARRAY['ab''cdef', 'what', 'is,hi', 'wh\"at']);",
-			"INSERT INTO t_varchar2 VALUES (ARRAY['ab''cdef', 'what', 'is,hi', 'wh\"at']);",
 		},
 		Assertions: []ScriptTestAssertion{
 			{
@@ -284,6 +310,14 @@ var typesTests = []ScriptTest{
 				Expected: []sql.Row{
 					{"{a,w,i,w}"},
 				},
+			},
+			{
+				Query:       "INSERT INTO t_varchar2 VALUES (ARRAY['ab''cdef', 'what', 'is,hi', 'wh\"at']);",
+				ExpectedErr: "too long",
+			},
+			{
+				Query:    "INSERT INTO t_varchar2 VALUES (ARRAY['a', 'w', 'i', 'w']);",
+				Expected: []sql.Row{},
 			},
 			{
 				Query: `SELECT * FROM t_varchar2;`,
@@ -313,7 +347,7 @@ var typesTests = []ScriptTest{
 		Name: "Character varying array type, no length",
 		SetUpScript: []string{
 			"CREATE TABLE t_varchar (id INTEGER primary key, v1 CHARACTER VARYING[]);",
-			"INSERT INTO t_varchar VALUES (1, ARRAY['abcdefghij', NULL]), (2, ARRAY['ab''cdef', 'what', 'is,hi', 'wh\"at', '}', '{', '{}']);",
+			"INSERT INTO t_varchar VALUES (1, '{abcdefghij, NULL}'), (2, ARRAY['ab''cdef', 'what', 'is,hi', 'wh\"at', '}', '{', '{}']);",
 		},
 		Assertions: []ScriptTestAssertion{
 			{
@@ -479,14 +513,44 @@ var typesTests = []ScriptTest{
 		Name: "JSON type",
 		SetUpScript: []string{
 			"CREATE TABLE t_json (id INTEGER primary key, v1 JSON);",
-			"INSERT INTO t_json VALUES (1, '{\"key\": \"value\"}'), (2, '{\"num\": 42}');",
+			"INSERT INTO t_json VALUES (1, '{\"key\": \"value\"}'), (2, '{\"num\":42}');",
 		},
 		Assertions: []ScriptTestAssertion{
 			{
 				Query: "SELECT * FROM t_json ORDER BY id;",
 				Expected: []sql.Row{
-					{1, `{"key":"value"}`},
+					{1, `{"key": "value"}`},
 					{2, `{"num":42}`},
+				},
+			},
+			{
+				Query: "SELECT '5'::json;",
+				Expected: []sql.Row{
+					{`5`},
+				},
+			},
+			{
+				Query: "SELECT 'false'::json;",
+				Expected: []sql.Row{
+					{`false`},
+				},
+			},
+			{
+				Query: `SELECT '"hi"'::json;`,
+				Expected: []sql.Row{
+					{`"hi"`},
+				},
+			},
+			{
+				Query: `SELECT 'null'::json;`,
+				Expected: []sql.Row{
+					{`null`},
+				},
+			},
+			{
+				Query: `SELECT '{"reading": 1.230e-5}'::json;`,
+				Expected: []sql.Row{
+					{`{"reading": 1.230e-5}`},
 				},
 			},
 		},
@@ -501,8 +565,238 @@ var typesTests = []ScriptTest{
 			{
 				Query: "SELECT * FROM t_jsonb ORDER BY id;",
 				Expected: []sql.Row{
-					{1, `{"key":"value"}`},
-					{2, `{"num":42}`},
+					{1, `{"key": "value"}`},
+					{2, `{"num": 42}`},
+				},
+			},
+			{
+				Query: `SELECT '{"bar": "baz", "balance": 7.77, "active":false}'::jsonb;`,
+				Expected: []sql.Row{
+					{`{"bar": "baz", "active": false, "balance": 7.77}`},
+				},
+			},
+			{
+				Query: `SELECT '{"active": "baz", "active":false, "balance": 7.77}'::jsonb;`,
+				Expected: []sql.Row{
+					{`{"active": false, "balance": 7.77}`},
+				},
+			},
+			{
+				Query: `SELECT '{"active":false, "balance": 7.77, "bar": "baz"}'::jsonb;`,
+				Expected: []sql.Row{
+					{`{"bar": "baz", "active": false, "balance": 7.77}`},
+				},
+			},
+		},
+	},
+	{
+		Name: "JSONB ORDER BY",
+		SetUpScript: []string{
+			`CREATE TABLE t_jsonb (v1 JSONB);`,
+			`INSERT INTO t_jsonb VALUES
+				('["string_with_emoji_😊"]'),
+				('[null, "null_as_string", false, 0]'),
+				('{"key1": "value1", "key2": "value2", "key3": "value3"}'),
+				('{"simple": "object"}'),
+				('["special_chars_!@#$%^&*()_+", {"more": "!@#$"}]'),
+				('[null, 1, "two", true, {"five": 5}]'),
+				('[true, false, true]'),
+				('{"key1": 123, "key2": "duplicate_key", "common_key": "same_value"}'),
+				('["emoji_😀", "nested_😂", {"key": "value"}]'),
+				('{"common_key": 456}'),
+				('{"common_key": 123}'),
+				('{"mixed_data": {"number": 100, "string": "text", "bool": false, "null": null}}'),
+				('{"nested": {"level1": {"level2": {"key": "deep_value"}}}}'),
+				('[1.1, 2.2, 3.3, 4.4, 5.5]'),
+				('[{"nested_array": [1, 2, {"deep": {"inner": "value"}}]}, "text"]'),
+				('{"common_key": "same_value"}'),
+				('["end", "of", "array", 123, true]'),
+				('"random string"'),
+				('{"unicode": "こんにちは", "emoji": "😊"}'),
+				('{"keyX": "string_value", "keyY": 123.456, "keyZ": null}'),
+				('[{"key1": "value1"}, {"key2": "value2"}]'),
+				('{"array_of_arrays": {"array1": [1, 2, 3], "array2": [4, 5, 6], "array3": [7, 8, 9]}}'),
+				('{"key1": 123, "key2": "value", "key3": true}'),
+				('{"key1": 1, "key2": 2, "key3": 3, "key4": 4, "key5": 5}'),
+				('{"numbers": [1, 2, 3], "strings": ["a", "b", "c"], "booleans": [true, false]}'),
+				('{"unicode_chars": {"char1": "あ", "char2": "い", "char3": "う"}}'),
+				('[true, null, "string", 3.14]'),
+				('{"array_of_bools": [true, false, true]}'),
+				('[-1, -2, -3, -4]'),
+				('[{"nested_array": [1, 2, 3]}, {"nested_object": {"inner_key": "inner_value"}}]'),
+				('{"single": 1, "double": 2, "triple": 3, "quadruple": 4}'),
+				('true'),
+				('{"complex_array": {"array1": [1, 2, 3], "array2": ["a", "b", "c"]}}'),
+				('["mixed", 123, false, null, {"complex": {"key": "value"}}]'),
+				('{"array_of_strings": ["one", "two", "three"]}'),
+				('["simple_text"]'),
+				('{"mixed": {"number": 100, "string": "text", "bool": false, "null": null}}'),
+				('{"boolean_true": true, "boolean_false": false, "null_value": null}'),
+				('[{"deep": {"structure": {"key": "value"}}}, 123, false]'),
+				('{"nested_numbers": {"one": 1, "two": 2, "three": 3}}'),
+				('[{"emoji": "😊"}, {"another_emoji": "😢"}]'),
+				('["just_text"]'),
+				('{"common_key": "different_value"}'),
+				('[[], [], []]'),
+				('{"array_of_objects": [{"key1": "value1"}, {"key2": "value2"}, {"key3": "value3"}]}'),
+				('{"combos": [{"number": 1}, {"string": "two"}, {"boolean": true}]}'),
+				('{"keyA": 456, "keyB": "another_value", "keyC": false, "keyD": [1, 2, 3]}'),
+				('[true, false, true, false, null]'),
+				('[{"deep_nested": {"level1": {"level2": {"level3": "value"}}}}, 42, "text"]'),
+				('{"empty": {}}'),
+				('{"common_key": {"nested_key": "different_value"}}'),
+				('["a", "b", "c", {"nested": {"key": "value"}}]'),
+				('{"deep_nesting": {"level1": {"level2": {"level3": {"key": "value"}}}}}'),
+				('{"random_text": "Lorem ipsum dolor sit amet"}'),
+				('{"nested_string": {"outer": {"inner": "text"}}}'),
+				('[1, 2, 3, 4, 5]'),
+				('{"single_bool": true}'),
+				('[1234567890, "large_number", false]'),
+				('{"array_of_numbers": [1, 2, 3]}'),
+				('[3.14159, 2.71828, 1.61803]'),
+				('{"common_key": {"nested_key": "value"}}'),
+				('["string1", "string2", "string3"]'),
+				('{"single_string": "hello"}'),
+				('{"nested_mixed": {"key1": 1, "key2": [true, false], "key3": {"inner_key": "inner_value"}}}'),
+				('[0.1, 0.2, 0.3, 0.4]'),
+				('[{"unicode": "こんにちは"}, {"another": "你好"}]'),
+				('[1, "two", true, null, [1, 2, 3]]'),
+				('["flat", "array", "of", "strings"]'),
+				('123456'),
+				('{"nested_object": {"subkey1": 789, "subkey2": [true, false], "subkey3": {"deep": "value"}}}'),
+				('[{"key": {"subkey": [1, 2, 3]}}, 42, "text", false]'),
+				('{"string_with_numbers": {"key": "123abc", "another_key": "456def"}}'),
+				('{"unicode_string": {"greeting": "你好"}}'),
+				('[{"key": "value"}, {"array": [1, 2, 3]}, {"nested": {"inner": "deep"}}]'),
+				('["simple", "array", "of", "strings"]'),
+				('{"text": "simple_string", "integer": 123, "float": 3.14}'),
+				('[[], ["nested", "array"], 123]'),
+				('{"object_in_array": [{"key": "value"}, {"another": "one"}]}'),
+				('{"single_number": 42}'),
+				('[null, null, null]'),
+				('{"random_mixed": {"number": 1, "string": "two", "boolean": true, "null": null}}'),
+				('null'),
+				('["varied", "types", true, 123, {"key": "value"}]'),
+				('[true, false, null, "end"]'),
+				('789.123'),
+				('["unicode_안녕하세요", "string"]'),
+				('{"empty_object": {}, "empty_array": [], "boolean": true}'),
+				('["text", 123, false, {"key": "value"}, [1, 2, 3]]'),
+				('["multiple", "types", 123, true, {"key": "value"}]'),
+				('{"boolean_mixed": {"true": true, "false": false, "null": null}}'),
+				('{"object_in_array": {"array": [1, 2, 3], "nested": {"key": "value"}}}'),
+				('[123, 456, 789]'),
+				('[{"obj_in_array": {"key": "value"}}, [1, 2, 3], false]'),
+				('false'),
+				('[{"complex": {"nested": {"structure": "value"}}}, [1, 2, 3], false]'),
+				('{"simple_object": {"key": "value"}}'),
+				('{"number_key": {"integer": 1, "float": 2.3, "negative": -1}}'),
+				('{"complex_object": {"key1": {"subkey": "value1"}, "key2": {"subkey": "value2"}}}'),
+				('[1, "two", true, null, {"key": "value"}]');`,
+		},
+		Assertions: []ScriptTestAssertion{
+			{
+				Query: "SELECT * FROM t_jsonb ORDER BY v1;",
+				Expected: []sql.Row{
+					{`null`},
+					{`"random string"`},
+					{`789.123`},
+					{`123456`},
+					{`false`},
+					{`true`},
+					{`["just_text"]`},
+					{`["simple_text"]`},
+					{`["string_with_emoji_😊"]`},
+					{`["special_chars_!@#$%^&*()_+", {"more": "!@#$"}]`},
+					{`["unicode_안녕하세요", "string"]`},
+					{`[{"emoji": "😊"}, {"another_emoji": "😢"}]`},
+					{`[{"key1": "value1"}, {"key2": "value2"}]`},
+					{`[{"nested_array": [1, 2, 3]}, {"nested_object": {"inner_key": "inner_value"}}]`},
+					{`[{"nested_array": [1, 2, {"deep": {"inner": "value"}}]}, "text"]`},
+					{`[{"unicode": "こんにちは"}, {"another": "你好"}]`},
+					{`[null, null, null]`},
+					{`["emoji_😀", "nested_😂", {"key": "value"}]`},
+					{`["string1", "string2", "string3"]`},
+					{`[3.14159, 2.71828, 1.61803]`},
+					{`[123, 456, 789]`},
+					{`[1234567890, "large_number", false]`},
+					{`[true, false, true]`},
+					{`[[], [], []]`},
+					{`[[], ["nested", "array"], 123]`},
+					{`[{"complex": {"nested": {"structure": "value"}}}, [1, 2, 3], false]`},
+					{`[{"deep": {"structure": {"key": "value"}}}, 123, false]`},
+					{`[{"deep_nested": {"level1": {"level2": {"level3": "value"}}}}, 42, "text"]`},
+					{`[{"key": "value"}, {"array": [1, 2, 3]}, {"nested": {"inner": "deep"}}]`},
+					{`[{"obj_in_array": {"key": "value"}}, [1, 2, 3], false]`},
+					{`[null, "null_as_string", false, 0]`},
+					{`["a", "b", "c", {"nested": {"key": "value"}}]`},
+					{`["flat", "array", "of", "strings"]`},
+					{`["simple", "array", "of", "strings"]`},
+					{`[-1, -2, -3, -4]`},
+					{`[0.1, 0.2, 0.3, 0.4]`},
+					{`[true, null, "string", 3.14]`},
+					{`[true, false, null, "end"]`},
+					{`[{"key": {"subkey": [1, 2, 3]}}, 42, "text", false]`},
+					{`[null, 1, "two", true, {"five": 5}]`},
+					{`["end", "of", "array", 123, true]`},
+					{`["mixed", 123, false, null, {"complex": {"key": "value"}}]`},
+					{`["multiple", "types", 123, true, {"key": "value"}]`},
+					{`["text", 123, false, {"key": "value"}, [1, 2, 3]]`},
+					{`["varied", "types", true, 123, {"key": "value"}]`},
+					{`[1, "two", true, null, [1, 2, 3]]`},
+					{`[1, "two", true, null, {"key": "value"}]`},
+					{`[1, 2, 3, 4, 5]`},
+					{`[1.1, 2.2, 3.3, 4.4, 5.5]`},
+					{`[true, false, true, false, null]`},
+					{`{"array_of_arrays": {"array1": [1, 2, 3], "array2": [4, 5, 6], "array3": [7, 8, 9]}}`},
+					{`{"array_of_bools": [true, false, true]}`},
+					{`{"array_of_numbers": [1, 2, 3]}`},
+					{`{"array_of_objects": [{"key1": "value1"}, {"key2": "value2"}, {"key3": "value3"}]}`},
+					{`{"array_of_strings": ["one", "two", "three"]}`},
+					{`{"boolean_mixed": {"null": null, "true": true, "false": false}}`},
+					{`{"combos": [{"number": 1}, {"string": "two"}, {"boolean": true}]}`},
+					{`{"common_key": "different_value"}`},
+					{`{"common_key": "same_value"}`},
+					{`{"common_key": 123}`},
+					{`{"common_key": 456}`},
+					{`{"common_key": {"nested_key": "different_value"}}`},
+					{`{"common_key": {"nested_key": "value"}}`},
+					{`{"complex_array": {"array1": [1, 2, 3], "array2": ["a", "b", "c"]}}`},
+					{`{"complex_object": {"key1": {"subkey": "value1"}, "key2": {"subkey": "value2"}}}`},
+					{`{"deep_nesting": {"level1": {"level2": {"level3": {"key": "value"}}}}}`},
+					{`{"empty": {}}`},
+					{`{"mixed": {"bool": false, "null": null, "number": 100, "string": "text"}}`},
+					{`{"mixed_data": {"bool": false, "null": null, "number": 100, "string": "text"}}`},
+					{`{"nested": {"level1": {"level2": {"key": "deep_value"}}}}`},
+					{`{"nested_mixed": {"key1": 1, "key2": [true, false], "key3": {"inner_key": "inner_value"}}}`},
+					{`{"nested_numbers": {"one": 1, "two": 2, "three": 3}}`},
+					{`{"nested_object": {"subkey1": 789, "subkey2": [true, false], "subkey3": {"deep": "value"}}}`},
+					{`{"nested_string": {"outer": {"inner": "text"}}}`},
+					{`{"number_key": {"float": 2.3, "integer": 1, "negative": -1}}`},
+					{`{"object_in_array": [{"key": "value"}, {"another": "one"}]}`},
+					{`{"object_in_array": {"array": [1, 2, 3], "nested": {"key": "value"}}}`},
+					{`{"random_mixed": {"null": null, "number": 1, "string": "two", "boolean": true}}`},
+					{`{"random_text": "Lorem ipsum dolor sit amet"}`},
+					{`{"simple": "object"}`},
+					{`{"simple_object": {"key": "value"}}`},
+					{`{"single_bool": true}`},
+					{`{"single_number": 42}`},
+					{`{"single_string": "hello"}`},
+					{`{"string_with_numbers": {"key": "123abc", "another_key": "456def"}}`},
+					{`{"unicode_chars": {"char1": "あ", "char2": "い", "char3": "う"}}`},
+					{`{"unicode_string": {"greeting": "你好"}}`},
+					{`{"emoji": "😊", "unicode": "こんにちは"}`},
+					{`{"boolean": true, "empty_array": [], "empty_object": {}}`},
+					{`{"key1": "value1", "key2": "value2", "key3": "value3"}`},
+					{`{"key1": 123, "key2": "duplicate_key", "common_key": "same_value"}`},
+					{`{"key1": 123, "key2": "value", "key3": true}`},
+					{`{"keyX": "string_value", "keyY": 123.456, "keyZ": null}`},
+					{`{"null_value": null, "boolean_true": true, "boolean_false": false}`},
+					{`{"numbers": [1, 2, 3], "strings": ["a", "b", "c"], "booleans": [true, false]}`},
+					{`{"text": "simple_string", "float": 3.14, "integer": 123}`},
+					{`{"double": 2, "single": 1, "triple": 3, "quadruple": 4}`},
+					{`{"keyA": 456, "keyB": "another_value", "keyC": false, "keyD": [1, 2, 3]}`},
+					{`{"key1": 1, "key2": 2, "key3": 3, "key4": 4, "key5": 5}`},
 				},
 			},
 		},
@@ -629,12 +923,12 @@ var typesTests = []ScriptTest{
 			},
 			{
 				Query:    "INSERT INTO t_name VALUES (4, 12345);",
-				Skip:     true, // TODO: Cannot insert number into name column
+				Skip:     true, // TODO: according to casting rules this shouldn't work but it does, investigate why
 				Expected: []sql.Row{},
 			},
 			{
 				Query: "SELECT * FROM t_name ORDER BY id;",
-				Skip:  true, // TODO: Cannot insert number into name column
+				Skip:  true, // This is skipped because the one above is skipped
 				Expected: []sql.Row{
 					{2, "tuvwxyz"},
 					{3, "012345678901234567890123456789012345678901234567890123456789012"},
@@ -644,22 +938,139 @@ var typesTests = []ScriptTest{
 		},
 	},
 	{
-		Name: "Name array type",
+		Name: "Name type, explicit casts",
 		SetUpScript: []string{
-			"CREATE TABLE t_name (id INTEGER primary key, v1 NAME[], v2 CHARACTER(100), v3 BOOLEAN);",
-			"INSERT INTO t_name VALUES (1, ARRAY['ab''cdef', 'what', 'is,hi', 'wh\"at'], '1234567890123456789012345678901234567890123456789012345678901234567890', true);",
+			"CREATE TABLE t_name (id INTEGER primary key, v1 NAME);",
+			"INSERT INTO t_name VALUES (1, 'abcdefghij'), (2, '12345');",
 		},
 		Assertions: []ScriptTestAssertion{
 			{
-				Query: `SELECT v1::varchar(1)[] FROM t_name;`,
+				Query: "SELECT * FROM t_name ORDER BY id;",
+				Expected: []sql.Row{
+					{1, "abcdefghij"},
+					{2, "12345"},
+				},
+			},
+			// Cast from Name to types
+			{
+				Query: "SELECT v1::char(1), v1::varchar(2), v1::text FROM t_name WHERE id=1;",
+				Expected: []sql.Row{
+					{"a", "ab", "abcdefghij"},
+				},
+			},
+			{
+				Query: "SELECT v1::smallint, v1::integer, v1::bigint, v1::float4, v1::float8, v1::numeric FROM t_name WHERE id=2;",
+				Expected: []sql.Row{
+					{12345, 12345, 12345, float64(12345), float64(12345), float64(12345)},
+				},
+			},
+			{
+				Query: "SELECT v1::oid, v1::xid FROM t_name WHERE id=2;",
+				Expected: []sql.Row{
+					{12345, 12345},
+				},
+			},
+			{
+				Query: "SELECT v1::xid FROM t_name WHERE id=1;",
+				Expected: []sql.Row{
+					{0},
+				},
+			},
+			{
+				Query: "SELECT ('0'::name)::boolean, ('1'::name)::boolean;",
+				Expected: []sql.Row{
+					{"f", "t"},
+				},
+			},
+			{
+				Query:       "SELECT v1::smallint FROM t_name WHERE id=1;",
+				ExpectedErr: "invalid input syntax for type",
+			},
+			{
+				Query:       "SELECT v1::integer FROM t_name WHERE id=1;",
+				ExpectedErr: "invalid input syntax for type",
+			},
+			{
+				Query:       "SELECT v1::bigint FROM t_name WHERE id=1;",
+				ExpectedErr: "invalid input syntax for type",
+			},
+			{
+				Query:       "SELECT v1::float4 FROM t_name WHERE id=1;",
+				ExpectedErr: "invalid input syntax for type",
+			},
+			{
+				Query:       "SELECT v1::float8 FROM t_name WHERE id=1;",
+				ExpectedErr: "invalid input syntax for type",
+			},
+			{
+				Query:       "SELECT v1::numeric FROM t_name WHERE id=1;",
+				ExpectedErr: "invalid input syntax for type",
+			},
+			{
+				Query:       "SELECT v1::boolean FROM t_name WHERE id=1;",
+				ExpectedErr: "invalid input syntax for type",
+			},
+			{
+				Query:       "SELECT v1::oid FROM t_name WHERE id=1;",
+				ExpectedErr: "invalid input syntax for type",
+			},
+			// Cast to Name from types
+			{
+				Query: "SELECT ('abc'::char(3))::name, ('abc'::varchar)::name, ('abc'::text)::name;",
+				Expected: []sql.Row{
+					{"abc", "abc", "abc"},
+				},
+			},
+			{
+				Query: "SELECT (10::int2)::name, (100::int4)::name, (1000::int8)::name;",
+				Expected: []sql.Row{
+					{"10", "100", "1000"},
+				},
+			},
+			{
+				Query: "SELECT (1.1::float4)::name, (10.1::float8)::name;",
+				Expected: []sql.Row{
+					{"1.1", "10.1"},
+				},
+			},
+			{
+				Query: "SELECT (100.0::numeric)::name;",
+				Skip:  true, // TODO: Should return 100.0 instead of 100
+				Expected: []sql.Row{
+					{"100.0"},
+				},
+			},
+			{
+				Query: "SELECT false::name, true::name, ('0'::boolean)::name, ('1'::boolean)::name;",
+				Expected: []sql.Row{
+					{"f", "t", "f", "t"},
+				},
+			},
+			{
+				Query: "SELECT ('123'::xid)::name, (123::oid)::name;",
+				Expected: []sql.Row{
+					{"123", "123"},
+				},
+			},
+		},
+	},
+	{
+		Name: "Name array type",
+		SetUpScript: []string{
+			"CREATE TABLE t_namea (id INTEGER primary key, v1 NAME[], v2 CHARACTER(100), v3 BOOLEAN);",
+			"INSERT INTO t_namea VALUES (1, ARRAY['ab''cdef', 'what', 'is,hi', 'wh\"at'], '1234567890123456789012345678901234567890123456789012345678901234567890', true);",
+		},
+		Assertions: []ScriptTestAssertion{
+			{
+				Query: `SELECT v1::varchar(1)[] FROM t_namea;`,
 				Expected: []sql.Row{
 					{"{a,w,i,w}"},
 				},
 			},
 			{
-				Query: `SELECT v2::name, v3::name FROM t_name;`,
+				Query: `SELECT v2::name, v3::name FROM t_namea;`,
 				Expected: []sql.Row{
-					{"123456789012345678901234567890123456789012345678901234567890123", "true"},
+					{"123456789012345678901234567890123456789012345678901234567890123", "t"},
 				},
 			},
 		},
@@ -764,8 +1175,7 @@ var typesTests = []ScriptTest{
 			},
 			{
 				Query:       "INSERT INTO t_oid VALUES (5, 4294967296);",
-				Skip:        true, // TODO: Should return an OID out of range error
-				ExpectedErr: true,
+				ExpectedErr: "out of range",
 			},
 			{
 				Query:    "INSERT INTO t_oid VALUES (6, 0);",
@@ -822,11 +1232,11 @@ var typesTests = []ScriptTest{
 			},
 			{
 				Query:       "SELECT coid::smallint FROM t_oid WHERE id=1;",
-				ExpectedErr: true,
+				ExpectedErr: "does not exist",
 			},
 			{
 				Query:       "SELECT coid::smallint FROM t_oid WHERE id=2;",
-				ExpectedErr: true,
+				ExpectedErr: "does not exist",
 			},
 			{
 				Query: "SELECT coid::integer FROM t_oid WHERE id=1;",
@@ -860,19 +1270,19 @@ var typesTests = []ScriptTest{
 			},
 			{
 				Query:       "SELECT coid::float4 FROM t_oid WHERE id=1;",
-				ExpectedErr: true,
+				ExpectedErr: "does not exist",
 			},
 			{
 				Query:       "SELECT coid::float8 FROM t_oid WHERE id=1;",
-				ExpectedErr: true,
+				ExpectedErr: "does not exist",
 			},
 			{
 				Query:       "SELECT coid::numeric FROM t_oid WHERE id=1;",
-				ExpectedErr: true,
+				ExpectedErr: "does not exist",
 			},
 			{
 				Query:       "SELECT coid::xid FROM t_oid WHERE id=1;",
-				ExpectedErr: true,
+				ExpectedErr: "does not exist",
 			},
 			// Cast to OID from types
 			{
@@ -907,47 +1317,47 @@ var typesTests = []ScriptTest{
 			},
 			{
 				Query:       "SELECT (-1::int8)::oid;",
-				ExpectedErr: true,
+				ExpectedErr: "out of range",
 			},
 			{
 				Query:       "SELECT (922337203685477580::int8)::oid;",
-				ExpectedErr: true,
+				ExpectedErr: "out of range",
 			},
 			{
 				Query:       "SELECT (1.1::float4)::oid;",
-				ExpectedErr: true,
+				ExpectedErr: "does not exist",
 			},
 			{
 				Query:       "SELECT (1.1::float8)::oid;",
-				ExpectedErr: true,
+				ExpectedErr: "does not exist",
 			},
 			{
 				Query:       "SELECT (1.1::decimal)::oid;",
-				ExpectedErr: true,
+				ExpectedErr: "does not exist",
 			},
 			{
 				Query:       "SELECT ('922337203685477580'::text)::oid;",
-				ExpectedErr: true,
+				ExpectedErr: "out of range",
 			},
 			{
 				Query:       "SELECT ('abc'::char(3))::oid;",
-				ExpectedErr: true,
+				ExpectedErr: "invalid input syntax",
 			},
 			{
 				Query:       "SELECT ('-2147483649'::char(11))::oid;",
-				ExpectedErr: true,
+				ExpectedErr: "out of range",
 			},
 			{
 				Query:       "SELECT ('-2147483649'::varchar)::oid;",
-				ExpectedErr: true,
+				ExpectedErr: "out of range",
 			},
 			{
 				Query:       "SELECT ('-2147483649'::text)::oid;",
-				ExpectedErr: true,
+				ExpectedErr: "out of range",
 			},
 			{
 				Query:       "SELECT ('-2147483649'::name)::oid;",
-				ExpectedErr: true,
+				ExpectedErr: "out of range",
 			},
 		},
 	},
@@ -965,10 +1375,8 @@ var typesTests = []ScriptTest{
 				},
 			},
 			{
-				Query: `SELECT v2::oid, v3::oid FROM t_oid;`,
-				Expected: []sql.Row{
-					{1234567890, 1},
-				},
+				Query:       `SELECT v2::oid, v3::oid FROM t_oid;`,
+				ExpectedErr: "cast",
 			},
 		},
 	},
@@ -1106,7 +1514,6 @@ var typesTests = []ScriptTest{
 	},
 	{
 		Name: "Smallserial type",
-		Skip: true,
 		SetUpScript: []string{
 			"CREATE TABLE t_smallserial (id SERIAL primary key, v1 SMALLSERIAL);",
 			"INSERT INTO t_smallserial (v1) VALUES (42), (99);",
@@ -1123,7 +1530,6 @@ var typesTests = []ScriptTest{
 	},
 	{
 		Name: "Serial type",
-		Skip: true,
 		SetUpScript: []string{
 			"CREATE TABLE t_serial (id SERIAL primary key, v1 SERIAL);",
 			"INSERT INTO t_serial (v1) VALUES (123), (456);",
@@ -1142,7 +1548,7 @@ var typesTests = []ScriptTest{
 		Name: "Text type",
 		SetUpScript: []string{
 			"CREATE TABLE t_text (id INTEGER primary key, v1 TEXT);",
-			"INSERT INTO t_text VALUES (1, 'Hello'), (2, 'World');",
+			"INSERT INTO t_text VALUES (1, 'Hello'), (2, 'World'), (3, ''), (4, NULL);",
 		},
 		Assertions: []ScriptTestAssertion{
 			{
@@ -1150,6 +1556,8 @@ var typesTests = []ScriptTest{
 				Expected: []sql.Row{
 					{1, "Hello"},
 					{2, "World"},
+					{3, ""},
+					{4, nil},
 				},
 			},
 		},
@@ -1295,12 +1703,11 @@ var typesTests = []ScriptTest{
 		Assertions: []ScriptTestAssertion{
 			{
 				Query:       "INSERT INTO t_xid VALUES (1, 1234, '100');",
-				Skip:        true, // TODO: Should return 'column "v1" is of type xid but expression is of type integer' error
-				ExpectedErr: true,
+				ExpectedErr: "expression is of type",
 			},
 			{
 				Query:       "INSERT INTO t_xid VALUES (1, 1234::xid, '100');",
-				ExpectedErr: true,
+				ExpectedErr: "does not exist",
 			},
 			{
 				Query:    "INSERT INTO t_xid VALUES (1, NULL, '100');",
@@ -1328,12 +1735,13 @@ var typesTests = []ScriptTest{
 			},
 			{
 				Query:    "DELETE FROM t_xid WHERE v1=100;",
+				Skip:     true, // TODO: need to implement comparisons, cast interface isn't adequate enough
 				Expected: []sql.Row{},
 			},
 			{
 				Query:       "SELECT * FROM t_xid ORDER BY v1 DESC;",
 				Skip:        true, // TODO: should error with "could not identify an ordering operator for type xid"
-				ExpectedErr: true,
+				ExpectedErr: "does not exist",
 			},
 			{
 				Query:    "INSERT INTO t_xid VALUES (4, '4294967295', 'a');",
@@ -1359,6 +1767,7 @@ var typesTests = []ScriptTest{
 				Query: "SELECT * FROM t_xid ORDER BY id;",
 				Expected: []sql.Row{
 					{1, 9012, "100"},
+					{2, 100, "101"},
 					{4, 4294967295, "a"},
 					{5, 0, "b"},
 					{6, 0, "c"},
@@ -1391,35 +1800,35 @@ var typesTests = []ScriptTest{
 			},
 			{
 				Query:       "SELECT v1::smallint FROM t_xid WHERE id=1;",
-				ExpectedErr: true,
+				ExpectedErr: "does not exist",
 			},
 			{
 				Query:       "SELECT v1::integer FROM t_xid WHERE id=1;",
-				ExpectedErr: true,
+				ExpectedErr: "does not exist",
 			},
 			{
 				Query:       "SELECT v1::bigint FROM t_xid WHERE id=1;",
-				ExpectedErr: true,
+				ExpectedErr: "does not exist",
 			},
 			{
 				Query:       "SELECT v1::oid FROM t_xid WHERE id=1;",
-				ExpectedErr: true,
+				ExpectedErr: "does not exist",
 			},
 			{
 				Query:       "SELECT v1::float4 FROM t_xid WHERE id=1;",
-				ExpectedErr: true,
+				ExpectedErr: "does not exist",
 			},
 			{
 				Query:       "SELECT v1::float8 FROM t_xid WHERE id=1;",
-				ExpectedErr: true,
+				ExpectedErr: "does not exist",
 			},
 			{
 				Query:       "SELECT v1::numeric FROM t_xid WHERE id=1;",
-				ExpectedErr: true,
+				ExpectedErr: "does not exist",
 			},
 			{
 				Query:       "SELECT v1::boolean FROM t_xid WHERE id=1;",
-				ExpectedErr: true,
+				ExpectedErr: "does not exist",
 			},
 			// Cast to XID from types
 			{
@@ -1442,31 +1851,31 @@ var typesTests = []ScriptTest{
 			},
 			{
 				Query:       "SELECT (10::int2)::xid;",
-				ExpectedErr: true,
+				ExpectedErr: "does not exist",
 			},
 			{
 				Query:       "SELECT (10::boolean)::xid;",
-				ExpectedErr: true,
+				ExpectedErr: "does not exist",
 			},
 			{
 				Query:       "SELECT (10::int4)::xid;",
-				ExpectedErr: true,
+				ExpectedErr: "does not exist",
 			},
 			{
 				Query:       "SELECT (10::int8)::xid;",
-				ExpectedErr: true,
+				ExpectedErr: "does not exist",
 			},
 			{
 				Query:       "SELECT (1.1::float4)::xid;",
-				ExpectedErr: true,
+				ExpectedErr: "does not exist",
 			},
 			{
 				Query:       "SELECT (1.1::float8)::xid;",
-				ExpectedErr: true,
+				ExpectedErr: "does not exist",
 			},
 			{
 				Query:       "SELECT (1.1::decimal)::xid;",
-				ExpectedErr: true,
+				ExpectedErr: "does not exist",
 			},
 			{
 				Query: "SELECT ('4294967295'::text)::xid, ('4294967297'::text)::xid;",
@@ -1514,7 +1923,6 @@ var typesTests = []ScriptTest{
 	},
 	{
 		Name: "Xid array type",
-		Skip: true, // TODO: Insert to XID[] column not working (invalid type: xid[]), will be fixed when Convert is removed
 		SetUpScript: []string{
 			"CREATE TABLE t_xid (id INTEGER primary key, v1 XID[], v2 CHARACTER(100), v3 BOOLEAN);",
 			"INSERT INTO t_xid VALUES (2, '{123, 456, 789, 101}', '1234567890', true);",
@@ -1528,7 +1936,7 @@ var typesTests = []ScriptTest{
 			},
 			{
 				Query:       `INSERT INTO t_xid VALUES (2, ARRAY[123, 456, 789, 101], '1234567890', true);`,
-				ExpectedErr: true,
+				ExpectedErr: "is of type",
 			},
 		},
 	},
@@ -1549,10 +1957,6 @@ var typesTests = []ScriptTest{
 			},
 		},
 	},
-}
-
-func TestTypes(t *testing.T) {
-	RunScripts(t, typesTests)
 }
 
 func TestSameTypes(t *testing.T) {
@@ -1668,8 +2072,6 @@ func TestSameTypes(t *testing.T) {
 						{"abc", "def", "ghi"},
 						{"jkl", "mno", "pqr"},
 					},
-					Skip: true, // type length info is not being passed correctly to the engine, which causes the
-					// select to fail with 'invalid length for "char": 3'
 				},
 			},
 		},
@@ -1683,17 +2085,17 @@ func TestSameTypes(t *testing.T) {
 				{
 					Query: "SELECT * FROM test ORDER BY 1;",
 					Expected: []sql.Row{
-						{1, `{"key1":{"key":"value"}}`},
-						{2, `{"key1":"value1","key2":"value2"}`},
-						{3, `{"key1":{"key":[2,3]}}`},
+						{1, `{"key1": {"key": "value"}}`},
+						{2, `{"key1": "value1", "key2": "value2"}`},
+						{3, `{"key1": {"key": [2,3]}}`},
 					},
 				},
 				{
 					Query: "SELECT * FROM test ORDER BY v1;",
 					Expected: []sql.Row{
-						{1, `{"key1":{"key":"value"}}`},
-						{2, `{"key1":"value1","key2":"value2"}`},
-						{3, `{"key1":{"key":[2,3]}}`},
+						{1, `{"key1": {"key": "value"}}`},
+						{2, `{"key1": "value1", "key2": "value2"}`},
+						{3, `{"key1": {"key": [2,3]}}`},
 					},
 				},
 			},

@@ -34,15 +34,29 @@ jobs:
         uses: actions/checkout@v4
         with:
           token: ${{ secrets.PUBLIC_REPO_ACCESS_TOKEN || secrets.REPO_ACCESS_TOKEN || secrets.GITHUB_TOKEN }}
+      - name: Build SQL Syntax
+        run: ./build.sh
+        working-directory: ./postgres/parser
+        shell: bash
       - name: Update Doltgres version command
         run: sed -i -e 's/	Version = ".*"/	Version = "'"$NEW_VERSION"'"/' "$FILE"
         env:
           FILE: ${{ format('{0}/server/server.go', github.workspace) }}
           NEW_VERSION: ${{ needs.format-version.outputs.version }}
+      - name: Set minver TBD to version
+        run: sed -i -e 's/minver:"TBD"/minver:"'"$NEW_VERSION"'"/' "$FILE"
+        env:
+          FILE: ${{ format('{0}/servercfg/config.go', github.workspace) }}
+          NEW_VERSION: ${{ needs.format-version.outputs.version }}
+      - name: update minver_validation.txt
+        working-directory: ./
+        run: go run -mod=readonly ./utils/genminver_validation/ $FILE
+        env:
+          FILE: ${{ format('{0}/servercfg/testdata/minver_validation.txt', github.workspace) }}
       - uses: EndBug/add-and-commit@v9.1.1
         with:
           message: ${{ format('Update DoltgreSQL version to {0}', needs.format-version.outputs.version) }}
-          add: ${{ format('{0}/server/server.go', github.workspace) }}
+          add: ${{ format('["{0}/server/server.go", "{0}/servercfg/config.go", "{0}/servercfg/testdata/minver_validation.txt"]', github.workspace) }}
           cwd: "."
           new_branch: cd-release
       - name: Create Pull Request
@@ -57,10 +71,6 @@ jobs:
         uses: actions/setup-go@v5
         with:
           go-version-file: go.mod
-      - name: Build SQL Syntax
-        run: ./build.sh
-        working-directory: ./postgres/parser
-        shell: bash
       - name: Build Binaries
         id: build_binaries
         run: |

@@ -23,6 +23,14 @@ type DoltgresType interface {
 	BaseID() DoltgresTypeBaseID
 	// GetSerializationID returns the SerializationID for this type.
 	GetSerializationID() SerializationID
+	// IoInput returns a value from the given input string. This function mirrors Postgres' I/O input function. Such
+	// strings are intended for serialization and automatic cross-type conversion. An input string will never represent
+	// NULL.
+	IoInput(input string) (any, error)
+	// IoOutput returns a string from the given output value. This function mirrors Postgres' I/O output function. These
+	// strings are not intended for output, but are instead intended for serialization and cross-type conversion. Output
+	// values will always be non-NULL.
+	IoOutput(output any) (string, error)
 	// IsUnbounded returns whether the type is unbounded. Unbounded types do not enforce a length, precision, etc. on
 	// values. All values are still bound by the field size limit, but that differs from any type-enforced limits.
 	IsUnbounded() bool
@@ -69,10 +77,17 @@ var typesFromBaseID = map[DoltgresTypeBaseID]DoltgresType{
 	Float64Array.BaseID():     Float64Array,
 	Int16.BaseID():            Int16,
 	Int16Array.BaseID():       Int16Array,
+	Int16Serial.BaseID():      Int16Serial,
 	Int32.BaseID():            Int32,
 	Int32Array.BaseID():       Int32Array,
+	Int32Serial.BaseID():      Int32Serial,
 	Int64.BaseID():            Int64,
 	Int64Array.BaseID():       Int64Array,
+	Int64Serial.BaseID():      Int64Serial,
+	Json.BaseID():             Json,
+	JsonArray.BaseID():        JsonArray,
+	JsonB.BaseID():            JsonB,
+	JsonBArray.BaseID():       JsonBArray,
 	Name.BaseID():             Name,
 	NameArray.BaseID():        NameArray,
 	Null.BaseID():             Null,

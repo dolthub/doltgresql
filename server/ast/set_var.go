@@ -29,6 +29,11 @@ func nodeSetVar(node *tree.SetVar) (vitess.Statement, error) {
 	if node == nil {
 		return nil, nil
 	}
+	// USE statement alias
+	if node.Name == "database" {
+		dbName := strings.TrimPrefix(strings.TrimSuffix(node.Values[0].String(), "'"), "'")
+		return &vitess.Use{DBName: vitess.NewTableIdent(dbName)}, nil
+	}
 	if !config.IsValidPostgresConfigParameter(node.Name) {
 		return nil, fmt.Errorf(`ERROR: syntax error at or near "%s"'`, node.Name)
 	}

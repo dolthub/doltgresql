@@ -24,18 +24,28 @@ import (
 type Operator byte
 
 const (
-	Operator_BinaryPlus Operator = iota
-	Operator_BinaryMinus
-	Operator_BinaryMultiply
-	Operator_BinaryDivide
-	Operator_BinaryMod
-	Operator_BinaryShiftLeft
-	Operator_BinaryShiftRight
-	Operator_BinaryBitAnd
-	Operator_BinaryBitOr
-	Operator_BinaryBitXor
-	Operator_UnaryPlus
-	Operator_UnaryMinus
+	Operator_BinaryPlus                Operator = iota // +
+	Operator_BinaryMinus                               // -
+	Operator_BinaryMultiply                            // *
+	Operator_BinaryDivide                              // /
+	Operator_BinaryMod                                 // %
+	Operator_BinaryShiftLeft                           // <<
+	Operator_BinaryShiftRight                          // >>
+	Operator_BinaryBitAnd                              // &
+	Operator_BinaryBitOr                               // |
+	Operator_BinaryBitXor                              // ^
+	Operator_BinaryConcatenate                         // ||
+	Operator_BinaryJSONExtractJson                     // ->
+	Operator_BinaryJSONExtractText                     // ->>
+	Operator_BinaryJSONExtractPathJson                 // #>
+	Operator_BinaryJSONExtractPathText                 // #>>
+	Operator_BinaryJSONContainsRight                   // @>
+	Operator_BinaryJSONContainsLeft                    // <@
+	Operator_BinaryJSONTopLevel                        // ?
+	Operator_BinaryJSONTopLevelAny                     // ?|
+	Operator_BinaryJSONTopLevelAll                     // ?&
+	Operator_UnaryPlus                                 // +
+	Operator_UnaryMinus                                // -
 )
 
 // unaryFunction represents the signature for a unary function.
@@ -62,6 +72,10 @@ var (
 	// binaryAggregateDeducers is a map from an operator to an overload deducer that is the aggregate of all functions
 	// for that operator.
 	binaryAggregateDeducers = map[Operator]*OverloadDeduction{}
+	// unaryAggregatePermutations contains all of the permutations for each unary operator.
+	unaryAggregatePermutations = map[Operator][][]pgtypes.DoltgresTypeBaseID{}
+	// unaryAggregatePermutations contains all of the permutations for each binary operator.
+	binaryAggregatePermutations = map[Operator][][]pgtypes.DoltgresTypeBaseID{}
 )
 
 // RegisterUnaryFunction registers the given function, so that it will be usable from a running server. This should
@@ -107,7 +121,9 @@ func RegisterBinaryFunction(operator Operator, f Function2) {
 func GetUnaryFunction(operator Operator) IntermediateFunction {
 	// Returns nil if not found, which is fine as IntermediateFunction will handle the nil deducer
 	return IntermediateFunction{
-		Functions: unaryAggregateDeducers[operator],
+		Functions:    unaryAggregateDeducers[operator],
+		AllOverloads: unaryAggregatePermutations[operator],
+		IsOperator:   true,
 	}
 }
 
@@ -115,7 +131,9 @@ func GetUnaryFunction(operator Operator) IntermediateFunction {
 func GetBinaryFunction(operator Operator) IntermediateFunction {
 	// Returns nil if not found, which is fine as IntermediateFunction will handle the nil deducer
 	return IntermediateFunction{
-		Functions: binaryAggregateDeducers[operator],
+		Functions:    binaryAggregateDeducers[operator],
+		AllOverloads: binaryAggregatePermutations[operator],
+		IsOperator:   true,
 	}
 }
 

@@ -34,6 +34,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	dserver "github.com/dolthub/doltgresql/server"
+	"github.com/dolthub/doltgresql/servercfg"
 	framework "github.com/dolthub/doltgresql/testing/go"
 	"github.com/dolthub/doltgresql/utils"
 )
@@ -167,13 +168,22 @@ func RunScripts(t *testing.T, scripts []ScriptTest) {
 	}
 }
 
+func ptr[T any](val T) *T {
+	return &val
+}
+
 // CreateServer creates a server with the given database, returning a connection to the server. The server will close
 // when the connection is closed (or loses its connection to the server). The accompanying WaitGroup may be used to wait
 // until the server has closed.
 func CreateServer(t *testing.T, database string) (context.Context, *pgx.Conn, *svcs.Controller) {
 	require.NotEmpty(t, database)
 	port := GetUnusedPort(t)
-	controller, err := dserver.RunInMemory([]string{fmt.Sprintf("--port=%d", port), "--host=127.0.0.1"})
+	controller, err := dserver.RunInMemory(&servercfg.DoltgresConfig{
+		ListenerConfig: &servercfg.DoltgresListenerConfig{
+			PortNumber: &port,
+			HostStr:    ptr("127.0.0.1"),
+		},
+	})
 	require.NoError(t, err)
 
 	ctx := context.Background()

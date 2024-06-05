@@ -74,22 +74,13 @@ func (b TimestampType) Compare(v1 any, v2 any) (int, error) {
 
 // Convert implements the DoltgresType interface.
 func (b TimestampType) Convert(val any) (any, sql.ConvertInRange, error) {
-	if val == nil {
-		return nil, sql.InRange, nil
-	}
-
 	switch val := val.(type) {
-	case string:
-		if t, err := time.Parse("2006-01-02 15:04:05", val); err == nil {
-			return t.UTC(), sql.InRange, nil
-		} else if t, err = time.Parse("January 01 15:04:05 2006", val); err == nil {
-			return t.UTC(), sql.InRange, nil
-		}
-		return nil, sql.OutOfRange, fmt.Errorf("invalid format for timestamp")
 	case time.Time:
-		return val.UTC(), sql.InRange, nil
+		return val, sql.InRange, nil
+	case nil:
+		return nil, sql.InRange, nil
 	default:
-		return nil, sql.OutOfRange, sql.ErrInvalidType.New(b)
+		return nil, sql.OutOfRange, fmt.Errorf("%s: unhandled type: %T", b.String(), val)
 	}
 }
 
@@ -115,16 +106,31 @@ func (b TimestampType) FormatValue(val any) (string, error) {
 	if val == nil {
 		return "", nil
 	}
-	converted, _, err := b.Convert(val)
-	if err != nil {
-		return "", err
-	}
-	return converted.(time.Time).Format("2006-01-02 15:04:05"), nil
+	return b.IoOutput(val)
 }
 
 // GetSerializationID implements the DoltgresType interface.
 func (b TimestampType) GetSerializationID() SerializationID {
 	return SerializationID_Timestamp
+}
+
+// IoInput implements the DoltgresType interface.
+func (b TimestampType) IoInput(input string) (any, error) {
+	if t, err := time.Parse("2006-01-02 15:04:05", input); err == nil {
+		return t.UTC(), nil
+	} else if t, err = time.Parse("January 01 15:04:05 2006", input); err == nil {
+		return t.UTC(), nil
+	}
+	return nil, fmt.Errorf("invalid format for timestamp")
+}
+
+// IoOutput implements the DoltgresType interface.
+func (b TimestampType) IoOutput(output any) (string, error) {
+	converted, _, err := b.Convert(output)
+	if err != nil {
+		return "", err
+	}
+	return converted.(time.Time).Format("2006-01-02 15:04:05"), nil
 }
 
 // IsUnbounded implements the DoltgresType interface.

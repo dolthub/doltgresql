@@ -17,6 +17,8 @@ package ast
 import (
 	vitess "github.com/dolthub/vitess/go/vt/sqlparser"
 
+	pgexprs "github.com/dolthub/doltgresql/server/expression"
+
 	"github.com/dolthub/doltgresql/postgres/parser/sem/tree"
 )
 
@@ -36,6 +38,18 @@ func nodeLimit(node *tree.Limit) (*vitess.Limit, error) {
 	offset, err := nodeExpr(node.Offset)
 	if err != nil {
 		return nil, err
+	}
+	// GMS is hardcoded to expect vitess.SQLVal for expressions such as `LIMIT 1 OFFSET 1`.
+	// We need to remove the hard dependency, but for now, we'll just convert our literals to a vitess.SQLVal.
+	if injectedExpr, ok := count.(vitess.InjectedExpr); ok {
+		if literal, ok := injectedExpr.Expression.(*pgexprs.Literal); ok {
+			count = literal.ToVitessLiteral()
+		}
+	}
+	if injectedExpr, ok := offset.(vitess.InjectedExpr); ok {
+		if literal, ok := injectedExpr.Expression.(*pgexprs.Literal); ok {
+			offset = literal.ToVitessLiteral()
+		}
 	}
 	return &vitess.Limit{
 		Offset:   offset,

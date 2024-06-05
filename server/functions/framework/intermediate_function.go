@@ -14,11 +14,17 @@
 
 package framework
 
-import "github.com/dolthub/go-mysql-server/sql"
+import (
+	"github.com/dolthub/go-mysql-server/sql"
+
+	pgtypes "github.com/dolthub/doltgresql/server/types"
+)
 
 // IntermediateFunction is an expression that represents an incomplete PostgreSQL function.
 type IntermediateFunction struct {
-	Functions *OverloadDeduction
+	Functions    *OverloadDeduction
+	AllOverloads [][]pgtypes.DoltgresTypeBaseID
+	IsOperator   bool
 }
 
 // Compile returns a CompiledFunction created from the calling IntermediateFunction. Returns a nil function if it could
@@ -28,8 +34,10 @@ func (f IntermediateFunction) Compile(name string, parameters ...sql.Expression)
 		return nil
 	}
 	return &CompiledFunction{
-		Name:       name,
-		Parameters: parameters,
-		Functions:  f.Functions,
+		Name:         name,
+		Parameters:   parameters,
+		Functions:    f.Functions,
+		AllOverloads: f.AllOverloads,
+		IsOperator:   f.IsOperator,
 	}
 }

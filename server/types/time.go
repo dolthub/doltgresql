@@ -74,22 +74,13 @@ func (b TimeType) Compare(v1 any, v2 any) (int, error) {
 
 // Convert implements the DoltgresType interface.
 func (b TimeType) Convert(val any) (any, sql.ConvertInRange, error) {
-	if val == nil {
-		return nil, sql.InRange, nil
-	}
-
 	switch val := val.(type) {
-	case string:
-		if t, err := time.Parse("15:04:05", val); err == nil {
-			return t.UTC(), sql.InRange, nil
-		} else if t, err = time.Parse("15:04:05.000", val); err == nil {
-			return t.UTC(), sql.InRange, nil
-		}
-		return nil, sql.OutOfRange, fmt.Errorf("invalid format for time")
 	case time.Time:
-		return val.UTC(), sql.InRange, nil
+		return val, sql.InRange, nil
+	case nil:
+		return nil, sql.InRange, nil
 	default:
-		return nil, sql.OutOfRange, sql.ErrInvalidType.New(b)
+		return nil, sql.OutOfRange, fmt.Errorf("%s: unhandled type: %T", b.String(), val)
 	}
 }
 
@@ -115,7 +106,27 @@ func (b TimeType) FormatValue(val any) (string, error) {
 	if val == nil {
 		return "", nil
 	}
-	converted, _, err := b.Convert(val)
+	return b.IoOutput(val)
+}
+
+// GetSerializationID implements the DoltgresType interface.
+func (b TimeType) GetSerializationID() SerializationID {
+	return SerializationID_Time
+}
+
+// IoInput implements the DoltgresType interface.
+func (b TimeType) IoInput(input string) (any, error) {
+	if t, err := time.Parse("15:04:05", input); err == nil {
+		return t.UTC(), nil
+	} else if t, err = time.Parse("15:04:05.000", input); err == nil {
+		return t.UTC(), nil
+	}
+	return nil, fmt.Errorf("invalid format for time")
+}
+
+// IoOutput implements the DoltgresType interface.
+func (b TimeType) IoOutput(output any) (string, error) {
+	converted, _, err := b.Convert(output)
 	if err != nil {
 		return "", err
 	}
@@ -125,11 +136,6 @@ func (b TimeType) FormatValue(val any) (string, error) {
 	} else {
 		return t.Format("15:04:05"), nil
 	}
-}
-
-// GetSerializationID implements the DoltgresType interface.
-func (b TimeType) GetSerializationID() SerializationID {
-	return SerializationID_Time
 }
 
 // IsUnbounded implements the DoltgresType interface.

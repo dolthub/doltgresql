@@ -7,9 +7,7 @@ ENV GO_VERSION=1.22.0
 
 # Install Go
 RUN apt-get update && \
-    apt-get install -y wget && \
-    apt-get install -y sudo && \
-    apt-get install -y git && \
+    apt-get install -y wget sudo git build-essential && \
     wget https://go.dev/dl/go${GO_VERSION}.linux-amd64.tar.gz && \
     tar -C /usr/local -xzf go${GO_VERSION}.linux-amd64.tar.gz && \
     rm go${GO_VERSION}.linux-amd64.tar.gz
@@ -34,11 +32,12 @@ RUN rm -rf ./doltgresql/testing/generation/
 WORKDIR /root/building/doltgresql/postgres/parser
 RUN bash ./build.sh
 
-# Build the doltgresql binary, which we will need for bats, and put it on PATH
-WORKDIR /root/building/doltgresql
+# Build the doltgres binary, which we will need for bats, and put it on PATH
+WORKDIR /root/building/doltgresql/cmd/doltgres
 RUN go build .
-RUN cp ./doltgresql /root/bin
-RUN cp ./doltgresql /root/bin/doltgres
+RUN cp ./doltgres /root/bin
+
+WORKDIR /root/building/doltgresql/
 
 # This env var is required to run the bats replication tests
 ENV RUN_DOLTGRES_REPLICATION_TESTS=true

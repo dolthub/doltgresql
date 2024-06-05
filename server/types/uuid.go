@@ -72,21 +72,13 @@ func (b UuidType) Compare(v1 any, v2 any) (int, error) {
 
 // Convert implements the DoltgresType interface.
 func (b UuidType) Convert(val any) (any, sql.ConvertInRange, error) {
-	if val == nil {
-		return nil, sql.InRange, nil
-	}
-
 	switch val := val.(type) {
-	case string:
-		uuidVal, err := uuid.FromString(val)
-		if err != nil {
-			return nil, sql.OutOfRange, err
-		}
-		return uuidVal, sql.InRange, nil
 	case uuid.UUID:
 		return val, sql.InRange, nil
+	case nil:
+		return nil, sql.InRange, nil
 	default:
-		return nil, sql.OutOfRange, sql.ErrInvalidType.New(b)
+		return nil, sql.OutOfRange, fmt.Errorf("%s: unhandled type: %T", b.String(), val)
 	}
 }
 
@@ -112,16 +104,26 @@ func (b UuidType) FormatValue(val any) (string, error) {
 	if val == nil {
 		return "", nil
 	}
-	converted, _, err := b.Convert(val)
-	if err != nil {
-		return "", err
-	}
-	return converted.(uuid.UUID).String(), nil
+	return b.IoOutput(val)
 }
 
 // GetSerializationID implements the DoltgresType interface.
 func (b UuidType) GetSerializationID() SerializationID {
 	return SerializationID_Uuid
+}
+
+// IoInput implements the DoltgresType interface.
+func (b UuidType) IoInput(input string) (any, error) {
+	return uuid.FromString(input)
+}
+
+// IoOutput implements the DoltgresType interface.
+func (b UuidType) IoOutput(output any) (string, error) {
+	converted, _, err := b.Convert(output)
+	if err != nil {
+		return "", err
+	}
+	return converted.(uuid.UUID).String(), nil
 }
 
 // IsUnbounded implements the DoltgresType interface.

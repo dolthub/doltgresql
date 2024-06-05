@@ -20,14 +20,16 @@ import (
 	"fmt"
 	"reflect"
 
-	"github.com/lib/pq/oid"
-
 	"github.com/dolthub/go-mysql-server/sql"
 	"github.com/dolthub/go-mysql-server/sql/types"
 	"github.com/dolthub/vitess/go/sqltypes"
 	"github.com/dolthub/vitess/go/vt/proto/query"
+	"github.com/lib/pq/oid"
+
+	"github.com/dolthub/doltgresql/utils"
 )
 
+// NameLength is the constant length of Name in Postgres 15.
 const NameLength = 63
 
 // Name is a 63-byte internal type for object names.
@@ -58,7 +60,14 @@ func (b NameType) Compare(v1 any, v2 any) (int, error) {
 
 // Convert implements the DoltgresType interface.
 func (b NameType) Convert(val any) (any, sql.ConvertInRange, error) {
-	return convertVarChar(b, b.Length, val)
+	switch val := val.(type) {
+	case string:
+		return val, sql.InRange, nil
+	case nil:
+		return nil, sql.InRange, nil
+	default:
+		return nil, sql.OutOfRange, fmt.Errorf("%s: unhandled type: %T", b.String(), val)
+	}
 }
 
 // Equals implements the DoltgresType interface.
@@ -83,16 +92,29 @@ func (b NameType) FormatValue(val any) (string, error) {
 	if val == nil {
 		return "", nil
 	}
-	converted, _, err := b.Convert(val)
-	if err != nil {
-		return "", err
-	}
-	return converted.(string), nil
+	return b.IoOutput(val)
 }
 
 // GetSerializationID implements the DoltgresType interface.
 func (b NameType) GetSerializationID() SerializationID {
 	return SerializationID_Name
+}
+
+// IoInput implements the DoltgresType interface.
+func (b NameType) IoInput(input string) (any, error) {
+	// Name seems to never throw an error, regardless of the context or how long the input is
+	input, _ = truncateString(input, b.Length)
+	return input, nil
+}
+
+// IoOutput implements the DoltgresType interface.
+func (b NameType) IoOutput(output any) (string, error) {
+	converted, _, err := b.Convert(output)
+	if err != nil {
+		return "", err
+	}
+	str, _ := truncateString(converted.(string), b.Length)
+	return str, nil
 }
 
 // IsUnbounded implements the DoltgresType interface.
@@ -129,7 +151,7 @@ func (b NameType) SerializedCompare(v1 []byte, v2 []byte) (int, error) {
 	} else if len(v1) == 0 && len(v2) > 0 {
 		return -1, nil
 	}
-	return bytes.Compare(v1, v2), nil
+	return serializedStringCompare(v1, v2), nil
 }
 
 // SQL implements the DoltgresType interface.
@@ -198,7 +220,10 @@ func (b NameType) SerializeValue(val any) ([]byte, error) {
 	if err != nil {
 		return nil, err
 	}
-	return []byte(converted.(string)), nil
+	str := converted.(string)
+	writer := utils.NewWriter(uint64(len(str) + 1))
+	writer.String(str)
+	return writer.Data(), nil
 }
 
 // DeserializeValue implements the DoltgresType interface.
@@ -206,5 +231,6 @@ func (b NameType) DeserializeValue(val []byte) (any, error) {
 	if len(val) == 0 {
 		return nil, nil
 	}
-	return string(val), nil
+	reader := utils.NewReader(val)
+	return reader.String(), nil
 }

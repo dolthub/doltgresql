@@ -16,10 +16,11 @@ package binary
 
 // Init initializes all binary operators in this package.
 func Init() {
-	InitBinaryBitAnd()
+	initBinaryBitAnd()
 	initBinaryBitOr()
 	initBinaryBitXor()
 	initBinaryDivide()
+	initJSON()
 	initBinaryMinus()
 	initBinaryMod()
 	initBinaryMultiply()

@@ -32,7 +32,7 @@ type Array struct {
 	coercedType pgtypes.DoltgresArrayType
 }
 
-var _ vitess.InjectableExpression = (*Array)(nil)
+var _ vitess.Injectable = (*Array)(nil)
 var _ sql.Expression = (*Array)(nil)
 
 // NewArray returns a new *Array.
@@ -56,7 +56,7 @@ func (array *Array) Children() []sql.Expression {
 
 // Eval implements the sql.Expression interface.
 func (array *Array) Eval(ctx *sql.Context, row sql.Row) (any, error) {
-	resultArrayType, requiresCasting := array.typeRequiresCasting()
+	resultArrayType := array.getTargetType()
 	if resultArrayType.Equals(pgtypes.AnyArray) {
 		// TODO: error should look like "ARRAY types XXXX and YYYY cannot be matched", need to display conflicting types
 		return nil, fmt.Errorf("ARRAY types cannot be matched")
@@ -69,18 +69,16 @@ func (array *Array) Eval(ctx *sql.Context, row sql.Row) (any, error) {
 		}
 		values[i] = val
 	}
-	// The ARRAY expression may require automatic casting, so this handles that
-	if requiresCasting {
-		baseResultType := resultArrayType.BaseType()
-		var err error
-		for i := range values {
-			if values[i] == nil {
-				continue
-			}
-			values[i], err = array.handleEvaluationCast(ctx, baseResultType, array.children[i].Type(), &values[i])
-			if err != nil {
-				return nil, err
-			}
+	// We always cast the elements, as there may be parameter restrictions in place
+	baseResultType := resultArrayType.BaseType()
+	var err error
+	for i := range values {
+		if values[i] == nil {
+			continue
+		}
+		values[i], err = array.handleEvaluationCast(ctx, baseResultType, array.children[i].Type(), &values[i])
+		if err != nil {
+			return nil, err
 		}
 	}
 	return values, nil
@@ -122,9 +120,7 @@ func (array *Array) String() string {
 
 // Type implements the sql.Expression interface.
 func (array *Array) Type() sql.Type {
-	// We'll ignore whether we need casting here, as that's only relevant while evaluating.
-	t, _ := array.typeRequiresCasting()
-	return t
+	return array.getTargetType()
 }
 
 // WithChildren implements the sql.Expression interface.
@@ -235,13 +231,13 @@ func (array *Array) handleEvaluationCast(ctx *sql.Context, baseResultType pgtype
 			return nil, fmt.Errorf("encountered an unknown GMS type")
 		}
 	}
-	castFunc := framework.GetExplicitCast(paramType.BaseID(), baseResultType.BaseID())
+	castFunc := framework.GetImplicitCast(paramType.BaseID(), baseResultType.BaseID())
 	if castFunc == nil {
 		// This should never happen, but we'll check here just to be safe
-		resultType, _ := array.typeRequiresCasting()
+		resultType := array.getTargetType()
 		return nil, fmt.Errorf("cannot cast type %s to %s", resultType.BaseType().String(), paramType.String())
 	}
-	return castFunc(framework.Context{Context: ctx}, *val, baseResultType)
+	return castFunc(ctx, *val, baseResultType)
 }
 
 // isNullType returns whether the given type is a NULL type.
@@ -270,16 +266,14 @@ func (array *Array) numberCastGroupPriority(t pgtypes.DoltgresTypeBaseID) int {
 	}
 }
 
-// typeRequiresCasting returns the evaluated type for this expression, along with whether the evaluation will require
-// casting. If all of the array's contents have the same type, then no casting will be necessary. Returns the "anyarray"
-// type if the type combination is invalid.
-func (array *Array) typeRequiresCasting() (pgtypes.DoltgresArrayType, bool) {
+// getTargetType returns the evaluated type for this expression. Returns the "anyarray" type if the type combination is
+// invalid.
+func (array *Array) getTargetType() pgtypes.DoltgresArrayType {
 	// TODO: figure out the conditions that result in this being set
 	if array.coercedType != nil {
-		return array.coercedType, true
+		return array.coercedType
 	}
 	var lastChildType pgtypes.DoltgresType
-	requiresCasting := false
 	for _, child := range array.children {
 		if child != nil {
 			gmsChildType := child.Type()
@@ -290,39 +284,8 @@ func (array *Array) typeRequiresCasting() (pgtypes.DoltgresArrayType, bool) {
 			// Ensure that the type is a DoltgresType
 			childType, ok := gmsChildType.(pgtypes.DoltgresType)
 			if !ok {
-				// TODO: we need to remove GMS types from all of our expressions so that we can remove this.
-				// It is worth noting that this switch block is different than the one found above
-				switch gmsChildType.Type() {
-				case query.Type_INT8, query.Type_INT16:
-					childType = pgtypes.Int16
-				case query.Type_INT24, query.Type_INT32:
-					childType = pgtypes.Int32
-				case query.Type_INT64:
-					childType = pgtypes.Int64
-				case query.Type_UINT8, query.Type_UINT16, query.Type_UINT24, query.Type_UINT32, query.Type_UINT64:
-					childType = pgtypes.Int64
-				case query.Type_YEAR:
-					childType = pgtypes.Int16
-				case query.Type_FLOAT32:
-					childType = pgtypes.Float32
-				case query.Type_FLOAT64:
-					childType = pgtypes.Float64
-				case query.Type_DECIMAL:
-					childType = pgtypes.Numeric
-				case query.Type_DATE, query.Type_DATETIME, query.Type_TIMESTAMP:
-					// TODO: add the Doltgres equivalents for these
-					return pgtypes.AnyArray, false
-				case query.Type_CHAR, query.Type_VARCHAR, query.Type_TEXT:
-					childType = pgtypes.Text
-				case query.Type_ENUM:
-					childType = pgtypes.Int16
-				case query.Type_SET:
-					childType = pgtypes.Int64
-				case query.Type_NULL_TYPE:
-					childType = pgtypes.Null
-				default:
-					return pgtypes.AnyArray, false
-				}
+				// We use "anyarray" as the indeterminate/invalid type
+				return pgtypes.AnyArray
 			}
 			// Ensure that all of the types align to a common type
 			if lastChildType == nil {
@@ -330,7 +293,6 @@ func (array *Array) typeRequiresCasting() (pgtypes.DoltgresArrayType, bool) {
 			} else if !lastChildType.Equals(childType) {
 				if castableType, ok := array.castable(lastChildType, childType); ok {
 					lastChildType = castableType
-					requiresCasting = true
 				} else {
 					lastChildType = nil
 					break
@@ -340,8 +302,8 @@ func (array *Array) typeRequiresCasting() (pgtypes.DoltgresArrayType, bool) {
 	}
 	// If this is not nil, then all types either match this type, or are automatically castable to this type
 	if lastChildType != nil {
-		return lastChildType.ToArrayType(), requiresCasting
+		return lastChildType.ToArrayType()
 	}
 	// We use "anyarray" as the indeterminate/invalid type
-	return pgtypes.AnyArray, false
+	return pgtypes.AnyArray
 }
