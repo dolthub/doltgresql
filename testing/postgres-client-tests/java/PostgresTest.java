@@ -76,6 +76,7 @@ public class PostgresTest {
                     // Compare the row count to the length of the array
                     if (rowCount != expectedResults.length) {
                         System.out.println("Row count in ResultSet: " + rowCount + " does not match length of the expected results: " + expectedResults.length);
+                        System.exit(1);
                     }
 
                     Integer j = 0;
