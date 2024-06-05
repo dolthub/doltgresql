@@ -16,6 +16,7 @@ package servercfg
 
 import (
 	"fmt"
+	"path/filepath"
 
 	"github.com/dolthub/dolt/go/libraries/doltcore/servercfg"
 	"github.com/dolthub/dolt/go/libraries/utils/filesys"
@@ -33,6 +34,48 @@ const (
 	eventSchedulerKey = "event_scheduler"
 
 	OverrideDataDirKey = "data_dir"
+)
+
+// LogLevel defines the available levels of logging for the server.
+type LogLevel string
+
+const (
+	LogLevel_Trace   LogLevel = "trace"
+	LogLevel_Debug   LogLevel = "debug"
+	LogLevel_Info    LogLevel = "info"
+	LogLevel_Warning LogLevel = "warning"
+	LogLevel_Error   LogLevel = "error"
+	LogLevel_Fatal   LogLevel = "fatal"
+)
+
+const (
+	DefaultHost                    = "localhost"
+	DefaultPort                    = 3306
+	DefaultUser                    = ""
+	DefaultPass                    = ""
+	DefaultTimeout                 = 8 * 60 * 60 * 1000 // 8 hours, same as MySQL
+	DefaultReadOnly                = false
+	DefaultLogLevel                = LogLevel_Info
+	DefaultAutoCommit              = true
+	DefaultDoltTransactionCommit   = false
+	DefaultMaxConnections          = 100
+	DefaultQueryParallelism        = 0
+	DefaultPersistenceBahavior     = LoadPerisistentGlobals
+	DefaultDataDir                 = "."
+	DefaultCfgDir                  = ".doltcfg"
+	DefaultPrivilegeFilePath       = "privileges.db"
+	DefaultBranchControlFilePath   = "branch_control.db"
+	DefaultMetricsHost             = ""
+	DefaultMetricsPort             = -1
+	DefaultAllowCleartextPasswords = false
+	DefaultUnixSocketFilePath      = "/tmp/mysql.sock"
+	DefaultMaxLoggedQueryLen       = 0
+	DefaultEncodeLoggedQuery       = false
+)
+
+const (
+	IgnorePeristentGlobals = "ignore"
+	LoadPerisistentGlobals = "load"
 )
 
 var ConfigHelp = `Place holder. This will be replaced with details on config.yaml options`
@@ -421,6 +464,41 @@ func (cfg *DoltgresConfig) ValueSet(value string) bool {
 
 func (cfg *DoltgresConfig) ToSqlServerConfig() servercfg.ServerConfig {
 	return cfg
+}
+
+// DefaultServerConfig creates a `*DoltgresConfig` that has all of the options set to their default values. Used when
+// no config.yaml file is provided.
+func DefaultServerConfig() *DoltgresConfig {
+	return &DoltgresConfig{
+		LogLevelStr:       ptr(string(DefaultLogLevel)),
+		EncodeLoggedQuery: ptr(DefaultEncodeLoggedQuery),
+		BehaviorConfig: &DoltgresBehaviorConfig{
+			ReadOnly:              ptr(DefaultReadOnly),
+			DoltTransactionCommit: ptr(DefaultDoltTransactionCommit),
+		},
+		UserConfig: &DoltgresUserConfig{
+			Name:     ptr(DefaultUser),
+			Password: ptr(DefaultPass),
+		},
+		ListenerConfig: &DoltgresListenerConfig{
+			HostStr:                 ptr(DefaultHost),
+			PortNumber:              ptr(DefaultPort),
+			ReadTimeoutMillis:       ptr(uint64(DefaultTimeout)),
+			WriteTimeoutMillis:      ptr(uint64(DefaultTimeout)),
+			AllowCleartextPasswords: ptr(DefaultAllowCleartextPasswords),
+		},
+		PerformanceConfig: &DoltgresPerformanceConfig{QueryParallelism: ptr(DefaultQueryParallelism)},
+		
+		// TODO: this needs to consider the env var 
+		DataDirStr:        ptr(DefaultDataDir),
+		CfgDirStr:         ptr(filepath.Join(DefaultDataDir, DefaultCfgDir)),
+		PrivilegeFile:     ptr(filepath.Join(DefaultDataDir, DefaultCfgDir, DefaultPrivilegeFilePath)),
+		BranchControlFile: ptr(filepath.Join(DefaultDataDir, DefaultCfgDir, DefaultBranchControlFilePath)),
+	}
+}
+
+func ptr[T any](t T) *T {
+	return &t
 }
 
 func ReadConfigFromYamlFile(fs filesys.Filesys, configFilePath string, overrides map[string]string) (*DoltgresConfig, error) {

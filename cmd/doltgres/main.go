@@ -57,6 +57,7 @@ const (
 
 	versionFlag    = "version"
 	configHelpFlag = "config-help"
+	configFileDefault = "config.yaml"
 )
 
 func parseArgs() (flags map[string]*bool, params map[string]*string) {
@@ -74,7 +75,7 @@ func parseArgs() (flags map[string]*bool, params map[string]*string) {
 	params[stdOutParam] = flag.String(stdOutParam, "", "file to use as stdout")
 	params[stdErrParam] = flag.String(stdErrParam, "", "file to use as stderr")
 	params[stdOutAndErrParam] = flag.String(stdOutAndErrParam, "", "file to use as stdout and stderr")
-	params[configParam] = flag.String(configParam, "config.yaml", "path to the config file")
+	params[configParam] = flag.String(configParam, "", "path to the config file")
 	params[dataDirParam] = flag.String(dataDirParam, "", "path to the directory where doltgres databases are stored")
 
 	flags[versionFlag] = flag.Bool(versionFlag, false, "print the version")
@@ -121,11 +122,7 @@ func main() {
 		servercfg.OverrideDataDirKey: *params[dataDirParam],
 	}
 
-	cfg, err := servercfg.ReadConfigFromYamlFile(fs, *params[configParam], overrides)
-	if err != nil {
-		cli.PrintErrln(err.Error())
-		os.Exit(1)
-	}
+	cfg, err := getServerConfig(params, fs, overrides)
 
 	err = runServer(ctx, dEnv, cfg)
 	if err != nil {
@@ -133,6 +130,32 @@ func main() {
 		os.Exit(1)
 	}
 	os.Exit(0)
+}
+
+// TODO: fill in overrides with any args provided
+func getServerConfig(params map[string]*string, fs filesys.Filesys, overrides map[string]string) (*servercfg.DoltgresConfig, error) {
+	cfgFilePath, configFileSet := params[configParam]
+	var cfg *servercfg.DoltgresConfig
+	if !configFileSet {
+		cfg = servercfg.DefaultServerConfig()
+	}
+
+	_, err := os.Stat(*cfgFilePath)
+	if os.IsNotExist(err) {
+		cli.PrintErrln("Config file not found at", *cfgFilePath)
+		cli.PrintErrln("Use the --config flag to specify the path to a config file.")
+		os.Exit(1)
+	} else if err != nil {
+		cli.PrintErrln("Error checking for config file:", err)
+		os.Exit(1)
+	}
+
+	cfg, err = servercfg.ReadConfigFromYamlFile(fs, *cfgFilePath, overrides)
+	if err != nil {
+		cli.PrintErrln(err.Error())
+		os.Exit(1)
+	}
+	return cfg, err
 }
 
 // configureDataDir sets the --data-dir argument as appropriate if it isn't specified
