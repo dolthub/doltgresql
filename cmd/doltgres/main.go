@@ -58,6 +58,11 @@ const (
 
 	versionFlag    = "version"
 	configHelpFlag = "config-help"
+
+	dataDirHelpText = "Path to the directory where doltgres databases are stored. If not provided, the value in " +
+		"config.yaml will be used. If that's not provided either, the value of the DOLTGRES_DATA_DIR environment variable " +
+		"will be used if set, otherwise $HOME/doltgres/databases will be used. The directory will be created if it doesn't " +
+		"exist."
 )
 
 func parseArgs() (flags map[string]*bool, params map[string]*string) {
@@ -70,13 +75,13 @@ func parseArgs() (flags map[string]*bool, params map[string]*string) {
 	flags = make(map[string]*bool)
 	params = make(map[string]*string)
 
+	params[configParam] = flag.String(configParam, "", "Path to the config file. If not provided, ./config.yaml will be used if it exists.")
+	params[dataDirParam] = flag.String(dataDirParam, "", dataDirHelpText)
 	params[chdirParam] = flag.String(chdirParam, "", "set the working directory for doltgres")
 	params[stdInParam] = flag.String(stdInParam, "", "file to use as stdin")
 	params[stdOutParam] = flag.String(stdOutParam, "", "file to use as stdout")
 	params[stdErrParam] = flag.String(stdErrParam, "", "file to use as stderr")
 	params[stdOutAndErrParam] = flag.String(stdOutAndErrParam, "", "file to use as stdout and stderr")
-	params[configParam] = flag.String(configParam, "", "path to the config file")
-	params[dataDirParam] = flag.String(dataDirParam, "", "path to the directory where doltgres databases are stored")
 
 	flags[versionFlag] = flag.Bool(versionFlag, false, "print the version")
 	flags[configHelpFlag] = flag.Bool(configHelpFlag, false, "print the config file help")
@@ -112,12 +117,12 @@ func main() {
 	// dEnv will be reloaded at server start to point to the data dir on the server config
 	dEnv := env.Load(ctx, env.GetCurrentUserHomeDir, fs, doltdb.LocalDirDoltDB, server.Version)
 	
-	cfg, err := loadServerConfig(params, fs)
+	cfg, loadedFromDisk, err := loadServerConfig(params, fs)
 	if err != nil {
 		handleErrAndExitCode(err)
 	}
 
-	err = setupDataDir(params, cfg, fs)
+	err = setupDataDir(params, cfg, loadedFromDisk, fs)
 	if err != nil {
 		handleErrAndExitCode(err)
 	}
@@ -139,21 +144,18 @@ func handleErrAndExitCode(err error) {
 
 // setupDataDir sets the appropriate data dir for the config given based on parameters and env, and creates the data
 // dir as necessary.
-func setupDataDir(params map[string]*string, cfg *servercfg.DoltgresConfig, fs filesys.Filesys) error {
+func setupDataDir(params map[string]*string, cfg *servercfg.DoltgresConfig, cfgLoadedFromDisk bool, fs filesys.Filesys) error {
 	dataDir, dataDirType, err := getDataDirFromParams(params)
 	if err != nil {
 		return err
 	}
 
 	// determine the data dir to use, in order of preference: 1) explicit flag, 2) env var, 3) default
-	dataDirNotSpecifiedInCfg := cfg.DataDirStr == nil || *cfg.DataDirStr == servercfg.DefaultDataDir
-	if dataDirType == dataDirExplicitParam {
+	// --data-dir
+	if dataDirType == dataDirExplicitParam || !cfgLoadedFromDisk {
 		cfg.DataDirStr = &dataDir
-	} else if dataDirType == dataDirEnv && dataDirNotSpecifiedInCfg {
-		cfg.DataDirStr = &dataDir
-	} else if dataDirNotSpecifiedInCfg {
-		def := servercfg.DefaultDataDir
-		cfg.DataDirStr = &def
+	} else {
+		// leave it alone, will come from the cfg (and gets a default if not provided)
 	}
 
 	dataDirPath := cfg.DataDir()
@@ -173,26 +175,30 @@ func setupDataDir(params map[string]*string, cfg *servercfg.DoltgresConfig, fs f
 // 1. If the --config flag is provided, loads the config from the file at the path provided, or returns an errors if it cannot.
 // 2. If the default config file config.yaml exists, attempts to load it, but doesn't return an error if it doesn't exist.
 // 3. If neither of the above are successful, returns the default config server config.
-func loadServerConfig(params map[string]*string, fs filesys.Filesys) (*servercfg.DoltgresConfig, error) {
+// The second result param is a boolean indicating whether a file was loaded, since we vary later initialization 
+// behavior depending on whether we loaded a config file from disk.
+func loadServerConfig(params map[string]*string, fs filesys.Filesys) (*servercfg.DoltgresConfig, bool, error) {
 	configFilePath, configFilePathSpecified := paramVal(params, configParam)
 	
 	if configFilePathSpecified {
 		cfgPathExists, isDir := fs.Exists(configFilePath)
 		if !cfgPathExists {
-			return nil, fmt.Errorf("config file not found at %s", configFilePath)
+			return nil, false, fmt.Errorf("config file not found at %s", configFilePath)
 		} else if isDir {
-			return nil, fmt.Errorf("cannot use directory %s for config file", configFilePath)
+			return nil, false, fmt.Errorf("cannot use directory %s for config file", configFilePath)
 		}
 
-		return servercfg.ReadConfigFromYamlFile(fs, configFilePath)
+		cfg, err := servercfg.ReadConfigFromYamlFile(fs, configFilePath)
+		return cfg, true, err
 	} else {
 		cfgPathExists, isDir := fs.Exists(defaultCfgFile)
 		if cfgPathExists && !isDir {
-			return servercfg.ReadConfigFromYamlFile(fs, defaultCfgFile)
+			cfg, err := servercfg.ReadConfigFromYamlFile(fs, defaultCfgFile)
+			return cfg, true, err
 		}
 	}
 
-	return servercfg.DefaultServerConfig(), nil
+	return servercfg.DefaultServerConfig(), false, nil
 }
 
 type dataDirType byte
@@ -208,7 +214,6 @@ func getDataDirFromParams(params map[string]*string) (string, dataDirType, error
 		return dataDir, dataDirExplicitParam, nil
 	}
 
-	// We should use the directory as pointed to by "DOLTGRES_DATA_DIR", if has been set, otherwise we'll use the default
 	if envDir := os.Getenv(server.DOLTGRES_DATA_DIR); len(envDir) > 0 {
 		return envDir, dataDirEnv, nil
 	} else {

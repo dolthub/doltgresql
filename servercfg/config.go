@@ -17,6 +17,9 @@ package servercfg
 import (
 	"fmt"
 	"path/filepath"
+	"strings"
+	"unicode"
+	"unicode/utf8"
 
 	"github.com/dolthub/dolt/go/libraries/doltcore/servercfg"
 	"github.com/dolthub/dolt/go/libraries/utils/filesys"
@@ -77,7 +80,8 @@ const (
 	LoadPerisistentGlobals = "load"
 )
 
-var ConfigHelp = `Place holder. This will be replaced with details on config.yaml options`
+var ConfigHelp = "Supported fields in the config.yaml file, and their default values, " +
+	"are as follows:\n\n" + DefaultServerConfig().String()
 
 type PostgresReplicationConfig struct {
 	PostgresServerAddress *string `yaml:"postgres_server_address,omitempty" minver:"0.7.4"`
@@ -521,4 +525,35 @@ func ConfigFromYamlData(configFileData []byte) (*DoltgresConfig, error) {
 	}
 	
 	return &cfg, err
+}
+
+func (cfg *DoltgresConfig) String() string {
+	data, err := yaml.Marshal(cfg)
+
+	if err != nil {
+		return "Failed to marshal as yaml: " + err.Error()
+	}
+
+	unformatted := string(data)
+
+	// format the yaml to be easier to read.
+	lines := strings.Split(unformatted, "\n")
+
+	var formatted []string
+	formatted = append(formatted, lines[0])
+	for i := 1; i < len(lines); i++ {
+		if len(lines[i]) == 0 {
+			continue
+		}
+
+		r, _ := utf8.DecodeRuneInString(lines[i])
+		if !unicode.IsSpace(r) {
+			formatted = append(formatted, "")
+		}
+
+		formatted = append(formatted, lines[i])
+	}
+
+	result := strings.Join(formatted, "\n")
+	return result
 }
