@@ -12,7 +12,9 @@ teardown() {
 @test 'doltgres: no arguments' {
     PORT=5432
     mkdir test-home
-    HOME=test-home doltgres > server.out 2>&1 &
+    # TODO: DOLT_ROOT_PATH behavior overrides the HOME behavior, which is confusing and not
+    # applicable to Doltgres, fix it
+    HOME=test-home DOLTGRES_DATA_DIR='' DOLT_ROOT_PATH='' doltgres > server.out 2>&1 &
     SERVER_PID=$!
     run wait_for_connection $PORT 7500
 
@@ -33,7 +35,7 @@ teardown() {
 
 @test 'doltgres: data-dir param' {
     PORT=5432
-    doltgres --data-dir test > server.out 2>&1 &
+    DOLTGRES_DATA_DIR=fake doltgres --data-dir test > server.out 2>&1 &
     SERVER_PID=$!
     run wait_for_connection $PORT 7500
 
@@ -136,7 +138,8 @@ listener:
 
 EOF
 
-    HOME=test-home doltgres > server.out 2>&1 &
+    mkdir test-home
+    HOME=test-home DOLTGRES_DATA_DIR='' DOLT_ROOT_PATH='' doltgres --config config.yaml > server.out 2>&1 &
     SERVER_PID=$!
     run wait_for_connection $PORT 7500
 
@@ -335,26 +338,4 @@ EOF
     [[ "$output" =~ "information_schema" ]] || false
     [[ "$output" =~ "doltgres" ]] || false
     [[ "$output" =~ "postgres" ]] || false
-}
-
-@test 'doltgres: setting both --data-dir and DOLTGRES_DATA_DIR should use --data-dir value' {
-    [ ! -d "doltgres" ]
-
-    export DOLTGRES_DATA_DIR="$(pwd)"
-    export SQL_USER="doltgres"
-    mkdir test
-    PORT=$( definePORT )
-    CONFIG=$( defineCONFIG $PORT )
-    echo "$CONFIG" > config.yaml
-    start_sql_server_with_args -config=config.yaml "-data-dir=./test" #> log.txt 2>&1
-
-    run cat log.txt
-    [[ ! "$output" =~ "Author identity unknown" ]] || false
-    [ ! -d "doltgres" ]
-    [ -d "test/doltgres" ]
-
-    run query_server -c "\l"
-    [ "$status" -eq 0 ]
-    [[ "$output" =~ "information_schema" ]] || false
-    [[ "$output" =~ "doltgres" ]] || false
 }
