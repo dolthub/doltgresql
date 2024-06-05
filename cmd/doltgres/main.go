@@ -146,11 +146,12 @@ func setupDataDir(params map[string]*string, cfg *servercfg.DoltgresConfig, fs f
 	}
 
 	// determine the data dir to use, in order of preference: 1) explicit flag, 2) env var, 3) default
+	dataDirNotSpecifiedInCfg := cfg.DataDirStr == nil || *cfg.DataDirStr == servercfg.DefaultDataDir
 	if dataDirType == dataDirExplicitParam {
 		cfg.DataDirStr = &dataDir
-	} else if dataDirType == dataDirEnv && (cfg.DataDirStr == nil || *cfg.DataDirStr == servercfg.DefaultDataDir) {
+	} else if dataDirType == dataDirEnv && dataDirNotSpecifiedInCfg {
 		cfg.DataDirStr = &dataDir
-	} else {
+	} else if dataDirNotSpecifiedInCfg {
 		def := servercfg.DefaultDataDir
 		cfg.DataDirStr = &def
 	}
@@ -187,7 +188,7 @@ func loadServerConfig(params map[string]*string, fs filesys.Filesys) (*servercfg
 	} else {
 		cfgPathExists, isDir := fs.Exists(defaultCfgFile)
 		if cfgPathExists && !isDir {
-			return servercfg.ReadConfigFromYamlFile(fs, configFilePath)
+			return servercfg.ReadConfigFromYamlFile(fs, defaultCfgFile)
 		}
 	}
 

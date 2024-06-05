@@ -151,7 +151,7 @@ EOF
     [[ "$output" =~ "1 | 2" ]] || false
 
     [ ! -d test/doltgres ]
-    [ ! -d local-override/doltgres ]
+    [ -d local-override/doltgres ]
 }
 
 @test 'doltgres: config file' {
