@@ -75,6 +75,9 @@ func (rf *ContextRootFinalizer) RowIter(ctx *sql.Context, r sql.Row) (sql.RowIte
 	if err != nil {
 		return nil, err
 	}
+	if childIter == nil {
+		childIter = sql.RowsToRowIter()
+	}
 	return &rootFinalizerIter{childIter: childIter}, nil
 }
 

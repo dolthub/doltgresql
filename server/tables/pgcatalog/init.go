@@ -1,4 +1,4 @@
-// Copyright 2023 Dolthub, Inc.
+// Copyright 2024 Dolthub, Inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -12,21 +12,13 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-package ast
+package pgcatalog
 
-import (
-	"fmt"
+// PgCatalogName is a constant to the pg_catalog name.
+const PgCatalogName = "pg_catalog"
 
-	vitess "github.com/dolthub/vitess/go/vt/sqlparser"
-
-	"github.com/dolthub/doltgresql/postgres/parser/sem/tree"
-)
-
-// nodeDropSchema handles *tree.DropSchema nodes.
-func nodeDropSchema(node *tree.DropSchema) (vitess.Statement, error) {
-	// TODO: disallow dropping pg_catalog for now
-	if node == nil {
-		return nil, nil
-	}
-	return nil, fmt.Errorf("DROP SCHEMA is not yet supported")
+// Init initializes everything necessary for the pg_catalog tables.
+func Init() {
+	InitPgDescription()
+	InitPgSequence()
 }
