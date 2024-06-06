@@ -21,6 +21,7 @@ import (
 	"unicode"
 	"unicode/utf8"
 
+	"github.com/dolthub/dolt/go/libraries/doltcore/env"
 	"github.com/dolthub/dolt/go/libraries/doltcore/servercfg"
 	"github.com/dolthub/dolt/go/libraries/utils/filesys"
 	"gopkg.in/yaml.v2"
@@ -74,6 +75,12 @@ const (
 	DefaultMaxLoggedQueryLen       = 0
 	DefaultEncodeLoggedQuery       = false
 )
+
+// DOLTGRES_DATA_DIR is an environment variable that defines the location of DoltgreSQL databases
+const DOLTGRES_DATA_DIR = "DOLTGRES_DATA_DIR"
+
+// DOLTGRES_DATA_DIR_DEFAULT is the portion to append to the user's home directory if DOLTGRES_DATA_DIR has not been specified
+const DOLTGRES_DATA_DIR_DEFAULT = "doltgres/databases"
 
 const (
 	IgnorePeristentGlobals = "ignore"
@@ -472,6 +479,12 @@ func (cfg *DoltgresConfig) ToSqlServerConfig() servercfg.ServerConfig {
 // DefaultServerConfig creates a `*DoltgresConfig` that has all of the options set to their default values. Used when
 // no config.yaml file is provided.
 func DefaultServerConfig() *DoltgresConfig {
+	dataDir := "."
+	homeDir, err := env.GetCurrentUserHomeDir()
+	if err == nil {
+		dataDir = filepath.Join(homeDir, DOLTGRES_DATA_DIR_DEFAULT)
+	}
+	
 	return &DoltgresConfig{
 		LogLevelStr:       ptr(string(DefaultLogLevel)),
 		EncodeLoggedQuery: ptr(DefaultEncodeLoggedQuery),
@@ -492,8 +505,7 @@ func DefaultServerConfig() *DoltgresConfig {
 		},
 		PerformanceConfig: &DoltgresPerformanceConfig{QueryParallelism: ptr(DefaultQueryParallelism)},
 		
-		// TODO: this needs to consider the env var 
-		DataDirStr:        ptr(DefaultDataDir),
+		DataDirStr:        ptr(dataDir),
 		CfgDirStr:         ptr(filepath.Join(DefaultDataDir, DefaultCfgDir)),
 		PrivilegeFile:     ptr(filepath.Join(DefaultDataDir, DefaultCfgDir, DefaultPrivilegeFilePath)),
 		BranchControlFile: ptr(filepath.Join(DefaultDataDir, DefaultCfgDir, DefaultBranchControlFilePath)),

@@ -150,12 +150,13 @@ func setupDataDir(params map[string]*string, cfg *servercfg.DoltgresConfig, cfgL
 		return err
 	}
 
-	// determine the data dir to use, in order of preference: 1) explicit flag, 2) env var, 3) default
-	// --data-dir
-	if dataDirType == dataDirExplicitParam || !cfgLoadedFromDisk {
+	// This logic chooses a data dir in the following order of preference:
+	// 1) explicit flag
+	// 2) env var if no config file, or if the config file doesn't have a data dir
+	// 3) default value if no config file, or if the config file doesn't have a data dir
+	// 4) the value in the config file
+	if dataDirType == dataDirExplicitParam || !cfgLoadedFromDisk || cfg.DataDirStr == nil {
 		cfg.DataDirStr = &dataDir
-	} else {
-		// leave it alone, will come from the cfg (and gets a default if not provided)
 	}
 
 	dataDirPath := cfg.DataDir()
@@ -214,15 +215,15 @@ func getDataDirFromParams(params map[string]*string) (string, dataDirType, error
 		return dataDir, dataDirExplicitParam, nil
 	}
 
-	if envDir := os.Getenv(server.DOLTGRES_DATA_DIR); len(envDir) > 0 {
+	if envDir := os.Getenv(servercfg.DOLTGRES_DATA_DIR); len(envDir) > 0 {
 		return envDir, dataDirEnv, nil
 	} else {
 		homeDir, err := env.GetCurrentUserHomeDir()
 		if err != nil {
 			return "", dataDirDefault, fmt.Errorf("failed to get current user's home directory: %w", err)
 		}
-
-		dbDir := filepath.Join(homeDir, server.DOLTGRES_DATA_DIR_DEFAULT)
+		
+		dbDir := filepath.Join(homeDir, servercfg.DOLTGRES_DATA_DIR_DEFAULT)
 		return dbDir, dataDirDefault, nil
 	}
 }
