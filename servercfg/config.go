@@ -16,15 +16,16 @@ package servercfg
 
 import (
 	"fmt"
+	"path/filepath"
+	"strings"
+	"unicode"
+	"unicode/utf8"
 
+	"github.com/dolthub/dolt/go/libraries/doltcore/env"
 	"github.com/dolthub/dolt/go/libraries/doltcore/servercfg"
 	"github.com/dolthub/dolt/go/libraries/utils/filesys"
 	"gopkg.in/yaml.v2"
 )
-
-func Ptr[T any](v T) *T {
-	return &v
-}
 
 const (
 	maxConnectionsKey = "max_connections"
@@ -35,7 +36,52 @@ const (
 	OverrideDataDirKey = "data_dir"
 )
 
-var ConfigHelp = `Place holder. This will be replaced with details on config.yaml options`
+const (
+	LogLevel_Trace   = "trace"
+	LogLevel_Debug   = "debug"
+	LogLevel_Info    = "info"
+	LogLevel_Warning = "warn"
+	LogLevel_Error   = "error"
+	LogLevel_Fatal   = "fatal"
+)
+
+const (
+	DefaultHost                    = "localhost"
+	DefaultPort                    = 5432
+	DefaultUser                    = ""
+	DefaultPass                    = ""
+	DefaultTimeout                 = 8 * 60 * 60 * 1000 // 8 hours, same as MySQL
+	DefaultReadOnly                = false
+	DefaultLogLevel                = LogLevel_Info
+	DefaultDoltTransactionCommit   = false
+	DefaultMaxConnections          = 100
+	DefaultQueryParallelism        = 0
+	DefaultPersistenceBahavior     = LoadPerisistentGlobals
+	DefaultDataDir                 = "."
+	DefaultCfgDir                  = ".doltcfg"
+	DefaultPrivilegeFilePath       = "privileges.db"
+	DefaultBranchControlFilePath   = "branch_control.db"
+	DefaultMetricsHost             = ""
+	DefaultMetricsPort             = -1
+	DefaultAllowCleartextPasswords = false
+	DefaultUnixSocketFilePath      = "/tmp/mysql.sock"
+	DefaultMaxLoggedQueryLen       = 0
+	DefaultEncodeLoggedQuery       = false
+)
+
+// DOLTGRES_DATA_DIR is an environment variable that defines the location of DoltgreSQL databases
+const DOLTGRES_DATA_DIR = "DOLTGRES_DATA_DIR"
+
+// DOLTGRES_DATA_DIR_DEFAULT is the portion to append to the user's home directory if DOLTGRES_DATA_DIR has not been specified
+const DOLTGRES_DATA_DIR_DEFAULT = "doltgres/databases"
+
+const (
+	IgnorePeristentGlobals = "ignore"
+	LoadPerisistentGlobals = "load"
+)
+
+var ConfigHelp = "Supported fields in the config.yaml file, and their default values, " +
+	"are as follows:\n\n" + DefaultServerConfig().String()
 
 type PostgresReplicationConfig struct {
 	PostgresServerAddress *string `yaml:"postgres_server_address,omitempty" minver:"0.7.4"`
@@ -129,6 +175,12 @@ type DoltgresConfig struct {
 	PostgresReplicationConfig *PostgresReplicationConfig `yaml:"postgres_replication,omitempty" minver:"0.7.4"`
 }
 
+// Ptr is a helper function that returns a pointer to the value passed in. This is necessary to e.g. get a pointer to
+// a const value without assigning to an intermediate variable.
+func Ptr[T any](v T) *T {
+	return &v
+}
+
 func (cfg *DoltgresConfig) AutoCommit() bool {
 	return true
 }
@@ -219,17 +271,17 @@ func (cfg *DoltgresConfig) LogLevel() servercfg.LogLevel {
 	}
 
 	switch *cfg.LogLevelStr {
-	case "trace":
+	case LogLevel_Trace:
 		return servercfg.LogLevel_Trace
-	case "debug":
+	case LogLevel_Debug:
 		return servercfg.LogLevel_Debug
-	case "info":
+	case LogLevel_Info:
 		return servercfg.LogLevel_Info
-	case "warn":
+	case LogLevel_Warning:
 		return servercfg.LogLevel_Warning
-	case "error":
+	case LogLevel_Error:
 		return servercfg.LogLevel_Error
-	case "fatal":
+	case LogLevel_Fatal:
 		return servercfg.LogLevel_Fatal
 	default:
 		return servercfg.LogLevel_Info
@@ -423,7 +475,43 @@ func (cfg *DoltgresConfig) ToSqlServerConfig() servercfg.ServerConfig {
 	return cfg
 }
 
-func ReadConfigFromYamlFile(fs filesys.Filesys, configFilePath string, overrides map[string]string) (*DoltgresConfig, error) {
+// DefaultServerConfig creates a `*DoltgresConfig` that has all of the options set to their default values. Used when
+// no config.yaml file is provided.
+func DefaultServerConfig() *DoltgresConfig {
+	dataDir := "."
+	homeDir, err := env.GetCurrentUserHomeDir()
+	if err == nil {
+		dataDir = filepath.Join(homeDir, DOLTGRES_DATA_DIR_DEFAULT)
+	}
+
+	return &DoltgresConfig{
+		LogLevelStr:       Ptr(string(DefaultLogLevel)),
+		EncodeLoggedQuery: Ptr(DefaultEncodeLoggedQuery),
+		BehaviorConfig: &DoltgresBehaviorConfig{
+			ReadOnly:              Ptr(DefaultReadOnly),
+			DoltTransactionCommit: Ptr(DefaultDoltTransactionCommit),
+		},
+		UserConfig: &DoltgresUserConfig{
+			Name:     Ptr(DefaultUser),
+			Password: Ptr(DefaultPass),
+		},
+		ListenerConfig: &DoltgresListenerConfig{
+			HostStr:                 Ptr(DefaultHost),
+			PortNumber:              Ptr(DefaultPort),
+			ReadTimeoutMillis:       Ptr(uint64(DefaultTimeout)),
+			WriteTimeoutMillis:      Ptr(uint64(DefaultTimeout)),
+			AllowCleartextPasswords: Ptr(DefaultAllowCleartextPasswords),
+		},
+		PerformanceConfig: &DoltgresPerformanceConfig{QueryParallelism: Ptr(DefaultQueryParallelism)},
+
+		DataDirStr:        Ptr(dataDir),
+		CfgDirStr:         Ptr(filepath.Join(DefaultDataDir, DefaultCfgDir)),
+		PrivilegeFile:     Ptr(filepath.Join(DefaultDataDir, DefaultCfgDir, DefaultPrivilegeFilePath)),
+		BranchControlFile: Ptr(filepath.Join(DefaultDataDir, DefaultCfgDir, DefaultBranchControlFilePath)),
+	}
+}
+
+func ReadConfigFromYamlFile(fs filesys.Filesys, configFilePath string) (*DoltgresConfig, error) {
 	configFileData, err := fs.ReadFile(configFilePath)
 	if err != nil {
 		absPath, absErr := fs.Abs(configFilePath)
@@ -433,25 +521,46 @@ func ReadConfigFromYamlFile(fs filesys.Filesys, configFilePath string, overrides
 			return nil, fmt.Errorf("error reading config file '%s': %w", absPath, err)
 		}
 	}
-	return ConfigFromYamlData(configFileData, overrides)
+	return ConfigFromYamlData(configFileData)
 }
 
-func ConfigFromYamlData(configFileData []byte, overrides map[string]string) (*DoltgresConfig, error) {
+func ConfigFromYamlData(configFileData []byte) (*DoltgresConfig, error) {
 	var cfg DoltgresConfig
 	err := yaml.UnmarshalStrict(configFileData, &cfg)
 	if err != nil {
 		return nil, fmt.Errorf("error unmarshalling config data: %w", err)
 	}
 
-	for k, v := range overrides {
-		switch k {
-		case OverrideDataDirKey:
-			cfg.DataDirStr = &v
-		default:
-			// this only happens if code to add an override is added but code to handle the override is not.
-			panic(fmt.Sprintf("unknown override key: %s", k))
-		}
+	return &cfg, err
+}
+
+func (cfg *DoltgresConfig) String() string {
+	data, err := yaml.Marshal(cfg)
+
+	if err != nil {
+		return "Failed to marshal as yaml: " + err.Error()
 	}
 
-	return &cfg, err
+	unformatted := string(data)
+
+	// format the yaml to be easier to read.
+	lines := strings.Split(unformatted, "\n")
+
+	var formatted []string
+	formatted = append(formatted, lines[0])
+	for i := 1; i < len(lines); i++ {
+		if len(lines[i]) == 0 {
+			continue
+		}
+
+		r, _ := utf8.DecodeRuneInString(lines[i])
+		if !unicode.IsSpace(r) {
+			formatted = append(formatted, "")
+		}
+
+		formatted = append(formatted, lines[i])
+	}
+
+	result := strings.Join(formatted, "\n")
+	return result
 }

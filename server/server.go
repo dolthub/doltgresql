@@ -43,13 +43,7 @@ import (
 )
 
 const (
-	Version = "0.8.0"
-
-	// DOLTGRES_DATA_DIR is an environment variable that defines the location of DoltgreSQL databases
-	DOLTGRES_DATA_DIR = "DOLTGRES_DATA_DIR"
-	// DOLTGRES_DATA_DIR_DEFAULT is the portion to append to the user's home directory if DOLTGRES_DATA_DIR has not been specified
-	DOLTGRES_DATA_DIR_DEFAULT = "doltgres/databases"
-
+	Version      = "0.8.0"
 	DefUserName  = "postres"
 	DefUserEmail = "postgres@somewhere.com"
 	DoltgresDir  = "doltgres"
@@ -140,7 +134,7 @@ func runServer(ctx context.Context, cfg *servercfg.DoltgresConfig, dEnv *env.Dol
 		// enforce the creation of a Doltgres database/directory, which would create a name conflict with the file
 		return nil, fmt.Errorf("Attempted to create the default `doltgres` database at `%s`, but a file with "+
 			"the same name was found. Either remove the file, change the directory using the `--data-dir` argument, "+
-			"or change the environment variable `%s` so that it points to a different directory.", workingDir, DOLTGRES_DATA_DIR)
+			"or change the environment variable `%s` so that it points to a different directory.", workingDir, servercfg.DOLTGRES_DATA_DIR)
 	}
 
 	controller := svcs.NewController()
