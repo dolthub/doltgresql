@@ -27,10 +27,6 @@ import (
 	"gopkg.in/yaml.v2"
 )
 
-func Ptr[T any](v T) *T {
-	return &v
-}
-
 const (
 	maxConnectionsKey = "max_connections"
 	readTimeoutKey    = "net_read_timeout"
@@ -180,6 +176,11 @@ type DoltgresConfig struct {
 	GoldenMysqlConn *string                   `yaml:"golden_mysql_conn,omitempty" minver:"0.7.4"`
 
 	PostgresReplicationConfig *PostgresReplicationConfig `yaml:"postgres_replication,omitempty" minver:"0.7.4"`
+}
+
+// Ptr is a helper function that returns a pointer to the value passed in.
+func Ptr[T any](v T) *T {
+	return &v
 }
 
 func (cfg *DoltgresConfig) AutoCommit() bool {
@@ -486,34 +487,30 @@ func DefaultServerConfig() *DoltgresConfig {
 	}
 	
 	return &DoltgresConfig{
-		LogLevelStr:       ptr(string(DefaultLogLevel)),
-		EncodeLoggedQuery: ptr(DefaultEncodeLoggedQuery),
+		LogLevelStr:       Ptr(string(DefaultLogLevel)),
+		EncodeLoggedQuery: Ptr(DefaultEncodeLoggedQuery),
 		BehaviorConfig: &DoltgresBehaviorConfig{
-			ReadOnly:              ptr(DefaultReadOnly),
-			DoltTransactionCommit: ptr(DefaultDoltTransactionCommit),
+			ReadOnly:              Ptr(DefaultReadOnly),
+			DoltTransactionCommit: Ptr(DefaultDoltTransactionCommit),
 		},
 		UserConfig: &DoltgresUserConfig{
-			Name:     ptr(DefaultUser),
-			Password: ptr(DefaultPass),
+			Name:     Ptr(DefaultUser),
+			Password: Ptr(DefaultPass),
 		},
 		ListenerConfig: &DoltgresListenerConfig{
-			HostStr:                 ptr(DefaultHost),
-			PortNumber:              ptr(DefaultPort),
-			ReadTimeoutMillis:       ptr(uint64(DefaultTimeout)),
-			WriteTimeoutMillis:      ptr(uint64(DefaultTimeout)),
-			AllowCleartextPasswords: ptr(DefaultAllowCleartextPasswords),
+			HostStr:                 Ptr(DefaultHost),
+			PortNumber:              Ptr(DefaultPort),
+			ReadTimeoutMillis:       Ptr(uint64(DefaultTimeout)),
+			WriteTimeoutMillis:      Ptr(uint64(DefaultTimeout)),
+			AllowCleartextPasswords: Ptr(DefaultAllowCleartextPasswords),
 		},
-		PerformanceConfig: &DoltgresPerformanceConfig{QueryParallelism: ptr(DefaultQueryParallelism)},
+		PerformanceConfig: &DoltgresPerformanceConfig{QueryParallelism: Ptr(DefaultQueryParallelism)},
 		
-		DataDirStr:        ptr(dataDir),
-		CfgDirStr:         ptr(filepath.Join(DefaultDataDir, DefaultCfgDir)),
-		PrivilegeFile:     ptr(filepath.Join(DefaultDataDir, DefaultCfgDir, DefaultPrivilegeFilePath)),
-		BranchControlFile: ptr(filepath.Join(DefaultDataDir, DefaultCfgDir, DefaultBranchControlFilePath)),
+		DataDirStr:        Ptr(dataDir),
+		CfgDirStr:         Ptr(filepath.Join(DefaultDataDir, DefaultCfgDir)),
+		PrivilegeFile:     Ptr(filepath.Join(DefaultDataDir, DefaultCfgDir, DefaultPrivilegeFilePath)),
+		BranchControlFile: Ptr(filepath.Join(DefaultDataDir, DefaultCfgDir, DefaultBranchControlFilePath)),
 	}
-}
-
-func ptr[T any](t T) *T {
-	return &t
 }
 
 func ReadConfigFromYamlFile(fs filesys.Filesys, configFilePath string) (*DoltgresConfig, error) {

@@ -9,6 +9,16 @@ teardown() {
     teardown_common
 }
 
+@test 'doltgres: --help' {
+    # just a smoke test
+    doltgres --help
+}
+
+@test 'doltgres: --config-help' {
+    # just a smoke test
+    doltgres --config-help
+}
+
 @test 'doltgres: no arguments' {
     PORT=5432
     mkdir test-home

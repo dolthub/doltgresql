@@ -21,6 +21,7 @@ import (
 	"os"
 	"path/filepath"
 	"strconv"
+	"strings"
 
 	"github.com/dolthub/dolt/go/cmd/dolt/cli"
 	"github.com/dolthub/dolt/go/cmd/dolt/commands"
@@ -59,24 +60,28 @@ const (
 	versionFlag    = "version"
 	configHelpFlag = "config-help"
 
-	dataDirHelpText = "Path to the directory where doltgres databases are stored. If not provided, the value in " +
-		"config.yaml will be used. If that's not provided either, the value of the DOLTGRES_DATA_DIR environment variable " +
-		"will be used if set, otherwise $HOME/doltgres/databases will be used. The directory will be created if it doesn't " +
-		"exist."
+
+	configHelpText = "Path to the config file. If not provided, ./config.yaml\n" +
+		"will be used if it exists."
+	dataDirHelpText = "Path to the directory where doltgres databases are stored.\n" +
+		"If not provided, the value in config.yaml will be used. If that's not provided\n" +
+		"either, the value of the DOLTGRES_DATA_DIR environment variable will be used\n" +
+		"if set. Otherwise $HOME/doltgres/databases will be used. The directory will be\n" +
+		"created if it doesn't exist."
 )
 
 func parseArgs() (flags map[string]*bool, params map[string]*string) {
 	flag.Usage = func() {
 		cli.Println("Usage: doltgres [options]")
 		cli.Println("Options:")
-		flag.PrintDefaults()
+		PrintDefaults(flag.CommandLine)
 	}
 
 	flags = make(map[string]*bool)
 	params = make(map[string]*string)
 
-	params[configParam] = flag.String(configParam, "", "Path to the config file. If not provided, ./config.yaml will be used if it exists.")
-	params[dataDirParam] = flag.String(dataDirParam, "", dataDirHelpText)
+	params[configParam] = flag.String(configParam, "", configHelpText)
+	params[dataDirParam] = flag.String(dataDirParam, "", configHelpText)
 	params[chdirParam] = flag.String(chdirParam, "", "set the working directory for doltgres")
 	params[stdInParam] = flag.String(stdInParam, "", "file to use as stdin")
 	params[stdOutParam] = flag.String(stdOutParam, "", "file to use as stdout")
@@ -89,6 +94,47 @@ func parseArgs() (flags map[string]*bool, params map[string]*string) {
 	flag.Parse()
 
 	return flags, params
+}
+
+// PrintDefaults is modified from the flag package to control the order of printing
+func PrintDefaults(fs *flag.FlagSet) {
+	helpOrder := []string{
+		configParam,
+		dataDirParam,
+		configHelpFlag,
+		versionFlag,
+		chdirParam,
+		stdInParam,
+		stdOutParam,
+		stdErrParam,
+		stdOutAndErrParam,
+	}
+
+	for _, fName := range helpOrder {
+		f := fs.Lookup(fName)
+		var b strings.Builder
+		fmt.Fprintf(&b, "  -%s", f.Name) // Two spaces before -; see next two comments.
+		name, usage := flag.UnquoteUsage(f)
+		if len(name) > 0 {
+			b.WriteString(" ")
+			b.WriteString(name)
+		}
+		// Boolean flags of one ASCII letter are so common we
+		// treat them specially, putting their usage on the same line.
+		if b.Len() <= 4 { // space, space, '-', 'x'.
+			b.WriteString("\t")
+		} else {
+			// Four spaces before the tab triggers good alignment
+			// for both 4- and 8-space tab stops.
+			b.WriteString("\n    \t")
+		}
+		b.WriteString(strings.ReplaceAll(usage, "\n", "\n    \t"))
+
+		if f.DefValue != "false" && f.DefValue != "" {
+			fmt.Fprintf(&b, " (default %v)", f.DefValue)
+		}
+		fmt.Fprint(fs.Output(), b.String(), "\n")
+	}
 }
 
 func main() {
