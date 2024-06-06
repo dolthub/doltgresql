@@ -36,16 +36,13 @@ const (
 	OverrideDataDirKey = "data_dir"
 )
 
-// LogLevel defines the available levels of logging for the server.
-type LogLevel string
-
 const (
-	LogLevel_Trace   LogLevel = "trace"
-	LogLevel_Debug   LogLevel = "debug"
-	LogLevel_Info    LogLevel = "info"
-	LogLevel_Warning LogLevel = "warning"
-	LogLevel_Error   LogLevel = "error"
-	LogLevel_Fatal   LogLevel = "fatal"
+	LogLevel_Trace   = "trace"
+	LogLevel_Debug   = "debug"
+	LogLevel_Info    = "info"
+	LogLevel_Warning = "warn"
+	LogLevel_Error   = "error"
+	LogLevel_Fatal   = "fatal"
 )
 
 const (
@@ -178,7 +175,8 @@ type DoltgresConfig struct {
 	PostgresReplicationConfig *PostgresReplicationConfig `yaml:"postgres_replication,omitempty" minver:"0.7.4"`
 }
 
-// Ptr is a helper function that returns a pointer to the value passed in.
+// Ptr is a helper function that returns a pointer to the value passed in. This is necessary to e.g. get a pointer to
+// a const value without assigning to an intermediate variable.
 func Ptr[T any](v T) *T {
 	return &v
 }
@@ -273,17 +271,17 @@ func (cfg *DoltgresConfig) LogLevel() servercfg.LogLevel {
 	}
 
 	switch *cfg.LogLevelStr {
-	case "trace":
+	case LogLevel_Trace:
 		return servercfg.LogLevel_Trace
-	case "debug":
+	case LogLevel_Debug:
 		return servercfg.LogLevel_Debug
-	case "info":
+	case LogLevel_Info:
 		return servercfg.LogLevel_Info
-	case "warn":
+	case LogLevel_Warning:
 		return servercfg.LogLevel_Warning
-	case "error":
+	case LogLevel_Error:
 		return servercfg.LogLevel_Error
-	case "fatal":
+	case LogLevel_Fatal:
 		return servercfg.LogLevel_Fatal
 	default:
 		return servercfg.LogLevel_Info
