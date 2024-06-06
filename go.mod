@@ -25,6 +25,7 @@ require (
 	github.com/jackc/pgx/v5 v5.4.3
 	github.com/lib/pq v1.10.9
 	github.com/madflojo/testcerts v1.1.1
+	github.com/mitchellh/go-wordwrap v1.0.1
 	github.com/pierrre/geohash v1.0.0
 	github.com/sergi/go-diff v1.1.0
 	github.com/shopspring/decimal v1.3.1

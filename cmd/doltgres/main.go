@@ -34,6 +34,7 @@ import (
 	"github.com/dolthub/dolt/go/libraries/utils/filesys"
 	"github.com/dolthub/dolt/go/store/nbs"
 	"github.com/fatih/color"
+	"github.com/mitchellh/go-wordwrap"
 
 	"github.com/dolthub/doltgresql/server"
 	"github.com/dolthub/doltgresql/servercfg"
@@ -61,13 +62,12 @@ const (
 	configHelpFlag = "config-help"
 
 
-	configHelpText = "Path to the config file. If not provided, ./config.yaml\n" +
-		"will be used if it exists."
+	configHelpText = "Path to the config file.\n" +
+		"If not provided, ./config.yaml will be used if it exists."
 	dataDirHelpText = "Path to the directory where doltgres databases are stored.\n" +
-		"If not provided, the value in config.yaml will be used. If that's not provided\n" +
-		"either, the value of the DOLTGRES_DATA_DIR environment variable will be used\n" +
-		"if set. Otherwise $HOME/doltgres/databases will be used. The directory will be\n" +
-		"created if it doesn't exist."
+		"If not provided, the value in config.yaml will be used. If that's not provided either, the value of the " +
+		"DOLTGRES_DATA_DIR environment variable will be used if set. Otherwise $HOME/doltgres/databases will be used. " +
+		"The directory will be created if it doesn't exist."
 )
 
 func parseArgs() (flags map[string]*bool, params map[string]*string) {
@@ -81,7 +81,7 @@ func parseArgs() (flags map[string]*bool, params map[string]*string) {
 	params = make(map[string]*string)
 
 	params[configParam] = flag.String(configParam, "", configHelpText)
-	params[dataDirParam] = flag.String(dataDirParam, "", configHelpText)
+	params[dataDirParam] = flag.String(dataDirParam, "", dataDirHelpText)
 	params[chdirParam] = flag.String(chdirParam, "", "set the working directory for doltgres")
 	params[stdInParam] = flag.String(stdInParam, "", "file to use as stdin")
 	params[stdOutParam] = flag.String(stdOutParam, "", "file to use as stdout")
@@ -128,6 +128,8 @@ func PrintDefaults(fs *flag.FlagSet) {
 			// for both 4- and 8-space tab stops.
 			b.WriteString("\n    \t")
 		}
+		// wrap at 80 chars
+		usage = wordwrap.WrapString(usage, 76)
 		b.WriteString(strings.ReplaceAll(usage, "\n", "\n    \t"))
 
 		if f.DefValue != "false" && f.DefValue != "" {
