@@ -627,5 +627,52 @@ func TestSequences(t *testing.T) {
 				},
 			},
 		},
+		{
+			Name: "UPDATE pg_sequence",
+			Assertions: []ScriptTestAssertion{
+				{
+					Query:    "SELECT * FROM pg_catalog.pg_sequence;",
+					Expected: []sql.Row{},
+				},
+				{
+					Query:    "CREATE SEQUENCE some_sequence;",
+					Expected: []sql.Row{},
+				},
+				{
+					Query:    "CREATE SEQUENCE another_sequence INCREMENT 3 CYCLE;",
+					Expected: []sql.Row{},
+				},
+				{
+					Query: "SELECT * FROM pg_catalog.pg_sequence ORDER BY seqrelid;",
+					Expected: []sql.Row{
+						{1, 20, 1, 3, 9223372036854775807, 1, 1, "t"},
+						{2, 20, 1, 1, 9223372036854775807, 1, 1, "f"},
+					},
+				},
+				{
+					Query:    "UPDATE pg_catalog.pg_sequence SET seqincrement = 22, seqmax = 303 WHERE seqrelid = 2;",
+					Expected: []sql.Row{},
+				},
+				{
+					Query: "SELECT * FROM pg_catalog.pg_sequence ORDER BY seqrelid;",
+					Expected: []sql.Row{
+						{1, 20, 1, 3, 9223372036854775807, 1, 1, "t"},
+						{2, 20, 1, 22, 303, 1, 1, "f"},
+					},
+				},
+				{
+					Query: "SELECT nextval('some_sequence');",
+					Expected: []sql.Row{
+						{1},
+					},
+				},
+				{
+					Query: "SELECT nextval('some_sequence');",
+					Expected: []sql.Row{
+						{23},
+					},
+				},
+			},
+		},
 	})
 }

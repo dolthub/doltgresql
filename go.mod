@@ -8,8 +8,8 @@ require (
 	github.com/PuerkitoBio/goquery v1.8.1
 	github.com/cockroachdb/apd/v2 v2.0.3-0.20200518165714-d020e156310a
 	github.com/cockroachdb/errors v1.7.5
-	github.com/dolthub/dolt/go v0.40.5-0.20240605183720-bf1a97a670f9
-	github.com/dolthub/dolt/go/gen/proto/dolt/services/eventsapi v0.0.0-20240529071237-4a099b896ce8
+	github.com/dolthub/dolt/go v0.0.0-20240606103914-ed16936a3d3a
+	github.com/dolthub/dolt/go/gen/proto/dolt/services/eventsapi v0.0.0-20240606103914-ed16936a3d3a
 	github.com/dolthub/flatbuffers/v23 v23.3.3-dh.2
 	github.com/dolthub/go-mysql-server v0.18.2-0.20240604235838-5d11cec1718f
 	github.com/dolthub/sqllogictest/go v0.0.0-20240118211725-a52e3f5697e3

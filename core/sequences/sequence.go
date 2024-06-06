@@ -17,6 +17,7 @@ package sequences
 import (
 	"fmt"
 	"math"
+	"sort"
 	"sync"
 
 	"github.com/dolthub/dolt/go/libraries/doltcore/doltdb"
@@ -83,6 +84,28 @@ func (pgs *Collection) GetSequencesWithTable(name doltdb.TableName) []*Sequence 
 		return seqs
 	}
 	return nil
+}
+
+// GetAllSequences returns a map containing all sequences in the collection, grouped by the schema they're contained in.
+// Each sequence array is also sorted by the sequence name.
+func (pgs *Collection) GetAllSequences() (sequences map[string][]*Sequence, schemaNames []string, totalCount int) {
+	sequences = make(map[string][]*Sequence)
+	for schemaName, nameMap := range pgs.schemaMap {
+		schemaNames = append(schemaNames, schemaName)
+		seqs := make([]*Sequence, 0, len(nameMap))
+		for _, seq := range nameMap {
+			seqs = append(seqs, seq)
+		}
+		totalCount += len(seqs)
+		sort.Slice(seqs, func(i, j int) bool {
+			return seqs[i].Name < seqs[j].Name
+		})
+		sequences[schemaName] = seqs
+	}
+	sort.Slice(schemaNames, func(i, j int) bool {
+		return schemaNames[i] < schemaNames[j]
+	})
+	return
 }
 
 // HasSequence returns whether the sequence is present.

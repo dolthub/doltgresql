@@ -186,22 +186,22 @@ func runServer(ctx context.Context, cfg *servercfg.DoltgresConfig, dEnv *env.Dol
 // createDatabase creates the database named on the local server using the configuration values to connect, returning
 // any error
 func createDatabase(cfg doltservercfg.ServerConfig, dbName string) error {
-	dns := fmt.Sprintf(
+	dsn := fmt.Sprintf(
 		"postgres://%s:%s@localhost:%d",
 		cfg.User(),
 		cfg.Password(),
 		cfg.Port(),
 	)
 
-	// connect to the DB and run "create database doltgres"
+	// Connect to the server and create the default database with the given name.
 	ctx := context.Background()
-	conn, err := pgx.Connect(ctx, dns)
+	conn, err := pgx.Connect(ctx, dsn)
 	if err != nil {
 		return err
 	}
-
 	defer conn.Close(ctx)
-	_, err = conn.Exec(ctx, fmt.Sprintf("create database %s", dbName))
+
+	_, err = conn.Exec(ctx, fmt.Sprintf("CREATE DATABASE %s;", dbName))
 	return err
 }
 

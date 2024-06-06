@@ -26,6 +26,7 @@ const (
 	ruleId_AssignInsertCasts
 	ruleId_AssignUpdateCasts
 	ruleId_ReplaceSerial
+	ruleId_ReplaceCreateDatabase
 	ruleId_InsertContextRootFinalizer
 )
 
@@ -49,6 +50,7 @@ func Init() {
 
 	analyzer.OnceAfterDefault = append(analyzer.OnceAfterDefault,
 		analyzer.Rule{Id: ruleId_ReplaceSerial, Apply: ReplaceSerial},
+		analyzer.Rule{Id: ruleId_ReplaceCreateDatabase, Apply: ReplaceCreateDatabase},
 	)
 
 	// The auto-commit rule writes the contents of the context, so we need to insert our finalizer before that
