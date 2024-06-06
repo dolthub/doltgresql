@@ -43,7 +43,7 @@ import (
 )
 
 const (
-	Version = "0.8.0"
+	Version      = "0.8.0"
 	DefUserName  = "postres"
 	DefUserEmail = "postgres@somewhere.com"
 	DoltgresDir  = "doltgres"

@@ -483,7 +483,7 @@ func DefaultServerConfig() *DoltgresConfig {
 	if err == nil {
 		dataDir = filepath.Join(homeDir, DOLTGRES_DATA_DIR_DEFAULT)
 	}
-	
+
 	return &DoltgresConfig{
 		LogLevelStr:       Ptr(string(DefaultLogLevel)),
 		EncodeLoggedQuery: Ptr(DefaultEncodeLoggedQuery),
@@ -503,7 +503,7 @@ func DefaultServerConfig() *DoltgresConfig {
 			AllowCleartextPasswords: Ptr(DefaultAllowCleartextPasswords),
 		},
 		PerformanceConfig: &DoltgresPerformanceConfig{QueryParallelism: Ptr(DefaultQueryParallelism)},
-		
+
 		DataDirStr:        Ptr(dataDir),
 		CfgDirStr:         Ptr(filepath.Join(DefaultDataDir, DefaultCfgDir)),
 		PrivilegeFile:     Ptr(filepath.Join(DefaultDataDir, DefaultCfgDir, DefaultPrivilegeFilePath)),
@@ -530,7 +530,7 @@ func ConfigFromYamlData(configFileData []byte) (*DoltgresConfig, error) {
 	if err != nil {
 		return nil, fmt.Errorf("error unmarshalling config data: %w", err)
 	}
-	
+
 	return &cfg, err
 }
 
