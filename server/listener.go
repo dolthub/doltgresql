@@ -22,6 +22,7 @@ import (
 
 	"github.com/dolthub/go-mysql-server/server"
 	"github.com/dolthub/vitess/go/mysql"
+	"github.com/dolthub/vitess/go/netutil"
 )
 
 var (
@@ -74,6 +75,12 @@ func (l *Listener) Accept() {
 			}
 			fmt.Printf("Unable to accept connection:\n%v\n", err)
 			continue
+		}
+
+		// Configure read timeouts on this connection
+		// TODO: use timeouts from the live server values
+		if l.cfg.ConnReadTimeout != 0 || l.cfg.ConnWriteTimeout != 0 {
+			conn = netutil.NewConnWithTimeouts(conn, l.cfg.ConnReadTimeout, l.cfg.ConnWriteTimeout)
 		}
 
 		connectionHandler := NewConnectionHandler(conn, l.cfg.Handler)
