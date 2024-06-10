@@ -33,11 +33,5 @@ func (f IntermediateFunction) Compile(name string, parameters ...sql.Expression)
 	if f.Functions == nil {
 		return nil
 	}
-	return &CompiledFunction{
-		Name:         name,
-		Parameters:   parameters,
-		Functions:    f.Functions,
-		AllOverloads: f.AllOverloads,
-		IsOperator:   f.IsOperator,
-	}
+	return newCompiledFunctionInternal(name, parameters, f.Functions, f.AllOverloads, f.IsOperator)
 }

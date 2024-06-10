@@ -121,13 +121,7 @@ func Initialize() {
 
 		// Store the compiled function into the engine's built-in functions
 		createFunc := func(params ...sql.Expression) (sql.Expression, error) {
-			return &CompiledFunction{
-				Name:         funcName,
-				Parameters:   params,
-				Functions:    baseOverload,
-				AllOverloads: baseOverload.collectOverloadPermutations(),
-				IsOperator:   false,
-			}, nil
+			return NewCompiledFunction(funcName, params, baseOverload, false), nil
 		}
 		function.BuiltIns = append(function.BuiltIns, sql.FunctionN{
 			Name: funcName,
