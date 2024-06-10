@@ -37,3 +37,21 @@ teardown() {
     echo $DOLTGRES_VERSION
     node $BATS_TEST_DIRNAME/node/knex.js $USER $PORT $DOLTGRES_VERSION
 }
+
+@test "perl DBI:Pg client" {
+    perl $BATS_TEST_DIRNAME/perl/postgres-test.pl $USER $PORT
+}
+
+@test "ruby pg test" {
+    ruby $BATS_TEST_DIRNAME/ruby/pg-test.rb $USER $PORT
+}
+
+@test "php pg_connect client" {
+    cd $BATS_TEST_DIRNAME/php
+    php pg_connect_test.php $USER $PORT
+}
+
+@test "php pdo pgsql client" {
+    cd $BATS_TEST_DIRNAME/php
+    php pdo_connector_test.php $USER $PORT
+}
