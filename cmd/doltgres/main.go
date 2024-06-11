@@ -16,6 +16,7 @@ package main
 
 import (
 	"context"
+	"errors"
 	"flag"
 	"fmt"
 	"os"
@@ -38,6 +39,7 @@ import (
 
 	"github.com/dolthub/doltgresql/server"
 	"github.com/dolthub/doltgresql/servercfg"
+	"github.com/dolthub/doltgresql/utils"
 )
 
 func init() {
@@ -57,6 +59,13 @@ const (
 	configParam       = "config"
 	dataDirParam      = "data-dir"
 	defaultCfgFile    = "config.yaml"
+
+	profilePath  = "--prof-path"
+	profFlag     = "--prof"
+	cpuProf      = "cpu"
+	memProf      = "mem"
+	blockingProf = "blocking"
+	traceProf    = "trace"
 
 	versionFlag    = "version"
 	configHelpFlag = "config-help"
@@ -139,6 +148,40 @@ func PrintDefaults(fs *flag.FlagSet) {
 }
 
 func main() {
+	if len(os.Args) >= 2 {
+		profilingOptions := utils.ProfilingOptions{}
+		doneDebugFlags := false
+		for !doneDebugFlags {
+			switch os.Args[1] {
+			case profilePath:
+				profilingOptions.Path = os.Args[2]
+				if _, err := os.Stat(profilingOptions.Path); errors.Is(err, os.ErrNotExist) {
+					panic(fmt.Errorf("profile path does not exist: %s", profilingOptions.Path))
+				}
+				os.Args = append([]string{os.Args[0]}, os.Args[3:]...)
+			case profFlag:
+				switch os.Args[2] {
+				case cpuProf:
+					profilingOptions.CPU = true
+				case memProf:
+					profilingOptions.Memory = true
+				case blockingProf:
+					profilingOptions.Block = true
+				case traceProf:
+					profilingOptions.Trace = true
+				default:
+					panic("Unexpected prof flag: " + os.Args[2])
+				}
+				os.Args = append([]string{os.Args[0]}, os.Args[3:]...)
+			default:
+				doneDebugFlags = true
+			}
+		}
+		if profilingOptions.HasOptions() {
+			utils.StartProfiling(profilingOptions)
+			defer utils.StopProfiling()
+		}
+	}
 	ctx := context.Background()
 	flags, params := parseArgs()
 
@@ -181,6 +224,7 @@ func main() {
 }
 
 func handleErrAndExitCode(err error) {
+	utils.StopProfiling()
 	if err != nil {
 		cli.PrintErrln(err.Error())
 		os.Exit(1)
