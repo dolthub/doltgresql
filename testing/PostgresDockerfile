@@ -32,9 +32,12 @@ RUN apt update -y && \
         ruby \
         ruby-dev \
         gem \
+        libc6 \
+        libgcc1 \
         r-base \
         postgresql-16 \
         postgresql-contrib-16 \
+        libpq-dev \
         nodejs \
         lsof \
         postgresql-server-dev-all && \
