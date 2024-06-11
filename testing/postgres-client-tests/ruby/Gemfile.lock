@@ -1,0 +1,18 @@
+GEM
+  remote: https://rubygems.org/
+  specs:
+    pg (1.5.6)
+    rubytest (0.8.1)
+    test (1.0.0)
+      rubytest
+
+PLATFORMS
+  ruby
+  x86_64-darwin-23
+
+DEPENDENCIES
+  pg
+  test
+
+BUNDLED WITH
+   2.5.9
