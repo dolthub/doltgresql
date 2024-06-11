@@ -39,7 +39,7 @@ jobs:
         working-directory: ./postgres/parser
         shell: bash
       - name: Update Doltgres version command
-        run: sed -i -e 's/	Version = ".*"/	Version = "'"$NEW_VERSION"'"/' "$FILE"
+        run: sed -i -e 's/Version\s*=\s*".*"/Version = "'"$NEW_VERSION"'"/' "$FILE"
         env:
           FILE: ${{ format('{0}/server/server.go', github.workspace) }}
           NEW_VERSION: ${{ needs.format-version.outputs.version }}
