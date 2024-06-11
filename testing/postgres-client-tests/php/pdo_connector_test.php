@@ -7,13 +7,13 @@
     $conn->setAttribute(PDO::ATTR_ERRMODE, PDO::ERRMODE_EXCEPTION);
 
     $queries = [
-        "create table test (pk int, value int, primary key(pk))" => 0,
-        "insert into test (pk, value) values (0,0)" => 1,
+        "create table test (pk int, value int, d1 decimal(9, 3), f1 float, primary key(pk))" => 0,
+        "insert into test (pk, value, d1, f1) values (0,0,0.0,0.0)" => 1,
         "select * from test" => 1,
         "call dolt_add('-A');" => 0,
         "call dolt_commit('-m', 'my commit')" => 0,
         "call dolt_checkout('-b', 'mybranch')" => 0,
-        "insert into test (pk, value) values (1,1)" => 1,
+        "insert into test (pk, value, d1, f1) values (1,1, 123456.789, 420.42)" => 1,
         "call dolt_commit('-a', '-m', 'my commit2')" => 0,
         "call dolt_checkout('main')" => 0,
         "call dolt_merge('mybranch')" => 0,
@@ -29,7 +29,15 @@
             echo "RESULT: {$result}";
             exit(1);
         }
+    }
 
+    $result = $conn->query("SELECT * FROM test WHERE pk = 1");
+    assert(1 == $result->rowCount());
+    while($row = $result->fetch(PDO::FETCH_ASSOC)) {
+        assert(1 == $row['pk']);
+        assert(1 == $row['value']);
+        assert(123456.789 == $row['d1']);
+        assert(420.42 == $row['f1']);
     }
 
     exit(0)
