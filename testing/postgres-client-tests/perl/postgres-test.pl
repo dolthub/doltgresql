@@ -16,8 +16,8 @@ my $QUERY_RESPONSE = [
     {"select COUNT(*) FROM dolt_log" => 1 },
 ];
 
-my $user = "doltgres"; #$ARGV[0];
-my $port = "5432"; #$ARGV[1];
+my $user = $ARGV[0];
+my $port = $ARGV[1];
 my $db   = "doltgres";
 
 my $dsn = "DBI:Pg:database=$db;host=127.0.0.1;port=$port";
