@@ -36,16 +36,19 @@ public class PostgresTest {
 
     // test queries to be run against Doltgres
     private static final PostgresTest[] tests = {
-        new PostgresTest("create table test (pk int, value int, primary key(pk))", 0, null, null),
+        new PostgresTest("create table test (pk int, value int, d1 decimal(4,2), c1 char(10), primary key(pk))", 0, null, null),
         new PostgresTest("select pk from test", null, "pk", new String[]{}), // the table has no rows
-        new PostgresTest("insert into test (pk, value) values (0,1), (2,3)", 2, null, null),
+        new PostgresTest("insert into test (pk, value, d1, c1) values (0,1,2.3,'hi'), (2,3,4.56,'hello')", 2, null, null),
         new PostgresTest("select * from test", null, "pk", new String[]{"0","2"}),
         new PostgresTest("select * from test", null, "value", new String[]{"1","3"}),
+        // TODO: doltgres DECIMAL type result is returned as "2.3", should be "2.30"
+        // new PostgresTest("select * from test", null, "d1", new String[]{"2.30","4.56"}),
+        new PostgresTest("select * from test", null, "c1", new String[]{"hi        ","hello     "}),
         new PostgresTest("call dolt_add('-A')", 0, null, null),
         new PostgresTest("call dolt_commit('-m', 'my commit')", 0, null, null),
         new PostgresTest("select COUNT(*) FROM dolt_log", null, 1, new String[]{"2"}),
         new PostgresTest("call dolt_checkout('-b', 'mybranch')", 0, null, null),
-        new PostgresTest("insert into test (pk, value) values (1,1)", 1, null, null),
+        new PostgresTest("insert into test (pk, value, d1, c1) values (1,1,12.34,'bye')", 1, null, null),
         new PostgresTest("call dolt_commit('-a', '-m', 'my commit2')", 0, null, null),
         new PostgresTest("call dolt_checkout('main')", 0, null, null),
         new PostgresTest("call dolt_merge('mybranch')", 0, null, null),
@@ -94,8 +97,8 @@ public class PostgresTest {
 
                         if (!expected.equals(result) && !(query.contains("dolt_commit")) && !(query.contains("dolt_merge"))) {
                             System.out.println("Query: \n" + query);
-                            System.out.println("Expected:\n" + expected);
-                            System.out.println("Result:\n" + result);
+                            System.out.println("Expected:\n'" + expected + "'");
+                            System.out.println("Result:\n'" + result + "'");
                             System.exit(1);
                         }
                         j++;

@@ -55,3 +55,8 @@ teardown() {
     cd $BATS_TEST_DIRNAME/php
     php pdo_connector_test.php $USER $PORT
 }
+
+@test "c postgres: libpq connector" {
+    (cd $BATS_TEST_DIRNAME/c; make clean; make)
+    $BATS_TEST_DIRNAME/c/postgres-c-connector-test $USER $PORT
+}
