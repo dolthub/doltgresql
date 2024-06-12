@@ -54,7 +54,6 @@ type DoltgresHarness struct {
 	serverDir        string
 	timeout          int64 // in seconds
 	harnessLog       *os.File
-	configFile       string
 	stashedLogOutput io.Writer
 }
 
