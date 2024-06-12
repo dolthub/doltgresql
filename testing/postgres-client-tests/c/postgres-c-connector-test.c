@@ -7,15 +7,15 @@
 #define QUERIES_SIZE 13
 
 char *queries[QUERIES_SIZE] = {
-    "create table test (pk int, value int, d1 decimal(9, 3), f1 float, primary key(pk))",
+    "create table test (pk int, value int, d1 decimal(9, 3), f1 float, c1 char(10), t1 text, primary key(pk))",
     "select * from test",
-    "insert into test (pk, value, d1, f1) values (0,0,0.0,0.0)",
+    "insert into test (pk, value, d1, f1, c1, t1) values (0,0,0.0,0.0,'abc','a1')",
     "select * from test",
     "call dolt_add('-A');",
     "call dolt_commit('-m', 'my commit')",
     "select COUNT(*) FROM dolt_log",
     "call dolt_checkout('-b', 'mybranch')",
-    "insert into test (pk, value, d1, f1) values (10,10, 123456.789, 420.42)",
+    "insert into test (pk, value, d1, f1, c1, t1) values (10,10, 123456.789, 420.42,'example','some text')",
     "call dolt_commit('-a', '-m', 'my commit2')",
     "call dolt_checkout('main')",
     "call dolt_merge('mybranch')",
@@ -106,9 +106,9 @@ int main(int argc, char *argv[]) {
     // Get the number of columns in the query result
     int cols = PQnfields(res);
     printf("Number of cols: %d\n", cols);
-    assert(cols == 4);
+    assert(cols == 6);
 
-    char *expectedCols[4] = {"pk", "value", "d1", "f1"};
+    char *expectedCols[6] = {"pk", "value", "d1", "f1", "c1", "t1"};
     // Assert the column names
     for (int i = 0; i < cols; i++) {
         assert(strcmp(PQfname(res, i), expectedCols[i]) == 0);
@@ -119,11 +119,14 @@ int main(int argc, char *argv[]) {
     printf("Number of rows: %d\n", rows);
     assert(rows == 1);
 
-    char *expectedRowResults[4] = {"10", "10", "123456.789", "420.42"};
+    char *expectedRowResults[6] = {"10", "10", "123456.789", "420.42", "example   ", "some text"};
     // Assert query result
     for (int i = 0; i < rows; i++) {
         for (int j = 0; j < cols; j++) {
-            assert(strcmp(PQgetvalue(res, i, j), expectedRowResults[j]) == 0);
+            char *actual = PQgetvalue(res, i, j);
+            printf("EXPECTED: '%s'\n", expectedRowResults[j]);
+            printf("ACTUAL: '%s'\n", actual);
+            assert(strcmp(actual, expectedRowResults[j]) == 0);
         }
     }
 
