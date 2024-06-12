@@ -36,7 +36,7 @@ public class PostgresTest {
 
     // test queries to be run against Doltgres
     private static final PostgresTest[] tests = {
-        new PostgresTest("create table test (pk int, value int, d1 decimal(4,2), c1 char(10) primary key(pk))", 0, null, null),
+        new PostgresTest("create table test (pk int, value int, d1 decimal(4,2), c1 char(10), primary key(pk))", 0, null, null),
         new PostgresTest("select pk from test", null, "pk", new String[]{}), // the table has no rows
         new PostgresTest("insert into test (pk, value, d1, c1) values (0,1,2.3,'hi'), (2,3,4.56,'hello')", 2, null, null),
         new PostgresTest("select * from test", null, "pk", new String[]{"0","2"}),
