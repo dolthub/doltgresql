@@ -42,7 +42,7 @@ public class PostgresTest {
         new PostgresTest("select * from test", null, "pk", new String[]{"0","2"}),
         new PostgresTest("select * from test", null, "value", new String[]{"1","3"}),
         new PostgresTest("select * from test", null, "d1", new String[]{"2.30","4.56"}),
-        new PostgresTest("select * from test", null, "c1", new String[]{"hi","hello"}),
+        new PostgresTest("select * from test", null, "c1", new String[]{"hi        ","hello     "}),
         new PostgresTest("call dolt_add('-A')", 0, null, null),
         new PostgresTest("call dolt_commit('-m', 'my commit')", 0, null, null),
         new PostgresTest("select COUNT(*) FROM dolt_log", null, 1, new String[]{"2"}),
@@ -96,8 +96,8 @@ public class PostgresTest {
 
                         if (!expected.equals(result) && !(query.contains("dolt_commit")) && !(query.contains("dolt_merge"))) {
                             System.out.println("Query: \n" + query);
-                            System.out.println("Expected:\n" + expected);
-                            System.out.println("Result:\n" + result);
+                            System.out.println("Expected:\n'" + expected + "'");
+                            System.out.println("Result:\n'" + result + "'");
                             System.exit(1);
                         }
                         j++;
