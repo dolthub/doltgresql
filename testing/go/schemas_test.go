@@ -85,6 +85,86 @@ var SchemaTests = []ScriptTest{
 		},
 	},
 	{
+		Name: "drop table",
+		SetUpScript: []string{
+			"CREATE TABLE t1 (pk BIGINT PRIMARY KEY, v1 BIGINT);",
+			"CREATE TABLE t2 (pk BIGINT PRIMARY KEY, v1 BIGINT);",
+			"CREATE TABLE t3 (pk BIGINT PRIMARY KEY, v1 BIGINT);",
+			"CREATE TABLE t4 (pk BIGINT PRIMARY KEY, v1 BIGINT);",
+		},
+		Assertions: []ScriptTestAssertion{
+			{
+				Query: "INSERT INTO t1 VALUES (1, 1), (2, 2);",
+			},
+			{
+				Query: "INSERT INTO t2 VALUES (3, 3), (4, 4);",
+			},
+			{
+				Query: "INSERT INTO t3 VALUES (1, 1), (2, 2);",
+			},
+			{
+				Query: "INSERT INTO t4 VALUES (3, 3), (4, 4);",
+			},
+			{
+				Query: "drop table t1",
+			},
+			{
+				Query: "drop table public.t2",
+			},
+			{
+				Query: "drop table if exists t3",
+			},
+			{
+				Query: "drop table if exists public.t4",
+			},
+			{
+				Query:       "INSERT INTO t1 VALUES (1, 1), (2, 2);",
+				ExpectedErr: "not found",
+			},
+			{
+				Query:       "INSERT INTO t2 VALUES (3, 3), (4, 4);",
+				ExpectedErr: "not found",
+			},
+			{
+				Query:       "INSERT INTO t3 VALUES (1, 1), (2, 2);",
+				ExpectedErr: "not found",
+			},
+			{
+				Query:       "INSERT INTO t4 VALUES (3, 3), (4, 4);",
+				ExpectedErr: "not found",
+			},
+			{
+				Query: "drop table if exists t1",
+			},
+			{
+				Query:       "drop table t1",
+				ExpectedErr: "not found",
+			},
+		},
+	},
+	{
+		Name: "alter table",
+		Skip: true, // alter table not supported yet
+		SetUpScript: []string{
+			"CREATE TABLE t1 (pk BIGINT PRIMARY KEY, v1 BIGINT);",
+			"CREATE TABLE t2 (pk BIGINT PRIMARY KEY, v1 BIGINT);",
+		},
+		Assertions: []ScriptTestAssertion{
+			{
+				Query: "alter table t1 add column v2 BIGINT;",
+			},
+			{
+				Query: "alter table public.t2 add column v2 BIGINT;",
+			},
+			{
+				Query: "INSERT INTO t1 VALUES (5, 5, 5), (6, 6, 6);",
+			},
+			{
+				Query: "INSERT INTO public.t2 VALUES (7, 7, 7), (8, 8, 8);",
+			},
+		},
+	},
+	{
 		Name: "table creation fails with no schema available",
 		SetUpScript: []string{
 			"set search_path to ''",

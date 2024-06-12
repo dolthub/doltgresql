@@ -20,13 +20,13 @@ import (
 	"fmt"
 	"reflect"
 	"strconv"
+	"strings"
 
 	"github.com/dolthub/go-mysql-server/sql"
 	"github.com/dolthub/go-mysql-server/sql/types"
 	"github.com/dolthub/vitess/go/sqltypes"
 	"github.com/dolthub/vitess/go/vt/proto/query"
 	"github.com/lib/pq/oid"
-	"github.com/shopspring/decimal"
 )
 
 // Oid is a data type used for identifying internal objects. It is implemented as an unsigned 32 bit integer.
@@ -84,50 +84,8 @@ func compareUint32(b DoltgresType, v1, v2 any) (int, error) {
 // Convert implements the DoltgresType interface.
 func (b OidType) Convert(val any) (any, sql.ConvertInRange, error) {
 	switch val := val.(type) {
-	case bool:
-		if val {
-			return uint32(1), sql.InRange, nil
-		}
-		return uint32(0), sql.InRange, nil
-	case int:
-		return uint32(val), sql.InRange, nil
-	case uint:
-		return uint32(val), sql.InRange, nil
-	case int8:
-		return uint32(val), sql.InRange, nil
-	case uint8:
-		return uint32(val), sql.InRange, nil
-	case int16:
-		return uint32(val), sql.InRange, nil
-	case uint16:
-		return uint32(val), sql.InRange, nil
-	case int32:
-		return uint32(val), sql.InRange, nil
 	case uint32:
-		return uint32(val), sql.InRange, nil
-	case int64:
-		return uint32(val), sql.InRange, nil
-	case uint64:
-		return uint32(val), sql.InRange, nil
-	case float32:
-		return uint32(val), sql.InRange, nil
-	case float64:
-		return uint32(val), sql.InRange, nil
-	case decimal.NullDecimal:
-		if !val.Valid {
-			return nil, sql.InRange, nil
-		}
-		return b.Convert(val.Decimal)
-	case decimal.Decimal:
-		return uint32(val.IntPart()), sql.InRange, nil
-	case string:
-		i, err := strconv.ParseInt(val, 10, 64)
-		if err != nil {
-			return nil, sql.OutOfRange, err
-		}
-		return uint32(i), sql.InRange, nil
-	case []byte:
-		return b.Convert(string(val))
+		return val, sql.InRange, nil
 	case nil:
 		return nil, sql.InRange, nil
 	default:
@@ -157,16 +115,34 @@ func (b OidType) FormatValue(val any) (string, error) {
 	if val == nil {
 		return "", nil
 	}
-	converted, _, err := b.Convert(val)
-	if err != nil {
-		return "", err
-	}
-	return strconv.FormatInt(int64(converted.(uint32)), 10), nil
+	return b.IoOutput(val)
 }
 
 // GetSerializationID implements the DoltgresType interface.
 func (b OidType) GetSerializationID() SerializationID {
 	return SerializationID_Oid
+}
+
+// IoInput implements the DoltgresType interface.
+func (b OidType) IoInput(input string) (any, error) {
+	val, err := strconv.ParseInt(strings.TrimSpace(input), 10, 64)
+	if err != nil {
+		return nil, fmt.Errorf("invalid input syntax for type %s: %q", b.String(), input)
+	}
+	// Note: This minimum is different (-4294967295) for Postgres 15.4 compiled by Visual C++
+	if val > MaxUint32 || val < MinInt32 {
+		return nil, fmt.Errorf("value %q is out of range for type %s", input, b.String())
+	}
+	return uint32(val), nil
+}
+
+// IoOutput implements the DoltgresType interface.
+func (b OidType) IoOutput(output any) (string, error) {
+	converted, _, err := b.Convert(output)
+	if err != nil {
+		return "", err
+	}
+	return strconv.FormatUint(uint64(converted.(uint32)), 10), nil
 }
 
 // IsUnbounded implements the DoltgresType interface.

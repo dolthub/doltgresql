@@ -9,6 +9,252 @@ teardown() {
     teardown_common
 }
 
+@test 'doltgres: --help' {
+    # just a smoke test
+    doltgres --help
+}
+
+@test 'doltgres: --config-help' {
+    # just a smoke test
+    doltgres --config-help
+}
+
+@test 'doltgres: no arguments' {
+    PORT=5432
+    mkdir test-home
+    # TODO: DOLT_ROOT_PATH behavior overrides the HOME behavior, which is confusing and not
+    # applicable to Doltgres, fix it
+    HOME=test-home DOLTGRES_DATA_DIR='' DOLT_ROOT_PATH='' doltgres > server.out 2>&1 &
+    SERVER_PID=$!
+    run wait_for_connection $PORT 7500
+
+    cat server.out
+    echo "$output"
+    [ "$status" -eq 0 ]
+    
+    query_server -c "create table t1 (a int primary key, b int)"
+    query_server -c "insert into t1 values (1,2)"
+
+    run query_server -c "select * from t1" -t
+    [ "$status" -eq 0 ]
+    [[ "$output" =~ "1 | 2" ]] || false
+
+    # databases should get created in home/doltgres/databases by default
+    [ -d test-home/doltgres/databases/doltgres ]
+}
+
+@test 'doltgres: data-dir param' {
+    PORT=5432
+    DOLTGRES_DATA_DIR=fake doltgres --data-dir test > server.out 2>&1 &
+    SERVER_PID=$!
+    run wait_for_connection $PORT 7500
+
+    cat server.out
+    echo "$output"
+    [ "$status" -eq 0 ]
+    
+    query_server -c "create table t1 (a int primary key, b int)"
+    query_server -c "insert into t1 values (1,2)"
+
+    run query_server -c "select * from t1" -t
+    [ "$status" -eq 0 ]
+    [[ "$output" =~ "1 | 2" ]] || false
+
+    [ -d test/doltgres ]
+}
+
+@test 'doltgres: data dir in env var' {
+    PORT=5432
+    DOLTGRES_DATA_DIR=test doltgres > server.out 2>&1 &
+    SERVER_PID=$!
+    run wait_for_connection $PORT 7500
+
+    cat server.out
+    echo "$output"
+    [ "$status" -eq 0 ]
+    
+    query_server -c "create table t1 (a int primary key, b int)"
+    query_server -c "insert into t1 values (1,2)"
+
+    run query_server -c "select * from t1" -t
+    [ "$status" -eq 0 ]
+    [[ "$output" =~ "1 | 2" ]] || false
+
+    [ -d test/doltgres ]
+}
+
+@test 'doltgres: implicit config.yaml' {
+    PORT=5434
+
+    cat > config.yaml <<EOF
+log_level: info
+
+behavior:
+  read_only: false
+  disable_client_multi_statements: false
+  dolt_transaction_commit: false
+
+user:
+  name: ""
+  password: ""
+
+listener:
+  host: localhost
+  port: $PORT
+  read_timeout_millis: 28800000
+  write_timeout_millis: 28800000
+
+data_dir: test
+EOF
+
+    doltgres > server.out 2>&1 &
+    SERVER_PID=$!
+    run wait_for_connection $PORT 7500
+
+    cat server.out
+    echo "$output"
+    [ "$status" -eq 0 ]
+    
+    query_server -c "create table t1 (a int primary key, b int)"
+    query_server -c "insert into t1 values (1,2)"
+
+    run query_server -c "select * from t1" -t
+    [ "$status" -eq 0 ]
+    [[ "$output" =~ "1 | 2" ]] || false
+
+    [ -d test/doltgres ]
+}
+
+@test 'doltgres: config.yaml without data dir' {
+    PORT=5434
+
+    cat > config.yaml <<EOF
+log_level: info
+
+behavior:
+  read_only: false
+  disable_client_multi_statements: false
+  dolt_transaction_commit: false
+
+user:
+  name: ""
+  password: ""
+
+listener:
+  host: localhost
+  port: $PORT
+  read_timeout_millis: 28800000
+  write_timeout_millis: 28800000
+
+EOF
+
+    mkdir test-home
+    HOME=test-home DOLTGRES_DATA_DIR='' DOLT_ROOT_PATH='' doltgres --config config.yaml > server.out 2>&1 &
+    SERVER_PID=$!
+    run wait_for_connection $PORT 7500
+
+    cat server.out
+    echo "$output"
+    [ "$status" -eq 0 ]
+    
+    query_server -c "create table t1 (a int primary key, b int)"
+    query_server -c "insert into t1 values (1,2)"
+
+    run query_server -c "select * from t1" -t
+    [ "$status" -eq 0 ]
+    [[ "$output" =~ "1 | 2" ]] || false
+
+    [ -d test-home/doltgres/databases/doltgres ]
+}
+
+@test 'doltgres: config file override with explicit config.yaml' {
+    PORT=5434
+
+    cat > config-test.yaml <<EOF
+log_level: info
+
+behavior:
+  read_only: false
+  disable_client_multi_statements: false
+  dolt_transaction_commit: false
+
+user:
+  name: ""
+  password: ""
+
+listener:
+  host: localhost
+  port: $PORT
+  read_timeout_millis: 28800000
+  write_timeout_millis: 28800000
+
+data_dir: test
+EOF
+
+    # The only supported override right now is the data dir, add more here as we add more overrides
+    doltgres --config config-test.yaml --data-dir local-override > server.out 2>&1 &
+    SERVER_PID=$!
+    run wait_for_connection $PORT 7500
+
+    cat server.out
+    echo "$output"
+    [ "$status" -eq 0 ]
+    
+    query_server -c "create table t1 (a int primary key, b int)"
+    query_server -c "insert into t1 values (1,2)"
+
+    run query_server -c "select * from t1" -t
+    [ "$status" -eq 0 ]
+    [[ "$output" =~ "1 | 2" ]] || false
+
+    [ ! -d test/doltgres ]
+    [ -d local-override/doltgres ]
+}
+
+@test 'doltgres: config file override with implicit config.yaml' {
+    PORT=5434
+
+    cat > config.yaml <<EOF
+log_level: info
+
+behavior:
+  read_only: false
+  disable_client_multi_statements: false
+  dolt_transaction_commit: false
+
+user:
+  name: ""
+  password: ""
+
+listener:
+  host: localhost
+  port: $PORT
+  read_timeout_millis: 28800000
+  write_timeout_millis: 28800000
+
+data_dir: test
+EOF
+
+    # The only supported override right now is the data dir, add more here as we add more overrides
+    doltgres --data-dir local-override > server.out 2>&1 &
+    SERVER_PID=$!
+    run wait_for_connection $PORT 7500
+
+    cat server.out
+    echo "$output"
+    [ "$status" -eq 0 ]
+    
+    query_server -c "create table t1 (a int primary key, b int)"
+    query_server -c "insert into t1 values (1,2)"
+
+    run query_server -c "select * from t1" -t
+    [ "$status" -eq 0 ]
+    [[ "$output" =~ "1 | 2" ]] || false
+
+    [ ! -d test/doltgres ]
+    [ -d local-override/doltgres ]
+}
+
 @test 'doltgres: config file' {
     PORT=$( definePORT )
     CONFIG=$( defineCONFIG $PORT )
@@ -102,26 +348,4 @@ EOF
     [[ "$output" =~ "information_schema" ]] || false
     [[ "$output" =~ "doltgres" ]] || false
     [[ "$output" =~ "postgres" ]] || false
-}
-
-@test 'doltgres: setting both --data-dir and DOLTGRES_DATA_DIR should use --data-dir value' {
-    [ ! -d "doltgres" ]
-
-    export DOLTGRES_DATA_DIR="$(pwd)"
-    export SQL_USER="doltgres"
-    mkdir test
-    PORT=$( definePORT )
-    CONFIG=$( defineCONFIG $PORT )
-    echo "$CONFIG" > config.yaml
-    start_sql_server_with_args -config=config.yaml "-data-dir=./test" #> log.txt 2>&1
-
-    run cat log.txt
-    [[ ! "$output" =~ "Author identity unknown" ]] || false
-    [ ! -d "doltgres" ]
-    [ -d "test/doltgres" ]
-
-    run query_server -c "\l"
-    [ "$status" -eq 0 ]
-    [[ "$output" =~ "information_schema" ]] || false
-    [[ "$output" =~ "doltgres" ]] || false
 }

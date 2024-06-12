@@ -21,13 +21,13 @@ import (
 	"math"
 	"reflect"
 	"strconv"
+	"strings"
 
 	"github.com/dolthub/go-mysql-server/sql"
 	"github.com/dolthub/go-mysql-server/sql/types"
 	"github.com/dolthub/vitess/go/sqltypes"
 	"github.com/dolthub/vitess/go/vt/proto/query"
 	"github.com/lib/pq/oid"
-	"github.com/shopspring/decimal"
 )
 
 // Float64 is an float64.
@@ -81,51 +81,8 @@ func (b Float64Type) Compare(v1 any, v2 any) (int, error) {
 // Convert implements the DoltgresType interface.
 func (b Float64Type) Convert(val any) (any, sql.ConvertInRange, error) {
 	switch val := val.(type) {
-	case bool:
-		if val {
-			return float64(1), sql.InRange, nil
-		}
-		return float64(0), sql.InRange, nil
-	case int:
-		return float64(val), sql.InRange, nil
-	case uint:
-		return float64(val), sql.InRange, nil
-	case int8:
-		return float64(val), sql.InRange, nil
-	case uint8:
-		return float64(val), sql.InRange, nil
-	case int16:
-		return float64(val), sql.InRange, nil
-	case uint16:
-		return float64(val), sql.InRange, nil
-	case int32:
-		return float64(val), sql.InRange, nil
-	case uint32:
-		return float64(val), sql.InRange, nil
-	case int64:
-		return float64(val), sql.InRange, nil
-	case uint64:
-		return float64(val), sql.InRange, nil
-	case float32:
-		return float64(val), sql.InRange, nil
 	case float64:
 		return val, sql.InRange, nil
-	case decimal.NullDecimal:
-		if !val.Valid {
-			return nil, sql.InRange, nil
-		}
-		return b.Convert(val.Decimal)
-	case decimal.Decimal:
-		v, _ := val.Float64()
-		return v, sql.InRange, nil
-	case string:
-		f, err := strconv.ParseFloat(val, 64)
-		if err != nil {
-			return nil, sql.OutOfRange, err
-		}
-		return f, sql.InRange, nil
-	case []byte:
-		return b.Convert(string(val))
 	case nil:
 		return nil, sql.InRange, nil
 	default:
@@ -165,6 +122,24 @@ func (b Float64Type) FormatValue(val any) (string, error) {
 // GetSerializationID implements the DoltgresType interface.
 func (b Float64Type) GetSerializationID() SerializationID {
 	return SerializationID_Float64
+}
+
+// IoInput implements the DoltgresType interface.
+func (b Float64Type) IoInput(input string) (any, error) {
+	val, err := strconv.ParseFloat(strings.TrimSpace(input), 64)
+	if err != nil {
+		return nil, fmt.Errorf("invalid input syntax for type %s: %q", b.String(), input)
+	}
+	return val, nil
+}
+
+// IoOutput implements the DoltgresType interface.
+func (b Float64Type) IoOutput(output any) (string, error) {
+	converted, _, err := b.Convert(output)
+	if err != nil {
+		return "", err
+	}
+	return strconv.FormatFloat(converted.(float64), 'f', -1, 64), nil
 }
 
 // IsUnbounded implements the DoltgresType interface.

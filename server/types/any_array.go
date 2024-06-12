@@ -81,6 +81,16 @@ func (aa AnyArrayType) GetSerializationID() SerializationID {
 	return SerializationID_Invalid
 }
 
+// IoInput implements the DoltgresType interface.
+func (aa AnyArrayType) IoInput(input string) (any, error) {
+	return "", fmt.Errorf("%s cannot receive I/O input", aa.String())
+}
+
+// IoOutput implements the DoltgresType interface.
+func (aa AnyArrayType) IoOutput(output any) (string, error) {
+	return "", fmt.Errorf("%s cannot produce I/O output", aa.String())
+}
+
 // IsUnbounded implements the DoltgresType interface.
 func (aa AnyArrayType) IsUnbounded() bool {
 	return true

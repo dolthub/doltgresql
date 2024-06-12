@@ -234,7 +234,7 @@ func nodeExpr(node tree.Expr) (vitess.Expr, error) {
 
 		// If we have the resolved type, then we've got a Doltgres type instead of a GMS type
 		if resolvedType != nil {
-			cast, err := pgexprs.NewCast(resolvedType)
+			cast, err := pgexprs.NewExplicitCast(resolvedType)
 			if err != nil {
 				return nil, err
 			}
@@ -306,7 +306,10 @@ func nodeExpr(node tree.Expr) (vitess.Expr, error) {
 		case tree.NE:
 			operator = vitess.NotEqualStr
 		case tree.In:
-			operator = vitess.InStr
+			return vitess.InjectedExpr{
+				Expression: pgexprs.NewInTuple(),
+				Children:   vitess.Exprs{left, right},
+			}, nil
 		case tree.NotIn:
 			operator = vitess.NotInStr
 		case tree.Like:

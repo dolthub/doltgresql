@@ -21,7 +21,6 @@ import (
 	"math"
 	"reflect"
 	"strings"
-	"unicode/utf8"
 
 	"github.com/dolthub/doltgresql/utils"
 
@@ -87,59 +86,13 @@ func (b CharType) Compare(v1 any, v2 any) (int, error) {
 
 // Convert implements the DoltgresType interface.
 func (b CharType) Convert(val any) (any, sql.ConvertInRange, error) {
-	// If the length is unbounded, then the conversion behaves the exact same as text
-	if b.Length == stringUnbounded {
-		return Text.Convert(val)
-	}
-
 	switch val := val.(type) {
 	case string:
-		// We have to pad if the length is less than the length, and trim spaces if it's greater, so we always need to read it
-		runeLength := uint32(utf8.RuneCountInString(val))
-		if runeLength > b.Length {
-			// TODO: figure out if there's a faster way to truncate based on rune count
-			startString := val
-			for i := uint32(0); i < b.Length; i++ {
-				_, size := utf8.DecodeRuneInString(val)
-				val = val[size:]
-			}
-			for _, r := range val {
-				if r != ' ' {
-					return nil, sql.OutOfRange, fmt.Errorf("value too long for type %s", b.String())
-				}
-			}
-			return startString[:len(startString)-len(val)], sql.InRange, nil
-		} else if runeLength < b.Length {
-			return val + strings.Repeat(" ", int(b.Length-runeLength)), sql.InRange, nil
-		}
 		return val, sql.InRange, nil
-	case []byte:
-		// We have to pad if the length is less than the length, and trim spaces if it's greater, so we always need to read it
-		runeLength := uint32(utf8.RuneCount(val))
-		if runeLength > b.Length {
-			// The byte-length is greater, so now we'll do a rune-count
-			if uint32(utf8.RuneCount(val)) > b.Length {
-				// TODO: figure out if there's a faster way to truncate based on rune count
-				startBytes := val
-				for i := uint32(0); i < b.Length; i++ {
-					_, size := utf8.DecodeRune(val)
-					val = val[size:]
-				}
-				for _, r := range val {
-					if r != ' ' {
-						return nil, sql.OutOfRange, fmt.Errorf("value too long for type %s", b.String())
-					}
-				}
-				return string(startBytes[:len(startBytes)-len(val)]), sql.InRange, nil
-			}
-		} else if runeLength < b.Length {
-			return string(val) + strings.Repeat(" ", int(b.Length-runeLength)), sql.InRange, nil
-		}
-		return string(val), sql.InRange, nil
 	case nil:
 		return nil, sql.InRange, nil
 	default:
-		return nil, sql.OutOfRange, sql.ErrInvalidType.New(b)
+		return nil, sql.OutOfRange, fmt.Errorf("%s: unhandled type: %T", b.String(), val)
 	}
 }
 
@@ -165,16 +118,45 @@ func (b CharType) FormatValue(val any) (string, error) {
 	if val == nil {
 		return "", nil
 	}
-	converted, _, err := b.Convert(val)
-	if err != nil {
-		return "", err
-	}
-	return converted.(string), nil
+	return b.IoOutput(val)
 }
 
 // GetSerializationID implements the DoltgresType interface.
 func (b CharType) GetSerializationID() SerializationID {
 	return SerializationID_Char
+}
+
+// IoInput implements the DoltgresType interface.
+func (b CharType) IoInput(input string) (any, error) {
+	if b.IsUnbounded() {
+		return input, nil
+	} else {
+		input, runeLength := truncateString(input, b.Length)
+		if runeLength > b.Length {
+			return input, fmt.Errorf("value too long for type %s", b.String())
+		} else if runeLength < b.Length {
+			return input + strings.Repeat(" ", int(b.Length-runeLength)), nil
+		} else {
+			return input, nil
+		}
+	}
+}
+
+// IoOutput implements the DoltgresType interface.
+func (b CharType) IoOutput(output any) (string, error) {
+	converted, _, err := b.Convert(output)
+	if err != nil {
+		return "", err
+	}
+	if b.IsUnbounded() {
+		return converted.(string), nil
+	} else {
+		str, runeCount := truncateString(converted.(string), b.Length)
+		if runeCount < b.Length {
+			return str + strings.Repeat(" ", int(b.Length-runeCount)), nil
+		}
+		return str, nil
+	}
 }
 
 // IsUnbounded implements the DoltgresType interface.
@@ -246,13 +228,9 @@ func (b CharType) String() string {
 // ToArrayType implements the DoltgresType interface.
 func (b CharType) ToArrayType() DoltgresArrayType {
 	if b.Length == stringUnbounded {
-		return createArrayTypeWithFuncs(b, SerializationID_CharArray, oid.T__bpchar, arrayContainerFunctions{
-			SQL: stringArraySQL,
-		})
+		return createArrayType(b, SerializationID_CharArray, oid.T__bpchar)
 	} else {
-		return createArrayTypeWithFuncs(b, SerializationID_CharArray, oid.T__char, arrayContainerFunctions{
-			SQL: stringArraySQL,
-		})
+		return createArrayType(b, SerializationID_CharArray, oid.T__char)
 	}
 }
 

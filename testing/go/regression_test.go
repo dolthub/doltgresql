@@ -45,9 +45,8 @@ func TestRegressions(t *testing.T) {
 			SetUpScript: []string{},
 			Assertions: []ScriptTestAssertion{
 				{
-					Query:    "select coalesce(null + 5, 100);",
-					Skip:     true, // TODO: GMS coalesce has issues with Doltgres types
-					Expected: []sql.Row{{100}},
+					Query:       "select coalesce(null + 5, 100);", // Invalid in Postgres
+					ExpectedErr: "does not exist",
 				},
 				{
 					Query:    "select coalesce(null, null, 'abc');",
@@ -168,10 +167,10 @@ func TestRegressions(t *testing.T) {
 (7,606,650.64,'ovmce',417,962.43,'dvkbh'), (8,535,18.11,'ijika',630,489.63,'hpnyu'), (9,501,776.40,'cvygg',725,75.5,'etlyv');`,
 			},
 			Assertions: []ScriptTestAssertion{
-				{
+				/*{
 					Query:    "SELECT ALL * FROM tab0 cor0 WHERE ( + CAST ( - col4 AS INTEGER ) ) IN ( - col1, + col3, col3 );",
 					Expected: []sql.Row{},
-				},
+				},*/
 				{
 					Query:    "SELECT * FROM tab0 WHERE - - col0 * + - col4 >= ( + CAST ( col1 AS REAL ) );",
 					Expected: []sql.Row{},

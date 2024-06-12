@@ -21,6 +21,7 @@ import (
 	"reflect"
 	"sort"
 	"strings"
+	"unsafe"
 
 	"github.com/dolthub/go-mysql-server/sql"
 	"github.com/dolthub/go-mysql-server/sql/types"
@@ -78,25 +79,12 @@ func (b JsonBType) Compare(v1 any, v2 any) (int, error) {
 // Convert implements the DoltgresType interface.
 func (b JsonBType) Convert(val any) (any, sql.ConvertInRange, error) {
 	switch val := val.(type) {
-	case string:
-		bval := []byte(val)
-		if json.Valid(bval) {
-			doc, err := b.unmarshalToJsonDocument(bval)
-			return doc, sql.InRange, err
-		}
-		return nil, sql.OutOfRange, fmt.Errorf("invalid input syntax for type json")
-	case []byte:
-		if json.Valid(val) {
-			doc, err := b.unmarshalToJsonDocument(val)
-			return doc, sql.InRange, err
-		}
-		return nil, sql.OutOfRange, fmt.Errorf("invalid input syntax for type json")
 	case JsonDocument:
 		return val, sql.InRange, nil
 	case nil:
 		return nil, sql.InRange, nil
 	default:
-		return nil, sql.OutOfRange, sql.ErrInvalidType.New(b)
+		return nil, sql.OutOfRange, fmt.Errorf("%s: unhandled type: %T", b.String(), val)
 	}
 }
 
@@ -122,7 +110,27 @@ func (b JsonBType) FormatValue(val any) (string, error) {
 	if val == nil {
 		return "", nil
 	}
-	converted, _, err := b.Convert(val)
+	return b.IoOutput(val)
+}
+
+// GetSerializationID implements the DoltgresType interface.
+func (b JsonBType) GetSerializationID() SerializationID {
+	return SerializationID_JsonB
+}
+
+// IoInput implements the DoltgresType interface.
+func (b JsonBType) IoInput(input string) (any, error) {
+	inputBytes := unsafe.Slice(unsafe.StringData(input), len(input))
+	if json.Valid(inputBytes) {
+		doc, err := b.unmarshalToJsonDocument(inputBytes)
+		return doc, err
+	}
+	return nil, fmt.Errorf("invalid input syntax for type json")
+}
+
+// IoOutput implements the DoltgresType interface.
+func (b JsonBType) IoOutput(output any) (string, error) {
+	converted, _, err := b.Convert(output)
 	if err != nil {
 		return "", err
 	}
@@ -130,11 +138,6 @@ func (b JsonBType) FormatValue(val any) (string, error) {
 	sb.Grow(256)
 	jsonValueFormatter(&sb, converted.(JsonDocument).Value)
 	return sb.String(), nil
-}
-
-// GetSerializationID implements the DoltgresType interface.
-func (b JsonBType) GetSerializationID() SerializationID {
-	return SerializationID_JsonB
 }
 
 // IsUnbounded implements the DoltgresType interface.

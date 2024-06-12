@@ -15,6 +15,8 @@
 package ast
 
 import (
+	"strings"
+
 	vitess "github.com/dolthub/vitess/go/vt/sqlparser"
 
 	"github.com/dolthub/doltgresql/postgres/parser/sem/tree"
@@ -36,9 +38,18 @@ func nodeTableName(node *tree.TableName) (vitess.TableName, error) {
 		schemaName = vitess.NewTableIdent(string(node.SchemaName))
 	}
 
-	return vitess.TableName{
-		Name:            vitess.NewTableIdent(string(node.ObjectName)),
-		DbQualifier:     dbName,
-		SchemaQualifier: schemaName,
-	}, nil
+	// for the information_schema schema, we treat it as a database name to make queries against it work with the engine
+	// TODO: this is a hack, we need to handle information_schema differently for doltgres, and as a true schema in each db
+	if strings.EqualFold(schemaName.String(), "information_schema") {
+		return vitess.TableName{
+			Name:        vitess.NewTableIdent(string(node.ObjectName)),
+			DbQualifier: schemaName,
+		}, nil
+	} else {
+		return vitess.TableName{
+			Name:            vitess.NewTableIdent(string(node.ObjectName)),
+			DbQualifier:     dbName,
+			SchemaQualifier: schemaName,
+		}, nil
+	}
 }

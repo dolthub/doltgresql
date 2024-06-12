@@ -15,6 +15,7 @@ Running the built container will produce output like:
 ```bash
 $ docker run postgres-client-tests:latest                                 
 Running postgres-client-tests:
-1..1
+1..2
 ok 1 postgres-connector-java client
+ok 2 node postgres client
 ```

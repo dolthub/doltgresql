@@ -1,6 +1,6 @@
 FROM --platform=linux/amd64 ubuntu:20.04
 
-# install python, libmysqlclient-dev, java, bats, git ruby, perl, cpan
+# install python, java, bats, git ruby, perl, cpan
 ENV DEBIAN_FRONTEND=noninteractive
 RUN apt update -y && \
     apt install -y \
@@ -23,6 +23,7 @@ RUN apt update -y && \
         bats \
         perl \
         php \
+        php-pgsql \
         cpanminus \
         cmake \
         g++ \
@@ -31,9 +32,12 @@ RUN apt update -y && \
         ruby \
         ruby-dev \
         gem \
+        libc6 \
+        libgcc1 \
         r-base \
         postgresql-16 \
         postgresql-contrib-16 \
+        libpq-dev \
         nodejs \
         lsof \
         postgresql-server-dev-all && \
@@ -59,6 +63,21 @@ ENV JAVA_HOME /usr/lib/jvm/java-17-openjdk-amd64/
 RUN mkdir -p /postgres-client-tests/java
 RUN curl -L -o /postgres-client-tests/java/postgresql-42.7.3.jar \
   https://jdbc.postgresql.org/download/postgresql-42.7.3.jar
+
+# install node deps
+COPY ./testing/postgres-client-tests/node/package.json /postgres-client-tests/node/
+COPY ./testing/postgres-client-tests/node/package-lock.json /postgres-client-tests/node/
+WORKDIR /postgres-client-tests/node
+RUN npm install
+
+# install cpan dependencies
+RUN cpanm --force DBD::Pg
+
+# install ruby dependencies
+COPY ./testing/postgres-client-tests/ruby/Gemfile /postgres-client-tests/ruby/
+COPY ./testing/postgres-client-tests/ruby/Gemfile.lock /postgres-client-tests/ruby/
+WORKDIR /postgres-client-tests/ruby
+RUN gem install bundler -v 2.1.4 && bundle install
 
 # install postgres and psql
 RUN service postgresql start

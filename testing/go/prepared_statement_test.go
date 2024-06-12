@@ -22,6 +22,10 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
+func TestPreparedStatements(t *testing.T) {
+	RunScripts(t, preparedStatementTests)
+}
+
 var preparedStatementTests = []ScriptTest{
 	{
 		Name: "Expressions without tables",
@@ -364,10 +368,6 @@ func TestPreparedErrorHandling(t *testing.T) {
 	}
 
 	RunScriptN(t, tt, 20)
-}
-
-func TestPreparedStatements(t *testing.T) {
-	RunScripts(t, preparedStatementTests)
 }
 
 // RunScriptN runs the assertios of the given script n times using the same connection
