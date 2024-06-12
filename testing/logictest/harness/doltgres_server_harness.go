@@ -61,7 +61,23 @@ type DoltgresHarness struct {
 // NewDoltgresHarness returns a new Doltgres test harness for the data source name given.
 // It starts doltgres server and handles every connection to it.
 func NewDoltgresHarness(doltgresExec string, t int64) *DoltgresHarness {
-	serverDir := prepareSqlLogicTestDBAndGetServerDir(context.Background(), doltgresExec)
+	cwd, err := os.Getwd()
+	if err != nil {
+		logErr(err, "getting cwd")
+	}
+
+	serverDir := filepath.Join(cwd, doltgresDBDir)
+	// remove this dir to make sure it doesn't exist from previous run
+	err = os.RemoveAll(serverDir)
+	if err != nil {
+		logErr(err, fmt.Sprintf("running `RemoveAll` for '%s'", serverDir))
+	}
+	// make this dir to prepare for the current run
+	err = os.MkdirAll(serverDir, os.ModePerm)
+	if err != nil {
+		logErr(err, fmt.Sprintf("running `MkdirAll` for '%s'", serverDir))
+	}
+	// open harness.log file
 	hl, err := os.OpenFile(harnessLogFile, os.O_RDWR|os.O_CREATE|os.O_APPEND, 0666)
 	if err != nil {
 		log.Fatal(err)
@@ -84,13 +100,6 @@ func (h *DoltgresHarness) EngineStr() string {
 }
 
 func (h *DoltgresHarness) Init() error {
-	config, err := h.createTempConfigFile()
-	if err != nil {
-		return err
-	}
-
-	h.configFile = config
-
 	h.startNewDoltgresServer(context.Background(), logictest.GetCurrentFileName())
 	db, err := sql.Open("pgx", doltgresNoDbDsn)
 	if err != nil {
@@ -102,8 +111,7 @@ func (h *DoltgresHarness) Init() error {
 		return err
 	}
 
-	// create database if not exists
-	//_, err = db.ExecContext(context.Background(), "\\c sqllogictest;")
+	// create 'sqllogictest' database
 	_, err = db.ExecContext(context.Background(), "CREATE DATABASE sqllogictest")
 	if err != nil {
 		logErr(err, "creating database")
@@ -187,7 +195,8 @@ func (h *DoltgresHarness) GetTimeout() int64 {
 func (h *DoltgresHarness) dropAllTables() error {
 	var rows *sql.Rows
 	var err error
-	rows, err = h.db.QueryContext(context.Background(), "SELECT table_name FROM information_schema.tables WHERE table_schema = 'sqllogictest' AND table_type = 'BASE TABLE';")
+	// TODO: once we support ENUM type and comparison, add `AND table_type = 'BASE TABLE'`
+	rows, err = h.db.QueryContext(context.Background(), "SELECT table_name FROM information_schema.tables WHERE table_schema = 'sqllogictest';")
 	if rows != nil {
 		defer rows.Close()
 	}
@@ -258,29 +267,6 @@ func (h *DoltgresHarness) dropAllViews() error {
 	return nil
 }
 
-var configTemplate = `log_level: info
-
-behavior:
-  read_only: false
-
-listener:
-  host: %s
-  port: %d
-  read_timeout_millis: 28800000
-  write_timeout_millis: 28800000
-`
-
-func (h *DoltgresHarness) createTempConfigFile() (string, error) {
-	content := fmt.Sprintf(configTemplate, "127.0.0.1", 5432)
-	file, err := os.CreateTemp("", "doltgres_config.yaml")
-	if err != nil {
-		return "", err
-	}
-	defer file.Close()
-	_, err = io.Copy(file, strings.NewReader(content))
-	return file.Name(), err
-}
-
 // startNewDoltgresServer stops the existing server if exists.
 // It starts a new server and update the |server| of the harness.
 func (h *DoltgresHarness) startNewDoltgresServer(ctx context.Context, newTestFile string) {
@@ -289,7 +275,7 @@ func (h *DoltgresHarness) startNewDoltgresServer(ctx context.Context, newTestFil
 	withKeyCtx, cancel := context.WithCancel(ctx)
 	gServer, serverCtx := errgroup.WithContext(withKeyCtx)
 
-	server := exec.CommandContext(serverCtx, h.doltgresExec, "--data-dir=.", fmt.Sprintf("--config=%s", h.configFile))
+	server := exec.CommandContext(serverCtx, h.doltgresExec, "--data-dir=.")
 	server.Dir = h.serverDir
 
 	// open log file for server output
@@ -340,37 +326,6 @@ func (h *DoltgresHarness) ClearServer() {
 		h.server.Close()
 		h.server = nil
 	}
-}
-
-func prepareSqlLogicTestDBAndGetServerDir(ctx context.Context, doltgresExec string) string {
-	cwd, err := os.Getwd()
-	if err != nil {
-		logErr(err, "getting cwd")
-	}
-
-	serverDir := filepath.Join(cwd, doltgresDBDir)
-	// remove this dir to make sure it doesn't exist from previous run
-	err = os.RemoveAll(serverDir)
-	if err != nil {
-		logErr(err, "running `RemoveAll`")
-	}
-
-	// todo: this no longer creates the db sqllogictest
-	// this creates db named 'sqllogictest'
-	logicTestDbDir := filepath.Join(serverDir, "sqllogictest")
-	err = os.MkdirAll(logicTestDbDir, os.ModePerm)
-	if err != nil {
-		logErr(err, "running `MkdirAll`")
-	}
-
-	//testInit := exec.CommandContext(ctx, doltgresExec, "init")
-	//testInit.Dir = logicTestDbDir
-	//err = testInit.Run()
-	//if err != nil {
-	//	logErr(err, "running `doltgres init`")
-	//}
-
-	return serverDir
 }
 
 type DoltgresServer struct {
