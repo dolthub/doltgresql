@@ -15,10 +15,8 @@
 package pgcatalog
 
 import (
-	"fmt"
 	"io"
 
-	"github.com/dolthub/dolt/go/libraries/doltcore/sqle"
 	"github.com/dolthub/go-mysql-server/sql"
 
 	"github.com/dolthub/doltgresql/core"
@@ -33,65 +31,20 @@ const PgSequenceName = "pg_sequence"
 // InitPgSequence handles registration of the pg_sequence handler.
 func InitPgSequence() {
 	tables.AddHandler(PgCatalogName, PgSequenceName, PgSequenceHandler{})
-	tables.AddInitializeTable(PgCatalogName, pgSequenceInitializeTable)
 }
 
 // PgSequenceHandler is the handler for the pg_sequence table.
 type PgSequenceHandler struct{}
 
-var _ tables.DataTableHandler = PgSequenceHandler{}
+var _ tables.Handler = PgSequenceHandler{}
 
-// Insert implements the interface tables.DataTableHandler.
-func (p PgSequenceHandler) Insert(ctx *sql.Context, editor *tables.DataTableEditor, row sql.Row) error {
-	// Sequences are spread over multiple system tables, so we'll block insertion for now
-	return fmt.Errorf("inserting into pg_sequence is not yet supported")
+// Name implements the interface tables.Handler.
+func (p PgSequenceHandler) Name() string {
+	return PgSequenceName
 }
 
-// Update implements the interface tables.DataTableHandler.
-func (p PgSequenceHandler) Update(ctx *sql.Context, editor *tables.DataTableEditor, old sql.Row, new sql.Row) error {
-	if len(old) != len(new) || len(old) != 8 {
-		return fmt.Errorf("invalid row count given to %s: %d, %d", PgSequenceName, len(old), len(new))
-	}
-	allSequences, err := p.getAllSequencesOrdered(ctx)
-	if err != nil {
-		return err
-	}
-	idx := old[pgSequence_seqrelid].(uint32) - 1
-	if idx >= uint32(len(allSequences)) {
-		return fmt.Errorf("invalid %s given to %s: %d", pgSequenceSchema[pgSequence_seqrelid].Name, PgSequenceName, idx+1)
-	}
-	if old[pgSequence_seqrelid].(uint32) != new[pgSequence_seqrelid].(uint32) {
-		return fmt.Errorf("%s does not support changing %s", PgSequenceName, pgSequenceSchema[pgSequence_seqrelid].Name)
-	}
-	if old[pgSequence_seqtypid].(uint32) != new[pgSequence_seqtypid].(uint32) {
-		return fmt.Errorf("%s does not support changing %s", PgSequenceName, pgSequenceSchema[pgSequence_seqtypid].Name)
-	}
-	seq := allSequences[idx]
-	seq.Start = new[pgSequence_seqstart].(int64)
-	seq.Increment = new[pgSequence_seqincrement].(int64)
-	seq.Maximum = new[pgSequence_seqmax].(int64)
-	seq.Minimum = new[pgSequence_seqmin].(int64)
-	seq.Cache = new[pgSequence_seqcache].(int64)
-	seq.Cycle = new[pgSequence_seqcycle].(bool)
-	if seq.Current < seq.Minimum || seq.Current > seq.Maximum {
-		seq.IsAtEnd = true
-	}
-	return nil
-}
-
-// Delete implements the interface tables.DataTableHandler.
-func (p PgSequenceHandler) Delete(ctx *sql.Context, editor *tables.DataTableEditor, row sql.Row) error {
-	// Sequences are spread over multiple system tables, so we'll block deletion for now
-	return fmt.Errorf("deleting from pg_sequence is not yet supported")
-}
-
-// UsesIndexes implements the interface tables.DataTableHandler.
-func (p PgSequenceHandler) UsesIndexes() bool {
-	return false
-}
-
-// RowIter implements the interface tables.DataTableHandler.
-func (p PgSequenceHandler) RowIter(ctx *sql.Context, rowIter sql.RowIter) (sql.RowIter, error) {
+// RowIter implements the interface tables.Handler.
+func (p PgSequenceHandler) RowIter(ctx *sql.Context) (sql.RowIter, error) {
 	allSequences, err := p.getAllSequencesOrdered(ctx)
 	if err != nil {
 		return nil, err
@@ -100,6 +53,14 @@ func (p PgSequenceHandler) RowIter(ctx *sql.Context, rowIter sql.RowIter) (sql.R
 		sequences: allSequences,
 		idx:       0,
 	}, nil
+}
+
+// Schema implements the interface tables.Handler.
+func (p PgSequenceHandler) Schema() sql.PrimaryKeySchema {
+	return sql.PrimaryKeySchema{
+		Schema:     pgSequenceSchema,
+		PkOrdinals: nil,
+	}
 }
 
 // getAllSequencesOrdered returns all sequences on the root, ordered by their schema and name.
@@ -126,30 +87,6 @@ var pgSequenceSchema = sql.Schema{
 	{Name: "seqmin", Type: pgtypes.Int64, Default: nil, Nullable: false, Source: PgSequenceName},
 	{Name: "seqcache", Type: pgtypes.Int64, Default: nil, Nullable: false, Source: PgSequenceName},
 	{Name: "seqcycle", Type: pgtypes.Bool, Default: nil, Nullable: false, Source: PgSequenceName},
-}
-
-const (
-	pgSequence_seqrelid     int = 0
-	pgSequence_seqtypid     int = 1
-	pgSequence_seqstart     int = 2
-	pgSequence_seqincrement int = 3
-	pgSequence_seqmax       int = 4
-	pgSequence_seqmin       int = 5
-	pgSequence_seqcache     int = 6
-	pgSequence_seqcycle     int = 7
-)
-
-// pgSequenceInitializeTable is the tables.InitializeTable function for pg_sequence.
-func pgSequenceInitializeTable(ctx *sql.Context, db sqle.Database) error {
-	return db.CreateIndexedTable(ctx, PgSequenceName, sql.PrimaryKeySchema{
-		Schema: pgSequenceSchema,
-	}, sql.IndexDef{
-		Name:       "pg_sequence_seqrelid_index",
-		Columns:    []sql.IndexColumn{{Name: pgSequenceSchema[pgSequence_seqrelid].Name}},
-		Constraint: sql.IndexConstraint_Unique,
-		Storage:    sql.IndexUsing_BTree,
-		Comment:    "",
-	}, sql.Collation_Default)
 }
 
 // pgSequenceRowIter is the sql.RowIter for the pg_sequence table.

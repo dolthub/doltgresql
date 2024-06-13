@@ -476,39 +476,5 @@ func TestSmokeTests(t *testing.T) {
 				},
 			},
 		},
-		{ // TODO: remove this test once we've fully implemented pg_catalog
-			Name: "Example System Table Interaction",
-			Assertions: []ScriptTestAssertion{
-				{
-					Query:    "SELECT * FROM pg_catalog.pg_description;",
-					Expected: []sql.Row{},
-				},
-				{
-					Query:    "INSERT INTO pg_catalog.pg_description VALUES (1, 1, 1, 'Test'), (2, 2, 2, 'Comment');",
-					Expected: []sql.Row{},
-				},
-				{
-					Query: "SELECT * FROM pg_catalog.pg_description ORDER BY objoid;",
-					Expected: []sql.Row{
-						{1, 1, 1, "Test"},
-						{2, 2, 2, "Comment"},
-					},
-				},
-				{
-					Query:    "UPDATE pg_catalog.pg_description SET description = 'Updated' WHERE objoid = 1;",
-					Expected: []sql.Row{},
-				},
-				{
-					Query:    "DELETE FROM pg_catalog.pg_description WHERE objoid = 2;",
-					Expected: []sql.Row{},
-				},
-				{
-					Query: "SELECT * FROM pg_catalog.pg_description ORDER BY objoid;",
-					Expected: []sql.Row{
-						{1, 1, 1, "Updated"},
-					},
-				},
-			},
-		},
 	})
 }

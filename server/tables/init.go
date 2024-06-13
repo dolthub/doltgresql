@@ -15,36 +15,16 @@
 package tables
 
 import (
-	"fmt"
-	"strings"
-
-	"github.com/dolthub/dolt/go/libraries/doltcore/doltdb"
-	"github.com/dolthub/dolt/go/libraries/doltcore/schema"
 	"github.com/dolthub/dolt/go/libraries/doltcore/sqle"
 	"github.com/dolthub/go-mysql-server/sql"
 )
 
 // Init handles initialization of all Postgres-specific and Doltgres-specific tables.
 func Init() {
-	originalTableFunc := sqle.NewDoltSqlTable
-	sqle.NewDoltSqlTable = func(db sqle.Database, tableName string, sch schema.Schema, tbl *doltdb.Table) (sql.Table, error) {
-		sqlTable, err := originalTableFunc(db, tableName, sch, tbl)
-		if err != nil {
-			return nil, err
+	sqle.HandleSchema = func(ctx *sql.Context, schemaName string, db sqle.Database) (sql.DatabaseSchema, error) {
+		if _, ok := handlers[schemaName]; ok {
+			return Database{db}, nil
 		}
-		const pgCatalogName = "pg_catalog"
-		if strings.EqualFold(db.Schema(), pgCatalogName) {
-			switch t := sqlTable.(type) {
-			case *sqle.DoltTable:
-				sqlTable = NewDataTable(t, pgCatalogName)
-			case *sqle.WritableDoltTable:
-				sqlTable = NewWritableDataTable(t, pgCatalogName)
-			case *sqle.AlterableDoltTable:
-				sqlTable = NewWritableDataTable(&t.WritableDoltTable, pgCatalogName)
-			default:
-				return nil, fmt.Errorf("unexpected Dolt table type in pg_catalog: %T", sqlTable)
-			}
-		}
-		return sqlTable, nil
+		return db, nil
 	}
 }

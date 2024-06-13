@@ -628,11 +628,19 @@ func TestSequences(t *testing.T) {
 			},
 		},
 		{
-			Name: "UPDATE pg_sequence",
+			Name: "pg_sequence",
 			Assertions: []ScriptTestAssertion{
 				{
-					Query:    "SELECT * FROM pg_catalog.pg_sequence;",
+					Query:    `SELECT * FROM "pg_catalog"."pg_sequence";`,
 					Expected: []sql.Row{},
+				},
+				{ // Different cases and quoted, so it fails
+					Query:       `SELECT * FROM "PG_catalog"."pg_sequence";`,
+					ExpectedErr: "not",
+				},
+				{ // Different cases and quoted, so it fails
+					Query:       `SELECT * FROM "pg_catalog"."PG_sequence";`,
+					ExpectedErr: "not",
 				},
 				{
 					Query:    "CREATE SEQUENCE some_sequence;",
@@ -649,27 +657,23 @@ func TestSequences(t *testing.T) {
 						{2, 20, 1, 1, 9223372036854775807, 1, 1, "f"},
 					},
 				},
-				{
-					Query:    "UPDATE pg_catalog.pg_sequence SET seqincrement = 22, seqmax = 303 WHERE seqrelid = 2;",
-					Expected: []sql.Row{},
-				},
-				{
-					Query: "SELECT * FROM pg_catalog.pg_sequence ORDER BY seqrelid;",
+				{ // Different cases but non-quoted, so it works
+					Query: "SELECT * FROM PG_catalog.pg_SEQUENCE ORDER BY seqrelid;",
 					Expected: []sql.Row{
 						{1, 20, 1, 3, 9223372036854775807, 1, 1, "t"},
-						{2, 20, 1, 22, 303, 1, 1, "f"},
+						{2, 20, 1, 1, 9223372036854775807, 1, 1, "f"},
 					},
 				},
 				{
-					Query: "SELECT nextval('some_sequence');",
+					Query: "SELECT nextval('another_sequence');",
 					Expected: []sql.Row{
 						{1},
 					},
 				},
 				{
-					Query: "SELECT nextval('some_sequence');",
+					Query: "SELECT nextval('another_sequence');",
 					Expected: []sql.Row{
-						{23},
+						{4},
 					},
 				},
 			},
