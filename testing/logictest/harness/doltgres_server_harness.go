@@ -111,7 +111,7 @@ func (h *DoltgresHarness) Init() error {
 	}
 
 	// create 'sqllogictest' database
-	_, err = db.ExecContext(context.Background(), "CREATE DATABASE sqllogictest")
+	_, err = db.ExecContext(context.Background(), "CREATE DATABASE IF NOT EXISTS sqllogictest")
 	if err != nil {
 		logErr(err, "creating database")
 		return err
