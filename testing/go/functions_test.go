@@ -153,3 +153,58 @@ func TestFunctionsMath(t *testing.T) {
 		},
 	})
 }
+
+func TestSystemInformationFunctions(t *testing.T) {
+	RunScripts(t, []ScriptTest{
+		// {
+		// 	Name: "current_catalog",
+		// 	Assertions: []ScriptTestAssertion{
+		// 		{
+		// 			Query: `SELECT current_catalog();`,
+		// 			Expected: []sql.Row{
+		// 				{"test"},
+		// 			},
+		// 		},
+		// 		{
+		// 			Query: `SELECT * FROM current_catalog();`,
+		// 			Expected: []sql.Row{
+		// 				{"test"},
+		// 			},
+		// 		},
+		// 	},
+		// },
+		{
+			Name: "current_schema",
+			SetUpScript: []string{
+				`CREATE SCHEMA test_schema;`,
+				`SET SEARCH_PATH TO test_schema;`,
+			},
+			Assertions: []ScriptTestAssertion{
+				{
+					Query: `SELECT current_schema();`,
+					Expected: []sql.Row{
+						{"test_schema"},
+					},
+				},
+				// {
+				// 	Query: `SELECT current_schema;`,
+				// 	Expected: []sql.Row{
+				// 		{"test_schema"},
+				// 	},
+				// },
+				// {
+				// 	Query: `SELECT * FROM current_schema();`,
+				// 	Expected: []sql.Row{
+				// 		{"test_schema"},
+				// 	},
+				// },
+				// {
+				// 	Query: `SELECT * FROM current_schema;`,
+				// 	Expected: []sql.Row{
+				// 		{"test_schema"},
+				// 	},
+				// },
+			},
+		},
+	})
+}

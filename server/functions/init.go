@@ -40,6 +40,8 @@ func Init() {
 	initCosh()
 	initCot()
 	initCotd()
+	initCurrentDatabase()
+	initCurrentSchema()
 	initDegrees()
 	initDiv()
 	initExp()

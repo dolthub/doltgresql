@@ -28,7 +28,7 @@ type FunctionInterface interface {
 	GetReturn() pgtypes.DoltgresType
 	// GetParameters returns the parameter types for the function.
 	GetParameters() []pgtypes.DoltgresType
-	// GetExpectedParameterCount returns the number of paramters that are valid for this function.
+	// GetExpectedParameterCount returns the number of parameters that are valid for this function.
 	GetExpectedParameterCount() int
 	// GetIsNonDeterministic returns whether the function is non-deterministic.
 	GetIsNonDeterministic() bool
