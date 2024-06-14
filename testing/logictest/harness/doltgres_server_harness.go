@@ -36,10 +36,12 @@ import (
 )
 
 const (
-	dsn            = "postgresql://postgres:password@localhost:5432/sqllogictest?sslmode=disable"
-	doltgresDBDir  = "doltgresDatabases"
-	serverLogFile  = "server.log"
-	harnessLogFile = "harness.log"
+	dsn               = "postgresql://postgres:password@localhost:5432/sqllogictest?sslmode=disable"
+	doltgresNoDbDsn   = "postgresql://doltgres:password@127.0.0.1:5432/?sslmode=disable"
+	doltgresWithDbDsn = "postgresql://doltgres:password@0.0.0.0:5432/sqllogictest?sslmode=disable"
+	doltgresDBDir     = "doltgresDatabases"
+	serverLogFile     = "server.log"
+	harnessLogFile    = "harness.log"
 )
 
 var _ logictest.Harness = &DoltgresHarness{}
@@ -58,7 +60,23 @@ type DoltgresHarness struct {
 // NewDoltgresHarness returns a new Doltgres test harness for the data source name given.
 // It starts doltgres server and handles every connection to it.
 func NewDoltgresHarness(doltgresExec string, t int64) *DoltgresHarness {
-	serverDir := prepareSqlLogicTestDBAndGetServerDir(context.Background(), doltgresExec)
+	cwd, err := os.Getwd()
+	if err != nil {
+		logErr(err, "getting cwd")
+	}
+
+	serverDir := filepath.Join(cwd, doltgresDBDir)
+	// remove this dir to make sure it doesn't exist from previous run
+	err = os.RemoveAll(serverDir)
+	if err != nil {
+		logErr(err, fmt.Sprintf("running `RemoveAll` for '%s'", serverDir))
+	}
+	// make this dir to prepare for the current run
+	err = os.MkdirAll(serverDir, os.ModePerm)
+	if err != nil {
+		logErr(err, fmt.Sprintf("running `MkdirAll` for '%s'", serverDir))
+	}
+	// open harness.log file
 	hl, err := os.OpenFile(harnessLogFile, os.O_RDWR|os.O_CREATE|os.O_APPEND, 0666)
 	if err != nil {
 		log.Fatal(err)
@@ -82,11 +100,39 @@ func (h *DoltgresHarness) EngineStr() string {
 
 func (h *DoltgresHarness) Init() error {
 	h.startNewDoltgresServer(context.Background(), logictest.GetCurrentFileName())
-	db, err := sql.Open("pgx", dsn)
+	db, err := sql.Open("pgx", doltgresNoDbDsn)
 	if err != nil {
 		logErr(err, "opening connection to pgx")
 		return err
 	}
+	err = db.Ping()
+	if err != nil {
+		return err
+	}
+
+	// create 'sqllogictest' database
+	_, err = db.ExecContext(context.Background(), "CREATE DATABASE sqllogictest")
+	if err != nil {
+		logErr(err, "creating database")
+		return err
+	}
+
+	err = db.Close()
+	if err != nil {
+		logErr(err, "closing database connection")
+		return err
+	}
+
+	db, err = sql.Open("pgx", doltgresWithDbDsn)
+	if err != nil {
+		logErr(err, "opening connection to pgx")
+		return err
+	}
+	err = db.Ping()
+	if err != nil {
+		return err
+	}
+
 	h.db = db
 
 	if err := h.dropAllTables(); err != nil {
@@ -148,7 +194,8 @@ func (h *DoltgresHarness) GetTimeout() int64 {
 func (h *DoltgresHarness) dropAllTables() error {
 	var rows *sql.Rows
 	var err error
-	rows, err = h.db.QueryContext(context.Background(), "SELECT table_name FROM information_schema.tables WHERE table_schema = 'sqllogictest' AND table_type = 'BASE TABLE';")
+	// TODO: once we support ENUM type and comparison, add `AND table_type = 'BASE TABLE'`
+	rows, err = h.db.QueryContext(context.Background(), "SELECT table_name FROM information_schema.tables WHERE table_schema = 'sqllogictest';")
 	if rows != nil {
 		defer rows.Close()
 	}
@@ -278,36 +325,6 @@ func (h *DoltgresHarness) ClearServer() {
 		h.server.Close()
 		h.server = nil
 	}
-}
-
-func prepareSqlLogicTestDBAndGetServerDir(ctx context.Context, doltgresExec string) string {
-	cwd, err := os.Getwd()
-	if err != nil {
-		logErr(err, "getting cwd")
-	}
-
-	serverDir := filepath.Join(cwd, doltgresDBDir)
-	// remove this dir to make sure it doesn't exist from previous run
-	err = os.RemoveAll(serverDir)
-	if err != nil {
-		logErr(err, "running `RemoveAll`")
-	}
-
-	// this creates db named 'sqllogictest'
-	logicTestDbDir := filepath.Join(serverDir, "sqllogictest")
-	err = os.MkdirAll(logicTestDbDir, os.ModePerm)
-	if err != nil {
-		logErr(err, "running `MkdirAll`")
-	}
-
-	testInit := exec.CommandContext(ctx, doltgresExec, "init")
-	testInit.Dir = logicTestDbDir
-	err = testInit.Run()
-	if err != nil {
-		logErr(err, "running `doltgres init`")
-	}
-
-	return serverDir
 }
 
 type DoltgresServer struct {
