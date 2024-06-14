@@ -627,5 +627,56 @@ func TestSequences(t *testing.T) {
 				},
 			},
 		},
+		{
+			Name: "pg_sequence",
+			Assertions: []ScriptTestAssertion{
+				{
+					Query:    `SELECT * FROM "pg_catalog"."pg_sequence";`,
+					Expected: []sql.Row{},
+				},
+				{ // Different cases and quoted, so it fails
+					Query:       `SELECT * FROM "PG_catalog"."pg_sequence";`,
+					ExpectedErr: "not",
+				},
+				{ // Different cases and quoted, so it fails
+					Query:       `SELECT * FROM "pg_catalog"."PG_sequence";`,
+					ExpectedErr: "not",
+				},
+				{
+					Query:    "CREATE SEQUENCE some_sequence;",
+					Expected: []sql.Row{},
+				},
+				{
+					Query:    "CREATE SEQUENCE another_sequence INCREMENT 3 CYCLE;",
+					Expected: []sql.Row{},
+				},
+				{
+					Query: "SELECT * FROM pg_catalog.pg_sequence ORDER BY seqrelid;",
+					Expected: []sql.Row{
+						{1, 20, 1, 3, 9223372036854775807, 1, 1, "t"},
+						{2, 20, 1, 1, 9223372036854775807, 1, 1, "f"},
+					},
+				},
+				{ // Different cases but non-quoted, so it works
+					Query: "SELECT * FROM PG_catalog.pg_SEQUENCE ORDER BY seqrelid;",
+					Expected: []sql.Row{
+						{1, 20, 1, 3, 9223372036854775807, 1, 1, "t"},
+						{2, 20, 1, 1, 9223372036854775807, 1, 1, "f"},
+					},
+				},
+				{
+					Query: "SELECT nextval('another_sequence');",
+					Expected: []sql.Row{
+						{1},
+					},
+				},
+				{
+					Query: "SELECT nextval('another_sequence');",
+					Expected: []sql.Row{
+						{4},
+					},
+				},
+			},
+		},
 	})
 }

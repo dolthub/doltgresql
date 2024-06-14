@@ -1,4 +1,4 @@
-// Copyright 2023 Dolthub, Inc.
+// Copyright 2024 Dolthub, Inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -12,21 +12,19 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-package ast
+package tables
 
 import (
-	"fmt"
-
-	vitess "github.com/dolthub/vitess/go/vt/sqlparser"
-
-	"github.com/dolthub/doltgresql/postgres/parser/sem/tree"
+	"github.com/dolthub/dolt/go/libraries/doltcore/sqle"
+	"github.com/dolthub/go-mysql-server/sql"
 )
 
-// nodeDropSchema handles *tree.DropSchema nodes.
-func nodeDropSchema(node *tree.DropSchema) (vitess.Statement, error) {
-	// TODO: disallow dropping pg_catalog for now
-	if node == nil {
-		return nil, nil
+// Init handles initialization of all Postgres-specific and Doltgres-specific tables.
+func Init() {
+	sqle.HandleSchema = func(ctx *sql.Context, schemaName string, db sqle.Database) (sql.DatabaseSchema, error) {
+		if _, ok := handlers[schemaName]; ok {
+			return Database{db}, nil
+		}
+		return db, nil
 	}
-	return nil, fmt.Errorf("DROP SCHEMA is not yet supported")
 }

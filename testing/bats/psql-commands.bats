@@ -28,17 +28,20 @@ teardown() {
 @test 'psql-commands: \dt' {
     run query_server --csv -c "\dt"
     [ "$status" -eq 0 ]
+    [[ "$output" =~ "public,pg_sequence,table,postgres" ]] || false
     [[ "$output" =~ "public,test1,table,postgres" ]] || false
     [[ "$output" =~ "public,test2,table,postgres" ]] || false
-    [ "${#lines[@]}" -eq 3 ]
+    [ "${#lines[@]}" -eq 4 ]
 }
 
 @test 'psql-commands: \d' {
     run query_server --csv -c "\d"
+    echo "$output"
     [ "$status" -eq 0 ]
+    [[ "$output" =~ "public,pg_sequence,table,postgres" ]] || false
     [[ "$output" =~ "public,test1,table,postgres" ]] || false
     [[ "$output" =~ "public,test2,table,postgres" ]] || false
-    [ "${#lines[@]}" -eq 3 ]
+    [ "${#lines[@]}" -eq 4 ]
 }
 
 @test 'psql-commands: \d table' {
