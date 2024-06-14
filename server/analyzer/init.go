@@ -22,7 +22,6 @@ import (
 
 const (
 	ruleId_TypeSanitizer analyzer.RuleId = iota + 1000
-	ruleId_ComparisonCasts
 	ruleId_AssignInsertCasts
 	ruleId_AssignUpdateCasts
 	ruleId_ReplaceSerial
@@ -35,7 +34,6 @@ func Init() {
 	analyzer.AlwaysBeforeDefault = append(analyzer.AlwaysBeforeDefault,
 		analyzer.Rule{Id: ruleId_TypeSanitizer, Apply: TypeSanitizer},
 		getAnalyzerRule(analyzer.OnceBeforeDefault, analyzer.ValidateColumnDefaultsId),
-		analyzer.Rule{Id: ruleId_ComparisonCasts, Apply: ComparisonCasts},
 		analyzer.Rule{Id: ruleId_AssignInsertCasts, Apply: AssignInsertCasts},
 		analyzer.Rule{Id: ruleId_AssignUpdateCasts, Apply: AssignUpdateCasts},
 	)

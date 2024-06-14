@@ -31,6 +31,12 @@ const (
 	Operator_BinaryMod                                 // %
 	Operator_BinaryShiftLeft                           // <<
 	Operator_BinaryShiftRight                          // >>
+	Operator_BinaryLessThan                            // <
+	Operator_BinaryGreaterThan                         // >
+	Operator_BinaryLessOrEqual                         // <=
+	Operator_BinaryGreaterOrEqual                      // >=
+	Operator_BinaryEqual                               // =
+	Operator_BinaryNotEqual                            // <> or != (they're equivalent in all cases)
 	Operator_BinaryBitAnd                              // &
 	Operator_BinaryBitOr                               // |
 	Operator_BinaryBitXor                              // ^
