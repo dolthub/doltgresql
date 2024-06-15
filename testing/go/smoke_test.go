@@ -459,6 +459,92 @@ func TestSmokeTests(t *testing.T) {
 			},
 		},
 		{
+			Name: "BETWEEN",
+			SetUpScript: []string{
+				"CREATE TABLE test (v1 FLOAT8);",
+				"INSERT INTO test VALUES (1), (3), (7);",
+			},
+			Assertions: []ScriptTestAssertion{
+				{
+					Query: "SELECT * FROM test WHERE v1 BETWEEN 1 AND 4 ORDER BY v1;",
+					Expected: []sql.Row{
+						{float64(1)},
+						{float64(3)},
+					},
+				},
+				{
+					Query: "SELECT * FROM test WHERE v1 BETWEEN 2 AND 4 ORDER BY v1;",
+					Expected: []sql.Row{
+						{float64(3)},
+					},
+				},
+				{
+					Query:    "SELECT * FROM test WHERE v1 BETWEEN 4 AND 2 ORDER BY v1;",
+					Expected: []sql.Row{},
+				},
+				{
+					Query: "SELECT * FROM test WHERE v1 BETWEEN SYMMETRIC 1 AND 4 ORDER BY v1;",
+					Expected: []sql.Row{
+						{float64(1)},
+						{float64(3)},
+					},
+				},
+				{
+					Query: "SELECT * FROM test WHERE v1 BETWEEN SYMMETRIC 2 AND 4 ORDER BY v1;",
+					Expected: []sql.Row{
+						{float64(3)},
+					},
+				},
+				{
+					Query: "SELECT * FROM test WHERE v1 BETWEEN SYMMETRIC 4 AND 2 ORDER BY v1;",
+					Expected: []sql.Row{
+						{float64(3)},
+					},
+				},
+				{
+					Query: "SELECT * FROM test WHERE v1 NOT BETWEEN 1 AND 4 ORDER BY v1;",
+					Expected: []sql.Row{
+						{float64(7)},
+					},
+				},
+				{
+					Query: "SELECT * FROM test WHERE v1 NOT BETWEEN 2 AND 4 ORDER BY v1;",
+					Expected: []sql.Row{
+						{float64(1)},
+						{float64(7)},
+					},
+				},
+				{
+					Query: "SELECT * FROM test WHERE v1 NOT BETWEEN 4 AND 2 ORDER BY v1;",
+					Expected: []sql.Row{
+						{float64(1)},
+						{float64(3)},
+						{float64(7)},
+					},
+				},
+				{
+					Query: "SELECT * FROM test WHERE v1 NOT BETWEEN SYMMETRIC 1 AND 4 ORDER BY v1;",
+					Expected: []sql.Row{
+						{float64(7)},
+					},
+				},
+				{
+					Query: "SELECT * FROM test WHERE v1 NOT BETWEEN SYMMETRIC 2 AND 4 ORDER BY v1;",
+					Expected: []sql.Row{
+						{float64(1)},
+						{float64(7)},
+					},
+				},
+				{
+					Query: "SELECT * FROM test WHERE v1 NOT BETWEEN SYMMETRIC 4 AND 2 ORDER BY v1;",
+					Expected: []sql.Row{
+						{float64(1)},
+						{float64(7)},
+					},
+				},
+			},
+		},
+		{
 			Name: "Empty statement",
 			Assertions: []ScriptTestAssertion{
 				{

@@ -294,24 +294,49 @@ func nodeExpr(node tree.Expr) (vitess.Expr, error) {
 		var operator string
 		switch node.Operator {
 		case tree.EQ:
-			operator = vitess.EqualStr
+			return vitess.InjectedExpr{
+				Expression: pgexprs.NewBinaryOperator(framework.Operator_BinaryEqual),
+				Children:   vitess.Exprs{left, right},
+			}, nil
 		case tree.LT:
-			operator = vitess.LessThanStr
+			return vitess.InjectedExpr{
+				Expression: pgexprs.NewBinaryOperator(framework.Operator_BinaryLessThan),
+				Children:   vitess.Exprs{left, right},
+			}, nil
 		case tree.GT:
-			operator = vitess.GreaterThanStr
+			return vitess.InjectedExpr{
+				Expression: pgexprs.NewBinaryOperator(framework.Operator_BinaryGreaterThan),
+				Children:   vitess.Exprs{left, right},
+			}, nil
 		case tree.LE:
-			operator = vitess.LessEqualStr
+			return vitess.InjectedExpr{
+				Expression: pgexprs.NewBinaryOperator(framework.Operator_BinaryLessOrEqual),
+				Children:   vitess.Exprs{left, right},
+			}, nil
 		case tree.GE:
-			operator = vitess.GreaterEqualStr
+			return vitess.InjectedExpr{
+				Expression: pgexprs.NewBinaryOperator(framework.Operator_BinaryGreaterOrEqual),
+				Children:   vitess.Exprs{left, right},
+			}, nil
 		case tree.NE:
-			operator = vitess.NotEqualStr
+			return vitess.InjectedExpr{
+				Expression: pgexprs.NewBinaryOperator(framework.Operator_BinaryNotEqual),
+				Children:   vitess.Exprs{left, right},
+			}, nil
 		case tree.In:
 			return vitess.InjectedExpr{
 				Expression: pgexprs.NewInTuple(),
 				Children:   vitess.Exprs{left, right},
 			}, nil
 		case tree.NotIn:
-			operator = vitess.NotInStr
+			innerExpr := vitess.InjectedExpr{
+				Expression: pgexprs.NewInTuple(),
+				Children:   vitess.Exprs{left, right},
+			}
+			return vitess.InjectedExpr{
+				Expression: pgexprs.NewNot(),
+				Children:   vitess.Exprs{innerExpr},
+			}, nil
 		case tree.Like:
 			operator = vitess.LikeStr
 		case tree.NotLike:
@@ -538,10 +563,6 @@ func nodeExpr(node tree.Expr) (vitess.Expr, error) {
 		mysqlBindVarIdx := node.Idx + 1
 		return vitess.NewValArg([]byte(fmt.Sprintf(":v%d", mysqlBindVarIdx))), nil
 	case *tree.RangeCond:
-		operator := vitess.BetweenStr
-		if node.Not {
-			operator = vitess.NotBetweenStr
-		}
 		left, err := nodeExpr(node.Left)
 		if err != nil {
 			return nil, err
@@ -554,29 +575,38 @@ func nodeExpr(node tree.Expr) (vitess.Expr, error) {
 		if err != nil {
 			return nil, err
 		}
+		retExpr := vitess.Expr(&vitess.AndExpr{
+			Left: vitess.InjectedExpr{
+				Expression: pgexprs.NewBinaryOperator(framework.Operator_BinaryGreaterOrEqual),
+				Children:   vitess.Exprs{left, from},
+			},
+			Right: vitess.InjectedExpr{
+				Expression: pgexprs.NewBinaryOperator(framework.Operator_BinaryLessOrEqual),
+				Children:   vitess.Exprs{left, to},
+			},
+		})
 		if node.Symmetric {
-			return &vitess.OrExpr{
-				Left: &vitess.RangeCond{
-					Operator: operator,
-					Left:     left,
-					From:     from,
-					To:       to,
+			retExpr = &vitess.OrExpr{
+				Left: retExpr,
+				Right: &vitess.AndExpr{
+					Left: vitess.InjectedExpr{
+						Expression: pgexprs.NewBinaryOperator(framework.Operator_BinaryGreaterOrEqual),
+						Children:   vitess.Exprs{left, to},
+					},
+					Right: vitess.InjectedExpr{
+						Expression: pgexprs.NewBinaryOperator(framework.Operator_BinaryLessOrEqual),
+						Children:   vitess.Exprs{left, from},
+					},
 				},
-				Right: &vitess.RangeCond{
-					Operator: operator,
-					Left:     left,
-					From:     to,
-					To:       from,
-				},
-			}, nil
-		} else {
-			return &vitess.RangeCond{
-				Operator: operator,
-				Left:     left,
-				From:     from,
-				To:       to,
-			}, nil
+			}
 		}
+		if node.Not {
+			retExpr = vitess.InjectedExpr{
+				Expression: pgexprs.NewNot(),
+				Children:   vitess.Exprs{retExpr},
+			}
+		}
+		return retExpr, nil
 	case *tree.StrVal:
 		//TODO: determine what to do when node.WasScannedAsBytes() is true
 		stringLiteral := pgexprs.NewStringLiteral(node.RawString())
