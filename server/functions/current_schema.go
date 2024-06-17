@@ -15,6 +15,7 @@
 package functions
 
 import (
+	"github.com/dolthub/dolt/go/libraries/doltcore/sqle/resolve"
 	"github.com/dolthub/go-mysql-server/sql"
 
 	"github.com/dolthub/doltgresql/server/functions/framework"
@@ -33,9 +34,13 @@ var current_schema = framework.Function0{
 	Parameters:         []pgtypes.DoltgresType{},
 	IsNonDeterministic: true,
 	Callable: func(ctx *sql.Context) (any, error) {
-		if ctx.GetCurrentDatabase() == "" {
+		schemas, err := resolve.SearchPath(ctx)
+		if err != nil {
+			return nil, err
+		}
+		if len(schemas) == 0 {
 			return nil, nil
 		}
-		return ctx.GetCurrentDatabase(), nil
+		return schemas[0], nil
 	},
 }
