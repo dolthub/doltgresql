@@ -27,8 +27,6 @@ package tree
 import (
 	"fmt"
 
-	"github.com/cockroachdb/errors"
-
 	"github.com/dolthub/doltgresql/postgres/parser/sessiondata"
 )
 
@@ -59,21 +57,7 @@ func (fn *ResolvableFunctionReference) String() string { return AsString(fn) }
 func (fn *ResolvableFunctionReference) Resolve(
 	searchPath sessiondata.SearchPath,
 ) (*FunctionDefinition, error) {
-	switch t := fn.FunctionReference.(type) {
-	case *FunctionDefinition:
-		return t, nil
-	case *UnresolvedName:
-		fd, err := t.ResolveFunction(searchPath)
-		if err != nil {
-			return nil, err
-		}
-		fn.FunctionReference = fd
-		return fd, nil
-	default:
-		return nil, errors.AssertionFailedf("unknown function name type: %+v (%T)",
-			fn.FunctionReference, fn.FunctionReference,
-		)
-	}
+	return nil, nil
 }
 
 // WrapFunction creates a new ResolvableFunctionReference

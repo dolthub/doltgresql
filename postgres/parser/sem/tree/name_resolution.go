@@ -484,25 +484,6 @@ func (tp *ObjectNamePrefix) Resolve(
 	return found, scMeta, err
 }
 
-// ResolveFunction transforms an UnresolvedName to a FunctionDefinition.
-//
-// Function resolution currently takes a "short path" using the
-// assumption that there are no stored functions in the database. That
-// is, only functions in the (virtual) global namespace and virtual
-// schemas can be used. This in turn implies that the current
-// database does not matter and no resolver is needed.
-//
-// TODO(whoever): this needs to be revisited when there can be stored functions.
-// When that is the case, function names must be first normalized to e.g.
-// TableName (or whatever an object name will be called by then)
-// and then undergo regular name resolution via ResolveExisting(). When
-// that happens, the following function can be removed.
-func (n *UnresolvedName) ResolveFunction(
-	searchPath sessiondata.SearchPath,
-) (*FunctionDefinition, error) {
-	return nil, nil
-}
-
 func newInvColRef(n *UnresolvedName) error {
 	return pgerror.NewWithDepthf(1, pgcode.InvalidColumnReference,
 		"invalid column name: %s", n)
