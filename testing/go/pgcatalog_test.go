@@ -18,6 +18,7 @@ func TestPgDatabase(t *testing.T) {
 				{
 					Query: `SELECT datname FROM "pg_catalog"."pg_database";`,
 					Expected: []sql.Row{
+						{"doltgres"},
 						{"postgres"},
 						{"test"},
 					},
@@ -27,6 +28,7 @@ func TestPgDatabase(t *testing.T) {
 					Expected: []sql.Row{
 						{"test"},
 						{"postgres"},
+						{"doltgres"},
 					},
 				},
 				{ // Different cases and quoted, so it fails
@@ -40,6 +42,7 @@ func TestPgDatabase(t *testing.T) {
 				{ // Different cases but non-quoted, so it works
 					Query: "SELECT datname FROM PG_catalog.pg_DATABASE ORDER BY datname;",
 					Expected: []sql.Row{
+						{"doltgres"},
 						{"postgres"},
 						{"test"},
 					},
