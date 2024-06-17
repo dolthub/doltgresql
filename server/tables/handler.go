@@ -21,7 +21,7 @@ type Handler interface {
 	// Name returns the name of the table.
 	Name() string
 	// RowIter returns a sql.RowIter that returns the rows of the table.
-	RowIter(ctx *sql.Context) (sql.RowIter, error)
+	RowIter(ctx *sql.Context, c sql.Catalog) (sql.RowIter, error)
 	// Schema returns the table's schema.
 	Schema() sql.PrimaryKeySchema
 }

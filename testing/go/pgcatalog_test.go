@@ -16,8 +16,18 @@ func TestPgDatabase(t *testing.T) {
 			},
 			Assertions: []ScriptTestAssertion{
 				{
-					Query:    `SELECT * FROM "pg_catalog"."pg_database";`,
-					Expected: []sql.Row{},
+					Query: `SELECT datname FROM "pg_catalog"."pg_database";`,
+					Expected: []sql.Row{
+						{"postgres"},
+						{"test"},
+					},
+				},
+				{
+					Query: `SELECT datname FROM "pg_catalog"."pg_database" ORDER BY oid DESC;`,
+					Expected: []sql.Row{
+						{"test"},
+						{"postgres"},
+					},
 				},
 				{ // Different cases and quoted, so it fails
 					Query:       `SELECT * FROM "PG_catalog"."pg_database";`,
@@ -28,12 +38,17 @@ func TestPgDatabase(t *testing.T) {
 					ExpectedErr: "not",
 				},
 				{ // Different cases but non-quoted, so it works
-					Query:    "SELECT * FROM PG_catalog.pg_DATABASE ORDER BY datname;",
-					Expected: []sql.Row{},
+					Query: "SELECT datname FROM PG_catalog.pg_DATABASE ORDER BY datname;",
+					Expected: []sql.Row{
+						{"postgres"},
+						{"test"},
+					},
 				},
 				{
-					Query:    "SELECT * FROM pg_catalog.pg_database WHERE datname='test';",
-					Expected: []sql.Row{},
+					Query: "SELECT datname FROM pg_catalog.pg_database WHERE datname='test';",
+					Expected: []sql.Row{
+						{"test"},
+					},
 				},
 			},
 		},

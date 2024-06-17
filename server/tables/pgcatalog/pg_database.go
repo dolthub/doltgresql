@@ -41,14 +41,22 @@ func (p PgDatabaseHandler) Name() string {
 	return PgDatabaseName
 }
 
-// emptyRowIter implements the sql.RowIter for empty table.
-func emptyRowIter() (sql.RowIter, error) {
-	return sql.RowsToRowIter(), nil
-}
-
 // RowIter implements the interface tables.Handler.
-func (p PgDatabaseHandler) RowIter(ctx *sql.Context) (sql.RowIter, error) {
-	return emptyRowIter()
+func (p PgDatabaseHandler) RowIter(ctx *sql.Context, c sql.Catalog) (sql.RowIter, error) {
+	databases := c.AllDatabases(ctx)
+	dbs := make([]sql.Database, 0, len(databases))
+	for _, db := range databases {
+		name := db.Name()
+		if name == "information_schema" || name == "pg_catalog" {
+			continue
+		}
+		dbs = append(dbs, db)
+	}
+
+	return &pgDatabaseRowIter{
+		dbs: dbs,
+		idx: 0,
+	}, nil
 }
 
 // Schema implements the interface tables.Handler.
@@ -82,6 +90,7 @@ var pgDatabaseSchema = sql.Schema{
 
 // pgDatabaseRowIter is the sql.RowIter for the pg_database table.
 type pgDatabaseRowIter struct {
+	dbs []sql.Database
 	idx int
 }
 
@@ -89,7 +98,32 @@ var _ sql.RowIter = (*pgDatabaseRowIter)(nil)
 
 // Next implements the interface sql.RowIter.
 func (iter *pgDatabaseRowIter) Next(ctx *sql.Context) (sql.Row, error) {
-	return nil, io.EOF
+	if iter.idx >= len(iter.dbs) {
+		return nil, io.EOF
+	}
+	iter.idx++
+	db := iter.dbs[iter.idx-1]
+
+	return sql.Row{
+		uint32(iter.idx), // oid
+		db.Name(),        // datname
+		// TODO: Add the rest of the pg_database columns
+		nil, // datdba
+		nil, // encoding
+		nil, // datlocprovider
+		nil, // datistemplate
+		nil, // datallowconn
+		nil, // datconnlimit
+		nil, // datfrozenxid
+		nil, // datminmxid
+		nil, // dattablespace
+		nil, // datcollate
+		nil, // datctype
+		nil, // daticulocale
+		nil, // daticurules
+		nil, // datcollversion
+		nil, // datacl
+	}, nil
 }
 
 // Close implements the interface sql.RowIter.
