@@ -185,6 +185,34 @@ func TestSystemInformationFunctions(t *testing.T) {
 			},
 		},
 		{
+			Name:     "current_catalog",
+			Database: "test",
+			Assertions: []ScriptTestAssertion{
+				{
+					Query: `SELECT current_catalog;`,
+					Expected: []sql.Row{
+						{"test"},
+					},
+				},
+				{
+					Query:       `SELECT current_catalog();`,
+					ExpectedErr: `ERROR: at or near "(": syntax error (SQLSTATE XX000)`,
+				},
+				// // TODO: Implement table function for current_catalog
+				{
+					Query: `SELECT * FROM current_catalog;`,
+					Skip:  true,
+					Expected: []sql.Row{
+						{"test"},
+					},
+				},
+				{
+					Query:       `SELECT * FROM current_catalog();`,
+					ExpectedErr: `ERROR: at or near "(": syntax error (SQLSTATE XX000)`,
+				},
+			},
+		},
+		{
 			Name: "current_schema",
 			Assertions: []ScriptTestAssertion{
 				{
