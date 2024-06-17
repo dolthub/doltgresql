@@ -99,16 +99,22 @@ func (h *DoltgresHarness) EngineStr() string {
 }
 
 func (h *DoltgresHarness) Init() error {
+	fmt.Println("DUSTIN: starting server no db dsn")
 	h.startNewDoltgresServer(context.Background(), logictest.GetCurrentFileName())
 	db, err := sql.Open("pgx", doltgresNoDbDsn)
 	if err != nil {
 		logErr(err, "opening connection to pgx")
 		return err
 	}
+	fmt.Println("DUSTIN: done: starting server no db dsn")
+	fmt.Println("DUSTIN: pinging server no db dsn")
 	err = db.Ping()
 	if err != nil {
 		return err
 	}
+	fmt.Println("DUSTIN: done: pinging server no db dsn")
+
+	fmt.Println("DUSTIN: dropping db no db dsn")
 
 	// drop if 'sqllogictest' database exists
 	_, err = db.ExecContext(context.Background(), "DROP DATABASE IF EXISTS sqllogictest")
@@ -117,6 +123,9 @@ func (h *DoltgresHarness) Init() error {
 		return err
 	}
 
+	fmt.Println("DUSTIN: done: dropping db no db dsn")
+
+	fmt.Println("DUSTIN: creating db no db dsn")
 	// create 'sqllogictest' database
 	_, err = db.ExecContext(context.Background(), "CREATE DATABASE sqllogictest")
 	if err != nil {
@@ -124,29 +133,50 @@ func (h *DoltgresHarness) Init() error {
 		return err
 	}
 
+	fmt.Println("DUSTIN: done: creating db no db dsn")
+
+	fmt.Println("DUSTIN: closing db no db dsn")
 	err = db.Close()
 	if err != nil {
 		logErr(err, "closing database connection")
 		return err
 	}
+	fmt.Println("DUSTIN: done: closing db no db dsn")
 
+	fmt.Println("DUSTIN: opening db with dsn")
 	db, err = sql.Open("pgx", doltgresWithDbDsn)
 	if err != nil {
 		logErr(err, "opening connection to pgx")
 		return err
 	}
+	fmt.Println("DUSTIN: done: opening db with dsn")
+
+	fmt.Println("DUSTIN: pinging db with dsn")
 	err = db.Ping()
 	if err != nil {
 		return err
 	}
 
+	fmt.Println("DUSTIN: done: pinging db with dsn")
+
 	h.db = db
 
-	if err := h.dropAllTables(); err != nil {
+	fmt.Println("DUSTIN: dropping tables with dsn")
+	if err = h.dropAllTables(); err != nil {
 		return err
 	}
 
-	return h.dropAllViews()
+	fmt.Println("DUSTIN: done: dropping tables with dsn")
+
+	fmt.Println("DUSTIN: dropping views with dsn")
+
+	err = h.dropAllViews()
+	if err != nil {
+		return err
+	}
+
+	fmt.Println("DUSTIN: done: dropping views with dsn")
+	return nil
 }
 
 func (s *DoltgresHarness) Close() error {
