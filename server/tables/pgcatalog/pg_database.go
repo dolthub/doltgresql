@@ -17,6 +17,8 @@ package pgcatalog
 import (
 	"io"
 
+	"github.com/dolthub/dolt/go/libraries/doltcore/sqle/dsess"
+	sqle "github.com/dolthub/go-mysql-server"
 	"github.com/dolthub/go-mysql-server/sql"
 
 	"github.com/dolthub/doltgresql/server/tables"
@@ -42,7 +44,11 @@ func (p PgDatabaseHandler) Name() string {
 }
 
 // RowIter implements the interface tables.Handler.
-func (p PgDatabaseHandler) RowIter(ctx *sql.Context, c sql.Catalog) (sql.RowIter, error) {
+func (p PgDatabaseHandler) RowIter(ctx *sql.Context) (sql.RowIter, error) {
+	// TODO: Should the catalog be passed to RowIter like it is for the information_schema tables RowIter?
+	doltSession := dsess.DSessFromSess(ctx.Session)
+	c := sqle.NewDefault(doltSession.Provider()).Analyzer.Catalog
+
 	databases := c.AllDatabases(ctx)
 	dbs := make([]sql.Database, 0, len(databases))
 	for _, db := range databases {

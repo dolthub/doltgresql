@@ -15,8 +15,6 @@
 package tables
 
 import (
-	"github.com/dolthub/dolt/go/libraries/doltcore/sqle/dsess"
-	sqle "github.com/dolthub/go-mysql-server"
 	"github.com/dolthub/go-mysql-server/sql"
 )
 
@@ -53,9 +51,7 @@ func (tbl *VirtualTable) Name() string {
 
 // PartitionRows implements the interface sql.Table.
 func (tbl *VirtualTable) PartitionRows(ctx *sql.Context, partition sql.Partition) (sql.RowIter, error) {
-	doltSession := dsess.DSessFromSess(ctx.Session)
-	cat := sqle.NewDefault(doltSession.Provider()).Analyzer.Catalog
-	return tbl.handler.RowIter(ctx, cat)
+	return tbl.handler.RowIter(ctx)
 }
 
 // Partitions implements the interface sql.Table.

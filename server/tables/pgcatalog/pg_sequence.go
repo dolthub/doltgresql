@@ -44,7 +44,7 @@ func (p PgSequenceHandler) Name() string {
 }
 
 // RowIter implements the interface tables.Handler.
-func (p PgSequenceHandler) RowIter(ctx *sql.Context, _ sql.Catalog) (sql.RowIter, error) {
+func (p PgSequenceHandler) RowIter(ctx *sql.Context) (sql.RowIter, error) {
 	allSequences, err := p.getAllSequencesOrdered(ctx)
 	if err != nil {
 		return nil, err
