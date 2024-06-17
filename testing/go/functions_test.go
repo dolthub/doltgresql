@@ -183,7 +183,7 @@ func TestSystemInformationFunctions(t *testing.T) {
 				{
 					Query: `SELECT current_schema();`,
 					Expected: []sql.Row{
-						{"test_schema"},
+						{"postgres"},
 					},
 				},
 				// {

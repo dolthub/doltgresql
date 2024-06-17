@@ -165,10 +165,6 @@ func NewFunctionDefinition(
 	}
 }
 
-// FunDefs holds pre-allocated FunctionDefinition instances
-// for every builtin function. Initialized by builtins.init().
-var FunDefs map[string]*FunctionDefinition
-
 // Format implements the NodeFormatter interface.
 func (fd *FunctionDefinition) Format(ctx *FmtCtx) {
 	ctx.WriteString(fd.Name)
