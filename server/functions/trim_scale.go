@@ -34,11 +34,9 @@ var trim_scale_numeric = framework.Function1{
 	Return:     pgtypes.Numeric,
 	Parameters: []pgtypes.DoltgresType{pgtypes.Numeric},
 	Callable: func(ctx *sql.Context, val1 any) (any, error) {
-		if val1 == nil {
-			return nil, nil
-		}
 		// We don't store the scale in the value, so I'm not sure if this is functionally correct.
 		// Seems like we'd need to modify the type of the return value (by trimming the scale), rather than the value itself.
 		return val1.(decimal.Decimal), nil
 	},
+	Strict: true,
 }

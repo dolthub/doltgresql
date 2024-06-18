@@ -38,4 +38,5 @@ var current_database = framework.Function0{
 		}
 		return ctx.GetCurrentDatabase(), nil
 	},
+	Strict: true,
 }

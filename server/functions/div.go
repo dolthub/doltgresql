@@ -35,9 +35,6 @@ var div_numeric = framework.Function2{
 	Return:     pgtypes.Numeric,
 	Parameters: []pgtypes.DoltgresType{pgtypes.Numeric, pgtypes.Numeric},
 	Callable: func(ctx *sql.Context, val1Interface any, val2Interface any) (any, error) {
-		if val1Interface == nil || val2Interface == nil {
-			return nil, nil
-		}
 		val1 := val1Interface.(decimal.Decimal)
 		val2 := val2Interface.(decimal.Decimal)
 		if val2.Cmp(decimal.Zero) == 0 {
@@ -46,4 +43,5 @@ var div_numeric = framework.Function2{
 		val := val1.Div(val2)
 		return val.Truncate(0), nil
 	},
+	Strict: true,
 }

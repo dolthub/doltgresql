@@ -45,6 +45,7 @@ var sqrt_float64 = framework.Function1{
 		}
 		return math.Sqrt(val1.(float64)), nil
 	},
+	Strict: true,
 }
 
 // sqrt_numeric represents the PostgreSQL function of the same name, taking the same parameters.
@@ -53,13 +54,11 @@ var sqrt_numeric = framework.Function1{
 	Return:     pgtypes.Numeric,
 	Parameters: []pgtypes.DoltgresType{pgtypes.Numeric},
 	Callable: func(ctx *sql.Context, val1 any) (any, error) {
-		if val1 == nil {
-			return nil, nil
-		}
 		if val1.(decimal.Decimal).Cmp(decimal.Zero) == -1 {
 			return nil, fmt.Errorf("cannot take square root of a negative number")
 		}
 		// TODO: decimal's Pow function does not work correctly using an exponent of 0.5, need to fix
 		return decimal.NewFromFloat(math.Sqrt(val1.(decimal.Decimal).InexactFloat64())), nil
 	},
+	Strict: true,
 }

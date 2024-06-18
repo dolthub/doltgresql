@@ -178,7 +178,9 @@ func (c *CompiledFunction) Eval(ctx *sql.Context, row sql.Row) (interface{}, err
 	resultTypes := c.callableFunc.GetParameters()
 	if len(c.casts) > 0 {
 		for i := range parameters {
-			if c.casts[i] != nil {
+			if parameters[i] == nil && c.callableFunc.GetIsStrict() {
+				return nil, nil
+			} else if c.casts[i] != nil {
 				parameters[i], err = c.casts[i](ctx, parameters[i], resultTypes[i])
 				if err != nil {
 					return nil, err

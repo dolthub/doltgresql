@@ -34,13 +34,11 @@ var cot_float64 = framework.Function1{
 	Return:     pgtypes.Float64,
 	Parameters: []pgtypes.DoltgresType{pgtypes.Float64},
 	Callable: func(ctx *sql.Context, val1Interface any) (any, error) {
-		if val1Interface == nil {
-			return nil, nil
-		}
 		val1 := val1Interface.(float64)
 		if val1 == 0 {
 			return math.Inf(1), nil
 		}
 		return math.Cos(val1) / math.Sin(val1), nil
 	},
+	Strict: true,
 }

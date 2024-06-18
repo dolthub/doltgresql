@@ -35,6 +35,7 @@ var rpad_varchar_int32 = framework.Function2{
 	Callable: func(ctx *sql.Context, val1 any, val2 any) (any, error) {
 		return rpad_varchar_int32_varchar.Callable(ctx, val1, val2, " ")
 	},
+	Strict: true,
 }
 
 // rpad_varchar_int32_varchar represents the PostgreSQL function of the same name, taking the same parameters.
@@ -43,9 +44,6 @@ var rpad_varchar_int32_varchar = framework.Function3{
 	Return:     pgtypes.VarChar,
 	Parameters: []pgtypes.DoltgresType{pgtypes.VarChar, pgtypes.Int32, pgtypes.VarChar},
 	Callable: func(ctx *sql.Context, str any, length any, fill any) (any, error) {
-		if str == nil || length == nil || fill == nil {
-			return nil, nil
-		}
 		if length.(int32) <= 0 {
 			return "", nil
 		}
@@ -56,4 +54,5 @@ var rpad_varchar_int32_varchar = framework.Function3{
 		}
 		return string(runes[:length.(int32)]), nil
 	},
+	Strict: true,
 }
