@@ -136,6 +136,32 @@ func TestPgAttribute(t *testing.T) {
 	})
 }
 
+func TestPgAttrdef(t *testing.T) {
+	RunScripts(t, []ScriptTest{
+		{
+			Name: "pg_attrdef",
+			Assertions: []ScriptTestAssertion{
+				{
+					Query:    `SELECT * FROM "pg_catalog"."pg_attrdef";`,
+					Expected: []sql.Row{},
+				},
+				{ // Different cases and quoted, so it fails
+					Query:       `SELECT * FROM "PG_catalog"."pg_attrdef";`,
+					ExpectedErr: "not",
+				},
+				{ // Different cases and quoted, so it fails
+					Query:       `SELECT * FROM "pg_catalog"."PG_attrdef";`,
+					ExpectedErr: "not",
+				},
+				{ // Different cases but non-quoted, so it works
+					Query:    "SELECT oid FROM PG_catalog.pg_ATTRDEF ORDER BY oid;",
+					Expected: []sql.Row{},
+				},
+			},
+		},
+	})
+}
+
 func TestPgAuthMembers(t *testing.T) {
 	RunScripts(t, []ScriptTest{
 		{

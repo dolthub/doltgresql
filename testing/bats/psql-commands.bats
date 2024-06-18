@@ -33,6 +33,7 @@ teardown() {
     [[ "$output" =~ "public,pg_am,table,postgres" ]] || false
     [[ "$output" =~ "public,pg_amop,table,postgres" ]] || false
     [[ "$output" =~ "public,pg_amproc,table,postgres" ]] || false
+    [[ "$output" =~ "public,pg_attrdef,table,postgres" ]] || false
     [[ "$output" =~ "public,pg_attribute,table,postgres" ]] || false
     [[ "$output" =~ "public,pg_auth_members,table,postgres" ]] || false
     [[ "$output" =~ "public,pg_class,table,postgres" ]] || false
@@ -49,7 +50,7 @@ teardown() {
     [[ "$output" =~ "public,pg_type,table,postgres" ]] || false
     [[ "$output" =~ "public,test1,table,postgres" ]] || false
     [[ "$output" =~ "public,test2,table,postgres" ]] || false
-    [ "${#lines[@]}" -eq 21 ]
+    [ "${#lines[@]}" -eq 22 ]
 }
 
 @test 'psql-commands: \d' {
@@ -60,6 +61,7 @@ teardown() {
     [[ "$output" =~ "public,pg_am,table,postgres" ]] || false
     [[ "$output" =~ "public,pg_amop,table,postgres" ]] || false
     [[ "$output" =~ "public,pg_amproc,table,postgres" ]] || false
+    [[ "$output" =~ "public,pg_attrdef,table,postgres" ]] || false
     [[ "$output" =~ "public,pg_attribute,table,postgres" ]] || false
     [[ "$output" =~ "public,pg_auth_members,table,postgres" ]] || false
     [[ "$output" =~ "public,pg_class,table,postgres" ]] || false
@@ -76,7 +78,7 @@ teardown() {
     [[ "$output" =~ "public,pg_type,table,postgres" ]] || false
     [[ "$output" =~ "public,test1,table,postgres" ]] || false
     [[ "$output" =~ "public,test2,table,postgres" ]] || false
-    [ "${#lines[@]}" -eq 21 ]
+    [ "${#lines[@]}" -eq 22 ]
 }
 
 @test 'psql-commands: \d table' {

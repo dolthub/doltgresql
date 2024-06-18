@@ -23,6 +23,7 @@ func Init() {
 	InitPgAm()
 	InitPgAmop()
 	InitPgAmproc()
+	InitPgAttrdef()
 	InitPgAttribute()
 	InitPgAuthMembers()
 	InitPgClass()
