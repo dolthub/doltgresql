@@ -68,6 +68,18 @@ func TestPgAttribute(t *testing.T) {
 					Query:    `SELECT * FROM "pg_catalog"."pg_attribute";`,
 					Expected: []sql.Row{},
 				},
+				{ // Different cases and quoted, so it fails
+					Query:       `SELECT * FROM "PG_catalog"."pg_attribute";`,
+					ExpectedErr: "not",
+				},
+				{ // Different cases and quoted, so it fails
+					Query:       `SELECT * FROM "pg_catalog"."PG_attribute";`,
+					ExpectedErr: "not",
+				},
+				{ // Different cases but non-quoted, so it works
+					Query:    "SELECT attname FROM PG_catalog.pg_ATTRIBUTE ORDER BY attname;",
+					Expected: []sql.Row{},
+				},
 			},
 		},
 	})
