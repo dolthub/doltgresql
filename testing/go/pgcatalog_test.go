@@ -163,6 +163,32 @@ func TestPgDatabase(t *testing.T) {
 	})
 }
 
+func TestPgEnum(t *testing.T) {
+	RunScripts(t, []ScriptTest{
+		{
+			Name: "pg_enum",
+			Assertions: []ScriptTestAssertion{
+				{
+					Query:    `SELECT * FROM "pg_catalog"."pg_enum";`,
+					Expected: []sql.Row{},
+				},
+				{ // Different cases and quoted, so it fails
+					Query:       `SELECT * FROM "PG_catalog"."pg_enum";`,
+					ExpectedErr: "not",
+				},
+				{ // Different cases and quoted, so it fails
+					Query:       `SELECT * FROM "pg_catalog"."PG_enum";`,
+					ExpectedErr: "not",
+				},
+				{ // Different cases but non-quoted, so it works
+					Query:    "SELECT enumlabel FROM PG_catalog.pg_ENUM ORDER BY enumlabel;",
+					Expected: []sql.Row{},
+				},
+			},
+		},
+	})
+}
+
 func TestPgEventTrigger(t *testing.T) {
 	RunScripts(t, []ScriptTest{
 		{
