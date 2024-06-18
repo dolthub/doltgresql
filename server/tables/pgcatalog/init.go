@@ -29,4 +29,5 @@ func Init() {
 	InitPgNamespace()
 	InitPgProc()
 	InitPgSequence()
+	InitPgTrigger()
 }
