@@ -58,3 +58,17 @@ func TestPgDatabase(t *testing.T) {
 		},
 	})
 }
+
+func TestPgAttribute(t *testing.T) {
+	RunScripts(t, []ScriptTest{
+		{
+			Name: "pg_attribute",
+			Assertions: []ScriptTestAssertion{
+				{
+					Query:    `SELECT * FROM "pg_catalog"."pg_attribute";`,
+					Expected: []sql.Row{},
+				},
+			},
+		},
+	})
+}
