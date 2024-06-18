@@ -214,3 +214,29 @@ func TestPgIndex(t *testing.T) {
 		},
 	})
 }
+
+func TestPgNamespace(t *testing.T) {
+	RunScripts(t, []ScriptTest{
+		{
+			Name: "pg_namespace",
+			Assertions: []ScriptTestAssertion{
+				{
+					Query:    `SELECT * FROM "pg_catalog"."pg_namespace";`,
+					Expected: []sql.Row{},
+				},
+				{ // Different cases and quoted, so it fails
+					Query:       `SELECT * FROM "PG_catalog"."pg_namespace";`,
+					ExpectedErr: "not",
+				},
+				{ // Different cases and quoted, so it fails
+					Query:       `SELECT * FROM "pg_catalog"."PG_namespace";`,
+					ExpectedErr: "not",
+				},
+				{ // Different cases but non-quoted, so it works
+					Query:    "SELECT nspname FROM PG_catalog.pg_NAMESPACE ORDER BY nspname;",
+					Expected: []sql.Row{},
+				},
+			},
+		},
+	})
+}

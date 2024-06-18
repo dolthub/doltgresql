@@ -26,5 +26,6 @@ func Init() {
 	InitPgDatabase()
 	InitPgEventTrigger()
 	InitPgIndex()
+	InitPgNamespace()
 	InitPgSequence()
 }
