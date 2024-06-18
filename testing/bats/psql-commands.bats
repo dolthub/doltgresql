@@ -31,9 +31,12 @@ teardown() {
     [ "$status" -eq 0 ]
     [[ "$output" =~ "public,pg_am,table,postgres" ]] || false
     [[ "$output" =~ "public,pg_attribute,table,postgres" ]] || false
+    [[ "$output" =~ "public,pg_auth_members,table,postgres" ]] || false
     [[ "$output" =~ "public,pg_class,table,postgres" ]] || false
     [[ "$output" =~ "public,pg_constraint,table,postgres" ]] || false
     [[ "$output" =~ "public,pg_database,table,postgres" ]] || false
+    [[ "$output" =~ "public,pg_description,table,postgres" ]] || false
+    [[ "$output" =~ "public,pg_enum,table,postgres" ]] || false
     [[ "$output" =~ "public,pg_event_trigger,table,postgres" ]] || false
     [[ "$output" =~ "public,pg_index,table,postgres" ]] || false
     [[ "$output" =~ "public,pg_namespace,table,postgres" ]] || false
@@ -43,7 +46,7 @@ teardown() {
     [[ "$output" =~ "public,pg_type,table,postgres" ]] || false
     [[ "$output" =~ "public,test1,table,postgres" ]] || false
     [[ "$output" =~ "public,test2,table,postgres" ]] || false
-    [ "${#lines[@]}" -eq 15 ]
+    [ "${#lines[@]}" -eq 18 ]
 }
 
 @test 'psql-commands: \d' {

@@ -65,7 +65,6 @@ var pgDescriptionSchema = sql.Schema{
 
 // pgDescriptionRowIter is the sql.RowIter for the pg_description table.
 type pgDescriptionRowIter struct {
-	idx int
 }
 
 var _ sql.RowIter = (*pgDescriptionRowIter)(nil)

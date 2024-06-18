@@ -65,7 +65,6 @@ var pgEnumSchema = sql.Schema{
 
 // pgEnumRowIter is the sql.RowIter for the pg_enum table.
 type pgEnumRowIter struct {
-	idx int
 }
 
 var _ sql.RowIter = (*pgEnumRowIter)(nil)
