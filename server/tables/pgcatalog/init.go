@@ -27,6 +27,7 @@ func Init() {
 	InitPgAttribute()
 	InitPgAuthMembers()
 	InitPgAuthid()
+	InitPgCast()
 	InitPgClass()
 	InitPgConstraint()
 	InitPgDatabase()
