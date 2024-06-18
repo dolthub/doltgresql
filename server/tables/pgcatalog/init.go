@@ -24,6 +24,7 @@ func Init() {
 	InitPgClass()
 	InitPgConstraint()
 	InitPgDatabase()
+	InitPgDescription()
 	InitPgEnum()
 	InitPgEventTrigger()
 	InitPgIndex()
