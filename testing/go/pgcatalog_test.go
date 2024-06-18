@@ -162,3 +162,29 @@ func TestPgDatabase(t *testing.T) {
 		},
 	})
 }
+
+func TestPgEventTrigger(t *testing.T) {
+	RunScripts(t, []ScriptTest{
+		{
+			Name: "pg_event_trigger",
+			Assertions: []ScriptTestAssertion{
+				{
+					Query:    `SELECT * FROM "pg_catalog"."pg_event_trigger";`,
+					Expected: []sql.Row{},
+				},
+				{ // Different cases and quoted, so it fails
+					Query:       `SELECT * FROM "PG_catalog"."pg_event_trigger";`,
+					ExpectedErr: "not",
+				},
+				{ // Different cases and quoted, so it fails
+					Query:       `SELECT * FROM "pg_catalog"."PG_event_trigger";`,
+					ExpectedErr: "not",
+				},
+				{ // Different cases but non-quoted, so it works
+					Query:    "SELECT evtname FROM PG_catalog.pg_EVENT_TRIGGER ORDER BY evtname;",
+					Expected: []sql.Row{},
+				},
+			},
+		},
+	})
+}
