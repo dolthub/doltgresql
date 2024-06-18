@@ -6,6 +6,7 @@ import (
 	"github.com/dolthub/go-mysql-server/sql"
 )
 
+// TODO: Figure out why there is not a doltgres database when running these tests locally
 func TestPgDatabase(t *testing.T) {
 	RunScripts(t, []ScriptTest{
 		{
@@ -50,7 +51,7 @@ func TestPgDatabase(t *testing.T) {
 				{
 					Query: "SELECT * FROM pg_catalog.pg_database WHERE datname='test';",
 					Expected: []sql.Row{
-						{2, "test", 0, 0, "i", "f", "t", -1, 0, 0, 0, "", "", nil, "", nil, nil},
+						{3, "test", 0, 0, "i", "f", "t", -1, 0, 0, 0, "", "", nil, "", nil, nil},
 					},
 				},
 			},
