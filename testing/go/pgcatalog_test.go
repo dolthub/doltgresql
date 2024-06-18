@@ -292,3 +292,29 @@ func TestPgTrigger(t *testing.T) {
 		},
 	})
 }
+
+func TestPgType(t *testing.T) {
+	RunScripts(t, []ScriptTest{
+		{
+			Name: "pg_type",
+			Assertions: []ScriptTestAssertion{
+				{
+					Query:    `SELECT * FROM "pg_catalog"."pg_type";`,
+					Expected: []sql.Row{},
+				},
+				{ // Different cases and quoted, so it fails
+					Query:       `SELECT * FROM "PG_catalog"."pg_type";`,
+					ExpectedErr: "not",
+				},
+				{ // Different cases and quoted, so it fails
+					Query:       `SELECT * FROM "pg_catalog"."PG_type";`,
+					ExpectedErr: "not",
+				},
+				{ // Different cases but non-quoted, so it works
+					Query:    "SELECT typname FROM PG_catalog.pg_TYPE ORDER BY typname;",
+					Expected: []sql.Row{},
+				},
+			},
+		},
+	})
+}

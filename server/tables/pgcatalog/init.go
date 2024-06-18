@@ -30,4 +30,5 @@ func Init() {
 	InitPgProc()
 	InitPgSequence()
 	InitPgTrigger()
+	InitPgType()
 }
