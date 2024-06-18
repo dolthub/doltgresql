@@ -188,6 +188,32 @@ func TestPgAuthMembers(t *testing.T) {
 	})
 }
 
+func TestPgAuthid(t *testing.T) {
+	RunScripts(t, []ScriptTest{
+		{
+			Name: "pg_authid",
+			Assertions: []ScriptTestAssertion{
+				{
+					Query:    `SELECT * FROM "pg_catalog"."pg_authid";`,
+					Expected: []sql.Row{},
+				},
+				{ // Different cases and quoted, so it fails
+					Query:       `SELECT * FROM "PG_catalog"."pg_authid";`,
+					ExpectedErr: "not",
+				},
+				{ // Different cases and quoted, so it fails
+					Query:       `SELECT * FROM "pg_catalog"."PG_authid";`,
+					ExpectedErr: "not",
+				},
+				{ // Different cases but non-quoted, so it works
+					Query:    "SELECT rolname FROM PG_catalog.pg_AUTHID ORDER BY rolname;",
+					Expected: []sql.Row{},
+				},
+			},
+		},
+	})
+}
+
 func TestPgClass(t *testing.T) {
 	RunScripts(t, []ScriptTest{
 		{
