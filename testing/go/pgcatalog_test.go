@@ -84,6 +84,32 @@ func TestPgAmop(t *testing.T) {
 	})
 }
 
+func TestPgAmproc(t *testing.T) {
+	RunScripts(t, []ScriptTest{
+		{
+			Name: "pg_amproc",
+			Assertions: []ScriptTestAssertion{
+				{
+					Query:    `SELECT * FROM "pg_catalog"."pg_amproc";`,
+					Expected: []sql.Row{},
+				},
+				{ // Different cases and quoted, so it fails
+					Query:       `SELECT * FROM "PG_catalog"."pg_amproc";`,
+					ExpectedErr: "not",
+				},
+				{ // Different cases and quoted, so it fails
+					Query:       `SELECT * FROM "pg_catalog"."PG_amproc";`,
+					ExpectedErr: "not",
+				},
+				{ // Different cases but non-quoted, so it works
+					Query:    "SELECT oid FROM PG_catalog.pg_AMPROC ORDER BY oid;",
+					Expected: []sql.Row{},
+				},
+			},
+		},
+	})
+}
+
 func TestPgAttribute(t *testing.T) {
 	RunScripts(t, []ScriptTest{
 		{
