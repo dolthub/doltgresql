@@ -318,6 +318,32 @@ func TestPgConstraint(t *testing.T) {
 	})
 }
 
+func TestPgConversion(t *testing.T) {
+	RunScripts(t, []ScriptTest{
+		{
+			Name: "pg_conversion",
+			Assertions: []ScriptTestAssertion{
+				{
+					Query:    `SELECT * FROM "pg_catalog"."pg_conversion";`,
+					Expected: []sql.Row{},
+				},
+				{ // Different cases and quoted, so it fails
+					Query:       `SELECT * FROM "PG_catalog"."pg_conversion";`,
+					ExpectedErr: "not",
+				},
+				{ // Different cases and quoted, so it fails
+					Query:       `SELECT * FROM "pg_catalog"."PG_conversion";`,
+					ExpectedErr: "not",
+				},
+				{ // Different cases but non-quoted, so it works
+					Query:    "SELECT conname FROM PG_catalog.pg_CONVERSION ORDER BY conname;",
+					Expected: []sql.Row{},
+				},
+			},
+		},
+	})
+}
+
 // TODO: Figure out why there is not a doltgres database when running these tests locally
 func TestPgDatabase(t *testing.T) {
 	RunScripts(t, []ScriptTest{

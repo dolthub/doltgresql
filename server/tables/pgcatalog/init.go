@@ -31,6 +31,7 @@ func Init() {
 	InitPgClass()
 	InitPgCollation()
 	InitPgConstraint()
+	InitPgConversion()
 	InitPgDatabase()
 	InitPgDescription()
 	InitPgEnum()
