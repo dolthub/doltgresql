@@ -266,6 +266,32 @@ func TestPgClass(t *testing.T) {
 	})
 }
 
+func TestPgCollation(t *testing.T) {
+	RunScripts(t, []ScriptTest{
+		{
+			Name: "pg_collation",
+			Assertions: []ScriptTestAssertion{
+				{
+					Query:    `SELECT * FROM "pg_catalog"."pg_collation";`,
+					Expected: []sql.Row{},
+				},
+				{ // Different cases and quoted, so it fails
+					Query:       `SELECT * FROM "PG_catalog"."pg_collation";`,
+					ExpectedErr: "not",
+				},
+				{ // Different cases and quoted, so it fails
+					Query:       `SELECT * FROM "pg_catalog"."PG_collation";`,
+					ExpectedErr: "not",
+				},
+				{ // Different cases but non-quoted, so it works
+					Query:    "SELECT collname FROM PG_catalog.pg_COLLATION ORDER BY collname;",
+					Expected: []sql.Row{},
+				},
+			},
+		},
+	})
+}
+
 func TestPgConstraint(t *testing.T) {
 	RunScripts(t, []ScriptTest{
 		{

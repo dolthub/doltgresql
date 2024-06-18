@@ -39,6 +39,7 @@ teardown() {
     [[ "$output" =~ "public,pg_authid,table,postgres" ]] || false
     [[ "$output" =~ "public,pg_cast,table,postgres" ]] || false
     [[ "$output" =~ "public,pg_class,table,postgres" ]] || false
+    [[ "$output" =~ "public,pg_collation,table,postgres" ]] || false
     [[ "$output" =~ "public,pg_constraint,table,postgres" ]] || false
     [[ "$output" =~ "public,pg_database,table,postgres" ]] || false
     [[ "$output" =~ "public,pg_description,table,postgres" ]] || false
@@ -52,7 +53,7 @@ teardown() {
     [[ "$output" =~ "public,pg_type,table,postgres" ]] || false
     [[ "$output" =~ "public,test1,table,postgres" ]] || false
     [[ "$output" =~ "public,test2,table,postgres" ]] || false
-    [ "${#lines[@]}" -eq 24 ]
+    [ "${#lines[@]}" -eq 25 ]
 }
 
 @test 'psql-commands: \d' {
@@ -69,6 +70,7 @@ teardown() {
     [[ "$output" =~ "public,pg_authid,table,postgres" ]] || false
     [[ "$output" =~ "public,pg_cast,table,postgres" ]] || false
     [[ "$output" =~ "public,pg_class,table,postgres" ]] || false
+    [[ "$output" =~ "public,pg_collation,table,postgres" ]] || false
     [[ "$output" =~ "public,pg_constraint,table,postgres" ]] || false
     [[ "$output" =~ "public,pg_database,table,postgres" ]] || false
     [[ "$output" =~ "public,pg_description,table,postgres" ]] || false
@@ -82,7 +84,7 @@ teardown() {
     [[ "$output" =~ "public,pg_type,table,postgres" ]] || false
     [[ "$output" =~ "public,test1,table,postgres" ]] || false
     [[ "$output" =~ "public,test2,table,postgres" ]] || false
-    [ "${#lines[@]}" -eq 24 ]
+    [ "${#lines[@]}" -eq 25 ]
 }
 
 @test 'psql-commands: \d table' {

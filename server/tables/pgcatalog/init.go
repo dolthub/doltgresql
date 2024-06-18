@@ -29,6 +29,7 @@ func Init() {
 	InitPgAuthid()
 	InitPgCast()
 	InitPgClass()
+	InitPgCollation()
 	InitPgConstraint()
 	InitPgDatabase()
 	InitPgDescription()
