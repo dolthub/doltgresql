@@ -22,6 +22,7 @@ func Init() {
 	InitPgAm()
 	InitPgAttribute()
 	InitPgClass()
+	InitPgConstraint()
 	InitPgDatabase()
 	InitPgSequence()
 }

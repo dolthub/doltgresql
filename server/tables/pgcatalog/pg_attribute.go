@@ -48,6 +48,7 @@ func emptyRowIter() (sql.RowIter, error) {
 
 // RowIter implements the interface tables.Handler.
 func (p PgAttributeHandler) RowIter(ctx *sql.Context) (sql.RowIter, error) {
+	// TODO: Implement pg_attribute row iter
 	return emptyRowIter()
 }
 

@@ -43,6 +43,7 @@ func (p PgAmHandler) Name() string {
 
 // RowIter implements the interface tables.Handler.
 func (p PgAmHandler) RowIter(ctx *sql.Context) (sql.RowIter, error) {
+	// TODO: Implement pg_am row iter
 	return emptyRowIter()
 }
 
