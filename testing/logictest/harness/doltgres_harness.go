@@ -24,8 +24,6 @@ import (
 	_ "github.com/jackc/pgx/v4/stdlib"
 )
 
-var _ logictest.Harness = &PostgresqlServerHarness{}
-
 // sqllogictest harness for postgres databases.
 type PostgresqlServerHarness struct {
 	dsn     string
@@ -79,6 +77,28 @@ func (h *PostgresqlServerHarness) ExecuteQuery(statement string) (schema string,
 		return "", nil, err
 	}
 
+	return h.getSchemaAndResults(rows)
+}
+
+func (h *PostgresqlServerHarness) ExecuteStatementContext(ctx context.Context, statement string) error {
+	_, err := h.db.ExecContext(ctx, statement)
+	return err
+}
+
+func (h *PostgresqlServerHarness) ExecuteQueryContext(ctx context.Context, statement string) (schema string, results []string, err error) {
+	rows, err := h.db.QueryContext(ctx, statement)
+	if rows != nil {
+		defer rows.Close()
+	}
+
+	if err != nil {
+		return "", nil, err
+	}
+
+	return h.getSchemaAndResults(rows)
+}
+
+func (h *PostgresqlServerHarness) getSchemaAndResults(rows *sql.Rows) (schema string, results []string, err error) {
 	schema, columns, err := columns(rows)
 	if err != nil {
 		return "", nil, err

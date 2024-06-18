@@ -236,6 +236,8 @@ github.com/dolthub/maphash v0.0.0-20221220182448-74e1e1ea1577 h1:SegEguMxToBn045
 github.com/dolthub/maphash v0.0.0-20221220182448-74e1e1ea1577/go.mod h1:gkg4Ch4CdCDu5h6PMriVLawB7koZ+5ijb9puGMV50a4=
 github.com/dolthub/sqllogictest/go v0.0.0-20240118211725-a52e3f5697e3 h1:+eDpuEJ9t8aag943P27VS5PFNhp5l+6NIJ/Rc3b164o=
 github.com/dolthub/sqllogictest/go v0.0.0-20240118211725-a52e3f5697e3/go.mod h1:e/FIZVvT2IR53HBCAo41NjqgtEnjMJGKca3Y/dAmZaA=
+github.com/dolthub/sqllogictest/go v0.0.0-20240618184124-ca47f9354216 h1:JWkKRE4EHUcEVQCMRBej8DYxjYjRz/9MdF/NNQh0o70=
+github.com/dolthub/sqllogictest/go v0.0.0-20240618184124-ca47f9354216/go.mod h1:e/FIZVvT2IR53HBCAo41NjqgtEnjMJGKca3Y/dAmZaA=
 github.com/dolthub/swiss v0.1.0 h1:EaGQct3AqeP/MjASHLiH6i4TAmgbG/c4rA6a1bzCOPc=
 github.com/dolthub/swiss v0.1.0/go.mod h1:BeucyB08Vb1G9tumVN3Vp/pyY4AMUnr9p7Rz7wJ7kAQ=
 github.com/dolthub/vitess v0.0.0-20240613191234-d432e84165f1 h1:UPBwWaa8htRLV1n22D+p7z2rCDGTdlI2Aw2W6e+d9+A=
