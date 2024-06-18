@@ -114,21 +114,21 @@ func (iter *pgDatabaseRowIter) Next(ctx *sql.Context) (sql.Row, error) {
 		uint32(iter.idx), // oid
 		db.Name(),        // datname
 		// TODO: Add the rest of the pg_database columns
-		nil, // datdba
-		nil, // encoding
-		nil, // datlocprovider
-		nil, // datistemplate
-		nil, // datallowconn
-		nil, // datconnlimit
-		nil, // datfrozenxid
-		nil, // datminmxid
-		nil, // dattablespace
-		nil, // datcollate
-		nil, // datctype
-		nil, // daticulocale
-		nil, // daticurules
-		nil, // datcollversion
-		nil, // datacl
+		uint32(0), // datdba
+		int32(0),  // encoding
+		"i",       // datlocprovider
+		false,     // datistemplate
+		true,      // datallowconn
+		int32(-1), // datconnlimit
+		uint32(0), // datfrozenxid
+		uint32(0), // datminmxid
+		uint32(0), // dattablespace
+		"",        // datcollate
+		"",        // datctype
+		nil,       // daticulocale
+		"",        // daticurules
+		nil,       // datcollversion
+		nil,       // datacl
 	}, nil
 }
 

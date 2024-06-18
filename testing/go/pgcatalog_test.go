@@ -48,9 +48,9 @@ func TestPgDatabase(t *testing.T) {
 					},
 				},
 				{
-					Query: "SELECT datname FROM pg_catalog.pg_database WHERE datname='test';",
+					Query: "SELECT * FROM pg_catalog.pg_database WHERE datname='test';",
 					Expected: []sql.Row{
-						{"test"},
+						{2, "test", 0, 0, "i", "f", "t", -1, 0, 0, 0, "", "", nil, "", nil, nil},
 					},
 				},
 			},
