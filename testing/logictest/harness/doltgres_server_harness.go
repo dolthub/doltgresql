@@ -200,11 +200,13 @@ func (h *DoltgresHarness) getSchemaAndResults(rows *sql.Rows) (schema string, re
 }
 
 func (h *DoltgresHarness) ExecuteStatementContext(ctx context.Context, statement string) error {
+	fmt.Println("DUSTIN: Executing statement:", statement)
 	_, err := h.db.ExecContext(ctx, statement)
 	return err
 }
 
 func (h *DoltgresHarness) ExecuteQueryContext(ctx context.Context, statement string) (schema string, results []string, err error) {
+	fmt.Println("DUSTIN: Executing query:", statement)
 	rows, err := h.db.QueryContext(ctx, statement)
 	if rows != nil {
 		defer rows.Close()
