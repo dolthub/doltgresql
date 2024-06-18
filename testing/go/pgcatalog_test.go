@@ -6,6 +6,58 @@ import (
 	"github.com/dolthub/go-mysql-server/sql"
 )
 
+func TestPgAttribute(t *testing.T) {
+	RunScripts(t, []ScriptTest{
+		{
+			Name: "pg_attribute",
+			Assertions: []ScriptTestAssertion{
+				{
+					Query:    `SELECT * FROM "pg_catalog"."pg_attribute";`,
+					Expected: []sql.Row{},
+				},
+				{ // Different cases and quoted, so it fails
+					Query:       `SELECT * FROM "PG_catalog"."pg_attribute";`,
+					ExpectedErr: "not",
+				},
+				{ // Different cases and quoted, so it fails
+					Query:       `SELECT * FROM "pg_catalog"."PG_attribute";`,
+					ExpectedErr: "not",
+				},
+				{ // Different cases but non-quoted, so it works
+					Query:    "SELECT attname FROM PG_catalog.pg_ATTRIBUTE ORDER BY attname;",
+					Expected: []sql.Row{},
+				},
+			},
+		},
+	})
+}
+
+func TestPgClass(t *testing.T) {
+	RunScripts(t, []ScriptTest{
+		{
+			Name: "pg_class",
+			Assertions: []ScriptTestAssertion{
+				{
+					Query:    `SELECT * FROM "pg_catalog"."pg_class";`,
+					Expected: []sql.Row{},
+				},
+				{ // Different cases and quoted, so it fails
+					Query:       `SELECT * FROM "PG_catalog"."pg_class";`,
+					ExpectedErr: "not",
+				},
+				{ // Different cases and quoted, so it fails
+					Query:       `SELECT * FROM "pg_catalog"."PG_class";`,
+					ExpectedErr: "not",
+				},
+				{ // Different cases but non-quoted, so it works
+					Query:    "SELECT relname FROM PG_catalog.pg_CLASS ORDER BY relname;",
+					Expected: []sql.Row{},
+				},
+			},
+		},
+	})
+}
+
 // TODO: Figure out why there is not a doltgres database when running these tests locally
 func TestPgDatabase(t *testing.T) {
 	RunScripts(t, []ScriptTest{
@@ -53,32 +105,6 @@ func TestPgDatabase(t *testing.T) {
 					Expected: []sql.Row{
 						{3, "test", 0, 0, "i", "f", "t", -1, 0, 0, 0, "", "", nil, "", nil, nil},
 					},
-				},
-			},
-		},
-	})
-}
-
-func TestPgAttribute(t *testing.T) {
-	RunScripts(t, []ScriptTest{
-		{
-			Name: "pg_attribute",
-			Assertions: []ScriptTestAssertion{
-				{
-					Query:    `SELECT * FROM "pg_catalog"."pg_attribute";`,
-					Expected: []sql.Row{},
-				},
-				{ // Different cases and quoted, so it fails
-					Query:       `SELECT * FROM "PG_catalog"."pg_attribute";`,
-					ExpectedErr: "not",
-				},
-				{ // Different cases and quoted, so it fails
-					Query:       `SELECT * FROM "pg_catalog"."PG_attribute";`,
-					ExpectedErr: "not",
-				},
-				{ // Different cases but non-quoted, so it works
-					Query:    "SELECT attname FROM PG_catalog.pg_ATTRIBUTE ORDER BY attname;",
-					Expected: []sql.Row{},
 				},
 			},
 		},
