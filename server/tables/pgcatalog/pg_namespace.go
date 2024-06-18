@@ -65,7 +65,6 @@ var pgNamespaceSchema = sql.Schema{
 
 // pgNamespaceRowIter is the sql.RowIter for the pg_namespace table.
 type pgNamespaceRowIter struct {
-	idx int
 }
 
 var _ sql.RowIter = (*pgNamespaceRowIter)(nil)

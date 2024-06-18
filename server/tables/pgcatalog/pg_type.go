@@ -93,7 +93,6 @@ var pgTypeSchema = sql.Schema{
 
 // pgTypeRowIter is the sql.RowIter for the pg_type table.
 type pgTypeRowIter struct {
-	idx int
 }
 
 var _ sql.RowIter = (*pgTypeRowIter)(nil)

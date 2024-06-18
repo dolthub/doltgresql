@@ -66,19 +66,18 @@ var PgEventTriggerSchema = sql.Schema{
 	{Name: "evttags", Type: pgtypes.TextArray, Default: nil, Nullable: true, Source: PgEventTriggerName}, // TODO: collation C
 }
 
-// PgEventTriggerRowIter is the sql.RowIter for the pg_event_trigger table.
-type PgEventTriggerRowIter struct {
-	idx int
+// pgEventTriggerRowIter is the sql.RowIter for the pg_event_trigger table.
+type pgEventTriggerRowIter struct {
 }
 
-var _ sql.RowIter = (*PgEventTriggerRowIter)(nil)
+var _ sql.RowIter = (*pgEventTriggerRowIter)(nil)
 
 // Next implements the interface sql.RowIter.
-func (iter *PgEventTriggerRowIter) Next(ctx *sql.Context) (sql.Row, error) {
+func (iter *pgEventTriggerRowIter) Next(ctx *sql.Context) (sql.Row, error) {
 	return nil, io.EOF
 }
 
 // Close implements the interface sql.RowIter.
-func (iter *PgEventTriggerRowIter) Close(ctx *sql.Context) error {
+func (iter *pgEventTriggerRowIter) Close(ctx *sql.Context) error {
 	return nil
 }

@@ -94,7 +94,6 @@ var pgClassSchema = sql.Schema{
 
 // pgClassRowIter is the sql.RowIter for the pg_class table.
 type pgClassRowIter struct {
-	idx int
 }
 
 var _ sql.RowIter = (*pgClassRowIter)(nil)

@@ -85,19 +85,18 @@ var PgConstraintSchema = sql.Schema{
 	{Name: "conbin", Type: pgtypes.Text, Default: nil, Nullable: true, Source: PgConstraintName}, // TODO: type pg_node_tree, collation C
 }
 
-// PgConstraintRowIter is the sql.RowIter for the pg_constraint table.
-type PgConstraintRowIter struct {
-	idx int
+// pgConstraintRowIter is the sql.RowIter for the pg_constraint table.
+type pgConstraintRowIter struct {
 }
 
-var _ sql.RowIter = (*PgConstraintRowIter)(nil)
+var _ sql.RowIter = (*pgConstraintRowIter)(nil)
 
 // Next implements the interface sql.RowIter.
-func (iter *PgConstraintRowIter) Next(ctx *sql.Context) (sql.Row, error) {
+func (iter *pgConstraintRowIter) Next(ctx *sql.Context) (sql.Row, error) {
 	return nil, io.EOF
 }
 
 // Close implements the interface sql.RowIter.
-func (iter *PgConstraintRowIter) Close(ctx *sql.Context) error {
+func (iter *pgConstraintRowIter) Close(ctx *sql.Context) error {
 	return nil
 }

@@ -92,7 +92,6 @@ var pgAttributeSchema = sql.Schema{
 
 // pgAttributeRowIter is the sql.RowIter for the pg_attribute table.
 type pgAttributeRowIter struct {
-	idx int
 }
 
 var _ sql.RowIter = (*pgAttributeRowIter)(nil)

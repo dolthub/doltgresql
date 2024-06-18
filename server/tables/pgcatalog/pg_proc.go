@@ -91,7 +91,6 @@ var pgProcSchema = sql.Schema{
 
 // pgProcRowIter is the sql.RowIter for the pg_proc table.
 type pgProcRowIter struct {
-	idx int
 }
 
 var _ sql.RowIter = (*pgProcRowIter)(nil)

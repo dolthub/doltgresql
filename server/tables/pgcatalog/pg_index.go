@@ -82,7 +82,6 @@ var pgIndexSchema = sql.Schema{
 
 // pgIndexRowIter is the sql.RowIter for the pg_index table.
 type pgIndexRowIter struct {
-	idx int
 }
 
 var _ sql.RowIter = (*pgIndexRowIter)(nil)
