@@ -21,6 +21,7 @@ const PgCatalogName = "pg_catalog"
 func Init() {
 	InitPgAggregate()
 	InitPgAm()
+	InitPgAmop()
 	InitPgAttribute()
 	InitPgAuthMembers()
 	InitPgClass()

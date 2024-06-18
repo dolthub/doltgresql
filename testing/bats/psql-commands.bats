@@ -31,6 +31,7 @@ teardown() {
     [ "$status" -eq 0 ]
     [[ "$output" =~ "public,pg_aggregate,table,postgres" ]] || false
     [[ "$output" =~ "public,pg_am,table,postgres" ]] || false
+    [[ "$output" =~ "public,pg_amop,table,postgres" ]] || false
     [[ "$output" =~ "public,pg_attribute,table,postgres" ]] || false
     [[ "$output" =~ "public,pg_auth_members,table,postgres" ]] || false
     [[ "$output" =~ "public,pg_class,table,postgres" ]] || false
@@ -47,7 +48,7 @@ teardown() {
     [[ "$output" =~ "public,pg_type,table,postgres" ]] || false
     [[ "$output" =~ "public,test1,table,postgres" ]] || false
     [[ "$output" =~ "public,test2,table,postgres" ]] || false
-    [ "${#lines[@]}" -eq 19 ]
+    [ "${#lines[@]}" -eq 20 ]
 }
 
 @test 'psql-commands: \d' {
@@ -56,6 +57,7 @@ teardown() {
     [ "$status" -eq 0 ]
     [[ "$output" =~ "public,pg_aggregate,table,postgres" ]] || false
     [[ "$output" =~ "public,pg_am,table,postgres" ]] || false
+     [[ "$output" =~ "public,pg_amop,table,postgres" ]] || false
     [[ "$output" =~ "public,pg_attribute,table,postgres" ]] || false
     [[ "$output" =~ "public,pg_auth_members,table,postgres" ]] || false
     [[ "$output" =~ "public,pg_class,table,postgres" ]] || false
@@ -72,7 +74,7 @@ teardown() {
     [[ "$output" =~ "public,pg_type,table,postgres" ]] || false
     [[ "$output" =~ "public,test1,table,postgres" ]] || false
     [[ "$output" =~ "public,test2,table,postgres" ]] || false
-    [ "${#lines[@]}" -eq 19 ]
+    [ "${#lines[@]}" -eq 20 ]
 }
 
 @test 'psql-commands: \d table' {

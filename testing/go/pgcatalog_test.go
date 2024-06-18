@@ -24,7 +24,7 @@ func TestPgAggregate(t *testing.T) {
 					ExpectedErr: "not",
 				},
 				{ // Different cases but non-quoted, so it works
-					Query:    "SELECT amname FROM PG_catalog.pg_AGGREGATE ORDER BY amname;",
+					Query:    "SELECT aggfnoid FROM PG_catalog.pg_AGGREGATE ORDER BY aggfnoid;",
 					Expected: []sql.Row{},
 				},
 			},
@@ -51,6 +51,32 @@ func TestPgAm(t *testing.T) {
 				},
 				{ // Different cases but non-quoted, so it works
 					Query:    "SELECT amname FROM PG_catalog.pg_AM ORDER BY amname;",
+					Expected: []sql.Row{},
+				},
+			},
+		},
+	})
+}
+
+func TestPgAmop(t *testing.T) {
+	RunScripts(t, []ScriptTest{
+		{
+			Name: "pg_amop",
+			Assertions: []ScriptTestAssertion{
+				{
+					Query:    `SELECT * FROM "pg_catalog"."pg_amop";`,
+					Expected: []sql.Row{},
+				},
+				{ // Different cases and quoted, so it fails
+					Query:       `SELECT * FROM "PG_catalog"."pg_amop";`,
+					ExpectedErr: "not",
+				},
+				{ // Different cases and quoted, so it fails
+					Query:       `SELECT * FROM "pg_catalog"."PG_amop";`,
+					ExpectedErr: "not",
+				},
+				{ // Different cases but non-quoted, so it works
+					Query:    "SELECT oid FROM PG_catalog.pg_AMOP ORDER BY oid;",
 					Expected: []sql.Row{},
 				},
 			},
