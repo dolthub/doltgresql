@@ -80,7 +80,6 @@ var pgTriggerSchema = sql.Schema{
 
 // pgTriggerRowIter is the sql.RowIter for the pg_trigger table.
 type pgTriggerRowIter struct {
-	idx int
 }
 
 var _ sql.RowIter = (*pgTriggerRowIter)(nil)

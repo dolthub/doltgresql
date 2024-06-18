@@ -29,11 +29,21 @@ teardown() {
 @test 'psql-commands: \dt' {
     run query_server --csv -c "\dt"
     [ "$status" -eq 0 ]
+    [[ "$output" =~ "public,pg_am,table,postgres" ]] || false
+    [[ "$output" =~ "public,pg_attribute,table,postgres" ]] || false
+    [[ "$output" =~ "public,pg_class,table,postgres" ]] || false
+    [[ "$output" =~ "public,pg_constraint,table,postgres" ]] || false
     [[ "$output" =~ "public,pg_database,table,postgres" ]] || false
+    [[ "$output" =~ "public,pg_event_trigger,table,postgres" ]] || false
+    [[ "$output" =~ "public,pg_index,table,postgres" ]] || false
+    [[ "$output" =~ "public,pg_namespace,table,postgres" ]] || false
+    [[ "$output" =~ "public,pg_proc,table,postgres" ]] || false
     [[ "$output" =~ "public,pg_sequence,table,postgres" ]] || false
+    [[ "$output" =~ "public,pg_trigger,table,postgres" ]] || false
+    [[ "$output" =~ "public,pg_type,table,postgres" ]] || false
     [[ "$output" =~ "public,test1,table,postgres" ]] || false
     [[ "$output" =~ "public,test2,table,postgres" ]] || false
-    [ "${#lines[@]}" -eq 5 ]
+    [ "${#lines[@]}" -eq 15 ]
 }
 
 @test 'psql-commands: \d' {

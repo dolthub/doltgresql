@@ -65,7 +65,6 @@ var pgAmSchema = sql.Schema{
 
 // pgAmRowIter is the sql.RowIter for the pg_am table.
 type pgAmRowIter struct {
-	idx int
 }
 
 var _ sql.RowIter = (*pgAmRowIter)(nil)
