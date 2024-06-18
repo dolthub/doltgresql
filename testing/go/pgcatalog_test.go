@@ -6,6 +6,32 @@ import (
 	"github.com/dolthub/go-mysql-server/sql"
 )
 
+func TestPgAggregate(t *testing.T) {
+	RunScripts(t, []ScriptTest{
+		{
+			Name: "pg_aggregate",
+			Assertions: []ScriptTestAssertion{
+				{
+					Query:    `SELECT * FROM "pg_catalog"."pg_aggregate";`,
+					Expected: []sql.Row{},
+				},
+				{ // Different cases and quoted, so it fails
+					Query:       `SELECT * FROM "PG_catalog"."pg_aggregate";`,
+					ExpectedErr: "not",
+				},
+				{ // Different cases and quoted, so it fails
+					Query:       `SELECT * FROM "pg_catalog"."PG_aggregate";`,
+					ExpectedErr: "not",
+				},
+				{ // Different cases but non-quoted, so it works
+					Query:    "SELECT amname FROM PG_catalog.pg_AGGREGATE ORDER BY amname;",
+					Expected: []sql.Row{},
+				},
+			},
+		},
+	})
+}
+
 func TestPgAm(t *testing.T) {
 	RunScripts(t, []ScriptTest{
 		{
