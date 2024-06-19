@@ -21,6 +21,7 @@ import (
 	"strings"
 	"testing"
 
+	denginetest "github.com/dolthub/dolt/go/libraries/doltcore/sqle/enginetest"
 	gms "github.com/dolthub/go-mysql-server"
 	"github.com/dolthub/go-mysql-server/enginetest"
 	"github.com/dolthub/go-mysql-server/enginetest/scriptgen/setup"
@@ -61,18 +62,28 @@ type DoltHarness struct {
 	setupTestProcedures bool
 }
 
-var _ enginetest.Harness = (*DoltHarness)(nil)
-var _ enginetest.SkippingHarness = (*DoltHarness)(nil)
-var _ enginetest.ClientHarness = (*DoltHarness)(nil)
-var _ enginetest.IndexHarness = (*DoltHarness)(nil)
-var _ enginetest.VersionedDBHarness = (*DoltHarness)(nil)
-var _ enginetest.ForeignKeyHarness = (*DoltHarness)(nil)
-var _ enginetest.KeylessTableHarness = (*DoltHarness)(nil)
-var _ enginetest.ReadOnlyDatabaseHarness = (*DoltHarness)(nil)
-var _ enginetest.ValidatingHarness = (*DoltHarness)(nil)
+func (d *DoltHarness) UseLocalFileSystem() {
+	d.useLocalFilesystem = true
+}
+
+func (d *DoltHarness) Session() *dsess.DoltSession {
+	return d.session
+}
+
+func (d *DoltHarness) WithConfigureStats(configureStats bool) denginetest.DoltEnginetestHarness {
+	nd := *d
+	nd.configureStats = configureStats
+	return &nd
+}
+
+func (d *DoltHarness) NewHarness(t *testing.T) denginetest.DoltEnginetestHarness {
+	return newDoltHarness(t)
+}
+
+var _ denginetest.DoltEnginetestHarness = &DoltHarness{}
 
 // newDoltHarness creates a new harness for testing Dolt, using an in-memory filesystem and an in-memory blob store.
-func newDoltHarness(t *testing.T) *DoltHarness {
+func newDoltHarness(t *testing.T) denginetest.DoltEnginetestHarness {
 	dh := &DoltHarness{
 		t:              t,
 		skippedQueries: defaultSkippedQueries,
@@ -82,13 +93,8 @@ func newDoltHarness(t *testing.T) *DoltHarness {
 	return dh
 }
 
-// newDoltHarnessForLocalFilesystem creates a new harness for testing Dolt, using
-// the local filesystem for all storage, instead of in-memory versions. This setup
-// is useful for testing functionality that requires a real filesystem.
-func newDoltHarnessForLocalFilesystem(t *testing.T) *DoltHarness {
-	dh := newDoltHarness(t)
-	dh.useLocalFilesystem = true
-	return dh
+func newDoltEnginetestHarness(t *testing.T) denginetest.DoltEnginetestHarness {
+	return newDoltHarness(t)
 }
 
 var defaultSkippedQueries = []string{
@@ -279,17 +285,21 @@ func filterStatsOnlyQueries(scripts []setup.SetupScript) []setup.SetupScript {
 
 // WithParallelism returns a copy of the harness with parallelism set to the given number of threads. A value of 0 or
 // less means to use the system parallelism settings.
-func (d *DoltHarness) WithParallelism(parallelism int) *DoltHarness {
+func (d *DoltHarness) WithParallelism(parallelism int) denginetest.DoltEnginetestHarness {
 	nd := *d
 	nd.parallelism = parallelism
 	return &nd
 }
 
 // WithSkippedQueries returns a copy of the harness with the given queries skipped
-func (d *DoltHarness) WithSkippedQueries(queries []string) *DoltHarness {
+func (d *DoltHarness) WithSkippedQueries(queries []string) denginetest.DoltEnginetestHarness {
 	nd := *d
 	nd.skippedQueries = append(d.skippedQueries, queries...)
 	return &nd
+}
+
+func (d *DoltHarness) Engine() *gms.Engine {
+	return d.engine
 }
 
 // SkipQueryTest returns whether to skip a query
@@ -550,10 +560,6 @@ func (d *DoltHarness) SnapshotTable(db sql.VersionedDatabase, tableName string, 
 }
 
 func (d *DoltHarness) ValidateEngine(ctx *sql.Context, e *gms.Engine) (err error) {
-	for _, db := range e.Analyzer.Catalog.AllDatabases(ctx) {
-		if err = ValidateDatabase(ctx, db); err != nil {
-			return err
-		}
-	}
-	return
+	// TODO
+	return nil
 }

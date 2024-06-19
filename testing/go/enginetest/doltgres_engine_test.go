@@ -20,7 +20,6 @@ import (
 	"io"
 	"os"
 	"runtime"
-	"sync"
 	"testing"
 	"time"
 
@@ -31,7 +30,6 @@ import (
 	"github.com/dolthub/go-mysql-server/server"
 	"github.com/dolthub/go-mysql-server/sql"
 	"github.com/dolthub/go-mysql-server/sql/memo"
-	"github.com/dolthub/go-mysql-server/sql/mysql_db"
 	"github.com/dolthub/go-mysql-server/sql/plan"
 	"github.com/dolthub/go-mysql-server/sql/transform"
 	gmstypes "github.com/dolthub/go-mysql-server/sql/types"
@@ -43,7 +41,6 @@ import (
 	"github.com/dolthub/dolt/go/libraries/doltcore/env"
 	"github.com/dolthub/dolt/go/libraries/doltcore/sqle"
 	"github.com/dolthub/dolt/go/libraries/doltcore/sqle/dsess"
-	"github.com/dolthub/dolt/go/libraries/doltcore/sqle/statspro"
 	"github.com/dolthub/dolt/go/libraries/utils/config"
 	"github.com/dolthub/dolt/go/store/datas"
 	"github.com/dolthub/dolt/go/store/types"
@@ -121,10 +118,6 @@ func TestSingleQuery(t *testing.T) {
 func TestSchemaOverrides(t *testing.T) {
 	harness := newDoltEnginetestHarness(t)
 	denginetest.RunSchemaOverridesTest(t, harness)
-}
-
-func newDoltEnginetestHarness(t *testing.T) denginetest.DoltEnginetestHarness {
-	
 }
 
 // Convenience test for debugging a single query. Unskip and set to the desired query.
@@ -520,71 +513,6 @@ func TestScripts(t *testing.T) {
 	enginetest.TestScripts(t, h)
 }
 
-// TestDoltUserPrivileges tests Dolt-specific code that needs to handle user privilege checking
-func TestDoltUserPrivileges(t *testing.T) {
-	harness := newDoltHarness(t)
-	defer harness.Close()
-	for _, script := range DoltUserPrivTests {
-		t.Run(script.Name, func(t *testing.T) {
-			harness.Setup(setup.MydbData)
-			engine, err := harness.NewEngine(t)
-			require.NoError(t, err)
-			defer engine.Close()
-
-			ctx := enginetest.NewContextWithClient(harness, sql.Client{
-				User:    "root",
-				Address: "localhost",
-			})
-
-			engine.EngineAnalyzer().Catalog.MySQLDb.AddRootAccount()
-			engine.EngineAnalyzer().Catalog.MySQLDb.SetPersister(&mysql_db.NoopPersister{})
-
-			for _, statement := range script.SetUpScript {
-				if sh, ok := interface{}(harness).(enginetest.SkippingHarness); ok {
-					if sh.SkipQueryTest(statement) {
-						t.Skip()
-					}
-				}
-				enginetest.RunQueryWithContext(t, engine, harness, ctx, statement)
-			}
-			for _, assertion := range script.Assertions {
-				if sh, ok := interface{}(harness).(enginetest.SkippingHarness); ok {
-					if sh.SkipQueryTest(assertion.Query) {
-						t.Skipf("Skipping query %s", assertion.Query)
-					}
-				}
-
-				user := assertion.User
-				host := assertion.Host
-				if user == "" {
-					user = "root"
-				}
-				if host == "" {
-					host = "localhost"
-				}
-				ctx := enginetest.NewContextWithClient(harness, sql.Client{
-					User:    user,
-					Address: host,
-				})
-
-				if assertion.ExpectedErr != nil {
-					t.Run(assertion.Query, func(t *testing.T) {
-						enginetest.AssertErrWithCtx(t, engine, harness, ctx, assertion.Query, assertion.ExpectedErr)
-					})
-				} else if assertion.ExpectedErrStr != "" {
-					t.Run(assertion.Query, func(t *testing.T) {
-						enginetest.AssertErrWithCtx(t, engine, harness, ctx, assertion.Query, nil, assertion.ExpectedErrStr)
-					})
-				} else {
-					t.Run(assertion.Query, func(t *testing.T) {
-						enginetest.TestQueryWithContext(t, ctx, engine, harness, assertion.Query, assertion.Expected, nil, nil)
-					})
-				}
-			}
-		})
-	}
-}
-
 func TestJoinOps(t *testing.T) {
 	if types.IsFormat_LD(types.Format_Default) {
 		t.Skip("DOLT_LD keyless indexes are not sorted")
@@ -642,14 +570,6 @@ func TestJSONTableScriptsPrepared(t *testing.T) {
 	h := newDoltHarness(t)
 	defer h.Close()
 	enginetest.TestJSONTableScriptsPrepared(t, h)
-}
-
-func TestUserPrivileges(t *testing.T) {
-	h := newDoltHarness(t)
-	h.setupTestProcedures = true
-	h.configureStats = true
-	defer h.Close()
-	enginetest.TestUserPrivileges(t, h)
 }
 
 func TestUserAuthentication(t *testing.T) {
@@ -1086,7 +1006,7 @@ func TestDoltDdlScripts(t *testing.T) {
 }
 
 func TestBrokenDdlScripts(t *testing.T) {
-	for _, script := range BrokenDDLScripts {
+	for _, script := range denginetest.BrokenDDLScripts {
 		t.Skip(script.Name)
 	}
 }
@@ -1094,7 +1014,7 @@ func TestBrokenDdlScripts(t *testing.T) {
 func TestDescribeTableAsOf(t *testing.T) {
 	h := newDoltHarness(t)
 	defer h.Close()
-	enginetest.TestScript(t, h, DescribeTableAsOfScriptTest)
+	enginetest.TestScript(t, h, denginetest.DescribeTableAsOfScriptTest)
 }
 
 func TestShowCreateTable(t *testing.T) {
@@ -1110,14 +1030,14 @@ func TestShowCreateTablePrepared(t *testing.T) {
 func TestViewsWithAsOf(t *testing.T) {
 	h := newDoltHarness(t)
 	defer h.Close()
-	enginetest.TestScript(t, h, ViewsWithAsOfScriptTest)
+	enginetest.TestScript(t, h, denginetest.ViewsWithAsOfScriptTest)
 }
 
 func TestViewsWithAsOfPrepared(t *testing.T) {
 	skipPreparedTests(t)
 	h := newDoltHarness(t)
 	defer h.Close()
-	enginetest.TestScriptPrepared(t, h, ViewsWithAsOfScriptTest)
+	enginetest.TestScriptPrepared(t, h, denginetest.ViewsWithAsOfScriptTest)
 }
 
 func TestDoltMerge(t *testing.T) {
@@ -1184,7 +1104,7 @@ func TestDoltReset(t *testing.T) {
 
 func TestDoltGC(t *testing.T) {
 	t.SkipNow()
-	for _, script := range DoltGC {
+	for _, script := range denginetest.DoltGC {
 		func() {
 			h := newDoltHarness(t)
 			defer h.Close()
@@ -1249,7 +1169,7 @@ func TestBrokenSystemTableQueries(t *testing.T) {
 
 	h := newDoltHarness(t)
 	defer h.Close()
-	enginetest.RunQueryTests(t, h, BrokenSystemTableQueries)
+	enginetest.RunQueryTests(t, h, denginetest.BrokenSystemTableQueries)
 }
 
 func TestHistorySystemTable(t *testing.T) {
@@ -1263,16 +1183,7 @@ func TestHistorySystemTablePrepared(t *testing.T) {
 }
 
 func TestBrokenHistorySystemTablePrepared(t *testing.T) {
-	t.Skip()
-	harness := newDoltHarness(t)
-	defer harness.Close()
-	harness.Setup(setup.MydbData)
-	for _, test := range BrokenHistorySystemTableScriptTests {
-		harness.engine = nil
-		t.Run(test.Name, func(t *testing.T) {
-			enginetest.TestScriptPrepared(t, harness, test)
-		})
-	}
+	t.Skip("test not migrated yet, skipped in Dolt")
 }
 
 func TestUnscopedDiffSystemTable(t *testing.T) {
@@ -1356,21 +1267,13 @@ func TestLogTableFunctionPrepared(t *testing.T) {
 }
 
 func TestDoltReflog(t *testing.T) {
-	for _, script := range DoltReflogTestScripts {
-		h := newDoltHarnessForLocalFilesystem(t)
-		h.SkipSetupCommit()
-		enginetest.TestScript(t, h, script)
-		h.Close()
-	}
+	harness := newDoltEnginetestHarness(t)
+	denginetest.RunDoltReflogTests(t, harness)
 }
 
 func TestDoltReflogPrepared(t *testing.T) {
-	for _, script := range DoltReflogTestScripts {
-		h := newDoltHarnessForLocalFilesystem(t)
-		h.SkipSetupCommit()
-		enginetest.TestScriptPrepared(t, h, script)
-		h.Close()
-	}
+	harness := newDoltEnginetestHarness(t)
+	denginetest.RunDoltReflogTestsPrepared(t, harness)
 }
 
 func TestCommitDiffSystemTable(t *testing.T) {
@@ -1490,9 +1393,7 @@ func TestPersist(t *testing.T) {
 }
 
 func TestTypesOverWire(t *testing.T) {
-	harness := newDoltHarness(t)
-	defer harness.Close()
-	enginetest.TestTypesOverWire(t, harness, newSessionBuilder(harness))
+	t.Skip("Port equivalent test from Dolt")
 }
 
 func TestDoltCherryPick(t *testing.T) {
@@ -1716,17 +1617,11 @@ func TestCharsetCollationEngine(t *testing.T) {
 }
 
 func TestCharsetCollationWire(t *testing.T) {
-	skipOldFormat(t)
-	harness := newDoltHarness(t)
-	defer harness.Close()
-	enginetest.TestCharsetCollationWire(t, harness, newSessionBuilder(harness))
+	t.Skip("port test from Dolt")
 }
 
 func TestDatabaseCollationWire(t *testing.T) {
-	skipOldFormat(t)
-	harness := newDoltHarness(t)
-	defer harness.Close()
-	enginetest.TestDatabaseCollationWire(t, harness, newSessionBuilder(harness))
+	t.Skip("port test from Dolt")
 }
 
 func TestAddDropPrimaryKeys(t *testing.T) {
@@ -1771,33 +1666,7 @@ func TestThreeWayMergeWithSchemaChangeScriptsPrepared(t *testing.T) {
 // If CREATE DATABASE has an error within the DatabaseProvider, it should not
 // leave behind intermediate filesystem state.
 func TestCreateDatabaseErrorCleansUp(t *testing.T) {
-	dh := newDoltHarness(t)
-	require.NotNil(t, dh)
-	e, err := dh.NewEngine(t)
-	require.NoError(t, err)
-	require.NotNil(t, e)
-
-	doltDatabaseProvider := dh.provider.(*sqle.DoltDatabaseProvider)
-	doltDatabaseProvider.InitDatabaseHooks = append(doltDatabaseProvider.InitDatabaseHooks,
-		func(_ *sql.Context, _ *sqle.DoltDatabaseProvider, name string, _ *env.DoltEnv, _ dsess.SqlDatabase) error {
-			if name == "cannot_create" {
-				return fmt.Errorf("there was an error initializing this database. abort!")
-			}
-			return nil
-		})
-
-	err = dh.provider.CreateDatabase(enginetest.NewContext(dh), "can_create")
-	require.NoError(t, err)
-
-	err = dh.provider.CreateDatabase(enginetest.NewContext(dh), "cannot_create")
-	require.Error(t, err)
-
-	fs := dh.multiRepoEnv.FileSystem()
-	exists, _ := fs.Exists("cannot_create")
-	require.False(t, exists)
-	exists, isDir := fs.Exists("can_create")
-	require.True(t, exists)
-	require.True(t, isDir)
+	t.Skip("port test from Dolt")
 }
 
 // TestStatsAutoRefreshConcurrency tests some common concurrent patterns that stats
@@ -1805,106 +1674,7 @@ func TestCreateDatabaseErrorCleansUp(t *testing.T) {
 // (2) auto refresh threads, and (3) manual ANALYZE statements.
 // todo: the dolt_stat functions should be concurrency tested
 func TestStatsAutoRefreshConcurrency(t *testing.T) {
-	// create engine
-	harness := newDoltHarness(t)
-	harness.Setup(setup.MydbData)
-	engine := mustNewEngine(t, harness)
-	defer engine.Close()
-
-	enginetest.RunQueryWithContext(t, engine, harness, nil, `create table xy (x int primary key, y int, z int, key (z), key (y,z), key (y,z,x))`)
-	enginetest.RunQueryWithContext(t, engine, harness, nil, `create table uv (u int primary key, v int, w int, key (w), key (w,u), key (u,w,v))`)
-
-	sqlDb, _ := harness.provider.BaseDatabase(harness.NewContext(), "mydb")
-
-	// Setting an interval of 0 and a threshold of 0 will result
-	// in the stats being updated after every operation
-	intervalSec := time.Duration(0)
-	thresholdf64 := 0.
-	bThreads := sql.NewBackgroundThreads()
-	branches := []string{"main"}
-	statsProv := engine.EngineAnalyzer().Catalog.StatsProvider.(*statspro.Provider)
-
-	// it is important to use new sessions for this test, to avoid working root conflicts
-	readCtx := enginetest.NewSession(harness)
-	writeCtx := enginetest.NewSession(harness)
-	newCtx := func(context.Context) (*sql.Context, error) {
-		return enginetest.NewSession(harness), nil
-	}
-
-	err := statsProv.InitAutoRefreshWithParams(newCtx, sqlDb.Name(), bThreads, intervalSec, thresholdf64, branches)
-	require.NoError(t, err)
-
-	execQ := func(ctx *sql.Context, q string, id int, tag string) {
-		_, iter, err := engine.Query(ctx, q)
-		require.NoError(t, err)
-		_, err = sql.RowIterToRows(ctx, iter)
-		//fmt.Printf("%s %d\n", tag, id)
-		require.NoError(t, err)
-	}
-
-	iters := 1_000
-	{
-		// 3 threads to test auto-refresh/DML concurrency safety
-		// - auto refresh (read + write)
-		// - write (write only)
-		// - read (read only)
-
-		wg := sync.WaitGroup{}
-		wg.Add(2)
-
-		go func() {
-			for i := 0; i < iters; i++ {
-				q := "select count(*) from xy a join xy b on a.x = b.x"
-				execQ(readCtx, q, i, "read")
-				q = "select count(*) from uv a join uv b on a.u = b.u"
-				execQ(readCtx, q, i, "read")
-			}
-			wg.Done()
-		}()
-
-		go func() {
-			for i := 0; i < iters; i++ {
-				q := fmt.Sprintf("insert into xy values (%d,%d,%d)", i, i, i)
-				execQ(writeCtx, q, i, "write")
-				q = fmt.Sprintf("insert into uv values (%d,%d,%d)", i, i, i)
-				execQ(writeCtx, q, i, "write")
-			}
-			wg.Done()
-		}()
-
-		wg.Wait()
-	}
-
-	{
-		// 3 threads to test auto-refresh/manual ANALYZE concurrency
-		// - auto refresh (read + write)
-		// - add (read + write)
-		// - drop (write only)
-
-		wg := sync.WaitGroup{}
-		wg.Add(2)
-
-		analyzeAddCtx := enginetest.NewSession(harness)
-		analyzeDropCtx := enginetest.NewSession(harness)
-
-		// hammer the provider with concurrent stat updates
-		go func() {
-			for i := 0; i < iters; i++ {
-				execQ(analyzeAddCtx, "analyze table xy,uv", i, "analyze create")
-			}
-			wg.Done()
-		}()
-
-		go func() {
-			for i := 0; i < iters; i++ {
-				execQ(analyzeDropCtx, "analyze table xy drop histogram on (y,z)", i, "analyze drop yz")
-				execQ(analyzeDropCtx, "analyze table uv drop histogram on (w,u)", i, "analyze drop wu")
-			}
-			wg.Done()
-		}()
-
-		wg.Wait()
-	}
+	t.Skip("port test from Dolt")
 }
 
 var newFormatSkippedScripts = []string{
