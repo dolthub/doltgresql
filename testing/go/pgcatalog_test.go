@@ -891,6 +891,32 @@ func TestPgOpfamily(t *testing.T) {
 	})
 }
 
+func TestPgParameterAcl(t *testing.T) {
+	RunScripts(t, []ScriptTest{
+		{
+			Name: "pg_parameter_acl",
+			Assertions: []ScriptTestAssertion{
+				{
+					Query:    `SELECT * FROM "pg_catalog"."pg_parameter_acl";`,
+					Expected: []sql.Row{},
+				},
+				{ // Different cases and quoted, so it fails
+					Query:       `SELECT * FROM "PG_catalog"."pg_parameter_acl";`,
+					ExpectedErr: "not",
+				},
+				{ // Different cases and quoted, so it fails
+					Query:       `SELECT * FROM "pg_catalog"."PG_parameter_acl";`,
+					ExpectedErr: "not",
+				},
+				{ // Different cases but non-quoted, so it works
+					Query:    "SELECT parname FROM PG_catalog.pg_PARAMETER_ACL ORDER BY parname;",
+					Expected: []sql.Row{},
+				},
+			},
+		},
+	})
+}
+
 func TestPgProc(t *testing.T) {
 	RunScripts(t, []ScriptTest{
 		{

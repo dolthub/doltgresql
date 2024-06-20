@@ -52,6 +52,7 @@ func Init() {
 	InitPgNamespace()
 	InitPgOpclass()
 	InitPgOpfamily()
+	InitPgParameterAcl()
 	InitPgProc()
 	InitPgSequence()
 	InitPgTrigger()
