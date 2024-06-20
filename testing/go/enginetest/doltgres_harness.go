@@ -16,11 +16,11 @@ package enginetest
 
 import (
 	"context"
+	gosql "database/sql"
 	"fmt"
 	"runtime"
 	"strings"
 	"testing"
-	gosql 	"database/sql"
 
 	"github.com/dolthub/dolt/go/libraries/doltcore/sqle/dsess"
 	denginetest "github.com/dolthub/dolt/go/libraries/doltcore/sqle/enginetest"
@@ -54,7 +54,8 @@ type DoltgresHarness struct {
 }
 
 func (d *DoltgresHarness) ValidateEngine(ctx *sql.Context, e *gms.Engine) error {
-	panic("implement me")
+	// TODO
+	return nil
 }
 
 func (d *DoltgresHarness) UseLocalFileSystem() {
@@ -164,7 +165,7 @@ func (d *DoltgresHarness) Parallelism() int {
 }
 
 func (d *DoltgresHarness) NewContext() *sql.Context {
-	panic("implement me")
+	return sql.NewEmptyContext()
 }
 
 func (d *DoltgresHarness) NewContextWithClient(client sql.Client) *sql.Context {
@@ -225,9 +226,15 @@ type DoltgresQueryEngine struct {
 	controller *svcs.Controller
 }
 
+// Ptr is a helper function that returns a pointer to the value passed in. This is necessary to e.g. get a pointer to
+// a const value without assigning to an intermediate variable.
+func Ptr[T any](v T) *T {
+	return &v
+}
+
 func NewDoltgresQueryEngine(t *testing.T, harness *DoltgresHarness) *DoltgresQueryEngine {
 	ctrl, err := server.RunInMemory(&servercfg.DoltgresConfig{
-		// TODO
+		LogLevelStr: Ptr("debug"),
 	})
 	require.NoError(t, err)
 	return &DoltgresQueryEngine{
@@ -310,7 +317,11 @@ func (d DoltgresQueryEngine) EnginePreparedDataCache() *gms.PreparedDataCache {
 }
 
 func (d DoltgresQueryEngine) QueryWithBindings(ctx *sql.Context, query string, parsed vitess.Statement, bindings map[string]*query.BindVariable) (sql.Schema, sql.RowIter, error) {
-	panic("implement me")
+	if len(bindings) > 0 {
+		return nil, nil, fmt.Errorf("bindings not supported")
+	}
+	
+	return d.Query(ctx, query)
 }
 
 func (d DoltgresQueryEngine) CloseSession(connID uint32) {
@@ -318,6 +329,7 @@ func (d DoltgresQueryEngine) CloseSession(connID uint32) {
 }
 
 func (d DoltgresQueryEngine) Close() error {
+	d.controller.Stop()
 	return d.controller.WaitForStop()
 }
 
