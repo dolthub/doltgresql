@@ -18,6 +18,8 @@ import (
 	"context"
 	gosql "database/sql"
 	"fmt"
+	"io"
+	"regexp"
 	"runtime"
 	"strings"
 	"testing"
@@ -114,7 +116,64 @@ func (d *DoltgresHarness) SkipSetupCommit() {
 // NewEngine creates a new *gms.Engine or calls reset and clear scripts on the existing
 // engine for reuse.
 func (d *DoltgresHarness) NewEngine(t *testing.T) (enginetest.QueryEngine, error) {
-	return NewDoltgresQueryEngine(t, d), nil
+	queryEngine := NewDoltgresQueryEngine(t, d)
+
+	ctx := d.NewContext()
+	for _, setupScript := range d.setupData {
+		for _, s := range setupScript {
+			runQuery, sanitized := sanitizeQuery(s)
+			if !runQuery {
+				t.Log("Skipping setup query: ", s)
+				continue
+			}
+			_, rowIter, err := queryEngine.Query(ctx, sanitized)
+			if err != nil {
+				return nil, err
+			}
+			err = drainIter(ctx, rowIter)
+			if err != nil {
+				return nil, err
+			}
+		}
+	}
+	
+	return queryEngine, nil
+}
+
+var commentClause = regexp.MustCompile(`comment '.*?'`)
+
+var autoIncrementClause = regexp.MustCompile(`auto_increment`)
+
+var createIndexStatement = regexp.MustCompile(`create.*index`)
+
+var backtick = "`"
+
+// sanitizeQuery strips the query string given of any unsupported constructs without attempting to actually convert 
+// to Postgres syntax.
+func sanitizeQuery(s string) (bool, string) {
+	if createIndexStatement.MatchString(s) {
+		return false, ""
+	}
+	if autoIncrementClause.MatchString(s) {
+		return false, ""
+	}
+	
+	s = commentClause.ReplaceAllString(s, "")
+	s = strings.ReplaceAll(s, backtick, `"`)
+	
+	return true, s
+}
+
+func drainIter(ctx *sql.Context, rowIter sql.RowIter) error {
+	for {
+		_, err := rowIter.Next(ctx)
+		if err == io.EOF {
+			break
+		} else if err != nil {
+			return err
+		}
+	}
+	return rowIter.Close(ctx)
 }
 
 // WithParallelism returns a copy of the harness with parallelism set to the given number of threads. A value of 0 or
