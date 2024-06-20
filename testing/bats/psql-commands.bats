@@ -77,11 +77,12 @@ teardown() {
     [[ "$output" =~ "public,pg_shdepend,table,postgres" ]] || false
     [[ "$output" =~ "public,pg_shdescription,table,postgres" ]] || false
     [[ "$output" =~ "public,pg_shseclabel,table,postgres" ]] || false
+    [[ "$output" =~ "public,pg_statistic,table,postgres" ]] || false
     [[ "$output" =~ "public,pg_trigger,table,postgres" ]] || false
     [[ "$output" =~ "public,pg_type,table,postgres" ]] || false
     [[ "$output" =~ "public,test1,table,postgres" ]] || false
     [[ "$output" =~ "public,test2,table,postgres" ]] || false
-    [ "${#lines[@]}" -eq 52 ]
+    [ "${#lines[@]}" -eq 54 ]
 }
 
 @test 'psql-commands: \d' {
@@ -136,11 +137,12 @@ teardown() {
     [[ "$output" =~ "public,pg_shdescription,table,postgres" ]] || false
     [[ "$output" =~ "public,pg_shseclabel,table,postgres" ]] || false
     [[ "$output" =~ "public,pg_sequence,table,postgres" ]] || false
+    [[ "$output" =~ "public,pg_statistic,table,postgres" ]] || false
     [[ "$output" =~ "public,pg_trigger,table,postgres" ]] || false
     [[ "$output" =~ "public,pg_type,table,postgres" ]] || false
     [[ "$output" =~ "public,test1,table,postgres" ]] || false
     [[ "$output" =~ "public,test2,table,postgres" ]] || false
-    [ "${#lines[@]}" -eq 53 ]
+    [ "${#lines[@]}" -eq 54 ]
 }
 
 @test 'psql-commands: \d table' {
