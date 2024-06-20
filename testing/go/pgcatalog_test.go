@@ -1177,6 +1177,32 @@ func TestPgSeclabel(t *testing.T) {
 	})
 }
 
+func TestPgShdepend(t *testing.T) {
+	RunScripts(t, []ScriptTest{
+		{
+			Name: "pg_shdepend",
+			Assertions: []ScriptTestAssertion{
+				{
+					Query:    `SELECT * FROM "pg_catalog"."pg_shdepend";`,
+					Expected: []sql.Row{},
+				},
+				{ // Different cases and quoted, so it fails
+					Query:       `SELECT * FROM "PG_catalog"."pg_shdepend";`,
+					ExpectedErr: "not",
+				},
+				{ // Different cases and quoted, so it fails
+					Query:       `SELECT * FROM "pg_catalog"."PG_shdepend";`,
+					ExpectedErr: "not",
+				},
+				{ // Different cases but non-quoted, so it works
+					Query:    "SELECT dbid FROM PG_catalog.pg_SHDEPEND ORDER BY dbid;",
+					Expected: []sql.Row{},
+				},
+			},
+		},
+	})
+}
+
 func TestPgTrigger(t *testing.T) {
 	RunScripts(t, []ScriptTest{
 		{
