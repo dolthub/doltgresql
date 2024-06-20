@@ -36,11 +36,9 @@ var exp_float64 = framework.Function1{
 	Return:     pgtypes.Float64,
 	Parameters: []pgtypes.DoltgresType{pgtypes.Float64},
 	Callable: func(ctx *sql.Context, val1 any) (any, error) {
-		if val1 == nil {
-			return nil, nil
-		}
 		return math.Exp(val1.(float64)), nil
 	},
+	Strict: true,
 }
 
 // exp_numeric represents the PostgreSQL function of the same name, taking the same parameters.
@@ -54,4 +52,5 @@ var exp_numeric = framework.Function1{
 		}
 		return val1.(decimal.Decimal).ExpHullAbrham(32)
 	},
+	Strict: true,
 }

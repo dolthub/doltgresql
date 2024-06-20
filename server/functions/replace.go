@@ -34,12 +34,10 @@ var replace_varchar_varchar_varchar = framework.Function3{
 	Return:     pgtypes.VarChar,
 	Parameters: []pgtypes.DoltgresType{pgtypes.VarChar, pgtypes.VarChar, pgtypes.VarChar},
 	Callable: func(ctx *sql.Context, str any, from any, to any) (any, error) {
-		if str == nil || from == nil || to == nil {
-			return nil, nil
-		}
 		if len(from.(string)) == 0 {
 			return str, nil
 		}
 		return strings.ReplaceAll(str.(string), from.(string), to.(string)), nil
 	},
+	Strict: true,
 }

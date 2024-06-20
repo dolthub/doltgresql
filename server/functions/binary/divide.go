@@ -51,14 +51,12 @@ var float4div = framework.Function2{
 	Return:     pgtypes.Float32,
 	Parameters: []pgtypes.DoltgresType{pgtypes.Float32, pgtypes.Float32},
 	Callable: func(ctx *sql.Context, val1 any, val2 any) (any, error) {
-		if val1 == nil || val2 == nil {
-			return nil, nil
-		}
 		if val2.(float32) == 0 {
 			return nil, fmt.Errorf("division by zero")
 		}
 		return val1.(float32) / val2.(float32), nil
 	},
+	Strict: true,
 }
 
 // float48div represents the PostgreSQL function of the same name, taking the same parameters.
@@ -67,14 +65,12 @@ var float48div = framework.Function2{
 	Return:     pgtypes.Float64,
 	Parameters: []pgtypes.DoltgresType{pgtypes.Float32, pgtypes.Float64},
 	Callable: func(ctx *sql.Context, val1 any, val2 any) (any, error) {
-		if val1 == nil || val2 == nil {
-			return nil, nil
-		}
 		if val2.(float64) == 0 {
 			return nil, fmt.Errorf("division by zero")
 		}
 		return float64(val1.(float32)) / val2.(float64), nil
 	},
+	Strict: true,
 }
 
 // float8div represents the PostgreSQL function of the same name, taking the same parameters.
@@ -83,14 +79,12 @@ var float8div = framework.Function2{
 	Return:     pgtypes.Float64,
 	Parameters: []pgtypes.DoltgresType{pgtypes.Float64, pgtypes.Float64},
 	Callable: func(ctx *sql.Context, val1 any, val2 any) (any, error) {
-		if val1 == nil || val2 == nil {
-			return nil, nil
-		}
 		if val2.(float64) == 0 {
 			return nil, fmt.Errorf("division by zero")
 		}
 		return val1.(float64) / val2.(float64), nil
 	},
+	Strict: true,
 }
 
 // float84div represents the PostgreSQL function of the same name, taking the same parameters.
@@ -99,14 +93,12 @@ var float84div = framework.Function2{
 	Return:     pgtypes.Float64,
 	Parameters: []pgtypes.DoltgresType{pgtypes.Float64, pgtypes.Float32},
 	Callable: func(ctx *sql.Context, val1 any, val2 any) (any, error) {
-		if val1 == nil || val2 == nil {
-			return nil, nil
-		}
 		if val2.(float32) == 0 {
 			return nil, fmt.Errorf("division by zero")
 		}
 		return val1.(float64) / float64(val2.(float32)), nil
 	},
+	Strict: true,
 }
 
 // int2div represents the PostgreSQL function of the same name, taking the same parameters.
@@ -115,14 +107,12 @@ var int2div = framework.Function2{
 	Return:     pgtypes.Int16,
 	Parameters: []pgtypes.DoltgresType{pgtypes.Int16, pgtypes.Int16},
 	Callable: func(ctx *sql.Context, val1 any, val2 any) (any, error) {
-		if val1 == nil || val2 == nil {
-			return nil, nil
-		}
 		if val2.(int16) == 0 {
 			return nil, fmt.Errorf("division by zero")
 		}
 		return val1.(int16) / val2.(int16), nil
 	},
+	Strict: true,
 }
 
 // int24div represents the PostgreSQL function of the same name, taking the same parameters.
@@ -131,14 +121,12 @@ var int24div = framework.Function2{
 	Return:     pgtypes.Int32,
 	Parameters: []pgtypes.DoltgresType{pgtypes.Int16, pgtypes.Int32},
 	Callable: func(ctx *sql.Context, val1 any, val2 any) (any, error) {
-		if val1 == nil || val2 == nil {
-			return nil, nil
-		}
 		if val2.(int32) == 0 {
 			return nil, fmt.Errorf("division by zero")
 		}
 		return int32(val1.(int16)) / val2.(int32), nil
 	},
+	Strict: true,
 }
 
 // int28div represents the PostgreSQL function of the same name, taking the same parameters.
@@ -147,14 +135,12 @@ var int28div = framework.Function2{
 	Return:     pgtypes.Int64,
 	Parameters: []pgtypes.DoltgresType{pgtypes.Int16, pgtypes.Int64},
 	Callable: func(ctx *sql.Context, val1 any, val2 any) (any, error) {
-		if val1 == nil || val2 == nil {
-			return nil, nil
-		}
 		if val2.(int64) == 0 {
 			return nil, fmt.Errorf("division by zero")
 		}
 		return int64(val1.(int16)) / val2.(int64), nil
 	},
+	Strict: true,
 }
 
 // int4div represents the PostgreSQL function of the same name, taking the same parameters.
@@ -163,14 +149,12 @@ var int4div = framework.Function2{
 	Return:     pgtypes.Int32,
 	Parameters: []pgtypes.DoltgresType{pgtypes.Int32, pgtypes.Int32},
 	Callable: func(ctx *sql.Context, val1 any, val2 any) (any, error) {
-		if val1 == nil || val2 == nil {
-			return nil, nil
-		}
 		if val2.(int32) == 0 {
 			return nil, fmt.Errorf("division by zero")
 		}
 		return val1.(int32) / val2.(int32), nil
 	},
+	Strict: true,
 }
 
 // int42div represents the PostgreSQL function of the same name, taking the same parameters.
@@ -179,14 +163,12 @@ var int42div = framework.Function2{
 	Return:     pgtypes.Int32,
 	Parameters: []pgtypes.DoltgresType{pgtypes.Int32, pgtypes.Int16},
 	Callable: func(ctx *sql.Context, val1 any, val2 any) (any, error) {
-		if val1 == nil || val2 == nil {
-			return nil, nil
-		}
 		if val2.(int16) == 0 {
 			return nil, fmt.Errorf("division by zero")
 		}
 		return val1.(int32) / int32(val2.(int16)), nil
 	},
+	Strict: true,
 }
 
 // int48div represents the PostgreSQL function of the same name, taking the same parameters.
@@ -195,14 +177,12 @@ var int48div = framework.Function2{
 	Return:     pgtypes.Int64,
 	Parameters: []pgtypes.DoltgresType{pgtypes.Int32, pgtypes.Int64},
 	Callable: func(ctx *sql.Context, val1 any, val2 any) (any, error) {
-		if val1 == nil || val2 == nil {
-			return nil, nil
-		}
 		if val2.(int64) == 0 {
 			return nil, fmt.Errorf("division by zero")
 		}
 		return int64(val1.(int32)) / val2.(int64), nil
 	},
+	Strict: true,
 }
 
 // int8div represents the PostgreSQL function of the same name, taking the same parameters.
@@ -211,14 +191,12 @@ var int8div = framework.Function2{
 	Return:     pgtypes.Int64,
 	Parameters: []pgtypes.DoltgresType{pgtypes.Int64, pgtypes.Int64},
 	Callable: func(ctx *sql.Context, val1 any, val2 any) (any, error) {
-		if val1 == nil || val2 == nil {
-			return nil, nil
-		}
 		if val2.(int64) == 0 {
 			return nil, fmt.Errorf("division by zero")
 		}
 		return val1.(int64) / val2.(int64), nil
 	},
+	Strict: true,
 }
 
 // int82div represents the PostgreSQL function of the same name, taking the same parameters.
@@ -227,14 +205,12 @@ var int82div = framework.Function2{
 	Return:     pgtypes.Int64,
 	Parameters: []pgtypes.DoltgresType{pgtypes.Int64, pgtypes.Int16},
 	Callable: func(ctx *sql.Context, val1 any, val2 any) (any, error) {
-		if val1 == nil || val2 == nil {
-			return nil, nil
-		}
 		if val2.(int16) == 0 {
 			return nil, fmt.Errorf("division by zero")
 		}
 		return val1.(int64) / int64(val2.(int16)), nil
 	},
+	Strict: true,
 }
 
 // int84div represents the PostgreSQL function of the same name, taking the same parameters.
@@ -243,14 +219,12 @@ var int84div = framework.Function2{
 	Return:     pgtypes.Int64,
 	Parameters: []pgtypes.DoltgresType{pgtypes.Int64, pgtypes.Int32},
 	Callable: func(ctx *sql.Context, val1 any, val2 any) (any, error) {
-		if val1 == nil || val2 == nil {
-			return nil, nil
-		}
 		if val2.(int32) == 0 {
 			return nil, fmt.Errorf("division by zero")
 		}
 		return val1.(int64) / int64(val2.(int32)), nil
 	},
+	Strict: true,
 }
 
 // numeric_div represents the PostgreSQL function of the same name, taking the same parameters.
@@ -259,12 +233,10 @@ var numeric_div = framework.Function2{
 	Return:     pgtypes.Numeric,
 	Parameters: []pgtypes.DoltgresType{pgtypes.Numeric, pgtypes.Numeric},
 	Callable: func(ctx *sql.Context, val1 any, val2 any) (any, error) {
-		if val1 == nil || val2 == nil {
-			return nil, nil
-		}
 		if val2.(decimal.Decimal).Equal(decimal.Zero) {
 			return nil, fmt.Errorf("division by zero")
 		}
 		return val1.(decimal.Decimal).Div(val2.(decimal.Decimal)), nil
 	},
+	Strict: true,
 }

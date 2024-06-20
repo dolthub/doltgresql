@@ -37,9 +37,6 @@ var ln_float64 = framework.Function1{
 	Return:     pgtypes.Float64,
 	Parameters: []pgtypes.DoltgresType{pgtypes.Float64},
 	Callable: func(ctx *sql.Context, val1 any) (any, error) {
-		if val1 == nil {
-			return nil, nil
-		}
 		if val1.(float64) == 0 {
 			return nil, fmt.Errorf("cannot take logarithm of zero")
 		} else if val1.(float64) < 0 {
@@ -47,6 +44,7 @@ var ln_float64 = framework.Function1{
 		}
 		return math.Log(val1.(float64)), nil
 	},
+	Strict: true,
 }
 
 // ln_numeric represents the PostgreSQL function of the same name, taking the same parameters.
@@ -67,4 +65,5 @@ var ln_numeric = framework.Function1{
 		}
 		return decimal.NewFromFloat(math.Log(f)), nil
 	},
+	Strict: true,
 }

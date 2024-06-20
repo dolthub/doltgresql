@@ -75,12 +75,10 @@ var boolne = framework.Function2{
 	Return:     pgtypes.Bool,
 	Parameters: []pgtypes.DoltgresType{pgtypes.Bool, pgtypes.Bool},
 	Callable: func(ctx *sql.Context, val1 any, val2 any) (any, error) {
-		if val1 == nil || val2 == nil {
-			return nil, nil
-		}
 		res, err := pgtypes.Bool.Compare(val1.(bool), val2.(bool))
 		return res != 0, err
 	},
+	Strict: true,
 }
 
 // bpcharne represents the PostgreSQL function of the same name, taking the same parameters.
@@ -89,12 +87,10 @@ var bpcharne = framework.Function2{
 	Return:     pgtypes.Bool,
 	Parameters: []pgtypes.DoltgresType{pgtypes.BpChar, pgtypes.BpChar},
 	Callable: func(ctx *sql.Context, val1 any, val2 any) (any, error) {
-		if val1 == nil || val2 == nil {
-			return nil, nil
-		}
 		res, err := pgtypes.BpChar.Compare(val1.(string), val2.(string))
 		return res != 0, err
 	},
+	Strict: true,
 }
 
 // byteane represents the PostgreSQL function of the same name, taking the same parameters.
@@ -103,12 +99,10 @@ var byteane = framework.Function2{
 	Return:     pgtypes.Bool,
 	Parameters: []pgtypes.DoltgresType{pgtypes.Bytea, pgtypes.Bytea},
 	Callable: func(ctx *sql.Context, val1 any, val2 any) (any, error) {
-		if val1 == nil || val2 == nil {
-			return nil, nil
-		}
 		res, err := pgtypes.Bytea.Compare(val1.([]byte), val2.([]byte))
 		return res != 0, err
 	},
+	Strict: true,
 }
 
 // date_ne represents the PostgreSQL function of the same name, taking the same parameters.
@@ -117,12 +111,10 @@ var date_ne = framework.Function2{
 	Return:     pgtypes.Bool,
 	Parameters: []pgtypes.DoltgresType{pgtypes.Date, pgtypes.Date},
 	Callable: func(ctx *sql.Context, val1 any, val2 any) (any, error) {
-		if val1 == nil || val2 == nil {
-			return nil, nil
-		}
 		res, err := pgtypes.Date.Compare(val1.(time.Time), val2.(time.Time))
 		return res != 0, err
 	},
+	Strict: true,
 }
 
 // date_ne_timestamp represents the PostgreSQL function of the same name, taking the same parameters.
@@ -131,12 +123,10 @@ var date_ne_timestamp = framework.Function2{
 	Return:     pgtypes.Bool,
 	Parameters: []pgtypes.DoltgresType{pgtypes.Date, pgtypes.Timestamp},
 	Callable: func(ctx *sql.Context, val1 any, val2 any) (any, error) {
-		if val1 == nil || val2 == nil {
-			return nil, nil
-		}
 		res := val1.(time.Time).Compare(val2.(time.Time))
 		return res != 0, nil
 	},
+	Strict: true,
 }
 
 // date_ne_timestamptz represents the PostgreSQL function of the same name, taking the same parameters.
@@ -145,12 +135,10 @@ var date_ne_timestamptz = framework.Function2{
 	Return:     pgtypes.Bool,
 	Parameters: []pgtypes.DoltgresType{pgtypes.Date, pgtypes.TimestampTZ},
 	Callable: func(ctx *sql.Context, val1 any, val2 any) (any, error) {
-		if val1 == nil || val2 == nil {
-			return nil, nil
-		}
 		res := val1.(time.Time).Compare(val2.(time.Time))
 		return res != 0, nil
 	},
+	Strict: true,
 }
 
 // float4ne represents the PostgreSQL function of the same name, taking the same parameters.
@@ -159,12 +147,10 @@ var float4ne = framework.Function2{
 	Return:     pgtypes.Bool,
 	Parameters: []pgtypes.DoltgresType{pgtypes.Float32, pgtypes.Float32},
 	Callable: func(ctx *sql.Context, val1 any, val2 any) (any, error) {
-		if val1 == nil || val2 == nil {
-			return nil, nil
-		}
 		res, err := pgtypes.Float32.Compare(val1.(float32), val2.(float32))
 		return res != 0, err
 	},
+	Strict: true,
 }
 
 // float48ne represents the PostgreSQL function of the same name, taking the same parameters.
@@ -173,12 +159,10 @@ var float48ne = framework.Function2{
 	Return:     pgtypes.Bool,
 	Parameters: []pgtypes.DoltgresType{pgtypes.Float32, pgtypes.Float64},
 	Callable: func(ctx *sql.Context, val1 any, val2 any) (any, error) {
-		if val1 == nil || val2 == nil {
-			return nil, nil
-		}
 		res, err := pgtypes.Float64.Compare(float64(val1.(float32)), val2.(float64))
 		return res != 0, err
 	},
+	Strict: true,
 }
 
 // float84ne represents the PostgreSQL function of the same name, taking the same parameters.
@@ -187,12 +171,10 @@ var float84ne = framework.Function2{
 	Return:     pgtypes.Bool,
 	Parameters: []pgtypes.DoltgresType{pgtypes.Float64, pgtypes.Float32},
 	Callable: func(ctx *sql.Context, val1 any, val2 any) (any, error) {
-		if val1 == nil || val2 == nil {
-			return nil, nil
-		}
 		res, err := pgtypes.Float64.Compare(val1.(float64), float64(val2.(float32)))
 		return res != 0, err
 	},
+	Strict: true,
 }
 
 // float8ne represents the PostgreSQL function of the same name, taking the same parameters.
@@ -201,12 +183,10 @@ var float8ne = framework.Function2{
 	Return:     pgtypes.Bool,
 	Parameters: []pgtypes.DoltgresType{pgtypes.Float64, pgtypes.Float64},
 	Callable: func(ctx *sql.Context, val1 any, val2 any) (any, error) {
-		if val1 == nil || val2 == nil {
-			return nil, nil
-		}
 		res, err := pgtypes.Float64.Compare(val1.(float64), val2.(float64))
 		return res != 0, err
 	},
+	Strict: true,
 }
 
 // int2ne represents the PostgreSQL function of the same name, taking the same parameters.
@@ -215,12 +195,10 @@ var int2ne = framework.Function2{
 	Return:     pgtypes.Bool,
 	Parameters: []pgtypes.DoltgresType{pgtypes.Int16, pgtypes.Int16},
 	Callable: func(ctx *sql.Context, val1 any, val2 any) (any, error) {
-		if val1 == nil || val2 == nil {
-			return nil, nil
-		}
 		res, err := pgtypes.Int16.Compare(val1.(int16), val2.(int16))
 		return res != 0, err
 	},
+	Strict: true,
 }
 
 // int24ne represents the PostgreSQL function of the same name, taking the same parameters.
@@ -229,12 +207,10 @@ var int24ne = framework.Function2{
 	Return:     pgtypes.Bool,
 	Parameters: []pgtypes.DoltgresType{pgtypes.Int16, pgtypes.Int32},
 	Callable: func(ctx *sql.Context, val1 any, val2 any) (any, error) {
-		if val1 == nil || val2 == nil {
-			return nil, nil
-		}
 		res, err := pgtypes.Int32.Compare(int32(val1.(int16)), val2.(int32))
 		return res != 0, err
 	},
+	Strict: true,
 }
 
 // int28ne represents the PostgreSQL function of the same name, taking the same parameters.
@@ -243,12 +219,10 @@ var int28ne = framework.Function2{
 	Return:     pgtypes.Bool,
 	Parameters: []pgtypes.DoltgresType{pgtypes.Int16, pgtypes.Int64},
 	Callable: func(ctx *sql.Context, val1 any, val2 any) (any, error) {
-		if val1 == nil || val2 == nil {
-			return nil, nil
-		}
 		res, err := pgtypes.Int64.Compare(int64(val1.(int16)), val2.(int64))
 		return res != 0, err
 	},
+	Strict: true,
 }
 
 // int42ne represents the PostgreSQL function of the same name, taking the same parameters.
@@ -257,12 +231,10 @@ var int42ne = framework.Function2{
 	Return:     pgtypes.Bool,
 	Parameters: []pgtypes.DoltgresType{pgtypes.Int32, pgtypes.Int16},
 	Callable: func(ctx *sql.Context, val1 any, val2 any) (any, error) {
-		if val1 == nil || val2 == nil {
-			return nil, nil
-		}
 		res, err := pgtypes.Int32.Compare(val1.(int32), int32(val2.(int16)))
 		return res != 0, err
 	},
+	Strict: true,
 }
 
 // int4ne represents the PostgreSQL function of the same name, taking the same parameters.
@@ -271,12 +243,10 @@ var int4ne = framework.Function2{
 	Return:     pgtypes.Bool,
 	Parameters: []pgtypes.DoltgresType{pgtypes.Int32, pgtypes.Int32},
 	Callable: func(ctx *sql.Context, val1 any, val2 any) (any, error) {
-		if val1 == nil || val2 == nil {
-			return nil, nil
-		}
 		res, err := pgtypes.Int32.Compare(val1.(int32), val2.(int32))
 		return res != 0, err
 	},
+	Strict: true,
 }
 
 // int48ne represents the PostgreSQL function of the same name, taking the same parameters.
@@ -285,12 +255,10 @@ var int48ne = framework.Function2{
 	Return:     pgtypes.Bool,
 	Parameters: []pgtypes.DoltgresType{pgtypes.Int32, pgtypes.Int64},
 	Callable: func(ctx *sql.Context, val1 any, val2 any) (any, error) {
-		if val1 == nil || val2 == nil {
-			return nil, nil
-		}
 		res, err := pgtypes.Int64.Compare(int64(val1.(int32)), val2.(int64))
 		return res != 0, err
 	},
+	Strict: true,
 }
 
 // int82ne represents the PostgreSQL function of the same name, taking the same parameters.
@@ -299,12 +267,10 @@ var int82ne = framework.Function2{
 	Return:     pgtypes.Bool,
 	Parameters: []pgtypes.DoltgresType{pgtypes.Int64, pgtypes.Int16},
 	Callable: func(ctx *sql.Context, val1 any, val2 any) (any, error) {
-		if val1 == nil || val2 == nil {
-			return nil, nil
-		}
 		res, err := pgtypes.Int64.Compare(val1.(int64), int64(val2.(int16)))
 		return res != 0, err
 	},
+	Strict: true,
 }
 
 // int84ne represents the PostgreSQL function of the same name, taking the same parameters.
@@ -313,12 +279,10 @@ var int84ne = framework.Function2{
 	Return:     pgtypes.Bool,
 	Parameters: []pgtypes.DoltgresType{pgtypes.Int64, pgtypes.Int32},
 	Callable: func(ctx *sql.Context, val1 any, val2 any) (any, error) {
-		if val1 == nil || val2 == nil {
-			return nil, nil
-		}
 		res, err := pgtypes.Int64.Compare(val1.(int64), int64(val2.(int32)))
 		return res != 0, err
 	},
+	Strict: true,
 }
 
 // int8ne represents the PostgreSQL function of the same name, taking the same parameters.
@@ -327,12 +291,10 @@ var int8ne = framework.Function2{
 	Return:     pgtypes.Bool,
 	Parameters: []pgtypes.DoltgresType{pgtypes.Int64, pgtypes.Int64},
 	Callable: func(ctx *sql.Context, val1 any, val2 any) (any, error) {
-		if val1 == nil || val2 == nil {
-			return nil, nil
-		}
 		res, err := pgtypes.Int64.Compare(val1.(int64), val2.(int64))
 		return res != 0, err
 	},
+	Strict: true,
 }
 
 // jsonb_ne represents the PostgreSQL function of the same name, taking the same parameters.
@@ -341,12 +303,10 @@ var jsonb_ne = framework.Function2{
 	Return:     pgtypes.Bool,
 	Parameters: []pgtypes.DoltgresType{pgtypes.JsonB, pgtypes.JsonB},
 	Callable: func(ctx *sql.Context, val1 any, val2 any) (any, error) {
-		if val1 == nil || val2 == nil {
-			return nil, nil
-		}
 		res, err := pgtypes.JsonB.Compare(val1.(pgtypes.JsonDocument), val2.(pgtypes.JsonDocument))
 		return res != 0, err
 	},
+	Strict: true,
 }
 
 // namene represents the PostgreSQL function of the same name, taking the same parameters.
@@ -355,12 +315,10 @@ var namene = framework.Function2{
 	Return:     pgtypes.Bool,
 	Parameters: []pgtypes.DoltgresType{pgtypes.Name, pgtypes.Name},
 	Callable: func(ctx *sql.Context, val1 any, val2 any) (any, error) {
-		if val1 == nil || val2 == nil {
-			return nil, nil
-		}
 		res, err := pgtypes.Name.Compare(val1.(string), val2.(string))
 		return res != 0, err
 	},
+	Strict: true,
 }
 
 // namenetext represents the PostgreSQL function of the same name, taking the same parameters.
@@ -369,12 +327,10 @@ var namenetext = framework.Function2{
 	Return:     pgtypes.Bool,
 	Parameters: []pgtypes.DoltgresType{pgtypes.Name, pgtypes.Text},
 	Callable: func(ctx *sql.Context, val1 any, val2 any) (any, error) {
-		if val1 == nil || val2 == nil {
-			return nil, nil
-		}
 		res, err := pgtypes.Text.Compare(val1.(string), val2.(string))
 		return res != 0, err
 	},
+	Strict: true,
 }
 
 // numeric_ne represents the PostgreSQL function of the same name, taking the same parameters.
@@ -383,12 +339,10 @@ var numeric_ne = framework.Function2{
 	Return:     pgtypes.Bool,
 	Parameters: []pgtypes.DoltgresType{pgtypes.Numeric, pgtypes.Numeric},
 	Callable: func(ctx *sql.Context, val1 any, val2 any) (any, error) {
-		if val1 == nil || val2 == nil {
-			return nil, nil
-		}
 		res, err := pgtypes.Numeric.Compare(val1.(decimal.Decimal), val2.(decimal.Decimal))
 		return res != 0, err
 	},
+	Strict: true,
 }
 
 // oidne represents the PostgreSQL function of the same name, taking the same parameters.
@@ -397,12 +351,10 @@ var oidne = framework.Function2{
 	Return:     pgtypes.Bool,
 	Parameters: []pgtypes.DoltgresType{pgtypes.Oid, pgtypes.Oid},
 	Callable: func(ctx *sql.Context, val1 any, val2 any) (any, error) {
-		if val1 == nil || val2 == nil {
-			return nil, nil
-		}
 		res, err := pgtypes.Oid.Compare(val1.(uint32), val2.(uint32))
 		return res != 0, err
 	},
+	Strict: true,
 }
 
 // textnename represents the PostgreSQL function of the same name, taking the same parameters.
@@ -411,12 +363,10 @@ var textnename = framework.Function2{
 	Return:     pgtypes.Bool,
 	Parameters: []pgtypes.DoltgresType{pgtypes.Text, pgtypes.Name},
 	Callable: func(ctx *sql.Context, val1 any, val2 any) (any, error) {
-		if val1 == nil || val2 == nil {
-			return nil, nil
-		}
 		res, err := pgtypes.Text.Compare(val1.(string), val2.(string))
 		return res != 0, err
 	},
+	Strict: true,
 }
 
 // text_ne represents the PostgreSQL function of the same name, taking the same parameters.
@@ -425,12 +375,10 @@ var text_ne = framework.Function2{
 	Return:     pgtypes.Bool,
 	Parameters: []pgtypes.DoltgresType{pgtypes.Text, pgtypes.Text},
 	Callable: func(ctx *sql.Context, val1 any, val2 any) (any, error) {
-		if val1 == nil || val2 == nil {
-			return nil, nil
-		}
 		res, err := pgtypes.Text.Compare(val1.(string), val2.(string))
 		return res != 0, err
 	},
+	Strict: true,
 }
 
 // time_ne represents the PostgreSQL function of the same name, taking the same parameters.
@@ -439,12 +387,10 @@ var time_ne = framework.Function2{
 	Return:     pgtypes.Bool,
 	Parameters: []pgtypes.DoltgresType{pgtypes.Time, pgtypes.Time},
 	Callable: func(ctx *sql.Context, val1 any, val2 any) (any, error) {
-		if val1 == nil || val2 == nil {
-			return nil, nil
-		}
 		res, err := pgtypes.Time.Compare(val1.(time.Time), val2.(time.Time))
 		return res != 0, err
 	},
+	Strict: true,
 }
 
 // timestamp_ne_date represents the PostgreSQL function of the same name, taking the same parameters.
@@ -453,12 +399,10 @@ var timestamp_ne_date = framework.Function2{
 	Return:     pgtypes.Bool,
 	Parameters: []pgtypes.DoltgresType{pgtypes.Timestamp, pgtypes.Date},
 	Callable: func(ctx *sql.Context, val1 any, val2 any) (any, error) {
-		if val1 == nil || val2 == nil {
-			return nil, nil
-		}
 		res := val1.(time.Time).Compare(val2.(time.Time))
 		return res != 0, nil
 	},
+	Strict: true,
 }
 
 // timestamp_ne represents the PostgreSQL function of the same name, taking the same parameters.
@@ -467,12 +411,10 @@ var timestamp_ne = framework.Function2{
 	Return:     pgtypes.Bool,
 	Parameters: []pgtypes.DoltgresType{pgtypes.Timestamp, pgtypes.Timestamp},
 	Callable: func(ctx *sql.Context, val1 any, val2 any) (any, error) {
-		if val1 == nil || val2 == nil {
-			return nil, nil
-		}
 		res, err := pgtypes.Timestamp.Compare(val1.(time.Time), val2.(time.Time))
 		return res != 0, err
 	},
+	Strict: true,
 }
 
 // timestamp_ne_timestamptz represents the PostgreSQL function of the same name, taking the same parameters.
@@ -481,12 +423,10 @@ var timestamp_ne_timestamptz = framework.Function2{
 	Return:     pgtypes.Bool,
 	Parameters: []pgtypes.DoltgresType{pgtypes.Timestamp, pgtypes.TimestampTZ},
 	Callable: func(ctx *sql.Context, val1 any, val2 any) (any, error) {
-		if val1 == nil || val2 == nil {
-			return nil, nil
-		}
 		res, err := pgtypes.TimestampTZ.Compare(val1.(time.Time), val2.(time.Time))
 		return res != 0, err
 	},
+	Strict: true,
 }
 
 // timestamptz_ne_date represents the PostgreSQL function of the same name, taking the same parameters.
@@ -495,12 +435,10 @@ var timestamptz_ne_date = framework.Function2{
 	Return:     pgtypes.Bool,
 	Parameters: []pgtypes.DoltgresType{pgtypes.TimestampTZ, pgtypes.Date},
 	Callable: func(ctx *sql.Context, val1 any, val2 any) (any, error) {
-		if val1 == nil || val2 == nil {
-			return nil, nil
-		}
 		res := val1.(time.Time).Compare(val2.(time.Time))
 		return res != 0, nil
 	},
+	Strict: true,
 }
 
 // timestamptz_ne_timestamp represents the PostgreSQL function of the same name, taking the same parameters.
@@ -509,12 +447,10 @@ var timestamptz_ne_timestamp = framework.Function2{
 	Return:     pgtypes.Bool,
 	Parameters: []pgtypes.DoltgresType{pgtypes.TimestampTZ, pgtypes.Timestamp},
 	Callable: func(ctx *sql.Context, val1 any, val2 any) (any, error) {
-		if val1 == nil || val2 == nil {
-			return nil, nil
-		}
 		res, err := pgtypes.TimestampTZ.Compare(val1.(time.Time), val2.(time.Time))
 		return res != 0, err
 	},
+	Strict: true,
 }
 
 // timestamptz_ne represents the PostgreSQL function of the same name, taking the same parameters.
@@ -523,12 +459,10 @@ var timestamptz_ne = framework.Function2{
 	Return:     pgtypes.Bool,
 	Parameters: []pgtypes.DoltgresType{pgtypes.TimestampTZ, pgtypes.TimestampTZ},
 	Callable: func(ctx *sql.Context, val1 any, val2 any) (any, error) {
-		if val1 == nil || val2 == nil {
-			return nil, nil
-		}
 		res, err := pgtypes.TimestampTZ.Compare(val1.(time.Time), val2.(time.Time))
 		return res != 0, err
 	},
+	Strict: true,
 }
 
 // timetz_ne represents the PostgreSQL function of the same name, taking the same parameters.
@@ -537,12 +471,10 @@ var timetz_ne = framework.Function2{
 	Return:     pgtypes.Bool,
 	Parameters: []pgtypes.DoltgresType{pgtypes.TimeTZ, pgtypes.TimeTZ},
 	Callable: func(ctx *sql.Context, val1 any, val2 any) (any, error) {
-		if val1 == nil || val2 == nil {
-			return nil, nil
-		}
 		res, err := pgtypes.TimeTZ.Compare(val1.(time.Time), val2.(time.Time))
 		return res != 0, err
 	},
+	Strict: true,
 }
 
 // uuid_ne represents the PostgreSQL function of the same name, taking the same parameters.
@@ -551,12 +483,10 @@ var uuid_ne = framework.Function2{
 	Return:     pgtypes.Bool,
 	Parameters: []pgtypes.DoltgresType{pgtypes.Uuid, pgtypes.Uuid},
 	Callable: func(ctx *sql.Context, val1 any, val2 any) (any, error) {
-		if val1 == nil || val2 == nil {
-			return nil, nil
-		}
 		res, err := pgtypes.Uuid.Compare(val1.(uuid.UUID), val2.(uuid.UUID))
 		return res != 0, err
 	},
+	Strict: true,
 }
 
 // xidneqint4 represents the PostgreSQL function of the same name, taking the same parameters.
@@ -565,13 +495,11 @@ var xidneqint4 = framework.Function2{
 	Return:     pgtypes.Bool,
 	Parameters: []pgtypes.DoltgresType{pgtypes.Xid, pgtypes.Int32},
 	Callable: func(ctx *sql.Context, val1 any, val2 any) (any, error) {
-		if val1 == nil || val2 == nil {
-			return nil, nil
-		}
 		// TODO: investigate the edge cases
 		res, err := pgtypes.Int64.Compare(int64(val1.(uint32)), int64(val2.(int32)))
 		return res != 0, err
 	},
+	Strict: true,
 }
 
 // xidneq represents the PostgreSQL function of the same name, taking the same parameters.
@@ -580,10 +508,8 @@ var xidneq = framework.Function2{
 	Return:     pgtypes.Bool,
 	Parameters: []pgtypes.DoltgresType{pgtypes.Xid, pgtypes.Xid},
 	Callable: func(ctx *sql.Context, val1 any, val2 any) (any, error) {
-		if val1 == nil || val2 == nil {
-			return nil, nil
-		}
 		res, err := pgtypes.Xid.Compare(val1.(uint32), val2.(uint32))
 		return res != 0, err
 	},
+	Strict: true,
 }

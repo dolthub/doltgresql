@@ -35,9 +35,7 @@ var md5_varchar = framework.Function1{
 	Return:     pgtypes.VarChar,
 	Parameters: []pgtypes.DoltgresType{pgtypes.VarChar},
 	Callable: func(ctx *sql.Context, val1 any) (any, error) {
-		if val1 == nil {
-			return nil, nil
-		}
 		return fmt.Sprintf("%x", md5_package.Sum([]byte(val1.(string)))), nil
 	},
+	Strict: true,
 }

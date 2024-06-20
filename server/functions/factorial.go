@@ -35,9 +35,6 @@ var factorial_int64 = framework.Function1{
 	Return:     pgtypes.Numeric,
 	Parameters: []pgtypes.DoltgresType{pgtypes.Int64},
 	Callable: func(ctx *sql.Context, val1Interface any) (any, error) {
-		if val1Interface == nil {
-			return nil, nil
-		}
 		val1 := val1Interface.(int64)
 		if val1 < 0 {
 			return nil, fmt.Errorf("factorial of a negative number is undefined")
@@ -48,4 +45,5 @@ var factorial_int64 = framework.Function1{
 		}
 		return decimal.NewFromInt(total), nil
 	},
+	Strict: true,
 }

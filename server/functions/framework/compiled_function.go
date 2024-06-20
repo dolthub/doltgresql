@@ -176,6 +176,15 @@ func (c *CompiledFunction) Eval(ctx *sql.Context, row sql.Row) (interface{}, err
 	}
 	// Convert the parameter values into their correct types
 	resultTypes := c.callableFunc.GetParameters()
+
+	if c.callableFunc.GetIsStrict() {
+		for i := range parameters {
+			if parameters[i] == nil {
+				return nil, nil
+			}
+		}
+	}
+
 	if len(c.casts) > 0 {
 		for i := range parameters {
 			if c.casts[i] != nil {

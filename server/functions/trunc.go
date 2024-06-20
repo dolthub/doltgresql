@@ -42,6 +42,7 @@ var trunc_float64 = framework.Function1{
 		}
 		return math.Trunc(val1.(float64)), nil
 	},
+	Strict: true,
 }
 
 // trunc_numeric represents the PostgreSQL function of the same name, taking the same parameters.
@@ -55,6 +56,7 @@ var trunc_numeric = framework.Function1{
 		}
 		return decimal.NewFromInt(val1.(decimal.Decimal).IntPart()), nil
 	},
+	Strict: true,
 }
 
 // trunc_numeric_int64 represents the PostgreSQL function of the same name, taking the same parameters.
@@ -63,10 +65,8 @@ var trunc_numeric_int64 = framework.Function2{
 	Return:     pgtypes.Numeric,
 	Parameters: []pgtypes.DoltgresType{pgtypes.Numeric, pgtypes.Int32},
 	Callable: func(ctx *sql.Context, num any, places any) (any, error) {
-		if num == nil || places == nil {
-			return nil, nil
-		}
 		//TODO: test for negative values in places
 		return num.(decimal.Decimal).Truncate(places.(int32)), nil
 	},
+	Strict: true,
 }

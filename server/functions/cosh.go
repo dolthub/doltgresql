@@ -34,9 +34,7 @@ var cosh_float64 = framework.Function1{
 	Return:     pgtypes.Float64,
 	Parameters: []pgtypes.DoltgresType{pgtypes.Float64},
 	Callable: func(ctx *sql.Context, val1 any) (any, error) {
-		if val1 == nil {
-			return nil, nil
-		}
 		return math.Cosh(val1.(float64)), nil
 	},
+	Strict: true,
 }

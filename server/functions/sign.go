@@ -35,9 +35,6 @@ var sign_float64 = framework.Function1{
 	Return:     pgtypes.Float64,
 	Parameters: []pgtypes.DoltgresType{pgtypes.Float64},
 	Callable: func(ctx *sql.Context, val1 any) (any, error) {
-		if val1 == nil {
-			return nil, nil
-		}
 		if val1.(float64) < 0 {
 			return float64(-1), nil
 		} else if val1.(float64) > 0 {
@@ -46,6 +43,7 @@ var sign_float64 = framework.Function1{
 			return float64(0), nil
 		}
 	},
+	Strict: true,
 }
 
 // sign_numeric represents the PostgreSQL function of the same name, taking the same parameters.
@@ -54,9 +52,6 @@ var sign_numeric = framework.Function1{
 	Return:     pgtypes.Numeric,
 	Parameters: []pgtypes.DoltgresType{pgtypes.Numeric},
 	Callable: func(ctx *sql.Context, val1 any) (any, error) {
-		if val1 == nil {
-			return nil, nil
-		}
 		return decimal.NewFromInt(int64(val1.(decimal.Decimal).Cmp(decimal.Zero))), nil
 	},
 }

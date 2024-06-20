@@ -35,9 +35,6 @@ var min_scale_numeric = framework.Function1{
 	Return:     pgtypes.Int32,
 	Parameters: []pgtypes.DoltgresType{pgtypes.Numeric},
 	Callable: func(ctx *sql.Context, val1 any) (any, error) {
-		if val1 == nil {
-			return nil, nil
-		}
 		str := val1.(decimal.Decimal).String()
 		if idx := strings.Index(str, "."); idx != -1 {
 			str = str[idx+1:]
@@ -51,4 +48,5 @@ var min_scale_numeric = framework.Function1{
 		}
 		return int32(0), nil
 	},
+	Strict: true,
 }
