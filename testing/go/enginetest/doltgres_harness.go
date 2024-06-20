@@ -16,19 +16,28 @@ package enginetest
 
 import (
 	"context"
+	"fmt"
 	"runtime"
 	"strings"
 	"testing"
+	gosql 	"database/sql"
 
 	"github.com/dolthub/dolt/go/libraries/doltcore/sqle/dsess"
 	denginetest "github.com/dolthub/dolt/go/libraries/doltcore/sqle/enginetest"
+	"github.com/dolthub/dolt/go/libraries/utils/svcs"
+	"github.com/dolthub/doltgresql/server"
+	"github.com/dolthub/doltgresql/servercfg"
 	gms "github.com/dolthub/go-mysql-server"
 	"github.com/dolthub/go-mysql-server/enginetest"
 	"github.com/dolthub/go-mysql-server/enginetest/scriptgen/setup"
 	"github.com/dolthub/go-mysql-server/sql"
 	"github.com/dolthub/go-mysql-server/sql/analyzer"
+	gmstypes "github.com/dolthub/go-mysql-server/sql/types"
 	"github.com/dolthub/vitess/go/vt/proto/query"
 	vitess "github.com/dolthub/vitess/go/vt/sqlparser"
+	"github.com/stretchr/testify/require"
+
+	_ "github.com/jackc/pgx/v4/stdlib"
 )
 
 type DoltgresHarness struct {
@@ -104,19 +113,7 @@ func (d *DoltgresHarness) SkipSetupCommit() {
 // NewEngine creates a new *gms.Engine or calls reset and clear scripts on the existing
 // engine for reuse.
 func (d *DoltgresHarness) NewEngine(t *testing.T) (enginetest.QueryEngine, error) {
-	return &DoltgresQueryEngine{harness: d}, nil
-}
-
-func filterStatsOnlyQueries(scripts []setup.SetupScript) []setup.SetupScript {
-	var ret []string
-	for i := range scripts {
-		for _, s := range scripts[i] {
-			if strings.HasPrefix(s, "analyze table") {
-				ret = append(ret, s)
-			}
-		}
-	}
-	return []setup.SetupScript{ret}
+	return NewDoltgresQueryEngine(t, d), nil
 }
 
 // WithParallelism returns a copy of the harness with parallelism set to the given number of threads. A value of 0 or
@@ -225,6 +222,18 @@ func (d *DoltgresHarness) SnapshotTable(db sql.VersionedDatabase, tableName stri
 
 type DoltgresQueryEngine struct {
 	harness *DoltgresHarness
+	controller *svcs.Controller
+}
+
+func NewDoltgresQueryEngine(t *testing.T, harness *DoltgresHarness) *DoltgresQueryEngine {
+	ctrl, err := server.RunInMemory(&servercfg.DoltgresConfig{
+		// TODO
+	})
+	require.NoError(t, err)
+	return &DoltgresQueryEngine{
+		harness: harness,
+		controller: ctrl,
+	}
 }
 
 func (d DoltgresQueryEngine) PrepareQuery(s *sql.Context, s2 string) (sql.Node, error) {
@@ -235,8 +244,61 @@ func (d DoltgresQueryEngine) AnalyzeQuery(s *sql.Context, s2 string) (sql.Node, 
 	panic("implement me")
 }
 
+// TODO: random port
+var doltgresNoDbDsn   = "postgresql://doltgres:password@127.0.0.1:5432/?sslmode=disable"
+
 func (d DoltgresQueryEngine) Query(ctx *sql.Context, query string) (sql.Schema, sql.RowIter, error) {
-	panic("implement me")
+	db, err := gosql.Open("pgx", doltgresNoDbDsn)
+	if err != nil {
+		return nil, nil, err
+	}
+
+	rows, err := db.Query(query)
+	if rows != nil {
+		defer rows.Close()
+	}
+
+	if err != nil {
+		return nil, nil, err
+	}
+
+	schema, columns, err := columns(rows)
+	if err != nil {
+		return nil, nil, err
+	}
+
+	results := make(sql.Row, 0)
+	for rows.Next() {
+		err := rows.Scan(columns...)
+		if err != nil {
+			return nil, nil, err
+		}
+
+		row, err := toRow(schema, columns)
+		if err != nil {
+			return nil, nil, err
+		}
+		
+		results = append(results, row)
+	}
+
+	if rows.Err() != nil {
+		return nil, nil, rows.Err()
+	}
+
+	return schema, sql.RowsToRowIter(results), nil
+}
+
+func toRow(schema sql.Schema, r []interface{}) (sql.Row, error) {
+	row := make(sql.Row, len(schema))
+	for i, col := range schema {
+		val, _, err := col.Type.Convert(r[i])
+		if err != nil {
+			return nil, err
+		}
+		row[i] = val		
+	}
+	return row, nil
 }
 
 func (d DoltgresQueryEngine) EngineAnalyzer() *analyzer.Analyzer {
@@ -256,7 +318,42 @@ func (d DoltgresQueryEngine) CloseSession(connID uint32) {
 }
 
 func (d DoltgresQueryEngine) Close() error {
-	panic("implement me")
+	return d.controller.WaitForStop()
 }
 
 var _ enginetest.QueryEngine = &DoltgresQueryEngine{}
+
+func columns(rows *gosql.Rows) (sql.Schema, []interface{}, error) {
+	types, err := rows.ColumnTypes()
+	if err != nil {
+		return nil, nil, err
+	}
+	
+	schema := make(sql.Schema, 0, len(types))
+	columnVals := make([]interface{}, 0, len(types))
+	
+	for _, columnType := range types {
+		switch columnType.DatabaseTypeName() {
+		case "BIT":
+			colVal := gosql.NullBool{}
+			columnVals = append(columnVals, &colVal)
+			schema = append(schema, &sql.Column{Name: columnType.Name(), Type: gmstypes.Int8, Nullable: true})
+		case "TEXT", "VARCHAR", "MEDIUMTEXT", "CHAR", "TINYTEXT", "NAME", "BYTEA":
+			colVal := gosql.NullString{}
+			columnVals = append(columnVals, &colVal)
+			schema = append(schema, &sql.Column{Name: columnType.Name(), Type: gmstypes.LongText, Nullable: true})
+		case "DECIMAL", "DOUBLE", "FLOAT", "FLOAT8", "NUMERIC":
+			colVal := gosql.NullFloat64{}
+			columnVals = append(columnVals, &colVal)
+			schema = append(schema, &sql.Column{Name: columnType.Name(), Type: gmstypes.Float64, Nullable: true})
+		case "MEDIUMINT", "INT", "BIGINT", "TINYINT", "SMALLINT", "INT4", "INT8":
+			colVal := gosql.NullInt64{}
+			columnVals = append(columnVals, &colVal)
+			schema = append(schema, &sql.Column{Name: columnType.Name(), Type: gmstypes.Int64, Nullable: true})
+		default:
+			return nil, nil, fmt.Errorf("Unhandled type %s", columnType.DatabaseTypeName())
+		}
+	}
+
+	return schema, columnVals, nil
+}
