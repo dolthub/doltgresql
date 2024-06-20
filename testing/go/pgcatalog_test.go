@@ -631,6 +631,32 @@ func TestPgForeignServer(t *testing.T) {
 	})
 }
 
+func TestPgForeignTable(t *testing.T) {
+	RunScripts(t, []ScriptTest{
+		{
+			Name: "pg_foreign_table",
+			Assertions: []ScriptTestAssertion{
+				{
+					Query:    `SELECT * FROM "pg_catalog"."pg_foreign_table";`,
+					Expected: []sql.Row{},
+				},
+				{ // Different cases and quoted, so it fails
+					Query:       `SELECT * FROM "PG_catalog"."pg_foreign_table";`,
+					ExpectedErr: "not",
+				},
+				{ // Different cases and quoted, so it fails
+					Query:       `SELECT * FROM "pg_catalog"."PG_foreign_table";`,
+					ExpectedErr: "not",
+				},
+				{ // Different cases but non-quoted, so it works
+					Query:    "SELECT ftrelid FROM PG_catalog.pg_FOREIGN_TABLE ORDER BY ftrelid;",
+					Expected: []sql.Row{},
+				},
+			},
+		},
+	})
+}
+
 func TestPgIndex(t *testing.T) {
 	RunScripts(t, []ScriptTest{
 		{
