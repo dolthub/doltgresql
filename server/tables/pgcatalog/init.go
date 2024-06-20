@@ -57,6 +57,7 @@ func Init() {
 	InitPgPolicy()
 	InitPgProc()
 	InitPgPublication()
+	InitPgPublicationNamespace()
 	InitPgSequence()
 	InitPgTrigger()
 	InitPgType()
