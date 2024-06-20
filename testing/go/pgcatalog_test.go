@@ -1229,6 +1229,32 @@ func TestPgShdescription(t *testing.T) {
 	})
 }
 
+func TestPgShseclabel(t *testing.T) {
+	RunScripts(t, []ScriptTest{
+		{
+			Name: "pg_shseclabel",
+			Assertions: []ScriptTestAssertion{
+				{
+					Query:    `SELECT * FROM "pg_catalog"."pg_shseclabel";`,
+					Expected: []sql.Row{},
+				},
+				{ // Different cases and quoted, so it fails
+					Query:       `SELECT * FROM "PG_catalog"."pg_shseclabel";`,
+					ExpectedErr: "not",
+				},
+				{ // Different cases and quoted, so it fails
+					Query:       `SELECT * FROM "pg_catalog"."PG_shseclabel";`,
+					ExpectedErr: "not",
+				},
+				{ // Different cases but non-quoted, so it works
+					Query:    "SELECT objoid FROM PG_catalog.pg_SHSECLABEL ORDER BY objoid;",
+					Expected: []sql.Row{},
+				},
+			},
+		},
+	})
+}
+
 func TestPgTrigger(t *testing.T) {
 	RunScripts(t, []ScriptTest{
 		{
