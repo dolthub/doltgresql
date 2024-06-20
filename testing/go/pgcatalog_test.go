@@ -787,6 +787,32 @@ func TestPgLargeobject(t *testing.T) {
 	})
 }
 
+func TestPgLargeobjectMetadata(t *testing.T) {
+	RunScripts(t, []ScriptTest{
+		{
+			Name: "pg_largeobject_metadata",
+			Assertions: []ScriptTestAssertion{
+				{
+					Query:    `SELECT * FROM "pg_catalog"."pg_largeobject_metadata";`,
+					Expected: []sql.Row{},
+				},
+				{ // Different cases and quoted, so it fails
+					Query:       `SELECT * FROM "PG_catalog"."pg_largeobject_metadata";`,
+					ExpectedErr: "not",
+				},
+				{ // Different cases and quoted, so it fails
+					Query:       `SELECT * FROM "pg_catalog"."PG_largeobject_metadata";`,
+					ExpectedErr: "not",
+				},
+				{ // Different cases but non-quoted, so it works
+					Query:    "SELECT oid FROM PG_catalog.pg_LARGEOBJECT_METADATA ORDER BY oid;",
+					Expected: []sql.Row{},
+				},
+			},
+		},
+	})
+}
+
 func TestPgNamespace(t *testing.T) {
 	RunScripts(t, []ScriptTest{
 		{
