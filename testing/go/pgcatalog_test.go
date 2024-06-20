@@ -995,6 +995,32 @@ func TestPgProc(t *testing.T) {
 	})
 }
 
+func TestPgPublication(t *testing.T) {
+	RunScripts(t, []ScriptTest{
+		{
+			Name: "pg_publication",
+			Assertions: []ScriptTestAssertion{
+				{
+					Query:    `SELECT * FROM "pg_catalog"."pg_publication";`,
+					Expected: []sql.Row{},
+				},
+				{ // Different cases and quoted, so it fails
+					Query:       `SELECT * FROM "PG_catalog"."pg_publication";`,
+					ExpectedErr: "not",
+				},
+				{ // Different cases and quoted, so it fails
+					Query:       `SELECT * FROM "pg_catalog"."PG_publication";`,
+					ExpectedErr: "not",
+				},
+				{ // Different cases but non-quoted, so it works
+					Query:    "SELECT pubname FROM PG_catalog.pg_PUBLICATION ORDER BY pubname;",
+					Expected: []sql.Row{},
+				},
+			},
+		},
+	})
+}
+
 func TestPgTrigger(t *testing.T) {
 	RunScripts(t, []ScriptTest{
 		{

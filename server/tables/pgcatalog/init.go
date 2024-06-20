@@ -56,6 +56,7 @@ func Init() {
 	InitPgPartitionedTable()
 	InitPgPolicy()
 	InitPgProc()
+	InitPgPublication()
 	InitPgSequence()
 	InitPgTrigger()
 	InitPgType()
