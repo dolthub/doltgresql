@@ -53,6 +53,7 @@ func Init() {
 	InitPgOpclass()
 	InitPgOpfamily()
 	InitPgParameterAcl()
+	InitPgPartitionedTable()
 	InitPgProc()
 	InitPgSequence()
 	InitPgTrigger()

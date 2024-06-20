@@ -917,6 +917,32 @@ func TestPgParameterAcl(t *testing.T) {
 	})
 }
 
+func TestPgPartitionedTable(t *testing.T) {
+	RunScripts(t, []ScriptTest{
+		{
+			Name: "pg_partitioned_table",
+			Assertions: []ScriptTestAssertion{
+				{
+					Query:    `SELECT * FROM "pg_catalog"."pg_partitioned_table";`,
+					Expected: []sql.Row{},
+				},
+				{ // Different cases and quoted, so it fails
+					Query:       `SELECT * FROM "PG_catalog"."pg_partitioned_table";`,
+					ExpectedErr: "not",
+				},
+				{ // Different cases and quoted, so it fails
+					Query:       `SELECT * FROM "pg_catalog"."PG_partitioned_table";`,
+					ExpectedErr: "not",
+				},
+				{ // Different cases but non-quoted, so it works
+					Query:    "SELECT partrelid FROM PG_catalog.pg_PARTITIONED_TABLE ORDER BY partrelid;",
+					Expected: []sql.Row{},
+				},
+			},
+		},
+	})
+}
+
 func TestPgProc(t *testing.T) {
 	RunScripts(t, []ScriptTest{
 		{
