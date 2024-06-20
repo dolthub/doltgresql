@@ -1125,6 +1125,32 @@ func TestPgReplicationOrigin(t *testing.T) {
 	})
 }
 
+func TestPgRewrite(t *testing.T) {
+	RunScripts(t, []ScriptTest{
+		{
+			Name: "pg_rewrite",
+			Assertions: []ScriptTestAssertion{
+				{
+					Query:    `SELECT * FROM "pg_catalog"."pg_rewrite";`,
+					Expected: []sql.Row{},
+				},
+				{ // Different cases and quoted, so it fails
+					Query:       `SELECT * FROM "PG_catalog"."pg_rewrite";`,
+					ExpectedErr: "not",
+				},
+				{ // Different cases and quoted, so it fails
+					Query:       `SELECT * FROM "pg_catalog"."PG_rewrite";`,
+					ExpectedErr: "not",
+				},
+				{ // Different cases but non-quoted, so it works
+					Query:    "SELECT oid FROM PG_catalog.pg_REWRITE ORDER BY oid;",
+					Expected: []sql.Row{},
+				},
+			},
+		},
+	})
+}
+
 func TestPgTrigger(t *testing.T) {
 	RunScripts(t, []ScriptTest{
 		{

@@ -61,6 +61,7 @@ func Init() {
 	InitPgPublicationRel()
 	InitPgRange()
 	InitPgReplicationOrigin()
+	InitPgRewrite()
 	InitPgSequence()
 	InitPgTrigger()
 	InitPgType()
