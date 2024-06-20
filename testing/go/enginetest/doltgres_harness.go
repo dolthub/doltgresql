@@ -274,7 +274,7 @@ func (d DoltgresQueryEngine) Query(ctx *sql.Context, query string) (sql.Schema, 
 		return nil, nil, err
 	}
 
-	results := make(sql.Row, 0)
+	results := make([]sql.Row, 0)
 	for rows.Next() {
 		err := rows.Scan(columns...)
 		if err != nil {
@@ -293,20 +293,66 @@ func (d DoltgresQueryEngine) Query(ctx *sql.Context, query string) (sql.Schema, 
 		return nil, nil, rows.Err()
 	}
 
-	return schema, sql.RowsToRowIter(results), nil
+	return schema, sql.RowsToRowIter(results...), nil
 }
 
 func toRow(schema sql.Schema, r []interface{}) (sql.Row, error) {
 	row := make(sql.Row, len(schema))
 	for i, col := range schema {
-		val, _, err := col.Type.Convert(r[i])
+		val, err := unwrapResultColumn(r[i])
 		if err != nil {
 			return nil, err
 		}
-		row[i] = val		
+
+		row[i], _, err = col.Type.Convert(val)
+		if err != nil {
+			return nil, err
+		}
 	}
 	return row, nil
 }
+
+func unwrapResultColumn(v any) (any, error) {
+	switch v := v.(type) {
+	case *gosql.NullBool:
+		if v.Valid {
+			return v.Bool, nil
+		}
+		return nil, nil
+	case *gosql.NullString:
+		if v.Valid {
+			return v.String, nil
+		}
+		return nil, nil
+	case *gosql.NullFloat64:
+		if v.Valid {
+			return v.Float64, nil
+		}
+		return nil, nil
+	case *gosql.NullInt64:
+		if v.Valid {
+			return v.Int64, nil
+		}
+		return nil, nil
+	case *gosql.NullTime:
+		if v.Valid {
+			return v.Time, nil
+		}
+		return nil, nil
+	case *gosql.NullInt32:
+		if v.Valid {
+			return v.Int32, nil
+		}
+		return nil, nil
+	case *gosql.NullInt16:
+		if v.Valid {
+			return v.Int16, nil
+		}
+		return nil, nil
+	default:
+		return nil, fmt.Errorf("unsupported type %T", v)
+	}
+} 
 
 func (d DoltgresQueryEngine) EngineAnalyzer() *analyzer.Analyzer {
 	panic("implement me")
