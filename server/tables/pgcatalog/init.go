@@ -39,6 +39,7 @@ func Init() {
 	InitPgDescription()
 	InitPgEnum()
 	InitPgEventTrigger()
+	InitPgExtension()
 	InitPgIndex()
 	InitPgNamespace()
 	InitPgProc()

@@ -553,6 +553,32 @@ func TestPgEventTrigger(t *testing.T) {
 	})
 }
 
+func TestPgExtension(t *testing.T) {
+	RunScripts(t, []ScriptTest{
+		{
+			Name: "pg_extension",
+			Assertions: []ScriptTestAssertion{
+				{
+					Query:    `SELECT * FROM "pg_catalog"."pg_extension";`,
+					Expected: []sql.Row{},
+				},
+				{ // Different cases and quoted, so it fails
+					Query:       `SELECT * FROM "PG_catalog"."pg_extension";`,
+					ExpectedErr: "not",
+				},
+				{ // Different cases and quoted, so it fails
+					Query:       `SELECT * FROM "pg_catalog"."PG_extension";`,
+					ExpectedErr: "not",
+				},
+				{ // Different cases but non-quoted, so it works
+					Query:    "SELECT extname FROM PG_catalog.pg_EXTENSION ORDER BY extname;",
+					Expected: []sql.Row{},
+				},
+			},
+		},
+	})
+}
+
 func TestPgIndex(t *testing.T) {
 	RunScripts(t, []ScriptTest{
 		{
