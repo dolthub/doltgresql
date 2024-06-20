@@ -50,6 +50,7 @@ func Init() {
 	InitPgLargeobject()
 	InitPgLargeobjectMetadata()
 	InitPgNamespace()
+	InitPgOpclass()
 	InitPgProc()
 	InitPgSequence()
 	InitPgTrigger()
