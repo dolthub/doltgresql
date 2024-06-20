@@ -1047,6 +1047,32 @@ func TestPgPublicationNamespace(t *testing.T) {
 	})
 }
 
+func TestPgPublicationRel(t *testing.T) {
+	RunScripts(t, []ScriptTest{
+		{
+			Name: "pg_publication_rel",
+			Assertions: []ScriptTestAssertion{
+				{
+					Query:    `SELECT * FROM "pg_catalog"."pg_publication_rel";`,
+					Expected: []sql.Row{},
+				},
+				{ // Different cases and quoted, so it fails
+					Query:       `SELECT * FROM "PG_catalog"."pg_publication_rel";`,
+					ExpectedErr: "not",
+				},
+				{ // Different cases and quoted, so it fails
+					Query:       `SELECT * FROM "pg_catalog"."PG_publication_rel";`,
+					ExpectedErr: "not",
+				},
+				{ // Different cases but non-quoted, so it works
+					Query:    "SELECT oid FROM PG_catalog.pg_PUBLICATION_REL ORDER BY oid;",
+					Expected: []sql.Row{},
+				},
+			},
+		},
+	})
+}
+
 func TestPgTrigger(t *testing.T) {
 	RunScripts(t, []ScriptTest{
 		{
