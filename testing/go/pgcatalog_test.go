@@ -865,6 +865,32 @@ func TestPgOpclass(t *testing.T) {
 	})
 }
 
+func TestPgOpfamily(t *testing.T) {
+	RunScripts(t, []ScriptTest{
+		{
+			Name: "pg_opfamily",
+			Assertions: []ScriptTestAssertion{
+				{
+					Query:    `SELECT * FROM "pg_catalog"."pg_opfamily";`,
+					Expected: []sql.Row{},
+				},
+				{ // Different cases and quoted, so it fails
+					Query:       `SELECT * FROM "PG_catalog"."pg_opfamily";`,
+					ExpectedErr: "not",
+				},
+				{ // Different cases and quoted, so it fails
+					Query:       `SELECT * FROM "pg_catalog"."PG_opfamily";`,
+					ExpectedErr: "not",
+				},
+				{ // Different cases but non-quoted, so it works
+					Query:    "SELECT opfname FROM PG_catalog.pg_OPFAMILY ORDER BY opfname;",
+					Expected: []sql.Row{},
+				},
+			},
+		},
+	})
+}
+
 func TestPgProc(t *testing.T) {
 	RunScripts(t, []ScriptTest{
 		{

@@ -61,13 +61,14 @@ teardown() {
     [[ "$output" =~ "public,pg_largeobject_metadata,table,postgres" ]] || false
     [[ "$output" =~ "public,pg_namespace,table,postgres" ]] || false
     [[ "$output" =~ "public,pg_opclass,table,postgres" ]] || false
+    [[ "$output" =~ "public,pg_opfamily,table,postgres" ]] || false
     [[ "$output" =~ "public,pg_proc,table,postgres" ]] || false
     [[ "$output" =~ "public,pg_sequence,table,postgres" ]] || false
     [[ "$output" =~ "public,pg_trigger,table,postgres" ]] || false
     [[ "$output" =~ "public,pg_type,table,postgres" ]] || false
     [[ "$output" =~ "public,test1,table,postgres" ]] || false
     [[ "$output" =~ "public,test2,table,postgres" ]] || false
-    [ "${#lines[@]}" -eq 39 ]
+    [ "${#lines[@]}" -eq 40 ]
 }
 
 @test 'psql-commands: \d' {
@@ -106,13 +107,14 @@ teardown() {
     [[ "$output" =~ "public,pg_largeobject_metadata,table,postgres" ]] || false
     [[ "$output" =~ "public,pg_namespace,table,postgres" ]] || false
     [[ "$output" =~ "public,pg_opclass,table,postgres" ]] || false
+    [[ "$output" =~ "public,pg_opfamily,table,postgres" ]] || false
     [[ "$output" =~ "public,pg_proc,table,postgres" ]] || false
     [[ "$output" =~ "public,pg_sequence,table,postgres" ]] || false
     [[ "$output" =~ "public,pg_trigger,table,postgres" ]] || false
     [[ "$output" =~ "public,pg_type,table,postgres" ]] || false
     [[ "$output" =~ "public,test1,table,postgres" ]] || false
     [[ "$output" =~ "public,test2,table,postgres" ]] || false
-    [ "${#lines[@]}" -eq 39 ]
+    [ "${#lines[@]}" -eq 40 ]
 }
 
 @test 'psql-commands: \d table' {
