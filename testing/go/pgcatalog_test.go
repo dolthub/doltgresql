@@ -683,6 +683,32 @@ func TestPgIndex(t *testing.T) {
 	})
 }
 
+func TestPgInherits(t *testing.T) {
+	RunScripts(t, []ScriptTest{
+		{
+			Name: "pg_inherits",
+			Assertions: []ScriptTestAssertion{
+				{
+					Query:    `SELECT * FROM "pg_catalog"."pg_inherits";`,
+					Expected: []sql.Row{},
+				},
+				{ // Different cases and quoted, so it fails
+					Query:       `SELECT * FROM "PG_catalog"."pg_inherits";`,
+					ExpectedErr: "not",
+				},
+				{ // Different cases and quoted, so it fails
+					Query:       `SELECT * FROM "pg_catalog"."PG_inherits";`,
+					ExpectedErr: "not",
+				},
+				{ // Different cases but non-quoted, so it works
+					Query:    "SELECT inhrelid FROM PG_catalog.pg_INHERITS ORDER BY inhrelid;",
+					Expected: []sql.Row{},
+				},
+			},
+		},
+	})
+}
+
 func TestPgNamespace(t *testing.T) {
 	RunScripts(t, []ScriptTest{
 		{

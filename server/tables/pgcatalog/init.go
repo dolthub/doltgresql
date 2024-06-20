@@ -44,6 +44,7 @@ func Init() {
 	InitPgForeignServer()
 	InitPgForeignTable()
 	InitPgIndex()
+	InitPgInherits()
 	InitPgNamespace()
 	InitPgProc()
 	InitPgSequence()
