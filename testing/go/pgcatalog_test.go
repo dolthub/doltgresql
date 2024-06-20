@@ -585,8 +585,8 @@ func TestPgType(t *testing.T) {
 			Name: "pg_type",
 			Assertions: []ScriptTestAssertion{
 				{
-					Query:    `SELECT * FROM "pg_catalog"."pg_type";`,
-					Expected: []sql.Row{},
+					Query:    `SELECT * FROM "pg_catalog"."pg_type" WHERE typname = 'float8';`,
+					Expected: []sql.Row{{701, "float8", 0, 0, 8, "t", "b", "N", "t", "t", ",", 0, "-", 0, 0, "float8in", "float8out", "float8rec", "float8send", "-", "-", "-", "d", "x", "f", 0, 0, 0, 0, nil, nil, nil}},
 				},
 				{ // Different cases and quoted, so it fails
 					Query:       `SELECT * FROM "PG_catalog"."pg_type";`,
@@ -598,7 +598,7 @@ func TestPgType(t *testing.T) {
 				},
 				{ // Different cases but non-quoted, so it works
 					Query:    "SELECT typname FROM PG_catalog.pg_TYPE ORDER BY typname;",
-					Expected: []sql.Row{},
+					Expected: []sql.Row{{"anyarray"}, {"bool"}, {"bpchar"}, {"bytea"}, {"char"}, {"date"}, {"float4"}, {"float8"}, {"int2"}, {"int4"}, {"int8"}, {"json"}, {"jsonb"}, {"name"}, {"numeric"}, {"oid"}, {"text"}, {"time"}, {"timestamp"}, {"timestamptz"}, {"timetz"}, {"unknown"}, {"uuid"}, {"varChar"}, {"xid"}},
 				},
 			},
 		},

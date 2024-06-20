@@ -113,3 +113,36 @@ var typesFromBaseID = map[DoltgresTypeBaseID]DoltgresType{
 	Xid.BaseID():              Xid,
 	XidArray.BaseID():         XidArray,
 }
+
+// typesFromBaseID contains a map from a DoltgresTypeBaseID to its originating type.
+var typesFromTypName = map[string]DoltgresType{
+	"anyarray":    AnyArray,
+	"bpchar":      BpChar,
+	"bool":        Bool,
+	"bytea":       Bytea,
+	"char":        CharType{Length: 1},
+	"date":        Date,
+	"float4":      Float32,
+	"float8":      Float64,
+	"int2":        Int16,
+	"int4":        Int32,
+	"int8":        Int64,
+	"json":        Json,
+	"jsonb":       JsonB,
+	"name":        Name,
+	"numeric":     Numeric,
+	"oid":         Oid,
+	"text":        Text,
+	"time":        Time,
+	"timestamp":   Timestamp,
+	"timestamptz": TimestampTZ,
+	"timetz":      TimeTZ,
+	"uuid":        Uuid,
+	"unknown":     Unknown,
+	"varChar":     VarChar,
+	"xid":         Xid,
+}
+
+func GetAllPgTypes() map[string]DoltgresType {
+	return typesFromTypName
+}
