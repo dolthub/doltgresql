@@ -423,6 +423,32 @@ func TestPgDbRoleSetting(t *testing.T) {
 	})
 }
 
+func TestPgDefaultAcl(t *testing.T) {
+	RunScripts(t, []ScriptTest{
+		{
+			Name: "pg_default_acl",
+			Assertions: []ScriptTestAssertion{
+				{
+					Query:    `SELECT * FROM "pg_catalog"."pg_default_acl";`,
+					Expected: []sql.Row{},
+				},
+				{ // Different cases and quoted, so it fails
+					Query:       `SELECT * FROM "PG_catalog"."pg_default_acl";`,
+					ExpectedErr: "not",
+				},
+				{ // Different cases and quoted, so it fails
+					Query:       `SELECT * FROM "pg_catalog"."PG_default_acl";`,
+					ExpectedErr: "not",
+				},
+				{ // Different cases but non-quoted, so it works
+					Query:    "SELECT oid FROM PG_catalog.pg_DEFAULT_ACL ORDER BY oid;",
+					Expected: []sql.Row{},
+				},
+			},
+		},
+	})
+}
+
 func TestPgDescription(t *testing.T) {
 	RunScripts(t, []ScriptTest{
 		{
