@@ -43,10 +43,22 @@ teardown() {
     [[ "$output" =~ "public,pg_constraint,table,postgres" ]] || false
     [[ "$output" =~ "public,pg_conversion,table,postgres" ]] || false
     [[ "$output" =~ "public,pg_database,table,postgres" ]] || false
+    [[ "$output" =~ "public,pg_db_role_setting,table,postgres" ]] || false
+    [[ "$output" =~ "public,pg_default_acl,table,postgres" ]] || false
+    [[ "$output" =~ "public,pg_depend,table,postgres" ]] || false
     [[ "$output" =~ "public,pg_description,table,postgres" ]] || false
     [[ "$output" =~ "public,pg_enum,table,postgres" ]] || false
     [[ "$output" =~ "public,pg_event_trigger,table,postgres" ]] || false
+    [[ "$output" =~ "public,pg_extension,table,postgres" ]] || false
+    [[ "$output" =~ "public,pg_foreign_data_wrapper,table,postgres" ]] || false
+    [[ "$output" =~ "public,pg_foreign_server,table,postgres" ]] || false
+    [[ "$output" =~ "public,pg_foreign_table,table,postgres" ]] || false
     [[ "$output" =~ "public,pg_index,table,postgres" ]] || false
+    [[ "$output" =~ "public,pg_inherits,table,postgres" ]] || false
+    [[ "$output" =~ "public,pg_init_privs,table,postgres" ]] || false
+    [[ "$output" =~ "public,pg_language,table,postgres" ]] || false
+    [[ "$output" =~ "public,pg_largeobject,table,postgres" ]] || false
+    [[ "$output" =~ "public,pg_largeobject_metadata,table,postgres" ]] || false
     [[ "$output" =~ "public,pg_namespace,table,postgres" ]] || false
     [[ "$output" =~ "public,pg_proc,table,postgres" ]] || false
     [[ "$output" =~ "public,pg_sequence,table,postgres" ]] || false
@@ -54,7 +66,7 @@ teardown() {
     [[ "$output" =~ "public,pg_type,table,postgres" ]] || false
     [[ "$output" =~ "public,test1,table,postgres" ]] || false
     [[ "$output" =~ "public,test2,table,postgres" ]] || false
-    [ "${#lines[@]}" -eq 26 ]
+    [ "${#lines[@]}" -eq 38 ]
 }
 
 @test 'psql-commands: \d' {
@@ -75,10 +87,22 @@ teardown() {
     [[ "$output" =~ "public,pg_constraint,table,postgres" ]] || false
     [[ "$output" =~ "public,pg_conversion,table,postgres" ]] || false
     [[ "$output" =~ "public,pg_database,table,postgres" ]] || false
+    [[ "$output" =~ "public,pg_db_role_setting,table,postgres" ]] || false
+    [[ "$output" =~ "public,pg_default_acl,table,postgres" ]] || false
+    [[ "$output" =~ "public,pg_depend,table,postgres" ]] || false
     [[ "$output" =~ "public,pg_description,table,postgres" ]] || false
     [[ "$output" =~ "public,pg_enum,table,postgres" ]] || false
     [[ "$output" =~ "public,pg_event_trigger,table,postgres" ]] || false
+    [[ "$output" =~ "public,pg_extension,table,postgres" ]] || false
+    [[ "$output" =~ "public,pg_foreign_data_wrapper,table,postgres" ]] || false
+    [[ "$output" =~ "public,pg_foreign_server,table,postgres" ]] || false
+    [[ "$output" =~ "public,pg_foreign_table,table,postgres" ]] || false
     [[ "$output" =~ "public,pg_index,table,postgres" ]] || false
+    [[ "$output" =~ "public,pg_inherits,table,postgres" ]] || false
+    [[ "$output" =~ "public,pg_init_privs,table,postgres" ]] || false
+    [[ "$output" =~ "public,pg_language,table,postgres" ]] || false
+    [[ "$output" =~ "public,pg_largeobject,table,postgres" ]] || false
+    [[ "$output" =~ "public,pg_largeobject_metadata,table,postgres" ]] || false
     [[ "$output" =~ "public,pg_namespace,table,postgres" ]] || false
     [[ "$output" =~ "public,pg_proc,table,postgres" ]] || false
     [[ "$output" =~ "public,pg_sequence,table,postgres" ]] || false
@@ -86,7 +110,7 @@ teardown() {
     [[ "$output" =~ "public,pg_type,table,postgres" ]] || false
     [[ "$output" =~ "public,test1,table,postgres" ]] || false
     [[ "$output" =~ "public,test2,table,postgres" ]] || false
-    [ "${#lines[@]}" -eq 26 ]
+    [ "${#lines[@]}" -eq 38 ]
 }
 
 @test 'psql-commands: \d table' {
