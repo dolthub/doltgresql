@@ -69,6 +69,7 @@ func Init() {
 	InitPgShseclabel()
 	InitPgStatistic()
 	InitPgStatisticExt()
+	InitPgStatisticExtData()
 	InitPgTrigger()
 	InitPgType()
 }
