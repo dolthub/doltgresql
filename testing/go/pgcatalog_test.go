@@ -1281,6 +1281,32 @@ func TestPgStatistic(t *testing.T) {
 	})
 }
 
+func TestPgStatisticExt(t *testing.T) {
+	RunScripts(t, []ScriptTest{
+		{
+			Name: "pg_statistic_ext",
+			Assertions: []ScriptTestAssertion{
+				{
+					Query:    `SELECT * FROM "pg_catalog"."pg_statistic_ext";`,
+					Expected: []sql.Row{},
+				},
+				{ // Different cases and quoted, so it fails
+					Query:       `SELECT * FROM "PG_catalog"."pg_statistic_ext";`,
+					ExpectedErr: "not",
+				},
+				{ // Different cases and quoted, so it fails
+					Query:       `SELECT * FROM "pg_catalog"."PG_statistic_ext";`,
+					ExpectedErr: "not",
+				},
+				{ // Different cases but non-quoted, so it works
+					Query:    "SELECT stxname FROM PG_catalog.pg_STATISTIC_EXT ORDER BY stxname;",
+					Expected: []sql.Row{},
+				},
+			},
+		},
+	})
+}
+
 func TestPgTrigger(t *testing.T) {
 	RunScripts(t, []ScriptTest{
 		{
