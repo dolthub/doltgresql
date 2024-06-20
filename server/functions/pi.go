@@ -36,4 +36,5 @@ var pi = framework.Function0{
 	Callable: func(ctx *sql.Context) (any, error) {
 		return float64(math.Pi), nil
 	},
+	Strict: true,
 }

@@ -32,9 +32,7 @@ var octet_length_varchar = framework.Function1{
 	Return:     pgtypes.Int32,
 	Parameters: []pgtypes.DoltgresType{pgtypes.VarChar},
 	Callable: func(ctx *sql.Context, val1 any) (any, error) {
-		if val1 == nil {
-			return nil, nil
-		}
 		return int32(len(val1.(string))), nil
 	},
+	Strict: true,
 }

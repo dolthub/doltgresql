@@ -33,9 +33,6 @@ var gcd_int64_int64 = framework.Function2{
 	Return:     pgtypes.Int64,
 	Parameters: []pgtypes.DoltgresType{pgtypes.Int64, pgtypes.Int64},
 	Callable: func(ctx *sql.Context, val1Interface any, val2Interface any) (any, error) {
-		if val1Interface == nil || val2Interface == nil {
-			return nil, nil
-		}
 		val1 := val1Interface.(int64)
 		val2 := val2Interface.(int64)
 		for val2 != 0 {
@@ -45,4 +42,5 @@ var gcd_int64_int64 = framework.Function2{
 		}
 		return utils.Abs(val1), nil
 	},
+	Strict: true,
 }

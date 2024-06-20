@@ -36,4 +36,5 @@ var random = framework.Function0{
 	Callable: func(ctx *sql.Context) (any, error) {
 		return rand.Float64(), nil
 	},
+	Strict: true,
 }
