@@ -65,6 +65,7 @@ func Init() {
 	InitPgSeclabel()
 	InitPgSequence()
 	InitPgShdepend()
+	InitPgShdescription()
 	InitPgTrigger()
 	InitPgType()
 }

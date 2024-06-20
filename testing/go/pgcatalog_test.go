@@ -1203,6 +1203,32 @@ func TestPgShdepend(t *testing.T) {
 	})
 }
 
+func TestPgShdescription(t *testing.T) {
+	RunScripts(t, []ScriptTest{
+		{
+			Name: "pg_shdescription",
+			Assertions: []ScriptTestAssertion{
+				{
+					Query:    `SELECT * FROM "pg_catalog"."pg_shdescription";`,
+					Expected: []sql.Row{},
+				},
+				{ // Different cases and quoted, so it fails
+					Query:       `SELECT * FROM "PG_catalog"."pg_shdescription";`,
+					ExpectedErr: "not",
+				},
+				{ // Different cases and quoted, so it fails
+					Query:       `SELECT * FROM "pg_catalog"."PG_shdescription";`,
+					ExpectedErr: "not",
+				},
+				{ // Different cases but non-quoted, so it works
+					Query:    "SELECT objoid FROM PG_catalog.pg_SHDESCRIPTION ORDER BY objoid;",
+					Expected: []sql.Row{},
+				},
+			},
+		},
+	})
+}
+
 func TestPgTrigger(t *testing.T) {
 	RunScripts(t, []ScriptTest{
 		{
