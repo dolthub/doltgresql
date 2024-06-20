@@ -397,6 +397,32 @@ func TestPgDatabase(t *testing.T) {
 	})
 }
 
+func TestPgDbRoleSetting(t *testing.T) {
+	RunScripts(t, []ScriptTest{
+		{
+			Name: "pg_db_role_setting",
+			Assertions: []ScriptTestAssertion{
+				{
+					Query:    `SELECT * FROM "pg_catalog"."pg_db_role_setting";`,
+					Expected: []sql.Row{},
+				},
+				{ // Different cases and quoted, so it fails
+					Query:       `SELECT * FROM "PG_catalog"."pg_db_role_setting";`,
+					ExpectedErr: "not",
+				},
+				{ // Different cases and quoted, so it fails
+					Query:       `SELECT * FROM "pg_catalog"."PG_db_role_setting";`,
+					ExpectedErr: "not",
+				},
+				{ // Different cases but non-quoted, so it works
+					Query:    "SELECT setdatabase FROM PG_catalog.pg_DB_ROLE_SETTING ORDER BY setdatabase;",
+					Expected: []sql.Row{},
+				},
+			},
+		},
+	})
+}
+
 func TestPgDescription(t *testing.T) {
 	RunScripts(t, []ScriptTest{
 		{
