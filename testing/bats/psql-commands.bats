@@ -51,6 +51,7 @@ teardown() {
     [[ "$output" =~ "public,pg_event_trigger,table,postgres" ]] || false
     [[ "$output" =~ "public,pg_extension,table,postgres" ]] || false
     [[ "$output" =~ "public,pg_foreign_data_wrapper,table,postgres" ]] || false
+    [[ "$output" =~ "public,pg_foreign_server,table,postgres" ]] || false
     [[ "$output" =~ "public,pg_index,table,postgres" ]] || false
     [[ "$output" =~ "public,pg_namespace,table,postgres" ]] || false
     [[ "$output" =~ "public,pg_proc,table,postgres" ]] || false
@@ -59,7 +60,7 @@ teardown() {
     [[ "$output" =~ "public,pg_type,table,postgres" ]] || false
     [[ "$output" =~ "public,test1,table,postgres" ]] || false
     [[ "$output" =~ "public,test2,table,postgres" ]] || false
-    [ "${#lines[@]}" -eq 31 ]
+    [ "${#lines[@]}" -eq 32 ]
 }
 
 @test 'psql-commands: \d' {
@@ -88,6 +89,7 @@ teardown() {
     [[ "$output" =~ "public,pg_event_trigger,table,postgres" ]] || false
     [[ "$output" =~ "public,pg_extension,table,postgres" ]] || false
     [[ "$output" =~ "public,pg_foreign_data_wrapper,table,postgres" ]] || false
+    [[ "$output" =~ "public,pg_foreign_server,table,postgres" ]] || false
     [[ "$output" =~ "public,pg_index,table,postgres" ]] || false
     [[ "$output" =~ "public,pg_namespace,table,postgres" ]] || false
     [[ "$output" =~ "public,pg_proc,table,postgres" ]] || false
@@ -96,7 +98,7 @@ teardown() {
     [[ "$output" =~ "public,pg_type,table,postgres" ]] || false
     [[ "$output" =~ "public,test1,table,postgres" ]] || false
     [[ "$output" =~ "public,test2,table,postgres" ]] || false
-    [ "${#lines[@]}" -eq 31 ]
+    [ "${#lines[@]}" -eq 32 ]
 }
 
 @test 'psql-commands: \d table' {
