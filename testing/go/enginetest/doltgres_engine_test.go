@@ -65,7 +65,7 @@ func init() {
 }
 
 func TestQueries(t *testing.T) {
-	h := newDoltHarness(t)
+	h := newDoltgresServerHarness(t)
 	defer h.Close()
 	enginetest.TestQueries(t, h)
 }
@@ -73,7 +73,7 @@ func TestQueries(t *testing.T) {
 func TestSingleQuery(t *testing.T) {
 	t.Skip()
 
-	harness := newDoltHarness(t)
+	harness := newDoltgresServerHarness(t)
 	harness.Setup(setup.SimpleSetup...)
 	engine, err := harness.NewEngine(t)
 	if err != nil {
@@ -133,7 +133,7 @@ func TestSingleScript(t *testing.T) {
 	}
 
 	for _, script := range scripts {
-		harness := newDoltHarness(t)
+		harness := newDoltgresServerHarness(t)
 		harness.Setup(setup.MydbData)
 
 		engine, err := harness.NewEngine(t)
@@ -277,11 +277,11 @@ func TestVersionedQueries(t *testing.T) {
 }
 
 func TestAnsiQuotesSqlMode(t *testing.T) {
-	enginetest.TestAnsiQuotesSqlMode(t, newDoltHarness(t))
+	enginetest.TestAnsiQuotesSqlMode(t, newDoltgresServerHarness(t))
 }
 
 func TestAnsiQuotesSqlModePrepared(t *testing.T) {
-	enginetest.TestAnsiQuotesSqlModePrepared(t, newDoltHarness(t))
+	enginetest.TestAnsiQuotesSqlModePrepared(t, newDoltgresServerHarness(t))
 }
 
 // Tests of choosing the correct execution plan independent of result correctness. Mostly useful for confirming that
@@ -312,7 +312,7 @@ func TestBranchPlans(t *testing.T) {
 }
 
 func TestQueryErrors(t *testing.T) {
-	h := newDoltHarness(t)
+	h := newDoltgresServerHarness(t)
 	defer h.Close()
 	enginetest.TestQueryErrors(t, h)
 }
@@ -323,31 +323,31 @@ func TestInfoSchema(t *testing.T) {
 }
 
 func TestColumnAliases(t *testing.T) {
-	h := newDoltHarness(t)
+	h := newDoltgresServerHarness(t)
 	defer h.Close()
 	enginetest.TestColumnAliases(t, h)
 }
 
 func TestOrderByGroupBy(t *testing.T) {
-	h := newDoltHarness(t)
+	h := newDoltgresServerHarness(t)
 	defer h.Close()
 	enginetest.TestOrderByGroupBy(t, h)
 }
 
 func TestAmbiguousColumnResolution(t *testing.T) {
-	h := newDoltHarness(t)
+	h := newDoltgresServerHarness(t)
 	defer h.Close()
 	enginetest.TestAmbiguousColumnResolution(t, h)
 }
 
 func TestInsertInto(t *testing.T) {
-	h := newDoltHarness(t)
+	h := newDoltgresServerHarness(t)
 	defer h.Close()
 	enginetest.TestInsertInto(t, h)
 }
 
 func TestInsertIgnoreInto(t *testing.T) {
-	h := newDoltHarness(t)
+	h := newDoltgresServerHarness(t)
 	defer h.Close()
 	enginetest.TestInsertIgnoreInto(t, h)
 }
@@ -357,7 +357,7 @@ func TestInsertDuplicateKeyKeyless(t *testing.T) {
 	if !types.IsFormat_DOLT(types.Format_Default) {
 		t.Skip()
 	}
-	enginetest.TestInsertDuplicateKeyKeyless(t, newDoltHarness(t))
+	enginetest.TestInsertDuplicateKeyKeyless(t, newDoltgresServerHarness(t))
 }
 
 // TODO: merge this into the above test when we remove old format
@@ -365,7 +365,7 @@ func TestInsertDuplicateKeyKeylessPrepared(t *testing.T) {
 	if !types.IsFormat_DOLT(types.Format_Default) {
 		t.Skip()
 	}
-	enginetest.TestInsertDuplicateKeyKeylessPrepared(t, newDoltHarness(t))
+	enginetest.TestInsertDuplicateKeyKeylessPrepared(t, newDoltgresServerHarness(t))
 }
 
 // TODO: merge this into the above test when we remove old format
@@ -373,7 +373,7 @@ func TestIgnoreIntoWithDuplicateUniqueKeyKeyless(t *testing.T) {
 	if !types.IsFormat_DOLT(types.Format_Default) {
 		t.Skip()
 	}
-	h := newDoltHarness(t)
+	h := newDoltgresServerHarness(t)
 	defer h.Close()
 	enginetest.TestIgnoreIntoWithDuplicateUniqueKeyKeyless(t, h)
 }
@@ -383,7 +383,7 @@ func TestIgnoreIntoWithDuplicateUniqueKeyKeylessPrepared(t *testing.T) {
 	if !types.IsFormat_DOLT(types.Format_Default) {
 		t.Skip()
 	}
-	enginetest.TestIgnoreIntoWithDuplicateUniqueKeyKeylessPrepared(t, newDoltHarness(t))
+	enginetest.TestIgnoreIntoWithDuplicateUniqueKeyKeylessPrepared(t, newDoltgresServerHarness(t))
 }
 
 func TestInsertIntoErrors(t *testing.T) {
@@ -397,90 +397,90 @@ func TestGeneratedColumns(t *testing.T) {
 }
 
 func TestGeneratedColumnPlans(t *testing.T) {
-	enginetest.TestGeneratedColumnPlans(t, newDoltHarness(t))
+	enginetest.TestGeneratedColumnPlans(t, newDoltgresServerHarness(t))
 }
 
 func TestSpatialQueries(t *testing.T) {
-	h := newDoltHarness(t)
+	h := newDoltgresServerHarness(t)
 	defer h.Close()
 	enginetest.TestSpatialQueries(t, h)
 }
 
 func TestReplaceInto(t *testing.T) {
-	h := newDoltHarness(t)
+	h := newDoltgresServerHarness(t)
 	defer h.Close()
 	enginetest.TestReplaceInto(t, h)
 }
 
 func TestReplaceIntoErrors(t *testing.T) {
-	h := newDoltHarness(t)
+	h := newDoltgresServerHarness(t)
 	defer h.Close()
 	enginetest.TestReplaceIntoErrors(t, h)
 }
 
 func TestUpdate(t *testing.T) {
-	h := newDoltHarness(t)
+	h := newDoltgresServerHarness(t)
 	defer h.Close()
 	enginetest.TestUpdate(t, h)
 }
 
 func TestUpdateIgnore(t *testing.T) {
-	h := newDoltHarness(t)
+	h := newDoltgresServerHarness(t)
 	defer h.Close()
 	enginetest.TestUpdateIgnore(t, h)
 }
 
 func TestUpdateErrors(t *testing.T) {
-	h := newDoltHarness(t)
+	h := newDoltgresServerHarness(t)
 	defer h.Close()
 	enginetest.TestUpdateErrors(t, h)
 }
 
 func TestDeleteFrom(t *testing.T) {
-	h := newDoltHarness(t)
+	h := newDoltgresServerHarness(t)
 	defer h.Close()
 	enginetest.TestDelete(t, h)
 }
 
 func TestDeleteFromErrors(t *testing.T) {
-	h := newDoltHarness(t)
+	h := newDoltgresServerHarness(t)
 	defer h.Close()
 	enginetest.TestDeleteErrors(t, h)
 }
 
 func TestSpatialDelete(t *testing.T) {
-	h := newDoltHarness(t)
+	h := newDoltgresServerHarness(t)
 	defer h.Close()
 	enginetest.TestSpatialDelete(t, h)
 }
 
 func TestSpatialScripts(t *testing.T) {
-	h := newDoltHarness(t)
+	h := newDoltgresServerHarness(t)
 	defer h.Close()
 	enginetest.TestSpatialScripts(t, h)
 }
 
 func TestSpatialScriptsPrepared(t *testing.T) {
-	enginetest.TestSpatialScriptsPrepared(t, newDoltHarness(t))
+	enginetest.TestSpatialScriptsPrepared(t, newDoltgresServerHarness(t))
 }
 
 func TestSpatialIndexScripts(t *testing.T) {
 	skipOldFormat(t)
-	enginetest.TestSpatialIndexScripts(t, newDoltHarness(t))
+	enginetest.TestSpatialIndexScripts(t, newDoltgresServerHarness(t))
 }
 
 func TestSpatialIndexScriptsPrepared(t *testing.T) {
 	skipOldFormat(t)
-	enginetest.TestSpatialIndexScriptsPrepared(t, newDoltHarness(t))
+	enginetest.TestSpatialIndexScriptsPrepared(t, newDoltgresServerHarness(t))
 }
 
 func TestSpatialIndexPlans(t *testing.T) {
 	skipOldFormat(t)
-	enginetest.TestSpatialIndexPlans(t, newDoltHarness(t))
+	enginetest.TestSpatialIndexPlans(t, newDoltgresServerHarness(t))
 }
 
 func TestTruncate(t *testing.T) {
-	h := newDoltHarness(t)
+	h := newDoltgresServerHarness(t)
 	defer h.Close()
 	enginetest.TestTruncate(t, h)
 }
@@ -489,7 +489,7 @@ func TestConvert(t *testing.T) {
 	if types.IsFormat_LD(types.Format_Default) {
 		t.Skip("noms format has outdated type enforcement")
 	}
-	h := newDoltHarness(t)
+	h := newDoltgresServerHarness(t)
 	defer h.Close()
 	enginetest.TestConvertPrepared(t, h)
 }
@@ -498,7 +498,7 @@ func TestConvertPrepared(t *testing.T) {
 	if types.IsFormat_LD(types.Format_Default) {
 		t.Skip("noms format has outdated type enforcement")
 	}
-	h := newDoltHarness(t)
+	h := newDoltgresServerHarness(t)
 	defer h.Close()
 	enginetest.TestConvertPrepared(t, h)
 }
@@ -508,7 +508,7 @@ func TestScripts(t *testing.T) {
 	if types.IsFormat_DOLT(types.Format_Default) {
 		skipped = append(skipped, newFormatSkippedScripts...)
 	}
-	h := newDoltHarness(t).WithSkippedQueries(skipped)
+	h := newDoltgresServerHarness(t).WithSkippedQueries(skipped)
 	defer h.Close()
 	enginetest.TestScripts(t, h)
 }
@@ -518,7 +518,7 @@ func TestJoinOps(t *testing.T) {
 		t.Skip("DOLT_LD keyless indexes are not sorted")
 	}
 
-	h := newDoltHarness(t)
+	h := newDoltgresServerHarness(t)
 	defer h.Close()
 	enginetest.TestJoinOps(t, h, enginetest.DefaultJoinOpTests)
 }
@@ -533,66 +533,66 @@ func TestJoinPlanning(t *testing.T) {
 }
 
 func TestJoinQueries(t *testing.T) {
-	h := newDoltHarness(t)
+	h := newDoltgresServerHarness(t)
 	defer h.Close()
 	enginetest.TestJoinQueries(t, h)
 }
 
 func TestJoinQueriesPrepared(t *testing.T) {
-	h := newDoltHarness(t)
+	h := newDoltgresServerHarness(t)
 	defer h.Close()
 	enginetest.TestJoinQueriesPrepared(t, h)
 }
 
 // TestJSONTableQueries runs the canonical test queries against a single threaded index enabled harness.
 func TestJSONTableQueries(t *testing.T) {
-	h := newDoltHarness(t)
+	h := newDoltgresServerHarness(t)
 	defer h.Close()
 	enginetest.TestJSONTableQueries(t, h)
 }
 
 // TestJSONTableQueriesPrepared runs the canonical test queries against a single threaded index enabled harness.
 func TestJSONTableQueriesPrepared(t *testing.T) {
-	h := newDoltHarness(t)
+	h := newDoltgresServerHarness(t)
 	defer h.Close()
 	enginetest.TestJSONTableQueriesPrepared(t, h)
 }
 
 // TestJSONTableScripts runs the canonical test queries against a single threaded index enabled harness.
 func TestJSONTableScripts(t *testing.T) {
-	h := newDoltHarness(t)
+	h := newDoltgresServerHarness(t)
 	defer h.Close()
 	enginetest.TestJSONTableScripts(t, h)
 }
 
 // TestJSONTableScriptsPrepared runs the canonical test queries against a single threaded index enabled harness.
 func TestJSONTableScriptsPrepared(t *testing.T) {
-	h := newDoltHarness(t)
+	h := newDoltgresServerHarness(t)
 	defer h.Close()
 	enginetest.TestJSONTableScriptsPrepared(t, h)
 }
 
 func TestUserAuthentication(t *testing.T) {
 	t.Skip("Unexpected panic, need to fix")
-	h := newDoltHarness(t)
+	h := newDoltgresServerHarness(t)
 	defer h.Close()
 	enginetest.TestUserAuthentication(t, h)
 }
 
 func TestComplexIndexQueries(t *testing.T) {
-	h := newDoltHarness(t)
+	h := newDoltgresServerHarness(t)
 	defer h.Close()
 	enginetest.TestComplexIndexQueries(t, h)
 }
 
 func TestCreateTable(t *testing.T) {
-	h := newDoltHarness(t)
+	h := newDoltgresServerHarness(t)
 	defer h.Close()
 	enginetest.TestCreateTable(t, h)
 }
 
 func TestRowLimit(t *testing.T) {
-	h := newDoltHarness(t)
+	h := newDoltgresServerHarness(t)
 	defer h.Close()
 	enginetest.TestRowLimit(t, h)
 }
@@ -608,82 +608,82 @@ func TestBranchDdlPrepared(t *testing.T) {
 }
 
 func TestPkOrdinalsDDL(t *testing.T) {
-	h := newDoltHarness(t)
+	h := newDoltgresServerHarness(t)
 	defer h.Close()
 	enginetest.TestPkOrdinalsDDL(t, h)
 }
 
 func TestPkOrdinalsDML(t *testing.T) {
-	h := newDoltHarness(t)
+	h := newDoltgresServerHarness(t)
 	defer h.Close()
 	enginetest.TestPkOrdinalsDML(t, h)
 }
 
 func TestDropTable(t *testing.T) {
-	h := newDoltHarness(t)
+	h := newDoltgresServerHarness(t)
 	defer h.Close()
 	enginetest.TestDropTable(t, h)
 }
 
 func TestRenameTable(t *testing.T) {
-	h := newDoltHarness(t)
+	h := newDoltgresServerHarness(t)
 	defer h.Close()
 	enginetest.TestRenameTable(t, h)
 }
 
 func TestRenameColumn(t *testing.T) {
-	h := newDoltHarness(t)
+	h := newDoltgresServerHarness(t)
 	defer h.Close()
 	enginetest.TestRenameColumn(t, h)
 }
 
 func TestAddColumn(t *testing.T) {
-	h := newDoltHarness(t)
+	h := newDoltgresServerHarness(t)
 	defer h.Close()
 	enginetest.TestAddColumn(t, h)
 }
 
 func TestModifyColumn(t *testing.T) {
-	h := newDoltHarness(t)
+	h := newDoltgresServerHarness(t)
 	defer h.Close()
 	enginetest.TestModifyColumn(t, h)
 }
 
 func TestDropColumn(t *testing.T) {
-	h := newDoltHarness(t)
+	h := newDoltgresServerHarness(t)
 	defer h.Close()
 	enginetest.TestDropColumn(t, h)
 }
 
 func TestCreateDatabase(t *testing.T) {
-	h := newDoltHarness(t)
+	h := newDoltgresServerHarness(t)
 	defer h.Close()
 	enginetest.TestCreateDatabase(t, h)
 }
 
 func TestBlobs(t *testing.T) {
 	skipOldFormat(t)
-	h := newDoltHarness(t)
+	h := newDoltgresServerHarness(t)
 	defer h.Close()
 	enginetest.TestBlobs(t, h)
 }
 
 func TestIndexes(t *testing.T) {
-	harness := newDoltHarness(t)
+	harness := newDoltgresServerHarness(t)
 	defer harness.Close()
 	enginetest.TestIndexes(t, harness)
 }
 
 func TestIndexPrefix(t *testing.T) {
 	skipOldFormat(t)
-	harness := newDoltHarness(t)
+	harness := newDoltgresServerHarness(t)
 	denginetest.RunIndexPrefixTest(t, harness)
 }
 
 func TestBigBlobs(t *testing.T) {
 	skipOldFormat(t)
 
-	h := newDoltHarness(t)
+	h := newDoltgresServerHarness(t)
 	denginetest.RunBigBlobsTest(t, h)
 }
 
@@ -693,19 +693,19 @@ func TestDropDatabase(t *testing.T) {
 }
 
 func TestCreateForeignKeys(t *testing.T) {
-	h := newDoltHarness(t)
+	h := newDoltgresServerHarness(t)
 	defer h.Close()
 	enginetest.TestCreateForeignKeys(t, h)
 }
 
 func TestDropForeignKeys(t *testing.T) {
-	h := newDoltHarness(t)
+	h := newDoltgresServerHarness(t)
 	defer h.Close()
 	enginetest.TestDropForeignKeys(t, h)
 }
 
 func TestForeignKeys(t *testing.T) {
-	h := newDoltHarness(t)
+	h := newDoltgresServerHarness(t)
 	defer h.Close()
 	enginetest.TestForeignKeys(t, h)
 }
@@ -727,49 +727,49 @@ func TestFulltextIndexes(t *testing.T) {
 	if runtime.GOOS == "windows" && os.Getenv("CI") != "" {
 		t.Skip("For some reason, this is flaky only on Windows CI.")
 	}
-	h := newDoltHarness(t)
+	h := newDoltgresServerHarness(t)
 	defer h.Close()
 	enginetest.TestFulltextIndexes(t, h)
 }
 
 func TestCreateCheckConstraints(t *testing.T) {
-	h := newDoltHarness(t)
+	h := newDoltgresServerHarness(t)
 	defer h.Close()
 	enginetest.TestCreateCheckConstraints(t, h)
 }
 
 func TestChecksOnInsert(t *testing.T) {
-	h := newDoltHarness(t)
+	h := newDoltgresServerHarness(t)
 	defer h.Close()
 	enginetest.TestChecksOnInsert(t, h)
 }
 
 func TestChecksOnUpdate(t *testing.T) {
-	h := newDoltHarness(t)
+	h := newDoltgresServerHarness(t)
 	defer h.Close()
 	enginetest.TestChecksOnUpdate(t, h)
 }
 
 func TestDisallowedCheckConstraints(t *testing.T) {
-	h := newDoltHarness(t)
+	h := newDoltgresServerHarness(t)
 	defer h.Close()
 	enginetest.TestDisallowedCheckConstraints(t, h)
 }
 
 func TestDropCheckConstraints(t *testing.T) {
-	h := newDoltHarness(t)
+	h := newDoltgresServerHarness(t)
 	defer h.Close()
 	enginetest.TestDropCheckConstraints(t, h)
 }
 
 func TestReadOnly(t *testing.T) {
-	h := newDoltHarness(t)
+	h := newDoltgresServerHarness(t)
 	defer h.Close()
 	enginetest.TestReadOnly(t, h, false /* testStoredProcedures */)
 }
 
 func TestViews(t *testing.T) {
-	h := newDoltHarness(t)
+	h := newDoltgresServerHarness(t)
 	defer h.Close()
 	enginetest.TestViews(t, h)
 }
@@ -790,68 +790,68 @@ func TestVersionedViews(t *testing.T) {
 }
 
 func TestWindowFunctions(t *testing.T) {
-	h := newDoltHarness(t)
+	h := newDoltgresServerHarness(t)
 	defer h.Close()
 	enginetest.TestWindowFunctions(t, h)
 }
 
 func TestWindowRowFrames(t *testing.T) {
-	h := newDoltHarness(t)
+	h := newDoltgresServerHarness(t)
 	defer h.Close()
 	enginetest.TestWindowRowFrames(t, h)
 }
 
 func TestWindowRangeFrames(t *testing.T) {
-	h := newDoltHarness(t)
+	h := newDoltgresServerHarness(t)
 	defer h.Close()
 	enginetest.TestWindowRangeFrames(t, h)
 }
 
 func TestNamedWindows(t *testing.T) {
-	h := newDoltHarness(t)
+	h := newDoltgresServerHarness(t)
 	defer h.Close()
 	enginetest.TestNamedWindows(t, h)
 }
 
 func TestNaturalJoin(t *testing.T) {
-	h := newDoltHarness(t)
+	h := newDoltgresServerHarness(t)
 	defer h.Close()
 	enginetest.TestNaturalJoin(t, h)
 }
 
 func TestNaturalJoinEqual(t *testing.T) {
-	h := newDoltHarness(t)
+	h := newDoltgresServerHarness(t)
 	defer h.Close()
 	enginetest.TestNaturalJoinEqual(t, h)
 }
 
 func TestNaturalJoinDisjoint(t *testing.T) {
-	h := newDoltHarness(t)
+	h := newDoltgresServerHarness(t)
 	defer h.Close()
 	enginetest.TestNaturalJoinEqual(t, h)
 }
 
 func TestInnerNestedInNaturalJoins(t *testing.T) {
-	h := newDoltHarness(t)
+	h := newDoltgresServerHarness(t)
 	defer h.Close()
 	enginetest.TestInnerNestedInNaturalJoins(t, h)
 }
 
 func TestColumnDefaults(t *testing.T) {
-	h := newDoltHarness(t)
+	h := newDoltgresServerHarness(t)
 	defer h.Close()
 	enginetest.TestColumnDefaults(t, h)
 }
 
 func TestOnUpdateExprScripts(t *testing.T) {
-	h := newDoltHarness(t)
+	h := newDoltgresServerHarness(t)
 	defer h.Close()
 	enginetest.TestOnUpdateExprScripts(t, h)
 }
 
 func TestAlterTable(t *testing.T) {
 	// This is a newly added test in GMS that dolt doesn't support yet
-	h := newDoltHarness(t).WithSkippedQueries([]string{"ALTER TABLE t42 ADD COLUMN s varchar(20), drop check check1"})
+	h := newDoltgresServerHarness(t).WithSkippedQueries([]string{"ALTER TABLE t42 ADD COLUMN s varchar(20), drop check check1"})
 	defer h.Close()
 	enginetest.TestAlterTable(t, h)
 }
@@ -862,7 +862,7 @@ func TestVariables(t *testing.T) {
 }
 
 func TestVariableErrors(t *testing.T) {
-	h := newDoltHarness(t)
+	h := newDoltgresServerHarness(t)
 	defer h.Close()
 	enginetest.TestVariableErrors(t, h)
 }
@@ -870,33 +870,33 @@ func TestVariableErrors(t *testing.T) {
 func TestLoadDataPrepared(t *testing.T) {
 	t.Skip("feature not supported")
 	skipPreparedTests(t)
-	h := newDoltHarness(t)
+	h := newDoltgresServerHarness(t)
 	defer h.Close()
 	enginetest.TestLoadDataPrepared(t, h)
 }
 
 func TestLoadData(t *testing.T) {
 	t.Skip()
-	h := newDoltHarness(t)
+	h := newDoltgresServerHarness(t)
 	defer h.Close()
 	enginetest.TestLoadData(t, h)
 }
 
 func TestLoadDataErrors(t *testing.T) {
 	t.Skip()
-	h := newDoltHarness(t)
+	h := newDoltgresServerHarness(t)
 	defer h.Close()
 	enginetest.TestLoadDataErrors(t, h)
 }
 
 func TestSelectIntoFile(t *testing.T) {
-	h := newDoltHarness(t)
+	h := newDoltgresServerHarness(t)
 	defer h.Close()
 	enginetest.TestSelectIntoFile(t, h)
 }
 
 func TestJsonScripts(t *testing.T) {
-	h := newDoltHarness(t)
+	h := newDoltgresServerHarness(t)
 	defer h.Close()
 	skippedTests := []string{
 		"round-trip into table", // The current Dolt JSON format does not preserve decimals and unsigneds in JSON.
@@ -906,13 +906,13 @@ func TestJsonScripts(t *testing.T) {
 }
 
 func TestTriggers(t *testing.T) {
-	h := newDoltHarness(t)
+	h := newDoltgresServerHarness(t)
 	defer h.Close()
 	enginetest.TestTriggers(t, h)
 }
 
 func TestRollbackTriggers(t *testing.T) {
-	h := newDoltHarness(t)
+	h := newDoltgresServerHarness(t)
 	defer h.Close()
 	enginetest.TestRollbackTriggers(t, h)
 }
@@ -933,7 +933,7 @@ func TestDoltStoredProceduresPrepared(t *testing.T) {
 }
 
 func TestEvents(t *testing.T) {
-	doltHarness := newDoltHarness(t)
+	doltHarness := newDoltgresServerHarness(t)
 	defer doltHarness.Close()
 	enginetest.TestEvents(t, doltHarness)
 }
@@ -975,7 +975,7 @@ func TestMultiDbTransactionsPrepared(t *testing.T) {
 }
 
 func TestConcurrentTransactions(t *testing.T) {
-	h := newDoltHarness(t)
+	h := newDoltgresServerHarness(t)
 	defer h.Close()
 	enginetest.TestConcurrentTransactions(t, h)
 }
@@ -1012,7 +1012,7 @@ func TestBrokenDdlScripts(t *testing.T) {
 }
 
 func TestDescribeTableAsOf(t *testing.T) {
-	h := newDoltHarness(t)
+	h := newDoltgresServerHarness(t)
 	defer h.Close()
 	enginetest.TestScript(t, h, denginetest.DescribeTableAsOfScriptTest)
 }
@@ -1028,14 +1028,14 @@ func TestShowCreateTablePrepared(t *testing.T) {
 }
 
 func TestViewsWithAsOf(t *testing.T) {
-	h := newDoltHarness(t)
+	h := newDoltgresServerHarness(t)
 	defer h.Close()
 	enginetest.TestScript(t, h, denginetest.ViewsWithAsOfScriptTest)
 }
 
 func TestViewsWithAsOfPrepared(t *testing.T) {
 	skipPreparedTests(t)
-	h := newDoltHarness(t)
+	h := newDoltgresServerHarness(t)
 	defer h.Close()
 	enginetest.TestScriptPrepared(t, h, denginetest.ViewsWithAsOfScriptTest)
 }
@@ -1056,7 +1056,7 @@ func TestDoltRebase(t *testing.T) {
 }
 
 func TestDoltRebasePrepared(t *testing.T) {
-	h := newDoltHarness(t)
+	h := newDoltgresServerHarness(t)
 	denginetest.RunDoltRebasePreparedTests(t, h)
 }
 
@@ -1106,7 +1106,7 @@ func TestDoltGC(t *testing.T) {
 	t.SkipNow()
 	for _, script := range denginetest.DoltGC {
 		func() {
-			h := newDoltHarness(t)
+			h := newDoltgresServerHarness(t)
 			defer h.Close()
 			enginetest.TestScript(t, h, script)
 		}()
@@ -1167,7 +1167,7 @@ func installTestCommitClock(tcc *testCommitClock) func() {
 func TestBrokenSystemTableQueries(t *testing.T) {
 	t.Skip()
 
-	h := newDoltHarness(t)
+	h := newDoltgresServerHarness(t)
 	defer h.Close()
 	enginetest.RunQueryTests(t, h, denginetest.BrokenSystemTableQueries)
 }
@@ -1352,13 +1352,13 @@ func TestSystemTableFunctionIndexesPrepared(t *testing.T) {
 }
 
 func TestReadOnlyDatabases(t *testing.T) {
-	h := newDoltHarness(t)
+	h := newDoltgresServerHarness(t)
 	defer h.Close()
 	enginetest.TestReadOnlyDatabases(t, h)
 }
 
 func TestAddDropPks(t *testing.T) {
-	h := newDoltHarness(t)
+	h := newDoltgresServerHarness(t)
 	defer h.Close()
 	enginetest.TestAddDropPks(t, h)
 }
@@ -1369,13 +1369,13 @@ func TestAddAutoIncrementColumn(t *testing.T) {
 }
 
 func TestNullRanges(t *testing.T) {
-	h := newDoltHarness(t)
+	h := newDoltgresServerHarness(t)
 	defer h.Close()
 	enginetest.TestNullRanges(t, h)
 }
 
 func TestPersist(t *testing.T) {
-	harness := newDoltHarness(t)
+	harness := newDoltgresServerHarness(t)
 	defer harness.Close()
 	dEnv := dtestutils.CreateTestEnv()
 	defer dEnv.DoltDB.Close()
@@ -1417,7 +1417,7 @@ func TestDoltCommitPrepared(t *testing.T) {
 }
 
 func TestQueriesPrepared(t *testing.T) {
-	h := newDoltHarness(t)
+	h := newDoltgresServerHarness(t)
 	defer h.Close()
 	enginetest.TestQueriesPrepared(t, h)
 }
@@ -1440,7 +1440,7 @@ func TestJoinStats(t *testing.T) {
 }
 
 func TestStatisticIndexes(t *testing.T) {
-	h := newDoltHarness(t)
+	h := newDoltgresServerHarness(t)
 	defer h.Close()
 	enginetest.TestStatisticIndexFilters(t, h)
 }
@@ -1448,7 +1448,7 @@ func TestStatisticIndexes(t *testing.T) {
 func TestSpatialQueriesPrepared(t *testing.T) {
 	skipPreparedTests(t)
 
-	h := newDoltHarness(t)
+	h := newDoltgresServerHarness(t)
 	defer h.Close()
 	enginetest.TestSpatialQueriesPrepared(t, h)
 }
@@ -1465,35 +1465,35 @@ func TestVersionedQueriesPrepared(t *testing.T) {
 
 func TestInfoSchemaPrepared(t *testing.T) {
 	skipPreparedTests(t)
-	h := newDoltHarness(t)
+	h := newDoltgresServerHarness(t)
 	defer h.Close()
 	enginetest.TestInfoSchemaPrepared(t, h)
 }
 
 func TestUpdateQueriesPrepared(t *testing.T) {
 	skipPreparedTests(t)
-	h := newDoltHarness(t)
+	h := newDoltgresServerHarness(t)
 	defer h.Close()
 	enginetest.TestUpdateQueriesPrepared(t, h)
 }
 
 func TestInsertQueriesPrepared(t *testing.T) {
 	skipPreparedTests(t)
-	h := newDoltHarness(t)
+	h := newDoltgresServerHarness(t)
 	defer h.Close()
 	enginetest.TestInsertQueriesPrepared(t, h)
 }
 
 func TestReplaceQueriesPrepared(t *testing.T) {
 	skipPreparedTests(t)
-	h := newDoltHarness(t)
+	h := newDoltgresServerHarness(t)
 	defer h.Close()
 	enginetest.TestReplaceQueriesPrepared(t, h)
 }
 
 func TestDeleteQueriesPrepared(t *testing.T) {
 	skipPreparedTests(t)
-	h := newDoltHarness(t)
+	h := newDoltgresServerHarness(t)
 	defer h.Close()
 	enginetest.TestDeleteQueriesPrepared(t, h)
 }
@@ -1504,28 +1504,28 @@ func TestScriptsPrepared(t *testing.T) {
 		skipped = append(skipped, newFormatSkippedScripts...)
 	}
 	skipPreparedTests(t)
-	h := newDoltHarness(t).WithSkippedQueries(skipped)
+	h := newDoltgresServerHarness(t).WithSkippedQueries(skipped)
 	defer h.Close()
 	enginetest.TestScriptsPrepared(t, h)
 }
 
 func TestInsertScriptsPrepared(t *testing.T) {
 	skipPreparedTests(t)
-	h := newDoltHarness(t)
+	h := newDoltgresServerHarness(t)
 	defer h.Close()
 	enginetest.TestInsertScriptsPrepared(t, h)
 }
 
 func TestComplexIndexQueriesPrepared(t *testing.T) {
 	skipPreparedTests(t)
-	h := newDoltHarness(t)
+	h := newDoltgresServerHarness(t)
 	defer h.Close()
 	enginetest.TestComplexIndexQueriesPrepared(t, h)
 }
 
 func TestJsonScriptsPrepared(t *testing.T) {
 	skipPreparedTests(t)
-	h := newDoltHarness(t)
+	h := newDoltgresServerHarness(t)
 	defer h.Close()
 	skippedTests := []string{
 		"round-trip into table", // The current Dolt JSON format does not preserve decimals and unsigneds in JSON.
@@ -1535,14 +1535,14 @@ func TestJsonScriptsPrepared(t *testing.T) {
 
 func TestCreateCheckConstraintsScriptsPrepared(t *testing.T) {
 	skipPreparedTests(t)
-	h := newDoltHarness(t)
+	h := newDoltgresServerHarness(t)
 	defer h.Close()
 	enginetest.TestCreateCheckConstraintsScriptsPrepared(t, h)
 }
 
 func TestInsertIgnoreScriptsPrepared(t *testing.T) {
 	skipPreparedTests(t)
-	h := newDoltHarness(t)
+	h := newDoltgresServerHarness(t)
 	defer h.Close()
 	enginetest.TestInsertIgnoreScriptsPrepared(t, h)
 }
@@ -1560,7 +1560,7 @@ func TestInsertErrorScriptsPrepared(t *testing.T) {
 
 func TestViewsPrepared(t *testing.T) {
 	skipPreparedTests(t)
-	h := newDoltHarness(t)
+	h := newDoltgresServerHarness(t)
 	defer h.Close()
 	enginetest.TestViewsPrepared(t, h)
 }
@@ -1568,28 +1568,28 @@ func TestViewsPrepared(t *testing.T) {
 func TestVersionedViewsPrepared(t *testing.T) {
 	t.Skip("not supported for prepareds")
 	skipPreparedTests(t)
-	h := newDoltHarness(t)
+	h := newDoltgresServerHarness(t)
 	defer h.Close()
 	enginetest.TestVersionedViewsPrepared(t, h)
 }
 
 func TestShowTableStatusPrepared(t *testing.T) {
 	skipPreparedTests(t)
-	h := newDoltHarness(t)
+	h := newDoltgresServerHarness(t)
 	defer h.Close()
 	enginetest.TestShowTableStatusPrepared(t, h)
 }
 
 func TestPrepared(t *testing.T) {
 	skipPreparedTests(t)
-	h := newDoltHarness(t)
+	h := newDoltgresServerHarness(t)
 	defer h.Close()
 	enginetest.TestPrepared(t, h)
 }
 
 func TestDoltPreparedScripts(t *testing.T) {
 	skipPreparedTests(t)
-	h := newDoltHarness(t)
+	h := newDoltgresServerHarness(t)
 	defer h.Close()
 	// TODO
 	// DoltPreparedScripts(t, h)
@@ -1597,21 +1597,21 @@ func TestDoltPreparedScripts(t *testing.T) {
 
 func TestPreparedInsert(t *testing.T) {
 	skipPreparedTests(t)
-	h := newDoltHarness(t)
+	h := newDoltgresServerHarness(t)
 	defer h.Close()
 	enginetest.TestPreparedInsert(t, h)
 }
 
 func TestPreparedStatements(t *testing.T) {
 	skipPreparedTests(t)
-	h := newDoltHarness(t)
+	h := newDoltgresServerHarness(t)
 	defer h.Close()
 	enginetest.TestPreparedStatements(t, h)
 }
 
 func TestCharsetCollationEngine(t *testing.T) {
 	skipOldFormat(t)
-	h := newDoltHarness(t)
+	h := newDoltgresServerHarness(t)
 	defer h.Close()
 	enginetest.TestCharsetCollationEngine(t, h)
 }
@@ -1646,7 +1646,7 @@ func TestDoltStorageFormatPrepared(t *testing.T) {
 	} else {
 		expectedFormatString = fmt.Sprintf("OLD ( %s )", types.Format_Default.VersionString())
 	}
-	h := newDoltHarness(t)
+	h := newDoltgresServerHarness(t)
 	defer h.Close()
 	enginetest.TestPreparedQuery(t, h, "SELECT dolt_storage_format()", []sql.Row{{expectedFormatString}}, nil)
 }
@@ -1692,12 +1692,5 @@ func skipOldFormat(t *testing.T) {
 func skipPreparedTests(t *testing.T) {
 	if skipPrepared {
 		t.Skip("skip prepared")
-	}
-}
-
-func newSessionBuilder(harness *DoltHarness) server.SessionBuilder {
-	return func(ctx context.Context, conn *mysql.Conn, host string) (sql.Session, error) {
-		newCtx := harness.NewSession()
-		return newCtx.Session, nil
 	}
 }
