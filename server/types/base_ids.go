@@ -110,7 +110,7 @@ var baseIDCategories = map[DoltgresTypeBaseID]TypeCategory{
 	AnyArray.BaseID():    TypeCategory_PseudoTypes,
 	Bool.BaseID():        TypeCategory_BooleanTypes,
 	Bytea.BaseID():       TypeCategory_UserDefinedTypes,
-	BpChar.BaseID():      TypeCategory_UserDefinedTypes,
+	BpChar.BaseID():      TypeCategory_StringTypes,
 	Date.BaseID():        TypeCategory_DateTimeTypes,
 	Float32.BaseID():     TypeCategory_NumericTypes,
 	Float64.BaseID():     TypeCategory_NumericTypes,
