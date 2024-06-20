@@ -761,6 +761,32 @@ func TestPgLanguage(t *testing.T) {
 	})
 }
 
+func TestPgLargeobject(t *testing.T) {
+	RunScripts(t, []ScriptTest{
+		{
+			Name: "pg_largeobject",
+			Assertions: []ScriptTestAssertion{
+				{
+					Query:    `SELECT * FROM "pg_catalog"."pg_largeobject";`,
+					Expected: []sql.Row{},
+				},
+				{ // Different cases and quoted, so it fails
+					Query:       `SELECT * FROM "PG_catalog"."pg_largeobject";`,
+					ExpectedErr: "not",
+				},
+				{ // Different cases and quoted, so it fails
+					Query:       `SELECT * FROM "pg_catalog"."PG_largeobject";`,
+					ExpectedErr: "not",
+				},
+				{ // Different cases but non-quoted, so it works
+					Query:    "SELECT loid FROM PG_catalog.pg_LARGEOBJECT ORDER BY loid;",
+					Expected: []sql.Row{},
+				},
+			},
+		},
+	})
+}
+
 func TestPgNamespace(t *testing.T) {
 	RunScripts(t, []ScriptTest{
 		{
