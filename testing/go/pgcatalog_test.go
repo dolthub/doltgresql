@@ -709,6 +709,32 @@ func TestPgInherits(t *testing.T) {
 	})
 }
 
+func TestPgInitPrivs(t *testing.T) {
+	RunScripts(t, []ScriptTest{
+		{
+			Name: "pg_init_privs",
+			Assertions: []ScriptTestAssertion{
+				{
+					Query:    `SELECT * FROM "pg_catalog"."pg_init_privs";`,
+					Expected: []sql.Row{},
+				},
+				{ // Different cases and quoted, so it fails
+					Query:       `SELECT * FROM "PG_catalog"."pg_init_privs";`,
+					ExpectedErr: "not",
+				},
+				{ // Different cases and quoted, so it fails
+					Query:       `SELECT * FROM "pg_catalog"."PG_init_privs";`,
+					ExpectedErr: "not",
+				},
+				{ // Different cases but non-quoted, so it works
+					Query:    "SELECT objoid FROM PG_catalog.pg_INIT_PRIVS ORDER BY objoid;",
+					Expected: []sql.Row{},
+				},
+			},
+		},
+	})
+}
+
 func TestPgNamespace(t *testing.T) {
 	RunScripts(t, []ScriptTest{
 		{
