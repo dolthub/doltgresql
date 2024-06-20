@@ -62,6 +62,7 @@ func Init() {
 	InitPgRange()
 	InitPgReplicationOrigin()
 	InitPgRewrite()
+	InitPgSeclabel()
 	InitPgSequence()
 	InitPgTrigger()
 	InitPgType()
