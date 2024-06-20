@@ -943,6 +943,32 @@ func TestPgPartitionedTable(t *testing.T) {
 	})
 }
 
+func TestPgPolicy(t *testing.T) {
+	RunScripts(t, []ScriptTest{
+		{
+			Name: "pg_policy",
+			Assertions: []ScriptTestAssertion{
+				{
+					Query:    `SELECT * FROM "pg_catalog"."pg_policy";`,
+					Expected: []sql.Row{},
+				},
+				{ // Different cases and quoted, so it fails
+					Query:       `SELECT * FROM "PG_catalog"."pg_policy";`,
+					ExpectedErr: "not",
+				},
+				{ // Different cases and quoted, so it fails
+					Query:       `SELECT * FROM "pg_catalog"."PG_policy";`,
+					ExpectedErr: "not",
+				},
+				{ // Different cases but non-quoted, so it works
+					Query:    "SELECT polname FROM PG_catalog.pg_POLICY ORDER BY polname;",
+					Expected: []sql.Row{},
+				},
+			},
+		},
+	})
+}
+
 func TestPgProc(t *testing.T) {
 	RunScripts(t, []ScriptTest{
 		{
