@@ -35,6 +35,7 @@ func Init() {
 	InitPgDatabase()
 	InitPgDbRoleSetting()
 	InitPgDefaultAcl()
+	InitPgDepend()
 	InitPgDescription()
 	InitPgEnum()
 	InitPgEventTrigger()

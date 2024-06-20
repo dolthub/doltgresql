@@ -449,6 +449,32 @@ func TestPgDefaultAcl(t *testing.T) {
 	})
 }
 
+func TestPgDepend(t *testing.T) {
+	RunScripts(t, []ScriptTest{
+		{
+			Name: "pg_depend",
+			Assertions: []ScriptTestAssertion{
+				{
+					Query:    `SELECT * FROM "pg_catalog"."pg_depend";`,
+					Expected: []sql.Row{},
+				},
+				{ // Different cases and quoted, so it fails
+					Query:       `SELECT * FROM "PG_catalog"."pg_depend";`,
+					ExpectedErr: "not",
+				},
+				{ // Different cases and quoted, so it fails
+					Query:       `SELECT * FROM "pg_catalog"."PG_depend";`,
+					ExpectedErr: "not",
+				},
+				{ // Different cases but non-quoted, so it works
+					Query:    "SELECT classid FROM PG_catalog.pg_DEPEND ORDER BY classid;",
+					Expected: []sql.Row{},
+				},
+			},
+		},
+	})
+}
+
 func TestPgDescription(t *testing.T) {
 	RunScripts(t, []ScriptTest{
 		{
