@@ -60,6 +60,7 @@ func Init() {
 	InitPgPublicationNamespace()
 	InitPgPublicationRel()
 	InitPgRange()
+	InitPgReplicationOrigin()
 	InitPgSequence()
 	InitPgTrigger()
 	InitPgType()

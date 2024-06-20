@@ -70,12 +70,13 @@ teardown() {
     [[ "$output" =~ "public,pg_publication_namespace,table,postgres" ]] || false
     [[ "$output" =~ "public,pg_publication_rel,table,postgres" ]] || false
     [[ "$output" =~ "public,pg_range,table,postgres" ]] || false
+    [[ "$output" =~ "public,pg_replication_origin,table,postgres" ]] || false
     [[ "$output" =~ "public,pg_sequence,table,postgres" ]] || false
     [[ "$output" =~ "public,pg_trigger,table,postgres" ]] || false
     [[ "$output" =~ "public,pg_type,table,postgres" ]] || false
     [[ "$output" =~ "public,test1,table,postgres" ]] || false
     [[ "$output" =~ "public,test2,table,postgres" ]] || false
-    [ "${#lines[@]}" -eq 47 ]
+    [ "${#lines[@]}" -eq 48 ]
 }
 
 @test 'psql-commands: \d' {
@@ -123,12 +124,13 @@ teardown() {
     [[ "$output" =~ "public,pg_publication_namespace,table,postgres" ]] || false
     [[ "$output" =~ "public,pg_publication_rel,table,postgres" ]] || false
     [[ "$output" =~ "public,pg_range,table,postgres" ]] || false
+    [[ "$output" =~ "public,pg_replication_origin,table,postgres" ]] || false
     [[ "$output" =~ "public,pg_sequence,table,postgres" ]] || false
     [[ "$output" =~ "public,pg_trigger,table,postgres" ]] || false
     [[ "$output" =~ "public,pg_type,table,postgres" ]] || false
     [[ "$output" =~ "public,test1,table,postgres" ]] || false
     [[ "$output" =~ "public,test2,table,postgres" ]] || false
-    [ "${#lines[@]}" -eq 47 ]
+    [ "${#lines[@]}" -eq 48 ]
 }
 
 @test 'psql-commands: \d table' {

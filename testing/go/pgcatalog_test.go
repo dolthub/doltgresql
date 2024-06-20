@@ -1099,6 +1099,32 @@ func TestPgRange(t *testing.T) {
 	})
 }
 
+func TestPgReplicationOrigin(t *testing.T) {
+	RunScripts(t, []ScriptTest{
+		{
+			Name: "pg_replication_origin",
+			Assertions: []ScriptTestAssertion{
+				{
+					Query:    `SELECT * FROM "pg_catalog"."pg_replication_origin";`,
+					Expected: []sql.Row{},
+				},
+				{ // Different cases and quoted, so it fails
+					Query:       `SELECT * FROM "PG_catalog"."pg_replication_origin";`,
+					ExpectedErr: "not",
+				},
+				{ // Different cases and quoted, so it fails
+					Query:       `SELECT * FROM "pg_catalog"."PG_replication_origin";`,
+					ExpectedErr: "not",
+				},
+				{ // Different cases but non-quoted, so it works
+					Query:    "SELECT roname FROM PG_catalog.pg_REPLICATION_ORIGIN ORDER BY roname;",
+					Expected: []sql.Row{},
+				},
+			},
+		},
+	})
+}
+
 func TestPgTrigger(t *testing.T) {
 	RunScripts(t, []ScriptTest{
 		{
