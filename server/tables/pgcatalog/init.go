@@ -46,6 +46,7 @@ func Init() {
 	InitPgIndex()
 	InitPgInherits()
 	InitPgInitPrivs()
+	InitPgLanguage()
 	InitPgNamespace()
 	InitPgProc()
 	InitPgSequence()
