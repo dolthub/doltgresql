@@ -45,14 +45,11 @@ import (
 type DoltgresHarness struct {
 	t                   *testing.T
 	setupData           []setup.SetupScript
-	resetData           []setup.SetupScript
 	skippedQueries      []string
 	parallelism         int
-	setupDbs            map[string]struct{}
 	skipSetupCommit     bool
 	configureStats      bool
 	useLocalFilesystem  bool
-	setupTestProcedures bool
 }
 
 func (d *DoltgresHarness) ValidateEngine(ctx *sql.Context, e *gms.Engine) error {

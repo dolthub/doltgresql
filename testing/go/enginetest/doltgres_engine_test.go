@@ -86,8 +86,7 @@ func TestSingleQuery(t *testing.T) {
 	// engine.EngineAnalyzer().Debug = true
 	// engine.EngineAnalyzer().Verbose = true
 
-	var test queries.QueryTest
-	test = queries.QueryTest{
+	test := queries.QueryTest{
 		Query: `show create table mytable`,
 		Expected: []sql.Row{
 			{"mytable",
@@ -1111,27 +1110,6 @@ func TestDoltUndrop(t *testing.T) {
 	denginetest.RunDoltUndropTests(t, h)
 }
 
-type testCommitClock struct {
-	unixNano int64
-}
-
-func (tcc *testCommitClock) Now() time.Time {
-	now := time.Unix(0, tcc.unixNano)
-	tcc.unixNano += int64(time.Hour)
-	return now
-}
-
-func installTestCommitClock(tcc *testCommitClock) func() {
-	oldNowFunc := datas.CommitterDate
-	oldCommitLoc := datas.CommitLoc
-	datas.CommitterDate = tcc.Now
-	datas.CommitLoc = time.UTC
-	return func() {
-		datas.CommitterDate = oldNowFunc
-		datas.CommitLoc = oldCommitLoc
-	}
-}
-
 func TestBrokenSystemTableQueries(t *testing.T) {
 	t.Skip()
 
@@ -1507,8 +1485,7 @@ func TestDeleteQueriesPrepared(t *testing.T) {
 
 func TestScriptsPrepared(t *testing.T) {
 	t.Skip()
-	var skipped []string
-	skipped = append(skipped, newFormatSkippedScripts...)
+	skipped := newFormatSkippedScripts
 	skipPreparedTests(t)
 	h := newDoltgresServerHarness(t).WithSkippedQueries(skipped)
 	defer h.Close()
