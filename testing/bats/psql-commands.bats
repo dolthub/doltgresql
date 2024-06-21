@@ -60,13 +60,25 @@ teardown() {
     [[ "$output" =~ "public,pg_largeobject,table,postgres" ]] || false
     [[ "$output" =~ "public,pg_largeobject_metadata,table,postgres" ]] || false
     [[ "$output" =~ "public,pg_namespace,table,postgres" ]] || false
+    [[ "$output" =~ "public,pg_opclass,table,postgres" ]] || false
+    [[ "$output" =~ "public,pg_opfamily,table,postgres" ]] || false
+    [[ "$output" =~ "public,pg_parameter_acl,table,postgres" ]] || false
+    [[ "$output" =~ "public,pg_partitioned_table,table,postgres" ]] || false
+    [[ "$output" =~ "public,pg_policy,table,postgres" ]] || false
     [[ "$output" =~ "public,pg_proc,table,postgres" ]] || false
+    [[ "$output" =~ "public,pg_publication,table,postgres" ]] || false
+    [[ "$output" =~ "public,pg_publication_namespace,table,postgres" ]] || false
+    [[ "$output" =~ "public,pg_publication_rel,table,postgres" ]] || false
+    [[ "$output" =~ "public,pg_range,table,postgres" ]] || false
+    [[ "$output" =~ "public,pg_replication_origin,table,postgres" ]] || false
+    [[ "$output" =~ "public,pg_rewrite,table,postgres" ]] || false
+    [[ "$output" =~ "public,pg_seclabel,table,postgres" ]] || false
     [[ "$output" =~ "public,pg_sequence,table,postgres" ]] || false
     [[ "$output" =~ "public,pg_trigger,table,postgres" ]] || false
     [[ "$output" =~ "public,pg_type,table,postgres" ]] || false
     [[ "$output" =~ "public,test1,table,postgres" ]] || false
     [[ "$output" =~ "public,test2,table,postgres" ]] || false
-    [ "${#lines[@]}" -eq 38 ]
+    [ "${#lines[@]}" -eq 50 ]
 }
 
 @test 'psql-commands: \d' {
@@ -104,13 +116,25 @@ teardown() {
     [[ "$output" =~ "public,pg_largeobject,table,postgres" ]] || false
     [[ "$output" =~ "public,pg_largeobject_metadata,table,postgres" ]] || false
     [[ "$output" =~ "public,pg_namespace,table,postgres" ]] || false
+    [[ "$output" =~ "public,pg_opclass,table,postgres" ]] || false
+    [[ "$output" =~ "public,pg_opfamily,table,postgres" ]] || false
+    [[ "$output" =~ "public,pg_parameter_acl,table,postgres" ]] || false
+    [[ "$output" =~ "public,pg_partitioned_table,table,postgres" ]] || false
+    [[ "$output" =~ "public,pg_policy,table,postgres" ]] || false
     [[ "$output" =~ "public,pg_proc,table,postgres" ]] || false
+    [[ "$output" =~ "public,pg_publication,table,postgres" ]] || false
+    [[ "$output" =~ "public,pg_publication_namespace,table,postgres" ]] || false
+    [[ "$output" =~ "public,pg_publication_rel,table,postgres" ]] || false
+    [[ "$output" =~ "public,pg_range,table,postgres" ]] || false
+    [[ "$output" =~ "public,pg_replication_origin,table,postgres" ]] || false
+    [[ "$output" =~ "public,pg_rewrite,table,postgres" ]] || false
+    [[ "$output" =~ "public,pg_seclabel,table,postgres" ]] || false
     [[ "$output" =~ "public,pg_sequence,table,postgres" ]] || false
     [[ "$output" =~ "public,pg_trigger,table,postgres" ]] || false
     [[ "$output" =~ "public,pg_type,table,postgres" ]] || false
     [[ "$output" =~ "public,test1,table,postgres" ]] || false
     [[ "$output" =~ "public,test2,table,postgres" ]] || false
-    [ "${#lines[@]}" -eq 38 ]
+    [ "${#lines[@]}" -eq 50 ]
 }
 
 @test 'psql-commands: \d table' {
