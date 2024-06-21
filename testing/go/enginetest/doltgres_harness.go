@@ -27,8 +27,6 @@ import (
 	"github.com/dolthub/dolt/go/libraries/doltcore/sqle/dsess"
 	denginetest "github.com/dolthub/dolt/go/libraries/doltcore/sqle/enginetest"
 	"github.com/dolthub/dolt/go/libraries/utils/svcs"
-	"github.com/dolthub/doltgresql/server"
-	"github.com/dolthub/doltgresql/servercfg"
 	gms "github.com/dolthub/go-mysql-server"
 	"github.com/dolthub/go-mysql-server/enginetest"
 	"github.com/dolthub/go-mysql-server/enginetest/scriptgen/setup"
@@ -37,9 +35,11 @@ import (
 	gmstypes "github.com/dolthub/go-mysql-server/sql/types"
 	"github.com/dolthub/vitess/go/vt/proto/query"
 	vitess "github.com/dolthub/vitess/go/vt/sqlparser"
+	_ "github.com/jackc/pgx/v4/stdlib"
 	"github.com/stretchr/testify/require"
 
-	_ "github.com/jackc/pgx/v4/stdlib"
+	"github.com/dolthub/doltgresql/server"
+	"github.com/dolthub/doltgresql/servercfg"
 )
 
 type DoltgresHarness struct {
@@ -47,7 +47,7 @@ type DoltgresHarness struct {
 	setupData           []setup.SetupScript
 	resetData           []setup.SetupScript
 	skippedQueries      []string
-	parallelism int
+	parallelism         int
 	setupDbs            map[string]struct{}
 	skipSetupCommit     bool
 	configureStats      bool
@@ -95,7 +95,7 @@ var defaultSkippedQueries = []string{
 	"show create table fk_tbl",   // we create an extra key for the FK that vanilla gms does not
 	"show indexes from",          // we create / expose extra indexes (for foreign keys)
 	"show global variables like", // we set extra variables
-	// unsupported doltgres syntax 
+	// unsupported doltgres syntax
 	"WITH",
 	"OVER",
 	// subqueries are broken, breaks with an index out of bounds error
@@ -142,26 +142,26 @@ func (d *DoltgresHarness) NewEngine(t *testing.T) (enginetest.QueryEngine, error
 			}
 		}
 	}
-	
+
 	return queryEngine, nil
 }
 
 var skippedSetupWords = []string{
 	"auto_increment",
 	"create index",
-	"bigtable", // "ERROR: blob/text column 't' used in key specification without a key length"
-	"typestable", // lots of work to do
-	"datetime_table", // invalid timestamp format
-	"specialtable", // invalid quoting
-	"people", // ERROR: blob/text column 'first_name' used in key specification without a key length
+	"bigtable",           // "ERROR: blob/text column 't' used in key specification without a key length"
+	"typestable",         // lots of work to do
+	"datetime_table",     // invalid timestamp format
+	"specialtable",       // invalid quoting
+	"people",             // ERROR: blob/text column 'first_name' used in key specification without a key length
 	"reservedWordsTable", // ERROR: blob/text column 'Timestamp' used in key specification without a key length
-	"foo.othertable", // ERROR: database schema not found: foo (errno 1105)
-	"bus_routes", // ERROR: blob/text column 'origin' used in key specification without a key length
-	"parts", // ERROR: blob/text column 'part' used in key specification without a key length
-	"xy_hasnull_idx", // needs an index during creation
-	"xy ", // needs an index during creation
-	"rs ", // needs an index during creation
-	"analyze table", // unsupported syntax
+	"foo.othertable",     // ERROR: database schema not found: foo (errno 1105)
+	"bus_routes",         // ERROR: blob/text column 'origin' used in key specification without a key length
+	"parts",              // ERROR: blob/text column 'part' used in key specification without a key length
+	"xy_hasnull_idx",     // needs an index during creation
+	"xy ",                // needs an index during creation
+	"rs ",                // needs an index during creation
+	"analyze table",      // unsupported syntax
 }
 
 var commentClause = regexp.MustCompile(`(?i)comment '.*?'`)
@@ -175,7 +175,7 @@ var mediumIntKeyword = regexp.MustCompile(`(?i)\bmediumint\b`)
 var tinyIntKeyword = regexp.MustCompile(`(?i)\btinyint\b`)
 var backtick = "`"
 
-// sanitizeQuery strips the query string given of any unsupported constructs without attempting to actually convert 
+// sanitizeQuery strips the query string given of any unsupported constructs without attempting to actually convert
 // to Postgres syntax.
 func sanitizeQuery(s string) (bool, string) {
 	for _, word := range skippedSetupWords {
@@ -183,21 +183,21 @@ func sanitizeQuery(s string) (bool, string) {
 			return false, ""
 		}
 	}
-	
+
 	if createIndexStatement.MatchString(s) {
 		return false, ""
 	}
 	if alterTableStatement.MatchString(s) {
 		return false, ""
 	}
-	
+
 	if createTableStatement.MatchString(s) {
 		s = replaceTypes(s)
 	}
-	
+
 	s = commentClause.ReplaceAllString(s, "")
 	s = strings.ReplaceAll(s, backtick, `"`)
-	
+
 	return true, s
 }
 
@@ -327,7 +327,7 @@ func (d *DoltgresHarness) SnapshotTable(db sql.VersionedDatabase, tableName stri
 }
 
 type DoltgresQueryEngine struct {
-	harness *DoltgresHarness
+	harness    *DoltgresHarness
 	controller *svcs.Controller
 }
 
@@ -343,7 +343,7 @@ func NewDoltgresQueryEngine(t *testing.T, harness *DoltgresHarness) *DoltgresQue
 	})
 	require.NoError(t, err)
 	return &DoltgresQueryEngine{
-		harness: harness,
+		harness:    harness,
 		controller: ctrl,
 	}
 }
@@ -357,7 +357,7 @@ func (d DoltgresQueryEngine) AnalyzeQuery(s *sql.Context, s2 string) (sql.Node, 
 }
 
 // TODO: random port
-var doltgresNoDbDsn   = "postgresql://doltgres:password@127.0.0.1:5432/?sslmode=disable"
+var doltgresNoDbDsn = "postgresql://doltgres:password@127.0.0.1:5432/?sslmode=disable"
 
 func (d DoltgresQueryEngine) Query(ctx *sql.Context, query string) (sql.Schema, sql.RowIter, error) {
 	db, err := gosql.Open("pgx", doltgresNoDbDsn)
@@ -390,7 +390,7 @@ func (d DoltgresQueryEngine) Query(ctx *sql.Context, query string) (sql.Schema, 
 		if err != nil {
 			return nil, nil, err
 		}
-		
+
 		results = append(results, row)
 	}
 
@@ -457,7 +457,7 @@ func unwrapResultColumn(v any) (any, error) {
 	default:
 		return nil, fmt.Errorf("unsupported type %T", v)
 	}
-} 
+}
 
 func (d DoltgresQueryEngine) EngineAnalyzer() *analyzer.Analyzer {
 	panic("implement me")
@@ -471,7 +471,7 @@ func (d DoltgresQueryEngine) QueryWithBindings(ctx *sql.Context, query string, p
 	if len(bindings) > 0 {
 		return nil, nil, fmt.Errorf("bindings not supported")
 	}
-	
+
 	return d.Query(ctx, query)
 }
 
@@ -491,10 +491,10 @@ func columns(rows *gosql.Rows) (sql.Schema, []interface{}, error) {
 	if err != nil {
 		return nil, nil, err
 	}
-	
+
 	schema := make(sql.Schema, 0, len(types))
 	columnVals := make([]interface{}, 0, len(types))
-	
+
 	for _, columnType := range types {
 		switch columnType.DatabaseTypeName() {
 		case "BIT":
