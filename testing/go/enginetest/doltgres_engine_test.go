@@ -18,7 +18,6 @@ import (
 	"os"
 	"runtime"
 	"testing"
-	"time"
 
 	denginetest "github.com/dolthub/dolt/go/libraries/doltcore/sqle/enginetest"
 	"github.com/dolthub/go-mysql-server/enginetest"
@@ -32,7 +31,6 @@ import (
 	"github.com/dolthub/dolt/go/libraries/doltcore/sqle"
 	"github.com/dolthub/dolt/go/libraries/doltcore/sqle/dsess"
 	"github.com/dolthub/dolt/go/libraries/utils/config"
-	"github.com/dolthub/dolt/go/store/datas"
 )
 
 var skipPrepared bool
@@ -1640,8 +1638,7 @@ func TestDoltStorageFormat(t *testing.T) {
 
 func TestDoltStorageFormatPrepared(t *testing.T) {
 	t.Skip()
-	var expectedFormatString string
-	expectedFormatString = "NEW ( __DOLT__ )"
+	expectedFormatString := "NEW ( __DOLT__ )"
 	h := newDoltgresServerHarness(t)
 	defer h.Close()
 	enginetest.TestPreparedQuery(t, h, "SELECT dolt_storage_format()", []sql.Row{{expectedFormatString}}, nil)

@@ -15,7 +15,6 @@
 package enginetest
 
 import (
-	"context"
 	gosql "database/sql"
 	"fmt"
 	"io"
@@ -271,15 +270,13 @@ func (d *DoltgresHarness) NewContext() *sql.Context {
 }
 
 func (d *DoltgresHarness) NewContextWithClient(client sql.Client) *sql.Context {
-	return sql.NewContext(context.Background(), sql.WithSession(d.newSessionWithClient(client)))
+	// unused for now, linter is complaining
+	// return sql.NewContext(context.Background(), sql.WithSession(d.newSessionWithClient(client)))
+	panic("implement me")
 }
 
 func (d *DoltgresHarness) NewSession() *sql.Context {
 	panic("implement	me")
-}
-
-func (d *DoltgresHarness) newSessionWithClient(client sql.Client) *dsess.DoltSession {
-	panic("implement me")
 }
 
 func (d *DoltgresHarness) SupportsNativeIndexCreation() bool {
