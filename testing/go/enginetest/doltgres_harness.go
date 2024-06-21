@@ -42,13 +42,13 @@ import (
 )
 
 type DoltgresHarness struct {
-	t                   *testing.T
-	setupData           []setup.SetupScript
-	skippedQueries      []string
-	parallelism         int
-	skipSetupCommit     bool
-	configureStats      bool
-	useLocalFilesystem  bool
+	t                  *testing.T
+	setupData          []setup.SetupScript
+	skippedQueries     []string
+	parallelism        int
+	skipSetupCommit    bool
+	configureStats     bool
+	useLocalFilesystem bool
 }
 
 func (d *DoltgresHarness) ValidateEngine(ctx *sql.Context, e *gms.Engine) error {
