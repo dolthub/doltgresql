@@ -34,6 +34,7 @@ import (
 // BpChar is a char that has an unbounded length. "bpchar" and "char" are the same type, distinguished by the length
 // being bounded or unbounded.
 var BpChar = CharType{Length: stringUnbounded}
+var internalChar = CharType{Length: 1}
 
 // CharType is the extended type implementation of the PostgreSQL char and bpchar, which are the same type internally.
 type CharType struct {
@@ -43,10 +44,39 @@ type CharType struct {
 }
 
 var _ DoltgresType = CharType{}
+var _ DoltgresValidType = CharType{}
+
+// Alignment implements the DoltgresType interface.
+func (b CharType) Alignment() TypeAlignment {
+	if b.Length == stringUnbounded {
+		return TypeAlignment_Int
+	} else {
+		return TypeAlignment_Char
+	}
+}
 
 // BaseID implements the DoltgresType interface.
 func (b CharType) BaseID() DoltgresTypeBaseID {
 	return DoltgresTypeBaseID_Char
+}
+
+// BaseName implements the DoltgresType interface.
+func (b CharType) BaseName() string {
+	if b.Length == stringUnbounded {
+		return "bpchar"
+	} else {
+		return "char"
+	}
+}
+
+// Category implements the DoltgresType interface.
+func (b CharType) Category() TypeCategory {
+	if b.Length == stringUnbounded {
+		return TypeCategory_StringTypes
+	} else {
+		// TODO: check if it only applies when Length == 1
+		return TypeCategory_InternalUseTypes
+	}
 }
 
 // CollationCoercibility implements the DoltgresType interface.

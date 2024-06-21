@@ -37,10 +37,26 @@ type TimeType struct {
 }
 
 var _ DoltgresType = TimeType{}
+var _ DoltgresValidType = TimeType{}
+
+// Alignment implements the DoltgresType interface.
+func (b TimeType) Alignment() TypeAlignment {
+	return TypeAlignment_Double
+}
 
 // BaseID implements the DoltgresType interface.
 func (b TimeType) BaseID() DoltgresTypeBaseID {
 	return DoltgresTypeBaseID_Time
+}
+
+// BaseName implements the DoltgresType interface.
+func (b TimeType) BaseName() string {
+	return "time"
+}
+
+// Category implements the DoltgresType interface.
+func (b TimeType) Category() TypeCategory {
+	return TypeCategory_DateTimeTypes
 }
 
 // CollationCoercibility implements the DoltgresType interface.

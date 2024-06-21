@@ -37,10 +37,26 @@ type TimestampTZType struct {
 }
 
 var _ DoltgresType = TimestampTZType{}
+var _ DoltgresValidType = TimestampTZType{}
+
+// Alignment implements the DoltgresType interface.
+func (b TimestampTZType) Alignment() TypeAlignment {
+	return TypeAlignment_Double
+}
 
 // BaseID implements the DoltgresType interface.
 func (b TimestampTZType) BaseID() DoltgresTypeBaseID {
 	return DoltgresTypeBaseID_TimestampTZ
+}
+
+// BaseName implements the DoltgresType interface.
+func (b TimestampTZType) BaseName() string {
+	return "timestamptz"
+}
+
+// Category implements the DoltgresType interface.
+func (b TimestampTZType) Category() TypeCategory {
+	return TypeCategory_DateTimeTypes
 }
 
 // CollationCoercibility implements the DoltgresType interface.

@@ -35,10 +35,26 @@ var Bool = BoolType{}
 type BoolType struct{}
 
 var _ DoltgresType = BoolType{}
+var _ DoltgresValidType = BoolType{}
+
+// Alignment implements the DoltgresType interface.
+func (b BoolType) Alignment() TypeAlignment {
+	return TypeAlignment_Char
+}
 
 // BaseID implements the DoltgresType interface.
 func (b BoolType) BaseID() DoltgresTypeBaseID {
 	return DoltgresTypeBaseID_Bool
+}
+
+// BaseName implements the DoltgresType interface.
+func (b BoolType) BaseName() string {
+	return "bool"
+}
+
+// Category implements the DoltgresType interface.
+func (b BoolType) Category() TypeCategory {
+	return TypeCategory_BooleanTypes
 }
 
 // CollationCoercibility implements the DoltgresType interface.

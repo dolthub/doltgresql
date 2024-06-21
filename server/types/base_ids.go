@@ -78,6 +78,16 @@ const (
 	DoltgresTypeBaseID_Xid         = DoltgresTypeBaseID(SerializationID_Xid)
 )
 
+// TypeAlignment represents the alignment required when storing a value of this type.
+type TypeAlignment string
+
+const (
+	TypeAlignment_Char   TypeAlignment = "c"
+	TypeAlignment_Short  TypeAlignment = "s"
+	TypeAlignment_Int    TypeAlignment = "i"
+	TypeAlignment_Double TypeAlignment = "d"
+)
+
 // TypeCategory represents the type category that a type belongs to. These are used by Postgres to group similar types
 // for parameter resolution, operator resolution, etc.
 type TypeCategory string
@@ -103,6 +113,11 @@ const (
 
 // baseIDArrayTypes contains a map of all base IDs that represent array variants.
 var baseIDArrayTypes = map[DoltgresTypeBaseID]DoltgresArrayType{}
+
+// baseIDValidTypes contains a map of all base IDs that are valid Postgres type displayed in pg_catalog tables.
+var baseIDValidTypes = map[string]DoltgresValidType{
+	internalChar.BaseName(): internalChar, // add internal type
+}
 
 // baseIDCategories contains a map from all base IDs to their respective categories
 // TODO: add all of the types to each category
@@ -141,21 +156,14 @@ var preferredTypeInCategory = map[TypeCategory]DoltgresTypeBaseID{
 	TypeCategory_StringTypes:  Text.BaseID(),
 }
 
-// TypeAlignment represents the alignment required when storing a value of this type.
-type TypeAlignment string
-
-const (
-	TypeAlignment_Char   TypeAlignment = "c"
-	TypeAlignment_Short  TypeAlignment = "s"
-	TypeAlignment_Int    TypeAlignment = "i"
-	TypeAlignment_Double TypeAlignment = "d"
-)
-
 // InitBaseIDs reads the list of all types and creates a mapping of the base ID for each array variant.
 func InitBaseIDs() {
 	for _, t := range typesFromBaseID {
 		if dat, ok := t.(DoltgresArrayType); ok {
 			baseIDArrayTypes[t.BaseID()] = dat
+		}
+		if dvt, ok := t.(DoltgresValidType); ok {
+			baseIDValidTypes[dvt.BaseName()] = dvt
 		}
 	}
 }

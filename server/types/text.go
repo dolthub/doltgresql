@@ -36,10 +36,26 @@ var Text = TextType{}
 type TextType struct{}
 
 var _ DoltgresType = TextType{}
+var _ DoltgresValidType = TextType{}
+
+// Alignment implements the DoltgresType interface.
+func (b TextType) Alignment() TypeAlignment {
+	return TypeAlignment_Int
+}
 
 // BaseID implements the DoltgresType interface.
 func (b TextType) BaseID() DoltgresTypeBaseID {
 	return DoltgresTypeBaseID_Text
+}
+
+// BaseName implements the DoltgresType interface.
+func (b TextType) BaseName() string {
+	return "text"
+}
+
+// Category implements the DoltgresType interface.
+func (b TextType) Category() TypeCategory {
+	return TypeCategory_StringTypes
 }
 
 // CollationCoercibility implements the DoltgresType interface.

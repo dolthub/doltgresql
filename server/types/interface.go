@@ -60,6 +60,17 @@ type DoltgresArrayType interface {
 	BaseType() DoltgresType
 }
 
+// DoltgresValidType is a DoltgresType that represents a type displayed in pg_catalog tables.
+type DoltgresValidType interface {
+	DoltgresType
+	// Alignment returns a char representing the alignment required when storing a value of this type.
+	Alignment() TypeAlignment
+	// BaseName returns the name of the type displayed in pg_catalog tables.
+	BaseName() string
+	// Category returns a char representing an arbitrary classification of data types that is used by the parser to determine which implicit casts should be “preferred”.
+	Category() TypeCategory
+}
+
 // typesFromBaseID contains a map from a DoltgresTypeBaseID to its originating type.
 var typesFromBaseID = map[DoltgresTypeBaseID]DoltgresType{
 	AnyArray.BaseID():         AnyArray,
@@ -114,35 +125,6 @@ var typesFromBaseID = map[DoltgresTypeBaseID]DoltgresType{
 	XidArray.BaseID():         XidArray,
 }
 
-// typesFromBaseID contains a map from a DoltgresTypeBaseID to its originating type.
-var typesFromTypName = map[string]DoltgresType{
-	"anyarray":    AnyArray,
-	"bpchar":      BpChar,
-	"bool":        Bool,
-	"bytea":       Bytea,
-	"char":        CharType{Length: 1},
-	"date":        Date,
-	"float4":      Float32,
-	"float8":      Float64,
-	"int2":        Int16,
-	"int4":        Int32,
-	"int8":        Int64,
-	"json":        Json,
-	"jsonb":       JsonB,
-	"name":        Name,
-	"numeric":     Numeric,
-	"oid":         Oid,
-	"text":        Text,
-	"time":        Time,
-	"timestamp":   Timestamp,
-	"timestamptz": TimestampTZ,
-	"timetz":      TimeTZ,
-	"uuid":        Uuid,
-	"unknown":     Unknown,
-	"varChar":     VarChar,
-	"xid":         Xid,
-}
-
-func GetAllPgTypes() map[string]DoltgresType {
-	return typesFromTypName
+func GetAllPgTypes() map[string]DoltgresValidType {
+	return baseIDValidTypes
 }

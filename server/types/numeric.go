@@ -56,10 +56,26 @@ type NumericType struct {
 }
 
 var _ DoltgresType = NumericType{}
+var _ DoltgresValidType = NumericType{}
+
+// Alignment implements the DoltgresType interface.
+func (b NumericType) Alignment() TypeAlignment {
+	return TypeAlignment_Int
+}
 
 // BaseID implements the DoltgresType interface.
 func (b NumericType) BaseID() DoltgresTypeBaseID {
 	return DoltgresTypeBaseID_Numeric
+}
+
+// BaseName implements the DoltgresType interface.
+func (b NumericType) BaseName() string {
+	return "numeric"
+}
+
+// Category implements the DoltgresType interface.
+func (b NumericType) Category() TypeCategory {
+	return TypeCategory_NumericTypes
 }
 
 // CollationCoercibility implements the DoltgresType interface.

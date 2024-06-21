@@ -36,10 +36,26 @@ var Oid = OidType{}
 type OidType struct{}
 
 var _ DoltgresType = OidType{}
+var _ DoltgresValidType = OidType{}
+
+// Alignment implements the DoltgresType interface.
+func (b OidType) Alignment() TypeAlignment {
+	return TypeAlignment_Int
+}
 
 // BaseID implements the DoltgresType interface.
 func (b OidType) BaseID() DoltgresTypeBaseID {
 	return DoltgresTypeBaseID_Oid
+}
+
+// BaseName implements the DoltgresType interface.
+func (b OidType) BaseName() string {
+	return "oid"
+}
+
+// Category implements the DoltgresType interface.
+func (b OidType) Category() TypeCategory {
+	return TypeCategory_NumericTypes
 }
 
 // CollationCoercibility implements the DoltgresType interface.

@@ -36,10 +36,26 @@ var Xid = XidType{}
 type XidType struct{}
 
 var _ DoltgresType = XidType{}
+var _ DoltgresValidType = XidType{}
+
+// Alignment implements the DoltgresType interface.
+func (b XidType) Alignment() TypeAlignment {
+	return TypeAlignment_Int
+}
 
 // BaseID implements the DoltgresType interface.
 func (b XidType) BaseID() DoltgresTypeBaseID {
 	return DoltgresTypeBaseID_Xid
+}
+
+// BaseName implements the DoltgresType interface.
+func (b XidType) BaseName() string {
+	return "xid"
+}
+
+// Category implements the DoltgresType interface.
+func (b XidType) Category() TypeCategory {
+	return TypeCategory_UserDefinedTypes
 }
 
 // CollationCoercibility implements the DoltgresType interface.

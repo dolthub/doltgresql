@@ -36,10 +36,26 @@ var Int64 = Int64Type{}
 type Int64Type struct{}
 
 var _ DoltgresType = Int64Type{}
+var _ DoltgresValidType = Int64Type{}
+
+// Alignment implements the DoltgresType interface.
+func (b Int64Type) Alignment() TypeAlignment {
+	return TypeAlignment_Double
+}
 
 // BaseID implements the DoltgresType interface.
 func (b Int64Type) BaseID() DoltgresTypeBaseID {
 	return DoltgresTypeBaseID_Int64
+}
+
+// BaseName implements the DoltgresType interface.
+func (b Int64Type) BaseName() string {
+	return "int8"
+}
+
+// Category implements the DoltgresType interface.
+func (b Int64Type) Category() TypeCategory {
+	return TypeCategory_NumericTypes
 }
 
 // CollationCoercibility implements the DoltgresType interface.

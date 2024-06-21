@@ -38,10 +38,26 @@ var Float32 = Float32Type{}
 type Float32Type struct{}
 
 var _ DoltgresType = Float32Type{}
+var _ DoltgresValidType = Float32Type{}
+
+// Alignment implements the DoltgresType interface.
+func (b Float32Type) Alignment() TypeAlignment {
+	return TypeAlignment_Int
+}
 
 // BaseID implements the DoltgresType interface.
 func (b Float32Type) BaseID() DoltgresTypeBaseID {
 	return DoltgresTypeBaseID_Float32
+}
+
+// BaseName implements the DoltgresType interface.
+func (b Float32Type) BaseName() string {
+	return "float4"
+}
+
+// Category implements the DoltgresType interface.
+func (b Float32Type) Category() TypeCategory {
+	return TypeCategory_NumericTypes
 }
 
 // CollationCoercibility implements the DoltgresType interface.

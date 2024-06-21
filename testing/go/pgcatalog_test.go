@@ -597,8 +597,8 @@ func TestPgType(t *testing.T) {
 					ExpectedErr: "not",
 				},
 				{ // Different cases but non-quoted, so it works
-					Query:    "SELECT typname FROM PG_catalog.pg_TYPE ORDER BY typname;",
-					Expected: []sql.Row{{"anyarray"}, {"bool"}, {"bpchar"}, {"bytea"}, {"char"}, {"date"}, {"float4"}, {"float8"}, {"int2"}, {"int4"}, {"int8"}, {"json"}, {"jsonb"}, {"name"}, {"numeric"}, {"oid"}, {"text"}, {"time"}, {"timestamp"}, {"timestamptz"}, {"timetz"}, {"unknown"}, {"uuid"}, {"varChar"}, {"xid"}},
+					Query:    "SELECT typname FROM PG_catalog.pg_TYPE WHERE typname LIKE '%char' ORDER BY typname;",
+					Expected: []sql.Row{{"bpchar"}, {"char"}, {"varchar"}},
 				},
 			},
 		},

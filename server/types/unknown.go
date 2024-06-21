@@ -34,10 +34,26 @@ type UnknownType struct{}
 
 var _ DoltgresType = UnknownType{}
 var _ DoltgresArrayType = UnknownType{}
+var _ DoltgresValidType = UnknownType{}
+
+// Alignment implements the DoltgresType interface.
+func (u UnknownType) Alignment() TypeAlignment {
+	return TypeAlignment_Char
+}
 
 // BaseID implements the DoltgresType interface.
 func (u UnknownType) BaseID() DoltgresTypeBaseID {
 	return DoltgresTypeBaseID_Unknown
+}
+
+// BaseName implements the DoltgresType interface.
+func (u UnknownType) BaseName() string {
+	return "unknown"
+}
+
+// Category implements the DoltgresType interface.
+func (u UnknownType) Category() TypeCategory {
+	return TypeCategory_UnknownTypes
 }
 
 // BaseType implements the DoltgresArrayType interface.

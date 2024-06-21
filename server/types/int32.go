@@ -36,10 +36,26 @@ var Int32 = Int32Type{}
 type Int32Type struct{}
 
 var _ DoltgresType = Int32Type{}
+var _ DoltgresValidType = Int32Type{}
+
+// Alignment implements the DoltgresType interface.
+func (b Int32Type) Alignment() TypeAlignment {
+	return TypeAlignment_Int
+}
 
 // BaseID implements the DoltgresType interface.
 func (b Int32Type) BaseID() DoltgresTypeBaseID {
 	return DoltgresTypeBaseID_Int32
+}
+
+// BaseName implements the DoltgresType interface.
+func (b Int32Type) BaseName() string {
+	return "int4"
+}
+
+// Category implements the DoltgresType interface.
+func (b Int32Type) Category() TypeCategory {
+	return TypeCategory_NumericTypes
 }
 
 // CollationCoercibility implements the DoltgresType interface.

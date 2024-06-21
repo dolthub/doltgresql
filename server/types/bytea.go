@@ -38,10 +38,26 @@ var Bytea = ByteaType{}
 type ByteaType struct{}
 
 var _ DoltgresType = ByteaType{}
+var _ DoltgresValidType = ByteaType{}
+
+// Alignment implements the DoltgresType interface.
+func (b ByteaType) Alignment() TypeAlignment {
+	return TypeAlignment_Int
+}
 
 // BaseID implements the DoltgresType interface.
 func (b ByteaType) BaseID() DoltgresTypeBaseID {
 	return DoltgresTypeBaseID_Bytea
+}
+
+// BaseName implements the DoltgresType interface.
+func (b ByteaType) BaseName() string {
+	return "bytea"
+}
+
+// Category implements the DoltgresType interface.
+func (b ByteaType) Category() TypeCategory {
+	return TypeCategory_UserDefinedTypes
 }
 
 // CollationCoercibility implements the DoltgresType interface.

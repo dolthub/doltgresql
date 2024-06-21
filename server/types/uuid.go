@@ -35,10 +35,26 @@ var Uuid = UuidType{}
 type UuidType struct{}
 
 var _ DoltgresType = UuidType{}
+var _ DoltgresValidType = UuidType{}
+
+// Alignment implements the DoltgresType interface.
+func (b UuidType) Alignment() TypeAlignment {
+	return TypeAlignment_Char
+}
 
 // BaseID implements the DoltgresType interface.
 func (b UuidType) BaseID() DoltgresTypeBaseID {
 	return DoltgresTypeBaseID_Uuid
+}
+
+// BaseName implements the DoltgresType interface.
+func (b UuidType) BaseName() string {
+	return "uuid"
+}
+
+// Category implements the DoltgresType interface.
+func (b UuidType) Category() TypeCategory {
+	return TypeCategory_UserDefinedTypes
 }
 
 // CollationCoercibility implements the DoltgresType interface.

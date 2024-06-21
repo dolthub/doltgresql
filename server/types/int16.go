@@ -36,10 +36,26 @@ var Int16 = Int16Type{}
 type Int16Type struct{}
 
 var _ DoltgresType = Int16Type{}
+var _ DoltgresValidType = Int16Type{}
+
+// Alignment implements the DoltgresType interface.
+func (b Int16Type) Alignment() TypeAlignment {
+	return TypeAlignment_Short
+}
 
 // BaseID implements the DoltgresType interface.
 func (b Int16Type) BaseID() DoltgresTypeBaseID {
 	return DoltgresTypeBaseID_Int16
+}
+
+// BaseName implements the DoltgresType interface.
+func (b Int16Type) BaseName() string {
+	return "int2"
+}
+
+// Category implements the DoltgresType interface.
+func (b Int16Type) Category() TypeCategory {
+	return TypeCategory_NumericTypes
 }
 
 // CollationCoercibility implements the DoltgresType interface.

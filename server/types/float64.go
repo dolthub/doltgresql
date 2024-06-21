@@ -37,10 +37,26 @@ var Float64 = Float64Type{}
 type Float64Type struct{}
 
 var _ DoltgresType = Float64Type{}
+var _ DoltgresValidType = Float64Type{}
+
+// Alignment implements the DoltgresType interface.
+func (b Float64Type) Alignment() TypeAlignment {
+	return TypeAlignment_Double
+}
 
 // BaseID implements the DoltgresType interface.
 func (b Float64Type) BaseID() DoltgresTypeBaseID {
 	return DoltgresTypeBaseID_Float64
+}
+
+// BaseName implements the DoltgresType interface.
+func (b Float64Type) BaseName() string {
+	return "float8"
+}
+
+// Category implements the DoltgresType interface.
+func (b Float64Type) Category() TypeCategory {
+	return TypeCategory_NumericTypes
 }
 
 // CollationCoercibility implements the DoltgresType interface.
