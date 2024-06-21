@@ -125,6 +125,8 @@ func (d *DoltgresHarness) NewEngine(t *testing.T) (enginetest.QueryEngine, error
 			if !runQuery {
 				t.Log("Skipping setup query: ", s)
 				continue
+			} else {
+				t.Log("Running setup query: ", s)
 			}
 			_, rowIter, err := queryEngine.Query(ctx, sanitized)
 			if err != nil {
@@ -140,28 +142,64 @@ func (d *DoltgresHarness) NewEngine(t *testing.T) (enginetest.QueryEngine, error
 	return queryEngine, nil
 }
 
-var commentClause = regexp.MustCompile(`comment '.*?'`)
+var skippedWords = []string{
+	"auto_increment",
+	"create index",
+	"bigtable", // "ERROR: blob/text column 't' used in key specification without a key length"
+	"typestable", // lots of work to do
+	"datetime_table", // invalid timestamp format
+	"specialtable", // invalid quoting
+	"people", // ERROR: blob/text column 'first_name' used in key specification without a key length
+	"reservedWordsTable", // ERROR: blob/text column 'Timestamp' used in key specification without a key length
+	"foo.othertable", // ERROR: database schema not found: foo (errno 1105)
+	"bus_routes", // ERROR: blob/text column 'origin' used in key specification without a key length
+	"parts", // ERROR: blob/text column 'part' used in key specification without a key length
+}
 
-var autoIncrementClause = regexp.MustCompile(`auto_increment`)
-
-var createIndexStatement = regexp.MustCompile(`create.*index`)
-
+var commentClause = regexp.MustCompile(`(?i)comment '.*?'`)
+var createIndexStatement = regexp.MustCompile(`(?i)create.*?index`)
+var alterTableStatement = regexp.MustCompile(`(?i)alter table`)
+var createTableStatement = regexp.MustCompile(`(?i)create table`)
+var floatKeyword = regexp.MustCompile(`(?i)\bfloat\b`)
+var doubleKeyword = regexp.MustCompile(`(?i)\bdouble\b`)
+var datetimeKeyword = regexp.MustCompile(`(?i)\bdatetime\b`)
+var mediumIntKeyword = regexp.MustCompile(`(?i)\bmediumint\b`)
+var tinyIntKeyword = regexp.MustCompile(`(?i)\btinyint\b`)
 var backtick = "`"
 
 // sanitizeQuery strips the query string given of any unsupported constructs without attempting to actually convert 
 // to Postgres syntax.
 func sanitizeQuery(s string) (bool, string) {
+	for _, word := range skippedWords {
+		if strings.Contains(s, word) {
+			return false, ""
+		}
+	}
+	
 	if createIndexStatement.MatchString(s) {
 		return false, ""
 	}
-	if autoIncrementClause.MatchString(s) {
+	if alterTableStatement.MatchString(s) {
 		return false, ""
+	}
+	
+	if createTableStatement.MatchString(s) {
+		s = replaceTypes(s)
 	}
 	
 	s = commentClause.ReplaceAllString(s, "")
 	s = strings.ReplaceAll(s, backtick, `"`)
 	
 	return true, s
+}
+
+func replaceTypes(s string) string {
+	s = floatKeyword.ReplaceAllString(s, "real")
+	s = doubleKeyword.ReplaceAllString(s, "double precision")
+	s = datetimeKeyword.ReplaceAllString(s, "timestamp")
+	s = mediumIntKeyword.ReplaceAllString(s, "integer")
+	s = tinyIntKeyword.ReplaceAllString(s, "smallint") // TODO: bool?
+	return s
 }
 
 func drainIter(ctx *sql.Context, rowIter sql.RowIter) error {
