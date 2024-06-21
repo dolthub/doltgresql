@@ -99,7 +99,8 @@ func (h *DoltgresHarness) EngineStr() string {
 }
 
 func (h *DoltgresHarness) Init() error {
-	h.startNewDoltgresServer(context.Background(), logictest.GetCurrentFileName())
+	ctx := context.Background()
+	h.startNewDoltgresServer(ctx, logictest.GetCurrentFileName())
 	db, err := sql.Open("pgx", doltgresNoDbDsn)
 	if err != nil {
 		logErr(err, "opening connection to pgx")
@@ -111,14 +112,14 @@ func (h *DoltgresHarness) Init() error {
 	}
 
 	// drop if 'sqllogictest' database exists
-	_, err = db.ExecContext(context.Background(), "DROP DATABASE IF EXISTS sqllogictest")
+	_, err = db.ExecContext(ctx, "DROP DATABASE IF EXISTS sqllogictest")
 	if err != nil {
 		logErr(err, "dropping 'sqllogictest' database")
 		return err
 	}
 
 	// create 'sqllogictest' database
-	_, err = db.ExecContext(context.Background(), "CREATE DATABASE sqllogictest")
+	_, err = db.ExecContext(ctx, "CREATE DATABASE sqllogictest")
 	if err != nil {
 		logErr(err, "creating 'sqllogictest' database")
 		return err
@@ -142,11 +143,11 @@ func (h *DoltgresHarness) Init() error {
 
 	h.db = db
 
-	if err := h.dropAllTables(); err != nil {
+	if err := h.dropAllTables(ctx); err != nil {
 		return err
 	}
 
-	return h.dropAllViews()
+	return h.dropAllViews(ctx)
 }
 
 func (s *DoltgresHarness) Close() error {
@@ -171,6 +172,10 @@ func (h *DoltgresHarness) ExecuteQuery(statement string) (schema string, results
 		return "", nil, err
 	}
 
+	return h.getSchemaAndResults(rows)
+}
+
+func (h *DoltgresHarness) getSchemaAndResults(rows *sql.Rows) (schema string, results []string, err error) {
 	schema, columns, err := columns(rows)
 	if err != nil {
 		return "", nil, err
@@ -194,15 +199,33 @@ func (h *DoltgresHarness) ExecuteQuery(statement string) (schema string, results
 	return schema, results, nil
 }
 
+func (h *DoltgresHarness) ExecuteStatementContext(ctx context.Context, statement string) error {
+	_, err := h.db.ExecContext(ctx, statement)
+	return err
+}
+
+func (h *DoltgresHarness) ExecuteQueryContext(ctx context.Context, statement string) (schema string, results []string, err error) {
+	rows, err := h.db.QueryContext(ctx, statement)
+	if rows != nil {
+		defer rows.Close()
+	}
+
+	if err != nil {
+		return "", nil, err
+	}
+
+	return h.getSchemaAndResults(rows)
+}
+
 func (h *DoltgresHarness) GetTimeout() int64 {
 	return h.timeout
 }
 
-func (h *DoltgresHarness) dropAllTables() error {
+func (h *DoltgresHarness) dropAllTables(ctx context.Context) error {
 	var rows *sql.Rows
 	var err error
 	// TODO: once we support ENUM type and comparison, add `AND table_type = 'BASE TABLE'`
-	rows, err = h.db.QueryContext(context.Background(), "SELECT table_name FROM information_schema.tables WHERE table_schema = 'sqllogictest';")
+	rows, err = h.db.QueryContext(ctx, "SELECT table_name FROM information_schema.tables WHERE table_schema = 'sqllogictest';")
 	if rows != nil {
 		defer rows.Close()
 	}
@@ -228,7 +251,7 @@ func (h *DoltgresHarness) dropAllTables() error {
 
 	if len(tableNames) > 0 {
 		dropTables := "drop table if exists " + strings.Join(tableNames, ",")
-		_, err = h.db.Exec(dropTables)
+		_, err = h.db.ExecContext(ctx, dropTables)
 		if err != nil {
 			return err
 		}
@@ -237,8 +260,8 @@ func (h *DoltgresHarness) dropAllTables() error {
 	return nil
 }
 
-func (h *DoltgresHarness) dropAllViews() error {
-	rows, err := h.db.QueryContext(context.Background(), "select table_name from INFORMATION_SCHEMA.views")
+func (h *DoltgresHarness) dropAllViews(ctx context.Context) error {
+	rows, err := h.db.QueryContext(ctx, "select table_name from INFORMATION_SCHEMA.views")
 	if rows != nil {
 		defer rows.Close()
 	}
@@ -264,7 +287,7 @@ func (h *DoltgresHarness) dropAllViews() error {
 
 	if len(viewNames) > 0 {
 		dropView := "drop view if exists " + strings.Join(viewNames, ",")
-		_, err = h.db.Exec(dropView)
+		_, err = h.db.ExecContext(ctx, dropView)
 		if err != nil {
 			return err
 		}

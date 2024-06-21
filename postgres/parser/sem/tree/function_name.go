@@ -27,8 +27,6 @@ package tree
 import (
 	"fmt"
 
-	"github.com/cockroachdb/errors"
-
 	"github.com/dolthub/doltgresql/postgres/parser/sessiondata"
 )
 
@@ -42,7 +40,7 @@ import (
 // first call to its Resolve() method.
 
 // ResolvableFunctionReference implements the editable reference cell
-// of a FuncExpr. The FunctionRerence is updated by the Normalize()
+// of a FuncExpr. The FunctionReference is updated by the Normalize()
 // method.
 type ResolvableFunctionReference struct {
 	FunctionReference
@@ -59,31 +57,14 @@ func (fn *ResolvableFunctionReference) String() string { return AsString(fn) }
 func (fn *ResolvableFunctionReference) Resolve(
 	searchPath sessiondata.SearchPath,
 ) (*FunctionDefinition, error) {
-	switch t := fn.FunctionReference.(type) {
-	case *FunctionDefinition:
-		return t, nil
-	case *UnresolvedName:
-		fd, err := t.ResolveFunction(searchPath)
-		if err != nil {
-			return nil, err
-		}
-		fn.FunctionReference = fd
-		return fd, nil
-	default:
-		return nil, errors.AssertionFailedf("unknown function name type: %+v (%T)",
-			fn.FunctionReference, fn.FunctionReference,
-		)
-	}
+	return nil, nil
 }
 
 // WrapFunction creates a new ResolvableFunctionReference
 // holding a pre-resolved function. Helper for grammar rules.
 func WrapFunction(n string) ResolvableFunctionReference {
-	fd, ok := FunDefs[n]
-	if !ok {
-		panic(errors.AssertionFailedf("function %s() not defined", n))
-	}
-	return ResolvableFunctionReference{fd}
+	un := &UnresolvedName{NumParts: 1, Parts: NameParts{n}}
+	return ResolvableFunctionReference{FunctionReference: un}
 }
 
 // FunctionReference is the common interface to UnresolvedName and QualifiedFunctionName.

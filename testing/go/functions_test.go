@@ -153,3 +153,120 @@ func TestFunctionsMath(t *testing.T) {
 		},
 	})
 }
+
+func TestSystemInformationFunctions(t *testing.T) {
+	RunScripts(t, []ScriptTest{
+		{
+			Name:     "current_database",
+			Database: "test",
+			Assertions: []ScriptTestAssertion{
+				{
+					Query: `SELECT current_database();`,
+					Expected: []sql.Row{
+						{"test"},
+					},
+				},
+				{
+					Query:       `SELECT current_database;`,
+					ExpectedErr: `column "current_database" could not be found in any table in scope`,
+				},
+				// TODO: Implement table function for current_database
+				{
+					Query: `SELECT * FROM current_database();`,
+					Skip:  true,
+					Expected: []sql.Row{
+						{"test"},
+					},
+				},
+				{
+					Query:       `SELECT * FROM current_database;`,
+					ExpectedErr: "table not found: current_database",
+				},
+			},
+		},
+		{
+			Name:     "current_catalog",
+			Database: "test",
+			Assertions: []ScriptTestAssertion{
+				{
+					Query: `SELECT current_catalog;`,
+					Expected: []sql.Row{
+						{"test"},
+					},
+				},
+				{
+					Query:       `SELECT current_catalog();`,
+					ExpectedErr: `ERROR: at or near "(": syntax error (SQLSTATE XX000)`,
+				},
+				// // TODO: Implement table function for current_catalog
+				{
+					Query: `SELECT * FROM current_catalog;`,
+					Skip:  true,
+					Expected: []sql.Row{
+						{"test"},
+					},
+				},
+				{
+					Query:       `SELECT * FROM current_catalog();`,
+					ExpectedErr: `ERROR: at or near "(": syntax error (SQLSTATE XX000)`,
+				},
+			},
+		},
+		{
+			Name: "current_schema",
+			Assertions: []ScriptTestAssertion{
+				{
+					Query: `SELECT current_schema();`,
+					Expected: []sql.Row{
+						{"postgres"},
+					},
+				},
+				{
+					Query:    "CREATE SCHEMA test_schema;",
+					Expected: []sql.Row{},
+				},
+				{
+					Query:    `SET SEARCH_PATH TO test_schema;`,
+					Expected: []sql.Row{},
+				},
+				{
+					Query: `SELECT current_schema();`,
+					Expected: []sql.Row{
+						{"test_schema"},
+					},
+				},
+				{
+					Query:    `SET SEARCH_PATH TO public;`,
+					Expected: []sql.Row{},
+				},
+				{
+					Query: `SELECT current_schema();`,
+					Expected: []sql.Row{
+						{"public"},
+					},
+				},
+				{
+					Query: `SELECT current_schema;`,
+					Expected: []sql.Row{
+						{"public"},
+					},
+				},
+				// TODO: Implement table function for current_schema
+				{
+					Query: `SELECT * FROM current_schema();`,
+					Skip:  true,
+					Expected: []sql.Row{
+						{"public"},
+					},
+				},
+				{
+					Query: `SELECT * FROM current_schema;`,
+					Skip:  true,
+					Expected: []sql.Row{
+						{"public"},
+					},
+				},
+			},
+		},
+	})
+}

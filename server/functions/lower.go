@@ -34,10 +34,8 @@ var lower_varchar = framework.Function1{
 	Return:     pgtypes.VarChar,
 	Parameters: []pgtypes.DoltgresType{pgtypes.VarChar},
 	Callable: func(ctx *sql.Context, val1 any) (any, error) {
-		if val1 == nil {
-			return nil, nil
-		}
 		//TODO: this doesn't respect collations
 		return strings.ToLower(val1.(string)), nil
 	},
+	Strict: true,
 }

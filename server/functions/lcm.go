@@ -35,9 +35,6 @@ var lcm_int64_int64 = framework.Function2{
 	Return:     pgtypes.Int64,
 	Parameters: []pgtypes.DoltgresType{pgtypes.Int64, pgtypes.Int64},
 	Callable: func(ctx *sql.Context, val1Int any, val2Int any) (any, error) {
-		if val1Int == nil || val2Int == nil {
-			return nil, nil
-		}
 		val1 := val1Int.(int64)
 		val2 := val2Int.(int64)
 		if val1 == val2 {
@@ -58,4 +55,5 @@ var lcm_int64_int64 = framework.Function2{
 		}
 		return utils.Abs(result / gcdResult), nil
 	},
+	Strict: true,
 }

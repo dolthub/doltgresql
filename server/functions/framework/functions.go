@@ -28,10 +28,13 @@ type FunctionInterface interface {
 	GetReturn() pgtypes.DoltgresType
 	// GetParameters returns the parameter types for the function.
 	GetParameters() []pgtypes.DoltgresType
-	// GetExpectedParameterCount returns the number of paramters that are valid for this function.
+	// GetExpectedParameterCount returns the number of parameters that are valid for this function.
 	GetExpectedParameterCount() int
 	// GetIsNonDeterministic returns whether the function is non-deterministic.
 	GetIsNonDeterministic() bool
+	// GetIsStrict returns whether the function is STRICT, which means if any parameter is NULL, then it returns NULL.
+	// Otherwise, if it's not, the NULL input must be handled by user.
+	GetIsStrict() bool
 	// enforceInterfaceInheritance is a special function that ensures only the expected types inherit this interface.
 	enforceInterfaceInheritance(error)
 }
@@ -42,6 +45,7 @@ type Function0 struct {
 	Return             pgtypes.DoltgresType
 	Parameters         []pgtypes.DoltgresType
 	IsNonDeterministic bool
+	Strict             bool
 	Callable           func(ctx *sql.Context) (any, error)
 }
 
@@ -51,6 +55,7 @@ type Function1 struct {
 	Return             pgtypes.DoltgresType
 	Parameters         []pgtypes.DoltgresType
 	IsNonDeterministic bool
+	Strict             bool
 	Callable           func(ctx *sql.Context, val1 any) (any, error)
 }
 
@@ -60,6 +65,7 @@ type Function2 struct {
 	Return             pgtypes.DoltgresType
 	Parameters         []pgtypes.DoltgresType
 	IsNonDeterministic bool
+	Strict             bool
 	Callable           func(ctx *sql.Context, val1 any, val2 any) (any, error)
 }
 
@@ -69,6 +75,7 @@ type Function3 struct {
 	Return             pgtypes.DoltgresType
 	Parameters         []pgtypes.DoltgresType
 	IsNonDeterministic bool
+	Strict             bool
 	Callable           func(ctx *sql.Context, val1 any, val2 any, val3 any) (any, error)
 }
 
@@ -78,6 +85,7 @@ type Function4 struct {
 	Return             pgtypes.DoltgresType
 	Parameters         []pgtypes.DoltgresType
 	IsNonDeterministic bool
+	Strict             bool
 	Callable           func(ctx *sql.Context, val1 any, val2 any, val3 any, val4 any) (any, error)
 }
 
@@ -102,6 +110,9 @@ func (f Function0) GetExpectedParameterCount() int { return 0 }
 // GetIsNonDeterministic implements the FunctionInterface interface.
 func (f Function0) GetIsNonDeterministic() bool { return f.IsNonDeterministic }
 
+// GetIsStrict implements the FunctionInterface interface.
+func (f Function0) GetIsStrict() bool { return f.Strict }
+
 // enforceInterfaceInheritance implements the FunctionInterface interface.
 func (f Function0) enforceInterfaceInheritance(error) {}
 
@@ -119,6 +130,9 @@ func (f Function1) GetExpectedParameterCount() int { return 1 }
 
 // GetIsNonDeterministic implements the FunctionInterface interface.
 func (f Function1) GetIsNonDeterministic() bool { return f.IsNonDeterministic }
+
+// GetIsStrict implements the FunctionInterface interface.
+func (f Function1) GetIsStrict() bool { return f.Strict }
 
 // enforceInterfaceInheritance implements the FunctionInterface interface.
 func (f Function1) enforceInterfaceInheritance(error) {}
@@ -138,6 +152,9 @@ func (f Function2) GetExpectedParameterCount() int { return 2 }
 // GetIsNonDeterministic implements the FunctionInterface interface.
 func (f Function2) GetIsNonDeterministic() bool { return f.IsNonDeterministic }
 
+// GetIsStrict implements the FunctionInterface interface.
+func (f Function2) GetIsStrict() bool { return f.Strict }
+
 // enforceInterfaceInheritance implements the FunctionInterface interface.
 func (f Function2) enforceInterfaceInheritance(error) {}
 
@@ -156,6 +173,9 @@ func (f Function3) GetExpectedParameterCount() int { return 3 }
 // GetIsNonDeterministic implements the FunctionInterface interface.
 func (f Function3) GetIsNonDeterministic() bool { return f.IsNonDeterministic }
 
+// GetIsStrict implements the FunctionInterface interface.
+func (f Function3) GetIsStrict() bool { return f.Strict }
+
 // enforceInterfaceInheritance implements the FunctionInterface interface.
 func (f Function3) enforceInterfaceInheritance(error) {}
 
@@ -173,6 +193,9 @@ func (f Function4) GetExpectedParameterCount() int { return 4 }
 
 // GetIsNonDeterministic implements the FunctionInterface interface.
 func (f Function4) GetIsNonDeterministic() bool { return f.IsNonDeterministic }
+
+// GetIsStrict implements the FunctionInterface interface.
+func (f Function4) GetIsStrict() bool { return f.Strict }
 
 // enforceInterfaceInheritance implements the FunctionInterface interface.
 func (f Function4) enforceInterfaceInheritance(error) {}

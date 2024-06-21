@@ -34,9 +34,7 @@ var sinh_float64 = framework.Function1{
 	Return:     pgtypes.Float64,
 	Parameters: []pgtypes.DoltgresType{pgtypes.Float64},
 	Callable: func(ctx *sql.Context, val1 any) (any, error) {
-		if val1 == nil {
-			return nil, nil
-		}
 		return math.Sinh(val1.(float64)), nil
 	},
+	Strict: true,
 }

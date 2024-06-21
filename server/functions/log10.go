@@ -22,6 +22,8 @@ func initLog10() {
 	log10_numeric := log_numeric
 	log10_float64.Name = "log10"
 	log10_numeric.Name = "log10"
+	log10_float64.Strict = true
+	log10_numeric.Strict = true
 	framework.RegisterFunction(log10_float64)
 	framework.RegisterFunction(log10_numeric)
 }

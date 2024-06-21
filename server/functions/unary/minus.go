@@ -41,11 +41,9 @@ var float4um = framework.Function1{
 	Return:     pgtypes.Float32,
 	Parameters: []pgtypes.DoltgresType{pgtypes.Float32},
 	Callable: func(ctx *sql.Context, val1 any) (any, error) {
-		if val1 == nil {
-			return nil, nil
-		}
 		return -(val1.(float32)), nil
 	},
+	Strict: true,
 }
 
 // float8um represents the PostgreSQL function of the same name, taking the same parameters.
@@ -54,11 +52,9 @@ var float8um = framework.Function1{
 	Return:     pgtypes.Float64,
 	Parameters: []pgtypes.DoltgresType{pgtypes.Float64},
 	Callable: func(ctx *sql.Context, val1 any) (any, error) {
-		if val1 == nil {
-			return nil, nil
-		}
 		return -(val1.(float64)), nil
 	},
+	Strict: true,
 }
 
 // int2um represents the PostgreSQL function of the same name, taking the same parameters.
@@ -67,11 +63,9 @@ var int2um = framework.Function1{
 	Return:     pgtypes.Int16,
 	Parameters: []pgtypes.DoltgresType{pgtypes.Int16},
 	Callable: func(ctx *sql.Context, val1 any) (any, error) {
-		if val1 == nil {
-			return nil, nil
-		}
 		return -(val1.(int16)), nil
 	},
+	Strict: true,
 }
 
 // int4um represents the PostgreSQL function of the same name, taking the same parameters.
@@ -80,11 +74,9 @@ var int4um = framework.Function1{
 	Return:     pgtypes.Int32,
 	Parameters: []pgtypes.DoltgresType{pgtypes.Int32},
 	Callable: func(ctx *sql.Context, val1 any) (any, error) {
-		if val1 == nil {
-			return nil, nil
-		}
 		return -(val1.(int32)), nil
 	},
+	Strict: true,
 }
 
 // int8um represents the PostgreSQL function of the same name, taking the same parameters.
@@ -93,11 +85,9 @@ var int8um = framework.Function1{
 	Return:     pgtypes.Int64,
 	Parameters: []pgtypes.DoltgresType{pgtypes.Int64},
 	Callable: func(ctx *sql.Context, val1 any) (any, error) {
-		if val1 == nil {
-			return nil, nil
-		}
 		return -(val1.(int64)), nil
 	},
+	Strict: true,
 }
 
 // numeric_uminus represents the PostgreSQL function of the same name, taking the same parameters.
@@ -106,9 +96,7 @@ var numeric_uminus = framework.Function1{
 	Return:     pgtypes.Numeric,
 	Parameters: []pgtypes.DoltgresType{pgtypes.Numeric},
 	Callable: func(ctx *sql.Context, val1 any) (any, error) {
-		if val1 == nil {
-			return nil, nil
-		}
 		return val1.(decimal.Decimal).Neg(), nil
 	},
+	Strict: true,
 }

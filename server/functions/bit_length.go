@@ -32,13 +32,11 @@ var bit_length_varchar = framework.Function1{
 	Return:     pgtypes.Int32,
 	Parameters: []pgtypes.DoltgresType{pgtypes.VarChar},
 	Callable: func(ctx *sql.Context, val1 any) (any, error) {
-		if val1 == nil {
-			return nil, nil
-		}
 		result, err := octet_length_varchar.Callable(ctx, val1)
 		if err != nil {
 			return nil, err
 		}
 		return result.(int32) * 8, nil
 	},
+	Strict: true,
 }
