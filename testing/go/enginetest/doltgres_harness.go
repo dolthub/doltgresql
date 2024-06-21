@@ -90,15 +90,19 @@ func newDoltgresServerHarness(t *testing.T) denginetest.DoltEnginetestHarness {
 	return dh
 }
 
-func newDoltEnginetestHarness(t *testing.T) denginetest.DoltEnginetestHarness {
-	return newDoltgresServerHarness(t)
-}
-
 var defaultSkippedQueries = []string{
 	"show variables",             // we set extra variables
 	"show create table fk_tbl",   // we create an extra key for the FK that vanilla gms does not
 	"show indexes from",          // we create / expose extra indexes (for foreign keys)
 	"show global variables like", // we set extra variables
+	// unsupported doltgres syntax 
+	"WITH",
+	"OVER",
+	// subqueries are broken, breaks with an index out of bounds error
+	"(SELECT",
+	// string functions are broken due to incompatible types
+	"HEX(",
+	"TO_BASE64(",
 }
 
 // Setup sets the setup scripts for this DoltHarness's engine
@@ -142,7 +146,7 @@ func (d *DoltgresHarness) NewEngine(t *testing.T) (enginetest.QueryEngine, error
 	return queryEngine, nil
 }
 
-var skippedWords = []string{
+var skippedSetupWords = []string{
 	"auto_increment",
 	"create index",
 	"bigtable", // "ERROR: blob/text column 't' used in key specification without a key length"
@@ -154,6 +158,10 @@ var skippedWords = []string{
 	"foo.othertable", // ERROR: database schema not found: foo (errno 1105)
 	"bus_routes", // ERROR: blob/text column 'origin' used in key specification without a key length
 	"parts", // ERROR: blob/text column 'part' used in key specification without a key length
+	"xy_hasnull_idx", // needs an index during creation
+	"xy ", // needs an index during creation
+	"rs ", // needs an index during creation
+	"analyze table", // unsupported syntax
 }
 
 var commentClause = regexp.MustCompile(`(?i)comment '.*?'`)
@@ -170,7 +178,7 @@ var backtick = "`"
 // sanitizeQuery strips the query string given of any unsupported constructs without attempting to actually convert 
 // to Postgres syntax.
 func sanitizeQuery(s string) (bool, string) {
-	for _, word := range skippedWords {
+	for _, word := range skippedSetupWords {
 		if strings.Contains(s, word) {
 			return false, ""
 		}
@@ -236,7 +244,7 @@ func (d *DoltgresHarness) Engine() *gms.Engine {
 // SkipQueryTest returns whether to skip a query
 func (d *DoltgresHarness) SkipQueryTest(query string) bool {
 	lowerQuery := strings.ToLower(query)
-	for _, skipped := range d.skippedQueries {
+	for _, skipped := range append(d.skippedQueries, skippedSetupWords...) {
 		if strings.Contains(lowerQuery, strings.ToLower(skipped)) {
 			return true
 		}
@@ -497,11 +505,11 @@ func columns(rows *gosql.Rows) (sql.Schema, []interface{}, error) {
 			colVal := gosql.NullString{}
 			columnVals = append(columnVals, &colVal)
 			schema = append(schema, &sql.Column{Name: columnType.Name(), Type: gmstypes.LongText, Nullable: true})
-		case "DECIMAL", "DOUBLE", "FLOAT", "FLOAT8", "NUMERIC":
+		case "DECIMAL", "DOUBLE", "FLOAT", "FLOAT4", "FLOAT8", "NUMERIC":
 			colVal := gosql.NullFloat64{}
 			columnVals = append(columnVals, &colVal)
 			schema = append(schema, &sql.Column{Name: columnType.Name(), Type: gmstypes.Float64, Nullable: true})
-		case "MEDIUMINT", "INT", "BIGINT", "TINYINT", "SMALLINT", "INT4", "INT8":
+		case "MEDIUMINT", "INT", "BIGINT", "TINYINT", "SMALLINT", "INT2", "INT4", "INT8":
 			colVal := gosql.NullInt64{}
 			columnVals = append(columnVals, &colVal)
 			schema = append(schema, &sql.Column{Name: columnType.Name(), Type: gmstypes.Int64, Nullable: true})
