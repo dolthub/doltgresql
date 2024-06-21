@@ -23,15 +23,15 @@ import (
 	pgtypes "github.com/dolthub/doltgresql/server/types"
 )
 
-// PgStatArchiverName is a constant to the pg_stat_all_tables name.
-const PgStatArchiverName = "pg_stat_all_tables"
+// PgStatArchiverName is a constant to the pg_stat_archiver name.
+const PgStatArchiverName = "pg_stat_archiver"
 
-// InitPgStatArchiver handles registration of the pg_stat_all_tables handler.
+// InitPgStatArchiver handles registration of the pg_stat_archiver handler.
 func InitPgStatArchiver() {
 	tables.AddHandler(PgCatalogName, PgStatArchiverName, PgStatArchiverHandler{})
 }
 
-// PgStatArchiverHandler is the handler for the pg_stat_all_tables table.
+// PgStatArchiverHandler is the handler for the pg_stat_archiver table.
 type PgStatArchiverHandler struct{}
 
 var _ tables.Handler = PgStatArchiverHandler{}
@@ -43,7 +43,7 @@ func (p PgStatArchiverHandler) Name() string {
 
 // RowIter implements the interface tables.Handler.
 func (p PgStatArchiverHandler) RowIter(ctx *sql.Context) (sql.RowIter, error) {
-	// TODO: Implement pg_stat_all_tables row iter
+	// TODO: Implement pg_stat_archiver row iter
 	return emptyRowIter()
 }
 
@@ -55,7 +55,7 @@ func (p PgStatArchiverHandler) Schema() sql.PrimaryKeySchema {
 	}
 }
 
-// pgStatArchiverSchema is the schema for pg_stat_all_tables.
+// pgStatArchiverSchema is the schema for pg_stat_archiver.
 var pgStatArchiverSchema = sql.Schema{
 	{Name: "archived_count", Type: pgtypes.Int64, Default: nil, Nullable: true, Source: PgStatArchiverName},
 	{Name: "last_archived_wal", Type: pgtypes.Text, Default: nil, Nullable: true, Source: PgStatArchiverName},
@@ -66,7 +66,7 @@ var pgStatArchiverSchema = sql.Schema{
 	{Name: "stats_reset", Type: pgtypes.TimestampTZ, Default: nil, Nullable: true, Source: PgStatArchiverName},
 }
 
-// pgStatArchiverRowIter is the sql.RowIter for the pg_stat_all_tables table.
+// pgStatArchiverRowIter is the sql.RowIter for the pg_stat_archiver table.
 type pgStatArchiverRowIter struct {
 }
 

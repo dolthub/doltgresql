@@ -23,15 +23,15 @@ import (
 	pgtypes "github.com/dolthub/doltgresql/server/types"
 )
 
-// PgHbaFileRulesName is a constant to the pg_backend_memory_contexts name.
-const PgHbaFileRulesName = "pg_backend_memory_contexts"
+// PgHbaFileRulesName is a constant to the pg_hba_file_rules name.
+const PgHbaFileRulesName = "pg_hba_file_rules"
 
-// InitPgHbaFileRules handles registration of the pg_backend_memory_contexts handler.
+// InitPgHbaFileRules handles registration of the pg_hba_file_rules handler.
 func InitPgHbaFileRules() {
 	tables.AddHandler(PgCatalogName, PgHbaFileRulesName, PgHbaFileRulesHandler{})
 }
 
-// PgHbaFileRulesHandler is the handler for the pg_backend_memory_contexts table.
+// PgHbaFileRulesHandler is the handler for the pg_hba_file_rules table.
 type PgHbaFileRulesHandler struct{}
 
 var _ tables.Handler = PgHbaFileRulesHandler{}
@@ -43,7 +43,7 @@ func (p PgHbaFileRulesHandler) Name() string {
 
 // RowIter implements the interface tables.Handler.
 func (p PgHbaFileRulesHandler) RowIter(ctx *sql.Context) (sql.RowIter, error) {
-	// TODO: Implement pg_backend_memory_contexts row iter
+	// TODO: Implement pg_hba_file_rules row iter
 	return emptyRowIter()
 }
 
@@ -55,7 +55,7 @@ func (p PgHbaFileRulesHandler) Schema() sql.PrimaryKeySchema {
 	}
 }
 
-// pgHbaFileRulesSchema is the schema for pg_backend_memory_contexts.
+// pgHbaFileRulesSchema is the schema for pg_hba_file_rules.
 var pgHbaFileRulesSchema = sql.Schema{
 	{Name: "rule_number", Type: pgtypes.Int32, Default: nil, Nullable: true, Source: PgHbaFileRulesName},
 	{Name: "file_name", Type: pgtypes.Text, Default: nil, Nullable: true, Source: PgHbaFileRulesName},
@@ -70,7 +70,7 @@ var pgHbaFileRulesSchema = sql.Schema{
 	{Name: "error", Type: pgtypes.Text, Default: nil, Nullable: true, Source: PgHbaFileRulesName},
 }
 
-// pgHbaFileRulesRowIter is the sql.RowIter for the pg_backend_memory_contexts table.
+// pgHbaFileRulesRowIter is the sql.RowIter for the pg_hba_file_rules table.
 type pgHbaFileRulesRowIter struct {
 }
 
