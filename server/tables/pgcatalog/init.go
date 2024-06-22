@@ -64,6 +64,12 @@ func Init() {
 	InitPgRewrite()
 	InitPgSeclabel()
 	InitPgSequence()
+	InitPgShdepend()
+	InitPgShdescription()
+	InitPgShseclabel()
+	InitPgStatistic()
+	InitPgStatisticExt()
+	InitPgStatisticExtData()
 	InitPgTrigger()
 	InitPgType()
 }

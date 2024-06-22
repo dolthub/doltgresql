@@ -74,11 +74,17 @@ teardown() {
     [[ "$output" =~ "public,pg_rewrite,table,postgres" ]] || false
     [[ "$output" =~ "public,pg_seclabel,table,postgres" ]] || false
     [[ "$output" =~ "public,pg_sequence,table,postgres" ]] || false
+    [[ "$output" =~ "public,pg_shdepend,table,postgres" ]] || false
+    [[ "$output" =~ "public,pg_shdescription,table,postgres" ]] || false
+    [[ "$output" =~ "public,pg_shseclabel,table,postgres" ]] || false
+    [[ "$output" =~ "public,pg_statistic,table,postgres" ]] || false
+    [[ "$output" =~ "public,pg_statistic_ext,table,postgres" ]] || false
+    [[ "$output" =~ "public,pg_statistic_ext_data,table,postgres" ]] || false
     [[ "$output" =~ "public,pg_trigger,table,postgres" ]] || false
     [[ "$output" =~ "public,pg_type,table,postgres" ]] || false
     [[ "$output" =~ "public,test1,table,postgres" ]] || false
     [[ "$output" =~ "public,test2,table,postgres" ]] || false
-    [ "${#lines[@]}" -eq 50 ]
+    [ "${#lines[@]}" -eq 56 ]
 }
 
 @test 'psql-commands: \d' {
@@ -129,12 +135,18 @@ teardown() {
     [[ "$output" =~ "public,pg_replication_origin,table,postgres" ]] || false
     [[ "$output" =~ "public,pg_rewrite,table,postgres" ]] || false
     [[ "$output" =~ "public,pg_seclabel,table,postgres" ]] || false
+    [[ "$output" =~ "public,pg_shdepend,table,postgres" ]] || false
+    [[ "$output" =~ "public,pg_shdescription,table,postgres" ]] || false
+    [[ "$output" =~ "public,pg_shseclabel,table,postgres" ]] || false
     [[ "$output" =~ "public,pg_sequence,table,postgres" ]] || false
+    [[ "$output" =~ "public,pg_statistic,table,postgres" ]] || false
+    [[ "$output" =~ "public,pg_statistic_ext,table,postgres" ]] || false
+    [[ "$output" =~ "public,pg_statistic_ext_data,table,postgres" ]] || false
     [[ "$output" =~ "public,pg_trigger,table,postgres" ]] || false
     [[ "$output" =~ "public,pg_type,table,postgres" ]] || false
     [[ "$output" =~ "public,test1,table,postgres" ]] || false
     [[ "$output" =~ "public,test2,table,postgres" ]] || false
-    [ "${#lines[@]}" -eq 50 ]
+    [ "${#lines[@]}" -eq 56 ]
 }
 
 @test 'psql-commands: \d table' {

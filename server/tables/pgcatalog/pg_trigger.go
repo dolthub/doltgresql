@@ -71,7 +71,7 @@ var pgTriggerSchema = sql.Schema{
 	{Name: "tgdeferrable", Type: pgtypes.Bool, Default: nil, Nullable: false, Source: PgTriggerName},
 	{Name: "tginitdeferred", Type: pgtypes.Bool, Default: nil, Nullable: false, Source: PgTriggerName},
 	{Name: "tgnargs", Type: pgtypes.Int16, Default: nil, Nullable: false, Source: PgTriggerName},
-	{Name: "tgattr", Type: pgtypes.Int16, Default: nil, Nullable: false, Source: PgTriggerName}, // TODO: type int2vector
+	{Name: "tgattr", Type: pgtypes.Int16Array, Default: nil, Nullable: false, Source: PgTriggerName}, // TODO: type int2vector
 	{Name: "tgargs", Type: pgtypes.Bytea, Default: nil, Nullable: false, Source: PgTriggerName},
 	{Name: "tgqual", Type: pgtypes.Text, Default: nil, Nullable: true, Source: PgTriggerName}, // TODO: type pg_node_tree, collation C
 	{Name: "tgoldtable", Type: pgtypes.Name, Default: nil, Nullable: true, Source: PgTriggerName},
