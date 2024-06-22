@@ -37,11 +37,9 @@ var int2xor = framework.Function2{
 	Return:     pgtypes.Int16,
 	Parameters: []pgtypes.DoltgresType{pgtypes.Int16, pgtypes.Int16},
 	Callable: func(ctx *sql.Context, val1 any, val2 any) (any, error) {
-		if val1 == nil || val2 == nil {
-			return nil, nil
-		}
 		return int16(val1.(int16) ^ val2.(int16)), nil
 	},
+	Strict: true,
 }
 
 // int4xor represents the PostgreSQL function of the same name, taking the same parameters.
@@ -50,11 +48,9 @@ var int4xor = framework.Function2{
 	Return:     pgtypes.Int32,
 	Parameters: []pgtypes.DoltgresType{pgtypes.Int32, pgtypes.Int32},
 	Callable: func(ctx *sql.Context, val1 any, val2 any) (any, error) {
-		if val1 == nil || val2 == nil {
-			return nil, nil
-		}
 		return int32(val1.(int32) ^ val2.(int32)), nil
 	},
+	Strict: true,
 }
 
 // int8xor represents the PostgreSQL function of the same name, taking the same parameters.
@@ -63,9 +59,7 @@ var int8xor = framework.Function2{
 	Return:     pgtypes.Int64,
 	Parameters: []pgtypes.DoltgresType{pgtypes.Int64, pgtypes.Int64},
 	Callable: func(ctx *sql.Context, val1 any, val2 any) (any, error) {
-		if val1 == nil || val2 == nil {
-			return nil, nil
-		}
 		return int64(val1.(int64) ^ val2.(int64)), nil
 	},
+	Strict: true,
 }

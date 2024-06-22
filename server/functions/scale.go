@@ -39,4 +39,5 @@ var scale_numeric = framework.Function1{
 		}
 		return nil, err
 	},
+	Strict: true,
 }

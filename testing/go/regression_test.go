@@ -211,8 +211,24 @@ func TestRegressions(t *testing.T) {
 				},
 				{
 					Query:    "INSERT INTO sbtest1(k, c, pad) VALUES(4284, '8386864191', '67847967371'),(9261, '339736817', '3861551598704');",
-					Skip:     true,
 					Expected: []sql.Row{},
+				},
+			},
+		},
+		{
+			Name: "arithmetic op with null casted as integer",
+			SetUpScript: []string{
+				"CREATE TABLE tab2(col0 INTEGER, col1 INTEGER, col2 INTEGER);",
+				"INSERT INTO tab2 VALUES(7,31,27), (79,17,38), (78,59,26);",
+			},
+			Assertions: []ScriptTestAssertion{
+				{
+					Query:    "SELECT ALL - col0 * CAST ( col0 AS REAL ) + col1 + CAST ( NULL AS INTEGER ) AS col0 FROM tab2 AS cor0;",
+					Expected: []sql.Row{{nil}, {nil}, {nil}},
+				},
+				{
+					Query:    "select 1.2 + cast ( null as integer );",
+					Expected: []sql.Row{{nil}},
 				},
 			},
 		},

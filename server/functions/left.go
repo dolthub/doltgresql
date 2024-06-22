@@ -32,9 +32,6 @@ var left_varchar_int32 = framework.Function2{
 	Return:     pgtypes.VarChar,
 	Parameters: []pgtypes.DoltgresType{pgtypes.VarChar, pgtypes.Int32},
 	Callable: func(ctx *sql.Context, strInt any, nInt any) (any, error) {
-		if strInt == nil || nInt == nil {
-			return nil, nil
-		}
 		str := strInt.(string)
 		n := nInt.(int32)
 		if n >= 0 {
@@ -49,4 +46,5 @@ var left_varchar_int32 = framework.Function2{
 			return str[:len(str)+int(n)], nil
 		}
 	},
+	Strict: true,
 }

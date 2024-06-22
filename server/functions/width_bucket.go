@@ -37,9 +37,6 @@ var width_bucket_float64_float64_float64_int64 = framework.Function4{
 	Return:     pgtypes.Int32,
 	Parameters: []pgtypes.DoltgresType{pgtypes.Float64, pgtypes.Float64, pgtypes.Float64, pgtypes.Int32},
 	Callable: func(ctx *sql.Context, operandInterface any, lowInterface any, highInterface any, countInterface any) (any, error) {
-		if operandInterface == nil || lowInterface == nil || highInterface == nil || countInterface == nil {
-			return nil, nil
-		}
 		operand := operandInterface.(float64)
 		low := lowInterface.(float64)
 		high := highInterface.(float64)
@@ -64,6 +61,7 @@ var width_bucket_float64_float64_float64_int64 = framework.Function4{
 		}
 		return int32(result), nil
 	},
+	Strict: true,
 }
 
 // width_bucket_numeric_numeric_numeric_int64 represents the PostgreSQL function of the same name, taking the same parameters.
@@ -72,9 +70,6 @@ var width_bucket_numeric_numeric_numeric_int64 = framework.Function4{
 	Return:     pgtypes.Int32,
 	Parameters: []pgtypes.DoltgresType{pgtypes.Numeric, pgtypes.Numeric, pgtypes.Numeric, pgtypes.Int32},
 	Callable: func(ctx *sql.Context, operandInterface any, lowInterface any, highInterface any, countInterface any) (any, error) {
-		if operandInterface == nil || lowInterface == nil || highInterface == nil || countInterface == nil {
-			return nil, nil
-		}
 		operand := operandInterface.(decimal.Decimal)
 		low := lowInterface.(decimal.Decimal)
 		high := highInterface.(decimal.Decimal)
@@ -100,4 +95,5 @@ var width_bucket_numeric_numeric_numeric_int64 = framework.Function4{
 		i64 := result.IntPart()
 		return int32(i64), nil
 	},
+	Strict: true,
 }

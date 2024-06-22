@@ -60,9 +60,6 @@ var json_array_element = framework.Function2{
 	Return:     pgtypes.Json,
 	Parameters: []pgtypes.DoltgresType{pgtypes.Json, pgtypes.Int32},
 	Callable: func(ctx *sql.Context, val1 any, val2 any) (any, error) {
-		if val1 == nil || val2 == nil {
-			return nil, nil
-		}
 		// TODO: make a bespoke implementation that preserves whitespace
 		newVal, err := pgtypes.JsonB.IoInput(val1.(string))
 		if err != nil {
@@ -74,6 +71,7 @@ var json_array_element = framework.Function2{
 		}
 		return pgtypes.JsonB.FormatValue(retVal)
 	},
+	Strict: true,
 }
 
 // jsonb_array_element represents the PostgreSQL function of the same name, taking the same parameters.
@@ -82,9 +80,6 @@ var jsonb_array_element = framework.Function2{
 	Return:     pgtypes.JsonB,
 	Parameters: []pgtypes.DoltgresType{pgtypes.JsonB, pgtypes.Int32},
 	Callable: func(ctx *sql.Context, val1 any, val2 any) (any, error) {
-		if val1 == nil || val2 == nil {
-			return nil, nil
-		}
 		array, ok := val1.(pgtypes.JsonDocument).Value.(pgtypes.JsonValueArray)
 		if !ok {
 			return nil, nil
@@ -98,6 +93,7 @@ var jsonb_array_element = framework.Function2{
 		}
 		return pgtypes.JsonDocument{Value: array[idx]}, nil
 	},
+	Strict: true,
 }
 
 // json_object_field represents the PostgreSQL function of the same name, taking the same parameters.
@@ -106,9 +102,6 @@ var json_object_field = framework.Function2{
 	Return:     pgtypes.Json,
 	Parameters: []pgtypes.DoltgresType{pgtypes.Json, pgtypes.Text},
 	Callable: func(ctx *sql.Context, val1 any, val2 any) (any, error) {
-		if val1 == nil || val2 == nil {
-			return nil, nil
-		}
 		// TODO: make a bespoke implementation that preserves whitespace
 		newVal, err := pgtypes.JsonB.IoInput(val1.(string))
 		if err != nil {
@@ -120,6 +113,7 @@ var json_object_field = framework.Function2{
 		}
 		return pgtypes.JsonB.FormatValue(retVal)
 	},
+	Strict: true,
 }
 
 // jsonb_object_field represents the PostgreSQL function of the same name, taking the same parameters.
@@ -128,9 +122,6 @@ var jsonb_object_field = framework.Function2{
 	Return:     pgtypes.JsonB,
 	Parameters: []pgtypes.DoltgresType{pgtypes.JsonB, pgtypes.Text},
 	Callable: func(ctx *sql.Context, val1 any, val2 any) (any, error) {
-		if val1 == nil || val2 == nil {
-			return nil, nil
-		}
 		if val1 == nil || val2 == nil {
 			return nil, nil
 		}
@@ -144,6 +135,7 @@ var jsonb_object_field = framework.Function2{
 		}
 		return pgtypes.JsonDocument{Value: object.Items[idx].Value}, nil
 	},
+	Strict: true,
 }
 
 // json_array_element_text represents the PostgreSQL function of the same name, taking the same parameters.
@@ -152,9 +144,6 @@ var json_array_element_text = framework.Function2{
 	Return:     pgtypes.Text,
 	Parameters: []pgtypes.DoltgresType{pgtypes.Json, pgtypes.Int32},
 	Callable: func(ctx *sql.Context, val1 any, val2 any) (any, error) {
-		if val1 == nil || val2 == nil {
-			return nil, nil
-		}
 		// TODO: make a bespoke implementation that preserves whitespace
 		newVal, err := pgtypes.JsonB.IoInput(val1.(string))
 		if err != nil {
@@ -162,6 +151,7 @@ var json_array_element_text = framework.Function2{
 		}
 		return jsonb_array_element_text.Callable(ctx, newVal, val2)
 	},
+	Strict: true,
 }
 
 // jsonb_array_element_text represents the PostgreSQL function of the same name, taking the same parameters.
@@ -170,9 +160,6 @@ var jsonb_array_element_text = framework.Function2{
 	Return:     pgtypes.Text,
 	Parameters: []pgtypes.DoltgresType{pgtypes.JsonB, pgtypes.Int32},
 	Callable: func(ctx *sql.Context, val1 any, val2 any) (any, error) {
-		if val1 == nil || val2 == nil {
-			return nil, nil
-		}
 		doc, err := jsonb_array_element.Callable(ctx, val1, val2)
 		if err != nil || doc == nil {
 			return nil, err
@@ -184,6 +171,7 @@ var jsonb_array_element_text = framework.Function2{
 			return pgtypes.JsonB.FormatValue(pgtypes.JsonDocument{Value: value})
 		}
 	},
+	Strict: true,
 }
 
 // json_object_field_text represents the PostgreSQL function of the same name, taking the same parameters.
@@ -192,9 +180,6 @@ var json_object_field_text = framework.Function2{
 	Return:     pgtypes.Text,
 	Parameters: []pgtypes.DoltgresType{pgtypes.Json, pgtypes.Text},
 	Callable: func(ctx *sql.Context, val1 any, val2 any) (any, error) {
-		if val1 == nil || val2 == nil {
-			return nil, nil
-		}
 		// TODO: make a bespoke implementation that preserves whitespace
 		newVal, err := pgtypes.JsonB.IoInput(val1.(string))
 		if err != nil {
@@ -202,6 +187,7 @@ var json_object_field_text = framework.Function2{
 		}
 		return jsonb_object_field_text.Callable(ctx, newVal, val2)
 	},
+	Strict: true,
 }
 
 // jsonb_object_field_tex_jsonb represents the PostgreSQL function of the same name, taking the same parameters.
@@ -210,9 +196,6 @@ var jsonb_object_field_text = framework.Function2{
 	Return:     pgtypes.Text,
 	Parameters: []pgtypes.DoltgresType{pgtypes.JsonB, pgtypes.Text},
 	Callable: func(ctx *sql.Context, val1 any, val2 any) (any, error) {
-		if val1 == nil || val2 == nil {
-			return nil, nil
-		}
 		doc, err := jsonb_object_field.Callable(ctx, val1, val2)
 		if err != nil || doc == nil {
 			return nil, err
@@ -224,6 +207,7 @@ var jsonb_object_field_text = framework.Function2{
 			return pgtypes.JsonB.FormatValue(pgtypes.JsonDocument{Value: value})
 		}
 	},
+	Strict: true,
 }
 
 // json_extract_path represents the PostgreSQL function of the same name, taking the same parameters.
@@ -232,9 +216,6 @@ var json_extract_path = framework.Function2{
 	Return:     pgtypes.Json,
 	Parameters: []pgtypes.DoltgresType{pgtypes.Json, pgtypes.TextArray},
 	Callable: func(ctx *sql.Context, val1 any, val2 any) (any, error) {
-		if val1 == nil || val2 == nil {
-			return nil, nil
-		}
 		// TODO: make a bespoke implementation that preserves whitespace
 		newVal, err := pgtypes.JsonB.IoInput(val1.(string))
 		if err != nil {
@@ -246,6 +227,7 @@ var json_extract_path = framework.Function2{
 		}
 		return pgtypes.JsonB.FormatValue(retVal)
 	},
+	Strict: true,
 }
 
 // jsonb_extract_path represents the PostgreSQL function of the same name, taking the same parameters.
@@ -254,9 +236,6 @@ var jsonb_extract_path = framework.Function2{
 	Return:     pgtypes.JsonB,
 	Parameters: []pgtypes.DoltgresType{pgtypes.JsonB, pgtypes.TextArray},
 	Callable: func(ctx *sql.Context, val1 any, val2 any) (any, error) {
-		if val1 == nil || val2 == nil {
-			return nil, nil
-		}
 		value := val1.(pgtypes.JsonDocument).Value
 		paths := val2.([]interface{})
 		for _, path := range paths {
@@ -284,6 +263,7 @@ var jsonb_extract_path = framework.Function2{
 		}
 		return pgtypes.JsonDocument{Value: value}, nil
 	},
+	Strict: true,
 }
 
 // json_extract_path_text represents the PostgreSQL function of the same name, taking the same parameters.
@@ -292,9 +272,6 @@ var json_extract_path_text = framework.Function2{
 	Return:     pgtypes.Text,
 	Parameters: []pgtypes.DoltgresType{pgtypes.Json, pgtypes.TextArray},
 	Callable: func(ctx *sql.Context, val1 any, val2 any) (any, error) {
-		if val1 == nil || val2 == nil {
-			return nil, nil
-		}
 		// TODO: make a bespoke implementation that preserves whitespace
 		newVal, err := pgtypes.JsonB.IoInput(val1.(string))
 		if err != nil {
@@ -302,6 +279,7 @@ var json_extract_path_text = framework.Function2{
 		}
 		return jsonb_extract_path_text.Callable(ctx, newVal, val2)
 	},
+	Strict: true,
 }
 
 // jsonb_extract_path_text represents the PostgreSQL function of the same name, taking the same parameters.
@@ -310,9 +288,6 @@ var jsonb_extract_path_text = framework.Function2{
 	Return:     pgtypes.Text,
 	Parameters: []pgtypes.DoltgresType{pgtypes.JsonB, pgtypes.TextArray},
 	Callable: func(ctx *sql.Context, val1 any, val2 any) (any, error) {
-		if val1 == nil || val2 == nil {
-			return nil, nil
-		}
 		doc, err := jsonb_extract_path.Callable(ctx, val1, val2)
 		if err != nil || doc == nil {
 			return nil, err
@@ -324,6 +299,7 @@ var jsonb_extract_path_text = framework.Function2{
 			return pgtypes.JsonB.FormatValue(pgtypes.JsonDocument{Value: value})
 		}
 	},
+	Strict: true,
 }
 
 // jsonb_contains represents the PostgreSQL function of the same name, taking the same parameters.
@@ -332,11 +308,9 @@ var jsonb_contains = framework.Function2{
 	Return:     pgtypes.Bool,
 	Parameters: []pgtypes.DoltgresType{pgtypes.JsonB, pgtypes.JsonB},
 	Callable: func(ctx *sql.Context, val1 any, val2 any) (any, error) {
-		if val1 == nil || val2 == nil {
-			return nil, nil
-		}
 		return nil, fmt.Errorf("JSON contains is not yet supported")
 	},
+	Strict: true,
 }
 
 // jsonb_contained represents the PostgreSQL function of the same name, taking the same parameters.
@@ -345,11 +319,9 @@ var jsonb_contained = framework.Function2{
 	Return:     pgtypes.Bool,
 	Parameters: []pgtypes.DoltgresType{pgtypes.JsonB, pgtypes.JsonB},
 	Callable: func(ctx *sql.Context, val1 any, val2 any) (any, error) {
-		if val1 == nil || val2 == nil {
-			return nil, nil
-		}
 		return jsonb_contains.Callable(ctx, val2, val1)
 	},
+	Strict: true,
 }
 
 // jsonb_exists represents the PostgreSQL function of the same name, taking the same parameters.
@@ -358,9 +330,6 @@ var jsonb_exists = framework.Function2{
 	Return:     pgtypes.Bool,
 	Parameters: []pgtypes.DoltgresType{pgtypes.JsonB, pgtypes.Text},
 	Callable: func(ctx *sql.Context, val1 any, val2 any) (any, error) {
-		if val1 == nil || val2 == nil {
-			return nil, nil
-		}
 		switch value := val1.(pgtypes.JsonDocument).Value.(type) {
 		case pgtypes.JsonValueObject:
 			_, ok := value.Index[val2.(string)]
@@ -380,6 +349,7 @@ var jsonb_exists = framework.Function2{
 			return false, nil
 		}
 	},
+	Strict: true,
 }
 
 // jsonb_exists_any represents the PostgreSQL function of the same name, taking the same parameters.
@@ -388,9 +358,6 @@ var jsonb_exists_any = framework.Function2{
 	Return:     pgtypes.Bool,
 	Parameters: []pgtypes.DoltgresType{pgtypes.JsonB, pgtypes.TextArray},
 	Callable: func(ctx *sql.Context, val1 any, val2 any) (any, error) {
-		if val1 == nil || val2 == nil {
-			return nil, nil
-		}
 		keys := val2.([]interface{})
 		switch value := val1.(pgtypes.JsonDocument).Value.(type) {
 		case pgtypes.JsonValueObject:
@@ -422,6 +389,7 @@ var jsonb_exists_any = framework.Function2{
 			return false, nil
 		}
 	},
+	Strict: true,
 }
 
 // jsonb_exists_all represents the PostgreSQL function of the same name, taking the same parameters.
@@ -430,9 +398,6 @@ var jsonb_exists_all = framework.Function2{
 	Return:     pgtypes.Bool,
 	Parameters: []pgtypes.DoltgresType{pgtypes.JsonB, pgtypes.TextArray},
 	Callable: func(ctx *sql.Context, val1 any, val2 any) (any, error) {
-		if val1 == nil || val2 == nil {
-			return nil, nil
-		}
 		keys := val2.([]interface{})
 		switch value := val1.(pgtypes.JsonDocument).Value.(type) {
 		case pgtypes.JsonValueObject:
@@ -469,6 +434,7 @@ var jsonb_exists_all = framework.Function2{
 			return false, nil
 		}
 	},
+	Strict: true,
 }
 
 // jsonb_concat represents the PostgreSQL function of the same name, taking the same parameters.
@@ -477,9 +443,6 @@ var jsonb_concat = framework.Function2{
 	Return:     pgtypes.JsonB,
 	Parameters: []pgtypes.DoltgresType{pgtypes.JsonB, pgtypes.JsonB},
 	Callable: func(ctx *sql.Context, val1Interface any, val2Interface any) (any, error) {
-		if val1Interface == nil || val2Interface == nil {
-			return nil, nil
-		}
 		val1 := val1Interface.(pgtypes.JsonDocument).Value
 		val2 := val2Interface.(pgtypes.JsonDocument).Value
 		// First we'll merge objects if they're both objects
@@ -525,6 +488,7 @@ var jsonb_concat = framework.Function2{
 		copy(newArray[len(val1Array):], val2Array)
 		return pgtypes.JsonDocument{Value: newArray}, nil
 	},
+	Strict: true,
 }
 
 // jsonb_delete_text represents the PostgreSQL function of the same name, taking the same parameters.
@@ -533,11 +497,9 @@ var jsonb_delete_text = framework.Function2{
 	Return:     pgtypes.JsonB,
 	Parameters: []pgtypes.DoltgresType{pgtypes.JsonB, pgtypes.Text},
 	Callable: func(ctx *sql.Context, val1 any, val2 any) (any, error) {
-		if val1 == nil || val2 == nil {
-			return nil, nil
-		}
 		return nil, fmt.Errorf("JSON deletions are not yet supported")
 	},
+	Strict: true,
 }
 
 // jsonb_delete_text_array represents the PostgreSQL function of the same name, taking the same parameters.
@@ -546,11 +508,9 @@ var jsonb_delete_text_array = framework.Function2{
 	Return:     pgtypes.JsonB,
 	Parameters: []pgtypes.DoltgresType{pgtypes.JsonB, pgtypes.TextArray},
 	Callable: func(ctx *sql.Context, val1 any, val2 any) (any, error) {
-		if val1 == nil || val2 == nil {
-			return nil, nil
-		}
 		return nil, fmt.Errorf("JSON deletions are not yet supported")
 	},
+	Strict: true,
 }
 
 // jsonb_delete_int32 represents the PostgreSQL function of the same name, taking the same parameters.
@@ -559,9 +519,7 @@ var jsonb_delete_int32 = framework.Function2{
 	Return:     pgtypes.JsonB,
 	Parameters: []pgtypes.DoltgresType{pgtypes.JsonB, pgtypes.Int32},
 	Callable: func(ctx *sql.Context, val1 any, val2 any) (any, error) {
-		if val1 == nil || val2 == nil {
-			return nil, nil
-		}
 		return nil, fmt.Errorf("JSON deletions are not yet supported")
 	},
+	Strict: true,
 }

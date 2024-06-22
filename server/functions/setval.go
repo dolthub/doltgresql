@@ -37,6 +37,7 @@ var setval_text_int64 = framework.Function2{
 	Callable: func(ctx *sql.Context, val1 any, val2 any) (any, error) {
 		return setval_text_int64_boolean.Callable(ctx, val1, val2, true)
 	},
+	Strict: true,
 }
 
 // setval_text_int64_boolean represents the PostgreSQL function of the same name, taking the same parameters.
@@ -46,9 +47,6 @@ var setval_text_int64_boolean = framework.Function3{
 	Parameters:         []pgtypes.DoltgresType{pgtypes.Text, pgtypes.Int64, pgtypes.Bool},
 	IsNonDeterministic: true,
 	Callable: func(ctx *sql.Context, val1 any, val2 any, val3 any) (any, error) {
-		if val1 == nil || val2 == nil || val3 == nil {
-			return nil, nil
-		}
 		collection, err := core.GetCollectionFromContext(ctx)
 		if err != nil {
 			return nil, err
@@ -61,4 +59,5 @@ var setval_text_int64_boolean = framework.Function3{
 
 		return val2.(int64), collection.SetVal(schema, val1.(string), val2.(int64), val3.(bool))
 	},
+	Strict: true,
 }

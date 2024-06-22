@@ -35,9 +35,6 @@ var chr_int32 = framework.Function1{
 	Return:     pgtypes.VarChar,
 	Parameters: []pgtypes.DoltgresType{pgtypes.Int32},
 	Callable: func(ctx *sql.Context, val1Interface any) (any, error) {
-		if val1Interface == nil {
-			return nil, nil
-		}
 		val1 := val1Interface.(int32)
 		if val1 == 0 {
 			return nil, fmt.Errorf("null character not permitted")
@@ -50,4 +47,5 @@ var chr_int32 = framework.Function1{
 		}
 		return string(r), nil
 	},
+	Strict: true,
 }

@@ -35,13 +35,11 @@ var acosh_float64 = framework.Function1{
 	Return:     pgtypes.Float64,
 	Parameters: []pgtypes.DoltgresType{pgtypes.Float64},
 	Callable: func(ctx *sql.Context, val1 any) (any, error) {
-		if val1 == nil {
-			return nil, nil
-		}
 		r := math.Acosh(val1.(float64))
 		if math.IsNaN(r) {
 			return nil, fmt.Errorf("input is out of range")
 		}
 		return r, nil
 	},
+	Strict: true,
 }

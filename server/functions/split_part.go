@@ -36,9 +36,6 @@ var split_part_varchar_varchar_int32 = framework.Function3{
 	Return:     pgtypes.VarChar,
 	Parameters: []pgtypes.DoltgresType{pgtypes.VarChar, pgtypes.VarChar, pgtypes.Int32},
 	Callable: func(ctx *sql.Context, str any, delimiter any, n any) (any, error) {
-		if str == nil || delimiter == nil || n == nil {
-			return nil, nil
-		}
 		if n.(int32) == 0 {
 			return nil, fmt.Errorf("field position must not be zero")
 		}
@@ -57,4 +54,5 @@ var split_part_varchar_varchar_int32 = framework.Function3{
 			return parts[int32(len(parts))+n.(int32)], nil
 		}
 	},
+	Strict: true,
 }

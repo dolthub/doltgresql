@@ -1333,6 +1333,7 @@ func TestPgStatisticExtData(t *testing.T) {
 	})
 }
 
+
 func TestPgTrigger(t *testing.T) {
 	RunScripts(t, []ScriptTest{
 		{

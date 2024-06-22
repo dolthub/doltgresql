@@ -36,11 +36,9 @@ var power_float64_float64 = framework.Function2{
 	Return:     pgtypes.Float64,
 	Parameters: []pgtypes.DoltgresType{pgtypes.Float64, pgtypes.Float64},
 	Callable: func(ctx *sql.Context, val1 any, val2 any) (any, error) {
-		if val1 == nil || val2 == nil {
-			return nil, nil
-		}
 		return math.Pow(val1.(float64), val2.(float64)), nil
 	},
+	Strict: true,
 }
 
 // power_numeric_numeric represents the PostgreSQL function of the same name, taking the same parameters.
@@ -58,4 +56,5 @@ var power_numeric_numeric = framework.Function2{
 		}
 		return val1.(decimal.Decimal).Pow(val2.(decimal.Decimal)), nil
 	},
+	Strict: true,
 }
