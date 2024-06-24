@@ -202,7 +202,7 @@ func replaceTypes(s string) string {
 	s = doubleKeyword.ReplaceAllString(s, "double precision")
 	s = datetimeKeyword.ReplaceAllString(s, "timestamp")
 	s = mediumIntKeyword.ReplaceAllString(s, "integer")
-	s = tinyIntKeyword.ReplaceAllString(s, "smallint") // TODO: bool?
+	s = tinyIntKeyword.ReplaceAllString(s, "smallint")
 	return s
 }
 
