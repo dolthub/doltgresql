@@ -189,6 +189,10 @@ func (b CharType) IoOutput(output any) (string, error) {
 	}
 }
 
+func (b CharType) IsPreferredType() bool {
+	return false
+}
+
 // IsUnbounded implements the DoltgresType interface.
 func (b CharType) IsUnbounded() bool {
 	return b.Length == stringUnbounded

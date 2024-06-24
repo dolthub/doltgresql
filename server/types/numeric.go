@@ -167,6 +167,10 @@ func (b NumericType) IoOutput(output any) (string, error) {
 	return converted.(decimal.Decimal).String(), nil
 }
 
+func (b NumericType) IsPreferredType() bool {
+	return false
+}
+
 // IsUnbounded implements the DoltgresType interface.
 func (b NumericType) IsUnbounded() bool {
 	return false

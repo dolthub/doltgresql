@@ -128,6 +128,10 @@ func (b XidType) IoOutput(output any) (string, error) {
 	return strconv.FormatUint(uint64(converted.(uint32)), 10), nil
 }
 
+func (b XidType) IsPreferredType() bool {
+	return false
+}
+
 // IsUnbounded implements the DoltgresType interface.
 func (b XidType) IsUnbounded() bool {
 	return false

@@ -150,11 +150,7 @@ var baseIDCategories = map[DoltgresTypeBaseID]TypeCategory{
 
 // preferredTypeInCategory contains a map from each type category to that category's preferred type.
 // TODO: add all of the preferred types
-var preferredTypeInCategory = map[TypeCategory]DoltgresTypeBaseID{
-	TypeCategory_BooleanTypes: Bool.BaseID(),
-	TypeCategory_NumericTypes: Float64.BaseID(),
-	TypeCategory_StringTypes:  Text.BaseID(),
-}
+var preferredTypeInCategory = map[TypeCategory][]DoltgresTypeBaseID{}
 
 // InitBaseIDs reads the list of all types and creates a mapping of the base ID for each array variant.
 func InitBaseIDs() {
@@ -164,6 +160,9 @@ func InitBaseIDs() {
 		}
 		if dvt, ok := t.(DoltgresValidType); ok {
 			baseIDValidTypes[dvt.BaseName()] = dvt
+			if dvt.IsPreferredType() {
+				preferredTypeInCategory[dvt.Category()] = append(preferredTypeInCategory[dvt.Category()], dvt.BaseID())
+			}
 		}
 	}
 }
@@ -192,11 +191,14 @@ func (id DoltgresTypeBaseID) GetRepresentativeType() DoltgresType {
 	return Unknown
 }
 
-// GetPreferredType returns the preferred type for this TypeCategory. Returns Unknown if the category does not have a
-// preferred type.
-func (cat TypeCategory) GetPreferredType() DoltgresTypeBaseID {
-	if id, ok := preferredTypeInCategory[cat]; ok {
-		return id
+// IsPreferredType returns whether the type passed is a preferred type for this TypeCategory.
+func (cat TypeCategory) IsPreferredType(p DoltgresTypeBaseID) bool {
+	if pts, ok := preferredTypeInCategory[cat]; ok {
+		for _, pt := range pts {
+			if pt == p {
+				return true
+			}
+		}
 	}
-	return DoltgresTypeBaseID_Unknown
+	return false
 }

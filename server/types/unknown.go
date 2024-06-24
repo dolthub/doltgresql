@@ -107,6 +107,10 @@ func (u UnknownType) IoOutput(output any) (string, error) {
 	return "", fmt.Errorf("%s cannot produce I/O output", u.String())
 }
 
+func (b UnknownType) IsPreferredType() bool {
+	return false
+}
+
 // IsUnbounded implements the DoltgresType interface.
 func (u UnknownType) IsUnbounded() bool {
 	return false

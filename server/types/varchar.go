@@ -180,6 +180,10 @@ func (b VarCharType) IoOutput(output any) (string, error) {
 	return str, nil
 }
 
+func (b VarCharType) IsPreferredType() bool {
+	return false
+}
+
 // IsUnbounded implements the DoltgresType interface.
 func (b VarCharType) IsUnbounded() bool {
 	return b.Length == stringUnbounded

@@ -156,6 +156,10 @@ func (b TimeTZType) IoOutput(output any) (string, error) {
 	return converted.(time.Time).Format("15:04:05-07"), nil
 }
 
+func (b TimeTZType) IsPreferredType() bool {
+	return false
+}
+
 // IsUnbounded implements the DoltgresType interface.
 func (b TimeTZType) IsUnbounded() bool {
 	return false

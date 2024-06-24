@@ -133,6 +133,10 @@ func (b NameType) IoOutput(output any) (string, error) {
 	return str, nil
 }
 
+func (b NameType) IsPreferredType() bool {
+	return false
+}
+
 // IsUnbounded implements the DoltgresType interface.
 func (b NameType) IsUnbounded() bool {
 	return false

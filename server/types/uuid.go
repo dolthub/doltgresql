@@ -142,6 +142,10 @@ func (b UuidType) IoOutput(output any) (string, error) {
 	return converted.(uuid.UUID).String(), nil
 }
 
+func (b UuidType) IsPreferredType() bool {
+	return false
+}
+
 // IsUnbounded implements the DoltgresType interface.
 func (b UuidType) IsUnbounded() bool {
 	return false

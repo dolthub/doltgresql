@@ -149,6 +149,10 @@ func (b ByteaType) IoOutput(output any) (string, error) {
 	return `\x` + hex.EncodeToString(converted.([]byte)), nil
 }
 
+func (b ByteaType) IsPreferredType() bool {
+	return false
+}
+
 // IsUnbounded implements the DoltgresType interface.
 func (b ByteaType) IsUnbounded() bool {
 	return true

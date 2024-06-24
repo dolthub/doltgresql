@@ -156,6 +156,10 @@ func (b Int16Type) IoOutput(output any) (string, error) {
 	return strconv.FormatInt(int64(converted.(int16)), 10), nil
 }
 
+func (b Int16Type) IsPreferredType() bool {
+	return false
+}
+
 // IsUnbounded implements the DoltgresType interface.
 func (b Int16Type) IsUnbounded() bool {
 	return false

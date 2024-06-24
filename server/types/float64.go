@@ -158,6 +158,10 @@ func (b Float64Type) IoOutput(output any) (string, error) {
 	return strconv.FormatFloat(converted.(float64), 'f', -1, 64), nil
 }
 
+func (b Float64Type) IsPreferredType() bool {
+	return true
+}
+
 // IsUnbounded implements the DoltgresType interface.
 func (b Float64Type) IsUnbounded() bool {
 	return false

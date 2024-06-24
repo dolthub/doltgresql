@@ -107,6 +107,10 @@ func (aa AnyArrayType) IoOutput(output any) (string, error) {
 	return "", fmt.Errorf("%s cannot produce I/O output", aa.String())
 }
 
+func (aa AnyArrayType) IsPreferredType() bool {
+	return false
+}
+
 // IsUnbounded implements the DoltgresType interface.
 func (aa AnyArrayType) IsUnbounded() bool {
 	return true

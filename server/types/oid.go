@@ -161,6 +161,10 @@ func (b OidType) IoOutput(output any) (string, error) {
 	return strconv.FormatUint(uint64(converted.(uint32)), 10), nil
 }
 
+func (b OidType) IsPreferredType() bool {
+	return true
+}
+
 // IsUnbounded implements the DoltgresType interface.
 func (b OidType) IsUnbounded() bool {
 	return false

@@ -69,6 +69,8 @@ type DoltgresValidType interface {
 	BaseName() string
 	// Category returns a char representing an arbitrary classification of data types that is used by the parser to determine which implicit casts should be “preferred”.
 	Category() TypeCategory
+	// IsPreferredType
+	IsPreferredType() bool
 }
 
 // typesFromBaseID contains a map from a DoltgresTypeBaseID to its originating type.

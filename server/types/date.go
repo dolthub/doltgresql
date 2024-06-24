@@ -148,6 +148,10 @@ func (b DateType) IoOutput(output any) (string, error) {
 	return converted.(time.Time).Format("2006-01-02"), nil
 }
 
+func (b DateType) IsPreferredType() bool {
+	return false
+}
+
 // IsUnbounded implements the DoltgresType interface.
 func (b DateType) IsUnbounded() bool {
 	return false

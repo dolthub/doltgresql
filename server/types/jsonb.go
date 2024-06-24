@@ -156,6 +156,10 @@ func (b JsonBType) IoOutput(output any) (string, error) {
 	return sb.String(), nil
 }
 
+func (b JsonBType) IsPreferredType() bool {
+	return false
+}
+
 // IsUnbounded implements the DoltgresType interface.
 func (b JsonBType) IsUnbounded() bool {
 	return true

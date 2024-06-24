@@ -115,13 +115,12 @@ func (iter *pgTypeRowIter) Next(ctx *sql.Context) (sql.Row, error) {
 	typ := iter.types[iter.idx-1]
 
 	var (
-		typName        = typ.BaseName()
-		typLen         int16
-		typByVal       = false
-		typCat         = typ.Category()
-		typIsPreferred = typ.BaseID() == typCat.GetPreferredType()
-		typAlign       = string(typ.Alignment())
-		typStorage     = "p"
+		typName    = typ.BaseName()
+		typLen     int16
+		typByVal   = false
+		typCat     = typ.Category()
+		typAlign   = string(typ.Alignment())
+		typStorage = "p"
 	)
 	if l := typ.MaxTextResponseByteLength(ctx); l == math.MaxUint32 {
 		typLen = -1
@@ -148,38 +147,38 @@ func (iter *pgTypeRowIter) Next(ctx *sql.Context) (sql.Row, error) {
 
 	// TODO: not all columns are populated
 	return sql.Row{
-		typ.OID(),      // oid
-		typName,        //typname
-		uint32(0),      //typnamespace
-		uint32(0),      //typowner
-		typLen,         //typlen
-		typByVal,       //typbyval
-		"b",            //typtype
-		string(typCat), //typcategory
-		typIsPreferred, //typispreferred
-		true,           //typisdefined
-		",",            //typdelim
-		uint32(0),      //typrelid
-		"-",            //typsubscript
-		uint32(0),      //typelem
-		uint32(0),      //typarray
-		typIn,          //typinput
-		typOut,         //typoutput
-		typRec,         //typreceive
-		typSend,        //typsend
-		"-",            //typmodin
-		"-",            //typmodout
-		"-",            //typanalyze
-		typAlign,       //typalign
-		typStorage,     //typstorage
-		false,          //typnotnull
-		uint32(0),      //typbasetype
-		int32(0),       //typtypmod
-		int32(0),       //typndims
-		uint32(0),      //typcollation
-		nil,            //typdefaultbin
-		nil,            //typdefault
-		nil,            //typacl
+		typ.OID(),             //oid
+		typName,               //typname
+		uint32(0),             //typnamespace
+		uint32(0),             //typowner
+		typLen,                //typlen
+		typByVal,              //typbyval
+		"b",                   //typtype
+		string(typCat),        //typcategory
+		typ.IsPreferredType(), //typispreferred
+		true,                  //typisdefined
+		",",                   //typdelim
+		uint32(0),             //typrelid
+		"-",                   //typsubscript
+		uint32(0),             //typelem
+		uint32(0),             //typarray
+		typIn,                 //typinput
+		typOut,                //typoutput
+		typRec,                //typreceive
+		typSend,               //typsend
+		"-",                   //typmodin
+		"-",                   //typmodout
+		"-",                   //typanalyze
+		typAlign,              //typalign
+		typStorage,            //typstorage
+		false,                 //typnotnull
+		uint32(0),             //typbasetype
+		int32(0),              //typtypmod
+		int32(0),              //typndims
+		uint32(0),             //typcollation
+		nil,                   //typdefaultbin
+		nil,                   //typdefault
+		nil,                   //typacl
 	}, nil
 }
 

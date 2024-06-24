@@ -154,6 +154,10 @@ func (b TimeType) IoOutput(output any) (string, error) {
 	}
 }
 
+func (b TimeType) IsPreferredType() bool {
+	return false
+}
+
 // IsUnbounded implements the DoltgresType interface.
 func (b TimeType) IsUnbounded() bool {
 	return false
