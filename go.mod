@@ -163,7 +163,3 @@ require (
 	gopkg.in/square/go-jose.v2 v2.5.1 // indirect
 	gopkg.in/yaml.v3 v3.0.1 // indirect
 )
-
-replace github.com/dolthub/go-mysql-server => /Users/jenniferpurevsuren/dolt_workspace/repos/go-mysql-server
-
-replace github.com/dolthub/dolt/go => /Users/jenniferpurevsuren/dolt_workspace/repos/dolt/go
