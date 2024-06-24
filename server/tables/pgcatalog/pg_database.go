@@ -53,7 +53,7 @@ func (p PgDatabaseHandler) RowIter(ctx *sql.Context) (sql.RowIter, error) {
 	dbs := make([]sql.Database, 0, len(databases))
 	for _, db := range databases {
 		name := db.Name()
-		if name == "information_schema" || name == "pg_catalog" {
+		if name == "information_schema" || name == "pg_catalog" || name == "performance_schema" {
 			continue
 		}
 		dbs = append(dbs, db)
