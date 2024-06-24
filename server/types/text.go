@@ -150,7 +150,7 @@ func (b TextType) IoOutput(output any) (string, error) {
 }
 
 func (b TextType) IsPreferredType() bool {
-	return false
+	return true
 }
 
 // IsUnbounded implements the DoltgresType interface.
