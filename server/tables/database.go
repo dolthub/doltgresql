@@ -51,3 +51,7 @@ func (d Database) GetTableNames(ctx *sql.Context) ([]string, error) {
 func (d Database) Name() string {
 	return d.db.Name()
 }
+
+func (d Database) SchemaName() string {
+	return d.db.SchemaName()
+}
