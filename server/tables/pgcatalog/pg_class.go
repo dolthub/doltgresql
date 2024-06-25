@@ -15,6 +15,7 @@
 package pgcatalog
 
 import (
+	"fmt"
 	"io"
 
 	"github.com/dolthub/dolt/go/libraries/doltcore/sqle/dsess"
@@ -54,6 +55,7 @@ func dbAndSchemaIter(ctx *sql.Context, c sql.Catalog, cb func(db sql.Database) (
 			}
 
 			for _, schema := range schemas {
+				fmt.Println("SCHEMA DB:", schema.Name())
 				cont, err := cb(schema)
 				if err != nil {
 					return err
@@ -64,6 +66,7 @@ func dbAndSchemaIter(ctx *sql.Context, c sql.Catalog, cb func(db sql.Database) (
 			}
 		}
 
+		fmt.Println("DB:", db.Name())
 		cont, err := cb(db)
 		if err != nil {
 			return err
