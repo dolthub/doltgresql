@@ -937,10 +937,13 @@ func TestPgIndex(t *testing.T) {
 	RunScripts(t, []ScriptTest{
 		{
 			Name: "pg_index",
+			SetUpScript: []string{
+				`CREATE TABLE testing (pk INT primary key, v1 INT);`,
+			},
 			Assertions: []ScriptTestAssertion{
 				{
 					Query:    `SELECT * FROM "pg_catalog"."pg_index";`,
-					Expected: []sql.Row{},
+					Expected: []sql.Row{{0, 0, 1, 0, "t", "f", "t", "f", "f", "f", "t", "f", "t", "t", "f", "{}", "{}", "{}", "{}", nil, nil}},
 				},
 				{ // Different cases and quoted, so it fails
 					Query:       `SELECT * FROM "PG_catalog"."pg_index";`,
@@ -952,7 +955,7 @@ func TestPgIndex(t *testing.T) {
 				},
 				{ // Different cases but non-quoted, so it works
 					Query:    "SELECT indexrelid FROM PG_catalog.pg_INDEX ORDER BY indexrelid;",
-					Expected: []sql.Row{},
+					Expected: []sql.Row{{0}},
 				},
 			},
 		},
