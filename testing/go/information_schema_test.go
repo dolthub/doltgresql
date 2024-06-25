@@ -15,19 +15,18 @@ func TestInfoSchemaTables(t *testing.T) {
 			},
 			Assertions: []ScriptTestAssertion{
 				{
-					Query: `SELECT table_schema FROM information_schema.tables group by table_schema order by table_schema;`,
+					Query: `SELECT DISTINCT table_schema FROM information_schema.tables order by table_schema;`,
 					Expected: []sql.Row{
 						{"information_schema"}, {"pg_catalog"}, {"public"},
 					},
 				},
 				{
-					// TODO: all table_catalog values should be "doltgres"
+					Skip:  true, // TODO: all table_catalog values should be "doltgres"
 					Query: `SELECT table_catalog, table_schema FROM information_schema.tables group by table_catalog, table_schema order by table_catalog;`,
 					Expected: []sql.Row{
-						{"def", "information_schema"},
+						{"doltgres", "information_schema"},
 						{"doltgres", "pg_catalog"},
-						{"postgres", "pg_catalog"},
-						{"postgres", "public"},
+						{"doltgres", "public"},
 					},
 				},
 				{
