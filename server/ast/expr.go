@@ -234,7 +234,7 @@ func nodeExpr(node tree.Expr) (vitess.Expr, error) {
 
 		// If we have the resolved type, then we've got a Doltgres type instead of a GMS type
 		if resolvedType != nil {
-			cast, err := pgexprs.NewExplicitCast(resolvedType)
+			cast, err := pgexprs.NewExplicitCastInjectable(resolvedType)
 			if err != nil {
 				return nil, err
 			}

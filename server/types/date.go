@@ -35,9 +35,24 @@ type DateType struct{}
 
 var _ DoltgresType = DateType{}
 
+// Alignment implements the DoltgresType interface.
+func (b DateType) Alignment() TypeAlignment {
+	return TypeAlignment_Int
+}
+
 // BaseID implements the DoltgresType interface.
 func (b DateType) BaseID() DoltgresTypeBaseID {
 	return DoltgresTypeBaseID_Date
+}
+
+// BaseName implements the DoltgresType interface.
+func (b DateType) BaseName() string {
+	return "date"
+}
+
+// Category implements the DoltgresType interface.
+func (b DateType) Category() TypeCategory {
+	return TypeCategory_DateTimeTypes
 }
 
 // CollationCoercibility implements the DoltgresType interface.
@@ -130,6 +145,11 @@ func (b DateType) IoOutput(output any) (string, error) {
 		return "", err
 	}
 	return converted.(time.Time).Format("2006-01-02"), nil
+}
+
+// IsPreferredType implements the DoltgresType interface.
+func (b DateType) IsPreferredType() bool {
+	return false
 }
 
 // IsUnbounded implements the DoltgresType interface.

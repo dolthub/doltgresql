@@ -37,9 +37,24 @@ type OidType struct{}
 
 var _ DoltgresType = OidType{}
 
+// Alignment implements the DoltgresType interface.
+func (b OidType) Alignment() TypeAlignment {
+	return TypeAlignment_Int
+}
+
 // BaseID implements the DoltgresType interface.
 func (b OidType) BaseID() DoltgresTypeBaseID {
 	return DoltgresTypeBaseID_Oid
+}
+
+// BaseName implements the DoltgresType interface.
+func (b OidType) BaseName() string {
+	return "oid"
+}
+
+// Category implements the DoltgresType interface.
+func (b OidType) Category() TypeCategory {
+	return TypeCategory_NumericTypes
 }
 
 // CollationCoercibility implements the DoltgresType interface.
@@ -143,6 +158,11 @@ func (b OidType) IoOutput(output any) (string, error) {
 		return "", err
 	}
 	return strconv.FormatUint(uint64(converted.(uint32)), 10), nil
+}
+
+// IsPreferredType implements the DoltgresType interface.
+func (b OidType) IsPreferredType() bool {
+	return true
 }
 
 // IsUnbounded implements the DoltgresType interface.

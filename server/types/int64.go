@@ -37,9 +37,24 @@ type Int64Type struct{}
 
 var _ DoltgresType = Int64Type{}
 
+// Alignment implements the DoltgresType interface.
+func (b Int64Type) Alignment() TypeAlignment {
+	return TypeAlignment_Double
+}
+
 // BaseID implements the DoltgresType interface.
 func (b Int64Type) BaseID() DoltgresTypeBaseID {
 	return DoltgresTypeBaseID_Int64
+}
+
+// BaseName implements the DoltgresType interface.
+func (b Int64Type) BaseName() string {
+	return "int8"
+}
+
+// Category implements the DoltgresType interface.
+func (b Int64Type) Category() TypeCategory {
+	return TypeCategory_NumericTypes
 }
 
 // CollationCoercibility implements the DoltgresType interface.
@@ -135,6 +150,11 @@ func (b Int64Type) IoOutput(output any) (string, error) {
 		return "", err
 	}
 	return strconv.FormatInt(converted.(int64), 10), nil
+}
+
+// IsPreferredType implements the DoltgresType interface.
+func (b Int64Type) IsPreferredType() bool {
+	return false
 }
 
 // IsUnbounded implements the DoltgresType interface.

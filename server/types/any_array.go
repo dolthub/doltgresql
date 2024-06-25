@@ -35,14 +35,29 @@ type AnyArrayType struct{}
 var _ DoltgresType = AnyArrayType{}
 var _ DoltgresArrayType = AnyArrayType{}
 
+// Alignment implements the DoltgresType interface.
+func (aa AnyArrayType) Alignment() TypeAlignment {
+	return TypeAlignment_Double
+}
+
 // BaseID implements the DoltgresType interface.
 func (aa AnyArrayType) BaseID() DoltgresTypeBaseID {
 	return DoltgresTypeBaseID_AnyArray
 }
 
+// BaseName implements the DoltgresType interface.
+func (aa AnyArrayType) BaseName() string {
+	return "anyarray"
+}
+
 // BaseType implements the DoltgresArrayType interface.
 func (aa AnyArrayType) BaseType() DoltgresType {
 	return Unknown
+}
+
+// Category implements the DoltgresArrayType interface.
+func (aa AnyArrayType) Category() TypeCategory {
+	return TypeCategory_PseudoTypes
 }
 
 // CollationCoercibility implements the DoltgresType interface.
@@ -89,6 +104,11 @@ func (aa AnyArrayType) IoInput(input string) (any, error) {
 // IoOutput implements the DoltgresType interface.
 func (aa AnyArrayType) IoOutput(output any) (string, error) {
 	return "", fmt.Errorf("%s cannot produce I/O output", aa.String())
+}
+
+// IsPreferredType implements the DoltgresType interface.
+func (aa AnyArrayType) IsPreferredType() bool {
+	return false
 }
 
 // IsUnbounded implements the DoltgresType interface.

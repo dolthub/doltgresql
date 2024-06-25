@@ -33,9 +33,24 @@ type Int32TypeSerial struct{}
 
 var _ DoltgresType = Int32TypeSerial{}
 
+// Alignment implements the DoltgresType interface.
+func (b Int32TypeSerial) Alignment() TypeAlignment {
+	return TypeAlignment_Int
+}
+
 // BaseID implements the DoltgresType interface.
 func (b Int32TypeSerial) BaseID() DoltgresTypeBaseID {
 	return DoltgresTypeBaseID_Int32Serial
+}
+
+// BaseName implements the DoltgresType interface.
+func (b Int32TypeSerial) BaseName() string {
+	return "serial"
+}
+
+// Category implements the DoltgresType interface.
+func (b Int32TypeSerial) Category() TypeCategory {
+	return TypeCategory_UnknownTypes
 }
 
 // CollationCoercibility implements the DoltgresType interface.
@@ -82,6 +97,11 @@ func (b Int32TypeSerial) IoInput(input string) (any, error) {
 // IoOutput implements the DoltgresType interface.
 func (b Int32TypeSerial) IoOutput(output any) (string, error) {
 	return "", fmt.Errorf("SERIAL types cannot produce I/O output")
+}
+
+// IsPreferredType implements the DoltgresType interface.
+func (b Int32TypeSerial) IsPreferredType() bool {
+	return false
 }
 
 // IsUnbounded implements the DoltgresType interface.
