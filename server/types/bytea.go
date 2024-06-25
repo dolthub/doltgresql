@@ -38,7 +38,6 @@ var Bytea = ByteaType{}
 type ByteaType struct{}
 
 var _ DoltgresType = ByteaType{}
-var _ DoltgresValidType = ByteaType{}
 
 // Alignment implements the DoltgresType interface.
 func (b ByteaType) Alignment() TypeAlignment {
@@ -149,6 +148,7 @@ func (b ByteaType) IoOutput(output any) (string, error) {
 	return `\x` + hex.EncodeToString(converted.([]byte)), nil
 }
 
+// IsPreferredType implements the DoltgresType interface.
 func (b ByteaType) IsPreferredType() bool {
 	return false
 }

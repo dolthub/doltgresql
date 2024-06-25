@@ -41,7 +41,6 @@ var JsonB = JsonBType{}
 type JsonBType struct{}
 
 var _ DoltgresType = JsonBType{}
-var _ DoltgresValidType = JsonBType{}
 
 // Alignment implements the DoltgresType interface.
 func (b JsonBType) Alignment() TypeAlignment {
@@ -156,6 +155,7 @@ func (b JsonBType) IoOutput(output any) (string, error) {
 	return sb.String(), nil
 }
 
+// IsPreferredType implements the DoltgresType interface.
 func (b JsonBType) IsPreferredType() bool {
 	return false
 }

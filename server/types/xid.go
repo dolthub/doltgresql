@@ -36,7 +36,6 @@ var Xid = XidType{}
 type XidType struct{}
 
 var _ DoltgresType = XidType{}
-var _ DoltgresValidType = XidType{}
 
 // Alignment implements the DoltgresType interface.
 func (b XidType) Alignment() TypeAlignment {
@@ -128,6 +127,7 @@ func (b XidType) IoOutput(output any) (string, error) {
 	return strconv.FormatUint(uint64(converted.(uint32)), 10), nil
 }
 
+// IsPreferredType implements the DoltgresType interface.
 func (b XidType) IsPreferredType() bool {
 	return false
 }

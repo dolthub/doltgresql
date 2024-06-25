@@ -36,7 +36,6 @@ var Text = TextType{}
 type TextType struct{}
 
 var _ DoltgresType = TextType{}
-var _ DoltgresValidType = TextType{}
 
 // Alignment implements the DoltgresType interface.
 func (b TextType) Alignment() TypeAlignment {
@@ -149,6 +148,7 @@ func (b TextType) IoOutput(output any) (string, error) {
 	return converted.(string), nil
 }
 
+// IsPreferredType implements the DoltgresType interface.
 func (b TextType) IsPreferredType() bool {
 	return true
 }

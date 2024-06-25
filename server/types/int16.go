@@ -36,7 +36,6 @@ var Int16 = Int16Type{}
 type Int16Type struct{}
 
 var _ DoltgresType = Int16Type{}
-var _ DoltgresValidType = Int16Type{}
 
 // Alignment implements the DoltgresType interface.
 func (b Int16Type) Alignment() TypeAlignment {
@@ -156,6 +155,7 @@ func (b Int16Type) IoOutput(output any) (string, error) {
 	return strconv.FormatInt(int64(converted.(int16)), 10), nil
 }
 
+// IsPreferredType implements the DoltgresType interface.
 func (b Int16Type) IsPreferredType() bool {
 	return false
 }

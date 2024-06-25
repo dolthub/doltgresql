@@ -37,7 +37,6 @@ type TimestampType struct {
 }
 
 var _ DoltgresType = TimestampType{}
-var _ DoltgresValidType = TimestampType{}
 
 // Alignment implements the DoltgresType interface.
 func (b TimestampType) Alignment() TypeAlignment {
@@ -149,6 +148,7 @@ func (b TimestampType) IoOutput(output any) (string, error) {
 	return converted.(time.Time).Format("2006-01-02 15:04:05"), nil
 }
 
+// IsPreferredType implements the DoltgresType interface.
 func (b TimestampType) IsPreferredType() bool {
 	return false
 }

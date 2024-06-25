@@ -36,7 +36,6 @@ var Int64 = Int64Type{}
 type Int64Type struct{}
 
 var _ DoltgresType = Int64Type{}
-var _ DoltgresValidType = Int64Type{}
 
 // Alignment implements the DoltgresType interface.
 func (b Int64Type) Alignment() TypeAlignment {
@@ -153,6 +152,7 @@ func (b Int64Type) IoOutput(output any) (string, error) {
 	return strconv.FormatInt(converted.(int64), 10), nil
 }
 
+// IsPreferredType implements the DoltgresType interface.
 func (b Int64Type) IsPreferredType() bool {
 	return false
 }

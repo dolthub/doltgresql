@@ -37,7 +37,6 @@ var Float64 = Float64Type{}
 type Float64Type struct{}
 
 var _ DoltgresType = Float64Type{}
-var _ DoltgresValidType = Float64Type{}
 
 // Alignment implements the DoltgresType interface.
 func (b Float64Type) Alignment() TypeAlignment {
@@ -158,6 +157,7 @@ func (b Float64Type) IoOutput(output any) (string, error) {
 	return strconv.FormatFloat(converted.(float64), 'f', -1, 64), nil
 }
 
+// IsPreferredType implements the DoltgresType interface.
 func (b Float64Type) IsPreferredType() bool {
 	return true
 }

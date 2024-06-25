@@ -114,11 +114,6 @@ const (
 // baseIDArrayTypes contains a map of all base IDs that represent array variants.
 var baseIDArrayTypes = map[DoltgresTypeBaseID]DoltgresArrayType{}
 
-// baseIDValidTypes contains a map of all base IDs that are valid Postgres type displayed in pg_catalog tables.
-var baseIDValidTypes = map[string]DoltgresValidType{
-	internalChar.BaseName(): internalChar, // add internal type
-}
-
 // baseIDCategories contains a map from all base IDs to their respective categories
 // TODO: add all of the types to each category
 var baseIDCategories = map[DoltgresTypeBaseID]TypeCategory{
@@ -158,11 +153,8 @@ func InitBaseIDs() {
 		if dat, ok := t.(DoltgresArrayType); ok {
 			baseIDArrayTypes[t.BaseID()] = dat
 		}
-		if dvt, ok := t.(DoltgresValidType); ok {
-			baseIDValidTypes[dvt.BaseName()] = dvt
-			if dvt.IsPreferredType() {
-				preferredTypeInCategory[dvt.Category()] = append(preferredTypeInCategory[dvt.Category()], dvt.BaseID())
-			}
+		if t.IsPreferredType() {
+			preferredTypeInCategory[t.Category()] = append(preferredTypeInCategory[t.Category()], t.BaseID())
 		}
 	}
 }

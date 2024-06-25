@@ -34,7 +34,6 @@ type AnyArrayType struct{}
 
 var _ DoltgresType = AnyArrayType{}
 var _ DoltgresArrayType = AnyArrayType{}
-var _ DoltgresValidType = AnyArrayType{}
 
 // Alignment implements the DoltgresType interface.
 func (aa AnyArrayType) Alignment() TypeAlignment {
@@ -107,6 +106,7 @@ func (aa AnyArrayType) IoOutput(output any) (string, error) {
 	return "", fmt.Errorf("%s cannot produce I/O output", aa.String())
 }
 
+// IsPreferredType implements the DoltgresType interface.
 func (aa AnyArrayType) IsPreferredType() bool {
 	return false
 }

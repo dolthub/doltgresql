@@ -42,7 +42,6 @@ type NameType struct {
 }
 
 var _ DoltgresType = NameType{}
-var _ DoltgresValidType = NameType{}
 
 // Alignment implements the DoltgresType interface.
 func (b NameType) Alignment() TypeAlignment {
@@ -133,6 +132,7 @@ func (b NameType) IoOutput(output any) (string, error) {
 	return str, nil
 }
 
+// IsPreferredType implements the DoltgresType interface.
 func (b NameType) IsPreferredType() bool {
 	return false
 }

@@ -36,7 +36,6 @@ var Json = JsonType{}
 type JsonType struct{}
 
 var _ DoltgresType = JsonType{}
-var _ DoltgresValidType = JsonType{}
 
 // Alignment implements the DoltgresType interface.
 func (b JsonType) Alignment() TypeAlignment {
@@ -153,6 +152,7 @@ func (b JsonType) IoOutput(output any) (string, error) {
 	return converted.(string), nil
 }
 
+// IsPreferredType implements the DoltgresType interface.
 func (b JsonType) IsPreferredType() bool {
 	return false
 }

@@ -36,7 +36,6 @@ var Oid = OidType{}
 type OidType struct{}
 
 var _ DoltgresType = OidType{}
-var _ DoltgresValidType = OidType{}
 
 // Alignment implements the DoltgresType interface.
 func (b OidType) Alignment() TypeAlignment {
@@ -161,6 +160,7 @@ func (b OidType) IoOutput(output any) (string, error) {
 	return strconv.FormatUint(uint64(converted.(uint32)), 10), nil
 }
 
+// IsPreferredType implements the DoltgresType interface.
 func (b OidType) IsPreferredType() bool {
 	return true
 }

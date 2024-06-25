@@ -19,8 +19,14 @@ import "github.com/dolthub/go-mysql-server/sql/types"
 // DoltgresType is a type that is distinct from the MySQL types in GMS.
 type DoltgresType interface {
 	types.ExtendedType
+	// Alignment returns a char representing the alignment required when storing a value of this type.
+	Alignment() TypeAlignment
 	// BaseID returns the DoltgresTypeBaseID for this type.
 	BaseID() DoltgresTypeBaseID
+	// BaseName returns the name of the type displayed in pg_catalog tables.
+	BaseName() string
+	// Category returns a char representing an arbitrary classification of data types that is used by the parser to determine which implicit casts should be “preferred”.
+	Category() TypeCategory
 	// GetSerializationID returns the SerializationID for this type.
 	GetSerializationID() SerializationID
 	// IoInput returns a value from the given input string. This function mirrors Postgres' I/O input function. Such
@@ -31,6 +37,8 @@ type DoltgresType interface {
 	// strings are not intended for output, but are instead intended for serialization and cross-type conversion. Output
 	// values will always be non-NULL.
 	IoOutput(output any) (string, error)
+	// IsPreferredType returns true if the type is preferred type.
+	IsPreferredType() bool
 	// IsUnbounded returns whether the type is unbounded. Unbounded types do not enforce a length, precision, etc. on
 	// values. All values are still bound by the field size limit, but that differs from any type-enforced limits.
 	IsUnbounded() bool
@@ -58,19 +66,6 @@ type DoltgresArrayType interface {
 	DoltgresType
 	// BaseType is the inner type of the array. This will always be a non-array type.
 	BaseType() DoltgresType
-}
-
-// DoltgresValidType is a DoltgresType that represents a type displayed in pg_catalog tables.
-type DoltgresValidType interface {
-	DoltgresType
-	// Alignment returns a char representing the alignment required when storing a value of this type.
-	Alignment() TypeAlignment
-	// BaseName returns the name of the type displayed in pg_catalog tables.
-	BaseName() string
-	// Category returns a char representing an arbitrary classification of data types that is used by the parser to determine which implicit casts should be “preferred”.
-	Category() TypeCategory
-	// IsPreferredType
-	IsPreferredType() bool
 }
 
 // typesFromBaseID contains a map from a DoltgresTypeBaseID to its originating type.
@@ -127,6 +122,22 @@ var typesFromBaseID = map[DoltgresTypeBaseID]DoltgresType{
 	XidArray.BaseID():         XidArray,
 }
 
-func GetAllPgTypes() map[string]DoltgresValidType {
-	return baseIDValidTypes
+// GetPgTypes returns an array of DoltgresTypes with types that should be displayed in `pg_catalog.pg_type` table.
+// It filters out the array types, null type and serial types as they are not present in the pg_type table.
+// It also adds the `Internal "char"` type as it is present in the pg_table table.
+func GetPgTypes() []DoltgresType {
+	pgTypes := make([]DoltgresType, 0, len(typesFromBaseID))
+	for _, typ := range typesFromBaseID {
+		switch typ.(type) {
+		case DoltgresArrayType, NullType, Int16TypeSerial,
+			Int32TypeSerial, Int64TypeSerial:
+			// these types are not present in pg_type table
+			continue
+		default:
+			pgTypes = append(pgTypes, typ)
+		}
+	}
+	// internal "char" type is present in pg_type table.
+	pgTypes = append(pgTypes, InternalChar)
+	return pgTypes
 }

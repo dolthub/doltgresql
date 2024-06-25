@@ -35,7 +35,6 @@ var Bool = BoolType{}
 type BoolType struct{}
 
 var _ DoltgresType = BoolType{}
-var _ DoltgresValidType = BoolType{}
 
 // Alignment implements the DoltgresType interface.
 func (b BoolType) Alignment() TypeAlignment {
@@ -159,6 +158,7 @@ func (b BoolType) IoOutput(output any) (string, error) {
 	}
 }
 
+// IsPreferredType implements the DoltgresType interface.
 func (b BoolType) IsPreferredType() bool {
 	return true
 }

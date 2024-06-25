@@ -36,7 +36,6 @@ var Int32 = Int32Type{}
 type Int32Type struct{}
 
 var _ DoltgresType = Int32Type{}
-var _ DoltgresValidType = Int32Type{}
 
 // Alignment implements the DoltgresType interface.
 func (b Int32Type) Alignment() TypeAlignment {
@@ -156,6 +155,7 @@ func (b Int32Type) IoOutput(output any) (string, error) {
 	return strconv.FormatInt(int64(converted.(int32)), 10), nil
 }
 
+// IsPreferredType implements the DoltgresType interface.
 func (b Int32Type) IsPreferredType() bool {
 	return false
 }

@@ -35,7 +35,6 @@ var Uuid = UuidType{}
 type UuidType struct{}
 
 var _ DoltgresType = UuidType{}
-var _ DoltgresValidType = UuidType{}
 
 // Alignment implements the DoltgresType interface.
 func (b UuidType) Alignment() TypeAlignment {
@@ -142,6 +141,7 @@ func (b UuidType) IoOutput(output any) (string, error) {
 	return converted.(uuid.UUID).String(), nil
 }
 
+// IsPreferredType implements the DoltgresType interface.
 func (b UuidType) IsPreferredType() bool {
 	return false
 }

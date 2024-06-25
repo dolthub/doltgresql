@@ -51,7 +51,6 @@ type VarCharType struct {
 }
 
 var _ DoltgresType = VarCharType{}
-var _ DoltgresValidType = VarCharType{}
 
 // Alignment implements the DoltgresType interface.
 func (b VarCharType) Alignment() TypeAlignment {
@@ -180,6 +179,7 @@ func (b VarCharType) IoOutput(output any) (string, error) {
 	return str, nil
 }
 
+// IsPreferredType implements the DoltgresType interface.
 func (b VarCharType) IsPreferredType() bool {
 	return false
 }

@@ -56,7 +56,6 @@ type NumericType struct {
 }
 
 var _ DoltgresType = NumericType{}
-var _ DoltgresValidType = NumericType{}
 
 // Alignment implements the DoltgresType interface.
 func (b NumericType) Alignment() TypeAlignment {
@@ -167,6 +166,7 @@ func (b NumericType) IoOutput(output any) (string, error) {
 	return converted.(decimal.Decimal).String(), nil
 }
 
+// IsPreferredType implements the DoltgresType interface.
 func (b NumericType) IsPreferredType() bool {
 	return false
 }

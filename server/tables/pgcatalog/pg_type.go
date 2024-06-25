@@ -45,13 +45,8 @@ func (p PgTypeHandler) Name() string {
 
 // RowIter implements the interface tables.Handler.
 func (p PgTypeHandler) RowIter(ctx *sql.Context) (sql.RowIter, error) {
-	// TODO: Implement pg_type row iter
-	doltgresTypes := pgtypes.GetAllPgTypes()
-	types := make([]pgtypes.DoltgresValidType, 0, len(doltgresTypes))
-	for _, typ := range doltgresTypes {
-		types = append(types, typ)
-	}
-	return &pgTypeRowIter{types: types, idx: 0}, nil
+	doltgresPgTypes := pgtypes.GetPgTypes()
+	return &pgTypeRowIter{types: doltgresPgTypes, idx: 0}, nil
 }
 
 // Schema implements the interface tables.Handler.
@@ -100,7 +95,7 @@ var pgTypeSchema = sql.Schema{
 
 // pgTypeRowIter is the sql.RowIter for the pg_type table.
 type pgTypeRowIter struct {
-	types []pgtypes.DoltgresValidType
+	types []pgtypes.DoltgresType
 	idx   int
 }
 

@@ -34,7 +34,6 @@ type UnknownType struct{}
 
 var _ DoltgresType = UnknownType{}
 var _ DoltgresArrayType = UnknownType{}
-var _ DoltgresValidType = UnknownType{}
 
 // Alignment implements the DoltgresType interface.
 func (u UnknownType) Alignment() TypeAlignment {
@@ -107,6 +106,7 @@ func (u UnknownType) IoOutput(output any) (string, error) {
 	return "", fmt.Errorf("%s cannot produce I/O output", u.String())
 }
 
+// IsPreferredType implements the DoltgresType interface.
 func (b UnknownType) IsPreferredType() bool {
 	return false
 }

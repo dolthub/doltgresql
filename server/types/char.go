@@ -34,7 +34,9 @@ import (
 // BpChar is a char that has an unbounded length. "bpchar" and "char" are the same type, distinguished by the length
 // being bounded or unbounded.
 var BpChar = CharType{Length: stringUnbounded}
-var internalChar = CharType{Length: 1}
+
+// InternalChar is a single-byte internal type. In Postgres, it's displayed as "char".
+var InternalChar = CharType{Length: 1}
 
 // CharType is the extended type implementation of the PostgreSQL char and bpchar, which are the same type internally.
 type CharType struct {
@@ -44,7 +46,6 @@ type CharType struct {
 }
 
 var _ DoltgresType = CharType{}
-var _ DoltgresValidType = CharType{}
 
 // Alignment implements the DoltgresType interface.
 func (b CharType) Alignment() TypeAlignment {
@@ -189,6 +190,7 @@ func (b CharType) IoOutput(output any) (string, error) {
 	}
 }
 
+// IsPreferredType implements the DoltgresType interface.
 func (b CharType) IsPreferredType() bool {
 	return false
 }
