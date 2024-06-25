@@ -120,11 +120,11 @@ func TestPgAttribute(t *testing.T) {
 			Assertions: []ScriptTestAssertion{
 				{
 					Query:    `SELECT * FROM "pg_catalog"."pg_attribute" WHERE attname='pk';`,
-					Expected: []sql.Row{{0, "pk", 0, 0, 1246, -1, -1, 0, "f", "i", "p", "", "t", "f", "f", "", "", "f", "t", 0, -1, 0, nil, nil, nil, nil}},
+					Expected: []sql.Row{{0, "pk", 0, 0, 1759, -1, -1, 0, "f", "i", "p", "", "t", "f", "f", "", "", "f", "t", 0, -1, 0, nil, nil, nil, nil}},
 				},
 				{
 					Query:    `SELECT * FROM "pg_catalog"."pg_attribute" WHERE attname='v1';`,
-					Expected: []sql.Row{{0, "v1", 0, 0, 1247, -1, -1, 0, "f", "i", "p", "", "f", "t", "f", "", "", "f", "t", 0, -1, 0, nil, nil, nil, nil}},
+					Expected: []sql.Row{{0, "v1", 0, 0, 1760, -1, -1, 0, "f", "i", "p", "", "f", "t", "f", "", "", "f", "t", 0, -1, 0, nil, nil, nil, nil}},
 				},
 				{ // Different cases and quoted, so it fails
 					Query:       `SELECT * FROM "PG_catalog"."pg_attribute";`,
@@ -263,17 +263,17 @@ func TestPgClass(t *testing.T) {
 				// Table
 				{
 					Query:    `SELECT * FROM "pg_catalog"."pg_class" WHERE relname='testing';`,
-					Expected: []sql.Row{{134, "testing", 0, 0, 0, 0, 0, 0, 0, 0, float32(0), 0, 0, "t", "f", "p", "r", 0, 0, "f", "f", "f", "f", "f", "t", "d", "f", 0, 0, 0, nil, nil, nil}},
+					Expected: []sql.Row{{187, "testing", 0, 0, 0, 0, 0, 0, 0, 0, float32(0), 0, 0, "t", "f", "p", "r", 0, 0, "f", "f", "f", "f", "f", "t", "d", "f", 0, 0, 0, nil, nil, nil}},
 				},
 				// Index
 				{
 					Query:    `SELECT * FROM "pg_catalog"."pg_class" WHERE relname='PRIMARY';`,
-					Expected: []sql.Row{{133, "PRIMARY", 0, 0, 0, 0, 0, 0, 0, 0, float32(0), 0, 0, "f", "f", "p", "i", 0, 0, "f", "f", "f", "f", "f", "t", "d", "f", 0, 0, 0, nil, nil, nil}},
+					Expected: []sql.Row{{186, "PRIMARY", 0, 0, 0, 0, 0, 0, 0, 0, float32(0), 0, 0, "f", "f", "p", "i", 0, 0, "f", "f", "f", "f", "f", "t", "d", "f", 0, 0, 0, nil, nil, nil}},
 				},
 				// View
 				{
 					Query:    `SELECT * FROM "pg_catalog"."pg_class" WHERE relname='testview';`,
-					Expected: []sql.Row{{135, "testview", 0, 0, 0, 0, 0, 0, 0, 0, float32(0), 0, 0, "f", "f", "p", "v", 0, 0, "f", "f", "f", "f", "f", "t", "d", "f", 0, 0, 0, nil, nil, nil}},
+					Expected: []sql.Row{{188, "testview", 0, 0, 0, 0, 0, 0, 0, 0, float32(0), 0, 0, "f", "f", "p", "v", 0, 0, "f", "f", "f", "f", "f", "t", "d", "f", 0, 0, 0, nil, nil, nil}},
 				},
 				{ // Different cases and quoted, so it fails
 					Query:       `SELECT * FROM "PG_catalog"."pg_class";`,
@@ -374,7 +374,6 @@ func TestPgConversion(t *testing.T) {
 	})
 }
 
-// TODO: Figure out why there is not a doltgres database when running these tests locally
 func TestPgDatabase(t *testing.T) {
 	RunScripts(t, []ScriptTest{
 		{
