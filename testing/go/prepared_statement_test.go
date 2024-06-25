@@ -370,7 +370,7 @@ func TestPreparedErrorHandling(t *testing.T) {
 	RunScriptN(t, tt, 20)
 }
 
-// RunScriptN runs the assertios of the given script n times using the same connection
+// RunScriptN runs the assertions of the given script n times using the same connection
 func RunScriptN(t *testing.T, script ScriptTest, n int) {
 	scriptDatabase := script.Database
 	if len(scriptDatabase) == 0 {
