@@ -114,10 +114,17 @@ func TestPgAttribute(t *testing.T) {
 	RunScripts(t, []ScriptTest{
 		{
 			Name: "pg_attribute",
+			SetUpScript: []string{
+				`CREATE TABLE test (pk INT primary key, v1 INT DEFAULT 0);`,
+			},
 			Assertions: []ScriptTestAssertion{
 				{
-					Query:    `SELECT * FROM "pg_catalog"."pg_attribute";`,
-					Expected: []sql.Row{},
+					Query:    `SELECT * FROM "pg_catalog"."pg_attribute" WHERE attname='pk';`,
+					Expected: []sql.Row{{0, "pk", 0, 0, 1246, -1, -1, 0, "f", "i", "p", "", "t", "f", "f", "", "", "f", "t", 0, -1, 0, nil, nil, nil, nil}},
+				},
+				{
+					Query:    `SELECT * FROM "pg_catalog"."pg_attribute" WHERE attname='v1';`,
+					Expected: []sql.Row{{0, "v1", 0, 0, 1247, -1, -1, 0, "f", "i", "p", "", "f", "t", "f", "", "", "f", "t", 0, -1, 0, nil, nil, nil, nil}},
 				},
 				{ // Different cases and quoted, so it fails
 					Query:       `SELECT * FROM "PG_catalog"."pg_attribute";`,
@@ -128,8 +135,12 @@ func TestPgAttribute(t *testing.T) {
 					ExpectedErr: "not",
 				},
 				{ // Different cases but non-quoted, so it works
-					Query:    "SELECT attname FROM PG_catalog.pg_ATTRIBUTE ORDER BY attname;",
-					Expected: []sql.Row{},
+					Query: "SELECT attname FROM PG_catalog.pg_ATTRIBUTE ORDER BY attname LIMIT 3;",
+					Expected: []sql.Row{
+						{"ACTION_CONDITION"},
+						{"ACTION_ORDER"},
+						{"ACTION_ORIENTATION"},
+					},
 				},
 			},
 		},
@@ -244,10 +255,25 @@ func TestPgClass(t *testing.T) {
 	RunScripts(t, []ScriptTest{
 		{
 			Name: "pg_class",
+			SetUpScript: []string{
+				`CREATE TABLE testing (pk INT primary key, v1 INT);`,
+				`CREATE VIEW testview AS SELECT * FROM testing LIMIT 1;`,
+			},
 			Assertions: []ScriptTestAssertion{
+				// Table
 				{
-					Query:    `SELECT * FROM "pg_catalog"."pg_class";`,
-					Expected: []sql.Row{},
+					Query:    `SELECT * FROM "pg_catalog"."pg_class" WHERE relname='testing';`,
+					Expected: []sql.Row{{134, "testing", 0, 0, 0, 0, 0, 0, 0, 0, float32(0), 0, 0, "t", "f", "p", "r", 0, 0, "f", "f", "f", "f", "f", "t", "d", "f", 0, 0, 0, nil, nil, nil}},
+				},
+				// Index
+				{
+					Query:    `SELECT * FROM "pg_catalog"."pg_class" WHERE relname='PRIMARY';`,
+					Expected: []sql.Row{{133, "PRIMARY", 0, 0, 0, 0, 0, 0, 0, 0, float32(0), 0, 0, "f", "f", "p", "i", 0, 0, "f", "f", "f", "f", "f", "t", "d", "f", 0, 0, 0, nil, nil, nil}},
+				},
+				// View
+				{
+					Query:    `SELECT * FROM "pg_catalog"."pg_class" WHERE relname='testview';`,
+					Expected: []sql.Row{{135, "testview", 0, 0, 0, 0, 0, 0, 0, 0, float32(0), 0, 0, "f", "f", "p", "v", 0, 0, "f", "f", "f", "f", "f", "t", "d", "f", 0, 0, 0, nil, nil, nil}},
 				},
 				{ // Different cases and quoted, so it fails
 					Query:       `SELECT * FROM "PG_catalog"."pg_class";`,
@@ -258,8 +284,12 @@ func TestPgClass(t *testing.T) {
 					ExpectedErr: "not",
 				},
 				{ // Different cases but non-quoted, so it works
-					Query:    "SELECT relname FROM PG_catalog.pg_CLASS ORDER BY relname;",
-					Expected: []sql.Row{},
+					Query: "SELECT relname FROM PG_catalog.pg_CLASS ORDER BY relname ASC LIMIT 3;",
+					Expected: []sql.Row{
+						{"PRIMARY"},
+						{"administrable_role_authorizations"},
+						{"applicable_roles"},
+					},
 				},
 			},
 		},

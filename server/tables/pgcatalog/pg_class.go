@@ -43,25 +43,58 @@ func (p PgClassHandler) Name() string {
 	return PgClassName
 }
 
+func dbAndSchemaIter(ctx *sql.Context, c sql.Catalog, cb func(db sql.Database) (bool, error)) error {
+	dbs := c.AllDatabases(ctx)
+
+	for _, db := range dbs {
+		if schDB, ok := db.(sql.SchemaDatabase); ok {
+			schemas, err := schDB.AllSchemas(ctx)
+			if err != nil {
+				return err
+			}
+
+			for _, schema := range schemas {
+				cont, err := cb(schema)
+				if err != nil {
+					return err
+				}
+				if !cont {
+					break
+				}
+			}
+		}
+
+		cont, err := cb(db)
+		if err != nil {
+			return err
+		}
+		if !cont {
+			break
+		}
+
+	}
+
+	return nil
+}
+
 // RowIter implements the interface tables.Handler.
 func (p PgClassHandler) RowIter(ctx *sql.Context) (sql.RowIter, error) {
 	doltSession := dsess.DSessFromSess(ctx.Session)
 	c := sqle.NewDefault(doltSession.Provider()).Analyzer.Catalog
 
-	var class []Class
+	var classes []Class
 
-	for _, db := range c.AllDatabases(ctx) {
+	err := dbAndSchemaIter(ctx, c, func(db sql.Database) (bool, error) {
 		// Get tables and table indexes
 		err := sql.DBTableIter(ctx, db, func(t sql.Table) (cont bool, err error) {
 			hasIndexes := false
-
 			if it, ok := t.(sql.IndexAddressable); ok {
 				idxs, err := it.GetIndexes(ctx)
 				if err != nil {
 					return false, err
 				}
 				for _, idx := range idxs {
-					class = append(class, Class{name: idx.ID(), hasIndexes: false, kind: "i"})
+					classes = append(classes, Class{name: idx.ID(), hasIndexes: false, kind: "i"})
 				}
 
 				if len(idxs) > 0 {
@@ -69,31 +102,35 @@ func (p PgClassHandler) RowIter(ctx *sql.Context) (sql.RowIter, error) {
 				}
 			}
 
-			class = append(class, Class{name: t.Name(), hasIndexes: hasIndexes, kind: "r"})
+			classes = append(classes, Class{name: t.Name(), hasIndexes: hasIndexes, kind: "r"})
 
 			return true, nil
 		})
 		if err != nil {
-			return nil, err
+			return false, err
 		}
 
 		// Get views
 		if vdb, ok := db.(sql.ViewDatabase); ok {
 			views, err := vdb.AllViews(ctx)
 			if err != nil {
-				return nil, err
+				return false, err
 			}
 
 			for _, view := range views {
-				class = append(class, Class{name: view.Name, hasIndexes: false, kind: "v"})
+				classes = append(classes, Class{name: view.Name, hasIndexes: false, kind: "v"})
 			}
 		}
 
+		return true, nil
+	})
+	if err != nil {
+		return nil, err
 	}
 
 	return &pgClassRowIter{
-		class: class,
-		idx:   0,
+		classes: classes,
+		idx:     0,
 	}, nil
 }
 
@@ -150,55 +187,55 @@ type Class struct {
 
 // pgClassRowIter is the sql.RowIter for the pg_class table.
 type pgClassRowIter struct {
-	class []Class
-	idx   int
+	classes []Class
+	idx     int
 }
 
 var _ sql.RowIter = (*pgClassRowIter)(nil)
 
 // Next implements the interface sql.RowIter.
 func (iter *pgClassRowIter) Next(ctx *sql.Context) (sql.Row, error) {
-	if iter.idx >= len(iter.class) {
+	if iter.idx >= len(iter.classes) {
 		return nil, io.EOF
 	}
 	iter.idx++
-	cl := iter.class[iter.idx-1]
+	class := iter.classes[iter.idx-1]
 
 	// TODO: Fill in the rest of the pg_class columns
 	return sql.Row{
-		int32(iter.idx), // oid
-		cl.name,         // relname
-		int32(0),        // relnamespace
-		int32(0),        // reltype
-		int32(0),        // reloftype
-		int32(0),        // relowner
-		int32(0),        // relam
-		int32(0),        // relfilenode
-		int32(0),        // reltablespace
-		int32(0),        // relpages
-		float32(0),      // reltuples
-		int32(0),        // relallvisible
-		int32(0),        // reltoastrelid
-		cl.hasIndexes,   // relhasindex
-		false,           // relisshared
-		"p",             // relpersistence
-		cl.kind,         // relkind
-		int16(0),        // relnatts
-		int16(0),        // relchecks
-		false,           // relhasrules
-		false,           // relhastriggers
-		false,           // relhassubclass
-		false,           // relrowsecurity
-		false,           // relforcerowsecurity
-		true,            // relispopulated
-		"d",             // relreplident
-		false,           // relispartition
-		int32(0),        // relrewrite
-		int32(0),        // relfrozenxid
-		int32(0),        // relminmxid
-		nil,             // relacl
-		nil,             // reloptions
-		nil,             // relpartbound
+		uint32(iter.idx), // oid
+		class.name,       // relname
+		uint32(0),        // relnamespace
+		uint32(0),        // reltype
+		uint32(0),        // reloftype
+		uint32(0),        // relowner
+		uint32(0),        // relam
+		uint32(0),        // relfilenode
+		uint32(0),        // reltablespace
+		int32(0),         // relpages
+		float32(0),       // reltuples
+		int32(0),         // relallvisible
+		uint32(0),        // reltoastrelid
+		class.hasIndexes, // relhasindex
+		false,            // relisshared
+		"p",              // relpersistence
+		class.kind,       // relkind
+		int16(0),         // relnatts
+		int16(0),         // relchecks
+		false,            // relhasrules
+		false,            // relhastriggers
+		false,            // relhassubclass
+		false,            // relrowsecurity
+		false,            // relforcerowsecurity
+		true,             // relispopulated
+		"d",              // relreplident
+		false,            // relispartition
+		uint32(0),        // relrewrite
+		uint32(0),        // relfrozenxid
+		uint32(0),        // relminmxid
+		nil,              // relacl
+		nil,              // reloptions
+		nil,              // relpartbound
 	}, nil
 }
 
