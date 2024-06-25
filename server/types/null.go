@@ -33,9 +33,24 @@ type NullType struct{}
 
 var _ DoltgresType = NullType{}
 
+// Alignment implements the DoltgresType interface.
+func (b NullType) Alignment() TypeAlignment {
+	return TypeAlignment_Char
+}
+
 // BaseID implements the DoltgresType interface.
 func (b NullType) BaseID() DoltgresTypeBaseID {
 	return DoltgresTypeBaseID_Null
+}
+
+// BaseName implements the DoltgresType interface.
+func (b NullType) BaseName() string {
+	return "null"
+}
+
+// Category implements the DoltgresType interface.
+func (b NullType) Category() TypeCategory {
+	return TypeCategory_UnknownTypes
 }
 
 // CollationCoercibility implements the DoltgresType interface.
@@ -93,6 +108,11 @@ func (b NullType) IoInput(input string) (any, error) {
 // IoOutput implements the DoltgresType interface.
 func (b NullType) IoOutput(output any) (string, error) {
 	return "", fmt.Errorf("%s cannot produce I/O output", b.String())
+}
+
+// IsPreferredType implements the DoltgresType interface.
+func (b NullType) IsPreferredType() bool {
+	return false
 }
 
 // IsUnbounded implements the DoltgresType interface.

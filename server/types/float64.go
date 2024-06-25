@@ -38,9 +38,24 @@ type Float64Type struct{}
 
 var _ DoltgresType = Float64Type{}
 
+// Alignment implements the DoltgresType interface.
+func (b Float64Type) Alignment() TypeAlignment {
+	return TypeAlignment_Double
+}
+
 // BaseID implements the DoltgresType interface.
 func (b Float64Type) BaseID() DoltgresTypeBaseID {
 	return DoltgresTypeBaseID_Float64
+}
+
+// BaseName implements the DoltgresType interface.
+func (b Float64Type) BaseName() string {
+	return "float8"
+}
+
+// Category implements the DoltgresType interface.
+func (b Float64Type) Category() TypeCategory {
+	return TypeCategory_NumericTypes
 }
 
 // CollationCoercibility implements the DoltgresType interface.
@@ -140,6 +155,11 @@ func (b Float64Type) IoOutput(output any) (string, error) {
 		return "", err
 	}
 	return strconv.FormatFloat(converted.(float64), 'f', -1, 64), nil
+}
+
+// IsPreferredType implements the DoltgresType interface.
+func (b Float64Type) IsPreferredType() bool {
+	return true
 }
 
 // IsUnbounded implements the DoltgresType interface.

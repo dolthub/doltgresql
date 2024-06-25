@@ -78,27 +78,37 @@ const (
 	DoltgresTypeBaseID_Xid         = DoltgresTypeBaseID(SerializationID_Xid)
 )
 
-// TypeCategory represents the type category that a type belongs to. These are used by Postgres to group similar types
-// for parameter resolution, operator resolution, etc.
-type TypeCategory uint8
+// TypeAlignment represents the alignment required when storing a value of this type.
+type TypeAlignment string
 
 const (
-	TypeCategory_Unknown TypeCategory = iota
-	TypeCategory_ArrayTypes
-	TypeCategory_BooleanTypes
-	TypeCategory_CompositeTypes
-	TypeCategory_DateTimeTypes
-	TypeCategory_EnumTypes
-	TypeCategory_GeometricTypes
-	TypeCategory_NetworkAddressTypes
-	TypeCategory_NumericTypes
-	TypeCategory_PseudoTypes
-	TypeCategory_RangeTypes
-	TypeCategory_StringTypes
-	TypeCategory_TimespanTypes
-	TypeCategory_UserDefinedTypes
-	TypeCategory_BitStringTypes
-	TypeCategory_XMLTypes
+	TypeAlignment_Char   TypeAlignment = "c"
+	TypeAlignment_Short  TypeAlignment = "s"
+	TypeAlignment_Int    TypeAlignment = "i"
+	TypeAlignment_Double TypeAlignment = "d"
+)
+
+// TypeCategory represents the type category that a type belongs to. These are used by Postgres to group similar types
+// for parameter resolution, operator resolution, etc.
+type TypeCategory string
+
+const (
+	TypeCategory_ArrayTypes          TypeCategory = "A"
+	TypeCategory_BooleanTypes        TypeCategory = "B"
+	TypeCategory_CompositeTypes      TypeCategory = "C"
+	TypeCategory_DateTimeTypes       TypeCategory = "D"
+	TypeCategory_EnumTypes           TypeCategory = "E"
+	TypeCategory_GeometricTypes      TypeCategory = "G"
+	TypeCategory_NetworkAddressTypes TypeCategory = "I"
+	TypeCategory_NumericTypes        TypeCategory = "N"
+	TypeCategory_PseudoTypes         TypeCategory = "P"
+	TypeCategory_RangeTypes          TypeCategory = "R"
+	TypeCategory_StringTypes         TypeCategory = "S"
+	TypeCategory_TimespanTypes       TypeCategory = "T"
+	TypeCategory_UserDefinedTypes    TypeCategory = "U"
+	TypeCategory_BitStringTypes      TypeCategory = "V"
+	TypeCategory_UnknownTypes        TypeCategory = "X"
+	TypeCategory_InternalUseTypes    TypeCategory = "Z"
 )
 
 // baseIDArrayTypes contains a map of all base IDs that represent array variants.
@@ -107,33 +117,44 @@ var baseIDArrayTypes = map[DoltgresTypeBaseID]DoltgresArrayType{}
 // baseIDCategories contains a map from all base IDs to their respective categories
 // TODO: add all of the types to each category
 var baseIDCategories = map[DoltgresTypeBaseID]TypeCategory{
-	Bool.BaseID():    TypeCategory_BooleanTypes,
-	BpChar.BaseID():  TypeCategory_StringTypes,
-	Float32.BaseID(): TypeCategory_NumericTypes,
-	Float64.BaseID(): TypeCategory_NumericTypes,
-	Int16.BaseID():   TypeCategory_NumericTypes,
-	Int32.BaseID():   TypeCategory_NumericTypes,
-	Int64.BaseID():   TypeCategory_NumericTypes,
-	Name.BaseID():    TypeCategory_StringTypes,
-	Numeric.BaseID(): TypeCategory_NumericTypes,
-	Oid.BaseID():     TypeCategory_NumericTypes,
-	Text.BaseID():    TypeCategory_StringTypes,
-	VarChar.BaseID(): TypeCategory_StringTypes,
+	AnyArray.BaseID():    TypeCategory_PseudoTypes,
+	Bool.BaseID():        TypeCategory_BooleanTypes,
+	Bytea.BaseID():       TypeCategory_UserDefinedTypes,
+	BpChar.BaseID():      TypeCategory_StringTypes,
+	Date.BaseID():        TypeCategory_DateTimeTypes,
+	Float32.BaseID():     TypeCategory_NumericTypes,
+	Float64.BaseID():     TypeCategory_NumericTypes,
+	Int16.BaseID():       TypeCategory_NumericTypes,
+	Int32.BaseID():       TypeCategory_NumericTypes,
+	Int64.BaseID():       TypeCategory_NumericTypes,
+	Json.BaseID():        TypeCategory_UserDefinedTypes,
+	JsonB.BaseID():       TypeCategory_UserDefinedTypes,
+	Name.BaseID():        TypeCategory_StringTypes,
+	Numeric.BaseID():     TypeCategory_NumericTypes,
+	Oid.BaseID():         TypeCategory_NumericTypes,
+	Text.BaseID():        TypeCategory_StringTypes,
+	Time.BaseID():        TypeCategory_DateTimeTypes,
+	Timestamp.BaseID():   TypeCategory_DateTimeTypes,
+	TimestampTZ.BaseID(): TypeCategory_DateTimeTypes,
+	TimeTZ.BaseID():      TypeCategory_DateTimeTypes,
+	Unknown.BaseID():     TypeCategory_UnknownTypes,
+	Uuid.BaseID():        TypeCategory_UserDefinedTypes,
+	VarChar.BaseID():     TypeCategory_StringTypes,
+	Xid.BaseID():         TypeCategory_UserDefinedTypes,
 }
 
 // preferredTypeInCategory contains a map from each type category to that category's preferred type.
 // TODO: add all of the preferred types
-var preferredTypeInCategory = map[TypeCategory]DoltgresTypeBaseID{
-	TypeCategory_BooleanTypes: Bool.BaseID(),
-	TypeCategory_NumericTypes: Float64.BaseID(),
-	TypeCategory_StringTypes:  Text.BaseID(),
-}
+var preferredTypeInCategory = map[TypeCategory][]DoltgresTypeBaseID{}
 
 // InitBaseIDs reads the list of all types and creates a mapping of the base ID for each array variant.
 func InitBaseIDs() {
 	for _, t := range typesFromBaseID {
 		if dat, ok := t.(DoltgresArrayType); ok {
 			baseIDArrayTypes[t.BaseID()] = dat
+		}
+		if t.IsPreferredType() {
+			preferredTypeInCategory[t.Category()] = append(preferredTypeInCategory[t.Category()], t.BaseID())
 		}
 	}
 }
@@ -150,7 +171,7 @@ func (id DoltgresTypeBaseID) GetTypeCategory() TypeCategory {
 	if tc, ok := baseIDCategories[id]; ok {
 		return tc
 	}
-	return TypeCategory_Unknown
+	return TypeCategory_UnknownTypes
 }
 
 // GetRepresentativeType returns the representative type of the base ID. This is usually the unbounded version or
@@ -162,11 +183,14 @@ func (id DoltgresTypeBaseID) GetRepresentativeType() DoltgresType {
 	return Unknown
 }
 
-// GetPreferredType returns the preferred type for this TypeCategory. Returns Unknown if the category does not have a
-// preferred type.
-func (cat TypeCategory) GetPreferredType() DoltgresTypeBaseID {
-	if id, ok := preferredTypeInCategory[cat]; ok {
-		return id
+// IsPreferredType returns whether the type passed is a preferred type for this TypeCategory.
+func (cat TypeCategory) IsPreferredType(p DoltgresTypeBaseID) bool {
+	if pts, ok := preferredTypeInCategory[cat]; ok {
+		for _, pt := range pts {
+			if pt == p {
+				return true
+			}
+		}
 	}
-	return DoltgresTypeBaseID_Unknown
+	return false
 }

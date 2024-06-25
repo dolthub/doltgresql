@@ -43,9 +43,24 @@ type NameType struct {
 
 var _ DoltgresType = NameType{}
 
+// Alignment implements the DoltgresType interface.
+func (b NameType) Alignment() TypeAlignment {
+	return TypeAlignment_Char
+}
+
 // BaseID implements the DoltgresType interface.
 func (b NameType) BaseID() DoltgresTypeBaseID {
 	return DoltgresTypeBaseID_Name
+}
+
+// BaseName implements the DoltgresType interface.
+func (b NameType) BaseName() string {
+	return "name"
+}
+
+// Category implements the DoltgresType interface.
+func (b NameType) Category() TypeCategory {
+	return TypeCategory_StringTypes
 }
 
 // CollationCoercibility implements the DoltgresType interface.
@@ -115,6 +130,11 @@ func (b NameType) IoOutput(output any) (string, error) {
 	}
 	str, _ := truncateString(converted.(string), b.Length)
 	return str, nil
+}
+
+// IsPreferredType implements the DoltgresType interface.
+func (b NameType) IsPreferredType() bool {
+	return false
 }
 
 // IsUnbounded implements the DoltgresType interface.
