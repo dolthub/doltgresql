@@ -65,7 +65,6 @@ var pgStatDatabaseConflictsSchema = sql.Schema{
 	{Name: "confl_bufferpin", Type: pgtypes.Int64, Default: nil, Nullable: true, Source: PgStatDatabaseConflictsName},
 	{Name: "confl_deadlock", Type: pgtypes.Int64, Default: nil, Nullable: true, Source: PgStatDatabaseConflictsName},
 	{Name: "confl_active_logicalslot", Type: pgtypes.Int64, Default: nil, Nullable: true, Source: PgStatDatabaseConflictsName},
-	{Name: "", Type: pgtypes.Int64, Default: nil, Nullable: true, Source: PgStatDatabaseConflictsName},
 }
 
 // pgStatDatabaseConflictsRowIter is the sql.RowIter for the pg_stat_database_conflicts table.
