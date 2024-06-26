@@ -114,6 +114,11 @@ func (b *BinaryOperator) WithResolvedChildren(children []any) (any, error) {
 	}, nil
 }
 
+// Operator returns the operator that is used.
+func (b *BinaryOperator) Operator() framework.Operator {
+	return b.operator
+}
+
 // Left implements the expression.BinaryExpression interface.
 func (b *BinaryOperator) Left() sql.Expression {
 	// We know that we'll always have two parameters here

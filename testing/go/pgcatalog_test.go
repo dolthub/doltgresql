@@ -3237,8 +3237,8 @@ func TestPgType(t *testing.T) {
 			Name: "pg_type",
 			Assertions: []ScriptTestAssertion{
 				{
-					Query:    `SELECT * FROM "pg_catalog"."pg_type";`,
-					Expected: []sql.Row{},
+					Query:    `SELECT * FROM "pg_catalog"."pg_type" WHERE typname = 'float8';`,
+					Expected: []sql.Row{{701, "float8", 0, 0, 8, "t", "b", "N", "t", "t", ",", 0, "-", 0, 0, "float8in", "float8out", "float8rec", "float8send", "-", "-", "-", "d", "x", "f", 0, 0, 0, 0, nil, nil, nil}},
 				},
 				{ // Different cases and quoted, so it fails
 					Query:       `SELECT * FROM "PG_catalog"."pg_type";`,
@@ -3249,8 +3249,8 @@ func TestPgType(t *testing.T) {
 					ExpectedErr: "not",
 				},
 				{ // Different cases but non-quoted, so it works
-					Query:    "SELECT typname FROM PG_catalog.pg_TYPE ORDER BY typname;",
-					Expected: []sql.Row{},
+					Query:    "SELECT typname FROM PG_catalog.pg_TYPE WHERE typname LIKE '%char' ORDER BY typname;",
+					Expected: []sql.Row{{"bpchar"}, {"char"}, {"varchar"}},
 				},
 			},
 		},

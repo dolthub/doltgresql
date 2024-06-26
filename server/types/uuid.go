@@ -36,9 +36,24 @@ type UuidType struct{}
 
 var _ DoltgresType = UuidType{}
 
+// Alignment implements the DoltgresType interface.
+func (b UuidType) Alignment() TypeAlignment {
+	return TypeAlignment_Char
+}
+
 // BaseID implements the DoltgresType interface.
 func (b UuidType) BaseID() DoltgresTypeBaseID {
 	return DoltgresTypeBaseID_Uuid
+}
+
+// BaseName implements the DoltgresType interface.
+func (b UuidType) BaseName() string {
+	return "uuid"
+}
+
+// Category implements the DoltgresType interface.
+func (b UuidType) Category() TypeCategory {
+	return TypeCategory_UserDefinedTypes
 }
 
 // CollationCoercibility implements the DoltgresType interface.
@@ -124,6 +139,11 @@ func (b UuidType) IoOutput(output any) (string, error) {
 		return "", err
 	}
 	return converted.(uuid.UUID).String(), nil
+}
+
+// IsPreferredType implements the DoltgresType interface.
+func (b UuidType) IsPreferredType() bool {
+	return false
 }
 
 // IsUnbounded implements the DoltgresType interface.

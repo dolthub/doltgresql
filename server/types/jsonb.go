@@ -42,9 +42,24 @@ type JsonBType struct{}
 
 var _ DoltgresType = JsonBType{}
 
+// Alignment implements the DoltgresType interface.
+func (b JsonBType) Alignment() TypeAlignment {
+	return TypeAlignment_Int
+}
+
 // BaseID implements the DoltgresType interface.
 func (b JsonBType) BaseID() DoltgresTypeBaseID {
 	return DoltgresTypeBaseID_JsonB
+}
+
+// BaseName implements the DoltgresType interface.
+func (b JsonBType) BaseName() string {
+	return "jsonb"
+}
+
+// Category implements the DoltgresType interface.
+func (b JsonBType) Category() TypeCategory {
+	return TypeCategory_UserDefinedTypes
 }
 
 // CollationCoercibility implements the DoltgresType interface.
@@ -138,6 +153,11 @@ func (b JsonBType) IoOutput(output any) (string, error) {
 	sb.Grow(256)
 	jsonValueFormatter(&sb, converted.(JsonDocument).Value)
 	return sb.String(), nil
+}
+
+// IsPreferredType implements the DoltgresType interface.
+func (b JsonBType) IsPreferredType() bool {
+	return false
 }
 
 // IsUnbounded implements the DoltgresType interface.

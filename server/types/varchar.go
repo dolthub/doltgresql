@@ -52,9 +52,24 @@ type VarCharType struct {
 
 var _ DoltgresType = VarCharType{}
 
+// Alignment implements the DoltgresType interface.
+func (b VarCharType) Alignment() TypeAlignment {
+	return TypeAlignment_Int
+}
+
 // BaseID implements the DoltgresType interface.
 func (b VarCharType) BaseID() DoltgresTypeBaseID {
 	return DoltgresTypeBaseID_VarChar
+}
+
+// BaseName implements the DoltgresType interface.
+func (b VarCharType) BaseName() string {
+	return "varchar"
+}
+
+// Category implements the DoltgresType interface.
+func (b VarCharType) Category() TypeCategory {
+	return TypeCategory_StringTypes
 }
 
 // CollationCoercibility implements the DoltgresType interface.
@@ -162,6 +177,11 @@ func (b VarCharType) IoOutput(output any) (string, error) {
 	}
 	str, _ := truncateString(converted.(string), b.Length)
 	return str, nil
+}
+
+// IsPreferredType implements the DoltgresType interface.
+func (b VarCharType) IsPreferredType() bool {
+	return false
 }
 
 // IsUnbounded implements the DoltgresType interface.

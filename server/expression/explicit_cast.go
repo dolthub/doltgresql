@@ -34,8 +34,8 @@ type ExplicitCast struct {
 var _ vitess.Injectable = (*ExplicitCast)(nil)
 var _ sql.Expression = (*ExplicitCast)(nil)
 
-// NewExplicitCast returns a new *ExplicitCast.
-func NewExplicitCast(castToType sql.Type) (*ExplicitCast, error) {
+// NewExplicitCastInjectable returns an incomplete *ExplicitCast that must be resolved through the vitess.Injectable interface.
+func NewExplicitCastInjectable(castToType sql.Type) (*ExplicitCast, error) {
 	pgtype, ok := castToType.(pgtypes.DoltgresType)
 	if !ok {
 		return nil, fmt.Errorf("cast expects a Doltgres type as the target type")
@@ -44,6 +44,14 @@ func NewExplicitCast(castToType sql.Type) (*ExplicitCast, error) {
 		sqlChild:   nil,
 		castToType: pgtype,
 	}, nil
+}
+
+// NewExplicitCast returns a new *ExplicitCast expression.
+func NewExplicitCast(expr sql.Expression, toType pgtypes.DoltgresType) *ExplicitCast {
+	return &ExplicitCast{
+		sqlChild:   expr,
+		castToType: toType,
+	}
 }
 
 // Children implements the sql.Expression interface.

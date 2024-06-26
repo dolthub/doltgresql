@@ -35,6 +35,9 @@ import (
 // being bounded or unbounded.
 var BpChar = CharType{Length: stringUnbounded}
 
+// InternalChar is a single-byte internal type. In Postgres, it's displayed as "char".
+var InternalChar = CharType{Length: 1}
+
 // CharType is the extended type implementation of the PostgreSQL char and bpchar, which are the same type internally.
 type CharType struct {
 	// Length represents the maximum number of characters that the type may hold.
@@ -44,9 +47,37 @@ type CharType struct {
 
 var _ DoltgresType = CharType{}
 
+// Alignment implements the DoltgresType interface.
+func (b CharType) Alignment() TypeAlignment {
+	if b.Length == stringUnbounded {
+		return TypeAlignment_Int
+	} else {
+		return TypeAlignment_Char
+	}
+}
+
 // BaseID implements the DoltgresType interface.
 func (b CharType) BaseID() DoltgresTypeBaseID {
 	return DoltgresTypeBaseID_Char
+}
+
+// BaseName implements the DoltgresType interface.
+func (b CharType) BaseName() string {
+	if b.Length == stringUnbounded {
+		return "bpchar"
+	} else {
+		return "char"
+	}
+}
+
+// Category implements the DoltgresType interface.
+func (b CharType) Category() TypeCategory {
+	if b.Length == stringUnbounded {
+		return TypeCategory_StringTypes
+	} else {
+		// TODO: check if it only applies when Length == 1
+		return TypeCategory_InternalUseTypes
+	}
 }
 
 // CollationCoercibility implements the DoltgresType interface.
@@ -157,6 +188,11 @@ func (b CharType) IoOutput(output any) (string, error) {
 		}
 		return str, nil
 	}
+}
+
+// IsPreferredType implements the DoltgresType interface.
+func (b CharType) IsPreferredType() bool {
+	return false
 }
 
 // IsUnbounded implements the DoltgresType interface.

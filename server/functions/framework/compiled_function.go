@@ -320,7 +320,7 @@ func (c *CompiledFunction) resolveFunction(parameters []pgtypes.DoltgresType, so
 	for matchIdx, match := range matches {
 		currentPreferredCount := 0
 		for paramIdx, param := range match {
-			if parameters[paramIdx].BaseID() != param && param.GetTypeCategory().GetPreferredType() == param {
+			if parameters[paramIdx].BaseID() != param && param.GetTypeCategory().IsPreferredType(param) {
 				currentPreferredCount++
 			}
 		}
