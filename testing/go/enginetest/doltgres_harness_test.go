@@ -540,8 +540,8 @@ func TestNormalizeStrings(t *testing.T) {
 	}
 	tests := []test{
 		{
-			input:    "SELECT 'foo' FROM 'bar'",
-			expected: `SELECT 'foo' FROM 'bar'`,
+			input:    "SELECT \"foo\" FROM `bar`",
+			expected: `SELECT 'foo' FROM "bar"`,
 		},
 		{
 			input:    `SELECT "foo"`,
@@ -552,12 +552,24 @@ func TestNormalizeStrings(t *testing.T) {
 			expected: `SELECT 'fo''o'`,
 		},
 		{
+			input:    "SELECT 'fo''''o'",
+			expected: `SELECT 'fo''''o'`,
+		},
+		{
+			input:    `SELECT "fo'o"`,
+			expected: `SELECT 'fo''o'`,
+		},
+		{
 			input:    `SELECT "fo''o"`,
 			expected: `SELECT 'fo''''o'`,
 		},
 		{
 			input:    `SELECT "fo""o"`,
 			expected: `SELECT 'fo"o'`,
+		},
+		{
+			input:    `SELECT "fo""""o"`,
+			expected: `SELECT 'fo""o'`,
 		},
 		{
 			input:    `SELECT 'fo""o'`,
