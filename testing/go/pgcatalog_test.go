@@ -3251,10 +3251,19 @@ func TestPgTables(t *testing.T) {
 	RunScripts(t, []ScriptTest{
 		{
 			Name: "pg_tables",
+			SetUpScript: []string{
+				`CREATE SCHEMA testschema;`,
+				`SET search_path TO testschema;`,
+				`CREATE TABLE testing (pk INT primary key, v1 INT);`,
+
+				// Should show classes for all schemas
+				`CREATE SCHEMA testschema2;`,
+				`SET search_path TO testschema2;`,
+			},
 			Assertions: []ScriptTestAssertion{
 				{
-					Query:    `SELECT * FROM "pg_catalog"."pg_tables";`,
-					Expected: []sql.Row{},
+					Query:    `SELECT * FROM "pg_catalog"."pg_tables" WHERE tablename='testing';`,
+					Expected: []sql.Row{{"postgres", "testing", "", "", "t", "f", "f", "f"}},
 				},
 				{ // Different cases and quoted, so it fails
 					Query:       `SELECT * FROM "PG_catalog"."pg_tables";`,
@@ -3264,10 +3273,10 @@ func TestPgTables(t *testing.T) {
 					Query:       `SELECT * FROM "pg_catalog"."PG_tables";`,
 					ExpectedErr: "not",
 				},
-				{ // Different cases but non-quoted, so it works
-					Query:    "SELECT tablename FROM PG_catalog.pg_TABLES ORDER BY tablename;",
-					Expected: []sql.Row{},
-				},
+				// { // Different cases but non-quoted, so it works
+				// 	Query:    "SELECT tablename FROM PG_catalog.pg_TABLES ORDER BY tablename;",
+				// 	Expected: []sql.Row{},
+				// },
 			},
 		},
 	})

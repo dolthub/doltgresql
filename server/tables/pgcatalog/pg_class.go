@@ -43,43 +43,45 @@ func (p PgClassHandler) Name() string {
 	return PgClassName
 }
 
+func schemasIter(ctx *sql.Context, db sql.Database, cb func(schema sql.Database) (bool, error)) error {
+	if schDB, ok := db.(sql.SchemaDatabase); ok {
+		schemas, err := schDB.AllSchemas(ctx)
+		if err != nil {
+			return err
+		}
+
+		for _, schema := range schemas {
+			cont, err := cb(schema)
+			if err != nil {
+				return err
+			}
+			if !cont {
+				break
+			}
+		}
+	}
+
+	return nil
+}
+
 // currentDatabaseSchemaIter iterates over all schemas in the current database,
 // calling cb for the database and each schema. Once all schemas have been
 // processed or the callback returns false or an error, the iteration stops.
 func currentDatabaseSchemaIter(ctx *sql.Context, c sql.Catalog, cb func(db sql.Database) (bool, error)) error {
 	currentDB := ctx.GetCurrentDatabase()
-	dbs := c.AllDatabases(ctx)
+	db, err := c.Database(ctx, currentDB)
+	if err != nil {
+		return err
+	}
 
-	for _, db := range dbs {
-		if currentDB != "" && db.Name() != currentDB {
-			continue
-		}
+	err = schemasIter(ctx, db, cb)
+	if err != nil {
+		return err
+	}
 
-		if schDB, ok := db.(sql.SchemaDatabase); ok {
-			schemas, err := schDB.AllSchemas(ctx)
-			if err != nil {
-				return err
-			}
-
-			for _, schema := range schemas {
-				cont, err := cb(schema)
-				if err != nil {
-					return err
-				}
-				if !cont {
-					break
-				}
-			}
-		}
-
-		cont, err := cb(db)
-		if err != nil {
-			return err
-		}
-		if !cont {
-			break
-		}
-
+	_, err = cb(db)
+	if err != nil {
+		return err
 	}
 
 	return nil
