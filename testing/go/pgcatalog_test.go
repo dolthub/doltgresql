@@ -857,7 +857,33 @@ func TestPgHbaFileRules(t *testing.T) {
 					ExpectedErr: "not",
 				},
 				{ // Different cases but non-quoted, so it works
-					Query:    "SELECT rule_number FROM PG_catalog.pg_HBA_FILE_RULES ORDER BY rule_number;",
+					Query:    "SELECT line_number FROM PG_catalog.pg_HBA_FILE_RULES ORDER BY line_number;",
+					Expected: []sql.Row{},
+				},
+			},
+		},
+	})
+}
+
+func TestPgIdentFileMappings(t *testing.T) {
+	RunScripts(t, []ScriptTest{
+		{
+			Name: "pg_ident_file_mappings",
+			Assertions: []ScriptTestAssertion{
+				{
+					Query:    `SELECT * FROM "pg_catalog"."pg_ident_file_mappings";`,
+					Expected: []sql.Row{},
+				},
+				{ // Different cases and quoted, so it fails
+					Query:       `SELECT * FROM "PG_catalog"."pg_ident_file_mappings";`,
+					ExpectedErr: "not",
+				},
+				{ // Different cases and quoted, so it fails
+					Query:       `SELECT * FROM "pg_catalog"."PG_ident_file_mappings";`,
+					ExpectedErr: "not",
+				},
+				{ // Different cases but non-quoted, so it works
+					Query:    "SELECT line_number FROM PG_catalog.pg_IDENT_FILE_MAPPINGS ORDER BY line_number;",
 					Expected: []sql.Row{},
 				},
 			},

@@ -57,8 +57,6 @@ func (p PgIdentFileMappingsHandler) Schema() sql.PrimaryKeySchema {
 
 // pgIdentFileMappingsSchema is the schema for pg_ident_file_mappings.
 var pgIdentFileMappingsSchema = sql.Schema{
-	{Name: "map_number", Type: pgtypes.Int32, Default: nil, Nullable: true, Source: PgIdentFileMappingsName},
-	{Name: "file_name", Type: pgtypes.Text, Default: nil, Nullable: true, Source: PgIdentFileMappingsName},
 	{Name: "line_number", Type: pgtypes.Int32, Default: nil, Nullable: true, Source: PgIdentFileMappingsName},
 	{Name: "map_name", Type: pgtypes.Text, Default: nil, Nullable: true, Source: PgIdentFileMappingsName},
 	{Name: "sys_name", Type: pgtypes.Text, Default: nil, Nullable: true, Source: PgIdentFileMappingsName},

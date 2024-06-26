@@ -72,7 +72,6 @@ var pgReplicationSlotsSchema = sql.Schema{
 	{Name: "wal_status", Type: pgtypes.Text, Default: nil, Nullable: true, Source: PgReplicationSlotsName},
 	{Name: "safe_wal_size", Type: pgtypes.Int64, Default: nil, Nullable: true, Source: PgReplicationSlotsName},
 	{Name: "two_phase", Type: pgtypes.Bool, Default: nil, Nullable: true, Source: PgReplicationSlotsName},
-	{Name: "conflicting", Type: pgtypes.Bool, Default: nil, Nullable: true, Source: PgReplicationSlotsName},
 }
 
 // pgReplicationSlotsRowIter is the sql.RowIter for the pg_replication_slots table.

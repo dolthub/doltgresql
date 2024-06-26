@@ -57,8 +57,6 @@ func (p PgHbaFileRulesHandler) Schema() sql.PrimaryKeySchema {
 
 // pgHbaFileRulesSchema is the schema for pg_hba_file_rules.
 var pgHbaFileRulesSchema = sql.Schema{
-	{Name: "rule_number", Type: pgtypes.Int32, Default: nil, Nullable: true, Source: PgHbaFileRulesName},
-	{Name: "file_name", Type: pgtypes.Text, Default: nil, Nullable: true, Source: PgHbaFileRulesName},
 	{Name: "line_number", Type: pgtypes.Int32, Default: nil, Nullable: true, Source: PgHbaFileRulesName},
 	{Name: "type", Type: pgtypes.Text, Default: nil, Nullable: true, Source: PgHbaFileRulesName},
 	{Name: "database", Type: pgtypes.TextArray, Default: nil, Nullable: true, Source: PgHbaFileRulesName},
