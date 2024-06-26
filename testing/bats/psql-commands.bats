@@ -25,128 +25,21 @@ teardown() {
     [[ "$output" =~ "doltgres" ]] || false
 }
 
-# TODO: These should not include pg_catalog tables
 @test 'psql-commands: \dt' {
     run query_server --csv -c "\dt"
+    echo "$output"
     [ "$status" -eq 0 ]
-    [[ "$output" =~ "public,pg_aggregate,table,postgres" ]] || false
-    [[ "$output" =~ "public,pg_am,table,postgres" ]] || false
-    [[ "$output" =~ "public,pg_amop,table,postgres" ]] || false
-    [[ "$output" =~ "public,pg_amproc,table,postgres" ]] || false
-    [[ "$output" =~ "public,pg_attrdef,table,postgres" ]] || false
-    [[ "$output" =~ "public,pg_attribute,table,postgres" ]] || false
-    [[ "$output" =~ "public,pg_auth_members,table,postgres" ]] || false
-    [[ "$output" =~ "public,pg_authid,table,postgres" ]] || false
-    [[ "$output" =~ "public,pg_cast,table,postgres" ]] || false
-    [[ "$output" =~ "public,pg_class,table,postgres" ]] || false
-    [[ "$output" =~ "public,pg_collation,table,postgres" ]] || false
-    [[ "$output" =~ "public,pg_constraint,table,postgres" ]] || false
-    [[ "$output" =~ "public,pg_conversion,table,postgres" ]] || false
-    [[ "$output" =~ "public,pg_database,table,postgres" ]] || false
-    [[ "$output" =~ "public,pg_db_role_setting,table,postgres" ]] || false
-    [[ "$output" =~ "public,pg_default_acl,table,postgres" ]] || false
-    [[ "$output" =~ "public,pg_depend,table,postgres" ]] || false
-    [[ "$output" =~ "public,pg_description,table,postgres" ]] || false
-    [[ "$output" =~ "public,pg_enum,table,postgres" ]] || false
-    [[ "$output" =~ "public,pg_event_trigger,table,postgres" ]] || false
-    [[ "$output" =~ "public,pg_extension,table,postgres" ]] || false
-    [[ "$output" =~ "public,pg_foreign_data_wrapper,table,postgres" ]] || false
-    [[ "$output" =~ "public,pg_foreign_server,table,postgres" ]] || false
-    [[ "$output" =~ "public,pg_foreign_table,table,postgres" ]] || false
-    [[ "$output" =~ "public,pg_index,table,postgres" ]] || false
-    [[ "$output" =~ "public,pg_inherits,table,postgres" ]] || false
-    [[ "$output" =~ "public,pg_init_privs,table,postgres" ]] || false
-    [[ "$output" =~ "public,pg_language,table,postgres" ]] || false
-    [[ "$output" =~ "public,pg_largeobject,table,postgres" ]] || false
-    [[ "$output" =~ "public,pg_largeobject_metadata,table,postgres" ]] || false
-    [[ "$output" =~ "public,pg_namespace,table,postgres" ]] || false
-    [[ "$output" =~ "public,pg_opclass,table,postgres" ]] || false
-    [[ "$output" =~ "public,pg_opfamily,table,postgres" ]] || false
-    [[ "$output" =~ "public,pg_parameter_acl,table,postgres" ]] || false
-    [[ "$output" =~ "public,pg_partitioned_table,table,postgres" ]] || false
-    [[ "$output" =~ "public,pg_policy,table,postgres" ]] || false
-    [[ "$output" =~ "public,pg_proc,table,postgres" ]] || false
-    [[ "$output" =~ "public,pg_publication,table,postgres" ]] || false
-    [[ "$output" =~ "public,pg_publication_namespace,table,postgres" ]] || false
-    [[ "$output" =~ "public,pg_publication_rel,table,postgres" ]] || false
-    [[ "$output" =~ "public,pg_range,table,postgres" ]] || false
-    [[ "$output" =~ "public,pg_replication_origin,table,postgres" ]] || false
-    [[ "$output" =~ "public,pg_rewrite,table,postgres" ]] || false
-    [[ "$output" =~ "public,pg_seclabel,table,postgres" ]] || false
-    [[ "$output" =~ "public,pg_sequence,table,postgres" ]] || false
-    [[ "$output" =~ "public,pg_shdepend,table,postgres" ]] || false
-    [[ "$output" =~ "public,pg_shdescription,table,postgres" ]] || false
-    [[ "$output" =~ "public,pg_shseclabel,table,postgres" ]] || false
-    [[ "$output" =~ "public,pg_statistic,table,postgres" ]] || false
-    [[ "$output" =~ "public,pg_statistic_ext,table,postgres" ]] || false
-    [[ "$output" =~ "public,pg_statistic_ext_data,table,postgres" ]] || false
-    [[ "$output" =~ "public,pg_trigger,table,postgres" ]] || false
-    [[ "$output" =~ "public,pg_type,table,postgres" ]] || false
     [[ "$output" =~ "public,test1,table,postgres" ]] || false
     [[ "$output" =~ "public,test2,table,postgres" ]] || false
-    [ "${#lines[@]}" -eq 56 ]
+    [ "${#lines[@]}" -eq 3 ]
 }
 
 @test 'psql-commands: \d' {
     run query_server --csv -c "\d"
-    echo "$output"
     [ "$status" -eq 0 ]
-    [[ "$output" =~ "public,pg_aggregate,table,postgres" ]] || false
-    [[ "$output" =~ "public,pg_am,table,postgres" ]] || false
-    [[ "$output" =~ "public,pg_amop,table,postgres" ]] || false
-    [[ "$output" =~ "public,pg_amproc,table,postgres" ]] || false
-    [[ "$output" =~ "public,pg_attrdef,table,postgres" ]] || false
-    [[ "$output" =~ "public,pg_attribute,table,postgres" ]] || false
-    [[ "$output" =~ "public,pg_auth_members,table,postgres" ]] || false
-    [[ "$output" =~ "public,pg_authid,table,postgres" ]] || false
-    [[ "$output" =~ "public,pg_cast,table,postgres" ]] || false
-    [[ "$output" =~ "public,pg_class,table,postgres" ]] || false
-    [[ "$output" =~ "public,pg_collation,table,postgres" ]] || false
-    [[ "$output" =~ "public,pg_constraint,table,postgres" ]] || false
-    [[ "$output" =~ "public,pg_conversion,table,postgres" ]] || false
-    [[ "$output" =~ "public,pg_database,table,postgres" ]] || false
-    [[ "$output" =~ "public,pg_db_role_setting,table,postgres" ]] || false
-    [[ "$output" =~ "public,pg_default_acl,table,postgres" ]] || false
-    [[ "$output" =~ "public,pg_depend,table,postgres" ]] || false
-    [[ "$output" =~ "public,pg_description,table,postgres" ]] || false
-    [[ "$output" =~ "public,pg_enum,table,postgres" ]] || false
-    [[ "$output" =~ "public,pg_event_trigger,table,postgres" ]] || false
-    [[ "$output" =~ "public,pg_extension,table,postgres" ]] || false
-    [[ "$output" =~ "public,pg_foreign_data_wrapper,table,postgres" ]] || false
-    [[ "$output" =~ "public,pg_foreign_server,table,postgres" ]] || false
-    [[ "$output" =~ "public,pg_foreign_table,table,postgres" ]] || false
-    [[ "$output" =~ "public,pg_index,table,postgres" ]] || false
-    [[ "$output" =~ "public,pg_inherits,table,postgres" ]] || false
-    [[ "$output" =~ "public,pg_init_privs,table,postgres" ]] || false
-    [[ "$output" =~ "public,pg_language,table,postgres" ]] || false
-    [[ "$output" =~ "public,pg_largeobject,table,postgres" ]] || false
-    [[ "$output" =~ "public,pg_largeobject_metadata,table,postgres" ]] || false
-    [[ "$output" =~ "public,pg_namespace,table,postgres" ]] || false
-    [[ "$output" =~ "public,pg_opclass,table,postgres" ]] || false
-    [[ "$output" =~ "public,pg_opfamily,table,postgres" ]] || false
-    [[ "$output" =~ "public,pg_parameter_acl,table,postgres" ]] || false
-    [[ "$output" =~ "public,pg_partitioned_table,table,postgres" ]] || false
-    [[ "$output" =~ "public,pg_policy,table,postgres" ]] || false
-    [[ "$output" =~ "public,pg_proc,table,postgres" ]] || false
-    [[ "$output" =~ "public,pg_publication,table,postgres" ]] || false
-    [[ "$output" =~ "public,pg_publication_namespace,table,postgres" ]] || false
-    [[ "$output" =~ "public,pg_publication_rel,table,postgres" ]] || false
-    [[ "$output" =~ "public,pg_range,table,postgres" ]] || false
-    [[ "$output" =~ "public,pg_replication_origin,table,postgres" ]] || false
-    [[ "$output" =~ "public,pg_rewrite,table,postgres" ]] || false
-    [[ "$output" =~ "public,pg_seclabel,table,postgres" ]] || false
-    [[ "$output" =~ "public,pg_shdepend,table,postgres" ]] || false
-    [[ "$output" =~ "public,pg_shdescription,table,postgres" ]] || false
-    [[ "$output" =~ "public,pg_shseclabel,table,postgres" ]] || false
-    [[ "$output" =~ "public,pg_sequence,table,postgres" ]] || false
-    [[ "$output" =~ "public,pg_statistic,table,postgres" ]] || false
-    [[ "$output" =~ "public,pg_statistic_ext,table,postgres" ]] || false
-    [[ "$output" =~ "public,pg_statistic_ext_data,table,postgres" ]] || false
-    [[ "$output" =~ "public,pg_trigger,table,postgres" ]] || false
-    [[ "$output" =~ "public,pg_type,table,postgres" ]] || false
     [[ "$output" =~ "public,test1,table,postgres" ]] || false
     [[ "$output" =~ "public,test2,table,postgres" ]] || false
-    [ "${#lines[@]}" -eq 56 ]
+    [ "${#lines[@]}" -eq 3 ]
 }
 
 @test 'psql-commands: \d table' {
