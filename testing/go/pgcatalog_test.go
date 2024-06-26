@@ -115,16 +115,22 @@ func TestPgAttribute(t *testing.T) {
 		{
 			Name: "pg_attribute",
 			SetUpScript: []string{
+				`CREATE SCHEMA testschema;`,
+				`SET search_path TO testschema;`,
 				`CREATE TABLE test (pk INT primary key, v1 INT DEFAULT 0);`,
+
+				// Should show attributes for all schemas
+				`CREATE SCHEMA testschema2;`,
+				`SET search_path TO testschema2;`,
 			},
 			Assertions: []ScriptTestAssertion{
 				{
 					Query:    `SELECT * FROM "pg_catalog"."pg_attribute" WHERE attname='pk';`,
-					Expected: []sql.Row{{0, "pk", 0, 0, 3273, -1, -1, 0, "f", "i", "p", "", "t", "f", "f", "", "", "f", "t", 0, -1, 0, nil, nil, nil, nil}},
+					Expected: []sql.Row{{0, "pk", 0, 0, 1271, -1, -1, 0, "f", "i", "p", "", "t", "f", "f", "", "", "f", "t", 0, -1, 0, nil, nil, nil, nil}},
 				},
 				{
 					Query:    `SELECT * FROM "pg_catalog"."pg_attribute" WHERE attname='v1';`,
-					Expected: []sql.Row{{0, "v1", 0, 0, 3274, -1, -1, 0, "f", "i", "p", "", "f", "t", "f", "", "", "f", "t", 0, -1, 0, nil, nil, nil, nil}},
+					Expected: []sql.Row{{0, "v1", 0, 0, 1272, -1, -1, 0, "f", "i", "p", "", "f", "t", "f", "", "", "f", "t", 0, -1, 0, nil, nil, nil, nil}},
 				},
 				{ // Different cases and quoted, so it fails
 					Query:       `SELECT * FROM "PG_catalog"."pg_attribute";`,
@@ -137,9 +143,9 @@ func TestPgAttribute(t *testing.T) {
 				{ // Different cases but non-quoted, so it works
 					Query: "SELECT attname FROM PG_catalog.pg_ATTRIBUTE ORDER BY attname LIMIT 3;",
 					Expected: []sql.Row{
-						{"ACTION_CONDITION"},
-						{"ACTION_ORDER"},
-						{"ACTION_ORIENTATION"},
+						{"abbrev"},
+						{"abbrev"},
+						{"active"},
 					},
 				},
 			},
@@ -334,24 +340,30 @@ func TestPgClass(t *testing.T) {
 		{
 			Name: "pg_class",
 			SetUpScript: []string{
+				`CREATE SCHEMA testschema;`,
+				`SET search_path TO testschema;`,
 				`CREATE TABLE testing (pk INT primary key, v1 INT);`,
 				`CREATE VIEW testview AS SELECT * FROM testing LIMIT 1;`,
+
+				// Should show classes for all schemas
+				`CREATE SCHEMA testschema2;`,
+				`SET search_path TO testschema2;`,
 			},
 			Assertions: []ScriptTestAssertion{
 				// Table
 				{
 					Query:    `SELECT * FROM "pg_catalog"."pg_class" WHERE relname='testing';`,
-					Expected: []sql.Row{{339, "testing", 0, 0, 0, 0, 0, 0, 0, 0, float32(0), 0, 0, "t", "f", "p", "r", 0, 0, "f", "f", "f", "f", "f", "t", "d", "f", 0, 0, 0, nil, nil, nil}},
+					Expected: []sql.Row{{131, "testing", 0, 0, 0, 0, 0, 0, 0, 0, float32(0), 0, 0, "t", "f", "p", "r", 0, 0, "f", "f", "f", "f", "f", "t", "d", "f", 0, 0, 0, nil, nil, nil}},
 				},
 				// Index
 				{
 					Query:    `SELECT * FROM "pg_catalog"."pg_class" WHERE relname='PRIMARY';`,
-					Expected: []sql.Row{{338, "PRIMARY", 0, 0, 0, 0, 0, 0, 0, 0, float32(0), 0, 0, "f", "f", "p", "i", 0, 0, "f", "f", "f", "f", "f", "t", "d", "f", 0, 0, 0, nil, nil, nil}},
+					Expected: []sql.Row{{130, "PRIMARY", 0, 0, 0, 0, 0, 0, 0, 0, float32(0), 0, 0, "f", "f", "p", "i", 0, 0, "f", "f", "f", "f", "f", "t", "d", "f", 0, 0, 0, nil, nil, nil}},
 				},
 				// View
 				{
 					Query:    `SELECT * FROM "pg_catalog"."pg_class" WHERE relname='testview';`,
-					Expected: []sql.Row{{340, "testview", 0, 0, 0, 0, 0, 0, 0, 0, float32(0), 0, 0, "f", "f", "p", "v", 0, 0, "f", "f", "f", "f", "f", "t", "d", "f", 0, 0, 0, nil, nil, nil}},
+					Expected: []sql.Row{{132, "testview", 0, 0, 0, 0, 0, 0, 0, 0, float32(0), 0, 0, "f", "f", "p", "v", 0, 0, "f", "f", "f", "f", "f", "t", "d", "f", 0, 0, 0, nil, nil, nil}},
 				},
 				{ // Different cases and quoted, so it fails
 					Query:       `SELECT * FROM "PG_catalog"."pg_class";`,
@@ -362,11 +374,11 @@ func TestPgClass(t *testing.T) {
 					ExpectedErr: "not",
 				},
 				{ // Different cases but non-quoted, so it works
-					Query: "SELECT relname FROM PG_catalog.pg_CLASS ORDER BY relname ASC LIMIT 3;",
+					Query: "SELECT relname FROM PG_catalog.pg_CLASS ORDER BY relname DESC LIMIT 3;",
 					Expected: []sql.Row{
-						{"PRIMARY"},
-						{"administrable_role_authorizations"},
-						{"applicable_roles"},
+						{"testview"},
+						{"testing"},
+						{"pg_views"},
 					},
 				},
 			},

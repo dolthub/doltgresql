@@ -49,6 +49,12 @@ query_server() {
     psql -U "${SQL_USER:-postgres}" -h localhost -p $PORT "$@" doltgres
 }
 
+query_server_for_db() {
+    local db_name=${1:-doltgres}
+    shift
+    psql -U "${SQL_USER:-postgres}" -h localhost -p $PORT "$@" $db_name
+}
+
 log_status_eq() {
     if ! [ "$status" -eq $1 ]; then
         echo "status: expected $1, received $status"

@@ -43,13 +43,18 @@ func (p PgClassHandler) Name() string {
 	return PgClassName
 }
 
-// dbAndSchemaIter iterates over all databases and schemas in the catalog,
-// calling cb for each database and schema. Once all databases and schemas have
-// been processed or the callback returns false or an error, the iteration stops.
-func dbAndSchemaIter(ctx *sql.Context, c sql.Catalog, cb func(db sql.Database) (bool, error)) error {
+// currentDatabaseSchemaIter iterates over all schemas in the current database,
+// calling cb for the database and each schema. Once all schemas have been
+// processed or the callback returns false or an error, the iteration stops.
+func currentDatabaseSchemaIter(ctx *sql.Context, c sql.Catalog, cb func(db sql.Database) (bool, error)) error {
+	currentDB := ctx.GetCurrentDatabase()
 	dbs := c.AllDatabases(ctx)
 
 	for _, db := range dbs {
+		if currentDB != "" && db.Name() != currentDB {
+			continue
+		}
+
 		if schDB, ok := db.(sql.SchemaDatabase); ok {
 			schemas, err := schDB.AllSchemas(ctx)
 			if err != nil {
@@ -87,7 +92,7 @@ func (p PgClassHandler) RowIter(ctx *sql.Context) (sql.RowIter, error) {
 
 	var classes []Class
 
-	err := dbAndSchemaIter(ctx, c, func(db sql.Database) (bool, error) {
+	err := currentDatabaseSchemaIter(ctx, c, func(db sql.Database) (bool, error) {
 		// Get tables and table indexes
 		err := sql.DBTableIter(ctx, db, func(t sql.Table) (cont bool, err error) {
 			hasIndexes := false
