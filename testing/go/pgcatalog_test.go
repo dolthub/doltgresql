@@ -120,11 +120,11 @@ func TestPgAttribute(t *testing.T) {
 			Assertions: []ScriptTestAssertion{
 				{
 					Query:    `SELECT * FROM "pg_catalog"."pg_attribute" WHERE attname='pk';`,
-					Expected: []sql.Row{{0, "pk", 0, 0, 1759, -1, -1, 0, "f", "i", "p", "", "t", "f", "f", "", "", "f", "t", 0, -1, 0, nil, nil, nil, nil}},
+					Expected: []sql.Row{{0, "pk", 0, 0, 3273, -1, -1, 0, "f", "i", "p", "", "t", "f", "f", "", "", "f", "t", 0, -1, 0, nil, nil, nil, nil}},
 				},
 				{
 					Query:    `SELECT * FROM "pg_catalog"."pg_attribute" WHERE attname='v1';`,
-					Expected: []sql.Row{{0, "v1", 0, 0, 1760, -1, -1, 0, "f", "i", "p", "", "f", "t", "f", "", "", "f", "t", 0, -1, 0, nil, nil, nil, nil}},
+					Expected: []sql.Row{{0, "v1", 0, 0, 3274, -1, -1, 0, "f", "i", "p", "", "f", "t", "f", "", "", "f", "t", 0, -1, 0, nil, nil, nil, nil}},
 				},
 				{ // Different cases and quoted, so it fails
 					Query:       `SELECT * FROM "PG_catalog"."pg_attribute";`,
@@ -225,6 +225,84 @@ func TestPgAuthid(t *testing.T) {
 	})
 }
 
+func TestPgAvailableExtensionVersions(t *testing.T) {
+	RunScripts(t, []ScriptTest{
+		{
+			Name: "pg_available_extension_versions",
+			Assertions: []ScriptTestAssertion{
+				{
+					Query:    `SELECT * FROM "pg_catalog"."pg_available_extension_versions";`,
+					Expected: []sql.Row{},
+				},
+				{ // Different cases and quoted, so it fails
+					Query:       `SELECT * FROM "PG_catalog"."pg_available_extension_versions";`,
+					ExpectedErr: "not",
+				},
+				{ // Different cases and quoted, so it fails
+					Query:       `SELECT * FROM "pg_catalog"."PG_available_extension_versions";`,
+					ExpectedErr: "not",
+				},
+				{ // Different cases but non-quoted, so it works
+					Query:    "SELECT name FROM PG_catalog.pg_AVAILABLE_EXTENSION_VERSIONS ORDER BY name;",
+					Expected: []sql.Row{},
+				},
+			},
+		},
+	})
+}
+
+func TestPgAvailableExtensions(t *testing.T) {
+	RunScripts(t, []ScriptTest{
+		{
+			Name: "pg_available_extensions",
+			Assertions: []ScriptTestAssertion{
+				{
+					Query:    `SELECT * FROM "pg_catalog"."pg_available_extensions";`,
+					Expected: []sql.Row{},
+				},
+				{ // Different cases and quoted, so it fails
+					Query:       `SELECT * FROM "PG_catalog"."pg_available_extensions";`,
+					ExpectedErr: "not",
+				},
+				{ // Different cases and quoted, so it fails
+					Query:       `SELECT * FROM "pg_catalog"."PG_available_extensions";`,
+					ExpectedErr: "not",
+				},
+				{ // Different cases but non-quoted, so it works
+					Query:    "SELECT name FROM PG_catalog.pg_AVAILABLE_EXTENSIONS ORDER BY name;",
+					Expected: []sql.Row{},
+				},
+			},
+		},
+	})
+}
+
+func TestPgBackendMemoryContexts(t *testing.T) {
+	RunScripts(t, []ScriptTest{
+		{
+			Name: "pg_backend_memory_contexts",
+			Assertions: []ScriptTestAssertion{
+				{
+					Query:    `SELECT * FROM "pg_catalog"."pg_backend_memory_contexts";`,
+					Expected: []sql.Row{},
+				},
+				{ // Different cases and quoted, so it fails
+					Query:       `SELECT * FROM "PG_catalog"."pg_backend_memory_contexts";`,
+					ExpectedErr: "not",
+				},
+				{ // Different cases and quoted, so it fails
+					Query:       `SELECT * FROM "pg_catalog"."PG_backend_memory_contexts";`,
+					ExpectedErr: "not",
+				},
+				{ // Different cases but non-quoted, so it works
+					Query:    "SELECT name FROM PG_catalog.pg_BACKEND_MEMORY_CONTEXTS ORDER BY name;",
+					Expected: []sql.Row{},
+				},
+			},
+		},
+	})
+}
+
 func TestPgCast(t *testing.T) {
 	RunScripts(t, []ScriptTest{
 		{
@@ -263,17 +341,17 @@ func TestPgClass(t *testing.T) {
 				// Table
 				{
 					Query:    `SELECT * FROM "pg_catalog"."pg_class" WHERE relname='testing';`,
-					Expected: []sql.Row{{187, "testing", 0, 0, 0, 0, 0, 0, 0, 0, float32(0), 0, 0, "t", "f", "p", "r", 0, 0, "f", "f", "f", "f", "f", "t", "d", "f", 0, 0, 0, nil, nil, nil}},
+					Expected: []sql.Row{{339, "testing", 0, 0, 0, 0, 0, 0, 0, 0, float32(0), 0, 0, "t", "f", "p", "r", 0, 0, "f", "f", "f", "f", "f", "t", "d", "f", 0, 0, 0, nil, nil, nil}},
 				},
 				// Index
 				{
 					Query:    `SELECT * FROM "pg_catalog"."pg_class" WHERE relname='PRIMARY';`,
-					Expected: []sql.Row{{186, "PRIMARY", 0, 0, 0, 0, 0, 0, 0, 0, float32(0), 0, 0, "f", "f", "p", "i", 0, 0, "f", "f", "f", "f", "f", "t", "d", "f", 0, 0, 0, nil, nil, nil}},
+					Expected: []sql.Row{{338, "PRIMARY", 0, 0, 0, 0, 0, 0, 0, 0, float32(0), 0, 0, "f", "f", "p", "i", 0, 0, "f", "f", "f", "f", "f", "t", "d", "f", 0, 0, 0, nil, nil, nil}},
 				},
 				// View
 				{
 					Query:    `SELECT * FROM "pg_catalog"."pg_class" WHERE relname='testview';`,
-					Expected: []sql.Row{{188, "testview", 0, 0, 0, 0, 0, 0, 0, 0, float32(0), 0, 0, "f", "f", "p", "v", 0, 0, "f", "f", "f", "f", "f", "t", "d", "f", 0, 0, 0, nil, nil, nil}},
+					Expected: []sql.Row{{340, "testview", 0, 0, 0, 0, 0, 0, 0, 0, float32(0), 0, 0, "f", "f", "p", "v", 0, 0, "f", "f", "f", "f", "f", "t", "d", "f", 0, 0, 0, nil, nil, nil}},
 				},
 				{ // Different cases and quoted, so it fails
 					Query:       `SELECT * FROM "PG_catalog"."pg_class";`,
@@ -315,6 +393,32 @@ func TestPgCollation(t *testing.T) {
 				},
 				{ // Different cases but non-quoted, so it works
 					Query:    "SELECT collname FROM PG_catalog.pg_COLLATION ORDER BY collname;",
+					Expected: []sql.Row{},
+				},
+			},
+		},
+	})
+}
+
+func TestPgConfig(t *testing.T) {
+	RunScripts(t, []ScriptTest{
+		{
+			Name: "pg_config",
+			Assertions: []ScriptTestAssertion{
+				{
+					Query:    `SELECT * FROM "pg_catalog"."pg_config";`,
+					Expected: []sql.Row{},
+				},
+				{ // Different cases and quoted, so it fails
+					Query:       `SELECT * FROM "PG_catalog"."pg_config";`,
+					ExpectedErr: "not",
+				},
+				{ // Different cases and quoted, so it fails
+					Query:       `SELECT * FROM "pg_catalog"."PG_config";`,
+					ExpectedErr: "not",
+				},
+				{ // Different cases but non-quoted, so it works
+					Query:    "SELECT name FROM PG_catalog.pg_CONFIG ORDER BY name;",
 					Expected: []sql.Row{},
 				},
 			},
@@ -374,6 +478,33 @@ func TestPgConversion(t *testing.T) {
 	})
 }
 
+func TestPgCursors(t *testing.T) {
+	RunScripts(t, []ScriptTest{
+		{
+			Name: "pg_cursors",
+			Assertions: []ScriptTestAssertion{
+				{
+					Query:    `SELECT * FROM "pg_catalog"."pg_cursors";`,
+					Expected: []sql.Row{},
+				},
+				{ // Different cases and quoted, so it fails
+					Query:       `SELECT * FROM "PG_catalog"."pg_cursors";`,
+					ExpectedErr: "not",
+				},
+				{ // Different cases and quoted, so it fails
+					Query:       `SELECT * FROM "pg_catalog"."PG_cursors";`,
+					ExpectedErr: "not",
+				},
+				{ // Different cases but non-quoted, so it works
+					Query:    "SELECT name FROM PG_catalog.pg_CURSORS ORDER BY name;",
+					Expected: []sql.Row{},
+				},
+			},
+		},
+	})
+}
+
+// TODO: Figure out why there is not a doltgres database when running these tests locally
 func TestPgDatabase(t *testing.T) {
 	RunScripts(t, []ScriptTest{
 		{
@@ -608,6 +739,32 @@ func TestPgExtension(t *testing.T) {
 	})
 }
 
+func TestPgFileSettings(t *testing.T) {
+	RunScripts(t, []ScriptTest{
+		{
+			Name: "pg_file_settings",
+			Assertions: []ScriptTestAssertion{
+				{
+					Query:    `SELECT * FROM "pg_catalog"."pg_file_settings";`,
+					Expected: []sql.Row{},
+				},
+				{ // Different cases and quoted, so it fails
+					Query:       `SELECT * FROM "PG_catalog"."pg_file_settings";`,
+					ExpectedErr: "not",
+				},
+				{ // Different cases and quoted, so it fails
+					Query:       `SELECT * FROM "pg_catalog"."PG_file_settings";`,
+					ExpectedErr: "not",
+				},
+				{ // Different cases but non-quoted, so it works
+					Query:    "SELECT name FROM PG_catalog.pg_FILE_SETTINGS ORDER BY name;",
+					Expected: []sql.Row{},
+				},
+			},
+		},
+	})
+}
+
 func TestPgForeignDataWrapper(t *testing.T) {
 	RunScripts(t, []ScriptTest{
 		{
@@ -686,6 +843,84 @@ func TestPgForeignTable(t *testing.T) {
 	})
 }
 
+func TestPgGroup(t *testing.T) {
+	RunScripts(t, []ScriptTest{
+		{
+			Name: "pg_group",
+			Assertions: []ScriptTestAssertion{
+				{
+					Query:    `SELECT * FROM "pg_catalog"."pg_group";`,
+					Expected: []sql.Row{},
+				},
+				{ // Different cases and quoted, so it fails
+					Query:       `SELECT * FROM "PG_catalog"."pg_group";`,
+					ExpectedErr: "not",
+				},
+				{ // Different cases and quoted, so it fails
+					Query:       `SELECT * FROM "pg_catalog"."PG_group";`,
+					ExpectedErr: "not",
+				},
+				{ // Different cases but non-quoted, so it works
+					Query:    "SELECT groname FROM PG_catalog.pg_GROUP ORDER BY groname;",
+					Expected: []sql.Row{},
+				},
+			},
+		},
+	})
+}
+
+func TestPgHbaFileRules(t *testing.T) {
+	RunScripts(t, []ScriptTest{
+		{
+			Name: "pg_hba_file_rules",
+			Assertions: []ScriptTestAssertion{
+				{
+					Query:    `SELECT * FROM "pg_catalog"."pg_hba_file_rules";`,
+					Expected: []sql.Row{},
+				},
+				{ // Different cases and quoted, so it fails
+					Query:       `SELECT * FROM "PG_catalog"."pg_hba_file_rules";`,
+					ExpectedErr: "not",
+				},
+				{ // Different cases and quoted, so it fails
+					Query:       `SELECT * FROM "pg_catalog"."PG_hba_file_rules";`,
+					ExpectedErr: "not",
+				},
+				{ // Different cases but non-quoted, so it works
+					Query:    "SELECT line_number FROM PG_catalog.pg_HBA_FILE_RULES ORDER BY line_number;",
+					Expected: []sql.Row{},
+				},
+			},
+		},
+	})
+}
+
+func TestPgIdentFileMappings(t *testing.T) {
+	RunScripts(t, []ScriptTest{
+		{
+			Name: "pg_ident_file_mappings",
+			Assertions: []ScriptTestAssertion{
+				{
+					Query:    `SELECT * FROM "pg_catalog"."pg_ident_file_mappings";`,
+					Expected: []sql.Row{},
+				},
+				{ // Different cases and quoted, so it fails
+					Query:       `SELECT * FROM "PG_catalog"."pg_ident_file_mappings";`,
+					ExpectedErr: "not",
+				},
+				{ // Different cases and quoted, so it fails
+					Query:       `SELECT * FROM "pg_catalog"."PG_ident_file_mappings";`,
+					ExpectedErr: "not",
+				},
+				{ // Different cases but non-quoted, so it works
+					Query:    "SELECT line_number FROM PG_catalog.pg_IDENT_FILE_MAPPINGS ORDER BY line_number;",
+					Expected: []sql.Row{},
+				},
+			},
+		},
+	})
+}
+
 func TestPgIndex(t *testing.T) {
 	RunScripts(t, []ScriptTest{
 		{
@@ -705,6 +940,32 @@ func TestPgIndex(t *testing.T) {
 				},
 				{ // Different cases but non-quoted, so it works
 					Query:    "SELECT indexrelid FROM PG_catalog.pg_INDEX ORDER BY indexrelid;",
+					Expected: []sql.Row{},
+				},
+			},
+		},
+	})
+}
+
+func TestPgIndexes(t *testing.T) {
+	RunScripts(t, []ScriptTest{
+		{
+			Name: "pg_indexes",
+			Assertions: []ScriptTestAssertion{
+				{
+					Query:    `SELECT * FROM "pg_catalog"."pg_indexes";`,
+					Expected: []sql.Row{},
+				},
+				{ // Different cases and quoted, so it fails
+					Query:       `SELECT * FROM "PG_catalog"."pg_indexes";`,
+					ExpectedErr: "not",
+				},
+				{ // Different cases and quoted, so it fails
+					Query:       `SELECT * FROM "pg_catalog"."PG_indexes";`,
+					ExpectedErr: "not",
+				},
+				{ // Different cases but non-quoted, so it works
+					Query:    "SELECT indexname FROM PG_catalog.pg_INDEXES ORDER BY indexname;",
 					Expected: []sql.Row{},
 				},
 			},
@@ -842,6 +1103,58 @@ func TestPgLargeobjectMetadata(t *testing.T) {
 	})
 }
 
+func TestPgLocks(t *testing.T) {
+	RunScripts(t, []ScriptTest{
+		{
+			Name: "pg_locks",
+			Assertions: []ScriptTestAssertion{
+				{
+					Query:    `SELECT * FROM "pg_catalog"."pg_locks";`,
+					Expected: []sql.Row{},
+				},
+				{ // Different cases and quoted, so it fails
+					Query:       `SELECT * FROM "PG_catalog"."pg_locks";`,
+					ExpectedErr: "not",
+				},
+				{ // Different cases and quoted, so it fails
+					Query:       `SELECT * FROM "pg_catalog"."PG_locks";`,
+					ExpectedErr: "not",
+				},
+				{ // Different cases but non-quoted, so it works
+					Query:    "SELECT objid FROM PG_catalog.pg_LOCKS ORDER BY objid;",
+					Expected: []sql.Row{},
+				},
+			},
+		},
+	})
+}
+
+func TestPgMatviews(t *testing.T) {
+	RunScripts(t, []ScriptTest{
+		{
+			Name: "pg_matviews",
+			Assertions: []ScriptTestAssertion{
+				{
+					Query:    `SELECT * FROM "pg_catalog"."pg_matviews";`,
+					Expected: []sql.Row{},
+				},
+				{ // Different cases and quoted, so it fails
+					Query:       `SELECT * FROM "PG_catalog"."pg_matviews";`,
+					ExpectedErr: "not",
+				},
+				{ // Different cases and quoted, so it fails
+					Query:       `SELECT * FROM "pg_catalog"."PG_matviews";`,
+					ExpectedErr: "not",
+				},
+				{ // Different cases but non-quoted, so it works
+					Query:    "SELECT matviewname FROM PG_catalog.pg_MATVIEWS ORDER BY matviewname;",
+					Expected: []sql.Row{},
+				},
+			},
+		},
+	})
+}
+
 func TestPgNamespace(t *testing.T) {
 	RunScripts(t, []ScriptTest{
 		{
@@ -972,6 +1285,32 @@ func TestPgPartitionedTable(t *testing.T) {
 	})
 }
 
+func TestPgPolicies(t *testing.T) {
+	RunScripts(t, []ScriptTest{
+		{
+			Name: "pg_policies",
+			Assertions: []ScriptTestAssertion{
+				{
+					Query:    `SELECT * FROM "pg_catalog"."pg_policies";`,
+					Expected: []sql.Row{},
+				},
+				{ // Different cases and quoted, so it fails
+					Query:       `SELECT * FROM "PG_catalog"."pg_policies";`,
+					ExpectedErr: "not",
+				},
+				{ // Different cases and quoted, so it fails
+					Query:       `SELECT * FROM "pg_catalog"."PG_policies";`,
+					ExpectedErr: "not",
+				},
+				{ // Different cases but non-quoted, so it works
+					Query:    "SELECT policyname FROM PG_catalog.pg_POLICIES ORDER BY policyname;",
+					Expected: []sql.Row{},
+				},
+			},
+		},
+	})
+}
+
 func TestPgPolicy(t *testing.T) {
 	RunScripts(t, []ScriptTest{
 		{
@@ -991,6 +1330,58 @@ func TestPgPolicy(t *testing.T) {
 				},
 				{ // Different cases but non-quoted, so it works
 					Query:    "SELECT polname FROM PG_catalog.pg_POLICY ORDER BY polname;",
+					Expected: []sql.Row{},
+				},
+			},
+		},
+	})
+}
+
+func TestPgPreparedStatements(t *testing.T) {
+	RunScripts(t, []ScriptTest{
+		{
+			Name: "pg_prepared_statements",
+			Assertions: []ScriptTestAssertion{
+				{
+					Query:    `SELECT * FROM "pg_catalog"."pg_prepared_statements";`,
+					Expected: []sql.Row{},
+				},
+				{ // Different cases and quoted, so it fails
+					Query:       `SELECT * FROM "PG_catalog"."pg_prepared_statements";`,
+					ExpectedErr: "not",
+				},
+				{ // Different cases and quoted, so it fails
+					Query:       `SELECT * FROM "pg_catalog"."PG_prepared_statements";`,
+					ExpectedErr: "not",
+				},
+				{ // Different cases but non-quoted, so it works
+					Query:    "SELECT name FROM PG_catalog.pg_PREPARED_STATEMENTS ORDER BY name;",
+					Expected: []sql.Row{},
+				},
+			},
+		},
+	})
+}
+
+func TestPgPreparedXacts(t *testing.T) {
+	RunScripts(t, []ScriptTest{
+		{
+			Name: "pg_prepared_xacts",
+			Assertions: []ScriptTestAssertion{
+				{
+					Query:    `SELECT * FROM "pg_catalog"."pg_prepared_xacts";`,
+					Expected: []sql.Row{},
+				},
+				{ // Different cases and quoted, so it fails
+					Query:       `SELECT * FROM "PG_catalog"."pg_prepared_xacts";`,
+					ExpectedErr: "not",
+				},
+				{ // Different cases and quoted, so it fails
+					Query:       `SELECT * FROM "pg_catalog"."PG_prepared_xacts";`,
+					ExpectedErr: "not",
+				},
+				{ // Different cases but non-quoted, so it works
+					Query:    "SELECT gid FROM PG_catalog.pg_PREPARED_XACTS ORDER BY gid;",
 					Expected: []sql.Row{},
 				},
 			},
@@ -1102,6 +1493,32 @@ func TestPgPublicationRel(t *testing.T) {
 	})
 }
 
+func TestPgPublicationTables(t *testing.T) {
+	RunScripts(t, []ScriptTest{
+		{
+			Name: "pg_publication_tables",
+			Assertions: []ScriptTestAssertion{
+				{
+					Query:    `SELECT * FROM "pg_catalog"."pg_publication_tables";`,
+					Expected: []sql.Row{},
+				},
+				{ // Different cases and quoted, so it fails
+					Query:       `SELECT * FROM "PG_catalog"."pg_publication_tables";`,
+					ExpectedErr: "not",
+				},
+				{ // Different cases and quoted, so it fails
+					Query:       `SELECT * FROM "pg_catalog"."PG_publication_tables";`,
+					ExpectedErr: "not",
+				},
+				{ // Different cases but non-quoted, so it works
+					Query:    "SELECT pubname FROM PG_catalog.pg_PUBLICATION_TABLES ORDER BY pubname;",
+					Expected: []sql.Row{},
+				},
+			},
+		},
+	})
+}
+
 func TestPgRange(t *testing.T) {
 	RunScripts(t, []ScriptTest{
 		{
@@ -1154,6 +1571,58 @@ func TestPgReplicationOrigin(t *testing.T) {
 	})
 }
 
+func TestPgReplicationOriginStatus(t *testing.T) {
+	RunScripts(t, []ScriptTest{
+		{
+			Name: "pg_replication_origin_status",
+			Assertions: []ScriptTestAssertion{
+				{
+					Query:    `SELECT * FROM "pg_catalog"."pg_replication_origin_status";`,
+					Expected: []sql.Row{},
+				},
+				{ // Different cases and quoted, so it fails
+					Query:       `SELECT * FROM "PG_catalog"."pg_replication_origin_status";`,
+					ExpectedErr: "not",
+				},
+				{ // Different cases and quoted, so it fails
+					Query:       `SELECT * FROM "pg_catalog"."PG_replication_origin_status";`,
+					ExpectedErr: "not",
+				},
+				{ // Different cases but non-quoted, so it works
+					Query:    "SELECT local_id FROM PG_catalog.pg_REPLICATION_ORIGIN_STATUS ORDER BY local_id;",
+					Expected: []sql.Row{},
+				},
+			},
+		},
+	})
+}
+
+func TestPgReplicationSlots(t *testing.T) {
+	RunScripts(t, []ScriptTest{
+		{
+			Name: "pg_replication_slot",
+			Assertions: []ScriptTestAssertion{
+				{
+					Query:    `SELECT * FROM "pg_catalog"."pg_replication_slots";`,
+					Expected: []sql.Row{},
+				},
+				{ // Different cases and quoted, so it fails
+					Query:       `SELECT * FROM "PG_catalog"."pg_replication_slots";`,
+					ExpectedErr: "not",
+				},
+				{ // Different cases and quoted, so it fails
+					Query:       `SELECT * FROM "pg_catalog"."PG_replication_slots";`,
+					ExpectedErr: "not",
+				},
+				{ // Different cases but non-quoted, so it works
+					Query:    "SELECT slot_name FROM PG_catalog.pg_REPLICATION_SLOTS ORDER BY slot_name;",
+					Expected: []sql.Row{},
+				},
+			},
+		},
+	})
+}
+
 func TestPgRewrite(t *testing.T) {
 	RunScripts(t, []ScriptTest{
 		{
@@ -1180,6 +1649,58 @@ func TestPgRewrite(t *testing.T) {
 	})
 }
 
+func TestPgRoles(t *testing.T) {
+	RunScripts(t, []ScriptTest{
+		{
+			Name: "pg_roles",
+			Assertions: []ScriptTestAssertion{
+				{
+					Query:    `SELECT * FROM "pg_catalog"."pg_roles";`,
+					Expected: []sql.Row{},
+				},
+				{ // Different cases and quoted, so it fails
+					Query:       `SELECT * FROM "PG_catalog"."pg_roles";`,
+					ExpectedErr: "not",
+				},
+				{ // Different cases and quoted, so it fails
+					Query:       `SELECT * FROM "pg_catalog"."PG_roles";`,
+					ExpectedErr: "not",
+				},
+				{ // Different cases but non-quoted, so it works
+					Query:    "SELECT rolname FROM PG_catalog.pg_ROLES ORDER BY rolname;",
+					Expected: []sql.Row{},
+				},
+			},
+		},
+	})
+}
+
+func TestPgRules(t *testing.T) {
+	RunScripts(t, []ScriptTest{
+		{
+			Name: "pg_rules",
+			Assertions: []ScriptTestAssertion{
+				{
+					Query:    `SELECT * FROM "pg_catalog"."pg_rules";`,
+					Expected: []sql.Row{},
+				},
+				{ // Different cases and quoted, so it fails
+					Query:       `SELECT * FROM "PG_catalog"."pg_rules";`,
+					ExpectedErr: "not",
+				},
+				{ // Different cases and quoted, so it fails
+					Query:       `SELECT * FROM "pg_catalog"."PG_rules";`,
+					ExpectedErr: "not",
+				},
+				{ // Different cases but non-quoted, so it works
+					Query:    "SELECT rulename FROM PG_catalog.pg_RULES ORDER BY rulename;",
+					Expected: []sql.Row{},
+				},
+			},
+		},
+	})
+}
+
 func TestPgSeclabel(t *testing.T) {
 	RunScripts(t, []ScriptTest{
 		{
@@ -1199,6 +1720,110 @@ func TestPgSeclabel(t *testing.T) {
 				},
 				{ // Different cases but non-quoted, so it works
 					Query:    "SELECT objoid FROM PG_catalog.pg_SECLABEL ORDER BY objoid;",
+					Expected: []sql.Row{},
+				},
+			},
+		},
+	})
+}
+
+func TestPgSeclabels(t *testing.T) {
+	RunScripts(t, []ScriptTest{
+		{
+			Name: "pg_seclabels",
+			Assertions: []ScriptTestAssertion{
+				{
+					Query:    `SELECT * FROM "pg_catalog"."pg_seclabels";`,
+					Expected: []sql.Row{},
+				},
+				{ // Different cases and quoted, so it fails
+					Query:       `SELECT * FROM "PG_catalog"."pg_seclabels";`,
+					ExpectedErr: "not",
+				},
+				{ // Different cases and quoted, so it fails
+					Query:       `SELECT * FROM "pg_catalog"."PG_seclabels";`,
+					ExpectedErr: "not",
+				},
+				{ // Different cases but non-quoted, so it works
+					Query:    "SELECT objoid FROM PG_catalog.pg_SECLABELS ORDER BY objoid;",
+					Expected: []sql.Row{},
+				},
+			},
+		},
+	})
+}
+
+func TestPgSequences(t *testing.T) {
+	RunScripts(t, []ScriptTest{
+		{
+			Name: "pg_sequences",
+			Assertions: []ScriptTestAssertion{
+				{
+					Query:    `SELECT * FROM "pg_catalog"."pg_sequences";`,
+					Expected: []sql.Row{},
+				},
+				{ // Different cases and quoted, so it fails
+					Query:       `SELECT * FROM "PG_catalog"."pg_sequences";`,
+					ExpectedErr: "not",
+				},
+				{ // Different cases and quoted, so it fails
+					Query:       `SELECT * FROM "pg_catalog"."PG_sequences";`,
+					ExpectedErr: "not",
+				},
+				{ // Different cases but non-quoted, so it works
+					Query:    "SELECT sequencename FROM PG_catalog.pg_SEQUENCES ORDER BY sequencename;",
+					Expected: []sql.Row{},
+				},
+			},
+		},
+	})
+}
+
+func TestPgSettings(t *testing.T) {
+	RunScripts(t, []ScriptTest{
+		{
+			Name: "pg_settings",
+			Assertions: []ScriptTestAssertion{
+				{
+					Query:    `SELECT * FROM "pg_catalog"."pg_settings";`,
+					Expected: []sql.Row{},
+				},
+				{ // Different cases and quoted, so it fails
+					Query:       `SELECT * FROM "PG_catalog"."pg_settings";`,
+					ExpectedErr: "not",
+				},
+				{ // Different cases and quoted, so it fails
+					Query:       `SELECT * FROM "pg_catalog"."PG_settings";`,
+					ExpectedErr: "not",
+				},
+				{ // Different cases but non-quoted, so it works
+					Query:    "SELECT name FROM PG_catalog.pg_SETTINGS ORDER BY name;",
+					Expected: []sql.Row{},
+				},
+			},
+		},
+	})
+}
+
+func TestPgShadow(t *testing.T) {
+	RunScripts(t, []ScriptTest{
+		{
+			Name: "pg_shadow",
+			Assertions: []ScriptTestAssertion{
+				{
+					Query:    `SELECT * FROM "pg_catalog"."pg_shadow";`,
+					Expected: []sql.Row{},
+				},
+				{ // Different cases and quoted, so it fails
+					Query:       `SELECT * FROM "PG_catalog"."pg_shadow";`,
+					ExpectedErr: "not",
+				},
+				{ // Different cases and quoted, so it fails
+					Query:       `SELECT * FROM "pg_catalog"."PG_shadow";`,
+					ExpectedErr: "not",
+				},
+				{ // Different cases but non-quoted, so it works
+					Query:    "SELECT usename FROM PG_catalog.pg_SHADOW ORDER BY usename;",
 					Expected: []sql.Row{},
 				},
 			},
@@ -1258,6 +1883,32 @@ func TestPgShdescription(t *testing.T) {
 	})
 }
 
+func TestPgShmemAllocations(t *testing.T) {
+	RunScripts(t, []ScriptTest{
+		{
+			Name: "pg_shmem_allocations",
+			Assertions: []ScriptTestAssertion{
+				{
+					Query:    `SELECT * FROM "pg_catalog"."pg_shmem_allocations";`,
+					Expected: []sql.Row{},
+				},
+				{ // Different cases and quoted, so it fails
+					Query:       `SELECT * FROM "PG_catalog"."pg_shmem_allocations";`,
+					ExpectedErr: "not",
+				},
+				{ // Different cases and quoted, so it fails
+					Query:       `SELECT * FROM "pg_catalog"."PG_shmem_allocations";`,
+					ExpectedErr: "not",
+				},
+				{ // Different cases but non-quoted, so it works
+					Query:    "SELECT name FROM PG_catalog.pg_SHMEM_ALLOCATIONS ORDER BY name;",
+					Expected: []sql.Row{},
+				},
+			},
+		},
+	})
+}
+
 func TestPgShseclabel(t *testing.T) {
 	RunScripts(t, []ScriptTest{
 		{
@@ -1277,6 +1928,1098 @@ func TestPgShseclabel(t *testing.T) {
 				},
 				{ // Different cases but non-quoted, so it works
 					Query:    "SELECT objoid FROM PG_catalog.pg_SHSECLABEL ORDER BY objoid;",
+					Expected: []sql.Row{},
+				},
+			},
+		},
+	})
+}
+
+func TestPgStatActivity(t *testing.T) {
+	RunScripts(t, []ScriptTest{
+		{
+			Name: "pg_stat_activity",
+			Assertions: []ScriptTestAssertion{
+				{
+					Query:    `SELECT * FROM "pg_catalog"."pg_stat_activity";`,
+					Expected: []sql.Row{},
+				},
+				{ // Different cases and quoted, so it fails
+					Query:       `SELECT * FROM "PG_catalog"."pg_stat_activity";`,
+					ExpectedErr: "not",
+				},
+				{ // Different cases and quoted, so it fails
+					Query:       `SELECT * FROM "pg_catalog"."PG_stat_activity";`,
+					ExpectedErr: "not",
+				},
+				{ // Different cases but non-quoted, so it works
+					Query:    "SELECT datname FROM PG_catalog.pg_STAT_ACTIVITY ORDER BY datname;",
+					Expected: []sql.Row{},
+				},
+			},
+		},
+	})
+}
+
+func TestPgStatAllIndexes(t *testing.T) {
+	RunScripts(t, []ScriptTest{
+		{
+			Name: "pg_stat_all_indexes",
+			Assertions: []ScriptTestAssertion{
+				{
+					Query:    `SELECT * FROM "pg_catalog"."pg_stat_all_indexes";`,
+					Expected: []sql.Row{},
+				},
+				{ // Different cases and quoted, so it fails
+					Query:       `SELECT * FROM "PG_catalog"."pg_stat_all_indexes";`,
+					ExpectedErr: "not",
+				},
+				{ // Different cases and quoted, so it fails
+					Query:       `SELECT * FROM "pg_catalog"."PG_stat_all_indexes";`,
+					ExpectedErr: "not",
+				},
+				{ // Different cases but non-quoted, so it works
+					Query:    "SELECT relname FROM PG_catalog.pg_STAT_ALL_INDEXES ORDER BY relname;",
+					Expected: []sql.Row{},
+				},
+			},
+		},
+	})
+}
+
+func TestPgStatAllTables(t *testing.T) {
+	RunScripts(t, []ScriptTest{
+		{
+			Name: "pg_stat_all_tables",
+			Assertions: []ScriptTestAssertion{
+				{
+					Query:    `SELECT * FROM "pg_catalog"."pg_stat_all_tables";`,
+					Expected: []sql.Row{},
+				},
+				{ // Different cases and quoted, so it fails
+					Query:       `SELECT * FROM "PG_catalog"."pg_stat_all_tables";`,
+					ExpectedErr: "not",
+				},
+				{ // Different cases and quoted, so it fails
+					Query:       `SELECT * FROM "pg_catalog"."PG_stat_all_tables";`,
+					ExpectedErr: "not",
+				},
+				{ // Different cases but non-quoted, so it works
+					Query:    "SELECT relname FROM PG_catalog.pg_STAT_ALL_TABLES ORDER BY relname;",
+					Expected: []sql.Row{},
+				},
+			},
+		},
+	})
+}
+
+func TestPgStatArchiver(t *testing.T) {
+	RunScripts(t, []ScriptTest{
+		{
+			Name: "pg_stat_archiver",
+			Assertions: []ScriptTestAssertion{
+				{
+					Query:    `SELECT * FROM "pg_catalog"."pg_stat_archiver";`,
+					Expected: []sql.Row{},
+				},
+				{ // Different cases and quoted, so it fails
+					Query:       `SELECT * FROM "PG_catalog"."pg_stat_archiver";`,
+					ExpectedErr: "not",
+				},
+				{ // Different cases and quoted, so it fails
+					Query:       `SELECT * FROM "pg_catalog"."PG_stat_archiver";`,
+					ExpectedErr: "not",
+				},
+				{ // Different cases but non-quoted, so it works
+					Query:    "SELECT archived_count FROM PG_catalog.pg_STAT_ARCHIVER ORDER BY archived_count;",
+					Expected: []sql.Row{},
+				},
+			},
+		},
+	})
+}
+
+func TestPgStatBgwriter(t *testing.T) {
+	RunScripts(t, []ScriptTest{
+		{
+			Name: "pg_stat_bgwriter",
+			Assertions: []ScriptTestAssertion{
+				{
+					Query:    `SELECT * FROM "pg_catalog"."pg_stat_bgwriter";`,
+					Expected: []sql.Row{},
+				},
+				{ // Different cases and quoted, so it fails
+					Query:       `SELECT * FROM "PG_catalog"."pg_stat_bgwriter";`,
+					ExpectedErr: "not",
+				},
+				{ // Different cases and quoted, so it fails
+					Query:       `SELECT * FROM "pg_catalog"."PG_stat_bgwriter";`,
+					ExpectedErr: "not",
+				},
+				{ // Different cases but non-quoted, so it works
+					Query:    "SELECT checkpoints_timed FROM PG_catalog.pg_STAT_BGWRITER ORDER BY checkpoints_timed;",
+					Expected: []sql.Row{},
+				},
+			},
+		},
+	})
+}
+
+func TestPgStatDatabase(t *testing.T) {
+	RunScripts(t, []ScriptTest{
+		{
+			Name: "pg_stat_database",
+			Assertions: []ScriptTestAssertion{
+				{
+					Query:    `SELECT * FROM "pg_catalog"."pg_stat_database";`,
+					Expected: []sql.Row{},
+				},
+				{ // Different cases and quoted, so it fails
+					Query:       `SELECT * FROM "PG_catalog"."pg_stat_database";`,
+					ExpectedErr: "not",
+				},
+				{ // Different cases and quoted, so it fails
+					Query:       `SELECT * FROM "pg_catalog"."PG_stat_database";`,
+					ExpectedErr: "not",
+				},
+				{ // Different cases but non-quoted, so it works
+					Query:    "SELECT datname FROM PG_catalog.pg_STAT_DATABASE ORDER BY datname;",
+					Expected: []sql.Row{},
+				},
+			},
+		},
+	})
+}
+
+func TestPgStatDatabaseConflicts(t *testing.T) {
+	RunScripts(t, []ScriptTest{
+		{
+			Name: "pg_stat_database_conflicts",
+			Assertions: []ScriptTestAssertion{
+				{
+					Query:    `SELECT * FROM "pg_catalog"."pg_stat_database_conflicts";`,
+					Expected: []sql.Row{},
+				},
+				{ // Different cases and quoted, so it fails
+					Query:       `SELECT * FROM "PG_catalog"."pg_stat_database_conflicts";`,
+					ExpectedErr: "not",
+				},
+				{ // Different cases and quoted, so it fails
+					Query:       `SELECT * FROM "pg_catalog"."PG_stat_database_conflicts";`,
+					ExpectedErr: "not",
+				},
+				{ // Different cases but non-quoted, so it works
+					Query:    "SELECT datname FROM PG_catalog.pg_STAT_DATABASE_CONFLICTS ORDER BY datname;",
+					Expected: []sql.Row{},
+				},
+			},
+		},
+	})
+}
+
+func TestPgStatGssapi(t *testing.T) {
+	RunScripts(t, []ScriptTest{
+		{
+			Name: "pg_stat_gssapi",
+			Assertions: []ScriptTestAssertion{
+				{
+					Query:    `SELECT * FROM "pg_catalog"."pg_stat_gssapi";`,
+					Expected: []sql.Row{},
+				},
+				{ // Different cases and quoted, so it fails
+					Query:       `SELECT * FROM "PG_catalog"."pg_stat_gssapi";`,
+					ExpectedErr: "not",
+				},
+				{ // Different cases and quoted, so it fails
+					Query:       `SELECT * FROM "pg_catalog"."PG_stat_gssapi";`,
+					ExpectedErr: "not",
+				},
+				{ // Different cases but non-quoted, so it works
+					Query:    "SELECT pid FROM PG_catalog.pg_STAT_GSSAPI ORDER BY pid;",
+					Expected: []sql.Row{},
+				},
+			},
+		},
+	})
+}
+
+func TestPgStatIo(t *testing.T) {
+	RunScripts(t, []ScriptTest{
+		{
+			Name: "pg_stat_io",
+			Assertions: []ScriptTestAssertion{
+				{
+					Query:    `SELECT * FROM "pg_catalog"."pg_stat_io";`,
+					Expected: []sql.Row{},
+				},
+				{ // Different cases and quoted, so it fails
+					Query:       `SELECT * FROM "PG_catalog"."pg_stat_io";`,
+					ExpectedErr: "not",
+				},
+				{ // Different cases and quoted, so it fails
+					Query:       `SELECT * FROM "pg_catalog"."PG_stat_io";`,
+					ExpectedErr: "not",
+				},
+				{ // Different cases but non-quoted, so it works
+					Query:    "SELECT object FROM PG_catalog.pg_STAT_IO ORDER BY object;",
+					Expected: []sql.Row{},
+				},
+			},
+		},
+	})
+}
+
+func TestPgStatProgressAnalyze(t *testing.T) {
+	RunScripts(t, []ScriptTest{
+		{
+			Name: "pg_stat_progress_analyze",
+			Assertions: []ScriptTestAssertion{
+				{
+					Query:    `SELECT * FROM "pg_catalog"."pg_stat_progress_analyze";`,
+					Expected: []sql.Row{},
+				},
+				{ // Different cases and quoted, so it fails
+					Query:       `SELECT * FROM "PG_catalog"."pg_stat_progress_analyze";`,
+					ExpectedErr: "not",
+				},
+				{ // Different cases and quoted, so it fails
+					Query:       `SELECT * FROM "pg_catalog"."PG_stat_progress_analyze";`,
+					ExpectedErr: "not",
+				},
+				{ // Different cases but non-quoted, so it works
+					Query:    "SELECT datname FROM PG_catalog.pg_STAT_PROGRESS_ANALYZE ORDER BY datname;",
+					Expected: []sql.Row{},
+				},
+			},
+		},
+	})
+}
+
+func TestPgStatProgressBasebackup(t *testing.T) {
+	RunScripts(t, []ScriptTest{
+		{
+			Name: "pg_stat_progress_basebackup",
+			Assertions: []ScriptTestAssertion{
+				{
+					Query:    `SELECT * FROM "pg_catalog"."pg_stat_progress_basebackup";`,
+					Expected: []sql.Row{},
+				},
+				{ // Different cases and quoted, so it fails
+					Query:       `SELECT * FROM "PG_catalog"."pg_stat_progress_basebackup";`,
+					ExpectedErr: "not",
+				},
+				{ // Different cases and quoted, so it fails
+					Query:       `SELECT * FROM "pg_catalog"."PG_stat_progress_basebackup";`,
+					ExpectedErr: "not",
+				},
+				{ // Different cases but non-quoted, so it works
+					Query:    "SELECT pid FROM PG_catalog.pg_STAT_PROGRESS_BASEBACKUP ORDER BY pid;",
+					Expected: []sql.Row{},
+				},
+			},
+		},
+	})
+}
+
+func TestPgStatProgressCluster(t *testing.T) {
+	RunScripts(t, []ScriptTest{
+		{
+			Name: "pg_stat_progress_cluster",
+			Assertions: []ScriptTestAssertion{
+				{
+					Query:    `SELECT * FROM "pg_catalog"."pg_stat_progress_cluster";`,
+					Expected: []sql.Row{},
+				},
+				{ // Different cases and quoted, so it fails
+					Query:       `SELECT * FROM "PG_catalog"."pg_stat_progress_cluster";`,
+					ExpectedErr: "not",
+				},
+				{ // Different cases and quoted, so it fails
+					Query:       `SELECT * FROM "pg_catalog"."PG_stat_progress_cluster";`,
+					ExpectedErr: "not",
+				},
+				{ // Different cases but non-quoted, so it works
+					Query:    "SELECT pid FROM PG_catalog.pg_STAT_PROGRESS_CLUSTER ORDER BY pid;",
+					Expected: []sql.Row{},
+				},
+			},
+		},
+	})
+}
+
+func TestPgStatProgressCopy(t *testing.T) {
+	RunScripts(t, []ScriptTest{
+		{
+			Name: "pg_stat_progress_copy",
+			Assertions: []ScriptTestAssertion{
+				{
+					Query:    `SELECT * FROM "pg_catalog"."pg_stat_progress_copy";`,
+					Expected: []sql.Row{},
+				},
+				{ // Different cases and quoted, so it fails
+					Query:       `SELECT * FROM "PG_catalog"."pg_stat_progress_copy";`,
+					ExpectedErr: "not",
+				},
+				{ // Different cases and quoted, so it fails
+					Query:       `SELECT * FROM "pg_catalog"."PG_stat_progress_copy";`,
+					ExpectedErr: "not",
+				},
+				{ // Different cases but non-quoted, so it works
+					Query:    "SELECT pid FROM PG_catalog.pg_STAT_PROGRESS_COPY ORDER BY pid;",
+					Expected: []sql.Row{},
+				},
+			},
+		},
+	})
+}
+
+func TestPgStatProgressCreateIndex(t *testing.T) {
+	RunScripts(t, []ScriptTest{
+		{
+			Name: "pg_stat_progress_create_index",
+			Assertions: []ScriptTestAssertion{
+				{
+					Query:    `SELECT * FROM "pg_catalog"."pg_stat_progress_create_index";`,
+					Expected: []sql.Row{},
+				},
+				{ // Different cases and quoted, so it fails
+					Query:       `SELECT * FROM "PG_catalog"."pg_stat_progress_create_index";`,
+					ExpectedErr: "not",
+				},
+				{ // Different cases and quoted, so it fails
+					Query:       `SELECT * FROM "pg_catalog"."PG_stat_progress_create_index";`,
+					ExpectedErr: "not",
+				},
+				{ // Different cases but non-quoted, so it works
+					Query:    "SELECT pid FROM PG_catalog.pg_STAT_PROGRESS_CREATE_INDEX ORDER BY pid;",
+					Expected: []sql.Row{},
+				},
+			},
+		},
+	})
+}
+
+func TestPgStatProgressVacuum(t *testing.T) {
+	RunScripts(t, []ScriptTest{
+		{
+			Name: "pg_stat_progress_vacuum",
+			Assertions: []ScriptTestAssertion{
+				{
+					Query:    `SELECT * FROM "pg_catalog"."pg_stat_progress_vacuum";`,
+					Expected: []sql.Row{},
+				},
+				{ // Different cases and quoted, so it fails
+					Query:       `SELECT * FROM "PG_catalog"."pg_stat_progress_vacuum";`,
+					ExpectedErr: "not",
+				},
+				{ // Different cases and quoted, so it fails
+					Query:       `SELECT * FROM "pg_catalog"."PG_stat_progress_vacuum";`,
+					ExpectedErr: "not",
+				},
+				{ // Different cases but non-quoted, so it works
+					Query:    "SELECT pid FROM PG_catalog.pg_STAT_PROGRESS_VACUUM ORDER BY pid;",
+					Expected: []sql.Row{},
+				},
+			},
+		},
+	})
+}
+
+func TestPgStatRecoveryPrefetch(t *testing.T) {
+	RunScripts(t, []ScriptTest{
+		{
+			Name: "pg_stat_recovery_prefetch",
+			Assertions: []ScriptTestAssertion{
+				{
+					Query:    `SELECT * FROM "pg_catalog"."pg_stat_recovery_prefetch";`,
+					Expected: []sql.Row{},
+				},
+				{ // Different cases and quoted, so it fails
+					Query:       `SELECT * FROM "PG_catalog"."pg_stat_recovery_prefetch";`,
+					ExpectedErr: "not",
+				},
+				{ // Different cases and quoted, so it fails
+					Query:       `SELECT * FROM "pg_catalog"."PG_stat_recovery_prefetch";`,
+					ExpectedErr: "not",
+				},
+				{ // Different cases but non-quoted, so it works
+					Query:    "SELECT hit FROM PG_catalog.pg_STAT_RECOVERY_PREFETCH ORDER BY hit;",
+					Expected: []sql.Row{},
+				},
+			},
+		},
+	})
+}
+
+func TestPgStatReplication(t *testing.T) {
+	RunScripts(t, []ScriptTest{
+		{
+			Name: "pg_stat_replication",
+			Assertions: []ScriptTestAssertion{
+				{
+					Query:    `SELECT * FROM "pg_catalog"."pg_stat_replication";`,
+					Expected: []sql.Row{},
+				},
+				{ // Different cases and quoted, so it fails
+					Query:       `SELECT * FROM "PG_catalog"."pg_stat_replication";`,
+					ExpectedErr: "not",
+				},
+				{ // Different cases and quoted, so it fails
+					Query:       `SELECT * FROM "pg_catalog"."PG_stat_replication";`,
+					ExpectedErr: "not",
+				},
+				{ // Different cases but non-quoted, so it works
+					Query:    "SELECT pid FROM PG_catalog.pg_STAT_REPLICATION ORDER BY pid;",
+					Expected: []sql.Row{},
+				},
+			},
+		},
+	})
+}
+
+func TestPgStatReplicationSlots(t *testing.T) {
+	RunScripts(t, []ScriptTest{
+		{
+			Name: "pg_stat_replication_slots",
+			Assertions: []ScriptTestAssertion{
+				{
+					Query:    `SELECT * FROM "pg_catalog"."pg_stat_replication_slots";`,
+					Expected: []sql.Row{},
+				},
+				{ // Different cases and quoted, so it fails
+					Query:       `SELECT * FROM "PG_catalog"."pg_stat_replication_slots";`,
+					ExpectedErr: "not",
+				},
+				{ // Different cases and quoted, so it fails
+					Query:       `SELECT * FROM "pg_catalog"."PG_stat_replication_slots";`,
+					ExpectedErr: "not",
+				},
+				{ // Different cases but non-quoted, so it works
+					Query:    "SELECT slot_name FROM PG_catalog.pg_STAT_REPLICATION_SLOTS ORDER BY slot_name;",
+					Expected: []sql.Row{},
+				},
+			},
+		},
+	})
+}
+
+func TestPgStatSlru(t *testing.T) {
+	RunScripts(t, []ScriptTest{
+		{
+			Name: "pg_stat_slru",
+			Assertions: []ScriptTestAssertion{
+				{
+					Query:    `SELECT * FROM "pg_catalog"."pg_stat_slru";`,
+					Expected: []sql.Row{},
+				},
+				{ // Different cases and quoted, so it fails
+					Query:       `SELECT * FROM "PG_catalog"."pg_stat_slru";`,
+					ExpectedErr: "not",
+				},
+				{ // Different cases and quoted, so it fails
+					Query:       `SELECT * FROM "pg_catalog"."PG_stat_slru";`,
+					ExpectedErr: "not",
+				},
+				{ // Different cases but non-quoted, so it works
+					Query:    "SELECT name FROM PG_catalog.pg_STAT_SLRU ORDER BY name;",
+					Expected: []sql.Row{},
+				},
+			},
+		},
+	})
+}
+
+func TestPgStatSsl(t *testing.T) {
+	RunScripts(t, []ScriptTest{
+		{
+			Name: "pg_stat_ssl",
+			Assertions: []ScriptTestAssertion{
+				{
+					Query:    `SELECT * FROM "pg_catalog"."pg_stat_ssl";`,
+					Expected: []sql.Row{},
+				},
+				{ // Different cases and quoted, so it fails
+					Query:       `SELECT * FROM "PG_catalog"."pg_stat_ssl";`,
+					ExpectedErr: "not",
+				},
+				{ // Different cases and quoted, so it fails
+					Query:       `SELECT * FROM "pg_catalog"."PG_stat_ssl";`,
+					ExpectedErr: "not",
+				},
+				{ // Different cases but non-quoted, so it works
+					Query:    "SELECT pid FROM PG_catalog.pg_STAT_SSL ORDER BY pid;",
+					Expected: []sql.Row{},
+				},
+			},
+		},
+	})
+}
+
+func TestPgStatSubscription(t *testing.T) {
+	RunScripts(t, []ScriptTest{
+		{
+			Name: "pg_stat_subscription",
+			Assertions: []ScriptTestAssertion{
+				{
+					Query:    `SELECT * FROM "pg_catalog"."pg_stat_subscription";`,
+					Expected: []sql.Row{},
+				},
+				{ // Different cases and quoted, so it fails
+					Query:       `SELECT * FROM "PG_catalog"."pg_stat_subscription";`,
+					ExpectedErr: "not",
+				},
+				{ // Different cases and quoted, so it fails
+					Query:       `SELECT * FROM "pg_catalog"."PG_stat_subscription";`,
+					ExpectedErr: "not",
+				},
+				{ // Different cases but non-quoted, so it works
+					Query:    "SELECT subid FROM PG_catalog.pg_STAT_SUBSCRIPTION ORDER BY subid;",
+					Expected: []sql.Row{},
+				},
+			},
+		},
+	})
+}
+
+func TestPgStatSubscriptionStats(t *testing.T) {
+	RunScripts(t, []ScriptTest{
+		{
+			Name: "pg_stat_subscription_stats",
+			Assertions: []ScriptTestAssertion{
+				{
+					Query:    `SELECT * FROM "pg_catalog"."pg_stat_subscription_stats";`,
+					Expected: []sql.Row{},
+				},
+				{ // Different cases and quoted, so it fails
+					Query:       `SELECT * FROM "PG_catalog"."pg_stat_subscription_stats";`,
+					ExpectedErr: "not",
+				},
+				{ // Different cases and quoted, so it fails
+					Query:       `SELECT * FROM "pg_catalog"."PG_stat_subscription_stats";`,
+					ExpectedErr: "not",
+				},
+				{ // Different cases but non-quoted, so it works
+					Query:    "SELECT subid FROM PG_catalog.pg_STAT_SUBSCRIPTION_STATS ORDER BY subid;",
+					Expected: []sql.Row{},
+				},
+			},
+		},
+	})
+}
+
+func TestPgStatSysIndexes(t *testing.T) {
+	RunScripts(t, []ScriptTest{
+		{
+			Name: "pg_stat_sys_indexes",
+			Assertions: []ScriptTestAssertion{
+				{
+					Query:    `SELECT * FROM "pg_catalog"."pg_stat_sys_indexes";`,
+					Expected: []sql.Row{},
+				},
+				{ // Different cases and quoted, so it fails
+					Query:       `SELECT * FROM "PG_catalog"."pg_stat_sys_indexes";`,
+					ExpectedErr: "not",
+				},
+				{ // Different cases and quoted, so it fails
+					Query:       `SELECT * FROM "pg_catalog"."PG_stat_sys_indexes";`,
+					ExpectedErr: "not",
+				},
+				{ // Different cases but non-quoted, so it works
+					Query:    "SELECT relid FROM PG_catalog.pg_STAT_SYS_INDEXES ORDER BY relid;",
+					Expected: []sql.Row{},
+				},
+			},
+		},
+	})
+}
+
+func TestPgStatSysTables(t *testing.T) {
+	RunScripts(t, []ScriptTest{
+		{
+			Name: "pg_stat_sys_tables",
+			Assertions: []ScriptTestAssertion{
+				{
+					Query:    `SELECT * FROM "pg_catalog"."pg_stat_sys_tables";`,
+					Expected: []sql.Row{},
+				},
+				{ // Different cases and quoted, so it fails
+					Query:       `SELECT * FROM "PG_catalog"."pg_stat_sys_tables";`,
+					ExpectedErr: "not",
+				},
+				{ // Different cases and quoted, so it fails
+					Query:       `SELECT * FROM "pg_catalog"."PG_stat_sys_tables";`,
+					ExpectedErr: "not",
+				},
+				{ // Different cases but non-quoted, so it works
+					Query:    "SELECT relid FROM PG_catalog.pg_STAT_SYS_TABLES ORDER BY relid;",
+					Expected: []sql.Row{},
+				},
+			},
+		},
+	})
+}
+
+func TestPgStatUserFunctions(t *testing.T) {
+	RunScripts(t, []ScriptTest{
+		{
+			Name: "pg_stat_user_functions",
+			Assertions: []ScriptTestAssertion{
+				{
+					Query:    `SELECT * FROM "pg_catalog"."pg_stat_user_functions";`,
+					Expected: []sql.Row{},
+				},
+				{ // Different cases and quoted, so it fails
+					Query:       `SELECT * FROM "PG_catalog"."pg_stat_user_functions";`,
+					ExpectedErr: "not",
+				},
+				{ // Different cases and quoted, so it fails
+					Query:       `SELECT * FROM "pg_catalog"."PG_stat_user_functions";`,
+					ExpectedErr: "not",
+				},
+				{ // Different cases but non-quoted, so it works
+					Query:    "SELECT funcid FROM PG_catalog.pg_STAT_USER_FUNCTIONS ORDER BY funcid;",
+					Expected: []sql.Row{},
+				},
+			},
+		},
+	})
+}
+
+func TestPgStatUserIndexes(t *testing.T) {
+	RunScripts(t, []ScriptTest{
+		{
+			Name: "pg_stat_user_indexes",
+			Assertions: []ScriptTestAssertion{
+				{
+					Query:    `SELECT * FROM "pg_catalog"."pg_stat_user_indexes";`,
+					Expected: []sql.Row{},
+				},
+				{ // Different cases and quoted, so it fails
+					Query:       `SELECT * FROM "PG_catalog"."pg_stat_user_indexes";`,
+					ExpectedErr: "not",
+				},
+				{ // Different cases and quoted, so it fails
+					Query:       `SELECT * FROM "pg_catalog"."PG_stat_user_indexes";`,
+					ExpectedErr: "not",
+				},
+				{ // Different cases but non-quoted, so it works
+					Query:    "SELECT relid FROM PG_catalog.pg_STAT_USER_INDEXES ORDER BY relid;",
+					Expected: []sql.Row{},
+				},
+			},
+		},
+	})
+}
+
+func TestPgStatUserTables(t *testing.T) {
+	RunScripts(t, []ScriptTest{
+		{
+			Name: "pg_stat_user_tables",
+			Assertions: []ScriptTestAssertion{
+				{
+					Query:    `SELECT * FROM "pg_catalog"."pg_stat_user_tables";`,
+					Expected: []sql.Row{},
+				},
+				{ // Different cases and quoted, so it fails
+					Query:       `SELECT * FROM "PG_catalog"."pg_stat_user_tables";`,
+					ExpectedErr: "not",
+				},
+				{ // Different cases and quoted, so it fails
+					Query:       `SELECT * FROM "pg_catalog"."PG_stat_user_tables";`,
+					ExpectedErr: "not",
+				},
+				{ // Different cases but non-quoted, so it works
+					Query:    "SELECT relid FROM PG_catalog.pg_STAT_USER_TABLES ORDER BY relid;",
+					Expected: []sql.Row{},
+				},
+			},
+		},
+	})
+}
+
+func TestPgStatWal(t *testing.T) {
+	RunScripts(t, []ScriptTest{
+		{
+			Name: "pg_stat_wal",
+			Assertions: []ScriptTestAssertion{
+				{
+					Query:    `SELECT * FROM "pg_catalog"."pg_stat_wal";`,
+					Expected: []sql.Row{},
+				},
+				{ // Different cases and quoted, so it fails
+					Query:       `SELECT * FROM "PG_catalog"."pg_stat_wal";`,
+					ExpectedErr: "not",
+				},
+				{ // Different cases and quoted, so it fails
+					Query:       `SELECT * FROM "pg_catalog"."PG_stat_wal";`,
+					ExpectedErr: "not",
+				},
+				{ // Different cases but non-quoted, so it works
+					Query:    "SELECT wal_records FROM PG_catalog.pg_STAT_WAL ORDER BY wal_records;",
+					Expected: []sql.Row{},
+				},
+			},
+		},
+	})
+}
+
+func TestPgStatWalReceiver(t *testing.T) {
+	RunScripts(t, []ScriptTest{
+		{
+			Name: "pg_stat_wal_receiver",
+			Assertions: []ScriptTestAssertion{
+				{
+					Query:    `SELECT * FROM "pg_catalog"."pg_stat_wal_receiver";`,
+					Expected: []sql.Row{},
+				},
+				{ // Different cases and quoted, so it fails
+					Query:       `SELECT * FROM "PG_catalog"."pg_stat_wal_receiver";`,
+					ExpectedErr: "not",
+				},
+				{ // Different cases and quoted, so it fails
+					Query:       `SELECT * FROM "pg_catalog"."PG_stat_wal_receiver";`,
+					ExpectedErr: "not",
+				},
+				{ // Different cases but non-quoted, so it works
+					Query:    "SELECT pid FROM PG_catalog.pg_STAT_WAL_RECEIVER ORDER BY pid;",
+					Expected: []sql.Row{},
+				},
+			},
+		},
+	})
+}
+
+func TestPgStatXactAllTables(t *testing.T) {
+	RunScripts(t, []ScriptTest{
+		{
+			Name: "pg_stat_xact_all_tables",
+			Assertions: []ScriptTestAssertion{
+				{
+					Query:    `SELECT * FROM "pg_catalog"."pg_stat_xact_all_tables";`,
+					Expected: []sql.Row{},
+				},
+				{ // Different cases and quoted, so it fails
+					Query:       `SELECT * FROM "PG_catalog"."pg_stat_xact_all_tables";`,
+					ExpectedErr: "not",
+				},
+				{ // Different cases and quoted, so it fails
+					Query:       `SELECT * FROM "pg_catalog"."PG_stat_xact_all_tables";`,
+					ExpectedErr: "not",
+				},
+				{ // Different cases but non-quoted, so it works
+					Query:    "SELECT relid FROM PG_catalog.pg_STAT_XACT_ALL_TABLES ORDER BY relid;",
+					Expected: []sql.Row{},
+				},
+			},
+		},
+	})
+}
+
+func TestPgStatXactSysTables(t *testing.T) {
+	RunScripts(t, []ScriptTest{
+		{
+			Name: "pg_stat_xact_sys_tables",
+			Assertions: []ScriptTestAssertion{
+				{
+					Query:    `SELECT * FROM "pg_catalog"."pg_stat_xact_sys_tables";`,
+					Expected: []sql.Row{},
+				},
+				{ // Different cases and quoted, so it fails
+					Query:       `SELECT * FROM "PG_catalog"."pg_stat_xact_sys_tables";`,
+					ExpectedErr: "not",
+				},
+				{ // Different cases and quoted, so it fails
+					Query:       `SELECT * FROM "pg_catalog"."PG_stat_xact_sys_tables";`,
+					ExpectedErr: "not",
+				},
+				{ // Different cases but non-quoted, so it works
+					Query:    "SELECT relid FROM PG_catalog.pg_STAT_XACT_SYS_TABLES ORDER BY relid;",
+					Expected: []sql.Row{},
+				},
+			},
+		},
+	})
+}
+
+func TestPgStatXactUserFunctions(t *testing.T) {
+	RunScripts(t, []ScriptTest{
+		{
+			Name: "pg_stat_xact_user_functions",
+			Assertions: []ScriptTestAssertion{
+				{
+					Query:    `SELECT * FROM "pg_catalog"."pg_stat_xact_user_functions";`,
+					Expected: []sql.Row{},
+				},
+				{ // Different cases and quoted, so it fails
+					Query:       `SELECT * FROM "PG_catalog"."pg_stat_xact_user_functions";`,
+					ExpectedErr: "not",
+				},
+				{ // Different cases and quoted, so it fails
+					Query:       `SELECT * FROM "pg_catalog"."PG_stat_xact_user_functions";`,
+					ExpectedErr: "not",
+				},
+				{ // Different cases but non-quoted, so it works
+					Query:    "SELECT funcid FROM PG_catalog.pg_STAT_XACT_USER_FUNCTIONS ORDER BY funcid;",
+					Expected: []sql.Row{},
+				},
+			},
+		},
+	})
+}
+
+func TestPgStatXactUserTables(t *testing.T) {
+	RunScripts(t, []ScriptTest{
+		{
+			Name: "pg_stat_xact_user_tables",
+			Assertions: []ScriptTestAssertion{
+				{
+					Query:    `SELECT * FROM "pg_catalog"."pg_stat_xact_user_tables";`,
+					Expected: []sql.Row{},
+				},
+				{ // Different cases and quoted, so it fails
+					Query:       `SELECT * FROM "PG_catalog"."pg_stat_xact_user_tables";`,
+					ExpectedErr: "not",
+				},
+				{ // Different cases and quoted, so it fails
+					Query:       `SELECT * FROM "pg_catalog"."PG_stat_xact_user_tables";`,
+					ExpectedErr: "not",
+				},
+				{ // Different cases but non-quoted, so it works
+					Query:    "SELECT relid FROM PG_catalog.pg_STAT_XACT_USER_TABLES ORDER BY relid;",
+					Expected: []sql.Row{},
+				},
+			},
+		},
+	})
+}
+
+func TestPgStatioAllIndexes(t *testing.T) {
+	RunScripts(t, []ScriptTest{
+		{
+			Name: "pg_statio_all_indexes",
+			Assertions: []ScriptTestAssertion{
+				{
+					Query:    `SELECT * FROM "pg_catalog"."pg_statio_all_indexes";`,
+					Expected: []sql.Row{},
+				},
+				{ // Different cases and quoted, so it fails
+					Query:       `SELECT * FROM "PG_catalog"."pg_statio_all_indexes";`,
+					ExpectedErr: "not",
+				},
+				{ // Different cases and quoted, so it fails
+					Query:       `SELECT * FROM "pg_catalog"."PG_statio_all_indexes";`,
+					ExpectedErr: "not",
+				},
+				{ // Different cases but non-quoted, so it works
+					Query:    "SELECT relid FROM PG_catalog.pg_STATIO_ALL_INDEXES ORDER BY relid;",
+					Expected: []sql.Row{},
+				},
+			},
+		},
+	})
+}
+
+func TestPgStatioAllSequences(t *testing.T) {
+	RunScripts(t, []ScriptTest{
+		{
+			Name: "pg_statio_all_sequences",
+			Assertions: []ScriptTestAssertion{
+				{
+					Query:    `SELECT * FROM "pg_catalog"."pg_statio_all_sequences";`,
+					Expected: []sql.Row{},
+				},
+				{ // Different cases and quoted, so it fails
+					Query:       `SELECT * FROM "PG_catalog"."pg_statio_all_sequences";`,
+					ExpectedErr: "not",
+				},
+				{ // Different cases and quoted, so it fails
+					Query:       `SELECT * FROM "pg_catalog"."PG_statio_all_sequences";`,
+					ExpectedErr: "not",
+				},
+				{ // Different cases but non-quoted, so it works
+					Query:    "SELECT relid FROM PG_catalog.pg_STATIO_ALL_SEQUENCES ORDER BY relid;",
+					Expected: []sql.Row{},
+				},
+			},
+		},
+	})
+}
+
+func TestPgStatioAllTables(t *testing.T) {
+	RunScripts(t, []ScriptTest{
+		{
+			Name: "pg_statio_all_tables",
+			Assertions: []ScriptTestAssertion{
+				{
+					Query:    `SELECT * FROM "pg_catalog"."pg_statio_all_tables";`,
+					Expected: []sql.Row{},
+				},
+				{ // Different cases and quoted, so it fails
+					Query:       `SELECT * FROM "PG_catalog"."pg_statio_all_tables";`,
+					ExpectedErr: "not",
+				},
+				{ // Different cases and quoted, so it fails
+					Query:       `SELECT * FROM "pg_catalog"."PG_statio_all_tables";`,
+					ExpectedErr: "not",
+				},
+				{ // Different cases but non-quoted, so it works
+					Query:    "SELECT relid FROM PG_catalog.pg_STATIO_ALL_TABLES ORDER BY relid;",
+					Expected: []sql.Row{},
+				},
+			},
+		},
+	})
+}
+
+func TestPgStatioSysIndexes(t *testing.T) {
+	RunScripts(t, []ScriptTest{
+		{
+			Name: "pg_statio_sys_indexes",
+			Assertions: []ScriptTestAssertion{
+				{
+					Query:    `SELECT * FROM "pg_catalog"."pg_statio_sys_indexes";`,
+					Expected: []sql.Row{},
+				},
+				{ // Different cases and quoted, so it fails
+					Query:       `SELECT * FROM "PG_catalog"."pg_statio_sys_indexes";`,
+					ExpectedErr: "not",
+				},
+				{ // Different cases and quoted, so it fails
+					Query:       `SELECT * FROM "pg_catalog"."PG_statio_sys_indexes";`,
+					ExpectedErr: "not",
+				},
+				{ // Different cases but non-quoted, so it works
+					Query:    "SELECT relid FROM PG_catalog.pg_STATIO_SYS_INDEXES ORDER BY relid;",
+					Expected: []sql.Row{},
+				},
+			},
+		},
+	})
+}
+
+func TestPgStatioSysSequences(t *testing.T) {
+	RunScripts(t, []ScriptTest{
+		{
+			Name: "pg_statio_sys_sequences",
+			Assertions: []ScriptTestAssertion{
+				{
+					Query:    `SELECT * FROM "pg_catalog"."pg_statio_sys_sequences";`,
+					Expected: []sql.Row{},
+				},
+				{ // Different cases and quoted, so it fails
+					Query:       `SELECT * FROM "PG_catalog"."pg_statio_sys_sequences";`,
+					ExpectedErr: "not",
+				},
+				{ // Different cases and quoted, so it fails
+					Query:       `SELECT * FROM "pg_catalog"."PG_statio_sys_sequences";`,
+					ExpectedErr: "not",
+				},
+				{ // Different cases but non-quoted, so it works
+					Query:    "SELECT relid FROM PG_catalog.pg_STATIO_SYS_SEQUENCES ORDER BY relid;",
+					Expected: []sql.Row{},
+				},
+			},
+		},
+	})
+}
+
+func TestPgStatioSysTables(t *testing.T) {
+	RunScripts(t, []ScriptTest{
+		{
+			Name: "pg_statio_sys_tables",
+			Assertions: []ScriptTestAssertion{
+				{
+					Query:    `SELECT * FROM "pg_catalog"."pg_statio_sys_tables";`,
+					Expected: []sql.Row{},
+				},
+				{ // Different cases and quoted, so it fails
+					Query:       `SELECT * FROM "PG_catalog"."pg_statio_sys_tables";`,
+					ExpectedErr: "not",
+				},
+				{ // Different cases and quoted, so it fails
+					Query:       `SELECT * FROM "pg_catalog"."PG_statio_sys_tables";`,
+					ExpectedErr: "not",
+				},
+				{ // Different cases but non-quoted, so it works
+					Query:    "SELECT relid FROM PG_catalog.pg_STATIO_SYS_TABLES ORDER BY relid;",
+					Expected: []sql.Row{},
+				},
+			},
+		},
+	})
+}
+
+func TestPgStatioUserIndexes(t *testing.T) {
+	RunScripts(t, []ScriptTest{
+		{
+			Name: "pg_statio_user_indexes",
+			Assertions: []ScriptTestAssertion{
+				{
+					Query:    `SELECT * FROM "pg_catalog"."pg_statio_user_indexes";`,
+					Expected: []sql.Row{},
+				},
+				{ // Different cases and quoted, so it fails
+					Query:       `SELECT * FROM "PG_catalog"."pg_statio_user_indexes";`,
+					ExpectedErr: "not",
+				},
+				{ // Different cases and quoted, so it fails
+					Query:       `SELECT * FROM "pg_catalog"."PG_statio_user_indexes";`,
+					ExpectedErr: "not",
+				},
+				{ // Different cases but non-quoted, so it works
+					Query:    "SELECT relid FROM PG_catalog.pg_STATIO_USER_INDEXES ORDER BY relid;",
+					Expected: []sql.Row{},
+				},
+			},
+		},
+	})
+}
+
+func TestPgStatioUserSequences(t *testing.T) {
+	RunScripts(t, []ScriptTest{
+		{
+			Name: "pg_statio_user_sequences",
+			Assertions: []ScriptTestAssertion{
+				{
+					Query:    `SELECT * FROM "pg_catalog"."pg_statio_user_sequences";`,
+					Expected: []sql.Row{},
+				},
+				{ // Different cases and quoted, so it fails
+					Query:       `SELECT * FROM "PG_catalog"."pg_statio_user_sequences";`,
+					ExpectedErr: "not",
+				},
+				{ // Different cases and quoted, so it fails
+					Query:       `SELECT * FROM "pg_catalog"."PG_statio_user_sequences";`,
+					ExpectedErr: "not",
+				},
+				{ // Different cases but non-quoted, so it works
+					Query:    "SELECT relid FROM PG_catalog.pg_STATIO_USER_SEQUENCES ORDER BY relid;",
+					Expected: []sql.Row{},
+				},
+			},
+		},
+	})
+}
+
+func TestPgStatioUserTables(t *testing.T) {
+	RunScripts(t, []ScriptTest{
+		{
+			Name: "pg_statio_user_tables",
+			Assertions: []ScriptTestAssertion{
+				{
+					Query:    `SELECT * FROM "pg_catalog"."pg_statio_user_tables";`,
+					Expected: []sql.Row{},
+				},
+				{ // Different cases and quoted, so it fails
+					Query:       `SELECT * FROM "PG_catalog"."pg_statio_user_tables";`,
+					ExpectedErr: "not",
+				},
+				{ // Different cases and quoted, so it fails
+					Query:       `SELECT * FROM "pg_catalog"."PG_statio_user_tables";`,
+					ExpectedErr: "not",
+				},
+				{ // Different cases but non-quoted, so it works
+					Query:    "SELECT relid FROM PG_catalog.pg_STATIO_USER_TABLES ORDER BY relid;",
 					Expected: []sql.Row{},
 				},
 			},
@@ -1362,6 +3105,162 @@ func TestPgStatisticExtData(t *testing.T) {
 	})
 }
 
+func TestPgStats(t *testing.T) {
+	RunScripts(t, []ScriptTest{
+		{
+			Name: "pg_stats",
+			Assertions: []ScriptTestAssertion{
+				{
+					Query:    `SELECT * FROM "pg_catalog"."pg_stats";`,
+					Expected: []sql.Row{},
+				},
+				{ // Different cases and quoted, so it fails
+					Query:       `SELECT * FROM "PG_catalog"."pg_stats";`,
+					ExpectedErr: "not",
+				},
+				{ // Different cases and quoted, so it fails
+					Query:       `SELECT * FROM "pg_catalog"."PG_stats";`,
+					ExpectedErr: "not",
+				},
+				{ // Different cases but non-quoted, so it works
+					Query:    "SELECT attname FROM PG_catalog.pg_STATS ORDER BY attname;",
+					Expected: []sql.Row{},
+				},
+			},
+		},
+	})
+}
+
+func TestPgStatsExt(t *testing.T) {
+	RunScripts(t, []ScriptTest{
+		{
+			Name: "pg_stats_ext",
+			Assertions: []ScriptTestAssertion{
+				{
+					Query:    `SELECT * FROM "pg_catalog"."pg_stats_ext";`,
+					Expected: []sql.Row{},
+				},
+				{ // Different cases and quoted, so it fails
+					Query:       `SELECT * FROM "PG_catalog"."pg_stats_ext";`,
+					ExpectedErr: "not",
+				},
+				{ // Different cases and quoted, so it fails
+					Query:       `SELECT * FROM "pg_catalog"."PG_stats_ext";`,
+					ExpectedErr: "not",
+				},
+				{ // Different cases but non-quoted, so it works
+					Query:    "SELECT statistics_name FROM PG_catalog.pg_STATS_EXT ORDER BY statistics_name;",
+					Expected: []sql.Row{},
+				},
+			},
+		},
+	})
+}
+
+func TestPgStatsExtExprs(t *testing.T) {
+	RunScripts(t, []ScriptTest{
+		{
+			Name: "pg_stats_ext_exprs",
+			Assertions: []ScriptTestAssertion{
+				{
+					Query:    `SELECT * FROM "pg_catalog"."pg_stats_ext_exprs";`,
+					Expected: []sql.Row{},
+				},
+				{ // Different cases and quoted, so it fails
+					Query:       `SELECT * FROM "PG_catalog"."pg_stats_ext_exprs";`,
+					ExpectedErr: "not",
+				},
+				{ // Different cases and quoted, so it fails
+					Query:       `SELECT * FROM "pg_catalog"."PG_stats_ext_exprs";`,
+					ExpectedErr: "not",
+				},
+				{ // Different cases but non-quoted, so it works
+					Query:    "SELECT statistics_name FROM PG_catalog.pg_STATS_EXT_EXPRS ORDER BY statistics_name;",
+					Expected: []sql.Row{},
+				},
+			},
+		},
+	})
+}
+
+func TestPgTables(t *testing.T) {
+	RunScripts(t, []ScriptTest{
+		{
+			Name: "pg_tables",
+			Assertions: []ScriptTestAssertion{
+				{
+					Query:    `SELECT * FROM "pg_catalog"."pg_tables";`,
+					Expected: []sql.Row{},
+				},
+				{ // Different cases and quoted, so it fails
+					Query:       `SELECT * FROM "PG_catalog"."pg_tables";`,
+					ExpectedErr: "not",
+				},
+				{ // Different cases and quoted, so it fails
+					Query:       `SELECT * FROM "pg_catalog"."PG_tables";`,
+					ExpectedErr: "not",
+				},
+				{ // Different cases but non-quoted, so it works
+					Query:    "SELECT tablename FROM PG_catalog.pg_TABLES ORDER BY tablename;",
+					Expected: []sql.Row{},
+				},
+			},
+		},
+	})
+}
+
+func TestPgTimezoneAbbrevs(t *testing.T) {
+	RunScripts(t, []ScriptTest{
+		{
+			Name: "pg_timezone_abbrevs",
+			Assertions: []ScriptTestAssertion{
+				{
+					Query:    `SELECT * FROM "pg_catalog"."pg_timezone_abbrevs";`,
+					Expected: []sql.Row{},
+				},
+				{ // Different cases and quoted, so it fails
+					Query:       `SELECT * FROM "PG_catalog"."pg_timezone_abbrevs";`,
+					ExpectedErr: "not",
+				},
+				{ // Different cases and quoted, so it fails
+					Query:       `SELECT * FROM "pg_catalog"."PG_timezone_abbrevs";`,
+					ExpectedErr: "not",
+				},
+				{ // Different cases but non-quoted, so it works
+					Query:    "SELECT abbrev FROM PG_catalog.pg_TIMEZONE_ABBREVS ORDER BY abbrev;",
+					Expected: []sql.Row{},
+				},
+			},
+		},
+	})
+}
+
+func TestPgPgTimezoneNames(t *testing.T) {
+	RunScripts(t, []ScriptTest{
+		{
+			Name: "pg_timezone_names",
+			Assertions: []ScriptTestAssertion{
+				{
+					Query:    `SELECT * FROM "pg_catalog"."pg_timezone_names";`,
+					Expected: []sql.Row{},
+				},
+				{ // Different cases and quoted, so it fails
+					Query:       `SELECT * FROM "PG_catalog"."pg_timezone_names";`,
+					ExpectedErr: "not",
+				},
+				{ // Different cases and quoted, so it fails
+					Query:       `SELECT * FROM "pg_catalog"."PG_timezone_names";`,
+					ExpectedErr: "not",
+				},
+				{ // Different cases but non-quoted, so it works
+					Query:    "SELECT name FROM PG_catalog.pg_TIMEZONE_NAMES ORDER BY name;",
+					Expected: []sql.Row{},
+				},
+			},
+		},
+	})
+}
+
 func TestPgTrigger(t *testing.T) {
 	RunScripts(t, []ScriptTest{
 		{
@@ -1408,6 +3307,84 @@ func TestPgType(t *testing.T) {
 				{ // Different cases but non-quoted, so it works
 					Query:    "SELECT typname FROM PG_catalog.pg_TYPE WHERE typname LIKE '%char' ORDER BY typname;",
 					Expected: []sql.Row{{"bpchar"}, {"char"}, {"varchar"}},
+				},
+			},
+		},
+	})
+}
+
+func TestPgUser(t *testing.T) {
+	RunScripts(t, []ScriptTest{
+		{
+			Name: "pg_user",
+			Assertions: []ScriptTestAssertion{
+				{
+					Query:    `SELECT * FROM "pg_catalog"."pg_user";`,
+					Expected: []sql.Row{},
+				},
+				{ // Different cases and quoted, so it fails
+					Query:       `SELECT * FROM "PG_catalog"."pg_user";`,
+					ExpectedErr: "not",
+				},
+				{ // Different cases and quoted, so it fails
+					Query:       `SELECT * FROM "pg_catalog"."PG_user";`,
+					ExpectedErr: "not",
+				},
+				{ // Different cases but non-quoted, so it works
+					Query:    "SELECT usename FROM PG_catalog.pg_USER ORDER BY usename;",
+					Expected: []sql.Row{},
+				},
+			},
+		},
+	})
+}
+
+func TestPgUserMappings(t *testing.T) {
+	RunScripts(t, []ScriptTest{
+		{
+			Name: "pg_user_mappings",
+			Assertions: []ScriptTestAssertion{
+				{
+					Query:    `SELECT * FROM "pg_catalog"."pg_user_mappings";`,
+					Expected: []sql.Row{},
+				},
+				{ // Different cases and quoted, so it fails
+					Query:       `SELECT * FROM "PG_catalog"."pg_user_mappings";`,
+					ExpectedErr: "not",
+				},
+				{ // Different cases and quoted, so it fails
+					Query:       `SELECT * FROM "pg_catalog"."PG_user_mappings";`,
+					ExpectedErr: "not",
+				},
+				{ // Different cases but non-quoted, so it works
+					Query:    "SELECT umid FROM PG_catalog.pg_USER_MAPPINGS ORDER BY umid;",
+					Expected: []sql.Row{},
+				},
+			},
+		},
+	})
+}
+
+func TestPgViews(t *testing.T) {
+	RunScripts(t, []ScriptTest{
+		{
+			Name: "pg_views",
+			Assertions: []ScriptTestAssertion{
+				{
+					Query:    `SELECT * FROM "pg_catalog"."pg_views";`,
+					Expected: []sql.Row{},
+				},
+				{ // Different cases and quoted, so it fails
+					Query:       `SELECT * FROM "PG_catalog"."pg_views";`,
+					ExpectedErr: "not",
+				},
+				{ // Different cases and quoted, so it fails
+					Query:       `SELECT * FROM "pg_catalog"."PG_views";`,
+					ExpectedErr: "not",
+				},
+				{ // Different cases but non-quoted, so it works
+					Query:    "SELECT viewname FROM PG_catalog.pg_VIEWS ORDER BY viewname;",
+					Expected: []sql.Row{},
 				},
 			},
 		},
