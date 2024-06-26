@@ -50,7 +50,7 @@ func (p PgIndexHandler) RowIter(ctx *sql.Context) (sql.RowIter, error) {
 	c := sqle.NewDefault(doltSession.Provider()).Analyzer.Catalog
 
 	var indexes []sql.Index
-	err := dbAndSchemaIter(ctx, c, func(db sql.Database) (bool, error) {
+	err := currentDatabaseSchemaIter(ctx, c, func(db sql.Database) (bool, error) {
 		// Get tables and table indexes
 		err := sql.DBTableIter(ctx, db, func(t sql.Table) (cont bool, err error) {
 			if it, ok := t.(sql.IndexAddressable); ok {
@@ -58,9 +58,7 @@ func (p PgIndexHandler) RowIter(ctx *sql.Context) (sql.RowIter, error) {
 				if err != nil {
 					return false, err
 				}
-				for _, idx := range idxs {
-					indexes = append(indexes, idx)
-				}
+				indexes = append(indexes, idxs...)
 			}
 
 			return true, nil
