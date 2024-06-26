@@ -1174,7 +1174,7 @@ func TestPgNamespace(t *testing.T) {
 			Assertions: []ScriptTestAssertion{
 				{
 					Query:    `SELECT * FROM "pg_catalog"."pg_namespace";`,
-					Expected: []sql.Row{},
+					Expected: []sql.Row{{1, "pg_catalog", 0, nil}, {2, "public", 0, nil}},
 				},
 				{ // Different cases and quoted, so it fails
 					Query:       `SELECT * FROM "PG_catalog"."pg_namespace";`,
@@ -1186,7 +1186,7 @@ func TestPgNamespace(t *testing.T) {
 				},
 				{ // Different cases but non-quoted, so it works
 					Query:    "SELECT nspname FROM PG_catalog.pg_NAMESPACE ORDER BY nspname;",
-					Expected: []sql.Row{},
+					Expected: []sql.Row{{"pg_catalog"}, {"public"}},
 				},
 			},
 		},
