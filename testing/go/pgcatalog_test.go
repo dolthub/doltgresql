@@ -3265,6 +3265,10 @@ func TestPgTables(t *testing.T) {
 					Query:    `SELECT * FROM "pg_catalog"."pg_tables" WHERE tablename='testing';`,
 					Expected: []sql.Row{{"testschema", "testing", "", "", "t", "f", "f", "f"}},
 				},
+				{
+					Query:    `SELECT count(*) FROM "pg_catalog"."pg_tables" WHERE schemaname='pg_catalog';`,
+					Expected: []sql.Row{{129}},
+				},
 				{ // Different cases and quoted, so it fails
 					Query:       `SELECT * FROM "PG_catalog"."pg_tables";`,
 					ExpectedErr: "not",
@@ -3273,10 +3277,14 @@ func TestPgTables(t *testing.T) {
 					Query:       `SELECT * FROM "pg_catalog"."PG_tables";`,
 					ExpectedErr: "not",
 				},
-				// { // Different cases but non-quoted, so it works
-				// 	Query:    "SELECT tablename FROM PG_catalog.pg_TABLES ORDER BY tablename;",
-				// 	Expected: []sql.Row{},
-				// },
+				{ // Different cases but non-quoted, so it works
+					Query: "SELECT schemaname, tablename FROM PG_catalog.pg_TABLES ORDER BY tablename DESC LIMIT 3;",
+					Expected: []sql.Row{
+						{"testschema", "testing"},
+						{"pg_catalog", "pg_views"},
+						{"pg_catalog", "pg_user_mappings"},
+					},
+				},
 			},
 		},
 	})

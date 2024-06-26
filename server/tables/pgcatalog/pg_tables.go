@@ -51,6 +51,7 @@ func (p PgTablesHandler) RowIter(ctx *sql.Context) (sql.RowIter, error) {
 	var tables []sql.Table
 	var schemas []string
 
+	// TODO: This should include a few information_schema tables
 	err := currentDatabaseSchemaIter(ctx, c, func(sch sql.DatabaseSchema) (bool, error) {
 		// Get tables and table indexes
 		err := sql.DBTableIter(ctx, sch, func(t sql.Table) (cont bool, err error) {
@@ -125,6 +126,7 @@ func (iter *pgTablesRowIter) Next(ctx *sql.Context) (sql.Row, error) {
 		}
 	}
 
+	// TODO: Implement the rest of these pg_tables columns
 	return sql.Row{
 		schema,       // schemaname
 		table.Name(), // tablename
