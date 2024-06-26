@@ -43,6 +43,9 @@ func (p PgClassHandler) Name() string {
 	return PgClassName
 }
 
+// dbAndSchemaIter iterates over all databases and schemas in the catalog,
+// calling cb for each database and schema. Once all databases and schemas have
+// been processed or the callback returns false or an error, the iteration stops.
 func dbAndSchemaIter(ctx *sql.Context, c sql.Catalog, cb func(db sql.Database) (bool, error)) error {
 	dbs := c.AllDatabases(ctx)
 
@@ -179,6 +182,7 @@ var pgClassSchema = sql.Schema{
 	{Name: "relpartbound", Type: pgtypes.Text, Default: nil, Nullable: true, Source: PgClassName},    // TODO: type pg_node_tree, collation C
 }
 
+// Class represents a row in the pg_class table.
 type Class struct {
 	name       string
 	hasIndexes bool
