@@ -169,7 +169,6 @@ var doubleKeyword = regexp.MustCompile(`(?i)\bdouble\b`)
 var datetimeKeyword = regexp.MustCompile(`(?i)\bdatetime\b`)
 var mediumIntKeyword = regexp.MustCompile(`(?i)\bmediumint\b`)
 var tinyIntKeyword = regexp.MustCompile(`(?i)\btinyint\b`)
-var backtick = "`"
 
 // sanitizeQuery strips the query string given of any unsupported constructs without attempting to actually convert
 // to Postgres syntax.
@@ -192,8 +191,6 @@ func sanitizeQuery(s string) (bool, string) {
 	}
 
 	s = commentClause.ReplaceAllString(s, "")
-	s = strings.ReplaceAll(s, backtick, `"`)
-
 	return true, s
 }
 
@@ -331,9 +328,14 @@ func Ptr[T any](v T) *T {
 	return &v
 }
 
+const port = 5433
+
 func NewDoltgresQueryEngine(t *testing.T, harness *DoltgresHarness) *DoltgresQueryEngine {
 	ctrl, err := server.RunInMemory(&servercfg.DoltgresConfig{
 		LogLevelStr: Ptr("debug"),
+		ListenerConfig: &servercfg.DoltgresListenerConfig{
+			PortNumber:              Ptr(port),
+		},
 	})
 	require.NoError(t, err)
 	return &DoltgresQueryEngine{
@@ -351,9 +353,11 @@ func (d DoltgresQueryEngine) AnalyzeQuery(s *sql.Context, s2 string) (sql.Node, 
 }
 
 // TODO: random port
-var doltgresNoDbDsn = "postgresql://doltgres:password@127.0.0.1:5432/?sslmode=disable"
+var doltgresNoDbDsn = fmt.Sprintf("postgresql://doltgres:password@127.0.0.1:%d/?sslmode=disable", port)
 
 func (d DoltgresQueryEngine) Query(ctx *sql.Context, query string) (sql.Schema, sql.RowIter, error) {
+	query = normalizeStrings(query)
+	
 	db, err := gosql.Open("pgx", doltgresNoDbDsn)
 	if err != nil {
 		return nil, nil, err
@@ -395,6 +399,176 @@ func (d DoltgresQueryEngine) Query(ctx *sql.Context, query string) (sql.Schema, 
 	return schema, sql.RowsToRowIter(results...), nil
 }
 
+// little state machine for turning MySQL quote characters into their postgres equivalents 
+type stringParserState byte
+
+const (
+	notInString stringParserState = iota
+	inDoubleQuote
+	maybeEndDoubleQuote
+	inSingleQuote
+	maybeEndSingleQuote
+	inBackticks
+	maybeEndBackticks
+)
+
+const singleQuote = '\''
+const doubleQuote = '"'
+const backtick = '`'
+const backslash = '\\'
+
+// normalizeStrings normalizes a query string to convert any MySQL syntax to Postgres syntax
+func normalizeStrings(q string) string {
+	state := notInString
+	normalized := strings.Builder{}
+	
+	for _, c := range q {
+		switch state {
+		case notInString:
+			switch c {
+			case singleQuote:
+				state = inSingleQuote
+				normalized.WriteRune(singleQuote)
+			case doubleQuote:
+				state = inDoubleQuote
+				normalized.WriteRune(singleQuote)
+			case backtick:
+				state = inBackticks
+				normalized.WriteRune(doubleQuote)
+			default:
+				normalized.WriteRune(c)
+			}
+		case inDoubleQuote:
+			switch c {
+			case doubleQuote:
+				state = maybeEndDoubleQuote
+			case singleQuote:
+				normalized.WriteRune(singleQuote)
+				normalized.WriteRune(singleQuote)
+			default:
+				normalized.WriteRune(c)
+			}
+		case maybeEndDoubleQuote:
+			switch c {
+			case doubleQuote:
+				state = inDoubleQuote
+				normalized.WriteRune(doubleQuote)
+			default:
+				state = notInString
+				normalized.WriteRune(singleQuote)
+				normalized.WriteRune(c)
+			}
+		case inSingleQuote:
+			switch c {
+			case singleQuote:
+				state = maybeEndSingleQuote
+			default:
+				normalized.WriteRune(c)
+			}
+		case maybeEndSingleQuote:
+			switch c {
+			case singleQuote:
+				state = inSingleQuote
+				normalized.WriteRune(singleQuote)
+				normalized.WriteRune(singleQuote)
+			default:
+				state = notInString
+				normalized.WriteRune(singleQuote)
+				normalized.WriteRune(c)
+			}
+		case inBackticks:
+			switch c {
+			case backtick:
+				state = maybeEndBackticks
+			default:
+				normalized.WriteRune(c)
+			}
+		case maybeEndBackticks:
+			switch c {
+			case backtick:
+				state = inBackticks
+				normalized.WriteRune(backtick)
+			default:
+				state = notInString
+				normalized.WriteRune(doubleQuote)
+				normalized.WriteRune(c)
+			}
+		default:
+			panic("unknown state")
+		}
+	}
+	
+	// If reached the end of input unsure whether to unquote a string, do so now
+	switch state {
+	case maybeEndDoubleQuote:
+		normalized.WriteRune(singleQuote)
+	case maybeEndSingleQuote:
+		normalized.WriteRune(singleQuote)
+	case maybeEndBackticks:
+		normalized.WriteRune(doubleQuote)
+		default: // do nothing
+	}
+	
+	return normalized.String()
+}
+
+// Test converting MySQL strings to Postgres strings
+func TestNormalizeStrings(t *testing.T) {
+	type test struct {
+		input    string
+		expected string
+	}
+	tests := []test{
+		{
+			input:    "SELECT 'foo' FROM 'bar'",
+			expected: `SELECT 'foo' FROM 'bar'`,
+		},
+		{
+			input:    `SELECT "foo"`,
+			expected: `SELECT 'foo'`,
+		},
+		{
+			input:    "SELECT 'fo''o'",
+			expected: `SELECT 'fo''o'`,
+		},
+		{
+			input:    `SELECT "fo''o"`,
+			expected: `SELECT 'fo''''o'`,
+		},
+		{
+			input:    `SELECT "fo""o"`,
+			expected: `SELECT 'fo"o'`,
+		},
+		{
+			input:    `SELECT 'fo""o'`,
+			expected: `SELECT 'fo""o'`,
+		},
+		{
+			input:    "SELECT `foo` FROM `bar`",
+			expected: `SELECT "foo" FROM "bar"`,
+		},
+		{
+			input:    "SELECT 'foo' FROM `bar`",
+			expected: `SELECT 'foo' FROM "bar"`,
+		},
+		{
+			input:    "SELECT `f\"o'o` FROM `ba``r`",
+			expected: "SELECT \"f\"o'o\" FROM \"ba`r\"",
+		},
+		{
+			input:    "SELECT \"foo\" from `bar` where `bar`.`baz` = \"qux\"",
+			expected: `SELECT 'foo' from "bar" where "bar"."baz" = 'qux'`,
+		},
+	}
+
+	for _, test := range tests {
+		t.Run(test.input, func(t *testing.T) {
+			actual := normalizeStrings(test.input)
+			require.Equal(t, test.expected, actual)
+		})
+	}
+}
+
 func toRow(schema sql.Schema, r []interface{}) (sql.Row, error) {
 	row := make(sql.Row, len(schema))
 	for i, col := range schema {
@@ -403,6 +577,12 @@ func toRow(schema sql.Schema, r []interface{}) (sql.Row, error) {
 			return nil, err
 		}
 
+		// special case: boolean results are returned as strings
+		if val == "t" || val == "f" {
+			row[i] = val == "t"
+			continue
+		}
+		
 		row[i], _, err = col.Type.Convert(val)
 		if err != nil {
 			return nil, err
