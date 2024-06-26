@@ -399,7 +399,28 @@ func (d DoltgresQueryEngine) Query(ctx *sql.Context, query string) (sql.Schema, 
 	return schema, sql.RowsToRowIter(results...), nil
 }
 
-// little state machine for turning MySQL quote characters into their postgres equivalents 
+// little state machine for turning MySQL quote characters into their postgres equivalents:
+/*
+               ┌───────────────────*─────────────────────────┐           
+               │                   ┌─*─┐                     *           
+               │               ┌───┴───▼──────┐         ┌────┴─────────┐ 
+               │     ┌────"───►│ In double    │◄───"────┤End double    │ 
+               │     │         │ quoted string│────"───►│quoted string?│ 
+               │     │         └──────────────┘         └──────────────┘ 
+               ├─────(──────────────────*───────────────────┐            
+      ┌─*──┐   ▼     │                                      *            
+      │    ├─────────┴┐            ┌─*─┐                    │            
+      └───►│ Not in   │        ┌───┴───▼─────┐          ┌───┴──────────┐ 
+           │ string   ├───'───►│In single    │◄────'────┤End single    │ 
+  ────────►└─────────┬┘        │quoted string│─────'───►│quoted string?│ 
+  START        ▲     │         └─────────────┘          └──────────────┘ 
+               └─────(──────────────────*───────────────────┐            
+                     │            ┌─*──┐                    *            
+                     │        ┌───┴────▼────┐           ┌───┴──────────┐ 
+                     └───`───►│In backtick  │◄─────`────┤End backtick  │ 
+                              │quoted string│──────`───►│quoted string?│ 
+                              └─────────────┘           └──────────────┘ 
+ */
 type stringParserState byte
 
 const (
@@ -415,7 +436,6 @@ const (
 const singleQuote = '\''
 const doubleQuote = '"'
 const backtick = '`'
-const backslash = '\\'
 
 // normalizeStrings normalizes a query string to convert any MySQL syntax to Postgres syntax
 func normalizeStrings(q string) string {
