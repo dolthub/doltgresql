@@ -43,7 +43,10 @@ func (p PgClassHandler) Name() string {
 	return PgClassName
 }
 
-func schemasIter(ctx *sql.Context, db sql.Database, cb func(schema sql.Database) (bool, error)) error {
+// schemaIter iterates over all schemas in the provided database, calling cb
+// for each schema. Once all schemas have been processed or the callback returns
+// false or an error, the iteration stops.
+func schemaIter(ctx *sql.Context, db sql.Database, cb func(schema sql.DatabaseSchema) (bool, error)) error {
 	if schDB, ok := db.(sql.SchemaDatabase); ok {
 		schemas, err := schDB.AllSchemas(ctx)
 		if err != nil {
@@ -64,17 +67,47 @@ func schemasIter(ctx *sql.Context, db sql.Database, cb func(schema sql.Database)
 	return nil
 }
 
-// currentDatabaseSchemaIter iterates over all schemas in the current database,
-// calling cb for the database and each schema. Once all schemas have been
-// processed or the callback returns false or an error, the iteration stops.
-func currentDatabaseSchemaIter(ctx *sql.Context, c sql.Catalog, cb func(db sql.Database) (bool, error)) error {
+// currentDatabaseSchemaIter iterates over all schemas in the current database, calling cb
+// for each schema. Once all schemas have been processed or the callback returns
+// false or an error, the iteration stops.
+func currentDatabaseSchemaIter(ctx *sql.Context, c sql.Catalog, cb func(schema sql.DatabaseSchema) (bool, error)) error {
 	currentDB := ctx.GetCurrentDatabase()
 	db, err := c.Database(ctx, currentDB)
 	if err != nil {
 		return err
 	}
 
-	err = schemasIter(ctx, db, cb)
+	err = schemaIter(ctx, db, func(schema sql.DatabaseSchema) (bool, error) {
+		cont, err := cb(schema)
+		if err != nil {
+			return false, err
+		}
+		return cont, nil
+	})
+	if err != nil {
+		return err
+	}
+
+	return nil
+}
+
+// currentDatabaseAndSchemaIter iterates over all schemas in the current database,
+// calling cb for the database and each schema. Once all schemas have been
+// processed or the callback returns false or an error, the iteration stops.
+func currentDatabaseAndSchemaIter(ctx *sql.Context, c sql.Catalog, cb func(db sql.Database) (bool, error)) error {
+	currentDB := ctx.GetCurrentDatabase()
+	db, err := c.Database(ctx, currentDB)
+	if err != nil {
+		return err
+	}
+
+	err = schemaIter(ctx, db, func(schema sql.DatabaseSchema) (bool, error) {
+		cont, err := cb(schema)
+		if err != nil {
+			return false, err
+		}
+		return cont, nil
+	})
 	if err != nil {
 		return err
 	}
@@ -94,7 +127,7 @@ func (p PgClassHandler) RowIter(ctx *sql.Context) (sql.RowIter, error) {
 
 	var classes []Class
 
-	err := currentDatabaseSchemaIter(ctx, c, func(db sql.Database) (bool, error) {
+	err := currentDatabaseAndSchemaIter(ctx, c, func(db sql.Database) (bool, error) {
 		// Get tables and table indexes
 		err := sql.DBTableIter(ctx, db, func(t sql.Table) (cont bool, err error) {
 			hasIndexes := false

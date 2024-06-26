@@ -51,17 +51,11 @@ func (p PgTablesHandler) RowIter(ctx *sql.Context) (sql.RowIter, error) {
 	var tables []sql.Table
 	var schemas []string
 
-	currentDB := ctx.GetCurrentDatabase()
-	db, err := c.Database(ctx, currentDB)
-	if err != nil {
-		return nil, err
-	}
-
-	err = schemasIter(ctx, db, func(sch sql.Database) (bool, error) {
+	err := currentDatabaseSchemaIter(ctx, c, func(sch sql.DatabaseSchema) (bool, error) {
 		// Get tables and table indexes
 		err := sql.DBTableIter(ctx, sch, func(t sql.Table) (cont bool, err error) {
 			tables = append(tables, t)
-			schemas = append(schemas, sch.Name())
+			schemas = append(schemas, sch.SchemaName())
 			return true, nil
 		})
 		if err != nil {
