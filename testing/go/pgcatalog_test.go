@@ -3267,7 +3267,7 @@ func TestPgTables(t *testing.T) {
 				},
 				{
 					Query:    `SELECT count(*) FROM "pg_catalog"."pg_tables" WHERE schemaname='pg_catalog';`,
-					Expected: []sql.Row{{129}},
+					Expected: []sql.Row{{139}},
 				},
 				{ // Different cases and quoted, so it fails
 					Query:       `SELECT * FROM "PG_catalog"."pg_tables";`,
