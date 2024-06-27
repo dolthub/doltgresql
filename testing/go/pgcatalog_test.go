@@ -970,10 +970,19 @@ func TestPgIndexes(t *testing.T) {
 	RunScripts(t, []ScriptTest{
 		{
 			Name: "pg_indexes",
+			SetUpScript: []string{
+				"CREATE SCHEMA testschema;",
+				"SET search_path TO testschema;",
+				`CREATE TABLE testing (pk INT primary key, v1 INT);`,
+				`CREATE TABLE testing2 (pk INT, v1 INT, PRIMARY KEY (pk, v1));`,
+			},
 			Assertions: []ScriptTestAssertion{
 				{
-					Query:    `SELECT * FROM "pg_catalog"."pg_indexes";`,
-					Expected: []sql.Row{},
+					Query: `SELECT * FROM "pg_catalog"."pg_indexes";`,
+					Expected: []sql.Row{
+						{"testschema", "testing", "PRIMARY", "", ""},
+						{"testschema", "testing2", "PRIMARY", "", ""},
+					},
 				},
 				{ // Different cases and quoted, so it fails
 					Query:       `SELECT * FROM "PG_catalog"."pg_indexes";`,
@@ -985,7 +994,7 @@ func TestPgIndexes(t *testing.T) {
 				},
 				{ // Different cases but non-quoted, so it works
 					Query:    "SELECT indexname FROM PG_catalog.pg_INDEXES ORDER BY indexname;",
-					Expected: []sql.Row{},
+					Expected: []sql.Row{{"PRIMARY"}, {"PRIMARY"}},
 				},
 			},
 		},

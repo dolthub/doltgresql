@@ -17,6 +17,8 @@ package pgcatalog
 import (
 	"io"
 
+	"github.com/dolthub/dolt/go/libraries/doltcore/sqle/dsess"
+	sqle "github.com/dolthub/go-mysql-server"
 	"github.com/dolthub/go-mysql-server/sql"
 
 	"github.com/dolthub/doltgresql/server/tables"
@@ -43,8 +45,41 @@ func (p PgIndexesHandler) Name() string {
 
 // RowIter implements the interface tables.Handler.
 func (p PgIndexesHandler) RowIter(ctx *sql.Context) (sql.RowIter, error) {
-	// TODO: Implement pg_indexes row iter
-	return emptyRowIter()
+	doltSession := dsess.DSessFromSess(ctx.Session)
+	c := sqle.NewDefault(doltSession.Provider()).Analyzer.Catalog
+
+	var indexes []sql.Index
+	var schemas []string
+
+	_, err := currentDatabaseSchemaIter(ctx, c, func(db sql.DatabaseSchema) (bool, error) {
+		// Get tables and table indexes
+		err := sql.DBTableIter(ctx, db, func(t sql.Table) (cont bool, err error) {
+			if it, ok := t.(sql.IndexAddressable); ok {
+				idxs, err := it.GetIndexes(ctx)
+				if err != nil {
+					return false, err
+				}
+				indexes = append(indexes, idxs...)
+				schemas = append(schemas, db.SchemaName())
+			}
+
+			return true, nil
+		})
+		if err != nil {
+			return false, err
+		}
+
+		return true, nil
+	})
+	if err != nil {
+		return nil, err
+	}
+
+	return &pgIndexesRowIter{
+		indexes: indexes,
+		schemas: schemas,
+		idx:     0,
+	}, nil
 }
 
 // Schema implements the interface tables.Handler.
@@ -66,13 +101,29 @@ var pgIndexesSchema = sql.Schema{
 
 // pgIndexesRowIter is the sql.RowIter for the pg_indexes table.
 type pgIndexesRowIter struct {
+	indexes []sql.Index
+	schemas []string
+	idx     int
 }
 
 var _ sql.RowIter = (*pgIndexesRowIter)(nil)
 
 // Next implements the interface sql.RowIter.
 func (iter *pgIndexesRowIter) Next(ctx *sql.Context) (sql.Row, error) {
-	return nil, io.EOF
+	if iter.idx >= len(iter.indexes) {
+		return nil, io.EOF
+	}
+	iter.idx++
+	index := iter.indexes[iter.idx-1]
+	schema := iter.schemas[iter.idx-1]
+
+	return sql.Row{
+		schema,        // schemaname
+		index.Table(), // tablename
+		index.ID(),    // indexname
+		"",            // tablespace
+		"",            // indexdef
+	}, nil
 }
 
 // Close implements the interface sql.RowIter.
