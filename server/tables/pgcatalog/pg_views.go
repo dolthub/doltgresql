@@ -17,6 +17,8 @@ package pgcatalog
 import (
 	"io"
 
+	"github.com/dolthub/dolt/go/libraries/doltcore/sqle/dsess"
+	sqle "github.com/dolthub/go-mysql-server"
 	"github.com/dolthub/go-mysql-server/sql"
 
 	"github.com/dolthub/doltgresql/server/tables"
@@ -43,8 +45,31 @@ func (p PgViewsHandler) Name() string {
 
 // RowIter implements the interface tables.Handler.
 func (p PgViewsHandler) RowIter(ctx *sql.Context) (sql.RowIter, error) {
-	// TODO: Implement pg_views row iter
-	return emptyRowIter()
+	doltSession := dsess.DSessFromSess(ctx.Session)
+	c := sqle.NewDefault(doltSession.Provider()).Analyzer.Catalog
+
+	var views []sql.ViewDefinition
+
+	currentDB := ctx.GetCurrentDatabase()
+	db, err := c.Database(ctx, currentDB)
+	if err != nil {
+		return nil, err
+	}
+
+	// TODO: Views should exist on schema
+	if vdb, ok := db.(sql.ViewDatabase); ok {
+		vws, err := vdb.AllViews(ctx)
+		if err != nil {
+			return nil, err
+		}
+
+		views = append(views, vws...)
+	}
+
+	return &pgViewsRowIter{
+		views: views,
+		idx:   0,
+	}, nil
 }
 
 // Schema implements the interface tables.Handler.
@@ -65,13 +90,27 @@ var pgViewsSchema = sql.Schema{
 
 // pgViewsRowIter is the sql.RowIter for the pg_views table.
 type pgViewsRowIter struct {
+	views []sql.ViewDefinition
+	idx   int
 }
 
 var _ sql.RowIter = (*pgViewsRowIter)(nil)
 
 // Next implements the interface sql.RowIter.
 func (iter *pgViewsRowIter) Next(ctx *sql.Context) (sql.Row, error) {
-	return nil, io.EOF
+	if iter.idx >= len(iter.views) {
+		return nil, io.EOF
+	}
+	iter.idx++
+	view := iter.views[iter.idx-1]
+
+	return sql.Row{
+		"public",  // schemaname
+		view.Name, // viewname
+		"",        // viewowner
+		// TODO: TextDefinition not populated
+		view.TextDefinition, // definition
+	}, nil
 }
 
 // Close implements the interface sql.RowIter.
