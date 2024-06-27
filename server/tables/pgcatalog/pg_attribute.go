@@ -55,7 +55,7 @@ func (p PgAttributeHandler) RowIter(ctx *sql.Context) (sql.RowIter, error) {
 
 	var cols []*sql.Column
 
-	err := currentDatabaseAndSchemaIter(ctx, c, func(db sql.Database) (bool, error) {
+	_, err := currentDatabaseSchemaIter(ctx, c, func(db sql.DatabaseSchema) (bool, error) {
 		err := sql.DBTableIter(ctx, db, func(t sql.Table) (cont bool, err error) {
 			for _, col := range t.Schema() {
 				cols = append(cols, col)

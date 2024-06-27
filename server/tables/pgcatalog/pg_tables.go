@@ -52,7 +52,7 @@ func (p PgTablesHandler) RowIter(ctx *sql.Context) (sql.RowIter, error) {
 	var schemas []string
 
 	// TODO: This should include a few information_schema tables
-	err := currentDatabaseSchemaIter(ctx, c, func(sch sql.DatabaseSchema) (bool, error) {
+	_, err := currentDatabaseSchemaIter(ctx, c, func(sch sql.DatabaseSchema) (bool, error) {
 		// Get tables and table indexes
 		err := sql.DBTableIter(ctx, sch, func(t sql.Table) (cont bool, err error) {
 			tables = append(tables, t)

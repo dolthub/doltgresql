@@ -43,20 +43,26 @@ func (p PgClassHandler) Name() string {
 	return PgClassName
 }
 
-// schemaIter iterates over all schemas in the provided database, calling cb
+// currentDatabaseSchemaIter iterates over all schemas in the current database, calling cb
 // for each schema. Once all schemas have been processed or the callback returns
 // false or an error, the iteration stops.
-func schemaIter(ctx *sql.Context, db sql.Database, cb func(schema sql.DatabaseSchema) (bool, error)) error {
+func currentDatabaseSchemaIter(ctx *sql.Context, c sql.Catalog, cb func(schema sql.DatabaseSchema) (bool, error)) (sql.Database, error) {
+	currentDB := ctx.GetCurrentDatabase()
+	db, err := c.Database(ctx, currentDB)
+	if err != nil {
+		return nil, err
+	}
+
 	if schDB, ok := db.(sql.SchemaDatabase); ok {
 		schemas, err := schDB.AllSchemas(ctx)
 		if err != nil {
-			return err
+			return nil, err
 		}
 
 		for _, schema := range schemas {
 			cont, err := cb(schema)
 			if err != nil {
-				return err
+				return nil, err
 			}
 			if !cont {
 				break
@@ -64,60 +70,7 @@ func schemaIter(ctx *sql.Context, db sql.Database, cb func(schema sql.DatabaseSc
 		}
 	}
 
-	return nil
-}
-
-// currentDatabaseSchemaIter iterates over all schemas in the current database, calling cb
-// for each schema. Once all schemas have been processed or the callback returns
-// false or an error, the iteration stops.
-func currentDatabaseSchemaIter(ctx *sql.Context, c sql.Catalog, cb func(schema sql.DatabaseSchema) (bool, error)) error {
-	currentDB := ctx.GetCurrentDatabase()
-	db, err := c.Database(ctx, currentDB)
-	if err != nil {
-		return err
-	}
-
-	err = schemaIter(ctx, db, func(schema sql.DatabaseSchema) (bool, error) {
-		cont, err := cb(schema)
-		if err != nil {
-			return false, err
-		}
-		return cont, nil
-	})
-	if err != nil {
-		return err
-	}
-
-	return nil
-}
-
-// currentDatabaseAndSchemaIter iterates over all schemas in the current database,
-// calling cb for the database and each schema. Once all schemas have been
-// processed or the callback returns false or an error, the iteration stops.
-func currentDatabaseAndSchemaIter(ctx *sql.Context, c sql.Catalog, cb func(db sql.Database) (bool, error)) error {
-	currentDB := ctx.GetCurrentDatabase()
-	db, err := c.Database(ctx, currentDB)
-	if err != nil {
-		return err
-	}
-
-	err = schemaIter(ctx, db, func(schema sql.DatabaseSchema) (bool, error) {
-		cont, err := cb(schema)
-		if err != nil {
-			return false, err
-		}
-		return cont, nil
-	})
-	if err != nil {
-		return err
-	}
-
-	_, err = cb(db)
-	if err != nil {
-		return err
-	}
-
-	return nil
+	return db, nil
 }
 
 // RowIter implements the interface tables.Handler.
@@ -127,7 +80,7 @@ func (p PgClassHandler) RowIter(ctx *sql.Context) (sql.RowIter, error) {
 
 	var classes []Class
 
-	err := currentDatabaseAndSchemaIter(ctx, c, func(db sql.Database) (bool, error) {
+	currentDB, err := currentDatabaseSchemaIter(ctx, c, func(db sql.DatabaseSchema) (bool, error) {
 		// Get tables and table indexes
 		err := sql.DBTableIter(ctx, db, func(t sql.Table) (cont bool, err error) {
 			hasIndexes := false
@@ -153,22 +106,22 @@ func (p PgClassHandler) RowIter(ctx *sql.Context) (sql.RowIter, error) {
 			return false, err
 		}
 
-		// Get views
-		if vdb, ok := db.(sql.ViewDatabase); ok {
-			views, err := vdb.AllViews(ctx)
-			if err != nil {
-				return false, err
-			}
-
-			for _, view := range views {
-				classes = append(classes, Class{name: view.Name, hasIndexes: false, kind: "v"})
-			}
-		}
-
 		return true, nil
 	})
 	if err != nil {
 		return nil, err
+	}
+
+	// Get views
+	if vdb, ok := currentDB.(sql.ViewDatabase); ok {
+		views, err := vdb.AllViews(ctx)
+		if err != nil {
+			return nil, err
+		}
+
+		for _, view := range views {
+			classes = append(classes, Class{name: view.Name, hasIndexes: false, kind: "v"})
+		}
 	}
 
 	return &pgClassRowIter{
