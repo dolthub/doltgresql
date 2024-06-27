@@ -15,6 +15,7 @@
 package sql
 
 import (
+	"context"
 	"fmt"
 
 	"github.com/dolthub/doltgresql/postgres/parser/parser"
@@ -35,17 +36,17 @@ func NewPostgresParser() *PostgresParser { return &PostgresParser{} }
 
 // ParseSimple implements sql.Parser interface.
 func (p *PostgresParser) ParseSimple(query string) (vitess.Statement, error) {
-	stmt, _, _, err := p.ParseWithOptions(query, ';', false, vitess.ParserOptions{})
+	stmt, _, _, err := p.ParseWithOptions(context.Background(), query, ';', false, vitess.ParserOptions{})
 	return stmt, err
 }
 
 // Parse implements sql.Parser interface.
-func (p *PostgresParser) Parse(_ *sql.Context, query string, multi bool) (vitess.Statement, string, string, error) {
-	return p.ParseWithOptions(query, ';', multi, vitess.ParserOptions{})
+func (p *PostgresParser) Parse(ctx *sql.Context, query string, multi bool) (vitess.Statement, string, string, error) {
+	return p.ParseWithOptions(ctx, query, ';', multi, vitess.ParserOptions{})
 }
 
 // ParseWithOptions implements sql.Parser interface.
-func (p *PostgresParser) ParseWithOptions(query string, delimiter rune, _ bool, _ vitess.ParserOptions) (vitess.Statement, string, string, error) {
+func (p *PostgresParser) ParseWithOptions(ctx context.Context, query string, delimiter rune, _ bool, _ vitess.ParserOptions) (vitess.Statement, string, string, error) {
 	q := sql.RemoveSpaceAndDelimiter(query, delimiter)
 	stmts, err := parser.Parse(q)
 	if err != nil {
@@ -70,7 +71,7 @@ func (p *PostgresParser) ParseWithOptions(query string, delimiter rune, _ bool, 
 }
 
 // ParseOneWithOptions implements sql.Parser interface.
-func (p *PostgresParser) ParseOneWithOptions(query string, _ vitess.ParserOptions) (vitess.Statement, int, error) {
+func (p *PostgresParser) ParseOneWithOptions(_ context.Context, query string, _ vitess.ParserOptions) (vitess.Statement, int, error) {
 	stmt, err := parser.ParseOne(query)
 	if err != nil {
 		return nil, 0, err
