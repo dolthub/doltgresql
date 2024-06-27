@@ -27,8 +27,14 @@ import (
 
 // InTuple represents a VALUE IN (<VALUES>) expression.
 type InTuple struct {
-	left  sql.Expression
-	right expression.Tuple
+	leftExpr  sql.Expression
+	rightExpr expression.Tuple
+
+	// These variables are used so that we can resolve the comparison functions once and reuse them as we iterate over rows.
+	// These are assigned in WithChildren, so refer there for more information.
+	staticLiteral *Literal
+	arrayLiterals []*Literal
+	compFuncs     []*framework.CompiledFunction
 }
 
 var _ vitess.Injectable = (*BinaryOperator)(nil)
@@ -38,59 +44,51 @@ var _ expression.BinaryExpression = (*BinaryOperator)(nil)
 // NewInTuple returns a new *InTuple.
 func NewInTuple() *InTuple {
 	return &InTuple{
-		left:  nil,
-		right: nil,
+		leftExpr:  nil,
+		rightExpr: nil,
 	}
 }
 
 // Children implements the sql.Expression interface.
 func (it *InTuple) Children() []sql.Expression {
-	return []sql.Expression{it.left, it.right}
+	return []sql.Expression{it.leftExpr, it.rightExpr}
 }
 
 // Eval implements the sql.Expression interface.
 func (it *InTuple) Eval(ctx *sql.Context, row sql.Row) (any, error) {
-	left, err := it.left.Eval(ctx, row)
+	if len(it.compFuncs) == 0 {
+		return nil, fmt.Errorf("%T: cannot Eval as it has not been fully resolved", it)
+	}
+	// First we'll evaluate everything before we do the comparisons
+	left, err := it.leftExpr.Eval(ctx, row)
 	if err != nil {
 		return nil, err
 	}
-	rightInterface, err := it.right.Eval(ctx, row)
+	rightInterface, err := it.rightExpr.Eval(ctx, row)
 	if err != nil {
 		return nil, err
 	}
 	rightValues, ok := rightInterface.([]any)
 	if !ok {
 		// Tuples will return the value directly if it has a length of one, so we'll check for that first
-		if len(it.right) == 1 {
+		if len(it.rightExpr) == 1 {
 			rightValues = []any{rightInterface}
 		} else {
 			return nil, fmt.Errorf("%T: expected right child to return `%T` but returned `%T`", it, []any{}, rightInterface)
 		}
 	}
-	leftType, ok := it.left.Type().(pgtypes.DoltgresType)
-	if !ok {
-		return nil, fmt.Errorf("%T: GMS type `%s` on left child", it, it.left.Type().String())
-	}
+	// Next we'll assign our evaluated values to the expressions that the comparison functions reference
+	it.staticLiteral.value = left
 	for i, rightValue := range rightValues {
-		rightType, ok := it.right[i].Type().(pgtypes.DoltgresType)
-		if !ok {
-			return nil, fmt.Errorf("%T: GMS type `%s` within right child", it, it.right[i].Type().String())
-		}
-		// TODO: this should use the BinaryOperator expression, but since equality is not yet implemented, we implicitly cast
-		if !leftType.Equals(rightType) {
-			castFunc := framework.GetImplicitCast(rightType.BaseID(), leftType.BaseID())
-			if castFunc == nil {
-				return nil, fmt.Errorf("operator does not exist: %s = %s",
-					leftType.String(), rightType.String())
-			}
-			rightValue, err = castFunc(ctx, rightValue, leftType)
-			if err != nil {
-				return nil, err
-			}
-		}
-		if res, err := leftType.Compare(left, rightValue); err != nil {
+		it.arrayLiterals[i].value = rightValue
+	}
+	// Now we can loop over all of the comparison functions, as they'll reference their respective values
+	for _, compFunc := range it.compFuncs {
+		result, err := compFunc.Eval(ctx, row)
+		if err != nil {
 			return nil, err
-		} else if res == 0 {
+		}
+		if result.(bool) {
 			return true, nil
 		}
 	}
@@ -104,15 +102,23 @@ func (it *InTuple) IsNullable() bool {
 
 // Resolved implements the sql.Expression interface.
 func (it *InTuple) Resolved() bool {
-	return it.left != nil && it.left.Resolved() && it.right != nil && it.right.Resolved()
+	if it.leftExpr == nil || !it.leftExpr.Resolved() || it.rightExpr == nil || !it.rightExpr.Resolved() || len(it.compFuncs) == 0 {
+		return false
+	}
+	for _, compFunc := range it.compFuncs {
+		if !compFunc.Resolved() {
+			return false
+		}
+	}
+	return true
 }
 
 // String implements the sql.Expression interface.
 func (it *InTuple) String() string {
-	if it.left == nil || it.right == nil {
+	if it.leftExpr == nil || it.rightExpr == nil {
 		return "? IN ?"
 	}
-	return fmt.Sprintf("%s IN %s", it.left.String(), it.right.String())
+	return fmt.Sprintf("%s IN %s", it.leftExpr.String(), it.rightExpr.String())
 }
 
 // Type implements the sql.Expression interface.
@@ -129,9 +135,54 @@ func (it *InTuple) WithChildren(children ...sql.Expression) (sql.Expression, err
 	if !ok {
 		return nil, fmt.Errorf("%T: expected right child to be `%T` but has type `%T`", it, expression.Tuple{}, children[1])
 	}
+	if len(rightTuple) == 0 {
+		return nil, fmt.Errorf("IN must contain at least 1 expression")
+	}
+	// We'll only resolve the comparison functions once we have all Doltgres types.
+	// We may see GMS types during some analyzer steps, so we should wait until those are done.
+	if leftType, ok := children[0].Type().(pgtypes.DoltgresType); ok {
+		// Rather than finding and resolving a comparison function every time we call Eval, we resolve them once and
+		// reuse the functions. We also want to avoid re-assigning the parameters of the comparison functions since that
+		// will also cause the functions to resolve again. To do this, we store expressions within our struct that the
+		// functions reference, so we can freely switch the values within the literals without changing anything
+		// regarding the comparison functions. This is usually unsafe, but since we're verifying the types returned by
+		// the parameters, and assigning the values to our own literals, we do not have to worry. This offers a
+		// significant speedup as function resolution is very expensive, so we want to do it as few times as possible
+		// (preferably once).
+		staticLiteral := &Literal{typ: leftType}
+		arrayLiterals := make([]*Literal, len(rightTuple))
+		// Each expression may be a different type (which is valid), so we need a comparison function for each expression.
+		compFuncs := make([]*framework.CompiledFunction, len(rightTuple))
+		allValidChildren := true
+		for i, rightExpr := range rightTuple {
+			rightType, ok := rightExpr.Type().(pgtypes.DoltgresType)
+			if !ok {
+				allValidChildren = false
+				break
+			}
+			arrayLiterals[i] = &Literal{typ: rightType}
+			compFuncs[i] = framework.GetBinaryFunction(framework.Operator_BinaryEqual).Compile("internal_in_comparison", staticLiteral, arrayLiterals[i])
+			if compFuncs[i] == nil {
+				return nil, fmt.Errorf("operator does not exist: %s = %s", leftType.String(), rightType.String())
+			}
+			if compFuncs[i].Type().(pgtypes.DoltgresType).BaseID() != pgtypes.DoltgresTypeBaseID_Bool {
+				// This should never happen, but this is just to be safe
+				return nil, fmt.Errorf("%T: found equality comparison that does not return a bool", it)
+			}
+		}
+		if allValidChildren {
+			return &InTuple{
+				leftExpr:      children[0],
+				rightExpr:     rightTuple,
+				staticLiteral: staticLiteral,
+				arrayLiterals: arrayLiterals,
+				compFuncs:     compFuncs,
+			}, nil
+		}
+	}
 	return &InTuple{
-		left:  children[0],
-		right: rightTuple,
+		leftExpr:  children[0],
+		rightExpr: rightTuple,
 	}, nil
 }
 
@@ -153,10 +204,10 @@ func (it *InTuple) WithResolvedChildren(children []any) (any, error) {
 
 // Left implements the expression.BinaryExpression interface.
 func (it *InTuple) Left() sql.Expression {
-	return it.left
+	return it.leftExpr
 }
 
 // Right implements the expression.BinaryExpression interface.
 func (it *InTuple) Right() sql.Expression {
-	return it.right
+	return it.rightExpr
 }
