@@ -939,11 +939,15 @@ func TestPgIndex(t *testing.T) {
 			Name: "pg_index",
 			SetUpScript: []string{
 				`CREATE TABLE testing (pk INT primary key, v1 INT);`,
+				`CREATE TABLE testing2 (pk INT, v1 INT, PRIMARY KEY (pk, v1));`,
 			},
 			Assertions: []ScriptTestAssertion{
 				{
-					Query:    `SELECT * FROM "pg_catalog"."pg_index";`,
-					Expected: []sql.Row{{0, 0, 1, 0, "t", "f", "t", "f", "f", "f", "t", "f", "t", "t", "f", "{}", "{}", "{}", "{}", nil, nil}},
+					Query: `SELECT * FROM "pg_catalog"."pg_index";`,
+					Expected: []sql.Row{
+						{1, 0, 1, 0, "t", "f", "t", "f", "f", "f", "t", "f", "t", "t", "f", "{}", "{}", "{}", "{}", nil, nil},
+						{2, 0, 2, 0, "t", "f", "t", "f", "f", "f", "t", "f", "t", "t", "f", "{}", "{}", "{}", "{}", nil, nil},
+					},
 				},
 				{ // Different cases and quoted, so it fails
 					Query:       `SELECT * FROM "PG_catalog"."pg_index";`,
@@ -955,7 +959,7 @@ func TestPgIndex(t *testing.T) {
 				},
 				{ // Different cases but non-quoted, so it works
 					Query:    "SELECT indexrelid FROM PG_catalog.pg_INDEX ORDER BY indexrelid;",
-					Expected: []sql.Row{{0}},
+					Expected: []sql.Row{{1}, {2}},
 				},
 			},
 		},

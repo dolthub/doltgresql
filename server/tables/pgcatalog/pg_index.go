@@ -50,7 +50,7 @@ func (p PgIndexHandler) RowIter(ctx *sql.Context) (sql.RowIter, error) {
 	c := sqle.NewDefault(doltSession.Provider()).Analyzer.Catalog
 
 	var indexes []sql.Index
-	err := currentDatabaseSchemaIter(ctx, c, func(db sql.Database) (bool, error) {
+	_, err := currentDatabaseSchemaIter(ctx, c, func(db sql.DatabaseSchema) (bool, error) {
 		// Get tables and table indexes
 		err := sql.DBTableIter(ctx, db, func(t sql.Table) (cont bool, err error) {
 			if it, ok := t.(sql.IndexAddressable); ok {
@@ -130,8 +130,7 @@ func (iter *pgIndexRowIter) Next(ctx *sql.Context) (sql.Row, error) {
 
 	// TODO: Fill in the rest of the pg_index columns
 	return sql.Row{
-		// TODO: How do we match these OIDs to the pg_class table?
-		uint32(0),                                // indexrelid
+		uint32(iter.idx),                         // indexrelid
 		uint32(0),                                // indrelid
 		int16(len(index.Expressions())),          // indnatts
 		int16(0),                                 // indnkeyatts
@@ -146,10 +145,10 @@ func (iter *pgIndexRowIter) Next(ctx *sql.Context) (sql.Row, error) {
 		true,                                     // indisready
 		true,                                     // indislive
 		false,                                    // indisreplident
-		[]any{},                                  // indkey
-		[]any{},                                  // indcollation
-		[]any{},                                  // indclass
-		[]any{},                                  // indoption
+		[]int16{},                                // indkey
+		[]uint32{},                               // indcollation
+		[]uint32{},                               // indclass
+		[]int16{},                                // indoption
 		nil,                                      // indexprs
 		nil,                                      // indpred
 	}, nil

@@ -143,12 +143,23 @@ func (ac arrayContainer) Compare(v1 any, v2 any) (int, error) {
 	}
 }
 
-// TODO: Should this handle different array types?
 // Convert implements the DoltgresType interface.
 func (ac arrayContainer) Convert(val any) (any, sql.ConvertInRange, error) {
 	switch val := val.(type) {
 	case []any:
 		return val, sql.InRange, nil
+	case []int16:
+		anyArray := make([]any, len(val))
+		for i, s := range val {
+			anyArray[i] = s
+		}
+		return anyArray, sql.InRange, nil
+	case []uint32:
+		anyArray := make([]any, len(val))
+		for i, s := range val {
+			anyArray[i] = s
+		}
+		return anyArray, sql.InRange, nil
 	case nil:
 		return nil, sql.InRange, nil
 	default:
