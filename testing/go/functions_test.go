@@ -321,5 +321,46 @@ func TestSystemInformationFunctions(t *testing.T) {
 				},
 			},
 		},
+		{
+			Name: "format_type",
+			Assertions: []ScriptTestAssertion{
+				{
+					Query: `SELECT format_type();`,
+					Expected: []sql.Row{
+						{"{pg_catalog,postgres,public}"},
+					},
+				},
+			},
+		},
+	})
+}
+
+func TestAggregateFunctions(t *testing.T) {
+	RunScripts(t, []ScriptTest{
+		{
+			Name: "string_agg",
+			SetUpScript: []string{
+				"CREATE TABLE test (id int, name text)",
+				"INSERT INTO TABLE test VALUES (1,'table'), (2,'chair')",
+			},
+			Assertions: []ScriptTestAssertion{
+				{
+					Query: `select string_agg(name, ';;') from test;`,
+					Expected: []sql.Row{
+						{"table;;chair"},
+					},
+				},
+				{
+					Query:    `select string_agg(null, null) from test;`,
+					Expected: []sql.Row{{nil}},
+				},
+				{
+					Query: `select string_agg(name, null) from test;`,
+					Expected: []sql.Row{
+						{"tablechair"},
+					},
+				},
+			},
+		},
 	})
 }
