@@ -271,13 +271,13 @@ func TestSystemInformationFunctions(t *testing.T) {
 		{
 			Name: "current_schemas",
 			Assertions: []ScriptTestAssertion{
-				{ // Not sure why Postgres does not display "$user", which is postgres here
+				{ // TODO: Not sure why Postgres does not display "$user", which is postgres here
 					Query: `SELECT current_schemas(true);`,
 					Expected: []sql.Row{
 						{"{pg_catalog,postgres,public}"},
 					},
 				},
-				{ // Not sure why Postgres does not display "$user" here
+				{ // TODO: Not sure why Postgres does not display "$user" here
 					Query: `SELECT current_schemas(false);`,
 					Expected: []sql.Row{
 						{"{postgres,public}"},
