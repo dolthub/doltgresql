@@ -15,6 +15,7 @@
 package server
 
 import (
+	"context"
 	"crypto/tls"
 	"fmt"
 	"io"
@@ -93,6 +94,12 @@ func (h *ConnectionHandler) HandleConnection() {
 				eomErr = fmt.Errorf("panic: %v", r)
 			}
 
+			// Sending eom can panic, which means we must recover again
+			defer func() {
+				if r := recover(); r != nil {
+					fmt.Printf("Listener recovered panic: %v", r)
+				}
+			}()
 			h.endOfMessages(eomErr)
 		}
 
@@ -263,7 +270,7 @@ InitialMessageLoop:
 // startup message provided
 func (h *ConnectionHandler) chooseInitialDatabase(startupMessage messages.StartupMessage) error {
 	if db, ok := startupMessage.Parameters["database"]; ok && len(db) > 0 {
-		err := h.handler.ComQuery(h.mysqlConn, fmt.Sprintf("USE `%s`;", db), func(res *sqltypes.Result, more bool) error {
+		err := h.handler.ComQuery(context.Background(), h.mysqlConn, fmt.Sprintf("USE `%s`;", db), func(res *sqltypes.Result, more bool) error {
 			return nil
 		})
 		if err != nil {
@@ -280,7 +287,7 @@ func (h *ConnectionHandler) chooseInitialDatabase(startupMessage messages.Startu
 	} else {
 		// If a database isn't specified, then we attempt to connect to a database with the same name as the user,
 		// ignoring any error
-		_ = h.handler.ComQuery(h.mysqlConn, fmt.Sprintf("USE `%s`;", h.mysqlConn.User), func(*sqltypes.Result, bool) error {
+		_ = h.handler.ComQuery(context.Background(), h.mysqlConn, fmt.Sprintf("USE `%s`;", h.mysqlConn.User), func(*sqltypes.Result, bool) error {
 			return nil
 		})
 	}
@@ -483,7 +490,7 @@ func (h *ConnectionHandler) handleExecute(message messages.Execute) error {
 		return connection.Send(h.Conn(), messages.EmptyQueryResponse{})
 	}
 
-	err := h.handler.(mysql.ExtendedHandler).ComExecuteBound(h.mysqlConn, query.String, portalData.BoundPlan, spoolRowsCallback(h.Conn(), &complete, true))
+	err := h.handler.(mysql.ExtendedHandler).ComExecuteBound(context.Background(), h.mysqlConn, query.String, portalData.BoundPlan, spoolRowsCallback(h.Conn(), &complete, true))
 	if err != nil {
 		return err
 	}
@@ -895,7 +902,7 @@ func (h *ConnectionHandler) getPlanAndFields(query ConvertedQuery) (sql.Node, []
 		return nil, nil, fmt.Errorf("cannot prepare a query that has not been parsed")
 	}
 
-	parsedQuery, fields, err := h.handler.(mysql.ExtendedHandler).ComPrepareParsed(h.mysqlConn, query.String, query.AST, &mysql.PrepareData{
+	parsedQuery, fields, err := h.handler.(mysql.ExtendedHandler).ComPrepareParsed(context.Background(), h.mysqlConn, query.String, query.AST, &mysql.PrepareData{
 		PrepareStmt: query.String,
 	})
 
@@ -914,9 +921,9 @@ func (h *ConnectionHandler) getPlanAndFields(query ConvertedQuery) (sql.Node, []
 // comQuery is a shortcut that determines which version of ComQuery to call based on whether the query has been parsed.
 func (h *ConnectionHandler) comQuery(query ConvertedQuery, callback func(res *sqltypes.Result, more bool) error) error {
 	if query.AST == nil {
-		return h.handler.ComQuery(h.mysqlConn, query.String, callback)
+		return h.handler.ComQuery(context.Background(), h.mysqlConn, query.String, callback)
 	} else {
-		return h.handler.(mysql.ExtendedHandler).ComParsedQuery(h.mysqlConn, query.String, query.AST, callback)
+		return h.handler.(mysql.ExtendedHandler).ComParsedQuery(context.Background(), h.mysqlConn, query.String, query.AST, callback)
 	}
 }
 
@@ -926,7 +933,7 @@ func (h *ConnectionHandler) bindParams(
 	parsedQuery sqlparser.Statement,
 	bindVars map[string]*querypb.BindVariable,
 ) (sql.Node, []*querypb.Field, error) {
-	bound, fields, err := h.handler.(mysql.ExtendedHandler).ComBind(h.mysqlConn, query, parsedQuery, &mysql.PrepareData{
+	bound, fields, err := h.handler.(mysql.ExtendedHandler).ComBind(context.Background(), h.mysqlConn, query, parsedQuery, &mysql.PrepareData{
 		PrepareStmt: query,
 		ParamsCount: uint16(len(bindVars)),
 		BindVars:    bindVars,

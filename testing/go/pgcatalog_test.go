@@ -374,11 +374,11 @@ func TestPgClass(t *testing.T) {
 					ExpectedErr: "not",
 				},
 				{ // Different cases but non-quoted, so it works
-					Query: "SELECT relname FROM PG_catalog.pg_CLASS ORDER BY relname DESC LIMIT 3;",
+					Query: "SELECT relname FROM PG_catalog.pg_CLASS ORDER BY relname ASC LIMIT 3;",
 					Expected: []sql.Row{
-						{"testview"},
-						{"testing"},
-						{"pg_views"},
+						{"PRIMARY"},
+						{"pg_aggregate"},
+						{"pg_am"},
 					},
 				},
 			},
