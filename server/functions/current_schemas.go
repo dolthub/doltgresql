@@ -16,8 +16,9 @@ package functions
 
 import (
 	"github.com/dolthub/dolt/go/libraries/doltcore/sqle/resolve"
-	"github.com/dolthub/doltgresql/postgres/parser/sessiondata"
 	"github.com/dolthub/go-mysql-server/sql"
+
+	"github.com/dolthub/doltgresql/postgres/parser/sessiondata"
 
 	"github.com/dolthub/doltgresql/server/functions/framework"
 	pgtypes "github.com/dolthub/doltgresql/server/types"
@@ -43,9 +44,7 @@ var current_schemas = framework.Function1{
 		if err != nil {
 			return nil, err
 		}
-		for _, searchPath := range searchPaths {
-			schemas = append(schemas, searchPath)
-		}
+		schemas = append(schemas, searchPaths...)
 		return schemas, nil
 	},
 	Strict: true,
