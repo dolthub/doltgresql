@@ -561,12 +561,10 @@ func TestSmokeTests(t *testing.T) {
 				},
 				{
 					Query:    "CREATE INDEX v2_idx ON test(v2);",
-					Skip:     true,
 					Expected: []sql.Row{},
 				},
 				{
 					Query: "SELECT * FROM test WHERE v2 IN (2, '3', 4) ORDER BY v1;",
-					Skip:  true,
 					Expected: []sql.Row{
 						{2, 2},
 						{3, 3},
@@ -594,7 +592,6 @@ func TestSmokeTests(t *testing.T) {
 				},
 				{
 					Query: "SELECT SUM(v1) FROM test WHERE v1 BETWEEN 3 AND 5;",
-					Skip:  true,
 					Expected: []sql.Row{
 						{12.0},
 					},
