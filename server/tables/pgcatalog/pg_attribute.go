@@ -43,11 +43,6 @@ func (p PgAttributeHandler) Name() string {
 	return PgAttributeName
 }
 
-// emptyRowIter implements the sql.RowIter for empty table.
-func emptyRowIter() (sql.RowIter, error) {
-	return sql.RowsToRowIter(), nil
-}
-
 // RowIter implements the interface tables.Handler.
 func (p PgAttributeHandler) RowIter(ctx *sql.Context) (sql.RowIter, error) {
 	doltSession := dsess.DSessFromSess(ctx.Session)
