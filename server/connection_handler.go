@@ -94,6 +94,12 @@ func (h *ConnectionHandler) HandleConnection() {
 				eomErr = fmt.Errorf("panic: %v", r)
 			}
 
+			// Sending eom can panic, which means we must recover again
+			defer func() {
+				if r := recover(); r != nil {
+					fmt.Printf("Listener recovered panic: %v", r)
+				}
+			}()
 			h.endOfMessages(eomErr)
 		}
 
