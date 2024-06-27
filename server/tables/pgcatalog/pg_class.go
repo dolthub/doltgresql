@@ -43,48 +43,6 @@ func (p PgClassHandler) Name() string {
 	return PgClassName
 }
 
-// currentDatabaseSchemaIter iterates over all schemas in the current database,
-// calling cb for the database and each schema. Once all schemas have been
-// processed or the callback returns false or an error, the iteration stops.
-func currentDatabaseSchemaIter(ctx *sql.Context, c sql.Catalog, cb func(db sql.Database) (bool, error)) error {
-	currentDB := ctx.GetCurrentDatabase()
-	dbs := c.AllDatabases(ctx)
-
-	for _, db := range dbs {
-		if currentDB != "" && db.Name() != currentDB {
-			continue
-		}
-
-		if schDB, ok := db.(sql.SchemaDatabase); ok {
-			schemas, err := schDB.AllSchemas(ctx)
-			if err != nil {
-				return err
-			}
-
-			for _, schema := range schemas {
-				cont, err := cb(schema)
-				if err != nil {
-					return err
-				}
-				if !cont {
-					break
-				}
-			}
-		}
-
-		cont, err := cb(db)
-		if err != nil {
-			return err
-		}
-		if !cont {
-			break
-		}
-
-	}
-
-	return nil
-}
-
 // RowIter implements the interface tables.Handler.
 func (p PgClassHandler) RowIter(ctx *sql.Context) (sql.RowIter, error) {
 	doltSession := dsess.DSessFromSess(ctx.Session)
@@ -92,7 +50,7 @@ func (p PgClassHandler) RowIter(ctx *sql.Context) (sql.RowIter, error) {
 
 	var classes []Class
 
-	err := currentDatabaseSchemaIter(ctx, c, func(db sql.Database) (bool, error) {
+	currentDB, err := currentDatabaseSchemaIter(ctx, c, func(db sql.DatabaseSchema) (bool, error) {
 		// Get tables and table indexes
 		err := sql.DBTableIter(ctx, db, func(t sql.Table) (cont bool, err error) {
 			hasIndexes := false
@@ -118,22 +76,22 @@ func (p PgClassHandler) RowIter(ctx *sql.Context) (sql.RowIter, error) {
 			return false, err
 		}
 
-		// Get views
-		if vdb, ok := db.(sql.ViewDatabase); ok {
-			views, err := vdb.AllViews(ctx)
-			if err != nil {
-				return false, err
-			}
-
-			for _, view := range views {
-				classes = append(classes, Class{name: view.Name, hasIndexes: false, kind: "v"})
-			}
-		}
-
 		return true, nil
 	})
 	if err != nil {
 		return nil, err
+	}
+
+	// Get views
+	if vdb, ok := currentDB.(sql.ViewDatabase); ok {
+		views, err := vdb.AllViews(ctx)
+		if err != nil {
+			return nil, err
+		}
+
+		for _, view := range views {
+			classes = append(classes, Class{name: view.Name, hasIndexes: false, kind: "v"})
+		}
 	}
 
 	return &pgClassRowIter{

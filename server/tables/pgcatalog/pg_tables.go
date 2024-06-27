@@ -17,6 +17,8 @@ package pgcatalog
 import (
 	"io"
 
+	"github.com/dolthub/dolt/go/libraries/doltcore/sqle/dsess"
+	sqle "github.com/dolthub/go-mysql-server"
 	"github.com/dolthub/go-mysql-server/sql"
 
 	"github.com/dolthub/doltgresql/server/tables"
@@ -43,8 +45,34 @@ func (p PgTablesHandler) Name() string {
 
 // RowIter implements the interface tables.Handler.
 func (p PgTablesHandler) RowIter(ctx *sql.Context) (sql.RowIter, error) {
-	// TODO: Implement pg_tables row iter
-	return emptyRowIter()
+	doltSession := dsess.DSessFromSess(ctx.Session)
+	c := sqle.NewDefault(doltSession.Provider()).Analyzer.Catalog
+
+	var tables []sql.Table
+	var schemas []string
+
+	// TODO: This should include a few information_schema tables
+	_, err := currentDatabaseSchemaIter(ctx, c, func(sch sql.DatabaseSchema) (bool, error) {
+		err := sql.DBTableIter(ctx, sch, func(t sql.Table) (cont bool, err error) {
+			tables = append(tables, t)
+			schemas = append(schemas, sch.SchemaName())
+			return true, nil
+		})
+		if err != nil {
+			return false, err
+		}
+
+		return true, nil
+	})
+	if err != nil {
+		return nil, err
+	}
+
+	return &pgTablesRowIter{
+		tables:  tables,
+		schemas: schemas,
+		idx:     0,
+	}, nil
 }
 
 // Schema implements the interface tables.Handler.
@@ -69,13 +97,45 @@ var pgTablesSchema = sql.Schema{
 
 // pgTablesRowIter is the sql.RowIter for the pg_tables table.
 type pgTablesRowIter struct {
+	tables  []sql.Table
+	schemas []string
+	idx     int
 }
 
 var _ sql.RowIter = (*pgTablesRowIter)(nil)
 
 // Next implements the interface sql.RowIter.
 func (iter *pgTablesRowIter) Next(ctx *sql.Context) (sql.Row, error) {
-	return nil, io.EOF
+	if iter.idx >= len(iter.tables) {
+		return nil, io.EOF
+	}
+	iter.idx++
+	table := iter.tables[iter.idx-1]
+	schema := iter.schemas[iter.idx-1]
+
+	hasIndexes := false
+	if it, ok := table.(sql.IndexAddressable); ok {
+		idxs, err := it.GetIndexes(ctx)
+		if err != nil {
+			return nil, err
+		}
+
+		if len(idxs) > 0 {
+			hasIndexes = true
+		}
+	}
+
+	// TODO: Implement the rest of these pg_tables columns
+	return sql.Row{
+		schema,       // schemaname
+		table.Name(), // tablename
+		"",           // tableowner
+		"",           // tablespace
+		hasIndexes,   // hasindexes
+		false,        // hasrules
+		false,        // hastriggers
+		false,        // rowsecurity
+	}, nil
 }
 
 // Close implements the interface sql.RowIter.
