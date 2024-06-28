@@ -15,21 +15,18 @@
 package pgcatalog
 
 import (
-	"hash/fnv"
-	"math"
 	"strings"
+
+	"github.com/cespare/xxhash/v2"
 )
 
 // hashStringToUint32 hashes a string to a uint32 using the FNV-1a hash function.
 func hashStringToUint32(s string) uint32 {
-	h := fnv.New32a()
-	h.Write([]byte(s))
-	hash := h.Sum32()
-	// Ensure the hash is in the top half of the key space (>= 2^31)
-	if hash < math.MaxUint32/2 {
-		hash += math.MaxUint32 / 2
-	}
-	return hash
+	hash := xxhash.Sum64String(s)
+	// Convert the hash to uint32
+	hash32 := uint32(hash & 0xFFFFFFFF)
+	// Ensure the hash is in the top half of the key space (>= 2^31) using XOR
+	return hash32 | 0x80000000
 }
 
 // genOid generates an OID from a list of names.
