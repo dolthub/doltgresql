@@ -110,10 +110,12 @@ func (iter *pgDatabaseRowIter) Next(ctx *sql.Context) (sql.Row, error) {
 	iter.idx++
 	db := iter.dbs[iter.idx-1]
 
+	oid := genOid(db.Name())
+
+	// TODO: Add the rest of the pg_database columns
 	return sql.Row{
-		uint32(iter.idx), // oid
-		db.Name(),        // datname
-		// TODO: Add the rest of the pg_database columns
+		oid,       // oid
+		db.Name(), // datname
 		uint32(0), // datdba
 		int32(0),  // encoding
 		"i",       // datlocprovider

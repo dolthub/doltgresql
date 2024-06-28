@@ -37,11 +37,11 @@ func IndexLeafChildren(e sql.Expression) (analyzer.IndexScanOp, sql.Expression, 
 			left = expr.Left()
 			right = expr.Right()
 		case framework.Operator_BinaryGreaterOrEqual:
-			op = analyzer.IndexScanOpGt
+			op = analyzer.IndexScanOpGte
 			left = expr.Left()
 			right = expr.Right()
 		case framework.Operator_BinaryGreaterThan:
-			op = analyzer.IndexScanOpGte
+			op = analyzer.IndexScanOpGt
 			left = expr.Left()
 			right = expr.Right()
 		case framework.Operator_BinaryLessOrEqual:

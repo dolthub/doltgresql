@@ -268,5 +268,58 @@ func TestSystemInformationFunctions(t *testing.T) {
 				},
 			},
 		},
+		{
+			Name: "current_schemas",
+			Assertions: []ScriptTestAssertion{
+				{ // TODO: Not sure why Postgres does not display "$user", which is postgres here
+					Query: `SELECT current_schemas(true);`,
+					Expected: []sql.Row{
+						{"{pg_catalog,postgres,public}"},
+					},
+				},
+				{ // TODO: Not sure why Postgres does not display "$user" here
+					Query: `SELECT current_schemas(false);`,
+					Expected: []sql.Row{
+						{"{postgres,public}"},
+					},
+				},
+				{
+					Query:    "CREATE SCHEMA test_schema;",
+					Expected: []sql.Row{},
+				},
+				{
+					Query:    `SET SEARCH_PATH TO test_schema;`,
+					Expected: []sql.Row{},
+				},
+				{
+					Query: `SELECT current_schemas(true);`,
+					Expected: []sql.Row{
+						{"{pg_catalog,test_schema}"},
+					},
+				},
+				{
+					Query: `SELECT current_schemas(false);`,
+					Expected: []sql.Row{
+						{"{test_schema}"},
+					},
+				},
+				{
+					Query:    `SET SEARCH_PATH TO public, test_schema;`,
+					Expected: []sql.Row{},
+				},
+				{
+					Query: `SELECT current_schemas(true);`,
+					Expected: []sql.Row{
+						{"{pg_catalog,public,test_schema}"},
+					},
+				},
+				{
+					Query: `SELECT current_schemas(false);`,
+					Expected: []sql.Row{
+						{"{public,test_schema}"},
+					},
+				},
+			},
+		},
 	})
 }
