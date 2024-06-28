@@ -38,9 +38,24 @@ type TimeType struct {
 
 var _ DoltgresType = TimeType{}
 
+// Alignment implements the DoltgresType interface.
+func (b TimeType) Alignment() TypeAlignment {
+	return TypeAlignment_Double
+}
+
 // BaseID implements the DoltgresType interface.
 func (b TimeType) BaseID() DoltgresTypeBaseID {
 	return DoltgresTypeBaseID_Time
+}
+
+// BaseName implements the DoltgresType interface.
+func (b TimeType) BaseName() string {
+	return "time"
+}
+
+// Category implements the DoltgresType interface.
+func (b TimeType) Category() TypeCategory {
+	return TypeCategory_DateTimeTypes
 }
 
 // CollationCoercibility implements the DoltgresType interface.
@@ -136,6 +151,11 @@ func (b TimeType) IoOutput(output any) (string, error) {
 	} else {
 		return t.Format("15:04:05"), nil
 	}
+}
+
+// IsPreferredType implements the DoltgresType interface.
+func (b TimeType) IsPreferredType() bool {
+	return false
 }
 
 // IsUnbounded implements the DoltgresType interface.

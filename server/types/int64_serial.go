@@ -28,14 +28,29 @@ import (
 // Int64Serial is an int16 serial type.
 var Int64Serial = Int64TypeSerial{}
 
-// Int64TypeSerial is the extended type implementation of the PostgreSQL serial.
+// Int64TypeSerial is the extended type implementation of the PostgreSQL bigserial.
 type Int64TypeSerial struct{}
 
 var _ DoltgresType = Int64TypeSerial{}
 
+// Alignment implements the DoltgresType interface.
+func (b Int64TypeSerial) Alignment() TypeAlignment {
+	return TypeAlignment_Double
+}
+
 // BaseID implements the DoltgresType interface.
 func (b Int64TypeSerial) BaseID() DoltgresTypeBaseID {
 	return DoltgresTypeBaseID_Int64Serial
+}
+
+// BaseName implements the DoltgresType interface.
+func (b Int64TypeSerial) BaseName() string {
+	return "bigserial"
+}
+
+// Category implements the DoltgresType interface.
+func (b Int64TypeSerial) Category() TypeCategory {
+	return TypeCategory_UnknownTypes
 }
 
 // CollationCoercibility implements the DoltgresType interface.
@@ -82,6 +97,11 @@ func (b Int64TypeSerial) IoInput(input string) (any, error) {
 // IoOutput implements the DoltgresType interface.
 func (b Int64TypeSerial) IoOutput(output any) (string, error) {
 	return "", fmt.Errorf("SERIAL types cannot produce I/O output")
+}
+
+// IsPreferredType implements the DoltgresType interface.
+func (b Int64TypeSerial) IsPreferredType() bool {
+	return false
 }
 
 // IsUnbounded implements the DoltgresType interface.

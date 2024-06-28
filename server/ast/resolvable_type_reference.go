@@ -52,6 +52,10 @@ func nodeResolvableTypeReference(typ tree.ResolvableTypeReference) (*vitess.Conv
 				return nil, nil, err
 			}
 			resolvedType = baseResolvedType.ToArrayType()
+		} else if columnType.Family() == types.GeometryFamily {
+			return nil, nil, fmt.Errorf("geometry types are not yet supported")
+		} else if columnType.Family() == types.GeographyFamily {
+			return nil, nil, fmt.Errorf("geography types are not yet supported")
 		} else {
 			switch columnType.Oid() {
 			case oid.T_bool:

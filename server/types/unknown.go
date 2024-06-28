@@ -35,9 +35,24 @@ type UnknownType struct{}
 var _ DoltgresType = UnknownType{}
 var _ DoltgresArrayType = UnknownType{}
 
+// Alignment implements the DoltgresType interface.
+func (u UnknownType) Alignment() TypeAlignment {
+	return TypeAlignment_Char
+}
+
 // BaseID implements the DoltgresType interface.
 func (u UnknownType) BaseID() DoltgresTypeBaseID {
 	return DoltgresTypeBaseID_Unknown
+}
+
+// BaseName implements the DoltgresType interface.
+func (u UnknownType) BaseName() string {
+	return "unknown"
+}
+
+// Category implements the DoltgresType interface.
+func (u UnknownType) Category() TypeCategory {
+	return TypeCategory_UnknownTypes
 }
 
 // BaseType implements the DoltgresArrayType interface.
@@ -89,6 +104,11 @@ func (u UnknownType) IoInput(input string) (any, error) {
 // IoOutput implements the DoltgresType interface.
 func (u UnknownType) IoOutput(output any) (string, error) {
 	return "", fmt.Errorf("%s cannot produce I/O output", u.String())
+}
+
+// IsPreferredType implements the DoltgresType interface.
+func (b UnknownType) IsPreferredType() bool {
+	return false
 }
 
 // IsUnbounded implements the DoltgresType interface.

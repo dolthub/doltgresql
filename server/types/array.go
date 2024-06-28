@@ -71,6 +71,11 @@ func createArrayTypeWithFuncs(innerType DoltgresType, serializationID Serializat
 	}
 }
 
+// Alignment implements the DoltgresType interface.
+func (ac arrayContainer) Alignment() TypeAlignment {
+	return ac.innerType.Alignment()
+}
+
 // BaseID implements the DoltgresType interface.
 func (ac arrayContainer) BaseID() DoltgresTypeBaseID {
 	// The serializationID might be enough, but it's technically possible for us to use the same serialization ID with
@@ -80,9 +85,19 @@ func (ac arrayContainer) BaseID() DoltgresTypeBaseID {
 	return (DoltgresTypeBaseID(ac.serializationID) << 16) | ac.innerType.BaseID()
 }
 
+// BaseName implements the DoltgresType interface.
+func (ac arrayContainer) BaseName() string {
+	return ac.innerType.BaseName()
+}
+
 // BaseType implements the DoltgresArrayType interface.
 func (ac arrayContainer) BaseType() DoltgresType {
 	return ac.innerType
+}
+
+// Category implements the DoltgresType interface.
+func (ac arrayContainer) Category() TypeCategory {
+	return ac.innerType.Category()
 }
 
 // CollationCoercibility implements the DoltgresType interface.
@@ -135,6 +150,12 @@ func (ac arrayContainer) Convert(val any) (any, sql.ConvertInRange, error) {
 		return val, sql.InRange, nil
 	case nil:
 		return nil, sql.InRange, nil
+	case []string:
+		anyArray := make([]any, len(val))
+		for i, s := range val {
+			anyArray[i] = s
+		}
+		return anyArray, sql.InRange, nil
 	default:
 		return nil, sql.OutOfRange, fmt.Errorf("%s: unhandled type: %T", ac.String(), val)
 	}
@@ -303,6 +324,11 @@ func (ac arrayContainer) IoOutput(output any) (string, error) {
 	}
 	sb.WriteRune('}')
 	return sb.String(), nil
+}
+
+// IsPreferredType implements the DoltgresType interface.
+func (ac arrayContainer) IsPreferredType() bool {
+	return false
 }
 
 // IsUnbounded implements the DoltgresType interface.

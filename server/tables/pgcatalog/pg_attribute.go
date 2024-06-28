@@ -17,6 +17,8 @@ package pgcatalog
 import (
 	"io"
 
+	"github.com/dolthub/dolt/go/libraries/doltcore/sqle/dsess"
+	sqle "github.com/dolthub/go-mysql-server"
 	"github.com/dolthub/go-mysql-server/sql"
 
 	"github.com/dolthub/doltgresql/server/tables"
@@ -41,15 +43,35 @@ func (p PgAttributeHandler) Name() string {
 	return PgAttributeName
 }
 
-// emptyRowIter implements the sql.RowIter for empty table.
-func emptyRowIter() (sql.RowIter, error) {
-	return sql.RowsToRowIter(), nil
-}
-
 // RowIter implements the interface tables.Handler.
 func (p PgAttributeHandler) RowIter(ctx *sql.Context) (sql.RowIter, error) {
-	// TODO: Implement pg_attribute row iter
-	return emptyRowIter()
+	doltSession := dsess.DSessFromSess(ctx.Session)
+	c := sqle.NewDefault(doltSession.Provider()).Analyzer.Catalog
+
+	var cols []*sql.Column
+
+	_, err := currentDatabaseSchemaIter(ctx, c, func(db sql.DatabaseSchema) (bool, error) {
+		err := sql.DBTableIter(ctx, db, func(t sql.Table) (cont bool, err error) {
+			for _, col := range t.Schema() {
+				cols = append(cols, col)
+			}
+			return true, nil
+		})
+		if err != nil {
+			return false, err
+		}
+
+		return true, nil
+	})
+
+	if err != nil {
+		return nil, err
+	}
+
+	return &pgAttributeRowIter{
+		cols: cols,
+		idx:  0,
+	}, nil
 }
 
 // Schema implements the interface tables.Handler.
@@ -92,13 +114,62 @@ var pgAttributeSchema = sql.Schema{
 
 // pgAttributeRowIter is the sql.RowIter for the pg_attribute table.
 type pgAttributeRowIter struct {
+	cols []*sql.Column
+	idx  int
 }
 
 var _ sql.RowIter = (*pgAttributeRowIter)(nil)
 
 // Next implements the interface sql.RowIter.
 func (iter *pgAttributeRowIter) Next(ctx *sql.Context) (sql.Row, error) {
-	return nil, io.EOF
+	if iter.idx >= len(iter.cols) {
+		return nil, io.EOF
+	}
+	iter.idx++
+	col := iter.cols[iter.idx-1]
+
+	generated := ""
+	if col.Generated != nil {
+		generated = "s"
+	}
+
+	dimensions := 0
+	s, ok := col.Type.(sql.SetType)
+	if ok {
+		dimensions = int(s.NumberOfElements())
+	}
+
+	hasDefault := col.Default != nil
+
+	// TODO: Fill in the rest of the pg_attribute columns
+	return sql.Row{
+		uint32(0),         // attrelid
+		col.Name,          // attname
+		uint32(0),         // atttypid
+		int16(0),          // attlen
+		int16(iter.idx),   // attnum
+		int32(-1),         // attcacheoff
+		int32(-1),         // atttypmod
+		int16(dimensions), // attndims
+		false,             // attbyval
+		"i",               // attalign
+		"p",               // attstorage
+		"",                // attcompression
+		!col.Nullable,     // attnotnull
+		hasDefault,        // atthasdef
+		false,             // atthasmissing
+		"",                // attidentity
+		generated,         // attgenerated
+		false,             // attisdropped
+		true,              // attislocal
+		int16(0),          // attinhcount
+		int16(-1),         // attstattarget
+		uint32(0),         // attcollation
+		nil,               // attacl
+		nil,               // attoptions
+		nil,               // attfdwoptions
+		nil,               // attmissingval
+	}, nil
 }
 
 // Close implements the interface sql.RowIter.

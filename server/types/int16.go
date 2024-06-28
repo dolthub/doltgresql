@@ -37,9 +37,24 @@ type Int16Type struct{}
 
 var _ DoltgresType = Int16Type{}
 
+// Alignment implements the DoltgresType interface.
+func (b Int16Type) Alignment() TypeAlignment {
+	return TypeAlignment_Short
+}
+
 // BaseID implements the DoltgresType interface.
 func (b Int16Type) BaseID() DoltgresTypeBaseID {
 	return DoltgresTypeBaseID_Int16
+}
+
+// BaseName implements the DoltgresType interface.
+func (b Int16Type) BaseName() string {
+	return "int2"
+}
+
+// Category implements the DoltgresType interface.
+func (b Int16Type) Category() TypeCategory {
+	return TypeCategory_NumericTypes
 }
 
 // CollationCoercibility implements the DoltgresType interface.
@@ -138,6 +153,11 @@ func (b Int16Type) IoOutput(output any) (string, error) {
 		return "", err
 	}
 	return strconv.FormatInt(int64(converted.(int16)), 10), nil
+}
+
+// IsPreferredType implements the DoltgresType interface.
+func (b Int16Type) IsPreferredType() bool {
+	return false
 }
 
 // IsUnbounded implements the DoltgresType interface.

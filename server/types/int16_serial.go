@@ -33,9 +33,24 @@ type Int16TypeSerial struct{}
 
 var _ DoltgresType = Int16TypeSerial{}
 
+// Alignment implements the DoltgresType interface.
+func (b Int16TypeSerial) Alignment() TypeAlignment {
+	return TypeAlignment_Short
+}
+
 // BaseID implements the DoltgresType interface.
 func (b Int16TypeSerial) BaseID() DoltgresTypeBaseID {
 	return DoltgresTypeBaseID_Int16Serial
+}
+
+// BaseName implements the DoltgresType interface.
+func (b Int16TypeSerial) BaseName() string {
+	return "smallserial"
+}
+
+// Category implements the DoltgresType interface.
+func (b Int16TypeSerial) Category() TypeCategory {
+	return TypeCategory_UnknownTypes
 }
 
 // CollationCoercibility implements the DoltgresType interface.
@@ -82,6 +97,11 @@ func (b Int16TypeSerial) IoInput(input string) (any, error) {
 // IoOutput implements the DoltgresType interface.
 func (b Int16TypeSerial) IoOutput(output any) (string, error) {
 	return "", fmt.Errorf("SERIAL types cannot produce I/O output")
+}
+
+// IsPreferredType implements the DoltgresType interface.
+func (b Int16TypeSerial) IsPreferredType() bool {
+	return false
 }
 
 // IsUnbounded implements the DoltgresType interface.
