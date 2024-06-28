@@ -15,6 +15,9 @@
 package pgcatalog
 
 import (
+	"fmt"
+	"github.com/dolthub/doltgresql/postgres/parser/parser"
+	"github.com/dolthub/doltgresql/postgres/parser/sem/tree"
 	"io"
 
 	"github.com/dolthub/dolt/go/libraries/doltcore/sqle/dsess"
@@ -50,20 +53,20 @@ func (p PgViewsHandler) RowIter(ctx *sql.Context) (sql.RowIter, error) {
 
 	var views []sql.ViewDefinition
 
-	currentDB := ctx.GetCurrentDatabase()
-	db, err := c.Database(ctx, currentDB)
+	_, err := currentDatabaseSchemaIter(ctx, c, func(sch sql.DatabaseSchema) (bool, error) {
+		// TODO: Views should exist on schema
+		if vdb, ok := sch.(sql.ViewDatabase); ok {
+			vws, err := vdb.AllViews(ctx)
+			if err != nil {
+				return false, err
+			}
+
+			views = append(views, vws...)
+		}
+		return true, nil
+	})
 	if err != nil {
 		return nil, err
-	}
-
-	// TODO: Views should exist on schema
-	if vdb, ok := db.(sql.ViewDatabase); ok {
-		vws, err := vdb.AllViews(ctx)
-		if err != nil {
-			return nil, err
-		}
-
-		views = append(views, vws...)
 	}
 
 	return &pgViewsRowIter{
@@ -104,12 +107,29 @@ func (iter *pgViewsRowIter) Next(ctx *sql.Context) (sql.Row, error) {
 	iter.idx++
 	view := iter.views[iter.idx-1]
 
+	textDef := view.TextDefinition
+	if textDef == "" {
+		stmts, err := parser.Parse(view.CreateViewStatement)
+		if err != nil {
+			return nil, err
+		}
+		if len(stmts) == 0 {
+			return nil, fmt.Errorf("expected Create View statement, got none")
+		}
+		cv, ok := stmts[0].AST.(*tree.CreateView)
+		if !ok {
+			return nil, fmt.Errorf("expected Create View statement, got %s", stmts[0].SQL)
+		}
+
+		textDef = cv.AsSource.String()
+	}
+
 	return sql.Row{
 		"public",  // schemaname
 		view.Name, // viewname
 		"",        // viewowner
 		// TODO: TextDefinition not populated
-		view.TextDefinition, // definition
+		textDef, // definition
 	}, nil
 }
 
