@@ -353,17 +353,17 @@ func TestPgClass(t *testing.T) {
 				// Table
 				{
 					Query:    `SELECT * FROM "pg_catalog"."pg_class" WHERE relname='testing';`,
-					Expected: []sql.Row{{141, "testing", 0, 0, 0, 0, 0, 0, 0, 0, float32(0), 0, 0, "t", "f", "p", "r", 0, 0, "f", "f", "f", "f", "f", "t", "d", "f", 0, 0, 0, nil, nil, nil}},
+					Expected: []sql.Row{{3604666016, "testing", 3709913471, 0, 0, 0, 0, 0, 0, 0, float32(0), 0, 0, "t", "f", "p", "r", 0, 0, "f", "f", "f", "f", "f", "t", "d", "f", 0, 0, 0, nil, nil, nil}},
 				},
 				// Index
 				{
 					Query:    `SELECT * FROM "pg_catalog"."pg_class" WHERE relname='PRIMARY';`,
-					Expected: []sql.Row{{140, "PRIMARY", 0, 0, 0, 0, 0, 0, 0, 0, float32(0), 0, 0, "f", "f", "p", "i", 0, 0, "f", "f", "f", "f", "f", "t", "d", "f", 0, 0, 0, nil, nil, nil}},
+					Expected: []sql.Row{{4076598512, "PRIMARY", 3709913471, 0, 0, 0, 0, 0, 0, 0, float32(0), 0, 0, "f", "f", "p", "i", 0, 0, "f", "f", "f", "f", "f", "t", "d", "f", 0, 0, 0, nil, nil, nil}},
 				},
 				// View
 				{
 					Query:    `SELECT * FROM "pg_catalog"."pg_class" WHERE relname='testview';`,
-					Expected: []sql.Row{{142, "testview", 0, 0, 0, 0, 0, 0, 0, 0, float32(0), 0, 0, "f", "f", "p", "v", 0, 0, "f", "f", "f", "f", "f", "t", "d", "f", 0, 0, 0, nil, nil, nil}},
+					Expected: []sql.Row{{2395220157, "testview", 3503556430, 0, 0, 0, 0, 0, 0, 0, float32(0), 0, 0, "f", "f", "p", "v", 0, 0, "f", "f", "f", "f", "f", "t", "d", "f", 0, 0, 0, nil, nil, nil}},
 				},
 				{ // Different cases and quoted, so it fails
 					Query:       `SELECT * FROM "PG_catalog"."pg_class";`,
@@ -1173,8 +1173,11 @@ func TestPgNamespace(t *testing.T) {
 			Name: "pg_namespace",
 			Assertions: []ScriptTestAssertion{
 				{
-					Query:    `SELECT * FROM "pg_catalog"."pg_namespace";`,
-					Expected: []sql.Row{{1, "pg_catalog", 0, nil}, {2, "public", 0, nil}},
+					Query: `SELECT * FROM "pg_catalog"."pg_namespace";`,
+					Expected: []sql.Row{
+						{2185672565, "pg_catalog", 0, nil},
+						{3321767984, "public", 0, nil},
+					},
 				},
 				{ // Different cases and quoted, so it fails
 					Query:       `SELECT * FROM "PG_catalog"."pg_namespace";`,
@@ -1187,6 +1190,18 @@ func TestPgNamespace(t *testing.T) {
 				{ // Different cases but non-quoted, so it works
 					Query:    "SELECT nspname FROM PG_catalog.pg_NAMESPACE ORDER BY nspname;",
 					Expected: []sql.Row{{"pg_catalog"}, {"public"}},
+				},
+				{
+					Query:    "CREATE SCHEMA testschema;",
+					Expected: []sql.Row{},
+				},
+				{
+					Query: `SELECT * FROM "pg_catalog"."pg_namespace";`,
+					Expected: []sql.Row{
+						{2185672565, "pg_catalog", 0, nil},
+						{3321767984, "public", 0, nil},
+						{3709913471, "testschema", 0, nil},
+					},
 				},
 			},
 		},

@@ -45,29 +45,25 @@ func (p PgNamespaceHandler) Name() string {
 
 // RowIter implements the interface tables.Handler.
 func (p PgNamespaceHandler) RowIter(ctx *sql.Context) (sql.RowIter, error) {
-	// TODO: Implement pg_namespace row iter
 	doltSession := dsess.DSessFromSess(ctx.Session)
 	c := sqle.NewDefault(doltSession.Provider()).Analyzer.Catalog
 
-	db, err := c.Database(ctx, doltSession.GetCurrentDatabase())
+	var schemaNames []string
+
+	// TODO: missing 'information_schema' schema
+	currentDB, err := currentDatabaseSchemaIter(ctx, c, func(db sql.DatabaseSchema) (bool, error) {
+		schemaNames = append(schemaNames, db.SchemaName())
+		return true, nil
+	})
 	if err != nil {
 		return nil, err
-	}
-	schDB, ok := db.(sql.SchemaDatabase)
-	if !ok {
-		return emptyRowIter()
 	}
 
-	allSchemas, err := schDB.AllSchemas(ctx)
-	if err != nil {
-		return nil, err
-	}
-	// TODO: missing 'information_schema' schema
-	schemaNames := make([]string, len(allSchemas))
-	for i, schema := range allSchemas {
-		schemaNames[i] = schema.SchemaName()
-	}
-	return &pgNamespaceRowIter{schemas: schemaNames, idx: 0}, nil
+	return &pgNamespaceRowIter{
+		schemas:   schemaNames,
+		currentDB: currentDB.Name(),
+		idx:       0,
+	}, nil
 }
 
 // Schema implements the interface tables.Handler.
@@ -88,8 +84,9 @@ var pgNamespaceSchema = sql.Schema{
 
 // pgNamespaceRowIter is the sql.RowIter for the pg_namespace table.
 type pgNamespaceRowIter struct {
-	schemas []string
-	idx     int
+	schemas   []string
+	currentDB string
+	idx       int
 }
 
 var _ sql.RowIter = (*pgNamespaceRowIter)(nil)
@@ -102,12 +99,14 @@ func (iter *pgNamespaceRowIter) Next(ctx *sql.Context) (sql.Row, error) {
 	iter.idx++
 	sch := iter.schemas[iter.idx-1]
 
+	oid := genOid(iter.currentDB, sch)
+
 	// TODO: columns are incomplete
 	return sql.Row{
-		uint32(iter.idx), //oid
-		sch,              //nspname
-		uint32(0),        //nspowner
-		nil,              //nspacl
+		oid,       //oid
+		sch,       //nspname
+		uint32(0), //nspowner
+		nil,       //nspacl
 	}, nil
 }
 
