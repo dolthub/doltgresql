@@ -51,16 +51,28 @@ func (p PgClassHandler) RowIter(ctx *sql.Context) (sql.RowIter, error) {
 	var classes []Class
 
 	currentDB, err := currentDatabaseSchemaIter(ctx, c, func(db sql.DatabaseSchema) (bool, error) {
+		dbName := db.Name()
+		schName := db.SchemaName()
+		schOid := genOid(dbName, schName)
+
 		// Get tables and table indexes
 		err := sql.DBTableIter(ctx, db, func(t sql.Table) (cont bool, err error) {
+			tableName := t.Name()
 			hasIndexes := false
+
 			if it, ok := t.(sql.IndexAddressable); ok {
 				idxs, err := it.GetIndexes(ctx)
 				if err != nil {
 					return false, err
 				}
 				for _, idx := range idxs {
-					classes = append(classes, Class{name: idx.ID(), hasIndexes: false, kind: "i"})
+					classes = append(classes, Class{
+						oid:        genOid(dbName, schName, tableName, idx.ID()),
+						name:       idx.ID(),
+						hasIndexes: false,
+						kind:       "i",
+						schemaOid:  schOid,
+					})
 				}
 
 				if len(idxs) > 0 {
@@ -68,7 +80,13 @@ func (p PgClassHandler) RowIter(ctx *sql.Context) (sql.RowIter, error) {
 				}
 			}
 
-			classes = append(classes, Class{name: t.Name(), hasIndexes: hasIndexes, kind: "r"})
+			classes = append(classes, Class{
+				oid:        genOid(dbName, schName, tableName),
+				name:       tableName,
+				hasIndexes: hasIndexes,
+				kind:       "r",
+				schemaOid:  schOid,
+			})
 
 			return true, nil
 		})
@@ -84,13 +102,22 @@ func (p PgClassHandler) RowIter(ctx *sql.Context) (sql.RowIter, error) {
 
 	// Get views
 	if vdb, ok := currentDB.(sql.ViewDatabase); ok {
+		dbName := currentDB.Name()
 		views, err := vdb.AllViews(ctx)
 		if err != nil {
 			return nil, err
 		}
 
 		for _, view := range views {
-			classes = append(classes, Class{name: view.Name, hasIndexes: false, kind: "v"})
+			// TODO: OIDs should use schemaName when this issue is fixed
+			// https://github.com/dolthub/doltgresql/issues/456
+			classes = append(classes, Class{
+				oid:        genOid(dbName, view.Name),
+				name:       view.Name,
+				hasIndexes: false,
+				kind:       "v",
+				schemaOid:  genOid(dbName),
+			})
 		}
 	}
 
@@ -147,7 +174,9 @@ var pgClassSchema = sql.Schema{
 
 // Class represents a row in the pg_class table.
 type Class struct {
+	oid        uint32
 	name       string
+	schemaOid  uint32
 	hasIndexes bool
 	kind       string // r = ordinary table, i = index, S = sequence, t = TOAST table, v = view, m = materialized view, c = composite type, f = foreign table, p = partitioned table, I = partitioned index
 }
@@ -170,9 +199,9 @@ func (iter *pgClassRowIter) Next(ctx *sql.Context) (sql.Row, error) {
 
 	// TODO: Fill in the rest of the pg_class columns
 	return sql.Row{
-		uint32(iter.idx), // oid
+		class.oid,        // oid
 		class.name,       // relname
-		uint32(0),        // relnamespace
+		class.schemaOid,  // relnamespace
 		uint32(0),        // reltype
 		uint32(0),        // reloftype
 		uint32(0),        // relowner
