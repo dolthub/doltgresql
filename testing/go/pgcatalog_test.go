@@ -126,11 +126,11 @@ func TestPgAttribute(t *testing.T) {
 			Assertions: []ScriptTestAssertion{
 				{
 					Query:    `SELECT * FROM "pg_catalog"."pg_attribute" WHERE attname='pk';`,
-					Expected: []sql.Row{{0, "pk", 0, 0, 1331, -1, -1, 0, "f", "i", "p", "", "t", "f", "f", "", "", "f", "t", 0, -1, 0, nil, nil, nil, nil}},
+					Expected: []sql.Row{{2650014423, "pk", 0, 0, 1331, -1, -1, 0, "f", "i", "p", "", "t", "f", "f", "", "", "f", "t", 0, -1, 0, nil, nil, nil, nil}},
 				},
 				{
 					Query:    `SELECT * FROM "pg_catalog"."pg_attribute" WHERE attname='v1';`,
-					Expected: []sql.Row{{0, "v1", 0, 0, 1332, -1, -1, 0, "f", "i", "p", "", "f", "t", "f", "", "", "f", "t", 0, -1, 0, nil, nil, nil, nil}},
+					Expected: []sql.Row{{2650014423, "v1", 0, 0, 1332, -1, -1, 0, "f", "i", "p", "", "f", "t", "f", "", "", "f", "t", 0, -1, 0, nil, nil, nil, nil}},
 				},
 				{ // Different cases and quoted, so it fails
 					Query:       `SELECT * FROM "PG_catalog"."pg_attribute";`,
@@ -146,6 +146,13 @@ func TestPgAttribute(t *testing.T) {
 						{"abbrev"},
 						{"abbrev"},
 						{"active"},
+					},
+				},
+				{
+					Query: `SELECT attname FROM "pg_catalog"."pg_attribute" a JOIN "pg_catalog"."pg_class" c ON a.attrelid = c.oid WHERE c.relname = 'test';`,
+					Expected: []sql.Row{
+						{"pk"},
+						{"v1"},
 					},
 				},
 			},

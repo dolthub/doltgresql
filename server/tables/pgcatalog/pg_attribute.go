@@ -49,11 +49,13 @@ func (p PgAttributeHandler) RowIter(ctx *sql.Context) (sql.RowIter, error) {
 	c := sqle.NewDefault(doltSession.Provider()).Analyzer.Catalog
 
 	var cols []*sql.Column
+	var schemas []string
 
 	_, err := currentDatabaseSchemaIter(ctx, c, func(db sql.DatabaseSchema) (bool, error) {
 		err := sql.DBTableIter(ctx, db, func(t sql.Table) (cont bool, err error) {
 			for _, col := range t.Schema() {
 				cols = append(cols, col)
+				schemas = append(schemas, db.SchemaName())
 			}
 			return true, nil
 		})
@@ -69,8 +71,9 @@ func (p PgAttributeHandler) RowIter(ctx *sql.Context) (sql.RowIter, error) {
 	}
 
 	return &pgAttributeRowIter{
-		cols: cols,
-		idx:  0,
+		cols:    cols,
+		schemas: schemas,
+		idx:     0,
 	}, nil
 }
 
@@ -114,8 +117,9 @@ var pgAttributeSchema = sql.Schema{
 
 // pgAttributeRowIter is the sql.RowIter for the pg_attribute table.
 type pgAttributeRowIter struct {
-	cols []*sql.Column
-	idx  int
+	cols    []*sql.Column
+	schemas []string
+	idx     int
 }
 
 var _ sql.RowIter = (*pgAttributeRowIter)(nil)
@@ -127,6 +131,9 @@ func (iter *pgAttributeRowIter) Next(ctx *sql.Context) (sql.Row, error) {
 	}
 	iter.idx++
 	col := iter.cols[iter.idx-1]
+	schema := iter.schemas[iter.idx-1]
+
+	tableOid := genOid(col.DatabaseSource, schema, col.Source)
 
 	generated := ""
 	if col.Generated != nil {
@@ -143,7 +150,7 @@ func (iter *pgAttributeRowIter) Next(ctx *sql.Context) (sql.Row, error) {
 
 	// TODO: Fill in the rest of the pg_attribute columns
 	return sql.Row{
-		uint32(0),         // attrelid
+		tableOid,          // attrelid
 		col.Name,          // attname
 		uint32(0),         // atttypid
 		int16(0),          // attlen
