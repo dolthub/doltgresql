@@ -50,6 +50,8 @@ func (p PgIndexHandler) RowIter(ctx *sql.Context) (sql.RowIter, error) {
 	c := sqle.NewDefault(doltSession.Provider()).Analyzer.Catalog
 
 	var indexes []sql.Index
+	var schemas []string
+
 	_, err := currentDatabaseSchemaIter(ctx, c, func(db sql.DatabaseSchema) (bool, error) {
 		// Get tables and table indexes
 		err := sql.DBTableIter(ctx, db, func(t sql.Table) (cont bool, err error) {
@@ -58,7 +60,11 @@ func (p PgIndexHandler) RowIter(ctx *sql.Context) (sql.RowIter, error) {
 				if err != nil {
 					return false, err
 				}
-				indexes = append(indexes, idxs...)
+				for _, idx := range idxs {
+					indexes = append(indexes, idx)
+					schemas = append(schemas, db.SchemaName())
+				}
+
 			}
 
 			return true, nil
@@ -75,6 +81,7 @@ func (p PgIndexHandler) RowIter(ctx *sql.Context) (sql.RowIter, error) {
 
 	return &pgIndexRowIter{
 		indexes: indexes,
+		schemas: schemas,
 		idx:     0,
 	}, nil
 }
@@ -115,6 +122,7 @@ var pgIndexSchema = sql.Schema{
 // pgIndexRowIter is the sql.RowIter for the pg_index table.
 type pgIndexRowIter struct {
 	indexes []sql.Index
+	schemas []string
 	idx     int
 }
 
@@ -127,11 +135,15 @@ func (iter *pgIndexRowIter) Next(ctx *sql.Context) (sql.Row, error) {
 	}
 	iter.idx++
 	index := iter.indexes[iter.idx-1]
+	schema := iter.schemas[iter.idx-1]
+
+	tableOid := genOid(index.Database(), schema, index.Table())
+	indexOid := genOid(index.Database(), schema, index.Table(), index.ID())
 
 	// TODO: Fill in the rest of the pg_index columns
 	return sql.Row{
-		uint32(iter.idx),                         // indexrelid
-		uint32(0),                                // indrelid
+		indexOid,                                 // indexrelid
+		tableOid,                                 // indrelid
 		int16(len(index.Expressions())),          // indnatts
 		int16(0),                                 // indnkeyatts
 		index.IsUnique(),                         // indisunique

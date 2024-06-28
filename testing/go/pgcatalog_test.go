@@ -962,8 +962,8 @@ func TestPgIndex(t *testing.T) {
 				{
 					Query: `SELECT * FROM "pg_catalog"."pg_index";`,
 					Expected: []sql.Row{
-						{1, 0, 1, 0, "t", "f", "t", "f", "f", "f", "t", "f", "t", "t", "f", "{}", "{}", "{}", "{}", nil, nil},
-						{2, 0, 2, 0, "t", "f", "t", "f", "f", "f", "t", "f", "t", "t", "f", "{}", "{}", "{}", "{}", nil, nil},
+						{2417240761, 2965627175, 1, 0, "t", "f", "t", "f", "f", "f", "t", "f", "t", "t", "f", "{}", "{}", "{}", "{}", nil, nil},
+						{2205885068, 4009776262, 2, 0, "t", "f", "t", "f", "f", "f", "t", "f", "t", "t", "f", "{}", "{}", "{}", "{}", nil, nil},
 					},
 				},
 				{ // Different cases and quoted, so it fails
@@ -975,8 +975,15 @@ func TestPgIndex(t *testing.T) {
 					ExpectedErr: "not",
 				},
 				{ // Different cases but non-quoted, so it works
-					Query:    "SELECT indexrelid FROM PG_catalog.pg_INDEX ORDER BY indexrelid;",
-					Expected: []sql.Row{{1}, {2}},
+					Query:    "SELECT indexrelid FROM PG_catalog.pg_INDEX ORDER BY indexrelid ASC;",
+					Expected: []sql.Row{{2205885068}, {2417240761}},
+				},
+				{
+					Query: "SELECT i.indexrelid, i.indrelid, c.relname, t.relname  FROM pg_catalog.pg_index i JOIN pg_catalog.pg_class c ON i.indexrelid = c.oid JOIN pg_catalog.pg_class t ON i.indrelid = t.oid;",
+					Expected: []sql.Row{
+						{2417240761, 2965627175, "PRIMARY", "testing"},
+						{2205885068, 4009776262, "PRIMARY", "testing2"},
+					},
 				},
 			},
 		},

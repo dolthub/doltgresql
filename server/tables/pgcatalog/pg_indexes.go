@@ -117,6 +117,7 @@ func (iter *pgIndexesRowIter) Next(ctx *sql.Context) (sql.Row, error) {
 	index := iter.indexes[iter.idx-1]
 	schema := iter.schemas[iter.idx-1]
 
+	// TODO: Fill in the rest of the pg_indexes columns
 	return sql.Row{
 		schema,        // schemaname
 		index.Table(), // tablename
