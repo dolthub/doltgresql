@@ -145,10 +145,10 @@ func (iter *pgIndexRowIter) Next(ctx *sql.Context) (sql.Row, error) {
 		true,                                     // indisready
 		true,                                     // indislive
 		false,                                    // indisreplident
-		[]int16{},                                // indkey
-		[]uint32{},                               // indcollation
-		[]uint32{},                               // indclass
-		[]int16{},                                // indoption
+		[]any{},                                  // indkey
+		[]any{},                                  // indcollation
+		[]any{},                                  // indclass
+		[]any{},                                  // indoption
 		nil,                                      // indexprs
 		nil,                                      // indpred
 	}, nil
