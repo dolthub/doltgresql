@@ -43,11 +43,6 @@ func (p PgAttributeHandler) Name() string {
 	return PgAttributeName
 }
 
-// emptyRowIter implements the sql.RowIter for empty table.
-func emptyRowIter() (sql.RowIter, error) {
-	return sql.RowsToRowIter(), nil
-}
-
 // RowIter implements the interface tables.Handler.
 func (p PgAttributeHandler) RowIter(ctx *sql.Context) (sql.RowIter, error) {
 	doltSession := dsess.DSessFromSess(ctx.Session)
@@ -55,7 +50,7 @@ func (p PgAttributeHandler) RowIter(ctx *sql.Context) (sql.RowIter, error) {
 
 	var cols []*sql.Column
 
-	err := currentDatabaseSchemaIter(ctx, c, func(db sql.Database) (bool, error) {
+	_, err := currentDatabaseSchemaIter(ctx, c, func(db sql.DatabaseSchema) (bool, error) {
 		err := sql.DBTableIter(ctx, db, func(t sql.Table) (cont bool, err error) {
 			for _, col := range t.Schema() {
 				cols = append(cols, col)

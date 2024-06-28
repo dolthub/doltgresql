@@ -545,6 +545,60 @@ func TestSmokeTests(t *testing.T) {
 			},
 		},
 		{
+			Name: "IN",
+			SetUpScript: []string{
+				"CREATE TABLE test(v1 INT4, v2 INT4);",
+				"INSERT INTO test VALUES (1, 1), (2, 2), (3, 3), (4, 4), (5, 5);",
+			},
+			Assertions: []ScriptTestAssertion{
+				{
+					Query: "SELECT * FROM test WHERE v1 IN (2, '3', 4) ORDER BY v1;",
+					Expected: []sql.Row{
+						{2, 2},
+						{3, 3},
+						{4, 4},
+					},
+				},
+				{
+					Query:    "CREATE INDEX v2_idx ON test(v2);",
+					Expected: []sql.Row{},
+				},
+				{
+					Query: "SELECT * FROM test WHERE v2 IN (2, '3', 4) ORDER BY v1;",
+					Expected: []sql.Row{
+						{2, 2},
+						{3, 3},
+						{4, 4},
+					},
+				},
+			},
+		},
+		{
+			Name: "SUM",
+			SetUpScript: []string{
+				"CREATE TABLE test(pk SERIAL PRIMARY KEY, v1 INT4);",
+				"INSERT INTO test (v1) VALUES (1), (2), (3), (4), (5);",
+			},
+			Assertions: []ScriptTestAssertion{
+				{
+					Query: "SELECT SUM(v1) FROM test WHERE v1 BETWEEN 3 AND 5;",
+					Expected: []sql.Row{
+						{12.0},
+					},
+				},
+				{
+					Query:    "CREATE INDEX v1_idx ON test(v1);",
+					Expected: []sql.Row{},
+				},
+				{
+					Query: "SELECT SUM(v1) FROM test WHERE v1 BETWEEN 3 AND 5;",
+					Expected: []sql.Row{
+						{12.0},
+					},
+				},
+			},
+		},
+		{
 			Name: "Empty statement",
 			Assertions: []ScriptTestAssertion{
 				{
