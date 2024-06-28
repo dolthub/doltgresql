@@ -162,6 +162,12 @@ func (ac arrayContainer) Convert(val any) (any, sql.ConvertInRange, error) {
 		return anyArray, sql.InRange, nil
 	case nil:
 		return nil, sql.InRange, nil
+	case []string:
+		anyArray := make([]any, len(val))
+		for i, s := range val {
+			anyArray[i] = s
+		}
+		return anyArray, sql.InRange, nil
 	default:
 		return nil, sql.OutOfRange, fmt.Errorf("%s: unhandled type: %T", ac.String(), val)
 	}

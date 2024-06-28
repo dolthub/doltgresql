@@ -43,6 +43,7 @@ func Init() {
 	initCurrentCatalog()
 	initCurrentDatabase()
 	initCurrentSchema()
+	initCurrentSchemas()
 	initDegrees()
 	initDiv()
 	initExp()
