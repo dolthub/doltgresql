@@ -17,6 +17,8 @@ package pgcatalog
 import (
 	"io"
 
+	"github.com/dolthub/dolt/go/libraries/doltcore/sqle/dsess"
+	sqle "github.com/dolthub/go-mysql-server"
 	"github.com/dolthub/go-mysql-server/sql"
 
 	"github.com/dolthub/doltgresql/server/tables"
@@ -43,8 +45,26 @@ func (p PgNamespaceHandler) Name() string {
 
 // RowIter implements the interface tables.Handler.
 func (p PgNamespaceHandler) RowIter(ctx *sql.Context) (sql.RowIter, error) {
-	// TODO: Implement pg_namespace row iter
-	return emptyRowIter()
+	doltSession := dsess.DSessFromSess(ctx.Session)
+	c := sqle.NewDefault(doltSession.Provider()).Analyzer.Catalog
+
+	var schemaNames []string
+
+	currentDB, err := currentDatabaseSchemaIter(ctx, c, func(db sql.DatabaseSchema) (bool, error) {
+		schemaNames = append(schemaNames, db.SchemaName())
+		return true, nil
+	})
+	if err != nil {
+		return nil, err
+	}
+
+	schemaNames = append(schemaNames, "information_schema")
+
+	return &pgNamespaceRowIter{
+		schemas:   schemaNames,
+		currentDB: currentDB.Name(),
+		idx:       0,
+	}, nil
 }
 
 // Schema implements the interface tables.Handler.
@@ -65,13 +85,30 @@ var pgNamespaceSchema = sql.Schema{
 
 // pgNamespaceRowIter is the sql.RowIter for the pg_namespace table.
 type pgNamespaceRowIter struct {
+	schemas   []string
+	currentDB string
+	idx       int
 }
 
 var _ sql.RowIter = (*pgNamespaceRowIter)(nil)
 
 // Next implements the interface sql.RowIter.
 func (iter *pgNamespaceRowIter) Next(ctx *sql.Context) (sql.Row, error) {
-	return nil, io.EOF
+	if iter.idx >= len(iter.schemas) {
+		return nil, io.EOF
+	}
+	iter.idx++
+	sch := iter.schemas[iter.idx-1]
+
+	oid := genOid(iter.currentDB, sch)
+
+	// TODO: columns are incomplete
+	return sql.Row{
+		oid,       //oid
+		sch,       //nspname
+		uint32(0), //nspowner
+		nil,       //nspacl
+	}, nil
 }
 
 // Close implements the interface sql.RowIter.
