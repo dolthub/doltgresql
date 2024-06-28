@@ -148,11 +148,16 @@ func (iter *pgAttributeRowIter) Next(ctx *sql.Context) (sql.Row, error) {
 
 	hasDefault := col.Default != nil
 
+	typeOid := uint32(0)
+	if doltgresType, ok := col.Type.(pgtypes.DoltgresType); ok {
+		typeOid = uint32(doltgresType.OID())
+	}
+
 	// TODO: Fill in the rest of the pg_attribute columns
 	return sql.Row{
 		tableOid,          // attrelid
 		col.Name,          // attname
-		uint32(0),         // atttypid
+		typeOid,           // atttypid
 		int16(0),          // attlen
 		int16(iter.idx),   // attnum
 		int32(-1),         // attcacheoff

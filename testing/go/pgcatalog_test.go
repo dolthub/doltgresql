@@ -117,7 +117,7 @@ func TestPgAttribute(t *testing.T) {
 			SetUpScript: []string{
 				`CREATE SCHEMA testschema;`,
 				`SET search_path TO testschema;`,
-				`CREATE TABLE test (pk INT primary key, v1 INT DEFAULT 0);`,
+				`CREATE TABLE test (pk INT primary key, v1 TEXT DEFAULT 'hey');`,
 
 				// Should show attributes for all schemas
 				`CREATE SCHEMA testschema2;`,
@@ -126,11 +126,11 @@ func TestPgAttribute(t *testing.T) {
 			Assertions: []ScriptTestAssertion{
 				{
 					Query:    `SELECT * FROM "pg_catalog"."pg_attribute" WHERE attname='pk';`,
-					Expected: []sql.Row{{2650014423, "pk", 0, 0, 1331, -1, -1, 0, "f", "i", "p", "", "t", "f", "f", "", "", "f", "t", 0, -1, 0, nil, nil, nil, nil}},
+					Expected: []sql.Row{{2650014423, "pk", 23, 0, 1331, -1, -1, 0, "f", "i", "p", "", "t", "f", "f", "", "", "f", "t", 0, -1, 0, nil, nil, nil, nil}},
 				},
 				{
 					Query:    `SELECT * FROM "pg_catalog"."pg_attribute" WHERE attname='v1';`,
-					Expected: []sql.Row{{2650014423, "v1", 0, 0, 1332, -1, -1, 0, "f", "i", "p", "", "f", "t", "f", "", "", "f", "t", 0, -1, 0, nil, nil, nil, nil}},
+					Expected: []sql.Row{{2650014423, "v1", 25, 0, 1332, -1, -1, 0, "f", "i", "p", "", "f", "t", "f", "", "", "f", "t", 0, -1, 0, nil, nil, nil, nil}},
 				},
 				{ // Different cases and quoted, so it fails
 					Query:       `SELECT * FROM "PG_catalog"."pg_attribute";`,
