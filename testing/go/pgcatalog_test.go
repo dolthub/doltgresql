@@ -381,6 +381,23 @@ func TestPgClass(t *testing.T) {
 						{"pg_am"},
 					},
 				},
+				{
+					Query: "SELECT relname from pg_catalog.pg_class c JOIN pg_catalog.pg_namespace n ON c.relnamespace = n.oid  WHERE n.nspname = 'testschema';",
+					Expected: []sql.Row{
+						{"PRIMARY"},
+						{"testing"},
+						// TODO: Uncomment when views exist on schema
+						// {"testview"},
+					},
+				},
+				{
+					Query: "SELECT relname from pg_catalog.pg_class c JOIN pg_catalog.pg_namespace n ON c.relnamespace = n.oid  WHERE n.nspname = 'pg_catalog' LIMIT 3;",
+					Expected: []sql.Row{
+						{"pg_aggregate"},
+						{"pg_am"},
+						{"pg_amop"},
+					},
+				},
 			},
 		},
 	})
@@ -1177,6 +1194,7 @@ func TestPgNamespace(t *testing.T) {
 					Expected: []sql.Row{
 						{2401452148, "pg_catalog", 0, nil},
 						{3313866986, "public", 0, nil},
+						{3662935674, "information_schema", 0, nil},
 					},
 				},
 				{ // Different cases and quoted, so it fails
@@ -1188,8 +1206,12 @@ func TestPgNamespace(t *testing.T) {
 					ExpectedErr: "not",
 				},
 				{ // Different cases but non-quoted, so it works
-					Query:    "SELECT nspname FROM PG_catalog.pg_NAMESPACE ORDER BY nspname;",
-					Expected: []sql.Row{{"pg_catalog"}, {"public"}},
+					Query: "SELECT nspname FROM PG_catalog.pg_NAMESPACE ORDER BY nspname;",
+					Expected: []sql.Row{
+						{"information_schema"},
+						{"pg_catalog"},
+						{"public"},
+					},
 				},
 				{
 					Query:    "CREATE SCHEMA testschema;",
@@ -1201,6 +1223,7 @@ func TestPgNamespace(t *testing.T) {
 						{2401452148, "pg_catalog", 0, nil},
 						{3313866986, "public", 0, nil},
 						{3874471750, "testschema", 0, nil},
+						{3662935674, "information_schema", 0, nil},
 					},
 				},
 			},

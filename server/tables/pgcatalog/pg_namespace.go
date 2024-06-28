@@ -50,7 +50,6 @@ func (p PgNamespaceHandler) RowIter(ctx *sql.Context) (sql.RowIter, error) {
 
 	var schemaNames []string
 
-	// TODO: missing 'information_schema' schema
 	currentDB, err := currentDatabaseSchemaIter(ctx, c, func(db sql.DatabaseSchema) (bool, error) {
 		schemaNames = append(schemaNames, db.SchemaName())
 		return true, nil
@@ -58,6 +57,8 @@ func (p PgNamespaceHandler) RowIter(ctx *sql.Context) (sql.RowIter, error) {
 	if err != nil {
 		return nil, err
 	}
+
+	schemaNames = append(schemaNames, "information_schema")
 
 	return &pgNamespaceRowIter{
 		schemas:   schemaNames,
