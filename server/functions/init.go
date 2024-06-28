@@ -94,5 +94,6 @@ func Init() {
 	initTrimScale()
 	initTrunc()
 	initUpper()
+	initVersion()
 	initWidthBucket()
 }
