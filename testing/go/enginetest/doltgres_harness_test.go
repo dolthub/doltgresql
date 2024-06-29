@@ -334,7 +334,7 @@ func NewDoltgresQueryEngine(t *testing.T, harness *DoltgresHarness) *DoltgresQue
 	ctrl, err := server.RunInMemory(&servercfg.DoltgresConfig{
 		LogLevelStr: Ptr("debug"),
 		ListenerConfig: &servercfg.DoltgresListenerConfig{
-			PortNumber:              Ptr(port),
+			PortNumber: Ptr(port),
 		},
 	})
 	require.NoError(t, err)
@@ -357,7 +357,7 @@ var doltgresNoDbDsn = fmt.Sprintf("postgresql://doltgres:password@127.0.0.1:%d/?
 
 func (d DoltgresQueryEngine) Query(ctx *sql.Context, query string) (sql.Schema, sql.RowIter, error) {
 	query = normalizeStrings(query)
-	
+
 	db, err := gosql.Open("pgx", doltgresNoDbDsn)
 	if err != nil {
 		return nil, nil, err
@@ -401,26 +401,26 @@ func (d DoltgresQueryEngine) Query(ctx *sql.Context, query string) (sql.Schema, 
 
 // little state machine for turning MySQL quote characters into their postgres equivalents:
 /*
-               ┌───────────────────*─────────────────────────┐           
-               │                   ┌─*─┐                     *           
-               │               ┌───┴───▼──────┐         ┌────┴─────────┐ 
-               │     ┌────"───►│ In double    │◄───"────┤End double    │ 
-               │     │         │ quoted string│────"───►│quoted string?│ 
-               │     │         └──────────────┘         └──────────────┘ 
-               ├─────(──────────────────*───────────────────┐            
-      ┌─*──┐   ▼     │                                      *            
-      │    ├─────────┴┐            ┌─*─┐                    │            
-      └───►│ Not in   │        ┌───┴───▼─────┐          ┌───┴──────────┐ 
-           │ string   ├───'───►│In single    │◄────'────┤End single    │ 
-  ────────►└─────────┬┘        │quoted string│─────'───►│quoted string?│ 
-  START        ▲     │         └─────────────┘          └──────────────┘ 
-               └─────(──────────────────*───────────────────┐            
-                     │            ┌─*──┐                    *            
-                     │        ┌───┴────▼────┐           ┌───┴──────────┐ 
-                     └───`───►│In backtick  │◄─────`────┤End backtick  │ 
-                              │quoted string│──────`───►│quoted string?│ 
-                              └─────────────┘           └──────────────┘ 
- */
+               ┌───────────────────*─────────────────────────┐
+               │                   ┌─*─┐                     *
+               │               ┌───┴───▼──────┐         ┌────┴─────────┐
+               │     ┌────"───►│ In double    │◄───"────┤End double    │
+               │     │         │ quoted string│────"───►│quoted string?│
+               │     │         └──────────────┘         └──────────────┘
+               ├─────(──────────────────*───────────────────┐
+      ┌─*──┐   ▼     │                                      *
+      │    ├─────────┴┐            ┌─*─┐                    │
+      └───►│ Not in   │        ┌───┴───▼─────┐          ┌───┴──────────┐
+           │ string   ├───'───►│In single    │◄────'────┤End single    │
+  ────────►└─────────┬┘        │quoted string│─────'───►│quoted string?│
+  START        ▲     │         └─────────────┘          └──────────────┘
+               └─────(──────────────────*───────────────────┐
+                     │            ┌─*──┐                    *
+                     │        ┌───┴────▼────┐           ┌───┴──────────┐
+                     └───`───►│In backtick  │◄─────`────┤End backtick  │
+                              │quoted string│──────`───►│quoted string?│
+                              └─────────────┘           └──────────────┘
+*/
 type stringParserState byte
 
 const (
@@ -441,7 +441,7 @@ const backtick = '`'
 func normalizeStrings(q string) string {
 	state := notInString
 	normalized := strings.Builder{}
-	
+
 	for _, c := range q {
 		switch state {
 		case notInString:
@@ -517,7 +517,7 @@ func normalizeStrings(q string) string {
 			panic("unknown state")
 		}
 	}
-	
+
 	// If reached the end of input unsure whether to unquote a string, do so now
 	switch state {
 	case maybeEndDoubleQuote:
@@ -526,9 +526,9 @@ func normalizeStrings(q string) string {
 		normalized.WriteRune(singleQuote)
 	case maybeEndBackticks:
 		normalized.WriteRune(doubleQuote)
-		default: // do nothing
+	default: // do nothing
 	}
-	
+
 	return normalized.String()
 }
 
@@ -614,7 +614,7 @@ func toRow(schema sql.Schema, r []interface{}) (sql.Row, error) {
 			row[i] = val == "t"
 			continue
 		}
-		
+
 		row[i], _, err = col.Type.Convert(val)
 		if err != nil {
 			return nil, err
