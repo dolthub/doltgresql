@@ -16,14 +16,14 @@ package pgcatalog
 
 import (
 	"fmt"
-	"github.com/dolthub/doltgresql/postgres/parser/parser"
-	"github.com/dolthub/doltgresql/postgres/parser/sem/tree"
 	"io"
 
 	"github.com/dolthub/dolt/go/libraries/doltcore/sqle/dsess"
 	sqle "github.com/dolthub/go-mysql-server"
 	"github.com/dolthub/go-mysql-server/sql"
 
+	"github.com/dolthub/doltgresql/postgres/parser/parser"
+	"github.com/dolthub/doltgresql/postgres/parser/sem/tree"
 	"github.com/dolthub/doltgresql/server/tables"
 	pgtypes "github.com/dolthub/doltgresql/server/types"
 )

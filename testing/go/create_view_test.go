@@ -43,6 +43,47 @@ var createViewStmts = []ScriptTest{
 		},
 	},
 	{
+		Name: "views on different schemas",
+		SetUpScript: []string{
+			"CREATE SCHEMA testschema;",
+			"SET search_path TO testschema;",
+			"CREATE TABLE testing (pk INT primary key, v2 TEXT);",
+			"INSERT INTO testing VALUES (1,'a'), (2,'b'), (3,'c')",
+			"CREATE VIEW testview AS SELECT * FROM testing LIMIT 1;",
+			"CREATE SCHEMA myschema",
+			"SET search_path TO myschema",
+			"CREATE TABLE mytable (pk INT primary key, v1 INT);",
+			"INSERT INTO testing VALUES (1,4), (2,5), (3,6)",
+			"CREATE VIEW myview AS SELECT * FROM mytable LIMIT 1;",
+		},
+		Assertions: []ScriptTestAssertion{
+			{
+				Query:    "SHOW search_path;",
+				Expected: []sql.Row{{"myschema"}},
+			},
+			{
+				Query:    "select * from myview order by pk;",
+				Expected: []sql.Row{{4}, {5}, {6}},
+			},
+			{
+				Query: "SET search_path = 'testschema';",
+			},
+			{
+				Query:    "SHOW search_path;",
+				Expected: []sql.Row{{"testschema"}},
+			},
+			{
+				Skip:        true, // TODO: It errors as expected but not matching the given error message?
+				Query:       "select * from myview order by pk; /* err */",
+				ExpectedErr: "table not found: testing",
+			},
+			{
+				Query:    "select * from testview order by pk;",
+				Expected: []sql.Row{{"a"}, {"b"}, {"c"}},
+			},
+		},
+	},
+	{
 		Name: "create view from view",
 		SetUpScript: []string{
 			"create table t1 (pk int);",
