@@ -3705,8 +3705,8 @@ func TestPgViews(t *testing.T) {
 		{
 			Name: "pg_views",
 			SetUpScript: []string{
-				// `CREATE SCHEMA testschema;`,
-				// `SET search_path TO testschema;`,
+				`CREATE SCHEMA testschema;`,
+				`SET search_path TO testschema;`,
 				"CREATE TABLE testing (pk INT primary key, v1 INT);",
 				`CREATE VIEW testview AS SELECT * FROM testing LIMIT 1;`,
 				`CREATE VIEW testview2 AS SELECT * FROM testing LIMIT 2;`,
@@ -3714,7 +3714,7 @@ func TestPgViews(t *testing.T) {
 			Assertions: []ScriptTestAssertion{
 				{
 					Query:    `SELECT * FROM "pg_catalog"."pg_views" WHERE viewname='testview';`,
-					Expected: []sql.Row{{"public", "testview", "", "SELECT * FROM testing LIMIT 1"}},
+					Expected: []sql.Row{{"testschema", "testview", "", "SELECT * FROM testing LIMIT 1"}},
 				},
 				{ // Different cases and quoted, so it fails
 					Query:       `SELECT * FROM "PG_catalog"."pg_views";`,

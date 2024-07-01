@@ -52,16 +52,18 @@ func (p PgViewsHandler) RowIter(ctx *sql.Context) (sql.RowIter, error) {
 	c := sqle.NewDefault(doltSession.Provider()).Analyzer.Catalog
 
 	var views []sql.ViewDefinition
-
+	var schemas []string
 	_, err := currentDatabaseSchemaIter(ctx, c, func(sch sql.DatabaseSchema) (bool, error) {
-		// TODO: Views should exist on schema
 		if vdb, ok := sch.(sql.ViewDatabase); ok {
 			vws, err := vdb.AllViews(ctx)
 			if err != nil {
 				return false, err
 			}
+			for _, vw := range vws {
+				views = append(views, vw)
+				schemas = append(schemas, sch.SchemaName())
+			}
 
-			views = append(views, vws...)
 		}
 		return true, nil
 	})
@@ -70,8 +72,9 @@ func (p PgViewsHandler) RowIter(ctx *sql.Context) (sql.RowIter, error) {
 	}
 
 	return &pgViewsRowIter{
-		views: views,
-		idx:   0,
+		views:   views,
+		schemas: schemas,
+		idx:     0,
 	}, nil
 }
 
@@ -93,8 +96,9 @@ var pgViewsSchema = sql.Schema{
 
 // pgViewsRowIter is the sql.RowIter for the pg_views table.
 type pgViewsRowIter struct {
-	views []sql.ViewDefinition
-	idx   int
+	views   []sql.ViewDefinition
+	schemas []string
+	idx     int
 }
 
 var _ sql.RowIter = (*pgViewsRowIter)(nil)
@@ -106,6 +110,7 @@ func (iter *pgViewsRowIter) Next(ctx *sql.Context) (sql.Row, error) {
 	}
 	iter.idx++
 	view := iter.views[iter.idx-1]
+	schema := iter.schemas[iter.idx-1]
 
 	textDef := view.TextDefinition
 	if textDef == "" {
@@ -125,7 +130,7 @@ func (iter *pgViewsRowIter) Next(ctx *sql.Context) (sql.Row, error) {
 	}
 
 	return sql.Row{
-		"public",  // schemaname
+		schema,    // schemaname
 		view.Name, // viewname
 		"",        // viewowner
 		textDef,   // definition
