@@ -53,7 +53,7 @@ var createViewStmts = []ScriptTest{
 			"CREATE SCHEMA myschema",
 			"SET search_path TO myschema",
 			"CREATE TABLE mytable (pk INT primary key, v1 INT);",
-			"INSERT INTO testing VALUES (1,4), (2,5), (3,6)",
+			"INSERT INTO mytable VALUES (1,4), (2,5), (3,6)",
 			"CREATE VIEW myview AS SELECT * FROM mytable LIMIT 1;",
 		},
 		Assertions: []ScriptTestAssertion{

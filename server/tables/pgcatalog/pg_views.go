@@ -128,8 +128,7 @@ func (iter *pgViewsRowIter) Next(ctx *sql.Context) (sql.Row, error) {
 		"public",  // schemaname
 		view.Name, // viewname
 		"",        // viewowner
-		// TODO: TextDefinition not populated
-		textDef, // definition
+		textDef,   // definition
 	}, nil
 }
 
