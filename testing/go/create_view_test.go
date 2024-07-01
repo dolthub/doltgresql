@@ -73,9 +73,8 @@ var createViewStmts = []ScriptTest{
 				Expected: []sql.Row{{"testschema"}},
 			},
 			{
-				Skip:        true, // TODO: It errors as expected but not matching the given error message?
 				Query:       "select * from myview order by pk; /* err */",
-				ExpectedErr: "table not found: testing",
+				ExpectedErr: "table not found: myview",
 			},
 			{
 				Query:    "select v2 from testview order by pk;",
