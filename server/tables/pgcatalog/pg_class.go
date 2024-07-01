@@ -50,7 +50,7 @@ func (p PgClassHandler) RowIter(ctx *sql.Context) (sql.RowIter, error) {
 
 	var classes []Class
 
-	currentDB, err := currentDatabaseSchemaIter(ctx, c, func(db sql.DatabaseSchema) (bool, error) {
+	_, err := currentDatabaseSchemaIter(ctx, c, func(db sql.DatabaseSchema) (bool, error) {
 		dbName := db.Name()
 		schName := db.SchemaName()
 		schOid := genOid(dbName, schName)
@@ -94,31 +94,28 @@ func (p PgClassHandler) RowIter(ctx *sql.Context) (sql.RowIter, error) {
 			return false, err
 		}
 
+		// Get views
+		if vdb, ok := db.(sql.ViewDatabase); ok {
+			views, err := vdb.AllViews(ctx)
+			if err != nil {
+				return false, err
+			}
+
+			for _, view := range views {
+				classes = append(classes, Class{
+					oid:        genOid(schName, view.Name),
+					name:       view.Name,
+					hasIndexes: false,
+					kind:       "v",
+					schemaOid:  genOid(dbName),
+				})
+			}
+		}
+
 		return true, nil
 	})
 	if err != nil {
 		return nil, err
-	}
-
-	// Get views
-	if vdb, ok := currentDB.(sql.ViewDatabase); ok {
-		dbName := currentDB.Name()
-		views, err := vdb.AllViews(ctx)
-		if err != nil {
-			return nil, err
-		}
-
-		for _, view := range views {
-			// TODO: OIDs should use schemaName when this issue is fixed
-			// https://github.com/dolthub/doltgresql/issues/456
-			classes = append(classes, Class{
-				oid:        genOid(dbName, view.Name),
-				name:       view.Name,
-				hasIndexes: false,
-				kind:       "v",
-				schemaOid:  genOid(dbName),
-			})
-		}
 	}
 
 	return &pgClassRowIter{

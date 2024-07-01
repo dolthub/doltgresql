@@ -370,7 +370,7 @@ func TestPgClass(t *testing.T) {
 				// View
 				{
 					Query:    `SELECT * FROM "pg_catalog"."pg_class" WHERE relname='testview';`,
-					Expected: []sql.Row{{2993650152, "testview", 3906608034, 0, 0, 0, 0, 0, 0, 0, float32(0), 0, 0, "f", "f", "p", "v", 0, 0, "f", "f", "f", "f", "f", "t", "d", "f", 0, 0, 0, nil, nil, nil}},
+					Expected: []sql.Row{{4120823081, "testview", 3906608034, 0, 0, 0, 0, 0, 0, 0, float32(0), 0, 0, "f", "f", "p", "v", 0, 0, "f", "f", "f", "f", "f", "t", "d", "f", 0, 0, 0, nil, nil, nil}},
 				},
 				{ // Different cases and quoted, so it fails
 					Query:       `SELECT * FROM "PG_catalog"."pg_class";`,
