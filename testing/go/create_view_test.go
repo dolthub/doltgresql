@@ -48,13 +48,13 @@ var createViewStmts = []ScriptTest{
 			"CREATE SCHEMA testschema;",
 			"SET search_path TO testschema;",
 			"CREATE TABLE testing (pk INT primary key, v2 TEXT);",
-			"INSERT INTO testing VALUES (1,'a'), (2,'b'), (3,'c')",
-			"CREATE VIEW testview AS SELECT * FROM testing LIMIT 1;",
-			"CREATE SCHEMA myschema",
-			"SET search_path TO myschema",
+			"INSERT INTO testing VALUES (1,'a'), (2,'b'), (3,'c');",
+			"CREATE VIEW testview AS SELECT * FROM testing;",
+			"CREATE SCHEMA myschema;",
+			"SET search_path TO myschema;",
 			"CREATE TABLE mytable (pk INT primary key, v1 INT);",
-			"INSERT INTO mytable VALUES (1,4), (2,5), (3,6)",
-			"CREATE VIEW myview AS SELECT * FROM mytable LIMIT 1;",
+			"INSERT INTO mytable VALUES (1,4), (2,5), (3,6);",
+			"CREATE VIEW myview AS SELECT * FROM mytable;",
 		},
 		Assertions: []ScriptTestAssertion{
 			{
@@ -62,7 +62,7 @@ var createViewStmts = []ScriptTest{
 				Expected: []sql.Row{{"myschema"}},
 			},
 			{
-				Query:    "select * from myview order by pk;",
+				Query:    "select v1 from myview order by pk;",
 				Expected: []sql.Row{{4}, {5}, {6}},
 			},
 			{
@@ -78,7 +78,7 @@ var createViewStmts = []ScriptTest{
 				ExpectedErr: "table not found: testing",
 			},
 			{
-				Query:    "select * from testview order by pk;",
+				Query:    "select v2 from testview order by pk;",
 				Expected: []sql.Row{{"a"}, {"b"}, {"c"}},
 			},
 		},
