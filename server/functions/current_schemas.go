@@ -36,7 +36,7 @@ var current_schemas = framework.Function1{
 	Parameters:         []pgtypes.DoltgresType{pgtypes.Bool},
 	IsNonDeterministic: true,
 	Callable: func(ctx *sql.Context, val any) (any, error) {
-		schemas := make([]string, 0)
+		schemas := make([]any, 0)
 		if val.(bool) {
 			schemas = append(schemas, sessiondata.PgCatalogName)
 		}
@@ -44,7 +44,9 @@ var current_schemas = framework.Function1{
 		if err != nil {
 			return nil, err
 		}
-		schemas = append(schemas, searchPaths...)
+		for _, schema := range searchPaths {
+			schemas = append(schemas, schema)
+		}
 		return schemas, nil
 	},
 	Strict: true,

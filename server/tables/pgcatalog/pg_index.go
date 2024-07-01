@@ -16,7 +16,10 @@ package pgcatalog
 
 import (
 	"io"
+	"strings"
 
+	"github.com/dolthub/dolt/go/libraries/doltcore/sqle/dsess"
+	sqle "github.com/dolthub/go-mysql-server"
 	"github.com/dolthub/go-mysql-server/sql"
 
 	"github.com/dolthub/doltgresql/server/tables"
@@ -43,8 +46,44 @@ func (p PgIndexHandler) Name() string {
 
 // RowIter implements the interface tables.Handler.
 func (p PgIndexHandler) RowIter(ctx *sql.Context) (sql.RowIter, error) {
-	// TODO: Implement pg_index row iter
-	return emptyRowIter()
+	doltSession := dsess.DSessFromSess(ctx.Session)
+	c := sqle.NewDefault(doltSession.Provider()).Analyzer.Catalog
+
+	var indexes []sql.Index
+	var schemas []string
+
+	_, err := currentDatabaseSchemaIter(ctx, c, func(db sql.DatabaseSchema) (bool, error) {
+		// Get tables and table indexes
+		err := sql.DBTableIter(ctx, db, func(t sql.Table) (cont bool, err error) {
+			if it, ok := t.(sql.IndexAddressable); ok {
+				idxs, err := it.GetIndexes(ctx)
+				if err != nil {
+					return false, err
+				}
+				for _, idx := range idxs {
+					indexes = append(indexes, idx)
+					schemas = append(schemas, db.SchemaName())
+				}
+
+			}
+
+			return true, nil
+		})
+		if err != nil {
+			return false, err
+		}
+
+		return true, nil
+	})
+	if err != nil {
+		return nil, err
+	}
+
+	return &pgIndexRowIter{
+		indexes: indexes,
+		schemas: schemas,
+		idx:     0,
+	}, nil
 }
 
 // Schema implements the interface tables.Handler.
@@ -82,13 +121,49 @@ var pgIndexSchema = sql.Schema{
 
 // pgIndexRowIter is the sql.RowIter for the pg_index table.
 type pgIndexRowIter struct {
+	indexes []sql.Index
+	schemas []string
+	idx     int
 }
 
 var _ sql.RowIter = (*pgIndexRowIter)(nil)
 
 // Next implements the interface sql.RowIter.
 func (iter *pgIndexRowIter) Next(ctx *sql.Context) (sql.Row, error) {
-	return nil, io.EOF
+	if iter.idx >= len(iter.indexes) {
+		return nil, io.EOF
+	}
+	iter.idx++
+	index := iter.indexes[iter.idx-1]
+	schema := iter.schemas[iter.idx-1]
+
+	tableOid := genOid(index.Database(), schema, index.Table())
+	indexOid := genOid(index.Database(), schema, index.Table(), index.ID())
+
+	// TODO: Fill in the rest of the pg_index columns
+	return sql.Row{
+		indexOid,                                 // indexrelid
+		tableOid,                                 // indrelid
+		int16(len(index.Expressions())),          // indnatts
+		int16(0),                                 // indnkeyatts
+		index.IsUnique(),                         // indisunique
+		false,                                    // indnullsnotdistinct
+		strings.ToLower(index.ID()) == "primary", // indisprimary
+		false,                                    // indisexclusion
+		false,                                    // indimmediate
+		false,                                    // indisclustered
+		true,                                     // indisvalid
+		false,                                    // indcheckxmin
+		true,                                     // indisready
+		true,                                     // indislive
+		false,                                    // indisreplident
+		[]any{},                                  // indkey
+		[]any{},                                  // indcollation
+		[]any{},                                  // indclass
+		[]any{},                                  // indoption
+		nil,                                      // indexprs
+		nil,                                      // indpred
+	}, nil
 }
 
 // Close implements the interface sql.RowIter.
