@@ -103,11 +103,11 @@ func (p PgClassHandler) RowIter(ctx *sql.Context) (sql.RowIter, error) {
 
 			for _, view := range views {
 				classes = append(classes, Class{
-					oid:        genOid(schName, view.Name),
+					oid:        genOid(dbName, schName, view.Name),
 					name:       view.Name,
 					hasIndexes: false,
 					kind:       "v",
-					schemaOid:  genOid(dbName),
+					schemaOid:  schOid,
 				})
 			}
 		}
