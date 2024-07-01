@@ -133,7 +133,9 @@ func getIndexName(idx sql.Index) string {
 	if idx.ID() == "PRIMARY" {
 		return fmt.Sprintf("%s_pkey", idx.Table())
 	}
-	return fmt.Sprintf("%s_%s_key", idx.Table(), idx.ID())
+	return idx.ID()
+	// TODO: Unnamed indexes should have below format
+	// return fmt.Sprintf("%s_%s_key", idx.Table(), idx.ID())
 }
 
 // Schema implements the interface tables.Handler.

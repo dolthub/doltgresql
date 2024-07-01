@@ -394,7 +394,7 @@ func TestPgClass(t *testing.T) {
 					Query: "SELECT relname from pg_catalog.pg_class c JOIN pg_catalog.pg_namespace n ON c.relnamespace = n.oid  WHERE n.nspname = 'testschema';",
 					Expected: []sql.Row{
 						{"testing_pkey"},
-						{"testing_v1_key"},
+						{"v1"},
 						{"testing"},
 						// TODO: Uncomment when views exist on schema
 						// {"testview"},
@@ -480,7 +480,7 @@ func TestPgConstraint(t *testing.T) {
 					Query: `SELECT * FROM "pg_catalog"."pg_constraint";`,
 					Expected: []sql.Row{
 						{2417240761, "testing_pkey", 3313866986, "p", "f", "f", "t", 2965627175, 0, 2417240761, 0, 0, "", "", "", "t", 0, "t", nil, nil, nil, nil, nil, nil, nil, nil},
-						{2372902490, "testing_v1_key", 3313866986, "u", "f", "f", "t", 2965627175, 0, 2372902490, 0, 0, "", "", "", "t", 0, "t", nil, nil, nil, nil, nil, nil, nil, nil},
+						{2372902490, "v1", 3313866986, "u", "f", "f", "t", 2965627175, 0, 2372902490, 0, 0, "", "", "", "t", 0, "t", nil, nil, nil, nil, nil, nil, nil, nil},
 						{2205885068, "testing2_pkey", 3313866986, "p", "f", "f", "t", 4009776262, 0, 2205885068, 0, 0, "", "", "", "t", 0, "t", nil, nil, nil, nil, nil, nil, nil, nil},
 						// TODO: Uncomment when foreign keys work
 						// {2205885068, "testing2_pktesting_fkey", 3313866986, "f", "f", "t", 4009776262, 0, 2205885068, 0, 0, "", "", "", "t", 0, "t", nil, nil, nil, nil, nil, nil, nil, nil}},
@@ -499,7 +499,7 @@ func TestPgConstraint(t *testing.T) {
 					Expected: []sql.Row{
 						{"testing2_pkey"},
 						{"testing_pkey"},
-						{"testing_v1_key"},
+						{"v1"},
 					},
 				},
 				{
@@ -1016,7 +1016,7 @@ func TestPgIndex(t *testing.T) {
 					Query: "SELECT i.indexrelid, i.indrelid, c.relname, t.relname  FROM pg_catalog.pg_index i JOIN pg_catalog.pg_class c ON i.indexrelid = c.oid JOIN pg_catalog.pg_class t ON i.indrelid = t.oid;",
 					Expected: []sql.Row{
 						{2755706564, 3421834825, "testing_pkey", "testing"},
-						{3477907979, 3421834825, "testing_v1_key", "testing"},
+						{3477907979, 3421834825, "v1", "testing"},
 						{3966643545, 2794008446, "testing2_pkey", "testing2"},
 					},
 				},
@@ -1034,14 +1034,16 @@ func TestPgIndexes(t *testing.T) {
 				"SET search_path TO testschema;",
 				`CREATE TABLE testing (pk INT primary key, v1 INT UNIQUE);`,
 				`CREATE TABLE testing2 (pk INT, v1 INT, PRIMARY KEY (pk, v1));`,
+				"CREATE INDEX my_index ON testing2(v1);",
 			},
 			Assertions: []ScriptTestAssertion{
 				{
 					Query: `SELECT * FROM "pg_catalog"."pg_indexes";`,
 					Expected: []sql.Row{
-						{"testschema", "testing", "testing_pkey", "", ""},
-						{"testschema", "testing", "testing_v1_key", "", ""},
-						{"testschema", "testing2", "testing2_pkey", "", ""},
+						{"testschema", "testing", "testing_pkey", "", "CREATE UNIQUE INDEX testing_pkey ON testschema.testing USING btree (pk)"},
+						{"testschema", "testing", "v1", "", "CREATE UNIQUE INDEX v1 ON testschema.testing USING btree (v1)"},
+						{"testschema", "testing2", "testing2_pkey", "", "CREATE UNIQUE INDEX testing2_pkey ON testschema.testing2 USING btree (pk, v1)"},
+						{"testschema", "testing2", "my_index", "", "CREATE INDEX my_index ON testschema.testing2 USING btree (v1)"},
 					},
 				},
 				{ // Different cases and quoted, so it fails
@@ -1054,7 +1056,7 @@ func TestPgIndexes(t *testing.T) {
 				},
 				{ // Different cases but non-quoted, so it works
 					Query:    "SELECT indexname FROM PG_catalog.pg_INDEXES ORDER BY indexname;",
-					Expected: []sql.Row{{"testing2_pkey"}, {"testing_pkey"}, {"testing_v1_key"}},
+					Expected: []sql.Row{{"my_index"}, {"testing2_pkey"}, {"testing_pkey"}, {"v1"}},
 				},
 			},
 		},
