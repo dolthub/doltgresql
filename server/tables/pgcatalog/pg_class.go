@@ -48,7 +48,7 @@ func (p PgClassHandler) RowIter(ctx *sql.Context) (sql.RowIter, error) {
 	doltSession := dsess.DSessFromSess(ctx.Session)
 	c := sqle.NewDefault(doltSession.Provider()).Analyzer.Catalog
 
-	var classes []Class
+	var classes []pgClass
 
 	currentDB, err := currentDatabaseSchemaIter(ctx, c, func(db sql.DatabaseSchema) (bool, error) {
 		dbName := db.Name()
@@ -66,7 +66,7 @@ func (p PgClassHandler) RowIter(ctx *sql.Context) (sql.RowIter, error) {
 					return false, err
 				}
 				for _, idx := range idxs {
-					classes = append(classes, Class{
+					classes = append(classes, pgClass{
 						oid:        genOid(dbName, schName, tableName, idx.ID()),
 						name:       idx.ID(),
 						hasIndexes: false,
@@ -80,7 +80,7 @@ func (p PgClassHandler) RowIter(ctx *sql.Context) (sql.RowIter, error) {
 				}
 			}
 
-			classes = append(classes, Class{
+			classes = append(classes, pgClass{
 				oid:        genOid(dbName, schName, tableName),
 				name:       tableName,
 				hasIndexes: hasIndexes,
@@ -111,7 +111,7 @@ func (p PgClassHandler) RowIter(ctx *sql.Context) (sql.RowIter, error) {
 		for _, view := range views {
 			// TODO: OIDs should use schemaName when this issue is fixed
 			// https://github.com/dolthub/doltgresql/issues/456
-			classes = append(classes, Class{
+			classes = append(classes, pgClass{
 				oid:        genOid(dbName, view.Name),
 				name:       view.Name,
 				hasIndexes: false,
@@ -172,8 +172,8 @@ var pgClassSchema = sql.Schema{
 	{Name: "relpartbound", Type: pgtypes.Text, Default: nil, Nullable: true, Source: PgClassName},    // TODO: type pg_node_tree, collation C
 }
 
-// Class represents a row in the pg_class table.
-type Class struct {
+// pgClass represents a row in the pg_class table.
+type pgClass struct {
 	oid        uint32
 	name       string
 	schemaOid  uint32
@@ -183,7 +183,7 @@ type Class struct {
 
 // pgClassRowIter is the sql.RowIter for the pg_class table.
 type pgClassRowIter struct {
-	classes []Class
+	classes []pgClass
 	idx     int
 }
 
