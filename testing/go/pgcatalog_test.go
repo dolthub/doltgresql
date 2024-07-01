@@ -558,12 +558,11 @@ func TestPgDatabase(t *testing.T) {
 					},
 				},
 				{
-					Query: `SELECT datname FROM "pg_catalog"."pg_database" ORDER BY oid DESC;`,
-					Skip:  true, // TODO: Why does this not respect the ORDER BY?
+					Query: `SELECT oid, datname FROM "pg_catalog"."pg_database" ORDER BY oid DESC;`,
 					Expected: []sql.Row{
-						{"test"},
-						{"postgres"},
-						{"doltgres"},
+						{3906608034, "postgres"},
+						{3680993593, "test"},
+						{2414594895, "doltgres"},
 					},
 				},
 				{ // Different cases and quoted, so it fails
@@ -576,7 +575,6 @@ func TestPgDatabase(t *testing.T) {
 				},
 				{ // Different cases but non-quoted, so it works
 					Query: "SELECT oid, datname FROM PG_catalog.pg_DATABASE ORDER BY datname ASC;",
-					Skip:  true, // TODO: Why does this not respect the ORDER BY?
 					Expected: []sql.Row{
 						{2414594895, "doltgres"},
 						{3906608034, "postgres"},
@@ -962,10 +960,17 @@ func TestPgIndex(t *testing.T) {
 	RunScripts(t, []ScriptTest{
 		{
 			Name: "pg_index",
+			SetUpScript: []string{
+				`CREATE TABLE testing (pk INT primary key, v1 INT);`,
+				`CREATE TABLE testing2 (pk INT, v1 INT, PRIMARY KEY (pk, v1));`,
+			},
 			Assertions: []ScriptTestAssertion{
 				{
-					Query:    `SELECT * FROM "pg_catalog"."pg_index";`,
-					Expected: []sql.Row{},
+					Query: `SELECT * FROM "pg_catalog"."pg_index";`,
+					Expected: []sql.Row{
+						{2417240761, 2965627175, 1, 0, "t", "f", "t", "f", "f", "f", "t", "f", "t", "t", "f", "{}", "{}", "{}", "{}", nil, nil},
+						{2205885068, 4009776262, 2, 0, "t", "f", "t", "f", "f", "f", "t", "f", "t", "t", "f", "{}", "{}", "{}", "{}", nil, nil},
+					},
 				},
 				{ // Different cases and quoted, so it fails
 					Query:       `SELECT * FROM "PG_catalog"."pg_index";`,
@@ -976,8 +981,15 @@ func TestPgIndex(t *testing.T) {
 					ExpectedErr: "not",
 				},
 				{ // Different cases but non-quoted, so it works
-					Query:    "SELECT indexrelid FROM PG_catalog.pg_INDEX ORDER BY indexrelid;",
-					Expected: []sql.Row{},
+					Query:    "SELECT indexrelid FROM PG_catalog.pg_INDEX ORDER BY indexrelid ASC;",
+					Expected: []sql.Row{{2205885068}, {2417240761}},
+				},
+				{
+					Query: "SELECT i.indexrelid, i.indrelid, c.relname, t.relname  FROM pg_catalog.pg_index i JOIN pg_catalog.pg_class c ON i.indexrelid = c.oid JOIN pg_catalog.pg_class t ON i.indrelid = t.oid;",
+					Expected: []sql.Row{
+						{2417240761, 2965627175, "PRIMARY", "testing"},
+						{2205885068, 4009776262, "PRIMARY", "testing2"},
+					},
 				},
 			},
 		},
@@ -988,10 +1000,19 @@ func TestPgIndexes(t *testing.T) {
 	RunScripts(t, []ScriptTest{
 		{
 			Name: "pg_indexes",
+			SetUpScript: []string{
+				"CREATE SCHEMA testschema;",
+				"SET search_path TO testschema;",
+				`CREATE TABLE testing (pk INT primary key, v1 INT);`,
+				`CREATE TABLE testing2 (pk INT, v1 INT, PRIMARY KEY (pk, v1));`,
+			},
 			Assertions: []ScriptTestAssertion{
 				{
-					Query:    `SELECT * FROM "pg_catalog"."pg_indexes";`,
-					Expected: []sql.Row{},
+					Query: `SELECT * FROM "pg_catalog"."pg_indexes";`,
+					Expected: []sql.Row{
+						{"testschema", "testing", "PRIMARY", "", ""},
+						{"testschema", "testing2", "PRIMARY", "", ""},
+					},
 				},
 				{ // Different cases and quoted, so it fails
 					Query:       `SELECT * FROM "PG_catalog"."pg_indexes";`,
@@ -1003,7 +1024,7 @@ func TestPgIndexes(t *testing.T) {
 				},
 				{ // Different cases but non-quoted, so it works
 					Query:    "SELECT indexname FROM PG_catalog.pg_INDEXES ORDER BY indexname;",
-					Expected: []sql.Row{},
+					Expected: []sql.Row{{"PRIMARY"}, {"PRIMARY"}},
 				},
 			},
 		},
