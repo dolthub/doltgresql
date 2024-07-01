@@ -558,12 +558,11 @@ func TestPgDatabase(t *testing.T) {
 					},
 				},
 				{
-					Query: `SELECT datname FROM "pg_catalog"."pg_database" ORDER BY oid DESC;`,
-					Skip:  true, // TODO: Why does this not respect the ORDER BY?
+					Query: `SELECT oid, datname FROM "pg_catalog"."pg_database" ORDER BY oid DESC;`,
 					Expected: []sql.Row{
-						{"test"},
-						{"postgres"},
-						{"doltgres"},
+						{3906608034, "postgres"},
+						{3680993593, "test"},
+						{2414594895, "doltgres"},
 					},
 				},
 				{ // Different cases and quoted, so it fails
@@ -576,7 +575,6 @@ func TestPgDatabase(t *testing.T) {
 				},
 				{ // Different cases but non-quoted, so it works
 					Query: "SELECT oid, datname FROM PG_catalog.pg_DATABASE ORDER BY datname ASC;",
-					Skip:  true, // TODO: Why does this not respect the ORDER BY?
 					Expected: []sql.Row{
 						{2414594895, "doltgres"},
 						{3906608034, "postgres"},
