@@ -331,6 +331,8 @@ func (h *ConnectionHandler) handleQuery(message messages.Query) error {
 		return err
 	}
 
+	// TODO: Remove this once we support `SELECT * FROM function()` syntax
+	// Github issue: https://github.com/dolthub/doltgresql/issues/464
 	handled, err = h.handledWorkbenchCommands(message.String)
 	if handled || err != nil {
 		return err
