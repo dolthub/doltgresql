@@ -59,8 +59,10 @@ func (p PgIndexesHandler) RowIter(ctx *sql.Context) (sql.RowIter, error) {
 				if err != nil {
 					return false, err
 				}
-				indexes = append(indexes, idxs...)
-				schemas = append(schemas, db.SchemaName())
+				for _, idx := range idxs {
+					indexes = append(indexes, idx)
+					schemas = append(schemas, db.SchemaName())
+				}
 			}
 
 			return true, nil
@@ -119,11 +121,11 @@ func (iter *pgIndexesRowIter) Next(ctx *sql.Context) (sql.Row, error) {
 
 	// TODO: Fill in the rest of the pg_indexes columns
 	return sql.Row{
-		schema,        // schemaname
-		index.Table(), // tablename
-		index.ID(),    // indexname
-		"",            // tablespace
-		"",            // indexdef
+		schema,              // schemaname
+		index.Table(),       // tablename
+		getIndexName(index), // indexname
+		"",                  // tablespace
+		"",                  // indexdef
 	}, nil
 }
 

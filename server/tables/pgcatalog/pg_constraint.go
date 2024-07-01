@@ -62,20 +62,24 @@ func (p PgConstraintHandler) RowIter(ctx *sql.Context) (sql.RowIter, error) {
 				}
 				for _, idx := range idxs {
 					idxOid := genOid(db.Name(), db.SchemaName(), t.Name(), idx.ID())
+					conType := "p"
+					if idx.IsUnique() && idx.ID() != "PRIMARY" {
+						conType = "u"
+					}
 					constraints = append(constraints, pgConstraint{
-						oid:          idxOid,
-						name:         idx.ID(),
-						schemaOid:    schemaOid,
-						conType:      "p",
-						tableOid:     genOid(db.Name(), db.SchemaName(), t.Name()),
-						idxOid:       idxOid,
-						tableRefOid:  uint32(0),
-						fkUpdateType: "",
-						fkDeleteType: "",
+						oid:         idxOid,
+						name:        getIndexName(idx),
+						schemaOid:   schemaOid,
+						conType:     conType,
+						tableOid:    genOid(db.Name(), db.SchemaName(), t.Name()),
+						idxOid:      idxOid,
+						tableRefOid: uint32(0),
 					})
 				}
+
 			}
 
+			// TODO: Why are there no foreign keys?
 			// Get foreign keys
 			if ft, ok := t.(sql.ForeignKeyTable); ok {
 				fks, err := ft.GetDeclaredForeignKeys(ctx)
@@ -94,6 +98,7 @@ func (p PgConstraintHandler) RowIter(ctx *sql.Context) (sql.RowIter, error) {
 						tableRefOid:  genOid(db.Name(), db.SchemaName(), fk.ParentTable),
 						fkUpdateType: getFKAction(fk.OnUpdate),
 						fkDeleteType: getFKAction(fk.OnDelete),
+						fkMatchType:  "s",
 					})
 				}
 			}
@@ -107,15 +112,13 @@ func (p PgConstraintHandler) RowIter(ctx *sql.Context) (sql.RowIter, error) {
 				for _, check := range checks {
 					checkOid := genOid(db.Name(), db.SchemaName(), t.Name(), check.Name)
 					constraints = append(constraints, pgConstraint{
-						oid:          checkOid,
-						name:         check.Name,
-						schemaOid:    schemaOid,
-						conType:      "c",
-						tableOid:     genOid(db.Name(), db.SchemaName(), t.Name()),
-						idxOid:       uint32(0),
-						tableRefOid:  uint32(0),
-						fkUpdateType: "",
-						fkDeleteType: "",
+						oid:         checkOid,
+						name:        check.Name,
+						schemaOid:   schemaOid,
+						conType:     "c",
+						tableOid:    genOid(db.Name(), db.SchemaName(), t.Name()),
+						idxOid:      uint32(0),
+						tableRefOid: uint32(0),
 					})
 				}
 			}
@@ -205,6 +208,7 @@ type pgConstraint struct {
 	tableRefOid  uint32
 	fkUpdateType string // a = no action, r = restrict, c = cascade, n = set null, d = set default
 	fkDeleteType string // a = no action, r = restrict, c = cascade, n = set null, d = set default
+	fkMatchType  string // f = full, p = partial, s = simple
 }
 
 // pgConstraintRowIter is the sql.RowIter for the pg_constraint table.
@@ -238,10 +242,10 @@ func (iter *pgConstraintRowIter) Next(ctx *sql.Context) (sql.Row, error) {
 		con.tableRefOid,  // confrelid
 		con.fkUpdateType, // confupdtype
 		con.fkDeleteType, // confdeltype
-		"f",              // confmatchtype
+		con.fkMatchType,  // confmatchtype
 		true,             // conislocal
 		int16(0),         // coninhcount
-		false,            // connoinherit
+		true,             // connoinherit
 		nil,              // conkey
 		nil,              // confkey
 		nil,              // conpfeqop

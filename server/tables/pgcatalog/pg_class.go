@@ -15,6 +15,7 @@
 package pgcatalog
 
 import (
+	"fmt"
 	"io"
 
 	"github.com/dolthub/dolt/go/libraries/doltcore/sqle/dsess"
@@ -68,7 +69,7 @@ func (p PgClassHandler) RowIter(ctx *sql.Context) (sql.RowIter, error) {
 				for _, idx := range idxs {
 					classes = append(classes, pgClass{
 						oid:        genOid(dbName, schName, tableName, idx.ID()),
-						name:       idx.ID(),
+						name:       getIndexName(idx),
 						hasIndexes: false,
 						kind:       "i",
 						schemaOid:  schOid,
@@ -125,6 +126,14 @@ func (p PgClassHandler) RowIter(ctx *sql.Context) (sql.RowIter, error) {
 		classes: classes,
 		idx:     0,
 	}, nil
+}
+
+// getIndexName returns the name of an index.
+func getIndexName(idx sql.Index) string {
+	if idx.ID() == "PRIMARY" {
+		return fmt.Sprintf("%s_pkey", idx.Table())
+	}
+	return fmt.Sprintf("%s_%s_key", idx.Table(), idx.ID())
 }
 
 // Schema implements the interface tables.Handler.
