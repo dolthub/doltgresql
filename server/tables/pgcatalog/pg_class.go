@@ -15,6 +15,7 @@
 package pgcatalog
 
 import (
+	"fmt"
 	"io"
 
 	"github.com/dolthub/dolt/go/libraries/doltcore/sqle/dsess"
@@ -48,7 +49,7 @@ func (p PgClassHandler) RowIter(ctx *sql.Context) (sql.RowIter, error) {
 	doltSession := dsess.DSessFromSess(ctx.Session)
 	c := sqle.NewDefault(doltSession.Provider()).Analyzer.Catalog
 
-	var classes []Class
+	var classes []pgClass
 
 	_, err := currentDatabaseSchemaIter(ctx, c, func(db sql.DatabaseSchema) (bool, error) {
 		dbName := db.Name()
@@ -66,9 +67,9 @@ func (p PgClassHandler) RowIter(ctx *sql.Context) (sql.RowIter, error) {
 					return false, err
 				}
 				for _, idx := range idxs {
-					classes = append(classes, Class{
+					classes = append(classes, pgClass{
 						oid:        genOid(dbName, schName, tableName, idx.ID()),
-						name:       idx.ID(),
+						name:       getIndexName(idx),
 						hasIndexes: false,
 						kind:       "i",
 						schemaOid:  schOid,
@@ -80,7 +81,7 @@ func (p PgClassHandler) RowIter(ctx *sql.Context) (sql.RowIter, error) {
 				}
 			}
 
-			classes = append(classes, Class{
+			classes = append(classes, pgClass{
 				oid:        genOid(dbName, schName, tableName),
 				name:       tableName,
 				hasIndexes: hasIndexes,
@@ -102,7 +103,7 @@ func (p PgClassHandler) RowIter(ctx *sql.Context) (sql.RowIter, error) {
 			}
 
 			for _, view := range views {
-				classes = append(classes, Class{
+				classes = append(classes, pgClass{
 					oid:        genOid(dbName, schName, view.Name),
 					name:       view.Name,
 					hasIndexes: false,
@@ -122,6 +123,16 @@ func (p PgClassHandler) RowIter(ctx *sql.Context) (sql.RowIter, error) {
 		classes: classes,
 		idx:     0,
 	}, nil
+}
+
+// getIndexName returns the name of an index.
+func getIndexName(idx sql.Index) string {
+	if idx.ID() == "PRIMARY" {
+		return fmt.Sprintf("%s_pkey", idx.Table())
+	}
+	return idx.ID()
+	// TODO: Unnamed indexes should have below format
+	// return fmt.Sprintf("%s_%s_key", idx.Table(), idx.ID())
 }
 
 // Schema implements the interface tables.Handler.
@@ -169,8 +180,8 @@ var pgClassSchema = sql.Schema{
 	{Name: "relpartbound", Type: pgtypes.Text, Default: nil, Nullable: true, Source: PgClassName},    // TODO: type pg_node_tree, collation C
 }
 
-// Class represents a row in the pg_class table.
-type Class struct {
+// pgClass represents a row in the pg_class table.
+type pgClass struct {
 	oid        uint32
 	name       string
 	schemaOid  uint32
@@ -180,7 +191,7 @@ type Class struct {
 
 // pgClassRowIter is the sql.RowIter for the pg_class table.
 type pgClassRowIter struct {
-	classes []Class
+	classes []pgClass
 	idx     int
 }
 
