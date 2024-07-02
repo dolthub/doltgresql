@@ -372,7 +372,7 @@ func TestPgClass(t *testing.T) {
 				// View
 				{
 					Query:    `SELECT * FROM "pg_catalog"."pg_class" WHERE relname='testview';`,
-					Expected: []sql.Row{{2993650152, "testview", 3906608034, 0, 0, 0, 0, 0, 0, 0, float32(0), 0, 0, "f", "f", "p", "v", 0, 0, "f", "f", "f", "f", "f", "t", "d", "f", 0, 0, 0, nil, nil, nil}},
+					Expected: []sql.Row{{3365776452, "testview", 3874471750, 0, 0, 0, 0, 0, 0, 0, float32(0), 0, 0, "f", "f", "p", "v", 0, 0, "f", "f", "f", "f", "f", "t", "d", "f", 0, 0, 0, nil, nil, nil}},
 				},
 				{ // Different cases and quoted, so it fails
 					Query:       `SELECT * FROM "PG_catalog"."pg_class";`,
@@ -396,8 +396,7 @@ func TestPgClass(t *testing.T) {
 						{"testing_pkey"},
 						{"v1"},
 						{"testing"},
-						// TODO: Uncomment when views exist on schema
-						// {"testview"},
+						{"testview"},
 					},
 				},
 				{
@@ -3757,10 +3756,17 @@ func TestPgViews(t *testing.T) {
 	RunScripts(t, []ScriptTest{
 		{
 			Name: "pg_views",
+			SetUpScript: []string{
+				`CREATE SCHEMA testschema;`,
+				`SET search_path TO testschema;`,
+				"CREATE TABLE testing (pk INT primary key, v1 INT);",
+				`CREATE VIEW testview AS SELECT * FROM testing LIMIT 1;`,
+				`CREATE VIEW testview2 AS SELECT * FROM testing LIMIT 2;`,
+			},
 			Assertions: []ScriptTestAssertion{
 				{
-					Query:    `SELECT * FROM "pg_catalog"."pg_views";`,
-					Expected: []sql.Row{},
+					Query:    `SELECT * FROM "pg_catalog"."pg_views" WHERE viewname='testview';`,
+					Expected: []sql.Row{{"testschema", "testview", "", "SELECT * FROM testing LIMIT 1"}},
 				},
 				{ // Different cases and quoted, so it fails
 					Query:       `SELECT * FROM "PG_catalog"."pg_views";`,
@@ -3772,7 +3778,7 @@ func TestPgViews(t *testing.T) {
 				},
 				{ // Different cases but non-quoted, so it works
 					Query:    "SELECT viewname FROM PG_catalog.pg_VIEWS ORDER BY viewname;",
-					Expected: []sql.Row{},
+					Expected: []sql.Row{{"testview"}, {"testview2"}},
 				},
 			},
 		},
