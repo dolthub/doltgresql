@@ -71,418 +71,418 @@ func initBinaryGreaterOrEqual() {
 var boolge = framework.Function2{
 	Name:       "boolge",
 	Return:     pgtypes.Bool,
-	Parameters: []pgtypes.DoltgresType{pgtypes.Bool, pgtypes.Bool},
-	Callable: func(ctx *sql.Context, val1 any, val2 any) (any, error) {
+	Parameters: [2]pgtypes.DoltgresType{pgtypes.Bool, pgtypes.Bool},
+	Strict:     true,
+	Callable: func(ctx *sql.Context, _ [3]pgtypes.DoltgresType, val1 any, val2 any) (any, error) {
 		res, err := pgtypes.Bool.Compare(val1.(bool), val2.(bool))
 		return res >= 0, err
 	},
-	Strict: true,
 }
 
 // bpcharge represents the PostgreSQL function of the same name, taking the same parameters.
 var bpcharge = framework.Function2{
 	Name:       "bpcharge",
 	Return:     pgtypes.Bool,
-	Parameters: []pgtypes.DoltgresType{pgtypes.BpChar, pgtypes.BpChar},
-	Callable: func(ctx *sql.Context, val1 any, val2 any) (any, error) {
+	Parameters: [2]pgtypes.DoltgresType{pgtypes.BpChar, pgtypes.BpChar},
+	Strict:     true,
+	Callable: func(ctx *sql.Context, _ [3]pgtypes.DoltgresType, val1 any, val2 any) (any, error) {
 		res, err := pgtypes.BpChar.Compare(val1.(string), val2.(string))
 		return res >= 0, err
 	},
-	Strict: true,
 }
 
 // byteage represents the PostgreSQL function of the same name, taking the same parameters.
 var byteage = framework.Function2{
 	Name:       "byteage",
 	Return:     pgtypes.Bool,
-	Parameters: []pgtypes.DoltgresType{pgtypes.Bytea, pgtypes.Bytea},
-	Callable: func(ctx *sql.Context, val1 any, val2 any) (any, error) {
+	Parameters: [2]pgtypes.DoltgresType{pgtypes.Bytea, pgtypes.Bytea},
+	Strict:     true,
+	Callable: func(ctx *sql.Context, _ [3]pgtypes.DoltgresType, val1 any, val2 any) (any, error) {
 		res, err := pgtypes.Bytea.Compare(val1.([]byte), val2.([]byte))
 		return res >= 0, err
 	},
-	Strict: true,
 }
 
 // date_ge represents the PostgreSQL function of the same name, taking the same parameters.
 var date_ge = framework.Function2{
 	Name:       "date_ge",
 	Return:     pgtypes.Bool,
-	Parameters: []pgtypes.DoltgresType{pgtypes.Date, pgtypes.Date},
-	Callable: func(ctx *sql.Context, val1 any, val2 any) (any, error) {
+	Parameters: [2]pgtypes.DoltgresType{pgtypes.Date, pgtypes.Date},
+	Strict:     true,
+	Callable: func(ctx *sql.Context, _ [3]pgtypes.DoltgresType, val1 any, val2 any) (any, error) {
 		res, err := pgtypes.Date.Compare(val1.(time.Time), val2.(time.Time))
 		return res >= 0, err
 	},
-	Strict: true,
 }
 
 // date_ge_timestamp represents the PostgreSQL function of the same name, taking the same parameters.
 var date_ge_timestamp = framework.Function2{
 	Name:       "date_ge_timestamp",
 	Return:     pgtypes.Bool,
-	Parameters: []pgtypes.DoltgresType{pgtypes.Date, pgtypes.Timestamp},
-	Callable: func(ctx *sql.Context, val1 any, val2 any) (any, error) {
+	Parameters: [2]pgtypes.DoltgresType{pgtypes.Date, pgtypes.Timestamp},
+	Strict:     true,
+	Callable: func(ctx *sql.Context, _ [3]pgtypes.DoltgresType, val1 any, val2 any) (any, error) {
 		res := val1.(time.Time).Compare(val2.(time.Time))
 		return res >= 0, nil
 	},
-	Strict: true,
 }
 
 // date_ge_timestamptz represents the PostgreSQL function of the same name, taking the same parameters.
 var date_ge_timestamptz = framework.Function2{
 	Name:       "date_ge_timestamptz",
 	Return:     pgtypes.Bool,
-	Parameters: []pgtypes.DoltgresType{pgtypes.Date, pgtypes.TimestampTZ},
-	Callable: func(ctx *sql.Context, val1 any, val2 any) (any, error) {
+	Parameters: [2]pgtypes.DoltgresType{pgtypes.Date, pgtypes.TimestampTZ},
+	Strict:     true,
+	Callable: func(ctx *sql.Context, _ [3]pgtypes.DoltgresType, val1 any, val2 any) (any, error) {
 		res := val1.(time.Time).Compare(val2.(time.Time))
 		return res >= 0, nil
 	},
-	Strict: true,
 }
 
 // float4ge represents the PostgreSQL function of the same name, taking the same parameters.
 var float4ge = framework.Function2{
 	Name:       "float4ge",
 	Return:     pgtypes.Bool,
-	Parameters: []pgtypes.DoltgresType{pgtypes.Float32, pgtypes.Float32},
-	Callable: func(ctx *sql.Context, val1 any, val2 any) (any, error) {
+	Parameters: [2]pgtypes.DoltgresType{pgtypes.Float32, pgtypes.Float32},
+	Strict:     true,
+	Callable: func(ctx *sql.Context, _ [3]pgtypes.DoltgresType, val1 any, val2 any) (any, error) {
 		res, err := pgtypes.Float32.Compare(val1.(float32), val2.(float32))
 		return res >= 0, err
 	},
-	Strict: true,
 }
 
 // float48ge represents the PostgreSQL function of the same name, taking the same parameters.
 var float48ge = framework.Function2{
 	Name:       "float48ge",
 	Return:     pgtypes.Bool,
-	Parameters: []pgtypes.DoltgresType{pgtypes.Float32, pgtypes.Float64},
-	Callable: func(ctx *sql.Context, val1 any, val2 any) (any, error) {
+	Parameters: [2]pgtypes.DoltgresType{pgtypes.Float32, pgtypes.Float64},
+	Strict:     true,
+	Callable: func(ctx *sql.Context, _ [3]pgtypes.DoltgresType, val1 any, val2 any) (any, error) {
 		res, err := pgtypes.Float64.Compare(float64(val1.(float32)), val2.(float64))
 		return res >= 0, err
 	},
-	Strict: true,
 }
 
 // float84ge represents the PostgreSQL function of the same name, taking the same parameters.
 var float84ge = framework.Function2{
 	Name:       "float84ge",
 	Return:     pgtypes.Bool,
-	Parameters: []pgtypes.DoltgresType{pgtypes.Float64, pgtypes.Float32},
-	Callable: func(ctx *sql.Context, val1 any, val2 any) (any, error) {
+	Parameters: [2]pgtypes.DoltgresType{pgtypes.Float64, pgtypes.Float32},
+	Strict:     true,
+	Callable: func(ctx *sql.Context, _ [3]pgtypes.DoltgresType, val1 any, val2 any) (any, error) {
 		res, err := pgtypes.Float64.Compare(val1.(float64), float64(val2.(float32)))
 		return res >= 0, err
 	},
-	Strict: true,
 }
 
 // float8ge represents the PostgreSQL function of the same name, taking the same parameters.
 var float8ge = framework.Function2{
 	Name:       "float8ge",
 	Return:     pgtypes.Bool,
-	Parameters: []pgtypes.DoltgresType{pgtypes.Float64, pgtypes.Float64},
-	Callable: func(ctx *sql.Context, val1 any, val2 any) (any, error) {
+	Parameters: [2]pgtypes.DoltgresType{pgtypes.Float64, pgtypes.Float64},
+	Strict:     true,
+	Callable: func(ctx *sql.Context, _ [3]pgtypes.DoltgresType, val1 any, val2 any) (any, error) {
 		res, err := pgtypes.Float64.Compare(val1.(float64), val2.(float64))
 		return res >= 0, err
 	},
-	Strict: true,
 }
 
 // int2ge represents the PostgreSQL function of the same name, taking the same parameters.
 var int2ge = framework.Function2{
 	Name:       "int2ge",
 	Return:     pgtypes.Bool,
-	Parameters: []pgtypes.DoltgresType{pgtypes.Int16, pgtypes.Int16},
-	Callable: func(ctx *sql.Context, val1 any, val2 any) (any, error) {
+	Parameters: [2]pgtypes.DoltgresType{pgtypes.Int16, pgtypes.Int16},
+	Strict:     true,
+	Callable: func(ctx *sql.Context, _ [3]pgtypes.DoltgresType, val1 any, val2 any) (any, error) {
 		res, err := pgtypes.Int16.Compare(val1.(int16), val2.(int16))
 		return res >= 0, err
 	},
-	Strict: true,
 }
 
 // int24ge represents the PostgreSQL function of the same name, taking the same parameters.
 var int24ge = framework.Function2{
 	Name:       "int24ge",
 	Return:     pgtypes.Bool,
-	Parameters: []pgtypes.DoltgresType{pgtypes.Int16, pgtypes.Int32},
-	Callable: func(ctx *sql.Context, val1 any, val2 any) (any, error) {
+	Parameters: [2]pgtypes.DoltgresType{pgtypes.Int16, pgtypes.Int32},
+	Strict:     true,
+	Callable: func(ctx *sql.Context, _ [3]pgtypes.DoltgresType, val1 any, val2 any) (any, error) {
 		res, err := pgtypes.Int32.Compare(int32(val1.(int16)), val2.(int32))
 		return res >= 0, err
 	},
-	Strict: true,
 }
 
 // int28ge represents the PostgreSQL function of the same name, taking the same parameters.
 var int28ge = framework.Function2{
 	Name:       "int28ge",
 	Return:     pgtypes.Bool,
-	Parameters: []pgtypes.DoltgresType{pgtypes.Int16, pgtypes.Int64},
-	Callable: func(ctx *sql.Context, val1 any, val2 any) (any, error) {
+	Parameters: [2]pgtypes.DoltgresType{pgtypes.Int16, pgtypes.Int64},
+	Strict:     true,
+	Callable: func(ctx *sql.Context, _ [3]pgtypes.DoltgresType, val1 any, val2 any) (any, error) {
 		res, err := pgtypes.Int64.Compare(int64(val1.(int16)), val2.(int64))
 		return res >= 0, err
 	},
-	Strict: true,
 }
 
 // int42ge represents the PostgreSQL function of the same name, taking the same parameters.
 var int42ge = framework.Function2{
 	Name:       "int42ge",
 	Return:     pgtypes.Bool,
-	Parameters: []pgtypes.DoltgresType{pgtypes.Int32, pgtypes.Int16},
-	Callable: func(ctx *sql.Context, val1 any, val2 any) (any, error) {
+	Parameters: [2]pgtypes.DoltgresType{pgtypes.Int32, pgtypes.Int16},
+	Strict:     true,
+	Callable: func(ctx *sql.Context, _ [3]pgtypes.DoltgresType, val1 any, val2 any) (any, error) {
 		res, err := pgtypes.Int32.Compare(val1.(int32), int32(val2.(int16)))
 		return res >= 0, err
 	},
-	Strict: true,
 }
 
 // int4ge represents the PostgreSQL function of the same name, taking the same parameters.
 var int4ge = framework.Function2{
 	Name:       "int4ge",
 	Return:     pgtypes.Bool,
-	Parameters: []pgtypes.DoltgresType{pgtypes.Int32, pgtypes.Int32},
-	Callable: func(ctx *sql.Context, val1 any, val2 any) (any, error) {
+	Parameters: [2]pgtypes.DoltgresType{pgtypes.Int32, pgtypes.Int32},
+	Strict:     true,
+	Callable: func(ctx *sql.Context, _ [3]pgtypes.DoltgresType, val1 any, val2 any) (any, error) {
 		res, err := pgtypes.Int32.Compare(val1.(int32), val2.(int32))
 		return res >= 0, err
 	},
-	Strict: true,
 }
 
 // int48ge represents the PostgreSQL function of the same name, taking the same parameters.
 var int48ge = framework.Function2{
 	Name:       "int48ge",
 	Return:     pgtypes.Bool,
-	Parameters: []pgtypes.DoltgresType{pgtypes.Int32, pgtypes.Int64},
-	Callable: func(ctx *sql.Context, val1 any, val2 any) (any, error) {
+	Parameters: [2]pgtypes.DoltgresType{pgtypes.Int32, pgtypes.Int64},
+	Strict:     true,
+	Callable: func(ctx *sql.Context, _ [3]pgtypes.DoltgresType, val1 any, val2 any) (any, error) {
 		res, err := pgtypes.Int64.Compare(int64(val1.(int32)), val2.(int64))
 		return res >= 0, err
 	},
-	Strict: true,
 }
 
 // int82ge represents the PostgreSQL function of the same name, taking the same parameters.
 var int82ge = framework.Function2{
 	Name:       "int82ge",
 	Return:     pgtypes.Bool,
-	Parameters: []pgtypes.DoltgresType{pgtypes.Int64, pgtypes.Int16},
-	Callable: func(ctx *sql.Context, val1 any, val2 any) (any, error) {
+	Parameters: [2]pgtypes.DoltgresType{pgtypes.Int64, pgtypes.Int16},
+	Strict:     true,
+	Callable: func(ctx *sql.Context, _ [3]pgtypes.DoltgresType, val1 any, val2 any) (any, error) {
 		res, err := pgtypes.Int64.Compare(val1.(int64), int64(val2.(int16)))
 		return res >= 0, err
 	},
-	Strict: true,
 }
 
 // int84ge represents the PostgreSQL function of the same name, taking the same parameters.
 var int84ge = framework.Function2{
 	Name:       "int84ge",
 	Return:     pgtypes.Bool,
-	Parameters: []pgtypes.DoltgresType{pgtypes.Int64, pgtypes.Int32},
-	Callable: func(ctx *sql.Context, val1 any, val2 any) (any, error) {
+	Parameters: [2]pgtypes.DoltgresType{pgtypes.Int64, pgtypes.Int32},
+	Strict:     true,
+	Callable: func(ctx *sql.Context, _ [3]pgtypes.DoltgresType, val1 any, val2 any) (any, error) {
 		res, err := pgtypes.Int64.Compare(val1.(int64), int64(val2.(int32)))
 		return res >= 0, err
 	},
-	Strict: true,
 }
 
 // int8ge represents the PostgreSQL function of the same name, taking the same parameters.
 var int8ge = framework.Function2{
 	Name:       "int8ge",
 	Return:     pgtypes.Bool,
-	Parameters: []pgtypes.DoltgresType{pgtypes.Int64, pgtypes.Int64},
-	Callable: func(ctx *sql.Context, val1 any, val2 any) (any, error) {
+	Parameters: [2]pgtypes.DoltgresType{pgtypes.Int64, pgtypes.Int64},
+	Strict:     true,
+	Callable: func(ctx *sql.Context, _ [3]pgtypes.DoltgresType, val1 any, val2 any) (any, error) {
 		res, err := pgtypes.Int64.Compare(val1.(int64), val2.(int64))
 		return res >= 0, err
 	},
-	Strict: true,
 }
 
 // jsonb_ge represents the PostgreSQL function of the same name, taking the same parameters.
 var jsonb_ge = framework.Function2{
 	Name:       "jsonb_ge",
 	Return:     pgtypes.Bool,
-	Parameters: []pgtypes.DoltgresType{pgtypes.JsonB, pgtypes.JsonB},
-	Callable: func(ctx *sql.Context, val1 any, val2 any) (any, error) {
+	Parameters: [2]pgtypes.DoltgresType{pgtypes.JsonB, pgtypes.JsonB},
+	Strict:     true,
+	Callable: func(ctx *sql.Context, _ [3]pgtypes.DoltgresType, val1 any, val2 any) (any, error) {
 		res, err := pgtypes.JsonB.Compare(val1.(pgtypes.JsonDocument), val2.(pgtypes.JsonDocument))
 		return res >= 0, err
 	},
-	Strict: true,
 }
 
 // namege represents the PostgreSQL function of the same name, taking the same parameters.
 var namege = framework.Function2{
 	Name:       "namege",
 	Return:     pgtypes.Bool,
-	Parameters: []pgtypes.DoltgresType{pgtypes.Name, pgtypes.Name},
-	Callable: func(ctx *sql.Context, val1 any, val2 any) (any, error) {
+	Parameters: [2]pgtypes.DoltgresType{pgtypes.Name, pgtypes.Name},
+	Strict:     true,
+	Callable: func(ctx *sql.Context, _ [3]pgtypes.DoltgresType, val1 any, val2 any) (any, error) {
 		res, err := pgtypes.Name.Compare(val1.(string), val2.(string))
 		return res >= 0, err
 	},
-	Strict: true,
 }
 
 // namegetext represents the PostgreSQL function of the same name, taking the same parameters.
 var namegetext = framework.Function2{
 	Name:       "namegetext",
 	Return:     pgtypes.Bool,
-	Parameters: []pgtypes.DoltgresType{pgtypes.Name, pgtypes.Text},
-	Callable: func(ctx *sql.Context, val1 any, val2 any) (any, error) {
+	Parameters: [2]pgtypes.DoltgresType{pgtypes.Name, pgtypes.Text},
+	Strict:     true,
+	Callable: func(ctx *sql.Context, _ [3]pgtypes.DoltgresType, val1 any, val2 any) (any, error) {
 		res, err := pgtypes.Text.Compare(val1.(string), val2.(string))
 		return res >= 0, err
 	},
-	Strict: true,
 }
 
 // numeric_ge represents the PostgreSQL function of the same name, taking the same parameters.
 var numeric_ge = framework.Function2{
 	Name:       "numeric_ge",
 	Return:     pgtypes.Bool,
-	Parameters: []pgtypes.DoltgresType{pgtypes.Numeric, pgtypes.Numeric},
-	Callable: func(ctx *sql.Context, val1 any, val2 any) (any, error) {
+	Parameters: [2]pgtypes.DoltgresType{pgtypes.Numeric, pgtypes.Numeric},
+	Strict:     true,
+	Callable: func(ctx *sql.Context, _ [3]pgtypes.DoltgresType, val1 any, val2 any) (any, error) {
 		res, err := pgtypes.Numeric.Compare(val1.(decimal.Decimal), val2.(decimal.Decimal))
 		return res >= 0, err
 	},
-	Strict: true,
 }
 
 // oidge represents the PostgreSQL function of the same name, taking the same parameters.
 var oidge = framework.Function2{
 	Name:       "oidge",
 	Return:     pgtypes.Bool,
-	Parameters: []pgtypes.DoltgresType{pgtypes.Oid, pgtypes.Oid},
-	Callable: func(ctx *sql.Context, val1 any, val2 any) (any, error) {
+	Parameters: [2]pgtypes.DoltgresType{pgtypes.Oid, pgtypes.Oid},
+	Strict:     true,
+	Callable: func(ctx *sql.Context, _ [3]pgtypes.DoltgresType, val1 any, val2 any) (any, error) {
 		res, err := pgtypes.Oid.Compare(val1.(uint32), val2.(uint32))
 		return res >= 0, err
 	},
-	Strict: true,
 }
 
 // textgename represents the PostgreSQL function of the same name, taking the same parameters.
 var textgename = framework.Function2{
 	Name:       "textgename",
 	Return:     pgtypes.Bool,
-	Parameters: []pgtypes.DoltgresType{pgtypes.Text, pgtypes.Name},
-	Callable: func(ctx *sql.Context, val1 any, val2 any) (any, error) {
+	Parameters: [2]pgtypes.DoltgresType{pgtypes.Text, pgtypes.Name},
+	Strict:     true,
+	Callable: func(ctx *sql.Context, _ [3]pgtypes.DoltgresType, val1 any, val2 any) (any, error) {
 		res, err := pgtypes.Text.Compare(val1.(string), val2.(string))
 		return res >= 0, err
 	},
-	Strict: true,
 }
 
 // text_ge represents the PostgreSQL function of the same name, taking the same parameters.
 var text_ge = framework.Function2{
 	Name:       "text_ge",
 	Return:     pgtypes.Bool,
-	Parameters: []pgtypes.DoltgresType{pgtypes.Text, pgtypes.Text},
-	Callable: func(ctx *sql.Context, val1 any, val2 any) (any, error) {
+	Parameters: [2]pgtypes.DoltgresType{pgtypes.Text, pgtypes.Text},
+	Strict:     true,
+	Callable: func(ctx *sql.Context, _ [3]pgtypes.DoltgresType, val1 any, val2 any) (any, error) {
 		res, err := pgtypes.Text.Compare(val1.(string), val2.(string))
 		return res >= 0, err
 	},
-	Strict: true,
 }
 
 // time_ge represents the PostgreSQL function of the same name, taking the same parameters.
 var time_ge = framework.Function2{
 	Name:       "time_ge",
 	Return:     pgtypes.Bool,
-	Parameters: []pgtypes.DoltgresType{pgtypes.Time, pgtypes.Time},
-	Callable: func(ctx *sql.Context, val1 any, val2 any) (any, error) {
+	Parameters: [2]pgtypes.DoltgresType{pgtypes.Time, pgtypes.Time},
+	Strict:     true,
+	Callable: func(ctx *sql.Context, _ [3]pgtypes.DoltgresType, val1 any, val2 any) (any, error) {
 		res, err := pgtypes.Time.Compare(val1.(time.Time), val2.(time.Time))
 		return res >= 0, err
 	},
-	Strict: true,
 }
 
 // timestamp_ge_date represents the PostgreSQL function of the same name, taking the same parameters.
 var timestamp_ge_date = framework.Function2{
 	Name:       "timestamp_ge_date",
 	Return:     pgtypes.Bool,
-	Parameters: []pgtypes.DoltgresType{pgtypes.Timestamp, pgtypes.Date},
-	Callable: func(ctx *sql.Context, val1 any, val2 any) (any, error) {
+	Parameters: [2]pgtypes.DoltgresType{pgtypes.Timestamp, pgtypes.Date},
+	Strict:     true,
+	Callable: func(ctx *sql.Context, _ [3]pgtypes.DoltgresType, val1 any, val2 any) (any, error) {
 		res := val1.(time.Time).Compare(val2.(time.Time))
 		return res >= 0, nil
 	},
-	Strict: true,
 }
 
 // timestamp_ge represents the PostgreSQL function of the same name, taking the same parameters.
 var timestamp_ge = framework.Function2{
 	Name:       "timestamp_ge",
 	Return:     pgtypes.Bool,
-	Parameters: []pgtypes.DoltgresType{pgtypes.Timestamp, pgtypes.Timestamp},
-	Callable: func(ctx *sql.Context, val1 any, val2 any) (any, error) {
+	Parameters: [2]pgtypes.DoltgresType{pgtypes.Timestamp, pgtypes.Timestamp},
+	Strict:     true,
+	Callable: func(ctx *sql.Context, _ [3]pgtypes.DoltgresType, val1 any, val2 any) (any, error) {
 		res, err := pgtypes.Timestamp.Compare(val1.(time.Time), val2.(time.Time))
 		return res >= 0, err
 	},
-	Strict: true,
 }
 
 // timestamp_ge_timestamptz represents the PostgreSQL function of the same name, taking the same parameters.
 var timestamp_ge_timestamptz = framework.Function2{
 	Name:       "timestamp_ge_timestamptz",
 	Return:     pgtypes.Bool,
-	Parameters: []pgtypes.DoltgresType{pgtypes.Timestamp, pgtypes.TimestampTZ},
-	Callable: func(ctx *sql.Context, val1 any, val2 any) (any, error) {
+	Parameters: [2]pgtypes.DoltgresType{pgtypes.Timestamp, pgtypes.TimestampTZ},
+	Strict:     true,
+	Callable: func(ctx *sql.Context, _ [3]pgtypes.DoltgresType, val1 any, val2 any) (any, error) {
 		res, err := pgtypes.TimestampTZ.Compare(val1.(time.Time), val2.(time.Time))
 		return res >= 0, err
 	},
-	Strict: true,
 }
 
 // timestamptz_ge_date represents the PostgreSQL function of the same name, taking the same parameters.
 var timestamptz_ge_date = framework.Function2{
 	Name:       "timestamptz_ge_date",
 	Return:     pgtypes.Bool,
-	Parameters: []pgtypes.DoltgresType{pgtypes.TimestampTZ, pgtypes.Date},
-	Callable: func(ctx *sql.Context, val1 any, val2 any) (any, error) {
+	Parameters: [2]pgtypes.DoltgresType{pgtypes.TimestampTZ, pgtypes.Date},
+	Strict:     true,
+	Callable: func(ctx *sql.Context, _ [3]pgtypes.DoltgresType, val1 any, val2 any) (any, error) {
 		res := val1.(time.Time).Compare(val2.(time.Time))
 		return res >= 0, nil
 	},
-	Strict: true,
 }
 
 // timestamptz_ge_timestamp represents the PostgreSQL function of the same name, taking the same parameters.
 var timestamptz_ge_timestamp = framework.Function2{
 	Name:       "timestamptz_ge_timestamp",
 	Return:     pgtypes.Bool,
-	Parameters: []pgtypes.DoltgresType{pgtypes.TimestampTZ, pgtypes.Timestamp},
-	Callable: func(ctx *sql.Context, val1 any, val2 any) (any, error) {
+	Parameters: [2]pgtypes.DoltgresType{pgtypes.TimestampTZ, pgtypes.Timestamp},
+	Strict:     true,
+	Callable: func(ctx *sql.Context, _ [3]pgtypes.DoltgresType, val1 any, val2 any) (any, error) {
 		res, err := pgtypes.TimestampTZ.Compare(val1.(time.Time), val2.(time.Time))
 		return res >= 0, err
 	},
-	Strict: true,
 }
 
 // timestamptz_ge represents the PostgreSQL function of the same name, taking the same parameters.
 var timestamptz_ge = framework.Function2{
 	Name:       "timestamptz_ge",
 	Return:     pgtypes.Bool,
-	Parameters: []pgtypes.DoltgresType{pgtypes.TimestampTZ, pgtypes.TimestampTZ},
-	Callable: func(ctx *sql.Context, val1 any, val2 any) (any, error) {
+	Parameters: [2]pgtypes.DoltgresType{pgtypes.TimestampTZ, pgtypes.TimestampTZ},
+	Strict:     true,
+	Callable: func(ctx *sql.Context, _ [3]pgtypes.DoltgresType, val1 any, val2 any) (any, error) {
 		res, err := pgtypes.TimestampTZ.Compare(val1.(time.Time), val2.(time.Time))
 		return res >= 0, err
 	},
-	Strict: true,
 }
 
 // timetz_ge represents the PostgreSQL function of the same name, taking the same parameters.
 var timetz_ge = framework.Function2{
 	Name:       "timetz_ge",
 	Return:     pgtypes.Bool,
-	Parameters: []pgtypes.DoltgresType{pgtypes.TimeTZ, pgtypes.TimeTZ},
-	Callable: func(ctx *sql.Context, val1 any, val2 any) (any, error) {
+	Parameters: [2]pgtypes.DoltgresType{pgtypes.TimeTZ, pgtypes.TimeTZ},
+	Strict:     true,
+	Callable: func(ctx *sql.Context, _ [3]pgtypes.DoltgresType, val1 any, val2 any) (any, error) {
 		res, err := pgtypes.TimeTZ.Compare(val1.(time.Time), val2.(time.Time))
 		return res >= 0, err
 	},
-	Strict: true,
 }
 
 // uuid_ge represents the PostgreSQL function of the same name, taking the same parameters.
 var uuid_ge = framework.Function2{
 	Name:       "uuid_ge",
 	Return:     pgtypes.Bool,
-	Parameters: []pgtypes.DoltgresType{pgtypes.Uuid, pgtypes.Uuid},
-	Callable: func(ctx *sql.Context, val1 any, val2 any) (any, error) {
+	Parameters: [2]pgtypes.DoltgresType{pgtypes.Uuid, pgtypes.Uuid},
+	Strict:     true,
+	Callable: func(ctx *sql.Context, _ [3]pgtypes.DoltgresType, val1 any, val2 any) (any, error) {
 		res, err := pgtypes.Uuid.Compare(val1.(uuid.UUID), val2.(uuid.UUID))
 		return res >= 0, err
 	},
-	Strict: true,
 }

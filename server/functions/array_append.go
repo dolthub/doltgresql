@@ -21,22 +21,22 @@ import (
 	pgtypes "github.com/dolthub/doltgresql/server/types"
 )
 
-// initReverse registers the functions to the catalog.
-func initReverse() {
-	framework.RegisterFunction(reverse_varchar)
+// initArrayAppend registers the functions to the catalog.
+func initArrayAppend() {
+	framework.RegisterFunction(array_append_anyarray_anyelement)
 }
 
-// reverse_varchar represents the PostgreSQL function of the same name, taking the same parameters.
-var reverse_varchar = framework.Function1{
-	Name:       "reverse",
-	Return:     pgtypes.VarChar,
-	Parameters: [1]pgtypes.DoltgresType{pgtypes.VarChar},
+// array_append_anyarray_anyelement represents the PostgreSQL function of the same name, taking the same parameters.
+var array_append_anyarray_anyelement = framework.Function2{
+	Name:       "array_append",
+	Return:     pgtypes.AnyArray,
+	Parameters: [2]pgtypes.DoltgresType{pgtypes.AnyArray, pgtypes.AnyElement},
 	Strict:     true,
-	Callable: func(ctx *sql.Context, _ [2]pgtypes.DoltgresType, val1 any) (any, error) {
-		runes := []rune(val1.(string))
-		for i, j := 0, len(runes)-1; i < j; i, j = i+1, j-1 {
-			runes[i], runes[j] = runes[j], runes[i]
-		}
-		return string(runes), nil
+	Callable: func(ctx *sql.Context, _ [3]pgtypes.DoltgresType, val1 any, val2 any) (any, error) {
+		array := val1.([]any)
+		returnArray := make([]any, len(array)+1)
+		copy(returnArray, array)
+		returnArray[len(returnArray)-1] = val2
+		return returnArray, nil
 	},
 }

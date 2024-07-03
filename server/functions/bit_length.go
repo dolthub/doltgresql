@@ -30,13 +30,13 @@ func initBitLength() {
 var bit_length_varchar = framework.Function1{
 	Name:       "bit_length",
 	Return:     pgtypes.Int32,
-	Parameters: []pgtypes.DoltgresType{pgtypes.VarChar},
-	Callable: func(ctx *sql.Context, val1 any) (any, error) {
-		result, err := octet_length_varchar.Callable(ctx, val1)
+	Parameters: [1]pgtypes.DoltgresType{pgtypes.VarChar},
+	Strict:     true,
+	Callable: func(ctx *sql.Context, t [2]pgtypes.DoltgresType, val1 any) (any, error) {
+		result, err := octet_length_varchar.Callable(ctx, t, val1)
 		if err != nil {
 			return nil, err
 		}
 		return result.(int32) * 8, nil
 	},
-	Strict: true,
 }

@@ -30,9 +30,9 @@ func initOctetLength() {
 var octet_length_varchar = framework.Function1{
 	Name:       "octet_length",
 	Return:     pgtypes.Int32,
-	Parameters: []pgtypes.DoltgresType{pgtypes.VarChar},
-	Callable: func(ctx *sql.Context, val1 any) (any, error) {
+	Parameters: [1]pgtypes.DoltgresType{pgtypes.VarChar},
+	Strict:     true,
+	Callable: func(ctx *sql.Context, _ [2]pgtypes.DoltgresType, val1 any) (any, error) {
 		return int32(len(val1.(string))), nil
 	},
-	Strict: true,
 }

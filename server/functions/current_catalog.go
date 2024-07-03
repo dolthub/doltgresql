@@ -30,13 +30,12 @@ func initCurrentCatalog() {
 var current_catalog = framework.Function0{
 	Name:               "current_catalog",
 	Return:             pgtypes.Name,
-	Parameters:         []pgtypes.DoltgresType{},
 	IsNonDeterministic: true,
+	Strict:             true,
 	Callable: func(ctx *sql.Context) (any, error) {
 		if ctx.GetCurrentDatabase() == "" {
 			return nil, nil
 		}
 		return ctx.GetCurrentDatabase(), nil
 	},
-	Strict: true,
 }

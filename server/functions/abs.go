@@ -36,53 +36,53 @@ func initAbs() {
 var abs_int16 = framework.Function1{
 	Name:       "abs",
 	Return:     pgtypes.Int16,
-	Parameters: []pgtypes.DoltgresType{pgtypes.Int16},
-	Callable: func(ctx *sql.Context, val1 any) (any, error) {
+	Parameters: [1]pgtypes.DoltgresType{pgtypes.Int16},
+	Strict:     true,
+	Callable: func(ctx *sql.Context, _ [2]pgtypes.DoltgresType, val1 any) (any, error) {
 		return utils.Abs(val1.(int16)), nil
 	},
-	Strict: true,
 }
 
 // abs_int32 represents the PostgreSQL function of the same name, taking the same parameters.
 var abs_int32 = framework.Function1{
 	Name:       "abs",
 	Return:     pgtypes.Int32,
-	Parameters: []pgtypes.DoltgresType{pgtypes.Int32},
-	Callable: func(ctx *sql.Context, val1 any) (any, error) {
+	Parameters: [1]pgtypes.DoltgresType{pgtypes.Int32},
+	Strict:     true,
+	Callable: func(ctx *sql.Context, _ [2]pgtypes.DoltgresType, val1 any) (any, error) {
 		return utils.Abs(val1.(int32)), nil
 	},
-	Strict: true,
 }
 
 // abs_int64 represents the PostgreSQL function of the same name, taking the same parameters.
 var abs_int64 = framework.Function1{
 	Name:       "abs",
 	Return:     pgtypes.Int64,
-	Parameters: []pgtypes.DoltgresType{pgtypes.Int64},
-	Callable: func(ctx *sql.Context, val1 any) (any, error) {
+	Parameters: [1]pgtypes.DoltgresType{pgtypes.Int64},
+	Strict:     true,
+	Callable: func(ctx *sql.Context, _ [2]pgtypes.DoltgresType, val1 any) (any, error) {
 		return utils.Abs(val1.(int64)), nil
 	},
-	Strict: true,
 }
 
 // abs_float64 represents the PostgreSQL function of the same name, taking the same parameters.
 var abs_float64 = framework.Function1{
 	Name:       "abs",
 	Return:     pgtypes.Float64,
-	Parameters: []pgtypes.DoltgresType{pgtypes.Float64},
-	Callable: func(ctx *sql.Context, val1 any) (any, error) {
+	Parameters: [1]pgtypes.DoltgresType{pgtypes.Float64},
+	Strict:     true,
+	Callable: func(ctx *sql.Context, _ [2]pgtypes.DoltgresType, val1 any) (any, error) {
 		return utils.Abs(val1.(float64)), nil
 	},
-	Strict: true,
 }
 
 // abs_numeric represents the PostgreSQL function of the same name, taking the same parameters.
 var abs_numeric = framework.Function1{
 	Name:       "abs",
 	Return:     pgtypes.Numeric,
-	Parameters: []pgtypes.DoltgresType{pgtypes.Numeric},
-	Callable: func(ctx *sql.Context, val1 any) (any, error) {
+	Parameters: [1]pgtypes.DoltgresType{pgtypes.Numeric},
+	Strict:     true,
+	Callable: func(ctx *sql.Context, _ [2]pgtypes.DoltgresType, val1 any) (any, error) {
 		return val1.(decimal.Decimal).Abs(), nil
 	},
-	Strict: true,
 }

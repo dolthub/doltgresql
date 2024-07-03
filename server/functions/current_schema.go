@@ -31,8 +31,8 @@ func initCurrentSchema() {
 var current_schema = framework.Function0{
 	Name:               "current_schema",
 	Return:             pgtypes.Name,
-	Parameters:         []pgtypes.DoltgresType{},
 	IsNonDeterministic: true,
+	Strict:             true,
 	Callable: func(ctx *sql.Context) (any, error) {
 		schemas, err := resolve.SearchPath(ctx)
 		if err != nil {
@@ -43,5 +43,4 @@ var current_schema = framework.Function0{
 		}
 		return schemas[0], nil
 	},
-	Strict: true,
 }

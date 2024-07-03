@@ -33,14 +33,15 @@ func initLcm() {
 var lcm_int64_int64 = framework.Function2{
 	Name:       "lcm",
 	Return:     pgtypes.Int64,
-	Parameters: []pgtypes.DoltgresType{pgtypes.Int64, pgtypes.Int64},
-	Callable: func(ctx *sql.Context, val1Int any, val2Int any) (any, error) {
+	Parameters: [2]pgtypes.DoltgresType{pgtypes.Int64, pgtypes.Int64},
+	Strict:     true,
+	Callable: func(ctx *sql.Context, dt [3]pgtypes.DoltgresType, val1Int any, val2Int any) (any, error) {
 		val1 := val1Int.(int64)
 		val2 := val2Int.(int64)
 		if val1 == val2 {
 			return utils.Abs(val1), nil
 		}
-		gcdResultInterface, err := gcd_int64_int64.Callable(ctx, val1, val2)
+		gcdResultInterface, err := gcd_int64_int64.Callable(ctx, dt, val1, val2)
 		if err != nil {
 			return nil, err
 		}
@@ -55,5 +56,4 @@ var lcm_int64_int64 = framework.Function2{
 		}
 		return utils.Abs(result / gcdResult), nil
 	},
-	Strict: true,
 }

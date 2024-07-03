@@ -30,11 +30,10 @@ func initPi() {
 
 // pi represents the PostgreSQL function of the same name, taking the same parameters.
 var pi = framework.Function0{
-	Name:       "pi",
-	Return:     pgtypes.Float64,
-	Parameters: []pgtypes.DoltgresType{},
+	Name:   "pi",
+	Return: pgtypes.Float64,
+	Strict: true,
 	Callable: func(ctx *sql.Context) (any, error) {
 		return float64(math.Pi), nil
 	},
-	Strict: true,
 }

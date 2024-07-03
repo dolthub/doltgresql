@@ -31,19 +31,21 @@ func initLpad() {
 var lpad_varchar_int32 = framework.Function2{
 	Name:       "lpad",
 	Return:     pgtypes.VarChar,
-	Parameters: []pgtypes.DoltgresType{pgtypes.VarChar, pgtypes.Int32},
-	Callable: func(ctx *sql.Context, val1 any, val2 any) (any, error) {
-		return lpad_varchar_int32_varchar.Callable(ctx, val1, val2, " ")
+	Parameters: [2]pgtypes.DoltgresType{pgtypes.VarChar, pgtypes.Int32},
+	Strict:     true,
+	Callable: func(ctx *sql.Context, _ [3]pgtypes.DoltgresType, val1 any, val2 any) (any, error) {
+		var unusedTypes [4]pgtypes.DoltgresType
+		return lpad_varchar_int32_varchar.Callable(ctx, unusedTypes, val1, val2, " ")
 	},
-	Strict: true,
 }
 
 // lpad_varchar_int32_varchar represents the PostgreSQL function of the same name, taking the same parameters.
 var lpad_varchar_int32_varchar = framework.Function3{
 	Name:       "lpad",
 	Return:     pgtypes.VarChar,
-	Parameters: []pgtypes.DoltgresType{pgtypes.VarChar, pgtypes.Int32, pgtypes.VarChar},
-	Callable: func(ctx *sql.Context, str any, length any, fill any) (any, error) {
+	Parameters: [3]pgtypes.DoltgresType{pgtypes.VarChar, pgtypes.Int32, pgtypes.VarChar},
+	Strict:     true,
+	Callable: func(ctx *sql.Context, _ [4]pgtypes.DoltgresType, str any, length any, fill any) (any, error) {
 		if length.(int32) <= 0 {
 			return "", nil
 		}
@@ -60,5 +62,4 @@ var lpad_varchar_int32_varchar = framework.Function3{
 		result = append(result, runes...)
 		return string(result[:length.(int32)]), nil
 	},
-	Strict: true,
 }
