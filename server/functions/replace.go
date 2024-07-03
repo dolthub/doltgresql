@@ -32,12 +32,12 @@ func initReplace() {
 var replace_varchar_varchar_varchar = framework.Function3{
 	Name:       "replace",
 	Return:     pgtypes.VarChar,
-	Parameters: []pgtypes.DoltgresType{pgtypes.VarChar, pgtypes.VarChar, pgtypes.VarChar},
-	Callable: func(ctx *sql.Context, str any, from any, to any) (any, error) {
+	Parameters: [3]pgtypes.DoltgresType{pgtypes.VarChar, pgtypes.VarChar, pgtypes.VarChar},
+	Strict:     true,
+	Callable: func(ctx *sql.Context, _ [4]pgtypes.DoltgresType, str any, from any, to any) (any, error) {
 		if len(from.(string)) == 0 {
 			return str, nil
 		}
 		return strings.ReplaceAll(str.(string), from.(string), to.(string)), nil
 	},
-	Strict: true,
 }

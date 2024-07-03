@@ -50,170 +50,170 @@ func initBinaryMinus() {
 var float4mi = framework.Function2{
 	Name:       "float4mi",
 	Return:     pgtypes.Float32,
-	Parameters: []pgtypes.DoltgresType{pgtypes.Float32, pgtypes.Float32},
-	Callable: func(ctx *sql.Context, val1 any, val2 any) (any, error) {
+	Parameters: [2]pgtypes.DoltgresType{pgtypes.Float32, pgtypes.Float32},
+	Strict:     true,
+	Callable: func(ctx *sql.Context, _ [3]pgtypes.DoltgresType, val1 any, val2 any) (any, error) {
 		return val1.(float32) - val2.(float32), nil
 	},
-	Strict: true,
 }
 
 // float48mi represents the PostgreSQL function of the same name, taking the same parameters.
 var float48mi = framework.Function2{
 	Name:       "float48mi",
 	Return:     pgtypes.Float64,
-	Parameters: []pgtypes.DoltgresType{pgtypes.Float32, pgtypes.Float64},
-	Callable: func(ctx *sql.Context, val1 any, val2 any) (any, error) {
+	Parameters: [2]pgtypes.DoltgresType{pgtypes.Float32, pgtypes.Float64},
+	Strict:     true,
+	Callable: func(ctx *sql.Context, _ [3]pgtypes.DoltgresType, val1 any, val2 any) (any, error) {
 		return float64(val1.(float32)) - val2.(float64), nil
 	},
-	Strict: true,
 }
 
 // float8mi represents the PostgreSQL function of the same name, taking the same parameters.
 var float8mi = framework.Function2{
 	Name:       "float8mi",
 	Return:     pgtypes.Float64,
-	Parameters: []pgtypes.DoltgresType{pgtypes.Float64, pgtypes.Float64},
-	Callable: func(ctx *sql.Context, val1 any, val2 any) (any, error) {
+	Parameters: [2]pgtypes.DoltgresType{pgtypes.Float64, pgtypes.Float64},
+	Strict:     true,
+	Callable: func(ctx *sql.Context, _ [3]pgtypes.DoltgresType, val1 any, val2 any) (any, error) {
 		return val1.(float64) - val2.(float64), nil
 	},
-	Strict: true,
 }
 
 // float84mi represents the PostgreSQL function of the same name, taking the same parameters.
 var float84mi = framework.Function2{
 	Name:       "float84mi",
 	Return:     pgtypes.Float64,
-	Parameters: []pgtypes.DoltgresType{pgtypes.Float64, pgtypes.Float32},
-	Callable: func(ctx *sql.Context, val1 any, val2 any) (any, error) {
+	Parameters: [2]pgtypes.DoltgresType{pgtypes.Float64, pgtypes.Float32},
+	Strict:     true,
+	Callable: func(ctx *sql.Context, _ [3]pgtypes.DoltgresType, val1 any, val2 any) (any, error) {
 		return val1.(float64) - float64(val2.(float32)), nil
 	},
-	Strict: true,
 }
 
 // int2mi represents the PostgreSQL function of the same name, taking the same parameters.
 var int2mi = framework.Function2{
 	Name:       "int2mi",
 	Return:     pgtypes.Int16,
-	Parameters: []pgtypes.DoltgresType{pgtypes.Int16, pgtypes.Int16},
-	Callable: func(ctx *sql.Context, val1 any, val2 any) (any, error) {
+	Parameters: [2]pgtypes.DoltgresType{pgtypes.Int16, pgtypes.Int16},
+	Strict:     true,
+	Callable: func(ctx *sql.Context, _ [3]pgtypes.DoltgresType, val1 any, val2 any) (any, error) {
 		result := int64(val1.(int16)) - int64(val2.(int16))
 		if result > math.MaxInt16 || result < math.MinInt16 {
 			return nil, fmt.Errorf("smallint out of range")
 		}
 		return int16(result), nil
 	},
-	Strict: true,
 }
 
 // int24mi represents the PostgreSQL function of the same name, taking the same parameters.
 var int24mi = framework.Function2{
 	Name:       "int24mi",
 	Return:     pgtypes.Int32,
-	Parameters: []pgtypes.DoltgresType{pgtypes.Int16, pgtypes.Int32},
-	Callable: func(ctx *sql.Context, val1 any, val2 any) (any, error) {
+	Parameters: [2]pgtypes.DoltgresType{pgtypes.Int16, pgtypes.Int32},
+	Strict:     true,
+	Callable: func(ctx *sql.Context, _ [3]pgtypes.DoltgresType, val1 any, val2 any) (any, error) {
 		result := int64(val1.(int16)) - int64(val2.(int32))
 		if result > math.MaxInt16 || result < math.MinInt16 {
 			return nil, fmt.Errorf("integer out of range")
 		}
 		return int32(result), nil
 	},
-	Strict: true,
 }
 
 // int28mi represents the PostgreSQL function of the same name, taking the same parameters.
 var int28mi = framework.Function2{
 	Name:       "int28mi",
 	Return:     pgtypes.Int64,
-	Parameters: []pgtypes.DoltgresType{pgtypes.Int16, pgtypes.Int64},
-	Callable: func(ctx *sql.Context, val1 any, val2 any) (any, error) {
+	Parameters: [2]pgtypes.DoltgresType{pgtypes.Int16, pgtypes.Int64},
+	Strict:     true,
+	Callable: func(ctx *sql.Context, _ [3]pgtypes.DoltgresType, val1 any, val2 any) (any, error) {
 		return minusOverflow(int64(val1.(int16)), val2.(int64))
 	},
-	Strict: true,
 }
 
 // int4mi represents the PostgreSQL function of the same name, taking the same parameters.
 var int4mi = framework.Function2{
 	Name:       "int4mi",
 	Return:     pgtypes.Int32,
-	Parameters: []pgtypes.DoltgresType{pgtypes.Int32, pgtypes.Int32},
-	Callable: func(ctx *sql.Context, val1 any, val2 any) (any, error) {
+	Parameters: [2]pgtypes.DoltgresType{pgtypes.Int32, pgtypes.Int32},
+	Strict:     true,
+	Callable: func(ctx *sql.Context, _ [3]pgtypes.DoltgresType, val1 any, val2 any) (any, error) {
 		result := int64(val1.(int32)) - int64(val2.(int32))
 		if result > math.MaxInt32 || result < math.MinInt32 {
 			return nil, fmt.Errorf("integer out of range")
 		}
 		return int32(result), nil
 	},
-	Strict: true,
 }
 
 // int42mi represents the PostgreSQL function of the same name, taking the same parameters.
 var int42mi = framework.Function2{
 	Name:       "int42mi",
 	Return:     pgtypes.Int32,
-	Parameters: []pgtypes.DoltgresType{pgtypes.Int32, pgtypes.Int16},
-	Callable: func(ctx *sql.Context, val1 any, val2 any) (any, error) {
+	Parameters: [2]pgtypes.DoltgresType{pgtypes.Int32, pgtypes.Int16},
+	Strict:     true,
+	Callable: func(ctx *sql.Context, _ [3]pgtypes.DoltgresType, val1 any, val2 any) (any, error) {
 		result := int64(val1.(int32)) - int64(val2.(int16))
 		if result > math.MaxInt32 || result < math.MinInt32 {
 			return nil, fmt.Errorf("integer out of range")
 		}
 		return int32(result), nil
 	},
-	Strict: true,
 }
 
 // int48mi represents the PostgreSQL function of the same name, taking the same parameters.
 var int48mi = framework.Function2{
 	Name:       "int48mi",
 	Return:     pgtypes.Int64,
-	Parameters: []pgtypes.DoltgresType{pgtypes.Int32, pgtypes.Int64},
-	Callable: func(ctx *sql.Context, val1 any, val2 any) (any, error) {
+	Parameters: [2]pgtypes.DoltgresType{pgtypes.Int32, pgtypes.Int64},
+	Strict:     true,
+	Callable: func(ctx *sql.Context, _ [3]pgtypes.DoltgresType, val1 any, val2 any) (any, error) {
 		return minusOverflow(int64(val1.(int32)), val2.(int64))
 	},
-	Strict: true,
 }
 
 // int8mi represents the PostgreSQL function of the same name, taking the same parameters.
 var int8mi = framework.Function2{
 	Name:       "int8mi",
 	Return:     pgtypes.Int64,
-	Parameters: []pgtypes.DoltgresType{pgtypes.Int64, pgtypes.Int64},
-	Callable: func(ctx *sql.Context, val1 any, val2 any) (any, error) {
+	Parameters: [2]pgtypes.DoltgresType{pgtypes.Int64, pgtypes.Int64},
+	Strict:     true,
+	Callable: func(ctx *sql.Context, _ [3]pgtypes.DoltgresType, val1 any, val2 any) (any, error) {
 		return minusOverflow(val1.(int64), val2.(int64))
 	},
-	Strict: true,
 }
 
 // int82mi represents the PostgreSQL function of the same name, taking the same parameters.
 var int82mi = framework.Function2{
 	Name:       "int82mi",
 	Return:     pgtypes.Int64,
-	Parameters: []pgtypes.DoltgresType{pgtypes.Int64, pgtypes.Int16},
-	Callable: func(ctx *sql.Context, val1 any, val2 any) (any, error) {
+	Parameters: [2]pgtypes.DoltgresType{pgtypes.Int64, pgtypes.Int16},
+	Strict:     true,
+	Callable: func(ctx *sql.Context, _ [3]pgtypes.DoltgresType, val1 any, val2 any) (any, error) {
 		return minusOverflow(val1.(int64), int64(val2.(int16)))
 	},
-	Strict: true,
 }
 
 // int84mi represents the PostgreSQL function of the same name, taking the same parameters.
 var int84mi = framework.Function2{
 	Name:       "int84mi",
 	Return:     pgtypes.Int64,
-	Parameters: []pgtypes.DoltgresType{pgtypes.Int64, pgtypes.Int32},
-	Callable: func(ctx *sql.Context, val1 any, val2 any) (any, error) {
+	Parameters: [2]pgtypes.DoltgresType{pgtypes.Int64, pgtypes.Int32},
+	Strict:     true,
+	Callable: func(ctx *sql.Context, _ [3]pgtypes.DoltgresType, val1 any, val2 any) (any, error) {
 		return minusOverflow(val1.(int64), int64(val2.(int32)))
 	},
-	Strict: true,
 }
 
 // numeric_sub represents the PostgreSQL function of the same name, taking the same parameters.
 var numeric_sub = framework.Function2{
 	Name:       "numeric_sub",
 	Return:     pgtypes.Numeric,
-	Parameters: []pgtypes.DoltgresType{pgtypes.Numeric, pgtypes.Numeric},
-	Callable: func(ctx *sql.Context, val1 any, val2 any) (any, error) {
+	Parameters: [2]pgtypes.DoltgresType{pgtypes.Numeric, pgtypes.Numeric},
+	Strict:     true,
+	Callable: func(ctx *sql.Context, _ [3]pgtypes.DoltgresType, val1 any, val2 any) (any, error) {
 		return val1.(decimal.Decimal).Sub(val2.(decimal.Decimal)), nil
 	},
-	Strict: true,
 }
 
 // minusOverflow is a convenience function that checks for overflow for int64 subtraction.

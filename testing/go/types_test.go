@@ -1957,6 +1957,35 @@ var typesTests = []ScriptTest{
 			},
 		},
 	},
+	{
+		Name: "Polymorphic types",
+		Assertions: []ScriptTestAssertion{
+			{
+				Query: "SELECT array_append(ARRAY[1], 2);",
+				Expected: []sql.Row{
+					{"{1,2}"},
+				},
+			},
+			{
+				Query: "SELECT array_append(ARRAY['abc','def'], 'ghi');",
+				Expected: []sql.Row{
+					{"{abc,def,ghi}"},
+				},
+			},
+			{
+				Query:       "SELECT array_append(1, 2);",
+				ExpectedErr: "does not exist",
+			},
+			{
+				Query:       "SELECT array_append(1, ARRAY[2]);",
+				ExpectedErr: "does not exist",
+			},
+			{
+				Query:       "SELECT array_append(ARRAY[1], ARRAY[2]);",
+				ExpectedErr: "does not exist",
+			},
+		},
+	},
 }
 
 func TestSameTypes(t *testing.T) {

@@ -35,19 +35,20 @@ func initBinaryShiftRight() {
 var int2shr = framework.Function2{
 	Name:       "int2shr",
 	Return:     pgtypes.Int16,
-	Parameters: []pgtypes.DoltgresType{pgtypes.Int16, pgtypes.Int32},
-	Callable: func(ctx *sql.Context, val1 any, val2 any) (any, error) {
+	Parameters: [2]pgtypes.DoltgresType{pgtypes.Int16, pgtypes.Int32},
+	Strict:     true,
+	Callable: func(ctx *sql.Context, _ [3]pgtypes.DoltgresType, val1 any, val2 any) (any, error) {
 		return int16(int32(val1.(int16)) >> val2.(int32)), nil
 	},
-	Strict: true,
 }
 
 // int4shr represents the PostgreSQL function of the same name, taking the same parameters.
 var int4shr = framework.Function2{
 	Name:       "int4shr",
 	Return:     pgtypes.Int32,
-	Parameters: []pgtypes.DoltgresType{pgtypes.Int32, pgtypes.Int32},
-	Callable: func(ctx *sql.Context, val1 any, val2 any) (any, error) {
+	Parameters: [2]pgtypes.DoltgresType{pgtypes.Int32, pgtypes.Int32},
+	Strict:     true,
+	Callable: func(ctx *sql.Context, _ [3]pgtypes.DoltgresType, val1 any, val2 any) (any, error) {
 		return int32(val1.(int32) >> val2.(int32)), nil
 	},
 }
@@ -56,8 +57,9 @@ var int4shr = framework.Function2{
 var int8shr = framework.Function2{
 	Name:       "int8shr",
 	Return:     pgtypes.Int64,
-	Parameters: []pgtypes.DoltgresType{pgtypes.Int64, pgtypes.Int32},
-	Callable: func(ctx *sql.Context, val1 any, val2 any) (any, error) {
+	Parameters: [2]pgtypes.DoltgresType{pgtypes.Int64, pgtypes.Int32},
+	Strict:     true,
+	Callable: func(ctx *sql.Context, _ [3]pgtypes.DoltgresType, val1 any, val2 any) (any, error) {
 		return int64(val1.(int64) >> int64(val2.(int32))), nil
 	},
 }

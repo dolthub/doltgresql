@@ -33,13 +33,13 @@ func initAcosd() {
 var acosd_float64 = framework.Function1{
 	Name:       "acosd",
 	Return:     pgtypes.Float64,
-	Parameters: []pgtypes.DoltgresType{pgtypes.Float64},
-	Callable: func(ctx *sql.Context, val1 any) (any, error) {
+	Parameters: [1]pgtypes.DoltgresType{pgtypes.Float64},
+	Strict:     true,
+	Callable: func(ctx *sql.Context, _ [2]pgtypes.DoltgresType, val1 any) (any, error) {
 		r := math.Acos(val1.(float64))
 		if math.IsNaN(r) {
 			return nil, fmt.Errorf("input is out of range")
 		}
 		return toDegrees(r), nil
 	},
-	Strict: true,
 }

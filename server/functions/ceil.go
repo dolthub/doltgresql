@@ -41,20 +41,20 @@ func initCeil() {
 var ceil_float64 = framework.Function1{
 	Name:       "ceil",
 	Return:     pgtypes.Float64,
-	Parameters: []pgtypes.DoltgresType{pgtypes.Float64},
-	Callable: func(ctx *sql.Context, val1 any) (any, error) {
+	Parameters: [1]pgtypes.DoltgresType{pgtypes.Float64},
+	Strict:     true,
+	Callable: func(ctx *sql.Context, _ [2]pgtypes.DoltgresType, val1 any) (any, error) {
 		return math.Ceil(val1.(float64)), nil
 	},
-	Strict: true,
 }
 
 // ceil_numeric represents the PostgreSQL function of the same name, taking the same parameters.
 var ceil_numeric = framework.Function1{
 	Name:       "ceil",
 	Return:     pgtypes.Numeric,
-	Parameters: []pgtypes.DoltgresType{pgtypes.Numeric},
-	Callable: func(ctx *sql.Context, val1 any) (any, error) {
+	Parameters: [1]pgtypes.DoltgresType{pgtypes.Numeric},
+	Strict:     true,
+	Callable: func(ctx *sql.Context, _ [2]pgtypes.DoltgresType, val1 any) (any, error) {
 		return val1.(decimal.Decimal).Ceil(), nil
 	},
-	Strict: true,
 }

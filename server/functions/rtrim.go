@@ -31,19 +31,21 @@ func initRtrim() {
 var rtrim_varchar = framework.Function1{
 	Name:       "rtrim",
 	Return:     pgtypes.VarChar,
-	Parameters: []pgtypes.DoltgresType{pgtypes.VarChar},
-	Callable: func(ctx *sql.Context, val1 any) (any, error) {
-		return rtrim_varchar_varchar.Callable(ctx, val1, " ")
+	Parameters: [1]pgtypes.DoltgresType{pgtypes.VarChar},
+	Strict:     true,
+	Callable: func(ctx *sql.Context, _ [2]pgtypes.DoltgresType, val1 any) (any, error) {
+		var unusedTypes [3]pgtypes.DoltgresType
+		return rtrim_varchar_varchar.Callable(ctx, unusedTypes, val1, " ")
 	},
-	Strict: true,
 }
 
 // rtrim_varchar_varchar represents the PostgreSQL function of the same name, taking the same parameters.
 var rtrim_varchar_varchar = framework.Function2{
 	Name:       "rtrim",
 	Return:     pgtypes.VarChar,
-	Parameters: []pgtypes.DoltgresType{pgtypes.VarChar, pgtypes.VarChar},
-	Callable: func(ctx *sql.Context, str any, characters any) (any, error) {
+	Parameters: [2]pgtypes.DoltgresType{pgtypes.VarChar, pgtypes.VarChar},
+	Strict:     true,
+	Callable: func(ctx *sql.Context, _ [3]pgtypes.DoltgresType, str any, characters any) (any, error) {
 		runes := []rune(str.(string))
 		trimChars := make(map[rune]struct{})
 		for _, c := range characters.(string) {
@@ -57,5 +59,4 @@ var rtrim_varchar_varchar = framework.Function2{
 		}
 		return string(runes[:trimIdx]), nil
 	},
-	Strict: true,
 }

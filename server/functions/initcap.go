@@ -33,9 +33,9 @@ func initInitcap() {
 var initcap_varchar = framework.Function1{
 	Name:       "initcap",
 	Return:     pgtypes.VarChar,
-	Parameters: []pgtypes.DoltgresType{pgtypes.VarChar},
-	Callable: func(ctx *sql.Context, val1 any) (any, error) {
+	Parameters: [1]pgtypes.DoltgresType{pgtypes.VarChar},
+	Strict:     true,
+	Callable: func(ctx *sql.Context, _ [2]pgtypes.DoltgresType, val1 any) (any, error) {
 		return cases.Title(language.English).String(val1.(string)), nil
 	},
-	Strict: true,
 }

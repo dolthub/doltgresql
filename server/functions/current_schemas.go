@@ -33,11 +33,12 @@ func initCurrentSchemas() {
 var current_schemas = framework.Function1{
 	Name:               "current_schemas",
 	Return:             pgtypes.NameArray,
-	Parameters:         []pgtypes.DoltgresType{pgtypes.Bool},
+	Parameters:         [1]pgtypes.DoltgresType{pgtypes.Bool},
 	IsNonDeterministic: true,
-	Callable: func(ctx *sql.Context, val any) (any, error) {
+	Strict:             true,
+	Callable: func(ctx *sql.Context, _ [2]pgtypes.DoltgresType, val1 any) (any, error) {
 		schemas := make([]any, 0)
-		if val.(bool) {
+		if val1.(bool) {
 			schemas = append(schemas, sessiondata.PgCatalogName)
 		}
 		searchPaths, err := resolve.SearchPath(ctx)
@@ -49,5 +50,4 @@ var current_schemas = framework.Function1{
 		}
 		return schemas, nil
 	},
-	Strict: true,
 }

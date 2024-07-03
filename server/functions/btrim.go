@@ -30,13 +30,13 @@ func initBtrim() {
 var btrim_varchar_varchar = framework.Function2{
 	Name:       "btrim",
 	Return:     pgtypes.VarChar,
-	Parameters: []pgtypes.DoltgresType{pgtypes.VarChar, pgtypes.VarChar},
-	Callable: func(ctx *sql.Context, str any, characters any) (any, error) {
-		result, err := ltrim_varchar_varchar.Callable(ctx, str, characters)
+	Parameters: [2]pgtypes.DoltgresType{pgtypes.VarChar, pgtypes.VarChar},
+	Strict:     true,
+	Callable: func(ctx *sql.Context, t [3]pgtypes.DoltgresType, str any, characters any) (any, error) {
+		result, err := ltrim_varchar_varchar.Callable(ctx, t, str, characters)
 		if err != nil {
 			return nil, err
 		}
-		return rtrim_varchar_varchar.Callable(ctx, result, characters)
+		return rtrim_varchar_varchar.Callable(ctx, t, result, characters)
 	},
-	Strict: true,
 }
