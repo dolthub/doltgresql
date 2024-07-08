@@ -436,10 +436,12 @@ const (
 const singleQuote = '\''
 const doubleQuote = '"'
 const backtick = '`'
+const backslash = '\\'
 
 // normalizeStrings normalizes a query string to convert any MySQL syntax to Postgres syntax
 func normalizeStrings(q string) string {
 	state := notInString
+	lastCharWasBackslash := false
 	normalized := strings.Builder{}
 
 	for _, c := range q {
@@ -460,12 +462,24 @@ func normalizeStrings(q string) string {
 			}
 		case inDoubleQuote:
 			switch c {
+			case backslash:
+				if lastCharWasBackslash {
+					normalized.WriteRune(c)
+				}
+				lastCharWasBackslash = !lastCharWasBackslash
 			case doubleQuote:
-				state = maybeEndDoubleQuote
+				if lastCharWasBackslash {
+					normalized.WriteRune(c)
+					lastCharWasBackslash = false
+				} else {
+					state = maybeEndDoubleQuote
+				}
 			case singleQuote:
 				normalized.WriteRune(singleQuote)
 				normalized.WriteRune(singleQuote)
+				lastCharWasBackslash = false
 			default:
+				lastCharWasBackslash = false
 				normalized.WriteRune(c)
 			}
 		case maybeEndDoubleQuote:
@@ -480,8 +494,18 @@ func normalizeStrings(q string) string {
 			}
 		case inSingleQuote:
 			switch c {
+			case backslash:
+				if lastCharWasBackslash {
+					normalized.WriteRune(c)
+				}
+				lastCharWasBackslash = !lastCharWasBackslash
 			case singleQuote:
-				state = maybeEndSingleQuote
+				if lastCharWasBackslash {
+					normalized.WriteRune(c)
+					lastCharWasBackslash = false
+				} else {
+					state = maybeEndSingleQuote
+				}
 			default:
 				normalized.WriteRune(c)
 			}
@@ -546,6 +570,38 @@ func TestNormalizeStrings(t *testing.T) {
 		{
 			input:    `SELECT "foo"`,
 			expected: `SELECT 'foo'`,
+		},
+		{
+			input:    `SELECT "fo\"o"`,
+			expected: `SELECT 'fo"o'`,
+		},
+		{
+			input:    `SELECT "fo\'o"`,
+			expected: `SELECT 'fo''o'`,
+		},
+		{
+			input:    `SELECT 'fo\'o'`,
+			expected: `SELECT 'fo''o'`,
+		},
+		{
+			input:    `SELECT 'fo\"o'`,
+			expected: `SELECT 'fo"o'`,
+		},
+		{
+			input:    `SELECT 'fo\\"o'`,
+			expected: `SELECT 'fo\"o'`,
+		},
+		{
+			input:    `SELECT 'fo\\\'o'`,
+			expected: `SELECT 'fo\''o'`,
+		},
+		{
+			input:    `SELECT "fo\\'o"`,
+			expected: `SELECT 'fo\''o'`,
+		},
+		{
+			input:    `SELECT "fo\\\"o"`,
+			expected: `SELECT 'fo\"o'`,
 		},
 		{
 			input:    "SELECT 'fo''o'",
