@@ -34,11 +34,11 @@ if [ -n "$withTpcc" ]; then
   withTpcc="\"--withTpcc=$withTpcc\","
 fi
 
-readTests="('oltp_read_only', 'oltp_point_select', 'select_random_points', 'select_random_ranges')"
+readTests="('oltp_read_only', 'oltp_point_select', 'select_random_points', 'select_random_ranges', 'covering_index_scan_postgres', 'index_scan_postgres', 'table_scan_postgres', 'groupby_scan_postgres', 'index_join_scan_postgres', 'types_table_scan_postgres', 'index_join_postgres')"
 medianLatencyMultiplierReadsQuery="select f.test_name as read_tests, f.server_name, f.server_version, avg(f.latency_percentile) as from_latency_median, t.server_name, t.server_version, avg(t.latency_percentile) as to_latency_median, ROUND(avg(t.latency_percentile) / (avg(f.latency_percentile) + .000001), $precision) as multiplier from from_results as f join to_results as t on f.test_name = t.test_name where f.test_name in $readTests group by f.test_name;"
 meanMultiplierReadsQuery="select round(avg(multipliers), $precision) as reads_mean_multiplier from (select (round(avg(t.latency_percentile) / (avg(f.latency_percentile) + .000001), $precision)) as multipliers from from_results as f join to_results as t on f.test_name = t.test_name where f.test_name in $readTests group by f.test_name)"
 
-writeTests="('oltp_read_write', 'oltp_update_index', 'oltp_update_non_index', 'oltp_insert', 'oltp_write_only', 'bulk_insert')"
+writeTests="('oltp_read_write', 'oltp_update_index', 'oltp_update_non_index', 'oltp_insert', 'oltp_write_only', 'bulk_insert', 'oltp_delete_insert_postgres', 'types_delete_insert_postgres')"
 medianLatencyMultiplierWritesQuery="select f.test_name as write_tests, f.server_name, f.server_version, avg(f.latency_percentile) as from_latency_median, t.server_name, t.server_version, avg(t.latency_percentile) as to_latency_median, ROUND(avg(t.latency_percentile) / (avg(f.latency_percentile) + .000001), $precision) as multiplier from from_results as f join to_results as t on f.test_name = t.test_name where f.test_name in $writeTests group by f.test_name;"
 meanMultiplierWritesQuery="select round(avg(multipliers), $precision) as writes_mean_multiplier from (select (round(avg(t.latency_percentile) / (avg(f.latency_percentile) + .000001), $precision)) as multipliers from from_results as f join to_results as t on f.test_name = t.test_name where f.test_name in $writeTests group by f.test_name)"
 
