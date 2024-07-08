@@ -502,11 +502,13 @@ func normalizeStrings(q string) string {
 			case singleQuote:
 				if lastCharWasBackslash {
 					normalized.WriteRune(c)
+					normalized.WriteRune(c)
 					lastCharWasBackslash = false
 				} else {
 					state = maybeEndSingleQuote
 				}
 			default:
+				lastCharWasBackslash = false
 				normalized.WriteRune(c)
 			}
 		case maybeEndSingleQuote:
