@@ -89,11 +89,22 @@ type Function4 struct {
 	Callable           func(ctx *sql.Context, val1 any, val2 any, val3 any, val4 any) (any, error)
 }
 
+// FunctionN is a function that takes N parameters.
+type FunctionN struct {
+	Name               string
+	Return             pgtypes.DoltgresType
+	Parameters         []pgtypes.DoltgresType
+	IsNonDeterministic bool
+	Strict             bool
+	Callable           func(ctx *sql.Context, values ...any) (any, error)
+}
+
 var _ FunctionInterface = Function0{}
 var _ FunctionInterface = Function1{}
 var _ FunctionInterface = Function2{}
 var _ FunctionInterface = Function3{}
 var _ FunctionInterface = Function4{}
+var _ FunctionInterface = FunctionN{}
 
 // GetName implements the FunctionInterface interface.
 func (f Function0) GetName() string { return f.Name }
@@ -199,3 +210,36 @@ func (f Function4) GetIsStrict() bool { return f.Strict }
 
 // enforceInterfaceInheritance implements the FunctionInterface interface.
 func (f Function4) enforceInterfaceInheritance(error) {}
+
+// GetName implements the FunctionInterface interface.
+func (f FunctionN) GetName() string {
+	return f.Name
+}
+
+// GetReturn implements the FunctionInterface interface.
+func (f FunctionN) GetReturn() pgtypes.DoltgresType {
+	return f.Return
+}
+
+// GetParameters implements the FunctionInterface interface.
+func (f FunctionN) GetParameters() []pgtypes.DoltgresType {
+	return f.Parameters
+}
+
+// GetExpectedParameterCount implements the FunctionInterface interface.
+func (f FunctionN) GetExpectedParameterCount() int {
+	return -1
+}
+
+// GetIsNonDeterministic implements the FunctionInterface interface.
+func (f FunctionN) GetIsNonDeterministic() bool {
+	return f.IsNonDeterministic
+}
+
+// GetIsStrict implements the FunctionInterface interface.
+func (f FunctionN) GetIsStrict() bool {
+	return f.Strict
+}
+
+// enforceInterfaceInheritance implements the FunctionInterface interface.
+func (f FunctionN) enforceInterfaceInheritance(err error) {}

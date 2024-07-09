@@ -94,4 +94,6 @@ func Init() {
 	initTrunc()
 	initUpper()
 	initWidthBucket()
+	initDoltProcedures()
 }
+

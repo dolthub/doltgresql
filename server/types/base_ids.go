@@ -50,6 +50,7 @@ const (
 	DoltgresTypeBaseID_Int16Serial
 	DoltgresTypeBaseID_Int32Serial
 	DoltgresTypeBaseID_Int64Serial
+	DoltgresTypeBaseID_Composite
 )
 
 const (
