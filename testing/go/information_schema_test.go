@@ -44,7 +44,6 @@ func TestInfoSchemaTables(t *testing.T) {
 					},
 				},
 				{
-					// TODO: Why are these all postgres instead of doltgres?
 					Query: `SELECT table_catalog, table_schema FROM information_schema.tables group by table_catalog, table_schema order by table_schema;`,
 					Expected: []sql.Row{
 						{"postgres", "information_schema"},
