@@ -321,5 +321,16 @@ func TestSystemInformationFunctions(t *testing.T) {
 				},
 			},
 		},
+		{
+			Name: "version",
+			Assertions: []ScriptTestAssertion{
+				{
+					Query: `SELECT version();`,
+					Expected: []sql.Row{
+						{"PostgreSQL 15.5"},
+					},
+				},
+			},
+		},
 	})
 }
