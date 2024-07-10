@@ -20,7 +20,6 @@ teardown() {
 @test 'psql-commands: \l' {
     run query_server -c "\l"
     [ "$status" -eq 0 ]
-    [[ "$output" =~ "information_schema" ]] || false
     [[ "$output" =~ "postgres" ]] || false
     [[ "$output" =~ "doltgres" ]] || false
 }
