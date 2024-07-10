@@ -94,7 +94,8 @@ func Initialize() {
 		funcName := funcName
 		// Verify that each function uses the correct Function overload
 		for _, functionOverload := range catalogFunctions {
-			if len(functionOverload.GetParameters()) != functionOverload.GetExpectedParameterCount() {
+			if functionOverload.GetExpectedParameterCount() >= 0 && 
+				len(functionOverload.GetParameters()) != functionOverload.GetExpectedParameterCount() {
 				panic(fmt.Errorf("function `%s` should have %d arguments but has %d arguments",
 					funcName, functionOverload.GetExpectedParameterCount(), len(functionOverload.GetParameters())))
 			}

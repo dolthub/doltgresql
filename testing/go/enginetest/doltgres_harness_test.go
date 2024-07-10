@@ -356,7 +356,7 @@ func (d DoltgresQueryEngine) AnalyzeQuery(s *sql.Context, s2 string) (sql.Node, 
 var doltgresNoDbDsn = fmt.Sprintf("postgresql://doltgres:password@127.0.0.1:%d/?sslmode=disable", port)
 
 func (d DoltgresQueryEngine) Query(ctx *sql.Context, query string) (sql.Schema, sql.RowIter, error) {
-	query = normalizeStrings(query)
+	query = convertQuery(query)
 
 	db, err := gosql.Open("pgx", doltgresNoDbDsn)
 	if err != nil {
@@ -397,6 +397,18 @@ func (d DoltgresQueryEngine) Query(ctx *sql.Context, query string) (sql.Schema, 
 	}
 
 	return schema, sql.RowsToRowIter(results...), nil
+}
+
+func convertQuery(query string) string {
+	query = normalizeStrings(query)
+	query = convertDoltProcedureCalls(query)
+	return query
+}
+
+var doltProcedureCall = regexp.MustCompile(`(?i)CALL DOLT_(\w+)`)
+
+func convertDoltProcedureCalls(query string) string {
+	return doltProcedureCall.ReplaceAllString(query, "SELECT DOLT_$1")
 }
 
 // little state machine for turning MySQL quote characters into their postgres equivalents:
