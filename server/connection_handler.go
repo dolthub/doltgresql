@@ -619,8 +619,16 @@ func convertType(oid int32) querypb.Type {
 		return sqltypes.Float32
 	case messages.OidFloat8:
 		return sqltypes.Float64
+	case messages.OidName:
+		return sqltypes.Text
 	case messages.OidNumeric:
 		return sqltypes.Decimal
+	case messages.OidOid:
+		return sqltypes.Uint32
+	case messages.OidXid:
+		return sqltypes.Uint32
+	case messages.OidChar:
+		return sqltypes.Text
 	case messages.OidText:
 		return sqltypes.Text
 	case messages.OidBool:
