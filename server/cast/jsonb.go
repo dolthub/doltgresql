@@ -208,7 +208,7 @@ func jsonbAssignment() {
 		FromType: pgtypes.JsonB,
 		ToType:   pgtypes.Json,
 		Function: func(ctx *sql.Context, val any, targetType pgtypes.DoltgresType) (any, error) {
-			return pgtypes.JsonB.IoOutput(val)
+			return pgtypes.JsonB.IoOutput(ctx, val)
 		},
 	})
 }

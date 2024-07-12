@@ -19,10 +19,10 @@ import (
 
 	"github.com/dolthub/go-mysql-server/sql"
 
-	"github.com/dolthub/doltgresql/core"
 	"github.com/dolthub/doltgresql/core/sequences"
 	"github.com/dolthub/doltgresql/server/tables"
 	pgtypes "github.com/dolthub/doltgresql/server/types"
+	"github.com/dolthub/doltgresql/server/types/oid"
 )
 
 // PgSequenceName is a constant to the pg_sequence name.
@@ -45,12 +45,21 @@ func (p PgSequenceHandler) Name() string {
 
 // RowIter implements the interface tables.Handler.
 func (p PgSequenceHandler) RowIter(ctx *sql.Context) (sql.RowIter, error) {
-	allSequences, err := p.getAllSequencesOrdered(ctx)
+	var allSequences []*sequences.Sequence
+	var oids []uint32
+	err := oid.IterateCurrentDatabase(ctx, oid.Callbacks{
+		Sequence: func(ctx *sql.Context, _ oid.ItemSchema, sequence oid.ItemSequence) (cont bool, err error) {
+			allSequences = append(allSequences, sequence.Item)
+			oids = append(oids, sequence.OID)
+			return true, nil
+		},
+	})
 	if err != nil {
 		return nil, err
 	}
 	return &pgSequenceRowIter{
 		sequences: allSequences,
+		oids:      oids,
 		idx:       0,
 	}, nil
 }
@@ -61,20 +70,6 @@ func (p PgSequenceHandler) Schema() sql.PrimaryKeySchema {
 		Schema:     pgSequenceSchema,
 		PkOrdinals: nil,
 	}
-}
-
-// getAllSequencesOrdered returns all sequences on the root, ordered by their schema and name.
-func (p PgSequenceHandler) getAllSequencesOrdered(ctx *sql.Context) ([]*sequences.Sequence, error) {
-	collection, err := core.GetCollectionFromContext(ctx)
-	if err != nil {
-		return nil, err
-	}
-	allSequencesMap, schemas, count := collection.GetAllSequences()
-	allSequences := make([]*sequences.Sequence, 0, count)
-	for _, schemaName := range schemas {
-		allSequences = append(allSequences, allSequencesMap[schemaName]...)
-	}
-	return allSequences, nil
 }
 
 // pgSequenceSchema is the schema for pg_sequence.
@@ -92,6 +87,7 @@ var pgSequenceSchema = sql.Schema{
 // pgSequenceRowIter is the sql.RowIter for the pg_sequence table.
 type pgSequenceRowIter struct {
 	sequences []*sequences.Sequence
+	oids      []uint32
 	idx       int
 }
 
@@ -104,8 +100,9 @@ func (iter *pgSequenceRowIter) Next(ctx *sql.Context) (sql.Row, error) {
 	}
 	iter.idx++
 	sequence := iter.sequences[iter.idx-1]
+	oid := iter.oids[iter.idx-1]
 	return sql.Row{
-		uint32(iter.idx),             // seqrelid
+		uint32(oid),                  // seqrelid
 		uint32(sequence.DataTypeOID), // seqtypid
 		int64(sequence.Start),        // seqstart
 		int64(sequence.Increment),    // seqincrement

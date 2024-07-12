@@ -19,12 +19,11 @@ import (
 	"io"
 	"strings"
 
-	"github.com/dolthub/dolt/go/libraries/doltcore/sqle/dsess"
-	sqle "github.com/dolthub/go-mysql-server"
 	"github.com/dolthub/go-mysql-server/sql"
 
 	"github.com/dolthub/doltgresql/server/tables"
 	pgtypes "github.com/dolthub/doltgresql/server/types"
+	"github.com/dolthub/doltgresql/server/types/oid"
 )
 
 // PgIndexesName is a constant to the pg_indexes name.
@@ -47,33 +46,15 @@ func (p PgIndexesHandler) Name() string {
 
 // RowIter implements the interface tables.Handler.
 func (p PgIndexesHandler) RowIter(ctx *sql.Context) (sql.RowIter, error) {
-	doltSession := dsess.DSessFromSess(ctx.Session)
-	c := sqle.NewDefault(doltSession.Provider()).Analyzer.Catalog
-
 	var indexes []sql.Index
 	var schemas []string
 
-	_, err := currentDatabaseSchemaIter(ctx, c, func(db sql.DatabaseSchema) (bool, error) {
-		// Get tables and table indexes
-		err := sql.DBTableIter(ctx, db, func(t sql.Table) (cont bool, err error) {
-			if it, ok := t.(sql.IndexAddressable); ok {
-				idxs, err := it.GetIndexes(ctx)
-				if err != nil {
-					return false, err
-				}
-				for _, idx := range idxs {
-					indexes = append(indexes, idx)
-					schemas = append(schemas, db.SchemaName())
-				}
-			}
-
+	err := oid.IterateCurrentDatabase(ctx, oid.Callbacks{
+		Index: func(ctx *sql.Context, schema oid.ItemSchema, table oid.ItemTable, index oid.ItemIndex) (cont bool, err error) {
+			indexes = append(indexes, index.Item)
+			schemas = append(schemas, schema.Item.SchemaName())
 			return true, nil
-		})
-		if err != nil {
-			return false, err
-		}
-
-		return true, nil
+		},
 	})
 	if err != nil {
 		return nil, err

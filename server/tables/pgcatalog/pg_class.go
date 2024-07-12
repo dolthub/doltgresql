@@ -18,12 +18,11 @@ import (
 	"fmt"
 	"io"
 
-	"github.com/dolthub/dolt/go/libraries/doltcore/sqle/dsess"
-	sqle "github.com/dolthub/go-mysql-server"
 	"github.com/dolthub/go-mysql-server/sql"
 
 	"github.com/dolthub/doltgresql/server/tables"
 	pgtypes "github.com/dolthub/doltgresql/server/types"
+	"github.com/dolthub/doltgresql/server/types/oid"
 )
 
 // PgClassName is a constant to the pg_class name.
@@ -46,74 +45,42 @@ func (p PgClassHandler) Name() string {
 
 // RowIter implements the interface tables.Handler.
 func (p PgClassHandler) RowIter(ctx *sql.Context) (sql.RowIter, error) {
-	doltSession := dsess.DSessFromSess(ctx.Session)
-	c := sqle.NewDefault(doltSession.Provider()).Analyzer.Catalog
-
 	var classes []pgClass
+	tableHasIndexes := make(map[uint32]struct{})
 
-	_, err := currentDatabaseSchemaIter(ctx, c, func(db sql.DatabaseSchema) (bool, error) {
-		dbName := db.Name()
-		schName := db.SchemaName()
-		schOid := genOid(dbName, schName)
-
-		// Get tables and table indexes
-		err := sql.DBTableIter(ctx, db, func(t sql.Table) (cont bool, err error) {
-			tableName := t.Name()
-			hasIndexes := false
-
-			if it, ok := t.(sql.IndexAddressable); ok {
-				idxs, err := it.GetIndexes(ctx)
-				if err != nil {
-					return false, err
-				}
-				for _, idx := range idxs {
-					classes = append(classes, pgClass{
-						oid:        genOid(dbName, schName, tableName, idx.ID()),
-						name:       getIndexName(idx),
-						hasIndexes: false,
-						kind:       "i",
-						schemaOid:  schOid,
-					})
-				}
-
-				if len(idxs) > 0 {
-					hasIndexes = true
-				}
-			}
-
+	err := oid.IterateCurrentDatabase(ctx, oid.Callbacks{
+		Index: func(ctx *sql.Context, schema oid.ItemSchema, table oid.ItemTable, index oid.ItemIndex) (cont bool, err error) {
+			tableHasIndexes[table.OID] = struct{}{}
 			classes = append(classes, pgClass{
-				oid:        genOid(dbName, schName, tableName),
-				name:       tableName,
+				oid:        index.OID,
+				name:       getIndexName(index.Item),
+				hasIndexes: false,
+				kind:       "i",
+				schemaOid:  schema.OID,
+			})
+			return true, nil
+		},
+		Table: func(ctx *sql.Context, schema oid.ItemSchema, table oid.ItemTable) (cont bool, err error) {
+			_, hasIndexes := tableHasIndexes[table.OID]
+			classes = append(classes, pgClass{
+				oid:        table.OID,
+				name:       table.Item.Name(),
 				hasIndexes: hasIndexes,
 				kind:       "r",
-				schemaOid:  schOid,
+				schemaOid:  schema.OID,
 			})
-
 			return true, nil
-		})
-		if err != nil {
-			return false, err
-		}
-
-		// Get views
-		if vdb, ok := db.(sql.ViewDatabase); ok {
-			views, err := vdb.AllViews(ctx)
-			if err != nil {
-				return false, err
-			}
-
-			for _, view := range views {
-				classes = append(classes, pgClass{
-					oid:        genOid(dbName, schName, view.Name),
-					name:       view.Name,
-					hasIndexes: false,
-					kind:       "v",
-					schemaOid:  schOid,
-				})
-			}
-		}
-
-		return true, nil
+		},
+		View: func(ctx *sql.Context, schema oid.ItemSchema, view oid.ItemView) (cont bool, err error) {
+			classes = append(classes, pgClass{
+				oid:        view.OID,
+				name:       view.Item.Name,
+				hasIndexes: false,
+				kind:       "v",
+				schemaOid:  schema.OID,
+			})
+			return true, nil
+		},
 	})
 	if err != nil {
 		return nil, err

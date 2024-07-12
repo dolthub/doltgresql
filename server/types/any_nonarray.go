@@ -81,11 +81,6 @@ func (ana AnyNonArrayType) Equals(otherType sql.Type) bool {
 	return ok
 }
 
-// FormatSerializedValue implements the DoltgresType interface.
-func (ana AnyNonArrayType) FormatSerializedValue(val []byte) (string, error) {
-	return "", fmt.Errorf("%s cannot format serialized values", ana.String())
-}
-
 // FormatValue implements the DoltgresType interface.
 func (ana AnyNonArrayType) FormatValue(val any) (string, error) {
 	return "", fmt.Errorf("%s cannot format values", ana.String())
@@ -97,12 +92,12 @@ func (ana AnyNonArrayType) GetSerializationID() SerializationID {
 }
 
 // IoInput implements the DoltgresType interface.
-func (ana AnyNonArrayType) IoInput(input string) (any, error) {
+func (ana AnyNonArrayType) IoInput(ctx *sql.Context, input string) (any, error) {
 	return "", fmt.Errorf("%s cannot receive I/O input", ana.String())
 }
 
 // IoOutput implements the DoltgresType interface.
-func (ana AnyNonArrayType) IoOutput(output any) (string, error) {
+func (ana AnyNonArrayType) IoOutput(ctx *sql.Context, output any) (string, error) {
 	return "", fmt.Errorf("%s cannot produce I/O output", ana.String())
 }
 

@@ -18,14 +18,13 @@ import (
 	"fmt"
 	"io"
 
-	"github.com/dolthub/dolt/go/libraries/doltcore/sqle/dsess"
-	sqle "github.com/dolthub/go-mysql-server"
 	"github.com/dolthub/go-mysql-server/sql"
 
 	"github.com/dolthub/doltgresql/postgres/parser/parser"
 	"github.com/dolthub/doltgresql/postgres/parser/sem/tree"
 	"github.com/dolthub/doltgresql/server/tables"
 	pgtypes "github.com/dolthub/doltgresql/server/types"
+	"github.com/dolthub/doltgresql/server/types/oid"
 )
 
 // PgViewsName is a constant to the pg_views name.
@@ -48,24 +47,15 @@ func (p PgViewsHandler) Name() string {
 
 // RowIter implements the interface tables.Handler.
 func (p PgViewsHandler) RowIter(ctx *sql.Context) (sql.RowIter, error) {
-	doltSession := dsess.DSessFromSess(ctx.Session)
-	c := sqle.NewDefault(doltSession.Provider()).Analyzer.Catalog
-
 	var views []sql.ViewDefinition
 	var schemas []string
-	_, err := currentDatabaseSchemaIter(ctx, c, func(sch sql.DatabaseSchema) (bool, error) {
-		if vdb, ok := sch.(sql.ViewDatabase); ok {
-			vws, err := vdb.AllViews(ctx)
-			if err != nil {
-				return false, err
-			}
-			for _, vw := range vws {
-				views = append(views, vw)
-				schemas = append(schemas, sch.SchemaName())
-			}
 
-		}
-		return true, nil
+	err := oid.IterateCurrentDatabase(ctx, oid.Callbacks{
+		View: func(ctx *sql.Context, schema oid.ItemSchema, view oid.ItemView) (cont bool, err error) {
+			views = append(views, view.Item)
+			schemas = append(schemas, schema.Item.SchemaName())
+			return true, nil
+		},
 	})
 	if err != nil {
 		return nil, err

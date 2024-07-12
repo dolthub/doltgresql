@@ -1481,6 +1481,113 @@ var typesTests = []ScriptTest{
 		},
 	},
 	{
+		Name: "Regclass type",
+		SetUpScript: []string{
+			`CREATE TABLE testing (pk INT primary key, v1 INT UNIQUE);`,
+			`CREATE TABLE "Testing2" (pk INT primary key, v1 INT);`,
+			`CREATE VIEW testview AS SELECT * FROM testing LIMIT 1;`,
+		},
+		Assertions: []ScriptTestAssertion{
+			{
+				Query: `SELECT 'testing'::regclass;`,
+				Expected: []sql.Row{
+					{"testing"},
+				},
+			},
+			{
+				Query: `SELECT 'testview'::regclass;`,
+				Expected: []sql.Row{
+					{"testview"},
+				},
+			},
+			{
+				Query: `SELECT ' testing'::regclass;`,
+				Expected: []sql.Row{
+					{"testing"},
+				},
+			},
+			{
+				Query:       `SELECT 'Testing2'::regclass;`,
+				ExpectedErr: "does not exist",
+			},
+			{
+				Query: `SELECT '"Testing2"'::regclass;`,
+				Expected: []sql.Row{
+					{"Testing2"},
+				},
+			},
+			{ // This tests that an invalid OID returns itself in string form
+				Query: `SELECT 4294967295::regclass;`,
+				Expected: []sql.Row{
+					{"4294967295"},
+				},
+			},
+			{
+				Query: "SELECT relname FROM pg_catalog.pg_class WHERE oid = 'testing'::regclass;",
+				Expected: []sql.Row{
+					{"testing"},
+				},
+			},
+		},
+	},
+	{
+		Name: "Regproc type",
+		Assertions: []ScriptTestAssertion{
+			{
+				Query: `SELECT 'acos'::regproc;`,
+				Expected: []sql.Row{
+					{"acos"},
+				},
+			},
+			{
+				Query: `SELECT ' acos'::regproc;`,
+				Expected: []sql.Row{
+					{"acos"},
+				},
+			},
+			{
+				Query: `SELECT '"acos"'::regproc;`,
+				Expected: []sql.Row{
+					{"acos"},
+				},
+			},
+			{ // This tests that a raw OID properly converts
+				Query: `SELECT (('acos'::regproc)::oid)::regproc;`,
+				Expected: []sql.Row{
+					{"acos"},
+				},
+			},
+			{ // This tests that a string representing a raw OID converts the same as a raw OID
+				Query: `SELECT ((('acos'::regproc)::oid)::text)::regproc;`,
+				Expected: []sql.Row{
+					{"acos"},
+				},
+			},
+			{ // This tests that an invalid OID returns itself in string form
+				Query: `SELECT 4294967295::regproc;`,
+				Expected: []sql.Row{
+					{"4294967295"},
+				},
+			},
+			{
+				Query:       `SELECT '"Abs"'::regproc;`,
+				ExpectedErr: "does not exist",
+			},
+			{
+				Query:       `SELECT '"acos'::regproc;`,
+				ExpectedErr: "invalid name syntax",
+			},
+			{
+				Query:       `SELECT 'acos"'::regproc;`,
+				ExpectedErr: "does not exist",
+			},
+			{
+				Query:       `SELECT '""acos'::regproc;`,
+				ExpectedErr: "invalid name syntax",
+			},
+		},
+	},
+	{
 		Name: "Smallint type",
 		SetUpScript: []string{
 			"CREATE TABLE t_smallint (id INTEGER primary key, v1 SMALLINT);",

@@ -22,7 +22,7 @@ package types
 type DoltgresTypeBaseID uint32
 
 const (
-	DoltgresTypeBaseID_Any DoltgresTypeBaseID = iota + 2147483648
+	DoltgresTypeBaseID_Any DoltgresTypeBaseID = iota + 8192
 	DoltgresTypeBaseID_AnyElement
 	DoltgresTypeBaseID_AnyArray
 	DoltgresTypeBaseID_AnyNonArray
@@ -50,6 +50,17 @@ const (
 	DoltgresTypeBaseID_Int16Serial
 	DoltgresTypeBaseID_Int32Serial
 	DoltgresTypeBaseID_Int64Serial
+	DoltgresTypeBaseID_Regclass
+	DoltgresTypeBaseID_Regcollation
+	DoltgresTypeBaseID_Regconfig
+	DoltgresTypeBaseID_Regdictionary
+	DoltgresTypeBaseID_Regnamespace
+	DoltgresTypeBaseID_Regoper
+	DoltgresTypeBaseID_Regoperator
+	DoltgresTypeBaseID_Regproc
+	DoltgresTypeBaseID_Regprocedure
+	DoltgresTypeBaseID_Regrole
+	DoltgresTypeBaseID_Regtype
 )
 
 const (

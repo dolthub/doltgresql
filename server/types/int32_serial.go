@@ -74,11 +74,6 @@ func (b Int32TypeSerial) Equals(otherType sql.Type) bool {
 	return ok
 }
 
-// FormatSerializedValue implements the DoltgresType interface.
-func (b Int32TypeSerial) FormatSerializedValue(val []byte) (string, error) {
-	return "", fmt.Errorf("SERIAL types are not formattable")
-}
-
 // FormatValue implements the DoltgresType interface.
 func (b Int32TypeSerial) FormatValue(val any) (string, error) {
 	return "", fmt.Errorf("SERIAL types are not formattable")
@@ -90,12 +85,12 @@ func (b Int32TypeSerial) GetSerializationID() SerializationID {
 }
 
 // IoInput implements the DoltgresType interface.
-func (b Int32TypeSerial) IoInput(input string) (any, error) {
+func (b Int32TypeSerial) IoInput(ctx *sql.Context, input string) (any, error) {
 	return "", fmt.Errorf("SERIAL types cannot receive I/O input")
 }
 
 // IoOutput implements the DoltgresType interface.
-func (b Int32TypeSerial) IoOutput(output any) (string, error) {
+func (b Int32TypeSerial) IoOutput(ctx *sql.Context, output any) (string, error) {
 	return "", fmt.Errorf("SERIAL types cannot produce I/O output")
 }
 

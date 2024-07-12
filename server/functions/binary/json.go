@@ -62,7 +62,7 @@ var json_array_element = framework.Function2{
 	Strict:     true,
 	Callable: func(ctx *sql.Context, _ [3]pgtypes.DoltgresType, val1 any, val2 any) (any, error) {
 		// TODO: make a bespoke implementation that preserves whitespace
-		newVal, err := pgtypes.JsonB.IoInput(val1.(string))
+		newVal, err := pgtypes.JsonB.IoInput(ctx, val1.(string))
 		if err != nil {
 			return nil, err
 		}
@@ -71,7 +71,10 @@ var json_array_element = framework.Function2{
 		if err != nil {
 			return nil, err
 		}
-		return pgtypes.JsonB.FormatValue(retVal)
+		if retVal == nil {
+			return "", nil
+		}
+		return pgtypes.JsonB.IoOutput(ctx, retVal)
 	},
 }
 
@@ -105,7 +108,7 @@ var json_object_field = framework.Function2{
 	Strict:     true,
 	Callable: func(ctx *sql.Context, _ [3]pgtypes.DoltgresType, val1 any, val2 any) (any, error) {
 		// TODO: make a bespoke implementation that preserves whitespace
-		newVal, err := pgtypes.JsonB.IoInput(val1.(string))
+		newVal, err := pgtypes.JsonB.IoInput(ctx, val1.(string))
 		if err != nil {
 			return nil, err
 		}
@@ -114,7 +117,10 @@ var json_object_field = framework.Function2{
 		if err != nil {
 			return nil, err
 		}
-		return pgtypes.JsonB.FormatValue(retVal)
+		if retVal == nil {
+			return "", nil
+		}
+		return pgtypes.JsonB.IoOutput(ctx, retVal)
 	},
 }
 
@@ -145,7 +151,7 @@ var json_array_element_text = framework.Function2{
 	Strict:     true,
 	Callable: func(ctx *sql.Context, _ [3]pgtypes.DoltgresType, val1 any, val2 any) (any, error) {
 		// TODO: make a bespoke implementation that preserves whitespace
-		newVal, err := pgtypes.JsonB.IoInput(val1.(string))
+		newVal, err := pgtypes.JsonB.IoInput(ctx, val1.(string))
 		if err != nil {
 			return nil, err
 		}
@@ -169,7 +175,7 @@ var jsonb_array_element_text = framework.Function2{
 		case pgtypes.JsonValueString:
 			return string(value), nil
 		default:
-			return pgtypes.JsonB.FormatValue(pgtypes.JsonDocument{Value: value})
+			return pgtypes.JsonB.IoOutput(ctx, pgtypes.JsonDocument{Value: value})
 		}
 	},
 }
@@ -182,7 +188,7 @@ var json_object_field_text = framework.Function2{
 	Strict:     true,
 	Callable: func(ctx *sql.Context, _ [3]pgtypes.DoltgresType, val1 any, val2 any) (any, error) {
 		// TODO: make a bespoke implementation that preserves whitespace
-		newVal, err := pgtypes.JsonB.IoInput(val1.(string))
+		newVal, err := pgtypes.JsonB.IoInput(ctx, val1.(string))
 		if err != nil {
 			return nil, err
 		}
@@ -206,7 +212,7 @@ var jsonb_object_field_text = framework.Function2{
 		case pgtypes.JsonValueString:
 			return string(value), nil
 		default:
-			return pgtypes.JsonB.FormatValue(pgtypes.JsonDocument{Value: value})
+			return pgtypes.JsonB.IoOutput(ctx, pgtypes.JsonDocument{Value: value})
 		}
 	},
 }
@@ -219,7 +225,7 @@ var json_extract_path = framework.Function2{
 	Strict:     true,
 	Callable: func(ctx *sql.Context, _ [3]pgtypes.DoltgresType, val1 any, val2 any) (any, error) {
 		// TODO: make a bespoke implementation that preserves whitespace
-		newVal, err := pgtypes.JsonB.IoInput(val1.(string))
+		newVal, err := pgtypes.JsonB.IoInput(ctx, val1.(string))
 		if err != nil {
 			return nil, err
 		}
@@ -228,7 +234,10 @@ var json_extract_path = framework.Function2{
 		if err != nil {
 			return nil, err
 		}
-		return pgtypes.JsonB.FormatValue(retVal)
+		if retVal == nil {
+			return "", nil
+		}
+		return pgtypes.JsonB.IoOutput(ctx, retVal)
 	},
 }
 
@@ -276,7 +285,7 @@ var json_extract_path_text = framework.Function2{
 	Strict:     true,
 	Callable: func(ctx *sql.Context, _ [3]pgtypes.DoltgresType, val1 any, val2 any) (any, error) {
 		// TODO: make a bespoke implementation that preserves whitespace
-		newVal, err := pgtypes.JsonB.IoInput(val1.(string))
+		newVal, err := pgtypes.JsonB.IoInput(ctx, val1.(string))
 		if err != nil {
 			return nil, err
 		}
@@ -300,7 +309,7 @@ var jsonb_extract_path_text = framework.Function2{
 		case pgtypes.JsonValueString:
 			return string(value), nil
 		default:
-			return pgtypes.JsonB.FormatValue(pgtypes.JsonDocument{Value: value})
+			return pgtypes.JsonB.IoOutput(ctx, pgtypes.JsonDocument{Value: value})
 		}
 	},
 }

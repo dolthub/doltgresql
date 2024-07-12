@@ -18,12 +18,11 @@ import (
 	"io"
 	"strings"
 
-	"github.com/dolthub/dolt/go/libraries/doltcore/sqle/dsess"
-	sqle "github.com/dolthub/go-mysql-server"
 	"github.com/dolthub/go-mysql-server/sql"
 
 	"github.com/dolthub/doltgresql/server/tables"
 	pgtypes "github.com/dolthub/doltgresql/server/types"
+	"github.com/dolthub/doltgresql/server/types/oid"
 )
 
 // PgIndexName is a constant to the pg_index name.
@@ -46,34 +45,17 @@ func (p PgIndexHandler) Name() string {
 
 // RowIter implements the interface tables.Handler.
 func (p PgIndexHandler) RowIter(ctx *sql.Context) (sql.RowIter, error) {
-	doltSession := dsess.DSessFromSess(ctx.Session)
-	c := sqle.NewDefault(doltSession.Provider()).Analyzer.Catalog
-
 	var indexes []sql.Index
-	var schemas []string
+	var indexOIDs []uint32
+	var tableOIDs []uint32
 
-	_, err := currentDatabaseSchemaIter(ctx, c, func(db sql.DatabaseSchema) (bool, error) {
-		// Get tables and table indexes
-		err := sql.DBTableIter(ctx, db, func(t sql.Table) (cont bool, err error) {
-			if it, ok := t.(sql.IndexAddressable); ok {
-				idxs, err := it.GetIndexes(ctx)
-				if err != nil {
-					return false, err
-				}
-				for _, idx := range idxs {
-					indexes = append(indexes, idx)
-					schemas = append(schemas, db.SchemaName())
-				}
-
-			}
-
+	err := oid.IterateCurrentDatabase(ctx, oid.Callbacks{
+		Index: func(ctx *sql.Context, schema oid.ItemSchema, table oid.ItemTable, index oid.ItemIndex) (cont bool, err error) {
+			indexes = append(indexes, index.Item)
+			tableOIDs = append(tableOIDs, table.OID)
+			indexOIDs = append(indexOIDs, index.OID)
 			return true, nil
-		})
-		if err != nil {
-			return false, err
-		}
-
-		return true, nil
+		},
 	})
 	if err != nil {
 		return nil, err
@@ -81,7 +63,8 @@ func (p PgIndexHandler) RowIter(ctx *sql.Context) (sql.RowIter, error) {
 
 	return &pgIndexRowIter{
 		indexes: indexes,
-		schemas: schemas,
+		idxOIDs: indexOIDs,
+		tblOIDs: tableOIDs,
 		idx:     0,
 	}, nil
 }
@@ -122,7 +105,8 @@ var pgIndexSchema = sql.Schema{
 // pgIndexRowIter is the sql.RowIter for the pg_index table.
 type pgIndexRowIter struct {
 	indexes []sql.Index
-	schemas []string
+	idxOIDs []uint32
+	tblOIDs []uint32
 	idx     int
 }
 
@@ -135,10 +119,8 @@ func (iter *pgIndexRowIter) Next(ctx *sql.Context) (sql.Row, error) {
 	}
 	iter.idx++
 	index := iter.indexes[iter.idx-1]
-	schema := iter.schemas[iter.idx-1]
-
-	tableOid := genOid(index.Database(), schema, index.Table())
-	indexOid := genOid(index.Database(), schema, index.Table(), index.ID())
+	tableOid := iter.tblOIDs[iter.idx-1]
+	indexOid := iter.idxOIDs[iter.idx-1]
 
 	// TODO: Fill in the rest of the pg_index columns
 	return sql.Row{

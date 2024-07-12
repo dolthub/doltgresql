@@ -94,6 +94,10 @@ func TypeSanitizer(ctx *sql.Context, a *analyzer.Analyzer, node sql.Node, scope 
 
 // typeSanitizerLiterals handles literal expressions for TypeSanitizer.
 func typeSanitizerLiterals(gmsLiteral *expression.Literal) (sql.Expression, transform.TreeIdentity, error) {
+	// GMS may resolve Doltgres literals and then stick them in GMS literals, so we have to account for that here
+	if doltgresType, ok := gmsLiteral.Type().(pgtypes.DoltgresType); ok {
+		return pgexprs.NewUnsafeLiteral(gmsLiteral.Value(), doltgresType), transform.NewTree, nil
+	}
 	switch gmsLiteral.Type().Type() {
 	case query.Type_INT8, query.Type_INT16, query.Type_INT24, query.Type_INT32, query.Type_INT64, query.Type_YEAR, query.Type_ENUM:
 		newVal, _, err := types.Int64.Convert(gmsLiteral.Value())

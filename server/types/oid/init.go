@@ -12,25 +12,14 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-package pgcatalog
+package oid
 
-import (
-	"strings"
+import pgtypes "github.com/dolthub/doltgresql/server/types"
 
-	"github.com/cespare/xxhash/v2"
-)
-
-// hashStringToUint32 hashes a string to a uint32 using the FNV-1a hash function.
-func hashStringToUint32(s string) uint32 {
-	hash := xxhash.Sum64String(s)
-	// Convert the hash to uint32
-	hash32 := uint32(hash & 0xFFFFFFFF)
-	// Ensure the hash is in the top half of the key space (>= 2^31) using XOR
-	return hash32 | 0x80000000
-}
-
-// genOid generates an OID from a list of names.
-func genOid(names ...string) uint32 {
-	id := strings.Join(names, ".")
-	return hashStringToUint32(id)
+// Init handles the assignment of the Io functions for the "reg" types.
+func Init() {
+	pgtypes.Regclass_IoInput = regclass_IoInput
+	pgtypes.Regclass_IoOutput = regclass_IoOutput
+	pgtypes.Regproc_IoInput = regproc_IoInput
+	pgtypes.Regproc_IoOutput = regproc_IoOutput
 }

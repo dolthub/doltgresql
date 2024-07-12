@@ -55,7 +55,7 @@ func charImplicit() {
 		FromType: pgtypes.BpChar,
 		ToType:   pgtypes.BpChar,
 		Function: func(ctx *sql.Context, val any, targetType pgtypes.DoltgresType) (any, error) {
-			return targetType.IoInput(val.(string))
+			return targetType.IoInput(ctx, val.(string))
 		},
 	})
 	framework.MustAddImplicitTypeCast(framework.TypeCast{
