@@ -107,21 +107,12 @@ func (b TimeType) Equals(otherType sql.Type) bool {
 	return false
 }
 
-// FormatSerializedValue implements the DoltgresType interface.
-func (b TimeType) FormatSerializedValue(val []byte) (string, error) {
-	deserialized, err := b.DeserializeValue(val)
-	if err != nil {
-		return "", err
-	}
-	return b.FormatValue(deserialized)
-}
-
 // FormatValue implements the DoltgresType interface.
 func (b TimeType) FormatValue(val any) (string, error) {
 	if val == nil {
 		return "", nil
 	}
-	return b.IoOutput(val)
+	return b.IoOutput(sql.NewEmptyContext(), val)
 }
 
 // GetSerializationID implements the DoltgresType interface.
@@ -130,7 +121,7 @@ func (b TimeType) GetSerializationID() SerializationID {
 }
 
 // IoInput implements the DoltgresType interface.
-func (b TimeType) IoInput(input string) (any, error) {
+func (b TimeType) IoInput(ctx *sql.Context, input string) (any, error) {
 	if t, err := time.Parse("15:04:05", input); err == nil {
 		return t.UTC(), nil
 	} else if t, err = time.Parse("15:04:05.000", input); err == nil {
@@ -140,7 +131,7 @@ func (b TimeType) IoInput(input string) (any, error) {
 }
 
 // IoOutput implements the DoltgresType interface.
-func (b TimeType) IoOutput(output any) (string, error) {
+func (b TimeType) IoOutput(ctx *sql.Context, output any) (string, error) {
 	converted, _, err := b.Convert(output)
 	if err != nil {
 		return "", err
@@ -202,7 +193,7 @@ func (b TimeType) SQL(ctx *sql.Context, dest []byte, v any) (sqltypes.Value, err
 	if v == nil {
 		return sqltypes.NULL, nil
 	}
-	value, err := b.FormatValue(v)
+	value, err := b.IoOutput(ctx, v)
 	if err != nil {
 		return sqltypes.Value{}, err
 	}

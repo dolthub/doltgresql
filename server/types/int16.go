@@ -112,21 +112,12 @@ func (b Int16Type) Equals(otherType sql.Type) bool {
 	return false
 }
 
-// FormatSerializedValue implements the DoltgresType interface.
-func (b Int16Type) FormatSerializedValue(val []byte) (string, error) {
-	deserialized, err := b.DeserializeValue(val)
-	if err != nil {
-		return "", err
-	}
-	return b.FormatValue(deserialized)
-}
-
 // FormatValue implements the DoltgresType interface.
 func (b Int16Type) FormatValue(val any) (string, error) {
 	if val == nil {
 		return "", nil
 	}
-	return b.IoOutput(val)
+	return b.IoOutput(sql.NewEmptyContext(), val)
 }
 
 // GetSerializationID implements the DoltgresType interface.
@@ -135,7 +126,7 @@ func (b Int16Type) GetSerializationID() SerializationID {
 }
 
 // IoInput implements the DoltgresType interface.
-func (b Int16Type) IoInput(input string) (any, error) {
+func (b Int16Type) IoInput(ctx *sql.Context, input string) (any, error) {
 	val, err := strconv.ParseInt(strings.TrimSpace(input), 10, 16)
 	if err != nil {
 		return nil, fmt.Errorf("invalid input syntax for type %s: %q", b.String(), input)
@@ -147,7 +138,7 @@ func (b Int16Type) IoInput(input string) (any, error) {
 }
 
 // IoOutput implements the DoltgresType interface.
-func (b Int16Type) IoOutput(output any) (string, error) {
+func (b Int16Type) IoOutput(ctx *sql.Context, output any) (string, error) {
 	converted, _, err := b.Convert(output)
 	if err != nil {
 		return "", err
@@ -203,7 +194,7 @@ func (b Int16Type) SQL(ctx *sql.Context, dest []byte, v any) (sqltypes.Value, er
 	if v == nil {
 		return sqltypes.NULL, nil
 	}
-	value, err := b.FormatValue(v)
+	value, err := b.IoOutput(ctx, v)
 	if err != nil {
 		return sqltypes.Value{}, err
 	}

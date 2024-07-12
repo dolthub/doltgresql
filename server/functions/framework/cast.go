@@ -145,11 +145,11 @@ func GetExplicitCast(fromType pgtypes.DoltgresTypeBaseID, toType pgtypes.Doltgre
 			if val == nil {
 				return nil, nil
 			}
-			str, err := fromType.GetRepresentativeType().IoOutput(val)
+			str, err := fromType.GetRepresentativeType().IoOutput(ctx, val)
 			if err != nil {
 				return nil, err
 			}
-			return targetType.IoInput(str)
+			return targetType.IoInput(ctx, str)
 		}
 	} else if fromType.GetTypeCategory() == pgtypes.TypeCategory_StringTypes {
 		// All types have a built-in assignment cast from string types, which we can reference in an explicit cast
@@ -157,11 +157,11 @@ func GetExplicitCast(fromType pgtypes.DoltgresTypeBaseID, toType pgtypes.Doltgre
 			if val == nil {
 				return nil, nil
 			}
-			str, err := fromType.GetRepresentativeType().IoOutput(val)
+			str, err := fromType.GetRepresentativeType().IoOutput(ctx, val)
 			if err != nil {
 				return nil, err
 			}
-			return targetType.IoInput(str)
+			return targetType.IoInput(ctx, str)
 		}
 	}
 	return nil
@@ -186,11 +186,11 @@ func GetAssignmentCast(fromType pgtypes.DoltgresTypeBaseID, toType pgtypes.Doltg
 			if val == nil {
 				return nil, nil
 			}
-			str, err := fromType.GetRepresentativeType().IoOutput(val)
+			str, err := fromType.GetRepresentativeType().IoOutput(ctx, val)
 			if err != nil {
 				return nil, err
 			}
-			return targetType.IoInput(str)
+			return targetType.IoInput(ctx, str)
 		}
 	}
 	return nil
@@ -298,5 +298,5 @@ func stringLiteralCast(ctx *sql.Context, val any, targetType pgtypes.DoltgresTyp
 	if !ok {
 		return nil, fmt.Errorf("string literal was expected in I/O cast, but received: `%T`", val)
 	}
-	return targetType.IoInput(str)
+	return targetType.IoInput(ctx, str)
 }

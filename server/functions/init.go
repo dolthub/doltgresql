@@ -91,6 +91,8 @@ func Init() {
 	initTand()
 	initTanh()
 	initToHex()
+	initToRegclass()
+	initToRegproc()
 	initTrimScale()
 	initTrunc()
 	initUpper()

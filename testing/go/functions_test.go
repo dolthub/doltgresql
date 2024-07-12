@@ -154,6 +154,79 @@ func TestFunctionsMath(t *testing.T) {
 	})
 }
 
+func TestFunctionsOID(t *testing.T) {
+	RunScripts(t, []ScriptTest{
+		{
+			Name: "to_regclass",
+			SetUpScript: []string{
+				`CREATE TABLE testing (pk INT primary key, v1 INT UNIQUE);`,
+				`CREATE TABLE "Testing2" (pk INT primary key, v1 INT);`,
+			},
+			Assertions: []ScriptTestAssertion{
+				{
+					Query: `SELECT to_regclass('testing');`,
+					Expected: []sql.Row{
+						{"testing"},
+					},
+				},
+				{
+					Query: `SELECT to_regclass('Testing2');`,
+					Expected: []sql.Row{
+						{nil},
+					},
+				},
+				{
+					Query: `SELECT to_regclass('"Testing2"');`,
+					Expected: []sql.Row{
+						{"Testing2"},
+					},
+				},
+				{
+					Query: `SELECT to_regclass(('testing'::regclass)::text);`,
+					Expected: []sql.Row{
+						{"testing"},
+					},
+				},
+				{
+					Query: `SELECT to_regclass((('testing'::regclass)::oid)::text);`,
+					Expected: []sql.Row{
+						{nil},
+					},
+				},
+			},
+		},
+		{
+			Name: "to_regproc",
+			Assertions: []ScriptTestAssertion{
+				{
+					Query: `SELECT to_regproc('acos');`,
+					Expected: []sql.Row{
+						{"acos"},
+					},
+				},
+				{
+					Query: `SELECT to_regproc('acos"');`,
+					Expected: []sql.Row{
+						{nil},
+					},
+				},
+				{
+					Query: `SELECT to_regproc(('acos'::regproc)::text);`,
+					Expected: []sql.Row{
+						{"acos"},
+					},
+				},
+				{
+					Query: `SELECT to_regproc((('acos'::regproc)::oid)::text);`,
+					Expected: []sql.Row{
+						{nil},
+					},
+				},
+			},
+		},
+	})
+}
+
 func TestSystemInformationFunctions(t *testing.T) {
 	RunScripts(t, []ScriptTest{
 		{

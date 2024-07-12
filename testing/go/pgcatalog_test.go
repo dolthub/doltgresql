@@ -126,11 +126,11 @@ func TestPgAttribute(t *testing.T) {
 			Assertions: []ScriptTestAssertion{
 				{
 					Query:    `SELECT * FROM "pg_catalog"."pg_attribute" WHERE attname='pk';`,
-					Expected: []sql.Row{{2650014423, "pk", 23, 0, 1331, -1, -1, 0, "f", "i", "p", "", "t", "f", "f", "", "", "f", "t", 0, -1, 0, nil, nil, nil, nil}},
+					Expected: []sql.Row{{2686451712, "pk", 23, 0, 1331, -1, -1, 0, "f", "i", "p", "", "t", "f", "f", "", "", "f", "t", 0, -1, 0, nil, nil, nil, nil}},
 				},
 				{
 					Query:    `SELECT * FROM "pg_catalog"."pg_attribute" WHERE attname='v1';`,
-					Expected: []sql.Row{{2650014423, "v1", 25, 0, 1332, -1, -1, 0, "f", "i", "p", "", "f", "t", "f", "", "", "f", "t", 0, -1, 0, nil, nil, nil, nil}},
+					Expected: []sql.Row{{2686451712, "v1", 25, 0, 1332, -1, -1, 0, "f", "i", "p", "", "f", "t", "f", "", "", "f", "t", 0, -1, 0, nil, nil, nil, nil}},
 				},
 				{ // Different cases and quoted, so it fails
 					Query:       `SELECT * FROM "PG_catalog"."pg_attribute";`,
@@ -361,18 +361,22 @@ func TestPgClass(t *testing.T) {
 				{
 					Query: `SELECT * FROM "pg_catalog"."pg_class" WHERE relname='testing';`,
 					Expected: []sql.Row{
-						{3421834825, "testing", 3874471750, 0, 0, 0, 0, 0, 0, 0, float32(0), 0, 0, "t", "f", "p", "r", 0, 0, "f", "f", "f", "f", "f", "t", "d", "f", 0, 0, 0, nil, nil, nil},
+						{2686451712, "testing", 1879048194, 0, 0, 0, 0, 0, 0, 0, float32(0), 0, 0, "t", "f", "p", "r", 0, 0, "f", "f", "f", "f", "f", "t", "d", "f", 0, 0, 0, nil, nil, nil},
 					},
 				},
 				// Index
 				{
-					Query:    `SELECT * FROM "pg_catalog"."pg_class" WHERE relname='testing_pkey';`,
-					Expected: []sql.Row{{2755706564, "testing_pkey", 3874471750, 0, 0, 0, 0, 0, 0, 0, float32(0), 0, 0, "f", "f", "p", "i", 0, 0, "f", "f", "f", "f", "f", "t", "d", "f", 0, 0, 0, nil, nil, nil}},
+					Query: `SELECT * FROM "pg_catalog"."pg_class" WHERE relname='testing_pkey';`,
+					Expected: []sql.Row{
+						{1612709888, "testing_pkey", 1879048194, 0, 0, 0, 0, 0, 0, 0, float32(0), 0, 0, "f", "f", "p", "i", 0, 0, "f", "f", "f", "f", "f", "t", "d", "f", 0, 0, 0, nil, nil, nil},
+					},
 				},
 				// View
 				{
-					Query:    `SELECT * FROM "pg_catalog"."pg_class" WHERE relname='testview';`,
-					Expected: []sql.Row{{3365776452, "testview", 3874471750, 0, 0, 0, 0, 0, 0, 0, float32(0), 0, 0, "f", "f", "p", "v", 0, 0, "f", "f", "f", "f", "f", "t", "d", "f", 0, 0, 0, nil, nil, nil}},
+					Query: `SELECT * FROM "pg_catalog"."pg_class" WHERE relname='testview';`,
+					Expected: []sql.Row{
+						{2954887168, "testview", 1879048194, 0, 0, 0, 0, 0, 0, 0, float32(0), 0, 0, "f", "f", "p", "v", 0, 0, "f", "f", "f", "f", "f", "t", "d", "f", 0, 0, 0, nil, nil, nil},
+					},
 				},
 				{ // Different cases and quoted, so it fails
 					Query:       `SELECT * FROM "PG_catalog"."pg_class";`,
@@ -391,12 +395,12 @@ func TestPgClass(t *testing.T) {
 					},
 				},
 				{
-					Query: "SELECT relname from pg_catalog.pg_class c JOIN pg_catalog.pg_namespace n ON c.relnamespace = n.oid  WHERE n.nspname = 'testschema';",
+					Query: "SELECT relname from pg_catalog.pg_class c JOIN pg_catalog.pg_namespace n ON c.relnamespace = n.oid  WHERE n.nspname = 'testschema' ORDER BY relname;",
 					Expected: []sql.Row{
-						{"testing_pkey"},
-						{"v1"},
 						{"testing"},
+						{"testing_pkey"},
 						{"testview"},
+						{"v1"},
 					},
 				},
 				{
@@ -405,6 +409,41 @@ func TestPgClass(t *testing.T) {
 						{"pg_aggregate"},
 						{"pg_am"},
 						{"pg_amop"},
+					},
+				},
+			},
+		},
+		{
+			Name: "pg_class with regclass",
+			SetUpScript: []string{
+				`CREATE SCHEMA testschema;`,
+				`SET search_path TO testschema;`,
+				`CREATE TABLE testing (pk INT primary key, v1 INT UNIQUE);`,
+				`CREATE VIEW testview AS SELECT * FROM testing LIMIT 1;`,
+				`CREATE SCHEMA testschema2;`,
+				`SET search_path TO testschema2;`,
+			},
+			Assertions: []ScriptTestAssertion{
+				{
+					Query:       `SELECT * FROM "pg_catalog"."pg_class" WHERE oid='testing'::regclass;`,
+					ExpectedErr: "does not exist",
+				},
+				{
+					Query: `SELECT * FROM "pg_catalog"."pg_class" WHERE oid='testschema.testing'::regclass;`,
+					Expected: []sql.Row{
+						{2686451712, "testing", 1879048194, 0, 0, 0, 0, 0, 0, 0, float32(0), 0, 0, "t", "f", "p", "r", 0, 0, "f", "f", "f", "f", "f", "t", "d", "f", 0, 0, 0, nil, nil, nil},
+					},
+				},
+				{
+					Query: `SELECT * FROM "pg_catalog"."pg_class" WHERE oid='testschema.testing_pkey'::regclass;`,
+					Expected: []sql.Row{
+						{1612709888, "testing_pkey", 1879048194, 0, 0, 0, 0, 0, 0, 0, float32(0), 0, 0, "f", "f", "p", "i", 0, 0, "f", "f", "f", "f", "f", "t", "d", "f", 0, 0, 0, nil, nil, nil},
+					},
+				},
+				{
+					Query: `SELECT * FROM "pg_catalog"."pg_class" WHERE oid='testschema.testview'::regclass;`,
+					Expected: []sql.Row{
+						{2954887168, "testview", 1879048194, 0, 0, 0, 0, 0, 0, 0, float32(0), 0, 0, "f", "f", "p", "v", 0, 0, "f", "f", "f", "f", "f", "t", "d", "f", 0, 0, 0, nil, nil, nil},
 					},
 				},
 			},
@@ -478,11 +517,11 @@ func TestPgConstraint(t *testing.T) {
 				{
 					Query: `SELECT * FROM "pg_catalog"."pg_constraint";`,
 					Expected: []sql.Row{
-						{2417240761, "testing_pkey", 3313866986, "p", "f", "f", "t", 2965627175, 0, 2417240761, 0, 0, "", "", "", "t", 0, "t", nil, nil, nil, nil, nil, nil, nil, nil},
-						{2372902490, "v1", 3313866986, "u", "f", "f", "t", 2965627175, 0, 2372902490, 0, 0, "", "", "", "t", 0, "t", nil, nil, nil, nil, nil, nil, nil, nil},
-						{2205885068, "testing2_pkey", 3313866986, "p", "f", "f", "t", 4009776262, 0, 2205885068, 0, 0, "", "", "", "t", 0, "t", nil, nil, nil, nil, nil, nil, nil, nil},
+						{1611661312, "testing_pkey", 1879048193, "p", "f", "f", "t", 2685403136, 0, 1611661312, 0, 0, "", "", "", "t", 0, "t", nil, nil, nil, nil, nil, nil, nil, nil},
+						{1611661313, "v1", 1879048193, "u", "f", "f", "t", 2685403136, 0, 1611661313, 0, 0, "", "", "", "t", 0, "t", nil, nil, nil, nil, nil, nil, nil, nil},
+						{1611661314, "testing2_pkey", 1879048193, "p", "f", "f", "t", 2685403137, 0, 1611661314, 0, 0, "", "", "", "t", 0, "t", nil, nil, nil, nil, nil, nil, nil, nil},
 						// TODO: Uncomment when foreign keys work
-						// {2205885068, "testing2_pktesting_fkey", 3313866986, "f", "f", "t", 4009776262, 0, 2205885068, 0, 0, "", "", "", "t", 0, "t", nil, nil, nil, nil, nil, nil, nil, nil}},
+						// {1611661314, "testing2_pktesting_fkey", 1879048193, "f", "f", "t", 2685403137, 0, 1611661314, 0, 0, "", "", "", "t", 0, "t", nil, nil, nil, nil, nil, nil, nil, nil}},
 					},
 				},
 				{ // Different cases and quoted, so it fails
@@ -504,7 +543,7 @@ func TestPgConstraint(t *testing.T) {
 				{
 					Query: "SELECT co.oid, co.conname, co.conrelid, cl.relname FROM pg_catalog.pg_constraint co JOIN pg_catalog.pg_class cl ON co.conrelid = cl.oid WHERE cl.relname = 'testing2';",
 					Expected: []sql.Row{
-						{2205885068, "testing2_pkey", 4009776262, "testing2"},
+						{1611661314, "testing2_pkey", 2685403137, "testing2"},
 					},
 				},
 			},
@@ -582,11 +621,11 @@ func TestPgDatabase(t *testing.T) {
 					},
 				},
 				{
-					Query: `SELECT oid, datname FROM "pg_catalog"."pg_database" ORDER BY oid DESC;`,
+					Query: `SELECT oid, datname FROM "pg_catalog"."pg_database" ORDER BY datname DESC;`,
 					Expected: []sql.Row{
-						{3906608034, "postgres"},
-						{3680993593, "test"},
-						{2414594895, "doltgres"},
+						{805306370, "test"},
+						{805306369, "postgres"},
+						{805306368, "doltgres"},
 					},
 				},
 				{ // Different cases and quoted, so it fails
@@ -600,15 +639,15 @@ func TestPgDatabase(t *testing.T) {
 				{ // Different cases but non-quoted, so it works
 					Query: "SELECT oid, datname FROM PG_catalog.pg_DATABASE ORDER BY datname ASC;",
 					Expected: []sql.Row{
-						{2414594895, "doltgres"},
-						{3906608034, "postgres"},
-						{3680993593, "test"},
+						{805306368, "doltgres"},
+						{805306369, "postgres"},
+						{805306370, "test"},
 					},
 				},
 				{
 					Query: "SELECT * FROM pg_catalog.pg_database WHERE datname='test';",
 					Expected: []sql.Row{
-						{3680993593, "test", 0, 0, "i", "f", "t", -1, 0, 0, 0, "", "", nil, "", nil, nil},
+						{805306370, "test", 0, 0, "i", "f", "t", -1, 0, 0, 0, "", "", nil, "", nil, nil},
 					},
 				},
 			},
@@ -994,9 +1033,9 @@ func TestPgIndex(t *testing.T) {
 				{
 					Query: `SELECT * FROM "pg_catalog"."pg_index";`,
 					Expected: []sql.Row{
-						{2755706564, 3421834825, 1, 0, "t", "f", "t", "f", "f", "f", "t", "f", "t", "t", "f", "{}", "{}", "{}", "{}", nil, nil},
-						{3477907979, 3421834825, 1, 0, "t", "f", "f", "f", "f", "f", "t", "f", "t", "t", "f", "{}", "{}", "{}", "{}", nil, nil},
-						{3966643545, 2794008446, 2, 0, "t", "f", "t", "f", "f", "f", "t", "f", "t", "t", "f", "{}", "{}", "{}", "{}", nil, nil},
+						{1612709888, 2686451712, 1, 0, "t", "f", "t", "f", "f", "f", "t", "f", "t", "t", "f", "{}", "{}", "{}", "{}", nil, nil},
+						{1612709889, 2686451712, 1, 0, "t", "f", "f", "f", "f", "f", "t", "f", "t", "t", "f", "{}", "{}", "{}", "{}", nil, nil},
+						{1612709890, 2686451713, 2, 0, "t", "f", "t", "f", "f", "f", "t", "f", "t", "t", "f", "{}", "{}", "{}", "{}", nil, nil},
 					},
 				},
 				{ // Different cases and quoted, so it fails
@@ -1009,14 +1048,14 @@ func TestPgIndex(t *testing.T) {
 				},
 				{ // Different cases but non-quoted, so it works
 					Query:    "SELECT indexrelid FROM PG_catalog.pg_INDEX ORDER BY indexrelid ASC;",
-					Expected: []sql.Row{{2755706564}, {3477907979}, {3966643545}},
+					Expected: []sql.Row{{1612709888}, {1612709889}, {1612709890}},
 				},
 				{
 					Query: "SELECT i.indexrelid, i.indrelid, c.relname, t.relname  FROM pg_catalog.pg_index i JOIN pg_catalog.pg_class c ON i.indexrelid = c.oid JOIN pg_catalog.pg_class t ON i.indrelid = t.oid;",
 					Expected: []sql.Row{
-						{2755706564, 3421834825, "testing_pkey", "testing"},
-						{3477907979, 3421834825, "v1", "testing"},
-						{3966643545, 2794008446, "testing2_pkey", "testing2"},
+						{1612709888, 2686451712, "testing_pkey", "testing"},
+						{1612709889, 2686451712, "v1", "testing"},
+						{1612709890, 2686451713, "testing2_pkey", "testing2"},
 					},
 				},
 			},
@@ -1250,11 +1289,11 @@ func TestPgNamespace(t *testing.T) {
 			Name: "pg_namespace",
 			Assertions: []ScriptTestAssertion{
 				{
-					Query: `SELECT * FROM "pg_catalog"."pg_namespace";`,
+					Query: `SELECT * FROM "pg_catalog"."pg_namespace" ORDER BY nspname;`,
 					Expected: []sql.Row{
-						{2401452148, "pg_catalog", 0, nil},
-						{3313866986, "public", 0, nil},
-						{3662935674, "information_schema", 0, nil},
+						{1879048194, "information_schema", 0, nil},
+						{1879048192, "pg_catalog", 0, nil},
+						{1879048193, "public", 0, nil},
 					},
 				},
 				{ // Different cases and quoted, so it fails
@@ -1278,12 +1317,12 @@ func TestPgNamespace(t *testing.T) {
 					Expected: []sql.Row{},
 				},
 				{
-					Query: `SELECT * FROM "pg_catalog"."pg_namespace";`,
+					Query: `SELECT * FROM "pg_catalog"."pg_namespace" ORDER BY nspname;`,
 					Expected: []sql.Row{
-						{2401452148, "pg_catalog", 0, nil},
-						{3313866986, "public", 0, nil},
-						{3874471750, "testschema", 0, nil},
-						{3662935674, "information_schema", 0, nil},
+						{1879048195, "information_schema", 0, nil},
+						{1879048192, "pg_catalog", 0, nil},
+						{1879048193, "public", 0, nil},
+						{1879048194, "testschema", 0, nil},
 					},
 				},
 			},

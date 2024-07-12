@@ -21,23 +21,23 @@ import (
 	pgtypes "github.com/dolthub/doltgresql/server/types"
 )
 
-// initOid handles all casts that are built-in. This comprises only the "From" types.
-func initOid() {
-	oidAssignment()
-	oidImplicit()
+// initRegclass handles all casts that are built-in. This comprises only the "From" types.
+func initRegclass() {
+	regclassAssignment()
+	regclassImplicit()
 }
 
-// oidAssignment registers all assignment casts. This comprises only the "From" types.
-func oidAssignment() {
+// regclassAssignment registers all assignment casts. This comprises only the "From" types.
+func regclassAssignment() {
 	framework.MustAddAssignmentTypeCast(framework.TypeCast{
-		FromType: pgtypes.Oid,
+		FromType: pgtypes.Regclass,
 		ToType:   pgtypes.Int32,
 		Function: func(ctx *sql.Context, val any, targetType pgtypes.DoltgresType) (any, error) {
 			return int32(val.(uint32)), nil
 		},
 	})
 	framework.MustAddAssignmentTypeCast(framework.TypeCast{
-		FromType: pgtypes.Oid,
+		FromType: pgtypes.Regclass,
 		ToType:   pgtypes.Int64,
 		Function: func(ctx *sql.Context, val any, targetType pgtypes.DoltgresType) (any, error) {
 			return int64(val.(uint32)), nil
@@ -45,18 +45,11 @@ func oidAssignment() {
 	})
 }
 
-// oidImplicit registers all implicit casts. This comprises only the "From" types.
-func oidImplicit() {
+// regclassImplicit registers all implicit casts. This comprises only the "From" types.
+func regclassImplicit() {
 	framework.MustAddImplicitTypeCast(framework.TypeCast{
-		FromType: pgtypes.Oid,
-		ToType:   pgtypes.Regclass,
-		Function: func(ctx *sql.Context, val any, targetType pgtypes.DoltgresType) (any, error) {
-			return val, nil
-		},
-	})
-	framework.MustAddImplicitTypeCast(framework.TypeCast{
-		FromType: pgtypes.Oid,
-		ToType:   pgtypes.Regproc,
+		FromType: pgtypes.Regclass,
+		ToType:   pgtypes.Oid,
 		Function: func(ctx *sql.Context, val any, targetType pgtypes.DoltgresType) (any, error) {
 			return val, nil
 		},

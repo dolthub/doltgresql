@@ -81,15 +81,6 @@ func (b NullType) Equals(otherType sql.Type) bool {
 	return false
 }
 
-// FormatSerializedValue implements the DoltgresType interface.
-func (b NullType) FormatSerializedValue(val []byte) (string, error) {
-	deserialized, err := b.DeserializeValue(val)
-	if err != nil {
-		return "", err
-	}
-	return b.FormatValue(deserialized)
-}
-
 // FormatValue implements the DoltgresType interface.
 func (b NullType) FormatValue(val any) (string, error) {
 	return "NULL", nil
@@ -101,12 +92,12 @@ func (b NullType) GetSerializationID() SerializationID {
 }
 
 // IoInput implements the DoltgresType interface.
-func (b NullType) IoInput(input string) (any, error) {
+func (b NullType) IoInput(ctx *sql.Context, input string) (any, error) {
 	return "", fmt.Errorf("%s cannot receive I/O input", b.String())
 }
 
 // IoOutput implements the DoltgresType interface.
-func (b NullType) IoOutput(output any) (string, error) {
+func (b NullType) IoOutput(ctx *sql.Context, output any) (string, error) {
 	return "", fmt.Errorf("%s cannot produce I/O output", b.String())
 }
 

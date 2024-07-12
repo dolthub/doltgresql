@@ -17,6 +17,8 @@ package types
 import (
 	"sort"
 
+	"github.com/dolthub/go-mysql-server/sql"
+
 	"github.com/dolthub/go-mysql-server/sql/types"
 )
 
@@ -36,11 +38,11 @@ type DoltgresType interface {
 	// IoInput returns a value from the given input string. This function mirrors Postgres' I/O input function. Such
 	// strings are intended for serialization and automatic cross-type conversion. An input string will never represent
 	// NULL.
-	IoInput(input string) (any, error)
+	IoInput(ctx *sql.Context, input string) (any, error)
 	// IoOutput returns a string from the given output value. This function mirrors Postgres' I/O output function. These
 	// strings are not intended for output, but are instead intended for serialization and cross-type conversion. Output
 	// values will always be non-NULL.
-	IoOutput(output any) (string, error)
+	IoOutput(ctx *sql.Context, output any) (string, error)
 	// IsPreferredType returns true if the type is preferred type.
 	IsPreferredType() bool
 	// IsUnbounded returns whether the type is unbounded. Unbounded types do not enforce a length, precision, etc. on
@@ -119,6 +121,10 @@ var typesFromBaseID = map[DoltgresTypeBaseID]DoltgresType{
 	NumericArray.BaseID():     NumericArray,
 	Oid.BaseID():              Oid,
 	OidArray.BaseID():         OidArray,
+	Regclass.BaseID():         Regclass,
+	RegclassArray.BaseID():    RegclassArray,
+	Regproc.BaseID():          Regproc,
+	RegprocArray.BaseID():     RegprocArray,
 	Text.BaseID():             Text,
 	TextArray.BaseID():        TextArray,
 	Time.BaseID():             Time,

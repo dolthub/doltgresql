@@ -107,26 +107,12 @@ func (b TimeTZType) Equals(otherType sql.Type) bool {
 	return false
 }
 
-// FormatSerializedValue implements the DoltgresType interface.
-func (b TimeTZType) FormatSerializedValue(val []byte) (string, error) {
-	deserialized, err := b.DeserializeValue(val)
-	if err != nil {
-		return "", err
-	}
-	return b.FormatValue(deserialized)
-}
-
 // FormatValue implements the DoltgresType interface.
 func (b TimeTZType) FormatValue(val any) (string, error) {
 	if val == nil {
 		return "", nil
 	}
-	converted, _, err := b.Convert(val)
-	if err != nil {
-		return "", err
-	}
-	// TODO: this always displays the time with an offset relevant to the server location
-	return converted.(time.Time).Format("15:04:05-07"), nil
+	return b.IoOutput(sql.NewEmptyContext(), val)
 }
 
 // GetSerializationID implements the DoltgresType interface.
@@ -135,7 +121,7 @@ func (b TimeTZType) GetSerializationID() SerializationID {
 }
 
 // IoInput implements the DoltgresType interface.
-func (b TimeTZType) IoInput(input string) (any, error) {
+func (b TimeTZType) IoInput(ctx *sql.Context, input string) (any, error) {
 	if t, err := time.Parse("15:04:05-0700", input); err == nil {
 		return t, nil
 	} else if t, err = time.Parse("15:04:05-07:00", input); err == nil {
@@ -147,11 +133,12 @@ func (b TimeTZType) IoInput(input string) (any, error) {
 }
 
 // IoOutput implements the DoltgresType interface.
-func (b TimeTZType) IoOutput(output any) (string, error) {
+func (b TimeTZType) IoOutput(ctx *sql.Context, output any) (string, error) {
 	converted, _, err := b.Convert(output)
 	if err != nil {
 		return "", err
 	}
+	// TODO: this always displays the time with an offset relevant to the server location
 	return converted.(time.Time).Format("15:04:05-07"), nil
 }
 
@@ -204,7 +191,7 @@ func (b TimeTZType) SQL(ctx *sql.Context, dest []byte, v any) (sqltypes.Value, e
 	if v == nil {
 		return sqltypes.NULL, nil
 	}
-	value, err := b.FormatValue(v)
+	value, err := b.IoOutput(ctx, v)
 	if err != nil {
 		return sqltypes.Value{}, err
 	}

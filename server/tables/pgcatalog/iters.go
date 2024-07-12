@@ -20,33 +20,3 @@ import "github.com/dolthub/go-mysql-server/sql"
 func emptyRowIter() (sql.RowIter, error) {
 	return sql.RowsToRowIter(), nil
 }
-
-// currentDatabaseSchemaIter iterates over all schemas in the current database, calling cb
-// for each schema. Once all schemas have been processed or the callback returns
-// false or an error, the iteration stops.
-func currentDatabaseSchemaIter(ctx *sql.Context, c sql.Catalog, cb func(schema sql.DatabaseSchema) (bool, error)) (sql.Database, error) {
-	currentDB := ctx.GetCurrentDatabase()
-	db, err := c.Database(ctx, currentDB)
-	if err != nil {
-		return nil, err
-	}
-
-	if schDB, ok := db.(sql.SchemaDatabase); ok {
-		schemas, err := schDB.AllSchemas(ctx)
-		if err != nil {
-			return nil, err
-		}
-
-		for _, schema := range schemas {
-			cont, err := cb(schema)
-			if err != nil {
-				return nil, err
-			}
-			if !cont {
-				break
-			}
-		}
-	}
-
-	return db, nil
-}

@@ -17,12 +17,11 @@ package pgcatalog
 import (
 	"io"
 
-	"github.com/dolthub/dolt/go/libraries/doltcore/sqle/dsess"
-	sqle "github.com/dolthub/go-mysql-server"
 	"github.com/dolthub/go-mysql-server/sql"
 
 	"github.com/dolthub/doltgresql/server/tables"
 	pgtypes "github.com/dolthub/doltgresql/server/types"
+	"github.com/dolthub/doltgresql/server/types/oid"
 )
 
 // PgNamespaceName is a constant to the pg_namespace name.
@@ -45,25 +44,27 @@ func (p PgNamespaceHandler) Name() string {
 
 // RowIter implements the interface tables.Handler.
 func (p PgNamespaceHandler) RowIter(ctx *sql.Context) (sql.RowIter, error) {
-	doltSession := dsess.DSessFromSess(ctx.Session)
-	c := sqle.NewDefault(doltSession.Provider()).Analyzer.Catalog
-
 	var schemaNames []string
+	var schemaOids []uint32
 
-	currentDB, err := currentDatabaseSchemaIter(ctx, c, func(db sql.DatabaseSchema) (bool, error) {
-		schemaNames = append(schemaNames, db.SchemaName())
-		return true, nil
+	err := oid.IterateCurrentDatabase(ctx, oid.Callbacks{
+		Schema: func(ctx *sql.Context, schema oid.ItemSchema) (cont bool, err error) {
+			schemaNames = append(schemaNames, schema.Item.SchemaName())
+			schemaOids = append(schemaOids, schema.OID)
+			return true, nil
+		},
 	})
 	if err != nil {
 		return nil, err
 	}
 
 	schemaNames = append(schemaNames, "information_schema")
+	schemaOids = append(schemaOids, schemaOids[len(schemaOids)-1]+1)
 
 	return &pgNamespaceRowIter{
-		schemas:   schemaNames,
-		currentDB: currentDB.Name(),
-		idx:       0,
+		schemas: schemaNames,
+		oids:    schemaOids,
+		idx:     0,
 	}, nil
 }
 
@@ -85,9 +86,9 @@ var pgNamespaceSchema = sql.Schema{
 
 // pgNamespaceRowIter is the sql.RowIter for the pg_namespace table.
 type pgNamespaceRowIter struct {
-	schemas   []string
-	currentDB string
-	idx       int
+	schemas []string
+	oids    []uint32
+	idx     int
 }
 
 var _ sql.RowIter = (*pgNamespaceRowIter)(nil)
@@ -99,12 +100,11 @@ func (iter *pgNamespaceRowIter) Next(ctx *sql.Context) (sql.Row, error) {
 	}
 	iter.idx++
 	sch := iter.schemas[iter.idx-1]
-
-	oid := genOid(iter.currentDB, sch)
+	nspOID := iter.oids[iter.idx-1]
 
 	// TODO: columns are incomplete
 	return sql.Row{
-		oid,       //oid
+		nspOID,    //oid
 		sch,       //nspname
 		uint32(0), //nspowner
 		nil,       //nspacl

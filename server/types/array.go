@@ -82,7 +82,7 @@ func (ac arrayContainer) BaseID() DoltgresTypeBaseID {
 	// different inner types, so this ensures uniqueness. It is safe to change base IDs in the future (unlike
 	// serialization IDs, which must never be changed, only added to), so we can change this at any time if we feel it
 	// is necessary to.
-	return (DoltgresTypeBaseID(ac.serializationID) << 16) | ac.innerType.BaseID()
+	return (1 << 31) | (DoltgresTypeBaseID(ac.serializationID) << 16) | ac.innerType.BaseID()
 }
 
 // BaseName implements the DoltgresType interface.
@@ -163,22 +163,12 @@ func (ac arrayContainer) Equals(otherType sql.Type) bool {
 	return false
 }
 
-// FormatSerializedValue implements the DoltgresType interface.
-func (ac arrayContainer) FormatSerializedValue(val []byte) (string, error) {
-	//TODO: write a far more optimized version of this that does not deserialize the entire array at once
-	deserialized, err := ac.DeserializeValue(val)
-	if err != nil {
-		return "", err
-	}
-	return ac.FormatValue(deserialized)
-}
-
 // FormatValue implements the DoltgresType interface.
 func (ac arrayContainer) FormatValue(val any) (string, error) {
 	if val == nil {
 		return "", nil
 	}
-	return ac.IoOutput(val)
+	return ac.IoOutput(sql.NewEmptyContext(), val)
 }
 
 // GetSerializationID implements the DoltgresType interface.
@@ -187,7 +177,7 @@ func (ac arrayContainer) GetSerializationID() SerializationID {
 }
 
 // IoInput implements the DoltgresType interface.
-func (ac arrayContainer) IoInput(input string) (any, error) {
+func (ac arrayContainer) IoInput(ctx *sql.Context, input string) (any, error) {
 	if len(input) < 2 || input[0] != '{' || input[len(input)-1] != '}' {
 		// This error is regarded as a critical error, and thus we immediately return the error alongside a nil
 		// value. Returning a nil value is a signal to not ignore the error.
@@ -235,7 +225,7 @@ func (ac arrayContainer) IoInput(input string) (any, error) {
 					innerValue = nil
 				} else {
 					var nErr error
-					innerValue, nErr = ac.innerType.IoInput(str)
+					innerValue, nErr = ac.innerType.IoInput(ctx, str)
 					if nErr != nil && err == nil {
 						// This is a non-critical error, therefore the error may be ignored at a higher layer (such as
 						// an explicit cast) and the inner type will still return a valid result, so we must allow the
@@ -266,7 +256,7 @@ func (ac arrayContainer) IoInput(input string) (any, error) {
 				innerValue = nil
 			} else {
 				var nErr error
-				innerValue, nErr = ac.innerType.IoInput(str)
+				innerValue, nErr = ac.innerType.IoInput(ctx, str)
 				if nErr != nil && err == nil {
 					// This is a non-critical error, therefore the error may be ignored at a higher layer (such as
 					// an explicit cast) and the inner type will still return a valid result, so we must allow the
@@ -282,7 +272,7 @@ func (ac arrayContainer) IoInput(input string) (any, error) {
 }
 
 // IoOutput implements the DoltgresType interface.
-func (ac arrayContainer) IoOutput(output any) (string, error) {
+func (ac arrayContainer) IoOutput(ctx *sql.Context, output any) (string, error) {
 	converted, _, err := ac.Convert(output)
 	if err != nil {
 		return "", err
@@ -294,7 +284,7 @@ func (ac arrayContainer) IoOutput(output any) (string, error) {
 			sb.WriteString(",")
 		}
 		if v != nil {
-			str, err := ac.innerType.IoOutput(v)
+			str, err := ac.innerType.IoOutput(ctx, v)
 			if err != nil {
 				return "", err
 			}
@@ -518,7 +508,10 @@ func (ac arrayContainer) DeserializeValue(serializedVals []byte) (_ any, err err
 
 // arrayContainerSQL implements the default SQL function for arrayContainer.
 func arrayContainerSQL(ctx *sql.Context, ac arrayContainer, dest []byte, value any) (sqltypes.Value, error) {
-	str, err := ac.FormatValue(value)
+	if value == nil {
+		return sqltypes.MakeTrusted(sqltypes.Text, types.AppendAndSliceBytes(dest, []byte(""))), nil
+	}
+	str, err := ac.IoOutput(ctx, value)
 	if err != nil {
 		return sqltypes.Value{}, err
 	}

@@ -338,13 +338,13 @@ var pgCatalogTests = []ScriptTest{
 			{
 				Query:    `SELECT * FROM "pg_catalog"."pg_namespace" WHERE nspname=$1;`,
 				BindVars: []any{"testschema"},
-				Expected: []sql.Row{{3874471750, "testschema", 0, nil}},
+				Expected: []sql.Row{{1879048194, "testschema", 0, nil}},
 			},
 			{
 				Skip:     true, // TODO: Getting ERROR: cannot scan oid (OID 26) in binary format into *string
 				Query:    `SELECT * FROM "pg_catalog"."pg_namespace" WHERE oid=$1;`,
-				BindVars: []any{3874471750},
-				Expected: []sql.Row{{3874471750, "testschema", 0, nil}},
+				BindVars: []any{1879048194},
+				Expected: []sql.Row{{1879048194, "testschema", 0, nil}},
 			},
 		},
 	},

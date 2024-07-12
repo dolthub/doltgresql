@@ -89,11 +89,6 @@ func (aa AnyArrayType) Equals(otherType sql.Type) bool {
 	return ok
 }
 
-// FormatSerializedValue implements the DoltgresType interface.
-func (aa AnyArrayType) FormatSerializedValue(val []byte) (string, error) {
-	return "", fmt.Errorf("%s cannot format serialized values", aa.String())
-}
-
 // FormatValue implements the DoltgresType interface.
 func (aa AnyArrayType) FormatValue(val any) (string, error) {
 	return "", fmt.Errorf("%s cannot format values", aa.String())
@@ -105,12 +100,12 @@ func (aa AnyArrayType) GetSerializationID() SerializationID {
 }
 
 // IoInput implements the DoltgresType interface.
-func (aa AnyArrayType) IoInput(input string) (any, error) {
+func (aa AnyArrayType) IoInput(ctx *sql.Context, input string) (any, error) {
 	return "", fmt.Errorf("%s cannot receive I/O input", aa.String())
 }
 
 // IoOutput implements the DoltgresType interface.
-func (aa AnyArrayType) IoOutput(output any) (string, error) {
+func (aa AnyArrayType) IoOutput(ctx *sql.Context, output any) (string, error) {
 	return "", fmt.Errorf("%s cannot produce I/O output", aa.String())
 }
 

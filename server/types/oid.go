@@ -67,35 +67,6 @@ func (b OidType) Compare(v1 any, v2 any) (int, error) {
 	return compareUint32(b, v1, v2)
 }
 
-func compareUint32(b DoltgresType, v1, v2 any) (int, error) {
-	if v1 == nil && v2 == nil {
-		return 0, nil
-	} else if v1 != nil && v2 == nil {
-		return 1, nil
-	} else if v1 == nil && v2 != nil {
-		return -1, nil
-	}
-
-	ac, _, err := b.Convert(v1)
-	if err != nil {
-		return 0, err
-	}
-	bc, _, err := b.Convert(v2)
-	if err != nil {
-		return 0, err
-	}
-
-	ab := ac.(uint32)
-	bb := bc.(uint32)
-	if ab == bb {
-		return 0, nil
-	} else if ab < bb {
-		return -1, nil
-	} else {
-		return 1, nil
-	}
-}
-
 // Convert implements the DoltgresType interface.
 func (b OidType) Convert(val any) (any, sql.ConvertInRange, error) {
 	switch val := val.(type) {
@@ -116,21 +87,12 @@ func (b OidType) Equals(otherType sql.Type) bool {
 	return false
 }
 
-// FormatSerializedValue implements the DoltgresType interface.
-func (b OidType) FormatSerializedValue(val []byte) (string, error) {
-	deserialized, err := b.DeserializeValue(val)
-	if err != nil {
-		return "", err
-	}
-	return b.FormatValue(deserialized)
-}
-
 // FormatValue implements the DoltgresType interface.
 func (b OidType) FormatValue(val any) (string, error) {
 	if val == nil {
 		return "", nil
 	}
-	return b.IoOutput(val)
+	return b.IoOutput(sql.NewEmptyContext(), val)
 }
 
 // GetSerializationID implements the DoltgresType interface.
@@ -139,7 +101,7 @@ func (b OidType) GetSerializationID() SerializationID {
 }
 
 // IoInput implements the DoltgresType interface.
-func (b OidType) IoInput(input string) (any, error) {
+func (b OidType) IoInput(ctx *sql.Context, input string) (any, error) {
 	val, err := strconv.ParseInt(strings.TrimSpace(input), 10, 64)
 	if err != nil {
 		return nil, fmt.Errorf("invalid input syntax for type %s: %q", b.String(), input)
@@ -152,7 +114,7 @@ func (b OidType) IoInput(input string) (any, error) {
 }
 
 // IoOutput implements the DoltgresType interface.
-func (b OidType) IoOutput(output any) (string, error) {
+func (b OidType) IoOutput(ctx *sql.Context, output any) (string, error) {
 	converted, _, err := b.Convert(output)
 	if err != nil {
 		return "", err
@@ -208,7 +170,7 @@ func (b OidType) SQL(ctx *sql.Context, dest []byte, v any) (sqltypes.Value, erro
 	if v == nil {
 		return sqltypes.NULL, nil
 	}
-	value, err := b.FormatValue(v)
+	value, err := b.IoOutput(ctx, v)
 	if err != nil {
 		return sqltypes.Value{}, err
 	}
@@ -275,4 +237,33 @@ func (b OidType) DeserializeValue(val []byte) (any, error) {
 		return nil, nil
 	}
 	return binary.BigEndian.Uint32(val), nil
+}
+
+func compareUint32(b DoltgresType, v1, v2 any) (int, error) {
+	if v1 == nil && v2 == nil {
+		return 0, nil
+	} else if v1 != nil && v2 == nil {
+		return 1, nil
+	} else if v1 == nil && v2 != nil {
+		return -1, nil
+	}
+
+	ac, _, err := b.Convert(v1)
+	if err != nil {
+		return 0, err
+	}
+	bc, _, err := b.Convert(v2)
+	if err != nil {
+		return 0, err
+	}
+
+	ab := ac.(uint32)
+	bb := bc.(uint32)
+	if ab == bb {
+		return 0, nil
+	} else if ab < bb {
+		return -1, nil
+	} else {
+		return 1, nil
+	}
 }
