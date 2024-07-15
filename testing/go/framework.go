@@ -81,6 +81,8 @@ type ScriptTestAssertion struct {
 	// ExpectedTag is used to check the command tag returned from the server.
 	// This is checked only if no Expected is defined
 	ExpectedTag string
+
+	Cols []string
 }
 
 // RunScript runs the given script.
@@ -154,6 +156,15 @@ func runScript(t *testing.T, ctx context.Context, script ScriptTest, conn *pgx.C
 				require.NoError(t, err)
 				readRows, err := ReadRows(rows, normalizeRows)
 				require.NoError(t, err)
+
+				if assertion.Cols != nil {
+					fields := rows.FieldDescriptions()
+					require.Len(t, fields, len(assertion.Cols))
+					for i, col := range assertion.Cols {
+						assert.Equal(t, col, fields[i].Name)
+					}
+				}
+
 				if normalizeRows {
 					assert.Equal(t, NormalizeRows(assertion.Expected), readRows)
 				} else {

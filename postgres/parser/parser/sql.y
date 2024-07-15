@@ -12548,7 +12548,7 @@ func_expr_common_subexpr:
 // https://www.postgresql.org/docs/10/static/functions-info.html
 | CURRENT_CATALOG
   {
-    $$.val = &tree.FuncExpr{Func: tree.WrapFunction("current_database")}
+    $$.val = &tree.FuncExpr{Func: tree.WrapFunction("current_catalog")}
   }
 | CURRENT_TIMESTAMP
   {
