@@ -435,6 +435,18 @@ func TestSystemInformationFunctions(t *testing.T) {
 			},
 		},
 		{
+			Name: "col_description",
+			Assertions: []ScriptTestAssertion{
+				{
+					Query: `SELECT col_description(100, 1);`,
+					Cols:  []string{"col_description"},
+					Expected: []sql.Row{
+						{""},
+					},
+				},
+			},
+		},
+		{
 			Name: "obj_description",
 			Assertions: []ScriptTestAssertion{
 				{

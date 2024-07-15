@@ -36,6 +36,7 @@ func Init() {
 	initCeil()
 	initCharLength()
 	initChr()
+	initColDescription()
 	initCos()
 	initCosd()
 	initCosh()
