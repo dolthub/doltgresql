@@ -458,5 +458,17 @@ func TestSystemInformationFunctions(t *testing.T) {
 				},
 			},
 		},
+		{
+			Name: "shobj_description",
+			Assertions: []ScriptTestAssertion{
+				{
+					Query: `SELECT shobj_description(100, 'pg_class');`,
+					Cols:  []string{"shobj_description"},
+					Expected: []sql.Row{
+						{""},
+					},
+				},
+			},
+		},
 	})
 }

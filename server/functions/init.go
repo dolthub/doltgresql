@@ -80,6 +80,7 @@ func Init() {
 	initRtrim()
 	initScale()
 	initSetVal()
+	initShobjDescription()
 	initSign()
 	initSin()
 	initSind()
