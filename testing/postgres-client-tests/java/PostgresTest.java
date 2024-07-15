@@ -52,7 +52,7 @@ public class PostgresTest {
         new PostgresTest("call dolt_commit('-a', '-m', 'my commit2')", 0, null, null),
         new PostgresTest("call dolt_checkout('main')", 0, null, null),
         new PostgresTest("call dolt_merge('mybranch')", 0, null, null),
-        new PostgresTest("select COUNT(*) FROM dolt_log", null, "COUNT(*)", new String[]{"3"}), // returns res
+        new PostgresTest("select COUNT(*) FROM dolt_log", null, "COUNT", new String[]{"3"}), // returns res
     };
 
     public static void main(String[] args) {
