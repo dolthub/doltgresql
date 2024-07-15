@@ -64,6 +64,7 @@ func Init() {
 	initMinScale()
 	initMod()
 	initNextVal()
+	initObjDescription()
 	initOctetLength()
 	initPi()
 	initPower()
