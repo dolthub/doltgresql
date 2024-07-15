@@ -274,7 +274,7 @@ func TestSystemInformationFunctions(t *testing.T) {
 			Assertions: []ScriptTestAssertion{
 				{
 					Query: `SELECT current_catalog;`,
-					Cols:  []string{"\"current_catalog\""}, // TODO: Should not be in quotes
+					Cols:  []string{"current_database"}, // TODO: Should be current_catalog
 					Expected: []sql.Row{
 						{"test"},
 					},
