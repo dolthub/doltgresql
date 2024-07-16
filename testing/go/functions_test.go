@@ -434,5 +434,98 @@ func TestSystemInformationFunctions(t *testing.T) {
 				},
 			},
 		},
+		{
+			Name: "col_description",
+			Assertions: []ScriptTestAssertion{
+				{
+					Query: `SELECT col_description(100, 1);`,
+					Cols:  []string{"col_description"},
+					Expected: []sql.Row{
+						{""},
+					},
+				},
+				{
+					Query:       `SELECT col_description('not_a_table'::regclass, 1);`,
+					ExpectedErr: `relation "not_a_table" does not exist`,
+				},
+				{
+					Query:    `CREATE TABLE test_table (id INT);`,
+					Expected: []sql.Row{},
+				},
+				{
+					Skip:     true, // TODO: Implement column comments
+					Query:    `COMMENT ON COLUMN test_table.id IS 'This is col id';`,
+					Expected: []sql.Row{},
+				},
+				{
+					Skip:  true, // TODO: Implement column object comments
+					Query: `SELECT col_description('test_table'::regclass, 1);`,
+					Cols:  []string{"col_description"},
+					Expected: []sql.Row{
+						{"This is col id"},
+					},
+				},
+			},
+		},
+		{
+			Name: "obj_description",
+			Assertions: []ScriptTestAssertion{
+				{
+					Query: `SELECT obj_description(100, 'pg_class');`,
+					Cols:  []string{"obj_description"},
+					Expected: []sql.Row{
+						{""},
+					},
+				},
+				{
+					Query:       `SELECT obj_description('does-not-exist'::regproc, 'pg_class');`,
+					ExpectedErr: `function "does-not-exist" does not exist`,
+				},
+				{
+					Skip:  true, // TODO: Implement database object comments
+					Query: `SELECT obj_description('sinh'::regproc, 'pg_proc');`,
+					Cols:  []string{"col_description"},
+					Expected: []sql.Row{
+						{"hyperbolic sine"},
+					},
+				},
+			},
+		},
+		{
+			Name: "shobj_description",
+			Assertions: []ScriptTestAssertion{
+				{
+					Query: `SELECT shobj_description(100, 'pg_class');`,
+					Cols:  []string{"shobj_description"},
+					Expected: []sql.Row{
+						{""},
+					},
+				},
+				{
+					Query:       `SELECT shobj_description('does-not-exist'::regproc, 'pg_class');`,
+					ExpectedErr: `function "does-not-exist" does not exist`,
+				},
+				{
+					Skip:     true, // TODO: Implement tablespaces
+					Query:    `CREATE TABLESPACE tblspc_2 LOCATION '/';`,
+					Expected: []sql.Row{},
+				},
+				{
+					Skip:     true, // TODO: Implement shared database object comments
+					Query:    `COMMENT ON TABLESPACE tblspc_2 IS 'Store a few of the things';`,
+					Expected: []sql.Row{},
+				},
+				{
+					Skip: true, // TODO: Implement shared database object comments
+					Query: `SELECT shobj_description(
+                 (SELECT oid FROM pg_tablespace WHERE spcname = 'tblspc_2'),
+                 'pg_tablespace');`,
+					Cols: []string{"shobj_description"},
+					Expected: []sql.Row{
+						{"Store a few of the things"},
+					},
+				},
+			},
+		},
 	})
 }
