@@ -58,11 +58,6 @@ func TestInfoSchemaTables(t *testing.T) {
 					Query:    "SELECT * FROM PG_catalog.pg_AGGREGATE ORDER BY aggfnoid;",
 					Expected: []sql.Row{},
 				},
-				{
-					Skip:     true, // TODO: regclass failing here
-					Query:    `SELECT "table_schema", "table_name", ('"' || "table_schema" || '"."' || "table_name" || '"')::regclass AS table_oid FROM "information_schema"."tables" WHERE ("table_schema" = 'test_schema' AND "table_name" = 'test_table');`,
-					Expected: []sql.Row{{"test_schema", "test_table", ""}},
-				},
 			},
 		},
 	})
