@@ -3194,5 +3194,22 @@ func TestOperators(t *testing.T) {
 				},
 			},
 		},
+		{
+			Name: "Concatenate",
+			Assertions: []ScriptTestAssertion{
+				{
+					Query:    `SELECT 'Hello, ' || 'World!';`,
+					Expected: []sql.Row{{"Hello, World!"}},
+				},
+				{
+					Query:    `SELECT '123' || '456';`,
+					Expected: []sql.Row{{"123456"}},
+				},
+				{
+					Query:    `SELECT 'foo' || 'bar' || 'baz';`,
+					Expected: []sql.Row{{"foobarbaz"}},
+				},
+			},
+		},
 	})
 }
