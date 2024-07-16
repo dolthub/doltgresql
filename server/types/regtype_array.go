@@ -12,25 +12,9 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-package cast
+package types
 
-// Init initializes all casts in this package.
-func Init() {
-	initBool()
-	initChar()
-	initFloat32()
-	initFloat64()
-	initInt16()
-	initInt32()
-	initInt64()
-	initJson()
-	initJsonB()
-	initName()
-	initNumeric()
-	initOid()
-	initRegclass()
-	initRegproc()
-	initRegtype()
-	initText()
-	initVarChar()
-}
+import "github.com/lib/pq/oid"
+
+// RegtypeArray is the array variant of Regtype.
+var RegtypeArray = createArrayType(Regtype, SerializationID_Invalid, oid.T__regtype)

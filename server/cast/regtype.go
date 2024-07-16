@@ -21,23 +21,23 @@ import (
 	pgtypes "github.com/dolthub/doltgresql/server/types"
 )
 
-// initOid handles all casts that are built-in. This comprises only the "From" types.
-func initOid() {
-	oidAssignment()
-	oidImplicit()
+// initRegtype handles all casts that are built-in. This comprises only the "From" types.
+func initRegtype() {
+	regtypeAssignment()
+	regtypeImplicit()
 }
 
-// oidAssignment registers all assignment casts. This comprises only the "From" types.
-func oidAssignment() {
+// regtypeAssignment registers all assignment casts. This comprises only the "From" types.
+func regtypeAssignment() {
 	framework.MustAddAssignmentTypeCast(framework.TypeCast{
-		FromType: pgtypes.Oid,
+		FromType: pgtypes.Regtype,
 		ToType:   pgtypes.Int32,
 		Function: func(ctx *sql.Context, val any, targetType pgtypes.DoltgresType) (any, error) {
 			return int32(val.(uint32)), nil
 		},
 	})
 	framework.MustAddAssignmentTypeCast(framework.TypeCast{
-		FromType: pgtypes.Oid,
+		FromType: pgtypes.Regtype,
 		ToType:   pgtypes.Int64,
 		Function: func(ctx *sql.Context, val any, targetType pgtypes.DoltgresType) (any, error) {
 			return int64(val.(uint32)), nil
@@ -45,25 +45,11 @@ func oidAssignment() {
 	})
 }
 
-// oidImplicit registers all implicit casts. This comprises only the "From" types.
-func oidImplicit() {
+// regtypeImplicit registers all implicit casts. This comprises only the "From" types.
+func regtypeImplicit() {
 	framework.MustAddImplicitTypeCast(framework.TypeCast{
-		FromType: pgtypes.Oid,
-		ToType:   pgtypes.Regclass,
-		Function: func(ctx *sql.Context, val any, targetType pgtypes.DoltgresType) (any, error) {
-			return val, nil
-		},
-	})
-	framework.MustAddImplicitTypeCast(framework.TypeCast{
-		FromType: pgtypes.Oid,
-		ToType:   pgtypes.Regproc,
-		Function: func(ctx *sql.Context, val any, targetType pgtypes.DoltgresType) (any, error) {
-			return val, nil
-		},
-	})
-	framework.MustAddImplicitTypeCast(framework.TypeCast{
-		FromType: pgtypes.Oid,
-		ToType:   pgtypes.Regtype,
+		FromType: pgtypes.Regtype,
+		ToType:   pgtypes.Oid,
 		Function: func(ctx *sql.Context, val any, targetType pgtypes.DoltgresType) (any, error) {
 			return val, nil
 		},

@@ -234,6 +234,55 @@ func TestFunctionsOID(t *testing.T) {
 				},
 			},
 		},
+		{
+			Name: "to_regtype",
+			Assertions: []ScriptTestAssertion{
+				{
+					Query: `SELECT to_regtype('integer');`,
+					Cols:  []string{"to_regtype"},
+					Expected: []sql.Row{
+						{"integer"},
+					},
+				},
+				{
+					Query: `SELECT to_regtype('int4');`,
+					Expected: []sql.Row{
+						{"integer"},
+					},
+				},
+				{
+					Query: `SELECT to_regtype('varchar');`,
+					Expected: []sql.Row{
+						{"character varying"},
+					},
+				},
+				{
+					Query: `SELECT to_regtype('varchar(10)');`,
+					Expected: []sql.Row{
+						{"character varying"},
+					},
+				},
+				{
+					Query: `SELECT to_regtype('integer"');`,
+					Expected: []sql.Row{
+						{nil},
+					},
+				},
+				{
+					Skip:  true, // TODO: Getting 'unknown cannot produce I/O output' error
+					Query: `SELECT to_regtype(('integer'::regtype)::text);`,
+					Expected: []sql.Row{
+						{"integer"},
+					},
+				},
+				{
+					Query: `SELECT to_regtype((('integer'::regtype)::oid)::text);`,
+					Expected: []sql.Row{
+						{nil},
+					},
+				},
+			},
+		},
 	})
 }
 

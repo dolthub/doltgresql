@@ -22,4 +22,6 @@ func Init() {
 	pgtypes.Regclass_IoOutput = regclass_IoOutput
 	pgtypes.Regproc_IoInput = regproc_IoInput
 	pgtypes.Regproc_IoOutput = regproc_IoOutput
+	pgtypes.Regtype_IoInput = regtype_IoInput
+	pgtypes.Regtype_IoOutput = regtype_IoOutput
 }

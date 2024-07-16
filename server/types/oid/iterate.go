@@ -24,6 +24,7 @@ import (
 
 	"github.com/dolthub/doltgresql/core"
 	"github.com/dolthub/doltgresql/core/sequences"
+	pgtypes "github.com/dolthub/doltgresql/server/types"
 )
 
 // Callbacks are a set of callbacks that are used to simplify and coalesce all iteration involving database elements and
@@ -157,6 +158,35 @@ func IterateCurrentDatabase(ctx *sql.Context, callbacks Callbacks) error {
 		}
 	}
 	return nil
+}
+
+// IterateTypes iterates over all types that are present in the pg_type table.
+func IterateTypes(ctx *sql.Context, cb func(displayType pgtypes.DoltgresType) (cont bool, err error)) error {
+	allTypes := pgtypes.GetAllTypes()
+	// Exclude all types that are not present in the pg_type table
+	for _, t := range allTypes {
+		switch t.BaseID() {
+		case pgtypes.DoltgresTypeBaseID_Null,
+			pgtypes.DoltgresTypeBaseID_Int16Serial,
+			pgtypes.DoltgresTypeBaseID_Int32Serial,
+			pgtypes.DoltgresTypeBaseID_Int64Serial:
+			continue
+		default:
+			if _, ok := t.(pgtypes.DoltgresArrayType); !ok {
+				if _, ok = t.(pgtypes.DoltgresPolymorphicType); !ok {
+					cont, err := cb(t)
+					if err != nil {
+						return err
+					}
+					if !cont {
+						return nil
+					}
+				}
+			}
+		}
+	}
+	_, err := cb(pgtypes.InternalChar)
+	return err
 }
 
 // iterateSchemas is called by IterateCurrentDatabase to handle schemas and elements contained within schemas.

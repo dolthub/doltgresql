@@ -3710,6 +3710,27 @@ func TestPgType(t *testing.T) {
 				},
 			},
 		},
+		{
+			Name: "pg_type with regtype",
+			Assertions: []ScriptTestAssertion{
+				{
+					Query:    `SELECT * FROM "pg_catalog"."pg_type" WHERE oid='float8'::regtype;`,
+					Expected: []sql.Row{{701, "float8", 0, 0, 8, "t", "b", "N", "t", "t", ",", 0, "-", 0, 0, "float8in", "float8out", "float8rec", "float8send", "-", "-", "-", "d", "x", "f", 0, 0, 0, 0, nil, nil, nil}},
+				},
+				{
+					Query:    `SELECT * FROM "pg_catalog"."pg_type" WHERE oid='double precision'::regtype;`,
+					Expected: []sql.Row{{701, "float8", 0, 0, 8, "t", "b", "N", "t", "t", ",", 0, "-", 0, 0, "float8in", "float8out", "float8rec", "float8send", "-", "-", "-", "d", "x", "f", 0, 0, 0, 0, nil, nil, nil}},
+				},
+				{
+					Query:    `SELECT * FROM "pg_catalog"."pg_type" WHERE oid='DOUBLE PRECISION'::regtype;`,
+					Expected: []sql.Row{{701, "float8", 0, 0, 8, "t", "b", "N", "t", "t", ",", 0, "-", 0, 0, "float8in", "float8out", "float8rec", "float8send", "-", "-", "-", "d", "x", "f", 0, 0, 0, 0, nil, nil, nil}},
+				},
+				{
+					Query:    `SELECT * FROM "pg_catalog"."pg_type" WHERE oid='pg_catalog.float8'::regtype;`,
+					Expected: []sql.Row{{701, "float8", 0, 0, 8, "t", "b", "N", "t", "t", ",", 0, "-", 0, 0, "float8in", "float8out", "float8rec", "float8send", "-", "-", "-", "d", "x", "f", 0, 0, 0, 0, nil, nil, nil}},
+				},
+			},
+		},
 	})
 }
 

@@ -23,6 +23,7 @@ import (
 
 	"github.com/dolthub/doltgresql/server/tables"
 	pgtypes "github.com/dolthub/doltgresql/server/types"
+	"github.com/dolthub/doltgresql/server/types/oid"
 )
 
 // PgTypeName is a constant to the pg_type name.
@@ -45,25 +46,14 @@ func (p PgTypeHandler) Name() string {
 
 // RowIter implements the interface tables.Handler.
 func (p PgTypeHandler) RowIter(ctx *sql.Context) (sql.RowIter, error) {
-	allTypes := pgtypes.GetAllTypes()
-	displayTypes := make([]pgtypes.DoltgresType, 0, len(allTypes))
-	// Exclude all types that are not present in the pg_type table
-	for _, t := range allTypes {
-		switch t.BaseID() {
-		case pgtypes.DoltgresTypeBaseID_Null,
-			pgtypes.DoltgresTypeBaseID_Int16Serial,
-			pgtypes.DoltgresTypeBaseID_Int32Serial,
-			pgtypes.DoltgresTypeBaseID_Int64Serial:
-			continue
-		default:
-			if _, ok := t.(pgtypes.DoltgresArrayType); !ok {
-				if _, ok = t.(pgtypes.DoltgresPolymorphicType); !ok {
-					displayTypes = append(displayTypes, t)
-				}
-			}
-		}
+	var displayTypes []pgtypes.DoltgresType
+	err := oid.IterateTypes(ctx, func(typ pgtypes.DoltgresType) (cont bool, err error) {
+		displayTypes = append(displayTypes, typ)
+		return true, nil
+	})
+	if err != nil {
+		return nil, err
 	}
-	displayTypes = append(displayTypes, pgtypes.InternalChar)
 	return &pgTypeRowIter{types: displayTypes, idx: 0}, nil
 }
 
