@@ -82,6 +82,7 @@ type ScriptTestAssertion struct {
 	// This is checked only if no Expected is defined
 	ExpectedTag string
 
+	// Cols is used to check the column names returned from the server.
 	Cols []string
 }
 
@@ -159,9 +160,10 @@ func runScript(t *testing.T, ctx context.Context, script ScriptTest, conn *pgx.C
 
 				if assertion.Cols != nil {
 					fields := rows.FieldDescriptions()
-					require.Len(t, fields, len(assertion.Cols))
-					for i, col := range assertion.Cols {
-						assert.Equal(t, col, fields[i].Name)
+					if assert.Len(t, fields, len(assertion.Cols)) {
+						for i, col := range assertion.Cols {
+							assert.Equal(t, col, fields[i].Name)
+						}
 					}
 				}
 

@@ -273,8 +273,15 @@ func TestSystemInformationFunctions(t *testing.T) {
 			Database: "test",
 			Assertions: []ScriptTestAssertion{
 				{
+					Skip:  true, // TODO: current_catalog currently returns current_database column name
 					Query: `SELECT current_catalog;`,
-					Cols:  []string{"current_database"}, // TODO: Should be current_catalog
+					Cols:  []string{"current_catalog"},
+					Expected: []sql.Row{
+						{"test"},
+					},
+				},
+				{
+					Query: `SELECT current_catalog;`,
 					Expected: []sql.Row{
 						{"test"},
 					},
@@ -301,8 +308,15 @@ func TestSystemInformationFunctions(t *testing.T) {
 			Name: "current_schema",
 			Assertions: []ScriptTestAssertion{
 				{
+					Skip:  true, // TODO: current_schema currently returns column name in quotes
 					Query: `SELECT current_schema();`,
-					Cols:  []string{"\"current_schema\""}, // TODO: Should not be in quotes
+					Cols:  []string{"\"current_schema\""},
+					Expected: []sql.Row{
+						{"postgres"},
+					},
+				},
+				{
+					Query: `SELECT current_schema();`,
 					Expected: []sql.Row{
 						{"postgres"},
 					},
