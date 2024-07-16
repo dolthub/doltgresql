@@ -3209,6 +3209,49 @@ func TestOperators(t *testing.T) {
 					Query:    `SELECT 'foo' || 'bar' || 'baz';`,
 					Expected: []sql.Row{{"foobarbaz"}},
 				},
+				{
+					Query:    `SELECT 123 || '456';`,
+					Expected: []sql.Row{{"123456"}},
+				},
+				{
+					Query:    `SELECT '123' || 456;`,
+					Expected: []sql.Row{{"123456"}},
+				},
+				{
+					Query:    `SELECT '123' || 4.56;`,
+					Expected: []sql.Row{{"1234.56"}},
+				},
+				{
+					Query:    `SELECT true || 'bar' || 'baz';`,
+					Expected: []sql.Row{{"truebarbaz"}},
+				},
+				{
+					Query:    `SELECT '2000-01-01 00:00:00'::timestamp || ' happy new year';`,
+					Expected: []sql.Row{{"2000-01-01 00:00:00 happy new year"}},
+				},
+				{
+					Query:    `SELECT '2000-01-01'::timestamp || ' happy new year';`,
+					Expected: []sql.Row{{"2000-01-01 00:00:00 happy new year"}},
+				},
+				{
+					Skip:     true, // TODO:  Return format incorrect
+					Query:    `SELECT '2000-01-01'::timestamptz || ' happy new year';`,
+					Expected: []sql.Row{{"2000-01-01 00:00:00-08 happy new year"}},
+				},
+				{
+					Query:    `SELECT '00:00:00'::time || ' midnight';`,
+					Expected: []sql.Row{{"00:00:00 midnight"}},
+				},
+				{
+					Skip:     true, // TODO: Return format incorrect
+					Query:    `SELECT '00:00:00'::timetz || ' midnight';`,
+					Expected: []sql.Row{{"00:00:00-07 midnight"}},
+				},
+				{
+					Skip:     true, // TODO: Return format incorrect
+					Query:    `SELECT 'foo'::bytea || 'bar';`,
+					Expected: []sql.Row{{"\x666f6f626172"}},
+				},
 			},
 		},
 	})

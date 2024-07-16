@@ -134,6 +134,8 @@ func (b TimestampTZType) IoInput(ctx *sql.Context, input string) (any, error) {
 		return t, nil
 	} else if t, err = time.Parse("January 01 15:04:05 2006 -07", input); err == nil {
 		return t, nil
+	} else if t, err = time.Parse("2006-01-02", input); err == nil {
+		return t, nil
 	}
 	return nil, fmt.Errorf("invalid format for timestamptz")
 }
