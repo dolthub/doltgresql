@@ -18,11 +18,11 @@ import (
 	"bytes"
 	"context"
 	"fmt"
-	"github.com/cespare/xxhash/v2"
 	"io"
 	"sort"
 	"strings"
 
+	"github.com/cespare/xxhash/v2"
 	"github.com/dolthub/dolt/go/libraries/doltcore/doltdb"
 	"github.com/dolthub/dolt/go/libraries/doltcore/doltdb/durable"
 	"github.com/dolthub/dolt/go/libraries/doltcore/schema"
