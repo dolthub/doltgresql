@@ -3222,35 +3222,58 @@ func TestOperators(t *testing.T) {
 					Expected: []sql.Row{{"1234.56"}},
 				},
 				{
-					Query:    `SELECT true || 'bar' || 'baz';`,
-					Expected: []sql.Row{{"truebarbaz"}},
+					Query:    `SELECT 12.3 || '4.56';`,
+					Expected: []sql.Row{{"12.34.56"}},
+				},
+				{
+					Query:    `SELECT true || 'bar' || false;`,
+					Expected: []sql.Row{{"truebarfalse"}},
 				},
 				{
 					Query:    `SELECT '2000-01-01 00:00:00'::timestamp || ' happy new year';`,
 					Expected: []sql.Row{{"2000-01-01 00:00:00 happy new year"}},
 				},
 				{
+					Query:    `SELECT 'hello ' || '2000-01-01 00:00:00'::timestamp ;`,
+					Expected: []sql.Row{{"hello 2000-01-01 00:00:00"}},
+				},
+				{
 					Query:    `SELECT '2000-01-01'::timestamp || ' happy new year';`,
 					Expected: []sql.Row{{"2000-01-01 00:00:00 happy new year"}},
 				},
 				{
-					Skip:     true, // TODO:  Return format incorrect
-					Query:    `SELECT '2000-01-01'::timestamptz || ' happy new year';`,
+					Query:    `SELECT '2000-01-01 00:00:00-08'::timestamptz || ' happy new year';`,
 					Expected: []sql.Row{{"2000-01-01 00:00:00-08 happy new year"}},
+				},
+				{
+					Query:    `SELECT 'hello ' || '2000-01-01 00:00:00-08'::timestamptz;`,
+					Expected: []sql.Row{{"hello 2000-01-01 00:00:00-08"}},
 				},
 				{
 					Query:    `SELECT '00:00:00'::time || ' midnight';`,
 					Expected: []sql.Row{{"00:00:00 midnight"}},
 				},
 				{
-					Skip:     true, // TODO: Return format incorrect
-					Query:    `SELECT '00:00:00'::timetz || ' midnight';`,
+					Query:    `SELECT 'midnight ' || '00:00:00'::time;`,
+					Expected: []sql.Row{{"midnight 00:00:00"}},
+				},
+				{
+					Query:    `SELECT '00:00:00-07'::timetz || ' midnight';`,
 					Expected: []sql.Row{{"00:00:00-07 midnight"}},
+				},
+				{
+					Query:    `SELECT 'midnight ' || '00:00:00-07'::timetz ;`,
+					Expected: []sql.Row{{"midnight 00:00:00-07"}},
 				},
 				{
 					Skip:     true, // TODO: Return format incorrect
 					Query:    `SELECT 'foo'::bytea || 'bar';`,
 					Expected: []sql.Row{{"\x666f6f626172"}},
+				},
+				{
+					Skip:     true, // TODO: Return format incorrect
+					Query:    `SELECT 'bar' || 'foo'::bytea;`,
+					Expected: []sql.Row{{"\x626172666f6f"}},
 				},
 			},
 		},
