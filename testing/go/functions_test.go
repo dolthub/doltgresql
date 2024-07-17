@@ -281,7 +281,6 @@ func TestFunctionsOID(t *testing.T) {
 					},
 				},
 				{
-					Skip:  true, // TODO: Getting 'unknown cannot produce I/O output' error
 					Query: `SELECT to_regtype(('integer'::regtype)::text);`,
 					Expected: []sql.Row{
 						{"integer"},
