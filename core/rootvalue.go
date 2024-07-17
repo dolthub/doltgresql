@@ -213,7 +213,6 @@ func (root *RootValue) GetTableNames(ctx context.Context, schemaName string) ([]
 
 	var names []string
 	err = tableMap.Iter(ctx, func(name string, _ hash.Hash) (bool, error) {
-		// avoid distinct table names converging to the same hash
 		names = append(names, name)
 		return false, nil
 	})
