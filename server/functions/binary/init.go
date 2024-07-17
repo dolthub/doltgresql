@@ -19,6 +19,7 @@ func Init() {
 	initBinaryBitAnd()
 	initBinaryBitOr()
 	initBinaryBitXor()
+	initBinaryConcatenate()
 	initBinaryDivide()
 	initBinaryEqual()
 	initBinaryGreaterOrEqual()
