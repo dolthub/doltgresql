@@ -214,6 +214,7 @@ func (root *RootValue) GetTableNames(ctx context.Context, schemaName string) ([]
 	}
 
 	tablesHash := xxhash.New()
+	tablesHash.Write([]byte(schemaName))
 
 	var names []string
 	err = tableMap.Iter(ctx, func(name string, _ hash.Hash) (bool, error) {
