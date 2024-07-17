@@ -18,6 +18,7 @@ import (
 	"bytes"
 	"context"
 	"fmt"
+	"github.com/cespare/xxhash/v2"
 	"io"
 	"sort"
 	"strings"
@@ -44,11 +45,12 @@ var DoltgresFeatureVersion = doltdb.DoltFeatureVersion + 0
 
 // RootValue is Doltgres' implementation of doltdb.RootValue.
 type RootValue struct {
-	vrw  types.ValueReadWriter
-	ns   tree.NodeStore
-	st   rootStorage
-	fkc  *doltdb.ForeignKeyCollection // cache the first load
-	hash hash.Hash                    // cache the first load
+	vrw       types.ValueReadWriter
+	ns        tree.NodeStore
+	st        rootStorage
+	fkc       *doltdb.ForeignKeyCollection // cache the first load
+	hash      hash.Hash                    // cache the first load
+	tableHash uint64
 }
 
 var _ doltdb.RootValue = (*RootValue)(nil)
@@ -85,6 +87,10 @@ func (root *RootValue) CreateDatabaseSchema(ctx context.Context, dbSchema schema
 	}
 
 	return root.withStorage(r), nil
+}
+
+func (root *RootValue) TableListHash() uint64 {
+	return 0
 }
 
 // DebugString implements the interface doltdb.RootValue.
@@ -207,14 +213,21 @@ func (root *RootValue) GetTableNames(ctx context.Context, schemaName string) ([]
 		return nil, err
 	}
 
+	md5 := xxhash.New()
+
 	var names []string
 	err = tableMap.Iter(ctx, func(name string, _ hash.Hash) (bool, error) {
+		md5.Write([]byte(name))
+		// avoid distinct table names converging to the same hash
+		md5.Write([]byte{0x0000})
 		names = append(names, name)
 		return false, nil
 	})
 	if err != nil {
 		return nil, err
 	}
+
+	root.tableHash = md5.Sum64()
 
 	return names, nil
 }
@@ -571,5 +584,5 @@ func (root *RootValue) putTable(ctx context.Context, tName doltdb.TableName, ref
 
 // withStorage returns a new root value with the given storage.
 func (root *RootValue) withStorage(st rootStorage) *RootValue {
-	return &RootValue{root.vrw, root.ns, st, nil, hash.Hash{}}
+	return &RootValue{root.vrw, root.ns, st, nil, hash.Hash{}, 0}
 }
