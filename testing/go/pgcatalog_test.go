@@ -3718,16 +3718,44 @@ func TestPgType(t *testing.T) {
 					Expected: []sql.Row{{701, "float8", 0, 0, 8, "t", "b", "N", "t", "t", ",", 0, "-", 0, 0, "float8in", "float8out", "float8rec", "float8send", "-", "-", "-", "d", "x", "f", 0, 0, 0, 0, nil, nil, nil}},
 				},
 				{
-					Query:    `SELECT * FROM "pg_catalog"."pg_type" WHERE oid='double precision'::regtype;`,
-					Expected: []sql.Row{{701, "float8", 0, 0, 8, "t", "b", "N", "t", "t", ",", 0, "-", 0, 0, "float8in", "float8out", "float8rec", "float8send", "-", "-", "-", "d", "x", "f", 0, 0, 0, 0, nil, nil, nil}},
+					Query:    `SELECT oid, typname FROM "pg_catalog"."pg_type" WHERE oid='double precision'::regtype;`,
+					Expected: []sql.Row{{701, "float8"}},
 				},
 				{
-					Query:    `SELECT * FROM "pg_catalog"."pg_type" WHERE oid='DOUBLE PRECISION'::regtype;`,
-					Expected: []sql.Row{{701, "float8", 0, 0, 8, "t", "b", "N", "t", "t", ",", 0, "-", 0, 0, "float8in", "float8out", "float8rec", "float8send", "-", "-", "-", "d", "x", "f", 0, 0, 0, 0, nil, nil, nil}},
+					Query:    `SELECT oid, typname FROM "pg_catalog"."pg_type" WHERE oid='DOUBLE PRECISION'::regtype;`,
+					Expected: []sql.Row{{701, "float8"}},
 				},
 				{
-					Query:    `SELECT * FROM "pg_catalog"."pg_type" WHERE oid='pg_catalog.float8'::regtype;`,
-					Expected: []sql.Row{{701, "float8", 0, 0, 8, "t", "b", "N", "t", "t", ",", 0, "-", 0, 0, "float8in", "float8out", "float8rec", "float8send", "-", "-", "-", "d", "x", "f", 0, 0, 0, 0, nil, nil, nil}},
+					Query:    `SELECT oid, typname FROM "pg_catalog"."pg_type" WHERE oid='pg_catalog.float8'::regtype;`,
+					Expected: []sql.Row{{701, "float8"}},
+				},
+				{
+					Query:    `SELECT oid, typname FROM "pg_catalog"."pg_type" WHERE oid='VARCHAR'::regtype;`,
+					Expected: []sql.Row{{1043, "varchar"}},
+				},
+				{
+					Query:    `SELECT oid, typname FROM "pg_catalog"."pg_type" WHERE oid='1043'::regtype;`,
+					Expected: []sql.Row{{1043, "varchar"}},
+				},
+				{
+					Query:    `SELECT oid, typname FROM "pg_catalog"."pg_type" WHERE oid='VARCHAR(10)'::regtype;`,
+					Expected: []sql.Row{{1043, "varchar"}},
+				},
+				{
+					Query:    `SELECT oid, typname FROM "pg_catalog"."pg_type" WHERE oid='character varying'::regtype;`,
+					Expected: []sql.Row{{1043, "varchar"}},
+				},
+				{
+					Query:    `SELECT oid, typname FROM "pg_catalog"."pg_type" WHERE oid='timestamptz'::regtype;`,
+					Expected: []sql.Row{{1184, "timestamptz"}},
+				},
+				{
+					Query:    `SELECT oid, typname FROM "pg_catalog"."pg_type" WHERE oid='timestamp with time zone'::regtype;`,
+					Expected: []sql.Row{{1184, "timestamptz"}},
+				},
+				{
+					Query:    `SELECT oid, typname FROM "pg_catalog"."pg_type" WHERE oid='regtype'::regtype;`,
+					Expected: []sql.Row{{2206, "regtype"}},
 				},
 			},
 		},

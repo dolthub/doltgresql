@@ -263,6 +263,18 @@ func TestFunctionsOID(t *testing.T) {
 					},
 				},
 				{
+					Query: `SELECT to_regtype('timestamp');`,
+					Expected: []sql.Row{
+						{"timestamp without time zone"},
+					},
+				},
+				{
+					Query: `SELECT to_regtype('timestamp without time zone');`,
+					Expected: []sql.Row{
+						{"timestamp without time zone"},
+					},
+				},
+				{
 					Query: `SELECT to_regtype('integer"');`,
 					Expected: []sql.Row{
 						{nil},

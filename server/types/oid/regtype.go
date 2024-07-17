@@ -21,7 +21,9 @@ import (
 
 	"github.com/dolthub/go-mysql-server/sql"
 
+	"github.com/dolthub/doltgresql/postgres/parser/types"
 	pgtypes "github.com/dolthub/doltgresql/server/types"
+	"github.com/lib/pq/oid"
 )
 
 // regtype_IoInput is the implementation for IoInput that avoids circular dependencies by being declared in a separate
@@ -55,8 +57,9 @@ func regtype_IoInput(ctx *sql.Context, input string) (uint32, error) {
 	// match found.
 	resultOid := uint32(0)
 	err = IterateTypes(ctx, func(typ pgtypes.DoltgresType) (cont bool, err error) {
-		stringNoSpace := strings.ReplaceAll(typ.String(), " ", "")
-		if stringNoSpace == relationName || typ.BaseName() == relationName {
+		stringNoSpace := removeSpaces(typ.String())
+		standardName := removeSpaces(getStandardNameFromOid(typ.OID()))
+		if relationName == stringNoSpace || relationName == typ.BaseName() || relationName == standardName {
 			resultOid = typ.OID()
 			return false, nil
 		}
@@ -68,27 +71,14 @@ func regtype_IoInput(ctx *sql.Context, input string) (uint32, error) {
 	return 0, fmt.Errorf(`type "%s" does not exist`, input)
 }
 
-func normalizeTypeRelationName(name string) string {
-	split := strings.Split(name, "(")
-	return split[0]
-}
-
 // regtype_IoOutput is the implementation for IoOutput that avoids circular dependencies by being declared in a separate
 // package.
-func regtype_IoOutput(ctx *sql.Context, oid uint32) (string, error) {
-	output := strconv.FormatUint(uint64(oid), 10)
-	err := IterateTypes(ctx, func(typ pgtypes.DoltgresType) (cont bool, err error) {
-		if typ.OID() == oid {
-			if typ.BaseName() == "varchar" {
-				output = "character varying"
-			} else {
-				output = typ.String()
-			}
-			return false, nil
-		}
-		return true, nil
-	})
-	return output, err
+func regtype_IoOutput(ctx *sql.Context, toid uint32) (string, error) {
+	name := getStandardNameFromOid(toid)
+	if name == "" {
+		return strconv.FormatUint(uint64(toid), 10), nil
+	}
+	return name, nil
 }
 
 // regtype_IoInputValidation handles the validation for the parsed sections in regtype_IoInput.
@@ -114,4 +104,24 @@ func regtype_IoInputValidation(ctx *sql.Context, input string, sections []string
 	default:
 		return fmt.Errorf("invalid name syntax")
 	}
+}
+
+// normalizeTypeRelationName removes everything after the first parenthesis from
+// the relation name.
+func normalizeTypeRelationName(name string) string {
+	split := strings.Split(name, "(")
+	return split[0]
+}
+
+// getStandardNameFromOid returns the SQL standard name of an OID if it exists.
+func getStandardNameFromOid(toid uint32) string {
+	if t, ok := types.OidToType[oid.Oid(toid)]; ok {
+		return t.SQLStandardName()
+	}
+	return ""
+}
+
+// removeSpaces removes all spaces from a string.
+func removeSpaces(s string) string {
+	return strings.ReplaceAll(s, " ", "")
 }

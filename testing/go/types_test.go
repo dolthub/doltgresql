@@ -1591,6 +1591,14 @@ var typesTests = []ScriptTest{
 		Name: "Regtype type",
 		Assertions: []ScriptTestAssertion{
 			{
+				Skip:  true, // TODO: Column should be regtype, not "integer"
+				Query: `SELECT 'integer'::regtype;`,
+				Cols:  []string{"regtype"},
+				Expected: []sql.Row{
+					{"integer"},
+				},
+			},
+			{
 				Query: `SELECT 'integer'::regtype;`,
 				Expected: []sql.Row{
 					{"integer"},
@@ -1600,6 +1608,18 @@ var typesTests = []ScriptTest{
 				Query: `SELECT 'int4'::regtype;`,
 				Expected: []sql.Row{
 					{"integer"},
+				},
+			},
+			{
+				Query: `SELECT 'float8'::regtype;`,
+				Expected: []sql.Row{
+					{"double precision"},
+				},
+			},
+			{
+				Query: `SELECT 'character varying'::regtype;`,
+				Expected: []sql.Row{
+					{"character varying"},
 				},
 			},
 			{
