@@ -213,13 +213,13 @@ func (root *RootValue) GetTableNames(ctx context.Context, schemaName string) ([]
 		return nil, err
 	}
 
-	md5 := xxhash.New()
+	tablesHash := xxhash.New()
 
 	var names []string
 	err = tableMap.Iter(ctx, func(name string, _ hash.Hash) (bool, error) {
-		md5.Write([]byte(name))
+		tablesHash.Write([]byte(name))
 		// avoid distinct table names converging to the same hash
-		md5.Write([]byte{0x0000})
+		tablesHash.Write([]byte{0x0000})
 		names = append(names, name)
 		return false, nil
 	})
@@ -227,7 +227,7 @@ func (root *RootValue) GetTableNames(ctx context.Context, schemaName string) ([]
 		return nil, err
 	}
 
-	root.tableHash = md5.Sum64()
+	root.tableHash = tablesHash.Sum64()
 
 	return names, nil
 }
