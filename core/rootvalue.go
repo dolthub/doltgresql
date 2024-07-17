@@ -22,7 +22,6 @@ import (
 	"sort"
 	"strings"
 
-	"github.com/cespare/xxhash/v2"
 	"github.com/dolthub/dolt/go/libraries/doltcore/doltdb"
 	"github.com/dolthub/dolt/go/libraries/doltcore/doltdb/durable"
 	"github.com/dolthub/dolt/go/libraries/doltcore/schema"
@@ -45,12 +44,11 @@ var DoltgresFeatureVersion = doltdb.DoltFeatureVersion + 0
 
 // RootValue is Doltgres' implementation of doltdb.RootValue.
 type RootValue struct {
-	vrw       types.ValueReadWriter
-	ns        tree.NodeStore
-	st        rootStorage
-	fkc       *doltdb.ForeignKeyCollection // cache the first load
-	hash      hash.Hash                    // cache the first load
-	tableHash uint64
+	vrw  types.ValueReadWriter
+	ns   tree.NodeStore
+	st   rootStorage
+	fkc  *doltdb.ForeignKeyCollection // cache the first load
+	hash hash.Hash                    // cache the first load
 }
 
 var _ doltdb.RootValue = (*RootValue)(nil)
@@ -213,22 +211,15 @@ func (root *RootValue) GetTableNames(ctx context.Context, schemaName string) ([]
 		return nil, err
 	}
 
-	tablesHash := xxhash.New()
-	tablesHash.Write([]byte(schemaName))
-
 	var names []string
 	err = tableMap.Iter(ctx, func(name string, _ hash.Hash) (bool, error) {
-		tablesHash.Write([]byte(name))
 		// avoid distinct table names converging to the same hash
-		tablesHash.Write([]byte{0x0000})
 		names = append(names, name)
 		return false, nil
 	})
 	if err != nil {
 		return nil, err
 	}
-
-	root.tableHash = tablesHash.Sum64()
 
 	return names, nil
 }
