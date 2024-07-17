@@ -3266,14 +3266,16 @@ func TestOperators(t *testing.T) {
 					Expected: []sql.Row{{"midnight 00:00:00-07"}},
 				},
 				{
-					Skip:     true, // TODO: Return format incorrect
 					Query:    `SELECT 'foo'::bytea || 'bar';`,
-					Expected: []sql.Row{{"\x666f6f626172"}},
+					Expected: []sql.Row{{[]byte{0x66, 0x6F, 0x6F, 0x62, 0x61, 0x72}}},
 				},
 				{
-					Skip:     true, // TODO: Return format incorrect
 					Query:    `SELECT 'bar' || 'foo'::bytea;`,
-					Expected: []sql.Row{{"\x626172666f6f"}},
+					Expected: []sql.Row{{[]byte{0x62, 0x61, 0x72, 0x66, 0x6F, 0x6F}}},
+				},
+				{
+					Query:    `SELECT '\xDEADBEEF'::bytea || '\xCAFEBABE'::bytea;`,
+					Expected: []sql.Row{{[]byte{0xDE, 0xAD, 0xBE, 0xEF, 0xCA, 0xFE, 0xBA, 0xBE}}},
 				},
 			},
 		},
