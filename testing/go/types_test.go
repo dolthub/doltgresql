@@ -1683,6 +1683,12 @@ var typesTests = []ScriptTest{
 					{2, "23:45:01"},
 				},
 			},
+			{
+				Query: `SELECT '00:00:00'::time;`,
+				Expected: []sql.Row{
+					{"00:00:00"},
+				},
+			},
 		},
 	},
 	{ // TODO: timezone representation is reported via local time, need to account for that in testing?
@@ -1698,6 +1704,18 @@ var typesTests = []ScriptTest{
 				Expected: []sql.Row{
 					{1, "12:34:56 UTC"},
 					{2, "23:45:01 America/New_York"},
+				},
+			},
+			{
+				Query: `SELECT '00:00:00'::timetz;`,
+				Expected: []sql.Row{
+					{"00:00:00-07"},
+				},
+			},
+			{
+				Query: `SELECT '00:00:00-07'::timetz;`,
+				Expected: []sql.Row{
+					{"00:00:00-07"},
 				},
 			},
 		},
@@ -1716,6 +1734,18 @@ var typesTests = []ScriptTest{
 					{2, "2022-02-01 23:45:01"},
 				},
 			},
+			{
+				Query: "SELECT '2000-01-01'::timestamp;",
+				Expected: []sql.Row{
+					{"2000-01-01 00:00:00"},
+				},
+			},
+			{
+				Query: `SELECT '2000-01-01 00:00:00'::timestamp;`,
+				Expected: []sql.Row{
+					{"2000-01-01 00:00:00"},
+				},
+			},
 		},
 	},
 	{ // TODO: timezone representation is reported via local time, need to account for that in testing?
@@ -1731,6 +1761,18 @@ var typesTests = []ScriptTest{
 				Expected: []sql.Row{
 					{1, "2022-01-01 12:34:56 UTC"},
 					{2, "2022-02-01 23:45:01 America/New_York"},
+				},
+			},
+			{
+				Query: "SELECT '2000-01-01'::timestamptz;",
+				Expected: []sql.Row{
+					{"2000-01-01 00:00:00-08"},
+				},
+			},
+			{
+				Query: `SELECT '2000-01-01 00:00:00'::timestamptz;`,
+				Expected: []sql.Row{
+					{"2000-01-01 00:00:00-08"},
 				},
 			},
 		},

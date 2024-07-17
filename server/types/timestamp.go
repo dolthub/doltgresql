@@ -126,6 +126,8 @@ func (b TimestampType) IoInput(ctx *sql.Context, input string) (any, error) {
 		return t.UTC(), nil
 	} else if t, err = time.Parse("January 01 15:04:05 2006", input); err == nil {
 		return t.UTC(), nil
+	} else if t, err = time.Parse("2006-01-02", input); err == nil {
+		return t.UTC(), nil
 	}
 	return nil, fmt.Errorf("invalid format for timestamp")
 }

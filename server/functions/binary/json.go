@@ -16,7 +16,6 @@ package binary
 
 import (
 	"fmt"
-	"sort"
 	"strconv"
 
 	"github.com/dolthub/go-mysql-server/sql"
@@ -48,7 +47,6 @@ func initJSON() {
 	framework.RegisterBinaryFunction(framework.Operator_BinaryJSONTopLevel, jsonb_exists)
 	framework.RegisterBinaryFunction(framework.Operator_BinaryJSONTopLevelAny, jsonb_exists_any)
 	framework.RegisterBinaryFunction(framework.Operator_BinaryJSONTopLevelAll, jsonb_exists_all)
-	framework.RegisterBinaryFunction(framework.Operator_BinaryConcatenate, jsonb_concat)
 	framework.RegisterBinaryFunction(framework.Operator_BinaryMinus, jsonb_delete_text)
 	framework.RegisterBinaryFunction(framework.Operator_BinaryMinus, jsonb_delete_text_array)
 	framework.RegisterBinaryFunction(framework.Operator_BinaryMinus, jsonb_delete_int32)
@@ -446,60 +444,6 @@ var jsonb_exists_all = framework.Function2{
 		default:
 			return false, nil
 		}
-	},
-}
-
-// jsonb_concat represents the PostgreSQL function of the same name, taking the same parameters.
-var jsonb_concat = framework.Function2{
-	Name:       "jsonb_concat",
-	Return:     pgtypes.JsonB,
-	Parameters: [2]pgtypes.DoltgresType{pgtypes.JsonB, pgtypes.JsonB},
-	Strict:     true,
-	Callable: func(ctx *sql.Context, _ [3]pgtypes.DoltgresType, val1Interface any, val2Interface any) (any, error) {
-		val1 := val1Interface.(pgtypes.JsonDocument).Value
-		val2 := val2Interface.(pgtypes.JsonDocument).Value
-		// First we'll merge objects if they're both objects
-		val1Obj, isVal1Obj := val1.(pgtypes.JsonValueObject)
-		val2Obj, isVal2Obj := val2.(pgtypes.JsonValueObject)
-		if isVal1Obj && isVal2Obj {
-			newObj := pgtypes.JsonValueCopy(val1Obj).(pgtypes.JsonValueObject)
-			for _, item := range val2Obj.Items {
-				if existingIdx, ok := newObj.Index[item.Key]; ok {
-					newObj.Items[existingIdx].Value = pgtypes.JsonValueCopy(item.Value)
-				} else {
-					newObj.Items = append(newObj.Items, pgtypes.JsonValueObjectItem{
-						Key:   item.Key,
-						Value: pgtypes.JsonValueCopy(item.Value),
-					})
-				}
-			}
-			sort.Slice(newObj.Items, func(i, j int) bool {
-				if len(newObj.Items[i].Key) < len(newObj.Items[j].Key) {
-					return true
-				} else if len(newObj.Items[i].Key) > len(newObj.Items[j].Key) {
-					return false
-				} else {
-					return newObj.Items[i].Key < newObj.Items[j].Key
-				}
-			})
-			for i, item := range newObj.Items {
-				newObj.Index[item.Key] = i
-			}
-			return pgtypes.JsonDocument{Value: newObj}, nil
-		}
-		// They're not both objects, so we'll make them both arrays if they're not already arrays
-		if _, ok := val1.(pgtypes.JsonValueArray); !ok {
-			val1 = pgtypes.JsonValueArray{val1}
-		}
-		if _, ok := val2.(pgtypes.JsonValueArray); !ok {
-			val2 = pgtypes.JsonValueArray{val2}
-		}
-		val1Array := pgtypes.JsonValueCopy(val1.(pgtypes.JsonValueArray)).(pgtypes.JsonValueArray)
-		val2Array := pgtypes.JsonValueCopy(val2.(pgtypes.JsonValueArray)).(pgtypes.JsonValueArray)
-		newArray := make(pgtypes.JsonValueArray, len(val1Array)+len(val2Array))
-		copy(newArray, val1Array)
-		copy(newArray[len(val1Array):], val2Array)
-		return pgtypes.JsonDocument{Value: newArray}, nil
 	},
 }
 

@@ -128,6 +128,8 @@ func (b TimeTZType) IoInput(ctx *sql.Context, input string) (any, error) {
 		return t, nil
 	} else if t, err = time.Parse("15:04:05-07", input); err == nil {
 		return t, nil
+	} else if t, err = time.Parse("15:04:05", input); err == nil {
+		return t, nil
 	}
 	return nil, fmt.Errorf("invalid format for timetz")
 }
