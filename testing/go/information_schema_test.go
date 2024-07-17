@@ -6,6 +6,69 @@ import (
 	"github.com/dolthub/go-mysql-server/sql"
 )
 
+func TestInfoSchemaColumns(t *testing.T) {
+	RunScripts(t, []ScriptTest{
+		{
+			Name: "information_schema.columns",
+			SetUpScript: []string{
+				"create table test_table (id int)",
+				"create view test_view as select * from test_table",
+			},
+			Assertions: []ScriptTestAssertion{
+				{
+					Query: `SELECT DISTINCT table_schema FROM information_schema.columns ORDER BY table_schema;`,
+					Expected: []sql.Row{
+						{"information_schema"}, {"pg_catalog"}, {"public"},
+					},
+				},
+				{
+					Query: `SELECT table_catalog, table_schema, table_name, column_name FROM information_schema.columns WHERE table_schema='public' ORDER BY table_name;`,
+					Expected: []sql.Row{
+						{"postgres", "public", "test_table", "id"},
+						{"postgres", "public", "test_view", ""},
+					},
+				},
+				{
+					Query:    `CREATE SCHEMA test_schema;`,
+					Expected: []sql.Row{},
+				},
+				{
+					Query:    `SET SEARCH_PATH TO test_schema;`,
+					Expected: []sql.Row{},
+				},
+				{
+					Query:    `CREATE TABLE test_table2 (id2 INT);`,
+					Expected: []sql.Row{},
+				},
+				{
+					Query: `SELECT DISTINCT table_schema FROM information_schema.columns order by table_schema;`,
+					Expected: []sql.Row{
+						{"information_schema"}, {"pg_catalog"}, {"public"}, {"test_schema"},
+					},
+				},
+				{
+					Query: `SELECT table_catalog, table_schema, table_name, column_name FROM information_schema.columns WHERE table_schema='test_schema';`,
+					Expected: []sql.Row{
+						{"postgres", "test_schema", "test_table2", "id2"},
+					},
+				},
+				{
+					Skip:     true, // TODO: need ENUM type for column_type column
+					Query:    "SELECT * FROM information_schema.columns;",
+					Expected: []sql.Row{},
+				},
+				{
+					Skip:  true, // TODO: table name in column returns `table not found: columns` error
+					Query: `SELECT columns.table_name from "information_schema"."columns" WHERE table_name='test_table';`,
+					Expected: []sql.Row{
+						{"test_table"},
+					},
+				},
+			},
+		},
+	})
+}
+
 func TestInfoSchemaSchemata(t *testing.T) {
 	RunScripts(t, []ScriptTest{
 		{
