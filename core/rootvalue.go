@@ -575,5 +575,5 @@ func (root *RootValue) putTable(ctx context.Context, tName doltdb.TableName, ref
 
 // withStorage returns a new root value with the given storage.
 func (root *RootValue) withStorage(st rootStorage) *RootValue {
-	return &RootValue{root.vrw, root.ns, st, nil, hash.Hash{}, 0}
+	return &RootValue{root.vrw, root.ns, st, nil, hash.Hash{}}
 }
