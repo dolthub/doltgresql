@@ -19,10 +19,11 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/dolthub/doltgresql/postgres/parser/types"
-	pgtypes "github.com/dolthub/doltgresql/server/types"
 	"github.com/dolthub/go-mysql-server/sql"
 	"github.com/lib/pq/oid"
+
+	"github.com/dolthub/doltgresql/postgres/parser/types"
+	pgtypes "github.com/dolthub/doltgresql/server/types"
 )
 
 // regtype_IoInput is the implementation for IoInput that avoids circular dependencies by being declared in a separate
