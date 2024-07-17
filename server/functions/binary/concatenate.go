@@ -61,7 +61,10 @@ var byteacat = framework.Function2{
 	Callable: func(ctx *sql.Context, paramsAndReturn [3]pgtypes.DoltgresType, val1 any, val2 any) (any, error) {
 		v1 := val1.([]byte)
 		v2 := val2.([]byte)
-		return append(v1, v2...), nil
+		copied := make([]byte, len(v1)+len(v2))
+		copy(copied, v1)
+		copy(copied[len(v1):], v2)
+		return copied, nil
 	},
 }
 
