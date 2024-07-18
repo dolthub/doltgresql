@@ -9,10 +9,10 @@ require (
 	github.com/cespare/xxhash/v2 v2.2.0
 	github.com/cockroachdb/apd/v2 v2.0.3-0.20200518165714-d020e156310a
 	github.com/cockroachdb/errors v1.7.5
-	github.com/dolthub/dolt/go v0.40.5-0.20240717002142-9d80114dc5cb
+	github.com/dolthub/dolt/go v0.40.5-0.20240718000057-71f6737ea741
 	github.com/dolthub/dolt/go/gen/proto/dolt/services/eventsapi v0.0.0-20240529071237-4a099b896ce8
 	github.com/dolthub/flatbuffers/v23 v23.3.3-dh.2
-	github.com/dolthub/go-mysql-server v0.18.2-0.20240715180604-3d70c263a451
+	github.com/dolthub/go-mysql-server v0.18.2-0.20240717222343-23b065691b11
 	github.com/dolthub/sqllogictest/go v0.0.0-20240618184124-ca47f9354216
 	github.com/dolthub/vitess v0.0.0-20240711213744-4232e1c4edae
 	github.com/fatih/color v1.13.0
