@@ -55,6 +55,14 @@ func TestSmokeTests(t *testing.T) {
 					},
 				},
 				{
+					Skip:  true, // TODO: specifying tables in column names fails with `table not found` error
+					Query: "SELECT test2.pk FROM test2;",
+					Expected: []sql.Row{
+						{3},
+						{4},
+					},
+				},
+				{
 					Query: "SELECT * FROM test ORDER BY 1 LIMIT 1 OFFSET 1;",
 					Expected: []sql.Row{
 						{2, 2},
