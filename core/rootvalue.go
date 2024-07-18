@@ -87,6 +87,10 @@ func (root *RootValue) CreateDatabaseSchema(ctx context.Context, dbSchema schema
 	return root.withStorage(r), nil
 }
 
+func (root *RootValue) TableListHash() uint64 {
+	return 0
+}
+
 // DebugString implements the interface doltdb.RootValue.
 func (root *RootValue) DebugString(ctx context.Context, transitive bool) string {
 	var buf bytes.Buffer
