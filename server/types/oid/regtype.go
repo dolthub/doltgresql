@@ -19,8 +19,10 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/dolthub/dolt/go/libraries/doltcore/sqle/resolve"
 	"github.com/dolthub/go-mysql-server/sql"
+	"github.com/lib/pq/oid"
+
+	"github.com/dolthub/doltgresql/postgres/parser/types"
 )
 
 // regtype_IoInput is the implementation for IoInput that avoids circular dependencies by being declared in a separate
@@ -41,28 +43,25 @@ func regtype_IoInput(ctx *sql.Context, input string) (uint32, error) {
 	var typeName string
 	switch len(sections) {
 	case 1:
-		searchSchemas, err = resolve.SearchPath(ctx)
-		if err != nil {
-			return 0, err
-		}
+		// TODO: we should make use of the search path, but it needs to include an implicit "pg_catalog" before we can
 		typeName = sections[0]
 	case 3:
-		if sections[0] != "pg_catalog" {
-			return 0, fmt.Errorf(`type "%s" does not exist`, input)
-		}
 		searchSchemas = []string{sections[0]}
 		typeName = sections[2]
 	default:
 		return 0, fmt.Errorf("regtype failed validation")
 	}
-	typeName = normalizeTypeName(typeName)
+	// Remove everything after the first parenthesis
+	typeName = strings.Split(typeName, "(")[0]
 
 	resultOid := uint32(0)
 	err = IterateCurrentDatabase(ctx, Callbacks{
 		Type: func(ctx *sql.Context, typ ItemType) (cont bool, err error) {
-			stringNoSpace := removeSpaces(typ.Item.String())
-			standardName := removeSpaces(typ.StandardName)
-			if typeName == stringNoSpace || typeName == typ.Item.BaseName() || typeName == standardName {
+			stringNoSpace := strings.ReplaceAll(typ.Item.String(), " ", "")
+			if typeName == stringNoSpace || typeName == typ.Item.BaseName() {
+				resultOid = typ.OID
+				return false, nil
+			} else if t, ok := types.OidToType[oid.Oid(typ.OID)]; ok && typeName == strings.ReplaceAll(t.SQLStandardName(), " ", "") {
 				resultOid = typ.OID
 				return false, nil
 			}
@@ -78,12 +77,12 @@ func regtype_IoInput(ctx *sql.Context, input string) (uint32, error) {
 
 // regtype_IoOutput is the implementation for IoOutput that avoids circular dependencies by being declared in a separate
 // package.
-func regtype_IoOutput(ctx *sql.Context, oid uint32) (string, error) {
-	output := strconv.FormatUint(uint64(oid), 10)
-	err := RunCallback(ctx, oid, Callbacks{
+func regtype_IoOutput(ctx *sql.Context, toid uint32) (string, error) {
+	output := strconv.FormatUint(uint64(toid), 10)
+	err := RunCallback(ctx, toid, Callbacks{
 		Type: func(ctx *sql.Context, typ ItemType) (cont bool, err error) {
-			if typ.StandardName != "" {
-				output = typ.StandardName
+			if t, ok := types.OidToType[oid.Oid(toid)]; ok {
+				output = t.SQLStandardName()
 			}
 			return false, nil
 		},
@@ -97,6 +96,7 @@ func regtype_IoInputValidation(ctx *sql.Context, input string, sections []string
 	case 1:
 		return nil
 	case 3:
+		// We check for name validity before checking the schema name
 		if sections[1] != "." {
 			return fmt.Errorf("invalid name syntax")
 		}
@@ -114,16 +114,4 @@ func regtype_IoInputValidation(ctx *sql.Context, input string, sections []string
 	default:
 		return fmt.Errorf("invalid name syntax")
 	}
-}
-
-// normalizeTypeName removes everything after the first parenthesis from
-// the relation name.
-func normalizeTypeName(name string) string {
-	split := strings.Split(name, "(")
-	return split[0]
-}
-
-// removeSpaces removes all spaces from a string.
-func removeSpaces(s string) string {
-	return strings.ReplaceAll(s, " ", "")
 }

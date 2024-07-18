@@ -42,7 +42,7 @@ func Initialize() {
 		core.Init()
 		analyzer.Init()
 		config.Init()
-		pgtypes.InitBaseIDs()
+		pgtypes.Init()
 		oid.Init()
 		binary.Init()
 		unary.Init()

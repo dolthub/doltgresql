@@ -21,11 +21,9 @@ import (
 	sqle "github.com/dolthub/go-mysql-server"
 	"github.com/dolthub/go-mysql-server/sql"
 	"github.com/dolthub/go-mysql-server/sql/expression/function"
-	"github.com/lib/pq/oid"
 
 	"github.com/dolthub/doltgresql/core"
 	"github.com/dolthub/doltgresql/core/sequences"
-	"github.com/dolthub/doltgresql/postgres/parser/types"
 	pgtypes "github.com/dolthub/doltgresql/server/types"
 )
 
@@ -107,9 +105,9 @@ type ItemTable struct {
 
 // ItemType contains the relevant information to pass to the Type callback.
 type ItemType struct {
-	OID          uint32
-	StandardName string
-	Item         pgtypes.DoltgresType
+	// TODO: add Index when we add custom types
+	OID  uint32
+	Item pgtypes.DoltgresType
 }
 
 // ItemView contains the relevant information to pass to the View callback.
@@ -125,21 +123,10 @@ type ItemView struct {
 func IterateCurrentDatabase(ctx *sql.Context, callbacks Callbacks) error {
 	// Functions and types aren't contained within a schema for now, so we'll iterate over those separately
 	if callbacks.Function != nil {
-		for functionIndex, f := range function.BuiltIns {
-			itemFunction := ItemFunction{
-				Index: functionIndex,
-				OID:   CreateOID(Section_Function, 0, functionIndex),
-				Item:  f,
-			}
-			if cont, err := callbacks.Function(ctx, itemFunction); err != nil {
-				return err
-			} else if !cont {
-				return nil
-			}
+		if err := iterateFunctions(ctx, callbacks); err != nil {
+			return err
 		}
 	}
-
-	// Check for a type callback
 	if callbacks.Type != nil {
 		if err := iterateTypes(ctx, callbacks); err != nil {
 			return err
@@ -179,24 +166,47 @@ func IterateCurrentDatabase(ctx *sql.Context, callbacks Callbacks) error {
 	return nil
 }
 
-// iterateTypes iterates over all types that are present in the pg_type table.
+// iterateFunctions is called by IterateCurrentDatabase to handle functions.
+func iterateFunctions(ctx *sql.Context, callbacks Callbacks) error {
+	for functionIndex, f := range function.BuiltIns {
+		itemFunction := ItemFunction{
+			Index: functionIndex,
+			OID:   CreateOID(Section_Function, 0, functionIndex),
+			Item:  f,
+		}
+		if cont, err := callbacks.Function(ctx, itemFunction); err != nil {
+			return err
+		} else if !cont {
+			return nil
+		}
+	}
+	return nil
+}
+
+// iterateTypes is called by IterateCurrentDatabase to handle types
 func iterateTypes(ctx *sql.Context, callbacks Callbacks) error {
-	allTypes := pgtypes.GetAllTypes()
-	// Exclude all types that are not present in the pg_type table
-	for _, t := range allTypes {
-		switch t.BaseID() {
-		case pgtypes.DoltgresTypeBaseID_Null,
-			pgtypes.DoltgresTypeBaseID_Int16Serial,
-			pgtypes.DoltgresTypeBaseID_Int32Serial,
-			pgtypes.DoltgresTypeBaseID_Int64Serial:
-			continue
-		default:
+	// We only iterate over the types that are present in the pg_type table.
+	// This means that we ignore the schema if one is given and it's not equal to "pg_catalog".
+	// If no schemas were given, then we'll automatically look for the types in "pg_catalog".
+	if len(callbacks.SearchSchemas) > 0 {
+		containsPgCatalog := false
+		for _, schema := range callbacks.SearchSchemas {
+			if schema == "pg_catalog" {
+				containsPgCatalog = true
+				break
+			}
+		}
+		if !containsPgCatalog {
+			return nil
+		}
+	}
+	for _, t := range pgtypes.GetAllTypes() {
+		if t.BaseID().HasUniqueOID() {
 			if _, ok := t.(pgtypes.DoltgresArrayType); !ok {
 				if _, ok = t.(pgtypes.DoltgresPolymorphicType); !ok {
 					cont, err := callbacks.Type(ctx, ItemType{
-						OID:          t.OID(),
-						StandardName: getStandardNameFromOid(t.OID()),
-						Item:         t,
+						OID:  t.OID(),
+						Item: t,
 					})
 					if err != nil {
 						return err
@@ -209,19 +219,10 @@ func iterateTypes(ctx *sql.Context, callbacks Callbacks) error {
 		}
 	}
 	_, err := callbacks.Type(ctx, ItemType{
-		OID:          pgtypes.InternalChar.OID(),
-		StandardName: getStandardNameFromOid(pgtypes.InternalChar.OID()),
-		Item:         pgtypes.InternalChar,
+		OID:  pgtypes.InternalChar.OID(),
+		Item: pgtypes.InternalChar,
 	})
 	return err
-}
-
-// getStandardNameFromOid returns the SQL standard name of an OID if it exists.
-func getStandardNameFromOid(toid uint32) string {
-	if t, ok := types.OidToType[oid.Oid(toid)]; ok {
-		return t.SQLStandardName()
-	}
-	return ""
 }
 
 // iterateSchemas is called by IterateCurrentDatabase to handle schemas and elements contained within schemas.
@@ -242,7 +243,6 @@ func iterateSchemas(ctx *sql.Context, callbacks Callbacks, sortedSchemas []sql.D
 				return nil
 			}
 		}
-
 		// Check for a view callback
 		if callbacks.View != nil {
 			if err := iterateViews(ctx, callbacks, itemSchema); err != nil {
@@ -441,10 +441,6 @@ func iterateIndexes(ctx *sql.Context, callbacks Callbacks, itemSchema ItemSchema
 // the relevant callback is called with the item. This means that, at most, only one callback will be called. If the
 // item cannot be found, then no callbacks are called.
 func RunCallback(ctx *sql.Context, oid uint32, callbacks Callbacks) error {
-	if callbacks.Type != nil {
-		return runType(ctx, oid, callbacks)
-	}
-
 	section, schemaIndex, dataIndex := ParseOID(oid)
 	if ok := runCallbackValidation(ctx, oid, callbacks); !ok {
 		return nil
@@ -453,7 +449,9 @@ func RunCallback(ctx *sql.Context, oid uint32, callbacks Callbacks) error {
 	if section == Section_Function {
 		return runFunction(ctx, oid, callbacks)
 	}
-
+	if section == Section_BuiltIn {
+		return runType(ctx, oid, callbacks)
+	}
 	// We know we have the relevant callback for the given section, so we'll grab the schema
 	doltSession := dsess.DSessFromSess(ctx.Session)
 	currentDatabase, err := sqle.NewDefault(doltSession.Provider()).Analyzer.Catalog.Database(ctx, ctx.GetCurrentDatabase())
@@ -612,15 +610,6 @@ func runFunction(ctx *sql.Context, oid uint32, callbacks Callbacks) error {
 	return err
 }
 
-// runType is called by RunCallback to handle Section_Function.
-func runType(ctx *sql.Context, toid uint32, callbacks Callbacks) error {
-	_, err := callbacks.Type(ctx, ItemType{
-		OID:          toid,
-		StandardName: getStandardNameFromOid(toid),
-	})
-	return err
-}
-
 // runIndex is called by RunCallback to handle Section_Index.
 func runIndex(ctx *sql.Context, oid uint32, callbacks Callbacks, itemSchema ItemSchema, itemTable ItemTable, countedIndex *int) (cont bool, err error) {
 	_, _, dataIndex := ParseOID(oid)
@@ -704,6 +693,19 @@ func runTable(ctx *sql.Context, oid uint32, callbacks Callbacks, itemSchema Item
 	return err
 }
 
+// runType is called by RunCallback to handle types within Section_BuiltIn.
+func runType(ctx *sql.Context, toid uint32, callbacks Callbacks) error {
+	if t := pgtypes.GetTypeByOID(toid); t != nil {
+		itemType := ItemType{
+			OID:  toid,
+			Item: t,
+		}
+		_, err := callbacks.Type(ctx, itemType)
+		return err
+	}
+	return nil
+}
+
 // runView is called by RunCallback to handle Section_View.
 func runView(ctx *sql.Context, oid uint32, callbacks Callbacks, itemSchema ItemSchema) error {
 	_, _, dataIndex := ParseOID(oid)
@@ -734,6 +736,11 @@ func runCallbackValidation(ctx *sql.Context, oid uint32, callbacks Callbacks) bo
 	section, _, _ := ParseOID(oid)
 	// Check that we have the relevant callback, and return early if we do not
 	switch section {
+	case Section_BuiltIn:
+		// For now, only the built-in types are checked in the built-in section
+		if callbacks.Type == nil {
+			return false
+		}
 	case Section_Check:
 		if callbacks.Check == nil {
 			return false
@@ -765,16 +772,12 @@ func runCallbackValidation(ctx *sql.Context, oid uint32, callbacks Callbacks) bo
 		if callbacks.Table == nil {
 			return false
 		}
-	case Section_Type:
-		if callbacks.Type == nil {
-			return false
-		}
 	case Section_View:
 		if callbacks.View == nil {
 			return false
 		}
 	default:
-		return true
+		return false
 	}
 	return true
 }
