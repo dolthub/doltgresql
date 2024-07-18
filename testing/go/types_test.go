@@ -1588,6 +1588,89 @@ var typesTests = []ScriptTest{
 		},
 	},
 	{
+		Name: "Regtype type",
+		Assertions: []ScriptTestAssertion{
+			{
+				Skip:  true, // TODO: Column should be regtype, not "integer"
+				Query: `SELECT 'integer'::regtype;`,
+				Cols:  []string{"regtype"},
+				Expected: []sql.Row{
+					{"integer"},
+				},
+			},
+			{
+				Query: `SELECT 'integer'::regtype;`,
+				Expected: []sql.Row{
+					{"integer"},
+				},
+			},
+			{
+				Query: `SELECT 'int4'::regtype;`,
+				Expected: []sql.Row{
+					{"integer"},
+				},
+			},
+			{
+				Query: `SELECT 'float8'::regtype;`,
+				Expected: []sql.Row{
+					{"double precision"},
+				},
+			},
+			{
+				Query: `SELECT 'character varying'::regtype;`,
+				Expected: []sql.Row{
+					{"character varying"},
+				},
+			},
+			{
+				Query: `SELECT ' integer'::regtype;`,
+				Expected: []sql.Row{
+					{"integer"},
+				},
+			},
+			{
+				Query: `SELECT '"integer"'::regtype;`,
+				Expected: []sql.Row{
+					{"integer"},
+				},
+			},
+			{ // This tests that a raw OID properly converts
+				Query: `SELECT (('integer'::regtype)::oid)::regtype;`,
+				Expected: []sql.Row{
+					{"integer"},
+				},
+			},
+			{ // This tests that a string representing a raw OID converts the same as a raw OID
+				Query: `SELECT ((('integer'::regtype)::oid)::text)::regtype;`,
+				Expected: []sql.Row{
+					{"integer"},
+				},
+			},
+			{ // This tests that an invalid OID returns itself in string form
+				Query: `SELECT 4294967295::regtype;`,
+				Expected: []sql.Row{
+					{"4294967295"},
+				},
+			},
+			{
+				Query:       `SELECT '"Integer"'::regtype;`,
+				ExpectedErr: "does not exist",
+			},
+			{
+				Query:       `SELECT '"integer'::regtype;`,
+				ExpectedErr: "invalid name syntax",
+			},
+			{
+				Query:       `SELECT 'integer"'::regtype;`,
+				ExpectedErr: "does not exist",
+			},
+			{
+				Query:       `SELECT '""integer'::regtype;`,
+				ExpectedErr: "invalid name syntax",
+			},
+		},
+	},
+	{
 		Name: "Smallint type",
 		SetUpScript: []string{
 			"CREATE TABLE t_smallint (id INTEGER primary key, v1 SMALLINT);",

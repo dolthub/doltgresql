@@ -125,6 +125,8 @@ var typesFromBaseID = map[DoltgresTypeBaseID]DoltgresType{
 	RegclassArray.BaseID():    RegclassArray,
 	Regproc.BaseID():          Regproc,
 	RegprocArray.BaseID():     RegprocArray,
+	Regtype.BaseID():          Regtype,
+	RegtypeArray.BaseID():     RegtypeArray,
 	Text.BaseID():             Text,
 	TextArray.BaseID():        TextArray,
 	Time.BaseID():             Time,

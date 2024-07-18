@@ -107,4 +107,14 @@ func int64Implicit() {
 			return uint32(val.(int64)), nil
 		},
 	})
+	framework.MustAddImplicitTypeCast(framework.TypeCast{
+		FromType: pgtypes.Int64,
+		ToType:   pgtypes.Regtype,
+		Function: func(ctx *sql.Context, val any, targetType pgtypes.DoltgresType) (any, error) {
+			if val.(int64) > pgtypes.MaxUint32 || val.(int64) < 0 {
+				return nil, errOutOfRange.New(targetType.String())
+			}
+			return uint32(val.(int64)), nil
+		},
+	})
 }

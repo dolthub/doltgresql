@@ -85,4 +85,11 @@ func int16Implicit() {
 			return uint32(val.(int16)), nil
 		},
 	})
+	framework.MustAddImplicitTypeCast(framework.TypeCast{
+		FromType: pgtypes.Int16,
+		ToType:   pgtypes.Regtype,
+		Function: func(ctx *sql.Context, val any, targetType pgtypes.DoltgresType) (any, error) {
+			return uint32(val.(int16)), nil
+		},
+	})
 }

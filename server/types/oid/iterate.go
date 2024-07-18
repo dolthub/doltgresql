@@ -24,6 +24,7 @@ import (
 
 	"github.com/dolthub/doltgresql/core"
 	"github.com/dolthub/doltgresql/core/sequences"
+	pgtypes "github.com/dolthub/doltgresql/server/types"
 )
 
 // Callbacks are a set of callbacks that are used to simplify and coalesce all iteration involving database elements and
@@ -44,6 +45,8 @@ type Callbacks struct {
 	Sequence func(ctx *sql.Context, schema ItemSchema, sequence ItemSequence) (cont bool, err error)
 	// Table is the callback for tables.
 	Table func(ctx *sql.Context, schema ItemSchema, table ItemTable) (cont bool, err error)
+	// Types is the callback for types.
+	Type func(ctx *sql.Context, typ ItemType) (cont bool, err error)
 	// View is the callback for views.
 	View func(ctx *sql.Context, schema ItemSchema, view ItemView) (cont bool, err error)
 	// SearchSchemas represents the search path. If left empty, then all schemas are iterated over. If supplied, then
@@ -100,6 +103,13 @@ type ItemTable struct {
 	Item  sql.Table
 }
 
+// ItemType contains the relevant information to pass to the Type callback.
+type ItemType struct {
+	// TODO: add Index when we add custom types
+	OID  uint32
+	Item pgtypes.DoltgresType
+}
+
 // ItemView contains the relevant information to pass to the View callback.
 type ItemView struct {
 	Index int
@@ -111,21 +121,18 @@ type ItemView struct {
 // over. This is a central function that homogenizes all iteration, since OIDs depend on a deterministic iteration over
 // items. This function should be expanded as we add more items to iterate over.
 func IterateCurrentDatabase(ctx *sql.Context, callbacks Callbacks) error {
-	// Functions aren't contained within a schema for now, so we'll iterate over those separately
+	// Functions and types aren't contained within a schema for now, so we'll iterate over those separately
 	if callbacks.Function != nil {
-		for functionIndex, f := range function.BuiltIns {
-			itemFunction := ItemFunction{
-				Index: functionIndex,
-				OID:   CreateOID(Section_Function, 0, functionIndex),
-				Item:  f,
-			}
-			if cont, err := callbacks.Function(ctx, itemFunction); err != nil {
-				return err
-			} else if !cont {
-				return nil
-			}
+		if err := iterateFunctions(ctx, callbacks); err != nil {
+			return err
 		}
 	}
+	if callbacks.Type != nil {
+		if err := iterateTypes(ctx, callbacks); err != nil {
+			return err
+		}
+	}
+
 	// Everything else is within a schema, so we grab the current database
 	doltSession := dsess.DSessFromSess(ctx.Session)
 	currentDatabase, err := sqle.NewDefault(doltSession.Provider()).Analyzer.Catalog.Database(ctx, ctx.GetCurrentDatabase())
@@ -157,6 +164,65 @@ func IterateCurrentDatabase(ctx *sql.Context, callbacks Callbacks) error {
 		}
 	}
 	return nil
+}
+
+// iterateFunctions is called by IterateCurrentDatabase to handle functions.
+func iterateFunctions(ctx *sql.Context, callbacks Callbacks) error {
+	for functionIndex, f := range function.BuiltIns {
+		itemFunction := ItemFunction{
+			Index: functionIndex,
+			OID:   CreateOID(Section_Function, 0, functionIndex),
+			Item:  f,
+		}
+		if cont, err := callbacks.Function(ctx, itemFunction); err != nil {
+			return err
+		} else if !cont {
+			return nil
+		}
+	}
+	return nil
+}
+
+// iterateTypes is called by IterateCurrentDatabase to handle types
+func iterateTypes(ctx *sql.Context, callbacks Callbacks) error {
+	// We only iterate over the types that are present in the pg_type table.
+	// This means that we ignore the schema if one is given and it's not equal to "pg_catalog".
+	// If no schemas were given, then we'll automatically look for the types in "pg_catalog".
+	if len(callbacks.SearchSchemas) > 0 {
+		containsPgCatalog := false
+		for _, schema := range callbacks.SearchSchemas {
+			if schema == "pg_catalog" {
+				containsPgCatalog = true
+				break
+			}
+		}
+		if !containsPgCatalog {
+			return nil
+		}
+	}
+	for _, t := range pgtypes.GetAllTypes() {
+		if t.BaseID().HasUniqueOID() {
+			if _, ok := t.(pgtypes.DoltgresArrayType); !ok {
+				if _, ok = t.(pgtypes.DoltgresPolymorphicType); !ok {
+					cont, err := callbacks.Type(ctx, ItemType{
+						OID:  t.OID(),
+						Item: t,
+					})
+					if err != nil {
+						return err
+					}
+					if !cont {
+						return nil
+					}
+				}
+			}
+		}
+	}
+	_, err := callbacks.Type(ctx, ItemType{
+		OID:  pgtypes.InternalChar.OID(),
+		Item: pgtypes.InternalChar,
+	})
+	return err
 }
 
 // iterateSchemas is called by IterateCurrentDatabase to handle schemas and elements contained within schemas.
@@ -379,9 +445,12 @@ func RunCallback(ctx *sql.Context, oid uint32, callbacks Callbacks) error {
 	if ok := runCallbackValidation(ctx, oid, callbacks); !ok {
 		return nil
 	}
-	// Functions aren't contained within a schema for now, so we'll iterate over those here
+	// Functions and types aren't contained within a schema for now, so we'll iterate over those here
 	if section == Section_Function {
 		return runFunction(ctx, oid, callbacks)
+	}
+	if section == Section_BuiltIn {
+		return runType(ctx, oid, callbacks)
 	}
 	// We know we have the relevant callback for the given section, so we'll grab the schema
 	doltSession := dsess.DSessFromSess(ctx.Session)
@@ -624,6 +693,19 @@ func runTable(ctx *sql.Context, oid uint32, callbacks Callbacks, itemSchema Item
 	return err
 }
 
+// runType is called by RunCallback to handle types within Section_BuiltIn.
+func runType(ctx *sql.Context, toid uint32, callbacks Callbacks) error {
+	if t := pgtypes.GetTypeByOID(toid); t != nil {
+		itemType := ItemType{
+			OID:  toid,
+			Item: t,
+		}
+		_, err := callbacks.Type(ctx, itemType)
+		return err
+	}
+	return nil
+}
+
 // runView is called by RunCallback to handle Section_View.
 func runView(ctx *sql.Context, oid uint32, callbacks Callbacks, itemSchema ItemSchema) error {
 	_, _, dataIndex := ParseOID(oid)
@@ -654,6 +736,11 @@ func runCallbackValidation(ctx *sql.Context, oid uint32, callbacks Callbacks) bo
 	section, _, _ := ParseOID(oid)
 	// Check that we have the relevant callback, and return early if we do not
 	switch section {
+	case Section_BuiltIn:
+		// For now, only the built-in types are checked in the built-in section
+		if callbacks.Type == nil {
+			return false
+		}
 	case Section_Check:
 		if callbacks.Check == nil {
 			return false

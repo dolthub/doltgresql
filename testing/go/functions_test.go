@@ -234,6 +234,66 @@ func TestFunctionsOID(t *testing.T) {
 				},
 			},
 		},
+		{
+			Name: "to_regtype",
+			Assertions: []ScriptTestAssertion{
+				{
+					Query: `SELECT to_regtype('integer');`,
+					Cols:  []string{"to_regtype"},
+					Expected: []sql.Row{
+						{"integer"},
+					},
+				},
+				{
+					Query: `SELECT to_regtype('int4');`,
+					Expected: []sql.Row{
+						{"integer"},
+					},
+				},
+				{
+					Query: `SELECT to_regtype('varchar');`,
+					Expected: []sql.Row{
+						{"character varying"},
+					},
+				},
+				{
+					Query: `SELECT to_regtype('varchar(10)');`,
+					Expected: []sql.Row{
+						{"character varying"},
+					},
+				},
+				{
+					Query: `SELECT to_regtype('timestamp');`,
+					Expected: []sql.Row{
+						{"timestamp without time zone"},
+					},
+				},
+				{
+					Query: `SELECT to_regtype('timestamp without time zone');`,
+					Expected: []sql.Row{
+						{"timestamp without time zone"},
+					},
+				},
+				{
+					Query: `SELECT to_regtype('integer"');`,
+					Expected: []sql.Row{
+						{nil},
+					},
+				},
+				{
+					Query: `SELECT to_regtype(('integer'::regtype)::text);`,
+					Expected: []sql.Row{
+						{"integer"},
+					},
+				},
+				{
+					Query: `SELECT to_regtype((('integer'::regtype)::oid)::text);`,
+					Expected: []sql.Row{
+						{nil},
+					},
+				},
+			},
+		},
 	})
 }
 
