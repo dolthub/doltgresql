@@ -30,6 +30,7 @@ const (
 	Section_Operator                  // Refers to operators (+, -, *, etc.)
 	Section_Sequence                  // Refers to sequences
 	Section_Table                     // Refers to tables
+	Section_Type                      // Refers to types
 	Section_View                      // Refers to views
 	Section_Invalid                   // Represents an invalid OID
 )

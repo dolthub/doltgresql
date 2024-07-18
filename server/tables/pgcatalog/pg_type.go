@@ -47,9 +47,11 @@ func (p PgTypeHandler) Name() string {
 // RowIter implements the interface tables.Handler.
 func (p PgTypeHandler) RowIter(ctx *sql.Context) (sql.RowIter, error) {
 	var displayTypes []pgtypes.DoltgresType
-	err := oid.IterateTypes(ctx, func(typ pgtypes.DoltgresType) (cont bool, err error) {
-		displayTypes = append(displayTypes, typ)
-		return true, nil
+	err := oid.IterateCurrentDatabase(ctx, oid.Callbacks{
+		Type: func(ctx *sql.Context, typ oid.ItemType) (cont bool, err error) {
+			displayTypes = append(displayTypes, typ.Item)
+			return true, nil
+		},
 	})
 	if err != nil {
 		return nil, err

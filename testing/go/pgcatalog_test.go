@@ -3730,6 +3730,10 @@ func TestPgType(t *testing.T) {
 					Expected: []sql.Row{{701, "float8"}},
 				},
 				{
+					Query:       `SELECT oid, typname FROM "pg_catalog"."pg_type" WHERE oid='public.float8'::regtype;`,
+					ExpectedErr: `type "public.float8" does not exist`,
+				},
+				{
 					Query:    `SELECT oid, typname FROM "pg_catalog"."pg_type" WHERE oid='VARCHAR'::regtype;`,
 					Expected: []sql.Row{{1043, "varchar"}},
 				},
