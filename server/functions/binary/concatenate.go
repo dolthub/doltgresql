@@ -29,10 +29,11 @@ import (
 // initBinaryConcatenate registers the functions to the catalog.
 func initBinaryConcatenate() {
 	framework.RegisterBinaryFunction(framework.Operator_BinaryConcatenate, anytextcat)
+	framework.RegisterBinaryFunction(framework.Operator_BinaryConcatenate, byteacat)
 	framework.RegisterBinaryFunction(framework.Operator_BinaryConcatenate, jsonb_concat)
 	framework.RegisterBinaryFunction(framework.Operator_BinaryConcatenate, textanycat)
 	framework.RegisterBinaryFunction(framework.Operator_BinaryConcatenate, textcat)
-	// TODO: array_append, array_cat, array_prepend, bitcat, byteacat, tsquery_or, tsvector_concat
+	// TODO: array_append, array_cat, array_prepend, bitcat, tsquery_or, tsvector_concat
 }
 
 // anytextcat represents the PostgreSQL function of the same name, taking the same parameters.
@@ -48,6 +49,22 @@ var anytextcat = framework.Function2{
 			return nil, err
 		}
 		return val1String + val2.(string), nil
+	},
+}
+
+// byteacat represents the PostgreSQL function of the same name, taking the same parameters.
+var byteacat = framework.Function2{
+	Name:       "byteacat",
+	Return:     pgtypes.Bytea,
+	Parameters: [2]pgtypes.DoltgresType{pgtypes.Bytea, pgtypes.Bytea},
+	Strict:     true,
+	Callable: func(ctx *sql.Context, paramsAndReturn [3]pgtypes.DoltgresType, val1 any, val2 any) (any, error) {
+		v1 := val1.([]byte)
+		v2 := val2.([]byte)
+		copied := make([]byte, len(v1)+len(v2))
+		copy(copied, v1)
+		copy(copied[len(v1):], v2)
+		return copied, nil
 	},
 }
 
