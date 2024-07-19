@@ -587,5 +587,55 @@ func TestSystemInformationFunctions(t *testing.T) {
 				},
 			},
 		},
+		{
+			Name: "format_type",
+			Assertions: []ScriptTestAssertion{
+				{
+					Query: `SELECT format_type('integer'::regtype, null);`,
+					Cols:  []string{"format_type"},
+					Expected: []sql.Row{
+						{"integer"},
+					},
+				},
+				{
+					Query: `SELECT format_type('varchar'::regtype, 20);`,
+					Expected: []sql.Row{
+						{"character varying(16)"},
+					},
+				},
+				{
+					Query: `SELECT format_type('character varying'::regtype, 100);`,
+					Expected: []sql.Row{
+						{"character varying(96)"},
+					},
+				},
+				{
+					Query: `SELECT format_type('varchar'::regtype, null);`,
+					Expected: []sql.Row{
+						{"character varying"},
+					},
+				},
+				{
+					Query: `SELECT format_type(874938247, 20);`,
+					Cols:  []string{"format_type"},
+					Expected: []sql.Row{
+						{"???"},
+					},
+				},
+				{
+					Query: `SELECT format_type(25, null);`,
+					Expected: []sql.Row{
+						{"text"},
+					},
+				},
+				{
+					Skip:  true, // TODO: Currently returning just `text`
+					Query: `SELECT format_type(25, 0);`,
+					Expected: []sql.Row{
+						{"text(0)"},
+					},
+				},
+			},
+		},
 	})
 }
