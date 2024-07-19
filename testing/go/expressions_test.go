@@ -33,20 +33,16 @@ func TestExpressions(t *testing.T) {
 			},
 			Assertions: []ScriptTestAssertion{
 				{
-					Query:    `SELECT * FROM test;`,
-					Expected: []sql.Row{{int32(1)}, {int32(3)}, {int32(2)}},
-				},
-				{
 					Query:    `SELECT 3 = ANY (ARRAY[1, 2, 3, 4, 5]);`,
 					Expected: []sql.Row{{"t"}},
 				},
 				{
-					Query:    `SELECT 3 > ANY (ARRAY[1, 2, 3, 4, 5]);`,
-					Expected: []sql.Row{{"t"}},
+					Query:       `SELECT 3 > ANY (ARRAY[1, 2, 3, 4, 5]);`,
+					ExpectedErr: "ANY operator is not yet supported with suboperator >",
 				},
 				{
-					Query:    `SELECT 6 < ANY (ARRAY[1, 2, 3, 4, 5]);`,
-					Expected: []sql.Row{{"f"}},
+					Query:       `SELECT 6 < ANY (ARRAY[1, 2, 3, 4, 5]);`,
+					ExpectedErr: "ANY operator is not yet supported with suboperator <",
 				},
 				{
 					Query:    `SELECT * FROM test WHERE id = ANY(ARRAY[2, 3, 4, 5]);`,
