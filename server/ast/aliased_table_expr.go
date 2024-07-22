@@ -20,7 +20,6 @@ import (
 	vitess "github.com/dolthub/vitess/go/vt/sqlparser"
 
 	"github.com/dolthub/doltgresql/postgres/parser/sem/tree"
-	"github.com/dolthub/doltgresql/utils"
 )
 
 // nodeAliasedTableExpr handles *tree.AliasedTableExpr nodes.
@@ -60,9 +59,6 @@ func nodeAliasedTableExpr(node *tree.AliasedTableExpr) (*vitess.AliasedTableExpr
 		aliasExpr = subquery
 	}
 	alias := string(node.As.Alias)
-	if len(alias) == 0 {
-		alias = utils.GenerateUniqueAlias()
-	}
 	return &vitess.AliasedTableExpr{
 		Expr:    aliasExpr,
 		As:      vitess.NewTableIdent(alias),
