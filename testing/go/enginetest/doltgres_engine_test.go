@@ -110,13 +110,20 @@ func TestSchemaOverrides(t *testing.T) {
 
 // Convenience test for debugging a single query. Unskip and set to the desired query.
 func TestSingleScript(t *testing.T) {
-	t.Skip()
+	// t.Skip()
 
 	var scripts = []queries.ScriptTest{
 		{
-			Name:        "",
-			SetUpScript: []string{},
-			Assertions:  []queries.ScriptTestAssertion{},
+			Name:        "dolt procedures",
+			SetUpScript: []string{
+				"create table t1 (pk int primary key, c int);",
+				"select dolt_add('.')",
+			},
+			Assertions:  []queries.ScriptTestAssertion{
+				{
+					Query:                           "select dolt_commit('-am', 'initial table');",
+				},
+			},
 		},
 	}
 
