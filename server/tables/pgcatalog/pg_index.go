@@ -16,11 +16,13 @@ package pgcatalog
 
 import (
 	"io"
+	"strings"
 
 	"github.com/dolthub/go-mysql-server/sql"
 
 	"github.com/dolthub/doltgresql/server/tables"
 	pgtypes "github.com/dolthub/doltgresql/server/types"
+	"github.com/dolthub/doltgresql/server/types/oid"
 )
 
 // PgIndexName is a constant to the pg_index name.
@@ -43,8 +45,28 @@ func (p PgIndexHandler) Name() string {
 
 // RowIter implements the interface tables.Handler.
 func (p PgIndexHandler) RowIter(ctx *sql.Context) (sql.RowIter, error) {
-	// TODO: Implement pg_index row iter
-	return emptyRowIter()
+	var indexes []sql.Index
+	var indexOIDs []uint32
+	var tableOIDs []uint32
+
+	err := oid.IterateCurrentDatabase(ctx, oid.Callbacks{
+		Index: func(ctx *sql.Context, schema oid.ItemSchema, table oid.ItemTable, index oid.ItemIndex) (cont bool, err error) {
+			indexes = append(indexes, index.Item)
+			tableOIDs = append(tableOIDs, table.OID)
+			indexOIDs = append(indexOIDs, index.OID)
+			return true, nil
+		},
+	})
+	if err != nil {
+		return nil, err
+	}
+
+	return &pgIndexRowIter{
+		indexes: indexes,
+		idxOIDs: indexOIDs,
+		tblOIDs: tableOIDs,
+		idx:     0,
+	}, nil
 }
 
 // Schema implements the interface tables.Handler.
@@ -82,13 +104,48 @@ var pgIndexSchema = sql.Schema{
 
 // pgIndexRowIter is the sql.RowIter for the pg_index table.
 type pgIndexRowIter struct {
+	indexes []sql.Index
+	idxOIDs []uint32
+	tblOIDs []uint32
+	idx     int
 }
 
 var _ sql.RowIter = (*pgIndexRowIter)(nil)
 
 // Next implements the interface sql.RowIter.
 func (iter *pgIndexRowIter) Next(ctx *sql.Context) (sql.Row, error) {
-	return nil, io.EOF
+	if iter.idx >= len(iter.indexes) {
+		return nil, io.EOF
+	}
+	iter.idx++
+	index := iter.indexes[iter.idx-1]
+	tableOid := iter.tblOIDs[iter.idx-1]
+	indexOid := iter.idxOIDs[iter.idx-1]
+
+	// TODO: Fill in the rest of the pg_index columns
+	return sql.Row{
+		indexOid,                                 // indexrelid
+		tableOid,                                 // indrelid
+		int16(len(index.Expressions())),          // indnatts
+		int16(0),                                 // indnkeyatts
+		index.IsUnique(),                         // indisunique
+		false,                                    // indnullsnotdistinct
+		strings.ToLower(index.ID()) == "primary", // indisprimary
+		false,                                    // indisexclusion
+		false,                                    // indimmediate
+		false,                                    // indisclustered
+		true,                                     // indisvalid
+		false,                                    // indcheckxmin
+		true,                                     // indisready
+		true,                                     // indislive
+		false,                                    // indisreplident
+		[]any{},                                  // indkey
+		[]any{},                                  // indcollation
+		[]any{},                                  // indclass
+		[]any{},                                  // indoption
+		nil,                                      // indexprs
+		nil,                                      // indpred
+	}, nil
 }
 
 // Close implements the interface sql.RowIter.

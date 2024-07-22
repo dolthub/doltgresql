@@ -38,64 +38,64 @@ func initUnaryPlus() {
 var float4up = framework.Function1{
 	Name:       "float4up",
 	Return:     pgtypes.Float32,
-	Parameters: []pgtypes.DoltgresType{pgtypes.Float32},
-	Callable: func(ctx *sql.Context, val1 any) (any, error) {
+	Parameters: [1]pgtypes.DoltgresType{pgtypes.Float32},
+	Strict:     true,
+	Callable: func(ctx *sql.Context, _ [2]pgtypes.DoltgresType, val1 any) (any, error) {
 		return val1, nil
 	},
-	Strict: true,
 }
 
 // float8up represents the PostgreSQL function of the same name, taking the same parameters.
 var float8up = framework.Function1{
 	Name:       "float8up",
 	Return:     pgtypes.Float64,
-	Parameters: []pgtypes.DoltgresType{pgtypes.Float64},
-	Callable: func(ctx *sql.Context, val1 any) (any, error) {
+	Parameters: [1]pgtypes.DoltgresType{pgtypes.Float64},
+	Strict:     true,
+	Callable: func(ctx *sql.Context, _ [2]pgtypes.DoltgresType, val1 any) (any, error) {
 		return val1, nil
 	},
-	Strict: true,
 }
 
 // int2up represents the PostgreSQL function of the same name, taking the same parameters.
 var int2up = framework.Function1{
 	Name:       "int2up",
 	Return:     pgtypes.Int16,
-	Parameters: []pgtypes.DoltgresType{pgtypes.Int16},
-	Callable: func(ctx *sql.Context, val1 any) (any, error) {
+	Parameters: [1]pgtypes.DoltgresType{pgtypes.Int16},
+	Strict:     true,
+	Callable: func(ctx *sql.Context, _ [2]pgtypes.DoltgresType, val1 any) (any, error) {
 		return val1, nil
 	},
-	Strict: true,
 }
 
 // int4up represents the PostgreSQL function of the same name, taking the same parameters.
 var int4up = framework.Function1{
 	Name:       "int4up",
 	Return:     pgtypes.Int32,
-	Parameters: []pgtypes.DoltgresType{pgtypes.Int32},
-	Callable: func(ctx *sql.Context, val1 any) (any, error) {
+	Parameters: [1]pgtypes.DoltgresType{pgtypes.Int32},
+	Strict:     true,
+	Callable: func(ctx *sql.Context, _ [2]pgtypes.DoltgresType, val1 any) (any, error) {
 		return val1, nil
 	},
-	Strict: true,
 }
 
 // int8up represents the PostgreSQL function of the same name, taking the same parameters.
 var int8up = framework.Function1{
 	Name:       "int8up",
 	Return:     pgtypes.Int64,
-	Parameters: []pgtypes.DoltgresType{pgtypes.Int64},
-	Callable: func(ctx *sql.Context, val1 any) (any, error) {
+	Parameters: [1]pgtypes.DoltgresType{pgtypes.Int64},
+	Strict:     true,
+	Callable: func(ctx *sql.Context, _ [2]pgtypes.DoltgresType, val1 any) (any, error) {
 		return val1, nil
 	},
-	Strict: true,
 }
 
 // numeric_uplus represents the PostgreSQL function of the same name, taking the same parameters.
 var numeric_uplus = framework.Function1{
 	Name:       "numeric_uplus",
 	Return:     pgtypes.Numeric,
-	Parameters: []pgtypes.DoltgresType{pgtypes.Numeric},
-	Callable: func(ctx *sql.Context, val1 any) (any, error) {
+	Parameters: [1]pgtypes.DoltgresType{pgtypes.Numeric},
+	Strict:     true,
+	Callable: func(ctx *sql.Context, _ [2]pgtypes.DoltgresType, val1 any) (any, error) {
 		return val1, nil
 	},
-	Strict: true,
 }

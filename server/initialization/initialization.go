@@ -31,6 +31,7 @@ import (
 	"github.com/dolthub/doltgresql/server/tables"
 	"github.com/dolthub/doltgresql/server/tables/pgcatalog"
 	pgtypes "github.com/dolthub/doltgresql/server/types"
+	"github.com/dolthub/doltgresql/server/types/oid"
 )
 
 var once = &sync.Once{}
@@ -41,7 +42,8 @@ func Initialize() {
 		core.Init()
 		analyzer.Init()
 		config.Init()
-		pgtypes.InitBaseIDs()
+		pgtypes.Init()
+		oid.Init()
 		binary.Init()
 		unary.Init()
 		functions.Init()

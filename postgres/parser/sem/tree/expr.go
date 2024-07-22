@@ -1390,25 +1390,12 @@ const (
 
 // Format implements the NodeFormatter interface.
 func (node *FuncExpr) Format(ctx *FmtCtx) {
-	var typ string
-	if node.Type != 0 {
-		typ = funcTypeName[node.Type] + " "
-	}
-
 	// We need to remove name anonymization for the function name in
 	// particular. Do this by overriding the flags.
 	ctx.WithFlags(ctx.flags&^FmtAnonymize, func() {
 		ctx.FormatNode(&node.Func)
 	})
 
-	ctx.WriteByte('(')
-	ctx.WriteString(typ)
-	ctx.FormatNode(&node.Exprs)
-	if node.AggType == GeneralAgg && len(node.OrderBy) > 0 {
-		ctx.WriteByte(' ')
-		ctx.FormatNode(&node.OrderBy)
-	}
-	ctx.WriteByte(')')
 	if ctx.HasFlags(FmtParsable) && node.typ != nil {
 		if node.fnProps.AmbiguousReturnType {
 			// There's no type annotation available for tuples.

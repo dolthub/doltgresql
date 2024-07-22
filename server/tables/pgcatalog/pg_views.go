@@ -15,12 +15,16 @@
 package pgcatalog
 
 import (
+	"fmt"
 	"io"
 
 	"github.com/dolthub/go-mysql-server/sql"
 
+	"github.com/dolthub/doltgresql/postgres/parser/parser"
+	"github.com/dolthub/doltgresql/postgres/parser/sem/tree"
 	"github.com/dolthub/doltgresql/server/tables"
 	pgtypes "github.com/dolthub/doltgresql/server/types"
+	"github.com/dolthub/doltgresql/server/types/oid"
 )
 
 // PgViewsName is a constant to the pg_views name.
@@ -43,8 +47,25 @@ func (p PgViewsHandler) Name() string {
 
 // RowIter implements the interface tables.Handler.
 func (p PgViewsHandler) RowIter(ctx *sql.Context) (sql.RowIter, error) {
-	// TODO: Implement pg_views row iter
-	return emptyRowIter()
+	var views []sql.ViewDefinition
+	var schemas []string
+
+	err := oid.IterateCurrentDatabase(ctx, oid.Callbacks{
+		View: func(ctx *sql.Context, schema oid.ItemSchema, view oid.ItemView) (cont bool, err error) {
+			views = append(views, view.Item)
+			schemas = append(schemas, schema.Item.SchemaName())
+			return true, nil
+		},
+	})
+	if err != nil {
+		return nil, err
+	}
+
+	return &pgViewsRowIter{
+		views:   views,
+		schemas: schemas,
+		idx:     0,
+	}, nil
 }
 
 // Schema implements the interface tables.Handler.
@@ -65,13 +86,45 @@ var pgViewsSchema = sql.Schema{
 
 // pgViewsRowIter is the sql.RowIter for the pg_views table.
 type pgViewsRowIter struct {
+	views   []sql.ViewDefinition
+	schemas []string
+	idx     int
 }
 
 var _ sql.RowIter = (*pgViewsRowIter)(nil)
 
 // Next implements the interface sql.RowIter.
 func (iter *pgViewsRowIter) Next(ctx *sql.Context) (sql.Row, error) {
-	return nil, io.EOF
+	if iter.idx >= len(iter.views) {
+		return nil, io.EOF
+	}
+	iter.idx++
+	view := iter.views[iter.idx-1]
+	schema := iter.schemas[iter.idx-1]
+
+	textDef := view.TextDefinition
+	if textDef == "" {
+		stmts, err := parser.Parse(view.CreateViewStatement)
+		if err != nil {
+			return nil, err
+		}
+		if len(stmts) == 0 {
+			return nil, fmt.Errorf("expected Create View statement, got none")
+		}
+		cv, ok := stmts[0].AST.(*tree.CreateView)
+		if !ok {
+			return nil, fmt.Errorf("expected Create View statement, got %s", stmts[0].SQL)
+		}
+
+		textDef = cv.AsSource.String()
+	}
+
+	return sql.Row{
+		schema,    // schemaname
+		view.Name, // viewname
+		"",        // viewowner
+		textDef,   // definition
+	}, nil
 }
 
 // Close implements the interface sql.RowIter.

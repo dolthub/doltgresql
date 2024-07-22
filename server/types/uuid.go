@@ -105,21 +105,12 @@ func (b UuidType) Equals(otherType sql.Type) bool {
 	return false
 }
 
-// FormatSerializedValue implements the DoltgresType interface.
-func (b UuidType) FormatSerializedValue(val []byte) (string, error) {
-	deserialized, err := b.DeserializeValue(val)
-	if err != nil {
-		return "", err
-	}
-	return b.FormatValue(deserialized)
-}
-
 // FormatValue implements the DoltgresType interface.
 func (b UuidType) FormatValue(val any) (string, error) {
 	if val == nil {
 		return "", nil
 	}
-	return b.IoOutput(val)
+	return b.IoOutput(sql.NewEmptyContext(), val)
 }
 
 // GetSerializationID implements the DoltgresType interface.
@@ -128,12 +119,12 @@ func (b UuidType) GetSerializationID() SerializationID {
 }
 
 // IoInput implements the DoltgresType interface.
-func (b UuidType) IoInput(input string) (any, error) {
+func (b UuidType) IoInput(ctx *sql.Context, input string) (any, error) {
 	return uuid.FromString(input)
 }
 
 // IoOutput implements the DoltgresType interface.
-func (b UuidType) IoOutput(output any) (string, error) {
+func (b UuidType) IoOutput(ctx *sql.Context, output any) (string, error) {
 	converted, _, err := b.Convert(output)
 	if err != nil {
 		return "", err

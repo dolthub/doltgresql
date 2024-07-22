@@ -24,6 +24,7 @@ import (
 // initOid handles all casts that are built-in. This comprises only the "From" types.
 func initOid() {
 	oidAssignment()
+	oidImplicit()
 }
 
 // oidAssignment registers all assignment casts. This comprises only the "From" types.
@@ -32,7 +33,6 @@ func oidAssignment() {
 		FromType: pgtypes.Oid,
 		ToType:   pgtypes.Int32,
 		Function: func(ctx *sql.Context, val any, targetType pgtypes.DoltgresType) (any, error) {
-			// Will return -1 for uint32 values greater than 2147483647
 			return int32(val.(uint32)), nil
 		},
 	})
@@ -41,6 +41,31 @@ func oidAssignment() {
 		ToType:   pgtypes.Int64,
 		Function: func(ctx *sql.Context, val any, targetType pgtypes.DoltgresType) (any, error) {
 			return int64(val.(uint32)), nil
+		},
+	})
+}
+
+// oidImplicit registers all implicit casts. This comprises only the "From" types.
+func oidImplicit() {
+	framework.MustAddImplicitTypeCast(framework.TypeCast{
+		FromType: pgtypes.Oid,
+		ToType:   pgtypes.Regclass,
+		Function: func(ctx *sql.Context, val any, targetType pgtypes.DoltgresType) (any, error) {
+			return val, nil
+		},
+	})
+	framework.MustAddImplicitTypeCast(framework.TypeCast{
+		FromType: pgtypes.Oid,
+		ToType:   pgtypes.Regproc,
+		Function: func(ctx *sql.Context, val any, targetType pgtypes.DoltgresType) (any, error) {
+			return val, nil
+		},
+	})
+	framework.MustAddImplicitTypeCast(framework.TypeCast{
+		FromType: pgtypes.Oid,
+		ToType:   pgtypes.Regtype,
+		Function: func(ctx *sql.Context, val any, targetType pgtypes.DoltgresType) (any, error) {
+			return val, nil
 		},
 	})
 }

@@ -32,9 +32,9 @@ func initSin() {
 var sin_float64 = framework.Function1{
 	Name:       "sin",
 	Return:     pgtypes.Float64,
-	Parameters: []pgtypes.DoltgresType{pgtypes.Float64},
-	Callable: func(ctx *sql.Context, val1 any) (any, error) {
+	Parameters: [1]pgtypes.DoltgresType{pgtypes.Float64},
+	Strict:     true,
+	Callable: func(ctx *sql.Context, _ [2]pgtypes.DoltgresType, val1 any) (any, error) {
 		return math.Sin(val1.(float64)), nil
 	},
-	Strict: true,
 }

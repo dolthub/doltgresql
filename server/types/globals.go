@@ -14,6 +14,8 @@
 
 package types
 
+import "fmt"
+
 // DoltgresTypeBaseID is an ID that is common between all variations of a DoltgresType. For example, VARCHAR(3) and
 // VARCHAR(6) are different types, however they will return the same DoltgresTypeBaseID. This ID is not suitable for
 // serialization, as it may change over time. Many types use their SerializationID as their base ID, so for types that
@@ -22,7 +24,7 @@ package types
 type DoltgresTypeBaseID uint32
 
 const (
-	DoltgresTypeBaseID_Any DoltgresTypeBaseID = iota + 2147483648
+	DoltgresTypeBaseID_Any DoltgresTypeBaseID = iota + 8192
 	DoltgresTypeBaseID_AnyElement
 	DoltgresTypeBaseID_AnyArray
 	DoltgresTypeBaseID_AnyNonArray
@@ -50,6 +52,17 @@ const (
 	DoltgresTypeBaseID_Int16Serial
 	DoltgresTypeBaseID_Int32Serial
 	DoltgresTypeBaseID_Int64Serial
+	DoltgresTypeBaseID_Regclass
+	DoltgresTypeBaseID_Regcollation
+	DoltgresTypeBaseID_Regconfig
+	DoltgresTypeBaseID_Regdictionary
+	DoltgresTypeBaseID_Regnamespace
+	DoltgresTypeBaseID_Regoper
+	DoltgresTypeBaseID_Regoperator
+	DoltgresTypeBaseID_Regproc
+	DoltgresTypeBaseID_Regprocedure
+	DoltgresTypeBaseID_Regrole
+	DoltgresTypeBaseID_Regtype
 	DoltgresTypeBaseID_Composite
 )
 
@@ -148,14 +161,24 @@ var baseIDCategories = map[DoltgresTypeBaseID]TypeCategory{
 // TODO: add all of the preferred types
 var preferredTypeInCategory = map[TypeCategory][]DoltgresTypeBaseID{}
 
-// InitBaseIDs reads the list of all types and creates a mapping of the base ID for each array variant.
-func InitBaseIDs() {
-	for _, t := range typesFromBaseID {
+// oidToType holds a reference from a given OID to its type.
+var oidToType = map[uint32]DoltgresType{}
+
+// Init reads the list of all types and creates mappings that will be used by various functions.
+func Init() {
+	for baseID, t := range typesFromBaseID {
 		if dat, ok := t.(DoltgresArrayType); ok {
 			baseIDArrayTypes[t.BaseID()] = dat
 		}
 		if t.IsPreferredType() {
 			preferredTypeInCategory[t.Category()] = append(preferredTypeInCategory[t.Category()], t.BaseID())
+		}
+		// Add the types to the OID map
+		if baseID.HasUniqueOID() {
+			if existingType, ok := oidToType[t.OID()]; ok {
+				panic(fmt.Errorf("OID (%d) type conflict: `%s` and `%s`", t.OID(), existingType.String(), t.String()))
+			}
+			oidToType[t.OID()] = t
 		}
 	}
 }
@@ -184,6 +207,20 @@ func (id DoltgresTypeBaseID) GetRepresentativeType() DoltgresType {
 	return Unknown
 }
 
+// HasUniqueOID returns whether the type belonging to the base ID has a unique OID. This will be true for most types.
+// Examples of types that do not have unique OIDs are the serial types, since they're not actual types.
+func (id DoltgresTypeBaseID) HasUniqueOID() bool {
+	switch id {
+	case DoltgresTypeBaseID_Null,
+		DoltgresTypeBaseID_Int16Serial,
+		DoltgresTypeBaseID_Int32Serial,
+		DoltgresTypeBaseID_Int64Serial:
+		return false
+	default:
+		return true
+	}
+}
+
 // IsPreferredType returns whether the type passed is a preferred type for this TypeCategory.
 func (cat TypeCategory) IsPreferredType(p DoltgresTypeBaseID) bool {
 	if pts, ok := preferredTypeInCategory[cat]; ok {
@@ -194,4 +231,13 @@ func (cat TypeCategory) IsPreferredType(p DoltgresTypeBaseID) bool {
 		}
 	}
 	return false
+}
+
+// GetTypeByOID returns the DoltgresType matching the given OID. If the OID does not match a type, then nil is returned.
+func GetTypeByOID(oid uint32) DoltgresType {
+	t, ok := oidToType[oid]
+	if !ok {
+		return nil
+	}
+	return t
 }

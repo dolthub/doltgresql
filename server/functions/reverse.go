@@ -30,13 +30,13 @@ func initReverse() {
 var reverse_varchar = framework.Function1{
 	Name:       "reverse",
 	Return:     pgtypes.VarChar,
-	Parameters: []pgtypes.DoltgresType{pgtypes.VarChar},
-	Callable: func(ctx *sql.Context, val1 any) (any, error) {
+	Parameters: [1]pgtypes.DoltgresType{pgtypes.VarChar},
+	Strict:     true,
+	Callable: func(ctx *sql.Context, _ [2]pgtypes.DoltgresType, val1 any) (any, error) {
 		runes := []rune(val1.(string))
 		for i, j := 0, len(runes)-1; i < j; i, j = i+1, j-1 {
 			runes[i], runes[j] = runes[j], runes[i]
 		}
 		return string(runes), nil
 	},
-	Strict: true,
 }

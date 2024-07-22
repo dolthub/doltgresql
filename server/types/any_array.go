@@ -34,6 +34,7 @@ type AnyArrayType struct{}
 
 var _ DoltgresType = AnyArrayType{}
 var _ DoltgresArrayType = AnyArrayType{}
+var _ DoltgresPolymorphicType = AnyArrayType{}
 
 // Alignment implements the DoltgresType interface.
 func (aa AnyArrayType) Alignment() TypeAlignment {
@@ -55,7 +56,7 @@ func (aa AnyArrayType) BaseType() DoltgresType {
 	return Unknown
 }
 
-// Category implements the DoltgresArrayType interface.
+// Category implements the DoltgresType interface.
 func (aa AnyArrayType) Category() TypeCategory {
 	return TypeCategory_PseudoTypes
 }
@@ -72,18 +73,20 @@ func (aa AnyArrayType) Compare(v1 any, v2 any) (int, error) {
 
 // Convert implements the DoltgresType interface.
 func (aa AnyArrayType) Convert(val any) (any, sql.ConvertInRange, error) {
-	return nil, sql.OutOfRange, fmt.Errorf("%s cannot convert values", aa.String())
+	switch val := val.(type) {
+	case []any:
+		return val, sql.InRange, nil
+	case nil:
+		return nil, sql.InRange, nil
+	default:
+		return nil, sql.OutOfRange, fmt.Errorf("%s: unhandled type: %T", aa.String(), val)
+	}
 }
 
 // Equals implements the DoltgresType interface.
 func (aa AnyArrayType) Equals(otherType sql.Type) bool {
 	_, ok := otherType.(AnyArrayType)
 	return ok
-}
-
-// FormatSerializedValue implements the DoltgresType interface.
-func (aa AnyArrayType) FormatSerializedValue(val []byte) (string, error) {
-	return "", fmt.Errorf("%s cannot format serialized values", aa.String())
 }
 
 // FormatValue implements the DoltgresType interface.
@@ -97,12 +100,12 @@ func (aa AnyArrayType) GetSerializationID() SerializationID {
 }
 
 // IoInput implements the DoltgresType interface.
-func (aa AnyArrayType) IoInput(input string) (any, error) {
+func (aa AnyArrayType) IoInput(ctx *sql.Context, input string) (any, error) {
 	return "", fmt.Errorf("%s cannot receive I/O input", aa.String())
 }
 
 // IoOutput implements the DoltgresType interface.
-func (aa AnyArrayType) IoOutput(output any) (string, error) {
+func (aa AnyArrayType) IoOutput(ctx *sql.Context, output any) (string, error) {
 	return "", fmt.Errorf("%s cannot produce I/O output", aa.String())
 }
 
@@ -114,6 +117,12 @@ func (aa AnyArrayType) IsPreferredType() bool {
 // IsUnbounded implements the DoltgresType interface.
 func (aa AnyArrayType) IsUnbounded() bool {
 	return true
+}
+
+// IsValid implements the DoltgresPolymorphicType interface.
+func (aa AnyArrayType) IsValid(target DoltgresType) bool {
+	_, ok := target.(DoltgresArrayType)
+	return ok
 }
 
 // MaxSerializedWidth implements the DoltgresType interface.

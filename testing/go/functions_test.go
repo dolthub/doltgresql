@@ -41,6 +41,7 @@ func TestFunctionsMath(t *testing.T) {
 				},
 				{
 					Query: `SELECT round(cbrt(v1)::numeric, 10), round(cbrt(v2)::numeric, 10), round(cbrt(v3)::numeric, 10) FROM test ORDER BY pk;`,
+					Cols:  []string{"round", "round", "round"},
 					Expected: []sql.Row{
 						{-1.0000000000, -1.2599210499, -1.4422495703},
 						{1.9129311828, 2.2239800906, 2.3513346877},
@@ -53,12 +54,14 @@ func TestFunctionsMath(t *testing.T) {
 				},
 				{
 					Query: `SELECT cbrt('64');`,
+					Cols:  []string{"cbrt"},
 					Expected: []sql.Row{
 						{4.0},
 					},
 				},
 				{
 					Query: `SELECT round(cbrt('64'));`,
+					Cols:  []string{"round"},
 					Expected: []sql.Row{
 						{4.0},
 					},
@@ -74,6 +77,7 @@ func TestFunctionsMath(t *testing.T) {
 			Assertions: []ScriptTestAssertion{
 				{
 					Query: `SELECT gcd(v1, 10), gcd(v2, 20) FROM test ORDER BY pk;`,
+					Cols:  []string{"gcd", "gcd"},
 					Expected: []sql.Row{
 						{2, 4},
 						{10, 4},
@@ -90,18 +94,21 @@ func TestFunctionsMath(t *testing.T) {
 				},
 				{
 					Query: `SELECT gcd(36, '48');`,
+					Cols:  []string{"gcd"},
 					Expected: []sql.Row{
 						{12},
 					},
 				},
 				{
 					Query: `SELECT gcd('36', 48);`,
+					Cols:  []string{"gcd"},
 					Expected: []sql.Row{
 						{12},
 					},
 				},
 				{
 					Query: `SELECT gcd(1, 0), gcd(0, 1), gcd(0, 0);`,
+					Cols:  []string{"gcd", "gcd", "gcd"},
 					Expected: []sql.Row{
 						{1, 1, 0},
 					},
@@ -117,6 +124,7 @@ func TestFunctionsMath(t *testing.T) {
 			Assertions: []ScriptTestAssertion{
 				{
 					Query: `SELECT lcm(v1, 10), lcm(v2, 20) FROM test ORDER BY pk;`,
+					Cols:  []string{"lcm", "lcm"},
 					Expected: []sql.Row{
 						{10, 20},
 						{10, 60},
@@ -154,6 +162,141 @@ func TestFunctionsMath(t *testing.T) {
 	})
 }
 
+func TestFunctionsOID(t *testing.T) {
+	RunScripts(t, []ScriptTest{
+		{
+			Name: "to_regclass",
+			SetUpScript: []string{
+				`CREATE TABLE testing (pk INT primary key, v1 INT UNIQUE);`,
+				`CREATE TABLE "Testing2" (pk INT primary key, v1 INT);`,
+			},
+			Assertions: []ScriptTestAssertion{
+				{
+					Query: `SELECT to_regclass('testing');`,
+					Cols:  []string{"to_regclass"},
+					Expected: []sql.Row{
+						{"testing"},
+					},
+				},
+				{
+					Query: `SELECT to_regclass('Testing2');`,
+					Expected: []sql.Row{
+						{nil},
+					},
+				},
+				{
+					Query: `SELECT to_regclass('"Testing2"');`,
+					Expected: []sql.Row{
+						{"Testing2"},
+					},
+				},
+				{
+					Query: `SELECT to_regclass(('testing'::regclass)::text);`,
+					Expected: []sql.Row{
+						{"testing"},
+					},
+				},
+				{
+					Query: `SELECT to_regclass((('testing'::regclass)::oid)::text);`,
+					Expected: []sql.Row{
+						{nil},
+					},
+				},
+			},
+		},
+		{
+			Name: "to_regproc",
+			Assertions: []ScriptTestAssertion{
+				{
+					Query: `SELECT to_regproc('acos');`,
+					Cols:  []string{"to_regproc"},
+					Expected: []sql.Row{
+						{"acos"},
+					},
+				},
+				{
+					Query: `SELECT to_regproc('acos"');`,
+					Expected: []sql.Row{
+						{nil},
+					},
+				},
+				{
+					Query: `SELECT to_regproc(('acos'::regproc)::text);`,
+					Expected: []sql.Row{
+						{"acos"},
+					},
+				},
+				{
+					Query: `SELECT to_regproc((('acos'::regproc)::oid)::text);`,
+					Expected: []sql.Row{
+						{nil},
+					},
+				},
+			},
+		},
+		{
+			Name: "to_regtype",
+			Assertions: []ScriptTestAssertion{
+				{
+					Query: `SELECT to_regtype('integer');`,
+					Cols:  []string{"to_regtype"},
+					Expected: []sql.Row{
+						{"integer"},
+					},
+				},
+				{
+					Query: `SELECT to_regtype('int4');`,
+					Expected: []sql.Row{
+						{"integer"},
+					},
+				},
+				{
+					Query: `SELECT to_regtype('varchar');`,
+					Expected: []sql.Row{
+						{"character varying"},
+					},
+				},
+				{
+					Query: `SELECT to_regtype('varchar(10)');`,
+					Expected: []sql.Row{
+						{"character varying"},
+					},
+				},
+				{
+					Query: `SELECT to_regtype('timestamp');`,
+					Expected: []sql.Row{
+						{"timestamp without time zone"},
+					},
+				},
+				{
+					Query: `SELECT to_regtype('timestamp without time zone');`,
+					Expected: []sql.Row{
+						{"timestamp without time zone"},
+					},
+				},
+				{
+					Query: `SELECT to_regtype('integer"');`,
+					Expected: []sql.Row{
+						{nil},
+					},
+				},
+				{
+					Query: `SELECT to_regtype(('integer'::regtype)::text);`,
+					Expected: []sql.Row{
+						{"integer"},
+					},
+				},
+				{
+					Query: `SELECT to_regtype((('integer'::regtype)::oid)::text);`,
+					Expected: []sql.Row{
+						{nil},
+					},
+				},
+			},
+		},
+	})
+}
+
 func TestSystemInformationFunctions(t *testing.T) {
 	RunScripts(t, []ScriptTest{
 		{
@@ -162,6 +305,7 @@ func TestSystemInformationFunctions(t *testing.T) {
 			Assertions: []ScriptTestAssertion{
 				{
 					Query: `SELECT current_database();`,
+					Cols:  []string{"current_database"},
 					Expected: []sql.Row{
 						{"test"},
 					},
@@ -189,6 +333,14 @@ func TestSystemInformationFunctions(t *testing.T) {
 			Database: "test",
 			Assertions: []ScriptTestAssertion{
 				{
+					Skip:  true, // TODO: current_catalog currently returns current_database column name
+					Query: `SELECT current_catalog;`,
+					Cols:  []string{"current_catalog"},
+					Expected: []sql.Row{
+						{"test"},
+					},
+				},
+				{
 					Query: `SELECT current_catalog;`,
 					Expected: []sql.Row{
 						{"test"},
@@ -215,6 +367,14 @@ func TestSystemInformationFunctions(t *testing.T) {
 		{
 			Name: "current_schema",
 			Assertions: []ScriptTestAssertion{
+				{
+					Skip:  true, // TODO: current_schema currently returns column name in quotes
+					Query: `SELECT current_schema();`,
+					Cols:  []string{"\"current_schema\""},
+					Expected: []sql.Row{
+						{"postgres"},
+					},
+				},
 				{
 					Query: `SELECT current_schema();`,
 					Expected: []sql.Row{
@@ -273,6 +433,7 @@ func TestSystemInformationFunctions(t *testing.T) {
 			Assertions: []ScriptTestAssertion{
 				{ // TODO: Not sure why Postgres does not display "$user", which is postgres here
 					Query: `SELECT current_schemas(true);`,
+					Cols:  []string{"current_schemas"},
 					Expected: []sql.Row{
 						{"{pg_catalog,postgres,public}"},
 					},
@@ -317,6 +478,111 @@ func TestSystemInformationFunctions(t *testing.T) {
 					Query: `SELECT current_schemas(false);`,
 					Expected: []sql.Row{
 						{"{public,test_schema}"},
+					},
+				},
+			},
+		},
+		{
+			Name: "version",
+			Assertions: []ScriptTestAssertion{
+				{
+					Query: `SELECT version();`,
+					Cols:  []string{"version"},
+					Expected: []sql.Row{
+						{"PostgreSQL 15.5"},
+					},
+				},
+			},
+		},
+		{
+			Name: "col_description",
+			Assertions: []ScriptTestAssertion{
+				{
+					Query: `SELECT col_description(100, 1);`,
+					Cols:  []string{"col_description"},
+					Expected: []sql.Row{
+						{""},
+					},
+				},
+				{
+					Query:       `SELECT col_description('not_a_table'::regclass, 1);`,
+					ExpectedErr: `relation "not_a_table" does not exist`,
+				},
+				{
+					Query:    `CREATE TABLE test_table (id INT);`,
+					Expected: []sql.Row{},
+				},
+				{
+					Skip:     true, // TODO: Implement column comments
+					Query:    `COMMENT ON COLUMN test_table.id IS 'This is col id';`,
+					Expected: []sql.Row{},
+				},
+				{
+					Skip:  true, // TODO: Implement column object comments
+					Query: `SELECT col_description('test_table'::regclass, 1);`,
+					Cols:  []string{"col_description"},
+					Expected: []sql.Row{
+						{"This is col id"},
+					},
+				},
+			},
+		},
+		{
+			Name: "obj_description",
+			Assertions: []ScriptTestAssertion{
+				{
+					Query: `SELECT obj_description(100, 'pg_class');`,
+					Cols:  []string{"obj_description"},
+					Expected: []sql.Row{
+						{""},
+					},
+				},
+				{
+					Query:       `SELECT obj_description('does-not-exist'::regproc, 'pg_class');`,
+					ExpectedErr: `function "does-not-exist" does not exist`,
+				},
+				{
+					Skip:  true, // TODO: Implement database object comments
+					Query: `SELECT obj_description('sinh'::regproc, 'pg_proc');`,
+					Cols:  []string{"col_description"},
+					Expected: []sql.Row{
+						{"hyperbolic sine"},
+					},
+				},
+			},
+		},
+		{
+			Name: "shobj_description",
+			Assertions: []ScriptTestAssertion{
+				{
+					Query: `SELECT shobj_description(100, 'pg_class');`,
+					Cols:  []string{"shobj_description"},
+					Expected: []sql.Row{
+						{""},
+					},
+				},
+				{
+					Query:       `SELECT shobj_description('does-not-exist'::regproc, 'pg_class');`,
+					ExpectedErr: `function "does-not-exist" does not exist`,
+				},
+				{
+					Skip:     true, // TODO: Implement tablespaces
+					Query:    `CREATE TABLESPACE tblspc_2 LOCATION '/';`,
+					Expected: []sql.Row{},
+				},
+				{
+					Skip:     true, // TODO: Implement shared database object comments
+					Query:    `COMMENT ON TABLESPACE tblspc_2 IS 'Store a few of the things';`,
+					Expected: []sql.Row{},
+				},
+				{
+					Skip: true, // TODO: Implement shared database object comments
+					Query: `SELECT shobj_description(
+                 (SELECT oid FROM pg_tablespace WHERE spcname = 'tblspc_2'),
+                 'pg_tablespace');`,
+					Cols: []string{"shobj_description"},
+					Expected: []sql.Row{
+						{"Store a few of the things"},
 					},
 				},
 			},

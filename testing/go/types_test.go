@@ -1481,6 +1481,196 @@ var typesTests = []ScriptTest{
 		},
 	},
 	{
+		Name: "Regclass type",
+		SetUpScript: []string{
+			`CREATE TABLE testing (pk INT primary key, v1 INT UNIQUE);`,
+			`CREATE TABLE "Testing2" (pk INT primary key, v1 INT);`,
+			`CREATE VIEW testview AS SELECT * FROM testing LIMIT 1;`,
+		},
+		Assertions: []ScriptTestAssertion{
+			{
+				Query: `SELECT 'testing'::regclass;`,
+				Expected: []sql.Row{
+					{"testing"},
+				},
+			},
+			{
+				Query: `SELECT 'testview'::regclass;`,
+				Expected: []sql.Row{
+					{"testview"},
+				},
+			},
+			{
+				Query: `SELECT ' testing'::regclass;`,
+				Expected: []sql.Row{
+					{"testing"},
+				},
+			},
+			{
+				Query:       `SELECT 'Testing2'::regclass;`,
+				ExpectedErr: "does not exist",
+			},
+			{
+				Query: `SELECT '"Testing2"'::regclass;`,
+				Expected: []sql.Row{
+					{"Testing2"},
+				},
+			},
+			{ // This tests that an invalid OID returns itself in string form
+				Query: `SELECT 4294967295::regclass;`,
+				Expected: []sql.Row{
+					{"4294967295"},
+				},
+			},
+			{
+				Query: "SELECT relname FROM pg_catalog.pg_class WHERE oid = 'testing'::regclass;",
+				Expected: []sql.Row{
+					{"testing"},
+				},
+			},
+		},
+	},
+	{
+		Name: "Regproc type",
+		Assertions: []ScriptTestAssertion{
+			{
+				Query: `SELECT 'acos'::regproc;`,
+				Expected: []sql.Row{
+					{"acos"},
+				},
+			},
+			{
+				Query: `SELECT ' acos'::regproc;`,
+				Expected: []sql.Row{
+					{"acos"},
+				},
+			},
+			{
+				Query: `SELECT '"acos"'::regproc;`,
+				Expected: []sql.Row{
+					{"acos"},
+				},
+			},
+			{ // This tests that a raw OID properly converts
+				Query: `SELECT (('acos'::regproc)::oid)::regproc;`,
+				Expected: []sql.Row{
+					{"acos"},
+				},
+			},
+			{ // This tests that a string representing a raw OID converts the same as a raw OID
+				Query: `SELECT ((('acos'::regproc)::oid)::text)::regproc;`,
+				Expected: []sql.Row{
+					{"acos"},
+				},
+			},
+			{ // This tests that an invalid OID returns itself in string form
+				Query: `SELECT 4294967295::regproc;`,
+				Expected: []sql.Row{
+					{"4294967295"},
+				},
+			},
+			{
+				Query:       `SELECT '"Abs"'::regproc;`,
+				ExpectedErr: "does not exist",
+			},
+			{
+				Query:       `SELECT '"acos'::regproc;`,
+				ExpectedErr: "invalid name syntax",
+			},
+			{
+				Query:       `SELECT 'acos"'::regproc;`,
+				ExpectedErr: "does not exist",
+			},
+			{
+				Query:       `SELECT '""acos'::regproc;`,
+				ExpectedErr: "invalid name syntax",
+			},
+		},
+	},
+	{
+		Name: "Regtype type",
+		Assertions: []ScriptTestAssertion{
+			{
+				Skip:  true, // TODO: Column should be regtype, not "integer"
+				Query: `SELECT 'integer'::regtype;`,
+				Cols:  []string{"regtype"},
+				Expected: []sql.Row{
+					{"integer"},
+				},
+			},
+			{
+				Query: `SELECT 'integer'::regtype;`,
+				Expected: []sql.Row{
+					{"integer"},
+				},
+			},
+			{
+				Query: `SELECT 'int4'::regtype;`,
+				Expected: []sql.Row{
+					{"integer"},
+				},
+			},
+			{
+				Query: `SELECT 'float8'::regtype;`,
+				Expected: []sql.Row{
+					{"double precision"},
+				},
+			},
+			{
+				Query: `SELECT 'character varying'::regtype;`,
+				Expected: []sql.Row{
+					{"character varying"},
+				},
+			},
+			{
+				Query: `SELECT ' integer'::regtype;`,
+				Expected: []sql.Row{
+					{"integer"},
+				},
+			},
+			{
+				Query: `SELECT '"integer"'::regtype;`,
+				Expected: []sql.Row{
+					{"integer"},
+				},
+			},
+			{ // This tests that a raw OID properly converts
+				Query: `SELECT (('integer'::regtype)::oid)::regtype;`,
+				Expected: []sql.Row{
+					{"integer"},
+				},
+			},
+			{ // This tests that a string representing a raw OID converts the same as a raw OID
+				Query: `SELECT ((('integer'::regtype)::oid)::text)::regtype;`,
+				Expected: []sql.Row{
+					{"integer"},
+				},
+			},
+			{ // This tests that an invalid OID returns itself in string form
+				Query: `SELECT 4294967295::regtype;`,
+				Expected: []sql.Row{
+					{"4294967295"},
+				},
+			},
+			{
+				Query:       `SELECT '"Integer"'::regtype;`,
+				ExpectedErr: "does not exist",
+			},
+			{
+				Query:       `SELECT '"integer'::regtype;`,
+				ExpectedErr: "invalid name syntax",
+			},
+			{
+				Query:       `SELECT 'integer"'::regtype;`,
+				ExpectedErr: "does not exist",
+			},
+			{
+				Query:       `SELECT '""integer'::regtype;`,
+				ExpectedErr: "invalid name syntax",
+			},
+		},
+	},
+	{
 		Name: "Smallint type",
 		SetUpScript: []string{
 			"CREATE TABLE t_smallint (id INTEGER primary key, v1 SMALLINT);",
@@ -1576,6 +1766,12 @@ var typesTests = []ScriptTest{
 					{2, "23:45:01"},
 				},
 			},
+			{
+				Query: `SELECT '00:00:00'::time;`,
+				Expected: []sql.Row{
+					{"00:00:00"},
+				},
+			},
 		},
 	},
 	{ // TODO: timezone representation is reported via local time, need to account for that in testing?
@@ -1591,6 +1787,18 @@ var typesTests = []ScriptTest{
 				Expected: []sql.Row{
 					{1, "12:34:56 UTC"},
 					{2, "23:45:01 America/New_York"},
+				},
+			},
+			{
+				Query: `SELECT '00:00:00'::timetz;`,
+				Expected: []sql.Row{
+					{"00:00:00-07"},
+				},
+			},
+			{
+				Query: `SELECT '00:00:00-07'::timetz;`,
+				Expected: []sql.Row{
+					{"00:00:00-07"},
 				},
 			},
 		},
@@ -1609,6 +1817,18 @@ var typesTests = []ScriptTest{
 					{2, "2022-02-01 23:45:01"},
 				},
 			},
+			{
+				Query: "SELECT '2000-01-01'::timestamp;",
+				Expected: []sql.Row{
+					{"2000-01-01 00:00:00"},
+				},
+			},
+			{
+				Query: `SELECT '2000-01-01 00:00:00'::timestamp;`,
+				Expected: []sql.Row{
+					{"2000-01-01 00:00:00"},
+				},
+			},
 		},
 	},
 	{ // TODO: timezone representation is reported via local time, need to account for that in testing?
@@ -1624,6 +1844,18 @@ var typesTests = []ScriptTest{
 				Expected: []sql.Row{
 					{1, "2022-01-01 12:34:56 UTC"},
 					{2, "2022-02-01 23:45:01 America/New_York"},
+				},
+			},
+			{
+				Query: "SELECT '2000-01-01'::timestamptz;",
+				Expected: []sql.Row{
+					{"2000-01-01 00:00:00-08"},
+				},
+			},
+			{
+				Query: `SELECT '2000-01-01 00:00:00'::timestamptz;`,
+				Expected: []sql.Row{
+					{"2000-01-01 00:00:00-08"},
 				},
 			},
 		},
@@ -1954,6 +2186,35 @@ var typesTests = []ScriptTest{
 					{1, "<note><to>Tove</to><from>Jani</from><body>Don't forget me this weekend!</body></note>"},
 					{2, "<book><title>Introduction to Golang</title><author>John Doe</author></book>"},
 				},
+			},
+		},
+	},
+	{
+		Name: "Polymorphic types",
+		Assertions: []ScriptTestAssertion{
+			{
+				Query: "SELECT array_append(ARRAY[1], 2);",
+				Expected: []sql.Row{
+					{"{1,2}"},
+				},
+			},
+			{
+				Query: "SELECT array_append(ARRAY['abc','def'], 'ghi');",
+				Expected: []sql.Row{
+					{"{abc,def,ghi}"},
+				},
+			},
+			{
+				Query:       "SELECT array_append(1, 2);",
+				ExpectedErr: "does not exist",
+			},
+			{
+				Query:       "SELECT array_append(1, ARRAY[2]);",
+				ExpectedErr: "does not exist",
+			},
+			{
+				Query:       "SELECT array_append(ARRAY[1], ARRAY[2]);",
+				ExpectedErr: "does not exist",
 			},
 		},
 	},

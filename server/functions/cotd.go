@@ -32,13 +32,13 @@ func initCotd() {
 var cotd_float64 = framework.Function1{
 	Name:       "cotd",
 	Return:     pgtypes.Float64,
-	Parameters: []pgtypes.DoltgresType{pgtypes.Float64},
-	Callable: func(ctx *sql.Context, val1Interface any) (any, error) {
+	Parameters: [1]pgtypes.DoltgresType{pgtypes.Float64},
+	Strict:     true,
+	Callable: func(ctx *sql.Context, _ [2]pgtypes.DoltgresType, val1Interface any) (any, error) {
 		val1 := toRadians(val1Interface.(float64))
 		if val1 == 0 {
 			return math.Inf(1), nil
 		}
 		return math.Cos(val1) / math.Sin(val1), nil
 	},
-	Strict: true,
 }

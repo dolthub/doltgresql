@@ -166,6 +166,8 @@ func (o Operator) String() string {
 		return "|"
 	case Operator_BinaryBitXor:
 		return "#"
+	case Operator_BinaryConcatenate:
+		return "||"
 	default:
 		return "unknown operator"
 	}

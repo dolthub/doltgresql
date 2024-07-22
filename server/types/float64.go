@@ -113,15 +113,6 @@ func (b Float64Type) Equals(otherType sql.Type) bool {
 	return false
 }
 
-// FormatSerializedValue implements the DoltgresType interface.
-func (b Float64Type) FormatSerializedValue(val []byte) (string, error) {
-	deserialized, err := b.DeserializeValue(val)
-	if err != nil {
-		return "", err
-	}
-	return b.FormatValue(deserialized)
-}
-
 // FormatValue implements the DoltgresType interface.
 func (b Float64Type) FormatValue(val any) (string, error) {
 	if val == nil {
@@ -140,7 +131,7 @@ func (b Float64Type) GetSerializationID() SerializationID {
 }
 
 // IoInput implements the DoltgresType interface.
-func (b Float64Type) IoInput(input string) (any, error) {
+func (b Float64Type) IoInput(ctx *sql.Context, input string) (any, error) {
 	val, err := strconv.ParseFloat(strings.TrimSpace(input), 64)
 	if err != nil {
 		return nil, fmt.Errorf("invalid input syntax for type %s: %q", b.String(), input)
@@ -149,7 +140,7 @@ func (b Float64Type) IoInput(input string) (any, error) {
 }
 
 // IoOutput implements the DoltgresType interface.
-func (b Float64Type) IoOutput(output any) (string, error) {
+func (b Float64Type) IoOutput(ctx *sql.Context, output any) (string, error) {
 	converted, _, err := b.Convert(output)
 	if err != nil {
 		return "", err

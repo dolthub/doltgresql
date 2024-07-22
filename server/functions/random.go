@@ -30,11 +30,11 @@ func initRandom() {
 
 // random represents the PostgreSQL function of the same name, taking the same parameters.
 var random = framework.Function0{
-	Name:       "random",
-	Return:     pgtypes.Float64,
-	Parameters: []pgtypes.DoltgresType{},
+	Name:               "random",
+	Return:             pgtypes.Float64,
+	IsNonDeterministic: true,
+	Strict:             true,
 	Callable: func(ctx *sql.Context) (any, error) {
 		return rand.Float64(), nil
 	},
-	Strict: true,
 }

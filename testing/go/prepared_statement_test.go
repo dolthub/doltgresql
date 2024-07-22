@@ -26,6 +26,10 @@ func TestPreparedStatements(t *testing.T) {
 	RunScripts(t, preparedStatementTests)
 }
 
+func TestPreparedPgCatalog(t *testing.T) {
+	RunScripts(t, pgCatalogTests)
+}
+
 var preparedStatementTests = []ScriptTest{
 	{
 		Name: "Expressions without tables",
@@ -319,6 +323,46 @@ var preparedStatementTests = []ScriptTest{
 				Expected: []sql.Row{
 					{3, 3.3},
 				},
+			},
+		},
+	},
+}
+
+var pgCatalogTests = []ScriptTest{
+	{
+		Name: "pg_namespace",
+		SetUpScript: []string{
+			`CREATE SCHEMA testschema;`,
+		},
+		Assertions: []ScriptTestAssertion{
+			{
+				Query:    `SELECT * FROM "pg_catalog"."pg_namespace" WHERE nspname=$1;`,
+				BindVars: []any{"testschema"},
+				Expected: []sql.Row{{1879048194, "testschema", 0, nil}},
+			},
+			{
+				Skip:     true, // TODO: Getting ERROR: cannot scan oid (OID 26) in binary format into *string
+				Query:    `SELECT * FROM "pg_catalog"."pg_namespace" WHERE oid=$1;`,
+				BindVars: []any{1879048194},
+				Expected: []sql.Row{{1879048194, "testschema", 0, nil}},
+			},
+		},
+	},
+	{
+		Name: "pg_tables",
+		SetUpScript: []string{
+			`CREATE TABLE testing (pk INT primary key, v1 INT);`,
+		},
+		Assertions: []ScriptTestAssertion{
+			{
+				Query:    `SELECT * FROM "pg_catalog"."pg_tables" WHERE tablename=$1;`,
+				BindVars: []any{"testing"},
+				Expected: []sql.Row{{"public", "testing", "", "", "t", "f", "f", "f"}},
+			},
+			{
+				Query:    `SELECT count(*) FROM "pg_catalog"."pg_tables" WHERE schemaname=$1;`,
+				BindVars: []any{"pg_catalog"},
+				Expected: []sql.Row{{139}},
 			},
 		},
 	},

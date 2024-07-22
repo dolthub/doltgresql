@@ -23,6 +23,7 @@ import (
 
 	"github.com/dolthub/doltgresql/server/tables"
 	pgtypes "github.com/dolthub/doltgresql/server/types"
+	"github.com/dolthub/doltgresql/server/types/oid"
 )
 
 // PgTypeName is a constant to the pg_type name.
@@ -45,8 +46,17 @@ func (p PgTypeHandler) Name() string {
 
 // RowIter implements the interface tables.Handler.
 func (p PgTypeHandler) RowIter(ctx *sql.Context) (sql.RowIter, error) {
-	doltgresPgTypes := pgtypes.GetPgTypes()
-	return &pgTypeRowIter{types: doltgresPgTypes, idx: 0}, nil
+	var displayTypes []pgtypes.DoltgresType
+	err := oid.IterateCurrentDatabase(ctx, oid.Callbacks{
+		Type: func(ctx *sql.Context, typ oid.ItemType) (cont bool, err error) {
+			displayTypes = append(displayTypes, typ.Item)
+			return true, nil
+		},
+	})
+	if err != nil {
+		return nil, err
+	}
+	return &pgTypeRowIter{types: displayTypes, idx: 0}, nil
 }
 
 // Schema implements the interface tables.Handler.

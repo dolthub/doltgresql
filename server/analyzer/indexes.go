@@ -55,6 +55,10 @@ func IndexLeafChildren(e sql.Expression) (analyzer.IndexScanOp, sql.Expression, 
 		default:
 			return 0, nil, nil, false
 		}
+	case *pgexprs.InTuple:
+		op = analyzer.IndexScanOpInSet
+		left = expr.Left()
+		right = expr.Right()
 	default:
 		return 0, nil, nil, false
 	}
@@ -76,6 +80,13 @@ func IndexLeafChildren(e sql.Expression) (analyzer.IndexScanOp, sql.Expression, 
 	}
 	rightType, ok := right.Type().(pgtypes.DoltgresType)
 	if !ok {
+		if tuple, ok := right.(expression.Tuple); ok {
+			newTuple := make(expression.Tuple, len(tuple))
+			for i := range tuple {
+				newTuple[i] = pgexprs.NewExplicitCast(tuple[i], leftType)
+			}
+			return op, left, newTuple, true
+		}
 		return 0, nil, nil, false
 	}
 	if !leftType.Equals(rightType) {

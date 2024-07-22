@@ -21,22 +21,22 @@ import (
 	pgtypes "github.com/dolthub/doltgresql/server/types"
 )
 
-// initCurrentCatalog registers the functions to the catalog.
-func initCurrentCatalog() {
-	framework.RegisterFunction(current_catalog)
+// initShobjDescription registers the functions to the catalog.
+func initShobjDescription() {
+	framework.RegisterFunction(shobj_description)
 }
 
-// current_catalog represents the PostgreSQL system information function of the same name, taking no parameters.
-var current_catalog = framework.Function0{
-	Name:               "current_catalog",
-	Return:             pgtypes.Name,
-	Parameters:         []pgtypes.DoltgresType{},
+// shobj_description represents the PostgreSQL function of the same name, taking the same parameters.
+var shobj_description = framework.Function2{
+	Name:               "shobj_description",
+	Return:             pgtypes.Text,
+	Parameters:         [2]pgtypes.DoltgresType{pgtypes.Oid, pgtypes.Name},
 	IsNonDeterministic: true,
-	Callable: func(ctx *sql.Context) (any, error) {
-		if ctx.GetCurrentDatabase() == "" {
-			return nil, nil
-		}
-		return ctx.GetCurrentDatabase(), nil
+	Strict:             true,
+	Callable: func(ctx *sql.Context, _ [3]pgtypes.DoltgresType, val1 any, val2 any) (any, error) {
+		// TODO: When we support comments this should return the comment for a
+		// shared database object specified by its OID and the name of the
+		// containing system catalog.
+		return "", nil
 	},
-	Strict: true,
 }

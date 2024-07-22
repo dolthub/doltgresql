@@ -31,9 +31,10 @@ func initNextVal() {
 var nextval_text = framework.Function1{
 	Name:               "nextval",
 	Return:             pgtypes.Int64,
-	Parameters:         []pgtypes.DoltgresType{pgtypes.Text},
+	Parameters:         [1]pgtypes.DoltgresType{pgtypes.Text},
 	IsNonDeterministic: true,
-	Callable: func(ctx *sql.Context, val1 any) (any, error) {
+	Strict:             true,
+	Callable: func(ctx *sql.Context, _ [2]pgtypes.DoltgresType, val1 any) (any, error) {
 		collection, err := core.GetCollectionFromContext(ctx)
 		if err != nil {
 			return nil, err
@@ -45,5 +46,4 @@ var nextval_text = framework.Function1{
 		}
 		return collection.NextVal(schema, val1.(string))
 	},
-	Strict: true,
 }

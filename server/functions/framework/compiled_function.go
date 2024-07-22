@@ -35,6 +35,7 @@ type CompiledFunction struct {
 	callableFunc  FunctionInterface
 	casts         []TypeCastFunction
 	originalTypes []pgtypes.DoltgresType
+	callResolved  []pgtypes.DoltgresType
 	stashedErr    error
 }
 
@@ -73,6 +74,32 @@ func newCompiledFunctionInternal(name string, params []sql.Expression, funcs *Ov
 		c.stashedErr = fmt.Errorf("function %s does not exist", c.OverloadString(originalTypes))
 		return c
 	}
+	// Then we'll handle the polymorphic types
+	// https://www.postgresql.org/docs/15/extend-type-system.html#EXTEND-TYPES-POLYMORPHIC
+	functionParameterTypes := overload.Function.GetParameters()
+	c.callResolved = make([]pgtypes.DoltgresType, len(functionParameterTypes)+1)
+	hasPolymorphicParam := false
+	for i, param := range functionParameterTypes {
+		if _, ok := param.(pgtypes.DoltgresPolymorphicType); ok {
+			// resolve will ensure that the parameter types are valid, so we can just assign them here
+			hasPolymorphicParam = true
+			c.callResolved[i] = originalTypes[i]
+		} else {
+			c.callResolved[i] = param
+		}
+	}
+	returnType := overload.Function.GetReturn()
+	c.callResolved[len(c.callResolved)-1] = returnType
+	if _, ok := returnType.(pgtypes.DoltgresPolymorphicType); ok {
+		if hasPolymorphicParam {
+			c.callResolved[len(c.callResolved)-1] = c.resolvePolymorphicReturnType(functionParameterTypes, originalTypes, returnType)
+		} else {
+			c.stashedErr = fmt.Errorf("A result of type %s requires at least one input of type "+
+				"anyelement, anyarray, anynonarray, anyenum, anyrange, or anymultirange.", returnType.String())
+			return c
+		}
+	}
+	// Lastly, we assign everything to the function struct
 	c.callableFunc = overload.Function
 	c.casts = casts
 	c.originalTypes = originalTypes
@@ -137,11 +164,10 @@ func (c *CompiledFunction) OverloadString(types []pgtypes.DoltgresType) string {
 
 // Type implements the interface sql.Expression.
 func (c *CompiledFunction) Type() sql.Type {
-	parameters, sources := c.possibleParameterTypes()
-	if resolvedFunction, _, _ := c.resolve(parameters, sources); resolvedFunction != nil {
-		return resolvedFunction.Function.GetReturn()
+	if len(c.callResolved) > 0 {
+		return c.callResolved[len(c.callResolved)-1]
 	}
-	// We can't resolve to a function before evaluation in this case, so we'll return something arbitrary
+	// Compilation must have errored, so we'll return the unknown type
 	return pgtypes.Unknown
 }
 
@@ -153,12 +179,10 @@ func (c *CompiledFunction) IsNullable() bool {
 
 // IsNonDeterministic implements the interface sql.NonDeterministicExpression.
 func (c *CompiledFunction) IsNonDeterministic() bool {
-	// TODO: determine if this needs to inspect the parameters as well
-	parameters, sources := c.possibleParameterTypes()
-	if resolvedFunction, _, _ := c.resolve(parameters, sources); resolvedFunction != nil {
-		return resolvedFunction.Function.GetIsNonDeterministic()
+	if c.callableFunc != nil {
+		return c.callableFunc.GetIsNonDeterministic()
 	}
-	// We can't resolve to a function before evaluation in this case, so we'll return true to be on the safe side
+	// Compilation must have errored, so we'll just return true
 	return true
 }
 
@@ -202,13 +226,13 @@ func (c *CompiledFunction) Eval(ctx *sql.Context, row sql.Row) (interface{}, err
 	case Function0:
 		return f.Callable(ctx)
 	case Function1:
-		return f.Callable(ctx, parameters[0])
+		return f.Callable(ctx, ([2]pgtypes.DoltgresType)(c.callResolved), parameters[0])
 	case Function2:
-		return f.Callable(ctx, parameters[0], parameters[1])
+		return f.Callable(ctx, ([3]pgtypes.DoltgresType)(c.callResolved), parameters[0], parameters[1])
 	case Function3:
-		return f.Callable(ctx, parameters[0], parameters[1], parameters[2])
+		return f.Callable(ctx, ([4]pgtypes.DoltgresType)(c.callResolved), parameters[0], parameters[1], parameters[2])
 	case Function4:
-		return f.Callable(ctx, parameters[0], parameters[1], parameters[2], parameters[3])
+		return f.Callable(ctx, ([5]pgtypes.DoltgresType)(c.callResolved), parameters[0], parameters[1], parameters[2], parameters[3])
 	default:
 		return nil, fmt.Errorf("unknown function type in CompiledFunction::Eval")
 	}
@@ -257,8 +281,15 @@ func (c *CompiledFunction) resolveFunction(parameters []pgtypes.DoltgresType, so
 		if len(overload) == len(parameters) {
 			isConvertible := true
 			overloadCasts := make([]TypeCastFunction, len(overload))
+			// Polymorphic parameters must be gathered so that we can later verify that they all have matching base types
+			var polymorphicParameters []pgtypes.DoltgresType
+			var polymorphicTargets []pgtypes.DoltgresType
 			for i, overloadParam := range overload {
-				if overloadCasts[i] = GetImplicitCast(parameters[i].BaseID(), overloadParam); overloadCasts[i] == nil {
+				if polymorphicType, ok := overloadParam.GetRepresentativeType().(pgtypes.DoltgresPolymorphicType); ok && polymorphicType.IsValid(parameters[i]) {
+					overloadCasts[i] = identityCast
+					polymorphicParameters = append(polymorphicParameters, polymorphicType)
+					polymorphicTargets = append(polymorphicTargets, parameters[i])
+				} else if overloadCasts[i] = GetImplicitCast(parameters[i].BaseID(), overloadParam); overloadCasts[i] == nil {
 					if sources[i] == Source_Constant && parameters[i].BaseID().GetTypeCategory() == pgtypes.TypeCategory_StringTypes {
 						overloadCasts[i] = stringLiteralCast
 					} else {
@@ -267,7 +298,7 @@ func (c *CompiledFunction) resolveFunction(parameters []pgtypes.DoltgresType, so
 					}
 				}
 			}
-			if isConvertible {
+			if isConvertible && c.checkPolymorphicTypes(polymorphicParameters, polymorphicTargets) {
 				convertibles = append(convertibles, overload)
 				casts = append(casts, overloadCasts)
 			}
@@ -375,6 +406,94 @@ func (c *CompiledFunction) resolveOperator(parameters []pgtypes.DoltgresType, so
 	return c.resolveFunction(parameters, sources)
 }
 
+// checkPolymorphicTypes looks at all polymorphic types and ensures that the types assigned to each are compatible
+func (c *CompiledFunction) checkPolymorphicTypes(paramTypes []pgtypes.DoltgresType, exprTypes []pgtypes.DoltgresType) bool {
+	if len(paramTypes) != len(exprTypes) {
+		return false
+	}
+	// If there are less than two parameters then we don't even need to check
+	if len(paramTypes) < 2 {
+		return true
+	}
+	// If one of the types is anyarray, then anyelement behaves as anynonarray, so we can convert them to anynonarray
+	for _, paramType := range paramTypes {
+		if polymorphicParamType, ok := paramType.(pgtypes.DoltgresPolymorphicType); ok && polymorphicParamType.BaseID() == pgtypes.DoltgresTypeBaseID_AnyArray {
+			// At least one parameter is anyarray, so copy all parameters to a new slice and replace anyelement with anynonarray
+			newParamTypes := make([]pgtypes.DoltgresType, len(paramTypes))
+			copy(newParamTypes, paramTypes)
+			for i := range newParamTypes {
+				if paramTypes[i].BaseID() == pgtypes.DoltgresTypeBaseID_AnyElement {
+					newParamTypes[i] = pgtypes.AnyNonArray
+				}
+			}
+			paramTypes = newParamTypes
+			break
+		}
+	}
+	// The base type is the type that must match between all polymorphic types.
+	var baseType pgtypes.DoltgresType
+	for i, paramType := range paramTypes {
+		if polymorphicParamType, ok := paramType.(pgtypes.DoltgresPolymorphicType); ok {
+			// Although we do this check before we ever reach this function, we do it again as we may convert anyelement
+			// to anynonarray, which changes type validity
+			if !polymorphicParamType.IsValid(exprTypes[i]) {
+				return false
+			}
+			// Get the base expression type that we'll compare against
+			baseExprType := exprTypes[i]
+			if arrayBaseExprType, ok := baseExprType.(pgtypes.DoltgresArrayType); ok {
+				baseExprType = arrayBaseExprType.BaseType()
+			}
+			// TODO: handle range types
+			// Check that the base expression type matches the previously-found base type
+			if baseType == nil {
+				baseType = baseExprType
+			} else if baseType.BaseID() != baseExprType.BaseID() {
+				return false
+			}
+		}
+	}
+	return true
+}
+
+// resolvePolymorphicReturnType returns the type that should be used for the return type. If the return type is not a
+// polymorphic type, then the return type is directly returned. However, if the return type is a polymorphic type, then
+// the type is determined using the expression types and parameter types. This makes the assumption that everything has
+// already been validated.
+func (c *CompiledFunction) resolvePolymorphicReturnType(functionInterfaceTypes []pgtypes.DoltgresType, originalTypes []pgtypes.DoltgresType, returnType pgtypes.DoltgresType) pgtypes.DoltgresType {
+	polymorphicReturnType, ok := returnType.(pgtypes.DoltgresPolymorphicType)
+	if !ok {
+		return returnType
+	}
+	// We can use the first polymorphic type that we find, since we can morph it into any type that we need.
+	// We've verified that all polymorphic types are compatible in a previous step, so this is safe to do.
+	var firstPolymorphicType pgtypes.DoltgresType
+	for i, functionInterfaceType := range functionInterfaceTypes {
+		if _, ok = functionInterfaceType.(pgtypes.DoltgresPolymorphicType); ok {
+			firstPolymorphicType = originalTypes[i]
+			break
+		}
+	}
+	switch polymorphicReturnType.BaseID() {
+	case pgtypes.DoltgresTypeBaseID_AnyElement, pgtypes.DoltgresTypeBaseID_AnyNonArray:
+		// For return types, anyelement behaves the same as anynonarray.
+		// This isn't explicitly in the documentation, however it does note that:
+		// "...anynonarray and anyenum do not represent separate type variables; they are the same type as anyelement..."
+		// The implication of this being that anyelement will always return the base type even for array types,
+		// just like anynonarray would.
+		if minimalArrayType, ok := firstPolymorphicType.(pgtypes.DoltgresArrayType); ok {
+			return minimalArrayType.BaseType()
+		} else {
+			return firstPolymorphicType
+		}
+	case pgtypes.DoltgresTypeBaseID_AnyArray:
+		// Array types will return themselves, so this is safe
+		return firstPolymorphicType.ToArrayType()
+	default:
+		panic(fmt.Errorf("`%s` is not yet handled during function compilation", polymorphicReturnType.String()))
+	}
+}
+
 // evalParameters evaluates the parameters within an Eval call.
 func (c *CompiledFunction) evalParameters(ctx *sql.Context, row sql.Row) ([]any, error) {
 	parameters := make([]any, len(c.Parameters))
@@ -447,7 +566,7 @@ func (c *CompiledFunction) analyzeParameters() (originalTypes []pgtypes.Doltgres
 			case query.Type_DECIMAL:
 				originalTypes[i] = pgtypes.Numeric
 			case query.Type_DATE, query.Type_DATETIME, query.Type_TIMESTAMP:
-				return nil, nil, fmt.Errorf("need to add DoltgresType equivalents to DATETIME")
+				originalTypes[i] = pgtypes.Timestamp
 			case query.Type_CHAR, query.Type_VARCHAR, query.Type_TEXT:
 				originalTypes[i] = pgtypes.Text
 			case query.Type_ENUM:
@@ -478,50 +597,4 @@ func (c *CompiledFunction) determineSource(expr sql.Expression) Source {
 		}
 		return Source_Expression
 	}
-}
-
-// possibleParameterTypes returns the parameter types of all of the expressions. This is accomplished by gathering the
-// return types of each parameter.
-func (c *CompiledFunction) possibleParameterTypes() ([]pgtypes.DoltgresType, []Source) {
-	possibleParamTypes := make([]pgtypes.DoltgresType, len(c.Parameters))
-	sources := make([]Source, len(c.Parameters))
-	for i, param := range c.Parameters {
-		expressionType := param.Type()
-		if extendedType, ok := expressionType.(pgtypes.DoltgresType); ok {
-			possibleParamTypes[i] = extendedType
-		} else {
-			// TODO: we need to remove GMS types from all of our expressions so that we can remove this
-			switch param.Type().Type() {
-			case query.Type_INT8, query.Type_INT16:
-				possibleParamTypes[i] = pgtypes.Int16
-			case query.Type_INT24, query.Type_INT32:
-				possibleParamTypes[i] = pgtypes.Int32
-			case query.Type_INT64:
-				possibleParamTypes[i] = pgtypes.Int64
-			case query.Type_UINT8, query.Type_UINT16, query.Type_UINT24, query.Type_UINT32, query.Type_UINT64:
-				possibleParamTypes[i] = pgtypes.Int64
-			case query.Type_YEAR:
-				possibleParamTypes[i] = pgtypes.Int16
-			case query.Type_FLOAT32:
-				possibleParamTypes[i] = pgtypes.Float32
-			case query.Type_FLOAT64:
-				possibleParamTypes[i] = pgtypes.Float64
-			case query.Type_DECIMAL:
-				possibleParamTypes[i] = pgtypes.Numeric
-			case query.Type_DATE, query.Type_DATETIME, query.Type_TIMESTAMP:
-				// TODO: need to add DoltgresType equivalents to DATETIME
-				possibleParamTypes[i] = pgtypes.Null
-			case query.Type_CHAR, query.Type_VARCHAR:
-				possibleParamTypes[i] = pgtypes.Text
-			case query.Type_ENUM:
-				possibleParamTypes[i] = pgtypes.Int16
-			case query.Type_SET:
-				possibleParamTypes[i] = pgtypes.Int64
-			default:
-				possibleParamTypes[i] = pgtypes.Null
-			}
-		}
-		sources[i] = c.determineSource(param)
-	}
-	return possibleParamTypes, sources
 }

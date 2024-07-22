@@ -33,11 +33,9 @@ func initSubstr() {
 var substr_varchar_int32 = framework.Function2{
 	Name:       "substr",
 	Return:     pgtypes.VarChar,
-	Parameters: []pgtypes.DoltgresType{pgtypes.VarChar, pgtypes.Int32},
-	Callable: func(ctx *sql.Context, str any, start any) (any, error) {
-		if str == nil || start == nil {
-			return nil, nil
-		}
+	Parameters: [2]pgtypes.DoltgresType{pgtypes.VarChar, pgtypes.Int32},
+	Strict:     true,
+	Callable: func(ctx *sql.Context, _ [3]pgtypes.DoltgresType, str any, start any) (any, error) {
 		runes := []rune(str.(string))
 		if start.(int32) < 1 {
 			start = int32(1)
@@ -49,15 +47,15 @@ var substr_varchar_int32 = framework.Function2{
 		}
 		return string(runes[start.(int32):]), nil
 	},
-	Strict: true,
 }
 
 // substr_varchar_int32_int32 represents the PostgreSQL function of the same name, taking the same parameters.
 var substr_varchar_int32_int32 = framework.Function3{
 	Name:       "substr",
 	Return:     pgtypes.VarChar,
-	Parameters: []pgtypes.DoltgresType{pgtypes.VarChar, pgtypes.Int32, pgtypes.Int32},
-	Callable: func(ctx *sql.Context, str any, startInt any, countInt any) (any, error) {
+	Parameters: [3]pgtypes.DoltgresType{pgtypes.VarChar, pgtypes.Int32, pgtypes.Int32},
+	Strict:     true,
+	Callable: func(ctx *sql.Context, _ [4]pgtypes.DoltgresType, str any, startInt any, countInt any) (any, error) {
 		start := startInt.(int32)
 		count := countInt.(int32)
 		runes := []rune(str.(string))
@@ -80,5 +78,4 @@ var substr_varchar_int32_int32 = framework.Function3{
 		}
 		return string(runes[start : start+count]), nil
 	},
-	Strict: true,
 }

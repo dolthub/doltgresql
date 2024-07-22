@@ -3194,5 +3194,90 @@ func TestOperators(t *testing.T) {
 				},
 			},
 		},
+		{
+			Name: "Concatenate",
+			Assertions: []ScriptTestAssertion{
+				{
+					Query:    `SELECT 'Hello, ' || 'World!';`,
+					Expected: []sql.Row{{"Hello, World!"}},
+				},
+				{
+					Query:    `SELECT '123' || '456';`,
+					Expected: []sql.Row{{"123456"}},
+				},
+				{
+					Query:    `SELECT 'foo' || 'bar' || 'baz';`,
+					Expected: []sql.Row{{"foobarbaz"}},
+				},
+				{
+					Query:    `SELECT 123 || '456';`,
+					Expected: []sql.Row{{"123456"}},
+				},
+				{
+					Query:    `SELECT '123' || 456;`,
+					Expected: []sql.Row{{"123456"}},
+				},
+				{
+					Query:    `SELECT '123' || 4.56;`,
+					Expected: []sql.Row{{"1234.56"}},
+				},
+				{
+					Query:    `SELECT 12.3 || '4.56';`,
+					Expected: []sql.Row{{"12.34.56"}},
+				},
+				{
+					Query:    `SELECT true || 'bar' || false;`,
+					Expected: []sql.Row{{"truebarfalse"}},
+				},
+				{
+					Query:    `SELECT '2000-01-01 00:00:00'::timestamp || ' happy new year';`,
+					Expected: []sql.Row{{"2000-01-01 00:00:00 happy new year"}},
+				},
+				{
+					Query:    `SELECT 'hello ' || '2000-01-01 00:00:00'::timestamp ;`,
+					Expected: []sql.Row{{"hello 2000-01-01 00:00:00"}},
+				},
+				{
+					Query:    `SELECT '2000-01-01'::timestamp || ' happy new year';`,
+					Expected: []sql.Row{{"2000-01-01 00:00:00 happy new year"}},
+				},
+				{
+					Query:    `SELECT '2000-01-01 00:00:00-08'::timestamptz || ' happy new year';`,
+					Expected: []sql.Row{{"2000-01-01 00:00:00-08 happy new year"}},
+				},
+				{
+					Query:    `SELECT 'hello ' || '2000-01-01 00:00:00-08'::timestamptz;`,
+					Expected: []sql.Row{{"hello 2000-01-01 00:00:00-08"}},
+				},
+				{
+					Query:    `SELECT '00:00:00'::time || ' midnight';`,
+					Expected: []sql.Row{{"00:00:00 midnight"}},
+				},
+				{
+					Query:    `SELECT 'midnight ' || '00:00:00'::time;`,
+					Expected: []sql.Row{{"midnight 00:00:00"}},
+				},
+				{
+					Query:    `SELECT '00:00:00-07'::timetz || ' midnight';`,
+					Expected: []sql.Row{{"00:00:00-07 midnight"}},
+				},
+				{
+					Query:    `SELECT 'midnight ' || '00:00:00-07'::timetz ;`,
+					Expected: []sql.Row{{"midnight 00:00:00-07"}},
+				},
+				{
+					Query:    `SELECT 'foo'::bytea || 'bar';`,
+					Expected: []sql.Row{{[]byte{0x66, 0x6F, 0x6F, 0x62, 0x61, 0x72}}},
+				},
+				{
+					Query:    `SELECT 'bar' || 'foo'::bytea;`,
+					Expected: []sql.Row{{[]byte{0x62, 0x61, 0x72, 0x66, 0x6F, 0x6F}}},
+				},
+				{
+					Query:    `SELECT '\xDEADBEEF'::bytea || '\xCAFEBABE'::bytea;`,
+					Expected: []sql.Row{{[]byte{0xDE, 0xAD, 0xBE, 0xEF, 0xCA, 0xFE, 0xBA, 0xBE}}},
+				},
+			},
+		},
 	})
 }

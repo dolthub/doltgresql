@@ -33,13 +33,13 @@ func initAtan2() {
 var atan2_float64 = framework.Function2{
 	Name:       "atan2",
 	Return:     pgtypes.Float64,
-	Parameters: []pgtypes.DoltgresType{pgtypes.Float64, pgtypes.Float64},
-	Callable: func(ctx *sql.Context, y any, x any) (any, error) {
+	Parameters: [2]pgtypes.DoltgresType{pgtypes.Float64, pgtypes.Float64},
+	Strict:     true,
+	Callable: func(ctx *sql.Context, _ [3]pgtypes.DoltgresType, y any, x any) (any, error) {
 		r := math.Atan2(y.(float64), x.(float64))
 		if math.IsNaN(r) {
 			return nil, fmt.Errorf("input is out of range")
 		}
 		return r, nil
 	},
-	Strict: true,
 }

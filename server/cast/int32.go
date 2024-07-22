@@ -93,4 +93,25 @@ func int32Implicit() {
 			return uint32(val.(int32)), nil
 		},
 	})
+	framework.MustAddImplicitTypeCast(framework.TypeCast{
+		FromType: pgtypes.Int32,
+		ToType:   pgtypes.Regclass,
+		Function: func(ctx *sql.Context, val any, targetType pgtypes.DoltgresType) (any, error) {
+			return uint32(val.(int32)), nil
+		},
+	})
+	framework.MustAddImplicitTypeCast(framework.TypeCast{
+		FromType: pgtypes.Int32,
+		ToType:   pgtypes.Regproc,
+		Function: func(ctx *sql.Context, val any, targetType pgtypes.DoltgresType) (any, error) {
+			return uint32(val.(int32)), nil
+		},
+	})
+	framework.MustAddImplicitTypeCast(framework.TypeCast{
+		FromType: pgtypes.Int32,
+		ToType:   pgtypes.Regtype,
+		Function: func(ctx *sql.Context, val any, targetType pgtypes.DoltgresType) (any, error) {
+			return uint32(val.(int32)), nil
+		},
+	})
 }

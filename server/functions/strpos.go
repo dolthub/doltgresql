@@ -32,13 +32,13 @@ func initStrpos() {
 var strpos_varchar = framework.Function2{
 	Name:       "strpos",
 	Return:     pgtypes.Int32,
-	Parameters: []pgtypes.DoltgresType{pgtypes.VarChar, pgtypes.VarChar},
-	Callable: func(ctx *sql.Context, str any, substring any) (any, error) {
+	Parameters: [2]pgtypes.DoltgresType{pgtypes.VarChar, pgtypes.VarChar},
+	Strict:     true,
+	Callable: func(ctx *sql.Context, _ [3]pgtypes.DoltgresType, str any, substring any) (any, error) {
 		idx := strings.Index(str.(string), substring.(string))
 		if idx == -1 {
 			return int32(0), nil
 		}
 		return int32(idx + 1), nil
 	},
-	Strict: true,
 }

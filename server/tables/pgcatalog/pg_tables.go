@@ -17,12 +17,11 @@ package pgcatalog
 import (
 	"io"
 
-	"github.com/dolthub/dolt/go/libraries/doltcore/sqle/dsess"
-	sqle "github.com/dolthub/go-mysql-server"
 	"github.com/dolthub/go-mysql-server/sql"
 
 	"github.com/dolthub/doltgresql/server/tables"
 	pgtypes "github.com/dolthub/doltgresql/server/types"
+	"github.com/dolthub/doltgresql/server/types/oid"
 )
 
 // PgTablesName is a constant to the pg_tables name.
@@ -45,24 +44,16 @@ func (p PgTablesHandler) Name() string {
 
 // RowIter implements the interface tables.Handler.
 func (p PgTablesHandler) RowIter(ctx *sql.Context) (sql.RowIter, error) {
-	doltSession := dsess.DSessFromSess(ctx.Session)
-	c := sqle.NewDefault(doltSession.Provider()).Analyzer.Catalog
-
 	var tables []sql.Table
 	var schemas []string
 
 	// TODO: This should include a few information_schema tables
-	_, err := currentDatabaseSchemaIter(ctx, c, func(sch sql.DatabaseSchema) (bool, error) {
-		err := sql.DBTableIter(ctx, sch, func(t sql.Table) (cont bool, err error) {
-			tables = append(tables, t)
-			schemas = append(schemas, sch.SchemaName())
+	err := oid.IterateCurrentDatabase(ctx, oid.Callbacks{
+		Table: func(ctx *sql.Context, schema oid.ItemSchema, table oid.ItemTable) (cont bool, err error) {
+			tables = append(tables, table.Item)
+			schemas = append(schemas, schema.Item.SchemaName())
 			return true, nil
-		})
-		if err != nil {
-			return false, err
-		}
-
-		return true, nil
+		},
 	})
 	if err != nil {
 		return nil, err

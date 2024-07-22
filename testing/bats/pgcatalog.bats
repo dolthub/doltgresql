@@ -48,7 +48,7 @@ teardown() {
   [[ "$output" =~ "attname" ]] || false
   [ "${#lines[@]}" -eq 1 ]
 
-    run query_server_for_db newdb --csv -c "SELECT relname FROM pg_catalog.pg_class WHERE relname = 'test1';"
+  run query_server_for_db newdb --csv -c "SELECT relname FROM pg_catalog.pg_class WHERE relname = 'test1';"
   [ "$status" -eq 0 ]
   [[ "$output" =~ "relname" ]] || false
   [ "${#lines[@]}" -eq 1 ]

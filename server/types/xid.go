@@ -87,21 +87,12 @@ func (b XidType) Equals(otherType sql.Type) bool {
 	return false
 }
 
-// FormatSerializedValue implements the DoltgresType interface.
-func (b XidType) FormatSerializedValue(val []byte) (string, error) {
-	deserialized, err := b.DeserializeValue(val)
-	if err != nil {
-		return "", err
-	}
-	return b.FormatValue(deserialized)
-}
-
 // FormatValue implements the DoltgresType interface.
 func (b XidType) FormatValue(val any) (string, error) {
 	if val == nil {
 		return "", nil
 	}
-	return b.IoOutput(val)
+	return b.IoOutput(sql.NewEmptyContext(), val)
 }
 
 // GetSerializationID implements the DoltgresType interface.
@@ -110,7 +101,7 @@ func (b XidType) GetSerializationID() SerializationID {
 }
 
 // IoInput implements the DoltgresType interface.
-func (b XidType) IoInput(input string) (any, error) {
+func (b XidType) IoInput(ctx *sql.Context, input string) (any, error) {
 	val, err := strconv.ParseInt(strings.TrimSpace(input), 10, 64)
 	if err != nil {
 		return uint32(0), nil
@@ -119,7 +110,7 @@ func (b XidType) IoInput(input string) (any, error) {
 }
 
 // IoOutput implements the DoltgresType interface.
-func (b XidType) IoOutput(output any) (string, error) {
+func (b XidType) IoOutput(ctx *sql.Context, output any) (string, error) {
 	converted, _, err := b.Convert(output)
 	if err != nil {
 		return "", err
@@ -175,7 +166,7 @@ func (b XidType) SQL(ctx *sql.Context, dest []byte, v any) (sqltypes.Value, erro
 	if v == nil {
 		return sqltypes.NULL, nil
 	}
-	value, err := b.FormatValue(v)
+	value, err := b.IoOutput(ctx, v)
 	if err != nil {
 		return sqltypes.Value{}, err
 	}

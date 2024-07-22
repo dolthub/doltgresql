@@ -35,31 +35,31 @@ func initBinaryBitAnd() {
 var int2and = framework.Function2{
 	Name:       "int2and",
 	Return:     pgtypes.Int16,
-	Parameters: []pgtypes.DoltgresType{pgtypes.Int16, pgtypes.Int16},
-	Callable: func(ctx *sql.Context, val1 any, val2 any) (any, error) {
+	Parameters: [2]pgtypes.DoltgresType{pgtypes.Int16, pgtypes.Int16},
+	Strict:     true,
+	Callable: func(ctx *sql.Context, _ [3]pgtypes.DoltgresType, val1 any, val2 any) (any, error) {
 		return int16(val1.(int16) & val2.(int16)), nil
 	},
-	Strict: true,
 }
 
 // int4and represents the PostgreSQL function of the same name, taking the same parameters.
 var int4and = framework.Function2{
 	Name:       "int4and",
 	Return:     pgtypes.Int32,
-	Parameters: []pgtypes.DoltgresType{pgtypes.Int32, pgtypes.Int32},
-	Callable: func(ctx *sql.Context, val1 any, val2 any) (any, error) {
+	Parameters: [2]pgtypes.DoltgresType{pgtypes.Int32, pgtypes.Int32},
+	Strict:     true,
+	Callable: func(ctx *sql.Context, _ [3]pgtypes.DoltgresType, val1 any, val2 any) (any, error) {
 		return int32(val1.(int32) & val2.(int32)), nil
 	},
-	Strict: true,
 }
 
 // int8and represents the PostgreSQL function of the same name, taking the same parameters.
 var int8and = framework.Function2{
 	Name:       "int8and",
 	Return:     pgtypes.Int64,
-	Parameters: []pgtypes.DoltgresType{pgtypes.Int64, pgtypes.Int64},
-	Callable: func(ctx *sql.Context, val1 any, val2 any) (any, error) {
+	Parameters: [2]pgtypes.DoltgresType{pgtypes.Int64, pgtypes.Int64},
+	Strict:     true,
+	Callable: func(ctx *sql.Context, _ [3]pgtypes.DoltgresType, val1 any, val2 any) (any, error) {
 		return int64(val1.(int64) & val2.(int64)), nil
 	},
-	Strict: true,
 }

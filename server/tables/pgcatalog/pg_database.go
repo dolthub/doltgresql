@@ -16,6 +16,7 @@ package pgcatalog
 
 import (
 	"io"
+	"sort"
 
 	"github.com/dolthub/dolt/go/libraries/doltcore/sqle/dsess"
 	sqle "github.com/dolthub/go-mysql-server"
@@ -23,6 +24,7 @@ import (
 
 	"github.com/dolthub/doltgresql/server/tables"
 	pgtypes "github.com/dolthub/doltgresql/server/types"
+	"github.com/dolthub/doltgresql/server/types/oid"
 )
 
 // PgDatabaseName is a constant to the pg_database name.
@@ -58,6 +60,9 @@ func (p PgDatabaseHandler) RowIter(ctx *sql.Context) (sql.RowIter, error) {
 		}
 		dbs = append(dbs, db)
 	}
+	sort.Slice(dbs, func(i, j int) bool {
+		return dbs[i].Name() < dbs[j].Name()
+	})
 
 	return &pgDatabaseRowIter{
 		dbs: dbs,
@@ -109,11 +114,12 @@ func (iter *pgDatabaseRowIter) Next(ctx *sql.Context) (sql.Row, error) {
 	}
 	iter.idx++
 	db := iter.dbs[iter.idx-1]
+	dbOid := oid.CreateOID(oid.Section_Database, 0, iter.idx-1)
 
+	// TODO: Add the rest of the pg_database columns
 	return sql.Row{
-		uint32(iter.idx), // oid
-		db.Name(),        // datname
-		// TODO: Add the rest of the pg_database columns
+		dbOid,     // oid
+		db.Name(), // datname
 		uint32(0), // datdba
 		int32(0),  // encoding
 		"i",       // datlocprovider

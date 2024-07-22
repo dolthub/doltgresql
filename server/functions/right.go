@@ -30,8 +30,9 @@ func initRight() {
 var right_varchar_int32 = framework.Function2{
 	Name:       "right",
 	Return:     pgtypes.VarChar,
-	Parameters: []pgtypes.DoltgresType{pgtypes.VarChar, pgtypes.Int32},
-	Callable: func(ctx *sql.Context, strInt any, nInt any) (any, error) {
+	Parameters: [2]pgtypes.DoltgresType{pgtypes.VarChar, pgtypes.Int32},
+	Strict:     true,
+	Callable: func(ctx *sql.Context, _ [3]pgtypes.DoltgresType, strInt any, nInt any) (any, error) {
 		str := strInt.(string)
 		n := nInt.(int32)
 		if n >= 0 {
@@ -46,5 +47,4 @@ var right_varchar_int32 = framework.Function2{
 			return str[int(-n):], nil
 		}
 	},
-	Strict: true,
 }

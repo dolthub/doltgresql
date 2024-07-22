@@ -136,6 +136,16 @@ func NewRawLiteralTimestamp(val time.Time) *Literal {
 	}
 }
 
+// NewUnsafeLiteral returns a new *Literal containing the given value and type. This should almost never be used, as
+// it does not perform any checking and circumvents type safety, which may lead to hard-to-debug errors. This is
+// currently only used within the analyzer, and will likely be removed in the future.
+func NewUnsafeLiteral(val any, t pgtypes.DoltgresType) *Literal {
+	return &Literal{
+		value: val,
+		typ:   t,
+	}
+}
+
 // Children implements the sql.Expression interface.
 func (l *Literal) Children() []sql.Expression {
 	return nil

@@ -14,7 +14,13 @@
 
 package types
 
-import "github.com/dolthub/go-mysql-server/sql/types"
+import (
+	"sort"
+
+	"github.com/dolthub/go-mysql-server/sql"
+
+	"github.com/dolthub/go-mysql-server/sql/types"
+)
 
 // DoltgresType is a type that is distinct from the MySQL types in GMS.
 type DoltgresType interface {
@@ -32,11 +38,11 @@ type DoltgresType interface {
 	// IoInput returns a value from the given input string. This function mirrors Postgres' I/O input function. Such
 	// strings are intended for serialization and automatic cross-type conversion. An input string will never represent
 	// NULL.
-	IoInput(input string) (any, error)
+	IoInput(ctx *sql.Context, input string) (any, error)
 	// IoOutput returns a string from the given output value. This function mirrors Postgres' I/O output function. These
 	// strings are not intended for output, but are instead intended for serialization and cross-type conversion. Output
 	// values will always be non-NULL.
-	IoOutput(output any) (string, error)
+	IoOutput(ctx *sql.Context, output any) (string, error)
 	// IsPreferredType returns true if the type is preferred type.
 	IsPreferredType() bool
 	// IsUnbounded returns whether the type is unbounded. Unbounded types do not enforce a length, precision, etc. on
@@ -68,9 +74,21 @@ type DoltgresArrayType interface {
 	BaseType() DoltgresType
 }
 
+// DoltgresPolymorphicType is a DoltgresType that represents one of the polymorphic types. These types are special
+// built-in pseudo-types that are used during function resolution to allow a function to handle multiple types from a
+// single definition. All polymorphic types have "any" as a prefix. The exception is the "any" type, which is not a
+// polymorphic type.
+type DoltgresPolymorphicType interface {
+	DoltgresType
+	// IsValid returns whether the given type is valid for the calling polymorphic type.
+	IsValid(target DoltgresType) bool
+}
+
 // typesFromBaseID contains a map from a DoltgresTypeBaseID to its originating type.
 var typesFromBaseID = map[DoltgresTypeBaseID]DoltgresType{
 	AnyArray.BaseID():         AnyArray,
+	AnyElement.BaseID():       AnyElement,
+	AnyNonArray.BaseID():      AnyNonArray,
 	BpChar.BaseID():           BpChar,
 	BpCharArray.BaseID():      BpCharArray,
 	Bool.BaseID():             Bool,
@@ -103,6 +121,12 @@ var typesFromBaseID = map[DoltgresTypeBaseID]DoltgresType{
 	NumericArray.BaseID():     NumericArray,
 	Oid.BaseID():              Oid,
 	OidArray.BaseID():         OidArray,
+	Regclass.BaseID():         Regclass,
+	RegclassArray.BaseID():    RegclassArray,
+	Regproc.BaseID():          Regproc,
+	RegprocArray.BaseID():     RegprocArray,
+	Regtype.BaseID():          Regtype,
+	RegtypeArray.BaseID():     RegtypeArray,
 	Text.BaseID():             Text,
 	TextArray.BaseID():        TextArray,
 	Time.BaseID():             Time,
@@ -122,22 +146,14 @@ var typesFromBaseID = map[DoltgresTypeBaseID]DoltgresType{
 	XidArray.BaseID():         XidArray,
 }
 
-// GetPgTypes returns an array of DoltgresTypes with types that should be displayed in `pg_catalog.pg_type` table.
-// It filters out the array types, null type and serial types as they are not present in the pg_type table.
-// It also adds the `Internal "char"` type as it is present in the pg_table table.
-func GetPgTypes() []DoltgresType {
+// GetAllTypes returns a slice containing all registered types. The slice is sorted by each type's base ID.
+func GetAllTypes() []DoltgresType {
 	pgTypes := make([]DoltgresType, 0, len(typesFromBaseID))
 	for _, typ := range typesFromBaseID {
-		switch typ.(type) {
-		case DoltgresArrayType, NullType, Int16TypeSerial,
-			Int32TypeSerial, Int64TypeSerial:
-			// these types are not present in pg_type table
-			continue
-		default:
-			pgTypes = append(pgTypes, typ)
-		}
+		pgTypes = append(pgTypes, typ)
 	}
-	// internal "char" type is present in pg_type table.
-	pgTypes = append(pgTypes, InternalChar)
+	sort.Slice(pgTypes, func(i, j int) bool {
+		return pgTypes[i].BaseID() < pgTypes[j].BaseID()
+	})
 	return pgTypes
 }

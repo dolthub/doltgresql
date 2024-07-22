@@ -20,7 +20,6 @@ teardown() {
 @test 'psql-commands: \l' {
     run query_server -c "\l"
     [ "$status" -eq 0 ]
-    [[ "$output" =~ "information_schema" ]] || false
     [[ "$output" =~ "postgres" ]] || false
     [[ "$output" =~ "doltgres" ]] || false
 }
@@ -39,7 +38,8 @@ teardown() {
     [ "$status" -eq 0 ]
     [[ "$output" =~ "public,test1,table,postgres" ]] || false
     [[ "$output" =~ "public,test2,table,postgres" ]] || false
-    [ "${#lines[@]}" -eq 3 ]
+    [[ "$output" =~ "public,testview,view,postgres" ]] || false
+    [ "${#lines[@]}" -eq 4 ]
 }
 
 @test 'psql-commands: \d table' {

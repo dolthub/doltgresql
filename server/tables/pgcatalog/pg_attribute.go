@@ -17,12 +17,11 @@ package pgcatalog
 import (
 	"io"
 
-	"github.com/dolthub/dolt/go/libraries/doltcore/sqle/dsess"
-	sqle "github.com/dolthub/go-mysql-server"
 	"github.com/dolthub/go-mysql-server/sql"
 
 	"github.com/dolthub/doltgresql/server/tables"
 	pgtypes "github.com/dolthub/doltgresql/server/types"
+	"github.com/dolthub/doltgresql/server/types/oid"
 )
 
 // PgAttributeName is a constant to the pg_attribute name.
@@ -45,32 +44,26 @@ func (p PgAttributeHandler) Name() string {
 
 // RowIter implements the interface tables.Handler.
 func (p PgAttributeHandler) RowIter(ctx *sql.Context) (sql.RowIter, error) {
-	doltSession := dsess.DSessFromSess(ctx.Session)
-	c := sqle.NewDefault(doltSession.Provider()).Analyzer.Catalog
-
 	var cols []*sql.Column
+	var tableOIDs []uint32
 
-	_, err := currentDatabaseSchemaIter(ctx, c, func(db sql.DatabaseSchema) (bool, error) {
-		err := sql.DBTableIter(ctx, db, func(t sql.Table) (cont bool, err error) {
-			for _, col := range t.Schema() {
+	err := oid.IterateCurrentDatabase(ctx, oid.Callbacks{
+		Table: func(ctx *sql.Context, _ oid.ItemSchema, table oid.ItemTable) (cont bool, err error) {
+			for _, col := range table.Item.Schema() {
 				cols = append(cols, col)
+				tableOIDs = append(tableOIDs, table.OID)
 			}
 			return true, nil
-		})
-		if err != nil {
-			return false, err
-		}
-
-		return true, nil
+		},
 	})
-
 	if err != nil {
 		return nil, err
 	}
 
 	return &pgAttributeRowIter{
-		cols: cols,
-		idx:  0,
+		cols:      cols,
+		tableOIDs: tableOIDs,
+		idx:       0,
 	}, nil
 }
 
@@ -114,8 +107,9 @@ var pgAttributeSchema = sql.Schema{
 
 // pgAttributeRowIter is the sql.RowIter for the pg_attribute table.
 type pgAttributeRowIter struct {
-	cols []*sql.Column
-	idx  int
+	cols      []*sql.Column
+	tableOIDs []uint32
+	idx       int
 }
 
 var _ sql.RowIter = (*pgAttributeRowIter)(nil)
@@ -127,6 +121,7 @@ func (iter *pgAttributeRowIter) Next(ctx *sql.Context) (sql.Row, error) {
 	}
 	iter.idx++
 	col := iter.cols[iter.idx-1]
+	tableOid := iter.tableOIDs[iter.idx-1]
 
 	generated := ""
 	if col.Generated != nil {
@@ -134,18 +129,22 @@ func (iter *pgAttributeRowIter) Next(ctx *sql.Context) (sql.Row, error) {
 	}
 
 	dimensions := 0
-	s, ok := col.Type.(sql.SetType)
-	if ok {
+	if s, ok := col.Type.(sql.SetType); ok {
 		dimensions = int(s.NumberOfElements())
 	}
 
 	hasDefault := col.Default != nil
 
+	typeOid := uint32(0)
+	if doltgresType, ok := col.Type.(pgtypes.DoltgresType); ok {
+		typeOid = doltgresType.OID()
+	}
+
 	// TODO: Fill in the rest of the pg_attribute columns
 	return sql.Row{
-		uint32(0),         // attrelid
+		tableOid,          // attrelid
 		col.Name,          // attname
-		uint32(0),         // atttypid
+		typeOid,           // atttypid
 		int16(0),          // attlen
 		int16(iter.idx),   // attnum
 		int32(-1),         // attcacheoff

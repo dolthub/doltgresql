@@ -28,6 +28,9 @@ func Init() {
 	initName()
 	initNumeric()
 	initOid()
+	initRegclass()
+	initRegproc()
+	initRegtype()
 	initText()
 	initVarChar()
 }

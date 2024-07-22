@@ -117,7 +117,7 @@ func TestPgAttribute(t *testing.T) {
 			SetUpScript: []string{
 				`CREATE SCHEMA testschema;`,
 				`SET search_path TO testschema;`,
-				`CREATE TABLE test (pk INT primary key, v1 INT DEFAULT 0);`,
+				`CREATE TABLE test (pk INT primary key, v1 TEXT DEFAULT 'hey');`,
 
 				// Should show attributes for all schemas
 				`CREATE SCHEMA testschema2;`,
@@ -126,11 +126,11 @@ func TestPgAttribute(t *testing.T) {
 			Assertions: []ScriptTestAssertion{
 				{
 					Query:    `SELECT * FROM "pg_catalog"."pg_attribute" WHERE attname='pk';`,
-					Expected: []sql.Row{{0, "pk", 0, 0, 1331, -1, -1, 0, "f", "i", "p", "", "t", "f", "f", "", "", "f", "t", 0, -1, 0, nil, nil, nil, nil}},
+					Expected: []sql.Row{{2686451712, "pk", 23, 0, 1331, -1, -1, 0, "f", "i", "p", "", "t", "f", "f", "", "", "f", "t", 0, -1, 0, nil, nil, nil, nil}},
 				},
 				{
 					Query:    `SELECT * FROM "pg_catalog"."pg_attribute" WHERE attname='v1';`,
-					Expected: []sql.Row{{0, "v1", 0, 0, 1332, -1, -1, 0, "f", "i", "p", "", "f", "t", "f", "", "", "f", "t", 0, -1, 0, nil, nil, nil, nil}},
+					Expected: []sql.Row{{2686451712, "v1", 25, 0, 1332, -1, -1, 0, "f", "i", "p", "", "f", "t", "f", "", "", "f", "t", 0, -1, 0, nil, nil, nil, nil}},
 				},
 				{ // Different cases and quoted, so it fails
 					Query:       `SELECT * FROM "PG_catalog"."pg_attribute";`,
@@ -146,6 +146,13 @@ func TestPgAttribute(t *testing.T) {
 						{"abbrev"},
 						{"abbrev"},
 						{"active"},
+					},
+				},
+				{
+					Query: `SELECT attname FROM "pg_catalog"."pg_attribute" a JOIN "pg_catalog"."pg_class" c ON a.attrelid = c.oid WHERE c.relname = 'test';`,
+					Expected: []sql.Row{
+						{"pk"},
+						{"v1"},
 					},
 				},
 			},
@@ -342,7 +349,7 @@ func TestPgClass(t *testing.T) {
 			SetUpScript: []string{
 				`CREATE SCHEMA testschema;`,
 				`SET search_path TO testschema;`,
-				`CREATE TABLE testing (pk INT primary key, v1 INT);`,
+				`CREATE TABLE testing (pk INT primary key, v1 INT UNIQUE);`,
 				`CREATE VIEW testview AS SELECT * FROM testing LIMIT 1;`,
 
 				// Should show classes for all schemas
@@ -352,18 +359,24 @@ func TestPgClass(t *testing.T) {
 			Assertions: []ScriptTestAssertion{
 				// Table
 				{
-					Query:    `SELECT * FROM "pg_catalog"."pg_class" WHERE relname='testing';`,
-					Expected: []sql.Row{{141, "testing", 0, 0, 0, 0, 0, 0, 0, 0, float32(0), 0, 0, "t", "f", "p", "r", 0, 0, "f", "f", "f", "f", "f", "t", "d", "f", 0, 0, 0, nil, nil, nil}},
+					Query: `SELECT * FROM "pg_catalog"."pg_class" WHERE relname='testing';`,
+					Expected: []sql.Row{
+						{2686451712, "testing", 1879048194, 0, 0, 0, 0, 0, 0, 0, float32(0), 0, 0, "t", "f", "p", "r", 0, 0, "f", "f", "f", "f", "f", "t", "d", "f", 0, 0, 0, nil, nil, nil},
+					},
 				},
 				// Index
 				{
-					Query:    `SELECT * FROM "pg_catalog"."pg_class" WHERE relname='PRIMARY';`,
-					Expected: []sql.Row{{140, "PRIMARY", 0, 0, 0, 0, 0, 0, 0, 0, float32(0), 0, 0, "f", "f", "p", "i", 0, 0, "f", "f", "f", "f", "f", "t", "d", "f", 0, 0, 0, nil, nil, nil}},
+					Query: `SELECT * FROM "pg_catalog"."pg_class" WHERE relname='testing_pkey';`,
+					Expected: []sql.Row{
+						{1612709888, "testing_pkey", 1879048194, 0, 0, 0, 0, 0, 0, 0, float32(0), 0, 0, "f", "f", "p", "i", 0, 0, "f", "f", "f", "f", "f", "t", "d", "f", 0, 0, 0, nil, nil, nil},
+					},
 				},
 				// View
 				{
-					Query:    `SELECT * FROM "pg_catalog"."pg_class" WHERE relname='testview';`,
-					Expected: []sql.Row{{142, "testview", 0, 0, 0, 0, 0, 0, 0, 0, float32(0), 0, 0, "f", "f", "p", "v", 0, 0, "f", "f", "f", "f", "f", "t", "d", "f", 0, 0, 0, nil, nil, nil}},
+					Query: `SELECT * FROM "pg_catalog"."pg_class" WHERE relname='testview';`,
+					Expected: []sql.Row{
+						{2954887168, "testview", 1879048194, 0, 0, 0, 0, 0, 0, 0, float32(0), 0, 0, "f", "f", "p", "v", 0, 0, "f", "f", "f", "f", "f", "t", "d", "f", 0, 0, 0, nil, nil, nil},
+					},
 				},
 				{ // Different cases and quoted, so it fails
 					Query:       `SELECT * FROM "PG_catalog"."pg_class";`,
@@ -376,9 +389,61 @@ func TestPgClass(t *testing.T) {
 				{ // Different cases but non-quoted, so it works
 					Query: "SELECT relname FROM PG_catalog.pg_CLASS ORDER BY relname ASC LIMIT 3;",
 					Expected: []sql.Row{
-						{"PRIMARY"},
 						{"pg_aggregate"},
 						{"pg_am"},
+						{"pg_amop"},
+					},
+				},
+				{
+					Query: "SELECT relname from pg_catalog.pg_class c JOIN pg_catalog.pg_namespace n ON c.relnamespace = n.oid  WHERE n.nspname = 'testschema' ORDER BY relname;",
+					Expected: []sql.Row{
+						{"testing"},
+						{"testing_pkey"},
+						{"testview"},
+						{"v1"},
+					},
+				},
+				{
+					Query: "SELECT relname from pg_catalog.pg_class c JOIN pg_catalog.pg_namespace n ON c.relnamespace = n.oid  WHERE n.nspname = 'pg_catalog' LIMIT 3;",
+					Expected: []sql.Row{
+						{"pg_aggregate"},
+						{"pg_am"},
+						{"pg_amop"},
+					},
+				},
+			},
+		},
+		{
+			Name: "pg_class with regclass",
+			SetUpScript: []string{
+				`CREATE SCHEMA testschema;`,
+				`SET search_path TO testschema;`,
+				`CREATE TABLE testing (pk INT primary key, v1 INT UNIQUE);`,
+				`CREATE VIEW testview AS SELECT * FROM testing LIMIT 1;`,
+				`CREATE SCHEMA testschema2;`,
+				`SET search_path TO testschema2;`,
+			},
+			Assertions: []ScriptTestAssertion{
+				{
+					Query:       `SELECT * FROM "pg_catalog"."pg_class" WHERE oid='testing'::regclass;`,
+					ExpectedErr: "does not exist",
+				},
+				{
+					Query: `SELECT * FROM "pg_catalog"."pg_class" WHERE oid='testschema.testing'::regclass;`,
+					Expected: []sql.Row{
+						{2686451712, "testing", 1879048194, 0, 0, 0, 0, 0, 0, 0, float32(0), 0, 0, "t", "f", "p", "r", 0, 0, "f", "f", "f", "f", "f", "t", "d", "f", 0, 0, 0, nil, nil, nil},
+					},
+				},
+				{
+					Query: `SELECT * FROM "pg_catalog"."pg_class" WHERE oid='testschema.testing_pkey'::regclass;`,
+					Expected: []sql.Row{
+						{1612709888, "testing_pkey", 1879048194, 0, 0, 0, 0, 0, 0, 0, float32(0), 0, 0, "f", "f", "p", "i", 0, 0, "f", "f", "f", "f", "f", "t", "d", "f", 0, 0, 0, nil, nil, nil},
+					},
+				},
+				{
+					Query: `SELECT * FROM "pg_catalog"."pg_class" WHERE oid='testschema.testview'::regclass;`,
+					Expected: []sql.Row{
+						{2954887168, "testview", 1879048194, 0, 0, 0, 0, 0, 0, 0, float32(0), 0, 0, "f", "f", "p", "v", 0, 0, "f", "f", "f", "f", "f", "t", "d", "f", 0, 0, 0, nil, nil, nil},
 					},
 				},
 			},
@@ -442,10 +507,22 @@ func TestPgConstraint(t *testing.T) {
 	RunScripts(t, []ScriptTest{
 		{
 			Name: "pg_constraint",
+			SetUpScript: []string{
+				`CREATE TABLE testing (pk INT primary key, v1 INT UNIQUE);`,
+				`CREATE TABLE testing2 (pk INT primary key, pktesting INT REFERENCES testing(pk), v1 TEXT);`,
+				// TODO: Uncomment when check constraints supported
+				// `ALTER TABLE testing2 ADD CONSTRAINT v1_check CHECK (v1 != '')`,
+			},
 			Assertions: []ScriptTestAssertion{
 				{
-					Query:    `SELECT * FROM "pg_catalog"."pg_constraint";`,
-					Expected: []sql.Row{},
+					Query: `SELECT * FROM "pg_catalog"."pg_constraint";`,
+					Expected: []sql.Row{
+						{1611661312, "testing_pkey", 1879048193, "p", "f", "f", "t", 2685403136, 0, 1611661312, 0, 0, "", "", "", "t", 0, "t", nil, nil, nil, nil, nil, nil, nil, nil},
+						{1611661313, "v1", 1879048193, "u", "f", "f", "t", 2685403136, 0, 1611661313, 0, 0, "", "", "", "t", 0, "t", nil, nil, nil, nil, nil, nil, nil, nil},
+						{1611661314, "testing2_pkey", 1879048193, "p", "f", "f", "t", 2685403137, 0, 1611661314, 0, 0, "", "", "", "t", 0, "t", nil, nil, nil, nil, nil, nil, nil, nil},
+						// TODO: Uncomment when foreign keys work
+						// {1611661314, "testing2_pktesting_fkey", 1879048193, "f", "f", "t", 2685403137, 0, 1611661314, 0, 0, "", "", "", "t", 0, "t", nil, nil, nil, nil, nil, nil, nil, nil}},
+					},
 				},
 				{ // Different cases and quoted, so it fails
 					Query:       `SELECT * FROM "PG_catalog"."pg_constraint";`,
@@ -456,8 +533,18 @@ func TestPgConstraint(t *testing.T) {
 					ExpectedErr: "not",
 				},
 				{ // Different cases but non-quoted, so it works
-					Query:    "SELECT conname FROM PG_catalog.pg_CONSTRAINT ORDER BY conname;",
-					Expected: []sql.Row{},
+					Query: "SELECT conname FROM PG_catalog.pg_CONSTRAINT ORDER BY conname;",
+					Expected: []sql.Row{
+						{"testing2_pkey"},
+						{"testing_pkey"},
+						{"v1"},
+					},
+				},
+				{
+					Query: "SELECT co.oid, co.conname, co.conrelid, cl.relname FROM pg_catalog.pg_constraint co JOIN pg_catalog.pg_class cl ON co.conrelid = cl.oid WHERE cl.relname = 'testing2';",
+					Expected: []sql.Row{
+						{1611661314, "testing2_pkey", 2685403137, "testing2"},
+					},
 				},
 			},
 		},
@@ -516,7 +603,6 @@ func TestPgCursors(t *testing.T) {
 	})
 }
 
-// TODO: Figure out why there is not a doltgres database when running these tests locally
 func TestPgDatabase(t *testing.T) {
 	RunScripts(t, []ScriptTest{
 		{
@@ -535,11 +621,11 @@ func TestPgDatabase(t *testing.T) {
 					},
 				},
 				{
-					Query: `SELECT datname FROM "pg_catalog"."pg_database" ORDER BY oid DESC;`,
+					Query: `SELECT oid, datname FROM "pg_catalog"."pg_database" ORDER BY datname DESC;`,
 					Expected: []sql.Row{
-						{"test"},
-						{"postgres"},
-						{"doltgres"},
+						{805306370, "test"},
+						{805306369, "postgres"},
+						{805306368, "doltgres"},
 					},
 				},
 				{ // Different cases and quoted, so it fails
@@ -551,17 +637,17 @@ func TestPgDatabase(t *testing.T) {
 					ExpectedErr: "not",
 				},
 				{ // Different cases but non-quoted, so it works
-					Query: "SELECT datname FROM PG_catalog.pg_DATABASE ORDER BY datname;",
+					Query: "SELECT oid, datname FROM PG_catalog.pg_DATABASE ORDER BY datname ASC;",
 					Expected: []sql.Row{
-						{"doltgres"},
-						{"postgres"},
-						{"test"},
+						{805306368, "doltgres"},
+						{805306369, "postgres"},
+						{805306370, "test"},
 					},
 				},
 				{
 					Query: "SELECT * FROM pg_catalog.pg_database WHERE datname='test';",
 					Expected: []sql.Row{
-						{3, "test", 0, 0, "i", "f", "t", -1, 0, 0, 0, "", "", nil, "", nil, nil},
+						{805306370, "test", 0, 0, "i", "f", "t", -1, 0, 0, 0, "", "", nil, "", nil, nil},
 					},
 				},
 			},
@@ -937,10 +1023,20 @@ func TestPgIndex(t *testing.T) {
 	RunScripts(t, []ScriptTest{
 		{
 			Name: "pg_index",
+			SetUpScript: []string{
+				`CREATE SCHEMA testschema;`,
+				`SET search_path TO testschema;`,
+				`CREATE TABLE testing (pk INT primary key, v1 INT UNIQUE);`,
+				`CREATE TABLE testing2 (pk INT, v1 INT, PRIMARY KEY (pk, v1));`,
+			},
 			Assertions: []ScriptTestAssertion{
 				{
-					Query:    `SELECT * FROM "pg_catalog"."pg_index";`,
-					Expected: []sql.Row{},
+					Query: `SELECT * FROM "pg_catalog"."pg_index";`,
+					Expected: []sql.Row{
+						{1612709888, 2686451712, 1, 0, "t", "f", "t", "f", "f", "f", "t", "f", "t", "t", "f", "{}", "{}", "{}", "{}", nil, nil},
+						{1612709889, 2686451712, 1, 0, "t", "f", "f", "f", "f", "f", "t", "f", "t", "t", "f", "{}", "{}", "{}", "{}", nil, nil},
+						{1612709890, 2686451713, 2, 0, "t", "f", "t", "f", "f", "f", "t", "f", "t", "t", "f", "{}", "{}", "{}", "{}", nil, nil},
+					},
 				},
 				{ // Different cases and quoted, so it fails
 					Query:       `SELECT * FROM "PG_catalog"."pg_index";`,
@@ -951,8 +1047,16 @@ func TestPgIndex(t *testing.T) {
 					ExpectedErr: "not",
 				},
 				{ // Different cases but non-quoted, so it works
-					Query:    "SELECT indexrelid FROM PG_catalog.pg_INDEX ORDER BY indexrelid;",
-					Expected: []sql.Row{},
+					Query:    "SELECT indexrelid FROM PG_catalog.pg_INDEX ORDER BY indexrelid ASC;",
+					Expected: []sql.Row{{1612709888}, {1612709889}, {1612709890}},
+				},
+				{
+					Query: "SELECT i.indexrelid, i.indrelid, c.relname, t.relname  FROM pg_catalog.pg_index i JOIN pg_catalog.pg_class c ON i.indexrelid = c.oid JOIN pg_catalog.pg_class t ON i.indrelid = t.oid;",
+					Expected: []sql.Row{
+						{1612709888, 2686451712, "testing_pkey", "testing"},
+						{1612709889, 2686451712, "v1", "testing"},
+						{1612709890, 2686451713, "testing2_pkey", "testing2"},
+					},
 				},
 			},
 		},
@@ -963,10 +1067,22 @@ func TestPgIndexes(t *testing.T) {
 	RunScripts(t, []ScriptTest{
 		{
 			Name: "pg_indexes",
+			SetUpScript: []string{
+				"CREATE SCHEMA testschema;",
+				"SET search_path TO testschema;",
+				`CREATE TABLE testing (pk INT primary key, v1 INT UNIQUE);`,
+				`CREATE TABLE testing2 (pk INT, v1 INT, PRIMARY KEY (pk, v1));`,
+				"CREATE INDEX my_index ON testing2(v1);",
+			},
 			Assertions: []ScriptTestAssertion{
 				{
-					Query:    `SELECT * FROM "pg_catalog"."pg_indexes";`,
-					Expected: []sql.Row{},
+					Query: `SELECT * FROM "pg_catalog"."pg_indexes";`,
+					Expected: []sql.Row{
+						{"testschema", "testing", "testing_pkey", "", "CREATE UNIQUE INDEX testing_pkey ON testschema.testing USING btree (pk)"},
+						{"testschema", "testing", "v1", "", "CREATE UNIQUE INDEX v1 ON testschema.testing USING btree (v1)"},
+						{"testschema", "testing2", "testing2_pkey", "", "CREATE UNIQUE INDEX testing2_pkey ON testschema.testing2 USING btree (pk, v1)"},
+						{"testschema", "testing2", "my_index", "", "CREATE INDEX my_index ON testschema.testing2 USING btree (v1)"},
+					},
 				},
 				{ // Different cases and quoted, so it fails
 					Query:       `SELECT * FROM "PG_catalog"."pg_indexes";`,
@@ -978,7 +1094,7 @@ func TestPgIndexes(t *testing.T) {
 				},
 				{ // Different cases but non-quoted, so it works
 					Query:    "SELECT indexname FROM PG_catalog.pg_INDEXES ORDER BY indexname;",
-					Expected: []sql.Row{},
+					Expected: []sql.Row{{"my_index"}, {"testing2_pkey"}, {"testing_pkey"}, {"v1"}},
 				},
 			},
 		},
@@ -1173,8 +1289,12 @@ func TestPgNamespace(t *testing.T) {
 			Name: "pg_namespace",
 			Assertions: []ScriptTestAssertion{
 				{
-					Query:    `SELECT * FROM "pg_catalog"."pg_namespace";`,
-					Expected: []sql.Row{},
+					Query: `SELECT * FROM "pg_catalog"."pg_namespace" ORDER BY nspname;`,
+					Expected: []sql.Row{
+						{1879048194, "information_schema", 0, nil},
+						{1879048192, "pg_catalog", 0, nil},
+						{1879048193, "public", 0, nil},
+					},
 				},
 				{ // Different cases and quoted, so it fails
 					Query:       `SELECT * FROM "PG_catalog"."pg_namespace";`,
@@ -1185,8 +1305,25 @@ func TestPgNamespace(t *testing.T) {
 					ExpectedErr: "not",
 				},
 				{ // Different cases but non-quoted, so it works
-					Query:    "SELECT nspname FROM PG_catalog.pg_NAMESPACE ORDER BY nspname;",
+					Query: "SELECT nspname FROM PG_catalog.pg_NAMESPACE ORDER BY nspname;",
+					Expected: []sql.Row{
+						{"information_schema"},
+						{"pg_catalog"},
+						{"public"},
+					},
+				},
+				{
+					Query:    "CREATE SCHEMA testschema;",
 					Expected: []sql.Row{},
+				},
+				{
+					Query: `SELECT * FROM "pg_catalog"."pg_namespace" ORDER BY nspname;`,
+					Expected: []sql.Row{
+						{1879048195, "information_schema", 0, nil},
+						{1879048192, "pg_catalog", 0, nil},
+						{1879048193, "public", 0, nil},
+						{1879048194, "testschema", 0, nil},
+					},
 				},
 			},
 		},
@@ -3573,6 +3710,59 @@ func TestPgType(t *testing.T) {
 				},
 			},
 		},
+		{
+			Name: "pg_type with regtype",
+			Assertions: []ScriptTestAssertion{
+				{
+					Query:    `SELECT * FROM "pg_catalog"."pg_type" WHERE oid='float8'::regtype;`,
+					Expected: []sql.Row{{701, "float8", 0, 0, 8, "t", "b", "N", "t", "t", ",", 0, "-", 0, 0, "float8in", "float8out", "float8rec", "float8send", "-", "-", "-", "d", "x", "f", 0, 0, 0, 0, nil, nil, nil}},
+				},
+				{
+					Query:    `SELECT oid, typname FROM "pg_catalog"."pg_type" WHERE oid='double precision'::regtype;`,
+					Expected: []sql.Row{{701, "float8"}},
+				},
+				{
+					Query:    `SELECT oid, typname FROM "pg_catalog"."pg_type" WHERE oid='DOUBLE PRECISION'::regtype;`,
+					Expected: []sql.Row{{701, "float8"}},
+				},
+				{
+					Query:    `SELECT oid, typname FROM "pg_catalog"."pg_type" WHERE oid='pg_catalog.float8'::regtype;`,
+					Expected: []sql.Row{{701, "float8"}},
+				},
+				{
+					Query:       `SELECT oid, typname FROM "pg_catalog"."pg_type" WHERE oid='public.float8'::regtype;`,
+					ExpectedErr: `type "public.float8" does not exist`,
+				},
+				{
+					Query:    `SELECT oid, typname FROM "pg_catalog"."pg_type" WHERE oid='VARCHAR'::regtype;`,
+					Expected: []sql.Row{{1043, "varchar"}},
+				},
+				{
+					Query:    `SELECT oid, typname FROM "pg_catalog"."pg_type" WHERE oid='1043'::regtype;`,
+					Expected: []sql.Row{{1043, "varchar"}},
+				},
+				{
+					Query:    `SELECT oid, typname FROM "pg_catalog"."pg_type" WHERE oid='VARCHAR(10)'::regtype;`,
+					Expected: []sql.Row{{1043, "varchar"}},
+				},
+				{
+					Query:    `SELECT oid, typname FROM "pg_catalog"."pg_type" WHERE oid='character varying'::regtype;`,
+					Expected: []sql.Row{{1043, "varchar"}},
+				},
+				{
+					Query:    `SELECT oid, typname FROM "pg_catalog"."pg_type" WHERE oid='timestamptz'::regtype;`,
+					Expected: []sql.Row{{1184, "timestamptz"}},
+				},
+				{
+					Query:    `SELECT oid, typname FROM "pg_catalog"."pg_type" WHERE oid='timestamp with time zone'::regtype;`,
+					Expected: []sql.Row{{1184, "timestamptz"}},
+				},
+				{
+					Query:    `SELECT oid, typname FROM "pg_catalog"."pg_type" WHERE oid='regtype'::regtype;`,
+					Expected: []sql.Row{{2206, "regtype"}},
+				},
+			},
+		},
 	})
 }
 
@@ -3658,10 +3848,17 @@ func TestPgViews(t *testing.T) {
 	RunScripts(t, []ScriptTest{
 		{
 			Name: "pg_views",
+			SetUpScript: []string{
+				`CREATE SCHEMA testschema;`,
+				`SET search_path TO testschema;`,
+				"CREATE TABLE testing (pk INT primary key, v1 INT);",
+				`CREATE VIEW testview AS SELECT * FROM testing LIMIT 1;`,
+				`CREATE VIEW testview2 AS SELECT * FROM testing LIMIT 2;`,
+			},
 			Assertions: []ScriptTestAssertion{
 				{
-					Query:    `SELECT * FROM "pg_catalog"."pg_views";`,
-					Expected: []sql.Row{},
+					Query:    `SELECT * FROM "pg_catalog"."pg_views" WHERE viewname='testview';`,
+					Expected: []sql.Row{{"testschema", "testview", "", "SELECT * FROM testing LIMIT 1"}},
 				},
 				{ // Different cases and quoted, so it fails
 					Query:       `SELECT * FROM "PG_catalog"."pg_views";`,
@@ -3673,7 +3870,7 @@ func TestPgViews(t *testing.T) {
 				},
 				{ // Different cases but non-quoted, so it works
 					Query:    "SELECT viewname FROM PG_catalog.pg_VIEWS ORDER BY viewname;",
-					Expected: []sql.Row{},
+					Expected: []sql.Row{{"testview"}, {"testview2"}},
 				},
 			},
 		},

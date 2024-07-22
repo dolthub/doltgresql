@@ -15,14 +15,14 @@
 package pgcatalog
 
 import (
+	"fmt"
 	"io"
 
-	"github.com/dolthub/dolt/go/libraries/doltcore/sqle/dsess"
-	sqle "github.com/dolthub/go-mysql-server"
 	"github.com/dolthub/go-mysql-server/sql"
 
 	"github.com/dolthub/doltgresql/server/tables"
 	pgtypes "github.com/dolthub/doltgresql/server/types"
+	"github.com/dolthub/doltgresql/server/types/oid"
 )
 
 // PgClassName is a constant to the pg_class name.
@@ -45,59 +45,61 @@ func (p PgClassHandler) Name() string {
 
 // RowIter implements the interface tables.Handler.
 func (p PgClassHandler) RowIter(ctx *sql.Context) (sql.RowIter, error) {
-	doltSession := dsess.DSessFromSess(ctx.Session)
-	c := sqle.NewDefault(doltSession.Provider()).Analyzer.Catalog
+	var classes []pgClass
+	tableHasIndexes := make(map[uint32]struct{})
 
-	var classes []Class
-
-	currentDB, err := currentDatabaseSchemaIter(ctx, c, func(db sql.DatabaseSchema) (bool, error) {
-		// Get tables and table indexes
-		err := sql.DBTableIter(ctx, db, func(t sql.Table) (cont bool, err error) {
-			hasIndexes := false
-			if it, ok := t.(sql.IndexAddressable); ok {
-				idxs, err := it.GetIndexes(ctx)
-				if err != nil {
-					return false, err
-				}
-				for _, idx := range idxs {
-					classes = append(classes, Class{name: idx.ID(), hasIndexes: false, kind: "i"})
-				}
-
-				if len(idxs) > 0 {
-					hasIndexes = true
-				}
-			}
-
-			classes = append(classes, Class{name: t.Name(), hasIndexes: hasIndexes, kind: "r"})
-
+	err := oid.IterateCurrentDatabase(ctx, oid.Callbacks{
+		Index: func(ctx *sql.Context, schema oid.ItemSchema, table oid.ItemTable, index oid.ItemIndex) (cont bool, err error) {
+			tableHasIndexes[table.OID] = struct{}{}
+			classes = append(classes, pgClass{
+				oid:        index.OID,
+				name:       getIndexName(index.Item),
+				hasIndexes: false,
+				kind:       "i",
+				schemaOid:  schema.OID,
+			})
 			return true, nil
-		})
-		if err != nil {
-			return false, err
-		}
-
-		return true, nil
+		},
+		Table: func(ctx *sql.Context, schema oid.ItemSchema, table oid.ItemTable) (cont bool, err error) {
+			_, hasIndexes := tableHasIndexes[table.OID]
+			classes = append(classes, pgClass{
+				oid:        table.OID,
+				name:       table.Item.Name(),
+				hasIndexes: hasIndexes,
+				kind:       "r",
+				schemaOid:  schema.OID,
+			})
+			return true, nil
+		},
+		View: func(ctx *sql.Context, schema oid.ItemSchema, view oid.ItemView) (cont bool, err error) {
+			classes = append(classes, pgClass{
+				oid:        view.OID,
+				name:       view.Item.Name,
+				hasIndexes: false,
+				kind:       "v",
+				schemaOid:  schema.OID,
+			})
+			return true, nil
+		},
 	})
 	if err != nil {
 		return nil, err
-	}
-
-	// Get views
-	if vdb, ok := currentDB.(sql.ViewDatabase); ok {
-		views, err := vdb.AllViews(ctx)
-		if err != nil {
-			return nil, err
-		}
-
-		for _, view := range views {
-			classes = append(classes, Class{name: view.Name, hasIndexes: false, kind: "v"})
-		}
 	}
 
 	return &pgClassRowIter{
 		classes: classes,
 		idx:     0,
 	}, nil
+}
+
+// getIndexName returns the name of an index.
+func getIndexName(idx sql.Index) string {
+	if idx.ID() == "PRIMARY" {
+		return fmt.Sprintf("%s_pkey", idx.Table())
+	}
+	return idx.ID()
+	// TODO: Unnamed indexes should have below format
+	// return fmt.Sprintf("%s_%s_key", idx.Table(), idx.ID())
 }
 
 // Schema implements the interface tables.Handler.
@@ -145,16 +147,18 @@ var pgClassSchema = sql.Schema{
 	{Name: "relpartbound", Type: pgtypes.Text, Default: nil, Nullable: true, Source: PgClassName},    // TODO: type pg_node_tree, collation C
 }
 
-// Class represents a row in the pg_class table.
-type Class struct {
+// pgClass represents a row in the pg_class table.
+type pgClass struct {
+	oid        uint32
 	name       string
+	schemaOid  uint32
 	hasIndexes bool
 	kind       string // r = ordinary table, i = index, S = sequence, t = TOAST table, v = view, m = materialized view, c = composite type, f = foreign table, p = partitioned table, I = partitioned index
 }
 
 // pgClassRowIter is the sql.RowIter for the pg_class table.
 type pgClassRowIter struct {
-	classes []Class
+	classes []pgClass
 	idx     int
 }
 
@@ -170,9 +174,9 @@ func (iter *pgClassRowIter) Next(ctx *sql.Context) (sql.Row, error) {
 
 	// TODO: Fill in the rest of the pg_class columns
 	return sql.Row{
-		uint32(iter.idx), // oid
+		class.oid,        // oid
 		class.name,       // relname
-		uint32(0),        // relnamespace
+		class.schemaOid,  // relnamespace
 		uint32(0),        // reltype
 		uint32(0),        // reloftype
 		uint32(0),        // relowner
