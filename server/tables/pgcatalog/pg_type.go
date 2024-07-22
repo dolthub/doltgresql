@@ -120,12 +120,17 @@ func (iter *pgTypeRowIter) Next(ctx *sql.Context) (sql.Row, error) {
 	typ := iter.types[iter.idx-1]
 
 	var (
-		typName    = typ.BaseName()
-		typLen     int16
-		typByVal   = false
-		typCat     = typ.Category()
-		typAlign   = string(typ.Alignment())
-		typStorage = "p"
+		typName         = typ.BaseName()
+		typLen          int16
+		typByVal        = false
+		typType         = "b"
+		typCat          = typ.Category()
+		typAlign        = string(typ.Alignment())
+		typStorage      = "p"
+		typSubscript    = "-"
+		typConvFnPrefix = typ.BaseName()
+		typConvFnSep    = ""
+		typAnalyze      = "-"
 	)
 	if l := typ.MaxTextResponseByteLength(ctx); l == math.MaxUint32 {
 		typLen = -1
@@ -142,13 +147,40 @@ func (iter *pgTypeRowIter) Next(ctx *sql.Context) (sql.Row, error) {
 		typLen = -2
 	case pgtypes.NumericType:
 		typStorage = "m"
+	case pgtypes.JsonType:
+		typConvFnSep = "_"
+		typStorage = "x"
+	case pgtypes.UuidType:
+		typConvFnSep = "_"
+	case pgtypes.DoltgresArrayType:
+		typStorage = "x"
+		typConvFnSep = "_"
+		if _, ok := typ.(pgtypes.DoltgresPolymorphicType); !ok {
+			typSubscript = "array_subscript_handler"
+			typConvFnPrefix = "array"
+			typAnalyze = "array_typanalyze"
+			typName = fmt.Sprintf("_%s", typName)
+		} else {
+			typType = "p"
+		}
+	case pgtypes.DoltgresPolymorphicType:
+		typType = "p"
+		typConvFnSep = "_"
+		typByVal = true
 	}
 
-	// TODO: fix some types get underscore as spacing (e.g. uuid_in, json_in, etc.)
-	typIn := fmt.Sprintf("%sin", typName)
-	typOut := fmt.Sprintf("%sout", typName)
-	typRec := fmt.Sprintf("%srec", typName)
-	typSend := fmt.Sprintf("%ssend", typName)
+	typIn := fmt.Sprintf("%s%sin", typConvFnPrefix, typConvFnSep)
+	typOut := fmt.Sprintf("%s%sout", typConvFnPrefix, typConvFnSep)
+	typRec := fmt.Sprintf("%s%srecv", typConvFnPrefix, typConvFnSep)
+	typSend := fmt.Sprintf("%s%ssend", typConvFnPrefix, typConvFnSep)
+
+	// Non array polymorphic types do not have a receive or send functions
+	if _, ok := typ.(pgtypes.DoltgresPolymorphicType); ok {
+		if _, ok := typ.(pgtypes.DoltgresArrayType); !ok {
+			typRec = "-"
+			typSend = "-"
+		}
+	}
 
 	// TODO: not all columns are populated
 	return sql.Row{
@@ -158,13 +190,13 @@ func (iter *pgTypeRowIter) Next(ctx *sql.Context) (sql.Row, error) {
 		uint32(0),             //typowner
 		typLen,                //typlen
 		typByVal,              //typbyval
-		"b",                   //typtype
+		typType,               //typtype
 		string(typCat),        //typcategory
 		typ.IsPreferredType(), //typispreferred
 		true,                  //typisdefined
 		",",                   //typdelim
 		uint32(0),             //typrelid
-		"-",                   //typsubscript
+		typSubscript,          //typsubscript
 		uint32(0),             //typelem
 		uint32(0),             //typarray
 		typIn,                 //typinput
@@ -173,7 +205,7 @@ func (iter *pgTypeRowIter) Next(ctx *sql.Context) (sql.Row, error) {
 		typSend,               //typsend
 		"-",                   //typmodin
 		"-",                   //typmodout
-		"-",                   //typanalyze
+		typAnalyze,            //typanalyze
 		typAlign,              //typalign
 		typStorage,            //typstorage
 		false,                 //typnotnull

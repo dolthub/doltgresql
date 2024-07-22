@@ -21,4 +21,4 @@ var BpCharArray = createArrayType(BpChar, SerializationID_CharArray, oid.T__bpch
 
 // CharArray is the array variant of BpChar. This is an alias of BpCharArray, since the documentation references "char"
 // more so than "bpchar" in PostgreSQL 15. They're the same type with different characteristics depending on the length.
-var CharArray = BpCharArray
+var CharArray = createArrayType(InternalChar, SerializationID_CharArray, oid.T__char)

@@ -1605,7 +1605,6 @@ var typesTests = []ScriptTest{
 				},
 			},
 			{
-				Skip:  true, // TODO: regtype should work with array types
 				Query: `SELECT 'integer[]'::regtype;`,
 				Expected: []sql.Row{
 					{"integer[]"},
@@ -1627,6 +1626,13 @@ var typesTests = []ScriptTest{
 				Query: `SELECT 'character varying'::regtype;`,
 				Expected: []sql.Row{
 					{"character varying"},
+				},
+			},
+			{
+				Skip:  true, // TODO: Fix regtype for "char"[] type
+				Query: `SELECT '"char"[]'::regtype;`,
+				Expected: []sql.Row{
+					{"\"char\"[]"},
 				},
 			},
 			{

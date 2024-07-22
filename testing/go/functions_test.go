@@ -245,7 +245,6 @@ func TestFunctionsOID(t *testing.T) {
 					},
 				},
 				{
-					Skip:  true, // TODO: to_regtype should work with array types
 					Query: `SELECT to_regtype('integer[]');`,
 					Expected: []sql.Row{
 						{"integer[]"},
@@ -648,7 +647,19 @@ func TestSystemInformationFunctions(t *testing.T) {
 					},
 				},
 				{
-					Skip:  true, // TODO: regtype should work with array types
+					Skip:  true, // TODO: Fix regtype for "char"[] type
+					Query: `SELECT format_type('"char"[]'::regtype, null);`,
+					Expected: []sql.Row{
+						{"\"char\"[]"},
+					},
+				},
+				{
+					Query: `SELECT format_type(1002, null);`,
+					Expected: []sql.Row{
+						{"\"char\"[]"},
+					},
+				},
+				{
 					Query: `SELECT format_type('real[]'::regtype, null);`,
 					Expected: []sql.Row{
 						{"real[]"},

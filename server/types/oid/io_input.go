@@ -26,7 +26,7 @@ func ioInputSections(input string) ([]string, error) {
 	if len(input) == 0 {
 		return nil, fmt.Errorf("invalid name syntax")
 	}
-	// TODO: this is removing the spacing for casts such as 'character varying'::regtype
+	// TODO: this is removing the spacing for casts such as 'character varying'::regtype and quotes for casts such as '"char"[]'::regtype
 	runeInput := []rune(strings.TrimSpace(input))
 	var sections []string
 	var sectionBuilder strings.Builder
