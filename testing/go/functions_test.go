@@ -245,6 +245,13 @@ func TestFunctionsOID(t *testing.T) {
 					},
 				},
 				{
+					Skip:  true, // TODO: to_regtype should work with array types
+					Query: `SELECT to_regtype('integer[]');`,
+					Expected: []sql.Row{
+						{"integer[]"},
+					},
+				},
+				{
 					Query: `SELECT to_regtype('int4');`,
 					Expected: []sql.Row{
 						{"integer"},
@@ -583,6 +590,156 @@ func TestSystemInformationFunctions(t *testing.T) {
 					Cols: []string{"shobj_description"},
 					Expected: []sql.Row{
 						{"Store a few of the things"},
+					},
+				},
+			},
+		},
+		{
+			Name: "format_type",
+			Assertions: []ScriptTestAssertion{
+				// Without typemod
+				{
+					Query: `SELECT format_type('integer'::regtype, null);`,
+					Cols:  []string{"format_type"},
+					Expected: []sql.Row{
+						{"integer"},
+					},
+				},
+				{
+					Query: `SELECT format_type('character varying'::regtype, null);`,
+					Expected: []sql.Row{
+						{"character varying"},
+					},
+				},
+				{
+					Query: `SELECT format_type('varchar'::regtype, null);`,
+					Expected: []sql.Row{
+						{"character varying"},
+					},
+				},
+				{
+					Query: `SELECT format_type('date'::regtype, null);`,
+					Expected: []sql.Row{
+						{"date"},
+					},
+				},
+				{
+					Query: `SELECT format_type('timestamptz'::regtype, null);`,
+					Expected: []sql.Row{
+						{"timestamp with time zone"},
+					},
+				},
+				{
+					Query: `SELECT format_type('bool'::regtype, null);`,
+					Expected: []sql.Row{
+						{"boolean"},
+					},
+				},
+				{
+					Query: `SELECT format_type(1007, null);`,
+					Expected: []sql.Row{
+						{"integer[]"},
+					},
+				},
+				{
+					Query: `SELECT format_type('"char"'::regtype, null);`,
+					Expected: []sql.Row{
+						{"\"char\""},
+					},
+				},
+				{
+					Skip:  true, // TODO: regtype should work with array types
+					Query: `SELECT format_type('real[]'::regtype, null);`,
+					Expected: []sql.Row{
+						{"real[]"},
+					},
+				},
+				// With typemod
+				{
+					Query: `SELECT format_type('character varying'::regtype, 100);`,
+					Expected: []sql.Row{
+						{"character varying(96)"},
+					},
+				},
+				{
+					Query: `SELECT format_type('text'::regtype, 0);`,
+					Expected: []sql.Row{
+						{"text(0)"},
+					},
+				},
+				{
+					Query: `SELECT format_type('text'::regtype, 4);`,
+					Expected: []sql.Row{
+						{"text(4)"},
+					},
+				},
+				{
+					Query: `SELECT format_type('text'::regtype, -1);`,
+					Expected: []sql.Row{
+						{"text"},
+					},
+				},
+				{
+					Query: `SELECT format_type('name'::regtype, 0);`,
+					Expected: []sql.Row{
+						{"name(0)"},
+					},
+				},
+				{
+					Query: `SELECT format_type('bpchar'::regtype, -1);`,
+					Expected: []sql.Row{
+						{"bpchar"},
+					},
+				},
+				{
+					Query: `SELECT format_type('bpchar'::regtype, 10);`,
+					Expected: []sql.Row{
+						{"character(6)"},
+					},
+				},
+				{
+					Query: `SELECT format_type('bpchar'::regtype, 10);`,
+					Expected: []sql.Row{
+						{"character(6)"},
+					},
+				},
+				{
+					Query: `SELECT format_type('character'::regtype, 4);`,
+					Expected: []sql.Row{
+						{"character"},
+					},
+				},
+				{
+					Query: `SELECT format_type('varchar'::regtype, 0);`,
+					Expected: []sql.Row{
+						{"character varying"},
+					},
+				},
+				{
+					Query: `SELECT format_type('"char"'::regtype, 0);`,
+					Expected: []sql.Row{
+						{"\"char\"(0)"},
+					},
+				},
+				{
+					Query: `SELECT format_type('numeric'::regtype, 12);`,
+					Expected: []sql.Row{
+						{"numeric(0,8)"},
+					},
+				},
+				// OID does not exist
+				{
+					Query: `SELECT format_type(874938247, 20);`,
+					Cols:  []string{"format_type"},
+					Expected: []sql.Row{
+						{"???"},
+					},
+				},
+				{
+					Query: `SELECT format_type(874938247, null);`,
+					Cols:  []string{"format_type"},
+					Expected: []sql.Row{
+						{"???"},
 					},
 				},
 			},
