@@ -19,17 +19,19 @@ import (
 )
 
 // FunctionOverloadTree is a type tree used to resolve which overload of a given function to apply to a given
-// function name and parameter list. Each node in the tree represents a parameter in the function signature, and the
-// leaves represent the function to call. Every node points to the set of possible next nodes via the type of the next
+// parameter list. Each node in the tree represents a parameter in the function signature, and the leaves represent
+// the function to call. Every node points to the set of possible next nodes via the type of the next
 // expected parameter.
 //
-// This type handles resolving which function to call by iterating over the parameter expressions. It also
-// handles casting between types if an exact function match is not found.
+// Vararg functions are a special case: they are represented as a single node with the VarargType field set to the type
+// of every argument.
 type FunctionOverloadTree struct {
-	// The function to call for this overload (nil for non-leaf nodes)
+	// Function is the function to call for this overload (nil for non-leaf nodes)
 	Function FunctionInterface
-	// The set of possible next nodes, keyed by the type of the next expected parameter.
+	// NextParam is the set of possible next nodes, keyed by the type of the next parameter.
 	NextParam map[pgtypes.DoltgresTypeBaseID]*FunctionOverloadTree
+	// VarargType is the type of the vararg parameter, if this overload is a vararg overload.
+	VarargType pgtypes.DoltgresTypeBaseID
 }
 
 // collectOverloadPermutations collects all parameters, starting from the caller, such that we have a collection of

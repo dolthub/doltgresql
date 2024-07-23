@@ -24,7 +24,8 @@ import "fmt"
 type DoltgresTypeBaseID uint32
 
 const (
-	DoltgresTypeBaseID_Any DoltgresTypeBaseID = iota + 8192
+	DoltgresTypeBaseID_Invalid DoltgresTypeBaseID = iota
+	DoltgresTypeBaseID_Any     DoltgresTypeBaseID = iota + 8192
 	DoltgresTypeBaseID_AnyElement
 	DoltgresTypeBaseID_AnyArray
 	DoltgresTypeBaseID_AnyNonArray
