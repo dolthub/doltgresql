@@ -88,15 +88,15 @@ func Initialize() {
 func compileFunctions() {
 	for funcName, overloads := range Catalog {
 		// Build the overloads
-		baseOverload := &FunctionOverloadTree{NextParam: make(map[pgtypes.DoltgresTypeBaseID]*FunctionOverloadTree)}
+		overloadTree := &FunctionOverloadTree{NextParam: make(map[pgtypes.DoltgresTypeBaseID]*FunctionOverloadTree)}
 		for _, functionOverload := range overloads {
-			buildOverload(funcName, baseOverload, functionOverload)
+			buildOverloadTree(funcName, overloadTree, functionOverload)
 		}
 
 		// Store the compiled function into the engine's built-in functions
 		// TODO: don't do this, use an actual contract for communicating these functions to the engine catalog
 		createFunc := func(params ...sql.Expression) (sql.Expression, error) {
-			return NewCompiledFunction(funcName, params, baseOverload, false), nil
+			return NewCompiledFunction(funcName, params, overloadTree, false), nil
 		}
 		function.BuiltIns = append(function.BuiltIns, sql.FunctionN{
 			Name: funcName,
@@ -110,28 +110,28 @@ func compileFunctions() {
 	// special rules, so it's far more efficient to reuse it for operators. Operators are also a special case since they
 	// all have different names, while standard overload deducers work on a function-name basis.
 	for signature, functionOverload := range unaryFunctions {
-		baseOverload, ok := unaryAggregateDeducers[signature.Operator]
+		overloadTree, ok := unaryAggregateOverloads[signature.Operator]
 		if !ok {
-			baseOverload = &FunctionOverloadTree{NextParam: make(map[pgtypes.DoltgresTypeBaseID]*FunctionOverloadTree)}
-			unaryAggregateDeducers[signature.Operator] = baseOverload
+			overloadTree = &FunctionOverloadTree{NextParam: make(map[pgtypes.DoltgresTypeBaseID]*FunctionOverloadTree)}
+			unaryAggregateOverloads[signature.Operator] = overloadTree
 		}
-		buildOverload("internal_unary_aggregate_function", baseOverload, functionOverload)
+		buildOverloadTree("internal_unary_aggregate_function", overloadTree, functionOverload)
 	}
 
 	for signature, functionOverload := range binaryFunctions {
-		baseOverload, ok := binaryAggregateDeducers[signature.Operator]
+		overloadTree, ok := binaryAggregateOverloads[signature.Operator]
 		if !ok {
-			baseOverload = &FunctionOverloadTree{NextParam: make(map[pgtypes.DoltgresTypeBaseID]*FunctionOverloadTree)}
-			binaryAggregateDeducers[signature.Operator] = baseOverload
+			overloadTree = &FunctionOverloadTree{NextParam: make(map[pgtypes.DoltgresTypeBaseID]*FunctionOverloadTree)}
+			binaryAggregateOverloads[signature.Operator] = overloadTree
 		}
-		buildOverload("internal_binary_aggregate_function", baseOverload, functionOverload)
+		buildOverloadTree("internal_binary_aggregate_function", overloadTree, functionOverload)
 	}
 
 	// Add all permutations for the unary and binary operators
-	for operator, baseOverload := range unaryAggregateDeducers {
+	for operator, baseOverload := range unaryAggregateOverloads {
 		unaryAggregatePermutations[operator] = baseOverload.collectOverloadPermutations()
 	}
-	for operator, baseOverload := range binaryAggregateDeducers {
+	for operator, baseOverload := range binaryAggregateOverloads {
 		binaryAggregatePermutations[operator] = baseOverload.collectOverloadPermutations()
 	}
 }
@@ -183,8 +183,8 @@ func validateFunctions() {
 	}
 }
 
-// buildOverload is used by Initialize to add the given function to the base overload deducer.
-func buildOverload(funcName string, baseOverload *FunctionOverloadTree, functionOverload FunctionInterface) {
+// buildOverloadTree is used by Initialize to add the given function to the base overload deducer.
+func buildOverloadTree(funcName string, baseOverload *FunctionOverloadTree, functionOverload FunctionInterface) {
 	// Loop through all of the parameters
 	currentOverload := baseOverload
 	for _, param := range functionOverload.GetParameters() {

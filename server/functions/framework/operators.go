@@ -72,12 +72,12 @@ var (
 	unaryFunctions = map[unaryFunction]Function1{}
 	// binaryFunctions is a map from a binaryFunction signature to the associated function.
 	binaryFunctions = map[binaryFunction]Function2{}
-	// unaryAggregateDeducers is a map from an operator to an overload deducer that is the aggregate of all functions
+	// unaryAggregateOverloads is a map from an operator to an overload deducer that is the aggregate of all functions
 	// for that operator.
-	unaryAggregateDeducers = map[Operator]*FunctionOverloadTree{}
-	// binaryAggregateDeducers is a map from an operator to an overload deducer that is the aggregate of all functions
+	unaryAggregateOverloads = map[Operator]*FunctionOverloadTree{}
+	// binaryAggregateOverloads is a map from an operator to an overload deducer that is the aggregate of all functions
 	// for that operator.
-	binaryAggregateDeducers = map[Operator]*FunctionOverloadTree{}
+	binaryAggregateOverloads = map[Operator]*FunctionOverloadTree{}
 	// unaryAggregatePermutations contains all of the permutations for each unary operator.
 	unaryAggregatePermutations = map[Operator][][]pgtypes.DoltgresTypeBaseID{}
 	// unaryAggregatePermutations contains all of the permutations for each binary operator.
@@ -127,7 +127,7 @@ func RegisterBinaryFunction(operator Operator, f Function2) {
 func GetUnaryFunction(operator Operator) IntermediateFunction {
 	// Returns nil if not found, which is fine as IntermediateFunction will handle the nil deducer
 	return IntermediateFunction{
-		Functions:    unaryAggregateDeducers[operator],
+		Functions:    unaryAggregateOverloads[operator],
 		AllOverloads: unaryAggregatePermutations[operator],
 		IsOperator:   true,
 	}
@@ -137,7 +137,7 @@ func GetUnaryFunction(operator Operator) IntermediateFunction {
 func GetBinaryFunction(operator Operator) IntermediateFunction {
 	// Returns nil if not found, which is fine as IntermediateFunction will handle the nil deducer
 	return IntermediateFunction{
-		Functions:    binaryAggregateDeducers[operator],
+		Functions:    binaryAggregateOverloads[operator],
 		AllOverloads: binaryAggregatePermutations[operator],
 		IsOperator:   true,
 	}
