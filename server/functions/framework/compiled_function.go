@@ -182,7 +182,7 @@ func (c *CompiledFunction) IsNullable() bool {
 // IsNonDeterministic implements the interface sql.NonDeterministicExpression.
 func (c *CompiledFunction) IsNonDeterministic() bool {
 	if c.callableFunc != nil {
-		return c.callableFunc.GetIsNonDeterministic()
+		return c.callableFunc.NonDeterministic()
 	}
 	// Compilation must have errored, so we'll just return true
 	return true
@@ -200,10 +200,16 @@ func (c *CompiledFunction) Eval(ctx *sql.Context, row sql.Row) (interface{}, err
 	if err != nil {
 		return nil, err
 	}
-	// Convert the parameter values into their correct types
-	resultTypes := c.callableFunc.GetParameters()
 
-	if c.callableFunc.GetIsStrict() {
+	// Convert the parameter values into their target types
+	var targetParamTypes []pgtypes.DoltgresType
+	if c.varArgsType != pgtypes.DoltgresTypeBaseID_Invalid {
+		targetParamTypes = make([]pgtypes.DoltgresType, len(parameters))
+	} else {
+		targetParamTypes = c.callableFunc.GetParameters()
+	}
+
+	if c.callableFunc.IsStrict() {
 		for i := range parameters {
 			if parameters[i] == nil {
 				return nil, nil
@@ -214,7 +220,7 @@ func (c *CompiledFunction) Eval(ctx *sql.Context, row sql.Row) (interface{}, err
 	if len(c.casts) > 0 {
 		for i := range parameters {
 			if c.casts[i] != nil {
-				parameters[i], err = c.casts[i](ctx, parameters[i], resultTypes[i])
+				parameters[i], err = c.casts[i](ctx, parameters[i], targetParamTypes[i])
 				if err != nil {
 					return nil, err
 				}
@@ -235,6 +241,9 @@ func (c *CompiledFunction) Eval(ctx *sql.Context, row sql.Row) (interface{}, err
 		return f.Callable(ctx, ([4]pgtypes.DoltgresType)(c.callResolved), parameters[0], parameters[1], parameters[2])
 	case Function4:
 		return f.Callable(ctx, ([5]pgtypes.DoltgresType)(c.callResolved), parameters[0], parameters[1], parameters[2], parameters[3])
+	case FunctionN:
+		// TODO: what does callResolved do here
+		return f.Callable(ctx, parameters...)
 	default:
 		return nil, fmt.Errorf("unknown function type in CompiledFunction::Eval")
 	}
