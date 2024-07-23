@@ -49,11 +49,11 @@ func NewCompiledFunction(name string, parameters []sql.Expression, functions *Fu
 }
 
 // newCompiledFunctionInternal is called internally, which skips steps that may have already been processed.
-func newCompiledFunctionInternal(name string, params []sql.Expression, funcs *FunctionOverloadTree, allFuncs [][]pgtypes.DoltgresTypeBaseID, isOperator bool) *CompiledFunction {
+func newCompiledFunctionInternal(name string, params []sql.Expression, overloads *FunctionOverloadTree, allFuncs [][]pgtypes.DoltgresTypeBaseID, isOperator bool) *CompiledFunction {
 	c := &CompiledFunction{
 		Name:         name,
 		Parameters:   params,
-		OverloadTree: funcs,
+		OverloadTree: overloads,
 		// varArgsType: funcs.
 		AllOverloads: allFuncs,
 		IsOperator:   isOperator,
@@ -254,15 +254,9 @@ func (c *CompiledFunction) WithChildren(children ...sql.Expression) (sql.Express
 // Returns a nil FunctionOverloadTree if a viable match is not found.
 func (c *CompiledFunction) resolve(paramTypes []pgtypes.DoltgresType, sources []Source) (FunctionInterface, []TypeCastFunction, error) {
 	// First check for an exact match
-	exactMatch := c.OverloadTree
-	for _, typ := range paramTypes {
-		var ok bool
-		if exactMatch, ok = exactMatch.Parameter[typ.BaseID()]; !ok {
-			break
-		}
-	}
-	if exactMatch != nil && exactMatch.Function != nil {
-		return exactMatch.Function, nil, nil
+	exactMatch, found := c.OverloadTree.ExactMatchForTypes(paramTypes)
+	if found {
+		return exactMatch, nil, nil
 	}
 	// There are no exact matches, so now we'll look through all of the functions to determine the best match. This is
 	// much more work, but there's a performance penalty for runtime overload resolution in Postgres as well.
@@ -306,13 +300,16 @@ func (c *CompiledFunction) resolveFunction(parameters []pgtypes.DoltgresType, so
 			}
 		}
 	}
+
 	// If we've found exactly one match then we'll return that one
 	if len(convertibles) == 1 {
-		matchedOverload := c.OverloadTree
-		for _, paramType := range convertibles[0] {
-			matchedOverload = matchedOverload.Parameter[paramType]
+		exactMatch, found := c.OverloadTree.ExactMatch(convertibles[0])
+		// should be impossible
+		if !found {
+			return nil, nil, fmt.Errorf("function %s does not exist", c.OverloadString(parameters))
 		}
-		return matchedOverload.Function, casts[0], nil
+
+		return exactMatch, casts[0], nil
 	} else if len(convertibles) == 0 {
 		return nil, nil, nil
 	}
@@ -338,11 +335,12 @@ func (c *CompiledFunction) resolveFunction(parameters []pgtypes.DoltgresType, so
 	}
 	// Now check again for exactly one match
 	if len(matches) == 1 {
-		matchedOverload := c.OverloadTree
-		for _, parameter := range matches[0] {
-			matchedOverload = matchedOverload.Parameter[parameter]
+		match, found := c.OverloadTree.ExactMatch(matches[0])
+		// should be impossible
+		if !found {
+			return nil, nil, fmt.Errorf("function %s does not exist", c.OverloadString(parameters))
 		}
-		return matchedOverload.Function, matchCasts[0], nil
+		return match, matchCasts[0], nil
 	} else if len(matches) == 0 {
 		return nil, nil, nil
 	}
@@ -368,11 +366,12 @@ func (c *CompiledFunction) resolveFunction(parameters []pgtypes.DoltgresType, so
 	}
 	// Check once more for exactly one match
 	if len(preferredOverloads) == 1 {
-		matchedOverload := c.OverloadTree
-		for _, parameter := range preferredOverloads[0] {
-			matchedOverload = matchedOverload.Parameter[parameter]
+		exactMatch, found := c.OverloadTree.ExactMatch(preferredOverloads[0])
+		// should be impossible
+		if !found {
+			return nil, nil, fmt.Errorf("function %s does not exist", c.OverloadString(parameters))
 		}
-		return matchedOverload.Function, preferredCasts[0], nil
+		return exactMatch, preferredCasts[0], nil
 	} else if len(preferredOverloads) == 0 {
 		return nil, nil, nil
 	}
@@ -397,8 +396,8 @@ func (c *CompiledFunction) resolveOperator(parameters []pgtypes.DoltgresType, so
 				casts[1] = stringLiteralCast
 				baseID = parameters[0].BaseID()
 			}
-			if exactMatch, ok := c.OverloadTree.Parameter[baseID]; ok {
-				if exactMatch, ok = exactMatch.Parameter[baseID]; ok {
+			if exactMatch, ok := c.OverloadTree.NextParam[baseID]; ok {
+				if exactMatch, ok = exactMatch.NextParam[baseID]; ok {
 					return exactMatch.Function, casts, nil
 				}
 			}

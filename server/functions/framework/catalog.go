@@ -88,7 +88,7 @@ func Initialize() {
 func compileFunctions() {
 	for funcName, overloads := range Catalog {
 		// Build the overloads
-		baseOverload := &FunctionOverloadTree{Parameter: make(map[pgtypes.DoltgresTypeBaseID]*FunctionOverloadTree)}
+		baseOverload := &FunctionOverloadTree{NextParam: make(map[pgtypes.DoltgresTypeBaseID]*FunctionOverloadTree)}
 		for _, functionOverload := range overloads {
 			buildOverload(funcName, baseOverload, functionOverload)
 		}
@@ -112,7 +112,7 @@ func compileFunctions() {
 	for signature, functionOverload := range unaryFunctions {
 		baseOverload, ok := unaryAggregateDeducers[signature.Operator]
 		if !ok {
-			baseOverload = &FunctionOverloadTree{Parameter: make(map[pgtypes.DoltgresTypeBaseID]*FunctionOverloadTree)}
+			baseOverload = &FunctionOverloadTree{NextParam: make(map[pgtypes.DoltgresTypeBaseID]*FunctionOverloadTree)}
 			unaryAggregateDeducers[signature.Operator] = baseOverload
 		}
 		buildOverload("internal_unary_aggregate_function", baseOverload, functionOverload)
@@ -121,7 +121,7 @@ func compileFunctions() {
 	for signature, functionOverload := range binaryFunctions {
 		baseOverload, ok := binaryAggregateDeducers[signature.Operator]
 		if !ok {
-			baseOverload = &FunctionOverloadTree{Parameter: make(map[pgtypes.DoltgresTypeBaseID]*FunctionOverloadTree)}
+			baseOverload = &FunctionOverloadTree{NextParam: make(map[pgtypes.DoltgresTypeBaseID]*FunctionOverloadTree)}
 			binaryAggregateDeducers[signature.Operator] = baseOverload
 		}
 		buildOverload("internal_binary_aggregate_function", baseOverload, functionOverload)
@@ -188,10 +188,10 @@ func buildOverload(funcName string, baseOverload *FunctionOverloadTree, function
 	// Loop through all of the parameters
 	currentOverload := baseOverload
 	for _, param := range functionOverload.GetParameters() {
-		nextOverload := currentOverload.Parameter[param.BaseID()]
+		nextOverload := currentOverload.NextParam[param.BaseID()]
 		if nextOverload == nil {
-			nextOverload = &FunctionOverloadTree{Parameter: make(map[pgtypes.DoltgresTypeBaseID]*FunctionOverloadTree)}
-			currentOverload.Parameter[param.BaseID()] = nextOverload
+			nextOverload = &FunctionOverloadTree{NextParam: make(map[pgtypes.DoltgresTypeBaseID]*FunctionOverloadTree)}
+			currentOverload.NextParam[param.BaseID()] = nextOverload
 		}
 		currentOverload = nextOverload
 	}
