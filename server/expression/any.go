@@ -17,8 +17,9 @@ package expression
 import (
 	"fmt"
 
-	pgtypes "github.com/dolthub/doltgresql/server/types"
 	"github.com/dolthub/go-mysql-server/sql"
+
+	pgtypes "github.com/dolthub/doltgresql/server/types"
 )
 
 // AnyExpr represents the ANY expression.
