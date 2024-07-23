@@ -38,24 +38,21 @@ func initDoltProcedures() {
 		}
 
 		callable := func(ctx *sql.Context, values ...any) (any, error) {
-			var funcParams []reflect.Value
-			funcParams = append(funcParams, reflect.ValueOf(ctx))
-
-			for i := range p.Params {
-				paramDefinition := p.ParamDefinitions[i]
+			funcParams := make([]reflect.Value, len(values)+1)
+			funcParams[0] = reflect.ValueOf(ctx)
+			
+			for i := range values {
+				paramDefinition := p.ParamDefinitions[0]
 				var funcParamType reflect.Type
 				if paramDefinition.Variadic {
 					funcParamType = funcType.In(funcType.NumIn() - 1).Elem()
 				} else {
-					funcParamType = funcType.In(i + 1)
+					// TODO: support non-variadic procedures
+					return nil, sql.ErrExternalProcedureInvalidParamType.New(funcType.String())
 				}
 
 				// Grab the passed-in variable and convert it to the type we expect
-				exprParamVal, err := p.Params[i].Eval(ctx, nil)
-				if err != nil {
-					return nil, err
-				}
-				exprParamVal, _, err = paramDefinition.Type.Convert(exprParamVal)
+				exprParamVal, _, err := paramDefinition.Type.Convert(values[i])
 				if err != nil {
 					return nil, err
 				}
@@ -65,7 +62,8 @@ func initDoltProcedures() {
 					return nil, err
 				}
 			}
-			rowIter := funcVal.Call([]reflect.Value{reflect.ValueOf(ctx), reflect.ValueOf(values)})
+
+			rowIter := funcVal.Call(funcParams)
 			// TODO: drain the iter, don't return it
 			return rowIter, nil
 		}
