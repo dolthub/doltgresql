@@ -25,7 +25,7 @@ import (
 
 var _ DoltgresType = CompositeType{}
 
-type CompositeType struct{
+type CompositeType struct {
 	elements []DoltgresType
 }
 
@@ -116,11 +116,11 @@ func (c CompositeType) GetSerializationID() SerializationID {
 	return SerializationID_Composite
 }
 
-func (c CompositeType) IoInput(input string) (any, error) {
+func (c CompositeType) IoInput(ctx *sql.Context, input string) (any, error) {
 	panic("implement me")
 }
 
-func (c CompositeType) IoOutput(output any) (string, error) {
+func (c CompositeType) IoOutput(ctx *sql.Context, output any) (string, error) {
 	panic("implement me")
 }
 

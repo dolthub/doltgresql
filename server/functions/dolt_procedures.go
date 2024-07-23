@@ -21,6 +21,7 @@ import (
 
 	"github.com/dolthub/dolt/go/libraries/doltcore/sqle/dprocedures"
 	"github.com/dolthub/doltgresql/server/functions/framework"
+	pgtypes "github.com/dolthub/doltgresql/server/types"
 	"github.com/dolthub/go-mysql-server/sql"
 	"github.com/dolthub/go-mysql-server/sql/expression"
 	"github.com/dolthub/go-mysql-server/sql/plan"
@@ -33,7 +34,7 @@ func initDoltProcedures() {
 		funcType := funcVal.Type()
 		p, err := resolveExternalStoredProcedure(nil, procDef)
 		if err != nil {
-			panic(err) 
+			panic(err)
 		}
 
 		callable := func(ctx *sql.Context, values ...any) (any, error) {
@@ -48,7 +49,7 @@ func initDoltProcedures() {
 				} else {
 					funcParamType = funcType.In(i + 1)
 				}
-				
+
 				// Grab the passed-in variable and convert it to the type we expect
 				exprParamVal, err := p.Params[i].Eval(ctx, nil)
 				if err != nil {
@@ -68,11 +69,11 @@ func initDoltProcedures() {
 			// TODO: drain the iter, don't return it
 			return rowIter, nil
 		}
-		
+
 		framework.RegisterFunction(framework.FunctionN{
 			Name:       procDef.Name,
 			Return:     nil,
-			Parameters: nil,
+			Parameters: make([]pgtypes.DoltgresType, 0),
 			Callable:   callable,
 		})
 	}
@@ -87,41 +88,41 @@ var (
 	errorType = reflect.TypeOf((*error)(nil)).Elem()
 	// externalStoredProcedurePointerTypes maps a non-pointer type to a sql.Type for external stored procedures.
 	externalStoredProcedureTypes = map[reflect.Type]sql.Type{
-		reflect.TypeOf(int(0)):            types.Int64,
-		reflect.TypeOf(int8(0)):           types.Int8,
-		reflect.TypeOf(int16(0)):          types.Int16,
-		reflect.TypeOf(int32(0)):          types.Int32,
-		reflect.TypeOf(int64(0)):          types.Int64,
-		reflect.TypeOf(uint(0)):           types.Uint64,
-		reflect.TypeOf(uint8(0)):          types.Uint8,
-		reflect.TypeOf(uint16(0)):         types.Uint16,
-		reflect.TypeOf(uint32(0)):         types.Uint32,
-		reflect.TypeOf(uint64(0)):         types.Uint64,
-		reflect.TypeOf(float32(0)):        types.Float32,
-		reflect.TypeOf(float64(0)):        types.Float64,
-		reflect.TypeOf(bool(false)):       types.Int8,
-		reflect.TypeOf(string("")):        types.LongText,
-		reflect.TypeOf([]byte{}):          types.LongBlob,
-		reflect.TypeOf(time.Time{}):       types.DatetimeMaxPrecision,
+		reflect.TypeOf(int(0)):      types.Int64,
+		reflect.TypeOf(int8(0)):     types.Int8,
+		reflect.TypeOf(int16(0)):    types.Int16,
+		reflect.TypeOf(int32(0)):    types.Int32,
+		reflect.TypeOf(int64(0)):    types.Int64,
+		reflect.TypeOf(uint(0)):     types.Uint64,
+		reflect.TypeOf(uint8(0)):    types.Uint8,
+		reflect.TypeOf(uint16(0)):   types.Uint16,
+		reflect.TypeOf(uint32(0)):   types.Uint32,
+		reflect.TypeOf(uint64(0)):   types.Uint64,
+		reflect.TypeOf(float32(0)):  types.Float32,
+		reflect.TypeOf(float64(0)):  types.Float64,
+		reflect.TypeOf(bool(false)): types.Int8,
+		reflect.TypeOf(string("")):  types.LongText,
+		reflect.TypeOf([]byte{}):    types.LongBlob,
+		reflect.TypeOf(time.Time{}): types.DatetimeMaxPrecision,
 	}
 	// externalStoredProcedurePointerTypes maps a pointer type to a sql.Type for external stored procedures.
 	externalStoredProcedurePointerTypes = map[reflect.Type]sql.Type{
-		reflect.TypeOf((*int)(nil)):             types.Int64,
-		reflect.TypeOf((*int8)(nil)):            types.Int8,
-		reflect.TypeOf((*int16)(nil)):           types.Int16,
-		reflect.TypeOf((*int32)(nil)):           types.Int32,
-		reflect.TypeOf((*int64)(nil)):           types.Int64,
-		reflect.TypeOf((*uint)(nil)):            types.Uint64,
-		reflect.TypeOf((*uint8)(nil)):           types.Uint8,
-		reflect.TypeOf((*uint16)(nil)):          types.Uint16,
-		reflect.TypeOf((*uint32)(nil)):          types.Uint32,
-		reflect.TypeOf((*uint64)(nil)):          types.Uint64,
-		reflect.TypeOf((*float32)(nil)):         types.Float32,
-		reflect.TypeOf((*float64)(nil)):         types.Float64,
-		reflect.TypeOf((*bool)(nil)):            types.Int8,
-		reflect.TypeOf((*string)(nil)):          types.LongText,
-		reflect.TypeOf((*[]byte)(nil)):          types.LongBlob,
-		reflect.TypeOf((*time.Time)(nil)):       types.DatetimeMaxPrecision,
+		reflect.TypeOf((*int)(nil)):       types.Int64,
+		reflect.TypeOf((*int8)(nil)):      types.Int8,
+		reflect.TypeOf((*int16)(nil)):     types.Int16,
+		reflect.TypeOf((*int32)(nil)):     types.Int32,
+		reflect.TypeOf((*int64)(nil)):     types.Int64,
+		reflect.TypeOf((*uint)(nil)):      types.Uint64,
+		reflect.TypeOf((*uint8)(nil)):     types.Uint8,
+		reflect.TypeOf((*uint16)(nil)):    types.Uint16,
+		reflect.TypeOf((*uint32)(nil)):    types.Uint32,
+		reflect.TypeOf((*uint64)(nil)):    types.Uint64,
+		reflect.TypeOf((*float32)(nil)):   types.Float32,
+		reflect.TypeOf((*float64)(nil)):   types.Float64,
+		reflect.TypeOf((*bool)(nil)):      types.Int8,
+		reflect.TypeOf((*string)(nil)):    types.LongText,
+		reflect.TypeOf((*[]byte)(nil)):    types.LongBlob,
+		reflect.TypeOf((*time.Time)(nil)): types.DatetimeMaxPrecision,
 	}
 )
 
@@ -193,8 +194,8 @@ func resolveExternalStoredProcedure(_ *sql.Context, externalProcedure sql.Extern
 	}
 
 	return &plan.ExternalProcedure{
-			ExternalStoredProcedureDetails: externalProcedure,
-			ParamDefinitions:               paramDefinitions,
-			Params:                         paramReferences,
-		}, nil
+		ExternalStoredProcedureDetails: externalProcedure,
+		ParamDefinitions:               paramDefinitions,
+		Params:                         paramReferences,
+	}, nil
 }

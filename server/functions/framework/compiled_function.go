@@ -36,6 +36,7 @@ type CompiledFunction struct {
 	casts         []TypeCastFunction
 	originalTypes []pgtypes.DoltgresType
 	callResolved  []pgtypes.DoltgresType
+	varArgsType   pgtypes.DoltgresType
 	stashedErr    error
 }
 
@@ -250,12 +251,12 @@ func (c *CompiledFunction) WithChildren(children ...sql.Expression) (sql.Express
 
 // resolve returns an overload that either matches the given parameters exactly, or is a viable match after casting.
 // Returns a nil OverloadDeduction if a viable match is not found.
-func (c *CompiledFunction) resolve(parameters []pgtypes.DoltgresType, sources []Source) (*OverloadDeduction, []TypeCastFunction, error) {
+func (c *CompiledFunction) resolve(paramTypes []pgtypes.DoltgresType, sources []Source) (*OverloadDeduction, []TypeCastFunction, error) {
 	// First check for an exact match
 	exactMatch := c.Functions
-	for _, parameter := range parameters {
+	for _, typ := range paramTypes {
 		var ok bool
-		if exactMatch, ok = exactMatch.Parameter[parameter.BaseID()]; !ok {
+		if exactMatch, ok = exactMatch.Parameter[typ.BaseID()]; !ok {
 			break
 		}
 	}
@@ -265,9 +266,9 @@ func (c *CompiledFunction) resolve(parameters []pgtypes.DoltgresType, sources []
 	// There are no exact matches, so now we'll look through all of the functions to determine the best match. This is
 	// much more work, but there's a performance penalty for runtime overload resolution in Postgres as well.
 	if c.IsOperator {
-		return c.resolveOperator(parameters, sources)
+		return c.resolveOperator(paramTypes, sources)
 	} else {
-		return c.resolveFunction(parameters, sources)
+		return c.resolveFunction(paramTypes, sources)
 	}
 }
 
