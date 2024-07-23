@@ -15,6 +15,7 @@
 package functions
 
 import (
+	"io"
 	"reflect"
 	"strconv"
 	"time"
@@ -40,7 +41,7 @@ func initDoltProcedures() {
 		callable := func(ctx *sql.Context, values ...any) (any, error) {
 			funcParams := make([]reflect.Value, len(values)+1)
 			funcParams[0] = reflect.ValueOf(ctx)
-			
+
 			for i := range values {
 				paramDefinition := p.ParamDefinitions[0]
 				var funcParamType reflect.Type
@@ -63,9 +64,19 @@ func initDoltProcedures() {
 				}
 			}
 
-			rowIter := funcVal.Call(funcParams)
-			// TODO: drain the iter, don't return it
-			return rowIter, nil
+			out := funcVal.Call(funcParams)
+			if err, ok := out[1].Interface().(error); ok { // Only evaluates to true when error is not nil
+				return nil, err
+			}
+
+			var rowIter sql.RowIter
+			if iter, ok := out[0].Interface().(sql.RowIter); ok {
+				rowIter = iter
+			} else {
+				rowIter = sql.RowsToRowIter()
+			}
+
+			return drainRowIter(ctx, rowIter)
 		}
 
 		framework.RegisterFunction(framework.FunctionN{
@@ -76,6 +87,26 @@ func initDoltProcedures() {
 			Callable:    callable,
 		})
 	}
+}
+
+func drainRowIter(ctx *sql.Context, rowIter sql.RowIter) (any, error) {
+	for {
+		row, err := rowIter.Next(ctx)
+		if err == io.EOF {
+			break
+		} else if err != nil {
+			return nil, err
+		}
+
+		// TODO: return an appropriate tuple
+		if len(row) > 0 {
+			return row[0], nil
+		} else {
+			return nil, nil
+		}
+	}
+
+	return nil, nil
 }
 
 var (
