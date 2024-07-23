@@ -29,7 +29,7 @@ import (
 type CompiledFunction struct {
 	Name          string
 	Parameters    []sql.Expression
-	Functions     *OverloadDeduction
+	OverloadTree  *FunctionOverloadTree
 	AllOverloads  [][]pgtypes.DoltgresTypeBaseID
 	IsOperator    bool
 	callableFunc  FunctionInterface
@@ -44,16 +44,16 @@ var _ sql.FunctionExpression = (*CompiledFunction)(nil)
 var _ sql.NonDeterministicExpression = (*CompiledFunction)(nil)
 
 // NewCompiledFunction returns a newly compiled function.
-func NewCompiledFunction(name string, parameters []sql.Expression, functions *OverloadDeduction, isOperator bool) *CompiledFunction {
+func NewCompiledFunction(name string, parameters []sql.Expression, functions *FunctionOverloadTree, isOperator bool) *CompiledFunction {
 	return newCompiledFunctionInternal(name, parameters, functions, functions.collectOverloadPermutations(), isOperator)
 }
 
 // newCompiledFunctionInternal is called internally, which skips steps that may have already been processed.
-func newCompiledFunctionInternal(name string, params []sql.Expression, funcs *OverloadDeduction, allFuncs [][]pgtypes.DoltgresTypeBaseID, isOperator bool) *CompiledFunction {
+func newCompiledFunctionInternal(name string, params []sql.Expression, funcs *FunctionOverloadTree, allFuncs [][]pgtypes.DoltgresTypeBaseID, isOperator bool) *CompiledFunction {
 	c := &CompiledFunction{
-		Name:       name,
-		Parameters: params,
-		Functions:  funcs,
+		Name:         name,
+		Parameters:   params,
+		OverloadTree: funcs,
 		// varArgsType: funcs.
 		AllOverloads: allFuncs,
 		IsOperator:   isOperator,
@@ -72,13 +72,13 @@ func newCompiledFunctionInternal(name string, params []sql.Expression, funcs *Ov
 		return c
 	}
 	// If we do not receive an overload, then the parameters given did not result in a valid match
-	if overload == nil || overload.Function == nil {
+	if overload == nil {
 		c.stashedErr = fmt.Errorf("function %s does not exist", c.OverloadString(originalTypes))
 		return c
 	}
 	// Then we'll handle the polymorphic types
 	// https://www.postgresql.org/docs/15/extend-type-system.html#EXTEND-TYPES-POLYMORPHIC
-	functionParameterTypes := overload.Function.GetParameters()
+	functionParameterTypes := overload.GetParameters()
 	c.callResolved = make([]pgtypes.DoltgresType, len(functionParameterTypes)+1)
 	hasPolymorphicParam := false
 	for i, param := range functionParameterTypes {
@@ -90,7 +90,7 @@ func newCompiledFunctionInternal(name string, params []sql.Expression, funcs *Ov
 			c.callResolved[i] = param
 		}
 	}
-	returnType := overload.Function.GetReturn()
+	returnType := overload.GetReturn()
 	c.callResolved[len(c.callResolved)-1] = returnType
 	if _, ok := returnType.(pgtypes.DoltgresPolymorphicType); ok {
 		if hasPolymorphicParam {
@@ -102,7 +102,7 @@ func newCompiledFunctionInternal(name string, params []sql.Expression, funcs *Ov
 		}
 	}
 	// Lastly, we assign everything to the function struct
-	c.callableFunc = overload.Function
+	c.callableFunc = overload
 	c.casts = casts
 	c.originalTypes = originalTypes
 	return c
@@ -125,7 +125,7 @@ func (c *CompiledFunction) Resolved() bool {
 			return false
 		}
 	}
-	return c.Functions != nil
+	return c.OverloadTree != nil
 }
 
 // String implements the interface sql.Expression.
@@ -247,14 +247,14 @@ func (c *CompiledFunction) Children() []sql.Expression {
 
 // WithChildren implements the interface sql.Expression.
 func (c *CompiledFunction) WithChildren(children ...sql.Expression) (sql.Expression, error) {
-	return newCompiledFunctionInternal(c.Name, children, c.Functions, c.AllOverloads, c.IsOperator), nil
+	return newCompiledFunctionInternal(c.Name, children, c.OverloadTree, c.AllOverloads, c.IsOperator), nil
 }
 
 // resolve returns an overload that either matches the given parameters exactly, or is a viable match after casting.
-// Returns a nil OverloadDeduction if a viable match is not found.
-func (c *CompiledFunction) resolve(paramTypes []pgtypes.DoltgresType, sources []Source) (*OverloadDeduction, []TypeCastFunction, error) {
+// Returns a nil FunctionOverloadTree if a viable match is not found.
+func (c *CompiledFunction) resolve(paramTypes []pgtypes.DoltgresType, sources []Source) (FunctionInterface, []TypeCastFunction, error) {
 	// First check for an exact match
-	exactMatch := c.Functions
+	exactMatch := c.OverloadTree
 	for _, typ := range paramTypes {
 		var ok bool
 		if exactMatch, ok = exactMatch.Parameter[typ.BaseID()]; !ok {
@@ -262,7 +262,7 @@ func (c *CompiledFunction) resolve(paramTypes []pgtypes.DoltgresType, sources []
 		}
 	}
 	if exactMatch != nil && exactMatch.Function != nil {
-		return exactMatch, nil, nil
+		return exactMatch.Function, nil, nil
 	}
 	// There are no exact matches, so now we'll look through all of the functions to determine the best match. This is
 	// much more work, but there's a performance penalty for runtime overload resolution in Postgres as well.
@@ -275,7 +275,7 @@ func (c *CompiledFunction) resolve(paramTypes []pgtypes.DoltgresType, sources []
 
 // resolveFunction resolves a function according to the rules defined by Postgres.
 // https://www.postgresql.org/docs/15/typeconv-func.html
-func (c *CompiledFunction) resolveFunction(parameters []pgtypes.DoltgresType, sources []Source) (*OverloadDeduction, []TypeCastFunction, error) {
+func (c *CompiledFunction) resolveFunction(parameters []pgtypes.DoltgresType, sources []Source) (FunctionInterface, []TypeCastFunction, error) {
 	// First we'll discard all overloads that have a different length, or that do not have implicitly-convertible params
 	var convertibles [][]pgtypes.DoltgresTypeBaseID
 	var casts [][]TypeCastFunction
@@ -308,11 +308,11 @@ func (c *CompiledFunction) resolveFunction(parameters []pgtypes.DoltgresType, so
 	}
 	// If we've found exactly one match then we'll return that one
 	if len(convertibles) == 1 {
-		matchedOverload := c.Functions
-		for _, parameter := range convertibles[0] {
-			matchedOverload = matchedOverload.Parameter[parameter]
+		matchedOverload := c.OverloadTree
+		for _, paramType := range convertibles[0] {
+			matchedOverload = matchedOverload.Parameter[paramType]
 		}
-		return matchedOverload, casts[0], nil
+		return matchedOverload.Function, casts[0], nil
 	} else if len(convertibles) == 0 {
 		return nil, nil, nil
 	}
@@ -338,11 +338,11 @@ func (c *CompiledFunction) resolveFunction(parameters []pgtypes.DoltgresType, so
 	}
 	// Now check again for exactly one match
 	if len(matches) == 1 {
-		matchedOverload := c.Functions
+		matchedOverload := c.OverloadTree
 		for _, parameter := range matches[0] {
 			matchedOverload = matchedOverload.Parameter[parameter]
 		}
-		return matchedOverload, matchCasts[0], nil
+		return matchedOverload.Function, matchCasts[0], nil
 	} else if len(matches) == 0 {
 		return nil, nil, nil
 	}
@@ -368,11 +368,11 @@ func (c *CompiledFunction) resolveFunction(parameters []pgtypes.DoltgresType, so
 	}
 	// Check once more for exactly one match
 	if len(preferredOverloads) == 1 {
-		matchedOverload := c.Functions
+		matchedOverload := c.OverloadTree
 		for _, parameter := range preferredOverloads[0] {
 			matchedOverload = matchedOverload.Parameter[parameter]
 		}
-		return matchedOverload, preferredCasts[0], nil
+		return matchedOverload.Function, preferredCasts[0], nil
 	} else if len(preferredOverloads) == 0 {
 		return nil, nil, nil
 	}
@@ -381,7 +381,7 @@ func (c *CompiledFunction) resolveFunction(parameters []pgtypes.DoltgresType, so
 
 // resolveOperator resolves an operator according to the rules defined by Postgres.
 // https://www.postgresql.org/docs/15/typeconv-oper.html
-func (c *CompiledFunction) resolveOperator(parameters []pgtypes.DoltgresType, sources []Source) (*OverloadDeduction, []TypeCastFunction, error) {
+func (c *CompiledFunction) resolveOperator(parameters []pgtypes.DoltgresType, sources []Source) (FunctionInterface, []TypeCastFunction, error) {
 	// Binary operators treat string literals as the other type, so we'll account for that here to see if we can find an
 	// "exact" match.
 	if len(parameters) == 2 {
@@ -397,9 +397,9 @@ func (c *CompiledFunction) resolveOperator(parameters []pgtypes.DoltgresType, so
 				casts[1] = stringLiteralCast
 				baseID = parameters[0].BaseID()
 			}
-			if exactMatch, ok := c.Functions.Parameter[baseID]; ok {
+			if exactMatch, ok := c.OverloadTree.Parameter[baseID]; ok {
 				if exactMatch, ok = exactMatch.Parameter[baseID]; ok {
-					return exactMatch, casts, nil
+					return exactMatch.Function, casts, nil
 				}
 			}
 		}

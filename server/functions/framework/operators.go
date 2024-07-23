@@ -74,10 +74,10 @@ var (
 	binaryFunctions = map[binaryFunction]Function2{}
 	// unaryAggregateDeducers is a map from an operator to an overload deducer that is the aggregate of all functions
 	// for that operator.
-	unaryAggregateDeducers = map[Operator]*OverloadDeduction{}
+	unaryAggregateDeducers = map[Operator]*FunctionOverloadTree{}
 	// binaryAggregateDeducers is a map from an operator to an overload deducer that is the aggregate of all functions
 	// for that operator.
-	binaryAggregateDeducers = map[Operator]*OverloadDeduction{}
+	binaryAggregateDeducers = map[Operator]*FunctionOverloadTree{}
 	// unaryAggregatePermutations contains all of the permutations for each unary operator.
 	unaryAggregatePermutations = map[Operator][][]pgtypes.DoltgresTypeBaseID{}
 	// unaryAggregatePermutations contains all of the permutations for each binary operator.

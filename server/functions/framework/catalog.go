@@ -88,7 +88,7 @@ func Initialize() {
 func compileFunctions() {
 	for funcName, overloads := range Catalog {
 		// Build the overloads
-		baseOverload := &OverloadDeduction{Parameter: make(map[pgtypes.DoltgresTypeBaseID]*OverloadDeduction)}
+		baseOverload := &FunctionOverloadTree{Parameter: make(map[pgtypes.DoltgresTypeBaseID]*FunctionOverloadTree)}
 		for _, functionOverload := range overloads {
 			buildOverload(funcName, baseOverload, functionOverload)
 		}
@@ -112,7 +112,7 @@ func compileFunctions() {
 	for signature, functionOverload := range unaryFunctions {
 		baseOverload, ok := unaryAggregateDeducers[signature.Operator]
 		if !ok {
-			baseOverload = &OverloadDeduction{Parameter: make(map[pgtypes.DoltgresTypeBaseID]*OverloadDeduction)}
+			baseOverload = &FunctionOverloadTree{Parameter: make(map[pgtypes.DoltgresTypeBaseID]*FunctionOverloadTree)}
 			unaryAggregateDeducers[signature.Operator] = baseOverload
 		}
 		buildOverload("internal_unary_aggregate_function", baseOverload, functionOverload)
@@ -121,7 +121,7 @@ func compileFunctions() {
 	for signature, functionOverload := range binaryFunctions {
 		baseOverload, ok := binaryAggregateDeducers[signature.Operator]
 		if !ok {
-			baseOverload = &OverloadDeduction{Parameter: make(map[pgtypes.DoltgresTypeBaseID]*OverloadDeduction)}
+			baseOverload = &FunctionOverloadTree{Parameter: make(map[pgtypes.DoltgresTypeBaseID]*FunctionOverloadTree)}
 			binaryAggregateDeducers[signature.Operator] = baseOverload
 		}
 		buildOverload("internal_binary_aggregate_function", baseOverload, functionOverload)
@@ -184,13 +184,13 @@ func validateFunctions() {
 }
 
 // buildOverload is used by Initialize to add the given function to the base overload deducer.
-func buildOverload(funcName string, baseOverload *OverloadDeduction, functionOverload FunctionInterface) {
+func buildOverload(funcName string, baseOverload *FunctionOverloadTree, functionOverload FunctionInterface) {
 	// Loop through all of the parameters
 	currentOverload := baseOverload
 	for _, param := range functionOverload.GetParameters() {
 		nextOverload := currentOverload.Parameter[param.BaseID()]
 		if nextOverload == nil {
-			nextOverload = &OverloadDeduction{Parameter: make(map[pgtypes.DoltgresTypeBaseID]*OverloadDeduction)}
+			nextOverload = &FunctionOverloadTree{Parameter: make(map[pgtypes.DoltgresTypeBaseID]*FunctionOverloadTree)}
 			currentOverload.Parameter[param.BaseID()] = nextOverload
 		}
 		currentOverload = nextOverload
