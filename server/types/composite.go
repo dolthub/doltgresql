@@ -29,6 +29,10 @@ type CompositeType struct {
 	elements []DoltgresType
 }
 
+func NewCompositeType(elements []DoltgresType) CompositeType {
+	return CompositeType{elements: elements}
+}
+
 func (c CompositeType) CollationCoercibility(ctx *sql.Context) (collation sql.CollationID, coercibility byte) {
 	return 0, 0
 }
@@ -60,6 +64,10 @@ func (c CompositeType) SQL(ctx *sql.Context, dest []byte, v interface{}) (sqltyp
 
 func (c CompositeType) Type() query.Type {
 	return query.Type_TUPLE
+}
+
+func (c CompositeType) NumElements() int {
+	return len(c.elements)
 }
 
 func (c CompositeType) ValueType() reflect.Type {

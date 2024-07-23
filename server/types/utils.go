@@ -17,6 +17,9 @@ package types
 import (
 	"strings"
 	"unicode/utf8"
+
+	"github.com/dolthub/go-mysql-server/sql"
+	"github.com/dolthub/vitess/go/vt/proto/query"
 )
 
 // QuoteString will quote the string according to the type given. This means that some types will quote, and others will
@@ -44,4 +47,36 @@ func truncateString(val string, runeLimit uint32) (string, uint32) {
 		return startString[:len(startString)-len(val)], runeLength
 	}
 	return val, runeLength
+}
+
+// FromGmsType returns a DoltgresType that is most similar to the given GMS type.
+func FromGmsType(typ sql.Type) DoltgresType {
+	switch typ.Type() {
+	case query.Type_INT8, query.Type_INT16, query.Type_INT24, query.Type_INT32, query.Type_YEAR, query.Type_ENUM:
+		return Int32
+	case query.Type_INT64, query.Type_SET, query.Type_BIT, query.Type_UINT8, query.Type_UINT16, query.Type_UINT24, query.Type_UINT32:
+		return Int64
+	case query.Type_UINT64:
+		return Numeric
+	case query.Type_FLOAT32:
+		return Float32
+	case query.Type_FLOAT64:
+		return Float64
+	case query.Type_DECIMAL:
+		return Numeric
+	case query.Type_DATE, query.Type_DATETIME, query.Type_TIMESTAMP:
+		return Timestamp
+	case query.Type_TIME:
+		return Text
+	case query.Type_CHAR, query.Type_VARCHAR, query.Type_TEXT, query.Type_BINARY, query.Type_VARBINARY, query.Type_BLOB:
+		return Text
+	case query.Type_JSON:
+		return Json
+	case query.Type_NULL_TYPE:
+		return Null
+	case query.Type_GEOMETRY:
+		return Unknown
+	default:
+		return Unknown
+	}
 }

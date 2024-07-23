@@ -114,14 +114,17 @@ func TestSingleScript(t *testing.T) {
 
 	var scripts = []queries.ScriptTest{
 		{
-			Name:        "dolt procedures",
+			Name: "dolt procedures",
 			SetUpScript: []string{
 				"create table t1 (pk int primary key, c int);",
 				"select dolt_add('.')",
 			},
-			Assertions:  []queries.ScriptTestAssertion{
+			Assertions: []queries.ScriptTestAssertion{
 				{
-					Query:                           "select dolt_commit('-am', 'initial table');",
+					Query: "select dolt_commit('-am', 'initial table');",
+					Expected: []sql.Row{
+						{1},
+					},
 				},
 			},
 		},
@@ -1092,7 +1095,7 @@ func TestDoltCheckoutPrepared(t *testing.T) {
 }
 
 func TestDoltBranch(t *testing.T) {
-	t.Skip()
+	// t.Skip()
 	h := newDoltgresServerHarness(t)
 	denginetest.RunDoltBranchTests(t, h)
 }

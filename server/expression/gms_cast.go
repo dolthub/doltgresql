@@ -57,34 +57,8 @@ func (c *GMSCast) DoltgresType() pgtypes.DoltgresType {
 	if t, ok := c.sqlChild.Type().(pgtypes.DoltgresType); ok {
 		return t
 	}
-	switch c.sqlChild.Type().Type() {
-	case query.Type_INT8, query.Type_INT16, query.Type_INT24, query.Type_INT32, query.Type_YEAR, query.Type_ENUM:
-		return pgtypes.Int32
-	case query.Type_INT64, query.Type_SET, query.Type_BIT, query.Type_UINT8, query.Type_UINT16, query.Type_UINT24, query.Type_UINT32:
-		return pgtypes.Int64
-	case query.Type_UINT64:
-		return pgtypes.Numeric
-	case query.Type_FLOAT32:
-		return pgtypes.Float32
-	case query.Type_FLOAT64:
-		return pgtypes.Float64
-	case query.Type_DECIMAL:
-		return pgtypes.Numeric
-	case query.Type_DATE, query.Type_DATETIME, query.Type_TIMESTAMP:
-		return pgtypes.Timestamp
-	case query.Type_TIME:
-		return pgtypes.Text
-	case query.Type_CHAR, query.Type_VARCHAR, query.Type_TEXT, query.Type_BINARY, query.Type_VARBINARY, query.Type_BLOB:
-		return pgtypes.Text
-	case query.Type_JSON:
-		return pgtypes.Json
-	case query.Type_NULL_TYPE:
-		return pgtypes.Null
-	case query.Type_GEOMETRY:
-		return pgtypes.Unknown
-	default:
-		return pgtypes.Unknown
-	}
+
+	return pgtypes.FromGmsType(c.sqlChild.Type())
 }
 
 // Eval implements the sql.Expression interface.

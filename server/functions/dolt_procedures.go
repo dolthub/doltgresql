@@ -15,6 +15,7 @@
 package functions
 
 import (
+	"fmt"
 	"io"
 	"reflect"
 	"strconv"
@@ -31,57 +32,23 @@ import (
 
 func initDoltProcedures() {
 	for _, procDef := range dprocedures.DoltProcedures {
-		funcVal := reflect.ValueOf(procDef.Function)
-		funcType := funcVal.Type()
 		p, err := resolveExternalStoredProcedure(nil, procDef)
 		if err != nil {
 			panic(err)
 		}
 
-		callable := func(ctx *sql.Context, values ...any) (any, error) {
-			funcParams := make([]reflect.Value, len(values)+1)
-			funcParams[0] = reflect.ValueOf(ctx)
-
-			for i := range values {
-				paramDefinition := p.ParamDefinitions[0]
-				var funcParamType reflect.Type
-				if paramDefinition.Variadic {
-					funcParamType = funcType.In(funcType.NumIn() - 1).Elem()
-				} else {
-					// TODO: support non-variadic procedures
-					return nil, sql.ErrExternalProcedureInvalidParamType.New(funcType.String())
-				}
-
-				// Grab the passed-in variable and convert it to the type we expect
-				exprParamVal, _, err := paramDefinition.Type.Convert(values[i])
-				if err != nil {
-					return nil, err
-				}
-
-				funcParams[i+1], err = p.ProcessParam(ctx, funcParamType, exprParamVal)
-				if err != nil {
-					return nil, err
-				}
-			}
-
-			out := funcVal.Call(funcParams)
-			if err, ok := out[1].Interface().(error); ok { // Only evaluates to true when error is not nil
-				return nil, err
-			}
-
-			var rowIter sql.RowIter
-			if iter, ok := out[0].Interface().(sql.RowIter); ok {
-				rowIter = iter
-			} else {
-				rowIter = sql.RowsToRowIter()
-			}
-
-			return drainRowIter(ctx, rowIter)
+		schema := make([]pgtypes.DoltgresType, len(procDef.Schema))
+		for i := range procDef.Schema {
+			schema[i] = pgtypes.FromGmsType(procDef.Schema[i].Type)
 		}
+		outputType := pgtypes.NewCompositeType(schema)
+
+		funcVal := reflect.ValueOf(procDef.Function)
+		callable := callableForDoltProcedure(p, funcVal, outputType)
 
 		framework.RegisterFunction(framework.FunctionN{
 			Name:        procDef.Name,
-			Return:      pgtypes.Int64, // TODO: real type
+			Return:      outputType,
 			Parameters:  make([]pgtypes.DoltgresType, 0),
 			VarargsType: pgtypes.TextType{},
 			Callable:    callable,
@@ -89,7 +56,52 @@ func initDoltProcedures() {
 	}
 }
 
-func drainRowIter(ctx *sql.Context, rowIter sql.RowIter) (any, error) {
+func callableForDoltProcedure(p *plan.ExternalProcedure, funcVal reflect.Value, outputType pgtypes.CompositeType) func(ctx *sql.Context, values ...any) (any, error) {
+	funcType := funcVal.Type()
+
+	return func(ctx *sql.Context, values ...any) (any, error) {
+		funcParams := make([]reflect.Value, len(values)+1)
+		funcParams[0] = reflect.ValueOf(ctx)
+
+		for i := range values {
+			paramDefinition := p.ParamDefinitions[0]
+			var funcParamType reflect.Type
+			if paramDefinition.Variadic {
+				funcParamType = funcType.In(funcType.NumIn() - 1).Elem()
+			} else {
+				// TODO: support non-variadic procedures
+				return nil, sql.ErrExternalProcedureInvalidParamType.New(funcType.String())
+			}
+
+			// Grab the passed-in variable and convert it to the type we expect
+			exprParamVal, _, err := paramDefinition.Type.Convert(values[i])
+			if err != nil {
+				return nil, err
+			}
+
+			funcParams[i+1], err = p.ProcessParam(ctx, funcParamType, exprParamVal)
+			if err != nil {
+				return nil, err
+			}
+		}
+
+		out := funcVal.Call(funcParams)
+		if err, ok := out[1].Interface().(error); ok { // Only evaluates to true when error is not nil
+			return nil, err
+		}
+
+		var rowIter sql.RowIter
+		if iter, ok := out[0].Interface().(sql.RowIter); ok {
+			rowIter = iter
+		} else {
+			rowIter = sql.RowsToRowIter()
+		}
+
+		return drainRowIter(ctx, rowIter, outputType)
+	}
+}
+
+func drainRowIter(ctx *sql.Context, rowIter sql.RowIter, outputType pgtypes.CompositeType) (any, error) {
 	for {
 		row, err := rowIter.Next(ctx)
 		if err == io.EOF {
@@ -98,11 +110,10 @@ func drainRowIter(ctx *sql.Context, rowIter sql.RowIter) (any, error) {
 			return nil, err
 		}
 
-		// TODO: return an appropriate tuple
-		if len(row) > 0 {
-			return row[0], nil
+		if len(row) != outputType.NumElements() {
+			return nil, fmt.Errorf("expected %d elements, got %d", outputType.NumElements(), len(row))
 		} else {
-			return nil, nil
+			return row, nil
 		}
 	}
 
