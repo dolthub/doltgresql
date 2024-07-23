@@ -71,10 +71,11 @@ func initDoltProcedures() {
 		}
 
 		framework.RegisterFunction(framework.FunctionN{
-			Name:       procDef.Name,
-			Return:     nil,
-			Parameters: make([]pgtypes.DoltgresType, 0),
-			Callable:   callable,
+			Name:        procDef.Name,
+			Return:      nil, // TODO
+			Parameters:  make([]pgtypes.DoltgresType, 0),
+			VarargsType: pgtypes.TextType{},
+			Callable:    callable,
 		})
 	}
 }

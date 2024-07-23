@@ -51,9 +51,10 @@ func NewCompiledFunction(name string, parameters []sql.Expression, functions *Ov
 // newCompiledFunctionInternal is called internally, which skips steps that may have already been processed.
 func newCompiledFunctionInternal(name string, params []sql.Expression, funcs *OverloadDeduction, allFuncs [][]pgtypes.DoltgresTypeBaseID, isOperator bool) *CompiledFunction {
 	c := &CompiledFunction{
-		Name:         name,
-		Parameters:   params,
-		Functions:    funcs,
+		Name:       name,
+		Parameters: params,
+		Functions:  funcs,
+		// varArgsType: funcs.
 		AllOverloads: allFuncs,
 		IsOperator:   isOperator,
 	}

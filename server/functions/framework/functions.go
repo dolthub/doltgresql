@@ -28,6 +28,8 @@ type FunctionInterface interface {
 	GetReturn() pgtypes.DoltgresType
 	// GetParameters returns the parameter types for the function.
 	GetParameters() []pgtypes.DoltgresType
+	// GetVarargsType returns the parameter types for vararg functions
+	GetVarargsType() pgtypes.DoltgresType
 	// GetExpectedParameterCount returns the number of parameters that are valid for this function.
 	GetExpectedParameterCount() int
 	// GetIsNonDeterministic returns whether the function is non-deterministic.
@@ -100,6 +102,7 @@ type FunctionN struct {
 	Name               string
 	Return             pgtypes.DoltgresType
 	Parameters         []pgtypes.DoltgresType
+	VarargsType        pgtypes.DoltgresType
 	IsNonDeterministic bool
 	Strict             bool
 	Callable           func(ctx *sql.Context, values ...any) (any, error)
@@ -120,6 +123,9 @@ func (f Function0) GetReturn() pgtypes.DoltgresType { return f.Return }
 
 // GetParameters implements the FunctionInterface interface.
 func (f Function0) GetParameters() []pgtypes.DoltgresType { return nil }
+
+// GetVarargsType implements the FunctionInterface interface.
+func (f Function0) GetVarargsType() pgtypes.DoltgresType { return nil }
 
 // GetExpectedParameterCount implements the FunctionInterface interface.
 func (f Function0) GetExpectedParameterCount() int { return 0 }
@@ -142,6 +148,9 @@ func (f Function1) GetReturn() pgtypes.DoltgresType { return f.Return }
 // GetParameters implements the FunctionInterface interface.
 func (f Function1) GetParameters() []pgtypes.DoltgresType { return f.Parameters[:] }
 
+// GetVarargsType implements the FunctionInterface interface.
+func (f Function1) GetVarargsType() pgtypes.DoltgresType { return nil }
+
 // GetExpectedParameterCount implements the FunctionInterface interface.
 func (f Function1) GetExpectedParameterCount() int { return 1 }
 
@@ -162,6 +171,9 @@ func (f Function2) GetReturn() pgtypes.DoltgresType { return f.Return }
 
 // GetParameters implements the FunctionInterface interface.
 func (f Function2) GetParameters() []pgtypes.DoltgresType { return f.Parameters[:] }
+
+// GetVarargsType implements the FunctionInterface interface.
+func (f Function2) GetVarargsType() pgtypes.DoltgresType { return nil }
 
 // GetExpectedParameterCount implements the FunctionInterface interface.
 func (f Function2) GetExpectedParameterCount() int { return 2 }
@@ -184,6 +196,9 @@ func (f Function3) GetReturn() pgtypes.DoltgresType { return f.Return }
 // GetParameters implements the FunctionInterface interface.
 func (f Function3) GetParameters() []pgtypes.DoltgresType { return f.Parameters[:] }
 
+// GetVarargsType implements the FunctionInterface interface.
+func (f Function3) GetVarargsType() pgtypes.DoltgresType { return nil }
+
 // GetExpectedParameterCount implements the FunctionInterface interface.
 func (f Function3) GetExpectedParameterCount() int { return 3 }
 
@@ -204,6 +219,9 @@ func (f Function4) GetReturn() pgtypes.DoltgresType { return f.Return }
 
 // GetParameters implements the FunctionInterface interface.
 func (f Function4) GetParameters() []pgtypes.DoltgresType { return f.Parameters[:] }
+
+// GetVarargsType implements the FunctionInterface interface.
+func (f Function4) GetVarargsType() pgtypes.DoltgresType { return nil }
 
 // GetExpectedParameterCount implements the FunctionInterface interface.
 func (f Function4) GetExpectedParameterCount() int { return 4 }
@@ -231,6 +249,9 @@ func (f FunctionN) GetReturn() pgtypes.DoltgresType {
 func (f FunctionN) GetParameters() []pgtypes.DoltgresType {
 	return f.Parameters
 }
+
+// GetVarargsType implements the FunctionInterface interface.
+func (f FunctionN) GetVarargsType() pgtypes.DoltgresType { return f.VarargsType }
 
 // GetExpectedParameterCount implements the FunctionInterface interface.
 func (f FunctionN) GetExpectedParameterCount() int {

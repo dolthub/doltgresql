@@ -94,6 +94,7 @@ func compileFunctions() {
 		}
 
 		// Store the compiled function into the engine's built-in functions
+		// TODO: don't do this, use an actual contract for communicating these functions to the engine catalog
 		createFunc := func(params ...sql.Expression) (sql.Expression, error) {
 			return NewCompiledFunction(funcName, params, baseOverload, false), nil
 		}
@@ -194,6 +195,7 @@ func buildOverload(funcName string, baseOverload *OverloadDeduction, functionOve
 		}
 		currentOverload = nextOverload
 	}
+
 	// This should never happen, but we'll check anyway to be safe
 	if currentOverload.Function != nil {
 		panic(fmt.Errorf("function `%s` somehow has duplicate overloads that weren't caught earlier", funcName))
