@@ -15,7 +15,9 @@
 package types
 
 import (
+	"fmt"
 	"reflect"
+	"strings"
 
 	"github.com/dolthub/go-mysql-server/sql"
 	"github.com/dolthub/go-mysql-server/sql/types"
@@ -58,8 +60,37 @@ func (c CompositeType) Promote() sql.Type {
 }
 
 func (c CompositeType) SQL(ctx *sql.Context, dest []byte, v interface{}) (sqltypes.Value, error) {
-	// TODO
-	return sqltypes.NULL, nil
+	row, ok := v.(sql.Row)
+	if !ok {
+		return sqltypes.Value{}, fmt.Errorf("expected sql.Row but got %T", v)
+	}
+
+	if len(row) != len(c.elements) {
+		return sqltypes.Value{}, fmt.Errorf("expected %d elements but got %d", len(c.elements), len(row))
+	}
+
+	sb := strings.Builder{}
+	if len(row) > 1 {
+		sb.WriteRune('(')
+	}
+
+	for i, typ := range c.elements {
+		if i > 0 {
+			sb.WriteRune(',')
+		}
+		sqlVal, err := typ.SQL(ctx, dest, row[i])
+		if err != nil {
+			return sqltypes.Value{}, err
+		}
+
+		sb.WriteString(sqlVal.ToString())
+	}
+
+	if len(row) > 1 {
+		sb.WriteRune(')')
+	}
+
+	return sqltypes.MakeTrusted(query.Type_TUPLE, []byte(sb.String())), nil
 }
 
 func (c CompositeType) Type() query.Type {
