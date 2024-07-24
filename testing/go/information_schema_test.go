@@ -11,8 +11,8 @@ func TestInfoSchemaColumns(t *testing.T) {
 		{
 			Name: "information_schema.columns",
 			SetUpScript: []string{
-				"create table test_table (id int)",
-				"create view test_view as select * from test_table",
+				"create table test_table (id int primary key, col1 varchar(255));",
+				"create view test_view as select * from test_table;",
 			},
 			Assertions: []ScriptTestAssertion{
 				{
@@ -25,6 +25,7 @@ func TestInfoSchemaColumns(t *testing.T) {
 					Query: `SELECT table_catalog, table_schema, table_name, column_name FROM information_schema.columns WHERE table_schema='public' ORDER BY table_name;`,
 					Expected: []sql.Row{
 						{"postgres", "public", "test_table", "id"},
+						{"postgres", "public", "test_table", "col1"},
 						{"postgres", "public", "test_view", ""},
 					},
 				},
@@ -53,15 +54,25 @@ func TestInfoSchemaColumns(t *testing.T) {
 					},
 				},
 				{
-					Skip:     true, // TODO: need ENUM type for column_type column
-					Query:    "SELECT * FROM information_schema.columns;",
-					Expected: []sql.Row{},
+					Query: "SELECT * FROM information_schema.columns WHERE table_name='test_table';",
+					Expected: []sql.Row{
+						{"postgres", "public", "test_table", "id", 1, nil, "NO", "integer", nil, nil, 32, 2, 0, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, "postgres", "pg_catalog", "int4", nil, nil, nil, nil, nil, "NO", "NO", nil, nil, nil, nil, nil, "NO", "NEVER", nil, "YES"},
+						{"postgres", "public", "test_table", "col1", 2, nil, "YES", "character varying", 255, 1020, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, "postgres", "pg_catalog", "varchar", nil, nil, nil, nil, nil, "NO", "NO", nil, nil, nil, nil, nil, "NO", "NEVER", nil, "YES"},
+					},
 				},
 				{
-					Skip:  true, // TODO: table name in column returns `table not found: columns` error
-					Query: `SELECT columns.table_name from "information_schema"."columns" WHERE table_name='test_table';`,
+					Skip:  true, // TODO: Don't have complete view information to fill out these rows
+					Query: "SELECT * FROM information_schema.columns WHERE table_name='test_view';",
 					Expected: []sql.Row{
-						{"test_table"},
+						{"postgres", "public", "test_view", "id", 1, nil, "YES", "integer", nil, nil, 32, 2, 0, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, "postgres", "pg_catalog", "int4", nil, nil, nil, nil, 1, "NO", "NO", nil, nil, nil, nil, nil, "NO", "NEVER", nil, "YES"},
+						{"postgres", "public", "test_view", "col1", 2, nil, "YES", "character varying", 255, 1020, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, "postgres", "pg_catalog", "varchar", nil, nil, nil, nil, 2, "NO", "NO", nil, nil, nil, nil, nil, "NO", "NEVER", nil, "YES"},
+					},
+				},
+				{
+					Query: `SELECT columns.table_name, columns.column_name from "information_schema"."columns" WHERE table_name='test_table';`,
+					Expected: []sql.Row{
+						{"test_table", "id"},
+						{"test_table", "col1"},
 					},
 				},
 			},
