@@ -50,6 +50,7 @@ func Init() {
 	initExp()
 	initFactorial()
 	initFloor()
+	initFormatType()
 	initGcd()
 	initInitcap()
 	initLcm()

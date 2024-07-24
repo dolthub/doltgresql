@@ -1543,11 +1543,9 @@ func (t *T) SQLStandardNameWithTypmod(haveTypmod bool, typmod int) string {
 			}
 			buf.WriteString("character")
 		case oid.T_char:
-			// Type modifiers not allowed for "char".
-			return `"char"`
+			buf.WriteString(`"char"`)
 		case oid.T_name:
-			// Type modifiers not allowed for name.
-			return "name"
+			buf.WriteString("name")
 		default:
 			panic(errors.AssertionFailedf("unexpected OID: %d", t.Oid()))
 		}
@@ -1557,11 +1555,11 @@ func (t *T) SQLStandardNameWithTypmod(haveTypmod bool, typmod int) string {
 
 		// Typmod gets subtracted by 4 for all non-text string-like types to produce
 		// the length.
-		if t.Oid() != oid.T_text {
+		textTypes := t.Oid() == oid.T_text || t.Oid() == oid.T_name || t.Oid() == oid.T_char
+		if !textTypes {
 			typmod -= 4
 		}
-		if typmod <= 0 {
-			// In this case, we don't print any modifier.
+		if typmod < 0 || (typmod == 0 && !textTypes) {
 			return buf.String()
 		}
 		buf.WriteString(fmt.Sprintf("(%d)", typmod))

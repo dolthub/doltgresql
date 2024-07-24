@@ -1605,6 +1605,13 @@ var typesTests = []ScriptTest{
 				},
 			},
 			{
+				Skip:  true, // TODO: regtype should work with array types
+				Query: `SELECT 'integer[]'::regtype;`,
+				Expected: []sql.Row{
+					{"integer[]"},
+				},
+			},
+			{
 				Query: `SELECT 'int4'::regtype;`,
 				Expected: []sql.Row{
 					{"integer"},
