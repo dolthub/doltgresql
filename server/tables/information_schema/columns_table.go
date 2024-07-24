@@ -28,6 +28,10 @@ import (
 	pgtypes "github.com/dolthub/doltgresql/server/types"
 )
 
+// maxCharacterLength is the maximum character length for a column.
+const maxCharacterOctetLength = 1073741824
+
+// typeToNumericPrecision is a map of sqltypes to their respective numeric precision.
 var typeToNumericPrecision = map[query.Type]int{
 	sqltypes.Int8:    3,
 	sqltypes.Int16:   16,
@@ -44,6 +48,7 @@ var sql_identifier = pgtypes.VarCharType{Length: 64}
 var time_stamp = pgtypes.TimestampTZ
 var yes_or_no = pgtypes.VarCharType{Length: 3}
 
+// columnsSchema is the schema for the information_schema.columns table.
 var columnsSchema = sql.Schema{
 	{Name: "table_catalog", Type: sql_identifier, Default: nil, Nullable: true, Source: information_schema.ColumnsTableName},
 	{Name: "table_schema", Type: sql_identifier, Default: nil, Nullable: true, Source: information_schema.ColumnsTableName},
@@ -122,13 +127,12 @@ func columnsRowIter(ctx *sql.Context, catalog sql.Catalog, allColsWithDefaultVal
 // object, database name, and table name.
 func getRowFromColumn(ctx *sql.Context, curOrdPos int, col *sql.Column, catName, schName, tblName string) sql.Row {
 	var (
-		ordinalPos        = uint32(curOrdPos + 1)
-		nullable          = "NO"
-		datetimePrecision interface{}
-		isGenerated       = "NEVER"
+		ordinalPos  = uint32(curOrdPos + 1)
+		nullable    = "NO"
+		isGenerated = "NEVER"
 	)
 
-	dataType, udtName := getDataAndUdtType(col.Type)
+	dataType, udtName := getDataAndUdtType(col.Type, col.Name)
 
 	if col.Nullable {
 		nullable = "YES"
@@ -139,13 +143,7 @@ func getRowFromColumn(ctx *sql.Context, curOrdPos int, col *sql.Column, catName,
 
 	charName, collName, charMaxLen, charOctetLen := getCharAndCollNamesAndCharMaxAndOctetLens(ctx, col.Type)
 	numericPrecision, numericPrecisionRadix, numericScale := getColumnPrecisionAndScale(col.Type, col.Name)
-
-	if types.IsDatetimeType(col.Type) || types.IsTimestampType(col.Type) {
-		datetimePrecision = 0
-	} else if types.IsTimespan(col.Type) {
-		// TODO: TIME length not yet supported
-		datetimePrecision = 6
-	}
+	datetimePrecision := getDatetimePrecision(col.Type)
 
 	columnDefault := information_schema.GetColumnDefault(ctx, col.Default)
 
@@ -236,38 +234,38 @@ func getRowsFromViews(ctx *sql.Context, db information_schema.DbWithNames) ([]sq
 			nil,            // character_maximum_length
 			nil,            // character_octet_length
 			nil,            // numeric_precision
-			nil,            // numeric_precision_radix TODO
+			nil,            // numeric_precision_radix
 			nil,            // numeric_scale
 			nil,            // datetime_precision
-			nil,            // interval_type TODO
-			nil,            // interval_precision TODO
-			nil,            // character_set_catalog TODO
-			nil,            // character_set_schema TODO
+			nil,            // interval_type
+			nil,            // interval_precision
+			nil,            // character_set_catalog
+			nil,            // character_set_schema
 			nil,            // character_set_name
-			nil,            // collation_catalog TODO
-			nil,            // collation_schema TODO
+			nil,            // collation_catalog
+			nil,            // collation_schema
 			nil,            // collation_name
-			nil,            // domain_catalog TODO
-			nil,            // domain_schema TODO
-			nil,            // domain_name TODO
-			nil,            // udt_catalog TODO
-			nil,            // udt_schema TODO
-			nil,            // udt_name TODO
-			nil,            // scope_catalog TODO
-			nil,            // scope_schema TODO
-			nil,            // scope_name TODO
+			nil,            // domain_catalog
+			nil,            // domain_schema
+			nil,            // domain_name
+			nil,            // udt_catalog
+			nil,            // udt_schema
+			nil,            // udt_name
+			nil,            // scope_catalog
+			nil,            // scope_schema
+			nil,            // scope_name
 			nil,            // maximum_cardinality
-			nil,            // dtd_identifier TODO
-			"NO",           // is_self_referencing TODO
-			"NO",           // is_identity TODO
-			nil,            // identity_generation TODO
-			nil,            // identity_start TODO
-			nil,            // identity_increment TODO
-			nil,            // identity_maximum TODO
-			nil,            // identity_minimum TODO
-			"NO",           // identity_cycle TODO
-			"NO",           // is_generated TODO
-			nil,            // generation_expression TODO
+			nil,            // dtd_identifier
+			"NO",           // is_self_referencing
+			"NO",           // is_identity
+			nil,            // identity_generation
+			nil,            // identity_start
+			nil,            // identity_increment
+			nil,            // identity_maximum
+			nil,            // identity_minimum
+			"NO",           // identity_cycle
+			"NO",           // is_generated
+			nil,            // generation_expression
 			"YES",          // is_updatable
 		})
 	}
@@ -297,7 +295,7 @@ func getRowsFromDatabase(ctx *sql.Context, db information_schema.DbWithNames, al
 // getDataAndUdtType returns data types for given DoltgresType. udt_name is the
 // base name of the type (i.e. "varchar"). data_type is the SQL standard name of
 // the type (i.e. "character varying").
-func getDataAndUdtType(colType sql.Type) (string, string) {
+func getDataAndUdtType(colType sql.Type, colName string) (string, string) {
 	udtName := ""
 	dataType := ""
 	dgType, ok := colType.(pgtypes.DoltgresType)
@@ -329,7 +327,15 @@ func getColumnPrecisionAndScale(colType sql.Type, name string) (interface{}, int
 		case pgtypes.Int16Type, pgtypes.Int32Type, pgtypes.Int64Type:
 			return typeToNumericPrecision[colType.Type()], 2, 0
 		case pgtypes.NumericType:
-			return int(t.Precision), 10, int(t.Scale)
+			var precision interface{}
+			var scale interface{}
+			if t.Precision >= 0 {
+				precision = int(t.Precision)
+			}
+			if t.Scale >= 0 {
+				scale = int(t.Scale)
+			}
+			return precision, 10, scale
 		default:
 			return nil, nil, nil
 		}
@@ -359,18 +365,37 @@ func getCharAndCollNamesAndCharMaxAndOctetLens(ctx *sql.Context, colType sql.Typ
 
 	switch t := colType.(type) {
 	case pgtypes.TextType:
-		charOctetLen = types.ExtendedTypeSerializedWidth_Unbounded
+		charOctetLen = maxCharacterOctetLength
 	case pgtypes.VarCharType:
 		if t.IsUnbounded() {
-			charOctetLen = types.ExtendedTypeSerializedWidth_Unbounded
+			charOctetLen = maxCharacterOctetLength
 		} else {
 			charOctetLen = int64(t.Length) * 4
 			charMaxLen = t.Length
 		}
 	case pgtypes.CharType:
-		charOctetLen = int64(t.Length) * 4
-		charMaxLen = t.Length
+		if t.IsUnbounded() {
+			charOctetLen = maxCharacterOctetLength
+		} else {
+			charOctetLen = int64(t.Length) * 4
+			charMaxLen = t.Length
+		}
 	}
 
 	return charName, collName, charMaxLen, charOctetLen
+}
+
+func getDatetimePrecision(colType sql.Type) interface{} {
+	if dgType, ok := colType.(pgtypes.DoltgresType); ok {
+		switch dgType.(type) {
+		case pgtypes.DateType:
+			return 0
+		case pgtypes.TimeType, pgtypes.TimeTZType, pgtypes.TimestampType, pgtypes.TimestampTZType:
+			// TODO: TIME length not yet supported
+			return 6
+		default:
+			return nil
+		}
+	}
+	return nil
 }
