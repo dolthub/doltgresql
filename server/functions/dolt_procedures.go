@@ -22,12 +22,13 @@ import (
 	"time"
 
 	"github.com/dolthub/dolt/go/libraries/doltcore/sqle/dprocedures"
-	"github.com/dolthub/doltgresql/server/functions/framework"
-	pgtypes "github.com/dolthub/doltgresql/server/types"
 	"github.com/dolthub/go-mysql-server/sql"
 	"github.com/dolthub/go-mysql-server/sql/expression"
 	"github.com/dolthub/go-mysql-server/sql/plan"
 	"github.com/dolthub/go-mysql-server/sql/types"
+
+	"github.com/dolthub/doltgresql/server/functions/framework"
+	pgtypes "github.com/dolthub/doltgresql/server/types"
 )
 
 func initDoltProcedures() {

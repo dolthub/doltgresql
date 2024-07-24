@@ -103,4 +103,3 @@ func Init() {
 	initWidthBucket()
 	initDoltProcedures()
 }
-

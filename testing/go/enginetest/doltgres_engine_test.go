@@ -118,12 +118,13 @@ func TestSingleScript(t *testing.T) {
 			SetUpScript: []string{
 				"create table t1 (pk int primary key, c int);",
 				"select dolt_add('.')",
+				"select dolt_branch('abc')",
 			},
 			Assertions: []queries.ScriptTestAssertion{
 				{
-					Query: "select dolt_commit('-am', 'initial table');",
+					Query: "select dolt_checkout('abc');",
 					Expected: []sql.Row{
-						{1},
+						{"(0,Switched to branch 'abc')"},
 					},
 				},
 			},
