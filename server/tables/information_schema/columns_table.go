@@ -45,7 +45,6 @@ var typeToNumericPrecision = map[query.Type]int{
 var cardinal_number = types.Uint32
 var character_data = pgtypes.Text
 var sql_identifier = pgtypes.VarCharType{Length: 64}
-var time_stamp = pgtypes.TimestampTZ
 var yes_or_no = pgtypes.VarCharType{Length: 3}
 
 // columnsSchema is the schema for the information_schema.columns table.
