@@ -24,6 +24,7 @@ import (
 	"github.com/dolthub/go-mysql-server/enginetest/queries"
 	"github.com/dolthub/go-mysql-server/enginetest/scriptgen/setup"
 	"github.com/dolthub/go-mysql-server/sql"
+	"github.com/dolthub/go-mysql-server/sql/types"
 	"github.com/stretchr/testify/require"
 
 	"github.com/dolthub/dolt/go/libraries/doltcore/dtestutils"
@@ -114,18 +115,26 @@ func TestSingleScript(t *testing.T) {
 
 	var scripts = []queries.ScriptTest{
 		{
-			Name: "dolt procedures",
+			Name: "dolt_hashof_table tests",
 			SetUpScript: []string{
-				"create table t1 (pk int primary key, c int);",
-				"select dolt_add('.')",
-				"select dolt_branch('abc')",
+				"CREATE TABLE t1 (pk int primary key);",
 			},
 			Assertions: []queries.ScriptTestAssertion{
 				{
-					Query: "select dolt_checkout('abc');",
-					Expected: []sql.Row{
-						{"(0,Switched to branch 'abc')"},
-					},
+					Query:    "SELECT dolt_hashof_table('t1');",
+					Expected: []sql.Row{{"0lvgnnqah2lj1p6ilvfg0ssaec1v0jgk"}},
+				},
+				{
+					Query:    "INSERT INTO t1 VALUES (1);",
+					Expected: []sql.Row{{types.OkResult{RowsAffected: 1}}},
+				},
+				{
+					Query:    "SELECT dolt_hashof_table('t1');",
+					Expected: []sql.Row{{"a2vkt9d1mtuhd90opbcseo5gqjae7tv6"}},
+				},
+				{
+					Query:          "SELECT dolt_hashof_table('noexist');",
+					ExpectedErrStr: "table not found: noexist",
 				},
 			},
 		},
@@ -245,19 +254,16 @@ func TestInsertIgnoreInto(t *testing.T) {
 	enginetest.TestInsertIgnoreInto(t, h)
 }
 
-// TODO: merge this into the above test when we remove old format
 func TestInsertDuplicateKeyKeyless(t *testing.T) {
 	t.Skip()
 	enginetest.TestInsertDuplicateKeyKeyless(t, newDoltgresServerHarness(t))
 }
 
-// TODO: merge this into the above test when we remove old format
 func TestInsertDuplicateKeyKeylessPrepared(t *testing.T) {
 	t.Skip()
 	enginetest.TestInsertDuplicateKeyKeylessPrepared(t, newDoltgresServerHarness(t))
 }
 
-// TODO: merge this into the above test when we remove old format
 func TestIgnoreIntoWithDuplicateUniqueKeyKeyless(t *testing.T) {
 	t.Skip()
 	h := newDoltgresServerHarness(t)
@@ -265,7 +271,6 @@ func TestIgnoreIntoWithDuplicateUniqueKeyKeyless(t *testing.T) {
 	enginetest.TestIgnoreIntoWithDuplicateUniqueKeyKeyless(t, h)
 }
 
-// TODO: merge this into the above test when we remove old format
 func TestIgnoreIntoWithDuplicateUniqueKeyKeylessPrepared(t *testing.T) {
 	t.Skip()
 	enginetest.TestIgnoreIntoWithDuplicateUniqueKeyKeylessPrepared(t, newDoltgresServerHarness(t))
@@ -408,7 +413,6 @@ func TestScripts(t *testing.T) {
 
 func TestJoinOps(t *testing.T) {
 	t.Skip()
-
 	h := newDoltgresServerHarness(t)
 	defer h.Close()
 	enginetest.TestJoinOps(t, h, enginetest.DefaultJoinOpTests)
@@ -928,7 +932,7 @@ func TestConcurrentTransactions(t *testing.T) {
 }
 
 func TestDoltScripts(t *testing.T) {
-	t.Skip()
+	// t.Skip()
 	harness := newDoltgresServerHarness(t)
 	denginetest.RunDoltScriptsTest(t, harness)
 }

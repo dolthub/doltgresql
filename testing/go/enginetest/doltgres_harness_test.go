@@ -20,12 +20,15 @@ import (
 	"io"
 	"regexp"
 	"runtime"
+	"strconv"
 	"strings"
 	"testing"
 
 	"github.com/dolthub/dolt/go/libraries/doltcore/sqle/dsess"
 	denginetest "github.com/dolthub/dolt/go/libraries/doltcore/sqle/enginetest"
 	"github.com/dolthub/dolt/go/libraries/utils/svcs"
+	"github.com/dolthub/doltgresql/postgres/parser/sem/tree"
+	"github.com/dolthub/doltgresql/postgres/parser/types"
 	gms "github.com/dolthub/go-mysql-server"
 	"github.com/dolthub/go-mysql-server/enginetest"
 	"github.com/dolthub/go-mysql-server/enginetest/scriptgen/setup"
@@ -35,6 +38,7 @@ import (
 	"github.com/dolthub/vitess/go/vt/proto/query"
 	vitess "github.com/dolthub/vitess/go/vt/sqlparser"
 	_ "github.com/jackc/pgx/v4/stdlib"
+	"github.com/lib/pq/oid"
 	"github.com/stretchr/testify/require"
 
 	"github.com/dolthub/doltgresql/server"
@@ -364,13 +368,15 @@ func (d DoltgresQueryEngine) Query(ctx *sql.Context, query string) (sql.Schema, 
 	}
 
 	rows, err := db.Query(query)
-	if rows != nil {
-		defer rows.Close()
-	}
-
 	if err != nil {
 		return nil, nil, err
 	}
+
+	if rows == nil {
+		return nil, nil, fmt.Errorf("rows is nil")
+	}
+
+	defer rows.Close()
 
 	schema, columns, err := columns(rows)
 	if err != nil {
@@ -392,6 +398,11 @@ func (d DoltgresQueryEngine) Query(ctx *sql.Context, query string) (sql.Schema, 
 		results = append(results, row)
 	}
 
+	err = rows.Close()
+	if err != nil {
+		return nil, nil, err
+	}
+
 	if rows.Err() != nil {
 		return nil, nil, rows.Err()
 	}
@@ -400,9 +411,154 @@ func (d DoltgresQueryEngine) Query(ctx *sql.Context, query string) (sql.Schema, 
 }
 
 func convertQuery(query string) string {
+	query, converted := transformAST(query)
+	if converted {
+		return query
+	}
+
 	query = normalizeStrings(query)
 	query = convertDoltProcedureCalls(query)
 	return query
+}
+
+func transformAST(query string) (string, bool) {
+	parser := sql.NewMysqlParser()
+	stmt, err := parser.ParseSimple(query)
+	if err != nil {
+		return "", false
+	}
+
+	switch stmt := stmt.(type) {
+	case *vitess.DDL:
+		if stmt.Action == "create" {
+			return transformCreateTable(query, stmt)
+		}
+	default:
+		return query, false
+	}
+}
+
+func transformCreateTable(query string, stmt *vitess.DDL) (string, bool) {
+	if stmt.TableSpec == nil {
+		return query, false
+	}
+
+	createTable := tree.CreateTable{
+		IfNotExists: stmt.IfNotExists,
+		Table:       tree.MakeTableName("", tree.Name(stmt.Table.Name.String())), // TODO: qualified
+	}
+
+	for _, col := range stmt.TableSpec.Columns {
+		createTable.Defs = append(createTable.Defs, &tree.ColumnTableDef{
+			Name:      tree.Name(col.Name.String()),
+			Type:      convertTypeDef(col.Type),
+			Collation: "", // TODO
+			Nullable: struct {
+				Nullability    tree.Nullability
+				ConstraintName tree.Name
+			}{
+				Nullability: convertNullability(!col.Type.NotNull),
+			},
+			PrimaryKey: struct {
+				IsPrimaryKey bool
+			}{
+				IsPrimaryKey: col.Type.KeyOpt == 1, // TODO: unexported const
+			},
+			Unique:               col.Type.KeyOpt == 3, // TODO: unexported const
+			UniqueConstraintName: "",                   // TODO
+			DefaultExpr: struct {
+				Expr           tree.Expr
+				ConstraintName tree.Name
+			}{
+				Expr:           nil, // TODO
+				ConstraintName: "",  // TODO
+			},
+			CheckExprs: nil, // TODO
+		})
+	}
+}
+
+func convertNullability(notNull vitess.BoolVal) tree.Nullability {
+	if notNull {
+		return tree.NotNull
+	}
+	return tree.Null
+}
+
+func convertTypeDef(columnType vitess.ColumnType) tree.ResolvableTypeReference {
+	switch strings.ToLower(columnType.Type) {
+	case "int", "mediumint":
+		return &tree.OIDTypeReference{OID: oid.T_int4}
+	case "tinyint", "bool":
+		return &tree.OIDTypeReference{OID: oid.T_int2}
+	case "bigint":
+		return &tree.OIDTypeReference{OID: oid.T_int8}
+	case "float":
+		return &tree.OIDTypeReference{OID: oid.T_float4}
+	case "double":
+		return &tree.OIDTypeReference{OID: oid.T_float8}
+	case "decimal":
+		return &tree.OIDTypeReference{OID: oid.T_numeric}
+	case "varchar":
+		return &types.T{
+			InternalType: types.InternalType{
+				Family: types.StringFamily,
+				Width:  int32FromSqlVal(columnType.Length),
+				Oid:    oid.T_varchar,
+			},
+		}
+	case "char":
+		return &types.T{
+			InternalType: types.InternalType{
+				Family: types.StringFamily,
+				Width:  int32FromSqlVal(columnType.Length),
+				Oid:    oid.T_char,
+			},
+		}
+	case "text", "tinytext", "mediumtext", "longtext":
+		return &types.T{
+			InternalType: types.InternalType{
+				Family: types.StringFamily,
+				Width:  int32FromSqlVal(columnType.Length),
+				Oid:    oid.T_text,
+			},
+		}
+	case "blob", "binary", "varbinary", "tinyblob", "mediumblob", "longblob":
+		return &types.T{
+			InternalType: types.InternalType{
+				Family: types.BytesFamily,
+				Width:  int32FromSqlVal(columnType.Length),
+				Oid:    oid.T_bytea,
+			},
+		}
+	case "datetime", "timestamp":
+		return &tree.OIDTypeReference{OID: oid.T_timestamp}
+	case "date":
+		return &tree.OIDTypeReference{OID: oid.T_date}
+	case "time":
+		return &tree.OIDTypeReference{OID: oid.T_time}
+	case "year":
+		return &tree.OIDTypeReference{OID: oid.T_int4}
+	case "enum":
+		panic(fmt.Sprintf("unhandled type: %s", columnType.Type))
+	case "set":
+		panic(fmt.Sprintf("unhandled type: %s", columnType.Type))
+	case "bit":
+		panic(fmt.Sprintf("unhandled type: %s", columnType.Type))
+	case "json":
+		return &tree.OIDTypeReference{OID: oid.T_json}
+	case "geometry", "point", "linestring", "polygon", "multipoint", "multilinestring", "multipolygon", "geometrycollection":
+	default:
+		panic(fmt.Sprintf("unhandled type: %s", columnType.Type))
+	}
+}
+
+func int32FromSqlVal(v *vitess.SQLVal) int32 {
+	i, err := strconv.Atoi(string(v.Val))
+	if err != nil {
+		return 0
+	}
+	return int32(i)
 }
 
 var doltProcedureCall = regexp.MustCompile(`(?i)CALL DOLT_(\w+)`)
