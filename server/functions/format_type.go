@@ -26,7 +26,6 @@ import (
 // initFormatType registers the functions to the catalog.
 func initFormatType() {
 	framework.RegisterFunction(format_type)
-	framework.RegisterFunction(format_type_null)
 }
 
 // format_type represents the PostgreSQL function of the same name, taking the same parameters.
@@ -35,24 +34,15 @@ var format_type = framework.Function2{
 	Return:     pgtypes.Text,
 	Parameters: [2]pgtypes.DoltgresType{pgtypes.Oid, pgtypes.Int32},
 	Callable: func(ctx *sql.Context, _ [3]pgtypes.DoltgresType, val1, val2 any) (any, error) {
-		toid := val1.(uint32)
-		typemod := val2.(int32)
-		if t, ok := types.OidToType[oid.Oid(toid)]; ok {
-			return t.SQLStandardNameWithTypmod(true, int(typemod)), nil
+		if val1 == nil {
+			return nil, nil
 		}
-		return "???", nil
-	},
-}
-
-// format_type_null represents the PostgreSQL function format_type, but with a null second parameter.
-var format_type_null = framework.Function2{
-	Name:       "format_type",
-	Return:     pgtypes.Text,
-	Parameters: [2]pgtypes.DoltgresType{pgtypes.Oid, pgtypes.Null},
-	Callable: func(ctx *sql.Context, _ [3]pgtypes.DoltgresType, val1, val2 any) (any, error) {
-		toid := val1.(uint32)
-		if t, ok := types.OidToType[oid.Oid(toid)]; ok {
-			return t.SQLStandardName(), nil
+		if t, ok := types.OidToType[oid.Oid(val1.(uint32))]; ok {
+			if val2 == nil {
+				return t.SQLStandardName(), nil
+			} else {
+				return t.SQLStandardNameWithTypmod(true, int(val2.(int32))), nil
+			}
 		}
 		return "???", nil
 	},
