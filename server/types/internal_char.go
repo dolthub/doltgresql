@@ -53,12 +53,11 @@ func (b InternalCharType) BaseID() DoltgresTypeBaseID {
 
 // BaseName implements the DoltgresType interface.
 func (b InternalCharType) BaseName() string {
-	return "char"
+	return "\"char\""
 }
 
 // Category implements the DoltgresType interface.
 func (b InternalCharType) Category() TypeCategory {
-	// TODO: check if it only applies when Length == 1
 	return TypeCategory_InternalUseTypes
 }
 
@@ -148,10 +147,7 @@ func (b InternalCharType) IoOutput(ctx *sql.Context, output any) (string, error)
 	if err != nil {
 		return "", err
 	}
-	str, runeCount := truncateString(converted.(string), InternalCharLength)
-	if runeCount < InternalCharLength {
-		return str + strings.Repeat(" ", int(InternalCharLength-runeCount)), nil
-	}
+	str, _ := truncateString(converted.(string), InternalCharLength)
 	return str, nil
 }
 
@@ -211,7 +207,7 @@ func (b InternalCharType) SQL(ctx *sql.Context, dest []byte, v any) (sqltypes.Va
 
 // String implements the DoltgresType interface.
 func (b InternalCharType) String() string {
-	return "char"
+	return "\"char\""
 }
 
 // ToArrayType implements the DoltgresType interface.

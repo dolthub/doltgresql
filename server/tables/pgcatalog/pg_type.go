@@ -132,6 +132,7 @@ func (iter *pgTypeRowIter) Next(ctx *sql.Context) (sql.Row, error) {
 		typConvFnSep    = ""
 		typAnalyze      = "-"
 	)
+
 	if l := typ.MaxTextResponseByteLength(ctx); l == math.MaxUint32 {
 		typLen = -1
 	} else {
@@ -142,7 +143,7 @@ func (iter *pgTypeRowIter) Next(ctx *sql.Context) (sql.Row, error) {
 	}
 
 	// TODO: use the type information to fill these rather than manually doing it
-	switch typ.(type) {
+	switch t := typ.(type) {
 	case pgtypes.UnknownType:
 		typLen = -2
 	case pgtypes.NumericType:
@@ -163,6 +164,11 @@ func (iter *pgTypeRowIter) Next(ctx *sql.Context) (sql.Row, error) {
 		} else {
 			typType = "p"
 		}
+		if _, ok := t.BaseType().(pgtypes.InternalCharType); ok {
+			typName = "_char"
+		}
+	case pgtypes.InternalCharType:
+		typName = "char"
 	case pgtypes.DoltgresPolymorphicType:
 		typType = "p"
 		typConvFnSep = "_"

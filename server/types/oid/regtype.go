@@ -42,7 +42,7 @@ func regtype_IoInput(ctx *sql.Context, input string) (uint32, error) {
 	var searchSchemas []string
 	var typeName string
 	switch len(sections) {
-	case 1, 2:
+	case 1:
 		// TODO: we should make use of the search path, but it needs to include an implicit "pg_catalog" before we can
 		typeName = sections[0]
 	case 3:
@@ -57,11 +57,10 @@ func regtype_IoInput(ctx *sql.Context, input string) (uint32, error) {
 	resultOid := uint32(0)
 	err = IterateCurrentDatabase(ctx, Callbacks{
 		Type: func(ctx *sql.Context, typ ItemType) (cont bool, err error) {
-			stringNoSpace := strings.ReplaceAll(typ.Item.String(), " ", "")
-			if typeName == stringNoSpace || typeName == typ.Item.BaseName() {
+			if typeName == typ.Item.String() || typeName == typ.Item.BaseName() || (typeName == "char" && typ.Item.BaseName() == "bpchar") {
 				resultOid = typ.OID
 				return false, nil
-			} else if t, ok := types.OidToType[oid.Oid(typ.OID)]; ok && typeName == strings.ReplaceAll(t.SQLStandardName(), " ", "") {
+			} else if t, ok := types.OidToType[oid.Oid(typ.OID)]; ok && typeName == t.SQLStandardName() {
 				resultOid = typ.OID
 				return false, nil
 			}
@@ -94,8 +93,6 @@ func regtype_IoOutput(ctx *sql.Context, toid uint32) (string, error) {
 func regtype_IoInputValidation(ctx *sql.Context, input string, sections []string) error {
 	switch len(sections) {
 	case 1:
-		return nil
-	case 2:
 		return nil
 	case 3:
 		// We check for name validity before checking the schema name
