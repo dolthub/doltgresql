@@ -647,7 +647,6 @@ func TestSystemInformationFunctions(t *testing.T) {
 					},
 				},
 				{
-					Skip:  true, // TODO: Fix regtype for "char"[] type
 					Query: `SELECT format_type('"char"[]'::regtype, null);`,
 					Expected: []sql.Row{
 						{"\"char\"[]"},

@@ -44,6 +44,17 @@ func handleStringCast(str string, targetType pgtypes.DoltgresType) (string, erro
 				return str, nil
 			}
 		}
+	case pgtypes.InternalCharType:
+		// str, runeLength := truncateString(str, pgtypes.InternalCharLength)
+		// if runeLength > pgtypes.InternalCharLength {
+		// 	return str, fmt.Errorf("value too long for type %s", targetType.String())
+		// } else if runeLength < pgtypes.InternalCharLength {
+		// 	return str + strings.Repeat(" ", int(pgtypes.InternalCharLength-runeLength)), nil
+		// } else {
+		// 	return str, nil
+		// }
+		str, _ := truncateString(str, pgtypes.InternalCharLength+1)
+		return str, nil
 	case pgtypes.NameType:
 		// Name seems to never throw an error, regardless of the context or how long the input is
 		str, _ := truncateString(str, targetType.Length)

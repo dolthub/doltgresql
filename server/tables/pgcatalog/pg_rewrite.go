@@ -60,8 +60,8 @@ var pgRewriteSchema = sql.Schema{
 	{Name: "oid", Type: pgtypes.Oid, Default: nil, Nullable: false, Source: PgRewriteName},
 	{Name: "rulename", Type: pgtypes.Name, Default: nil, Nullable: false, Source: PgRewriteName},
 	{Name: "ev_class", Type: pgtypes.Oid, Default: nil, Nullable: false, Source: PgRewriteName},
-	{Name: "ev_type", Type: pgtypes.BpChar, Default: nil, Nullable: false, Source: PgRewriteName},
-	{Name: "ev_enabled", Type: pgtypes.BpChar, Default: nil, Nullable: false, Source: PgRewriteName},
+	{Name: "ev_type", Type: pgtypes.InternalChar, Default: nil, Nullable: false, Source: PgRewriteName},
+	{Name: "ev_enabled", Type: pgtypes.InternalChar, Default: nil, Nullable: false, Source: PgRewriteName},
 	{Name: "is_instead", Type: pgtypes.Bool, Default: nil, Nullable: false, Source: PgRewriteName},
 	{Name: "ev_qual", Type: pgtypes.Text, Default: nil, Nullable: false, Source: PgRewriteName},   // TODO: pg_node_tree type, collation C
 	{Name: "ev_action", Type: pgtypes.Text, Default: nil, Nullable: false, Source: PgRewriteName}, // TODO: pg_node_tree type, collation C

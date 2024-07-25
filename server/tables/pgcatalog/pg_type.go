@@ -75,11 +75,11 @@ var pgTypeSchema = sql.Schema{
 	{Name: "typowner", Type: pgtypes.Oid, Default: nil, Nullable: false, Source: PgTypeName},
 	{Name: "typlen", Type: pgtypes.Int16, Default: nil, Nullable: false, Source: PgTypeName},
 	{Name: "typbyval", Type: pgtypes.Bool, Default: nil, Nullable: false, Source: PgTypeName},
-	{Name: "typtype", Type: pgtypes.BpChar, Default: nil, Nullable: false, Source: PgTypeName},
-	{Name: "typcategory", Type: pgtypes.BpChar, Default: nil, Nullable: false, Source: PgTypeName},
+	{Name: "typtype", Type: pgtypes.InternalChar, Default: nil, Nullable: false, Source: PgTypeName},
+	{Name: "typcategory", Type: pgtypes.InternalChar, Default: nil, Nullable: false, Source: PgTypeName},
 	{Name: "typispreferred", Type: pgtypes.Bool, Default: nil, Nullable: false, Source: PgTypeName},
 	{Name: "typisdefined", Type: pgtypes.Bool, Default: nil, Nullable: false, Source: PgTypeName},
-	{Name: "typdelim", Type: pgtypes.BpChar, Default: nil, Nullable: false, Source: PgTypeName},
+	{Name: "typdelim", Type: pgtypes.InternalChar, Default: nil, Nullable: false, Source: PgTypeName},
 	{Name: "typrelid", Type: pgtypes.Oid, Default: nil, Nullable: false, Source: PgTypeName},
 	{Name: "typsubscript", Type: pgtypes.Text, Default: nil, Nullable: false, Source: PgTypeName}, // TODO: type regproc
 	{Name: "typelem", Type: pgtypes.Oid, Default: nil, Nullable: false, Source: PgTypeName},
@@ -91,8 +91,8 @@ var pgTypeSchema = sql.Schema{
 	{Name: "typmodin", Type: pgtypes.Text, Default: nil, Nullable: false, Source: PgTypeName},   // TODO: type regproc
 	{Name: "typmodout", Type: pgtypes.Text, Default: nil, Nullable: false, Source: PgTypeName},  // TODO: type regproc
 	{Name: "typanalyze", Type: pgtypes.Text, Default: nil, Nullable: false, Source: PgTypeName}, // TODO: type regproc
-	{Name: "typalign", Type: pgtypes.BpChar, Default: nil, Nullable: false, Source: PgTypeName},
-	{Name: "typstorage", Type: pgtypes.BpChar, Default: nil, Nullable: false, Source: PgTypeName},
+	{Name: "typalign", Type: pgtypes.InternalChar, Default: nil, Nullable: false, Source: PgTypeName},
+	{Name: "typstorage", Type: pgtypes.InternalChar, Default: nil, Nullable: false, Source: PgTypeName},
 	{Name: "typnotnull", Type: pgtypes.Bool, Default: nil, Nullable: false, Source: PgTypeName},
 	{Name: "typbasetype", Type: pgtypes.Oid, Default: nil, Nullable: false, Source: PgTypeName},
 	{Name: "typtypmod", Type: pgtypes.Int32, Default: nil, Nullable: false, Source: PgTypeName},

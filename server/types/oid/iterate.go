@@ -214,11 +214,7 @@ func iterateTypes(ctx *sql.Context, callbacks Callbacks) error {
 			}
 		}
 	}
-	_, err := callbacks.Type(ctx, ItemType{
-		OID:  pgtypes.InternalChar.OID(),
-		Item: pgtypes.InternalChar,
-	})
-	return err
+	return nil
 }
 
 // iterateSchemas is called by IterateCurrentDatabase to handle schemas and elements contained within schemas.

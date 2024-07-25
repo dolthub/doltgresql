@@ -42,7 +42,7 @@ func regtype_IoInput(ctx *sql.Context, input string) (uint32, error) {
 	var searchSchemas []string
 	var typeName string
 	switch len(sections) {
-	case 1:
+	case 1, 2:
 		// TODO: we should make use of the search path, but it needs to include an implicit "pg_catalog" before we can
 		typeName = sections[0]
 	case 3:
@@ -94,6 +94,8 @@ func regtype_IoOutput(ctx *sql.Context, toid uint32) (string, error) {
 func regtype_IoInputValidation(ctx *sql.Context, input string, sections []string) error {
 	switch len(sections) {
 	case 1:
+		return nil
+	case 2:
 		return nil
 	case 3:
 		// We check for name validity before checking the schema name

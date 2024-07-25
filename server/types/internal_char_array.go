@@ -16,5 +16,5 @@ package types
 
 import "github.com/lib/pq/oid"
 
-// BpCharArray is the array variant of BpChar.
-var BpCharArray = createArrayType(BpChar, SerializationID_CharArray, oid.T__bpchar)
+// InternalCharArray is the array variant of InternalChar.
+var InternalCharArray = createArrayType(InternalChar, SerializationID_InternalCharArray, oid.T__char)

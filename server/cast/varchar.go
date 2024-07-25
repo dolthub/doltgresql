@@ -36,6 +36,13 @@ func varcharAssignment() {
 			return handleStringCast(val.(string), targetType)
 		},
 	})
+	framework.MustAddAssignmentTypeCast(framework.TypeCast{
+		FromType: pgtypes.VarChar,
+		ToType:   pgtypes.InternalChar,
+		Function: func(ctx *sql.Context, val any, targetType pgtypes.DoltgresType) (any, error) {
+			return handleStringCast(val.(string), targetType)
+		},
+	})
 }
 
 // varcharImplicit registers all implicit casts. This comprises only the "From" types.
@@ -43,6 +50,13 @@ func varcharImplicit() {
 	framework.MustAddImplicitTypeCast(framework.TypeCast{
 		FromType: pgtypes.VarChar,
 		ToType:   pgtypes.BpChar,
+		Function: func(ctx *sql.Context, val any, targetType pgtypes.DoltgresType) (any, error) {
+			return handleStringCast(val.(string), targetType)
+		},
+	})
+	framework.MustAddImplicitTypeCast(framework.TypeCast{
+		FromType: pgtypes.VarChar,
+		ToType:   pgtypes.InternalChar,
 		Function: func(ctx *sql.Context, val any, targetType pgtypes.DoltgresType) (any, error) {
 			return handleStringCast(val.(string), targetType)
 		},

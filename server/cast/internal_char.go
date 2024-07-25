@@ -25,30 +25,23 @@ import (
 	pgtypes "github.com/dolthub/doltgresql/server/types"
 )
 
-// initChar handles all casts that are built-in. This comprises only the "From" types.
-func initChar() {
-	charExplicit()
-	charImplicit()
+// initInternalChar handles all casts that are built-in. This comprises only the "From" types.
+func initInternalChar() {
+	internalCharExplicit()
+	internalCharImplicit()
 }
 
-// charExplicit registers all explicit casts. This comprises only the "From" types.
-func charExplicit() {
+// internalCharExplicit registers all explicit casts. This comprises only the "From" types.
+func internalCharExplicit() {
 	framework.MustAddExplicitTypeCast(framework.TypeCast{
-		FromType: pgtypes.BpChar,
+		FromType: pgtypes.InternalChar,
 		ToType:   pgtypes.BpChar,
 		Function: func(ctx *sql.Context, val any, targetType pgtypes.DoltgresType) (any, error) {
 			return targetType.IoInput(ctx, val.(string))
 		},
 	})
 	framework.MustAddExplicitTypeCast(framework.TypeCast{
-		FromType: pgtypes.BpChar,
-		ToType:   pgtypes.InternalChar,
-		Function: func(ctx *sql.Context, val any, targetType pgtypes.DoltgresType) (any, error) {
-			return targetType.IoInput(ctx, val.(string))
-		},
-	})
-	framework.MustAddExplicitTypeCast(framework.TypeCast{
-		FromType: pgtypes.BpChar,
+		FromType: pgtypes.InternalChar,
 		ToType:   pgtypes.Int32,
 		Function: func(ctx *sql.Context, val any, targetType pgtypes.DoltgresType) (any, error) {
 			out, err := strconv.ParseInt(strings.TrimSpace(val.(string)), 10, 32)
@@ -62,21 +55,21 @@ func charExplicit() {
 		},
 	})
 	framework.MustAddExplicitTypeCast(framework.TypeCast{
-		FromType: pgtypes.BpChar,
+		FromType: pgtypes.InternalChar,
 		ToType:   pgtypes.Name,
 		Function: func(ctx *sql.Context, val any, targetType pgtypes.DoltgresType) (any, error) {
 			return handleStringCast(val.(string), targetType)
 		},
 	})
 	framework.MustAddExplicitTypeCast(framework.TypeCast{
-		FromType: pgtypes.BpChar,
+		FromType: pgtypes.InternalChar,
 		ToType:   pgtypes.Text,
 		Function: func(ctx *sql.Context, val any, targetType pgtypes.DoltgresType) (any, error) {
 			return val, nil
 		},
 	})
 	framework.MustAddExplicitTypeCast(framework.TypeCast{
-		FromType: pgtypes.BpChar,
+		FromType: pgtypes.InternalChar,
 		ToType:   pgtypes.VarChar,
 		Function: func(ctx *sql.Context, val any, targetType pgtypes.DoltgresType) (any, error) {
 			return handleStringCast(val.(string), targetType)
@@ -84,38 +77,45 @@ func charExplicit() {
 	})
 }
 
-// charImplicit registers all implicit casts. This comprises only the "From" types.
-func charImplicit() {
+// internalCharImplicit registers all implicit casts. This comprises only the "From" types.
+func internalCharImplicit() {
 	framework.MustAddImplicitTypeCast(framework.TypeCast{
-		FromType: pgtypes.BpChar,
+		FromType: pgtypes.InternalChar,
 		ToType:   pgtypes.BpChar,
 		Function: func(ctx *sql.Context, val any, targetType pgtypes.DoltgresType) (any, error) {
 			return targetType.IoInput(ctx, val.(string))
 		},
 	})
 	framework.MustAddImplicitTypeCast(framework.TypeCast{
-		FromType: pgtypes.BpChar,
-		ToType:   pgtypes.InternalChar,
+		FromType: pgtypes.InternalChar,
+		ToType:   pgtypes.Int32,
 		Function: func(ctx *sql.Context, val any, targetType pgtypes.DoltgresType) (any, error) {
-			return targetType.IoInput(ctx, val.(string))
+			out, err := strconv.ParseInt(strings.TrimSpace(val.(string)), 10, 32)
+			if err != nil {
+				return nil, fmt.Errorf("invalid input syntax for type %s: %q", targetType.String(), val.(string))
+			}
+			if out > 2147483647 || out < -2147483648 {
+				return nil, fmt.Errorf("value %q is out of range for type %s", val.(string), targetType.String())
+			}
+			return int32(out), nil
 		},
 	})
 	framework.MustAddImplicitTypeCast(framework.TypeCast{
-		FromType: pgtypes.BpChar,
+		FromType: pgtypes.InternalChar,
 		ToType:   pgtypes.Name,
 		Function: func(ctx *sql.Context, val any, targetType pgtypes.DoltgresType) (any, error) {
 			return handleStringCast(val.(string), targetType)
 		},
 	})
 	framework.MustAddImplicitTypeCast(framework.TypeCast{
-		FromType: pgtypes.BpChar,
+		FromType: pgtypes.InternalChar,
 		ToType:   pgtypes.Text,
 		Function: func(ctx *sql.Context, val any, targetType pgtypes.DoltgresType) (any, error) {
 			return val, nil
 		},
 	})
 	framework.MustAddImplicitTypeCast(framework.TypeCast{
-		FromType: pgtypes.BpChar,
+		FromType: pgtypes.InternalChar,
 		ToType:   pgtypes.VarChar,
 		Function: func(ctx *sql.Context, val any, targetType pgtypes.DoltgresType) (any, error) {
 			return handleStringCast(val.(string), targetType)

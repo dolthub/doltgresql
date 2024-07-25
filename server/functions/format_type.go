@@ -15,6 +15,8 @@
 package functions
 
 import (
+	"fmt"
+
 	"github.com/dolthub/go-mysql-server/sql"
 	"github.com/lib/pq/oid"
 
@@ -37,6 +39,7 @@ var format_type = framework.Function2{
 	Callable: func(ctx *sql.Context, _ [3]pgtypes.DoltgresType, val1, val2 any) (any, error) {
 		toid := val1.(uint32)
 		typemod := val2.(int32)
+		fmt.Println("format_type", toid, typemod)
 		if t, ok := types.OidToType[oid.Oid(toid)]; ok {
 			return t.SQLStandardNameWithTypmod(true, int(typemod)), nil
 		}

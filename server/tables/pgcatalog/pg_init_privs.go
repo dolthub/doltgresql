@@ -60,7 +60,7 @@ var pgInitPrivsSchema = sql.Schema{
 	{Name: "objoid", Type: pgtypes.Oid, Default: nil, Nullable: false, Source: PgInitPrivsName},
 	{Name: "classoid", Type: pgtypes.Oid, Default: nil, Nullable: false, Source: PgInitPrivsName},
 	{Name: "objsubid", Type: pgtypes.Int32, Default: nil, Nullable: false, Source: PgInitPrivsName},
-	{Name: "privtype", Type: pgtypes.BpChar, Default: nil, Nullable: false, Source: PgInitPrivsName},
+	{Name: "privtype", Type: pgtypes.InternalChar, Default: nil, Nullable: false, Source: PgInitPrivsName},
 	{Name: "initprivs", Type: pgtypes.TextArray, Default: nil, Nullable: false, Source: PgInitPrivsName}, // TODO: aclitem[] type
 }
 

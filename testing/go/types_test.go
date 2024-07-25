@@ -24,6 +24,24 @@ func TestTypes(t *testing.T) {
 	RunScripts(t, typesTests)
 }
 
+func TestTypesChar(t *testing.T) {
+	RunScripts(t, []ScriptTest{
+		{
+			Name: "Char type",
+			Assertions: []ScriptTestAssertion{
+				{
+					Query:    `CREATE TABLE t_char (id INTEGER primary key, v1 "char");`,
+					Expected: []sql.Row{},
+				},
+				{
+					Query:    "INSERT INTO t_char VALUES (1, 'abcde');",
+					Expected: []sql.Row{},
+				},
+			},
+		},
+	})
+}
+
 var typesTests = []ScriptTest{
 	{
 		Name: "Bigint type",
@@ -269,6 +287,53 @@ var typesTests = []ScriptTest{
 				Query: "SELECT true::character(5), false::character(5);",
 				Expected: []sql.Row{
 					{"true ", "false"},
+				},
+			},
+		},
+	},
+	{
+		Name: "Internal char type",
+		SetUpScript: []string{
+			`CREATE TABLE t_char (id INTEGER primary key, v1 "char");`,
+			"INSERT INTO t_char VALUES (1, 'abcde'), (2, 'vwxyz'), (3, 'ghi'), (4, ''), (5, NULL);",
+		},
+		Assertions: []ScriptTestAssertion{
+			{
+				Query: "SELECT * FROM t_char ORDER BY id;",
+				Expected: []sql.Row{
+					{1, "a"},
+					{2, "v"},
+					{3, "g"},
+					{4, ""},
+					{5, nil},
+				},
+			},
+			{
+				Query:       "INSERT INTO t_char VALUES (6, 7);",
+				ExpectedErr: `column "v1" is of type "char" but expression is of type integer`,
+			},
+			{
+				Query:       "INSERT INTO t_char VALUES (6, true);",
+				ExpectedErr: `column "v1" is of type "char" but expression is of type boolean`,
+			},
+			{
+				Query:       `SELECT true::"char";`,
+				ExpectedErr: `cannot cast type boolean to "char"`,
+			},
+			{
+				Query: `SELECT 'abc'::"char", 'def'::name::"char", 'ghi'::varchar(3)::"char";`,
+				Expected: []sql.Row{
+					{"a", "d", "g"},
+				},
+			},
+			{
+				Query: `SELECT id, v1::int, v1::text FROM t_char;`,
+				Expected: []sql.Row{
+					{1, 97, "a"},
+					{2, 118, "v"},
+					{3, 103, "g"},
+					{4, 0, ""},
+					{5, nil, nil},
 				},
 			},
 		},
@@ -1629,7 +1694,6 @@ var typesTests = []ScriptTest{
 				},
 			},
 			{
-				Skip:  true, // TODO: Fix regtype for "char"[] type
 				Query: `SELECT '"char"[]'::regtype;`,
 				Expected: []sql.Row{
 					{"\"char\"[]"},

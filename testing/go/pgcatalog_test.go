@@ -3705,7 +3705,6 @@ func TestPgType(t *testing.T) {
 					ExpectedErr: "not",
 				},
 				{ // Different cases but non-quoted, so it works
-					Skip:  true, // TODO: _char should be included
 					Query: "SELECT typname FROM PG_catalog.pg_TYPE WHERE typname LIKE '%char' ORDER BY typname;",
 					Expected: []sql.Row{
 						{"_bpchar"},

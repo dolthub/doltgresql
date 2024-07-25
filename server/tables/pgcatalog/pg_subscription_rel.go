@@ -59,7 +59,7 @@ func (p PgSubscriptionRelHandler) Schema() sql.PrimaryKeySchema {
 var pgSubscriptionRelSchema = sql.Schema{
 	{Name: "srsubid", Type: pgtypes.Oid, Default: nil, Nullable: false, Source: PgSubscriptionRelName},
 	{Name: "srrelid", Type: pgtypes.Oid, Default: nil, Nullable: false, Source: PgSubscriptionRelName},
-	{Name: "srsubstate", Type: pgtypes.BpChar, Default: nil, Nullable: false, Source: PgSubscriptionRelName},
+	{Name: "srsubstate", Type: pgtypes.InternalChar, Default: nil, Nullable: false, Source: PgSubscriptionRelName},
 	{Name: "srsublsn", Type: pgtypes.Text, Default: nil, Nullable: true, Source: PgSubscriptionRelName}, // TODO: pg_lsn type
 }
 
