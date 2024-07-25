@@ -20,7 +20,7 @@ import (
 
 // Init handles initialization of all Postgres-specific and Doltgres-specific information_schema tables.
 func Init() {
-	information_schema.HandleColumnsTable = func() *information_schema.ColumnsTable {
+	information_schema.NewColumnsTable = func() *information_schema.ColumnsTable {
 		return &information_schema.ColumnsTable{
 			TableName:   information_schema.ColumnsTableName,
 			TableSchema: columnsSchema,
