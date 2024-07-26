@@ -285,7 +285,9 @@ func (c *CompiledFunction) resolveFunction(parameters []pgtypes.DoltgresType, so
 			var polymorphicParameters []pgtypes.DoltgresType
 			var polymorphicTargets []pgtypes.DoltgresType
 			for i, overloadParam := range overload {
-				if polymorphicType, ok := overloadParam.GetRepresentativeType().(pgtypes.DoltgresPolymorphicType); ok && polymorphicType.IsValid(parameters[i]) {
+				if parameters[i].BaseID() == pgtypes.DoltgresTypeBaseID_Null {
+					overloadCasts[i] = identityCast
+				} else if polymorphicType, ok := overloadParam.GetRepresentativeType().(pgtypes.DoltgresPolymorphicType); ok && polymorphicType.IsValid(parameters[i]) {
 					overloadCasts[i] = identityCast
 					polymorphicParameters = append(polymorphicParameters, polymorphicType)
 					polymorphicTargets = append(polymorphicTargets, parameters[i])
@@ -320,8 +322,10 @@ func (c *CompiledFunction) resolveFunction(parameters []pgtypes.DoltgresType, so
 	var matchCasts [][]TypeCastFunction
 	for convertibleIdx, convertible := range convertibles {
 		currentMatchCount := 0
-		for paramIdx, param := range convertible {
-			if parameters[paramIdx].BaseID() == param {
+		for paramIdx, targetParam := range convertible {
+			// NULL values count as exact matches, since all types accept NULL as a valid value
+			paramBaseID := parameters[paramIdx].BaseID()
+			if paramBaseID == targetParam || paramBaseID == pgtypes.DoltgresTypeBaseID_Null {
 				currentMatchCount++
 			}
 		}
@@ -350,8 +354,8 @@ func (c *CompiledFunction) resolveFunction(parameters []pgtypes.DoltgresType, so
 	var preferredCasts [][]TypeCastFunction
 	for matchIdx, match := range matches {
 		currentPreferredCount := 0
-		for paramIdx, param := range match {
-			if parameters[paramIdx].BaseID() != param && param.GetTypeCategory().IsPreferredType(param) {
+		for paramIdx, matchParam := range match {
+			if parameters[paramIdx].BaseID() != matchParam && matchParam.GetTypeCategory().IsPreferredType(matchParam) {
 				currentPreferredCount++
 			}
 		}
