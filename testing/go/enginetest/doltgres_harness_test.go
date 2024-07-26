@@ -433,9 +433,9 @@ func transformAST(query string) (string, bool) {
 		if stmt.Action == "create" {
 			return transformCreateTable(query, stmt)
 		}
-	default:
-		return query, false
 	}
+
+	return query, false
 }
 
 func transformCreateTable(query string, stmt *vitess.DDL) (string, bool) {
@@ -445,7 +445,7 @@ func transformCreateTable(query string, stmt *vitess.DDL) (string, bool) {
 
 	createTable := tree.CreateTable{
 		IfNotExists: stmt.IfNotExists,
-		Table:       tree.MakeTableName("", tree.Name(stmt.Table.Name.String())), // TODO: qualified
+		Table:       tree.MakeTableNameWithSchema("", "", tree.Name(stmt.Table.Name.String())), // TODO: qualified
 	}
 
 	for _, col := range stmt.TableSpec.Columns {
@@ -476,6 +476,14 @@ func transformCreateTable(query string, stmt *vitess.DDL) (string, bool) {
 			CheckExprs: nil, // TODO
 		})
 	}
+
+	// The default formatter always qualifies table names with db name and schema name, which we don't want in most cases
+	ctx := tree.NewFmtCtx(tree.FmtSimple)
+	ctx.SetReformatTableNames(func(ctx *tree.FmtCtx, tn *tree.TableName) {
+		ctx.FormatNode(&tn.ObjectName)
+	})
+	ctx.FormatNode(&createTable)
+	return ctx.String(), true
 }
 
 func convertNullability(notNull vitess.BoolVal) tree.Nullability {
@@ -488,17 +496,51 @@ func convertNullability(notNull vitess.BoolVal) tree.Nullability {
 func convertTypeDef(columnType vitess.ColumnType) tree.ResolvableTypeReference {
 	switch strings.ToLower(columnType.Type) {
 	case "int", "mediumint":
-		return &tree.OIDTypeReference{OID: oid.T_int4}
+		return &types.T{
+			InternalType: types.InternalType{
+				Family: types.IntFamily,
+				Width:  32,
+				Oid:    oid.T_int4,
+			},
+		}
 	case "tinyint", "bool":
-		return &tree.OIDTypeReference{OID: oid.T_int2}
+		return &types.T{
+			InternalType: types.InternalType{
+				Family: types.IntFamily,
+				Width:  16,
+				Oid:    oid.T_int2,
+			},
+		}
 	case "bigint":
-		return &tree.OIDTypeReference{OID: oid.T_int8}
+		return &types.T{
+			InternalType: types.InternalType{
+				Family: types.IntFamily,
+				Width:  64,
+				Oid:    oid.T_int8,
+			},
+		}
 	case "float":
-		return &tree.OIDTypeReference{OID: oid.T_float4}
+		return &types.T{
+			InternalType: types.InternalType{
+				Family: types.FloatFamily,
+				Width:  32,
+				Oid:    oid.T_float4,
+			},
+		}
 	case "double":
-		return &tree.OIDTypeReference{OID: oid.T_float8}
+		return &types.T{
+			InternalType: types.InternalType{
+				Family: types.FloatFamily,
+				Oid:    oid.T_float8,
+			},
+		}
 	case "decimal":
-		return &tree.OIDTypeReference{OID: oid.T_numeric}
+		return &types.T{
+			InternalType: types.InternalType{
+				Family: types.DecimalFamily,
+				Oid:    oid.T_numeric,
+			},
+		}
 	case "varchar":
 		return &types.T{
 			InternalType: types.InternalType{
@@ -548,6 +590,7 @@ func convertTypeDef(columnType vitess.ColumnType) tree.ResolvableTypeReference {
 	case "json":
 		return &tree.OIDTypeReference{OID: oid.T_json}
 	case "geometry", "point", "linestring", "polygon", "multipoint", "multilinestring", "multipolygon", "geometrycollection":
+		panic(fmt.Sprintf("unhandled type: %s", columnType.Type))
 	default:
 		panic(fmt.Sprintf("unhandled type: %s", columnType.Type))
 	}
@@ -822,6 +865,30 @@ func TestNormalizeStrings(t *testing.T) {
 	for _, test := range tests {
 		t.Run(test.input, func(t *testing.T) {
 			actual := normalizeStrings(test.input)
+			require.Equal(t, test.expected, actual)
+		})
+	}
+}
+
+func TestConvertQuery(t *testing.T) {
+	type test struct {
+		input    string
+		expected string
+	}
+	tests := []test{
+		{
+			input:    "CREATE TABLE foo (a INT primary key)",
+			expected: "CREATE TABLE foo (a INT primary key)",
+		},
+		{
+			input:    "CREATE TABLE foo (a INT primary key, b int, key (b))",
+			expected: "CREATE TABLE foo (a INT primary key, b int)",
+		},
+	}
+
+	for _, test := range tests {
+		t.Run(test.input, func(t *testing.T) {
+			actual := convertQuery(test.input)
 			require.Equal(t, test.expected, actual)
 		})
 	}
