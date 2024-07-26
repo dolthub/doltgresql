@@ -391,15 +391,16 @@ func nodeExpr(node tree.Expr) (vitess.Expr, error) {
 		case tree.Overlaps:
 			return nil, fmt.Errorf("&& is not yet supported")
 		case tree.Any:
-			if node.SubOperator.String() != "=" {
-				return nil, fmt.Errorf("ANY operator is not yet supported with suboperator %s", node.SubOperator)
-			}
 			return vitess.InjectedExpr{
-				Expression: pgexprs.NewAnyExpr(),
+				Expression: pgexprs.NewAnyExpr(node.SubOperator.String()),
 				Children:   vitess.Exprs{left, right},
 			}, nil
 		case tree.Some:
-			return nil, fmt.Errorf("SOME is not yet supported")
+			// SOME is synonymous with ANY
+			return vitess.InjectedExpr{
+				Expression: pgexprs.NewSomeExpr(node.SubOperator.String()),
+				Children:   vitess.Exprs{left, right},
+			}, nil
 		case tree.All:
 			return nil, fmt.Errorf("ALL is not yet supported")
 		default:
