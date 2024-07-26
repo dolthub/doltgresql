@@ -233,7 +233,7 @@ func (b InternalCharType) Zero() any {
 // SerializeType implements the DoltgresType interface.
 func (b InternalCharType) SerializeType() ([]byte, error) {
 	t := make([]byte, serializationIDHeaderSize+4)
-	copy(t, SerializationID_Char.ToByteSlice(0))
+	copy(t, SerializationID_InternalChar.ToByteSlice(0))
 	binary.LittleEndian.PutUint32(t[serializationIDHeaderSize:], InternalCharLength)
 	return t, nil
 }

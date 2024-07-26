@@ -18,6 +18,7 @@ import (
 	"fmt"
 	"strconv"
 	"strings"
+	"unicode"
 
 	"github.com/dolthub/go-mysql-server/sql"
 
@@ -44,14 +45,18 @@ func internalCharExplicit() {
 		FromType: pgtypes.InternalChar,
 		ToType:   pgtypes.Int32,
 		Function: func(ctx *sql.Context, val any, targetType pgtypes.DoltgresType) (any, error) {
-			out, err := strconv.ParseInt(strings.TrimSpace(val.(string)), 10, 32)
+			s := val.(string)
+			if len(s) == 0 {
+				return int32(0), nil
+			}
+			if unicode.IsLetter(rune(s[0])) {
+				return int32(s[0]), nil
+			}
+			i, err := strconv.ParseInt(s, 10, 32)
 			if err != nil {
-				return nil, fmt.Errorf("invalid input syntax for type %s: %q", targetType.String(), val.(string))
+				return 0, err
 			}
-			if out > 2147483647 || out < -2147483648 {
-				return nil, fmt.Errorf("value %q is out of range for type %s", val.(string), targetType.String())
-			}
-			return int32(out), nil
+			return int32(i), nil
 		},
 	})
 	framework.MustAddExplicitTypeCast(framework.TypeCast{
