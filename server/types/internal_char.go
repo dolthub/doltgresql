@@ -168,7 +168,7 @@ func (b InternalCharType) MaxSerializedWidth() types.ExtendedTypeSerializedWidth
 
 // MaxTextResponseByteLength implements the DoltgresType interface.
 func (b InternalCharType) MaxTextResponseByteLength(ctx *sql.Context) uint32 {
-	return InternalCharLength * 4
+	return InternalCharLength
 }
 
 // OID implements the DoltgresType interface.

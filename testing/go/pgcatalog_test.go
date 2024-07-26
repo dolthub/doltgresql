@@ -3791,6 +3791,14 @@ func TestPgType(t *testing.T) {
 					Query:    `SELECT * FROM "pg_catalog"."pg_type" WHERE oid='json'::regtype;`,
 					Expected: []sql.Row{{114, "json", 0, 0, -1, "f", "b", "U", "f", "t", ",", 0, "-", 0, 0, "json_in", "json_out", "json_recv", "json_send", "-", "-", "-", "i", "x", "f", 0, 0, 0, 0, nil, nil, nil}},
 				},
+				{
+					Query:    `SELECT * FROM "pg_catalog"."pg_type" WHERE oid='char'::regtype;`,
+					Expected: []sql.Row{{1042, "bpchar", 0, 0, -1, "f", "b", "S", "f", "t", ",", 0, "-", 0, 0, "bpcharin", "bpcharout", "bpcharrecv", "bpcharsend", "bpchartypmodin", "bpchartypmodout", "-", "i", "x", "f", 0, 0, 0, 0, nil, nil, nil}},
+				},
+				{
+					Query:    `SELECT * FROM "pg_catalog"."pg_type" WHERE oid='"char"'::regtype;`,
+					Expected: []sql.Row{{18, "char", 0, 0, 1, "t", "b", "Z", "f", "t", ",", 0, "-", 0, 0, "charin", "charout", "charrecv", "charsend", "-", "-", "-", "c", "p", "f", 0, 0, 0, 0, nil, nil, nil}},
+				},
 			},
 		},
 	})

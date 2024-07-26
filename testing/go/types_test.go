@@ -299,9 +299,12 @@ var typesTests = []ScriptTest{
 				ExpectedErr: `target is of type "char" but expression is of type boolean`,
 			},
 			{
-				Skip:        true, // TODO: Why is this not erroring?
 				Query:       `SELECT true::"char";`,
-				ExpectedErr: `cannot cast type boolean to "char"`,
+				ExpectedErr: "cast from `boolean` to `\"char\"` does not exist",
+			},
+			{
+				Query:       `SELECT 100000::bigint::"char";`,
+				ExpectedErr: "cast from `bigint` to `\"char\"` does not exist",
 			},
 			{
 				Query: `SELECT 'abc'::"char", 'def'::name::"char", '123'::varchar(3)::"char";`,

@@ -48,6 +48,9 @@ func regtype_IoInput(ctx *sql.Context, input string) (uint32, error) {
 	case 3:
 		searchSchemas = []string{sections[0]}
 		typeName = sections[2]
+		if sections[0] == "pg_catalog" && typeName == "char" { // Sad but true
+			typeName = `"char"`
+		}
 	default:
 		return 0, fmt.Errorf("regtype failed validation")
 	}

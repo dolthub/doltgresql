@@ -56,11 +56,7 @@ func (b CharType) BaseID() DoltgresTypeBaseID {
 
 // BaseName implements the DoltgresType interface.
 func (b CharType) BaseName() string {
-	if b.IsUnbounded() {
-		return "bpchar"
-	} else {
-		return "char"
-	}
+	return "bpchar"
 }
 
 // Category implements the DoltgresType interface.

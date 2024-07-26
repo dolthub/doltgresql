@@ -131,6 +131,8 @@ func (iter *pgTypeRowIter) Next(ctx *sql.Context) (sql.Row, error) {
 		typConvFnPrefix = typ.BaseName()
 		typConvFnSep    = ""
 		typAnalyze      = "-"
+		typModIn        = "-"
+		typModOut       = "-"
 	)
 
 	if l := typ.MaxTextResponseByteLength(ctx); l == math.MaxUint32 {
@@ -169,6 +171,12 @@ func (iter *pgTypeRowIter) Next(ctx *sql.Context) (sql.Row, error) {
 		}
 	case pgtypes.InternalCharType:
 		typName = "char"
+		typConvFnPrefix = "char"
+		typStorage = "p"
+	case pgtypes.CharType:
+		typModIn = "bpchartypmodin"
+		typModOut = "bpchartypmodout"
+		typStorage = "x"
 	case pgtypes.DoltgresPolymorphicType:
 		typType = "p"
 		typConvFnSep = "_"
@@ -209,8 +217,8 @@ func (iter *pgTypeRowIter) Next(ctx *sql.Context) (sql.Row, error) {
 		typOut,                //typoutput
 		typRec,                //typreceive
 		typSend,               //typsend
-		"-",                   //typmodin
-		"-",                   //typmodout
+		typModIn,              //typmodin
+		typModOut,             //typmodout
 		typAnalyze,            //typanalyze
 		typAlign,              //typalign
 		typStorage,            //typstorage

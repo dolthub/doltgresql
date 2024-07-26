@@ -139,6 +139,10 @@ func GetExplicitCast(fromType pgtypes.DoltgresTypeBaseID, toType pgtypes.Doltgre
 	if fromType == toType && toType.GetTypeCategory() != pgtypes.TypeCategory_StringTypes && fromType.GetTypeCategory() != pgtypes.TypeCategory_StringTypes {
 		return identityCast
 	}
+	// The "char" type is an exception to the built-in explicit cast for string types below
+	if fromType.GetRepresentativeType() == pgtypes.InternalChar || toType.GetRepresentativeType() == pgtypes.InternalChar {
+		return nil
+	}
 	// All types have a built-in explicit cast to string types: https://www.postgresql.org/docs/15/sql-createcast.html
 	if toType.GetTypeCategory() == pgtypes.TypeCategory_StringTypes {
 		return func(ctx *sql.Context, val any, targetType pgtypes.DoltgresType) (any, error) {
@@ -177,7 +181,7 @@ func GetAssignmentCast(fromType pgtypes.DoltgresTypeBaseID, toType pgtypes.Doltg
 	}
 	// We check for the identity after checking the maps, as the identity may be overridden (such as for types that have
 	// parameters). If the "to" type is a string type, then we do not use the identity, and use the I/O conversion below.
-	if fromType == toType && fromType.GetTypeCategory() != pgtypes.TypeCategory_StringTypes {
+	if fromType == toType {
 		return identityCast
 	}
 	// All types have a built-in assignment cast from string types: https://www.postgresql.org/docs/15/sql-createcast.html

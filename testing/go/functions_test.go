@@ -263,9 +263,51 @@ func TestFunctionsOID(t *testing.T) {
 					},
 				},
 				{
+					Query: `SELECT to_regtype('pg_catalog.varchar');`,
+					Expected: []sql.Row{
+						{"character varying"},
+					},
+				},
+				{
 					Query: `SELECT to_regtype('varchar(10)');`,
 					Expected: []sql.Row{
 						{"character varying"},
+					},
+				},
+				{
+					Query: `SELECT to_regtype('char');`,
+					Expected: []sql.Row{
+						{"character"},
+					},
+				},
+				{
+					Query: `SELECT to_regtype('pg_catalog.char');`,
+					Expected: []sql.Row{
+						{"\"char\""},
+					},
+				},
+				{
+					Query: `SELECT to_regtype('char(10)');`,
+					Expected: []sql.Row{
+						{"character"},
+					},
+				},
+				{
+					Query: `SELECT to_regtype('"char"');`,
+					Expected: []sql.Row{
+						{"\"char\""},
+					},
+				},
+				{
+					Query: `SELECT to_regtype('pg_catalog."char"');`,
+					Expected: []sql.Row{
+						{"\"char\""},
+					},
+				},
+				{
+					Query: `SELECT to_regtype('otherschema.char');`,
+					Expected: []sql.Row{
+						{nil},
 					},
 				},
 				{
