@@ -126,11 +126,11 @@ func TestPgAttribute(t *testing.T) {
 			Assertions: []ScriptTestAssertion{
 				{
 					Query:    `SELECT * FROM "pg_catalog"."pg_attribute" WHERE attname='pk';`,
-					Expected: []sql.Row{{2686451712, "pk", 23, 0, 1331, -1, -1, 0, "f", "i", "p", "", "t", "f", "f", "", "", "f", "t", 0, -1, 0, nil, nil, nil, nil}},
+					Expected: []sql.Row{{2686451712, "pk", 23, 0, 1, -1, -1, 0, "f", "i", "p", "", "t", "f", "f", "", "", "f", "t", 0, -1, 0, nil, nil, nil, nil}},
 				},
 				{
 					Query:    `SELECT * FROM "pg_catalog"."pg_attribute" WHERE attname='v1';`,
-					Expected: []sql.Row{{2686451712, "v1", 25, 0, 1332, -1, -1, 0, "f", "i", "p", "", "f", "t", "f", "", "", "f", "t", 0, -1, 0, nil, nil, nil, nil}},
+					Expected: []sql.Row{{2686451712, "v1", 25, 0, 2, -1, -1, 0, "f", "i", "p", "", "f", "t", "f", "", "", "f", "t", 0, -1, 0, nil, nil, nil, nil}},
 				},
 				{ // Different cases and quoted, so it fails
 					Query:       `SELECT * FROM "PG_catalog"."pg_attribute";`,
@@ -522,24 +522,21 @@ func TestPgConstraint(t *testing.T) {
 			},
 			Assertions: []ScriptTestAssertion{
 				{
-					Query: `SELECT * FROM "pg_catalog"."pg_constraint" LIMIT 2;`,
+					Query: `SELECT * FROM "pg_catalog"."pg_constraint" LIMIT 3;`,
 					Expected: []sql.Row{
-						{1611661312, "testing_pkey", 1879048193, "p", "f", "f", "t", 2685403136, 0, 1611661312, 0, 0, "", "", "", "t", 0, "t", nil, nil, nil, nil, nil, nil, nil, nil},
-						{1611661313, "v1", 1879048193, "u", "f", "f", "t", 2685403136, 0, 1611661313, 0, 0, "", "", "", "t", 0, "t", nil, nil, nil, nil, nil, nil, nil, nil},
-						{1611661314, "testing2_pkey", 1879048193, "p", "f", "f", "t", 2685403137, 0, 1611661314, 0, 0, "", "", "", "t", 0, "t", nil, nil, nil, nil, nil, nil, nil, nil},
+						{1611661312, "testing_pkey", 1879048193, "p", "f", "f", "t", 2685403136, 0, 1611661312, 0, 0, "", "", "", "t", 0, "t", "{1}", nil, nil, nil, nil, nil, nil, nil},
+						{1611661313, "v1", 1879048193, "u", "f", "f", "t", 2685403136, 0, 1611661313, 0, 0, "", "", "", "t", 0, "t", "{2}", nil, nil, nil, nil, nil, nil, nil},
+						{1611661314, "testing2_pkey", 1879048193, "p", "f", "f", "t", 2685403137, 0, 1611661314, 0, 0, "", "", "", "t", 0, "t", "{1}", nil, nil, nil, nil, nil, nil, nil},
 					},
 				},
 				{
 					Skip:  true, // TODO: Foreign keys don't work
 					Query: `SELECT * FROM "pg_catalog"."pg_constraint" LIMIT 2;`,
 					Expected: []sql.Row{
-						{1611661312, "testing_pkey", 1879048193, "p", "f", "f", "t", 2685403136, 0, 1611661312, 0, 0, "", "", "", "t", 0, "t", nil, nil, nil, nil, nil, nil, nil, nil},
-						{1611661313, "v1", 1879048193, "u", "f", "f", "t", 2685403136, 0, 1611661313, 0, 0, "", "", "", "t", 0, "t", nil, nil, nil, nil, nil, nil, nil, nil},
-						{1611661314, "testing2_pkey", 1879048193, "p", "f", "f", "t", 2685403137, 0, 1611661314, 0, 0, "", "", "", "t", 0, "t", nil, nil, nil, nil, nil, nil, nil, nil},
-						{1611661314, "testing2_pktesting_fkey", 1879048193, "f", "f", "t", 2685403137, 0, 1611661314, 0, 0, "", "", "", "t", 0, "t", nil, nil, nil, nil, nil, nil, nil, nil}},
-				},
-				{
-					Query: `SELECT * FROM "pg_catalog"."pg_constraint" WHERE conname='testing_pkey';`,
+						{1611661312, "testing_pkey", 1879048193, "p", "f", "f", "t", 2685403136, 0, 1611661312, 0, 0, "", "", "", "t", 0, "t", "{1}", nil, nil, nil, nil, nil, nil, nil},
+						{1611661313, "v1", 1879048193, "u", "f", "f", "t", 2685403136, 0, 1611661313, 0, 0, "", "", "", "t", 0, "t", "{2}", nil, nil, nil, nil, nil, nil, nil},
+						{1611661314, "testing2_pkey", 1879048193, "p", "f", "f", "t", 2685403137, 0, 1611661314, 0, 0, "", "", "", "t", 0, "t", "{1}", nil, nil, nil, nil, nil, nil, nil},
+						{1611661314, "testing2_pktesting_fkey", 1879048193, "f", "f", "t", 2685403137, 0, 1611661314, 0, 0, "", "", "", "t", 0, "t", "{2}", "{1}", nil, nil, nil, nil, nil, nil}},
 				},
 				{ // Different cases and quoted, so it fails
 					Query:       `SELECT * FROM "PG_catalog"."pg_constraint";`,

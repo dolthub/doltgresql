@@ -46,11 +46,13 @@ func (p PgAttributeHandler) Name() string {
 func (p PgAttributeHandler) RowIter(ctx *sql.Context) (sql.RowIter, error) {
 	var cols []*sql.Column
 	var tableOIDs []uint32
+	var colIdxs []int
 
 	err := oid.IterateCurrentDatabase(ctx, oid.Callbacks{
 		Table: func(ctx *sql.Context, _ oid.ItemSchema, table oid.ItemTable) (cont bool, err error) {
-			for _, col := range table.Item.Schema() {
+			for i, col := range table.Item.Schema() {
 				cols = append(cols, col)
+				colIdxs = append(colIdxs, i)
 				tableOIDs = append(tableOIDs, table.OID)
 			}
 			return true, nil
@@ -62,6 +64,7 @@ func (p PgAttributeHandler) RowIter(ctx *sql.Context) (sql.RowIter, error) {
 
 	return &pgAttributeRowIter{
 		cols:      cols,
+		colIdxs:   colIdxs,
 		tableOIDs: tableOIDs,
 		idx:       0,
 	}, nil
@@ -108,6 +111,7 @@ var pgAttributeSchema = sql.Schema{
 // pgAttributeRowIter is the sql.RowIter for the pg_attribute table.
 type pgAttributeRowIter struct {
 	cols      []*sql.Column
+	colIdxs   []int
 	tableOIDs []uint32
 	idx       int
 }
@@ -122,6 +126,7 @@ func (iter *pgAttributeRowIter) Next(ctx *sql.Context) (sql.Row, error) {
 	iter.idx++
 	col := iter.cols[iter.idx-1]
 	tableOid := iter.tableOIDs[iter.idx-1]
+	colIdx := iter.colIdxs[iter.idx-1]
 
 	generated := ""
 	if col.Generated != nil {
@@ -146,7 +151,7 @@ func (iter *pgAttributeRowIter) Next(ctx *sql.Context) (sql.Row, error) {
 		col.Name,          // attname
 		typeOid,           // atttypid
 		int16(0),          // attlen
-		int16(iter.idx),   // attnum
+		int16(colIdx + 1), // attnum
 		int32(-1),         // attcacheoff
 		int32(-1),         // atttypmod
 		int16(dimensions), // attndims
