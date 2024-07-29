@@ -53,7 +53,7 @@ func TestIoInputSections(t *testing.T) {
 		},
 		{
 			input:    `"char"`,
-			expected: []string{"\"char\""},
+			expected: []string{`"char"`},
 		},
 		{
 			input:    `varchar(10)`,

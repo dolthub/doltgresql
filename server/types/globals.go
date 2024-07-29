@@ -130,33 +130,7 @@ var baseIDArrayTypes = map[DoltgresTypeBaseID]DoltgresArrayType{}
 
 // baseIDCategories contains a map from all base IDs to their respective categories
 // TODO: add all of the types to each category
-var baseIDCategories = map[DoltgresTypeBaseID]TypeCategory{
-	AnyArray.BaseID():     TypeCategory_PseudoTypes,
-	Bool.BaseID():         TypeCategory_BooleanTypes,
-	Bytea.BaseID():        TypeCategory_UserDefinedTypes,
-	BpChar.BaseID():       TypeCategory_StringTypes,
-	Date.BaseID():         TypeCategory_DateTimeTypes,
-	Float32.BaseID():      TypeCategory_NumericTypes,
-	Float64.BaseID():      TypeCategory_NumericTypes,
-	Int16.BaseID():        TypeCategory_NumericTypes,
-	Int32.BaseID():        TypeCategory_NumericTypes,
-	Int64.BaseID():        TypeCategory_NumericTypes,
-	InternalChar.BaseID(): TypeCategory_StringTypes,
-	Json.BaseID():         TypeCategory_UserDefinedTypes,
-	JsonB.BaseID():        TypeCategory_UserDefinedTypes,
-	Name.BaseID():         TypeCategory_StringTypes,
-	Numeric.BaseID():      TypeCategory_NumericTypes,
-	Oid.BaseID():          TypeCategory_NumericTypes,
-	Text.BaseID():         TypeCategory_StringTypes,
-	Time.BaseID():         TypeCategory_DateTimeTypes,
-	Timestamp.BaseID():    TypeCategory_DateTimeTypes,
-	TimestampTZ.BaseID():  TypeCategory_DateTimeTypes,
-	TimeTZ.BaseID():       TypeCategory_DateTimeTypes,
-	Unknown.BaseID():      TypeCategory_UnknownTypes,
-	Uuid.BaseID():         TypeCategory_UserDefinedTypes,
-	VarChar.BaseID():      TypeCategory_StringTypes,
-	Xid.BaseID():          TypeCategory_UserDefinedTypes,
-}
+var baseIDCategories = map[DoltgresTypeBaseID]TypeCategory{}
 
 // preferredTypeInCategory contains a map from each type category to that category's preferred type.
 // TODO: add all of the preferred types
@@ -180,6 +154,7 @@ func Init() {
 				panic(fmt.Errorf("OID (%d) type conflict: `%s` and `%s`", t.OID(), existingType.String(), t.String()))
 			}
 			oidToType[t.OID()] = t
+			baseIDCategories[t.BaseID()] = t.Category()
 		}
 	}
 }

@@ -36,7 +36,7 @@ const InternalCharLength = 1
 // InternalChar is a single-byte internal type. In Postgres, it's displayed as "char".
 var InternalChar = InternalCharType{}
 
-// InternalCharType is the extended type implementation of the PostgreSQL char and bpchar, which are the same type internally.
+// InternalCharType is the type implementation of the internal PostgreSQL "char" type.
 type InternalCharType struct{}
 
 var _ DoltgresType = InternalCharType{}
@@ -53,7 +53,7 @@ func (b InternalCharType) BaseID() DoltgresTypeBaseID {
 
 // BaseName implements the DoltgresType interface.
 func (b InternalCharType) BaseName() string {
-	return "\"char\""
+	return `"char"`
 }
 
 // Category implements the DoltgresType interface.
@@ -207,7 +207,7 @@ func (b InternalCharType) SQL(ctx *sql.Context, dest []byte, v any) (sqltypes.Va
 
 // String implements the DoltgresType interface.
 func (b InternalCharType) String() string {
-	return "\"char\""
+	return `"char"`
 }
 
 // ToArrayType implements the DoltgresType interface.

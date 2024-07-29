@@ -27,19 +27,24 @@ import (
 
 // initChar handles all casts that are built-in. This comprises only the "From" types.
 func initChar() {
+	charAssignment()
 	charExplicit()
 	charImplicit()
 }
 
-// charExplicit registers all explicit casts. This comprises only the "From" types.
-func charExplicit() {
-	framework.MustAddExplicitTypeCast(framework.TypeCast{
+// charAssignment registers all assignment casts. This comprises only the "From" types.
+func charAssignment() {
+	framework.MustAddAssignmentTypeCast(framework.TypeCast{
 		FromType: pgtypes.BpChar,
 		ToType:   pgtypes.InternalChar,
 		Function: func(ctx *sql.Context, val any, targetType pgtypes.DoltgresType) (any, error) {
 			return targetType.IoInput(ctx, val.(string))
 		},
 	})
+}
+
+// charExplicit registers all explicit casts. This comprises only the "From" types.
+func charExplicit() {
 	framework.MustAddExplicitTypeCast(framework.TypeCast{
 		FromType: pgtypes.BpChar,
 		ToType:   pgtypes.Int32,
@@ -61,13 +66,6 @@ func charImplicit() {
 	framework.MustAddImplicitTypeCast(framework.TypeCast{
 		FromType: pgtypes.BpChar,
 		ToType:   pgtypes.BpChar,
-		Function: func(ctx *sql.Context, val any, targetType pgtypes.DoltgresType) (any, error) {
-			return targetType.IoInput(ctx, val.(string))
-		},
-	})
-	framework.MustAddImplicitTypeCast(framework.TypeCast{
-		FromType: pgtypes.BpChar,
-		ToType:   pgtypes.InternalChar,
 		Function: func(ctx *sql.Context, val any, targetType pgtypes.DoltgresType) (any, error) {
 			return targetType.IoInput(ctx, val.(string))
 		},

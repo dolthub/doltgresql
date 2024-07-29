@@ -301,7 +301,7 @@ func getDataAndUdtType(colType sql.Type, colName string) (string, string) {
 	if ok {
 		udtName = dgType.BaseName()
 		if udtName == `"char"` {
-			udtName = "char"
+			udtName = `char`
 		}
 		if t, ok := partypes.OidToType[oid.Oid(dgType.OID())]; ok {
 			dataType = t.SQLStandardName()

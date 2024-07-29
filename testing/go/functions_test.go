@@ -283,7 +283,7 @@ func TestFunctionsOID(t *testing.T) {
 				{
 					Query: `SELECT to_regtype('pg_catalog.char');`,
 					Expected: []sql.Row{
-						{"\"char\""},
+						{`"char"`},
 					},
 				},
 				{
@@ -295,13 +295,13 @@ func TestFunctionsOID(t *testing.T) {
 				{
 					Query: `SELECT to_regtype('"char"');`,
 					Expected: []sql.Row{
-						{"\"char\""},
+						{`"char"`},
 					},
 				},
 				{
 					Query: `SELECT to_regtype('pg_catalog."char"');`,
 					Expected: []sql.Row{
-						{"\"char\""},
+						{`"char"`},
 					},
 				},
 				{
@@ -685,7 +685,7 @@ func TestSystemInformationFunctions(t *testing.T) {
 				{
 					Query: `SELECT format_type('"char"'::regtype, null);`,
 					Expected: []sql.Row{
-						{"\"char\""},
+						{`"char"`},
 					},
 				},
 				{

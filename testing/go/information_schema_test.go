@@ -104,7 +104,7 @@ func TestInfoSchemaColumns(t *testing.T) {
 						{"col1", 2, "character", "bpchar", 10, 40},
 						{"col2", 3, "character varying", "varchar", 10, 40},
 						{"col3", 4, "text", "text", nil, 1073741824},
-						{"col4", 5, "\"char\"", "char", nil, nil},
+						{"col4", 5, `"char"`, "char", nil, nil},
 						{"col5", 6, "character", "bpchar", 1, 4},
 						{"col6", 7, "character varying", "varchar", nil, 1073741824},
 						{"col7", 8, "uuid", "uuid", nil, nil},

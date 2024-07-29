@@ -31,11 +31,10 @@ import (
 	"github.com/lib/pq/oid"
 )
 
-// BpChar is a char that has an unbounded length. "bpchar" and "char" are the same type, distinguished by the length
-// being bounded or unbounded.
+// BpChar is a char that has an unbounded length.
 var BpChar = CharType{Length: stringUnbounded}
 
-// CharType is the extended type implementation of the PostgreSQL char and bpchar, which are the same type internally.
+// CharType is the type implementation of the PostgreSQL bpchar.
 type CharType struct {
 	// Length represents the maximum number of characters that the type may hold.
 	// When this is set to unbounded, then it becomes recognized as bpchar.
