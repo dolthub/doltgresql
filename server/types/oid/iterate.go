@@ -551,7 +551,7 @@ func runCheck(ctx *sql.Context, oid uint32, callbacks Callbacks, itemSchema Item
 		if err != nil {
 			return false, err
 		}
-		if len(checks) <= dataIndex {
+		if dataIndex >= *countedIndex+len(checks) {
 			*countedIndex += len(checks)
 			return true, nil
 		}
@@ -577,7 +577,7 @@ func runForeignKey(ctx *sql.Context, oid uint32, callbacks Callbacks, itemSchema
 		if err != nil {
 			return false, err
 		}
-		if len(foreignKeys) <= dataIndex {
+		if dataIndex >= *countedIndex+len(foreignKeys) {
 			*countedIndex += len(foreignKeys)
 			return true, nil
 		}
@@ -618,7 +618,7 @@ func runIndex(ctx *sql.Context, oid uint32, callbacks Callbacks, itemSchema Item
 		if err != nil {
 			return false, err
 		}
-		if len(indexes) <= dataIndex {
+		if dataIndex >= *countedIndex+len(indexes) {
 			*countedIndex += len(indexes)
 			return true, nil
 		}
@@ -628,7 +628,7 @@ func runIndex(ctx *sql.Context, oid uint32, callbacks Callbacks, itemSchema Item
 		itemIndex := ItemIndex{
 			Index: dataIndex,
 			OID:   oid,
-			Item:  indexes[dataIndex-(*countedIndex)],
+			Item:  indexes[dataIndex-*countedIndex],
 		}
 		_, err = callbacks.Index(ctx, itemSchema, itemTable, itemIndex)
 		return false, err

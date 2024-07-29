@@ -139,6 +139,12 @@ func anyTests(name string) ScriptTest {
 				{int32(3), int32(2), "baz"},
 			},
 		},
+		{
+			Query: `SELECT "ns"."nspname" AS "table_schema", "t"."relname" AS "table_name", "cnst"."conname" AS "constraint_name", pg_get_constraintdef("cnst"."oid") AS "expression", CASE "cnst"."contype" WHEN 'p' THEN 'PRIMARY' WHEN 'u' THEN 'UNIQUE' WHEN 'c' THEN 'CHECK' WHEN 'x' THEN 'EXCLUDE' END AS "constraint_type", "a"."attname" AS "column_name" FROM "pg_catalog"."pg_constraint" "cnst" INNER JOIN "pg_catalog"."pg_class" "t" ON "t"."oid" = "cnst"."conrelid" INNER JOIN "pg_catalog"."pg_namespace" "ns" ON "ns"."oid" = "cnst"."connamespace" LEFT JOIN "pg_catalog"."pg_attribute" "a" ON "a"."attrelid" = "cnst"."conrelid" AND "a"."attnum" = %s ("cnst"."conkey") WHERE "t"."relkind" IN ('r', 'p') AND (("ns"."nspname" = 'public' AND "t"."relname" = 'test2'));`,
+			Expected: []sql.Row{
+				{"public", "test2", "test2_pkey", "PRIMARY KEY (id)", "PRIMARY", "id"},
+			},
+		},
 	}
 
 	formattedTests := make([]ScriptTestAssertion, len(tests))
@@ -157,7 +163,7 @@ func anyTests(name string) ScriptTest {
 			`CREATE TABLE test (id INT);`,
 			`INSERT INTO test VALUES (1), (3), (2);`,
 
-			`CREATE TABLE test2 (id INT, test_id INT, txt text);`,
+			`CREATE TABLE test2 (id INT PRIMARY KEY, test_id INT, txt text);`,
 			`INSERT INTO test2 VALUES (1, 1, 'foo'), (2, 10, 'bar'), (3, 2, 'baz');`,
 		},
 		Assertions: formattedTests,
