@@ -29,6 +29,7 @@ import (
 	"github.com/dolthub/doltgresql/server/functions/framework"
 	"github.com/dolthub/doltgresql/server/functions/unary"
 	"github.com/dolthub/doltgresql/server/tables"
+	"github.com/dolthub/doltgresql/server/tables/information_schema"
 	"github.com/dolthub/doltgresql/server/tables/pgcatalog"
 	pgtypes "github.com/dolthub/doltgresql/server/types"
 	"github.com/dolthub/doltgresql/server/types/oid"
@@ -52,5 +53,6 @@ func Initialize() {
 		sql.GlobalParser = pgsql.NewPostgresParser()
 		tables.Init()
 		pgcatalog.Init()
+		information_schema.Init()
 	})
 }
