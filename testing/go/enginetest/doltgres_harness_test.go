@@ -144,31 +144,20 @@ func (d *DoltgresHarness) NewEngine(t *testing.T) (enginetest.QueryEngine, error
 
 var skippedSetupWords = []string{
 	"auto_increment",
-	"create index",
 	"bigtable",           // "ERROR: blob/text column 't' used in key specification without a key length"
 	"typestable",         // lots of work to do
 	"datetime_table",     // invalid timestamp format
-	"specialtable",       // invalid quoting
 	"people",             // ERROR: blob/text column 'first_name' used in key specification without a key length
 	"reservedWordsTable", // ERROR: blob/text column 'Timestamp' used in key specification without a key length
 	"foo.othertable",     // ERROR: database schema not found: foo (errno 1105)
 	"bus_routes",         // ERROR: blob/text column 'origin' used in key specification without a key length
 	"parts",              // ERROR: blob/text column 'part' used in key specification without a key length
-	"xy_hasnull_idx",     // needs an index during creation
-	"xy ",                // needs an index during creation
-	"rs ",                // needs an index during creation
 	"analyze table",      // unsupported syntax
 }
 
 var commentClause = regexp.MustCompile(`(?i)comment '.*?'`)
-var createIndexStatement = regexp.MustCompile(`(?i)create.*?index`)
+var createIndexStatement = regexp.MustCompile(`(?i)create( unique)? index`)
 var alterTableStatement = regexp.MustCompile(`(?i)alter table`)
-var createTableStatement = regexp.MustCompile(`(?i)create table`)
-var floatKeyword = regexp.MustCompile(`(?i)\bfloat\b`)
-var doubleKeyword = regexp.MustCompile(`(?i)\bdouble\b`)
-var datetimeKeyword = regexp.MustCompile(`(?i)\bdatetime\b`)
-var mediumIntKeyword = regexp.MustCompile(`(?i)\bmediumint\b`)
-var tinyIntKeyword = regexp.MustCompile(`(?i)\btinyint\b`)
 
 // sanitizeQuery strips the query string given of any unsupported constructs without attempting to actually convert
 // to Postgres syntax.
@@ -186,21 +175,8 @@ func sanitizeQuery(s string) (bool, string) {
 		return false, ""
 	}
 
-	if createTableStatement.MatchString(s) {
-		s = replaceTypes(s)
-	}
-
 	s = commentClause.ReplaceAllString(s, "")
 	return true, s
-}
-
-func replaceTypes(s string) string {
-	s = floatKeyword.ReplaceAllString(s, "real")
-	s = doubleKeyword.ReplaceAllString(s, "double precision")
-	s = datetimeKeyword.ReplaceAllString(s, "timestamp")
-	s = mediumIntKeyword.ReplaceAllString(s, "integer")
-	s = tinyIntKeyword.ReplaceAllString(s, "smallint")
-	return s
 }
 
 func drainIter(ctx *sql.Context, rowIter sql.RowIter) error {
@@ -356,6 +332,7 @@ func (d DoltgresQueryEngine) AnalyzeQuery(s *sql.Context, s2 string) (sql.Node, 
 var doltgresNoDbDsn = fmt.Sprintf("postgresql://doltgres:password@127.0.0.1:%d/?sslmode=disable", port)
 
 func (d DoltgresQueryEngine) Query(ctx *sql.Context, query string) (sql.Schema, sql.RowIter, error) {
+
 	queries := convertQuery(query)
 
 	// convertQuery may return more than one query in the case of some DDL operations that can be represented as a single

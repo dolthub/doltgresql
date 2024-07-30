@@ -138,7 +138,7 @@ func convertNullability(typ sqlparser.ColumnType) tree.Nullability {
 
 func convertTypeDef(columnType sqlparser.ColumnType) tree.ResolvableTypeReference {
 	switch strings.ToLower(columnType.Type) {
-	case "int", "mediumint":
+	case "int", "mediumint", "integer":
 		return &types.T{
 			InternalType: types.InternalType{
 				Family: types.IntFamily,
@@ -146,7 +146,7 @@ func convertTypeDef(columnType sqlparser.ColumnType) tree.ResolvableTypeReferenc
 				Oid:    oid.T_int4,
 			},
 		}
-	case "tinyint", "bool":
+	case "tinyint", "smallint", "bool":
 		return &types.T{
 			InternalType: types.InternalType{
 				Family: types.IntFamily,
@@ -162,7 +162,7 @@ func convertTypeDef(columnType sqlparser.ColumnType) tree.ResolvableTypeReferenc
 				Oid:    oid.T_int8,
 			},
 		}
-	case "float":
+	case "float", "real":
 		return &types.T{
 			InternalType: types.InternalType{
 				Family: types.FloatFamily,
@@ -170,7 +170,7 @@ func convertTypeDef(columnType sqlparser.ColumnType) tree.ResolvableTypeReferenc
 				Oid:    oid.T_float4,
 			},
 		}
-	case "double":
+	case "double precision", "double":
 		return &types.T{
 			InternalType: types.InternalType{
 				Family: types.FloatFamily,
@@ -217,13 +217,29 @@ func convertTypeDef(columnType sqlparser.ColumnType) tree.ResolvableTypeReferenc
 			},
 		}
 	case "datetime", "timestamp":
-		return &tree.OIDTypeReference{OID: oid.T_timestamp}
+		return &types.T{
+			InternalType: types.InternalType{
+				Family: types.TimestampFamily,
+				Width:  int32FromSqlVal(columnType.Length),
+				Oid:    oid.T_timestamp,
+			},
+		}
 	case "date":
-		return &tree.OIDTypeReference{OID: oid.T_date}
+		return &types.T{
+			InternalType: types.InternalType{
+				Family: types.DateFamily,
+				Width:  int32FromSqlVal(columnType.Length),
+				Oid:    oid.T_date,
+			},
+		}
 	case "time":
-		return &tree.OIDTypeReference{OID: oid.T_time}
-	case "year":
-		return &tree.OIDTypeReference{OID: oid.T_int4}
+		return &types.T{
+			InternalType: types.InternalType{
+				Family: types.TimeFamily,
+				Width:  int32FromSqlVal(columnType.Length),
+				Oid:    oid.T_time,
+			},
+		}
 	case "enum":
 		panic(fmt.Sprintf("unhandled type: %s", columnType.Type))
 	case "set":
@@ -231,7 +247,13 @@ func convertTypeDef(columnType sqlparser.ColumnType) tree.ResolvableTypeReferenc
 	case "bit":
 		panic(fmt.Sprintf("unhandled type: %s", columnType.Type))
 	case "json":
-		return &tree.OIDTypeReference{OID: oid.T_json}
+		return &types.T{
+			InternalType: types.InternalType{
+				Family: types.JsonFamily,
+				Width:  int32FromSqlVal(columnType.Length),
+				Oid:    oid.T_json,
+			},
+		}
 	case "geometry", "point", "linestring", "polygon", "multipoint", "multilinestring", "multipolygon", "geometrycollection":
 		panic(fmt.Sprintf("unhandled type: %s", columnType.Type))
 	default:
@@ -240,6 +262,10 @@ func convertTypeDef(columnType sqlparser.ColumnType) tree.ResolvableTypeReferenc
 }
 
 func int32FromSqlVal(v *sqlparser.SQLVal) int32 {
+	if v == nil {
+		return 0
+	}
+
 	i, err := strconv.Atoi(string(v.Val))
 	if err != nil {
 		return 0
