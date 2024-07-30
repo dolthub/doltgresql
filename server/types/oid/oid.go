@@ -19,19 +19,20 @@ package oid
 type Section uint8
 
 const (
-	Section_BuiltIn    Section = iota // Contains all of the OIDs that are defined when creating a Postgres database
-	Section_Check                     // Refers to checks on tables (the dataIndex is obtained by incrementing through all tables' checks)
-	Section_Collation                 // Refers to collations
-	Section_Database                  // Refers to the database (schemaIndex does not apply, so only dataIndex should be used)
-	Section_ForeignKey                // Refers to foreign keys on tables (the dataIndex is obtained by incrementing through all tables' foreign keys)
-	Section_Function                  // Refers to functions only (no stored procedures, etc.)
-	Section_Index                     // Refers to indexes on tables (the dataIndex is obtained by incrementing through all tables' indexes)
-	Section_Namespace                 // Namespaces are the underlying structure of a schema, so these only use the dataIndex
-	Section_Operator                  // Refers to operators (+, -, *, etc.)
-	Section_Sequence                  // Refers to sequences
-	Section_Table                     // Refers to tables
-	Section_View                      // Refers to views
-	Section_Invalid                   // Represents an invalid OID
+	Section_BuiltIn       Section = iota // Contains all of the OIDs that are defined when creating a Postgres database
+	Section_Check                        // Refers to checks on tables (the dataIndex is obtained by incrementing through all tables' checks)
+	Section_Collation                    // Refers to collations
+	Section_Database                     // Refers to the database (schemaIndex does not apply, so only dataIndex should be used)
+	Section_ForeignKey                   // Refers to foreign keys on tables (the dataIndex is obtained by incrementing through all tables' foreign keys)
+	Section_Function                     // Refers to functions only (no stored procedures, etc.)
+	Section_Index                        // Refers to indexes on tables (the dataIndex is obtained by incrementing through all tables' indexes)
+	Section_Namespace                    // Namespaces are the underlying structure of a schema, so these only use the dataIndex
+	Section_Operator                     // Refers to operators (+, -, *, etc.)
+	Section_Sequence                     // Refers to sequences
+	Section_Table                        // Refers to tables
+	Section_View                         // Refers to views
+	Section_Invalid                      // Represents an invalid OID
+	Section_ColumnDefault                // Refers to column defaults on tables (the dataIndex is obtained by incrementing through all tables' column defaults)
 )
 
 const (

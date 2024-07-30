@@ -69,6 +69,7 @@ func Init() {
 	initObjDescription()
 	initOctetLength()
 	initPgGetConstraintdef()
+	initPgGetExpr()
 	initPi()
 	initPower()
 	initRadians()
