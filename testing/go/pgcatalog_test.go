@@ -412,7 +412,6 @@ func TestPgClass(t *testing.T) {
 					},
 				},
 				{
-					Skip:  true, // TODO: Should be able to select from pg_class without specifying pg_catalog
 					Query: `SELECT relname FROM "pg_class" WHERE relname='testing';`,
 					Expected: []sql.Row{
 						{"testing"},

@@ -55,7 +55,6 @@ func TestSmokeTests(t *testing.T) {
 					},
 				},
 				{
-					// Skip:  true, // TODO: specifying tables in column names fails with `table not found` error
 					Query: "SELECT test2.pk FROM test2;",
 					Expected: []sql.Row{
 						{3},
@@ -621,6 +620,63 @@ func TestSmokeTests(t *testing.T) {
 				{
 					Query:       "SHOW CREATE TABLE;",
 					ExpectedErr: "syntax error",
+				},
+			},
+		},
+		{
+			Name: "querying tables with same name as pg_catalog tables",
+			Assertions: []ScriptTestAssertion{
+				{
+					Query: "SELECT attname FROM pg_catalog.pg_attribute ORDER BY attname LIMIT 3;",
+					Expected: []sql.Row{
+						{"abbrev"},
+						{"abbrev"},
+						{"active"},
+					},
+				},
+				{
+					Query: "SELECT attname FROM pg_attribute ORDER BY attname LIMIT 3;",
+					Expected: []sql.Row{
+						{"abbrev"},
+						{"abbrev"},
+						{"active"},
+					},
+				},
+				{
+					Query:    "CREATE TABLE pg_attribute (id INT);",
+					Expected: []sql.Row{},
+				},
+				{
+					Query:       "insert into pg_attribute values (1);",
+					ExpectedErr: "number of values does not match number of columns provided",
+				},
+				{
+					Query:    "insert into public.pg_attribute values (1);",
+					Expected: []sql.Row{},
+				},
+				{
+					Query: "SELECT attname FROM pg_attribute ORDER BY attname LIMIT 3;",
+					Expected: []sql.Row{
+						{"abbrev"},
+						{"abbrev"},
+						{"active"},
+					},
+				},
+				{
+					Query:    "SELECT * FROM public.pg_attribute;",
+					Expected: []sql.Row{{1}},
+				},
+				{
+					Query:       "drop table pg_attribute;",
+					ExpectedErr: "tables cannot be dropped on database pg_catalog",
+				},
+				{
+					Query:    "drop table public.pg_attribute;",
+					Expected: []sql.Row{},
+				},
+				{
+					Query:       "SELECT * FROM public.pg_attribute;",
+					ExpectedErr: "table not found: pg_attribute",
 				},
 			},
 		},
