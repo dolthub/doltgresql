@@ -34,7 +34,7 @@ var random = framework.Function0{
 	Return:             pgtypes.Float64,
 	IsNonDeterministic: true,
 	Strict:             true,
-	Callable: func(ctx *sql.Context) (any, error) {
+	Callable: func(ctx *sql.Context, varargs ...any) (any, error) {
 		return rand.Float64(), nil
 	},
 }

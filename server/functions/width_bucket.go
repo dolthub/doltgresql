@@ -37,7 +37,7 @@ var width_bucket_float64_float64_float64_int64 = framework.Function4{
 	Return:     pgtypes.Int32,
 	Parameters: [4]pgtypes.DoltgresType{pgtypes.Float64, pgtypes.Float64, pgtypes.Float64, pgtypes.Int32},
 	Strict:     true,
-	Callable: func(ctx *sql.Context, _ [5]pgtypes.DoltgresType, operandInterface any, lowInterface any, highInterface any, countInterface any) (any, error) {
+	Callable: func(ctx *sql.Context, _ [5]pgtypes.DoltgresType, operandInterface any, lowInterface any, highInterface any, countInterface any, varargs ...any) (any, error) {
 		operand := operandInterface.(float64)
 		low := lowInterface.(float64)
 		high := highInterface.(float64)
@@ -70,7 +70,7 @@ var width_bucket_numeric_numeric_numeric_int64 = framework.Function4{
 	Return:     pgtypes.Int32,
 	Parameters: [4]pgtypes.DoltgresType{pgtypes.Numeric, pgtypes.Numeric, pgtypes.Numeric, pgtypes.Int32},
 	Strict:     true,
-	Callable: func(ctx *sql.Context, _ [5]pgtypes.DoltgresType, operandInterface any, lowInterface any, highInterface any, countInterface any) (any, error) {
+	Callable: func(ctx *sql.Context, _ [5]pgtypes.DoltgresType, operandInterface any, lowInterface any, highInterface any, countInterface any, varargs ...any) (any, error) {
 		operand := operandInterface.(decimal.Decimal)
 		low := lowInterface.(decimal.Decimal)
 		high := highInterface.(decimal.Decimal)

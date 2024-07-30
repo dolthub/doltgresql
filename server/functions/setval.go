@@ -48,7 +48,7 @@ var setval_text_int64_boolean = framework.Function3{
 	Parameters:         [3]pgtypes.DoltgresType{pgtypes.Text, pgtypes.Int64, pgtypes.Bool},
 	IsNonDeterministic: true,
 	Strict:             true,
-	Callable: func(ctx *sql.Context, _ [4]pgtypes.DoltgresType, val1 any, val2 any, val3 any) (any, error) {
+	Callable: func(ctx *sql.Context, _ [4]pgtypes.DoltgresType, val1 any, val2 any, val3 any, varargs ...any) (any, error) {
 		collection, err := core.GetCollectionFromContext(ctx)
 		if err != nil {
 			return nil, err

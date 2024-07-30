@@ -35,7 +35,7 @@ var version = framework.Function0{
 	Name:   "version",
 	Return: pgtypes.Text,
 	Strict: true,
-	Callable: func(ctx *sql.Context) (any, error) {
+	Callable: func(ctx *sql.Context, varargs ...any) (any, error) {
 		return fmt.Sprintf("PostgreSQL %s", postgresVersion), nil
 	},
 }

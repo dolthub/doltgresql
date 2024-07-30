@@ -33,7 +33,7 @@ var scale_numeric = framework.Function1{
 	Return:     pgtypes.Int32,
 	Parameters: [1]pgtypes.DoltgresType{pgtypes.Numeric},
 	Strict:     true,
-	Callable: func(ctx *sql.Context, dt [2]pgtypes.DoltgresType, val1 any) (any, error) {
+	Callable: func(ctx *sql.Context, dt [2]pgtypes.DoltgresType, val1 any, varargs ...any) (any, error) {
 		res, err := min_scale_numeric.Callable(ctx, dt, val1)
 		if res != nil {
 			return res.(int32), err
