@@ -47,7 +47,7 @@ type Function0 struct {
 	Return             pgtypes.DoltgresType
 	IsNonDeterministic bool
 	Strict             bool
-	Callable           func(ctx *sql.Context) (any, error)
+	Callable           func(ctx *sql.Context, varargs ...any) (any, error)
 }
 
 // Function1 is a function that takes one parameter. The parameter and return type is passed into the Callable function
@@ -58,7 +58,7 @@ type Function1 struct {
 	Parameters         [1]pgtypes.DoltgresType
 	IsNonDeterministic bool
 	Strict             bool
-	Callable           func(ctx *sql.Context, paramsAndReturn [2]pgtypes.DoltgresType, val1 any) (any, error)
+	Callable           func(ctx *sql.Context, paramsAndReturn [2]pgtypes.DoltgresType, val1 any, varargs ...any) (any, error)
 }
 
 // Function2 is a function that takes two parameters. The parameter and return types are passed into the Callable
@@ -70,7 +70,7 @@ type Function2 struct {
 	Parameters         [2]pgtypes.DoltgresType
 	IsNonDeterministic bool
 	Strict             bool
-	Callable           func(ctx *sql.Context, paramsAndReturn [3]pgtypes.DoltgresType, val1 any, val2 any) (any, error)
+	Callable           func(ctx *sql.Context, paramsAndReturn [3]pgtypes.DoltgresType, val1 any, val2 any, varargs ...any) (any, error)
 }
 
 // Function3 is a function that takes three parameters. The parameter and return types are passed into the Callable
@@ -82,7 +82,7 @@ type Function3 struct {
 	Parameters         [3]pgtypes.DoltgresType
 	IsNonDeterministic bool
 	Strict             bool
-	Callable           func(ctx *sql.Context, paramsAndReturn [4]pgtypes.DoltgresType, val1 any, val2 any, val3 any) (any, error)
+	Callable           func(ctx *sql.Context, paramsAndReturn [4]pgtypes.DoltgresType, val1 any, val2 any, val3 any, varargs ...any) (any, error)
 }
 
 // Function4 is a function that takes four parameters. The parameter and return types are passed into the Callable
@@ -94,18 +94,7 @@ type Function4 struct {
 	Parameters         [4]pgtypes.DoltgresType
 	IsNonDeterministic bool
 	Strict             bool
-	Callable           func(ctx *sql.Context, paramsAndReturn [5]pgtypes.DoltgresType, val1 any, val2 any, val3 any, val4 any) (any, error)
-}
-
-// FunctionN is a function that takes N parameters.
-type FunctionN struct {
-	Name               string
-	Return             pgtypes.DoltgresType
-	Parameters         []pgtypes.DoltgresType
-	VarargsType        pgtypes.DoltgresType
-	IsNonDeterministic bool
-	Strict             bool
-	Callable           func(ctx *sql.Context, values ...any) (any, error)
+	Callable           func(ctx *sql.Context, paramsAndReturn [5]pgtypes.DoltgresType, val1 any, val2 any, val3 any, val4 any, varargs ...any) (any, error)
 }
 
 var _ FunctionInterface = Function0{}
@@ -113,7 +102,6 @@ var _ FunctionInterface = Function1{}
 var _ FunctionInterface = Function2{}
 var _ FunctionInterface = Function3{}
 var _ FunctionInterface = Function4{}
-var _ FunctionInterface = FunctionN{}
 
 // GetName implements the FunctionInterface interface.
 func (f Function0) GetName() string { return f.Name }
@@ -234,39 +222,3 @@ func (f Function4) IsStrict() bool { return f.Strict }
 
 // enforceInterfaceInheritance implements the FunctionInterface interface.
 func (f Function4) enforceInterfaceInheritance(error) {}
-
-// GetName implements the FunctionInterface interface.
-func (f FunctionN) GetName() string {
-	return f.Name
-}
-
-// GetReturn implements the FunctionInterface interface.
-func (f FunctionN) GetReturn() pgtypes.DoltgresType {
-	return f.Return
-}
-
-// GetParameters implements the FunctionInterface interface.
-func (f FunctionN) GetParameters() []pgtypes.DoltgresType {
-	return f.Parameters
-}
-
-// GetVarargsType implements the FunctionInterface interface.
-func (f FunctionN) GetVarargsType() pgtypes.DoltgresType { return f.VarargsType }
-
-// GetExpectedParameterCount implements the FunctionInterface interface.
-func (f FunctionN) GetExpectedParameterCount() int {
-	return -1
-}
-
-// GetIsNonDeterministic implements the FunctionInterface interface.
-func (f FunctionN) NonDeterministic() bool {
-	return f.IsNonDeterministic
-}
-
-// GetIsStrict implements the FunctionInterface interface.
-func (f FunctionN) IsStrict() bool {
-	return f.Strict
-}
-
-// enforceInterfaceInheritance implements the FunctionInterface interface.
-func (f FunctionN) enforceInterfaceInheritance(err error) {}

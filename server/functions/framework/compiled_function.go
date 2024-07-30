@@ -234,16 +234,13 @@ func (c *CompiledFunction) Eval(ctx *sql.Context, row sql.Row) (interface{}, err
 	case Function0:
 		return f.Callable(ctx)
 	case Function1:
-		return f.Callable(ctx, ([2]pgtypes.DoltgresType)(c.callResolved), parameters[0])
+		return f.Callable(ctx, ([2]pgtypes.DoltgresType)(c.callResolved), parameters[0:]...)
 	case Function2:
-		return f.Callable(ctx, ([3]pgtypes.DoltgresType)(c.callResolved), parameters[0], parameters[1])
+		return f.Callable(ctx, ([3]pgtypes.DoltgresType)(c.callResolved), parameters[0], parameters[1:]...)
 	case Function3:
-		return f.Callable(ctx, ([4]pgtypes.DoltgresType)(c.callResolved), parameters[0], parameters[1], parameters[2])
+		return f.Callable(ctx, ([4]pgtypes.DoltgresType)(c.callResolved), parameters[0], parameters[1], parameters[2:]...)
 	case Function4:
-		return f.Callable(ctx, ([5]pgtypes.DoltgresType)(c.callResolved), parameters[0], parameters[1], parameters[2], parameters[3])
-	case FunctionN:
-		// TODO: what does callResolved do here
-		return f.Callable(ctx, parameters...)
+		return f.Callable(ctx, ([5]pgtypes.DoltgresType)(c.callResolved), parameters[0], parameters[1], parameters[2], parameters[3:]...)
 	default:
 		return nil, fmt.Errorf("unknown function type in CompiledFunction::Eval")
 	}

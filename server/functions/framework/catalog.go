@@ -59,9 +59,6 @@ func RegisterFunction(f FunctionInterface) {
 	case Function4:
 		name := strings.ToLower(f.Name)
 		Catalog[name] = append(Catalog[name], f)
-	case FunctionN:
-		name := strings.ToLower(f.Name)
-		Catalog[name] = append(Catalog[name], f)
 	default:
 		panic("unhandled function type")
 	}
