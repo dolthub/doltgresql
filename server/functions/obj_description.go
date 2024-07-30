@@ -33,7 +33,7 @@ var obj_description = framework.Function2{
 	Parameters:         [2]pgtypes.DoltgresType{pgtypes.Oid, pgtypes.Name},
 	IsNonDeterministic: true,
 	Strict:             true,
-	Callable: func(ctx *sql.Context, _ [3]pgtypes.DoltgresType, val1 any, val2 any) (any, error) {
+	Callable: func(ctx *sql.Context, _ [3]pgtypes.DoltgresType, val1 any, val2 any, varargs ...any) (any, error) {
 		// TODO: When we support comments this should return the comment for a
 		// database object specified by its OID and the name of the containing
 		// system catalog.

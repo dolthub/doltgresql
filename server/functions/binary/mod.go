@@ -41,7 +41,7 @@ var int2mod = framework.Function2{
 	Return:     pgtypes.Int16,
 	Parameters: [2]pgtypes.DoltgresType{pgtypes.Int16, pgtypes.Int16},
 	Strict:     true,
-	Callable: func(ctx *sql.Context, _ [3]pgtypes.DoltgresType, val1 any, val2 any) (any, error) {
+	Callable: func(ctx *sql.Context, _ [3]pgtypes.DoltgresType, val1 any, val2 any, varargs ...any) (any, error) {
 		if val2.(int16) == 0 {
 			return nil, fmt.Errorf("division by zero")
 		}
@@ -55,7 +55,7 @@ var int4mod = framework.Function2{
 	Return:     pgtypes.Int32,
 	Parameters: [2]pgtypes.DoltgresType{pgtypes.Int32, pgtypes.Int32},
 	Strict:     true,
-	Callable: func(ctx *sql.Context, _ [3]pgtypes.DoltgresType, val1 any, val2 any) (any, error) {
+	Callable: func(ctx *sql.Context, _ [3]pgtypes.DoltgresType, val1 any, val2 any, varargs ...any) (any, error) {
 		if val2.(int32) == 0 {
 			return nil, fmt.Errorf("division by zero")
 		}
@@ -69,7 +69,7 @@ var int8mod = framework.Function2{
 	Return:     pgtypes.Int64,
 	Parameters: [2]pgtypes.DoltgresType{pgtypes.Int64, pgtypes.Int64},
 	Strict:     true,
-	Callable: func(ctx *sql.Context, _ [3]pgtypes.DoltgresType, val1 any, val2 any) (any, error) {
+	Callable: func(ctx *sql.Context, _ [3]pgtypes.DoltgresType, val1 any, val2 any, varargs ...any) (any, error) {
 		if val2.(int64) == 0 {
 			return nil, fmt.Errorf("division by zero")
 		}
@@ -83,7 +83,7 @@ var numeric_mod = framework.Function2{
 	Return:     pgtypes.Numeric,
 	Parameters: [2]pgtypes.DoltgresType{pgtypes.Numeric, pgtypes.Numeric},
 	Strict:     true,
-	Callable: func(ctx *sql.Context, _ [3]pgtypes.DoltgresType, val1 any, val2 any) (any, error) {
+	Callable: func(ctx *sql.Context, _ [3]pgtypes.DoltgresType, val1 any, val2 any, varargs ...any) (any, error) {
 		if val2.(decimal.Decimal).Equal(decimal.Zero) {
 			return nil, fmt.Errorf("division by zero")
 		}

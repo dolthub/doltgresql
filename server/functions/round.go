@@ -65,7 +65,7 @@ var round_numeric_int64 = framework.Function2{
 	Return:     pgtypes.Numeric,
 	Parameters: [2]pgtypes.DoltgresType{pgtypes.Numeric, pgtypes.Int64},
 	Strict:     true,
-	Callable: func(ctx *sql.Context, _ [3]pgtypes.DoltgresType, val1 any, val2 any) (any, error) {
+	Callable: func(ctx *sql.Context, _ [3]pgtypes.DoltgresType, val1 any, val2 any, varargs ...any) (any, error) {
 		return val1.(decimal.Decimal).Round(int32(val2.(int64))), nil
 	},
 }

@@ -37,7 +37,7 @@ var int2shr = framework.Function2{
 	Return:     pgtypes.Int16,
 	Parameters: [2]pgtypes.DoltgresType{pgtypes.Int16, pgtypes.Int32},
 	Strict:     true,
-	Callable: func(ctx *sql.Context, _ [3]pgtypes.DoltgresType, val1 any, val2 any) (any, error) {
+	Callable: func(ctx *sql.Context, _ [3]pgtypes.DoltgresType, val1 any, val2 any, varargs ...any) (any, error) {
 		return int16(int32(val1.(int16)) >> val2.(int32)), nil
 	},
 }
@@ -48,7 +48,7 @@ var int4shr = framework.Function2{
 	Return:     pgtypes.Int32,
 	Parameters: [2]pgtypes.DoltgresType{pgtypes.Int32, pgtypes.Int32},
 	Strict:     true,
-	Callable: func(ctx *sql.Context, _ [3]pgtypes.DoltgresType, val1 any, val2 any) (any, error) {
+	Callable: func(ctx *sql.Context, _ [3]pgtypes.DoltgresType, val1 any, val2 any, varargs ...any) (any, error) {
 		return int32(val1.(int32) >> val2.(int32)), nil
 	},
 }
@@ -59,7 +59,7 @@ var int8shr = framework.Function2{
 	Return:     pgtypes.Int64,
 	Parameters: [2]pgtypes.DoltgresType{pgtypes.Int64, pgtypes.Int32},
 	Strict:     true,
-	Callable: func(ctx *sql.Context, _ [3]pgtypes.DoltgresType, val1 any, val2 any) (any, error) {
+	Callable: func(ctx *sql.Context, _ [3]pgtypes.DoltgresType, val1 any, val2 any, varargs ...any) (any, error) {
 		return int64(val1.(int64) >> int64(val2.(int32))), nil
 	},
 }
