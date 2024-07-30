@@ -42,16 +42,6 @@ func NewAnyExpr(subOperator string) *AnyExpr {
 	}
 }
 
-// NewSomeExpr creates a new AnyExpr expression for SOME.
-func NewSomeExpr(subOperator string) *AnyExpr {
-	return &AnyExpr{
-		leftExpr:    nil,
-		rightExpr:   nil,
-		subOperator: subOperator,
-		name:        "SOME",
-	}
-}
-
 // Children implements the Expression interface.
 func (a *AnyExpr) Children() []sql.Expression {
 	return []sql.Expression{a.leftExpr, a.rightExpr}
@@ -112,12 +102,12 @@ func (a *AnyExpr) Eval(ctx *sql.Context, row sql.Row) (interface{}, error) {
 		return nil, fmt.Errorf("%T: expected right child to return `%T` but returned `%T`", a, []any{}, rightInterface)
 	}
 	if len(rightValues) == 0 {
-		return false, nil
+		return nil, nil
 	}
 
 	if leftType, ok := a.leftExpr.Type().(pgtypes.DoltgresType); ok {
 		for _, rightVal := range rightValues {
-			op, err := a.getBinaryOperator()
+			op, err := framework.GetOperatorFromString(a.subOperator)
 			if err != nil {
 				return nil, err
 			}
@@ -186,24 +176,4 @@ func (a *AnyExpr) String() string {
 // DebugString implements the Expression interface.
 func (a *AnyExpr) DebugString() string {
 	return fmt.Sprintf("%s %s (%s)", sql.DebugString(a.leftExpr), a.name, sql.DebugString(a.rightExpr))
-}
-
-// getBinaryOperator returns the binary operator for the given subOperator.
-func (a *AnyExpr) getBinaryOperator() (framework.Operator, error) {
-	switch a.subOperator {
-	case "=":
-		return framework.Operator_BinaryEqual, nil
-	case "<>", "!=":
-		return framework.Operator_BinaryNotEqual, nil
-	case "<":
-		return framework.Operator_BinaryLessThan, nil
-	case "<=":
-		return framework.Operator_BinaryLessOrEqual, nil
-	case ">":
-		return framework.Operator_BinaryGreaterThan, nil
-	case ">=":
-		return framework.Operator_BinaryGreaterOrEqual, nil
-	default:
-		return 0, fmt.Errorf("unhandled SubOperator for %s `%s`", a.name, a.subOperator)
-	}
 }
