@@ -360,72 +360,86 @@ func (d DoltgresQueryEngine) AnalyzeQuery(s *sql.Context, s2 string) (sql.Node, 
 var doltgresNoDbDsn = fmt.Sprintf("postgresql://doltgres:password@127.0.0.1:%d/?sslmode=disable", port)
 
 func (d DoltgresQueryEngine) Query(ctx *sql.Context, query string) (sql.Schema, sql.RowIter, error) {
-	query = convertQuery(query)
+	queries := convertQuery(query)
 
-	db, err := gosql.Open("pgx", doltgresNoDbDsn)
-	if err != nil {
-		return nil, nil, err
-	}
+	// convertQuery may return more than one query in the case of some DDL operations that can be represented as a single
+	// statement in MySQL but not in Postgres. We always return the result from only the first one, but execute all of
+	// them.
+	var (
+		resultSchema sql.Schema
+		resultRows   []sql.Row
+	)
 
-	rows, err := db.Query(query)
-	if err != nil {
-		return nil, nil, err
-	}
-
-	if rows == nil {
-		return nil, nil, fmt.Errorf("rows is nil")
-	}
-
-	defer rows.Close()
-
-	schema, columns, err := columns(rows)
-	if err != nil {
-		return nil, nil, err
-	}
-
-	results := make([]sql.Row, 0)
-	for rows.Next() {
-		err := rows.Scan(columns...)
+	for _, query := range queries {
+		db, err := gosql.Open("pgx", doltgresNoDbDsn)
 		if err != nil {
 			return nil, nil, err
 		}
 
-		row, err := toRow(schema, columns)
+		rows, err := db.Query(query)
 		if err != nil {
 			return nil, nil, err
 		}
 
-		results = append(results, row)
+		if rows == nil {
+			return nil, nil, fmt.Errorf("rows is nil")
+		}
+
+		defer rows.Close()
+
+		schema, columns, err := columns(rows)
+		if err != nil {
+			return nil, nil, err
+		}
+
+		results := make([]sql.Row, 0)
+		for rows.Next() {
+			err := rows.Scan(columns...)
+			if err != nil {
+				return nil, nil, err
+			}
+
+			row, err := toRow(schema, columns)
+			if err != nil {
+				return nil, nil, err
+			}
+
+			results = append(results, row)
+		}
+
+		if resultRows == nil {
+			resultSchema = schema
+			resultRows = results
+		}
+
+		err = rows.Close()
+		if err != nil {
+			return nil, nil, err
+		}
+
+		if rows.Err() != nil {
+			return nil, nil, rows.Err()
+		}
 	}
 
-	err = rows.Close()
-	if err != nil {
-		return nil, nil, err
-	}
-
-	if rows.Err() != nil {
-		return nil, nil, rows.Err()
-	}
-
-	return schema, sql.RowsToRowIter(results...), nil
+	return resultSchema, sql.RowsToRowIter(resultRows...), nil
 }
 
-func convertQuery(query string) string {
-	query, converted := transformAST(query)
-	if converted {
-		return query
+func convertQuery(query string) []string {
+	if queries, converted := transformAST(query); converted {
+		return queries
 	}
 
 	query = normalizeStrings(query)
 	query = convertDoltProcedureCalls(query)
-	return query
+	return []string{query}
 }
 
-func transformAST(query string) (string, bool) {
+func transformAST(query string) ([]string, bool) {
 	parser := sql.NewMysqlParser()
 	stmt, err := parser.ParseSimple(query)
 	if err != nil {
-		return "", false
+		return nil, false
 	}
 
 	switch stmt := stmt.(type) {
@@ -435,12 +449,12 @@ func transformAST(query string) (string, bool) {
 		}
 	}
 
-	return query, false
+	return nil, false
 }
 
-func transformCreateTable(query string, stmt *vitess.DDL) (string, bool) {
+func transformCreateTable(query string, stmt *vitess.DDL) ([]string, bool) {
 	if stmt.TableSpec == nil {
-		return query, false
+		return nil, false
 	}
 
 	createTable := tree.CreateTable{
@@ -483,7 +497,8 @@ func transformCreateTable(query string, stmt *vitess.DDL) (string, bool) {
 		ctx.FormatNode(&tn.ObjectName)
 	})
 	ctx.FormatNode(&createTable)
-	return ctx.String(), true
+
+	return []string{ctx.String()}, true
 }
 
 func convertNullability(notNull vitess.BoolVal) tree.Nullability {
@@ -878,7 +893,7 @@ func TestConvertQuery(t *testing.T) {
 	tests := []test{
 		{
 			input:    "CREATE TABLE foo (a INT primary key)",
-			expected: "CREATE TABLE foo (a INT primary key)",
+			expected: "CREATE TABLE foo (a INTEGER NOT NULL PRIMARY KEY)",
 		},
 		{
 			input:    "CREATE TABLE foo (a INT primary key, b int, key (b))",
