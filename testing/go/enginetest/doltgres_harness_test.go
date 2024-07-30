@@ -888,16 +888,16 @@ func TestNormalizeStrings(t *testing.T) {
 func TestConvertQuery(t *testing.T) {
 	type test struct {
 		input    string
-		expected string
+		expected []string
 	}
 	tests := []test{
 		{
 			input:    "CREATE TABLE foo (a INT primary key)",
-			expected: "CREATE TABLE foo (a INTEGER NOT NULL PRIMARY KEY)",
+			expected: []string{"CREATE TABLE foo (a INTEGER NOT NULL PRIMARY KEY)"},
 		},
 		{
 			input:    "CREATE TABLE foo (a INT primary key, b int, key (b))",
-			expected: "CREATE TABLE foo (a INT primary key, b int)",
+			expected: []string{"CREATE TABLE foo (a INTEGER NOT NULL PRIMARY KEY, b INTEGER NOT NULL)"},
 		},
 	}
 
