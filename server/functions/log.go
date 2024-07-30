@@ -77,7 +77,7 @@ var log_numeric_numeric = framework.Function2{
 	Return:     pgtypes.Numeric,
 	Parameters: [2]pgtypes.DoltgresType{pgtypes.Numeric, pgtypes.Numeric},
 	Strict:     true,
-	Callable: func(ctx *sql.Context, _ [3]pgtypes.DoltgresType, val1Interface any, val2Interface any) (any, error) {
+	Callable: func(ctx *sql.Context, _ [3]pgtypes.DoltgresType, val1Interface any, val2Interface any, varargs ...any) (any, error) {
 		if val1Interface == nil || val2Interface == nil {
 			return nil, nil
 		}

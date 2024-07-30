@@ -65,7 +65,7 @@ var trunc_numeric_int64 = framework.Function2{
 	Return:     pgtypes.Numeric,
 	Parameters: [2]pgtypes.DoltgresType{pgtypes.Numeric, pgtypes.Int32},
 	Strict:     true,
-	Callable: func(ctx *sql.Context, _ [3]pgtypes.DoltgresType, num any, places any) (any, error) {
+	Callable: func(ctx *sql.Context, _ [3]pgtypes.DoltgresType, num any, places any, varargs ...any) (any, error) {
 		// TODO: test for negative values in places
 		return num.(decimal.Decimal).Truncate(places.(int32)), nil
 	},

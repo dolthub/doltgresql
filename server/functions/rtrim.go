@@ -45,7 +45,7 @@ var rtrim_varchar_varchar = framework.Function2{
 	Return:     pgtypes.VarChar,
 	Parameters: [2]pgtypes.DoltgresType{pgtypes.VarChar, pgtypes.VarChar},
 	Strict:     true,
-	Callable: func(ctx *sql.Context, _ [3]pgtypes.DoltgresType, str any, characters any) (any, error) {
+	Callable: func(ctx *sql.Context, _ [3]pgtypes.DoltgresType, str any, characters any, varargs ...any) (any, error) {
 		runes := []rune(str.(string))
 		trimChars := make(map[rune]struct{})
 		for _, c := range characters.(string) {

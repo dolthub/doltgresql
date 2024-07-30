@@ -34,7 +34,7 @@ var repeat_varchar_int32 = framework.Function2{
 	Return:     pgtypes.VarChar,
 	Parameters: [2]pgtypes.DoltgresType{pgtypes.VarChar, pgtypes.Int32},
 	Strict:     true,
-	Callable: func(ctx *sql.Context, _ [3]pgtypes.DoltgresType, str any, num any) (any, error) {
+	Callable: func(ctx *sql.Context, _ [3]pgtypes.DoltgresType, str any, num any, varargs ...any) (any, error) {
 		return strings.Repeat(str.(string), int(num.(int32))), nil
 	},
 }
