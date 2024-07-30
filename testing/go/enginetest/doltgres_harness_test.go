@@ -459,9 +459,10 @@ func transformCreateTable(query string, stmt *vitess.DDL) ([]string, bool) {
 
 	createTable := tree.CreateTable{
 		IfNotExists: stmt.IfNotExists,
-		Table:       tree.MakeTableNameWithSchema("", "", tree.Name(stmt.Table.Name.String())), // TODO: qualified
+		Table:       tree.MakeTableNameWithSchema("", "", tree.Name(stmt.Table.Name.String())), // TODO: qualified names
 	}
 
+	var queries []string
 	for _, col := range stmt.TableSpec.Columns {
 		createTable.Defs = append(createTable.Defs, &tree.ColumnTableDef{
 			Name:      tree.Name(col.Name.String()),
@@ -471,7 +472,7 @@ func transformCreateTable(query string, stmt *vitess.DDL) ([]string, bool) {
 				Nullability    tree.Nullability
 				ConstraintName tree.Name
 			}{
-				Nullability: convertNullability(!col.Type.NotNull),
+				Nullability: convertNullability(col.Type),
 			},
 			PrimaryKey: struct {
 				IsPrimaryKey bool
@@ -491,20 +492,57 @@ func transformCreateTable(query string, stmt *vitess.DDL) ([]string, bool) {
 		})
 	}
 
-	// The default formatter always qualifies table names with db name and schema name, which we don't want in most cases
+	ctx := formatNodeWithUnqualifiedTableNames(&createTable)
+	queries = append(queries, ctx.String())
+
+	// If there are additional (non-primary key) indexes defined, each one gets its own additional statement
+	if len(stmt.TableSpec.Indexes) > 0 {
+		for _, index := range stmt.TableSpec.Indexes {
+			if index.Info.Primary {
+				continue
+			}
+
+			createIndex := tree.CreateIndex{
+				Name:    tree.Name(index.Info.Name.String()),
+				Table:   tree.MakeTableNameWithSchema("", "", tree.Name(stmt.Table.Name.String())), // TODO: qualified
+				Unique:  index.Info.Unique,
+				Columns: make(tree.IndexElemList, len(index.Columns)),
+			}
+
+			for i, col := range index.Columns {
+				createIndex.Columns[i] = tree.IndexElem{
+					Column:    tree.Name(col.Column.String()),
+					Direction: tree.Ascending,
+				}
+			}
+
+			ctx := formatNodeWithUnqualifiedTableNames(&createIndex)
+
+			queries = append(queries, ctx.String())
+		}
+	}
+
+	return queries, true
+}
+
+// The default formatter always qualifies table names with db name and schema name, which we don't want in most cases
+func formatNodeWithUnqualifiedTableNames(n tree.NodeFormatter) *tree.FmtCtx {
 	ctx := tree.NewFmtCtx(tree.FmtSimple)
 	ctx.SetReformatTableNames(func(ctx *tree.FmtCtx, tn *tree.TableName) {
 		ctx.FormatNode(&tn.ObjectName)
 	})
-	ctx.FormatNode(&createTable)
-
-	return []string{ctx.String()}, true
+	ctx.FormatNode(n)
+	return ctx
 }
 
-func convertNullability(notNull vitess.BoolVal) tree.Nullability {
-	if notNull {
+func convertNullability(typ vitess.ColumnType) tree.Nullability {
+	if typ.NotNull {
 		return tree.NotNull
 	}
+	if typ.KeyOpt == 1 { // primary key, unexported constant
+		return tree.NotNull
+	}
+
 	return tree.Null
 }
 
@@ -896,8 +934,33 @@ func TestConvertQuery(t *testing.T) {
 			expected: []string{"CREATE TABLE foo (a INTEGER NOT NULL PRIMARY KEY)"},
 		},
 		{
-			input:    "CREATE TABLE foo (a INT primary key, b int, key (b))",
-			expected: []string{"CREATE TABLE foo (a INTEGER NOT NULL PRIMARY KEY, b INTEGER NOT NULL)"},
+			input: "CREATE TABLE foo (a INT primary key, b int not null)",
+			expected: []string{
+				"CREATE TABLE foo (a INTEGER NOT NULL PRIMARY KEY, b INTEGER NOT NULL)",
+			},
+		},
+		{
+			input: "CREATE TABLE foo (a INT primary key, b int, key (b))",
+			expected: []string{
+				"CREATE TABLE foo (a INTEGER NOT NULL PRIMARY KEY, b INTEGER NULL)",
+				"CREATE INDEX ON foo ( b ASC ) NULLS NOT DISTINCT ",
+			},
+		},
+		{
+			input: "CREATE TABLE foo (a INT primary key, b int, c int, key (c,b))",
+			expected: []string{
+				"CREATE TABLE foo (a INTEGER NOT NULL PRIMARY KEY, b INTEGER NULL, c INTEGER NULL)",
+				"CREATE INDEX ON foo ( c ASC, b ASC ) NULLS NOT DISTINCT ",
+			},
+		},
+		{
+			input: "CREATE TABLE foo (a INT primary key, b int, c int not null, d int, key (c), key (b), key (b,c))",
+			expected: []string{
+				"CREATE TABLE foo (a INTEGER NOT NULL PRIMARY KEY, b INTEGER NULL, c INTEGER NOT NULL, d INTEGER NULL)",
+				"CREATE INDEX ON foo ( c ASC ) NULLS NOT DISTINCT ",
+				"CREATE INDEX ON foo ( b ASC ) NULLS NOT DISTINCT ",
+				"CREATE INDEX ON foo ( b ASC, c ASC ) NULLS NOT DISTINCT ",
+			},
 		},
 	}
 
