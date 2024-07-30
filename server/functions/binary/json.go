@@ -164,7 +164,7 @@ var jsonb_array_element_text = framework.Function2{
 	Return:     pgtypes.Text,
 	Parameters: [2]pgtypes.DoltgresType{pgtypes.JsonB, pgtypes.Int32},
 	Strict:     true,
-	Callable: func(ctx *sql.Context, dt [3]pgtypes.DoltgresType, val1 any, val2 any) (any, error) {
+	Callable: func(ctx *sql.Context, dt [3]pgtypes.DoltgresType, val1 any, val2 any, varargs ...any) (any, error) {
 		doc, err := jsonb_array_element.Callable(ctx, dt, val1, val2)
 		if err != nil || doc == nil {
 			return nil, err
@@ -201,7 +201,7 @@ var jsonb_object_field_text = framework.Function2{
 	Return:     pgtypes.Text,
 	Parameters: [2]pgtypes.DoltgresType{pgtypes.JsonB, pgtypes.Text},
 	Strict:     true,
-	Callable: func(ctx *sql.Context, dt [3]pgtypes.DoltgresType, val1 any, val2 any) (any, error) {
+	Callable: func(ctx *sql.Context, dt [3]pgtypes.DoltgresType, val1 any, val2 any, varargs ...any) (any, error) {
 		doc, err := jsonb_object_field.Callable(ctx, dt, val1, val2)
 		if err != nil || doc == nil {
 			return nil, err
@@ -298,7 +298,7 @@ var jsonb_extract_path_text = framework.Function2{
 	Return:     pgtypes.Text,
 	Parameters: [2]pgtypes.DoltgresType{pgtypes.JsonB, pgtypes.TextArray},
 	Strict:     true,
-	Callable: func(ctx *sql.Context, dt [3]pgtypes.DoltgresType, val1 any, val2 any) (any, error) {
+	Callable: func(ctx *sql.Context, dt [3]pgtypes.DoltgresType, val1 any, val2 any, varargs ...any) (any, error) {
 		doc, err := jsonb_extract_path.Callable(ctx, dt, val1, val2)
 		if err != nil || doc == nil {
 			return nil, err
@@ -329,7 +329,7 @@ var jsonb_contained = framework.Function2{
 	Return:     pgtypes.Bool,
 	Parameters: [2]pgtypes.DoltgresType{pgtypes.JsonB, pgtypes.JsonB},
 	Strict:     true,
-	Callable: func(ctx *sql.Context, dt [3]pgtypes.DoltgresType, val1 any, val2 any) (any, error) {
+	Callable: func(ctx *sql.Context, dt [3]pgtypes.DoltgresType, val1 any, val2 any, varargs ...any) (any, error) {
 		return jsonb_contains.Callable(ctx, dt, val2, val1)
 	},
 }

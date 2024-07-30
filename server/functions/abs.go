@@ -38,7 +38,7 @@ var abs_int16 = framework.Function1{
 	Return:     pgtypes.Int16,
 	Parameters: [1]pgtypes.DoltgresType{pgtypes.Int16},
 	Strict:     true,
-	Callable: func(ctx *sql.Context, _ [2]pgtypes.DoltgresType, val1 any) (any, error) {
+	Callable: func(ctx *sql.Context, _ [2]pgtypes.DoltgresType, val1 any, varargs ...any) (any, error) {
 		return utils.Abs(val1.(int16)), nil
 	},
 }
@@ -49,7 +49,7 @@ var abs_int32 = framework.Function1{
 	Return:     pgtypes.Int32,
 	Parameters: [1]pgtypes.DoltgresType{pgtypes.Int32},
 	Strict:     true,
-	Callable: func(ctx *sql.Context, _ [2]pgtypes.DoltgresType, val1 any) (any, error) {
+	Callable: func(ctx *sql.Context, _ [2]pgtypes.DoltgresType, val1 any, varargs ...any) (any, error) {
 		return utils.Abs(val1.(int32)), nil
 	},
 }
@@ -60,7 +60,7 @@ var abs_int64 = framework.Function1{
 	Return:     pgtypes.Int64,
 	Parameters: [1]pgtypes.DoltgresType{pgtypes.Int64},
 	Strict:     true,
-	Callable: func(ctx *sql.Context, _ [2]pgtypes.DoltgresType, val1 any) (any, error) {
+	Callable: func(ctx *sql.Context, _ [2]pgtypes.DoltgresType, val1 any, varargs ...any) (any, error) {
 		return utils.Abs(val1.(int64)), nil
 	},
 }
@@ -71,7 +71,7 @@ var abs_float64 = framework.Function1{
 	Return:     pgtypes.Float64,
 	Parameters: [1]pgtypes.DoltgresType{pgtypes.Float64},
 	Strict:     true,
-	Callable: func(ctx *sql.Context, _ [2]pgtypes.DoltgresType, val1 any) (any, error) {
+	Callable: func(ctx *sql.Context, _ [2]pgtypes.DoltgresType, val1 any, varargs ...any) (any, error) {
 		return utils.Abs(val1.(float64)), nil
 	},
 }
@@ -82,7 +82,7 @@ var abs_numeric = framework.Function1{
 	Return:     pgtypes.Numeric,
 	Parameters: [1]pgtypes.DoltgresType{pgtypes.Numeric},
 	Strict:     true,
-	Callable: func(ctx *sql.Context, _ [2]pgtypes.DoltgresType, val1 any) (any, error) {
+	Callable: func(ctx *sql.Context, _ [2]pgtypes.DoltgresType, val1 any, varargs ...any) (any, error) {
 		return val1.(decimal.Decimal).Abs(), nil
 	},
 }

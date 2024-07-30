@@ -34,7 +34,7 @@ var to_hex_int64 = framework.Function1{
 	Return:     pgtypes.VarChar,
 	Parameters: [1]pgtypes.DoltgresType{pgtypes.Int64},
 	Strict:     true,
-	Callable: func(ctx *sql.Context, _ [2]pgtypes.DoltgresType, val1 any) (any, error) {
+	Callable: func(ctx *sql.Context, _ [2]pgtypes.DoltgresType, val1 any, varargs ...any) (any, error) {
 		return fmt.Sprintf("%x", uint64(val1.(int64))), nil
 	},
 }

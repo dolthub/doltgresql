@@ -32,7 +32,7 @@ var ascii_varchar = framework.Function1{
 	Return:     pgtypes.Int32,
 	Parameters: [1]pgtypes.DoltgresType{pgtypes.VarChar},
 	Strict:     true,
-	Callable: func(ctx *sql.Context, _ [2]pgtypes.DoltgresType, val1Interface any) (any, error) {
+	Callable: func(ctx *sql.Context, _ [2]pgtypes.DoltgresType, val1Interface any, varargs ...any) (any, error) {
 		val1 := val1Interface.(string)
 		if len(val1) == 0 {
 			return int32(0), nil
