@@ -45,6 +45,7 @@ type FunctionInterface interface {
 type Function0 struct {
 	Name               string
 	Return             pgtypes.DoltgresType
+	VarArgsType        pgtypes.DoltgresType
 	IsNonDeterministic bool
 	Strict             bool
 	Callable           func(ctx *sql.Context, varargs ...any) (any, error)
@@ -56,6 +57,7 @@ type Function1 struct {
 	Name               string
 	Return             pgtypes.DoltgresType
 	Parameters         [1]pgtypes.DoltgresType
+	VarArgsType        pgtypes.DoltgresType
 	IsNonDeterministic bool
 	Strict             bool
 	Callable           func(ctx *sql.Context, paramsAndReturn [2]pgtypes.DoltgresType, val1 any, varargs ...any) (any, error)
@@ -68,6 +70,7 @@ type Function2 struct {
 	Name               string
 	Return             pgtypes.DoltgresType
 	Parameters         [2]pgtypes.DoltgresType
+	VarArgsType        pgtypes.DoltgresType
 	IsNonDeterministic bool
 	Strict             bool
 	Callable           func(ctx *sql.Context, paramsAndReturn [3]pgtypes.DoltgresType, val1 any, val2 any, varargs ...any) (any, error)
@@ -80,6 +83,7 @@ type Function3 struct {
 	Name               string
 	Return             pgtypes.DoltgresType
 	Parameters         [3]pgtypes.DoltgresType
+	VarArgsType        pgtypes.DoltgresType
 	IsNonDeterministic bool
 	Strict             bool
 	Callable           func(ctx *sql.Context, paramsAndReturn [4]pgtypes.DoltgresType, val1 any, val2 any, val3 any, varargs ...any) (any, error)
@@ -92,6 +96,7 @@ type Function4 struct {
 	Name               string
 	Return             pgtypes.DoltgresType
 	Parameters         [4]pgtypes.DoltgresType
+	VarArgsType        pgtypes.DoltgresType
 	IsNonDeterministic bool
 	Strict             bool
 	Callable           func(ctx *sql.Context, paramsAndReturn [5]pgtypes.DoltgresType, val1 any, val2 any, val3 any, val4 any, varargs ...any) (any, error)

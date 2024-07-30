@@ -47,11 +47,10 @@ func initDoltProcedures() {
 		funcVal := reflect.ValueOf(procDef.Function)
 		callable := callableForDoltProcedure(p, funcVal, outputType)
 
-		framework.RegisterFunction(framework.FunctionN{
+		framework.RegisterFunction(framework.Function0{
 			Name:        procDef.Name,
 			Return:      outputType,
-			Parameters:  make([]pgtypes.DoltgresType, 0),
-			VarargsType: pgtypes.TextType{},
+			VarArgsType: pgtypes.TextType{},
 			Callable:    callable,
 		})
 	}
