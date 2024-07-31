@@ -47,7 +47,7 @@ func initDoltProcedures() {
 		funcVal := reflect.ValueOf(procDef.Function)
 		callable := callableForDoltProcedure(p, funcVal)
 
-		framework.RegisterFunction(framework.Function0{
+		framework.RegisterFunction(framework.Function1{
 			Name:        procDef.Name,
 			Return:      outputType,
 			VarArgsType: pgtypes.TextType{},
@@ -56,10 +56,15 @@ func initDoltProcedures() {
 	}
 }
 
-func callableForDoltProcedure(p *plan.ExternalProcedure, funcVal reflect.Value) func(ctx *sql.Context, values ...any) (any, error) {
+func callableForDoltProcedure(p *plan.ExternalProcedure, funcVal reflect.Value) func(ctx *sql.Context, paramsAndReturn [2]pgtypes.DoltgresType, val1 any) (any, error) {
 	funcType := funcVal.Type()
 
-	return func(ctx *sql.Context, values ...any) (any, error) {
+	return func(ctx *sql.Context, paramsAndReturn [2]pgtypes.DoltgresType, val1 any) (any, error) {
+		values, ok := val1.([]any)
+		if !ok {
+			return nil, sql.ErrExternalProcedureInvalidParamType.New(reflect.TypeOf(val1).String())
+		}
+
 		funcParams := make([]reflect.Value, len(values)+1)
 		funcParams[0] = reflect.ValueOf(ctx)
 

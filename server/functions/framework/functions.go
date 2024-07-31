@@ -48,7 +48,7 @@ type Function0 struct {
 	VarArgsType        pgtypes.DoltgresType
 	IsNonDeterministic bool
 	Strict             bool
-	Callable           func(ctx *sql.Context, varargs ...any) (any, error)
+	Callable           func(ctx *sql.Context) (any, error)
 }
 
 // Function1 is a function that takes one parameter. The parameter and return type is passed into the Callable function
@@ -60,7 +60,7 @@ type Function1 struct {
 	VarArgsType        pgtypes.DoltgresType
 	IsNonDeterministic bool
 	Strict             bool
-	Callable           func(ctx *sql.Context, paramsAndReturn [2]pgtypes.DoltgresType, val1 any, varargs ...any) (any, error)
+	Callable           func(ctx *sql.Context, paramsAndReturn [2]pgtypes.DoltgresType, val1 any) (any, error)
 }
 
 // Function2 is a function that takes two parameters. The parameter and return types are passed into the Callable
@@ -73,7 +73,7 @@ type Function2 struct {
 	VarArgsType        pgtypes.DoltgresType
 	IsNonDeterministic bool
 	Strict             bool
-	Callable           func(ctx *sql.Context, paramsAndReturn [3]pgtypes.DoltgresType, val1 any, val2 any, varargs ...any) (any, error)
+	Callable           func(ctx *sql.Context, paramsAndReturn [3]pgtypes.DoltgresType, val1 any, val2 any) (any, error)
 }
 
 // Function3 is a function that takes three parameters. The parameter and return types are passed into the Callable
@@ -86,7 +86,7 @@ type Function3 struct {
 	VarArgsType        pgtypes.DoltgresType
 	IsNonDeterministic bool
 	Strict             bool
-	Callable           func(ctx *sql.Context, paramsAndReturn [4]pgtypes.DoltgresType, val1 any, val2 any, val3 any, varargs ...any) (any, error)
+	Callable           func(ctx *sql.Context, paramsAndReturn [4]pgtypes.DoltgresType, val1 any, val2 any, val3 any) (any, error)
 }
 
 // Function4 is a function that takes four parameters. The parameter and return types are passed into the Callable
@@ -99,7 +99,7 @@ type Function4 struct {
 	VarArgsType        pgtypes.DoltgresType
 	IsNonDeterministic bool
 	Strict             bool
-	Callable           func(ctx *sql.Context, paramsAndReturn [5]pgtypes.DoltgresType, val1 any, val2 any, val3 any, val4 any, varargs ...any) (any, error)
+	Callable           func(ctx *sql.Context, paramsAndReturn [5]pgtypes.DoltgresType, val1 any, val2 any, val3 any, val4 any) (any, error)
 }
 
 var _ FunctionInterface = Function0{}
