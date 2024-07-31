@@ -52,7 +52,7 @@ var float4pl = framework.Function2{
 	Return:     pgtypes.Float32,
 	Parameters: [2]pgtypes.DoltgresType{pgtypes.Float32, pgtypes.Float32},
 	Strict:     true,
-	Callable: func(ctx *sql.Context, _ [3]pgtypes.DoltgresType, val1 any, val2 any, varargs ...any) (any, error) {
+	Callable: func(ctx *sql.Context, _ [3]pgtypes.DoltgresType, val1 any, val2 any) (any, error) {
 		return val1.(float32) + val2.(float32), nil
 	},
 }
@@ -63,7 +63,7 @@ var float48pl = framework.Function2{
 	Return:     pgtypes.Float64,
 	Parameters: [2]pgtypes.DoltgresType{pgtypes.Float32, pgtypes.Float64},
 	Strict:     true,
-	Callable: func(ctx *sql.Context, _ [3]pgtypes.DoltgresType, val1 any, val2 any, varargs ...any) (any, error) {
+	Callable: func(ctx *sql.Context, _ [3]pgtypes.DoltgresType, val1 any, val2 any) (any, error) {
 		return float64(val1.(float32)) + val2.(float64), nil
 	},
 }
@@ -74,7 +74,7 @@ var float8pl = framework.Function2{
 	Return:     pgtypes.Float64,
 	Parameters: [2]pgtypes.DoltgresType{pgtypes.Float64, pgtypes.Float64},
 	Strict:     true,
-	Callable: func(ctx *sql.Context, _ [3]pgtypes.DoltgresType, val1 any, val2 any, varargs ...any) (any, error) {
+	Callable: func(ctx *sql.Context, _ [3]pgtypes.DoltgresType, val1 any, val2 any) (any, error) {
 		return val1.(float64) + val2.(float64), nil
 	},
 }
@@ -85,7 +85,7 @@ var float84pl = framework.Function2{
 	Return:     pgtypes.Float64,
 	Parameters: [2]pgtypes.DoltgresType{pgtypes.Float64, pgtypes.Float32},
 	Strict:     true,
-	Callable: func(ctx *sql.Context, _ [3]pgtypes.DoltgresType, val1 any, val2 any, varargs ...any) (any, error) {
+	Callable: func(ctx *sql.Context, _ [3]pgtypes.DoltgresType, val1 any, val2 any) (any, error) {
 		return val1.(float64) + float64(val2.(float32)), nil
 	},
 }
@@ -96,7 +96,7 @@ var int2pl = framework.Function2{
 	Return:     pgtypes.Int16,
 	Parameters: [2]pgtypes.DoltgresType{pgtypes.Int16, pgtypes.Int16},
 	Strict:     true,
-	Callable: func(ctx *sql.Context, _ [3]pgtypes.DoltgresType, val1 any, val2 any, varargs ...any) (any, error) {
+	Callable: func(ctx *sql.Context, _ [3]pgtypes.DoltgresType, val1 any, val2 any) (any, error) {
 		result := int64(val1.(int16)) + int64(val2.(int16))
 		if result > math.MaxInt16 || result < math.MinInt16 {
 			return nil, fmt.Errorf("smallint out of range")
@@ -111,7 +111,7 @@ var int24pl = framework.Function2{
 	Return:     pgtypes.Int32,
 	Parameters: [2]pgtypes.DoltgresType{pgtypes.Int16, pgtypes.Int32},
 	Strict:     true,
-	Callable: func(ctx *sql.Context, _ [3]pgtypes.DoltgresType, val1 any, val2 any, varargs ...any) (any, error) {
+	Callable: func(ctx *sql.Context, _ [3]pgtypes.DoltgresType, val1 any, val2 any) (any, error) {
 		result := int64(val1.(int16)) + int64(val2.(int32))
 		if result > math.MaxInt16 || result < math.MinInt16 {
 			return nil, fmt.Errorf("integer out of range")
@@ -126,7 +126,7 @@ var int28pl = framework.Function2{
 	Return:     pgtypes.Int64,
 	Parameters: [2]pgtypes.DoltgresType{pgtypes.Int16, pgtypes.Int64},
 	Strict:     true,
-	Callable: func(ctx *sql.Context, _ [3]pgtypes.DoltgresType, val1 any, val2 any, varargs ...any) (any, error) {
+	Callable: func(ctx *sql.Context, _ [3]pgtypes.DoltgresType, val1 any, val2 any) (any, error) {
 		return plusOverflow(int64(val1.(int16)), val2.(int64))
 	},
 }
@@ -137,7 +137,7 @@ var int4pl = framework.Function2{
 	Return:     pgtypes.Int32,
 	Parameters: [2]pgtypes.DoltgresType{pgtypes.Int32, pgtypes.Int32},
 	Strict:     true,
-	Callable: func(ctx *sql.Context, _ [3]pgtypes.DoltgresType, val1 any, val2 any, varargs ...any) (any, error) {
+	Callable: func(ctx *sql.Context, _ [3]pgtypes.DoltgresType, val1 any, val2 any) (any, error) {
 		result := int64(val1.(int32)) + int64(val2.(int32))
 		if result > math.MaxInt32 || result < math.MinInt32 {
 			return nil, fmt.Errorf("integer out of range")
@@ -152,7 +152,7 @@ var int42pl = framework.Function2{
 	Return:     pgtypes.Int32,
 	Parameters: [2]pgtypes.DoltgresType{pgtypes.Int32, pgtypes.Int16},
 	Strict:     true,
-	Callable: func(ctx *sql.Context, _ [3]pgtypes.DoltgresType, val1 any, val2 any, varargs ...any) (any, error) {
+	Callable: func(ctx *sql.Context, _ [3]pgtypes.DoltgresType, val1 any, val2 any) (any, error) {
 		result := int64(val1.(int32)) + int64(val2.(int16))
 		if result > math.MaxInt32 || result < math.MinInt32 {
 			return nil, fmt.Errorf("integer out of range")
@@ -167,7 +167,7 @@ var int48pl = framework.Function2{
 	Return:     pgtypes.Int64,
 	Parameters: [2]pgtypes.DoltgresType{pgtypes.Int32, pgtypes.Int64},
 	Strict:     true,
-	Callable: func(ctx *sql.Context, _ [3]pgtypes.DoltgresType, val1 any, val2 any, varargs ...any) (any, error) {
+	Callable: func(ctx *sql.Context, _ [3]pgtypes.DoltgresType, val1 any, val2 any) (any, error) {
 		return plusOverflow(int64(val1.(int32)), val2.(int64))
 	},
 }
@@ -178,7 +178,7 @@ var int8pl = framework.Function2{
 	Return:     pgtypes.Int64,
 	Parameters: [2]pgtypes.DoltgresType{pgtypes.Int64, pgtypes.Int64},
 	Strict:     true,
-	Callable: func(ctx *sql.Context, _ [3]pgtypes.DoltgresType, val1 any, val2 any, varargs ...any) (any, error) {
+	Callable: func(ctx *sql.Context, _ [3]pgtypes.DoltgresType, val1 any, val2 any) (any, error) {
 		return plusOverflow(val1.(int64), val2.(int64))
 	},
 }
@@ -189,7 +189,7 @@ var int82pl = framework.Function2{
 	Return:     pgtypes.Int64,
 	Parameters: [2]pgtypes.DoltgresType{pgtypes.Int64, pgtypes.Int16},
 	Strict:     true,
-	Callable: func(ctx *sql.Context, _ [3]pgtypes.DoltgresType, val1 any, val2 any, varargs ...any) (any, error) {
+	Callable: func(ctx *sql.Context, _ [3]pgtypes.DoltgresType, val1 any, val2 any) (any, error) {
 		return plusOverflow(val1.(int64), int64(val2.(int16)))
 	},
 }
@@ -200,7 +200,7 @@ var int84pl = framework.Function2{
 	Return:     pgtypes.Int64,
 	Parameters: [2]pgtypes.DoltgresType{pgtypes.Int64, pgtypes.Int32},
 	Strict:     true,
-	Callable: func(ctx *sql.Context, _ [3]pgtypes.DoltgresType, val1 any, val2 any, varargs ...any) (any, error) {
+	Callable: func(ctx *sql.Context, _ [3]pgtypes.DoltgresType, val1 any, val2 any) (any, error) {
 		return plusOverflow(val1.(int64), int64(val2.(int32)))
 	},
 }
@@ -211,7 +211,7 @@ var numeric_add = framework.Function2{
 	Return:     pgtypes.Numeric,
 	Parameters: [2]pgtypes.DoltgresType{pgtypes.Numeric, pgtypes.Numeric},
 	Strict:     true,
-	Callable: func(ctx *sql.Context, _ [3]pgtypes.DoltgresType, val1 any, val2 any, varargs ...any) (any, error) {
+	Callable: func(ctx *sql.Context, _ [3]pgtypes.DoltgresType, val1 any, val2 any) (any, error) {
 		return val1.(decimal.Decimal).Add(val2.(decimal.Decimal)), nil
 	},
 }
