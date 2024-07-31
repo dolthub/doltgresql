@@ -33,6 +33,7 @@ func initBinaryEqual() {
 	framework.RegisterBinaryFunction(framework.Operator_BinaryEqual, booleq)
 	framework.RegisterBinaryFunction(framework.Operator_BinaryEqual, bpchareq)
 	framework.RegisterBinaryFunction(framework.Operator_BinaryEqual, byteaeq)
+	framework.RegisterBinaryFunction(framework.Operator_BinaryEqual, chareq)
 	framework.RegisterBinaryFunction(framework.Operator_BinaryEqual, date_eq)
 	framework.RegisterBinaryFunction(framework.Operator_BinaryEqual, date_eq_timestamp)
 	framework.RegisterBinaryFunction(framework.Operator_BinaryEqual, date_eq_timestamptz)
@@ -101,6 +102,18 @@ var byteaeq = framework.Function2{
 	Strict:     true,
 	Callable: func(ctx *sql.Context, _ [3]pgtypes.DoltgresType, val1 any, val2 any) (any, error) {
 		res, err := pgtypes.Bytea.Compare(val1.([]byte), val2.([]byte))
+		return res == 0, err
+	},
+}
+
+// chareq represents the PostgreSQL function of the same name, taking the same parameters.
+var chareq = framework.Function2{
+	Name:       "chareq",
+	Return:     pgtypes.Bool,
+	Parameters: [2]pgtypes.DoltgresType{pgtypes.InternalChar, pgtypes.InternalChar},
+	Strict:     true,
+	Callable: func(ctx *sql.Context, _ [3]pgtypes.DoltgresType, val1 any, val2 any) (any, error) {
+		res, err := pgtypes.InternalChar.Compare(val1.(string), val2.(string))
 		return res == 0, err
 	},
 }
