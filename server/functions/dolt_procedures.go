@@ -102,34 +102,32 @@ func callableForDoltProcedure(p *plan.ExternalProcedure, funcVal reflect.Value) 
 }
 
 func drainRowIter(ctx *sql.Context, rowIter sql.RowIter) (any, error) {
-	for {
-		row, err := rowIter.Next(ctx)
-		if err == io.EOF {
-			break
-		} else if err != nil {
+	defer rowIter.Close(ctx)
+
+	row, err := rowIter.Next(ctx)
+	if err == io.EOF {
+		return nil, nil
+	} else if err != nil {
+		return nil, err
+	}
+
+	// The conversion to []text needs []any, not sql.Row
+	rowSlice := make([]any, len(row))
+	for i := range row {
+		fromType, err := typeForElement(row[i])
+		if err != nil {
 			return nil, err
 		}
 
-		// The conversion to []text needs []any, not sql.Row
-		rowSlice := make([]any, len(row))
-		for i := range row {
-			fromType, err := typeForElement(row[i])
-			if err != nil {
-				return nil, err
-			}
-
-			castFn := framework.GetExplicitCast(fromType, pgtypes.Text.BaseID())
-			textVal, err := castFn(ctx, row[i], pgtypes.Text)
-			if err != nil {
-				return nil, err
-			}
-
-			rowSlice[i] = textVal
+		castFn := framework.GetExplicitCast(fromType, pgtypes.Text.BaseID())
+		textVal, err := castFn(ctx, row[i], pgtypes.Text)
+		if err != nil {
+			return nil, err
 		}
-		return rowSlice, nil
-	}
 
-	return nil, nil
+		rowSlice[i] = textVal
+	}
+	return rowSlice, nil
 }
 
 func typeForElement(v any) (pgtypes.DoltgresTypeBaseID, error) {
