@@ -66,7 +66,7 @@ func (overload *FunctionOverloadTree) traverseOverloadTree(currentPermutation []
 // ExactMatch returns the function that exactly matches the given parameter types. If no exact match is found, then
 // nil, false is returned.
 func (overload *FunctionOverloadTree) ExactMatch(paramTypes []pgtypes.DoltgresTypeBaseID) (FunctionInterface, bool) {
-	if overload.Function != nil {
+	if overload.Function != nil && len(paramTypes) == 0 {
 		if len(paramTypes) == 0 {
 			return overload.Function, true
 		}
