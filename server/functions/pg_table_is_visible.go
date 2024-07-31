@@ -16,10 +16,11 @@ package functions
 
 import (
 	"github.com/dolthub/dolt/go/libraries/doltcore/sqle/resolve"
+	"github.com/dolthub/go-mysql-server/sql"
+
 	"github.com/dolthub/doltgresql/server/functions/framework"
 	pgtypes "github.com/dolthub/doltgresql/server/types"
 	"github.com/dolthub/doltgresql/server/types/oid"
-	"github.com/dolthub/go-mysql-server/sql"
 )
 
 // initPgTableIsVisible registers the functions to the catalog.
@@ -36,6 +37,9 @@ var pg_table_is_visible = framework.Function1{
 	Callable: func(ctx *sql.Context, _ [2]pgtypes.DoltgresType, val any) (any, error) {
 		oidVal := val.(uint32)
 		paths, err := resolve.SearchPath(ctx)
+		if err != nil {
+			return false, err
+		}
 		lookUpPaths := make(map[string]bool)
 		for _, path := range paths {
 			lookUpPaths[path] = true
