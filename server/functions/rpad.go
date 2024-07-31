@@ -33,7 +33,7 @@ var rpad_varchar_int32 = framework.Function2{
 	Return:     pgtypes.VarChar,
 	Parameters: [2]pgtypes.DoltgresType{pgtypes.VarChar, pgtypes.Int32},
 	Strict:     true,
-	Callable: func(ctx *sql.Context, _ [3]pgtypes.DoltgresType, val1 any, val2 any, varargs ...any) (any, error) {
+	Callable: func(ctx *sql.Context, _ [3]pgtypes.DoltgresType, val1 any, val2 any) (any, error) {
 		var unusedTypes [4]pgtypes.DoltgresType
 		return rpad_varchar_int32_varchar.Callable(ctx, unusedTypes, val1, val2, " ")
 	},
@@ -45,7 +45,7 @@ var rpad_varchar_int32_varchar = framework.Function3{
 	Return:     pgtypes.VarChar,
 	Parameters: [3]pgtypes.DoltgresType{pgtypes.VarChar, pgtypes.Int32, pgtypes.VarChar},
 	Strict:     true,
-	Callable: func(ctx *sql.Context, _ [4]pgtypes.DoltgresType, str any, length any, fill any, varargs ...any) (any, error) {
+	Callable: func(ctx *sql.Context, _ [4]pgtypes.DoltgresType, str any, length any, fill any) (any, error) {
 		if length.(int32) <= 0 {
 			return "", nil
 		}

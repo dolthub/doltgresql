@@ -34,7 +34,7 @@ var cotd_float64 = framework.Function1{
 	Return:     pgtypes.Float64,
 	Parameters: [1]pgtypes.DoltgresType{pgtypes.Float64},
 	Strict:     true,
-	Callable: func(ctx *sql.Context, _ [2]pgtypes.DoltgresType, val1Interface any, varargs ...any) (any, error) {
+	Callable: func(ctx *sql.Context, _ [2]pgtypes.DoltgresType, val1Interface any) (any, error) {
 		val1 := toRadians(val1Interface.(float64))
 		if val1 == 0 {
 			return math.Inf(1), nil

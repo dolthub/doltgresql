@@ -34,7 +34,7 @@ var degrees_float64 = framework.Function1{
 	Return:     pgtypes.Float64,
 	Parameters: [1]pgtypes.DoltgresType{pgtypes.Float64},
 	Strict:     true,
-	Callable: func(ctx *sql.Context, _ [2]pgtypes.DoltgresType, val1 any, varargs ...any) (any, error) {
+	Callable: func(ctx *sql.Context, _ [2]pgtypes.DoltgresType, val1 any) (any, error) {
 		return toDegrees(val1.(float64)), nil
 	},
 }

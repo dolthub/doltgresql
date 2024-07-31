@@ -37,7 +37,7 @@ var sqrt_float64 = framework.Function1{
 	Return:     pgtypes.Float64,
 	Parameters: [1]pgtypes.DoltgresType{pgtypes.Float64},
 	Strict:     true,
-	Callable: func(ctx *sql.Context, _ [2]pgtypes.DoltgresType, val1 any, varargs ...any) (any, error) {
+	Callable: func(ctx *sql.Context, _ [2]pgtypes.DoltgresType, val1 any) (any, error) {
 		if val1 == nil {
 			return nil, nil
 		}
@@ -54,7 +54,7 @@ var sqrt_numeric = framework.Function1{
 	Return:     pgtypes.Numeric,
 	Parameters: [1]pgtypes.DoltgresType{pgtypes.Numeric},
 	Strict:     true,
-	Callable: func(ctx *sql.Context, _ [2]pgtypes.DoltgresType, val1 any, varargs ...any) (any, error) {
+	Callable: func(ctx *sql.Context, _ [2]pgtypes.DoltgresType, val1 any) (any, error) {
 		if val1.(decimal.Decimal).Cmp(decimal.Zero) == -1 {
 			return nil, fmt.Errorf("cannot take square root of a negative number")
 		}

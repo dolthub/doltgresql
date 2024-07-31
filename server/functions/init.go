@@ -102,5 +102,4 @@ func Init() {
 	initUpper()
 	initVersion()
 	initWidthBucket()
-	initDoltProcedures()
 }

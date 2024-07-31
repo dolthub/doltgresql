@@ -33,7 +33,7 @@ var pi = framework.Function0{
 	Name:   "pi",
 	Return: pgtypes.Float64,
 	Strict: true,
-	Callable: func(ctx *sql.Context, varargs ...any) (any, error) {
+	Callable: func(ctx *sql.Context) (any, error) {
 		return float64(math.Pi), nil
 	},
 }

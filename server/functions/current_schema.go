@@ -33,7 +33,7 @@ var current_schema = framework.Function0{
 	Return:             pgtypes.Name,
 	IsNonDeterministic: true,
 	Strict:             true,
-	Callable: func(ctx *sql.Context, varargs ...any) (any, error) {
+	Callable: func(ctx *sql.Context) (any, error) {
 		schemas, err := resolve.SearchPath(ctx)
 		if err != nil {
 			return nil, err

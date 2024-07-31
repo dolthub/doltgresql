@@ -32,7 +32,7 @@ var right_varchar_int32 = framework.Function2{
 	Return:     pgtypes.VarChar,
 	Parameters: [2]pgtypes.DoltgresType{pgtypes.VarChar, pgtypes.Int32},
 	Strict:     true,
-	Callable: func(ctx *sql.Context, _ [3]pgtypes.DoltgresType, strInt any, nInt any, varargs ...any) (any, error) {
+	Callable: func(ctx *sql.Context, _ [3]pgtypes.DoltgresType, strInt any, nInt any) (any, error) {
 		str := strInt.(string)
 		n := nInt.(int32)
 		if n >= 0 {

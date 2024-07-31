@@ -34,7 +34,7 @@ var nextval_text = framework.Function1{
 	Parameters:         [1]pgtypes.DoltgresType{pgtypes.Text},
 	IsNonDeterministic: true,
 	Strict:             true,
-	Callable: func(ctx *sql.Context, _ [2]pgtypes.DoltgresType, val1 any, varargs ...any) (any, error) {
+	Callable: func(ctx *sql.Context, _ [2]pgtypes.DoltgresType, val1 any) (any, error) {
 		collection, err := core.GetCollectionFromContext(ctx)
 		if err != nil {
 			return nil, err

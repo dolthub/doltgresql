@@ -34,7 +34,7 @@ var replace_varchar_varchar_varchar = framework.Function3{
 	Return:     pgtypes.VarChar,
 	Parameters: [3]pgtypes.DoltgresType{pgtypes.VarChar, pgtypes.VarChar, pgtypes.VarChar},
 	Strict:     true,
-	Callable: func(ctx *sql.Context, _ [4]pgtypes.DoltgresType, str any, from any, to any, varargs ...any) (any, error) {
+	Callable: func(ctx *sql.Context, _ [4]pgtypes.DoltgresType, str any, from any, to any) (any, error) {
 		if len(from.(string)) == 0 {
 			return str, nil
 		}

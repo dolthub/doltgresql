@@ -32,7 +32,7 @@ var current_database = framework.Function0{
 	Return:             pgtypes.Name,
 	IsNonDeterministic: true,
 	Strict:             true,
-	Callable: func(ctx *sql.Context, varargs ...any) (any, error) {
+	Callable: func(ctx *sql.Context) (any, error) {
 		if ctx.GetCurrentDatabase() == "" {
 			return nil, nil
 		}

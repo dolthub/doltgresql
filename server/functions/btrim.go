@@ -32,7 +32,7 @@ var btrim_varchar_varchar = framework.Function2{
 	Return:     pgtypes.VarChar,
 	Parameters: [2]pgtypes.DoltgresType{pgtypes.VarChar, pgtypes.VarChar},
 	Strict:     true,
-	Callable: func(ctx *sql.Context, t [3]pgtypes.DoltgresType, str any, characters any, varargs ...any) (any, error) {
+	Callable: func(ctx *sql.Context, t [3]pgtypes.DoltgresType, str any, characters any) (any, error) {
 		result, err := ltrim_varchar_varchar.Callable(ctx, t, str, characters)
 		if err != nil {
 			return nil, err

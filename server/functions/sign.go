@@ -35,7 +35,7 @@ var sign_float64 = framework.Function1{
 	Return:     pgtypes.Float64,
 	Parameters: [1]pgtypes.DoltgresType{pgtypes.Float64},
 	Strict:     true,
-	Callable: func(ctx *sql.Context, _ [2]pgtypes.DoltgresType, val1 any, varargs ...any) (any, error) {
+	Callable: func(ctx *sql.Context, _ [2]pgtypes.DoltgresType, val1 any) (any, error) {
 		if val1.(float64) < 0 {
 			return float64(-1), nil
 		} else if val1.(float64) > 0 {
@@ -52,7 +52,7 @@ var sign_numeric = framework.Function1{
 	Return:     pgtypes.Numeric,
 	Parameters: [1]pgtypes.DoltgresType{pgtypes.Numeric},
 	Strict:     true,
-	Callable: func(ctx *sql.Context, _ [2]pgtypes.DoltgresType, val1 any, varargs ...any) (any, error) {
+	Callable: func(ctx *sql.Context, _ [2]pgtypes.DoltgresType, val1 any) (any, error) {
 		return decimal.NewFromInt(int64(val1.(decimal.Decimal).Cmp(decimal.Zero))), nil
 	},
 }

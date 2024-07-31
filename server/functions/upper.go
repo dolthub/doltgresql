@@ -34,8 +34,8 @@ var upper_varchar = framework.Function1{
 	Return:     pgtypes.VarChar,
 	Parameters: [1]pgtypes.DoltgresType{pgtypes.VarChar},
 	Strict:     true,
-	Callable: func(ctx *sql.Context, _ [2]pgtypes.DoltgresType, val1 any, varargs ...any) (any, error) {
-		// TODO: this doesn't respect collations
+	Callable: func(ctx *sql.Context, _ [2]pgtypes.DoltgresType, val1 any) (any, error) {
+		//TODO: this doesn't respect collations
 		return strings.ToUpper(val1.(string)), nil
 	},
 }
