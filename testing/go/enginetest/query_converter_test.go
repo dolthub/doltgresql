@@ -7,12 +7,13 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/dolthub/doltgresql/postgres/parser/sem/tree"
-	"github.com/dolthub/doltgresql/postgres/parser/types"
 	"github.com/dolthub/go-mysql-server/sql"
 	"github.com/dolthub/vitess/go/vt/sqlparser"
 	"github.com/lib/pq/oid"
 	"github.com/stretchr/testify/require"
+
+	"github.com/dolthub/doltgresql/postgres/parser/sem/tree"
+	"github.com/dolthub/doltgresql/postgres/parser/types"
 )
 
 func convertQuery(query string) []string {
