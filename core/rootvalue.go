@@ -112,6 +112,17 @@ func (root *RootValue) DebugString(ctx context.Context, transitive bool) string 
 	return buf.String()
 }
 
+func (root *RootValue) GetTableSchemaHash(ctx context.Context, tName doltdb.TableName) (hash.Hash, error) {
+	tab, ok, err := root.GetTable(ctx, tName)
+	if err != nil {
+		return hash.Hash{}, err
+	}
+	if !ok {
+		return hash.Hash{}, doltdb.ErrTableNotFound
+	}
+	return tab.GetSchemaHash(ctx)
+}
+
 // GetCollation implements the interface doltdb.RootValue.
 func (root *RootValue) GetCollation(ctx context.Context) (schema.Collation, error) {
 	return root.st.GetCollation(ctx)
