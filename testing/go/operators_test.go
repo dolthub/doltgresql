@@ -793,6 +793,10 @@ func TestOperators(t *testing.T) {
 					Expected: []sql.Row{{"t"}},
 				},
 				{
+					Query:    `SELECT 'abc'::"char" < 'aef';`,
+					Expected: []sql.Row{{"f"}},
+				},
+				{
 					Query:    `SELECT E'\\x01'::bytea < E'\\x02'::bytea;`,
 					Expected: []sql.Row{{"t"}},
 				},
@@ -1079,6 +1083,14 @@ func TestOperators(t *testing.T) {
 				},
 				{
 					Query:    `SELECT 'abc'::"char" > 'def'::"char";`,
+					Expected: []sql.Row{{"f"}},
+				},
+				{
+					Query:    `SELECT 'def'::"char" > 'abc'::"char";`,
+					Expected: []sql.Row{{"t"}},
+				},
+				{
+					Query:    `SELECT 'aef' > 'abc'::"char";`,
 					Expected: []sql.Row{{"f"}},
 				},
 				{
@@ -1376,6 +1388,14 @@ func TestOperators(t *testing.T) {
 				},
 				{
 					Query:    `SELECT 'abc'::"char" <= 'def'::"char";`,
+					Expected: []sql.Row{{"t"}},
+				},
+				{
+					Query:    `SELECT 'def'::"char" <= 'abc'::"char";`,
+					Expected: []sql.Row{{"f"}},
+				},
+				{
+					Query:    `SELECT 'abc' <= 'aef'::"char";`,
 					Expected: []sql.Row{{"t"}},
 				},
 				{
@@ -1808,6 +1828,14 @@ func TestOperators(t *testing.T) {
 					Expected: []sql.Row{{"f"}},
 				},
 				{
+					Query:    `SELECT 'def'::"char" >= 'abc'::"char";`,
+					Expected: []sql.Row{{"t"}},
+				},
+				{
+					Query:    `SELECT 'aef'::"char" >= 'abc';`,
+					Expected: []sql.Row{{"t"}},
+				},
+				{
 					Query:    `SELECT E'\\x01'::bytea >= E'\\x02'::bytea;`,
 					Expected: []sql.Row{{"f"}},
 				},
@@ -2231,6 +2259,10 @@ func TestOperators(t *testing.T) {
 				{
 					Query:    `SELECT 'def'::"char" = 'abc'::"char";`,
 					Expected: []sql.Row{{"f"}},
+				},
+				{
+					Query:    `SELECT 'abc'::"char" = 'aef';`,
+					Expected: []sql.Row{{"t"}},
 				},
 				{
 					Query:    `SELECT E'\\x01'::bytea = E'\\x01'::bytea;`,

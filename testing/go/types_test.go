@@ -313,7 +313,6 @@ var typesTests = []ScriptTest{
 				},
 			},
 			{
-				Skip:  true, // TODO: Should be able to cast name to "char" even though cast does not exist
 				Query: `SELECT 'def'::name::"char";`,
 				Expected: []sql.Row{
 					{"d"},
@@ -337,6 +336,25 @@ var typesTests = []ScriptTest{
 				Query: "SELECT * FROM t_char WHERE id=6;",
 				Expected: []sql.Row{
 					{6, "0"},
+				},
+			},
+			{
+				Query:       "INSERT INTO t_char VALUES (7, 'abc'::name);",
+				ExpectedErr: "expression is of type",
+			},
+			{
+				Query:    "INSERT INTO t_char VALUES (8, 'def'::text);",
+				Expected: []sql.Row{},
+			},
+			{
+				Query:    "INSERT INTO t_char VALUES (9, 'ghi'::varchar);",
+				Expected: []sql.Row{},
+			},
+			{
+				Query: `SELECT * FROM t_char WHERE id >= 7 ORDER BY id;`,
+				Expected: []sql.Row{
+					{8, "d"},
+					{9, "g"},
 				},
 			},
 		},
