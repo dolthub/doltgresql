@@ -15,36 +15,34 @@
 package functions
 
 import (
-	"github.com/dolthub/go-mysql-server/sql"
-	"github.com/lib/pq/oid"
-
-	"github.com/dolthub/doltgresql/postgres/parser/types"
 	"github.com/dolthub/doltgresql/server/functions/framework"
 	pgtypes "github.com/dolthub/doltgresql/server/types"
+	"github.com/dolthub/go-mysql-server/sql"
+	"strings"
 )
 
-// initFormatType registers the functions to the catalog.
-func initFormatType() {
-	framework.RegisterFunction(format_type)
+// initStringAgg registers the functions to the catalog.
+func initStringAgg() {
+	framework.RegisterFunction(string_agg)
 }
 
-// format_type represents the PostgreSQL system information function.
-var format_type = framework.Function2{
-	Name:       "format_type",
-	Return:     pgtypes.Text,
-	Parameters: [2]pgtypes.DoltgresType{pgtypes.Oid, pgtypes.Int32},
+// string_agg represents the PostgreSQL built-in aggregate function.
+var string_agg = framework.Function2{
+	Name:               "string_agg",
+	Return:             pgtypes.Text,
+	Parameters:         [2]pgtypes.DoltgresType{pgtypes.Text, pgtypes.Text},
+	IsNonDeterministic: true,
 	Callable: func(ctx *sql.Context, _ [3]pgtypes.DoltgresType, val1, val2 any) (any, error) {
 		if val1 == nil {
 			return nil, nil
 		}
-		if t, ok := types.OidToType[oid.Oid(val1.(uint32))]; ok {
-			if val2 == nil {
-				return t.SQLStandardName(), nil
-			} else {
-				return t.SQLStandardNameWithTypmod(true, int(val2.(int32))), nil
-			}
+		delimiter := ""
+		if val2 != nil {
+			delimiter = val2.(string)
 		}
-		return "???", nil
+		// TODO: extract row values from val1
+		expr := []string{val1.(string)}
+		return strings.Join(expr, delimiter), nil
 	},
 	Strict: false,
 }

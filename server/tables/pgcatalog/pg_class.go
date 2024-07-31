@@ -81,6 +81,16 @@ func (p PgClassHandler) RowIter(ctx *sql.Context) (sql.RowIter, error) {
 			})
 			return true, nil
 		},
+		Sequence: func(ctx *sql.Context, schema oid.ItemSchema, sequence oid.ItemSequence) (cont bool, err error) {
+			classes = append(classes, pgClass{
+				oid:        sequence.OID,
+				name:       sequence.Item.Name,
+				hasIndexes: false,
+				kind:       "S",
+				schemaOid:  schema.OID,
+			})
+			return true, nil
+		},
 	})
 	if err != nil {
 		return nil, err

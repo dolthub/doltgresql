@@ -31,7 +31,6 @@ var array_append_anyarray_anyelement = framework.Function2{
 	Name:       "array_append",
 	Return:     pgtypes.AnyArray,
 	Parameters: [2]pgtypes.DoltgresType{pgtypes.AnyArray, pgtypes.AnyElement},
-	Strict:     true,
 	Callable: func(ctx *sql.Context, _ [3]pgtypes.DoltgresType, val1 any, val2 any) (any, error) {
 		array := val1.([]any)
 		returnArray := make([]any, len(array)+1)
@@ -39,4 +38,5 @@ var array_append_anyarray_anyelement = framework.Function2{
 		returnArray[len(returnArray)-1] = val2
 		return returnArray, nil
 	},
+	Strict: false,
 }

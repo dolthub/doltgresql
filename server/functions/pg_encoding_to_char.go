@@ -15,27 +15,29 @@
 package functions
 
 import (
-	"github.com/dolthub/go-mysql-server/sql"
-
 	"github.com/dolthub/doltgresql/server/functions/framework"
 	pgtypes "github.com/dolthub/doltgresql/server/types"
+	"github.com/dolthub/go-mysql-server/sql"
 )
 
-// initColDescription registers the functions to the catalog.
-func initColDescription() {
-	framework.RegisterFunction(col_description)
+// initPgEncodingToChar registers the functions to the catalog.
+func initPgEncodingToChar() {
+	framework.RegisterFunction(pg_encoding_to_char)
 }
 
-// col_description represents the PostgreSQL comment information function.
-var col_description = framework.Function2{
-	Name:               "col_description",
-	Return:             pgtypes.Text,
-	Parameters:         [2]pgtypes.DoltgresType{pgtypes.Oid, pgtypes.Int32},
+// pg_encoding_to_char represents the PostgreSQL system catalog information function.
+var pg_encoding_to_char = framework.Function1{
+	Name:               "pg_encoding_to_char",
+	Return:             pgtypes.Name,
+	Parameters:         [1]pgtypes.DoltgresType{pgtypes.Int32},
 	IsNonDeterministic: true,
-	Strict:             true,
-	Callable: func(ctx *sql.Context, _ [3]pgtypes.DoltgresType, val1 any, val2 any) (any, error) {
-		// TODO: When we support comments this should return the comment for a table
-		// column, which is specified by the OID of its table and its column number
+	Callable: func(ctx *sql.Context, _ [2]pgtypes.DoltgresType, val any) (any, error) {
+		encoding := val.(int32)
+		if encoding == int32(6) {
+			return "UTF8", nil
+		}
+		// TODO: encoding is not supported yet; if invalid val, return empty
 		return "", nil
 	},
+	Strict: true,
 }

@@ -121,7 +121,7 @@ func (iter *pgDatabaseRowIter) Next(ctx *sql.Context) (sql.Row, error) {
 		dbOid,     // oid
 		db.Name(), // datname
 		uint32(0), // datdba
-		int32(0),  // encoding
+		int32(6),  // encoding
 		"i",       // datlocprovider
 		false,     // datistemplate
 		true,      // datallowconn

@@ -15,27 +15,25 @@
 package functions
 
 import (
-	"github.com/dolthub/go-mysql-server/sql"
-
 	"github.com/dolthub/doltgresql/server/functions/framework"
 	pgtypes "github.com/dolthub/doltgresql/server/types"
+	"github.com/dolthub/go-mysql-server/sql"
 )
 
-// initColDescription registers the functions to the catalog.
-func initColDescription() {
-	framework.RegisterFunction(col_description)
+// initPgFunctionIsVisible registers the functions to the catalog.
+func initPgFunctionIsVisible() {
+	framework.RegisterFunction(pg_function_is_visible)
 }
 
-// col_description represents the PostgreSQL comment information function.
-var col_description = framework.Function2{
-	Name:               "col_description",
-	Return:             pgtypes.Text,
-	Parameters:         [2]pgtypes.DoltgresType{pgtypes.Oid, pgtypes.Int32},
+// pg_function_is_visible represents the PostgreSQL system schema visibility inquiry function.
+var pg_function_is_visible = framework.Function1{
+	Name:               "pg_function_is_visible",
+	Return:             pgtypes.Bool,
+	Parameters:         [1]pgtypes.DoltgresType{pgtypes.Oid},
 	IsNonDeterministic: true,
-	Strict:             true,
-	Callable: func(ctx *sql.Context, _ [3]pgtypes.DoltgresType, val1 any, val2 any) (any, error) {
-		// TODO: When we support comments this should return the comment for a table
-		// column, which is specified by the OID of its table and its column number
-		return "", nil
+	Callable: func(ctx *sql.Context, _ [2]pgtypes.DoltgresType, val any) (any, error) {
+		// TODO: Functions are not contained within a schema for now
+		return true, nil
 	},
+	Strict: true,
 }
