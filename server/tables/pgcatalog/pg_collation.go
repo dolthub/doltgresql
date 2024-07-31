@@ -61,7 +61,7 @@ var PgCollationSchema = sql.Schema{
 	{Name: "collname", Type: pgtypes.Name, Default: nil, Nullable: false, Source: PgCollationName},
 	{Name: "collnamespace", Type: pgtypes.Oid, Default: nil, Nullable: false, Source: PgCollationName},
 	{Name: "collowner", Type: pgtypes.Oid, Default: nil, Nullable: false, Source: PgCollationName},
-	{Name: "collprovider", Type: pgtypes.BpChar, Default: nil, Nullable: false, Source: PgCollationName},
+	{Name: "collprovider", Type: pgtypes.InternalChar, Default: nil, Nullable: false, Source: PgCollationName},
 	{Name: "collisdeterministic", Type: pgtypes.Bool, Default: nil, Nullable: false, Source: PgCollationName},
 	{Name: "collencoding", Type: pgtypes.Int32, Default: nil, Nullable: false, Source: PgCollationName},
 	{Name: "collcollate", Type: pgtypes.Text, Default: nil, Nullable: true, Source: PgCollationName},   // TODO: collation C

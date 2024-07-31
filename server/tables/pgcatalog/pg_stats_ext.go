@@ -64,7 +64,7 @@ var pgStatsExtSchema = sql.Schema{
 	{Name: "statistics_owner", Type: pgtypes.Name, Default: nil, Nullable: true, Source: PgStatsExtName},
 	{Name: "attnames", Type: pgtypes.NameArray, Default: nil, Nullable: true, Source: PgStatsExtName},
 	{Name: "exprs", Type: pgtypes.TextArray, Default: nil, Nullable: true, Source: PgStatsExtName},
-	{Name: "kinds", Type: pgtypes.CharArray, Default: nil, Nullable: true, Source: PgStatsExtName},
+	{Name: "kinds", Type: pgtypes.InternalCharArray, Default: nil, Nullable: true, Source: PgStatsExtName},
 	{Name: "inherited", Type: pgtypes.Bool, Default: nil, Nullable: true, Source: PgStatsExtName},
 	{Name: "n_distinct", Type: pgtypes.Text, Default: nil, Nullable: true, Source: PgStatsExtName},   // TODO: pg_ndistinct type AND collation C
 	{Name: "dependencies", Type: pgtypes.Text, Default: nil, Nullable: true, Source: PgStatsExtName}, // TODO: pg_dependencies type AND collation C

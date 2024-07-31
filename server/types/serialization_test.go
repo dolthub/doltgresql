@@ -124,6 +124,8 @@ func TestSerialization(t *testing.T) {
 		{SerializationID_OidArray, 93, "OidArray"},
 		{SerializationID_Xid, 94, "Xid"},
 		{SerializationID_XidArray, 95, "XidArray"},
+		{SerializationID_InternalChar, 96, "InternalChar"},
+		{SerializationID_InternalCharArray, 97, "InternalCharArray"},
 	}
 	allIds := make(map[uint16]string)
 	for _, id := range ids {

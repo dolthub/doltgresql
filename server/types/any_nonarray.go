@@ -37,7 +37,7 @@ var _ DoltgresPolymorphicType = AnyNonArrayType{}
 
 // Alignment implements the DoltgresType interface.
 func (ana AnyNonArrayType) Alignment() TypeAlignment {
-	return TypeAlignment_Double
+	return TypeAlignment_Int
 }
 
 // BaseID implements the DoltgresType interface.

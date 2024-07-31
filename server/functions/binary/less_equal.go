@@ -33,6 +33,7 @@ func initBinaryLessOrEqual() {
 	framework.RegisterBinaryFunction(framework.Operator_BinaryLessOrEqual, boolle)
 	framework.RegisterBinaryFunction(framework.Operator_BinaryLessOrEqual, bpcharle)
 	framework.RegisterBinaryFunction(framework.Operator_BinaryLessOrEqual, byteale)
+	framework.RegisterBinaryFunction(framework.Operator_BinaryLessOrEqual, charle)
 	framework.RegisterBinaryFunction(framework.Operator_BinaryLessOrEqual, date_le)
 	framework.RegisterBinaryFunction(framework.Operator_BinaryLessOrEqual, date_le_timestamp)
 	framework.RegisterBinaryFunction(framework.Operator_BinaryLessOrEqual, date_le_timestamptz)
@@ -99,6 +100,18 @@ var byteale = framework.Function2{
 	Strict:     true,
 	Callable: func(ctx *sql.Context, _ [3]pgtypes.DoltgresType, val1 any, val2 any) (any, error) {
 		res, err := pgtypes.Bytea.Compare(val1.([]byte), val2.([]byte))
+		return res <= 0, err
+	},
+}
+
+// charle represents the PostgreSQL function of the same name, taking the same parameters.
+var charle = framework.Function2{
+	Name:       "charle",
+	Return:     pgtypes.Bool,
+	Parameters: [2]pgtypes.DoltgresType{pgtypes.InternalChar, pgtypes.InternalChar},
+	Strict:     true,
+	Callable: func(ctx *sql.Context, _ [3]pgtypes.DoltgresType, val1 any, val2 any) (any, error) {
+		res, err := pgtypes.InternalChar.Compare(val1.(string), val2.(string))
 		return res <= 0, err
 	},
 }

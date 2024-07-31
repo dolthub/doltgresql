@@ -80,17 +80,17 @@ func TestInfoSchemaColumns(t *testing.T) {
 					Expected: []sql.Row{},
 				},
 				{
-					Query: "SELECT column_name, ordinal_position, data_type, numeric_precision, numeric_precision_radix, numeric_scale FROM information_schema.columns WHERE table_name='testnumtypes' ORDER BY ordinal_position ASC;",
+					Query: "SELECT column_name, ordinal_position, data_type, udt_name, numeric_precision, numeric_precision_radix, numeric_scale FROM information_schema.columns WHERE table_name='testnumtypes' ORDER BY ordinal_position ASC;",
 					Expected: []sql.Row{
-						{"id", 1, "integer", 32, 2, 0},
-						{"col1", 2, "smallint", 16, 2, 0},
-						{"col2", 3, "bigint", 64, 2, 0},
-						{"col3", 4, "real", 24, 2, nil},
-						{"col4", 5, "double precision", 53, 2, nil},
-						{"col5", 6, "numeric", nil, 10, nil},
-						{"col6", 7, "numeric", 10, 10, 2},
-						{"col7", 8, "oid", nil, nil, nil},
-						{"col8", 9, "xid", nil, nil, nil},
+						{"id", 1, "integer", "int4", 32, 2, 0},
+						{"col1", 2, "smallint", "int2", 16, 2, 0},
+						{"col2", 3, "bigint", "int8", 64, 2, 0},
+						{"col3", 4, "real", "float4", 24, 2, nil},
+						{"col4", 5, "double precision", "float8", 53, 2, nil},
+						{"col5", 6, "numeric", "numeric", nil, 10, nil},
+						{"col6", 7, "numeric", "numeric", 10, 10, 2},
+						{"col7", 8, "oid", "oid", nil, nil, nil},
+						{"col8", 9, "xid", "xid", nil, nil, nil},
 					},
 				},
 				{
@@ -98,17 +98,16 @@ func TestInfoSchemaColumns(t *testing.T) {
 					Expected: []sql.Row{},
 				},
 				{
-					Skip:  true, // "char" and character are associated with the same OID for some reason
-					Query: "SELECT column_name, ordinal_position, data_type, character_maximum_length, character_octet_length FROM information_schema.columns WHERE table_name='teststringtypes' ORDER BY ordinal_position ASC;",
+					Query: "SELECT column_name, ordinal_position, data_type, udt_name, character_maximum_length, character_octet_length FROM information_schema.columns WHERE table_name='teststringtypes' ORDER BY ordinal_position ASC;",
 					Expected: []sql.Row{
-						{"id", 1, "integer", nil, nil},
-						{"col1", 2, "character", 10, 40}, // data_type is "char"
-						{"col2", 3, "character varying", 10, 40},
-						{"col3", 4, "text", nil, 1073741824},
-						{"col4", 5, "\"char\"", nil, nil}, // character lengths not nil
-						{"col5", 6, "character", 1, 4},    // data_type is "char"
-						{"col6", 7, "character varying", nil, 1073741824},
-						{"col7", 8, "uuid", nil, nil},
+						{"id", 1, "integer", "int4", nil, nil},
+						{"col1", 2, "character", "bpchar", 10, 40},
+						{"col2", 3, "character varying", "varchar", 10, 40},
+						{"col3", 4, "text", "text", nil, 1073741824},
+						{"col4", 5, `"char"`, "char", nil, nil},
+						{"col5", 6, "character", "bpchar", 1, 4},
+						{"col6", 7, "character varying", "varchar", nil, 1073741824},
+						{"col7", 8, "uuid", "uuid", nil, nil},
 					},
 				},
 				{

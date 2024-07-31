@@ -97,7 +97,7 @@ func (ac arrayContainer) BaseType() DoltgresType {
 
 // Category implements the DoltgresType interface.
 func (ac arrayContainer) Category() TypeCategory {
-	return ac.innerType.Category()
+	return TypeCategory_ArrayTypes
 }
 
 // CollationCoercibility implements the DoltgresType interface.

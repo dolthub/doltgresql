@@ -58,7 +58,7 @@ func (p PgAggregateHandler) Schema() sql.PrimaryKeySchema {
 // pgAggregateSchema is the schema for pg_aggregate.
 var pgAggregateSchema = sql.Schema{
 	{Name: "aggfnoid", Type: pgtypes.Text, Default: nil, Nullable: false, Source: PgAggregateName}, // TODO: regproc type
-	{Name: "aggkind", Type: pgtypes.BpChar, Default: nil, Nullable: false, Source: PgAggregateName},
+	{Name: "aggkind", Type: pgtypes.InternalChar, Default: nil, Nullable: false, Source: PgAggregateName},
 	{Name: "aggnumdirectargs", Type: pgtypes.Int16, Default: nil, Nullable: false, Source: PgAggregateName},
 	{Name: "aggtransfn", Type: pgtypes.Text, Default: nil, Nullable: false, Source: PgAggregateName},     // TODO: regproc type
 	{Name: "aggfinalfn", Type: pgtypes.Text, Default: nil, Nullable: false, Source: PgAggregateName},     // TODO: regproc type

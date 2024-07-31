@@ -33,6 +33,7 @@ func initBinaryNotEqual() {
 	framework.RegisterBinaryFunction(framework.Operator_BinaryNotEqual, boolne)
 	framework.RegisterBinaryFunction(framework.Operator_BinaryNotEqual, bpcharne)
 	framework.RegisterBinaryFunction(framework.Operator_BinaryNotEqual, byteane)
+	framework.RegisterBinaryFunction(framework.Operator_BinaryNotEqual, charne)
 	framework.RegisterBinaryFunction(framework.Operator_BinaryNotEqual, date_ne)
 	framework.RegisterBinaryFunction(framework.Operator_BinaryNotEqual, date_ne_timestamp)
 	framework.RegisterBinaryFunction(framework.Operator_BinaryNotEqual, date_ne_timestamptz)
@@ -101,6 +102,18 @@ var byteane = framework.Function2{
 	Strict:     true,
 	Callable: func(ctx *sql.Context, _ [3]pgtypes.DoltgresType, val1 any, val2 any) (any, error) {
 		res, err := pgtypes.Bytea.Compare(val1.([]byte), val2.([]byte))
+		return res != 0, err
+	},
+}
+
+// charne represents the PostgreSQL function of the same name, taking the same parameters.
+var charne = framework.Function2{
+	Name:       "charne",
+	Return:     pgtypes.Bool,
+	Parameters: [2]pgtypes.DoltgresType{pgtypes.InternalChar, pgtypes.InternalChar},
+	Strict:     true,
+	Callable: func(ctx *sql.Context, _ [3]pgtypes.DoltgresType, val1 any, val2 any) (any, error) {
+		res, err := pgtypes.InternalChar.Compare(val1.(string), val2.(string))
 		return res != 0, err
 	},
 }
