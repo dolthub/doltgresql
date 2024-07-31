@@ -118,15 +118,17 @@ func (f Function0) GetReturn() pgtypes.DoltgresType { return f.Return }
 func (f Function0) GetParameters() []pgtypes.DoltgresType { return nil }
 
 // GetVarargsType implements the FunctionInterface interface.
-func (f Function0) GetVarargsType() pgtypes.DoltgresType { return nil }
+func (f Function0) GetVarargsType() pgtypes.DoltgresType {
+	return f.VarArgsType
+}
 
 // GetExpectedParameterCount implements the FunctionInterface interface.
 func (f Function0) GetExpectedParameterCount() int { return 0 }
 
-// GetIsNonDeterministic implements the FunctionInterface interface.
+// NonDeterministic implements the FunctionInterface interface.
 func (f Function0) NonDeterministic() bool { return f.IsNonDeterministic }
 
-// GetIsStrict implements the FunctionInterface interface.
+// IsStrict implements the FunctionInterface interface.
 func (f Function0) IsStrict() bool { return f.Strict }
 
 // enforceInterfaceInheritance implements the FunctionInterface interface.
@@ -142,15 +144,17 @@ func (f Function1) GetReturn() pgtypes.DoltgresType { return f.Return }
 func (f Function1) GetParameters() []pgtypes.DoltgresType { return f.Parameters[:] }
 
 // GetVarargsType implements the FunctionInterface interface.
-func (f Function1) GetVarargsType() pgtypes.DoltgresType { return nil }
+func (f Function1) GetVarargsType() pgtypes.DoltgresType {
+	return f.VarArgsType
+}
 
 // GetExpectedParameterCount implements the FunctionInterface interface.
 func (f Function1) GetExpectedParameterCount() int { return 1 }
 
-// GetIsNonDeterministic implements the FunctionInterface interface.
+// NonDeterministic implements the FunctionInterface interface.
 func (f Function1) NonDeterministic() bool { return f.IsNonDeterministic }
 
-// GetIsStrict implements the FunctionInterface interface.
+// IsStrict implements the FunctionInterface interface.
 func (f Function1) IsStrict() bool { return f.Strict }
 
 // enforceInterfaceInheritance implements the FunctionInterface interface.
@@ -166,15 +170,17 @@ func (f Function2) GetReturn() pgtypes.DoltgresType { return f.Return }
 func (f Function2) GetParameters() []pgtypes.DoltgresType { return f.Parameters[:] }
 
 // GetVarargsType implements the FunctionInterface interface.
-func (f Function2) GetVarargsType() pgtypes.DoltgresType { return nil }
+func (f Function2) GetVarargsType() pgtypes.DoltgresType {
+	return f.VarArgsType
+}
 
 // GetExpectedParameterCount implements the FunctionInterface interface.
 func (f Function2) GetExpectedParameterCount() int { return 2 }
 
-// GetIsNonDeterministic implements the FunctionInterface interface.
+// NonDeterministic implements the FunctionInterface interface.
 func (f Function2) NonDeterministic() bool { return f.IsNonDeterministic }
 
-// GetIsStrict implements the FunctionInterface interface.
+// IsStrict implements the FunctionInterface interface.
 func (f Function2) IsStrict() bool { return f.Strict }
 
 // enforceInterfaceInheritance implements the FunctionInterface interface.
@@ -190,15 +196,17 @@ func (f Function3) GetReturn() pgtypes.DoltgresType { return f.Return }
 func (f Function3) GetParameters() []pgtypes.DoltgresType { return f.Parameters[:] }
 
 // GetVarargsType implements the FunctionInterface interface.
-func (f Function3) GetVarargsType() pgtypes.DoltgresType { return nil }
+func (f Function3) GetVarargsType() pgtypes.DoltgresType {
+	return f.VarArgsType
+}
 
 // GetExpectedParameterCount implements the FunctionInterface interface.
 func (f Function3) GetExpectedParameterCount() int { return 3 }
 
-// GetIsNonDeterministic implements the FunctionInterface interface.
+// NonDeterministic implements the FunctionInterface interface.
 func (f Function3) NonDeterministic() bool { return f.IsNonDeterministic }
 
-// GetIsStrict implements the FunctionInterface interface.
+// IsStrict implements the FunctionInterface interface.
 func (f Function3) IsStrict() bool { return f.Strict }
 
 // enforceInterfaceInheritance implements the FunctionInterface interface.
@@ -214,15 +222,17 @@ func (f Function4) GetReturn() pgtypes.DoltgresType { return f.Return }
 func (f Function4) GetParameters() []pgtypes.DoltgresType { return f.Parameters[:] }
 
 // GetVarargsType implements the FunctionInterface interface.
-func (f Function4) GetVarargsType() pgtypes.DoltgresType { return nil }
+func (f Function4) GetVarargsType() pgtypes.DoltgresType {
+	return f.VarArgsType
+}
 
 // GetExpectedParameterCount implements the FunctionInterface interface.
 func (f Function4) GetExpectedParameterCount() int { return 4 }
 
-// GetIsNonDeterministic implements the FunctionInterface interface.
+// NonDeterministic implements the FunctionInterface interface.
 func (f Function4) NonDeterministic() bool { return f.IsNonDeterministic }
 
-// GetIsStrict implements the FunctionInterface interface.
+// IsStrict implements the FunctionInterface interface.
 func (f Function4) IsStrict() bool { return f.Strict }
 
 // enforceInterfaceInheritance implements the FunctionInterface interface.

@@ -24,7 +24,6 @@ import (
 	"github.com/dolthub/go-mysql-server/enginetest/queries"
 	"github.com/dolthub/go-mysql-server/enginetest/scriptgen/setup"
 	"github.com/dolthub/go-mysql-server/sql"
-	"github.com/dolthub/go-mysql-server/sql/types"
 	"github.com/stretchr/testify/require"
 
 	"github.com/dolthub/dolt/go/libraries/doltcore/dtestutils"
@@ -115,26 +114,28 @@ func TestSingleScript(t *testing.T) {
 
 	var scripts = []queries.ScriptTest{
 		{
-			Name: "dolt_hashof_table tests",
+			Name: "test basic dolt procedures",
 			SetUpScript: []string{
 				"CREATE TABLE t1 (pk int primary key);",
 			},
 			Assertions: []queries.ScriptTestAssertion{
 				{
-					Query:    "SELECT dolt_hashof_table('t1');",
-					Expected: []sql.Row{{"0lvgnnqah2lj1p6ilvfg0ssaec1v0jgk"}},
+					Query: "select dolt_add('.')",
 				},
 				{
-					Query:    "INSERT INTO t1 VALUES (1);",
-					Expected: []sql.Row{{types.OkResult{RowsAffected: 1}}},
+					Query: "select dolt_commit('-am', 'initial commit')",
 				},
 				{
-					Query:    "SELECT dolt_hashof_table('t1');",
-					Expected: []sql.Row{{"a2vkt9d1mtuhd90opbcseo5gqjae7tv6"}},
+					Query: "select count(*) from dolt_log",
+					Expected: []sql.Row{
+						{2},
+					},
 				},
 				{
-					Query:          "SELECT dolt_hashof_table('noexist');",
-					ExpectedErrStr: "table not found: noexist",
+					Query: "select message from dolt_log order by date desc limit 1",
+					Expected: []sql.Row{
+						{"initial commit"},
+					},
 				},
 			},
 		},
