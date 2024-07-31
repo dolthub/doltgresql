@@ -132,9 +132,7 @@ func (b InternalCharType) GetSerializationID() SerializationID {
 // IoInput implements the DoltgresType interface.
 func (b InternalCharType) IoInput(ctx *sql.Context, input string) (any, error) {
 	input, runeLength := truncateString(input, InternalCharLength)
-	if runeLength > InternalCharLength {
-		return input, fmt.Errorf("value too long for type %s", b.String())
-	} else if runeLength < InternalCharLength {
+	if runeLength < InternalCharLength {
 		return input + strings.Repeat(" ", int(InternalCharLength-runeLength)), nil
 	} else {
 		return input, nil

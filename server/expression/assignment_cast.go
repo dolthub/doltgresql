@@ -54,8 +54,24 @@ func (ac *AssignmentCast) Eval(ctx *sql.Context, row sql.Row) (any, error) {
 	}
 	castFunc := framework.GetAssignmentCast(ac.fromType.BaseID(), ac.toType.BaseID())
 	if castFunc == nil {
-		return nil, fmt.Errorf("ASSIGNMENT_CAST: target is of type %s but expression is of type %s: %s",
-			ac.toType.String(), ac.fromType.String(), ac.expr.String())
+		// Technically, string literals have the type "unknown", but we currently implement them as having the "text"
+		// type. As a consequence, string literals should properly convert, but true "text" types should not.
+		// TODO: change string literals to the "unknown" type
+		if literal, ok := ac.expr.(*Literal); ok && literal.typ.BaseID() == pgtypes.DoltgresTypeBaseID_Text {
+			castFunc = func(ctx *sql.Context, val any, targetType pgtypes.DoltgresType) (any, error) {
+				if val == nil {
+					return nil, nil
+				}
+				str, err := ac.fromType.IoOutput(ctx, val)
+				if err != nil {
+					return nil, err
+				}
+				return targetType.IoInput(ctx, str)
+			}
+		} else {
+			return nil, fmt.Errorf("ASSIGNMENT_CAST: target is of type %s but expression is of type %s: %s",
+				ac.toType.String(), ac.fromType.String(), ac.expr.String())
+		}
 	}
 	return castFunc(ctx, val, ac.toType)
 }
