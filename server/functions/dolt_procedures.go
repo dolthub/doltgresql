@@ -42,10 +42,10 @@ func initDoltProcedures() {
 		for i := range procDef.Schema {
 			schema[i] = pgtypes.FromGmsType(procDef.Schema[i].Type)
 		}
-		outputType := pgtypes.NewCompositeType(schema)
+		outputType := pgtypes.TextArray
 
 		funcVal := reflect.ValueOf(procDef.Function)
-		callable := callableForDoltProcedure(p, funcVal, outputType)
+		callable := callableForDoltProcedure(p, funcVal)
 
 		framework.RegisterFunction(framework.Function0{
 			Name:        procDef.Name,
@@ -56,7 +56,7 @@ func initDoltProcedures() {
 	}
 }
 
-func callableForDoltProcedure(p *plan.ExternalProcedure, funcVal reflect.Value, outputType pgtypes.CompositeType) func(ctx *sql.Context, values ...any) (any, error) {
+func callableForDoltProcedure(p *plan.ExternalProcedure, funcVal reflect.Value) func(ctx *sql.Context, values ...any) (any, error) {
 	funcType := funcVal.Type()
 
 	return func(ctx *sql.Context, values ...any) (any, error) {
@@ -97,11 +97,11 @@ func callableForDoltProcedure(p *plan.ExternalProcedure, funcVal reflect.Value, 
 			rowIter = sql.RowsToRowIter()
 		}
 
-		return drainRowIter(ctx, rowIter, outputType)
+		return drainRowIter(ctx, rowIter)
 	}
 }
 
-func drainRowIter(ctx *sql.Context, rowIter sql.RowIter, outputType pgtypes.CompositeType) (any, error) {
+func drainRowIter(ctx *sql.Context, rowIter sql.RowIter) (any, error) {
 	for {
 		row, err := rowIter.Next(ctx)
 		if err == io.EOF {
@@ -110,14 +110,41 @@ func drainRowIter(ctx *sql.Context, rowIter sql.RowIter, outputType pgtypes.Comp
 			return nil, err
 		}
 
-		if len(row) != outputType.NumElements() {
-			return nil, fmt.Errorf("expected %d elements, got %d", outputType.NumElements(), len(row))
-		} else {
-			return row, nil
+		// The conversion to []text needs []any, not sql.Row
+		rowSlice := make([]any, len(row))
+		for i := range row {
+			fromType, err := typeForElement(row[i])
+			if err != nil {
+				return nil, err
+			}
+
+			castFn := framework.GetExplicitCast(fromType, pgtypes.Text.BaseID())
+			textVal, err := castFn(ctx, row[i], pgtypes.Text)
+			if err != nil {
+				return nil, err
+			}
+
+			rowSlice[i] = textVal
 		}
+		return rowSlice, nil
 	}
 
 	return nil, nil
+}
+
+func typeForElement(v any) (pgtypes.DoltgresTypeBaseID, error) {
+	switch x := v.(type) {
+	case int64:
+		return pgtypes.Int64.BaseID(), nil
+	case int32:
+		return pgtypes.Int32.BaseID(), nil
+	case int16, int8:
+		return pgtypes.Int16.BaseID(), nil
+	case string:
+		return pgtypes.Text.BaseID(), nil
+	default:
+		return pgtypes.DoltgresTypeBaseID_Invalid, fmt.Errorf("dolt_procedures: unsupported type %T", x)
+	}
 }
 
 var (
