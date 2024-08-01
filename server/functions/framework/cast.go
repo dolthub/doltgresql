@@ -139,8 +139,8 @@ func GetExplicitCast(fromType pgtypes.DoltgresTypeBaseID, toType pgtypes.Doltgre
 	if fromType == toType && toType.GetTypeCategory() != pgtypes.TypeCategory_StringTypes && fromType.GetTypeCategory() != pgtypes.TypeCategory_StringTypes {
 		return identityCast
 	}
-	// All types have a built-in explicit cast to string types: https://www.postgresql.org/docs/15/sql-createcast.html
-	if toType.GetTypeCategory() == pgtypes.TypeCategory_StringTypes {
+	// All types have a built-in explicit cast from string types: https://www.postgresql.org/docs/15/sql-createcast.html
+	if fromType.GetTypeCategory() == pgtypes.TypeCategory_StringTypes {
 		return func(ctx *sql.Context, val any, targetType pgtypes.DoltgresType) (any, error) {
 			if val == nil {
 				return nil, nil
@@ -151,8 +151,8 @@ func GetExplicitCast(fromType pgtypes.DoltgresTypeBaseID, toType pgtypes.Doltgre
 			}
 			return targetType.IoInput(ctx, str)
 		}
-	} else if fromType.GetTypeCategory() == pgtypes.TypeCategory_StringTypes {
-		// All types have a built-in assignment cast from string types, which we can reference in an explicit cast
+	} else if toType.GetTypeCategory() == pgtypes.TypeCategory_StringTypes {
+		// All types have a built-in assignment cast to string types, which we can reference in an explicit cast
 		return func(ctx *sql.Context, val any, targetType pgtypes.DoltgresType) (any, error) {
 			if val == nil {
 				return nil, nil
@@ -180,8 +180,8 @@ func GetAssignmentCast(fromType pgtypes.DoltgresTypeBaseID, toType pgtypes.Doltg
 	if fromType == toType && fromType.GetTypeCategory() != pgtypes.TypeCategory_StringTypes {
 		return identityCast
 	}
-	// All types have a built-in assignment cast from string types: https://www.postgresql.org/docs/15/sql-createcast.html
-	if fromType.GetTypeCategory() == pgtypes.TypeCategory_StringTypes {
+	// All types have a built-in assignment cast to string types: https://www.postgresql.org/docs/15/sql-createcast.html
+	if toType.GetTypeCategory() == pgtypes.TypeCategory_StringTypes {
 		return func(ctx *sql.Context, val any, targetType pgtypes.DoltgresType) (any, error) {
 			if val == nil {
 				return nil, nil

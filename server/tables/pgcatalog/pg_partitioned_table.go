@@ -58,7 +58,7 @@ func (p PgPartitionedTableHandler) Schema() sql.PrimaryKeySchema {
 // pgPartitionedTableSchema is the schema for pg_partitioned_table.
 var pgPartitionedTableSchema = sql.Schema{
 	{Name: "partrelid", Type: pgtypes.Oid, Default: nil, Nullable: false, Source: PgPartitionedTableName},
-	{Name: "partstrat", Type: pgtypes.BpChar, Default: nil, Nullable: false, Source: PgPartitionedTableName},
+	{Name: "partstrat", Type: pgtypes.InternalChar, Default: nil, Nullable: false, Source: PgPartitionedTableName},
 	{Name: "partnatts", Type: pgtypes.Int16, Default: nil, Nullable: false, Source: PgPartitionedTableName},
 	{Name: "partdefid", Type: pgtypes.Oid, Default: nil, Nullable: false, Source: PgPartitionedTableName},
 	{Name: "partattrs", Type: pgtypes.Int16Array, Default: nil, Nullable: false, Source: PgPartitionedTableName},   // TODO: int2vector type

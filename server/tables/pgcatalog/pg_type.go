@@ -75,11 +75,11 @@ var pgTypeSchema = sql.Schema{
 	{Name: "typowner", Type: pgtypes.Oid, Default: nil, Nullable: false, Source: PgTypeName},
 	{Name: "typlen", Type: pgtypes.Int16, Default: nil, Nullable: false, Source: PgTypeName},
 	{Name: "typbyval", Type: pgtypes.Bool, Default: nil, Nullable: false, Source: PgTypeName},
-	{Name: "typtype", Type: pgtypes.BpChar, Default: nil, Nullable: false, Source: PgTypeName},
-	{Name: "typcategory", Type: pgtypes.BpChar, Default: nil, Nullable: false, Source: PgTypeName},
+	{Name: "typtype", Type: pgtypes.InternalChar, Default: nil, Nullable: false, Source: PgTypeName},
+	{Name: "typcategory", Type: pgtypes.InternalChar, Default: nil, Nullable: false, Source: PgTypeName},
 	{Name: "typispreferred", Type: pgtypes.Bool, Default: nil, Nullable: false, Source: PgTypeName},
 	{Name: "typisdefined", Type: pgtypes.Bool, Default: nil, Nullable: false, Source: PgTypeName},
-	{Name: "typdelim", Type: pgtypes.BpChar, Default: nil, Nullable: false, Source: PgTypeName},
+	{Name: "typdelim", Type: pgtypes.InternalChar, Default: nil, Nullable: false, Source: PgTypeName},
 	{Name: "typrelid", Type: pgtypes.Oid, Default: nil, Nullable: false, Source: PgTypeName},
 	{Name: "typsubscript", Type: pgtypes.Text, Default: nil, Nullable: false, Source: PgTypeName}, // TODO: type regproc
 	{Name: "typelem", Type: pgtypes.Oid, Default: nil, Nullable: false, Source: PgTypeName},
@@ -91,8 +91,8 @@ var pgTypeSchema = sql.Schema{
 	{Name: "typmodin", Type: pgtypes.Text, Default: nil, Nullable: false, Source: PgTypeName},   // TODO: type regproc
 	{Name: "typmodout", Type: pgtypes.Text, Default: nil, Nullable: false, Source: PgTypeName},  // TODO: type regproc
 	{Name: "typanalyze", Type: pgtypes.Text, Default: nil, Nullable: false, Source: PgTypeName}, // TODO: type regproc
-	{Name: "typalign", Type: pgtypes.BpChar, Default: nil, Nullable: false, Source: PgTypeName},
-	{Name: "typstorage", Type: pgtypes.BpChar, Default: nil, Nullable: false, Source: PgTypeName},
+	{Name: "typalign", Type: pgtypes.InternalChar, Default: nil, Nullable: false, Source: PgTypeName},
+	{Name: "typstorage", Type: pgtypes.InternalChar, Default: nil, Nullable: false, Source: PgTypeName},
 	{Name: "typnotnull", Type: pgtypes.Bool, Default: nil, Nullable: false, Source: PgTypeName},
 	{Name: "typbasetype", Type: pgtypes.Oid, Default: nil, Nullable: false, Source: PgTypeName},
 	{Name: "typtypmod", Type: pgtypes.Int32, Default: nil, Nullable: false, Source: PgTypeName},
@@ -120,13 +120,21 @@ func (iter *pgTypeRowIter) Next(ctx *sql.Context) (sql.Row, error) {
 	typ := iter.types[iter.idx-1]
 
 	var (
-		typName    = typ.BaseName()
-		typLen     int16
-		typByVal   = false
-		typCat     = typ.Category()
-		typAlign   = string(typ.Alignment())
-		typStorage = "p"
+		typName         = typ.BaseName()
+		typLen          int16
+		typByVal        = false
+		typType         = "b"
+		typCat          = typ.Category()
+		typAlign        = string(typ.Alignment())
+		typStorage      = "p"
+		typSubscript    = "-"
+		typConvFnPrefix = typ.BaseName()
+		typConvFnSep    = ""
+		typAnalyze      = "-"
+		typModIn        = "-"
+		typModOut       = "-"
 	)
+
 	if l := typ.MaxTextResponseByteLength(ctx); l == math.MaxUint32 {
 		typLen = -1
 	} else {
@@ -137,18 +145,56 @@ func (iter *pgTypeRowIter) Next(ctx *sql.Context) (sql.Row, error) {
 	}
 
 	// TODO: use the type information to fill these rather than manually doing it
-	switch typ.(type) {
+	switch t := typ.(type) {
 	case pgtypes.UnknownType:
 		typLen = -2
 	case pgtypes.NumericType:
 		typStorage = "m"
+	case pgtypes.JsonType:
+		typConvFnSep = "_"
+		typStorage = "x"
+	case pgtypes.UuidType:
+		typConvFnSep = "_"
+	case pgtypes.DoltgresArrayType:
+		typStorage = "x"
+		typConvFnSep = "_"
+		if _, ok := typ.(pgtypes.DoltgresPolymorphicType); !ok {
+			typSubscript = "array_subscript_handler"
+			typConvFnPrefix = "array"
+			typAnalyze = "array_typanalyze"
+			typName = fmt.Sprintf("_%s", typName)
+		} else {
+			typType = "p"
+		}
+		if _, ok := t.BaseType().(pgtypes.InternalCharType); ok {
+			typName = "_char"
+		}
+	case pgtypes.InternalCharType:
+		typName = "char"
+		typConvFnPrefix = "char"
+		typStorage = "p"
+	case pgtypes.CharType:
+		typModIn = "bpchartypmodin"
+		typModOut = "bpchartypmodout"
+		typStorage = "x"
+	case pgtypes.DoltgresPolymorphicType:
+		typType = "p"
+		typConvFnSep = "_"
+		typByVal = true
 	}
 
-	// TODO: fix some types get underscore as spacing (e.g. uuid_in, json_in, etc.)
-	typIn := fmt.Sprintf("%sin", typName)
-	typOut := fmt.Sprintf("%sout", typName)
-	typRec := fmt.Sprintf("%srec", typName)
-	typSend := fmt.Sprintf("%ssend", typName)
+	typIn := fmt.Sprintf("%s%sin", typConvFnPrefix, typConvFnSep)
+	typOut := fmt.Sprintf("%s%sout", typConvFnPrefix, typConvFnSep)
+	typRec := fmt.Sprintf("%s%srecv", typConvFnPrefix, typConvFnSep)
+	typSend := fmt.Sprintf("%s%ssend", typConvFnPrefix, typConvFnSep)
+
+	// Non array polymorphic types do not have a receive or send functions
+	if _, ok := typ.(pgtypes.DoltgresPolymorphicType); ok {
+		if _, ok := typ.(pgtypes.DoltgresArrayType); !ok {
+			typRec = "-"
+			typSend = "-"
+		}
+	}
 
 	// TODO: not all columns are populated
 	return sql.Row{
@@ -158,22 +204,22 @@ func (iter *pgTypeRowIter) Next(ctx *sql.Context) (sql.Row, error) {
 		uint32(0),             //typowner
 		typLen,                //typlen
 		typByVal,              //typbyval
-		"b",                   //typtype
+		typType,               //typtype
 		string(typCat),        //typcategory
 		typ.IsPreferredType(), //typispreferred
 		true,                  //typisdefined
 		",",                   //typdelim
 		uint32(0),             //typrelid
-		"-",                   //typsubscript
+		typSubscript,          //typsubscript
 		uint32(0),             //typelem
 		uint32(0),             //typarray
 		typIn,                 //typinput
 		typOut,                //typoutput
 		typRec,                //typreceive
 		typSend,               //typsend
-		"-",                   //typmodin
-		"-",                   //typmodout
-		"-",                   //typanalyze
+		typModIn,              //typmodin
+		typModOut,             //typmodout
+		typAnalyze,            //typanalyze
 		typAlign,              //typalign
 		typStorage,            //typstorage
 		false,                 //typnotnull

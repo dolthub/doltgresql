@@ -33,6 +33,7 @@ func initBinaryGreaterThan() {
 	framework.RegisterBinaryFunction(framework.Operator_BinaryGreaterThan, boolgt)
 	framework.RegisterBinaryFunction(framework.Operator_BinaryGreaterThan, bpchargt)
 	framework.RegisterBinaryFunction(framework.Operator_BinaryGreaterThan, byteagt)
+	framework.RegisterBinaryFunction(framework.Operator_BinaryGreaterThan, chargt)
 	framework.RegisterBinaryFunction(framework.Operator_BinaryGreaterThan, date_gt)
 	framework.RegisterBinaryFunction(framework.Operator_BinaryGreaterThan, date_gt_timestamp)
 	framework.RegisterBinaryFunction(framework.Operator_BinaryGreaterThan, date_gt_timestamptz)
@@ -99,6 +100,18 @@ var byteagt = framework.Function2{
 	Strict:     true,
 	Callable: func(ctx *sql.Context, _ [3]pgtypes.DoltgresType, val1 any, val2 any) (any, error) {
 		res, err := pgtypes.Bytea.Compare(val1.([]byte), val2.([]byte))
+		return res == 1, err
+	},
+}
+
+// chargt represents the PostgreSQL function of the same name, taking the same parameters.
+var chargt = framework.Function2{
+	Name:       "chargt",
+	Return:     pgtypes.Bool,
+	Parameters: [2]pgtypes.DoltgresType{pgtypes.InternalChar, pgtypes.InternalChar},
+	Strict:     true,
+	Callable: func(ctx *sql.Context, _ [3]pgtypes.DoltgresType, val1 any, val2 any) (any, error) {
+		res, err := pgtypes.InternalChar.Compare(val1.(string), val2.(string))
 		return res == 1, err
 	},
 }

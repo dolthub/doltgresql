@@ -18,10 +18,11 @@ import (
 	"fmt"
 	"strings"
 
+	"github.com/dolthub/go-mysql-server/sql"
+
 	"github.com/dolthub/doltgresql/server/functions/framework"
 	pgtypes "github.com/dolthub/doltgresql/server/types"
 	"github.com/dolthub/doltgresql/server/types/oid"
-	"github.com/dolthub/go-mysql-server/sql"
 )
 
 // initPgGetConstraintdef registers the functions to the catalog.

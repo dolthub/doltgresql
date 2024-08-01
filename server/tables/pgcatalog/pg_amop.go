@@ -62,7 +62,7 @@ var pgAmopSchema = sql.Schema{
 	{Name: "amoplefttype", Type: pgtypes.Oid, Default: nil, Nullable: false, Source: PgAmopName},
 	{Name: "amoprighttype", Type: pgtypes.Oid, Default: nil, Nullable: false, Source: PgAmopName},
 	{Name: "amopstrategy", Type: pgtypes.Int16, Default: nil, Nullable: false, Source: PgAmopName},
-	{Name: "amoppurpose", Type: pgtypes.BpChar, Default: nil, Nullable: false, Source: PgAmopName},
+	{Name: "amoppurpose", Type: pgtypes.InternalChar, Default: nil, Nullable: false, Source: PgAmopName},
 	{Name: "amopopr", Type: pgtypes.Oid, Default: nil, Nullable: false, Source: PgAmopName},
 	{Name: "amopmethod", Type: pgtypes.Oid, Default: nil, Nullable: false, Source: PgAmopName},
 	{Name: "amopsortfamily", Type: pgtypes.Oid, Default: nil, Nullable: false, Source: PgAmopName},

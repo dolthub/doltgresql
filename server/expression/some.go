@@ -12,9 +12,14 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-package types
+package expression
 
-import "github.com/lib/pq/oid"
-
-// BpCharArray is the array variant of BpChar.
-var BpCharArray = createArrayType(BpChar, SerializationID_CharArray, oid.T__bpchar)
+// NewSomeExpr creates a new AnyExpr expression for SOME. SOME is synonymous with ANY.
+func NewSomeExpr(subOperator string) *AnyExpr {
+	return &AnyExpr{
+		leftExpr:    nil,
+		rightExpr:   nil,
+		subOperator: subOperator,
+		name:        "SOME",
+	}
+}

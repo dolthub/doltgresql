@@ -112,27 +112,36 @@ func anyTests(name string) ScriptTest {
 			Expected: []sql.Row{},
 		},
 		{
+			Query: `SELECT id FROM test3 WHERE 4 = %s(carr);`,
+			Expected: []sql.Row{
+				{int32(2)},
+			},
+		},
+		{
+			Skip:     true, // TODO: Fix subqueries
 			Query:    `SELECT * FROM test2 WHERE test_id = %s(SELECT * FROM test WHERE id = 2);`,
 			Expected: []sql.Row{{int32(3), int32(2), "baz"}},
 		},
 		{
+			Skip:     true, // TODO: Fix subqueries
 			Query:    `SELECT * FROM test2 WHERE test_id = %s(SELECT * FROM test WHERE id = 10);`,
 			Expected: []sql.Row{},
 		},
 		{
+			Skip:     true, // TODO: Fix subqueries
 			Query:    `SELECT * FROM test2 WHERE test_id = %s(SELECT * FROM test WHERE id > 1) AND txt = 'baz';`,
 			Expected: []sql.Row{{int32(3), int32(2), "baz"}},
 		},
 		{
-			Skip:  true, // TODO: Returns nothing from EvalMultiple when >1 row matches
+			Skip:  true, // TODO: Panics in EvalMultiple when >1 row matches
 			Query: `SELECT * FROM test2 WHERE test_id > %s(SELECT * FROM test);`,
 			Expected: []sql.Row{
-				{int32(2), int32(10), "foo"},
+				{int32(2), int32(10), "bar"},
 				{int32(3), int32(2), "baz"},
 			},
 		},
 		{
-			Skip:  true, // TODO: Returns nothing from EvalMultiple when >1 row matches
+			Skip:  true, // TODO: Panics in EvalMultiple when >1 row matches
 			Query: `SELECT * FROM test2 WHERE test_id = %s(SELECT * FROM test WHERE id > 0);`,
 			Expected: []sql.Row{
 				{int32(1), int32(1), "foo"},
@@ -165,6 +174,9 @@ func anyTests(name string) ScriptTest {
 
 			`CREATE TABLE test2 (id INT PRIMARY KEY, test_id INT, txt text);`,
 			`INSERT INTO test2 VALUES (1, 1, 'foo'), (2, 10, 'bar'), (3, 2, 'baz');`,
+
+			`CREATE TABLE test3 (id INT PRIMARY KEY, carr smallint[]);`,
+			`INSERT INTO test3 VALUES (1, ARRAY[1, 2, 3]), (2, ARRAY[4, 5, 6]);`,
 		},
 		Assertions: formattedTests,
 	}

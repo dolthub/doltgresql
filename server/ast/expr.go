@@ -396,7 +396,6 @@ func nodeExpr(node tree.Expr) (vitess.Expr, error) {
 				Children:   vitess.Exprs{left, right},
 			}, nil
 		case tree.Some:
-			// SOME is synonymous with ANY
 			return vitess.InjectedExpr{
 				Expression: pgexprs.NewSomeExpr(node.SubOperator.String()),
 				Children:   vitess.Exprs{left, right},

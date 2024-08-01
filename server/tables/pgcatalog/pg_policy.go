@@ -60,7 +60,7 @@ var pgPolicySchema = sql.Schema{
 	{Name: "oid", Type: pgtypes.Oid, Default: nil, Nullable: false, Source: PgPolicyName},
 	{Name: "polname", Type: pgtypes.Name, Default: nil, Nullable: false, Source: PgPolicyName},
 	{Name: "polrelid", Type: pgtypes.Oid, Default: nil, Nullable: false, Source: PgPolicyName},
-	{Name: "polcmd", Type: pgtypes.BpChar, Default: nil, Nullable: false, Source: PgPolicyName},
+	{Name: "polcmd", Type: pgtypes.InternalChar, Default: nil, Nullable: false, Source: PgPolicyName},
 	{Name: "polpermissive", Type: pgtypes.Bool, Default: nil, Nullable: false, Source: PgPolicyName},
 	{Name: "polroles", Type: pgtypes.OidArray, Default: nil, Nullable: false, Source: PgPolicyName},
 	{Name: "polqual", Type: pgtypes.Text, Default: nil, Nullable: true, Source: PgPolicyName},      // TODO: pg_node_tree type, collation C
