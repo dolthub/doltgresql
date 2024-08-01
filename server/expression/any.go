@@ -18,7 +18,6 @@ import (
 	"fmt"
 
 	"github.com/dolthub/go-mysql-server/sql"
-	"github.com/dolthub/go-mysql-server/sql/expression"
 	"github.com/dolthub/go-mysql-server/sql/plan"
 
 	"github.com/dolthub/doltgresql/server/functions/framework"
@@ -32,11 +31,24 @@ type AnyExpr struct {
 	subOperator string
 	name        string // ANY or SOME
 
-	// These variables are used so that we can resolve the comparison functions once and reuse them as we iterate over rows.
-	// These are assigned in WithChildren, so refer there for more information.
+	subqueryAnyExpr   *subqueryAnyExpr
+	expressionAnyExpr *expressionAnyExpr
+}
+
+// subqueryAnyExpr represents the resolved comparison functions for a plan.Subquery.
+type subqueryAnyExpr struct {
+	rightSub      *plan.Subquery
 	staticLiteral *Literal
 	arrayLiterals []*Literal
 	compFuncs     []*framework.CompiledFunction
+}
+
+// expressionAnyExpr represents the resolved comparison function for a sql.Expression.
+type expressionAnyExpr struct {
+	rightExpr     sql.Expression
+	staticLiteral *Literal
+	arrayLiteral  *Literal
+	compFunc      *framework.CompiledFunction
 }
 
 // NewAnyExpr creates a new AnyExpr expression.
@@ -56,13 +68,14 @@ func (a *AnyExpr) Children() []sql.Expression {
 
 // Resolved implements the Expression interface.
 func (a *AnyExpr) Resolved() bool {
-	if a.leftExpr == nil || !a.leftExpr.Resolved() || a.rightExpr == nil || !a.rightExpr.Resolved() || len(a.compFuncs) == 0 {
+	if a.leftExpr == nil || !a.leftExpr.Resolved() || a.rightExpr == nil || !a.rightExpr.Resolved() {
 		return false
 	}
-	for _, compFunc := range a.compFuncs {
-		if !compFunc.Resolved() {
-			return false
-		}
+	if a.subqueryAnyExpr != nil {
+		return a.subqueryAnyExpr.resolved()
+	}
+	if a.expressionAnyExpr != nil {
+		return a.expressionAnyExpr.resolved()
 	}
 	return true
 }
@@ -77,48 +90,40 @@ func (a *AnyExpr) Type() sql.Type {
 	return pgtypes.Bool
 }
 
-// Eval implements the Expression interface.
-func (a *AnyExpr) Eval(ctx *sql.Context, row sql.Row) (interface{}, error) {
-	// First we'll evaluate everything before we do the comparisons
+// resolved checks if the comparison functions for subqueryAnyExpr is resolved.
+func (a *subqueryAnyExpr) resolved() bool {
+	if len(a.compFuncs) == 0 {
+		return false
+	}
+	for _, compFunc := range a.compFuncs {
+		if !compFunc.Resolved() {
+			return false
+		}
+	}
+	return true
+}
+
+// eval evaluates the comparison functions for subqueryAnyExpr.
+func (a *subqueryAnyExpr) eval(ctx *sql.Context, subOperator string, row sql.Row, left interface{}) (interface{}, error) {
 	if len(a.compFuncs) == 0 {
 		return nil, fmt.Errorf("%T: cannot Eval as it has not been fully resolved", a)
 	}
-	// First we'll evaluate everything before we do the comparisons
-	left, err := a.leftExpr.Eval(ctx, row)
+
+	// TODO: This sometimes panics in `evalMultiple` for subqueries that return
+	// more than one row, when len(row) > len(iter.Next())
+	rightValues, err := a.rightSub.EvalMultiple(ctx, row)
 	if err != nil {
 		return nil, err
 	}
 
-	var rightInterface interface{}
-	if sub, ok := a.rightExpr.(*plan.Subquery); ok {
-		// TODO: This sometimes panics in `evalMultiple` for subqueries that return
-		// more than one row, when len(row) > len(iter.Next())
-		rightInterface, err = sub.EvalMultiple(ctx, row)
-		if err != nil {
-			return nil, err
-		}
-	} else {
-		rightInterface, err = a.rightExpr.Eval(ctx, row)
-		if err != nil {
-			return nil, err
-		}
-	}
-	if rightInterface == nil {
-		return nil, nil
-	}
-
-	rightValues, ok := rightInterface.([]any)
-	if !ok {
-		return nil, fmt.Errorf("%T: expected right child to return `%T` but returned `%T`", a, []any{}, rightInterface)
-	}
 	if len(rightValues) == 0 {
 		return nil, nil
 	}
 
-	// TODO: This is a workaround some expression types (Subquery, GetFields)
-	// where we don't know the number of right values beforehand
+	// TODO: This is a workaround some subqueries where the schema length does not
+	// match the row length
 	if len(a.arrayLiterals) == 1 && len(rightValues) != 1 {
-		op, err := framework.GetOperatorFromString(a.subOperator)
+		op, err := framework.GetOperatorFromString(subOperator)
 		if err != nil {
 			return nil, err
 		}
@@ -154,55 +159,89 @@ func (a *AnyExpr) Eval(ctx *sql.Context, row sql.Row) (interface{}, error) {
 	return false, nil
 }
 
+// resolved checks if the comparison function for expressionAnyExpr is resolved.
+func (a *expressionAnyExpr) resolved() bool {
+	if a.compFunc == nil || !a.compFunc.Resolved() {
+		return false
+	}
+	return true
+}
+
+// eval evaluates the comparison function for expressionAnyExpr.
+func (a *expressionAnyExpr) eval(ctx *sql.Context, row sql.Row, left interface{}) (interface{}, error) {
+	if a.compFunc == nil {
+		return nil, fmt.Errorf("%T: cannot Eval as it has not been fully resolved", a)
+	}
+
+	rightInterface, err := a.rightExpr.Eval(ctx, row)
+	if err != nil {
+		return nil, err
+	}
+
+	if rightInterface == nil {
+		return nil, nil
+	}
+
+	rightValues, ok := rightInterface.([]any)
+	if !ok {
+		return nil, fmt.Errorf("%T: expected right child to return `%T` but returned `%T`", a, []any{}, rightInterface)
+	}
+	if len(rightValues) == 0 {
+		return nil, nil
+	}
+
+	// Next we'll assign our evaluated values to the expressions that the comparison function reference
+	a.staticLiteral.value = left
+	for _, rightValue := range rightValues {
+		a.arrayLiteral.value = rightValue
+		result, err := a.compFunc.Eval(ctx, row)
+		if err != nil {
+			return nil, err
+		}
+		if result.(bool) {
+			return true, nil
+		}
+	}
+
+	return false, nil
+}
+
+// Eval implements the Expression interface.
+func (a *AnyExpr) Eval(ctx *sql.Context, row sql.Row) (interface{}, error) {
+	left, err := a.leftExpr.Eval(ctx, row)
+	if err != nil {
+		return nil, err
+	}
+
+	if a.subqueryAnyExpr != nil {
+		return a.subqueryAnyExpr.eval(ctx, a.subOperator, row, left)
+	}
+
+	if a.expressionAnyExpr != nil {
+		return a.expressionAnyExpr.eval(ctx, row, left)
+	}
+
+	return nil, fmt.Errorf("%T: cannot Eval as it has not been fully resolved", a)
+}
+
 // WithChildren implements the Expression interface.
 func (a *AnyExpr) WithChildren(children ...sql.Expression) (sql.Expression, error) {
 	if len(children) != 2 {
 		return nil, sql.ErrInvalidChildrenNumber.New(a, len(children), 2)
 	}
 
-	rightTypes, err := a.getRightTypes(children[1])
-	if err != nil {
-		return nil, err
-	}
-
-	op, err := framework.GetOperatorFromString(a.subOperator)
-	if err != nil {
-		return nil, err
-	}
-
-	if leftType, ok := children[0].Type().(pgtypes.DoltgresType); ok {
-		// Resolve comparison functions once and reuse the functions in Eval.
-		staticLiteral := &Literal{typ: leftType}
-		arrayLiterals := make([]*Literal, len(rightTypes))
-		// Each expression may be a different type (which is valid), so we need a comparison function for each expression.
-		compFuncs := make([]*framework.CompiledFunction, len(rightTypes))
-		for i, rightType := range rightTypes {
-			arrayLiterals[i] = &Literal{typ: rightType}
-			compFuncs[i] = framework.GetBinaryFunction(op).Compile("internal_any_comparison", staticLiteral, arrayLiterals[i])
-			if compFuncs[i] == nil {
-				return nil, fmt.Errorf("operator does not exist: %s = %s", leftType.String(), rightType.String())
-			}
-			if compFuncs[i].Type().(pgtypes.DoltgresType).BaseID() != pgtypes.DoltgresTypeBaseID_Bool {
-				// This should never happen, but this is just to be safe
-				return nil, fmt.Errorf("%T: found equality comparison that does not return a bool", a)
-			}
-		}
-		return &AnyExpr{
-			leftExpr:      children[0],
-			rightExpr:     children[1],
-			subOperator:   a.subOperator,
-			name:          a.name,
-			staticLiteral: staticLiteral,
-			arrayLiterals: arrayLiterals,
-			compFuncs:     compFuncs,
-		}, nil
-	}
-	return &AnyExpr{
+	anyExpr := &AnyExpr{
 		leftExpr:    children[0],
 		rightExpr:   children[1],
 		subOperator: a.subOperator,
 		name:        a.name,
-	}, nil
+	}
+
+	if sub, ok := children[1].(*plan.Subquery); ok {
+		return subqueryWithChildren(anyExpr, sub)
+	}
+
+	return expressionWithChildren(anyExpr)
 }
 
 // WithResolvedChildren implements the Expression interface.
@@ -234,17 +273,8 @@ func (a *AnyExpr) DebugString() string {
 	return fmt.Sprintf("%s %s (%s)", sql.DebugString(a.leftExpr), a.name, sql.DebugString(a.rightExpr))
 }
 
-// getRightTypes returns the types of the right expression.
-func (a *AnyExpr) getRightTypes(right sql.Expression) ([]pgtypes.DoltgresType, error) {
-	if sub, ok := right.(*plan.Subquery); ok {
-		return getSubQueryTypes(sub)
-	}
-
-	return getSqlExpressionTypes(right)
-}
-
-// getSubQueryTypes returns the types of the subquery schema.
-func getSubQueryTypes(sub *plan.Subquery) ([]pgtypes.DoltgresType, error) {
+// subqueryWithChildren resolves the comparison functions for a plan.Subquery.
+func subqueryWithChildren(anyExpr *AnyExpr, sub *plan.Subquery) (sql.Expression, error) {
 	schema := sub.Query.Schema()
 	subTypes := make([]pgtypes.DoltgresType, len(schema))
 	for i, col := range schema {
@@ -254,42 +284,76 @@ func getSubQueryTypes(sub *plan.Subquery) ([]pgtypes.DoltgresType, error) {
 		}
 		subTypes[i] = dgType
 	}
-	return subTypes, nil
+
+	op, err := framework.GetOperatorFromString(anyExpr.subOperator)
+	if err != nil {
+		return nil, err
+	}
+
+	if leftType, ok := anyExpr.leftExpr.Type().(pgtypes.DoltgresType); ok {
+		// Resolve comparison functions once and reuse the functions in Eval.
+		staticLiteral := &Literal{typ: leftType}
+		arrayLiterals := make([]*Literal, len(subTypes))
+		// Each expression may be a different type (which is valid), so we need a comparison function for each expression.
+		compFuncs := make([]*framework.CompiledFunction, len(subTypes))
+		for i, rightType := range subTypes {
+			arrayLiterals[i] = &Literal{typ: rightType}
+			compFuncs[i] = framework.GetBinaryFunction(op).Compile("internal_any_comparison", staticLiteral, arrayLiterals[i])
+			if compFuncs[i] == nil {
+				return nil, fmt.Errorf("operator does not exist: %s = %s", leftType.String(), rightType.String())
+			}
+			if compFuncs[i].Type().(pgtypes.DoltgresType).BaseID() != pgtypes.DoltgresTypeBaseID_Bool {
+				// This should never happen, but this is just to be safe
+				return nil, fmt.Errorf("%T: found equality comparison that does not return a bool", anyExpr)
+			}
+		}
+
+		anyExpr.subqueryAnyExpr = &subqueryAnyExpr{
+			rightSub:      sub,
+			staticLiteral: staticLiteral,
+			arrayLiterals: arrayLiterals,
+			compFuncs:     compFuncs,
+		}
+	}
+
+	return anyExpr, nil
 }
 
-// getSqlExpressionTypes returns the types of the right expression.
-func getSqlExpressionTypes(expr sql.Expression) ([]pgtypes.DoltgresType, error) {
-	var length int
-	var dgType pgtypes.DoltgresType
-	var ok bool
-	switch r := expr.(type) {
-	case *Literal:
-		if val, valOk := r.Value().([]interface{}); valOk {
-			length = len(val)
-		}
-		dgType, ok = r.Type().(pgtypes.DoltgresType)
-	case *expression.GetField:
-		length = 1
-		dgType, ok = r.Type().(pgtypes.DoltgresType)
-	default:
-		dgType, ok = expr.Type().(pgtypes.DoltgresType)
-		length = len(expr.Children())
-	}
+// expressionWithChildren resolves the comparison functions for a sql.Expression.
+func expressionWithChildren(anyExpr *AnyExpr) (sql.Expression, error) {
+	rightType, ok := anyExpr.rightExpr.Type().(pgtypes.DoltgresType)
 	if !ok {
-		return nil, fmt.Errorf("expected right child to be a DoltgresType but got `%T`", expr)
-	}
-	if length == 0 {
-		return nil, nil
+		return nil, fmt.Errorf("expected right child to be a DoltgresType but got `%T`", anyExpr.rightExpr)
 	}
 
-	if at, ok := dgType.(pgtypes.DoltgresArrayType); ok {
-		dgType = at.BaseType()
+	if at, ok := rightType.(pgtypes.DoltgresArrayType); ok {
+		rightType = at.BaseType()
 	}
 
-	rightTypes := make([]pgtypes.DoltgresType, length)
-	for i := range length {
-		rightTypes[i] = dgType
+	op, err := framework.GetOperatorFromString(anyExpr.subOperator)
+	if err != nil {
+		return nil, err
 	}
 
-	return rightTypes, nil
+	if leftType, ok := anyExpr.leftExpr.Type().(pgtypes.DoltgresType); ok {
+		// Resolve comparison function once and reuse the function in Eval.
+		staticLiteral := &Literal{typ: leftType}
+		arrayLiteral := &Literal{typ: rightType}
+		compFunc := framework.GetBinaryFunction(op).Compile("internal_any_comparison", staticLiteral, arrayLiteral)
+		if compFunc == nil {
+			return nil, fmt.Errorf("operator does not exist: %s = %s", leftType.String(), rightType.String())
+		}
+		if compFunc.Type().(pgtypes.DoltgresType).BaseID() != pgtypes.DoltgresTypeBaseID_Bool {
+			// This should never happen, but this is just to be safe
+			return nil, fmt.Errorf("%T: found equality comparison that does not return a bool", anyExpr)
+		}
+		anyExpr.expressionAnyExpr = &expressionAnyExpr{
+			rightExpr:     anyExpr.rightExpr,
+			staticLiteral: staticLiteral,
+			arrayLiteral:  arrayLiteral,
+			compFunc:      compFunc,
+		}
+	}
+
+	return anyExpr, nil
 }
