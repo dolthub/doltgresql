@@ -202,27 +202,19 @@ func iterateTypes(ctx *sql.Context, callbacks Callbacks) error {
 	}
 	for _, t := range pgtypes.GetAllTypes() {
 		if t.BaseID().HasUniqueOID() {
-			if _, ok := t.(pgtypes.DoltgresArrayType); !ok {
-				if _, ok = t.(pgtypes.DoltgresPolymorphicType); !ok {
-					cont, err := callbacks.Type(ctx, ItemType{
-						OID:  t.OID(),
-						Item: t,
-					})
-					if err != nil {
-						return err
-					}
-					if !cont {
-						return nil
-					}
-				}
+			cont, err := callbacks.Type(ctx, ItemType{
+				OID:  t.OID(),
+				Item: t,
+			})
+			if err != nil {
+				return err
+			}
+			if !cont {
+				return nil
 			}
 		}
 	}
-	_, err := callbacks.Type(ctx, ItemType{
-		OID:  pgtypes.InternalChar.OID(),
-		Item: pgtypes.InternalChar,
-	})
-	return err
+	return nil
 }
 
 // iterateSchemas is called by IterateCurrentDatabase to handle schemas and elements contained within schemas.

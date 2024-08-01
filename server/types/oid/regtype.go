@@ -48,6 +48,9 @@ func regtype_IoInput(ctx *sql.Context, input string) (uint32, error) {
 	case 3:
 		searchSchemas = []string{sections[0]}
 		typeName = sections[2]
+		if sections[0] == "pg_catalog" && typeName == "char" { // Sad but true
+			typeName = `"char"`
+		}
 	default:
 		return 0, fmt.Errorf("regtype failed validation")
 	}
@@ -57,11 +60,10 @@ func regtype_IoInput(ctx *sql.Context, input string) (uint32, error) {
 	resultOid := uint32(0)
 	err = IterateCurrentDatabase(ctx, Callbacks{
 		Type: func(ctx *sql.Context, typ ItemType) (cont bool, err error) {
-			stringNoSpace := strings.ReplaceAll(typ.Item.String(), " ", "")
-			if typeName == stringNoSpace || typeName == typ.Item.BaseName() {
+			if typeName == typ.Item.String() || typeName == typ.Item.BaseName() || (typeName == "char" && typ.Item.BaseName() == "bpchar") {
 				resultOid = typ.OID
 				return false, nil
-			} else if t, ok := types.OidToType[oid.Oid(typ.OID)]; ok && typeName == strings.ReplaceAll(t.SQLStandardName(), " ", "") {
+			} else if t, ok := types.OidToType[oid.Oid(typ.OID)]; ok && typeName == t.SQLStandardName() {
 				resultOid = typ.OID
 				return false, nil
 			}

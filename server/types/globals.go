@@ -66,29 +66,30 @@ const (
 )
 
 const (
-	DoltgresTypeBaseID_Bool        = DoltgresTypeBaseID(SerializationID_Bool)
-	DoltgresTypeBaseID_Bytea       = DoltgresTypeBaseID(SerializationID_Bytea)
-	DoltgresTypeBaseID_Char        = DoltgresTypeBaseID(SerializationID_Char)
-	DoltgresTypeBaseID_Date        = DoltgresTypeBaseID(SerializationID_Date)
-	DoltgresTypeBaseID_Float32     = DoltgresTypeBaseID(SerializationID_Float32)
-	DoltgresTypeBaseID_Float64     = DoltgresTypeBaseID(SerializationID_Float64)
-	DoltgresTypeBaseID_Int16       = DoltgresTypeBaseID(SerializationID_Int16)
-	DoltgresTypeBaseID_Int32       = DoltgresTypeBaseID(SerializationID_Int32)
-	DoltgresTypeBaseID_Int64       = DoltgresTypeBaseID(SerializationID_Int64)
-	DoltgresTypeBaseID_Json        = DoltgresTypeBaseID(SerializationID_Json)
-	DoltgresTypeBaseID_JsonB       = DoltgresTypeBaseID(SerializationID_JsonB)
-	DoltgresTypeBaseID_Name        = DoltgresTypeBaseID(SerializationID_Name)
-	DoltgresTypeBaseID_Null        = DoltgresTypeBaseID(SerializationID_Null)
-	DoltgresTypeBaseID_Numeric     = DoltgresTypeBaseID(SerializationID_Numeric)
-	DoltgresTypeBaseID_Oid         = DoltgresTypeBaseID(SerializationID_Oid)
-	DoltgresTypeBaseID_Text        = DoltgresTypeBaseID(SerializationID_Text)
-	DoltgresTypeBaseID_Time        = DoltgresTypeBaseID(SerializationID_Time)
-	DoltgresTypeBaseID_Timestamp   = DoltgresTypeBaseID(SerializationID_Timestamp)
-	DoltgresTypeBaseID_TimestampTZ = DoltgresTypeBaseID(SerializationID_TimestampTZ)
-	DoltgresTypeBaseID_TimeTZ      = DoltgresTypeBaseID(SerializationID_TimeTZ)
-	DoltgresTypeBaseID_Uuid        = DoltgresTypeBaseID(SerializationID_Uuid)
-	DoltgresTypeBaseID_VarChar     = DoltgresTypeBaseID(SerializationID_VarChar)
-	DoltgresTypeBaseID_Xid         = DoltgresTypeBaseID(SerializationID_Xid)
+	DoltgresTypeBaseID_Bool         = DoltgresTypeBaseID(SerializationID_Bool)
+	DoltgresTypeBaseID_Bytea        = DoltgresTypeBaseID(SerializationID_Bytea)
+	DoltgresTypeBaseID_Char         = DoltgresTypeBaseID(SerializationID_Char)
+	DoltgresTypeBaseID_Date         = DoltgresTypeBaseID(SerializationID_Date)
+	DoltgresTypeBaseID_Float32      = DoltgresTypeBaseID(SerializationID_Float32)
+	DoltgresTypeBaseID_Float64      = DoltgresTypeBaseID(SerializationID_Float64)
+	DoltgresTypeBaseID_Int16        = DoltgresTypeBaseID(SerializationID_Int16)
+	DoltgresTypeBaseID_Int32        = DoltgresTypeBaseID(SerializationID_Int32)
+	DoltgresTypeBaseID_Int64        = DoltgresTypeBaseID(SerializationID_Int64)
+	DoltgresTypeBaseID_InternalChar = DoltgresTypeBaseID(SerializationID_InternalChar)
+	DoltgresTypeBaseID_Json         = DoltgresTypeBaseID(SerializationID_Json)
+	DoltgresTypeBaseID_JsonB        = DoltgresTypeBaseID(SerializationID_JsonB)
+	DoltgresTypeBaseID_Name         = DoltgresTypeBaseID(SerializationID_Name)
+	DoltgresTypeBaseID_Null         = DoltgresTypeBaseID(SerializationID_Null)
+	DoltgresTypeBaseID_Numeric      = DoltgresTypeBaseID(SerializationID_Numeric)
+	DoltgresTypeBaseID_Oid          = DoltgresTypeBaseID(SerializationID_Oid)
+	DoltgresTypeBaseID_Text         = DoltgresTypeBaseID(SerializationID_Text)
+	DoltgresTypeBaseID_Time         = DoltgresTypeBaseID(SerializationID_Time)
+	DoltgresTypeBaseID_Timestamp    = DoltgresTypeBaseID(SerializationID_Timestamp)
+	DoltgresTypeBaseID_TimestampTZ  = DoltgresTypeBaseID(SerializationID_TimestampTZ)
+	DoltgresTypeBaseID_TimeTZ       = DoltgresTypeBaseID(SerializationID_TimeTZ)
+	DoltgresTypeBaseID_Uuid         = DoltgresTypeBaseID(SerializationID_Uuid)
+	DoltgresTypeBaseID_VarChar      = DoltgresTypeBaseID(SerializationID_VarChar)
+	DoltgresTypeBaseID_Xid          = DoltgresTypeBaseID(SerializationID_Xid)
 )
 
 // TypeAlignment represents the alignment required when storing a value of this type.
@@ -129,32 +130,7 @@ var baseIDArrayTypes = map[DoltgresTypeBaseID]DoltgresArrayType{}
 
 // baseIDCategories contains a map from all base IDs to their respective categories
 // TODO: add all of the types to each category
-var baseIDCategories = map[DoltgresTypeBaseID]TypeCategory{
-	AnyArray.BaseID():    TypeCategory_PseudoTypes,
-	Bool.BaseID():        TypeCategory_BooleanTypes,
-	Bytea.BaseID():       TypeCategory_UserDefinedTypes,
-	BpChar.BaseID():      TypeCategory_StringTypes,
-	Date.BaseID():        TypeCategory_DateTimeTypes,
-	Float32.BaseID():     TypeCategory_NumericTypes,
-	Float64.BaseID():     TypeCategory_NumericTypes,
-	Int16.BaseID():       TypeCategory_NumericTypes,
-	Int32.BaseID():       TypeCategory_NumericTypes,
-	Int64.BaseID():       TypeCategory_NumericTypes,
-	Json.BaseID():        TypeCategory_UserDefinedTypes,
-	JsonB.BaseID():       TypeCategory_UserDefinedTypes,
-	Name.BaseID():        TypeCategory_StringTypes,
-	Numeric.BaseID():     TypeCategory_NumericTypes,
-	Oid.BaseID():         TypeCategory_NumericTypes,
-	Text.BaseID():        TypeCategory_StringTypes,
-	Time.BaseID():        TypeCategory_DateTimeTypes,
-	Timestamp.BaseID():   TypeCategory_DateTimeTypes,
-	TimestampTZ.BaseID(): TypeCategory_DateTimeTypes,
-	TimeTZ.BaseID():      TypeCategory_DateTimeTypes,
-	Unknown.BaseID():     TypeCategory_UnknownTypes,
-	Uuid.BaseID():        TypeCategory_UserDefinedTypes,
-	VarChar.BaseID():     TypeCategory_StringTypes,
-	Xid.BaseID():         TypeCategory_UserDefinedTypes,
-}
+var baseIDCategories = map[DoltgresTypeBaseID]TypeCategory{}
 
 // preferredTypeInCategory contains a map from each type category to that category's preferred type.
 // TODO: add all of the preferred types
@@ -178,6 +154,7 @@ func Init() {
 				panic(fmt.Errorf("OID (%d) type conflict: `%s` and `%s`", t.OID(), existingType.String(), t.String()))
 			}
 			oidToType[t.OID()] = t
+			baseIDCategories[t.BaseID()] = t.Category()
 		}
 	}
 }

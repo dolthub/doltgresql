@@ -245,7 +245,6 @@ func TestFunctionsOID(t *testing.T) {
 					},
 				},
 				{
-					Skip:  true, // TODO: to_regtype should work with array types
 					Query: `SELECT to_regtype('integer[]');`,
 					Expected: []sql.Row{
 						{"integer[]"},
@@ -264,9 +263,51 @@ func TestFunctionsOID(t *testing.T) {
 					},
 				},
 				{
+					Query: `SELECT to_regtype('pg_catalog.varchar');`,
+					Expected: []sql.Row{
+						{"character varying"},
+					},
+				},
+				{
 					Query: `SELECT to_regtype('varchar(10)');`,
 					Expected: []sql.Row{
 						{"character varying"},
+					},
+				},
+				{
+					Query: `SELECT to_regtype('char');`,
+					Expected: []sql.Row{
+						{"character"},
+					},
+				},
+				{
+					Query: `SELECT to_regtype('pg_catalog.char');`,
+					Expected: []sql.Row{
+						{`"char"`},
+					},
+				},
+				{
+					Query: `SELECT to_regtype('char(10)');`,
+					Expected: []sql.Row{
+						{"character"},
+					},
+				},
+				{
+					Query: `SELECT to_regtype('"char"');`,
+					Expected: []sql.Row{
+						{`"char"`},
+					},
+				},
+				{
+					Query: `SELECT to_regtype('pg_catalog."char"');`,
+					Expected: []sql.Row{
+						{`"char"`},
+					},
+				},
+				{
+					Query: `SELECT to_regtype('otherschema.char');`,
+					Expected: []sql.Row{
+						{nil},
 					},
 				},
 				{
@@ -644,11 +685,22 @@ func TestSystemInformationFunctions(t *testing.T) {
 				{
 					Query: `SELECT format_type('"char"'::regtype, null);`,
 					Expected: []sql.Row{
-						{"\"char\""},
+						{`"char"`},
 					},
 				},
 				{
-					Skip:  true, // TODO: regtype should work with array types
+					Query: `SELECT format_type('"char"[]'::regtype, null);`,
+					Expected: []sql.Row{
+						{"\"char\"[]"},
+					},
+				},
+				{
+					Query: `SELECT format_type(1002, null);`,
+					Expected: []sql.Row{
+						{"\"char\"[]"},
+					},
+				},
+				{
 					Query: `SELECT format_type('real[]'::regtype, null);`,
 					Expected: []sql.Row{
 						{"real[]"},

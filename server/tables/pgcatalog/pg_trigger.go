@@ -63,7 +63,7 @@ var pgTriggerSchema = sql.Schema{
 	{Name: "tgname", Type: pgtypes.Name, Default: nil, Nullable: false, Source: PgTriggerName},
 	{Name: "tgfoid", Type: pgtypes.Oid, Default: nil, Nullable: false, Source: PgTriggerName},
 	{Name: "tgtype", Type: pgtypes.Int16, Default: nil, Nullable: false, Source: PgTriggerName},
-	{Name: "tgenabled", Type: pgtypes.BpChar, Default: nil, Nullable: false, Source: PgTriggerName},
+	{Name: "tgenabled", Type: pgtypes.InternalChar, Default: nil, Nullable: false, Source: PgTriggerName},
 	{Name: "tgisinternal", Type: pgtypes.Bool, Default: nil, Nullable: false, Source: PgTriggerName},
 	{Name: "tgconstrrelid", Type: pgtypes.Oid, Default: nil, Nullable: false, Source: PgTriggerName},
 	{Name: "tgconstrindid", Type: pgtypes.Oid, Default: nil, Nullable: false, Source: PgTriggerName},

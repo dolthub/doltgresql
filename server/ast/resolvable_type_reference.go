@@ -74,13 +74,13 @@ func nodeResolvableTypeReference(typ tree.ResolvableTypeReference) (*vitess.Conv
 				}
 			case oid.T_char:
 				width := uint32(columnType.Width())
-				if width > pgtypes.StringMaxLength {
-					return nil, nil, fmt.Errorf("length for type char cannot exceed %d", pgtypes.StringMaxLength)
+				if width > pgtypes.InternalCharLength {
+					return nil, nil, fmt.Errorf("length for type \"char\" cannot exceed %d", pgtypes.InternalCharLength)
 				}
 				if width == 0 {
 					width = 1
 				}
-				resolvedType = pgtypes.CharType{Length: width}
+				resolvedType = pgtypes.InternalChar
 			case oid.T_date:
 				resolvedType = pgtypes.Date
 			case oid.T_float4:

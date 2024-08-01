@@ -60,7 +60,7 @@ var pgDefaultAclSchema = sql.Schema{
 	{Name: "oid", Type: pgtypes.Oid, Default: nil, Nullable: false, Source: PgDefaultAclName},
 	{Name: "defaclrole", Type: pgtypes.Oid, Default: nil, Nullable: false, Source: PgDefaultAclName},
 	{Name: "defaclnamespace", Type: pgtypes.Oid, Default: nil, Nullable: false, Source: PgDefaultAclName},
-	{Name: "defaclobjtype", Type: pgtypes.BpChar, Default: nil, Nullable: false, Source: PgDefaultAclName},
+	{Name: "defaclobjtype", Type: pgtypes.InternalChar, Default: nil, Nullable: false, Source: PgDefaultAclName},
 	{Name: "defaclacl", Type: pgtypes.TextArray, Default: nil, Nullable: false, Source: PgDefaultAclName}, // TODO: aclitem[] type
 }
 

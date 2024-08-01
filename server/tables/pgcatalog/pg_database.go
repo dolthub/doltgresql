@@ -84,7 +84,7 @@ var pgDatabaseSchema = sql.Schema{
 	{Name: "datname", Type: pgtypes.Name, Default: nil, Nullable: false, Source: PgDatabaseName},
 	{Name: "datdba", Type: pgtypes.Oid, Default: nil, Nullable: false, Source: PgDatabaseName},
 	{Name: "encoding", Type: pgtypes.Int32, Default: nil, Nullable: false, Source: PgDatabaseName},
-	{Name: "datlocprovider", Type: pgtypes.BpChar, Default: nil, Nullable: false, Source: PgDatabaseName},
+	{Name: "datlocprovider", Type: pgtypes.InternalChar, Default: nil, Nullable: false, Source: PgDatabaseName},
 	{Name: "datistemplate", Type: pgtypes.Bool, Default: nil, Nullable: false, Source: PgDatabaseName},
 	{Name: "datallowconn", Type: pgtypes.Bool, Default: nil, Nullable: false, Source: PgDatabaseName},
 	{Name: "datconnlimit", Type: pgtypes.Int32, Default: nil, Nullable: false, Source: PgDatabaseName},

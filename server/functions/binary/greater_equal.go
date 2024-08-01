@@ -33,6 +33,7 @@ func initBinaryGreaterOrEqual() {
 	framework.RegisterBinaryFunction(framework.Operator_BinaryGreaterOrEqual, boolge)
 	framework.RegisterBinaryFunction(framework.Operator_BinaryGreaterOrEqual, bpcharge)
 	framework.RegisterBinaryFunction(framework.Operator_BinaryGreaterOrEqual, byteage)
+	framework.RegisterBinaryFunction(framework.Operator_BinaryGreaterOrEqual, charge)
 	framework.RegisterBinaryFunction(framework.Operator_BinaryGreaterOrEqual, date_ge)
 	framework.RegisterBinaryFunction(framework.Operator_BinaryGreaterOrEqual, date_ge_timestamp)
 	framework.RegisterBinaryFunction(framework.Operator_BinaryGreaterOrEqual, date_ge_timestamptz)
@@ -99,6 +100,18 @@ var byteage = framework.Function2{
 	Strict:     true,
 	Callable: func(ctx *sql.Context, _ [3]pgtypes.DoltgresType, val1 any, val2 any) (any, error) {
 		res, err := pgtypes.Bytea.Compare(val1.([]byte), val2.([]byte))
+		return res >= 0, err
+	},
+}
+
+// charge represents the PostgreSQL function of the same name, taking the same parameters.
+var charge = framework.Function2{
+	Name:       "charge",
+	Return:     pgtypes.Bool,
+	Parameters: [2]pgtypes.DoltgresType{pgtypes.InternalChar, pgtypes.InternalChar},
+	Strict:     true,
+	Callable: func(ctx *sql.Context, _ [3]pgtypes.DoltgresType, val1 any, val2 any) (any, error) {
+		res, err := pgtypes.InternalChar.Compare(val1.(string), val2.(string))
 		return res >= 0, err
 	},
 }

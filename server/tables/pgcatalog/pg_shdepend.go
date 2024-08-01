@@ -63,7 +63,7 @@ var pgShdependSchema = sql.Schema{
 	{Name: "objsubid", Type: pgtypes.Int32, Default: nil, Nullable: false, Source: PgShdependName},
 	{Name: "refclassid", Type: pgtypes.Oid, Default: nil, Nullable: false, Source: PgShdependName},
 	{Name: "refobjid", Type: pgtypes.Oid, Default: nil, Nullable: false, Source: PgShdependName},
-	{Name: "deptype", Type: pgtypes.BpChar, Default: nil, Nullable: false, Source: PgShdependName},
+	{Name: "deptype", Type: pgtypes.InternalChar, Default: nil, Nullable: false, Source: PgShdependName},
 }
 
 // pgShdependRowIter is the sql.RowIter for the pg_shdepend table.

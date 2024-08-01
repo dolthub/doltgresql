@@ -62,7 +62,7 @@ var PgEventTriggerSchema = sql.Schema{
 	{Name: "evtevent", Type: pgtypes.Name, Default: nil, Nullable: false, Source: PgEventTriggerName},
 	{Name: "evtowner", Type: pgtypes.Oid, Default: nil, Nullable: false, Source: PgEventTriggerName},
 	{Name: "evtfoid", Type: pgtypes.Oid, Default: nil, Nullable: false, Source: PgEventTriggerName},
-	{Name: "evtenabled", Type: pgtypes.BpChar, Default: nil, Nullable: false, Source: PgEventTriggerName},
+	{Name: "evtenabled", Type: pgtypes.InternalChar, Default: nil, Nullable: false, Source: PgEventTriggerName},
 	{Name: "evttags", Type: pgtypes.TextArray, Default: nil, Nullable: true, Source: PgEventTriggerName}, // TODO: collation C
 }
 
