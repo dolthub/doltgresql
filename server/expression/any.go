@@ -237,11 +237,12 @@ func (a *AnyExpr) WithChildren(children ...sql.Expression) (sql.Expression, erro
 		name:        a.name,
 	}
 
-	if sub, ok := children[1].(*plan.Subquery); ok {
-		return subqueryWithChildren(anyExpr, sub)
+	if _, ok := children[1].(*plan.Subquery); ok {
+		// TODO: Fix subqueries and return anySubqueryWithChildren(anyExpr, sub)
+		return nil, fmt.Errorf("%s does not support subqueries yet", a.name)
 	}
 
-	return expressionWithChildren(anyExpr)
+	return anyExpressionWithChildren(anyExpr)
 }
 
 // WithResolvedChildren implements the Expression interface.
@@ -273,8 +274,8 @@ func (a *AnyExpr) DebugString() string {
 	return fmt.Sprintf("%s %s (%s)", sql.DebugString(a.leftExpr), a.name, sql.DebugString(a.rightExpr))
 }
 
-// subqueryWithChildren resolves the comparison functions for a plan.Subquery.
-func subqueryWithChildren(anyExpr *AnyExpr, sub *plan.Subquery) (sql.Expression, error) {
+// AnySubqueryWithChildren resolves the comparison functions for a plan.Subquery.
+func AnySubqueryWithChildren(anyExpr *AnyExpr, sub *plan.Subquery) (sql.Expression, error) {
 	schema := sub.Query.Schema()
 	subTypes := make([]pgtypes.DoltgresType, len(schema))
 	for i, col := range schema {
@@ -319,16 +320,13 @@ func subqueryWithChildren(anyExpr *AnyExpr, sub *plan.Subquery) (sql.Expression,
 	return anyExpr, nil
 }
 
-// expressionWithChildren resolves the comparison functions for a sql.Expression.
-func expressionWithChildren(anyExpr *AnyExpr) (sql.Expression, error) {
-	rightType, ok := anyExpr.rightExpr.Type().(pgtypes.DoltgresType)
+// anyExpressionWithChildren resolves the comparison functions for a sql.Expression.
+func anyExpressionWithChildren(anyExpr *AnyExpr) (sql.Expression, error) {
+	arrType, ok := anyExpr.rightExpr.Type().(pgtypes.DoltgresArrayType)
 	if !ok {
 		return nil, fmt.Errorf("expected right child to be a DoltgresType but got `%T`", anyExpr.rightExpr)
 	}
-
-	if at, ok := rightType.(pgtypes.DoltgresArrayType); ok {
-		rightType = at.BaseType()
-	}
+	rightType := arrType.BaseType()
 
 	op, err := framework.GetOperatorFromString(anyExpr.subOperator)
 	if err != nil {
