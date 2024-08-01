@@ -15,6 +15,7 @@
 package pgcatalog
 
 import (
+	"fmt"
 	"io"
 
 	"github.com/dolthub/go-mysql-server/sql"
@@ -46,6 +47,7 @@ func (p PgConstraintHandler) Name() string {
 func (p PgConstraintHandler) RowIter(ctx *sql.Context) (sql.RowIter, error) {
 	var constraints []pgConstraint
 	tableOIDs := make(map[uint32]map[string]uint32)
+	tableColToIdxMap := make(map[string]int16)
 
 	// We iterate over all of the tables first to obtain their OIDs, which we'll need to reference for foreign keys
 	err := oid.IterateCurrentDatabase(ctx, oid.Callbacks{
@@ -56,6 +58,11 @@ func (p PgConstraintHandler) RowIter(ctx *sql.Context) (sql.RowIter, error) {
 				tableOIDs[schema.OID] = inner
 			}
 			inner[table.Item.Name()] = table.OID
+
+			for i, col := range table.Item.Schema() {
+				tableColToIdxMap[fmt.Sprintf("%s.%s", table.Item.Name(), col.Name)] = int16(i + 1)
+			}
+
 			return true, nil
 		},
 	})
@@ -78,6 +85,26 @@ func (p PgConstraintHandler) RowIter(ctx *sql.Context) (sql.RowIter, error) {
 			return true, nil
 		},
 		ForeignKey: func(ctx *sql.Context, schema oid.ItemSchema, table oid.ItemTable, foreignKey oid.ItemForeignKey) (cont bool, err error) {
+			conKey := make([]any, len(foreignKey.Item.Columns))
+			for i, expr := range foreignKey.Item.Columns {
+				conKey[i] = tableColToIdxMap[expr]
+			}
+
+			parentTableColToIdxMap := make(map[string]int16)
+			parentTable, ok, err := schema.Item.GetTableInsensitive(ctx, foreignKey.Item.ParentTable)
+			if err != nil {
+				return false, err
+			} else if ok {
+				for i, col := range parentTable.Schema() {
+					parentTableColToIdxMap[col.Name] = int16(i + 1)
+				}
+			}
+
+			conFkey := make([]any, len(foreignKey.Item.ParentColumns))
+			for i, expr := range foreignKey.Item.ParentColumns {
+				conFkey[i] = parentTableColToIdxMap[expr]
+			}
+
 			constraints = append(constraints, pgConstraint{
 				oid:          foreignKey.OID,
 				name:         foreignKey.Item.Name,
@@ -89,6 +116,8 @@ func (p PgConstraintHandler) RowIter(ctx *sql.Context) (sql.RowIter, error) {
 				fkUpdateType: getFKAction(foreignKey.Item.OnUpdate),
 				fkDeleteType: getFKAction(foreignKey.Item.OnDelete),
 				fkMatchType:  "s",
+				conKey:       conKey,
+				conFkey:      conFkey,
 			})
 			return true, nil
 		},
@@ -97,6 +126,12 @@ func (p PgConstraintHandler) RowIter(ctx *sql.Context) (sql.RowIter, error) {
 			if index.Item.IsUnique() && index.Item.ID() != "PRIMARY" {
 				conType = "u"
 			}
+
+			conKey := make([]any, len(index.Item.Expressions()))
+			for i, expr := range index.Item.Expressions() {
+				conKey[i] = tableColToIdxMap[expr]
+			}
+
 			constraints = append(constraints, pgConstraint{
 				oid:         index.OID,
 				name:        getIndexName(index.Item),
@@ -105,6 +140,8 @@ func (p PgConstraintHandler) RowIter(ctx *sql.Context) (sql.RowIter, error) {
 				tableOid:    table.OID,
 				idxOid:      index.OID,
 				tableRefOid: uint32(0),
+				conKey:      conKey,
+				conFkey:     nil,
 			})
 			return true, nil
 		},
@@ -187,6 +224,8 @@ type pgConstraint struct {
 	fkUpdateType string // a = no action, r = restrict, c = cascade, n = set null, d = set default
 	fkDeleteType string // a = no action, r = restrict, c = cascade, n = set null, d = set default
 	fkMatchType  string // f = full, p = partial, s = simple
+	conKey       []any
+	conFkey      []any
 }
 
 // pgConstraintRowIter is the sql.RowIter for the pg_constraint table.
@@ -204,6 +243,20 @@ func (iter *pgConstraintRowIter) Next(ctx *sql.Context) (sql.Row, error) {
 	}
 	iter.idx++
 	con := iter.constraints[iter.idx-1]
+
+	var conKey interface{}
+	if len(con.conKey) == 0 {
+		conKey = nil
+	} else {
+		conKey = con.conKey
+	}
+
+	var conFkey interface{}
+	if len(con.conFkey) == 0 {
+		conFkey = nil
+	} else {
+		conFkey = con.conFkey
+	}
 
 	return sql.Row{
 		con.oid,          // oid
@@ -224,8 +277,8 @@ func (iter *pgConstraintRowIter) Next(ctx *sql.Context) (sql.Row, error) {
 		true,             // conislocal
 		int16(0),         // coninhcount
 		true,             // connoinherit
-		nil,              // conkey
-		nil,              // confkey
+		conKey,           // conkey
+		conFkey,          // confkey
 		nil,              // conpfeqop
 		nil,              // conppeqop
 		nil,              // conffeqop
