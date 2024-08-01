@@ -43,6 +43,7 @@ var string_agg = framework.Function2{
 			delimiter = val2.(string)
 		}
 		// TODO: extract row values from val1
+		//  need to return single result for all rows
 		expr := []string{val1.(string)}
 		return strings.Join(expr, delimiter), nil
 	},
