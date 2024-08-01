@@ -24,6 +24,7 @@ const (
 	ruleId_TypeSanitizer analyzer.RuleId = iota + 1000
 	ruleId_AssignInsertCasts
 	ruleId_AssignUpdateCasts
+	ruleId_ResolvedTable // TODO: rename this
 	ruleId_ReplaceSerial
 	ruleId_InsertContextRootFinalizer
 )
@@ -36,6 +37,7 @@ func Init() {
 		getAnalyzerRule(analyzer.OnceBeforeDefault, analyzer.ValidateColumnDefaultsId),
 		analyzer.Rule{Id: ruleId_AssignInsertCasts, Apply: AssignInsertCasts},
 		analyzer.Rule{Id: ruleId_AssignUpdateCasts, Apply: AssignUpdateCasts},
+		analyzer.Rule{Id: ruleId_ResolvedTable, Apply: ResolvedTable},
 	)
 
 	// Column default validation was moved to occur after type sanitization, so we'll remove it from its original place
