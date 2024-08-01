@@ -27,12 +27,12 @@ import (
 
 // initPgGetConstraintdef registers the functions to the catalog.
 func initPgGetConstraintdef() {
-	framework.RegisterFunction(pg_get_constraintdef1)
-	framework.RegisterFunction(pg_get_constraintdef2)
+	framework.RegisterFunction(pg_get_constraintdef_oid)
+	framework.RegisterFunction(pg_get_constraintdef_oid_bool)
 }
 
-// pg_get_constraintdef1 represents the PostgreSQL function pg_get_constraintdef, taking one OID parameter.
-var pg_get_constraintdef1 = framework.Function1{
+// pg_get_constraintdef_oid represents the PostgreSQL function of the same name, taking the same parameters.
+var pg_get_constraintdef_oid = framework.Function1{
 	Name:       "pg_get_constraintdef",
 	Return:     pgtypes.Text,
 	Parameters: [1]pgtypes.DoltgresType{pgtypes.Oid},
@@ -44,8 +44,8 @@ var pg_get_constraintdef1 = framework.Function1{
 	},
 }
 
-// pg_get_constraintdef2 represents the PostgreSQL function pg_get_constraintdef, taking two parameters.
-var pg_get_constraintdef2 = framework.Function2{
+// pg_get_constraintdef_oid_bool represents the PostgreSQL function of the same name, taking the same parameters.
+var pg_get_constraintdef_oid_bool = framework.Function2{
 	Name:       "pg_get_constraintdef",
 	Return:     pgtypes.Text,
 	Parameters: [2]pgtypes.DoltgresType{pgtypes.Oid, pgtypes.Bool},

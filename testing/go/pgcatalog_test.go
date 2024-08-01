@@ -200,7 +200,7 @@ func TestPgAttrdef(t *testing.T) {
 				{
 					Query: `SELECT * FROM "pg_catalog"."pg_attrdef" WHERE adrelid='testschema.test'::regclass;`,
 					Expected: []sql.Row{
-						{3491758080, 2686451712, 2, nil},
+						{3223322624, 2686451712, 2, nil},
 					},
 				},
 				{ // Different cases and quoted, so it fails
@@ -214,7 +214,7 @@ func TestPgAttrdef(t *testing.T) {
 				{ // Different cases but non-quoted, so it works
 					Query: "SELECT oid FROM PG_catalog.pg_ATTRDEF ORDER BY oid;",
 					Expected: []sql.Row{
-						{3491758080},
+						{3223322624},
 					},
 				},
 			},

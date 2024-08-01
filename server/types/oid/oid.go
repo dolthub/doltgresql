@@ -31,8 +31,8 @@ const (
 	Section_Sequence                     // Refers to sequences
 	Section_Table                        // Refers to tables
 	Section_View                         // Refers to views
-	Section_Invalid                      // Represents an invalid OID
 	Section_ColumnDefault                // Refers to column defaults on tables (the dataIndex is obtained by incrementing through all tables' column defaults)
+	Section_Invalid                      // Represents an invalid OID
 )
 
 const (

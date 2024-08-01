@@ -397,7 +397,7 @@ func iterateChecks(ctx *sql.Context, callbacks Callbacks, itemSchema ItemSchema,
 	return nil
 }
 
-// iterateColumnDefaults is called by iterateTables to handle check constraints.
+// iterateColumnDefaults is called by iterateTables to handle column defaults.
 func iterateColumnDefaults(ctx *sql.Context, callbacks Callbacks, itemSchema ItemSchema, itemTable ItemTable, columnDefaultCount *int) error {
 	columns := itemTable.Item.Schema()
 	for i, col := range columns {
@@ -612,7 +612,7 @@ func runCheck(ctx *sql.Context, oid uint32, callbacks Callbacks, itemSchema Item
 	return true, nil
 }
 
-// runColumnDefault is called by RunCallback to handle Section_Check.
+// runColumnDefault is called by RunCallback to handle Section_ColumnDefault.
 func runColumnDefault(ctx *sql.Context, oid uint32, callbacks Callbacks, itemSchema ItemSchema, itemTable ItemTable, countedIndex *int) (cont bool, err error) {
 	_, _, dataIndex := ParseOID(oid)
 	columns := itemTable.Item.Schema()
