@@ -25,15 +25,16 @@ import (
 
 // initPgTableIsVisible registers the functions to the catalog.
 func initPgTableIsVisible() {
-	framework.RegisterFunction(pg_table_is_visible)
+	framework.RegisterFunction(pg_table_is_visible_oid)
 }
 
-// pg_table_is_visible represents the PostgreSQL system schema visibility inquiry function.
-var pg_table_is_visible = framework.Function1{
+// pg_table_is_visible_oid represents the PostgreSQL system schema visibility inquiry function.
+var pg_table_is_visible_oid = framework.Function1{
 	Name:               "pg_table_is_visible",
 	Return:             pgtypes.Bool,
 	Parameters:         [1]pgtypes.DoltgresType{pgtypes.Oid},
 	IsNonDeterministic: true,
+	Strict:             true,
 	Callable: func(ctx *sql.Context, _ [2]pgtypes.DoltgresType, val any) (any, error) {
 		oidVal := val.(uint32)
 		paths, err := resolve.SearchPath(ctx)
@@ -70,5 +71,4 @@ var pg_table_is_visible = framework.Function1{
 		}
 		return isVisible, nil
 	},
-	Strict: true,
 }

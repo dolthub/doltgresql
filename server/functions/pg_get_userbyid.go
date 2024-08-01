@@ -23,18 +23,18 @@ import (
 
 // initPgGetUserbyid registers the functions to the catalog.
 func initPgGetUserbyid() {
-	framework.RegisterFunction(pg_get_userbyid)
+	framework.RegisterFunction(pg_get_userbyid_oid)
 }
 
-// pg_get_userbyid represents the PostgreSQL system catalog information function.
-var pg_get_userbyid = framework.Function1{
+// pg_get_userbyid_oid represents the PostgreSQL system catalog information function.
+var pg_get_userbyid_oid = framework.Function1{
 	Name:               "pg_get_userbyid",
 	Return:             pgtypes.Text,
 	Parameters:         [1]pgtypes.DoltgresType{pgtypes.Oid},
 	IsNonDeterministic: true,
+	Strict:             true,
 	Callable: func(ctx *sql.Context, _ [2]pgtypes.DoltgresType, val any) (any, error) {
 		// TODO: roles are not supported yet
 		return "unknown OID()", nil
 	},
-	Strict: true,
 }

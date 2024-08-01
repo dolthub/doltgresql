@@ -23,15 +23,16 @@ import (
 
 // initPgEncodingToChar registers the functions to the catalog.
 func initPgEncodingToChar() {
-	framework.RegisterFunction(pg_encoding_to_char)
+	framework.RegisterFunction(pg_encoding_to_char_int)
 }
 
-// pg_encoding_to_char represents the PostgreSQL system catalog information function.
-var pg_encoding_to_char = framework.Function1{
+// pg_encoding_to_char_int represents the PostgreSQL system catalog information function.
+var pg_encoding_to_char_int = framework.Function1{
 	Name:               "pg_encoding_to_char",
 	Return:             pgtypes.Name,
 	Parameters:         [1]pgtypes.DoltgresType{pgtypes.Int32},
 	IsNonDeterministic: true,
+	Strict:             true,
 	Callable: func(ctx *sql.Context, _ [2]pgtypes.DoltgresType, val any) (any, error) {
 		encoding := val.(int32)
 		if encoding == int32(6) {
@@ -40,5 +41,4 @@ var pg_encoding_to_char = framework.Function1{
 		// TODO: encoding is not supported yet; if invalid val, return empty
 		return "", nil
 	},
-	Strict: true,
 }

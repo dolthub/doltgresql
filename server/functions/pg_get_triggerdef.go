@@ -25,29 +25,30 @@ import (
 
 // initPgGetTriggerDef registers the functions to the catalog.
 func initPgGetTriggerDef() {
-	framework.RegisterFunction(pg_get_triggerdef1)
-	framework.RegisterFunction(pg_get_triggerdef2)
+	framework.RegisterFunction(pg_get_triggerdef_oid)
+	framework.RegisterFunction(pg_get_triggerdef_oid_bool)
 }
 
-// pg_get_triggerdef1 represents the PostgreSQL system catalog information function taking 1 parameter.
-var pg_get_triggerdef1 = framework.Function1{
+// pg_get_triggerdef_oid represents the PostgreSQL system catalog information function taking 1 parameter.
+var pg_get_triggerdef_oid = framework.Function1{
 	Name:               "pg_get_triggerdef",
 	Return:             pgtypes.Text,
 	Parameters:         [1]pgtypes.DoltgresType{pgtypes.Oid},
 	IsNonDeterministic: true,
+	Strict:             true,
 	Callable: func(ctx *sql.Context, _ [2]pgtypes.DoltgresType, val any) (any, error) {
 		// TODO: triggers are not supported yet
 		return "", nil
 	},
-	Strict: true,
 }
 
-// pg_get_triggerdef2 represents the PostgreSQL system catalog information function taking 2 parameters.
-var pg_get_triggerdef2 = framework.Function2{
+// pg_get_triggerdef_oid_bool represents the PostgreSQL system catalog information function taking 2 parameters.
+var pg_get_triggerdef_oid_bool = framework.Function2{
 	Name:               "pg_get_triggerdef",
 	Return:             pgtypes.Text,
 	Parameters:         [2]pgtypes.DoltgresType{pgtypes.Oid, pgtypes.Bool},
 	IsNonDeterministic: true,
+	Strict:             true,
 	Callable: func(ctx *sql.Context, _ [3]pgtypes.DoltgresType, val1, val2 any) (any, error) {
 		pretty := val2.(bool)
 		if pretty {
@@ -56,5 +57,4 @@ var pg_get_triggerdef2 = framework.Function2{
 		// TODO: triggers are not supported yet
 		return "", nil
 	},
-	Strict: true,
 }

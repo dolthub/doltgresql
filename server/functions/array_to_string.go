@@ -26,54 +26,58 @@ import (
 
 // initArrayToString registers the functions to the catalog.
 func initArrayToString() {
-	framework.RegisterFunction(array_to_string2)
-	framework.RegisterFunction(array_to_string3)
+	framework.RegisterFunction(array_to_string_anyarray_text)
+	framework.RegisterFunction(array_to_string_anyarray_text_text)
 }
 
-// array_to_string represents the PostgreSQL system catalog information function taking 2 parameters.
-var array_to_string2 = framework.Function2{
+// array_to_string represents the PostgreSQL array function taking 2 parameters.
+var array_to_string_anyarray_text = framework.Function2{
 	Name:               "array_to_string",
 	Return:             pgtypes.Text,
 	Parameters:         [2]pgtypes.DoltgresType{pgtypes.AnyArray, pgtypes.Text},
 	IsNonDeterministic: true,
-	Callable: func(ctx *sql.Context, _ [3]pgtypes.DoltgresType, val1, val2 any) (any, error) {
+	Strict:             true,
+	Callable: func(ctx *sql.Context, paramsAndReturn [3]pgtypes.DoltgresType, val1, val2 any) (any, error) {
 		arr := val1.([]any)
 		delimiter := val2.(string)
-		strs := make([]string, 0)
-		for _, el := range arr {
-			if el != nil {
-				strs = append(strs, fmt.Sprintf("%v", el))
-			}
-		}
-		return strings.Join(strs, delimiter), nil
+		return getStringArrFromAnyArray(ctx, paramsAndReturn[0], arr, delimiter, nil)
 	},
-	Strict: true,
 }
 
-// array_to_string represents the PostgreSQL system catalog information function taking 3 parameter.
-var array_to_string3 = framework.Function3{
+// array_to_string3 represents the PostgreSQL array function taking 3 parameter.
+var array_to_string_anyarray_text_text = framework.Function3{
 	Name:               "array_to_string",
 	Return:             pgtypes.Text,
 	Parameters:         [3]pgtypes.DoltgresType{pgtypes.AnyArray, pgtypes.Text, pgtypes.Text},
 	IsNonDeterministic: true,
-	Callable: func(ctx *sql.Context, _ [4]pgtypes.DoltgresType, val1, val2, val3 any) (any, error) {
+	Strict:             false,
+	Callable: func(ctx *sql.Context, paramsAndReturn [4]pgtypes.DoltgresType, val1, val2, val3 any) (any, error) {
 		if val1 == nil {
 			return nil, fmt.Errorf("could not determine polymorphic type because input has type unknown")
 		} else if val2 == nil {
 			return nil, nil
 		}
-
 		arr := val1.([]any)
 		delimiter := val2.(string)
-		strs := make([]string, 0)
-		for _, el := range arr {
-			if el != nil {
-				strs = append(strs, fmt.Sprintf("%v", el))
-			} else if val3 != nil {
-				strs = append(strs, val3.(string))
-			}
-		}
-		return strings.Join(strs, delimiter), nil
+		return getStringArrFromAnyArray(ctx, paramsAndReturn[0], arr, delimiter, val3)
 	},
-	Strict: false,
+}
+
+// getArrayToString takes inputs of any array, delimiter and null entry replacement. It uses the IoOutput() of the
+// base type of the AnyArray type to get string representation of array elements.
+func getStringArrFromAnyArray(ctx *sql.Context, anyArrayType pgtypes.DoltgresType, arr []any, delimiter string, nullEntry any) (string, error) {
+	baseType := anyArrayType.ToArrayType().BaseType()
+	strs := make([]string, 0)
+	for _, el := range arr {
+		if el != nil {
+			v, err := baseType.IoOutput(ctx, el)
+			if err != nil {
+				return "", err
+			}
+			strs = append(strs, v)
+		} else if nullEntry != nil {
+			strs = append(strs, nullEntry.(string))
+		}
+	}
+	return strings.Join(strs, delimiter), nil
 }

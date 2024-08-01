@@ -28,30 +28,31 @@ import (
 
 // initPgGetViewDef registers the functions to the catalog.
 func initPgGetViewDef() {
-	framework.RegisterFunction(pg_get_viewdef1)
-	framework.RegisterFunction(pg_get_viewdef2bool)
-	framework.RegisterFunction(pg_get_viewdef2int)
+	framework.RegisterFunction(pg_get_viewdef_oid)
+	framework.RegisterFunction(pg_get_viewdef_oid_bool)
+	framework.RegisterFunction(pg_get_viewdef_oid_int)
 }
 
-// pg_get_viewdef represents the PostgreSQL system catalog information function taking 1 parameter, {oid}.
-var pg_get_viewdef1 = framework.Function1{
+// pg_get_viewdef_oid represents the PostgreSQL system catalog information function taking 1 parameter.
+var pg_get_viewdef_oid = framework.Function1{
 	Name:               "pg_get_viewdef",
 	Return:             pgtypes.Text,
 	Parameters:         [1]pgtypes.DoltgresType{pgtypes.Oid},
 	IsNonDeterministic: true,
+	Strict:             true,
 	Callable: func(ctx *sql.Context, _ [2]pgtypes.DoltgresType, val any) (any, error) {
 		oidVal := val.(uint32)
 		return getViewDef(ctx, oidVal)
 	},
-	Strict: true,
 }
 
-// pg_get_viewdef represents the PostgreSQL system catalog information function taking 2 parameters, {oid, bool}.
-var pg_get_viewdef2bool = framework.Function2{
+// pg_get_viewdef_oid_bool represents the PostgreSQL system catalog information function taking 2 parameters.
+var pg_get_viewdef_oid_bool = framework.Function2{
 	Name:               "pg_get_viewdef",
 	Return:             pgtypes.Text,
 	Parameters:         [2]pgtypes.DoltgresType{pgtypes.Oid, pgtypes.Bool},
 	IsNonDeterministic: true,
+	Strict:             true,
 	Callable: func(ctx *sql.Context, _ [3]pgtypes.DoltgresType, val1, val2 any) (any, error) {
 		oidVal := val1.(uint32)
 		pretty := val2.(bool)
@@ -60,22 +61,22 @@ var pg_get_viewdef2bool = framework.Function2{
 		}
 		return getViewDef(ctx, oidVal)
 	},
-	Strict: true,
 }
 
-// pg_get_viewdef represents the PostgreSQL system catalog information function taking 2 parameters, {oid, int}.
-var pg_get_viewdef2int = framework.Function2{
+// pg_get_viewdef_oid_int represents the PostgreSQL system catalog information function taking 2 parameters.
+var pg_get_viewdef_oid_int = framework.Function2{
 	Name:               "pg_get_viewdef",
 	Return:             pgtypes.Text,
 	Parameters:         [2]pgtypes.DoltgresType{pgtypes.Oid, pgtypes.Int64},
 	IsNonDeterministic: true,
+	Strict:             true,
 	Callable: func(ctx *sql.Context, _ [3]pgtypes.DoltgresType, val1, val2 any) (any, error) {
 		// TODO: prettyprint is implied
 		return "", fmt.Errorf("pretty printing is not yet supported")
 	},
-	Strict: true,
 }
 
+// getViewDef takes oid of view and returns the text definition of underlying SELECT statement.
 func getViewDef(ctx *sql.Context, oidVal uint32) (string, error) {
 	var result string
 	err := oid.RunCallback(ctx, oidVal, oid.Callbacks{

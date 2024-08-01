@@ -41,5 +41,4 @@ var array_append_anyarray_anyelement = framework.Function2{
 		returnArray[len(returnArray)-1] = val2
 		return returnArray, nil
 	},
-	Strict: false,
 }

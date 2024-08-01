@@ -46,5 +46,4 @@ var format_type = framework.Function2{
 		}
 		return "???", nil
 	},
-	Strict: false,
 }

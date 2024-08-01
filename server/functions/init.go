@@ -96,7 +96,6 @@ func Init() {
 	initSinh()
 	initSplitPart()
 	initSqrt()
-	initStringAgg()
 	initStrpos()
 	initSubstr()
 	initTan()

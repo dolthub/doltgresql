@@ -799,44 +799,22 @@ func TestSystemInformationFunctions(t *testing.T) {
 	})
 }
 
-func TestAggregateFunctions(t *testing.T) {
-	RunScripts(t, []ScriptTest{
-		{
-			Skip: true, // TODO: retrieve all row values into a function
-			Name: "string_agg",
-			SetUpScript: []string{
-				"CREATE TABLE test (id int, name text)",
-				"INSERT INTO test VALUES (1,'desk'), (2,'chair')",
-			},
-			Assertions: []ScriptTestAssertion{
-				{
-					Query: `select string_agg(name, ';;') from test;`,
-					Expected: []sql.Row{
-						{"desk;;chair"},
-					},
-				},
-				{
-					Query:    `select string_agg(null, null) from test;`,
-					Expected: []sql.Row{{nil}},
-				},
-				{
-					Query: `select string_agg(name, null) from test;`,
-					Expected: []sql.Row{
-						{"deskchair"},
-					},
-				},
-			},
-		},
-	})
-}
-
 func TestSchemaVisibilityInquiryFunctions(t *testing.T) {
 	RunScripts(t, []ScriptTest{
 		{
 			Skip:        true, // TODO: not supported
 			Name:        "pg_function_is_visible",
 			SetUpScript: []string{},
-			Assertions:  []ScriptTestAssertion{},
+			Assertions: []ScriptTestAssertion{
+				{
+					Query:    `SELECT pg_function_is_visible(1342177280);`,
+					Expected: []sql.Row{{"t"}},
+				},
+				{
+					Query:    `SELECT pg_function_is_visible(22);`, // invalid
+					Expected: []sql.Row{{"f"}},
+				},
+			},
 		},
 		{
 			Name: "pg_table_is_visible",
@@ -994,6 +972,34 @@ func TestSystemCatalogInformationFunctions(t *testing.T) {
 				{
 					Query:    `select pg_get_viewdef(2953838592);`,
 					Expected: []sql.Row{{"SELECT name FROM test"}},
+				},
+			},
+		},
+	})
+}
+
+func TestArrayFunction(t *testing.T) {
+	RunScripts(t, []ScriptTest{
+		{
+			Name:        "array_to_string",
+			SetUpScript: []string{},
+			Assertions: []ScriptTestAssertion{
+				{
+					Query:    `SELECT array_to_string(ARRAY[1, 2, 3, NULL, 5], ',', '*')`,
+					Expected: []sql.Row{{"1,2,3,*,5"}},
+				},
+				{
+					Query:    `SELECT array_to_string(ARRAY[1, 2, 3, NULL, 5], ',')`,
+					Expected: []sql.Row{{"1,2,3,5"}},
+				},
+				{
+					Query:    `SELECT array_to_string(ARRAY[37.89, 1.2], '_');`,
+					Expected: []sql.Row{{"37.89_1.2"}},
+				},
+				{
+					Skip:     true, // TODO: we currently return "37_1"
+					Query:    `SELECT array_to_string(ARRAY[37.89::int4, 1.2::int4], '_');`,
+					Expected: []sql.Row{{"38_1"}},
 				},
 			},
 		},

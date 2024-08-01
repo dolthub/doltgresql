@@ -17,24 +17,36 @@ package functions
 import (
 	"github.com/dolthub/go-mysql-server/sql"
 
+	"github.com/dolthub/doltgresql/server/types/oid"
+
 	"github.com/dolthub/doltgresql/server/functions/framework"
 	pgtypes "github.com/dolthub/doltgresql/server/types"
 )
 
 // initPgFunctionIsVisible registers the functions to the catalog.
 func initPgFunctionIsVisible() {
-	framework.RegisterFunction(pg_function_is_visible)
+	framework.RegisterFunction(pg_function_is_visible_oid)
 }
 
-// pg_function_is_visible represents the PostgreSQL system schema visibility inquiry function.
-var pg_function_is_visible = framework.Function1{
+// pg_function_is_visible_oid represents the PostgreSQL system schema visibility inquiry function.
+var pg_function_is_visible_oid = framework.Function1{
 	Name:               "pg_function_is_visible",
 	Return:             pgtypes.Bool,
 	Parameters:         [1]pgtypes.DoltgresType{pgtypes.Oid},
 	IsNonDeterministic: true,
+	Strict:             true,
 	Callable: func(ctx *sql.Context, _ [2]pgtypes.DoltgresType, val any) (any, error) {
-		// TODO: Functions are not contained within a schema for now
-		return true, nil
+		var found bool
+		err := oid.RunCallback(ctx, val.(uint32), oid.Callbacks{
+			Function: func(ctx *sql.Context, function oid.ItemFunction) (cont bool, err error) {
+				// TODO: Functions are not contained within a schema for now, so will be true if function is found
+				found = true
+				return false, nil
+			},
+		})
+		if err != nil {
+			return nil, err
+		}
+		return found, nil
 	},
-	Strict: true,
 }

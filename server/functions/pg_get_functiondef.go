@@ -24,15 +24,16 @@ import (
 
 // initPgGetFunctionDef registers the functions to the catalog.
 func initPgGetFunctionDef() {
-	framework.RegisterFunction(pg_get_functiondef)
+	framework.RegisterFunction(pg_get_functiondef_oid)
 }
 
-// pg_get_functiondef represents the PostgreSQL system catalog information function.
-var pg_get_functiondef = framework.Function1{
+// pg_get_functiondef_oid represents the PostgreSQL system catalog information function.
+var pg_get_functiondef_oid = framework.Function1{
 	Name:               "pg_get_functiondef",
 	Return:             pgtypes.Text,
 	Parameters:         [1]pgtypes.DoltgresType{pgtypes.Oid},
 	IsNonDeterministic: true,
+	Strict:             true,
 	Callable: func(ctx *sql.Context, _ [2]pgtypes.DoltgresType, val any) (any, error) {
 		err := oid.RunCallback(ctx, val.(uint32), oid.Callbacks{
 			Function: func(ctx *sql.Context, function oid.ItemFunction) (cont bool, err error) {
@@ -45,5 +46,4 @@ var pg_get_functiondef = framework.Function1{
 		}
 		return "", nil
 	},
-	Strict: true,
 }
