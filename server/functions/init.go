@@ -101,6 +101,7 @@ func Init() {
 	initToRegtype()
 	initTrimScale()
 	initTrunc()
+	initUnnest()
 	initUpper()
 	initVersion()
 	initWidthBucket()

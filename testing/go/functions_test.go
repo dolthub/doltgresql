@@ -881,3 +881,33 @@ func TestSystemInformationFunctions(t *testing.T) {
 		},
 	})
 }
+
+func TestArrayFunctions(t *testing.T) {
+	RunScripts(t, []ScriptTest{
+		{
+			Name: "unnest",
+			SetUpScript: []string{
+				`CREATE TABLE testing (id INT primary key, val1 smallint[]);`,
+				`INSERT INTO testing VALUES (1, '{}'), (2, '{1}'), (3, '{1, 2}');`,
+			},
+			Assertions: []ScriptTestAssertion{
+				{
+					Skip:     true, // TODO: Should return no rows instead of empty row
+					Query:    `SELECT unnest(val1) FROM testing WHERE id=1;`,
+					Cols:     []string{"unnest"},
+					Expected: []sql.Row{},
+				},
+				{
+					Query:    `SELECT unnest(val1) FROM testing WHERE id=2;`,
+					Cols:     []string{"unnest"},
+					Expected: []sql.Row{{1}},
+				},
+				{
+					Skip:     true, // TODO: Support unnesting multiple values
+					Query:    `SELECT unnest(val1) FROM testing WHERE id=3;`,
+					Expected: []sql.Row{{1}, {2}},
+				},
+			},
+		},
+	})
+}
