@@ -155,6 +155,29 @@ func TestPgAttribute(t *testing.T) {
 						{"v1"},
 					},
 				},
+				{
+					Query:    `SELECT "ns"."nspname" AS "table_schema", "t"."relname" AS "table_name", "i"."relname" AS "constraint_name", "a"."attname" AS "column_name", CASE "ix"."indisunique" WHEN 't' THEN 'TRUE' ELSE'FALSE' END AS "is_unique", pg_get_expr("ix"."indpred", "ix"."indrelid") AS "condition", "types"."typname" AS "type_name", "am"."amname" AS "index_type" FROM "pg_catalog"."pg_class" "t" INNER JOIN "pg_catalog"."pg_index" "ix" ON "ix"."indrelid" = "t"."oid" INNER JOIN "pg_catalog"."pg_attribute" "a" ON "a"."attrelid" = "t"."oid"  AND "a"."attnum" = ANY ("ix"."indkey") INNER JOIN "pg_catalog"."pg_namespace" "ns" ON "ns"."oid" = "t"."relnamespace" INNER JOIN "pg_catalog"."pg_class" "i" ON "i"."oid" = "ix"."indexrelid" INNER JOIN "pg_catalog"."pg_type" "types" ON "types"."oid" = "a"."atttypid" INNER JOIN "pg_catalog"."pg_am" "am" ON "i"."relam" = "am"."oid" LEFT JOIN "pg_catalog"."pg_constraint" "cnst" ON "cnst"."conname" = "i"."relname" WHERE "t"."relkind" IN ('r', 'p') AND "cnst"."contype" IS NULL AND (("ns"."nspname" = 'public' AND "t"."relname" = 'testing'));`,
+					Expected: []sql.Row{},
+				},
+				{
+					Skip: true, // TODO: Error `table "con" does not have column "confrelid"`
+					Query: `SELECT
+					"con"."conname" AS "constraint_name",
+					"con"."nspname" AS "table_schema",
+					"con"."relname" AS "table_name" FROM (
+						SELECT 
+						1 AS "child",
+						24822 AS "confrelid",
+						'testing2_pktesting_fkey' AS "conname",
+					  'public' AS "nspname",
+						'testing2' AS "relname"
+					) "con"
+					 INNER JOIN "pg_catalog"."pg_attribute" "att"
+					 ON "att"."attrelid" = "con"."confrelid" AND "att"."attnum" = "con"."child";`,
+					Expected: []sql.Row{
+						{"testing2_pktesting_fkey", "public", "testing2"},
+					},
+				},
 			},
 		},
 	})
@@ -164,10 +187,21 @@ func TestPgAttrdef(t *testing.T) {
 	RunScripts(t, []ScriptTest{
 		{
 			Name: "pg_attrdef",
+			SetUpScript: []string{
+				`CREATE SCHEMA testschema;`,
+				`SET search_path TO testschema;`,
+				`CREATE TABLE test (pk INT primary key, v1 TEXT DEFAULT 'hey');`,
+
+				// Should show attributes for all schemas
+				`CREATE SCHEMA testschema2;`,
+				`SET search_path TO testschema2;`,
+			},
 			Assertions: []ScriptTestAssertion{
 				{
-					Query:    `SELECT * FROM "pg_catalog"."pg_attrdef";`,
-					Expected: []sql.Row{},
+					Query: `SELECT * FROM "pg_catalog"."pg_attrdef" WHERE adrelid='testschema.test'::regclass;`,
+					Expected: []sql.Row{
+						{3223322624, 2686451712, 2, nil},
+					},
 				},
 				{ // Different cases and quoted, so it fails
 					Query:       `SELECT * FROM "PG_catalog"."pg_attrdef";`,
@@ -178,8 +212,10 @@ func TestPgAttrdef(t *testing.T) {
 					ExpectedErr: "not",
 				},
 				{ // Different cases but non-quoted, so it works
-					Query:    "SELECT oid FROM PG_catalog.pg_ATTRDEF ORDER BY oid;",
-					Expected: []sql.Row{},
+					Query: "SELECT oid FROM PG_catalog.pg_ATTRDEF ORDER BY oid;",
+					Expected: []sql.Row{
+						{3223322624},
+					},
 				},
 			},
 		},

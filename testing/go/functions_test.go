@@ -851,5 +851,33 @@ func TestSystemInformationFunctions(t *testing.T) {
 				},
 			},
 		},
+		{
+			Name: "pg_get_expr",
+			SetUpScript: []string{
+				`CREATE TABLE testing (id INT primary key);`,
+				`CREATE TABLE temperature (celsius SMALLINT NOT NULL, fahrenheit SMALLINT NOT NULL GENERATED ALWAYS AS ((celsius * 9/5) + 32) STORED);`,
+			},
+			Assertions: []ScriptTestAssertion{
+				{
+					Skip:     true, // TODO: pg_attrdef.adbin not implemented
+					Query:    `SELECT pg_get_expr(adbin, adrelid) FROM pg_catalog.pg_attrdef WHERE adrelid = 'temperature'::regclass;`,
+					Cols:     []string{"pg_get_expr"},
+					Expected: []sql.Row{{"(celsius * 9 / 5 + 32)"}},
+				},
+				{
+					Query:    `SELECT indexrelid, pg_get_expr(indpred, indrelid) FROM pg_catalog.pg_index WHERE indrelid='testing'::regclass;`,
+					Cols:     []string{"indexrelid", "pg_get_expr"},
+					Expected: []sql.Row{{1611661312, nil}},
+				},
+				{
+					Query:    `SELECT indexrelid, pg_get_expr(indpred, indrelid, true) FROM pg_catalog.pg_index WHERE indrelid='testing'::regclass;`,
+					Expected: []sql.Row{{1611661312, nil}},
+				},
+				{
+					Query:    `SELECT indexrelid, pg_get_expr(indpred, indrelid, NULL) FROM pg_catalog.pg_index WHERE indrelid='testing'::regclass;`,
+					Expected: []sql.Row{{1611661312, nil}},
+				},
+			},
+		},
 	})
 }
