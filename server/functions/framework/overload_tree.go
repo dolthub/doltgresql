@@ -35,28 +35,22 @@ type FunctionOverloadTree struct {
 }
 
 type overloadParamPermutation struct {
-	paramTypes     []pgtypes.DoltgresTypeBaseID
-	variadicParams []bool
+	paramTypes []pgtypes.DoltgresTypeBaseID
+	variadic   bool
 }
 
-func newOverloadParamPermutation(paramTypes []pgtypes.DoltgresTypeBaseID, variadicParams []bool) overloadParamPermutation {
-	return overloadParamPermutation{paramTypes, variadicParams}
+func newOverloadParamPermutation(paramTypes []pgtypes.DoltgresTypeBaseID, variadic bool) overloadParamPermutation {
+	return overloadParamPermutation{paramTypes, variadic}
 }
 
 func (opp overloadParamPermutation) copy() overloadParamPermutation {
-	cpy := newOverloadParamPermutation(make([]pgtypes.DoltgresTypeBaseID, len(opp.paramTypes)), make([]bool, len(opp.variadicParams)))
+	cpy := newOverloadParamPermutation(make([]pgtypes.DoltgresTypeBaseID, len(opp.paramTypes)), opp.variadic)
 	copy(cpy.paramTypes, opp.paramTypes)
-	copy(cpy.variadicParams, opp.variadicParams)
 	return cpy
 }
 
 func (opp overloadParamPermutation) hasVariadic() bool {
-	for _, v := range opp.variadicParams {
-		if v {
-			return true
-		}
-	}
-	return false
+	return opp.variadic
 }
 
 // collectOverloadPermutations collects all parameters, starting from the caller, such that we have a collection of
@@ -70,7 +64,7 @@ func (opp overloadParamPermutation) hasVariadic() bool {
 // This would return two slices. The first would contain [int4, int4] while the second would contain [text, int8, int8].
 func (overload *FunctionOverloadTree) collectOverloadPermutations() []overloadParamPermutation {
 	var permutations []overloadParamPermutation
-	overload.traverseOverloadTree(newOverloadParamPermutation(nil, nil), &permutations)
+	overload.traverseOverloadTree(newOverloadParamPermutation(nil, false), &permutations)
 	return permutations
 }
 
@@ -82,7 +76,7 @@ func (overload *FunctionOverloadTree) traverseOverloadTree(currentPermutation ov
 	}
 	// Continue to walk the tree
 	for baseID, child := range overload.NextParam {
-		nextPermutation := newOverloadParamPermutation(append(currentPermutation.paramTypes, baseID), append(currentPermutation.variadicParams, overload.NextParamVariadic))
+		nextPermutation := newOverloadParamPermutation(append(currentPermutation.paramTypes, baseID), overload.NextParamVariadic)
 		child.traverseOverloadTree(nextPermutation, permutations)
 	}
 }

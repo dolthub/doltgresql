@@ -36,7 +36,6 @@ type CompiledFunction struct {
 	casts             []TypeCastFunction
 	originalTypes     []pgtypes.DoltgresType
 	callResolved      []pgtypes.DoltgresType
-	variadicParams    []bool
 	stashedErr        error
 }
 
