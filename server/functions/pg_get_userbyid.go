@@ -21,21 +21,20 @@ import (
 	pgtypes "github.com/dolthub/doltgresql/server/types"
 )
 
-// initColDescription registers the functions to the catalog.
-func initColDescription() {
-	framework.RegisterFunction(col_description)
+// initPgGetUserbyid registers the functions to the catalog.
+func initPgGetUserbyid() {
+	framework.RegisterFunction(pg_get_userbyid_oid)
 }
 
-// col_description represents the PostgreSQL comment information function.
-var col_description = framework.Function2{
-	Name:               "col_description",
+// pg_get_userbyid_oid represents the PostgreSQL system catalog information function.
+var pg_get_userbyid_oid = framework.Function1{
+	Name:               "pg_get_userbyid",
 	Return:             pgtypes.Text,
-	Parameters:         [2]pgtypes.DoltgresType{pgtypes.Oid, pgtypes.Int32},
+	Parameters:         [1]pgtypes.DoltgresType{pgtypes.Oid},
 	IsNonDeterministic: true,
 	Strict:             true,
-	Callable: func(ctx *sql.Context, _ [3]pgtypes.DoltgresType, val1 any, val2 any) (any, error) {
-		// TODO: When we support comments this should return the comment for a table
-		// column, which is specified by the OID of its table and its column number
-		return "", nil
+	Callable: func(ctx *sql.Context, _ [2]pgtypes.DoltgresType, val any) (any, error) {
+		// TODO: roles are not supported yet
+		return "unknown OID()", nil
 	},
 }

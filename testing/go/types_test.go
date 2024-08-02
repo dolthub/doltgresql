@@ -2333,6 +2333,26 @@ var typesTests = []ScriptTest{
 				},
 			},
 			{
+				Query: "SELECT array_append(ARRAY['abc','def'], null);",
+				Expected: []sql.Row{
+					{"{abc,def,NULL}"},
+				},
+			},
+			{
+				Skip:  true, // TODO: need fix
+				Query: "SELECT array_append(null, null);",
+				Expected: []sql.Row{
+					{"{NULL}"},
+				},
+			},
+			{
+				Skip:  true, // TODO: need fix
+				Query: "SELECT array_append(null, 'ghi');",
+				Expected: []sql.Row{
+					{"{ghi}"},
+				},
+			},
+			{
 				Query:       "SELECT array_append(1, 2);",
 				ExpectedErr: "does not exist",
 			},

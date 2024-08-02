@@ -19,23 +19,31 @@ import (
 
 	"github.com/dolthub/doltgresql/server/functions/framework"
 	pgtypes "github.com/dolthub/doltgresql/server/types"
+	"github.com/dolthub/doltgresql/server/types/oid"
 )
 
-// initColDescription registers the functions to the catalog.
-func initColDescription() {
-	framework.RegisterFunction(col_description)
+// initPgGetFunctionDef registers the functions to the catalog.
+func initPgGetFunctionDef() {
+	framework.RegisterFunction(pg_get_functiondef_oid)
 }
 
-// col_description represents the PostgreSQL comment information function.
-var col_description = framework.Function2{
-	Name:               "col_description",
+// pg_get_functiondef_oid represents the PostgreSQL system catalog information function.
+var pg_get_functiondef_oid = framework.Function1{
+	Name:               "pg_get_functiondef",
 	Return:             pgtypes.Text,
-	Parameters:         [2]pgtypes.DoltgresType{pgtypes.Oid, pgtypes.Int32},
+	Parameters:         [1]pgtypes.DoltgresType{pgtypes.Oid},
 	IsNonDeterministic: true,
 	Strict:             true,
-	Callable: func(ctx *sql.Context, _ [3]pgtypes.DoltgresType, val1 any, val2 any) (any, error) {
-		// TODO: When we support comments this should return the comment for a table
-		// column, which is specified by the OID of its table and its column number
+	Callable: func(ctx *sql.Context, _ [2]pgtypes.DoltgresType, val any) (any, error) {
+		err := oid.RunCallback(ctx, val.(uint32), oid.Callbacks{
+			Function: func(ctx *sql.Context, function oid.ItemFunction) (cont bool, err error) {
+				// TODO: sql.Function does not have sufficient information to build CREATE FUNCTION statement
+				return false, nil
+			},
+		})
+		if err != nil {
+			return "", err
+		}
 		return "", nil
 	},
 }

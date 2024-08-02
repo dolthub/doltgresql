@@ -911,3 +911,210 @@ func TestArrayFunctions(t *testing.T) {
 		},
 	})
 }
+
+func TestSchemaVisibilityInquiryFunctions(t *testing.T) {
+	RunScripts(t, []ScriptTest{
+		{
+			Skip:        true, // TODO: not supported
+			Name:        "pg_function_is_visible",
+			SetUpScript: []string{},
+			Assertions: []ScriptTestAssertion{
+				{
+					Query:    `SELECT pg_function_is_visible(1342177280);`,
+					Expected: []sql.Row{{"t"}},
+				},
+				{
+					Query:    `SELECT pg_function_is_visible(22);`, // invalid
+					Expected: []sql.Row{{"f"}},
+				},
+			},
+		},
+		{
+			Name: "pg_table_is_visible",
+			SetUpScript: []string{
+				"CREATE SCHEMA myschema;",
+				"SET search_path TO myschema;",
+				"CREATE TABLE mytable (id int, name text);",
+				"INSERT INTO mytable VALUES (1,'desk'), (2,'chair');",
+				"CREATE VIEW myview AS SELECT name FROM mytable;",
+				"CREATE SCHEMA testschema;",
+				"SET search_path TO testschema;",
+				`CREATE TABLE test_table (pk INT primary key, v1 INT UNIQUE);`,
+				"INSERT INTO test_table VALUES (1,5), (2,7);",
+				"CREATE INDEX test_index ON test_table(v1);",
+				"CREATE SEQUENCE test_seq START 39;",
+			},
+			Assertions: []ScriptTestAssertion{
+				{
+					Query: `SELECT c.oid, c.relname AS table_name, n.nspname AS table_schema FROM pg_catalog.pg_class c JOIN pg_namespace n ON n.oid = c.relnamespace WHERE n.nspname='myschema' OR n.nspname='testschema';`,
+					Expected: []sql.Row{
+						{2952790016, "myview", "myschema"},
+						{2684354560, "mytable", "myschema"},
+						{2419064832, "test_seq", "testschema"},
+						{1613758464, "test_table_pkey", "testschema"},
+						{1613758465, "test_index", "testschema"},
+						{1613758466, "v1", "testschema"},
+						{2687500288, "test_table", "testschema"},
+					},
+				},
+				{
+					Query: `SHOW search_path;`,
+					Expected: []sql.Row{
+						{"testschema"},
+					},
+				},
+				{
+					Query: `select pg_table_is_visible(1613758465);`, // index from testschema
+					Expected: []sql.Row{
+						{"t"},
+					},
+				},
+				{
+					Query: `select pg_table_is_visible(2687500288);`, // table from testschema
+					Expected: []sql.Row{
+						{"t"},
+					},
+				},
+				{
+					Query: `select pg_table_is_visible(2419064832);`, // sequence from testschema
+					Expected: []sql.Row{
+						{"t"},
+					},
+				},
+				{
+					Query: `select pg_table_is_visible(2952790016);`, // view from myschema
+					Expected: []sql.Row{
+						{"f"},
+					},
+				},
+				{
+					Query:    `SET search_path = 'myschema';`,
+					Expected: []sql.Row{},
+				},
+				{
+					Query: `SHOW search_path;`,
+					Expected: []sql.Row{
+						{"myschema"},
+					},
+				},
+				{
+					Query: `select pg_table_is_visible(2952790016);`, // view from myschema
+					Expected: []sql.Row{
+						{"t"},
+					},
+				},
+				{
+					Query: `select pg_table_is_visible(2684354560);`, // table from myschema
+					Expected: []sql.Row{
+						{"t"},
+					},
+				},
+			},
+		},
+	})
+}
+
+func TestSystemCatalogInformationFunctions(t *testing.T) {
+	RunScripts(t, []ScriptTest{
+		{
+			Name:        "pg_encoding_to_char",
+			SetUpScript: []string{},
+			Assertions: []ScriptTestAssertion{
+				{
+					Query: `SELECT pg_encoding_to_char(encoding) FROM pg_database WHERE datname = 'doltgres';`,
+					Expected: []sql.Row{
+						{"UTF8"},
+					},
+				},
+			},
+		},
+		{
+			Name:        "pg_get_functiondef",
+			SetUpScript: []string{},
+			Assertions: []ScriptTestAssertion{
+				{
+					// TODO: not supported yet
+					Query: `SELECT pg_get_functiondef(22)`,
+					Expected: []sql.Row{
+						{""},
+					},
+				},
+			},
+		},
+		{
+			Name:        "pg_get_triggerdef",
+			SetUpScript: []string{},
+			Assertions: []ScriptTestAssertion{
+				{
+					// TODO: triggers are not supported yet
+					Query: `SELECT pg_get_triggerdef(22)`,
+					Expected: []sql.Row{
+						{""},
+					},
+				},
+			},
+		},
+		{
+			Name:        "pg_get_userbyid",
+			SetUpScript: []string{},
+			Assertions: []ScriptTestAssertion{
+				{
+					// TODO: users and roles are not supported yet
+					Query: `SELECT pg_get_userbyid(22)`,
+					Expected: []sql.Row{
+						{"unknown OID()"},
+					},
+				},
+			},
+		},
+		{
+			Name: "pg_get_viewdef",
+			SetUpScript: []string{
+				"CREATE TABLE test (id int, name text)",
+				"INSERT INTO test VALUES (1,'desk'), (2,'chair')",
+				"CREATE VIEW test_view AS SELECT name FROM test",
+			},
+			Assertions: []ScriptTestAssertion{
+				{
+					Query: `SELECT c.oid, c.relname AS table_name, n.nspname AS table_schema FROM pg_catalog.pg_class c JOIN pg_namespace n ON n.oid = c.relnamespace WHERE n.nspname='myschema' OR n.nspname='public';`,
+					Expected: []sql.Row{
+						{2953838592, "test_view", "public"},
+						{2685403136, "test", "public"},
+					},
+				},
+				{
+					Query:    `select pg_get_viewdef(2953838592);`,
+					Expected: []sql.Row{{"SELECT name FROM test"}},
+				},
+			},
+		},
+	})
+}
+
+func TestArrayFunction(t *testing.T) {
+	RunScripts(t, []ScriptTest{
+		{
+			Name:        "array_to_string",
+			SetUpScript: []string{},
+			Assertions: []ScriptTestAssertion{
+				{
+					Query:    `SELECT array_to_string(ARRAY[1, 2, 3, NULL, 5], ',', '*')`,
+					Expected: []sql.Row{{"1,2,3,*,5"}},
+				},
+				{
+					Query:    `SELECT array_to_string(ARRAY[1, 2, 3, NULL, 5], ',')`,
+					Expected: []sql.Row{{"1,2,3,5"}},
+				},
+				{
+					Query:    `SELECT array_to_string(ARRAY[37.89, 1.2], '_');`,
+					Expected: []sql.Row{{"37.89_1.2"}},
+				},
+				{
+					Skip:     true, // TODO: we currently return "37_1"
+					Query:    `SELECT array_to_string(ARRAY[37.89::int4, 1.2::int4], '_');`,
+					Expected: []sql.Row{{"38_1"}},
+				},
+			},
+		},
+	})
+}
