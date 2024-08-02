@@ -796,6 +796,119 @@ func TestSystemInformationFunctions(t *testing.T) {
 				},
 			},
 		},
+		{
+			Name: "pg_get_constraintdef",
+			SetUpScript: []string{
+				`CREATE TABLE testing (pk INT primary key, v1 INT UNIQUE);`,
+				`CREATE TABLE testing2 (pk INT primary key, pktesting INT REFERENCES testing(pk), v1 TEXT);`,
+				`CREATE TABLE testing3 (pk1 INT, pk2 INT, PRIMARY KEY (pk1, pk2));`,
+				// TODO: Uncomment when check constraints supported
+				// `ALTER TABLE testing2 ADD CONSTRAINT v1_check CHECK (v1 != '');`,
+			},
+			Assertions: []ScriptTestAssertion{
+				{
+					Query:    `SELECT pg_get_constraintdef(845743985);`,
+					Cols:     []string{"pg_get_constraintdef"},
+					Expected: []sql.Row{{""}},
+				},
+				{
+					Query: `SELECT pg_get_constraintdef(oid) FROM pg_catalog.pg_constraint WHERE conrelid='testing'::regclass;`,
+					Cols:  []string{"pg_get_constraintdef"},
+					Expected: []sql.Row{
+						{"PRIMARY KEY (pk)"},
+						{"UNIQUE (v1)"},
+					},
+				},
+				{
+					Query: `SELECT pg_get_constraintdef(oid) FROM pg_catalog.pg_constraint WHERE conrelid='testing2'::regclass LIMIT 1;`,
+					Expected: []sql.Row{
+						{"PRIMARY KEY (pk)"},
+					},
+				},
+				{
+					Skip:  true, // TODO: Foreign keys don't work
+					Query: `SELECT pg_get_constraintdef(oid) FROM pg_catalog.pg_constraint WHERE conrelid='testing2'::regclass;`,
+					Expected: []sql.Row{
+						{"PRIMARY KEY (pk)"},
+						{"FOREIGN KEY (pktesting) REFERENCES testing(pk)"},
+					},
+				},
+				{
+					Query: `SELECT pg_get_constraintdef(oid) FROM pg_catalog.pg_constraint WHERE conrelid='testing3'::regclass;`,
+					Expected: []sql.Row{
+						{"PRIMARY KEY (pk1, pk2)"},
+					},
+				},
+				{
+					Query:       `SELECT pg_get_constraintdef(oid, true) FROM pg_catalog.pg_constraint WHERE conrelid='testing3'::regclass;`,
+					ExpectedErr: "pretty printing is not yet supported",
+				},
+				{
+					Query: `SELECT pg_get_constraintdef(oid, false) FROM pg_catalog.pg_constraint WHERE conrelid='testing3'::regclass;`,
+					Expected: []sql.Row{
+						{"PRIMARY KEY (pk1, pk2)"},
+					},
+				},
+			},
+		},
+		{
+			Name: "pg_get_expr",
+			SetUpScript: []string{
+				`CREATE TABLE testing (id INT primary key);`,
+				`CREATE TABLE temperature (celsius SMALLINT NOT NULL, fahrenheit SMALLINT NOT NULL GENERATED ALWAYS AS ((celsius * 9/5) + 32) STORED);`,
+			},
+			Assertions: []ScriptTestAssertion{
+				{
+					Skip:     true, // TODO: pg_attrdef.adbin not implemented
+					Query:    `SELECT pg_get_expr(adbin, adrelid) FROM pg_catalog.pg_attrdef WHERE adrelid = 'temperature'::regclass;`,
+					Cols:     []string{"pg_get_expr"},
+					Expected: []sql.Row{{"(celsius * 9 / 5 + 32)"}},
+				},
+				{
+					Query:    `SELECT indexrelid, pg_get_expr(indpred, indrelid) FROM pg_catalog.pg_index WHERE indrelid='testing'::regclass;`,
+					Cols:     []string{"indexrelid", "pg_get_expr"},
+					Expected: []sql.Row{{1611661312, nil}},
+				},
+				{
+					Query:    `SELECT indexrelid, pg_get_expr(indpred, indrelid, true) FROM pg_catalog.pg_index WHERE indrelid='testing'::regclass;`,
+					Expected: []sql.Row{{1611661312, nil}},
+				},
+				{
+					Query:    `SELECT indexrelid, pg_get_expr(indpred, indrelid, NULL) FROM pg_catalog.pg_index WHERE indrelid='testing'::regclass;`,
+					Expected: []sql.Row{{1611661312, nil}},
+				},
+			},
+		},
+	})
+}
+
+func TestArrayFunctions(t *testing.T) {
+	RunScripts(t, []ScriptTest{
+		{
+			Name: "unnest",
+			SetUpScript: []string{
+				`CREATE TABLE testing (id INT primary key, val1 smallint[]);`,
+				`INSERT INTO testing VALUES (1, '{}'), (2, '{1}'), (3, '{1, 2}');`,
+			},
+			Assertions: []ScriptTestAssertion{
+				{
+					Skip:     true, // TODO: Should return no rows instead of empty row
+					Query:    `SELECT unnest(val1) FROM testing WHERE id=1;`,
+					Cols:     []string{"unnest"},
+					Expected: []sql.Row{},
+				},
+				{
+					Query:    `SELECT unnest(val1) FROM testing WHERE id=2;`,
+					Cols:     []string{"unnest"},
+					Expected: []sql.Row{{1}},
+				},
+				{
+					Skip:     true, // TODO: Support unnesting multiple values
+					Query:    `SELECT unnest(val1) FROM testing WHERE id=3;`,
+					Expected: []sql.Row{{1}, {2}},
+				},
+			},
+		},
 	})
 }
 
