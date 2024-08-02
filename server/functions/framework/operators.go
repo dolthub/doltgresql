@@ -72,10 +72,10 @@ var (
 	unaryFunctions = map[unaryFunction]Function1{}
 	// binaryFunctions is a map from a binaryFunction signature to the associated function.
 	binaryFunctions = map[binaryFunction]Function2{}
-	// unaryAggregateOverloads is a map from an operator to an overload deducer that is the aggregate of all functions
+	// unaryAggregateOverloads is a map from an operator to an overloadParamPermutation deducer that is the aggregate of all functions
 	// for that operator.
 	unaryAggregateOverloads = map[Operator]*FunctionOverloadTree{}
-	// binaryAggregateOverloads is a map from an operator to an overload deducer that is the aggregate of all functions
+	// binaryAggregateOverloads is a map from an operator to an overloadParamPermutation deducer that is the aggregate of all functions
 	// for that operator.
 	binaryAggregateOverloads = map[Operator]*FunctionOverloadTree{}
 	// unaryAggregatePermutations contains all of the permutations for each unary operator.

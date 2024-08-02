@@ -81,7 +81,7 @@ func Initialize() {
 	compileFunctions()
 }
 
-// compileFunctions creates a CompiledFunction for each overload of each function in the catalog
+// compileFunctions creates a CompiledFunction for each overloadParamPermutation of each function in the catalog
 func compileFunctions() {
 	for funcName, overloads := range Catalog {
 		// Build the overloads
@@ -180,15 +180,8 @@ func validateFunctions() {
 	}
 }
 
-// buildOverloadTree is used by Initialize to add the given function to the base overload deducer.
+// buildOverloadTree is used by Initialize to add the given function to the base overloadParamPermutation deducer.
 func buildOverloadTree(funcName string, baseOverload *FunctionOverloadTree, functionOverload FunctionInterface) {
-	// special case: vararg functions have a single overload
-	if functionOverload.GetVarargsType() != nil {
-		baseOverload.Function = functionOverload
-		baseOverload.VarargType = functionOverload.GetVarargsType().BaseID()
-		return
-	}
-
 	// Loop through all of the parameters
 	currentOverload := baseOverload
 	for _, param := range functionOverload.GetParameters() {

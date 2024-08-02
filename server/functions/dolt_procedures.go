@@ -38,20 +38,15 @@ func initDoltProcedures() {
 			panic(err)
 		}
 
-		schema := make([]pgtypes.DoltgresType, len(procDef.Schema))
-		for i := range procDef.Schema {
-			schema[i] = pgtypes.FromGmsType(procDef.Schema[i].Type)
-		}
-		outputType := pgtypes.TextArray
-
 		funcVal := reflect.ValueOf(procDef.Function)
 		callable := callableForDoltProcedure(p, funcVal)
 
 		framework.RegisterFunction(framework.Function1{
-			Name:        procDef.Name,
-			Return:      outputType,
-			VarArgsType: pgtypes.TextType{},
-			Callable:    callable,
+			Name:           procDef.Name,
+			Return:         pgtypes.TextArray,
+			Parameters:     [1]pgtypes.DoltgresType{pgtypes.TextArray},
+			VariadicParams: [1]bool{true},
+			Callable:       callable,
 		})
 	}
 }

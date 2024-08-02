@@ -30,8 +30,24 @@ type FunctionOverloadTree struct {
 	Function FunctionInterface
 	// NextParam is the set of possible next nodes, keyed by the type of the next parameter.
 	NextParam map[pgtypes.DoltgresTypeBaseID]*FunctionOverloadTree
-	// VarargType is the type of the vararg parameter, if this overload is a vararg overload.
-	VarargType pgtypes.DoltgresTypeBaseID
+	// NextParamVariadic is whether the next parameter is variadic. The param will have a array base ID in this case.
+	NextParamVariadic bool
+}
+
+type overloadParamPermutation struct {
+	paramTypes     []pgtypes.DoltgresTypeBaseID
+	variadicParams []bool
+}
+
+func newOverloadParamPermutation(paramTypes []pgtypes.DoltgresTypeBaseID, variadicParams []bool) overloadParamPermutation {
+	return overloadParamPermutation{paramTypes, variadicParams}
+}
+
+func (opp overloadParamPermutation) copy() overloadParamPermutation {
+	cpy := newOverloadParamPermutation(make([]pgtypes.DoltgresTypeBaseID, len(opp.paramTypes)), make([]bool, len(opp.variadicParams)))
+	copy(cpy.paramTypes, opp.paramTypes)
+	copy(cpy.variadicParams, opp.variadicParams)
+	return cpy
 }
 
 // collectOverloadPermutations collects all parameters, starting from the caller, such that we have a collection of
@@ -43,23 +59,22 @@ type FunctionOverloadTree struct {
 // example(text, int8, int8)
 //
 // This would return two slices. The first would contain [int4, int4] while the second would contain [text, int8, int8].
-func (overload *FunctionOverloadTree) collectOverloadPermutations() [][]pgtypes.DoltgresTypeBaseID {
-	var permutations [][]pgtypes.DoltgresTypeBaseID
-	overload.traverseOverloadTree([]pgtypes.DoltgresTypeBaseID{}, &permutations)
+func (overload *FunctionOverloadTree) collectOverloadPermutations() []overloadParamPermutation {
+	var permutations []overloadParamPermutation
+	overload.traverseOverloadTree(newOverloadParamPermutation(nil, nil), &permutations)
 	return permutations
 }
 
 // traverseOverloadTree walks the tree of overloads, persisting any paths that resolve to a function.
-func (overload *FunctionOverloadTree) traverseOverloadTree(currentPermutation []pgtypes.DoltgresTypeBaseID, permutations *[][]pgtypes.DoltgresTypeBaseID) {
+func (overload *FunctionOverloadTree) traverseOverloadTree(currentPermutation overloadParamPermutation, permutations *[]overloadParamPermutation) {
 	// If we've hit a function, then we should persist the progress we've made so far
 	if overload.Function != nil {
-		pathCopy := make([]pgtypes.DoltgresTypeBaseID, len(currentPermutation))
-		copy(pathCopy, currentPermutation)
-		*permutations = append(*permutations, pathCopy)
+		*permutations = append(*permutations, currentPermutation.copy())
 	}
 	// Continue to walk the tree
 	for baseID, child := range overload.NextParam {
-		child.traverseOverloadTree(append(currentPermutation, baseID), permutations)
+		nextPermutation := newOverloadParamPermutation(append(currentPermutation.paramTypes, baseID), append(currentPermutation.variadicParams, overload.NextParamVariadic))
+		child.traverseOverloadTree(nextPermutation, permutations)
 	}
 }
 
