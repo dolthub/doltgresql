@@ -23,6 +23,30 @@ import (
 func TestSmokeTests(t *testing.T) {
 	RunScripts(t, []ScriptTest{
 		{
+			Name:  "TODO: DELETE ME", // TODO: DELETE ME
+			Focus: true,
+			SetUpScript: []string{
+				"CREATE TABLE test (pk BIGINT PRIMARY KEY, v1 BIGINT);",
+				"INSERT INTO test VALUES (3, 3), (1, 1), (5, 5), (2, 2);",
+				"CREATE INDEX v1_idx ON test(v1);",
+			},
+			Assertions: []ScriptTestAssertion{
+				{
+					Query: "SELECT * FROM test WHERE v1 = 2;",
+					Expected: []sql.Row{
+						{2, 2},
+					},
+				},
+				{
+					Query: "SELECT * FROM test WHERE v1 > 2;",
+					Expected: []sql.Row{
+						{3, 3},
+						{5, 5},
+					},
+				},
+			},
+		},
+		{
 			Name: "Simple statements",
 			SetUpScript: []string{
 				"CREATE TABLE test (pk BIGINT PRIMARY KEY, v1 BIGINT);",

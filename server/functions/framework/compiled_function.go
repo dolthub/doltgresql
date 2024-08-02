@@ -503,6 +503,10 @@ func (c *CompiledFunction) evalParameters(ctx *sql.Context, row sql.Row) ([]any,
 	parameters := make([]any, len(c.Parameters))
 	for i, param := range c.Parameters {
 		var err error
+		// TODO: figure out why GMS is increasing the index in GetField for indexes. This is just for the POC, and is obviously not final
+		if getField, ok := param.(*expression.GetField); ok && getField.Index() >= len(row) {
+			param = getField.WithIndex(len(row) - 1)
+		}
 		parameters[i], err = param.Eval(ctx, row)
 		if err != nil {
 			return nil, err
