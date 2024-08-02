@@ -206,13 +206,7 @@ func (c *CompiledFunction) Eval(ctx *sql.Context, row sql.Row) (interface{}, err
 		return nil, err
 	}
 
-	// Convert the parameter values into their target types
-	var targetParamTypes []pgtypes.DoltgresType
-	if c.varArgsType != pgtypes.DoltgresTypeBaseID_Invalid {
-		targetParamTypes = make([]pgtypes.DoltgresType, len(parameters))
-	} else {
-		targetParamTypes = c.callableFunc.GetParameters()
-	}
+	targetParamTypes := c.callableFunc.GetParameters()
 
 	if c.callableFunc.IsStrict() {
 		for i := range parameters {
@@ -234,7 +228,8 @@ func (c *CompiledFunction) Eval(ctx *sql.Context, row sql.Row) (interface{}, err
 			}
 		}
 	}
-	// Pass the parameters to the function
+
+	// Call the function
 	switch f := c.callableFunc.(type) {
 	case Function0:
 		return f.Callable(ctx)
@@ -305,32 +300,35 @@ func (c *CompiledFunction) resolveFunction(paramTypes []pgtypes.DoltgresType, so
 	var convertibles [][]pgtypes.DoltgresTypeBaseID
 	var casts [][]TypeCastFunction
 	for _, overload := range c.ParamPermutations {
-		if len(overload.paramTypes) == len(paramTypes) {
-			isConvertible := true
-			overloadCasts := make([]TypeCastFunction, len(overload.paramTypes))
-			// Polymorphic parameters must be gathered so that we can later verify that they all have matching base types
-			var polymorphicParameters []pgtypes.DoltgresType
-			var polymorphicTargets []pgtypes.DoltgresType
-			for i, overloadParam := range overload {
-				if paramTypes[i].BaseID() == pgtypes.DoltgresTypeBaseID_Null {
-					overloadCasts[i] = identityCast
-				} else if polymorphicType, ok := overloadParam.GetRepresentativeType().(pgtypes.DoltgresPolymorphicType); ok && polymorphicType.IsValid(paramTypes[i]) {
-					overloadCasts[i] = identityCast
-					polymorphicParameters = append(polymorphicParameters, polymorphicType)
-					polymorphicTargets = append(polymorphicTargets, paramTypes[i])
-				} else if overloadCasts[i] = GetImplicitCast(paramTypes[i].BaseID(), overloadParam); overloadCasts[i] == nil {
-					if sources[i] == Source_Constant && paramTypes[i].BaseID().GetTypeCategory() == pgtypes.TypeCategory_StringTypes {
-						overloadCasts[i] = stringLiteralCast
-					} else {
-						isConvertible = false
-						break
-					}
+		if !paramNumbersMatch(paramTypes, overload) {
+			continue
+		}
+
+		isConvertible := true
+		overloadCasts := make([]TypeCastFunction, len(overload.paramTypes))
+		// Polymorphic parameters must be gathered so that we can later verify that they all have matching base types
+		var polymorphicParameters []pgtypes.DoltgresType
+		var polymorphicTargets []pgtypes.DoltgresType
+		for i, overloadParam := range overload.paramTypes {
+			if paramTypes[i].BaseID() == pgtypes.DoltgresTypeBaseID_Null {
+				overloadCasts[i] = identityCast
+			} else if polymorphicType, ok := overloadParam.GetRepresentativeType().(pgtypes.DoltgresPolymorphicType); ok && polymorphicType.IsValid(paramTypes[i]) {
+				overloadCasts[i] = identityCast
+				polymorphicParameters = append(polymorphicParameters, polymorphicType)
+				polymorphicTargets = append(polymorphicTargets, paramTypes[i])
+			} else if overloadCasts[i] = GetImplicitCast(paramTypes[i].BaseID(), overloadParam); overloadCasts[i] == nil {
+				if sources[i] == Source_Constant && paramTypes[i].BaseID().GetTypeCategory() == pgtypes.TypeCategory_StringTypes {
+					overloadCasts[i] = stringLiteralCast
+				} else {
+					isConvertible = false
+					break
 				}
 			}
-			if isConvertible && c.checkPolymorphicTypes(polymorphicParameters, polymorphicTargets) {
-				convertibles = append(convertibles, overload)
-				casts = append(casts, overloadCasts)
-			}
+		}
+
+		if isConvertible && polymorphicTypesCompatible(polymorphicParameters, polymorphicTargets) {
+			convertibles = append(convertibles, overload.paramTypes)
+			casts = append(casts, overloadCasts)
 		}
 	}
 
@@ -419,6 +417,11 @@ func (c *CompiledFunction) resolveFunction(paramTypes []pgtypes.DoltgresType, so
 	return nil, nil, nil
 }
 
+func paramNumbersMatch(paramTypes []pgtypes.DoltgresType, overload overloadParamPermutation) bool {
+	return len(overload.paramTypes) == len(paramTypes) ||
+		(overload.hasVariadic() && len(paramTypes) >= len(overload.paramTypes)-1)
+}
+
 // resolveOperator resolves an operator according to the rules defined by Postgres.
 // https://www.postgresql.org/docs/15/typeconv-oper.html
 func (c *CompiledFunction) resolveOperator(parameters []pgtypes.DoltgresType, sources []Source) (FunctionInterface, []TypeCastFunction, error) {
@@ -448,8 +451,8 @@ func (c *CompiledFunction) resolveOperator(parameters []pgtypes.DoltgresType, so
 	return c.resolveFunction(parameters, sources)
 }
 
-// checkPolymorphicTypes looks at all polymorphic types and ensures that the types assigned to each are compatible
-func (c *CompiledFunction) checkPolymorphicTypes(paramTypes []pgtypes.DoltgresType, exprTypes []pgtypes.DoltgresType) bool {
+// polymorphicTypesCompatible returns whether any polymorphic types given are compatible with the expression types given
+func polymorphicTypesCompatible(paramTypes []pgtypes.DoltgresType, exprTypes []pgtypes.DoltgresType) bool {
 	if len(paramTypes) != len(exprTypes) {
 		return false
 	}
@@ -457,6 +460,7 @@ func (c *CompiledFunction) checkPolymorphicTypes(paramTypes []pgtypes.DoltgresTy
 	if len(paramTypes) < 2 {
 		return true
 	}
+
 	// If one of the types is anyarray, then anyelement behaves as anynonarray, so we can convert them to anynonarray
 	for _, paramType := range paramTypes {
 		if polymorphicParamType, ok := paramType.(pgtypes.DoltgresPolymorphicType); ok && polymorphicParamType.BaseID() == pgtypes.DoltgresTypeBaseID_AnyArray {
@@ -472,6 +476,7 @@ func (c *CompiledFunction) checkPolymorphicTypes(paramTypes []pgtypes.DoltgresTy
 			break
 		}
 	}
+
 	// The base type is the type that must match between all polymorphic types.
 	var baseType pgtypes.DoltgresType
 	for i, paramType := range paramTypes {

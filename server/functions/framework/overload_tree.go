@@ -50,6 +50,15 @@ func (opp overloadParamPermutation) copy() overloadParamPermutation {
 	return cpy
 }
 
+func (opp overloadParamPermutation) hasVariadic() bool {
+	for _, v := range opp.variadicParams {
+		if v {
+			return true
+		}
+	}
+	return false
+}
+
 // collectOverloadPermutations collects all parameters, starting from the caller, such that we have a collection of
 // slices containing all possible parameter combinations that lead to functions. For example, let's say we have the
 // following function overloads:
