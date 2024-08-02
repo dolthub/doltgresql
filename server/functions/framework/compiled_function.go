@@ -272,6 +272,11 @@ func (c *CompiledFunction) resolve(paramTypes []pgtypes.DoltgresType, sources []
 	}
 }
 
+type overloadMatch struct {
+	params overloadParamPermutation
+	casts  []TypeCastFunction
+}
+
 // resolveFunction resolves a function according to the rules defined by Postgres.
 // https://www.postgresql.org/docs/15/typeconv-func.html
 func (c *CompiledFunction) resolveFunction(paramTypes []pgtypes.DoltgresType, sources []Source) (FunctionInterface, []TypeCastFunction, error) {
@@ -295,9 +300,105 @@ func (c *CompiledFunction) resolveFunction(paramTypes []pgtypes.DoltgresType, so
 	// 	return c.OverloadTree.Function, casts, nil
 	// }
 
-	// First we'll discard all overloads that have a different length, or that do not have implicitly-convertible params
-	var convertibles [][]pgtypes.DoltgresTypeBaseID
-	var casts [][]TypeCastFunction
+	convertibles := c.matchingConvertibleOverloads(paramTypes, sources)
+	if len(convertibles) == 0 {
+		return nil, nil, nil
+	}
+
+	// If we've found exactly one match then we'll return that one
+	if len(convertibles) == 1 {
+		exactMatch, found := c.OverloadTree.ExactMatch(convertibles[0].params.paramTypes)
+		// should be impossible
+		if !found {
+			return nil, nil, fmt.Errorf("function %s does not exist", c.OverloadString(paramTypes))
+		}
+
+		return exactMatch, convertibles[0].casts, nil
+	}
+
+	matches := closestMatches(paramTypes, convertibles)
+	if len(matches) == 0 {
+		return nil, nil, nil
+	}
+
+	// Now check again for exactly one match
+	if len(matches) == 1 {
+		match, found := c.OverloadTree.ExactMatch(matches[0].params.paramTypes)
+		// should be impossible
+		if !found {
+			return nil, nil, fmt.Errorf("function %s does not exist", c.OverloadString(paramTypes))
+		}
+		return match, matches[0].casts, nil
+	}
+
+	preferredOverloads := findPreferredMatches(paramTypes, matches)
+	if len(preferredOverloads) == 0 {
+		return nil, nil, nil
+	}
+
+	// Check once more for exactly one match
+	if len(preferredOverloads) == 1 {
+		exactMatch, found := c.OverloadTree.ExactMatch(preferredOverloads[0].params.paramTypes)
+		// should be impossible
+		if !found {
+			return nil, nil, fmt.Errorf("function %s does not exist", c.OverloadString(paramTypes))
+		}
+		return exactMatch, preferredOverloads[0].casts, nil
+	}
+
+	// No matching function overload found
+	return nil, nil, nil
+}
+
+// findPreferredMatches returns the matches that have the most preferred types for parameters that require casts
+func findPreferredMatches(paramTypes []pgtypes.DoltgresType, matches []overloadMatch) []overloadMatch {
+	preferredCount := 0
+	var preferredOverloads []overloadMatch
+	for _, match := range matches {
+		currentPreferredCount := 0
+		for paramIdx, matchParam := range match.params.paramTypes {
+			if paramTypes[paramIdx].BaseID() != matchParam && matchParam.GetTypeCategory().IsPreferredType(matchParam) {
+				currentPreferredCount++
+			}
+		}
+		if currentPreferredCount > preferredCount {
+			preferredCount = currentPreferredCount
+			preferredOverloads = append([]overloadMatch{}, match)
+		} else if currentPreferredCount == preferredCount {
+			preferredOverloads = append(preferredOverloads, match)
+		}
+	}
+	return preferredOverloads
+}
+
+// closestMatches returns the set of matches that have the most exact matches for the param types provided, with all
+// being returned if more than one match exactly
+func closestMatches(paramTypes []pgtypes.DoltgresType, convertibles []overloadMatch) []overloadMatch {
+	matchCount := 0
+	var matches []overloadMatch
+	for _, convertible := range convertibles {
+		currentMatchCount := 0
+		for paramIdx, param := range convertible.params.paramTypes {
+			// NULL values count as exact matches, since all types accept NULL as a valid value
+			paramBaseID := paramTypes[paramIdx].BaseID()
+			if paramBaseID == param || paramBaseID == pgtypes.DoltgresTypeBaseID_Null {
+				currentMatchCount++
+			}
+		}
+		if currentMatchCount > matchCount {
+			matchCount = currentMatchCount
+			matches = append([]overloadMatch{}, convertible)
+		} else if currentMatchCount == matchCount {
+			matches = append(matches, convertible)
+		}
+	}
+	return matches
+}
+
+// matchingConvertibleOverloads returns all overloads that have a matching number of params whose types can be
+// implicitly converted to the ones provided
+func (c *CompiledFunction) matchingConvertibleOverloads(paramTypes []pgtypes.DoltgresType, sources []Source) []overloadMatch {
+	var convertibles []overloadMatch
 	for _, overload := range c.ParamPermutations {
 		if !paramNumbersMatch(paramTypes, overload) {
 			continue
@@ -326,94 +427,10 @@ func (c *CompiledFunction) resolveFunction(paramTypes []pgtypes.DoltgresType, so
 		}
 
 		if isConvertible && polymorphicTypesCompatible(polymorphicParameters, polymorphicTargets) {
-			convertibles = append(convertibles, overload.paramTypes)
-			casts = append(casts, overloadCasts)
+			convertibles = append(convertibles, overloadMatch{params: overload, casts: overloadCasts})
 		}
 	}
-
-	// If we've found exactly one match then we'll return that one
-	if len(convertibles) == 1 {
-		exactMatch, found := c.OverloadTree.ExactMatch(convertibles[0])
-		// should be impossible
-		if !found {
-			return nil, nil, fmt.Errorf("function %s does not exist", c.OverloadString(paramTypes))
-		}
-
-		return exactMatch, casts[0], nil
-	} else if len(convertibles) == 0 {
-		return nil, nil, nil
-	}
-
-	// Next we'll keep the functions that have the most exact matches, or all of them if none have exact matches
-	matchCount := 0
-	var matches [][]pgtypes.DoltgresTypeBaseID
-	var matchCasts [][]TypeCastFunction
-	for convertibleIdx, convertible := range convertibles {
-		currentMatchCount := 0
-		for paramIdx, param := range convertible {
-			// NULL values count as exact matches, since all types accept NULL as a valid value
-			paramBaseID := paramTypes[paramIdx].BaseID()
-			if paramBaseID == param || paramBaseID == pgtypes.DoltgresTypeBaseID_Null {
-				currentMatchCount++
-			}
-		}
-		if currentMatchCount > matchCount {
-			matchCount = currentMatchCount
-			matches = append([][]pgtypes.DoltgresTypeBaseID{}, convertible)
-			matchCasts = append([][]TypeCastFunction{}, casts[convertibleIdx])
-		} else if currentMatchCount == matchCount {
-			matches = append(matches, convertible)
-			matchCasts = append(matchCasts, casts[convertibleIdx])
-		}
-	}
-
-	// Now check again for exactly one match
-	if len(matches) == 1 {
-		match, found := c.OverloadTree.ExactMatch(matches[0])
-		// should be impossible
-		if !found {
-			return nil, nil, fmt.Errorf("function %s does not exist", c.OverloadString(paramTypes))
-		}
-		return match, matchCasts[0], nil
-	} else if len(matches) == 0 {
-		return nil, nil, nil
-	}
-
-	// Check for preferred types, retaining those that have the most preferred types for parameters that require casts
-	preferredCount := 0
-	var preferredOverloads [][]pgtypes.DoltgresTypeBaseID
-	var preferredCasts [][]TypeCastFunction
-	for matchIdx, match := range matches {
-		currentPreferredCount := 0
-		for paramIdx, matchParam := range match {
-			if paramTypes[paramIdx].BaseID() != matchParam && matchParam.GetTypeCategory().IsPreferredType(matchParam) {
-				currentPreferredCount++
-			}
-		}
-		if currentPreferredCount > preferredCount {
-			preferredCount = currentPreferredCount
-			preferredOverloads = append([][]pgtypes.DoltgresTypeBaseID{}, match)
-			preferredCasts = append([][]TypeCastFunction{}, matchCasts[matchIdx])
-		} else if currentPreferredCount == preferredCount {
-			preferredOverloads = append(preferredOverloads, match)
-			preferredCasts = append(preferredCasts, matchCasts[matchIdx])
-		}
-	}
-
-	// Check once more for exactly one match
-	if len(preferredOverloads) == 1 {
-		exactMatch, found := c.OverloadTree.ExactMatch(preferredOverloads[0])
-		// should be impossible
-		if !found {
-			return nil, nil, fmt.Errorf("function %s does not exist", c.OverloadString(paramTypes))
-		}
-		return exactMatch, preferredCasts[0], nil
-	} else if len(preferredOverloads) == 0 {
-		return nil, nil, nil
-	}
-
-	// No matching function overload found
-	return nil, nil, nil
+	return convertibles
 }
 
 func paramNumbersMatch(paramTypes []pgtypes.DoltgresType, overload overloadParamPermutation) bool {
