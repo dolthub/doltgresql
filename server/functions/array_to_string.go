@@ -30,7 +30,7 @@ func initArrayToString() {
 	framework.RegisterFunction(array_to_string_anyarray_text_text)
 }
 
-// array_to_string represents the PostgreSQL array function taking 2 parameters.
+// array_to_string_anyarray_text represents the PostgreSQL array function taking 2 parameters.
 var array_to_string_anyarray_text = framework.Function2{
 	Name:               "array_to_string",
 	Return:             pgtypes.Text,
@@ -44,7 +44,7 @@ var array_to_string_anyarray_text = framework.Function2{
 	},
 }
 
-// array_to_string3 represents the PostgreSQL array function taking 3 parameter.
+// array_to_string_anyarray_text_text represents the PostgreSQL array function taking 3 parameter.
 var array_to_string_anyarray_text_text = framework.Function3{
 	Name:               "array_to_string",
 	Return:             pgtypes.Text,
@@ -63,7 +63,7 @@ var array_to_string_anyarray_text_text = framework.Function3{
 	},
 }
 
-// getArrayToString takes inputs of any array, delimiter and null entry replacement. It uses the IoOutput() of the
+// getStringArrFromAnyArray takes inputs of any array, delimiter and null entry replacement. It uses the IoOutput() of the
 // base type of the AnyArray type to get string representation of array elements.
 func getStringArrFromAnyArray(ctx *sql.Context, anyArrayType pgtypes.DoltgresType, arr []any, delimiter string, nullEntry any) (string, error) {
 	baseType := anyArrayType.ToArrayType().BaseType()
