@@ -30,7 +30,7 @@ type FunctionOverloadTree struct {
 	Function FunctionInterface
 	// NextParam is the set of possible next nodes, keyed by the type of the next parameter.
 	NextParam map[pgtypes.DoltgresTypeBaseID]*FunctionOverloadTree
-	// Variadic is whether this node is variadic, which means that the
+	// Variadic is whether this node is variadic, which means that this node consumes all arguments with the last type.
 	Variadic bool
 }
 
@@ -68,7 +68,9 @@ func (overload *FunctionOverloadTree) collectOverloadPermutations() []overloadPa
 func (overload *FunctionOverloadTree) traverseOverloadTree(currentPermutation overloadParamPermutation, permutations *[]overloadParamPermutation) {
 	// If we've hit a function, then we should persist the progress we've made so far
 	if overload.Function != nil {
-		*permutations = append(*permutations, currentPermutation.copy())
+		perm := currentPermutation.copy()
+		perm.variadic = overload.Variadic
+		*permutations = append(*permutations, perm)
 	}
 	// Continue to walk the tree
 	for baseID, child := range overload.NextParam {

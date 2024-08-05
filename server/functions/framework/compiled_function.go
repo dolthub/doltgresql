@@ -282,25 +282,6 @@ type overloadMatch struct {
 // https://www.postgresql.org/docs/15/typeconv-func.html
 func (c *CompiledFunction) resolveFunction(argTypes []pgtypes.DoltgresType, sources []Source) (FunctionInterface, []TypeCastFunction, error) {
 
-	// special case: vararg funcs match a single type for all params, just need to find the right cast functions
-	// if c.varArgsType != pgtypes.DoltgresTypeBaseID_Invalid {
-	// 	casts := make([]TypeCastFunction, len(paramTypes))
-	// 	for i := range paramTypes {
-	// 		if polymorphicType, ok := c.varArgsType.GetRepresentativeType().(pgtypes.DoltgresPolymorphicType); ok && polymorphicType.IsValid(paramTypes[i]) {
-	// 			casts[i] = identityCast
-	// 		} else if casts[i] = GetImplicitCast(paramTypes[i].BaseID(), c.varArgsType); casts[i] == nil {
-	// 			if sources[i] == Source_Constant && paramTypes[i].BaseID().GetTypeCategory() == pgtypes.TypeCategory_StringTypes {
-	// 				casts[i] = stringLiteralCast
-	// 			} else {
-	// 				// can't find an appropriate cast, can't call the func
-	// 				return nil, nil, nil
-	// 			}
-	// 		}
-	// 	}
-	//
-	// 	return c.OverloadTree.Function, casts, nil
-	// }
-
 	compatibleOverloads := c.typeCompatibleOverloads(argTypes, sources)
 	if len(compatibleOverloads) == 0 {
 		return nil, nil, nil

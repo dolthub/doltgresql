@@ -193,6 +193,10 @@ func buildOverloadTree(funcName string, baseOverload *FunctionOverloadTree, func
 		currentOverload = nextOverload
 	}
 
+	if functionOverload.IsVariadic() {
+		currentOverload.Variadic = true
+	}
+
 	// This should never happen, but we'll check anyway to be safe
 	if currentOverload.Function != nil {
 		panic(fmt.Errorf("function `%s` somehow has duplicate overloads that weren't caught earlier", funcName))
