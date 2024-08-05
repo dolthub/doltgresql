@@ -28,7 +28,7 @@ import (
 // CompiledFunction is an expression that represents a fully-analyzed PostgreSQL function.
 type CompiledFunction struct {
 	Name              string
-	Parameters        []sql.Expression
+	Arguments         []sql.Expression
 	OverloadTree      *FunctionOverloadTree
 	ParamPermutations []overloadParamPermutation
 	IsOperator        bool
@@ -57,7 +57,7 @@ func newCompiledFunctionInternal(
 ) *CompiledFunction {
 	c := &CompiledFunction{
 		Name:              name,
-		Parameters:        params,
+		Arguments:         params,
 		OverloadTree:      overloads,
 		ParamPermutations: paramPermutations,
 		IsOperator:        isOperator,
@@ -124,7 +124,7 @@ func (c *CompiledFunction) Description() string {
 
 // Resolved implements the interface sql.Expression.
 func (c *CompiledFunction) Resolved() bool {
-	for _, param := range c.Parameters {
+	for _, param := range c.Arguments {
 		if !param.Resolved() {
 			return false
 		}
@@ -136,7 +136,7 @@ func (c *CompiledFunction) Resolved() bool {
 func (c *CompiledFunction) String() string {
 	sb := strings.Builder{}
 	sb.WriteString(c.Name + "(")
-	for i, param := range c.Parameters {
+	for i, param := range c.Arguments {
 		// Aliases will output the string "x as x", which is an artifact of how we build the AST, so we'll bypass it
 		if alias, ok := param.(*expression.Alias); ok {
 			param = alias.Child
@@ -199,8 +199,9 @@ func (c *CompiledFunction) Eval(ctx *sql.Context, row sql.Row) (interface{}, err
 	if c.stashedErr != nil {
 		return nil, c.stashedErr
 	}
-	// Evaluate all of the parameters.
-	parameters, err := c.evalParameters(ctx, row)
+
+	// Evaluate all of the arguments.
+	args, err := c.evalArgs(ctx, row)
 	if err != nil {
 		return nil, err
 	}
@@ -208,17 +209,17 @@ func (c *CompiledFunction) Eval(ctx *sql.Context, row sql.Row) (interface{}, err
 	targetParamTypes := c.callableFunc.GetParameters()
 
 	if c.callableFunc.IsStrict() {
-		for i := range parameters {
-			if parameters[i] == nil {
+		for i := range args {
+			if args[i] == nil {
 				return nil, nil
 			}
 		}
 	}
 
 	if len(c.casts) > 0 {
-		for i := range parameters {
+		for i := range args {
 			if c.casts[i] != nil {
-				parameters[i], err = c.casts[i](ctx, parameters[i], targetParamTypes[i])
+				args[i], err = c.casts[i](ctx, args[i], targetParamTypes[i])
 				if err != nil {
 					return nil, err
 				}
@@ -233,13 +234,13 @@ func (c *CompiledFunction) Eval(ctx *sql.Context, row sql.Row) (interface{}, err
 	case Function0:
 		return f.Callable(ctx)
 	case Function1:
-		return f.Callable(ctx, ([2]pgtypes.DoltgresType)(c.callResolved), parameters[0])
+		return f.Callable(ctx, ([2]pgtypes.DoltgresType)(c.callResolved), args[0])
 	case Function2:
-		return f.Callable(ctx, ([3]pgtypes.DoltgresType)(c.callResolved), parameters[0], parameters[1])
+		return f.Callable(ctx, ([3]pgtypes.DoltgresType)(c.callResolved), args[0], args[1])
 	case Function3:
-		return f.Callable(ctx, ([4]pgtypes.DoltgresType)(c.callResolved), parameters[0], parameters[1], parameters[2])
+		return f.Callable(ctx, ([4]pgtypes.DoltgresType)(c.callResolved), args[0], args[1], args[2])
 	case Function4:
-		return f.Callable(ctx, ([5]pgtypes.DoltgresType)(c.callResolved), parameters[0], parameters[1], parameters[2], parameters[3])
+		return f.Callable(ctx, ([5]pgtypes.DoltgresType)(c.callResolved), args[0], args[1], args[2], args[3])
 	default:
 		return nil, fmt.Errorf("unknown function type in CompiledFunction::Eval")
 	}
@@ -247,7 +248,7 @@ func (c *CompiledFunction) Eval(ctx *sql.Context, row sql.Row) (interface{}, err
 
 // Children implements the interface sql.Expression.
 func (c *CompiledFunction) Children() []sql.Expression {
-	return c.Parameters
+	return c.Arguments
 }
 
 // WithChildren implements the interface sql.Expression.
@@ -583,55 +584,55 @@ func (c *CompiledFunction) resolvePolymorphicReturnType(functionInterfaceTypes [
 	}
 }
 
-// evalParameters evaluates the parameters within an Eval call.
-func (c *CompiledFunction) evalParameters(ctx *sql.Context, row sql.Row) ([]any, error) {
-	parameters := make([]any, len(c.Parameters))
-	for i, param := range c.Parameters {
+// evalArgs evaluates the function args within an Eval call.
+func (c *CompiledFunction) evalArgs(ctx *sql.Context, row sql.Row) ([]any, error) {
+	args := make([]any, len(c.Arguments))
+	for i, arg := range c.Arguments {
 		var err error
-		parameters[i], err = param.Eval(ctx, row)
+		args[i], err = arg.Eval(ctx, row)
 		if err != nil {
 			return nil, err
 		}
 		// TODO: once we remove GMS types from all of our expressions, we can remove this step which ensures the correct type
-		if _, ok := param.Type().(pgtypes.DoltgresType); !ok {
-			switch param.Type().Type() {
+		if _, ok := arg.Type().(pgtypes.DoltgresType); !ok {
+			switch arg.Type().Type() {
 			case query.Type_INT8, query.Type_INT16:
-				parameters[i], _, _ = pgtypes.Int16.Convert(parameters[i])
+				args[i], _, _ = pgtypes.Int16.Convert(args[i])
 			case query.Type_INT24, query.Type_INT32:
-				parameters[i], _, _ = pgtypes.Int32.Convert(parameters[i])
+				args[i], _, _ = pgtypes.Int32.Convert(args[i])
 			case query.Type_INT64:
-				parameters[i], _, _ = pgtypes.Int64.Convert(parameters[i])
+				args[i], _, _ = pgtypes.Int64.Convert(args[i])
 			case query.Type_UINT8, query.Type_UINT16, query.Type_UINT24, query.Type_UINT32, query.Type_UINT64:
-				parameters[i], _, _ = pgtypes.Int64.Convert(parameters[i])
+				args[i], _, _ = pgtypes.Int64.Convert(args[i])
 			case query.Type_YEAR:
-				parameters[i], _, _ = pgtypes.Int16.Convert(parameters[i])
+				args[i], _, _ = pgtypes.Int16.Convert(args[i])
 			case query.Type_FLOAT32:
-				parameters[i], _, _ = pgtypes.Float32.Convert(parameters[i])
+				args[i], _, _ = pgtypes.Float32.Convert(args[i])
 			case query.Type_FLOAT64:
-				parameters[i], _, _ = pgtypes.Float64.Convert(parameters[i])
+				args[i], _, _ = pgtypes.Float64.Convert(args[i])
 			case query.Type_DECIMAL:
-				parameters[i], _, _ = pgtypes.Numeric.Convert(parameters[i])
+				args[i], _, _ = pgtypes.Numeric.Convert(args[i])
 			case query.Type_DATE, query.Type_DATETIME, query.Type_TIMESTAMP:
 				return nil, fmt.Errorf("need to add DoltgresType equivalents to DATETIME")
 			case query.Type_CHAR, query.Type_VARCHAR, query.Type_TEXT:
-				parameters[i], _, _ = pgtypes.Text.Convert(parameters[i])
+				args[i], _, _ = pgtypes.Text.Convert(args[i])
 			case query.Type_ENUM:
-				parameters[i], _, _ = pgtypes.Int16.Convert(parameters[i])
+				args[i], _, _ = pgtypes.Int16.Convert(args[i])
 			case query.Type_SET:
-				parameters[i], _, _ = pgtypes.Int64.Convert(parameters[i])
+				args[i], _, _ = pgtypes.Int64.Convert(args[i])
 			default:
 				return nil, fmt.Errorf("encountered a GMS type that cannot be handled")
 			}
 		}
 	}
-	return parameters, nil
+	return args, nil
 }
 
 // analyzeParameters analyzes the parameters within an Eval call.
 func (c *CompiledFunction) analyzeParameters() (originalTypes []pgtypes.DoltgresType, sources []Source, err error) {
-	originalTypes = make([]pgtypes.DoltgresType, len(c.Parameters))
-	sources = make([]Source, len(c.Parameters))
-	for i, param := range c.Parameters {
+	originalTypes = make([]pgtypes.DoltgresType, len(c.Arguments))
+	sources = make([]Source, len(c.Arguments))
+	for i, param := range c.Arguments {
 		returnType := param.Type()
 		if extendedType, ok := returnType.(pgtypes.DoltgresType); ok {
 			originalTypes[i] = extendedType
