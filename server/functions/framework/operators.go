@@ -79,9 +79,9 @@ var (
 	// for that operator.
 	binaryAggregateOverloads = map[Operator]*FunctionOverloadTree{}
 	// unaryAggregatePermutations contains all of the permutations for each unary operator.
-	unaryAggregatePermutations = map[Operator][][]pgtypes.DoltgresTypeBaseID{}
+	unaryAggregatePermutations = map[Operator][]overloadParamPermutation{}
 	// unaryAggregatePermutations contains all of the permutations for each binary operator.
-	binaryAggregatePermutations = map[Operator][][]pgtypes.DoltgresTypeBaseID{}
+	binaryAggregatePermutations = map[Operator][]overloadParamPermutation{}
 )
 
 // RegisterUnaryFunction registers the given function, so that it will be usable from a running server. This should

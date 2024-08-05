@@ -56,7 +56,7 @@ type Function1 struct {
 	Name               string
 	Return             pgtypes.DoltgresType
 	Parameters         [1]pgtypes.DoltgresType
-	VariadicParams     [1]bool
+	Variadic           bool
 	IsNonDeterministic bool
 	Strict             bool
 	Callable           func(ctx *sql.Context, paramsAndReturn [2]pgtypes.DoltgresType, val1 any) (any, error)
@@ -69,7 +69,7 @@ type Function2 struct {
 	Name               string
 	Return             pgtypes.DoltgresType
 	Parameters         [2]pgtypes.DoltgresType
-	VariadicParams     [2]bool
+	Variadic           bool
 	IsNonDeterministic bool
 	Strict             bool
 	Callable           func(ctx *sql.Context, paramsAndReturn [3]pgtypes.DoltgresType, val1 any, val2 any) (any, error)
@@ -82,7 +82,7 @@ type Function3 struct {
 	Name               string
 	Return             pgtypes.DoltgresType
 	Parameters         [3]pgtypes.DoltgresType
-	VariadicParams     [3]bool
+	Variadic           bool
 	IsNonDeterministic bool
 	Strict             bool
 	Callable           func(ctx *sql.Context, paramsAndReturn [4]pgtypes.DoltgresType, val1 any, val2 any, val3 any) (any, error)
@@ -95,7 +95,7 @@ type Function4 struct {
 	Name               string
 	Return             pgtypes.DoltgresType
 	Parameters         [4]pgtypes.DoltgresType
-	VariadicParams     [4]bool
+	Variadic           bool
 	IsNonDeterministic bool
 	Strict             bool
 	Callable           func(ctx *sql.Context, paramsAndReturn [5]pgtypes.DoltgresType, val1 any, val2 any, val3 any, val4 any) (any, error)
@@ -144,7 +144,7 @@ func (f Function1) GetParameters() []pgtypes.DoltgresType { return f.Parameters[
 
 // ParamVariadic implements the FunctionInterface interface.
 func (f Function1) ParamVariadic(i int) bool {
-	return f.VariadicParams[i]
+	return i == 0 && f.Variadic
 }
 
 // GetExpectedParameterCount implements the FunctionInterface interface.
@@ -170,7 +170,7 @@ func (f Function2) GetParameters() []pgtypes.DoltgresType { return f.Parameters[
 
 // ParamVariadic implements the FunctionInterface interface.
 func (f Function2) ParamVariadic(i int) bool {
-	return f.VariadicParams[i]
+	return i == 1 && f.Variadic
 }
 
 // GetExpectedParameterCount implements the FunctionInterface interface.
@@ -196,7 +196,7 @@ func (f Function3) GetParameters() []pgtypes.DoltgresType { return f.Parameters[
 
 // ParamVariadic implements the FunctionInterface interface.
 func (f Function3) ParamVariadic(i int) bool {
-	return f.VariadicParams[i]
+	return i == 2 && f.Variadic
 }
 
 // GetExpectedParameterCount implements the FunctionInterface interface.
@@ -222,7 +222,7 @@ func (f Function4) GetParameters() []pgtypes.DoltgresType { return f.Parameters[
 
 // ParamVariadic implements the FunctionInterface interface.
 func (f Function4) ParamVariadic(i int) bool {
-	return f.VariadicParams[i]
+	return i == 3 && f.Variadic
 }
 
 // GetExpectedParameterCount implements the FunctionInterface interface.

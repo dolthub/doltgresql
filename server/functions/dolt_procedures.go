@@ -42,11 +42,11 @@ func initDoltProcedures() {
 		callable := callableForDoltProcedure(p, funcVal)
 
 		framework.RegisterFunction(framework.Function1{
-			Name:           procDef.Name,
-			Return:         pgtypes.TextArray,
-			Parameters:     [1]pgtypes.DoltgresType{pgtypes.TextArray},
-			VariadicParams: [1]bool{true},
-			Callable:       callable,
+			Name:       procDef.Name,
+			Return:     pgtypes.TextArray,
+			Parameters: [1]pgtypes.DoltgresType{pgtypes.TextArray},
+			Variadic:   true,
+			Callable:   callable,
 		})
 	}
 }
