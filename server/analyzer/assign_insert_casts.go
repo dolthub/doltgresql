@@ -28,7 +28,7 @@ import (
 )
 
 // AssignInsertCasts adds the appropriate assign casts for insertions.
-func AssignInsertCasts(ctx *sql.Context, a *analyzer.Analyzer, node sql.Node, scope *plan.Scope, selector analyzer.RuleSelector) (sql.Node, transform.TreeIdentity, error) {
+func AssignInsertCasts(ctx *sql.Context, a *analyzer.Analyzer, node sql.Node, scope *plan.Scope, selector analyzer.RuleSelector, qFlags *sql.QueryFlags) (sql.Node, transform.TreeIdentity, error) {
 	insertInto, ok := node.(*plan.InsertInto)
 	if !ok {
 		return node, transform.SameTree, nil

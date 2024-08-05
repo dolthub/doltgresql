@@ -26,7 +26,7 @@ import (
 // InsertContextRootFinalizer inserts a ContextRootFinalizer node right before the transaction commits, yet after all
 // other nodes have finished. This ensures that the ContextRootFinalizer does not overwrite any changes from its
 // children.
-func InsertContextRootFinalizer(ctx *sql.Context, a *analyzer.Analyzer, node sql.Node, scope *plan.Scope, selector analyzer.RuleSelector) (sql.Node, transform.TreeIdentity, error) {
+func InsertContextRootFinalizer(ctx *sql.Context, a *analyzer.Analyzer, node sql.Node, scope *plan.Scope, selector analyzer.RuleSelector, qFlags *sql.QueryFlags) (sql.Node, transform.TreeIdentity, error) {
 	if _, ok := node.(*pgnodes.ContextRootFinalizer); ok {
 		return node, transform.SameTree, nil
 	}

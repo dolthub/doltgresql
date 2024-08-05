@@ -673,7 +673,7 @@ func (d DoltgresQueryEngine) EnginePreparedDataCache() *gms.PreparedDataCache {
 	panic("implement me")
 }
 
-func (d DoltgresQueryEngine) QueryWithBindings(ctx *sql.Context, query string, parsed vitess.Statement, bindings map[string]*query.BindVariable) (sql.Schema, sql.RowIter, error) {
+func (d DoltgresQueryEngine) QueryWithBindings(ctx *sql.Context, query string, parsed vitess.Statement, bindings map[string]*query.BindVariable, qFlags *sql.QueryFlags) (sql.Schema, sql.RowIter, error) {
 	if len(bindings) > 0 {
 		return nil, nil, fmt.Errorf("bindings not supported")
 	}

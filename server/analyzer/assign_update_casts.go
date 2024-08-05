@@ -28,7 +28,7 @@ import (
 )
 
 // AssignUpdateCasts adds the appropriate assign casts for updates.
-func AssignUpdateCasts(ctx *sql.Context, a *analyzer.Analyzer, node sql.Node, scope *plan.Scope, selector analyzer.RuleSelector) (sql.Node, transform.TreeIdentity, error) {
+func AssignUpdateCasts(ctx *sql.Context, a *analyzer.Analyzer, node sql.Node, scope *plan.Scope, selector analyzer.RuleSelector, qFlags *sql.QueryFlags) (sql.Node, transform.TreeIdentity, error) {
 	update, ok := node.(*plan.Update)
 	if !ok {
 		return node, transform.SameTree, nil

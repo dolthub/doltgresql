@@ -22,7 +22,7 @@ import (
 )
 
 // handleDisjointedNodes handles disjointed nodes.
-func handleDisjointedNodes(ctx *sql.Context, a *analyzer.Analyzer, node plan.DisjointedChildrenNode, scope *plan.Scope, selector analyzer.RuleSelector, ruleFunc analyzer.RuleFunc) (sql.Node, transform.TreeIdentity, error) {
+func handleDisjointedNodes(ctx *sql.Context, a *analyzer.Analyzer, node plan.DisjointedChildrenNode, scope *plan.Scope, selector analyzer.RuleSelector, ruleFunc analyzer.RuleFunc, qFlags *sql.QueryFlags) (sql.Node, transform.TreeIdentity, error) {
 	// TODO: should move this to the transform package in GMS, rather than have it here
 	disjointedChildren := node.DisjointedChildren()
 	tree := transform.SameTree
@@ -30,7 +30,7 @@ func handleDisjointedNodes(ctx *sql.Context, a *analyzer.Analyzer, node plan.Dis
 	for firstIndex := range disjointedChildren {
 		newSubChildren := make([]sql.Node, len(disjointedChildren[firstIndex]))
 		for secondIndex := range disjointedChildren[firstIndex] {
-			newSubChild, newTree, err := ruleFunc(ctx, a, disjointedChildren[firstIndex][secondIndex], scope, selector)
+			newSubChild, newTree, err := ruleFunc(ctx, a, disjointedChildren[firstIndex][secondIndex], scope, selector, qFlags)
 			if err != nil {
 				return nil, transform.NewTree, err
 			}
