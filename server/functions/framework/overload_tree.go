@@ -30,8 +30,8 @@ type FunctionOverloadTree struct {
 	Function FunctionInterface
 	// NextParam is the set of possible next nodes, keyed by the type of the next parameter.
 	NextParam map[pgtypes.DoltgresTypeBaseID]*FunctionOverloadTree
-	// NextParamVariadic is whether the next parameter is variadic. The param will have a array base ID in this case.
-	NextParamVariadic bool
+	// Variadic is whether this node is variadic, which means that the
+	Variadic bool
 }
 
 type overloadParamPermutation struct {
@@ -76,26 +76,46 @@ func (overload *FunctionOverloadTree) traverseOverloadTree(currentPermutation ov
 	}
 	// Continue to walk the tree
 	for baseID, child := range overload.NextParam {
-		nextPermutation := newOverloadParamPermutation(append(currentPermutation.paramTypes, baseID), overload.NextParamVariadic)
+		nextPermutation := newOverloadParamPermutation(append(currentPermutation.paramTypes, baseID), overload.Variadic)
 		child.traverseOverloadTree(nextPermutation, permutations)
 	}
 }
 
 // ExactMatch returns the function that exactly matches the given parameter types. If no exact match is found, then
 // nil, false is returned.
-func (overload *FunctionOverloadTree) ExactMatch(paramTypes []pgtypes.DoltgresTypeBaseID) (FunctionInterface, bool) {
-	if overload.Function != nil && len(paramTypes) == 0 {
-		if len(paramTypes) == 0 {
+func (overload *FunctionOverloadTree) ExactMatch(argTypes []pgtypes.DoltgresTypeBaseID) (FunctionInterface, bool) {
+	// Base case: this is a leaf node and we're out of args
+	if overload.Function != nil && len(argTypes) == 0 {
+		if len(argTypes) == 0 {
 			return overload.Function, true
 		}
 		return nil, false
 	}
 
-	for _, paramType := range paramTypes {
-		if nextNode, ok := overload.NextParam[paramType]; ok {
-			return nextNode.ExactMatch(paramTypes[1:])
+	for _, argType := range argTypes {
+		nextNode, nextParamTypeMatches := overload.NextParam[argType]
+		if !nextParamTypeMatches {
+			continue
+		}
+
+		// If the next node is variadic, match the rest of the arguments with the current param type
+		if nextNode.Variadic {
+			// keep consuming the remainder of the varags
+			for _, varargType := range argTypes[1:] {
+				if _, ok := overload.NextParam[varargType]; !ok {
+					return nil, false
+				}
+				return nextNode.Function, true
+			}
+		}
+
+		// Otherwise, look for a match for the rest of the args
+		matchingFunc, foundMatch := nextNode.ExactMatch(argTypes[1:])
+		if foundMatch {
+			return matchingFunc, true
 		}
 	}
+
 	return nil, false
 }
 
