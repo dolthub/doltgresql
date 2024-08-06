@@ -141,7 +141,7 @@ func typeForElement(v any) (pgtypes.DoltgresTypeBaseID, error) {
 	case string:
 		return pgtypes.Text.BaseID(), nil
 	default:
-		return pgtypes.DoltgresTypeBaseID_Invalid, fmt.Errorf("dolt_procedures: unsupported type %T", x)
+		return 0, fmt.Errorf("dolt_procedures: unsupported type %T", x)
 	}
 }
 

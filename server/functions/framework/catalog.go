@@ -73,9 +73,7 @@ func Initialize() {
 	initializedFunctions = true
 
 	replaceGmsBuiltIns()
-
 	validateFunctions()
-
 	compileFunctions()
 }
 

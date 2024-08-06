@@ -52,7 +52,7 @@ func NewCompiledFunction(name string, args []sql.Expression, functions *Overload
 func newCompiledFunctionInternal(
 	name string,
 	params []sql.Expression,
-	overloads *FunctionOverloadTree,
+	overloads *Overloads,
 	paramPermutations []overloadParamPermutation,
 	isOperator bool,
 ) *CompiledFunction {
@@ -451,15 +451,13 @@ func (c *CompiledFunction) resolveOperator(argTypes []pgtypes.DoltgresType, sour
 				casts[1] = stringLiteralCast
 				baseID = argTypes[0].BaseID()
 			}
-			if exactMatch, ok := c.OverloadTree.NextParam[baseID]; ok {
-				if exactMatch, ok = exactMatch.NextParam[baseID]; ok {
-					return exactMatch.Function, overloadMatch{
-						params: overloadParamPermutation{
-							paramTypes: []pgtypes.DoltgresTypeBaseID{baseID, baseID},
-						},
-						casts: casts,
-					}, nil
-				}
+			if exactMatch, ok := c.OverloadTree.ExactMatchForBaseIds(baseID, baseID); ok {
+				return exactMatch, overloadMatch{ // TODO: fill in
+					params: overloadParamPermutation{
+						paramTypes: []pgtypes.DoltgresTypeBaseID{baseID, baseID},
+					},
+					casts: casts,
+				}, nil
 			}
 		}
 	}

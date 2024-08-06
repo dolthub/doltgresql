@@ -86,6 +86,18 @@ func keyForParamTypes(types []pgtypes.DoltgresType) string {
 	return sb.String()
 }
 
+// keyForParamTypes returns a string key that may be used in the `ExactMatches` field to find the desired overload.
+func keyForBaseIds(types []pgtypes.DoltgresTypeBaseID) string {
+	sb := strings.Builder{}
+	for i, typ := range types {
+		if i > 0 {
+			sb.WriteByte(',')
+		}
+		sb.WriteString(typ.String())
+	}
+	return sb.String()
+}
+
 func baseIdsFortypes(types []pgtypes.DoltgresType) []pgtypes.DoltgresTypeBaseID {
 	baseIds := make([]pgtypes.DoltgresTypeBaseID, len(types))
 	for i, t := range types {
@@ -137,6 +149,12 @@ func (overloads *Overloads) expandParameters(paramLength int) []overloadParamPer
 
 func (overloads *Overloads) ExactMatchForTypes(types []pgtypes.DoltgresType) (FunctionInterface, bool) {
 	key := keyForParamTypes(types)
+	fn, ok := overloads.ExactMatches[key]
+	return fn, ok
+}
+
+func (overloads *Overloads) ExactMatchForBaseIds(types ...pgtypes.DoltgresTypeBaseID) (FunctionInterface, bool) {
+	key := keyForBaseIds(types)
 	fn, ok := overloads.ExactMatches[key]
 	return fn, ok
 }
