@@ -229,7 +229,7 @@ func (c *CompiledFunction) Eval(ctx *sql.Context, row sql.Row) (interface{}, err
 
 			var newArg interface{}
 			if c.overload.casts[castIdx] != nil {
-				targetType := targetParamTypes[i]
+				targetType := targetParamTypes[castIdx]
 				if isVariadicArg {
 					targetArrayType, ok := targetType.(pgtypes.DoltgresArrayType)
 					if !ok {
