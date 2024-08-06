@@ -218,17 +218,45 @@ func (c *CompiledFunction) Eval(ctx *sql.Context, row sql.Row) (interface{}, err
 		}
 	}
 
+	var variadicArgs []interface{}
 	if len(c.overload.casts) > 0 {
-		for i := range args {
-			if c.overload.casts[i] != nil {
-				args[i], err = c.overload.casts[i](ctx, args[i], targetParamTypes[i])
+		for i, arg := range args {
+			castIdx := i
+			isVariadicArg := c.overload.params.variadic && i >= len(c.overload.params.paramTypes)-1
+			if isVariadicArg {
+				castIdx = len(c.overload.params.paramTypes) - 1
+			}
+
+			var newArg interface{}
+			if c.overload.casts[castIdx] != nil {
+				targetType := targetParamTypes[i]
+				if isVariadicArg {
+					targetArrayType, ok := targetType.(pgtypes.DoltgresArrayType)
+					if !ok {
+						return nil, fmt.Errorf("variadic arguments must be array types, was %T", targetType)
+					}
+					targetType = targetArrayType.BaseType()
+				}
+
+				newArg, err = c.overload.casts[i](ctx, arg, targetType)
 				if err != nil {
 					return nil, err
 				}
 			} else {
 				return nil, fmt.Errorf("function %s is missing the appropriate implicit cast", c.OverloadString(c.originalTypes))
 			}
+
+			if isVariadicArg {
+				variadicArgs = append(variadicArgs, newArg)
+			} else {
+				args[i] = newArg
+			}
 		}
+	}
+
+	if c.overload.params.variadic {
+		args[len(c.overload.params.paramTypes)-1] = variadicArgs
+		args = args[:len(c.overload.params.paramTypes)]
 	}
 
 	// Call the function
@@ -427,12 +455,20 @@ func (c *CompiledFunction) typeCompatibleOverloads(argTypes []pgtypes.DoltgresTy
 				overloadCasts[i] = identityCast
 				polymorphicParameters = append(polymorphicParameters, polymorphicType)
 				polymorphicTargets = append(polymorphicTargets, argTypes[i])
-			} else if overloadCasts[i] = GetImplicitCast(argTypes[i].BaseID(), paramType); overloadCasts[i] == nil {
-				if sources[i] == Source_Constant && argTypes[i].BaseID().GetTypeCategory() == pgtypes.TypeCategory_StringTypes {
+			} else {
+				isVariadicArg := overload.variadic && i >= len(overload.paramTypes)-1
+				if isVariadicArg {
+					// TODO
 					overloadCasts[i] = stringLiteralCast
 				} else {
-					isConvertible = false
-					break
+					if overloadCasts[i] = GetImplicitCast(argTypes[i].BaseID(), paramType); overloadCasts[i] == nil {
+						if sources[i] == Source_Constant && argTypes[i].BaseID().GetTypeCategory() == pgtypes.TypeCategory_StringTypes {
+							overloadCasts[i] = stringLiteralCast
+						} else {
+							isConvertible = false
+							break
+						}
+					}
 				}
 			}
 		}
