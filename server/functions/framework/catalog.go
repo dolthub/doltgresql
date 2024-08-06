@@ -193,7 +193,7 @@ func buildOverloadTree(funcName string, baseOverload *FunctionOverloadTree, func
 		currentOverload = nextOverload
 	}
 
-	if functionOverload.IsVariadic() {
+	if functionOverload.VariadicIndex() {
 		currentOverload.Variadic = true
 	}
 
