@@ -436,7 +436,7 @@ func (c *CompiledFunction) typeCompatibleOverloads(argTypes []pgtypes.DoltgresTy
 		}
 
 		isConvertible := true
-		overloadCasts := make([]TypeCastFunction, len(overload.paramTypes))
+		overloadCasts := make([]TypeCastFunction, len(argTypes))
 		// Polymorphic parameters must be gathered so that we can later verify that they all have matching base types
 		var polymorphicParameters []pgtypes.DoltgresType
 		var polymorphicTargets []pgtypes.DoltgresType
@@ -458,7 +458,7 @@ func (c *CompiledFunction) typeCompatibleOverloads(argTypes []pgtypes.DoltgresTy
 			} else {
 				isVariadicArg := overload.variadic && i >= len(overload.paramTypes)-1
 				if isVariadicArg {
-					// TODO
+					// TODO: get the base type of the array type
 					overloadCasts[i] = stringLiteralCast
 				} else {
 					if overloadCasts[i] = GetImplicitCast(argTypes[i].BaseID(), paramType); overloadCasts[i] == nil {
