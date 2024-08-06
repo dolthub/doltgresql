@@ -30,7 +30,7 @@ type CompiledFunction struct {
 	Name      string
 	Arguments []sql.Expression
 	// TODO: separate the resolution vars from the run-time vars, they aren't needed after resolution
-	OverloadTree      *FunctionOverloadTree
+	OverloadTree      *Overloads
 	ParamPermutations []overloadParamPermutation
 	IsOperator        bool
 	overload          overloadMatch
@@ -44,8 +44,8 @@ var _ sql.FunctionExpression = (*CompiledFunction)(nil)
 var _ sql.NonDeterministicExpression = (*CompiledFunction)(nil)
 
 // NewCompiledFunction returns a newly compiled function.
-func NewCompiledFunction(name string, parameters []sql.Expression, functions *FunctionOverloadTree, isOperator bool) *CompiledFunction {
-	return newCompiledFunctionInternal(name, parameters, functions, functions.collectOverloadPermutations(), isOperator)
+func NewCompiledFunction(name string, args []sql.Expression, functions *Overloads, isOperator bool) *CompiledFunction {
+	return newCompiledFunctionInternal(name, args, functions, functions.expandParameters(len(args)), isOperator)
 }
 
 // newCompiledFunctionInternal is called internally, which skips steps that may have already been processed.
@@ -218,18 +218,16 @@ func (c *CompiledFunction) Eval(ctx *sql.Context, row sql.Row) (interface{}, err
 		}
 	}
 
-	var variadicArgs []interface{}
 	if len(c.overload.casts) > 0 {
 		for i, arg := range args {
-			castIdx := i
-			isVariadicArg := c.overload.params.variadic && i >= len(c.overload.params.paramTypes)-1
+			paramIdx := i
+			isVariadicArg := c.overload.params.variadic >= 0 && i >= len(c.overload.params.paramTypes)-1
 			if isVariadicArg {
-				castIdx = len(c.overload.params.paramTypes) - 1
+				paramIdx = len(c.overload.params.paramTypes) - 1
 			}
 
-			var newArg interface{}
-			if c.overload.casts[castIdx] != nil {
-				targetType := targetParamTypes[castIdx]
+			if c.overload.casts[paramIdx] != nil {
+				targetType := targetParamTypes[paramIdx]
 				if isVariadicArg {
 					targetArrayType, ok := targetType.(pgtypes.DoltgresArrayType)
 					if !ok {
@@ -238,27 +236,17 @@ func (c *CompiledFunction) Eval(ctx *sql.Context, row sql.Row) (interface{}, err
 					targetType = targetArrayType.BaseType()
 				}
 
-				newArg, err = c.overload.casts[i](ctx, arg, targetType)
+				args[i], err = c.overload.casts[paramIdx](ctx, arg, targetType)
 				if err != nil {
 					return nil, err
 				}
 			} else {
 				return nil, fmt.Errorf("function %s is missing the appropriate implicit cast", c.OverloadString(c.originalTypes))
 			}
-
-			if isVariadicArg {
-				variadicArgs = append(variadicArgs, newArg)
-			} else {
-				args[i] = newArg
-			}
 		}
 	}
 
-	if c.overload.params.variadic {
-		args[len(c.overload.params.paramTypes)-1] = variadicArgs
-		args = args[:len(c.overload.params.paramTypes)]
-	}
-
+	args = c.overload.params.coalesceVariadicValues(args)
 	// Call the function
 	switch f := c.callableFunc.(type) {
 	case Function0:
@@ -320,13 +308,7 @@ func (c *CompiledFunction) resolveFunction(argTypes []pgtypes.DoltgresType, sour
 
 	// If we've found exactly one match then we'll return that one
 	if len(compatibleOverloads) == 1 {
-		exactMatch, found := c.OverloadTree.ExactMatch(compatibleOverloads[0].params.paramTypes)
-		// should be impossible
-		if !found {
-			return nil, overloadMatch{}, fmt.Errorf("function %s does not exist", c.OverloadString(argTypes))
-		}
-
-		return exactMatch, compatibleOverloads[0], nil
+		return compatibleOverloads[0].params.function, compatibleOverloads[0], nil
 	}
 
 	matches := exactTypeMatches(argTypes, compatibleOverloads)
@@ -336,12 +318,7 @@ func (c *CompiledFunction) resolveFunction(argTypes []pgtypes.DoltgresType, sour
 
 	// Now check again for exactly one match
 	if len(matches) == 1 {
-		match, found := c.OverloadTree.ExactMatch(matches[0].params.paramTypes)
-		// should be impossible
-		if !found {
-			return nil, overloadMatch{}, fmt.Errorf("function %s does not exist", c.OverloadString(argTypes))
-		}
-		return match, matches[0], nil
+		return matches[0].params.function, matches[0], nil
 	}
 
 	preferredOverloads := preferredTypeMatches(argTypes, compatibleOverloads)
@@ -351,12 +328,7 @@ func (c *CompiledFunction) resolveFunction(argTypes []pgtypes.DoltgresType, sour
 
 	// Check once more for exactly one match
 	if len(preferredOverloads) == 1 {
-		exactMatch, found := c.OverloadTree.ExactMatch(preferredOverloads[0].params.paramTypes)
-		// should be impossible
-		if !found {
-			return nil, overloadMatch{}, fmt.Errorf("function %s does not exist", c.OverloadString(argTypes))
-		}
-		return exactMatch, preferredOverloads[0], nil
+		return preferredOverloads[0].params.function, preferredOverloads[0], nil
 	}
 
 	// No matching function overload found
@@ -370,13 +342,7 @@ func preferredTypeMatches(argTypes []pgtypes.DoltgresType, candidates []overload
 	for _, cand := range candidates {
 		currentPreferredCount := 0
 		for argIdx := range argTypes {
-			// For variadic functions, the final param consumes all remaining arguments
-			var paramType pgtypes.DoltgresTypeBaseID
-			if argIdx >= len(cand.params.paramTypes) {
-				paramType = cand.params.paramTypes[len(cand.params.paramTypes)-1]
-			} else {
-				paramType = cand.params.paramTypes[argIdx]
-			}
+			paramType := cand.params.argTypes[argIdx]
 
 			if argTypes[argIdx].BaseID() != paramType && paramType.GetTypeCategory().IsPreferredType(paramType) {
 				currentPreferredCount++
@@ -401,13 +367,7 @@ func exactTypeMatches(argTypes []pgtypes.DoltgresType, candidates []overloadMatc
 	for _, cand := range candidates {
 		currentMatchCount := 0
 		for argIdx := range argTypes {
-			// For variadic functions, the final param consumes all remaining arguments
-			var paramType pgtypes.DoltgresTypeBaseID
-			if argIdx >= len(cand.params.paramTypes) {
-				paramType = cand.params.paramTypes[len(cand.params.paramTypes)-1]
-			} else {
-				paramType = cand.params.paramTypes[argIdx]
-			}
+			paramType := cand.params.argTypes[argIdx]
 
 			// NULL values count as exact matches, since all types accept NULL as a valid value
 			paramBaseID := argTypes[argIdx].BaseID()
@@ -441,13 +401,7 @@ func (c *CompiledFunction) typeCompatibleOverloads(argTypes []pgtypes.DoltgresTy
 		var polymorphicParameters []pgtypes.DoltgresType
 		var polymorphicTargets []pgtypes.DoltgresType
 		for i := range argTypes {
-			// For variadic functions, the final param consumes all remaining arguments
-			var paramType pgtypes.DoltgresTypeBaseID
-			if i >= len(overload.paramTypes) {
-				paramType = overload.paramTypes[len(overload.paramTypes)-1]
-			} else {
-				paramType = overload.paramTypes[i]
-			}
+			paramType := overload.argTypes[i]
 
 			if argTypes[i].BaseID() == pgtypes.DoltgresTypeBaseID_Null {
 				overloadCasts[i] = identityCast
@@ -456,18 +410,12 @@ func (c *CompiledFunction) typeCompatibleOverloads(argTypes []pgtypes.DoltgresTy
 				polymorphicParameters = append(polymorphicParameters, polymorphicType)
 				polymorphicTargets = append(polymorphicTargets, argTypes[i])
 			} else {
-				isVariadicArg := overload.variadic && i >= len(overload.paramTypes)-1
-				if isVariadicArg {
-					// TODO: get the base type of the array type
-					overloadCasts[i] = stringLiteralCast
-				} else {
-					if overloadCasts[i] = GetImplicitCast(argTypes[i].BaseID(), paramType); overloadCasts[i] == nil {
-						if sources[i] == Source_Constant && argTypes[i].BaseID().GetTypeCategory() == pgtypes.TypeCategory_StringTypes {
-							overloadCasts[i] = stringLiteralCast
-						} else {
-							isConvertible = false
-							break
-						}
+				if overloadCasts[i] = GetImplicitCast(argTypes[i].BaseID(), paramType); overloadCasts[i] == nil {
+					if sources[i] == Source_Constant && argTypes[i].BaseID().GetTypeCategory() == pgtypes.TypeCategory_StringTypes {
+						overloadCasts[i] = stringLiteralCast
+					} else {
+						isConvertible = false
+						break
 					}
 				}
 			}
@@ -482,7 +430,7 @@ func (c *CompiledFunction) typeCompatibleOverloads(argTypes []pgtypes.DoltgresTy
 
 func paramNumbersMatch(paramTypes []pgtypes.DoltgresType, overload overloadParamPermutation) bool {
 	return len(overload.paramTypes) == len(paramTypes) ||
-		(overload.variadic && len(paramTypes) >= len(overload.paramTypes)-1)
+		(overload.variadic >= 0 && len(paramTypes) >= len(overload.paramTypes)-1)
 }
 
 // resolveOperator resolves an operator according to the rules defined by Postgres.

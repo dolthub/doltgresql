@@ -20,28 +20,29 @@ import (
 	pgtypes "github.com/dolthub/doltgresql/server/types"
 )
 
-// FunctionOverloadTree is a type tree used to resolve which overload of a given function to apply to a given
-// parameter list. Each node in the tree represents a parameter in the function signature, and the leaves represent
-// the function to call. Every node points to the set of possible next nodes via the type of the next
-// expected parameter.
-//
-// Vararg functions are a special case: they are represented as a single node with the VarargType field set to the type
-// of every argument.
-type FunctionOverloadTree struct {
-	// Function is the function to call for this overload (nil for non-leaf nodes)
-	Function FunctionInterface
-	// NextParam is the set of possible next nodes, keyed by the type of the next parameter.
-	NextParam map[pgtypes.DoltgresTypeBaseID]*FunctionOverloadTree
-	// Variadic is whether this node is variadic, which means that this node consumes all arguments with the last type.
-	Variadic bool
-}
-
 // TODO: doc
-type extendedParamPermutation struct {
+type overloadParamPermutation struct {
 	function   FunctionInterface
 	paramTypes []pgtypes.DoltgresTypeBaseID
 	argTypes   []pgtypes.DoltgresTypeBaseID
 	variadic   int
+}
+
+// coalesceVariadicValues returns a new value set that coalesces all variadic parameters into their actual array parameter.
+func (p *overloadParamPermutation) coalesceVariadicValues(values []any) []any {
+	// If the overload is not variadic, then we don't need to do anything
+	if p.variadic < 0 {
+		return values
+	}
+	coalescedValues := make([]any, len(p.paramTypes))
+	copy(coalescedValues, values[:p.variadic])
+	// This is for the values after the variadic index, so we need to add 1. We subtract the extended parameter count
+	// from the actual parameter count to obtain the additional parameter count.
+	firstValueAfterVariadic := p.variadic + 1 + (len(p.argTypes) - len(p.paramTypes))
+	copy(coalescedValues[p.variadic+1:], values[firstValueAfterVariadic:])
+	// We can just take the relevant slice out of the given values to represent our array, since all arrays use []any
+	coalescedValues[p.variadic] = values[p.variadic:firstValueAfterVariadic]
+	return coalescedValues
 }
 
 // Overloads represents the collection of all valid overloads for a function.
@@ -88,8 +89,8 @@ func baseIdsFortypes(types []pgtypes.DoltgresType) []pgtypes.DoltgresTypeBaseID 
 
 // expandParameters returns all of the permutations, while using the given parameter length to determine the length
 // target for variadic functions.
-func (overloads *Overloads) expandParameters(paramLength int) []extendedParamPermutation {
-	extended := make([]extendedParamPermutation, len(overloads.Permutations))
+func (overloads *Overloads) expandParameters(paramLength int) []overloadParamPermutation {
+	extended := make([]overloadParamPermutation, len(overloads.Permutations))
 	for permutationIdx, permutation := range overloads.Permutations {
 		params := baseIdsFortypes(permutation.GetParameters())
 		variadicIndex := -1 // permutation.VariadicIndex()
@@ -109,14 +110,14 @@ func (overloads *Overloads) expandParameters(paramLength int) []extendedParamPer
 			for variadicParamIdx := 0; variadicParamIdx < 1+(paramLength-len(params)); variadicParamIdx++ {
 				extendedParams[variadicParamIdx+variadicIndex] = variadicBaseType
 			}
-			extended[permutationIdx] = extendedParamPermutation{
+			extended[permutationIdx] = overloadParamPermutation{
 				function:   permutation,
 				paramTypes: params,
 				argTypes:   params,
 				variadic:   variadicIndex,
 			}
 		} else {
-			extended[permutationIdx] = extendedParamPermutation{
+			extended[permutationIdx] = overloadParamPermutation{
 				function:   permutation,
 				paramTypes: params,
 				argTypes:   params,
@@ -127,96 +128,8 @@ func (overloads *Overloads) expandParameters(paramLength int) []extendedParamPer
 	return extended
 }
 
-type overloadParamPermutation struct {
-	paramTypes []pgtypes.DoltgresTypeBaseID
-	variadic   bool
-}
-
-func newOverloadParamPermutation(paramTypes []pgtypes.DoltgresTypeBaseID, variadic bool) overloadParamPermutation {
-	return overloadParamPermutation{paramTypes, variadic}
-}
-
-func (opp overloadParamPermutation) copy() overloadParamPermutation {
-	cpy := newOverloadParamPermutation(make([]pgtypes.DoltgresTypeBaseID, len(opp.paramTypes)), opp.variadic)
-	copy(cpy.paramTypes, opp.paramTypes)
-	return cpy
-}
-
-// collectOverloadPermutations collects all parameters, starting from the caller, such that we have a collection of
-// slices containing all possible parameter combinations that lead to functions. For example, let's say we have the
-// following function overloads:
-//
-// example(int4, int4)
-//
-// example(text, int8, int8)
-//
-// This would return two slices. The first would contain [int4, int4] while the second would contain [text, int8, int8].
-func (overload *FunctionOverloadTree) collectOverloadPermutations() []overloadParamPermutation {
-	var permutations []overloadParamPermutation
-	overload.traverseOverloadTree(newOverloadParamPermutation(nil, false), &permutations)
-	return permutations
-}
-
-// traverseOverloadTree walks the tree of overloads, persisting any paths that resolve to a function.
-func (overload *FunctionOverloadTree) traverseOverloadTree(currentPermutation overloadParamPermutation, permutations *[]overloadParamPermutation) {
-	// If we've hit a function, then we should persist the progress we've made so far
-	if overload.Function != nil {
-		perm := currentPermutation.copy()
-		perm.variadic = overload.Variadic
-		*permutations = append(*permutations, perm)
-	}
-	// Continue to walk the tree
-	for baseID, child := range overload.NextParam {
-		nextPermutation := newOverloadParamPermutation(append(currentPermutation.paramTypes, baseID), overload.Variadic)
-		child.traverseOverloadTree(nextPermutation, permutations)
-	}
-}
-
-// ExactMatch returns the function that exactly matches the given parameter types. If no exact match is found, then
-// nil, false is returned.
-func (overload *FunctionOverloadTree) ExactMatch(argTypes []pgtypes.DoltgresTypeBaseID) (FunctionInterface, bool) {
-	// Base case: this is a leaf node and we're out of args
-	if overload.Function != nil && len(argTypes) == 0 {
-		if len(argTypes) == 0 {
-			return overload.Function, true
-		}
-		return nil, false
-	}
-
-	for _, argType := range argTypes {
-		nextNode, nextParamTypeMatches := overload.NextParam[argType]
-		if !nextParamTypeMatches {
-			continue
-		}
-
-		// If the next node is variadic, match the rest of the arguments with the current param type
-		if nextNode.Variadic {
-			// keep consuming the remainder of the varags
-			for _, varargType := range argTypes[1:] {
-				if _, ok := overload.NextParam[varargType]; !ok {
-					return nil, false
-				}
-				return nextNode.Function, true
-			}
-		}
-
-		// Otherwise, look for a match for the rest of the args
-		matchingFunc, foundMatch := nextNode.ExactMatch(argTypes[1:])
-		if foundMatch {
-			return matchingFunc, true
-		}
-	}
-
-	return nil, false
-}
-
-// ExactMatchForTypes returns the function that exactly matches the given parameter types. If no exact match is found, then
-// nil, false is returned.
-func (overload *FunctionOverloadTree) ExactMatchForTypes(paramTypes []pgtypes.DoltgresType) (FunctionInterface, bool) {
-	baseTypeIds := make([]pgtypes.DoltgresTypeBaseID, len(paramTypes))
-	for i, paramType := range paramTypes {
-		baseTypeIds[i] = paramType.BaseID()
-	}
-
-	return overload.ExactMatch(baseTypeIds)
+func (overloads *Overloads) ExactMatchForTypes(types []pgtypes.DoltgresType) (FunctionInterface, bool) {
+	key := keyForParamTypes(types)
+	fn, ok := overloads.ExactMatches[key]
+	return fn, ok
 }
