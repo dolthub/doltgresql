@@ -20,45 +20,19 @@ import (
 	pgtypes "github.com/dolthub/doltgresql/server/types"
 )
 
-// TODO: doc
-type overloadParamPermutation struct {
-	function   FunctionInterface
-	paramTypes []pgtypes.DoltgresTypeBaseID
-	argTypes   []pgtypes.DoltgresTypeBaseID
-	variadic   int
-}
-
-// coalesceVariadicValues returns a new value set that coalesces all variadic parameters into their actual array parameter.
-func (p *overloadParamPermutation) coalesceVariadicValues(values []any) []any {
-	// If the overload is not variadic, then we don't need to do anything
-	if p.variadic < 0 {
-		return values
-	}
-	coalescedValues := make([]any, len(p.paramTypes))
-	copy(coalescedValues, values[:p.variadic])
-	// This is for the values after the variadic index, so we need to add 1. We subtract the extended parameter count
-	// from the actual parameter count to obtain the additional parameter count.
-	firstValueAfterVariadic := p.variadic + 1 + (len(p.argTypes) - len(p.paramTypes))
-	copy(coalescedValues[p.variadic+1:], values[firstValueAfterVariadic:])
-	// We can just take the relevant slice out of the given values to represent our array, since all arrays use []any
-	coalescedValues[p.variadic] = values[p.variadic:firstValueAfterVariadic]
-	return coalescedValues
-}
-
-// Overloads represents the collection of all valid overloads for a function.
+// Overloads is the collection of all overloads for a given function name.
 type Overloads struct {
-	// ExactMatches uses the concatenation of the parameters' base IDs to construct an exact lookup key for each
-	// overload. This is only used by a specific step during function resolution, and therefore does not apply to other
-	// steps (such as resolving the `unknown` type, etc.).
-	ExactMatches map[string]FunctionInterface
-	// Permutations contains all of the valid permutations for the function.
-	Permutations []FunctionInterface
+	// ByParamType contains all overloads for the function with this name, indexed by the key of the parameter types.
+	ByParamType map[string]FunctionInterface
+	// AllOverloads contains all overloads for the function with this name
+	AllOverloads []FunctionInterface
 }
 
+// NewOverloads creates a new empty overload collection.
 func NewOverloads() *Overloads {
 	return &Overloads{
-		ExactMatches: make(map[string]FunctionInterface),
-		Permutations: make([]FunctionInterface, 0),
+		ByParamType:  make(map[string]FunctionInterface),
+		AllOverloads: make([]FunctionInterface, 0),
 	}
 }
 
@@ -66,11 +40,11 @@ func NewOverloads() *Overloads {
 // overload.
 func (overloads *Overloads) Add(function FunctionInterface) bool {
 	key := keyForParamTypes(function.GetParameters())
-	if _, ok := overloads.ExactMatches[key]; ok {
+	if _, ok := overloads.ByParamType[key]; ok {
 		return false
 	}
-	overloads.ExactMatches[key] = function
-	overloads.Permutations = append(overloads.Permutations, function)
+	overloads.ByParamType[key] = function
+	overloads.AllOverloads = append(overloads.AllOverloads, function)
 	return true
 }
 
@@ -106,37 +80,36 @@ func baseIdsFortypes(types []pgtypes.DoltgresType) []pgtypes.DoltgresTypeBaseID 
 	return baseIds
 }
 
-// expandParameters returns all of the permutations, while using the given parameter length to determine the length
-// target for variadic functions.
-func (overloads *Overloads) expandParameters(paramLength int) []overloadParamPermutation {
-	extended := make([]overloadParamPermutation, len(overloads.Permutations))
-	for permutationIdx, permutation := range overloads.Permutations {
+// overloadsForParams returns all overloads matching the number of params given, without regard for types.
+func (overloads *Overloads) overloadsForParams(numParams int) []functionOverload {
+	extended := make([]functionOverload, len(overloads.AllOverloads))
+	for permutationIdx, permutation := range overloads.AllOverloads {
 		params := baseIdsFortypes(permutation.GetParameters())
 		variadicIndex := permutation.VariadicIndex()
-		if variadicIndex >= 0 && len(params) <= paramLength {
+		if variadicIndex >= 0 && len(params) <= numParams {
 			// Variadic functions may only match when the function is declared with parameters that are fewer or equal
 			// to our target length. If our target length is less, then we cannot expand, so we do not treat it as
 			// variadic.
-			extendedParams := make([]pgtypes.DoltgresTypeBaseID, paramLength)
+			extendedParams := make([]pgtypes.DoltgresTypeBaseID, numParams)
 			copy(extendedParams, params[:variadicIndex])
 			// This is copying the parameters after the variadic index, so we need to add 1. We subtract the declared
 			// parameter count from the target parameter count to obtain the additional parameter count.
-			firstValueAfterVariadic := variadicIndex + 1 + (paramLength - len(params))
+			firstValueAfterVariadic := variadicIndex + 1 + (numParams - len(params))
 			copy(extendedParams[firstValueAfterVariadic:], params[variadicIndex+1:])
 			// ToArrayType immediately followed by BaseType is a way to get the base type without having to cast.
 			// For array types, ToArrayType causes them to return themselves.
 			variadicBaseType := permutation.GetParameters()[variadicIndex].ToArrayType().BaseType().BaseID()
-			for variadicParamIdx := 0; variadicParamIdx < 1+(paramLength-len(params)); variadicParamIdx++ {
+			for variadicParamIdx := 0; variadicParamIdx < 1+(numParams-len(params)); variadicParamIdx++ {
 				extendedParams[variadicParamIdx+variadicIndex] = variadicBaseType
 			}
-			extended[permutationIdx] = overloadParamPermutation{
+			extended[permutationIdx] = functionOverload{
 				function:   permutation,
 				paramTypes: params,
 				argTypes:   extendedParams,
 				variadic:   variadicIndex,
 			}
 		} else {
-			extended[permutationIdx] = overloadParamPermutation{
+			extended[permutationIdx] = functionOverload{
 				function:   permutation,
 				paramTypes: params,
 				argTypes:   params,
@@ -147,14 +120,49 @@ func (overloads *Overloads) expandParameters(paramLength int) []overloadParamPer
 	return extended
 }
 
+// ExactMatchForTypes returns the function that exactly matches the given parameter types, or nil if no overload with
+// those types exists.
 func (overloads *Overloads) ExactMatchForTypes(types []pgtypes.DoltgresType) (FunctionInterface, bool) {
 	key := keyForParamTypes(types)
-	fn, ok := overloads.ExactMatches[key]
+	fn, ok := overloads.ByParamType[key]
 	return fn, ok
 }
 
+// ExactMatchForBaseIds returns the function that exactly matches the given parameter types, or nil if no overload with
+// those types exists.
 func (overloads *Overloads) ExactMatchForBaseIds(types ...pgtypes.DoltgresTypeBaseID) (FunctionInterface, bool) {
 	key := keyForBaseIds(types)
-	fn, ok := overloads.ExactMatches[key]
+	fn, ok := overloads.ByParamType[key]
 	return fn, ok
+}
+
+// functionOverload is a single overload of a given function, used during evaluation to match the arguments provided
+// to a particular overload.
+type functionOverload struct {
+	// function is the actual function to call to invoke this overload
+	function FunctionInterface
+	// paramTypes is the base IDs of the parameters that the function expects
+	paramTypes []pgtypes.DoltgresTypeBaseID
+	// argTypes is the base IDs of the parameters that the function expects, extended to match the number of args
+	// provided in the case of a variadic function.
+	argTypes []pgtypes.DoltgresTypeBaseID
+	// variadic is the index of the variadic parameter, or -1 if the function is not variadic
+	variadic int
+}
+
+// coalesceVariadicValues returns a new value set that coalesces all variadic parameters into an array parameter
+func (p *functionOverload) coalesceVariadicValues(returnValues []any) []any {
+	// If the overload is not variadic, then we don't need to do anything
+	if p.variadic < 0 {
+		return returnValues
+	}
+	coalescedValues := make([]any, len(p.paramTypes))
+	copy(coalescedValues, returnValues[:p.variadic])
+	// This is for the values after the variadic index, so we need to add 1. We subtract the extended parameter count
+	// from the actual parameter count to obtain the additional parameter count.
+	firstValueAfterVariadic := p.variadic + 1 + (len(p.argTypes) - len(p.paramTypes))
+	copy(coalescedValues[p.variadic+1:], returnValues[firstValueAfterVariadic:])
+	// We can just take the relevant slice out of the given values to represent our array, since all arrays use []any
+	coalescedValues[p.variadic] = returnValues[p.variadic:firstValueAfterVariadic]
+	return coalescedValues
 }

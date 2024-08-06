@@ -72,16 +72,16 @@ var (
 	unaryFunctions = map[unaryFunction]Function1{}
 	// binaryFunctions is a map from a binaryFunction signature to the associated function.
 	binaryFunctions = map[binaryFunction]Function2{}
-	// unaryAggregateOverloads is a map from an operator to an overloadParamPermutation deducer that is the aggregate of all functions
+	// unaryAggregateOverloads is a map from an operator to an functionOverload deducer that is the aggregate of all functions
 	// for that operator.
 	unaryAggregateOverloads = map[Operator]*Overloads{}
-	// binaryAggregateOverloads is a map from an operator to an overloadParamPermutation deducer that is the aggregate of all functions
+	// binaryAggregateOverloads is a map from an operator to an functionOverload deducer that is the aggregate of all functions
 	// for that operator.
 	binaryAggregateOverloads = map[Operator]*Overloads{}
 	// unaryAggregatePermutations contains all of the permutations for each unary operator.
-	unaryAggregatePermutations = map[Operator][]overloadParamPermutation{}
+	unaryAggregatePermutations = map[Operator][]functionOverload{}
 	// unaryAggregatePermutations contains all of the permutations for each binary operator.
-	binaryAggregatePermutations = map[Operator][]overloadParamPermutation{}
+	binaryAggregatePermutations = map[Operator][]functionOverload{}
 )
 
 // RegisterUnaryFunction registers the given function, so that it will be usable from a running server. This should

@@ -77,12 +77,14 @@ func Initialize() {
 	compileFunctions()
 }
 
-// compileFunctions creates a CompiledFunction for each overloadParamPermutation of each function in the catalog
+// compileFunctions creates a CompiledFunction for each functionOverload of each function in the catalog
 func compileFunctions() {
 	for funcName, overloads := range Catalog {
 		overloadTree := NewOverloads()
 		for _, functionOverload := range overloads {
-			overloadTree.Add(functionOverload)
+			if !overloadTree.Add(functionOverload) {
+				panic(fmt.Errorf("duplicate function overload for `%s`", funcName))
+			}
 		}
 
 		// Store the compiled function into the engine's built-in functions
@@ -107,7 +109,9 @@ func compileFunctions() {
 			overloads = NewOverloads()
 			unaryAggregateOverloads[signature.Operator] = overloads
 		}
-		overloads.Add(functionOverload)
+		if !overloads.Add(functionOverload) {
+			panic(fmt.Errorf("duplicate unary function for `%s`", signature.Operator.String()))
+		}
 	}
 
 	for signature, functionOverload := range binaryFunctions {
@@ -116,15 +120,17 @@ func compileFunctions() {
 			overloads = NewOverloads()
 			binaryAggregateOverloads[signature.Operator] = overloads
 		}
-		overloads.Add(functionOverload)
+		if !overloads.Add(functionOverload) {
+			panic(fmt.Errorf("duplicate binary function for `%s`", signature.Operator.String()))
+		}
 	}
 
 	// Add all permutations for the unary and binary operators
 	for operator, overload := range unaryAggregateOverloads {
-		unaryAggregatePermutations[operator] = overload.expandParameters(1)
+		unaryAggregatePermutations[operator] = overload.overloadsForParams(1)
 	}
 	for operator, overload := range binaryAggregateOverloads {
-		binaryAggregatePermutations[operator] = overload.expandParameters(2)
+		binaryAggregatePermutations[operator] = overload.overloadsForParams(2)
 	}
 }
 

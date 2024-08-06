@@ -31,7 +31,7 @@ type CompiledFunction struct {
 	Arguments []sql.Expression
 	// TODO: separate the resolution vars from the run-time vars, they aren't needed after resolution
 	OverloadTree      *Overloads
-	ParamPermutations []overloadParamPermutation
+	ParamPermutations []functionOverload
 	IsOperator        bool
 	overload          overloadMatch
 	callableFunc      FunctionInterface
@@ -45,7 +45,7 @@ var _ sql.NonDeterministicExpression = (*CompiledFunction)(nil)
 
 // NewCompiledFunction returns a newly compiled function.
 func NewCompiledFunction(name string, args []sql.Expression, functions *Overloads, isOperator bool) *CompiledFunction {
-	return newCompiledFunctionInternal(name, args, functions, functions.expandParameters(len(args)), isOperator)
+	return newCompiledFunctionInternal(name, args, functions, functions.overloadsForParams(len(args)), isOperator)
 }
 
 // newCompiledFunctionInternal is called internally, which skips steps that may have already been processed.
@@ -53,7 +53,7 @@ func newCompiledFunctionInternal(
 	name string,
 	params []sql.Expression,
 	overloads *Overloads,
-	paramPermutations []overloadParamPermutation,
+	paramPermutations []functionOverload,
 	isOperator bool,
 ) *CompiledFunction {
 	c := &CompiledFunction{
@@ -275,7 +275,7 @@ func (c *CompiledFunction) WithChildren(children ...sql.Expression) (sql.Express
 	return newCompiledFunctionInternal(c.Name, children, c.OverloadTree, c.ParamPermutations, c.IsOperator), nil
 }
 
-// resolve returns an overloadParamPermutation that either matches the given parameters exactly, or is a viable match after casting.
+// resolve returns an functionOverload that either matches the given parameters exactly, or is a viable match after casting.
 // Returns a nil FunctionOverloadTree if a viable match is not found.
 func (c *CompiledFunction) resolve(argTypes []pgtypes.DoltgresType, sources []Source) (FunctionInterface, overloadMatch, error) {
 	// First check for an exact match
@@ -294,7 +294,7 @@ func (c *CompiledFunction) resolve(argTypes []pgtypes.DoltgresType, sources []So
 }
 
 type overloadMatch struct {
-	params overloadParamPermutation
+	params functionOverload
 	casts  []TypeCastFunction
 }
 
@@ -429,7 +429,7 @@ func (c *CompiledFunction) typeCompatibleOverloads(argTypes []pgtypes.DoltgresTy
 	return compatible
 }
 
-func paramNumbersMatch(paramTypes []pgtypes.DoltgresType, overload overloadParamPermutation) bool {
+func paramNumbersMatch(paramTypes []pgtypes.DoltgresType, overload functionOverload) bool {
 	return len(overload.paramTypes) == len(paramTypes) ||
 		(overload.variadic >= 0 && len(paramTypes) >= len(overload.paramTypes)-1)
 }
@@ -454,7 +454,7 @@ func (c *CompiledFunction) resolveOperator(argTypes []pgtypes.DoltgresType, sour
 			}
 			if exactMatch, ok := c.OverloadTree.ExactMatchForBaseIds(baseID, baseID); ok {
 				return exactMatch, overloadMatch{ // TODO: fill in
-					params: overloadParamPermutation{
+					params: functionOverload{
 						paramTypes: []pgtypes.DoltgresTypeBaseID{baseID, baseID},
 					},
 					casts: casts,
