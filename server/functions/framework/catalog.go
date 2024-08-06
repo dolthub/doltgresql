@@ -18,8 +18,6 @@ import (
 	"fmt"
 	"strings"
 
-	pgtypes "github.com/dolthub/doltgresql/server/types"
-
 	"github.com/dolthub/go-mysql-server/sql"
 	"github.com/dolthub/go-mysql-server/sql/expression/function"
 )
@@ -84,10 +82,9 @@ func Initialize() {
 // compileFunctions creates a CompiledFunction for each overloadParamPermutation of each function in the catalog
 func compileFunctions() {
 	for funcName, overloads := range Catalog {
-		// Build the overloads
-		overloadTree := &FunctionOverloadTree{NextParam: make(map[pgtypes.DoltgresTypeBaseID]*FunctionOverloadTree)}
+		overloadTree := NewOverloads()
 		for _, functionOverload := range overloads {
-			buildOverloadTree(funcName, overloadTree, functionOverload)
+			overloadTree.Add(functionOverload)
 		}
 
 		// Store the compiled function into the engine's built-in functions
@@ -107,29 +104,29 @@ func compileFunctions() {
 	// special rules, so it's far more efficient to reuse it for operators. Operators are also a special case since they
 	// all have different names, while standard overload deducers work on a function-name basis.
 	for signature, functionOverload := range unaryFunctions {
-		overloadTree, ok := unaryAggregateOverloads[signature.Operator]
+		overloads, ok := unaryAggregateOverloads[signature.Operator]
 		if !ok {
-			overloadTree = &FunctionOverloadTree{NextParam: make(map[pgtypes.DoltgresTypeBaseID]*FunctionOverloadTree)}
-			unaryAggregateOverloads[signature.Operator] = overloadTree
+			overloads = NewOverloads()
+			unaryAggregateOverloads[signature.Operator] = overloads
 		}
-		buildOverloadTree("internal_unary_aggregate_function", overloadTree, functionOverload)
+		overloads.Add(functionOverload)
 	}
 
 	for signature, functionOverload := range binaryFunctions {
-		overloadTree, ok := binaryAggregateOverloads[signature.Operator]
+		overloads, ok := binaryAggregateOverloads[signature.Operator]
 		if !ok {
-			overloadTree = &FunctionOverloadTree{NextParam: make(map[pgtypes.DoltgresTypeBaseID]*FunctionOverloadTree)}
-			binaryAggregateOverloads[signature.Operator] = overloadTree
+			overloads = NewOverloads()
+			binaryAggregateOverloads[signature.Operator] = overloads
 		}
-		buildOverloadTree("internal_binary_aggregate_function", overloadTree, functionOverload)
+		overloads.Add(functionOverload)
 	}
 
 	// Add all permutations for the unary and binary operators
-	for operator, baseOverload := range unaryAggregateOverloads {
-		unaryAggregatePermutations[operator] = baseOverload.collectOverloadPermutations()
+	for operator, overload := range unaryAggregateOverloads {
+		unaryAggregatePermutations[operator] = overload.expandParameters(1)
 	}
-	for operator, baseOverload := range binaryAggregateOverloads {
-		binaryAggregatePermutations[operator] = baseOverload.collectOverloadPermutations()
+	for operator, overload := range binaryAggregateOverloads {
+		binaryAggregatePermutations[operator] = overload.expandParameters(2)
 	}
 }
 
@@ -178,28 +175,4 @@ func validateFunctions() {
 			}
 		}
 	}
-}
-
-// buildOverloadTree is used by Initialize to add the given function to the base overloadParamPermutation deducer.
-func buildOverloadTree(funcName string, baseOverload *FunctionOverloadTree, functionOverload FunctionInterface) {
-	// Loop through all of the parameters
-	currentOverload := baseOverload
-	for _, param := range functionOverload.GetParameters() {
-		nextOverload := currentOverload.NextParam[param.BaseID()]
-		if nextOverload == nil {
-			nextOverload = &FunctionOverloadTree{NextParam: make(map[pgtypes.DoltgresTypeBaseID]*FunctionOverloadTree)}
-			currentOverload.NextParam[param.BaseID()] = nextOverload
-		}
-		currentOverload = nextOverload
-	}
-
-	if functionOverload.VariadicIndex() {
-		currentOverload.Variadic = true
-	}
-
-	// This should never happen, but we'll check anyway to be safe
-	if currentOverload.Function != nil {
-		panic(fmt.Errorf("function `%s` somehow has duplicate overloads that weren't caught earlier", funcName))
-	}
-	currentOverload.Function = functionOverload
 }

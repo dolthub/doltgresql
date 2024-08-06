@@ -55,6 +55,13 @@ type Overloads struct {
 	Permutations []FunctionInterface
 }
 
+func NewOverloads() *Overloads {
+	return &Overloads{
+		ExactMatches: make(map[string]FunctionInterface),
+		Permutations: make([]FunctionInterface, 0),
+	}
+}
+
 // Add adds the given function to the overload collection. Returns false if the new overload collides with an existing
 // overload.
 func (overloads *Overloads) Add(function FunctionInterface) bool {
