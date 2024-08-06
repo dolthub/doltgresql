@@ -112,7 +112,7 @@ func (overloads *Overloads) expandParameters(paramLength int) []overloadParamPer
 	extended := make([]overloadParamPermutation, len(overloads.Permutations))
 	for permutationIdx, permutation := range overloads.Permutations {
 		params := baseIdsFortypes(permutation.GetParameters())
-		variadicIndex := -1 // permutation.VariadicIndex()
+		variadicIndex := permutation.VariadicIndex()
 		if variadicIndex >= 0 && len(params) <= paramLength {
 			// Variadic functions may only match when the function is declared with parameters that are fewer or equal
 			// to our target length. If our target length is less, then we cannot expand, so we do not treat it as
@@ -132,7 +132,7 @@ func (overloads *Overloads) expandParameters(paramLength int) []overloadParamPer
 			extended[permutationIdx] = overloadParamPermutation{
 				function:   permutation,
 				paramTypes: params,
-				argTypes:   params,
+				argTypes:   extendedParams,
 				variadic:   variadicIndex,
 			}
 		} else {

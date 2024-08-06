@@ -247,6 +247,7 @@ func (c *CompiledFunction) Eval(ctx *sql.Context, row sql.Row) (interface{}, err
 	}
 
 	args = c.overload.params.coalesceVariadicValues(args)
+
 	// Call the function
 	switch f := c.callableFunc.(type) {
 	case Function0:
