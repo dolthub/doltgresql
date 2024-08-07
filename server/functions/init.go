@@ -82,7 +82,6 @@ func Init() {
 	initPgGetViewDef()
 	initPgPostmasterStartTime()
 	initPgTableIsVisible()
-	//initPgTotalRelationSize() // TODO: need regclass type serialization support
 	initPi()
 	initPower()
 	initRadians()
