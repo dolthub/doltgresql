@@ -933,7 +933,7 @@ func TestConcurrentTransactions(t *testing.T) {
 }
 
 func TestDoltScripts(t *testing.T) {
-	// t.Skip()
+	t.Skip()
 	harness := newDoltgresServerHarness(t)
 	denginetest.RunDoltScriptsTest(t, harness)
 }

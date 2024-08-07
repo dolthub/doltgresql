@@ -21,7 +21,7 @@ import (
 // IntermediateFunction is an expression that represents an incomplete PostgreSQL function.
 type IntermediateFunction struct {
 	Functions    *Overloads
-	AllOverloads []functionOverload
+	AllOverloads []Overload
 	IsOperator   bool
 }
 

@@ -77,7 +77,7 @@ func Initialize() {
 	compileFunctions()
 }
 
-// compileFunctions creates a CompiledFunction for each functionOverload of each function in the catalog
+// compileFunctions creates a CompiledFunction for each Overload of each function in the catalog
 func compileFunctions() {
 	for funcName, overloads := range Catalog {
 		overloadTree := NewOverloads()

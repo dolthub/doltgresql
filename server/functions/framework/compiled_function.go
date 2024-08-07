@@ -39,6 +39,23 @@ type CompiledFunction struct {
 var _ sql.FunctionExpression = (*CompiledFunction)(nil)
 var _ sql.NonDeterministicExpression = (*CompiledFunction)(nil)
 
+// overloadMatch is the result of a successful overload resolution, containing the types of the parameters as well
+// as the type cast functions required to convert every argument to its appropriate parameter type
+type overloadMatch struct {
+	params Overload
+	casts  []TypeCastFunction
+}
+
+// Valid returns whether this overload is valid (has a callable function)
+func (o overloadMatch) Valid() bool {
+	return o.params.function != nil
+}
+
+// Function returns the function for this overload
+func (o overloadMatch) Function() FunctionInterface {
+	return o.params.function
+}
+
 // NewCompiledFunction returns a newly compiled function.
 func NewCompiledFunction(name string, args []sql.Expression, functions *Overloads, isOperator bool) *CompiledFunction {
 	return newCompiledFunctionInternal(name, args, functions, functions.overloadsForParams(len(args)), isOperator)
@@ -49,7 +66,7 @@ func newCompiledFunctionInternal(
 	name string,
 	args []sql.Expression,
 	overloads *Overloads,
-	fnOverloads []functionOverload,
+	fnOverloads []Overload,
 	isOperator bool,
 ) *CompiledFunction {
 	c := &CompiledFunction{
@@ -276,7 +293,7 @@ func (c CompiledFunction) WithChildren(children ...sql.Expression) (sql.Expressi
 // Returns an empty overloadMatch if a viable match is not found.
 func (c *CompiledFunction) resolve(
 	overloads *Overloads,
-	fnOverloads []functionOverload,
+	fnOverloads []Overload,
 	argTypes []pgtypes.DoltgresType,
 	sources []Source,
 ) (overloadMatch, error) {
@@ -287,7 +304,7 @@ func (c *CompiledFunction) resolve(
 		// empty overload match for an exact match
 		baseTypes := baseIdsFortypes(argTypes)
 		return overloadMatch{
-			params: functionOverload{
+			params: Overload{
 				function:   exactMatch,
 				paramTypes: baseTypes,
 				argTypes:   baseTypes,
@@ -304,26 +321,9 @@ func (c *CompiledFunction) resolve(
 	}
 }
 
-// overloadMatch is the result of a successful overload resolution, containing the types of the parameters as well
-// as the type cast functions required to convert every argument to its appropriate parameter type
-type overloadMatch struct {
-	params functionOverload
-	casts  []TypeCastFunction
-}
-
-// Valid returns whether this overload is valid (has a callable function)
-func (o overloadMatch) Valid() bool {
-	return o.params.function != nil
-}
-
-// Function returns the function for this overload
-func (o overloadMatch) Function() FunctionInterface {
-	return o.params.function
-}
-
 // resolveFunction resolves a function according to the rules defined by Postgres.
 // https://www.postgresql.org/docs/15/typeconv-func.html
-func (c *CompiledFunction) resolveFunction(argTypes []pgtypes.DoltgresType, overloads []functionOverload, sources []Source) (overloadMatch, error) {
+func (c *CompiledFunction) resolveFunction(argTypes []pgtypes.DoltgresType, overloads []Overload, sources []Source) (overloadMatch, error) {
 
 	compatibleOverloads := c.typeCompatibleOverloads(overloads, argTypes, sources)
 	if len(compatibleOverloads) == 0 {
@@ -412,7 +412,7 @@ func exactTypeMatches(argTypes []pgtypes.DoltgresType, candidates []overloadMatc
 // typeCompatibleOverloads returns all overloads that have a matching number of params whose types can be
 // implicitly converted to the ones provided. This is the set of all possible overloads that could be used with the
 // param types provided.
-func (c *CompiledFunction) typeCompatibleOverloads(fnOverloads []functionOverload, argTypes []pgtypes.DoltgresType, sources []Source) []overloadMatch {
+func (c *CompiledFunction) typeCompatibleOverloads(fnOverloads []Overload, argTypes []pgtypes.DoltgresType, sources []Source) []overloadMatch {
 	var compatible []overloadMatch
 	for _, overload := range fnOverloads {
 		isConvertible := true
@@ -468,7 +468,7 @@ func (c *CompiledFunction) resolveOperator(argTypes []pgtypes.DoltgresType, over
 			}
 			if exactMatch, ok := overloads.ExactMatchForBaseIds(baseID, baseID); ok {
 				return overloadMatch{
-					params: functionOverload{
+					params: Overload{
 						function:   exactMatch,
 						paramTypes: []pgtypes.DoltgresTypeBaseID{baseID, baseID},
 						argTypes:   []pgtypes.DoltgresTypeBaseID{baseID, baseID},

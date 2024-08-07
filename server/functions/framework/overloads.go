@@ -81,8 +81,8 @@ func baseIdsFortypes(types []pgtypes.DoltgresType) []pgtypes.DoltgresTypeBaseID 
 }
 
 // overloadsForParams returns all overloads matching the number of params given, without regard for types.
-func (overloads *Overloads) overloadsForParams(numParams int) []functionOverload {
-	extended := make([]functionOverload, len(overloads.AllOverloads))
+func (overloads *Overloads) overloadsForParams(numParams int) []Overload {
+	extended := make([]Overload, len(overloads.AllOverloads))
 	for permutationIdx, permutation := range overloads.AllOverloads {
 		params := baseIdsFortypes(permutation.GetParameters())
 		variadicIndex := permutation.VariadicIndex()
@@ -102,14 +102,14 @@ func (overloads *Overloads) overloadsForParams(numParams int) []functionOverload
 			for variadicParamIdx := 0; variadicParamIdx < 1+(numParams-len(params)); variadicParamIdx++ {
 				extendedParams[variadicParamIdx+variadicIndex] = variadicBaseType
 			}
-			extended[permutationIdx] = functionOverload{
+			extended[permutationIdx] = Overload{
 				function:   permutation,
 				paramTypes: params,
 				argTypes:   extendedParams,
 				variadic:   variadicIndex,
 			}
 		} else {
-			extended[permutationIdx] = functionOverload{
+			extended[permutationIdx] = Overload{
 				function:   permutation,
 				paramTypes: params,
 				argTypes:   params,
@@ -136,9 +136,9 @@ func (overloads *Overloads) ExactMatchForBaseIds(types ...pgtypes.DoltgresTypeBa
 	return fn, ok
 }
 
-// functionOverload is a single overload of a given function, used during evaluation to match the arguments provided
+// Overload is a single overload of a given function, used during evaluation to match the arguments provided
 // to a particular overload.
-type functionOverload struct {
+type Overload struct {
 	// function is the actual function to call to invoke this overload
 	function FunctionInterface
 	// paramTypes is the base IDs of the parameters that the function expects
@@ -151,7 +151,7 @@ type functionOverload struct {
 }
 
 // coalesceVariadicValues returns a new value set that coalesces all variadic parameters into an array parameter
-func (p *functionOverload) coalesceVariadicValues(returnValues []any) []any {
+func (p *Overload) coalesceVariadicValues(returnValues []any) []any {
 	// If the overload is not variadic, then we don't need to do anything
 	if p.variadic < 0 {
 		return returnValues
