@@ -65,7 +65,6 @@ const (
 	DoltgresTypeBaseID_Regprocedure
 	DoltgresTypeBaseID_Regrole
 	DoltgresTypeBaseID_Regtype
-	DoltgresTypeBaseID_Composite
 )
 
 const (

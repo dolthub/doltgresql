@@ -284,13 +284,17 @@ func (c *CompiledFunction) Children() []sql.Expression {
 }
 
 // WithChildren implements the interface sql.Expression.
-func (c CompiledFunction) WithChildren(children ...sql.Expression) (sql.Expression, error) {
-	c.Arguments = children
-	return &c, nil
+func (c *CompiledFunction) WithChildren(children ...sql.Expression) (sql.Expression, error) {
+	if len(children) != len(c.Arguments) {
+		return nil, sql.ErrInvalidChildrenNumber.New(len(children), len(c.Arguments))
+	}
+	nc := *c
+	nc.Arguments = children
+	return &nc, nil
 }
 
 // resolve returns an overloadMatch that either matches the given parameters exactly, or is a viable match after casting.
-// Returns an empty overloadMatch if a viable match is not found.
+// Returns an invalid overloadMatch if a viable match is not found.
 func (c *CompiledFunction) resolve(
 	overloads *Overloads,
 	fnOverloads []Overload,
@@ -321,10 +325,45 @@ func (c *CompiledFunction) resolve(
 	}
 }
 
+// resolveOperator resolves an operator according to the rules defined by Postgres.
+// https://www.postgresql.org/docs/15/typeconv-oper.html
+func (c *CompiledFunction) resolveOperator(argTypes []pgtypes.DoltgresType, overloads *Overloads, sources []Source) (overloadMatch, error) {
+	// Binary operators treat string literals as the other type, so we'll account for that here to see if we can find an
+	// "exact" match.
+	if len(argTypes) == 2 {
+		leftStringLiteral := sources[0] == Source_Constant && argTypes[0].BaseID().GetTypeCategory() == pgtypes.TypeCategory_StringTypes
+		rightStringLiteral := sources[1] == Source_Constant && argTypes[1].BaseID().GetTypeCategory() == pgtypes.TypeCategory_StringTypes
+		if (leftStringLiteral && !rightStringLiteral) || (!leftStringLiteral && rightStringLiteral) {
+			var baseID pgtypes.DoltgresTypeBaseID
+			casts := []TypeCastFunction{identityCast, identityCast}
+			if leftStringLiteral {
+				casts[0] = stringLiteralCast
+				baseID = argTypes[1].BaseID()
+			} else {
+				casts[1] = stringLiteralCast
+				baseID = argTypes[0].BaseID()
+			}
+			if exactMatch, ok := overloads.ExactMatchForBaseIds(baseID, baseID); ok {
+				return overloadMatch{
+					params: Overload{
+						function:   exactMatch,
+						paramTypes: []pgtypes.DoltgresTypeBaseID{baseID, baseID},
+						argTypes:   []pgtypes.DoltgresTypeBaseID{baseID, baseID},
+						variadic:   -1,
+					},
+					casts: casts,
+				}, nil
+			}
+		}
+	}
+	// From this point, the steps appear to be the same for functions and operators
+	return c.resolveFunction(argTypes, nil, sources)
+}
+
 // resolveFunction resolves a function according to the rules defined by Postgres.
 // https://www.postgresql.org/docs/15/typeconv-func.html
 func (c *CompiledFunction) resolveFunction(argTypes []pgtypes.DoltgresType, overloads []Overload, sources []Source) (overloadMatch, error) {
-
+	// First we'll discard all overloads that do not have implicitly-convertible param types
 	compatibleOverloads := c.typeCompatibleOverloads(overloads, argTypes, sources)
 	if len(compatibleOverloads) == 0 {
 		return overloadMatch{}, nil
@@ -335,20 +374,16 @@ func (c *CompiledFunction) resolveFunction(argTypes []pgtypes.DoltgresType, over
 		return compatibleOverloads[0], nil
 	}
 
-	matches := exactTypeMatches(argTypes, compatibleOverloads)
-	if len(matches) == 0 {
-		return overloadMatch{}, nil
-	}
+	// Next rank the candidates by the number of params whose types match exactly
+	matches := closestTypeMatches(argTypes, compatibleOverloads)
 
 	// Now check again for exactly one match
 	if len(matches) == 1 {
 		return matches[0], nil
 	}
 
+	// Finally rank the candidates by the number of params with a preferred type conversion available
 	preferredOverloads := preferredTypeMatches(argTypes, compatibleOverloads)
-	if len(preferredOverloads) == 0 {
-		return overloadMatch{}, nil
-	}
 
 	// Check once more for exactly one match
 	if len(preferredOverloads) == 1 {
@@ -357,56 +392,6 @@ func (c *CompiledFunction) resolveFunction(argTypes []pgtypes.DoltgresType, over
 
 	// No matching function overload found
 	return overloadMatch{}, nil
-}
-
-// preferredTypeMatches returns the overload candidates that have the most preferred types for args that require casts.
-func preferredTypeMatches(argTypes []pgtypes.DoltgresType, candidates []overloadMatch) []overloadMatch {
-	preferredCount := 0
-	var preferredOverloads []overloadMatch
-	for _, cand := range candidates {
-		currentPreferredCount := 0
-		for argIdx := range argTypes {
-			paramType := cand.params.argTypes[argIdx]
-
-			if argTypes[argIdx].BaseID() != paramType && paramType.GetTypeCategory().IsPreferredType(paramType) {
-				currentPreferredCount++
-			}
-		}
-
-		if currentPreferredCount > preferredCount {
-			preferredCount = currentPreferredCount
-			preferredOverloads = append([]overloadMatch{}, cand)
-		} else if currentPreferredCount == preferredCount {
-			preferredOverloads = append(preferredOverloads, cand)
-		}
-	}
-	return preferredOverloads
-}
-
-// exactTypeMatches returns the set of overload candidates that have the most exact type matches for the arg types
-// provided.
-func exactTypeMatches(argTypes []pgtypes.DoltgresType, candidates []overloadMatch) []overloadMatch {
-	matchCount := 0
-	var matches []overloadMatch
-	for _, cand := range candidates {
-		currentMatchCount := 0
-		for argIdx := range argTypes {
-			paramType := cand.params.argTypes[argIdx]
-
-			// NULL values count as exact matches, since all types accept NULL as a valid value
-			paramBaseID := argTypes[argIdx].BaseID()
-			if paramBaseID == paramType || paramBaseID == pgtypes.DoltgresTypeBaseID_Null {
-				currentMatchCount++
-			}
-		}
-		if currentMatchCount > matchCount {
-			matchCount = currentMatchCount
-			matches = append([]overloadMatch{}, cand)
-		} else if currentMatchCount == matchCount {
-			matches = append(matches, cand)
-		}
-	}
-	return matches
 }
 
 // typeCompatibleOverloads returns all overloads that have a matching number of params whose types can be
@@ -448,39 +433,54 @@ func (c *CompiledFunction) typeCompatibleOverloads(fnOverloads []Overload, argTy
 	return compatible
 }
 
-// resolveOperator resolves an operator according to the rules defined by Postgres.
-// https://www.postgresql.org/docs/15/typeconv-oper.html
-func (c *CompiledFunction) resolveOperator(argTypes []pgtypes.DoltgresType, overloads *Overloads, sources []Source) (overloadMatch, error) {
-	// Binary operators treat string literals as the other type, so we'll account for that here to see if we can find an
-	// "exact" match.
-	if len(argTypes) == 2 {
-		leftStringLiteral := sources[0] == Source_Constant && argTypes[0].BaseID().GetTypeCategory() == pgtypes.TypeCategory_StringTypes
-		rightStringLiteral := sources[1] == Source_Constant && argTypes[1].BaseID().GetTypeCategory() == pgtypes.TypeCategory_StringTypes
-		if (leftStringLiteral && !rightStringLiteral) || (!leftStringLiteral && rightStringLiteral) {
-			var baseID pgtypes.DoltgresTypeBaseID
-			casts := []TypeCastFunction{identityCast, identityCast}
-			if leftStringLiteral {
-				casts[0] = stringLiteralCast
-				baseID = argTypes[1].BaseID()
-			} else {
-				casts[1] = stringLiteralCast
-				baseID = argTypes[0].BaseID()
-			}
-			if exactMatch, ok := overloads.ExactMatchForBaseIds(baseID, baseID); ok {
-				return overloadMatch{
-					params: Overload{
-						function:   exactMatch,
-						paramTypes: []pgtypes.DoltgresTypeBaseID{baseID, baseID},
-						argTypes:   []pgtypes.DoltgresTypeBaseID{baseID, baseID},
-						variadic:   -1,
-					},
-					casts: casts,
-				}, nil
+// closestTypeMatches returns the set of overload candidates that have the most exact type matches for the arg types
+// provided.
+func closestTypeMatches(argTypes []pgtypes.DoltgresType, candidates []overloadMatch) []overloadMatch {
+	matchCount := 0
+	var matches []overloadMatch
+	for _, cand := range candidates {
+		currentMatchCount := 0
+		for argIdx := range argTypes {
+			paramType := cand.params.argTypes[argIdx]
+
+			// NULL values count as exact matches, since all types accept NULL as a valid value
+			paramBaseID := argTypes[argIdx].BaseID()
+			if paramBaseID == paramType || paramBaseID == pgtypes.DoltgresTypeBaseID_Null {
+				currentMatchCount++
 			}
 		}
+		if currentMatchCount > matchCount {
+			matchCount = currentMatchCount
+			matches = append([]overloadMatch{}, cand)
+		} else if currentMatchCount == matchCount {
+			matches = append(matches, cand)
+		}
 	}
-	// From this point, the steps appear to be the same for functions and operators
-	return c.resolveFunction(argTypes, nil, sources)
+	return matches
+}
+
+// preferredTypeMatches returns the overload candidates that have the most preferred types for args that require casts.
+func preferredTypeMatches(argTypes []pgtypes.DoltgresType, candidates []overloadMatch) []overloadMatch {
+	preferredCount := 0
+	var preferredOverloads []overloadMatch
+	for _, cand := range candidates {
+		currentPreferredCount := 0
+		for argIdx := range argTypes {
+			paramType := cand.params.argTypes[argIdx]
+
+			if argTypes[argIdx].BaseID() != paramType && paramType.GetTypeCategory().IsPreferredType(paramType) {
+				currentPreferredCount++
+			}
+		}
+
+		if currentPreferredCount > preferredCount {
+			preferredCount = currentPreferredCount
+			preferredOverloads = append([]overloadMatch{}, cand)
+		} else if currentPreferredCount == preferredCount {
+			preferredOverloads = append(preferredOverloads, cand)
+		}
+	}
+	return preferredOverloads
 }
 
 // polymorphicTypesCompatible returns whether any polymorphic types given are compatible with the expression types given

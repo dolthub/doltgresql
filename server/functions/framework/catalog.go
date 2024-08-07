@@ -22,13 +22,6 @@ import (
 	"github.com/dolthub/go-mysql-server/sql/expression/function"
 )
 
-// Function is a name, along with a collection of functions, that represent a single PostgreSQL function with all of its
-// overloads.
-type Function struct {
-	Name      string
-	Overloads []any
-}
-
 // Catalog contains all of the PostgreSQL functions.
 var Catalog = map[string][]FunctionInterface{}
 
@@ -77,7 +70,7 @@ func Initialize() {
 	compileFunctions()
 }
 
-// compileFunctions creates a CompiledFunction for each Overload of each function in the catalog
+// compileFunctions creates a CompiledFunction for each overload of each function in the catalog
 func compileFunctions() {
 	for funcName, overloads := range Catalog {
 		overloadTree := NewOverloads()

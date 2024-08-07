@@ -82,10 +82,10 @@ func baseIdsFortypes(types []pgtypes.DoltgresType) []pgtypes.DoltgresTypeBaseID 
 
 // overloadsForParams returns all overloads matching the number of params given, without regard for types.
 func (overloads *Overloads) overloadsForParams(numParams int) []Overload {
-	extended := make([]Overload, len(overloads.AllOverloads))
-	for permutationIdx, permutation := range overloads.AllOverloads {
-		params := baseIdsFortypes(permutation.GetParameters())
-		variadicIndex := permutation.VariadicIndex()
+	results := make([]Overload, 0, len(overloads.AllOverloads))
+	for _, overload := range overloads.AllOverloads {
+		params := baseIdsFortypes(overload.GetParameters())
+		variadicIndex := overload.VariadicIndex()
 		if variadicIndex >= 0 && len(params) <= numParams {
 			// Variadic functions may only match when the function is declared with parameters that are fewer or equal
 			// to our target length. If our target length is less, then we cannot expand, so we do not treat it as
@@ -98,26 +98,26 @@ func (overloads *Overloads) overloadsForParams(numParams int) []Overload {
 			copy(extendedParams[firstValueAfterVariadic:], params[variadicIndex+1:])
 			// ToArrayType immediately followed by BaseType is a way to get the base type without having to cast.
 			// For array types, ToArrayType causes them to return themselves.
-			variadicBaseType := permutation.GetParameters()[variadicIndex].ToArrayType().BaseType().BaseID()
+			variadicBaseType := overload.GetParameters()[variadicIndex].ToArrayType().BaseType().BaseID()
 			for variadicParamIdx := 0; variadicParamIdx < 1+(numParams-len(params)); variadicParamIdx++ {
 				extendedParams[variadicParamIdx+variadicIndex] = variadicBaseType
 			}
-			extended[permutationIdx] = Overload{
-				function:   permutation,
+			results = append(results, Overload{
+				function:   overload,
 				paramTypes: params,
 				argTypes:   extendedParams,
 				variadic:   variadicIndex,
-			}
-		} else {
-			extended[permutationIdx] = Overload{
-				function:   permutation,
+			})
+		} else if len(params) == numParams {
+			results = append(results, Overload{
+				function:   overload,
 				paramTypes: params,
 				argTypes:   params,
 				variadic:   -1,
-			}
+			})
 		}
 	}
-	return extended
+	return results
 }
 
 // ExactMatchForTypes returns the function that exactly matches the given parameter types, or nil if no overload with
