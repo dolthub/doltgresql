@@ -274,6 +274,92 @@ var typesTests = []ScriptTest{
 		},
 	},
 	{
+		Name: "Internal char type",
+		SetUpScript: []string{
+			`CREATE TABLE t_char (id INTEGER primary key, v1 "char");`,
+			`INSERT INTO t_char VALUES (1, 'abcde'), (2, 'vwxyz'), (3, '123'), (4, ''), (5, NULL);`,
+		},
+		Assertions: []ScriptTestAssertion{
+			{
+				Query: "SELECT * FROM t_char ORDER BY id;",
+				Expected: []sql.Row{
+					{1, "a"},
+					{2, "v"},
+					{3, "1"},
+					{4, ""},
+					{5, nil},
+				},
+			},
+			{
+				Query:       "INSERT INTO t_char VALUES (6, 7);",
+				ExpectedErr: `target is of type "char" but expression is of type integer`,
+			},
+			{
+				Query:       "INSERT INTO t_char VALUES (6, true);",
+				ExpectedErr: `target is of type "char" but expression is of type boolean`,
+			},
+			{
+				Query:       `SELECT true::"char";`,
+				ExpectedErr: "cast from `boolean` to `\"char\"` does not exist",
+			},
+			{
+				Query:       `SELECT 100000::bigint::"char";`,
+				ExpectedErr: "cast from `bigint` to `\"char\"` does not exist",
+			},
+			{
+				Query: `SELECT 'abc'::"char", '123'::varchar(3)::"char";`,
+				Expected: []sql.Row{
+					{"a", "1"},
+				},
+			},
+			{
+				Query: `SELECT 'def'::name::"char";`,
+				Expected: []sql.Row{
+					{"d"},
+				},
+			},
+			{
+				Query: `SELECT id, v1::int, v1::text FROM t_char;`,
+				Expected: []sql.Row{
+					{1, 97, "a"},
+					{2, 118, "v"},
+					{3, 1, "1"},
+					{4, 0, ""},
+					{5, nil, nil},
+				},
+			},
+			{
+				Query:    "INSERT INTO t_char VALUES (6, '0123456789012345678901234567890123456789012345678901234567890123456789');",
+				Expected: []sql.Row{},
+			},
+			{
+				Query: "SELECT * FROM t_char WHERE id=6;",
+				Expected: []sql.Row{
+					{6, "0"},
+				},
+			},
+			{
+				Query:       "INSERT INTO t_char VALUES (7, 'abc'::name);",
+				ExpectedErr: "expression is of type",
+			},
+			{
+				Query:    "INSERT INTO t_char VALUES (8, 'def'::text);",
+				Expected: []sql.Row{},
+			},
+			{
+				Query:    "INSERT INTO t_char VALUES (9, 'ghi'::varchar);",
+				Expected: []sql.Row{},
+			},
+			{
+				Query: `SELECT * FROM t_char WHERE id >= 7 ORDER BY id;`,
+				Expected: []sql.Row{
+					{8, "d"},
+					{9, "g"},
+				},
+			},
+		},
+	},
+	{
 		Name: "Character varying type",
 		SetUpScript: []string{
 			"CREATE TABLE t_varchar (id INTEGER primary key, v1 CHARACTER VARYING(10));",
@@ -1605,7 +1691,6 @@ var typesTests = []ScriptTest{
 				},
 			},
 			{
-				Skip:  true, // TODO: regtype should work with array types
 				Query: `SELECT 'integer[]'::regtype;`,
 				Expected: []sql.Row{
 					{"integer[]"},
@@ -1627,6 +1712,42 @@ var typesTests = []ScriptTest{
 				Query: `SELECT 'character varying'::regtype;`,
 				Expected: []sql.Row{
 					{"character varying"},
+				},
+			},
+			{
+				Query: `SELECT '"char"'::regtype;`,
+				Expected: []sql.Row{
+					{`"char"`},
+				},
+			},
+			{
+				Query: `SELECT 'char'::regtype;`,
+				Expected: []sql.Row{
+					{"character"},
+				},
+			},
+			{
+				Query: `SELECT 'char(10)'::regtype;`,
+				Expected: []sql.Row{
+					{"character"},
+				},
+			},
+			{
+				Query: `SELECT '"char"'::regtype::oid;`,
+				Expected: []sql.Row{
+					{18},
+				},
+			},
+			{
+				Query: `SELECT 'char'::regtype::oid;`,
+				Expected: []sql.Row{
+					{1042},
+				},
+			},
+			{
+				Query: `SELECT '"char"[]'::regtype;`,
+				Expected: []sql.Row{
+					{"\"char\"[]"},
 				},
 			},
 			{
@@ -2209,6 +2330,26 @@ var typesTests = []ScriptTest{
 				Query: "SELECT array_append(ARRAY['abc','def'], 'ghi');",
 				Expected: []sql.Row{
 					{"{abc,def,ghi}"},
+				},
+			},
+			{
+				Query: "SELECT array_append(ARRAY['abc','def'], null);",
+				Expected: []sql.Row{
+					{"{abc,def,NULL}"},
+				},
+			},
+			{
+				Skip:  true, // TODO: need fix
+				Query: "SELECT array_append(null, null);",
+				Expected: []sql.Row{
+					{"{NULL}"},
+				},
+			},
+			{
+				Skip:  true, // TODO: need fix
+				Query: "SELECT array_append(null, 'ghi');",
+				Expected: []sql.Row{
+					{"{ghi}"},
 				},
 			},
 			{

@@ -28,7 +28,7 @@ func initFormatType() {
 	framework.RegisterFunction(format_type)
 }
 
-// format_type represents the PostgreSQL function of the same name, taking the same parameters.
+// format_type represents the PostgreSQL system information function.
 var format_type = framework.Function2{
 	Name:       "format_type",
 	Return:     pgtypes.Text,

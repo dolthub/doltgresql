@@ -33,6 +33,8 @@ import (
 type Callbacks struct {
 	// Check is the callback for check constraints.
 	Check func(ctx *sql.Context, schema ItemSchema, table ItemTable, check ItemCheck) (cont bool, err error)
+	// ColumnDefault is the callback for column defaults.
+	ColumnDefault func(ctx *sql.Context, schema ItemSchema, table ItemTable, check ItemColumnDefault) (cont bool, err error)
 	// ForeignKey is the callback for foreign keys.
 	ForeignKey func(ctx *sql.Context, schema ItemSchema, table ItemTable, foreignKey ItemForeignKey) (cont bool, err error)
 	// Function is the callback for functions.
@@ -59,6 +61,19 @@ type ItemCheck struct {
 	Index int
 	OID   uint32
 	Item  sql.CheckDefinition
+}
+
+// ColumnWithIndex is a helper struct to pass the column and its index to the ColumnDefault callback.
+type ColumnWithIndex struct {
+	Column      *sql.Column
+	ColumnIndex int
+}
+
+// ItemColumnDefault contains the relevant information to pass to the ColumnDefault callback.
+type ItemColumnDefault struct {
+	Index int
+	OID   uint32
+	Item  ColumnWithIndex
 }
 
 // ItemForeignKey contains the relevant information to pass to the ForeignKey callback.
@@ -202,27 +217,19 @@ func iterateTypes(ctx *sql.Context, callbacks Callbacks) error {
 	}
 	for _, t := range pgtypes.GetAllTypes() {
 		if t.BaseID().HasUniqueOID() {
-			if _, ok := t.(pgtypes.DoltgresArrayType); !ok {
-				if _, ok = t.(pgtypes.DoltgresPolymorphicType); !ok {
-					cont, err := callbacks.Type(ctx, ItemType{
-						OID:  t.OID(),
-						Item: t,
-					})
-					if err != nil {
-						return err
-					}
-					if !cont {
-						return nil
-					}
-				}
+			cont, err := callbacks.Type(ctx, ItemType{
+				OID:  t.OID(),
+				Item: t,
+			})
+			if err != nil {
+				return err
+			}
+			if !cont {
+				return nil
 			}
 		}
 	}
-	_, err := callbacks.Type(ctx, ItemType{
-		OID:  pgtypes.InternalChar.OID(),
-		Item: pgtypes.InternalChar,
-	})
-	return err
+	return nil
 }
 
 // iterateSchemas is called by IterateCurrentDatabase to handle schemas and elements contained within schemas.
@@ -309,6 +316,7 @@ func iterateViews(ctx *sql.Context, callbacks Callbacks, itemSchema ItemSchema) 
 func iterateTables(ctx *sql.Context, callbacks Callbacks, itemSchema ItemSchema, sortedTableNames []string) error {
 	// Start all of the counts at -1, since we always increment before using the count.
 	checkCount := -1
+	columnDefaultCount := -1
 	foreignKeyCount := -1
 	indexCount := -1
 
@@ -329,6 +337,12 @@ func iterateTables(ctx *sql.Context, callbacks Callbacks, itemSchema ItemSchema,
 		// Check for a check constraint callback
 		if callbacks.Check != nil {
 			if err = iterateChecks(ctx, callbacks, itemSchema, itemTable, &checkCount); err != nil {
+				return err
+			}
+		}
+		// Check for a column default callback
+		if callbacks.ColumnDefault != nil {
+			if err = iterateColumnDefaults(ctx, callbacks, itemSchema, itemTable, &columnDefaultCount); err != nil {
 				return err
 			}
 		}
@@ -381,6 +395,28 @@ func iterateChecks(ctx *sql.Context, callbacks Callbacks, itemSchema ItemSchema,
 		}
 	}
 	return nil
+}
+
+// iterateColumnDefaults is called by iterateTables to handle column defaults.
+func iterateColumnDefaults(ctx *sql.Context, callbacks Callbacks, itemSchema ItemSchema, itemTable ItemTable, columnDefaultCount *int) error {
+	columns := itemTable.Item.Schema()
+	for i, col := range columns {
+		if col.Default != nil {
+			*columnDefaultCount++
+			itemColDefault := ItemColumnDefault{
+				Index: *columnDefaultCount,
+				OID:   CreateOID(Section_ColumnDefault, itemSchema.Index, *columnDefaultCount),
+				Item:  ColumnWithIndex{col, i},
+			}
+			if cont, err := callbacks.ColumnDefault(ctx, itemSchema, itemTable, itemColDefault); err != nil {
+				return err
+			} else if !cont {
+				return nil
+			}
+		}
+	}
+	return nil
+
 }
 
 // iterateForeignKeys is called by iterateTables to handle foreign keys.
@@ -521,6 +557,13 @@ func RunCallback(ctx *sql.Context, oid uint32, callbacks Callbacks) error {
 					continue
 				}
 				return nil
+			case Section_ColumnDefault:
+				if ok, err := runColumnDefault(ctx, oid, callbacks, itemSchema, itemTable, &countedIndex); err != nil {
+					return err
+				} else if ok {
+					continue
+				}
+				return nil
 			case Section_ForeignKey:
 				if ok, err := runForeignKey(ctx, oid, callbacks, itemSchema, itemTable, &countedIndex); err != nil {
 					return err
@@ -551,7 +594,7 @@ func runCheck(ctx *sql.Context, oid uint32, callbacks Callbacks, itemSchema Item
 		if err != nil {
 			return false, err
 		}
-		if len(checks) <= dataIndex {
+		if dataIndex >= *countedIndex+len(checks) {
 			*countedIndex += len(checks)
 			return true, nil
 		}
@@ -569,6 +612,34 @@ func runCheck(ctx *sql.Context, oid uint32, callbacks Callbacks, itemSchema Item
 	return true, nil
 }
 
+// runColumnDefault is called by RunCallback to handle Section_ColumnDefault.
+func runColumnDefault(ctx *sql.Context, oid uint32, callbacks Callbacks, itemSchema ItemSchema, itemTable ItemTable, countedIndex *int) (cont bool, err error) {
+	_, _, dataIndex := ParseOID(oid)
+	columns := itemTable.Item.Schema()
+
+	var colDefaults []ColumnWithIndex
+	for i, col := range columns {
+		if col.Default != nil {
+			colDefaults = append(colDefaults, ColumnWithIndex{col, i})
+		}
+	}
+	if dataIndex >= *countedIndex+len(colDefaults) {
+		*countedIndex += len(colDefaults)
+		return true, nil
+	}
+
+	itemColDefault := ItemColumnDefault{
+		Index: dataIndex,
+		OID:   oid,
+		Item:  colDefaults[dataIndex-(*countedIndex)],
+	}
+	_, err = callbacks.ColumnDefault(ctx, itemSchema, itemTable, itemColDefault)
+	if err != nil {
+		return false, err
+	}
+	return true, nil
+}
+
 // runForeignKey is called by RunCallback to handle Section_ForeignKey.
 func runForeignKey(ctx *sql.Context, oid uint32, callbacks Callbacks, itemSchema ItemSchema, itemTable ItemTable, countedIndex *int) (cont bool, err error) {
 	_, _, dataIndex := ParseOID(oid)
@@ -577,7 +648,7 @@ func runForeignKey(ctx *sql.Context, oid uint32, callbacks Callbacks, itemSchema
 		if err != nil {
 			return false, err
 		}
-		if len(foreignKeys) <= dataIndex {
+		if dataIndex >= *countedIndex+len(foreignKeys) {
 			*countedIndex += len(foreignKeys)
 			return true, nil
 		}
@@ -618,7 +689,7 @@ func runIndex(ctx *sql.Context, oid uint32, callbacks Callbacks, itemSchema Item
 		if err != nil {
 			return false, err
 		}
-		if len(indexes) <= dataIndex {
+		if dataIndex >= *countedIndex+len(indexes) {
 			*countedIndex += len(indexes)
 			return true, nil
 		}
@@ -628,7 +699,7 @@ func runIndex(ctx *sql.Context, oid uint32, callbacks Callbacks, itemSchema Item
 		itemIndex := ItemIndex{
 			Index: dataIndex,
 			OID:   oid,
-			Item:  indexes[dataIndex-(*countedIndex)],
+			Item:  indexes[dataIndex-*countedIndex],
 		}
 		_, err = callbacks.Index(ctx, itemSchema, itemTable, itemIndex)
 		return false, err
@@ -745,6 +816,10 @@ func runCallbackValidation(ctx *sql.Context, oid uint32, callbacks Callbacks) bo
 		if callbacks.Check == nil {
 			return false
 		}
+	case Section_ColumnDefault:
+		if callbacks.ColumnDefault == nil {
+			return false
+		}
 	case Section_Database:
 		// TODO: we inject information_schema, so we need to figure out how to model that here
 		return false
@@ -785,6 +860,7 @@ func runCallbackValidation(ctx *sql.Context, oid uint32, callbacks Callbacks) bo
 // iteratesOverSchemas returns whether we need to iterate over schemas based on the given callbacks.
 func (iter Callbacks) iteratesOverSchemas() bool {
 	return iter.Check != nil ||
+		iter.ColumnDefault != nil ||
 		iter.ForeignKey != nil ||
 		iter.Index != nil ||
 		iter.Schema != nil ||
@@ -796,6 +872,7 @@ func (iter Callbacks) iteratesOverSchemas() bool {
 // iteratesOverTables returns whether we need to iterate over tables based on the given callbacks.
 func (iter Callbacks) iteratesOverTables() bool {
 	return iter.Check != nil ||
+		iter.ColumnDefault != nil ||
 		iter.ForeignKey != nil ||
 		iter.Index != nil ||
 		iter.Table != nil

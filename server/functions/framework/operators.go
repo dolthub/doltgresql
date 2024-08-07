@@ -187,3 +187,23 @@ func (o Operator) IsUnary() bool {
 func (o Operator) IsBinary() bool {
 	return !o.IsUnary()
 }
+
+// GetOperatorFromString returns the binary operator for the given subOperator.
+func GetOperatorFromString(op string) (Operator, error) {
+	switch op {
+	case "=":
+		return Operator_BinaryEqual, nil
+	case "<>", "!=":
+		return Operator_BinaryNotEqual, nil
+	case "<":
+		return Operator_BinaryLessThan, nil
+	case "<=":
+		return Operator_BinaryLessOrEqual, nil
+	case ">":
+		return Operator_BinaryGreaterThan, nil
+	case ">=":
+		return Operator_BinaryGreaterOrEqual, nil
+	default:
+		return 0, fmt.Errorf("unhandled Operator `%s`", op)
+	}
+}

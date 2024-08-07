@@ -31,8 +31,10 @@ var array_append_anyarray_anyelement = framework.Function2{
 	Name:       "array_append",
 	Return:     pgtypes.AnyArray,
 	Parameters: [2]pgtypes.DoltgresType{pgtypes.AnyArray, pgtypes.AnyElement},
-	Strict:     true,
 	Callable: func(ctx *sql.Context, _ [3]pgtypes.DoltgresType, val1 any, val2 any) (any, error) {
+		if val1 == nil {
+			return [1]any{val2}, nil
+		}
 		array := val1.([]any)
 		returnArray := make([]any, len(array)+1)
 		copy(returnArray, array)

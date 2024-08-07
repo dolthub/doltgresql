@@ -65,7 +65,7 @@ var pgSubscriptionSchema = sql.Schema{
 	{Name: "subenabled", Type: pgtypes.Bool, Default: nil, Nullable: false, Source: PgSubscriptionName},
 	{Name: "subbinary", Type: pgtypes.Bool, Default: nil, Nullable: false, Source: PgSubscriptionName},
 	{Name: "substream", Type: pgtypes.Bool, Default: nil, Nullable: false, Source: PgSubscriptionName},
-	{Name: "subtwophasestate", Type: pgtypes.BpChar, Default: nil, Nullable: false, Source: PgSubscriptionName},
+	{Name: "subtwophasestate", Type: pgtypes.InternalChar, Default: nil, Nullable: false, Source: PgSubscriptionName},
 	{Name: "subdisableonerr", Type: pgtypes.Bool, Default: nil, Nullable: false, Source: PgSubscriptionName},
 	{Name: "subconninfo", Type: pgtypes.Text, Default: nil, Nullable: false, Source: PgSubscriptionName}, // TODO: collation C
 	{Name: "subslotname", Type: pgtypes.Name, Default: nil, Nullable: true, Source: PgSubscriptionName},

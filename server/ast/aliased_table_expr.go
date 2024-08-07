@@ -48,7 +48,7 @@ func nodeAliasedTableExpr(node *tree.AliasedTableExpr) (*vitess.AliasedTableExpr
 				From: vitess.TableExprs{tableExpr},
 			},
 		}
-		//TODO: make sure that this actually works
+		// TODO: make sure that this actually works
 		if len(node.As.Cols) > 0 {
 			columns := make([]vitess.ColIdent, len(node.As.Cols))
 			for i := range node.As.Cols {

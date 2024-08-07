@@ -31,14 +31,10 @@ import (
 	"github.com/lib/pq/oid"
 )
 
-// BpChar is a char that has an unbounded length. "bpchar" and "char" are the same type, distinguished by the length
-// being bounded or unbounded.
+// BpChar is a char that has an unbounded length.
 var BpChar = CharType{Length: stringUnbounded}
 
-// InternalChar is a single-byte internal type. In Postgres, it's displayed as "char".
-var InternalChar = CharType{Length: 1}
-
-// CharType is the extended type implementation of the PostgreSQL char and bpchar, which are the same type internally.
+// CharType is the type implementation of the PostgreSQL bpchar.
 type CharType struct {
 	// Length represents the maximum number of characters that the type may hold.
 	// When this is set to unbounded, then it becomes recognized as bpchar.
@@ -49,11 +45,7 @@ var _ DoltgresType = CharType{}
 
 // Alignment implements the DoltgresType interface.
 func (b CharType) Alignment() TypeAlignment {
-	if b.Length == stringUnbounded {
-		return TypeAlignment_Int
-	} else {
-		return TypeAlignment_Char
-	}
+	return TypeAlignment_Int
 }
 
 // BaseID implements the DoltgresType interface.
@@ -63,21 +55,12 @@ func (b CharType) BaseID() DoltgresTypeBaseID {
 
 // BaseName implements the DoltgresType interface.
 func (b CharType) BaseName() string {
-	if b.Length == stringUnbounded {
-		return "bpchar"
-	} else {
-		return "char"
-	}
+	return "bpchar"
 }
 
 // Category implements the DoltgresType interface.
 func (b CharType) Category() TypeCategory {
-	if b.Length == stringUnbounded {
-		return TypeCategory_StringTypes
-	} else {
-		// TODO: check if it only applies when Length == 1
-		return TypeCategory_InternalUseTypes
-	}
+	return TypeCategory_StringTypes
 }
 
 // CollationCoercibility implements the DoltgresType interface.
@@ -211,11 +194,7 @@ func (b CharType) MaxTextResponseByteLength(ctx *sql.Context) uint32 {
 
 // OID implements the DoltgresType interface.
 func (b CharType) OID() uint32 {
-	if b.Length == stringUnbounded {
-		return uint32(oid.T_bpchar)
-	} else {
-		return uint32(oid.T_char)
-	}
+	return uint32(oid.T_bpchar)
 }
 
 // Promote implements the DoltgresType interface.
@@ -254,11 +233,7 @@ func (b CharType) String() string {
 
 // ToArrayType implements the DoltgresType interface.
 func (b CharType) ToArrayType() DoltgresArrayType {
-	if b.Length == stringUnbounded {
-		return createArrayType(b, SerializationID_CharArray, oid.T__bpchar)
-	} else {
-		return createArrayType(b, SerializationID_CharArray, oid.T__char)
-	}
+	return createArrayType(b, SerializationID_CharArray, oid.T__bpchar)
 }
 
 // Type implements the DoltgresType interface.

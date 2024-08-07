@@ -160,7 +160,7 @@ func runScript(t *testing.T, ctx context.Context, script ScriptTest, conn *pgx.C
 
 				if assertion.Cols != nil {
 					fields := rows.FieldDescriptions()
-					if assert.Len(t, fields, len(assertion.Cols)) {
+					if assert.Len(t, fields, len(assertion.Cols), "expected length of columns") {
 						for i, col := range assertion.Cols {
 							assert.Equal(t, col, fields[i].Name)
 						}

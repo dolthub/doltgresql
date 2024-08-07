@@ -81,6 +81,16 @@ func (p PgClassHandler) RowIter(ctx *sql.Context) (sql.RowIter, error) {
 			})
 			return true, nil
 		},
+		Sequence: func(ctx *sql.Context, schema oid.ItemSchema, sequence oid.ItemSequence) (cont bool, err error) {
+			classes = append(classes, pgClass{
+				oid:        sequence.OID,
+				name:       sequence.Item.Name,
+				hasIndexes: false,
+				kind:       "S",
+				schemaOid:  schema.OID,
+			})
+			return true, nil
+		},
 	})
 	if err != nil {
 		return nil, err
@@ -127,8 +137,8 @@ var pgClassSchema = sql.Schema{
 	{Name: "reltoastrelid", Type: pgtypes.Oid, Default: nil, Nullable: false, Source: PgClassName},
 	{Name: "relhasindex", Type: pgtypes.Bool, Default: nil, Nullable: false, Source: PgClassName},
 	{Name: "relisshared", Type: pgtypes.Bool, Default: nil, Nullable: false, Source: PgClassName},
-	{Name: "relpersistence", Type: pgtypes.BpChar, Default: nil, Nullable: false, Source: PgClassName},
-	{Name: "relkind", Type: pgtypes.BpChar, Default: nil, Nullable: false, Source: PgClassName},
+	{Name: "relpersistence", Type: pgtypes.InternalChar, Default: nil, Nullable: false, Source: PgClassName},
+	{Name: "relkind", Type: pgtypes.InternalChar, Default: nil, Nullable: false, Source: PgClassName},
 	{Name: "relnatts", Type: pgtypes.Int16, Default: nil, Nullable: false, Source: PgClassName},
 	{Name: "relchecks", Type: pgtypes.Int16, Default: nil, Nullable: false, Source: PgClassName},
 	{Name: "relhasrules", Type: pgtypes.Bool, Default: nil, Nullable: false, Source: PgClassName},
@@ -137,7 +147,7 @@ var pgClassSchema = sql.Schema{
 	{Name: "relrowsecurity", Type: pgtypes.Bool, Default: nil, Nullable: false, Source: PgClassName},
 	{Name: "relforcerowsecurity", Type: pgtypes.Bool, Default: nil, Nullable: false, Source: PgClassName},
 	{Name: "relispopulated", Type: pgtypes.Bool, Default: nil, Nullable: false, Source: PgClassName},
-	{Name: "relreplident", Type: pgtypes.BpChar, Default: nil, Nullable: false, Source: PgClassName},
+	{Name: "relreplident", Type: pgtypes.InternalChar, Default: nil, Nullable: false, Source: PgClassName},
 	{Name: "relispartition", Type: pgtypes.Bool, Default: nil, Nullable: false, Source: PgClassName},
 	{Name: "relrewrite", Type: pgtypes.Oid, Default: nil, Nullable: false, Source: PgClassName},
 	{Name: "relfrozenxid", Type: pgtypes.Xid, Default: nil, Nullable: false, Source: PgClassName},

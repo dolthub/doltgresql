@@ -26,7 +26,7 @@ func initColDescription() {
 	framework.RegisterFunction(col_description)
 }
 
-// col_description represents the PostgreSQL function of the same name, taking the same parameters.
+// col_description represents the PostgreSQL comment information function.
 var col_description = framework.Function2{
 	Name:               "col_description",
 	Return:             pgtypes.Text,

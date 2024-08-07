@@ -21,6 +21,7 @@ import (
 
 	"github.com/dolthub/doltgresql/server/tables"
 	pgtypes "github.com/dolthub/doltgresql/server/types"
+	"github.com/dolthub/doltgresql/server/types/oid"
 )
 
 // PgAttrdefName is a constant to the pg_attrdef name.
@@ -43,8 +44,25 @@ func (p PgAttrdefHandler) Name() string {
 
 // RowIter implements the interface tables.Handler.
 func (p PgAttrdefHandler) RowIter(ctx *sql.Context) (sql.RowIter, error) {
-	// TODO: Implement pg_attrdef row iter
-	return emptyRowIter()
+	var cols []oid.ItemColumnDefault
+	var tableOIDs []uint32
+
+	err := oid.IterateCurrentDatabase(ctx, oid.Callbacks{
+		ColumnDefault: func(ctx *sql.Context, _ oid.ItemSchema, table oid.ItemTable, col oid.ItemColumnDefault) (cont bool, err error) {
+			cols = append(cols, col)
+			tableOIDs = append(tableOIDs, table.OID)
+			return true, nil
+		},
+	})
+	if err != nil {
+		return nil, err
+	}
+
+	return &pgAttrdefRowIter{
+		cols:      cols,
+		tableOIDs: tableOIDs,
+		idx:       0,
+	}, nil
 }
 
 // Schema implements the interface tables.Handler.
@@ -65,13 +83,29 @@ var pgAttrdefSchema = sql.Schema{
 
 // pgAttrdefRowIter is the sql.RowIter for the pg_attrdef table.
 type pgAttrdefRowIter struct {
+	cols      []oid.ItemColumnDefault
+	tableOIDs []uint32
+	idx       int
 }
 
 var _ sql.RowIter = (*pgAttrdefRowIter)(nil)
 
 // Next implements the interface sql.RowIter.
 func (iter *pgAttrdefRowIter) Next(ctx *sql.Context) (sql.Row, error) {
-	return nil, io.EOF
+	if iter.idx >= len(iter.cols) {
+		return nil, io.EOF
+	}
+	iter.idx++
+	col := iter.cols[iter.idx-1]
+	tableOid := iter.tableOIDs[iter.idx-1]
+
+	// TODO: Implement adbin when pg_node_tree exists
+	return sql.Row{
+		col.OID,                         // oid
+		tableOid,                        // adrelid
+		int16(col.Item.ColumnIndex + 1), // adnum
+		nil,                             // adbin
+	}, nil
 }
 
 // Close implements the interface sql.RowIter.
