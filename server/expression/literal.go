@@ -23,6 +23,7 @@ import (
 	vitess "github.com/dolthub/vitess/go/vt/sqlparser"
 	"github.com/shopspring/decimal"
 
+	"github.com/dolthub/doltgresql/postgres/parser/duration"
 	"github.com/dolthub/doltgresql/server/functions/framework"
 	pgtypes "github.com/dolthub/doltgresql/server/types"
 )
@@ -85,6 +86,14 @@ func NewStringLiteral(stringValue string) *Literal {
 	return &Literal{
 		value: stringValue,
 		typ:   pgtypes.Text,
+	}
+}
+
+// NewIntervalLiteral returns a new *Literal containing a INTERVAL value.
+func NewIntervalLiteral(duration duration.Duration) *Literal {
+	return &Literal{
+		value: duration,
+		typ:   pgtypes.Interval,
 	}
 }
 

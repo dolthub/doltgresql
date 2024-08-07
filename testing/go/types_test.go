@@ -579,19 +579,21 @@ var typesTests = []ScriptTest{
 	},
 	{
 		Name: "Interval type",
-		Skip: true,
 		SetUpScript: []string{
 			"CREATE TABLE t_interval (id INTEGER primary key, v1 INTERVAL);",
 			"INSERT INTO t_interval VALUES (1, '1 day 3 hours'), (2, '2 hours 30 minutes');",
 		},
 		Assertions: []ScriptTestAssertion{
 			{
-				// TODO: might need a GMS type here, not a string (psql output is different than below)
 				Query: "SELECT * FROM t_interval ORDER BY id;",
 				Expected: []sql.Row{
-					{1, "1 day 3 hours"},
-					{2, "2 hours 30 minutes"},
+					{1, "1 day 03:00:00"},
+					{2, "02:30:00"},
 				},
+			},
+			{
+				Query:    `SELECT '2 years 15 months 100 weeks 99 hours 123456789 milliseconds'::interval;`,
+				Expected: []sql.Row{{"3 years 3 mons 700 days 133:17:36.789"}},
 			},
 		},
 	},
