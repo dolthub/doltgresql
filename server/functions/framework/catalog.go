@@ -70,63 +70,6 @@ func Initialize() {
 	compileFunctions()
 }
 
-// compileFunctions creates a CompiledFunction for each overload of each function in the catalog
-func compileFunctions() {
-	for funcName, overloads := range Catalog {
-		overloadTree := NewOverloads()
-		for _, functionOverload := range overloads {
-			if err := overloadTree.Add(functionOverload); err != nil {
-				panic(err)
-			}
-		}
-
-		// Store the compiled function into the engine's built-in functions
-		// TODO: don't do this, use an actual contract for communicating these functions to the engine catalog
-		createFunc := func(params ...sql.Expression) (sql.Expression, error) {
-			return NewCompiledFunction(funcName, params, overloadTree, false), nil
-		}
-		function.BuiltIns = append(function.BuiltIns, sql.FunctionN{
-			Name: funcName,
-			Fn:   createFunc,
-		})
-		compiledCatalog[funcName] = createFunc
-	}
-
-	// Build the overload for all unary and binary functions based on their operator. This will be used for fallback if
-	// an exact match is not found. Compiled functions (which wrap the overload deducer) handle upcasting and other
-	// special rules, so it's far more efficient to reuse it for operators. Operators are also a special case since they
-	// all have different names, while standard overload deducers work on a function-name basis.
-	for signature, functionOverload := range unaryFunctions {
-		overloads, ok := unaryAggregateOverloads[signature.Operator]
-		if !ok {
-			overloads = NewOverloads()
-			unaryAggregateOverloads[signature.Operator] = overloads
-		}
-		if !overloads.Add(functionOverload) {
-			panic(fmt.Errorf("duplicate unary function for `%s`", signature.Operator.String()))
-		}
-	}
-
-	for signature, functionOverload := range binaryFunctions {
-		overloads, ok := binaryAggregateOverloads[signature.Operator]
-		if !ok {
-			overloads = NewOverloads()
-			binaryAggregateOverloads[signature.Operator] = overloads
-		}
-		if !overloads.Add(functionOverload) {
-			panic(fmt.Errorf("duplicate binary function for `%s`", signature.Operator.String()))
-		}
-	}
-
-	// Add all permutations for the unary and binary operators
-	for operator, overload := range unaryAggregateOverloads {
-		unaryAggregatePermutations[operator] = overload.overloadsForParams(1)
-	}
-	for operator, overload := range binaryAggregateOverloads {
-		binaryAggregatePermutations[operator] = overload.overloadsForParams(2)
-	}
-}
-
 // replaceGmsBuiltIns replaces all GMS built-ins that have conflicting names with PostgreSQL functions
 func replaceGmsBuiltIns() {
 	functionNames := make(map[string]struct{})
@@ -171,5 +114,62 @@ func validateFunctions() {
 				}
 			}
 		}
+	}
+}
+
+// compileFunctions creates a CompiledFunction for each overload of each function in the catalog
+func compileFunctions() {
+	for funcName, overloads := range Catalog {
+		overloadTree := NewOverloads()
+		for _, functionOverload := range overloads {
+			if err := overloadTree.Add(functionOverload); err != nil {
+				panic(err)
+			}
+		}
+
+		// Store the compiled function into the engine's built-in functions
+		// TODO: don't do this, use an actual contract for communicating these functions to the engine catalog
+		createFunc := func(params ...sql.Expression) (sql.Expression, error) {
+			return NewCompiledFunction(funcName, params, overloadTree, false), nil
+		}
+		function.BuiltIns = append(function.BuiltIns, sql.FunctionN{
+			Name: funcName,
+			Fn:   createFunc,
+		})
+		compiledCatalog[funcName] = createFunc
+	}
+
+	// Build the overload for all unary and binary functions based on their operator. This will be used for fallback if
+	// an exact match is not found. Compiled functions (which wrap the overload deducer) handle upcasting and other
+	// special rules, so it's far more efficient to reuse it for operators. Operators are also a special case since they
+	// all have different names, while standard overload deducers work on a function-name basis.
+	for signature, functionOverload := range unaryFunctions {
+		overloads, ok := unaryAggregateOverloads[signature.Operator]
+		if !ok {
+			overloads = NewOverloads()
+			unaryAggregateOverloads[signature.Operator] = overloads
+		}
+		if err := overloads.Add(functionOverload); err != nil {
+			panic(err)
+		}
+	}
+
+	for signature, functionOverload := range binaryFunctions {
+		overloads, ok := binaryAggregateOverloads[signature.Operator]
+		if !ok {
+			overloads = NewOverloads()
+			binaryAggregateOverloads[signature.Operator] = overloads
+		}
+		if err := overloads.Add(functionOverload); err != nil {
+			panic(err)
+		}
+	}
+
+	// Add all permutations for the unary and binary operators
+	for operator, overload := range unaryAggregateOverloads {
+		unaryAggregatePermutations[operator] = overload.overloadsForParams(1)
+	}
+	for operator, overload := range binaryAggregateOverloads {
+		binaryAggregatePermutations[operator] = overload.overloadsForParams(2)
 	}
 }
