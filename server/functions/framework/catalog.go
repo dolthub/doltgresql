@@ -75,8 +75,8 @@ func compileFunctions() {
 	for funcName, overloads := range Catalog {
 		overloadTree := NewOverloads()
 		for _, functionOverload := range overloads {
-			if !overloadTree.Add(functionOverload) {
-				panic(fmt.Errorf("duplicate function overload for `%s`", funcName))
+			if err := overloadTree.Add(functionOverload); err != nil {
+				panic(err)
 			}
 		}
 

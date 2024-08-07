@@ -15,6 +15,7 @@
 package framework
 
 import (
+	"fmt"
 	"strings"
 
 	pgtypes "github.com/dolthub/doltgresql/server/types"
@@ -36,16 +37,24 @@ func NewOverloads() *Overloads {
 	}
 }
 
-// Add adds the given function to the overload collection. Returns false if the new overload collides with an existing
-// overload.
-func (overloads *Overloads) Add(function FunctionInterface) bool {
+// Add adds the given function to the overload collection. Returns an error if the there's a problem with the
+// function's declaration.
+func (overloads *Overloads) Add(function FunctionInterface) error {
 	key := keyForParamTypes(function.GetParameters())
 	if _, ok := overloads.ByParamType[key]; ok {
-		return false
+		return fmt.Errorf("duplicate function overload for `%s`", function.GetName())
 	}
+
+	if function.VariadicIndex() >= 0 {
+		varArgsType := function.GetParameters()[function.VariadicIndex()]
+		if _, ok := varArgsType.(pgtypes.DoltgresArrayType); !ok {
+			return fmt.Errorf("variadic parameter must be an array type for function `%s`", function.GetName())
+		}
+	}
+
 	overloads.ByParamType[key] = function
 	overloads.AllOverloads = append(overloads.AllOverloads, function)
-	return true
+	return nil
 }
 
 // keyForParamTypes returns a string key to match an overload with the given parameter types.
