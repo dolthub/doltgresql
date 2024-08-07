@@ -656,8 +656,10 @@ func (c *CompiledFunction) analyzeParameters() (originalTypes []pgtypes.Doltgres
 				originalTypes[i] = pgtypes.Int16
 			case query.Type_SET:
 				originalTypes[i] = pgtypes.Int64
+			case query.Type_NULL_TYPE:
+				originalTypes[i] = pgtypes.Null
 			default:
-				return nil, nil, fmt.Errorf("encountered a type that does not conform to the DoltgresType interface")
+				return nil, nil, fmt.Errorf("encountered a type that does not conform to the DoltgresType interface: %T", param.Type())
 			}
 		}
 		sources[i] = c.determineSource(param)
