@@ -48,7 +48,7 @@ func (overloads *Overloads) Add(function FunctionInterface) bool {
 	return true
 }
 
-// keyForParamTypes returns a string key that may be used in the `ExactMatches` field to find the desired overload.
+// keyForParamTypes returns a string key to match an overload with the given parameter types.
 func keyForParamTypes(types []pgtypes.DoltgresType) string {
 	sb := strings.Builder{}
 	for i, typ := range types {
@@ -60,7 +60,7 @@ func keyForParamTypes(types []pgtypes.DoltgresType) string {
 	return sb.String()
 }
 
-// keyForParamTypes returns a string key that may be used in the `ExactMatches` field to find the desired overload.
+// keyForParamTypes returns a string key to match an overload with the given parameter types.
 func keyForBaseIds(types []pgtypes.DoltgresTypeBaseID) string {
 	sb := strings.Builder{}
 	for i, typ := range types {
