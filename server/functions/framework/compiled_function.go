@@ -144,7 +144,8 @@ func (c *CompiledFunction) Resolved() bool {
 			return false
 		}
 	}
-	return c.overload.Valid()
+	// We don't error until evaluation time, so we need to tell the engine we're resolved if there was a stashed error
+	return c.stashedErr != nil || c.overload.Valid()
 }
 
 // String implements the interface sql.Expression.
@@ -305,7 +306,6 @@ func (c *CompiledFunction) resolve(
 	// First check for an exact match
 	exactMatch, found := overloads.ExactMatchForTypes(argTypes)
 	if found {
-		// empty overload match for an exact match
 		baseTypes := baseIdsFortypes(argTypes)
 		return overloadMatch{
 			params: Overload{
