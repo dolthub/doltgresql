@@ -1310,5 +1310,44 @@ func TestDateAndTimeFunction(t *testing.T) {
 				},
 			},
 		},
+		{
+			Name:        "age",
+			SetUpScript: []string{},
+			Assertions: []ScriptTestAssertion{
+				{
+					Query:    `SELECT age(timestamp '2001-04-10', timestamp '1957-06-13');`,
+					Expected: []sql.Row{{"43 years 9 mons 27 days"}},
+				},
+				{
+					Query:    `SELECT age(timestamp '1957-06-13', timestamp '2001-04-10');`,
+					Expected: []sql.Row{{"-43 years -9 mons -27 days"}},
+				},
+				{
+					Query:    `SELECT age(timestamp '2001-06-13', timestamp '2001-04-10');`,
+					Expected: []sql.Row{{"2 mons 3 days"}},
+				},
+				{
+					Query:    `SELECT age(timestamp '2001-04-10', timestamp '2001-06-13');`,
+					Expected: []sql.Row{{"-2 mons -3 days"}},
+				},
+				{
+					Query:    `SELECT age(timestamp '2001-04-10 12:23:33', timestamp '1957-06-13 13:23:34.4');`,
+					Expected: []sql.Row{{"43 years 9 mons 26 days 22:59:58.6"}},
+				},
+				{
+					Query:    `SELECT age(timestamp '1957-06-13 13:23:34.4', timestamp '2001-04-10 12:23:33');`,
+					Expected: []sql.Row{{"-43 years -9 mons -26 days -22:59:58.6"}},
+				},
+				{
+					Skip:     true, // TODO: current_date should return timestamp, not text
+					Query:    `SELECT age(current_date);`,
+					Expected: []sql.Row{{"00:00:00"}},
+				},
+				{
+					Query:    `SELECT age(current_date::timestamp);`,
+					Expected: []sql.Row{{"00:00:00"}},
+				},
+			},
+		},
 	})
 }
