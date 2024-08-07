@@ -163,13 +163,13 @@ func getFieldFromTimeVal(field string, tVal time.Time) (any, error) {
 		year, _ := tVal.ISOWeek()
 		return decimal.NewFromInt(int64(year)), nil
 	case "julian":
-		return nil, fmt.Errorf("'julian' field extraction not supported")
+		return nil, fmt.Errorf("'julian' field extraction not supported yet")
 	case "microsecond", "microseconds":
 		w := float64(tVal.Second() * 1000000)
 		f := float64(tVal.Nanosecond()) / float64(1000)
 		return decimal.NewFromFloat(w + f), nil
 	case "millennium", "millenniums":
-		return nil, fmt.Errorf("'millennium' field extraction not supported")
+		return decimal.NewFromFloat(math.Ceil(float64(tVal.Year()) / 1000)), nil
 	case "millisecond", "milliseconds":
 		w := float64(tVal.Second() * 1000)
 		f := float64(tVal.Nanosecond()) / float64(1000000)
