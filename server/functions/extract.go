@@ -1,0 +1,205 @@
+// Copyright 2024 Dolthub, Inc.
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//     http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
+
+package functions
+
+import (
+	"fmt"
+	"math"
+	"strings"
+	"time"
+
+	"github.com/dolthub/go-mysql-server/sql"
+	"github.com/shopspring/decimal"
+	"gopkg.in/src-d/go-errors.v1"
+
+	"github.com/dolthub/doltgresql/server/functions/framework"
+	pgtypes "github.com/dolthub/doltgresql/server/types"
+)
+
+// initExtract registers the functions to the catalog.
+func initExtract() {
+	framework.RegisterFunction(extract_text_date)
+	framework.RegisterFunction(extract_text_time)
+	framework.RegisterFunction(extract_text_timetz)
+	framework.RegisterFunction(extract_text_timestamp)
+	framework.RegisterFunction(extract_text_timestamptz)
+	//framework.RegisterFunction(extract_text_interval)
+}
+
+var ErrUnitNotSupported = errors.NewKind("unit \"%s\" not supported for type %s")
+
+// extract_text_date represents the PostgreSQL date/time function, taking {text, date}
+var extract_text_date = framework.Function2{
+	Name:               "extract",
+	Return:             pgtypes.Numeric,
+	Parameters:         [2]pgtypes.DoltgresType{pgtypes.Text, pgtypes.Date},
+	IsNonDeterministic: true,
+	Strict:             true,
+	Callable: func(ctx *sql.Context, _ [3]pgtypes.DoltgresType, val1, val2 any) (any, error) {
+		field := val1.(string)
+		if strings.HasPrefix(strings.ToLower(field), "timezone") {
+			return nil, ErrUnitNotSupported.New(field, "date")
+		}
+		dateVal := val2.(time.Time)
+		return getFieldFromTimeVal(field, dateVal)
+	},
+}
+
+// extract_text_time represents the PostgreSQL date/time function, taking {text, time without time zone}
+var extract_text_time = framework.Function2{
+	Name:               "extract",
+	Return:             pgtypes.Numeric,
+	Parameters:         [2]pgtypes.DoltgresType{pgtypes.Text, pgtypes.Time},
+	IsNonDeterministic: true,
+	Strict:             true,
+	Callable: func(ctx *sql.Context, _ [3]pgtypes.DoltgresType, val1, val2 any) (any, error) {
+		field := val1.(string)
+		if strings.HasPrefix(strings.ToLower(field), "timezone") {
+			return nil, ErrUnitNotSupported.New(field, "time without time zone")
+		}
+		timeVal := val2.(time.Time)
+		return getFieldFromTimeVal(field, timeVal)
+	},
+}
+
+// extract_text_timetz represents the PostgreSQL date/time function, taking {text, time with time zone}
+var extract_text_timetz = framework.Function2{
+	Name:               "extract",
+	Return:             pgtypes.Numeric,
+	Parameters:         [2]pgtypes.DoltgresType{pgtypes.Text, pgtypes.TimeTZ},
+	IsNonDeterministic: true,
+	Strict:             true,
+	Callable: func(ctx *sql.Context, _ [3]pgtypes.DoltgresType, val1, val2 any) (any, error) {
+		field := val1.(string)
+		timetzVal := val2.(time.Time)
+		return getFieldFromTimeVal(field, timetzVal)
+	},
+}
+
+// extract_text_timestamp represents the PostgreSQL date/time function, taking {text, timestamp without time zone}
+var extract_text_timestamp = framework.Function2{
+	Name:               "extract",
+	Return:             pgtypes.Numeric,
+	Parameters:         [2]pgtypes.DoltgresType{pgtypes.Text, pgtypes.Timestamp},
+	IsNonDeterministic: true,
+	Strict:             true,
+	Callable: func(ctx *sql.Context, _ [3]pgtypes.DoltgresType, val1, val2 any) (any, error) {
+		field := val1.(string)
+		if strings.HasPrefix(strings.ToLower(field), "timezone") {
+			return nil, ErrUnitNotSupported.New(field, "timestamp without time zone")
+		}
+		tsVal := val2.(time.Time)
+		return getFieldFromTimeVal(field, tsVal)
+	},
+}
+
+// extract_text_timestamptz represents the PostgreSQL date/time function, taking {text, timestamp with time zone}
+var extract_text_timestamptz = framework.Function2{
+	Name:               "extract",
+	Return:             pgtypes.Numeric,
+	Parameters:         [2]pgtypes.DoltgresType{pgtypes.Text, pgtypes.TimestampTZ},
+	IsNonDeterministic: true,
+	Strict:             true,
+	Callable: func(ctx *sql.Context, _ [3]pgtypes.DoltgresType, val1, val2 any) (any, error) {
+		field := val1.(string)
+		tstzVal := val2.(time.Time)
+		return getFieldFromTimeVal(field, tstzVal)
+	},
+}
+
+//// extract_text_interval represents the PostgreSQL date/time function, taking {text, interval}
+//var extract_text_interval = framework.Function2{
+//	Name:               "extract",
+//	Return:             pgtypes.Numeric,
+//	Parameters:         [2]pgtypes.DoltgresType{pgtypes.Text, pgtypes.Interval},
+//	IsNonDeterministic: true,
+//	Strict:             true,
+//	Callable: func(ctx *sql.Context, _ [3]pgtypes.DoltgresType, val1, val2 any) (any, error) {
+//		field := val1.(string)
+//		if strings.HasPrefix(strings.ToLower(field), "timezone") {
+//			return nil, ErrUnitNotSupported.New(field, "time without time zone")
+//		}
+//		//intervalVal :=
+//		return nil, nil
+//	},
+//}
+
+// getFieldFromTimeVal returns the value for given field extracted from non-interval values.
+func getFieldFromTimeVal(field string, tVal time.Time) (any, error) {
+	switch strings.ToLower(field) {
+	case "century", "centuries":
+		return decimal.NewFromFloat(math.Ceil(float64(tVal.Year()) / 100)), nil
+	case "day", "days":
+		return decimal.NewFromInt(int64(tVal.Day())), nil
+	case "decade", "decades":
+		return decimal.NewFromFloat(math.Floor(float64(tVal.Year()) / 10)), nil
+	case "dow":
+		return decimal.NewFromInt(int64(tVal.Weekday())), nil
+	case "doy":
+		return decimal.NewFromInt(int64(tVal.YearDay())), nil
+	case "epoch":
+		return decimal.NewFromFloat(float64(tVal.UnixMicro()) / 1000000), nil
+	case "hour", "hours":
+		return decimal.NewFromInt(int64(tVal.Hour())), nil
+	case "isodow":
+		wd := int64(tVal.Weekday())
+		if wd == 0 {
+			wd = 7
+		}
+		return decimal.NewFromInt(wd), nil
+	case "isoyear":
+		year, _ := tVal.ISOWeek()
+		return decimal.NewFromInt(int64(year)), nil
+	case "julian":
+		return nil, fmt.Errorf("'julian' field extraction not supported")
+	case "microsecond", "microseconds":
+		w := float64(tVal.Second() * 1000000)
+		f := float64(tVal.Nanosecond()) / float64(1000)
+		return decimal.NewFromFloat(w + f), nil
+	case "millennium", "millenniums":
+		return nil, fmt.Errorf("'millennium' field extraction not supported")
+	case "millisecond", "milliseconds":
+		w := float64(tVal.Second() * 1000)
+		f := float64(tVal.Nanosecond()) / float64(1000000)
+		return decimal.NewFromFloatWithExponent(w+f, -3), nil
+	case "minute", "minutes":
+		return decimal.NewFromInt(int64(tVal.Minute())), nil
+	case "month", "months":
+		return decimal.NewFromInt(int64(tVal.Month())), nil
+	case "quarter":
+		q := (int(tVal.Month())-1)/3 + 1
+		return decimal.NewFromInt(int64(q)), nil
+	case "second", "seconds":
+		w := float64(tVal.Second())
+		f := float64(tVal.Nanosecond()) / float64(1000000000)
+		return decimal.NewFromFloatWithExponent(w+f, -6), nil
+	case "timezone":
+		// TODO: postgres seem to use server timezone regardless of input value
+		return decimal.NewFromInt(-28800), nil
+	case "timezone_hour":
+		// TODO: postgres seem to use server timezone regardless of input value
+		return decimal.NewFromInt(-8), nil
+	case "timezone_minute":
+		// TODO: postgres seem to use server timezone regardless of input value
+		return decimal.NewFromInt(0), nil
+	case "week":
+		_, week := tVal.ISOWeek()
+		return decimal.NewFromInt(int64(week)), nil
+	case "year", "years":
+		return decimal.NewFromInt(int64(tVal.Year())), nil
+	default:
+		return nil, fmt.Errorf("unknown field given: %s", field)
+	}
+}

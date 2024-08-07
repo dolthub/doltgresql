@@ -222,7 +222,7 @@ func nodeExpr(node tree.Expr) (vitess.Expr, error) {
 		case tree.CastExplicit, tree.CastShort:
 			// Both of these are acceptable
 		case tree.CastPrepend:
-			return nil, fmt.Errorf("typed literals are not yet supported")
+			//return nil, fmt.Errorf("typed literals are not yet supported")
 		default:
 			return nil, fmt.Errorf("unknown cast syntax")
 		}
