@@ -319,7 +319,7 @@ func (c *CompiledFunction) resolve(
 	// There are no exact matches, so now we'll look through all of the functions to determine the best match. This is
 	// much more work, but there's a performance penalty for runtime overload resolution in Postgres as well.
 	if c.IsOperator {
-		return c.resolveOperator(argTypes, overloads, sources)
+		return c.resolveOperator(argTypes, overloads, fnOverloads, sources)
 	} else {
 		return c.resolveFunction(argTypes, fnOverloads, sources)
 	}
@@ -327,7 +327,7 @@ func (c *CompiledFunction) resolve(
 
 // resolveOperator resolves an operator according to the rules defined by Postgres.
 // https://www.postgresql.org/docs/15/typeconv-oper.html
-func (c *CompiledFunction) resolveOperator(argTypes []pgtypes.DoltgresType, overloads *Overloads, sources []Source) (overloadMatch, error) {
+func (c *CompiledFunction) resolveOperator(argTypes []pgtypes.DoltgresType, overloads *Overloads, fnOverloads []Overload, sources []Source) (overloadMatch, error) {
 	// Binary operators treat string literals as the other type, so we'll account for that here to see if we can find an
 	// "exact" match.
 	if len(argTypes) == 2 {
@@ -357,7 +357,7 @@ func (c *CompiledFunction) resolveOperator(argTypes []pgtypes.DoltgresType, over
 		}
 	}
 	// From this point, the steps appear to be the same for functions and operators
-	return c.resolveFunction(argTypes, nil, sources)
+	return c.resolveFunction(argTypes, fnOverloads, sources)
 }
 
 // resolveFunction resolves a function according to the rules defined by Postgres.
@@ -365,11 +365,15 @@ func (c *CompiledFunction) resolveOperator(argTypes []pgtypes.DoltgresType, over
 func (c *CompiledFunction) resolveFunction(argTypes []pgtypes.DoltgresType, overloads []Overload, sources []Source) (overloadMatch, error) {
 	// First we'll discard all overloads that do not have implicitly-convertible param types
 	compatibleOverloads := c.typeCompatibleOverloads(overloads, argTypes, sources)
+
+	// No compatible overloads available, return early
 	if len(compatibleOverloads) == 0 {
 		return overloadMatch{}, nil
 	}
 
 	// If we've found exactly one match then we'll return that one
+	// TODO: we need to also prefer non-variadic functions here over variadic ones (no such conflict can exist for now)
+	//  https://www.postgresql.org/docs/15/typeconv-func.html
 	if len(compatibleOverloads) == 1 {
 		return compatibleOverloads[0], nil
 	}
