@@ -121,7 +121,7 @@ func runServer(ctx context.Context, cfg *servercfg.DoltgresConfig, dEnv *env.Dol
 		config.UserEmailKey: DefUserEmail,
 	})
 
-	dataDirFs, err := filesys.LocalFS.WithWorkingDir(ssCfg.DataDir())
+	dataDirFs, err := dEnv.FS.WithWorkingDir(ssCfg.DataDir())
 	if err != nil {
 		return nil, err
 	}

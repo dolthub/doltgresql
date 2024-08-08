@@ -1021,7 +1021,7 @@ func TestSystemCatalogInformationFunctions(t *testing.T) {
 			SetUpScript: []string{},
 			Assertions: []ScriptTestAssertion{
 				{
-					Query: `SELECT pg_encoding_to_char(encoding) FROM pg_database WHERE datname = 'postgres';`,
+					Query: `SELECT pg_encoding_to_char(encoding) FROM pg_database WHERE datname = 'doltgres';`,
 					Expected: []sql.Row{
 						{"UTF8"},
 					},

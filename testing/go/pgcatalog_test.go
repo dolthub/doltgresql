@@ -664,6 +664,7 @@ func TestPgDatabase(t *testing.T) {
 				{
 					Query: `SELECT datname FROM "pg_catalog"."pg_database";`,
 					Expected: []sql.Row{
+						{"doltgres"},
 						{"postgres"},
 						{"test"},
 					},
@@ -671,8 +672,9 @@ func TestPgDatabase(t *testing.T) {
 				{
 					Query: `SELECT oid, datname FROM "pg_catalog"."pg_database" ORDER BY datname DESC;`,
 					Expected: []sql.Row{
-						{805306369, "test"},
-						{805306368, "postgres"},
+						{805306370, "test"},
+						{805306369, "postgres"},
+						{805306368, "doltgres"},
 					},
 				},
 				{ // Different cases and quoted, so it fails
@@ -686,14 +688,15 @@ func TestPgDatabase(t *testing.T) {
 				{ // Different cases but non-quoted, so it works
 					Query: "SELECT oid, datname FROM PG_catalog.pg_DATABASE ORDER BY datname ASC;",
 					Expected: []sql.Row{
-						{805306368, "postgres"},
-						{805306369, "test"},
+						{805306368, "doltgres"},
+						{805306369, "postgres"},
+						{805306370, "test"},
 					},
 				},
 				{
 					Query: "SELECT * FROM pg_catalog.pg_database WHERE datname='test';",
 					Expected: []sql.Row{
-						{805306369, "test", 0, 6, "i", "f", "t", -1, 0, 0, 0, "", "", nil, "", nil, nil},
+						{805306370, "test", 0, 6, "i", "f", "t", -1, 0, 0, 0, "", "", nil, "", nil, nil},
 					},
 				},
 			},
