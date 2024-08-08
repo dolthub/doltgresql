@@ -16,14 +16,14 @@ package binary
 
 import (
 	"fmt"
-	"github.com/dolthub/doltgresql/postgres/parser/duration"
-	"github.com/dolthub/doltgresql/server/functions"
 	"math"
 	"time"
 
 	"github.com/dolthub/go-mysql-server/sql"
 	"github.com/shopspring/decimal"
 
+	"github.com/dolthub/doltgresql/postgres/parser/duration"
+	"github.com/dolthub/doltgresql/server/functions"
 	"github.com/dolthub/doltgresql/server/functions/framework"
 	pgtypes "github.com/dolthub/doltgresql/server/types"
 )
@@ -282,12 +282,19 @@ var interval_pl_timestamptz = framework.Function2{
 	},
 }
 
+// intervalPlusNonInterval adds given interval duration to the given time.Time value.
+// During converting interval duration to time.Duration type, it can overflow.
 func intervalPlusNonInterval(d duration.Duration, t time.Time) (time.Time, error) {
 	seconds, ok := d.AsInt64()
 	if !ok {
+		if !ok {
+			return time.Time{}, fmt.Errorf("interval overflow")
+		}
+	}
+	nanos := float64(seconds) * functions.NanosPerSec
+	if nanos > float64(math.MaxInt64) || nanos < float64(math.MinInt64) {
 		return time.Time{}, fmt.Errorf("interval overflow")
 	}
-	nanos := seconds * functions.NanosPerSec // TODO: might overflow
 	return t.Add(time.Duration(nanos)), nil
 }
 
