@@ -16,18 +16,18 @@ package types
 
 import (
 	"bytes"
+	"encoding/gob"
 	"fmt"
 	"reflect"
-
-	"github.com/dolthub/doltgresql/postgres/parser/duration"
-	"github.com/dolthub/doltgresql/postgres/parser/sem/tree"
-	"github.com/dolthub/doltgresql/utils"
 
 	"github.com/dolthub/go-mysql-server/sql"
 	"github.com/dolthub/go-mysql-server/sql/types"
 	"github.com/dolthub/vitess/go/sqltypes"
 	"github.com/dolthub/vitess/go/vt/proto/query"
 	"github.com/lib/pq/oid"
+
+	"github.com/dolthub/doltgresql/postgres/parser/duration"
+	"github.com/dolthub/doltgresql/postgres/parser/sem/tree"
 )
 
 // Interval is the interval type.
@@ -180,14 +180,19 @@ func (b IntervalType) SerializedCompare(v1 []byte, v2 []byte) (int, error) {
 		return -1, nil
 	}
 
-	d1, err := deserializeDuration(v1)
+	var d1, d2 duration.Duration
+	dec := gob.NewDecoder(bytes.NewReader(v1))
+	err := dec.Decode(&d1)
 	if err != nil {
 		return 0, err
 	}
-	d2, err := deserializeDuration(v2)
+
+	dec = gob.NewDecoder(bytes.NewReader(v2))
+	err = dec.Decode(&d2)
 	if err != nil {
 		return 0, err
 	}
+
 	return d1.Compare(d2), nil
 }
 
@@ -252,10 +257,13 @@ func (b IntervalType) SerializeValue(val any) ([]byte, error) {
 	if err != nil {
 		return nil, err
 	}
-	str := converted.(duration.Duration).String()
-	writer := utils.NewWriter(uint64(len(str) + 1))
-	writer.String(str)
-	return writer.Data(), nil
+	var buf bytes.Buffer
+	enc := gob.NewEncoder(&buf)
+	err = enc.Encode(converted.(duration.Duration))
+	if err != nil {
+		return nil, err
+	}
+	return buf.Bytes(), nil
 }
 
 // DeserializeValue implements the DoltgresType interface.
@@ -263,15 +271,8 @@ func (b IntervalType) DeserializeValue(val []byte) (any, error) {
 	if len(val) == 0 {
 		return nil, nil
 	}
-	return deserializeDuration(val)
-}
-
-func deserializeDuration(val []byte) (duration.Duration, error) {
-	reader := utils.NewReader(val)
-	str := reader.String()
-	dInterval, err := tree.ParseDInterval(str)
-	if err != nil {
-		return duration.Duration{}, err
-	}
-	return dInterval.Duration, nil
+	var deserialized duration.Duration
+	dec := gob.NewDecoder(bytes.NewReader(val))
+	err := dec.Decode(&deserialized)
+	return deserialized, err
 }
