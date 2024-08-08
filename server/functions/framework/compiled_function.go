@@ -373,8 +373,8 @@ func (c *CompiledFunction) resolveFunction(argTypes []pgtypes.DoltgresType, over
 		return matches[0], nil
 	}
 
-	// Finally rank the candidates by the number of params with a preferred type conversion available
-	preferredOverloads := preferredTypeMatches(argTypes, compatibleOverloads)
+	// If there was more than a single match, try to find the one with the most preferred type conversions
+	preferredOverloads := preferredTypeMatches(argTypes, matches)
 
 	// Check once more for exactly one match
 	if len(preferredOverloads) == 1 {
@@ -432,11 +432,11 @@ func closestTypeMatches(argTypes []pgtypes.DoltgresType, candidates []overloadMa
 	for _, cand := range candidates {
 		currentMatchCount := 0
 		for argIdx := range argTypes {
-			paramType := cand.params.argTypes[argIdx]
+			argType := cand.params.argTypes[argIdx]
 
 			// NULL values count as exact matches, since all types accept NULL as a valid value
-			paramBaseID := argTypes[argIdx].BaseID()
-			if paramBaseID == paramType || paramBaseID == pgtypes.DoltgresTypeBaseID_Null {
+			argBaseId := argTypes[argIdx].BaseID()
+			if argBaseId == argType || argBaseId == pgtypes.DoltgresTypeBaseID_Null {
 				currentMatchCount++
 			}
 		}
@@ -457,9 +457,9 @@ func preferredTypeMatches(argTypes []pgtypes.DoltgresType, candidates []overload
 	for _, cand := range candidates {
 		currentPreferredCount := 0
 		for argIdx := range argTypes {
-			paramType := cand.params.argTypes[argIdx]
+			argType := cand.params.argTypes[argIdx]
 
-			if argTypes[argIdx].BaseID() != paramType && paramType.GetTypeCategory().IsPreferredType(paramType) {
+			if argTypes[argIdx].BaseID() != argType && argType.GetTypeCategory().IsPreferredType(argType) {
 				currentPreferredCount++
 			}
 		}
