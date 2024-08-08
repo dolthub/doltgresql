@@ -168,6 +168,16 @@ func (o Operator) String() string {
 		return "#"
 	case Operator_BinaryConcatenate:
 		return "||"
+	case Operator_BinaryEqual:
+		return "="
+	case Operator_BinaryGreaterThan:
+		return ">"
+	case Operator_BinaryGreaterOrEqual:
+		return ">="
+	case Operator_BinaryLessThan:
+		return "<"
+	case Operator_BinaryLessOrEqual:
+		return "<="
 	default:
 		return "unknown operator"
 	}

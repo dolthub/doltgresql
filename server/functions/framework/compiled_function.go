@@ -30,6 +30,8 @@ type CompiledFunction struct {
 	Name          string
 	Arguments     []sql.Expression
 	IsOperator    bool
+	overloads     *Overloads
+	fnOverloads   []Overload
 	overload      overloadMatch
 	originalTypes []pgtypes.DoltgresType
 	callResolved  []pgtypes.DoltgresType
@@ -53,9 +55,11 @@ func newCompiledFunctionInternal(
 	isOperator bool,
 ) *CompiledFunction {
 	c := &CompiledFunction{
-		Name:       name,
-		Arguments:  args,
-		IsOperator: isOperator,
+		Name:        name,
+		Arguments:   args,
+		IsOperator:  isOperator,
+		overloads:   overloads,
+		fnOverloads: fnOverloads,
 	}
 	// First we'll analyze all of the parameters.
 	originalTypes, sources, err := c.analyzeParameters()
@@ -272,9 +276,9 @@ func (c *CompiledFunction) WithChildren(children ...sql.Expression) (sql.Express
 	if len(children) != len(c.Arguments) {
 		return nil, sql.ErrInvalidChildrenNumber.New(len(children), len(c.Arguments))
 	}
-	nc := *c
-	nc.Arguments = children
-	return &nc, nil
+
+	// We have to re-resolve here, since the change in children may require it (e.g. we have more type info than we did)
+	return newCompiledFunctionInternal(c.Name, children, c.overloads, c.fnOverloads, c.IsOperator), nil
 }
 
 // resolve returns an overloadMatch that either matches the given parameters exactly, or is a viable match after casting.
