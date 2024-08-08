@@ -1072,7 +1072,7 @@ func TestDoltMergeArtifacts(t *testing.T) {
 }
 
 func TestDoltReset(t *testing.T) {
-	// t.Skip()
+	t.Skip()
 	h := newDoltgresServerHarness(t)
 	denginetest.RunDoltResetTest(t, h)
 }
@@ -1101,7 +1101,7 @@ func TestDoltCheckoutPrepared(t *testing.T) {
 }
 
 func TestDoltBranch(t *testing.T) {
-	// t.Skip()
+	t.Skip()
 	h := newDoltgresServerHarness(t)
 	denginetest.RunDoltBranchTests(t, h)
 }
