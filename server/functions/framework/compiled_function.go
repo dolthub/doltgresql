@@ -39,23 +39,6 @@ type CompiledFunction struct {
 var _ sql.FunctionExpression = (*CompiledFunction)(nil)
 var _ sql.NonDeterministicExpression = (*CompiledFunction)(nil)
 
-// overloadMatch is the result of a successful overload resolution, containing the types of the parameters as well
-// as the type cast functions required to convert every argument to its appropriate parameter type
-type overloadMatch struct {
-	params Overload
-	casts  []TypeCastFunction
-}
-
-// Valid returns whether this overload is valid (has a callable function)
-func (o overloadMatch) Valid() bool {
-	return o.params.function != nil
-}
-
-// Function returns the function for this overload
-func (o overloadMatch) Function() FunctionInterface {
-	return o.params.function
-}
-
 // NewCompiledFunction returns a newly compiled function.
 func NewCompiledFunction(name string, args []sql.Expression, functions *Overloads, isOperator bool) *CompiledFunction {
 	return newCompiledFunctionInternal(name, args, functions, functions.overloadsForParams(len(args)), isOperator)
@@ -306,7 +289,7 @@ func (c *CompiledFunction) resolve(
 	// First check for an exact match
 	exactMatch, found := overloads.ExactMatchForTypes(argTypes)
 	if found {
-		baseTypes := baseIdsFortypes(argTypes)
+		baseTypes := baseIdsForTypes(argTypes)
 		return overloadMatch{
 			params: Overload{
 				function:   exactMatch,
