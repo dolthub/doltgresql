@@ -122,19 +122,23 @@ func (b TimestampTZType) GetSerializationID() SerializationID {
 
 // IoInput implements the DoltgresType interface.
 func (b TimestampTZType) IoInput(ctx *sql.Context, input string) (any, error) {
-	if t, err := time.Parse("2006-01-02 15:04:05-0700", input); err == nil {
+	if t, err := time.Parse("2006-01-02 15:04:05.999999999-0700", input); err == nil {
 		return t, nil
-	} else if t, err = time.Parse("2006-01-02 15:04:05-07:00", input); err == nil {
+	} else if t, err = time.Parse("2006-01-02 15:04:05.999999999-07:00", input); err == nil {
 		return t, nil
-	} else if t, err = time.Parse("2006-01-02 15:04:05-07", input); err == nil {
+	} else if t, err = time.Parse("2006-01-02 15:04:05.999999999-07", input); err == nil {
 		return t, nil
-	} else if t, err = time.Parse("January 01 15:04:05 2006 -0700", input); err == nil {
+	} else if t, err = time.Parse("January 01 15:04:05.999999999 2006 -0700", input); err == nil {
 		return t, nil
-	} else if t, err = time.Parse("January 01 15:04:05 2006 -07:00", input); err == nil {
+	} else if t, err = time.Parse("January 01 15:04:05.999999999 2006 -07:00", input); err == nil {
 		return t, nil
-	} else if t, err = time.Parse("January 01 15:04:05 2006 -07", input); err == nil {
+	} else if t, err = time.Parse("January 01 15:04:05.999999999 2006 -07", input); err == nil {
 		return t, nil
 	} else if t, err = time.Parse("2006-01-02", input); err == nil {
+		return t, nil
+	} else if t, err = time.Parse("2006-01-02 15:04:05.999999999", input); err == nil {
+		return t, nil
+	} else if t, err = time.Parse("2006-01-02 15:04:05.999999999 -0700", input); err == nil {
 		return t, nil
 	}
 	return nil, fmt.Errorf("invalid format for timestamptz")

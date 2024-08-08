@@ -216,9 +216,10 @@ func TestInfoSchemaTables(t *testing.T) {
 					},
 				},
 				{
-					Skip:     true, // TODO: need ENUM type for table_type column
-					Query:    "SELECT * FROM information_schema.tables ORDER BY table_name;",
-					Expected: []sql.Row{},
+					Query: "SELECT table_catalog, table_schema, table_name, table_type FROM information_schema.tables WHERE table_schema = 'test_schema' ORDER BY table_name;",
+					Expected: []sql.Row{
+						{"postgres", "test_schema", "test_table2", "BASE TABLE"},
+					},
 				},
 				{
 					Query:    `SELECT "table_schema", "table_name", obj_description(('"' || "table_schema" || '"."' || "table_name" || '"')::regclass, 'pg_class') AS table_comment FROM "information_schema"."tables" WHERE ("table_schema" = 'test_schema' AND "table_name" = 'test_table2')`,
