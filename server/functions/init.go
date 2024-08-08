@@ -49,6 +49,7 @@ func Init() {
 	initCurrentSchemas()
 	initDegrees()
 	initDiv()
+	initDoltProcedures()
 	initExp()
 	initExtract()
 	initFactorial()

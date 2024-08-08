@@ -18,18 +18,9 @@ import (
 	"fmt"
 	"strings"
 
-	pgtypes "github.com/dolthub/doltgresql/server/types"
-
 	"github.com/dolthub/go-mysql-server/sql"
 	"github.com/dolthub/go-mysql-server/sql/expression/function"
 )
-
-// Function is a name, along with a collection of functions, that represent a single PostgreSQL function with all of its
-// overloads.
-type Function struct {
-	Name      string
-	Overloads []any
-}
 
 // Catalog contains all of the PostgreSQL functions.
 var Catalog = map[string][]FunctionInterface{}
@@ -74,7 +65,13 @@ func Initialize() {
 	}
 	initializedFunctions = true
 
-	// Flush all GMS built-ins that have conflicting names with PostgreSQL functions
+	replaceGmsBuiltIns()
+	validateFunctions()
+	compileFunctions()
+}
+
+// replaceGmsBuiltIns replaces all GMS built-ins that have conflicting names with PostgreSQL functions
+func replaceGmsBuiltIns() {
 	functionNames := make(map[string]struct{})
 	for name := range Catalog {
 		functionNames[strings.ToLower(name)] = struct{}{}
@@ -86,19 +83,23 @@ func Initialize() {
 		}
 	}
 	function.BuiltIns = newBuiltIns
+}
 
-	for funcName, catalogFunctions := range Catalog {
+// validateFunctions panics if any functions are defined incorrectly or ambiguously
+func validateFunctions() {
+	for funcName, overloads := range Catalog {
 		funcName := funcName
 		// Verify that each function uses the correct Function overload
-		for _, functionOverload := range catalogFunctions {
-			if len(functionOverload.GetParameters()) != functionOverload.GetExpectedParameterCount() {
+		for _, functionOverload := range overloads {
+			if functionOverload.GetExpectedParameterCount() >= 0 &&
+				len(functionOverload.GetParameters()) != functionOverload.GetExpectedParameterCount() {
 				panic(fmt.Errorf("function `%s` should have %d arguments but has %d arguments",
 					funcName, functionOverload.GetExpectedParameterCount(), len(functionOverload.GetParameters())))
 			}
 		}
 		// Verify that all overloads are unique
-		for functionIndex, f1 := range catalogFunctions {
-			for _, f2 := range catalogFunctions[functionIndex+1:] {
+		for functionIndex, f1 := range overloads {
+			for _, f2 := range overloads[functionIndex+1:] {
 				sameCount := 0
 				if f1.GetExpectedParameterCount() == f2.GetExpectedParameterCount() {
 					f2Parameters := f2.GetParameters()
@@ -113,15 +114,23 @@ func Initialize() {
 				}
 			}
 		}
-		// Build the overloads
-		baseOverload := &OverloadDeduction{Parameter: make(map[pgtypes.DoltgresTypeBaseID]*OverloadDeduction)}
-		for _, functionOverload := range catalogFunctions {
-			buildOverload(funcName, baseOverload, functionOverload)
+	}
+}
+
+// compileFunctions creates a CompiledFunction for each overload of each function in the catalog
+func compileFunctions() {
+	for funcName, overloads := range Catalog {
+		overloadTree := NewOverloads()
+		for _, functionOverload := range overloads {
+			if err := overloadTree.Add(functionOverload); err != nil {
+				panic(err)
+			}
 		}
 
 		// Store the compiled function into the engine's built-in functions
+		// TODO: don't do this, use an actual contract for communicating these functions to the engine catalog
 		createFunc := func(params ...sql.Expression) (sql.Expression, error) {
-			return NewCompiledFunction(funcName, params, baseOverload, false), nil
+			return NewCompiledFunction(funcName, params, overloadTree, false), nil
 		}
 		function.BuiltIns = append(function.BuiltIns, sql.FunctionN{
 			Name: funcName,
@@ -135,45 +144,32 @@ func Initialize() {
 	// special rules, so it's far more efficient to reuse it for operators. Operators are also a special case since they
 	// all have different names, while standard overload deducers work on a function-name basis.
 	for signature, functionOverload := range unaryFunctions {
-		baseOverload, ok := unaryAggregateDeducers[signature.Operator]
+		overloads, ok := unaryAggregateOverloads[signature.Operator]
 		if !ok {
-			baseOverload = &OverloadDeduction{Parameter: make(map[pgtypes.DoltgresTypeBaseID]*OverloadDeduction)}
-			unaryAggregateDeducers[signature.Operator] = baseOverload
+			overloads = NewOverloads()
+			unaryAggregateOverloads[signature.Operator] = overloads
 		}
-		buildOverload("internal_unary_aggregate_function", baseOverload, functionOverload)
-	}
-	for signature, functionOverload := range binaryFunctions {
-		baseOverload, ok := binaryAggregateDeducers[signature.Operator]
-		if !ok {
-			baseOverload = &OverloadDeduction{Parameter: make(map[pgtypes.DoltgresTypeBaseID]*OverloadDeduction)}
-			binaryAggregateDeducers[signature.Operator] = baseOverload
+		if err := overloads.Add(functionOverload); err != nil {
+			panic(err)
 		}
-		buildOverload("internal_binary_aggregate_function", baseOverload, functionOverload)
 	}
-	// Add all permutations for the unary and binary operators
-	for operator, baseOverload := range unaryAggregateDeducers {
-		unaryAggregatePermutations[operator] = baseOverload.collectOverloadPermutations()
-	}
-	for operator, baseOverload := range binaryAggregateDeducers {
-		binaryAggregatePermutations[operator] = baseOverload.collectOverloadPermutations()
-	}
-}
 
-// buildOverload is used by Initialize to add the given function to the base overload deducer.
-func buildOverload(funcName string, baseOverload *OverloadDeduction, functionOverload FunctionInterface) {
-	// Loop through all of the parameters
-	currentOverload := baseOverload
-	for _, param := range functionOverload.GetParameters() {
-		nextOverload := currentOverload.Parameter[param.BaseID()]
-		if nextOverload == nil {
-			nextOverload = &OverloadDeduction{Parameter: make(map[pgtypes.DoltgresTypeBaseID]*OverloadDeduction)}
-			currentOverload.Parameter[param.BaseID()] = nextOverload
+	for signature, functionOverload := range binaryFunctions {
+		overloads, ok := binaryAggregateOverloads[signature.Operator]
+		if !ok {
+			overloads = NewOverloads()
+			binaryAggregateOverloads[signature.Operator] = overloads
 		}
-		currentOverload = nextOverload
+		if err := overloads.Add(functionOverload); err != nil {
+			panic(err)
+		}
 	}
-	// This should never happen, but we'll check anyway to be safe
-	if currentOverload.Function != nil {
-		panic(fmt.Errorf("function `%s` somehow has duplicate overloads that weren't caught earlier", funcName))
+
+	// Add all permutations for the unary and binary operators
+	for operator, overload := range unaryAggregateOverloads {
+		unaryAggregatePermutations[operator] = overload.overloadsForParams(1)
 	}
-	currentOverload.Function = functionOverload
+	for operator, overload := range binaryAggregateOverloads {
+		binaryAggregatePermutations[operator] = overload.overloadsForParams(2)
+	}
 }

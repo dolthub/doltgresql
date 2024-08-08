@@ -1198,9 +1198,12 @@ func TestDateAndTimeFunction(t *testing.T) {
 					Expected: []sql.Row{{float64(28500000)}},
 				},
 				{
-					Skip:     true, // TODO: not supported yet
 					Query:    `SELECT EXTRACT(MILLENNIUM FROM TIMESTAMP '2001-02-16 20:38:40');`,
 					Expected: []sql.Row{{float64(3)}},
+				},
+				{
+					Query:    `SELECT EXTRACT(MILLENNIUM FROM TIMESTAMP '2000-02-16 20:38:40');`,
+					Expected: []sql.Row{{float64(2)}},
 				},
 				{
 					Query:    `SELECT EXTRACT(MILLISECONDS FROM TIME '17:12:28.5');`,

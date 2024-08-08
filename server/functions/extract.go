@@ -183,7 +183,7 @@ var extract_text_interval = framework.Function2{
 }
 
 // getFieldFromTimeVal returns the value for given field extracted from non-interval values.
-func getFieldFromTimeVal(field string, tVal time.Time) (any, error) {
+func getFieldFromTimeVal(field string, tVal time.Time) (decimal.Decimal, error) {
 	switch strings.ToLower(field) {
 	case "century", "centuries":
 		return decimal.NewFromFloat(math.Ceil(float64(tVal.Year()) / 100)), nil
@@ -209,13 +209,13 @@ func getFieldFromTimeVal(field string, tVal time.Time) (any, error) {
 		year, _ := tVal.ISOWeek()
 		return decimal.NewFromInt(int64(year)), nil
 	case "julian":
-		return nil, fmt.Errorf("'julian' field extraction not supported")
+		return decimal.Decimal{}, fmt.Errorf("'julian' field extraction not supported yet")
 	case "microsecond", "microseconds":
 		w := float64(tVal.Second() * 1000000)
 		f := float64(tVal.Nanosecond()) / float64(1000)
 		return decimal.NewFromFloat(w + f), nil
 	case "millennium", "millenniums":
-		return nil, fmt.Errorf("'millennium' field extraction not supported")
+		return decimal.NewFromFloat(math.Ceil(float64(tVal.Year()) / 1000)), nil
 	case "millisecond", "milliseconds":
 		w := float64(tVal.Second() * 1000)
 		f := float64(tVal.Nanosecond()) / float64(1000000)
@@ -246,6 +246,6 @@ func getFieldFromTimeVal(field string, tVal time.Time) (any, error) {
 	case "year", "years":
 		return decimal.NewFromInt(int64(tVal.Year())), nil
 	default:
-		return nil, fmt.Errorf("unknown field given: %s", field)
+		return decimal.Decimal{}, fmt.Errorf("unknown field given: %s", field)
 	}
 }
