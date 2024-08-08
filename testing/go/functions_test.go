@@ -1018,7 +1018,6 @@ func TestSystemCatalogInformationFunctions(t *testing.T) {
 	RunScripts(t, []ScriptTest{
 		{
 			Name:        "pg_encoding_to_char",
-			Focus:       true,
 			SetUpScript: []string{},
 			Assertions: []ScriptTestAssertion{
 				{
