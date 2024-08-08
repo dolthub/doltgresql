@@ -24,6 +24,7 @@ import (
 	"github.com/shopspring/decimal"
 	"gopkg.in/src-d/go-errors.v1"
 
+	"github.com/dolthub/doltgresql/postgres/parser/duration"
 	"github.com/dolthub/doltgresql/server/functions/framework"
 	pgtypes "github.com/dolthub/doltgresql/server/types"
 )
@@ -35,7 +36,7 @@ func initExtract() {
 	framework.RegisterFunction(extract_text_timetz)
 	framework.RegisterFunction(extract_text_timestamp)
 	framework.RegisterFunction(extract_text_timestamptz)
-	//framework.RegisterFunction(extract_text_interval)
+	framework.RegisterFunction(extract_text_interval)
 }
 
 var ErrUnitNotSupported = errors.NewKind("unit \"%s\" not supported for type %s")
@@ -119,22 +120,67 @@ var extract_text_timestamptz = framework.Function2{
 	},
 }
 
-//// extract_text_interval represents the PostgreSQL date/time function, taking {text, interval}
-//var extract_text_interval = framework.Function2{
-//	Name:               "extract",
-//	Return:             pgtypes.Numeric,
-//	Parameters:         [2]pgtypes.DoltgresType{pgtypes.Text, pgtypes.Interval},
-//	IsNonDeterministic: true,
-//	Strict:             true,
-//	Callable: func(ctx *sql.Context, _ [3]pgtypes.DoltgresType, val1, val2 any) (any, error) {
-//		field := val1.(string)
-//		if strings.HasPrefix(strings.ToLower(field), "timezone") {
-//			return nil, ErrUnitNotSupported.New(field, "time without time zone")
-//		}
-//		//intervalVal :=
-//		return nil, nil
-//	},
-//}
+const (
+	NanosPerMicro = 1000
+	NanosPerMilli = NanosPerMicro * duration.MicrosPerMilli
+	NanosPerSec   = NanosPerMicro * duration.MicrosPerMilli * duration.MillisPerSec
+)
+
+// extract_text_interval represents the PostgreSQL date/time function, taking {text, interval}
+var extract_text_interval = framework.Function2{
+	Name:               "extract",
+	Return:             pgtypes.Numeric,
+	Parameters:         [2]pgtypes.DoltgresType{pgtypes.Text, pgtypes.Interval},
+	IsNonDeterministic: true,
+	Strict:             true,
+	Callable: func(ctx *sql.Context, _ [3]pgtypes.DoltgresType, val1, val2 any) (any, error) {
+		field := val1.(string)
+		dur := val2.(duration.Duration)
+		switch strings.ToLower(field) {
+		case "century", "centuries":
+			return decimal.NewFromFloat(math.Floor(float64(dur.Months) / 12 / 100)), nil
+		case "day", "days":
+			return decimal.NewFromInt(dur.Days), nil
+		case "decade", "decades":
+			return decimal.NewFromFloat(math.Floor(float64(dur.Months) / 12 / 10)), nil
+		case "epoch":
+			epoch := float64(duration.SecsPerDay*duration.DaysPerMonth*dur.Months) + float64(duration.SecsPerDay*dur.Days) +
+				(float64(dur.Nanos()) / (NanosPerSec))
+			return decimal.NewFromFloatWithExponent(epoch, -6), nil
+		case "hour", "hours":
+			hours := math.Floor(float64(dur.Nanos()) / (NanosPerSec * duration.SecsPerHour))
+			return decimal.NewFromFloat(hours), nil
+		case "microsecond", "microseconds":
+			secondsInNanos := dur.Nanos() % (NanosPerSec * duration.SecsPerMinute)
+			microseconds := float64(secondsInNanos) / NanosPerMicro
+			return decimal.NewFromFloat(microseconds), nil
+		case "millennium", "millenniums":
+			return decimal.NewFromFloat(math.Floor(float64(dur.Months) / 12 / 1000)), nil
+		case "millisecond", "milliseconds":
+			secondsInNanos := dur.Nanos() % (NanosPerSec * duration.SecsPerMinute)
+			milliseconds := float64(secondsInNanos) / NanosPerMilli
+			return decimal.NewFromFloatWithExponent(milliseconds, -3), nil
+		case "minute", "minutes":
+			minutesInNanos := dur.Nanos() % (NanosPerSec * duration.SecsPerHour)
+			minutes := math.Floor(float64(minutesInNanos) / (NanosPerSec * duration.SecsPerMinute))
+			return decimal.NewFromFloat(minutes), nil
+		case "month", "months":
+			return decimal.NewFromInt(dur.Months % 12), nil
+		case "quarter":
+			return decimal.NewFromInt((dur.Months%12-1)/3 + 1), nil
+		case "second", "seconds":
+			secondsInNanos := dur.Nanos() % (NanosPerSec * duration.SecsPerMinute)
+			seconds := float64(secondsInNanos) / NanosPerSec
+			return decimal.NewFromFloatWithExponent(seconds, -6), nil
+		case "year", "years":
+			return decimal.NewFromFloat(math.Floor(float64(dur.Months) / 12)), nil
+		case "dow", "doy", "isodow", "isoyear", "julian", "timezone", "timezone_hour", "timezone_minute", "week":
+			return nil, ErrUnitNotSupported.New(field, "interval")
+		default:
+			return nil, fmt.Errorf("unknown field given: %s", field)
+		}
+	},
+}
 
 // getFieldFromTimeVal returns the value for given field extracted from non-interval values.
 func getFieldFromTimeVal(field string, tVal time.Time) (decimal.Decimal, error) {

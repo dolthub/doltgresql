@@ -20,6 +20,7 @@ import (
 	"github.com/dolthub/go-mysql-server/sql"
 	"github.com/shopspring/decimal"
 
+	"github.com/dolthub/doltgresql/postgres/parser/duration"
 	"github.com/dolthub/doltgresql/server/functions/framework"
 	pgtypes "github.com/dolthub/doltgresql/server/types"
 )
@@ -42,6 +43,7 @@ func initBinaryDivide() {
 	framework.RegisterBinaryFunction(framework.Operator_BinaryDivide, int8div)
 	framework.RegisterBinaryFunction(framework.Operator_BinaryDivide, int82div)
 	framework.RegisterBinaryFunction(framework.Operator_BinaryDivide, int84div)
+	framework.RegisterBinaryFunction(framework.Operator_BinaryDivide, interval_div)
 	framework.RegisterBinaryFunction(framework.Operator_BinaryDivide, numeric_div)
 }
 
@@ -224,6 +226,20 @@ var int84div = framework.Function2{
 			return nil, fmt.Errorf("division by zero")
 		}
 		return val1.(int64) / int64(val2.(int32)), nil
+	},
+}
+
+// interval_div represents the PostgreSQL function of the same name, taking the same parameters.
+var interval_div = framework.Function2{
+	Name:       "interval_div",
+	Return:     pgtypes.Interval,
+	Parameters: [2]pgtypes.DoltgresType{pgtypes.Interval, pgtypes.Float64},
+	Strict:     true,
+	Callable: func(ctx *sql.Context, _ [3]pgtypes.DoltgresType, val1 any, val2 any) (any, error) {
+		if val2.(float64) == 0 {
+			return nil, fmt.Errorf("division by zero")
+		}
+		return val1.(duration.Duration).DivFloat(val2.(float64)), nil
 	},
 }
 

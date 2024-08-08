@@ -1144,18 +1144,8 @@ func TestDateAndTimeFunction(t *testing.T) {
 					Expected: []sql.Row{{float64(-1)}},
 				},
 				{
-					Skip:     true, // TODO: support INTERVAL type
-					Query:    `SELECT EXTRACT(CENTURY FROM INTERVAL '2001 years');`,
-					Expected: []sql.Row{{float64(20)}},
-				},
-				{
 					Query:    `SELECT EXTRACT(DAY FROM TIMESTAMP '2001-02-16 20:38:40');`,
 					Expected: []sql.Row{{float64(16)}},
-				},
-				{
-					Skip:     true, // TODO: support INTERVAL type
-					Query:    `SELECT EXTRACT(DAY FROM INTERVAL '40 days 1 minute');`,
-					Expected: []sql.Row{{float64(40)}},
 				},
 				{
 					Query:    `SELECT EXTRACT(DECADE FROM TIMESTAMP '2001-02-16 20:38:40');`,
@@ -1176,11 +1166,6 @@ func TestDateAndTimeFunction(t *testing.T) {
 				{
 					Query:    `SELECT EXTRACT(EPOCH FROM TIMESTAMP '2001-02-16 20:38:40.12');`,
 					Expected: []sql.Row{{float64(982355920.120000)}},
-				},
-				{
-					Skip:     true, // TODO: support INTERVAL type
-					Query:    `SELECT EXTRACT(EPOCH FROM INTERVAL '5 days 3 hours');`,
-					Expected: []sql.Row{{float64(442800.000000)}},
 				},
 				{
 					Query:    `SELECT EXTRACT(HOUR FROM TIMESTAMP '2001-02-16 20:38:40');`,
@@ -1233,16 +1218,6 @@ func TestDateAndTimeFunction(t *testing.T) {
 					Expected: []sql.Row{{float64(2)}},
 				},
 				{
-					Skip:     true, // TODO: not supported yet
-					Query:    `SELECT EXTRACT(MONTH FROM INTERVAL '2 years 3 months');`,
-					Expected: []sql.Row{{float64(3)}},
-				},
-				{
-					Skip:     true, // TODO: not supported yet
-					Query:    `SELECT EXTRACT(MONTH FROM INTERVAL '2 years 13 months');`,
-					Expected: []sql.Row{{float64(1)}},
-				},
-				{
 					Query:    `SELECT EXTRACT(QUARTER FROM TIMESTAMP '2001-02-16 20:38:40');`,
 					Expected: []sql.Row{{float64(1)}},
 				},
@@ -1261,6 +1236,192 @@ func TestDateAndTimeFunction(t *testing.T) {
 				{
 					Query:    `SELECT EXTRACT(YEAR FROM TIMESTAMP '2001-02-16 20:38:40');`,
 					Expected: []sql.Row{{float64(2001)}},
+				},
+			},
+		},
+		{
+			Name:        "extract interval",
+			SetUpScript: []string{},
+			Assertions: []ScriptTestAssertion{
+				{
+					Query:    `SELECT EXTRACT(CENTURY FROM INTERVAL '2001 years');`,
+					Expected: []sql.Row{{float64(20)}},
+				},
+				{
+					Query:    `SELECT EXTRACT(DAY FROM INTERVAL '40 days 1 minute');`,
+					Expected: []sql.Row{{float64(40)}},
+				},
+				{
+					Query:    `select extract(decades from interval '1000 months');`,
+					Expected: []sql.Row{{float64(8)}},
+				},
+				{
+					Query:    `SELECT EXTRACT(EPOCH FROM INTERVAL '5 days 3 hours');`,
+					Expected: []sql.Row{{float64(442800.000000)}},
+				},
+				{
+					Query:    `select extract(epoch from interval '10 months 10 seconds');`,
+					Expected: []sql.Row{{float64(25920010.000000)}},
+				},
+				{
+					Query:    `select extract(hours from interval '10 months 65 minutes 10 seconds');`,
+					Expected: []sql.Row{{float64(1)}},
+				},
+				{
+					Query:    `select extract(microsecond from interval '10 months 65 minutes 10 seconds');`,
+					Expected: []sql.Row{{float64(10000000)}},
+				},
+				{
+					Query:    `SELECT EXTRACT(MILLENNIUM FROM INTERVAL '2001 years');`,
+					Expected: []sql.Row{{float64(2)}},
+				},
+				{
+					Query:    `select extract(millenniums from interval '3000 years 65 minutes 10 seconds');`,
+					Expected: []sql.Row{{float64(3)}},
+				},
+				{
+					Query:    `select extract(millisecond from interval '10 months 65 minutes 10 seconds');`,
+					Expected: []sql.Row{{float64(10000.000)}},
+				},
+				{
+					Query:    `select extract(minutes from interval '10 months 65 minutes 10 seconds');`,
+					Expected: []sql.Row{{float64(5)}},
+				},
+				{
+					Query:    `SELECT EXTRACT(MONTH FROM INTERVAL '2 years 3 months');`,
+					Expected: []sql.Row{{float64(3)}},
+				},
+				{
+					Query:    `SELECT EXTRACT(MONTH FROM INTERVAL '2 years 13 months');`,
+					Expected: []sql.Row{{float64(1)}},
+				},
+				{
+					Query:    `select extract(months from interval '20 months 65 minutes 10 seconds');`,
+					Expected: []sql.Row{{float64(8)}},
+				},
+				{
+					Query:    `select extract(quarter from interval '20 months 65 minutes 10 seconds');`,
+					Expected: []sql.Row{{float64(3)}},
+				},
+				{
+					Query:    `select extract(seconds from interval '65 minutes 10 seconds 5 millisecond');`,
+					Expected: []sql.Row{{float64(10.005000)}},
+				},
+				{
+					Query:    `select extract(years from interval '20 months 65 minutes 10 seconds');`,
+					Expected: []sql.Row{{float64(1)}},
+				},
+			},
+		},
+		{
+			Name:        "age",
+			SetUpScript: []string{},
+			Assertions: []ScriptTestAssertion{
+				{
+					Query:    `SELECT age(timestamp '2001-04-10', timestamp '1957-06-13');`,
+					Expected: []sql.Row{{"43 years 9 mons 27 days"}},
+				},
+				{
+					Query:    `SELECT age(timestamp '1957-06-13', timestamp '2001-04-10');`,
+					Expected: []sql.Row{{"-43 years -9 mons -27 days"}},
+				},
+				{
+					Query:    `SELECT age(timestamp '2001-06-13', timestamp '2001-04-10');`,
+					Expected: []sql.Row{{"2 mons 3 days"}},
+				},
+				{
+					Query:    `SELECT age(timestamp '2001-04-10', timestamp '2001-06-13');`,
+					Expected: []sql.Row{{"-2 mons -3 days"}},
+				},
+				{
+					Query:    `SELECT age(timestamp '2001-04-10 12:23:33', timestamp '1957-06-13 13:23:34.4');`,
+					Expected: []sql.Row{{"43 years 9 mons 26 days 22:59:58.6"}},
+				},
+				{
+					Query:    `SELECT age(timestamp '1957-06-13 13:23:34.4', timestamp '2001-04-10 12:23:33');`,
+					Expected: []sql.Row{{"-43 years -9 mons -26 days -22:59:58.6"}},
+				},
+				{
+					Skip:     true, // TODO: current_date should return timestamp, not text
+					Query:    `SELECT age(current_date);`,
+					Expected: []sql.Row{{"00:00:00"}},
+				},
+				{
+					Query:    `SELECT age(current_date::timestamp);`,
+					Expected: []sql.Row{{"00:00:00"}},
+				},
+			},
+		},
+		{
+			Name: "Interval type functions",
+			SetUpScript: []string{
+				"CREATE TABLE t_interval (id INTEGER primary key, v1 INTERVAL);",
+				"INSERT INTO t_interval VALUES (1, '1 day 3 hours'), (2, '23 hours 30 minutes');",
+			},
+			Assertions: []ScriptTestAssertion{
+				{
+					Query:    `select - interval '20 days -11:00:00';`,
+					Expected: []sql.Row{{"-20 days +11:00:00"}},
+				},
+				{
+					Query:    `select '27:00:24'::interval = '1 day 03:00:24'::interval;`,
+					Expected: []sql.Row{{"t"}},
+				},
+				{
+					Query:    `select '27:00:24'::interval <> '1 day 03:00:24'::interval;`,
+					Expected: []sql.Row{{"f"}},
+				},
+				{
+					Query:    `select '23:22:24'::interval > '1 day 03:00:00'::interval;`,
+					Expected: []sql.Row{{"f"}},
+				},
+				{
+					Query:    `select '27:00:24'::interval >= '1 day 03:00:24.5'::interval;`,
+					Expected: []sql.Row{{"f"}},
+				},
+				{
+					Query:    `select '27:00:24'::interval < '1 day 03:00:24.5'::interval;`,
+					Expected: []sql.Row{{"t"}},
+				},
+				{
+					Query:    `select '27:00:24.5'::interval <= '1 day 03:00:24.5'::interval;`,
+					Expected: []sql.Row{{"t"}},
+				},
+				{
+					Query:    `select interval '2 days' + interval '1.5 days';`,
+					Expected: []sql.Row{{"3 days 12:00:00"}},
+				},
+				{
+					Query:    `select interval '2 days' + time '12:23:34';`,
+					Expected: []sql.Row{{"12:23:34"}},
+				},
+				{
+					Query:    `select interval '2 days' + date '2022-2-5';`,
+					Expected: []sql.Row{{"2022-02-07 00:00:00"}},
+				},
+				{
+					Query:    `select interval '2 days' + time with time zone '12:23:45-0700';`,
+					Expected: []sql.Row{{"12:23:45-07"}},
+				},
+				{
+					Query:    `select interval '2 days' + timestamp '2021-04-08 12:23:45';`,
+					Expected: []sql.Row{{"2021-04-10 12:23:45"}},
+				},
+				{
+					Query:    `select interval '2 days' + timestamp with time zone '2021-04-08 12:23:45-0700';`,
+					Expected: []sql.Row{{"2021-04-10 12:23:45-07"}},
+				},
+				{
+					Query:    `select interval '2 days' - interval '1.5 days';`,
+					Expected: []sql.Row{{"1 day -12:00:00"}},
+				},
+				{
+					Query:    `select interval '20 days' / 2.3`,
+					Expected: []sql.Row{{"8 days 16:41:44.347826"}},
+				},
+				{
+					Query:    `select interval '20 days' * 2.3`,
+					Expected: []sql.Row{{"46 days"}},
 				},
 			},
 		},

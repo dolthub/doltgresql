@@ -20,6 +20,7 @@ func Init() {
 	initAcos()
 	initAcosd()
 	initAcosh()
+	initAge()
 	initArrayAppend()
 	initArrayToString()
 	initAscii()

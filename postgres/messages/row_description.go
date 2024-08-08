@@ -88,6 +88,8 @@ const (
 	OidTimestampArray    = 1115
 	OidDateArray         = 1182
 	OidTimeArray         = 1183
+	OidInterval          = 1186
+	OidIntervalArray     = 1187
 	OidNumeric           = 1700
 	OidRefcursor         = 1790
 	OidRegprocedure      = 2202

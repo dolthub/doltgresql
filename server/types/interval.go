@@ -18,7 +18,10 @@ import (
 	"bytes"
 	"fmt"
 	"reflect"
-	"time"
+
+	"github.com/dolthub/doltgresql/postgres/parser/duration"
+	"github.com/dolthub/doltgresql/postgres/parser/sem/tree"
+	"github.com/dolthub/doltgresql/utils"
 
 	"github.com/dolthub/go-mysql-server/sql"
 	"github.com/dolthub/go-mysql-server/sql/types"
@@ -27,41 +30,41 @@ import (
 	"github.com/lib/pq/oid"
 )
 
-// Date is the day, month, and year.
-var Date = DateType{}
+// Interval is the interval type.
+var Interval = IntervalType{}
 
-// DateType is the extended type implementation of the PostgreSQL date.
-type DateType struct{}
+// IntervalType is the extended type implementation of the PostgreSQL interval.
+type IntervalType struct{}
 
-var _ DoltgresType = DateType{}
+var _ DoltgresType = IntervalType{}
 
 // Alignment implements the DoltgresType interface.
-func (b DateType) Alignment() TypeAlignment {
-	return TypeAlignment_Int
+func (b IntervalType) Alignment() TypeAlignment {
+	return TypeAlignment_Double
 }
 
 // BaseID implements the DoltgresType interface.
-func (b DateType) BaseID() DoltgresTypeBaseID {
-	return DoltgresTypeBaseID_Date
+func (b IntervalType) BaseID() DoltgresTypeBaseID {
+	return DoltgresTypeBaseID_Interval
 }
 
 // BaseName implements the DoltgresType interface.
-func (b DateType) BaseName() string {
-	return "date"
+func (b IntervalType) BaseName() string {
+	return "interval"
 }
 
 // Category implements the DoltgresType interface.
-func (b DateType) Category() TypeCategory {
-	return TypeCategory_DateTimeTypes
+func (b IntervalType) Category() TypeCategory {
+	return TypeCategory_TimespanTypes
 }
 
 // CollationCoercibility implements the DoltgresType interface.
-func (b DateType) CollationCoercibility(ctx *sql.Context) (collation sql.CollationID, coercibility byte) {
+func (b IntervalType) CollationCoercibility(ctx *sql.Context) (collation sql.CollationID, coercibility byte) {
 	return sql.Collation_binary, 5
 }
 
 // Compare implements the DoltgresType interface.
-func (b DateType) Compare(v1 any, v2 any) (int, error) {
+func (b IntervalType) Compare(v1 any, v2 any) (int, error) {
 	if v1 == nil && v2 == nil {
 		return 0, nil
 	} else if v1 != nil && v2 == nil {
@@ -79,15 +82,15 @@ func (b DateType) Compare(v1 any, v2 any) (int, error) {
 		return 0, err
 	}
 
-	ab := ac.(time.Time)
-	bb := bc.(time.Time)
+	ab := ac.(duration.Duration)
+	bb := bc.(duration.Duration)
 	return ab.Compare(bb), nil
 }
 
 // Convert implements the DoltgresType interface.
-func (b DateType) Convert(val any) (any, sql.ConvertInRange, error) {
+func (b IntervalType) Convert(val any) (any, sql.ConvertInRange, error) {
 	switch val := val.(type) {
-	case time.Time:
+	case duration.Duration:
 		return val, sql.InRange, nil
 	case nil:
 		return nil, sql.InRange, nil
@@ -97,7 +100,7 @@ func (b DateType) Convert(val any) (any, sql.ConvertInRange, error) {
 }
 
 // Equals implements the DoltgresType interface.
-func (b DateType) Equals(otherType sql.Type) bool {
+func (b IntervalType) Equals(otherType sql.Type) bool {
 	if otherExtendedType, ok := otherType.(types.ExtendedType); ok {
 		return bytes.Equal(MustSerializeType(b), MustSerializeType(otherExtendedType))
 	}
@@ -105,7 +108,7 @@ func (b DateType) Equals(otherType sql.Type) bool {
 }
 
 // FormatValue implements the DoltgresType interface.
-func (b DateType) FormatValue(val any) (string, error) {
+func (b IntervalType) FormatValue(val any) (string, error) {
 	if val == nil {
 		return "", nil
 	}
@@ -113,64 +116,62 @@ func (b DateType) FormatValue(val any) (string, error) {
 }
 
 // GetSerializationID implements the DoltgresType interface.
-func (b DateType) GetSerializationID() SerializationID {
-	return SerializationID_Date
+func (b IntervalType) GetSerializationID() SerializationID {
+	return SerializationID_Interval
 }
 
 // IoInput implements the DoltgresType interface.
-func (b DateType) IoInput(ctx *sql.Context, input string) (any, error) {
-	// TODO: need support for calendar era, AD and BC
-	if t, err := time.Parse("2006-1-2", input); err == nil {
-		return t.UTC(), nil
-	} else if t, err = time.Parse("January 02, 2006", input); err == nil {
-		return t.UTC(), nil
-	} else if t, err = time.Parse("2006-Jan-02", input); err == nil {
-		return t.UTC(), nil
+func (b IntervalType) IoInput(ctx *sql.Context, input string) (any, error) {
+	dInterval, err := tree.ParseDInterval(input)
+	if err != nil {
+		return nil, err
 	}
-	return nil, fmt.Errorf("invalid format for date")
+	return dInterval.Duration, nil
 }
 
 // IoOutput implements the DoltgresType interface.
-func (b DateType) IoOutput(ctx *sql.Context, output any) (string, error) {
+func (b IntervalType) IoOutput(ctx *sql.Context, output any) (string, error) {
 	converted, _, err := b.Convert(output)
 	if err != nil {
 		return "", err
 	}
-	return converted.(time.Time).Format("2006-01-02"), nil
+	// TODO: depends on `intervalStyle` configuration variable. Defaults to `postgres`.
+	d := converted.(duration.Duration)
+	return d.String(), nil
 }
 
 // IsPreferredType implements the DoltgresType interface.
-func (b DateType) IsPreferredType() bool {
-	return false
+func (b IntervalType) IsPreferredType() bool {
+	return true
 }
 
 // IsUnbounded implements the DoltgresType interface.
-func (b DateType) IsUnbounded() bool {
+func (b IntervalType) IsUnbounded() bool {
 	return false
 }
 
 // MaxSerializedWidth implements the DoltgresType interface.
-func (b DateType) MaxSerializedWidth() types.ExtendedTypeSerializedWidth {
+func (b IntervalType) MaxSerializedWidth() types.ExtendedTypeSerializedWidth {
 	return types.ExtendedTypeSerializedWidth_64K
 }
 
 // MaxTextResponseByteLength implements the DoltgresType interface.
-func (b DateType) MaxTextResponseByteLength(ctx *sql.Context) uint32 {
-	return 32
+func (b IntervalType) MaxTextResponseByteLength(ctx *sql.Context) uint32 {
+	return 64
 }
 
 // OID implements the DoltgresType interface.
-func (b DateType) OID() uint32 {
-	return uint32(oid.T_date)
+func (b IntervalType) OID() uint32 {
+	return uint32(oid.T_interval)
 }
 
 // Promote implements the DoltgresType interface.
-func (b DateType) Promote() sql.Type {
-	return Date
+func (b IntervalType) Promote() sql.Type {
+	return Interval
 }
 
 // SerializedCompare implements the DoltgresType interface.
-func (b DateType) SerializedCompare(v1 []byte, v2 []byte) (int, error) {
+func (b IntervalType) SerializedCompare(v1 []byte, v2 []byte) (int, error) {
 	if len(v1) == 0 && len(v2) == 0 {
 		return 0, nil
 	} else if len(v1) > 0 && len(v2) == 0 {
@@ -179,12 +180,19 @@ func (b DateType) SerializedCompare(v1 []byte, v2 []byte) (int, error) {
 		return -1, nil
 	}
 
-	// The marshalled time format is byte-comparable
-	return bytes.Compare(v1, v2), nil
+	d1, err := deserializeDuration(v1)
+	if err != nil {
+		return 0, err
+	}
+	d2, err := deserializeDuration(v2)
+	if err != nil {
+		return 0, err
+	}
+	return d1.Compare(d2), nil
 }
 
 // SQL implements the DoltgresType interface.
-func (b DateType) SQL(ctx *sql.Context, dest []byte, v any) (sqltypes.Value, error) {
+func (b IntervalType) SQL(ctx *sql.Context, dest []byte, v any) (sqltypes.Value, error) {
 	if v == nil {
 		return sqltypes.NULL, nil
 	}
@@ -196,47 +204,47 @@ func (b DateType) SQL(ctx *sql.Context, dest []byte, v any) (sqltypes.Value, err
 }
 
 // String implements the DoltgresType interface.
-func (b DateType) String() string {
-	return "date"
+func (b IntervalType) String() string {
+	return "interval"
 }
 
 // ToArrayType implements the DoltgresType interface.
-func (b DateType) ToArrayType() DoltgresArrayType {
-	return DateArray
+func (b IntervalType) ToArrayType() DoltgresArrayType {
+	return IntervalArray
 }
 
 // Type implements the DoltgresType interface.
-func (b DateType) Type() query.Type {
+func (b IntervalType) Type() query.Type {
 	return sqltypes.Text
 }
 
 // ValueType implements the DoltgresType interface.
-func (b DateType) ValueType() reflect.Type {
-	return reflect.TypeOf(time.Time{})
+func (b IntervalType) ValueType() reflect.Type {
+	return reflect.TypeOf(duration.MakeDuration(0, 0, 0))
 }
 
 // Zero implements the DoltgresType interface.
-func (b DateType) Zero() any {
-	return time.Time{}
+func (b IntervalType) Zero() any {
+	return duration.MakeDuration(0, 0, 0)
 }
 
 // SerializeType implements the DoltgresType interface.
-func (b DateType) SerializeType() ([]byte, error) {
-	return SerializationID_Date.ToByteSlice(0), nil
+func (b IntervalType) SerializeType() ([]byte, error) {
+	return SerializationID_Interval.ToByteSlice(0), nil
 }
 
 // deserializeType implements the DoltgresType interface.
-func (b DateType) deserializeType(version uint16, metadata []byte) (DoltgresType, error) {
+func (b IntervalType) deserializeType(version uint16, metadata []byte) (DoltgresType, error) {
 	switch version {
 	case 0:
-		return Date, nil
+		return Interval, nil
 	default:
 		return nil, fmt.Errorf("version %d is not yet supported for %s", version, b.String())
 	}
 }
 
 // SerializeValue implements the DoltgresType interface.
-func (b DateType) SerializeValue(val any) ([]byte, error) {
+func (b IntervalType) SerializeValue(val any) ([]byte, error) {
 	if val == nil {
 		return nil, nil
 	}
@@ -244,17 +252,26 @@ func (b DateType) SerializeValue(val any) ([]byte, error) {
 	if err != nil {
 		return nil, err
 	}
-	return converted.(time.Time).MarshalBinary()
+	str := converted.(duration.Duration).String()
+	writer := utils.NewWriter(uint64(len(str) + 1))
+	writer.String(str)
+	return writer.Data(), nil
 }
 
 // DeserializeValue implements the DoltgresType interface.
-func (b DateType) DeserializeValue(val []byte) (any, error) {
+func (b IntervalType) DeserializeValue(val []byte) (any, error) {
 	if len(val) == 0 {
 		return nil, nil
 	}
-	t := time.Time{}
-	if err := t.UnmarshalBinary(val); err != nil {
-		return nil, err
+	return deserializeDuration(val)
+}
+
+func deserializeDuration(val []byte) (duration.Duration, error) {
+	reader := utils.NewReader(val)
+	str := reader.String()
+	dInterval, err := tree.ParseDInterval(str)
+	if err != nil {
+		return duration.Duration{}, err
 	}
-	return t, nil
+	return dInterval.Duration, nil
 }

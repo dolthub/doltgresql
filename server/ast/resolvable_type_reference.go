@@ -93,6 +93,8 @@ func nodeResolvableTypeReference(typ tree.ResolvableTypeReference) (*vitess.Conv
 				resolvedType = pgtypes.Int32
 			case oid.T_int8:
 				resolvedType = pgtypes.Int64
+			case oid.T_interval:
+				resolvedType = pgtypes.Interval
 			case oid.T_json:
 				resolvedType = pgtypes.Json
 			case oid.T_jsonb:

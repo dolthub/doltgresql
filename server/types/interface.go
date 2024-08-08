@@ -112,6 +112,8 @@ var typesFromBaseID = map[DoltgresTypeBaseID]DoltgresType{
 	Int64Serial.BaseID():       Int64Serial,
 	InternalChar.BaseID():      InternalChar,
 	InternalCharArray.BaseID(): InternalCharArray,
+	Interval.BaseID():          Interval,
+	IntervalArray.BaseID():     IntervalArray,
 	Json.BaseID():              Json,
 	JsonArray.BaseID():         JsonArray,
 	JsonB.BaseID():             JsonB,
