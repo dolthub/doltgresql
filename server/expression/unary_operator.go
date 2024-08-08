@@ -63,7 +63,7 @@ func (b *UnaryOperator) String() string {
 		return fmt.Sprintf("%s?", b.operator.String())
 	}
 	// We know that we'll always have one parameter here
-	return fmt.Sprintf("%s%s", b.operator.String(), b.compiledFunc.Parameters[0].String())
+	return fmt.Sprintf("%s%s", b.operator.String(), b.compiledFunc.Arguments[0].String())
 }
 
 // Type implements the sql.Expression interface.

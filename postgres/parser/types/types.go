@@ -1631,11 +1631,11 @@ func (t *T) SQLString() string {
 	case IntFamily:
 		switch t.Width() {
 		case 16:
-			return "SMALLINT" //TODO: Return commented version, different function for MySQL string -> "INT2"
+			return "SMALLINT" // TODO: Return commented version, different function for MySQL string -> "INT2"
 		case 32:
-			return "INTEGER" //TODO: Return commented version, different function for MySQL string -> "INT4"
+			return "INTEGER" // TODO: Return commented version, different function for MySQL string -> "INT4"
 		case 64:
-			return "BIGINT" //TODO: Return commented version, different function for MySQL string -> "INT8"
+			return "BIGINT" // TODO: Return commented version, different function for MySQL string -> "INT8"
 		default:
 			panic(errors.AssertionFailedf("programming error: unknown int width: %d", t.Width()))
 		}
@@ -1644,8 +1644,8 @@ func (t *T) SQLString() string {
 	case CollatedStringFamily:
 		return t.collatedStringTypeSQL(false /* isArray */)
 	case FloatFamily:
-		const realName = "FLOAT"    //TODO: Return commented version, different function for MySQL string -> "FLOAT4"
-		const doubleName = "DOUBLE" //TODO: Return commented version, different function for MySQL string -> "FLOAT8"
+		const realName = "REAL"               // TODO: Return commented version, different function for MySQL string -> "FLOAT4"
+		const doubleName = "DOUBLE PRECISION" // TODO: Return commented version, different function for MySQL string -> "FLOAT8"
 		if t.Width() == 32 {
 			return realName
 		}

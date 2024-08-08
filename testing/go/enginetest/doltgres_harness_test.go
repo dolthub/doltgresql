@@ -144,31 +144,20 @@ func (d *DoltgresHarness) NewEngine(t *testing.T) (enginetest.QueryEngine, error
 
 var skippedSetupWords = []string{
 	"auto_increment",
-	"create index",
 	"bigtable",           // "ERROR: blob/text column 't' used in key specification without a key length"
 	"typestable",         // lots of work to do
 	"datetime_table",     // invalid timestamp format
-	"specialtable",       // invalid quoting
 	"people",             // ERROR: blob/text column 'first_name' used in key specification without a key length
 	"reservedWordsTable", // ERROR: blob/text column 'Timestamp' used in key specification without a key length
 	"foo.othertable",     // ERROR: database schema not found: foo (errno 1105)
 	"bus_routes",         // ERROR: blob/text column 'origin' used in key specification without a key length
 	"parts",              // ERROR: blob/text column 'part' used in key specification without a key length
-	"xy_hasnull_idx",     // needs an index during creation
-	"xy ",                // needs an index during creation
-	"rs ",                // needs an index during creation
 	"analyze table",      // unsupported syntax
 }
 
 var commentClause = regexp.MustCompile(`(?i)comment '.*?'`)
-var createIndexStatement = regexp.MustCompile(`(?i)create.*?index`)
+var createIndexStatement = regexp.MustCompile(`(?i)create( unique)? index`)
 var alterTableStatement = regexp.MustCompile(`(?i)alter table`)
-var createTableStatement = regexp.MustCompile(`(?i)create table`)
-var floatKeyword = regexp.MustCompile(`(?i)\bfloat\b`)
-var doubleKeyword = regexp.MustCompile(`(?i)\bdouble\b`)
-var datetimeKeyword = regexp.MustCompile(`(?i)\bdatetime\b`)
-var mediumIntKeyword = regexp.MustCompile(`(?i)\bmediumint\b`)
-var tinyIntKeyword = regexp.MustCompile(`(?i)\btinyint\b`)
 
 // sanitizeQuery strips the query string given of any unsupported constructs without attempting to actually convert
 // to Postgres syntax.
@@ -186,21 +175,8 @@ func sanitizeQuery(s string) (bool, string) {
 		return false, ""
 	}
 
-	if createTableStatement.MatchString(s) {
-		s = replaceTypes(s)
-	}
-
 	s = commentClause.ReplaceAllString(s, "")
 	return true, s
-}
-
-func replaceTypes(s string) string {
-	s = floatKeyword.ReplaceAllString(s, "real")
-	s = doubleKeyword.ReplaceAllString(s, "double precision")
-	s = datetimeKeyword.ReplaceAllString(s, "timestamp")
-	s = mediumIntKeyword.ReplaceAllString(s, "integer")
-	s = tinyIntKeyword.ReplaceAllString(s, "smallint")
-	return s
 }
 
 func drainIter(ctx *sql.Context, rowIter sql.RowIter) error {
@@ -356,249 +332,70 @@ func (d DoltgresQueryEngine) AnalyzeQuery(s *sql.Context, s2 string) (sql.Node, 
 var doltgresNoDbDsn = fmt.Sprintf("postgresql://doltgres:password@127.0.0.1:%d/?sslmode=disable", port)
 
 func (d DoltgresQueryEngine) Query(ctx *sql.Context, query string) (sql.Schema, sql.RowIter, error) {
-	query = normalizeStrings(query)
 
-	db, err := gosql.Open("pgx", doltgresNoDbDsn)
-	if err != nil {
-		return nil, nil, err
-	}
+	queries := convertQuery(query)
 
-	rows, err := db.Query(query)
-	if rows != nil {
+	// convertQuery may return more than one query in the case of some DDL operations that can be represented as a single
+	// statement in MySQL but not in Postgres. We always return the result from only the first one, but execute all of
+	// them.
+	var (
+		resultSchema sql.Schema
+		resultRows   []sql.Row
+	)
+
+	for _, query := range queries {
+		db, err := gosql.Open("pgx", doltgresNoDbDsn)
+		if err != nil {
+			return nil, nil, err
+		}
+
+		rows, err := db.Query(query)
+		if err != nil {
+			return nil, nil, err
+		}
+
+		if rows == nil {
+			return nil, nil, fmt.Errorf("rows is nil")
+		}
+
 		defer rows.Close()
-	}
 
-	if err != nil {
-		return nil, nil, err
-	}
-
-	schema, columns, err := columns(rows)
-	if err != nil {
-		return nil, nil, err
-	}
-
-	results := make([]sql.Row, 0)
-	for rows.Next() {
-		err := rows.Scan(columns...)
+		schema, columns, err := columns(rows)
 		if err != nil {
 			return nil, nil, err
 		}
 
-		row, err := toRow(schema, columns)
+		results := make([]sql.Row, 0)
+		for rows.Next() {
+			err := rows.Scan(columns...)
+			if err != nil {
+				return nil, nil, err
+			}
+
+			row, err := toRow(schema, columns)
+			if err != nil {
+				return nil, nil, err
+			}
+
+			results = append(results, row)
+		}
+
+		if resultRows == nil {
+			resultSchema = schema
+			resultRows = results
+		}
+
+		err = rows.Close()
 		if err != nil {
 			return nil, nil, err
 		}
 
-		results = append(results, row)
-	}
-
-	if rows.Err() != nil {
-		return nil, nil, rows.Err()
-	}
-
-	return schema, sql.RowsToRowIter(results...), nil
-}
-
-// little state machine for turning MySQL quote characters into their postgres equivalents:
-/*
-               ┌───────────────────*─────────────────────────┐
-               │                   ┌─*─┐                     *
-               │               ┌───┴───▼──────┐         ┌────┴─────────┐
-               │     ┌────"───►│ In double    │◄───"────┤End double    │
-               │     │         │ quoted string│────"───►│quoted string?│
-               │     │         └──────────────┘         └──────────────┘
-               ├─────(──────────────────*───────────────────┐
-      ┌─*──┐   ▼     │                                      *
-      │    ├─────────┴┐            ┌─*─┐                    │
-      └───►│ Not in   │        ┌───┴───▼─────┐          ┌───┴──────────┐
-           │ string   ├───'───►│In single    │◄────'────┤End single    │
-  ────────►└─────────┬┘        │quoted string│─────'───►│quoted string?│
-  START        ▲     │         └─────────────┘          └──────────────┘
-               └─────(──────────────────*───────────────────┐
-                     │            ┌─*──┐                    *
-                     │        ┌───┴────▼────┐           ┌───┴──────────┐
-                     └───`───►│In backtick  │◄─────`────┤End backtick  │
-                              │quoted string│──────`───►│quoted string?│
-                              └─────────────┘           └──────────────┘
-*/
-type stringParserState byte
-
-const (
-	notInString stringParserState = iota
-	inDoubleQuote
-	maybeEndDoubleQuote
-	inSingleQuote
-	maybeEndSingleQuote
-	inBackticks
-	maybeEndBackticks
-)
-
-const singleQuote = '\''
-const doubleQuote = '"'
-const backtick = '`'
-
-// normalizeStrings normalizes a query string to convert any MySQL syntax to Postgres syntax
-func normalizeStrings(q string) string {
-	state := notInString
-	normalized := strings.Builder{}
-
-	for _, c := range q {
-		switch state {
-		case notInString:
-			switch c {
-			case singleQuote:
-				state = inSingleQuote
-				normalized.WriteRune(singleQuote)
-			case doubleQuote:
-				state = inDoubleQuote
-				normalized.WriteRune(singleQuote)
-			case backtick:
-				state = inBackticks
-				normalized.WriteRune(doubleQuote)
-			default:
-				normalized.WriteRune(c)
-			}
-		case inDoubleQuote:
-			switch c {
-			case doubleQuote:
-				state = maybeEndDoubleQuote
-			case singleQuote:
-				normalized.WriteRune(singleQuote)
-				normalized.WriteRune(singleQuote)
-			default:
-				normalized.WriteRune(c)
-			}
-		case maybeEndDoubleQuote:
-			switch c {
-			case doubleQuote:
-				state = inDoubleQuote
-				normalized.WriteRune(doubleQuote)
-			default:
-				state = notInString
-				normalized.WriteRune(singleQuote)
-				normalized.WriteRune(c)
-			}
-		case inSingleQuote:
-			switch c {
-			case singleQuote:
-				state = maybeEndSingleQuote
-			default:
-				normalized.WriteRune(c)
-			}
-		case maybeEndSingleQuote:
-			switch c {
-			case singleQuote:
-				state = inSingleQuote
-				normalized.WriteRune(singleQuote)
-				normalized.WriteRune(singleQuote)
-			default:
-				state = notInString
-				normalized.WriteRune(singleQuote)
-				normalized.WriteRune(c)
-			}
-		case inBackticks:
-			switch c {
-			case backtick:
-				state = maybeEndBackticks
-			default:
-				normalized.WriteRune(c)
-			}
-		case maybeEndBackticks:
-			switch c {
-			case backtick:
-				state = inBackticks
-				normalized.WriteRune(backtick)
-			default:
-				state = notInString
-				normalized.WriteRune(doubleQuote)
-				normalized.WriteRune(c)
-			}
-		default:
-			panic("unknown state")
+		if rows.Err() != nil {
+			return nil, nil, rows.Err()
 		}
 	}
 
-	// If reached the end of input unsure whether to unquote a string, do so now
-	switch state {
-	case maybeEndDoubleQuote:
-		normalized.WriteRune(singleQuote)
-	case maybeEndSingleQuote:
-		normalized.WriteRune(singleQuote)
-	case maybeEndBackticks:
-		normalized.WriteRune(doubleQuote)
-	default: // do nothing
-	}
-
-	return normalized.String()
-}
-
-// Test converting MySQL strings to Postgres strings
-func TestNormalizeStrings(t *testing.T) {
-	type test struct {
-		input    string
-		expected string
-	}
-	tests := []test{
-		{
-			input:    "SELECT \"foo\" FROM `bar`",
-			expected: `SELECT 'foo' FROM "bar"`,
-		},
-		{
-			input:    `SELECT "foo"`,
-			expected: `SELECT 'foo'`,
-		},
-		{
-			input:    "SELECT 'fo''o'",
-			expected: `SELECT 'fo''o'`,
-		},
-		{
-			input:    "SELECT 'fo''''o'",
-			expected: `SELECT 'fo''''o'`,
-		},
-		{
-			input:    `SELECT "fo'o"`,
-			expected: `SELECT 'fo''o'`,
-		},
-		{
-			input:    `SELECT "fo''o"`,
-			expected: `SELECT 'fo''''o'`,
-		},
-		{
-			input:    `SELECT "fo""o"`,
-			expected: `SELECT 'fo"o'`,
-		},
-		{
-			input:    `SELECT "fo""""o"`,
-			expected: `SELECT 'fo""o'`,
-		},
-		{
-			input:    `SELECT 'fo""o'`,
-			expected: `SELECT 'fo""o'`,
-		},
-		{
-			input:    "SELECT `foo` FROM `bar`",
-			expected: `SELECT "foo" FROM "bar"`,
-		},
-		{
-			input:    "SELECT 'foo' FROM `bar`",
-			expected: `SELECT 'foo' FROM "bar"`,
-		},
-		{
-			input:    "SELECT `f\"o'o` FROM `ba``r`",
-			expected: "SELECT \"f\"o'o\" FROM \"ba`r\"",
-		},
-		{
-			input:    "SELECT \"foo\" from `bar` where `bar`.`baz` = \"qux\"",
-			expected: `SELECT 'foo' from "bar" where "bar"."baz" = 'qux'`,
-		},
-	}
-
-	for _, test := range tests {
-		t.Run(test.input, func(t *testing.T) {
-			actual := normalizeStrings(test.input)
-			require.Equal(t, test.expected, actual)
-		})
-	}
+	return resultSchema, sql.RowsToRowIter(resultRows...), nil
 }
 
 func toRow(schema sql.Schema, r []interface{}) (sql.Row, error) {

@@ -110,13 +110,34 @@ func TestSchemaOverrides(t *testing.T) {
 
 // Convenience test for debugging a single query. Unskip and set to the desired query.
 func TestSingleScript(t *testing.T) {
-	t.Skip()
+	// t.Skip()
 
 	var scripts = []queries.ScriptTest{
 		{
-			Name:        "",
-			SetUpScript: []string{},
-			Assertions:  []queries.ScriptTestAssertion{},
+			Name: "test basic dolt procedures",
+			SetUpScript: []string{
+				"CREATE TABLE t1 (pk int primary key);",
+			},
+			Assertions: []queries.ScriptTestAssertion{
+				{
+					Query: "select dolt_add('.')",
+				},
+				{
+					Query: "select dolt_commit('-am', 'initial commit')",
+				},
+				{
+					Query: "select count(*) from dolt_log",
+					Expected: []sql.Row{
+						{2},
+					},
+				},
+				{
+					Query: "select message from dolt_log order by date desc limit 1",
+					Expected: []sql.Row{
+						{"initial commit"},
+					},
+				},
+			},
 		},
 	}
 
@@ -234,19 +255,16 @@ func TestInsertIgnoreInto(t *testing.T) {
 	enginetest.TestInsertIgnoreInto(t, h)
 }
 
-// TODO: merge this into the above test when we remove old format
 func TestInsertDuplicateKeyKeyless(t *testing.T) {
 	t.Skip()
 	enginetest.TestInsertDuplicateKeyKeyless(t, newDoltgresServerHarness(t))
 }
 
-// TODO: merge this into the above test when we remove old format
 func TestInsertDuplicateKeyKeylessPrepared(t *testing.T) {
 	t.Skip()
 	enginetest.TestInsertDuplicateKeyKeylessPrepared(t, newDoltgresServerHarness(t))
 }
 
-// TODO: merge this into the above test when we remove old format
 func TestIgnoreIntoWithDuplicateUniqueKeyKeyless(t *testing.T) {
 	t.Skip()
 	h := newDoltgresServerHarness(t)
@@ -254,7 +272,6 @@ func TestIgnoreIntoWithDuplicateUniqueKeyKeyless(t *testing.T) {
 	enginetest.TestIgnoreIntoWithDuplicateUniqueKeyKeyless(t, h)
 }
 
-// TODO: merge this into the above test when we remove old format
 func TestIgnoreIntoWithDuplicateUniqueKeyKeylessPrepared(t *testing.T) {
 	t.Skip()
 	enginetest.TestIgnoreIntoWithDuplicateUniqueKeyKeylessPrepared(t, newDoltgresServerHarness(t))
@@ -397,7 +414,6 @@ func TestScripts(t *testing.T) {
 
 func TestJoinOps(t *testing.T) {
 	t.Skip()
-
 	h := newDoltgresServerHarness(t)
 	defer h.Close()
 	enginetest.TestJoinOps(t, h, enginetest.DefaultJoinOpTests)
