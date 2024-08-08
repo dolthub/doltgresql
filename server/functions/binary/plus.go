@@ -16,7 +16,10 @@ package binary
 
 import (
 	"fmt"
+	"github.com/dolthub/doltgresql/postgres/parser/duration"
+	"github.com/dolthub/doltgresql/server/functions"
 	"math"
+	"time"
 
 	"github.com/dolthub/go-mysql-server/sql"
 	"github.com/shopspring/decimal"
@@ -43,6 +46,12 @@ func initBinaryPlus() {
 	framework.RegisterBinaryFunction(framework.Operator_BinaryPlus, int8pl)
 	framework.RegisterBinaryFunction(framework.Operator_BinaryPlus, int82pl)
 	framework.RegisterBinaryFunction(framework.Operator_BinaryPlus, int84pl)
+	framework.RegisterBinaryFunction(framework.Operator_BinaryPlus, interval_pl)
+	framework.RegisterBinaryFunction(framework.Operator_BinaryPlus, interval_pl_time)
+	framework.RegisterBinaryFunction(framework.Operator_BinaryPlus, interval_pl_date)
+	framework.RegisterBinaryFunction(framework.Operator_BinaryPlus, interval_pl_timetz)
+	framework.RegisterBinaryFunction(framework.Operator_BinaryPlus, interval_pl_timestamp)
+	framework.RegisterBinaryFunction(framework.Operator_BinaryPlus, interval_pl_timestamptz)
 	framework.RegisterBinaryFunction(framework.Operator_BinaryPlus, numeric_add)
 }
 
@@ -203,6 +212,83 @@ var int84pl = framework.Function2{
 	Callable: func(ctx *sql.Context, _ [3]pgtypes.DoltgresType, val1 any, val2 any) (any, error) {
 		return plusOverflow(val1.(int64), int64(val2.(int32)))
 	},
+}
+
+// interval_pl represents the PostgreSQL function of the same name, taking the same parameters.
+var interval_pl = framework.Function2{
+	Name:       "interval_pl",
+	Return:     pgtypes.Interval,
+	Parameters: [2]pgtypes.DoltgresType{pgtypes.Interval, pgtypes.Interval},
+	Strict:     true,
+	Callable: func(ctx *sql.Context, _ [3]pgtypes.DoltgresType, val1 any, val2 any) (any, error) {
+		dur1 := val1.(duration.Duration)
+		dur2 := val2.(duration.Duration)
+		return dur1.Add(dur2), nil
+	},
+}
+
+// interval_pl_time represents the PostgreSQL function of the same name, taking the same parameters.
+var interval_pl_time = framework.Function2{
+	Name:       "interval_pl_time",
+	Return:     pgtypes.Time,
+	Parameters: [2]pgtypes.DoltgresType{pgtypes.Interval, pgtypes.Time},
+	Strict:     true,
+	Callable: func(ctx *sql.Context, _ [3]pgtypes.DoltgresType, val1 any, val2 any) (any, error) {
+		return intervalPlusNonInterval(val1.(duration.Duration), val2.(time.Time))
+	},
+}
+
+// interval_pl_date represents the PostgreSQL function of the same name, taking the same parameters.
+var interval_pl_date = framework.Function2{
+	Name:       "interval_pl_date",
+	Return:     pgtypes.Timestamp,
+	Parameters: [2]pgtypes.DoltgresType{pgtypes.Interval, pgtypes.Date},
+	Strict:     true,
+	Callable: func(ctx *sql.Context, _ [3]pgtypes.DoltgresType, val1 any, val2 any) (any, error) {
+		return intervalPlusNonInterval(val1.(duration.Duration), val2.(time.Time))
+	},
+}
+
+// interval_pl_timetz represents the PostgreSQL function of the same name, taking the same parameters.
+var interval_pl_timetz = framework.Function2{
+	Name:       "interval_pl_timetz",
+	Return:     pgtypes.TimeTZ,
+	Parameters: [2]pgtypes.DoltgresType{pgtypes.Interval, pgtypes.TimeTZ},
+	Strict:     true,
+	Callable: func(ctx *sql.Context, _ [3]pgtypes.DoltgresType, val1 any, val2 any) (any, error) {
+		return intervalPlusNonInterval(val1.(duration.Duration), val2.(time.Time))
+	},
+}
+
+// interval_pl_timestamp represents the PostgreSQL function of the same name, taking the same parameters.
+var interval_pl_timestamp = framework.Function2{
+	Name:       "interval_pl_timestamp",
+	Return:     pgtypes.Timestamp,
+	Parameters: [2]pgtypes.DoltgresType{pgtypes.Interval, pgtypes.Timestamp},
+	Strict:     true,
+	Callable: func(ctx *sql.Context, _ [3]pgtypes.DoltgresType, val1 any, val2 any) (any, error) {
+		return intervalPlusNonInterval(val1.(duration.Duration), val2.(time.Time))
+	},
+}
+
+// interval_pl_timestamptz represents the PostgreSQL function of the same name, taking the same parameters.
+var interval_pl_timestamptz = framework.Function2{
+	Name:       "interval_pl_timestamptz",
+	Return:     pgtypes.TimestampTZ,
+	Parameters: [2]pgtypes.DoltgresType{pgtypes.Interval, pgtypes.TimestampTZ},
+	Strict:     true,
+	Callable: func(ctx *sql.Context, _ [3]pgtypes.DoltgresType, val1 any, val2 any) (any, error) {
+		return intervalPlusNonInterval(val1.(duration.Duration), val2.(time.Time))
+	},
+}
+
+func intervalPlusNonInterval(d duration.Duration, t time.Time) (time.Time, error) {
+	seconds, ok := d.AsInt64()
+	if !ok {
+		return time.Time{}, fmt.Errorf("interval overflow")
+	}
+	nanos := seconds * functions.NanosPerSec // TODO: might overflow
+	return t.Add(time.Duration(nanos)), nil
 }
 
 // numeric_add represents the PostgreSQL function of the same name, taking the same parameters.

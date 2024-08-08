@@ -24,6 +24,7 @@ func Init() {
 	initInt32()
 	initInt64()
 	initInternalChar()
+	initInterval()
 	initJson()
 	initJsonB()
 	initName()
@@ -33,5 +34,6 @@ func Init() {
 	initRegproc()
 	initRegtype()
 	initText()
+	initTime()
 	initVarChar()
 }

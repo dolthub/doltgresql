@@ -120,7 +120,7 @@ func (b DateType) GetSerializationID() SerializationID {
 // IoInput implements the DoltgresType interface.
 func (b DateType) IoInput(ctx *sql.Context, input string) (any, error) {
 	// TODO: need support for calendar era, AD and BC
-	if t, err := time.Parse("2006-01-02", input); err == nil {
+	if t, err := time.Parse("2006-1-2", input); err == nil {
 		return t.UTC(), nil
 	} else if t, err = time.Parse("January 02, 2006", input); err == nil {
 		return t.UTC(), nil

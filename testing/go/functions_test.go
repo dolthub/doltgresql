@@ -1352,5 +1352,78 @@ func TestDateAndTimeFunction(t *testing.T) {
 				},
 			},
 		},
+		{
+			Name: "Interval type functions",
+			SetUpScript: []string{
+				"CREATE TABLE t_interval (id INTEGER primary key, v1 INTERVAL);",
+				"INSERT INTO t_interval VALUES (1, '1 day 3 hours'), (2, '23 hours 30 minutes');",
+			},
+			Assertions: []ScriptTestAssertion{
+				{
+					Query:    `select - interval '20 days -11:00:00';`,
+					Expected: []sql.Row{{"-20 days +11:00:00"}},
+				},
+				{
+					Query:    `select '27:00:24'::interval = '1 day 03:00:24'::interval;`,
+					Expected: []sql.Row{{"t"}},
+				},
+				{
+					Query:    `select '27:00:24'::interval <> '1 day 03:00:24'::interval;`,
+					Expected: []sql.Row{{"f"}},
+				},
+				{
+					Query:    `select '23:22:24'::interval > '1 day 03:00:00'::interval;`,
+					Expected: []sql.Row{{"f"}},
+				},
+				{
+					Query:    `select '27:00:24'::interval >= '1 day 03:00:24.5'::interval;`,
+					Expected: []sql.Row{{"f"}},
+				},
+				{
+					Query:    `select '27:00:24'::interval < '1 day 03:00:24.5'::interval;`,
+					Expected: []sql.Row{{"t"}},
+				},
+				{
+					Query:    `select '27:00:24.5'::interval <= '1 day 03:00:24.5'::interval;`,
+					Expected: []sql.Row{{"t"}},
+				},
+				{
+					Query:    `select interval '2 days' + interval '1.5 days';`,
+					Expected: []sql.Row{{"3 days 12:00:00"}},
+				},
+				{
+					Query:    `select interval '2 days' + time '12:23:34';`,
+					Expected: []sql.Row{{"12:23:34"}},
+				},
+				{
+					Query:    `select interval '2 days' + date '2022-2-5';`,
+					Expected: []sql.Row{{"2022-02-07 00:00:00"}},
+				},
+				{
+					Query:    `select interval '2 days' + time with time zone '12:23:45-0700';`,
+					Expected: []sql.Row{{"12:23:45-07"}},
+				},
+				{
+					Query:    `select interval '2 days' + timestamp '2021-04-08 12:23:45';`,
+					Expected: []sql.Row{{"2021-04-10 12:23:45"}},
+				},
+				{
+					Query:    `select interval '2 days' + timestamp with time zone '2021-04-08 12:23:45-0700';`,
+					Expected: []sql.Row{{"2021-04-10 12:23:45-07"}},
+				},
+				{
+					Query:    `select interval '2 days' - interval '1.5 days';`,
+					Expected: []sql.Row{{"1 day -12:00:00"}},
+				},
+				{
+					Query:    `select interval '20 days' / 2.3`,
+					Expected: []sql.Row{{"8 days 16:41:44.347826"}},
+				},
+				{
+					Query:    `select interval '20 days' * 2.3`,
+					Expected: []sql.Row{{"46 days"}},
+				},
+			},
+		},
 	})
 }

@@ -106,13 +106,17 @@ func diffTimes(t1, t2 time.Time) duration.Duration {
 		years--
 	}
 
-	durNanos := nanoseconds + seconds*NanosPerSec + minutes*NanosPerSec*duration.SecsPerMinute + hours*NanosPerSec*duration.SecsPerHour
+	dur := GetIntervalDurationFromTimeComponents(years, months, days, hours, minutes, seconds, nanoseconds)
+	if negate {
+		return dur.Mul(-1)
+	}
+	return dur
+}
+
+func GetIntervalDurationFromTimeComponents(years, months, days, hours, minutes, seconds, nanos int64) duration.Duration {
+	durNanos := nanos + seconds*NanosPerSec + minutes*NanosPerSec*duration.SecsPerMinute + hours*NanosPerSec*duration.SecsPerHour
 	durDays := days
 	durMonths := months + years*duration.MonthsPerYear
 
-	if negate {
-		return duration.MakeDuration(-durNanos, -durDays, -durMonths)
-	} else {
-		return duration.MakeDuration(durNanos, durDays, durMonths)
-	}
+	return duration.MakeDuration(durNanos, durDays, durMonths)
 }

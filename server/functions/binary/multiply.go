@@ -16,6 +16,7 @@ package binary
 
 import (
 	"fmt"
+	"github.com/dolthub/doltgresql/postgres/parser/duration"
 	"math"
 
 	"github.com/dolthub/go-mysql-server/sql"
@@ -43,6 +44,7 @@ func initBinaryMultiply() {
 	framework.RegisterBinaryFunction(framework.Operator_BinaryMultiply, int8mul)
 	framework.RegisterBinaryFunction(framework.Operator_BinaryMultiply, int82mul)
 	framework.RegisterBinaryFunction(framework.Operator_BinaryMultiply, int84mul)
+	framework.RegisterBinaryFunction(framework.Operator_BinaryMultiply, interval_mul)
 	framework.RegisterBinaryFunction(framework.Operator_BinaryMultiply, numeric_mul)
 }
 
@@ -202,6 +204,17 @@ var int84mul = framework.Function2{
 	Strict:     true,
 	Callable: func(ctx *sql.Context, _ [3]pgtypes.DoltgresType, val1 any, val2 any) (any, error) {
 		return multiplyOverflow(val1.(int64), int64(val2.(int32)))
+	},
+}
+
+// interval_mul represents the PostgreSQL function of the same name, taking the same parameters.
+var interval_mul = framework.Function2{
+	Name:       "interval_mul",
+	Return:     pgtypes.Interval,
+	Parameters: [2]pgtypes.DoltgresType{pgtypes.Interval, pgtypes.Float64},
+	Strict:     true,
+	Callable: func(ctx *sql.Context, _ [3]pgtypes.DoltgresType, val1 any, val2 any) (any, error) {
+		return val1.(duration.Duration).MulFloat(val2.(float64)), nil
 	},
 }
 

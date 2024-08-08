@@ -15,6 +15,7 @@
 package binary
 
 import (
+	"github.com/dolthub/doltgresql/postgres/parser/duration"
 	"time"
 
 	"github.com/dolthub/go-mysql-server/sql"
@@ -50,6 +51,7 @@ func initBinaryEqual() {
 	framework.RegisterBinaryFunction(framework.Operator_BinaryEqual, int82eq)
 	framework.RegisterBinaryFunction(framework.Operator_BinaryEqual, int84eq)
 	framework.RegisterBinaryFunction(framework.Operator_BinaryEqual, int8eq)
+	framework.RegisterBinaryFunction(framework.Operator_BinaryEqual, interval_eq)
 	framework.RegisterBinaryFunction(framework.Operator_BinaryEqual, jsonb_eq)
 	framework.RegisterBinaryFunction(framework.Operator_BinaryEqual, nameeq)
 	framework.RegisterBinaryFunction(framework.Operator_BinaryEqual, nameeqtext)
@@ -306,6 +308,18 @@ var int8eq = framework.Function2{
 	Strict:     true,
 	Callable: func(ctx *sql.Context, _ [3]pgtypes.DoltgresType, val1 any, val2 any) (any, error) {
 		res, err := pgtypes.Int64.Compare(val1.(int64), val2.(int64))
+		return res == 0, err
+	},
+}
+
+// interval_eq represents the PostgreSQL function of the same name, taking the same parameters.
+var interval_eq = framework.Function2{
+	Name:       "interval_eq",
+	Return:     pgtypes.Bool,
+	Parameters: [2]pgtypes.DoltgresType{pgtypes.Interval, pgtypes.Interval},
+	Strict:     true,
+	Callable: func(ctx *sql.Context, _ [3]pgtypes.DoltgresType, val1 any, val2 any) (any, error) {
+		res, err := pgtypes.Interval.Compare(val1.(duration.Duration), val2.(duration.Duration))
 		return res == 0, err
 	},
 }

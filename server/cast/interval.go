@@ -15,69 +15,63 @@
 package cast
 
 import (
-	"strconv"
-	"unicode"
-
+	"github.com/dolthub/doltgresql/postgres/parser/duration"
 	"github.com/dolthub/go-mysql-server/sql"
 
 	"github.com/dolthub/doltgresql/server/functions/framework"
 	pgtypes "github.com/dolthub/doltgresql/server/types"
 )
 
-// initInternalChar handles all casts that are built-in. This comprises only the "From" types.
-func initInternalChar() {
-	internalCharAssignment()
-	internalCharExplicit()
-	internalCharImplicit()
+// initInterval handles all casts that are built-in. This comprises only the "From" types.
+func initInterval() {
+	intervalAssignment()
+	intervalExplicit()
+	intervalImplicit()
 }
 
-// internalCharAssignment registers all assignment casts. This comprises only the "From" types.
-func internalCharAssignment() {
+// intervalAssignment registers all assignment casts. This comprises only the "From" types.
+func intervalAssignment() {
 	framework.MustAddAssignmentTypeCast(framework.TypeCast{
-		FromType: pgtypes.InternalChar,
+		FromType: pgtypes.Interval,
 		ToType:   pgtypes.BpChar,
 		Function: func(ctx *sql.Context, val any, targetType pgtypes.DoltgresType) (any, error) {
-			return targetType.IoInput(ctx, val.(string))
+			return handleStringCast(val.(duration.Duration).String(), targetType)
 		},
 	})
 	framework.MustAddAssignmentTypeCast(framework.TypeCast{
-		FromType: pgtypes.InternalChar,
+		FromType: pgtypes.Interval,
 		ToType:   pgtypes.VarChar,
 		Function: func(ctx *sql.Context, val any, targetType pgtypes.DoltgresType) (any, error) {
-			return handleStringCast(val.(string), targetType)
+			return handleStringCast(val.(duration.Duration).String(), targetType)
 		},
 	})
 }
 
-// internalCharExplicit registers all explicit casts. This comprises only the "From" types.
-func internalCharExplicit() {
+// intervalExplicit registers all implicit casts. This comprises only the "From" types.
+func intervalExplicit() {
 	framework.MustAddExplicitTypeCast(framework.TypeCast{
-		FromType: pgtypes.InternalChar,
-		ToType:   pgtypes.Int32,
+		FromType: pgtypes.Interval,
+		ToType:   pgtypes.InternalChar,
 		Function: func(ctx *sql.Context, val any, targetType pgtypes.DoltgresType) (any, error) {
-			s := val.(string)
-			if len(s) == 0 {
-				return int32(0), nil
-			}
-			if unicode.IsLetter(rune(s[0])) {
-				return int32(s[0]), nil
-			}
-			i, err := strconv.ParseInt(s, 10, 32)
-			if err != nil {
-				return 0, err
-			}
-			return int32(i), nil
+			return handleStringCast(val.(duration.Duration).String(), targetType)
+		},
+	})
+	framework.MustAddExplicitTypeCast(framework.TypeCast{
+		FromType: pgtypes.Interval,
+		ToType:   pgtypes.Name,
+		Function: func(ctx *sql.Context, val any, targetType pgtypes.DoltgresType) (any, error) {
+			return handleStringCast(val.(duration.Duration).String(), targetType)
 		},
 	})
 }
 
-// internalCharImplicit registers all implicit casts. This comprises only the "From" types.
-func internalCharImplicit() {
+// intervalImplicit registers all implicit casts. This comprises only the "From" types.
+func intervalImplicit() {
 	framework.MustAddImplicitTypeCast(framework.TypeCast{
-		FromType: pgtypes.InternalChar,
+		FromType: pgtypes.Interval,
 		ToType:   pgtypes.Text,
 		Function: func(ctx *sql.Context, val any, targetType pgtypes.DoltgresType) (any, error) {
-			return val, nil
+			return val.(duration.Duration).String(), nil
 		},
 	})
 }

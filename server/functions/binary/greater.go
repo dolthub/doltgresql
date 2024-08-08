@@ -15,6 +15,7 @@
 package binary
 
 import (
+	"github.com/dolthub/doltgresql/postgres/parser/duration"
 	"time"
 
 	"github.com/dolthub/go-mysql-server/sql"
@@ -50,6 +51,7 @@ func initBinaryGreaterThan() {
 	framework.RegisterBinaryFunction(framework.Operator_BinaryGreaterThan, int82gt)
 	framework.RegisterBinaryFunction(framework.Operator_BinaryGreaterThan, int84gt)
 	framework.RegisterBinaryFunction(framework.Operator_BinaryGreaterThan, int8gt)
+	framework.RegisterBinaryFunction(framework.Operator_BinaryGreaterThan, interval_gt)
 	framework.RegisterBinaryFunction(framework.Operator_BinaryGreaterThan, jsonb_gt)
 	framework.RegisterBinaryFunction(framework.Operator_BinaryGreaterThan, namegt)
 	framework.RegisterBinaryFunction(framework.Operator_BinaryGreaterThan, namegttext)
@@ -304,6 +306,18 @@ var int8gt = framework.Function2{
 	Strict:     true,
 	Callable: func(ctx *sql.Context, _ [3]pgtypes.DoltgresType, val1 any, val2 any) (any, error) {
 		res, err := pgtypes.Int64.Compare(val1.(int64), val2.(int64))
+		return res == 1, err
+	},
+}
+
+// interval_gt represents the PostgreSQL function of the same name, taking the same parameters.
+var interval_gt = framework.Function2{
+	Name:       "interval_gt",
+	Return:     pgtypes.Bool,
+	Parameters: [2]pgtypes.DoltgresType{pgtypes.Interval, pgtypes.Interval},
+	Strict:     true,
+	Callable: func(ctx *sql.Context, _ [3]pgtypes.DoltgresType, val1 any, val2 any) (any, error) {
+		res, err := pgtypes.Interval.Compare(val1.(duration.Duration), val2.(duration.Duration))
 		return res == 1, err
 	},
 }
