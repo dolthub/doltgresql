@@ -217,23 +217,23 @@ func (c *CompiledFunction) Eval(ctx *sql.Context, row sql.Row) (interface{}, err
 
 	if len(c.overload.casts) > 0 {
 		for i, arg := range args {
-			paramIdx := i
+			// For variadic params, we need to identify the corresponding target type
+			var targetType pgtypes.DoltgresType
 			isVariadicArg := c.overload.params.variadic >= 0 && i >= len(c.overload.params.paramTypes)-1
 			if isVariadicArg {
-				paramIdx = len(c.overload.params.paramTypes) - 1
+				targetType = targetParamTypes[c.overload.params.variadic]
+				targetArrayType, ok := targetType.(pgtypes.DoltgresArrayType)
+				if !ok {
+					// should be impossible, we check this at function compile time
+					return nil, fmt.Errorf("variadic arguments must be array types, was %T", targetType)
+				}
+				targetType = targetArrayType.BaseType()
+			} else {
+				targetType = targetParamTypes[i]
 			}
 
-			if c.overload.casts[paramIdx] != nil {
-				targetType := targetParamTypes[paramIdx]
-				if isVariadicArg {
-					targetArrayType, ok := targetType.(pgtypes.DoltgresArrayType)
-					if !ok {
-						return nil, fmt.Errorf("variadic arguments must be array types, was %T", targetType)
-					}
-					targetType = targetArrayType.BaseType()
-				}
-
-				args[i], err = c.overload.casts[paramIdx](ctx, arg, targetType)
+			if c.overload.casts[i] != nil {
+				args[i], err = c.overload.casts[i](ctx, arg, targetType)
 				if err != nil {
 					return nil, err
 				}
@@ -289,7 +289,7 @@ func (c *CompiledFunction) resolve(
 	// First check for an exact match
 	exactMatch, found := overloads.ExactMatchForTypes(argTypes)
 	if found {
-		baseTypes := baseIdsForTypes(argTypes)
+		baseTypes := overloads.baseIdsForTypes(argTypes)
 		return overloadMatch{
 			params: Overload{
 				function:   exactMatch,
@@ -299,7 +299,7 @@ func (c *CompiledFunction) resolve(
 			},
 		}, nil
 	}
-	// There are no exact matches, so now we'll look through all of the functions to determine the best match. This is
+	// There are no exact matches, so now we'll look through all of the overloads to determine the best match. This is
 	// much more work, but there's a performance penalty for runtime overload resolution in Postgres as well.
 	if c.IsOperator {
 		return c.resolveOperator(argTypes, overloads, fnOverloads, sources)
