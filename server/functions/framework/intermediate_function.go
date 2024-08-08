@@ -16,14 +16,12 @@ package framework
 
 import (
 	"github.com/dolthub/go-mysql-server/sql"
-
-	pgtypes "github.com/dolthub/doltgresql/server/types"
 )
 
 // IntermediateFunction is an expression that represents an incomplete PostgreSQL function.
 type IntermediateFunction struct {
-	Functions    *OverloadDeduction
-	AllOverloads [][]pgtypes.DoltgresTypeBaseID
+	Functions    *Overloads
+	AllOverloads []Overload
 	IsOperator   bool
 }
 

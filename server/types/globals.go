@@ -23,6 +23,8 @@ import "fmt"
 // SerializationID to prevent base ID conflicts.
 type DoltgresTypeBaseID uint32
 
+//go:generate stringer -type=DoltgresTypeBaseID
+
 const (
 	DoltgresTypeBaseID_Any DoltgresTypeBaseID = iota + 8192
 	DoltgresTypeBaseID_AnyElement

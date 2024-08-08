@@ -66,7 +66,7 @@ func (b *BinaryOperator) String() string {
 	}
 	// We know that we'll always have two parameters here
 	return fmt.Sprintf("%s %s %s",
-		b.compiledFunc.Parameters[0].String(), b.operator.String(), b.compiledFunc.Parameters[1].String())
+		b.compiledFunc.Arguments[0].String(), b.operator.String(), b.compiledFunc.Arguments[1].String())
 }
 
 // Type implements the sql.Expression interface.
@@ -122,11 +122,11 @@ func (b *BinaryOperator) Operator() framework.Operator {
 // Left implements the expression.BinaryExpression interface.
 func (b *BinaryOperator) Left() sql.Expression {
 	// We know that we'll always have two parameters here
-	return b.compiledFunc.Parameters[0]
+	return b.compiledFunc.Arguments[0]
 }
 
 // Right implements the expression.BinaryExpression interface.
 func (b *BinaryOperator) Right() sql.Expression {
 	// We know that we'll always have two parameters here
-	return b.compiledFunc.Parameters[1]
+	return b.compiledFunc.Arguments[1]
 }
