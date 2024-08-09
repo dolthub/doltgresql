@@ -32,7 +32,7 @@ import (
 
 // ReplaceSerial replaces a CreateTable node containing a SERIAL type with a node that can create sequences alongside
 // the table.
-func ReplaceSerial(ctx *sql.Context, a *analyzer.Analyzer, node sql.Node, scope *plan.Scope, selector analyzer.RuleSelector) (sql.Node, transform.TreeIdentity, error) {
+func ReplaceSerial(ctx *sql.Context, a *analyzer.Analyzer, node sql.Node, scope *plan.Scope, selector analyzer.RuleSelector, qFlags *sql.QueryFlags) (sql.Node, transform.TreeIdentity, error) {
 	createTable, ok := node.(*plan.CreateTable)
 	if !ok {
 		return node, transform.SameTree, nil

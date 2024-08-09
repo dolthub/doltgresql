@@ -36,10 +36,10 @@ import (
 // TypeSanitizer converts all GMS types into Doltgres types. Some places, such as parameter binding, will always default
 // to GMS types, so by taking care of all conversions here, we can ensure that Doltgres only needs to worry about its
 // own types.
-func TypeSanitizer(ctx *sql.Context, a *analyzer.Analyzer, node sql.Node, scope *plan.Scope, selector analyzer.RuleSelector) (sql.Node, transform.TreeIdentity, error) {
+func TypeSanitizer(ctx *sql.Context, a *analyzer.Analyzer, node sql.Node, scope *plan.Scope, selector analyzer.RuleSelector, qFlags *sql.QueryFlags) (sql.Node, transform.TreeIdentity, error) {
 	node, nodeSame, err := transform.NodeWithOpaque(node, func(node sql.Node) (sql.Node, transform.TreeIdentity, error) {
 		if disjointedNode, ok := node.(plan.DisjointedChildrenNode); ok {
-			return handleDisjointedNodes(ctx, a, disjointedNode, scope, selector, TypeSanitizer)
+			return handleDisjointedNodes(ctx, a, disjointedNode, scope, selector, TypeSanitizer, qFlags)
 		}
 		return node, transform.SameTree, nil
 	})
