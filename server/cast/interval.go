@@ -15,11 +15,11 @@
 package cast
 
 import (
-	"github.com/dolthub/go-mysql-server/sql"
 	"time"
 
-	"github.com/dolthub/doltgresql/postgres/parser/duration"
+	"github.com/dolthub/go-mysql-server/sql"
 
+	"github.com/dolthub/doltgresql/postgres/parser/duration"
 	"github.com/dolthub/doltgresql/server/functions/framework"
 	pgtypes "github.com/dolthub/doltgresql/server/types"
 )
