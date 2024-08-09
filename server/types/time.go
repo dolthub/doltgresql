@@ -124,7 +124,7 @@ func (b TimeType) GetSerializationID() SerializationID {
 func (b TimeType) IoInput(ctx *sql.Context, input string) (any, error) {
 	if t, err := time.Parse("15:04:05", input); err == nil {
 		return t.UTC(), nil
-	} else if t, err = time.Parse("15:04:05.000", input); err == nil {
+	} else if t, err = time.Parse("15:04:05.999", input); err == nil {
 		return t.UTC(), nil
 	}
 	return nil, fmt.Errorf("invalid format for time")

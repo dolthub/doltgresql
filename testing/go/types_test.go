@@ -494,6 +494,18 @@ var typesTests = []ScriptTest{
 					{2, "2023-02-02"},
 				},
 			},
+			{
+				Query: "SELECT date '2022-2-2'",
+				Expected: []sql.Row{
+					{"2022-02-02"},
+				},
+			},
+			{
+				Query: "SELECT date '2022-02-02'",
+				Expected: []sql.Row{
+					{"2022-02-02"},
+				},
+			},
 		},
 	},
 	{
@@ -614,6 +626,10 @@ var typesTests = []ScriptTest{
 				Expected: []sql.Row{{"3"}},
 			},
 			{
+				Query:    `SELECT '2 years 15 months 100 weeks 99 hours 123456789 milliseconds'::interval::text;`,
+				Expected: []sql.Row{{"3 years 3 mons 700 days 133:17:36.789"}},
+			},
+			{
 				Query:    `SELECT '2 years 15 months 100 weeks 99 hours 123456789 milliseconds'::char::interval;`,
 				Expected: []sql.Row{{"00:00:02"}},
 			},
@@ -657,8 +673,8 @@ var typesTests = []ScriptTest{
 			{
 				Query: "SELECT * FROM t_interval_array ORDER BY id;",
 				Expected: []sql.Row{
-					{1, "{\"1 day 03:00:00\",\"5 days 02:00:00\"}"},
-					{2, "{\"3 years 3 mons 700 days 133:17:36.789\",200:00:00}"},
+					{1, `{"1 day 03:00:00","5 days 02:00:00"}`},
+					{2, `{"3 years 3 mons 700 days 133:17:36.789",200:00:00}`},
 				},
 			},
 		},

@@ -180,15 +180,7 @@ func (b IntervalType) SerializedCompare(v1 []byte, v2 []byte) (int, error) {
 		return -1, nil
 	}
 
-	d1, err := deserializeDuration(v1)
-	if err != nil {
-		return 0, err
-	}
-	d2, err := deserializeDuration(v2)
-	if err != nil {
-		return 0, err
-	}
-	return d1.Compare(d2), nil
+	return bytes.Compare(v1, v2), nil
 }
 
 // SQL implements the DoltgresType interface.
@@ -252,9 +244,14 @@ func (b IntervalType) SerializeValue(val any) ([]byte, error) {
 	if err != nil {
 		return nil, err
 	}
-	str := converted.(duration.Duration).String()
-	writer := utils.NewWriter(uint64(len(str) + 1))
-	writer.String(str)
+	sortNanos, months, days, err := converted.(duration.Duration).Encode()
+	if err != nil {
+		return nil, err
+	}
+	writer := utils.NewWriter(0)
+	writer.Int64(sortNanos)
+	writer.Int64(months)
+	writer.Int64(days)
 	return writer.Data(), nil
 }
 
@@ -263,15 +260,9 @@ func (b IntervalType) DeserializeValue(val []byte) (any, error) {
 	if len(val) == 0 {
 		return nil, nil
 	}
-	return deserializeDuration(val)
-}
-
-func deserializeDuration(val []byte) (duration.Duration, error) {
 	reader := utils.NewReader(val)
-	str := reader.String()
-	dInterval, err := tree.ParseDInterval(str)
-	if err != nil {
-		return duration.Duration{}, err
-	}
-	return dInterval.Duration, nil
+	sortNanos := reader.Int64()
+	months := reader.Int64()
+	days := reader.Int64()
+	return duration.Decode(sortNanos, months, days)
 }

@@ -282,22 +282,6 @@ var interval_pl_timestamptz = framework.Function2{
 	},
 }
 
-// intervalPlusNonInterval adds given interval duration to the given time.Time value.
-// During converting interval duration to time.Duration type, it can overflow.
-func intervalPlusNonInterval(d duration.Duration, t time.Time) (time.Time, error) {
-	seconds, ok := d.AsInt64()
-	if !ok {
-		if !ok {
-			return time.Time{}, fmt.Errorf("interval overflow")
-		}
-	}
-	nanos := float64(seconds) * functions.NanosPerSec
-	if nanos > float64(math.MaxInt64) || nanos < float64(math.MinInt64) {
-		return time.Time{}, fmt.Errorf("interval overflow")
-	}
-	return t.Add(time.Duration(nanos)), nil
-}
-
 // numeric_add represents the PostgreSQL function of the same name, taking the same parameters.
 var numeric_add = framework.Function2{
 	Name:       "numeric_add",
@@ -321,4 +305,20 @@ func plusOverflow(val1 int64, val2 int64) (any, error) {
 		}
 	}
 	return val1 + val2, nil
+}
+
+// intervalPlusNonInterval adds given interval duration to the given time.Time value.
+// During converting interval duration to time.Duration type, it can overflow.
+func intervalPlusNonInterval(d duration.Duration, t time.Time) (time.Time, error) {
+	seconds, ok := d.AsInt64()
+	if !ok {
+		if !ok {
+			return time.Time{}, fmt.Errorf("interval overflow")
+		}
+	}
+	nanos := float64(seconds) * functions.NanosPerSec
+	if nanos > float64(math.MaxInt64) || nanos < float64(math.MinInt64) {
+		return time.Time{}, fmt.Errorf("interval overflow")
+	}
+	return t.Add(time.Duration(nanos)), nil
 }

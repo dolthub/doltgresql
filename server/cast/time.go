@@ -26,12 +26,12 @@ import (
 
 // initTime handles all casts that are built-in. This comprises only the "From" types.
 func initTime() {
-	timeExplicit()
+	timeImplicit()
 }
 
-// timeExplicit registers all implicit casts. This comprises only the "From" types.
-func timeExplicit() {
-	framework.MustAddExplicitTypeCast(framework.TypeCast{
+// timeImplicit registers all implicit casts. This comprises only the "From" types.
+func timeImplicit() {
+	framework.MustAddImplicitTypeCast(framework.TypeCast{
 		FromType: pgtypes.Time,
 		ToType:   pgtypes.Interval,
 		Function: func(ctx *sql.Context, val any, targetType pgtypes.DoltgresType) (any, error) {

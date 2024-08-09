@@ -16,6 +16,7 @@ package cast
 
 import (
 	"github.com/dolthub/go-mysql-server/sql"
+	"time"
 
 	"github.com/dolthub/doltgresql/postgres/parser/duration"
 
@@ -26,7 +27,6 @@ import (
 // initInterval handles all casts that are built-in. This comprises only the "From" types.
 func initInterval() {
 	intervalAssignment()
-	intervalExplicit()
 	intervalImplicit()
 }
 
@@ -34,34 +34,13 @@ func initInterval() {
 func intervalAssignment() {
 	framework.MustAddAssignmentTypeCast(framework.TypeCast{
 		FromType: pgtypes.Interval,
-		ToType:   pgtypes.BpChar,
+		ToType:   pgtypes.Time,
 		Function: func(ctx *sql.Context, val any, targetType pgtypes.DoltgresType) (any, error) {
-			return handleStringCast(val.(duration.Duration).String(), targetType)
-		},
-	})
-	framework.MustAddAssignmentTypeCast(framework.TypeCast{
-		FromType: pgtypes.Interval,
-		ToType:   pgtypes.VarChar,
-		Function: func(ctx *sql.Context, val any, targetType pgtypes.DoltgresType) (any, error) {
-			return handleStringCast(val.(duration.Duration).String(), targetType)
-		},
-	})
-}
-
-// intervalExplicit registers all implicit casts. This comprises only the "From" types.
-func intervalExplicit() {
-	framework.MustAddExplicitTypeCast(framework.TypeCast{
-		FromType: pgtypes.Interval,
-		ToType:   pgtypes.InternalChar,
-		Function: func(ctx *sql.Context, val any, targetType pgtypes.DoltgresType) (any, error) {
-			return handleStringCast(val.(duration.Duration).String(), targetType)
-		},
-	})
-	framework.MustAddExplicitTypeCast(framework.TypeCast{
-		FromType: pgtypes.Interval,
-		ToType:   pgtypes.Name,
-		Function: func(ctx *sql.Context, val any, targetType pgtypes.DoltgresType) (any, error) {
-			return handleStringCast(val.(duration.Duration).String(), targetType)
+			dur := val.(duration.Duration)
+			// truncate the month and day of the duration.
+			dur.Months = 0
+			dur.Days = 0
+			return time.Parse("15:04:05.999", dur.String())
 		},
 	})
 }
@@ -70,9 +49,9 @@ func intervalExplicit() {
 func intervalImplicit() {
 	framework.MustAddImplicitTypeCast(framework.TypeCast{
 		FromType: pgtypes.Interval,
-		ToType:   pgtypes.Text,
+		ToType:   pgtypes.Interval,
 		Function: func(ctx *sql.Context, val any, targetType pgtypes.DoltgresType) (any, error) {
-			return val.(duration.Duration).String(), nil
+			return val.(duration.Duration), nil
 		},
 	})
 }
