@@ -18,7 +18,7 @@ import "testing"
 
 func TestDiscard(t *testing.T) {
 	tests := []QueryParses{
-		Parses("DISCARD ALL"),
+		Converts("DISCARD ALL"),
 		Unimplemented("DISCARD PLANS"),
 		Unimplemented("DISCARD SEQUENCES"),
 		Unimplemented("DISCARD TEMPORARY"),
