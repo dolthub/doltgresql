@@ -250,8 +250,8 @@ func (b IntervalType) SerializeValue(val any) ([]byte, error) {
 	}
 	writer := utils.NewWriter(0)
 	writer.Int64(sortNanos)
-	writer.Int64(months)
-	writer.Int64(days)
+	writer.Int32(int32(months))
+	writer.Int32(int32(days))
 	return writer.Data(), nil
 }
 
@@ -262,7 +262,7 @@ func (b IntervalType) DeserializeValue(val []byte) (any, error) {
 	}
 	reader := utils.NewReader(val)
 	sortNanos := reader.Int64()
-	months := reader.Int64()
-	days := reader.Int64()
-	return duration.Decode(sortNanos, months, days)
+	months := reader.Int32()
+	days := reader.Int32()
+	return duration.Decode(sortNanos, int64(months), int64(days))
 }
