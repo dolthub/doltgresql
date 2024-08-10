@@ -12,28 +12,9 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-package cast
+package types
 
-// Init initializes all casts in this package.
-func Init() {
-	initBool()
-	initChar()
-	initFloat32()
-	initFloat64()
-	initInt16()
-	initInt32()
-	initInt64()
-	initInternalChar()
-	initInterval()
-	initJson()
-	initJsonB()
-	initName()
-	initNumeric()
-	initOid()
-	initRegclass()
-	initRegproc()
-	initRegtype()
-	initText()
-	initTime()
-	initVarChar()
-}
+import "github.com/lib/pq/oid"
+
+// IntervalArray is the array variant of Interval.
+var IntervalArray = createArrayType(Interval, SerializationID_IntervalArray, oid.T__interval)

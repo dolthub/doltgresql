@@ -442,7 +442,15 @@ func nodeExpr(node tree.Expr) (vitess.Expr, error) {
 	case *tree.DInt:
 		return nil, fmt.Errorf("the statement is not yet supported")
 	case *tree.DInterval:
-		return nil, fmt.Errorf("the statement is not yet supported")
+		cast, err := pgexprs.NewExplicitCastInjectable(pgtypes.Interval)
+		if err != nil {
+			return nil, err
+		}
+		expr := pgexprs.NewIntervalLiteral(node.Duration)
+		return vitess.InjectedExpr{
+			Expression: cast,
+			Children:   vitess.Exprs{vitess.InjectedExpr{Expression: expr}},
+		}, nil
 	case *tree.DJSON:
 		return nil, fmt.Errorf("the statement is not yet supported")
 	case *tree.DOid:

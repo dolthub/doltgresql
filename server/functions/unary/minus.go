@@ -18,6 +18,8 @@ import (
 	"github.com/dolthub/go-mysql-server/sql"
 	"github.com/shopspring/decimal"
 
+	"github.com/dolthub/doltgresql/postgres/parser/duration"
+
 	"github.com/dolthub/doltgresql/server/functions/framework"
 	pgtypes "github.com/dolthub/doltgresql/server/types"
 )
@@ -32,6 +34,7 @@ func initUnaryMinus() {
 	framework.RegisterUnaryFunction(framework.Operator_UnaryMinus, int2um)
 	framework.RegisterUnaryFunction(framework.Operator_UnaryMinus, int4um)
 	framework.RegisterUnaryFunction(framework.Operator_UnaryMinus, int8um)
+	framework.RegisterUnaryFunction(framework.Operator_UnaryMinus, interval_um)
 	framework.RegisterUnaryFunction(framework.Operator_UnaryMinus, numeric_uminus)
 }
 
@@ -87,6 +90,18 @@ var int8um = framework.Function1{
 	Strict:     true,
 	Callable: func(ctx *sql.Context, _ [2]pgtypes.DoltgresType, val1 any) (any, error) {
 		return -(val1.(int64)), nil
+	},
+}
+
+// interval_um represents the PostgreSQL function of the same name, taking the same parameters.
+var interval_um = framework.Function1{
+	Name:       "interval_um",
+	Return:     pgtypes.Interval,
+	Parameters: [1]pgtypes.DoltgresType{pgtypes.Interval},
+	Strict:     true,
+	Callable: func(ctx *sql.Context, _ [2]pgtypes.DoltgresType, val1 any) (any, error) {
+		dur := val1.(duration.Duration)
+		return dur.Mul(-1), nil
 	},
 }
 

@@ -20,6 +20,7 @@ import (
 	"github.com/dolthub/go-mysql-server/sql"
 	"github.com/shopspring/decimal"
 
+	"github.com/dolthub/doltgresql/postgres/parser/duration"
 	"github.com/dolthub/doltgresql/postgres/parser/uuid"
 	"github.com/dolthub/doltgresql/server/functions/framework"
 	pgtypes "github.com/dolthub/doltgresql/server/types"
@@ -50,6 +51,7 @@ func initBinaryLessThan() {
 	framework.RegisterBinaryFunction(framework.Operator_BinaryLessThan, int82lt)
 	framework.RegisterBinaryFunction(framework.Operator_BinaryLessThan, int84lt)
 	framework.RegisterBinaryFunction(framework.Operator_BinaryLessThan, int8lt)
+	framework.RegisterBinaryFunction(framework.Operator_BinaryLessThan, interval_lt)
 	framework.RegisterBinaryFunction(framework.Operator_BinaryLessThan, jsonb_lt)
 	framework.RegisterBinaryFunction(framework.Operator_BinaryLessThan, namelt)
 	framework.RegisterBinaryFunction(framework.Operator_BinaryLessThan, namelttext)
@@ -304,6 +306,18 @@ var int8lt = framework.Function2{
 	Strict:     true,
 	Callable: func(ctx *sql.Context, _ [3]pgtypes.DoltgresType, val1 any, val2 any) (any, error) {
 		res, err := pgtypes.Int64.Compare(val1.(int64), val2.(int64))
+		return res == -1, err
+	},
+}
+
+// interval_lt represents the PostgreSQL function of the same name, taking the same parameters.
+var interval_lt = framework.Function2{
+	Name:       "interval_lt",
+	Return:     pgtypes.Bool,
+	Parameters: [2]pgtypes.DoltgresType{pgtypes.Interval, pgtypes.Interval},
+	Strict:     true,
+	Callable: func(ctx *sql.Context, _ [3]pgtypes.DoltgresType, val1 any, val2 any) (any, error) {
+		res, err := pgtypes.Interval.Compare(val1.(duration.Duration), val2.(duration.Duration))
 		return res == -1, err
 	},
 }

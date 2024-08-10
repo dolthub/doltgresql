@@ -80,5 +80,4 @@ func internalCharImplicit() {
 			return val, nil
 		},
 	})
-
 }

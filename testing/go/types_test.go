@@ -494,6 +494,18 @@ var typesTests = []ScriptTest{
 					{2, "2023-02-02"},
 				},
 			},
+			{
+				Query: "SELECT date '2022-2-2'",
+				Expected: []sql.Row{
+					{"2022-02-02"},
+				},
+			},
+			{
+				Query: "SELECT date '2022-02-02'",
+				Expected: []sql.Row{
+					{"2022-02-02"},
+				},
+			},
 		},
 	},
 	{
@@ -579,18 +591,90 @@ var typesTests = []ScriptTest{
 	},
 	{
 		Name: "Interval type",
-		Skip: true,
 		SetUpScript: []string{
 			"CREATE TABLE t_interval (id INTEGER primary key, v1 INTERVAL);",
-			"INSERT INTO t_interval VALUES (1, '1 day 3 hours'), (2, '2 hours 30 minutes');",
+			"INSERT INTO t_interval VALUES (1, '1 day 3 hours'), (2, '23 hours 30 minutes');",
 		},
 		Assertions: []ScriptTestAssertion{
 			{
-				// TODO: might need a GMS type here, not a string (psql output is different than below)
 				Query: "SELECT * FROM t_interval ORDER BY id;",
 				Expected: []sql.Row{
-					{1, "1 day 3 hours"},
-					{2, "2 hours 30 minutes"},
+					{1, "1 day 03:00:00"},
+					{2, "23:30:00"},
+				},
+			},
+			{
+				Query: "SELECT * FROM t_interval ORDER BY v1;",
+				Expected: []sql.Row{
+					{2, "23:30:00"},
+					{1, "1 day 03:00:00"},
+				},
+			},
+			{
+				Query: `SELECT id, v1::char, v1::name FROM t_interval;`,
+				Expected: []sql.Row{
+					{1, "1", "1 day 03:00:00"},
+					{2, "2", "23:30:00"},
+				},
+			},
+			{
+				Query:    `SELECT '2 years 15 months 100 weeks 99 hours 123456789 milliseconds'::interval;`,
+				Expected: []sql.Row{{"3 years 3 mons 700 days 133:17:36.789"}},
+			},
+			{
+				Query:    `SELECT '2 years 15 months 100 weeks 99 hours 123456789 milliseconds'::interval::char;`,
+				Expected: []sql.Row{{"3"}},
+			},
+			{
+				Query:    `SELECT '2 years 15 months 100 weeks 99 hours 123456789 milliseconds'::interval::text;`,
+				Expected: []sql.Row{{"3 years 3 mons 700 days 133:17:36.789"}},
+			},
+			{
+				Query:    `SELECT '2 years 15 months 100 weeks 99 hours 123456789 milliseconds'::char::interval;`,
+				Expected: []sql.Row{{"00:00:02"}},
+			},
+			{
+				Query:    `SELECT '13 months'::name::interval;`,
+				Expected: []sql.Row{{"1 year 1 mon"}},
+			},
+			{
+				Query:    `SELECT '13 months'::bpchar::interval;`,
+				Expected: []sql.Row{{"1 year 1 mon"}},
+			},
+			{
+				Query:    `SELECT '13 months'::varchar::interval;`,
+				Expected: []sql.Row{{"1 year 1 mon"}},
+			},
+			{
+				Query:    `SELECT '13 months'::text::interval;`,
+				Expected: []sql.Row{{"1 year 1 mon"}},
+			},
+			{
+				Query:    `SELECT '13 months'::char::interval;`,
+				Expected: []sql.Row{{"00:00:01"}},
+			},
+			{
+				Query:       "INSERT INTO t_interval VALUES (3, 7);",
+				ExpectedErr: `ASSIGNMENT_CAST: target is of type interval but expression is of type integer: 7`,
+			},
+			{
+				Query:       "INSERT INTO t_interval VALUES (3, true);",
+				ExpectedErr: `ASSIGNMENT_CAST: target is of type interval but expression is of type boolean: true`,
+			},
+		},
+	},
+	{
+		Name: "Interval array type",
+		SetUpScript: []string{
+			"CREATE TABLE t_interval_array (id INTEGER primary key, v1 INTERVAL[]);",
+			"INSERT INTO t_interval_array VALUES (1, ARRAY['1 day 3 hours'::interval,'5 days 2 hours'::interval]), (2, ARRAY['3 years 3 mons 700 days 133:17:36.789'::interval,'200 hours'::interval]);",
+		},
+		Assertions: []ScriptTestAssertion{
+			{
+				Query: "SELECT * FROM t_interval_array ORDER BY id;",
+				Expected: []sql.Row{
+					{1, `{"1 day 03:00:00","5 days 02:00:00"}`},
+					{2, `{"3 years 3 mons 700 days 133:17:36.789",200:00:00}`},
 				},
 			},
 		},
@@ -1895,6 +1979,13 @@ var typesTests = []ScriptTest{
 				},
 			},
 			{
+				Query: "SELECT v1::interval FROM t_time_without_zone ORDER BY id;",
+				Expected: []sql.Row{
+					{"12:34:56"},
+					{"23:45:01"},
+				},
+			},
+			{
 				Query: `SELECT '00:00:00'::time;`,
 				Expected: []sql.Row{
 					{"00:00:00"},
@@ -1907,14 +1998,14 @@ var typesTests = []ScriptTest{
 		Skip: true,
 		SetUpScript: []string{
 			"CREATE TABLE t_time_with_zone (id INTEGER primary key, v1 TIME WITH TIME ZONE);",
-			"INSERT INTO t_time_with_zone VALUES (1, '12:34:56 UTC'), (2, '23:45:01 America/New_York');",
+			"INSERT INTO t_time_with_zone VALUES (1, '12:34:56 UTC'), (2, '23:45:01-0200');",
 		},
 		Assertions: []ScriptTestAssertion{
 			{
 				Query: "SELECT * FROM t_time_with_zone ORDER BY id;",
 				Expected: []sql.Row{
-					{1, "12:34:56 UTC"},
-					{2, "23:45:01 America/New_York"},
+					{1, "12:34:56+00"},
+					{2, "23:45:01-02"},
 				},
 			},
 			{
