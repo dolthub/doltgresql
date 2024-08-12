@@ -23,6 +23,7 @@ import (
 	"strings"
 	"sync/atomic"
 
+	"github.com/dolthub/doltgresql/server/node"
 	"github.com/dolthub/go-mysql-server/sql"
 	"github.com/dolthub/go-mysql-server/sql/expression"
 	"github.com/dolthub/go-mysql-server/sql/plan"
@@ -365,7 +366,7 @@ func (h *ConnectionHandler) handleQueryOutsideEngine(query ConvertedQuery) (erro
 		return h.deallocatePreparedStatement(stmt.Name, h.preparedStatements, query, h.Conn()), true
 	case sqlparser.InjectedStatement:
 		switch stmt.Statement.(type) {
-		case ast.DiscardStatement:
+		case node.DiscardStatement:
 			return h.discardAll(query, h.Conn()), true
 		}
 	}
