@@ -23,7 +23,6 @@ import (
 	"strings"
 	"sync/atomic"
 
-	"github.com/dolthub/doltgresql/server/node"
 	"github.com/dolthub/go-mysql-server/sql"
 	"github.com/dolthub/go-mysql-server/sql/expression"
 	"github.com/dolthub/go-mysql-server/sql/plan"
@@ -40,6 +39,7 @@ import (
 	"github.com/dolthub/doltgresql/postgres/parser/parser"
 	"github.com/dolthub/doltgresql/server/ast"
 	pgexprs "github.com/dolthub/doltgresql/server/expression"
+	"github.com/dolthub/doltgresql/server/node"
 	pgtypes "github.com/dolthub/doltgresql/server/types"
 )
 
