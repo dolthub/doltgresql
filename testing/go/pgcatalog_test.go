@@ -566,7 +566,7 @@ func TestPgConstraint(t *testing.T) {
 				},
 				{
 					Skip:  true, // TODO: Foreign keys don't work
-					Query: `SELECT * FROM "pg_catalog"."pg_constraint" LIMIT 2;`,
+					Query: `SELECT * FROM "pg_catalog"."pg_constraint" WHERE conrelid='testing2'::regclass OR conrelid='testing'::regclass;`,
 					Expected: []sql.Row{
 						{1611661312, "testing_pkey", 1879048193, "p", "f", "f", "t", 2685403136, 0, 1611661312, 0, 0, "", "", "", "t", 0, "t", "{1}", nil, nil, nil, nil, nil, nil, nil},
 						{1611661313, "v1", 1879048193, "u", "f", "f", "t", 2685403136, 0, 1611661313, 0, 0, "", "", "", "t", 0, "t", "{2}", nil, nil, nil, nil, nil, nil, nil},

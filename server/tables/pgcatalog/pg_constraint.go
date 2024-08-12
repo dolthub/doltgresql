@@ -123,8 +123,12 @@ func (p PgConstraintHandler) RowIter(ctx *sql.Context) (sql.RowIter, error) {
 		},
 		Index: func(ctx *sql.Context, schema oid.ItemSchema, table oid.ItemTable, index oid.ItemIndex) (cont bool, err error) {
 			conType := "p"
-			if index.Item.IsUnique() && index.Item.ID() != "PRIMARY" {
-				conType = "u"
+			if index.Item.ID() != "PRIMARY" {
+				if index.Item.IsUnique() {
+					conType = "u"
+				} else {
+					conType = "f"
+				}
 			}
 
 			conKey := make([]any, len(index.Item.Expressions()))
