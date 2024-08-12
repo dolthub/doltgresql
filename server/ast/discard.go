@@ -20,12 +20,19 @@ import (
 	vitess "github.com/dolthub/vitess/go/vt/sqlparser"
 
 	"github.com/dolthub/doltgresql/postgres/parser/sem/tree"
+	"github.com/dolthub/doltgresql/server/node"
 )
 
 // nodeDiscard handles *tree.Discard nodes.
-func nodeDiscard(node *tree.Discard) (vitess.Statement, error) {
-	if node == nil {
+func nodeDiscard(discard *tree.Discard) (vitess.Statement, error) {
+	if discard == nil {
 		return nil, nil
 	}
-	return nil, fmt.Errorf("DISCARD is not yet supported")
+	if discard.Mode != tree.DiscardModeAll {
+		return nil, fmt.Errorf("unhandled DISCARD mode: %v", discard.Mode)
+	}
+
+	return vitess.InjectedStatement{
+		Statement: node.DiscardStatement{},
+	}, nil
 }

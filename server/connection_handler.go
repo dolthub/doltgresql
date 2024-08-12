@@ -39,6 +39,7 @@ import (
 	"github.com/dolthub/doltgresql/postgres/parser/parser"
 	"github.com/dolthub/doltgresql/server/ast"
 	pgexprs "github.com/dolthub/doltgresql/server/expression"
+	"github.com/dolthub/doltgresql/server/node"
 	pgtypes "github.com/dolthub/doltgresql/server/types"
 )
 
@@ -347,15 +348,29 @@ func (h *ConnectionHandler) handleQuery(message messages.Query) error {
 	delete(h.preparedStatements, "")
 	delete(h.portals, "")
 
-	// The Deallocate message does not get passed to the engine, since we handle allocation / deallocation of
-	// prepared statements at this layer
-	switch stmt := query.AST.(type) {
-	case *sqlparser.Deallocate:
-		// TODO: handle ALL keyword
-		return h.deallocatePreparedStatement(stmt.Name, h.preparedStatements, query, h.Conn())
+	// Certain statement types get handled directly by the handler instead of being passed to the engine
+	err, handled = h.handleQueryOutsideEngine(query)
+	if handled {
+		return err
 	}
 
 	return h.query(query)
+}
+
+// handleQueryOutsideEngine handles any queries that should be handled by the handler directly, rather than being
+// passed to the engine. Returns true if the query was handled and any error that occurred while doing so.
+func (h *ConnectionHandler) handleQueryOutsideEngine(query ConvertedQuery) (error, bool) {
+	switch stmt := query.AST.(type) {
+	case *sqlparser.Deallocate:
+		// TODO: handle ALL keyword
+		return h.deallocatePreparedStatement(stmt.Name, h.preparedStatements, query, h.Conn()), true
+	case sqlparser.InjectedStatement:
+		switch stmt.Statement.(type) {
+		case node.DiscardStatement:
+			return h.discardAll(query, h.Conn()), true
+		}
+	}
+	return nil, false
 }
 
 // handleParse handles a parse message, returning any error that occurs
@@ -497,7 +512,13 @@ func (h *ConnectionHandler) handleExecute(message messages.Execute) error {
 		return connection.Send(h.Conn(), messages.EmptyQueryResponse{})
 	}
 
-	err := h.handler.(mysql.ExtendedHandler).ComExecuteBound(context.Background(), h.mysqlConn, query.String, portalData.BoundPlan, spoolRowsCallback(h.Conn(), &complete, true))
+	// Certain statement types get handled directly by the handler instead of being passed to the engine
+	err, handled := h.handleQueryOutsideEngine(query)
+	if handled {
+		return err
+	}
+
+	err = h.handler.(mysql.ExtendedHandler).ComExecuteBound(context.Background(), h.mysqlConn, query.String, portalData.BoundPlan, spoolRowsCallback(h.Conn(), &complete, true))
 	if err != nil {
 		return err
 	}
@@ -978,4 +999,19 @@ func (h *ConnectionHandler) bindParams(
 	}
 
 	return plan, fields, err
+}
+
+// discardAll handles the DISCARD ALL command
+func (h *ConnectionHandler) discardAll(query ConvertedQuery, conn net.Conn) error {
+	err := h.handler.ComResetConnection(h.mysqlConn)
+	if err != nil {
+		return err
+	}
+
+	commandComplete := messages.CommandComplete{
+		Query: query.String,
+		Tag:   query.StatementTag,
+	}
+
+	return connection.Send(conn, commandComplete)
 }
