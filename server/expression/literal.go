@@ -77,12 +77,21 @@ func NewIntegerLiteral(integerValue string) (*Literal, error) {
 func NewNullLiteral() *Literal {
 	return &Literal{
 		value: nil,
-		typ:   pgtypes.Null,
+		typ:   pgtypes.Unknown,
 	}
 }
 
-// NewStringLiteral returns a new *Literal containing a TEXT value.
+// NewStringLiteral returns a new *Literal containing a UNKNOWN type value.
 func NewStringLiteral(stringValue string) *Literal {
+	return &Literal{
+		value: stringValue,
+		typ:   pgtypes.Unknown,
+	}
+}
+
+// NewTextLiteral returns a new *Literal containing a TEXT type value.
+// This should be used for internal uses when the type of the value is certain.
+func NewTextLiteral(stringValue string) *Literal {
 	return &Literal{
 		value: stringValue,
 		typ:   pgtypes.Text,
@@ -207,6 +216,14 @@ func (l *Literal) ToVitessLiteral() *vitess.SQLVal {
 		return vitess.NewFloatVal([]byte(l.value.(decimal.Decimal).String()))
 	case pgtypes.DoltgresTypeBaseID_Text:
 		return vitess.NewStrVal([]byte(l.value.(string)))
+	case pgtypes.DoltgresTypeBaseID_Unknown:
+		if l.value == nil {
+			return nil
+		} else if str, ok := l.value.(string); ok {
+			return vitess.NewStrVal([]byte(str))
+		} else {
+			panic("unhandled value of 'unknown' type in temporary literal conversion: " + l.typ.String())
+		}
 	default:
 		panic("unhandled type in temporary literal conversion: " + l.typ.String())
 	}

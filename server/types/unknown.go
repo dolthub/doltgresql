@@ -138,7 +138,7 @@ func (u UnknownType) SerializedCompare(v1 []byte, v2 []byte) (int, error) {
 
 // SQL implements the DoltgresType interface.
 func (u UnknownType) SQL(ctx *sql.Context, dest []byte, v any) (sqltypes.Value, error) {
-	return sqltypes.Value{}, fmt.Errorf("%s cannot output values in the wire format", u.String())
+	return Text.SQL(ctx, dest, v)
 }
 
 // String implements the DoltgresType interface.

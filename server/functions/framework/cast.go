@@ -126,6 +126,9 @@ func GetPotentialImplicitCasts(fromType pgtypes.DoltgresTypeBaseID) []pgtypes.Do
 // GetExplicitCast returns the explicit type cast function that will cast the "from" type to the "to" type. Returns nil
 // if such a cast is not valid.
 func GetExplicitCast(fromType pgtypes.DoltgresTypeBaseID, toType pgtypes.DoltgresTypeBaseID) TypeCastFunction {
+	fromType = checkForUnknownType(fromType)
+	toType = checkForUnknownType(toType)
+
 	if tcf := getCast(explicitTypeCastMutex, explicitTypeCastsMap, fromType, toType, GetExplicitCast); tcf != nil {
 		return tcf
 	} else if tcf = getCast(assignmentTypeCastMutex, assignmentTypeCastsMap, fromType, toType, GetExplicitCast); tcf != nil {
@@ -170,6 +173,9 @@ func GetExplicitCast(fromType pgtypes.DoltgresTypeBaseID, toType pgtypes.Doltgre
 // GetAssignmentCast returns the assignment type cast function that will cast the "from" type to the "to" type. Returns
 // nil if such a cast is not valid.
 func GetAssignmentCast(fromType pgtypes.DoltgresTypeBaseID, toType pgtypes.DoltgresTypeBaseID) TypeCastFunction {
+	fromType = checkForUnknownType(fromType)
+	toType = checkForUnknownType(toType)
+
 	if tcf := getCast(assignmentTypeCastMutex, assignmentTypeCastsMap, fromType, toType, GetAssignmentCast); tcf != nil {
 		return tcf
 	} else if tcf = getCast(implicitTypeCastMutex, implicitTypeCastsMap, fromType, toType, GetAssignmentCast); tcf != nil {
@@ -199,6 +205,9 @@ func GetAssignmentCast(fromType pgtypes.DoltgresTypeBaseID, toType pgtypes.Doltg
 // GetImplicitCast returns the implicit type cast function that will cast the "from" type to the "to" type. Returns nil
 // if such a cast is not valid.
 func GetImplicitCast(fromType pgtypes.DoltgresTypeBaseID, toType pgtypes.DoltgresTypeBaseID) TypeCastFunction {
+	fromType = checkForUnknownType(fromType)
+	toType = checkForUnknownType(toType)
+
 	if tcf := getCast(implicitTypeCastMutex, implicitTypeCastsMap, fromType, toType, GetImplicitCast); tcf != nil {
 		return tcf
 	}
@@ -299,4 +308,11 @@ func stringLiteralCast(ctx *sql.Context, val any, targetType pgtypes.DoltgresTyp
 		return nil, fmt.Errorf("string literal was expected in I/O cast, but received: `%T`", val)
 	}
 	return targetType.IoInput(ctx, str)
+}
+
+func checkForUnknownType(t pgtypes.DoltgresTypeBaseID) pgtypes.DoltgresTypeBaseID {
+	if t == pgtypes.Unknown.BaseID() {
+		t = pgtypes.Text.BaseID()
+	}
+	return t
 }

@@ -226,10 +226,13 @@ func (array *Array) handleEvaluationCast(ctx *sql.Context, baseResultType pgtype
 		case query.Type_SET:
 			paramType = pgtypes.Int64
 		case query.Type_NULL_TYPE:
-			paramType = pgtypes.Null
+			paramType = pgtypes.Unknown
 		default:
 			return nil, fmt.Errorf("encountered an unknown GMS type")
 		}
+	}
+	if _, isUnknown := paramType.(pgtypes.UnknownType); isUnknown {
+		paramType = pgtypes.Text
 	}
 	castFunc := framework.GetImplicitCast(paramType.BaseID(), baseResultType.BaseID())
 	if castFunc == nil {
@@ -276,13 +279,12 @@ func (array *Array) getTargetType() pgtypes.DoltgresArrayType {
 	var lastChildType pgtypes.DoltgresType
 	for _, child := range array.children {
 		if child != nil {
-			gmsChildType := child.Type()
 			// We ignore NULL values here since they do not affect the array's type
-			if array.isNullType(gmsChildType) {
+			if l, ok := child.(*Literal); ok && l.typ == pgtypes.Unknown && l.value == nil {
 				continue
 			}
 			// Ensure that the type is a DoltgresType
-			childType, ok := gmsChildType.(pgtypes.DoltgresType)
+			childType, ok := child.Type().(pgtypes.DoltgresType)
 			if !ok {
 				// We use "anyarray" as the indeterminate/invalid type
 				return pgtypes.AnyArray
@@ -299,6 +301,9 @@ func (array *Array) getTargetType() pgtypes.DoltgresArrayType {
 				}
 			}
 		}
+	}
+	if _, isUnknown := lastChildType.(pgtypes.UnknownType); isUnknown {
+		return pgtypes.TextArray
 	}
 	// If this is not nil, then all types either match this type, or are automatically castable to this type
 	if lastChildType != nil {

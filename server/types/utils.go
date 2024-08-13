@@ -26,7 +26,7 @@ import (
 // not, or they may quote in a special way that is unique to that type.
 func QuoteString(baseID DoltgresTypeBaseID, str string) string {
 	switch baseID {
-	case DoltgresTypeBaseID_Char, DoltgresTypeBaseID_Name, DoltgresTypeBaseID_Text, DoltgresTypeBaseID_VarChar:
+	case DoltgresTypeBaseID_Char, DoltgresTypeBaseID_Name, DoltgresTypeBaseID_Text, DoltgresTypeBaseID_VarChar, DoltgresTypeBaseID_Unknown:
 		return `'` + strings.ReplaceAll(str, `'`, `''`) + `'`
 	default:
 		return str

@@ -82,7 +82,7 @@ func ReplaceSerial(ctx *sql.Context, a *analyzer.Analyzer, node sql.Node, scope 
 						return nil, transform.NewTree, fmt.Errorf("SERIAL sequence name reached max iterations")
 					}
 				}
-				nextVal, ok, err := framework.GetFunction("nextval", pgexprs.NewStringLiteral(sequenceName))
+				nextVal, ok, err := framework.GetFunction("nextval", pgexprs.NewTextLiteral(sequenceName))
 				if err != nil {
 					return nil, transform.NewTree, err
 				}

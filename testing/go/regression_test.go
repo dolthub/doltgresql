@@ -45,8 +45,8 @@ func TestRegressions(t *testing.T) {
 			SetUpScript: []string{},
 			Assertions: []ScriptTestAssertion{
 				{
-					Query:       "select coalesce(null + 5, 100);", // Invalid in Postgres
-					ExpectedErr: "does not exist",
+					Query:    "select coalesce(null + 5, 100);",
+					Expected: []sql.Row{{"100"}},
 				},
 				{
 					Query:    "select coalesce(null, null, 'abc');",

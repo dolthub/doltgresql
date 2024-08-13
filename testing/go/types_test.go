@@ -2430,17 +2430,21 @@ var typesTests = []ScriptTest{
 				},
 			},
 			{
-				Skip:  true, // TODO: need fix
 				Query: "SELECT array_append(null, null);",
 				Expected: []sql.Row{
 					{"{NULL}"},
 				},
 			},
 			{
-				Skip:  true, // TODO: need fix
 				Query: "SELECT array_append(null, 'ghi');",
 				Expected: []sql.Row{
 					{"{ghi}"},
+				},
+			},
+			{
+				Query: "SELECT array_append(null, 3);",
+				Expected: []sql.Row{
+					{"{3}"},
 				},
 			},
 			{

@@ -84,9 +84,12 @@ func (c *ExplicitCast) Eval(ctx *sql.Context, row sql.Row) (any, error) {
 	if val == nil {
 		return nil, nil
 	}
+	if _, isUnknown := fromType.(pgtypes.UnknownType); isUnknown {
+		fromType = pgtypes.Text
+	}
 	castFunction := framework.GetExplicitCast(fromType.BaseID(), c.castToType.BaseID())
 	if castFunction == nil {
-		return nil, fmt.Errorf("CAST: cast from `%s` to `%s` does not exist: %s",
+		return nil, fmt.Errorf("EXPLICIT CAST: cast from `%s` to `%s` does not exist: %s",
 			fromType.String(), c.castToType.String(), c.sqlChild.String())
 	}
 	castResult, err := castFunction(ctx, val, c.castToType)
