@@ -41,11 +41,14 @@ var typeToNumericPrecision = map[query.Type]int{
 	sqltypes.Float64: 53,
 }
 
-// information_schema columns are one of these 5 types https://www.postgresql.org/docs/current/infoschema-datatypes.html
-var cardinal_number = types.Uint32
-var character_data = pgtypes.Text
-var sql_identifier = pgtypes.VarCharType{Length: 64}
-var yes_or_no = pgtypes.VarCharType{Length: 3}
+// newColumnsTable creates a new information_schema.COLUMNS table.
+func newColumnsTable() *information_schema.ColumnsTable {
+	return &information_schema.ColumnsTable{
+		TableName:   information_schema.ColumnsTableName,
+		TableSchema: columnsSchema,
+		RowIter:     columnsRowIter,
+	}
+}
 
 // columnsSchema is the schema for the information_schema.columns table.
 var columnsSchema = sql.Schema{
