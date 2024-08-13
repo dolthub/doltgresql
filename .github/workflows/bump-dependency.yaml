@@ -111,7 +111,7 @@ jobs:
       - name: Get Assignee and Reviewer
         id: get_reviewer
         run: |
-          if [ "${{ github.event.client_payload.assignee }}" == "github-actions[bot]" ]
+          if [ "${{ contains(github.event.client_payload.assignee, 'github-actions[bot]') }}" == "true" ]
           then
             echo "assignee=zachmu" >> $GITHUB_OUTPUT
           else
