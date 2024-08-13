@@ -142,7 +142,7 @@ jobs:
           source_branch: ${{ format('{0}-{1}', steps.get_reviewer.outputs.assignee, steps.short-sha.outputs.short ) }}
           destination_branch: "main"
           github_token: ${{ secrets.PUBLIC_REPO_ACCESS_TOKEN || secrets.REPO_ACCESS_TOKEN || secrets.GITHUB_TOKEN }}
-          pr_title: "[auto-bump] [no-release-notes] dependency by ${{ github.event.client_payload.assignee }}"
+          pr_title: "[auto-bump] [no-release-notes] dependency by ${{ steps.get_reviewer.outputs.assignee }}"
           pr_template: ".github/markdown-templates/dep-bump.md"
           pr_reviewer: ${{ steps.get_reviewer.outputs.reviewer }}
           pr_assignee: ${{ github.event.client_payload.assignee }}
