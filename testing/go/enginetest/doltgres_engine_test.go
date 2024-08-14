@@ -110,9 +110,16 @@ func TestSchemaOverrides(t *testing.T) {
 
 // Convenience test for debugging a single query. Unskip and set to the desired query.
 func TestSingleScript(t *testing.T) {
-	// t.Skip()
+	t.Skip()
 
-	var scripts = []queries.ScriptTest{}
+	var scripts = []queries.ScriptTest{
+		{
+			Name: "bigtable",
+			SetUpScript: []string{
+				"create table bigtable (t varchar(1) primary key, n bigint)",
+			},
+		},
+	}
 
 	for _, script := range scripts {
 		harness := newDoltgresServerHarness(t)
