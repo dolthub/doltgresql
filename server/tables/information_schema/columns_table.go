@@ -32,7 +32,7 @@ import (
 const maxCharacterOctetLength = 1073741824
 
 // typeToNumericPrecision is a map of sqltypes to their respective numeric precision.
-var typeToNumericPrecision = map[query.Type]int{
+var typeToNumericPrecision = map[query.Type]int32{
 	sqltypes.Int8:    3,
 	sqltypes.Int16:   16,
 	sqltypes.Int32:   32,
@@ -41,11 +41,14 @@ var typeToNumericPrecision = map[query.Type]int{
 	sqltypes.Float64: 53,
 }
 
-// information_schema columns are one of these 5 types https://www.postgresql.org/docs/current/infoschema-datatypes.html
-var cardinal_number = types.Uint32
-var character_data = pgtypes.Text
-var sql_identifier = pgtypes.VarCharType{MaxChars: 64}
-var yes_or_no = pgtypes.VarCharType{MaxChars: 3}
+// newColumnsTable creates a new information_schema.COLUMNS table.
+func newColumnsTable() *information_schema.ColumnsTable {
+	return &information_schema.ColumnsTable{
+		TableName:   information_schema.ColumnsTableName,
+		TableSchema: columnsSchema,
+		RowIter:     columnsRowIter,
+	}
+}
 
 // columnsSchema is the schema for the information_schema.columns table.
 var columnsSchema = sql.Schema{
@@ -126,7 +129,7 @@ func columnsRowIter(ctx *sql.Context, catalog sql.Catalog, allColsWithDefaultVal
 // object, database name, and table name.
 func getRowFromColumn(ctx *sql.Context, curOrdPos int, col *sql.Column, catName, schName, tblName string) sql.Row {
 	var (
-		ordinalPos  = uint32(curOrdPos + 1)
+		ordinalPos  = int32(curOrdPos + 1)
 		nullable    = "NO"
 		isGenerated = "NEVER"
 	)
@@ -141,7 +144,7 @@ func getRowFromColumn(ctx *sql.Context, curOrdPos int, col *sql.Column, catName,
 	}
 
 	charName, collName, charMaxLen, charOctetLen := getCharAndCollNamesAndCharMaxAndOctetLens(ctx, col.Type)
-	numericPrecision, numericPrecisionRadix, numericScale := getColumnPrecisionAndScale(col.Type, col.Name)
+	numericPrecision, numericPrecisionRadix, numericScale := getColumnPrecisionAndScale(col.Type)
 	datetimePrecision := getDatetimePrecision(col.Type)
 
 	columnDefault := information_schema.GetColumnDefault(ctx, col.Default)
@@ -226,7 +229,7 @@ func getRowsFromViews(ctx *sql.Context, db information_schema.DbWithNames) ([]sq
 			db.SchemaName,  // table_schema
 			view.Name,      // table_name
 			"",             // column_name
-			uint32(0),      // ordinal_position
+			int32(0),       // ordinal_position
 			nil,            // column_default
 			"YES",          // is_nullable
 			nil,            // data_type
@@ -319,25 +322,25 @@ func getDataAndUdtType(colType sql.Type, colName string) (string, string) {
 
 // getColumnPrecisionAndScale returns the precision or a number of postgres type. For non-numeric or decimal types this
 // function should return nil,nil.
-func getColumnPrecisionAndScale(colType sql.Type, name string) (interface{}, interface{}, interface{}) {
+func getColumnPrecisionAndScale(colType sql.Type) (interface{}, interface{}, interface{}) {
 	dgt, ok := colType.(pgtypes.DoltgresType)
 	if ok {
 		switch t := dgt.(type) {
 		// TODO: BitType
 		case pgtypes.Float32Type, pgtypes.Float64Type:
-			return typeToNumericPrecision[colType.Type()], 2, nil
+			return typeToNumericPrecision[colType.Type()], int32(2), nil
 		case pgtypes.Int16Type, pgtypes.Int32Type, pgtypes.Int64Type:
-			return typeToNumericPrecision[colType.Type()], 2, 0
+			return typeToNumericPrecision[colType.Type()], int32(2), int32(0)
 		case pgtypes.NumericType:
 			var precision interface{}
 			var scale interface{}
 			if t.Precision >= 0 {
-				precision = int(t.Precision)
+				precision = int32(t.Precision)
 			}
 			if t.Scale >= 0 {
-				scale = int(t.Scale)
+				scale = int32(t.Scale)
 			}
-			return precision, 10, scale
+			return precision, int32(10), scale
 		default:
 			return nil, nil, nil
 		}
@@ -360,27 +363,27 @@ func getCharAndCollNamesAndCharMaxAndOctetLens(ctx *sql.Context, colType sql.Typ
 		collName = colColl.Name()
 		charName = colColl.CharacterSet().String()
 		if types.IsEnum(colType) || types.IsSet(colType) {
-			charOctetLen = int64(colType.MaxTextResponseByteLength(ctx))
-			charMaxLen = int64(colType.MaxTextResponseByteLength(ctx)) / colColl.CharacterSet().MaxLength()
+			charOctetLen = int32(colType.MaxTextResponseByteLength(ctx))
+			charMaxLen = int32(colType.MaxTextResponseByteLength(ctx)) / int32(colColl.CharacterSet().MaxLength())
 		}
 	}
 
 	switch t := colType.(type) {
 	case pgtypes.TextType:
-		charOctetLen = maxCharacterOctetLength
+		charOctetLen = int32(maxCharacterOctetLength)
 	case pgtypes.VarCharType:
 		if t.IsUnbounded() {
-			charOctetLen = maxCharacterOctetLength
+			charOctetLen = int32(maxCharacterOctetLength)
 		} else {
 			charOctetLen = int64(t.MaxChars) * 4
 			charMaxLen = t.MaxChars
 		}
 	case pgtypes.CharType:
 		if t.IsUnbounded() {
-			charOctetLen = maxCharacterOctetLength
+			charOctetLen = int32(maxCharacterOctetLength)
 		} else {
-			charOctetLen = int64(t.Length) * 4
-			charMaxLen = t.Length
+			charOctetLen = int32(t.Length) * 4
+			charMaxLen = int32(t.Length)
 		}
 	}
 
@@ -391,10 +394,10 @@ func getDatetimePrecision(colType sql.Type) interface{} {
 	if dgType, ok := colType.(pgtypes.DoltgresType); ok {
 		switch dgType.(type) {
 		case pgtypes.DateType:
-			return 0
+			return int32(0)
 		case pgtypes.TimeType, pgtypes.TimeTZType, pgtypes.TimestampType, pgtypes.TimestampTZType:
 			// TODO: TIME length not yet supported
-			return 6
+			return int32(6)
 		default:
 			return nil
 		}

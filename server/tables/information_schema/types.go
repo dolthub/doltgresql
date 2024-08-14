@@ -15,11 +15,11 @@
 package information_schema
 
 import (
-	"github.com/dolthub/go-mysql-server/sql/information_schema"
+	pgtypes "github.com/dolthub/doltgresql/server/types"
 )
 
-// Init handles initialization of all Postgres-specific and Doltgres-specific information_schema tables.
-func Init() {
-	information_schema.NewColumnsTable = newColumnsTable
-	information_schema.NewSchemataTable = newSchemataTable
-}
+// information_schema columns are one of these 5 types https://www.postgresql.org/docs/current/infoschema-datatypes.html
+var cardinal_number = pgtypes.Int32
+var character_data = pgtypes.Text
+var sql_identifier = pgtypes.VarCharType{MaxChars: 64}
+var yes_or_no = pgtypes.VarCharType{MaxChars: 3}

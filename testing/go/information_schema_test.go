@@ -149,6 +149,15 @@ func TestInfoSchemaSchemata(t *testing.T) {
 						{"newdb", "test_schema"},
 					},
 				},
+				{
+					Query: `SELECT * FROM information_schema.schemata order by schema_name;`,
+					Expected: []sql.Row{
+						{"newdb", "information_schema", "", nil, nil, nil, nil},
+						{"newdb", "pg_catalog", "", nil, nil, nil, nil},
+						{"newdb", "public", "", nil, nil, nil, nil},
+						{"newdb", "test_schema", "", nil, nil, nil, nil},
+					},
+				},
 			},
 		},
 	})
