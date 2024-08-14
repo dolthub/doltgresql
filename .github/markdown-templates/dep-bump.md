@@ -4,6 +4,6 @@
 
 The changes contained in this PR were produced by `go get`ing the dependency.
 
-```
-$ go get github.com/dolthub/<dependency>/go@<commit>
+```bash
+go get github.com/dolthub/[dependency]/go@[commit]
 ```
