@@ -112,34 +112,7 @@ func TestSchemaOverrides(t *testing.T) {
 func TestSingleScript(t *testing.T) {
 	// t.Skip()
 
-	var scripts = []queries.ScriptTest{
-		{
-			Name: "test basic dolt procedures",
-			SetUpScript: []string{
-				"CREATE TABLE t1 (pk int primary key);",
-			},
-			Assertions: []queries.ScriptTestAssertion{
-				{
-					Query: "select dolt_add('.')",
-				},
-				{
-					Query: "select dolt_commit('-am', 'initial commit')",
-				},
-				{
-					Query: "select count(*) from dolt_log",
-					Expected: []sql.Row{
-						{2},
-					},
-				},
-				{
-					Query: "select message from dolt_log order by date desc limit 1",
-					Expected: []sql.Row{
-						{"initial commit"},
-					},
-				},
-			},
-		},
-	}
+	var scripts = []queries.ScriptTest{}
 
 	for _, script := range scripts {
 		harness := newDoltgresServerHarness(t)
