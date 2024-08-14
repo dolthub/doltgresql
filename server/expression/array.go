@@ -243,11 +243,6 @@ func (array *Array) handleEvaluationCast(ctx *sql.Context, baseResultType pgtype
 	return castFunc(ctx, *val, baseResultType)
 }
 
-// isNullType returns whether the given type is a NULL type.
-func (array *Array) isNullType(t sql.Type) bool {
-	return t.Type() == query.Type_NULL_TYPE
-}
-
 // numberCastGroupPriority returns the priority for the given type belonging to the number group. The lower the value,
 // the higher the priority.
 func (array *Array) numberCastGroupPriority(t pgtypes.DoltgresTypeBaseID) int {
