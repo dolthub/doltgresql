@@ -135,7 +135,11 @@ func nodeResolvableTypeReference(typ tree.ResolvableTypeReference) (*vitess.Conv
 				if width > pgtypes.StringMaxLength {
 					return nil, nil, fmt.Errorf("length for type varchar cannot exceed %d", pgtypes.StringMaxLength)
 				}
-				resolvedType = pgtypes.VarCharType{Length: width}
+				columnTypeLength = &vitess.SQLVal{
+					Type: vitess.IntVal,
+					Val:  []byte(fmt.Sprintf("%d", width)),
+				}
+				resolvedType = pgtypes.VarCharType{MaxChars: width}
 			case oid.T_xid:
 				resolvedType = pgtypes.Xid
 			default:

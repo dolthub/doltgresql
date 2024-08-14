@@ -44,8 +44,8 @@ var typeToNumericPrecision = map[query.Type]int{
 // information_schema columns are one of these 5 types https://www.postgresql.org/docs/current/infoschema-datatypes.html
 var cardinal_number = types.Uint32
 var character_data = pgtypes.Text
-var sql_identifier = pgtypes.VarCharType{Length: 64}
-var yes_or_no = pgtypes.VarCharType{Length: 3}
+var sql_identifier = pgtypes.VarCharType{MaxChars: 64}
+var yes_or_no = pgtypes.VarCharType{MaxChars: 3}
 
 // columnsSchema is the schema for the information_schema.columns table.
 var columnsSchema = sql.Schema{
@@ -372,8 +372,8 @@ func getCharAndCollNamesAndCharMaxAndOctetLens(ctx *sql.Context, colType sql.Typ
 		if t.IsUnbounded() {
 			charOctetLen = maxCharacterOctetLength
 		} else {
-			charOctetLen = int64(t.Length) * 4
-			charMaxLen = t.Length
+			charOctetLen = int64(t.MaxChars) * 4
+			charMaxLen = t.MaxChars
 		}
 	case pgtypes.CharType:
 		if t.IsUnbounded() {

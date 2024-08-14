@@ -55,8 +55,8 @@ func handleStringCast(str string, targetType pgtypes.DoltgresType) (string, erro
 		if targetType.IsUnbounded() {
 			return str, nil
 		}
-		str, runeLength := truncateString(str, targetType.Length)
-		if runeLength > targetType.Length {
+		str, runeLength := truncateString(str, targetType.MaxChars)
+		if runeLength > targetType.MaxChars {
 			return str, fmt.Errorf("value too long for type %s", targetType.String())
 		} else {
 			return str, nil

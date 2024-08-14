@@ -55,6 +55,23 @@ func assignTableDef(node tree.TableDef, target *vitess.DDL) error {
 			return err
 		}
 		target.TableSpec.Columns = append(target.TableSpec.Columns, columnDef)
+
+		// if the column is declared as a primary key, add a corresponding index to the table spec
+		if node.PrimaryKey.IsPrimaryKey {
+			target.TableSpec.Indexes = append(target.TableSpec.Indexes, &vitess.IndexDefinition{
+				Info: &vitess.IndexInfo{
+					Primary: true,
+					Unique:  true,
+				},
+				Columns: []*vitess.IndexColumn{
+					{
+						Column: columnDef.Name,
+						// Length: columnDef.Type.Length,
+					},
+				},
+				Options: nil,
+			})
+		}
 		return nil
 	case *tree.ForeignKeyConstraintTableDef:
 		if target.TableSpec == nil {
