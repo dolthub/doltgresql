@@ -41,7 +41,7 @@ func InsertContextRootFinalizer(ctx *sql.Context, a *analyzer.Analyzer, node sql
 // transformRemoveContextRootFinalizer is the function used by the transform from within InsertContextRootFinalizer.
 func transformRemoveContextRootFinalizer(node sql.Node) (sql.Node, transform.TreeIdentity, error) {
 	if finalizer, ok := node.(*pgnodes.ContextRootFinalizer); ok {
-		return finalizer.Child(), transform.NewTree, nil
+		return finalizer.Children()[0], transform.NewTree, nil
 	} else if disjointedNode, ok := node.(plan.DisjointedChildrenNode); ok {
 		var err error
 		same := transform.SameTree
