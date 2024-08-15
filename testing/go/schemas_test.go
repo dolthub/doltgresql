@@ -503,6 +503,45 @@ var SchemaTests = []ScriptTest{
 			},
 		},
 	},
+	{
+		Name: "non default schema qualifier",
+		SetUpScript: []string{
+			"CREATE SCHEMA myschema",
+			"SET search_path = 'myschema'",
+			"CREATE TABLE mytbl (pk BIGINT PRIMARY KEY, v1 BIGINT);",
+			"INSERT INTO mytbl VALUES (1, 1), (2, 2)",
+			"CREATE VIEW myvw AS SELECT pk+3, v1 from mytbl",
+			"SET search_path TO DEFAULT",
+		},
+		Assertions: []ScriptTestAssertion{
+			{
+				Query:    "SHOW search_path",
+				Expected: []sql.Row{{`"$user", public`}},
+			},
+			{
+				Query:       "SELECT * FROM mytbl;",
+				ExpectedErr: "table not found",
+			},
+			{
+				Query:       "SELECT * FROM myvw;",
+				ExpectedErr: "table not found",
+			},
+			{
+				Query: "SELECT * FROM myschema.mytbl;",
+				Expected: []sql.Row{
+					{1, 1},
+					{2, 2},
+				},
+			},
+			{
+				Query: "SELECT * FROM myschema.myvw;",
+				Expected: []sql.Row{
+					{4, 1},
+					{5, 2},
+				},
+			},
+		},
+	},
 	// More tests:
 	// * alter table statements, when they work better
 	// * AS OF (when supported)

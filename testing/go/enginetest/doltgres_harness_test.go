@@ -128,7 +128,7 @@ func (d *DoltgresHarness) NewEngine(t *testing.T) (enginetest.QueryEngine, error
 			} else {
 				t.Log("Running setup query: ", s)
 			}
-			_, rowIter, err := queryEngine.Query(ctx, sanitized)
+			_, rowIter, _, err := queryEngine.Query(ctx, sanitized)
 			if err != nil {
 				return nil, err
 			}
@@ -331,7 +331,7 @@ func (d DoltgresQueryEngine) AnalyzeQuery(s *sql.Context, s2 string) (sql.Node, 
 // TODO: random port
 var doltgresNoDbDsn = fmt.Sprintf("postgresql://doltgres:password@127.0.0.1:%d/?sslmode=disable", port)
 
-func (d DoltgresQueryEngine) Query(ctx *sql.Context, query string) (sql.Schema, sql.RowIter, error) {
+func (d DoltgresQueryEngine) Query(ctx *sql.Context, query string) (sql.Schema, sql.RowIter, *sql.QueryFlags, error) {
 
 	queries := convertQuery(query)
 
@@ -346,35 +346,35 @@ func (d DoltgresQueryEngine) Query(ctx *sql.Context, query string) (sql.Schema, 
 	for _, query := range queries {
 		db, err := gosql.Open("pgx", doltgresNoDbDsn)
 		if err != nil {
-			return nil, nil, err
+			return nil, nil, nil, err
 		}
 
 		rows, err := db.Query(query)
 		if err != nil {
-			return nil, nil, err
+			return nil, nil, nil, err
 		}
 
 		if rows == nil {
-			return nil, nil, fmt.Errorf("rows is nil")
+			return nil, nil, nil, fmt.Errorf("rows is nil")
 		}
 
 		defer rows.Close()
 
 		schema, columns, err := columns(rows)
 		if err != nil {
-			return nil, nil, err
+			return nil, nil, nil, err
 		}
 
 		results := make([]sql.Row, 0)
 		for rows.Next() {
 			err := rows.Scan(columns...)
 			if err != nil {
-				return nil, nil, err
+				return nil, nil, nil, err
 			}
 
 			row, err := toRow(schema, columns)
 			if err != nil {
-				return nil, nil, err
+				return nil, nil, nil, err
 			}
 
 			results = append(results, row)
@@ -387,15 +387,15 @@ func (d DoltgresQueryEngine) Query(ctx *sql.Context, query string) (sql.Schema, 
 
 		err = rows.Close()
 		if err != nil {
-			return nil, nil, err
+			return nil, nil, nil, err
 		}
 
 		if rows.Err() != nil {
-			return nil, nil, rows.Err()
+			return nil, nil, nil, rows.Err()
 		}
 	}
 
-	return resultSchema, sql.RowsToRowIter(resultRows...), nil
+	return resultSchema, sql.RowsToRowIter(resultRows...), nil, nil
 }
 
 func toRow(schema sql.Schema, r []interface{}) (sql.Row, error) {
@@ -470,9 +470,9 @@ func (d DoltgresQueryEngine) EnginePreparedDataCache() *gms.PreparedDataCache {
 	panic("implement me")
 }
 
-func (d DoltgresQueryEngine) QueryWithBindings(ctx *sql.Context, query string, parsed vitess.Statement, bindings map[string]*query.BindVariable, qFlags *sql.QueryFlags) (sql.Schema, sql.RowIter, error) {
+func (d DoltgresQueryEngine) QueryWithBindings(ctx *sql.Context, query string, parsed vitess.Statement, bindings map[string]*query.BindVariable, qFlags *sql.QueryFlags) (sql.Schema, sql.RowIter, *sql.QueryFlags, error) {
 	if len(bindings) > 0 {
-		return nil, nil, fmt.Errorf("bindings not supported")
+		return nil, nil, nil, fmt.Errorf("bindings not supported")
 	}
 
 	return d.Query(ctx, query)
