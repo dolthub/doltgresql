@@ -20,6 +20,7 @@ import (
 	"fmt"
 	"io"
 	"net"
+	"os"
 	"strings"
 	"sync/atomic"
 
@@ -54,6 +55,18 @@ type ConnectionHandler struct {
 	waitForSync        bool
 }
 
+// Set this env var to disable panic handling in the connection, which is useful when debugging a panic
+const disablePanicHandlingEnvVar = "DOLT_PGSQL_PANIC"
+
+// handlePanics determines whether panics should be handled in the connection handler. See |disablePanicHandlingEnvVar|.
+var handlePanics = true
+
+func init() {
+	if _, ok := os.LookupEnv(disablePanicHandlingEnvVar); ok {
+		handlePanics = false
+	}
+}
+
 // NewConnectionHandler returns a new ConnectionHandler for the connection provided
 func NewConnectionHandler(conn net.Conn, handler mysql.Handler) *ConnectionHandler {
 	mysqlConn := &mysql.Conn{
@@ -82,37 +95,39 @@ func NewConnectionHandler(conn net.Conn, handler mysql.Handler) *ConnectionHandl
 // Expected to run in a goroutine per connection.
 func (h *ConnectionHandler) HandleConnection() {
 	var returnErr error
-	defer func() {
-		if r := recover(); r != nil {
-			fmt.Printf("Listener recovered panic: %v", r)
+	if handlePanics {
+		defer func() {
+			if r := recover(); r != nil {
+				fmt.Printf("Listener recovered panic: %v", r)
 
-			var eomErr error
-			if returnErr != nil {
-				eomErr = returnErr
-			} else if rErr, ok := r.(error); ok {
-				eomErr = rErr
-			} else {
-				eomErr = fmt.Errorf("panic: %v", r)
+				var eomErr error
+				if returnErr != nil {
+					eomErr = returnErr
+				} else if rErr, ok := r.(error); ok {
+					eomErr = rErr
+				} else {
+					eomErr = fmt.Errorf("panic: %v", r)
+				}
+
+				// Sending eom can panic, which means we must recover again
+				defer func() {
+					if r := recover(); r != nil {
+						fmt.Printf("Listener recovered panic: %v", r)
+					}
+				}()
+				h.endOfMessages(eomErr)
 			}
 
-			// Sending eom can panic, which means we must recover again
-			defer func() {
-				if r := recover(); r != nil {
-					fmt.Printf("Listener recovered panic: %v", r)
-				}
-			}()
-			h.endOfMessages(eomErr)
-		}
+			if returnErr != nil {
+				fmt.Println(returnErr.Error())
+			}
 
-		if returnErr != nil {
-			fmt.Println(returnErr.Error())
-		}
-
-		h.handler.ConnectionClosed(h.mysqlConn)
-		if err := h.Conn().Close(); err != nil {
-			fmt.Printf("Failed to properly close connection:\n%v\n", err)
-		}
-	}()
+			h.handler.ConnectionClosed(h.mysqlConn)
+			if err := h.Conn().Close(); err != nil {
+				fmt.Printf("Failed to properly close connection:\n%v\n", err)
+			}
+		}()
+	}
 	h.handler.NewConnection(h.mysqlConn)
 
 	startupMessage, err := h.receiveStartupMessage()
@@ -169,19 +184,21 @@ func (h *ConnectionHandler) receiveMessage() (bool, error) {
 	// forcibly close the connection. Contrast this with the panic handling logic in HandleConnection, where we treat any
 	// panic as unrecoverable to the connection. As we fill out the implementation, we can revisit this decision and
 	// rethink our posture over whether panics should terminate a connection.
-	defer func() {
-		if r := recover(); r != nil {
-			fmt.Printf("Listener recovered panic: %v", r)
+	if handlePanics {
+		defer func() {
+			if r := recover(); r != nil {
+				fmt.Printf("Listener recovered panic: %v", r)
 
-			var eomErr error
-			if !endOfMessages && h.waitForSync {
-				if syncErr := connection.DiscardToSync(h.Conn()); syncErr != nil {
-					fmt.Println(syncErr.Error())
+				var eomErr error
+				if !endOfMessages && h.waitForSync {
+					if syncErr := connection.DiscardToSync(h.Conn()); syncErr != nil {
+						fmt.Println(syncErr.Error())
+					}
 				}
+				h.endOfMessages(eomErr)
 			}
-			h.endOfMessages(eomErr)
-		}
-	}()
+		}()
+	}
 
 	message, err := connection.Receive(h.Conn())
 	if err != nil {
