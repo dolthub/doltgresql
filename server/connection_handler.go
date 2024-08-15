@@ -190,6 +190,12 @@ func (h *ConnectionHandler) receiveMessage() (bool, error) {
 				fmt.Printf("Listener recovered panic: %v", r)
 
 				var eomErr error
+				if rErr, ok := r.(error); ok {
+					eomErr = rErr
+				} else {
+					eomErr = fmt.Errorf("panic: %v", r)
+				}
+
 				if !endOfMessages && h.waitForSync {
 					if syncErr := connection.DiscardToSync(h.Conn()); syncErr != nil {
 						fmt.Println(syncErr.Error())
