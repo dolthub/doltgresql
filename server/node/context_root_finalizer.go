@@ -41,14 +41,9 @@ func (rf *ContextRootFinalizer) CheckPrivileges(ctx *sql.Context, opChecker sql.
 	return rf.child.CheckPrivileges(ctx, opChecker)
 }
 
-// Child returns the child of the finalizer.
-func (rf *ContextRootFinalizer) Child() sql.Node {
-	return rf.child
-}
-
 // Children implements the interface sql.ExecSourceRel.
 func (rf *ContextRootFinalizer) Children() []sql.Node {
-	return rf.child.Children()
+	return []sql.Node{rf.child}
 }
 
 // Expressions implements the interface sql.Expressioner.
@@ -97,10 +92,10 @@ func (rf *ContextRootFinalizer) DebugString() string {
 
 // WithChildren implements the interface sql.ExecSourceRel.
 func (rf *ContextRootFinalizer) WithChildren(children ...sql.Node) (sql.Node, error) {
-	newChild, err := rf.child.WithChildren(children...)
-	if err != nil {
-		return nil, err
+	if len(children) != 1 {
+		return nil, sql.ErrInvalidChildrenNumber.New(rf, len(children), 1)
 	}
+	newChild := children[0]
 	return NewContextRootFinalizer(newChild), nil
 }
 
