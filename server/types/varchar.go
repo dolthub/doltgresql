@@ -73,29 +73,19 @@ func (b VarCharType) Category() TypeCategory {
 	return TypeCategory_StringTypes
 }
 
-// CollationCoercibility implements the DoltgresType interface.
-func (b VarCharType) CollationCoercibility(ctx *sql.Context) (collation sql.CollationID, coercibility byte) {
-	return sql.Collation_binary, 5
-}
-
+// CharacterSet implements the sql.StringType interface.
 func (b VarCharType) CharacterSet() sql.CharacterSetID {
 	return sql.CharacterSet_binary // TODO
 }
 
+// Collation implements the sql.StringType interface.
 func (b VarCharType) Collation() sql.CollationID {
 	return sql.Collation_Default // TODO
 }
 
-func (b VarCharType) MaxCharacterLength() int64 {
-	return b.Length() // TODO
-}
-
-func (b VarCharType) MaxByteLength() int64 {
-	return b.Length() * 4 // TODO
-}
-
-func (b VarCharType) Length() int64 {
-	return int64(b.MaxChars)
+// CollationCoercibility implements the DoltgresType interface.
+func (b VarCharType) CollationCoercibility(ctx *sql.Context) (collation sql.CollationID, coercibility byte) {
+	return sql.Collation_binary, 5
 }
 
 // Compare implements the DoltgresType interface.
@@ -199,6 +189,21 @@ func (b VarCharType) IsPreferredType() bool {
 // IsUnbounded implements the DoltgresType interface.
 func (b VarCharType) IsUnbounded() bool {
 	return b.MaxChars == stringUnbounded
+}
+
+// Length implements the sql.StringType interface.
+func (b VarCharType) Length() int64 {
+	return int64(b.MaxChars)
+}
+
+// MaxByteLength implements the sql.StringType interface.
+func (b VarCharType) MaxByteLength() int64 {
+	return b.Length() * 4 // TODO
+}
+
+// MaxCharacterLength implements the sql.StringType interface.
+func (b VarCharType) MaxCharacterLength() int64 {
+	return b.Length()
 }
 
 // MaxSerializedWidth implements the DoltgresType interface.

@@ -55,10 +55,14 @@ type ConnectionHandler struct {
 	waitForSync        bool
 }
 
+// Set this env var to disable panic handling in the connection, which is useful when debugging a panic
+const disablePanicHandlingEnvVar = "DOLT_PGSQL_PANIC"
+
+// handlePanics determines whether panics should be handled in the connection handler. See |disablePanicHandlingEnvVar|.
 var handlePanics = true
 
 func init() {
-	if _, ok := os.LookupEnv("DOLT_PGSQL_PANIC"); ok {
+	if _, ok := os.LookupEnv(disablePanicHandlingEnvVar); ok {
 		handlePanics = false
 	}
 }
