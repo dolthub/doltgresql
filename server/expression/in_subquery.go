@@ -19,16 +19,17 @@ import (
 
 	"github.com/dolthub/go-mysql-server/sql"
 	"github.com/dolthub/go-mysql-server/sql/expression"
+	"github.com/dolthub/go-mysql-server/sql/plan"
 	vitess "github.com/dolthub/vitess/go/vt/sqlparser"
 
 	"github.com/dolthub/doltgresql/server/functions/framework"
 	pgtypes "github.com/dolthub/doltgresql/server/types"
 )
 
-// InTuple represents a VALUE IN (<VALUES>) expression.
-type InTuple struct {
+// InSubquery represents a VALUE IN (SELECT ...) expression.
+type InSubquery struct {
 	leftExpr  sql.Expression
-	rightExpr expression.Tuple
+	rightExpr *plan.Subquery
 
 	// These variables are used so that we can resolve the comparison functions once and reuse them as we iterate over rows.
 	// These are assigned in WithChildren, so refer there for more information.
@@ -41,30 +42,32 @@ var _ vitess.Injectable = (*BinaryOperator)(nil)
 var _ sql.Expression = (*BinaryOperator)(nil)
 var _ expression.BinaryExpression = (*BinaryOperator)(nil)
 
-// NewInTuple returns a new *InTuple.
-func NewInTuple() *InTuple {
-	return &InTuple{}
+// NewInSubquery returns a new *InSubquery.
+func NewInSubquery() *InSubquery {
+	return &InSubquery{}
 }
 
 // Children implements the sql.Expression interface.
-func (it *InTuple) Children() []sql.Expression {
+func (it *InSubquery) Children() []sql.Expression {
 	return []sql.Expression{it.leftExpr, it.rightExpr}
 }
 
 // Eval implements the sql.Expression interface.
-func (it *InTuple) Eval(ctx *sql.Context, row sql.Row) (any, error) {
+func (it *InSubquery) Eval(ctx *sql.Context, row sql.Row) (any, error) {
 	if len(it.compFuncs) == 0 {
 		return nil, fmt.Errorf("%T: cannot Eval as it has not been fully resolved", it)
 	}
-	// First we'll evaluate everything before we do the comparisons
+
 	left, err := it.leftExpr.Eval(ctx, row)
 	if err != nil {
 		return nil, err
 	}
+
 	rightInterface, err := it.rightExpr.Eval(ctx, row)
 	if err != nil {
 		return nil, err
 	}
+	
 	rightValues, ok := rightInterface.([]any)
 	if !ok {
 		// Tuples will return the value directly if it has a length of one, so we'll check for that first
@@ -93,12 +96,12 @@ func (it *InTuple) Eval(ctx *sql.Context, row sql.Row) (any, error) {
 }
 
 // IsNullable implements the sql.Expression interface.
-func (it *InTuple) IsNullable() bool {
+func (it *InSubquery) IsNullable() bool {
 	return true
 }
 
 // Resolved implements the sql.Expression interface.
-func (it *InTuple) Resolved() bool {
+func (it *InSubquery) Resolved() bool {
 	if it.leftExpr == nil || !it.leftExpr.Resolved() || it.rightExpr == nil || !it.rightExpr.Resolved() || len(it.compFuncs) == 0 {
 		return false
 	}
@@ -111,7 +114,7 @@ func (it *InTuple) Resolved() bool {
 }
 
 // String implements the sql.Expression interface.
-func (it *InTuple) String() string {
+func (it *InSubquery) String() string {
 	if it.leftExpr == nil || it.rightExpr == nil {
 		return "? IN ?"
 	}
@@ -119,12 +122,12 @@ func (it *InTuple) String() string {
 }
 
 // Type implements the sql.Expression interface.
-func (it *InTuple) Type() sql.Type {
+func (it *InSubquery) Type() sql.Type {
 	return pgtypes.Bool
 }
 
 // WithChildren implements the sql.Expression interface.
-func (it *InTuple) WithChildren(children ...sql.Expression) (sql.Expression, error) {
+func (it *InSubquery) WithChildren(children ...sql.Expression) (sql.Expression, error) {
 	if len(children) != 2 {
 		return nil, sql.ErrInvalidChildrenNumber.New(it, len(children), 2)
 	}
@@ -184,7 +187,7 @@ func (it *InTuple) WithChildren(children ...sql.Expression) (sql.Expression, err
 }
 
 // WithResolvedChildren implements the vitess.InjectableExpression interface.
-func (it *InTuple) WithResolvedChildren(children []any) (any, error) {
+func (it *InSubquery) WithResolvedChildren(children []any) (any, error) {
 	if len(children) != 2 {
 		return nil, fmt.Errorf("invalid vitess child count, expected `2` but got `%d`", len(children))
 	}
@@ -200,11 +203,11 @@ func (it *InTuple) WithResolvedChildren(children []any) (any, error) {
 }
 
 // Left implements the expression.BinaryExpression interface.
-func (it *InTuple) Left() sql.Expression {
+func (it *InSubquery) Left() sql.Expression {
 	return it.leftExpr
 }
 
 // Right implements the expression.BinaryExpression interface.
-func (it *InTuple) Right() sql.Expression {
+func (it *InSubquery) Right() sql.Expression {
 	return it.rightExpr
 }
