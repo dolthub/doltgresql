@@ -20,6 +20,7 @@ import (
 	"github.com/dolthub/go-mysql-server/sql"
 	"github.com/dolthub/go-mysql-server/sql/expression"
 	"github.com/dolthub/go-mysql-server/sql/plan"
+	"github.com/dolthub/go-mysql-server/sql/types"
 	vitess "github.com/dolthub/vitess/go/vt/sqlparser"
 
 	"github.com/dolthub/doltgresql/server/functions/framework"
@@ -47,65 +48,99 @@ func NewInSubquery() *InSubquery {
 	return &InSubquery{}
 }
 
+var nilKey, _ = sql.HashOf(sql.NewRow(nil))
+
 // Children implements the sql.Expression interface.
-func (it *InSubquery) Children() []sql.Expression {
-	return []sql.Expression{it.leftExpr, it.rightExpr}
+func (in *InSubquery) Children() []sql.Expression {
+	return []sql.Expression{in.leftExpr, in.rightExpr}
 }
 
 // Eval implements the sql.Expression interface.
-func (it *InSubquery) Eval(ctx *sql.Context, row sql.Row) (any, error) {
-	if len(it.compFuncs) == 0 {
-		return nil, fmt.Errorf("%T: cannot Eval as it has not been fully resolved", it)
+func (in *InSubquery) Eval(ctx *sql.Context, row sql.Row) (any, error) {
+	if len(in.compFuncs) == 0 {
+		return nil, fmt.Errorf("%T: cannot Eval as it has not been fully resolved", in)
 	}
 
-	left, err := it.leftExpr.Eval(ctx, row)
+	left, err := in.leftExpr.Eval(ctx, row)
 	if err != nil {
 		return nil, err
 	}
 
-	rightInterface, err := it.rightExpr.Eval(ctx, row)
+	// The NULL handling for IN expressions is tricky. According to
+	// https://dev.mysql.com/doc/refman/8.0/en/comparison-operators.html#operator_in:
+	// To comply with the SQL standard, IN() returns NULL not only if the expression on the left hand side is NULL, but
+	// also if no match is found in the list and one of the expressions in the list is NULL.
+	// However, there's a strange edge case. NULL IN (empty list) return 0, not NULL.
+	leftNull := left == nil
+
+	if types.NumColumns(in.Left().Type()) != types.NumColumns(in.Right().Type()) {
+		return nil, sql.ErrInvalidOperandColumns.New(types.NumColumns(in.Left().Type()), types.NumColumns(in.Right().Type()))
+	}
+
+	typ := in.rightExpr.Type()
+	right := in.rightExpr
+
+	// TODO: does this work for pg values?
+	values, err := right.HashMultiple(ctx, row)
 	if err != nil {
 		return nil, err
 	}
-	
-	rightValues, ok := rightInterface.([]any)
-	if !ok {
-		// Tuples will return the value directly if it has a length of one, so we'll check for that first
-		if len(it.rightExpr) == 1 {
-			rightValues = []any{rightInterface}
-		} else {
-			return nil, fmt.Errorf("%T: expected right child to return `%T` but returned `%T`", it, []any{}, rightInterface)
+
+	// NULL IN (list) returns NULL. NULL IN (empty list) returns 0
+	if leftNull {
+		if values.Size() == 0 {
+			return false, nil
 		}
+		return nil, nil
 	}
-	// Next we'll assign our evaluated values to the expressions that the comparison functions reference
-	it.staticLiteral.value = left
-	for i, rightValue := range rightValues {
-		it.arrayLiterals[i].value = rightValue
+
+	// convert left to right's type
+	nLeft, _, err := typ.Convert(left)
+	if err != nil {
+		return false, nil
 	}
-	// Now we can loop over all of the comparison functions, as they'll reference their respective values
-	for _, compFunc := range it.compFuncs {
+
+	key, err := sql.HashOf(sql.NewRow(nLeft))
+	if err != nil {
+		return nil, err
+	}
+
+	val, notFoundErr := values.Get(key)
+	if notFoundErr != nil {
+		if _, nilValNotFoundErr := values.Get(nilKey); nilValNotFoundErr == nil {
+			return nil, nil
+		}
+		return false, nil
+	}
+
+	// TODO: handle tuples
+	return in.valuesEqual(ctx, sql.Row{val})
+}
+
+func (in *InSubquery) valuesEqual(ctx *sql.Context, row sql.Row) (interface{}, error) {
+	for _, compFunc := range in.compFuncs {
 		result, err := compFunc.Eval(ctx, row)
 		if err != nil {
 			return nil, err
 		}
-		if result.(bool) {
-			return true, nil
+		if !result.(bool) {
+			return false, nil
 		}
 	}
-	return false, nil
+	return true, nil
 }
 
 // IsNullable implements the sql.Expression interface.
-func (it *InSubquery) IsNullable() bool {
+func (in *InSubquery) IsNullable() bool {
 	return true
 }
 
 // Resolved implements the sql.Expression interface.
-func (it *InSubquery) Resolved() bool {
-	if it.leftExpr == nil || !it.leftExpr.Resolved() || it.rightExpr == nil || !it.rightExpr.Resolved() || len(it.compFuncs) == 0 {
+func (in *InSubquery) Resolved() bool {
+	if in.leftExpr == nil || !in.leftExpr.Resolved() || in.rightExpr == nil || !in.rightExpr.Resolved() || len(in.compFuncs) == 0 {
 		return false
 	}
-	for _, compFunc := range it.compFuncs {
+	for _, compFunc := range in.compFuncs {
 		if !compFunc.Resolved() {
 			return false
 		}
@@ -114,29 +149,26 @@ func (it *InSubquery) Resolved() bool {
 }
 
 // String implements the sql.Expression interface.
-func (it *InSubquery) String() string {
-	if it.leftExpr == nil || it.rightExpr == nil {
+func (in *InSubquery) String() string {
+	if in.leftExpr == nil || in.rightExpr == nil {
 		return "? IN ?"
 	}
-	return fmt.Sprintf("%s IN %s", it.leftExpr.String(), it.rightExpr.String())
+	return fmt.Sprintf("%s IN %s", in.leftExpr.String(), in.rightExpr.String())
 }
 
 // Type implements the sql.Expression interface.
-func (it *InSubquery) Type() sql.Type {
+func (in *InSubquery) Type() sql.Type {
 	return pgtypes.Bool
 }
 
 // WithChildren implements the sql.Expression interface.
-func (it *InSubquery) WithChildren(children ...sql.Expression) (sql.Expression, error) {
+func (in *InSubquery) WithChildren(children ...sql.Expression) (sql.Expression, error) {
 	if len(children) != 2 {
-		return nil, sql.ErrInvalidChildrenNumber.New(it, len(children), 2)
+		return nil, sql.ErrInvalidChildrenNumber.New(in, len(children), 2)
 	}
-	rightTuple, ok := children[1].(expression.Tuple)
+	sq, ok := children[1].(*plan.Subquery)
 	if !ok {
-		return nil, fmt.Errorf("%T: expected right child to be `%T` but has type `%T`", it, expression.Tuple{}, children[1])
-	}
-	if len(rightTuple) == 0 {
-		return nil, fmt.Errorf("IN must contain at least 1 expression")
+		return nil, fmt.Errorf("%T: expected right child to be `%T` but has type `%T`", in, &plan.Subquery{}, children[1])
 	}
 	// We'll only resolve the comparison functions once we have all Doltgres types.
 	// We may see GMS types during some analyzer steps, so we should wait until those are done.
@@ -149,45 +181,45 @@ func (it *InSubquery) WithChildren(children ...sql.Expression) (sql.Expression, 
 		// the parameters, and assigning the values to our own literals, we do not have to worry. This offers a
 		// significant speedup as function resolution is very expensive, so we want to do it as few times as possible
 		// (preferably once).
+
+		// We need a comparison function for each type in the query result
+		sch := sq.Query.Schema()
 		staticLiteral := &Literal{typ: leftType}
-		arrayLiterals := make([]*Literal, len(rightTuple))
-		// Each expression may be a different type (which is valid), so we need a comparison function for each expression.
-		compFuncs := make([]*framework.CompiledFunction, len(rightTuple))
+		compFuncs := make([]*framework.CompiledFunction, len(sch))
 		allValidChildren := true
-		for i, rightExpr := range rightTuple {
-			rightType, ok := rightExpr.Type().(pgtypes.DoltgresType)
+		for i, rightCol := range sch {
+			rightType, ok := rightCol.Type.(pgtypes.DoltgresType)
 			if !ok {
 				allValidChildren = false
 				break
 			}
-			arrayLiterals[i] = &Literal{typ: rightType}
-			compFuncs[i] = framework.GetBinaryFunction(framework.Operator_BinaryEqual).Compile("internal_in_comparison", staticLiteral, arrayLiterals[i])
+			rightLit := &Literal{typ: rightType}
+			compFuncs[i] = framework.GetBinaryFunction(framework.Operator_BinaryEqual).Compile("internal_in_comparison", staticLiteral, rightLit)
 			if compFuncs[i] == nil {
 				return nil, fmt.Errorf("operator does not exist: %s = %s", leftType.String(), rightType.String())
 			}
 			if compFuncs[i].Type().(pgtypes.DoltgresType).BaseID() != pgtypes.DoltgresTypeBaseID_Bool {
 				// This should never happen, but this is just to be safe
-				return nil, fmt.Errorf("%T: found equality comparison that does not return a bool", it)
+				return nil, fmt.Errorf("%T: found equality comparison that does not return a bool", in)
 			}
 		}
 		if allValidChildren {
-			return &InTuple{
+			return &InSubquery{
 				leftExpr:      children[0],
-				rightExpr:     rightTuple,
+				rightExpr:     sq,
 				staticLiteral: staticLiteral,
-				arrayLiterals: arrayLiterals,
 				compFuncs:     compFuncs,
 			}, nil
 		}
 	}
-	return &InTuple{
+	return &InSubquery{
 		leftExpr:  children[0],
-		rightExpr: rightTuple,
+		rightExpr: sq,
 	}, nil
 }
 
 // WithResolvedChildren implements the vitess.InjectableExpression interface.
-func (it *InSubquery) WithResolvedChildren(children []any) (any, error) {
+func (in *InSubquery) WithResolvedChildren(children []any) (any, error) {
 	if len(children) != 2 {
 		return nil, fmt.Errorf("invalid vitess child count, expected `2` but got `%d`", len(children))
 	}
@@ -195,19 +227,19 @@ func (it *InSubquery) WithResolvedChildren(children []any) (any, error) {
 	if !ok {
 		return nil, fmt.Errorf("expected vitess child to be an expression but has type `%T`", children[0])
 	}
-	right, ok := children[1].(expression.Tuple)
+	right, ok := children[1].(*plan.Subquery)
 	if !ok {
-		return nil, fmt.Errorf("expected vitess child to be an expression tuple but has type `%T`", children[1])
+		return nil, fmt.Errorf("expected vitess child to be a *plan.Subquery but has type `%T`", children[1])
 	}
-	return it.WithChildren(left, right)
+	return in.WithChildren(left, right)
 }
 
 // Left implements the expression.BinaryExpression interface.
-func (it *InSubquery) Left() sql.Expression {
-	return it.leftExpr
+func (in *InSubquery) Left() sql.Expression {
+	return in.leftExpr
 }
 
 // Right implements the expression.BinaryExpression interface.
-func (it *InSubquery) Right() sql.Expression {
-	return it.rightExpr
+func (in *InSubquery) Right() sql.Expression {
+	return in.rightExpr
 }
