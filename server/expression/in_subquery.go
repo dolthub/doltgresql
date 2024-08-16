@@ -34,8 +34,8 @@ type InSubquery struct {
 
 	// These variables are used so that we can resolve the comparison functions once and reuse them as we iterate over rows.
 	// These are assigned in WithChildren, so refer there for more information.
-	staticLiteral *Literal
-	arrayLiterals []*Literal
+	leftLiteral   *Literal
+	rightLiterals []*Literal
 	compFuncs     []*framework.CompiledFunction
 }
 
@@ -80,7 +80,7 @@ func (in *InSubquery) Eval(ctx *sql.Context, row sql.Row) (any, error) {
 	typ := in.rightExpr.Type()
 	right := in.rightExpr
 
-	// TODO: does this work for pg values?
+	// TODO: does this work for all pg values?
 	values, err := right.HashMultiple(ctx, row)
 	if err != nil {
 		return nil, err
@@ -113,11 +113,23 @@ func (in *InSubquery) Eval(ctx *sql.Context, row sql.Row) (any, error) {
 		return false, nil
 	}
 
-	// TODO: handle tuples
-	return in.valuesEqual(ctx, sql.Row{val})
+	var r sql.Row
+	rowVal, ok := val.([]any)
+	if !ok {
+		r = sql.Row{val}
+	} else {
+		r = sql.NewRow(rowVal...)
+	}
+
+	return in.valuesEqual(ctx, left, r)
 }
 
-func (in *InSubquery) valuesEqual(ctx *sql.Context, row sql.Row) (interface{}, error) {
+func (in *InSubquery) valuesEqual(ctx *sql.Context, left interface{}, row sql.Row) (interface{}, error) {
+	in.leftLiteral.value = left
+	for i, v := range row {
+		in.rightLiterals[i].value = v
+	}
+
 	for _, compFunc := range in.compFuncs {
 		result, err := compFunc.Eval(ctx, row)
 		if err != nil {
@@ -184,7 +196,8 @@ func (in *InSubquery) WithChildren(children ...sql.Expression) (sql.Expression, 
 
 		// We need a comparison function for each type in the query result
 		sch := sq.Query.Schema()
-		staticLiteral := &Literal{typ: leftType}
+		leftLiteral := &Literal{typ: leftType}
+		rightLiterals := make([]*Literal, len(sch))
 		compFuncs := make([]*framework.CompiledFunction, len(sch))
 		allValidChildren := true
 		for i, rightCol := range sch {
@@ -193,8 +206,8 @@ func (in *InSubquery) WithChildren(children ...sql.Expression) (sql.Expression, 
 				allValidChildren = false
 				break
 			}
-			rightLit := &Literal{typ: rightType}
-			compFuncs[i] = framework.GetBinaryFunction(framework.Operator_BinaryEqual).Compile("internal_in_comparison", staticLiteral, rightLit)
+			rightLiterals[i] = &Literal{typ: rightType}
+			compFuncs[i] = framework.GetBinaryFunction(framework.Operator_BinaryEqual).Compile("internal_in_comparison", leftLiteral, rightLiterals[i])
 			if compFuncs[i] == nil {
 				return nil, fmt.Errorf("operator does not exist: %s = %s", leftType.String(), rightType.String())
 			}
@@ -207,7 +220,8 @@ func (in *InSubquery) WithChildren(children ...sql.Expression) (sql.Expression, 
 			return &InSubquery{
 				leftExpr:      children[0],
 				rightExpr:     sq,
-				staticLiteral: staticLiteral,
+				leftLiteral:   leftLiteral,
+				rightLiterals: rightLiterals,
 				compFuncs:     compFuncs,
 			}, nil
 		}
