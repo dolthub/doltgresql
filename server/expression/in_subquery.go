@@ -48,12 +48,12 @@ func NewInSubquery() *InSubquery {
 	return &InSubquery{}
 }
 
-var nilKey, _ = sql.HashOf(sql.NewRow(nil))
-
 // Children implements the sql.Expression interface.
 func (in *InSubquery) Children() []sql.Expression {
 	return []sql.Expression{in.leftExpr, in.rightExpr}
 }
+
+var nilKey, _ = sql.HashOf(sql.NewRow(nil))
 
 // Eval implements the sql.Expression interface.
 func (in *InSubquery) Eval(ctx *sql.Context, row sql.Row) (any, error) {
@@ -131,7 +131,7 @@ func (in *InSubquery) valuesEqual(ctx *sql.Context, left interface{}, row sql.Ro
 	}
 
 	for _, compFunc := range in.compFuncs {
-		result, err := compFunc.Eval(ctx, row)
+		result, err := compFunc.Eval(ctx, nil)
 		if err != nil {
 			return nil, err
 		}

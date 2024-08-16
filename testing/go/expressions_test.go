@@ -217,7 +217,6 @@ func TestSubqueries(t *testing.T) {
 		},
 		{
 			Name: "IN",
-			Skip: true, // ERROR: expected vitess child to be an expression tuple but has type `*plan.Subquery`
 			SetUpScript: []string{
 				`CREATE TABLE test (id INT);`,
 				`INSERT INTO test VALUES (1), (3), (2);`,
@@ -243,6 +242,13 @@ func TestSubqueries(t *testing.T) {
 					Expected: []sql.Row{
 						{int32(1), int32(1), "foo"},
 						{int32(3), int32(2), "baz"},
+					},
+				},
+				{
+					Query: `SELECT * FROM test2 WHERE (2, 10) IN (SELECT id, test_id FROM test2 WHERE id > 0);`,
+					Skip:  true, // TODO: Support tuples in IN operator
+					Expected: []sql.Row{
+						{int32(2), int32(10), "bar"},
 					},
 				},
 			},
