@@ -55,10 +55,7 @@ var pg_get_viewdef_oid_bool = framework.Function2{
 	Strict:             true,
 	Callable: func(ctx *sql.Context, _ [3]pgtypes.DoltgresType, val1, val2 any) (any, error) {
 		oidVal := val1.(uint32)
-		pretty := val2.(bool)
-		if pretty {
-			// TODO: pretty printing is not yet supported
-		}
+		// TODO: pretty printing is not yet supported
 		return getViewDef(ctx, oidVal)
 	},
 }

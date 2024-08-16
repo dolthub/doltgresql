@@ -145,7 +145,14 @@ func (u UnknownType) SerializedCompare(v1 []byte, v2 []byte) (int, error) {
 
 // SQL implements the DoltgresType interface.
 func (u UnknownType) SQL(ctx *sql.Context, dest []byte, v any) (sqltypes.Value, error) {
-	return Text.SQL(ctx, dest, v)
+	if v == nil {
+		return sqltypes.NULL, nil
+	}
+	value, err := u.IoOutput(ctx, v)
+	if err != nil {
+		return sqltypes.Value{}, err
+	}
+	return sqltypes.MakeTrusted(u.Type(), types.AppendAndSliceBytes(dest, []byte(value))), nil
 }
 
 // String implements the DoltgresType interface.
