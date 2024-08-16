@@ -27,7 +27,6 @@ type ContextRootFinalizer struct {
 }
 
 var _ sql.ExecSourceRel = (*ContextRootFinalizer)(nil)
-var _ sql.Expressioner = (*ContextRootFinalizer)(nil)
 
 // NewContextRootFinalizer returns a new *ContextRootFinalizer.
 func NewContextRootFinalizer(child sql.Node) *ContextRootFinalizer {
@@ -41,22 +40,14 @@ func (rf *ContextRootFinalizer) CheckPrivileges(ctx *sql.Context, opChecker sql.
 	return rf.child.CheckPrivileges(ctx, opChecker)
 }
 
-// Child returns the child of the finalizer.
+// Child returns the single child of this node
 func (rf *ContextRootFinalizer) Child() sql.Node {
 	return rf.child
 }
 
 // Children implements the interface sql.ExecSourceRel.
 func (rf *ContextRootFinalizer) Children() []sql.Node {
-	return rf.child.Children()
-}
-
-// Expressions implements the interface sql.Expressioner.
-func (rf *ContextRootFinalizer) Expressions() []sql.Expression {
-	if expressioner, ok := rf.child.(sql.Expressioner); ok {
-		return expressioner.Expressions()
-	}
-	return nil
+	return []sql.Node{rf.child}
 }
 
 // IsReadOnly implements the interface sql.ExecSourceRel.
@@ -97,26 +88,10 @@ func (rf *ContextRootFinalizer) DebugString() string {
 
 // WithChildren implements the interface sql.ExecSourceRel.
 func (rf *ContextRootFinalizer) WithChildren(children ...sql.Node) (sql.Node, error) {
-	newChild, err := rf.child.WithChildren(children...)
-	if err != nil {
-		return nil, err
+	if len(children) != 1 {
+		return nil, sql.ErrInvalidChildrenNumber.New(rf, len(children), 1)
 	}
-	return NewContextRootFinalizer(newChild), nil
-}
-
-// WithExpressions implements the interface sql.Expressioner.
-func (rf *ContextRootFinalizer) WithExpressions(expressions ...sql.Expression) (sql.Node, error) {
-	if expressioner, ok := rf.child.(sql.Expressioner); ok {
-		newExpressioner, err := expressioner.WithExpressions(expressions...)
-		if err != nil {
-			return nil, err
-		}
-		return NewContextRootFinalizer(newExpressioner), nil
-	}
-	if len(expressions) != 0 {
-		return nil, sql.ErrInvalidChildrenNumber.New(rf, len(expressions), 0)
-	}
-	return rf, nil
+	return NewContextRootFinalizer(children[0]), nil
 }
 
 // rootFinalizerIter is the iterator for *ContextRootFinalizer that finalizes the context.

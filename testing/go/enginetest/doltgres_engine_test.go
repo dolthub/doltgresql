@@ -116,14 +116,14 @@ func TestSingleScript(t *testing.T) {
 		{
 			Name: "bigtable",
 			SetUpScript: []string{
-				"create table bigtable (t varchar(1) primary key, n bigint)",
+				"SELECT count(*), (SELECT i FROM mytable WHERE i = 1 group by i);",
 			},
 		},
 	}
 
 	for _, script := range scripts {
 		harness := newDoltgresServerHarness(t)
-		harness.Setup(setup.MydbData)
+		harness.Setup(setup.MydbData, setup.MytableData)
 
 		engine, err := harness.NewEngine(t)
 		if err != nil {
