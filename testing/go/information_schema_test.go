@@ -30,7 +30,6 @@ func TestInfoSchemaColumns(t *testing.T) {
 					},
 				},
 				{
-					Skip: true, // TODO: regclass cross-database references are not implemented
 					Query: `SELECT 
 						columns.column_name, 
 						pg_catalog.col_description(('"' || table_catalog || '"."' || table_schema || '"."' || table_name || '"')::regclass::oid, ordinal_position) AS description, 

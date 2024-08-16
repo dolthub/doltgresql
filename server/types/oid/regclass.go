@@ -36,6 +36,8 @@ func regclass_IoInput(ctx *sql.Context, input string) (uint32, error) {
 	if err = regclass_IoInputValidation(ctx, input, sections); err != nil {
 		return 0, err
 	}
+	fmt.Println("SECTIONS", sections)
+	var database string
 	var searchSchemas []string
 	var relationName string
 	switch len(sections) {
@@ -48,15 +50,24 @@ func regclass_IoInput(ctx *sql.Context, input string) (uint32, error) {
 	case 3:
 		searchSchemas = []string{sections[0]}
 		relationName = sections[2]
+	case 5:
+		database = sections[0]
+		searchSchemas = []string{sections[2]}
+		relationName = sections[4]
 	default:
 		return 0, fmt.Errorf("regclass failed validation")
 	}
+
+	if len(database) == 0 {
+		database = ctx.GetCurrentDatabase()
+	}
+
 	// Iterate over all of the items to find which relation matches.
 	// Postgres does not need to worry about name conflicts since everything is created in the same naming space, but
 	// GMS and Dolt use different naming spaces, so for now we just ignore potential name conflicts and return the first
 	// match found.
 	resultOid := uint32(0)
-	err = IterateCurrentDatabase(ctx, Callbacks{
+	err = IterateDatabase(ctx, database, Callbacks{
 		Index: func(ctx *sql.Context, schema ItemSchema, table ItemTable, index ItemIndex) (cont bool, err error) {
 			idxName := index.Item.ID()
 			if idxName == "PRIMARY" {
@@ -139,7 +150,7 @@ func regclass_IoInputValidation(ctx *sql.Context, input string, sections []strin
 		if sections[1] != "." || sections[3] != "." {
 			return fmt.Errorf("invalid name syntax")
 		}
-		return fmt.Errorf("cross-database references are not implemented: %s", input)
+		return nil
 	case 7:
 		if sections[1] != "." || sections[3] != "." || sections[5] != "." {
 			return fmt.Errorf("invalid name syntax")
