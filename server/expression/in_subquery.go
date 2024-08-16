@@ -39,9 +39,9 @@ type InSubquery struct {
 	compFuncs     []*framework.CompiledFunction
 }
 
-var _ vitess.Injectable = (*BinaryOperator)(nil)
-var _ sql.Expression = (*BinaryOperator)(nil)
-var _ expression.BinaryExpression = (*BinaryOperator)(nil)
+var _ vitess.Injectable = (*InSubquery)(nil)
+var _ sql.Expression = (*InSubquery)(nil)
+var _ expression.BinaryExpression = (*InSubquery)(nil)
 
 // NewInSubquery returns a new *InSubquery.
 func NewInSubquery() *InSubquery {

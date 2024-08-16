@@ -230,6 +230,10 @@ func TestSubqueries(t *testing.T) {
 					Expected: []sql.Row{{int32(2)}},
 				},
 				{
+					Query:    `SELECT * FROM test WHERE id IN (SELECT id FROM test WHERE id = 3);`,
+					Expected: []sql.Row{{int32(3)}},
+				},
+				{
 					Query:    `SELECT * FROM test WHERE id IN (SELECT * FROM test WHERE id > 0);`,
 					Expected: []sql.Row{{int32(1)}, {int32(3)}, {int32(2)}},
 				},
@@ -245,10 +249,17 @@ func TestSubqueries(t *testing.T) {
 					},
 				},
 				{
-					Query: `SELECT * FROM test2 WHERE (2, 10) IN (SELECT id, test_id FROM test2 WHERE id > 0);`,
-					Skip:  true, // TODO: Support tuples in IN operator
+					Query: `SELECT id FROM test2 WHERE (2, 10) IN (SELECT id, test_id FROM test2 WHERE id > 0);`,
+					Skip:  true, // won't pass until we have a doltgres tuple type to match against for equality funcs
 					Expected: []sql.Row{
-						{int32(2), int32(10), "bar"},
+						{1}, {2}, {3},
+					},
+				},
+				{
+					Query: `SELECT id FROM test2 WHERE (id, test_id) IN (SELECT id, test_id FROM test2 WHERE id > 0);`,
+					Skip:  true, // won't pass until we have a doltgres tuple type to match against for equality funcs
+					Expected: []sql.Row{
+						{2},
 					},
 				},
 			},
