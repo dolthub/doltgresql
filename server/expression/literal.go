@@ -81,8 +81,8 @@ func NewNullLiteral() *Literal {
 	}
 }
 
-// NewStringLiteral returns a new *Literal containing a UNKNOWN type value.
-func NewStringLiteral(stringValue string) *Literal {
+// NewUnknownLiteral returns a new *Literal containing a UNKNOWN type value.
+func NewUnknownLiteral(stringValue string) *Literal {
 	return &Literal{
 		value: stringValue,
 		typ:   pgtypes.Unknown,

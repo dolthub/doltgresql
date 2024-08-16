@@ -26,7 +26,7 @@ import (
 // not, or they may quote in a special way that is unique to that type.
 func QuoteString(baseID DoltgresTypeBaseID, str string) string {
 	switch baseID {
-	case DoltgresTypeBaseID_Char, DoltgresTypeBaseID_Name, DoltgresTypeBaseID_Text, DoltgresTypeBaseID_VarChar, DoltgresTypeBaseID_Unknown:
+	case DoltgresTypeBaseID_Char, DoltgresTypeBaseID_Name, DoltgresTypeBaseID_Text, DoltgresTypeBaseID_VarChar:
 		return `'` + strings.ReplaceAll(str, `'`, `''`) + `'`
 	default:
 		return str
@@ -73,7 +73,7 @@ func FromGmsType(typ sql.Type) DoltgresType {
 	case query.Type_JSON:
 		return Json
 	case query.Type_NULL_TYPE:
-		return Null
+		return Unknown
 	case query.Type_GEOMETRY:
 		return Unknown
 	default:

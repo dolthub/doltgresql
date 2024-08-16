@@ -18,6 +18,7 @@ import (
 	"fmt"
 	"math"
 	"reflect"
+	"strings"
 
 	"github.com/dolthub/go-mysql-server/sql"
 	"github.com/dolthub/go-mysql-server/sql/types"
@@ -93,12 +94,18 @@ func (u UnknownType) GetSerializationID() SerializationID {
 
 // IoInput implements the DoltgresType interface.
 func (u UnknownType) IoInput(ctx *sql.Context, input string) (any, error) {
-	return "", fmt.Errorf("%s cannot receive I/O input", u.String())
+	if strings.ToLower(input) == "null" {
+		return nil, nil
+	}
+	return input, nil
 }
 
 // IoOutput implements the DoltgresType interface.
 func (u UnknownType) IoOutput(ctx *sql.Context, output any) (string, error) {
-	return "", fmt.Errorf("%s cannot produce I/O output", u.String())
+	if output == nil {
+		return "NULL", nil
+	}
+	return output.(string), nil
 }
 
 // IsPreferredType implements the DoltgresType interface.

@@ -84,7 +84,7 @@ func (c *ExplicitCast) Eval(ctx *sql.Context, row sql.Row) (any, error) {
 	if val == nil {
 		return nil, nil
 	}
-	if _, isUnknown := fromType.(pgtypes.UnknownType); isUnknown {
+	if fromType.BaseID() == pgtypes.DoltgresTypeBaseID_Unknown {
 		fromType = pgtypes.Text
 	}
 	castFunction := framework.GetExplicitCast(fromType.BaseID(), c.castToType.BaseID())
