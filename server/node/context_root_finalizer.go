@@ -47,14 +47,15 @@ func (rf *ContextRootFinalizer) Child() sql.Node {
 
 // Children implements the interface sql.ExecSourceRel.
 func (rf *ContextRootFinalizer) Children() []sql.Node {
-	return rf.child.Children()
+	return []sql.Node{rf.child}
+	// return rf.child.Children()
 }
 
 // Expressions implements the interface sql.Expressioner.
 func (rf *ContextRootFinalizer) Expressions() []sql.Expression {
-	if expressioner, ok := rf.child.(sql.Expressioner); ok {
-		return expressioner.Expressions()
-	}
+	// if expressioner, ok := rf.child.(sql.Expressioner); ok {
+	// 	return expressioner.Expressions()
+	// }
 	return nil
 }
 
@@ -96,30 +97,30 @@ func (rf *ContextRootFinalizer) DebugString() string {
 
 // WithChildren implements the interface sql.ExecSourceRel.
 func (rf *ContextRootFinalizer) WithChildren(children ...sql.Node) (sql.Node, error) {
-	// if len(children) != 1 {
-	// 	return nil, sql.ErrInvalidChildrenNumber.New(rf, len(children), 1)
-	// }
-	// newChild := children[0]
-	newChild, err := rf.child.WithChildren(children...)
-	if err != nil {
-		return nil, err
+	if len(children) != 1 {
+		return nil, sql.ErrInvalidChildrenNumber.New(rf, len(children), 1)
 	}
+	newChild := children[0]
+	// newChild, err := rf.child.WithChildren(children...)
+	// if err != nil {
+	// 	return nil, err
+	// }
 
 	return NewContextRootFinalizer(newChild), nil
 }
 
 // WithExpressions implements the interface sql.Expressioner.
 func (rf *ContextRootFinalizer) WithExpressions(expressions ...sql.Expression) (sql.Node, error) {
-	if expressioner, ok := rf.child.(sql.Expressioner); ok {
-		newExpressioner, err := expressioner.WithExpressions(expressions...)
-		if err != nil {
-			return nil, err
-		}
-		return NewContextRootFinalizer(newExpressioner), nil
-	}
-	if len(expressions) != 0 {
-		return nil, sql.ErrInvalidChildrenNumber.New(rf, len(expressions), 0)
-	}
+	// if expressioner, ok := rf.child.(sql.Expressioner); ok {
+	// 	newExpressioner, err := expressioner.WithExpressions(expressions...)
+	// 	if err != nil {
+	// 		return nil, err
+	// 	}
+	// 	return NewContextRootFinalizer(newExpressioner), nil
+	// }
+	// if len(expressions) != 0 {
+	// 	return nil, sql.ErrInvalidChildrenNumber.New(rf, len(expressions), 0)
+	// }
 	return rf, nil
 }
 

@@ -94,8 +94,6 @@ var defaultSkippedQueries = []string{
 	// unsupported doltgres syntax
 	"WITH",
 	"OVER",
-	// subqueries are broken, breaks with an index out of bounds error
-	"(SELECT",
 	// string functions are broken due to incompatible types
 	"HEX(",
 	"TO_BASE64(",
@@ -144,6 +142,9 @@ func (d *DoltgresHarness) NewEngine(t *testing.T) (enginetest.QueryEngine, error
 
 var skippedSetupWords = []string{
 	"auto_increment",
+	"xy",
+	"y_idx",
+	"xy_hasnull_idx",
 	"typestable",     // lots of work to do
 	"datetime_table", // invalid timestamp format
 	"foo.othertable", // ERROR: database schema not found: foo (errno 1105)

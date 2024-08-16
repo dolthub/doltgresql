@@ -156,7 +156,8 @@ var createViewStmts = []ScriptTest{
 		},
 	},
 	{
-		Name: "cast (postgres-specific syntax)",
+		Name:  "cast (postgres-specific syntax)",
+		Focus: true,
 		SetUpScript: []string{
 			"create table t1 (pk int);",
 			"insert into t1 values (1), (2), (3), (4);",
