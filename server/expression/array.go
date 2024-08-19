@@ -55,11 +55,7 @@ func (array *Array) Children() []sql.Expression {
 
 // Eval implements the sql.Expression interface.
 func (array *Array) Eval(ctx *sql.Context, row sql.Row) (any, error) {
-	resultArrayType := array.getTargetType()
-	if resultArrayType.Equals(pgtypes.AnyArray) {
-		// TODO: error should look like "ARRAY types XXXX and YYYY cannot be matched", need to display conflicting types
-		return nil, fmt.Errorf("ARRAY types cannot be matched")
-	}
+	resultTyp := array.coercedType.BaseType()
 	values := make([]any, len(array.children))
 	for i, expr := range array.children {
 		val, err := expr.Eval(ctx, row)
@@ -77,7 +73,6 @@ func (array *Array) Eval(ctx *sql.Context, row sql.Row) (any, error) {
 			return nil, fmt.Errorf("expected DoltgresType, but got %s", expr.Type().String())
 		}
 
-		resultTyp := resultArrayType.BaseType()
 		// We always cast the element, as there may be parameter restrictions in place
 		castFunc := framework.GetImplicitCast(doltgresType.BaseID(), resultTyp.BaseID())
 		if castFunc == nil {
@@ -132,14 +127,18 @@ func (array *Array) String() string {
 
 // Type implements the sql.Expression interface.
 func (array *Array) Type() sql.Type {
-	return array.getTargetType()
+	return array.coercedType
 }
 
 // WithChildren implements the sql.Expression interface.
 func (array *Array) WithChildren(children ...sql.Expression) (sql.Expression, error) {
+	resultType, err := getTargetType(children...)
+	if err != nil {
+		return nil, err
+	}
 	return &Array{
 		children:    children,
-		coercedType: array.coercedType,
+		coercedType: resultType,
 	}, nil
 }
 
@@ -153,33 +152,26 @@ func (array *Array) WithResolvedChildren(children []any) (any, error) {
 		}
 		newExpressions[i] = resolvedExpression
 	}
-	return &Array{
-		children:    newExpressions,
-		coercedType: array.coercedType,
-	}, nil
+	return array.WithChildren(newExpressions...)
 }
 
 // getTargetType returns the evaluated type for this expression. Returns the "anyarray" type if the type combination is
 // invalid.
-func (array *Array) getTargetType() pgtypes.DoltgresArrayType {
-	if array.coercedType != nil {
-		return array.coercedType
-	}
+func getTargetType(children ...sql.Expression) (pgtypes.DoltgresArrayType, error) {
 	var childrenTypes []pgtypes.DoltgresTypeBaseID
-	for _, child := range array.children {
+	for _, child := range children {
 		if child != nil {
 			childType, ok := child.Type().(pgtypes.DoltgresType)
 			if !ok {
 				// We use "anyarray" as the indeterminate/invalid type
-				return pgtypes.AnyArray
+				return pgtypes.AnyArray, nil
 			}
 			childrenTypes = append(childrenTypes, childType.BaseID())
 		}
 	}
-	targetType, ok := framework.FindCommonType(childrenTypes)
-	if !ok {
-		// We use "anyarray" as the indeterminate/invalid type
-		return pgtypes.AnyArray
+	targetType, err := framework.FindCommonType(childrenTypes)
+	if err != nil {
+		return nil, err
 	}
-	return targetType.GetRepresentativeType().ToArrayType()
+	return targetType.GetRepresentativeType().ToArrayType(), nil
 }

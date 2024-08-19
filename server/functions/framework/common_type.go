@@ -15,6 +15,8 @@
 package framework
 
 import (
+	"fmt"
+
 	"github.com/dolthub/go-mysql-server/sql"
 
 	pgtypes "github.com/dolthub/doltgresql/server/types"
@@ -22,7 +24,7 @@ import (
 
 // FindCommonType returns the common type that given types can convert to.
 // https://www.postgresql.org/docs/15/typeconv-union-case.html
-func FindCommonType(types []pgtypes.DoltgresTypeBaseID) (pgtypes.DoltgresTypeBaseID, bool) {
+func FindCommonType(types []pgtypes.DoltgresTypeBaseID) (pgtypes.DoltgresTypeBaseID, error) {
 	var candidateType = pgtypes.DoltgresTypeBaseID_Unknown
 	var fail = false
 	for _, typBaseID := range types {
@@ -37,16 +39,16 @@ func FindCommonType(types []pgtypes.DoltgresTypeBaseID) (pgtypes.DoltgresTypeBas
 	}
 	if !fail {
 		if candidateType == pgtypes.DoltgresTypeBaseID_Unknown {
-			return pgtypes.DoltgresTypeBaseID_Text, true
+			return pgtypes.DoltgresTypeBaseID_Text, nil
 		}
-		return candidateType, true
+		return candidateType, nil
 	}
 	for _, typBaseID := range types {
 		if candidateType == pgtypes.DoltgresTypeBaseID_Unknown {
 			candidateType = typBaseID
 		}
 		if typBaseID != pgtypes.DoltgresTypeBaseID_Unknown && candidateType.GetTypeCategory() != typBaseID.GetTypeCategory() {
-			return 0, false
+			return 0, fmt.Errorf("ARRAY types %s and %s cannot be matched", candidateType.GetRepresentativeType().String(), typBaseID.GetRepresentativeType().String())
 		}
 	}
 	for _, typBaseID := range types {
@@ -55,10 +57,10 @@ func FindCommonType(types []pgtypes.DoltgresTypeBaseID) (pgtypes.DoltgresTypeBas
 		}
 		candidateType = typBaseID
 		if candidateType.GetRepresentativeType().IsPreferredType() {
-			return candidateType, true
+			return candidateType, nil
 		}
 	}
-	return candidateType, true
+	return candidateType, nil
 }
 
 // CastFromUnknownType if a type cast function that uses the unknown type output
