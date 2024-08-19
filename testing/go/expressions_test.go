@@ -118,22 +118,18 @@ func anyTests(name string) ScriptTest {
 			},
 		},
 		{
-			Skip:     true, // TODO: Fix subqueries
 			Query:    `SELECT * FROM test2 WHERE test_id = %s(SELECT * FROM test WHERE id = 2);`,
 			Expected: []sql.Row{{int32(3), int32(2), "baz"}},
 		},
 		{
-			Skip:     true, // TODO: Fix subqueries
 			Query:    `SELECT * FROM test2 WHERE test_id = %s(SELECT * FROM test WHERE id = 10);`,
 			Expected: []sql.Row{},
 		},
 		{
-			Skip:     true, // TODO: Fix subqueries
 			Query:    `SELECT * FROM test2 WHERE test_id = %s(SELECT * FROM test WHERE id > 1) AND txt = 'baz';`,
 			Expected: []sql.Row{{int32(3), int32(2), "baz"}},
 		},
 		{
-			Skip:  true, // TODO: Panics in EvalMultiple when >1 row matches
 			Query: `SELECT * FROM test2 WHERE test_id > %s(SELECT * FROM test);`,
 			Expected: []sql.Row{
 				{int32(2), int32(10), "bar"},
@@ -141,7 +137,6 @@ func anyTests(name string) ScriptTest {
 			},
 		},
 		{
-			Skip:  true, // TODO: Panics in EvalMultiple when >1 row matches
 			Query: `SELECT * FROM test2 WHERE test_id = %s(SELECT * FROM test WHERE id > 0);`,
 			Expected: []sql.Row{
 				{int32(1), int32(1), "foo"},
