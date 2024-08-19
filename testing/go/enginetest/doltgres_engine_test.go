@@ -110,13 +110,13 @@ func TestSchemaOverrides(t *testing.T) {
 
 // Convenience test for debugging a single query. Unskip and set to the desired query.
 func TestSingleScript(t *testing.T) {
-	t.Skip()
+	// t.Skip()
 
 	var scripts = []queries.ScriptTest{
 		{
 			Name: "bigtable",
 			SetUpScript: []string{
-				"SELECT count(*), (SELECT i FROM mytable WHERE i = 1 group by i);",
+				"SELECT * from mytable where i in (SELECT i FROM mytable);",
 			},
 		},
 	}

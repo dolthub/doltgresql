@@ -44,12 +44,10 @@ func TestExpressions(t *testing.T) {
 					Expected: []sql.Row{{int32(1)}, {int32(3)}, {int32(2)}},
 				},
 				{
-					Skip:     true, // TODO: Support subqueries with IN operator
 					Query:    `SELECT * FROM test2 WHERE test_id IN (SELECT * FROM test WHERE id = 2);`,
 					Expected: []sql.Row{{int32(3), int32(2), "baz"}},
 				},
 				{
-					Skip:  true, // TODO: Support subqueries with IN operator
 					Query: `SELECT * FROM test2 WHERE test_id IN(SELECT * FROM test WHERE id > 0);`,
 					Expected: []sql.Row{
 						{int32(1), int32(1), "foo"},
@@ -144,7 +142,22 @@ func anyTests(name string) ScriptTest {
 			},
 		},
 		{
-			Query: `SELECT "ns"."nspname" AS "table_schema", "t"."relname" AS "table_name", "cnst"."conname" AS "constraint_name", pg_get_constraintdef("cnst"."oid") AS "expression", CASE "cnst"."contype" WHEN 'p' THEN 'PRIMARY' WHEN 'u' THEN 'UNIQUE' WHEN 'c' THEN 'CHECK' WHEN 'x' THEN 'EXCLUDE' END AS "constraint_type", "a"."attname" AS "column_name" FROM "pg_catalog"."pg_constraint" "cnst" INNER JOIN "pg_catalog"."pg_class" "t" ON "t"."oid" = "cnst"."conrelid" INNER JOIN "pg_catalog"."pg_namespace" "ns" ON "ns"."oid" = "cnst"."connamespace" LEFT JOIN "pg_catalog"."pg_attribute" "a" ON "a"."attrelid" = "cnst"."conrelid" AND "a"."attnum" = %s ("cnst"."conkey") WHERE "t"."relkind" IN ('r', 'p') AND (("ns"."nspname" = 'public' AND "t"."relname" = 'test2'));`,
+			Query: `SELECT "ns"."nspname" AS "table_schema",
+       "t"."relname" AS "table_name",
+       "cnst"."conname" AS "constraint_name",
+       pg_get_constraintdef("cnst"."oid") AS "expression",
+       CASE "cnst"."contype" 
+           WHEN 'p' THEN 'PRIMARY'
+           WHEN 'u' THEN 'UNIQUE'
+           WHEN 'c' THEN 'CHECK'
+           WHEN 'x' THEN 'EXCLUDE'
+           END AS "constraint_type", 
+    "a"."attname" AS "column_name" 
+FROM "pg_catalog"."pg_constraint" "cnst" 
+    INNER JOIN "pg_catalog"."pg_class" "t" ON "t"."oid" = "cnst"."conrelid"
+    INNER JOIN "pg_catalog"."pg_namespace" "ns" ON "ns"."oid" = "cnst"."connamespace"
+    LEFT JOIN "pg_catalog"."pg_attribute" "a" ON "a"."attrelid" = "cnst"."conrelid" AND "a"."attnum" = %s ("cnst"."conkey")
+WHERE "t"."relkind" IN ('r', 'p') AND (("ns"."nspname" = 'public' AND "t"."relname" = 'test2'));`,
 			Expected: []sql.Row{
 				{"public", "test2", "test2_pkey", "PRIMARY KEY (id)", "PRIMARY", "id"},
 			},
@@ -212,7 +225,6 @@ func TestSubqueries(t *testing.T) {
 		},
 		{
 			Name: "IN",
-			Skip: true, // ERROR: expected vitess child to be an expression tuple but has type `*plan.Subquery`
 			SetUpScript: []string{
 				`CREATE TABLE test (id INT);`,
 				`INSERT INTO test VALUES (1), (3), (2);`,
@@ -224,6 +236,10 @@ func TestSubqueries(t *testing.T) {
 				{
 					Query:    `SELECT * FROM test WHERE id IN (SELECT * FROM test WHERE id = 2);`,
 					Expected: []sql.Row{{int32(2)}},
+				},
+				{
+					Query:    `SELECT * FROM test WHERE id IN (SELECT id FROM test WHERE id = 3);`,
+					Expected: []sql.Row{{int32(3)}},
 				},
 				{
 					Query:    `SELECT * FROM test WHERE id IN (SELECT * FROM test WHERE id > 0);`,
@@ -238,6 +254,20 @@ func TestSubqueries(t *testing.T) {
 					Expected: []sql.Row{
 						{int32(1), int32(1), "foo"},
 						{int32(3), int32(2), "baz"},
+					},
+				},
+				{
+					Query: `SELECT id FROM test2 WHERE (2, 10) IN (SELECT id, test_id FROM test2 WHERE id > 0);`,
+					Skip:  true, // won't pass until we have a doltgres tuple type to match against for equality funcs
+					Expected: []sql.Row{
+						{1}, {2}, {3},
+					},
+				},
+				{
+					Query: `SELECT id FROM test2 WHERE (id, test_id) IN (SELECT id, test_id FROM test2 WHERE id > 0);`,
+					Skip:  true, // won't pass until we have a doltgres tuple type to match against for equality funcs
+					Expected: []sql.Row{
+						{2},
 					},
 				},
 			},
