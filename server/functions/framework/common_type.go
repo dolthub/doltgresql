@@ -23,29 +23,40 @@ import (
 // FindCommonType returns the common type that given types can convert to.
 // https://www.postgresql.org/docs/15/typeconv-union-case.html
 func FindCommonType(types []pgtypes.DoltgresTypeBaseID) (pgtypes.DoltgresTypeBaseID, bool) {
-	var candidateType = pgtypes.DoltgresTypeBaseID_Any
+	var candidateType = pgtypes.DoltgresTypeBaseID_Unknown
+	var fail = false
 	for _, typBaseID := range types {
-		if candidateType == pgtypes.DoltgresTypeBaseID_Any {
-			candidateType = typBaseID
-		} else if typBaseID == pgtypes.DoltgresTypeBaseID_Unknown {
+		if typBaseID == candidateType {
 			continue
-		} else if candidateType != typBaseID {
-			if candidateType == pgtypes.DoltgresTypeBaseID_Unknown {
-				candidateType = typBaseID
-				continue
-			} else if candidateType.GetTypeCategory() != typBaseID.GetTypeCategory() {
-				return 0, false
-			} else if typCastFunction := GetImplicitCast(candidateType, typBaseID); typCastFunction == nil {
-				continue
-			}
+		} else if candidateType == pgtypes.DoltgresTypeBaseID_Unknown {
 			candidateType = typBaseID
-			if candidateType.GetRepresentativeType().IsPreferredType() {
-				return candidateType, true
-			}
+		} else {
+			candidateType = pgtypes.DoltgresTypeBaseID_Unknown
+			fail = true
 		}
 	}
-	if candidateType == pgtypes.DoltgresTypeBaseID_Unknown {
-		return pgtypes.DoltgresTypeBaseID_Text, true
+	if !fail {
+		if candidateType == pgtypes.DoltgresTypeBaseID_Unknown {
+			return pgtypes.DoltgresTypeBaseID_Text, true
+		}
+		return candidateType, true
+	}
+	for _, typBaseID := range types {
+		if candidateType == pgtypes.DoltgresTypeBaseID_Unknown {
+			candidateType = typBaseID
+		}
+		if typBaseID != pgtypes.DoltgresTypeBaseID_Unknown && candidateType.GetTypeCategory() != typBaseID.GetTypeCategory() {
+			return 0, false
+		}
+	}
+	for _, typBaseID := range types {
+		if typCastFunction := GetImplicitCast(candidateType, typBaseID); typCastFunction == nil {
+			continue
+		}
+		candidateType = typBaseID
+		if candidateType.GetRepresentativeType().IsPreferredType() {
+			return candidateType, true
+		}
 	}
 	return candidateType, true
 }
