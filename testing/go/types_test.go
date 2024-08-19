@@ -1706,6 +1706,26 @@ var typesTests = []ScriptTest{
 				},
 			},
 			{
+				Query: `SELECT 'public.testing'::regclass;`,
+				Expected: []sql.Row{
+					{"testing"},
+				},
+			},
+			{
+				Query: `SELECT 'postgres.public.testing'::regclass;`,
+				Expected: []sql.Row{
+					{"testing"},
+				},
+			},
+			{
+				Query:       `SELECT 'doltgres.public.testing'::regclass;`,
+				ExpectedErr: "does not exist",
+			},
+			{
+				Query:       `SELECT 'doesnotexist.public.testing'::regclass;`,
+				ExpectedErr: "database not found",
+			},
+			{
 				Query: `SELECT 'testview'::regclass;`,
 				Expected: []sql.Row{
 					{"testview"},

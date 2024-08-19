@@ -65,3 +65,4 @@ SQL
   [ "$status" -eq 0 ]
   [[ "$output" =~ "newdb" ]] || false
 }
+

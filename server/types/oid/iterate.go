@@ -132,10 +132,10 @@ type ItemView struct {
 	Item  sql.ViewDefinition
 }
 
-// IterateCurrentDatabase iterates over the current database, calling each callback as the relevant items are iterated
+// IterateDatabase iterates over the provided database, calling each callback as the relevant items are iterated
 // over. This is a central function that homogenizes all iteration, since OIDs depend on a deterministic iteration over
 // items. This function should be expanded as we add more items to iterate over.
-func IterateCurrentDatabase(ctx *sql.Context, callbacks Callbacks) error {
+func IterateDatabase(ctx *sql.Context, database string, callbacks Callbacks) error {
 	// Functions and types aren't contained within a schema for now, so we'll iterate over those separately
 	if callbacks.Function != nil {
 		if err := iterateFunctions(ctx, callbacks); err != nil {
@@ -148,12 +148,13 @@ func IterateCurrentDatabase(ctx *sql.Context, callbacks Callbacks) error {
 		}
 	}
 
-	// Everything else is within a schema, so we grab the current database
 	doltSession := dsess.DSessFromSess(ctx.Session)
-	currentDatabase, err := sqle.NewDefault(doltSession.Provider()).Analyzer.Catalog.Database(ctx, ctx.GetCurrentDatabase())
+
+	currentDatabase, err := sqle.NewDefault(doltSession.Provider()).Analyzer.Catalog.Database(ctx, database)
 	if err != nil {
 		return err
 	}
+
 	// Then we'll iterate over everything that is contained within a schema
 	if currentSchemaDatabase, ok := currentDatabase.(sql.SchemaDatabase); ok && callbacks.iteratesOverSchemas() {
 		// Load and sort all of the schemas by name ascending
@@ -179,6 +180,13 @@ func IterateCurrentDatabase(ctx *sql.Context, callbacks Callbacks) error {
 		}
 	}
 	return nil
+}
+
+// IterateCurrentDatabase iterates over the current database, calling each callback as the relevant items are iterated
+// over. This is a central function that homogenizes all iteration, since OIDs depend on a deterministic iteration over
+// items. This function should be expanded as we add more items to iterate over.
+func IterateCurrentDatabase(ctx *sql.Context, callbacks Callbacks) error {
+	return IterateDatabase(ctx, ctx.GetCurrentDatabase(), callbacks)
 }
 
 // iterateFunctions is called by IterateCurrentDatabase to handle functions.
