@@ -43,6 +43,9 @@ var _ vitess.Injectable = (*InSubquery)(nil)
 var _ sql.Expression = (*InSubquery)(nil)
 var _ expression.BinaryExpression = (*InSubquery)(nil)
 
+// nilKey is the hash of a row with a single nil value.
+var nilKey, _ = sql.HashOf(sql.NewRow(nil))
+
 // NewInSubquery returns a new *InSubquery.
 func NewInSubquery() *InSubquery {
 	return &InSubquery{}
@@ -52,8 +55,6 @@ func NewInSubquery() *InSubquery {
 func (in *InSubquery) Children() []sql.Expression {
 	return []sql.Expression{in.leftExpr, in.rightExpr}
 }
-
-var nilKey, _ = sql.HashOf(sql.NewRow(nil))
 
 // Eval implements the sql.Expression interface.
 func (in *InSubquery) Eval(ctx *sql.Context, row sql.Row) (any, error) {
@@ -77,7 +78,6 @@ func (in *InSubquery) Eval(ctx *sql.Context, row sql.Row) (any, error) {
 		return nil, sql.ErrInvalidOperandColumns.New(types.NumColumns(in.Left().Type()), types.NumColumns(in.Right().Type()))
 	}
 
-	typ := in.rightExpr.Type()
 	right := in.rightExpr
 
 	// TODO: does this work for all pg values?
@@ -94,13 +94,7 @@ func (in *InSubquery) Eval(ctx *sql.Context, row sql.Row) (any, error) {
 		return nil, nil
 	}
 
-	// convert left to right's type
-	nLeft, _, err := typ.Convert(left)
-	if err != nil {
-		return false, nil
-	}
-
-	key, err := sql.HashOf(sql.NewRow(nLeft))
+	key, err := sql.HashOf(sql.NewRow(left))
 	if err != nil {
 		return nil, err
 	}
