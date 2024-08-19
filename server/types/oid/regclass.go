@@ -36,18 +36,20 @@ func regclass_IoInput(ctx *sql.Context, input string) (uint32, error) {
 	if err = regclass_IoInputValidation(ctx, input, sections); err != nil {
 		return 0, err
 	}
-	fmt.Println("SECTIONS", sections)
+
 	var database string
 	var searchSchemas []string
 	var relationName string
 	switch len(sections) {
 	case 1:
+		database = ctx.GetCurrentDatabase()
 		searchSchemas, err = resolve.SearchPath(ctx)
 		if err != nil {
 			return 0, err
 		}
 		relationName = sections[0]
 	case 3:
+		database = ctx.GetCurrentDatabase()
 		searchSchemas = []string{sections[0]}
 		relationName = sections[2]
 	case 5:
@@ -56,10 +58,6 @@ func regclass_IoInput(ctx *sql.Context, input string) (uint32, error) {
 		relationName = sections[4]
 	default:
 		return 0, fmt.Errorf("regclass failed validation")
-	}
-
-	if len(database) == 0 {
-		database = ctx.GetCurrentDatabase()
 	}
 
 	// Iterate over all of the items to find which relation matches.
