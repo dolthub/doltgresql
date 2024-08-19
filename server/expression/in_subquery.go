@@ -68,10 +68,9 @@ func (in *InSubquery) Eval(ctx *sql.Context, row sql.Row) (any, error) {
 	}
 
 	// The NULL handling for IN expressions is tricky. According to
-	// https://dev.mysql.com/doc/refman/8.0/en/comparison-operators.html#operator_in:
+	// https://www.postgresql.org/docs/16/functions-comparisons.html#FUNCTIONS-COMPARISONS-IN-SCALAR:
 	// To comply with the SQL standard, IN() returns NULL not only if the expression on the left hand side is NULL, but
 	// also if no match is found in the list and one of the expressions in the list is NULL.
-	// However, there's a strange edge case. NULL IN (empty list) return 0, not NULL.
 	leftNull := left == nil
 
 	if types.NumColumns(in.Left().Type()) != types.NumColumns(in.Right().Type()) {
@@ -94,11 +93,16 @@ func (in *InSubquery) Eval(ctx *sql.Context, row sql.Row) (any, error) {
 		return nil, nil
 	}
 
+	// TODO: it might be possible for the left value to hash to a different value than the right even though they pass
+	//  an equality check. We need to perform a type conversion here to catch this case.
 	key, err := sql.HashOf(sql.NewRow(left))
 	if err != nil {
 		return nil, err
 	}
 
+	// If the hashed values don't contain the left value hash, we know it's not there.
+	// If we do find the hash of the left value, we still need to check for equality,
+	// since non-equal values could have the same hash in some cases.
 	val, notFoundErr := values.Get(key)
 	if notFoundErr != nil {
 		if _, nilValNotFoundErr := values.Get(nilKey); nilValNotFoundErr == nil {
@@ -118,7 +122,10 @@ func (in *InSubquery) Eval(ctx *sql.Context, row sql.Row) (any, error) {
 	return in.valuesEqual(ctx, left, r)
 }
 
-func (in *InSubquery) valuesEqual(ctx *sql.Context, left interface{}, row sql.Row) (interface{}, error) {
+// valuesEqual returns true if the left value is equal to the row provided using the equality functions previously
+// assigned to |compFuncs| during analysis. If the left value is a single scalar, then |row| has a single value as
+// well. Otherwise, (left is a tuple), |row| has a matching number of values.
+func (in *InSubquery) valuesEqual(ctx *sql.Context, left interface{}, row sql.Row) (bool, error) {
 	in.leftLiteral.value = left
 	for i, v := range row {
 		in.rightLiterals[i].value = v
@@ -127,7 +134,7 @@ func (in *InSubquery) valuesEqual(ctx *sql.Context, left interface{}, row sql.Ro
 	for _, compFunc := range in.compFuncs {
 		result, err := compFunc.Eval(ctx, nil)
 		if err != nil {
-			return nil, err
+			return false, err
 		}
 		if !result.(bool) {
 			return false, nil
