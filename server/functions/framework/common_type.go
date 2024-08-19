@@ -15,8 +15,6 @@
 package framework
 
 import (
-	"fmt"
-
 	"github.com/dolthub/go-mysql-server/sql"
 
 	pgtypes "github.com/dolthub/doltgresql/server/types"
@@ -52,22 +50,15 @@ func FindCommonType(types []pgtypes.DoltgresTypeBaseID) (pgtypes.DoltgresTypeBas
 	return candidateType, true
 }
 
-// ConvertValToCommonType returns an input converted to the final candidate/common type.
-// Fail if there is not an implicit conversion from a given input type to the candidate type.
-func ConvertValToCommonType(ctx *sql.Context, val any, valTyp, resultTyp pgtypes.DoltgresType) (any, error) {
+// CastFromUnknownType if a type cast function that uses the unknown type output
+// to get string value passed to the target type as input.
+var CastFromUnknownType TypeCastFunction = func(ctx *sql.Context, val any, targetType pgtypes.DoltgresType) (any, error) {
 	if val == nil {
 		return nil, nil
 	}
-
-	if valTyp.BaseID() == pgtypes.DoltgresTypeBaseID_Unknown {
-		valTyp = pgtypes.Text
+	str, err := pgtypes.Unknown.IoOutput(ctx, val)
+	if err != nil {
+		return nil, err
 	}
-
-	// We always cast the element, as there may be parameter restrictions in place
-	castFunc := GetImplicitCast(valTyp.BaseID(), resultTyp.BaseID())
-	if castFunc == nil {
-		return nil, fmt.Errorf("cannot find implicit cast function from %s to %s", valTyp.String(), resultTyp.String())
-	}
-
-	return castFunc(ctx, val, resultTyp)
+	return targetType.IoInput(ctx, str)
 }

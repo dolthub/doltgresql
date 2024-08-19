@@ -148,9 +148,6 @@ func (c *CompiledFunction) String() string {
 			sb.WriteString(", ")
 		}
 		if doltgresType, ok := param.Type().(pgtypes.DoltgresType); ok {
-			if doltgresType.BaseID() == pgtypes.DoltgresTypeBaseID_Unknown {
-				doltgresType = pgtypes.Text
-			}
 			sb.WriteString(pgtypes.QuoteString(doltgresType.BaseID(), param.String()))
 		} else {
 			sb.WriteString(param.String())

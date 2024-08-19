@@ -18,7 +18,6 @@ import (
 	"fmt"
 	"math"
 	"reflect"
-	"strings"
 
 	"github.com/dolthub/go-mysql-server/sql"
 	"github.com/dolthub/go-mysql-server/sql/types"
@@ -73,7 +72,14 @@ func (u UnknownType) Compare(v1 any, v2 any) (int, error) {
 
 // Convert implements the DoltgresType interface.
 func (u UnknownType) Convert(val any) (any, sql.ConvertInRange, error) {
-	return nil, sql.OutOfRange, fmt.Errorf("%s cannot convert values", u.String())
+	switch val := val.(type) {
+	case string:
+		return val, sql.InRange, nil
+	case nil:
+		return nil, sql.InRange, nil
+	default:
+		return nil, sql.OutOfRange, fmt.Errorf("%s: unhandled type: %T", u.String(), val)
+	}
 }
 
 // Equals implements the DoltgresType interface.
@@ -94,17 +100,11 @@ func (u UnknownType) GetSerializationID() SerializationID {
 
 // IoInput implements the DoltgresType interface.
 func (u UnknownType) IoInput(ctx *sql.Context, input string) (any, error) {
-	if strings.ToLower(input) == "null" {
-		return nil, nil
-	}
 	return input, nil
 }
 
 // IoOutput implements the DoltgresType interface.
 func (u UnknownType) IoOutput(ctx *sql.Context, output any) (string, error) {
-	if output == nil {
-		return "NULL", nil
-	}
 	return output.(string), nil
 }
 

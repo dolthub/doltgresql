@@ -67,12 +67,28 @@ func (array *Array) Eval(ctx *sql.Context, row sql.Row) (any, error) {
 			return nil, err
 		}
 
+		if val == nil {
+			values[i] = val
+			continue
+		}
+
 		doltgresType, ok := expr.Type().(pgtypes.DoltgresType)
 		if !ok {
 			return nil, fmt.Errorf("expected DoltgresType, but got %s", expr.Type().String())
 		}
 
-		values[i], err = framework.ConvertValToCommonType(ctx, val, doltgresType, resultArrayType.BaseType())
+		resultTyp := resultArrayType.BaseType()
+		// We always cast the element, as there may be parameter restrictions in place
+		castFunc := framework.GetImplicitCast(doltgresType.BaseID(), resultTyp.BaseID())
+		if castFunc == nil {
+			if doltgresType.BaseID() == pgtypes.DoltgresTypeBaseID_Unknown {
+				castFunc = framework.CastFromUnknownType
+			} else {
+				return nil, fmt.Errorf("cannot find cast function from %s to %s", doltgresType.String(), resultTyp.String())
+			}
+		}
+
+		values[i], err = castFunc(ctx, val, resultTyp)
 		if err != nil {
 			return nil, err
 		}
