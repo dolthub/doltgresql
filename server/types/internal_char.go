@@ -18,14 +18,16 @@ import (
 	"bytes"
 	"encoding/binary"
 	"fmt"
-	"github.com/dolthub/doltgresql/utils"
+	"reflect"
+	"strings"
+
 	"github.com/dolthub/go-mysql-server/sql"
 	"github.com/dolthub/go-mysql-server/sql/types"
 	"github.com/dolthub/vitess/go/sqltypes"
 	"github.com/dolthub/vitess/go/vt/proto/query"
 	"github.com/lib/pq/oid"
-	"reflect"
-	"strings"
+
+	"github.com/dolthub/doltgresql/utils"
 )
 
 // InternalCharLength will always be 1.
