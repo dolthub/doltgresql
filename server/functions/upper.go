@@ -25,14 +25,14 @@ import (
 
 // initUpper registers the functions to the catalog.
 func initUpper() {
-	framework.RegisterFunction(upper_varchar)
+	framework.RegisterFunction(upper_text)
 }
 
-// upper_varchar represents the PostgreSQL function of the same name, taking the same parameters.
-var upper_varchar = framework.Function1{
+// upper_text represents the PostgreSQL function of the same name, taking the same parameters.
+var upper_text = framework.Function1{
 	Name:       "upper",
-	Return:     pgtypes.VarChar,
-	Parameters: [1]pgtypes.DoltgresType{pgtypes.VarChar},
+	Return:     pgtypes.Text,
+	Parameters: [1]pgtypes.DoltgresType{pgtypes.Text},
 	Strict:     true,
 	Callable: func(ctx *sql.Context, _ [2]pgtypes.DoltgresType, val1 any) (any, error) {
 		//TODO: this doesn't respect collations
