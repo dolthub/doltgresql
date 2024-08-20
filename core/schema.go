@@ -29,3 +29,21 @@ func GetCurrentSchema(ctx *sql.Context) (string, error) {
 
 	return resolve.FirstExistingSchemaOnSearchPath(ctx, root)
 }
+
+// GetSchemaName returns the schema name if there is any exist.
+// If the given schema is not empty, it's returned.
+// If it is empty, uses given database to get schema name if it's DatabaseSchema.
+// If it's not of DatabaseSchema type or the schema name of it is empty,
+// it tries retrieving the current schema used by the context.
+// Defaults to "public" if the context does not specify a schema.
+func GetSchemaName(ctx *sql.Context, db sql.Database, schemaName string) (string, error) {
+	if schemaName == "" {
+		if schema, isSch := db.(sql.DatabaseSchema); isSch {
+			schemaName = schema.SchemaName()
+		}
+		if schemaName == "" {
+			return GetCurrentSchema(ctx)
+		}
+	}
+	return schemaName, nil
+}

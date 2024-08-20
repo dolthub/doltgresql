@@ -69,13 +69,9 @@ func (c *DropSequence) Resolved() bool {
 
 // RowIter implements the interface sql.ExecSourceRel.
 func (c *DropSequence) RowIter(ctx *sql.Context, r sql.Row) (sql.RowIter, error) {
-	schema := c.schema
-	if len(c.schema) == 0 {
-		var err error
-		schema, err = core.GetCurrentSchema(ctx)
-		if err != nil {
-			return nil, err
-		}
+	schema, err := core.GetSchemaName(ctx, nil, c.schema)
+	if err != nil {
+		return nil, err
 	}
 	relationType, err := core.GetRelationType(ctx, schema, c.sequence)
 	if err != nil {

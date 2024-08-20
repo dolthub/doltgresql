@@ -601,6 +601,48 @@ func TestSequences(t *testing.T) {
 			},
 		},
 		{
+			Name: "SERIAL type created in table of different schema",
+			SetUpScript: []string{
+				"CREATE SCHEMA myschema",
+			},
+			Assertions: []ScriptTestAssertion{
+				{
+					Query:    "CREATE TABLE myschema.test (pk SERIAL PRIMARY KEY, v1 INTEGER);",
+					Expected: []sql.Row{},
+				},
+				{
+					Query:    "INSERT INTO myschema.test (v1) VALUES (2), (3), (5), (7), (11);",
+					Expected: []sql.Row{},
+				},
+				{
+					Query: "SELECT * FROM myschema.test;",
+					Expected: []sql.Row{
+						{1, 2},
+						{2, 3},
+						{3, 5},
+						{4, 7},
+						{5, 11},
+					},
+				},
+				{
+					Query:       "SELECT nextval('test_pk_seq');",
+					ExpectedErr: `relation "test_pk_seq" does not exist`,
+				},
+				{
+					Query: "SELECT nextval('myschema.test_pk_seq');",
+					Expected: []sql.Row{
+						{6},
+					},
+				},
+				{
+					Query: "SELECT nextval('postgres.myschema.test_pk_seq');",
+					Expected: []sql.Row{
+						{7},
+					},
+				},
+			},
+		},
+		{
 			Name: "Default emulating SERIAL",
 			Assertions: []ScriptTestAssertion{
 				{
@@ -617,6 +659,38 @@ func TestSequences(t *testing.T) {
 				},
 				{
 					Query: "SELECT * FROM test ORDER BY v1;",
+					Expected: []sql.Row{
+						{1, 2},
+						{2, 3},
+						{3, 5},
+						{4, 7},
+						{5, 11},
+					},
+				},
+			},
+		},
+		{
+			Name: "Default emulating SERIAL in non default schema",
+			SetUpScript: []string{
+				"CREATE SCHEMA myschema",
+			},
+			Assertions: []ScriptTestAssertion{
+				{
+					Query:    "CREATE SEQUENCE myschema.seq1;",
+					Expected: []sql.Row{},
+				},
+				{
+					Query:    "CREATE TABLE myschema.test (pk INTEGER DEFAULT (nextval('seq1')), v1 INTEGER);",
+					Expected: []sql.Row{},
+				},
+				{
+					Skip:     true, // TODO: relation "seq1" does not exist
+					Query:    "INSERT INTO myschema.test (v1) VALUES (2), (3), (5), (7), (11);",
+					Expected: []sql.Row{},
+				},
+				{
+					Skip:  true, // TODO: unskip when INSERT above is unskipped
+					Query: "SELECT * FROM myschema.test ORDER BY v1;",
 					Expected: []sql.Row{
 						{1, 2},
 						{2, 3},

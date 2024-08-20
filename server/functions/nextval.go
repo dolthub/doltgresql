@@ -15,35 +15,48 @@
 package functions
 
 import (
+	"fmt"
+
 	"github.com/dolthub/go-mysql-server/sql"
 
 	"github.com/dolthub/doltgresql/core"
 	"github.com/dolthub/doltgresql/server/functions/framework"
 	pgtypes "github.com/dolthub/doltgresql/server/types"
+	"github.com/dolthub/doltgresql/server/types/oid"
 )
 
 // initNextVal registers the functions to the catalog.
 func initNextVal() {
-	framework.RegisterFunction(nextval_text)
+	framework.RegisterFunction(nextval_regclass)
 }
 
 // nextval_text represents the PostgreSQL function of the same name, taking the same parameters.
-var nextval_text = framework.Function1{
+var nextval_regclass = framework.Function1{
 	Name:               "nextval",
 	Return:             pgtypes.Int64,
-	Parameters:         [1]pgtypes.DoltgresType{pgtypes.Text},
+	Parameters:         [1]pgtypes.DoltgresType{pgtypes.Regclass},
 	IsNonDeterministic: true,
 	Strict:             true,
-	Callable: func(ctx *sql.Context, _ [2]pgtypes.DoltgresType, val1 any) (any, error) {
+	Callable: func(ctx *sql.Context, _ [2]pgtypes.DoltgresType, val any) (any, error) {
+		var schemaName, seqName string
+		err := oid.RunCallback(ctx, val.(uint32), oid.Callbacks{
+			Sequence: func(ctx *sql.Context, schema oid.ItemSchema, sequence oid.ItemSequence) (cont bool, err error) {
+				schemaName = schema.Item.SchemaName()
+				seqName = sequence.Item.Name
+				return false, nil
+			},
+		})
+		if err != nil {
+			return nil, err
+		}
+
 		collection, err := core.GetCollectionFromContext(ctx)
 		if err != nil {
 			return nil, err
 		}
-		// TODO: this should take a regclass as the parameter to determine the schema
-		schema, err := core.GetCurrentSchema(ctx)
-		if err != nil {
-			return nil, err
+		if schemaName == "" || seqName == "" {
+			return nil, fmt.Errorf("cannot find sequence to get its nextval")
 		}
-		return collection.NextVal(schema, val1.(string))
+		return collection.NextVal(schemaName, seqName)
 	},
 }

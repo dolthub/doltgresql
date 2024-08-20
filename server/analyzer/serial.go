@@ -17,6 +17,7 @@ package analyzer
 import (
 	"fmt"
 
+	"github.com/dolthub/dolt/go/libraries/doltcore/doltdb"
 	"github.com/dolthub/go-mysql-server/sql"
 	"github.com/dolthub/go-mysql-server/sql/analyzer"
 	"github.com/dolthub/go-mysql-server/sql/plan"
@@ -60,8 +61,12 @@ func ReplaceSerial(ctx *sql.Context, a *analyzer.Analyzer, node sql.Node, scope 
 			if isSerial {
 				baseSequenceName := fmt.Sprintf("%s_%s_seq", createTable.Name(), col.Name)
 				sequenceName := baseSequenceName
-				// TODO: schema name needs to be fetched from the CreateTable node
-				relationType, err := core.GetRelationType(ctx, "", baseSequenceName)
+				schemaName, err := core.GetSchemaName(ctx, createTable.Db, "")
+				if err != nil {
+					return nil, false, err
+				}
+
+				relationType, err := core.GetRelationType(ctx, schemaName, baseSequenceName)
 				if err != nil {
 					return nil, transform.NewTree, err
 				}
@@ -69,8 +74,7 @@ func ReplaceSerial(ctx *sql.Context, a *analyzer.Analyzer, node sql.Node, scope 
 					seqIndex := 1
 					for ; seqIndex <= 100; seqIndex++ {
 						sequenceName = fmt.Sprintf("%s%d", baseSequenceName, seqIndex)
-						// TODO: figure out what the schema should be here
-						relationType, err = core.GetRelationType(ctx, "", baseSequenceName)
+						relationType, err = core.GetRelationType(ctx, schemaName, baseSequenceName)
 						if err != nil {
 							return nil, transform.NewTree, err
 						}
@@ -82,7 +86,9 @@ func ReplaceSerial(ctx *sql.Context, a *analyzer.Analyzer, node sql.Node, scope 
 						return nil, transform.NewTree, fmt.Errorf("SERIAL sequence name reached max iterations")
 					}
 				}
-				nextVal, ok, err := framework.GetFunction("nextval", pgexprs.NewStringLiteral(sequenceName))
+
+				seqName := doltdb.TableName{Name: sequenceName, Schema: schemaName}.String()
+				nextVal, ok, err := framework.GetFunction("nextval", pgexprs.NewStringLiteral(seqName))
 				if err != nil {
 					return nil, transform.NewTree, err
 				}
