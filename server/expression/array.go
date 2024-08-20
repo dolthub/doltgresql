@@ -132,7 +132,7 @@ func (array *Array) Type() sql.Type {
 
 // WithChildren implements the sql.Expression interface.
 func (array *Array) WithChildren(children ...sql.Expression) (sql.Expression, error) {
-	resultType, err := getTargetType(children...)
+	resultType, err := array.getTargetType(children...)
 	if err != nil {
 		return nil, err
 	}
@@ -155,9 +155,9 @@ func (array *Array) WithResolvedChildren(children []any) (any, error) {
 	return array.WithChildren(newExpressions...)
 }
 
-// getTargetType returns the evaluated type for this expression. Returns the "anyarray" type if the type combination is
-// invalid.
-func getTargetType(children ...sql.Expression) (pgtypes.DoltgresArrayType, error) {
+// getTargetType returns the evaluated type for this expression.
+// Returns the "anyarray" type if the type combination is invalid.
+func (array *Array) getTargetType(children ...sql.Expression) (pgtypes.DoltgresArrayType, error) {
 	var childrenTypes []pgtypes.DoltgresTypeBaseID
 	for _, child := range children {
 		if child != nil {
@@ -171,7 +171,7 @@ func getTargetType(children ...sql.Expression) (pgtypes.DoltgresArrayType, error
 	}
 	targetType, err := framework.FindCommonType(childrenTypes)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("ARRAY %s", err.Error())
 	}
 	return targetType.GetRepresentativeType().ToArrayType(), nil
 }

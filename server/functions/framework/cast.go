@@ -255,6 +255,7 @@ func getCast(mutex *sync.RWMutex,
 	}
 	// If there isn't a direct mapping, then we need to check if the types are array variants.
 	// As long as the base types are convertable, the array variants are also convertable.
+	// TODO: currently, unknown type is considered an array type, need to look into it.
 	if fromArrayType, ok := fromType.IsBaseIDArrayType(); ok && fromType != pgtypes.DoltgresTypeBaseID_Unknown {
 		if toArrayType, ok := toType.IsBaseIDArrayType(); ok {
 			if baseCast := outerFunc(fromArrayType.BaseType().BaseID(), toArrayType.BaseType().BaseID()); baseCast != nil {
