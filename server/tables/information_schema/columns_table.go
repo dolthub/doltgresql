@@ -375,8 +375,8 @@ func getCharAndCollNamesAndCharMaxAndOctetLens(ctx *sql.Context, colType sql.Typ
 		if t.IsUnbounded() {
 			charOctetLen = int32(maxCharacterOctetLength)
 		} else {
-			charOctetLen = int32(t.Length) * 4
-			charMaxLen = int32(t.Length)
+			charOctetLen = int32(t.MaxChars) * 4
+			charMaxLen = int32(t.MaxChars)
 		}
 	case pgtypes.CharType:
 		if t.IsUnbounded() {

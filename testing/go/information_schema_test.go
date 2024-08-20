@@ -30,6 +30,24 @@ func TestInfoSchemaColumns(t *testing.T) {
 					},
 				},
 				{
+					Query: `SELECT 
+						columns.column_name, 
+						pg_catalog.col_description(('"' || table_catalog || '"."' || table_schema || '"."' || table_name || '"')::regclass::oid, ordinal_position) AS description, 
+						('"' || "udt_schema" || '"."' || "udt_name" || '"')::"regtype" AS "regtype", 
+						pg_catalog.format_type("col_attr"."atttypid", "col_attr"."atttypmod") AS "format_type" 
+						FROM "information_schema"."columns" 
+						LEFT JOIN "pg_catalog"."pg_attribute" AS "col_attr" 
+						ON "col_attr"."attname" = "columns"."column_name" AND "col_attr"."attrelid" = ( 
+							SELECT "cls"."oid" FROM "pg_catalog"."pg_class" AS "cls" 
+							LEFT JOIN "pg_catalog"."pg_namespace" AS "ns" ON "ns"."oid" = "cls"."relnamespace" 
+							WHERE "cls"."relname" = "columns"."table_name" AND "ns"."nspname" = "columns"."table_schema" 
+						) WHERE ("table_schema" = 'public' AND "table_name" = 'test_table');`,
+					Expected: []sql.Row{
+						{"id", "", "integer", "integer"},
+						{"col1", "", "character varying", "character varying"},
+					},
+				},
+				{
 					Query:    `CREATE SCHEMA test_schema;`,
 					Expected: []sql.Row{},
 				},

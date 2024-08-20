@@ -94,8 +94,6 @@ var defaultSkippedQueries = []string{
 	// unsupported doltgres syntax
 	"WITH",
 	"OVER",
-	// subqueries are broken, breaks with an index out of bounds error
-	"(SELECT",
 	// string functions are broken due to incompatible types
 	"HEX(",
 	"TO_BASE64(",
@@ -144,15 +142,13 @@ func (d *DoltgresHarness) NewEngine(t *testing.T) (enginetest.QueryEngine, error
 
 var skippedSetupWords = []string{
 	"auto_increment",
-	"bigtable",           // "ERROR: blob/text column 't' used in key specification without a key length"
-	"typestable",         // lots of work to do
-	"datetime_table",     // invalid timestamp format
-	"people",             // ERROR: blob/text column 'first_name' used in key specification without a key length
-	"reservedWordsTable", // ERROR: blob/text column 'Timestamp' used in key specification without a key length
-	"foo.othertable",     // ERROR: database schema not found: foo (errno 1105)
-	"bus_routes",         // ERROR: blob/text column 'origin' used in key specification without a key length
-	"parts",              // ERROR: blob/text column 'part' used in key specification without a key length
-	"analyze table",      // unsupported syntax
+	"xy",
+	"y_idx",
+	"xy_hasnull_idx",
+	"typestable",     // lots of work to do
+	"datetime_table", // invalid timestamp format
+	"foo.othertable", // ERROR: database schema not found: foo (errno 1105)
+	"analyze table",  // unsupported syntax
 }
 
 var commentClause = regexp.MustCompile(`(?i)comment '.*?'`)

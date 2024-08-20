@@ -237,9 +237,8 @@ func (a *AnyExpr) WithChildren(children ...sql.Expression) (sql.Expression, erro
 		name:        a.name,
 	}
 
-	if _, ok := children[1].(*plan.Subquery); ok {
-		// TODO: Fix subqueries and return anySubqueryWithChildren(anyExpr, sub)
-		return nil, fmt.Errorf("%s does not support subqueries yet", a.name)
+	if sub, ok := children[1].(*plan.Subquery); ok {
+		return anySubqueryWithChildren(anyExpr, sub)
 	}
 
 	return anyExpressionWithChildren(anyExpr)
@@ -274,8 +273,8 @@ func (a *AnyExpr) DebugString() string {
 	return fmt.Sprintf("%s %s (%s)", sql.DebugString(a.leftExpr), a.name, sql.DebugString(a.rightExpr))
 }
 
-// AnySubqueryWithChildren resolves the comparison functions for a plan.Subquery.
-func AnySubqueryWithChildren(anyExpr *AnyExpr, sub *plan.Subquery) (sql.Expression, error) {
+// anySubqueryWithChildren resolves the comparison functions for a plan.Subquery.
+func anySubqueryWithChildren(anyExpr *AnyExpr, sub *plan.Subquery) (sql.Expression, error) {
 	schema := sub.Query.Schema()
 	subTypes := make([]pgtypes.DoltgresType, len(schema))
 	for i, col := range schema {

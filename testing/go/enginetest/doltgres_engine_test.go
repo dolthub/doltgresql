@@ -114,36 +114,16 @@ func TestSingleScript(t *testing.T) {
 
 	var scripts = []queries.ScriptTest{
 		{
-			Name: "test basic dolt procedures",
+			Name: "bigtable",
 			SetUpScript: []string{
-				"CREATE TABLE t1 (pk int primary key);",
-			},
-			Assertions: []queries.ScriptTestAssertion{
-				{
-					Query: "select dolt_add('.')",
-				},
-				{
-					Query: "select dolt_commit('-am', 'initial commit')",
-				},
-				{
-					Query: "select count(*) from dolt_log",
-					Expected: []sql.Row{
-						{2},
-					},
-				},
-				{
-					Query: "select message from dolt_log order by date desc limit 1",
-					Expected: []sql.Row{
-						{"initial commit"},
-					},
-				},
+				"SELECT * from mytable where i in (SELECT i FROM mytable);",
 			},
 		},
 	}
 
 	for _, script := range scripts {
 		harness := newDoltgresServerHarness(t)
-		harness.Setup(setup.MydbData)
+		harness.Setup(setup.MydbData, setup.MytableData)
 
 		engine, err := harness.NewEngine(t)
 		if err != nil {

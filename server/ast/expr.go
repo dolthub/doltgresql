@@ -155,12 +155,12 @@ func nodeExpr(node tree.Expr) (vitess.Expr, error) {
 		case tree.Div:
 			operator = framework.Operator_BinaryDivide
 		case tree.FloorDiv:
-			//TODO: replace with floor divide function
+			// TODO: replace with floor divide function
 			return nil, fmt.Errorf("the floor divide operator is not yet supported")
 		case tree.Mod:
 			operator = framework.Operator_BinaryMod
 		case tree.Pow:
-			//TODO: replace with power function
+			// TODO: replace with power function
 			return nil, fmt.Errorf("the power operator is not yet supported")
 		case tree.Concat:
 			operator = framework.Operator_BinaryConcatenate
@@ -324,10 +324,20 @@ func nodeExpr(node tree.Expr) (vitess.Expr, error) {
 				Children:   vitess.Exprs{left, right},
 			}, nil
 		case tree.In:
-			return vitess.InjectedExpr{
-				Expression: pgexprs.NewInTuple(),
-				Children:   vitess.Exprs{left, right},
-			}, nil
+			switch right := right.(type) {
+			case vitess.ValTuple:
+				return vitess.InjectedExpr{
+					Expression: pgexprs.NewInTuple(),
+					Children:   vitess.Exprs{left, right},
+				}, nil
+			case *vitess.Subquery:
+				return vitess.InjectedExpr{
+					Expression: pgexprs.NewInSubquery(),
+					Children:   vitess.Exprs{left, right},
+				}, nil
+			default:
+				return nil, fmt.Errorf("right side of IN expression is not a tuple or subquery, got %T", right)
+			}
 		case tree.NotIn:
 			innerExpr := vitess.InjectedExpr{
 				Expression: pgexprs.NewInTuple(),
@@ -409,7 +419,7 @@ func nodeExpr(node tree.Expr) (vitess.Expr, error) {
 			Operator: operator,
 			Left:     left,
 			Right:    right,
-			Escape:   nil, //TODO: is '\' the default in Postgres as well?
+			Escape:   nil, // TODO: is '\' the default in Postgres as well?
 		}, nil
 	case *tree.DArray:
 		return nil, fmt.Errorf("the statement is not yet supported")
@@ -480,10 +490,10 @@ func nodeExpr(node tree.Expr) (vitess.Expr, error) {
 	case *tree.IfErrExpr:
 		return nil, fmt.Errorf("IFERROR is not yet supported")
 	case *tree.IfExpr:
-		//TODO: probably should be the IF function
+		// TODO: probably should be the IF function
 		return nil, fmt.Errorf("IF is not yet supported")
 	case *tree.IndexedVar:
-		//TODO: figure out if I can delete this
+		// TODO: figure out if I can delete this
 		return nil, fmt.Errorf("this should probably be deleted (internal error, IndexedVar)")
 	case *tree.IndirectionExpr:
 		return nil, fmt.Errorf("subscripts are not yet supported")
@@ -622,7 +632,7 @@ func nodeExpr(node tree.Expr) (vitess.Expr, error) {
 		}
 		return retExpr, nil
 	case *tree.StrVal:
-		//TODO: determine what to do when node.WasScannedAsBytes() is true
+		// TODO: determine what to do when node.WasScannedAsBytes() is true
 		unknownLiteral := pgexprs.NewUnknownLiteral(node.RawString())
 		return vitess.InjectedExpr{
 			Expression: unknownLiteral,
@@ -651,7 +661,7 @@ func nodeExpr(node tree.Expr) (vitess.Expr, error) {
 		}
 		var operator framework.Operator
 		switch node.Operator {
-		//TODO: need to add UnaryPlus, it's like a no-op but Postgres actually implements it and it affects coercion
+		// TODO: need to add UnaryPlus, it's like a no-op but Postgres actually implements it and it affects coercion
 		case tree.UnaryMinus:
 			operator = framework.Operator_UnaryMinus
 		case tree.UnaryComplement:
@@ -660,13 +670,13 @@ func nodeExpr(node tree.Expr) (vitess.Expr, error) {
 				Expr:     expr,
 			}, nil
 		case tree.UnarySqrt:
-			//TODO: replace with a function
+			// TODO: replace with a function
 			return nil, fmt.Errorf("square root operator is not yet supported")
 		case tree.UnaryCbrt:
-			//TODO: replace with a function
+			// TODO: replace with a function
 			return nil, fmt.Errorf("cube root operator is not yet supported")
 		case tree.UnaryAbsolute:
-			//TODO: replace with a function
+			// TODO: replace with a function
 			return nil, fmt.Errorf("absolute operator is not yet supported")
 		default:
 			return nil, fmt.Errorf("the unary operator used is not yet supported")

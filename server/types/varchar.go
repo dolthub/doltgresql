@@ -41,16 +41,17 @@ const (
 )
 
 // VarChar is a varchar that has an unbounded length.
-var VarChar = VarCharType{Length: stringUnbounded}
+var VarChar = VarCharType{MaxChars: stringUnbounded}
 
 // VarCharType is the extended type implementation of the PostgreSQL varchar.
 type VarCharType struct {
-	// Length represents the maximum number of characters that the type may hold.
+	// MaxChars represents the maximum number of characters that the type may hold.
 	// When this is zero, we treat it as completely unbounded (which is still limited by the field size limit).
-	Length uint32
+	MaxChars uint32
 }
 
 var _ DoltgresType = VarCharType{}
+var _ sql.StringType = VarCharType{}
 
 // Alignment implements the DoltgresType interface.
 func (b VarCharType) Alignment() TypeAlignment {
@@ -70,6 +71,16 @@ func (b VarCharType) BaseName() string {
 // Category implements the DoltgresType interface.
 func (b VarCharType) Category() TypeCategory {
 	return TypeCategory_StringTypes
+}
+
+// CharacterSet implements the sql.StringType interface.
+func (b VarCharType) CharacterSet() sql.CharacterSetID {
+	return sql.CharacterSet_binary // TODO
+}
+
+// Collation implements the sql.StringType interface.
+func (b VarCharType) Collation() sql.CollationID {
+	return sql.Collation_Default // TODO
 }
 
 // CollationCoercibility implements the DoltgresType interface.
@@ -149,8 +160,8 @@ func (b VarCharType) IoInput(ctx *sql.Context, input string) (any, error) {
 	if b.IsUnbounded() {
 		return input, nil
 	}
-	input, runeLength := truncateString(input, b.Length)
-	if runeLength > b.Length {
+	input, runeLength := truncateString(input, b.MaxChars)
+	if runeLength > b.MaxChars {
 		return input, fmt.Errorf("value too long for type %s", b.String())
 	} else {
 		return input, nil
@@ -166,7 +177,7 @@ func (b VarCharType) IoOutput(ctx *sql.Context, output any) (string, error) {
 	if b.IsUnbounded() {
 		return converted.(string), nil
 	}
-	str, _ := truncateString(converted.(string), b.Length)
+	str, _ := truncateString(converted.(string), b.MaxChars)
 	return str, nil
 }
 
@@ -177,12 +188,27 @@ func (b VarCharType) IsPreferredType() bool {
 
 // IsUnbounded implements the DoltgresType interface.
 func (b VarCharType) IsUnbounded() bool {
-	return b.Length == stringUnbounded
+	return b.MaxChars == stringUnbounded
+}
+
+// Length implements the sql.StringType interface.
+func (b VarCharType) Length() int64 {
+	return int64(b.MaxChars)
+}
+
+// MaxByteLength implements the sql.StringType interface.
+func (b VarCharType) MaxByteLength() int64 {
+	return b.Length() * 4 // TODO
+}
+
+// MaxCharacterLength implements the sql.StringType interface.
+func (b VarCharType) MaxCharacterLength() int64 {
+	return b.Length()
 }
 
 // MaxSerializedWidth implements the DoltgresType interface.
 func (b VarCharType) MaxSerializedWidth() types.ExtendedTypeSerializedWidth {
-	if b.Length != stringUnbounded && b.Length <= stringInline {
+	if b.MaxChars != stringUnbounded && b.MaxChars <= stringInline {
 		return types.ExtendedTypeSerializedWidth_64K
 	} else {
 		return types.ExtendedTypeSerializedWidth_Unbounded
@@ -191,10 +217,10 @@ func (b VarCharType) MaxSerializedWidth() types.ExtendedTypeSerializedWidth {
 
 // MaxTextResponseByteLength implements the DoltgresType interface.
 func (b VarCharType) MaxTextResponseByteLength(ctx *sql.Context) uint32 {
-	if b.Length == stringUnbounded {
+	if b.MaxChars == stringUnbounded {
 		return math.MaxUint32
 	} else {
-		return b.Length * 4
+		return b.MaxChars * 4
 	}
 }
 
@@ -234,10 +260,10 @@ func (b VarCharType) SQL(ctx *sql.Context, dest []byte, v any) (sqltypes.Value, 
 
 // String implements the DoltgresType interface.
 func (b VarCharType) String() string {
-	if b.Length == stringUnbounded {
+	if b.MaxChars == stringUnbounded {
 		return "varchar"
 	}
-	return fmt.Sprintf("varchar(%d)", b.Length)
+	return fmt.Sprintf("varchar(%d)", b.MaxChars)
 }
 
 // ToArrayType implements the DoltgresType interface.
@@ -247,7 +273,7 @@ func (b VarCharType) ToArrayType() DoltgresArrayType {
 
 // Type implements the DoltgresType interface.
 func (b VarCharType) Type() query.Type {
-	return sqltypes.Text
+	return sqltypes.VarChar
 }
 
 // ValueType implements the DoltgresType interface.
@@ -264,7 +290,7 @@ func (b VarCharType) Zero() any {
 func (b VarCharType) SerializeType() ([]byte, error) {
 	t := make([]byte, serializationIDHeaderSize+4)
 	copy(t, SerializationID_VarChar.ToByteSlice(0))
-	binary.LittleEndian.PutUint32(t[serializationIDHeaderSize:], b.Length)
+	binary.LittleEndian.PutUint32(t[serializationIDHeaderSize:], b.MaxChars)
 	return t, nil
 }
 
@@ -273,7 +299,7 @@ func (b VarCharType) deserializeType(version uint16, metadata []byte) (DoltgresT
 	switch version {
 	case 0:
 		return VarCharType{
-			Length: binary.LittleEndian.Uint32(metadata),
+			MaxChars: binary.LittleEndian.Uint32(metadata),
 		}, nil
 	default:
 		return nil, fmt.Errorf("version %d is not yet supported for %s", version, b.String())

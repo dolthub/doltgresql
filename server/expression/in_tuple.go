@@ -43,10 +43,7 @@ var _ expression.BinaryExpression = (*BinaryOperator)(nil)
 
 // NewInTuple returns a new *InTuple.
 func NewInTuple() *InTuple {
-	return &InTuple{
-		leftExpr:  nil,
-		rightExpr: nil,
-	}
+	return &InTuple{}
 }
 
 // Children implements the sql.Expression interface.

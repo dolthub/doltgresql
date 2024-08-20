@@ -392,6 +392,29 @@ var typesTests = []ScriptTest{
 		},
 	},
 	{
+		Name: "Character varying type as primary key",
+		SetUpScript: []string{
+			"CREATE TABLE t_varchar (id INTEGER, v1 CHARACTER VARYING(10) primary key);",
+			"INSERT INTO t_varchar VALUES (1, 'abcdefghij'), (2, 'klmnopqrst'), (3, '');",
+		},
+		Assertions: []ScriptTestAssertion{
+			{
+				Query: "SELECT * FROM t_varchar ORDER BY id;",
+				Expected: []sql.Row{
+					{1, "abcdefghij"},
+					{2, "klmnopqrst"},
+					{3, ""},
+				},
+			},
+			{
+				Query: "SELECT true::character varying(10), false::character varying(10);",
+				Expected: []sql.Row{
+					{"true", "false"},
+				},
+			},
+		},
+	},
+	{
 		Name: "Character varying array type, with length",
 		SetUpScript: []string{
 			"CREATE TABLE t_varchar1 (v1 CHARACTER VARYING[]);",
@@ -430,6 +453,24 @@ var typesTests = []ScriptTest{
 		Assertions: []ScriptTestAssertion{
 			{
 				Query: "SELECT * FROM t_varchar ORDER BY id;",
+				Expected: []sql.Row{
+					{1, "abcdefghij"},
+					{2, "klmnopqrst"},
+				},
+			},
+		},
+	},
+	{
+		Name: "Character varying type, no length, as primary key",
+		Skip: true, // panic
+		SetUpScript: []string{
+			"CREATE TABLE t_varchar (id INTEGER, v1 CHARACTER VARYING primary key);",
+			"INSERT INTO t_varchar VALUES (1, 'abcdefghij'), (2, 'klmnopqrst');",
+		},
+		Assertions: []ScriptTestAssertion{
+			{
+				Query: "SELECT * FROM t_varchar ORDER BY id;",
+				Skip:  true, // missing the second row
 				Expected: []sql.Row{
 					{1, "abcdefghij"},
 					{2, "klmnopqrst"},
@@ -1671,6 +1712,26 @@ var typesTests = []ScriptTest{
 				Expected: []sql.Row{
 					{"testing"},
 				},
+			},
+			{
+				Query: `SELECT 'public.testing'::regclass;`,
+				Expected: []sql.Row{
+					{"testing"},
+				},
+			},
+			{
+				Query: `SELECT 'postgres.public.testing'::regclass;`,
+				Expected: []sql.Row{
+					{"testing"},
+				},
+			},
+			{
+				Query:       `SELECT 'doltgres.public.testing'::regclass;`,
+				ExpectedErr: "does not exist",
+			},
+			{
+				Query:       `SELECT 'doesnotexist.public.testing'::regclass;`,
+				ExpectedErr: "database not found",
 			},
 			{
 				Query: `SELECT 'testview'::regclass;`,
