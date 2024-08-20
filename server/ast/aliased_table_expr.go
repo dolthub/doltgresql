@@ -61,7 +61,27 @@ func nodeAliasedTableExpr(node *tree.AliasedTableExpr) (*vitess.AliasedTableExpr
 			Select: selectStmt,
 		}
 
-		// TODO: make sure that this actually works
+		if len(node.As.Cols) > 0 {
+			columns := make([]vitess.ColIdent, len(node.As.Cols))
+			for i := range node.As.Cols {
+				columns[i] = vitess.NewColIdent(string(node.As.Cols[i]))
+			}
+			subquery.Columns = columns
+		}
+		aliasExpr = subquery
+	case *tree.RowsFromExpr:
+		tableExpr, err := nodeTableExpr(expr)
+		if err != nil {
+			return nil, err
+		}
+
+		// TODO: this should be represented as a table function more directly
+		subquery := &vitess.Subquery{
+			Select: &vitess.Select{
+				From: vitess.TableExprs{tableExpr},
+			},
+		}
+
 		if len(node.As.Cols) > 0 {
 			columns := make([]vitess.ColIdent, len(node.As.Cols))
 			for i := range node.As.Cols {
