@@ -64,7 +64,6 @@ func FindCommonType(types []pgtypes.DoltgresTypeBaseID) (pgtypes.DoltgresTypeBas
 			candidateType = typBaseID
 			if candidateType.GetRepresentativeType().IsPreferredType() {
 				preferredTypeFound = true
-				return candidateType, nil
 			}
 		}
 	}
