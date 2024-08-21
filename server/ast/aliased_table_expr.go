@@ -38,17 +38,29 @@ func nodeAliasedTableExpr(node *tree.AliasedTableExpr) (*vitess.AliasedTableExpr
 		if err != nil {
 			return nil, err
 		}
-	default:
+	case *tree.Subquery:
 		tableExpr, err := nodeTableExpr(expr)
 		if err != nil {
 			return nil, err
 		}
-		subquery := &vitess.Subquery{
-			Select: &vitess.Select{
-				From: vitess.TableExprs{tableExpr},
-			},
+
+		ate, ok := tableExpr.(*vitess.AliasedTableExpr)
+		if !ok {
+			return nil, fmt.Errorf("expected *vitess.AliasedTableExpr, found %T", tableExpr)
 		}
-		// TODO: make sure that this actually works
+
+		var selectStmt vitess.SelectStatement
+		switch ate.Expr.(type) {
+		case *vitess.Subquery:
+			selectStmt = ate.Expr.(*vitess.Subquery).Select
+		default:
+			return nil, fmt.Errorf("unhandled subquery table expression: `%T`", tableExpr)
+		}
+
+		subquery := &vitess.Subquery{
+			Select: selectStmt,
+		}
+
 		if len(node.As.Cols) > 0 {
 			columns := make([]vitess.ColIdent, len(node.As.Cols))
 			for i := range node.As.Cols {
@@ -57,6 +69,29 @@ func nodeAliasedTableExpr(node *tree.AliasedTableExpr) (*vitess.AliasedTableExpr
 			subquery.Columns = columns
 		}
 		aliasExpr = subquery
+	case *tree.RowsFromExpr:
+		tableExpr, err := nodeTableExpr(expr)
+		if err != nil {
+			return nil, err
+		}
+
+		// TODO: this should be represented as a table function more directly
+		subquery := &vitess.Subquery{
+			Select: &vitess.Select{
+				From: vitess.TableExprs{tableExpr},
+			},
+		}
+
+		if len(node.As.Cols) > 0 {
+			columns := make([]vitess.ColIdent, len(node.As.Cols))
+			for i := range node.As.Cols {
+				columns[i] = vitess.NewColIdent(string(node.As.Cols[i]))
+			}
+			subquery.Columns = columns
+		}
+		aliasExpr = subquery
+	default:
+		return nil, fmt.Errorf("unhandled table expression: `%T`", expr)
 	}
 	alias := string(node.As.Alias)
 	return &vitess.AliasedTableExpr{
