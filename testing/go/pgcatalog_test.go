@@ -38,8 +38,16 @@ func TestPgAm(t *testing.T) {
 			Name: "pg_am",
 			Assertions: []ScriptTestAssertion{
 				{
-					Query:    `SELECT * FROM "pg_catalog"."pg_am";`,
-					Expected: []sql.Row{},
+					Query: `SELECT * FROM "pg_catalog"."pg_am";`,
+					Expected: []sql.Row{
+						{2, "heap", "heap_tableam_handler", "t"},
+						{403, "btree", "bthandler", "i"},
+						{405, "hash", "hashhandler", "i"},
+						{783, "gist", "gisthandler", "i"},
+						{2742, "gin", "ginhandler", "i"},
+						{4000, "spgist", "spghandler", "i"},
+						{3580, "brin", "brinhandler", "i"},
+					},
 				},
 				{ // Different cases and quoted, so it fails
 					Query:       `SELECT * FROM "PG_catalog"."pg_am";`,
@@ -51,7 +59,7 @@ func TestPgAm(t *testing.T) {
 				},
 				{ // Different cases but non-quoted, so it works
 					Query:    "SELECT amname FROM PG_catalog.pg_AM ORDER BY amname;",
-					Expected: []sql.Row{},
+					Expected: []sql.Row{{"brin"}, {"btree"}, {"gin"}, {"gist"}, {"hash"}, {"heap"}, {"spgist"}},
 				},
 			},
 		},
@@ -401,14 +409,14 @@ func TestPgClass(t *testing.T) {
 				{
 					Query: `SELECT * FROM "pg_catalog"."pg_class" WHERE relname='testing';`,
 					Expected: []sql.Row{
-						{2686451712, "testing", 1879048194, 0, 0, 0, 0, 0, 0, 0, float32(0), 0, 0, "t", "f", "p", "r", 0, 0, "f", "f", "f", "f", "f", "t", "d", "f", 0, 0, 0, nil, nil, nil},
+						{2686451712, "testing", 1879048194, 0, 0, 0, 2, 0, 0, 0, float32(0), 0, 0, "t", "f", "p", "r", 0, 0, "f", "f", "f", "f", "f", "t", "d", "f", 0, 0, 0, nil, nil, nil},
 					},
 				},
 				// Index
 				{
 					Query: `SELECT * FROM "pg_catalog"."pg_class" WHERE relname='testing_pkey';`,
 					Expected: []sql.Row{
-						{1612709888, "testing_pkey", 1879048194, 0, 0, 0, 0, 0, 0, 0, float32(0), 0, 0, "f", "f", "p", "i", 0, 0, "f", "f", "f", "f", "f", "t", "d", "f", 0, 0, 0, nil, nil, nil},
+						{1612709888, "testing_pkey", 1879048194, 0, 0, 0, 403, 0, 0, 0, float32(0), 0, 0, "f", "f", "p", "i", 0, 0, "f", "f", "f", "f", "f", "t", "d", "f", 0, 0, 0, nil, nil, nil},
 					},
 				},
 				// View
@@ -477,13 +485,13 @@ func TestPgClass(t *testing.T) {
 				{
 					Query: `SELECT * FROM "pg_catalog"."pg_class" WHERE oid='testschema.testing'::regclass;`,
 					Expected: []sql.Row{
-						{2686451712, "testing", 1879048194, 0, 0, 0, 0, 0, 0, 0, float32(0), 0, 0, "t", "f", "p", "r", 0, 0, "f", "f", "f", "f", "f", "t", "d", "f", 0, 0, 0, nil, nil, nil},
+						{2686451712, "testing", 1879048194, 0, 0, 0, 2, 0, 0, 0, float32(0), 0, 0, "t", "f", "p", "r", 0, 0, "f", "f", "f", "f", "f", "t", "d", "f", 0, 0, 0, nil, nil, nil},
 					},
 				},
 				{
 					Query: `SELECT * FROM "pg_catalog"."pg_class" WHERE oid='testschema.testing_pkey'::regclass;`,
 					Expected: []sql.Row{
-						{1612709888, "testing_pkey", 1879048194, 0, 0, 0, 0, 0, 0, 0, float32(0), 0, 0, "f", "f", "p", "i", 0, 0, "f", "f", "f", "f", "f", "t", "d", "f", 0, 0, 0, nil, nil, nil},
+						{1612709888, "testing_pkey", 1879048194, 0, 0, 0, 403, 0, 0, 0, float32(0), 0, 0, "f", "f", "p", "i", 0, 0, "f", "f", "f", "f", "f", "t", "d", "f", 0, 0, 0, nil, nil, nil},
 					},
 				},
 				{
@@ -491,6 +499,20 @@ func TestPgClass(t *testing.T) {
 					Expected: []sql.Row{
 						{2954887168, "testview", 1879048194, 0, 0, 0, 0, 0, 0, 0, float32(0), 0, 0, "f", "f", "p", "v", 0, 0, "f", "f", "f", "f", "f", "t", "d", "f", 0, 0, 0, nil, nil, nil},
 					},
+				},
+			},
+		},
+		{
+			Name: "pg_class joined with other pg_catalog tables to retrieve indexes",
+			SetUpScript: []string{
+				`CREATE TABLE foo (a INTEGER NOT NULL PRIMARY KEY, b INTEGER NULL);`,
+				`CREATE INDEX ON foo ( b ASC ) NULLS NOT DISTINCT;`,
+				`CREATE INDEX ON foo ( b ASC , a DESC ) NULLS NOT DISTINCT;`,
+			},
+			Assertions: []ScriptTestAssertion{
+				{
+					Query:    `SELECT ix.relname AS index_name, upper(am.amname) AS index_algorithm FROM pg_index i JOIN pg_class t ON t.oid = i.indrelid JOIN pg_class ix ON ix.oid = i.indexrelid JOIN pg_namespace n ON t.relnamespace = n.oid JOIN pg_am AS am ON ix.relam = am.oid WHERE t.relname = 'foo' AND n.nspname = 'public';`,
+					Expected: []sql.Row{{"foo_pkey", "BTREE"}, {"b", "BTREE"}, {"b_2", "BTREE"}}, // TODO: should follow Postgres index naming convention: "foo_pkey", "foo_b_idx", "foo_b_a_idx"
 				},
 			},
 		},

@@ -23,27 +23,27 @@ import (
 
 // initRpad registers the functions to the catalog.
 func initRpad() {
-	framework.RegisterFunction(rpad_varchar_int32)
-	framework.RegisterFunction(rpad_varchar_int32_varchar)
+	framework.RegisterFunction(rpad_text_int32)
+	framework.RegisterFunction(rpad_text_int32_text)
 }
 
-// rpad_varchar_int32 represents the PostgreSQL function of the same name, taking the same parameters.
-var rpad_varchar_int32 = framework.Function2{
+// rpad_text_int32 represents the PostgreSQL function of the same name, taking the same parameters.
+var rpad_text_int32 = framework.Function2{
 	Name:       "rpad",
-	Return:     pgtypes.VarChar,
-	Parameters: [2]pgtypes.DoltgresType{pgtypes.VarChar, pgtypes.Int32},
+	Return:     pgtypes.Text,
+	Parameters: [2]pgtypes.DoltgresType{pgtypes.Text, pgtypes.Int32},
 	Strict:     true,
 	Callable: func(ctx *sql.Context, _ [3]pgtypes.DoltgresType, val1 any, val2 any) (any, error) {
 		var unusedTypes [4]pgtypes.DoltgresType
-		return rpad_varchar_int32_varchar.Callable(ctx, unusedTypes, val1, val2, " ")
+		return rpad_text_int32_text.Callable(ctx, unusedTypes, val1, val2, " ")
 	},
 }
 
-// rpad_varchar_int32_varchar represents the PostgreSQL function of the same name, taking the same parameters.
-var rpad_varchar_int32_varchar = framework.Function3{
+// rpad_text_int32_text represents the PostgreSQL function of the same name, taking the same parameters.
+var rpad_text_int32_text = framework.Function3{
 	Name:       "rpad",
-	Return:     pgtypes.VarChar,
-	Parameters: [3]pgtypes.DoltgresType{pgtypes.VarChar, pgtypes.Int32, pgtypes.VarChar},
+	Return:     pgtypes.Text,
+	Parameters: [3]pgtypes.DoltgresType{pgtypes.Text, pgtypes.Int32, pgtypes.Text},
 	Strict:     true,
 	Callable: func(ctx *sql.Context, _ [4]pgtypes.DoltgresType, str any, length any, fill any) (any, error) {
 		if length.(int32) <= 0 {

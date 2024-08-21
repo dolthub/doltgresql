@@ -25,14 +25,14 @@ import (
 
 // initRepeat registers the functions to the catalog.
 func initRepeat() {
-	framework.RegisterFunction(repeat_varchar_int32)
+	framework.RegisterFunction(repeat_text_int32)
 }
 
-// repeat_varchar_int32 represents the PostgreSQL function of the same name, taking the same parameters.
-var repeat_varchar_int32 = framework.Function2{
+// repeat_text_int32 represents the PostgreSQL function of the same name, taking the same parameters.
+var repeat_text_int32 = framework.Function2{
 	Name:       "repeat",
-	Return:     pgtypes.VarChar,
-	Parameters: [2]pgtypes.DoltgresType{pgtypes.VarChar, pgtypes.Int32},
+	Return:     pgtypes.Text,
+	Parameters: [2]pgtypes.DoltgresType{pgtypes.Text, pgtypes.Int32},
 	Strict:     true,
 	Callable: func(ctx *sql.Context, _ [3]pgtypes.DoltgresType, str any, num any) (any, error) {
 		return strings.Repeat(str.(string), int(num.(int32))), nil

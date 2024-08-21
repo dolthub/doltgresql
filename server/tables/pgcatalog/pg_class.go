@@ -182,6 +182,14 @@ func (iter *pgClassRowIter) Next(ctx *sql.Context) (sql.Row, error) {
 	iter.idx++
 	class := iter.classes[iter.idx-1]
 
+	// TODO: this is temporary definition of 'relam' field
+	var relam = uint32(0)
+	if class.kind == "i" {
+		relam = 403
+	} else if class.kind == "r" || class.kind == "t" {
+		relam = 2
+	}
+
 	// TODO: Fill in the rest of the pg_class columns
 	return sql.Row{
 		class.oid,        // oid
@@ -190,7 +198,7 @@ func (iter *pgClassRowIter) Next(ctx *sql.Context) (sql.Row, error) {
 		uint32(0),        // reltype
 		uint32(0),        // reloftype
 		uint32(0),        // relowner
-		uint32(0),        // relam
+		relam,            // relam
 		uint32(0),        // relfilenode
 		uint32(0),        // reltablespace
 		int32(0),         // relpages

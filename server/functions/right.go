@@ -23,14 +23,14 @@ import (
 
 // initRight registers the functions to the catalog.
 func initRight() {
-	framework.RegisterFunction(right_varchar_int32)
+	framework.RegisterFunction(right_text_int32)
 }
 
-// right_varchar_int32 represents the PostgreSQL function of the same name, taking the same parameters.
-var right_varchar_int32 = framework.Function2{
+// right_text_int32 represents the PostgreSQL function of the same name, taking the same parameters.
+var right_text_int32 = framework.Function2{
 	Name:       "right",
-	Return:     pgtypes.VarChar,
-	Parameters: [2]pgtypes.DoltgresType{pgtypes.VarChar, pgtypes.Int32},
+	Return:     pgtypes.Text,
+	Parameters: [2]pgtypes.DoltgresType{pgtypes.Text, pgtypes.Int32},
 	Strict:     true,
 	Callable: func(ctx *sql.Context, _ [3]pgtypes.DoltgresType, strInt any, nInt any) (any, error) {
 		str := strInt.(string)

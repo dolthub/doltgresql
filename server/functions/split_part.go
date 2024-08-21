@@ -27,14 +27,14 @@ import (
 
 // initSplitPart registers the functions to the catalog.
 func initSplitPart() {
-	framework.RegisterFunction(split_part_varchar_varchar_int32)
+	framework.RegisterFunction(split_part_text_text_int32)
 }
 
-// split_part_varchar_varchar_int32 represents the PostgreSQL function of the same name, taking the same parameters.
-var split_part_varchar_varchar_int32 = framework.Function3{
+// split_part_text_text_int32 represents the PostgreSQL function of the same name, taking the same parameters.
+var split_part_text_text_int32 = framework.Function3{
 	Name:       "split_part",
-	Return:     pgtypes.VarChar,
-	Parameters: [3]pgtypes.DoltgresType{pgtypes.VarChar, pgtypes.VarChar, pgtypes.Int32},
+	Return:     pgtypes.Text,
+	Parameters: [3]pgtypes.DoltgresType{pgtypes.Text, pgtypes.Text, pgtypes.Int32},
 	Strict:     true,
 	Callable: func(ctx *sql.Context, _ [4]pgtypes.DoltgresType, str any, delimiter any, n any) (any, error) {
 		if n.(int32) == 0 {

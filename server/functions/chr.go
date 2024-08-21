@@ -32,7 +32,7 @@ func initChr() {
 // chr_int32 represents the PostgreSQL function of the same name, taking the same parameters.
 var chr_int32 = framework.Function1{
 	Name:       "chr",
-	Return:     pgtypes.VarChar,
+	Return:     pgtypes.Text,
 	Parameters: [1]pgtypes.DoltgresType{pgtypes.Int32},
 	Strict:     true,
 	Callable: func(ctx *sql.Context, _ [2]pgtypes.DoltgresType, val1Interface any) (any, error) {

@@ -43,8 +43,10 @@ func (p PgAmHandler) Name() string {
 
 // RowIter implements the interface tables.Handler.
 func (p PgAmHandler) RowIter(ctx *sql.Context) (sql.RowIter, error) {
-	// TODO: Implement pg_am row iter
-	return emptyRowIter()
+	return &pgAmRowIter{
+		ams: defaultPostgresAms,
+		idx: 0,
+	}, nil
 }
 
 // Schema implements the interface tables.Handler.
@@ -65,16 +67,47 @@ var pgAmSchema = sql.Schema{
 
 // pgAmRowIter is the sql.RowIter for the pg_am table.
 type pgAmRowIter struct {
+	ams []accessMethod
+	idx int
 }
 
 var _ sql.RowIter = (*pgAmRowIter)(nil)
 
 // Next implements the interface sql.RowIter.
 func (iter *pgAmRowIter) Next(ctx *sql.Context) (sql.Row, error) {
-	return nil, io.EOF
+	if iter.idx >= len(iter.ams) {
+		return nil, io.EOF
+	}
+	iter.idx++
+	am := iter.ams[iter.idx-1]
+
+	return sql.Row{
+		am.oid,     // oid
+		am.name,    // amname
+		am.handler, // amhandler
+		am.typ,     // amtype
+	}, nil
 }
 
 // Close implements the interface sql.RowIter.
 func (iter *pgAmRowIter) Close(ctx *sql.Context) error {
 	return nil
+}
+
+type accessMethod struct {
+	oid     uint32
+	name    string
+	handler string
+	typ     string
+}
+
+// defaultPostgresAms is the list of default access methods available in Postgres.
+var defaultPostgresAms = []accessMethod{
+	{oid: 2, name: "heap", handler: "heap_tableam_handler", typ: "t"},
+	{oid: 403, name: "btree", handler: "bthandler", typ: "i"},
+	{oid: 405, name: "hash", handler: "hashhandler", typ: "i"},
+	{oid: 783, name: "gist", handler: "gisthandler", typ: "i"},
+	{oid: 2742, name: "gin", handler: "ginhandler", typ: "i"},
+	{oid: 4000, name: "spgist", handler: "spghandler", typ: "i"},
+	{oid: 3580, name: "brin", handler: "brinhandler", typ: "i"},
 }
