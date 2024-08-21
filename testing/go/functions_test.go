@@ -420,13 +420,13 @@ func TestSystemInformationFunctions(t *testing.T) {
 					Query: `SELECT current_schema();`,
 					Cols:  []string{"\"current_schema\""},
 					Expected: []sql.Row{
-						{"postgres"},
+						{"public"},
 					},
 				},
 				{
 					Query: `SELECT current_schema();`,
 					Expected: []sql.Row{
-						{"postgres"},
+						{"public"},
 					},
 				},
 				{
@@ -444,7 +444,7 @@ func TestSystemInformationFunctions(t *testing.T) {
 					},
 				},
 				{
-					Query:    `SET SEARCH_PATH TO public;`,
+					Query:    `SET SEARCH_PATH TO public, test_schema;`,
 					Expected: []sql.Row{},
 				},
 				{
@@ -457,6 +457,16 @@ func TestSystemInformationFunctions(t *testing.T) {
 					Query: `SELECT current_schema;`,
 					Expected: []sql.Row{
 						{"public"},
+					},
+				},
+				{
+					Query:    `SET SEARCH_PATH TO test_schema, public;`,
+					Expected: []sql.Row{},
+				},
+				{
+					Query: `SELECT current_schema();`,
+					Expected: []sql.Row{
+						{"test_schema"},
 					},
 				},
 				// TODO: Implement table function for current_schema
@@ -483,13 +493,13 @@ func TestSystemInformationFunctions(t *testing.T) {
 					Query: `SELECT current_schemas(true);`,
 					Cols:  []string{"current_schemas"},
 					Expected: []sql.Row{
-						{"{pg_catalog,postgres,public}"},
+						{"{pg_catalog,public}"},
 					},
 				},
 				{ // TODO: Not sure why Postgres does not display "$user" here
 					Query: `SELECT current_schemas(false);`,
 					Expected: []sql.Row{
-						{"{postgres,public}"},
+						{"{public}"},
 					},
 				},
 				{
