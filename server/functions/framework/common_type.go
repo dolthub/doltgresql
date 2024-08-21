@@ -56,15 +56,17 @@ func FindCommonType(types []pgtypes.DoltgresTypeBaseID) (pgtypes.DoltgresTypeBas
 	for _, typBaseID := range types {
 		if typBaseID == pgtypes.DoltgresTypeBaseID_Unknown {
 			continue
-		} else if GetImplicitCast(candidateType, typBaseID) == nil {
+		} else if GetImplicitCast(typBaseID, candidateType) != nil {
 			continue
-		} else if preferredTypeFound && GetImplicitCast(typBaseID, candidateType) == nil {
-			return 0, fmt.Errorf("cannot find implicit cast function from %s to %s", typBaseID.String(), candidateType.String())
+		} else if GetImplicitCast(candidateType, typBaseID) == nil {
+			return 0, fmt.Errorf("cannot find implicit cast function from %s to %s", candidateType.String(), typBaseID.String())
 		} else if !preferredTypeFound {
-			candidateType = typBaseID
 			if candidateType.GetRepresentativeType().IsPreferredType() {
+				candidateType = typBaseID
 				preferredTypeFound = true
 			}
+		} else {
+			return 0, fmt.Errorf("found another preferred candidate type")
 		}
 	}
 	return candidateType, nil
