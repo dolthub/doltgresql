@@ -21,24 +21,20 @@ import (
 	pgtypes "github.com/dolthub/doltgresql/server/types"
 )
 
-// initArrayAppend registers the functions to the catalog.
-func initArrayAppend() {
-	framework.RegisterFunction(array_append_anyarray_anyelement)
+// initPgIndexesSize registers the functions to the catalog.
+func initPgIndexesSize() {
+	framework.RegisterFunction(pg_indexes_size_regclass)
 }
 
-// array_append_anyarray_anyelement represents the PostgreSQL function of the same name, taking the same parameters.
-var array_append_anyarray_anyelement = framework.Function2{
-	Name:       "array_append",
-	Return:     pgtypes.AnyArray,
-	Parameters: [2]pgtypes.DoltgresType{pgtypes.AnyArray, pgtypes.AnyElement},
-	Callable: func(ctx *sql.Context, _ [3]pgtypes.DoltgresType, val1 any, val2 any) (any, error) {
-		if val1 == nil {
-			return []any{val2}, nil
-		}
-		array := val1.([]any)
-		returnArray := make([]any, len(array)+1)
-		copy(returnArray, array)
-		returnArray[len(returnArray)-1] = val2
-		return returnArray, nil
+// pg_indexes_size_regclass represents the PostgreSQL system administration functions.
+var pg_indexes_size_regclass = framework.Function1{
+	Name:               "pg_indexes_size",
+	Return:             pgtypes.Int64,
+	Parameters:         [1]pgtypes.DoltgresType{pgtypes.Regclass},
+	IsNonDeterministic: true,
+	Strict:             true,
+	Callable: func(ctx *sql.Context, _ [2]pgtypes.DoltgresType, val1 any) (any, error) {
+		// TODO: Total disk space used by indexes attached to the specified table
+		return 0, nil
 	},
 }

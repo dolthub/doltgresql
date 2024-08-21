@@ -633,9 +633,9 @@ func nodeExpr(node tree.Expr) (vitess.Expr, error) {
 		return retExpr, nil
 	case *tree.StrVal:
 		// TODO: determine what to do when node.WasScannedAsBytes() is true
-		stringLiteral := pgexprs.NewStringLiteral(node.RawString())
+		unknownLiteral := pgexprs.NewUnknownLiteral(node.RawString())
 		return vitess.InjectedExpr{
-			Expression: stringLiteral,
+			Expression: unknownLiteral,
 		}, nil
 	case *tree.Subquery:
 		return nodeSubquery(node)

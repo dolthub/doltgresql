@@ -19,7 +19,6 @@ import (
 	"strings"
 
 	"github.com/dolthub/go-mysql-server/sql"
-	"github.com/dolthub/vitess/go/vt/proto/query"
 	vitess "github.com/dolthub/vitess/go/vt/sqlparser"
 
 	"github.com/dolthub/doltgresql/server/functions/framework"
@@ -56,27 +55,35 @@ func (array *Array) Children() []sql.Expression {
 
 // Eval implements the sql.Expression interface.
 func (array *Array) Eval(ctx *sql.Context, row sql.Row) (any, error) {
-	resultArrayType := array.getTargetType()
-	if resultArrayType.Equals(pgtypes.AnyArray) {
-		// TODO: error should look like "ARRAY types XXXX and YYYY cannot be matched", need to display conflicting types
-		return nil, fmt.Errorf("ARRAY types cannot be matched")
-	}
+	resultTyp := array.coercedType.BaseType()
 	values := make([]any, len(array.children))
 	for i, expr := range array.children {
 		val, err := expr.Eval(ctx, row)
 		if err != nil {
 			return nil, err
 		}
-		values[i] = val
-	}
-	// We always cast the elements, as there may be parameter restrictions in place
-	baseResultType := resultArrayType.BaseType()
-	var err error
-	for i := range values {
-		if values[i] == nil {
+
+		if val == nil {
+			values[i] = val
 			continue
 		}
-		values[i], err = array.handleEvaluationCast(ctx, baseResultType, array.children[i].Type(), &values[i])
+
+		doltgresType, ok := expr.Type().(pgtypes.DoltgresType)
+		if !ok {
+			return nil, fmt.Errorf("expected DoltgresType, but got %s", expr.Type().String())
+		}
+
+		// We always cast the element, as there may be parameter restrictions in place
+		castFunc := framework.GetImplicitCast(doltgresType.BaseID(), resultTyp.BaseID())
+		if castFunc == nil {
+			if doltgresType.BaseID() == pgtypes.DoltgresTypeBaseID_Unknown {
+				castFunc = framework.CastFromUnknownType
+			} else {
+				return nil, fmt.Errorf("cannot find cast function from %s to %s", doltgresType.String(), resultTyp.String())
+			}
+		}
+
+		values[i], err = castFunc(ctx, val, resultTyp)
 		if err != nil {
 			return nil, err
 		}
@@ -120,14 +127,18 @@ func (array *Array) String() string {
 
 // Type implements the sql.Expression interface.
 func (array *Array) Type() sql.Type {
-	return array.getTargetType()
+	return array.coercedType
 }
 
 // WithChildren implements the sql.Expression interface.
 func (array *Array) WithChildren(children ...sql.Expression) (sql.Expression, error) {
+	resultType, err := array.getTargetType(children...)
+	if err != nil {
+		return nil, err
+	}
 	return &Array{
 		children:    children,
-		coercedType: array.coercedType,
+		coercedType: resultType,
 	}, nil
 }
 
@@ -141,169 +152,26 @@ func (array *Array) WithResolvedChildren(children []any) (any, error) {
 		}
 		newExpressions[i] = resolvedExpression
 	}
-	return &Array{
-		children:    newExpressions,
-		coercedType: array.coercedType,
-	}, nil
+	return array.WithChildren(newExpressions...)
 }
 
-// castable returns the largest type if both types are automatically castable to each other. Returns false if neither
-// type allows for automatic casting.
-func (array *Array) castable(t1, t2 pgtypes.DoltgresType) (pgtypes.DoltgresType, bool) {
-	t1BaseID := t1.BaseID()
-	t2BaseID := t2.BaseID()
-	// We set these to different negative numbers so that the default matching behavior will fail, since it checks for
-	// the equivalence of these two numbers. This is in an array so that we can simply loop over the logic.
-	generalTyping := [2]int16{-1, -2}
-	// Check for castable groups specific to the ARRAY expression. We'll assign integers to broadly represent each group.
-	for i, baseID := range []pgtypes.DoltgresTypeBaseID{t1BaseID, t2BaseID} {
-		switch baseID {
-		// TODO: fill out the remaining convertable groups
-		case pgtypes.DoltgresTypeBaseID_Float32, pgtypes.DoltgresTypeBaseID_Float64, pgtypes.DoltgresTypeBaseID_Int16,
-			pgtypes.DoltgresTypeBaseID_Int32, pgtypes.DoltgresTypeBaseID_Int64, pgtypes.DoltgresTypeBaseID_Numeric:
-			generalTyping[i] = 1
-		}
-	}
-	// If the types are not in the same group, then we'll return false
-	if generalTyping[0] != generalTyping[1] {
-		return nil, false
-	}
-	// Check for each cast group
-	if generalTyping[0] == 1 {
-		if array.numberCastGroupPriority(t1BaseID) < array.numberCastGroupPriority(t2BaseID) {
-			return t1, true
-		} else {
-			return t2, true
-		}
-	}
-	return nil, false
-}
-
-// handleEvaluationCast handles the casts performed during evaluation. This is only called if casting is required.
-func (array *Array) handleEvaluationCast(ctx *sql.Context, baseResultType pgtypes.DoltgresType, paramSqlType sql.Type, val *any) (any, error) {
-	var paramType pgtypes.DoltgresType
-	if doltgresType, ok := paramSqlType.(pgtypes.DoltgresType); ok {
-		paramType = doltgresType
-	} else {
-		// TODO: we need to remove GMS types from all of our expressions so that we can remove this. For now, we have to
-		// handle all possible GMS types and make any conversions for types that are not supported by Postgres
-		switch paramType.Type() {
-		case query.Type_INT8:
-			*val = int16((*val).(int8))
-			paramType = pgtypes.Int16
-		case query.Type_INT16:
-			paramType = pgtypes.Int16
-		case query.Type_INT24, query.Type_INT32:
-			paramType = pgtypes.Int32
-		case query.Type_INT64:
-			paramType = pgtypes.Int64
-		case query.Type_UINT8:
-			*val = int64((*val).(uint8))
-			paramType = pgtypes.Int64
-		case query.Type_UINT16:
-			*val = int64((*val).(uint16))
-			paramType = pgtypes.Int64
-		case query.Type_UINT24, query.Type_UINT32:
-			*val = int64((*val).(uint32))
-			paramType = pgtypes.Int64
-		case query.Type_UINT64:
-			*val = int64((*val).(uint64))
-			paramType = pgtypes.Int64
-		case query.Type_YEAR:
-			paramType = pgtypes.Int16
-		case query.Type_FLOAT32:
-			paramType = pgtypes.Float32
-		case query.Type_FLOAT64:
-			paramType = pgtypes.Float64
-		case query.Type_DECIMAL:
-			paramType = pgtypes.Numeric
-		case query.Type_DATE, query.Type_DATETIME, query.Type_TIMESTAMP:
-			return nil, fmt.Errorf("need to add DoltgresType equivalents to DATETIME")
-		case query.Type_CHAR, query.Type_VARCHAR, query.Type_TEXT:
-			paramType = pgtypes.Text
-		case query.Type_ENUM:
-			paramType = pgtypes.Int16
-		case query.Type_SET:
-			paramType = pgtypes.Int64
-		case query.Type_NULL_TYPE:
-			paramType = pgtypes.Null
-		default:
-			return nil, fmt.Errorf("encountered an unknown GMS type")
-		}
-	}
-	castFunc := framework.GetImplicitCast(paramType.BaseID(), baseResultType.BaseID())
-	if castFunc == nil {
-		// This should never happen, but we'll check here just to be safe
-		resultType := array.getTargetType()
-		return nil, fmt.Errorf("cannot cast type %s to %s", resultType.BaseType().String(), paramType.String())
-	}
-	return castFunc(ctx, *val, baseResultType)
-}
-
-// isNullType returns whether the given type is a NULL type.
-func (array *Array) isNullType(t sql.Type) bool {
-	return t.Type() == query.Type_NULL_TYPE
-}
-
-// numberCastGroupPriority returns the priority for the given type belonging to the number group. The lower the value,
-// the higher the priority.
-func (array *Array) numberCastGroupPriority(t pgtypes.DoltgresTypeBaseID) int {
-	switch t {
-	case pgtypes.DoltgresTypeBaseID_Float64:
-		return 1
-	case pgtypes.DoltgresTypeBaseID_Float32:
-		return 2
-	case pgtypes.DoltgresTypeBaseID_Numeric:
-		return 3
-	case pgtypes.DoltgresTypeBaseID_Int64:
-		return 4
-	case pgtypes.DoltgresTypeBaseID_Int32:
-		return 5
-	case pgtypes.DoltgresTypeBaseID_Int16:
-		return 6
-	default:
-		return 7
-	}
-}
-
-// getTargetType returns the evaluated type for this expression. Returns the "anyarray" type if the type combination is
-// invalid.
-func (array *Array) getTargetType() pgtypes.DoltgresArrayType {
-	// TODO: figure out the conditions that result in this being set
-	if array.coercedType != nil {
-		return array.coercedType
-	}
-	var lastChildType pgtypes.DoltgresType
-	for _, child := range array.children {
+// getTargetType returns the evaluated type for this expression.
+// Returns the "anyarray" type if the type combination is invalid.
+func (array *Array) getTargetType(children ...sql.Expression) (pgtypes.DoltgresArrayType, error) {
+	var childrenTypes []pgtypes.DoltgresTypeBaseID
+	for _, child := range children {
 		if child != nil {
-			gmsChildType := child.Type()
-			// We ignore NULL values here since they do not affect the array's type
-			if array.isNullType(gmsChildType) {
-				continue
-			}
-			// Ensure that the type is a DoltgresType
-			childType, ok := gmsChildType.(pgtypes.DoltgresType)
+			childType, ok := child.Type().(pgtypes.DoltgresType)
 			if !ok {
 				// We use "anyarray" as the indeterminate/invalid type
-				return pgtypes.AnyArray
+				return pgtypes.AnyArray, nil
 			}
-			// Ensure that all of the types align to a common type
-			if lastChildType == nil {
-				lastChildType = childType
-			} else if !lastChildType.Equals(childType) {
-				if castableType, ok := array.castable(lastChildType, childType); ok {
-					lastChildType = castableType
-				} else {
-					lastChildType = nil
-					break
-				}
-			}
+			childrenTypes = append(childrenTypes, childType.BaseID())
 		}
 	}
-	// If this is not nil, then all types either match this type, or are automatically castable to this type
-	if lastChildType != nil {
-		return lastChildType.ToArrayType()
+	targetType, err := framework.FindCommonType(childrenTypes)
+	if err != nil {
+		return nil, fmt.Errorf("ARRAY %s", err.Error())
 	}
-	// We use "anyarray" as the indeterminate/invalid type
-	return pgtypes.AnyArray
+	return targetType.GetRepresentativeType().ToArrayType(), nil
 }

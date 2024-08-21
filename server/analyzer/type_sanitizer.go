@@ -147,15 +147,15 @@ func typeSanitizerLiterals(gmsLiteral *expression.Literal) (sql.Expression, tran
 		if !ok {
 			return nil, transform.NewTree, fmt.Errorf("SANITIZER: expected string type: %T", gmsLiteral.Value())
 		}
-		return pgexprs.NewStringLiteral(str), transform.NewTree, nil
+		return pgexprs.NewTextLiteral(str), transform.NewTree, nil
 	case query.Type_BINARY, query.Type_VARBINARY, query.Type_BLOB:
 		newVal := gmsLiteral.Value()
 		if newVal == nil {
 			return pgexprs.NewNullLiteral(), transform.NewTree, nil
 		} else if str, ok := newVal.(string); ok {
-			return pgexprs.NewStringLiteral(str), transform.NewTree, nil
+			return pgexprs.NewTextLiteral(str), transform.NewTree, nil
 		} else if b, ok := newVal.([]byte); ok {
-			return pgexprs.NewStringLiteral(string(b)), transform.NewTree, nil
+			return pgexprs.NewTextLiteral(string(b)), transform.NewTree, nil
 		}
 		return nil, transform.NewTree, fmt.Errorf("SANITIZER: invalid binary type: %T", gmsLiteral.Value())
 	case query.Type_JSON:
@@ -167,7 +167,7 @@ func typeSanitizerLiterals(gmsLiteral *expression.Literal) (sql.Expression, tran
 		if !ok {
 			return nil, transform.NewTree, fmt.Errorf("SANITIZER: expected string type: %T", gmsLiteral.Value())
 		}
-		return pgexprs.NewStringLiteral(str), transform.NewTree, nil
+		return pgexprs.NewTextLiteral(str), transform.NewTree, nil
 	case query.Type_NULL_TYPE:
 		return pgexprs.NewNullLiteral(), transform.NewTree, nil
 	default:

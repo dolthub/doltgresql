@@ -55,10 +55,7 @@ var pg_get_viewdef_oid_bool = framework.Function2{
 	Strict:             true,
 	Callable: func(ctx *sql.Context, _ [3]pgtypes.DoltgresType, val1, val2 any) (any, error) {
 		oidVal := val1.(uint32)
-		pretty := val2.(bool)
-		if pretty {
-			return "", fmt.Errorf("pretty printing is not yet supported")
-		}
+		// TODO: pretty printing is not yet supported
 		return getViewDef(ctx, oidVal)
 	},
 }
@@ -71,8 +68,9 @@ var pg_get_viewdef_oid_int = framework.Function2{
 	IsNonDeterministic: true,
 	Strict:             true,
 	Callable: func(ctx *sql.Context, _ [3]pgtypes.DoltgresType, val1, val2 any) (any, error) {
-		// TODO: prettyprint is implied
-		return "", fmt.Errorf("pretty printing is not yet supported")
+		// TODO: prettyprint is implied, not yet supported
+		// TODO: lines with fields are wrapped to specified number of columns
+		return "", fmt.Errorf("not yet supported")
 	},
 }
 

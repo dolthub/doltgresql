@@ -72,7 +72,14 @@ func (u UnknownType) Compare(v1 any, v2 any) (int, error) {
 
 // Convert implements the DoltgresType interface.
 func (u UnknownType) Convert(val any) (any, sql.ConvertInRange, error) {
-	return nil, sql.OutOfRange, fmt.Errorf("%s cannot convert values", u.String())
+	switch val := val.(type) {
+	case string:
+		return val, sql.InRange, nil
+	case nil:
+		return nil, sql.InRange, nil
+	default:
+		return nil, sql.OutOfRange, fmt.Errorf("%s: unhandled type: %T", u.String(), val)
+	}
 }
 
 // Equals implements the DoltgresType interface.
@@ -93,12 +100,12 @@ func (u UnknownType) GetSerializationID() SerializationID {
 
 // IoInput implements the DoltgresType interface.
 func (u UnknownType) IoInput(ctx *sql.Context, input string) (any, error) {
-	return "", fmt.Errorf("%s cannot receive I/O input", u.String())
+	return input, nil
 }
 
 // IoOutput implements the DoltgresType interface.
 func (u UnknownType) IoOutput(ctx *sql.Context, output any) (string, error) {
-	return "", fmt.Errorf("%s cannot produce I/O output", u.String())
+	return output.(string), nil
 }
 
 // IsPreferredType implements the DoltgresType interface.
@@ -138,7 +145,14 @@ func (u UnknownType) SerializedCompare(v1 []byte, v2 []byte) (int, error) {
 
 // SQL implements the DoltgresType interface.
 func (u UnknownType) SQL(ctx *sql.Context, dest []byte, v any) (sqltypes.Value, error) {
-	return sqltypes.Value{}, fmt.Errorf("%s cannot output values in the wire format", u.String())
+	if v == nil {
+		return sqltypes.NULL, nil
+	}
+	value, err := u.IoOutput(ctx, v)
+	if err != nil {
+		return sqltypes.Value{}, err
+	}
+	return sqltypes.MakeTrusted(u.Type(), types.AppendAndSliceBytes(dest, []byte(value))), nil
 }
 
 // String implements the DoltgresType interface.

@@ -61,7 +61,7 @@ func newCompiledFunctionInternal(
 		overloads:   overloads,
 		fnOverloads: fnOverloads,
 	}
-	// First we'll analyze all of the parameters.
+	// First we'll analyze all the parameters.
 	originalTypes, sources, err := c.analyzeParameters()
 	if err != nil {
 		// Errors should be returned from the call to Eval, so we'll stash it for now
@@ -318,12 +318,12 @@ func (c *CompiledFunction) resolveOperator(argTypes []pgtypes.DoltgresType, over
 	// Binary operators treat string literals as the other type, so we'll account for that here to see if we can find an
 	// "exact" match.
 	if len(argTypes) == 2 {
-		leftStringLiteral := sources[0] == Source_Constant && argTypes[0].BaseID().GetTypeCategory() == pgtypes.TypeCategory_StringTypes
-		rightStringLiteral := sources[1] == Source_Constant && argTypes[1].BaseID().GetTypeCategory() == pgtypes.TypeCategory_StringTypes
-		if (leftStringLiteral && !rightStringLiteral) || (!leftStringLiteral && rightStringLiteral) {
+		leftUnknownLiteral := argTypes[0].BaseID() == pgtypes.DoltgresTypeBaseID_Unknown
+		rightUnknownLiteral := argTypes[1].BaseID() == pgtypes.DoltgresTypeBaseID_Unknown
+		if (leftUnknownLiteral && !rightUnknownLiteral) || (!leftUnknownLiteral && rightUnknownLiteral) {
 			var baseID pgtypes.DoltgresTypeBaseID
 			casts := []TypeCastFunction{identityCast, identityCast}
-			if leftStringLiteral {
+			if leftUnknownLiteral {
 				casts[0] = stringLiteralCast
 				baseID = argTypes[1].BaseID()
 			} else {
@@ -399,15 +399,13 @@ func (c *CompiledFunction) typeCompatibleOverloads(fnOverloads []Overload, argTy
 		for i := range argTypes {
 			paramType := overload.argTypes[i]
 
-			if argTypes[i].BaseID() == pgtypes.DoltgresTypeBaseID_Null {
-				overloadCasts[i] = identityCast
-			} else if polymorphicType, ok := paramType.GetRepresentativeType().(pgtypes.DoltgresPolymorphicType); ok && polymorphicType.IsValid(argTypes[i]) {
+			if polymorphicType, ok := paramType.GetRepresentativeType().(pgtypes.DoltgresPolymorphicType); ok && polymorphicType.IsValid(argTypes[i]) {
 				overloadCasts[i] = identityCast
 				polymorphicParameters = append(polymorphicParameters, polymorphicType)
 				polymorphicTargets = append(polymorphicTargets, argTypes[i])
 			} else {
 				if overloadCasts[i] = GetImplicitCast(argTypes[i].BaseID(), paramType); overloadCasts[i] == nil {
-					if sources[i] == Source_Constant && argTypes[i].BaseID().GetTypeCategory() == pgtypes.TypeCategory_StringTypes {
+					if argTypes[i].BaseID() == pgtypes.DoltgresTypeBaseID_Unknown {
 						overloadCasts[i] = stringLiteralCast
 					} else {
 						isConvertible = false
@@ -434,9 +432,8 @@ func closestTypeMatches(argTypes []pgtypes.DoltgresType, candidates []overloadMa
 		for argIdx := range argTypes {
 			argType := cand.params.argTypes[argIdx]
 
-			// NULL values count as exact matches, since all types accept NULL as a valid value
 			argBaseId := argTypes[argIdx].BaseID()
-			if argBaseId == argType || argBaseId == pgtypes.DoltgresTypeBaseID_Null {
+			if argBaseId == argType || argBaseId == pgtypes.DoltgresTypeBaseID_Unknown {
 				currentMatchCount++
 			}
 		}
@@ -503,7 +500,7 @@ func polymorphicTypesCompatible(paramTypes []pgtypes.DoltgresType, exprTypes []p
 	// The base type is the type that must match between all polymorphic types.
 	var baseType pgtypes.DoltgresType
 	for i, paramType := range paramTypes {
-		if polymorphicParamType, ok := paramType.(pgtypes.DoltgresPolymorphicType); ok {
+		if polymorphicParamType, ok := paramType.(pgtypes.DoltgresPolymorphicType); ok && exprTypes[i].BaseID() != pgtypes.DoltgresTypeBaseID_Unknown {
 			// Although we do this check before we ever reach this function, we do it again as we may convert anyelement
 			// to anynonarray, which changes type validity
 			if !polymorphicParamType.IsValid(exprTypes[i]) {
@@ -535,15 +532,21 @@ func (c *CompiledFunction) resolvePolymorphicReturnType(functionInterfaceTypes [
 	if !ok {
 		return returnType
 	}
-	// We can use the first polymorphic type that we find, since we can morph it into any type that we need.
+	// We can use the first polymorphic non-unknown type that we find, since we can morph it into any type that we need.
 	// We've verified that all polymorphic types are compatible in a previous step, so this is safe to do.
 	var firstPolymorphicType pgtypes.DoltgresType
 	for i, functionInterfaceType := range functionInterfaceTypes {
-		if _, ok = functionInterfaceType.(pgtypes.DoltgresPolymorphicType); ok {
+		if _, ok = functionInterfaceType.(pgtypes.DoltgresPolymorphicType); ok && originalTypes[i].BaseID() != pgtypes.DoltgresTypeBaseID_Unknown {
 			firstPolymorphicType = originalTypes[i]
 			break
 		}
 	}
+
+	// if all types are `unknown`, use `text` type
+	if firstPolymorphicType == nil {
+		firstPolymorphicType = pgtypes.Text
+	}
+
 	switch polymorphicReturnType.BaseID() {
 	case pgtypes.DoltgresTypeBaseID_AnyElement, pgtypes.DoltgresTypeBaseID_AnyNonArray:
 		// For return types, anyelement behaves the same as anynonarray.
@@ -644,7 +647,7 @@ func (c *CompiledFunction) analyzeParameters() (originalTypes []pgtypes.Doltgres
 			case query.Type_SET:
 				originalTypes[i] = pgtypes.Int64
 			case query.Type_NULL_TYPE:
-				originalTypes[i] = pgtypes.Null
+				originalTypes[i] = pgtypes.Unknown
 			default:
 				return nil, nil, fmt.Errorf("encountered a type that does not conform to the DoltgresType interface: %T", param.Type())
 			}
