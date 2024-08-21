@@ -157,25 +157,6 @@ func TestPgAttribute(t *testing.T) {
 					},
 				},
 				{
-					Query: `SELECT
-					"con"."conname" AS "constraint_name",
-					"con"."nspname" AS "table_schema",
-					"con"."relname" AS "table_name" FROM (
-						SELECT 
-						1 AS "child",
-						24822 AS "confrelid",
-						'testing2_pktesting_fkey' AS "conname",
-					  'public' AS "nspname",
-						'testing2' AS "relname"
-					) "con"
-					 INNER JOIN "pg_catalog"."pg_attribute" "att"
-					 ON "att"."attrelid" = "con"."confrelid" AND "att"."attnum" = "con"."child";`,
-					Expected: []sql.Row{
-						// TODO: not clear test is defined correctly, returns no rows
-						// {"testing2_pktesting_fkey", "public", "testing2"},
-					},
-				},
-				{
 					Skip: true, // This test times out, needs some analysis to figure out why, possible a 5-table join of generated tables with no indexes is just too much
 					Query: `SELECT "con"."conname" AS "constraint_name", 
        "con"."nspname" AS "table_schema", 
