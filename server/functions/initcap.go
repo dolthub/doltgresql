@@ -26,14 +26,14 @@ import (
 
 // initInitcap registers the functions to the catalog.
 func initInitcap() {
-	framework.RegisterFunction(initcap_varchar)
+	framework.RegisterFunction(initcap_text)
 }
 
-// initcap_varchar represents the PostgreSQL function of the same name, taking the same parameters.
-var initcap_varchar = framework.Function1{
+// initcap_text represents the PostgreSQL function of the same name, taking the same parameters.
+var initcap_text = framework.Function1{
 	Name:       "initcap",
-	Return:     pgtypes.VarChar,
-	Parameters: [1]pgtypes.DoltgresType{pgtypes.VarChar},
+	Return:     pgtypes.Text,
+	Parameters: [1]pgtypes.DoltgresType{pgtypes.Text},
 	Strict:     true,
 	Callable: func(ctx *sql.Context, _ [2]pgtypes.DoltgresType, val1 any) (any, error) {
 		return cases.Title(language.English).String(val1.(string)), nil

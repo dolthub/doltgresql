@@ -23,14 +23,14 @@ import (
 
 // initOctetLength registers the functions to the catalog.
 func initOctetLength() {
-	framework.RegisterFunction(octet_length_varchar)
+	framework.RegisterFunction(octet_length_text)
 }
 
-// octet_length_varchar represents the PostgreSQL function of the same name, taking the same parameters.
-var octet_length_varchar = framework.Function1{
+// octet_length_text represents the PostgreSQL function of the same name, taking the same parameters.
+var octet_length_text = framework.Function1{
 	Name:       "octet_length",
 	Return:     pgtypes.Int32,
-	Parameters: [1]pgtypes.DoltgresType{pgtypes.VarChar},
+	Parameters: [1]pgtypes.DoltgresType{pgtypes.Text},
 	Strict:     true,
 	Callable: func(ctx *sql.Context, _ [2]pgtypes.DoltgresType, val1 any) (any, error) {
 		return int32(len(val1.(string))), nil

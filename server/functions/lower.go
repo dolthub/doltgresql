@@ -25,14 +25,14 @@ import (
 
 // initLower registers the functions to the catalog.
 func initLower() {
-	framework.RegisterFunction(lower_varchar)
+	framework.RegisterFunction(lower_text)
 }
 
-// lower_varchar represents the PostgreSQL function of the same name, taking the same parameters.
-var lower_varchar = framework.Function1{
+// lower_text represents the PostgreSQL function of the same name, taking the same parameters.
+var lower_text = framework.Function1{
 	Name:       "lower",
-	Return:     pgtypes.VarChar,
-	Parameters: [1]pgtypes.DoltgresType{pgtypes.VarChar},
+	Return:     pgtypes.Text,
+	Parameters: [1]pgtypes.DoltgresType{pgtypes.Text},
 	Strict:     true,
 	Callable: func(ctx *sql.Context, _ [2]pgtypes.DoltgresType, val1 any) (any, error) {
 		//TODO: this doesn't respect collations

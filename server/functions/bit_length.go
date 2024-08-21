@@ -23,17 +23,17 @@ import (
 
 // initBitLength registers the functions to the catalog.
 func initBitLength() {
-	framework.RegisterFunction(bit_length_varchar)
+	framework.RegisterFunction(bit_length_text)
 }
 
-// bit_length_varchar represents the PostgreSQL function of the same name, taking the same parameters.
-var bit_length_varchar = framework.Function1{
+// bit_length_text represents the PostgreSQL function of the same name, taking the same parameters.
+var bit_length_text = framework.Function1{
 	Name:       "bit_length",
 	Return:     pgtypes.Int32,
-	Parameters: [1]pgtypes.DoltgresType{pgtypes.VarChar},
+	Parameters: [1]pgtypes.DoltgresType{pgtypes.Text},
 	Strict:     true,
 	Callable: func(ctx *sql.Context, t [2]pgtypes.DoltgresType, val1 any) (any, error) {
-		result, err := octet_length_varchar.Callable(ctx, t, val1)
+		result, err := octet_length_text.Callable(ctx, t, val1)
 		if err != nil {
 			return nil, err
 		}

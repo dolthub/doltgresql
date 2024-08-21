@@ -23,14 +23,14 @@ import (
 
 // initAscii registers the functions to the catalog.
 func initAscii() {
-	framework.RegisterFunction(ascii_varchar)
+	framework.RegisterFunction(ascii_text)
 }
 
-// ascii_varchar represents the PostgreSQL function of the same name, taking the same parameters.
-var ascii_varchar = framework.Function1{
+// ascii_text represents the PostgreSQL function of the same name, taking the same parameters.
+var ascii_text = framework.Function1{
 	Name:       "ascii",
 	Return:     pgtypes.Int32,
-	Parameters: [1]pgtypes.DoltgresType{pgtypes.VarChar},
+	Parameters: [1]pgtypes.DoltgresType{pgtypes.Text},
 	Strict:     true,
 	Callable: func(ctx *sql.Context, _ [2]pgtypes.DoltgresType, val1Interface any) (any, error) {
 		val1 := val1Interface.(string)

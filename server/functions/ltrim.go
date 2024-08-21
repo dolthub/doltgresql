@@ -23,27 +23,27 @@ import (
 
 // initLtrim registers the functions to the catalog.
 func initLtrim() {
-	framework.RegisterFunction(ltrim_varchar)
-	framework.RegisterFunction(ltrim_varchar_varchar)
+	framework.RegisterFunction(ltrim_text)
+	framework.RegisterFunction(ltrim_text_text)
 }
 
-// ltrim_varchar represents the PostgreSQL function of the same name, taking the same parameters.
-var ltrim_varchar = framework.Function1{
+// ltrim_text represents the PostgreSQL function of the same name, taking the same parameters.
+var ltrim_text = framework.Function1{
 	Name:       "ltrim",
-	Return:     pgtypes.VarChar,
-	Parameters: [1]pgtypes.DoltgresType{pgtypes.VarChar},
+	Return:     pgtypes.Text,
+	Parameters: [1]pgtypes.DoltgresType{pgtypes.Text},
 	Strict:     true,
 	Callable: func(ctx *sql.Context, _ [2]pgtypes.DoltgresType, val1 any) (any, error) {
 		var unusedTypes [3]pgtypes.DoltgresType
-		return ltrim_varchar_varchar.Callable(ctx, unusedTypes, val1, " ")
+		return ltrim_text_text.Callable(ctx, unusedTypes, val1, " ")
 	},
 }
 
-// ltrim_varchar_varchar represents the PostgreSQL function of the same name, taking the same parameters.
-var ltrim_varchar_varchar = framework.Function2{
+// ltrim_text_text represents the PostgreSQL function of the same name, taking the same parameters.
+var ltrim_text_text = framework.Function2{
 	Name:       "ltrim",
-	Return:     pgtypes.VarChar,
-	Parameters: [2]pgtypes.DoltgresType{pgtypes.VarChar, pgtypes.VarChar},
+	Return:     pgtypes.Text,
+	Parameters: [2]pgtypes.DoltgresType{pgtypes.Text, pgtypes.Text},
 	Strict:     true,
 	Callable: func(ctx *sql.Context, _ [3]pgtypes.DoltgresType, str any, characters any) (any, error) {
 		runes := []rune(str.(string))
