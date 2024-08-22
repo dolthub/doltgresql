@@ -420,13 +420,13 @@ func TestSystemInformationFunctions(t *testing.T) {
 					Query: `SELECT current_schema();`,
 					Cols:  []string{"\"current_schema\""},
 					Expected: []sql.Row{
-						{"postgres"},
+						{"public"},
 					},
 				},
 				{
 					Query: `SELECT current_schema();`,
 					Expected: []sql.Row{
-						{"postgres"},
+						{"public"},
 					},
 				},
 				{
@@ -444,7 +444,7 @@ func TestSystemInformationFunctions(t *testing.T) {
 					},
 				},
 				{
-					Query:    `SET SEARCH_PATH TO public;`,
+					Query:    `SET SEARCH_PATH TO public, test_schema;`,
 					Expected: []sql.Row{},
 				},
 				{
@@ -457,6 +457,16 @@ func TestSystemInformationFunctions(t *testing.T) {
 					Query: `SELECT current_schema;`,
 					Expected: []sql.Row{
 						{"public"},
+					},
+				},
+				{
+					Query:    `SET SEARCH_PATH TO test_schema, public;`,
+					Expected: []sql.Row{},
+				},
+				{
+					Query: `SELECT current_schema();`,
+					Expected: []sql.Row{
+						{"test_schema"},
 					},
 				},
 				// TODO: Implement table function for current_schema
@@ -483,13 +493,13 @@ func TestSystemInformationFunctions(t *testing.T) {
 					Query: `SELECT current_schemas(true);`,
 					Cols:  []string{"current_schemas"},
 					Expected: []sql.Row{
-						{"{pg_catalog,postgres,public}"},
+						{"{pg_catalog,public}"},
 					},
 				},
 				{ // TODO: Not sure why Postgres does not display "$user" here
 					Query: `SELECT current_schemas(false);`,
 					Expected: []sql.Row{
-						{"{postgres,public}"},
+						{"{public}"},
 					},
 				},
 				{
@@ -909,6 +919,29 @@ func TestArrayFunctions(t *testing.T) {
 				},
 			},
 		},
+		{
+			Name:        "array_to_string",
+			SetUpScript: []string{},
+			Assertions: []ScriptTestAssertion{
+				{
+					Query:    `SELECT array_to_string(ARRAY[1, 2, 3, NULL, 5], ',', '*')`,
+					Expected: []sql.Row{{"1,2,3,*,5"}},
+				},
+				{
+					Query:    `SELECT array_to_string(ARRAY[1, 2, 3, NULL, 5], ',')`,
+					Expected: []sql.Row{{"1,2,3,5"}},
+				},
+				{
+					Query:    `SELECT array_to_string(ARRAY[37.89, 1.2], '_');`,
+					Expected: []sql.Row{{"37.89_1.2"}},
+				},
+				{
+					Skip:     true, // TODO: we currently return "37_1"
+					Query:    `SELECT array_to_string(ARRAY[37.89::int4, 1.2::int4], '_');`,
+					Expected: []sql.Row{{"38_1"}},
+				},
+			},
+		},
 	})
 }
 
@@ -1085,34 +1118,6 @@ func TestSystemCatalogInformationFunctions(t *testing.T) {
 				{
 					Query:    `select pg_get_viewdef(2953838592);`,
 					Expected: []sql.Row{{"SELECT name FROM test"}},
-				},
-			},
-		},
-	})
-}
-
-func TestArrayFunction(t *testing.T) {
-	RunScripts(t, []ScriptTest{
-		{
-			Name:        "array_to_string",
-			SetUpScript: []string{},
-			Assertions: []ScriptTestAssertion{
-				{
-					Query:    `SELECT array_to_string(ARRAY[1, 2, 3, NULL, 5], ',', '*')`,
-					Expected: []sql.Row{{"1,2,3,*,5"}},
-				},
-				{
-					Query:    `SELECT array_to_string(ARRAY[1, 2, 3, NULL, 5], ',')`,
-					Expected: []sql.Row{{"1,2,3,5"}},
-				},
-				{
-					Query:    `SELECT array_to_string(ARRAY[37.89, 1.2], '_');`,
-					Expected: []sql.Row{{"37.89_1.2"}},
-				},
-				{
-					Skip:     true, // TODO: we currently return "37_1"
-					Query:    `SELECT array_to_string(ARRAY[37.89::int4, 1.2::int4], '_');`,
-					Expected: []sql.Row{{"38_1"}},
 				},
 			},
 		},
@@ -1349,6 +1354,49 @@ func TestDateAndTimeFunction(t *testing.T) {
 				{
 					Query:    `SELECT age(current_date::timestamp);`,
 					Expected: []sql.Row{{"00:00:00"}},
+				},
+			},
+		},
+	})
+}
+
+func TestStringFunction(t *testing.T) {
+	RunScripts(t, []ScriptTest{
+		{
+			Name:        "use name type for text type input",
+			SetUpScript: []string{},
+			Assertions: []ScriptTestAssertion{
+				{
+					Query:    `SELECT ascii('name'::name)`,
+					Expected: []sql.Row{{110}},
+				},
+				{
+					Query:    "SELECT bit_length('name'::name);",
+					Expected: []sql.Row{{32}},
+				},
+				{
+					Query:    "SELECT btrim(' name  '::name);",
+					Expected: []sql.Row{{"name"}},
+				},
+				{
+					Query:    "SELECT initcap('name'::name);",
+					Expected: []sql.Row{{"Name"}},
+				},
+				{
+					Query:    "SELECT left('name'::name, 2);",
+					Expected: []sql.Row{{"na"}},
+				},
+				{
+					Query:    "SELECT length('name'::name);",
+					Expected: []sql.Row{{4}},
+				},
+				{
+					Query:    "SELECT lower('naMe'::name);",
+					Expected: []sql.Row{{"name"}},
+				},
+				{
+					Query:    "SELECT lpad('name'::name, 7, '*');",
+					Expected: []sql.Row{{"***name"}},
 				},
 			},
 		},

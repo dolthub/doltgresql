@@ -23,14 +23,14 @@ import (
 
 // initReverse registers the functions to the catalog.
 func initReverse() {
-	framework.RegisterFunction(reverse_varchar)
+	framework.RegisterFunction(reverse_text)
 }
 
-// reverse_varchar represents the PostgreSQL function of the same name, taking the same parameters.
-var reverse_varchar = framework.Function1{
+// reverse_text represents the PostgreSQL function of the same name, taking the same parameters.
+var reverse_text = framework.Function1{
 	Name:       "reverse",
-	Return:     pgtypes.VarChar,
-	Parameters: [1]pgtypes.DoltgresType{pgtypes.VarChar},
+	Return:     pgtypes.Text,
+	Parameters: [1]pgtypes.DoltgresType{pgtypes.Text},
 	Strict:     true,
 	Callable: func(ctx *sql.Context, _ [2]pgtypes.DoltgresType, val1 any) (any, error) {
 		runes := []rune(val1.(string))

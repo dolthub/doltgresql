@@ -26,14 +26,14 @@ import (
 
 // initMd5 registers the functions to the catalog.
 func initMd5() {
-	framework.RegisterFunction(md5_varchar)
+	framework.RegisterFunction(md5_text)
 }
 
-// md5_varchar represents the PostgreSQL function of the same name, taking the same parameters.
-var md5_varchar = framework.Function1{
+// md5_text represents the PostgreSQL function of the same name, taking the same parameters.
+var md5_text = framework.Function1{
 	Name:       "md5",
-	Return:     pgtypes.VarChar,
-	Parameters: [1]pgtypes.DoltgresType{pgtypes.VarChar},
+	Return:     pgtypes.Text,
+	Parameters: [1]pgtypes.DoltgresType{pgtypes.Text},
 	Strict:     true,
 	Callable: func(ctx *sql.Context, _ [2]pgtypes.DoltgresType, val1 any) (any, error) {
 		return fmt.Sprintf("%x", md5_package.Sum([]byte(val1.(string)))), nil

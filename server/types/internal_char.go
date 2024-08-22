@@ -21,13 +21,13 @@ import (
 	"reflect"
 	"strings"
 
-	"github.com/dolthub/doltgresql/utils"
-
 	"github.com/dolthub/go-mysql-server/sql"
 	"github.com/dolthub/go-mysql-server/sql/types"
 	"github.com/dolthub/vitess/go/sqltypes"
 	"github.com/dolthub/vitess/go/vt/proto/query"
 	"github.com/lib/pq/oid"
+
+	"github.com/dolthub/doltgresql/utils"
 )
 
 // InternalCharLength will always be 1.
@@ -131,12 +131,10 @@ func (b InternalCharType) GetSerializationID() SerializationID {
 
 // IoInput implements the DoltgresType interface.
 func (b InternalCharType) IoInput(ctx *sql.Context, input string) (any, error) {
-	input, runeLength := truncateString(input, InternalCharLength)
-	if runeLength < InternalCharLength {
-		return input + strings.Repeat(" ", int(InternalCharLength-runeLength)), nil
-	} else {
-		return input, nil
+	if uint32(len(input)) > InternalCharLength {
+		return input[:InternalCharLength], nil
 	}
+	return input, nil
 }
 
 // IoOutput implements the DoltgresType interface.
@@ -145,7 +143,10 @@ func (b InternalCharType) IoOutput(ctx *sql.Context, output any) (string, error)
 	if err != nil {
 		return "", err
 	}
-	str, _ := truncateString(converted.(string), InternalCharLength)
+	str := converted.(string)
+	if uint32(len(str)) > InternalCharLength {
+		return str[:InternalCharLength], nil
+	}
 	return str, nil
 }
 

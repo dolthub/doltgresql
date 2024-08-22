@@ -25,13 +25,25 @@ import (
 
 // initToHex registers the functions to the catalog.
 func initToHex() {
+	framework.RegisterFunction(to_hex_int32)
 	framework.RegisterFunction(to_hex_int64)
+}
+
+// to_hex_int32 represents the PostgreSQL function of the same name, taking the same parameters.
+var to_hex_int32 = framework.Function1{
+	Name:       "to_hex",
+	Return:     pgtypes.Text,
+	Parameters: [1]pgtypes.DoltgresType{pgtypes.Int32},
+	Strict:     true,
+	Callable: func(ctx *sql.Context, _ [2]pgtypes.DoltgresType, val1 any) (any, error) {
+		return fmt.Sprintf("%x", uint64(val1.(int32))), nil
+	},
 }
 
 // to_hex_int64 represents the PostgreSQL function of the same name, taking the same parameters.
 var to_hex_int64 = framework.Function1{
 	Name:       "to_hex",
-	Return:     pgtypes.VarChar,
+	Return:     pgtypes.Text,
 	Parameters: [1]pgtypes.DoltgresType{pgtypes.Int64},
 	Strict:     true,
 	Callable: func(ctx *sql.Context, _ [2]pgtypes.DoltgresType, val1 any) (any, error) {

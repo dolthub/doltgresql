@@ -277,7 +277,7 @@ var typesTests = []ScriptTest{
 		Name: "Internal char type",
 		SetUpScript: []string{
 			`CREATE TABLE t_char (id INTEGER primary key, v1 "char");`,
-			`INSERT INTO t_char VALUES (1, 'abcde'), (2, 'vwxyz'), (3, '123'), (4, ''), (5, NULL);`,
+			`INSERT INTO t_char VALUES (1, 'abcde'), (2, 'vwxyz'), (3, '123'), (4, ''), (5, NULL), (100, 'こんにちは');`,
 		},
 		Assertions: []ScriptTestAssertion{
 			{
@@ -288,6 +288,7 @@ var typesTests = []ScriptTest{
 					{3, "1"},
 					{4, ""},
 					{5, nil},
+					{100, "\343"},
 				},
 			},
 			{
@@ -319,13 +320,20 @@ var typesTests = []ScriptTest{
 				},
 			},
 			{
-				Query: `SELECT id, v1::int, v1::text FROM t_char;`,
+				Query: `SELECT id, v1::int, v1::text FROM t_char WHERE id < 10;`,
 				Expected: []sql.Row{
 					{1, 97, "a"},
 					{2, 118, "v"},
 					{3, 1, "1"},
 					{4, 0, ""},
 					{5, nil, nil},
+				},
+			},
+			{
+				Skip:  true, // TODO: We currently return '227'
+				Query: `SELECT v1::int FROM t_char WHERE id = 100;`,
+				Expected: []sql.Row{
+					{-29},
 				},
 			},
 			{
@@ -351,7 +359,7 @@ var typesTests = []ScriptTest{
 				Expected: []sql.Row{},
 			},
 			{
-				Query: `SELECT * FROM t_char WHERE id >= 7 ORDER BY id;`,
+				Query: `SELECT * FROM t_char WHERE id >= 7 AND id < 10 ORDER BY id;`,
 				Expected: []sql.Row{
 					{8, "d"},
 					{9, "g"},
@@ -2491,17 +2499,21 @@ var typesTests = []ScriptTest{
 				},
 			},
 			{
-				Skip:  true, // TODO: need fix
 				Query: "SELECT array_append(null, null);",
 				Expected: []sql.Row{
 					{"{NULL}"},
 				},
 			},
 			{
-				Skip:  true, // TODO: need fix
 				Query: "SELECT array_append(null, 'ghi');",
 				Expected: []sql.Row{
 					{"{ghi}"},
+				},
+			},
+			{
+				Query: "SELECT array_append(null, 3);",
+				Expected: []sql.Row{
+					{"{3}"},
 				},
 			},
 			{

@@ -25,14 +25,14 @@ import (
 
 // initReplace registers the functions to the catalog.
 func initReplace() {
-	framework.RegisterFunction(replace_varchar_varchar_varchar)
+	framework.RegisterFunction(replace_text_text_text)
 }
 
-// replace_varchar_varchar_varchar represents the PostgreSQL function of the same name, taking the same parameters.
-var replace_varchar_varchar_varchar = framework.Function3{
+// replace_text_text_text represents the PostgreSQL function of the same name, taking the same parameters.
+var replace_text_text_text = framework.Function3{
 	Name:       "replace",
-	Return:     pgtypes.VarChar,
-	Parameters: [3]pgtypes.DoltgresType{pgtypes.VarChar, pgtypes.VarChar, pgtypes.VarChar},
+	Return:     pgtypes.Text,
+	Parameters: [3]pgtypes.DoltgresType{pgtypes.Text, pgtypes.Text, pgtypes.Text},
 	Strict:     true,
 	Callable: func(ctx *sql.Context, _ [4]pgtypes.DoltgresType, str any, from any, to any) (any, error) {
 		if len(from.(string)) == 0 {

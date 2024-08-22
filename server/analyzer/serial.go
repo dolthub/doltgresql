@@ -88,7 +88,7 @@ func ReplaceSerial(ctx *sql.Context, a *analyzer.Analyzer, node sql.Node, scope 
 				}
 
 				seqName := doltdb.TableName{Name: sequenceName, Schema: schemaName}.String()
-				nextVal, ok, err := framework.GetFunction("nextval", pgexprs.NewStringLiteral(seqName))
+				nextVal, ok, err := framework.GetFunction("nextval", pgexprs.NewTextLiteral(seqName))
 				if err != nil {
 					return nil, transform.NewTree, err
 				}

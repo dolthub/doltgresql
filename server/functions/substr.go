@@ -25,15 +25,15 @@ import (
 
 // initSubstr registers the functions to the catalog.
 func initSubstr() {
-	framework.RegisterFunction(substr_varchar_int32)
-	framework.RegisterFunction(substr_varchar_int32_int32)
+	framework.RegisterFunction(substr_text_int32)
+	framework.RegisterFunction(substr_text_int32_int32)
 }
 
-// substr_varchar_int32 represents the PostgreSQL function of the same name, taking the same parameters.
-var substr_varchar_int32 = framework.Function2{
+// substr_text_int32 represents the PostgreSQL function of the same name, taking the same parameters.
+var substr_text_int32 = framework.Function2{
 	Name:       "substr",
-	Return:     pgtypes.VarChar,
-	Parameters: [2]pgtypes.DoltgresType{pgtypes.VarChar, pgtypes.Int32},
+	Return:     pgtypes.Text,
+	Parameters: [2]pgtypes.DoltgresType{pgtypes.Text, pgtypes.Int32},
 	Strict:     true,
 	Callable: func(ctx *sql.Context, _ [3]pgtypes.DoltgresType, str any, start any) (any, error) {
 		runes := []rune(str.(string))
@@ -49,11 +49,11 @@ var substr_varchar_int32 = framework.Function2{
 	},
 }
 
-// substr_varchar_int32_int32 represents the PostgreSQL function of the same name, taking the same parameters.
-var substr_varchar_int32_int32 = framework.Function3{
+// substr_text_int32_int32 represents the PostgreSQL function of the same name, taking the same parameters.
+var substr_text_int32_int32 = framework.Function3{
 	Name:       "substr",
-	Return:     pgtypes.VarChar,
-	Parameters: [3]pgtypes.DoltgresType{pgtypes.VarChar, pgtypes.Int32, pgtypes.Int32},
+	Return:     pgtypes.Text,
+	Parameters: [3]pgtypes.DoltgresType{pgtypes.Text, pgtypes.Int32, pgtypes.Int32},
 	Strict:     true,
 	Callable: func(ctx *sql.Context, _ [4]pgtypes.DoltgresType, str any, startInt any, countInt any) (any, error) {
 		start := startInt.(int32)
