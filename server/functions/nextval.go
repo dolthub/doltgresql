@@ -16,47 +16,52 @@ package functions
 
 import (
 	"fmt"
+	"strings"
 
 	"github.com/dolthub/go-mysql-server/sql"
 
 	"github.com/dolthub/doltgresql/core"
 	"github.com/dolthub/doltgresql/server/functions/framework"
 	pgtypes "github.com/dolthub/doltgresql/server/types"
-	"github.com/dolthub/doltgresql/server/types/oid"
 )
 
 // initNextVal registers the functions to the catalog.
 func initNextVal() {
-	framework.RegisterFunction(nextval_regclass)
+	framework.RegisterFunction(nextval_text)
 }
 
 // nextval_text represents the PostgreSQL function of the same name, taking the same parameters.
-var nextval_regclass = framework.Function1{
+var nextval_text = framework.Function1{
 	Name:               "nextval",
 	Return:             pgtypes.Int64,
-	Parameters:         [1]pgtypes.DoltgresType{pgtypes.Regclass},
+	Parameters:         [1]pgtypes.DoltgresType{pgtypes.Text},
 	IsNonDeterministic: true,
 	Strict:             true,
 	Callable: func(ctx *sql.Context, _ [2]pgtypes.DoltgresType, val any) (any, error) {
-		var schemaName, seqName string
-		err := oid.RunCallback(ctx, val.(uint32), oid.Callbacks{
-			Sequence: func(ctx *sql.Context, schema oid.ItemSchema, sequence oid.ItemSequence) (cont bool, err error) {
-				schemaName = schema.Item.SchemaName()
-				seqName = sequence.Item.Name
-				return false, nil
-			},
-		})
-		if err != nil {
-			return nil, err
+		var schema, sequence string
+		var err error
+		pathElems := strings.Split(val.(string), ".")
+		switch len(pathElems) {
+		case 1:
+			schema, err = core.GetCurrentSchema(ctx)
+			if err != nil {
+				return nil, err
+			}
+			sequence = pathElems[0]
+		case 2:
+			schema = pathElems[0]
+			sequence = pathElems[1]
+		case 3:
+			// database is not used atm
+			schema = pathElems[1]
+			sequence = pathElems[2]
+		default:
+			return nil, fmt.Errorf(`cannot find sequence "%s" to get its nextval`, val.(string))
 		}
-
 		collection, err := core.GetCollectionFromContext(ctx)
 		if err != nil {
 			return nil, err
 		}
-		if schemaName == "" || seqName == "" {
-			return nil, fmt.Errorf("cannot find sequence to get its nextval")
-		}
-		return collection.NextVal(schemaName, seqName)
+		return collection.NextVal(schema, sequence)
 	},
 }
