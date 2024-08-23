@@ -72,13 +72,9 @@ func (c *CreateSequence) RowIter(ctx *sql.Context, r sql.Row) (sql.RowIter, erro
 	if strings.HasPrefix(strings.ToLower(c.sequence.Name), "dolt") {
 		return nil, fmt.Errorf("sequences cannot be prefixed with 'dolt'")
 	}
-	schema := c.schema
-	if len(c.schema) == 0 {
-		var err error
-		schema, err = core.GetCurrentSchema(ctx)
-		if err != nil {
-			return nil, err
-		}
+	schema, err := core.GetSchemaName(ctx, nil, c.schema)
+	if err != nil {
+		return nil, err
 	}
 
 	// Check that the sequence name is free
@@ -105,7 +101,7 @@ func (c *CreateSequence) RowIter(ctx *sql.Context, r sql.Row) (sql.RowIter, erro
 			return nil, fmt.Errorf(`sequence cannot be owned by relation "%s"`, c.sequence.OwnerTable)
 		}
 
-		table, err := core.GetTableFromContext(ctx, doltdb.TableName{Name: c.sequence.OwnerTable})
+		table, err := core.GetTableFromContext(ctx, doltdb.TableName{Name: c.sequence.OwnerTable, Schema: schema})
 		if err != nil {
 			return nil, err
 		}
