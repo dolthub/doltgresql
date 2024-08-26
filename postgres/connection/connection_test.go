@@ -45,10 +45,11 @@ func TestReceive(t *testing.T) {
 		message := &pgproto3.Query{
 			String: "SELECT * FROM example",
 		}
-		encodedMessage := message.Encode(nil)
+		encodedMessage, err := message.Encode(nil)
+		require.NoError(t, err)
 
 		// Write the encoded message to the mock connection's buffer
-		_, err := clientConn.Write(encodedMessage)
+		_, err = clientConn.Write(encodedMessage)
 		require.NoError(t, err)
 
 		receivedMessage, err := connection.Receive(serverConn)
@@ -68,8 +69,10 @@ func TestReceive(t *testing.T) {
 		message := &pgproto3.Query{
 			String: "SELECT abc, def, ghi, jkl, mno, pqr, stuv, wxyz, abc, def, ghi, jkl, mno, pqr, stuv, wxyz FROM example",
 		}
-		encodedMessage := message.Encode(nil)
-		_, err := clientConn.Write(encodedMessage[:len(encodedMessage)/2])
+		encodedMessage, err := message.Encode(nil)
+		require.NoError(t, err)
+
+		_, err = clientConn.Write(encodedMessage[:len(encodedMessage)/2])
 		require.NoError(t, err)
 
 		wg := &sync.WaitGroup{}
@@ -114,7 +117,8 @@ func TestReceive(t *testing.T) {
 
 		b := bytes.Buffer{}
 		for _, message := range queries {
-			encodedMessage := message.Encode(nil)
+			encodedMessage, err := message.Encode(nil)
+			require.NoError(t, err)
 			b.Write(encodedMessage)
 		}
 
