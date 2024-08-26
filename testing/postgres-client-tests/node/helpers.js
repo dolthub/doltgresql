@@ -14,36 +14,42 @@ export function getDoltgresVersion() {
 export function getConfig() {
   const { user, port } = getArgs();
   return {
-    host: 'localhost',
+    host: "localhost",
     port: port,
-    database: 'doltgres',
+    database: "doltgres",
     user: user,
   };
 }
 
-export function assertQueryResult(q, resultStr, expected, rows, matcher) {
+export function assertQueryResult(q, resultStr, expected, data, matcher) {
   if (matcher) {
-    return matcher(rows, expected);
+    return matcher(data, expected);
   }
-  // TODO: figure out a way to get result from stored procedure calls to check these
-  // if (q.toLowerCase().includes("dolt_commit")) {
-  //   return rows.length === 1 && rows[0].hash.length === 32;
-  // }
-  // if (q.toLowerCase().includes("dolt_merge")) {
-  //   const result = JSON.parse(resultStr);
-  //   return (
-  //     expected.fast_forward === result.fast_forward &&
-  //     expected.conflicts === result.conflicts
-  //   );
-  // }
+  if (q.toLowerCase().includes("dolt_commit")) {
+    if (data.rows.length !== 1) return false;
+    const hash = data.rows[0].dolt_commit.slice(1, -1);
+    // dolt_commit row returns 32 character hash enclosed in brackets.
+    return hash.length === 32;
+  }
+  if (q.toLowerCase().includes("dolt_merge")) {
+    if (data.rows.length !== 1) return false;
+    const res = data.rows[0].dolt_merge.slice(1, -1).split(",");
+    const [hash, fastForward, conflicts, message] = res;
+    return (
+      hash.length === 32 &&
+      expected.fastForward === fastForward &&
+      expected.conflicts === conflicts &&
+      expected.message === message
+    );
+  }
 
   // Does partial matching of actual and expected results.
   const partialRes = {
-    command: rows.command,
-    rowCount: rows.rowCount,
-    oid: rows.oid,
-    rows: rows.rows,
-    fields: rows.fields,
-  }
-  return JSON.stringify(expected) === JSON.stringify(partialRes)
+    command: data.command,
+    rowCount: data.rowCount,
+    oid: data.oid,
+    rows: data.rows,
+    fields: data.fields,
+  };
+  return JSON.stringify(expected) === JSON.stringify(partialRes);
 }
