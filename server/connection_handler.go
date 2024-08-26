@@ -636,9 +636,16 @@ func (h *ConnectionHandler) convertBindParameters(types []int32, formatCodes []i
 
 		// TODO: need to check for byte length for given type length. E.g. int16, int32 and uint32 expects 4 bytes
 		//  but currently, receives 8 bytes.
-
+		// This is temporary change to pass the byte array with correct length.
+		val := values[i].Data
+		switch typ {
+		case querypb.Type_INT32, querypb.Type_UINT32:
+			if len(val) != 4 {
+				val = val[len(val)-4:]
+			}
+		}
 		// We'll rely on a library to decode each format, which will deal with text and binary representations for us
-		if err := h.pgTypeMap.Scan(uint32(types[i]), int16(formatCodes[i]), values[i].Data, &bindVarString); err != nil {
+		if err := h.pgTypeMap.Scan(uint32(types[i]), int16(formatCodes[i]), val, &bindVarString); err != nil {
 			return nil, err
 		}
 		bindVar := &querypb.BindVariable{

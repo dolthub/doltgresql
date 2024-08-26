@@ -439,7 +439,7 @@ WHERE c.relnamespace=$1 AND c.relkind not in ('i','I','c');`,
 				Expected: []sql.Row{{1612709888, 0, 0}, {2686451712, 0, 0}},
 			},
 			{
-				Query: `SELECT c.relname,a.*,pg_catalog.pg_get_expr(ad.adbin, ad.adrelid, true) as def_value,dsc.description,dep.objid 
+				Query: `SELECT c.relname, a.attrelid, a.attname, a.atttypid, pg_catalog.pg_get_expr(ad.adbin, ad.adrelid, true) as def_value,dsc.description,dep.objid 
 FROM pg_catalog.pg_attribute a 
 INNER JOIN pg_catalog.pg_class c ON (a.attrelid=c.oid) 
 LEFT OUTER JOIN pg_catalog.pg_attrdef ad ON (a.attrelid=ad.adrelid AND a.attnum = ad.adnum) 
@@ -447,7 +447,7 @@ LEFT OUTER JOIN pg_catalog.pg_description dsc ON (c.oid=dsc.objoid AND a.attnum 
 LEFT OUTER JOIN pg_depend dep on dep.refobjid = a.attrelid AND dep.deptype = 'i' and dep.refobjsubid = a.attnum and dep.classid = dep.refclassid 
 WHERE NOT a.attisdropped AND c.relkind not in ('i','I','c') AND c.oid=$1 ORDER BY a.attnum`,
 				BindVars: []any{2686451712},
-				Expected: []sql.Row{{1612709888, 0, 0}, {2686451712, 0, 0}},
+				Expected: []sql.Row{{"testtable", 2686451712, "id", 23, nil, nil, nil}, {"testtable", 2686451712, "v1", 25, nil, nil, nil}},
 			},
 		},
 	},
