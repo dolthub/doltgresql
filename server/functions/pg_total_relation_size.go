@@ -26,15 +26,15 @@ func initPgTotalRelationSize() {
 	framework.RegisterFunction(pg_total_relation_size_regclass)
 }
 
-// pg_total_relation_size_regclass represents the PostgreSQL system administration functions.
+// pg_total_relation_size_regclass represents the PostgreSQL function of the same name, taking the same parameters.
 var pg_total_relation_size_regclass = framework.Function1{
 	Name:               "pg_total_relation_size",
 	Return:             pgtypes.Int64,
 	Parameters:         [1]pgtypes.DoltgresType{pgtypes.Regclass},
 	IsNonDeterministic: true,
 	Strict:             true,
-	Callable: func(ctx *sql.Context, _ [2]pgtypes.DoltgresType, val1 any) (any, error) {
+	Callable: func(ctx *sql.Context, _ [2]pgtypes.DoltgresType, val any) (any, error) {
 		// TODO: Total disk space used by the specified table, including all indexes and TOAST data
-		return 0, nil
+		return int64(0), nil
 	},
 }

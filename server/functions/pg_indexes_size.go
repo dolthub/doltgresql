@@ -26,15 +26,15 @@ func initPgIndexesSize() {
 	framework.RegisterFunction(pg_indexes_size_regclass)
 }
 
-// pg_indexes_size_regclass represents the PostgreSQL system administration functions.
+// pg_indexes_size_regclass represents the PostgreSQL function of the same name, taking the same parameters.
 var pg_indexes_size_regclass = framework.Function1{
 	Name:               "pg_indexes_size",
 	Return:             pgtypes.Int64,
 	Parameters:         [1]pgtypes.DoltgresType{pgtypes.Regclass},
 	IsNonDeterministic: true,
 	Strict:             true,
-	Callable: func(ctx *sql.Context, _ [2]pgtypes.DoltgresType, val1 any) (any, error) {
+	Callable: func(ctx *sql.Context, _ [2]pgtypes.DoltgresType, val any) (any, error) {
 		// TODO: Total disk space used by indexes attached to the specified table
-		return 0, nil
+		return int64(0), nil
 	},
 }
