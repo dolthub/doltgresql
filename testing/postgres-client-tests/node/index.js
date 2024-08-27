@@ -81,23 +81,43 @@ const tests = [
     },
   },
   {
-    q: "call dolt_add('-A');",
+    q: "select dolt_add('-A');",
     res: {
-      command: "CALL",
-      rowCount: null,
+      command: "SELECT",
+      rowCount: 1,
       oid: null,
-      rows: [],
-      fields: [],
+      rows: [{ dolt_add: "{0}" }],
+      fields: [
+        {
+          name: "dolt_add",
+          tableID: 0,
+          columnID: 0,
+          dataTypeID: 25,
+          dataTypeSize: -1,
+          dataTypeModifier: -1,
+          format: "text",
+        },
+      ],
     },
   },
   {
-    q: "call dolt_commit('-m', 'my commit')",
+    q: "select dolt_commit('-m', 'my commit')",
     res: {
-      command: "CALL",
-      rowCount: null,
+      command: "SELECT",
+      rowCount: 1,
       oid: null,
-      rows: [],
-      fields: [],
+      rows: [{ dolt_commit: "" }],
+      fields: [
+        {
+          name: "dolt_commit",
+          tableID: 0,
+          columnID: 0,
+          dataTypeID: 25,
+          dataTypeSize: -1,
+          dataTypeModifier: -1,
+          format: "text",
+        },
+      ],
     },
   },
   {
@@ -121,13 +141,23 @@ const tests = [
     },
   },
   {
-    q: "call dolt_checkout('-b', 'mybranch')",
+    q: "select dolt_checkout('-b', 'mybranch')",
     res: {
-      command: "CALL",
-      rowCount: null,
+      command: "SELECT",
+      rowCount: 1,
       oid: null,
-      rows: [],
-      fields: [],
+      rows: [{ dolt_checkout: `{0,"Switched to branch 'mybranch'"}` }],
+      fields: [
+        {
+          name: "dolt_checkout",
+          tableID: 0,
+          columnID: 0,
+          dataTypeID: 25,
+          dataTypeSize: -1,
+          dataTypeModifier: -1,
+          format: "text",
+        },
+      ],
     },
   },
   {
@@ -141,7 +171,7 @@ const tests = [
     },
   },
   {
-    q: "call dolt_commit('-a', '-m', 'my commit2')",
+    q: "select dolt_commit('-a', '-m', 'my commit2')",
     res: {
       command: "CALL",
       rowCount: null,
@@ -151,23 +181,31 @@ const tests = [
     },
   },
   {
-    q: "call dolt_checkout('main')",
+    q: "select dolt_checkout('main')",
     res: {
-      command: "CALL",
-      rowCount: null,
+      command: "SELECT",
+      rowCount: 1,
       oid: null,
-      rows: [],
-      fields: [],
+      rows: [{ dolt_checkout: `{0,"Switched to branch 'main'"}` }],
+      fields: [
+        {
+          name: "dolt_checkout",
+          tableID: 0,
+          columnID: 0,
+          dataTypeID: 25,
+          dataTypeSize: -1,
+          dataTypeModifier: -1,
+          format: "text",
+        },
+      ],
     },
   },
   {
-    q: "call dolt_merge('mybranch')",
+    q: "select dolt_merge('mybranch')",
     res: {
-      command: "CALL",
-      rowCount: null,
-      oid: null,
-      rows: [],
-      fields: [],
+      fastForward: "1",
+      conflicts: "0",
+      message: `"merge successful"`,
     },
   },
   {
@@ -200,10 +238,10 @@ async function main() {
       const expected = test.res;
       return database
         .query(test.q)
-        .then((rows) => {
-          const resultStr = JSON.stringify(rows);
+        .then((data) => {
+          const resultStr = JSON.stringify(data);
           const result = JSON.parse(resultStr);
-          if (!assertQueryResult(test.q, resultStr, expected, rows)) {
+          if (!assertQueryResult(test.q, resultStr, expected, data)) {
             console.log("Query:", test.q);
             console.log("Results:", result);
             console.log("Expected:", expected);

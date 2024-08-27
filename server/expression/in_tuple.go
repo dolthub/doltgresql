@@ -29,6 +29,7 @@ import (
 type InTuple struct {
 	leftExpr  sql.Expression
 	rightExpr expression.Tuple
+	decay     bool
 
 	// These variables are used so that we can resolve the comparison functions once and reuse them as we iterate over rows.
 	// These are assigned in WithChildren, so refer there for more information.
@@ -43,7 +44,21 @@ var _ expression.BinaryExpression = (*BinaryOperator)(nil)
 
 // NewInTuple returns a new *InTuple.
 func NewInTuple() *InTuple {
-	return &InTuple{}
+	return &InTuple{
+		leftExpr:  nil,
+		rightExpr: nil,
+		decay:     false,
+	}
+}
+
+// NewInTupleDecaying returns a new *InTuple that may will decay into a set of OR comparisons. This allows the IN
+// expression to work with indexes, however it is not accurate to Postgres behavior. This will eventually be removed.
+func NewInTupleDecaying() *InTuple {
+	return &InTuple{
+		leftExpr:  nil,
+		rightExpr: nil,
+		decay:     true,
+	}
 }
 
 // Children implements the sql.Expression interface.
@@ -168,6 +183,23 @@ func (it *InTuple) WithChildren(children ...sql.Expression) (sql.Expression, err
 			}
 		}
 		if allValidChildren {
+			// We've verified validity, so if this should decay, we'll do that here.
+			// We know that the compiled functions reference the correct types, so we can simply swap out the parameters.
+			if it.decay {
+				compFuncs[0].Arguments = []sql.Expression{children[0], rightTuple[0]}
+				var expr sql.Expression = &BinaryOperator{
+					operator:     framework.Operator_BinaryEqual,
+					compiledFunc: compFuncs[0],
+				}
+				for i := 1; i < len(rightTuple); i++ {
+					compFuncs[i].Arguments = []sql.Expression{children[0], rightTuple[i]}
+					expr = expression.NewOr(expr, &BinaryOperator{
+						operator:     framework.Operator_BinaryEqual,
+						compiledFunc: compFuncs[i],
+					})
+				}
+				return expr, nil
+			}
 			return &InTuple{
 				leftExpr:      children[0],
 				rightExpr:     rightTuple,
