@@ -1,5 +1,11 @@
 import { Database } from "./database.js";
 import { assertQueryResult, getConfig } from "./helpers.js";
+import {
+  doltAddFields,
+  doltCheckoutFields,
+  doltCommitFields,
+  countFields,
+} from "./fields.js";
 
 const tests = [
   {
@@ -87,17 +93,7 @@ const tests = [
       rowCount: 1,
       oid: null,
       rows: [{ dolt_add: "{0}" }],
-      fields: [
-        {
-          name: "dolt_add",
-          tableID: 0,
-          columnID: 0,
-          dataTypeID: 25,
-          dataTypeSize: -1,
-          dataTypeModifier: -1,
-          format: "text",
-        },
-      ],
+      fields: doltAddFields,
     },
   },
   {
@@ -107,17 +103,7 @@ const tests = [
       rowCount: 1,
       oid: null,
       rows: [{ dolt_commit: "" }],
-      fields: [
-        {
-          name: "dolt_commit",
-          tableID: 0,
-          columnID: 0,
-          dataTypeID: 25,
-          dataTypeSize: -1,
-          dataTypeModifier: -1,
-          format: "text",
-        },
-      ],
+      fields: doltCommitFields,
     },
   },
   {
@@ -127,17 +113,7 @@ const tests = [
       rowCount: 1,
       oid: null,
       rows: [{ count: "2" }],
-      fields: [
-        {
-          name: "count",
-          tableID: 0,
-          columnID: 0,
-          dataTypeID: 20,
-          dataTypeSize: 8,
-          dataTypeModifier: -1,
-          format: "text",
-        },
-      ],
+      fields: countFields,
     },
   },
   {
@@ -147,17 +123,7 @@ const tests = [
       rowCount: 1,
       oid: null,
       rows: [{ dolt_checkout: `{0,"Switched to branch 'mybranch'"}` }],
-      fields: [
-        {
-          name: "dolt_checkout",
-          tableID: 0,
-          columnID: 0,
-          dataTypeID: 25,
-          dataTypeSize: -1,
-          dataTypeModifier: -1,
-          format: "text",
-        },
-      ],
+      fields: doltCheckoutFields,
     },
   },
   {
@@ -187,17 +153,7 @@ const tests = [
       rowCount: 1,
       oid: null,
       rows: [{ dolt_checkout: `{0,"Switched to branch 'main'"}` }],
-      fields: [
-        {
-          name: "dolt_checkout",
-          tableID: 0,
-          columnID: 0,
-          dataTypeID: 25,
-          dataTypeSize: -1,
-          dataTypeModifier: -1,
-          format: "text",
-        },
-      ],
+      fields: doltCheckoutFields,
     },
   },
   {
@@ -215,17 +171,7 @@ const tests = [
       rowCount: 1,
       oid: null,
       rows: [{ count: "3" }],
-      fields: [
-        {
-          name: "count",
-          tableID: 0,
-          columnID: 0,
-          dataTypeID: 20,
-          dataTypeSize: 8,
-          dataTypeModifier: -1,
-          format: "text",
-        },
-      ],
+      fields: countFields,
     },
   },
 ];

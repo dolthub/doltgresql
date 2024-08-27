@@ -30,6 +30,38 @@ func TestPreparedPgCatalog(t *testing.T) {
 	RunScripts(t, pgCatalogTests)
 }
 
+func TestTest(t *testing.T) {
+	RunScripts(t, []ScriptTest{
+		{
+
+			Name: "Expressions without tables",
+			Assertions: []ScriptTestAssertion{
+				// {
+				// 	Query:    "SELECT * FROM dolt_log($1::text);",
+				// 	BindVars: []any{"main"},
+				// 	Expected: []sql.Row{
+				// 		{},
+				// 	},
+				// },
+				{
+					Query:    "SELECT dolt_branch($1::text, $2::text);",
+					BindVars: []any{"newtag", "main"},
+					Expected: []sql.Row{
+						{},
+					},
+				},
+				{
+					Query:    "SELECT dolt_tag($1::text, $2::text);",
+					BindVars: []any{"newtag", "main"},
+					Expected: []sql.Row{
+						{},
+					},
+				},
+			},
+		},
+	})
+}
+
 var preparedStatementTests = []ScriptTest{
 	{
 		Name: "Expressions without tables",
@@ -42,10 +74,24 @@ var preparedStatementTests = []ScriptTest{
 				},
 			},
 			{
+				Query:    "SELECT CONCAT($1, $2)",
+				BindVars: []any{"hello", "world"},
+				Expected: []sql.Row{
+					{"helloworld"},
+				},
+			},
+			{
 				Query:    "SELECT $1::integer + $2::integer",
 				BindVars: []any{1, 2},
 				Expected: []sql.Row{
 					{3},
+				},
+			},
+			{
+				Query:    "SELECT TRUNC($1);",
+				BindVars: []any{1.5},
+				Expected: []sql.Row{
+					{1},
 				},
 			},
 		},
