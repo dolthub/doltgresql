@@ -105,7 +105,11 @@ func (u UnknownType) IoInput(ctx *sql.Context, input string) (any, error) {
 
 // IoOutput implements the DoltgresType interface.
 func (u UnknownType) IoOutput(ctx *sql.Context, output any) (string, error) {
-	return output.(string), nil
+	s, ok := output.(string)
+	if !ok {
+		return "", fmt.Errorf("%s: unexpected type %T", u.String(), output)
+	}
+	return s, nil
 }
 
 // IsPreferredType implements the DoltgresType interface.

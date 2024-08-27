@@ -85,6 +85,9 @@ func (it *InTuple) Eval(ctx *sql.Context, row sql.Row) (any, error) {
 		if err != nil {
 			return nil, err
 		}
+		if result == nil {
+			return nil, nil
+		}
 		if result.(bool) {
 			return true, nil
 		}
