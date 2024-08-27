@@ -327,7 +327,7 @@ func nodeExpr(node tree.Expr) (vitess.Expr, error) {
 			switch right := right.(type) {
 			case vitess.ValTuple:
 				return vitess.InjectedExpr{
-					Expression: pgexprs.NewInTuple(),
+					Expression: pgexprs.NewInTupleDecaying(),
 					Children:   vitess.Exprs{left, right},
 				}, nil
 			case *vitess.Subquery:
