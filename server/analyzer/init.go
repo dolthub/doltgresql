@@ -24,6 +24,7 @@ const (
 	ruleId_TypeSanitizer analyzer.RuleId = iota + 1000
 	ruleId_AssignInsertCasts
 	ruleId_AssignUpdateCasts
+	ruleId_ReplaceIndexedTables
 	ruleId_ReplaceSerial
 	ruleId_InsertContextRootFinalizer
 )
@@ -36,6 +37,7 @@ func Init() {
 		getAnalyzerRule(analyzer.OnceBeforeDefault, analyzer.ValidateColumnDefaultsId),
 		analyzer.Rule{Id: ruleId_AssignInsertCasts, Apply: AssignInsertCasts},
 		analyzer.Rule{Id: ruleId_AssignUpdateCasts, Apply: AssignUpdateCasts},
+		analyzer.Rule{Id: ruleId_ReplaceIndexedTables, Apply: ReplaceIndexedTables},
 	)
 
 	// Column default validation was moved to occur after type sanitization, so we'll remove it from its original place
@@ -52,9 +54,6 @@ func Init() {
 	// The auto-commit rule writes the contents of the context, so we need to insert our finalizer before that
 	analyzer.OnceAfterAll = insertAnalyzerRules(analyzer.OnceAfterAll, analyzer.AutocommitId, true,
 		analyzer.Rule{Id: ruleId_InsertContextRootFinalizer, Apply: InsertContextRootFinalizer})
-
-	// Handle the function overrides
-	analyzer.IndexLeafChildren = IndexLeafChildren
 }
 
 // getAnalyzerRule returns the rule matching the given ID.
