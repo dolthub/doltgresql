@@ -251,7 +251,7 @@ func VitessTypeToObjectID(typ query.Type) (int32, error) {
 		return OidInt4, nil
 	case query.Type_UINT32:
 		// Since this has an upperbound greater than `INT32`, we'll treat it as `INT64`
-		return OidInt8, nil
+		return OidOid, nil
 	case query.Type_UINT64:
 		// Since this has an upperbound greater than `INT64`, we'll treat it as `NUMERIC`
 		return OidNumeric, nil
@@ -306,8 +306,7 @@ func VitessFieldToDataTypeSize(field *query.Field) (int16, error) {
 	case query.Type_UINT24:
 		return 4, nil
 	case query.Type_UINT32:
-		// Since this has an upperbound greater than `INT32`, we'll treat it as `INT64`
-		return 8, nil
+		return 4, nil
 	case query.Type_UINT64:
 		// Since this has an upperbound greater than `INT64`, we'll treat it as `NUMERIC`
 		return -1, nil

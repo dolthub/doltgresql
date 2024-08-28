@@ -633,6 +633,10 @@ func (h *ConnectionHandler) convertBindParameters(types []int32, formatCodes []i
 		bindingName := fmt.Sprintf("v%d", i+1)
 		typ := convertType(types[i])
 		var bindVarString string
+
+		// TODO: need to check for byte length for given type length. E.g. int16, int32 and uint32 expects 4 bytes
+		//  but currently, receives 8 bytes.
+
 		// We'll rely on a library to decode each format, which will deal with text and binary representations for us
 		if err := h.pgTypeMap.Scan(uint32(types[i]), int16(formatCodes[i]), values[i].Data, &bindVarString); err != nil {
 			return nil, err
@@ -677,6 +681,8 @@ func convertType(oid int32) querypb.Type {
 		return sqltypes.Timestamp
 	case messages.OidVarchar:
 		return sqltypes.Text
+	case messages.OidOid:
+		return sqltypes.Uint32
 	default:
 		panic(fmt.Sprintf("convertType(oid): unhandled type %d", oid))
 	}

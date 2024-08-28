@@ -326,6 +326,59 @@ var preparedStatementTests = []ScriptTest{
 			},
 		},
 	},
+	{
+		Name: "Date type insert, update, delete",
+		SetUpScript: []string{
+			"drop table if exists test",
+			"CREATE TABLE test (pk BIGINT PRIMARY KEY, v1 DATE);",
+		},
+		Assertions: []ScriptTestAssertion{
+			{
+				Query:    "INSERT INTO test VALUES ($1, $2), ($3, $4);",
+				BindVars: []any{1, "2022-02-02", 3, "2024-04-01 -07"},
+			},
+			{
+				Query: "SELECT * FROM test order by pk;",
+				Expected: []sql.Row{
+					{1, "2022-02-02"},
+					{3, "2024-04-01"},
+				},
+			},
+			{
+				Query:    "SELECT * FROM test WHERE v1 = $1;",
+				BindVars: []any{"2022-02-02"},
+				Expected: []sql.Row{
+					{1, "2022-02-02"},
+				},
+			},
+			{
+				Query:    "SELECT * FROM test WHERE v1 = $1;",
+				BindVars: []any{"2022-02-03"},
+				Expected: []sql.Row{},
+			},
+			{
+				Query:    "UPDATE test set v1 = $1 WHERE pk = $2;",
+				BindVars: []any{"2022-02-03", 1},
+			},
+			{
+				Query:    "SELECT * FROM test WHERE v1 = $1;",
+				BindVars: []any{"2022-02-03"},
+				Expected: []sql.Row{
+					{1, "2022-02-03"},
+				},
+			},
+			{
+				Query:    "DELETE FROM test WHERE pk = $1;",
+				BindVars: []any{1},
+			},
+			{
+				Query: "SELECT * FROM test order by 1;",
+				Expected: []sql.Row{
+					{3, "2024-04-01"},
+				},
+			},
+		},
+	},
 }
 
 var pgCatalogTests = []ScriptTest{
@@ -341,7 +394,6 @@ var pgCatalogTests = []ScriptTest{
 				Expected: []sql.Row{{1879048194, "testschema", 0, nil}},
 			},
 			{
-				Skip:     true, // TODO: Getting ERROR: cannot scan oid (OID 26) in binary format into *string
 				Query:    `SELECT * FROM "pg_catalog"."pg_namespace" WHERE oid=$1;`,
 				BindVars: []any{1879048194},
 				Expected: []sql.Row{{1879048194, "testschema", 0, nil}},
@@ -363,6 +415,39 @@ var pgCatalogTests = []ScriptTest{
 				Query:    `SELECT count(*) FROM "pg_catalog"."pg_tables" WHERE schemaname=$1;`,
 				BindVars: []any{"pg_catalog"},
 				Expected: []sql.Row{{139}},
+			},
+		},
+	},
+	{
+		Name: "pg_class",
+		SetUpScript: []string{
+			`CREATE SCHEMA testschema;`,
+			`CREATE TABLE testschema.testtable (id int primary key, v1 text)`,
+		},
+		Assertions: []ScriptTestAssertion{
+			{
+				Query: `SELECT c.oid,d.description,pg_catalog.pg_get_expr(c.relpartbound, c.oid) as partition_expr,  pg_catalog.pg_get_partkeydef(c.oid) as partition_key 
+FROM pg_catalog.pg_class c
+LEFT OUTER JOIN pg_catalog.pg_description d ON d.objoid=c.oid AND d.objsubid=0 AND d.classoid='pg_class'::regclass
+WHERE c.relnamespace=$1 AND c.relkind not in ('i','I','c');`,
+				BindVars: []any{1879048194},
+				Expected: []sql.Row{{2686451712, nil, nil, ""}},
+			},
+			{
+				Query:    `select c.oid,pg_catalog.pg_total_relation_size(c.oid) as total_rel_size,pg_catalog.pg_relation_size(c.oid) as rel_size FROM pg_class c WHERE c.relnamespace=$1;`,
+				BindVars: []any{1879048194},
+				Expected: []sql.Row{{1612709888, 0, 0}, {2686451712, 0, 0}},
+			},
+			{
+				Query: `SELECT c.relname, a.attrelid, a.attname, a.atttypid, pg_catalog.pg_get_expr(ad.adbin, ad.adrelid, true) as def_value,dsc.description,dep.objid 
+FROM pg_catalog.pg_attribute a 
+INNER JOIN pg_catalog.pg_class c ON (a.attrelid=c.oid) 
+LEFT OUTER JOIN pg_catalog.pg_attrdef ad ON (a.attrelid=ad.adrelid AND a.attnum = ad.adnum) 
+LEFT OUTER JOIN pg_catalog.pg_description dsc ON (c.oid=dsc.objoid AND a.attnum = dsc.objsubid) 
+LEFT OUTER JOIN pg_depend dep on dep.refobjid = a.attrelid AND dep.deptype = 'i' and dep.refobjsubid = a.attnum and dep.classid = dep.refclassid 
+WHERE NOT a.attisdropped AND c.relkind not in ('i','I','c') AND c.oid=$1 ORDER BY a.attnum`,
+				BindVars: []any{2686451712},
+				Expected: []sql.Row{{"testtable", 2686451712, "id", 23, nil, nil, nil}, {"testtable", 2686451712, "v1", 25, nil, nil, nil}},
 			},
 		},
 	},
