@@ -22,6 +22,7 @@ import (
 	"runtime"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/dolthub/dolt/go/libraries/doltcore/sqle/dsess"
 	denginetest "github.com/dolthub/dolt/go/libraries/doltcore/sqle/enginetest"
@@ -35,6 +36,7 @@ import (
 	"github.com/dolthub/vitess/go/vt/proto/query"
 	vitess "github.com/dolthub/vitess/go/vt/sqlparser"
 	_ "github.com/jackc/pgx/v4/stdlib"
+	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
 	"github.com/dolthub/doltgresql/server"
@@ -50,6 +52,10 @@ type DoltgresHarness struct {
 	configureStats     bool
 	useLocalFilesystem bool
 }
+
+var _ denginetest.DoltEnginetestHarness = &DoltgresHarness{}
+var _ enginetest.SkippingHarness = &DoltgresHarness{}
+var _ enginetest.ResultEvaluationHarness = &DoltgresHarness{}
 
 func (d *DoltgresHarness) ValidateEngine(ctx *sql.Context, e *gms.Engine) error {
 	// TODO
@@ -73,8 +79,6 @@ func (d *DoltgresHarness) WithConfigureStats(configureStats bool) denginetest.Do
 func (d *DoltgresHarness) NewHarness(t *testing.T) denginetest.DoltEnginetestHarness {
 	return newDoltgresServerHarness(t)
 }
-
-var _ denginetest.DoltEnginetestHarness = &DoltgresHarness{}
 
 // newDoltgresServerHarness creates a new harness for testing Dolt, using an in-memory filesystem and an in-memory blob store.
 func newDoltgresServerHarness(t *testing.T) denginetest.DoltEnginetestHarness {
@@ -289,10 +293,99 @@ func (d *DoltgresHarness) SnapshotTable(db sql.VersionedDatabase, tableName stri
 	panic("implement me")
 }
 
+func (d *DoltgresHarness) EvaluateQueryResults(t *testing.T, expected []sql.Row, expectedCols []*sql.Column, sch sql.Schema, rows []sql.Row, q string) {
+	widenedRows := enginetest.WidenRows(sch, rows)
+	widenedExpected := enginetest.WidenRows(sch, expected)
+
+	upperQuery := strings.ToUpper(q)
+	orderBy := strings.Contains(upperQuery, "ORDER BY ")
+
+	isServerEngine := true
+	isNilOrEmptySchema := sch == nil || len(sch) == 0
+	// We replace all times for SHOW statements with the Unix epoch except for SHOW EVENTS
+	setZeroTime := strings.HasPrefix(upperQuery, "SHOW ") && !strings.Contains(upperQuery, "EVENTS")
+
+	for _, widenedRow := range widenedRows {
+		for i, val := range widenedRow {
+			switch val.(type) {
+			case time.Time:
+				if setZeroTime {
+					widenedRow[i] = time.Unix(0, 0).UTC()
+				}
+			}
+		}
+	}
+
+	// if the sch is nil or empty, over the wire result is no row whereas single empty row is expected.
+	// This happens for SET and SELECT INTO statements.
+	if isServerEngine && isNilOrEmptySchema && len(widenedRows) == 0 && len(widenedExpected) == 1 && len(widenedExpected[0]) == 0 {
+		widenedExpected = widenedRows
+	}
+
+	// The expected results that need  conversion before checking against actual results.
+	for i, row := range widenedExpected {
+		for j, field := range row {
+			// Special case for custom values
+			if cvv, isCustom := field.(enginetest.CustomValueValidator); isCustom {
+				if i >= len(widenedRows) {
+					continue
+				}
+				actual := widenedRows[i][j] // shouldn't panic, but fine if it does
+				ok, err := cvv.Validate(actual)
+				if err != nil {
+					t.Error(err.Error())
+				}
+				if !ok {
+					t.Errorf("Custom value validation, got %v", actual)
+				}
+				widenedExpected[i][j] = actual // ensure it passes equality check later
+			}
+
+			if !isServerEngine || isNilOrEmptySchema {
+				continue
+			}
+
+			// TODO: handle OkResult
+			// if okRes, ok := widenedExpected[i][j].(gmstypes.OkResult); ok {
+			// 	okResult := types.OkResult{
+			// 		RowsAffected: okRes.RowsAffected,
+			// 		InsertID:     okRes.InsertID,
+			// 		Info:         nil,
+			// 	}
+			// 	widenedExpected[i][j] = okResult
+			// } else {
+			// this attempts to do what `rowToSQL()` method in `handler.go` on expected row
+			// because over the wire values gets converted to SQL values depending on the column types.
+			convertedExpected, _, err := sch[j].Type.Convert(widenedExpected[i][j])
+			require.NoError(t, err)
+			widenedExpected[i][j] = convertedExpected
+		}
+	}
+
+	// .Equal gives better error messages than .ElementsMatch, so use it when possible
+	if orderBy || len(expected) <= 1 {
+		require.Equal(t, widenedExpected, widenedRows, "Unexpected result for query %s", q)
+	} else {
+		require.ElementsMatch(t, widenedExpected, widenedRows, "Unexpected result for query %s", q)
+	}
+
+	// If the expected schema was given, test it as well
+	// TODO: handle expected schema
+	// if expectedCols != nil && !isServerEngine {
+	// 	assert.Equal(t, simplifyResultSchema(expectedCols), simplifyResultSchema(sch))
+	// }
+}
+
+func (d *DoltgresHarness) EvaluateExpectedError(t *testing.T, expected string, err error) {
+	assert.Contains(t, err.Error(), expected)
+}
+
 type DoltgresQueryEngine struct {
 	harness    *DoltgresHarness
 	controller *svcs.Controller
 }
+
+var _ enginetest.QueryEngine = &DoltgresQueryEngine{}
 
 // Ptr is a helper function that returns a pointer to the value passed in. This is necessary to e.g. get a pointer to
 // a const value without assigning to an intermediate variable.
@@ -482,8 +575,6 @@ func (d DoltgresQueryEngine) Close() error {
 	d.controller.Stop()
 	return d.controller.WaitForStop()
 }
-
-var _ enginetest.QueryEngine = &DoltgresQueryEngine{}
 
 func columns(rows *gosql.Rows) (sql.Schema, []interface{}, error) {
 	types, err := rows.ColumnTypes()

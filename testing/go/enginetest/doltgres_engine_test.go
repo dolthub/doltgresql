@@ -52,7 +52,7 @@ func init() {
 }
 
 func TestQueries(t *testing.T) {
-	t.Skip()
+	// t.Skip()
 	h := newDoltgresServerHarness(t)
 	defer h.Close()
 	enginetest.TestQueries(t, h)
@@ -1081,7 +1081,7 @@ func TestDoltCheckoutPrepared(t *testing.T) {
 }
 
 func TestDoltBranch(t *testing.T) {
-	t.Skip()
+	// t.Skip()
 	h := newDoltgresServerHarness(t)
 	denginetest.RunDoltBranchTests(t, h)
 }
