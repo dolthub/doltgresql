@@ -23,8 +23,15 @@ import (
 	"github.com/dolthub/go-mysql-server/sql/types"
 )
 
+// IsValidPostgresConfigParameter returns true if the given parameter name is a valid postgres configuration parameter.
 func IsValidPostgresConfigParameter(name string) bool {
 	_, ok := postgresConfigParameters[strings.ToLower(name)]
+	return ok
+}
+
+// IsValidDoltConfigParameter returns true if the given parameter name is a valid Dolt configuration parameter.
+func IsValidDoltConfigParameter(name string) bool {
+	_, ok := doltConfigParameters[strings.ToLower(name)]
 	return ok
 }
 

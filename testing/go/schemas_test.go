@@ -548,6 +548,7 @@ var SchemaTests = []ScriptTest{
 			"CREATE SCHEMA myschema",
 			"SET search_path = 'myschema'",
 			"CREATE TABLE mytbl (pk BIGINT PRIMARY KEY, v1 BIGINT);",
+			"set dolt_show_branch_databases to 1;", // TODO: Use `use db/branch` instead of dolt_checkout for these tests and remove this
 		},
 		Assertions: []ScriptTestAssertion{
 			{
@@ -561,7 +562,6 @@ var SchemaTests = []ScriptTest{
 				},
 			},
 			{
-				Skip:  true, // TODO: revision database not supported yet
 				Query: "SELECT schema_name FROM information_schema.schemata WHERE catalog_name = 'postgres/main';",
 				Expected: []sql.Row{
 					{"myschema"},
@@ -617,7 +617,7 @@ var SchemaTests = []ScriptTest{
 				},
 			},
 			{
-				Skip:  true, // TODO: revision database not supported yet
+				Skip:  true, // TODO: pg_catalog and public are not showing up
 				Query: "SELECT schema_name FROM information_schema.schemata WHERE catalog_name = 'postgres/newbranch';",
 				Expected: []sql.Row{
 					{"newbranchschema"},
