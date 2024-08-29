@@ -121,6 +121,7 @@ func (d *DoltgresHarness) NewEngine(t *testing.T) (enginetest.QueryEngine, error
 	queryEngine := NewDoltgresQueryEngine(t, d)
 
 	ctx := d.NewContext()
+
 	for _, setupScript := range d.setupData {
 		for _, s := range setupScript {
 			runQuery, sanitized := sanitizeQuery(s)
@@ -141,7 +142,43 @@ func (d *DoltgresHarness) NewEngine(t *testing.T) (enginetest.QueryEngine, error
 		}
 	}
 
+	var dbs []string
+	dbs = d.allDatabaseNames(ctx, queryEngine)
+
+	for _, setupScript := range commitScripts(dbs) {
+		for _, s := range setupScript {
+			runQuery, sanitized := sanitizeQuery(s)
+			if !runQuery {
+				t.Log("Skipping setup query: ", s)
+				continue
+			} else {
+				t.Log("Running setup query: ", s)
+			}
+			_, rowIter, _, err := queryEngine.Query(ctx, sanitized)
+			if err != nil {
+				return nil, err
+			}
+			err = drainIter(ctx, rowIter)
+			if err != nil {
+				return nil, err
+			}
+		}
+	}
+
 	return queryEngine, nil
+}
+
+// commitScripts returns a set of queries that will commit the working sets of the given database names
+func commitScripts(dbs []string) []setup.SetupScript {
+	var commitCmds setup.SetupScript
+	for i := range dbs {
+		db := dbs[i]
+		commitCmds = append(commitCmds, fmt.Sprintf("use %s", db))
+		commitCmds = append(commitCmds, "call dolt_add('.')")
+		commitCmds = append(commitCmds, fmt.Sprintf("call dolt_commit('--allow-empty', '-am', 'checkpoint enginetest database %s', '--date', '1970-01-01T12:00:00')", db))
+	}
+	commitCmds = append(commitCmds, "use mydb")
+	return []setup.SetupScript{commitCmds}
 }
 
 var skippedSetupWords = []string{
@@ -322,7 +359,8 @@ func (d *DoltgresHarness) EvaluateQueryResults(t *testing.T, expected []sql.Row,
 		widenedExpected = widenedRows
 	}
 
-	// The expected results that need  conversion before checking against actual results.
+	// The expected results that need widening before checking against actual results.
+	// TODO: make this behavior configurable
 	for i, row := range widenedExpected {
 		for j, field := range row {
 			// Special case for custom values
@@ -362,6 +400,8 @@ func (d *DoltgresHarness) EvaluateQueryResults(t *testing.T, expected []sql.Row,
 		}
 	}
 
+	convertExpectedResultsForDoltProcedures(t, q, widenedExpected)
+
 	// .Equal gives better error messages than .ElementsMatch, so use it when possible
 	if orderBy || len(expected) <= 1 {
 		require.Equal(t, widenedExpected, widenedRows, "Unexpected result for query %s", q)
@@ -376,8 +416,69 @@ func (d *DoltgresHarness) EvaluateQueryResults(t *testing.T, expected []sql.Row,
 	// }
 }
 
+func convertExpectedResultsForDoltProcedures(t *testing.T, q string, widenedExpected []sql.Row) {
+	if doltProcedureCall.MatchString(q) {
+		// if this was a dolt procedure call, we need to convert the expected values to what doltgres currently outputs
+		// TODO: this can be removed when we support `select * from dolt_procedure_call(...)`
+		for i := range widenedExpected {
+			r := widenedExpected[i]
+			sb := strings.Builder{}
+			sb.WriteRune('{')
+			for j, val := range r {
+				if j > 0 {
+					sb.WriteRune(',')
+				}
+				switch v := val.(type) {
+				case string:
+					sb.WriteString(v)
+				case int64, uint64:
+					sb.WriteString(fmt.Sprintf("%d", v))
+				case float64:
+					sb.WriteString(fmt.Sprintf("%f", v))
+				case bool:
+					if v {
+						sb.WriteString("t")
+					} else {
+						sb.WriteString("f")
+					}
+				case time.Time:
+					sb.WriteString(v.Format("2006-01-02 15:04:05.999999999"))
+				default:
+					t.Fatalf("unexpected type %T", val)
+				}
+			}
+			sb.WriteRune('}')
+
+			widenedExpected[i] = []interface{}{sb.String()}
+		}
+	}
+}
+
 func (d *DoltgresHarness) EvaluateExpectedError(t *testing.T, expected string, err error) {
 	assert.Contains(t, err.Error(), expected)
+}
+
+func (d *DoltgresHarness) allDatabaseNames(ctx *sql.Context, queryEngine *DoltgresQueryEngine) []string {
+	_, rowIter, _, err := queryEngine.Query(ctx, "SELECT datname FROM pg_database")
+	if err != nil {
+		d.t.Fatalf("error getting database names: %v", err)
+	}
+
+	var dbs []string
+	for {
+		r, err := rowIter.Next(ctx)
+		if err == io.EOF {
+			break
+		} else if err != nil {
+			d.t.Fatalf("error getting database names: %v", err)
+		}
+
+		dbName := r[0].(string)
+		dbs = append(dbs, dbName)
+	}
+
+	_ = rowIter.Close(ctx)
+	return dbs
 }
 
 type DoltgresQueryEngine struct {

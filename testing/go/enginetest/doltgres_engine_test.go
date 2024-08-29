@@ -114,9 +114,15 @@ func TestSingleScript(t *testing.T) {
 
 	var scripts = []queries.ScriptTest{
 		{
-			Name: "bigtable",
+			Name: "Create branches from HEAD fails when using a non-branch revision",
 			SetUpScript: []string{
-				"SELECT * from mytable where i in (SELECT i FROM mytable);",
+				"use `mydb/main~`",
+			},
+			Assertions: []queries.ScriptTestAssertion{
+				{
+					Query:          "CALL DOLT_BRANCH('myNewBranch1')",
+					ExpectedErrStr: "fatal: Unexpected error creating branch 'myNewBranch1' : this operation is not supported while in a detached head state",
+				},
 			},
 		},
 	}
