@@ -110,7 +110,7 @@ func TestSchemaOverrides(t *testing.T) {
 
 // Convenience test for debugging a single query. Unskip and set to the desired query.
 func TestSingleScript(t *testing.T) {
-	// t.Skip()
+	t.Skip()
 
 	var scripts = []queries.ScriptTest{
 		{
@@ -119,6 +119,19 @@ func TestSingleScript(t *testing.T) {
 				"use `mydb/main~`",
 			},
 			Assertions: []queries.ScriptTestAssertion{
+				// {
+				// 	Query: "use mydb",
+				// },
+				// {
+				// 	Query: "select database()",
+				// 	Expected: []sql.Row{
+				// 		{"mydb"},
+				// 	},
+				// },
+				{
+					Query:    "select * from dolt_log order by date desc",
+					Expected: []sql.Row{},
+				},
 				{
 					Query:          "CALL DOLT_BRANCH('myNewBranch1')",
 					ExpectedErrStr: "fatal: Unexpected error creating branch 'myNewBranch1' : this operation is not supported while in a detached head state",

@@ -484,6 +484,7 @@ func (d *DoltgresHarness) allDatabaseNames(ctx *sql.Context, queryEngine *Doltgr
 type DoltgresQueryEngine struct {
 	harness    *DoltgresHarness
 	controller *svcs.Controller
+	conn       *gosql.DB
 }
 
 var _ enginetest.QueryEngine = &DoltgresQueryEngine{}
@@ -510,18 +511,22 @@ func NewDoltgresQueryEngine(t *testing.T, harness *DoltgresHarness) *DoltgresQue
 	}
 }
 
-func (d DoltgresQueryEngine) PrepareQuery(s *sql.Context, s2 string) (sql.Node, error) {
+func (d *DoltgresQueryEngine) PrepareQuery(s *sql.Context, s2 string) (sql.Node, error) {
 	panic("implement me")
 }
 
-func (d DoltgresQueryEngine) AnalyzeQuery(s *sql.Context, s2 string) (sql.Node, error) {
+func (d *DoltgresQueryEngine) AnalyzeQuery(s *sql.Context, s2 string) (sql.Node, error) {
 	panic("implement me")
 }
 
 // TODO: random port
 var doltgresNoDbDsn = fmt.Sprintf("postgresql://doltgres:password@127.0.0.1:%d/?sslmode=disable", port)
 
-func (d DoltgresQueryEngine) Query(ctx *sql.Context, query string) (sql.Schema, sql.RowIter, *sql.QueryFlags, error) {
+func (d *DoltgresQueryEngine) Query(ctx *sql.Context, query string) (sql.Schema, sql.RowIter, *sql.QueryFlags, error) {
+	db, err := d.getConnection()
+	if err != nil {
+		return nil, nil, nil, err
+	}
 
 	queries := convertQuery(query)
 
@@ -534,11 +539,6 @@ func (d DoltgresQueryEngine) Query(ctx *sql.Context, query string) (sql.Schema, 
 	)
 
 	for _, query := range queries {
-		db, err := gosql.Open("pgx", doltgresNoDbDsn)
-		if err != nil {
-			return nil, nil, nil, err
-		}
-
 		rows, err := db.Query(query)
 		if err != nil {
 			return nil, nil, nil, err
@@ -586,6 +586,20 @@ func (d DoltgresQueryEngine) Query(ctx *sql.Context, query string) (sql.Schema, 
 	}
 
 	return resultSchema, sql.RowsToRowIter(resultRows...), nil, nil
+}
+
+func (d *DoltgresQueryEngine) getConnection() (*gosql.DB, error) {
+	if d.conn != nil {
+		return d.conn, nil
+	}
+
+	db, err := gosql.Open("pgx", doltgresNoDbDsn)
+	if err != nil {
+		return nil, err
+	}
+
+	d.conn = db
+	return d.conn, nil
 }
 
 func toRow(schema sql.Schema, r []interface{}) (sql.Row, error) {
@@ -652,15 +666,15 @@ func unwrapResultColumn(v any) (any, error) {
 	}
 }
 
-func (d DoltgresQueryEngine) EngineAnalyzer() *analyzer.Analyzer {
+func (d *DoltgresQueryEngine) EngineAnalyzer() *analyzer.Analyzer {
 	panic("implement me")
 }
 
-func (d DoltgresQueryEngine) EnginePreparedDataCache() *gms.PreparedDataCache {
+func (d *DoltgresQueryEngine) EnginePreparedDataCache() *gms.PreparedDataCache {
 	panic("implement me")
 }
 
-func (d DoltgresQueryEngine) QueryWithBindings(ctx *sql.Context, query string, parsed vitess.Statement, bindings map[string]*query.BindVariable, qFlags *sql.QueryFlags) (sql.Schema, sql.RowIter, *sql.QueryFlags, error) {
+func (d *DoltgresQueryEngine) QueryWithBindings(ctx *sql.Context, query string, parsed vitess.Statement, bindings map[string]*query.BindVariable, qFlags *sql.QueryFlags) (sql.Schema, sql.RowIter, *sql.QueryFlags, error) {
 	if len(bindings) > 0 {
 		return nil, nil, nil, fmt.Errorf("bindings not supported")
 	}
@@ -668,11 +682,13 @@ func (d DoltgresQueryEngine) QueryWithBindings(ctx *sql.Context, query string, p
 	return d.Query(ctx, query)
 }
 
-func (d DoltgresQueryEngine) CloseSession(connID uint32) {
-	panic("implement me")
+func (d *DoltgresQueryEngine) CloseSession(connID uint32) {
+	// TODO: track connection ids
+	d.conn = nil
 }
 
-func (d DoltgresQueryEngine) Close() error {
+func (d *DoltgresQueryEngine) Close() error {
+	d.conn = nil
 	d.controller.Stop()
 	return d.controller.WaitForStop()
 }
@@ -704,6 +720,10 @@ func columns(rows *gosql.Rows) (sql.Schema, []interface{}, error) {
 			colVal := gosql.NullInt64{}
 			columnVals = append(columnVals, &colVal)
 			schema = append(schema, &sql.Column{Name: columnType.Name(), Type: gmstypes.Int64, Nullable: true})
+		case "TIMESTAMP", "DATETIME", "DATE":
+			colVal := gosql.NullTime{}
+			columnVals = append(columnVals, &colVal)
+			schema = append(schema, &sql.Column{Name: columnType.Name(), Type: gmstypes.Timestamp, Nullable: true})
 		default:
 			return nil, nil, fmt.Errorf("Unhandled type %s", columnType.DatabaseTypeName())
 		}
