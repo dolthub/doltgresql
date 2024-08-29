@@ -122,7 +122,7 @@ func (d *DoltgresHarness) NewEngine(t *testing.T) (enginetest.QueryEngine, error
 
 	ctx := d.NewContext()
 
-	for _, setupScript := range d.setupData {
+	for _, setupScript := range d.getSetupData() {
 		for _, s := range setupScript {
 			runQuery, sanitized := sanitizeQuery(s)
 			if !runQuery {
@@ -166,6 +166,15 @@ func (d *DoltgresHarness) NewEngine(t *testing.T) (enginetest.QueryEngine, error
 	}
 
 	return queryEngine, nil
+}
+
+func (d *DoltgresHarness) getSetupData() []setup.SetupScript {
+	// The way we construct and initialize the database and engine is convoluted. In dolt, this happens in the
+	// enginetest package in GMS, but we take a slightly different codepath, so we need to do this here.
+	if len(d.setupData) == 0 {
+		return setup.MydbData
+	}
+	return d.setupData
 }
 
 // commitScripts returns a set of queries that will commit the working sets of the given database names

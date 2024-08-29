@@ -114,27 +114,24 @@ func TestSingleScript(t *testing.T) {
 
 	var scripts = []queries.ScriptTest{
 		{
-			Name: "Create branches from HEAD fails when using a non-branch revision",
-			SetUpScript: []string{
-				"use `mydb/main~`",
-			},
+			Name: "Create branches from HEAD with dolt_branch procedure",
 			Assertions: []queries.ScriptTestAssertion{
-				// {
-				// 	Query: "use mydb",
-				// },
-				// {
-				// 	Query: "select database()",
-				// 	Expected: []sql.Row{
-				// 		{"mydb"},
-				// 	},
-				// },
 				{
-					Query:    "select * from dolt_log order by date desc",
-					Expected: []sql.Row{},
+					Query:    "CALL DOLT_BRANCH('myNewBranch1')",
+					Expected: []sql.Row{{0}},
 				},
 				{
+					Query:    "SELECT COUNT(*) FROM DOLT_BRANCHES WHERE NAME='myNewBranch1';",
+					Expected: []sql.Row{{1}},
+				},
+				{
+					// Trying to recreate that branch fails without the force flag
 					Query:          "CALL DOLT_BRANCH('myNewBranch1')",
-					ExpectedErrStr: "fatal: Unexpected error creating branch 'myNewBranch1' : this operation is not supported while in a detached head state",
+					ExpectedErrStr: "fatal: A branch named 'myNewBranch1' already exists.",
+				},
+				{
+					Query:    "CALL DOLT_BRANCH('-f', 'myNewBranch1')",
+					Expected: []sql.Row{{0}},
 				},
 			},
 		},
@@ -142,7 +139,7 @@ func TestSingleScript(t *testing.T) {
 
 	for _, script := range scripts {
 		harness := newDoltgresServerHarness(t)
-		harness.Setup(setup.MydbData, setup.MytableData)
+		// harness.Setup(setup.MydbData, setup.MytableData)
 
 		engine, err := harness.NewEngine(t)
 		if err != nil {
