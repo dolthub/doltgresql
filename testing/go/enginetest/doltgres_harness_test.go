@@ -77,7 +77,10 @@ func (d *DoltgresHarness) WithConfigureStats(configureStats bool) denginetest.Do
 }
 
 func (d *DoltgresHarness) NewHarness(t *testing.T) denginetest.DoltEnginetestHarness {
-	return newDoltgresServerHarness(t)
+	h := newDoltgresServerHarness(t).(*DoltgresHarness)
+	h.skippedQueries = d.skippedQueries
+	h.setupData = d.setupData
+	return h
 }
 
 // newDoltgresServerHarness creates a new harness for testing Dolt, using an in-memory filesystem and an in-memory blob store.
@@ -96,8 +99,8 @@ var defaultSkippedQueries = []string{
 	"show indexes from",          // we create / expose extra indexes (for foreign keys)
 	"show global variables like", // we set extra variables
 	// unsupported doltgres syntax
-	"WITH",
-	"OVER",
+	// " WITH ",
+	// " OVER ",
 	// string functions are broken due to incompatible types
 	"HEX(",
 	"TO_BASE64(",
