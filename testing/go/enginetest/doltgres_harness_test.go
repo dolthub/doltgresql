@@ -47,6 +47,7 @@ type DoltgresHarness struct {
 	t                  *testing.T
 	setupData          []setup.SetupScript
 	skippedQueries     []string
+	queryEngine        *DoltgresQueryEngine
 	parallelism        int
 	skipSetupCommit    bool
 	configureStats     bool
@@ -121,7 +122,15 @@ func (d *DoltgresHarness) SkipSetupCommit() {
 // NewEngine creates a new *gms.Engine or calls reset and clear scripts on the existing
 // engine for reuse.
 func (d *DoltgresHarness) NewEngine(t *testing.T) (enginetest.QueryEngine, error) {
+	if d.queryEngine != nil {
+		err := d.queryEngine.Close()
+		if err != nil {
+			return nil, err
+		}
+	}
+
 	queryEngine := NewDoltgresQueryEngine(t, d)
+	d.queryEngine = queryEngine
 
 	ctx := d.NewContext()
 
@@ -318,7 +327,9 @@ func (d *DoltgresHarness) NewDatabases(names ...string) []sql.Database {
 }
 
 func (d *DoltgresHarness) NewReadOnlyEngine(provider sql.DatabaseProvider) (enginetest.QueryEngine, error) {
-	panic("implement me")
+	// TODO: toggle the server to be read-only
+	d.Close()
+	return d.NewEngine(d.t)
 }
 
 func (d *DoltgresHarness) NewDatabaseProvider() sql.MutableDatabaseProvider {
@@ -326,6 +337,12 @@ func (d *DoltgresHarness) NewDatabaseProvider() sql.MutableDatabaseProvider {
 }
 
 func (d *DoltgresHarness) Close() {
+	if d.queryEngine != nil {
+		err := d.queryEngine.Close()
+		if err != nil {
+			d.t.Fatal(err)
+		}
+	}
 }
 
 // NewTableAsOf implements enginetest.VersionedHarness
@@ -679,7 +696,11 @@ func unwrapResultColumn(v any) (any, error) {
 }
 
 func (d *DoltgresQueryEngine) EngineAnalyzer() *analyzer.Analyzer {
-	panic("implement me")
+	// TODO: this is a shim to get simple tests to work, we need to restructure the tests to not require access to
+	//  an analyzer
+	return &analyzer.Analyzer{
+		Catalog: &analyzer.Catalog{},
+	}
 }
 
 func (d *DoltgresQueryEngine) EnginePreparedDataCache() *gms.PreparedDataCache {
