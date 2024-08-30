@@ -433,9 +433,9 @@ func (d *DoltgresHarness) EvaluateQueryResults(t *testing.T, expected []sql.Row,
 
 	// .Equal gives better error messages than .ElementsMatch, so use it when possible
 	if orderBy || len(expected) <= 1 {
-		require.Equal(t, widenedExpected, widenedRows, "Unexpected result for query %s", q)
+		assert.Equal(t, widenedExpected, widenedRows, "Unexpected result for query %s", q)
 	} else {
-		require.ElementsMatch(t, widenedExpected, widenedRows, "Unexpected result for query %s", q)
+		assert.ElementsMatch(t, widenedExpected, widenedRows, "Unexpected result for query %s", q)
 	}
 
 	// If the expected schema was given, test it as well
