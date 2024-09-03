@@ -181,7 +181,7 @@ func (u UnknownType) ValueType() reflect.Type {
 
 // Zero implements the DoltgresType interface.
 func (u UnknownType) Zero() any {
-	return any(nil)
+	return ""
 }
 
 // SerializeType implements the DoltgresType interface.

@@ -231,3 +231,35 @@ func (u *UnresolvedName) ToUnresolvedObjectName(idx AnnotationIdx) (*UnresolvedO
 		idx,
 	)
 }
+
+// GetUnresolvedObjectName pulls the UnresolvedObjectName from the UnresolvedName. It is possible that the
+// UnresolvedName does not reference an upper object, therefore the UnresolvedObjectName may be empty.
+func (u *UnresolvedName) GetUnresolvedObjectName() *UnresolvedObjectName {
+	switch u.NumParts {
+	case 1:
+		return &UnresolvedObjectName{
+			NumParts: 0,
+			Parts:    [3]string{},
+		}
+	case 2:
+		return &UnresolvedObjectName{
+			NumParts: 1,
+			Parts:    [3]string{u.Parts[1], "", ""},
+		}
+	case 3:
+		return &UnresolvedObjectName{
+			NumParts: 2,
+			Parts:    [3]string{u.Parts[1], u.Parts[2], ""},
+		}
+	case 4:
+		return &UnresolvedObjectName{
+			NumParts: 3,
+			Parts:    [3]string{u.Parts[1], u.Parts[2], u.Parts[3]},
+		}
+	default:
+		return &UnresolvedObjectName{
+			NumParts: 0,
+			Parts:    [3]string{},
+		}
+	}
+}

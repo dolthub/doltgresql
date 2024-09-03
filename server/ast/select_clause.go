@@ -32,6 +32,87 @@ func nodeSelectClause(node *tree.SelectClause) (*vitess.Select, error) {
 	if err != nil {
 		return nil, err
 	}
+	// Multiple tables in the FROM column with an "equals" filter for some columns within each table should be treated
+	// as a join. The analyzer should catch this, however GMS processes this form of a join differently than a standard
+	// join, which is currently incompatible with Doltgres expressions. As a workaround, we rewrite the tree so that we
+	// pass along a join node.
+	// TODO: handle more than two tables, also make this more robust with handling more node types
+	if len(node.From.Tables) == 2 && node.Where != nil {
+		// We don't yet handle AS OF for rewrites
+		if node.From.AsOf.Expr != nil {
+			goto PostJoinRewrite
+		}
+		tableNames := make(map[tree.TableName]int)
+		tableAliases := make(map[tree.TableName]int)
+		// First we need to get the table names and aliases, since they'll be referenced by the filters
+		for i := range node.From.Tables {
+			switch table := node.From.Tables[i].(type) {
+			case *tree.AliasedTableExpr:
+				if tableName, ok := table.Expr.(*tree.TableName); ok {
+					tableNames[*tableName] = i
+				} else {
+					goto PostJoinRewrite
+				}
+				tableAliases[tree.MakeUnqualifiedTableName(table.As.Alias)] = i
+			case *tree.TableName:
+				tableNames[*table] = i
+			case *tree.UnresolvedObjectName:
+				tableNames[table.ToTableName()] = i
+			default:
+				goto PostJoinRewrite
+			}
+		}
+		// For now, we'll check if the entire filter should be moved into the join condition. Eventually, this should
+		// move only the needed expressions into the join condition.
+		var delveExprs func(expr tree.Expr) bool
+		delveExprs = func(expr tree.Expr) bool {
+			switch expr := expr.(type) {
+			case *tree.AndExpr:
+				return delveExprs(expr.Left) && delveExprs(expr.Right)
+			case *tree.OrExpr:
+				return delveExprs(expr.Left) && delveExprs(expr.Right)
+			case *tree.ComparisonExpr:
+				if expr.Operator != tree.EQ {
+					return false
+				}
+				var refTables [2]int
+				for argIndex, arg := range []tree.Expr{expr.Left, expr.Right} {
+					switch arg := arg.(type) {
+					case *tree.UnresolvedName:
+						refTable := arg.GetUnresolvedObjectName().ToTableName()
+						if aliasIndex, ok := tableAliases[refTable]; ok {
+							refTables[argIndex] = aliasIndex
+						} else if tableIndex, ok := tableNames[refTable]; ok {
+							refTables[argIndex] = tableIndex
+						} else {
+							return false
+						}
+					default:
+						return false
+					}
+				}
+				// In this case, the expression does not reference multiple tables, so it's not a join condition
+				if refTables[0] == refTables[1] {
+					return false
+				}
+				return true
+			default:
+				return false
+			}
+		}
+		if !delveExprs(node.Where.Expr) {
+			goto PostJoinRewrite
+		}
+		// The filter condition represents a join, so we need to rewrite our FROM node to be a join node
+		node.From.Tables = tree.TableExprs{&tree.JoinTableExpr{
+			JoinType: "",
+			Left:     node.From.Tables[0],
+			Right:    node.From.Tables[1],
+			Cond:     &tree.OnJoinCond{Expr: node.Where.Expr},
+		}}
+		node.Where = nil
+	}
+PostJoinRewrite:
 	from, err := nodeFrom(node.From)
 	if err != nil {
 		return nil, err

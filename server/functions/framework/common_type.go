@@ -17,8 +17,6 @@ package framework
 import (
 	"fmt"
 
-	"github.com/dolthub/go-mysql-server/sql"
-
 	pgtypes "github.com/dolthub/doltgresql/server/types"
 )
 
@@ -70,17 +68,4 @@ func FindCommonType(types []pgtypes.DoltgresTypeBaseID) (pgtypes.DoltgresTypeBas
 		}
 	}
 	return candidateType, nil
-}
-
-// CastFromUnknownType if a type cast function that uses the unknown type output
-// to get string value passed to the target type as input.
-var CastFromUnknownType TypeCastFunction = func(ctx *sql.Context, val any, targetType pgtypes.DoltgresType) (any, error) {
-	if val == nil {
-		return nil, nil
-	}
-	str, err := pgtypes.Unknown.IoOutput(ctx, val)
-	if err != nil {
-		return nil, err
-	}
-	return targetType.IoInput(ctx, str)
 }

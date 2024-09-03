@@ -33,6 +33,7 @@ type BinaryOperator struct {
 var _ vitess.Injectable = (*BinaryOperator)(nil)
 var _ sql.Expression = (*BinaryOperator)(nil)
 var _ expression.BinaryExpression = (*BinaryOperator)(nil)
+var _ expression.Equality = (*BinaryOperator)(nil)
 
 // NewBinaryOperator returns a new *BinaryOperator.
 func NewBinaryOperator(operator framework.Operator) *BinaryOperator {
@@ -54,6 +55,11 @@ func (b *BinaryOperator) IsNullable() bool {
 	return b.compiledFunc.IsNullable()
 }
 
+// RepresentsEquality implements the expression.Equality interface.
+func (b *BinaryOperator) RepresentsEquality() bool {
+	return b.operator == framework.Operator_BinaryEqual
+}
+
 // Resolved implements the sql.Expression interface.
 func (b *BinaryOperator) Resolved() bool {
 	return b.compiledFunc.Resolved()
@@ -67,6 +73,21 @@ func (b *BinaryOperator) String() string {
 	// We know that we'll always have two parameters here
 	return fmt.Sprintf("%s %s %s",
 		b.compiledFunc.Arguments[0].String(), b.operator.String(), b.compiledFunc.Arguments[1].String())
+}
+
+// SwapParameters implements the expression.Equality interface.
+func (b *BinaryOperator) SwapParameters(ctx *sql.Context) (expression.Equality, error) {
+	// TODO: for now we'll assume this is valid, but we should check for the `COMMUTATOR` property on the operator
+	f, err := b.WithResolvedChildren([]any{b.Right(), b.Left()})
+	if err != nil {
+		return nil, err
+	}
+	return f.(expression.Equality), nil
+}
+
+// ToComparer implements the expression.Equality interface.
+func (b *BinaryOperator) ToComparer() (expression.Comparer, error) {
+	return NewJoinComparator(b)
 }
 
 // Type implements the sql.Expression interface.

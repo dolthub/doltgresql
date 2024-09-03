@@ -542,6 +542,109 @@ var SchemaTests = []ScriptTest{
 			},
 		},
 	},
+	{
+		Name: "with branches",
+		SetUpScript: []string{
+			"CREATE SCHEMA myschema",
+			"SET search_path = 'myschema'",
+			"CREATE TABLE mytbl (pk BIGINT PRIMARY KEY, v1 BIGINT);",
+		},
+		Assertions: []ScriptTestAssertion{
+			{
+				Query:    "SELECT active_branch();",
+				Expected: []sql.Row{{"main"}},
+			},
+			{
+				Query: "SELECT current_schemas(true);",
+				Expected: []sql.Row{
+					{"{pg_catalog,myschema}"},
+				},
+			},
+			{
+				Skip:  true, // TODO: revision database not supported yet
+				Query: "SELECT schema_name FROM information_schema.schemata WHERE catalog_name = 'postgres/main';",
+				Expected: []sql.Row{
+					{"myschema"},
+					{"pg_catalog"},
+					{"public"},
+					{"information_schema"},
+				},
+			},
+			{
+				Query: "SELECT schema_name FROM information_schema.schemata WHERE catalog_name = 'postgres';",
+				Expected: []sql.Row{
+					{"myschema"},
+					{"pg_catalog"},
+					{"public"},
+					{"information_schema"},
+				},
+			},
+			{
+				Query:    "SELECT * FROM mytbl;",
+				Expected: []sql.Row{},
+			},
+			{
+				Query: "SELECT schemaname, tablename FROM pg_catalog.pg_tables WHERE schemaname != 'pg_catalog';",
+				Expected: []sql.Row{
+					{"myschema", "mytbl"},
+				},
+			},
+			{
+				Query:    "SELECT dolt_checkout('-b', 'newbranch')",
+				Expected: []sql.Row{{"{0,\"Switched to branch 'newbranch'\"}"}},
+			},
+			{
+				Skip:     true, // TODO: ERROR: no schema has been selected to create in
+				Query:    "CREATE TABLE mytbl2 (pk BIGINT PRIMARY KEY, v1 BIGINT);",
+				Expected: []sql.Row{},
+			},
+			{
+				Query:    "CREATE SCHEMA newbranchschema;",
+				Expected: []sql.Row{},
+			},
+			{
+				Query:    "SET search_path = 'newbranchschema';",
+				Expected: []sql.Row{},
+			},
+			{
+				Query:    "CREATE TABLE mytbl2 (pk BIGINT PRIMARY KEY, v1 BIGINT);",
+				Expected: []sql.Row{},
+			},
+			{
+				Query: "SELECT current_schemas(true)",
+				Expected: []sql.Row{
+					{"{pg_catalog,newbranchschema}"},
+				},
+			},
+			{
+				Skip:  true, // TODO: revision database not supported yet
+				Query: "SELECT schema_name FROM information_schema.schemata WHERE catalog_name = 'postgres/newbranch';",
+				Expected: []sql.Row{
+					{"newbranchschema"},
+					{"pg_catalog"},
+					{"public"},
+					{"information_schema"},
+				},
+			},
+			{
+				Skip:  true, // TODO: Why are pg_catalog and public not showing up?
+				Query: "SELECT schema_name FROM information_schema.schemata WHERE catalog_name = 'postgres';",
+				Expected: []sql.Row{
+					{"newbranchschema"},
+					{"pg_catalog"},
+					{"public"},
+					{"information_schema"},
+				},
+			},
+			{
+				Skip:  true, // TODO: Getting error "database schema not found: pg_catalog"
+				Query: "SELECT schemaname, tablename FROM pg_catalog.pg_tables WHERE schemaname != 'pg_catalog';",
+				Expected: []sql.Row{
+					{"newbranchschema", "mytbl2"},
+				},
+			},
+		},
+	},
 	// More tests:
 	// * alter table statements, when they work better
 	// * AS OF (when supported)

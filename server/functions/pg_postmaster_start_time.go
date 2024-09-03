@@ -26,7 +26,7 @@ func initPgPostmasterStartTime() {
 	framework.RegisterFunction(pg_postmaster_start_time)
 }
 
-// pg_postmaster_start_time represents the PostgreSQL system information function.
+// pg_postmaster_start_time represents the PostgreSQL function of the same name, taking the same parameters.
 var pg_postmaster_start_time = framework.Function0{
 	Name:               "pg_postmaster_start_time",
 	Return:             pgtypes.Timestamp,

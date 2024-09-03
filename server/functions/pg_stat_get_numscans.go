@@ -21,20 +21,19 @@ import (
 	pgtypes "github.com/dolthub/doltgresql/server/types"
 )
 
-// initPgTableSize registers the functions to the catalog.
-func initPgTableSize() {
-	framework.RegisterFunction(pg_table_size_regclass)
+// initPgStatGetNumscans registers the functions to the catalog.
+func initPgStatGetNumscans() {
+	framework.RegisterFunction(pg_stat_get_numscans_oid)
 }
 
-// pg_table_size_regclass represents the PostgreSQL function of the same name, taking the same parameters.
-var pg_table_size_regclass = framework.Function1{
-	Name:               "pg_table_size",
+// pg_stat_get_numscans_oid represents the PostgreSQL function of the same name, taking the same parameters.
+var pg_stat_get_numscans_oid = framework.Function1{
+	Name:               "pg_stat_get_numscans",
 	Return:             pgtypes.Int64,
-	Parameters:         [1]pgtypes.DoltgresType{pgtypes.Regclass},
+	Parameters:         [1]pgtypes.DoltgresType{pgtypes.Oid},
 	IsNonDeterministic: true,
 	Strict:             true,
 	Callable: func(ctx *sql.Context, _ [2]pgtypes.DoltgresType, val any) (any, error) {
-		// TODO: Disk space used by the specified table, excluding indexes (but including TOAST, free space map, and visibility map)
 		return int64(0), nil
 	},
 }
