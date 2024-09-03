@@ -74,6 +74,26 @@ func TestExpressions(t *testing.T) {
 					Query:    `SELECT 4 IN (1, 2, 3);`,
 					Expected: []sql.Row{{"f"}},
 				},
+				{
+					Query:    `SELECT concat('a', 'b') in ('a', 'b', 'ab');`,
+					Expected: []sql.Row{{"t"}},
+				},
+				{
+					Query:    `SELECT concat('a', 'b') in ('a', 'b');`,
+					Expected: []sql.Row{{"f"}},
+				},
+				{
+					Query:    `SELECT concat('a', 'b') in ('a', NULL, 'b');`,
+					Expected: []sql.Row{{nil}},
+				},
+				{
+					Query:    `SELECT concat('a', NULL) in ('a', 'b', 'ab');`,
+					Expected: []sql.Row{{nil}},
+				},
+				{
+					Query:    `SELECT concat('a', NULL) in ('a', NULL);`,
+					Expected: []sql.Row{{nil}},
+				},
 			},
 		},
 	})

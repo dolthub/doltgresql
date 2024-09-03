@@ -97,8 +97,13 @@ func (it *InTuple) Eval(ctx *sql.Context, row sql.Row) (any, error) {
 
 		if result == nil {
 			sawNull = true
-		} else if result.(bool) {
-			return true, nil
+		} else {
+			isEqual, isBool := result.(bool)
+			if isEqual {
+				return true, nil
+			} else if !isBool {
+				return false, fmt.Errorf("%T: expected comparison function to return a bool but returned `%T`", it, result)
+			}
 		}
 	}
 
@@ -178,10 +183,6 @@ func (it *InTuple) WithChildren(children ...sql.Expression) (sql.Expression, err
 			compFuncs[i] = framework.GetBinaryFunction(framework.Operator_BinaryEqual).Compile("internal_in_comparison", staticLiteral, arrayLiterals[i])
 			if compFuncs[i] == nil {
 				return nil, fmt.Errorf("operator does not exist: %s = %s", leftType.String(), rightType.String())
-			}
-			if compFuncs[i].Type().(pgtypes.DoltgresType).BaseID() != pgtypes.DoltgresTypeBaseID_Bool {
-				// This should never happen, but this is just to be safe
-				return nil, fmt.Errorf("%T: found equality comparison that does not return a bool", it)
 			}
 		}
 		if allValidChildren {
