@@ -61,6 +61,11 @@ func (it *InTuple) Eval(ctx *sql.Context, row sql.Row) (any, error) {
 	if err != nil {
 		return nil, err
 	}
+
+	if left == nil {
+		return nil, nil
+	}
+
 	rightInterface, err := it.rightExpr.Eval(ctx, row)
 	if err != nil {
 		return nil, err
@@ -79,19 +84,28 @@ func (it *InTuple) Eval(ctx *sql.Context, row sql.Row) (any, error) {
 	for i, rightValue := range rightValues {
 		it.arrayLiterals[i].value = rightValue
 	}
+
 	// Now we can loop over all of the comparison functions, as they'll reference their respective values
+	// The rules for null comparisons are subtle: an IN expression that includes a NULL in the tuple will return null
+	// instead of false if a match is not found, but true otherwise.
+	sawNull := false
 	for _, compFunc := range it.compFuncs {
 		result, err := compFunc.Eval(ctx, row)
 		if err != nil {
 			return nil, err
 		}
+
 		if result == nil {
-			return nil, nil
-		}
-		if result.(bool) {
+			sawNull = true
+		} else if result.(bool) {
 			return true, nil
 		}
 	}
+
+	if sawNull {
+		return nil, nil
+	}
+
 	return false, nil
 }
 
