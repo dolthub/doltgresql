@@ -545,10 +545,10 @@ var SchemaTests = []ScriptTest{
 	{
 		Name: "with branches", // TODO: Use `use db/branch` instead of dolt_checkout for these tests
 		SetUpScript: []string{
+			`USE "postgres/main"`,
 			"CREATE SCHEMA myschema",
 			"SET search_path = 'myschema'",
 			"CREATE TABLE mytbl (pk BIGINT PRIMARY KEY, v1 BIGINT);",
-			"set dolt_show_branch_databases to 1;",
 		},
 		Assertions: []ScriptTestAssertion{
 			{
@@ -602,31 +602,35 @@ var SchemaTests = []ScriptTest{
 				},
 			},
 			{
-				Query:    "SELECT dolt_checkout('-b', 'newbranch')",
-				Expected: []sql.Row{{"{0,\"Switched to branch 'newbranch'\"}"}},
+				Query:    "SELECT * FROM dolt_status;",
+				Expected: []sql.Row{{"mytbl", 0, "new table"}},
 			},
 			{
-				Skip:     true, // TODO: ERROR: no schema has been selected to create in
-				Query:    "CREATE TABLE mytbl2 (pk BIGINT PRIMARY KEY, v1 BIGINT);",
+				Query:    "SELECT dolt_commit('-A', '-m', 'Add mytbl');", // TODO: This is failing with "nothing to commit"
+				Expected: []sql.Row{{"{0}"}},
+			},
+			{
+				Query:    "SELECT * FROM dolt_status;",
 				Expected: []sql.Row{},
 			},
 			{
-				Query:    "CREATE SCHEMA newbranchschema;",
+				Query:    "SELECT dolt_branch('newbranch')",
+				Expected: []sql.Row{{"{0}"}},
+			},
+			{
+				Query:    "USE 'postgres/newbranch'",
 				Expected: []sql.Row{},
 			},
 			{
-				Query:    "SET search_path = 'newbranchschema';",
-				Expected: []sql.Row{},
-			},
-			{
-				Query:    "CREATE TABLE mytbl2 (pk BIGINT PRIMARY KEY, v1 BIGINT);",
-				Expected: []sql.Row{},
-			},
-			{
-				Query: "SELECT current_schemas(true)",
+				Query: "SELECT current_schemas(true);",
 				Expected: []sql.Row{
-					{"{pg_catalog,newbranchschema}"},
+					{"{pg_catalog,myschema}"},
 				},
+			},
+			{
+				// Skip:     true, // TODO: ERROR: no schema has been selected to create in
+				Query:    "CREATE TABLE mytbl2 (pk BIGINT PRIMARY KEY, v1 BIGINT);",
+				Expected: []sql.Row{},
 			},
 			{
 				Skip:  true, // TODO: pg_catalog and public are not showing up
