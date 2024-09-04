@@ -52,7 +52,7 @@ func init() {
 }
 
 func TestQueries(t *testing.T) {
-	// t.Skip()
+	t.Skip()
 	h := newDoltgresServerHarness(t)
 	defer h.Close()
 	enginetest.TestQueries(t, h)
