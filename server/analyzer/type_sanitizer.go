@@ -52,6 +52,8 @@ func TypeSanitizer(ctx *sql.Context, a *analyzer.Analyzer, node sql.Node, scope 
 		switch expr := expr.(type) {
 		case *expression.Literal:
 			return typeSanitizerLiterals(expr)
+		case *expression.Not, *expression.And, *expression.Or, *expression.Like:
+			return pgexprs.NewGMSCast(expr), transform.NewTree, nil
 		case sql.FunctionExpression:
 			// Compiled functions are Doltgres functions. We're only concerned with GMS functions.
 			if _, ok := expr.(*framework.CompiledFunction); !ok {

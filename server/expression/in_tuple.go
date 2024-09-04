@@ -76,6 +76,11 @@ func (it *InTuple) Eval(ctx *sql.Context, row sql.Row) (any, error) {
 	if err != nil {
 		return nil, err
 	}
+
+	if left == nil {
+		return nil, nil
+	}
+
 	rightInterface, err := it.rightExpr.Eval(ctx, row)
 	if err != nil {
 		return nil, err
@@ -94,16 +99,33 @@ func (it *InTuple) Eval(ctx *sql.Context, row sql.Row) (any, error) {
 	for i, rightValue := range rightValues {
 		it.arrayLiterals[i].value = rightValue
 	}
+
 	// Now we can loop over all of the comparison functions, as they'll reference their respective values
+	// The rules for null comparisons are subtle: an IN expression that includes a NULL in the tuple will return null
+	// instead of false if a match is not found, but true otherwise.
+	sawNull := false
 	for _, compFunc := range it.compFuncs {
 		result, err := compFunc.Eval(ctx, row)
 		if err != nil {
 			return nil, err
 		}
-		if result.(bool) {
-			return true, nil
+
+		if result == nil {
+			sawNull = true
+		} else {
+			isEqual, isBool := result.(bool)
+			if isEqual {
+				return true, nil
+			} else if !isBool {
+				return false, fmt.Errorf("%T: expected comparison function to return a bool but returned `%T`", it, result)
+			}
 		}
 	}
+
+	if sawNull {
+		return nil, nil
+	}
+
 	return false, nil
 }
 
@@ -177,10 +199,6 @@ func (it *InTuple) WithChildren(children ...sql.Expression) (sql.Expression, err
 			if compFuncs[i] == nil {
 				return nil, fmt.Errorf("operator does not exist: %s = %s", leftType.String(), rightType.String())
 			}
-			if compFuncs[i].Type().(pgtypes.DoltgresType).BaseID() != pgtypes.DoltgresTypeBaseID_Bool {
-				// This should never happen, but this is just to be safe
-				return nil, fmt.Errorf("%T: found equality comparison that does not return a bool", it)
-			}
 		}
 		if allValidChildren {
 			// We've verified validity, so if this should decay, we'll do that here.
@@ -198,6 +216,7 @@ func (it *InTuple) WithChildren(children ...sql.Expression) (sql.Expression, err
 						compiledFunc: compFuncs[i],
 					})
 				}
+
 				return expr, nil
 			}
 			return &InTuple{

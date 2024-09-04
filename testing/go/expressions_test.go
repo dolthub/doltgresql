@@ -54,6 +54,50 @@ func TestExpressions(t *testing.T) {
 						{int32(3), int32(2), "baz"},
 					},
 				},
+				{
+					Query:    `SELECT 4 IN (null, 1, 2, 3);`,
+					Expected: []sql.Row{{nil}},
+				},
+				{
+					Query:    `SELECT 4 IN (null, 1, 2, 3, 4);`,
+					Expected: []sql.Row{{"t"}},
+				},
+				{
+					Query:    `SELECT NULL IN (null, 1, 2, 3);`,
+					Expected: []sql.Row{{nil}},
+				},
+				{
+					Query:    `SELECT 4 IN (1, 2, 3, null::int4);`,
+					Expected: []sql.Row{{nil}},
+				},
+				{
+					Query:    `SELECT 4 IN (1, 2, 3);`,
+					Expected: []sql.Row{{"f"}},
+				},
+				{
+					Query:    `SELECT 4 IN (1, 2, 3, 4);`,
+					Expected: []sql.Row{{"t"}},
+				},
+				{
+					Query:    `SELECT concat('a', 'b') in ('a', 'b', 'ab');`,
+					Expected: []sql.Row{{"t"}},
+				},
+				{
+					Query:    `SELECT concat('a', 'b') in ('a', 'b');`,
+					Expected: []sql.Row{{"f"}},
+				},
+				{
+					Query:    `SELECT concat('a', 'b') in ('a', NULL, 'b');`,
+					Expected: []sql.Row{{nil}},
+				},
+				{
+					Query:    `SELECT concat('a', NULL) in ('a', 'b', 'ab');`,
+					Expected: []sql.Row{{nil}},
+				},
+				{
+					Query:    `SELECT concat('a', NULL) in ('a', NULL);`,
+					Expected: []sql.Row{{nil}},
+				},
 			},
 		},
 	})
@@ -190,85 +234,59 @@ WHERE "t"."relkind" IN ('r', 'p') AND (("ns"."nspname" = 'public' AND "t"."relna
 	}
 }
 
-func TestSubqueries(t *testing.T) {
+func TestBinaryLogic(t *testing.T) {
 	RunScripts(t, []ScriptTest{
 		{
-			Name: "Subselect",
-			SetUpScript: []string{
-				`CREATE TABLE test (id INT);`,
-				`INSERT INTO test VALUES (1), (3), (2);`,
-			},
+			Name: "AND",
 			Assertions: []ScriptTestAssertion{
 				{
-					Query: `SELECT * FROM test WHERE id = (SELECT 2);`,
-					Expected: []sql.Row{
-						{int32(2)},
-					},
+					Query:    `SELECT 1 = 1 AND 2 = 2;`,
+					Expected: []sql.Row{{"t"}},
 				},
 				{
-					Query: `SELECT *, (SELECT id from test where id = 2) FROM test order by id;`,
-					Expected: []sql.Row{
-						{1, 2},
-						{2, 2},
-						{3, 2},
-					},
+					Query:    `SELECT (1 = 1 AND 2 = 2) AND (false);`,
+					Expected: []sql.Row{{"f"}},
 				},
 				{
-					Query: `SELECT *, (SELECT id from test t2 where t2.id = test.id) FROM test order by id;`,
-					Expected: []sql.Row{
-						{1, 1},
-						{2, 2},
-						{3, 3},
-					},
+					Query:    `SELECT (1 > 1 AND 2 = 2);`,
+					Expected: []sql.Row{{"f"}},
+				},
+				{
+					Query:    `SELECT (1 = 1 AND 2 = 2) AND (false);`,
+					Expected: []sql.Row{{"f"}},
+				},
+				{
+					Query:    `SELECT (1 = 1 AND 2 = 2) AND (true);`,
+					Expected: []sql.Row{{"t"}},
 				},
 			},
 		},
 		{
-			Name: "IN",
-			SetUpScript: []string{
-				`CREATE TABLE test (id INT);`,
-				`INSERT INTO test VALUES (1), (3), (2);`,
-
-				`CREATE TABLE test2 (id INT, test_id INT, txt text);`,
-				`INSERT INTO test2 VALUES (1, 1, 'foo'), (2, 10, 'bar'), (3, 2, 'baz');`,
-			},
+			Name: "OR",
 			Assertions: []ScriptTestAssertion{
 				{
-					Query:    `SELECT * FROM test WHERE id IN (SELECT * FROM test WHERE id = 2);`,
-					Expected: []sql.Row{{int32(2)}},
+					Query:    `SELECT 1 = 1 OR 2 = 2;`,
+					Expected: []sql.Row{{"t"}},
 				},
 				{
-					Query:    `SELECT * FROM test WHERE id IN (SELECT id FROM test WHERE id = 3);`,
-					Expected: []sql.Row{{int32(3)}},
+					Query:    `SELECT (1 = 1 AND 2 = 2) OR (false);`,
+					Expected: []sql.Row{{"t"}},
 				},
 				{
-					Query:    `SELECT * FROM test WHERE id IN (SELECT * FROM test WHERE id > 0);`,
-					Expected: []sql.Row{{int32(1)}, {int32(3)}, {int32(2)}},
+					Query:    `SELECT (1 > 1 OR 2 = 2);`,
+					Expected: []sql.Row{{"t"}},
 				},
 				{
-					Query:    `SELECT * FROM test2 WHERE test_id IN (SELECT * FROM test WHERE id = 2);`,
-					Expected: []sql.Row{{int32(3), int32(2), "baz"}},
+					Query:    `SELECT (1 > 1 OR 2 > 2);`,
+					Expected: []sql.Row{{"f"}},
 				},
 				{
-					Query: `SELECT * FROM test2 WHERE test_id IN (SELECT * FROM test WHERE id > 0);`,
-					Expected: []sql.Row{
-						{int32(1), int32(1), "foo"},
-						{int32(3), int32(2), "baz"},
-					},
+					Query:    `SELECT (1 > 1 OR 2 > 2) OR (true);`,
+					Expected: []sql.Row{{"t"}},
 				},
 				{
-					Query: `SELECT id FROM test2 WHERE (2, 10) IN (SELECT id, test_id FROM test2 WHERE id > 0);`,
-					Skip:  true, // won't pass until we have a doltgres tuple type to match against for equality funcs
-					Expected: []sql.Row{
-						{1}, {2}, {3},
-					},
-				},
-				{
-					Query: `SELECT id FROM test2 WHERE (id, test_id) IN (SELECT id, test_id FROM test2 WHERE id > 0);`,
-					Skip:  true, // won't pass until we have a doltgres tuple type to match against for equality funcs
-					Expected: []sql.Row{
-						{2},
-					},
+					Query:    `SELECT (1 = 1 AND 2 = 2) OR (true);`,
+					Expected: []sql.Row{{"t"}},
 				},
 			},
 		},

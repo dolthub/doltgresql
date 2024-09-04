@@ -19,6 +19,7 @@ import (
 	"unicode/utf8"
 
 	"github.com/dolthub/go-mysql-server/sql"
+	"github.com/dolthub/go-mysql-server/sql/types"
 	"github.com/dolthub/vitess/go/vt/proto/query"
 )
 
@@ -52,7 +53,13 @@ func truncateString(val string, runeLimit uint32) (string, uint32) {
 // FromGmsType returns a DoltgresType that is most similar to the given GMS type.
 func FromGmsType(typ sql.Type) DoltgresType {
 	switch typ.Type() {
-	case query.Type_INT8, query.Type_INT16, query.Type_INT24, query.Type_INT32, query.Type_YEAR, query.Type_ENUM:
+	case query.Type_INT8:
+		// Special treatment for boolean types when we can detect them
+		if typ == types.Boolean {
+			return Bool
+		}
+		return Int32
+	case query.Type_INT16, query.Type_INT24, query.Type_INT32, query.Type_YEAR, query.Type_ENUM:
 		return Int32
 	case query.Type_INT64, query.Type_SET, query.Type_BIT, query.Type_UINT8, query.Type_UINT16, query.Type_UINT24, query.Type_UINT32:
 		return Int64

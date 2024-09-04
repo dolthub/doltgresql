@@ -74,10 +74,29 @@ func (c *GMSCast) Eval(ctx *sql.Context, row sql.Row) (any, error) {
 	if _, ok := c.sqlChild.Type().(pgtypes.DoltgresType); ok {
 		return val, nil
 	}
-	switch c.sqlChild.Type().Type() {
+	sqlTyp := c.sqlChild.Type()
+	switch sqlTyp.Type() {
+	// Boolean types are a special case because of how they are translated on the wire in Postgres. If we identify a
+	// boolean result, we want to convert it from an int back to a boolean.
+	case query.Type_INT8:
+		if sqlTyp == types.Boolean {
+			newVal, _, err := types.Int32.Convert(val)
+			if err != nil {
+				return nil, err
+			}
+			if _, ok := newVal.(int32); !ok {
+				return nil, fmt.Errorf("GMSCast expected type `int32`, got `%T`", val)
+			}
+			if newVal.(int32) == 0 {
+				return false, nil
+			} else {
+				return true, nil
+			}
+		}
+		fallthrough
 	// Although Int16 would be a closer fit for some of these types, in Postgres, Int32 is generally the smallest value
 	// used. To maximize overall compatibility, it's better to interpret these values as Int32 instead.
-	case query.Type_INT8, query.Type_INT16, query.Type_INT24, query.Type_INT32, query.Type_YEAR, query.Type_ENUM:
+	case query.Type_INT16, query.Type_INT24, query.Type_INT32, query.Type_YEAR, query.Type_ENUM:
 		newVal, _, err := types.Int32.Convert(val)
 		if err != nil {
 			return nil, err
