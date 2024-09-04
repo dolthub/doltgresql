@@ -110,20 +110,61 @@ func TestSchemaOverrides(t *testing.T) {
 
 // Convenience test for debugging a single query. Unskip and set to the desired query.
 func TestSingleScript(t *testing.T) {
-	// t.Skip()
+	t.Skip()
 
 	var scripts = []queries.ScriptTest{
 		{
-			Name: "bigtable",
+			Name: "Delete branches with dolt_branch procedure",
 			SetUpScript: []string{
-				"SELECT * from mytable where i in (SELECT i FROM mytable);",
+				"CALL DOLT_BRANCH('myNewBranch1')",
+				"CALL DOLT_BRANCH('myNewBranch2')",
+				"CALL DOLT_BRANCH('myNewBranch3')",
+				"CALL DOLT_BRANCH('myNewBranchWithCommit')",
+				"CALL DOLT_CHECKOUT('myNewBranchWithCommit')",
+				"CALL DOLT_COMMIT('--allow-empty', '-am', 'empty commit')",
+				"CALL DOLT_CHECKOUT('main')",
+			},
+			Assertions: []queries.ScriptTestAssertion{
+				{
+					Query:          "CALL DOLT_BRANCH('-d')",
+					ExpectedErrStr: "error: invalid usage",
+				},
+				{
+					Query:          "CALL DOLT_BRANCH('-d', '')",
+					ExpectedErrStr: "error: cannot branch empty string",
+				},
+				{
+					Query:          "CALL DOLT_BRANCH('-d', 'branchDoesNotExist')",
+					ExpectedErrStr: "branch not found",
+				},
+				{
+					Query:    "CALL DOLT_BRANCH('-d', 'myNewBranch1')",
+					Expected: []sql.Row{{0}},
+				},
+				{
+					Query:    "SELECT COUNT(*) FROM DOLT_BRANCHES WHERE NAME='myNewBranch1'",
+					Expected: []sql.Row{{0}},
+				},
+				{
+					Query:    "CALL DOLT_BRANCH('-d', 'myNewBranch2', 'myNewBranch3')",
+					Expected: []sql.Row{{0}},
+				},
+				{
+					// Trying to delete a branch with unpushed changes fails without force option
+					Query:          "CALL DOLT_BRANCH('-d', 'myNewBranchWithCommit')",
+					ExpectedErrStr: "branch 'myNewBranchWithCommit' is not fully merged",
+				},
+				{
+					Query:    "CALL DOLT_BRANCH('-df', 'myNewBranchWithCommit')",
+					Expected: []sql.Row{{0}},
+				},
 			},
 		},
 	}
 
 	for _, script := range scripts {
 		harness := newDoltgresServerHarness(t)
-		harness.Setup(setup.MydbData, setup.MytableData)
+		// harness.Setup(setup.MydbData, setup.MytableData)
 
 		engine, err := harness.NewEngine(t)
 		if err != nil {
@@ -1069,8 +1110,13 @@ func TestDoltGC(t *testing.T) {
 }
 
 func TestDoltCheckout(t *testing.T) {
-	t.Skip()
-	h := newDoltgresServerHarness(t)
+	t.Skip("race condition in CI")
+	h := newDoltgresServerHarness(t).WithSkippedQueries([]string{
+		"dolt_checkout and base name resolution", // needs db-qualified table names
+		"branch last checked out is deleted",
+		"Using non-existent refs",
+		"read-only databases", // read-only not yet implemented in harness
+	})
 	denginetest.RunDoltCheckoutTests(t, h)
 }
 
@@ -1081,8 +1127,12 @@ func TestDoltCheckoutPrepared(t *testing.T) {
 }
 
 func TestDoltBranch(t *testing.T) {
-	t.Skip()
-	h := newDoltgresServerHarness(t)
+	t.Skip("race condition in CI")
+	h := newDoltgresServerHarness(t).WithSkippedQueries([]string{
+		"Create branch from startpoint",  // missing SET @var syntax
+		"Join same table at two commits", // needs different branch-qualified DB syntax
+	})
+
 	denginetest.RunDoltBranchTests(t, h)
 }
 

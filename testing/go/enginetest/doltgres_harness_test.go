@@ -22,6 +22,7 @@ import (
 	"runtime"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/dolthub/dolt/go/libraries/doltcore/sqle/dsess"
 	denginetest "github.com/dolthub/dolt/go/libraries/doltcore/sqle/enginetest"
@@ -35,6 +36,7 @@ import (
 	"github.com/dolthub/vitess/go/vt/proto/query"
 	vitess "github.com/dolthub/vitess/go/vt/sqlparser"
 	_ "github.com/jackc/pgx/v4/stdlib"
+	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
 	"github.com/dolthub/doltgresql/server"
@@ -45,11 +47,16 @@ type DoltgresHarness struct {
 	t                  *testing.T
 	setupData          []setup.SetupScript
 	skippedQueries     []string
+	queryEngine        *DoltgresQueryEngine
 	parallelism        int
 	skipSetupCommit    bool
 	configureStats     bool
 	useLocalFilesystem bool
 }
+
+var _ denginetest.DoltEnginetestHarness = &DoltgresHarness{}
+var _ enginetest.SkippingHarness = &DoltgresHarness{}
+var _ enginetest.ResultEvaluationHarness = &DoltgresHarness{}
 
 func (d *DoltgresHarness) ValidateEngine(ctx *sql.Context, e *gms.Engine) error {
 	// TODO
@@ -71,10 +78,11 @@ func (d *DoltgresHarness) WithConfigureStats(configureStats bool) denginetest.Do
 }
 
 func (d *DoltgresHarness) NewHarness(t *testing.T) denginetest.DoltEnginetestHarness {
-	return newDoltgresServerHarness(t)
+	h := newDoltgresServerHarness(t).(*DoltgresHarness)
+	h.skippedQueries = d.skippedQueries
+	h.setupData = d.setupData
+	return h
 }
-
-var _ denginetest.DoltEnginetestHarness = &DoltgresHarness{}
 
 // newDoltgresServerHarness creates a new harness for testing Dolt, using an in-memory filesystem and an in-memory blob store.
 func newDoltgresServerHarness(t *testing.T) denginetest.DoltEnginetestHarness {
@@ -92,8 +100,8 @@ var defaultSkippedQueries = []string{
 	"show indexes from",          // we create / expose extra indexes (for foreign keys)
 	"show global variables like", // we set extra variables
 	// unsupported doltgres syntax
-	"WITH",
-	"OVER",
+	// " WITH ",
+	// " OVER ",
 	// string functions are broken due to incompatible types
 	"HEX(",
 	"TO_BASE64(",
@@ -114,10 +122,41 @@ func (d *DoltgresHarness) SkipSetupCommit() {
 // NewEngine creates a new *gms.Engine or calls reset and clear scripts on the existing
 // engine for reuse.
 func (d *DoltgresHarness) NewEngine(t *testing.T) (enginetest.QueryEngine, error) {
+	if d.queryEngine != nil {
+		err := d.queryEngine.Close()
+		if err != nil {
+			return nil, err
+		}
+	}
+
 	queryEngine := NewDoltgresQueryEngine(t, d)
+	d.queryEngine = queryEngine
 
 	ctx := d.NewContext()
-	for _, setupScript := range d.setupData {
+
+	for _, setupScript := range d.getSetupData() {
+		for _, s := range setupScript {
+			runQuery, sanitized := sanitizeQuery(s)
+			if !runQuery {
+				t.Log("Skipping setup query: ", s)
+				continue
+			} else {
+				t.Log("Running setup query: ", s)
+			}
+			_, rowIter, _, err := queryEngine.Query(ctx, sanitized)
+			if err != nil {
+				return nil, err
+			}
+			err = drainIter(ctx, rowIter)
+			if err != nil {
+				return nil, err
+			}
+		}
+	}
+
+	dbs := d.allDatabaseNames(ctx, queryEngine)
+
+	for _, setupScript := range commitScripts(dbs) {
 		for _, s := range setupScript {
 			runQuery, sanitized := sanitizeQuery(s)
 			if !runQuery {
@@ -138,6 +177,28 @@ func (d *DoltgresHarness) NewEngine(t *testing.T) (enginetest.QueryEngine, error
 	}
 
 	return queryEngine, nil
+}
+
+func (d *DoltgresHarness) getSetupData() []setup.SetupScript {
+	// The way we construct and initialize the database and engine is convoluted. In dolt, this happens in the
+	// enginetest package in GMS, but we take a slightly different codepath, so we need to do this here.
+	if len(d.setupData) == 0 {
+		return setup.MydbData
+	}
+	return d.setupData
+}
+
+// commitScripts returns a set of queries that will commit the working sets of the given database names
+func commitScripts(dbs []string) []setup.SetupScript {
+	var commitCmds setup.SetupScript
+	for i := range dbs {
+		db := dbs[i]
+		commitCmds = append(commitCmds, fmt.Sprintf("use %s", db))
+		commitCmds = append(commitCmds, "call dolt_add('.')")
+		commitCmds = append(commitCmds, fmt.Sprintf("call dolt_commit('--allow-empty', '-am', 'checkpoint enginetest database %s', '--date', '1970-01-01T12:00:00')", db))
+	}
+	commitCmds = append(commitCmds, "use mydb")
+	return []setup.SetupScript{commitCmds}
 }
 
 var skippedSetupWords = []string{
@@ -265,7 +326,9 @@ func (d *DoltgresHarness) NewDatabases(names ...string) []sql.Database {
 }
 
 func (d *DoltgresHarness) NewReadOnlyEngine(provider sql.DatabaseProvider) (enginetest.QueryEngine, error) {
-	panic("implement me")
+	// TODO: toggle the server to be read-only
+	d.Close()
+	return d.NewEngine(d.t)
 }
 
 func (d *DoltgresHarness) NewDatabaseProvider() sql.MutableDatabaseProvider {
@@ -273,6 +336,12 @@ func (d *DoltgresHarness) NewDatabaseProvider() sql.MutableDatabaseProvider {
 }
 
 func (d *DoltgresHarness) Close() {
+	if d.queryEngine != nil {
+		err := d.queryEngine.Close()
+		if err != nil {
+			d.t.Fatal(err)
+		}
+	}
 }
 
 // NewTableAsOf implements enginetest.VersionedHarness
@@ -289,10 +358,164 @@ func (d *DoltgresHarness) SnapshotTable(db sql.VersionedDatabase, tableName stri
 	panic("implement me")
 }
 
+func (d *DoltgresHarness) EvaluateQueryResults(t *testing.T, expected []sql.Row, expectedCols []*sql.Column, sch sql.Schema, rows []sql.Row, q string) {
+	widenedRows := enginetest.WidenRows(sch, rows)
+	widenedExpected := enginetest.WidenRows(sch, expected)
+
+	upperQuery := strings.ToUpper(q)
+	orderBy := strings.Contains(upperQuery, "ORDER BY ")
+
+	isServerEngine := true
+	isNilOrEmptySchema := len(sch) == 0
+	// We replace all times for SHOW statements with the Unix epoch except for SHOW EVENTS
+	setZeroTime := strings.HasPrefix(upperQuery, "SHOW ") && !strings.Contains(upperQuery, "EVENTS")
+
+	for _, widenedRow := range widenedRows {
+		for i, val := range widenedRow {
+			switch val.(type) {
+			case time.Time:
+				if setZeroTime {
+					widenedRow[i] = time.Unix(0, 0).UTC()
+				}
+			}
+		}
+	}
+
+	// if the sch is nil or empty, over the wire result is no row whereas single empty row is expected.
+	// This happens for SET and SELECT INTO statements.
+	if isServerEngine && isNilOrEmptySchema && len(widenedRows) == 0 && len(widenedExpected) == 1 && len(widenedExpected[0]) == 0 {
+		widenedExpected = widenedRows
+	}
+
+	// The expected results that need widening before checking against actual results.
+	// TODO: make this behavior configurable
+	for i, row := range widenedExpected {
+		for j, field := range row {
+			// Special case for custom values
+			if cvv, isCustom := field.(enginetest.CustomValueValidator); isCustom {
+				if i >= len(widenedRows) {
+					continue
+				}
+				actual := widenedRows[i][j] // shouldn't panic, but fine if it does
+				ok, err := cvv.Validate(actual)
+				if err != nil {
+					t.Error(err.Error())
+				}
+				if !ok {
+					t.Errorf("Custom value validation, got %v", actual)
+				}
+				widenedExpected[i][j] = actual // ensure it passes equality check later
+			}
+
+			if !isServerEngine || isNilOrEmptySchema {
+				continue
+			}
+
+			// TODO: handle OkResult
+			// if okRes, ok := widenedExpected[i][j].(gmstypes.OkResult); ok {
+			// 	okResult := types.OkResult{
+			// 		RowsAffected: okRes.RowsAffected,
+			// 		InsertID:     okRes.InsertID,
+			// 		Info:         nil,
+			// 	}
+			// 	widenedExpected[i][j] = okResult
+			// } else {
+			// this attempts to do what `rowToSQL()` method in `handler.go` on expected row
+			// because over the wire values gets converted to SQL values depending on the column types.
+			convertedExpected, _, err := sch[j].Type.Convert(widenedExpected[i][j])
+			require.NoError(t, err)
+			widenedExpected[i][j] = convertedExpected
+		}
+	}
+
+	convertExpectedResultsForDoltProcedures(t, q, widenedExpected)
+
+	// .Equal gives better error messages than .ElementsMatch, so use it when possible
+	if orderBy || len(expected) <= 1 {
+		assert.Equal(t, widenedExpected, widenedRows, "Unexpected result for query %s", q)
+	} else {
+		assert.ElementsMatch(t, widenedExpected, widenedRows, "Unexpected result for query %s", q)
+	}
+
+	// If the expected schema was given, test it as well
+	// TODO: handle expected schema
+	// if expectedCols != nil && !isServerEngine {
+	// 	assert.Equal(t, simplifyResultSchema(expectedCols), simplifyResultSchema(sch))
+	// }
+}
+
+func convertExpectedResultsForDoltProcedures(t *testing.T, q string, widenedExpected []sql.Row) {
+	if doltProcedureCall.MatchString(q) {
+		// if this was a dolt procedure call, we need to convert the expected values to what doltgres currently outputs
+		// TODO: this can be removed when we support `select * from dolt_procedure_call(...)`
+		for i := range widenedExpected {
+			r := widenedExpected[i]
+			sb := strings.Builder{}
+			sb.WriteRune('{')
+			for j, val := range r {
+				if j > 0 {
+					sb.WriteRune(',')
+				}
+				switch v := val.(type) {
+				case string:
+					sb.WriteString(v)
+				case int64, uint64:
+					sb.WriteString(fmt.Sprintf("%d", v))
+				case float64:
+					sb.WriteString(fmt.Sprintf("%f", v))
+				case bool:
+					if v {
+						sb.WriteString("t")
+					} else {
+						sb.WriteString("f")
+					}
+				case time.Time:
+					sb.WriteString(v.Format("2006-01-02 15:04:05.999999999"))
+				default:
+					t.Fatalf("unexpected type %T", val)
+				}
+			}
+			sb.WriteRune('}')
+
+			widenedExpected[i] = []interface{}{sb.String()}
+		}
+	}
+}
+
+func (d *DoltgresHarness) EvaluateExpectedError(t *testing.T, expected string, err error) {
+	assert.Contains(t, err.Error(), expected)
+}
+
+func (d *DoltgresHarness) allDatabaseNames(ctx *sql.Context, queryEngine *DoltgresQueryEngine) []string {
+	_, rowIter, _, err := queryEngine.Query(ctx, "SELECT datname FROM pg_database")
+	if err != nil {
+		d.t.Fatalf("error getting database names: %v", err)
+	}
+
+	var dbs []string
+	for {
+		r, err := rowIter.Next(ctx)
+		if err == io.EOF {
+			break
+		} else if err != nil {
+			d.t.Fatalf("error getting database names: %v", err)
+		}
+
+		dbName := r[0].(string)
+		dbs = append(dbs, dbName)
+	}
+
+	_ = rowIter.Close(ctx)
+	return dbs
+}
+
 type DoltgresQueryEngine struct {
 	harness    *DoltgresHarness
 	controller *svcs.Controller
+	conn       *gosql.DB
 }
+
+var _ enginetest.QueryEngine = &DoltgresQueryEngine{}
 
 // Ptr is a helper function that returns a pointer to the value passed in. This is necessary to e.g. get a pointer to
 // a const value without assigning to an intermediate variable.
@@ -316,18 +539,22 @@ func NewDoltgresQueryEngine(t *testing.T, harness *DoltgresHarness) *DoltgresQue
 	}
 }
 
-func (d DoltgresQueryEngine) PrepareQuery(s *sql.Context, s2 string) (sql.Node, error) {
+func (d *DoltgresQueryEngine) PrepareQuery(s *sql.Context, s2 string) (sql.Node, error) {
 	panic("implement me")
 }
 
-func (d DoltgresQueryEngine) AnalyzeQuery(s *sql.Context, s2 string) (sql.Node, error) {
+func (d *DoltgresQueryEngine) AnalyzeQuery(s *sql.Context, s2 string) (sql.Node, error) {
 	panic("implement me")
 }
 
 // TODO: random port
 var doltgresNoDbDsn = fmt.Sprintf("postgresql://doltgres:password@127.0.0.1:%d/?sslmode=disable", port)
 
-func (d DoltgresQueryEngine) Query(ctx *sql.Context, query string) (sql.Schema, sql.RowIter, *sql.QueryFlags, error) {
+func (d *DoltgresQueryEngine) Query(ctx *sql.Context, query string) (sql.Schema, sql.RowIter, *sql.QueryFlags, error) {
+	db, err := d.getConnection()
+	if err != nil {
+		return nil, nil, nil, err
+	}
 
 	queries := convertQuery(query)
 
@@ -340,11 +567,6 @@ func (d DoltgresQueryEngine) Query(ctx *sql.Context, query string) (sql.Schema, 
 	)
 
 	for _, query := range queries {
-		db, err := gosql.Open("pgx", doltgresNoDbDsn)
-		if err != nil {
-			return nil, nil, nil, err
-		}
-
 		rows, err := db.Query(query)
 		if err != nil {
 			return nil, nil, nil, err
@@ -392,6 +614,20 @@ func (d DoltgresQueryEngine) Query(ctx *sql.Context, query string) (sql.Schema, 
 	}
 
 	return resultSchema, sql.RowsToRowIter(resultRows...), nil, nil
+}
+
+func (d *DoltgresQueryEngine) getConnection() (*gosql.DB, error) {
+	if d.conn != nil {
+		return d.conn, nil
+	}
+
+	db, err := gosql.Open("pgx", doltgresNoDbDsn)
+	if err != nil {
+		return nil, err
+	}
+
+	d.conn = db
+	return d.conn, nil
 }
 
 func toRow(schema sql.Schema, r []interface{}) (sql.Row, error) {
@@ -458,15 +694,19 @@ func unwrapResultColumn(v any) (any, error) {
 	}
 }
 
-func (d DoltgresQueryEngine) EngineAnalyzer() *analyzer.Analyzer {
+func (d *DoltgresQueryEngine) EngineAnalyzer() *analyzer.Analyzer {
+	// TODO: this is a shim to get simple tests to work, we need to restructure the tests to not require access to
+	//  an analyzer
+	return &analyzer.Analyzer{
+		Catalog: &analyzer.Catalog{},
+	}
+}
+
+func (d *DoltgresQueryEngine) EnginePreparedDataCache() *gms.PreparedDataCache {
 	panic("implement me")
 }
 
-func (d DoltgresQueryEngine) EnginePreparedDataCache() *gms.PreparedDataCache {
-	panic("implement me")
-}
-
-func (d DoltgresQueryEngine) QueryWithBindings(ctx *sql.Context, query string, parsed vitess.Statement, bindings map[string]*query.BindVariable, qFlags *sql.QueryFlags) (sql.Schema, sql.RowIter, *sql.QueryFlags, error) {
+func (d *DoltgresQueryEngine) QueryWithBindings(ctx *sql.Context, query string, parsed vitess.Statement, bindings map[string]*query.BindVariable, qFlags *sql.QueryFlags) (sql.Schema, sql.RowIter, *sql.QueryFlags, error) {
 	if len(bindings) > 0 {
 		return nil, nil, nil, fmt.Errorf("bindings not supported")
 	}
@@ -474,16 +714,16 @@ func (d DoltgresQueryEngine) QueryWithBindings(ctx *sql.Context, query string, p
 	return d.Query(ctx, query)
 }
 
-func (d DoltgresQueryEngine) CloseSession(connID uint32) {
-	panic("implement me")
+func (d *DoltgresQueryEngine) CloseSession(connID uint32) {
+	// TODO: track connection ids
+	d.conn = nil
 }
 
-func (d DoltgresQueryEngine) Close() error {
+func (d *DoltgresQueryEngine) Close() error {
+	d.conn = nil
 	d.controller.Stop()
 	return d.controller.WaitForStop()
 }
-
-var _ enginetest.QueryEngine = &DoltgresQueryEngine{}
 
 func columns(rows *gosql.Rows) (sql.Schema, []interface{}, error) {
 	types, err := rows.ColumnTypes()
@@ -512,6 +752,10 @@ func columns(rows *gosql.Rows) (sql.Schema, []interface{}, error) {
 			colVal := gosql.NullInt64{}
 			columnVals = append(columnVals, &colVal)
 			schema = append(schema, &sql.Column{Name: columnType.Name(), Type: gmstypes.Int64, Nullable: true})
+		case "TIMESTAMP", "DATETIME", "DATE":
+			colVal := gosql.NullTime{}
+			columnVals = append(columnVals, &colVal)
+			schema = append(schema, &sql.Column{Name: columnType.Name(), Type: gmstypes.Timestamp, Nullable: true})
 		default:
 			return nil, nil, fmt.Errorf("Unhandled type %s", columnType.DatabaseTypeName())
 		}

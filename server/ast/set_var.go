@@ -31,7 +31,10 @@ func nodeSetVar(node *tree.SetVar) (vitess.Statement, error) {
 	}
 	// USE statement alias
 	if node.Name == "database" {
+		// strip off all quotes from the database name
 		dbName := strings.TrimPrefix(strings.TrimSuffix(node.Values[0].String(), "'"), "'")
+		dbName = strings.TrimPrefix(strings.TrimSuffix(dbName, "\""), "\"")
+		dbName = strings.TrimPrefix(strings.TrimSuffix(dbName, "`"), "`")
 		return &vitess.Use{DBName: vitess.NewTableIdent(dbName)}, nil
 	}
 	if !config.IsValidPostgresConfigParameter(node.Name) && !config.IsValidDoltConfigParameter(node.Name) {
