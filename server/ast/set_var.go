@@ -34,8 +34,8 @@ func nodeSetVar(node *tree.SetVar) (vitess.Statement, error) {
 		dbName := strings.TrimPrefix(strings.TrimSuffix(node.Values[0].String(), "'"), "'")
 		return &vitess.Use{DBName: vitess.NewTableIdent(dbName)}, nil
 	}
-	if !config.IsValidPostgresConfigParameter(node.Name) {
-		return nil, fmt.Errorf(`ERROR: syntax error at or near "%s"'`, node.Name)
+	if !config.IsValidPostgresConfigParameter(node.Name) && !config.IsValidDoltConfigParameter(node.Name) {
+		return nil, fmt.Errorf(`ERROR: unrecognized configuration parameter "%s"`, node.Name)
 	}
 	if node.IsLocal {
 		// TODO: takes effect for only the current transaction rather than the current session.

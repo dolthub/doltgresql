@@ -22,9 +22,13 @@ import (
 
 	"gopkg.in/src-d/go-errors.v1"
 
+	"github.com/dolthub/dolt/go/libraries/doltcore/sqle"
 	"github.com/dolthub/go-mysql-server/sql"
 	"github.com/dolthub/go-mysql-server/sql/variables"
 )
+
+// doltConfigParameters is a list of Dolt-specific configuration parameters that can be used in SET statement.
+var doltConfigParameters = make(map[string]sql.SystemVariable)
 
 // Init initializes or appends to SystemVariables as it functions as a global variable.
 // Currently, we append all of postgres configuration parameters to sql.SystemVariables.
@@ -43,7 +47,11 @@ func Init() {
 		params[i] = sysVar
 		i++
 	}
+	for _, doltSysVar := range sqle.DoltSystemVariables {
+		doltConfigParameters[doltSysVar.GetName()] = doltSysVar
+	}
 	sql.SystemVariables.AddSystemVariables(params)
+	sqle.AddDoltSystemVariables()
 }
 
 var (
