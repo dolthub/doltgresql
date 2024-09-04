@@ -26,8 +26,7 @@ func TestExpressions(t *testing.T) {
 		anyTests("ANY"),
 		anyTests("SOME"),
 		{
-			Name:  "IN",
-			Focus: true,
+			Name: "IN",
 			SetUpScript: []string{
 				`CREATE TABLE test (id INT);`,
 				`INSERT INTO test VALUES (1), (3), (2);`,
