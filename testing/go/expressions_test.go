@@ -26,7 +26,8 @@ func TestExpressions(t *testing.T) {
 		anyTests("ANY"),
 		anyTests("SOME"),
 		{
-			Name: "IN",
+			Name:  "IN",
+			Focus: true,
 			SetUpScript: []string{
 				`CREATE TABLE test (id INT);`,
 				`INSERT INTO test VALUES (1), (3), (2);`,
@@ -73,6 +74,10 @@ func TestExpressions(t *testing.T) {
 				{
 					Query:    `SELECT 4 IN (1, 2, 3);`,
 					Expected: []sql.Row{{"f"}},
+				},
+				{
+					Query:    `SELECT 4 IN (1, 2, 3, 4);`,
+					Expected: []sql.Row{{"t"}},
 				},
 				{
 					Query:    `SELECT concat('a', 'b') in ('a', 'b', 'ab');`,
@@ -228,4 +233,63 @@ WHERE "t"."relkind" IN ('r', 'p') AND (("ns"."nspname" = 'public' AND "t"."relna
 		},
 		Assertions: formattedTests,
 	}
+}
+
+func TestBinaryLogic(t *testing.T) {
+	RunScripts(t, []ScriptTest{
+		{
+			Name: "AND",
+			Assertions: []ScriptTestAssertion{
+				{
+					Query:    `SELECT 1 = 1 AND 2 = 2;`,
+					Expected: []sql.Row{{"t"}},
+				},
+				{
+					Query:    `SELECT (1 = 1 AND 2 = 2) AND (false);`,
+					Expected: []sql.Row{{"f"}},
+				},
+				{
+					Query:    `SELECT (1 > 1 AND 2 = 2);`,
+					Expected: []sql.Row{{"f"}},
+				},
+				{
+					Query:    `SELECT (1 = 1 AND 2 = 2) AND (false);`,
+					Expected: []sql.Row{{"f"}},
+				},
+				{
+					Query:    `SELECT (1 = 1 AND 2 = 2) AND (true);`,
+					Expected: []sql.Row{{"t"}},
+				},
+			},
+		},
+		{
+			Name: "OR",
+			Assertions: []ScriptTestAssertion{
+				{
+					Query:    `SELECT 1 = 1 OR 2 = 2;`,
+					Expected: []sql.Row{{"t"}},
+				},
+				{
+					Query:    `SELECT (1 = 1 AND 2 = 2) OR (false);`,
+					Expected: []sql.Row{{"t"}},
+				},
+				{
+					Query:    `SELECT (1 > 1 OR 2 = 2);`,
+					Expected: []sql.Row{{"t"}},
+				},
+				{
+					Query:    `SELECT (1 > 1 OR 2 > 2);`,
+					Expected: []sql.Row{{"f"}},
+				},
+				{
+					Query:    `SELECT (1 > 1 OR 2 > 2) OR (true);`,
+					Expected: []sql.Row{{"t"}},
+				},
+				{
+					Query:    `SELECT (1 = 1 AND 2 = 2) OR (true);`,
+					Expected: []sql.Row{{"t"}},
+				},
+			},
+		},
+	})
 }

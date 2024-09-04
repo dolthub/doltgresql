@@ -216,6 +216,7 @@ func (it *InTuple) WithChildren(children ...sql.Expression) (sql.Expression, err
 						compiledFunc: compFuncs[i],
 					})
 				}
+				
 				return expr, nil
 			}
 			return &InTuple{
