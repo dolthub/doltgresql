@@ -49,7 +49,11 @@ func allDatabasesWithNames(ctx *sql.Context, cat sql.Catalog, privCheck bool) ([
 				revDb, _ := dsess.SplitRevisionDbName(dbName)
 				// Add database it is the current database/revision database and if SchemaName exists
 				if schema.SchemaName() != "" && (dbName == currentDB || revDb == currentRevDB) {
-					dbsForSchema = append(dbsForSchema, information_schema.DbWithNames{schema, schema.Name(), schema.SchemaName()})
+					dbsForSchema = append(dbsForSchema, information_schema.DbWithNames{
+						Database:    schema,
+						CatalogName: schema.Name(),
+						SchemaName:  schema.SchemaName(),
+					})
 				}
 			}
 
@@ -59,7 +63,11 @@ func allDatabasesWithNames(ctx *sql.Context, cat sql.Catalog, privCheck bool) ([
 				if err != nil {
 					return nil, err
 				}
-				dbsForSchema = append(dbsForSchema, information_schema.DbWithNames{infoSchemaDB, sdb.Name(), sql.InformationSchemaDatabaseName})
+				dbsForSchema = append(dbsForSchema, information_schema.DbWithNames{
+					Database:    infoSchemaDB,
+					CatalogName: sdb.Name(),
+					SchemaName:  sql.InformationSchemaDatabaseName,
+				})
 
 				dbs = append(dbs, dbsForSchema...)
 			}
