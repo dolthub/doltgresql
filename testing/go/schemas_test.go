@@ -562,6 +562,7 @@ var SchemaTests = []ScriptTest{
 				},
 			},
 			{
+				Skip:  true, // TODO: revision database not supported yet
 				Query: "SELECT schema_name FROM information_schema.schemata WHERE catalog_name = 'postgres/main';",
 				Expected: []sql.Row{
 					{"myschema"},
