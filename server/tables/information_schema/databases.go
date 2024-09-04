@@ -27,6 +27,7 @@ func allDatabasesWithNames(ctx *sql.Context, cat sql.Catalog, privCheck bool) ([
 	var dbs []information_schema.DbWithNames
 
 	currentDB := ctx.GetCurrentDatabase()
+	currentRevDB, _ := splitRevisionDbName(currentDB)
 
 	allDbs := cat.AllDatabases(ctx)
 	for _, db := range allDbs {
@@ -48,7 +49,7 @@ func allDatabasesWithNames(ctx *sql.Context, cat sql.Catalog, privCheck bool) ([
 				dbName := db.Name()
 				revDb, _ := splitRevisionDbName(dbName)
 				// Add database it is the current database/revision database and if SchemaName exists
-				if schema.SchemaName() != "" && (dbName == currentDB || revDb == currentDB) {
+				if schema.SchemaName() != "" && (dbName == currentDB || revDb == currentRevDB) {
 					dbsForSchema = append(dbsForSchema, information_schema.DbWithNames{schema, schema.Name(), schema.SchemaName()})
 				}
 			}
