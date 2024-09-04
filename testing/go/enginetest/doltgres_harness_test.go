@@ -154,8 +154,7 @@ func (d *DoltgresHarness) NewEngine(t *testing.T) (enginetest.QueryEngine, error
 		}
 	}
 
-	var dbs []string
-	dbs = d.allDatabaseNames(ctx, queryEngine)
+	dbs := d.allDatabaseNames(ctx, queryEngine)
 
 	for _, setupScript := range commitScripts(dbs) {
 		for _, s := range setupScript {
@@ -367,7 +366,7 @@ func (d *DoltgresHarness) EvaluateQueryResults(t *testing.T, expected []sql.Row,
 	orderBy := strings.Contains(upperQuery, "ORDER BY ")
 
 	isServerEngine := true
-	isNilOrEmptySchema := sch == nil || len(sch) == 0
+	isNilOrEmptySchema := len(sch) == 0
 	// We replace all times for SHOW statements with the Unix epoch except for SHOW EVENTS
 	setZeroTime := strings.HasPrefix(upperQuery, "SHOW ") && !strings.Contains(upperQuery, "EVENTS")
 
