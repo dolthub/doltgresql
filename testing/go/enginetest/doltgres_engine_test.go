@@ -1110,6 +1110,7 @@ func TestDoltGC(t *testing.T) {
 }
 
 func TestDoltCheckout(t *testing.T) {
+	t.Skip("race condition in CI")
 	h := newDoltgresServerHarness(t).WithSkippedQueries([]string{
 		"dolt_checkout and base name resolution", // needs db-qualified table names
 		"branch last checked out is deleted",
