@@ -6,6 +6,7 @@ import {
   doltStatusFields,
 } from "../fields.js";
 import { branchesMatcher } from "./matchers.js";
+import { dbName } from "../helpers.js";
 
 export const branchTests = [
   {
@@ -20,14 +21,13 @@ export const branchTests = [
     },
   },
   {
-    q: `SELECT DOLT_CHECKOUT($1::text)`, // TODO: Should work without casts
-    p: ["mybranch"],
+    q: `USE '${dbName}/mybranch';`,
     res: {
-      command: "SELECT",
-      rowCount: 1,
+      command: "SET",
+      rowCount: null,
       oid: null,
-      rows: [{ dolt_checkout: `{0,"Switched to branch 'mybranch'"}` }],
-      fields: doltCheckoutFields,
+      rows: [],
+      fields: [],
     },
   },
   // TODO: 'public' schema should be accessible by this point. It cannot be

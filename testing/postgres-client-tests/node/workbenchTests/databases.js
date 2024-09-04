@@ -1,25 +1,23 @@
-import { doltCheckoutFields } from "../fields.js";
 import { dbName } from "../helpers.js";
 
 export const databaseTests = [
   {
-    q: `SELECT dolt_checkout($1::text);`, // TODO: All of these should work without type casts
-    p: ["main"],
+    q: `USE '${dbName}/main';`,
     res: {
-      command: "SELECT",
-      rowCount: 1,
+      command: "SET",
+      rowCount: null,
       oid: null,
-      rows: [{ dolt_checkout: `{0,"Already on branch 'main'"}` }],
-      fields: doltCheckoutFields,
+      rows: [],
+      fields: [],
     },
   },
   {
     q: `SELECT datname FROM pg_database;`,
     res: {
       command: "SELECT",
-      rowCount: 1,
+      rowCount: 2,
       oid: null,
-      rows: [{ datname: dbName }],
+      rows: [{ datname: dbName }, { datname: `${dbName}/main` }],
       fields: [
         {
           name: "datname",
@@ -47,9 +45,13 @@ export const databaseTests = [
     q: `SELECT datname FROM pg_database;`,
     res: {
       command: "SELECT",
-      rowCount: 2,
+      rowCount: 3,
       oid: null,
-      rows: [{ datname: dbName }, { datname: "new_db" }],
+      rows: [
+        { datname: dbName },
+        { datname: `${dbName}/main` },
+        { datname: "new_db" },
+      ],
       fields: [
         {
           name: "datname",
