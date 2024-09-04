@@ -27,7 +27,7 @@ import (
 
 var (
 	connectionIDCounter uint32
-	processID           = int32(os.Getpid())
+	processID           = uint32(os.Getpid())
 	certificate         tls.Certificate //TODO: move this into the mysql.ListenerConfig
 )
 

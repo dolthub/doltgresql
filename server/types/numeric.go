@@ -237,6 +237,18 @@ func (b NumericType) Type() query.Type {
 	return sqltypes.Decimal
 }
 
+// ValToByteArray implements the DoltgresType interface.
+func (b NumericType) ValToByteArray(val any) ([]byte, error) {
+	if val == nil {
+		return nil, nil
+	}
+	converted, _, err := b.Convert(val)
+	if err != nil {
+		return nil, err
+	}
+	return []byte(converted.(decimal.Decimal).String()), nil
+}
+
 // ValueType implements the DoltgresType interface.
 func (b NumericType) ValueType() reflect.Type {
 	return reflect.TypeOf(decimal.Zero)

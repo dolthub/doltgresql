@@ -16,9 +16,6 @@ package messages
 
 import (
 	"fmt"
-
-	"github.com/dolthub/vitess/go/sqltypes"
-
 	"github.com/dolthub/doltgresql/postgres/connection"
 )
 
@@ -28,7 +25,7 @@ func init() {
 
 // DataRow represents a row of data.
 type DataRow struct {
-	Values []sqltypes.Value
+	Values [][]byte
 }
 
 var dataRowDefault = connection.MessageFormat{
@@ -75,12 +72,13 @@ var _ connection.Message = DataRow{}
 func (m DataRow) Encode() (connection.MessageFormat, error) {
 	outputMessage := m.DefaultMessage().Copy()
 	for i := 0; i < len(m.Values); i++ {
-		if m.Values[i].IsNull() {
+		if m.Values[i] == nil {
 			outputMessage.Field("Columns").Child("ColumnLength", i).MustWrite(-1)
 		} else {
-			value := []byte(m.Values[i].ToString())
-			outputMessage.Field("Columns").Child("ColumnLength", i).MustWrite(len(value))
-			outputMessage.Field("Columns").Child("ColumnData", i).MustWrite(value)
+			value := m.Values[i]
+			valLen := len(value)
+			outputMessage.Field("Columns").Child("ColumnLength", i).MustWrite(valLen)
+			outputMessage.Field("Columns").Child("ColumnData", i).MustWrite(value[:valLen])
 		}
 	}
 	return outputMessage, nil

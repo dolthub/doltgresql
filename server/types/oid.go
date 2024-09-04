@@ -22,6 +22,8 @@ import (
 	"strconv"
 	"strings"
 
+	"github.com/jackc/pgio"
+
 	"github.com/dolthub/go-mysql-server/sql"
 	"github.com/dolthub/go-mysql-server/sql/types"
 	"github.com/dolthub/vitess/go/sqltypes"
@@ -163,6 +165,18 @@ func (b OidType) SerializedCompare(v1 []byte, v2 []byte) (int, error) {
 	}
 
 	return bytes.Compare(v1, v2), nil
+}
+
+// ValToByteArray implements the DoltgresType interface.
+func (b OidType) ValToByteArray(val any) ([]byte, error) {
+	if val == nil {
+		return nil, nil
+	}
+	converted, _, err := b.Convert(val)
+	if err != nil {
+		return nil, err
+	}
+	return pgio.AppendUint32(nil, converted.(uint32)), nil
 }
 
 // SQL implements the DoltgresType interface.

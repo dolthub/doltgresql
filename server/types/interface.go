@@ -65,6 +65,8 @@ type DoltgresType interface {
 	// DoltgresArrayType, then it simply returns itself, as a multidimensional or nested array is equivalent to a
 	// standard array.
 	ToArrayType() DoltgresArrayType
+
+	ValToByteArray(val any) ([]byte, error)
 }
 
 // DoltgresArrayType is a DoltgresType that represents an array variant of a non-array type.

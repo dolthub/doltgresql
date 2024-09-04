@@ -276,6 +276,18 @@ func (b VarCharType) Type() query.Type {
 	return sqltypes.VarChar
 }
 
+// ValToByteArray implements the DoltgresType interface.
+func (b VarCharType) ValToByteArray(val any) ([]byte, error) {
+	if val == nil {
+		return nil, nil
+	}
+	value, err := b.IoOutput(nil, val)
+	if err != nil {
+		return nil, err
+	}
+	return []byte(value), nil
+}
+
 // ValueType implements the DoltgresType interface.
 func (b VarCharType) ValueType() reflect.Type {
 	return reflect.TypeOf("")

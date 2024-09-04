@@ -170,6 +170,11 @@ func (aa AnyArrayType) Type() query.Type {
 	return sqltypes.Text
 }
 
+// ValToByteArray implements the DoltgresType interface.
+func (aa AnyArrayType) ValToByteArray(val any) ([]byte, error) {
+	return nil, fmt.Errorf("%s cannot output values in the wire format", aa.String())
+}
+
 // ValueType implements the DoltgresType interface.
 func (aa AnyArrayType) ValueType() reflect.Type {
 	return reflect.TypeOf([]any{})

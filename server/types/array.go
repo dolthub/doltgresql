@@ -45,7 +45,8 @@ type arrayContainer struct {
 type arrayContainerFunctions struct {
 	// SQL is similar to the function with the same name that is found on sql.Type. This just takes an additional
 	// arrayContainer parameter.
-	SQL func(ctx *sql.Context, ac arrayContainer, dest []byte, valInterface any) (sqltypes.Value, error)
+	SQL            func(ctx *sql.Context, ac arrayContainer, dest []byte, valInterface any) (sqltypes.Value, error)
+	ValToByteArray func(ac arrayContainer, val any) ([]byte, error)
 }
 
 var _ DoltgresType = arrayContainer{}
@@ -62,6 +63,7 @@ func createArrayType(innerType DoltgresType, serializationID SerializationID, ar
 func createArrayTypeWithFuncs(innerType DoltgresType, serializationID SerializationID, arrayOid oid.Oid, funcs arrayContainerFunctions) DoltgresArrayType {
 	if funcs.SQL == nil {
 		funcs.SQL = arrayContainerSQL
+		funcs.ValToByteArray = arrayContainerToByteArray
 	}
 	return arrayContainer{
 		innerType:       innerType,
@@ -374,6 +376,10 @@ func (ac arrayContainer) Type() query.Type {
 	return sqltypes.Text
 }
 
+func (ac arrayContainer) ValToByteArray(val any) ([]byte, error) {
+	return ac.funcs.ValToByteArray(ac, val)
+}
+
 // ValueType implements the DoltgresType interface.
 func (ac arrayContainer) ValueType() reflect.Type {
 	return reflect.TypeOf([]any{})
@@ -516,4 +522,16 @@ func arrayContainerSQL(ctx *sql.Context, ac arrayContainer, dest []byte, value a
 		return sqltypes.Value{}, err
 	}
 	return sqltypes.MakeTrusted(sqltypes.Text, types.AppendAndSliceBytes(dest, []byte(str))), nil
+}
+
+// arrayContainerToByteArray implements the default ValToByteArray function for arrayContainer.
+func arrayContainerToByteArray(ac arrayContainer, value any) ([]byte, error) {
+	if value == nil {
+		return []byte(""), nil
+	}
+	str, err := ac.IoOutput(nil, value)
+	if err != nil {
+		return nil, err
+	}
+	return []byte(str), nil
 }

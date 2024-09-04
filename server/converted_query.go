@@ -16,8 +16,8 @@ package server
 
 import (
 	"github.com/dolthub/go-mysql-server/sql"
-	querypb "github.com/dolthub/vitess/go/vt/proto/query"
 	vitess "github.com/dolthub/vitess/go/vt/sqlparser"
+	"github.com/jackc/pgx/v5/pgproto3"
 )
 
 // ConvertedQuery represents a query that has been converted from the Postgres representation to the Vitess
@@ -32,13 +32,13 @@ type ConvertedQuery struct {
 
 type PreparedStatementData struct {
 	Query        ConvertedQuery
-	ReturnFields []*querypb.Field
-	BindVarTypes []int32
+	ReturnFields []pgproto3.FieldDescription
+	BindVarTypes []uint32
 }
 
 type PortalData struct {
 	Query        ConvertedQuery
 	IsEmptyQuery bool
-	Fields       []*querypb.Field
+	Fields       []pgproto3.FieldDescription
 	BoundPlan    sql.Node
 }

@@ -19,6 +19,8 @@ import (
 	"fmt"
 	"reflect"
 
+	"github.com/jackc/pgio"
+
 	"github.com/dolthub/go-mysql-server/sql"
 	"github.com/dolthub/go-mysql-server/sql/types"
 	"github.com/dolthub/vitess/go/sqltypes"
@@ -185,6 +187,18 @@ func (b RegclassType) ToArrayType() DoltgresArrayType {
 // Type implements the DoltgresType interface.
 func (b RegclassType) Type() query.Type {
 	return sqltypes.Text
+}
+
+// ValToByteArray implements the DoltgresType interface.
+func (b RegclassType) ValToByteArray(val any) ([]byte, error) {
+	if val == nil {
+		return nil, nil
+	}
+	converted, _, err := b.Convert(val)
+	if err != nil {
+		return nil, err
+	}
+	return pgio.AppendUint32(nil, converted.(uint32)), nil
 }
 
 // ValueType implements the DoltgresType interface.

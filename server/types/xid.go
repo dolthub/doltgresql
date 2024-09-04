@@ -22,6 +22,8 @@ import (
 	"strconv"
 	"strings"
 
+	"github.com/jackc/pgio"
+
 	"github.com/dolthub/go-mysql-server/sql"
 	"github.com/dolthub/go-mysql-server/sql/types"
 	"github.com/dolthub/vitess/go/sqltypes"
@@ -186,6 +188,18 @@ func (b XidType) ToArrayType() DoltgresArrayType {
 // Type implements the DoltgresType interface.
 func (b XidType) Type() query.Type {
 	return sqltypes.Uint32
+}
+
+// ValToByteArray implements the DoltgresType interface.
+func (b XidType) ValToByteArray(val any) ([]byte, error) {
+	if val == nil {
+		return nil, nil
+	}
+	converted, _, err := b.Convert(val)
+	if err != nil {
+		return nil, err
+	}
+	return pgio.AppendUint32(nil, converted.(uint32)), nil
 }
 
 // ValueType implements the DoltgresType interface.

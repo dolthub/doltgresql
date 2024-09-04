@@ -162,6 +162,11 @@ func (ana AnyNonArrayType) Type() query.Type {
 	return sqltypes.Text
 }
 
+// ValToByteArray implements the DoltgresType interface.
+func (ana AnyNonArrayType) ValToByteArray(val any) ([]byte, error) {
+	return nil, fmt.Errorf("%s cannot output values in the wire format", ana.String())
+}
+
 // ValueType implements the DoltgresType interface.
 func (ana AnyNonArrayType) ValueType() reflect.Type {
 	var val any
