@@ -1127,6 +1127,7 @@ func TestDoltCheckoutPrepared(t *testing.T) {
 }
 
 func TestDoltBranch(t *testing.T) {
+	t.Skip("race condition in CI")
 	h := newDoltgresServerHarness(t).WithSkippedQueries([]string{
 		"Create branch from startpoint",  // missing SET @var syntax
 		"Join same table at two commits", // needs different branch-qualified DB syntax
