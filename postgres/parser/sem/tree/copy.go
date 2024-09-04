@@ -29,6 +29,7 @@ import "github.com/cockroachdb/errors"
 // CopyFrom represents a COPY FROM statement.
 type CopyFrom struct {
 	Table   TableName
+	File    string
 	Columns NameList
 	Stdin   bool
 	Options CopyOptions
