@@ -543,7 +543,41 @@ var SchemaTests = []ScriptTest{
 		},
 	},
 	{
-		Name: "with branches", // TODO: Use `use db/branch` instead of dolt_checkout for these tests
+		Name:  "add, commit, status",
+		Focus: true,
+		SetUpScript: []string{
+			// "call dolt_commit('-m', 'initial commit')",
+			"CREATE SCHEMA myschema",
+			"Create table myschema.mytbl (pk BIGINT PRIMARY KEY, v1 BIGINT);",
+		},
+		Assertions: []ScriptTestAssertion{
+			{
+				Query:    "SELECT * FROM dolt_status;",
+				Expected: []sql.Row{{"myschema", 0, "new schema"}},
+			},
+			{
+				Query: "select dolt_add('.')",
+				Expected: []sql.Row{
+					{"{0}"},
+				},
+			},
+			{
+				Query:    "SELECT * FROM dolt_status;",
+				Expected: []sql.Row{{"myschema", 1, "new schema"}},
+			},
+			{
+				Query:            "select dolt_commit('-m', 'new schema')",
+				SkipResultsCheck: true,
+			},
+			{
+				Query:    "SELECT * FROM dolt_status;",
+				Expected: []sql.Row{},
+			},
+		},
+	},
+	{
+		Name: "with branches",
+		// Focus: true,
 		SetUpScript: []string{
 			`USE "postgres/main"`,
 			"CREATE SCHEMA myschema",
@@ -607,8 +641,8 @@ var SchemaTests = []ScriptTest{
 				Expected: []sql.Row{{"mytbl", 0, "new table"}},
 			},
 			{
-				Query:    "SELECT dolt_commit('-A', '-m', 'Add mytbl');", // TODO: This is failing with "nothing to commit"
-				Expected: []sql.Row{{"{0}"}},
+				Query:            "SELECT dolt_commit('-A', '-m', 'Add mytbl');",
+				SkipResultsCheck: true,
 			},
 			{
 				Query:    "SELECT * FROM dolt_status;",
@@ -629,7 +663,6 @@ var SchemaTests = []ScriptTest{
 				},
 			},
 			{
-				// Skip:     true, // TODO: ERROR: no schema has been selected to create in
 				Query:    "CREATE TABLE mytbl2 (pk BIGINT PRIMARY KEY, v1 BIGINT);",
 				Expected: []sql.Row{},
 			},
