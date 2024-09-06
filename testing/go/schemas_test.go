@@ -543,17 +543,15 @@ var SchemaTests = []ScriptTest{
 		},
 	},
 	{
-		Name:  "add, commit, status",
-		Focus: true,
+		Name: "add new table in new schema, commit, status",
 		SetUpScript: []string{
-			// "call dolt_commit('-m', 'initial commit')",
 			"CREATE SCHEMA myschema",
 			"Create table myschema.mytbl (pk BIGINT PRIMARY KEY, v1 BIGINT);",
 		},
 		Assertions: []ScriptTestAssertion{
 			{
 				Query:    "SELECT * FROM dolt_status;",
-				Expected: []sql.Row{{"myschema", 0, "new schema"}},
+				Expected: []sql.Row{{"mytbl", 0, "new table"}},
 			},
 			{
 				Query: "select dolt_add('.')",
@@ -563,21 +561,53 @@ var SchemaTests = []ScriptTest{
 			},
 			{
 				Query:    "SELECT * FROM dolt_status;",
-				Expected: []sql.Row{{"myschema", 1, "new schema"}},
+				Expected: []sql.Row{{"mytbl", 1, "new table"}},
 			},
 			{
-				Query:            "select dolt_commit('-m', 'new schema')",
+				Query:            "select dolt_commit('-m', 'new table in new schema')",
 				SkipResultsCheck: true,
 			},
 			{
 				Query:    "SELECT * FROM dolt_status;",
 				Expected: []sql.Row{},
 			},
+			{
+				Query: "select message from dolt_log order by date desc limit 1",
+				Expected: []sql.Row{
+					{"new table in new schema"},
+				},
+			},
+		},
+	},
+	{
+		Name: "add new table in new schema, commit -Am",
+		SetUpScript: []string{
+			"CREATE SCHEMA myschema",
+			"Create table myschema.mytbl (pk BIGINT PRIMARY KEY, v1 BIGINT);",
+		},
+		Assertions: []ScriptTestAssertion{
+			{
+				Query:    "SELECT * FROM dolt_status;",
+				Expected: []sql.Row{{"mytbl", 0, "new table"}},
+			},
+			{
+				Query:            "select dolt_commit('-Am', 'new table in new schema')",
+				SkipResultsCheck: true,
+			},
+			{
+				Query:    "SELECT * FROM dolt_status;",
+				Expected: []sql.Row{},
+			},
+			{
+				Query: "select message from dolt_log order by date desc limit 1",
+				Expected: []sql.Row{
+					{"new table in new schema"},
+				},
+			},
 		},
 	},
 	{
 		Name: "with branches",
-		// Focus: true,
 		SetUpScript: []string{
 			`USE "postgres/main"`,
 			"CREATE SCHEMA myschema",
