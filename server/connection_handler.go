@@ -414,15 +414,19 @@ func (h *ConnectionHandler) handleParse(message messages.Parse) error {
 		return nil
 	}
 
-	plan, fields, err := h.getPlanAndFields(query)
+	analyzedPlan, fields, err := h.getPlanAndFields(query)
 	if err != nil {
 		return err
 	}
 
-	// TODO: bindvar types can be specified directly in the message, need tests of this
-	bindVarTypes, err := extractBindVarTypes(plan)
-	if err != nil {
-		return err
+	// A valid Parse message must have ParameterObjectIDs if there are any binding variables.
+	bindVarTypes := message.ParameterObjectIDs
+	if len(bindVarTypes) == 0 {
+		// NOTE: This is used for Prepared Statement Tests only.
+		bindVarTypes, err = extractBindVarTypes(analyzedPlan)
+		if err != nil {
+			return err
+		}
 	}
 
 	// Nil fields means an OKResult, fill one in here
@@ -447,7 +451,7 @@ func (h *ConnectionHandler) handleParse(message messages.Parse) error {
 // handleDescribe handles a Describe message, returning any error that occurs
 func (h *ConnectionHandler) handleDescribe(message messages.Describe) error {
 	var fields []*querypb.Field
-	var bindvarTypes []int32
+	var bindvarTypes []uint32
 	var tag string
 
 	h.waitForSync = true
@@ -564,14 +568,14 @@ func (h *ConnectionHandler) deallocatePreparedStatement(name string, preparedSta
 	return connection.Send(conn, commandComplete)
 }
 
-func extractBindVarTypes(queryPlan sql.Node) ([]int32, error) {
+func extractBindVarTypes(queryPlan sql.Node) ([]uint32, error) {
 	inspectNode := queryPlan
 	switch queryPlan := queryPlan.(type) {
 	case *plan.InsertInto:
 		inspectNode = queryPlan.Source
 	}
 
-	types := make([]int32, 0)
+	types := make([]uint32, 0)
 	var err error
 	extractBindVars := func(expr sql.Expression) bool {
 		if err != nil {
@@ -579,9 +583,9 @@ func extractBindVarTypes(queryPlan sql.Node) ([]int32, error) {
 		}
 		switch e := expr.(type) {
 		case *expression.BindVar:
-			var oid int32
+			var oid uint32
 			if doltgresType, ok := e.Type().(pgtypes.DoltgresType); ok {
-				oid = int32(doltgresType.OID())
+				oid = doltgresType.OID()
 			} else {
 				oid, err = messages.VitessTypeToObjectID(e.Type().Type())
 				if err != nil {
@@ -592,9 +596,9 @@ func extractBindVarTypes(queryPlan sql.Node) ([]int32, error) {
 			types = append(types, oid)
 		case *pgexprs.ExplicitCast:
 			if bindVar, ok := e.Child().(*expression.BindVar); ok {
-				var oid int32
+				var oid uint32
 				if doltgresType, ok := bindVar.Type().(pgtypes.DoltgresType); ok {
-					oid = int32(doltgresType.OID())
+					oid = doltgresType.OID()
 				} else {
 					oid, err = messages.VitessTypeToObjectID(e.Type().Type())
 					if err != nil {
@@ -608,7 +612,7 @@ func extractBindVarTypes(queryPlan sql.Node) ([]int32, error) {
 		// $1::text and similar get converted to a Convert expression wrapping the bindvar
 		case *expression.Convert:
 			if bindVar, ok := e.Child.(*expression.BindVar); ok {
-				var oid int32
+				var oid uint32
 				oid, err = messages.VitessTypeToObjectID(e.Type().Type())
 				if err != nil {
 					err = fmt.Errorf("could not determine OID for placeholder %s: %w", bindVar.Name, err)
@@ -627,18 +631,15 @@ func extractBindVarTypes(queryPlan sql.Node) ([]int32, error) {
 }
 
 // convertBindParameters handles the conversion from bind parameters to variable values.
-func (h *ConnectionHandler) convertBindParameters(types []int32, formatCodes []int32, values []messages.BindParameterValue) (map[string]*querypb.BindVariable, error) {
+func (h *ConnectionHandler) convertBindParameters(types []uint32, formatCodes []int32, values []messages.BindParameterValue) (map[string]*querypb.BindVariable, error) {
 	bindings := make(map[string]*querypb.BindVariable, len(values))
 	for i := range values {
 		bindingName := fmt.Sprintf("v%d", i+1)
 		typ := convertType(types[i])
 		var bindVarString string
 
-		// TODO: need to check for byte length for given type length. E.g. int16, int32 and uint32 expects 4 bytes
-		//  but currently, receives 8 bytes.
-
 		// We'll rely on a library to decode each format, which will deal with text and binary representations for us
-		if err := h.pgTypeMap.Scan(uint32(types[i]), int16(formatCodes[i]), values[i].Data, &bindVarString); err != nil {
+		if err := h.pgTypeMap.Scan(types[i], int16(formatCodes[i]), values[i].Data, &bindVarString); err != nil {
 			return nil, err
 		}
 		bindVar := &querypb.BindVariable{
@@ -652,7 +653,7 @@ func (h *ConnectionHandler) convertBindParameters(types []int32, formatCodes []i
 }
 
 // TODO: we need to migrate this away from vitess types and deal strictly with OIDs which are compatible with Postgres types
-func convertType(oid int32) querypb.Type {
+func convertType(oid uint32) querypb.Type {
 	switch oid {
 	// TODO: this should never be 0
 	case 0:
@@ -799,7 +800,7 @@ func spoolRowsCallback(conn net.Conn, commandComplete *messages.CommandComplete,
 }
 
 // sendDescribeResponse sends a response message for a Describe message
-func (h *ConnectionHandler) sendDescribeResponse(conn net.Conn, fields []*querypb.Field, types []int32, tag string) (err error) {
+func (h *ConnectionHandler) sendDescribeResponse(conn net.Conn, fields []*querypb.Field, types []uint32, tag string) (err error) {
 	// The prepared statement variant of the describe command returns the OIDs of the parameters.
 	if types != nil {
 		if err := connection.Send(conn, messages.ParameterDescription{
@@ -989,12 +990,12 @@ func (h *ConnectionHandler) getPlanAndFields(query ConvertedQuery) (sql.Node, []
 		return nil, nil, err
 	}
 
-	plan, ok := parsedQuery.(sql.Node)
+	analyzedPlan, ok := parsedQuery.(sql.Node)
 	if !ok {
 		return nil, nil, fmt.Errorf("expected a sql.Node, got %T", parsedQuery)
 	}
 
-	return plan, fields, nil
+	return analyzedPlan, fields, nil
 }
 
 // comQuery is a shortcut that determines which version of ComQuery to call based on whether the query has been parsed.

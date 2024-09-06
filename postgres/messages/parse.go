@@ -32,7 +32,7 @@ func init() {
 type Parse struct {
 	Name               string
 	Query              string
-	ParameterObjectIDs []int32
+	ParameterObjectIDs []uint32
 }
 
 var _ sql.DebugStringer = Parse{}
@@ -98,9 +98,9 @@ func (m Parse) Decode(s connection.MessageFormat) (connection.Message, error) {
 		return nil, err
 	}
 	count := int(s.Field("Parameters").MustGet().(int32))
-	objectIDs := make([]int32, count)
+	objectIDs := make([]uint32, count)
 	for i := 0; i < count; i++ {
-		objectIDs[i] = s.Field("Parameters").Child("ObjectID", i).MustGet().(int32)
+		objectIDs[i] = uint32(s.Field("Parameters").Child("ObjectID", i).MustGet().(int32))
 	}
 	return Parse{
 		Name:               s.Field("Name").MustGet().(string),
