@@ -580,6 +580,43 @@ var SchemaTests = []ScriptTest{
 		},
 	},
 	{
+		Name: "merge new table in new schema",
+		SetUpScript: []string{
+			"call dolt_checkout('-b', 'branch1')",
+			"CREATE SCHEMA branchschema",
+			"Create table branchschema.mytbl (pk BIGINT PRIMARY KEY, v1 BIGINT);",
+			"INSERT INTO branchschema.mytbl VALUES (1, 1), (2, 2)",
+			"select dolt_commit('-Am', 'new table in new schema')",
+			"call dolt_checkout('main')",
+			"create schema mainschema",
+			"create table mainschema.maintable (pk BIGINT PRIMARY KEY, v1 BIGINT);",
+			"insert into mainschema.maintable values (3, 3), (4, 4)",
+			"select dolt_commit('-Am', 'new table in main')",
+		},
+		Assertions: []ScriptTestAssertion{
+			{
+				Query: "call dolt_merge('branch1')",
+				Expected: []sql.Row{
+					{"{0}"},
+				},
+			},
+			{
+				Query: "SELECT * from mainschema.maintable",
+				Expected: []sql.Row{
+					{3, 3},
+					{4, 4},
+				},
+			},
+			{
+				Query: "SELECT * from branchschema.mytbl",
+				Expected: []sql.Row{
+					{1, 1},
+					{2, 2},
+				},
+			},
+		},
+	},
+	{
 		Name: "add new table in new schema, commit -Am",
 		SetUpScript: []string{
 			"CREATE SCHEMA myschema",
@@ -607,7 +644,43 @@ var SchemaTests = []ScriptTest{
 		},
 	},
 	{
-		Name: "with branches",
+		Name: "create new schema with no tables, add and commit",
+		SetUpScript: []string{
+			"CREATE SCHEMA myschema",
+		},
+		Assertions: []ScriptTestAssertion{
+			{
+				Query:    "SELECT * FROM dolt_status;",
+				Expected: []sql.Row{{"myschema", 0, "new schema"}},
+			},
+			{
+				Query: "select dolt_add('.')",
+				Expected: []sql.Row{
+					{"{0}"},
+				},
+			},
+			{
+				Query:    "SELECT * FROM dolt_status;",
+				Expected: []sql.Row{{"myschema", 1, "new schema"}},
+			},
+			{
+				Query:            "select dolt_commit('-m', 'new schema')",
+				SkipResultsCheck: true,
+			},
+			{
+				Query:    "SELECT * FROM dolt_status;",
+				Expected: []sql.Row{},
+			},
+			{
+				Query: "select message from dolt_log order by date desc limit 1",
+				Expected: []sql.Row{
+					{"new schema"},
+				},
+			},
+		},
+	},
+	{
+		Name: "USE branches",
 		SetUpScript: []string{
 			`USE "postgres/main"`,
 			"CREATE SCHEMA myschema",
