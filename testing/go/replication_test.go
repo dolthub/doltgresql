@@ -654,7 +654,7 @@ func runReplicationScript(
 					require.NoError(t, err)
 					readRows, err := ReadRows(rows, true)
 					require.NoError(t, err)
-					normalizedRows := NormalizeRows(assertion.Expected)
+					normalizedRows := NormalizeRows(rows.FieldDescriptions(), assertion.Expected)
 
 					// For queries against the replica, whether or not replication is caught up is a heuristic that can be
 					// incorrect. So we retry queries with sleeps in between to give replication a chance to catch up when this

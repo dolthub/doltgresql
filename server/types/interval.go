@@ -210,18 +210,6 @@ func (b IntervalType) Type() query.Type {
 	return sqltypes.Text
 }
 
-// ValToByteArray implements the DoltgresType interface.
-func (b IntervalType) ValToByteArray(val any) ([]byte, error) {
-	if val == nil {
-		return nil, nil
-	}
-	value, err := b.IoOutput(nil, val)
-	if err != nil {
-		return nil, err
-	}
-	return []byte(value), nil
-}
-
 // ValueType implements the DoltgresType interface.
 func (b IntervalType) ValueType() reflect.Type {
 	return reflect.TypeOf(duration.MakeDuration(0, 0, 0))

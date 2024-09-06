@@ -149,11 +149,6 @@ func (b Int64TypeSerial) Type() query.Type {
 	return sqltypes.Int64
 }
 
-// ValToByteArray implements the DoltgresType interface.
-func (b Int64TypeSerial) ValToByteArray(val any) ([]byte, error) {
-	return nil, fmt.Errorf("SERIAL types may not be passed over the wire")
-}
-
 // ValueType implements the DoltgresType interface.
 func (b Int64TypeSerial) ValueType() reflect.Type {
 	return reflect.TypeOf(int64(0))

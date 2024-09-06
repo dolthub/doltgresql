@@ -19,6 +19,10 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"github.com/dolthub/doltgresql/postgres/parser/duration"
+	"github.com/dolthub/doltgresql/server/functions"
+	"github.com/dolthub/doltgresql/server/types"
+	"github.com/jackc/pgx/v5/pgconn"
 	"math"
 	"net"
 	"os"
@@ -168,7 +172,7 @@ func runScript(t *testing.T, ctx context.Context, script ScriptTest, conn *pgx.C
 				}
 
 				if normalizeRows {
-					assert.Equal(t, NormalizeRows(assertion.Expected), readRows)
+					assert.Equal(t, NormalizeRows(rows.FieldDescriptions(), assertion.Expected), readRows)
 				} else {
 					assert.Equal(t, assertion.Expected, readRows)
 				}
@@ -276,7 +280,7 @@ func ReadRows(rows pgx.Rows, normalizeRows bool) (readRows []sql.Row, err error)
 		slice = append(slice, row)
 	}
 	if normalizeRows {
-		return NormalizeRows(slice), nil
+		return NormalizeRows(rows.FieldDescriptions(), slice), nil
 	} else {
 		// We must always normalize Numeric values, as they have an infinite number of ways to represent the same value
 		return NormalizeRowsOnlyNumeric(slice), nil
@@ -284,13 +288,18 @@ func ReadRows(rows pgx.Rows, normalizeRows bool) (readRows []sql.Row, err error)
 }
 
 // NormalizeRow normalizes each value's type, as the tests only want to compare values. Returns a new row.
-func NormalizeRow(row sql.Row) sql.Row {
+func NormalizeRow(fds []pgconn.FieldDescription, row sql.Row) sql.Row {
 	if len(row) == 0 {
 		return nil
 	}
 	newRow := make(sql.Row, len(row))
 	for i := range row {
-		switch val := row[i].(type) {
+		dt, ok := dserver.OidToDoltgresType[fds[i].DataTypeOID]
+		if !ok {
+			panic(fmt.Sprintf("unhandled oid type: %v", fds[i].DataTypeOID))
+		}
+		v := NormalizePgtypeValue(dt, row[i])
+		switch val := v.(type) {
 		case int:
 			newRow[i] = int64(val)
 		case int8:
@@ -312,25 +321,22 @@ func NormalizeRow(row sql.Row) sql.Row {
 			newRow[i] = int64(val)
 		case float32:
 			newRow[i] = float64(val)
-		case pgtype.Numeric:
-			if val.NaN {
-				newRow[i] = math.NaN()
-			} else if val.InfinityModifier != pgtype.Finite {
-				newRow[i] = math.Inf(int(val.InfinityModifier))
-			} else if !val.Valid {
-				newRow[i] = nil
-			} else {
-				fVal, err := val.Float64Value()
-				if err != nil {
-					panic(err)
-				}
-				if !fVal.Valid {
-					panic("no idea why the numeric float value is invalid")
-				}
-				newRow[i] = fVal.Float64
+		case time.Time, duration.Duration, []byte:
+			tVal, err := dt.IoOutput(nil, val)
+			if err != nil {
+				panic(err)
 			}
-		case time.Time:
-			newRow[i] = val.Format("2006-01-02 15:04:05")
+			newRow[i] = tVal
+		//case []any:
+		//	if _, ok = dt.(types.DoltgresArrayType); ok {
+		//		tVal, err := dt.IoOutput(nil, val)
+		//		if err != nil {
+		//			panic(err)
+		//		}
+		//		newRow[i] = tVal
+		//	} else {
+		//		newRow[i] = val
+		//	}
 		case map[string]interface{}:
 			str, err := json.Marshal(val)
 			if err != nil {
@@ -346,12 +352,54 @@ func NormalizeRow(row sql.Row) sql.Row {
 
 // NormalizeRows normalizes each value's type within each row, as the tests only want to compare values. Returns a new
 // set of rows in the same order.
-func NormalizeRows(rows []sql.Row) []sql.Row {
+func NormalizeRows(fds []pgconn.FieldDescription, rows []sql.Row) []sql.Row {
 	newRows := make([]sql.Row, len(rows))
 	for i := range rows {
-		newRows[i] = NormalizeRow(rows[i])
+		newRows[i] = NormalizeRow(fds, rows[i])
 	}
 	return newRows
+}
+
+func NormalizePgtypeValue(dt types.DoltgresType, v any) any {
+	switch val := v.(type) {
+	case pgtype.Numeric:
+		if val.NaN {
+			return math.NaN()
+		} else if val.InfinityModifier != pgtype.Finite {
+			return math.Inf(int(val.InfinityModifier))
+		} else if !val.Valid {
+			return nil
+		} else {
+			fVal, err := val.Float64Value()
+			if err != nil {
+				panic(err)
+			}
+			if !fVal.Valid {
+				panic("no idea why the numeric float value is invalid")
+			}
+			return fVal.Float64
+		}
+	case pgtype.Time:
+		dur := time.Duration(val.Microseconds) * time.Microsecond
+		return time.Time{}.Add(dur)
+	case pgtype.Interval:
+		return duration.MakeDuration(val.Microseconds*functions.NanosPerMicro, int64(val.Days), int64(val.Months))
+	case []any:
+		newVal := make([]any, len(val))
+		for i, el := range val {
+			newVal[i] = NormalizePgtypeValue(dt, el)
+		}
+		return newVal
+	case float64:
+		if dt == types.Numeric {
+			return decimal.NewFromFloat(val)
+		}
+	case string:
+		if dt == types.JsonB {
+			// TODO
+		}
+	}
+	return v
 }
 
 // NormalizeRowsOnlyNumeric normalizes Numeric values only. There are an infinite number of ways to represent the same

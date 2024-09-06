@@ -60,7 +60,7 @@ func TestExpressions(t *testing.T) {
 				},
 				{
 					Query:    `SELECT 4 IN (null, 1, 2, 3, 4);`,
-					Expected: []sql.Row{{"t"}},
+					Expected: []sql.Row{{true}},
 				},
 				{
 					Query:    `SELECT NULL IN (null, 1, 2, 3);`,
@@ -72,19 +72,19 @@ func TestExpressions(t *testing.T) {
 				},
 				{
 					Query:    `SELECT 4 IN (1, 2, 3);`,
-					Expected: []sql.Row{{"f"}},
+					Expected: []sql.Row{{false}},
 				},
 				{
 					Query:    `SELECT 4 IN (1, 2, 3, 4);`,
-					Expected: []sql.Row{{"t"}},
+					Expected: []sql.Row{{true}},
 				},
 				{
 					Query:    `SELECT concat('a', 'b') in ('a', 'b', 'ab');`,
-					Expected: []sql.Row{{"t"}},
+					Expected: []sql.Row{{true}},
 				},
 				{
 					Query:    `SELECT concat('a', 'b') in ('a', 'b');`,
-					Expected: []sql.Row{{"f"}},
+					Expected: []sql.Row{{false}},
 				},
 				{
 					Query:    `SELECT concat('a', 'b') in ('a', NULL, 'b');`,
@@ -107,39 +107,39 @@ func anyTests(name string) ScriptTest {
 	tests := []ScriptTestAssertion{
 		{
 			Query:    `SELECT 3 = %s (ARRAY[1, 2, 3, 4, 5]);`,
-			Expected: []sql.Row{{"t"}},
+			Expected: []sql.Row{{true}},
 		},
 		{
 			Query:    `SELECT 3 = %s (ARRAY[1, 2, 4, 5]);`,
-			Expected: []sql.Row{{"f"}},
+			Expected: []sql.Row{{false}},
 		},
 		{
 			Query:    `SELECT 'a' = %s (ARRAY['c', 'a', 't']);`,
-			Expected: []sql.Row{{"t"}},
+			Expected: []sql.Row{{true}},
 		},
 		{
 			Query:    `SELECT 'a' = %s (ARRAY['c', 'at', 't']);`,
-			Expected: []sql.Row{{"f"}},
+			Expected: []sql.Row{{false}},
 		},
 		{
 			Query:    `SELECT 3 = %s (ARRAY[1.0, 2.1, 3.0, 5]);`,
-			Expected: []sql.Row{{"t"}},
+			Expected: []sql.Row{{true}},
 		},
 		{
 			Query:    `SELECT 6 > %s (ARRAY[1, 2, 3, 4, 5]);`,
-			Expected: []sql.Row{{"t"}},
+			Expected: []sql.Row{{true}},
 		},
 		{
 			Query:    `SELECT 6 < %s (ARRAY[1, 2, 3, 4, 5]);`,
-			Expected: []sql.Row{{"f"}},
+			Expected: []sql.Row{{false}},
 		},
 		{
 			Query:    `SELECT 6 <= %s (ARRAY[1, 2, 3, 4, 5]);`,
-			Expected: []sql.Row{{"f"}},
+			Expected: []sql.Row{{false}},
 		},
 		{
 			Query:    `SELECT 6 >= %s (ARRAY[1, 2, 3, 6, 5]);`,
-			Expected: []sql.Row{{"t"}},
+			Expected: []sql.Row{{true}},
 		},
 		{
 			Query:    `SELECT * FROM test WHERE id = %s(ARRAY[2, 3, 4, 5]);`,
@@ -241,23 +241,23 @@ func TestBinaryLogic(t *testing.T) {
 			Assertions: []ScriptTestAssertion{
 				{
 					Query:    `SELECT 1 = 1 AND 2 = 2;`,
-					Expected: []sql.Row{{"t"}},
+					Expected: []sql.Row{{true}},
 				},
 				{
 					Query:    `SELECT (1 = 1 AND 2 = 2) AND (false);`,
-					Expected: []sql.Row{{"f"}},
+					Expected: []sql.Row{{false}},
 				},
 				{
 					Query:    `SELECT (1 > 1 AND 2 = 2);`,
-					Expected: []sql.Row{{"f"}},
+					Expected: []sql.Row{{false}},
 				},
 				{
 					Query:    `SELECT (1 = 1 AND 2 = 2) AND (false);`,
-					Expected: []sql.Row{{"f"}},
+					Expected: []sql.Row{{false}},
 				},
 				{
 					Query:    `SELECT (1 = 1 AND 2 = 2) AND (true);`,
-					Expected: []sql.Row{{"t"}},
+					Expected: []sql.Row{{true}},
 				},
 			},
 		},
@@ -266,27 +266,27 @@ func TestBinaryLogic(t *testing.T) {
 			Assertions: []ScriptTestAssertion{
 				{
 					Query:    `SELECT 1 = 1 OR 2 = 2;`,
-					Expected: []sql.Row{{"t"}},
+					Expected: []sql.Row{{true}},
 				},
 				{
 					Query:    `SELECT (1 = 1 AND 2 = 2) OR (false);`,
-					Expected: []sql.Row{{"t"}},
+					Expected: []sql.Row{{true}},
 				},
 				{
 					Query:    `SELECT (1 > 1 OR 2 = 2);`,
-					Expected: []sql.Row{{"t"}},
+					Expected: []sql.Row{{true}},
 				},
 				{
 					Query:    `SELECT (1 > 1 OR 2 > 2);`,
-					Expected: []sql.Row{{"f"}},
+					Expected: []sql.Row{{false}},
 				},
 				{
 					Query:    `SELECT (1 > 1 OR 2 > 2) OR (true);`,
-					Expected: []sql.Row{{"t"}},
+					Expected: []sql.Row{{true}},
 				},
 				{
 					Query:    `SELECT (1 = 1 AND 2 = 2) OR (true);`,
-					Expected: []sql.Row{{"t"}},
+					Expected: []sql.Row{{true}},
 				},
 			},
 		},

@@ -16,6 +16,7 @@ package messages
 
 import (
 	"fmt"
+
 	"github.com/dolthub/doltgresql/postgres/connection"
 )
 

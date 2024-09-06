@@ -954,11 +954,11 @@ func TestSchemaVisibilityInquiryFunctions(t *testing.T) {
 			Assertions: []ScriptTestAssertion{
 				{
 					Query:    `SELECT pg_function_is_visible(1342177280);`,
-					Expected: []sql.Row{{"t"}},
+					Expected: []sql.Row{{true}},
 				},
 				{
 					Query:    `SELECT pg_function_is_visible(22);`, // invalid
-					Expected: []sql.Row{{"f"}},
+					Expected: []sql.Row{{false}},
 				},
 			},
 		},
@@ -999,25 +999,25 @@ func TestSchemaVisibilityInquiryFunctions(t *testing.T) {
 				{
 					Query: `select pg_table_is_visible(1613758465);`, // index from testschema
 					Expected: []sql.Row{
-						{"t"},
+						{true},
 					},
 				},
 				{
 					Query: `select pg_table_is_visible(2687500288);`, // table from testschema
 					Expected: []sql.Row{
-						{"t"},
+						{true},
 					},
 				},
 				{
 					Query: `select pg_table_is_visible(2419064832);`, // sequence from testschema
 					Expected: []sql.Row{
-						{"t"},
+						{true},
 					},
 				},
 				{
 					Query: `select pg_table_is_visible(2952790016);`, // view from myschema
 					Expected: []sql.Row{
-						{"f"},
+						{false},
 					},
 				},
 				{
@@ -1033,13 +1033,13 @@ func TestSchemaVisibilityInquiryFunctions(t *testing.T) {
 				{
 					Query: `select pg_table_is_visible(2952790016);`, // view from myschema
 					Expected: []sql.Row{
-						{"t"},
+						{true},
 					},
 				},
 				{
 					Query: `select pg_table_is_visible(2684354560);`, // table from myschema
 					Expected: []sql.Row{
-						{"t"},
+						{true},
 					},
 				},
 			},

@@ -34,6 +34,7 @@ import (
 	"github.com/dolthub/vitess/go/vt/sqlparser"
 	"github.com/jackc/pgx/v5/pgproto3"
 	"github.com/jackc/pgx/v5/pgtype"
+	"github.com/lib/pq/oid"
 	"github.com/sirupsen/logrus"
 
 	"github.com/dolthub/doltgresql/postgres/connection"
@@ -43,7 +44,6 @@ import (
 	pgexprs "github.com/dolthub/doltgresql/server/expression"
 	"github.com/dolthub/doltgresql/server/node"
 	pgtypes "github.com/dolthub/doltgresql/server/types"
-	"github.com/dolthub/doltgresql/servercfg"
 )
 
 // ConnectionHandler is responsible for the entire lifecycle of a user connection: receiving messages they send,
@@ -90,11 +90,11 @@ func NewConnectionHandler(conn net.Conn, handler mysql.Handler) *ConnectionHandl
 	h := &Handler{
 		e:                 server.Engine,
 		sm:                server.SessionManager(),
-		readTimeout:       servercfg.DefaultTimeout, // cfg.ConnReadTimeout,
-		disableMultiStmts: false,                    // cfg.DisableClientMultiStatements,
-		maxLoggedQueryLen: 0,                        // cfg.MaxLoggedQueryLen, ???
-		encodeLoggedQuery: false,                    // cfg.EncodeLoggedQuery,
-		sel:               nil,                      // TODO
+		readTimeout:       0,     // cfg.ConnReadTimeout,
+		disableMultiStmts: false, // cfg.DisableClientMultiStatements,
+		maxLoggedQueryLen: 0,     // cfg.MaxLoggedQueryLen, ???
+		encodeLoggedQuery: false, // cfg.EncodeLoggedQuery,
+		sel:               nil,   // TODO
 		handler:           handler,
 	}
 
@@ -663,7 +663,10 @@ func (h *ConnectionHandler) convertBindParameters(types []uint32, formatCodes []
 			return nil, err
 		}
 
-		pgTyp := convertType(typ)
+		pgTyp, ok := OidToDoltgresType[typ]
+		if !ok {
+			return nil, fmt.Errorf("unhandled oid type: %v", typ)
+		}
 		v, err := pgTyp.IoInput(nil, bindVarString)
 		if err != nil {
 			return nil, err
@@ -671,43 +674,6 @@ func (h *ConnectionHandler) convertBindParameters(types []uint32, formatCodes []
 		bindings[fmt.Sprintf("v%d", i+1)] = sqlparser.InjectedExpr{Expression: pgexprs.NewUnsafeLiteral(v, pgTyp)}
 	}
 	return bindings, nil
-}
-
-// TODO: we need to migrate this away from vitess types and deal strictly with OIDs which are compatible with Postgres types
-func convertType(oid uint32) pgtypes.DoltgresType {
-	switch oid {
-	// TODO: this should never be 0
-	case 0:
-		return pgtypes.Int32
-	case messages.OidInt2:
-		return pgtypes.Int16
-	case messages.OidInt4:
-		return pgtypes.Int32
-	case messages.OidInt8:
-		return pgtypes.Int64
-	case messages.OidFloat4:
-		return pgtypes.Float32
-	case messages.OidFloat8:
-		return pgtypes.Float64
-	case messages.OidName:
-		return pgtypes.Text
-	case messages.OidNumeric:
-		return pgtypes.Numeric
-	case messages.OidText:
-		return pgtypes.Text
-	case messages.OidBool:
-		return pgtypes.Bool
-	case messages.OidDate:
-		return pgtypes.Date
-	case messages.OidTimestamp:
-		return pgtypes.Timestamp
-	case messages.OidVarchar:
-		return pgtypes.VarChar
-	case messages.OidOid:
-		return pgtypes.Oid
-	default:
-		panic(fmt.Sprintf("convertType(oid): unhandled type %d", oid))
-	}
 }
 
 // sendClientStartupMessages sends introductory messages to the client and returns any error
@@ -1052,4 +1018,174 @@ func (h *ConnectionHandler) discardAll(query ConvertedQuery, conn net.Conn) erro
 	}
 
 	return connection.Send(conn, commandComplete)
+}
+
+var OidToDoltgresType = map[uint32]pgtypes.DoltgresType{
+	uint32(oid.T_bool):             pgtypes.Bool,
+	uint32(oid.T_bytea):            pgtypes.Bytea,
+	uint32(oid.T_char):             pgtypes.InternalChar,
+	uint32(oid.T_name):             pgtypes.Name,
+	uint32(oid.T_int8):             pgtypes.Int64,
+	uint32(oid.T_int2):             pgtypes.Int16,
+	uint32(oid.T_int2vector):       pgtypes.Unknown,
+	uint32(oid.T_int4):             pgtypes.Int32,
+	uint32(oid.T_regproc):          pgtypes.Regproc,
+	uint32(oid.T_text):             pgtypes.Text,
+	uint32(oid.T_oid):              pgtypes.Oid,
+	uint32(oid.T_tid):              pgtypes.Unknown,
+	uint32(oid.T_xid):              pgtypes.Xid,
+	uint32(oid.T_cid):              pgtypes.Unknown,
+	uint32(oid.T_oidvector):        pgtypes.Unknown,
+	uint32(oid.T_pg_ddl_command):   pgtypes.Unknown,
+	uint32(oid.T_pg_type):          pgtypes.Unknown,
+	uint32(oid.T_pg_attribute):     pgtypes.Unknown,
+	uint32(oid.T_pg_proc):          pgtypes.Unknown,
+	uint32(oid.T_pg_class):         pgtypes.Unknown,
+	uint32(oid.T_json):             pgtypes.Json,
+	uint32(oid.T_xml):              pgtypes.Unknown,
+	uint32(oid.T__xml):             pgtypes.Unknown,
+	uint32(oid.T_pg_node_tree):     pgtypes.Unknown,
+	uint32(oid.T__json):            pgtypes.JsonArray,
+	uint32(oid.T_smgr):             pgtypes.Unknown,
+	uint32(oid.T_index_am_handler): pgtypes.Unknown,
+	uint32(oid.T_point):            pgtypes.Unknown,
+	uint32(oid.T_lseg):             pgtypes.Unknown,
+	uint32(oid.T_path):             pgtypes.Unknown,
+	uint32(oid.T_box):              pgtypes.Unknown,
+	uint32(oid.T_polygon):          pgtypes.Unknown,
+	uint32(oid.T_line):             pgtypes.Unknown,
+	uint32(oid.T__line):            pgtypes.Unknown,
+	uint32(oid.T_cidr):             pgtypes.Unknown,
+	uint32(oid.T__cidr):            pgtypes.Unknown,
+	uint32(oid.T_float4):           pgtypes.Float32,
+	uint32(oid.T_float8):           pgtypes.Float64,
+	uint32(oid.T_abstime):          pgtypes.Unknown,
+	uint32(oid.T_reltime):          pgtypes.Unknown,
+	uint32(oid.T_tinterval):        pgtypes.Unknown,
+	uint32(oid.T_unknown):          pgtypes.Unknown,
+	uint32(oid.T_circle):           pgtypes.Unknown,
+	uint32(oid.T__circle):          pgtypes.Unknown,
+	uint32(oid.T_money):            pgtypes.Unknown,
+	uint32(oid.T__money):           pgtypes.Unknown,
+	uint32(oid.T_macaddr):          pgtypes.Unknown,
+	uint32(oid.T_inet):             pgtypes.Unknown,
+	uint32(oid.T__bool):            pgtypes.BoolArray,
+	uint32(oid.T__bytea):           pgtypes.ByteaArray,
+	uint32(oid.T__char):            pgtypes.InternalCharArray,
+	uint32(oid.T__name):            pgtypes.NameArray,
+	uint32(oid.T__int2):            pgtypes.Int16Array,
+	uint32(oid.T__int2vector):      pgtypes.Unknown,
+	uint32(oid.T__int4):            pgtypes.Int32Array,
+	uint32(oid.T__regproc):         pgtypes.RegprocArray,
+	uint32(oid.T__text):            pgtypes.TextArray,
+	uint32(oid.T__tid):             pgtypes.Unknown,
+	uint32(oid.T__xid):             pgtypes.XidArray,
+	uint32(oid.T__cid):             pgtypes.Unknown,
+	uint32(oid.T__oidvector):       pgtypes.Unknown,
+	uint32(oid.T__bpchar):          pgtypes.BpCharArray,
+	uint32(oid.T__varchar):         pgtypes.VarCharArray,
+	uint32(oid.T__int8):            pgtypes.Int64Array,
+	uint32(oid.T__point):           pgtypes.Unknown,
+	uint32(oid.T__lseg):            pgtypes.Unknown,
+	uint32(oid.T__path):            pgtypes.Unknown,
+	uint32(oid.T__box):             pgtypes.Unknown,
+	uint32(oid.T__float4):          pgtypes.Float32Array,
+	uint32(oid.T__float8):          pgtypes.Float64Array,
+	uint32(oid.T__abstime):         pgtypes.Unknown,
+	uint32(oid.T__reltime):         pgtypes.Unknown,
+	uint32(oid.T__tinterval):       pgtypes.Unknown,
+	uint32(oid.T__polygon):         pgtypes.Unknown,
+	uint32(oid.T__oid):             pgtypes.OidArray,
+	uint32(oid.T_aclitem):          pgtypes.Unknown,
+	uint32(oid.T__aclitem):         pgtypes.Unknown,
+	uint32(oid.T__macaddr):         pgtypes.Unknown,
+	uint32(oid.T__inet):            pgtypes.Unknown,
+	uint32(oid.T_bpchar):           pgtypes.BpChar,
+	uint32(oid.T_varchar):          pgtypes.VarChar,
+	uint32(oid.T_date):             pgtypes.Date,
+	uint32(oid.T_time):             pgtypes.Time,
+	uint32(oid.T_timestamp):        pgtypes.Timestamp,
+	uint32(oid.T__timestamp):       pgtypes.TimestampArray,
+	uint32(oid.T__date):            pgtypes.DateArray,
+	uint32(oid.T__time):            pgtypes.TimeArray,
+	uint32(oid.T_timestamptz):      pgtypes.TimestampTZ,
+	uint32(oid.T__timestamptz):     pgtypes.TimestampTZArray,
+	uint32(oid.T_interval):         pgtypes.Interval,
+	uint32(oid.T__interval):        pgtypes.IntervalArray,
+	uint32(oid.T__numeric):         pgtypes.NumericArray,
+	uint32(oid.T_pg_database):      pgtypes.Unknown,
+	uint32(oid.T__cstring):         pgtypes.Unknown,
+	uint32(oid.T_timetz):           pgtypes.TimeTZ,
+	uint32(oid.T__timetz):          pgtypes.TimeTZArray,
+	uint32(oid.T_bit):              pgtypes.Unknown,
+	uint32(oid.T__bit):             pgtypes.Unknown,
+	uint32(oid.T_varbit):           pgtypes.Unknown,
+	uint32(oid.T__varbit):          pgtypes.Unknown,
+	uint32(oid.T_numeric):          pgtypes.Numeric,
+	uint32(oid.T_refcursor):        pgtypes.Unknown,
+	uint32(oid.T__refcursor):       pgtypes.Unknown,
+	uint32(oid.T_regprocedure):     pgtypes.Unknown,
+	uint32(oid.T_regoper):          pgtypes.Unknown,
+	uint32(oid.T_regoperator):      pgtypes.Unknown,
+	uint32(oid.T_regclass):         pgtypes.Regclass,
+	uint32(oid.T_regtype):          pgtypes.Regtype,
+	uint32(oid.T__regprocedure):    pgtypes.Unknown,
+	uint32(oid.T__regoper):         pgtypes.Unknown,
+	uint32(oid.T__regoperator):     pgtypes.Unknown,
+	uint32(oid.T__regclass):        pgtypes.RegclassArray,
+	uint32(oid.T__regtype):         pgtypes.RegtypeArray,
+	uint32(oid.T_record):           pgtypes.Unknown,
+	uint32(oid.T_cstring):          pgtypes.Unknown,
+	uint32(oid.T_any):              pgtypes.Unknown,
+	uint32(oid.T_anyarray):         pgtypes.AnyArray,
+	uint32(oid.T_void):             pgtypes.Unknown,
+	uint32(oid.T_trigger):          pgtypes.Unknown,
+	uint32(oid.T_language_handler): pgtypes.Unknown,
+	uint32(oid.T_internal):         pgtypes.Unknown,
+	uint32(oid.T_opaque):           pgtypes.Unknown,
+	uint32(oid.T_anyelement):       pgtypes.AnyElement,
+	uint32(oid.T__record):          pgtypes.Unknown,
+	uint32(oid.T_anynonarray):      pgtypes.AnyNonArray,
+	uint32(oid.T_pg_authid):        pgtypes.Unknown,
+	uint32(oid.T_pg_auth_members):  pgtypes.Unknown,
+	uint32(oid.T__txid_snapshot):   pgtypes.Unknown,
+	uint32(oid.T_uuid):             pgtypes.Uuid,
+	uint32(oid.T__uuid):            pgtypes.UuidArray,
+	uint32(oid.T_txid_snapshot):    pgtypes.Unknown,
+	uint32(oid.T_fdw_handler):      pgtypes.Unknown,
+	uint32(oid.T_pg_lsn):           pgtypes.Unknown,
+	uint32(oid.T__pg_lsn):          pgtypes.Unknown,
+	uint32(oid.T_tsm_handler):      pgtypes.Unknown,
+	uint32(oid.T_anyenum):          pgtypes.Unknown,
+	uint32(oid.T_tsvector):         pgtypes.Unknown,
+	uint32(oid.T_tsquery):          pgtypes.Unknown,
+	uint32(oid.T_gtsvector):        pgtypes.Unknown,
+	uint32(oid.T__tsvector):        pgtypes.Unknown,
+	uint32(oid.T__gtsvector):       pgtypes.Unknown,
+	uint32(oid.T__tsquery):         pgtypes.Unknown,
+	uint32(oid.T_regconfig):        pgtypes.Unknown,
+	uint32(oid.T__regconfig):       pgtypes.Unknown,
+	uint32(oid.T_regdictionary):    pgtypes.Unknown,
+	uint32(oid.T__regdictionary):   pgtypes.Unknown,
+	uint32(oid.T_jsonb):            pgtypes.JsonB,
+	uint32(oid.T__jsonb):           pgtypes.JsonBArray,
+	uint32(oid.T_anyrange):         pgtypes.Unknown,
+	uint32(oid.T_event_trigger):    pgtypes.Unknown,
+	uint32(oid.T_int4range):        pgtypes.Unknown,
+	uint32(oid.T__int4range):       pgtypes.Unknown,
+	uint32(oid.T_numrange):         pgtypes.Unknown,
+	uint32(oid.T__numrange):        pgtypes.Unknown,
+	uint32(oid.T_tsrange):          pgtypes.Unknown,
+	uint32(oid.T__tsrange):         pgtypes.Unknown,
+	uint32(oid.T_tstzrange):        pgtypes.Unknown,
+	uint32(oid.T__tstzrange):       pgtypes.Unknown,
+	uint32(oid.T_daterange):        pgtypes.Unknown,
+	uint32(oid.T__daterange):       pgtypes.Unknown,
+	uint32(oid.T_int8range):        pgtypes.Unknown,
+	uint32(oid.T__int8range):       pgtypes.Unknown,
+	uint32(oid.T_pg_shseclabel):    pgtypes.Unknown,
+	uint32(oid.T_regnamespace):     pgtypes.Unknown,
+	uint32(oid.T__regnamespace):    pgtypes.Unknown,
+	uint32(oid.T_regrole):          pgtypes.Unknown,
+	uint32(oid.T__regrole):         pgtypes.Unknown,
 }

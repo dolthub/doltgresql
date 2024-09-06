@@ -219,23 +219,6 @@ func (b InternalCharType) Type() query.Type {
 	return sqltypes.Text
 }
 
-// ValToByteArray implements the DoltgresType interface.
-func (b InternalCharType) ValToByteArray(val any) ([]byte, error) {
-	if val == nil {
-		return nil, nil
-	}
-	converted, _, err := b.Convert(val)
-	if err != nil {
-		return nil, err
-	}
-
-	str := converted.(string)
-	if uint32(len(str)) > InternalCharLength {
-		return []byte(str[:InternalCharLength]), nil
-	}
-	return []byte(str), nil
-}
-
 // ValueType implements the DoltgresType interface.
 func (b InternalCharType) ValueType() reflect.Type {
 	return reflect.TypeOf("")

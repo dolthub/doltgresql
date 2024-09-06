@@ -23,8 +23,6 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/jackc/pgio"
-
 	"github.com/dolthub/go-mysql-server/sql"
 	"github.com/dolthub/go-mysql-server/sql/types"
 	"github.com/dolthub/vitess/go/sqltypes"
@@ -218,18 +216,6 @@ func (b Float64Type) ToArrayType() DoltgresArrayType {
 // Type implements the DoltgresType interface.
 func (b Float64Type) Type() query.Type {
 	return sqltypes.Float64
-}
-
-// ValToByteArray implements the DoltgresType interface.
-func (b Float64Type) ValToByteArray(val any) ([]byte, error) {
-	if val == nil {
-		return nil, nil
-	}
-	converted, _, err := b.Convert(val)
-	if err != nil {
-		return nil, err
-	}
-	return pgio.AppendUint64(nil, math.Float64bits(converted.(float64))), nil
 }
 
 // ValueType implements the DoltgresType interface.

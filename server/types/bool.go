@@ -232,22 +232,6 @@ func (b BoolType) Type() query.Type {
 	return sqltypes.Text
 }
 
-// ValToByteArray implements the DoltgresType interface.
-func (b BoolType) ValToByteArray(val any) ([]byte, error) {
-	if val == nil {
-		return nil, nil
-	}
-	value, _, err := b.Convert(val)
-	if err != nil {
-		return nil, err
-	}
-	if value.(bool) {
-		return []byte{'t'}, nil
-	} else {
-		return []byte{'f'}, nil
-	}
-}
-
 // ValueType implements the DoltgresType interface.
 func (b BoolType) ValueType() reflect.Type {
 	return reflect.TypeOf(bool(false))

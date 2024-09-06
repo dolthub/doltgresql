@@ -546,7 +546,7 @@ func RunScriptN(t *testing.T, script ScriptTest, n int) {
 						foundRows, err := ReadRows(rows, true)
 						if assertion.ExpectedErr == "" {
 							require.NoError(t, err)
-							assert.Equal(t, NormalizeRows(assertion.Expected), foundRows)
+							assert.Equal(t, NormalizeRows(rows.FieldDescriptions(), assertion.Expected), foundRows)
 						} else if err != nil {
 							errorSeen = err.Error()
 						}

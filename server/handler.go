@@ -114,7 +114,9 @@ func (h *Handler) ComPrepareParsed(ctx context.Context, c *mysql.Conn, query str
 	var fields []pgproto3.FieldDescription
 	// The return result fields should only be directly translated if it doesn't correspond to an OK result.
 	// See comment in ComPrepare
-	if !(nodeReturnsOkResultSchema(analyzed) || types.IsOkResultSchema(analyzed.Schema())) {
+	n1 := nodeReturnsOkResultSchema(analyzed)
+	n2 := types.IsOkResultSchema(analyzed.Schema())
+	if n1 || n2 {
 		fields = nil
 	} else {
 		fields = schemaToFieldDescriptions(sqlCtx, analyzed.Schema())
@@ -377,19 +379,14 @@ func schemaToFieldDescriptions(ctx *sql.Context, s sql.Schema) []pgproto3.FieldD
 	fields := make([]pgproto3.FieldDescription, len(s))
 	for i, c := range s {
 		var oid uint32
-		var format = int16(0)
-		if types.IsNumber(c.Type) {
-			oid = messages.OidInt8
-		} else if types.IsText(c.Type) {
-			oid = messages.OidText
-		}
-
+		var err error
 		if doltgresType, ok := c.Type.(types2.DoltgresType); ok {
 			// TODO: handle ok result
 			oid = doltgresType.OID()
-			switch doltgresType {
-			case types2.Int16, types2.Int32, types2.Int64, types2.Oid, types2.Float32, types2.Float64:
-				format = 1
+		} else {
+			oid, err = messages.VitessTypeToObjectID(c.Type.Type())
+			if err != nil {
+				panic(err)
 			}
 		}
 
@@ -405,7 +402,7 @@ func schemaToFieldDescriptions(ctx *sql.Context, s sql.Schema) []pgproto3.FieldD
 			DataTypeOID:          oid,
 			DataTypeSize:         int16(c.Type.MaxTextResponseByteLength(ctx)),
 			TypeModifier:         int32(-1), // TODO: used for domain type, which we don't support yet
-			Format:               format,
+			Format:               int16(0),
 		}
 	}
 
@@ -494,21 +491,21 @@ func rowToBytes(ctx *sql.Context, s sql.Schema, row sql.Row) ([][]byte, error) {
 		}
 		// need to make sure the schema is not null as some plan schema is defined as null (e.g. IfElseBlock)
 		if len(s) > 0 {
-			dt, ok := s[i].Type.(types2.DoltgresType)
-			if ok {
-				val, err := dt.ValToByteArray(v)
-				if err != nil {
-					return nil, err
-				}
-				o[i] = val
-			} else {
-				val, err := s[i].Type.SQL(ctx, nil, v)
-				if err != nil {
-					return nil, err
-				}
-				o[i] = val.ToBytes()
+			//dt, ok := s[i].Type.(types2.DoltgresType)
+			//if ok {
+			//	str, err := dt.IoOutput(ctx, v)
+			//	if err != nil {
+			//		return nil, err
+			//	}
+			//	o[i] = []byte(str)
+			//} else {
+			//
+			//}
+			val, err := s[i].Type.SQL(ctx, []byte{}, v)
+			if err != nil {
+				return nil, err
 			}
-
+			o[i] = val.ToBytes()
 		}
 	}
 	return o, nil

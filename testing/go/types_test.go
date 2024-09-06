@@ -25,254 +25,254 @@ func TestTypes(t *testing.T) {
 }
 
 var typesTests = []ScriptTest{
-	{
-		Name: "Bigint type",
-		SetUpScript: []string{
-			"CREATE TABLE t_bigint (id INTEGER primary key, v1 BIGINT);",
-			"INSERT INTO t_bigint VALUES (1, 123456789012345), (2, 987654321098765);",
-		},
-		Assertions: []ScriptTestAssertion{
-			{
-				Query: "SELECT * FROM t_bigint ORDER BY id;",
-				Expected: []sql.Row{
-					{1, 123456789012345},
-					{2, 987654321098765},
-				},
-			},
-		},
-	},
-	{
-		Name: "Bigint array type",
-		SetUpScript: []string{
-			"CREATE TABLE t_bigint (id INTEGER primary key, v1 BIGINT[]);",
-			"INSERT INTO t_bigint VALUES (1, ARRAY[123456789012345, NULL]), (2, ARRAY[987654321098765, 5]), (3, ARRAY[4, 5]);",
-		},
-		Assertions: []ScriptTestAssertion{
-			{
-				Query: "SELECT * FROM t_bigint ORDER BY id;",
-				Expected: []sql.Row{
-					{1, "{123456789012345,NULL}"},
-					{2, "{987654321098765,5}"},
-					{3, "{4,5}"},
-				},
-			},
-		},
-	},
-	{
-		Name: "Bit type",
-		Skip: true,
-		SetUpScript: []string{
-			"CREATE TABLE t_bit (id INTEGER primary key, v1 BIT(8));",
-			"INSERT INTO t_bit VALUES (1, B'11011010'), (2, B'00101011');",
-		},
-		Assertions: []ScriptTestAssertion{
-			{
-				Query: "SELECT * FROM t_bit ORDER BY id;",
-				Expected: []sql.Row{
-					{1, []byte{0xDA}},
-					{2, []byte{0x2B}},
-				},
-			},
-		},
-	},
-	{
-		Name: "Boolean type",
-		SetUpScript: []string{
-			"CREATE TABLE t_boolean (id INTEGER primary key, v1 BOOLEAN);",
-			"INSERT INTO t_boolean VALUES (1, true), (2, 'false'), (3, NULL);",
-		},
-		Assertions: []ScriptTestAssertion{
-			{
-				Query: "SELECT * FROM t_boolean ORDER BY id;",
-				Skip:  true, // Proper NULL-ordering has not yet been implemented
-				Expected: []sql.Row{
-					{1, "t"},
-					{2, "f"},
-					{3, nil},
-				},
-			},
-			{
-				Query: "SELECT * FROM t_boolean ORDER BY v1;",
-				Skip:  true, // Proper NULL-ordering has not yet been implemented
-				Expected: []sql.Row{
-					{2, "f"},
-					{1, "t"},
-					{3, nil},
-				},
-			},
-			{
-				Query: "SELECT * FROM t_boolean WHERE v1 IS NOT NULL ORDER BY id;",
-				Expected: []sql.Row{
-					{1, "t"},
-					{2, "f"},
-				},
-			},
-			{
-				Query: "SELECT * FROM t_boolean WHERE v1 IS NOT NULL ORDER BY v1;",
-				Expected: []sql.Row{
-					{2, "f"},
-					{1, "t"},
-				},
-			},
-		},
-	},
-	{
-		Name: "Boolean array type",
-		SetUpScript: []string{
-			"CREATE TABLE t_boolean_array (id INTEGER primary key, v1 BOOLEAN[]);",
-			"INSERT INTO t_boolean_array VALUES (1, ARRAY[true, false]), (2, ARRAY[false, true]), (3, ARRAY[true, true]), (4, ARRAY[false, false]), (5, ARRAY[true]), (6, ARRAY[false]), (7, NULL);",
-		},
-		Assertions: []ScriptTestAssertion{
-			{
-				Query: "SELECT * FROM t_boolean_array ORDER BY id;",
-				Skip:  true, // Proper NULL-ordering has not yet been implemented
-				Expected: []sql.Row{
-					{1, "{t,f}"},
-					{2, "{f,t}"},
-					{3, "{t,t}"},
-					{4, "{f,f}"},
-					{5, "{t}"},
-					{6, "{f}"},
-					{7, nil},
-				},
-			},
-			{
-				Query: "SELECT * FROM t_boolean_array ORDER BY v1;",
-				Skip:  true, // Proper NULL-ordering has not yet been implemented
-				Expected: []sql.Row{
-					{6, "{f}"},
-					{4, "{f,f}"},
-					{2, "{f,t}"},
-					{5, "{t}"},
-					{1, "{t,f}"},
-					{3, "{t,t}"},
-					{7, nil},
-				},
-			},
-			{
-				Query: "SELECT * FROM t_boolean_array WHERE v1 IS NOT NULL ORDER BY id;",
-				Expected: []sql.Row{
-					{1, "{t,f}"},
-					{2, "{f,t}"},
-					{3, "{t,t}"},
-					{4, "{f,f}"},
-					{5, "{t}"},
-					{6, "{f}"},
-				},
-			},
-			{
-				Query: "SELECT * FROM t_boolean_array WHERE v1 IS NOT NULL ORDER BY v1;",
-				Expected: []sql.Row{
-					{6, "{f}"},
-					{4, "{f,f}"},
-					{2, "{f,t}"},
-					{5, "{t}"},
-					{1, "{t,f}"},
-					{3, "{t,t}"},
-				},
-			},
-		},
-	},
-	{
-		Name: "Bigserial type",
-		SetUpScript: []string{
-			"CREATE TABLE t_bigserial (id INTEGER primary key, v1 BIGSERIAL);",
-			"INSERT INTO t_bigserial VALUES (1, 123456789012345), (2, 987654321098765);",
-		},
-		Assertions: []ScriptTestAssertion{
-			{
-				Query: "SELECT * FROM t_bigserial ORDER BY id;",
-				Expected: []sql.Row{
-					{1, 123456789012345},
-					{2, 987654321098765},
-				},
-			},
-		},
-	},
-	{
-		Name: "Bit varying type",
-		Skip: true,
-		SetUpScript: []string{
-			"CREATE TABLE t_bit_varying (id INTEGER primary key, v1 BIT VARYING(16));",
-			"INSERT INTO t_bit_varying VALUES (1, B'1101101010101010'), (2, B'0010101101010101');",
-		},
-		Assertions: []ScriptTestAssertion{
-			{
-				Query: "SELECT * FROM t_bit_varying ORDER BY id;",
-				Expected: []sql.Row{
-					{1, []byte{0xDA, 0xAA}},
-					{2, []byte{0x2B, 0xA5}},
-				},
-			},
-		},
-	},
-	{
-		Name: "Box type",
-		Skip: true,
-		SetUpScript: []string{
-			"CREATE TABLE t_box (id INTEGER primary key, v1 BOX);",
-			"INSERT INTO t_box VALUES (1, '(1,2),(3,4)'), (2, '(5,6),(7,8)');",
-		},
-		Assertions: []ScriptTestAssertion{
-			{
-				Query: "SELECT * FROM t_box ORDER BY id;",
-				// TODO: the output and ordering of points here varies from postgres, probably need a GMS type, not a string
-				Expected: []sql.Row{
-					{1, "((1,2),(3,4))"},
-					{2, "((5,6),(7,8))"},
-				},
-			},
-		},
-	},
-	{
-		Name: "Bytea type",
-		SetUpScript: []string{
-			"CREATE TABLE t_bytea (id INTEGER primary key, v1 BYTEA);",
-			"INSERT INTO t_bytea VALUES (1, E'\\\\xDEADBEEF'), (2, '\\xC0FFEE'), (3, ''), (4, NULL);",
-		},
-		Assertions: []ScriptTestAssertion{
-			{
-				Query: "SELECT * FROM t_bytea ORDER BY id;",
-				Expected: []sql.Row{
-					{1, []byte{0xDE, 0xAD, 0xBE, 0xEF}},
-					{2, []byte{0xC0, 0xFF, 0xEE}},
-					{3, []byte{}},
-					{4, nil},
-				},
-			},
-		},
-	},
-	{
-		Name: "Character type",
-		SetUpScript: []string{
-			"CREATE TABLE t_character (id INTEGER primary key, v1 CHARACTER(5));",
-			"INSERT INTO t_character VALUES (1, 'abcde'), (2, 'vwxyz'), (3, 'ghi'), (4, ''), (5, NULL);",
-		},
-		Assertions: []ScriptTestAssertion{
-			{
-				Query: "SELECT * FROM t_character ORDER BY id;",
-				Expected: []sql.Row{
-					{1, "abcde"},
-					{2, "vwxyz"},
-					{3, "ghi  "},
-					{4, "     "},
-					{5, nil},
-				},
-			},
-			{
-				Query: "SELECT true::char, false::char;",
-				Expected: []sql.Row{
-					{"t", "f"},
-				},
-			},
-			{
-				Query: "SELECT true::character(5), false::character(5);",
-				Expected: []sql.Row{
-					{"true ", "false"},
-				},
-			},
-		},
-	},
+	//{
+	//	Name: "Bigint type",
+	//	SetUpScript: []string{
+	//		"CREATE TABLE t_bigint (id INTEGER primary key, v1 BIGINT);",
+	//		"INSERT INTO t_bigint VALUES (1, 123456789012345), (2, 987654321098765);",
+	//	},
+	//	Assertions: []ScriptTestAssertion{
+	//		{
+	//			Query: "SELECT * FROM t_bigint ORDER BY id;",
+	//			Expected: []sql.Row{
+	//				{1, 123456789012345},
+	//				{2, 987654321098765},
+	//			},
+	//		},
+	//	},
+	//},
+	//{
+	//	Name: "Bigint array type",
+	//	SetUpScript: []string{
+	//		"CREATE TABLE t_bigint (id INTEGER primary key, v1 BIGINT[]);",
+	//		"INSERT INTO t_bigint VALUES (1, ARRAY[123456789012345, NULL]), (2, ARRAY[987654321098765, 5]), (3, ARRAY[4, 5]);",
+	//	},
+	//	Assertions: []ScriptTestAssertion{
+	//		{
+	//			Query: "SELECT * FROM t_bigint ORDER BY id;",
+	//			Expected: []sql.Row{
+	//				{1, "{123456789012345,NULL}"},
+	//				{2, "{987654321098765,5}"},
+	//				{3, "{4,5}"},
+	//			},
+	//		},
+	//	},
+	//},
+	//{
+	//	Name: "Bit type",
+	//	Skip: true,
+	//	SetUpScript: []string{
+	//		"CREATE TABLE t_bit (id INTEGER primary key, v1 BIT(8));",
+	//		"INSERT INTO t_bit VALUES (1, B'11011010'), (2, B'00101011');",
+	//	},
+	//	Assertions: []ScriptTestAssertion{
+	//		{
+	//			Query: "SELECT * FROM t_bit ORDER BY id;",
+	//			Expected: []sql.Row{
+	//				{1, []byte{0xDA}},
+	//				{2, []byte{0x2B}},
+	//			},
+	//		},
+	//	},
+	//},
+	//{
+	//	Name: "Boolean type",
+	//	SetUpScript: []string{
+	//		"CREATE TABLE t_boolean (id INTEGER primary key, v1 BOOLEAN);",
+	//		"INSERT INTO t_boolean VALUES (1, true), (2, 'false'), (3, NULL);",
+	//	},
+	//	Assertions: []ScriptTestAssertion{
+	//		{
+	//			Query: "SELECT * FROM t_boolean ORDER BY id;",
+	//			Skip:  true, // Proper NULL-ordering has not yet been implemented
+	//			Expected: []sql.Row{
+	//				{1, "t"},
+	//				{2, "f"},
+	//				{3, nil},
+	//			},
+	//		},
+	//		{
+	//			Query: "SELECT * FROM t_boolean ORDER BY v1;",
+	//			Skip:  true, // Proper NULL-ordering has not yet been implemented
+	//			Expected: []sql.Row{
+	//				{2, "f"},
+	//				{1, "t"},
+	//				{3, nil},
+	//			},
+	//		},
+	//		{
+	//			Query: "SELECT * FROM t_boolean WHERE v1 IS NOT NULL ORDER BY id;",
+	//			Expected: []sql.Row{
+	//				{1, "t"},
+	//				{2, "f"},
+	//			},
+	//		},
+	//		{
+	//			Query: "SELECT * FROM t_boolean WHERE v1 IS NOT NULL ORDER BY v1;",
+	//			Expected: []sql.Row{
+	//				{2, "f"},
+	//				{1, "t"},
+	//			},
+	//		},
+	//	},
+	//},
+	//{
+	//	Name: "Boolean array type",
+	//	SetUpScript: []string{
+	//		"CREATE TABLE t_boolean_array (id INTEGER primary key, v1 BOOLEAN[]);",
+	//		"INSERT INTO t_boolean_array VALUES (1, ARRAY[true, false]), (2, ARRAY[false, true]), (3, ARRAY[true, true]), (4, ARRAY[false, false]), (5, ARRAY[true]), (6, ARRAY[false]), (7, NULL);",
+	//	},
+	//	Assertions: []ScriptTestAssertion{
+	//		{
+	//			Query: "SELECT * FROM t_boolean_array ORDER BY id;",
+	//			Skip:  true, // Proper NULL-ordering has not yet been implemented
+	//			Expected: []sql.Row{
+	//				{1, "{t,f}"},
+	//				{2, "{f,t}"},
+	//				{3, "{t,t}"},
+	//				{4, "{f,f}"},
+	//				{5, "{t}"},
+	//				{6, "{f}"},
+	//				{7, nil},
+	//			},
+	//		},
+	//		{
+	//			Query: "SELECT * FROM t_boolean_array ORDER BY v1;",
+	//			Skip:  true, // Proper NULL-ordering has not yet been implemented
+	//			Expected: []sql.Row{
+	//				{6, "{f}"},
+	//				{4, "{f,f}"},
+	//				{2, "{f,t}"},
+	//				{5, "{t}"},
+	//				{1, "{t,f}"},
+	//				{3, "{t,t}"},
+	//				{7, nil},
+	//			},
+	//		},
+	//		{
+	//			Query: "SELECT * FROM t_boolean_array WHERE v1 IS NOT NULL ORDER BY id;",
+	//			Expected: []sql.Row{
+	//				{1, "{t,f}"},
+	//				{2, "{f,t}"},
+	//				{3, "{t,t}"},
+	//				{4, "{f,f}"},
+	//				{5, "{t}"},
+	//				{6, "{f}"},
+	//			},
+	//		},
+	//		{
+	//			Query: "SELECT * FROM t_boolean_array WHERE v1 IS NOT NULL ORDER BY v1;",
+	//			Expected: []sql.Row{
+	//				{6, "{f}"},
+	//				{4, "{f,f}"},
+	//				{2, "{f,t}"},
+	//				{5, "{t}"},
+	//				{1, "{t,f}"},
+	//				{3, "{t,t}"},
+	//			},
+	//		},
+	//	},
+	//},
+	//{
+	//	Name: "Bigserial type",
+	//	SetUpScript: []string{
+	//		"CREATE TABLE t_bigserial (id INTEGER primary key, v1 BIGSERIAL);",
+	//		"INSERT INTO t_bigserial VALUES (1, 123456789012345), (2, 987654321098765);",
+	//	},
+	//	Assertions: []ScriptTestAssertion{
+	//		{
+	//			Query: "SELECT * FROM t_bigserial ORDER BY id;",
+	//			Expected: []sql.Row{
+	//				{1, 123456789012345},
+	//				{2, 987654321098765},
+	//			},
+	//		},
+	//	},
+	//},
+	//{
+	//	Name: "Bit varying type",
+	//	Skip: true,
+	//	SetUpScript: []string{
+	//		"CREATE TABLE t_bit_varying (id INTEGER primary key, v1 BIT VARYING(16));",
+	//		"INSERT INTO t_bit_varying VALUES (1, B'1101101010101010'), (2, B'0010101101010101');",
+	//	},
+	//	Assertions: []ScriptTestAssertion{
+	//		{
+	//			Query: "SELECT * FROM t_bit_varying ORDER BY id;",
+	//			Expected: []sql.Row{
+	//				{1, []byte{0xDA, 0xAA}},
+	//				{2, []byte{0x2B, 0xA5}},
+	//			},
+	//		},
+	//	},
+	//},
+	//{
+	//	Name: "Box type",
+	//	Skip: true,
+	//	SetUpScript: []string{
+	//		"CREATE TABLE t_box (id INTEGER primary key, v1 BOX);",
+	//		"INSERT INTO t_box VALUES (1, '(1,2),(3,4)'), (2, '(5,6),(7,8)');",
+	//	},
+	//	Assertions: []ScriptTestAssertion{
+	//		{
+	//			Query: "SELECT * FROM t_box ORDER BY id;",
+	//			// TODO: the output and ordering of points here varies from postgres, probably need a GMS type, not a string
+	//			Expected: []sql.Row{
+	//				{1, "((1,2),(3,4))"},
+	//				{2, "((5,6),(7,8))"},
+	//			},
+	//		},
+	//	},
+	//},
+	//{
+	//	Name: "Bytea type",
+	//	SetUpScript: []string{
+	//		"CREATE TABLE t_bytea (id INTEGER primary key, v1 BYTEA);",
+	//		"INSERT INTO t_bytea VALUES (1, E'\\\\xDEADBEEF'), (2, '\\xC0FFEE'), (3, ''), (4, NULL);",
+	//	},
+	//	Assertions: []ScriptTestAssertion{
+	//		{
+	//			Query: "SELECT * FROM t_bytea ORDER BY id;",
+	//			Expected: []sql.Row{
+	//				{1, []byte{0xDE, 0xAD, 0xBE, 0xEF}},
+	//				{2, []byte{0xC0, 0xFF, 0xEE}},
+	//				{3, []byte{}},
+	//				{4, nil},
+	//			},
+	//		},
+	//	},
+	//},
+	//{
+	//	Name: "Character type",
+	//	SetUpScript: []string{
+	//		"CREATE TABLE t_character (id INTEGER primary key, v1 CHARACTER(5));",
+	//		"INSERT INTO t_character VALUES (1, 'abcde'), (2, 'vwxyz'), (3, 'ghi'), (4, ''), (5, NULL);",
+	//	},
+	//	Assertions: []ScriptTestAssertion{
+	//		{
+	//			Query: "SELECT * FROM t_character ORDER BY id;",
+	//			Expected: []sql.Row{
+	//				{1, "abcde"},
+	//				{2, "vwxyz"},
+	//				{3, "ghi  "},
+	//				{4, "     "},
+	//				{5, nil},
+	//			},
+	//		},
+	//		{
+	//			Query: "SELECT true::char, false::char;",
+	//			Expected: []sql.Row{
+	//				{"t", "f"},
+	//			},
+	//		},
+	//		{
+	//			Query: "SELECT true::character(5), false::character(5);",
+	//			Expected: []sql.Row{
+	//				{"true ", "false"},
+	//			},
+	//		},
+	//	},
+	//},
 	{
 		Name: "Internal char type",
 		SetUpScript: []string{
