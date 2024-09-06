@@ -102,7 +102,7 @@ var columnsSchema = sql.Schema{
 func columnsRowIter(ctx *sql.Context, catalog sql.Catalog, allColsWithDefaultValue sql.Schema) (sql.RowIter, error) {
 	var rows []sql.Row
 
-	databases, err := information_schema.AllDatabases(ctx, catalog, false)
+	databases, err := information_schema.AllDatabasesWithNames(ctx, catalog, false)
 	if err != nil {
 		return nil, err
 	}

@@ -433,15 +433,19 @@ func (h *ConnectionHandler) handleParse(message messages.Parse) error {
 		return nil
 	}
 
-	plan, fields, err := h.getPlanAndFields(query)
+	analyzedPlan, fields, err := h.getPlanAndFields(query)
 	if err != nil {
 		return err
 	}
 
-	// TODO: bindvar types can be specified directly in the message, need tests of this
-	bindVarTypes, err := extractBindVarTypes(plan)
-	if err != nil {
-		return err
+	// A valid Parse message must have ParameterObjectIDs if there are any binding variables.
+	bindVarTypes := message.ParameterObjectIDs
+	if len(bindVarTypes) == 0 {
+		// NOTE: This is used for Prepared Statement Tests only.
+		bindVarTypes, err = extractBindVarTypes(analyzedPlan)
+		if err != nil {
+			return err
+		}
 	}
 
 	// Nil fields means an OKResult, fill one in here
@@ -653,19 +657,9 @@ func (h *ConnectionHandler) convertBindParameters(types []uint32, formatCodes []
 	bindings := make(map[string]sqlparser.Expr, len(values))
 	for i := range values {
 		typ := types[i]
-		// TODO: need to check for byte length for given type length. E.g. int16, int32 and uint32 expects 4 bytes
-		//  but currently, receives 8 bytes.
-		// This is temporary change to pass the byte array with correct length.
-		val := values[i].Data
-		//switch typ {
-		//case messages.OidOid:
-		//	if len(val) != 4 {
-		//		val = val[len(val)-4:]
-		//	}
-		//}
 		var bindVarString string
 		// We'll rely on a library to decode each format, which will deal with text and binary representations for us
-		if err := h.pgTypeMap.Scan(typ, int16(formatCodes[i]), val, &bindVarString); err != nil {
+		if err := h.pgTypeMap.Scan(typ, int16(formatCodes[i]), values[i].Data, &bindVarString); err != nil {
 			return nil, err
 		}
 
@@ -1013,12 +1007,12 @@ func (h *ConnectionHandler) getPlanAndFields(query ConvertedQuery) (sql.Node, []
 		return nil, nil, err
 	}
 
-	plan, ok := parsedQuery.(sql.Node)
+	analyzedPlan, ok := parsedQuery.(sql.Node)
 	if !ok {
 		return nil, nil, fmt.Errorf("expected a sql.Node, got %T", parsedQuery)
 	}
 
-	return plan, fields, nil
+	return analyzedPlan, fields, nil
 }
 
 // bindParams binds the paramters given to the query plan given and returns the resulting plan and fields.
