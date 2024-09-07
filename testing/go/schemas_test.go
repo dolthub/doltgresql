@@ -586,25 +586,24 @@ var SchemaTests = []ScriptTest{
 			"CREATE SCHEMA branchschema",
 			"Create table branchschema.mytbl (pk BIGINT PRIMARY KEY, v1 BIGINT);",
 			"INSERT INTO branchschema.mytbl VALUES (1, 1), (2, 2)",
+			"Create table branchschema.mytbl2 (pk BIGINT PRIMARY KEY, v1 BIGINT);",
+			"INSERT INTO branchschema.mytbl2 VALUES (3, 3), (4, 4)",
 			"select dolt_commit('-Am', 'new table in new schema')",
 			"call dolt_checkout('main')",
 			"create schema mainschema",
 			"create table mainschema.maintable (pk BIGINT PRIMARY KEY, v1 BIGINT);",
-			"insert into mainschema.maintable values (3, 3), (4, 4)",
+			"insert into mainschema.maintable values (5, 5), (6, 6)",
 			"select dolt_commit('-Am', 'new table in main')",
 		},
 		Assertions: []ScriptTestAssertion{
 			{
 				Query: "call dolt_merge('branch1')",
-				Expected: []sql.Row{
-					{"{0}"},
-				},
 			},
 			{
 				Query: "SELECT * from mainschema.maintable",
 				Expected: []sql.Row{
-					{3, 3},
-					{4, 4},
+					{5, 5},
+					{6, 6},
 				},
 			},
 			{
@@ -612,6 +611,13 @@ var SchemaTests = []ScriptTest{
 				Expected: []sql.Row{
 					{1, 1},
 					{2, 2},
+				},
+			},
+			{
+				Query: "SELECT * from branchschema.mytbl2",
+				Expected: []sql.Row{
+					{3, 3},
+					{4, 4},
 				},
 			},
 		},
