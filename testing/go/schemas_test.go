@@ -623,15 +623,20 @@ var SchemaTests = []ScriptTest{
 		},
 	},
 	{
-		Name: "add new table in new schema, commit -Am",
+		Name:  "add new table in new schema, commit -Am",
+		Focus: true,
 		SetUpScript: []string{
+			"call dolt_commit('-Am', 'initial commit')",
 			"CREATE SCHEMA myschema",
 			"Create table myschema.mytbl (pk BIGINT PRIMARY KEY, v1 BIGINT);",
 		},
 		Assertions: []ScriptTestAssertion{
 			{
-				Query:    "SELECT * FROM dolt_status;",
-				Expected: []sql.Row{{"mytbl", 0, "new table"}},
+				Query: "SELECT * FROM dolt_status;",
+				Expected: []sql.Row{
+					{"mytbl", 0, "new table"},
+					{"myschema", 0, "new schema"},
+				},
 			},
 			{
 				Query:            "select dolt_commit('-Am', 'new table in new schema')",
