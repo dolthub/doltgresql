@@ -17,16 +17,16 @@ package node
 import (
 	"bufio"
 	"fmt"
-	"io"
 	"os"
-	"strings"
 
 	"github.com/dolthub/dolt/go/libraries/doltcore/doltdb"
 	"github.com/dolthub/go-mysql-server/sql"
 	vitess "github.com/dolthub/vitess/go/vt/sqlparser"
+	"github.com/sirupsen/logrus"
 
 	"github.com/dolthub/doltgresql/core"
-	pgtypes "github.com/dolthub/doltgresql/server/types"
+	"github.com/dolthub/doltgresql/core/dataloader"
+	"github.com/dolthub/doltgresql/postgres/parser/sem/tree"
 )
 
 // CopyFrom handles the COPY ... FROM ... statement.
@@ -36,19 +36,23 @@ type CopyFrom struct {
 	File         string
 	Delimiter    string
 	Null         string
+	Stdin        bool
+	Columns      tree.NameList
 }
 
 var _ vitess.Injectable = (*CopyFrom)(nil)
 var _ sql.ExecSourceRel = (*CopyFrom)(nil)
 
 // NewCopyFrom returns a new *CopyFrom.
-func NewCopyFrom(databaseName string, tableName doltdb.TableName, fileName string) *CopyFrom {
+func NewCopyFrom(databaseName string, tableName doltdb.TableName, fileName string, stdin bool, columns tree.NameList) *CopyFrom {
 	return &CopyFrom{
 		DatabaseName: databaseName,
 		TableName:    tableName,
 		File:         fileName,
 		Delimiter:    "\t",
 		Null:         `\N`,
+		Stdin:        stdin,
+		Columns:      columns,
 	}
 }
 
@@ -74,9 +78,42 @@ func (cf *CopyFrom) Resolved() bool {
 	return true
 }
 
+// Validate returns an error if the CopyFrom node is invalid, for example if it contains columns that
+// are not in the table schema.
+//
+// TODO: This validation logic should be hooked into the analyzer so that it can be run in a consistent way.
+func (cf *CopyFrom) Validate(ctx *sql.Context) error {
+	table, err := core.GetSqlTableFromContext(ctx, cf.DatabaseName, cf.TableName)
+	if err != nil {
+		return err
+	}
+	if table == nil {
+		return fmt.Errorf(`relation "%s" does not exist`, cf.TableName.String())
+	}
+	if _, ok := table.(sql.InsertableTable); !ok {
+		return fmt.Errorf(`table "%s" is read-only`, cf.TableName.String())
+	}
+
+	if len(table.Schema()) != len(cf.Columns) {
+		return fmt.Errorf("invalid column name list for table %s: %v", table.Name(), cf.Columns)
+	}
+
+	for i, col := range table.Schema() {
+		name := cf.Columns[i]
+		if name.String() != col.Name {
+			return fmt.Errorf("invalid column name list for table %s: %v", table.Name(), cf.Columns)
+		}
+	}
+
+	return nil
+}
+
 // RowIter implements the interface sql.ExecSourceRel.
-func (cf *CopyFrom) RowIter(ctx *sql.Context, r sql.Row) (_ sql.RowIter, err error) {
-	// Fetch the table
+func (cf *CopyFrom) RowIter(ctx *sql.Context, _ sql.Row) (_ sql.RowIter, err error) {
+	if err := cf.Validate(ctx); err != nil {
+		return nil, err
+	}
+
 	table, err := core.GetSqlTableFromContext(ctx, cf.DatabaseName, cf.TableName)
 	if err != nil {
 		return nil, err
@@ -102,77 +139,26 @@ func (cf *CopyFrom) RowIter(ctx *sql.Context, r sql.Row) (_ sql.RowIter, err err
 	}()
 	reader := bufio.NewReader(openFile)
 
-	// Get the row inserter and set the defers
-	rowInserter := insertable.Inserter(ctx)
-	defer func() {
-		nErr := rowInserter.Close(ctx)
-		if err == nil {
-			err = nErr
-		}
-	}()
-	rowInserter.StatementBegin(ctx)
-	defer func() {
-		if err == nil {
-			err = rowInserter.StatementComplete(ctx)
-		} else {
-			err = rowInserter.DiscardChanges(ctx, err)
-		}
-	}()
-
-	// Get the column's types, which we'll use for casting
-	sch := insertable.Schema()
-	colTypes := make([]pgtypes.DoltgresType, len(sch))
-	for i, col := range sch {
-		var ok bool
-		colTypes[i], ok = col.Type.(pgtypes.DoltgresType)
-		if !ok {
-			return nil, fmt.Errorf("COPY FROM only works for tables with all Postgres types")
-		}
+	dataLoader, err := dataloader.NewTabularDataLoader(ctx, insertable, cf.Delimiter, cf.Null)
+	if err != nil {
+		return nil, err
 	}
 
-	// Write the data to the table
-	row := make(sql.Row, len(colTypes))
-	foundEOF := false
-	for !foundEOF {
-		// Read the next line from the file
-		line, err := reader.ReadString('\n')
-		if err != nil {
-			if err != io.EOF {
-				return nil, err
-			}
-			foundEOF = true
-		} else {
-			// If we've not reached EOF, then there will be a newline appended to the end that we must remove.
-			// We'll check though just for thoroughness.
-			line = strings.TrimSuffix(line, "\n")
+	// NOTE: when loading data from a specified file, there is only one chunk for the entire file
+	if err = dataLoader.LoadChunk(ctx, reader); err != nil {
+		if abortError := dataLoader.Abort(ctx); abortError != nil {
+			logrus.Warn("unable to cleanly abort data loader: %s", abortError.Error())
 		}
-		if len(line) == 0 {
-			continue
-		}
-		// Split the values by the delimiter, ensuring the correct number of values have been read
-		values := strings.Split(line, cf.Delimiter)
-		if len(values) > len(colTypes) {
-			return nil, fmt.Errorf("extra data after last expected column")
-		} else if len(values) < len(colTypes) {
-			return nil, fmt.Errorf(`missing data for column "%s"`, sch[len(values)].Name)
-		}
-		// Cast the values using I/O input
-		for i := range colTypes {
-			if values[i] == cf.Null {
-				row[i] = nil
-			} else {
-				row[i], err = colTypes[i].IoInput(ctx, values[i])
-				if err != nil {
-					return nil, err
-				}
-			}
-		}
-		// Insert the read row
-		err = rowInserter.Insert(ctx, row)
-		if err != nil {
-			return nil, err
-		}
+		return nil, err
 	}
+
+	if _, err = dataLoader.Finish(ctx); err != nil {
+		if abortError := dataLoader.Abort(ctx); err != nil {
+			logrus.Warn("unable to cleanly abort data loader: %s", abortError.Error())
+		}
+		return nil, err
+	}
+
 	return sql.RowsToRowIter(), nil
 }
 
@@ -189,7 +175,7 @@ func (cf *CopyFrom) String() string {
 // WithChildren implements the interface sql.ExecSourceRel.
 func (cf *CopyFrom) WithChildren(children ...sql.Node) (sql.Node, error) {
 	if len(children) != 0 {
-		return nil, sql.ErrInvalidChildrenNumber.New(cf, len(children), 1)
+		return nil, sql.ErrInvalidChildrenNumber.New(cf, len(children), 0)
 	}
 	return cf, nil
 }
