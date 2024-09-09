@@ -15,6 +15,8 @@
 package server
 
 import (
+	"bufio"
+	"bytes"
 	"context"
 	"crypto/tls"
 	"fmt"
@@ -35,6 +37,8 @@ import (
 	"github.com/jackc/pgx/v5/pgtype"
 	"github.com/sirupsen/logrus"
 
+	"github.com/dolthub/doltgresql/core"
+	"github.com/dolthub/doltgresql/core/dataloader"
 	"github.com/dolthub/doltgresql/postgres/connection"
 	"github.com/dolthub/doltgresql/postgres/messages"
 	"github.com/dolthub/doltgresql/postgres/parser/parser"
@@ -53,6 +57,17 @@ type ConnectionHandler struct {
 	handler            mysql.Handler
 	pgTypeMap          *pgtype.Map
 	waitForSync        bool
+	// copyFromStdinState is set when this connection is in the COPY FROM STDIN mode, meaning it is waiting on
+	// COPY DATA messages from the client to import data into tables.
+	copyFromStdinState *copyFromStdinState
+}
+
+// copyFromStdinState tracks the metadata for an import of data into a table using a COPY FROM STDIN statement. When
+// this statement is processed, the server accepts COPY DATA messages from the client with chunks of data to load
+// into a table.
+type copyFromStdinState struct {
+	copyFromStdinNode *node.CopyFrom
+	dataLoader        *dataloader.TabularDataLoader
 }
 
 // Set this env var to disable panic handling in the connection, which is useful when debugging a panic
@@ -233,7 +248,7 @@ func (h *ConnectionHandler) receiveMessage() (bool, error) {
 	return stop, nil
 }
 
-// receiveStarupMessage reads a startup message from the connection given and returns it. Some startup messages will
+// receiveStartupMessage reads a startup message from the connection given and returns it. Some startup messages will
 // result in the establishment of a new connection, which is also returned.
 func (h *ConnectionHandler) receiveStartupMessage() (messages.StartupMessage, error) {
 	var startupMessage messages.StartupMessage
@@ -318,7 +333,10 @@ func (h *ConnectionHandler) chooseInitialDatabase(startupMessage messages.Startu
 	return nil
 }
 
-// handleMessages processes the message provided and returns status flags for what should happen next
+// handleMessages processes the message provided and returns status flags indicating what the connection should do next.
+// If the |stop| response parameter is true, it indicates that the connection should be closed by the caller. If the
+// |endOfMessages| response parameter is true, it indicates that no more messages are expected for the current operation
+// and a READY FOR QUERY message should be sent back to the client so it can send the next query.
 func (h *ConnectionHandler) handleMessage(message connection.Message) (stop, endOfMessages bool, err error) {
 	switch message := message.(type) {
 	case messages.Terminate:
@@ -327,7 +345,8 @@ func (h *ConnectionHandler) handleMessage(message connection.Message) (stop, end
 		h.waitForSync = false
 		return false, true, nil
 	case messages.Query:
-		return false, true, h.handleQuery(message)
+		endOfMessages, err = h.handleQuery(message)
+		return false, endOfMessages, err
 	case messages.Parse:
 		return false, false, h.handleParse(message)
 	case messages.Describe:
@@ -343,28 +362,36 @@ func (h *ConnectionHandler) handleMessage(message connection.Message) (stop, end
 			delete(h.portals, message.Target)
 		}
 		return false, false, connection.Send(h.Conn(), messages.CloseComplete{})
+	case messages.CopyData:
+		return h.handleCopyData(message)
+	case messages.CopyDone:
+		return h.handleCopyDone(message)
+	case messages.CopyFail:
+		return h.handleCopyFail(message)
 	default:
 		return false, true, fmt.Errorf(`Unhandled message "%s"`, message.DefaultMessage().Name)
 	}
 }
 
-// handleQuery handles a query message, returning any error that occurs
-func (h *ConnectionHandler) handleQuery(message messages.Query) error {
+// handleQuery handles a query message, and returns a boolean flag, |endOfMessages| indicating if no other messages are
+// expected as part of this query, in which case the server will send a READY FOR QUERY message back to the client so
+// that it can send its next query.
+func (h *ConnectionHandler) handleQuery(message messages.Query) (endOfMessages bool, err error) {
 	handled, err := h.handledPSQLCommands(message.String)
 	if handled || err != nil {
-		return err
+		return true, err
 	}
 
 	// TODO: Remove this once we support `SELECT * FROM function()` syntax
 	// Github issue: https://github.com/dolthub/doltgresql/issues/464
 	handled, err = h.handledWorkbenchCommands(message.String)
 	if handled || err != nil {
-		return err
+		return true, err
 	}
 
 	query, err := h.convertQuery(message.String)
 	if err != nil {
-		return err
+		return true, err
 	}
 
 	// A query message destroys the unnamed statement and the unnamed portal
@@ -372,28 +399,37 @@ func (h *ConnectionHandler) handleQuery(message messages.Query) error {
 	delete(h.portals, "")
 
 	// Certain statement types get handled directly by the handler instead of being passed to the engine
-	err, handled = h.handleQueryOutsideEngine(query)
+	handled, endOfMessages, err = h.handleQueryOutsideEngine(query)
 	if handled {
-		return err
+		return endOfMessages, err
 	}
 
-	return h.query(query)
+	return true, h.query(query)
 }
 
 // handleQueryOutsideEngine handles any queries that should be handled by the handler directly, rather than being
-// passed to the engine. Returns true if the query was handled and any error that occurred while doing so.
-func (h *ConnectionHandler) handleQueryOutsideEngine(query ConvertedQuery) (error, bool) {
+// passed to the engine. The response parameter |handled| is true if the query was handled, |endOfMessages| is true
+// if no more messages are expected for this query and server should send the client a READY FOR QUERY message,
+// and any error that occurred while handling the query.
+func (h *ConnectionHandler) handleQueryOutsideEngine(query ConvertedQuery) (handled bool, endOfMessages bool, err error) {
 	switch stmt := query.AST.(type) {
 	case *sqlparser.Deallocate:
 		// TODO: handle ALL keyword
-		return h.deallocatePreparedStatement(stmt.Name, h.preparedStatements, query, h.Conn()), true
+		return true, true, h.deallocatePreparedStatement(stmt.Name, h.preparedStatements, query, h.Conn())
 	case sqlparser.InjectedStatement:
-		switch stmt.Statement.(type) {
+		switch injectedStmt := stmt.Statement.(type) {
 		case node.DiscardStatement:
-			return h.discardAll(query, h.Conn()), true
+			return true, true, h.discardAll(query, h.Conn())
+		case *node.CopyFrom:
+			// When copying data from STDIN, the data is sent to the server as CopyData messages
+			// We send endOfMessages=false since the server will be in COPY DATA mode and won't
+			// be ready for more queries util COPY DATA mode is completed.
+			if injectedStmt.Stdin {
+				return true, false, h.handleCopyFromStdinQuery(injectedStmt, h.Conn())
+			}
 		}
 	}
-	return nil, false
+	return false, true, nil
 }
 
 // handleParse handles a parse message, returning any error that occurs
@@ -540,7 +576,7 @@ func (h *ConnectionHandler) handleExecute(message messages.Execute) error {
 	}
 
 	// Certain statement types get handled directly by the handler instead of being passed to the engine
-	err, handled := h.handleQueryOutsideEngine(query)
+	handled, _, err := h.handleQueryOutsideEngine(query)
 	if handled {
 		return err
 	}
@@ -551,6 +587,127 @@ func (h *ConnectionHandler) handleExecute(message messages.Execute) error {
 	}
 
 	return connection.Send(h.Conn(), complete)
+}
+
+// handleCopyData handles the COPY DATA message, by loading the data sent from the client. The |stop| response parameter
+// is true if the connection handler should shut down the connection, |endOfMessages| is true if no more COPY DATA
+// messages are expected, and the server should tell the client that it is ready for the next query, and |err| contains
+// any error that occurred while processing the COPY DATA message.
+func (h *ConnectionHandler) handleCopyData(message messages.CopyData) (stop bool, endOfMessages bool, err error) {
+	if h.copyFromStdinState == nil {
+		return false, true,
+			fmt.Errorf("COPY DATA message received without a COPY FROM STDIN operation in progress")
+	}
+
+	// Grab a sql.Context
+	ctxProvider, ok := h.handler.(sql.ContextProvider)
+	if !ok {
+		return false, true, fmt.Errorf("%T does not implement server.ContextProvider", h.handler)
+	}
+	sqlCtx, err := ctxProvider.NewContext(context.Background(), h.mysqlConn, "")
+	if err != nil {
+		return false, false, err
+	}
+
+	dataLoader := h.copyFromStdinState.dataLoader
+	if dataLoader == nil {
+		copyFromStdinNode := h.copyFromStdinState.copyFromStdinNode
+		if copyFromStdinNode == nil {
+			return false, false, fmt.Errorf("no COPY FROM STDIN node found")
+		}
+
+		// TODO: It would be better to get the table from the copyFromStdinNode – not by calling core.GetSqlTableFromContext
+		table, err := core.GetSqlTableFromContext(sqlCtx, copyFromStdinNode.DatabaseName, copyFromStdinNode.TableName)
+		if err != nil {
+			return false, true, err
+		}
+		if table == nil {
+			return false, true, fmt.Errorf(`relation "%s" does not exist`, copyFromStdinNode.TableName.String())
+		}
+		insertableTable, ok := table.(sql.InsertableTable)
+		if !ok {
+			return false, true, fmt.Errorf(`table "%s" is read-only`, copyFromStdinNode.TableName.String())
+		}
+
+		dataLoader, err = dataloader.NewTabularDataLoader(sqlCtx, insertableTable, copyFromStdinNode.Delimiter, copyFromStdinNode.Null)
+		if err != nil {
+			return false, false, err
+		}
+
+		h.copyFromStdinState.dataLoader = dataLoader
+	}
+
+	byteReader := bytes.NewReader(message.Data)
+	reader := bufio.NewReader(byteReader)
+	if err = dataLoader.LoadChunk(sqlCtx, reader); err != nil {
+		return false, false, err
+	}
+
+	// We expect to see more CopyData messages until we see either a CopyDone or CopyFail message, so
+	// return false for endOfMessages
+	return false, false, nil
+}
+
+// handleCopyDone handles a COPY DONE message by finalizing the in-progress COPY DATA operation and committing the
+// loaded table data. The |stop| response parameter is true if the connection handler should shut down the connection,
+// |endOfMessages| is true if no more COPY DATA messages are expected, and the server should tell the client that it is
+// ready for the next query, and |err| contains any error that occurred while processing the COPY DATA message.
+func (h *ConnectionHandler) handleCopyDone(_ messages.CopyDone) (stop bool, endOfMessages bool, err error) {
+	if h.copyFromStdinState == nil {
+		return false, true,
+			fmt.Errorf("COPY DONE message received without a COPY FROM STDIN operation in progress")
+	}
+
+	dataLoader := h.copyFromStdinState.dataLoader
+	if dataLoader == nil {
+		return false, true,
+			fmt.Errorf("no data loader found for COPY FROM STDIN operation")
+	}
+
+	ctxProvider, ok := h.handler.(sql.ContextProvider)
+	if !ok {
+		return false, true, fmt.Errorf("%T does not implement server.ContextProvider", h.handler)
+	}
+	sqlCtx, err := ctxProvider.NewContext(context.Background(), h.mysqlConn, "")
+	if err != nil {
+		return false, false, err
+	}
+
+	loadDataResults, err := dataLoader.Finish(sqlCtx)
+	if err != nil {
+		return false, false, err
+	}
+
+	h.copyFromStdinState = nil
+	// We send back endOfMessage=true, since the COPY DONE message ends the COPY DATA flow and the server is ready
+	// to accept the next query now.
+	return false, true, connection.Send(h.Conn(), messages.CommandComplete{
+		Query: "",
+		Rows:  loadDataResults.RowsLoaded,
+		Tag:   "COPY",
+	})
+}
+
+// handleCopyDone handles a COPY FAIL message by aborting the in-progress COPY DATA operation.  The |stop| response
+// parameter is true if the connection handler should shut down the connection, |endOfMessages| is true if no more
+// COPY DATA messages are expected, and the server should tell the client that it is ready for the next query, and
+// |err| contains any error that occurred while processing the COPY DATA message.
+func (h *ConnectionHandler) handleCopyFail(_ messages.CopyFail) (stop bool, endOfMessages bool, err error) {
+	if h.copyFromStdinState == nil {
+		return false, true,
+			fmt.Errorf("COPY FAIL message received without a COPY FROM STDIN operation in progress")
+	}
+
+	dataLoader := h.copyFromStdinState.dataLoader
+	if dataLoader == nil {
+		return false, true,
+			fmt.Errorf("no data loader found for COPY FROM STDIN operation")
+	}
+
+	h.copyFromStdinState = nil
+	// We send back endOfMessage=true, since the COPY FAIL message ends the COPY DATA flow and the server is ready
+	// to accept the next query now.
+	return false, true, nil
 }
 
 func (h *ConnectionHandler) deallocatePreparedStatement(name string, preparedStatements map[string]PreparedStatementData, query ConvertedQuery, conn net.Conn) error {
@@ -1044,4 +1201,30 @@ func (h *ConnectionHandler) discardAll(query ConvertedQuery, conn net.Conn) erro
 	}
 
 	return connection.Send(conn, commandComplete)
+}
+
+// handleCopyFromStdinQuery handles the COPY FROM STDIN query at the Doltgres layer, without passing it to the engine.
+// COPY FROM STDIN can't be handled directly by the GMS engine, since COPY FROM STDIN relies on multiple messages sent
+// over the wire.
+func (h *ConnectionHandler) handleCopyFromStdinQuery(copyFrom *node.CopyFrom, conn net.Conn) error {
+	ctxProvider, ok := h.handler.(sql.ContextProvider)
+	if !ok {
+		return fmt.Errorf("%T does not implement server.ContextProvider", h.handler)
+	}
+	sqlCtx, err := ctxProvider.NewContext(context.Background(), h.mysqlConn, "")
+	if err != nil {
+		return err
+	}
+
+	if err := copyFrom.Validate(sqlCtx); err != nil {
+		return err
+	}
+
+	h.copyFromStdinState = &copyFromStdinState{
+		copyFromStdinNode: copyFrom,
+	}
+
+	return connection.Send(conn, messages.CopyInResponse{
+		IsTextual: true,
+	})
 }
