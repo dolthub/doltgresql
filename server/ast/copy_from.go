@@ -17,9 +17,11 @@ package ast
 import (
 	"fmt"
 
+	"github.com/dolthub/dolt/go/libraries/doltcore/doltdb"
 	vitess "github.com/dolthub/vitess/go/vt/sqlparser"
 
 	"github.com/dolthub/doltgresql/postgres/parser/sem/tree"
+	pgnodes "github.com/dolthub/doltgresql/server/node"
 )
 
 // nodeCopyFrom handles *tree.CopyFrom nodes.
@@ -27,5 +29,23 @@ func nodeCopyFrom(node *tree.CopyFrom) (vitess.Statement, error) {
 	if node == nil {
 		return nil, nil
 	}
-	return nil, fmt.Errorf("COPY FROM is not yet supported")
+	if len(node.Columns) != 0 {
+		return nil, fmt.Errorf("COPY FROM does not yet support a column list")
+	}
+	if node.Stdin {
+		return nil, fmt.Errorf("COPY FROM does not yet support reading from STDIN")
+	}
+	if node.Options.CopyFormat != tree.CopyFormatText {
+		return nil, fmt.Errorf("COPY FROM does not yet support non-text formats")
+	}
+	if node.Options.Destination != nil {
+		return nil, fmt.Errorf("COPY FROM does not work with destinations")
+	}
+	return vitess.InjectedStatement{
+		Statement: pgnodes.NewCopyFrom(node.Table.Catalog(), doltdb.TableName{
+			Name:   node.Table.Object(),
+			Schema: node.Table.Schema(),
+		}, node.File),
+		Children: nil,
+	}, nil
 }
