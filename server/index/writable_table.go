@@ -17,8 +17,6 @@ package index
 import (
 	"fmt"
 
-	"github.com/dolthub/go-mysql-server/sql/expression"
-
 	"github.com/dolthub/dolt/go/libraries/doltcore/sqle"
 	"github.com/dolthub/dolt/go/libraries/doltcore/sqle/index"
 	"github.com/dolthub/go-mysql-server/sql"
@@ -45,6 +43,9 @@ func (dt *WritableDoltgresTable) IndexedAccess(lookup sql.IndexLookup) sql.Index
 
 // LookupForExpressions implements the sql.IndexSearchableTable interface.
 func (dt *WritableDoltgresTable) LookupForExpressions(ctx *sql.Context, exprs ...sql.Expression) (sql.IndexLookup, *sql.FuncDepSet, sql.Expression, bool, error) {
+	// GMS splits conjunctions before calling LookupForExpressions, however it is not aware of Doltgres expressions and
+	// cannot properly split those.
+	exprs = SplitConjunctions(exprs)
 	allIndexes, err := dt.DoltTable.GetIndexes(ctx)
 	if err != nil {
 		return sql.IndexLookup{}, nil, nil, false, err
@@ -54,7 +55,7 @@ func (dt *WritableDoltgresTable) LookupForExpressions(ctx *sql.Context, exprs ..
 	}
 	// Specially handle OR expressions here, although we need to build proper support into the index builder
 	if len(exprs) == 1 {
-		exprs = expression.SplitDisjunction(exprs[0])
+		exprs = SplitDisjunction(exprs[0])
 		if len(exprs) > 1 {
 			var lookup sql.IndexLookup
 			for _, expr := range exprs {
@@ -62,7 +63,7 @@ func (dt *WritableDoltgresTable) LookupForExpressions(ctx *sql.Context, exprs ..
 				if err != nil {
 					return sql.IndexLookup{}, nil, nil, false, err
 				}
-				for _, andExpr := range expression.SplitConjunction(expr) {
+				for _, andExpr := range SplitConjunction(expr) {
 					indexBuilder.AddExpression(ctx, andExpr)
 				}
 				if lookup.Index == nil {

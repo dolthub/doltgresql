@@ -29,7 +29,6 @@ import (
 type InTuple struct {
 	leftExpr  sql.Expression
 	rightExpr expression.Tuple
-	decay     bool
 
 	// These variables are used so that we can resolve the comparison functions once and reuse them as we iterate over rows.
 	// These are assigned in WithChildren, so refer there for more information.
@@ -47,23 +46,30 @@ func NewInTuple() *InTuple {
 	return &InTuple{
 		leftExpr:  nil,
 		rightExpr: nil,
-		decay:     false,
-	}
-}
-
-// NewInTupleDecaying returns a new *InTuple that may will decay into a set of OR comparisons. This allows the IN
-// expression to work with indexes, however it is not accurate to Postgres behavior. This will eventually be removed.
-func NewInTupleDecaying() *InTuple {
-	return &InTuple{
-		leftExpr:  nil,
-		rightExpr: nil,
-		decay:     true,
 	}
 }
 
 // Children implements the sql.Expression interface.
 func (it *InTuple) Children() []sql.Expression {
 	return []sql.Expression{it.leftExpr, it.rightExpr}
+}
+
+// Decay returns the expression as a series of OR expressions. The behavior is not the same, however it allows some
+// paths to simplify their expression handling (such as filters).
+func (it *InTuple) Decay() sql.Expression {
+	it.compFuncs[0].Arguments = []sql.Expression{it.leftExpr, it.rightExpr[0]}
+	var expr sql.Expression = &BinaryOperator{
+		operator:     framework.Operator_BinaryEqual,
+		compiledFunc: it.compFuncs[0],
+	}
+	for i := 1; i < len(it.rightExpr); i++ {
+		it.compFuncs[i].Arguments = []sql.Expression{it.leftExpr, it.rightExpr[i]}
+		expr = expression.NewOr(expr, &BinaryOperator{
+			operator:     framework.Operator_BinaryEqual,
+			compiledFunc: it.compFuncs[i],
+		})
+	}
+	return expr
 }
 
 // Eval implements the sql.Expression interface.
@@ -112,13 +118,8 @@ func (it *InTuple) Eval(ctx *sql.Context, row sql.Row) (any, error) {
 
 		if result == nil {
 			sawNull = true
-		} else {
-			isEqual, isBool := result.(bool)
-			if isEqual {
-				return true, nil
-			} else if !isBool {
-				return false, fmt.Errorf("%T: expected comparison function to return a bool but returned `%T`", it, result)
-			}
+		} else if result.(bool) {
+			return true, nil
 		}
 	}
 
@@ -199,26 +200,12 @@ func (it *InTuple) WithChildren(children ...sql.Expression) (sql.Expression, err
 			if compFuncs[i] == nil {
 				return nil, fmt.Errorf("operator does not exist: %s = %s", leftType.String(), rightType.String())
 			}
+			if compFuncs[i].Type().(pgtypes.DoltgresType).BaseID() != pgtypes.DoltgresTypeBaseID_Bool {
+				// This should never happen, but this is just to be safe
+				return nil, fmt.Errorf("%T: found equality comparison that does not return a bool", it)
+			}
 		}
 		if allValidChildren {
-			// We've verified validity, so if this should decay, we'll do that here.
-			// We know that the compiled functions reference the correct types, so we can simply swap out the parameters.
-			if it.decay {
-				compFuncs[0].Arguments = []sql.Expression{children[0], rightTuple[0]}
-				var expr sql.Expression = &BinaryOperator{
-					operator:     framework.Operator_BinaryEqual,
-					compiledFunc: compFuncs[0],
-				}
-				for i := 1; i < len(rightTuple); i++ {
-					compFuncs[i].Arguments = []sql.Expression{children[0], rightTuple[i]}
-					expr = expression.NewOr(expr, &BinaryOperator{
-						operator:     framework.Operator_BinaryEqual,
-						compiledFunc: compFuncs[i],
-					})
-				}
-
-				return expr, nil
-			}
 			return &InTuple{
 				leftExpr:      children[0],
 				rightExpr:     rightTuple,
