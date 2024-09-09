@@ -128,7 +128,6 @@ func (tdl *TabularDataLoader) LoadChunk(ctx *sql.Context, data *bufio.Reader) er
 			}
 		}
 		// Insert the read row
-		logrus.Warnf("inserting row: %v", row)
 		err = tdl.rowInserter.Insert(ctx, row)
 		if err != nil {
 			return err
