@@ -28,6 +28,7 @@ import (
 	"github.com/dolthub/dolt/go/libraries/doltcore/sqle/dfunctions"
 	"github.com/dolthub/dolt/go/libraries/doltcore/sqle/dsess"
 	"github.com/dolthub/dolt/go/libraries/doltcore/sqle/resolve"
+	doltsqlserver "github.com/dolthub/dolt/go/libraries/doltcore/sqlserver"
 	"github.com/dolthub/dolt/go/libraries/utils/argparser"
 	"github.com/dolthub/dolt/go/libraries/utils/config"
 	"github.com/dolthub/dolt/go/libraries/utils/filesys"
@@ -163,6 +164,9 @@ func runServer(ctx context.Context, cfg *servercfg.DoltgresConfig, dEnv *env.Dol
 	if err != nil {
 		return nil, err
 	}
+
+	runningServer := doltsqlserver.GetRunningServer()
+	runningServer.Engine.Analyzer.EngineType = sql.EngineType_Postgres
 
 	if createDoltgresDatabase {
 		err = createDatabase(ssCfg, "doltgres")

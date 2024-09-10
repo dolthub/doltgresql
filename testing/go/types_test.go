@@ -2111,11 +2111,17 @@ var typesTests = []ScriptTest{
 	{
 		Name: "Text type",
 		SetUpScript: []string{
+			// Test a table with a TEXT column
 			"CREATE TABLE t_text (id INTEGER primary key, v1 TEXT);",
 			"INSERT INTO t_text VALUES (1, 'Hello'), (2, 'World'), (3, ''), (4, NULL);",
+
+			// Test a table using a TEXT column in a secondary index
+			"CREATE TABLE t_text_unique (id INTEGER primary key, v1 TEXT, v2 TEXT NOT NULL UNIQUE);",
+			"INSERT INTO t_text_unique VALUES (1, 'Hello', 'Bonjour'), (2, 'World', 'tout le monde'), (3, '', ''), (4, NULL, '!');",
 		},
 		Assertions: []ScriptTestAssertion{
 			{
+				// Basic select from a table with a TEXT column
 				Query: "SELECT * FROM t_text ORDER BY id;",
 				Expected: []sql.Row{
 					{1, "Hello"},
@@ -2131,6 +2137,70 @@ var typesTests = []ScriptTest{
 			{
 				Query:    `SELECT text 'this is a text string' = text 'this is a text string' AS true;`,
 				Expected: []sql.Row{{"t"}},
+			},
+			{
+				Query:    `SELECT text 'this is a text string' = text 'this is a text string' AS true;`,
+				Expected: []sql.Row{{"t"}},
+			},
+			{
+				// Alter a table to add a secondary index on a TEXT column
+				//Query:    "ALTER TABLE t_text ADD CONSTRAINT v1_unique UNIQUE (v1);",
+				Query:    "CREATE UNIQUE INDEX v1_unique ON t_text(v1);",
+				Expected: []sql.Row{},
+			},
+			{
+				Query: "SELECT * FROM t_text WHERE v1 = 'World';",
+				Expected: []sql.Row{
+					{2, "World"},
+				},
+			},
+			{
+				// Test the new unique constraint on the TEXT column
+				Query:       "INSERT INTO t_text VALUES (5, 'World');",
+				ExpectedErr: "duplicate unique key given: [World]",
+			},
+			{
+				Query: "SELECT * FROM t_text_unique WHERE v2 = '!';",
+				Expected: []sql.Row{
+					{4, nil, "!"},
+				},
+			},
+			{
+				Query: "SELECT * FROM t_text_unique WHERE v2 >= '!' ORDER BY v2;",
+				Expected: []sql.Row{
+					{4, nil, "!"},
+					{1, "Hello", "Bonjour"},
+					{2, "World", "tout le monde"},
+				},
+			},
+			{
+				// Test ordering by TEXT column in a secondary index
+				Query: "SELECT * FROM t_text_unique ORDER BY v2;",
+				Expected: []sql.Row{
+					{3, "", ""},
+					{4, nil, "!"},
+					{1, "Hello", "Bonjour"},
+					{2, "World", "tout le monde"},
+				},
+			},
+			{
+				Query: "SELECT * FROM t_text_unique ORDER BY id;",
+				Expected: []sql.Row{
+					{1, "Hello", "Bonjour"},
+					{2, "World", "tout le monde"},
+					{3, "", ""},
+					{4, nil, "!"},
+				},
+			},
+			{
+				Query:       "INSERT INTO t_text_unique VALUES (5, 'Another', 'Bonjour');",
+				ExpectedErr: "duplicate unique key given: [Bonjour]",
+			},
+			{
+				// Test that TEXT types can't be used in primary keys yet – Dolt doesn't support prefix lengths in
+				// primary indexes currently.
+				Query:       "CREATE TABLE t_text_pk (id TEXT PRIMARY KEY, col1 int);",
+				ExpectedErr: "blob/text column 'id' used in key specification without a key length",
 			},
 		},
 	},
