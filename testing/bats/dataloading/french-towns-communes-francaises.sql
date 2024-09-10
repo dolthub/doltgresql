@@ -36921,7 +36921,6 @@ SELECT pg_catalog.setval('towns_id_seq', 36684, true);
 
 COMMIT;
 
--- TODO: ANALYZE is not supported by Doltgres yet
--- ANALYZE Regions;
--- ANALYZE Departments;
--- ANALYZE Towns;
+ANALYZE Regions;
+ANALYZE Departments;
+ANALYZE Towns;
