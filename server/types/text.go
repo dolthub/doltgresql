@@ -36,6 +36,7 @@ var Text = TextType{}
 type TextType struct{}
 
 var _ DoltgresType = TextType{}
+var _ sql.StringType = TextType{}
 
 // Alignment implements the DoltgresType interface.
 func (b TextType) Alignment() TypeAlignment {
@@ -178,7 +179,10 @@ func (b TextType) SerializedCompare(v1 []byte, v2 []byte) (int, error) {
 	} else if len(v1) == 0 && len(v2) > 0 {
 		return -1, nil
 	}
-	return serializedStringCompare(v1, v2), nil
+
+	// Note that |v1| and |v2| are the addresses of the two TEXT values being compared, so instead of
+	// loading the large TEXT values into memory, we just compare their content-hashed addresses.
+	return bytes.Compare(v1, v2), nil
 }
 
 // SQL implements the DoltgresType interface.
@@ -267,4 +271,29 @@ func serializedStringCompare(v1 []byte, v2 []byte) int {
 	v1Bytes := utils.UnsafeAdvanceReader(readerV1, readerV1.VariableUint())
 	v2Bytes := utils.UnsafeAdvanceReader(readerV2, readerV2.VariableUint())
 	return bytes.Compare(v1Bytes, v2Bytes)
+}
+
+// CharacterSet implements the sql.StringType interface
+func (b TextType) CharacterSet() sql.CharacterSetID {
+	return sql.CharacterSet_binary // TODO
+}
+
+// Collation implements the sql.StringType interface
+func (b TextType) Collation() sql.CollationID {
+	return sql.Collation_Default // TODO
+}
+
+// MaxCharacterLength implements the sql.StringType interface
+func (b TextType) MaxCharacterLength() int64 {
+	return 65_535
+}
+
+// MaxByteLength implements the sql.StringType interface
+func (b TextType) MaxByteLength() int64 {
+	return 65_535
+}
+
+// Length implements the sql.StringType interface
+func (b TextType) Length() int64 {
+	return 65_535
 }

@@ -2111,18 +2111,25 @@ var typesTests = []ScriptTest{
 	{
 		Name: "Text type",
 		SetUpScript: []string{
-			"CREATE TABLE t_text (id INTEGER primary key, v1 TEXT);",
-			"INSERT INTO t_text VALUES (1, 'Hello'), (2, 'World'), (3, ''), (4, NULL);",
+			"CREATE TABLE t_text (id INTEGER primary key, v1 TEXT, v2 TEXT NOT NULL UNIQUE);",
 		},
 		Assertions: []ScriptTestAssertion{
 			{
+				Query:    "INSERT INTO t_text VALUES (1, 'Hello', 'Bonjour'), (2, 'World', 'tout le monde'), (3, '', ''), (4, NULL, '!');",
+				Expected: []sql.Row{},
+			},
+			{
 				Query: "SELECT * FROM t_text ORDER BY id;",
 				Expected: []sql.Row{
-					{1, "Hello"},
-					{2, "World"},
-					{3, ""},
-					{4, nil},
+					{1, "Hello", "Bonjour"},
+					{2, "World", "tout le monde"},
+					{3, "", ""},
+					{4, nil, "!"},
 				},
+			},
+			{
+				Query:       "INSERT INTO t_text VALUES (5, 'Another', 'Bonjour');",
+				ExpectedErr: "ERROR: duplicate unique key given: [dfad80eab9ae06d1c9c0eaf2ef667a2bb45293f3] (errno 1062) (sqlstate HY000) (SQLSTATE XX000)",
 			},
 			{
 				Query:    `SELECT text 'text' || ' and unknown';`,
