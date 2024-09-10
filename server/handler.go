@@ -19,11 +19,8 @@ import (
 	"github.com/dolthub/go-mysql-server/sql/types"
 	"github.com/dolthub/vitess/go/mysql"
 	"github.com/dolthub/vitess/go/vt/sqlparser"
-	"github.com/go-kit/kit/metrics/discard"
 	"github.com/jackc/pgx/v5/pgproto3"
 	"github.com/sirupsen/logrus"
-	"go.opentelemetry.io/otel/attribute"
-	otel "go.opentelemetry.io/otel/trace"
 	goerrors "gopkg.in/src-d/go-errors.v1"
 
 	types2 "github.com/dolthub/doltgresql/server/types"
@@ -51,13 +48,26 @@ func (h *Handler) ConnectionClosed(c *mysql.Conn) {
 	h.handler.ConnectionClosed(c)
 }
 
-// executeQuery is a QueryExecutor that calls QueryWithBindings on the given engine using the given query and parsed
-// statement, which may be nil.
-func (h *Handler) executeQuery(ctx *sql.Context, query string, parsed sqlparser.Statement, _ sql.Node, bindings map[string]sqlparser.Expr, qFlags *sql.QueryFlags) (sql.Schema, sql.RowIter, *sql.QueryFlags, error) {
-	return h.e.QueryWithBindings(ctx, query, parsed, bindings, qFlags)
+func (h *Handler) ComBind(ctx context.Context, c *mysql.Conn, query string, parsedQuery mysql.ParsedQuery, bindVars map[string]sqlparser.Expr) (mysql.BoundQuery, []pgproto3.FieldDescription, error) {
+	sqlCtx, err := h.sm.NewContextWithQuery(ctx, c, query)
+	if err != nil {
+		return nil, nil, err
+	}
+
+	stmt, ok := parsedQuery.(sqlparser.Statement)
+	if !ok {
+		return nil, nil, fmt.Errorf("parsedQuery must be a sqlparser.Statement, but got %T", parsedQuery)
+	}
+
+	queryPlan, err := h.e.BoundQueryPlan(sqlCtx, query, stmt, bindVars)
+	if err != nil {
+		return nil, nil, err
+	}
+
+	return queryPlan, schemaToFieldDescriptions(sqlCtx, queryPlan.Schema()), nil
 }
 
-func (h *Handler) ComExecuteBound(ctx context.Context, conn *mysql.Conn, query string, boundQuery mysql.BoundQuery, callback func(*Result, bool) error) error {
+func (h *Handler) ComExecuteBound(ctx context.Context, conn *mysql.Conn, query string, boundQuery mysql.BoundQuery, callback func(*Result) error) error {
 	analyzedPlan, ok := boundQuery.(sql.Node)
 	if !ok {
 		return fmt.Errorf("boundQuery must be a sql.Node, but got %T", boundQuery)
@@ -68,8 +78,7 @@ func (h *Handler) ComExecuteBound(ctx context.Context, conn *mysql.Conn, query s
 		h.sel.QueryStarted()
 	}
 
-	_, err := h.doQuery(ctx, conn, query, nil, analyzedPlan, server.MultiStmtModeOff, h.executeBoundPlan, nil, callback, nil)
-
+	err := h.doQuery(ctx, conn, query, nil, analyzedPlan, h.executeBoundPlan, callback)
 	if err != nil {
 		err = sql.CastSQLError(err)
 	}
@@ -79,19 +88,6 @@ func (h *Handler) ComExecuteBound(ctx context.Context, conn *mysql.Conn, query s
 	}
 
 	return err
-}
-
-// executeQuery is a QueryExecutor that calls QueryWithBindings on the given engine using the given query and parsed
-// statement, which may be nil.
-func (h *Handler) executeBoundPlan(
-	ctx *sql.Context,
-	query string,
-	_ sqlparser.Statement,
-	plan sql.Node,
-	_ map[string]sqlparser.Expr,
-	_ *sql.QueryFlags,
-) (sql.Schema, sql.RowIter, *sql.QueryFlags, error) {
-	return h.e.PrepQueryPlanForExecution(ctx, query, plan)
 }
 
 func (h *Handler) ComPrepareParsed(ctx context.Context, c *mysql.Conn, query string, parsed sqlparser.Statement) (mysql.ParsedQuery, []pgproto3.FieldDescription, error) {
@@ -114,15 +110,58 @@ func (h *Handler) ComPrepareParsed(ctx context.Context, c *mysql.Conn, query str
 	var fields []pgproto3.FieldDescription
 	// The return result fields should only be directly translated if it doesn't correspond to an OK result.
 	// See comment in ComPrepare
-	n1 := nodeReturnsOkResultSchema(analyzed)
-	n2 := types.IsOkResultSchema(analyzed.Schema())
-	if n1 || n2 {
+	if nodeReturnsOkResultSchema(analyzed) || types.IsOkResultSchema(analyzed.Schema()) {
 		fields = nil
 	} else {
 		fields = schemaToFieldDescriptions(sqlCtx, analyzed.Schema())
 	}
-
 	return analyzed, fields, nil
+}
+
+// ComQuery executes a SQL query on the SQL engine.
+func (h *Handler) ComQuery(ctx context.Context, c *mysql.Conn, query string, parsed sqlparser.Statement, callback func(*Result) error) error {
+	start := time.Now()
+	if h.sel != nil {
+		h.sel.QueryStarted()
+	}
+
+	err := h.doQuery(ctx, c, query, parsed, nil, h.executeQuery, callback)
+	if err != nil {
+		err = sql.CastSQLError(err)
+	}
+
+	if h.sel != nil {
+		h.sel.QueryCompleted(err == nil, time.Since(start))
+	}
+
+	return err
+}
+
+// discardAll resets the connection's session, clearing out any cached prepared statements, locks, user and
+// session variables. The currently selected database is preserved.
+func (h *Handler) discardAll(c *mysql.Conn) error {
+	return h.handler.ComResetConnection(c)
+}
+
+// QueryExecutor is a function that executes a query and returns the result as a schema and iterator. Either of
+// |parsed| or |analyzed| can be nil depending on the use case
+type QueryExecutor func(
+	ctx *sql.Context,
+	query string,
+	parsed sqlparser.Statement,
+	analyzed sql.Node,
+) (sql.Schema, sql.RowIter, *sql.QueryFlags, error)
+
+// executeQuery is a QueryExecutor that calls QueryWithBindings on the given engine using the given query and parsed
+// statement, which may be nil.
+func (h *Handler) executeQuery(ctx *sql.Context, query string, parsed sqlparser.Statement, _ sql.Node) (sql.Schema, sql.RowIter, *sql.QueryFlags, error) {
+	return h.e.QueryWithBindings(ctx, query, parsed, nil, nil)
+}
+
+// executeBoundPlan is a QueryExecutor that calls QueryWithBindings on the given engine using the given query and parsed
+// statement, which may be nil.
+func (h *Handler) executeBoundPlan(ctx *sql.Context, query string, _ sqlparser.Statement, plan sql.Node) (sql.Schema, sql.RowIter, *sql.QueryFlags, error) {
+	return h.e.PrepQueryPlanForExecution(ctx, query, plan)
 }
 
 // These nodes will eventually return an OK result, but their intermediate forms here return a different schema
@@ -135,128 +174,15 @@ func nodeReturnsOkResultSchema(node sql.Node) bool {
 	return false
 }
 
-// ComQuery executes a SQL query on the SQLe engine.
-func (h *Handler) ComQuery(ctx context.Context, c *mysql.Conn, query string, parsed sqlparser.Statement, callback func(*Result, bool) error) error {
-	start := time.Now()
-	if h.sel != nil {
-		h.sel.QueryStarted()
-	}
-
-	_, err := h.doQuery(ctx, c, query, parsed, nil,
-		server.MultiStmtModeOff, h.executeQuery, nil, callback, nil)
-	if err != nil {
-		err = sql.CastSQLError(err)
-	}
-
-	if h.sel != nil {
-		h.sel.QueryCompleted(err == nil, time.Since(start))
-	}
-
-	return err
-}
-
-func (h *Handler) ComBind(ctx context.Context, c *mysql.Conn, query string, parsedQuery mysql.ParsedQuery, prepare *PrepareData) (mysql.BoundQuery, []pgproto3.FieldDescription, error) {
-	sqlCtx, err := h.sm.NewContextWithQuery(ctx, c, query)
-	if err != nil {
-		return nil, nil, err
-	}
-
-	stmt, ok := parsedQuery.(sqlparser.Statement)
-	if !ok {
-		return nil, nil, fmt.Errorf("parsedQuery must be a sqlparser.Statement, but got %T", parsedQuery)
-	}
-
-	queryPlan, err := h.e.BoundQueryPlan(sqlCtx, query, stmt, prepare.BindVars)
-	if err != nil {
-		return nil, nil, err
-	}
-
-	return queryPlan, schemaToFieldDescriptions(sqlCtx, queryPlan.Schema()), nil
-}
-
-// ComResetConnection implements the mysql.Handler interface.
-//
-// This command resets the connection's session, clearing out any cached prepared statements, locks, user and
-// session variables. The currently selected database is preserved.
-//
-// The COM_RESET command can be sent manually through the mysql client by issuing the "resetconnection" (or "\x")
-// client command.
-func (h *Handler) discardAll(c *mysql.Conn) error {
-	return h.handler.ComResetConnection(c)
-}
-
 var queryLoggingRegex = regexp.MustCompile(`[\r\n\t ]+`)
 
-var (
-	// QueryCounter describes a metric that accumulates number of queries monotonically.
-	QueryCounter = discard.NewCounter()
-
-	// QueryErrorCounter describes a metric that accumulates number of failed queries monotonically.
-	QueryErrorCounter = discard.NewCounter()
-
-	// QueryHistogram describes a queries latency.
-	QueryHistogram = discard.NewHistogram()
-)
-
-func observeQuery(ctx *sql.Context, query string) func(err error) {
-	span, ctx := ctx.Span("query", otel.WithAttributes(attribute.String("query", query)))
-
-	t := time.Now()
-	return func(err error) {
-		if err != nil {
-			QueryErrorCounter.With("query", query, "error", err.Error()).Add(1)
-		} else {
-			QueryCounter.With("query", query).Add(1)
-			QueryHistogram.With("query", query, "duration", "seconds").Observe(time.Since(t).Seconds())
-		}
-
-		span.End()
-	}
-}
-
-// QueryExecutor is a function that executes a query and returns the result as a schema and iterator. Either of
-// |parsed| or |analyzed| can be nil depending on the use case
-type QueryExecutor func(
-	ctx *sql.Context,
-	query string,
-	parsed sqlparser.Statement,
-	analyzed sql.Node,
-	bindings map[string]sqlparser.Expr,
-	qFlags *sql.QueryFlags,
-) (sql.Schema, sql.RowIter, *sql.QueryFlags, error)
-
-func (h *Handler) doQuery(
-	ctx context.Context,
-	c *mysql.Conn,
-	query string,
-	parsed sqlparser.Statement,
-	analyzedPlan sql.Node,
-	mode server.MultiStmtMode,
-	queryExec QueryExecutor,
-	bindings map[string]sqlparser.Expr,
-	callback func(*Result, bool) error,
-	qFlags *sql.QueryFlags,
-) (string, error) {
+func (h *Handler) doQuery(ctx context.Context, c *mysql.Conn, query string, parsed sqlparser.Statement, analyzedPlan sql.Node, queryExec QueryExecutor, callback func(*Result) error) error {
 	sqlCtx, err := h.sm.NewContext(ctx, c, query)
 	if err != nil {
-		return "", err
+		return err
 	}
 
 	start := time.Now()
-
-	var remainder string
-	var prequery string
-	if parsed == nil {
-		_, inPreparedCache := h.e.PreparedDataCache.GetCachedStmt(sqlCtx.Session.ID(), query)
-		if mode == server.MultiStmtModeOn && !inPreparedCache {
-			parsed, prequery, remainder, err = h.e.Parser.Parse(sqlCtx, query, true)
-			if prequery != "" {
-				query = prequery
-			}
-		}
-	}
-
-	more := remainder != ""
 
 	var queryStr string
 	if h.encodeLoggedQuery {
@@ -273,10 +199,6 @@ func (h *Handler) doQuery(
 		sqlCtx.SetLogger(sqlCtx.GetLogger().WithField("query", queryStr))
 	}
 	sqlCtx.GetLogger().Debugf("Starting query")
-
-	finish := observeQuery(sqlCtx, query)
-	defer finish(err)
-
 	sqlCtx.GetLogger().Tracef("beginning execution")
 
 	oCtx := ctx
@@ -290,11 +212,11 @@ func (h *Handler) doQuery(
 		}
 	}()
 
-	schema, rowIter, qFlags, err := queryExec(sqlCtx, query, parsed, analyzedPlan, bindings, qFlags)
+	schema, rowIter, qFlags, err := queryExec(sqlCtx, query, parsed, analyzedPlan)
 	if err != nil {
 		sqlCtx.GetLogger().WithError(err).Warn("error running query")
 		fmt.Printf("Err: %+v", err)
-		return remainder, err
+		return err
 	}
 
 	// create result before goroutines to avoid |ctx| racing
@@ -311,28 +233,17 @@ func (h *Handler) doQuery(
 		r, err = resultForMax1RowIter(sqlCtx, schema, rowIter, resultFields)
 	} else {
 		resultFields := schemaToFieldDescriptions(sqlCtx, schema)
-		r, processedAtLeastOneBatch, err = h.resultForDefaultIter(sqlCtx, c, schema, rowIter, callback, resultFields, more)
+		r, processedAtLeastOneBatch, err = h.resultForDefaultIter(sqlCtx, c, schema, rowIter, callback, resultFields)
 	}
 	if err != nil {
-		return remainder, err
+		return err
 	}
 
 	// errGroup context is now canceled
 	ctx = oCtx
 
 	if err = setConnStatusFlags(sqlCtx, c); err != nil {
-		return remainder, err
-	}
-
-	switch len(r.Rows) {
-	case 0:
-		if len(r.Info) > 0 {
-			sqlCtx.GetLogger().Tracef("returning result %s", r.Info)
-		} else {
-			sqlCtx.GetLogger().Tracef("returning empty result")
-		}
-	case 1:
-		sqlCtx.GetLogger().Tracef("returning result %v", r)
+		return err
 	}
 
 	sqlCtx.GetLogger().Debugf("Query finished in %d ms", time.Since(start).Milliseconds())
@@ -340,10 +251,10 @@ func (h *Handler) doQuery(
 	// processedAtLeastOneBatch means we already called callback() at least
 	// once, so no need to call it if RowsAffected == 0.
 	if r != nil && (r.RowsAffected == 0 && processedAtLeastOneBatch) {
-		return remainder, nil
+		return nil
 	}
 
-	return remainder, callback(r, more)
+	return callback(r)
 }
 
 // See https://dev.mysql.com/doc/internals/en/status-flags.html
@@ -424,15 +335,9 @@ func resultForOkIter(ctx *sql.Context, iter sql.RowIter) (*Result, error) {
 	if err := iter.Close(ctx); err != nil {
 		return nil, err
 	}
-	infoStr := ""
-	result := row[0].(types.OkResult)
-	if result.Info != nil {
-		infoStr = result.Info.String()
-	}
+
 	return &Result{
-		RowsAffected: result.RowsAffected,
-		InsertID:     result.InsertID,
-		Info:         infoStr,
+		RowsAffected: row[0].(types.OkResult).RowsAffected,
 	}, nil
 }
 
@@ -491,16 +396,6 @@ func rowToBytes(ctx *sql.Context, s sql.Schema, row sql.Row) ([][]byte, error) {
 		}
 		// need to make sure the schema is not null as some plan schema is defined as null (e.g. IfElseBlock)
 		if len(s) > 0 {
-			//dt, ok := s[i].Type.(types2.DoltgresType)
-			//if ok {
-			//	str, err := dt.IoOutput(ctx, v)
-			//	if err != nil {
-			//		return nil, err
-			//	}
-			//	o[i] = []byte(str)
-			//} else {
-			//
-			//}
 			val, err := s[i].Type.SQL(ctx, []byte{}, v)
 			if err != nil {
 				return nil, err
@@ -520,9 +415,8 @@ func (h *Handler) resultForDefaultIter(
 	c *mysql.Conn,
 	schema sql.Schema,
 	iter sql.RowIter,
-	callback func(*Result, bool) error,
-	resultFields []pgproto3.FieldDescription,
-	more bool) (r *Result, processedAtLeastOneBatch bool, returnErr error) {
+	callback func(*Result) error,
+	resultFields []pgproto3.FieldDescription) (r *Result, processedAtLeastOneBatch bool, returnErr error) {
 	defer trace.StartRegion(ctx, "Handler.resultForDefaultIter").End()
 
 	eg, ctx := ctx.NewErrgroup()
@@ -593,7 +487,7 @@ func (h *Handler) resultForDefaultIter(
 				r = &Result{Fields: resultFields}
 			}
 			if r.RowsAffected == rowsBatch {
-				if err := callback(r, more); err != nil {
+				if err := callback(r); err != nil {
 					return err
 				}
 				r = nil
@@ -665,25 +559,11 @@ var ErrRowTimeout = goerrors.NewKind("row read wait bigger than connection timeo
 // Result represents a query result.
 type Result struct {
 	Fields       []pgproto3.FieldDescription `json:"fields"`
-	RowsAffected uint64                      `json:"rows_affected"`
-	InsertID     uint64                      `json:"insert_id"`
-	Info         string                      `json:"info"`
 	Rows         []Value                     `json:"rows"`
+	RowsAffected uint64                      `json:"rows_affected"`
 }
 
-// Value can store any SQL value. If the value represents
-// an integral type, the bytes are always stored as a canonical
-// representation that matches how MySQL returns such values.
+// Value represents a row value in bytes format.
 type Value struct {
 	val [][]byte
-}
-
-// PrepareData is a buffer used for store prepare statement metadata
-type PrepareData struct {
-	StatementID uint32
-	PrepareStmt string
-	ParamsCount uint16
-	ParamsType  []int32
-	ColumnNames []string
-	BindVars    map[string]sqlparser.Expr
 }

@@ -810,299 +810,299 @@ func TestOperators(t *testing.T) {
 			Assertions: []ScriptTestAssertion{
 				{
 					Query:    `SELECT false < true;`,
-					Expected: []sql.Row{{true}},
+					Expected: []sql.Row{{"t"}},
 				},
 				{
 					Query:    `SELECT true < false;`,
-					Expected: []sql.Row{{false}},
+					Expected: []sql.Row{{"f"}},
 				},
 				{
 					Query:    `SELECT 'abc'::bpchar < 'def'::bpchar;`,
-					Expected: []sql.Row{{true}},
+					Expected: []sql.Row{{"t"}},
 				},
 				{
 					Query:    `SELECT 'def'::bpchar < 'abc'::bpchar;`,
-					Expected: []sql.Row{{false}},
+					Expected: []sql.Row{{"f"}},
 				},
 				{
 					Query:    `SELECT 'abc'::"char" < 'def'::"char";`,
-					Expected: []sql.Row{{true}},
+					Expected: []sql.Row{{"t"}},
 				},
 				{
 					Query:    `SELECT 'abc'::"char" < 'aef';`,
-					Expected: []sql.Row{{false}},
+					Expected: []sql.Row{{"f"}},
 				},
 				{
 					Query:    `SELECT E'\\x01'::bytea < E'\\x02'::bytea;`,
-					Expected: []sql.Row{{true}},
+					Expected: []sql.Row{{"t"}},
 				},
 				{
 					Query:    `SELECT E'\\x02'::bytea < E'\\x01'::bytea;`,
-					Expected: []sql.Row{{false}},
+					Expected: []sql.Row{{"f"}},
 				},
 				{
 					Query:    `SELECT '2019-01-03'::date < '2020-07-15'::date;`,
-					Expected: []sql.Row{{true}},
+					Expected: []sql.Row{{"t"}},
 				},
 				{
 					Query:    `SELECT '2020-02-05'::date < '2019-08-17'::date;`,
-					Expected: []sql.Row{{false}},
+					Expected: []sql.Row{{"f"}},
 				},
 				{
 					Query:    `SELECT '2021-03-07'::date < '2022-09-19 04:19:19'::timestamp;`,
-					Expected: []sql.Row{{true}},
+					Expected: []sql.Row{{"t"}},
 				},
 				{
 					Query:    `SELECT '2022-04-09'::date < '2021-10-21 08:27:40'::timestamp;`,
-					Expected: []sql.Row{{false}},
+					Expected: []sql.Row{{"f"}},
 				},
 				{
 					Query:    `SELECT '2023-05-11'::date < '2024-11-23 12:35:54+00'::timestamptz;`,
-					Expected: []sql.Row{{true}},
+					Expected: []sql.Row{{"t"}},
 				},
 				{
 					Query:    `SELECT '2024-06-13'::date < '2023-12-25 16:43:55+00'::timestamptz;`,
-					Expected: []sql.Row{{false}},
+					Expected: []sql.Row{{"f"}},
 				},
 				{
 					Query:    `SELECT 1.23::float4 < 4.56::float4;`,
-					Expected: []sql.Row{{true}},
+					Expected: []sql.Row{{"t"}},
 				},
 				{
 					Query:    `SELECT 4.56::float4 < 1.23::float4;`,
-					Expected: []sql.Row{{false}},
+					Expected: []sql.Row{{"f"}},
 				},
 				{
 					Query:    `SELECT 7.89::float4 < 9.01::float8;`,
-					Expected: []sql.Row{{true}},
+					Expected: []sql.Row{{"t"}},
 				},
 				{
 					Query:    `SELECT 9.01::float4 < 7.89::float8;`,
-					Expected: []sql.Row{{false}},
+					Expected: []sql.Row{{"f"}},
 				},
 				{
 					Query:    `SELECT 2.34::float8 < 5.67::float4;`,
-					Expected: []sql.Row{{true}},
+					Expected: []sql.Row{{"t"}},
 				},
 				{
 					Query:    `SELECT 5.67::float8 < 2.34::float4;`,
-					Expected: []sql.Row{{false}},
+					Expected: []sql.Row{{"f"}},
 				},
 				{
 					Query:    `SELECT 8.99::float8 < 9.01::float8;`,
-					Expected: []sql.Row{{true}},
+					Expected: []sql.Row{{"t"}},
 				},
 				{
 					Query:    `SELECT 9.01::float8 < 8.99::float8;`,
-					Expected: []sql.Row{{false}},
+					Expected: []sql.Row{{"f"}},
 				},
 				{
 					Query:    `SELECT 10::int2 < 29::int2;`,
-					Expected: []sql.Row{{true}},
+					Expected: []sql.Row{{"t"}},
 				},
 				{
 					Query:    `SELECT 29::int2 < 10::int2;`,
-					Expected: []sql.Row{{false}},
+					Expected: []sql.Row{{"f"}},
 				},
 				{
 					Query:    `SELECT 11::int2 < 28::int4;`,
-					Expected: []sql.Row{{true}},
+					Expected: []sql.Row{{"t"}},
 				},
 				{
 					Query:    `SELECT 28::int2 < 11::int4;`,
-					Expected: []sql.Row{{false}},
+					Expected: []sql.Row{{"f"}},
 				},
 				{
 					Query:    `SELECT 12::int2 < 27::int8;`,
-					Expected: []sql.Row{{true}},
+					Expected: []sql.Row{{"t"}},
 				},
 				{
 					Query:    `SELECT 27::int2 < 12::int8;`,
-					Expected: []sql.Row{{false}},
+					Expected: []sql.Row{{"f"}},
 				},
 				{
 					Query:    `SELECT 13::int4 < 26::int2;`,
-					Expected: []sql.Row{{true}},
+					Expected: []sql.Row{{"t"}},
 				},
 				{
 					Query:    `SELECT 26::int4 < 13::int2;`,
-					Expected: []sql.Row{{false}},
+					Expected: []sql.Row{{"f"}},
 				},
 				{
 					Query:    `SELECT 14::int4 < 25::int4;`,
-					Expected: []sql.Row{{true}},
+					Expected: []sql.Row{{"t"}},
 				},
 				{
 					Query:    `SELECT 25::int4 < 14::int4;`,
-					Expected: []sql.Row{{false}},
+					Expected: []sql.Row{{"f"}},
 				},
 				{
 					Query:    `SELECT 15::int4 < 24::int8;`,
-					Expected: []sql.Row{{true}},
+					Expected: []sql.Row{{"t"}},
 				},
 				{
 					Query:    `SELECT 24::int4 < 15::int8;`,
-					Expected: []sql.Row{{false}},
+					Expected: []sql.Row{{"f"}},
 				},
 				{
 					Query:    `SELECT 16::int8 < 23::int2;`,
-					Expected: []sql.Row{{true}},
+					Expected: []sql.Row{{"t"}},
 				},
 				{
 					Query:    `SELECT 23::int8 < 16::int2;`,
-					Expected: []sql.Row{{false}},
+					Expected: []sql.Row{{"f"}},
 				},
 				{
 					Query:    `SELECT 17::int8 < 22::int4;`,
-					Expected: []sql.Row{{true}},
+					Expected: []sql.Row{{"t"}},
 				},
 				{
 					Query:    `SELECT 22::int8 < 17::int4;`,
-					Expected: []sql.Row{{false}},
+					Expected: []sql.Row{{"f"}},
 				},
 				{
 					Query:    `SELECT 18::int8 < 21::int8;`,
-					Expected: []sql.Row{{true}},
+					Expected: []sql.Row{{"t"}},
 				},
 				{
 					Query:    `SELECT 21::int8 < 18::int8;`,
-					Expected: []sql.Row{{false}},
+					Expected: []sql.Row{{"f"}},
 				},
 				{
 					Query:    `SELECT '{"a":1}'::jsonb < '{"b":2}'::jsonb;`,
-					Expected: []sql.Row{{true}},
+					Expected: []sql.Row{{"t"}},
 				},
 				{
 					Query:    `SELECT '{"b":2}'::jsonb < '{"a":1}'::jsonb;`,
-					Expected: []sql.Row{{false}},
+					Expected: []sql.Row{{"f"}},
 				},
 				{
 					Query:    `SELECT 'and'::name < 'then'::name;`,
-					Expected: []sql.Row{{true}},
+					Expected: []sql.Row{{"t"}},
 				},
 				{
 					Query:    `SELECT 'then'::name < 'and'::name;`,
-					Expected: []sql.Row{{false}},
+					Expected: []sql.Row{{"f"}},
 				},
 				{
 					Query:    `SELECT 'cold'::name < 'dance'::text;`,
-					Expected: []sql.Row{{true}},
+					Expected: []sql.Row{{"t"}},
 				},
 				{
 					Query:    `SELECT 'dance'::name < 'cold'::text;`,
-					Expected: []sql.Row{{false}},
+					Expected: []sql.Row{{"f"}},
 				},
 				{
 					Query:    `SELECT 10.20::numeric < 20.10::numeric;`,
-					Expected: []sql.Row{{true}},
+					Expected: []sql.Row{{"t"}},
 				},
 				{
 					Query:    `SELECT 20.10::numeric < 10.20::numeric;`,
-					Expected: []sql.Row{{false}},
+					Expected: []sql.Row{{"f"}},
 				},
 				{
 					Query:    `SELECT 101::oid < 202::oid;`,
-					Expected: []sql.Row{{true}},
+					Expected: []sql.Row{{"t"}},
 				},
 				{
 					Query:    `SELECT 202::oid < 101::oid;`,
-					Expected: []sql.Row{{false}},
+					Expected: []sql.Row{{"f"}},
 				},
 				{
 					Query:    `SELECT 'dog'::text < 'good'::name;`,
-					Expected: []sql.Row{{true}},
+					Expected: []sql.Row{{"t"}},
 				},
 				{
 					Query:    `SELECT 'good'::text < 'dog'::name;`,
-					Expected: []sql.Row{{false}},
+					Expected: []sql.Row{{"f"}},
 				},
 				{
 					Query:    `SELECT 'hello'::text < 'world'::text;`,
-					Expected: []sql.Row{{true}},
+					Expected: []sql.Row{{"t"}},
 				},
 				{
 					Query:    `SELECT 'world'::text < 'hello'::text;`,
-					Expected: []sql.Row{{false}},
+					Expected: []sql.Row{{"f"}},
 				},
 				{
 					Query:    `SELECT '12:12:12'::time < '14:15:16'::time;`,
-					Expected: []sql.Row{{true}},
+					Expected: []sql.Row{{"t"}},
 				},
 				{
 					Query:    `SELECT '14:15:16'::time < '12:12:12'::time;`,
-					Expected: []sql.Row{{false}},
+					Expected: []sql.Row{{"f"}},
 				},
 				{
 					Query:    `SELECT '2019-01-03 10:21:00'::timestamp < '2020-02-05'::date;`,
-					Expected: []sql.Row{{true}},
+					Expected: []sql.Row{{"t"}},
 				},
 				{
 					Query:    `SELECT '2020-02-05 10:21:00'::timestamp < '2019-01-03'::date;`,
-					Expected: []sql.Row{{false}},
+					Expected: []sql.Row{{"f"}},
 				},
 				{
 					Query:    `SELECT '2020-02-05 11:32:00'::timestamp < '2021-03-07 12:43:00'::timestamp;`,
-					Expected: []sql.Row{{true}},
+					Expected: []sql.Row{{"t"}},
 				},
 				{
 					Query:    `SELECT '2021-03-07 12:43:00'::timestamp < '2020-02-05 11:32:00'::timestamp;`,
-					Expected: []sql.Row{{false}},
+					Expected: []sql.Row{{"f"}},
 				},
 				{
 					Query:    `SELECT '2021-03-07 12:43:00'::timestamp < '2022-04-09 13:54:00+00'::timestamptz;`,
-					Expected: []sql.Row{{true}},
+					Expected: []sql.Row{{"t"}},
 				},
 				{
 					Query:    `SELECT '2022-04-09 13:54:00'::timestamp < '2021-03-07 12:43:00+00'::timestamptz;`,
-					Expected: []sql.Row{{false}},
+					Expected: []sql.Row{{"f"}},
 				},
 				{
 					Query:    `SELECT '2022-04-09 13:54:00+00'::timestamptz < '2023-05-11'::date;`,
-					Expected: []sql.Row{{true}},
+					Expected: []sql.Row{{"t"}},
 				},
 				{
 					Query:    `SELECT '2023-05-11 13:54:00+00'::timestamptz < '2022-04-09'::date;`,
-					Expected: []sql.Row{{false}},
+					Expected: []sql.Row{{"f"}},
 				},
 				{
 					Query:    `SELECT '2023-05-11 14:15:00+00'::timestamptz < '2024-06-13 13:54:00'::timestamp;`,
-					Expected: []sql.Row{{true}},
+					Expected: []sql.Row{{"t"}},
 				},
 				{
 					Query:    `SELECT '2024-06-13 13:54:00+00'::timestamptz < '2023-05-11 14:15:00'::timestamp;`,
-					Expected: []sql.Row{{false}},
+					Expected: []sql.Row{{"f"}},
 				},
 				{
 					Query:    `SELECT '2024-06-13 15:36:00+00'::timestamptz < '2025-07-15 14:15:00+00'::timestamptz;`,
-					Expected: []sql.Row{{true}},
+					Expected: []sql.Row{{"t"}},
 				},
 				{
 					Query:    `SELECT '2025-07-15 14:15:00+00'::timestamptz < '2024-06-13 15:36:00+00'::timestamptz;`,
-					Expected: []sql.Row{{false}},
+					Expected: []sql.Row{{"f"}},
 				},
 				{
 					Query:    `SELECT '12:16:20+00'::timetz < '13:17:21+00'::timetz;`,
-					Expected: []sql.Row{{true}},
+					Expected: []sql.Row{{"t"}},
 				},
 				{
 					Query:    `SELECT '13:17:21+00'::timetz < '12:16:20+00'::timetz;`,
-					Expected: []sql.Row{{false}},
+					Expected: []sql.Row{{"f"}},
 				},
 				{
 					Query:    `SELECT '64b67ba1-e368-4cfd-ae6f-0c3e77716fb5'::uuid < '64b67ba1-e368-4cfd-ae6f-0c3e77716fb6'::uuid;`,
-					Expected: []sql.Row{{true}},
+					Expected: []sql.Row{{"t"}},
 				},
 				{
 					Query:    `SELECT '64b67ba1-e368-4cfd-ae6f-0c3e77716fb6'::uuid < '64b67ba1-e368-4cfd-ae6f-0c3e77716fb5'::uuid;`,
-					Expected: []sql.Row{{false}},
+					Expected: []sql.Row{{"f"}},
 				},
 				{
 					Query:    `select '27:00:24'::interval < '1 day 03:00:24.5'::interval;`,
-					Expected: []sql.Row{{true}},
+					Expected: []sql.Row{{"t"}},
 				},
 				{
 					Query:    `select '27:01:24'::interval < '1 day 03:00:24.5'::interval;`,
-					Expected: []sql.Row{{false}},
+					Expected: []sql.Row{{"f"}},
 				},
 			},
 		},
@@ -1111,303 +1111,303 @@ func TestOperators(t *testing.T) {
 			Assertions: []ScriptTestAssertion{
 				{
 					Query:    `SELECT false > true;`,
-					Expected: []sql.Row{{false}},
+					Expected: []sql.Row{{"f"}},
 				},
 				{
 					Query:    `SELECT true > false;`,
-					Expected: []sql.Row{{true}},
+					Expected: []sql.Row{{"t"}},
 				},
 				{
 					Query:    `SELECT 'abc'::bpchar > 'def'::bpchar;`,
-					Expected: []sql.Row{{false}},
+					Expected: []sql.Row{{"f"}},
 				},
 				{
 					Query:    `SELECT 'def'::bpchar > 'abc'::bpchar;`,
-					Expected: []sql.Row{{true}},
+					Expected: []sql.Row{{"t"}},
 				},
 				{
 					Query:    `SELECT 'abc'::"char" > 'def'::"char";`,
-					Expected: []sql.Row{{false}},
+					Expected: []sql.Row{{"f"}},
 				},
 				{
 					Query:    `SELECT 'def'::"char" > 'abc'::"char";`,
-					Expected: []sql.Row{{true}},
+					Expected: []sql.Row{{"t"}},
 				},
 				{
 					Query:    `SELECT 'aef' > 'abc'::"char";`,
-					Expected: []sql.Row{{false}},
+					Expected: []sql.Row{{"f"}},
 				},
 				{
 					Query:    `SELECT E'\\x01'::bytea > E'\\x02'::bytea;`,
-					Expected: []sql.Row{{false}},
+					Expected: []sql.Row{{"f"}},
 				},
 				{
 					Query:    `SELECT E'\\x02'::bytea > E'\\x01'::bytea;`,
-					Expected: []sql.Row{{true}},
+					Expected: []sql.Row{{"t"}},
 				},
 				{
 					Query:    `SELECT '2019-01-03'::date > '2020-07-15'::date;`,
-					Expected: []sql.Row{{false}},
+					Expected: []sql.Row{{"f"}},
 				},
 				{
 					Query:    `SELECT '2020-02-05'::date > '2019-08-17'::date;`,
-					Expected: []sql.Row{{true}},
+					Expected: []sql.Row{{"t"}},
 				},
 				{
 					Query:    `SELECT '2021-03-07'::date > '2022-09-19 04:19:19'::timestamp;`,
-					Expected: []sql.Row{{false}},
+					Expected: []sql.Row{{"f"}},
 				},
 				{
 					Query:    `SELECT '2022-04-09'::date > '2021-10-21 08:27:40'::timestamp;`,
-					Expected: []sql.Row{{true}},
+					Expected: []sql.Row{{"t"}},
 				},
 				{
 					Query:    `SELECT '2023-05-11'::date > '2024-11-23 12:35:54+00'::timestamptz;`,
-					Expected: []sql.Row{{false}},
+					Expected: []sql.Row{{"f"}},
 				},
 				{
 					Query:    `SELECT '2024-06-13'::date > '2023-12-25 16:43:55+00'::timestamptz;`,
-					Expected: []sql.Row{{true}},
+					Expected: []sql.Row{{"t"}},
 				},
 				{
 					Query:    `SELECT 1.23::float4 > 4.56::float4;`,
-					Expected: []sql.Row{{false}},
+					Expected: []sql.Row{{"f"}},
 				},
 				{
 					Query:    `SELECT 4.56::float4 > 1.23::float4;`,
-					Expected: []sql.Row{{true}},
+					Expected: []sql.Row{{"t"}},
 				},
 				{
 					Query:    `SELECT 7.89::float4 > 9.01::float8;`,
-					Expected: []sql.Row{{false}},
+					Expected: []sql.Row{{"f"}},
 				},
 				{
 					Query:    `SELECT 9.01::float4 > 7.89::float8;`,
-					Expected: []sql.Row{{true}},
+					Expected: []sql.Row{{"t"}},
 				},
 				{
 					Query:    `SELECT 2.34::float8 > 5.67::float4;`,
-					Expected: []sql.Row{{false}},
+					Expected: []sql.Row{{"f"}},
 				},
 				{
 					Query:    `SELECT 5.67::float8 > 2.34::float4;`,
-					Expected: []sql.Row{{true}},
+					Expected: []sql.Row{{"t"}},
 				},
 				{
 					Query:    `SELECT 8.99::float8 > 9.01::float8;`,
-					Expected: []sql.Row{{false}},
+					Expected: []sql.Row{{"f"}},
 				},
 				{
 					Query:    `SELECT 9.01::float8 > 8.99::float8;`,
-					Expected: []sql.Row{{true}},
+					Expected: []sql.Row{{"t"}},
 				},
 				{
 					Query:    `SELECT 10::int2 > 29::int2;`,
-					Expected: []sql.Row{{false}},
+					Expected: []sql.Row{{"f"}},
 				},
 				{
 					Query:    `SELECT 29::int2 > 10::int2;`,
-					Expected: []sql.Row{{true}},
+					Expected: []sql.Row{{"t"}},
 				},
 				{
 					Query:    `SELECT 11::int2 > 28::int4;`,
-					Expected: []sql.Row{{false}},
+					Expected: []sql.Row{{"f"}},
 				},
 				{
 					Query:    `SELECT 28::int2 > 11::int4;`,
-					Expected: []sql.Row{{true}},
+					Expected: []sql.Row{{"t"}},
 				},
 				{
 					Query:    `SELECT 12::int2 > 27::int8;`,
-					Expected: []sql.Row{{false}},
+					Expected: []sql.Row{{"f"}},
 				},
 				{
 					Query:    `SELECT 27::int2 > 12::int8;`,
-					Expected: []sql.Row{{true}},
+					Expected: []sql.Row{{"t"}},
 				},
 				{
 					Query:    `SELECT 13::int4 > 26::int2;`,
-					Expected: []sql.Row{{false}},
+					Expected: []sql.Row{{"f"}},
 				},
 				{
 					Query:    `SELECT 26::int4 > 13::int2;`,
-					Expected: []sql.Row{{true}},
+					Expected: []sql.Row{{"t"}},
 				},
 				{
 					Query:    `SELECT 14::int4 > 25::int4;`,
-					Expected: []sql.Row{{false}},
+					Expected: []sql.Row{{"f"}},
 				},
 				{
 					Query:    `SELECT 25::int4 > 14::int4;`,
-					Expected: []sql.Row{{true}},
+					Expected: []sql.Row{{"t"}},
 				},
 				{
 					Query:    `SELECT 15::int4 > 24::int8;`,
-					Expected: []sql.Row{{false}},
+					Expected: []sql.Row{{"f"}},
 				},
 				{
 					Query:    `SELECT 24::int4 > 15::int8;`,
-					Expected: []sql.Row{{true}},
+					Expected: []sql.Row{{"t"}},
 				},
 				{
 					Query:    `SELECT 16::int8 > 23::int2;`,
-					Expected: []sql.Row{{false}},
+					Expected: []sql.Row{{"f"}},
 				},
 				{
 					Query:    `SELECT 23::int8 > 16::int2;`,
-					Expected: []sql.Row{{true}},
+					Expected: []sql.Row{{"t"}},
 				},
 				{
 					Query:    `SELECT 17::int8 > 22::int4;`,
-					Expected: []sql.Row{{false}},
+					Expected: []sql.Row{{"f"}},
 				},
 				{
 					Query:    `SELECT 22::int8 > 17::int4;`,
-					Expected: []sql.Row{{true}},
+					Expected: []sql.Row{{"t"}},
 				},
 				{
 					Query:    `SELECT 18::int8 > 21::int8;`,
-					Expected: []sql.Row{{false}},
+					Expected: []sql.Row{{"f"}},
 				},
 				{
 					Query:    `SELECT 21::int8 > 18::int8;`,
-					Expected: []sql.Row{{true}},
+					Expected: []sql.Row{{"t"}},
 				},
 				{
 					Query:    `SELECT '{"a":1}'::jsonb > '{"b":2}'::jsonb;`,
-					Expected: []sql.Row{{false}},
+					Expected: []sql.Row{{"f"}},
 				},
 				{
 					Query:    `SELECT '{"b":2}'::jsonb > '{"a":1}'::jsonb;`,
-					Expected: []sql.Row{{true}},
+					Expected: []sql.Row{{"t"}},
 				},
 				{
 					Query:    `SELECT 'and'::name > 'then'::name;`,
-					Expected: []sql.Row{{false}},
+					Expected: []sql.Row{{"f"}},
 				},
 				{
 					Query:    `SELECT 'then'::name > 'and'::name;`,
-					Expected: []sql.Row{{true}},
+					Expected: []sql.Row{{"t"}},
 				},
 				{
 					Query:    `SELECT 'cold'::name > 'dance'::text;`,
-					Expected: []sql.Row{{false}},
+					Expected: []sql.Row{{"f"}},
 				},
 				{
 					Query:    `SELECT 'dance'::name > 'cold'::text;`,
-					Expected: []sql.Row{{true}},
+					Expected: []sql.Row{{"t"}},
 				},
 				{
 					Query:    `SELECT 10.20::numeric > 20.10::numeric;`,
-					Expected: []sql.Row{{false}},
+					Expected: []sql.Row{{"f"}},
 				},
 				{
 					Query:    `SELECT 20.10::numeric > 10.20::numeric;`,
-					Expected: []sql.Row{{true}},
+					Expected: []sql.Row{{"t"}},
 				},
 				{
 					Query:    `SELECT 101::oid > 202::oid;`,
-					Expected: []sql.Row{{false}},
+					Expected: []sql.Row{{"f"}},
 				},
 				{
 					Query:    `SELECT 202::oid > 101::oid;`,
-					Expected: []sql.Row{{true}},
+					Expected: []sql.Row{{"t"}},
 				},
 				{
 					Query:    `SELECT 'dog'::text > 'good'::name;`,
-					Expected: []sql.Row{{false}},
+					Expected: []sql.Row{{"f"}},
 				},
 				{
 					Query:    `SELECT 'good'::text > 'dog'::name;`,
-					Expected: []sql.Row{{true}},
+					Expected: []sql.Row{{"t"}},
 				},
 				{
 					Query:    `SELECT 'hello'::text > 'world'::text;`,
-					Expected: []sql.Row{{false}},
+					Expected: []sql.Row{{"f"}},
 				},
 				{
 					Query:    `SELECT 'world'::text > 'hello'::text;`,
-					Expected: []sql.Row{{true}},
+					Expected: []sql.Row{{"t"}},
 				},
 				{
 					Query:    `SELECT '12:12:12'::time > '14:15:16'::time;`,
-					Expected: []sql.Row{{false}},
+					Expected: []sql.Row{{"f"}},
 				},
 				{
 					Query:    `SELECT '14:15:16'::time > '12:12:12'::time;`,
-					Expected: []sql.Row{{true}},
+					Expected: []sql.Row{{"t"}},
 				},
 				{
 					Query:    `SELECT '2019-01-03 10:21:00'::timestamp > '2020-02-05'::date;`,
-					Expected: []sql.Row{{false}},
+					Expected: []sql.Row{{"f"}},
 				},
 				{
 					Query:    `SELECT '2020-02-05 10:21:00'::timestamp > '2019-01-03'::date;`,
-					Expected: []sql.Row{{true}},
+					Expected: []sql.Row{{"t"}},
 				},
 				{
 					Query:    `SELECT '2020-02-05 11:32:00'::timestamp > '2021-03-07 12:43:00'::timestamp;`,
-					Expected: []sql.Row{{false}},
+					Expected: []sql.Row{{"f"}},
 				},
 				{
 					Query:    `SELECT '2021-03-07 12:43:00'::timestamp > '2020-02-05 11:32:00'::timestamp;`,
-					Expected: []sql.Row{{true}},
+					Expected: []sql.Row{{"t"}},
 				},
 				{
 					Query:    `SELECT '2021-03-07 12:43:00'::timestamp > '2022-04-09 13:54:00+00'::timestamptz;`,
-					Expected: []sql.Row{{false}},
+					Expected: []sql.Row{{"f"}},
 				},
 				{
 					Query:    `SELECT '2022-04-09 13:54:00'::timestamp > '2021-03-07 12:43:00+00'::timestamptz;`,
-					Expected: []sql.Row{{true}},
+					Expected: []sql.Row{{"t"}},
 				},
 				{
 					Query:    `SELECT '2022-04-09 13:54:00+00'::timestamptz > '2023-05-11'::date;`,
-					Expected: []sql.Row{{false}},
+					Expected: []sql.Row{{"f"}},
 				},
 				{
 					Query:    `SELECT '2023-05-11 13:54:00+00'::timestamptz > '2022-04-09'::date;`,
-					Expected: []sql.Row{{true}},
+					Expected: []sql.Row{{"t"}},
 				},
 				{
 					Query:    `SELECT '2023-05-11 14:15:00+00'::timestamptz > '2024-06-13 13:54:00'::timestamp;`,
-					Expected: []sql.Row{{false}},
+					Expected: []sql.Row{{"f"}},
 				},
 				{
 					Query:    `SELECT '2024-06-13 13:54:00+00'::timestamptz > '2023-05-11 14:15:00'::timestamp;`,
-					Expected: []sql.Row{{true}},
+					Expected: []sql.Row{{"t"}},
 				},
 				{
 					Query:    `SELECT '2024-06-13 15:36:00+00'::timestamptz > '2025-07-15 14:15:00+00'::timestamptz;`,
-					Expected: []sql.Row{{false}},
+					Expected: []sql.Row{{"f"}},
 				},
 				{
 					Query:    `SELECT '2025-07-15 14:15:00+00'::timestamptz > '2024-06-13 15:36:00+00'::timestamptz;`,
-					Expected: []sql.Row{{true}},
+					Expected: []sql.Row{{"t"}},
 				},
 				{
 					Query:    `SELECT '12:16:20+00'::timetz > '13:17:21+00'::timetz;`,
-					Expected: []sql.Row{{false}},
+					Expected: []sql.Row{{"f"}},
 				},
 				{
 					Query:    `SELECT '13:17:21+00'::timetz > '12:16:20+00'::timetz;`,
-					Expected: []sql.Row{{true}},
+					Expected: []sql.Row{{"t"}},
 				},
 				{
 					Query:    `SELECT '64b67ba1-e368-4cfd-ae6f-0c3e77716fb5'::uuid > '64b67ba1-e368-4cfd-ae6f-0c3e77716fb6'::uuid;`,
-					Expected: []sql.Row{{false}},
+					Expected: []sql.Row{{"f"}},
 				},
 				{
 					Query:    `SELECT '64b67ba1-e368-4cfd-ae6f-0c3e77716fb6'::uuid > '64b67ba1-e368-4cfd-ae6f-0c3e77716fb5'::uuid;`,
-					Expected: []sql.Row{{true}},
+					Expected: []sql.Row{{"t"}},
 				},
 				{
 					Query:    `select '28:22:24'::interval > '1 day 03:00:00'::interval;`,
-					Expected: []sql.Row{{true}},
+					Expected: []sql.Row{{"t"}},
 				},
 				{
 					Query:    `select '23:22:24'::interval > '1 day 03:00:00'::interval;`,
-					Expected: []sql.Row{{false}},
+					Expected: []sql.Row{{"f"}},
 				},
 			},
 		},
@@ -1416,447 +1416,447 @@ func TestOperators(t *testing.T) {
 			Assertions: []ScriptTestAssertion{
 				{
 					Query:    `SELECT false <= true;`,
-					Expected: []sql.Row{{true}},
+					Expected: []sql.Row{{"t"}},
 				},
 				{
 					Query:    `SELECT true <= true;`,
-					Expected: []sql.Row{{true}},
+					Expected: []sql.Row{{"t"}},
 				},
 				{
 					Query:    `SELECT true <= false;`,
-					Expected: []sql.Row{{false}},
+					Expected: []sql.Row{{"f"}},
 				},
 				{
 					Query:    `SELECT 'abc'::bpchar <= 'def'::bpchar;`,
-					Expected: []sql.Row{{true}},
+					Expected: []sql.Row{{"t"}},
 				},
 				{
 					Query:    `SELECT 'abc'::bpchar <= 'abc'::bpchar;`,
-					Expected: []sql.Row{{true}},
+					Expected: []sql.Row{{"t"}},
 				},
 				{
 					Query:    `SELECT 'def'::bpchar <= 'abc'::bpchar;`,
-					Expected: []sql.Row{{false}},
+					Expected: []sql.Row{{"f"}},
 				},
 				{
 					Query:    `SELECT 'abc'::"char" <= 'def'::"char";`,
-					Expected: []sql.Row{{true}},
+					Expected: []sql.Row{{"t"}},
 				},
 				{
 					Query:    `SELECT 'def'::"char" <= 'abc'::"char";`,
-					Expected: []sql.Row{{false}},
+					Expected: []sql.Row{{"f"}},
 				},
 				{
 					Query:    `SELECT 'abc' <= 'aef'::"char";`,
-					Expected: []sql.Row{{true}},
+					Expected: []sql.Row{{"t"}},
 				},
 				{
 					Query:    `SELECT E'\\x01'::bytea <= E'\\x02'::bytea;`,
-					Expected: []sql.Row{{true}},
+					Expected: []sql.Row{{"t"}},
 				},
 				{
 					Query:    `SELECT E'\\x01'::bytea <= E'\\x01'::bytea;`,
-					Expected: []sql.Row{{true}},
+					Expected: []sql.Row{{"t"}},
 				},
 				{
 					Query:    `SELECT E'\\x02'::bytea <= E'\\x01'::bytea;`,
-					Expected: []sql.Row{{false}},
+					Expected: []sql.Row{{"f"}},
 				},
 				{
 					Query:    `SELECT '2019-01-03'::date <= '2020-07-15'::date;`,
-					Expected: []sql.Row{{true}},
+					Expected: []sql.Row{{"t"}},
 				},
 				{
 					Query:    `SELECT '2019-01-03'::date <= '2019-01-03'::date;`,
-					Expected: []sql.Row{{true}},
+					Expected: []sql.Row{{"t"}},
 				},
 				{
 					Query:    `SELECT '2020-02-05'::date <= '2019-08-17'::date;`,
-					Expected: []sql.Row{{false}},
+					Expected: []sql.Row{{"f"}},
 				},
 				{
 					Query:    `SELECT '2021-03-07'::date <= '2022-09-19 04:19:19'::timestamp;`,
-					Expected: []sql.Row{{true}},
+					Expected: []sql.Row{{"t"}},
 				},
 				{
 					Query:    `SELECT '2021-03-07'::date <= '2021-03-07 00:00:00'::timestamp;`,
-					Expected: []sql.Row{{true}},
+					Expected: []sql.Row{{"t"}},
 				},
 				{
 					Query:    `SELECT '2022-04-09'::date <= '2021-10-21 08:27:40'::timestamp;`,
-					Expected: []sql.Row{{false}},
+					Expected: []sql.Row{{"f"}},
 				},
 				{
 					Query:    `SELECT '2023-05-11'::date <= '2024-11-23 12:35:54+00'::timestamptz;`,
-					Expected: []sql.Row{{true}},
+					Expected: []sql.Row{{"t"}},
 				},
 				{
 					Query:    `SELECT '2023-05-11'::date <= '2023-05-11 00:00:00+00'::timestamptz;`,
-					Expected: []sql.Row{{true}},
+					Expected: []sql.Row{{"t"}},
 				},
 				{
 					Query:    `SELECT '2024-06-13'::date <= '2023-12-25 16:43:55+00'::timestamptz;`,
-					Expected: []sql.Row{{false}},
+					Expected: []sql.Row{{"f"}},
 				},
 				{
 					Query:    `SELECT 1.23::float4 <= 4.56::float4;`,
-					Expected: []sql.Row{{true}},
+					Expected: []sql.Row{{"t"}},
 				},
 				{
 					Query:    `SELECT 1.23::float4 <= 1.23::float4;`,
-					Expected: []sql.Row{{true}},
+					Expected: []sql.Row{{"t"}},
 				},
 				{
 					Query:    `SELECT 4.56::float4 <= 1.23::float4;`,
-					Expected: []sql.Row{{false}},
+					Expected: []sql.Row{{"f"}},
 				},
 				{
 					Query:    `SELECT 7.89::float4 <= 9.01::float8;`,
-					Expected: []sql.Row{{true}},
+					Expected: []sql.Row{{"t"}},
 				},
 				{
 					Query:    `SELECT 7.75::float4 <= 7.75::float8;`,
-					Expected: []sql.Row{{true}},
+					Expected: []sql.Row{{"t"}},
 				},
 				{
 					Query:    `SELECT 9.01::float4 <= 7.89::float8;`,
-					Expected: []sql.Row{{false}},
+					Expected: []sql.Row{{"f"}},
 				},
 				{
 					Query:    `SELECT 2.34::float8 <= 5.67::float4;`,
-					Expected: []sql.Row{{true}},
+					Expected: []sql.Row{{"t"}},
 				},
 				{
 					Query:    `SELECT 2.25::float8 <= 2.25::float4;`,
-					Expected: []sql.Row{{true}},
+					Expected: []sql.Row{{"t"}},
 				},
 				{
 					Query:    `SELECT 5.67::float8 <= 2.34::float4;`,
-					Expected: []sql.Row{{false}},
+					Expected: []sql.Row{{"f"}},
 				},
 				{
 					Query:    `SELECT 8.99::float8 <= 9.01::float8;`,
-					Expected: []sql.Row{{true}},
+					Expected: []sql.Row{{"t"}},
 				},
 				{
 					Query:    `SELECT 8.75::float8 <= 8.75::float8;`,
-					Expected: []sql.Row{{true}},
+					Expected: []sql.Row{{"t"}},
 				},
 				{
 					Query:    `SELECT 9.01::float8 <= 8.99::float8;`,
-					Expected: []sql.Row{{false}},
+					Expected: []sql.Row{{"f"}},
 				},
 				{
 					Query:    `SELECT 10::int2 <= 29::int2;`,
-					Expected: []sql.Row{{true}},
+					Expected: []sql.Row{{"t"}},
 				},
 				{
 					Query:    `SELECT 10::int2 <= 10::int2;`,
-					Expected: []sql.Row{{true}},
+					Expected: []sql.Row{{"t"}},
 				},
 				{
 					Query:    `SELECT 29::int2 <= 10::int2;`,
-					Expected: []sql.Row{{false}},
+					Expected: []sql.Row{{"f"}},
 				},
 				{
 					Query:    `SELECT 11::int2 <= 28::int4;`,
-					Expected: []sql.Row{{true}},
+					Expected: []sql.Row{{"t"}},
 				},
 				{
 					Query:    `SELECT 11::int2 <= 11::int4;`,
-					Expected: []sql.Row{{true}},
+					Expected: []sql.Row{{"t"}},
 				},
 				{
 					Query:    `SELECT 28::int2 <= 11::int4;`,
-					Expected: []sql.Row{{false}},
+					Expected: []sql.Row{{"f"}},
 				},
 				{
 					Query:    `SELECT 12::int2 <= 27::int8;`,
-					Expected: []sql.Row{{true}},
+					Expected: []sql.Row{{"t"}},
 				},
 				{
 					Query:    `SELECT 12::int2 <= 12::int8;`,
-					Expected: []sql.Row{{true}},
+					Expected: []sql.Row{{"t"}},
 				},
 				{
 					Query:    `SELECT 27::int2 <= 12::int8;`,
-					Expected: []sql.Row{{false}},
+					Expected: []sql.Row{{"f"}},
 				},
 				{
 					Query:    `SELECT 13::int4 <= 26::int2;`,
-					Expected: []sql.Row{{true}},
+					Expected: []sql.Row{{"t"}},
 				},
 				{
 					Query:    `SELECT 13::int4 <= 13::int2;`,
-					Expected: []sql.Row{{true}},
+					Expected: []sql.Row{{"t"}},
 				},
 				{
 					Query:    `SELECT 26::int4 <= 13::int2;`,
-					Expected: []sql.Row{{false}},
+					Expected: []sql.Row{{"f"}},
 				},
 				{
 					Query:    `SELECT 14::int4 <= 25::int4;`,
-					Expected: []sql.Row{{true}},
+					Expected: []sql.Row{{"t"}},
 				},
 				{
 					Query:    `SELECT 14::int4 <= 14::int4;`,
-					Expected: []sql.Row{{true}},
+					Expected: []sql.Row{{"t"}},
 				},
 				{
 					Query:    `SELECT 25::int4 <= 14::int4;`,
-					Expected: []sql.Row{{false}},
+					Expected: []sql.Row{{"f"}},
 				},
 				{
 					Query:    `SELECT 15::int4 <= 24::int8;`,
-					Expected: []sql.Row{{true}},
+					Expected: []sql.Row{{"t"}},
 				},
 				{
 					Query:    `SELECT 15::int4 <= 15::int8;`,
-					Expected: []sql.Row{{true}},
+					Expected: []sql.Row{{"t"}},
 				},
 				{
 					Query:    `SELECT 24::int4 <= 15::int8;`,
-					Expected: []sql.Row{{false}},
+					Expected: []sql.Row{{"f"}},
 				},
 				{
 					Query:    `SELECT 16::int8 <= 23::int2;`,
-					Expected: []sql.Row{{true}},
+					Expected: []sql.Row{{"t"}},
 				},
 				{
 					Query:    `SELECT 16::int8 <= 16::int2;`,
-					Expected: []sql.Row{{true}},
+					Expected: []sql.Row{{"t"}},
 				},
 				{
 					Query:    `SELECT 23::int8 <= 16::int2;`,
-					Expected: []sql.Row{{false}},
+					Expected: []sql.Row{{"f"}},
 				},
 				{
 					Query:    `SELECT 17::int8 <= 22::int4;`,
-					Expected: []sql.Row{{true}},
+					Expected: []sql.Row{{"t"}},
 				},
 				{
 					Query:    `SELECT 17::int8 <= 17::int4;`,
-					Expected: []sql.Row{{true}},
+					Expected: []sql.Row{{"t"}},
 				},
 				{
 					Query:    `SELECT 22::int8 <= 17::int4;`,
-					Expected: []sql.Row{{false}},
+					Expected: []sql.Row{{"f"}},
 				},
 				{
 					Query:    `SELECT 18::int8 <= 21::int8;`,
-					Expected: []sql.Row{{true}},
+					Expected: []sql.Row{{"t"}},
 				},
 				{
 					Query:    `SELECT 18::int8 <= 18::int8;`,
-					Expected: []sql.Row{{true}},
+					Expected: []sql.Row{{"t"}},
 				},
 				{
 					Query:    `SELECT 21::int8 <= 18::int8;`,
-					Expected: []sql.Row{{false}},
+					Expected: []sql.Row{{"f"}},
 				},
 				{
 					Query:    `SELECT '{"a":1}'::jsonb <= '{"b":2}'::jsonb;`,
-					Expected: []sql.Row{{true}},
+					Expected: []sql.Row{{"t"}},
 				},
 				{
 					Query:    `SELECT '{"a":1}'::jsonb <= '{"a":1}'::jsonb;`,
-					Expected: []sql.Row{{true}},
+					Expected: []sql.Row{{"t"}},
 				},
 				{
 					Query:    `SELECT '{"b":2}'::jsonb <= '{"a":1}'::jsonb;`,
-					Expected: []sql.Row{{false}},
+					Expected: []sql.Row{{"f"}},
 				},
 				{
 					Query:    `SELECT 'and'::name <= 'then'::name;`,
-					Expected: []sql.Row{{true}},
+					Expected: []sql.Row{{"t"}},
 				},
 				{
 					Query:    `SELECT 'and'::name <= 'and'::name;`,
-					Expected: []sql.Row{{true}},
+					Expected: []sql.Row{{"t"}},
 				},
 				{
 					Query:    `SELECT 'then'::name <= 'and'::name;`,
-					Expected: []sql.Row{{false}},
+					Expected: []sql.Row{{"f"}},
 				},
 				{
 					Query:    `SELECT 'cold'::name <= 'dance'::text;`,
-					Expected: []sql.Row{{true}},
+					Expected: []sql.Row{{"t"}},
 				},
 				{
 					Query:    `SELECT 'cold'::name <= 'cold'::text;`,
-					Expected: []sql.Row{{true}},
+					Expected: []sql.Row{{"t"}},
 				},
 				{
 					Query:    `SELECT 'dance'::name <= 'cold'::text;`,
-					Expected: []sql.Row{{false}},
+					Expected: []sql.Row{{"f"}},
 				},
 				{
 					Query:    `SELECT 10.20::numeric <= 20.10::numeric;`,
-					Expected: []sql.Row{{true}},
+					Expected: []sql.Row{{"t"}},
 				},
 				{
 					Query:    `SELECT 10.20::numeric <= 10.20::numeric;`,
-					Expected: []sql.Row{{true}},
+					Expected: []sql.Row{{"t"}},
 				},
 				{
 					Query:    `SELECT 20.10::numeric <= 10.20::numeric;`,
-					Expected: []sql.Row{{false}},
+					Expected: []sql.Row{{"f"}},
 				},
 				{
 					Query:    `SELECT 101::oid <= 202::oid;`,
-					Expected: []sql.Row{{true}},
+					Expected: []sql.Row{{"t"}},
 				},
 				{
 					Query:    `SELECT 101::oid <= 101::oid;`,
-					Expected: []sql.Row{{true}},
+					Expected: []sql.Row{{"t"}},
 				},
 				{
 					Query:    `SELECT 202::oid <= 101::oid;`,
-					Expected: []sql.Row{{false}},
+					Expected: []sql.Row{{"f"}},
 				},
 				{
 					Query:    `SELECT 'dog'::text <= 'good'::name;`,
-					Expected: []sql.Row{{true}},
+					Expected: []sql.Row{{"t"}},
 				},
 				{
 					Query:    `SELECT 'dog'::text <= 'dog'::name;`,
-					Expected: []sql.Row{{true}},
+					Expected: []sql.Row{{"t"}},
 				},
 				{
 					Query:    `SELECT 'good'::text <= 'dog'::name;`,
-					Expected: []sql.Row{{false}},
+					Expected: []sql.Row{{"f"}},
 				},
 				{
 					Query:    `SELECT 'hello'::text <= 'world'::text;`,
-					Expected: []sql.Row{{true}},
+					Expected: []sql.Row{{"t"}},
 				},
 				{
 					Query:    `SELECT 'hello'::text <= 'hello'::text;`,
-					Expected: []sql.Row{{true}},
+					Expected: []sql.Row{{"t"}},
 				},
 				{
 					Query:    `SELECT 'world'::text <= 'hello'::text;`,
-					Expected: []sql.Row{{false}},
+					Expected: []sql.Row{{"f"}},
 				},
 				{
 					Query:    `SELECT '12:12:12'::time <= '14:15:16'::time;`,
-					Expected: []sql.Row{{true}},
+					Expected: []sql.Row{{"t"}},
 				},
 				{
 					Query:    `SELECT '12:12:12'::time <= '12:12:12'::time;`,
-					Expected: []sql.Row{{true}},
+					Expected: []sql.Row{{"t"}},
 				},
 				{
 					Query:    `SELECT '14:15:16'::time <= '12:12:12'::time;`,
-					Expected: []sql.Row{{false}},
+					Expected: []sql.Row{{"f"}},
 				},
 				{
 					Query:    `SELECT '2019-01-03 10:21:00'::timestamp <= '2020-02-05'::date;`,
-					Expected: []sql.Row{{true}},
+					Expected: []sql.Row{{"t"}},
 				},
 				{
 					Query:    `SELECT '2019-01-03 00:00:00'::timestamp <= '2019-01-03'::date;`,
-					Expected: []sql.Row{{true}},
+					Expected: []sql.Row{{"t"}},
 				},
 				{
 					Query:    `SELECT '2020-02-05 10:21:00'::timestamp <= '2019-01-03'::date;`,
-					Expected: []sql.Row{{false}},
+					Expected: []sql.Row{{"f"}},
 				},
 				{
 					Query:    `SELECT '2020-02-05 11:32:00'::timestamp <= '2021-03-07 12:43:00'::timestamp;`,
-					Expected: []sql.Row{{true}},
+					Expected: []sql.Row{{"t"}},
 				},
 				{
 					Query:    `SELECT '2020-02-05 11:32:00'::timestamp <= '2020-02-05 11:32:00'::timestamp;`,
-					Expected: []sql.Row{{true}},
+					Expected: []sql.Row{{"t"}},
 				},
 				{
 					Query:    `SELECT '2021-03-07 12:43:00'::timestamp <= '2020-02-05 11:32:00'::timestamp;`,
-					Expected: []sql.Row{{false}},
+					Expected: []sql.Row{{"f"}},
 				},
 				{
 					Query:    `SELECT '2021-03-07 12:43:00'::timestamp <= '2022-04-09 13:54:00+00'::timestamptz;`,
-					Expected: []sql.Row{{true}},
+					Expected: []sql.Row{{"t"}},
 				},
 				{
 					Query:    `SELECT '2021-03-07 12:43:00'::timestamp <= '2021-03-07 12:43:00+00'::timestamptz;`,
-					Expected: []sql.Row{{true}},
+					Expected: []sql.Row{{"t"}},
 				},
 				{
 					Query:    `SELECT '2022-04-09 13:54:00'::timestamp <= '2021-03-07 12:43:00+00'::timestamptz;`,
-					Expected: []sql.Row{{false}},
+					Expected: []sql.Row{{"f"}},
 				},
 				{
 					Query:    `SELECT '2022-04-09 13:54:00+00'::timestamptz <= '2023-05-11'::date;`,
-					Expected: []sql.Row{{true}},
+					Expected: []sql.Row{{"t"}},
 				},
 				{
 					Query:    `SELECT '2022-04-09 00:00:00+00'::timestamptz <= '2022-04-09'::date;`,
-					Expected: []sql.Row{{true}},
+					Expected: []sql.Row{{"t"}},
 				},
 				{
 					Query:    `SELECT '2023-05-11 13:54:00+00'::timestamptz <= '2022-04-09'::date;`,
-					Expected: []sql.Row{{false}},
+					Expected: []sql.Row{{"f"}},
 				},
 				{
 					Query:    `SELECT '2023-05-11 14:15:00+00'::timestamptz <= '2024-06-13 13:54:00'::timestamp;`,
-					Expected: []sql.Row{{true}},
+					Expected: []sql.Row{{"t"}},
 				},
 				{
 					Query:    `SELECT '2023-05-11 14:15:00+00'::timestamptz <= '2023-05-11 14:15:00'::timestamp;`,
-					Expected: []sql.Row{{true}},
+					Expected: []sql.Row{{"t"}},
 				},
 				{
 					Query:    `SELECT '2024-06-13 13:54:00+00'::timestamptz <= '2023-05-11 14:15:00'::timestamp;`,
-					Expected: []sql.Row{{false}},
+					Expected: []sql.Row{{"f"}},
 				},
 				{
 					Query:    `SELECT '2024-06-13 15:36:00+00'::timestamptz <= '2025-07-15 14:15:00+00'::timestamptz;`,
-					Expected: []sql.Row{{true}},
+					Expected: []sql.Row{{"t"}},
 				},
 				{
 					Query:    `SELECT '2024-06-13 15:36:00+00'::timestamptz <= '2024-06-13 15:36:00+00'::timestamptz;`,
-					Expected: []sql.Row{{true}},
+					Expected: []sql.Row{{"t"}},
 				},
 				{
 					Query:    `SELECT '2025-07-15 14:15:00+00'::timestamptz <= '2024-06-13 15:36:00+00'::timestamptz;`,
-					Expected: []sql.Row{{false}},
+					Expected: []sql.Row{{"f"}},
 				},
 				{
 					Query:    `SELECT '12:16:20+00'::timetz <= '13:17:21+00'::timetz;`,
-					Expected: []sql.Row{{true}},
+					Expected: []sql.Row{{"t"}},
 				},
 				{
 					Query:    `SELECT '12:16:20+00'::timetz <= '12:16:20+00'::timetz;`,
-					Expected: []sql.Row{{true}},
+					Expected: []sql.Row{{"t"}},
 				},
 				{
 					Query:    `SELECT '13:17:21+00'::timetz <= '12:16:20+00'::timetz;`,
-					Expected: []sql.Row{{false}},
+					Expected: []sql.Row{{"f"}},
 				},
 				{
 					Query:    `SELECT '64b67ba1-e368-4cfd-ae6f-0c3e77716fb5'::uuid <= '64b67ba1-e368-4cfd-ae6f-0c3e77716fb6'::uuid;`,
-					Expected: []sql.Row{{true}},
+					Expected: []sql.Row{{"t"}},
 				},
 				{
 					Query:    `SELECT '64b67ba1-e368-4cfd-ae6f-0c3e77716fb5'::uuid <= '64b67ba1-e368-4cfd-ae6f-0c3e77716fb5'::uuid;`,
-					Expected: []sql.Row{{true}},
+					Expected: []sql.Row{{"t"}},
 				},
 				{
 					Query:    `SELECT '64b67ba1-e368-4cfd-ae6f-0c3e77716fb6'::uuid <= '64b67ba1-e368-4cfd-ae6f-0c3e77716fb5'::uuid;`,
-					Expected: []sql.Row{{false}},
+					Expected: []sql.Row{{"f"}},
 				},
 				{
 					Query:    `select '27:00:24.5'::interval <= '1 day 03:00:24.5'::interval;`,
-					Expected: []sql.Row{{true}},
+					Expected: []sql.Row{{"t"}},
 				},
 				{
 					Query:    `select '25:00:24.5'::interval <= '1 day 03:00:24.5'::interval;`,
-					Expected: []sql.Row{{true}},
+					Expected: []sql.Row{{"t"}},
 				},
 				{
 					Query:    `select '2 days 27:00:24.5'::interval <= '1 day 03:00:24.5'::interval;`,
-					Expected: []sql.Row{{false}},
+					Expected: []sql.Row{{"f"}},
 				},
 			},
 		},
@@ -1865,447 +1865,447 @@ func TestOperators(t *testing.T) {
 			Assertions: []ScriptTestAssertion{
 				{
 					Query:    `SELECT false >= true;`,
-					Expected: []sql.Row{{false}},
+					Expected: []sql.Row{{"f"}},
 				},
 				{
 					Query:    `SELECT true >= true;`,
-					Expected: []sql.Row{{true}},
+					Expected: []sql.Row{{"t"}},
 				},
 				{
 					Query:    `SELECT true >= false;`,
-					Expected: []sql.Row{{true}},
+					Expected: []sql.Row{{"t"}},
 				},
 				{
 					Query:    `SELECT 'abc'::bpchar >= 'def'::bpchar;`,
-					Expected: []sql.Row{{false}},
+					Expected: []sql.Row{{"f"}},
 				},
 				{
 					Query:    `SELECT 'abc'::bpchar >= 'abc'::bpchar;`,
-					Expected: []sql.Row{{true}},
+					Expected: []sql.Row{{"t"}},
 				},
 				{
 					Query:    `SELECT 'def'::bpchar >= 'abc'::bpchar;`,
-					Expected: []sql.Row{{true}},
+					Expected: []sql.Row{{"t"}},
 				},
 				{
 					Query:    `SELECT 'abc'::"char" >= 'def'::"char";`,
-					Expected: []sql.Row{{false}},
+					Expected: []sql.Row{{"f"}},
 				},
 				{
 					Query:    `SELECT 'def'::"char" >= 'abc'::"char";`,
-					Expected: []sql.Row{{true}},
+					Expected: []sql.Row{{"t"}},
 				},
 				{
 					Query:    `SELECT 'aef'::"char" >= 'abc';`,
-					Expected: []sql.Row{{true}},
+					Expected: []sql.Row{{"t"}},
 				},
 				{
 					Query:    `SELECT E'\\x01'::bytea >= E'\\x02'::bytea;`,
-					Expected: []sql.Row{{false}},
+					Expected: []sql.Row{{"f"}},
 				},
 				{
 					Query:    `SELECT E'\\x01'::bytea >= E'\\x01'::bytea;`,
-					Expected: []sql.Row{{true}},
+					Expected: []sql.Row{{"t"}},
 				},
 				{
 					Query:    `SELECT E'\\x02'::bytea >= E'\\x01'::bytea;`,
-					Expected: []sql.Row{{true}},
+					Expected: []sql.Row{{"t"}},
 				},
 				{
 					Query:    `SELECT '2019-01-03'::date >= '2020-07-15'::date;`,
-					Expected: []sql.Row{{false}},
+					Expected: []sql.Row{{"f"}},
 				},
 				{
 					Query:    `SELECT '2019-01-03'::date >= '2019-01-03'::date;`,
-					Expected: []sql.Row{{true}},
+					Expected: []sql.Row{{"t"}},
 				},
 				{
 					Query:    `SELECT '2020-02-05'::date >= '2019-08-17'::date;`,
-					Expected: []sql.Row{{true}},
+					Expected: []sql.Row{{"t"}},
 				},
 				{
 					Query:    `SELECT '2021-03-07'::date >= '2022-09-19 04:19:19'::timestamp;`,
-					Expected: []sql.Row{{false}},
+					Expected: []sql.Row{{"f"}},
 				},
 				{
 					Query:    `SELECT '2021-03-07'::date >= '2021-03-07 00:00:00'::timestamp;`,
-					Expected: []sql.Row{{true}},
+					Expected: []sql.Row{{"t"}},
 				},
 				{
 					Query:    `SELECT '2022-04-09'::date >= '2021-10-21 08:27:40'::timestamp;`,
-					Expected: []sql.Row{{true}},
+					Expected: []sql.Row{{"t"}},
 				},
 				{
 					Query:    `SELECT '2023-05-11'::date >= '2024-11-23 12:35:54+00'::timestamptz;`,
-					Expected: []sql.Row{{false}},
+					Expected: []sql.Row{{"f"}},
 				},
 				{
 					Query:    `SELECT '2023-05-11'::date >= '2023-05-11 00:00:00+00'::timestamptz;`,
-					Expected: []sql.Row{{true}},
+					Expected: []sql.Row{{"t"}},
 				},
 				{
 					Query:    `SELECT '2024-06-13'::date >= '2023-12-25 16:43:55+00'::timestamptz;`,
-					Expected: []sql.Row{{true}},
+					Expected: []sql.Row{{"t"}},
 				},
 				{
 					Query:    `SELECT 1.23::float4 >= 4.56::float4;`,
-					Expected: []sql.Row{{false}},
+					Expected: []sql.Row{{"f"}},
 				},
 				{
 					Query:    `SELECT 1.23::float4 >= 1.23::float4;`,
-					Expected: []sql.Row{{true}},
+					Expected: []sql.Row{{"t"}},
 				},
 				{
 					Query:    `SELECT 4.56::float4 >= 1.23::float4;`,
-					Expected: []sql.Row{{true}},
+					Expected: []sql.Row{{"t"}},
 				},
 				{
 					Query:    `SELECT 7.89::float4 >= 9.01::float8;`,
-					Expected: []sql.Row{{false}},
+					Expected: []sql.Row{{"f"}},
 				},
 				{
 					Query:    `SELECT 7.75::float4 >= 7.75::float8;`,
-					Expected: []sql.Row{{true}},
+					Expected: []sql.Row{{"t"}},
 				},
 				{
 					Query:    `SELECT 9.01::float4 >= 7.89::float8;`,
-					Expected: []sql.Row{{true}},
+					Expected: []sql.Row{{"t"}},
 				},
 				{
 					Query:    `SELECT 2.34::float8 >= 5.67::float4;`,
-					Expected: []sql.Row{{false}},
+					Expected: []sql.Row{{"f"}},
 				},
 				{
 					Query:    `SELECT 2.25::float8 >= 2.25::float4;`,
-					Expected: []sql.Row{{true}},
+					Expected: []sql.Row{{"t"}},
 				},
 				{
 					Query:    `SELECT 5.67::float8 >= 2.34::float4;`,
-					Expected: []sql.Row{{true}},
+					Expected: []sql.Row{{"t"}},
 				},
 				{
 					Query:    `SELECT 8.99::float8 >= 9.01::float8;`,
-					Expected: []sql.Row{{false}},
+					Expected: []sql.Row{{"f"}},
 				},
 				{
 					Query:    `SELECT 8.75::float8 >= 8.75::float8;`,
-					Expected: []sql.Row{{true}},
+					Expected: []sql.Row{{"t"}},
 				},
 				{
 					Query:    `SELECT 9.01::float8 >= 8.99::float8;`,
-					Expected: []sql.Row{{true}},
+					Expected: []sql.Row{{"t"}},
 				},
 				{
 					Query:    `SELECT 10::int2 >= 29::int2;`,
-					Expected: []sql.Row{{false}},
+					Expected: []sql.Row{{"f"}},
 				},
 				{
 					Query:    `SELECT 10::int2 >= 10::int2;`,
-					Expected: []sql.Row{{true}},
+					Expected: []sql.Row{{"t"}},
 				},
 				{
 					Query:    `SELECT 29::int2 >= 10::int2;`,
-					Expected: []sql.Row{{true}},
+					Expected: []sql.Row{{"t"}},
 				},
 				{
 					Query:    `SELECT 11::int2 >= 28::int4;`,
-					Expected: []sql.Row{{false}},
+					Expected: []sql.Row{{"f"}},
 				},
 				{
 					Query:    `SELECT 11::int2 >= 11::int4;`,
-					Expected: []sql.Row{{true}},
+					Expected: []sql.Row{{"t"}},
 				},
 				{
 					Query:    `SELECT 28::int2 >= 11::int4;`,
-					Expected: []sql.Row{{true}},
+					Expected: []sql.Row{{"t"}},
 				},
 				{
 					Query:    `SELECT 12::int2 >= 27::int8;`,
-					Expected: []sql.Row{{false}},
+					Expected: []sql.Row{{"f"}},
 				},
 				{
 					Query:    `SELECT 12::int2 >= 12::int8;`,
-					Expected: []sql.Row{{true}},
+					Expected: []sql.Row{{"t"}},
 				},
 				{
 					Query:    `SELECT 27::int2 >= 12::int8;`,
-					Expected: []sql.Row{{true}},
+					Expected: []sql.Row{{"t"}},
 				},
 				{
 					Query:    `SELECT 13::int4 >= 26::int2;`,
-					Expected: []sql.Row{{false}},
+					Expected: []sql.Row{{"f"}},
 				},
 				{
 					Query:    `SELECT 13::int4 >= 13::int2;`,
-					Expected: []sql.Row{{true}},
+					Expected: []sql.Row{{"t"}},
 				},
 				{
 					Query:    `SELECT 26::int4 >= 13::int2;`,
-					Expected: []sql.Row{{true}},
+					Expected: []sql.Row{{"t"}},
 				},
 				{
 					Query:    `SELECT 14::int4 >= 25::int4;`,
-					Expected: []sql.Row{{false}},
+					Expected: []sql.Row{{"f"}},
 				},
 				{
 					Query:    `SELECT 14::int4 >= 14::int4;`,
-					Expected: []sql.Row{{true}},
+					Expected: []sql.Row{{"t"}},
 				},
 				{
 					Query:    `SELECT 25::int4 >= 14::int4;`,
-					Expected: []sql.Row{{true}},
+					Expected: []sql.Row{{"t"}},
 				},
 				{
 					Query:    `SELECT 15::int4 >= 24::int8;`,
-					Expected: []sql.Row{{false}},
+					Expected: []sql.Row{{"f"}},
 				},
 				{
 					Query:    `SELECT 15::int4 >= 15::int8;`,
-					Expected: []sql.Row{{true}},
+					Expected: []sql.Row{{"t"}},
 				},
 				{
 					Query:    `SELECT 24::int4 >= 15::int8;`,
-					Expected: []sql.Row{{true}},
+					Expected: []sql.Row{{"t"}},
 				},
 				{
 					Query:    `SELECT 16::int8 >= 23::int2;`,
-					Expected: []sql.Row{{false}},
+					Expected: []sql.Row{{"f"}},
 				},
 				{
 					Query:    `SELECT 16::int8 >= 16::int2;`,
-					Expected: []sql.Row{{true}},
+					Expected: []sql.Row{{"t"}},
 				},
 				{
 					Query:    `SELECT 23::int8 >= 16::int2;`,
-					Expected: []sql.Row{{true}},
+					Expected: []sql.Row{{"t"}},
 				},
 				{
 					Query:    `SELECT 17::int8 >= 22::int4;`,
-					Expected: []sql.Row{{false}},
+					Expected: []sql.Row{{"f"}},
 				},
 				{
 					Query:    `SELECT 17::int8 >= 17::int4;`,
-					Expected: []sql.Row{{true}},
+					Expected: []sql.Row{{"t"}},
 				},
 				{
 					Query:    `SELECT 22::int8 >= 17::int4;`,
-					Expected: []sql.Row{{true}},
+					Expected: []sql.Row{{"t"}},
 				},
 				{
 					Query:    `SELECT 18::int8 >= 21::int8;`,
-					Expected: []sql.Row{{false}},
+					Expected: []sql.Row{{"f"}},
 				},
 				{
 					Query:    `SELECT 18::int8 >= 18::int8;`,
-					Expected: []sql.Row{{true}},
+					Expected: []sql.Row{{"t"}},
 				},
 				{
 					Query:    `SELECT 21::int8 >= 18::int8;`,
-					Expected: []sql.Row{{true}},
+					Expected: []sql.Row{{"t"}},
 				},
 				{
 					Query:    `SELECT '{"a":1}'::jsonb >= '{"b":2}'::jsonb;`,
-					Expected: []sql.Row{{false}},
+					Expected: []sql.Row{{"f"}},
 				},
 				{
 					Query:    `SELECT '{"a":1}'::jsonb >= '{"a":1}'::jsonb;`,
-					Expected: []sql.Row{{true}},
+					Expected: []sql.Row{{"t"}},
 				},
 				{
 					Query:    `SELECT '{"b":2}'::jsonb >= '{"a":1}'::jsonb;`,
-					Expected: []sql.Row{{true}},
+					Expected: []sql.Row{{"t"}},
 				},
 				{
 					Query:    `SELECT 'and'::name >= 'then'::name;`,
-					Expected: []sql.Row{{false}},
+					Expected: []sql.Row{{"f"}},
 				},
 				{
 					Query:    `SELECT 'and'::name >= 'and'::name;`,
-					Expected: []sql.Row{{true}},
+					Expected: []sql.Row{{"t"}},
 				},
 				{
 					Query:    `SELECT 'then'::name >= 'and'::name;`,
-					Expected: []sql.Row{{true}},
+					Expected: []sql.Row{{"t"}},
 				},
 				{
 					Query:    `SELECT 'cold'::name >= 'dance'::text;`,
-					Expected: []sql.Row{{false}},
+					Expected: []sql.Row{{"f"}},
 				},
 				{
 					Query:    `SELECT 'cold'::name >= 'cold'::text;`,
-					Expected: []sql.Row{{true}},
+					Expected: []sql.Row{{"t"}},
 				},
 				{
 					Query:    `SELECT 'dance'::name >= 'cold'::text;`,
-					Expected: []sql.Row{{true}},
+					Expected: []sql.Row{{"t"}},
 				},
 				{
 					Query:    `SELECT 10.20::numeric >= 20.10::numeric;`,
-					Expected: []sql.Row{{false}},
+					Expected: []sql.Row{{"f"}},
 				},
 				{
 					Query:    `SELECT 10.20::numeric >= 10.20::numeric;`,
-					Expected: []sql.Row{{true}},
+					Expected: []sql.Row{{"t"}},
 				},
 				{
 					Query:    `SELECT 20.10::numeric >= 10.20::numeric;`,
-					Expected: []sql.Row{{true}},
+					Expected: []sql.Row{{"t"}},
 				},
 				{
 					Query:    `SELECT 101::oid >= 202::oid;`,
-					Expected: []sql.Row{{false}},
+					Expected: []sql.Row{{"f"}},
 				},
 				{
 					Query:    `SELECT 101::oid >= 101::oid;`,
-					Expected: []sql.Row{{true}},
+					Expected: []sql.Row{{"t"}},
 				},
 				{
 					Query:    `SELECT 202::oid >= 101::oid;`,
-					Expected: []sql.Row{{true}},
+					Expected: []sql.Row{{"t"}},
 				},
 				{
 					Query:    `SELECT 'dog'::text >= 'good'::name;`,
-					Expected: []sql.Row{{false}},
+					Expected: []sql.Row{{"f"}},
 				},
 				{
 					Query:    `SELECT 'dog'::text >= 'dog'::name;`,
-					Expected: []sql.Row{{true}},
+					Expected: []sql.Row{{"t"}},
 				},
 				{
 					Query:    `SELECT 'good'::text >= 'dog'::name;`,
-					Expected: []sql.Row{{true}},
+					Expected: []sql.Row{{"t"}},
 				},
 				{
 					Query:    `SELECT 'hello'::text >= 'world'::text;`,
-					Expected: []sql.Row{{false}},
+					Expected: []sql.Row{{"f"}},
 				},
 				{
 					Query:    `SELECT 'hello'::text >= 'hello'::text;`,
-					Expected: []sql.Row{{true}},
+					Expected: []sql.Row{{"t"}},
 				},
 				{
 					Query:    `SELECT 'world'::text >= 'hello'::text;`,
-					Expected: []sql.Row{{true}},
+					Expected: []sql.Row{{"t"}},
 				},
 				{
 					Query:    `SELECT '12:12:12'::time >= '14:15:16'::time;`,
-					Expected: []sql.Row{{false}},
+					Expected: []sql.Row{{"f"}},
 				},
 				{
 					Query:    `SELECT '12:12:12'::time >= '12:12:12'::time;`,
-					Expected: []sql.Row{{true}},
+					Expected: []sql.Row{{"t"}},
 				},
 				{
 					Query:    `SELECT '14:15:16'::time >= '12:12:12'::time;`,
-					Expected: []sql.Row{{true}},
+					Expected: []sql.Row{{"t"}},
 				},
 				{
 					Query:    `SELECT '2019-01-03 10:21:00'::timestamp >= '2020-02-05'::date;`,
-					Expected: []sql.Row{{false}},
+					Expected: []sql.Row{{"f"}},
 				},
 				{
 					Query:    `SELECT '2019-01-03 00:00:00'::timestamp >= '2019-01-03'::date;`,
-					Expected: []sql.Row{{true}},
+					Expected: []sql.Row{{"t"}},
 				},
 				{
 					Query:    `SELECT '2020-02-05 10:21:00'::timestamp >= '2019-01-03'::date;`,
-					Expected: []sql.Row{{true}},
+					Expected: []sql.Row{{"t"}},
 				},
 				{
 					Query:    `SELECT '2020-02-05 11:32:00'::timestamp >= '2021-03-07 12:43:00'::timestamp;`,
-					Expected: []sql.Row{{false}},
+					Expected: []sql.Row{{"f"}},
 				},
 				{
 					Query:    `SELECT '2020-02-05 11:32:00'::timestamp >= '2020-02-05 11:32:00'::timestamp;`,
-					Expected: []sql.Row{{true}},
+					Expected: []sql.Row{{"t"}},
 				},
 				{
 					Query:    `SELECT '2021-03-07 12:43:00'::timestamp >= '2020-02-05 11:32:00'::timestamp;`,
-					Expected: []sql.Row{{true}},
+					Expected: []sql.Row{{"t"}},
 				},
 				{
 					Query:    `SELECT '2021-03-07 12:43:00'::timestamp >= '2022-04-09 13:54:00+00'::timestamptz;`,
-					Expected: []sql.Row{{false}},
+					Expected: []sql.Row{{"f"}},
 				},
 				{
 					Query:    `SELECT '2021-03-07 12:43:00'::timestamp >= '2021-03-07 12:43:00+00'::timestamptz;`,
-					Expected: []sql.Row{{true}},
+					Expected: []sql.Row{{"t"}},
 				},
 				{
 					Query:    `SELECT '2022-04-09 13:54:00'::timestamp >= '2021-03-07 12:43:00+00'::timestamptz;`,
-					Expected: []sql.Row{{true}},
+					Expected: []sql.Row{{"t"}},
 				},
 				{
 					Query:    `SELECT '2022-04-09 13:54:00+00'::timestamptz >= '2023-05-11'::date;`,
-					Expected: []sql.Row{{false}},
+					Expected: []sql.Row{{"f"}},
 				},
 				{
 					Query:    `SELECT '2022-04-09 00:00:00+00'::timestamptz >= '2022-04-09'::date;`,
-					Expected: []sql.Row{{true}},
+					Expected: []sql.Row{{"t"}},
 				},
 				{
 					Query:    `SELECT '2023-05-11 13:54:00+00'::timestamptz >= '2022-04-09'::date;`,
-					Expected: []sql.Row{{true}},
+					Expected: []sql.Row{{"t"}},
 				},
 				{
 					Query:    `SELECT '2023-05-11 14:15:00+00'::timestamptz >= '2024-06-13 13:54:00'::timestamp;`,
-					Expected: []sql.Row{{false}},
+					Expected: []sql.Row{{"f"}},
 				},
 				{
 					Query:    `SELECT '2023-05-11 14:15:00+00'::timestamptz >= '2023-05-11 14:15:00'::timestamp;`,
-					Expected: []sql.Row{{true}},
+					Expected: []sql.Row{{"t"}},
 				},
 				{
 					Query:    `SELECT '2024-06-13 13:54:00+00'::timestamptz >= '2023-05-11 14:15:00'::timestamp;`,
-					Expected: []sql.Row{{true}},
+					Expected: []sql.Row{{"t"}},
 				},
 				{
 					Query:    `SELECT '2024-06-13 15:36:00+00'::timestamptz >= '2025-07-15 14:15:00+00'::timestamptz;`,
-					Expected: []sql.Row{{false}},
+					Expected: []sql.Row{{"f"}},
 				},
 				{
 					Query:    `SELECT '2024-06-13 15:36:00+00'::timestamptz >= '2024-06-13 15:36:00+00'::timestamptz;`,
-					Expected: []sql.Row{{true}},
+					Expected: []sql.Row{{"t"}},
 				},
 				{
 					Query:    `SELECT '2025-07-15 14:15:00+00'::timestamptz >= '2024-06-13 15:36:00+00'::timestamptz;`,
-					Expected: []sql.Row{{true}},
+					Expected: []sql.Row{{"t"}},
 				},
 				{
 					Query:    `SELECT '12:16:20+00'::timetz >= '13:17:21+00'::timetz;`,
-					Expected: []sql.Row{{false}},
+					Expected: []sql.Row{{"f"}},
 				},
 				{
 					Query:    `SELECT '12:16:20+00'::timetz >= '12:16:20+00'::timetz;`,
-					Expected: []sql.Row{{true}},
+					Expected: []sql.Row{{"t"}},
 				},
 				{
 					Query:    `SELECT '13:17:21+00'::timetz >= '12:16:20+00'::timetz;`,
-					Expected: []sql.Row{{true}},
+					Expected: []sql.Row{{"t"}},
 				},
 				{
 					Query:    `SELECT '64b67ba1-e368-4cfd-ae6f-0c3e77716fb5'::uuid >= '64b67ba1-e368-4cfd-ae6f-0c3e77716fb6'::uuid;`,
-					Expected: []sql.Row{{false}},
+					Expected: []sql.Row{{"f"}},
 				},
 				{
 					Query:    `SELECT '64b67ba1-e368-4cfd-ae6f-0c3e77716fb5'::uuid >= '64b67ba1-e368-4cfd-ae6f-0c3e77716fb5'::uuid;`,
-					Expected: []sql.Row{{true}},
+					Expected: []sql.Row{{"t"}},
 				},
 				{
 					Query:    `SELECT '64b67ba1-e368-4cfd-ae6f-0c3e77716fb6'::uuid >= '64b67ba1-e368-4cfd-ae6f-0c3e77716fb5'::uuid;`,
-					Expected: []sql.Row{{true}},
+					Expected: []sql.Row{{"t"}},
 				},
 				{
 					Query:    `select '1 month 00:00:24'::interval >= '1 day 03:00:24.5'::interval;`,
-					Expected: []sql.Row{{true}},
+					Expected: []sql.Row{{"t"}},
 				},
 				{
 					Query:    `select '2 days 00:00:24'::interval >= '48:00:24'::interval;`,
-					Expected: []sql.Row{{true}},
+					Expected: []sql.Row{{"t"}},
 				},
 				{
 					Query:    `select '27:00:24'::interval >= '1 day 03:00:24.5'::interval;`,
-					Expected: []sql.Row{{false}},
+					Expected: []sql.Row{{"f"}},
 				},
 			},
 		},
@@ -2314,303 +2314,303 @@ func TestOperators(t *testing.T) {
 			Assertions: []ScriptTestAssertion{
 				{
 					Query:    `SELECT true = true;`,
-					Expected: []sql.Row{{true}},
+					Expected: []sql.Row{{"t"}},
 				},
 				{
 					Query:    `SELECT true = false;`,
-					Expected: []sql.Row{{false}},
+					Expected: []sql.Row{{"f"}},
 				},
 				{
 					Query:    `SELECT 'abc'::bpchar = 'abc'::bpchar;`,
-					Expected: []sql.Row{{true}},
+					Expected: []sql.Row{{"t"}},
 				},
 				{
 					Query:    `SELECT 'def'::bpchar = 'abc'::bpchar;`,
-					Expected: []sql.Row{{false}},
+					Expected: []sql.Row{{"f"}},
 				},
 				{
 					Query:    `SELECT 'abc'::"char" = 'abc'::"char";`,
-					Expected: []sql.Row{{true}},
+					Expected: []sql.Row{{"t"}},
 				},
 				{
 					Query:    `SELECT 'def'::"char" = 'abc'::"char";`,
-					Expected: []sql.Row{{false}},
+					Expected: []sql.Row{{"f"}},
 				},
 				{
 					Query:    `SELECT 'abc'::"char" = 'aef';`,
-					Expected: []sql.Row{{true}},
+					Expected: []sql.Row{{"t"}},
 				},
 				{
 					Query:    `SELECT E'\\x01'::bytea = E'\\x01'::bytea;`,
-					Expected: []sql.Row{{true}},
+					Expected: []sql.Row{{"t"}},
 				},
 				{
 					Query:    `SELECT E'\\x02'::bytea = E'\\x01'::bytea;`,
-					Expected: []sql.Row{{false}},
+					Expected: []sql.Row{{"f"}},
 				},
 				{
 					Query:    `SELECT '2019-01-03'::date = '2019-01-03'::date;`,
-					Expected: []sql.Row{{true}},
+					Expected: []sql.Row{{"t"}},
 				},
 				{
 					Query:    `SELECT '2020-02-05'::date = '2019-08-17'::date;`,
-					Expected: []sql.Row{{false}},
+					Expected: []sql.Row{{"f"}},
 				},
 				{
 					Query:    `SELECT '2021-03-07'::date = '2021-03-07 00:00:00'::timestamp;`,
-					Expected: []sql.Row{{true}},
+					Expected: []sql.Row{{"t"}},
 				},
 				{
 					Query:    `SELECT '2022-04-09'::date = '2021-10-21 08:27:40'::timestamp;`,
-					Expected: []sql.Row{{false}},
+					Expected: []sql.Row{{"f"}},
 				},
 				{
 					Query:    `SELECT '2023-05-11'::date = '2023-05-11 00:00:00+00'::timestamptz;`,
-					Expected: []sql.Row{{true}},
+					Expected: []sql.Row{{"t"}},
 				},
 				{
 					Query:    `SELECT '2024-06-13'::date = '2023-12-25 16:43:55+00'::timestamptz;`,
-					Expected: []sql.Row{{false}},
+					Expected: []sql.Row{{"f"}},
 				},
 				{
 					Query:    `SELECT 1.23::float4 = 1.23::float4;`,
-					Expected: []sql.Row{{true}},
+					Expected: []sql.Row{{"t"}},
 				},
 				{
 					Query:    `SELECT 4.56::float4 = 1.23::float4;`,
-					Expected: []sql.Row{{false}},
+					Expected: []sql.Row{{"f"}},
 				},
 				{
 					Query:    `SELECT 7.75::float4 = 7.75::float8;`,
-					Expected: []sql.Row{{true}},
+					Expected: []sql.Row{{"t"}},
 				},
 				{
 					Query:    `SELECT 9.01::float4 = 7.89::float8;`,
-					Expected: []sql.Row{{false}},
+					Expected: []sql.Row{{"f"}},
 				},
 				{
 					Query:    `SELECT 2.25::float8 = 2.25::float4;`,
-					Expected: []sql.Row{{true}},
+					Expected: []sql.Row{{"t"}},
 				},
 				{
 					Query:    `SELECT 5.67::float8 = 2.34::float4;`,
-					Expected: []sql.Row{{false}},
+					Expected: []sql.Row{{"f"}},
 				},
 				{
 					Query:    `SELECT 8.75::float8 = 8.75::float8;`,
-					Expected: []sql.Row{{true}},
+					Expected: []sql.Row{{"t"}},
 				},
 				{
 					Query:    `SELECT 9.01::float8 = 8.99::float8;`,
-					Expected: []sql.Row{{false}},
+					Expected: []sql.Row{{"f"}},
 				},
 				{
 					Query:    `SELECT 10::int2 = 10::int2;`,
-					Expected: []sql.Row{{true}},
+					Expected: []sql.Row{{"t"}},
 				},
 				{
 					Query:    `SELECT 29::int2 = 10::int2;`,
-					Expected: []sql.Row{{false}},
+					Expected: []sql.Row{{"f"}},
 				},
 				{
 					Query:    `SELECT 11::int2 = 11::int4;`,
-					Expected: []sql.Row{{true}},
+					Expected: []sql.Row{{"t"}},
 				},
 				{
 					Query:    `SELECT 28::int2 = 11::int4;`,
-					Expected: []sql.Row{{false}},
+					Expected: []sql.Row{{"f"}},
 				},
 				{
 					Query:    `SELECT 12::int2 = 12::int8;`,
-					Expected: []sql.Row{{true}},
+					Expected: []sql.Row{{"t"}},
 				},
 				{
 					Query:    `SELECT 27::int2 = 12::int8;`,
-					Expected: []sql.Row{{false}},
+					Expected: []sql.Row{{"f"}},
 				},
 				{
 					Query:    `SELECT 13::int4 = 13::int2;`,
-					Expected: []sql.Row{{true}},
+					Expected: []sql.Row{{"t"}},
 				},
 				{
 					Query:    `SELECT 26::int4 = 13::int2;`,
-					Expected: []sql.Row{{false}},
+					Expected: []sql.Row{{"f"}},
 				},
 				{
 					Query:    `SELECT 14::int4 = 14::int4;`,
-					Expected: []sql.Row{{true}},
+					Expected: []sql.Row{{"t"}},
 				},
 				{
 					Query:    `SELECT 25::int4 = 14::int4;`,
-					Expected: []sql.Row{{false}},
+					Expected: []sql.Row{{"f"}},
 				},
 				{
 					Query:    `SELECT 15::int4 = 15::int8;`,
-					Expected: []sql.Row{{true}},
+					Expected: []sql.Row{{"t"}},
 				},
 				{
 					Query:    `SELECT 24::int4 = 15::int8;`,
-					Expected: []sql.Row{{false}},
+					Expected: []sql.Row{{"f"}},
 				},
 				{
 					Query:    `SELECT 16::int8 = 16::int2;`,
-					Expected: []sql.Row{{true}},
+					Expected: []sql.Row{{"t"}},
 				},
 				{
 					Query:    `SELECT 23::int8 = 16::int2;`,
-					Expected: []sql.Row{{false}},
+					Expected: []sql.Row{{"f"}},
 				},
 				{
 					Query:    `SELECT 17::int8 = 17::int4;`,
-					Expected: []sql.Row{{true}},
+					Expected: []sql.Row{{"t"}},
 				},
 				{
 					Query:    `SELECT 22::int8 = 17::int4;`,
-					Expected: []sql.Row{{false}},
+					Expected: []sql.Row{{"f"}},
 				},
 				{
 					Query:    `SELECT 18::int8 = 18::int8;`,
-					Expected: []sql.Row{{true}},
+					Expected: []sql.Row{{"t"}},
 				},
 				{
 					Query:    `SELECT 21::int8 = 18::int8;`,
-					Expected: []sql.Row{{false}},
+					Expected: []sql.Row{{"f"}},
 				},
 				{
 					Query:    `SELECT '{"a":1}'::jsonb = '{"a":1}'::jsonb;`,
-					Expected: []sql.Row{{true}},
+					Expected: []sql.Row{{"t"}},
 				},
 				{
 					Query:    `SELECT '{"b":2}'::jsonb = '{"a":1}'::jsonb;`,
-					Expected: []sql.Row{{false}},
+					Expected: []sql.Row{{"f"}},
 				},
 				{
 					Query:    `SELECT 'and'::name = 'and'::name;`,
-					Expected: []sql.Row{{true}},
+					Expected: []sql.Row{{"t"}},
 				},
 				{
 					Query:    `SELECT 'then'::name = 'and'::name;`,
-					Expected: []sql.Row{{false}},
+					Expected: []sql.Row{{"f"}},
 				},
 				{
 					Query:    `SELECT 'cold'::name = 'cold'::text;`,
-					Expected: []sql.Row{{true}},
+					Expected: []sql.Row{{"t"}},
 				},
 				{
 					Query:    `SELECT 'dance'::name = 'cold'::text;`,
-					Expected: []sql.Row{{false}},
+					Expected: []sql.Row{{"f"}},
 				},
 				{
 					Query:    `SELECT 10.20::numeric = 10.20::numeric;`,
-					Expected: []sql.Row{{true}},
+					Expected: []sql.Row{{"t"}},
 				},
 				{
 					Query:    `SELECT 20.10::numeric = 10.20::numeric;`,
-					Expected: []sql.Row{{false}},
+					Expected: []sql.Row{{"f"}},
 				},
 				{
 					Query:    `SELECT 101::oid = 101::oid;`,
-					Expected: []sql.Row{{true}},
+					Expected: []sql.Row{{"t"}},
 				},
 				{
 					Query:    `SELECT 202::oid = 101::oid;`,
-					Expected: []sql.Row{{false}},
+					Expected: []sql.Row{{"f"}},
 				},
 				{
 					Query:    `SELECT 'dog'::text = 'dog'::name;`,
-					Expected: []sql.Row{{true}},
+					Expected: []sql.Row{{"t"}},
 				},
 				{
 					Query:    `SELECT 'good'::text = 'dog'::name;`,
-					Expected: []sql.Row{{false}},
+					Expected: []sql.Row{{"f"}},
 				},
 				{
 					Query:    `SELECT 'hello'::text = 'hello'::text;`,
-					Expected: []sql.Row{{true}},
+					Expected: []sql.Row{{"t"}},
 				},
 				{
 					Query:    `SELECT 'world'::text = 'hello'::text;`,
-					Expected: []sql.Row{{false}},
+					Expected: []sql.Row{{"f"}},
 				},
 				{
 					Query:    `SELECT '12:12:12'::time = '12:12:12'::time;`,
-					Expected: []sql.Row{{true}},
+					Expected: []sql.Row{{"t"}},
 				},
 				{
 					Query:    `SELECT '14:15:16'::time = '12:12:12'::time;`,
-					Expected: []sql.Row{{false}},
+					Expected: []sql.Row{{"f"}},
 				},
 				{
 					Query:    `SELECT '2019-01-03 00:00:00'::timestamp = '2019-01-03'::date;`,
-					Expected: []sql.Row{{true}},
+					Expected: []sql.Row{{"t"}},
 				},
 				{
 					Query:    `SELECT '2020-02-05 10:21:00'::timestamp = '2019-01-03'::date;`,
-					Expected: []sql.Row{{false}},
+					Expected: []sql.Row{{"f"}},
 				},
 				{
 					Query:    `SELECT '2020-02-05 11:32:00'::timestamp = '2020-02-05 11:32:00'::timestamp;`,
-					Expected: []sql.Row{{true}},
+					Expected: []sql.Row{{"t"}},
 				},
 				{
 					Query:    `SELECT '2021-03-07 12:43:00'::timestamp = '2020-02-05 11:32:00'::timestamp;`,
-					Expected: []sql.Row{{false}},
+					Expected: []sql.Row{{"f"}},
 				},
 				{
 					Query:    `SELECT '2021-03-07 12:43:00'::timestamp = '2021-03-07 12:43:00+00'::timestamptz;`,
-					Expected: []sql.Row{{true}},
+					Expected: []sql.Row{{"t"}},
 				},
 				{
 					Query:    `SELECT '2022-04-09 13:54:00'::timestamp = '2021-03-07 12:43:00+00'::timestamptz;`,
-					Expected: []sql.Row{{false}},
+					Expected: []sql.Row{{"f"}},
 				},
 				{
 					Query:    `SELECT '2022-04-09 00:00:00+00'::timestamptz = '2022-04-09'::date;`,
-					Expected: []sql.Row{{true}},
+					Expected: []sql.Row{{"t"}},
 				},
 				{
 					Query:    `SELECT '2023-05-11 13:54:00+00'::timestamptz = '2022-04-09'::date;`,
-					Expected: []sql.Row{{false}},
+					Expected: []sql.Row{{"f"}},
 				},
 				{
 					Query:    `SELECT '2023-05-11 14:15:00+00'::timestamptz = '2023-05-11 14:15:00'::timestamp;`,
-					Expected: []sql.Row{{true}},
+					Expected: []sql.Row{{"t"}},
 				},
 				{
 					Query:    `SELECT '2024-06-13 13:54:00+00'::timestamptz = '2023-05-11 14:15:00'::timestamp;`,
-					Expected: []sql.Row{{false}},
+					Expected: []sql.Row{{"f"}},
 				},
 				{
 					Query:    `SELECT '2024-06-13 15:36:00+00'::timestamptz = '2024-06-13 15:36:00+00'::timestamptz;`,
-					Expected: []sql.Row{{true}},
+					Expected: []sql.Row{{"t"}},
 				},
 				{
 					Query:    `SELECT '2025-07-15 14:15:00+00'::timestamptz = '2024-06-13 15:36:00+00'::timestamptz;`,
-					Expected: []sql.Row{{false}},
+					Expected: []sql.Row{{"f"}},
 				},
 				{
 					Query:    `SELECT '12:16:20+00'::timetz = '12:16:20+00'::timetz;`,
-					Expected: []sql.Row{{true}},
+					Expected: []sql.Row{{"t"}},
 				},
 				{
 					Query:    `SELECT '13:17:21+00'::timetz = '12:16:20+00'::timetz;`,
-					Expected: []sql.Row{{false}},
+					Expected: []sql.Row{{"f"}},
 				},
 				{
 					Query:    `SELECT '64b67ba1-e368-4cfd-ae6f-0c3e77716fb5'::uuid = '64b67ba1-e368-4cfd-ae6f-0c3e77716fb5'::uuid;`,
-					Expected: []sql.Row{{true}},
+					Expected: []sql.Row{{"t"}},
 				},
 				{
 					Query:    `SELECT '64b67ba1-e368-4cfd-ae6f-0c3e77716fb6'::uuid = '64b67ba1-e368-4cfd-ae6f-0c3e77716fb5'::uuid;`,
-					Expected: []sql.Row{{false}},
+					Expected: []sql.Row{{"f"}},
 				},
 				{
 					Query:    `select '27:00:24'::interval = '1 day 03:00:24'::interval;`,
-					Expected: []sql.Row{{true}},
+					Expected: []sql.Row{{"t"}},
 				},
 				{
 					Query:    `select '1 day'::interval = '1 day 03:00:24'::interval;`,
-					Expected: []sql.Row{{false}},
+					Expected: []sql.Row{{"f"}},
 				},
 			},
 		},
@@ -2619,299 +2619,299 @@ func TestOperators(t *testing.T) {
 			Assertions: []ScriptTestAssertion{
 				{
 					Query:    `SELECT true <> true;`,
-					Expected: []sql.Row{{false}},
+					Expected: []sql.Row{{"f"}},
 				},
 				{
 					Query:    `SELECT true <> false;`,
-					Expected: []sql.Row{{true}},
+					Expected: []sql.Row{{"t"}},
 				},
 				{
 					Query:    `SELECT 'abc'::bpchar <> 'abc'::bpchar;`,
-					Expected: []sql.Row{{false}},
+					Expected: []sql.Row{{"f"}},
 				},
 				{
 					Query:    `SELECT 'def'::bpchar <> 'abc'::bpchar;`,
-					Expected: []sql.Row{{true}},
+					Expected: []sql.Row{{"t"}},
 				},
 				{
 					Query:    `SELECT 'abc'::"char" <> 'abc'::"char";`,
-					Expected: []sql.Row{{false}},
+					Expected: []sql.Row{{"f"}},
 				},
 				{
 					Query:    `SELECT 'def'::"char" <> 'abc'::"char";`,
-					Expected: []sql.Row{{true}},
+					Expected: []sql.Row{{"t"}},
 				},
 				{
 					Query:    `SELECT E'\\x01'::bytea <> E'\\x01'::bytea;`,
-					Expected: []sql.Row{{false}},
+					Expected: []sql.Row{{"f"}},
 				},
 				{
 					Query:    `SELECT E'\\x02'::bytea <> E'\\x01'::bytea;`,
-					Expected: []sql.Row{{true}},
+					Expected: []sql.Row{{"t"}},
 				},
 				{
 					Query:    `SELECT '2019-01-03'::date <> '2019-01-03'::date;`,
-					Expected: []sql.Row{{false}},
+					Expected: []sql.Row{{"f"}},
 				},
 				{
 					Query:    `SELECT '2020-02-05'::date <> '2019-08-17'::date;`,
-					Expected: []sql.Row{{true}},
+					Expected: []sql.Row{{"t"}},
 				},
 				{
 					Query:    `SELECT '2021-03-07'::date <> '2021-03-07 00:00:00'::timestamp;`,
-					Expected: []sql.Row{{false}},
+					Expected: []sql.Row{{"f"}},
 				},
 				{
 					Query:    `SELECT '2022-04-09'::date <> '2021-10-21 08:27:40'::timestamp;`,
-					Expected: []sql.Row{{true}},
+					Expected: []sql.Row{{"t"}},
 				},
 				{
 					Query:    `SELECT '2023-05-11'::date <> '2023-05-11 00:00:00+00'::timestamptz;`,
-					Expected: []sql.Row{{false}},
+					Expected: []sql.Row{{"f"}},
 				},
 				{
 					Query:    `SELECT '2024-06-13'::date <> '2023-12-25 16:43:55+00'::timestamptz;`,
-					Expected: []sql.Row{{true}},
+					Expected: []sql.Row{{"t"}},
 				},
 				{
 					Query:    `SELECT 1.23::float4 <> 1.23::float4;`,
-					Expected: []sql.Row{{false}},
+					Expected: []sql.Row{{"f"}},
 				},
 				{
 					Query:    `SELECT 4.56::float4 <> 1.23::float4;`,
-					Expected: []sql.Row{{true}},
+					Expected: []sql.Row{{"t"}},
 				},
 				{
 					Query:    `SELECT 7.75::float4 <> 7.75::float8;`,
-					Expected: []sql.Row{{false}},
+					Expected: []sql.Row{{"f"}},
 				},
 				{
 					Query:    `SELECT 9.01::float4 <> 7.89::float8;`,
-					Expected: []sql.Row{{true}},
+					Expected: []sql.Row{{"t"}},
 				},
 				{
 					Query:    `SELECT 2.25::float8 <> 2.25::float4;`,
-					Expected: []sql.Row{{false}},
+					Expected: []sql.Row{{"f"}},
 				},
 				{
 					Query:    `SELECT 5.67::float8 <> 2.34::float4;`,
-					Expected: []sql.Row{{true}},
+					Expected: []sql.Row{{"t"}},
 				},
 				{
 					Query:    `SELECT 8.75::float8 <> 8.75::float8;`,
-					Expected: []sql.Row{{false}},
+					Expected: []sql.Row{{"f"}},
 				},
 				{
 					Query:    `SELECT 9.01::float8 <> 8.99::float8;`,
-					Expected: []sql.Row{{true}},
+					Expected: []sql.Row{{"t"}},
 				},
 				{
 					Query:    `SELECT 10::int2 <> 10::int2;`,
-					Expected: []sql.Row{{false}},
+					Expected: []sql.Row{{"f"}},
 				},
 				{
 					Query:    `SELECT 29::int2 <> 10::int2;`,
-					Expected: []sql.Row{{true}},
+					Expected: []sql.Row{{"t"}},
 				},
 				{
 					Query:    `SELECT 11::int2 <> 11::int4;`,
-					Expected: []sql.Row{{false}},
+					Expected: []sql.Row{{"f"}},
 				},
 				{
 					Query:    `SELECT 28::int2 <> 11::int4;`,
-					Expected: []sql.Row{{true}},
+					Expected: []sql.Row{{"t"}},
 				},
 				{
 					Query:    `SELECT 12::int2 <> 12::int8;`,
-					Expected: []sql.Row{{false}},
+					Expected: []sql.Row{{"f"}},
 				},
 				{
 					Query:    `SELECT 27::int2 <> 12::int8;`,
-					Expected: []sql.Row{{true}},
+					Expected: []sql.Row{{"t"}},
 				},
 				{
 					Query:    `SELECT 13::int4 <> 13::int2;`,
-					Expected: []sql.Row{{false}},
+					Expected: []sql.Row{{"f"}},
 				},
 				{
 					Query:    `SELECT 26::int4 <> 13::int2;`,
-					Expected: []sql.Row{{true}},
+					Expected: []sql.Row{{"t"}},
 				},
 				{
 					Query:    `SELECT 14::int4 <> 14::int4;`,
-					Expected: []sql.Row{{false}},
+					Expected: []sql.Row{{"f"}},
 				},
 				{
 					Query:    `SELECT 25::int4 <> 14::int4;`,
-					Expected: []sql.Row{{true}},
+					Expected: []sql.Row{{"t"}},
 				},
 				{
 					Query:    `SELECT 15::int4 <> 15::int8;`,
-					Expected: []sql.Row{{false}},
+					Expected: []sql.Row{{"f"}},
 				},
 				{
 					Query:    `SELECT 24::int4 <> 15::int8;`,
-					Expected: []sql.Row{{true}},
+					Expected: []sql.Row{{"t"}},
 				},
 				{
 					Query:    `SELECT 16::int8 <> 16::int2;`,
-					Expected: []sql.Row{{false}},
+					Expected: []sql.Row{{"f"}},
 				},
 				{
 					Query:    `SELECT 23::int8 <> 16::int2;`,
-					Expected: []sql.Row{{true}},
+					Expected: []sql.Row{{"t"}},
 				},
 				{
 					Query:    `SELECT 17::int8 <> 17::int4;`,
-					Expected: []sql.Row{{false}},
+					Expected: []sql.Row{{"f"}},
 				},
 				{
 					Query:    `SELECT 22::int8 <> 17::int4;`,
-					Expected: []sql.Row{{true}},
+					Expected: []sql.Row{{"t"}},
 				},
 				{
 					Query:    `SELECT 18::int8 <> 18::int8;`,
-					Expected: []sql.Row{{false}},
+					Expected: []sql.Row{{"f"}},
 				},
 				{
 					Query:    `SELECT 21::int8 <> 18::int8;`,
-					Expected: []sql.Row{{true}},
+					Expected: []sql.Row{{"t"}},
 				},
 				{
 					Query:    `SELECT '{"a":1}'::jsonb <> '{"a":1}'::jsonb;`,
-					Expected: []sql.Row{{false}},
+					Expected: []sql.Row{{"f"}},
 				},
 				{
 					Query:    `SELECT '{"b":2}'::jsonb <> '{"a":1}'::jsonb;`,
-					Expected: []sql.Row{{true}},
+					Expected: []sql.Row{{"t"}},
 				},
 				{
 					Query:    `SELECT 'and'::name <> 'and'::name;`,
-					Expected: []sql.Row{{false}},
+					Expected: []sql.Row{{"f"}},
 				},
 				{
 					Query:    `SELECT 'then'::name <> 'and'::name;`,
-					Expected: []sql.Row{{true}},
+					Expected: []sql.Row{{"t"}},
 				},
 				{
 					Query:    `SELECT 'cold'::name <> 'cold'::text;`,
-					Expected: []sql.Row{{false}},
+					Expected: []sql.Row{{"f"}},
 				},
 				{
 					Query:    `SELECT 'dance'::name <> 'cold'::text;`,
-					Expected: []sql.Row{{true}},
+					Expected: []sql.Row{{"t"}},
 				},
 				{
 					Query:    `SELECT 10.20::numeric <> 10.20::numeric;`,
-					Expected: []sql.Row{{false}},
+					Expected: []sql.Row{{"f"}},
 				},
 				{
 					Query:    `SELECT 20.10::numeric <> 10.20::numeric;`,
-					Expected: []sql.Row{{true}},
+					Expected: []sql.Row{{"t"}},
 				},
 				{
 					Query:    `SELECT 101::oid <> 101::oid;`,
-					Expected: []sql.Row{{false}},
+					Expected: []sql.Row{{"f"}},
 				},
 				{
 					Query:    `SELECT 202::oid <> 101::oid;`,
-					Expected: []sql.Row{{true}},
+					Expected: []sql.Row{{"t"}},
 				},
 				{
 					Query:    `SELECT 'dog'::text <> 'dog'::name;`,
-					Expected: []sql.Row{{false}},
+					Expected: []sql.Row{{"f"}},
 				},
 				{
 					Query:    `SELECT 'good'::text <> 'dog'::name;`,
-					Expected: []sql.Row{{true}},
+					Expected: []sql.Row{{"t"}},
 				},
 				{
 					Query:    `SELECT 'hello'::text <> 'hello'::text;`,
-					Expected: []sql.Row{{false}},
+					Expected: []sql.Row{{"f"}},
 				},
 				{
 					Query:    `SELECT 'world'::text <> 'hello'::text;`,
-					Expected: []sql.Row{{true}},
+					Expected: []sql.Row{{"t"}},
 				},
 				{
 					Query:    `SELECT '12:12:12'::time <> '12:12:12'::time;`,
-					Expected: []sql.Row{{false}},
+					Expected: []sql.Row{{"f"}},
 				},
 				{
 					Query:    `SELECT '14:15:16'::time <> '12:12:12'::time;`,
-					Expected: []sql.Row{{true}},
+					Expected: []sql.Row{{"t"}},
 				},
 				{
 					Query:    `SELECT '2019-01-03 00:00:00'::timestamp <> '2019-01-03'::date;`,
-					Expected: []sql.Row{{false}},
+					Expected: []sql.Row{{"f"}},
 				},
 				{
 					Query:    `SELECT '2020-02-05 10:21:00'::timestamp <> '2019-01-03'::date;`,
-					Expected: []sql.Row{{true}},
+					Expected: []sql.Row{{"t"}},
 				},
 				{
 					Query:    `SELECT '2020-02-05 11:32:00'::timestamp <> '2020-02-05 11:32:00'::timestamp;`,
-					Expected: []sql.Row{{false}},
+					Expected: []sql.Row{{"f"}},
 				},
 				{
 					Query:    `SELECT '2021-03-07 12:43:00'::timestamp <> '2020-02-05 11:32:00'::timestamp;`,
-					Expected: []sql.Row{{true}},
+					Expected: []sql.Row{{"t"}},
 				},
 				{
 					Query:    `SELECT '2021-03-07 12:43:00'::timestamp <> '2021-03-07 12:43:00+00'::timestamptz;`,
-					Expected: []sql.Row{{false}},
+					Expected: []sql.Row{{"f"}},
 				},
 				{
 					Query:    `SELECT '2022-04-09 13:54:00'::timestamp <> '2021-03-07 12:43:00+00'::timestamptz;`,
-					Expected: []sql.Row{{true}},
+					Expected: []sql.Row{{"t"}},
 				},
 				{
 					Query:    `SELECT '2022-04-09 00:00:00+00'::timestamptz <> '2022-04-09'::date;`,
-					Expected: []sql.Row{{false}},
+					Expected: []sql.Row{{"f"}},
 				},
 				{
 					Query:    `SELECT '2023-05-11 13:54:00+00'::timestamptz <> '2022-04-09'::date;`,
-					Expected: []sql.Row{{true}},
+					Expected: []sql.Row{{"t"}},
 				},
 				{
 					Query:    `SELECT '2023-05-11 14:15:00+00'::timestamptz <> '2023-05-11 14:15:00'::timestamp;`,
-					Expected: []sql.Row{{false}},
+					Expected: []sql.Row{{"f"}},
 				},
 				{
 					Query:    `SELECT '2024-06-13 13:54:00+00'::timestamptz <> '2023-05-11 14:15:00'::timestamp;`,
-					Expected: []sql.Row{{true}},
+					Expected: []sql.Row{{"t"}},
 				},
 				{
 					Query:    `SELECT '2024-06-13 15:36:00+00'::timestamptz <> '2024-06-13 15:36:00+00'::timestamptz;`,
-					Expected: []sql.Row{{false}},
+					Expected: []sql.Row{{"f"}},
 				},
 				{
 					Query:    `SELECT '2025-07-15 14:15:00+00'::timestamptz <> '2024-06-13 15:36:00+00'::timestamptz;`,
-					Expected: []sql.Row{{true}},
+					Expected: []sql.Row{{"t"}},
 				},
 				{
 					Query:    `SELECT '12:16:20+00'::timetz <> '12:16:20+00'::timetz;`,
-					Expected: []sql.Row{{false}},
+					Expected: []sql.Row{{"f"}},
 				},
 				{
 					Query:    `SELECT '13:17:21+00'::timetz <> '12:16:20+00'::timetz;`,
-					Expected: []sql.Row{{true}},
+					Expected: []sql.Row{{"t"}},
 				},
 				{
 					Query:    `SELECT '64b67ba1-e368-4cfd-ae6f-0c3e77716fb5'::uuid <> '64b67ba1-e368-4cfd-ae6f-0c3e77716fb5'::uuid;`,
-					Expected: []sql.Row{{false}},
+					Expected: []sql.Row{{"f"}},
 				},
 				{
 					Query:    `SELECT '64b67ba1-e368-4cfd-ae6f-0c3e77716fb6'::uuid <> '64b67ba1-e368-4cfd-ae6f-0c3e77716fb5'::uuid;`,
-					Expected: []sql.Row{{true}},
+					Expected: []sql.Row{{"t"}},
 				},
 				{
 					Query:    `select '3 hours 24 seconds'::interval <> '1 day 03:00:24'::interval;`,
-					Expected: []sql.Row{{true}},
+					Expected: []sql.Row{{"t"}},
 				},
 				{
 					Query:    `select '27:00:24'::interval <> '1 day 03:00:24'::interval;`,
-					Expected: []sql.Row{{false}},
+					Expected: []sql.Row{{"f"}},
 				},
 			},
 		},
@@ -2920,75 +2920,75 @@ func TestOperators(t *testing.T) {
 			Assertions: []ScriptTestAssertion{
 				{
 					Query:    `SELECT 10::int2 != 10::int2;`,
-					Expected: []sql.Row{{false}},
+					Expected: []sql.Row{{"f"}},
 				},
 				{
 					Query:    `SELECT 29::int2 != 10::int2;`,
-					Expected: []sql.Row{{true}},
+					Expected: []sql.Row{{"t"}},
 				},
 				{
 					Query:    `SELECT 11::int2 != 11::int4;`,
-					Expected: []sql.Row{{false}},
+					Expected: []sql.Row{{"f"}},
 				},
 				{
 					Query:    `SELECT 28::int2 != 11::int4;`,
-					Expected: []sql.Row{{true}},
+					Expected: []sql.Row{{"t"}},
 				},
 				{
 					Query:    `SELECT 12::int2 != 12::int8;`,
-					Expected: []sql.Row{{false}},
+					Expected: []sql.Row{{"f"}},
 				},
 				{
 					Query:    `SELECT 27::int2 != 12::int8;`,
-					Expected: []sql.Row{{true}},
+					Expected: []sql.Row{{"t"}},
 				},
 				{
 					Query:    `SELECT 13::int4 != 13::int2;`,
-					Expected: []sql.Row{{false}},
+					Expected: []sql.Row{{"f"}},
 				},
 				{
 					Query:    `SELECT 26::int4 != 13::int2;`,
-					Expected: []sql.Row{{true}},
+					Expected: []sql.Row{{"t"}},
 				},
 				{
 					Query:    `SELECT 14::int4 != 14::int4;`,
-					Expected: []sql.Row{{false}},
+					Expected: []sql.Row{{"f"}},
 				},
 				{
 					Query:    `SELECT 25::int4 != 14::int4;`,
-					Expected: []sql.Row{{true}},
+					Expected: []sql.Row{{"t"}},
 				},
 				{
 					Query:    `SELECT 15::int4 != 15::int8;`,
-					Expected: []sql.Row{{false}},
+					Expected: []sql.Row{{"f"}},
 				},
 				{
 					Query:    `SELECT 24::int4 != 15::int8;`,
-					Expected: []sql.Row{{true}},
+					Expected: []sql.Row{{"t"}},
 				},
 				{
 					Query:    `SELECT 16::int8 != 16::int2;`,
-					Expected: []sql.Row{{false}},
+					Expected: []sql.Row{{"f"}},
 				},
 				{
 					Query:    `SELECT 23::int8 != 16::int2;`,
-					Expected: []sql.Row{{true}},
+					Expected: []sql.Row{{"t"}},
 				},
 				{
 					Query:    `SELECT 17::int8 != 17::int4;`,
-					Expected: []sql.Row{{false}},
+					Expected: []sql.Row{{"f"}},
 				},
 				{
 					Query:    `SELECT 22::int8 != 17::int4;`,
-					Expected: []sql.Row{{true}},
+					Expected: []sql.Row{{"t"}},
 				},
 				{
 					Query:    `SELECT 18::int8 != 18::int8;`,
-					Expected: []sql.Row{{false}},
+					Expected: []sql.Row{{"f"}},
 				},
 				{
 					Query:    `SELECT 21::int8 != 18::int8;`,
-					Expected: []sql.Row{{true}},
+					Expected: []sql.Row{{"t"}},
 				},
 			},
 		},
@@ -3271,44 +3271,44 @@ func TestOperators(t *testing.T) {
 				{
 					Query:    `SELECT '{"a":1, "b":2}'::jsonb @> '{"b":2}'::jsonb;`,
 					Skip:     true,
-					Expected: []sql.Row{{true}},
+					Expected: []sql.Row{{"t"}},
 				},
 				{
 					Query:    `SELECT '{"b":2}'::jsonb <@ '{"a":1, "b":2}'::jsonb;`,
 					Skip:     true,
-					Expected: []sql.Row{{true}},
+					Expected: []sql.Row{{"t"}},
 				},
 				{
 					Query:    `SELECT '{"a":1, "b":2}'::jsonb ? 'b';`,
-					Expected: []sql.Row{{true}},
+					Expected: []sql.Row{{"t"}},
 				},
 				{
 					Query:    `SELECT '["a", "b", "c"]'::jsonb ? 'b';`,
-					Expected: []sql.Row{{true}},
+					Expected: []sql.Row{{"t"}},
 				},
 				{
 					Query:    `SELECT '{"a":1, "b":2, "c":3}'::jsonb ?| ARRAY['b','d']::text[];`,
-					Expected: []sql.Row{{true}},
+					Expected: []sql.Row{{"t"}},
 				},
 				{
 					Query:    `SELECT '{"a":1, "b":2, "c":3}'::jsonb ?| ARRAY['b','d'];`,
-					Expected: []sql.Row{{true}},
+					Expected: []sql.Row{{"t"}},
 				},
 				{
 					Query:    `SELECT '["a", "b", "c"]'::jsonb ?& ARRAY['a','b']::text[];`,
-					Expected: []sql.Row{{true}},
+					Expected: []sql.Row{{"t"}},
 				},
 				{
 					Query:    `SELECT '["a", "b", "c"]'::jsonb ?& ARRAY['a','b'];`,
-					Expected: []sql.Row{{true}},
+					Expected: []sql.Row{{"t"}},
 				},
 				{
 					Query:    `SELECT '["a", "b", "c"]'::jsonb ?& ARRAY['d','b']::text[];`,
-					Expected: []sql.Row{{false}},
+					Expected: []sql.Row{{"f"}},
 				},
 				{
 					Query:    `SELECT '["a", "b", "c"]'::jsonb ?& ARRAY['d','b'];`,
-					Expected: []sql.Row{{false}},
+					Expected: []sql.Row{{"f"}},
 				},
 				{
 					Query:    `SELECT '["a", "b"]'::jsonb || '["a", "d"]'::jsonb;`,

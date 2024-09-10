@@ -196,13 +196,13 @@ func TestSmokeTests(t *testing.T) {
 				{
 					Query: "SELECT 1 IN (2);",
 					Expected: []sql.Row{
-						{false},
+						{"f"},
 					},
 				},
 				{
 					Query: "SELECT 2 IN (2);",
 					Expected: []sql.Row{
-						{true},
+						{"t"},
 					},
 				},
 			},

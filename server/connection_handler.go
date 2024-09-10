@@ -433,9 +433,14 @@ func (h *ConnectionHandler) handleParse(message messages.Parse) error {
 		return nil
 	}
 
-	analyzedPlan, fields, err := h.getPlanAndFields(query)
+	parsedQuery, fields, err := h.doltgresHandler.ComPrepareParsed(context.Background(), h.mysqlConn, query.String, query.AST)
 	if err != nil {
 		return err
+	}
+
+	analyzedPlan, ok := parsedQuery.(sql.Node)
+	if !ok {
+		return fmt.Errorf("expected a sql.Node, got %T", parsedQuery)
 	}
 
 	// A valid Parse message must have ParameterObjectIDs if there are any binding variables.
@@ -518,15 +523,19 @@ func (h *ConnectionHandler) handleBind(message messages.Bind) error {
 		return connection.Send(h.Conn(), messages.BindComplete{})
 	}
 
-	// TODO: need to do binding in Doltgres
 	bindVars, err := h.convertBindParameters(preparedData.BindVarTypes, message.ParameterFormatCodes, message.ParameterValues)
 	if err != nil {
 		return err
 	}
 
-	boundPlan, fields, err := h.bindParams(preparedData.Query.String, preparedData.Query.AST, bindVars)
+	analyzedPlan, fields, err := h.doltgresHandler.ComBind(context.Background(), h.mysqlConn, preparedData.Query.String, preparedData.Query.AST, bindVars)
 	if err != nil {
 		return err
+	}
+
+	boundPlan, ok := analyzedPlan.(sql.Node)
+	if !ok {
+		return fmt.Errorf("expected a sql.Node, got %T", analyzedPlan)
 	}
 
 	h.portals[message.DestinationPortal] = PortalData{
@@ -755,8 +764,8 @@ func (h *ConnectionHandler) query(query ConvertedQuery) error {
 
 // spoolRowsCallback returns a callback function that will send RowDescription message, then a DataRow message for
 // each row in the result set.
-func spoolRowsCallback(conn net.Conn, commandComplete *messages.CommandComplete, isExecute bool) func(res *Result, more bool) error {
-	return func(res *Result, more bool) error {
+func spoolRowsCallback(conn net.Conn, commandComplete *messages.CommandComplete, isExecute bool) func(res *Result) error {
+	return func(res *Result) error {
 		if messages.ReturnsRow(commandComplete.Tag) {
 			// EXECUTE does not send RowDescription; instead it should be sent from DESCRIBE prior to it
 			if !isExecute {
@@ -960,49 +969,6 @@ func (h *ConnectionHandler) convertQuery(query string) (ConvertedQuery, error) {
 		AST:          vitessAST,
 		StatementTag: stmtTag,
 	}, nil
-}
-
-// getPlanAndFields builds a plan and return fields for the given query
-func (h *ConnectionHandler) getPlanAndFields(query ConvertedQuery) (sql.Node, []pgproto3.FieldDescription, error) {
-	if query.AST == nil {
-		return nil, nil, fmt.Errorf("cannot prepare a query that has not been parsed")
-	}
-
-	parsedQuery, fields, err := h.doltgresHandler.ComPrepareParsed(context.Background(), h.mysqlConn, query.String, query.AST)
-	if err != nil {
-		return nil, nil, err
-	}
-
-	analyzedPlan, ok := parsedQuery.(sql.Node)
-	if !ok {
-		return nil, nil, fmt.Errorf("expected a sql.Node, got %T", parsedQuery)
-	}
-
-	return analyzedPlan, fields, nil
-}
-
-// bindParams binds the paramters given to the query plan given and returns the resulting plan and fields.
-func (h *ConnectionHandler) bindParams(
-	query string,
-	parsedQuery sqlparser.Statement,
-	bindVars map[string]sqlparser.Expr,
-) (sql.Node, []pgproto3.FieldDescription, error) {
-	bound, fields, err := h.doltgresHandler.ComBind(context.Background(), h.mysqlConn, query, parsedQuery, &PrepareData{
-		PrepareStmt: query,
-		ParamsCount: uint16(len(bindVars)),
-		BindVars:    bindVars,
-	})
-
-	if err != nil {
-		return nil, nil, err
-	}
-
-	plan, ok := bound.(sql.Node)
-	if !ok {
-		return nil, nil, fmt.Errorf("expected a sql.Node, got %T", bound)
-	}
-
-	return plan, fields, err
 }
 
 // discardAll handles the DISCARD ALL command

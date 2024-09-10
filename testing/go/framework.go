@@ -20,6 +20,7 @@ import (
 	"errors"
 	"fmt"
 	"github.com/dolthub/doltgresql/postgres/parser/duration"
+	"github.com/dolthub/doltgresql/postgres/parser/uuid"
 	"github.com/dolthub/doltgresql/server/functions"
 	"github.com/dolthub/doltgresql/server/types"
 	"github.com/jackc/pgx/v5/pgconn"
@@ -283,7 +284,7 @@ func ReadRows(rows pgx.Rows, normalizeRows bool) (readRows []sql.Row, err error)
 		return NormalizeRows(rows.FieldDescriptions(), slice), nil
 	} else {
 		// We must always normalize Numeric values, as they have an infinite number of ways to represent the same value
-		return NormalizeRowsOnlyNumeric(slice), nil
+		return NormalizeNumericAndTime(rows.FieldDescriptions(), slice), nil
 	}
 }
 
@@ -298,7 +299,7 @@ func NormalizeRow(fds []pgconn.FieldDescription, row sql.Row) sql.Row {
 		if !ok {
 			panic(fmt.Sprintf("unhandled oid type: %v", fds[i].DataTypeOID))
 		}
-		v := NormalizePgtypeValue(dt, row[i])
+		v := NormalizeValToString(dt, row[i], false)
 		switch val := v.(type) {
 		case int:
 			newRow[i] = int64(val)
@@ -321,28 +322,6 @@ func NormalizeRow(fds []pgconn.FieldDescription, row sql.Row) sql.Row {
 			newRow[i] = int64(val)
 		case float32:
 			newRow[i] = float64(val)
-		case time.Time, duration.Duration, []byte:
-			tVal, err := dt.IoOutput(nil, val)
-			if err != nil {
-				panic(err)
-			}
-			newRow[i] = tVal
-		//case []any:
-		//	if _, ok = dt.(types.DoltgresArrayType); ok {
-		//		tVal, err := dt.IoOutput(nil, val)
-		//		if err != nil {
-		//			panic(err)
-		//		}
-		//		newRow[i] = tVal
-		//	} else {
-		//		newRow[i] = val
-		//	}
-		case map[string]interface{}:
-			str, err := json.Marshal(val)
-			if err != nil {
-				panic(err)
-			}
-			newRow[i] = string(str)
 		default:
 			newRow[i] = val
 		}
@@ -360,7 +339,93 @@ func NormalizeRows(fds []pgconn.FieldDescription, rows []sql.Row) []sql.Row {
 	return newRows
 }
 
-func NormalizePgtypeValue(dt types.DoltgresType, v any) any {
+func NormalizeValToString(dt types.DoltgresType, v any, normalizeNumeric bool) any {
+	switch val := v.(type) {
+	case bool:
+		if val {
+			return "t"
+		} else {
+			return "f"
+		}
+	case pgtype.Numeric:
+		if normalizeNumeric {
+			num, err := val.Value()
+			if err != nil {
+				panic(err) // Should never happen
+			}
+			// Using decimal as an intermediate value will remove all differences between the string formatting
+			d := decimal.RequireFromString(num.(string))
+			return Numeric(d.String())
+		} else {
+			if val.NaN {
+				return math.NaN()
+			} else if val.InfinityModifier != pgtype.Finite {
+				return math.Inf(int(val.InfinityModifier))
+			} else if !val.Valid {
+				return nil
+			} else {
+				fVal, err := val.Float64Value()
+				if err != nil {
+					panic(err)
+				}
+				if !fVal.Valid {
+					panic("no idea why the numeric float value is invalid")
+				}
+				return fVal.Float64
+			}
+		}
+	case pgtype.Time, pgtype.Interval, [16]byte, time.Time:
+		tVal, err := dt.IoOutput(nil, NormalizeVal(dt, val))
+		if err != nil {
+			panic(err)
+		}
+		return tVal
+	case map[string]interface{}:
+		str, err := json.Marshal(val)
+		if err != nil {
+			panic(err)
+		}
+		return string(str)
+	case []any:
+		if dt == types.Json || dt == types.JsonB {
+			str, err := json.Marshal(val)
+			if err != nil {
+				panic(err)
+			}
+			return string(str)
+		} else {
+			if dta, ok := dt.(types.DoltgresArrayType); ok {
+				return NormalizeArrayTypeToString(dta, val)
+			}
+		}
+	}
+	return v
+}
+
+func NormalizeArrayTypeToString(dta types.DoltgresArrayType, arr []any) any {
+	newVal := make([]any, len(arr))
+	for i, el := range arr {
+		newVal[i] = NormalizeVal(dta.BaseType(), el)
+	}
+	baseType := dta.BaseType()
+	if baseType == types.Json || baseType == types.JsonB {
+		return newVal
+	} else if baseType == types.Bool {
+		sqlVal, err := dta.SQL(nil, nil, newVal)
+		if err != nil {
+			panic(err)
+		}
+		return sqlVal.ToString()
+	} else {
+		ret, err := dta.IoOutput(nil, newVal)
+		if err != nil {
+			panic(err)
+		}
+		return ret
+	}
+}
+
+func NormalizeVal(dt types.DoltgresType, v any) any {
 	switch val := v.(type) {
 	case pgtype.Numeric:
 		if val.NaN {
@@ -377,48 +442,69 @@ func NormalizePgtypeValue(dt types.DoltgresType, v any) any {
 			if !fVal.Valid {
 				panic("no idea why the numeric float value is invalid")
 			}
-			return fVal.Float64
+			return decimal.NewFromFloat(fVal.Float64)
 		}
 	case pgtype.Time:
 		dur := time.Duration(val.Microseconds) * time.Microsecond
 		return time.Time{}.Add(dur)
 	case pgtype.Interval:
 		return duration.MakeDuration(val.Microseconds*functions.NanosPerMicro, int64(val.Days), int64(val.Months))
-	case []any:
-		newVal := make([]any, len(val))
-		for i, el := range val {
-			newVal[i] = NormalizePgtypeValue(dt, el)
+	case [16]byte:
+		u, err := uuid.FromBytes(val[:])
+		if err != nil {
+			panic(err)
 		}
-		return newVal
+		return u
+	case map[string]interface{}: // TODO
+		str, err := json.Marshal(val)
+		if err != nil {
+			panic(err)
+		}
+		return string(str)
+	case []any:
+		if dt == types.Json || dt == types.JsonB {
+			str, err := json.Marshal(val)
+			if err != nil {
+				panic(err)
+			}
+			return string(str)
+		} else {
+			baseType := dt
+			if dta, ok := baseType.(types.DoltgresArrayType); ok {
+				baseType = dta.BaseType()
+			}
+			newVal := make([]any, len(val))
+			for i, el := range val {
+				newVal[i] = NormalizeVal(baseType, el)
+			}
+			return newVal
+		}
 	case float64:
 		if dt == types.Numeric {
 			return decimal.NewFromFloat(val)
 		}
-	case string:
-		if dt == types.JsonB {
-			// TODO
+	case int32: // TODO
+		if dt == types.InternalChar {
+			return string(byte(val))
 		}
 	}
 	return v
 }
 
-// NormalizeRowsOnlyNumeric normalizes Numeric values only. There are an infinite number of ways to represent the same
+// NormalizeNumericAndTime normalizes Numeric and Time/Interval values only.
+// There are an infinite number of ways to represent the same
 // value in-memory, so we must at least normalize Numeric values.
-func NormalizeRowsOnlyNumeric(rows []sql.Row) []sql.Row {
+func NormalizeNumericAndTime(fds []pgconn.FieldDescription, rows []sql.Row) []sql.Row {
 	newRows := make([]sql.Row, len(rows))
 	for rowIdx, row := range rows {
 		newRow := make(sql.Row, len(row))
 		copy(newRow, row)
 		for colIdx := range newRow {
-			if numericValue, ok := newRow[colIdx].(pgtype.Numeric); ok {
-				val, err := numericValue.Value()
-				if err != nil {
-					panic(err) // Should never happen
-				}
-				// Using decimal as an intermediate value will remove all differences between the string formatting
-				d := decimal.RequireFromString(val.(string))
-				newRow[colIdx] = Numeric(d.String())
+			dt, ok := dserver.OidToDoltgresType[fds[colIdx].DataTypeOID]
+			if !ok {
+				panic(fmt.Sprintf("unhandled oid type: %v", fds[colIdx].DataTypeOID))
 			}
+			newRow[colIdx] = NormalizeValToString(dt, newRow[colIdx], true)
 		}
 		newRows[rowIdx] = newRow
 	}
