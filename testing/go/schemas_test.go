@@ -483,16 +483,18 @@ var SchemaTests = []ScriptTest{
 	},
 	{
 		Name: "create new database and new schema",
-		Skip: true,
 		SetUpScript: []string{
 			"CREATE DATABASE db2;",
-			"USE db2;", // TODO: not a real postgres statement
+			"USE db2;",
 			"create schema schema2;",
 			"use postgres",
 		},
 		Assertions: []ScriptTestAssertion{
 			{
 				Query: "CREATE TABLE db2.schema2.test (pk BIGINT PRIMARY KEY, v1 BIGINT);",
+			},
+			{
+				Query: "INSERT INTO db2.schema2.test VALUES (1, 1), (2, 2);",
 			},
 			{
 				Query: "SELECT * FROM db2.schema2.test;",
@@ -550,8 +552,11 @@ var SchemaTests = []ScriptTest{
 		},
 		Assertions: []ScriptTestAssertion{
 			{
-				Query:    "SELECT * FROM dolt_status;",
-				Expected: []sql.Row{{"mytbl", 0, "new table"}},
+				Query: "SELECT * FROM dolt_status;",
+				Expected: []sql.Row{
+					{"mytbl", 0, "new table"},
+					{"myschema", 0, "new schema"},
+				},
 			},
 			{
 				Query: "select dolt_add('.')",
@@ -560,11 +565,44 @@ var SchemaTests = []ScriptTest{
 				},
 			},
 			{
-				Query:    "SELECT * FROM dolt_status;",
-				Expected: []sql.Row{{"mytbl", 1, "new table"}},
+				Query: "SELECT * FROM dolt_status;",
+				Expected: []sql.Row{
+					{"mytbl", 1, "new table"},
+					{"myschema", 1, "new schema"},
+				},
 			},
 			{
 				Query:            "select dolt_commit('-m', 'new table in new schema')",
+				SkipResultsCheck: true,
+			},
+			{
+				Query:    "SELECT * FROM dolt_status;",
+				Expected: []sql.Row{},
+			},
+			{
+				Query: "select message from dolt_log order by date desc limit 1",
+				Expected: []sql.Row{
+					{"new table in new schema"},
+				},
+			},
+		},
+	},
+	{
+		Name: "add new table in new schema, commit -Am",
+		SetUpScript: []string{
+			"CREATE SCHEMA myschema",
+			"Create table myschema.mytbl (pk BIGINT PRIMARY KEY, v1 BIGINT);",
+		},
+		Assertions: []ScriptTestAssertion{
+			{
+				Query: "SELECT * FROM dolt_status;",
+				Expected: []sql.Row{
+					{"mytbl", 0, "new table"},
+					{"myschema", 0, "new schema"},
+				},
+			},
+			{
+				Query:            "select dolt_commit('-Am', 'new table in new schema')",
 				SkipResultsCheck: true,
 			},
 			{
@@ -618,38 +656,6 @@ var SchemaTests = []ScriptTest{
 				Expected: []sql.Row{
 					{3, 3},
 					{4, 4},
-				},
-			},
-		},
-	},
-	{
-		Name:  "add new table in new schema, commit -Am",
-		Focus: true,
-		SetUpScript: []string{
-			"call dolt_commit('-Am', 'initial commit')",
-			"CREATE SCHEMA myschema",
-			"Create table myschema.mytbl (pk BIGINT PRIMARY KEY, v1 BIGINT);",
-		},
-		Assertions: []ScriptTestAssertion{
-			{
-				Query: "SELECT * FROM dolt_status;",
-				Expected: []sql.Row{
-					{"mytbl", 0, "new table"},
-					{"myschema", 0, "new schema"},
-				},
-			},
-			{
-				Query:            "select dolt_commit('-Am', 'new table in new schema')",
-				SkipResultsCheck: true,
-			},
-			{
-				Query:    "SELECT * FROM dolt_status;",
-				Expected: []sql.Row{},
-			},
-			{
-				Query: "select message from dolt_log order by date desc limit 1",
-				Expected: []sql.Row{
-					{"new table in new schema"},
 				},
 			},
 		},
@@ -751,8 +757,11 @@ var SchemaTests = []ScriptTest{
 				},
 			},
 			{
-				Query:    "SELECT * FROM dolt_status;",
-				Expected: []sql.Row{{"mytbl", 0, "new table"}},
+				Query: "SELECT * FROM dolt_status;",
+				Expected: []sql.Row{
+					{"mytbl", 0, "new table"},
+					{"myschema", 0, "new schema"},
+				},
 			},
 			{
 				Query:            "SELECT dolt_commit('-A', '-m', 'Add mytbl');",
