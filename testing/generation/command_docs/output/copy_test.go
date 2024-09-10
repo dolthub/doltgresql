@@ -19,10 +19,10 @@ import "testing"
 func TestCopy(t *testing.T) {
 	tests := []QueryParses{
 		Converts("COPY table_name FROM ' filename '"),
-		Parses("COPY table_name ( column_name ) FROM ' filename '"),
-		Parses("COPY table_name ( column_name , column_name ) FROM ' filename '"),
+		Converts("COPY table_name ( column_name ) FROM ' filename '"),
+		Converts("COPY table_name ( column_name , column_name ) FROM ' filename '"),
 		Unimplemented("COPY table_name ( column_name ) FROM PROGRAM ' command '"),
-		Parses("COPY table_name FROM STDIN"),
+		Converts("COPY table_name FROM STDIN"),
 		Unimplemented("COPY table_name FROM PROGRAM ' command ' ( FORMAT format_name )"),
 		Unimplemented("COPY table_name ( column_name ) FROM PROGRAM ' command ' ( FORMAT format_name )"),
 		Unimplemented("COPY table_name FROM STDIN ( FORMAT format_name )"),
