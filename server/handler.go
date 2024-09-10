@@ -4,7 +4,6 @@ import (
 	"context"
 	"encoding/base64"
 	"fmt"
-	"github.com/dolthub/doltgresql/postgres/messages"
 	"io"
 	"regexp"
 	"runtime/trace"
@@ -23,6 +22,7 @@ import (
 	"github.com/sirupsen/logrus"
 	goerrors "gopkg.in/src-d/go-errors.v1"
 
+	"github.com/dolthub/doltgresql/postgres/messages"
 	types2 "github.com/dolthub/doltgresql/server/types"
 )
 
@@ -135,12 +135,6 @@ func (h *Handler) ComQuery(ctx context.Context, c *mysql.Conn, query string, par
 	}
 
 	return err
-}
-
-// discardAll resets the connection's session, clearing out any cached prepared statements, locks, user and
-// session variables. The currently selected database is preserved.
-func (h *Handler) discardAll(c *mysql.Conn) error {
-	return h.handler.ComResetConnection(c)
 }
 
 // QueryExecutor is a function that executes a query and returns the result as a schema and iterator. Either of
@@ -421,9 +415,7 @@ func (h *Handler) resultForDefaultIter(
 
 	eg, ctx := ctx.NewErrgroup()
 
-	var rowChan chan sql.Row
-
-	rowChan = make(chan sql.Row, 512)
+	var rowChan = make(chan sql.Row, 512)
 
 	pan2err := func() {
 		if recoveredPanic := recover(); recoveredPanic != nil {
