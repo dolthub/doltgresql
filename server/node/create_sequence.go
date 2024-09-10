@@ -101,7 +101,7 @@ func (c *CreateSequence) RowIter(ctx *sql.Context, r sql.Row) (sql.RowIter, erro
 			return nil, fmt.Errorf(`sequence cannot be owned by relation "%s"`, c.sequence.OwnerTable)
 		}
 
-		table, err := core.GetTableFromContext(ctx, doltdb.TableName{Name: c.sequence.OwnerTable, Schema: schema})
+		table, err := core.GetDoltTableFromContext(ctx, doltdb.TableName{Name: c.sequence.OwnerTable, Schema: schema})
 		if err != nil {
 			return nil, err
 		}

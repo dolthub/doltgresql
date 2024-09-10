@@ -60,8 +60,8 @@ func getRootFromContext(ctx *sql.Context) (*dsess.DoltSession, *RootValue, error
 	return session, state.WorkingRoot().(*RootValue), nil
 }
 
-// GetTableFromContext returns the table from the context. Returns nil if no table was found.
-func GetTableFromContext(ctx *sql.Context, tableName doltdb.TableName) (*doltdb.Table, error) {
+// GetDoltTableFromContext returns the Dolt table from the context. Returns nil if no table was found.
+func GetDoltTableFromContext(ctx *sql.Context, tableName doltdb.TableName) (*doltdb.Table, error) {
 	_, root, err := getRootFromContext(ctx)
 	if err != nil {
 		return nil, err
@@ -82,6 +82,77 @@ func GetTableFromContext(ctx *sql.Context, tableName doltdb.TableName) (*doltdb.
 	}
 
 	return table, nil
+}
+
+// GetSqlDatabaseFromContext returns the database from the context. Uses the context's current database if an empty
+// string is provided. Returns nil if the database was not found.
+func GetSqlDatabaseFromContext(ctx *sql.Context, database string) (sql.Database, error) {
+	session := dsess.DSessFromSess(ctx.Session)
+	if len(database) == 0 {
+		database = ctx.GetCurrentDatabase()
+	}
+	db, err := session.Provider().Database(ctx, database)
+	if err != nil {
+		if sql.ErrDatabaseNotFound.Is(err) {
+			return nil, nil
+		}
+		return nil, err
+	}
+	return db, nil
+}
+
+// GetSqlTableFromContext returns the table from the context. Uses the context's current database if an empty database
+// name is provided. Returns nil if no table was found.
+func GetSqlTableFromContext(ctx *sql.Context, databaseName string, tableName doltdb.TableName) (sql.Table, error) {
+	db, err := GetSqlDatabaseFromContext(ctx, databaseName)
+	if err != nil || db == nil {
+		return nil, err
+	}
+	schemaDb, ok := db.(sql.SchemaDatabase)
+	if !ok {
+		// Fairly confident that Dolt only has database implementations that inherit sql.SchemaDatabase, so only GMS
+		// databases may fail here (like information_schema). In this scenario, we expect that no schema will be passed,
+		// so we'll special-case it here.
+		if len(tableName.Schema) == 0 {
+			tbl, ok, err := db.GetTableInsensitive(ctx, tableName.Name)
+			if err != nil || !ok {
+				return nil, err
+			}
+			return tbl, nil
+		}
+		return nil, nil
+	}
+
+	var searchPath []string
+	if len(tableName.Schema) == 0 {
+		// If a schema was not provided, then we'll use the search path
+		searchPath, err = resolve.SearchPath(ctx)
+		if err != nil {
+			return nil, err
+		}
+	} else {
+		// A specific schema is given, so we'll only use that one for the search path
+		searchPath = []string{tableName.Schema}
+	}
+
+	for _, schema := range searchPath {
+		db, ok, err = schemaDb.GetSchema(ctx, schema)
+		if err != nil {
+			return nil, err
+		}
+		if !ok {
+			continue
+		}
+		tbl, ok, err := db.GetTableInsensitive(ctx, tableName.Name)
+		if err != nil {
+			return nil, err
+		}
+		if !ok {
+			continue
+		}
+		return tbl, nil
+	}
+	return nil, nil
 }
 
 // GetCollectionFromContext returns the given sequence collection from the context. Will always return a collection if
