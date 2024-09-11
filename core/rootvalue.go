@@ -107,6 +107,17 @@ func (root *RootValue) DebugString(ctx context.Context, transitive bool) string 
 
 			return false, nil
 		})
+
+		buf.WriteString("\nSchemas:")
+		schemas, err := root.GetDatabaseSchemas(ctx)
+		if err != nil {
+			return ""
+		}
+
+		for _, schema := range schemas {
+			buf.WriteString("\nSchema ")
+			buf.WriteString(schema.Name)
+		}
 	}
 
 	return buf.String()
