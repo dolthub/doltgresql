@@ -35,19 +35,19 @@ func TestDoltFunctions(t *testing.T) {
 					},
 				},
 				{
-					Query:            "select dolt_commit('-am', 'initial commit')",
+					Query:            "select dolt_commit('-am', 'new table')",
 					SkipResultsCheck: true,
 				},
 				{
 					Query: "select count(*) from dolt_log",
 					Expected: []sql.Row{
-						{2},
+						{3}, // initial commit, CREATE DATABASE commit, CREATE TABLE commit
 					},
 				},
 				{
 					Query: "select message from dolt_log order by date desc limit 1",
 					Expected: []sql.Row{
-						{"initial commit"},
+						{"new table"},
 					},
 				},
 			},

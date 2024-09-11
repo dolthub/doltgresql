@@ -483,16 +483,18 @@ var SchemaTests = []ScriptTest{
 	},
 	{
 		Name: "create new database and new schema",
-		Skip: true,
 		SetUpScript: []string{
 			"CREATE DATABASE db2;",
-			"USE db2;", // TODO: not a real postgres statement
+			"USE db2;",
 			"create schema schema2;",
 			"use postgres",
 		},
 		Assertions: []ScriptTestAssertion{
 			{
 				Query: "CREATE TABLE db2.schema2.test (pk BIGINT PRIMARY KEY, v1 BIGINT);",
+			},
+			{
+				Query: "INSERT INTO db2.schema2.test VALUES (1, 1), (2, 2);",
 			},
 			{
 				Query: "SELECT * FROM db2.schema2.test;",
@@ -543,8 +545,161 @@ var SchemaTests = []ScriptTest{
 		},
 	},
 	{
-		Name: "with branches", // TODO: Use `use db/branch` instead of dolt_checkout for these tests
+		Name: "add new table in new schema, commit, status",
 		SetUpScript: []string{
+			"CREATE SCHEMA myschema",
+			"Create table myschema.mytbl (pk BIGINT PRIMARY KEY, v1 BIGINT);",
+		},
+		Assertions: []ScriptTestAssertion{
+			{
+				Query: "SELECT * FROM dolt_status;",
+				Expected: []sql.Row{
+					{"mytbl", 0, "new table"},
+					{"myschema", 0, "new schema"},
+				},
+			},
+			{
+				Query: "select dolt_add('.')",
+				Expected: []sql.Row{
+					{"{0}"},
+				},
+			},
+			{
+				Query: "SELECT * FROM dolt_status;",
+				Expected: []sql.Row{
+					{"mytbl", 1, "new table"},
+					{"myschema", 1, "new schema"},
+				},
+			},
+			{
+				Query:            "select dolt_commit('-m', 'new table in new schema')",
+				SkipResultsCheck: true,
+			},
+			{
+				Query:    "SELECT * FROM dolt_status;",
+				Expected: []sql.Row{},
+			},
+			{
+				Query: "select message from dolt_log order by date desc limit 1",
+				Expected: []sql.Row{
+					{"new table in new schema"},
+				},
+			},
+		},
+	},
+	{
+		Name: "add new table in new schema, commit -Am",
+		SetUpScript: []string{
+			"CREATE SCHEMA myschema",
+			"Create table myschema.mytbl (pk BIGINT PRIMARY KEY, v1 BIGINT);",
+		},
+		Assertions: []ScriptTestAssertion{
+			{
+				Query: "SELECT * FROM dolt_status;",
+				Expected: []sql.Row{
+					{"mytbl", 0, "new table"},
+					{"myschema", 0, "new schema"},
+				},
+			},
+			{
+				Query:            "select dolt_commit('-Am', 'new table in new schema')",
+				SkipResultsCheck: true,
+			},
+			{
+				Query:    "SELECT * FROM dolt_status;",
+				Expected: []sql.Row{},
+			},
+			{
+				Query: "select message from dolt_log order by date desc limit 1",
+				Expected: []sql.Row{
+					{"new table in new schema"},
+				},
+			},
+		},
+	},
+	{
+		Name: "merge new table in new schema",
+		SetUpScript: []string{
+			"call dolt_checkout('-b', 'branch1')",
+			"CREATE SCHEMA branchschema",
+			"Create table branchschema.mytbl (pk BIGINT PRIMARY KEY, v1 BIGINT);",
+			"INSERT INTO branchschema.mytbl VALUES (1, 1), (2, 2)",
+			"Create table branchschema.mytbl2 (pk BIGINT PRIMARY KEY, v1 BIGINT);",
+			"INSERT INTO branchschema.mytbl2 VALUES (3, 3), (4, 4)",
+			"select dolt_commit('-Am', 'new table in new schema')",
+			"call dolt_checkout('main')",
+			"create schema mainschema",
+			"create table mainschema.maintable (pk BIGINT PRIMARY KEY, v1 BIGINT);",
+			"insert into mainschema.maintable values (5, 5), (6, 6)",
+			"select dolt_commit('-Am', 'new table in main')",
+		},
+		Assertions: []ScriptTestAssertion{
+			{
+				Query: "call dolt_merge('branch1')",
+			},
+			{
+				Query: "SELECT * from mainschema.maintable",
+				Expected: []sql.Row{
+					{5, 5},
+					{6, 6},
+				},
+			},
+			{
+				Query: "SELECT * from branchschema.mytbl",
+				Expected: []sql.Row{
+					{1, 1},
+					{2, 2},
+				},
+			},
+			{
+				Query: "SELECT * from branchschema.mytbl2",
+				Expected: []sql.Row{
+					{3, 3},
+					{4, 4},
+				},
+			},
+		},
+	},
+	{
+		Name: "create new schema with no tables, add and commit",
+		SetUpScript: []string{
+			"CREATE SCHEMA myschema",
+		},
+		Assertions: []ScriptTestAssertion{
+			{
+				Query:    "SELECT * FROM dolt_status;",
+				Expected: []sql.Row{{"myschema", 0, "new schema"}},
+			},
+			{
+				Query: "select dolt_add('.')",
+				Expected: []sql.Row{
+					{"{0}"},
+				},
+			},
+			{
+				Query:    "SELECT * FROM dolt_status;",
+				Expected: []sql.Row{{"myschema", 1, "new schema"}},
+			},
+			{
+				Query:            "select dolt_commit('-m', 'new schema')",
+				SkipResultsCheck: true,
+			},
+			{
+				Query:    "SELECT * FROM dolt_status;",
+				Expected: []sql.Row{},
+			},
+			{
+				Query: "select message from dolt_log order by date desc limit 1",
+				Expected: []sql.Row{
+					{"new schema"},
+				},
+			},
+		},
+	},
+	{
+		Name: "USE branches",
+		SetUpScript: []string{
+			`USE "postgres/main"`,
 			"CREATE SCHEMA myschema",
 			"SET search_path = 'myschema'",
 			"CREATE TABLE mytbl (pk BIGINT PRIMARY KEY, v1 BIGINT);",
@@ -602,31 +757,37 @@ var SchemaTests = []ScriptTest{
 				},
 			},
 			{
-				Query:    "SELECT dolt_checkout('-b', 'newbranch')",
-				Expected: []sql.Row{{"{0,\"Switched to branch 'newbranch'\"}"}},
-			},
-			{
-				Skip:     true, // TODO: ERROR: no schema has been selected to create in
-				Query:    "CREATE TABLE mytbl2 (pk BIGINT PRIMARY KEY, v1 BIGINT);",
-				Expected: []sql.Row{},
-			},
-			{
-				Query:    "CREATE SCHEMA newbranchschema;",
-				Expected: []sql.Row{},
-			},
-			{
-				Query:    "SET search_path = 'newbranchschema';",
-				Expected: []sql.Row{},
-			},
-			{
-				Query:    "CREATE TABLE mytbl2 (pk BIGINT PRIMARY KEY, v1 BIGINT);",
-				Expected: []sql.Row{},
-			},
-			{
-				Query: "SELECT current_schemas(true)",
+				Query: "SELECT * FROM dolt_status;",
 				Expected: []sql.Row{
-					{"{pg_catalog,newbranchschema}"},
+					{"mytbl", 0, "new table"},
+					{"myschema", 0, "new schema"},
 				},
+			},
+			{
+				Query:            "SELECT dolt_commit('-A', '-m', 'Add mytbl');",
+				SkipResultsCheck: true,
+			},
+			{
+				Query:    "SELECT * FROM dolt_status;",
+				Expected: []sql.Row{},
+			},
+			{
+				Query:    "SELECT dolt_branch('newbranch')",
+				Expected: []sql.Row{{"{0}"}},
+			},
+			{
+				Query:    "USE 'postgres/newbranch'",
+				Expected: []sql.Row{},
+			},
+			{
+				Query: "SELECT current_schemas(true);",
+				Expected: []sql.Row{
+					{"{pg_catalog,myschema}"},
+				},
+			},
+			{
+				Query:    "CREATE TABLE mytbl2 (pk BIGINT PRIMARY KEY, v1 BIGINT);",
+				Expected: []sql.Row{},
 			},
 			{
 				Skip:  true, // TODO: pg_catalog and public are not showing up
