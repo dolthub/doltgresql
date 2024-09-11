@@ -22,7 +22,7 @@ func init() {
 
 // ParameterDescription represents a PostgreSQL message.
 type ParameterDescription struct {
-	ObjectIDs []int32
+	ObjectIDs []uint32
 }
 
 var parameterDescriptionDefault = connection.MessageFormat{
@@ -74,9 +74,9 @@ func (m ParameterDescription) Decode(s connection.MessageFormat) (connection.Mes
 		return nil, err
 	}
 	count := int(s.Field("Parameters").MustGet().(int32))
-	objectIDs := make([]int32, count)
+	objectIDs := make([]uint32, count)
 	for i := 0; i < count; i++ {
-		objectIDs[i] = s.Field("Parameters").Child("ObjectID", i).MustGet().(int32)
+		objectIDs[i] = uint32(s.Field("Parameters").Child("ObjectID", i).MustGet().(int32))
 	}
 	return ParameterDescription{
 		ObjectIDs: objectIDs,

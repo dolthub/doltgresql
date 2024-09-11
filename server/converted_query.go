@@ -33,7 +33,7 @@ type ConvertedQuery struct {
 type PreparedStatementData struct {
 	Query        ConvertedQuery
 	ReturnFields []*querypb.Field
-	BindVarTypes []int32
+	BindVarTypes []uint32
 }
 
 type PortalData struct {
