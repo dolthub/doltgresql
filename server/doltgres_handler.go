@@ -20,35 +20,35 @@ import (
 	"github.com/dolthub/vitess/go/vt/sqlparser"
 	"github.com/jackc/pgx/v5/pgproto3"
 	"github.com/sirupsen/logrus"
-	goerrors "gopkg.in/src-d/go-errors.v1"
 
 	"github.com/dolthub/doltgresql/postgres/messages"
 	pgtypes "github.com/dolthub/doltgresql/server/types"
 )
 
-// Handler is a connection handler for a SQLe engine, implementing the Vitess mysql.Handler interface.
-type Handler struct {
+// DoltgresHandler is a handler uses SQLe engine directly
+// running Doltgres specific queries.
+type DoltgresHandler struct {
 	e                 *sqle.Engine
 	sm                *server.SessionManager
 	readTimeout       time.Duration
-	disableMultiStmts bool
-	maxLoggedQueryLen int
 	encodeLoggedQuery bool
-	sel               server.ServerEventListener
-	handler           mysql.Handler
 }
 
-// NewConnection reports that a new connection has been established.
-func (h *Handler) NewConnection(c *mysql.Conn) {
-	h.handler.NewConnection(c)
+// Result represents a query result.
+type Result struct {
+	Fields       []pgproto3.FieldDescription `json:"fields"`
+	Rows         []Value                     `json:"rows"`
+	RowsAffected uint64                      `json:"rows_affected"`
 }
 
-// ConnectionClosed reports that a connection has been closed.
-func (h *Handler) ConnectionClosed(c *mysql.Conn) {
-	h.handler.ConnectionClosed(c)
+// Value represents a single row value in bytes format.
+type Value struct {
+	val [][]byte
 }
 
-func (h *Handler) ComBind(ctx context.Context, c *mysql.Conn, query string, parsedQuery mysql.ParsedQuery, bindVars map[string]sqlparser.Expr) (mysql.BoundQuery, []pgproto3.FieldDescription, error) {
+const rowsBatch = 128
+
+func (h *DoltgresHandler) ComBind(ctx context.Context, c *mysql.Conn, query string, parsedQuery mysql.ParsedQuery, bindVars map[string]sqlparser.Expr) (mysql.BoundQuery, []pgproto3.FieldDescription, error) {
 	sqlCtx, err := h.sm.NewContextWithQuery(ctx, c, query)
 	if err != nil {
 		return nil, nil, err
@@ -67,15 +67,10 @@ func (h *Handler) ComBind(ctx context.Context, c *mysql.Conn, query string, pars
 	return queryPlan, schemaToFieldDescriptions(sqlCtx, queryPlan.Schema()), nil
 }
 
-func (h *Handler) ComExecuteBound(ctx context.Context, conn *mysql.Conn, query string, boundQuery mysql.BoundQuery, callback func(*Result) error) error {
+func (h *DoltgresHandler) ComExecuteBound(ctx context.Context, conn *mysql.Conn, query string, boundQuery mysql.BoundQuery, callback func(*Result) error) error {
 	analyzedPlan, ok := boundQuery.(sql.Node)
 	if !ok {
 		return fmt.Errorf("boundQuery must be a sql.Node, but got %T", boundQuery)
-	}
-
-	start := time.Now()
-	if h.sel != nil {
-		h.sel.QueryStarted()
 	}
 
 	err := h.doQuery(ctx, conn, query, nil, analyzedPlan, h.executeBoundPlan, callback)
@@ -83,18 +78,10 @@ func (h *Handler) ComExecuteBound(ctx context.Context, conn *mysql.Conn, query s
 		err = sql.CastSQLError(err)
 	}
 
-	if h.sel != nil {
-		h.sel.QueryCompleted(err == nil, time.Since(start))
-	}
-
 	return err
 }
 
-func (h *Handler) ComPrepareParsed(ctx context.Context, c *mysql.Conn, query string, parsed sqlparser.Statement) (mysql.ParsedQuery, []pgproto3.FieldDescription, error) {
-	//logrus.WithField("query", query).
-	//	WithField("paramsCount", prepare.ParamsCount).
-	//	WithField("statementId", prepare.StatementID).Debugf("preparing query")
-
+func (h *DoltgresHandler) ComPrepareParsed(ctx context.Context, c *mysql.Conn, query string, parsed sqlparser.Statement) (mysql.ParsedQuery, []pgproto3.FieldDescription, error) {
 	sqlCtx, err := h.sm.NewContextWithQuery(ctx, c, query)
 	if err != nil {
 		return nil, nil, err
@@ -109,7 +96,7 @@ func (h *Handler) ComPrepareParsed(ctx context.Context, c *mysql.Conn, query str
 
 	var fields []pgproto3.FieldDescription
 	// The query is not a SELECT statement if it corresponds to an OK result.
-	if nodeReturnsOkResultSchema(analyzed) || types.IsOkResultSchema(analyzed.Schema()) {
+	if nodeReturnsOkResultSchema(analyzed) {
 		fields = []pgproto3.FieldDescription{
 			{
 				Name:         []byte("Rows"),
@@ -124,45 +111,31 @@ func (h *Handler) ComPrepareParsed(ctx context.Context, c *mysql.Conn, query str
 }
 
 // ComQuery executes a SQL query on the SQL engine.
-func (h *Handler) ComQuery(ctx context.Context, c *mysql.Conn, query string, parsed sqlparser.Statement, callback func(*Result) error) error {
-	start := time.Now()
-	if h.sel != nil {
-		h.sel.QueryStarted()
-	}
-
+func (h *DoltgresHandler) ComQuery(ctx context.Context, c *mysql.Conn, query string, parsed sqlparser.Statement, callback func(*Result) error) error {
 	err := h.doQuery(ctx, c, query, parsed, nil, h.executeQuery, callback)
 	if err != nil {
 		err = sql.CastSQLError(err)
 	}
-
-	if h.sel != nil {
-		h.sel.QueryCompleted(err == nil, time.Since(start))
-	}
-
 	return err
 }
 
 // QueryExecutor is a function that executes a query and returns the result as a schema and iterator. Either of
 // |parsed| or |analyzed| can be nil depending on the use case
-type QueryExecutor func(
-	ctx *sql.Context,
-	query string,
-	parsed sqlparser.Statement,
-	analyzed sql.Node,
-) (sql.Schema, sql.RowIter, *sql.QueryFlags, error)
+type QueryExecutor func(ctx *sql.Context, query string, parsed sqlparser.Statement, analyzed sql.Node) (sql.Schema, sql.RowIter, *sql.QueryFlags, error)
 
 // executeQuery is a QueryExecutor that calls QueryWithBindings on the given engine using the given query and parsed
 // statement, which may be nil.
-func (h *Handler) executeQuery(ctx *sql.Context, query string, parsed sqlparser.Statement, _ sql.Node) (sql.Schema, sql.RowIter, *sql.QueryFlags, error) {
+func (h *DoltgresHandler) executeQuery(ctx *sql.Context, query string, parsed sqlparser.Statement, _ sql.Node) (sql.Schema, sql.RowIter, *sql.QueryFlags, error) {
 	return h.e.QueryWithBindings(ctx, query, parsed, nil, nil)
 }
 
 // executeBoundPlan is a QueryExecutor that calls QueryWithBindings on the given engine using the given query and parsed
 // statement, which may be nil.
-func (h *Handler) executeBoundPlan(ctx *sql.Context, query string, _ sqlparser.Statement, plan sql.Node) (sql.Schema, sql.RowIter, *sql.QueryFlags, error) {
+func (h *DoltgresHandler) executeBoundPlan(ctx *sql.Context, query string, _ sqlparser.Statement, plan sql.Node) (sql.Schema, sql.RowIter, *sql.QueryFlags, error) {
 	return h.e.PrepQueryPlanForExecution(ctx, query, plan)
 }
 
+// nodeReturnsOkResultSchema returns whether the node returns OK result or the schema is OK result schema.
 // These nodes will eventually return an OK result, but their intermediate forms here return a different schema
 // than they will at execution time.
 func nodeReturnsOkResultSchema(node sql.Node) bool {
@@ -170,32 +143,28 @@ func nodeReturnsOkResultSchema(node sql.Node) bool {
 	case *plan.InsertInto, *plan.Update, *plan.UpdateJoin, *plan.DeleteFrom:
 		return true
 	}
-	return false
+	return types.IsOkResultSchema(node.Schema())
 }
 
 var queryLoggingRegex = regexp.MustCompile(`[\r\n\t ]+`)
 
-func (h *Handler) doQuery(ctx context.Context, c *mysql.Conn, query string, parsed sqlparser.Statement, analyzedPlan sql.Node, queryExec QueryExecutor, callback func(*Result) error) error {
-	sqlCtx, err := h.sm.NewContext(ctx, c, query)
+func (h *DoltgresHandler) doQuery(ctx context.Context, c *mysql.Conn, query string, parsed sqlparser.Statement, analyzedPlan sql.Node, queryExec QueryExecutor, callback func(*Result) error) error {
+	sqlCtx, err := h.sm.NewContextWithQuery(ctx, c, query)
 	if err != nil {
 		return err
 	}
 
 	start := time.Now()
-
-	var queryStr string
+	var queryStrToLog string
 	if h.encodeLoggedQuery {
-		queryStr = base64.StdEncoding.EncodeToString([]byte(query))
+		queryStrToLog = base64.StdEncoding.EncodeToString([]byte(query))
 	} else if logrus.IsLevelEnabled(logrus.DebugLevel) {
 		// this is expensive, so skip this unless we're logging at DEBUG level
-		queryStr = string(queryLoggingRegex.ReplaceAll([]byte(query), []byte(" ")))
-		if h.maxLoggedQueryLen > 0 && len(queryStr) > h.maxLoggedQueryLen {
-			queryStr = queryStr[:h.maxLoggedQueryLen] + "..."
-		}
+		queryStrToLog = string(queryLoggingRegex.ReplaceAll([]byte(query), []byte(" ")))
 	}
 
-	if queryStr != "" {
-		sqlCtx.SetLogger(sqlCtx.GetLogger().WithField("query", queryStr))
+	if queryStrToLog != "" {
+		sqlCtx.SetLogger(sqlCtx.GetLogger().WithField("query", queryStrToLog))
 	}
 	sqlCtx.GetLogger().Debugf("Starting query")
 	sqlCtx.GetLogger().Tracef("beginning execution")
@@ -232,7 +201,7 @@ func (h *Handler) doQuery(ctx context.Context, c *mysql.Conn, query string, pars
 		r, err = resultForMax1RowIter(sqlCtx, schema, rowIter, resultFields)
 	} else {
 		resultFields := schemaToFieldDescriptions(sqlCtx, schema)
-		r, processedAtLeastOneBatch, err = h.resultForDefaultIter(sqlCtx, c, schema, rowIter, callback, resultFields)
+		r, processedAtLeastOneBatch, err = h.resultForDefaultIter(sqlCtx, schema, rowIter, callback, resultFields)
 	}
 	if err != nil {
 		return err
@@ -240,10 +209,6 @@ func (h *Handler) doQuery(ctx context.Context, c *mysql.Conn, query string, pars
 
 	// errGroup context is now canceled
 	ctx = oCtx
-
-	if err = setConnStatusFlags(sqlCtx, c); err != nil {
-		return err
-	}
 
 	sqlCtx.GetLogger().Debugf("Query finished in %d ms", time.Since(start).Milliseconds())
 
@@ -256,42 +221,12 @@ func (h *Handler) doQuery(ctx context.Context, c *mysql.Conn, query string, pars
 	return callback(r)
 }
 
-// See https://dev.mysql.com/doc/internals/en/status-flags.html
-func setConnStatusFlags(ctx *sql.Context, c *mysql.Conn) error {
-	ok, err := isSessionAutocommit(ctx)
-	if err != nil {
-		return err
-	}
-	if ok {
-		c.StatusFlags |= uint16(mysql.ServerStatusAutocommit)
-	} else {
-		c.StatusFlags &= ^uint16(mysql.ServerStatusAutocommit)
-	}
-
-	if t := ctx.GetTransaction(); t != nil {
-		c.StatusFlags |= uint16(mysql.ServerInTransaction)
-	} else {
-		c.StatusFlags &= ^uint16(mysql.ServerInTransaction)
-	}
-
-	return nil
-}
-
-func isSessionAutocommit(ctx *sql.Context) (bool, error) {
-	autoCommitSessionVar, err := ctx.GetSessionVariable(ctx, sql.AutoCommitSessionVar)
-	if err != nil {
-		return false, err
-	}
-	return sql.ConvertToBool(ctx, autoCommitSessionVar)
-}
-
 func schemaToFieldDescriptions(ctx *sql.Context, s sql.Schema) []pgproto3.FieldDescription {
 	fields := make([]pgproto3.FieldDescription, len(s))
 	for i, c := range s {
 		var oid uint32
 		var err error
 		if doltgresType, ok := c.Type.(pgtypes.DoltgresType); ok {
-			// TODO: handle ok result
 			oid = doltgresType.OID()
 		} else {
 			oid, err = messages.VitessTypeToObjectID(c.Type.Type())
@@ -321,7 +256,7 @@ func schemaToFieldDescriptions(ctx *sql.Context, s sql.Schema) []pgproto3.FieldD
 
 // resultForOkIter reads a maximum of one result row from a result iterator.
 func resultForOkIter(ctx *sql.Context, iter sql.RowIter) (*Result, error) {
-	defer trace.StartRegion(ctx, "Handler.resultForOkIter").End()
+	defer trace.StartRegion(ctx, "DoltgresHandler.resultForOkIter").End()
 
 	row, err := iter.Next(ctx)
 	if err != nil {
@@ -342,7 +277,7 @@ func resultForOkIter(ctx *sql.Context, iter sql.RowIter) (*Result, error) {
 
 // resultForEmptyIter ensures that an expected empty iterator returns no rows.
 func resultForEmptyIter(ctx *sql.Context, iter sql.RowIter) (*Result, error) {
-	defer trace.StartRegion(ctx, "Handler.resultForEmptyIter").End()
+	defer trace.StartRegion(ctx, "DoltgresHandler.resultForEmptyIter").End()
 	if _, err := iter.Next(ctx); err != io.EOF {
 		return nil, fmt.Errorf("result schema iterator returned more than zero rows")
 	}
@@ -354,7 +289,7 @@ func resultForEmptyIter(ctx *sql.Context, iter sql.RowIter) (*Result, error) {
 
 // resultForMax1RowIter ensures that an empty iterator returns at most one row
 func resultForMax1RowIter(ctx *sql.Context, schema sql.Schema, iter sql.RowIter, resultFields []pgproto3.FieldDescription) (*Result, error) {
-	defer trace.StartRegion(ctx, "Handler.resultForMax1RowIter").End()
+	defer trace.StartRegion(ctx, "DoltgresHandler.resultForMax1RowIter").End()
 	row, err := iter.Next(ctx)
 	if err == io.EOF {
 		return &Result{Fields: resultFields}, nil
@@ -379,44 +314,10 @@ func resultForMax1RowIter(ctx *sql.Context, schema sql.Schema, iter sql.RowIter,
 	return &Result{Fields: resultFields, Rows: []Value{{outputRow}}, RowsAffected: 1}, nil
 }
 
-func rowToBytes(ctx *sql.Context, s sql.Schema, row sql.Row) ([][]byte, error) {
-	if len(row) == 0 {
-		return nil, nil
-	}
-	o := make([][]byte, len(row))
-	if len(s) == 0 {
-		// TODO: should not happen
-		return nil, fmt.Errorf("received empty schema")
-	}
-	for i, v := range row {
-		if v == nil {
-			o[i] = nil
-			continue
-		}
-		// need to make sure the schema is not null as some plan schema is defined as null (e.g. IfElseBlock)
-		if len(s) > 0 {
-			val, err := s[i].Type.SQL(ctx, []byte{}, v)
-			if err != nil {
-				return nil, err
-			}
-			o[i] = val.ToBytes()
-		}
-	}
-	return o, nil
-}
-
-const rowsBatch = 128
-
 // resultForDefaultIter reads batches of rows from the iterator
 // and writes results into the callback function.
-func (h *Handler) resultForDefaultIter(
-	ctx *sql.Context,
-	c *mysql.Conn,
-	schema sql.Schema,
-	iter sql.RowIter,
-	callback func(*Result) error,
-	resultFields []pgproto3.FieldDescription) (r *Result, processedAtLeastOneBatch bool, returnErr error) {
-	defer trace.StartRegion(ctx, "Handler.resultForDefaultIter").End()
+func (h *DoltgresHandler) resultForDefaultIter(ctx *sql.Context, schema sql.Schema, iter sql.RowIter, callback func(*Result) error, resultFields []pgproto3.FieldDescription) (r *Result, processedAtLeastOneBatch bool, returnErr error) {
+	defer trace.StartRegion(ctx, "DoltgresHandler.resultForDefaultIter").End()
 
 	eg, ctx := ctx.NewErrgroup()
 
@@ -424,7 +325,7 @@ func (h *Handler) resultForDefaultIter(
 
 	pan2err := func() {
 		if recoveredPanic := recover(); recoveredPanic != nil {
-			returnErr = fmt.Errorf("handler caught panic: %v", recoveredPanic)
+			returnErr = fmt.Errorf("DoltgresHandler caught panic: %v", recoveredPanic)
 		}
 	}
 
@@ -455,12 +356,6 @@ func (h *Handler) resultForDefaultIter(
 			}
 		}
 	})
-
-	//pollCtx, cancelF := ctx.NewSubContext()
-	//eg.Go(func() error {
-	//	defer pan2err()
-	//	return h.pollForClosedConnection(pollCtx, c)
-	//})
 
 	// Default waitTime is one minute if there is no timeout configured, in which case
 	// it will loop to iterate again unless the socket died by the OS timeout or other problems.
@@ -522,7 +417,7 @@ func (h *Handler) resultForDefaultIter(
 				if h.readTimeout != 0 {
 					// Cancel and return so Vitess can call the CloseConnection callback
 					ctx.GetLogger().Tracef("connection timeout")
-					return ErrRowTimeout.New()
+					return fmt.Errorf("row read wait bigger than connection timeout")
 				}
 			}
 			if !timer.Stop() {
@@ -550,17 +445,25 @@ func (h *Handler) resultForDefaultIter(
 	return
 }
 
-// ErrRowTimeout will be returned if the wait for the row is longer than the connection timeout
-var ErrRowTimeout = goerrors.NewKind("row read wait bigger than connection timeout")
-
-// Result represents a query result.
-type Result struct {
-	Fields       []pgproto3.FieldDescription `json:"fields"`
-	Rows         []Value                     `json:"rows"`
-	RowsAffected uint64                      `json:"rows_affected"`
-}
-
-// Value represents a row value in bytes format.
-type Value struct {
-	val [][]byte
+func rowToBytes(ctx *sql.Context, s sql.Schema, row sql.Row) ([][]byte, error) {
+	if len(row) == 0 {
+		return nil, nil
+	}
+	if len(s) == 0 {
+		// should not happen
+		return nil, fmt.Errorf("received empty schema")
+	}
+	o := make([][]byte, len(row))
+	for i, v := range row {
+		if v == nil {
+			o[i] = nil
+		} else {
+			val, err := s[i].Type.SQL(ctx, []byte{}, v)
+			if err != nil {
+				return nil, err
+			}
+			o[i] = val.ToBytes()
+		}
+	}
+	return o, nil
 }

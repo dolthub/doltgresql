@@ -86,13 +86,13 @@ const tests = [
       command: "SELECT",
       rowCount: 1,
       oid: null,
-      rows: [{ dolt_add: "{0}" }],
+      rows: [{ dolt_add: [0] }],
       fields: [
         {
           name: "dolt_add",
           tableID: 0,
           columnID: 0,
-          dataTypeID: 25,
+          dataTypeID: 1009,
           dataTypeSize: -1,
           dataTypeModifier: -1,
           format: "text",

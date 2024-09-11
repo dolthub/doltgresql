@@ -355,6 +355,9 @@ func NormalizeExpectedRow(fds []pgconn.FieldDescription, rows []sql.Row) []sql.R
 					newRow[i] = string(m)
 				} else if dta, ok := dt.(types.DoltgresArrayType); ok && dta.BaseType() == types.Json {
 					v, err := dta.IoInput(nil, row[i].(string))
+					if err != nil {
+						panic(err)
+					}
 					arr := v.([]any)
 					newArr := make([]any, len(arr))
 					for j, el := range arr {
