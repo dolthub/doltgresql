@@ -954,11 +954,11 @@ func TestSchemaVisibilityInquiryFunctions(t *testing.T) {
 			Assertions: []ScriptTestAssertion{
 				{
 					Query:    `SELECT pg_function_is_visible(1342177280);`,
-					Expected: []sql.Row{{true}},
+					Expected: []sql.Row{{"t"}},
 				},
 				{
 					Query:    `SELECT pg_function_is_visible(22);`, // invalid
-					Expected: []sql.Row{{false}},
+					Expected: []sql.Row{{"f"}},
 				},
 			},
 		},
@@ -991,56 +991,40 @@ func TestSchemaVisibilityInquiryFunctions(t *testing.T) {
 					},
 				},
 				{
-					Query: `SHOW search_path;`,
-					Expected: []sql.Row{
-						{"testschema"},
-					},
+					Query:    `SHOW search_path;`,
+					Expected: []sql.Row{{"testschema"}},
 				},
 				{
-					Query: `select pg_table_is_visible(1613758465);`, // index from testschema
-					Expected: []sql.Row{
-						{true},
-					},
+					Query:    `select pg_table_is_visible(1613758465);`, // index from testschema
+					Expected: []sql.Row{{"t"}},
 				},
 				{
-					Query: `select pg_table_is_visible(2687500288);`, // table from testschema
-					Expected: []sql.Row{
-						{true},
-					},
+					Query:    `select pg_table_is_visible(2687500288);`, // table from testschema
+					Expected: []sql.Row{{"t"}},
 				},
 				{
-					Query: `select pg_table_is_visible(2419064832);`, // sequence from testschema
-					Expected: []sql.Row{
-						{true},
-					},
+					Query:    `select pg_table_is_visible(2419064832);`, // sequence from testschema
+					Expected: []sql.Row{{"t"}},
 				},
 				{
-					Query: `select pg_table_is_visible(2952790016);`, // view from myschema
-					Expected: []sql.Row{
-						{false},
-					},
+					Query:    `select pg_table_is_visible(2952790016);`, // view from myschema
+					Expected: []sql.Row{{"f"}},
 				},
 				{
 					Query:    `SET search_path = 'myschema';`,
 					Expected: []sql.Row{},
 				},
 				{
-					Query: `SHOW search_path;`,
-					Expected: []sql.Row{
-						{"myschema"},
-					},
+					Query:    `SHOW search_path;`,
+					Expected: []sql.Row{{"myschema"}},
 				},
 				{
-					Query: `select pg_table_is_visible(2952790016);`, // view from myschema
-					Expected: []sql.Row{
-						{true},
-					},
+					Query:    `select pg_table_is_visible(2952790016);`, // view from myschema
+					Expected: []sql.Row{{"t"}},
 				},
 				{
-					Query: `select pg_table_is_visible(2684354560);`, // table from myschema
-					Expected: []sql.Row{
-						{true},
-					},
+					Query:    `select pg_table_is_visible(2684354560);`, // table from myschema
+					Expected: []sql.Row{{"t"}},
 				},
 			},
 		},

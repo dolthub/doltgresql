@@ -727,27 +727,27 @@ func TestSequences(t *testing.T) {
 				{
 					Query: "SELECT * FROM pg_catalog.pg_sequence ORDER BY seqrelid;",
 					Expected: []sql.Row{
-						{2416967680, 20, 1, 3, 9223372036854775807, 1, 1, true},
-						{2416967681, 20, 1, 1, 9223372036854775807, 1, 1, false},
+						{2416967680, 20, 1, 3, 9223372036854775807, 1, 1, "t"},
+						{2416967681, 20, 1, 1, 9223372036854775807, 1, 1, "f"},
 					},
 				},
 				{ // Different cases but non-quoted, so it works
 					Query: "SELECT * FROM PG_catalog.pg_SEQUENCE ORDER BY seqrelid;",
 					Expected: []sql.Row{
-						{2416967680, 20, 1, 3, 9223372036854775807, 1, 1, true},
-						{2416967681, 20, 1, 1, 9223372036854775807, 1, 1, false},
+						{2416967680, 20, 1, 3, 9223372036854775807, 1, 1, "t"},
+						{2416967681, 20, 1, 1, 9223372036854775807, 1, 1, "f"},
 					},
 				},
 				{
 					Query: "SELECT * FROM pg_catalog.pg_sequence WHERE seqrelid = 'some_sequence'::regclass;",
 					Expected: []sql.Row{
-						{2416967681, 20, 1, 1, 9223372036854775807, 1, 1, false},
+						{2416967681, 20, 1, 1, 9223372036854775807, 1, 1, "f"},
 					},
 				},
 				{
 					Query: "SELECT * FROM pg_catalog.pg_sequence WHERE seqrelid = 'another_sequence'::regclass;",
 					Expected: []sql.Row{
-						{2416967680, 20, 1, 3, 9223372036854775807, 1, 1, true},
+						{2416967680, 20, 1, 3, 9223372036854775807, 1, 1, "t"},
 					},
 				},
 				{

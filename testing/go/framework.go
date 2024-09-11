@@ -173,7 +173,7 @@ func runScript(t *testing.T, ctx context.Context, script ScriptTest, conn *pgx.C
 				}
 
 				if normalizeRows {
-					assert.Equal(t, NormalizeRows(rows.FieldDescriptions(), assertion.Expected), readRows)
+					assert.Equal(t, NormalizeExpectedRow(rows.FieldDescriptions(), assertion.Expected), readRows)
 				} else {
 					assert.Equal(t, assertion.Expected, readRows)
 				}
@@ -329,6 +329,85 @@ func NormalizeRow(fds []pgconn.FieldDescription, row sql.Row) sql.Row {
 	return newRow
 }
 
+// NormalizeExpectedRow normalizes each value's type, as the tests only want to compare values. Returns a new row.
+func NormalizeExpectedRow(fds []pgconn.FieldDescription, rows []sql.Row) []sql.Row {
+	newRows := make([]sql.Row, len(rows))
+	for ri, row := range rows {
+		if len(row) == 0 {
+			newRows[ri] = nil
+		} else {
+			newRow := make(sql.Row, len(row))
+			for i := range row {
+				dt, ok := dserver.OidToDoltgresType[fds[i].DataTypeOID]
+				if !ok {
+					panic(fmt.Sprintf("unhandled oid type: %v", fds[i].DataTypeOID))
+				}
+				if dt == types.Json {
+					var decoded any
+					err := json.Unmarshal([]byte(row[i].(string)), &decoded)
+					if err != nil {
+						panic(err)
+					}
+					m, err := json.Marshal(decoded)
+					if err != nil {
+						panic(err)
+					}
+					newRow[i] = string(m)
+				} else if dta, ok := dt.(types.DoltgresArrayType); ok && dta.BaseType() == types.Json {
+					v, err := dta.IoInput(nil, row[i].(string))
+					arr := v.([]any)
+					newArr := make([]any, len(arr))
+					for j, el := range arr {
+						var decoded any
+						err := json.Unmarshal([]byte(el.(string)), &decoded)
+						if err != nil {
+							panic(err)
+						}
+						m, err := json.Marshal(decoded)
+						if err != nil {
+							panic(err)
+						}
+						newArr[j] = string(m)
+					}
+					ret, err := dt.IoOutput(nil, newArr)
+					if err != nil {
+						panic(err)
+					}
+					newRow[i] = ret
+				} else {
+					switch val := row[i].(type) {
+					case int:
+						newRow[i] = int64(val)
+					case int8:
+						newRow[i] = int64(val)
+					case int16:
+						newRow[i] = int64(val)
+					case int32:
+						newRow[i] = int64(val)
+					case uint:
+						newRow[i] = int64(val)
+					case uint8:
+						newRow[i] = int64(val)
+					case uint16:
+						newRow[i] = int64(val)
+					case uint32:
+						newRow[i] = int64(val)
+					case uint64:
+						// PostgreSQL does not support an uint64 type, so we can always convert this to an int64 safely.
+						newRow[i] = int64(val)
+					case float32:
+						newRow[i] = float64(val)
+					default:
+						newRow[i] = val
+					}
+				}
+			}
+			newRows[ri] = newRow
+		}
+	}
+	return newRows
+}
+
 // NormalizeRows normalizes each value's type within each row, as the tests only want to compare values. Returns a new
 // set of rows in the same order.
 func NormalizeRows(fds []pgconn.FieldDescription, rows []sql.Row) []sql.Row {
@@ -340,6 +419,44 @@ func NormalizeRows(fds []pgconn.FieldDescription, rows []sql.Row) []sql.Row {
 }
 
 func NormalizeValToString(dt types.DoltgresType, v any, normalizeNumeric bool) any {
+	switch t := dt.(type) {
+	case types.JsonType:
+		str, err := json.Marshal(v)
+		if err != nil {
+			panic(err)
+		}
+		ret, err := t.IoOutput(nil, string(str))
+		if err != nil {
+			panic(err)
+		}
+		return ret
+	case types.JsonBType:
+		jv, err := t.ConvertToJsonDocument(v)
+		if err != nil {
+			panic(err)
+		}
+		str, err := t.IoOutput(nil, types.JsonDocument{Value: jv})
+		if err != nil {
+			panic(err)
+		}
+		return str
+	case types.InternalCharType:
+		if v == nil {
+			return nil
+		}
+		var b []byte
+		if v.(int32) == 0 {
+			b = []byte{}
+		} else {
+			b = []byte{uint8(v.(int32))}
+		}
+		val, err := t.IoOutput(nil, string(b))
+		if err != nil {
+			panic(err)
+		}
+		return val
+	}
+
 	switch val := v.(type) {
 	case bool:
 		if val {
@@ -395,22 +512,22 @@ func NormalizeValToString(dt types.DoltgresType, v any, normalizeNumeric bool) a
 			return string(str)
 		} else {
 			if dta, ok := dt.(types.DoltgresArrayType); ok {
-				return NormalizeArrayTypeToString(dta, val)
+				return NormalizeArrayType(dta, val)
 			}
 		}
 	}
 	return v
 }
 
-func NormalizeArrayTypeToString(dta types.DoltgresArrayType, arr []any) any {
+// NormalizeArrayType normalizes array types by normalizing its elements first, then
+// to an array string using the type IoOutput method.
+func NormalizeArrayType(dta types.DoltgresArrayType, arr []any) any {
 	newVal := make([]any, len(arr))
 	for i, el := range arr {
 		newVal[i] = NormalizeVal(dta.BaseType(), el)
 	}
 	baseType := dta.BaseType()
-	if baseType == types.Json || baseType == types.JsonB {
-		return newVal
-	} else if baseType == types.Bool {
+	if baseType == types.Bool {
 		sqlVal, err := dta.SQL(nil, nil, newVal)
 		if err != nil {
 			panic(err)
@@ -426,6 +543,21 @@ func NormalizeArrayTypeToString(dta types.DoltgresArrayType, arr []any) any {
 }
 
 func NormalizeVal(dt types.DoltgresType, v any) any {
+	switch t := dt.(type) {
+	case types.JsonType:
+		str, err := json.Marshal(v)
+		if err != nil {
+			panic(err)
+		}
+		return string(str)
+	case types.JsonBType:
+		jv, err := t.ConvertToJsonDocument(v)
+		if err != nil {
+			panic(err)
+		}
+		return types.JsonDocument{Value: jv}
+	}
+
 	switch val := v.(type) {
 	case pgtype.Numeric:
 		if val.NaN {
@@ -462,23 +594,16 @@ func NormalizeVal(dt types.DoltgresType, v any) any {
 		}
 		return string(str)
 	case []any:
-		if dt == types.Json || dt == types.JsonB {
-			str, err := json.Marshal(val)
-			if err != nil {
-				panic(err)
-			}
-			return string(str)
-		} else {
-			baseType := dt
-			if dta, ok := baseType.(types.DoltgresArrayType); ok {
-				baseType = dta.BaseType()
-			}
-			newVal := make([]any, len(val))
-			for i, el := range val {
-				newVal[i] = NormalizeVal(baseType, el)
-			}
-			return newVal
+		baseType := dt
+		if dta, ok := baseType.(types.DoltgresArrayType); ok {
+			baseType = dta.BaseType()
 		}
+		newVal := make([]any, len(val))
+		for i, el := range val {
+			newVal[i] = NormalizeVal(baseType, el)
+		}
+		return newVal
+
 	case float64:
 		if dt == types.Numeric {
 			return decimal.NewFromFloat(val)

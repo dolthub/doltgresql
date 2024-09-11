@@ -23,7 +23,7 @@ import (
 	goerrors "gopkg.in/src-d/go-errors.v1"
 
 	"github.com/dolthub/doltgresql/postgres/messages"
-	types2 "github.com/dolthub/doltgresql/server/types"
+	pgtypes "github.com/dolthub/doltgresql/server/types"
 )
 
 // Handler is a connection handler for a SQLe engine, implementing the Vitess mysql.Handler interface.
@@ -108,10 +108,15 @@ func (h *Handler) ComPrepareParsed(ctx context.Context, c *mysql.Conn, query str
 	}
 
 	var fields []pgproto3.FieldDescription
-	// The return result fields should only be directly translated if it doesn't correspond to an OK result.
-	// See comment in ComPrepare
+	// The query is not a SELECT statement if it corresponds to an OK result.
 	if nodeReturnsOkResultSchema(analyzed) || types.IsOkResultSchema(analyzed.Schema()) {
-		fields = nil
+		fields = []pgproto3.FieldDescription{
+			{
+				Name:         []byte("Rows"),
+				DataTypeOID:  pgtypes.Int32.OID(),
+				DataTypeSize: int16(pgtypes.Int32.MaxTextResponseByteLength(nil)),
+			},
+		}
 	} else {
 		fields = schemaToFieldDescriptions(sqlCtx, analyzed.Schema())
 	}
@@ -285,7 +290,7 @@ func schemaToFieldDescriptions(ctx *sql.Context, s sql.Schema) []pgproto3.FieldD
 	for i, c := range s {
 		var oid uint32
 		var err error
-		if doltgresType, ok := c.Type.(types2.DoltgresType); ok {
+		if doltgresType, ok := c.Type.(pgtypes.DoltgresType); ok {
 			// TODO: handle ok result
 			oid = doltgresType.OID()
 		} else {

@@ -409,7 +409,7 @@ var pgCatalogTests = []ScriptTest{
 			{
 				Query:    `SELECT * FROM "pg_catalog"."pg_tables" WHERE tablename=$1;`,
 				BindVars: []any{"testing"},
-				Expected: []sql.Row{{"public", "testing", "", "", true, false, false, false}},
+				Expected: []sql.Row{{"public", "testing", "", "", "t", "f", "f", "f"}},
 			},
 			{
 				Query:    `SELECT count(*) FROM "pg_catalog"."pg_tables" WHERE schemaname=$1;`,
@@ -546,7 +546,7 @@ func RunScriptN(t *testing.T, script ScriptTest, n int) {
 						foundRows, err := ReadRows(rows, true)
 						if assertion.ExpectedErr == "" {
 							require.NoError(t, err)
-							assert.Equal(t, NormalizeRows(rows.FieldDescriptions(), assertion.Expected), foundRows)
+							assert.Equal(t, NormalizeExpectedRow(rows.FieldDescriptions(), assertion.Expected), foundRows)
 						} else if err != nil {
 							errorSeen = err.Error()
 						}

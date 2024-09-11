@@ -453,17 +453,6 @@ func (h *ConnectionHandler) handleParse(message messages.Parse) error {
 		}
 	}
 
-	// Nil fields means an OKResult, fill one in here
-	if fields == nil {
-		fields = []pgproto3.FieldDescription{
-			{
-				Name:         []byte("Rows"),
-				DataTypeOID:  pgtypes.Int32.OID(),
-				DataTypeSize: int16(pgtypes.Int32.MaxTextResponseByteLength(nil)),
-			},
-		}
-	}
-
 	h.preparedStatements[message.Name] = PreparedStatementData{
 		Query:        query,
 		ReturnFields: fields,

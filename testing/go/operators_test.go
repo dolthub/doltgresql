@@ -3182,7 +3182,7 @@ func TestOperators(t *testing.T) {
 			Assertions: []ScriptTestAssertion{
 				{
 					Query:    `SELECT '[{"a":"foo"},{"b":"bar"},{"c":"baz"}]'::json -> 2;`,
-					Expected: []sql.Row{{`{"c": "baz"}`}},
+					Expected: []sql.Row{{`{"c":"baz"}`}},
 				},
 				{
 					Query:    `SELECT '[{"a":"foo"},{"b":"bar"},{"c":"baz"}]'::jsonb -> 2;`,
@@ -3190,7 +3190,7 @@ func TestOperators(t *testing.T) {
 				},
 				{
 					Query:    `SELECT '[{"a":"foo"},{"b":"bar"},{"c":"baz"}]'::json -> -3;`,
-					Expected: []sql.Row{{`{"a": "foo"}`}},
+					Expected: []sql.Row{{`{"a":"foo"}`}},
 				},
 				{
 					Query:    `SELECT '[{"a":"foo"},{"b":"bar"},{"c":"baz"}]'::jsonb -> -3;`,
@@ -3198,7 +3198,7 @@ func TestOperators(t *testing.T) {
 				},
 				{
 					Query:    `SELECT '{"a": {"b":"foo"}}'::json -> 'a';`,
-					Expected: []sql.Row{{`{"b": "foo"}`}},
+					Expected: []sql.Row{{`{"b":"foo"}`}},
 				},
 				{
 					Query:    `SELECT '{"a": {"b":"foo"}}'::jsonb -> 'a';`,
