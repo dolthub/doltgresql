@@ -29,12 +29,6 @@ func nodeCopyFrom(node *tree.CopyFrom) (vitess.Statement, error) {
 	if node == nil {
 		return nil, nil
 	}
-	if len(node.Columns) != 0 {
-		return nil, fmt.Errorf("COPY FROM does not yet support a column list")
-	}
-	if node.Stdin {
-		return nil, fmt.Errorf("COPY FROM does not yet support reading from STDIN")
-	}
 	if node.Options.CopyFormat != tree.CopyFormatText {
 		return nil, fmt.Errorf("COPY FROM does not yet support non-text formats")
 	}
@@ -45,7 +39,7 @@ func nodeCopyFrom(node *tree.CopyFrom) (vitess.Statement, error) {
 		Statement: pgnodes.NewCopyFrom(node.Table.Catalog(), doltdb.TableName{
 			Name:   node.Table.Object(),
 			Schema: node.Table.Schema(),
-		}, node.File),
+		}, node.File, node.Stdin, node.Columns),
 		Children: nil,
 	}, nil
 }

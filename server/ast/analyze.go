@@ -27,6 +27,21 @@ func nodeAnalyze(node *tree.Analyze) (vitess.Statement, error) {
 	if node == nil {
 		return nil, nil
 	}
-	// This functions a bit differently compared to the GMS version, so it's unsupported for now
-	return nil, fmt.Errorf("ANALYZE is not yet supported")
+
+	objectName, ok := node.Table.(*tree.UnresolvedObjectName)
+	if !ok {
+		return nil, fmt.Errorf("unsupported table type in Analyze node: %T", node.Table)
+	}
+
+	if objectName.Object() == "" && objectName.Schema() == "" && objectName.Catalog() == "" {
+		return nil, fmt.Errorf("ANALYZE all tables not supported; must specify a table")
+	}
+
+	return &vitess.Analyze{Tables: []vitess.TableName{
+		{
+			Name:            vitess.NewTableIdent(objectName.Object()),
+			SchemaQualifier: vitess.NewTableIdent(objectName.Schema()),
+			DbQualifier:     vitess.NewTableIdent(objectName.Catalog()),
+		},
+	}}, nil
 }
