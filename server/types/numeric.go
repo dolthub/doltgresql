@@ -154,7 +154,12 @@ func (b NumericType) IoOutput(ctx *sql.Context, output any) (string, error) {
 	if err != nil {
 		return "", err
 	}
-	return converted.(decimal.Decimal).String(), nil
+	dec := converted.(decimal.Decimal)
+	scale := b.Scale
+	if scale == -1 {
+		scale = dec.Exponent() * -1
+	}
+	return dec.StringFixed(scale), nil
 }
 
 // IsPreferredType implements the DoltgresType interface.

@@ -280,16 +280,22 @@ func ReadRows(rows pgx.Rows, normalizeRows bool) (readRows []sql.Row, err error)
 		}
 		slice = append(slice, row)
 	}
-	if normalizeRows {
-		return NormalizeRows(rows.FieldDescriptions(), slice), nil
-	} else {
-		// We must always normalize Numeric values, as they have an infinite number of ways to represent the same value
-		return NormalizeNumericAndTime(rows.FieldDescriptions(), slice), nil
-	}
+	return NormalizeRows(rows.FieldDescriptions(), slice, normalizeRows), nil
 }
 
-// NormalizeRow normalizes each value's type, as the tests only want to compare values. Returns a new row.
-func NormalizeRow(fds []pgconn.FieldDescription, row sql.Row) sql.Row {
+// NormalizeRows normalizes each value's type within each row, as the tests only want to compare values. Returns a new
+// set of rows in the same order.
+func NormalizeRows(fds []pgconn.FieldDescription, rows []sql.Row, normalize bool) []sql.Row {
+	newRows := make([]sql.Row, len(rows))
+	for i := range rows {
+		newRows[i] = NormalizeRow(fds, rows[i], normalize)
+	}
+	return newRows
+}
+
+// NormalizeRow normalizes each value's type, as the tests only want to compare values.
+// Returns a new row.
+func NormalizeRow(fds []pgconn.FieldDescription, row sql.Row, normalize bool) sql.Row {
 	if len(row) == 0 {
 		return nil
 	}
@@ -299,31 +305,12 @@ func NormalizeRow(fds []pgconn.FieldDescription, row sql.Row) sql.Row {
 		if !ok {
 			panic(fmt.Sprintf("unhandled oid type: %v", fds[i].DataTypeOID))
 		}
-		v := NormalizeValToString(dt, row[i], false)
-		switch val := v.(type) {
-		case int:
-			newRow[i] = int64(val)
-		case int8:
-			newRow[i] = int64(val)
-		case int16:
-			newRow[i] = int64(val)
-		case int32:
-			newRow[i] = int64(val)
-		case uint:
-			newRow[i] = int64(val)
-		case uint8:
-			newRow[i] = int64(val)
-		case uint16:
-			newRow[i] = int64(val)
-		case uint32:
-			newRow[i] = int64(val)
-		case uint64:
-			// PostgreSQL does not support an uint64 type, so we can always convert this to an int64 safely.
-			newRow[i] = int64(val)
-		case float32:
-			newRow[i] = float64(val)
-		default:
-			newRow[i] = val
+		if normalize {
+			v := NormalizeValToString(dt, row[i], false)
+			newRow[i] = NormalizeIntsAndFloats(v)
+		} else {
+			// We must always normalize Numeric values, as they have an infinite number of ways to represent the same value
+			newRow[i] = NormalizeValToString(dt, row[i], true)
 		}
 	}
 	return newRow
@@ -343,16 +330,7 @@ func NormalizeExpectedRow(fds []pgconn.FieldDescription, rows []sql.Row) []sql.R
 					panic(fmt.Sprintf("unhandled oid type: %v", fds[i].DataTypeOID))
 				}
 				if dt == types.Json {
-					var decoded any
-					err := json.Unmarshal([]byte(row[i].(string)), &decoded)
-					if err != nil {
-						panic(err)
-					}
-					m, err := json.Marshal(decoded)
-					if err != nil {
-						panic(err)
-					}
-					newRow[i] = string(m)
+					newRow[i] = UnmarshalAndMarshalJsonString(row[i].(string))
 				} else if dta, ok := dt.(types.DoltgresArrayType); ok && dta.BaseType() == types.Json {
 					v, err := dta.IoInput(nil, row[i].(string))
 					if err != nil {
@@ -361,16 +339,7 @@ func NormalizeExpectedRow(fds []pgconn.FieldDescription, rows []sql.Row) []sql.R
 					arr := v.([]any)
 					newArr := make([]any, len(arr))
 					for j, el := range arr {
-						var decoded any
-						err := json.Unmarshal([]byte(el.(string)), &decoded)
-						if err != nil {
-							panic(err)
-						}
-						m, err := json.Marshal(decoded)
-						if err != nil {
-							panic(err)
-						}
-						newArr[j] = string(m)
+						newArr[j] = UnmarshalAndMarshalJsonString(el.(string))
 					}
 					ret, err := dt.IoOutput(nil, newArr)
 					if err != nil {
@@ -378,31 +347,7 @@ func NormalizeExpectedRow(fds []pgconn.FieldDescription, rows []sql.Row) []sql.R
 					}
 					newRow[i] = ret
 				} else {
-					switch val := row[i].(type) {
-					case int:
-						newRow[i] = int64(val)
-					case int8:
-						newRow[i] = int64(val)
-					case int16:
-						newRow[i] = int64(val)
-					case int32:
-						newRow[i] = int64(val)
-					case uint:
-						newRow[i] = int64(val)
-					case uint8:
-						newRow[i] = int64(val)
-					case uint16:
-						newRow[i] = int64(val)
-					case uint32:
-						newRow[i] = int64(val)
-					case uint64:
-						// PostgreSQL does not support an uint64 type, so we can always convert this to an int64 safely.
-						newRow[i] = int64(val)
-					case float32:
-						newRow[i] = float64(val)
-					default:
-						newRow[i] = val
-					}
+					newRow[i] = NormalizeIntsAndFloats(row[i])
 				}
 			}
 			newRows[ri] = newRow
@@ -411,16 +356,29 @@ func NormalizeExpectedRow(fds []pgconn.FieldDescription, rows []sql.Row) []sql.R
 	return newRows
 }
 
-// NormalizeRows normalizes each value's type within each row, as the tests only want to compare values. Returns a new
-// set of rows in the same order.
-func NormalizeRows(fds []pgconn.FieldDescription, rows []sql.Row) []sql.Row {
-	newRows := make([]sql.Row, len(rows))
-	for i := range rows {
-		newRows[i] = NormalizeRow(fds, rows[i])
+// UnmarshalAndMarshalJsonString is used to normalize expected json type value to compare the actual value.
+// JSON type value is in string format, and since Postrges JSON type preserves the input string if valid,
+// it cannot be compared to the returned map as json.Marshal method space padded key value pair.
+// To allow result matching, we unmarshal and marshal the expected string. This causes missing check
+// for the identical format as the input of the json string.
+func UnmarshalAndMarshalJsonString(val string) string {
+	var decoded any
+	err := json.Unmarshal([]byte(val), &decoded)
+	if err != nil {
+		panic(err)
 	}
-	return newRows
+	ret, err := json.Marshal(decoded)
+	if err != nil {
+		panic(err)
+	}
+	return string(ret)
 }
 
+// NormalizeValToString normalizes values into types that can be compared.
+// JSON types, any pg types and time and decimal type values are converted into string value.
+// |normalizeNumeric| defines whether to normalize Numeric values into either Numeric type or string type.
+// There are an infinite number of ways to represent the same value in-memory,
+// so we must at least normalize Numeric values.
 func NormalizeValToString(dt types.DoltgresType, v any, normalizeNumeric bool) any {
 	switch t := dt.(type) {
 	case types.JsonType:
@@ -468,30 +426,18 @@ func NormalizeValToString(dt types.DoltgresType, v any, normalizeNumeric bool) a
 			return "f"
 		}
 	case pgtype.Numeric:
-		if normalizeNumeric {
-			num, err := val.Value()
-			if err != nil {
-				panic(err) // Should never happen
-			}
-			// Using decimal as an intermediate value will remove all differences between the string formatting
-			d := decimal.RequireFromString(num.(string))
-			return Numeric(d.String())
+		if val.NaN {
+			return math.NaN()
+		} else if val.InfinityModifier != pgtype.Finite {
+			return math.Inf(int(val.InfinityModifier))
+		} else if !val.Valid {
+			return nil
 		} else {
-			if val.NaN {
-				return math.NaN()
-			} else if val.InfinityModifier != pgtype.Finite {
-				return math.Inf(int(val.InfinityModifier))
-			} else if !val.Valid {
-				return nil
+			decStr := decimal.NewFromBigInt(val.Int, val.Exp).StringFixed(val.Exp * -1)
+			if normalizeNumeric {
+				return Numeric(decStr)
 			} else {
-				fVal, err := val.Float64Value()
-				if err != nil {
-					panic(err)
-				}
-				if !fVal.Valid {
-					panic("no idea why the numeric float value is invalid")
-				}
-				return fVal.Float64
+				return decStr
 			}
 		}
 	case pgtype.Time, pgtype.Interval, [16]byte, time.Time:
@@ -500,30 +446,16 @@ func NormalizeValToString(dt types.DoltgresType, v any, normalizeNumeric bool) a
 			panic(err)
 		}
 		return tVal
-	case map[string]interface{}:
-		str, err := json.Marshal(val)
-		if err != nil {
-			panic(err)
-		}
-		return string(str)
 	case []any:
-		if dt == types.Json || dt == types.JsonB {
-			str, err := json.Marshal(val)
-			if err != nil {
-				panic(err)
-			}
-			return string(str)
-		} else {
-			if dta, ok := dt.(types.DoltgresArrayType); ok {
-				return NormalizeArrayType(dta, val)
-			}
+		if dta, ok := dt.(types.DoltgresArrayType); ok {
+			return NormalizeArrayType(dta, val)
 		}
 	}
 	return v
 }
 
-// NormalizeArrayType normalizes array types by normalizing its elements first, then
-// to an array string using the type IoOutput method.
+// NormalizeArrayType normalizes array types by normalizing its elements first,
+// then to a string using the type IoOutput method.
 func NormalizeArrayType(dta types.DoltgresArrayType, arr []any) any {
 	newVal := make([]any, len(arr))
 	for i, el := range arr {
@@ -545,6 +477,9 @@ func NormalizeArrayType(dta types.DoltgresArrayType, arr []any) any {
 	}
 }
 
+// NormalizeVal normalizes values to the Doltgres type expects, so it can be used to
+// convert the values using the given Doltgres type. This is used to normalize array
+// types as the type conversion expects certain type values.
 func NormalizeVal(dt types.DoltgresType, v any) any {
 	switch t := dt.(type) {
 	case types.JsonType:
@@ -570,14 +505,7 @@ func NormalizeVal(dt types.DoltgresType, v any) any {
 		} else if !val.Valid {
 			return nil
 		} else {
-			fVal, err := val.Float64Value()
-			if err != nil {
-				panic(err)
-			}
-			if !fVal.Valid {
-				panic("no idea why the numeric float value is invalid")
-			}
-			return decimal.NewFromFloat(fVal.Float64)
+			return decimal.NewFromBigInt(val.Int, val.Exp)
 		}
 	case pgtype.Time:
 		dur := time.Duration(val.Microseconds) * time.Microsecond
@@ -590,12 +518,6 @@ func NormalizeVal(dt types.DoltgresType, v any) any {
 			panic(err)
 		}
 		return u
-	case map[string]interface{}: // TODO
-		str, err := json.Marshal(val)
-		if err != nil {
-			panic(err)
-		}
-		return string(str)
 	case []any:
 		baseType := dt
 		if dta, ok := baseType.(types.DoltgresArrayType); ok {
@@ -606,37 +528,38 @@ func NormalizeVal(dt types.DoltgresType, v any) any {
 			newVal[i] = NormalizeVal(baseType, el)
 		}
 		return newVal
-
-	case float64:
-		if dt == types.Numeric {
-			return decimal.NewFromFloat(val)
-		}
-	case int32: // TODO
-		if dt == types.InternalChar {
-			return string(byte(val))
-		}
 	}
 	return v
 }
 
-// NormalizeNumericAndTime normalizes Numeric and Time/Interval values only.
-// There are an infinite number of ways to represent the same
-// value in-memory, so we must at least normalize Numeric values.
-func NormalizeNumericAndTime(fds []pgconn.FieldDescription, rows []sql.Row) []sql.Row {
-	newRows := make([]sql.Row, len(rows))
-	for rowIdx, row := range rows {
-		newRow := make(sql.Row, len(row))
-		copy(newRow, row)
-		for colIdx := range newRow {
-			dt, ok := dserver.OidToDoltgresType[fds[colIdx].DataTypeOID]
-			if !ok {
-				panic(fmt.Sprintf("unhandled oid type: %v", fds[colIdx].DataTypeOID))
-			}
-			newRow[colIdx] = NormalizeValToString(dt, newRow[colIdx], true)
-		}
-		newRows[rowIdx] = newRow
+// NormalizeIntsAndFloats normalizes all int and float types
+// to int64 and float64, respectively.
+func NormalizeIntsAndFloats(v any) any {
+	switch val := v.(type) {
+	case int:
+		return int64(val)
+	case int8:
+		return int64(val)
+	case int16:
+		return int64(val)
+	case int32:
+		return int64(val)
+	case uint:
+		return int64(val)
+	case uint8:
+		return int64(val)
+	case uint16:
+		return int64(val)
+	case uint32:
+		return int64(val)
+	case uint64:
+		// PostgreSQL does not support an uint64 type, so we can always convert this to an int64 safely.
+		return int64(val)
+	case float32:
+		return float64(val)
+	default:
+		return val
 	}
-	return newRows
 }
 
 // GetUnusedPort returns an unused port.

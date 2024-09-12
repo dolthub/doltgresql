@@ -574,7 +574,7 @@ func TestOperators(t *testing.T) {
 				},
 				{
 					Query:    `SELECT 8::int2 / 2::numeric;`,
-					Expected: []sql.Row{{Numeric("4")}},
+					Expected: []sql.Row{{Numeric("4.0000000000000000")}},
 				},
 				{
 					Query:    `SELECT 8::int4 / 2::float4;`,
@@ -598,7 +598,7 @@ func TestOperators(t *testing.T) {
 				},
 				{
 					Query:    `SELECT 8::int4 / 2::numeric;`,
-					Expected: []sql.Row{{Numeric("4")}},
+					Expected: []sql.Row{{Numeric("4.0000000000000000")}},
 				},
 				{
 					Query:    `SELECT 8::int8 / 2::float4;`,
@@ -622,7 +622,7 @@ func TestOperators(t *testing.T) {
 				},
 				{
 					Query:    `SELECT 8::int8 / 2::numeric;`,
-					Expected: []sql.Row{{Numeric("4")}},
+					Expected: []sql.Row{{Numeric("4.0000000000000000")}},
 				},
 				{
 					Query:    `SELECT 8::numeric / 2::float4;`,
@@ -634,19 +634,19 @@ func TestOperators(t *testing.T) {
 				},
 				{
 					Query:    `SELECT 8::numeric / 2::int2;`,
-					Expected: []sql.Row{{Numeric("4")}},
+					Expected: []sql.Row{{Numeric("4.0000000000000000")}},
 				},
 				{
 					Query:    `SELECT 8::numeric / 2::int4;`,
-					Expected: []sql.Row{{Numeric("4")}},
+					Expected: []sql.Row{{Numeric("4.0000000000000000")}},
 				},
 				{
 					Query:    `SELECT 8::numeric / 2::int8;`,
-					Expected: []sql.Row{{Numeric("4")}},
+					Expected: []sql.Row{{Numeric("4.0000000000000000")}},
 				},
 				{
 					Query:    `SELECT 8::numeric / 2::numeric;`,
-					Expected: []sql.Row{{Numeric("4")}},
+					Expected: []sql.Row{{Numeric("4.0000000000000000")}},
 				},
 				{
 					Query:    `select interval '20 days' / 2.3`,

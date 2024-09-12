@@ -34,8 +34,8 @@ func TestCoercion(t *testing.T) {
 					Expected: []sql.Row{{Numeric("0.5")}},
 				},
 				{
-					Query:    `SELECT 0.5`,
-					Expected: []sql.Row{{Numeric("0.5")}},
+					Query:    `SELECT 0.50`,
+					Expected: []sql.Row{{Numeric("0.50")}},
 				},
 				{
 					Query:    `SELECT -0.5`,

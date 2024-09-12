@@ -86,7 +86,7 @@ const tests = [
       command: "SELECT",
       rowCount: 1,
       oid: null,
-      rows: [{ dolt_add: [0] }],
+      rows: [{ dolt_add: ["0"] }],
       fields: [
         {
           name: "dolt_add",
@@ -106,13 +106,13 @@ const tests = [
       command: "SELECT",
       rowCount: 1,
       oid: null,
-      rows: [{ dolt_commit: "" }],
+      rows: [{ dolt_commit: [""] }],
       fields: [
         {
           name: "dolt_commit",
           tableID: 0,
           columnID: 0,
-          dataTypeID: 25,
+          dataTypeID: 1009,
           dataTypeSize: -1,
           dataTypeModifier: -1,
           format: "text",
@@ -133,7 +133,7 @@ const tests = [
           tableID: 0,
           columnID: 0,
           dataTypeID: 20,
-          dataTypeSize: 8,
+          dataTypeSize: 20,
           dataTypeModifier: -1,
           format: "text",
         },
@@ -146,13 +146,13 @@ const tests = [
       command: "SELECT",
       rowCount: 1,
       oid: null,
-      rows: [{ dolt_checkout: `{0,"Switched to branch 'mybranch'"}` }],
+      rows: [{ dolt_checkout: ["0","Switched to branch 'mybranch'"] }],
       fields: [
         {
           name: "dolt_checkout",
           tableID: 0,
           columnID: 0,
-          dataTypeID: 25,
+          dataTypeID: 1009,
           dataTypeSize: -1,
           dataTypeModifier: -1,
           format: "text",
@@ -173,11 +173,21 @@ const tests = [
   {
     q: "select dolt_commit('-a', '-m', 'my commit2')",
     res: {
-      command: "CALL",
-      rowCount: null,
+      command: "SELECT",
+      rowCount: 1,
       oid: null,
-      rows: [],
-      fields: [],
+      rows: [{ dolt_commit: [""] }],
+      fields: [
+        {
+          name: "dolt_commit",
+          tableID: 0,
+          columnID: 0,
+          dataTypeID: 1009,
+          dataTypeSize: -1,
+          dataTypeModifier: -1,
+          format: "text",
+        },
+      ],
     },
   },
   {
@@ -186,13 +196,13 @@ const tests = [
       command: "SELECT",
       rowCount: 1,
       oid: null,
-      rows: [{ dolt_checkout: `{0,"Switched to branch 'main'"}` }],
+      rows: [{ dolt_checkout: ["0","Switched to branch 'main'"] }],
       fields: [
         {
           name: "dolt_checkout",
           tableID: 0,
           columnID: 0,
-          dataTypeID: 25,
+          dataTypeID: 1009,
           dataTypeSize: -1,
           dataTypeModifier: -1,
           format: "text",
@@ -205,7 +215,7 @@ const tests = [
     res: {
       fastForward: "1",
       conflicts: "0",
-      message: `"merge successful"`,
+      message: "merge successful",
     },
   },
   {
@@ -221,7 +231,7 @@ const tests = [
           tableID: 0,
           columnID: 0,
           dataTypeID: 20,
-          dataTypeSize: 8,
+          dataTypeSize: 20,
           dataTypeModifier: -1,
           format: "text",
         },

@@ -1191,7 +1191,7 @@ var typesTests = []ScriptTest{
 			{
 				Query: "SELECT v1::smallint, v1::integer, v1::bigint, v1::float4, v1::float8, v1::numeric FROM t_name WHERE id=2;",
 				Expected: []sql.Row{
-					{12345, 12345, 12345, float64(12345), float64(12345), float64(12345)},
+					{12345, 12345, 12345, float64(12345), float64(12345), "12345"},
 				},
 			},
 			{
@@ -1309,14 +1309,15 @@ var typesTests = []ScriptTest{
 		Name: "Numeric type",
 		SetUpScript: []string{
 			"CREATE TABLE t_numeric (id INTEGER primary key, v1 NUMERIC(5,2));",
-			"INSERT INTO t_numeric VALUES (1, 123.45), (2, 67.89);",
+			"INSERT INTO t_numeric VALUES (1, 123.45), (2, 67.89), (3, 100.3);",
 		},
 		Assertions: []ScriptTestAssertion{
 			{
 				Query: "SELECT * FROM t_numeric ORDER BY id;",
 				Expected: []sql.Row{
-					{1, 123.45},
-					{2, 67.89},
+					{1, "123.45"},
+					{2, "67.89"},
+					{3, "100.30"},
 				},
 			},
 		},
@@ -1325,14 +1326,15 @@ var typesTests = []ScriptTest{
 		Name: "Numeric type, no scale or precision",
 		SetUpScript: []string{
 			"CREATE TABLE t_numeric (id INTEGER primary key, v1 NUMERIC);",
-			"INSERT INTO t_numeric VALUES (1, 123.45), (2, 67.875);",
+			"INSERT INTO t_numeric VALUES (1, 123.45), (2, 67.875), (3, 100.3);",
 		},
 		Assertions: []ScriptTestAssertion{
 			{
 				Query: "SELECT * FROM t_numeric ORDER BY id;",
 				Expected: []sql.Row{
-					{1, 123.45},
-					{2, 67.875},
+					{1, "123.45"},
+					{2, "67.875"},
+					{3, "100.3"},
 				},
 			},
 		},
@@ -2588,14 +2590,15 @@ func TestSameTypes(t *testing.T) {
 			Name: "Arbitrary precision types",
 			SetUpScript: []string{
 				"CREATE TABLE test (v1 DECIMAL(10, 1), v2 NUMERIC(11, 2));",
-				"INSERT INTO test VALUES (14854.5, 2504.25), (566821525.5, 735134574.75);",
+				"INSERT INTO test VALUES (14854.5, 2504.25), (566821525.5, 735134574.75), (21525, 134574.7);",
 			},
 			Assertions: []ScriptTestAssertion{
 				{
 					Query: "SELECT * FROM test ORDER BY 1;",
 					Expected: []sql.Row{
-						{14854.5, 2504.25},
-						{566821525.5, 735134574.75},
+						{"14854.5", "2504.25"},
+						{"21525.0", "134574.70"},
+						{"566821525.5", "735134574.75"},
 					},
 				},
 			},
