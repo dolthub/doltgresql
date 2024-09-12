@@ -547,7 +547,6 @@ var SchemaTests = []ScriptTest{
 	{
 		Name: "add new table in new schema, commit, status",
 		SetUpScript: []string{
-			`USE 'postgres/main'`,
 			"CREATE SCHEMA myschema",
 			"Create table myschema.mytbl (pk BIGINT PRIMARY KEY, v1 BIGINT);",
 		},
@@ -704,7 +703,6 @@ var SchemaTests = []ScriptTest{
 			"CREATE SCHEMA myschema",
 			"SET search_path = 'myschema'",
 			"CREATE TABLE mytbl (pk BIGINT PRIMARY KEY, v1 BIGINT);",
-			// "set dolt_show_branch_databases to 1;",
 		},
 		Assertions: []ScriptTestAssertion{
 			{

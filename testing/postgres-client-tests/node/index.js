@@ -187,7 +187,7 @@ async function main() {
         .then((data) => {
           const resultStr = JSON.stringify(data);
           const result = JSON.parse(resultStr);
-          if (!assertQueryResult(test.q, resultStr, expected, data)) {
+          if (!assertQueryResult(test.q, expected, data)) {
             console.log("Query:", test.q);
             console.log("Results:", result);
             console.log("Expected:", expected);

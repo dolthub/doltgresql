@@ -23,7 +23,7 @@ export function getConfig() {
   };
 }
 
-export function assertQueryResult(q, resultStr, expected, data, matcher) {
+export function assertQueryResult(q, expected, data, matcher) {
   if (matcher) {
     return matcher(data, expected);
   }
