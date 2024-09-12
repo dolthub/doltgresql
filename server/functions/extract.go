@@ -200,7 +200,7 @@ func getFieldFromTimeVal(field string, tVal time.Time) (decimal.Decimal, error) 
 	case "isodow":
 		wd := int64(tVal.Weekday())
 		if wd == 0 {
-			wd = 7 // 3102957403
+			wd = 7
 		}
 		return decimal.NewFromInt(wd), nil
 	case "isoyear":
