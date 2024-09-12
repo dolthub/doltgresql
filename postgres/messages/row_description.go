@@ -24,84 +24,84 @@ import (
 )
 
 const (
-	OidBool              = 16
-	OidBytea             = 17
-	OidChar              = 18
-	OidName              = 19
-	OidInt8              = 20
-	OidInt2              = 21
-	OidInt2Vector        = 22
-	OidInt4              = 23
-	OidRegproc           = 24
-	OidText              = 25
-	OidOid               = 26
-	OidTid               = 27
-	OidXid               = 28
-	OidCid               = 29
-	OidOidVector         = 30
-	OidPgType            = 71
-	OidPgAttribute       = 75
-	OidPgProc            = 81
-	OidPgClass           = 83
-	OidJson              = 114
-	OidXml               = 142
-	OidXmlArray          = 143
-	OidPgNodeTree        = 194
-	OidPgNodeTreeArray   = 195
-	OidJsonArray         = 199
-	OidSmgr              = 210
-	OidIndexAm           = 261
-	OidPoint             = 600
-	OidLseg              = 601
-	OidPath              = 602
-	OidBox               = 603
-	OidPolygon           = 604
-	OidLine              = 628
-	OidCidr              = 650
-	OidCidrArray         = 651
-	OidFloat4            = 700
-	OidFloat8            = 701
-	OidAbstime           = 702
-	OidReltime           = 703
-	OidTinterval         = 704
-	OidUnknown           = 705
-	OidCircle            = 718
-	OidCash              = 790
-	OidMacaddr           = 829
-	OidInet              = 869
-	OidByteaArray        = 1001
-	OidInt2Array         = 1005
-	OidInt4Array         = 1007
-	OidTextArray         = 1009
-	OidVarcharArray      = 1015
-	OidInt8Array         = 1016
-	OidPointArray        = 1017
-	OidFloat4Array       = 1021
-	OidFloat8Array       = 1022
-	OidAclitem           = 1033
-	OidAclitemArray      = 1034
-	OidInetArray         = 1041
-	OidVarchar           = 1043
-	OidDate              = 1082
-	OidTime              = 1083
-	OidTimestamp         = 1114
-	OidTimestampArray    = 1115
-	OidDateArray         = 1182
-	OidTimeArray         = 1183
-	OidInterval          = 1186
-	OidIntervalArray     = 1187
-	OidNumeric           = 1700
-	OidRefcursor         = 1790
-	OidRegprocedure      = 2202
-	OidRegoper           = 2203
-	OidRegoperator       = 2204
-	OidRegclass          = 2205
-	OidRegtype           = 2206
-	OidRegrole           = 4096
-	OidRegnamespace      = 4097
-	OidRegnamespaceArray = 4098
-	OidRegclassArray     = 4099
-	OidRegRoleArray      = 4090
+	OidBool              = uint32(16)
+	OidBytea             = uint32(17)
+	OidChar              = uint32(18)
+	OidName              = uint32(19)
+	OidInt8              = uint32(20)
+	OidInt2              = uint32(21)
+	OidInt2Vector        = uint32(22)
+	OidInt4              = uint32(23)
+	OidRegproc           = uint32(24)
+	OidText              = uint32(25)
+	OidOid               = uint32(26)
+	OidTid               = uint32(27)
+	OidXid               = uint32(28)
+	OidCid               = uint32(29)
+	OidOidVector         = uint32(30)
+	OidPgType            = uint32(71)
+	OidPgAttribute       = uint32(75)
+	OidPgProc            = uint32(81)
+	OidPgClass           = uint32(83)
+	OidJson              = uint32(114)
+	OidXml               = uint32(142)
+	OidXmlArray          = uint32(143)
+	OidPgNodeTree        = uint32(194)
+	OidPgNodeTreeArray   = uint32(195)
+	OidJsonArray         = uint32(199)
+	OidSmgr              = uint32(210)
+	OidIndexAm           = uint32(261)
+	OidPoint             = uint32(600)
+	OidLseg              = uint32(601)
+	OidPath              = uint32(602)
+	OidBox               = uint32(603)
+	OidPolygon           = uint32(604)
+	OidLine              = uint32(628)
+	OidCidr              = uint32(650)
+	OidCidrArray         = uint32(651)
+	OidFloat4            = uint32(700)
+	OidFloat8            = uint32(701)
+	OidAbstime           = uint32(702)
+	OidReltime           = uint32(703)
+	OidTinterval         = uint32(704)
+	OidUnknown           = uint32(705)
+	OidCircle            = uint32(718)
+	OidCash              = uint32(790)
+	OidMacaddr           = uint32(829)
+	OidInet              = uint32(869)
+	OidByteaArray        = uint32(1001)
+	OidInt2Array         = uint32(1005)
+	OidInt4Array         = uint32(1007)
+	OidTextArray         = uint32(1009)
+	OidVarcharArray      = uint32(1015)
+	OidInt8Array         = uint32(1016)
+	OidPointArray        = uint32(1017)
+	OidFloat4Array       = uint32(1021)
+	OidFloat8Array       = uint32(1022)
+	OidAclitem           = uint32(1033)
+	OidAclitemArray      = uint32(1034)
+	OidInetArray         = uint32(1041)
+	OidVarchar           = uint32(1043)
+	OidDate              = uint32(1082)
+	OidTime              = uint32(1083)
+	OidTimestamp         = uint32(1114)
+	OidTimestampArray    = uint32(1115)
+	OidDateArray         = uint32(1182)
+	OidTimeArray         = uint32(1183)
+	OidInterval          = uint32(1186)
+	OidIntervalArray     = uint32(1187)
+	OidNumeric           = uint32(1700)
+	OidRefcursor         = uint32(1790)
+	OidRegprocedure      = uint32(2202)
+	OidRegoper           = uint32(2203)
+	OidRegoperator       = uint32(2204)
+	OidRegclass          = uint32(2205)
+	OidRegtype           = uint32(2206)
+	OidRegrole           = uint32(4096)
+	OidRegnamespace      = uint32(4097)
+	OidRegnamespaceArray = uint32(4098)
+	OidRegclassArray     = uint32(4099)
+	OidRegRoleArray      = uint32(4090)
 )
 
 func init() {
@@ -217,13 +217,13 @@ func (m RowDescription) DefaultMessage() *connection.MessageFormat {
 
 // VitessFieldToDataTypeObjectID returns the type of a vitess Field into a type as defined by Postgres.
 // OIDs can be obtained with the following query: `SELECT oid, typname FROM pg_type ORDER BY 1;`
-func VitessFieldToDataTypeObjectID(field *query.Field) (int32, error) {
+func VitessFieldToDataTypeObjectID(field *query.Field) (uint32, error) {
 	return VitessTypeToObjectID(field.Type)
 }
 
 // VitessFieldToDataTypeObjectID returns a type, as defined by Vitess, into a type as defined by Postgres.
 // OIDs can be obtained with the following query: `SELECT oid, typname FROM pg_type ORDER BY 1;`
-func VitessTypeToObjectID(typ query.Type) (int32, error) {
+func VitessTypeToObjectID(typ query.Type) (uint32, error) {
 	switch typ {
 	case query.Type_INT8:
 		// Postgres doesn't make use of a small integer type for integer returns, which presents a bit of a conundrum.

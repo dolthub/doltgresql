@@ -3550,7 +3550,18 @@ call_stmt:
 // We currently support only the #2 format.
 // See the comment for CopyStmt in https://github.com/postgres/postgres/blob/master/src/backend/parser/gram.y.
 copy_from_stmt:
-  COPY table_name opt_column_list FROM STDIN opt_with_copy_options
+  COPY table_name opt_column_list FROM SCONST opt_with_copy_options
+  {
+    name := $2.unresolvedObjectName().ToTableName()
+    $$.val = &tree.CopyFrom{
+       Table: name,
+       File: $5,
+       Columns: $3.nameList(),
+       Stdin: false,
+       Options: *$6.copyOptions(),
+    }
+  }
+| COPY table_name opt_column_list FROM STDIN opt_with_copy_options
   {
     name := $2.unresolvedObjectName().ToTableName()
     $$.val = &tree.CopyFrom{
