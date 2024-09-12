@@ -20,11 +20,13 @@ import (
 	"strings"
 	"time"
 
+	"github.com/dolthub/go-mysql-server/sql"
+	"github.com/shopspring/decimal"
+	"gopkg.in/src-d/go-errors.v1"
+
 	"github.com/dolthub/doltgresql/postgres/parser/duration"
 	"github.com/dolthub/doltgresql/server/functions/framework"
 	pgtypes "github.com/dolthub/doltgresql/server/types"
-	"github.com/dolthub/go-mysql-server/sql"
-	"github.com/shopspring/decimal"
 )
 
 // initExtract registers the functions to the catalog.
