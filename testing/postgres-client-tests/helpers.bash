@@ -1,10 +1,4 @@
-setup_doltgres_repo() {
-  run psql --version
-  if [[ ! "$output" =~ "(PostgreSQL) 15" ]] && [[ ! "$output" =~ "(PostgreSQL) 16" ]]; then
-    echo "PSQL must be version 15"
-    return 1
-  fi
-
+start_doltgres_server() {
   REPO_NAME="doltgres_repo_$$"
   mkdir $REPO_NAME
   cd $REPO_NAME
@@ -18,6 +12,16 @@ setup_doltgres_repo() {
   SERVER_PID=$!
   # Give the server a chance to start
   sleep 2
+}
+
+setup_doltgres_repo() {
+  run psql --version
+  if [[ ! "$output" =~ "(PostgreSQL) 15" ]] && [[ ! "$output" =~ "(PostgreSQL) 16" ]]; then
+    echo "PSQL must be version 15"
+    return 1
+  fi
+
+  start_doltgres_server
 }
 
 teardown_doltgres_repo() {

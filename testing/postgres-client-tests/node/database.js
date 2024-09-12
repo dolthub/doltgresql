@@ -1,4 +1,4 @@
-import pkg from 'pg';
+import pkg from "pg";
 const { Client } = pkg;
 
 export class Database {

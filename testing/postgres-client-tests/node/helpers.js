@@ -3,6 +3,8 @@ const user = args[0];
 const port = args[1];
 const version = args[2];
 
+export const dbName = "doltgres";
+
 export function getArgs() {
   return { user, port };
 }
@@ -16,12 +18,12 @@ export function getConfig() {
   return {
     host: "localhost",
     port: port,
-    database: "doltgres",
+    database: dbName,
     user: user,
   };
 }
 
-export function assertQueryResult(q, resultStr, expected, data, matcher) {
+export function assertQueryResult(q, expected, data, matcher) {
   if (matcher) {
     return matcher(data, expected);
   }
