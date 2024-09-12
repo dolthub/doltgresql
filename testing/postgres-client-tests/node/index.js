@@ -126,7 +126,7 @@ const tests = [
       command: "SELECT",
       rowCount: 1,
       oid: null,
-      rows: [{ count: "2" }],
+      rows: [{ count: "3" }],
       fields: [
         {
           name: "count",
@@ -224,7 +224,7 @@ const tests = [
       command: "SELECT",
       rowCount: 1,
       oid: null,
-      rows: [{ count: "3" }],
+      rows: [{ count: "4" }],
       fields: [
         {
           name: "count",

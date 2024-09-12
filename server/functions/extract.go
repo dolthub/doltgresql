@@ -20,13 +20,11 @@ import (
 	"strings"
 	"time"
 
-	"github.com/dolthub/go-mysql-server/sql"
-	"github.com/shopspring/decimal"
-	"gopkg.in/src-d/go-errors.v1"
-
 	"github.com/dolthub/doltgresql/postgres/parser/duration"
 	"github.com/dolthub/doltgresql/server/functions/framework"
 	pgtypes "github.com/dolthub/doltgresql/server/types"
+	"github.com/dolthub/go-mysql-server/sql"
+	"github.com/shopspring/decimal"
 )
 
 // initExtract registers the functions to the catalog.
@@ -202,7 +200,7 @@ func getFieldFromTimeVal(field string, tVal time.Time) (decimal.Decimal, error) 
 	case "isodow":
 		wd := int64(tVal.Weekday())
 		if wd == 0 {
-			wd = 7
+			wd = 7 // 3102957403
 		}
 		return decimal.NewFromInt(wd), nil
 	case "isoyear":
