@@ -29,17 +29,14 @@ func nodeCopyFrom(node *tree.CopyFrom) (vitess.Statement, error) {
 	if node == nil {
 		return nil, nil
 	}
-	if node.Options.CopyFormat != tree.CopyFormatText {
-		return nil, fmt.Errorf("COPY FROM does not yet support non-text formats")
-	}
-	if node.Options.Destination != nil {
-		return nil, fmt.Errorf("COPY FROM does not work with destinations")
+	if node.Options.CopyFormat == tree.CopyFormatBinary {
+		return nil, fmt.Errorf("COPY FROM does not support format BINARY")
 	}
 	return vitess.InjectedStatement{
 		Statement: pgnodes.NewCopyFrom(node.Table.Catalog(), doltdb.TableName{
 			Name:   node.Table.Object(),
 			Schema: node.Table.Schema(),
-		}, node.File, node.Stdin, node.Columns),
+		}, node.Options, node.File, node.Stdin, node.Columns),
 		Children: nil,
 	}, nil
 }

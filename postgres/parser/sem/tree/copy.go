@@ -24,7 +24,9 @@
 
 package tree
 
-import "github.com/cockroachdb/errors"
+import (
+	"github.com/cockroachdb/errors"
+)
 
 // CopyFrom represents a COPY FROM statement.
 type CopyFrom struct {
@@ -37,8 +39,7 @@ type CopyFrom struct {
 
 // CopyOptions describes options for COPY execution.
 type CopyOptions struct {
-	Destination Expr
-	CopyFormat  CopyFormat
+	CopyFormat CopyFormat
 }
 
 var _ NodeFormatter = &CopyOptions{}
@@ -71,19 +72,13 @@ func (o *CopyOptions) Format(ctx *FmtCtx) {
 		}
 		addSep = true
 	}
-	if o.Destination != nil {
-		// Lowercase because that's what has historically been produced
-		// by copy_file_upload.go, so this will provide backward
-		// compatibility with older servers.
-		ctx.WriteString("destination = ")
-		o.Destination.Format(ctx)
-		addSep = true
-	}
 	if o.CopyFormat != CopyFormatText {
 		maybeAddSep()
 		switch o.CopyFormat {
+		case CopyFormatCsv:
+			ctx.WriteString("FORMAT CSV")
 		case CopyFormatBinary:
-			ctx.WriteString("BINARY")
+			ctx.WriteString("FORMAT BINARY")
 		}
 	}
 }
@@ -96,12 +91,6 @@ func (o CopyOptions) IsDefault() bool {
 // CombineWith merges other options into this struct. An error is returned if
 // the same option merged multiple times.
 func (o *CopyOptions) CombineWith(other *CopyOptions) error {
-	if other.Destination != nil {
-		if o.Destination != nil {
-			return errors.New("destination option specified multiple times")
-		}
-		o.Destination = other.Destination
-	}
 	if other.CopyFormat != CopyFormatText {
 		if o.CopyFormat != CopyFormatText {
 			return errors.New("format option specified multiple times")
@@ -118,4 +107,5 @@ type CopyFormat int
 const (
 	CopyFormatText CopyFormat = iota
 	CopyFormatBinary
+	CopyFormatCsv
 )

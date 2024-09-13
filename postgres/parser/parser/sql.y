@@ -700,6 +700,7 @@ func (u *sqlSymUnion) aggregatesToDrop() []tree.AggregateToDrop {
 %token <str> ASYMMETRIC AT ATOMIC ATTACH ATTRIBUTE AUTHORIZATION AUTOMATIC
 
 %token <str> BACKUP BACKUPS BASETYPE BEFORE BEGIN BETWEEN BIGINT BIGSERIAL BINARY BIT
+%token <str> FORMAT CSV
 %token <str> BUCKET_COUNT
 %token <str> BOOLEAN BOTH BOX2D BUNDLE BY
 
@@ -3573,9 +3574,9 @@ copy_from_stmt:
   }
 
 opt_with_copy_options:
-  opt_with copy_options_list
+  opt_with '(' copy_options_list ')'
   {
-    $$.val = $2.copyOptions()
+    $$.val = $3.copyOptions()
   }
 | /* EMPTY */
   {
@@ -3595,11 +3596,15 @@ copy_options_list:
   }
 
 copy_options:
-  DESTINATION '=' string_or_placeholder
+ FORMAT CSV
   {
-    $$.val = &tree.CopyOptions{Destination: $3.expr()}
+    $$.val = &tree.CopyOptions{CopyFormat: tree.CopyFormatCsv}
   }
-| BINARY
+| FORMAT TEXT
+  {
+    $$.val = &tree.CopyOptions{CopyFormat: tree.CopyFormatText}
+  }
+| FORMAT BINARY
   {
     $$.val = &tree.CopyOptions{CopyFormat: tree.CopyFormatBinary}
   }
@@ -13948,6 +13953,7 @@ unreserved_keyword:
 | CREATEDB
 | CREATELOGIN
 | CREATEROLE
+| CSV
 | CUBE
 | CURRENT
 | CYCLE
@@ -14007,6 +14013,7 @@ unreserved_keyword:
 | FOLLOWING
 | FORCE
 | FORCE_INDEX
+| FORMAT
 | FUNCTION
 | FUNCTIONS
 | GENERATED
