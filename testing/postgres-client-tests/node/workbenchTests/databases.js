@@ -68,8 +68,8 @@ export const databaseTests = [
   {
     q: `SELECT dolt_version();`,
     res: [{ "dolt_version()": "0.0.0" }],
-    matcher: (res) => {
-      return res.rows[0].dolt_version.length > 0;
+    matcher: (data) => {
+      return data.rows[0].dolt_version.length > 0;
     },
   },
 ];
