@@ -113,6 +113,7 @@ const tests = [
       rowCount: 1,
       oid: null,
       rows: [{ count: "3" }],
+      fields: countFields,
     },
   },
   {
