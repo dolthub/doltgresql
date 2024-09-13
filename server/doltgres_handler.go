@@ -21,7 +21,6 @@ import (
 	"github.com/jackc/pgx/v5/pgproto3"
 	"github.com/sirupsen/logrus"
 
-	"github.com/dolthub/doltgresql/postgres/messages"
 	pgtypes "github.com/dolthub/doltgresql/server/types"
 )
 
@@ -229,7 +228,7 @@ func schemaToFieldDescriptions(ctx *sql.Context, s sql.Schema) []pgproto3.FieldD
 		if doltgresType, ok := c.Type.(pgtypes.DoltgresType); ok {
 			oid = doltgresType.OID()
 		} else {
-			oid, err = messages.VitessTypeToObjectID(c.Type.Type())
+			oid, err = VitessTypeToObjectID(c.Type.Type())
 			if err != nil {
 				panic(err)
 			}

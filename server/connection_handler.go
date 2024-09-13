@@ -19,8 +19,8 @@ import (
 	"bytes"
 	"context"
 	"crypto/tls"
+	"encoding/json"
 	"fmt"
-	"io"
 	"net"
 	"os"
 	"strings"
@@ -37,8 +37,6 @@ import (
 
 	"github.com/dolthub/doltgresql/core"
 	"github.com/dolthub/doltgresql/core/dataloader"
-	"github.com/dolthub/doltgresql/postgres/connection"
-	"github.com/dolthub/doltgresql/postgres/messages"
 	"github.com/dolthub/doltgresql/postgres/parser/parser"
 	"github.com/dolthub/doltgresql/server/ast"
 	pgexprs "github.com/dolthub/doltgresql/server/expression"
@@ -53,6 +51,7 @@ type ConnectionHandler struct {
 	portals            map[string]PortalData
 	doltgresHandler    *DoltgresHandler
 	handler            mysql.Handler
+	backend            *pgproto3.Backend
 	pgTypeMap          *pgtype.Map
 	waitForSync        bool
 	// copyFromStdinState is set when this connection is in the COPY FROM STDIN mode, meaning it is waiting on
@@ -95,14 +94,13 @@ func NewConnectionHandler(conn net.Conn, handler mysql.Handler) *ConnectionHandl
 		encodeLoggedQuery: false, // cfg.EncodeLoggedQuery,
 	}
 
-	// TODO: should we use this backend???
-	//pgproto3.NewBackend()
 	return &ConnectionHandler{
 		mysqlConn:          mysqlConn,
 		preparedStatements: preparedStatements,
 		portals:            portals,
 		doltgresHandler:    doltgresHandler,
 		handler:            handler,
+		backend:            pgproto3.NewBackend(conn, conn),
 		pgTypeMap:          pgtype.NewMap(),
 	}
 }
@@ -146,27 +144,7 @@ func (h *ConnectionHandler) HandleConnection() {
 	}
 	h.handler.NewConnection(h.mysqlConn)
 
-	startupMessage, err := h.receiveStartupMessage()
-	if err != nil {
-		returnErr = err
-		return
-	}
-
-	err = h.sendClientStartupMessages(startupMessage)
-	if err != nil {
-		returnErr = err
-		return
-	}
-
-	err = h.chooseInitialDatabase(startupMessage)
-	if err != nil {
-		returnErr = err
-		return
-	}
-
-	if err := connection.Send(h.Conn(), messages.ReadyForQuery{
-		Indicator: messages.ReadyForQueryTransactionIndicator_Idle,
-	}); err != nil {
+	if err := h.handleStartup(); err != nil {
 		returnErr = err
 		return
 	}
@@ -191,8 +169,134 @@ func (h *ConnectionHandler) Conn() net.Conn {
 	return h.mysqlConn.Conn
 }
 
+func (h *ConnectionHandler) setConn(conn net.Conn) {
+	h.mysqlConn.Conn = conn
+	h.backend = pgproto3.NewBackend(conn, conn)
+}
+
+func (h *ConnectionHandler) handleStartup() error {
+	startupMessage, err := h.backend.ReceiveStartupMessage()
+	if err != nil {
+		return fmt.Errorf("error receiving startup message: %w", err)
+	}
+
+	switch sm := startupMessage.(type) {
+	case *pgproto3.StartupMessage:
+		if err = h.sendClientStartupMessages(sm); err != nil {
+			return err
+		}
+		if err = h.chooseInitialDatabase(sm); err != nil {
+			return err
+		}
+		return h.send(&pgproto3.ReadyForQuery{
+			TxStatus: byte(ReadyForQueryTransactionIndicator_Idle),
+		})
+	case *pgproto3.SSLRequest:
+		hasCertificate := len(certificate.Certificate) > 0
+		var performSSL = []byte("N")
+		if hasCertificate {
+			performSSL = []byte("S")
+		}
+		_, err = h.Conn().Write(performSSL)
+		if err != nil {
+			return fmt.Errorf("error sending deny SSL request: %w", err)
+		}
+		// If we have a certificate and the client has asked for SSL support, then we switch here.
+		// This involves swapping out our underlying net connection for a new one.
+		// We can't start in SSL mode, as the client does not attempt the handshake until after our response.
+		if hasCertificate {
+			h.setConn(tls.Server(h.Conn(), &tls.Config{
+				Certificates: []tls.Certificate{certificate},
+			}))
+		}
+		return h.handleStartup()
+	case *pgproto3.GSSEncRequest:
+		// we don't support GSSAPI
+		_, err = h.Conn().Write([]byte("N"))
+		if err != nil {
+			return fmt.Errorf("error sending response to GSS Enc Request: %w", err)
+		}
+		return h.handleStartup()
+	default:
+		return fmt.Errorf("terminating connection: unexpected start message: %#v", startupMessage)
+	}
+}
+
+// sendClientStartupMessages sends introductory messages to the client and returns any error
+// TODO: implement users and authentication
+func (h *ConnectionHandler) sendClientStartupMessages(startupMessage *pgproto3.StartupMessage) error {
+	if user, ok := startupMessage.Parameters["user"]; ok && len(user) > 0 {
+		var host string
+		if h.Conn().RemoteAddr().Network() == "unix" {
+			host = "localhost"
+		} else {
+			host, _, _ = net.SplitHostPort(h.Conn().RemoteAddr().String())
+			if len(host) == 0 {
+				host = "localhost"
+			}
+		}
+
+		h.mysqlConn.User = user
+		h.mysqlConn.UserData = sql.MysqlConnectionUser{
+			User: user,
+			Host: host,
+		}
+	} else {
+		h.mysqlConn.User = "doltgres"
+		h.mysqlConn.UserData = sql.MysqlConnectionUser{
+			User: "doltgres",
+			Host: "localhost",
+		}
+	}
+
+	if err := h.send(&pgproto3.AuthenticationOk{}); err != nil {
+		return err
+	}
+	if err := h.send(&pgproto3.ParameterStatus{
+		Name:  "server_version",
+		Value: "15.0",
+	}); err != nil {
+		return err
+	}
+	if err := h.send(&pgproto3.ParameterStatus{
+		Name:  "client_encoding",
+		Value: "UTF8",
+	}); err != nil {
+		return err
+	}
+	return h.send(&pgproto3.BackendKeyData{
+		ProcessID: processID,
+		SecretKey: 0,
+	})
+}
+
+// chooseInitialDatabase attempts to choose the initial database for the connection,
+// if one is specified in the startup message provided
+func (h *ConnectionHandler) chooseInitialDatabase(startupMessage *pgproto3.StartupMessage) error {
+	if db, ok := startupMessage.Parameters["database"]; ok && len(db) > 0 {
+		err := h.handler.ComQuery(context.Background(), h.mysqlConn, fmt.Sprintf("USE `%s`;", db), func(res *sqltypes.Result, more bool) error {
+			return nil
+		})
+		if err != nil {
+			return h.send(&pgproto3.ErrorResponse{
+				Severity: string(ErrorResponseSeverity_Fatal),
+				Code:     "3D000",
+				Message:  fmt.Sprintf(`"database "%s" does not exist"`, db),
+				Routine:  "InitPostgres",
+			})
+		}
+	} else {
+		// If a database isn't specified, then we attempt to connect to a database with the same name as the user,
+		// ignoring any error
+		_ = h.handler.ComQuery(context.Background(), h.mysqlConn, fmt.Sprintf("USE `%s`;", h.mysqlConn.User), func(res *sqltypes.Result, more bool) error {
+			return nil
+		})
+	}
+	return nil
+}
+
 // receiveMessage reads a single message off the connection and processes it, returning an error if no message could be
-// received from the connection. Otherwise (a message is received successfully), the message is processed and any
+// received from the connection. Otherwise, (a message is received successfully), the message is processed and any
 // error is handled appropriately. The return value indicates whether the connection should be closed.
 func (h *ConnectionHandler) receiveMessage() (bool, error) {
 	var endOfMessages bool
@@ -213,7 +317,7 @@ func (h *ConnectionHandler) receiveMessage() (bool, error) {
 				}
 
 				if !endOfMessages && h.waitForSync {
-					if syncErr := connection.DiscardToSync(h.Conn()); syncErr != nil {
+					if syncErr := h.discardToSync(); syncErr != nil {
 						fmt.Println(syncErr.Error())
 					}
 				}
@@ -222,22 +326,26 @@ func (h *ConnectionHandler) receiveMessage() (bool, error) {
 		}()
 	}
 
-	message, err := connection.Receive(h.Conn())
+	msg, err := h.backend.Receive()
 	if err != nil {
-		return false, err
+		return false, fmt.Errorf("error receiving message: %w", err)
 	}
 
-	if ds, ok := message.(sql.DebugStringer); ok && logrus.IsLevelEnabled(logrus.DebugLevel) {
-		logrus.Debugf("Received message: %s", ds.DebugString())
+	if m, ok := msg.(json.Marshaler); ok && logrus.IsLevelEnabled(logrus.DebugLevel) {
+		msgInfo, err := m.MarshalJSON()
+		if err != nil {
+			return false, err
+		}
+		logrus.Debugf("Received message: %s", string(msgInfo))
 	} else {
-		logrus.Debugf("Received message: %s", message.DefaultMessage().Name)
+		logrus.Debugf("Received message: %t", msg)
 	}
 
 	var stop bool
-	stop, endOfMessages, err = h.handleMessage(message)
+	stop, endOfMessages, err = h.handleMessage(msg)
 	if err != nil {
 		if !endOfMessages && h.waitForSync {
-			if syncErr := connection.DiscardToSync(h.Conn()); syncErr != nil {
+			if syncErr := h.discardToSync(); syncErr != nil {
 				fmt.Println(syncErr.Error())
 			}
 		}
@@ -249,135 +357,50 @@ func (h *ConnectionHandler) receiveMessage() (bool, error) {
 	return stop, nil
 }
 
-// receiveStartupMessage reads a startup message from the connection given and returns it. Some startup messages will
-// result in the establishment of a new connection, which is also returned.
-func (h *ConnectionHandler) receiveStartupMessage() (messages.StartupMessage, error) {
-	var startupMessage messages.StartupMessage
-	// The initial message may be one of a few different messages, so we'll check for those.
-InitialMessageLoop:
-	for {
-		initialMessages, err := connection.ReceiveIntoAny(h.Conn(),
-			messages.StartupMessage{},
-			messages.SSLRequest{},
-			messages.GSSENCRequest{})
-		if err != nil {
-			if err == io.EOF {
-				return messages.StartupMessage{}, nil
-			}
-			return messages.StartupMessage{}, err
-		}
-
-		if len(initialMessages) != 1 {
-			return messages.StartupMessage{}, fmt.Errorf("expected a single message upon starting connection, terminating connection")
-		}
-
-		initialMessage := initialMessages[0]
-		switch initialMessage := initialMessage.(type) {
-		case messages.StartupMessage:
-			startupMessage = initialMessage
-			break InitialMessageLoop
-		case messages.SSLRequest:
-			hasCertificate := len(certificate.Certificate) > 0
-			if err := connection.Send(h.Conn(), messages.SSLResponse{
-				SupportsSSL: hasCertificate,
-			}); err != nil {
-				return messages.StartupMessage{}, err
-			}
-			// If we have a certificate and the client has asked for SSL support, then we switch here.
-			// This involves swapping out our underlying net connection for a new one.
-			// We can't start in SSL mode, as the client does not attempt the handshake until after our response.
-			if hasCertificate {
-				conn := tls.Server(h.Conn(), &tls.Config{
-					Certificates: []tls.Certificate{certificate},
-				})
-				h.mysqlConn.Conn = conn
-			}
-		case messages.GSSENCRequest:
-			if err = connection.Send(h.Conn(), messages.GSSENCResponse{
-				SupportsGSSAPI: false,
-			}); err != nil {
-				return messages.StartupMessage{}, err
-			}
-		default:
-			return messages.StartupMessage{}, fmt.Errorf("unexpected initial message, terminating connection")
-		}
-	}
-
-	return startupMessage, nil
-}
-
-// chooseInitialDatabase attempts to choose the initial database for the connection, if one is specified in the
-// startup message provided
-func (h *ConnectionHandler) chooseInitialDatabase(startupMessage messages.StartupMessage) error {
-	if db, ok := startupMessage.Parameters["database"]; ok && len(db) > 0 {
-		err := h.handler.ComQuery(context.Background(), h.mysqlConn, fmt.Sprintf("USE `%s`;", db), func(res *sqltypes.Result, more bool) error {
-			return nil
-		})
-		if err != nil {
-			_ = connection.Send(h.Conn(), messages.ErrorResponse{
-				Severity:     messages.ErrorResponseSeverity_Fatal,
-				SqlStateCode: "3D000",
-				Message:      fmt.Sprintf(`"database "%s" does not exist"`, db),
-				Optional: messages.ErrorResponseOptionalFields{
-					Routine: "InitPostgres",
-				},
-			})
-			return err
-		}
-	} else {
-		// If a database isn't specified, then we attempt to connect to a database with the same name as the user,
-		// ignoring any error
-		_ = h.handler.ComQuery(context.Background(), h.mysqlConn, fmt.Sprintf("USE `%s`;", h.mysqlConn.User), func(res *sqltypes.Result, more bool) error {
-			return nil
-		})
-	}
-	return nil
-}
-
 // handleMessages processes the message provided and returns status flags indicating what the connection should do next.
 // If the |stop| response parameter is true, it indicates that the connection should be closed by the caller. If the
 // |endOfMessages| response parameter is true, it indicates that no more messages are expected for the current operation
-// and a READY FOR QUERY message should be sent back to the client so it can send the next query.
-func (h *ConnectionHandler) handleMessage(message connection.Message) (stop, endOfMessages bool, err error) {
-	switch message := message.(type) {
-	case messages.Terminate:
+// and a READY FOR QUERY message should be sent back to the client, so it can send the next query.
+func (h *ConnectionHandler) handleMessage(msg pgproto3.Message) (stop, endOfMessages bool, err error) {
+	switch message := msg.(type) {
+	case *pgproto3.Terminate:
 		return true, false, nil
-	case messages.Sync:
+	case *pgproto3.Sync:
 		h.waitForSync = false
 		return false, true, nil
-	case messages.Query:
+	case *pgproto3.Query:
 		endOfMessages, err = h.handleQuery(message)
 		return false, endOfMessages, err
-	case messages.Parse:
+	case *pgproto3.Parse:
 		return false, false, h.handleParse(message)
-	case messages.Describe:
+	case *pgproto3.Describe:
 		return false, false, h.handleDescribe(message)
-	case messages.Bind:
+	case *pgproto3.Bind:
 		return false, false, h.handleBind(message)
-	case messages.Execute:
+	case *pgproto3.Execute:
 		return false, false, h.handleExecute(message)
-	case messages.Close:
-		if message.ClosingPreparedStatement {
-			delete(h.preparedStatements, message.Target)
+	case *pgproto3.Close:
+		if message.ObjectType == 'S' {
+			delete(h.preparedStatements, message.Name)
 		} else {
-			delete(h.portals, message.Target)
+			delete(h.portals, message.Name)
 		}
-		return false, false, connection.Send(h.Conn(), messages.CloseComplete{})
-	case messages.CopyData:
+		return false, false, h.send(&pgproto3.CloseComplete{})
+	case *pgproto3.CopyData:
 		return h.handleCopyData(message)
-	case messages.CopyDone:
+	case *pgproto3.CopyDone:
 		return h.handleCopyDone(message)
-	case messages.CopyFail:
+	case *pgproto3.CopyFail:
 		return h.handleCopyFail(message)
 	default:
-		return false, true, fmt.Errorf(`Unhandled message "%s"`, message.DefaultMessage().Name)
+		return false, true, fmt.Errorf(`unhandled message "%t"`, message)
 	}
 }
 
 // handleQuery handles a query message, and returns a boolean flag, |endOfMessages| indicating if no other messages are
 // expected as part of this query, in which case the server will send a READY FOR QUERY message back to the client so
 // that it can send its next query.
-func (h *ConnectionHandler) handleQuery(message messages.Query) (endOfMessages bool, err error) {
+func (h *ConnectionHandler) handleQuery(message *pgproto3.Query) (endOfMessages bool, err error) {
 	handled, err := h.handledPSQLCommands(message.String)
 	if handled || err != nil {
 		return true, err
@@ -420,7 +443,7 @@ func (h *ConnectionHandler) handleQueryOutsideEngine(query ConvertedQuery) (hand
 	case sqlparser.InjectedStatement:
 		switch injectedStmt := stmt.Statement.(type) {
 		case node.DiscardStatement:
-			return true, true, h.discardAll(query, h.Conn())
+			return true, true, h.discardAll(query)
 		case *node.CopyFrom:
 			// When copying data from STDIN, the data is sent to the server as CopyData messages
 			// We send endOfMessages=false since the server will be in COPY DATA mode and won't
@@ -434,7 +457,7 @@ func (h *ConnectionHandler) handleQueryOutsideEngine(query ConvertedQuery) (hand
 }
 
 // handleParse handles a parse message, returning any error that occurs
-func (h *ConnectionHandler) handleParse(message messages.Parse) error {
+func (h *ConnectionHandler) handleParse(message *pgproto3.Parse) error {
 	h.waitForSync = true
 
 	// TODO: "Named prepared statements must be explicitly closed before they can be redefined by another Parse message, but this is not required for the unnamed statement"
@@ -462,7 +485,7 @@ func (h *ConnectionHandler) handleParse(message messages.Parse) error {
 	}
 
 	// A valid Parse message must have ParameterObjectIDs if there are any binding variables.
-	bindVarTypes := message.ParameterObjectIDs
+	bindVarTypes := message.ParameterOIDs
 	if len(bindVarTypes) == 0 {
 		// NOTE: This is used for Prepared Statement Tests only.
 		bindVarTypes, err = extractBindVarTypes(analyzedPlan)
@@ -476,49 +499,48 @@ func (h *ConnectionHandler) handleParse(message messages.Parse) error {
 		ReturnFields: fields,
 		BindVarTypes: bindVarTypes,
 	}
-
-	return connection.Send(h.Conn(), messages.ParseComplete{})
+	return h.send(&pgproto3.ParseComplete{})
 }
 
 // handleDescribe handles a Describe message, returning any error that occurs
-func (h *ConnectionHandler) handleDescribe(message messages.Describe) error {
+func (h *ConnectionHandler) handleDescribe(message *pgproto3.Describe) error {
 	var fields []pgproto3.FieldDescription
 	var bindvarTypes []uint32
 	var tag string
 
 	h.waitForSync = true
-	if message.IsPrepared {
-		preparedStatementData, ok := h.preparedStatements[message.Target]
+	if message.ObjectType == 'S' {
+		preparedStatementData, ok := h.preparedStatements[message.Name]
 		if !ok {
-			return fmt.Errorf("prepared statement %s does not exist", message.Target)
+			return fmt.Errorf("prepared statement %s does not exist", message.Name)
 		}
 
 		fields = preparedStatementData.ReturnFields
 		bindvarTypes = preparedStatementData.BindVarTypes
 		tag = preparedStatementData.Query.StatementTag
 	} else {
-		portalData, ok := h.portals[message.Target]
+		portalData, ok := h.portals[message.Name]
 		if !ok {
-			return fmt.Errorf("portal %s does not exist", message.Target)
+			return fmt.Errorf("portal %s does not exist", message.Name)
 		}
 
 		fields = portalData.Fields
 		tag = portalData.Query.StatementTag
 	}
 
-	return h.sendDescribeResponse(h.Conn(), fields, bindvarTypes, tag)
+	return h.sendDescribeResponse(fields, bindvarTypes, tag)
 }
 
 // handleBind handles a bind message, returning any error that occurs
-func (h *ConnectionHandler) handleBind(message messages.Bind) error {
+func (h *ConnectionHandler) handleBind(message *pgproto3.Bind) error {
 	h.waitForSync = true
 
 	// TODO: a named portal object lasts till the end of the current transaction, unless explicitly destroyed
 	//  we need to destroy the named portal as a side effect of the transaction ending
-	logrus.Tracef("binding portal %q to prepared statement %s", message.DestinationPortal, message.SourcePreparedStatement)
-	preparedData, ok := h.preparedStatements[message.SourcePreparedStatement]
+	logrus.Tracef("binding portal %q to prepared statement %s", message.DestinationPortal, message.PreparedStatement)
+	preparedData, ok := h.preparedStatements[message.PreparedStatement]
 	if !ok {
-		return fmt.Errorf("prepared statement %s does not exist", message.SourcePreparedStatement)
+		return fmt.Errorf("prepared statement %s does not exist", message.PreparedStatement)
 	}
 
 	if preparedData.Query.AST == nil {
@@ -527,10 +549,10 @@ func (h *ConnectionHandler) handleBind(message messages.Bind) error {
 			Query:        preparedData.Query,
 			IsEmptyQuery: true,
 		}
-		return connection.Send(h.Conn(), messages.BindComplete{})
+		return h.send(&pgproto3.BindComplete{})
 	}
 
-	bindVars, err := h.convertBindParameters(preparedData.BindVarTypes, message.ParameterFormatCodes, message.ParameterValues)
+	bindVars, err := h.convertBindParameters(preparedData.BindVarTypes, message.ParameterFormatCodes, message.Parameters)
 	if err != nil {
 		return err
 	}
@@ -550,11 +572,11 @@ func (h *ConnectionHandler) handleBind(message messages.Bind) error {
 		Fields:    fields,
 		BoundPlan: boundPlan,
 	}
-	return connection.Send(h.Conn(), messages.BindComplete{})
+	return h.send(&pgproto3.BindComplete{})
 }
 
 // handleExecute handles an execute message, returning any error that occurs
-func (h *ConnectionHandler) handleExecute(message messages.Execute) error {
+func (h *ConnectionHandler) handleExecute(message *pgproto3.Execute) error {
 	h.waitForSync = true
 
 	// TODO: implement the RowMax
@@ -566,14 +588,8 @@ func (h *ConnectionHandler) handleExecute(message messages.Execute) error {
 	logrus.Tracef("executing portal %s with contents %v", message.Portal, portalData)
 	query := portalData.Query
 
-	// we need the CommandComplete message defined here because it's altered by the callback below
-	complete := messages.CommandComplete{
-		Query: query.String,
-		Tag:   query.StatementTag,
-	}
-
 	if portalData.IsEmptyQuery {
-		return connection.Send(h.Conn(), messages.EmptyQueryResponse{})
+		return h.send(&pgproto3.EmptyQueryResponse{})
 	}
 
 	// Certain statement types get handled directly by the handler instead of being passed to the engine
@@ -582,22 +598,26 @@ func (h *ConnectionHandler) handleExecute(message messages.Execute) error {
 		return err
 	}
 
-	err = h.doltgresHandler.ComExecuteBound(context.Background(), h.mysqlConn, query.String, portalData.BoundPlan, spoolRowsCallback(h.Conn(), &complete, true))
+	// we need the CommandComplete message defined here because it's altered by the callback below
+	commandComplete := &pgproto3.CommandComplete{
+		CommandTag: []byte(query.StatementTag),
+	}
+	callback := h.spoolRowsCallback(query.String, commandComplete, true)
+	err = h.doltgresHandler.ComExecuteBound(context.Background(), h.mysqlConn, query.String, portalData.BoundPlan, callback)
 	if err != nil {
 		return err
 	}
 
-	return connection.Send(h.Conn(), complete)
+	return h.send(commandComplete)
 }
 
 // handleCopyData handles the COPY DATA message, by loading the data sent from the client. The |stop| response parameter
 // is true if the connection handler should shut down the connection, |endOfMessages| is true if no more COPY DATA
 // messages are expected, and the server should tell the client that it is ready for the next query, and |err| contains
 // any error that occurred while processing the COPY DATA message.
-func (h *ConnectionHandler) handleCopyData(message messages.CopyData) (stop bool, endOfMessages bool, err error) {
+func (h *ConnectionHandler) handleCopyData(message *pgproto3.CopyData) (stop bool, endOfMessages bool, err error) {
 	if h.copyFromStdinState == nil {
-		return false, true,
-			fmt.Errorf("COPY DATA message received without a COPY FROM STDIN operation in progress")
+		return false, true, fmt.Errorf("COPY DATA message received without a COPY FROM STDIN operation in progress")
 	}
 
 	// Grab a sql.Context
@@ -653,7 +673,7 @@ func (h *ConnectionHandler) handleCopyData(message messages.CopyData) (stop bool
 // loaded table data. The |stop| response parameter is true if the connection handler should shut down the connection,
 // |endOfMessages| is true if no more COPY DATA messages are expected, and the server should tell the client that it is
 // ready for the next query, and |err| contains any error that occurred while processing the COPY DATA message.
-func (h *ConnectionHandler) handleCopyDone(_ messages.CopyDone) (stop bool, endOfMessages bool, err error) {
+func (h *ConnectionHandler) handleCopyDone(_ *pgproto3.CopyDone) (stop bool, endOfMessages bool, err error) {
 	if h.copyFromStdinState == nil {
 		return false, true,
 			fmt.Errorf("COPY DONE message received without a COPY FROM STDIN operation in progress")
@@ -682,10 +702,8 @@ func (h *ConnectionHandler) handleCopyDone(_ messages.CopyDone) (stop bool, endO
 	h.copyFromStdinState = nil
 	// We send back endOfMessage=true, since the COPY DONE message ends the COPY DATA flow and the server is ready
 	// to accept the next query now.
-	return false, true, connection.Send(h.Conn(), messages.CommandComplete{
-		Query: "",
-		Rows:  loadDataResults.RowsLoaded,
-		Tag:   "COPY",
+	return false, true, h.send(&pgproto3.CommandComplete{
+		CommandTag: []byte(fmt.Sprintf("COPY %d", loadDataResults.RowsLoaded)),
 	})
 }
 
@@ -693,7 +711,7 @@ func (h *ConnectionHandler) handleCopyDone(_ messages.CopyDone) (stop bool, endO
 // parameter is true if the connection handler should shut down the connection, |endOfMessages| is true if no more
 // COPY DATA messages are expected, and the server should tell the client that it is ready for the next query, and
 // |err| contains any error that occurred while processing the COPY DATA message.
-func (h *ConnectionHandler) handleCopyFail(_ messages.CopyFail) (stop bool, endOfMessages bool, err error) {
+func (h *ConnectionHandler) handleCopyFail(_ *pgproto3.CopyFail) (stop bool, endOfMessages bool, err error) {
 	if h.copyFromStdinState == nil {
 		return false, true,
 			fmt.Errorf("COPY FAIL message received without a COPY FROM STDIN operation in progress")
@@ -718,22 +736,19 @@ func (h *ConnectionHandler) deallocatePreparedStatement(name string, preparedSta
 	}
 	delete(preparedStatements, name)
 
-	commandComplete := messages.CommandComplete{
-		Query: query.String,
-		Tag:   query.StatementTag,
-	}
-
-	return connection.Send(conn, commandComplete)
+	return h.send(&pgproto3.CommandComplete{
+		CommandTag: []byte(query.StatementTag),
+	})
 }
 
 // convertBindParameters handles the conversion from bind parameters to variable values.
-func (h *ConnectionHandler) convertBindParameters(types []uint32, formatCodes []int32, values []messages.BindParameterValue) (map[string]sqlparser.Expr, error) {
+func (h *ConnectionHandler) convertBindParameters(types []uint32, formatCodes []int16, values [][]byte) (map[string]sqlparser.Expr, error) {
 	bindings := make(map[string]sqlparser.Expr, len(values))
 	for i := range values {
 		typ := types[i]
 		var bindVarString string
 		// We'll rely on a library to decode each format, which will deal with text and binary representations for us
-		if err := h.pgTypeMap.Scan(typ, int16(formatCodes[i]), values[i].Data, &bindVarString); err != nil {
+		if err := h.pgTypeMap.Scan(typ, formatCodes[i], values[i], &bindVarString); err != nil {
 			return nil, err
 		}
 
@@ -750,69 +765,13 @@ func (h *ConnectionHandler) convertBindParameters(types []uint32, formatCodes []
 	return bindings, nil
 }
 
-// sendClientStartupMessages sends introductory messages to the client and returns any error
-// TODO: implement users and authentication
-func (h *ConnectionHandler) sendClientStartupMessages(startupMessage messages.StartupMessage) error {
-	if user, ok := startupMessage.Parameters["user"]; ok && len(user) > 0 {
-		var host string
-		if h.Conn().RemoteAddr().Network() == "unix" {
-			host = "localhost"
-		} else {
-			host, _, _ = net.SplitHostPort(h.Conn().RemoteAddr().String())
-			if len(host) == 0 {
-				host = "localhost"
-			}
-		}
-
-		h.mysqlConn.User = user
-		h.mysqlConn.UserData = sql.MysqlConnectionUser{
-			User: user,
-			Host: host,
-		}
-	} else {
-		h.mysqlConn.User = "doltgres"
-		h.mysqlConn.UserData = sql.MysqlConnectionUser{
-			User: "doltgres",
-			Host: "localhost",
-		}
-	}
-
-	if err := connection.Send(h.Conn(), messages.AuthenticationOk{}); err != nil {
-		return err
-	}
-
-	if err := connection.Send(h.Conn(), messages.ParameterStatus{
-		Name:  "server_version",
-		Value: "15.0",
-	}); err != nil {
-		return err
-	}
-
-	if err := connection.Send(h.Conn(), messages.ParameterStatus{
-		Name:  "client_encoding",
-		Value: "UTF8",
-	}); err != nil {
-		return err
-	}
-
-	if err := connection.Send(h.Conn(), messages.BackendKeyData{
-		ProcessID: int32(processID),
-		SecretKey: 0,
-	}); err != nil {
-		return err
-	}
-
-	return nil
-}
-
 // query runs the given query and sends a CommandComplete message to the client
 func (h *ConnectionHandler) query(query ConvertedQuery) error {
-	commandComplete := messages.CommandComplete{
-		Query: query.String,
-		Tag:   query.StatementTag,
+	commandComplete := &pgproto3.CommandComplete{
+		CommandTag: []byte(query.StatementTag),
 	}
-
-	err := h.doltgresHandler.ComQuery(context.Background(), h.mysqlConn, query.String, query.AST, spoolRowsCallback(h.Conn(), &commandComplete, false))
+	callback := h.spoolRowsCallback(query.String, commandComplete, false)
+	err := h.doltgresHandler.ComQuery(context.Background(), h.mysqlConn, query.String, query.AST, callback)
 	if err != nil {
 		if strings.HasPrefix(err.Error(), "syntax error at position") {
 			return fmt.Errorf("This statement is not yet supported")
@@ -820,21 +779,21 @@ func (h *ConnectionHandler) query(query ConvertedQuery) error {
 		return err
 	}
 
-	if err := connection.Send(h.Conn(), commandComplete); err != nil {
-		return err
-	}
-
-	return nil
+	return h.send(commandComplete)
 }
 
 // spoolRowsCallback returns a callback function that will send RowDescription message, then a DataRow message for
 // each row in the result set.
-func spoolRowsCallback(conn net.Conn, commandComplete *messages.CommandComplete, isExecute bool) func(res *Result) error {
+func (h *ConnectionHandler) spoolRowsCallback(query string, cc *pgproto3.CommandComplete, isExecute bool) func(res *Result) error {
+	// IsIUD returns whether the query is either an INSERT, UPDATE, or DELETE query.
+	q := strings.TrimSpace(strings.ToLower(query))
+	isIUD := strings.HasPrefix(q, "insert") || strings.HasPrefix(q, "update") || strings.HasPrefix(q, "delete")
 	return func(res *Result) error {
-		if messages.ReturnsRow(commandComplete.Tag) {
+		tag := string(cc.CommandTag)
+		if returnsRow(tag) {
 			// EXECUTE does not send RowDescription; instead it should be sent from DESCRIBE prior to it
 			if !isExecute {
-				if err := connection.Send(conn, messages.RowDescription{
+				if err := h.send(&pgproto3.RowDescription{
 					Fields: res.Fields,
 				}); err != nil {
 					return err
@@ -842,7 +801,7 @@ func spoolRowsCallback(conn net.Conn, commandComplete *messages.CommandComplete,
 			}
 
 			for _, row := range res.Rows {
-				if err := connection.Send(conn, messages.DataRow{
+				if err := h.send(&pgproto3.DataRow{
 					Values: row.val,
 				}); err != nil {
 					return err
@@ -850,33 +809,44 @@ func spoolRowsCallback(conn net.Conn, commandComplete *messages.CommandComplete,
 			}
 		}
 
-		if commandComplete.IsIUD() {
-			commandComplete.Rows = int32(res.RowsAffected)
+		var rows int32
+		if isIUD {
+			rows = int32(res.RowsAffected)
 		} else {
-			commandComplete.Rows += int32(len(res.Rows))
+			rows += int32(len(res.Rows))
 		}
+
+		switch tag {
+		case "INSERT", "DELETE", "UPDATE", "MERGE", "SELECT", "CREATE TABLE AS", "MOVE", "FETCH", "COPY":
+			if tag == "INSERT" {
+				tag = "INSERT 0"
+			}
+			tag = fmt.Sprintf("%s %d", tag, rows)
+		}
+
+		cc.CommandTag = []byte(tag)
 		return nil
 	}
 }
 
 // sendDescribeResponse sends a response message for a Describe message
-func (h *ConnectionHandler) sendDescribeResponse(conn net.Conn, fields []pgproto3.FieldDescription, types []uint32, tag string) (err error) {
+func (h *ConnectionHandler) sendDescribeResponse(fields []pgproto3.FieldDescription, types []uint32, tag string) error {
 	// The prepared statement variant of the describe command returns the OIDs of the parameters.
 	if types != nil {
-		if err := connection.Send(conn, messages.ParameterDescription{
-			ObjectIDs: types,
+		if err := h.send(&pgproto3.ParameterDescription{
+			ParameterOIDs: types,
 		}); err != nil {
 			return err
 		}
 	}
 
-	if messages.ReturnsRow(tag) {
+	if returnsRow(tag) {
 		// Both variants finish with a row description.
-		return connection.Send(conn, messages.RowDescription{
+		return h.send(&pgproto3.RowDescription{
 			Fields: fields,
 		})
 	} else {
-		return connection.Send(conn, messages.NoData{})
+		return h.send(&pgproto3.NoData{})
 	}
 }
 
@@ -982,10 +952,10 @@ func (h *ConnectionHandler) handledWorkbenchCommands(statement string) (bool, er
 // query. A nil error should be provided if this is being called naturally.
 func (h *ConnectionHandler) endOfMessages(err error) {
 	if err != nil {
-		h.sendError(h.Conn(), err)
+		h.sendError(err)
 	}
-	if sendErr := connection.Send(h.Conn(), messages.ReadyForQuery{
-		Indicator: messages.ReadyForQueryTransactionIndicator_Idle,
+	if sendErr := h.send(&pgproto3.ReadyForQuery{
+		TxStatus: byte(ReadyForQueryTransactionIndicator_Idle),
 	}); sendErr != nil {
 		// We panic here for the same reason as above.
 		panic(sendErr)
@@ -993,12 +963,12 @@ func (h *ConnectionHandler) endOfMessages(err error) {
 }
 
 // sendError sends the given error to the client. This should generally never be called directly.
-func (h *ConnectionHandler) sendError(conn net.Conn, err error) {
+func (h *ConnectionHandler) sendError(err error) {
 	fmt.Println(err.Error())
-	if sendErr := connection.Send(conn, messages.ErrorResponse{
-		Severity:     messages.ErrorResponseSeverity_Error,
-		SqlStateCode: "XX000", // internal_error for now
-		Message:      err.Error(),
+	if sendErr := h.send(&pgproto3.ErrorResponse{
+		Severity: string(ErrorResponseSeverity_Error),
+		Code:     "XX000", // internal_error for now
+		Message:  err.Error(),
 	}); sendErr != nil {
 		// If we're unable to send anything to the connection, then there's something wrong with the connection and
 		// we should terminate it. This will be caught in HandleConnection's defer block.
@@ -1037,18 +1007,15 @@ func (h *ConnectionHandler) convertQuery(query string) (ConvertedQuery, error) {
 }
 
 // discardAll handles the DISCARD ALL command
-func (h *ConnectionHandler) discardAll(query ConvertedQuery, conn net.Conn) error {
+func (h *ConnectionHandler) discardAll(query ConvertedQuery) error {
 	err := h.handler.ComResetConnection(h.mysqlConn)
 	if err != nil {
 		return err
 	}
 
-	commandComplete := messages.CommandComplete{
-		Query: query.String,
-		Tag:   query.StatementTag,
-	}
-
-	return connection.Send(conn, commandComplete)
+	return h.send(&pgproto3.CommandComplete{
+		CommandTag: []byte(query.StatementTag),
+	})
 }
 
 // handleCopyFromStdinQuery handles the COPY FROM STDIN query at the Doltgres layer, without passing it to the engine.
@@ -1072,7 +1039,38 @@ func (h *ConnectionHandler) handleCopyFromStdinQuery(copyFrom *node.CopyFrom, co
 		copyFromStdinNode: copyFrom,
 	}
 
-	return connection.Send(conn, messages.CopyInResponse{
-		IsTextual: true,
+	return h.send(&pgproto3.CopyInResponse{
+		OverallFormat: 0,
 	})
+}
+
+// DiscardToSync discards all messages in the buffer until a Sync has been reached. If a Sync was never sent, then this
+// may cause the connection to lock until the client send a Sync, as their request structure was malformed.
+func (h *ConnectionHandler) discardToSync() error {
+	for {
+		message, err := h.backend.Receive()
+		if err != nil {
+			return err
+		}
+
+		if _, ok := message.(*pgproto3.Sync); ok {
+			return nil
+		}
+	}
+}
+
+// Send sends the given message over the connection.
+func (h *ConnectionHandler) send(message pgproto3.BackendMessage) error {
+	h.backend.Send(message)
+	return h.backend.Flush()
+}
+
+// returnsRow returns whether the query returns set of rows such as SELECT and FETCH statements.
+func returnsRow(tag string) bool {
+	switch tag {
+	case "SELECT", "SHOW", "FETCH":
+		return true
+	default:
+		return false
+	}
 }
