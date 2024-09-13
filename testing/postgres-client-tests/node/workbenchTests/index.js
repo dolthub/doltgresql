@@ -3,12 +3,14 @@ import { databaseTests } from "./databases.js";
 import { logTests } from "./logs.js";
 import { assertQueryResult } from "../helpers.js";
 import { mergeTests } from "./merge.js";
+import { tableTests } from "./table.js";
 
 export default async function runWorkbenchTests(database) {
   await runTests(database, databaseTests);
   await runTests(database, branchTests);
   await runTests(database, logTests);
   await runTests(database, mergeTests);
+  await runTests(database, tableTests);
   // TODO: Move over the rest of the Dolt workbench tests
 }
 

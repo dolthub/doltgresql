@@ -30,18 +30,11 @@ export function assertQueryResult(q, expected, data, matcher) {
   if (q.toLowerCase().includes("dolt_commit")) {
     if (data.rows.length !== 1) return false;
     const hash = data.rows[0].dolt_commit[0];
-    // dolt_commit row returns 32 character hash
-    return hash.length === 32;
-  }
-  if (q.toLowerCase().includes("dolt_merge")) {
-    if (data.rows.length !== 1) return false;
-    const [hash, fastForward, conflicts, message] = data.rows[0].dolt_merge;
-    return (
-      hash.length === 32 &&
-      expected.fastForward === fastForward &&
-      expected.conflicts === conflicts &&
-      expected.message === message
-    );
+    if (hash.length !== 32) {
+      console.log("Invalid hash for dolt_commit:", hash);
+      return false;
+    }
+    expected.rows[0].dolt_commit = data.rows[0].dolt_commit;
   }
 
   // Does partial matching of actual and expected results.

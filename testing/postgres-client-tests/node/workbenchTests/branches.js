@@ -3,6 +3,7 @@ import {
   doltBranchFields,
   doltCheckoutFields,
   doltStatusFields,
+  doltCommitFields,
 } from "../fields.js";
 import { branchesMatcher } from "./matchers.js";
 import { dbName } from "../helpers.js";
@@ -58,7 +59,13 @@ export const branchTests = [
   {
     q: `SELECT DOLT_COMMIT('-Am', $1::text, '--author', $2::text);`,
     p: ["Create table test", "Dolt <dolt@dolthub.com>"],
-    res: [{ hash: "" }],
+    res: {
+      command: "SELECT",
+      rowCount: 1,
+      oid: null,
+      rows: [{ dolt_commit: "" }],
+      fields: doltCommitFields,
+    },
   },
   {
     q: `SELECT * FROM dolt_branches LIMIT 200`,
