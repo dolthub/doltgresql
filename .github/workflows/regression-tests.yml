@@ -1,0 +1,132 @@
+name: Regression Tests
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened]
+
+env:
+  REGRESSION_TESTING: true
+
+permissions:
+  contents: read
+  pull-requests: write
+
+jobs:
+  regression-tests:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout DoltgreSQL
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha }}
+
+      - name: Setup Git User
+        uses: fregante/setup-git-user@v2
+
+      - name: Merge main into PR
+        id: merge_main
+        run: |
+          git fetch --all --unshallow
+          git merge origin/main --no-commit --no-ff
+          if [ $? -ne 0 ]; then
+            echo "Skipping the remainder of the workflow due to a merge conflict."
+            echo "skip=true" >> $GITHUB_OUTPUT
+          else
+            echo "Merge performed successfully, continuing workflow."
+            echo "skip=false" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Install Go
+        uses: actions/setup-go@v5
+        if: steps.merge_main.outputs.skip == 'false'
+        with:
+          go-version-file: go.mod
+
+      - name: Build DoltgreSQL's parser
+        if: steps.merge_main.outputs.skip == 'false'
+        run: ./build.sh
+        working-directory: ./postgres/parser
+
+      - name: Get results for PR
+        id: test_doltgresql_pr
+        if: steps.merge_main.outputs.skip == 'false'
+        continue-on-error: true
+        run: |
+          cd testing/go/regression
+          mkdir -p out
+          cd tool
+          go test ./... --count=1
+          cp ../out/results.trackers ../out/results2.trackers
+
+      - name: Get results for main
+        id: test_doltgresql_main
+        if: steps.merge_main.outputs.skip == 'false'
+        continue-on-error: true
+        run: |
+          git reset --hard
+          git checkout origin/main
+          cd testing/go/regression
+          mkdir -p out
+          cd tool
+          go test ./... --count=1
+          cp ../out/results.trackers ../out/results1.trackers
+
+      - name: Check result trackers
+        id: check_trackers
+        if: steps.merge_main.outputs.skip == 'false'
+        run: |
+          cd testing/go/regression/out
+          if [[ -f "results1.trackers" && -f "results2.trackers" ]]; then
+            echo "trackers_exist=true" >> $GITHUB_OUTPUT
+          else
+            echo "trackers_exist=false" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Build Regression Test Results Comment
+        id: build_results
+        if: steps.check_trackers.outputs.trackers_exist == 'true'
+        run: |
+          cd testing/go/regression/tool
+          output=$(go run . results1.trackers results2.trackers)
+          echo "program_output<<EOF" >> $GITHUB_OUTPUT
+          echo "$output" >> $GITHUB_OUTPUT
+          echo "EOF" >> $GITHUB_OUTPUT
+
+      - name: Post Comment
+        if: steps.build_results.outputs.program_output
+        uses: actions/github-script@v6
+        with:
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          script: |
+            const commentMarker = '<!-- go-run-output -->'
+            const output = `${{ steps.build_results.outputs.program_output }}`
+            const body = `${commentMarker}\n${output}`
+
+            // List comments on the PR
+            const { data: comments } = await github.rest.issues.listComments({
+              issue_number: context.issue.number,
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+            })
+
+            // Check if a comment already exists
+            const comment = comments.find(comment => comment.body.includes(commentMarker))
+
+            if (comment) {
+              // Update the existing comment
+              await github.rest.issues.updateComment({
+                comment_id: comment.id,
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                body: body
+              })
+            } else {
+              // Create a new comment
+              await github.rest.issues.createComment({
+                issue_number: context.issue.number,
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                body: body
+              })
+            }

@@ -287,3 +287,26 @@ func FromMessageType(messageType MessageType) (pgproto3.Message, error) {
 		return nil, fmt.Errorf("unknown message type: %d", uint16(messageType))
 	}
 }
+
+// DuplicateMessage returns a duplicate of the given message, since the connections generally reuse the messages.
+func DuplicateMessage(message pgproto3.Message) pgproto3.Message {
+	if message == nil {
+		return message
+	}
+	messageType, err := ToMessageType(message)
+	if err != nil {
+		return message
+	}
+	newMessage, err := FromMessageType(messageType)
+	if err != nil {
+		return message
+	}
+	data, err := EncodeMessage(message)
+	if err != nil {
+		return message
+	}
+	if err = newMessage.Decode(data); err != nil {
+		return message
+	}
+	return newMessage
+}

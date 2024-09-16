@@ -15,11 +15,58 @@
 package main
 
 import (
+	"fmt"
+	"os"
 	"testing"
+
+	regex "github.com/dolthub/go-icu-regex"
+	"github.com/stretchr/testify/require"
 )
 
 func TestRegressionTests(t *testing.T) {
-	// TODO: skip unless a specific environment variable is present (for CI usage)
-	// TODO: replay the messages against a DoltgreSQL server, compare received messages with saved messages
-	// TODO: write a table comment on the PR
+	// We'll only run this on GitHub Actions, so set this environment variable to run locally
+	if _, ok := os.LookupEnv("REGRESSION_TESTING"); !ok {
+		t.Skip()
+	}
+	regex.ShouldPanic = false // Something that is occurring in a test is causing this to panic, so we disable for now
+	controller, port, err := CreateDoltgresServer()
+	require.NoError(t, err)
+	defer func() {
+		controller.Stop()
+		err = controller.WaitForStop()
+		require.NoError(t, err)
+	}()
+
+	trackers := make([]*ReplayTracker, 0, len(AllTestResultFilesNames))
+	for _, fileName := range AllTestResultFilesNames {
+		messages, err := regressionFolder.ReadMessages(fileName)
+		require.NoError(t, err)
+		tracker, err := Replay(ReplayOptions{
+			File:         fileName,
+			Port:         port,
+			Messages:     messages,
+			PrintQueries: false,
+			FailPSQL:     true,
+			FailQueries: []string{
+				`CREATE VIEW lock_view7 AS SELECT * from lock_view2;`,
+				`create index testtable_apple_index on testtable_apple(logdate);`,
+				`create index testtable_orange_index on testtable_orange(logdate);`,
+				`create table child_0_10 partition of parent_tab
+  for values from (0) to (10);`,
+				`create table child_10_20 partition of parent_tab
+  for values from (10) to (20);`,
+				`create table child_20_30 partition of parent_tab
+  for values from (20) to (30);`,
+				`create table child_30_35 partition of child_30_40
+  for values from (30) to (35);`,
+				`create table child_35_40 partition of child_30_40
+   for values from (35) to (40);`,
+			},
+		})
+		require.NoError(t, err)
+		trackers = append(trackers, tracker)
+	}
+	fmt.Printf("Finished, writing output to `%s`\n", regressionFolder.GetAbsolutePath("out/results.trackers"))
+	err = regressionFolder.WriteReplayTrackers("out/results.trackers", trackers, 0644)
+	require.NoError(t, err)
 }

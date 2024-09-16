@@ -17,6 +17,8 @@ package main
 import (
 	"fmt"
 	"net"
+	"os"
+	"strings"
 	"sync"
 	"time"
 
@@ -25,19 +27,112 @@ import (
 )
 
 var (
-	regressionFolder RegressionFolderLocation               // regressionFolder is the disk location of the regression folder
-	terminate        = &sync.WaitGroup{}                    // terminate is used when a Terminate message has been received.
-	messageMutex     = &sync.Mutex{}                        // messageMutex guards against both the client and server writing to the message slice.
-	allMessages      = make([]pgproto3.Message, 0, 1000000) // allMessages contains all messages exchanged by the client and server.
+	terminate    = &sync.WaitGroup{}                    // terminate is used when a Terminate message has been received.
+	messageMutex = &sync.Mutex{}                        // messageMutex guards against both the client and server writing to the message slice.
+	allMessages  = make([]pgproto3.Message, 0, 1000000) // allMessages contains all messages exchanged by the client and server.
 )
 
 func main() {
-	var err error
-	regressionFolder, err = GetRegressionFolder()
-	if err != nil {
-		fmt.Println(err)
+	// If no arguments are given, then we'll update the results against the regression files
+	if len(os.Args) <= 1 {
+		updateResults()
 		return
+	} else if len(os.Args) != 3 {
+		fmt.Println("Expected two arguments, each containing a file name pointing to the tracker files (located in the out directory)")
+		os.Exit(1)
 	}
+
+	trackersFrom, err := regressionFolder.ReadReplayTrackers("out/" + os.Args[1])
+	if err != nil {
+		fmt.Println(err.Error())
+		os.Exit(1)
+	}
+	trackersTo, err := regressionFolder.ReadReplayTrackers("out/" + os.Args[2])
+	if err != nil {
+		fmt.Println(err.Error())
+		os.Exit(1)
+	}
+	fromTotal := uint32(0)
+	fromSuccess := uint32(0)
+	fromPartial := uint32(0)
+	fromFail := uint32(0)
+	for _, tracker := range trackersFrom {
+		fromTotal += tracker.Success
+		fromTotal += tracker.Failed
+		fromSuccess += tracker.Success
+		fromPartial += tracker.PartialSuccess
+		fromFail += tracker.Failed
+	}
+	toTotal := uint32(0)
+	toSuccess := uint32(0)
+	toPartial := uint32(0)
+	toFail := uint32(0)
+	for _, tracker := range trackersTo {
+		toTotal += tracker.Success
+		toTotal += tracker.Failed
+		toSuccess += tracker.Success
+		toPartial += tracker.PartialSuccess
+		toFail += tracker.Failed
+	}
+	sb := strings.Builder{}
+	sb.WriteString("|   | Main | PR |\n")
+	sb.WriteString("| --- | --- | --- |\n")
+	sb.WriteString(fmt.Sprintf("| Total | %d | %d |\n", fromTotal, toTotal))
+	sb.WriteString(fmt.Sprintf("| Successful | %d | %d |\n", fromSuccess, toSuccess))
+	sb.WriteString(fmt.Sprintf("| Failures | %d | %d |\n", fromFail, toFail))
+	sb.WriteString(fmt.Sprintf("| Partial Successes[^1] | %d | %d |\n", fromPartial, toPartial))
+	sb.WriteString("\n|   | Main | PR |\n")
+	sb.WriteString("| --- | --- | --- |\n")
+	sb.WriteString(fmt.Sprintf("| Successful | %.4f%% | %.4f%% |\n",
+		(float64(fromSuccess)/float64(fromTotal))*100.0,
+		(float64(toSuccess)/float64(toTotal))*100.0))
+	sb.WriteString(fmt.Sprintf("| Failures | %.4f%% | %.4f%% |\n",
+		(float64(fromFail)/float64(fromTotal))*100.0,
+		(float64(toFail)/float64(toTotal))*100.0))
+	if len(trackersFrom) == len(trackersTo) {
+		foundAnyDiff := false
+		for trackerIdx := range trackersFrom {
+			// They're sorted, so this should always hold true.
+			// This will really only fail if the tests were updated.
+			if trackersFrom[trackerIdx].File != trackersTo[trackerIdx].File {
+				continue
+			}
+			foundFileDiff := false
+			fromItems := make(map[string]struct{})
+			for _, trackerFromItem := range trackersFrom[trackerIdx].Items {
+				fromItems[trackerFromItem.Query] = struct{}{}
+			}
+			for _, trackerToItem := range trackersTo[trackerIdx].Items {
+				if _, ok := fromItems[trackerToItem.Query]; !ok {
+					if !foundAnyDiff {
+						foundAnyDiff = true
+						sb.WriteString("\n## Regressions:\n")
+					}
+					if !foundFileDiff {
+						foundFileDiff = true
+						sb.WriteString(fmt.Sprintf("### %s\n", trackersFrom[trackerIdx].File))
+					}
+					sb.WriteString(fmt.Sprintf("```\nQUERY:          %s\n", trackerToItem.Query))
+					if len(trackerToItem.ExpectedError) != 0 {
+						sb.WriteString(fmt.Sprintf("EXPECTED ERROR: %s\n", trackerToItem.ExpectedError))
+					}
+					if len(trackerToItem.UnexpectedError) != 0 {
+						sb.WriteString(fmt.Sprintf("RECEIVED ERROR: %s\n", trackerToItem.UnexpectedError))
+					}
+					for _, partial := range trackerToItem.PartialSuccess {
+						sb.WriteString(fmt.Sprintf("PARTIAL:        %s\n", partial))
+					}
+					sb.WriteString("```\n")
+				}
+			}
+		}
+	}
+	sb.WriteString("[^1]: These are tests that we're marking as `Successful`, however they do not match the expected output in some way. This is due to small differences, such as different wording on the error messages, or the column names being incorrect while the data itself is correct.")
+	fmt.Println(sb.String())
+}
+
+func updateResults() {
+	fmt.Println("Updating results, remember to run the regression tester using our schedule")
 	listener, err := server.NewListener("tcp", "127.0.0.1:5431", "")
 	if err != nil {
 		fmt.Println(err)

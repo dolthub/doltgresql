@@ -43,6 +43,7 @@ const (
 	LogLevel_Warning = "warn"
 	LogLevel_Error   = "error"
 	LogLevel_Fatal   = "fatal"
+	LogLevel_Panic   = "panic"
 )
 
 const (
@@ -283,6 +284,8 @@ func (cfg *DoltgresConfig) LogLevel() servercfg.LogLevel {
 		return servercfg.LogLevel_Error
 	case LogLevel_Fatal:
 		return servercfg.LogLevel_Fatal
+	case LogLevel_Panic:
+		return servercfg.LogLevel_Fatal // TODO: add the panic level
 	default:
 		return servercfg.LogLevel_Info
 	}

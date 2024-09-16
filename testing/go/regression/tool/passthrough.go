@@ -33,6 +33,7 @@ func createPassthrough(clientConnBackend *pgproto3.Backend, postgresConnFrontend
 				}
 				return
 			}
+			clientMessage = DuplicateMessage(clientMessage).(pgproto3.FrontendMessage)
 			if query, ok := clientMessage.(*pgproto3.Query); ok {
 				clientMessage, err = RewriteCopyToLocal(query)
 				if err != nil {
@@ -66,6 +67,7 @@ func createPassthrough(clientConnBackend *pgproto3.Backend, postgresConnFrontend
 				}
 				return
 			}
+			postgresMessage = DuplicateMessage(postgresMessage).(pgproto3.BackendMessage)
 			addMessage(postgresMessage)
 			if err = setAuthType(clientConnBackend, postgresMessage); err != nil {
 				fmt.Println(err)

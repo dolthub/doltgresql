@@ -25,6 +25,8 @@ import (
 	"github.com/dolthub/doltgresql/utils"
 )
 
+var regressionFolder RegressionFolderLocation // regressionFolder is the disk location of the regression folder
+
 // RegressionFolderLocation is the location of this project's root folder.
 type RegressionFolderLocation struct {
 	path string
@@ -57,10 +59,10 @@ func (root RegressionFolderLocation) GetAbsolutePath(relativePath string) string
 // if the check was unable to be completed.
 func (root RegressionFolderLocation) Exists(relativePath string) (bool, error) {
 	_, err := os.Stat(root.GetAbsolutePath(relativePath))
-	if err != nil {
-		return false, err
-	} else if os.IsNotExist(err) {
+	if os.IsNotExist(err) {
 		return false, nil
+	} else if err != nil {
+		return false, err
 	}
 	return true, nil
 }
@@ -106,8 +108,28 @@ func (root RegressionFolderLocation) ReadMessages(relativePath string) ([]pgprot
 	return messages, nil
 }
 
+// ReadReplayTrackers reads the replay trackers from the file at the given path (relative to the root path). It is
+// assumed that this file was previously written to using WriteReplayTrackers.
+func (root RegressionFolderLocation) ReadReplayTrackers(relativePath string) ([]*ReplayTracker, error) {
+	fileData, err := root.ReadFile(relativePath)
+	if err != nil {
+		return nil, err
+	}
+	return DeserializeTrackers(fileData)
+}
+
 // WriteFile is equivalent to os.WriteFile, except that it uses the root path and the given relative path.
 func (root RegressionFolderLocation) WriteFile(relativePath string, data []byte, perm os.FileMode) error {
+	directory := filepath.ToSlash(filepath.Dir(relativePath))
+	exists, err := root.Exists(directory)
+	if err != nil {
+		return err
+	}
+	if !exists {
+		if err = os.MkdirAll(root.GetAbsolutePath(directory), 0644); err != nil {
+			return err
+		}
+	}
 	return os.WriteFile(root.GetAbsolutePath(relativePath), data, perm)
 }
 
@@ -129,4 +151,19 @@ func (root RegressionFolderLocation) WriteMessages(relativePath string, messages
 		writer.ByteSlice(data)
 	}
 	return root.WriteFile(relativePath, writer.Data(), perm)
+}
+
+// WriteReplayTrackers writes the given replay trackers to the file at the given path (relative to the root path). It is
+// assumed that this file will be read using ReadReplayTrackers.
+func (root RegressionFolderLocation) WriteReplayTrackers(relativePath string, trackers []*ReplayTracker, perm os.FileMode) error {
+	return root.WriteFile(relativePath, SerializeTrackers(trackers...), perm)
+}
+
+// init is used to load the location of the regression folder.
+func init() {
+	var err error
+	regressionFolder, err = GetRegressionFolder()
+	if err != nil {
+		panic(err)
+	}
 }
