@@ -16,8 +16,9 @@ sysbench-runner-tests-entrypoint.sh
 config.json
 integration-tests/bats/batsee_results
 
-# ignore log files created from logic test
+# ignore log files created from logic test and regression tests
 testing/logictest/*.log
+testing/go/regression/out
 
 # ignore doltgres db created
 doltgres
