@@ -703,7 +703,6 @@ var SchemaTests = []ScriptTest{
 			"CREATE SCHEMA myschema",
 			"SET search_path = 'myschema'",
 			"CREATE TABLE mytbl (pk BIGINT PRIMARY KEY, v1 BIGINT);",
-			"set dolt_show_branch_databases to 1;",
 		},
 		Assertions: []ScriptTestAssertion{
 			{

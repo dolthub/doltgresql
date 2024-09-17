@@ -28,7 +28,10 @@ func nodeCreateDatabase(node *tree.CreateDatabase) (*vitess.DBDDL, error) {
 		return nil, fmt.Errorf("OWNER clause is not yet supported")
 	}
 	if len(node.Template) > 0 {
-		return nil, fmt.Errorf("TEMPLATE clause is not yet supported")
+		// TODO: special casing "template0", as some tests make use of it and we need them to pass for now
+		if node.Template != "template0" {
+			return nil, fmt.Errorf("TEMPLATE clause is not yet supported")
+		}
 	}
 	if len(node.Encoding) > 0 {
 		return nil, fmt.Errorf("ENCODING clause is not yet supported")

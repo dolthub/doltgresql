@@ -38,6 +38,13 @@ teardown() {
     node $BATS_TEST_DIRNAME/node/knex.js $USER $PORT $DOLTGRES_VERSION
 }
 
+@test "node postgres client, workbench stability" {
+    DOLTGRES_VERSION=$( doltgres --version | sed -nre 's/^[^0-9]*(([0-9]+\.)*[0-9]+).*/\1/p' )
+    echo $DOLTGRES_VERSION
+    node $BATS_TEST_DIRNAME/node/workbench.js $USER $PORT $DOLTGRES_VERSION
+}
+
+
 @test "perl DBI:Pg client" {
     perl $BATS_TEST_DIRNAME/perl/postgres-test.pl $USER $PORT
 }

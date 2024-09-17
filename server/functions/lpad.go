@@ -54,8 +54,10 @@ var lpad_text_int32_text = framework.Function3{
 		fillRunes := []rune(fill.(string))
 		var result []rune
 		if fillTarget > 0 {
-			for int32(len(result)) < fillTarget {
-				result = append(result, fillRunes...)
+			if len(fillRunes) > 0 {
+				for int32(len(result)) < fillTarget {
+					result = append(result, fillRunes...)
+				}
 			}
 			result = result[:fillTarget]
 		}

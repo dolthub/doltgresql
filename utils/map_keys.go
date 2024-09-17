@@ -19,6 +19,12 @@ import (
 	"sort"
 )
 
+// KeyValue represents an entry in a map.
+type KeyValue[K comparable, V any] struct {
+	Key   K
+	Value V
+}
+
 // GetMapKeys returns the map's keys as an unsorted slice.
 func GetMapKeys[K comparable, V any](m map[K]V) []K {
 	allKeys := make([]K, len(m))
@@ -33,12 +39,7 @@ func GetMapKeys[K comparable, V any](m map[K]V) []K {
 // GetMapKeysSorted returns the map's keys as a sorted slice. The keys are sorted in ascending order. For descending
 // order, use GetMapKeysSortedDescending.
 func GetMapKeysSorted[K cmp.Ordered, V any](m map[K]V) []K {
-	allKeys := make([]K, len(m))
-	i := 0
-	for k := range m {
-		allKeys[i] = k
-		i++
-	}
+	allKeys := GetMapKeys(m)
 	sort.Slice(allKeys, func(i, j int) bool {
 		return allKeys[i] < allKeys[j]
 	})
@@ -48,16 +49,42 @@ func GetMapKeysSorted[K cmp.Ordered, V any](m map[K]V) []K {
 // GetMapKeysSortedDescending returns the map's keys as a sorted slice. The keys are sorted in descending order. For
 // ascending order, use GetMapKeysSorted.
 func GetMapKeysSortedDescending[K cmp.Ordered, V any](m map[K]V) []K {
-	allKeys := make([]K, len(m))
-	i := 0
-	for k := range m {
-		allKeys[i] = k
-		i++
-	}
+	allKeys := GetMapKeys(m)
 	sort.Slice(allKeys, func(i, j int) bool {
 		return allKeys[i] > allKeys[j]
 	})
 	return allKeys
+}
+
+// GetMapKVs returns the map's KeyValue entries as an unsorted slice.
+func GetMapKVs[K comparable, V any](m map[K]V) []KeyValue[K, V] {
+	allEntries := make([]KeyValue[K, V], len(m))
+	i := 0
+	for k, v := range m {
+		allEntries[i] = KeyValue[K, V]{Key: k, Value: v}
+		i++
+	}
+	return allEntries
+}
+
+// GetMapKVsSorted returns the map's KeyValue entries as a sorted slice. The keys are sorted in ascending order. For
+// descending order, use GetMapKVsSortedDescending.
+func GetMapKVsSorted[K cmp.Ordered, V any](m map[K]V) []KeyValue[K, V] {
+	allEntries := GetMapKVs(m)
+	sort.Slice(allEntries, func(i, j int) bool {
+		return allEntries[i].Key < allEntries[j].Key
+	})
+	return allEntries
+}
+
+// GetMapKVsSortedDescending returns the map's KeyValue entries as a sorted slice. The keys are sorted in descending
+// order. For ascending order, use GetMapKVsSorted.
+func GetMapKVsSortedDescending[K cmp.Ordered, V any](m map[K]V) []KeyValue[K, V] {
+	allEntries := GetMapKVs(m)
+	sort.Slice(allEntries, func(i, j int) bool {
+		return allEntries[i].Key > allEntries[j].Key
+	})
+	return allEntries
 }
 
 // GetMapValues returns the map's values as a slice. Due to Go's map iteration, the values will be in a
