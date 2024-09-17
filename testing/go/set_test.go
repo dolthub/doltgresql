@@ -32,6 +32,108 @@ func TestSetStatements(t *testing.T) {
 // through configuration file and/or SIGHUP signal and/or having appropriate roles.
 var setStmts = []ScriptTest{
 	{
+		Name:        "special case for TIME ZONE",
+		SetUpScript: []string{},
+		Assertions: []ScriptTestAssertion{
+			{
+				Query:    "SHOW timezone",
+				Expected: []sql.Row{{"America/Los_Angeles"}},
+			},
+			{
+				Query:    "SET timezone TO '+00:00';",
+				Expected: []sql.Row{},
+			},
+			{
+				Query:    "SHOW timezone",
+				Expected: []sql.Row{{"+00:00"}},
+			},
+			{
+				Query:    "SET TIME ZONE LOCAL;",
+				Expected: []sql.Row{},
+			},
+			{
+				Query:    "SHOW timezone",
+				Expected: []sql.Row{{"America/Los_Angeles"}},
+			},
+			{
+				Query:    "SET TIME ZONE '+00:00';",
+				Expected: []sql.Row{},
+			},
+			{
+				Query:    "SHOW timezone",
+				Expected: []sql.Row{{"+00:00"}},
+			},
+			{
+				Query:    "SET TIME ZONE DEFAULT;",
+				Expected: []sql.Row{},
+			},
+			{
+				Query:    "SHOW timezone",
+				Expected: []sql.Row{{"America/Los_Angeles"}},
+			},
+		},
+	},
+	{
+		Name:        "special case for SCHEMA",
+		SetUpScript: []string{},
+		Assertions: []ScriptTestAssertion{
+			{
+				Query:    "SHOW search_path",
+				Expected: []sql.Row{{"\"$user\", public"}},
+			},
+			{
+				Query:    "SET SCHEMA 'postgres';",
+				Expected: []sql.Row{},
+			},
+			{
+				Query:    "SHOW search_path",
+				Expected: []sql.Row{{"postgres"}},
+			},
+			{
+				Query:    "SET search_path = public, pg_catalog;",
+				Expected: []sql.Row{},
+			},
+			{
+				Query:    "SHOW search_path",
+				Expected: []sql.Row{{"public, pg_catalog"}},
+			},
+			{
+				Query:    "SET search_path = postgres;",
+				Expected: []sql.Row{},
+			},
+			{
+				Query:    "SHOW search_path",
+				Expected: []sql.Row{{"postgres"}},
+			},
+		},
+	},
+	{
+		Name:        "special case for NAMES",
+		SetUpScript: []string{},
+		Assertions: []ScriptTestAssertion{
+			{
+				Query:    "SHOW client_encoding",
+				Expected: []sql.Row{{"UTF8"}},
+			},
+			{
+				Query:    "SET NAMES 'LATIN1';",
+				Expected: []sql.Row{},
+			},
+			{
+				Query:    "SHOW client_encoding;",
+				Expected: []sql.Row{{"LATIN1"}},
+			},
+			{
+				Query:    "SET client_encoding = DEFAULT;",
+				Expected: []sql.Row{},
+			},
+			{
+				Query:    "SHOW client_encoding;",
+				Expected: []sql.Row{{"UTF8"}},
+			},
+		},
+	},
+	{
 		Name:        "special case SEED",
 		SetUpScript: []string{},
 		Assertions: []ScriptTestAssertion{

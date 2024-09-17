@@ -305,12 +305,9 @@ func NormalizeRow(fds []pgconn.FieldDescription, row sql.Row, normalize bool) sq
 		if !ok {
 			panic(fmt.Sprintf("unhandled oid type: %v", fds[i].DataTypeOID))
 		}
+		newRow[i] = NormalizeValToString(dt, row[i])
 		if normalize {
-			v := NormalizeValToString(dt, row[i], false)
-			newRow[i] = NormalizeIntsAndFloats(v)
-		} else {
-			// We must always normalize Numeric values, as they have an infinite number of ways to represent the same value
-			newRow[i] = NormalizeValToString(dt, row[i], true)
+			newRow[i] = NormalizeIntsAndFloats(newRow[i])
 		}
 	}
 	return newRow
@@ -379,7 +376,7 @@ func UnmarshalAndMarshalJsonString(val string) string {
 // |normalizeNumeric| defines whether to normalize Numeric values into either Numeric type or string type.
 // There are an infinite number of ways to represent the same value in-memory,
 // so we must at least normalize Numeric values.
-func NormalizeValToString(dt types.DoltgresType, v any, normalizeNumeric bool) any {
+func NormalizeValToString(dt types.DoltgresType, v any) any {
 	switch t := dt.(type) {
 	case types.JsonType:
 		str, err := json.Marshal(v)
@@ -434,13 +431,10 @@ func NormalizeValToString(dt types.DoltgresType, v any, normalizeNumeric bool) a
 			return nil
 		} else {
 			decStr := decimal.NewFromBigInt(val.Int, val.Exp).StringFixed(val.Exp * -1)
-			if normalizeNumeric {
-				return Numeric(decStr)
-			} else {
-				return decStr
-			}
+			return Numeric(decStr)
 		}
 	case pgtype.Time, pgtype.Interval, [16]byte, time.Time:
+		// These values are
 		tVal, err := dt.IoOutput(nil, NormalizeVal(dt, val))
 		if err != nil {
 			panic(err)

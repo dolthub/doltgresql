@@ -86,7 +86,7 @@ func extractBindVarTypes(queryPlan sql.Node) ([]uint32, error) {
 			if doltgresType, ok := e.Type().(pgtypes.DoltgresType); ok {
 				typOid = doltgresType.OID()
 			} else {
-				// TODO: error here?
+				// TODO: should remove usage non doltgres type
 				typOid, err = messages.VitessTypeToObjectID(e.Type().Type())
 				if err != nil {
 					err = fmt.Errorf("could not determine OID for placeholder %s: %w", e.Name, err)
