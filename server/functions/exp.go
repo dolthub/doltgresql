@@ -51,6 +51,6 @@ var exp_numeric = framework.Function1{
 		if val1 == nil {
 			return nil, nil
 		}
-		return val1.(decimal.Decimal).ExpHullAbrham(32)
+		return val1.(decimal.Decimal).ExpTaylor(32)
 	},
 }
