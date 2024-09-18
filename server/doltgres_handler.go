@@ -50,9 +50,9 @@ type DoltgresHandler struct {
 	encodeLoggedQuery bool
 }
 
-var _ = DoltgresHandler{}
+var _ Handler = &DoltgresHandler{}
 
-// ComBind is called when a connection receives a request to bind a prepared statement to a set of values.
+// ComBind implements the Handler interface.
 func (h *DoltgresHandler) ComBind(ctx context.Context, c *mysql.Conn, query string, parsedQuery mysql.ParsedQuery, bindVars map[string]sqlparser.Expr) (mysql.BoundQuery, []pgproto3.FieldDescription, error) {
 	sqlCtx, err := h.sm.NewContextWithQuery(ctx, c, query)
 	if err != nil {
@@ -72,7 +72,7 @@ func (h *DoltgresHandler) ComBind(ctx context.Context, c *mysql.Conn, query stri
 	return queryPlan, schemaToFieldDescriptions(sqlCtx, queryPlan.Schema()), nil
 }
 
-// ComExecuteBound is called when a connection receives a request to execute a prepared statement that has already bound to a set of values.
+// ComExecuteBound implements the Handler interface.
 func (h *DoltgresHandler) ComExecuteBound(ctx context.Context, conn *mysql.Conn, query string, boundQuery mysql.BoundQuery, callback func(*Result) error) error {
 	analyzedPlan, ok := boundQuery.(sql.Node)
 	if !ok {
@@ -87,7 +87,7 @@ func (h *DoltgresHandler) ComExecuteBound(ctx context.Context, conn *mysql.Conn,
 	return err
 }
 
-// ComPrepareParsed is called when a connection receives a prepared statement query that has already been parsed.
+// ComPrepareParsed implements the Handler interface.
 func (h *DoltgresHandler) ComPrepareParsed(ctx context.Context, c *mysql.Conn, query string, parsed sqlparser.Statement) (mysql.ParsedQuery, []pgproto3.FieldDescription, error) {
 	sqlCtx, err := h.sm.NewContextWithQuery(ctx, c, query)
 	if err != nil {
@@ -117,8 +117,7 @@ func (h *DoltgresHandler) ComPrepareParsed(ctx context.Context, c *mysql.Conn, q
 	return analyzed, fields, nil
 }
 
-// ComQuery is called when a connection receives a query. Note the contents of the query slice may change
-// after the first call to callback. So the Handler should not hang on to the byte slice.
+// ComQuery implements the Handler interface.
 func (h *DoltgresHandler) ComQuery(ctx context.Context, c *mysql.Conn, query string, parsed sqlparser.Statement, callback func(*Result) error) error {
 	err := h.doQuery(ctx, c, query, parsed, nil, h.executeQuery, callback)
 	if err != nil {
@@ -127,8 +126,7 @@ func (h *DoltgresHandler) ComQuery(ctx context.Context, c *mysql.Conn, query str
 	return err
 }
 
-// ComResetConnection resets the connection's session, clearing out any cached prepared statements, locks, user and
-// session variables. The currently selected database is preserved.
+// ComResetConnection implements the Handler interface.
 func (h *DoltgresHandler) ComResetConnection(c *mysql.Conn) error {
 	logrus.WithField("connectionId", c.ConnectionID).Debug("COM_RESET_CONNECTION command received")
 
@@ -147,7 +145,7 @@ func (h *DoltgresHandler) ComResetConnection(c *mysql.Conn) error {
 	return h.sm.SetDB(c, db)
 }
 
-// ConnectionClosed reports that a connection has been closed.
+// ConnectionClosed implements the Handler interface.
 func (h *DoltgresHandler) ConnectionClosed(c *mysql.Conn) {
 	defer h.sm.RemoveConn(c)
 	defer h.e.CloseSession(c.ConnectionID)
@@ -157,18 +155,16 @@ func (h *DoltgresHandler) ConnectionClosed(c *mysql.Conn) {
 	logrus.WithField(sql.ConnectionIdLogField, c.ConnectionID).Infof("ConnectionClosed")
 }
 
-// NewConnection reports that a new connection has been established.
+// NewConnection implements the Handler interface.
 func (h *DoltgresHandler) NewConnection(c *mysql.Conn) {
 	h.sm.AddConn(c)
-	//updateMaxUsedConnectionsStatusVariable()
 	sql.StatusVariables.IncrementGlobal("Connections", 1)
 
 	c.DisableClientMultiStatements = true // TODO: h.disableMultiStmts
 	logrus.WithField(sql.ConnectionIdLogField, c.ConnectionID).WithField("DisableClientMultiStatements", c.DisableClientMultiStatements).Infof("NewConnection")
 }
 
-// NewContext creates a new sql.Context instance for the connection |c|. The
-// optional |query| can be specified to populate the sql.Context's query field.
+// NewContext implements the Handler interface.
 func (h *DoltgresHandler) NewContext(ctx context.Context, c *mysql.Conn, query string) (*sql.Context, error) {
 	return h.sm.NewContext(ctx, c, query)
 }
@@ -431,7 +427,7 @@ func (h *DoltgresHandler) resultForDefaultIter(ctx *sql.Context, schema sql.Sche
 	// Default waitTime is one minute if there is no timeout configured, in which case
 	// it will loop to iterate again unless the socket died by the OS timeout or other problems.
 	// If there is a timeout, it will be enforced to ensure that Vitess has a chance to
-	// call Handler.CloseConnection()
+	// call DoltgresHandler.CloseConnection()
 	waitTime := 1 * time.Minute
 	if h.readTimeout > 0 {
 		waitTime = h.readTimeout
