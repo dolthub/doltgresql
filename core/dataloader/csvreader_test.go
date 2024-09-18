@@ -52,7 +52,7 @@ const nullAndEmptyStringQuotingCsvData = `
 
 // escapedQuotesCsvData tests escaped quotes in CSV data.
 const escapedQuotesCsvData = `
-1,'',"'","\"",\",'\''
+1,'',"'","""",','''
 `
 
 // newLineInQuotedFieldCsvData tests when a quoted field contains a newline.
@@ -160,8 +160,6 @@ func TestCsvReader(t *testing.T) {
 	})
 
 	t.Run("quote escaping", func(t *testing.T) {
-		t.Skip("errors with escaped quotes")
-
 		csvReader, err := newCsvReader(newReader(escapedQuotesCsvData))
 		require.NoError(t, err)
 
@@ -171,9 +169,9 @@ func TestCsvReader(t *testing.T) {
 		assert.Equal(t, "1", row[0])
 		assert.Equal(t, "''", row[1])
 		assert.Equal(t, "'", row[2])
-		assert.Equal(t, "\"", row[3]) // currently returns: "\\\",\\"
-		assert.Equal(t, "\"", row[4]) // currently returns: "'\\''"
-		assert.Equal(t, "\"", row[5])
+		assert.Equal(t, "\"", row[3])
+		assert.Equal(t, "'", row[4])
+		assert.Equal(t, "'''", row[5])
 
 		// Read the EOF error
 		_, err = csvReader.ReadSqlRow()
