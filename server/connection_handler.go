@@ -51,7 +51,6 @@ type ConnectionHandler struct {
 	preparedStatements map[string]PreparedStatementData
 	portals            map[string]PortalData
 	doltgresHandler    *DoltgresHandler
-	handler            mysql.Handler
 	pgTypeMap          *pgtype.Map
 	waitForSync        bool
 	// copyFromStdinState is set when this connection is in the COPY FROM STDIN mode, meaning it is waiting on
@@ -86,6 +85,8 @@ func NewConnectionHandler(conn net.Conn, handler mysql.Handler) *ConnectionHandl
 	preparedStatements := make(map[string]PreparedStatementData)
 	portals := make(map[string]PortalData)
 
+	// TODO: possibly should define engine and session manager ourselves
+	//  instead of depending on the GetRunningServer method.
 	server := sqlserver.GetRunningServer()
 	doltgresHandler := &DoltgresHandler{
 		e:                 server.Engine,
@@ -101,7 +102,6 @@ func NewConnectionHandler(conn net.Conn, handler mysql.Handler) *ConnectionHandl
 		preparedStatements: preparedStatements,
 		portals:            portals,
 		doltgresHandler:    doltgresHandler,
-		handler:            handler,
 		pgTypeMap:          pgtype.NewMap(),
 	}
 }
@@ -137,13 +137,13 @@ func (h *ConnectionHandler) HandleConnection() {
 				fmt.Println(returnErr.Error())
 			}
 
-			h.handler.ConnectionClosed(h.mysqlConn)
+			h.doltgresHandler.ConnectionClosed(h.mysqlConn)
 			if err := h.Conn().Close(); err != nil {
 				fmt.Printf("Failed to properly close connection:\n%v\n", err)
 			}
 		}()
 	}
-	h.handler.NewConnection(h.mysqlConn)
+	h.doltgresHandler.NewConnection(h.mysqlConn)
 
 	startupMessage, err := h.receiveStartupMessage()
 	if err != nil {
@@ -604,11 +604,7 @@ func (h *ConnectionHandler) handleCopyData(message messages.CopyData) (stop bool
 	}
 
 	// Grab a sql.Context
-	ctxProvider, ok := h.handler.(sql.ContextProvider)
-	if !ok {
-		return false, true, fmt.Errorf("%T does not implement server.ContextProvider", h.handler)
-	}
-	sqlCtx, err := ctxProvider.NewContext(context.Background(), h.mysqlConn, "")
+	sqlCtx, err := h.doltgresHandler.NewContext(context.Background(), h.mysqlConn, "")
 	if err != nil {
 		return false, false, err
 	}
@@ -668,11 +664,7 @@ func (h *ConnectionHandler) handleCopyDone(_ messages.CopyDone) (stop bool, endO
 			fmt.Errorf("no data loader found for COPY FROM STDIN operation")
 	}
 
-	ctxProvider, ok := h.handler.(sql.ContextProvider)
-	if !ok {
-		return false, true, fmt.Errorf("%T does not implement server.ContextProvider", h.handler)
-	}
-	sqlCtx, err := ctxProvider.NewContext(context.Background(), h.mysqlConn, "")
+	sqlCtx, err := h.doltgresHandler.NewContext(context.Background(), h.mysqlConn, "")
 	if err != nil {
 		return false, false, err
 	}
@@ -1041,7 +1033,7 @@ func (h *ConnectionHandler) convertQuery(query string) (ConvertedQuery, error) {
 
 // discardAll handles the DISCARD ALL command
 func (h *ConnectionHandler) discardAll(query ConvertedQuery, conn net.Conn) error {
-	err := h.handler.ComResetConnection(h.mysqlConn)
+	err := h.doltgresHandler.ComResetConnection(h.mysqlConn)
 	if err != nil {
 		return err
 	}
@@ -1058,11 +1050,7 @@ func (h *ConnectionHandler) discardAll(query ConvertedQuery, conn net.Conn) erro
 // COPY FROM STDIN can't be handled directly by the GMS engine, since COPY FROM STDIN relies on multiple messages sent
 // over the wire.
 func (h *ConnectionHandler) handleCopyFromStdinQuery(copyFrom *node.CopyFrom, conn net.Conn) error {
-	ctxProvider, ok := h.handler.(sql.ContextProvider)
-	if !ok {
-		return fmt.Errorf("%T does not implement server.ContextProvider", h.handler)
-	}
-	sqlCtx, err := ctxProvider.NewContext(context.Background(), h.mysqlConn, "")
+	sqlCtx, err := h.doltgresHandler.NewContext(context.Background(), h.mysqlConn, "")
 	if err != nil {
 		return err
 	}
