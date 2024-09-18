@@ -140,31 +140,50 @@ func (h *DoltgresHandler) ComQuery(ctx context.Context, c *mysql.Conn, query str
 	return err
 }
 
-// QueryExecutor is a function that executes a query and returns the result as a schema and iterator. Either of
-// |parsed| or |analyzed| can be nil depending on the use case
-type QueryExecutor func(ctx *sql.Context, query string, parsed sqlparser.Statement, analyzed sql.Node) (sql.Schema, sql.RowIter, *sql.QueryFlags, error)
+// ComResetConnection resets the connection's session, clearing out any cached prepared statements, locks, user and
+// session variables. The currently selected database is preserved.
+func (h *DoltgresHandler) ComResetConnection(c *mysql.Conn) error {
+	logrus.WithField("connectionId", c.ConnectionID).Debug("COM_RESET_CONNECTION command received")
 
-// executeQuery is a QueryExecutor that calls QueryWithBindings on the given engine using the given query and parsed
-// statement, which may be nil.
-func (h *DoltgresHandler) executeQuery(ctx *sql.Context, query string, parsed sqlparser.Statement, _ sql.Node) (sql.Schema, sql.RowIter, *sql.QueryFlags, error) {
-	return h.e.QueryWithBindings(ctx, query, parsed, nil, nil)
-}
+	// Grab the currently selected database name
+	db := h.sm.GetCurrentDB(c)
 
-// executeBoundPlan is a QueryExecutor that calls QueryWithBindings on the given engine using the given query and parsed
-// statement, which may be nil.
-func (h *DoltgresHandler) executeBoundPlan(ctx *sql.Context, query string, _ sqlparser.Statement, plan sql.Node) (sql.Schema, sql.RowIter, *sql.QueryFlags, error) {
-	return h.e.PrepQueryPlanForExecution(ctx, query, plan)
-}
+	// Dispose of the connection's current session
+	h.maybeReleaseAllLocks(c)
+	h.e.CloseSession(c.ConnectionID)
 
-// nodeReturnsOkResultSchema returns whether the node returns OK result or the schema is OK result schema.
-// These nodes will eventually return an OK result, but their intermediate forms here return a different schema
-// than they will at execution time.
-func nodeReturnsOkResultSchema(node sql.Node) bool {
-	switch node.(type) {
-	case *plan.InsertInto, *plan.Update, *plan.UpdateJoin, *plan.DeleteFrom:
-		return true
+	// Create a new session and set the current database
+	err := h.sm.NewSession(context.Background(), c)
+	if err != nil {
+		return err
 	}
-	return types.IsOkResultSchema(node.Schema())
+	return h.sm.SetDB(c, db)
+}
+
+// ConnectionClosed reports that a connection has been closed.
+func (h *DoltgresHandler) ConnectionClosed(c *mysql.Conn) {
+	defer h.sm.RemoveConn(c)
+	defer h.e.CloseSession(c.ConnectionID)
+
+	h.maybeReleaseAllLocks(c)
+
+	logrus.WithField(sql.ConnectionIdLogField, c.ConnectionID).Infof("ConnectionClosed")
+}
+
+// NewConnection reports that a new connection has been established.
+func (h *DoltgresHandler) NewConnection(c *mysql.Conn) {
+	h.sm.AddConn(c)
+	//updateMaxUsedConnectionsStatusVariable()
+	sql.StatusVariables.IncrementGlobal("Connections", 1)
+
+	c.DisableClientMultiStatements = true // TODO: h.disableMultiStmts
+	logrus.WithField(sql.ConnectionIdLogField, c.ConnectionID).WithField("DisableClientMultiStatements", c.DisableClientMultiStatements).Infof("NewConnection")
+}
+
+// NewContext creates a new sql.Context instance for the connection |c|. The
+// optional |query| can be specified to populate the sql.Context's query field.
+func (h *DoltgresHandler) NewContext(ctx context.Context, c *mysql.Conn, query string) (*sql.Context, error) {
+	return h.sm.NewContext(ctx, c, query)
 }
 
 var queryLoggingRegex = regexp.MustCompile(`[\r\n\t ]+`)
@@ -240,6 +259,50 @@ func (h *DoltgresHandler) doQuery(ctx context.Context, c *mysql.Conn, query stri
 	}
 
 	return callback(r)
+}
+
+// QueryExecutor is a function that executes a query and returns the result as a schema and iterator. Either of
+// |parsed| or |analyzed| can be nil depending on the use case
+type QueryExecutor func(ctx *sql.Context, query string, parsed sqlparser.Statement, analyzed sql.Node) (sql.Schema, sql.RowIter, *sql.QueryFlags, error)
+
+// executeQuery is a QueryExecutor that calls QueryWithBindings on the given engine using the given query and parsed
+// statement, which may be nil.
+func (h *DoltgresHandler) executeQuery(ctx *sql.Context, query string, parsed sqlparser.Statement, _ sql.Node) (sql.Schema, sql.RowIter, *sql.QueryFlags, error) {
+	return h.e.QueryWithBindings(ctx, query, parsed, nil, nil)
+}
+
+// executeBoundPlan is a QueryExecutor that calls QueryWithBindings on the given engine using the given query and parsed
+// statement, which may be nil.
+func (h *DoltgresHandler) executeBoundPlan(ctx *sql.Context, query string, _ sqlparser.Statement, plan sql.Node) (sql.Schema, sql.RowIter, *sql.QueryFlags, error) {
+	return h.e.PrepQueryPlanForExecution(ctx, query, plan)
+}
+
+// maybeReleaseAllLocks makes a best effort attempt to release all locks on the given connection. If the attempt fails,
+// an error is logged but not returned.
+func (h *DoltgresHandler) maybeReleaseAllLocks(c *mysql.Conn) {
+	if ctx, err := h.sm.NewContextWithQuery(context.Background(), c, ""); err != nil {
+		logrus.Errorf("unable to release all locks on session close: %s", err)
+		logrus.Errorf("unable to unlock tables on session close: %s", err)
+	} else {
+		_, err = h.e.LS.ReleaseAll(ctx)
+		if err != nil {
+			logrus.Errorf("unable to release all locks on session close: %s", err)
+		}
+		if err = h.e.Analyzer.Catalog.UnlockTables(ctx, c.ConnectionID); err != nil {
+			logrus.Errorf("unable to unlock tables on session close: %s", err)
+		}
+	}
+}
+
+// nodeReturnsOkResultSchema returns whether the node returns OK result or the schema is OK result schema.
+// These nodes will eventually return an OK result, but their intermediate forms here return a different schema
+// than they will at execution time.
+func nodeReturnsOkResultSchema(node sql.Node) bool {
+	switch node.(type) {
+	case *plan.InsertInto, *plan.Update, *plan.UpdateJoin, *plan.DeleteFrom:
+		return true
+	}
+	return types.IsOkResultSchema(node.Schema())
 }
 
 func schemaToFieldDescriptions(ctx *sql.Context, s sql.Schema) []pgproto3.FieldDescription {
