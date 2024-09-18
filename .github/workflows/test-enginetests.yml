@@ -1,4 +1,4 @@
-name: Test
+name: Enginetests
 on: [pull_request]
 
 concurrency:
