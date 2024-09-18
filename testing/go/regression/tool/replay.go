@@ -130,6 +130,7 @@ ListenerLoop:
 						_ = postgresConn.Close()
 						continue ListenerLoop
 					}
+					response = DuplicateMessage(response).(pgproto3.BackendMessage)
 					switch response := response.(type) {
 					case *pgproto3.EmptyQueryResponse:
 					case *pgproto3.ErrorResponse:
@@ -259,6 +260,7 @@ ListenerLoop:
 						_ = postgresConn.Close()
 						continue ListenerLoop
 					}
+					response = DuplicateMessage(response).(pgproto3.BackendMessage)
 					switch response := response.(type) {
 					case *pgproto3.EmptyQueryResponse:
 					case *pgproto3.ErrorResponse:
@@ -374,6 +376,7 @@ ListenerLoop:
 						_ = postgresConn.Close()
 						continue ListenerLoop
 					}
+					response = DuplicateMessage(response).(pgproto3.BackendMessage)
 					switch response := response.(type) {
 					case *pgproto3.EmptyQueryResponse:
 					case *pgproto3.ErrorResponse:
@@ -496,6 +499,7 @@ ListenerLoop:
 						_ = postgresConn.Close()
 						continue ListenerLoop
 					}
+					response = DuplicateMessage(response).(pgproto3.BackendMessage)
 					switch response := response.(type) {
 					case *pgproto3.CommandComplete:
 					case *pgproto3.CopyInResponse:
@@ -586,21 +590,21 @@ ListenerLoop:
 					}
 					if strings.Contains(strings.ToLower(message.String), "order by") {
 						// There's an ORDER BY, so we need to check based on the order
-						if !CompareRowsOrdered(expectedDataRows, responseDataRows) {
+						if err = CompareRowsOrdered(expectedRowDesc, responseRowDesc, expectedDataRows, responseDataRows); err != nil {
 							tracker.Failed++
 							tracker.Add(ReplayTrackerItem{
 								Query:           message.String,
-								UnexpectedError: "returned values differ",
+								UnexpectedError: err.Error(),
 							})
 							continue MessageLoop
 						}
 					} else {
 						// There's no ORDER BY, so our native row order may differ from Postgres.
-						if !CompareRowsUnordered(expectedDataRows, responseDataRows) {
+						if err = CompareRowsUnordered(expectedRowDesc, responseRowDesc, expectedDataRows, responseDataRows); err != nil {
 							tracker.Failed++
 							tracker.Add(ReplayTrackerItem{
 								Query:           message.String,
-								UnexpectedError: "returned values differ (order was ignored due to missing ORDER BY)",
+								UnexpectedError: err.Error(),
 							})
 							continue MessageLoop
 						}

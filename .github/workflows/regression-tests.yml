@@ -96,18 +96,6 @@ jobs:
           echo "EOF" >> $GITHUB_OUTPUT
           echo "$output"
 
-      - name: Print main tracker as hex
-        if: steps.check_trackers.outputs.trackers_exist == 'true'
-        run: |
-          cd testing/go/regression/out
-          xxd -p -c 60 results1.trackers
-
-      - name: Print PR tracker as hex
-        if: steps.check_trackers.outputs.trackers_exist == 'true'
-        run: |
-          cd testing/go/regression/out
-          xxd -p -c 60 results2.trackers
-
       - name: Post Comment
         if: steps.build_results.outputs.program_output
         uses: actions/github-script@v6

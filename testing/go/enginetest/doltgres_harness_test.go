@@ -637,12 +637,6 @@ func toRow(schema sql.Schema, r []interface{}) (sql.Row, error) {
 			return nil, err
 		}
 
-		// special case: boolean results are returned as strings
-		if val == "t" || val == "f" {
-			row[i] = val == "t"
-			continue
-		}
-
 		row[i], _, err = col.Type.Convert(val)
 		if err != nil {
 			return nil, err
