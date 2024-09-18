@@ -434,7 +434,13 @@ func NormalizeValToString(dt types.DoltgresType, v any) any {
 			return Numeric(decStr)
 		}
 	case pgtype.Time, pgtype.Interval, [16]byte, time.Time:
-		// These values are
+		// These values need to be normalized into the appropriate types
+		// before being converted to string type using the Doltgres
+		// IoOutput method.
+		// - pgtype.Time is specific to Time type.
+		// - pgtype.Interval is specific to Interval type.
+		// - [16]byte is specific to UUID type
+		// - time.Time is specific to date, timetz, timestamp and timestamptz types.
 		tVal, err := dt.IoOutput(nil, NormalizeVal(dt, val))
 		if err != nil {
 			panic(err)
