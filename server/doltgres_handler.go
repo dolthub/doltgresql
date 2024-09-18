@@ -38,6 +38,22 @@ import (
 	pgtypes "github.com/dolthub/doltgresql/server/types"
 )
 
+// Result represents a query result.
+type Result struct {
+	Fields       []pgproto3.FieldDescription `json:"fields"`
+	Rows         []Row                       `json:"rows"`
+	RowsAffected uint64                      `json:"rows_affected"`
+}
+
+// Row represents a single row value in bytes format.
+// |val| represents array of a single row elements,
+// which each element value is in byte array format.
+type Row struct {
+	val [][]byte
+}
+
+const rowsBatch = 128
+
 // DoltgresHandler is a handler uses SQLe engine directly
 // running Doltgres specific queries.
 type DoltgresHandler struct {
@@ -47,20 +63,9 @@ type DoltgresHandler struct {
 	encodeLoggedQuery bool
 }
 
-// Result represents a query result.
-type Result struct {
-	Fields       []pgproto3.FieldDescription `json:"fields"`
-	Rows         []Value                     `json:"rows"`
-	RowsAffected uint64                      `json:"rows_affected"`
-}
+var _ = DoltgresHandler{}
 
-// Value represents a single row value in bytes format.
-type Value struct {
-	val [][]byte
-}
-
-const rowsBatch = 128
-
+// ComBind is called when a connection receives a request to bind a prepared statement to a set of values.
 func (h *DoltgresHandler) ComBind(ctx context.Context, c *mysql.Conn, query string, parsedQuery mysql.ParsedQuery, bindVars map[string]sqlparser.Expr) (mysql.BoundQuery, []pgproto3.FieldDescription, error) {
 	sqlCtx, err := h.sm.NewContextWithQuery(ctx, c, query)
 	if err != nil {
@@ -80,6 +85,7 @@ func (h *DoltgresHandler) ComBind(ctx context.Context, c *mysql.Conn, query stri
 	return queryPlan, schemaToFieldDescriptions(sqlCtx, queryPlan.Schema()), nil
 }
 
+// ComExecuteBound is called when a connection receives a request to execute a prepared statement that has already bound to a set of values.
 func (h *DoltgresHandler) ComExecuteBound(ctx context.Context, conn *mysql.Conn, query string, boundQuery mysql.BoundQuery, callback func(*Result) error) error {
 	analyzedPlan, ok := boundQuery.(sql.Node)
 	if !ok {
@@ -94,6 +100,7 @@ func (h *DoltgresHandler) ComExecuteBound(ctx context.Context, conn *mysql.Conn,
 	return err
 }
 
+// ComPrepareParsed is called when a connection receives a prepared statement query that has already been parsed.
 func (h *DoltgresHandler) ComPrepareParsed(ctx context.Context, c *mysql.Conn, query string, parsed sqlparser.Statement) (mysql.ParsedQuery, []pgproto3.FieldDescription, error) {
 	sqlCtx, err := h.sm.NewContextWithQuery(ctx, c, query)
 	if err != nil {
@@ -123,7 +130,8 @@ func (h *DoltgresHandler) ComPrepareParsed(ctx context.Context, c *mysql.Conn, q
 	return analyzed, fields, nil
 }
 
-// ComQuery executes a SQL query on the SQL engine.
+// ComQuery is called when a connection receives a query. Note the contents of the query slice may change
+// after the first call to callback. So the Handler should not hang on to the byte slice.
 func (h *DoltgresHandler) ComQuery(ctx context.Context, c *mysql.Conn, query string, parsed sqlparser.Statement, callback func(*Result) error) error {
 	err := h.doQuery(ctx, c, query, parsed, nil, h.executeQuery, callback)
 	if err != nil {
@@ -324,7 +332,7 @@ func resultForMax1RowIter(ctx *sql.Context, schema sql.Schema, iter sql.RowIter,
 
 	ctx.GetLogger().Tracef("spooling result row %s", outputRow)
 
-	return &Result{Fields: resultFields, Rows: []Value{{outputRow}}, RowsAffected: 1}, nil
+	return &Result{Fields: resultFields, Rows: []Row{{outputRow}}, RowsAffected: 1}, nil
 }
 
 // resultForDefaultIter reads batches of rows from the iterator
@@ -424,7 +432,7 @@ func (h *DoltgresHandler) resultForDefaultIter(ctx *sql.Context, schema sql.Sche
 				}
 
 				ctx.GetLogger().Tracef("spooling result row %s", outputRow)
-				r.Rows = append(r.Rows, Value{outputRow})
+				r.Rows = append(r.Rows, Row{outputRow})
 				r.RowsAffected++
 			case <-timer.C:
 				if h.readTimeout != 0 {

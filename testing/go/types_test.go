@@ -1191,7 +1191,7 @@ var typesTests = []ScriptTest{
 			{
 				Query: "SELECT v1::smallint, v1::integer, v1::bigint, v1::float4, v1::float8, v1::numeric FROM t_name WHERE id=2;",
 				Expected: []sql.Row{
-					{12345, 12345, 12345, float64(12345), float64(12345), "12345"},
+					{12345, 12345, 12345, float64(12345), float64(12345), Numeric("12345")},
 				},
 			},
 			{
@@ -1315,9 +1315,9 @@ var typesTests = []ScriptTest{
 			{
 				Query: "SELECT * FROM t_numeric ORDER BY id;",
 				Expected: []sql.Row{
-					{1, "123.45"},
-					{2, "67.89"},
-					{3, "100.30"},
+					{1, Numeric("123.45")},
+					{2, Numeric("67.89")},
+					{3, Numeric("100.30")},
 				},
 			},
 		},
@@ -1332,9 +1332,9 @@ var typesTests = []ScriptTest{
 			{
 				Query: "SELECT * FROM t_numeric ORDER BY id;",
 				Expected: []sql.Row{
-					{1, "123.45"},
-					{2, "67.875"},
-					{3, "100.3"},
+					{1, Numeric("123.45")},
+					{2, Numeric("67.875")},
+					{3, Numeric("100.3")},
 				},
 			},
 		},
@@ -2596,9 +2596,9 @@ func TestSameTypes(t *testing.T) {
 				{
 					Query: "SELECT * FROM test ORDER BY 1;",
 					Expected: []sql.Row{
-						{"14854.5", "2504.25"},
-						{"21525.0", "134574.70"},
-						{"566821525.5", "735134574.75"},
+						{Numeric("14854.5"), Numeric("2504.25")},
+						{Numeric("21525.0"), Numeric("134574.70")},
+						{Numeric("566821525.5"), Numeric("735134574.75")},
 					},
 				},
 			},

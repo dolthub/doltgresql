@@ -29,7 +29,6 @@ import (
 	"github.com/dolthub/dolt/go/libraries/doltcore/sqlserver"
 	"github.com/dolthub/go-mysql-server/sql"
 	"github.com/dolthub/vitess/go/mysql"
-	"github.com/dolthub/vitess/go/sqltypes"
 	"github.com/dolthub/vitess/go/vt/sqlparser"
 	"github.com/jackc/pgx/v5/pgproto3"
 	"github.com/jackc/pgx/v5/pgtype"
@@ -273,24 +272,29 @@ func (h *ConnectionHandler) sendClientStartupMessages(startupMessage *pgproto3.S
 // chooseInitialDatabase attempts to choose the initial database for the connection,
 // if one is specified in the startup message provided
 func (h *ConnectionHandler) chooseInitialDatabase(startupMessage *pgproto3.StartupMessage) error {
-	if db, ok := startupMessage.Parameters["database"]; ok && len(db) > 0 {
-		err := h.handler.ComQuery(context.Background(), h.mysqlConn, fmt.Sprintf("USE `%s`;", db), func(res *sqltypes.Result, more bool) error {
-			return nil
+	db, ok := startupMessage.Parameters["database"]
+	dbSpecified := ok && len(db) > 0
+	if !dbSpecified {
+		db = h.mysqlConn.User
+	}
+	useStmt := fmt.Sprintf("SET database TO '%s';", db)
+	parsed, err := sql.GlobalParser.ParseSimple(useStmt)
+	if err != nil {
+		return err
+	}
+	err = h.doltgresHandler.ComQuery(context.Background(), h.mysqlConn, useStmt, parsed, func(res *Result) error {
+		return nil
+	})
+	// If a database isn't specified, then we attempt to connect to a database with the same name as the user,
+	// ignoring any error
+	if err != nil && dbSpecified {
+		_ = h.send(&pgproto3.ErrorResponse{
+			Severity: string(ErrorResponseSeverity_Fatal),
+			Code:     "3D000",
+			Message:  fmt.Sprintf(`"database "%s" does not exist"`, db),
+			Routine:  "InitPostgres",
 		})
-		if err != nil {
-			return h.send(&pgproto3.ErrorResponse{
-				Severity: string(ErrorResponseSeverity_Fatal),
-				Code:     "3D000",
-				Message:  fmt.Sprintf(`"database "%s" does not exist"`, db),
-				Routine:  "InitPostgres",
-			})
-		}
-	} else {
-		// If a database isn't specified, then we attempt to connect to a database with the same name as the user,
-		// ignoring any error
-		_ = h.handler.ComQuery(context.Background(), h.mysqlConn, fmt.Sprintf("USE `%s`;", h.mysqlConn.User), func(res *sqltypes.Result, more bool) error {
-			return nil
-		})
+		return err
 	}
 	return nil
 }
