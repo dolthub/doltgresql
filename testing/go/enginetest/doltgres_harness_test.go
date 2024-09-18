@@ -387,48 +387,49 @@ func (d *DoltgresHarness) EvaluateQueryResults(t *testing.T, expected []sql.Row,
 		widenedExpected = widenedRows
 	}
 
-	// The expected results that need widening before checking against actual results.
-	// TODO: make this behavior configurable
-	for i, row := range widenedExpected {
-		for j, field := range row {
-			// Special case for custom values
-			if cvv, isCustom := field.(enginetest.CustomValueValidator); isCustom {
-				if i >= len(widenedRows) {
+	if !convertExpectedResultsForDoltProcedures(t, q, widenedExpected, widenedRows) {
+
+		// The expected results that need widening before checking against actual results.
+		for i, row := range widenedExpected {
+			for j := range sch {
+				field := row[j]
+				// Special case for custom values
+				if cvv, isCustom := field.(enginetest.CustomValueValidator); isCustom {
+					if i >= len(widenedRows) {
+						continue
+					}
+					actual := widenedRows[i][j] // shouldn't panic, but fine if it does
+					ok, err := cvv.Validate(actual)
+					if err != nil {
+						t.Error(err.Error())
+					}
+					if !ok {
+						t.Errorf("Custom value validation, got %v", actual)
+					}
+					widenedExpected[i][j] = actual // ensure it passes equality check later
+				}
+
+				if !isServerEngine || isNilOrEmptySchema {
 					continue
 				}
-				actual := widenedRows[i][j] // shouldn't panic, but fine if it does
-				ok, err := cvv.Validate(actual)
-				if err != nil {
-					t.Error(err.Error())
-				}
-				if !ok {
-					t.Errorf("Custom value validation, got %v", actual)
-				}
-				widenedExpected[i][j] = actual // ensure it passes equality check later
-			}
 
-			if !isServerEngine || isNilOrEmptySchema {
-				continue
+				// TODO: handle OkResult
+				// if okRes, ok := widenedExpected[i][j].(gmstypes.OkResult); ok {
+				// 	okResult := types.OkResult{
+				// 		RowsAffected: okRes.RowsAffected,
+				// 		InsertID:     okRes.InsertID,
+				// 		Info:         nil,
+				// 	}
+				// 	widenedExpected[i][j] = okResult
+				// } else {
+				// this attempts to do what `rowToSQL()` method in `handler.go` on expected row
+				// because over the wire values gets converted to SQL values depending on the column types.
+				convertedExpected, _, err := sch[j].Type.Convert(widenedExpected[i][j])
+				require.NoError(t, err)
+				widenedExpected[i][j] = convertedExpected
 			}
-
-			// TODO: handle OkResult
-			// if okRes, ok := widenedExpected[i][j].(gmstypes.OkResult); ok {
-			// 	okResult := types.OkResult{
-			// 		RowsAffected: okRes.RowsAffected,
-			// 		InsertID:     okRes.InsertID,
-			// 		Info:         nil,
-			// 	}
-			// 	widenedExpected[i][j] = okResult
-			// } else {
-			// this attempts to do what `rowToSQL()` method in `handler.go` on expected row
-			// because over the wire values gets converted to SQL values depending on the column types.
-			convertedExpected, _, err := sch[j].Type.Convert(widenedExpected[i][j])
-			require.NoError(t, err)
-			widenedExpected[i][j] = convertedExpected
 		}
 	}
-
-	convertExpectedResultsForDoltProcedures(t, q, widenedExpected)
 
 	// .Equal gives better error messages than .ElementsMatch, so use it when possible
 	if orderBy || len(expected) <= 1 {
@@ -444,7 +445,7 @@ func (d *DoltgresHarness) EvaluateQueryResults(t *testing.T, expected []sql.Row,
 	// }
 }
 
-func convertExpectedResultsForDoltProcedures(t *testing.T, q string, widenedExpected []sql.Row) {
+func convertExpectedResultsForDoltProcedures(t *testing.T, q string, widenedExpected []sql.Row, widenedActual []sql.Row) bool {
 	if doltProcedureCall.MatchString(q) {
 		// if this was a dolt procedure call, we need to convert the expected values to what doltgres currently outputs
 		// TODO: this can be removed when we support `select * from dolt_procedure_call(...)`
@@ -458,7 +459,10 @@ func convertExpectedResultsForDoltProcedures(t *testing.T, q string, widenedExpe
 				}
 				switch v := val.(type) {
 				case string:
+					// Quoting here is wrong, but we need to match the current output
+					sb.WriteString("\"")
 					sb.WriteString(v)
+					sb.WriteString("\"")
 				case int64, uint64:
 					sb.WriteString(fmt.Sprintf("%d", v))
 				case float64:
@@ -471,6 +475,24 @@ func convertExpectedResultsForDoltProcedures(t *testing.T, q string, widenedExpe
 					}
 				case time.Time:
 					sb.WriteString(v.Format("2006-01-02 15:04:05.999999999"))
+				case enginetest.CustomValueValidator:
+					actual := widenedActual[i][j]
+					ok, err := v.Validate(actual)
+					if err != nil {
+						t.Error(err.Error())
+					}
+					if !ok {
+						t.Errorf("Custom value validation, got %v", actual)
+					}
+					if dcv, ok := v.(*doltCommitValidator); ok {
+						ok, hash := dcv.CommitHash(actual)
+						if !ok {
+							t.Errorf("Custom value validation, got %v", actual)
+						}
+						sb.WriteString(hash)
+					} else {
+						sb.WriteString(fmt.Sprintf("%v", strings.Trim(actual.(string), "{}")))
+					}
 				default:
 					t.Fatalf("unexpected type %T", val)
 				}
@@ -479,7 +501,11 @@ func convertExpectedResultsForDoltProcedures(t *testing.T, q string, widenedExpe
 
 			widenedExpected[i] = []interface{}{sb.String()}
 		}
+
+		return true
 	}
+
+	return false
 }
 
 func (d *DoltgresHarness) EvaluateExpectedError(t *testing.T, expected string, err error) {

@@ -16,6 +16,7 @@ package enginetest
 
 import (
 	"os"
+	"regexp"
 	"runtime"
 	"testing"
 
@@ -24,6 +25,7 @@ import (
 	"github.com/dolthub/go-mysql-server/enginetest/queries"
 	"github.com/dolthub/go-mysql-server/enginetest/scriptgen/setup"
 	"github.com/dolthub/go-mysql-server/sql"
+	"github.com/dolthub/go-mysql-server/sql/types"
 	"github.com/stretchr/testify/require"
 
 	"github.com/dolthub/dolt/go/libraries/doltcore/dtestutils"
@@ -108,31 +110,81 @@ func TestSchemaOverrides(t *testing.T) {
 	denginetest.RunSchemaOverridesTest(t, harness)
 }
 
+type doltCommitValidator struct{}
+
+var _ enginetest.CustomValueValidator = &doltCommitValidator{}
+
+// TODO: this custom validator is supposed to match only a commit hash, but we extend it to match the formatting
+//
+//	characters present in the Doltgres response for some calls. We can remove this when we support the syntax
+//	`select * from dolt_commit(...)`
+var hashRegex = regexp.MustCompile(`^\{?([0-9a-v]{32}).*$`)
+
+// Validate returns true if the value is a valid commit hash.
+func (dcv *doltCommitValidator) Validate(val interface{}) (bool, error) {
+	hash, ok := val.(string)
+	if !ok {
+		return false, nil
+	}
+	return hashRegex.MatchString(hash), nil
+}
+
+// CommitHash returns the commit hash from the value, if it is a valid commit hash.
+func (dcv *doltCommitValidator) CommitHash(val interface{}) (bool, string) {
+	hash, ok := val.(string)
+	if !ok {
+		return false, ""
+	}
+
+	matches := hashRegex.FindStringSubmatch(hash)
+	if len(matches) == 0 {
+		return false, ""
+	}
+	return true, matches[1]
+}
+
+var doltCommit = &doltCommitValidator{}
+
 // Convenience test for debugging a single query. Unskip and set to the desired query.
 func TestSingleScript(t *testing.T) {
-	t.Skip()
+	// t.Skip()
 
 	var scripts = []queries.ScriptTest{
 		{
-			Name: "dolt_reset('--soft') commits the active SQL transaction",
+			Name: "dolt-tag: SQL use a tag as a ref for merge",
 			SetUpScript: []string{
-				"create table t (pk int primary key);",
-				"insert into t values (1), (2);",
-				"call dolt_commit('-Am', 'creating table t');",
+				"CREATE TABLE test(pk int primary key);",
+				"CALL DOLT_ADD('.')",
+				"INSERT INTO test VALUES (0),(1),(2);",
+				"CALL DOLT_COMMIT('-am','created table test')",
+				"DELETE FROM test WHERE pk = 0",
+				"INSERT INTO test VALUES (3)",
+				"CALL DOLT_COMMIT('-am','made changes')",
 			},
 			Assertions: []queries.ScriptTestAssertion{
 				{
-					Query:    "start transaction;",
-					Expected: []sql.Row{},
-				},
-				{
-					Query:    "call dolt_reset('--soft', 'HEAD~');",
+					Query:    "CALL DOLT_TAG('v1','HEAD')",
 					Expected: []sql.Row{{0}},
 				},
 				{
-					// dolt_status should only show the unstaged table t being added
-					Query:    "select * from dolt_status",
-					Expected: []sql.Row{{"t", false, "new table"}},
+					Query:    "CALL DOLT_CHECKOUT('-b','other','HEAD^')",
+					Expected: []sql.Row{{0, "Switched to branch 'other'"}},
+				},
+				{
+					Query:    "INSERT INTO test VALUES (8), (9)",
+					Expected: []sql.Row{{types.OkResult{RowsAffected: 2}}},
+				},
+				{
+					Query:    "CALL DOLT_COMMIT('-am','made changes in other')",
+					Expected: []sql.Row{{doltCommit}},
+				},
+				{
+					Query:    "CALL DOLT_MERGE('v1')",
+					Expected: []sql.Row{{doltCommit, 0, 0, "merge successful"}},
+				},
+				{
+					Query:    "SELECT * FROM test",
+					Expected: []sql.Row{{1}, {2}, {3}, {8}, {9}},
 				},
 			},
 		},
@@ -1095,8 +1147,12 @@ func TestDoltCheckout(t *testing.T) {
 }
 
 func TestDoltCheckoutPrepared(t *testing.T) {
-	t.Skip()
-	h := newDoltgresServerHarness(t)
+	h := newDoltgresServerHarness(t).WithSkippedQueries([]string{
+		"dolt_checkout and base name resolution", // needs db-qualified table names
+		"branch last checked out is deleted",
+		"Using non-existent refs",
+		"read-only databases", // read-only not yet implemented in harness
+	})
 	denginetest.RunDoltCheckoutPreparedTests(t, h)
 }
 
@@ -1110,8 +1166,7 @@ func TestDoltBranch(t *testing.T) {
 }
 
 func TestDoltTag(t *testing.T) {
-	t.Skip()
-	h := newDoltgresServerHarness(t)
+	h := newDoltgresServerHarness(t) // .WithSkippedQueries()
 	denginetest.RunDoltTagTests(t, h)
 }
 
