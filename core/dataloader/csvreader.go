@@ -19,12 +19,9 @@ import (
 	"bytes"
 	"context"
 	"encoding/csv"
-	"fmt"
 	"io"
-	"strings"
 	"unicode/utf8"
 
-	"github.com/dolthub/dolt/go/libraries/doltcore/schema"
 	"github.com/dolthub/dolt/go/libraries/doltcore/table"
 	"github.com/dolthub/go-mysql-server/sql"
 	textunicode "golang.org/x/text/encoding/unicode"
@@ -64,7 +61,6 @@ func (ple partialLineError) Error() string {
 type csvReader struct {
 	closer          io.Closer
 	bRd             *bufio.Reader
-	sch             schema.Schema
 	isDone          bool
 	delim           []byte
 	numLine         int
@@ -138,13 +134,6 @@ func (csvr *csvReader) Close(ctx context.Context) error {
 }
 
 // Functions below this line are borrowed or adapted from encoding/csv/reader.go
-
-func validDelim(s string) bool {
-	return !(strings.Contains(s, "\"") ||
-		strings.Contains(s, "\r") ||
-		strings.Contains(s, "\n") ||
-		strings.Contains(s, string([]byte{0xFF, 0xFD}))) // Unicode replacement char
-}
 
 // lengthNL returns 1 if the last byte in b is a newline, 0 otherwise.
 func lengthNL(b []byte) int {
@@ -311,7 +300,7 @@ func (csvr *csvReader) parseQuotedField(rs *recordState) (kontinue bool, err err
 			rs.recordBuffer = append(rs.recordBuffer, rs.line[:i]...)
 			rs.line = rs.line[i+quoteLen:]
 
-			atDelimiter := len(rs.line) >= dl && bytes.Compare(rs.line[:dl], csvr.delim) == 0
+			atDelimiter := len(rs.line) >= dl && bytes.Equal(rs.line[:dl], csvr.delim)
 			nextRune, _ := utf8.DecodeRune(rs.line)
 
 			switch {
@@ -363,44 +352,4 @@ func (csvr *csvReader) parseQuotedField(rs *recordState) (kontinue bool, err err
 			return false, err
 		}
 	}
-}
-
-// interpretRowSizeError returns a format map (written as a string) of a set of columns to their row values. It also
-// returns a slice of an unused strings.
-func interpretRowSizeError(schema schema.Schema, rowVals []*string) (string, []string) {
-	cols := schema.GetAllCols().GetColumns()
-
-	keyValPairs := make([][]string, len(cols))
-	unusedRowValues := make([]string, 0)
-
-	// 1. Start by adding all cols to the map and their relevant pair
-	for i, col := range cols {
-		if i >= len(rowVals) || rowVals[i] == nil {
-			keyValPairs[i] = []string{col.Name, ""}
-		} else {
-			keyValPairs[i] = []string{col.Name, *rowVals[i]}
-		}
-	}
-
-	// 2. Append any unused row values to print to the user
-	for i := len(cols); i < len(rowVals); i++ {
-		if rowVals[i] == nil {
-			unusedRowValues = append(unusedRowValues, fmt.Sprintf("%q", ""))
-		} else {
-			unusedRowValues = append(unusedRowValues, fmt.Sprintf("%q", *rowVals[i]))
-		}
-	}
-
-	// 3. Pretty print the column names to value pairings
-	var b bytes.Buffer
-
-	b.Write([]byte("{\n"))
-
-	for _, pair := range keyValPairs {
-		b.Write([]byte(fmt.Sprintf("\t%q: %q\n", pair[0], pair[1])))
-	}
-
-	b.Write([]byte("}\n"))
-
-	return b.String(), unusedRowValues
 }

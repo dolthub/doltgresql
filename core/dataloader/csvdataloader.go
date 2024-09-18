@@ -75,7 +75,8 @@ func (tdl *CsvDataLoader) LoadChunk(ctx *sql.Context, data *bufio.Reader) error 
 			}
 
 			// csvReader will return a BadRow error if it encounters an input line without the
-			// correct number of columns. If we see the end of data marker, then
+			// correct number of columns. If we see the end of data marker, then break out of the
+			// loop and return from this function without returning an error.
 			if _, ok := err.(*table.BadRow); ok {
 				if len(record) == 1 && record[0] == "\\." {
 					break

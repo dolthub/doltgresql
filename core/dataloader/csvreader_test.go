@@ -90,7 +90,7 @@ func TestCsvReader(t *testing.T) {
 		assert.Equal(t, "bash", row[2])
 
 		// Read the EOF error
-		row, err = csvReader.ReadSqlRow()
+		_, err = csvReader.ReadSqlRow()
 		require.Equal(t, io.EOF, err)
 	})
 
@@ -108,7 +108,7 @@ func TestCsvReader(t *testing.T) {
 		require.Equal(t, "bash", row[4])
 
 		// Read the second row
-		row, err = csvReader.ReadSqlRow()
+		_, err = csvReader.ReadSqlRow()
 		require.Error(t, err)
 		require.Equal(t, "record on line 3: wrong number of fields", err.Error())
 	})
@@ -136,7 +136,7 @@ func TestCsvReader(t *testing.T) {
 		assert.Equal(t, "blorp", row[4])
 
 		// Third row should trigger a partialLineError
-		row, err = csvReader.ReadSqlRow()
+		_, err = csvReader.ReadSqlRow()
 		require.Error(t, err)
 		require.Equal(t, "incomplete record found at end of CSV data: 3,blue,g", err.Error())
 	})
@@ -155,15 +155,15 @@ func TestCsvReader(t *testing.T) {
 		assert.Equal(t, "", row[4])
 
 		// Read the EOF error
-		row, err = csvReader.ReadSqlRow()
+		_, err = csvReader.ReadSqlRow()
 		require.Equal(t, io.EOF, err)
 	})
 
 	t.Run("quote escaping", func(t *testing.T) {
+		t.Skip("errors with escaped quotes")
+
 		csvReader, err := newCsvReader(newReader(escapedQuotesCsvData))
 		require.NoError(t, err)
-
-		t.Skip("errors with escaped quotes")
 
 		// Read the first row
 		row, err := csvReader.ReadSqlRow()
@@ -176,7 +176,7 @@ func TestCsvReader(t *testing.T) {
 		assert.Equal(t, "\"", row[5])
 
 		// Read the EOF error
-		row, err = csvReader.ReadSqlRow()
+		_, err = csvReader.ReadSqlRow()
 		require.Equal(t, io.EOF, err)
 	})
 
@@ -192,7 +192,7 @@ func TestCsvReader(t *testing.T) {
 		assert.Equal(t, "baz\nbar\nbash", row[2])
 
 		// Read the EOF error
-		row, err = csvReader.ReadSqlRow()
+		_, err = csvReader.ReadSqlRow()
 		require.Equal(t, io.EOF, err)
 	})
 
@@ -208,7 +208,7 @@ func TestCsvReader(t *testing.T) {
 		assert.Equal(t, "baz\n\\.\nbash", row[2])
 
 		// Read the EOF error
-		row, err = csvReader.ReadSqlRow()
+		_, err = csvReader.ReadSqlRow()
 		require.Equal(t, io.EOF, err)
 	})
 

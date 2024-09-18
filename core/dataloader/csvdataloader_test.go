@@ -123,6 +123,7 @@ func TestCsvDataLoader(t *testing.T) {
 		})
 	})
 
+	// Test that calling Abort() does not insert any data into the table.
 	t.Run("abort cancels data load", func(t *testing.T) {
 		table := memory.NewTable(db, "myTable", pkSchema, nil)
 		dataLoader, err := NewCsvDataLoader(ctx, table)

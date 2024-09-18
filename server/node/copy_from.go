@@ -63,12 +63,11 @@ func NewCopyFrom(databaseName string, tableName doltdb.TableName, options tree.C
 		DatabaseName: databaseName,
 		TableName:    tableName,
 		File:         fileName,
-		// TODO: Do we need delimiter here? Seems like it should be in CopyOptions?
-		Delimiter:   delimiterChar,
-		Null:        nullChar,
-		Stdin:       stdin,
-		Columns:     columns,
-		CopyOptions: options,
+		Delimiter:    delimiterChar,
+		Null:         nullChar,
+		Stdin:        stdin,
+		Columns:      columns,
+		CopyOptions:  options,
 	}
 }
 
