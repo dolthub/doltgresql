@@ -15,6 +15,7 @@
 package enginetest
 
 import (
+	"context"
 	gosql "database/sql"
 	"fmt"
 	"io"
@@ -36,6 +37,8 @@ import (
 	"github.com/dolthub/vitess/go/vt/proto/query"
 	vitess "github.com/dolthub/vitess/go/vt/sqlparser"
 	_ "github.com/jackc/pgx/v4/stdlib"
+	"github.com/jackc/pgx/v5"
+	"github.com/lib/pq/oid"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
@@ -365,7 +368,6 @@ func (d *DoltgresHarness) EvaluateQueryResults(t *testing.T, expected []sql.Row,
 	upperQuery := strings.ToUpper(q)
 	orderBy := strings.Contains(upperQuery, "ORDER BY ")
 
-	isServerEngine := true
 	isNilOrEmptySchema := len(sch) == 0
 	// We replace all times for SHOW statements with the Unix epoch except for SHOW EVENTS
 	setZeroTime := strings.HasPrefix(upperQuery, "SHOW ") && !strings.Contains(upperQuery, "EVENTS")
@@ -383,52 +385,18 @@ func (d *DoltgresHarness) EvaluateQueryResults(t *testing.T, expected []sql.Row,
 
 	// if the sch is nil or empty, over the wire result is no row whereas single empty row is expected.
 	// This happens for SET and SELECT INTO statements.
-	if isServerEngine && isNilOrEmptySchema && len(widenedRows) == 0 && len(widenedExpected) == 1 && len(widenedExpected[0]) == 0 {
+	if isNilOrEmptySchema && len(widenedRows) == 0 && len(widenedExpected) == 1 && len(widenedExpected[0]) == 0 {
 		widenedExpected = widenedRows
 	}
 
-	if !convertExpectedResultsForDoltProcedures(t, q, widenedExpected, widenedRows) {
-
+	switch true {
+	case convertExpectedResultsForDoltProcedures(t, q, widenedExpected, widenedRows):
+	// widenedExpected modified in place
+	case convertInsertIntoResults(t, q, widenedExpected, widenedRows):
+		// widenedExpected modified in place
+	default:
 		// The expected results that need widening before checking against actual results.
-		for i, row := range widenedExpected {
-			for j := range sch {
-				field := row[j]
-				// Special case for custom values
-				if cvv, isCustom := field.(enginetest.CustomValueValidator); isCustom {
-					if i >= len(widenedRows) {
-						continue
-					}
-					actual := widenedRows[i][j] // shouldn't panic, but fine if it does
-					ok, err := cvv.Validate(actual)
-					if err != nil {
-						t.Error(err.Error())
-					}
-					if !ok {
-						t.Errorf("Custom value validation, got %v", actual)
-					}
-					widenedExpected[i][j] = actual // ensure it passes equality check later
-				}
-
-				if !isServerEngine || isNilOrEmptySchema {
-					continue
-				}
-
-				// TODO: handle OkResult
-				// if okRes, ok := widenedExpected[i][j].(gmstypes.OkResult); ok {
-				// 	okResult := types.OkResult{
-				// 		RowsAffected: okRes.RowsAffected,
-				// 		InsertID:     okRes.InsertID,
-				// 		Info:         nil,
-				// 	}
-				// 	widenedExpected[i][j] = okResult
-				// } else {
-				// this attempts to do what `rowToSQL()` method in `handler.go` on expected row
-				// because over the wire values gets converted to SQL values depending on the column types.
-				convertedExpected, _, err := sch[j].Type.Convert(widenedExpected[i][j])
-				require.NoError(t, err)
-				widenedExpected[i][j] = convertedExpected
-			}
-		}
+		widenExpectedRows(t, widenedExpected, sch, widenedRows, isNilOrEmptySchema)
 	}
 
 	// .Equal gives better error messages than .ElementsMatch, so use it when possible
@@ -443,6 +411,42 @@ func (d *DoltgresHarness) EvaluateQueryResults(t *testing.T, expected []sql.Row,
 	// if expectedCols != nil && !isServerEngine {
 	// 	assert.Equal(t, simplifyResultSchema(expectedCols), simplifyResultSchema(sch))
 	// }
+}
+
+func convertInsertIntoResults(t *testing.T, q string, expected []sql.Row, rows []sql.Row) bool {
+
+	return false
+}
+
+func widenExpectedRows(t *testing.T, expected []sql.Row, sch sql.Schema, actual []sql.Row, isNilOrEmptySchema bool) {
+	for i, row := range expected {
+		for j := range sch {
+			field := row[j]
+			// Special case for custom values
+			if cvv, isCustom := field.(enginetest.CustomValueValidator); isCustom {
+				if i >= len(actual) {
+					continue
+				}
+				actual := actual[i][j] // shouldn't panic, but fine if it does
+				ok, err := cvv.Validate(actual)
+				if err != nil {
+					t.Error(err.Error())
+				}
+				if !ok {
+					t.Errorf("Custom value validation, got %v", actual)
+				}
+				expected[i][j] = actual // ensure it passes equality check later
+			}
+
+			if isNilOrEmptySchema {
+				continue
+			}
+
+			convertedExpected, _, err := sch[j].Type.Convert(expected[i][j])
+			require.NoError(t, err)
+			expected[i][j] = convertedExpected
+		}
+	}
 }
 
 func convertExpectedResultsForDoltProcedures(t *testing.T, q string, widenedExpected []sql.Row, widenedActual []sql.Row) bool {
@@ -538,7 +542,7 @@ func (d *DoltgresHarness) allDatabaseNames(ctx *sql.Context, queryEngine *Doltgr
 type DoltgresQueryEngine struct {
 	harness    *DoltgresHarness
 	controller *svcs.Controller
-	conn       *gosql.DB
+	conn       *pgx.Conn
 }
 
 var _ enginetest.QueryEngine = &DoltgresQueryEngine{}
@@ -593,13 +597,17 @@ func (d *DoltgresQueryEngine) Query(ctx *sql.Context, query string) (sql.Schema,
 	)
 
 	for _, query := range queries {
-		rows, err := db.Query(query)
+		rows, err := db.Query(context.Background(), query)
 		if err != nil {
 			return nil, nil, nil, err
 		}
 
 		if rows == nil {
 			return nil, nil, nil, fmt.Errorf("rows is nil")
+		}
+
+		if rows.Err() != nil {
+			return nil, nil, nil, rows.Err()
 		}
 
 		defer rows.Close()
@@ -611,11 +619,7 @@ func (d *DoltgresQueryEngine) Query(ctx *sql.Context, query string) (sql.Schema,
 
 		results := make([]sql.Row, 0)
 		for rows.Next() {
-			err := rows.Scan(columns...)
-			if err != nil {
-				return nil, nil, nil, err
-			}
-
+			rows.Scan(columns...)
 			row, err := toRow(schema, columns)
 			if err != nil {
 				return nil, nil, nil, err
@@ -629,11 +633,7 @@ func (d *DoltgresQueryEngine) Query(ctx *sql.Context, query string) (sql.Schema,
 			resultRows = results
 		}
 
-		err = rows.Close()
-		if err != nil {
-			return nil, nil, nil, err
-		}
-
+		rows.Close()
 		if rows.Err() != nil {
 			return nil, nil, nil, rows.Err()
 		}
@@ -642,12 +642,12 @@ func (d *DoltgresQueryEngine) Query(ctx *sql.Context, query string) (sql.Schema,
 	return resultSchema, sql.RowsToRowIter(resultRows...), nil, nil
 }
 
-func (d *DoltgresQueryEngine) getConnection() (*gosql.DB, error) {
+func (d *DoltgresQueryEngine) getConnection() (*pgx.Conn, error) {
 	if d.conn != nil {
 		return d.conn, nil
 	}
 
-	db, err := gosql.Open("pgx", doltgresNoDbDsn)
+	db, err := pgx.Connect(context.Background(), doltgresNoDbDsn)
 	if err != nil {
 		return nil, err
 	}
@@ -745,39 +745,36 @@ func (d *DoltgresQueryEngine) Close() error {
 	return d.controller.WaitForStop()
 }
 
-func columns(rows *gosql.Rows) (sql.Schema, []interface{}, error) {
-	types, err := rows.ColumnTypes()
-	if err != nil {
-		return nil, nil, err
-	}
+func columns(rows pgx.Rows) (sql.Schema, []interface{}, error) {
+	fields := rows.FieldDescriptions()
 
-	schema := make(sql.Schema, 0, len(types))
-	columnVals := make([]interface{}, 0, len(types))
+	schema := make(sql.Schema, 0, len(fields))
+	columnVals := make([]interface{}, 0, len(fields))
 
-	for _, columnType := range types {
-		switch columnType.DatabaseTypeName() {
-		case "BIT":
+	for _, field := range fields {
+		switch field.DataTypeOID {
+		case uint32(oid.T_bool):
 			colVal := gosql.NullBool{}
 			columnVals = append(columnVals, &colVal)
-			schema = append(schema, &sql.Column{Name: columnType.Name(), Type: gmstypes.Int8, Nullable: true})
-		case "TEXT", "VARCHAR", "MEDIUMTEXT", "CHAR", "TINYTEXT", "NAME", "BYTEA":
+			schema = append(schema, &sql.Column{Name: field.Name, Type: gmstypes.Int8, Nullable: true})
+		case uint32(oid.T_text), uint32(oid.T_varchar):
 			colVal := gosql.NullString{}
 			columnVals = append(columnVals, &colVal)
-			schema = append(schema, &sql.Column{Name: columnType.Name(), Type: gmstypes.LongText, Nullable: true})
-		case "DECIMAL", "DOUBLE", "FLOAT", "FLOAT4", "FLOAT8", "NUMERIC":
+			schema = append(schema, &sql.Column{Name: field.Name, Type: gmstypes.LongText, Nullable: true})
+		case uint32(oid.T_numeric), uint32(oid.T_float8), uint32(oid.T_float4):
 			colVal := gosql.NullFloat64{}
 			columnVals = append(columnVals, &colVal)
-			schema = append(schema, &sql.Column{Name: columnType.Name(), Type: gmstypes.Float64, Nullable: true})
-		case "MEDIUMINT", "INT", "BIGINT", "TINYINT", "SMALLINT", "INT2", "INT4", "INT8":
+			schema = append(schema, &sql.Column{Name: field.Name, Type: gmstypes.Float64, Nullable: true})
+		case uint32(oid.T_int2), uint32(oid.T_int4), uint32(oid.T_int8):
 			colVal := gosql.NullInt64{}
 			columnVals = append(columnVals, &colVal)
-			schema = append(schema, &sql.Column{Name: columnType.Name(), Type: gmstypes.Int64, Nullable: true})
-		case "TIMESTAMP", "DATETIME", "DATE":
+			schema = append(schema, &sql.Column{Name: field.Name, Type: gmstypes.Int64, Nullable: true})
+		case uint32(oid.T_timestamp), uint32(oid.T_time), uint32(oid.T_date):
 			colVal := gosql.NullTime{}
 			columnVals = append(columnVals, &colVal)
-			schema = append(schema, &sql.Column{Name: columnType.Name(), Type: gmstypes.Timestamp, Nullable: true})
+			schema = append(schema, &sql.Column{Name: field.Name, Type: gmstypes.Timestamp, Nullable: true})
 		default:
-			return nil, nil, fmt.Errorf("Unhandled type %s", columnType.DatabaseTypeName())
+			return nil, nil, fmt.Errorf("Unhandled type %s", field.Name)
 		}
 	}
 
