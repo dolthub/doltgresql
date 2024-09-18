@@ -191,17 +191,20 @@ func TestSingleScript(t *testing.T) {
 	}
 
 	for _, script := range scripts {
-		harness := newDoltgresServerHarness(t)
-		// harness.Setup(setup.MydbData, setup.MytableData)
+		func() {
+			harness := newDoltgresServerHarness(t)
+			defer harness.Close()
+			// harness.Setup(setup.MydbData, setup.MytableData)
 
-		engine, err := harness.NewEngine(t)
-		if err != nil {
-			panic(err)
-		}
-		// engine.EngineAnalyzer().Debug = true
-		// engine.EngineAnalyzer().Verbose = true
+			engine, err := harness.NewEngine(t)
+			if err != nil {
+				panic(err)
+			}
+			// engine.EngineAnalyzer().Debug = true
+			// engine.EngineAnalyzer().Verbose = true
 
-		enginetest.TestScriptWithEngine(t, engine, harness, script)
+			enginetest.TestScriptWithEngine(t, engine, harness, script)
+		}()
 	}
 }
 
