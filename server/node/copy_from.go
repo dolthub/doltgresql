@@ -157,7 +157,7 @@ func (cf *CopyFrom) RowIter(ctx *sql.Context, _ sql.Row) (_ sql.RowIter, err err
 	}()
 	reader := bufio.NewReader(openFile)
 
-	dataLoader, err := dataloader.NewTabularDataLoader(ctx, insertable, cf.Delimiter, cf.Null)
+	dataLoader, err := dataloader.NewTabularDataLoader(ctx, insertable, cf.Delimiter, cf.Null, cf.CopyOptions.Header)
 	if err != nil {
 		return nil, err
 	}

@@ -700,7 +700,7 @@ func (u *sqlSymUnion) aggregatesToDrop() []tree.AggregateToDrop {
 %token <str> ASYMMETRIC AT ATOMIC ATTACH ATTRIBUTE AUTHORIZATION AUTOMATIC
 
 %token <str> BACKUP BACKUPS BASETYPE BEFORE BEGIN BETWEEN BIGINT BIGSERIAL BINARY BIT
-%token <str> FORMAT CSV
+%token <str> FORMAT CSV HEADER
 %token <str> BUCKET_COUNT
 %token <str> BOOLEAN BOTH BOX2D BUNDLE BY
 
@@ -757,7 +757,7 @@ func (u *sqlSymUnion) aggregatesToDrop() []tree.AggregateToDrop {
 
 %token <str> NAN NAME NAMES NATURAL NEVER NEW NEXT NO NOCANCELQUERY NOCONTROLCHANGEFEED NOCONTROLJOB
 %token <str> NOCREATEDB NOCREATELOGIN NOCREATEROLE NOLOGIN NOMODIFYCLUSTERSETTING NO_INDEX_JOIN
-%token <str> NONE NORMAL NOT NOTHING NOTNULL NOVIEWACTIVITY NOWAIT NULL NULLIF NULLS NUMERIC
+%token <str> NONE NORMAL NOT NOTHING NOTNULL NOVIEWACTIVITY NOWAIT NULL NULLIF NULLS NUMERIC YES
 
 %token <str> OBJECT OF OFF OFFSET OID OIDS OIDVECTOR OLD ON ONLY OPT OPTION OPTIONS OR
 %token <str> ORDER ORDINALITY OTHERS OUT OUTER OUTPUT OVER OVERLAPS OVERLAY OWNED OWNER OPERATOR
@@ -1200,6 +1200,7 @@ func (u *sqlSymUnion) aggregatesToDrop() []tree.AggregateToDrop {
 
 %type <bool> all_or_distinct opt_cascade opt_if_exists opt_restrict opt_trusted opt_procedural
 %type <bool> with_comment opt_with_force opt_create_as_with_data
+%type <bool> boolean_value
 %type <empty> join_outer
 %type <tree.JoinCond> join_qual
 %type <str> join_type
@@ -3588,9 +3589,9 @@ copy_options_list:
   {
     $$.val = $1.copyOptions()
   }
-| copy_options_list copy_options
+| copy_options_list ',' copy_options
   {
-    if err := $1.copyOptions().CombineWith($2.copyOptions()); err != nil {
+    if err := $1.copyOptions().CombineWith($3.copyOptions()); err != nil {
       return setErr(sqllex, err)
     }
   }
@@ -3607,6 +3608,14 @@ copy_options:
 | FORMAT BINARY
   {
     $$.val = &tree.CopyOptions{CopyFormat: tree.CopyFormatBinary}
+  }
+| HEADER
+  {
+    $$.val = &tree.CopyOptions{Header: true}
+  }
+| HEADER boolean_value
+  {
+    $$.val = &tree.CopyOptions{Header: $2.val.(bool)}
   }
 
 // %Help: CANCEL
@@ -5524,6 +5533,44 @@ admin_inherit_set:
 | SET
   {
     $$ = $1
+  }
+
+boolean_value:
+  TRUE
+  {
+    $$.val = true
+  }
+| FALSE
+  {
+    $$.val = false
+  }
+| 't'
+  {
+    $$.val = true
+  }
+| 'f'
+  {
+    $$.val = false
+  }
+| YES
+  {
+    $$.val = true
+  }
+| NO
+  {
+    $$.val = false
+  }
+| 'y'
+  {
+    $$.val = true
+  }
+| 'n'
+  {
+    $$.val = false
+  }
+| ICONST
+  {
+    $$.val = $1.int64() != 0
   }
 
 option_true_false:
@@ -14030,6 +14077,7 @@ unreserved_keyword:
 | GROUPS
 | HANDLER
 | HASH
+| HEADER
 | HIGH
 | HISTOGRAM
 | HOUR
@@ -14333,6 +14381,7 @@ unreserved_keyword:
 | WITHOUT
 | WRITE
 | YEAR
+| YES
 | ZONE
 
 // Column identifier --- keywords that can be column, table, etc names.

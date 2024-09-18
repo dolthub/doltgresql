@@ -34,12 +34,14 @@ type CsvDataLoader struct {
 	rowInserter   sql.RowInserter
 	colTypes      []types.DoltgresType
 	sch           sql.Schema
+	removeHeader  bool
 }
 
 var _ DataLoader = (*CsvDataLoader)(nil)
 
-// NewCsvDataLoader creates a new DataLoader instance that will insert records from chunks of CSV data into |table|.
-func NewCsvDataLoader(ctx *sql.Context, table sql.InsertableTable) (*CsvDataLoader, error) {
+// NewCsvDataLoader creates a new DataLoader instance that will insert records from chunks of CSV data into |table|. If
+// |header| is true, the first line of the data will be treated as a header and ignored.
+func NewCsvDataLoader(ctx *sql.Context, table sql.InsertableTable, header bool) (*CsvDataLoader, error) {
 	colTypes, err := getColumnTypes(table.Schema())
 	if err != nil {
 		return nil, err
@@ -49,16 +51,17 @@ func NewCsvDataLoader(ctx *sql.Context, table sql.InsertableTable) (*CsvDataLoad
 	rowInserter.StatementBegin(ctx)
 
 	return &CsvDataLoader{
-		rowInserter: rowInserter,
-		colTypes:    colTypes,
-		sch:         table.Schema(),
+		rowInserter:  rowInserter,
+		colTypes:     colTypes,
+		sch:          table.Schema(),
+		removeHeader: header,
 	}, nil
 }
 
 // LoadChunk implements the DataLoader interface
-func (tdl *CsvDataLoader) LoadChunk(ctx *sql.Context, data *bufio.Reader) error {
-	combinedReader := newStringPrefixReader(tdl.partialRecord, data)
-	tdl.partialRecord = ""
+func (cdl *CsvDataLoader) LoadChunk(ctx *sql.Context, data *bufio.Reader) error {
+	combinedReader := newStringPrefixReader(cdl.partialRecord, data)
+	cdl.partialRecord = ""
 
 	reader, err := newCsvReader(combinedReader)
 	if err != nil {
@@ -67,10 +70,18 @@ func (tdl *CsvDataLoader) LoadChunk(ctx *sql.Context, data *bufio.Reader) error 
 
 	for {
 		// Read the next record from the data
+		if cdl.removeHeader {
+			_, err := reader.readLine()
+			cdl.removeHeader = false
+			if err != nil {
+				return err
+			}
+		}
+
 		record, err := reader.ReadSqlRow()
 		if err != nil {
 			if ple, ok := err.(*partialLineError); ok {
-				tdl.partialRecord = ple.partialLine
+				cdl.partialRecord = ple.partialLine
 				break
 			}
 
@@ -91,7 +102,7 @@ func (tdl *CsvDataLoader) LoadChunk(ctx *sql.Context, data *bufio.Reader) error 
 			for _, v := range record {
 				recordValues = append(recordValues, fmt.Sprintf("%v", v))
 			}
-			tdl.partialRecord = strings.Join(recordValues, ",")
+			cdl.partialRecord = strings.Join(recordValues, ",")
 			break
 		}
 
@@ -102,19 +113,19 @@ func (tdl *CsvDataLoader) LoadChunk(ctx *sql.Context, data *bufio.Reader) error 
 			break
 		}
 
-		if len(record) > len(tdl.colTypes) {
+		if len(record) > len(cdl.colTypes) {
 			return fmt.Errorf("extra data after last expected column")
-		} else if len(record) < len(tdl.colTypes) {
-			return fmt.Errorf(`missing data for column "%s"`, tdl.sch[len(record)].Name)
+		} else if len(record) < len(cdl.colTypes) {
+			return fmt.Errorf(`missing data for column "%s"`, cdl.sch[len(record)].Name)
 		}
 
 		// Cast the values using I/O input
-		row := make(sql.Row, len(tdl.colTypes))
-		for i := range tdl.colTypes {
+		row := make(sql.Row, len(cdl.colTypes))
+		for i := range cdl.colTypes {
 			if record[i] == nil {
 				row[i] = nil
 			} else {
-				row[i], err = tdl.colTypes[i].IoInput(ctx, fmt.Sprintf("%v", record[i]))
+				row[i], err = cdl.colTypes[i].IoInput(ctx, fmt.Sprintf("%v", record[i]))
 				if err != nil {
 					return err
 				}
@@ -122,44 +133,44 @@ func (tdl *CsvDataLoader) LoadChunk(ctx *sql.Context, data *bufio.Reader) error 
 		}
 
 		// Insert the row
-		if err = tdl.rowInserter.Insert(ctx, row); err != nil {
+		if err = cdl.rowInserter.Insert(ctx, row); err != nil {
 			return err
 		}
-		tdl.results.RowsLoaded += 1
+		cdl.results.RowsLoaded += 1
 	}
 
 	return nil
 }
 
 // Abort implements the DataLoader interface
-func (tdl *CsvDataLoader) Abort(ctx *sql.Context) error {
+func (cdl *CsvDataLoader) Abort(ctx *sql.Context) error {
 	defer func() {
-		if closeErr := tdl.rowInserter.Close(ctx); closeErr != nil {
+		if closeErr := cdl.rowInserter.Close(ctx); closeErr != nil {
 			logrus.Warnf("error closing rowInserter: %v", closeErr)
 		}
 	}()
 
-	return tdl.rowInserter.DiscardChanges(ctx, nil)
+	return cdl.rowInserter.DiscardChanges(ctx, nil)
 }
 
 // Finish implements the DataLoader interface
-func (tdl *CsvDataLoader) Finish(ctx *sql.Context) (*LoadDataResults, error) {
+func (cdl *CsvDataLoader) Finish(ctx *sql.Context) (*LoadDataResults, error) {
 	defer func() {
-		if closeErr := tdl.rowInserter.Close(ctx); closeErr != nil {
+		if closeErr := cdl.rowInserter.Close(ctx); closeErr != nil {
 			logrus.Warnf("error closing rowInserter: %v", closeErr)
 		}
 	}()
 
 	// If there is partial data from the last chunk that hasn't been inserted, return an error.
-	if tdl.partialRecord != "" {
-		return nil, fmt.Errorf("partial record (%s) found at end of data load", tdl.partialRecord)
+	if cdl.partialRecord != "" {
+		return nil, fmt.Errorf("partial record (%s) found at end of data load", cdl.partialRecord)
 	}
 
-	err := tdl.rowInserter.StatementComplete(ctx)
+	err := cdl.rowInserter.StatementComplete(ctx)
 	if err != nil {
-		err = tdl.rowInserter.DiscardChanges(ctx, err)
+		err = cdl.rowInserter.DiscardChanges(ctx, err)
 		return nil, err
 	}
 
-	return &tdl.results, nil
+	return &cdl.results, nil
 }

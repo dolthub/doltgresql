@@ -35,13 +35,15 @@ type TabularDataLoader struct {
 	sch           sql.Schema
 	delimiterChar string
 	nullChar      string
+	removeHeader  bool
 }
 
 var _ DataLoader = (*TabularDataLoader)(nil)
 
 // NewTabularDataLoader creates a new TabularDataLoader to insert into the specifeid |table| using the specified
-// |delimiterChar| and |nullChar|.
-func NewTabularDataLoader(ctx *sql.Context, table sql.InsertableTable, delimiterChar, nullChar string) (*TabularDataLoader, error) {
+// |delimiterChar| and |nullChar|. If |header| is true, the first line of the data will be treated as a header and
+// ignored.
+func NewTabularDataLoader(ctx *sql.Context, table sql.InsertableTable, delimiterChar, nullChar string, header bool) (*TabularDataLoader, error) {
 	colTypes, err := getColumnTypes(table.Schema())
 	if err != nil {
 		return nil, err
@@ -56,6 +58,7 @@ func NewTabularDataLoader(ctx *sql.Context, table sql.InsertableTable, delimiter
 		sch:           table.Schema(),
 		delimiterChar: delimiterChar,
 		nullChar:      nullChar,
+		removeHeader:  header,
 	}, nil
 }
 
@@ -63,8 +66,9 @@ func NewTabularDataLoader(ctx *sql.Context, table sql.InsertableTable, delimiter
 // the chunk does not need to end on a line boundary – the loader will handle partial lines at the end of the chunk
 // by saving them for the next chunk.
 func (tdl *TabularDataLoader) LoadChunk(ctx *sql.Context, data *bufio.Reader) error {
-	row := make(sql.Row, len(tdl.colTypes))
 	for {
+		row := make(sql.Row, len(tdl.colTypes))
+
 		// Read the next line from the file
 		line, err := data.ReadString('\n')
 		if err != nil {
@@ -79,6 +83,13 @@ func (tdl *TabularDataLoader) LoadChunk(ctx *sql.Context, data *bufio.Reader) er
 			tdl.partialLine = line
 			break
 		}
+
+		if tdl.removeHeader {
+			// Skip the first line if it is a header
+			tdl.removeHeader = false
+			continue
+		}
+
 		// If we've not reached EOF, then there will be a newline appended to the end that we must remove.
 		line = strings.TrimSuffix(line, "\n")
 		// Data with windows line endings will also have a carriage return character that we need to remove.
