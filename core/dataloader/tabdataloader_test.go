@@ -18,11 +18,13 @@ import (
 	"bufio"
 	"bytes"
 	"context"
-	"github.com/dolthub/doltgresql/server/types"
+	"testing"
+
 	"github.com/dolthub/go-mysql-server/memory"
 	"github.com/dolthub/go-mysql-server/sql"
 	"github.com/stretchr/testify/require"
-	"testing"
+
+	"github.com/dolthub/doltgresql/server/types"
 )
 
 func TestTabDataLoader(t *testing.T) {
