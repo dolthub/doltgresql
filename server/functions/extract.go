@@ -146,7 +146,7 @@ var extract_text_interval = framework.Function2{
 		case "epoch":
 			epoch := float64(duration.SecsPerDay*duration.DaysPerMonth*dur.Months) + float64(duration.SecsPerDay*dur.Days) +
 				(float64(dur.Nanos()) / (NanosPerSec))
-			return decimal.NewFromFloatWithExponent(epoch, -6), nil
+			return decimal.NewFromString(decimal.NewFromFloat(epoch).StringFixed(6))
 		case "hour", "hours":
 			hours := math.Floor(float64(dur.Nanos()) / (NanosPerSec * duration.SecsPerHour))
 			return decimal.NewFromFloat(hours), nil
@@ -159,7 +159,7 @@ var extract_text_interval = framework.Function2{
 		case "millisecond", "milliseconds":
 			secondsInNanos := dur.Nanos() % (NanosPerSec * duration.SecsPerMinute)
 			milliseconds := float64(secondsInNanos) / NanosPerMilli
-			return decimal.NewFromFloatWithExponent(milliseconds, -3), nil
+			return decimal.NewFromString(decimal.NewFromFloat(milliseconds).StringFixed(3))
 		case "minute", "minutes":
 			minutesInNanos := dur.Nanos() % (NanosPerSec * duration.SecsPerHour)
 			minutes := math.Floor(float64(minutesInNanos) / (NanosPerSec * duration.SecsPerMinute))
@@ -171,7 +171,7 @@ var extract_text_interval = framework.Function2{
 		case "second", "seconds":
 			secondsInNanos := dur.Nanos() % (NanosPerSec * duration.SecsPerMinute)
 			seconds := float64(secondsInNanos) / NanosPerSec
-			return decimal.NewFromFloatWithExponent(seconds, -6), nil
+			return decimal.NewFromString(decimal.NewFromFloat(seconds).StringFixed(6))
 		case "year", "years":
 			return decimal.NewFromFloat(math.Floor(float64(dur.Months) / 12)), nil
 		case "dow", "doy", "isodow", "isoyear", "julian", "timezone", "timezone_hour", "timezone_minute", "week":
@@ -196,7 +196,7 @@ func getFieldFromTimeVal(field string, tVal time.Time) (decimal.Decimal, error) 
 	case "doy":
 		return decimal.NewFromInt(int64(tVal.YearDay())), nil
 	case "epoch":
-		return decimal.NewFromFloat(float64(tVal.UnixMicro()) / 1000000), nil
+		return decimal.NewFromString(decimal.NewFromFloat(float64(tVal.UnixMicro()) / 1000000).StringFixed(6))
 	case "hour", "hours":
 		return decimal.NewFromInt(int64(tVal.Hour())), nil
 	case "isodow":
@@ -219,7 +219,7 @@ func getFieldFromTimeVal(field string, tVal time.Time) (decimal.Decimal, error) 
 	case "millisecond", "milliseconds":
 		w := float64(tVal.Second() * 1000)
 		f := float64(tVal.Nanosecond()) / float64(1000000)
-		return decimal.NewFromFloatWithExponent(w+f, -3), nil
+		return decimal.NewFromString(decimal.NewFromFloat(w + f).StringFixed(3))
 	case "minute", "minutes":
 		return decimal.NewFromInt(int64(tVal.Minute())), nil
 	case "month", "months":
@@ -230,7 +230,7 @@ func getFieldFromTimeVal(field string, tVal time.Time) (decimal.Decimal, error) 
 	case "second", "seconds":
 		w := float64(tVal.Second())
 		f := float64(tVal.Nanosecond()) / float64(1000000000)
-		return decimal.NewFromFloatWithExponent(w+f, -6), nil
+		return decimal.NewFromString(decimal.NewFromFloat(w + f).StringFixed(6))
 	case "timezone":
 		// TODO: postgres seem to use server timezone regardless of input value
 		return decimal.NewFromInt(-28800), nil

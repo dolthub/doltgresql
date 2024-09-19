@@ -17,8 +17,8 @@ package messages
 import (
 	"fmt"
 
-	"github.com/dolthub/go-mysql-server/sql"
 	"github.com/dolthub/vitess/go/vt/proto/query"
+	"github.com/jackc/pgx/v5/pgproto3"
 
 	"github.com/dolthub/doltgresql/postgres/connection"
 )
@@ -110,7 +110,7 @@ func init() {
 
 // RowDescription represents a RowDescription message intended for the client.
 type RowDescription struct {
-	Fields []*query.Field
+	Fields []pgproto3.FieldDescription
 }
 
 var rowDescriptionDefault = connection.MessageFormat{
@@ -182,22 +182,11 @@ func (m RowDescription) Encode() (connection.MessageFormat, error) {
 	outputMessage := m.DefaultMessage().Copy()
 	for i := 0; i < len(m.Fields); i++ {
 		field := m.Fields[i]
-		dataTypeObjectID, err := VitessFieldToDataTypeObjectID(field)
-		if err != nil {
-			return connection.MessageFormat{}, err
-		}
-		dataTypeSize, err := VitessFieldToDataTypeSize(field)
-		if err != nil {
-			return connection.MessageFormat{}, err
-		}
-		dataTypeModifier, err := VitessFieldToDataTypeModifier(field)
-		if err != nil {
-			return connection.MessageFormat{}, err
-		}
-		outputMessage.Field("Fields").Child("ColumnName", i).MustWrite(field.Name)
-		outputMessage.Field("Fields").Child("DataTypeObjectID", i).MustWrite(dataTypeObjectID)
-		outputMessage.Field("Fields").Child("DataTypeSize", i).MustWrite(dataTypeSize)
-		outputMessage.Field("Fields").Child("DataTypeModifier", i).MustWrite(dataTypeModifier)
+		outputMessage.Field("Fields").Child("ColumnName", i).MustWrite(string(field.Name))
+		outputMessage.Field("Fields").Child("DataTypeObjectID", i).MustWrite(field.DataTypeOID)
+		outputMessage.Field("Fields").Child("DataTypeSize", i).MustWrite(field.DataTypeSize)
+		outputMessage.Field("Fields").Child("DataTypeModifier", i).MustWrite(field.TypeModifier)
+		outputMessage.Field("Fields").Child("FormatCode", i).MustWrite(field.Format)
 	}
 	return outputMessage, nil
 }
@@ -215,13 +204,7 @@ func (m RowDescription) DefaultMessage() *connection.MessageFormat {
 	return &rowDescriptionDefault
 }
 
-// VitessFieldToDataTypeObjectID returns the type of a vitess Field into a type as defined by Postgres.
-// OIDs can be obtained with the following query: `SELECT oid, typname FROM pg_type ORDER BY 1;`
-func VitessFieldToDataTypeObjectID(field *query.Field) (uint32, error) {
-	return VitessTypeToObjectID(field.Type)
-}
-
-// VitessFieldToDataTypeObjectID returns a type, as defined by Vitess, into a type as defined by Postgres.
+// VitessTypeToObjectID returns a type, as defined by Vitess, into a type as defined by Postgres.
 // OIDs can be obtained with the following query: `SELECT oid, typname FROM pg_type ORDER BY 1;`
 func VitessTypeToObjectID(typ query.Type) (uint32, error) {
 	switch typ {
@@ -272,10 +255,8 @@ func VitessTypeToObjectID(typ query.Type) (uint32, error) {
 	case query.Type_JSON:
 		return OidJson, nil
 	case query.Type_TIMESTAMP, query.Type_DATETIME:
-		const OidTimestamp = 1114
 		return OidTimestamp, nil
 	case query.Type_DATE:
-		const OidDate = 1082
 		return OidDate, nil
 	case query.Type_NULL_TYPE:
 		return OidText, nil // NULL is treated as TEXT on the wire
@@ -283,120 +264,5 @@ func VitessTypeToObjectID(typ query.Type) (uint32, error) {
 		return OidText, nil // TODO: temporary solution until we support CREATE TYPE
 	default:
 		return 0, fmt.Errorf("unsupported type: %s", typ)
-	}
-}
-
-// VitessFieldToDataTypeSize returns the type's size, as defined by Vitess, into the size as defined by Postgres.
-func VitessFieldToDataTypeSize(field *query.Field) (int16, error) {
-	switch field.Type {
-	case query.Type_INT8:
-		return 1, nil
-	case query.Type_INT16:
-		return 2, nil
-	case query.Type_INT24:
-		return 4, nil
-	case query.Type_INT32:
-		return 4, nil
-	case query.Type_INT64:
-		return 8, nil
-	case query.Type_UINT8:
-		return 4, nil
-	case query.Type_UINT16:
-		return 4, nil
-	case query.Type_UINT24:
-		return 4, nil
-	case query.Type_UINT32:
-		return 4, nil
-	case query.Type_UINT64:
-		// Since this has an upperbound greater than `INT64`, we'll treat it as `NUMERIC`
-		return -1, nil
-	case query.Type_FLOAT32:
-		return 4, nil
-	case query.Type_FLOAT64:
-		return 8, nil
-	case query.Type_DECIMAL:
-		return -1, nil
-	case query.Type_CHAR:
-		return -1, nil
-	case query.Type_VARCHAR:
-		return -1, nil
-	case query.Type_TEXT:
-		return -1, nil
-	case query.Type_BLOB:
-		return -1, nil
-	case query.Type_JSON:
-		return -1, nil
-	case query.Type_TIMESTAMP, query.Type_DATETIME:
-		return 8, nil
-	case query.Type_DATE:
-		return 4, nil
-	case query.Type_NULL_TYPE:
-		return -1, nil // NULL is treated as TEXT on the wire
-	case query.Type_ENUM:
-		return -1, nil // TODO: temporary solution until we support CREATE TYPE
-	default:
-		return 0, fmt.Errorf("unsupported type returned from engine: %s", field.Type)
-	}
-}
-
-// VitessFieldToDataTypeModifier returns the field's data type modifier as defined by Postgres.
-func VitessFieldToDataTypeModifier(field *query.Field) (int32, error) {
-	switch field.Type {
-	case query.Type_INT8:
-		return -1, nil
-	case query.Type_INT16:
-		return -1, nil
-	case query.Type_INT24:
-		return -1, nil
-	case query.Type_INT32:
-		return -1, nil
-	case query.Type_INT64:
-		return -1, nil
-	case query.Type_UINT8:
-		return -1, nil
-	case query.Type_UINT16:
-		return -1, nil
-	case query.Type_UINT24:
-		return -1, nil
-	case query.Type_UINT32:
-		return -1, nil
-	case query.Type_UINT64:
-		// Since we're encoding this as `NUMERIC`, we emulate a `NUMERIC` type with a precision of 19 and a scale of 0
-		return (19 << 16) + 4, nil
-	case query.Type_FLOAT32:
-		return -1, nil
-	case query.Type_FLOAT64:
-		return -1, nil
-	case query.Type_DECIMAL:
-		// This is how we encode the precision and scale for some reason
-		precision := int32(field.ColumnLength - 1)
-		scale := int32(field.Decimals)
-		if scale > 0 {
-			precision--
-		}
-		// PostgreSQL adds 4 to the length for an unknown reason
-		return (precision<<16 + scale) + 4, nil
-	case query.Type_CHAR:
-		// PostgreSQL adds 4 to the length for an unknown reason
-		return int32(int64(field.ColumnLength)/sql.CharacterSetID(field.Charset).MaxLength()) + 4, nil
-	case query.Type_VARCHAR:
-		// PostgreSQL adds 4 to the length for an unknown reason
-		return int32(int64(field.ColumnLength)/sql.CharacterSetID(field.Charset).MaxLength()) + 4, nil
-	case query.Type_TEXT:
-		return -1, nil
-	case query.Type_BLOB:
-		return -1, nil
-	case query.Type_JSON:
-		return -1, nil
-	case query.Type_TIMESTAMP, query.Type_DATETIME:
-		return -1, nil
-	case query.Type_DATE:
-		return -1, nil
-	case query.Type_NULL_TYPE:
-		return -1, nil // NULL is treated as TEXT on the wire
-	case query.Type_ENUM:
-		return -1, nil // TODO: temporary solution until we support CREATE TYPE
-	default:
-		return 0, fmt.Errorf("unsupported type returned from engine: %s", field.Type)
 	}
 }

@@ -279,15 +279,15 @@ func (b JsonBType) unmarshalToJsonDocument(val []byte) (JsonDocument, error) {
 	if err := json.Unmarshal(val, &decoded); err != nil {
 		return JsonDocument{}, err
 	}
-	jsonValue, err := b.convertToJsonDocument(decoded)
+	jsonValue, err := b.ConvertToJsonDocument(decoded)
 	if err != nil {
 		return JsonDocument{}, err
 	}
 	return JsonDocument{Value: jsonValue}, nil
 }
 
-// convertToJsonDocument recursively constructs a valid JsonDocument based on the structures returned by the decoder.
-func (b JsonBType) convertToJsonDocument(val interface{}) (JsonValue, error) {
+// ConvertToJsonDocument recursively constructs a valid JsonDocument based on the structures returned by the decoder.
+func (b JsonBType) ConvertToJsonDocument(val interface{}) (JsonValue, error) {
 	var err error
 	switch val := val.(type) {
 	case map[string]interface{}:
@@ -306,7 +306,7 @@ func (b JsonBType) convertToJsonDocument(val interface{}) (JsonValue, error) {
 		index := make(map[string]int)
 		for i, key := range keys {
 			items[i].Key = key
-			items[i].Value, err = b.convertToJsonDocument(val[key])
+			items[i].Value, err = b.ConvertToJsonDocument(val[key])
 			if err != nil {
 				return nil, err
 			}
@@ -319,7 +319,7 @@ func (b JsonBType) convertToJsonDocument(val interface{}) (JsonValue, error) {
 	case []interface{}:
 		values := make(JsonValueArray, len(val))
 		for i, item := range val {
-			values[i], err = b.convertToJsonDocument(item)
+			values[i], err = b.ConvertToJsonDocument(item)
 			if err != nil {
 				return nil, err
 			}

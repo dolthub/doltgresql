@@ -29,14 +29,13 @@ export function assertQueryResult(q, expected, data, matcher) {
   }
   if (q.toLowerCase().includes("dolt_commit")) {
     if (data.rows.length !== 1) return false;
-    const hash = data.rows[0].dolt_commit.slice(1, -1);
-    // dolt_commit row returns 32 character hash enclosed in brackets.
+    const hash = data.rows[0].dolt_commit[0];
+    // dolt_commit row returns 32 character hash
     return hash.length === 32;
   }
   if (q.toLowerCase().includes("dolt_merge")) {
     if (data.rows.length !== 1) return false;
-    const res = data.rows[0].dolt_merge.slice(1, -1).split(",");
-    const [hash, fastForward, conflicts, message] = res;
+    const [hash, fastForward, conflicts, message] = data.rows[0].dolt_merge;
     return (
       hash.length === 32 &&
       expected.fastForward === fastForward &&

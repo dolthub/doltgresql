@@ -26,14 +26,11 @@ import (
 	"strings"
 	"sync/atomic"
 
+	"github.com/dolthub/dolt/go/libraries/doltcore/sqlserver"
 	"github.com/dolthub/go-mysql-server/sql"
-	"github.com/dolthub/go-mysql-server/sql/expression"
-	"github.com/dolthub/go-mysql-server/sql/plan"
-	"github.com/dolthub/go-mysql-server/sql/transform"
 	"github.com/dolthub/vitess/go/mysql"
-	"github.com/dolthub/vitess/go/sqltypes"
-	querypb "github.com/dolthub/vitess/go/vt/proto/query"
 	"github.com/dolthub/vitess/go/vt/sqlparser"
+	"github.com/jackc/pgx/v5/pgproto3"
 	"github.com/jackc/pgx/v5/pgtype"
 	"github.com/sirupsen/logrus"
 
@@ -45,7 +42,6 @@ import (
 	"github.com/dolthub/doltgresql/server/ast"
 	pgexprs "github.com/dolthub/doltgresql/server/expression"
 	"github.com/dolthub/doltgresql/server/node"
-	pgtypes "github.com/dolthub/doltgresql/server/types"
 )
 
 // ConnectionHandler is responsible for the entire lifecycle of a user connection: receiving messages they send,
@@ -54,20 +50,12 @@ type ConnectionHandler struct {
 	mysqlConn          *mysql.Conn
 	preparedStatements map[string]PreparedStatementData
 	portals            map[string]PortalData
-	handler            mysql.Handler
+	doltgresHandler    *DoltgresHandler
 	pgTypeMap          *pgtype.Map
 	waitForSync        bool
 	// copyFromStdinState is set when this connection is in the COPY FROM STDIN mode, meaning it is waiting on
 	// COPY DATA messages from the client to import data into tables.
 	copyFromStdinState *copyFromStdinState
-}
-
-// copyFromStdinState tracks the metadata for an import of data into a table using a COPY FROM STDIN statement. When
-// this statement is processed, the server accepts COPY DATA messages from the client with chunks of data to load
-// into a table.
-type copyFromStdinState struct {
-	copyFromStdinNode *node.CopyFrom
-	dataLoader        *dataloader.TabularDataLoader
 }
 
 // Set this env var to disable panic handling in the connection, which is useful when debugging a panic
@@ -97,11 +85,23 @@ func NewConnectionHandler(conn net.Conn, handler mysql.Handler) *ConnectionHandl
 	preparedStatements := make(map[string]PreparedStatementData)
 	portals := make(map[string]PortalData)
 
+	// TODO: possibly should define engine and session manager ourselves
+	//  instead of depending on the GetRunningServer method.
+	server := sqlserver.GetRunningServer()
+	doltgresHandler := &DoltgresHandler{
+		e:                 server.Engine,
+		sm:                server.SessionManager(),
+		readTimeout:       0,     // cfg.ConnReadTimeout,
+		encodeLoggedQuery: false, // cfg.EncodeLoggedQuery,
+	}
+
+	// TODO: should we use this backend???
+	//pgproto3.NewBackend()
 	return &ConnectionHandler{
 		mysqlConn:          mysqlConn,
 		preparedStatements: preparedStatements,
 		portals:            portals,
-		handler:            handler,
+		doltgresHandler:    doltgresHandler,
 		pgTypeMap:          pgtype.NewMap(),
 	}
 }
@@ -137,13 +137,13 @@ func (h *ConnectionHandler) HandleConnection() {
 				fmt.Println(returnErr.Error())
 			}
 
-			h.handler.ConnectionClosed(h.mysqlConn)
+			h.doltgresHandler.ConnectionClosed(h.mysqlConn)
 			if err := h.Conn().Close(); err != nil {
 				fmt.Printf("Failed to properly close connection:\n%v\n", err)
 			}
 		}()
 	}
-	h.handler.NewConnection(h.mysqlConn)
+	h.doltgresHandler.NewConnection(h.mysqlConn)
 
 	startupMessage, err := h.receiveStartupMessage()
 	if err != nil {
@@ -308,27 +308,31 @@ InitialMessageLoop:
 // chooseInitialDatabase attempts to choose the initial database for the connection, if one is specified in the
 // startup message provided
 func (h *ConnectionHandler) chooseInitialDatabase(startupMessage messages.StartupMessage) error {
-	if db, ok := startupMessage.Parameters["database"]; ok && len(db) > 0 {
-		err := h.handler.ComQuery(context.Background(), h.mysqlConn, fmt.Sprintf("USE `%s`;", db), func(res *sqltypes.Result, more bool) error {
-			return nil
+	db, ok := startupMessage.Parameters["database"]
+	dbSpecified := ok && len(db) > 0
+	if !dbSpecified {
+		db = h.mysqlConn.User
+	}
+	useStmt := fmt.Sprintf("SET database TO '%s';", db)
+	parsed, err := sql.GlobalParser.ParseSimple(useStmt)
+	if err != nil {
+		return err
+	}
+	err = h.doltgresHandler.ComQuery(context.Background(), h.mysqlConn, useStmt, parsed, func(res *Result) error {
+		return nil
+	})
+	// If a database isn't specified, then we attempt to connect to a database with the same name as the user,
+	// ignoring any error
+	if err != nil && dbSpecified {
+		_ = connection.Send(h.Conn(), messages.ErrorResponse{
+			Severity:     messages.ErrorResponseSeverity_Fatal,
+			SqlStateCode: "3D000",
+			Message:      fmt.Sprintf(`"database "%s" does not exist"`, db),
+			Optional: messages.ErrorResponseOptionalFields{
+				Routine: "InitPostgres",
+			},
 		})
-		if err != nil {
-			_ = connection.Send(h.Conn(), messages.ErrorResponse{
-				Severity:     messages.ErrorResponseSeverity_Fatal,
-				SqlStateCode: "3D000",
-				Message:      fmt.Sprintf(`"database "%s" does not exist"`, db),
-				Optional: messages.ErrorResponseOptionalFields{
-					Routine: "InitPostgres",
-				},
-			})
-			return err
-		}
-	} else {
-		// If a database isn't specified, then we attempt to connect to a database with the same name as the user,
-		// ignoring any error
-		_ = h.handler.ComQuery(context.Background(), h.mysqlConn, fmt.Sprintf("USE `%s`;", h.mysqlConn.User), func(*sqltypes.Result, bool) error {
-			return nil
-		})
+		return err
 	}
 	return nil
 }
@@ -450,9 +454,14 @@ func (h *ConnectionHandler) handleParse(message messages.Parse) error {
 		return nil
 	}
 
-	analyzedPlan, fields, err := h.getPlanAndFields(query)
+	parsedQuery, fields, err := h.doltgresHandler.ComPrepareParsed(context.Background(), h.mysqlConn, query.String, query.AST)
 	if err != nil {
 		return err
+	}
+
+	analyzedPlan, ok := parsedQuery.(sql.Node)
+	if !ok {
+		return fmt.Errorf("expected a sql.Node, got %T", parsedQuery)
 	}
 
 	// A valid Parse message must have ParameterObjectIDs if there are any binding variables.
@@ -462,16 +471,6 @@ func (h *ConnectionHandler) handleParse(message messages.Parse) error {
 		bindVarTypes, err = extractBindVarTypes(analyzedPlan)
 		if err != nil {
 			return err
-		}
-	}
-
-	// Nil fields means an OKResult, fill one in here
-	if fields == nil {
-		fields = []*querypb.Field{
-			{
-				Name: "Rows",
-				Type: sqltypes.Int32,
-			},
 		}
 	}
 
@@ -486,7 +485,7 @@ func (h *ConnectionHandler) handleParse(message messages.Parse) error {
 
 // handleDescribe handles a Describe message, returning any error that occurs
 func (h *ConnectionHandler) handleDescribe(message messages.Describe) error {
-	var fields []*querypb.Field
+	var fields []pgproto3.FieldDescription
 	var bindvarTypes []uint32
 	var tag string
 
@@ -539,9 +538,14 @@ func (h *ConnectionHandler) handleBind(message messages.Bind) error {
 		return err
 	}
 
-	boundPlan, fields, err := h.bindParams(preparedData.Query.String, preparedData.Query.AST, bindVars)
+	analyzedPlan, fields, err := h.doltgresHandler.ComBind(context.Background(), h.mysqlConn, preparedData.Query.String, preparedData.Query.AST, bindVars)
 	if err != nil {
 		return err
+	}
+
+	boundPlan, ok := analyzedPlan.(sql.Node)
+	if !ok {
+		return fmt.Errorf("expected a sql.Node, got %T", analyzedPlan)
 	}
 
 	h.portals[message.DestinationPortal] = PortalData{
@@ -581,7 +585,7 @@ func (h *ConnectionHandler) handleExecute(message messages.Execute) error {
 		return err
 	}
 
-	err = h.handler.(mysql.ExtendedHandler).ComExecuteBound(context.Background(), h.mysqlConn, query.String, portalData.BoundPlan, spoolRowsCallback(h.Conn(), &complete, true))
+	err = h.doltgresHandler.ComExecuteBound(context.Background(), h.mysqlConn, query.String, portalData.BoundPlan, spoolRowsCallback(h.Conn(), &complete, true))
 	if err != nil {
 		return err
 	}
@@ -600,11 +604,7 @@ func (h *ConnectionHandler) handleCopyData(message messages.CopyData) (stop bool
 	}
 
 	// Grab a sql.Context
-	ctxProvider, ok := h.handler.(sql.ContextProvider)
-	if !ok {
-		return false, true, fmt.Errorf("%T does not implement server.ContextProvider", h.handler)
-	}
-	sqlCtx, err := ctxProvider.NewContext(context.Background(), h.mysqlConn, "")
+	sqlCtx, err := h.doltgresHandler.NewContext(context.Background(), h.mysqlConn, "")
 	if err != nil {
 		return false, false, err
 	}
@@ -664,11 +664,7 @@ func (h *ConnectionHandler) handleCopyDone(_ messages.CopyDone) (stop bool, endO
 			fmt.Errorf("no data loader found for COPY FROM STDIN operation")
 	}
 
-	ctxProvider, ok := h.handler.(sql.ContextProvider)
-	if !ok {
-		return false, true, fmt.Errorf("%T does not implement server.ContextProvider", h.handler)
-	}
-	sqlCtx, err := ctxProvider.NewContext(context.Background(), h.mysqlConn, "")
+	sqlCtx, err := h.doltgresHandler.NewContext(context.Background(), h.mysqlConn, "")
 	if err != nil {
 		return false, false, err
 	}
@@ -725,125 +721,28 @@ func (h *ConnectionHandler) deallocatePreparedStatement(name string, preparedSta
 	return connection.Send(conn, commandComplete)
 }
 
-func extractBindVarTypes(queryPlan sql.Node) ([]uint32, error) {
-	inspectNode := queryPlan
-	switch queryPlan := queryPlan.(type) {
-	case *plan.InsertInto:
-		inspectNode = queryPlan.Source
-	}
-
-	types := make([]uint32, 0)
-	var err error
-	extractBindVars := func(expr sql.Expression) bool {
-		if err != nil {
-			return false
-		}
-		switch e := expr.(type) {
-		case *expression.BindVar:
-			var oid uint32
-			if doltgresType, ok := e.Type().(pgtypes.DoltgresType); ok {
-				oid = doltgresType.OID()
-			} else {
-				oid, err = messages.VitessTypeToObjectID(e.Type().Type())
-				if err != nil {
-					err = fmt.Errorf("could not determine OID for placeholder %s: %w", e.Name, err)
-					return false
-				}
-			}
-			types = append(types, oid)
-		case *pgexprs.ExplicitCast:
-			if bindVar, ok := e.Child().(*expression.BindVar); ok {
-				var oid uint32
-				if doltgresType, ok := bindVar.Type().(pgtypes.DoltgresType); ok {
-					oid = doltgresType.OID()
-				} else {
-					oid, err = messages.VitessTypeToObjectID(e.Type().Type())
-					if err != nil {
-						err = fmt.Errorf("could not determine OID for placeholder %s: %w", bindVar.Name, err)
-						return false
-					}
-				}
-				types = append(types, oid)
-				return false
-			}
-		// $1::text and similar get converted to a Convert expression wrapping the bindvar
-		case *expression.Convert:
-			if bindVar, ok := e.Child.(*expression.BindVar); ok {
-				var oid uint32
-				oid, err = messages.VitessTypeToObjectID(e.Type().Type())
-				if err != nil {
-					err = fmt.Errorf("could not determine OID for placeholder %s: %w", bindVar.Name, err)
-					return false
-				}
-				types = append(types, oid)
-				return false
-			}
-		}
-
-		return true
-	}
-
-	transform.InspectExpressions(inspectNode, extractBindVars)
-	return types, err
-}
-
 // convertBindParameters handles the conversion from bind parameters to variable values.
-func (h *ConnectionHandler) convertBindParameters(types []uint32, formatCodes []int32, values []messages.BindParameterValue) (map[string]*querypb.BindVariable, error) {
-	bindings := make(map[string]*querypb.BindVariable, len(values))
+func (h *ConnectionHandler) convertBindParameters(types []uint32, formatCodes []int32, values []messages.BindParameterValue) (map[string]sqlparser.Expr, error) {
+	bindings := make(map[string]sqlparser.Expr, len(values))
 	for i := range values {
-		bindingName := fmt.Sprintf("v%d", i+1)
-		typ := convertType(types[i])
+		typ := types[i]
 		var bindVarString string
-
 		// We'll rely on a library to decode each format, which will deal with text and binary representations for us
-		if err := h.pgTypeMap.Scan(types[i], int16(formatCodes[i]), values[i].Data, &bindVarString); err != nil {
+		if err := h.pgTypeMap.Scan(typ, int16(formatCodes[i]), values[i].Data, &bindVarString); err != nil {
 			return nil, err
 		}
-		bindVar := &querypb.BindVariable{
-			Type:   typ,
-			Value:  []byte(bindVarString),
-			Values: nil, // TODO
+
+		pgTyp, ok := OidToDoltgresType[typ]
+		if !ok {
+			return nil, fmt.Errorf("unhandled oid type: %v", typ)
 		}
-		bindings[bindingName] = bindVar
+		v, err := pgTyp.IoInput(nil, bindVarString)
+		if err != nil {
+			return nil, err
+		}
+		bindings[fmt.Sprintf("v%d", i+1)] = sqlparser.InjectedExpr{Expression: pgexprs.NewUnsafeLiteral(v, pgTyp)}
 	}
 	return bindings, nil
-}
-
-// TODO: we need to migrate this away from vitess types and deal strictly with OIDs which are compatible with Postgres types
-func convertType(oid uint32) querypb.Type {
-	switch oid {
-	// TODO: this should never be 0
-	case 0:
-		return sqltypes.Int32
-	case messages.OidInt2:
-		return sqltypes.Int16
-	case messages.OidInt4:
-		return sqltypes.Int32
-	case messages.OidInt8:
-		return sqltypes.Int64
-	case messages.OidFloat4:
-		return sqltypes.Float32
-	case messages.OidFloat8:
-		return sqltypes.Float64
-	case messages.OidName:
-		return sqltypes.Text
-	case messages.OidNumeric:
-		return sqltypes.Decimal
-	case messages.OidText:
-		return sqltypes.Text
-	case messages.OidBool:
-		return sqltypes.Bit
-	case messages.OidDate:
-		return sqltypes.Date
-	case messages.OidTimestamp:
-		return sqltypes.Timestamp
-	case messages.OidVarchar:
-		return sqltypes.Text
-	case messages.OidOid:
-		return sqltypes.Uint32
-	default:
-		panic(fmt.Sprintf("convertType(oid): unhandled type %d", oid))
-	}
 }
 
 // sendClientStartupMessages sends introductory messages to the client and returns any error
@@ -892,7 +791,7 @@ func (h *ConnectionHandler) sendClientStartupMessages(startupMessage messages.St
 	}
 
 	if err := connection.Send(h.Conn(), messages.BackendKeyData{
-		ProcessID: processID,
+		ProcessID: int32(processID),
 		SecretKey: 0,
 	}); err != nil {
 		return err
@@ -908,8 +807,7 @@ func (h *ConnectionHandler) query(query ConvertedQuery) error {
 		Tag:   query.StatementTag,
 	}
 
-	err := h.comQuery(query, spoolRowsCallback(h.Conn(), &commandComplete, false))
-
+	err := h.doltgresHandler.ComQuery(context.Background(), h.mysqlConn, query.String, query.AST, spoolRowsCallback(h.Conn(), &commandComplete, false))
 	if err != nil {
 		if strings.HasPrefix(err.Error(), "syntax error at position") {
 			return fmt.Errorf("This statement is not yet supported")
@@ -926,8 +824,8 @@ func (h *ConnectionHandler) query(query ConvertedQuery) error {
 
 // spoolRowsCallback returns a callback function that will send RowDescription message, then a DataRow message for
 // each row in the result set.
-func spoolRowsCallback(conn net.Conn, commandComplete *messages.CommandComplete, isExecute bool) mysql.ResultSpoolFn {
-	return func(res *sqltypes.Result, more bool) error {
+func spoolRowsCallback(conn net.Conn, commandComplete *messages.CommandComplete, isExecute bool) func(res *Result) error {
+	return func(res *Result) error {
 		if messages.ReturnsRow(commandComplete.Tag) {
 			// EXECUTE does not send RowDescription; instead it should be sent from DESCRIBE prior to it
 			if !isExecute {
@@ -940,7 +838,7 @@ func spoolRowsCallback(conn net.Conn, commandComplete *messages.CommandComplete,
 
 			for _, row := range res.Rows {
 				if err := connection.Send(conn, messages.DataRow{
-					Values: row,
+					Values: row.val,
 				}); err != nil {
 					return err
 				}
@@ -957,7 +855,7 @@ func spoolRowsCallback(conn net.Conn, commandComplete *messages.CommandComplete,
 }
 
 // sendDescribeResponse sends a response message for a Describe message
-func (h *ConnectionHandler) sendDescribeResponse(conn net.Conn, fields []*querypb.Field, types []uint32, tag string) (err error) {
+func (h *ConnectionHandler) sendDescribeResponse(conn net.Conn, fields []pgproto3.FieldDescription, types []uint32, tag string) (err error) {
 	// The prepared statement variant of the describe command returns the OIDs of the parameters.
 	if types != nil {
 		if err := connection.Send(conn, messages.ParameterDescription{
@@ -1133,64 +1031,9 @@ func (h *ConnectionHandler) convertQuery(query string) (ConvertedQuery, error) {
 	}, nil
 }
 
-// getPlanAndFields builds a plan and return fields for the given query
-func (h *ConnectionHandler) getPlanAndFields(query ConvertedQuery) (sql.Node, []*querypb.Field, error) {
-	if query.AST == nil {
-		return nil, nil, fmt.Errorf("cannot prepare a query that has not been parsed")
-	}
-
-	parsedQuery, fields, err := h.handler.(mysql.ExtendedHandler).ComPrepareParsed(context.Background(), h.mysqlConn, query.String, query.AST, &mysql.PrepareData{
-		PrepareStmt: query.String,
-	})
-
-	if err != nil {
-		return nil, nil, err
-	}
-
-	analyzedPlan, ok := parsedQuery.(sql.Node)
-	if !ok {
-		return nil, nil, fmt.Errorf("expected a sql.Node, got %T", parsedQuery)
-	}
-
-	return analyzedPlan, fields, nil
-}
-
-// comQuery is a shortcut that determines which version of ComQuery to call based on whether the query has been parsed.
-func (h *ConnectionHandler) comQuery(query ConvertedQuery, callback func(res *sqltypes.Result, more bool) error) error {
-	if query.AST == nil {
-		return h.handler.ComQuery(context.Background(), h.mysqlConn, query.String, callback)
-	} else {
-		return h.handler.(mysql.ExtendedHandler).ComParsedQuery(context.Background(), h.mysqlConn, query.String, query.AST, callback)
-	}
-}
-
-// bindParams binds the paramters given to the query plan given and returns the resulting plan and fields.
-func (h *ConnectionHandler) bindParams(
-	query string,
-	parsedQuery sqlparser.Statement,
-	bindVars map[string]*querypb.BindVariable,
-) (sql.Node, []*querypb.Field, error) {
-	bound, fields, err := h.handler.(mysql.ExtendedHandler).ComBind(context.Background(), h.mysqlConn, query, parsedQuery, &mysql.PrepareData{
-		PrepareStmt: query,
-		ParamsCount: uint16(len(bindVars)),
-		BindVars:    bindVars,
-	})
-
-	if err != nil {
-		return nil, nil, err
-	}
-
-	plan, ok := bound.(sql.Node)
-	if !ok {
-		return nil, nil, fmt.Errorf("expected a sql.Node, got %T", bound)
-	}
-
-	return plan, fields, err
-}
-
 // discardAll handles the DISCARD ALL command
 func (h *ConnectionHandler) discardAll(query ConvertedQuery, conn net.Conn) error {
-	err := h.handler.ComResetConnection(h.mysqlConn)
+	err := h.doltgresHandler.ComResetConnection(h.mysqlConn)
 	if err != nil {
 		return err
 	}
@@ -1207,11 +1050,7 @@ func (h *ConnectionHandler) discardAll(query ConvertedQuery, conn net.Conn) erro
 // COPY FROM STDIN can't be handled directly by the GMS engine, since COPY FROM STDIN relies on multiple messages sent
 // over the wire.
 func (h *ConnectionHandler) handleCopyFromStdinQuery(copyFrom *node.CopyFrom, conn net.Conn) error {
-	ctxProvider, ok := h.handler.(sql.ContextProvider)
-	if !ok {
-		return fmt.Errorf("%T does not implement server.ContextProvider", h.handler)
-	}
-	sqlCtx, err := ctxProvider.NewContext(context.Background(), h.mysqlConn, "")
+	sqlCtx, err := h.doltgresHandler.NewContext(context.Background(), h.mysqlConn, "")
 	if err != nil {
 		return err
 	}
