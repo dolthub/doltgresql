@@ -37,6 +37,7 @@ import (
 	"github.com/dolthub/doltgresql/core"
 	"github.com/dolthub/doltgresql/core/dataloader"
 	"github.com/dolthub/doltgresql/postgres/parser/parser"
+	"github.com/dolthub/doltgresql/postgres/parser/sem/tree"
 	"github.com/dolthub/doltgresql/server/ast"
 	pgexprs "github.com/dolthub/doltgresql/server/expression"
 	"github.com/dolthub/doltgresql/server/node"
@@ -650,7 +651,18 @@ func (h *ConnectionHandler) handleCopyData(message *pgproto3.CopyData) (stop boo
 			return false, true, fmt.Errorf(`table "%s" is read-only`, copyFromStdinNode.TableName.String())
 		}
 
-		dataLoader, err = dataloader.NewTabularDataLoader(sqlCtx, insertableTable, copyFromStdinNode.Delimiter, copyFromStdinNode.Null)
+		switch copyFromStdinNode.CopyOptions.CopyFormat {
+		case tree.CopyFormatText:
+			dataLoader, err = dataloader.NewTabularDataLoader(sqlCtx, insertableTable, copyFromStdinNode.Delimiter, copyFromStdinNode.Null, copyFromStdinNode.CopyOptions.Header)
+		case tree.CopyFormatCsv:
+			dataLoader, err = dataloader.NewCsvDataLoader(sqlCtx, insertableTable, copyFromStdinNode.CopyOptions.Header)
+		case tree.CopyFormatBinary:
+			err = fmt.Errorf("BINARY format is not supported for COPY FROM")
+		default:
+			err = fmt.Errorf("unknown format specified for COPY FROM: %v",
+				copyFromStdinNode.CopyOptions.CopyFormat)
+		}
+
 		if err != nil {
 			return false, false, err
 		}

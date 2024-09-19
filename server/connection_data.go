@@ -70,7 +70,7 @@ type ConvertedQuery struct {
 // into a table.
 type copyFromStdinState struct {
 	copyFromStdinNode *node.CopyFrom
-	dataLoader        *dataloader.TabularDataLoader
+	dataLoader        dataloader.DataLoader
 }
 
 type PortalData struct {

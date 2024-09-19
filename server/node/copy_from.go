@@ -38,21 +38,36 @@ type CopyFrom struct {
 	Null         string
 	Stdin        bool
 	Columns      tree.NameList
+	CopyOptions  tree.CopyOptions
 }
 
 var _ vitess.Injectable = (*CopyFrom)(nil)
 var _ sql.ExecSourceRel = (*CopyFrom)(nil)
 
 // NewCopyFrom returns a new *CopyFrom.
-func NewCopyFrom(databaseName string, tableName doltdb.TableName, fileName string, stdin bool, columns tree.NameList) *CopyFrom {
+func NewCopyFrom(databaseName string, tableName doltdb.TableName, options tree.CopyOptions, fileName string, stdin bool, columns tree.NameList) *CopyFrom {
+	var delimiterChar, nullChar string
+	switch options.CopyFormat {
+	case tree.CopyFormatBinary:
+		panic("BINARY format is not supported for COPY FROM")
+	case tree.CopyFormatText:
+		delimiterChar = "\t"
+		nullChar = "\\N"
+	case tree.CopyFormatCsv:
+		delimiterChar = ","
+	default:
+		panic(fmt.Sprintf("unknown COPY FROM format: %d", options.CopyFormat))
+	}
+
 	return &CopyFrom{
 		DatabaseName: databaseName,
 		TableName:    tableName,
 		File:         fileName,
-		Delimiter:    "\t",
-		Null:         `\N`,
+		Delimiter:    delimiterChar,
+		Null:         nullChar,
 		Stdin:        stdin,
 		Columns:      columns,
+		CopyOptions:  options,
 	}
 }
 
@@ -94,14 +109,17 @@ func (cf *CopyFrom) Validate(ctx *sql.Context) error {
 		return fmt.Errorf(`table "%s" is read-only`, cf.TableName.String())
 	}
 
-	if len(table.Schema()) != len(cf.Columns) {
-		return fmt.Errorf("invalid column name list for table %s: %v", table.Name(), cf.Columns)
-	}
-
-	for i, col := range table.Schema() {
-		name := cf.Columns[i]
-		if name.String() != col.Name {
+	// If a set of columns was explicitly specified, validate them
+	if len(cf.Columns) > 0 {
+		if len(table.Schema()) != len(cf.Columns) {
 			return fmt.Errorf("invalid column name list for table %s: %v", table.Name(), cf.Columns)
+		}
+
+		for i, col := range table.Schema() {
+			name := cf.Columns[i]
+			if name.String() != col.Name {
+				return fmt.Errorf("invalid column name list for table %s: %v", table.Name(), cf.Columns)
+			}
 		}
 	}
 
@@ -139,7 +157,7 @@ func (cf *CopyFrom) RowIter(ctx *sql.Context, _ sql.Row) (_ sql.RowIter, err err
 	}()
 	reader := bufio.NewReader(openFile)
 
-	dataLoader, err := dataloader.NewTabularDataLoader(ctx, insertable, cf.Delimiter, cf.Null)
+	dataLoader, err := dataloader.NewTabularDataLoader(ctx, insertable, cf.Delimiter, cf.Null, cf.CopyOptions.Header)
 	if err != nil {
 		return nil, err
 	}
