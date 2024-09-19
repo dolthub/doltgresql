@@ -38,6 +38,7 @@ import (
 	vitess "github.com/dolthub/vitess/go/vt/sqlparser"
 	_ "github.com/jackc/pgx/v4/stdlib"
 	"github.com/jackc/pgx/v5"
+	"github.com/jackc/pgx/v5/pgconn"
 	"github.com/lib/pq/oid"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -637,9 +638,35 @@ func (d *DoltgresQueryEngine) Query(ctx *sql.Context, query string) (sql.Schema,
 		if rows.Err() != nil {
 			return nil, nil, nil, rows.Err()
 		}
+
+		if dmlResult, ok := getDmlResult(rows); ok {
+			// we can only capture the last command tag in the case there were multiple queries
+			resultRows = []sql.Row{dmlResult}
+		}
 	}
 
 	return resultSchema, sql.RowsToRowIter(resultRows...), nil, nil
+}
+
+var emptyCommandTag = pgconn.NewCommandTag("")
+
+// getDmlResult returns a Row representing the result of a DML operation, or nil if the operation was not a DML operation.
+func getDmlResult(rows pgx.Rows) (sql.Row, bool) {
+	tag := rows.CommandTag()
+	if tag == emptyCommandTag {
+		return nil, false
+	}
+
+	switch true {
+	case tag.Insert():
+		return sql.NewRow(gmstypes.NewOkResult(int(tag.RowsAffected()))), true
+	case tag.Update():
+		return sql.NewRow(gmstypes.NewOkResult(int(tag.RowsAffected()))), true
+	case tag.Delete():
+		return sql.NewRow(gmstypes.NewOkResult(int(tag.RowsAffected()))), true
+	default:
+		return nil, false
+	}
 }
 
 func (d *DoltgresQueryEngine) getConnection() (*pgx.Conn, error) {
