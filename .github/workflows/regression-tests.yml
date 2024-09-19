@@ -79,8 +79,10 @@ jobs:
           cd testing/go/regression/out
           if [[ -f "results1.trackers" && -f "results2.trackers" ]]; then
             echo "trackers_exist=true" >> $GITHUB_OUTPUT
+            echo "trackers exist"
           else
             echo "trackers_exist=false" >> $GITHUB_OUTPUT
+            echo "trackers do not exist"
           fi
 
       - name: Build Regression Test Results Comment
@@ -92,15 +94,18 @@ jobs:
           echo "program_output<<EOF" >> $GITHUB_OUTPUT
           echo "$output" >> $GITHUB_OUTPUT
           echo "EOF" >> $GITHUB_OUTPUT
+          echo "$output"
 
       - name: Post Comment
         if: steps.build_results.outputs.program_output
         uses: actions/github-script@v6
+        env:
+          PROGRAM_OUTPUT: ${{ steps.build_results.outputs.program_output }}
         with:
           github-token: ${{ secrets.GITHUB_TOKEN }}
           script: |
             const commentMarker = '<!-- go-run-output -->'
-            const output = `${{ steps.build_results.outputs.program_output }}`
+            const output = process.env.PROGRAM_OUTPUT
             const body = `${commentMarker}\n${output}`
 
             // List comments on the PR

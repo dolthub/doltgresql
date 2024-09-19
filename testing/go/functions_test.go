@@ -43,9 +43,9 @@ func TestFunctionsMath(t *testing.T) {
 					Query: `SELECT round(cbrt(v1)::numeric, 10), round(cbrt(v2)::numeric, 10), round(cbrt(v3)::numeric, 10) FROM test ORDER BY pk;`,
 					Cols:  []string{"round", "round", "round"},
 					Expected: []sql.Row{
-						{-1.0000000000, -1.2599210499, -1.4422495703},
-						{1.9129311828, 2.2239800906, 2.3513346877},
-						{2.6684016487, -2.8438669799, 3.0723168257},
+						{Numeric("-1.0000000000"), Numeric("-1.2599210499"), Numeric("-1.4422495703")},
+						{Numeric("1.9129311828"), Numeric("2.2239800906"), Numeric("2.3513346877")},
+						{Numeric("2.6684016487"), Numeric("-2.8438669799"), Numeric("3.0723168257")},
 					},
 				},
 				{
@@ -991,56 +991,40 @@ func TestSchemaVisibilityInquiryFunctions(t *testing.T) {
 					},
 				},
 				{
-					Query: `SHOW search_path;`,
-					Expected: []sql.Row{
-						{"testschema"},
-					},
+					Query:    `SHOW search_path;`,
+					Expected: []sql.Row{{"testschema"}},
 				},
 				{
-					Query: `select pg_table_is_visible(1613758465);`, // index from testschema
-					Expected: []sql.Row{
-						{"t"},
-					},
+					Query:    `select pg_table_is_visible(1613758465);`, // index from testschema
+					Expected: []sql.Row{{"t"}},
 				},
 				{
-					Query: `select pg_table_is_visible(2687500288);`, // table from testschema
-					Expected: []sql.Row{
-						{"t"},
-					},
+					Query:    `select pg_table_is_visible(2687500288);`, // table from testschema
+					Expected: []sql.Row{{"t"}},
 				},
 				{
-					Query: `select pg_table_is_visible(2419064832);`, // sequence from testschema
-					Expected: []sql.Row{
-						{"t"},
-					},
+					Query:    `select pg_table_is_visible(2419064832);`, // sequence from testschema
+					Expected: []sql.Row{{"t"}},
 				},
 				{
-					Query: `select pg_table_is_visible(2952790016);`, // view from myschema
-					Expected: []sql.Row{
-						{"f"},
-					},
+					Query:    `select pg_table_is_visible(2952790016);`, // view from myschema
+					Expected: []sql.Row{{"f"}},
 				},
 				{
 					Query:    `SET search_path = 'myschema';`,
 					Expected: []sql.Row{},
 				},
 				{
-					Query: `SHOW search_path;`,
-					Expected: []sql.Row{
-						{"myschema"},
-					},
+					Query:    `SHOW search_path;`,
+					Expected: []sql.Row{{"myschema"}},
 				},
 				{
-					Query: `select pg_table_is_visible(2952790016);`, // view from myschema
-					Expected: []sql.Row{
-						{"t"},
-					},
+					Query:    `select pg_table_is_visible(2952790016);`, // view from myschema
+					Expected: []sql.Row{{"t"}},
 				},
 				{
-					Query: `select pg_table_is_visible(2684354560);`, // table from myschema
-					Expected: []sql.Row{
-						{"t"},
-					},
+					Query:    `select pg_table_is_visible(2684354560);`, // table from myschema
+					Expected: []sql.Row{{"t"}},
 				},
 			},
 		},
@@ -1132,115 +1116,115 @@ func TestDateAndTimeFunction(t *testing.T) {
 			Assertions: []ScriptTestAssertion{
 				{
 					Query:    `SELECT EXTRACT(CENTURY FROM TIMESTAMP '2000-12-16 12:21:13');`,
-					Expected: []sql.Row{{float64(20)}},
+					Expected: []sql.Row{{Numeric("20")}},
 				},
 				{
 					Query:    `SELECT EXTRACT(CENTURY FROM TIMESTAMP '2001-02-16 20:38:40');`,
-					Expected: []sql.Row{{float64(21)}},
+					Expected: []sql.Row{{Numeric("21")}},
 				},
 				{
 					Skip:     true, // TODO: cannot parse calendar era
 					Query:    `SELECT EXTRACT(CENTURY FROM DATE '0001-01-01 AD');`,
-					Expected: []sql.Row{{float64(1)}},
+					Expected: []sql.Row{{Numeric("1")}},
 				},
 				{
 					Skip:     true, // TODO: cannot parse calendar era
 					Query:    `SELECT EXTRACT(CENTURY FROM DATE '0001-12-31 BC');`,
-					Expected: []sql.Row{{float64(-1)}},
+					Expected: []sql.Row{{Numeric("-1")}},
 				},
 				{
 					Query:    `SELECT EXTRACT(DAY FROM TIMESTAMP '2001-02-16 20:38:40');`,
-					Expected: []sql.Row{{float64(16)}},
+					Expected: []sql.Row{{Numeric("16")}},
 				},
 				{
 					Query:    `SELECT EXTRACT(DECADE FROM TIMESTAMP '2001-02-16 20:38:40');`,
-					Expected: []sql.Row{{float64(200)}},
+					Expected: []sql.Row{{Numeric("200")}},
 				},
 				{
 					Query:    `SELECT EXTRACT(DOW FROM TIMESTAMP '2001-02-16 20:38:40');`,
-					Expected: []sql.Row{{float64(5)}},
+					Expected: []sql.Row{{Numeric("5")}},
 				},
 				{
 					Query:    `SELECT EXTRACT(DOY FROM TIMESTAMP '2001-02-16 20:38:40');`,
-					Expected: []sql.Row{{float64(47)}},
+					Expected: []sql.Row{{Numeric("47")}},
 				},
 				{
 					Query:    `SELECT EXTRACT(EPOCH FROM TIMESTAMP WITH TIME ZONE '2001-02-16 20:38:40.12-08');`,
-					Expected: []sql.Row{{float64(982384720.120000)}},
+					Expected: []sql.Row{{Numeric("982384720.120000")}},
 				},
 				{
 					Query:    `SELECT EXTRACT(EPOCH FROM TIMESTAMP '2001-02-16 20:38:40.12');`,
-					Expected: []sql.Row{{float64(982355920.120000)}},
+					Expected: []sql.Row{{Numeric("982355920.120000")}},
 				},
 				{
 					Query:    `SELECT EXTRACT(HOUR FROM TIMESTAMP '2001-02-16 20:38:40');`,
-					Expected: []sql.Row{{float64(20)}},
+					Expected: []sql.Row{{Numeric("20")}},
 				},
 				{
 					Query:    `SELECT EXTRACT(ISODOW FROM TIMESTAMP '2001-02-18 20:38:40');`,
-					Expected: []sql.Row{{float64(7)}},
+					Expected: []sql.Row{{Numeric("7")}},
 				},
 				{
 					Query:    `SELECT EXTRACT(ISOYEAR FROM DATE '2006-01-01');`,
-					Expected: []sql.Row{{float64(2005)}},
+					Expected: []sql.Row{{Numeric("2005")}},
 				},
 				{
 					Query:    `SELECT EXTRACT(ISOYEAR FROM DATE '2006-01-02');`,
-					Expected: []sql.Row{{float64(2006)}},
+					Expected: []sql.Row{{Numeric("2006")}},
 				},
 				{
 					Skip:     true, // TODO: not supported yet
 					Query:    `SELECT EXTRACT(JULIAN FROM DATE '2006-01-01');`,
-					Expected: []sql.Row{{float64(2453737)}},
+					Expected: []sql.Row{{Numeric("2453737")}},
 				},
 				{
 					Skip:     true, // TODO: not supported yet
 					Query:    `SELECT EXTRACT(JULIAN FROM TIMESTAMP '2006-01-01 12:00');`,
-					Expected: []sql.Row{{float64(2453737.50000000000000000000)}},
+					Expected: []sql.Row{{Numeric("2453737.50000000000000000000")}},
 				},
 				{
 					Query:    `SELECT EXTRACT(MICROSECONDS FROM TIME '17:12:28.5');`,
-					Expected: []sql.Row{{float64(28500000)}},
+					Expected: []sql.Row{{Numeric("28500000")}},
 				},
 				{
 					Query:    `SELECT EXTRACT(MILLENNIUM FROM TIMESTAMP '2001-02-16 20:38:40');`,
-					Expected: []sql.Row{{float64(3)}},
+					Expected: []sql.Row{{Numeric("3")}},
 				},
 				{
 					Query:    `SELECT EXTRACT(MILLENNIUM FROM TIMESTAMP '2000-02-16 20:38:40');`,
-					Expected: []sql.Row{{float64(2)}},
+					Expected: []sql.Row{{Numeric("2")}},
 				},
 				{
 					Query:    `SELECT EXTRACT(MILLISECONDS FROM TIME '17:12:28.5');`,
-					Expected: []sql.Row{{float64(28500.000)}},
+					Expected: []sql.Row{{Numeric("28500.000")}},
 				},
 				{
 					Query:    `SELECT EXTRACT(MINUTE FROM TIMESTAMP '2001-02-16 20:38:40');`,
-					Expected: []sql.Row{{float64(38)}},
+					Expected: []sql.Row{{Numeric("38")}},
 				},
 				{
 					Query:    `SELECT EXTRACT(MONTH FROM TIMESTAMP '2001-02-16 20:38:40');`,
-					Expected: []sql.Row{{float64(2)}},
+					Expected: []sql.Row{{Numeric("2")}},
 				},
 				{
 					Query:    `SELECT EXTRACT(QUARTER FROM TIMESTAMP '2001-02-16 20:38:40');`,
-					Expected: []sql.Row{{float64(1)}},
+					Expected: []sql.Row{{Numeric("1")}},
 				},
 				{
 					Query:    `SELECT EXTRACT(SECOND FROM TIMESTAMP '2001-02-16 20:38:40');`,
-					Expected: []sql.Row{{float64(40.000000)}},
+					Expected: []sql.Row{{Numeric("40.000000")}},
 				},
 				{
 					Query:    `SELECT EXTRACT(SECOND FROM TIME '17:12:28.5');`,
-					Expected: []sql.Row{{float64(28.500000)}},
+					Expected: []sql.Row{{Numeric("28.500000")}},
 				},
 				{
 					Query:    `SELECT EXTRACT(WEEK FROM TIMESTAMP '2001-02-16 20:38:40');`,
-					Expected: []sql.Row{{float64(7)}},
+					Expected: []sql.Row{{Numeric("7")}},
 				},
 				{
 					Query:    `SELECT EXTRACT(YEAR FROM TIMESTAMP '2001-02-16 20:38:40');`,
-					Expected: []sql.Row{{float64(2001)}},
+					Expected: []sql.Row{{Numeric("2001")}},
 				},
 			},
 		},
@@ -1250,71 +1234,71 @@ func TestDateAndTimeFunction(t *testing.T) {
 			Assertions: []ScriptTestAssertion{
 				{
 					Query:    `SELECT EXTRACT(CENTURY FROM INTERVAL '2001 years');`,
-					Expected: []sql.Row{{float64(20)}},
+					Expected: []sql.Row{{Numeric("20")}},
 				},
 				{
 					Query:    `SELECT EXTRACT(DAY FROM INTERVAL '40 days 1 minute');`,
-					Expected: []sql.Row{{float64(40)}},
+					Expected: []sql.Row{{Numeric("40")}},
 				},
 				{
 					Query:    `select extract(decades from interval '1000 months');`,
-					Expected: []sql.Row{{float64(8)}},
+					Expected: []sql.Row{{Numeric("8")}},
 				},
 				{
 					Query:    `SELECT EXTRACT(EPOCH FROM INTERVAL '5 days 3 hours');`,
-					Expected: []sql.Row{{float64(442800.000000)}},
+					Expected: []sql.Row{{Numeric("442800.000000")}},
 				},
 				{
 					Query:    `select extract(epoch from interval '10 months 10 seconds');`,
-					Expected: []sql.Row{{float64(25920010.000000)}},
+					Expected: []sql.Row{{Numeric("25920010.000000")}},
 				},
 				{
 					Query:    `select extract(hours from interval '10 months 65 minutes 10 seconds');`,
-					Expected: []sql.Row{{float64(1)}},
+					Expected: []sql.Row{{Numeric("1")}},
 				},
 				{
 					Query:    `select extract(microsecond from interval '10 months 65 minutes 10 seconds');`,
-					Expected: []sql.Row{{float64(10000000)}},
+					Expected: []sql.Row{{Numeric("10000000")}},
 				},
 				{
 					Query:    `SELECT EXTRACT(MILLENNIUM FROM INTERVAL '2001 years');`,
-					Expected: []sql.Row{{float64(2)}},
+					Expected: []sql.Row{{Numeric("2")}},
 				},
 				{
 					Query:    `select extract(millenniums from interval '3000 years 65 minutes 10 seconds');`,
-					Expected: []sql.Row{{float64(3)}},
+					Expected: []sql.Row{{Numeric("3")}},
 				},
 				{
 					Query:    `select extract(millisecond from interval '10 months 65 minutes 10 seconds');`,
-					Expected: []sql.Row{{float64(10000.000)}},
+					Expected: []sql.Row{{Numeric("10000.000")}},
 				},
 				{
 					Query:    `select extract(minutes from interval '10 months 65 minutes 10 seconds');`,
-					Expected: []sql.Row{{float64(5)}},
+					Expected: []sql.Row{{Numeric("5")}},
 				},
 				{
 					Query:    `SELECT EXTRACT(MONTH FROM INTERVAL '2 years 3 months');`,
-					Expected: []sql.Row{{float64(3)}},
+					Expected: []sql.Row{{Numeric("3")}},
 				},
 				{
 					Query:    `SELECT EXTRACT(MONTH FROM INTERVAL '2 years 13 months');`,
-					Expected: []sql.Row{{float64(1)}},
+					Expected: []sql.Row{{Numeric("1")}},
 				},
 				{
 					Query:    `select extract(months from interval '20 months 65 minutes 10 seconds');`,
-					Expected: []sql.Row{{float64(8)}},
+					Expected: []sql.Row{{Numeric("8")}},
 				},
 				{
 					Query:    `select extract(quarter from interval '20 months 65 minutes 10 seconds');`,
-					Expected: []sql.Row{{float64(3)}},
+					Expected: []sql.Row{{Numeric("3")}},
 				},
 				{
 					Query:    `select extract(seconds from interval '65 minutes 10 seconds 5 millisecond');`,
-					Expected: []sql.Row{{float64(10.005000)}},
+					Expected: []sql.Row{{Numeric("10.005000")}},
 				},
 				{
 					Query:    `select extract(years from interval '20 months 65 minutes 10 seconds');`,
-					Expected: []sql.Row{{float64(1)}},
+					Expected: []sql.Row{{Numeric("1")}},
 				},
 			},
 		},

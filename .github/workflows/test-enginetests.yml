@@ -1,8 +1,8 @@
-name: Test
+name: Enginetests
 on: [pull_request]
 
 concurrency:
-  group: test-${{ github.event.pull_request.number || github.ref }}
+  group: test-enginetests-${{ github.event.pull_request.number || github.ref }}
   cancel-in-progress: true
 
 jobs:
@@ -25,9 +25,4 @@ jobs:
       working-directory: ./postgres/parser
       shell: bash
     - name: Test
-      if: ${{ matrix.platform != 'ubuntu-latest' }}
-      run: go test -skip="TestReplication" $(go list ./... | grep -v enginetest)
-    - name: Test
-      if: ${{ matrix.platform == 'ubuntu-latest' }}
-      # Enginetest harness breaks with race testing, not sure why yet
-      run: go test -race -skip="TestReplication" $(go list ./... | grep -v enginetest)
+      run: go test $(go list ./testing/go/enginetest)

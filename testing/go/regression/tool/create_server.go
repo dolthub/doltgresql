@@ -38,7 +38,7 @@ func CreateDoltgresServer() (controller *svcs.Controller, port int, err error) {
 		return nil, 0, err
 	}
 	address := "127.0.0.1"
-	logLevel := servercfg.LogLevel_Fatal
+	logLevel := servercfg.LogLevel_Panic
 	controller, err = dserver.RunInMemory(&servercfg.DoltgresConfig{
 		LogLevelStr: &logLevel,
 		ListenerConfig: &servercfg.DoltgresListenerConfig{
