@@ -632,9 +632,9 @@ func (h *ConnectionHandler) handleCopyData(message messages.CopyData) (stop bool
 
 		switch copyFromStdinNode.CopyOptions.CopyFormat {
 		case tree.CopyFormatText:
-			dataLoader, err = dataloader.NewTabularDataLoader(sqlCtx, insertableTable, copyFromStdinNode.Delimiter, copyFromStdinNode.Null)
+			dataLoader, err = dataloader.NewTabularDataLoader(sqlCtx, insertableTable, copyFromStdinNode.Delimiter, copyFromStdinNode.Null, copyFromStdinNode.CopyOptions.Header)
 		case tree.CopyFormatCsv:
-			dataLoader, err = dataloader.NewCsvDataLoader(sqlCtx, insertableTable)
+			dataLoader, err = dataloader.NewCsvDataLoader(sqlCtx, insertableTable, copyFromStdinNode.CopyOptions.Header)
 		case tree.CopyFormatBinary:
 			err = fmt.Errorf("BINARY format is not supported for COPY FROM")
 		default:

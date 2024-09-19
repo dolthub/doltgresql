@@ -40,6 +40,7 @@ type CopyFrom struct {
 // CopyOptions describes options for COPY execution.
 type CopyOptions struct {
 	CopyFormat CopyFormat
+	Header     bool
 }
 
 var _ NodeFormatter = &CopyOptions{}
@@ -81,6 +82,10 @@ func (o *CopyOptions) Format(ctx *FmtCtx) {
 			ctx.WriteString("FORMAT BINARY")
 		}
 	}
+	if o.Header {
+		maybeAddSep()
+		ctx.WriteString("HEADER")
+	}
 }
 
 // IsDefault returns true if this struct has default value.
@@ -97,6 +102,14 @@ func (o *CopyOptions) CombineWith(other *CopyOptions) error {
 		}
 		o.CopyFormat = other.CopyFormat
 	}
+
+	if other.Header {
+		if o.Header {
+			return errors.New("header option specified multiple times")
+		}
+		o.Header = other.Header
+	}
+
 	return nil
 }
 
