@@ -733,7 +733,7 @@ func columns(rows *gosql.Rows) (sql.Schema, []interface{}, error) {
 			colVal := gosql.NullBool{}
 			columnVals = append(columnVals, &colVal)
 			schema = append(schema, &sql.Column{Name: columnType.Name(), Type: gmstypes.Int8, Nullable: true})
-		case "TEXT", "VARCHAR", "MEDIUMTEXT", "CHAR", "TINYTEXT", "NAME", "BYTEA":
+		case "TEXT", "VARCHAR", "MEDIUMTEXT", "CHAR", "TINYTEXT", "NAME", "BYTEA", "_TEXT":
 			colVal := gosql.NullString{}
 			columnVals = append(columnVals, &colVal)
 			schema = append(schema, &sql.Column{Name: columnType.Name(), Type: gmstypes.LongText, Nullable: true})
