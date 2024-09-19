@@ -637,12 +637,6 @@ func toRow(schema sql.Schema, r []interface{}) (sql.Row, error) {
 			return nil, err
 		}
 
-		// special case: boolean results are returned as strings
-		if val == "t" || val == "f" {
-			row[i] = val == "t"
-			continue
-		}
-
 		row[i], _, err = col.Type.Convert(val)
 		if err != nil {
 			return nil, err
@@ -739,7 +733,7 @@ func columns(rows *gosql.Rows) (sql.Schema, []interface{}, error) {
 			colVal := gosql.NullBool{}
 			columnVals = append(columnVals, &colVal)
 			schema = append(schema, &sql.Column{Name: columnType.Name(), Type: gmstypes.Int8, Nullable: true})
-		case "TEXT", "VARCHAR", "MEDIUMTEXT", "CHAR", "TINYTEXT", "NAME", "BYTEA":
+		case "TEXT", "VARCHAR", "MEDIUMTEXT", "CHAR", "TINYTEXT", "NAME", "BYTEA", "_TEXT":
 			colVal := gosql.NullString{}
 			columnVals = append(columnVals, &colVal)
 			schema = append(schema, &sql.Column{Name: columnType.Name(), Type: gmstypes.LongText, Nullable: true})

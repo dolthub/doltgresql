@@ -114,49 +114,25 @@ func TestSingleScript(t *testing.T) {
 
 	var scripts = []queries.ScriptTest{
 		{
-			Name: "Delete branches with dolt_branch procedure",
+			Name: "dolt_reset('--soft') commits the active SQL transaction",
 			SetUpScript: []string{
-				"CALL DOLT_BRANCH('myNewBranch1')",
-				"CALL DOLT_BRANCH('myNewBranch2')",
-				"CALL DOLT_BRANCH('myNewBranch3')",
-				"CALL DOLT_BRANCH('myNewBranchWithCommit')",
-				"CALL DOLT_CHECKOUT('myNewBranchWithCommit')",
-				"CALL DOLT_COMMIT('--allow-empty', '-am', 'empty commit')",
-				"CALL DOLT_CHECKOUT('main')",
+				"create table t (pk int primary key);",
+				"insert into t values (1), (2);",
+				"call dolt_commit('-Am', 'creating table t');",
 			},
 			Assertions: []queries.ScriptTestAssertion{
 				{
-					Query:          "CALL DOLT_BRANCH('-d')",
-					ExpectedErrStr: "error: invalid usage",
+					Query:    "start transaction;",
+					Expected: []sql.Row{},
 				},
 				{
-					Query:          "CALL DOLT_BRANCH('-d', '')",
-					ExpectedErrStr: "error: cannot branch empty string",
-				},
-				{
-					Query:          "CALL DOLT_BRANCH('-d', 'branchDoesNotExist')",
-					ExpectedErrStr: "branch not found",
-				},
-				{
-					Query:    "CALL DOLT_BRANCH('-d', 'myNewBranch1')",
+					Query:    "call dolt_reset('--soft', 'HEAD~');",
 					Expected: []sql.Row{{0}},
 				},
 				{
-					Query:    "SELECT COUNT(*) FROM DOLT_BRANCHES WHERE NAME='myNewBranch1'",
-					Expected: []sql.Row{{0}},
-				},
-				{
-					Query:    "CALL DOLT_BRANCH('-d', 'myNewBranch2', 'myNewBranch3')",
-					Expected: []sql.Row{{0}},
-				},
-				{
-					// Trying to delete a branch with unpushed changes fails without force option
-					Query:          "CALL DOLT_BRANCH('-d', 'myNewBranchWithCommit')",
-					ExpectedErrStr: "branch 'myNewBranchWithCommit' is not fully merged",
-				},
-				{
-					Query:    "CALL DOLT_BRANCH('-df', 'myNewBranchWithCommit')",
-					Expected: []sql.Row{{0}},
+					// dolt_status should only show the unstaged table t being added
+					Query:    "select * from dolt_status",
+					Expected: []sql.Row{{"t", false, "new table"}},
 				},
 			},
 		},
@@ -1093,7 +1069,6 @@ func TestDoltMergeArtifacts(t *testing.T) {
 }
 
 func TestDoltReset(t *testing.T) {
-	t.Skip()
 	h := newDoltgresServerHarness(t)
 	denginetest.RunDoltResetTest(t, h)
 }
@@ -1110,7 +1085,6 @@ func TestDoltGC(t *testing.T) {
 }
 
 func TestDoltCheckout(t *testing.T) {
-	t.Skip("race condition in CI")
 	h := newDoltgresServerHarness(t).WithSkippedQueries([]string{
 		"dolt_checkout and base name resolution", // needs db-qualified table names
 		"branch last checked out is deleted",
@@ -1127,7 +1101,6 @@ func TestDoltCheckoutPrepared(t *testing.T) {
 }
 
 func TestDoltBranch(t *testing.T) {
-	t.Skip("race condition in CI")
 	h := newDoltgresServerHarness(t).WithSkippedQueries([]string{
 		"Create branch from startpoint",  // missing SET @var syntax
 		"Join same table at two commits", // needs different branch-qualified DB syntax
