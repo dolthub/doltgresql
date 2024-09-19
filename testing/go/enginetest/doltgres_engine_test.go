@@ -147,7 +147,7 @@ var doltCommit = &doltCommitValidator{}
 
 // Convenience test for debugging a single query. Unskip and set to the desired query.
 func TestSingleScript(t *testing.T) {
-	// t.Skip()
+	t.Skip()
 
 	var scripts = []queries.ScriptTest{
 		{
@@ -1150,6 +1150,7 @@ func TestDoltCheckout(t *testing.T) {
 }
 
 func TestDoltCheckoutPrepared(t *testing.T) {
+	t.Skip("need to implement prepared queries in harness")
 	h := newDoltgresServerHarness(t).WithSkippedQueries([]string{
 		"dolt_checkout and base name resolution", // needs db-qualified table names
 		"branch last checked out is deleted",

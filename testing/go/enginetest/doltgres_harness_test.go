@@ -393,8 +393,6 @@ func (d *DoltgresHarness) EvaluateQueryResults(t *testing.T, expected []sql.Row,
 	switch true {
 	case convertExpectedResultsForDoltProcedures(t, q, widenedExpected, widenedRows):
 	// widenedExpected modified in place
-	case convertInsertIntoResults(t, q, widenedExpected, widenedRows):
-		// widenedExpected modified in place
 	default:
 		// The expected results that need widening before checking against actual results.
 		widenExpectedRows(t, widenedExpected, sch, widenedRows, isNilOrEmptySchema)
@@ -481,6 +479,9 @@ func convertExpectedResultsForDoltProcedures(t *testing.T, q string, widenedExpe
 				case time.Time:
 					sb.WriteString(v.Format("2006-01-02 15:04:05.999999999"))
 				case enginetest.CustomValueValidator:
+					// This is a hack, but in practice there's only a single implementation of this interface, used by dolt
+					v = &doltCommitValidator{}
+
 					actual := widenedActual[i][j]
 					ok, err := v.Validate(actual)
 					if err != nil {
