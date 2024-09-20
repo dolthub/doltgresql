@@ -411,11 +411,6 @@ func (d *DoltgresHarness) EvaluateQueryResults(t *testing.T, expected []sql.Row,
 	// }
 }
 
-func convertInsertIntoResults(t *testing.T, q string, expected []sql.Row, rows []sql.Row) bool {
-
-	return false
-}
-
 func widenExpectedRows(t *testing.T, expected []sql.Row, sch sql.Schema, actual []sql.Row, isNilOrEmptySchema bool) {
 	for i, row := range expected {
 		for j := range sch {
