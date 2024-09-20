@@ -219,7 +219,6 @@ func (h *DoltgresHandler) doQuery(ctx context.Context, c *mysql.Conn, query stri
 	schema, rowIter, qFlags, err := queryExec(sqlCtx, query, parsed, analyzedPlan)
 	if err != nil {
 		sqlCtx.GetLogger().WithError(err).Warn("error running query")
-		fmt.Printf("Err: %+v", err)
 		return err
 	}
 
@@ -518,7 +517,6 @@ func (h *DoltgresHandler) resultForDefaultIter(ctx *sql.Context, schema sql.Sche
 	err := eg.Wait()
 	if err != nil {
 		ctx.GetLogger().WithError(err).Warn("error running query")
-		fmt.Printf("Err: %+v", err)
 		returnErr = err
 	}
 

@@ -21,6 +21,7 @@ import (
 	"crypto/tls"
 	"encoding/json"
 	"fmt"
+	"io"
 	"net"
 	"os"
 	"strings"
@@ -176,7 +177,9 @@ func (h *ConnectionHandler) setConn(conn net.Conn) {
 
 func (h *ConnectionHandler) handleStartup() error {
 	startupMessage, err := h.backend.ReceiveStartupMessage()
-	if err != nil {
+	if err == io.EOF {
+		startupMessage = &pgproto3.StartupMessage{}
+	} else if err != nil {
 		return fmt.Errorf("error receiving startup message: %w", err)
 	}
 
@@ -603,17 +606,30 @@ func (h *ConnectionHandler) handleExecute(message *pgproto3.Execute) error {
 		return err
 	}
 
-	// we need the CommandComplete message defined here because it's altered by the callback below
-	commandComplete := &pgproto3.CommandComplete{
-		CommandTag: []byte(query.StatementTag),
-	}
-	callback := h.spoolRowsCallback(query.String, commandComplete, true)
+	// |rowsAffected| gets altered by the callback below
+	rowsAffected := int32(0)
+
+	callback := h.spoolRowsCallback(query.StatementTag, &rowsAffected, true)
 	err = h.doltgresHandler.ComExecuteBound(context.Background(), h.mysqlConn, query.String, portalData.BoundPlan, callback)
 	if err != nil {
 		return err
 	}
 
-	return h.send(commandComplete)
+	return h.send(makeCommandComplete(query.StatementTag, rowsAffected))
+}
+
+func makeCommandComplete(tag string, rows int32) *pgproto3.CommandComplete {
+	switch tag {
+	case "INSERT", "DELETE", "UPDATE", "MERGE", "SELECT", "CREATE TABLE AS", "MOVE", "FETCH", "COPY":
+		if tag == "INSERT" {
+			tag = "INSERT 0"
+		}
+		tag = fmt.Sprintf("%s %d", tag, rows)
+	}
+
+	return &pgproto3.CommandComplete{
+		CommandTag: []byte(tag),
+	}
 }
 
 // handleCopyData handles the COPY DATA message, by loading the data sent from the client. The |stop| response parameter
@@ -775,10 +791,10 @@ func (h *ConnectionHandler) convertBindParameters(types []uint32, formatCodes []
 
 // query runs the given query and sends a CommandComplete message to the client
 func (h *ConnectionHandler) query(query ConvertedQuery) error {
-	commandComplete := &pgproto3.CommandComplete{
-		CommandTag: []byte(query.StatementTag),
-	}
-	callback := h.spoolRowsCallback(query.String, commandComplete, false)
+	// |rowsAffected| gets altered by the callback below
+	rowsAffected := int32(0)
+
+	callback := h.spoolRowsCallback(query.StatementTag, &rowsAffected, false)
 	err := h.doltgresHandler.ComQuery(context.Background(), h.mysqlConn, query.String, query.AST, callback)
 	if err != nil {
 		if strings.HasPrefix(err.Error(), "syntax error at position") {
@@ -787,17 +803,15 @@ func (h *ConnectionHandler) query(query ConvertedQuery) error {
 		return err
 	}
 
-	return h.send(commandComplete)
+	return h.send(makeCommandComplete(query.StatementTag, rowsAffected))
 }
 
-// spoolRowsCallback returns a callback function that will send RowDescription message, then a DataRow message for
-// each row in the result set.
-func (h *ConnectionHandler) spoolRowsCallback(query string, cc *pgproto3.CommandComplete, isExecute bool) func(res *Result) error {
+// spoolRowsCallback returns a callback function that will send RowDescription message,
+// then a DataRow message for each row in the result set.
+func (h *ConnectionHandler) spoolRowsCallback(tag string, rows *int32, isExecute bool) func(res *Result) error {
 	// IsIUD returns whether the query is either an INSERT, UPDATE, or DELETE query.
-	q := strings.TrimSpace(strings.ToLower(query))
-	isIUD := strings.HasPrefix(q, "insert") || strings.HasPrefix(q, "update") || strings.HasPrefix(q, "delete")
+	isIUD := tag == "INSERT" || tag == "UPDATE" || tag == "DELETE"
 	return func(res *Result) error {
-		tag := string(cc.CommandTag)
 		if returnsRow(tag) {
 			// EXECUTE does not send RowDescription; instead it should be sent from DESCRIBE prior to it
 			if !isExecute {
@@ -817,22 +831,12 @@ func (h *ConnectionHandler) spoolRowsCallback(query string, cc *pgproto3.Command
 			}
 		}
 
-		var rows int32
 		if isIUD {
-			rows = int32(res.RowsAffected)
+			*rows = int32(res.RowsAffected)
 		} else {
-			rows += int32(len(res.Rows))
+			*rows += int32(len(res.Rows))
 		}
 
-		switch tag {
-		case "INSERT", "DELETE", "UPDATE", "MERGE", "SELECT", "CREATE TABLE AS", "MOVE", "FETCH", "COPY":
-			if tag == "INSERT" {
-				tag = "INSERT 0"
-			}
-			tag = fmt.Sprintf("%s %d", tag, rows)
-		}
-
-		cc.CommandTag = []byte(tag)
 		return nil
 	}
 }
