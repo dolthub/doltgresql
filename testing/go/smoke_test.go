@@ -195,6 +195,71 @@ func TestSmokeTests(t *testing.T) {
 			},
 		},
 		{
+			Name: "USE statements",
+			SetUpScript: []string{
+				"CREATE DATABASE test",
+				"USE test",
+				"CREATE TABLE t1 (pk BIGINT PRIMARY KEY, v1 BIGINT);",
+				"INSERT INTO t1 VALUES (1, 1), (2, 2);",
+				"call dolt_commit('-Am', 'initial commit');",
+				"call dolt_branch('b1');",
+				"call dolt_checkout('b1');",
+				"INSERT INTO t1 VALUES (3, 3), (4, 4);",
+				"call dolt_commit('-Am', 'commit b1');",
+				"call dolt_tag('tag1')",
+				"INSERT INTO t1 VALUES (5, 5), (6, 6);",
+				"call dolt_checkout('main');",
+			},
+			Assertions: []ScriptTestAssertion{
+				{
+					Query: "select * from t1 order by 1;",
+					Expected: []sql.Row{
+						{1, 1},
+						{2, 2},
+					},
+				},
+				{
+					Query:            "USE test/b1",
+					SkipResultsCheck: true,
+				},
+				{
+					Query: "select * from t1 order by 1;",
+					Expected: []sql.Row{
+						{1, 1},
+						{2, 2},
+						{3, 3},
+						{4, 4},
+						{5, 5},
+						{6, 6},
+					},
+				},
+				{
+					Query:            "USE \"test/main\"",
+					SkipResultsCheck: true,
+				},
+				{
+					Query: "select * from t1 order by 1;",
+					Expected: []sql.Row{
+						{1, 1},
+						{2, 2},
+					},
+				},
+				{
+					Query:            "USE 'test/tag1'",
+					SkipResultsCheck: true,
+				},
+				{
+					Query: "select * from t1 order by 1;",
+					Expected: []sql.Row{
+						{1, 1},
+						{2, 2},
+						{3, 3},
+						{4, 4},
+					},
+				},
+			},
+		},
+		{
 			Name: "Boolean results",
 			Assertions: []ScriptTestAssertion{
 				{
