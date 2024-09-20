@@ -25,7 +25,6 @@ import (
 	"github.com/dolthub/go-mysql-server/enginetest/queries"
 	"github.com/dolthub/go-mysql-server/enginetest/scriptgen/setup"
 	"github.com/dolthub/go-mysql-server/sql"
-	"github.com/dolthub/go-mysql-server/sql/types"
 	"github.com/stretchr/testify/require"
 
 	"github.com/dolthub/dolt/go/libraries/doltcore/dtestutils"
@@ -151,40 +150,29 @@ func TestSingleScript(t *testing.T) {
 
 	var scripts = []queries.ScriptTest{
 		{
-			Name: "dolt-tag: SQL use a tag as a ref for merge",
+			Name: "dolt-tag: SQL create tags",
 			SetUpScript: []string{
 				"CREATE TABLE test(pk int primary key);",
 				"CALL DOLT_ADD('.')",
 				"INSERT INTO test VALUES (0),(1),(2);",
 				"CALL DOLT_COMMIT('-am','created table test')",
-				"DELETE FROM test WHERE pk = 0",
-				"INSERT INTO test VALUES (3)",
-				"CALL DOLT_COMMIT('-am','made changes')",
 			},
 			Assertions: []queries.ScriptTestAssertion{
 				{
-					Query:    "CALL DOLT_TAG('v1','HEAD')",
+					Query:    "CALL DOLT_TAG('v1', 'HEAD')",
 					Expected: []sql.Row{{0}},
 				},
 				{
-					Query:    "CALL DOLT_CHECKOUT('-b','other','HEAD^')",
-					Expected: []sql.Row{{0, "Switched to branch 'other'"}},
+					Query:    "SELECT tag_name, IF(CHAR_LENGTH(tag_hash) < 0, NULL, 'not null'), tagger, email, IF(date IS NULL, NULL, 'not null'), message from dolt_tags",
+					Expected: []sql.Row{{"v1", "not null", "billy bob", "bigbillieb@fake.horse", "not null", ""}},
 				},
 				{
-					Query:    "INSERT INTO test VALUES (8), (9)",
-					Expected: []sql.Row{{types.OkResult{RowsAffected: 2}}},
+					Query:    "CALL DOLT_TAG('v2', '-m', 'create tag v2')",
+					Expected: []sql.Row{{0}},
 				},
 				{
-					Query:    "CALL DOLT_COMMIT('-am','made changes in other')",
-					Expected: []sql.Row{{doltCommit}},
-				},
-				{
-					Query:    "CALL DOLT_MERGE('v1')",
-					Expected: []sql.Row{{doltCommit, 0, 0, "merge successful"}},
-				},
-				{
-					Query:    "SELECT * FROM test",
-					Expected: []sql.Row{{1}, {2}, {3}, {8}, {9}},
+					Query:    "SELECT tag_name, message from dolt_tags",
+					Expected: []sql.Row{{"v1", ""}, {"v2", "create tag v2"}},
 				},
 			},
 		},
@@ -1170,7 +1158,11 @@ func TestDoltBranch(t *testing.T) {
 }
 
 func TestDoltTag(t *testing.T) {
-	h := newDoltgresServerHarness(t) // .WithSkippedQueries()
+	h := newDoltgresServerHarness(t).WithSkippedQueries([]string{
+		// dolt's initialization is different which results in a different user name for the tagger,
+		// should fix the harness to match
+		"SELECT tag_name, IF(CHAR_LENGTH(tag_hash) < 0, NULL, 'not null'), tagger, email, IF(date IS NULL, NULL, 'not null'), message from dolt_tags",
+	})
 	denginetest.RunDoltTagTests(t, h)
 }
 
