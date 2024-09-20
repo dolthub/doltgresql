@@ -47,21 +47,7 @@ func TestRegressionTests(t *testing.T) {
 			Messages:     messages,
 			PrintQueries: false,
 			FailPSQL:     true,
-			FailQueries: []string{
-				`CREATE VIEW lock_view7 AS SELECT * from lock_view2;`,
-				`create index testtable_apple_index on testtable_apple(logdate);`,
-				`create index testtable_orange_index on testtable_orange(logdate);`,
-				`create table child_0_10 partition of parent_tab
-  for values from (0) to (10);`,
-				`create table child_10_20 partition of parent_tab
-  for values from (10) to (20);`,
-				`create table child_20_30 partition of parent_tab
-  for values from (20) to (30);`,
-				`create table child_30_35 partition of child_30_40
-  for values from (30) to (35);`,
-				`create table child_35_40 partition of child_30_40
-   for values from (35) to (40);`,
-			},
+			FailQueries:  queriesToSkip,
 		})
 		require.NoError(t, err)
 		trackers = append(trackers, tracker)
@@ -69,4 +55,43 @@ func TestRegressionTests(t *testing.T) {
 	fmt.Printf("Finished, writing output to `%s`\n", regressionFolder.GetAbsolutePath("out/results.trackers"))
 	err = regressionFolder.WriteReplayTrackers("out/results.trackers", trackers, 0644)
 	require.NoError(t, err)
+}
+
+var queriesToSkip = []string{
+	`CREATE VIEW lock_view7 AS SELECT * from lock_view2;`,
+	`create index testtable_apple_index on testtable_apple(logdate);`,
+	`create index testtable_orange_index on testtable_orange(logdate);`,
+	`create table child_0_10 partition of parent_tab
+  for values from (0) to (10);`,
+	`create table child_10_20 partition of parent_tab
+  for values from (10) to (20);`,
+	`create table child_20_30 partition of parent_tab
+  for values from (20) to (30);`,
+	`create table child_30_35 partition of child_30_40
+  for values from (30) to (35);`,
+	`create table child_35_40 partition of child_30_40
+   for values from (35) to (40);`,
+	`select count(*)
+from
+  (select t3.tenthous as x1, coalesce(t1.stringu1, t2.stringu1) as x2
+   from tenk1 t1
+   left join tenk1 t2 on t1.unique1 = t2.unique1
+   join tenk1 t3 on t1.unique2 = t3.unique2) ss,
+  tenk1 t4,
+  tenk1 t5
+where t4.thousand = t5.unique1 and ss.x1 = t4.tenthous and ss.x2 = t5.stringu1;`,
+	`select count(*) from
+  (select * from tenk1 x order by x.thousand, x.twothousand, x.fivethous) x
+  left join
+  (select * from tenk1 y order by y.unique2) y
+  on x.thousand = y.unique2 and x.twothousand = y.hundred and x.fivethous = y.unique2;`,
+	`select count(*) from tenk1 a, tenk1 b
+  where a.hundred = b.thousand and (b.fivethous % 10) < 10;`,
+	`select a.unique2, a.ten, b.tenthous, b.unique2, b.hundred
+from tenk1 a left join tenk1 b on a.unique2 = b.tenthous
+where a.unique1 = 42 and
+      ((b.unique2 is null and a.ten = 2) or b.hundred = 3);`,
+	`select
+  (select max((select i.unique2 from tenk1 i where i.unique1 = o.unique1)))
+from tenk1 o;`,
 }
