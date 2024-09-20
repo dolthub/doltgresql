@@ -16,6 +16,7 @@ package enginetest
 
 import (
 	"os"
+	"regexp"
 	"runtime"
 	"testing"
 
@@ -108,48 +109,88 @@ func TestSchemaOverrides(t *testing.T) {
 	denginetest.RunSchemaOverridesTest(t, harness)
 }
 
+type doltCommitValidator struct{}
+
+var _ enginetest.CustomValueValidator = &doltCommitValidator{}
+
+// TODO: this custom validator is supposed to match only a commit hash, but we extend it to match the formatting
+//
+//	characters present in the Doltgres response for some calls. We can remove this when we support the syntax
+//	`select * from dolt_commit(...)`
+var hashRegex = regexp.MustCompile(`^\{?([0-9a-v]{32}).*$`)
+
+// Validate returns true if the value is a valid commit hash.
+func (dcv *doltCommitValidator) Validate(val interface{}) (bool, error) {
+	hash, ok := val.(string)
+	if !ok {
+		return false, nil
+	}
+	return hashRegex.MatchString(hash), nil
+}
+
+// CommitHash returns the commit hash from the value, if it is a valid commit hash.
+func (dcv *doltCommitValidator) CommitHash(val interface{}) (bool, string) {
+	hash, ok := val.(string)
+	if !ok {
+		return false, ""
+	}
+
+	matches := hashRegex.FindStringSubmatch(hash)
+	if len(matches) == 0 {
+		return false, ""
+	}
+	return true, matches[1]
+}
+
 // Convenience test for debugging a single query. Unskip and set to the desired query.
 func TestSingleScript(t *testing.T) {
 	t.Skip()
 
 	var scripts = []queries.ScriptTest{
 		{
-			Name: "dolt_reset('--soft') commits the active SQL transaction",
+			Name: "dolt-tag: SQL create tags",
 			SetUpScript: []string{
-				"create table t (pk int primary key);",
-				"insert into t values (1), (2);",
-				"call dolt_commit('-Am', 'creating table t');",
+				"CREATE TABLE test(pk int primary key);",
+				"CALL DOLT_ADD('.')",
+				"INSERT INTO test VALUES (0),(1),(2);",
+				"CALL DOLT_COMMIT('-am','created table test')",
 			},
 			Assertions: []queries.ScriptTestAssertion{
 				{
-					Query:    "start transaction;",
-					Expected: []sql.Row{},
-				},
-				{
-					Query:    "call dolt_reset('--soft', 'HEAD~');",
+					Query:    "CALL DOLT_TAG('v1', 'HEAD')",
 					Expected: []sql.Row{{0}},
 				},
 				{
-					// dolt_status should only show the unstaged table t being added
-					Query:    "select * from dolt_status",
-					Expected: []sql.Row{{"t", false, "new table"}},
+					Query:    "SELECT tag_name, IF(CHAR_LENGTH(tag_hash) < 0, NULL, 'not null'), tagger, email, IF(date IS NULL, NULL, 'not null'), message from dolt_tags",
+					Expected: []sql.Row{{"v1", "not null", "billy bob", "bigbillieb@fake.horse", "not null", ""}},
+				},
+				{
+					Query:    "CALL DOLT_TAG('v2', '-m', 'create tag v2')",
+					Expected: []sql.Row{{0}},
+				},
+				{
+					Query:    "SELECT tag_name, message from dolt_tags",
+					Expected: []sql.Row{{"v1", ""}, {"v2", "create tag v2"}},
 				},
 			},
 		},
 	}
 
 	for _, script := range scripts {
-		harness := newDoltgresServerHarness(t)
-		// harness.Setup(setup.MydbData, setup.MytableData)
+		func() {
+			harness := newDoltgresServerHarness(t)
+			defer harness.Close()
+			// harness.Setup(setup.MydbData, setup.MytableData)
 
-		engine, err := harness.NewEngine(t)
-		if err != nil {
-			panic(err)
-		}
-		// engine.EngineAnalyzer().Debug = true
-		// engine.EngineAnalyzer().Verbose = true
+			engine, err := harness.NewEngine(t)
+			if err != nil {
+				panic(err)
+			}
+			// engine.EngineAnalyzer().Debug = true
+			// engine.EngineAnalyzer().Verbose = true
 
-		enginetest.TestScriptWithEngine(t, engine, harness, script)
+			enginetest.TestScriptWithEngine(t, engine, harness, script)
+		}()
 	}
 }
 
@@ -1095,8 +1136,13 @@ func TestDoltCheckout(t *testing.T) {
 }
 
 func TestDoltCheckoutPrepared(t *testing.T) {
-	t.Skip()
-	h := newDoltgresServerHarness(t)
+	t.Skip("need to implement prepared queries in harness")
+	h := newDoltgresServerHarness(t).WithSkippedQueries([]string{
+		"dolt_checkout and base name resolution", // needs db-qualified table names
+		"branch last checked out is deleted",
+		"Using non-existent refs",
+		"read-only databases", // read-only not yet implemented in harness
+	})
 	denginetest.RunDoltCheckoutPreparedTests(t, h)
 }
 
@@ -1110,8 +1156,11 @@ func TestDoltBranch(t *testing.T) {
 }
 
 func TestDoltTag(t *testing.T) {
-	t.Skip()
-	h := newDoltgresServerHarness(t)
+	h := newDoltgresServerHarness(t).WithSkippedQueries([]string{
+		// dolt's initialization is different which results in a different user name for the tagger,
+		// should fix the harness to match
+		"SELECT tag_name, IF(CHAR_LENGTH(tag_hash) < 0, NULL, 'not null'), tagger, email, IF(date IS NULL, NULL, 'not null'), message from dolt_tags",
+	})
 	denginetest.RunDoltTagTests(t, h)
 }
 
@@ -1394,8 +1443,13 @@ func TestDoltCherryPickPrepared(t *testing.T) {
 }
 
 func TestDoltCommit(t *testing.T) {
-	t.Skip()
-	harness := newDoltgresServerHarness(t)
+	harness := newDoltgresServerHarness(t).WithSkippedQueries([]string{
+		// These tests set @@autocommit, which we can't translate accurately yet
+		"CALL DOLT_COMMIT('-amend') works to update commit message",
+		"CALL DOLT_COMMIT('-amend') works to add changes to a commit",
+		"CALL DOLT_COMMIT('-amend') works to remove changes from a commit",
+		"CALL DOLT_COMMIT('-amend') works to update a merge commit",
+	})
 	denginetest.RunDoltCommitTests(t, harness)
 }
 
