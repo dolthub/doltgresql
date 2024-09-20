@@ -43,29 +43,26 @@ jobs:
         with:
           go-version-file: go.mod
 
-      - name: Build DoltgreSQL's parser
-        if: steps.merge_main.outputs.skip == 'false'
-        run: ./build.sh
-        working-directory: ./postgres/parser
-
-      - name: Get results for PR
+      - name: Test PR branch
         id: test_doltgresql_pr
         if: steps.merge_main.outputs.skip == 'false'
         continue-on-error: true
         run: |
+          ./postgres/parser/build.sh
           cd testing/go/regression
           mkdir -p out
           cd tool
           go test ./... --count=1
           cp ../out/results.trackers ../out/results2.trackers
 
-      - name: Get results for main
+      - name: Test main branch
         id: test_doltgresql_main
         if: steps.merge_main.outputs.skip == 'false'
         continue-on-error: true
         run: |
           git reset --hard
           git checkout origin/main
+          ./postgres/parser/build.sh
           cd testing/go/regression
           mkdir -p out
           cd tool
@@ -82,7 +79,9 @@ jobs:
             echo "trackers exist"
           else
             echo "trackers_exist=false" >> $GITHUB_OUTPUT
-            echo "trackers do not exist"
+            echo "One of the branches could not successfully complete their tests."
+            echo "Please review them for errors, which must be fixed."
+            exit 1
           fi
 
       - name: Build Regression Test Results Comment
@@ -95,18 +94,6 @@ jobs:
           echo "$output" >> $GITHUB_OUTPUT
           echo "EOF" >> $GITHUB_OUTPUT
           echo "$output"
-
-      - name: Print main tracker as hex
-        if: steps.check_trackers.outputs.trackers_exist == 'true'
-        run: |
-          cd testing/go/regression/out
-          xxd -p -c 60 results1.trackers
-
-      - name: Print PR tracker as hex
-        if: steps.check_trackers.outputs.trackers_exist == 'true'
-        run: |
-          cd testing/go/regression/out
-          xxd -p -c 60 results2.trackers
 
       - name: Post Comment
         if: steps.build_results.outputs.program_output

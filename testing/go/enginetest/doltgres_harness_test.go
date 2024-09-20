@@ -34,7 +34,6 @@ import (
 	"github.com/dolthub/go-mysql-server/sql"
 	"github.com/dolthub/go-mysql-server/sql/analyzer"
 	gmstypes "github.com/dolthub/go-mysql-server/sql/types"
-	"github.com/dolthub/vitess/go/vt/proto/query"
 	vitess "github.com/dolthub/vitess/go/vt/sqlparser"
 	_ "github.com/jackc/pgx/v4/stdlib"
 	"github.com/jackc/pgx/v5"
@@ -754,7 +753,7 @@ func (d *DoltgresQueryEngine) EnginePreparedDataCache() *gms.PreparedDataCache {
 	panic("implement me")
 }
 
-func (d *DoltgresQueryEngine) QueryWithBindings(ctx *sql.Context, query string, parsed vitess.Statement, bindings map[string]*query.BindVariable, qFlags *sql.QueryFlags) (sql.Schema, sql.RowIter, *sql.QueryFlags, error) {
+func (d *DoltgresQueryEngine) QueryWithBindings(ctx *sql.Context, query string, parsed vitess.Statement, bindings map[string]vitess.Expr, qFlags *sql.QueryFlags) (sql.Schema, sql.RowIter, *sql.QueryFlags, error) {
 	if len(bindings) > 0 {
 		return nil, nil, nil, fmt.Errorf("bindings not supported")
 	}
@@ -785,7 +784,7 @@ func columns(rows pgx.Rows) (sql.Schema, []interface{}, error) {
 			colVal := gosql.NullBool{}
 			columnVals = append(columnVals, &colVal)
 			schema = append(schema, &sql.Column{Name: field.Name, Type: gmstypes.Int8, Nullable: true})
-		case uint32(oid.T_text), uint32(oid.T_varchar):
+		case uint32(oid.T_text), uint32(oid.T_varchar), uint32(oid.T_name), uint32(oid.T__text):
 			colVal := gosql.NullString{}
 			columnVals = append(columnVals, &colVal)
 			schema = append(schema, &sql.Column{Name: field.Name, Type: gmstypes.LongText, Nullable: true})
@@ -802,7 +801,7 @@ func columns(rows pgx.Rows) (sql.Schema, []interface{}, error) {
 			columnVals = append(columnVals, &colVal)
 			schema = append(schema, &sql.Column{Name: field.Name, Type: gmstypes.Timestamp, Nullable: true})
 		default:
-			return nil, nil, fmt.Errorf("Unhandled type %s", field.Name)
+			return nil, nil, fmt.Errorf("Unhandled OID %d", field.DataTypeOID)
 		}
 	}
 

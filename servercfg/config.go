@@ -285,7 +285,7 @@ func (cfg *DoltgresConfig) LogLevel() servercfg.LogLevel {
 	case LogLevel_Fatal:
 		return servercfg.LogLevel_Fatal
 	case LogLevel_Panic:
-		return servercfg.LogLevel_Fatal // TODO: add the panic level
+		return servercfg.LogLevel_Panic
 	default:
 		return servercfg.LogLevel_Info
 	}

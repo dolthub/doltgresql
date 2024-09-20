@@ -17,14 +17,31 @@ package dataloader
 import (
 	"bufio"
 	"fmt"
-	"io"
-	"strings"
 
 	"github.com/dolthub/go-mysql-server/sql"
-	"github.com/sirupsen/logrus"
 
 	"github.com/dolthub/doltgresql/server/types"
 )
+
+// DataLoader allows callers to insert rows from multiple chunks into a table. Rows encoded in each chunk will not
+// necessarily end cleanly on a chunk boundary, so DataLoader implementations must handle recognizing partial, or
+// incomplete records, and saving that partial record until the next call to LoadChunk, so that it may be prefixed
+// with the incomplete record.
+type DataLoader interface {
+	// LoadChunk reads the records from |data| and inserts them into the previously configured table. Data records
+	// are not guaranteed to stard and end cleanly on chunk boundaries, so implementations must recognize incomplete
+	// records and save them to prepend on the next processed chunk.
+	LoadChunk(ctx *sql.Context, data *bufio.Reader) error
+
+	// Abort aborts the current load operation and releases all used resources.
+	Abort(ctx *sql.Context) error
+
+	// Finish finalizes the current load operation and commits the inserted rows so that the data becomes visibile
+	// to clients. Implementations should check that the last call to LoadChunk did not end with an incomplete
+	// record and return an error to the caller if so. The returned LoadDataResults describe the load operation,
+	// including how many rows were inserted.
+	Finish(ctx *sql.Context) (*LoadDataResults, error)
+}
 
 // LoadDataResults contains the results of a load data operation, including the number of rows loaded.
 type LoadDataResults struct {
@@ -32,22 +49,9 @@ type LoadDataResults struct {
 	RowsLoaded int32
 }
 
-// TabularDataLoader tracks the state of a load data operation from a tabular data source.
-type TabularDataLoader struct {
-	results       LoadDataResults
-	partialLine   string
-	rowInserter   sql.RowInserter
-	colTypes      []types.DoltgresType
-	sch           sql.Schema
-	delimiterChar string
-	nullChar      string
-}
-
-// NewTabularDataLoader creates a new TabularDataLoader to insert into the specifeid |table| using the specified
-// |delimiterChar| and |nullChar|.
-func NewTabularDataLoader(ctx *sql.Context, table sql.InsertableTable, delimiterChar, nullChar string) (*TabularDataLoader, error) {
-	// Get the columns' types, which we'll use later for casting
-	sch := table.Schema()
+// getColumnTypes examines |sch| and returns a slice of DoltgresTypes in the order of the schema's columns. If any
+// columns in the schema are not DoltgresType instances, an error is returned.
+func getColumnTypes(sch sql.Schema) ([]types.DoltgresType, error) {
 	colTypes := make([]types.DoltgresType, len(sch))
 	for i, col := range sch {
 		var ok bool
@@ -57,116 +61,5 @@ func NewTabularDataLoader(ctx *sql.Context, table sql.InsertableTable, delimiter
 		}
 	}
 
-	rowInserter := table.Inserter(ctx)
-	rowInserter.StatementBegin(ctx)
-
-	return &TabularDataLoader{
-		rowInserter:   rowInserter,
-		colTypes:      colTypes,
-		sch:           sch,
-		delimiterChar: delimiterChar,
-		nullChar:      nullChar,
-	}, nil
-}
-
-// LoadChunk loads a chunk of data from the specified |data| reader into the table for this data loader. Note that
-// the chunk does not need to end on a line boundary – the loader will handle partial lines at the end of the chunk
-// by saving them for the next chunk.
-func (tdl *TabularDataLoader) LoadChunk(ctx *sql.Context, data *bufio.Reader) error {
-	row := make(sql.Row, len(tdl.colTypes))
-	for {
-		// Read the next line from the file
-		line, err := data.ReadString('\n')
-		if err != nil {
-			if err != io.EOF {
-				return err
-			}
-
-			// bufio.Reader.ReadString will return an error AND a line
-			// if the final contents of the data does NOT end in the
-			// delimiter. In this case, that means that we need to save
-			// the partial line and use it in the next chunk.
-			tdl.partialLine = line
-			break
-		}
-		// If we've not reached EOF, then there will be a newline appended to the end that we must remove.
-		line = strings.TrimSuffix(line, "\n")
-		// Data with windows line endings will also have a carriage return character that we need to remove.
-		line = strings.TrimSuffix(line, "\r")
-
-		if tdl.partialLine != "" {
-			line = tdl.partialLine + line
-			tdl.partialLine = ""
-		}
-
-		// If we see the end of data marker, then jump out of the loop
-		if line == "\\." {
-			break
-		}
-
-		// Skip over empty lines
-		if len(line) == 0 {
-			continue
-		}
-		// Split the values by the delimiter, ensuring the correct number of values have been read
-		values := strings.Split(line, tdl.delimiterChar)
-
-		if len(values) > len(tdl.colTypes) {
-			return fmt.Errorf("extra data after last expected column")
-		} else if len(values) < len(tdl.colTypes) {
-			return fmt.Errorf(`missing data for column "%s"`, tdl.sch[len(values)].Name)
-		}
-		// Cast the values using I/O input
-		for i := range tdl.colTypes {
-			if values[i] == tdl.nullChar {
-				row[i] = nil
-			} else {
-				row[i], err = tdl.colTypes[i].IoInput(ctx, values[i])
-				if err != nil {
-					return err
-				}
-			}
-		}
-		// Insert the read row
-		err = tdl.rowInserter.Insert(ctx, row)
-		if err != nil {
-			return err
-		}
-		tdl.results.RowsLoaded += 1
-	}
-
-	return nil
-}
-
-// Abort ends the current load data operation and discards any changes that have been made.
-func (tdl *TabularDataLoader) Abort(ctx *sql.Context) error {
-	defer func() {
-		if closeErr := tdl.rowInserter.Close(ctx); closeErr != nil {
-			logrus.Warnf("error closing rowInserter: %v", closeErr)
-		}
-	}()
-
-	return tdl.rowInserter.DiscardChanges(ctx, nil)
-}
-
-// Finish completes the current load data operation and finalizes the data that has been inserted.
-func (tdl *TabularDataLoader) Finish(ctx *sql.Context) (*LoadDataResults, error) {
-	defer func() {
-		if closeErr := tdl.rowInserter.Close(ctx); closeErr != nil {
-			logrus.Warnf("error closing rowInserter: %v", closeErr)
-		}
-	}()
-
-	// If there is partial data from the last chunk that hasn't been inserted, return an error.
-	if tdl.partialLine != "" {
-		return nil, fmt.Errorf("partial line found at end of data load")
-	}
-
-	err := tdl.rowInserter.StatementComplete(ctx)
-	if err != nil {
-		err = tdl.rowInserter.DiscardChanges(ctx, err)
-		return nil, err
-	}
-
-	return &tdl.results, nil
+	return colTypes, nil
 }
