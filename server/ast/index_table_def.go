@@ -59,12 +59,12 @@ func nodeIndexTableDef(node *tree.IndexTableDef) (*vitess.IndexDefinition, error
 		default:
 			return nil, fmt.Errorf("unknown index sorting direction encountered")
 		}
-		if indexElem.Direction != tree.Ascending {
+		if indexElem.Direction == tree.Descending {
 			logrus.Warn("descending indexes are not yet supported, ignoring sort order")
 		}
 		switch indexElem.NullsOrder {
 		case tree.DefaultNullsOrder:
-			//TODO: the default NULL order is reversed compared to MySQL, so the default is technically always wrong.
+			// TODO: the default NULL order is reversed compared to MySQL, so the default is technically always wrong.
 			// To prevent choking on every index, we allow this to proceed (even with incorrect results) for now.
 		case tree.NullsFirst:
 			// The only form supported in GMS for now
