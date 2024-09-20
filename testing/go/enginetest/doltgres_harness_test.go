@@ -41,6 +41,7 @@ import (
 	"github.com/lib/pq/oid"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	"gopkg.in/src-d/go-errors.v1"
 
 	"github.com/dolthub/doltgresql/server"
 	"github.com/dolthub/doltgresql/servercfg"
@@ -508,8 +509,20 @@ func convertExpectedResultsForDoltProcedures(t *testing.T, q string, widenedExpe
 	return false
 }
 
+// EvaluateExpectedError is a harness extension that gives us more control over matching expected errors. Our error
+// strings after being transmitted through the server are slightly different than the vanilla gms ones.
 func (d *DoltgresHarness) EvaluateExpectedError(t *testing.T, expected string, err error) {
 	assert.Contains(t, err.Error(), expected)
+}
+
+// EvaluateExpectedErrorKind is a harness extension that gives us more control over matching expected errors. We don't
+// have access to the error kind object eny longer, so we have to see if the error we get matches its pattern
+func (d *DoltgresHarness) EvaluateExpectedErrorKind(t *testing.T, expected *errors.Kind, actualErr error) {
+	pattern := strings.ReplaceAll(expected.Message, "%s", "\\w+")
+	regex, regexErr := regexp.Compile(pattern)
+	require.NoError(t, regexErr)
+
+	assert.Regexp(t, regex, actualErr.Error())
 }
 
 func (d *DoltgresHarness) allDatabaseNames(ctx *sql.Context, queryEngine *DoltgresQueryEngine) []string {
@@ -659,6 +672,10 @@ func getDmlResult(rows pgx.Rows) (sql.Row, bool) {
 		return sql.NewRow(gmstypes.NewOkResult(int(tag.RowsAffected()))), true
 	case tag.Delete():
 		return sql.NewRow(gmstypes.NewOkResult(int(tag.RowsAffected()))), true
+	case strings.HasPrefix(tag.String(), "DROP TABLE"):
+		return sql.NewRow(gmstypes.NewOkResult(0)), true
+	case strings.HasPrefix(tag.String(), "CREATE TABLE"):
+		return sql.NewRow(gmstypes.NewOkResult(0)), true
 	default:
 		return nil, false
 	}

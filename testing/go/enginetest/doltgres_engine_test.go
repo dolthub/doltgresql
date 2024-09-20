@@ -1443,8 +1443,13 @@ func TestDoltCherryPickPrepared(t *testing.T) {
 }
 
 func TestDoltCommit(t *testing.T) {
-	t.Skip()
-	harness := newDoltgresServerHarness(t)
+	harness := newDoltgresServerHarness(t).WithSkippedQueries([]string{
+		// These tests set @@autocommit, which we can't translate accurately yet
+		"CALL DOLT_COMMIT('-amend') works to update commit message",
+		"CALL DOLT_COMMIT('-amend') works to add changes to a commit",
+		"CALL DOLT_COMMIT('-amend') works to remove changes from a commit",
+		"CALL DOLT_COMMIT('-amend') works to update a merge commit",
+	})
 	denginetest.RunDoltCommitTests(t, harness)
 }
 
