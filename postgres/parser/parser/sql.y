@@ -1105,7 +1105,7 @@ func (u *sqlSymUnion) aggregatesToDrop() []tree.AggregateToDrop {
 %type <tree.ReadWriteMode> transaction_read_mode
 %type <tree.DeferrableMode> deferrable_mode opt_deferrable_mode
 
-%type <str> name opt_name opt_name_parens
+%type <str> name opt_name opt_name_parens use_db_name
 %type <str> privilege savepoint_name
 %type <tree.KVOption> role_option password_clause valid_until_clause
 %type <tree.Operator> subquery_op
@@ -5700,11 +5700,22 @@ reset_stmt:
 // "USE <dbname>" is an alias for "SET [SESSION] database = <dbname>".
 // %SeeAlso: SET SESSION, WEBDOCS/set-vars.html
 use_stmt:
-  USE var_value
+  USE use_db_name
   {
-    $$.val = &tree.SetVar{Name: "database", Values: tree.Exprs{$2.expr()}}
+    $$.val = &tree.SetVar{Name: "database", Values: tree.Exprs{tree.NewStrVal($2)}}
   }
 | USE error // SHOW HELP: USE
+
+// use_db_name is for the db name in USE <dbname>. We extend the simple syntax to allow for mydb/main without quoting.
+use_db_name:
+  db_object_name_component
+  {
+    $$ = $1
+  }
+| db_object_name_component '/' db_object_name_component
+  {
+    $$ = fmt.Sprintf("%s/%s", $1, $3)
+  }
 
 // SET statements including e.g. SET TRANSACTION
 set_stmt:
