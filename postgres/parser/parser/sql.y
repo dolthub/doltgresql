@@ -5708,7 +5708,11 @@ use_stmt:
 
 // use_db_name is for the db name in USE <dbname>. We extend the simple syntax to allow for mydb/main without quoting.
 use_db_name:
-  db_object_name_component
+  SCONST
+  {
+    $$ = $1
+  }
+| db_object_name_component
   {
     $$ = $1
   }
