@@ -202,7 +202,7 @@ func (h *ConnectionHandler) handleStartup() error {
 		}
 		_, err = h.Conn().Write(performSSL)
 		if err != nil {
-			return fmt.Errorf("error sending deny SSL request: %w", err)
+			return fmt.Errorf("error sending SSL request: %w", err)
 		}
 		// If we have a certificate and the client has asked for SSL support, then we switch here.
 		// This involves swapping out our underlying net connection for a new one.
