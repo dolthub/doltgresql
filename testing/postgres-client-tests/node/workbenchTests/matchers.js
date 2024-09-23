@@ -44,7 +44,6 @@ function dateIsValid(date) {
 }
 
 export function branchesMatcher(data, exp) {
-  // console.log("BRANCHES", data.rows, exp.rows);
   const exceptionKeys = ["hash", "latest_commit_date"];
 
   function getExceptionIsValid(row, key) {
@@ -96,16 +95,18 @@ export function mergeMatcher(data, exp) {
     return false;
   }
 
-  const row = data.rows[0].dolt_merge.slice(1, -1).split(",");
-  const expRow = exp.rows[0].dolt_merge.slice(1, -1).split(",");
+  const row = data.rows[0].dolt_merge;
+  const expRow = exp.rows[0].dolt_merge;
 
   // Check valid commit hash
   if (!commitHashIsValid(row[0])) {
+    console.log("Invalid commit hash", row[0]);
     return false;
   }
   // Check the rest of the fields
   for (let i = 1; i < row.length; i++) {
     if (row[i] !== expRow[i]) {
+      console.log("Values don't match", row[i], expRow[i]);
       return false;
     }
   }

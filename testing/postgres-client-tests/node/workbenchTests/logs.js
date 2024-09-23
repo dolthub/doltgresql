@@ -19,8 +19,8 @@ export const logTests = [
         },
         {
           commit_hash: "",
-          committer: "mysql-test-runner",
-          email: "mysql-test-runner@liquidata.co",
+          committer: "Dolt System Account",
+          email: "doltuser@dolthub.com",
           date: "",
           message: "Initialize data repository",
           parents: [],
@@ -63,8 +63,8 @@ export const logTests = [
         },
         {
           commit_hash: "",
-          committer: "mysql-test-runner",
-          email: "mysql-test-runner@liquidata.co",
+          committer: "Dolt System Account",
+          email: "doltuser@dolthub.com",
           date: "",
           message: "Initialize data repository",
         },

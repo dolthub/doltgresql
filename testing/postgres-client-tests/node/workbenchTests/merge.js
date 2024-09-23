@@ -33,8 +33,12 @@ export const mergeTests = [
       oid: null,
       rows: [
         {
-          dolt_merge:
-            '{d1nrvfjfsnbl0hkritdc6ktc41bh2grl,0,0,"merge successful"}',
+          dolt_merge: [
+            "d1nrvfjfsnbl0hkritdc6ktc41bh2grl",
+            "0",
+            "0",
+            "merge successful",
+          ],
         },
       ],
       fields: [],
@@ -74,8 +78,8 @@ export const mergeTests = [
         },
         {
           commit_hash: "",
-          committer: "mysql-test-runner",
-          email: "mysql-test-runner@liquidata.co",
+          committer: "Dolt System Account",
+          email: "doltuser@dolthub.com",
           date: "",
           message: "Initialize data repository",
           parents: [],
