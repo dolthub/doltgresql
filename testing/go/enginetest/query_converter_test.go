@@ -38,9 +38,24 @@ func transformAST(query string) ([]string, bool) {
 		if stmt.Action == "create" {
 			return transformCreateTable(query, stmt)
 		}
+	case *sqlparser.Set:
+		return transformSet(stmt)
 	}
 
 	return nil, false
+}
+
+func transformSet(stmt *sqlparser.Set) ([]string, bool) {
+	var queries []string
+	for _, expr := range stmt.Exprs {
+		if expr.Scope == sqlparser.GlobalStr {
+			queries = append(queries, fmt.Sprintf("SET GLOBAL %s = %s", expr.Name, expr.Expr))
+		} else {
+			queries = append(queries, fmt.Sprintf("SET %s = %s", expr.Name, expr.Expr))
+		}
+	}
+
+	return queries, true
 }
 
 func transformCreateTable(query string, stmt *sqlparser.DDL) ([]string, bool) {
@@ -577,6 +592,17 @@ func TestConvertQuery(t *testing.T) {
 				"CREATE INDEX ON foo ( c ASC ) NULLS NOT DISTINCT ",
 				"CREATE INDEX ON foo ( b ASC ) NULLS NOT DISTINCT ",
 				"CREATE INDEX ON foo ( b ASC, c ASC ) NULLS NOT DISTINCT ",
+			},
+		},
+		{
+			input:    "SET @@autocommit = 1",
+			expected: []string{"SET autocommit = 1"},
+		},
+		{
+			input: "SET @@autocommit = 1, @@dolt_transaction_commit = off",
+			expected: []string{
+				"SET autocommit = 1",
+				"SET dolt_transaction_commit = 'off'",
 			},
 		},
 	}
