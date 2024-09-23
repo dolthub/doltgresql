@@ -12,6 +12,17 @@ export const databaseTests = [
     },
   },
   {
+    skip: true, // TODO: error: failed to clean; failed to remove tables; table not found: 'test_table'
+    q: `SELECT DOLT_CLEAN('test_table')`,
+    res: {
+      command: "SELECT",
+      rowCount: 1,
+      oid: null,
+      rows: [{ dolt_clean: ["0"] }],
+      fields: [],
+    },
+  },
+  {
     q: `SELECT datname FROM pg_database;`,
     res: {
       command: "SELECT",
@@ -68,8 +79,8 @@ export const databaseTests = [
   {
     q: `SELECT dolt_version();`,
     res: [{ "dolt_version()": "0.0.0" }],
-    matcher: (res) => {
-      return res.rows[0].dolt_version.length > 0;
+    matcher: (data) => {
+      return data.rows[0].dolt_version.length > 0;
     },
   },
 ];
