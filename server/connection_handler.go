@@ -145,7 +145,7 @@ func (h *ConnectionHandler) HandleConnection() {
 	}
 	h.doltgresHandler.NewConnection(h.mysqlConn)
 
-	if err := h.handleStartup(); err != nil {
+	if proceed, err := h.handleStartup(); err != nil || !proceed {
 		returnErr = err
 		return
 	}
@@ -170,28 +170,35 @@ func (h *ConnectionHandler) Conn() net.Conn {
 	return h.mysqlConn.Conn
 }
 
+// setConn sets a new underlying net.Conn for this connection.
 func (h *ConnectionHandler) setConn(conn net.Conn) {
 	h.mysqlConn.Conn = conn
 	h.backend = pgproto3.NewBackend(conn, conn)
 }
 
-func (h *ConnectionHandler) handleStartup() error {
+// handleStartup handles the entire startup routine, including SSL requests, authentication, etc. Returns false if the
+// connection has been terminated, or if we should not proceed with the message loop.
+func (h *ConnectionHandler) handleStartup() (bool, error) {
 	startupMessage, err := h.backend.ReceiveStartupMessage()
 	if err == io.EOF {
-		startupMessage = &pgproto3.StartupMessage{}
+		// Receiving EOF means that the connection has terminated, so we should just return
+		return false, nil
 	} else if err != nil {
-		return fmt.Errorf("error receiving startup message: %w", err)
+		return false, fmt.Errorf("error receiving startup message: %w", err)
 	}
 
 	switch sm := startupMessage.(type) {
 	case *pgproto3.StartupMessage:
-		if err = h.sendClientStartupMessages(sm); err != nil {
-			return err
+		if err = h.handleAuthentication(sm); err != nil {
+			return false, err
+		}
+		if err = h.sendClientStartupMessages(); err != nil {
+			return false, err
 		}
 		if err = h.chooseInitialDatabase(sm); err != nil {
-			return err
+			return false, err
 		}
-		return h.send(&pgproto3.ReadyForQuery{
+		return true, h.send(&pgproto3.ReadyForQuery{
 			TxStatus: byte(ReadyForQueryTransactionIndicator_Idle),
 		})
 	case *pgproto3.SSLRequest:
@@ -202,7 +209,7 @@ func (h *ConnectionHandler) handleStartup() error {
 		}
 		_, err = h.Conn().Write(performSSL)
 		if err != nil {
-			return fmt.Errorf("error sending SSL request: %w", err)
+			return false, fmt.Errorf("error sending SSL request: %w", err)
 		}
 		// If we have a certificate and the client has asked for SSL support, then we switch here.
 		// This involves swapping out our underlying net connection for a new one.
@@ -217,44 +224,16 @@ func (h *ConnectionHandler) handleStartup() error {
 		// we don't support GSSAPI
 		_, err = h.Conn().Write([]byte("N"))
 		if err != nil {
-			return fmt.Errorf("error sending response to GSS Enc Request: %w", err)
+			return false, fmt.Errorf("error sending response to GSS Enc Request: %w", err)
 		}
 		return h.handleStartup()
 	default:
-		return fmt.Errorf("terminating connection: unexpected start message: %#v", startupMessage)
+		return false, fmt.Errorf("terminating connection: unexpected start message: %#v", startupMessage)
 	}
 }
 
 // sendClientStartupMessages sends introductory messages to the client and returns any error
-// TODO: implement users and authentication
-func (h *ConnectionHandler) sendClientStartupMessages(startupMessage *pgproto3.StartupMessage) error {
-	if user, ok := startupMessage.Parameters["user"]; ok && len(user) > 0 {
-		var host string
-		if h.Conn().RemoteAddr().Network() == "unix" {
-			host = "localhost"
-		} else {
-			host, _, _ = net.SplitHostPort(h.Conn().RemoteAddr().String())
-			if len(host) == 0 {
-				host = "localhost"
-			}
-		}
-
-		h.mysqlConn.User = user
-		h.mysqlConn.UserData = sql.MysqlConnectionUser{
-			User: user,
-			Host: host,
-		}
-	} else {
-		h.mysqlConn.User = "doltgres"
-		h.mysqlConn.UserData = sql.MysqlConnectionUser{
-			User: "doltgres",
-			Host: "localhost",
-		}
-	}
-
-	if err := h.send(&pgproto3.AuthenticationOk{}); err != nil {
-		return err
-	}
+func (h *ConnectionHandler) sendClientStartupMessages() error {
 	if err := h.send(&pgproto3.ParameterStatus{
 		Name:  "server_version",
 		Value: "15.0",
@@ -269,7 +248,7 @@ func (h *ConnectionHandler) sendClientStartupMessages(startupMessage *pgproto3.S
 	}
 	return h.send(&pgproto3.BackendKeyData{
 		ProcessID: processID,
-		SecretKey: 0,
+		SecretKey: 0, // TODO: this should represent an ID that can uniquely identify this connection, so that CancelRequest will work
 	})
 }
 
