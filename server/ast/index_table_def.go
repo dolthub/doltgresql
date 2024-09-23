@@ -18,7 +18,6 @@ import (
 	"fmt"
 
 	vitess "github.com/dolthub/vitess/go/vt/sqlparser"
-	"github.com/sirupsen/logrus"
 
 	"github.com/dolthub/doltgresql/postgres/parser/sem/tree"
 )
@@ -38,49 +37,12 @@ func nodeIndexTableDef(node *tree.IndexTableDef) (*vitess.IndexDefinition, error
 	if node.IndexParams.Tablespace != "" {
 		return nil, fmt.Errorf("tablespace is not yet supported")
 	}
-	columns := make([]*vitess.IndexColumn, len(node.Columns))
-	for i, indexElem := range node.Columns {
-		if indexElem.Expr != nil {
-			return nil, fmt.Errorf("expression index attribute is not yet supported")
-		}
-		if indexElem.Collation != "" {
-			return nil, fmt.Errorf("index attribute collation is not yet supported")
-		}
-		if indexElem.OpClass != nil {
-			return nil, fmt.Errorf("index attribute operator class is not yet supported")
-		}
-		switch indexElem.Direction {
-		case tree.DefaultDirection:
-			// Defaults to ASC
-		case tree.Ascending:
-			// The only default supported in GMS for now
-		case tree.Descending:
-			logrus.Warn("descending indexes are not yet supported, ignoring sort order")
-		default:
-			return nil, fmt.Errorf("unknown index sorting direction encountered")
-		}
-		if indexElem.Direction != tree.Ascending {
-			logrus.Warn("descending indexes are not yet supported, ignoring sort order")
-		}
-		switch indexElem.NullsOrder {
-		case tree.DefaultNullsOrder:
-			//TODO: the default NULL order is reversed compared to MySQL, so the default is technically always wrong.
-			// To prevent choking on every index, we allow this to proceed (even with incorrect results) for now.
-		case tree.NullsFirst:
-			// The only form supported in GMS for now
-		case tree.NullsLast:
-			return nil, fmt.Errorf("NULLS LAST for indexes is not yet supported")
-		default:
-			return nil, fmt.Errorf("unknown NULL ordering for index")
-		}
-		if indexElem.ExcludeOp != nil {
-			return nil, fmt.Errorf("index attribute exclude operator is not yet supported")
-		}
-		columns[i] = &vitess.IndexColumn{
-			Column: vitess.NewColIdent(string(indexElem.Column)),
-			Order:  vitess.AscScr,
-		}
+
+	columns, err := nodeIndexElemList(node.Columns)
+	if err != nil {
+		return nil, err
 	}
+
 	return &vitess.IndexDefinition{
 		Info: &vitess.IndexInfo{
 			Type: "",

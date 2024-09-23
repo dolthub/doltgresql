@@ -18,6 +18,7 @@ import (
 	"fmt"
 
 	vitess "github.com/dolthub/vitess/go/vt/sqlparser"
+	"github.com/sirupsen/logrus"
 
 	"github.com/dolthub/doltgresql/postgres/parser/sem/tree"
 )
@@ -25,38 +26,46 @@ import (
 // nodeIndexElemList converts a tree.IndexElemList to a slice of vitess.IndexColumn.
 func nodeIndexElemList(node tree.IndexElemList) ([]*vitess.IndexColumn, error) {
 	vitessIndexColumns := make([]*vitess.IndexColumn, 0, len(node))
-	for i := range node {
-		inputColumn := node[i]
-		if inputColumn.Collation != "" {
-			return nil, fmt.Errorf("collation is not yet supported " +
-				"for index column constraint definitions")
-		}
-
+	for _, inputColumn := range node {
 		if inputColumn.Expr != nil {
-			return nil, fmt.Errorf("expressions are not yet supported " +
-				"for index column constraint definitions")
+			return nil, fmt.Errorf("expression index attribute is not yet supported")
 		}
-
-		if inputColumn.ExcludeOp != nil {
-			return nil, fmt.Errorf("EXCLUDE is not yet supported")
+		if inputColumn.Collation != "" {
+			return nil, fmt.Errorf("index attribute collation is not yet supported")
 		}
-
-		if inputColumn.NullsOrder == tree.NullsLast {
-			return nil, fmt.Errorf("NULLS LAST is not yet supported")
-		}
-
 		if inputColumn.OpClass != nil {
-			return nil, fmt.Errorf("operator classes are not yet supported")
+			return nil, fmt.Errorf("index attribute operator class is not yet supported")
+		}
+		if inputColumn.ExcludeOp != nil {
+			return nil, fmt.Errorf("index attribute exclude operator is not yet supported")
 		}
 
-		order := vitess.AscScr
-		if inputColumn.Direction == tree.Descending {
-			order = vitess.DescScr
+		switch inputColumn.Direction {
+		case tree.DefaultDirection:
+			// Defaults to ASC
+		case tree.Ascending:
+			// The only default supported in GMS for now
+		case tree.Descending:
+			logrus.Warn("descending indexes are not yet supported, ignoring sort order")
+		default:
+			return nil, fmt.Errorf("unknown index sorting direction encountered")
+		}
+
+		switch inputColumn.NullsOrder {
+		case tree.DefaultNullsOrder:
+			// TODO: the default NULL order is reversed compared to MySQL, so the default is technically always wrong.
+			//       To prevent choking on every index, we allow this to proceed (even with incorrect results) for now.
+		case tree.NullsFirst:
+			// The only form supported in GMS for now
+		case tree.NullsLast:
+			return nil, fmt.Errorf("NULLS LAST for indexes is not yet supported")
+		default:
+			return nil, fmt.Errorf("unknown NULL ordering for index")
 		}
 
 		vitessIndexColumns = append(vitessIndexColumns, &vitess.IndexColumn{
-			Column: vitess.NewColIdent(inputColumn.Column.String()),
-			Order:  order,
+			Column: vitess.NewColIdent(string(inputColumn.Column)),
+			Order:  vitess.AscScr,
 		})
 	}
 

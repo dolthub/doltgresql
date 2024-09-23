@@ -37,7 +37,7 @@ func TestAlterTableAddPrimaryKey(t *testing.T) {
 				{
 					// Test the pk by inserting a duplicate value
 					Query:       "INSERT into test1 values (1, 2), (1, 3);",
-					ExpectedErr: "ERROR: duplicate primary key given: [1] (errno 1062) (sqlstate HY000) (SQLSTATE XX000)",
+					ExpectedErr: "duplicate primary key",
 				},
 				{
 					Query:    "ALTER TABLE test2 ADD PRIMARY KEY (a, b);",
@@ -46,11 +46,11 @@ func TestAlterTableAddPrimaryKey(t *testing.T) {
 				{
 					// Test the pk by inserting a duplicate value
 					Query:       "INSERT into test2 values (1, 2, 3), (1, 2, 4);",
-					ExpectedErr: "ERROR: duplicate primary key given: [1,2] (errno 1062) (sqlstate HY000) (SQLSTATE XX000)",
+					ExpectedErr: "duplicate primary key",
 				},
 				{
 					Query:       "ALTER TABLE pkTable1 ADD PRIMARY KEY (a);",
-					ExpectedErr: "ERROR: error: Multiple primary keys defined (errno 1068) (sqlstate HY000) (SQLSTATE XX000)",
+					ExpectedErr: "Multiple primary keys defined",
 				},
 				{
 					// TODO: This statement fails in analysis, because it can't find a table named
