@@ -69,8 +69,7 @@ func TestBasicIndexing(t *testing.T) {
 			},
 		},
 		{
-			Name:  "Unique Covering Index",
-			Focus: true,
+			Name: "Unique Covering Index",
 			SetUpScript: []string{
 				"CREATE TABLE test (pk BIGINT PRIMARY KEY, v1 BIGINT);",
 				"INSERT INTO test VALUES (13, 3), (11, 1), (15, 5), (12, 2), (14, 4);",
@@ -87,7 +86,7 @@ func TestBasicIndexing(t *testing.T) {
 				},
 				{
 					Query:       "insert into test values (16, 3);",
-					ExpectedErr: "Duplicate entry '3' for key 'v1_idx'",
+					ExpectedErr: "duplicate unique key given",
 				},
 			},
 		},
@@ -387,7 +386,7 @@ func TestBasicIndexing(t *testing.T) {
 				},
 				{
 					Query:       "insert into test values (16, 3, 23);",
-					ExpectedErr: "Duplicate entry '3' for key 'v1_idx'",
+					ExpectedErr: "duplicate unique key given",
 				},
 			},
 		},
@@ -490,10 +489,11 @@ func TestBasicIndexing(t *testing.T) {
 				},
 				{
 					Query:       "insert into test values (16, 3, 23, 33);",
-					ExpectedErr: "Duplicate entry '3-23' for key 'v1_idx'",
+					ExpectedErr: "duplicate unique key given",
 				},
 			},
-		}, {
+		},
+		{
 			Name: "Keyless Index",
 			SetUpScript: []string{
 				"CREATE TABLE test (v0 BIGINT, v1 BIGINT, v2 BIGINT);",
@@ -540,13 +540,30 @@ func TestBasicIndexing(t *testing.T) {
 			},
 		},
 		{
-			Name: "keyless unique index",
+			Name: "Unique Keyless Index",
 			SetUpScript: []string{
-				"CREATE TABLE aTable (aColumn INT NULL, bColumn INT NULL, primary key (aColumn));",
+				"CREATE TABLE test (v0 BIGINT, v1 BIGINT, v2 BIGINT);",
+				"INSERT INTO test VALUES (13, 3, 23), (11, 1, 21), (15, 5, 25), (12, 2, 22), (14, 4, 24);",
+				"CREATE UNIQUE INDEX v1_idx ON test(v1);",
 			},
 			Assertions: []ScriptTestAssertion{
 				{
-					Query: "CREATE UNIQUE INDEX aIndex ON aTable (bColumn);",
+					Query: "SELECT * FROM test WHERE v1 = 2 ORDER BY v0;",
+					Expected: []sql.Row{
+						{12, 2, 22},
+					},
+				},
+				{
+					Query: "SELECT * FROM test WHERE v1 > 2 ORDER BY v0;",
+					Expected: []sql.Row{
+						{13, 3, 23},
+						{14, 4, 24},
+						{15, 5, 25},
+					},
+				},
+				{
+					Query:       "INSERT INTO test VALUES (16, 3, 23);",
+					ExpectedErr: "duplicate unique key given",
 				},
 			},
 		},
@@ -649,7 +666,7 @@ func TestBasicIndexing(t *testing.T) {
 				},
 				{
 					Query:       "insert into test values (16, 3, 23, 33);",
-					ExpectedErr: "Duplicate entry '3-23' for key 'v1_idx'",
+					ExpectedErr: "duplicate unique key given",
 				},
 			},
 		},
