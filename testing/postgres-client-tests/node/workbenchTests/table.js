@@ -8,6 +8,36 @@ import {
   infoSchemaKeyColumnUsageFields,
 } from "../fields.js";
 
+const testInfoFields = [
+  {
+    name: "id",
+    tableID: 0,
+    columnID: 0,
+    dataTypeID: 23,
+    dataTypeSize: 4,
+    dataTypeModifier: -1,
+    format: "text",
+  },
+  {
+    name: "info",
+    tableID: 0,
+    columnID: 0,
+    dataTypeID: 1043,
+    dataTypeSize: 1020,
+    dataTypeModifier: -1,
+    format: "text",
+  },
+  {
+    name: "test_pk",
+    tableID: 0,
+    columnID: 0,
+    dataTypeID: 23,
+    dataTypeSize: 4,
+    dataTypeModifier: -1,
+    format: "text",
+  },
+];
+
 export const tableTests = [
   {
     q: "INSERT INTO test VALUES (0, 0), (1, 1), (2,2)",
@@ -232,35 +262,7 @@ export const tableTests = [
       rowCount: 1,
       oid: null,
       rows: [{ id: 1, info: "info about test pk 0", test_pk: 0 }],
-      fields: [
-        {
-          name: "id",
-          tableID: 0,
-          columnID: 0,
-          dataTypeID: 23,
-          dataTypeSize: 4,
-          dataTypeModifier: -1,
-          format: "text",
-        },
-        {
-          name: "info",
-          tableID: 0,
-          columnID: 0,
-          dataTypeID: 1043,
-          dataTypeSize: 1020,
-          dataTypeModifier: -1,
-          format: "text",
-        },
-        {
-          name: "test_pk",
-          tableID: 0,
-          columnID: 0,
-          dataTypeID: 23,
-          dataTypeSize: 4,
-          dataTypeModifier: -1,
-          format: "text",
-        },
-      ],
+      fields: testInfoFields,
     },
   },
   {
@@ -274,7 +276,96 @@ export const tableTests = [
     },
   },
 
-  // TODO: File upload tests
+  // Copy from tests
+  {
+    skip: true, // TODO: dolt_commit above did not actually commit
+    q: `SELECT * FROM dolt_status`,
+    res: {
+      command: "SELECT",
+      rowCount: 0,
+      oid: null,
+      rows: [],
+      fields: [],
+    },
+  },
+  {
+    q: `COPY "test_info" FROM STDIN WITH (FORMAT csv, HEADER TRUE);`,
+    file: "update_test_info.csv",
+    res: { command: "COPY", rowCount: 3, oid: null, rows: [], fields: [] },
+  },
+  {
+    skip: true, // TODO: COPY did not add rows
+    q: "SELECT * FROM test_info",
+    res: {
+      command: "SELECT",
+      rowCount: 4,
+      oid: null,
+      rows: [
+        { id: 1, info: "info about test pk 0", test_pk: 0 },
+        { id: 4, info: "info about test pk 4", test_pk: 1 },
+        { id: 5, info: "info about test pk 5", test_pk: 0 },
+        { id: 6, info: "info about test pk 6", test_pk: 0 },
+      ],
+      fields: testInfoFields,
+    },
+  },
+  {
+    skip: true, // TODO: error: table not found: test_info
+    q: "SELECT * FROM dolt_diff_stat('HEAD', 'WORKING')",
+    res: {
+      command: "SELECT",
+      rowCount: 1,
+      oid: null,
+      rows: [
+        {
+          table_name: "test_info",
+          rows_unmodified: 1,
+          rows_added: 3,
+          rows_deleted: 0,
+          rows_modified: 0,
+          cells_added: 9,
+          cells_deleted: 0,
+          cells_modified: 0,
+          old_row_count: 1,
+          new_row_count: 4,
+          old_cell_count: 3,
+          new_cell_count: 12,
+        },
+      ],
+      fields: [],
+    },
+  },
+  {
+    skip: true, // TODO: DELIMITER not yet supported
+    q: `COPY "test_info" FROM STDIN WITH (FORMAT csv, HEADER TRUE, DELIMITER '|');`,
+    file: "replace_test_info.psv",
+    res: { command: "COPY", rowCount: 6, oid: null, rows: [], fields: [] },
+  },
+  {
+    skip: true, // TODO: error: table not found: test_info
+    q: "SELECT * FROM dolt_diff_stat('HEAD', 'WORKING')",
+    res: {
+      command: "SELECT",
+      rowCount: 1,
+      oid: null,
+      rows: [
+        {
+          table_name: "test_info",
+          rows_unmodified: 0,
+          rows_added: 3,
+          rows_deleted: 0,
+          rows_modified: 1,
+          cells_added: 9,
+          cells_deleted: 0,
+          cells_modified: 1,
+          old_row_count: 1,
+          new_row_count: 4,
+          old_cell_count: 3,
+          new_cell_count: 12,
+        },
+      ],
+    },
+  },
 
   // Add and revert load data changes
   {
