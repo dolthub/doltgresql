@@ -68,16 +68,6 @@ export const branchTests = [
     },
   },
   {
-    q: `SELECT * FROM dolt_status`,
-    res: {
-      command: "SELECT",
-      rowCount: 0,
-      oid: null,
-      rows: [],
-      fields: doltStatusFields,
-    },
-  },
-  {
     q: `SELECT * FROM dolt_branches LIMIT 200`,
     res: {
       rows: [
@@ -114,16 +104,6 @@ export const branchTests = [
       oid: null,
       rows: [{ dolt_checkout: ["0", "Switched to branch 'branch-to-delete'"] }],
       fields: doltCheckoutFields,
-    },
-  },
-  {
-    q: `SELECT * FROM dolt_status`,
-    res: {
-      command: "SELECT",
-      rowCount: 0,
-      oid: null,
-      rows: [],
-      fields: doltStatusFields,
     },
   },
   {

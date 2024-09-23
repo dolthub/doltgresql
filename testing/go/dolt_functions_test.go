@@ -90,5 +90,61 @@ func TestDoltFunctions(t *testing.T) {
 				},
 			},
 		},
+		{
+			Name: "smoke test select dolt_reset",
+			SetUpScript: []string{
+				"CREATE TABLE t1 (pk int primary key);",
+				"INSERT INTO t1 VALUES (1);",
+			},
+			Assertions: []ScriptTestAssertion{
+				{
+					Query: "SELECT * FROM dolt_status;",
+					Expected: []sql.Row{
+						{"t1", 0, "new table"},
+					},
+				},
+				{
+					Query:    "SELECT DOLT_ADD('t1');",
+					Expected: []sql.Row{{"{0}"}},
+				},
+				{
+					Query: "SELECT * FROM dolt_status;",
+					Expected: []sql.Row{
+						{"t1", 1, "new table"},
+					},
+				},
+				{
+					Query:    "SELECT DOLT_RESET('t1');",
+					Expected: []sql.Row{{"{0}"}},
+				},
+				{
+					Query:    "SELECT * FROM dolt_status;",
+					Expected: []sql.Row{},
+				},
+			},
+		},
+		{
+			Name: "smoke test select dolt_clean",
+			SetUpScript: []string{
+				"CREATE TABLE t1 (pk int primary key);",
+				"INSERT INTO t1 VALUES (1);",
+			},
+			Assertions: []ScriptTestAssertion{
+				{
+					Query: "SELECT * FROM dolt_status;",
+					Expected: []sql.Row{
+						{"t1", 0, "new table"},
+					},
+				},
+				{
+					Query:    "SELECT DOLT_CLEAN('t1');",
+					Expected: []sql.Row{{"{0}"}},
+				},
+				{
+					Query:    "SELECT * FROM dolt_status;",
+					Expected: []sql.Row{},
+				},
+			},
+		},
 	})
 }

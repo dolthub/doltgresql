@@ -309,7 +309,7 @@ export const tableTests = [
     },
   },
   {
-    q: "SELECT DOLT_RESET('test_info');",
+    q: "SELECT DOLT_RESET('test_info');", // TODO: error: branch not found: test_info
     res: {
       command: "SELECT",
       rowCount: 1,

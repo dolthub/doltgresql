@@ -1,5 +1,6 @@
 import { logsMatcher } from "./matchers.js";
 import { dbName } from "../helpers.js";
+import { doltStatusFields } from "../fields.js";
 
 export const logTests = [
   {
