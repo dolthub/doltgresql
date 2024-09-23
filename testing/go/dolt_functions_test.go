@@ -118,8 +118,10 @@ func TestDoltFunctions(t *testing.T) {
 					Expected: []sql.Row{{"{0}"}},
 				},
 				{
-					Query:    "SELECT * FROM dolt_status;",
-					Expected: []sql.Row{},
+					Query: "SELECT * FROM dolt_status;",
+					Expected: []sql.Row{
+						{"t1", 0, "new table"},
+					},
 				},
 			},
 		},
