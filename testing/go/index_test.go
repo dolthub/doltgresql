@@ -69,6 +69,29 @@ func TestBasicIndexing(t *testing.T) {
 			},
 		},
 		{
+			Name:  "Unique Covering Index",
+			Focus: true,
+			SetUpScript: []string{
+				"CREATE TABLE test (pk BIGINT PRIMARY KEY, v1 BIGINT);",
+				"INSERT INTO test VALUES (13, 3), (11, 1), (15, 5), (12, 2), (14, 4);",
+				"CREATE unique INDEX v1_idx ON test(v1);",
+			},
+			Assertions: []ScriptTestAssertion{
+				{
+					Query: "SELECT * FROM test WHERE v1 > 2 ORDER BY pk;",
+					Expected: []sql.Row{
+						{13, 3},
+						{14, 4},
+						{15, 5},
+					},
+				},
+				{
+					Query:       "insert into test values (16, 3);",
+					ExpectedErr: "Duplicate entry '3' for key 'v1_idx'",
+				},
+			},
+		},
+		{
 			Name: "Covering Composite Index",
 			SetUpScript: []string{
 				"CREATE TABLE test (pk BIGINT PRIMARY KEY, v1 BIGINT, v2 BIGINT);",
@@ -347,6 +370,28 @@ func TestBasicIndexing(t *testing.T) {
 			},
 		},
 		{
+			Name: "Unique Non-Covering Index",
+			SetUpScript: []string{
+				"CREATE TABLE test (pk BIGINT PRIMARY KEY, v1 BIGINT, v2 BIGINT);",
+				"INSERT INTO test VALUES (13, 3, 23), (11, 1, 21), (15, 5, 25), (12, 2, 22), (14, 4, 24);",
+				"CREATE UNIQUE INDEX v1_idx ON test(v1);",
+			},
+			Assertions: []ScriptTestAssertion{
+				{
+					Query: "SELECT * FROM test WHERE v1 > 2 ORDER BY pk;",
+					Expected: []sql.Row{
+						{13, 3, 23},
+						{14, 4, 24},
+						{15, 5, 25},
+					},
+				},
+				{
+					Query:       "insert into test values (16, 3, 23);",
+					ExpectedErr: "Duplicate entry '3' for key 'v1_idx'",
+				},
+			},
+		},
+		{
 			Name: "Non-Covering Composite Index",
 			SetUpScript: []string{
 				"CREATE TABLE test (pk BIGINT PRIMARY KEY, v1 BIGINT, v2 BIGINT, v3 BIGINT);",
@@ -423,6 +468,32 @@ func TestBasicIndexing(t *testing.T) {
 			},
 		},
 		{
+			Name: "Unique Non-Covering Composite Index",
+			SetUpScript: []string{
+				"CREATE TABLE test (pk BIGINT PRIMARY KEY, v1 BIGINT, v2 BIGINT, v3 BIGINT);",
+				"INSERT INTO test VALUES (13, 3, 23, 33), (11, 1, 21, 31), (15, 5, 25, 35), (12, 2, 22, 32), (14, 4, 24, 34);",
+				"CREATE UNIQUE INDEX v1_idx ON test(v1, v2);",
+			},
+			Assertions: []ScriptTestAssertion{
+				{
+					Query: "SELECT * FROM test WHERE v1 < 3 AND v2 = 21 ORDER BY pk;",
+					Expected: []sql.Row{
+						{11, 1, 21, 31},
+					},
+				},
+				{
+					Query: "SELECT * FROM test WHERE v1 <= 3 AND v2 < 23 ORDER BY pk;",
+					Expected: []sql.Row{
+						{11, 1, 21, 31},
+						{12, 2, 22, 32},
+					},
+				},
+				{
+					Query:       "insert into test values (16, 3, 23, 33);",
+					ExpectedErr: "Duplicate entry '3-23' for key 'v1_idx'",
+				},
+			},
+		}, {
 			Name: "Keyless Index",
 			SetUpScript: []string{
 				"CREATE TABLE test (v0 BIGINT, v1 BIGINT, v2 BIGINT);",
@@ -465,6 +536,17 @@ func TestBasicIndexing(t *testing.T) {
 						{12, 2, 22},
 						{13, 3, 23},
 					},
+				},
+			},
+		},
+		{
+			Name: "keyless unique index",
+			SetUpScript: []string{
+				"CREATE TABLE aTable (aColumn INT NULL, bColumn INT NULL, primary key (aColumn));",
+			},
+			Assertions: []ScriptTestAssertion{
+				{
+					Query: "CREATE UNIQUE INDEX aIndex ON aTable (bColumn);",
 				},
 			},
 		},
@@ -541,6 +623,33 @@ func TestBasicIndexing(t *testing.T) {
 						{11, 1, 21, 31},
 						{12, 2, 22, 32},
 					},
+				},
+			},
+		},
+		{
+			Name: "Unique Keyless Composite Index",
+			SetUpScript: []string{
+				"CREATE TABLE test (v0 BIGINT, v1 BIGINT, v2 BIGINT, v3 BIGINT);",
+				"INSERT INTO test VALUES (13, 3, 23, 33), (11, 1, 21, 31), (15, 5, 25, 35), (12, 2, 22, 32), (14, 4, 24, 34);",
+				"CREATE UNIQUE INDEX v1_idx ON test(v1, v2);",
+			},
+			Assertions: []ScriptTestAssertion{
+				{
+					Query: "SELECT * FROM test WHERE v1 = 2 AND v2 < 23 ORDER BY v0;",
+					Expected: []sql.Row{
+						{12, 2, 22, 32},
+					},
+				},
+				{
+					Query: "SELECT * FROM test WHERE v1 <= 3 AND v2 < 23 ORDER BY v0;",
+					Expected: []sql.Row{
+						{11, 1, 21, 31},
+						{12, 2, 22, 32},
+					},
+				},
+				{
+					Query:       "insert into test values (16, 3, 23, 33);",
+					ExpectedErr: "Duplicate entry '3-23' for key 'v1_idx'",
 				},
 			},
 		},
