@@ -490,8 +490,34 @@ func nodeExpr(node tree.Expr) (vitess.Expr, error) {
 	case *tree.IfErrExpr:
 		return nil, fmt.Errorf("IFERROR is not yet supported")
 	case *tree.IfExpr:
-		// TODO: probably should be the IF function
-		return nil, fmt.Errorf("IF is not yet supported")
+		cond, err := nodeExpr(node.Cond)
+		if err != nil {
+			return nil, err
+		}
+		trueVal, err := nodeExpr(node.True)
+		if err != nil {
+			return nil, err
+		}
+		falseVal, err := nodeExpr(node.Else)
+		if err != nil {
+			return nil, err
+		}
+
+		// TODO: this could be a postgres func, but postgres doesn't have an IF function, this is an extension from cockroach
+		return &vitess.FuncExpr{
+			Name: vitess.NewColIdent("IF"),
+			Exprs: vitess.SelectExprs{
+				&vitess.AliasedExpr{
+					Expr: cond,
+				},
+				&vitess.AliasedExpr{
+					Expr: trueVal,
+				},
+				&vitess.AliasedExpr{
+					Expr: falseVal,
+				},
+			},
+		}, nil
 	case *tree.IndexedVar:
 		// TODO: figure out if I can delete this
 		return nil, fmt.Errorf("this should probably be deleted (internal error, IndexedVar)")
