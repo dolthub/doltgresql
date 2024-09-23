@@ -457,10 +457,12 @@ func convertExpectedResultsForDoltProcedures(t *testing.T, q string, widenedExpe
 				}
 				switch v := val.(type) {
 				case string:
-					// Quoting here is wrong, but we need to match the current output
-					sb.WriteString("\"")
-					sb.WriteString(v)
-					sb.WriteString("\"")
+					// Quoting here is wrong in several ways, but we need to match the current output
+					if len(v) > 0 {
+						sb.WriteString("\"")
+						sb.WriteString(v)
+						sb.WriteString("\"")
+					}
 				case int64, uint64:
 					sb.WriteString(fmt.Sprintf("%d", v))
 				case float64:
