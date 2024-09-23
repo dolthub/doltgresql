@@ -92,6 +92,7 @@ export function mergeBaseMatcher(data) {
 
 export function mergeMatcher(data, exp) {
   if (data.rows.length !== 1) {
+    console.log("Rows length not 1", data.rows.length);
     return false;
   }
 

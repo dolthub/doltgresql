@@ -23,6 +23,20 @@ export function getConfig() {
   };
 }
 
+export function assertEqualRows(test, data) {
+  const expected = test.res;
+  const resultStr = JSON.stringify(data);
+  const result = JSON.parse(resultStr);
+  if (!assertQueryResult(test.q, expected, data, test.matcher)) {
+    console.log("Query:", test.q);
+    console.log("Results:", result);
+    console.log("Expected:", expected);
+    throw new Error("Query failed");
+  } else {
+    console.log("Query succeeded:", test.q);
+  }
+}
+
 export function assertQueryResult(q, expected, data, matcher) {
   if (matcher) {
     return matcher(data, expected);

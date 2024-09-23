@@ -33,12 +33,7 @@ export const mergeTests = [
       oid: null,
       rows: [
         {
-          dolt_merge: [
-            "d1nrvfjfsnbl0hkritdc6ktc41bh2grl",
-            "0",
-            "0",
-            "merge successful",
-          ],
+          dolt_merge: ["", "0", "0", "merge successful"],
         },
       ],
       fields: [],

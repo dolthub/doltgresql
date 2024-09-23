@@ -1,20 +1,21 @@
 import { branchTests } from "./branches.js";
 import { databaseTests } from "./databases.js";
 import { logTests } from "./logs.js";
-import { assertQueryResult } from "../helpers.js";
+import { assertEqualRows } from "../helpers.js";
 import { mergeTests } from "./merge.js";
 import { tableTests } from "./table.js";
 
 export default async function runWorkbenchTests(database) {
-  await runTests(database, databaseTests);
-  await runTests(database, branchTests);
-  await runTests(database, logTests);
-  await runTests(database, mergeTests);
-  await runTests(database, tableTests);
+  await runTests(database, databaseTests, "database");
+  await runTests(database, branchTests, "branches");
+  await runTests(database, logTests, "logs");
+  await runTests(database, mergeTests, "merge");
+  await runTests(database, tableTests, "tables");
   // TODO: Move over the rest of the Dolt workbench tests
 }
 
-async function runTests(database, tests) {
+async function runTests(database, tests, name) {
+  console.log("Running tests for", name);
   await Promise.all(
     tests.map((test) => {
       if (test.skip) return;
@@ -39,16 +40,4 @@ async function runTests(database, tests) {
         });
     })
   );
-}
-
-function assertEqualRows(test, data) {
-  const expected = test.res;
-  const resultStr = JSON.stringify(data);
-  const result = JSON.parse(resultStr);
-  if (!assertQueryResult(test.q, expected, data, test.matcher)) {
-    console.log("Query:", test.q);
-    console.log("Results:", result);
-    console.log("Expected:", expected);
-    throw new Error("Query failed");
-  }
 }
