@@ -25,6 +25,8 @@ import (
 	"github.com/dolthub/go-mysql-server/enginetest/queries"
 	"github.com/dolthub/go-mysql-server/enginetest/scriptgen/setup"
 	"github.com/dolthub/go-mysql-server/sql"
+	"github.com/dolthub/go-mysql-server/sql/plan"
+	"github.com/dolthub/go-mysql-server/sql/types"
 	"github.com/stretchr/testify/require"
 
 	"github.com/dolthub/dolt/go/libraries/doltcore/dtestutils"
@@ -142,35 +144,72 @@ func (dcv *doltCommitValidator) CommitHash(val interface{}) (bool, string) {
 	return true, matches[1]
 }
 
+var doltCommit = &doltCommitValidator{}
+
 // Convenience test for debugging a single query. Unskip and set to the desired query.
 func TestSingleScript(t *testing.T) {
-	t.Skip()
+	// t.Skip()
 
 	var scripts = []queries.ScriptTest{
 		{
-			Name: "dolt-tag: SQL create tags",
+			// https://github.com/dolthub/dolt/issues/7275
+			Name: "keyless table merge with constraint violations",
 			SetUpScript: []string{
-				"CREATE TABLE test(pk int primary key);",
-				"CALL DOLT_ADD('.')",
-				"INSERT INTO test VALUES (0),(1),(2);",
-				"CALL DOLT_COMMIT('-am','created table test')",
+				"CREATE TABLE aTable (aColumn INT NULL, bColumn INT NULL, UNIQUE INDEX aColumn_UNIQUE (aColumn ASC) VISIBLE, UNIQUE INDEX bColumn_UNIQUE (bColumn ASC) VISIBLE);",
+				"CALL dolt_commit('-Am', 'add tables');",
+				"CALL dolt_checkout('-b', 'side');",
+				"INSERT INTO aTable VALUES (1,2);",
+				"CALL dolt_commit('-am', 'add side data');",
+
+				"CALL dolt_checkout('main');",
+				"INSERT INTO aTable VALUES (1,3);",
+				"CALL dolt_commit('-am', 'add main data');",
+				"CALL dolt_checkout('side');",
+				"SET @@dolt_force_transaction_commit=1;",
 			},
 			Assertions: []queries.ScriptTestAssertion{
 				{
-					Query:    "CALL DOLT_TAG('v1', 'HEAD')",
-					Expected: []sql.Row{{0}},
+					Query:    "SELECT * FROM aTable;",
+					Expected: []sql.Row{{1, 2}},
 				},
 				{
-					Query:    "SELECT tag_name, IF(CHAR_LENGTH(tag_hash) < 0, NULL, 'not null'), tagger, email, IF(date IS NULL, NULL, 'not null'), message from dolt_tags",
-					Expected: []sql.Row{{"v1", "not null", "billy bob", "bigbillieb@fake.horse", "not null", ""}},
+					Query:    "call dolt_merge('main');",
+					Expected: []sql.Row{{"", 0, 1, "conflicts found"}},
 				},
 				{
-					Query:    "CALL DOLT_TAG('v2', '-m', 'create tag v2')",
-					Expected: []sql.Row{{0}},
+					Query:    "SELECT * FROM aTable;",
+					Expected: []sql.Row{{1, 2}, {1, 3}},
 				},
 				{
-					Query:    "SELECT tag_name, message from dolt_tags",
-					Expected: []sql.Row{{"v1", ""}, {"v2", "create tag v2"}},
+					Query:    "SELECT * FROM dolt_constraint_violations;",
+					Expected: []sql.Row{{"aTable", uint64(2)}},
+				},
+				{
+					Query: "SELECT from_root_ish, violation_type, hex(dolt_row_hash), aColumn, bColumn, CAST(violation_info as CHAR) FROM dolt_constraint_violations_aTable;",
+					Expected: []sql.Row{
+						{doltCommit, "unique index", "5A1ED8633E1842FCA8EE529E4F1C5944", 1, 2, `{"Name": "aColumn_UNIQUE", "Columns": ["aColumn"]}`},
+						{doltCommit, "unique index", "A922BFBF4E5489501A3808BC5CD702C0", 1, 3, `{"Name": "aColumn_UNIQUE", "Columns": ["aColumn"]}`},
+					},
+				},
+				{
+					// Fix the data
+					Query:    "UPDATE aTable SET aColumn = 2 WHERE bColumn = 2;",
+					Expected: []sql.Row{{types.OkResult{RowsAffected: uint64(1), Info: plan.UpdateInfo{Matched: 1, Updated: 1}}}},
+				},
+				{
+					// clear out the violations
+					Query:    "DELETE FROM dolt_constraint_violations_aTable;",
+					Expected: []sql.Row{{types.NewOkResult(2)}},
+				},
+				{
+					// Commit the merge after resolving the constraint violations
+					Query:    "call dolt_commit('-am', 'merging in main and resolving unique constraint violations');",
+					Expected: []sql.Row{{doltCommit}},
+				},
+				{
+					// Merging again is a no-op
+					Query:    "call dolt_merge('main');",
+					Expected: []sql.Row{{"", 0, 0, "cannot fast forward from a to b. a is ahead of b already"}},
 				},
 			},
 		},
@@ -1042,7 +1081,7 @@ func TestViewsWithAsOfPrepared(t *testing.T) {
 }
 
 func TestDoltMerge(t *testing.T) {
-	t.Skip()
+	// t.Skip()
 	h := newDoltgresServerHarness(t)
 	denginetest.RunDoltMergeTests(t, h)
 }
