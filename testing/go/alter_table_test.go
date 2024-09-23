@@ -28,6 +28,8 @@ func TestAlterTableAddPrimaryKey(t *testing.T) {
 				"CREATE TABLE test1 (a INT, b INT);",
 				"CREATE TABLE test2 (a INT, b INT, c INT);",
 				"CREATE TABLE pkTable1 (a INT PRIMARY KEY);",
+				"CREATE TABLE duplicateRows (a INT, b INT);",
+				"INSERT INTO duplicateRows VALUES (1, 2), (1, 2);",
 			},
 			Assertions: []ScriptTestAssertion{
 				{
@@ -51,6 +53,10 @@ func TestAlterTableAddPrimaryKey(t *testing.T) {
 				{
 					Query:       "ALTER TABLE pkTable1 ADD PRIMARY KEY (a);",
 					ExpectedErr: "Multiple primary keys defined",
+				},
+				{
+					Query:       "ALTER TABLE duplicateRows ADD PRIMARY KEY (a);",
+					ExpectedErr: "duplicate primary key",
 				},
 				{
 					// TODO: This statement fails in analysis, because it can't find a table named
