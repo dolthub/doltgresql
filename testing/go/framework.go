@@ -422,6 +422,9 @@ func NormalizeValToString(dt types.DoltgresType, v any) any {
 		// These values need to be normalized into the appropriate types
 		// before being converted to string type using the Doltgres
 		// IoOutput method.
+		if v == nil {
+			return nil
+		}
 		tVal, err := dt.IoOutput(nil, NormalizeVal(dt, v))
 		if err != nil {
 			panic(err)
