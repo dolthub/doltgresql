@@ -440,6 +440,14 @@ func widenExpectedRows(t *testing.T, expected []sql.Row, sch sql.Schema, actual 
 			require.NoError(t, err)
 			expected[i][j] = convertedExpected
 		}
+
+		// OK results from GMS manifest as a nil schema in postgres, only accessible via command tags
+		if isNilOrEmptySchema && len(expected[i]) == 1 {
+			if okResult, isOkResult := expected[i][0].(gmstypes.OkResult); isOkResult {
+				// we can't verify the custom text fields of things like update results, so we strip out that info
+				expected[i][0] = gmstypes.NewOkResult(int(okResult.RowsAffected))
+			}
+		}
 	}
 }
 
