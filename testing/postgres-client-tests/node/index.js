@@ -1,11 +1,12 @@
 import { Database } from "./database.js";
-import { assertQueryResult, getConfig } from "./helpers.js";
+import { assertEqualRows, getConfig } from "./helpers.js";
 import {
   doltAddFields,
   doltCheckoutFields,
   doltCommitFields,
   countFields,
 } from "./fields.js";
+import { mergeMatcher } from "./workbenchTests/matchers.js";
 
 const tests = [
   {
@@ -122,7 +123,7 @@ const tests = [
       command: "SELECT",
       rowCount: 1,
       oid: null,
-      rows: [{ dolt_checkout: ["0","Switched to branch 'mybranch'"] }],
+      rows: [{ dolt_checkout: ["0", "Switched to branch 'mybranch'"] }],
       fields: doltCheckoutFields,
     },
   },
@@ -143,17 +144,7 @@ const tests = [
       rowCount: 1,
       oid: null,
       rows: [{ dolt_commit: [""] }],
-      fields: [
-        {
-          name: "dolt_commit",
-          tableID: 0,
-          columnID: 0,
-          dataTypeID: 1009,
-          dataTypeSize: -1,
-          dataTypeModifier: -1,
-          format: "text",
-        },
-      ],
+      fields: doltCommitFields,
     },
   },
   {
@@ -162,17 +153,24 @@ const tests = [
       command: "SELECT",
       rowCount: 1,
       oid: null,
-      rows: [{ dolt_checkout: ["0","Switched to branch 'main'"] }],
+      rows: [{ dolt_checkout: ["0", "Switched to branch 'main'"] }],
       fields: doltCheckoutFields,
     },
   },
   {
     q: "select dolt_merge('mybranch')",
     res: {
-      fastForward: "1",
-      conflicts: "0",
-      message: "merge successful",
+      command: "SELECT",
+      rowCount: 1,
+      oid: null,
+      rows: [
+        {
+          dolt_merge: ["", "1", "0", "merge successful"],
+        },
+      ],
+      fields: [],
     },
+    matcher: mergeMatcher,
   },
   {
     q: "select COUNT(*) FROM dolt_log",
@@ -191,20 +189,10 @@ async function main() {
 
   await Promise.all(
     tests.map((test) => {
-      const expected = test.res;
       return database
         .query(test.q)
         .then((data) => {
-          const resultStr = JSON.stringify(data);
-          const result = JSON.parse(resultStr);
-          if (!assertQueryResult(test.q, expected, data)) {
-            console.log("Query:", test.q);
-            console.log("Results:", result);
-            console.log("Expected:", expected);
-            throw new Error("Query failed");
-          } else {
-            console.log("Query succeeded:", test.q);
-          }
+          assertEqualRows(test, data);
         })
         .catch((err) => {
           console.error(err);
