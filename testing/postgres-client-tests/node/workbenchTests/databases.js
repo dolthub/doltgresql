@@ -1,3 +1,4 @@
+import { doltCleanFields } from "../fields.js";
 import { dbName } from "../helpers.js";
 
 export const databaseTests = [
@@ -9,6 +10,16 @@ export const databaseTests = [
       oid: null,
       rows: [],
       fields: [],
+    },
+  },
+  {
+    q: `SELECT DOLT_CLEAN('test_table')`,
+    res: {
+      command: "SELECT",
+      rowCount: 1,
+      oid: null,
+      rows: [{ dolt_clean: ["0"] }],
+      fields: doltCleanFields,
     },
   },
   {
@@ -68,8 +79,8 @@ export const databaseTests = [
   {
     q: `SELECT dolt_version();`,
     res: [{ "dolt_version()": "0.0.0" }],
-    matcher: (res) => {
-      return res.rows[0].dolt_version.length > 0;
+    matcher: (data) => {
+      return data.rows[0].dolt_version.length > 0;
     },
   },
 ];

@@ -1,9 +1,9 @@
 import {
   countFields,
-  doltAddFields,
   doltBranchFields,
   doltCheckoutFields,
   doltStatusFields,
+  doltCommitFields,
 } from "../fields.js";
 import { branchesMatcher } from "./matchers.js";
 import { dbName } from "../helpers.js";
@@ -59,7 +59,13 @@ export const branchTests = [
   {
     q: `SELECT DOLT_COMMIT('-Am', $1::text, '--author', $2::text);`,
     p: ["Create table test", "Dolt <dolt@dolthub.com>"],
-    res: [{ hash: "" }],
+    res: {
+      command: "SELECT",
+      rowCount: 1,
+      oid: null,
+      rows: [{ dolt_commit: "" }],
+      fields: doltCommitFields,
+    },
   },
   {
     q: `SELECT * FROM dolt_branches LIMIT 200`,
@@ -68,10 +74,10 @@ export const branchTests = [
         {
           name: "main",
           hash: "",
-          latest_committer: "mysql-test-runner",
-          latest_committer_email: "mysql-test-runner@liquidata.co",
+          latest_committer: "doltgres",
+          latest_committer_email: "doltgres@127.0.0.1",
           latest_commit_date: "",
-          latest_commit_message: "Initialize data repository",
+          latest_commit_message: "CREATE DATABASE",
           remote: "",
           branch: "",
         },
@@ -96,7 +102,7 @@ export const branchTests = [
       command: "SELECT",
       rowCount: 1,
       oid: null,
-      rows: [{ dolt_checkout: ["0","Switched to branch 'branch-to-delete'"] }],
+      rows: [{ dolt_checkout: ["0", "Switched to branch 'branch-to-delete'"] }],
       fields: doltCheckoutFields,
     },
   },
@@ -111,14 +117,13 @@ export const branchTests = [
     },
   },
   {
-    q: `SELECT dolt_checkout($1::text)`,
-    p: ["main"],
+    q: `USE '${dbName}/main';`,
     res: {
-      command: "SELECT",
-      rowCount: 1,
+      command: "SET",
+      rowCount: null,
       oid: null,
-      rows: [{ dolt_checkout: ["0","Switched to branch 'main'"] }],
-      fields: doltCheckoutFields,
+      rows: [],
+      fields: [],
     },
   },
   {
