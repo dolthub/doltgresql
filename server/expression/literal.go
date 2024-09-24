@@ -27,6 +27,7 @@ import (
 	"github.com/dolthub/doltgresql/postgres/parser/pgdate"
 	"github.com/dolthub/doltgresql/postgres/parser/timeofday"
 	"github.com/dolthub/doltgresql/postgres/parser/timetz"
+	"github.com/dolthub/doltgresql/postgres/parser/uuid"
 	"github.com/dolthub/doltgresql/server/functions/framework"
 	pgtypes "github.com/dolthub/doltgresql/server/types"
 )
@@ -186,6 +187,30 @@ func NewRawLiteralTimestampTZ(val time.Time) *Literal {
 	return &Literal{
 		value: val,
 		typ:   pgtypes.TimestampTZ,
+	}
+}
+
+// NewRawLiteralJSON returns a new *Literal containing a JSON value.
+func NewRawLiteralJSON(val string) *Literal {
+	return &Literal{
+		value: val,
+		typ:   pgtypes.Json,
+	}
+}
+
+// NewRawLiteralOid returns a new *Literal containing a OID value.
+func NewRawLiteralOid(val uint32) *Literal {
+	return &Literal{
+		value: val,
+		typ:   pgtypes.Oid,
+	}
+}
+
+// NewRawLiteralUuid returns a new *Literal containing a UUID value.
+func NewRawLiteralUuid(val uuid.UUID) *Literal {
+	return &Literal{
+		value: val,
+		typ:   pgtypes.Uuid,
 	}
 }
 

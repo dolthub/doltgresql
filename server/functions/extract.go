@@ -147,7 +147,19 @@ var extract_text_timestamptz = framework.Function2{
 	Callable: func(ctx *sql.Context, _ [3]pgtypes.DoltgresType, val1, val2 any) (any, error) {
 		field := val1.(string)
 		tstzVal := val2.(time.Time).In(time.Local)
-		return getFieldFromTimeVal(field, tstzVal)
+		switch strings.ToLower(field) {
+		case "timezone":
+			// TODO: postgres seem to use server timezone regardless of input value
+			return decimal.NewFromInt(-28800), nil
+		case "timezone_hour":
+			// TODO: postgres seem to use server timezone regardless of input value
+			return decimal.NewFromInt(-8), nil
+		case "timezone_minute":
+			// TODO: postgres seem to use server timezone regardless of input value
+			return decimal.NewFromInt(0), nil
+		default:
+			return getFieldFromTimeVal(field, tstzVal)
+		}
 	},
 }
 
@@ -266,15 +278,6 @@ func getFieldFromTimeVal(field string, tVal time.Time) (decimal.Decimal, error) 
 		w := float64(tVal.Second())
 		f := float64(tVal.Nanosecond()) / float64(1000000000)
 		return decimal.NewFromString(decimal.NewFromFloat(w + f).StringFixed(6))
-	case "timezone":
-		// TODO: postgres seem to use server timezone regardless of input value
-		return decimal.NewFromInt(-28800), nil
-	case "timezone_hour":
-		// TODO: postgres seem to use server timezone regardless of input value
-		return decimal.NewFromInt(-8), nil
-	case "timezone_minute":
-		// TODO: postgres seem to use server timezone regardless of input value
-		return decimal.NewFromInt(0), nil
 	case "week":
 		_, week := tVal.ISOWeek()
 		return decimal.NewFromInt(int64(week)), nil

@@ -19,6 +19,7 @@ import (
 
 	"github.com/dolthub/go-mysql-server/sql"
 
+	"github.com/dolthub/doltgresql/postgres/parser/duration"
 	"github.com/dolthub/doltgresql/server/functions/framework"
 	pgtypes "github.com/dolthub/doltgresql/server/types"
 )
@@ -41,8 +42,9 @@ var timezone_interval_timestamptz = framework.Function2{
 	IsNonDeterministic: true,
 	Strict:             true,
 	Callable: func(ctx *sql.Context, _ [3]pgtypes.DoltgresType, val1, val2 any) (any, error) {
-		// TODO
-		return nil, nil
+		dur := val1.(duration.Duration)
+		t := val2.(time.Time)
+		return t.UTC().Add(time.Duration(dur.Nanos())), nil
 	},
 }
 

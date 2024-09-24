@@ -127,7 +127,7 @@ func (b TimeType) GetSerializationID() SerializationID {
 func (b TimeType) IoInput(ctx *sql.Context, input string) (any, error) {
 	p := b.Precision
 	if p == -1 {
-		p = 0
+		p = 6
 	}
 	t, _, err := tree.ParseDTime(nil, input, tree.TimeFamilyPrecisionToRoundDuration(int32(p)))
 	if err != nil {

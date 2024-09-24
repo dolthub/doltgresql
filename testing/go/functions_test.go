@@ -1446,7 +1446,7 @@ func TestDateAndTimeFunction(t *testing.T) {
 					Expected: []sql.Row{{Numeric("2001")}},
 				},
 				{
-					Skip:     true, // TODO
+					Skip:     true, // TODO: not supported yet
 					Query:    `SELECT EXTRACT(JULIAN FROM TIMESTAMP '2001-02-18 20:38:40');`,
 					Expected: []sql.Row{{Numeric("2451959.86018518518518518519")}},
 				},
@@ -1505,96 +1505,109 @@ func TestDateAndTimeFunction(t *testing.T) {
 			},
 		},
 		{
+			// The value is converted to Local timezone regardless on input, so running this test locally can differ
+			// from running them on GitHub CI. To avoid differences, we use hour value before noon.
 			Name:        "extract from timestamp with time zone",
 			SetUpScript: []string{},
 			Assertions: []ScriptTestAssertion{
 				{
-					Query:    `SELECT EXTRACT(CENTURY FROM TIMESTAMP WITH TIME ZONE '2001-02-16 20:38:40.12-05');`,
+					Query:    `SELECT EXTRACT(CENTURY FROM TIMESTAMP WITH TIME ZONE '2001-02-16 12:38:40.12-05');`,
 					Expected: []sql.Row{{Numeric("21")}},
 				},
 				{
-					Query:    `SELECT EXTRACT(DAY FROM TIMESTAMP WITH TIME ZONE '2001-02-16 20:38:40.12-05');`,
+					Query:    `SELECT EXTRACT(DAY FROM TIMESTAMP WITH TIME ZONE '2001-02-16 12:38:40.12-05');`,
 					Expected: []sql.Row{{Numeric("16")}},
 				},
 				{
-					Query:    `SELECT EXTRACT(DECADE FROM TIMESTAMP WITH TIME ZONE '2001-02-16 20:38:40.12-05');`,
+					Query:    `SELECT EXTRACT(DECADE FROM TIMESTAMP WITH TIME ZONE '2001-02-16 12:38:40.12-05');`,
 					Expected: []sql.Row{{Numeric("200")}},
 				},
 				{
-					Query:    `SELECT EXTRACT(DOW FROM TIMESTAMP WITH TIME ZONE '2001-02-16 20:38:40.12-05');`,
+					Query:    `SELECT EXTRACT(DOW FROM TIMESTAMP WITH TIME ZONE '2001-02-16 12:38:40.12-05');`,
 					Expected: []sql.Row{{Numeric("5")}},
 				},
 				{
-					Query:    `SELECT EXTRACT(DOY FROM TIMESTAMP WITH TIME ZONE '2001-02-16 20:38:40.12-05');`,
+					Query:    `SELECT EXTRACT(DOY FROM TIMESTAMP WITH TIME ZONE '2001-02-16 12:38:40.12-05');`,
 					Expected: []sql.Row{{Numeric("47")}},
 				},
 				{
-					Query:    `SELECT EXTRACT(EPOCH FROM TIMESTAMP WITH TIME ZONE '2001-02-16 20:38:40.12-05');`,
-					Expected: []sql.Row{{Numeric("982373920.120000")}},
+					Query:    `SELECT EXTRACT(EPOCH FROM TIMESTAMP WITH TIME ZONE '2001-02-16 12:38:40.12-05');`,
+					Expected: []sql.Row{{Numeric("982345120.120000")}},
 				},
 				{
-					Query:    `SELECT EXTRACT(HOUR FROM TIMESTAMP WITH TIME ZONE '2001-02-16 20:38:40.12-05');`,
+					// This might fail locally if the timezone is different from GitHub CI.
+					Query:    `SELECT EXTRACT(HOUR FROM TIMESTAMP WITH TIME ZONE '2001-02-16 12:38:40.12-05');`,
 					Expected: []sql.Row{{Numeric("17")}},
 				},
 				{
-					Query:    `SELECT EXTRACT(ISODOW FROM TIMESTAMP WITH TIME ZONE '2001-02-16 20:38:40.12-05');`,
+					Query:    `SELECT EXTRACT(ISODOW FROM TIMESTAMP WITH TIME ZONE '2001-02-16 12:38:40.12-05');`,
 					Expected: []sql.Row{{Numeric("5")}},
 				},
 				{
-					Query:    `SELECT EXTRACT(ISOYEAR FROM TIMESTAMP WITH TIME ZONE '2001-02-16 20:38:40.12-05');`,
+					Query:    `SELECT EXTRACT(ISOYEAR FROM TIMESTAMP WITH TIME ZONE '2001-02-16 12:38:40.12-05');`,
 					Expected: []sql.Row{{Numeric("2001")}},
 				},
 				{
-					Skip:     true, // TODO
-					Query:    `SELECT EXTRACT(JULIAN FROM TIMESTAMP WITH TIME ZONE '2001-02-16 20:38:40.12-05');`,
+					Skip:     true, // TODO: not supported yet
+					Query:    `SELECT EXTRACT(JULIAN FROM TIMESTAMP WITH TIME ZONE '2001-02-16 12:38:40.12-05');`,
 					Expected: []sql.Row{{Numeric("2451957.73518657407407407407")}},
 				},
 				{
-					Query:    `SELECT EXTRACT(MICROSECONDS FROM TIMESTAMP WITH TIME ZONE '2001-02-16 20:38:40.12-05');`,
+					Skip:     true, // TODO: not supported yet
+					Query:    `SELECT extract(julian from '2021-06-23 7:00:00-04'::timestamptz at time zone 'UTC+12');`,
+					Expected: []sql.Row{{Numeric("2459388.95833333333333333333")}},
+				},
+				{
+					Skip:     true, // TODO: not supported yet
+					Query:    `SELECT extract(julian from '2021-06-23 8:00:00-04'::timestamptz at time zone 'UTC+12');`,
+					Expected: []sql.Row{{Numeric("2459389.0000000000000000000000000000")}},
+				},
+				{
+					Query:    `SELECT EXTRACT(MICROSECONDS FROM TIMESTAMP WITH TIME ZONE '2001-02-16 12:38:40.12-05');`,
 					Expected: []sql.Row{{Numeric("40120000")}},
 				},
 				{
-					Query:    `SELECT EXTRACT(MILLENNIUM FROM TIMESTAMP WITH TIME ZONE '2001-02-16 20:38:40.12-05');`,
+					Query:    `SELECT EXTRACT(MILLENNIUM FROM TIMESTAMP WITH TIME ZONE '2001-02-16 12:38:40.12-05');`,
 					Expected: []sql.Row{{Numeric("3")}},
 				},
 				{
-					Query:    `SELECT EXTRACT(MILLISECONDS FROM TIMESTAMP WITH TIME ZONE '2001-02-16 20:38:40.12-05');`,
+					Query:    `SELECT EXTRACT(MILLISECONDS FROM TIMESTAMP WITH TIME ZONE '2001-02-16 12:38:40.12-05');`,
 					Expected: []sql.Row{{Numeric("40120.000")}},
 				},
 				{
-					Query:    `SELECT EXTRACT(MINUTE FROM TIMESTAMP WITH TIME ZONE '2001-02-16 20:38:40.12-05');`,
+					Query:    `SELECT EXTRACT(MINUTE FROM TIMESTAMP WITH TIME ZONE '2001-02-16 12:38:40.12-05');`,
 					Expected: []sql.Row{{Numeric("38")}},
 				},
 				{
-					Query:    `SELECT EXTRACT(MONTH FROM TIMESTAMP WITH TIME ZONE '2001-02-16 20:38:40.12-05');`,
+					Query:    `SELECT EXTRACT(MONTH FROM TIMESTAMP WITH TIME ZONE '2001-02-16 12:38:40.12-05');`,
 					Expected: []sql.Row{{Numeric("2")}},
 				},
 				{
-					Query:    `SELECT EXTRACT(QUARTER FROM TIMESTAMP WITH TIME ZONE '2001-02-16 20:38:40.12-05');`,
+					Query:    `SELECT EXTRACT(QUARTER FROM TIMESTAMP WITH TIME ZONE '2001-02-16 12:38:40.12-05');`,
 					Expected: []sql.Row{{Numeric("1")}},
 				},
 				{
-					Query:    `SELECT EXTRACT(SECOND FROM TIMESTAMP WITH TIME ZONE '2001-02-16 20:38:40.12-05');`,
+					Query:    `SELECT EXTRACT(SECOND FROM TIMESTAMP WITH TIME ZONE '2001-02-16 12:38:40.12-05');`,
 					Expected: []sql.Row{{Numeric("40.120000")}},
 				},
 				{
-					Query:    `SELECT EXTRACT(TIMEZONE FROM TIMESTAMP WITH TIME ZONE '2001-02-16 20:38:40.12-05');`,
+					Query:    `SELECT EXTRACT(TIMEZONE FROM TIMESTAMP WITH TIME ZONE '2001-02-16 12:38:40.12-05');`,
 					Expected: []sql.Row{{Numeric("-28800")}},
 				},
 				{
-					Query:    `SELECT EXTRACT(TIMEZONE_HOUR FROM TIMESTAMP WITH TIME ZONE '2001-02-16 20:38:40.12-05');`,
+					Query:    `SELECT EXTRACT(TIMEZONE_HOUR FROM TIMESTAMP WITH TIME ZONE '2001-02-16 12:38:40.12-05');`,
 					Expected: []sql.Row{{Numeric("-8")}},
 				},
 				{
-					Query:    `SELECT EXTRACT(TIMEZONE_MINUTE FROM TIMESTAMP WITH TIME ZONE '2001-02-16 20:38:40.12-05:45');`,
+					Query:    `SELECT EXTRACT(TIMEZONE_MINUTE FROM TIMESTAMP WITH TIME ZONE '2001-02-16 12:38:40.12-05:45');`,
 					Expected: []sql.Row{{Numeric("0")}},
 				},
 				{
-					Query:    `SELECT EXTRACT(WEEK FROM TIMESTAMP WITH TIME ZONE '2001-02-16 20:38:40.12-05');`,
+					Query:    `SELECT EXTRACT(WEEK FROM TIMESTAMP WITH TIME ZONE '2001-02-16 12:38:40.12-05');`,
 					Expected: []sql.Row{{Numeric("7")}},
 				},
 				{
-					Query:    `SELECT EXTRACT(YEAR FROM TIMESTAMP WITH TIME ZONE '2001-02-16 20:38:40.12-05');`,
+					Query:    `SELECT EXTRACT(YEAR FROM TIMESTAMP WITH TIME ZONE '2001-02-16 12:38:40.12-05');`,
 					Expected: []sql.Row{{Numeric("2001")}},
 				},
 			},
@@ -1717,6 +1730,10 @@ func TestDateAndTimeFunction(t *testing.T) {
 			SetUpScript: []string{},
 			Assertions: []ScriptTestAssertion{
 				{
+					Query:    `select timezone(interval '2 minutes', timestamp with time zone '2001-02-16 20:38:40.12-05');`,
+					Expected: []sql.Row{{"2001-02-17 01:40:40.12"}},
+				},
+				{
 					Query:    `select '2024-08-22 14:47:57 -07' at time zone 'utc';`,
 					Expected: []sql.Row{{"2024-08-22 21:47:57"}},
 				},
@@ -1736,16 +1753,6 @@ func TestDateAndTimeFunction(t *testing.T) {
 					Skip:     true,
 					Query:    `select timestamp '2024-08-22 13:47:57-07' at time zone 'utc';`,
 					Expected: []sql.Row{{"2024-08-22 06:47:57-07"}},
-				},
-				{
-					Skip:     true,
-					Query:    `SELECT extract(julian from '2021-06-23 7:00:00-04'::timestamptz at time zone 'UTC+12');`,
-					Expected: []sql.Row{{Numeric("2459388.95833333333333333333")}},
-				},
-				{
-					Skip:     true,
-					Query:    `SELECT extract(julian from '2021-06-23 8:00:00-04'::timestamptz at time zone 'UTC+12');`,
-					Expected: []sql.Row{{Numeric("2459389.0000000000000000000000000000")}},
 				},
 			},
 		},

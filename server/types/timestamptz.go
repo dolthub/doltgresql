@@ -125,8 +125,8 @@ func (b TimestampTZType) GetSerializationID() SerializationID {
 // IoInput implements the DoltgresType interface.
 func (b TimestampTZType) IoInput(ctx *sql.Context, input string) (any, error) {
 	p := b.Precision
-	if b.Precision == -1 {
-		p = 0
+	if p == -1 {
+		p = 6
 	}
 	t, _, err := tree.ParseDTimestampTZ(nil, input, tree.TimeFamilyPrecisionToRoundDuration(int32(p)))
 	if err != nil {
