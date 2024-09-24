@@ -319,6 +319,9 @@ func NormalizeExpectedRow(fds []pgconn.FieldDescription, rows []sql.Row) []sql.R
 	for ri, row := range rows {
 		if len(row) == 0 {
 			newRows[ri] = nil
+		} else if len(row) != len(fds) {
+			// Return if the expected row count does not match the field description count, we'll error elsewhere
+			return rows
 		} else {
 			newRow := make(sql.Row, len(row))
 			for i := range row {
