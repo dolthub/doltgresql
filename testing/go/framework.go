@@ -172,7 +172,7 @@ func runScript(t *testing.T, ctx context.Context, script ScriptTest, conn *pgx.C
 					}
 				}
 
-				if normalizeRows && len(rows.FieldDescriptions()) > 0 {
+				if normalizeRows && rows.FieldDescriptions() != nil {
 					assert.Equal(t, NormalizeExpectedRow(rows.FieldDescriptions(), assertion.Expected), readRows)
 				} else {
 					assert.Equal(t, assertion.Expected, readRows)
