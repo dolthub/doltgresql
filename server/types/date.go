@@ -20,6 +20,9 @@ import (
 	"reflect"
 	"time"
 
+	"github.com/dolthub/doltgresql/postgres/parser/pgdate"
+	"github.com/dolthub/doltgresql/postgres/parser/sem/tree"
+
 	"github.com/dolthub/go-mysql-server/sql"
 	"github.com/dolthub/go-mysql-server/sql/types"
 	"github.com/dolthub/vitess/go/sqltypes"
@@ -79,15 +82,15 @@ func (b DateType) Compare(v1 any, v2 any) (int, error) {
 		return 0, err
 	}
 
-	ab := ac.(time.Time)
-	bb := bc.(time.Time)
+	ab := ac.(pgdate.Date)
+	bb := bc.(pgdate.Date)
 	return ab.Compare(bb), nil
 }
 
 // Convert implements the DoltgresType interface.
 func (b DateType) Convert(val any) (any, sql.ConvertInRange, error) {
 	switch val := val.(type) {
-	case time.Time:
+	case pgdate.Date:
 		return val, sql.InRange, nil
 	case nil:
 		return nil, sql.InRange, nil
@@ -119,17 +122,11 @@ func (b DateType) GetSerializationID() SerializationID {
 
 // IoInput implements the DoltgresType interface.
 func (b DateType) IoInput(ctx *sql.Context, input string) (any, error) {
-	// TODO: need support for calendar era, AD and BC
-	if t, err := time.Parse("2006-1-2", input); err == nil {
-		return t.UTC(), nil
-	} else if t, err = time.Parse("2006-1-2 -07", input); err == nil {
-		return t.UTC(), nil
-	} else if t, err = time.Parse("January 02, 2006", input); err == nil {
-		return t.UTC(), nil
-	} else if t, err = time.Parse("2006-Jan-02", input); err == nil {
-		return t.UTC(), nil
+	ddate, _, err := tree.ParseDDate(nil, input)
+	if err != nil {
+		return nil, err
 	}
-	return nil, fmt.Errorf("invalid format for date")
+	return ddate.Date, nil
 }
 
 // IoOutput implements the DoltgresType interface.
@@ -138,7 +135,7 @@ func (b DateType) IoOutput(ctx *sql.Context, output any) (string, error) {
 	if err != nil {
 		return "", err
 	}
-	return converted.(time.Time).Format("2006-01-02"), nil
+	return converted.(pgdate.Date).String(), nil
 }
 
 // IsPreferredType implements the DoltgresType interface.
@@ -214,12 +211,12 @@ func (b DateType) Type() query.Type {
 
 // ValueType implements the DoltgresType interface.
 func (b DateType) ValueType() reflect.Type {
-	return reflect.TypeOf(time.Time{})
+	return reflect.TypeOf(pgdate.Date{})
 }
 
 // Zero implements the DoltgresType interface.
 func (b DateType) Zero() any {
-	return time.Time{}
+	return pgdate.Date{}
 }
 
 // SerializeType implements the DoltgresType interface.
@@ -246,7 +243,11 @@ func (b DateType) SerializeValue(val any) ([]byte, error) {
 	if err != nil {
 		return nil, err
 	}
-	return converted.(time.Time).MarshalBinary()
+	t, err := converted.(pgdate.Date).ToTime()
+	if err != nil {
+		return nil, err
+	}
+	return t.MarshalBinary()
 }
 
 // DeserializeValue implements the DoltgresType interface.
@@ -258,5 +259,5 @@ func (b DateType) DeserializeValue(val []byte) (any, error) {
 	if err := t.UnmarshalBinary(val); err != nil {
 		return nil, err
 	}
-	return t, nil
+	return pgdate.MakeDateFromTime(t)
 }

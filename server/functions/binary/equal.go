@@ -21,6 +21,9 @@ import (
 	"github.com/shopspring/decimal"
 
 	"github.com/dolthub/doltgresql/postgres/parser/duration"
+	"github.com/dolthub/doltgresql/postgres/parser/pgdate"
+	"github.com/dolthub/doltgresql/postgres/parser/timeofday"
+	"github.com/dolthub/doltgresql/postgres/parser/timetz"
 	"github.com/dolthub/doltgresql/postgres/parser/uuid"
 	"github.com/dolthub/doltgresql/server/functions/framework"
 	pgtypes "github.com/dolthub/doltgresql/server/types"
@@ -127,7 +130,7 @@ var date_eq = framework.Function2{
 	Parameters: [2]pgtypes.DoltgresType{pgtypes.Date, pgtypes.Date},
 	Strict:     true,
 	Callable: func(ctx *sql.Context, _ [3]pgtypes.DoltgresType, val1 any, val2 any) (any, error) {
-		res, err := pgtypes.Date.Compare(val1.(time.Time), val2.(time.Time))
+		res, err := pgtypes.Date.Compare(val1.(pgdate.Date), val2.(pgdate.Date))
 		return res == 0, err
 	},
 }
@@ -139,7 +142,11 @@ var date_eq_timestamp = framework.Function2{
 	Parameters: [2]pgtypes.DoltgresType{pgtypes.Date, pgtypes.Timestamp},
 	Strict:     true,
 	Callable: func(ctx *sql.Context, _ [3]pgtypes.DoltgresType, val1 any, val2 any) (any, error) {
-		res := val1.(time.Time).Compare(val2.(time.Time))
+		t1, err := val1.(pgdate.Date).ToTime()
+		if err != nil {
+			return nil, err
+		}
+		res := t1.Compare(val2.(time.Time))
 		return res == 0, nil
 	},
 }
@@ -151,7 +158,11 @@ var date_eq_timestamptz = framework.Function2{
 	Parameters: [2]pgtypes.DoltgresType{pgtypes.Date, pgtypes.TimestampTZ},
 	Strict:     true,
 	Callable: func(ctx *sql.Context, _ [3]pgtypes.DoltgresType, val1 any, val2 any) (any, error) {
-		res := val1.(time.Time).Compare(val2.(time.Time))
+		t1, err := val1.(pgdate.Date).ToTime()
+		if err != nil {
+			return nil, err
+		}
+		res := t1.Compare(val2.(time.Time))
 		return res == 0, nil
 	},
 }
@@ -415,7 +426,7 @@ var time_eq = framework.Function2{
 	Parameters: [2]pgtypes.DoltgresType{pgtypes.Time, pgtypes.Time},
 	Strict:     true,
 	Callable: func(ctx *sql.Context, _ [3]pgtypes.DoltgresType, val1 any, val2 any) (any, error) {
-		res, err := pgtypes.Time.Compare(val1.(time.Time), val2.(time.Time))
+		res, err := pgtypes.Time.Compare(val1.(timeofday.TimeOfDay), val2.(timeofday.TimeOfDay))
 		return res == 0, err
 	},
 }
@@ -427,7 +438,11 @@ var timestamp_eq_date = framework.Function2{
 	Parameters: [2]pgtypes.DoltgresType{pgtypes.Timestamp, pgtypes.Date},
 	Strict:     true,
 	Callable: func(ctx *sql.Context, _ [3]pgtypes.DoltgresType, val1 any, val2 any) (any, error) {
-		res := val1.(time.Time).Compare(val2.(time.Time))
+		t2, err := val2.(pgdate.Date).ToTime()
+		if err != nil {
+			return nil, err
+		}
+		res := val1.(time.Time).Compare(t2)
 		return res == 0, nil
 	},
 }
@@ -463,7 +478,11 @@ var timestamptz_eq_date = framework.Function2{
 	Parameters: [2]pgtypes.DoltgresType{pgtypes.TimestampTZ, pgtypes.Date},
 	Strict:     true,
 	Callable: func(ctx *sql.Context, _ [3]pgtypes.DoltgresType, val1 any, val2 any) (any, error) {
-		res := val1.(time.Time).Compare(val2.(time.Time))
+		t2, err := val2.(pgdate.Date).ToTime()
+		if err != nil {
+			return nil, err
+		}
+		res := val1.(time.Time).Compare(t2)
 		return res == 0, nil
 	},
 }
@@ -499,7 +518,7 @@ var timetz_eq = framework.Function2{
 	Parameters: [2]pgtypes.DoltgresType{pgtypes.TimeTZ, pgtypes.TimeTZ},
 	Strict:     true,
 	Callable: func(ctx *sql.Context, _ [3]pgtypes.DoltgresType, val1 any, val2 any) (any, error) {
-		res, err := pgtypes.TimeTZ.Compare(val1.(time.Time), val2.(time.Time))
+		res, err := pgtypes.TimeTZ.Compare(val1.(timetz.TimeTZ), val2.(timetz.TimeTZ))
 		return res == 0, err
 	},
 }

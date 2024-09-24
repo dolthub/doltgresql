@@ -17,27 +17,33 @@ package cast
 import (
 	"github.com/dolthub/go-mysql-server/sql"
 
-	"github.com/dolthub/doltgresql/postgres/parser/timeofday"
+	"github.com/dolthub/doltgresql/postgres/parser/pgdate"
 
-	"github.com/dolthub/doltgresql/server/functions"
 	"github.com/dolthub/doltgresql/server/functions/framework"
 	pgtypes "github.com/dolthub/doltgresql/server/types"
 )
 
-// initTime handles all casts that are built-in. This comprises only the "From" types.
-func initTime() {
-	timeImplicit()
+// initDate handles all casts that are built-in. This comprises only the "From" types.
+func initDate() {
+	dateImplicit()
 }
 
-// timeImplicit registers all implicit casts. This comprises only the "From" types.
-func timeImplicit() {
+// dateImplicit registers all implicit casts. This comprises only the "From" types.
+func dateImplicit() {
 	framework.MustAddImplicitTypeCast(framework.TypeCast{
-		FromType: pgtypes.Time,
-		ToType:   pgtypes.Interval,
+		FromType: pgtypes.Date,
+		ToType:   pgtypes.Timestamp,
 		Function: func(ctx *sql.Context, val any, targetType pgtypes.DoltgresType) (any, error) {
-			t := val.(timeofday.TimeOfDay)
-			dur := functions.GetIntervalDurationFromTimeComponents(0, 0, 0, int64(t.Hour()), int64(t.Minute()), int64(t.Second()), 0)
-			return dur, nil
+			d := val.(pgdate.Date)
+			return d.ToTime()
+		},
+	})
+	framework.MustAddImplicitTypeCast(framework.TypeCast{
+		FromType: pgtypes.Date,
+		ToType:   pgtypes.TimestampTZ,
+		Function: func(ctx *sql.Context, val any, targetType pgtypes.DoltgresType) (any, error) {
+			d := val.(pgdate.Date)
+			return d.ToTime()
 		},
 	})
 }

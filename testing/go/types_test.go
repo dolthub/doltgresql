@@ -2077,7 +2077,6 @@ var typesTests = []ScriptTest{
 	},
 	{ // TODO: timezone representation is reported via local time, need to account for that in testing?
 		Name: "Time with time zone type",
-		Skip: true,
 		SetUpScript: []string{
 			"CREATE TABLE t_time_with_zone (id INTEGER primary key, v1 TIME WITH TIME ZONE);",
 			"INSERT INTO t_time_with_zone VALUES (1, '12:34:56 UTC'), (2, '23:45:01-0200');",

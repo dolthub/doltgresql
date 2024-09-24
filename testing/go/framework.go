@@ -35,6 +35,8 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/dolthub/doltgresql/postgres/parser/duration"
+	"github.com/dolthub/doltgresql/postgres/parser/pgdate"
+	"github.com/dolthub/doltgresql/postgres/parser/timeofday"
 	"github.com/dolthub/doltgresql/postgres/parser/uuid"
 	dserver "github.com/dolthub/doltgresql/server"
 	"github.com/dolthub/doltgresql/server/functions"
@@ -416,6 +418,15 @@ func NormalizeValToString(dt types.DoltgresType, v any) any {
 			panic(err)
 		}
 		return val
+	case types.IntervalType, types.UuidType, types.DateType, types.TimeType, types.TimestampType, types.TimestampTZType:
+		// These values need to be normalized into the appropriate types
+		// before being converted to string type using the Doltgres
+		// IoOutput method.
+		tVal, err := dt.IoOutput(nil, NormalizeVal(dt, v))
+		if err != nil {
+			panic(err)
+		}
+		return tVal
 	}
 
 	switch val := v.(type) {
@@ -436,19 +447,6 @@ func NormalizeValToString(dt types.DoltgresType, v any) any {
 			decStr := decimal.NewFromBigInt(val.Int, val.Exp).StringFixed(val.Exp * -1)
 			return Numeric(decStr)
 		}
-	case pgtype.Time, pgtype.Interval, [16]byte, time.Time:
-		// These values need to be normalized into the appropriate types
-		// before being converted to string type using the Doltgres
-		// IoOutput method.
-		// - pgtype.Time is specific to Time type.
-		// - pgtype.Interval is specific to Interval type.
-		// - [16]byte is specific to UUID type
-		// - time.Time is specific to date, timetz, timestamp and timestamptz types.
-		tVal, err := dt.IoOutput(nil, NormalizeVal(dt, val))
-		if err != nil {
-			panic(err)
-		}
-		return tVal
 	case []any:
 		if dta, ok := dt.(types.DoltgresArrayType); ok {
 			return NormalizeArrayType(dta, val)
@@ -497,6 +495,12 @@ func NormalizeVal(dt types.DoltgresType, v any) any {
 			panic(err)
 		}
 		return types.JsonDocument{Value: jv}
+	case types.DateType:
+		d, err := pgdate.MakeDateFromTime(v.(time.Time))
+		if err != nil {
+			panic(err)
+		}
+		return d
 	}
 
 	switch val := v.(type) {
@@ -511,11 +515,13 @@ func NormalizeVal(dt types.DoltgresType, v any) any {
 			return decimal.NewFromBigInt(val.Int, val.Exp)
 		}
 	case pgtype.Time:
-		dur := time.Duration(val.Microseconds) * time.Microsecond
-		return time.Time{}.Add(dur)
+		// This value type is used for TIME type.
+		return timeofday.FromInt(val.Microseconds)
 	case pgtype.Interval:
+		//This value type is used for INTERVAL type.
 		return duration.MakeDuration(val.Microseconds*functions.NanosPerMicro, int64(val.Days), int64(val.Months))
 	case [16]byte:
+		// This value type is used for UUID type.
 		u, err := uuid.FromBytes(val[:])
 		if err != nil {
 			panic(err)

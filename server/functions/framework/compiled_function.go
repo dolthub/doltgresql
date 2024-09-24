@@ -424,7 +424,16 @@ func (c *CompiledFunction) typeCompatibleOverloads(fnOverloads []Overload, argTy
 			} else {
 				if overloadCasts[i] = GetImplicitCast(argTypes[i].BaseID(), paramType); overloadCasts[i] == nil {
 					if argTypes[i].BaseID() == pgtypes.DoltgresTypeBaseID_Unknown {
-						overloadCasts[i] = stringLiteralCast
+						overloadCasts[i] = func(ctx *sql.Context, val any, targetType pgtypes.DoltgresType) (any, error) {
+							if val == nil {
+								return nil, nil
+							}
+							str, err := pgtypes.Unknown.IoOutput(ctx, val)
+							if err != nil {
+								return nil, err
+							}
+							return targetType.IoInput(ctx, str)
+						}
 					} else {
 						isConvertible = false
 						break

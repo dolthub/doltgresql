@@ -17,27 +17,36 @@ package cast
 import (
 	"github.com/dolthub/go-mysql-server/sql"
 
-	"github.com/dolthub/doltgresql/postgres/parser/timeofday"
+	"github.com/dolthub/doltgresql/postgres/parser/timetz"
 
-	"github.com/dolthub/doltgresql/server/functions"
 	"github.com/dolthub/doltgresql/server/functions/framework"
 	pgtypes "github.com/dolthub/doltgresql/server/types"
 )
 
-// initTime handles all casts that are built-in. This comprises only the "From" types.
-func initTime() {
-	timeImplicit()
+// initTimeTZ handles all casts that are built-in. This comprises only the "From" types.
+func initTimeTZ() {
+	timeTZAssignment()
+	timeTZImplicit()
 }
 
-// timeImplicit registers all implicit casts. This comprises only the "From" types.
-func timeImplicit() {
-	framework.MustAddImplicitTypeCast(framework.TypeCast{
-		FromType: pgtypes.Time,
-		ToType:   pgtypes.Interval,
+// timeTZAssignment registers all assignment casts. This comprises only the "From" types.
+func timeTZAssignment() {
+	framework.MustAddAssignmentTypeCast(framework.TypeCast{
+		FromType: pgtypes.TimeTZ,
+		ToType:   pgtypes.Time,
 		Function: func(ctx *sql.Context, val any, targetType pgtypes.DoltgresType) (any, error) {
-			t := val.(timeofday.TimeOfDay)
-			dur := functions.GetIntervalDurationFromTimeComponents(0, 0, 0, int64(t.Hour()), int64(t.Minute()), int64(t.Second()), 0)
-			return dur, nil
+			return val.(timetz.TimeTZ).TimeOfDay, nil
+		},
+	})
+}
+
+// timeTZImplicit registers all implicit casts. This comprises only the "From" types.
+func timeTZImplicit() {
+	framework.MustAddImplicitTypeCast(framework.TypeCast{
+		FromType: pgtypes.TimeTZ,
+		ToType:   pgtypes.TimeTZ,
+		Function: func(ctx *sql.Context, val any, targetType pgtypes.DoltgresType) (any, error) {
+			return val.(timetz.TimeTZ), nil
 		},
 	})
 }

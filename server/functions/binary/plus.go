@@ -23,6 +23,9 @@ import (
 	"github.com/shopspring/decimal"
 
 	"github.com/dolthub/doltgresql/postgres/parser/duration"
+	"github.com/dolthub/doltgresql/postgres/parser/pgdate"
+	"github.com/dolthub/doltgresql/postgres/parser/timeofday"
+	"github.com/dolthub/doltgresql/postgres/parser/timetz"
 	"github.com/dolthub/doltgresql/server/functions"
 	"github.com/dolthub/doltgresql/server/functions/framework"
 	pgtypes "github.com/dolthub/doltgresql/server/types"
@@ -234,7 +237,7 @@ var interval_pl_time = framework.Function2{
 	Parameters: [2]pgtypes.DoltgresType{pgtypes.Interval, pgtypes.Time},
 	Strict:     true,
 	Callable: func(ctx *sql.Context, _ [3]pgtypes.DoltgresType, val1 any, val2 any) (any, error) {
-		return intervalPlusNonInterval(val1.(duration.Duration), val2.(time.Time))
+		return val2.(timeofday.TimeOfDay).Add(val1.(duration.Duration)), nil
 	},
 }
 
@@ -245,7 +248,11 @@ var interval_pl_date = framework.Function2{
 	Parameters: [2]pgtypes.DoltgresType{pgtypes.Interval, pgtypes.Date},
 	Strict:     true,
 	Callable: func(ctx *sql.Context, _ [3]pgtypes.DoltgresType, val1 any, val2 any) (any, error) {
-		return intervalPlusNonInterval(val1.(duration.Duration), val2.(time.Time))
+		t, err := val2.(pgdate.Date).ToTime()
+		if err != nil {
+			return nil, err
+		}
+		return intervalPlusNonInterval(val1.(duration.Duration), t)
 	},
 }
 
@@ -256,7 +263,8 @@ var interval_pl_timetz = framework.Function2{
 	Parameters: [2]pgtypes.DoltgresType{pgtypes.Interval, pgtypes.TimeTZ},
 	Strict:     true,
 	Callable: func(ctx *sql.Context, _ [3]pgtypes.DoltgresType, val1 any, val2 any) (any, error) {
-		return intervalPlusNonInterval(val1.(duration.Duration), val2.(time.Time))
+		ttz := val2.(timetz.TimeTZ)
+		return timetz.MakeTimeTZ(ttz.Add(val1.(duration.Duration)), ttz.OffsetSecs), nil
 	},
 }
 

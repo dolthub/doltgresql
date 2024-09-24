@@ -20,6 +20,9 @@ import (
 	"reflect"
 	"time"
 
+	"github.com/dolthub/doltgresql/postgres/parser/sem/tree"
+	"github.com/dolthub/doltgresql/postgres/parser/timeofday"
+
 	"github.com/dolthub/go-mysql-server/sql"
 	"github.com/dolthub/go-mysql-server/sql/types"
 	"github.com/dolthub/vitess/go/sqltypes"
@@ -82,15 +85,15 @@ func (b TimeType) Compare(v1 any, v2 any) (int, error) {
 		return 0, err
 	}
 
-	ab := ac.(time.Time)
-	bb := bc.(time.Time)
+	ab := ac.(timeofday.TimeOfDay).ToTime()
+	bb := bc.(timeofday.TimeOfDay).ToTime()
 	return ab.Compare(bb), nil
 }
 
 // Convert implements the DoltgresType interface.
 func (b TimeType) Convert(val any) (any, sql.ConvertInRange, error) {
 	switch val := val.(type) {
-	case time.Time:
+	case timeofday.TimeOfDay:
 		return val, sql.InRange, nil
 	case nil:
 		return nil, sql.InRange, nil
@@ -122,12 +125,15 @@ func (b TimeType) GetSerializationID() SerializationID {
 
 // IoInput implements the DoltgresType interface.
 func (b TimeType) IoInput(ctx *sql.Context, input string) (any, error) {
-	if t, err := time.Parse("15:04:05", input); err == nil {
-		return t.UTC(), nil
-	} else if t, err = time.Parse("15:04:05.999", input); err == nil {
-		return t.UTC(), nil
+	p := b.Precision
+	if p == -1 {
+		p = 0
 	}
-	return nil, fmt.Errorf("invalid format for time")
+	t, _, err := tree.ParseDTime(nil, input, tree.TimeFamilyPrecisionToRoundDuration(int32(p)))
+	if err != nil {
+		return nil, err
+	}
+	return timeofday.TimeOfDay(*t), nil
 }
 
 // IoOutput implements the DoltgresType interface.
@@ -136,12 +142,7 @@ func (b TimeType) IoOutput(ctx *sql.Context, output any) (string, error) {
 	if err != nil {
 		return "", err
 	}
-	t := converted.(time.Time)
-	if t.Nanosecond() != 0 {
-		return t.Format("15:04:05.999999999"), nil
-	} else {
-		return t.Format("15:04:05"), nil
-	}
+	return converted.(timeofday.TimeOfDay).String(), nil
 }
 
 // IsPreferredType implements the DoltgresType interface.
@@ -220,12 +221,12 @@ func (b TimeType) Type() query.Type {
 
 // ValueType implements the DoltgresType interface.
 func (b TimeType) ValueType() reflect.Type {
-	return reflect.TypeOf(time.Time{})
+	return reflect.TypeOf(timeofday.TimeOfDay(0))
 }
 
 // Zero implements the DoltgresType interface.
 func (b TimeType) Zero() any {
-	return time.Time{}
+	return timeofday.TimeOfDay(0)
 }
 
 // SerializeType implements the DoltgresType interface.
@@ -257,7 +258,8 @@ func (b TimeType) SerializeValue(val any) ([]byte, error) {
 	if err != nil {
 		return nil, err
 	}
-	return converted.(time.Time).MarshalBinary()
+	t := converted.(timeofday.TimeOfDay).ToTime()
+	return t.MarshalBinary()
 }
 
 // DeserializeValue implements the DoltgresType interface.
@@ -269,5 +271,5 @@ func (b TimeType) DeserializeValue(val []byte) (any, error) {
 	if err := t.UnmarshalBinary(val); err != nil {
 		return nil, err
 	}
-	return t, nil
+	return timeofday.FromTime(t), nil
 }
