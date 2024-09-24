@@ -1505,11 +1505,15 @@ func TestDateAndTimeFunction(t *testing.T) {
 			},
 		},
 		{
-			// The value is converted to Local timezone regardless on input, so running this test locally can differ
-			// from running them on GitHub CI. To avoid differences, we use hour value before noon.
+			// The TIMESTAMPTZ value gets converted to Local timezone / server timezone,
+			// so set the server timezone to UTC. GitHub CI runs on UTC time zone.
 			Name:        "extract from timestamp with time zone",
 			SetUpScript: []string{},
 			Assertions: []ScriptTestAssertion{
+				{
+					Query:    `SET TIMEZONE TO 'UTC';`,
+					Expected: []sql.Row{},
+				},
 				{
 					Query:    `SELECT EXTRACT(CENTURY FROM TIMESTAMP WITH TIME ZONE '2001-02-16 12:38:40.12-05');`,
 					Expected: []sql.Row{{Numeric("21")}},
@@ -1535,7 +1539,6 @@ func TestDateAndTimeFunction(t *testing.T) {
 					Expected: []sql.Row{{Numeric("982345120.120000")}},
 				},
 				{
-					// This might fail locally if the timezone is different from GitHub CI.
 					Query:    `SELECT EXTRACT(HOUR FROM TIMESTAMP WITH TIME ZONE '2001-02-16 12:38:40.12-05');`,
 					Expected: []sql.Row{{Numeric("17")}},
 				},
@@ -1609,6 +1612,10 @@ func TestDateAndTimeFunction(t *testing.T) {
 				{
 					Query:    `SELECT EXTRACT(YEAR FROM TIMESTAMP WITH TIME ZONE '2001-02-16 12:38:40.12-05');`,
 					Expected: []sql.Row{{Numeric("2001")}},
+				},
+				{
+					Query:    `SET TIMEZONE TO DEFAULT;`,
+					Expected: []sql.Row{},
 				},
 			},
 		},

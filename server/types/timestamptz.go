@@ -128,7 +128,11 @@ func (b TimestampTZType) IoInput(ctx *sql.Context, input string) (any, error) {
 	if p == -1 {
 		p = 6
 	}
-	t, _, err := tree.ParseDTimestampTZ(nil, input, tree.TimeFamilyPrecisionToRoundDuration(int32(p)))
+	loc, err := GetServerLocation(ctx)
+	if err != nil {
+		return nil, err
+	}
+	t, _, err := tree.ParseDTimestampTZ(nil, input, tree.TimeFamilyPrecisionToRoundDuration(int32(p)), loc)
 	if err != nil {
 		return nil, err
 	}

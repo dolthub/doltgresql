@@ -2138,10 +2138,18 @@ var typesTests = []ScriptTest{
 				},
 			},
 			{
+				Query:    `SET TIMEZONE TO 'UTC';`,
+				Expected: []sql.Row{},
+			},
+			{
 				Query: `SELECT '00:00:00'::timetz;`,
 				Expected: []sql.Row{
-					{"00:00:00-07"},
+					{"00:00:00+00"},
 				},
+			},
+			{
+				Query:    `SET TIMEZONE TO DEFAULT;`,
+				Expected: []sql.Row{},
 			},
 			{
 				Query: `SELECT '00:00:00-07'::timetz;`,

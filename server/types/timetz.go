@@ -129,7 +129,11 @@ func (b TimeTZType) IoInput(ctx *sql.Context, input string) (any, error) {
 	if p == -1 {
 		p = 6
 	}
-	t, _, err := tree.ParseDTimeTZ(nil, input, tree.TimeFamilyPrecisionToRoundDuration(int32(p)))
+	loc, err := GetServerLocation(ctx)
+	if err != nil {
+		return nil, err
+	}
+	t, _, err := tree.ParseDTimeTZ(nil, input, tree.TimeFamilyPrecisionToRoundDuration(int32(p)), loc)
 	if err != nil {
 		return nil, err
 	}
@@ -273,4 +277,12 @@ func (b TimeTZType) DeserializeValue(val []byte) (any, error) {
 		return nil, err
 	}
 	return timetz.MakeTimeTZFromTime(t), nil
+}
+
+func GetServerLocation(ctx *sql.Context) (*time.Location, error) {
+	val, err := ctx.GetSessionVariable(ctx, "timezone")
+	if err != nil {
+		return nil, err
+	}
+	return time.LoadLocation(val.(string))
 }

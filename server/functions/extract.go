@@ -146,7 +146,11 @@ var extract_text_timestamptz = framework.Function2{
 	Strict:             true,
 	Callable: func(ctx *sql.Context, _ [3]pgtypes.DoltgresType, val1, val2 any) (any, error) {
 		field := val1.(string)
-		tstzVal := val2.(time.Time).In(time.Local)
+		loc, err := pgtypes.GetServerLocation(ctx)
+		if err != nil {
+			return nil, err
+		}
+		tstzVal := val2.(time.Time).In(loc)
 		switch strings.ToLower(field) {
 		case "timezone":
 			// TODO: postgres seem to use server timezone regardless of input value
