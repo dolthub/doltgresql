@@ -89,9 +89,6 @@ func TestGettingStartedGuide(t *testing.T) {
 					Expected: []sql.Row{},
 				},
 				{
-					// TODO: This query panics
-					//       https://github.com/dolthub/doltgresql/issues/730
-					Skip: true,
 					Query: `select first_name, last_name, team_name from employees
 							join employees_teams on (employees.id=employees_teams.employee_id)
 							join teams on (teams.id=employees_teams.team_id)
@@ -228,6 +225,7 @@ func TestGettingStartedGuide(t *testing.T) {
 				},
 
 				// Make a schema change on another branch
+				// TODO: Most ALTER TABLE statements aren't supported yet
 				{
 					Query:    "call dolt_checkout('-b', 'schema_changes');",
 					Expected: []sql.Row{},
