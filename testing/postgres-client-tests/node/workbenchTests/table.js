@@ -20,11 +20,10 @@ export const tableTests = [
     },
   },
   {
-    skip: true, // TODO: Unique indexes not yet supported
     q: `CREATE UNIQUE INDEX test_idx ON test (pk, value)`,
     res: {
       command: "CREATE",
-      rowCount: 3,
+      rowCount: null,
       oid: null,
       rows: [],
       fields: [],
@@ -114,7 +113,7 @@ export const tableTests = [
     },
   },
   {
-    skip: true, // TODO: GROUP BY not implemented
+    skip: true, // TODO: ORDER BY is not yet supported
     q: `SELECT 
     table_name, index_name, comment, non_unique, GROUP_CONCAT(column_name ORDER BY seq_in_index) AS COLUMNS 
   FROM information_schema.statistics 
@@ -309,7 +308,7 @@ export const tableTests = [
     },
   },
   {
-    q: "SELECT DOLT_RESET('test_info');", // TODO: error: branch not found: test_info
+    q: "SELECT DOLT_RESET('test_info');",
     res: {
       command: "SELECT",
       rowCount: 1,
@@ -334,7 +333,7 @@ export const tableTests = [
       command: "SELECT",
       rowCount: 1,
       oid: null,
-      rows: [{ dolt_checkout: ["0", ""] }],
+      rows: [{ dolt_checkout: ["0"] }],
       fields: doltCheckoutFields,
     },
   },

@@ -146,6 +146,49 @@ func TestDoltFunctions(t *testing.T) {
 					Query:    "SELECT * FROM dolt_status;",
 					Expected: []sql.Row{},
 				},
+				{
+					Query:    "CREATE TABLE t1 (pk int primary key);",
+					Expected: []sql.Row{},
+				},
+				{
+					Query: "SELECT * FROM dolt_status;",
+					Expected: []sql.Row{
+						{"t1", 0, "new table"},
+					},
+				},
+				{
+					Skip:     true, // TODO: function dolt_clean() does not exist
+					Query:    "SELECT DOLT_CLEAN();",
+					Expected: []sql.Row{{"{0}"}},
+				},
+				{
+					Skip:     true,
+					Query:    "SELECT * FROM dolt_status;",
+					Expected: []sql.Row{},
+				},
+			},
+		},
+		{
+			Name: "smoke test select dolt_checkout(table)",
+			SetUpScript: []string{
+				"CREATE TABLE t1 (pk int primary key);",
+				"INSERT INTO t1 VALUES (1);",
+			},
+			Assertions: []ScriptTestAssertion{
+				{
+					Query: "SELECT * FROM dolt_status;",
+					Expected: []sql.Row{
+						{"t1", 0, "new table"},
+					},
+				},
+				{
+					Query:    "SELECT DOLT_CHECKOUT('t1');",
+					Expected: []sql.Row{{"{0}"}},
+				},
+				{
+					Query:    "SELECT * FROM dolt_status;",
+					Expected: []sql.Row{},
+				},
 			},
 		},
 	})

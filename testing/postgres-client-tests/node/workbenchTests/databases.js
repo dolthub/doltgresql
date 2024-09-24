@@ -1,3 +1,4 @@
+import { doltCleanFields } from "../fields.js";
 import { dbName } from "../helpers.js";
 
 export const databaseTests = [
@@ -12,14 +13,13 @@ export const databaseTests = [
     },
   },
   {
-    skip: true, // TODO: error: failed to clean; failed to remove tables; table not found: 'test_table'
     q: `SELECT DOLT_CLEAN('test_table')`,
     res: {
       command: "SELECT",
       rowCount: 1,
       oid: null,
       rows: [{ dolt_clean: ["0"] }],
-      fields: [],
+      fields: doltCleanFields,
     },
   },
   {

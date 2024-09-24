@@ -27,7 +27,7 @@ export const doltResetFields = [
     name: "dolt_reset",
     tableID: 0,
     columnID: 0,
-    dataTypeID: 25,
+    dataTypeID: 1009,
     dataTypeSize: -1,
     dataTypeModifier: -1,
     format: "text",
@@ -49,6 +49,18 @@ export const doltBranchFields = [
 export const doltCheckoutFields = [
   {
     name: "dolt_checkout",
+    tableID: 0,
+    columnID: 0,
+    dataTypeID: 1009,
+    dataTypeSize: -1,
+    dataTypeModifier: -1,
+    format: "text",
+  },
+];
+
+export const doltCleanFields = [
+  {
+    name: "dolt_clean",
     tableID: 0,
     columnID: 0,
     dataTypeID: 1009,
