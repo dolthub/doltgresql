@@ -185,6 +185,17 @@ func TestSmokeTests(t *testing.T) {
 			},
 			Assertions: []ScriptTestAssertion{
 				{
+					Query: "select first_name, last_name, team_name from employees " +
+						"join employees_teams on (employees.id=employees_teams.employee_id) " +
+						"join teams on (teams.id=employees_teams.team_id) where team_name='Engineering';",
+					Expected: []sql.Row{
+						{"Timothy", "Sehn", "Engineering"},
+						{"Brian", "Hendriks", "Engineering"},
+						{"Aaron", "Son", "Engineering"},
+						{"Daylon", "Wilkins", "Engineering"},
+					},
+				},
+				{
 					Query: "select to_last_name, to_first_name, to_id, to_commit, from_last_name, from_first_name," +
 						"from_id, from_commit, diff_type from dolt_diff('main', 'modifications', 'employees');",
 					Expected: []sql.Row{

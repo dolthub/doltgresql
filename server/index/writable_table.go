@@ -34,10 +34,14 @@ var _ sql.IndexSearchableTable = (*WritableDoltgresTable)(nil)
 
 // IndexedAccess implements the sql.IndexSearchableTable interface.
 func (dt *WritableDoltgresTable) IndexedAccess(lookup sql.IndexLookup) sql.IndexedTable {
-	return &IndexedWritableDoltgresTable{
-		WritableIndexedDoltTable: dt.WritableDoltTable.IndexedAccess(lookup).(*sqle.WritableIndexedDoltTable),
-		idx:                      lookup.Index,
-		rc:                       lookup.Ranges.(index.DoltgresRangeCollection),
+	if dgRanges, ok := lookup.Ranges.(index.DoltgresRangeCollection); ok {
+		return &IndexedWritableDoltgresTable{
+			WritableIndexedDoltTable: dt.WritableDoltTable.IndexedAccess(lookup).(*sqle.WritableIndexedDoltTable),
+			idx:                      lookup.Index,
+			rc:                       dgRanges,
+		}
+	} else {
+		return dt.WritableDoltTable.IndexedAccess(lookup)
 	}
 }
 
