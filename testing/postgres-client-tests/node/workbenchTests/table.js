@@ -3,6 +3,7 @@ import {
   doltAddFields,
   doltCheckoutFields,
   doltCommitFields,
+  doltDiffStatFields,
   doltResetFields,
   doltStatusFields,
   infoSchemaKeyColumnUsageFields,
@@ -332,7 +333,7 @@ export const tableTests = [
           new_cell_count: 12,
         },
       ],
-      fields: [],
+      fields: doltDiffStatFields,
     },
   },
   {
@@ -364,6 +365,7 @@ export const tableTests = [
           new_cell_count: 12,
         },
       ],
+      fields: doltDiffStatFields,
     },
   },
 
