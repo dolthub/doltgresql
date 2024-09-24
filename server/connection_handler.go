@@ -617,6 +617,16 @@ func makeCommandComplete(tag string, rows int32) *pgproto3.CommandComplete {
 // messages are expected, and the server should tell the client that it is ready for the next query, and |err| contains
 // any error that occurred while processing the COPY DATA message.
 func (h *ConnectionHandler) handleCopyData(message *pgproto3.CopyData) (stop bool, endOfMessages bool, err error) {
+	helper, messages, err := h.handleCopyDataHelper(message)
+	if err != nil {
+		h.copyFromStdinState.copyErr = err
+	}
+	return helper, messages, err
+}
+
+// handleCopyDataHelper is a helper function that should only be invoked by handleCopyData. handleCopyData wraps this
+// function so that it can capture any returned error message and store it in the saved state.
+func (h *ConnectionHandler) handleCopyDataHelper(message *pgproto3.CopyData) (stop bool, endOfMessages bool, err error) {
 	if h.copyFromStdinState == nil {
 		return false, true, fmt.Errorf("COPY DATA message received without a COPY FROM STDIN operation in progress")
 	}
@@ -691,6 +701,14 @@ func (h *ConnectionHandler) handleCopyDone(_ *pgproto3.CopyDone) (stop bool, end
 			fmt.Errorf("COPY DONE message received without a COPY FROM STDIN operation in progress")
 	}
 
+	// If there was a previous error returned from processing a CopyData message, then don't return an error here
+	// and don't send endOfMessage=true, since the CopyData error already sent endOfMessage=true. If we do send
+	// endOfMessage=true here, then the client gets confused about the unexpected/extra Idle message since the
+	// server has already reported it was idle in the last message after the returned error.
+	if h.copyFromStdinState.copyErr != nil {
+		return false, false, nil
+	}
+
 	dataLoader := h.copyFromStdinState.dataLoader
 	if dataLoader == nil {
 		return false, true,
@@ -726,7 +744,7 @@ func (h *ConnectionHandler) handleCopyDone(_ *pgproto3.CopyDone) (stop bool, end
 	})
 }
 
-// handleCopyDone handles a COPY FAIL message by aborting the in-progress COPY DATA operation.  The |stop| response
+// handleCopyFail handles a COPY FAIL message by aborting the in-progress COPY DATA operation.  The |stop| response
 // parameter is true if the connection handler should shut down the connection, |endOfMessages| is true if no more
 // COPY DATA messages are expected, and the server should tell the client that it is ready for the next query, and
 // |err| contains any error that occurred while processing the COPY DATA message.

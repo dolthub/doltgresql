@@ -69,8 +69,18 @@ type ConvertedQuery struct {
 // this statement is processed, the server accepts COPY DATA messages from the client with chunks of data to load
 // into a table.
 type copyFromStdinState struct {
+	// copyFromStdinNode stores the original CopyFrom statement that initiated the CopyData message sequence. This
+	// node is used to look at what parameters were specified, such as which table to load data into, file format,
+	// delimiters, etc.
 	copyFromStdinNode *node.CopyFrom
-	dataLoader        dataloader.DataLoader
+	// dataLoader is the implementation of DataLoader that is used to load each individual CopyData chunk into the
+	// target table.
+	dataLoader dataloader.DataLoader
+	// copyErr stores any error that was returned while processing a CopyData message and loading a chunk of data
+	// to the target table. The server needs to keep track of any errors that were encountered while processing chunks
+	// so that it can avoid sending a CommandComplete message if an error was encountered after the client already
+	// sent a CopyDone message to the server.
+	copyErr error
 }
 
 type PortalData struct {
