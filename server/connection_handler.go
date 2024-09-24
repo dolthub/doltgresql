@@ -27,6 +27,7 @@ import (
 	"strings"
 	"sync/atomic"
 
+	"github.com/dolthub/dolt/go/libraries/doltcore/sqle/dsess"
 	"github.com/dolthub/dolt/go/libraries/doltcore/sqlserver"
 	"github.com/dolthub/go-mysql-server/sql"
 	"github.com/dolthub/vitess/go/mysql"
@@ -641,9 +642,13 @@ func (h *ConnectionHandler) handleCopyData(message *pgproto3.CopyData) (stop boo
 		return false, true, fmt.Errorf("COPY DATA message received without a COPY FROM STDIN operation in progress")
 	}
 
-	// Grab a sql.Context
+	// Grab a sql.Context and ensure the session has a transaction started, otherwise the copied data
+	// won't get committed correctly.
 	sqlCtx, err := h.doltgresHandler.NewContext(context.Background(), h.mysqlConn, "")
 	if err != nil {
+		return false, false, err
+	}
+	if err = startTransaction(sqlCtx); err != nil {
 		return false, false, err
 	}
 
@@ -723,6 +728,17 @@ func (h *ConnectionHandler) handleCopyDone(_ *pgproto3.CopyDone) (stop bool, end
 		return false, false, err
 	}
 
+	// If we aren't in an explicit/user managed transaction, we need to commit the transaction
+	if !sqlCtx.GetIgnoreAutoCommit() {
+		txSession, ok := sqlCtx.Session.(sql.TransactionSession)
+		if !ok {
+			return false, false, fmt.Errorf("session does not implement sql.TransactionSession")
+		}
+		if err = txSession.CommitTransaction(sqlCtx, txSession.GetTransaction()); err != nil {
+			return false, false, err
+		}
+	}
+
 	h.copyFromStdinState = nil
 	// We send back endOfMessage=true, since the COPY DONE message ends the COPY DATA flow and the server is ready
 	// to accept the next query now.
@@ -751,6 +767,23 @@ func (h *ConnectionHandler) handleCopyFail(_ *pgproto3.CopyFail) (stop bool, end
 	// We send back endOfMessage=true, since the COPY FAIL message ends the COPY DATA flow and the server is ready
 	// to accept the next query now.
 	return false, true, nil
+}
+
+// startTransaction checks to see if the current session has a transaction started yet or not, and if not,
+// creates a read/write transaction for the session to use. This is necessary for handling commands that alter
+// data without going through the GMS engine.
+func startTransaction(ctx *sql.Context) error {
+	doltSession, ok := ctx.Session.(*dsess.DoltSession)
+	if !ok {
+		return fmt.Errorf("unexpected session type: %T", ctx.Session)
+	}
+	if doltSession.GetTransaction() == nil {
+		if _, err := doltSession.StartTransaction(ctx, sql.ReadWrite); err != nil {
+			return err
+		}
+	}
+
+	return nil
 }
 
 func (h *ConnectionHandler) deallocatePreparedStatement(name string, preparedStatements map[string]PreparedStatementData, query ConvertedQuery, conn net.Conn) error {
