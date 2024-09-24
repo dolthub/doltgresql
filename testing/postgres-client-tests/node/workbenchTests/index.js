@@ -8,6 +8,7 @@ import { logTests } from "./logs.js";
 import { assertEqualRows } from "../helpers.js";
 import { mergeTests } from "./merge.js";
 import { tableTests } from "./table.js";
+import { schemaTests } from "./schemas.js";
 
 const args = process.argv.slice(2);
 const testDataPath = args[3];
@@ -15,6 +16,7 @@ const testDataPath = args[3];
 export default async function runWorkbenchTests(database) {
   await runTests(database, databaseTests, "database");
   await runTests(database, branchTests, "branches");
+  await runTests(database, schemaTests, "schemas");
   await runTests(database, logTests, "logs");
   await runTests(database, mergeTests, "merge");
   await runTests(database, tableTests, "tables");

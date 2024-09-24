@@ -223,6 +223,37 @@ export const infoSchemaKeyColumnUsageFields = [
   },
 ];
 
+export const schemaNameField = {
+  name: "schema_name",
+  tableID: 0,
+  columnID: 0,
+  dataTypeID: 1043,
+  dataTypeSize: 256,
+  dataTypeModifier: -1,
+  format: "text",
+};
+
+export const pgTablesFields = [
+  {
+    name: "schemaname",
+    tableID: 0,
+    columnID: 0,
+    dataTypeID: 19,
+    dataTypeSize: 252,
+    dataTypeModifier: -1,
+    format: "text",
+  },
+  {
+    name: "tablename",
+    tableID: 0,
+    columnID: 0,
+    dataTypeID: 19,
+    dataTypeSize: 252,
+    dataTypeModifier: -1,
+    format: "text",
+  },
+];
+
 export const doltDiffStatFields = [
   {
     name: "table_name",
