@@ -33,7 +33,7 @@ var txid_current = framework.Function0{
 	IsNonDeterministic: true,
 	Strict:             true,
 	Callable: func(ctx *sql.Context) (any, error) {
-		//t := ctx.GetTransaction()
-		return int64(757), nil
+		// TODO: current transaction ID
+		return int64(0), nil
 	},
 }
