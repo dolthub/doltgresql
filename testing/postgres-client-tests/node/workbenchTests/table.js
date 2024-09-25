@@ -279,7 +279,7 @@ export const tableTests = [
 
   // Copy from tests
   {
-    skip: true, // TODO: dolt_commit above did not actually commit
+    skip: true, // TODO: dolt_commit above did not actually commit (foreign keys)
     q: `SELECT * FROM dolt_status`,
     res: {
       command: "SELECT",
@@ -295,7 +295,6 @@ export const tableTests = [
     res: { command: "COPY", rowCount: 3, oid: null, rows: [], fields: [] },
   },
   {
-    skip: true, // TODO: COPY did not add rows
     q: "SELECT * FROM test_info",
     res: {
       command: "SELECT",
@@ -303,15 +302,14 @@ export const tableTests = [
       oid: null,
       rows: [
         { id: 1, info: "info about test pk 0", test_pk: 0 },
-        { id: 4, info: "info about test pk 4", test_pk: 1 },
-        { id: 5, info: "info about test pk 5", test_pk: 0 },
-        { id: 6, info: "info about test pk 6", test_pk: 0 },
+        { id: 4, info: "string for 4", test_pk: 1 },
+        { id: 5, info: "string for 5", test_pk: 0 },
+        { id: 6, info: "string for 6", test_pk: 0 },
       ],
       fields: testInfoFields,
     },
   },
   {
-    skip: true, // TODO: error: table not found: test_info
     q: "SELECT * FROM dolt_diff_stat('HEAD', 'WORKING')",
     res: {
       command: "SELECT",
@@ -320,17 +318,17 @@ export const tableTests = [
       rows: [
         {
           table_name: "test_info",
-          rows_unmodified: 1,
-          rows_added: 3,
-          rows_deleted: 0,
-          rows_modified: 0,
-          cells_added: 9,
-          cells_deleted: 0,
-          cells_modified: 0,
-          old_row_count: 1,
-          new_row_count: 4,
-          old_cell_count: 3,
-          new_cell_count: 12,
+          rows_unmodified: "1",
+          rows_added: "3",
+          rows_deleted: "0",
+          rows_modified: "0",
+          cells_added: "9",
+          cells_deleted: "0",
+          cells_modified: "0",
+          old_row_count: "1",
+          new_row_count: "4",
+          old_cell_count: "3",
+          new_cell_count: "12",
         },
       ],
       fields: doltDiffStatFields,
@@ -343,7 +341,7 @@ export const tableTests = [
     res: { command: "COPY", rowCount: 6, oid: null, rows: [], fields: [] },
   },
   {
-    skip: true, // TODO: error: table not found: test_info
+    skip: true,
     q: "SELECT * FROM dolt_diff_stat('HEAD', 'WORKING')",
     res: {
       command: "SELECT",
