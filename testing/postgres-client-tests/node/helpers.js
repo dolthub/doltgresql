@@ -23,6 +23,20 @@ export function getConfig() {
   };
 }
 
+export function assertEqualRows(test, data) {
+  const expected = test.res;
+  const resultStr = JSON.stringify(data);
+  const result = JSON.parse(resultStr);
+  if (!assertQueryResult(test.q, expected, data, test.matcher)) {
+    console.log("Query:", test.q);
+    console.log("Results:", result);
+    console.log("Expected:", expected);
+    throw new Error("Query failed");
+  } else {
+    console.log("Query succeeded:", test.q);
+  }
+}
+
 export function assertQueryResult(q, expected, data, matcher) {
   if (matcher) {
     return matcher(data, expected);
@@ -30,18 +44,11 @@ export function assertQueryResult(q, expected, data, matcher) {
   if (q.toLowerCase().includes("dolt_commit")) {
     if (data.rows.length !== 1) return false;
     const hash = data.rows[0].dolt_commit[0];
-    // dolt_commit row returns 32 character hash
-    return hash.length === 32;
-  }
-  if (q.toLowerCase().includes("dolt_merge")) {
-    if (data.rows.length !== 1) return false;
-    const [hash, fastForward, conflicts, message] = data.rows[0].dolt_merge;
-    return (
-      hash.length === 32 &&
-      expected.fastForward === fastForward &&
-      expected.conflicts === conflicts &&
-      expected.message === message
-    );
+    if (hash.length !== 32) {
+      console.log("Invalid hash for dolt_commit:", hash);
+      return false;
+    }
+    expected.rows[0].dolt_commit = data.rows[0].dolt_commit;
   }
 
   // Does partial matching of actual and expected results.

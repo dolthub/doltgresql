@@ -89,6 +89,21 @@ func (mr *MessageReader) PushQueue(messages ...pgproto3.Message) {
 	mr.queue = append(mr.queue, messages...)
 }
 
+// SurroundingMessages returns the messages that are surrounding the ones at the current index. This is primarily for
+// debugging, as it can be hard to locate messages when there are thousands in the reader, and you want to know which
+// messages surround the current one.
+func (mr *MessageReader) SurroundingMessages(amountBefore int, amountAfter int) []pgproto3.Message {
+	amountBefore = mr.idx - amountBefore
+	amountAfter = mr.idx + amountAfter
+	if amountBefore < 0 {
+		amountBefore = 0
+	}
+	if amountAfter > len(mr.messages) {
+		amountAfter = len(mr.messages) - 1
+	}
+	return mr.messages[amountBefore:amountAfter]
+}
+
 // SyncToNextQuery advances the reader forward to the next query.
 func (mr *MessageReader) SyncToNextQuery() {
 	for {
