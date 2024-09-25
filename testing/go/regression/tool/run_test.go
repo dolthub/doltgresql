@@ -26,7 +26,7 @@ import (
 func TestRegressionTests(t *testing.T) {
 	// We'll only run this on GitHub Actions, so set this environment variable to run locally
 	if _, ok := os.LookupEnv("REGRESSION_TESTING"); !ok {
-		// t.Skip()
+		t.Skip()
 	}
 	regex.ShouldPanic = false // Something that is occurring in a test is causing this to panic, so we disable for now
 	controller, port, err := CreateDoltgresServer()
