@@ -62,12 +62,12 @@ type ConnectionHandler struct {
 // Set this env var to disable panic handling in the connection, which is useful when debugging a panic
 const disablePanicHandlingEnvVar = "DOLT_PGSQL_PANIC"
 
-// handlePanics determines whether panics should be handled in the connection handler. See |disablePanicHandlingEnvVar|.
-var handlePanics = true
+// HandlePanics determines whether panics should be handled in the connection handler. See |disablePanicHandlingEnvVar|.
+var HandlePanics = true
 
 func init() {
 	if _, ok := os.LookupEnv(disablePanicHandlingEnvVar); ok {
-		handlePanics = false
+		HandlePanics = false
 	}
 }
 
@@ -110,7 +110,7 @@ func NewConnectionHandler(conn net.Conn, handler mysql.Handler) *ConnectionHandl
 // Expected to run in a goroutine per connection.
 func (h *ConnectionHandler) HandleConnection() {
 	var returnErr error
-	if handlePanics {
+	if HandlePanics {
 		defer func() {
 			if r := recover(); r != nil {
 				fmt.Printf("Listener recovered panic: %v", r)
@@ -291,7 +291,7 @@ func (h *ConnectionHandler) receiveMessage() (bool, error) {
 	// forcibly close the connection. Contrast this with the panic handling logic in HandleConnection, where we treat any
 	// panic as unrecoverable to the connection. As we fill out the implementation, we can revisit this decision and
 	// rethink our posture over whether panics should terminate a connection.
-	if handlePanics {
+	if HandlePanics {
 		defer func() {
 			if r := recover(); r != nil {
 				fmt.Printf("Listener recovered panic: %v", r)
