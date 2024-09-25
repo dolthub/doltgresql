@@ -146,6 +146,17 @@ ListenerLoop:
 						return nil, fmt.Errorf("unable to determine what to do with %T", message)
 					}
 				}
+				if postgresConnFrontend.ReadBufferLen() > 0 {
+					for postgresConnFrontend.ReadBufferLen() > 0 {
+						_, _ = postgresConnFrontend.Receive()
+					}
+					tracker.Failed++
+					tracker.Add(ReplayTrackerItem{
+						Query:           "DESCRIBE",
+						UnexpectedError: "Doltgres sent additional messages after ReadyForQuery",
+					})
+					continue MessageLoop
+				}
 				if expectedError == nil {
 					if responseError != nil {
 						tracker.Failed++
@@ -274,6 +285,17 @@ ListenerLoop:
 						return nil, fmt.Errorf("unable to determine what to do with %T", message)
 					}
 				}
+				if postgresConnFrontend.ReadBufferLen() > 0 {
+					for postgresConnFrontend.ReadBufferLen() > 0 {
+						_, _ = postgresConnFrontend.Receive()
+					}
+					tracker.Failed++
+					tracker.Add(ReplayTrackerItem{
+						Query:           fmt.Sprintf("Function OID: %d", message.Function),
+						UnexpectedError: "Doltgres sent additional messages after ReadyForQuery",
+					})
+					continue MessageLoop
+				}
 				if expectedError == nil {
 					if responseError != nil {
 						tracker.Failed++
@@ -389,6 +411,17 @@ ListenerLoop:
 					default:
 						return nil, fmt.Errorf("unable to determine what to do with %T", message)
 					}
+				}
+				if postgresConnFrontend.ReadBufferLen() > 0 {
+					for postgresConnFrontend.ReadBufferLen() > 0 {
+						_, _ = postgresConnFrontend.Receive()
+					}
+					tracker.Failed++
+					tracker.Add(ReplayTrackerItem{
+						Query:           message.Query,
+						UnexpectedError: "Doltgres sent additional messages after ReadyForQuery",
+					})
+					continue MessageLoop
 				}
 				if expectedError == nil {
 					if responseError != nil {
@@ -530,6 +563,17 @@ ListenerLoop:
 					default:
 						return nil, fmt.Errorf("unable to determine what to do with %T", message)
 					}
+				}
+				if postgresConnFrontend.ReadBufferLen() > 0 {
+					for postgresConnFrontend.ReadBufferLen() > 0 {
+						_, _ = postgresConnFrontend.Receive()
+					}
+					tracker.Failed++
+					tracker.Add(ReplayTrackerItem{
+						Query:           message.String,
+						UnexpectedError: "Doltgres sent additional messages after ReadyForQuery",
+					})
+					continue MessageLoop
 				}
 				if expectedError == nil {
 					if responseError != nil {
