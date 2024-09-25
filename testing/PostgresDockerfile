@@ -4,44 +4,44 @@ FROM --platform=linux/amd64 ubuntu:20.04
 ENV DEBIAN_FRONTEND=noninteractive
 RUN apt update -y && \
     apt install -y \
-        curl \
-        gnupg \
-        software-properties-common && \
-    curl -sL https://deb.nodesource.com/setup_14.x | bash - && \
+    curl \
+    gnupg \
+    software-properties-common && \
+    curl -sL https://deb.nodesource.com/setup_20.x | bash - && \
     add-apt-repository ppa:deadsnakes/ppa -y && \
     sh -c 'echo "deb http://apt.postgresql.org/pub/repos/apt $(lsb_release -cs)-pgdg main" > /etc/apt/sources.list.d/pgdg.list' && \
     curl -fsSL https://www.postgresql.org/media/keys/ACCC4CF8.asc | gpg --dearmor -o /etc/apt/trusted.gpg.d/postgresql.gpg
 RUN apt update -y && \
     apt install -y \
-        python3.8 \
-        python3-pip \
-        curl \
-        wget \
-        pkg-config \
-        openjdk-17-jdk \
-        ca-certificates-java \
-        bats \
-        perl \
-        php \
-        php-pgsql \
-        cpanminus \
-        cmake \
-        g++ \
-        libmysqlcppconn-dev \
-        git \
-        ruby \
-        ruby-dev \
-        gem \
-        libc6 \
-        libgcc1 \
-        r-base \
-        postgresql-16 \
-        postgresql-contrib-16 \
-        libpq-dev \
-        nodejs \
-        lsof \
-        postgresql-server-dev-all && \
-        update-ca-certificates -f
+    python3.8 \
+    python3-pip \
+    curl \
+    wget \
+    pkg-config \
+    openjdk-17-jdk \
+    ca-certificates-java \
+    bats \
+    perl \
+    php \
+    php-pgsql \
+    cpanminus \
+    cmake \
+    g++ \
+    libmysqlcppconn-dev \
+    git \
+    ruby \
+    ruby-dev \
+    gem \
+    libc6 \
+    libgcc1 \
+    r-base \
+    postgresql-16 \
+    postgresql-contrib-16 \
+    libpq-dev \
+    nodejs \
+    lsof \
+    postgresql-server-dev-all && \
+    update-ca-certificates -f
 
 # install go
 WORKDIR /root
@@ -62,7 +62,7 @@ ENV JAVA_HOME /usr/lib/jvm/java-17-openjdk-amd64/
 # install java postgres JDBC driver
 RUN mkdir -p /postgres-client-tests/java
 RUN curl -L -o /postgres-client-tests/java/postgresql-42.7.3.jar \
-  https://jdbc.postgresql.org/download/postgresql-42.7.3.jar
+    https://jdbc.postgresql.org/download/postgresql-42.7.3.jar
 
 # install node deps
 COPY ./testing/postgres-client-tests/node/package.json /postgres-client-tests/node/
