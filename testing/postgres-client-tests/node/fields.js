@@ -82,6 +82,54 @@ export const doltCommitFields = [
   },
 ];
 
+export const doltSchemasFields = [
+  {
+    name: "type",
+    tableID: 0,
+    columnID: 0,
+    dataTypeID: 1043,
+    dataTypeSize: 256,
+    dataTypeModifier: -1,
+    format: "text",
+  },
+  {
+    name: "name",
+    tableID: 0,
+    columnID: 0,
+    dataTypeID: 1043,
+    dataTypeSize: 256,
+    dataTypeModifier: -1,
+    format: "text",
+  },
+  {
+    name: "fragment",
+    tableID: 0,
+    columnID: 0,
+    dataTypeID: 25,
+    dataTypeSize: -1,
+    dataTypeModifier: -1,
+    format: "text",
+  },
+  {
+    name: "extra",
+    tableID: 0,
+    columnID: 0,
+    dataTypeID: 114,
+    dataTypeSize: -1,
+    dataTypeModifier: -1,
+    format: "text",
+  },
+  {
+    name: "sql_mode",
+    tableID: 0,
+    columnID: 0,
+    dataTypeID: 1043,
+    dataTypeSize: 1024,
+    dataTypeModifier: -1,
+    format: "text",
+  },
+];
+
 export const doltStatusFields = [
   {
     name: "table_name",
