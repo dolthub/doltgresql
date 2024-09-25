@@ -47,6 +47,21 @@ func transformAST(query string) ([]string, bool) {
 
 func transformSet(stmt *sqlparser.Set) ([]string, bool) {
 	var queries []string
+
+	// the semantics aren't quite the same, but setting autocommit to false is the same as beginning a transaction
+	// (for most scripts). Setting autocommit to true is a no-op.
+	if len(stmt.Exprs) == 1 && strings.ToLower(stmt.Exprs[0].Name.String()) == "autocommit" {
+		buf := sqlparser.NewTrackedBuffer(nil)
+		stmt.Exprs[0].Expr.Format(buf)
+		exprStr := strings.ToLower(buf.String())
+		if exprStr == "0" || exprStr == "off" || exprStr == "'off'" || exprStr == "false" {
+			queries = append(queries, "START TRANSACTION")
+			return queries, true
+		} else {
+			return []string{""}, true
+		}
+	}
+
 	for _, expr := range stmt.Exprs {
 		if expr.Scope == sqlparser.GlobalStr {
 			queries = append(queries, fmt.Sprintf("SET GLOBAL %s = %s", expr.Name, expr.Expr))
@@ -596,7 +611,15 @@ func TestConvertQuery(t *testing.T) {
 		},
 		{
 			input:    "SET @@autocommit = 1",
-			expected: []string{"SET autocommit = 1"},
+			expected: []string{""},
+		},
+		{
+			input:    "SET @@autocommit = 0",
+			expected: []string{"START TRANSACTION"},
+		},
+		{
+			input:    "SET @@autocommit = off",
+			expected: []string{"START TRANSACTION"},
 		},
 		{
 			input: "SET @@autocommit = 1, @@dolt_transaction_commit = off",

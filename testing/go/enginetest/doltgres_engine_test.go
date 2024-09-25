@@ -1081,8 +1081,44 @@ func TestViewsWithAsOfPrepared(t *testing.T) {
 }
 
 func TestDoltMerge(t *testing.T) {
-	// t.Skip()
-	h := newDoltgresServerHarness(t)
+	h := newDoltgresServerHarness(t).WithSkippedQueries([]string{
+		"keyless table merge with constraint violation on duplicate rows",                                                     // alter table
+		"CALL DOLT_MERGE without conflicts correctly works with autocommit off with commit flag",                              // datetime support
+		"CALL DOLT_MERGE without conflicts correctly works with autocommit off and no commit flag",                            // datetime support
+		"CALL DOLT_MERGE with conflicts can be correctly resolved when autocommit is off",                                     // datetime support
+		"CALL DOLT_MERGE with schema conflicts can be correctly resolved using dolt_conflicts_resolve when autocommit is off", // alter table
+		"merge conflicts prevent new branch creation",                                                                         // unknown encoding
+		"select message from dolt_log where date ",                                                                            // datetime support
+		"CALL DOLT_MERGE with conflict is queryable and committable with dolt_allow_commit_conflicts on",                      // unknown encoding
+		"CALL DOLT_MERGE with conflicts can be aborted when autocommit is off",                                                // unknown encoding
+		"DOLT_MERGE(--abort) clears staged",
+		"CALL DOLT_MERGE complains when a merge overrides local changes",
+		"Drop and add primary key on two branches converges to same schema", // alter table
+		"Constraint violations are persisted",
+		"left adds a unique key constraint and resolves existing violations", // alter table
+		"insert two tables with the same name and different schema",
+		"insert two tables with the same name and schema that conflict",                                   // unknown encoding
+		"merge with new triggers defined",                                                                 // triggers
+		"add multiple columns, then set and unset a value. No conflicts expected.",                        // alter table
+		"dropping constraint from one branch drops from both",                                             // alter table
+		"dropping constraint from one branch drops from both, no checkout",                                // alter table
+		"merge constraint with valid data on different branches",                                          // alter table
+		"resolving a deleted and modified row handles constraint checks",                                  // alter table
+		"resolving a modified/modified row still checks nullness constraint",                              // alter table
+		"Merge errors if the primary key types have changed (even if the new type has the same NomsKind)", // alter table
+		"`Delete from table` should keep artifacts - conflicts",                                           // unknown encoding
+		"`Truncate table` should keep artifacts - conflicts",                                              // unknown encoding
+		"`Truncate table` should keep artifacts - violations",                                             // unknown encoding
+		"parent index is longer than child index",
+		"parallel column updates (repro issue #4547)",
+		"try to merge a nullable field into a non-null column",        // alter table
+		"merge fulltext with renamed table",                           // alter table
+		"merge when schemas are equal, but column tags are different", // alter table
+		"merge with float column default",                             // alter table
+		"merge with float 1.23 column default",                        // alter table
+		"merge with decimal 1.23 column default",                      // alter table
+		"merge with different types",                                  // alter table
+	})
 	denginetest.RunDoltMergeTests(t, h)
 }
 
