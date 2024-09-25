@@ -21,6 +21,7 @@ import (
 	"net"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/jackc/pgx/v5/pgproto3"
 )
@@ -87,7 +88,7 @@ ListenerLoop:
 					_ = reader.Next()
 					postgresConnFrontend.Send(sync)
 				}
-				if err = postgresConnFrontend.Flush(); err != nil {
+				if err = sendMessagesWithTimeout(postgresConnFrontend); err != nil {
 					tracker.Failed++
 					tracker.Add(ReplayTrackerItem{
 						Query:           "DESCRIBE",
@@ -119,7 +120,7 @@ ListenerLoop:
 				var responseRowDesc *pgproto3.RowDescription
 			DescribeResponseLoop:
 				for {
-					response, err := postgresConnFrontend.Receive()
+					response, err := receiveMessageWithTimeout(postgresConnFrontend)
 					if err != nil {
 						tracker.Failed++
 						tracker.Add(ReplayTrackerItem{
@@ -230,7 +231,7 @@ ListenerLoop:
 				}
 			case *pgproto3.FunctionCall:
 				postgresConnFrontend.Send(message)
-				if err = postgresConnFrontend.Flush(); err != nil {
+				if err = sendMessagesWithTimeout(postgresConnFrontend); err != nil {
 					tracker.Failed++
 					tracker.Add(ReplayTrackerItem{
 						Query:           fmt.Sprintf("Function OID: %d", message.Function),
@@ -260,7 +261,7 @@ ListenerLoop:
 				var responseData *pgproto3.FunctionCallResponse
 			FunctionResponseLoop:
 				for {
-					response, err := postgresConnFrontend.Receive()
+					response, err := receiveMessageWithTimeout(postgresConnFrontend)
 					if err != nil {
 						tracker.Failed++
 						tracker.Add(ReplayTrackerItem{
@@ -358,7 +359,7 @@ ListenerLoop:
 					_ = reader.Next()
 					postgresConnFrontend.Send(sync)
 				}
-				if err = postgresConnFrontend.Flush(); err != nil {
+				if err = sendMessagesWithTimeout(postgresConnFrontend); err != nil {
 					tracker.Failed++
 					tracker.Add(ReplayTrackerItem{
 						Query:           message.Query,
@@ -387,7 +388,7 @@ ListenerLoop:
 				var responseError *pgproto3.ErrorResponse
 			ParseResponseLoop:
 				for {
-					response, err := postgresConnFrontend.Receive()
+					response, err := receiveMessageWithTimeout(postgresConnFrontend)
 					if err != nil {
 						tracker.Failed++
 						tracker.Add(ReplayTrackerItem{
@@ -479,7 +480,7 @@ ListenerLoop:
 					}
 				}
 				postgresConnFrontend.Send(message)
-				if err = postgresConnFrontend.Flush(); err != nil {
+				if err = sendMessagesWithTimeout(postgresConnFrontend); err != nil {
 					tracker.Failed++
 					tracker.Add(ReplayTrackerItem{
 						Query:           message.String,
@@ -521,7 +522,7 @@ ListenerLoop:
 				var responseDataRows []*pgproto3.DataRow
 			ResponseLoop:
 				for {
-					response, err := postgresConnFrontend.Receive()
+					response, err := receiveMessageWithTimeout(postgresConnFrontend)
 					if err != nil {
 						tracker.Failed++
 						tracker.Add(ReplayTrackerItem{
@@ -678,7 +679,7 @@ ListenerLoop:
 				}
 			case *pgproto3.Terminate:
 				postgresConnFrontend.Send(message)
-				if err = postgresConnFrontend.Flush(); err != nil {
+				if err = sendMessagesWithTimeout(postgresConnFrontend); err != nil {
 					return nil, err
 				}
 				break MessageLoop
@@ -689,4 +690,45 @@ ListenerLoop:
 		_ = postgresConn.Close()
 	}
 	return tracker, nil
+}
+
+const connTimeout = 20 * time.Second
+
+func receiveMessageWithTimeout(postgresConnFrontend *pgproto3.Frontend) (pgproto3.BackendMessage, error) {
+	c := make(chan pgproto3.BackendMessage)
+	cErr := make(chan error)
+	go func() {
+		msg, err := postgresConnFrontend.Receive()
+		if err != nil {
+			cErr <- err
+		} else {
+			c <- msg
+		}
+		close(c)
+		close(cErr)
+	}()
+
+	select {
+	case msg := <-c:
+		return msg, nil
+	case err := <-cErr:
+		return nil, err
+	case <-time.After(connTimeout):
+		return nil, errors.New("timeout while receiving message")
+	}
+}
+
+func sendMessagesWithTimeout(postgresConnFrontend *pgproto3.Frontend) error {
+	c := make(chan error)
+	go func() {
+		c <- postgresConnFrontend.Flush()
+		close(c)
+	}()
+
+	select {
+	case err := <-c:
+		return err
+	case <-time.After(connTimeout):
+		return errors.New("timeout while flushing messages")
+	}
 }
