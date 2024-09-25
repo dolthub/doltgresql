@@ -362,20 +362,27 @@ CREATE TRIGGER insert_when BEFORE INSERT ON main_table
 FOR EACH STATEMENT WHEN (true) EXECUTE PROCEDURE trigger_func('insert_when');
 CREATE TRIGGER delete_when AFTER DELETE ON main_table
 FOR EACH STATEMENT WHEN (true) EXECUTE PROCEDURE trigger_func('delete_when');
+
 SELECT trigger_name, event_manipulation, event_object_schema, event_object_table,
        action_order, action_condition, action_orientation, action_timing,
        action_reference_old_table, action_reference_new_table
   FROM information_schema.triggers
   WHERE event_object_table IN ('main_table')
   ORDER BY trigger_name COLLATE "C", 2;
+
 INSERT INTO main_table (a) VALUES (123), (456);
+
 COPY main_table FROM stdin;
 123	999
 456	999
 \.
+
 DELETE FROM main_table WHERE a IN (123, 456);
+
 UPDATE main_table SET a = 50, b = 60;
+
 SELECT * FROM main_table ORDER BY a, b;
+
 SELECT pg_get_triggerdef(oid, true) FROM pg_trigger WHERE tgrelid = 'main_table'::regclass AND tgname = 'modified_a';
 SELECT pg_get_triggerdef(oid, false) FROM pg_trigger WHERE tgrelid = 'main_table'::regclass AND tgname = 'modified_a';
 SELECT pg_get_triggerdef(oid, true) FROM pg_trigger WHERE tgrelid = 'main_table'::regclass AND tgname = 'modified_any';
@@ -420,6 +427,7 @@ FOR EACH STATEMENT EXECUTE PROCEDURE trigger_func('after_upd_b_stmt');
 SELECT pg_get_triggerdef(oid) FROM pg_trigger WHERE tgrelid = 'main_table'::regclass AND tgname = 'after_upd_a_b_row_trig';
 
 UPDATE main_table SET a = 50;
+
 UPDATE main_table SET b = 10;
 
 --

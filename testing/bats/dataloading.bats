@@ -88,6 +88,22 @@ teardown() {
   [[ "$output" =~ "3 | 03   | 97302   | Guyane" ]] || false
 }
 
+# Tests that we can load tabular data dump files that do not explicitly manage the session's transaction.
+@test 'dataloading: tabular import, no explicit tx management' {
+  # Import the data dump and assert the expected output
+  run query_server -f $BATS_TEST_DIRNAME/dataloading/tab-load-with-no-tx-control.sql
+  [ "$status" -eq 0 ]
+  [[ "$output" =~ "COPY 3" ]] || false
+  [[ ! "$output" =~ "ERROR" ]] || false
+
+  # Check the inserted rows
+  run query_server -c "SELECT * FROM test_info ORDER BY id;"
+  [ "$status" -eq 0 ]
+  [[ "$output" =~ "4 | string for 4 |       1" ]] || false
+  [[ "$output" =~ "5 | string for 5 |       0" ]] || false
+  [[ "$output" =~ "6 | string for 6 |       0" ]] || false
+}
+
 # Tests loading in data via different CSV data files.
 @test 'dataloading: csv import' {
   # Import the data dump and assert the expected output
@@ -157,4 +173,20 @@ teardown() {
   run query_server -c "SELECT count(*) from tbl1;"
   [ "$status" -eq 0 ]
   [[ "$output" =~ "100" ]] || false
+}
+
+# Tests that we can load CSV data dump files that do not explicitly manage the session's transaction.
+@test 'dataloading: csv import, no explicit tx management' {
+  # Import the data dump and assert the expected output
+  run query_server -f $BATS_TEST_DIRNAME/dataloading/csv-load-with-no-tx-control.sql
+  [ "$status" -eq 0 ]
+  [[ "$output" =~ "COPY 3" ]] || false
+  [[ ! "$output" =~ "ERROR" ]] || false
+
+  # Check the inserted rows
+  run query_server -c "SELECT * FROM test_info ORDER BY id;"
+  [ "$status" -eq 0 ]
+  [[ "$output" =~ "4 | string for 4 |       1" ]] || false
+  [[ "$output" =~ "5 | string for 5 |       0" ]] || false
+  [[ "$output" =~ "6 | string for 6 |       0" ]] || false
 }

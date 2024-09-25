@@ -27,6 +27,7 @@ import (
 	"strings"
 	"sync/atomic"
 
+	"github.com/dolthub/dolt/go/libraries/doltcore/sqle/dsess"
 	"github.com/dolthub/dolt/go/libraries/doltcore/sqlserver"
 	"github.com/dolthub/go-mysql-server/sql"
 	"github.com/dolthub/vitess/go/mysql"
@@ -616,13 +617,27 @@ func makeCommandComplete(tag string, rows int32) *pgproto3.CommandComplete {
 // messages are expected, and the server should tell the client that it is ready for the next query, and |err| contains
 // any error that occurred while processing the COPY DATA message.
 func (h *ConnectionHandler) handleCopyData(message *pgproto3.CopyData) (stop bool, endOfMessages bool, err error) {
+	helper, messages, err := h.handleCopyDataHelper(message)
+	if err != nil {
+		h.copyFromStdinState.copyErr = err
+	}
+	return helper, messages, err
+}
+
+// handleCopyDataHelper is a helper function that should only be invoked by handleCopyData. handleCopyData wraps this
+// function so that it can capture any returned error message and store it in the saved state.
+func (h *ConnectionHandler) handleCopyDataHelper(message *pgproto3.CopyData) (stop bool, endOfMessages bool, err error) {
 	if h.copyFromStdinState == nil {
 		return false, true, fmt.Errorf("COPY DATA message received without a COPY FROM STDIN operation in progress")
 	}
 
-	// Grab a sql.Context
+	// Grab a sql.Context and ensure the session has a transaction started, otherwise the copied data
+	// won't get committed correctly.
 	sqlCtx, err := h.doltgresHandler.NewContext(context.Background(), h.mysqlConn, "")
 	if err != nil {
+		return false, false, err
+	}
+	if err = startTransaction(sqlCtx); err != nil {
 		return false, false, err
 	}
 
@@ -686,6 +701,14 @@ func (h *ConnectionHandler) handleCopyDone(_ *pgproto3.CopyDone) (stop bool, end
 			fmt.Errorf("COPY DONE message received without a COPY FROM STDIN operation in progress")
 	}
 
+	// If there was a previous error returned from processing a CopyData message, then don't return an error here
+	// and don't send endOfMessage=true, since the CopyData error already sent endOfMessage=true. If we do send
+	// endOfMessage=true here, then the client gets confused about the unexpected/extra Idle message since the
+	// server has already reported it was idle in the last message after the returned error.
+	if h.copyFromStdinState.copyErr != nil {
+		return false, false, nil
+	}
+
 	dataLoader := h.copyFromStdinState.dataLoader
 	if dataLoader == nil {
 		return false, true,
@@ -702,6 +725,17 @@ func (h *ConnectionHandler) handleCopyDone(_ *pgproto3.CopyDone) (stop bool, end
 		return false, false, err
 	}
 
+	// If we aren't in an explicit/user managed transaction, we need to commit the transaction
+	if !sqlCtx.GetIgnoreAutoCommit() {
+		txSession, ok := sqlCtx.Session.(sql.TransactionSession)
+		if !ok {
+			return false, false, fmt.Errorf("session does not implement sql.TransactionSession")
+		}
+		if err = txSession.CommitTransaction(sqlCtx, txSession.GetTransaction()); err != nil {
+			return false, false, err
+		}
+	}
+
 	h.copyFromStdinState = nil
 	// We send back endOfMessage=true, since the COPY DONE message ends the COPY DATA flow and the server is ready
 	// to accept the next query now.
@@ -710,7 +744,7 @@ func (h *ConnectionHandler) handleCopyDone(_ *pgproto3.CopyDone) (stop bool, end
 	})
 }
 
-// handleCopyDone handles a COPY FAIL message by aborting the in-progress COPY DATA operation.  The |stop| response
+// handleCopyFail handles a COPY FAIL message by aborting the in-progress COPY DATA operation.  The |stop| response
 // parameter is true if the connection handler should shut down the connection, |endOfMessages| is true if no more
 // COPY DATA messages are expected, and the server should tell the client that it is ready for the next query, and
 // |err| contains any error that occurred while processing the COPY DATA message.
@@ -730,6 +764,23 @@ func (h *ConnectionHandler) handleCopyFail(_ *pgproto3.CopyFail) (stop bool, end
 	// We send back endOfMessage=true, since the COPY FAIL message ends the COPY DATA flow and the server is ready
 	// to accept the next query now.
 	return false, true, nil
+}
+
+// startTransaction checks to see if the current session has a transaction started yet or not, and if not,
+// creates a read/write transaction for the session to use. This is necessary for handling commands that alter
+// data without going through the GMS engine.
+func startTransaction(ctx *sql.Context) error {
+	doltSession, ok := ctx.Session.(*dsess.DoltSession)
+	if !ok {
+		return fmt.Errorf("unexpected session type: %T", ctx.Session)
+	}
+	if doltSession.GetTransaction() == nil {
+		if _, err := doltSession.StartTransaction(ctx, sql.ReadWrite); err != nil {
+			return err
+		}
+	}
+
+	return nil
 }
 
 func (h *ConnectionHandler) deallocatePreparedStatement(name string, preparedStatements map[string]PreparedStatementData, query ConvertedQuery, conn net.Conn) error {
