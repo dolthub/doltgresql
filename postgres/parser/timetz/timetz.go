@@ -184,9 +184,9 @@ func (t TimeTZ) String() string {
 		// in the range -0s < offsetSecs < -60s, e.g. -22s offset prints as 00:00:-22.
 		// Manually correct for this.
 		timeZoneComponent = fmt.Sprintf("-00:00:%02d", t.OffsetSecs)
-	} else if t.OffsetSecs%60 > 0 {
+	} else if t.OffsetSecs%60 != 0 {
 		timeZoneComponent = tTime.Format("Z07:00:00")
-	} else if t.OffsetSecs%3600 > 0 {
+	} else if t.OffsetSecs%3600 != 0 {
 		timeZoneComponent = tTime.Format("Z07:00")
 	}
 

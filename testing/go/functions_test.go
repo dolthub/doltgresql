@@ -1741,6 +1741,30 @@ func TestDateAndTimeFunction(t *testing.T) {
 					Expected: []sql.Row{{"2001-02-17 01:40:40.12"}},
 				},
 				{
+					Query:    `select timezone('UTC', timestamp with time zone '2001-02-16 20:38:40.12-05');`,
+					Expected: []sql.Row{{"2001-02-17 01:38:40.12"}},
+				},
+				{
+					Query:    `select timezone('-04:45', time with time zone '20:38:40.12-05');`,
+					Expected: []sql.Row{{"06:23:40.12+04:45"}},
+				},
+				{
+					Query:    `select timezone(interval '2 hours 2 minutes', time with time zone '20:38:40.12-05');`,
+					Expected: []sql.Row{{"03:40:40.12+02:02"}},
+				},
+				{
+					Query:    `select timezone('-04:45', timestamp '2001-02-16 20:38:40.12');`,
+					Expected: []sql.Row{{"2001-02-16 07:53:40.12-08"}},
+				},
+				{
+					Query:    `select timezone('-04:45:44', timestamp '2001-02-16 20:38:40.12');`,
+					Expected: []sql.Row{{"2001-02-16 07:52:56.12-08"}},
+				},
+				{
+					Query:    `select timezone(interval '2 hours 2 minutes', timestamp '2001-02-16 20:38:40.12');`,
+					Expected: []sql.Row{{"2001-02-16 10:36:40.12-08"}},
+				},
+				{
 					Query:    `select '2024-08-22 14:47:57 -07' at time zone 'utc';`,
 					Expected: []sql.Row{{"2024-08-22 21:47:57"}},
 				},
@@ -1757,7 +1781,6 @@ func TestDateAndTimeFunction(t *testing.T) {
 					Expected: []sql.Row{{"2024-08-22 13:47:57"}},
 				},
 				{
-					Skip:     true,
 					Query:    `select timestamp '2024-08-22 13:47:57-07' at time zone 'utc';`,
 					Expected: []sql.Row{{"2024-08-22 06:47:57-07"}},
 				},

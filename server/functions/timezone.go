@@ -15,6 +15,8 @@
 package functions
 
 import (
+	"github.com/dolthub/doltgresql/postgres/parser/timetz"
+	"strings"
 	"time"
 
 	"github.com/dolthub/go-mysql-server/sql"
@@ -58,7 +60,11 @@ var timezone_text_timestamptz = framework.Function2{
 	Callable: func(ctx *sql.Context, _ [3]pgtypes.DoltgresType, val1, val2 any) (any, error) {
 		tz := val1.(string)
 		timeVal := val2.(time.Time)
-		return convertTimeToLoc(tz, timeVal)
+		loc, err := time.LoadLocation(tz)
+		if err != nil {
+			return time.Time{}, err
+		}
+		return timeVal.In(loc), nil
 	},
 }
 
@@ -71,8 +77,13 @@ var timezone_text_timetz = framework.Function2{
 	Strict:             true,
 	Callable: func(ctx *sql.Context, _ [3]pgtypes.DoltgresType, val1, val2 any) (any, error) {
 		tz := val1.(string)
-		timeVal := val2.(time.Time)
-		return convertTimeToLoc(tz, timeVal)
+		timeVal := val2.(timetz.TimeTZ)
+		newOffset, err := convertTzToOffsetSecs(tz)
+		if err != nil {
+			return nil, err
+		}
+		dur := duration.MakeDuration(int64(timeVal.OffsetSecs+newOffset)*NanosPerSec, 0, 0)
+		return timetz.MakeTimeTZ(timeVal.Add(dur), -newOffset), nil
 	},
 }
 
@@ -84,8 +95,11 @@ var timezone_interval_timetz = framework.Function2{
 	IsNonDeterministic: true,
 	Strict:             true,
 	Callable: func(ctx *sql.Context, _ [3]pgtypes.DoltgresType, val1, val2 any) (any, error) {
-		// TODO
-		return nil, nil
+		dur := val1.(duration.Duration)
+		timeVal := val2.(timetz.TimeTZ)
+		newOffset := int32(dur.Nanos() / NanosPerSec)
+		durToAdd := dur.Add(duration.MakeDuration(int64(timeVal.OffsetSecs)*NanosPerSec, 0, 0))
+		return timetz.MakeTimeTZ(timeVal.Add(durToAdd), -newOffset), nil
 	},
 }
 
@@ -99,7 +113,15 @@ var timezone_text_timestamp = framework.Function2{
 	Callable: func(ctx *sql.Context, _ [3]pgtypes.DoltgresType, val1, val2 any) (any, error) {
 		tz := val1.(string)
 		timeVal := val2.(time.Time)
-		return convertTimeToLoc(tz, timeVal)
+		newOffset, err := convertTzToOffsetSecs(tz)
+		if err != nil {
+			return nil, err
+		}
+		serverLoc, err := pgtypes.GetServerLocation(ctx)
+		if err != nil {
+			return nil, err
+		}
+		return timeVal.Add(time.Duration(-int64(newOffset) * NanosPerSec)).In(serverLoc), nil
 	},
 }
 
@@ -111,15 +133,36 @@ var timezone_interval_timestamp = framework.Function2{
 	IsNonDeterministic: true,
 	Strict:             true,
 	Callable: func(ctx *sql.Context, _ [3]pgtypes.DoltgresType, val1, val2 any) (any, error) {
-		// TODO
-		return nil, nil
+		dur := val1.(duration.Duration)
+		timeVal := val2.(time.Time)
+		serverLoc, err := pgtypes.GetServerLocation(ctx)
+		if err != nil {
+			return nil, err
+		}
+		return timeVal.Add(time.Duration(-dur.Nanos())).In(serverLoc), nil
 	},
 }
 
-func convertTimeToLoc(tz string, timeVal time.Time) (any, error) {
-	loc, err := time.LoadLocation(tz)
-	if err != nil {
-		return nil, err
+// TZ input can be in format of 'UTC' or '-04:45:33'
+func convertTzToOffsetSecs(tz string) (int32, error) {
+	if strings.ToLower(tz) == "utc" {
+		tz = "UTC"
 	}
-	return timeVal.In(loc), nil
+	loc, err := time.LoadLocation(tz)
+	if err == nil {
+		_, offsetSecsUnconverted := time.Now().In(loc).Zone()
+		return int32(-offsetSecsUnconverted), nil
+	}
+
+	var t time.Time
+	if t, err = time.Parse("Z07", tz); err == nil {
+	} else if t, err = time.Parse("Z07:00", tz); err == nil {
+	} else if t, err = time.Parse("Z07:00:00", tz); err == nil {
+	}
+	if err != nil {
+		return 0, err
+	}
+
+	_, offsetSecsUnconverted := t.Zone()
+	return int32(-offsetSecsUnconverted), nil
 }

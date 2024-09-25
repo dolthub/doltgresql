@@ -926,8 +926,8 @@ func NewDTimeTZFromOffset(t timeofday.TimeOfDay, offsetSecs int32) *DTimeTZ {
 //
 // The dependsOnContext return value indicates if we had to consult the
 // ParseTimeContext (either for the time or the local timezone).
-func ParseDTimeTZ(ctx ParseTimeContext, s string, precision time.Duration, loc *time.Location) (_ *DTimeTZ, dependsOnContext bool, _ error) {
-	now := relativeParseTime(ctx).In(loc)
+func ParseDTimeTZ(ctx ParseTimeContext, s string, precision time.Duration) (_ *DTimeTZ, dependsOnContext bool, _ error) {
+	now := relativeParseTime(ctx)
 	d, dependsOnContext, err := timetz.ParseTimeTZ(now, s, precision)
 	if err != nil {
 		return nil, false, err

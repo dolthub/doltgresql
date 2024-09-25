@@ -133,11 +133,11 @@ func (b TimeTZType) IoInput(ctx *sql.Context, input string) (any, error) {
 	if err != nil {
 		return nil, err
 	}
-	t, _, err := tree.ParseDTimeTZ(nil, input, tree.TimeFamilyPrecisionToRoundDuration(int32(p)), loc)
+	t, _, err := timetz.ParseTimeTZ(time.Now().In(loc), input, tree.TimeFamilyPrecisionToRoundDuration(int32(p)))
 	if err != nil {
 		return nil, err
 	}
-	return t.TimeTZ, nil
+	return t, nil
 }
 
 // IoOutput implements the DoltgresType interface.

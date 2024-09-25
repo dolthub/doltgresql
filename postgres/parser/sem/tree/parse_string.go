@@ -116,7 +116,7 @@ func ParseAndRequireString(
 	case types.TimeFamily:
 		d, dependsOnContext, err = ParseDTime(ctx, s, TimeFamilyPrecisionToRoundDuration(t.Precision()))
 	case types.TimeTZFamily:
-		d, dependsOnContext, err = ParseDTimeTZ(ctx, s, TimeFamilyPrecisionToRoundDuration(t.Precision()), time.Local)
+		d, dependsOnContext, err = ParseDTimeTZ(ctx, s, TimeFamilyPrecisionToRoundDuration(t.Precision()))
 	case types.TimestampFamily:
 		d, dependsOnContext, err = ParseDTimestamp(ctx, s, TimeFamilyPrecisionToRoundDuration(t.Precision()))
 	case types.TimestampTZFamily:
