@@ -150,7 +150,8 @@ func IterateDatabase(ctx *sql.Context, database string, callbacks Callbacks) err
 
 	doltSession := dsess.DSessFromSess(ctx.Session)
 
-	currentDatabase, err := sqle.NewDefault(doltSession.Provider()).Analyzer.Catalog.Database(ctx, database)
+	cat := sqle.NewDefault(doltSession.Provider()).Analyzer.Catalog
+	currentDatabase, err := cat.Database(ctx, database)
 	if err != nil {
 		return err
 	}
@@ -162,6 +163,7 @@ func IterateDatabase(ctx *sql.Context, database string, callbacks Callbacks) err
 		if err != nil {
 			return err
 		}
+
 		sort.Slice(schemas, func(i, j int) bool {
 			return schemas[i].SchemaName() < schemas[j].SchemaName()
 		})
@@ -350,6 +352,9 @@ func iterateTables(ctx *sql.Context, callbacks Callbacks, itemSchema ItemSchema,
 		}
 		// Check for a column default callback
 		if callbacks.ColumnDefault != nil {
+			if itemSchema.Item.SchemaName() == "information_schema" {
+				continue
+			}
 			if err = iterateColumnDefaults(ctx, callbacks, itemSchema, itemTable, &columnDefaultCount); err != nil {
 				return err
 			}
