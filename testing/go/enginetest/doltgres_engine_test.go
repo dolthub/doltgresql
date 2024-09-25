@@ -25,6 +25,8 @@ import (
 	"github.com/dolthub/go-mysql-server/enginetest/queries"
 	"github.com/dolthub/go-mysql-server/enginetest/scriptgen/setup"
 	"github.com/dolthub/go-mysql-server/sql"
+	"github.com/dolthub/go-mysql-server/sql/plan"
+	"github.com/dolthub/go-mysql-server/sql/types"
 	"github.com/stretchr/testify/require"
 
 	"github.com/dolthub/dolt/go/libraries/doltcore/dtestutils"
@@ -142,35 +144,72 @@ func (dcv *doltCommitValidator) CommitHash(val interface{}) (bool, string) {
 	return true, matches[1]
 }
 
+var doltCommit = &doltCommitValidator{}
+
 // Convenience test for debugging a single query. Unskip and set to the desired query.
 func TestSingleScript(t *testing.T) {
 	t.Skip()
 
 	var scripts = []queries.ScriptTest{
 		{
-			Name: "dolt-tag: SQL create tags",
+			// https://github.com/dolthub/dolt/issues/7275
+			Name: "keyless table merge with constraint violations",
 			SetUpScript: []string{
-				"CREATE TABLE test(pk int primary key);",
-				"CALL DOLT_ADD('.')",
-				"INSERT INTO test VALUES (0),(1),(2);",
-				"CALL DOLT_COMMIT('-am','created table test')",
+				"CREATE TABLE aTable (aColumn INT NULL, bColumn INT NULL, UNIQUE INDEX aColumn_UNIQUE (aColumn ASC) VISIBLE, UNIQUE INDEX bColumn_UNIQUE (bColumn ASC) VISIBLE);",
+				"CALL dolt_commit('-Am', 'add tables');",
+				"CALL dolt_checkout('-b', 'side');",
+				"INSERT INTO aTable VALUES (1,2);",
+				"CALL dolt_commit('-am', 'add side data');",
+
+				"CALL dolt_checkout('main');",
+				"INSERT INTO aTable VALUES (1,3);",
+				"CALL dolt_commit('-am', 'add main data');",
+				"CALL dolt_checkout('side');",
+				"SET @@dolt_force_transaction_commit=1;",
 			},
 			Assertions: []queries.ScriptTestAssertion{
 				{
-					Query:    "CALL DOLT_TAG('v1', 'HEAD')",
-					Expected: []sql.Row{{0}},
+					Query:    "SELECT * FROM aTable;",
+					Expected: []sql.Row{{1, 2}},
 				},
 				{
-					Query:    "SELECT tag_name, IF(CHAR_LENGTH(tag_hash) < 0, NULL, 'not null'), tagger, email, IF(date IS NULL, NULL, 'not null'), message from dolt_tags",
-					Expected: []sql.Row{{"v1", "not null", "billy bob", "bigbillieb@fake.horse", "not null", ""}},
+					Query:    "call dolt_merge('main');",
+					Expected: []sql.Row{{"", 0, 1, "conflicts found"}},
 				},
 				{
-					Query:    "CALL DOLT_TAG('v2', '-m', 'create tag v2')",
-					Expected: []sql.Row{{0}},
+					Query:    "SELECT * FROM aTable;",
+					Expected: []sql.Row{{1, 2}, {1, 3}},
 				},
 				{
-					Query:    "SELECT tag_name, message from dolt_tags",
-					Expected: []sql.Row{{"v1", ""}, {"v2", "create tag v2"}},
+					Query:    "SELECT * FROM dolt_constraint_violations;",
+					Expected: []sql.Row{{"aTable", uint64(2)}},
+				},
+				{
+					Query: "SELECT from_root_ish, violation_type, hex(dolt_row_hash), aColumn, bColumn, CAST(violation_info as CHAR) FROM dolt_constraint_violations_aTable;",
+					Expected: []sql.Row{
+						{doltCommit, "unique index", "5A1ED8633E1842FCA8EE529E4F1C5944", 1, 2, `{"Name": "aColumn_UNIQUE", "Columns": ["aColumn"]}`},
+						{doltCommit, "unique index", "A922BFBF4E5489501A3808BC5CD702C0", 1, 3, `{"Name": "aColumn_UNIQUE", "Columns": ["aColumn"]}`},
+					},
+				},
+				{
+					// Fix the data
+					Query:    "UPDATE aTable SET aColumn = 2 WHERE bColumn = 2;",
+					Expected: []sql.Row{{types.OkResult{RowsAffected: uint64(1), Info: plan.UpdateInfo{Matched: 1, Updated: 1}}}},
+				},
+				{
+					// clear out the violations
+					Query:    "DELETE FROM dolt_constraint_violations_aTable;",
+					Expected: []sql.Row{{types.NewOkResult(2)}},
+				},
+				{
+					// Commit the merge after resolving the constraint violations
+					Query:    "call dolt_commit('-am', 'merging in main and resolving unique constraint violations');",
+					Expected: []sql.Row{{doltCommit}},
+				},
+				{
+					// Merging again is a no-op
+					Query:    "call dolt_merge('main');",
+					Expected: []sql.Row{{"", 0, 0, "cannot fast forward from a to b. a is ahead of b already"}},
 				},
 			},
 		},
@@ -1042,8 +1081,44 @@ func TestViewsWithAsOfPrepared(t *testing.T) {
 }
 
 func TestDoltMerge(t *testing.T) {
-	t.Skip()
-	h := newDoltgresServerHarness(t)
+	h := newDoltgresServerHarness(t).WithSkippedQueries([]string{
+		"keyless table merge with constraint violation on duplicate rows",                                                     // alter table
+		"CALL DOLT_MERGE without conflicts correctly works with autocommit off with commit flag",                              // datetime support
+		"CALL DOLT_MERGE without conflicts correctly works with autocommit off and no commit flag",                            // datetime support
+		"CALL DOLT_MERGE with conflicts can be correctly resolved when autocommit is off",                                     // datetime support
+		"CALL DOLT_MERGE with schema conflicts can be correctly resolved using dolt_conflicts_resolve when autocommit is off", // alter table
+		"merge conflicts prevent new branch creation",                                                                         // unknown encoding
+		"select message from dolt_log where date ",                                                                            // datetime support
+		"CALL DOLT_MERGE with conflict is queryable and committable with dolt_allow_commit_conflicts on",                      // unknown encoding
+		"CALL DOLT_MERGE with conflicts can be aborted when autocommit is off",                                                // unknown encoding
+		"DOLT_MERGE(--abort) clears staged",
+		"CALL DOLT_MERGE complains when a merge overrides local changes",
+		"Drop and add primary key on two branches converges to same schema", // alter table
+		"Constraint violations are persisted",
+		"left adds a unique key constraint and resolves existing violations", // alter table
+		"insert two tables with the same name and different schema",
+		"insert two tables with the same name and schema that conflict",                                   // unknown encoding
+		"merge with new triggers defined",                                                                 // triggers
+		"add multiple columns, then set and unset a value. No conflicts expected.",                        // alter table
+		"dropping constraint from one branch drops from both",                                             // alter table
+		"dropping constraint from one branch drops from both, no checkout",                                // alter table
+		"merge constraint with valid data on different branches",                                          // alter table
+		"resolving a deleted and modified row handles constraint checks",                                  // alter table
+		"resolving a modified/modified row still checks nullness constraint",                              // alter table
+		"Merge errors if the primary key types have changed (even if the new type has the same NomsKind)", // alter table
+		"`Delete from table` should keep artifacts - conflicts",                                           // unknown encoding
+		"`Truncate table` should keep artifacts - conflicts",                                              // unknown encoding
+		"`Truncate table` should keep artifacts - violations",                                             // unknown encoding
+		"parent index is longer than child index",
+		"parallel column updates (repro issue #4547)",
+		"try to merge a nullable field into a non-null column",        // alter table
+		"merge fulltext with renamed table",                           // alter table
+		"merge when schemas are equal, but column tags are different", // alter table
+		"merge with float column default",                             // alter table
+		"merge with float 1.23 column default",                        // alter table
+		"merge with decimal 1.23 column default",                      // alter table
+		"merge with different types",                                  // alter table
+	})
 	denginetest.RunDoltMergeTests(t, h)
 }
 
