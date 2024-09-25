@@ -3458,6 +3458,9 @@ var postgresConfigParameters = map[string]sql.SystemVariable{
 					//   https://pkg.go.dev/github.com/thlib/go-timezone-local/tzlocal seems useful in this case.
 					return "America/Los_Angeles", true
 				} else {
+					if strings.ToLower(v) == "utc" {
+						v = "UTC"
+					}
 					loc, err := time.LoadLocation(v)
 					if err == nil {
 						return loc.String(), true

@@ -15,13 +15,13 @@
 package functions
 
 import (
-	"github.com/dolthub/doltgresql/postgres/parser/timetz"
 	"strings"
 	"time"
 
 	"github.com/dolthub/go-mysql-server/sql"
 
 	"github.com/dolthub/doltgresql/postgres/parser/duration"
+	"github.com/dolthub/doltgresql/postgres/parser/timetz"
 	"github.com/dolthub/doltgresql/server/functions/framework"
 	pgtypes "github.com/dolthub/doltgresql/server/types"
 )
@@ -60,11 +60,11 @@ var timezone_text_timestamptz = framework.Function2{
 	Callable: func(ctx *sql.Context, _ [3]pgtypes.DoltgresType, val1, val2 any) (any, error) {
 		tz := val1.(string)
 		timeVal := val2.(time.Time)
-		loc, err := time.LoadLocation(tz)
+		newOffset, err := convertTzToOffsetSecs(tz)
 		if err != nil {
-			return time.Time{}, err
+			return nil, err
 		}
-		return timeVal.In(loc), nil
+		return timeVal.UTC().Add(time.Duration(-int64(newOffset) * NanosPerSec)), nil
 	},
 }
 
@@ -157,9 +157,7 @@ func convertTzToOffsetSecs(tz string) (int32, error) {
 	var t time.Time
 	if t, err = time.Parse("Z07", tz); err == nil {
 	} else if t, err = time.Parse("Z07:00", tz); err == nil {
-	} else if t, err = time.Parse("Z07:00:00", tz); err == nil {
-	}
-	if err != nil {
+	} else if t, err = time.Parse("Z07:00:00", tz); err != nil {
 		return 0, err
 	}
 
