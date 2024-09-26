@@ -35,7 +35,6 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/dolthub/doltgresql/postgres/parser/duration"
-	"github.com/dolthub/doltgresql/postgres/parser/pgdate"
 	"github.com/dolthub/doltgresql/postgres/parser/timeofday"
 	"github.com/dolthub/doltgresql/postgres/parser/uuid"
 	dserver "github.com/dolthub/doltgresql/server"
@@ -498,12 +497,6 @@ func NormalizeVal(dt types.DoltgresType, v any) any {
 			panic(err)
 		}
 		return types.JsonDocument{Value: jv}
-	case types.DateType:
-		d, err := pgdate.MakeDateFromTime(v.(time.Time))
-		if err != nil {
-			panic(err)
-		}
-		return d
 	}
 
 	switch val := v.(type) {
@@ -519,7 +512,7 @@ func NormalizeVal(dt types.DoltgresType, v any) any {
 		}
 	case pgtype.Time:
 		// This value type is used for TIME type.
-		return timeofday.FromInt(val.Microseconds)
+		return timeofday.FromInt(val.Microseconds).ToTime()
 	case pgtype.Interval:
 		//This value type is used for INTERVAL type.
 		return duration.MakeDuration(val.Microseconds*functions.NanosPerMicro, int64(val.Days), int64(val.Months))

@@ -20,7 +20,6 @@ import (
 	"reflect"
 	"time"
 
-	"github.com/dolthub/doltgresql/postgres/parser/pgdate"
 	"github.com/dolthub/doltgresql/postgres/parser/sem/tree"
 
 	"github.com/dolthub/go-mysql-server/sql"
@@ -82,15 +81,15 @@ func (b DateType) Compare(v1 any, v2 any) (int, error) {
 		return 0, err
 	}
 
-	ab := ac.(pgdate.Date)
-	bb := bc.(pgdate.Date)
+	ab := ac.(time.Time)
+	bb := bc.(time.Time)
 	return ab.Compare(bb), nil
 }
 
 // Convert implements the DoltgresType interface.
 func (b DateType) Convert(val any) (any, sql.ConvertInRange, error) {
 	switch val := val.(type) {
-	case pgdate.Date:
+	case time.Time:
 		return val, sql.InRange, nil
 	case nil:
 		return nil, sql.InRange, nil
@@ -126,7 +125,7 @@ func (b DateType) IoInput(ctx *sql.Context, input string) (any, error) {
 	if err != nil {
 		return nil, err
 	}
-	return ddate.Date, nil
+	return ddate.Date.ToTime()
 }
 
 // IoOutput implements the DoltgresType interface.
@@ -135,7 +134,7 @@ func (b DateType) IoOutput(ctx *sql.Context, output any) (string, error) {
 	if err != nil {
 		return "", err
 	}
-	return converted.(pgdate.Date).String(), nil
+	return converted.(time.Time).Format("2006-01-02"), nil
 }
 
 // IsPreferredType implements the DoltgresType interface.
@@ -211,12 +210,12 @@ func (b DateType) Type() query.Type {
 
 // ValueType implements the DoltgresType interface.
 func (b DateType) ValueType() reflect.Type {
-	return reflect.TypeOf(pgdate.Date{})
+	return reflect.TypeOf(time.Time{})
 }
 
 // Zero implements the DoltgresType interface.
 func (b DateType) Zero() any {
-	return pgdate.Date{}
+	return time.Time{}
 }
 
 // SerializeType implements the DoltgresType interface.
@@ -243,11 +242,7 @@ func (b DateType) SerializeValue(val any) ([]byte, error) {
 	if err != nil {
 		return nil, err
 	}
-	t, err := converted.(pgdate.Date).ToTime()
-	if err != nil {
-		return nil, err
-	}
-	return t.MarshalBinary()
+	return converted.(time.Time).MarshalBinary()
 }
 
 // DeserializeValue implements the DoltgresType interface.
@@ -259,5 +254,5 @@ func (b DateType) DeserializeValue(val []byte) (any, error) {
 	if err := t.UnmarshalBinary(val); err != nil {
 		return nil, err
 	}
-	return pgdate.MakeDateFromTime(t)
+	return t, nil
 }

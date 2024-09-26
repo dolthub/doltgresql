@@ -85,15 +85,15 @@ func (b TimeTZType) Compare(v1 any, v2 any) (int, error) {
 		return 0, err
 	}
 
-	ab := ac.(timetz.TimeTZ).ToTime()
-	bb := bc.(timetz.TimeTZ).ToTime()
+	ab := ac.(time.Time)
+	bb := bc.(time.Time)
 	return ab.Compare(bb), nil
 }
 
 // Convert implements the DoltgresType interface.
 func (b TimeTZType) Convert(val any) (any, sql.ConvertInRange, error) {
 	switch val := val.(type) {
-	case timetz.TimeTZ:
+	case time.Time:
 		return val, sql.InRange, nil
 	case nil:
 		return nil, sql.InRange, nil
@@ -137,7 +137,7 @@ func (b TimeTZType) IoInput(ctx *sql.Context, input string) (any, error) {
 	if err != nil {
 		return nil, err
 	}
-	return t, nil
+	return t.ToTime(), nil
 }
 
 // IoOutput implements the DoltgresType interface.
@@ -147,7 +147,8 @@ func (b TimeTZType) IoOutput(ctx *sql.Context, output any) (string, error) {
 		return "", err
 	}
 	// TODO: this always displays the time with an offset relevant to the server location
-	return converted.(timetz.TimeTZ).String(), nil
+	t := converted.(time.Time)
+	return timetz.MakeTimeTZFromTime(t).String(), nil
 }
 
 // IsPreferredType implements the DoltgresType interface.
@@ -226,12 +227,12 @@ func (b TimeTZType) Type() query.Type {
 
 // ValueType implements the DoltgresType interface.
 func (b TimeTZType) ValueType() reflect.Type {
-	return reflect.TypeOf(timetz.TimeTZ{})
+	return reflect.TypeOf(time.Time{})
 }
 
 // Zero implements the DoltgresType interface.
 func (b TimeTZType) Zero() any {
-	return timetz.TimeTZ{}
+	return time.Time{}
 }
 
 // SerializeType implements the DoltgresType interface.
@@ -263,8 +264,7 @@ func (b TimeTZType) SerializeValue(val any) ([]byte, error) {
 	if err != nil {
 		return nil, err
 	}
-	t := converted.(timetz.TimeTZ)
-	return t.ToTime().MarshalBinary()
+	return converted.(time.Time).MarshalBinary()
 }
 
 // DeserializeValue implements the DoltgresType interface.
@@ -276,13 +276,5 @@ func (b TimeTZType) DeserializeValue(val []byte) (any, error) {
 	if err := t.UnmarshalBinary(val); err != nil {
 		return nil, err
 	}
-	return timetz.MakeTimeTZFromTime(t), nil
-}
-
-func GetServerLocation(ctx *sql.Context) (*time.Location, error) {
-	val, err := ctx.GetSessionVariable(ctx, "timezone")
-	if err != nil {
-		return nil, err
-	}
-	return time.LoadLocation(val.(string))
+	return t, nil
 }

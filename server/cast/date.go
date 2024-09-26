@@ -16,8 +16,7 @@ package cast
 
 import (
 	"github.com/dolthub/go-mysql-server/sql"
-
-	"github.com/dolthub/doltgresql/postgres/parser/pgdate"
+	"time"
 
 	"github.com/dolthub/doltgresql/server/functions/framework"
 	pgtypes "github.com/dolthub/doltgresql/server/types"
@@ -34,16 +33,14 @@ func dateImplicit() {
 		FromType: pgtypes.Date,
 		ToType:   pgtypes.Timestamp,
 		Function: func(ctx *sql.Context, val any, targetType pgtypes.DoltgresType) (any, error) {
-			d := val.(pgdate.Date)
-			return d.ToTime()
+			return val.(time.Time), nil
 		},
 	})
 	framework.MustAddImplicitTypeCast(framework.TypeCast{
 		FromType: pgtypes.Date,
 		ToType:   pgtypes.TimestampTZ,
 		Function: func(ctx *sql.Context, val any, targetType pgtypes.DoltgresType) (any, error) {
-			d := val.(pgdate.Date)
-			return d.ToTime()
+			return val.(time.Time), nil
 		},
 	})
 }

@@ -16,6 +16,7 @@ package types
 
 import (
 	"strings"
+	"time"
 	"unicode/utf8"
 
 	"github.com/dolthub/go-mysql-server/sql"
@@ -86,4 +87,13 @@ func FromGmsType(typ sql.Type) DoltgresType {
 	default:
 		return Unknown
 	}
+}
+
+// GetServerLocation returns timezone value set for the server.
+func GetServerLocation(ctx *sql.Context) (*time.Location, error) {
+	val, err := ctx.GetSessionVariable(ctx, "timezone")
+	if err != nil {
+		return nil, err
+	}
+	return time.LoadLocation(val.(string))
 }

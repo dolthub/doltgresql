@@ -24,9 +24,6 @@ import (
 	"github.com/shopspring/decimal"
 
 	"github.com/dolthub/doltgresql/postgres/parser/duration"
-	"github.com/dolthub/doltgresql/postgres/parser/pgdate"
-	"github.com/dolthub/doltgresql/postgres/parser/timeofday"
-	"github.com/dolthub/doltgresql/postgres/parser/timetz"
 	"github.com/dolthub/doltgresql/postgres/parser/uuid"
 	"github.com/dolthub/doltgresql/server/functions/framework"
 	pgtypes "github.com/dolthub/doltgresql/server/types"
@@ -151,7 +148,7 @@ func NewRawLiteralNumeric(val decimal.Decimal) *Literal {
 }
 
 // NewRawLiteralDate returns a new *Literal containing a DATE value.
-func NewRawLiteralDate(date pgdate.Date) *Literal {
+func NewRawLiteralDate(date time.Time) *Literal {
 	return &Literal{
 		value: date,
 		typ:   pgtypes.Date,
@@ -159,7 +156,7 @@ func NewRawLiteralDate(date pgdate.Date) *Literal {
 }
 
 // NewRawLiteralTime returns a new *Literal containing a TIME value.
-func NewRawLiteralTime(t timeofday.TimeOfDay) *Literal {
+func NewRawLiteralTime(t time.Time) *Literal {
 	return &Literal{
 		value: t,
 		typ:   pgtypes.Time,
@@ -167,7 +164,7 @@ func NewRawLiteralTime(t timeofday.TimeOfDay) *Literal {
 }
 
 // NewRawLiteralTimeTZ returns a new *Literal containing a TIMETZ value.
-func NewRawLiteralTimeTZ(ttz timetz.TimeTZ) *Literal {
+func NewRawLiteralTimeTZ(ttz time.Time) *Literal {
 	return &Literal{
 		value: ttz,
 		typ:   pgtypes.TimeTZ,

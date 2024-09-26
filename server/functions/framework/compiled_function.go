@@ -331,10 +331,10 @@ func (c *CompiledFunction) resolveOperator(argTypes []pgtypes.DoltgresType, over
 			var baseID pgtypes.DoltgresTypeBaseID
 			casts := []TypeCastFunction{identityCast, identityCast}
 			if leftUnknownType {
-				casts[0] = stringLiteralCast
+				casts[0] = UnknownLiteralCast
 				baseID = argTypes[1].BaseID()
 			} else {
-				casts[1] = stringLiteralCast
+				casts[1] = UnknownLiteralCast
 				baseID = argTypes[0].BaseID()
 			}
 			if exactMatch, ok := overloads.ExactMatchForBaseIds(baseID, baseID); ok {
@@ -424,16 +424,7 @@ func (c *CompiledFunction) typeCompatibleOverloads(fnOverloads []Overload, argTy
 			} else {
 				if overloadCasts[i] = GetImplicitCast(argTypes[i].BaseID(), paramType); overloadCasts[i] == nil {
 					if argTypes[i].BaseID() == pgtypes.DoltgresTypeBaseID_Unknown {
-						overloadCasts[i] = func(ctx *sql.Context, val any, targetType pgtypes.DoltgresType) (any, error) {
-							if val == nil {
-								return nil, nil
-							}
-							str, err := pgtypes.Unknown.IoOutput(ctx, val)
-							if err != nil {
-								return nil, err
-							}
-							return targetType.IoInput(ctx, str)
-						}
+						overloadCasts[i] = UnknownLiteralCast
 					} else {
 						isConvertible = false
 						break

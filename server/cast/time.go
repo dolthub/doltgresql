@@ -16,8 +16,7 @@ package cast
 
 import (
 	"github.com/dolthub/go-mysql-server/sql"
-
-	"github.com/dolthub/doltgresql/postgres/parser/timeofday"
+	"time"
 
 	"github.com/dolthub/doltgresql/server/functions"
 	"github.com/dolthub/doltgresql/server/functions/framework"
@@ -35,7 +34,7 @@ func timeImplicit() {
 		FromType: pgtypes.Time,
 		ToType:   pgtypes.Interval,
 		Function: func(ctx *sql.Context, val any, targetType pgtypes.DoltgresType) (any, error) {
-			t := val.(timeofday.TimeOfDay)
+			t := val.(time.Time)
 			dur := functions.GetIntervalDurationFromTimeComponents(0, 0, 0, int64(t.Hour()), int64(t.Minute()), int64(t.Second()), 0)
 			return dur, nil
 		},

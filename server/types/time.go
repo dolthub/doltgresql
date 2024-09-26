@@ -85,15 +85,15 @@ func (b TimeType) Compare(v1 any, v2 any) (int, error) {
 		return 0, err
 	}
 
-	ab := ac.(timeofday.TimeOfDay).ToTime()
-	bb := bc.(timeofday.TimeOfDay).ToTime()
+	ab := ac.(time.Time)
+	bb := bc.(time.Time)
 	return ab.Compare(bb), nil
 }
 
 // Convert implements the DoltgresType interface.
 func (b TimeType) Convert(val any) (any, sql.ConvertInRange, error) {
 	switch val := val.(type) {
-	case timeofday.TimeOfDay:
+	case time.Time:
 		return val, sql.InRange, nil
 	case nil:
 		return nil, sql.InRange, nil
@@ -133,7 +133,7 @@ func (b TimeType) IoInput(ctx *sql.Context, input string) (any, error) {
 	if err != nil {
 		return nil, err
 	}
-	return timeofday.TimeOfDay(*t), nil
+	return timeofday.TimeOfDay(*t).ToTime(), nil
 }
 
 // IoOutput implements the DoltgresType interface.
@@ -142,7 +142,7 @@ func (b TimeType) IoOutput(ctx *sql.Context, output any) (string, error) {
 	if err != nil {
 		return "", err
 	}
-	return converted.(timeofday.TimeOfDay).String(), nil
+	return converted.(time.Time).Format("15:04:05.999999999"), nil
 }
 
 // IsPreferredType implements the DoltgresType interface.
@@ -221,12 +221,12 @@ func (b TimeType) Type() query.Type {
 
 // ValueType implements the DoltgresType interface.
 func (b TimeType) ValueType() reflect.Type {
-	return reflect.TypeOf(timeofday.TimeOfDay(0))
+	return reflect.TypeOf(time.Time{})
 }
 
 // Zero implements the DoltgresType interface.
 func (b TimeType) Zero() any {
-	return timeofday.TimeOfDay(0)
+	return time.Time{}
 }
 
 // SerializeType implements the DoltgresType interface.
@@ -258,8 +258,7 @@ func (b TimeType) SerializeValue(val any) ([]byte, error) {
 	if err != nil {
 		return nil, err
 	}
-	t := converted.(timeofday.TimeOfDay).ToTime()
-	return t.MarshalBinary()
+	return converted.(time.Time).MarshalBinary()
 }
 
 // DeserializeValue implements the DoltgresType interface.
@@ -271,5 +270,5 @@ func (b TimeType) DeserializeValue(val []byte) (any, error) {
 	if err := t.UnmarshalBinary(val); err != nil {
 		return nil, err
 	}
-	return timeofday.FromTime(t), nil
+	return t, nil
 }

@@ -452,8 +452,12 @@ func nodeExpr(node tree.Expr) (vitess.Expr, error) {
 	case *tree.DCollatedString:
 		return nil, fmt.Errorf("the statement is not yet supported")
 	case *tree.DDate:
+		t, err := node.Date.ToTime()
+		if err != nil {
+			return nil, err
+		}
 		return vitess.InjectedExpr{
-			Expression: pgexprs.NewRawLiteralDate(node.Date),
+			Expression: pgexprs.NewRawLiteralDate(t),
 		}, nil
 	case *tree.DDecimal:
 		// TODO: should we use apd.Decimal for Numeric type values?
@@ -492,7 +496,7 @@ func nodeExpr(node tree.Expr) (vitess.Expr, error) {
 			Children:   vitess.Exprs{vitess.InjectedExpr{Expression: expr}},
 		}, nil
 	case *tree.DJSON:
-		// TODO: should we use json.JSON for JSON type values?
+		// JSON type is handled in string format
 		return vitess.InjectedExpr{
 			Expression: pgexprs.NewRawLiteralJSON(node.JSON.String()),
 		}, nil
@@ -508,11 +512,11 @@ func nodeExpr(node tree.Expr) (vitess.Expr, error) {
 		}, nil
 	case *tree.DTime:
 		return vitess.InjectedExpr{
-			Expression: pgexprs.NewRawLiteralTime(timeofday.TimeOfDay(*node)),
+			Expression: pgexprs.NewRawLiteralTime(timeofday.TimeOfDay(*node).ToTime()),
 		}, nil
 	case *tree.DTimeTZ:
 		return vitess.InjectedExpr{
-			Expression: pgexprs.NewRawLiteralTimeTZ(node.TimeTZ),
+			Expression: pgexprs.NewRawLiteralTimeTZ(node.TimeTZ.ToTime()),
 		}, nil
 	case *tree.DTimestamp:
 		return vitess.InjectedExpr{

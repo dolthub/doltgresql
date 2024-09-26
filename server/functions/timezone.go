@@ -15,13 +15,14 @@
 package functions
 
 import (
+	"github.com/dolthub/doltgresql/postgres/parser/timeofday"
+	"github.com/dolthub/doltgresql/postgres/parser/timetz"
 	"strings"
 	"time"
 
 	"github.com/dolthub/go-mysql-server/sql"
 
 	"github.com/dolthub/doltgresql/postgres/parser/duration"
-	"github.com/dolthub/doltgresql/postgres/parser/timetz"
 	"github.com/dolthub/doltgresql/server/functions/framework"
 	pgtypes "github.com/dolthub/doltgresql/server/types"
 )
@@ -77,13 +78,14 @@ var timezone_text_timetz = framework.Function2{
 	Strict:             true,
 	Callable: func(ctx *sql.Context, _ [3]pgtypes.DoltgresType, val1, val2 any) (any, error) {
 		tz := val1.(string)
-		timeVal := val2.(timetz.TimeTZ)
+		timeVal := val2.(time.Time)
 		newOffset, err := convertTzToOffsetSecs(tz)
 		if err != nil {
 			return nil, err
 		}
-		dur := duration.MakeDuration(int64(timeVal.OffsetSecs+newOffset)*NanosPerSec, 0, 0)
-		return timetz.MakeTimeTZ(timeVal.Add(dur), -newOffset), nil
+		_, currentOffset := timeVal.Zone()
+		t := timeVal.Add(time.Duration((-int64(currentOffset) + int64(newOffset)) * NanosPerSec))
+		return timetz.MakeTimeTZ(timeofday.FromTime(t), -newOffset).ToTime(), nil
 	},
 }
 
@@ -96,10 +98,11 @@ var timezone_interval_timetz = framework.Function2{
 	Strict:             true,
 	Callable: func(ctx *sql.Context, _ [3]pgtypes.DoltgresType, val1, val2 any) (any, error) {
 		dur := val1.(duration.Duration)
-		timeVal := val2.(timetz.TimeTZ)
+		timeVal := val2.(time.Time)
 		newOffset := int32(dur.Nanos() / NanosPerSec)
-		durToAdd := dur.Add(duration.MakeDuration(int64(timeVal.OffsetSecs)*NanosPerSec, 0, 0))
-		return timetz.MakeTimeTZ(timeVal.Add(durToAdd), -newOffset), nil
+		_, currentOffset := timeVal.Zone()
+		t := timeVal.Add(time.Duration((-int64(currentOffset) + int64(newOffset)) * NanosPerSec))
+		return timetz.MakeTimeTZ(timeofday.FromTime(t), -newOffset).ToTime(), nil
 	},
 }
 
