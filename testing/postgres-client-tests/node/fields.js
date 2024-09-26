@@ -130,6 +130,27 @@ export const doltSchemasFields = [
   },
 ];
 
+export const doltDocsFields = [
+  {
+    name: "doc_name",
+    tableID: 0,
+    columnID: 0,
+    dataTypeID: 25,
+    dataTypeSize: -1,
+    dataTypeModifier: -1,
+    format: "text",
+  },
+  {
+    name: "doc_text",
+    tableID: 0,
+    columnID: 0,
+    dataTypeID: 25,
+    dataTypeSize: -1,
+    dataTypeModifier: -1,
+    format: "text",
+  },
+];
+
 export const doltStatusFields = [
   {
     name: "table_name",
