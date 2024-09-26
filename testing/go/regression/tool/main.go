@@ -90,23 +90,25 @@ func main() {
 		(float64(fromFail)/float64(fromTotal))*100.0,
 		(float64(toFail)/float64(toTotal))*100.0))
 	if len(trackersFrom) == len(trackersTo) {
-		foundAnyDiff := false
+		foundAnyFailDiff := false
+		foundAnySuccessDiff := false
 		for trackerIdx := range trackersFrom {
 			// They're sorted, so this should always hold true.
 			// This will really only fail if the tests were updated.
 			if trackersFrom[trackerIdx].File != trackersTo[trackerIdx].File {
 				continue
 			}
+			// Handle regressions (which we'll display first)
 			foundFileDiff := false
-			fromItems := make(map[string]struct{})
-			for _, trackerFromItem := range trackersFrom[trackerIdx].Items {
-				fromItems[trackerFromItem.Query] = struct{}{}
+			fromFailItems := make(map[string]struct{})
+			for _, trackerFromItem := range trackersFrom[trackerIdx].FailPartialItems {
+				fromFailItems[trackerFromItem.Query] = struct{}{}
 			}
-			for _, trackerToItem := range trackersTo[trackerIdx].Items {
-				if _, ok := fromItems[trackerToItem.Query]; !ok {
-					if !foundAnyDiff {
-						foundAnyDiff = true
-						sb.WriteString("\n## Regressions:\n")
+			for _, trackerToItem := range trackersTo[trackerIdx].FailPartialItems {
+				if _, ok := fromFailItems[trackerToItem.Query]; !ok {
+					if !foundAnyFailDiff {
+						foundAnyFailDiff = true
+						sb.WriteString("\n## Regressions\n")
 					}
 					if !foundFileDiff {
 						foundFileDiff = true
@@ -123,6 +125,25 @@ func main() {
 						sb.WriteString(fmt.Sprintf("PARTIAL:        %s\n", partial))
 					}
 					sb.WriteString("```\n")
+				}
+			}
+			// Handle progressions (which we'll display second)
+			foundFileDiff = false
+			fromSuccessItems := make(map[string]struct{})
+			for _, trackerFromItem := range trackersFrom[trackerIdx].SuccessItems {
+				fromSuccessItems[trackerFromItem.Query] = struct{}{}
+			}
+			for _, trackerToItem := range trackersTo[trackerIdx].SuccessItems {
+				if _, ok := fromSuccessItems[trackerToItem.Query]; !ok {
+					if !foundAnySuccessDiff {
+						foundAnySuccessDiff = true
+						sb.WriteString("\n## Progressions\n")
+					}
+					if !foundFileDiff {
+						foundFileDiff = true
+						sb.WriteString(fmt.Sprintf("### %s\n", trackersFrom[trackerIdx].File))
+					}
+					sb.WriteString(fmt.Sprintf("```\nQUERY: %s\n```\n", trackerToItem.Query))
 				}
 			}
 		}

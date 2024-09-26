@@ -207,7 +207,6 @@ func commitScripts(dbs []string) []setup.SetupScript {
 
 var skippedSetupWords = []string{
 	"auto_increment",
-	"xy",
 	"y_idx",
 	"xy_hasnull_idx",
 	"typestable",     // lots of work to do
@@ -392,6 +391,7 @@ func (d *DoltgresHarness) EvaluateQueryResults(t *testing.T, expected []sql.Row,
 
 	switch true {
 	case convertExpectedResultsForDoltProcedures(t, q, widenedExpected, widenedRows):
+	case convertCountStarDoltLog(t, q, widenedExpected, widenedRows):
 	// widenedExpected modified in place
 	default:
 		// The expected results that need widening before checking against actual results.
@@ -410,6 +410,23 @@ func (d *DoltgresHarness) EvaluateQueryResults(t *testing.T, expected []sql.Row,
 	// if expectedCols != nil && !isServerEngine {
 	// 	assert.Equal(t, simplifyResultSchema(expectedCols), simplifyResultSchema(sch))
 	// }
+}
+
+func convertCountStarDoltLog(t *testing.T, q string, expected []sql.Row, rows []sql.Row) bool {
+	// doltgres setup involves one additional commit in the commit history
+	if strings.ToLower(q) == "select count(*) from dolt_log" {
+		switch count := expected[0][0].(type) {
+		case int64:
+			expected[0][0] = count + 1
+		case int32:
+			expected[0][0] = count + 1
+		case int:
+			expected[0][0] = count + 1
+		}
+		return true
+	}
+
+	return false
 }
 
 func widenExpectedRows(t *testing.T, expected []sql.Row, sch sql.Schema, actual []sql.Row, isNilOrEmptySchema bool) {
@@ -440,6 +457,14 @@ func widenExpectedRows(t *testing.T, expected []sql.Row, sch sql.Schema, actual 
 			require.NoError(t, err)
 			expected[i][j] = convertedExpected
 		}
+
+		// OK results from GMS manifest as a nil schema in postgres, only accessible via command tags
+		if isNilOrEmptySchema && len(expected[i]) == 1 {
+			if okResult, isOkResult := expected[i][0].(gmstypes.OkResult); isOkResult {
+				// we can't verify the custom text fields of things like update results, so we strip out that info
+				expected[i][0] = gmstypes.NewOkResult(int(okResult.RowsAffected))
+			}
+		}
 	}
 }
 
@@ -457,10 +482,12 @@ func convertExpectedResultsForDoltProcedures(t *testing.T, q string, widenedExpe
 				}
 				switch v := val.(type) {
 				case string:
-					// Quoting here is wrong, but we need to match the current output
-					sb.WriteString("\"")
-					sb.WriteString(v)
-					sb.WriteString("\"")
+					// Quoting here is wrong in several ways, but we need to match the current output
+					if len(v) > 0 {
+						sb.WriteString("\"")
+						sb.WriteString(v)
+						sb.WriteString("\"")
+					}
 				case int64, uint64:
 					sb.WriteString(fmt.Sprintf("%d", v))
 				case float64:
@@ -812,6 +839,10 @@ func columns(rows pgx.Rows) (sql.Schema, []interface{}, error) {
 			colVal := gosql.NullTime{}
 			columnVals = append(columnVals, &colVal)
 			schema = append(schema, &sql.Column{Name: field.Name, Type: gmstypes.Timestamp, Nullable: true})
+		case uint32(oid.T_json):
+			colVal := gosql.NullByte{}
+			columnVals = append(columnVals, &colVal)
+			schema = append(schema, &sql.Column{Name: field.Name, Type: gmstypes.JSON, Nullable: true})
 		default:
 			return nil, nil, fmt.Errorf("Unhandled OID %d", field.DataTypeOID)
 		}

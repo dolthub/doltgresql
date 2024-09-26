@@ -94,4 +94,9 @@ where a.unique1 = 42 and
 	`select
   (select max((select i.unique2 from tenk1 i where i.unique1 = o.unique1)))
 from tenk1 o;`,
+	`SELECT pg_class.relname FROM pg_index, pg_class, pg_class AS pg_class_2
+WHERE pg_class.oid=indexrelid
+	AND indrelid=pg_class_2.oid
+	AND pg_class_2.relname = 'clstr_tst'
+	AND indisclustered;`,
 }

@@ -38,9 +38,39 @@ func transformAST(query string) ([]string, bool) {
 		if stmt.Action == "create" {
 			return transformCreateTable(query, stmt)
 		}
+	case *sqlparser.Set:
+		return transformSet(stmt)
 	}
 
 	return nil, false
+}
+
+func transformSet(stmt *sqlparser.Set) ([]string, bool) {
+	var queries []string
+
+	// the semantics aren't quite the same, but setting autocommit to false is the same as beginning a transaction
+	// (for most scripts). Setting autocommit to true is a no-op.
+	if len(stmt.Exprs) == 1 && strings.ToLower(stmt.Exprs[0].Name.String()) == "autocommit" {
+		buf := sqlparser.NewTrackedBuffer(nil)
+		stmt.Exprs[0].Expr.Format(buf)
+		exprStr := strings.ToLower(buf.String())
+		if exprStr == "0" || exprStr == "off" || exprStr == "'off'" || exprStr == "false" {
+			queries = append(queries, "START TRANSACTION")
+			return queries, true
+		} else {
+			return []string{""}, true
+		}
+	}
+
+	for _, expr := range stmt.Exprs {
+		if expr.Scope == sqlparser.GlobalStr {
+			queries = append(queries, fmt.Sprintf("SET GLOBAL %s = %s", expr.Name, expr.Expr))
+		} else {
+			queries = append(queries, fmt.Sprintf("SET %s = %s", expr.Name, expr.Expr))
+		}
+	}
+
+	return queries, true
 }
 
 func transformCreateTable(query string, stmt *sqlparser.DDL) ([]string, bool) {
@@ -577,6 +607,25 @@ func TestConvertQuery(t *testing.T) {
 				"CREATE INDEX ON foo ( c ASC ) NULLS NOT DISTINCT ",
 				"CREATE INDEX ON foo ( b ASC ) NULLS NOT DISTINCT ",
 				"CREATE INDEX ON foo ( b ASC, c ASC ) NULLS NOT DISTINCT ",
+			},
+		},
+		{
+			input:    "SET @@autocommit = 1",
+			expected: []string{""},
+		},
+		{
+			input:    "SET @@autocommit = 0",
+			expected: []string{"START TRANSACTION"},
+		},
+		{
+			input:    "SET @@autocommit = off",
+			expected: []string{"START TRANSACTION"},
+		},
+		{
+			input: "SET @@autocommit = 1, @@dolt_transaction_commit = off",
+			expected: []string{
+				"SET autocommit = 1",
+				"SET dolt_transaction_commit = 'off'",
 			},
 		},
 	}
