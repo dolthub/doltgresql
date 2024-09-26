@@ -112,6 +112,75 @@ export const doltStatusFields = [
   },
 ];
 
+export const doltTagFields = [
+  {
+    name: "dolt_tag",
+    tableID: 0,
+    columnID: 0,
+    dataTypeID: 1009,
+    dataTypeSize: -1,
+    dataTypeModifier: -1,
+    format: "text",
+  },
+];
+
+export const doltTagsFields = [
+  {
+    name: "tag_name",
+    tableID: 0,
+    columnID: 0,
+    dataTypeID: 25,
+    dataTypeSize: -4,
+    dataTypeModifier: -1,
+    format: "text",
+  },
+  {
+    name: "tag_hash",
+    tableID: 0,
+    columnID: 0,
+    dataTypeID: 25,
+    dataTypeSize: -4,
+    dataTypeModifier: -1,
+    format: "text",
+  },
+  {
+    name: "tagger",
+    tableID: 0,
+    columnID: 0,
+    dataTypeID: 25,
+    dataTypeSize: -4,
+    dataTypeModifier: -1,
+    format: "text",
+  },
+  {
+    name: "email",
+    tableID: 0,
+    columnID: 0,
+    dataTypeID: 25,
+    dataTypeSize: -4,
+    dataTypeModifier: -1,
+    format: "text",
+  },
+  {
+    name: "date",
+    tableID: 0,
+    columnID: 0,
+    dataTypeID: 1114,
+    dataTypeSize: 26,
+    dataTypeModifier: -1,
+    format: "text",
+  },
+  {
+    name: "message",
+    tableID: 0,
+    columnID: 0,
+    dataTypeID: 25,
+    dataTypeSize: -4,
+    dataTypeModifier: -1,
+    format: "text",
+  },
+];
+
 export const infoSchemaKeyColumnUsageFields = [
   {
     name: "CONSTRAINT_CATALOG",
