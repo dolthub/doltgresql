@@ -20,7 +20,9 @@ import (
 
 // Init handles initialization of all Postgres-specific and Doltgres-specific information_schema tables.
 func Init() {
+	information_schema.AllDatabasesWithNames = allDatabasesWithNames
 	information_schema.NewColumnsTable = newColumnsTable
 	information_schema.NewSchemataTable = newSchemataTable
-	information_schema.AllDatabasesWithNames = allDatabasesWithNames
+	information_schema.NewTablesTable = newTablesTable
+	information_schema.NewViewsTable = newViewsTable
 }
