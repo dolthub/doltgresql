@@ -20,6 +20,46 @@ import (
 	"github.com/dolthub/go-mysql-server/sql"
 )
 
+func TestAlterTableAddForeignKeyConstraint(t *testing.T) {
+	RunScripts(t, []ScriptTest{
+		{
+			Name: "Add Foreign Key Constraint",
+			SetUpScript: []string{
+				"create table child (pk int primary key, c1 int);",
+				"insert into child values (1,1), (2,2), (3,3);",
+				"create index idx_child_c1 on child (pk, c1);",
+				"create table parent (pk int primary key, c1 int, c2 int);",
+				"insert into parent values (1, 1, 10);",
+			},
+			Assertions: []ScriptTestAssertion{
+				{
+					Query:    "ALTER TABLE parent ADD FOREIGN KEY (c1) REFERENCES child (pk) ON DELETE CASCADE;",
+					Expected: []sql.Row{},
+				},
+				{
+					// Test that the FK constraint is working
+					Query:       "INSERT INTO parent VALUES (10, 10, 10);",
+					ExpectedErr: "Foreign key violation",
+				},
+				{
+					Query:       "ALTER TABLE parent ADD FOREIGN KEY (c2) REFERENCES child (pk);",
+					ExpectedErr: "Foreign key violation",
+				},
+				{
+					// Test an FK reference over multiple columns
+					Query:       "ALTER TABLE parent ADD FOREIGN KEY (c1, c2) REFERENCES child (pk, c1);",
+					ExpectedErr: "Foreign key violation",
+				},
+				{
+					// Unsupported syntax: MATCH PARTIAL
+					Query:       "ALTER TABLE parent ADD FOREIGN KEY (c1, c2) REFERENCES child (pk, c1) MATCH PARTIAL;",
+					ExpectedErr: "MATCH PARTIAL is not yet supported",
+				},
+			},
+		},
+	})
+}
+
 func TestAlterTableAddPrimaryKey(t *testing.T) {
 	RunScripts(t, []ScriptTest{
 		{
