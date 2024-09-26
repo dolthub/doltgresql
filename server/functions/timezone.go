@@ -15,14 +15,14 @@
 package functions
 
 import (
-	"github.com/dolthub/doltgresql/postgres/parser/timeofday"
-	"github.com/dolthub/doltgresql/postgres/parser/timetz"
 	"strings"
 	"time"
 
 	"github.com/dolthub/go-mysql-server/sql"
 
 	"github.com/dolthub/doltgresql/postgres/parser/duration"
+	"github.com/dolthub/doltgresql/postgres/parser/timeofday"
+	"github.com/dolthub/doltgresql/postgres/parser/timetz"
 	"github.com/dolthub/doltgresql/server/functions/framework"
 	pgtypes "github.com/dolthub/doltgresql/server/types"
 )
