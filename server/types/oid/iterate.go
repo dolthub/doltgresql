@@ -376,10 +376,6 @@ func iterateTables(ctx *sql.Context, callbacks Callbacks, itemSchema ItemSchema,
 		}
 		// Check for an index callback
 		if callbacks.Index != nil {
-			// System tables don't have indexes
-			if itemSchema.IsSystemSchema() {
-				continue
-			}
 			if err = iterateIndexes(ctx, callbacks, itemSchema, itemTable, &indexCount); err != nil {
 				return err
 			}
