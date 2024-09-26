@@ -675,17 +675,17 @@ func TestSmokeTests(t *testing.T) {
 				{
 					Query: "SELECT attname FROM pg_catalog.pg_attribute ORDER BY attname LIMIT 3;",
 					Expected: []sql.Row{
-						{"abbrev"},
-						{"abbrev"},
-						{"active"},
+						{"ACTION_CONDITION"},
+						{"ACTION_ORDER"},
+						{"ACTION_ORIENTATION"},
 					},
 				},
 				{
 					Query: "SELECT attname FROM pg_attribute ORDER BY attname LIMIT 3;",
 					Expected: []sql.Row{
-						{"abbrev"},
-						{"abbrev"},
-						{"active"},
+						{"ACTION_CONDITION"},
+						{"ACTION_ORDER"},
+						{"ACTION_ORIENTATION"},
 					},
 				},
 				{
@@ -703,9 +703,9 @@ func TestSmokeTests(t *testing.T) {
 				{
 					Query: "SELECT attname FROM pg_attribute ORDER BY attname LIMIT 3;",
 					Expected: []sql.Row{
-						{"abbrev"},
-						{"abbrev"},
-						{"active"},
+						{"ACTION_CONDITION"},
+						{"ACTION_ORDER"},
+						{"ACTION_ORIENTATION"},
 					},
 				},
 				{

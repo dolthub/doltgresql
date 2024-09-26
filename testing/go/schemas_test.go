@@ -750,7 +750,7 @@ var SchemaTests = []ScriptTest{
 				Expected: []sql.Row{},
 			},
 			{
-				Query: "SELECT schemaname, tablename FROM pg_catalog.pg_tables WHERE schemaname != 'pg_catalog';",
+				Query: "SELECT schemaname, tablename FROM pg_catalog.pg_tables WHERE schemaname != 'pg_catalog' AND schemaname != 'information_schema';",
 				Expected: []sql.Row{
 					{"myschema", "mytbl"},
 				},
