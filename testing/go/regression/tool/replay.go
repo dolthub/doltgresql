@@ -18,7 +18,6 @@ import (
 	"bytes"
 	"errors"
 	"fmt"
-	"net"
 	"strconv"
 	"strings"
 	"time"
@@ -26,6 +25,7 @@ import (
 	"github.com/jackc/pgx/v5/pgproto3"
 )
 
+// ReplayOptions contain all of the options that may be given to Replay. This is a replacement for a long argument list.
 type ReplayOptions struct {
 	File         string
 	Port         int
@@ -42,11 +42,10 @@ func Replay(options ReplayOptions) (*ReplayTracker, error) {
 	fmt.Println("-------------------- ", tracker.File, " --------------------")
 ListenerLoop:
 	for !reader.IsEmpty() {
-		postgresConn, err := (&net.Dialer{}).Dial("tcp", "127.0.0.1:"+strconv.Itoa(options.Port))
+		connection, err := NewConnection("127.0.0.1:"+strconv.Itoa(options.Port), reader, 15*time.Second)
 		if err != nil {
 			return nil, err
 		}
-		postgresConnFrontend := pgproto3.NewFrontend(postgresConn, postgresConn)
 		startupMessage, ok := reader.Next().(*pgproto3.StartupMessage)
 		if !ok {
 			return nil, fmt.Errorf("%s: first message is not StartupMessage (%T)", options.File, reader.Previous())
@@ -54,13 +53,12 @@ ListenerLoop:
 		if _, ok = reader.Next().(*pgproto3.ReadyForQuery); !ok {
 			return nil, fmt.Errorf("expected message after StartupMessage to be ReadyForQuery (%T)", reader.Previous())
 		}
-		postgresConnFrontend.Send(startupMessage)
-		if err = postgresConnFrontend.Flush(); err != nil {
+		if err = connection.SendNoSync(startupMessage); err != nil {
 			return nil, err
 		}
 	StartupLoop:
 		for {
-			postgresMessage, err := postgresConnFrontend.Receive()
+			postgresMessage, err := connection.Receive()
 			if err != nil {
 				return nil, err
 			}
@@ -83,20 +81,17 @@ ListenerLoop:
 				// TODO: messages have somehow gotten misordered in `copy2`, so need to fix that, then can remove this case
 				reader.SyncToNextQuery()
 			case *pgproto3.Describe:
-				postgresConnFrontend.Send(message)
+				connection.Queue(message)
 				if sync, ok := reader.Peek().(*pgproto3.Sync); ok {
 					_ = reader.Next()
-					postgresConnFrontend.Send(sync)
+					connection.Queue(sync)
 				}
-				if err = sendMessagesWithTimeout(postgresConnFrontend); err != nil {
+				if err = connection.Send(); err != nil {
 					tracker.Failed++
-					tracker.Add(ReplayTrackerItem{
+					tracker.AddFailure(ReplayTrackerItem{
 						Query:           "DESCRIBE",
 						UnexpectedError: err.Error(),
 					})
-					reader.SyncToNextQuery()
-					reader.PushQueue(startupMessage, &pgproto3.ReadyForQuery{TxStatus: 'I'})
-					_ = postgresConn.Close()
 					continue ListenerLoop
 				}
 				var expectedError *pgproto3.ErrorResponse
@@ -120,15 +115,13 @@ ListenerLoop:
 				var responseRowDesc *pgproto3.RowDescription
 			DescribeResponseLoop:
 				for {
-					response, err := receiveMessageWithTimeout(postgresConnFrontend)
+					response, err := connection.Receive()
 					if err != nil {
 						tracker.Failed++
-						tracker.Add(ReplayTrackerItem{
+						tracker.AddFailure(ReplayTrackerItem{
 							Query:           "DESCRIBE",
 							UnexpectedError: err.Error(),
 						})
-						reader.PushQueue(startupMessage, &pgproto3.ReadyForQuery{TxStatus: 'I'})
-						_ = postgresConn.Close()
 						continue ListenerLoop
 					}
 					response = DuplicateMessage(response).(pgproto3.BackendMessage)
@@ -147,21 +140,18 @@ ListenerLoop:
 						return nil, fmt.Errorf("unable to determine what to do with %T", message)
 					}
 				}
-				if postgresConnFrontend.ReadBufferLen() > 0 {
-					for postgresConnFrontend.ReadBufferLen() > 0 {
-						_, _ = postgresConnFrontend.Receive()
-					}
+				if err = connection.EmptyReceiveBuffer(); err != nil {
 					tracker.Failed++
-					tracker.Add(ReplayTrackerItem{
+					tracker.AddFailure(ReplayTrackerItem{
 						Query:           "DESCRIBE",
-						UnexpectedError: "Doltgres sent additional messages after ReadyForQuery",
+						UnexpectedError: err.Error(),
 					})
 					continue MessageLoop
 				}
 				if expectedError == nil {
 					if responseError != nil {
 						tracker.Failed++
-						tracker.Add(ReplayTrackerItem{
+						tracker.AddFailure(ReplayTrackerItem{
 							Query:           "DESCRIBE",
 							UnexpectedError: responseError.Message,
 						})
@@ -172,7 +162,7 @@ ListenerLoop:
 							tracker.Success++
 						} else {
 							tracker.Failed++
-							tracker.Add(ReplayTrackerItem{
+							tracker.AddFailure(ReplayTrackerItem{
 								Query:           "DESCRIBE",
 								UnexpectedError: "expected no row description but received a description",
 							})
@@ -181,7 +171,7 @@ ListenerLoop:
 					}
 					if responseRowDesc == nil {
 						tracker.Failed++
-						tracker.Add(ReplayTrackerItem{
+						tracker.AddFailure(ReplayTrackerItem{
 							Query:           "DESCRIBE",
 							UnexpectedError: "expected rows but received none",
 						})
@@ -189,7 +179,7 @@ ListenerLoop:
 					}
 					if len(expectedRowDesc.Fields) != len(responseRowDesc.Fields) {
 						tracker.Failed++
-						tracker.Add(ReplayTrackerItem{
+						tracker.AddFailure(ReplayTrackerItem{
 							Query: "DESCRIBE",
 							UnexpectedError: fmt.Sprintf("expected column count %d but received %d",
 								len(expectedRowDesc.Fields), len(responseRowDesc.Fields)),
@@ -213,7 +203,7 @@ ListenerLoop:
 				} else /* expectedError != nil */ {
 					if responseError == nil {
 						tracker.Failed++
-						tracker.Add(ReplayTrackerItem{
+						tracker.AddFailure(ReplayTrackerItem{
 							Query:         "DESCRIBE",
 							ExpectedError: expectedError.Message,
 						})
@@ -222,7 +212,7 @@ ListenerLoop:
 					tracker.Success++
 					if expectedError.Message != responseError.Message {
 						tracker.PartialSuccess++
-						tracker.Add(ReplayTrackerItem{
+						tracker.AddFailure(ReplayTrackerItem{
 							Query:           "DESCRIBE",
 							UnexpectedError: responseError.Message,
 							ExpectedError:   expectedError.Message,
@@ -230,16 +220,12 @@ ListenerLoop:
 					}
 				}
 			case *pgproto3.FunctionCall:
-				postgresConnFrontend.Send(message)
-				if err = sendMessagesWithTimeout(postgresConnFrontend); err != nil {
+				if err = connection.Send(message); err != nil {
 					tracker.Failed++
-					tracker.Add(ReplayTrackerItem{
+					tracker.AddFailure(ReplayTrackerItem{
 						Query:           fmt.Sprintf("Function OID: %d", message.Function),
 						UnexpectedError: err.Error(),
 					})
-					reader.SyncToNextQuery()
-					reader.PushQueue(startupMessage, &pgproto3.ReadyForQuery{TxStatus: 'I'})
-					_ = postgresConn.Close()
 					continue ListenerLoop
 				}
 				var expectedError *pgproto3.ErrorResponse
@@ -261,15 +247,13 @@ ListenerLoop:
 				var responseData *pgproto3.FunctionCallResponse
 			FunctionResponseLoop:
 				for {
-					response, err := receiveMessageWithTimeout(postgresConnFrontend)
+					response, err := connection.Receive()
 					if err != nil {
 						tracker.Failed++
-						tracker.Add(ReplayTrackerItem{
+						tracker.AddFailure(ReplayTrackerItem{
 							Query:           fmt.Sprintf("Function OID: %d", message.Function),
 							UnexpectedError: err.Error(),
 						})
-						reader.PushQueue(startupMessage, &pgproto3.ReadyForQuery{TxStatus: 'I'})
-						_ = postgresConn.Close()
 						continue ListenerLoop
 					}
 					response = DuplicateMessage(response).(pgproto3.BackendMessage)
@@ -286,21 +270,18 @@ ListenerLoop:
 						return nil, fmt.Errorf("unable to determine what to do with %T", message)
 					}
 				}
-				if postgresConnFrontend.ReadBufferLen() > 0 {
-					for postgresConnFrontend.ReadBufferLen() > 0 {
-						_, _ = postgresConnFrontend.Receive()
-					}
+				if err = connection.EmptyReceiveBuffer(); err != nil {
 					tracker.Failed++
-					tracker.Add(ReplayTrackerItem{
+					tracker.AddFailure(ReplayTrackerItem{
 						Query:           fmt.Sprintf("Function OID: %d", message.Function),
-						UnexpectedError: "Doltgres sent additional messages after ReadyForQuery",
+						UnexpectedError: err.Error(),
 					})
 					continue MessageLoop
 				}
 				if expectedError == nil {
 					if responseError != nil {
 						tracker.Failed++
-						tracker.Add(ReplayTrackerItem{
+						tracker.AddFailure(ReplayTrackerItem{
 							Query:           fmt.Sprintf("Function OID: %d", message.Function),
 							UnexpectedError: responseError.Message,
 						})
@@ -309,7 +290,7 @@ ListenerLoop:
 					if expectedData != nil {
 						if responseData == nil {
 							tracker.Failed++
-							tracker.Add(ReplayTrackerItem{
+							tracker.AddFailure(ReplayTrackerItem{
 								Query:           fmt.Sprintf("Function OID: %d", message.Function),
 								UnexpectedError: "expected a result but received no result",
 							})
@@ -317,7 +298,7 @@ ListenerLoop:
 						}
 						if !bytes.Equal(expectedData.Result, responseData.Result) {
 							tracker.Failed++
-							tracker.Add(ReplayTrackerItem{
+							tracker.AddFailure(ReplayTrackerItem{
 								Query:           fmt.Sprintf("Function OID: %d", message.Function),
 								UnexpectedError: "result is incorrect",
 							})
@@ -326,7 +307,7 @@ ListenerLoop:
 					} else /* expectedData == nil */ {
 						if responseData != nil {
 							tracker.Failed++
-							tracker.Add(ReplayTrackerItem{
+							tracker.AddFailure(ReplayTrackerItem{
 								Query:           fmt.Sprintf("Function OID: %d", message.Function),
 								UnexpectedError: "expected no result but received a result",
 							})
@@ -334,19 +315,25 @@ ListenerLoop:
 						}
 					}
 					tracker.Success++
+					tracker.AddSuccess(ReplayTrackerItem{
+						Query: fmt.Sprintf("Function OID: %d", message.Function),
+					})
 				} else /* expectedError != nil */ {
 					if responseError == nil {
 						tracker.Failed++
-						tracker.Add(ReplayTrackerItem{
+						tracker.AddFailure(ReplayTrackerItem{
 							Query:         fmt.Sprintf("Function OID: %d", message.Function),
 							ExpectedError: expectedError.Message,
 						})
 						continue MessageLoop
 					}
 					tracker.Success++
+					tracker.AddSuccess(ReplayTrackerItem{
+						Query: fmt.Sprintf("Function OID: %d", message.Function),
+					})
 					if expectedError.Message != responseError.Message {
 						tracker.PartialSuccess++
-						tracker.Add(ReplayTrackerItem{
+						tracker.AddFailure(ReplayTrackerItem{
 							Query:           fmt.Sprintf("Function OID: %d", message.Function),
 							UnexpectedError: responseError.Message,
 							ExpectedError:   expectedError.Message,
@@ -354,20 +341,17 @@ ListenerLoop:
 					}
 				}
 			case *pgproto3.Parse:
-				postgresConnFrontend.Send(message)
+				connection.Queue(message)
 				if sync, ok := reader.Peek().(*pgproto3.Sync); ok {
 					_ = reader.Next()
-					postgresConnFrontend.Send(sync)
+					connection.Queue(sync)
 				}
-				if err = sendMessagesWithTimeout(postgresConnFrontend); err != nil {
+				if err = connection.Send(); err != nil {
 					tracker.Failed++
-					tracker.Add(ReplayTrackerItem{
+					tracker.AddFailure(ReplayTrackerItem{
 						Query:           message.Query,
 						UnexpectedError: err.Error(),
 					})
-					reader.SyncToNextQuery()
-					reader.PushQueue(startupMessage, &pgproto3.ReadyForQuery{TxStatus: 'I'})
-					_ = postgresConn.Close()
 					continue ListenerLoop
 				}
 				var expectedError *pgproto3.ErrorResponse
@@ -388,15 +372,13 @@ ListenerLoop:
 				var responseError *pgproto3.ErrorResponse
 			ParseResponseLoop:
 				for {
-					response, err := receiveMessageWithTimeout(postgresConnFrontend)
+					response, err := connection.Receive()
 					if err != nil {
 						tracker.Failed++
-						tracker.Add(ReplayTrackerItem{
+						tracker.AddFailure(ReplayTrackerItem{
 							Query:           message.Query,
 							UnexpectedError: err.Error(),
 						})
-						reader.PushQueue(startupMessage, &pgproto3.ReadyForQuery{TxStatus: 'I'})
-						_ = postgresConn.Close()
 						continue ListenerLoop
 					}
 					response = DuplicateMessage(response).(pgproto3.BackendMessage)
@@ -413,40 +395,43 @@ ListenerLoop:
 						return nil, fmt.Errorf("unable to determine what to do with %T", message)
 					}
 				}
-				if postgresConnFrontend.ReadBufferLen() > 0 {
-					for postgresConnFrontend.ReadBufferLen() > 0 {
-						_, _ = postgresConnFrontend.Receive()
-					}
+				if err = connection.EmptyReceiveBuffer(); err != nil {
 					tracker.Failed++
-					tracker.Add(ReplayTrackerItem{
+					tracker.AddFailure(ReplayTrackerItem{
 						Query:           message.Query,
-						UnexpectedError: "Doltgres sent additional messages after ReadyForQuery",
+						UnexpectedError: err.Error(),
 					})
 					continue MessageLoop
 				}
 				if expectedError == nil {
 					if responseError != nil {
 						tracker.Failed++
-						tracker.Add(ReplayTrackerItem{
+						tracker.AddFailure(ReplayTrackerItem{
 							Query:           message.Query,
 							UnexpectedError: responseError.Message,
 						})
 						continue MessageLoop
 					}
 					tracker.Success++
+					tracker.AddSuccess(ReplayTrackerItem{
+						Query: message.Query,
+					})
 				} else /* expectedError != nil */ {
 					if responseError == nil {
 						tracker.Failed++
-						tracker.Add(ReplayTrackerItem{
+						tracker.AddFailure(ReplayTrackerItem{
 							Query:         message.Query,
 							ExpectedError: expectedError.Message,
 						})
 						continue MessageLoop
 					}
 					tracker.Success++
+					tracker.AddSuccess(ReplayTrackerItem{
+						Query: message.Query,
+					})
 					if expectedError.Message != responseError.Message {
 						tracker.PartialSuccess++
-						tracker.Add(ReplayTrackerItem{
+						tracker.AddFailure(ReplayTrackerItem{
 							Query:           message.Query,
 							UnexpectedError: responseError.Message,
 							ExpectedError:   expectedError.Message,
@@ -460,7 +445,7 @@ ListenerLoop:
 				if options.FailPSQL {
 					if strings.HasPrefix(message.String, "SELECT c2.relname, i.indisprimary, i.indisunique, i.indisclustered, i.indisvalid, pg_catalog.pg_get_indexdef(i.indexrelid, 0, true),") {
 						tracker.Failed++
-						tracker.Add(ReplayTrackerItem{
+						tracker.AddFailure(ReplayTrackerItem{
 							Query:           message.String,
 							UnexpectedError: "set to automatically fail PSQL commands",
 						})
@@ -471,7 +456,7 @@ ListenerLoop:
 				for _, failQuery := range options.FailQueries {
 					if message.String == failQuery {
 						tracker.Failed++
-						tracker.Add(ReplayTrackerItem{
+						tracker.AddFailure(ReplayTrackerItem{
 							Query:           message.String,
 							UnexpectedError: "set to automatically fail due to catastrophic error (OOM, stack limit, etc.)",
 						})
@@ -479,16 +464,12 @@ ListenerLoop:
 						continue MessageLoop
 					}
 				}
-				postgresConnFrontend.Send(message)
-				if err = sendMessagesWithTimeout(postgresConnFrontend); err != nil {
+				if err = connection.Send(message); err != nil {
 					tracker.Failed++
-					tracker.Add(ReplayTrackerItem{
+					tracker.AddFailure(ReplayTrackerItem{
 						Query:           message.String,
 						UnexpectedError: err.Error(),
 					})
-					reader.SyncToNextQuery()
-					reader.PushQueue(startupMessage, &pgproto3.ReadyForQuery{TxStatus: 'I'})
-					_ = postgresConn.Close()
 					continue ListenerLoop
 				}
 				var expectedError *pgproto3.ErrorResponse
@@ -522,15 +503,13 @@ ListenerLoop:
 				var responseDataRows []*pgproto3.DataRow
 			ResponseLoop:
 				for {
-					response, err := receiveMessageWithTimeout(postgresConnFrontend)
+					response, err := connection.Receive()
 					if err != nil {
 						tracker.Failed++
-						tracker.Add(ReplayTrackerItem{
+						tracker.AddFailure(ReplayTrackerItem{
 							Query:           message.String,
 							UnexpectedError: err.Error(),
 						})
-						reader.PushQueue(startupMessage, &pgproto3.ReadyForQuery{TxStatus: 'I'})
-						_ = postgresConn.Close()
 						continue ListenerLoop
 					}
 					response = DuplicateMessage(response).(pgproto3.BackendMessage)
@@ -538,17 +517,14 @@ ListenerLoop:
 					case *pgproto3.CommandComplete:
 					case *pgproto3.CopyInResponse:
 						for _, copyData := range expectedCopyData {
-							postgresConnFrontend.Send(copyData)
+							connection.Queue(copyData)
 						}
-						postgresConnFrontend.Send(&pgproto3.CopyDone{})
-						if err = postgresConnFrontend.Flush(); err != nil {
+						if err = connection.SendNoSync(&pgproto3.CopyDone{}); err != nil {
 							tracker.Failed++
-							tracker.Add(ReplayTrackerItem{
+							tracker.AddFailure(ReplayTrackerItem{
 								Query:           message.String,
 								UnexpectedError: err.Error(),
 							})
-							reader.PushQueue(startupMessage, &pgproto3.ReadyForQuery{TxStatus: 'I'})
-							_ = postgresConn.Close()
 							continue ListenerLoop
 						}
 					case *pgproto3.DataRow:
@@ -565,21 +541,18 @@ ListenerLoop:
 						return nil, fmt.Errorf("unable to determine what to do with %T", message)
 					}
 				}
-				if postgresConnFrontend.ReadBufferLen() > 0 {
-					for postgresConnFrontend.ReadBufferLen() > 0 {
-						_, _ = postgresConnFrontend.Receive()
-					}
+				if err = connection.EmptyReceiveBuffer(); err != nil {
 					tracker.Failed++
-					tracker.Add(ReplayTrackerItem{
+					tracker.AddFailure(ReplayTrackerItem{
 						Query:           message.String,
-						UnexpectedError: "Doltgres sent additional messages after ReadyForQuery",
+						UnexpectedError: err.Error(),
 					})
 					continue MessageLoop
 				}
 				if expectedError == nil {
 					if responseError != nil {
 						tracker.Failed++
-						tracker.Add(ReplayTrackerItem{
+						tracker.AddFailure(ReplayTrackerItem{
 							Query:           message.String,
 							UnexpectedError: responseError.Message,
 						})
@@ -588,9 +561,12 @@ ListenerLoop:
 					if expectedRowDesc == nil {
 						if responseRowDesc == nil {
 							tracker.Success++
+							tracker.AddSuccess(ReplayTrackerItem{
+								Query: message.String,
+							})
 						} else {
 							tracker.Failed++
-							tracker.Add(ReplayTrackerItem{
+							tracker.AddFailure(ReplayTrackerItem{
 								Query:           message.String,
 								UnexpectedError: "expected no rows but received rows",
 							})
@@ -599,7 +575,7 @@ ListenerLoop:
 					}
 					if responseRowDesc == nil {
 						tracker.Failed++
-						tracker.Add(ReplayTrackerItem{
+						tracker.AddFailure(ReplayTrackerItem{
 							Query:           message.String,
 							UnexpectedError: "expected rows but received none",
 						})
@@ -607,7 +583,7 @@ ListenerLoop:
 					}
 					if len(expectedRowDesc.Fields) != len(responseRowDesc.Fields) {
 						tracker.Failed++
-						tracker.Add(ReplayTrackerItem{
+						tracker.AddFailure(ReplayTrackerItem{
 							Query: message.String,
 							UnexpectedError: fmt.Sprintf("expected column count %d but received %d",
 								len(expectedRowDesc.Fields), len(responseRowDesc.Fields)),
@@ -626,7 +602,7 @@ ListenerLoop:
 					}
 					if len(expectedDataRows) != len(responseDataRows) {
 						tracker.Failed++
-						tracker.Add(ReplayTrackerItem{
+						tracker.AddFailure(ReplayTrackerItem{
 							Query: message.String,
 							UnexpectedError: fmt.Sprintf("expected row count %d but received %d",
 								len(expectedDataRows), len(responseDataRows)),
@@ -637,7 +613,7 @@ ListenerLoop:
 						// There's an ORDER BY, so we need to check based on the order
 						if err = CompareRowsOrdered(expectedRowDesc, responseRowDesc, expectedDataRows, responseDataRows); err != nil {
 							tracker.Failed++
-							tracker.Add(ReplayTrackerItem{
+							tracker.AddFailure(ReplayTrackerItem{
 								Query:           message.String,
 								UnexpectedError: err.Error(),
 							})
@@ -647,7 +623,7 @@ ListenerLoop:
 						// There's no ORDER BY, so our native row order may differ from Postgres.
 						if err = CompareRowsUnordered(expectedRowDesc, responseRowDesc, expectedDataRows, responseDataRows); err != nil {
 							tracker.Failed++
-							tracker.Add(ReplayTrackerItem{
+							tracker.AddFailure(ReplayTrackerItem{
 								Query:           message.String,
 								UnexpectedError: err.Error(),
 							})
@@ -655,22 +631,28 @@ ListenerLoop:
 						}
 					}
 					tracker.Success++
+					tracker.AddSuccess(ReplayTrackerItem{
+						Query: message.String,
+					})
 					if len(partialSuccesses) > 0 {
 						tracker.PartialSuccess++
 					}
 				} else /* expectedError != nil */ {
 					if responseError == nil {
 						tracker.Failed++
-						tracker.Add(ReplayTrackerItem{
+						tracker.AddFailure(ReplayTrackerItem{
 							Query:         message.String,
 							ExpectedError: expectedError.Message,
 						})
 						continue MessageLoop
 					}
 					tracker.Success++
+					tracker.AddSuccess(ReplayTrackerItem{
+						Query: message.String,
+					})
 					if expectedError.Message != responseError.Message {
 						tracker.PartialSuccess++
-						tracker.Add(ReplayTrackerItem{
+						tracker.AddFailure(ReplayTrackerItem{
 							Query:           message.String,
 							UnexpectedError: responseError.Message,
 							ExpectedError:   expectedError.Message,
@@ -678,8 +660,7 @@ ListenerLoop:
 					}
 				}
 			case *pgproto3.Terminate:
-				postgresConnFrontend.Send(message)
-				if err = sendMessagesWithTimeout(postgresConnFrontend); err != nil {
+				if err = connection.SendNoSync(message); err != nil {
 					return nil, err
 				}
 				break MessageLoop
@@ -687,48 +668,7 @@ ListenerLoop:
 				return nil, fmt.Errorf("unable to determine what to do with %T", message)
 			}
 		}
-		_ = postgresConn.Close()
+		connection.Close()
 	}
 	return tracker, nil
-}
-
-const connTimeout = 20 * time.Second
-
-func receiveMessageWithTimeout(postgresConnFrontend *pgproto3.Frontend) (pgproto3.BackendMessage, error) {
-	c := make(chan pgproto3.BackendMessage)
-	cErr := make(chan error)
-	go func() {
-		msg, err := postgresConnFrontend.Receive()
-		if err != nil {
-			cErr <- err
-		} else {
-			c <- msg
-		}
-		close(c)
-		close(cErr)
-	}()
-
-	select {
-	case msg := <-c:
-		return msg, nil
-	case err := <-cErr:
-		return nil, err
-	case <-time.After(connTimeout):
-		return nil, errors.New("timeout while receiving message")
-	}
-}
-
-func sendMessagesWithTimeout(postgresConnFrontend *pgproto3.Frontend) error {
-	c := make(chan error)
-	go func() {
-		c <- postgresConnFrontend.Flush()
-		close(c)
-	}()
-
-	select {
-	case err := <-c:
-		return err
-	case <-time.After(connTimeout):
-		return errors.New("timeout while flushing messages")
-	}
 }
