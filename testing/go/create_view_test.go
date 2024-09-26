@@ -66,6 +66,10 @@ var createViewStmts = []ScriptTest{
 				Expected: []sql.Row{{4}, {5}, {6}},
 			},
 			{
+				Query:    "select name from dolt_schemas;",
+				Expected: []sql.Row{{"myview"}},
+			},
+			{
 				Query: "SET search_path = 'testschema';",
 			},
 			{
@@ -79,6 +83,10 @@ var createViewStmts = []ScriptTest{
 			{
 				Query:    "select v2 from testview order by pk;",
 				Expected: []sql.Row{{"a"}, {"b"}, {"c"}},
+			},
+			{
+				Query:    "select name from dolt_schemas;",
+				Expected: []sql.Row{{"testview"}},
 			},
 		},
 	},
