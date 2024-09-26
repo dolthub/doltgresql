@@ -352,6 +352,7 @@ func iterateTables(ctx *sql.Context, callbacks Callbacks, itemSchema ItemSchema,
 		}
 		// Check for a column default callback
 		if callbacks.ColumnDefault != nil {
+			// TODO: Remove when information_schema tables don't use column defaults
 			if itemSchema.Item.SchemaName() == "information_schema" {
 				continue
 			}
