@@ -104,6 +104,10 @@ type ItemSchema struct {
 	Item  sql.DatabaseSchema
 }
 
+func (is ItemSchema) IsSystemSchema() bool {
+	return is.Item.SchemaName() == "information_schema" || is.Item.SchemaName() == "pg_catalog"
+}
+
 // ItemSequence contains the relevant information to pass to the Sequence callback.
 type ItemSequence struct {
 	Index int
@@ -352,8 +356,8 @@ func iterateTables(ctx *sql.Context, callbacks Callbacks, itemSchema ItemSchema,
 		}
 		// Check for a column default callback
 		if callbacks.ColumnDefault != nil {
-			// TODO: Remove when information_schema tables don't use column defaults
-			if itemSchema.Item.SchemaName() == "information_schema" {
+			// System tables don't have column defaults
+			if itemSchema.IsSystemSchema() {
 				continue
 			}
 			if err = iterateColumnDefaults(ctx, callbacks, itemSchema, itemTable, &columnDefaultCount); err != nil {
@@ -362,12 +366,20 @@ func iterateTables(ctx *sql.Context, callbacks Callbacks, itemSchema ItemSchema,
 		}
 		// Check for a foreign key callback
 		if callbacks.ForeignKey != nil {
+			// System tables don't have foreign keys
+			if itemSchema.IsSystemSchema() {
+				continue
+			}
 			if err = iterateForeignKeys(ctx, callbacks, itemSchema, itemTable, &foreignKeyCount); err != nil {
 				return err
 			}
 		}
 		// Check for an index callback
 		if callbacks.Index != nil {
+			// System tables don't have indexes
+			if itemSchema.IsSystemSchema() {
+				continue
+			}
 			if err = iterateIndexes(ctx, callbacks, itemSchema, itemTable, &indexCount); err != nil {
 				return err
 			}
