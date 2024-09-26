@@ -4,6 +4,7 @@ import { from as copyFrom } from "pg-copy-streams";
 import path from "path";
 import { branchTests } from "./branches.js";
 import { databaseTests } from "./databases.js";
+import { docsTests } from "./docs.js";
 import { logTests } from "./logs.js";
 import { assertEqualRows } from "../helpers.js";
 import { mergeTests } from "./merge.js";
@@ -22,7 +23,7 @@ export default async function runWorkbenchTests(database) {
   await runTests(database, logTests, "logs");
   await runTests(database, mergeTests, "merge");
   await runTests(database, tableTests, "tables");
-  // await runTests(database, docsTests, "docs");
+  await runTests(database, docsTests, "docs");
   await runTests(database, tagsTests, "tags");
   await runTests(database, viewsTests, "views");
   // TODO: Move over the rest of the Dolt workbench tests

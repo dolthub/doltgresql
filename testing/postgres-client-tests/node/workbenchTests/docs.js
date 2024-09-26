@@ -21,12 +21,12 @@ export const docsTests = [
     },
   },
   {
-    q: "INSERT INTO dolt_docs VALUES ($1, $2);", // TODO: INSERT: non-Doltgres type found in destination: varchar(1023)
+    q: "INSERT INTO dolt_docs VALUES ($1, $2);",
     p: ["README.md", readmeText],
     res: {
       command: "INSERT",
-      rowCount: null,
-      oid: null,
+      rowCount: 1,
+      oid: 0,
       rows: [],
       fields: [],
     },
@@ -39,7 +39,7 @@ export const docsTests = [
       rowCount: 1,
       oid: null,
       rows: [{ doc_name: "README.md", doc_text: readmeText }],
-      fields: [],
+      fields: doltDocsFields,
     },
   },
   {
@@ -67,10 +67,64 @@ export const docsTests = [
     },
   },
   {
+    q: `SELECT DOLT_COMMIT('-A', '-m', $1::text)`,
+    p: ["Add dolt_docs table"],
+    res: {
+      command: "SELECT",
+      rowCount: 1,
+      oid: null,
+      rows: [{ dolt_commit: "" }],
+      fields: doltCommitFields,
+    },
+  },
+  {
+    q: `SET SEARCH_PATH = 'testschema';`,
+    res: {
+      command: "SET",
+      rowCount: null,
+      oid: null,
+      rows: [],
+      fields: [],
+    },
+  },
+  // dolt_docs should not be schema-specific
+  {
+    q: `select * from dolt_docs where doc_name=$1`,
+    p: ["README.md"],
+    res: {
+      command: "SELECT",
+      rowCount: 1,
+      oid: null,
+      rows: [{ doc_name: "README.md", doc_text: readmeText }],
+      fields: doltDocsFields,
+    },
+  },
+  {
     q: "DELETE FROM dolt_docs WHERE doc_name=$1",
     p: ["README.md"],
     res: {
       command: "DELETE",
+      rowCount: 1,
+      oid: null,
+      rows: [],
+      fields: [],
+    },
+  },
+  {
+    q: `select * from dolt_docs where doc_name=$1`,
+    p: ["README.md"],
+    res: {
+      command: "SELECT",
+      rowCount: 0,
+      oid: null,
+      rows: [],
+      fields: doltDocsFields,
+    },
+  },
+  {
+    q: `SET SEARCH_PATH = 'public';`,
+    res: {
+      command: "SET",
       rowCount: null,
       oid: null,
       rows: [],
@@ -79,18 +133,18 @@ export const docsTests = [
   },
   {
     q: `select * from dolt_docs where doc_name=$1`,
-    p: { docName: "README.md" },
+    p: ["README.md"],
     res: {
       command: "SELECT",
       rowCount: 0,
       oid: null,
       rows: [],
-      fields: [],
+      fields: doltDocsFields,
     },
   },
   {
     q: `SELECT DOLT_COMMIT('-A', '-m', $1::text)`,
-    p: ["Add dolt_docs table"],
+    p: ["Remove README"],
     res: {
       command: "SELECT",
       rowCount: 1,
