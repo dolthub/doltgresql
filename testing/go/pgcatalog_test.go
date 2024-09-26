@@ -165,6 +165,13 @@ func TestPgAttribute(t *testing.T) {
 					},
 				},
 				{
+					Query: `SELECT count(*) FROM pg_attribute as a1
+				WHERE a1.attrelid = 0 OR a1.atttypid = 0 OR a1.attnum = 0 OR
+				a1.attcacheoff != -1 OR a1.attinhcount < 0 OR
+    		(a1.attinhcount = 0 AND NOT a1.attislocal);`,
+					Expected: []sql.Row{{0}},
+				},
+				{
 					Skip: true, // This test times out, needs some analysis to figure out why, possible a 5-table join of generated tables with no indexes is just too much
 					Query: `SELECT "con"."conname" AS "constraint_name", 
        "con"."nspname" AS "table_schema", 
