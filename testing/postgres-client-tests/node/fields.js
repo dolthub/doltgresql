@@ -82,6 +82,54 @@ export const doltCommitFields = [
   },
 ];
 
+export const doltSchemasFields = [
+  {
+    name: "type",
+    tableID: 0,
+    columnID: 0,
+    dataTypeID: 1043,
+    dataTypeSize: 256,
+    dataTypeModifier: -1,
+    format: "text",
+  },
+  {
+    name: "name",
+    tableID: 0,
+    columnID: 0,
+    dataTypeID: 1043,
+    dataTypeSize: 256,
+    dataTypeModifier: -1,
+    format: "text",
+  },
+  {
+    name: "fragment",
+    tableID: 0,
+    columnID: 0,
+    dataTypeID: 25,
+    dataTypeSize: -1,
+    dataTypeModifier: -1,
+    format: "text",
+  },
+  {
+    name: "extra",
+    tableID: 0,
+    columnID: 0,
+    dataTypeID: 114,
+    dataTypeSize: -1,
+    dataTypeModifier: -1,
+    format: "text",
+  },
+  {
+    name: "sql_mode",
+    tableID: 0,
+    columnID: 0,
+    dataTypeID: 1043,
+    dataTypeSize: 1024,
+    dataTypeModifier: -1,
+    format: "text",
+  },
+];
+
 export const doltStatusFields = [
   {
     name: "table_name",
@@ -103,6 +151,75 @@ export const doltStatusFields = [
   },
   {
     name: "status",
+    tableID: 0,
+    columnID: 0,
+    dataTypeID: 25,
+    dataTypeSize: -4,
+    dataTypeModifier: -1,
+    format: "text",
+  },
+];
+
+export const doltTagFields = [
+  {
+    name: "dolt_tag",
+    tableID: 0,
+    columnID: 0,
+    dataTypeID: 1009,
+    dataTypeSize: -1,
+    dataTypeModifier: -1,
+    format: "text",
+  },
+];
+
+export const doltTagsFields = [
+  {
+    name: "tag_name",
+    tableID: 0,
+    columnID: 0,
+    dataTypeID: 25,
+    dataTypeSize: -4,
+    dataTypeModifier: -1,
+    format: "text",
+  },
+  {
+    name: "tag_hash",
+    tableID: 0,
+    columnID: 0,
+    dataTypeID: 25,
+    dataTypeSize: -4,
+    dataTypeModifier: -1,
+    format: "text",
+  },
+  {
+    name: "tagger",
+    tableID: 0,
+    columnID: 0,
+    dataTypeID: 25,
+    dataTypeSize: -4,
+    dataTypeModifier: -1,
+    format: "text",
+  },
+  {
+    name: "email",
+    tableID: 0,
+    columnID: 0,
+    dataTypeID: 25,
+    dataTypeSize: -4,
+    dataTypeModifier: -1,
+    format: "text",
+  },
+  {
+    name: "date",
+    tableID: 0,
+    columnID: 0,
+    dataTypeID: 1114,
+    dataTypeSize: 26,
+    dataTypeModifier: -1,
+    format: "text",
+  },
+  {
+    name: "message",
     tableID: 0,
     columnID: 0,
     dataTypeID: 25,
@@ -218,6 +335,37 @@ export const infoSchemaKeyColumnUsageFields = [
     columnID: 0,
     dataTypeID: 1043,
     dataTypeSize: 192,
+    dataTypeModifier: -1,
+    format: "text",
+  },
+];
+
+export const schemaNameField = {
+  name: "schema_name",
+  tableID: 0,
+  columnID: 0,
+  dataTypeID: 1043,
+  dataTypeSize: 256,
+  dataTypeModifier: -1,
+  format: "text",
+};
+
+export const pgTablesFields = [
+  {
+    name: "schemaname",
+    tableID: 0,
+    columnID: 0,
+    dataTypeID: 19,
+    dataTypeSize: 252,
+    dataTypeModifier: -1,
+    format: "text",
+  },
+  {
+    name: "tablename",
+    tableID: 0,
+    columnID: 0,
+    dataTypeID: 19,
+    dataTypeSize: 252,
     dataTypeModifier: -1,
     format: "text",
   },

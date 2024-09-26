@@ -9,6 +9,11 @@ function matcher(rows, exp, exceptionKeys, getExceptionIsValid) {
     const expKeys = Object.keys(exp[i]);
     // Row key lengths match
     if (rowKeys.length !== expKeys.length) {
+      console.log(
+        "row key lengths don't match",
+        rowKeys.length,
+        expKeys.length
+      );
       return false;
     }
     // Row key values match
@@ -113,4 +118,22 @@ export function mergeMatcher(data, exp) {
   }
 
   return true;
+}
+
+export function tagsMatcher(data, exp) {
+  const exceptionKeys = ["tag_hash", "date"];
+
+  function getExceptionIsValid(row, key) {
+    const val = row[key];
+    switch (key) {
+      case "tag_hash":
+        return commitHashIsValid(val);
+      case "date":
+        return dateIsValid(val);
+      default:
+        return false;
+    }
+  }
+
+  return matcher(data.rows, exp.rows, exceptionKeys, getExceptionIsValid);
 }
