@@ -16,7 +16,7 @@ start_doltgres_server() {
 
 setup_doltgres_repo() {
   run psql --version
-  if [[ ! "$output" =~ "(PostgreSQL) 15" ]] && [[ ! "$output" =~ "(PostgreSQL) 16" ]]; then
+  if [[ ! "$output" =~ "(PostgreSQL) 15" ]] && [[ ! "$output" =~ "(PostgreSQL) 16" ]] && [[ ! "$output" =~ "(PostgreSQL) 17" ]]; then
     echo "PSQL must be version 15, got $output"
     return 1
   fi
