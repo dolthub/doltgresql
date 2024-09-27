@@ -102,6 +102,23 @@ func nodeAlterTableAddConstraint(
 	switch constraintDef := node.ConstraintDef.(type) {
 	case *tree.UniqueConstraintTableDef:
 		return nodeUniqueConstraintTableDef(constraintDef, tableName, ifExists)
+	case *tree.ForeignKeyConstraintTableDef:
+		foreignKeyDefinition, err := nodeForeignKeyConstraintTableDef(constraintDef)
+		if err != nil {
+			return nil, err
+		}
+		return &vitess.DDL{
+			Action:           "alter",
+			ConstraintAction: "add",
+			Table:            tableName,
+			IfExists:         ifExists,
+			TableSpec: &vitess.TableSpec{
+				Constraints: []*vitess.ConstraintDefinition{
+					{Details: foreignKeyDefinition},
+				},
+			},
+		}, nil
+
 	default:
 		return nil, fmt.Errorf("ALTER TABLE with unsupported constraint "+
 			"definition type %T", node)

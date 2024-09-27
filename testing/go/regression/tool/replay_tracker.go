@@ -25,11 +25,12 @@ import (
 
 // ReplayTracker tracks data for a Replay run.
 type ReplayTracker struct {
-	File           string
-	Success        uint32
-	PartialSuccess uint32
-	Failed         uint32
-	Items          []ReplayTrackerItem
+	File             string
+	Success          uint32
+	PartialSuccess   uint32
+	Failed           uint32
+	SuccessItems     []ReplayTrackerItem
+	FailPartialItems []ReplayTrackerItem
 }
 
 // ReplayTrackerItem specifically tracks partial successes and failures for queries.
@@ -43,17 +44,23 @@ type ReplayTrackerItem struct {
 // NewReplayTracker returns a new *ReplayTracker.
 func NewReplayTracker(file string) *ReplayTracker {
 	return &ReplayTracker{
-		File:           strings.ReplaceAll(filepath.Base(file), ".results", ""),
-		Success:        0,
-		PartialSuccess: 0,
-		Failed:         0,
-		Items:          nil,
+		File:             strings.ReplaceAll(filepath.Base(file), ".results", ""),
+		Success:          0,
+		PartialSuccess:   0,
+		Failed:           0,
+		SuccessItems:     nil,
+		FailPartialItems: nil,
 	}
 }
 
-// Add adds the given ReplayTrackerItem.
-func (rt *ReplayTracker) Add(item ReplayTrackerItem) {
-	rt.Items = append(rt.Items, item)
+// AddSuccess adds the given ReplayTrackerItem as a Success.
+func (rt *ReplayTracker) AddSuccess(item ReplayTrackerItem) {
+	rt.SuccessItems = append(rt.SuccessItems, item)
+}
+
+// AddFailure adds the given ReplayTrackerItem as a Failure (or Partial Success).
+func (rt *ReplayTracker) AddFailure(item ReplayTrackerItem) {
+	rt.FailPartialItems = append(rt.FailPartialItems, item)
 }
 
 // SerializeTrackers serializes the given trackers.
@@ -62,14 +69,19 @@ func SerializeTrackers(trackers ...*ReplayTracker) []byte {
 		return trackers[i].File < trackers[j].File
 	})
 	writer := utils.NewWriter(1048576)
+	writer.Uint32(2) // Version
 	writer.Uint32(uint32(len(trackers)))
 	for _, tracker := range trackers {
 		writer.String(tracker.File)
 		writer.Uint32(tracker.Success)
 		writer.Uint32(tracker.PartialSuccess)
 		writer.Uint32(tracker.Failed)
-		writer.Uint32(uint32(len(tracker.Items)))
-		for _, item := range tracker.Items {
+		writer.Uint32(uint32(len(tracker.SuccessItems)))
+		for _, item := range tracker.SuccessItems {
+			writer.String(item.Query)
+		}
+		writer.Uint32(uint32(len(tracker.FailPartialItems)))
+		for _, item := range tracker.FailPartialItems {
 			writer.String(item.Query)
 			writer.StringSlice(item.PartialSuccess)
 			writer.String(item.UnexpectedError)
@@ -82,6 +94,10 @@ func SerializeTrackers(trackers ...*ReplayTracker) []byte {
 // DeserializeTrackers deserializes the given data into a sorted list of trackers.
 func DeserializeTrackers(data []byte) ([]*ReplayTracker, error) {
 	reader := utils.NewReader(data)
+	version := reader.Uint32()
+	if version != 2 {
+		return nil, fmt.Errorf("version %d is not supported by this branch", version)
+	}
 	trackers := make([]*ReplayTracker, reader.Uint32())
 	for trackerIdx := 0; trackerIdx < len(trackers); trackerIdx++ {
 		trackers[trackerIdx] = &ReplayTracker{}
@@ -89,12 +105,16 @@ func DeserializeTrackers(data []byte) ([]*ReplayTracker, error) {
 		trackers[trackerIdx].Success = reader.Uint32()
 		trackers[trackerIdx].PartialSuccess = reader.Uint32()
 		trackers[trackerIdx].Failed = reader.Uint32()
-		trackers[trackerIdx].Items = make([]ReplayTrackerItem, reader.Uint32())
-		for itemIdx := 0; itemIdx < len(trackers[trackerIdx].Items); itemIdx++ {
-			trackers[trackerIdx].Items[itemIdx].Query = reader.String()
-			trackers[trackerIdx].Items[itemIdx].PartialSuccess = reader.StringSlice()
-			trackers[trackerIdx].Items[itemIdx].UnexpectedError = reader.String()
-			trackers[trackerIdx].Items[itemIdx].ExpectedError = reader.String()
+		trackers[trackerIdx].SuccessItems = make([]ReplayTrackerItem, reader.Uint32())
+		for itemIdx := 0; itemIdx < len(trackers[trackerIdx].SuccessItems); itemIdx++ {
+			trackers[trackerIdx].SuccessItems[itemIdx].Query = reader.String()
+		}
+		trackers[trackerIdx].FailPartialItems = make([]ReplayTrackerItem, reader.Uint32())
+		for itemIdx := 0; itemIdx < len(trackers[trackerIdx].FailPartialItems); itemIdx++ {
+			trackers[trackerIdx].FailPartialItems[itemIdx].Query = reader.String()
+			trackers[trackerIdx].FailPartialItems[itemIdx].PartialSuccess = reader.StringSlice()
+			trackers[trackerIdx].FailPartialItems[itemIdx].UnexpectedError = reader.String()
+			trackers[trackerIdx].FailPartialItems[itemIdx].ExpectedError = reader.String()
 		}
 	}
 	sort.Slice(trackers, func(i, j int) bool {
