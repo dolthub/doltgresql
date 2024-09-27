@@ -395,7 +395,7 @@ func (d *DoltgresHarness) EvaluateQueryResults(t *testing.T, expected []sql.Row,
 	// widenedExpected modified in place
 	default:
 		// The expected results that need widening before checking against actual results.
-		widenExpectedRows(t, widenedExpected, sch, widenedRows, isNilOrEmptySchema)
+		widenExpectedRows(t, q, widenedExpected, sch, widenedRows, isNilOrEmptySchema)
 	}
 
 	// .Equal gives better error messages than .ElementsMatch, so use it when possible
@@ -429,7 +429,7 @@ func convertCountStarDoltLog(t *testing.T, q string, expected []sql.Row, rows []
 	return false
 }
 
-func widenExpectedRows(t *testing.T, expected []sql.Row, sch sql.Schema, actual []sql.Row, isNilOrEmptySchema bool) {
+func widenExpectedRows(t *testing.T, q string, expected []sql.Row, sch sql.Schema, actual []sql.Row, isNilOrEmptySchema bool) {
 	for i, row := range expected {
 		for j := range sch {
 			field := row[j]
@@ -463,6 +463,10 @@ func widenExpectedRows(t *testing.T, expected []sql.Row, sch sql.Schema, actual 
 			if okResult, isOkResult := expected[i][0].(gmstypes.OkResult); isOkResult {
 				// we can't verify the custom text fields of things like update results, so we strip out that info
 				expected[i][0] = gmstypes.NewOkResult(int(okResult.RowsAffected))
+				// there are other Postgres queries that lack a row count
+				if strings.HasPrefix(strings.ToLower(q), "truncate") {
+					expected[i][0] = gmstypes.NewOkResult(0)
+				}
 			}
 		}
 	}
@@ -702,6 +706,8 @@ func getDmlResult(rows pgx.Rows) (sql.Row, bool) {
 	case strings.HasPrefix(tag.String(), "DROP TABLE"):
 		return sql.NewRow(gmstypes.NewOkResult(0)), true
 	case strings.HasPrefix(tag.String(), "CREATE TABLE"):
+		return sql.NewRow(gmstypes.NewOkResult(0)), true
+	case strings.HasPrefix(tag.String(), "TRUNCATE"):
 		return sql.NewRow(gmstypes.NewOkResult(0)), true
 	default:
 		return nil, false
