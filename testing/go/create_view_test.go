@@ -66,6 +66,14 @@ var createViewStmts = []ScriptTest{
 				Expected: []sql.Row{{4}, {5}, {6}},
 			},
 			{
+				Query:       "select v2 from testview order by pk;",
+				ExpectedErr: "table not found: testview",
+			},
+			{
+				Query:    "select v2 from testschema.testview order by pk;",
+				Expected: []sql.Row{{"a"}, {"b"}, {"c"}},
+			},
+			{
 				Query:    "select name from dolt_schemas;",
 				Expected: []sql.Row{{"myview"}},
 			},
@@ -81,12 +89,39 @@ var createViewStmts = []ScriptTest{
 				ExpectedErr: "table not found: myview",
 			},
 			{
+				Query:    "select v1 from myschema.myview order by pk;",
+				Expected: []sql.Row{{4}, {5}, {6}},
+			},
+			{
 				Query:    "select v2 from testview order by pk;",
 				Expected: []sql.Row{{"a"}, {"b"}, {"c"}},
 			},
 			{
 				Query:    "select name from dolt_schemas;",
 				Expected: []sql.Row{{"testview"}},
+			},
+
+			{
+				Query:    "SET search_path = testschema, myschema;",
+				Expected: []sql.Row{},
+			},
+			{
+				Query:    "SHOW search_path;",
+				Expected: []sql.Row{{"testschema, myschema"}},
+			},
+			{
+				Skip:     true, // TODO: Should be able to resolve views from all schema in search_path
+				Query:    "select v1 from myview order by pk;",
+				Expected: []sql.Row{{4}, {5}, {6}},
+			},
+			{
+				Query:    "select v2 from testview order by pk;",
+				Expected: []sql.Row{{"a"}, {"b"}, {"c"}},
+			},
+			{
+				Skip:     true, // TODO: Should be able to resolve views from all schema in search_path
+				Query:    "select name from dolt_schemas;",
+				Expected: []sql.Row{{"testview"}, {"myview"}},
 			},
 		},
 	},
