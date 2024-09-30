@@ -19,6 +19,7 @@ teardown() {
   # Import the data dump and assert the expected output
   run query_server -f $BATS_TEST_DIRNAME/dataloading/french-towns-communes-francaises.sql
   [ "$status" -eq 0 ]
+  echo "OUTPUT: $output"
   [[ "$output" =~ "COPY 26" ]] || false
   [[ "$output" =~ "COPY 100" ]] || false
   [[ "$output" =~ "COPY 36684" ]] || false
@@ -104,6 +105,24 @@ teardown() {
   [[ "$output" =~ "6 | string for 6 |       0" ]] || false
 }
 
+# Tests that we can load tabular data dump files that specify a delimiter.
+@test "dataloading: tabular import, delimiter='|', no explicit tx management" {
+  # Import the data dump and assert the expected output
+  run query_server -f $BATS_TEST_DIRNAME/dataloading/tab-load-with-delimiter-no-tx-control.sql
+  [ "$status" -eq 0 ]
+  echo "OUTPUT: $output"
+  [[ "$output" =~ "COPY 3" ]] || false
+  [[ ! "$output" =~ "ERROR" ]] || false
+
+  # Check the inserted rows
+  run query_server -c "SELECT * FROM test_info ORDER BY id;"
+  [ "$status" -eq 0 ]
+  [[ "$output" =~ "4 | string for 4 |       1" ]] || false
+  [[ "$output" =~ "5 | string for 5 |       0" ]] || false
+  [[ "$output" =~ "6 | string for 6 |       0" ]] || false
+}
+
+
 # Tests loading in data via different CSV data files.
 @test 'dataloading: csv import' {
   # Import the data dump and assert the expected output
@@ -179,6 +198,22 @@ teardown() {
 @test 'dataloading: csv import, no explicit tx management' {
   # Import the data dump and assert the expected output
   run query_server -f $BATS_TEST_DIRNAME/dataloading/csv-load-with-no-tx-control.sql
+  [ "$status" -eq 0 ]
+  [[ "$output" =~ "COPY 3" ]] || false
+  [[ ! "$output" =~ "ERROR" ]] || false
+
+  # Check the inserted rows
+  run query_server -c "SELECT * FROM test_info ORDER BY id;"
+  [ "$status" -eq 0 ]
+  [[ "$output" =~ "4 | string for 4 |       1" ]] || false
+  [[ "$output" =~ "5 | string for 5 |       0" ]] || false
+  [[ "$output" =~ "6 | string for 6 |       0" ]] || false
+}
+
+# Tests that we can load CSV data dump files that do not explicitly manage the session's transaction.
+@test "dataloading: csv import, delimiter='|', no explicit tx management" {
+  # Import the data dump and assert the expected output
+  run query_server -f $BATS_TEST_DIRNAME/dataloading/psv-load-with-no-tx-control.sql
   [ "$status" -eq 0 ]
   [[ "$output" =~ "COPY 3" ]] || false
   [[ ! "$output" =~ "ERROR" ]] || false

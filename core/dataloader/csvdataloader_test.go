@@ -47,7 +47,7 @@ func TestCsvDataLoader(t *testing.T) {
 	// Tests that a basic CSV document can be loaded as a single chunk.
 	t.Run("basic case", func(t *testing.T) {
 		table := memory.NewTable(db, "myTable", pkSchema, nil)
-		dataLoader, err := NewCsvDataLoader(ctx, table, false)
+		dataLoader, err := NewCsvDataLoader(ctx, table, ",", false)
 		require.NoError(t, err)
 
 		// Load all the data as a single chunk
@@ -69,7 +69,7 @@ func TestCsvDataLoader(t *testing.T) {
 	// partial record must be buffered and prepended to the next chunk.
 	t.Run("record split across two chunks", func(t *testing.T) {
 		table := memory.NewTable(db, "myTable", pkSchema, nil)
-		dataLoader, err := NewCsvDataLoader(ctx, table, false)
+		dataLoader, err := NewCsvDataLoader(ctx, table, ",", false)
 		require.NoError(t, err)
 
 		// Load the first chunk
@@ -98,7 +98,7 @@ func TestCsvDataLoader(t *testing.T) {
 	// header row is present.
 	t.Run("record split across two chunks, with header", func(t *testing.T) {
 		table := memory.NewTable(db, "myTable", pkSchema, nil)
-		dataLoader, err := NewCsvDataLoader(ctx, table, true)
+		dataLoader, err := NewCsvDataLoader(ctx, table, ",", true)
 		require.NoError(t, err)
 
 		// Load the first chunk
@@ -127,7 +127,7 @@ func TestCsvDataLoader(t *testing.T) {
 	// across two chunks.
 	t.Run("quoted newlines across two chunks", func(t *testing.T) {
 		table := memory.NewTable(db, "myTable", pkSchema, nil)
-		dataLoader, err := NewCsvDataLoader(ctx, table, false)
+		dataLoader, err := NewCsvDataLoader(ctx, table, ",", false)
 		require.NoError(t, err)
 
 		// Load the first chunk
@@ -155,7 +155,7 @@ func TestCsvDataLoader(t *testing.T) {
 	// Test that calling Abort() does not insert any data into the table.
 	t.Run("abort cancels data load", func(t *testing.T) {
 		table := memory.NewTable(db, "myTable", pkSchema, nil)
-		dataLoader, err := NewCsvDataLoader(ctx, table, false)
+		dataLoader, err := NewCsvDataLoader(ctx, table, ",", false)
 		require.NoError(t, err)
 
 		// Load the first chunk
@@ -174,6 +174,35 @@ func TestCsvDataLoader(t *testing.T) {
 
 		// Assert that the table does not contain any of the data from the CSV load
 		assertRows(t, ctx, table, [][]any{})
+	})
+
+	// Tests when a PSV (i.e. delimiter='|') record is split across two chunks of data,
+	// and a header row is present.
+	t.Run("delimiter='|', record split across two chunks, with header", func(t *testing.T) {
+		table := memory.NewTable(db, "myTable", pkSchema, nil)
+		dataLoader, err := NewCsvDataLoader(ctx, table, "|", true)
+		require.NoError(t, err)
+
+		// Load the first chunk
+		reader := bytes.NewReader([]byte("pk|c1|c2\n1|100|ba"))
+		err = dataLoader.LoadChunk(ctx, bufio.NewReader(reader))
+		require.NoError(t, err)
+
+		// Load the second chunk
+		reader = bytes.NewReader([]byte("r\n2|200|bash\n"))
+		err = dataLoader.LoadChunk(ctx, bufio.NewReader(reader))
+		require.NoError(t, err)
+
+		// Finish
+		results, err := dataLoader.Finish(ctx)
+		require.NoError(t, err)
+		require.EqualValues(t, 2, results.RowsLoaded)
+
+		// Assert that the table contains the expected data
+		assertRows(t, ctx, table, [][]any{
+			{int64(1), int64(100), "bar"},
+			{int64(2), int64(200), "bash"},
+		})
 	})
 }
 

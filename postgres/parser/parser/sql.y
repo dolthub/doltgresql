@@ -3617,6 +3617,10 @@ copy_options:
   {
     $$.val = &tree.CopyOptions{Header: $2.val.(bool)}
   }
+| DELIMITER SCONST
+  {
+    $$.val = &tree.CopyOptions{Delimiter: $2}
+  }
 
 // %Help: CANCEL
 // %Category: Group
