@@ -1174,7 +1174,7 @@ func TestDoltConflictsTableNameTable(t *testing.T) {
 func TestKeylessDoltMergeCVsAndConflicts(t *testing.T) {
 	t.Skip()
 	h := newDoltgresServerHarness(t)
-	denginetest.RunKelyessDoltMergeCVsAndConflictsTests(t, h)
+	denginetest.RunKeylessDoltMergeCVsAndConflictsTests(t, h)
 }
 
 // eventually this will be part of TestDoltMerge
