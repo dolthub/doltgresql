@@ -170,7 +170,6 @@ teardown() {
   # Import the data dump and assert the expected output
   run query_server -f $BATS_TEST_DIRNAME/dataloading/csv-load-with-header.sql
   [ "$status" -eq 0 ]
-  echo "OUTPUT: $output"
   [[ "$output" =~ "COPY 9" ]] || false
   [[ ! "$output" =~ "ERROR" ]] || false
 
@@ -224,4 +223,23 @@ teardown() {
   [[ "$output" =~ "4 | string for 4 |       1" ]] || false
   [[ "$output" =~ "5 | string for 5 |       0" ]] || false
   [[ "$output" =~ "6 | string for 6 |       0" ]] || false
+}
+
+# Tests that we can load CSV data dump files using Postgres' legacy syntax
+@test "dataloading: csv import, legacy syntax" {
+  # Import the data dump and assert the expected output
+  run query_server -f $BATS_TEST_DIRNAME/dataloading/csv-load-with-legacy-syntax.sql
+  [ "$status" -eq 0 ]
+  [[ "$output" =~ "COPY 9" ]] || false
+  [[ ! "$output" =~ "ERROR" ]] || false
+
+  # Check the row count of imported tables
+  run query_server -c "SELECT count(*) from tbl1;"
+  [ "$status" -eq 0 ]
+  [[ "$output" =~ "9" ]] || false
+
+  # Spot check a row
+  run query_server -c "SELECT * FROM tbl1 WHERE pk=3 and c2 IS NULL;"
+  [ "$status" -eq 0 ]
+  [[ "$output" =~ " 3 | brown | " ]] || false
 }
