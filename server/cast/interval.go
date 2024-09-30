@@ -39,7 +39,7 @@ func intervalAssignment() {
 		Function: func(ctx *sql.Context, val any, targetType pgtypes.DoltgresType) (any, error) {
 			dur := val.(duration.Duration)
 			// the month and day of the duration are excluded
-			return timeofday.FromInt(dur.Nanos() / functions.NanosPerMicro), nil
+			return timeofday.FromInt(dur.Nanos() / functions.NanosPerMicro).ToTime(), nil
 		},
 	})
 }

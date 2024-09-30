@@ -716,6 +716,10 @@ var typesTests = []ScriptTest{
 				Query:       "INSERT INTO t_interval VALUES (3, true);",
 				ExpectedErr: `ASSIGNMENT_CAST: target is of type interval but expression is of type boolean: true`,
 			},
+			{
+				Query:    `SELECT CAST(interval '02:03' AS time) AS "02:03:00";`,
+				Expected: []sql.Row{{"02:03:00"}},
+			},
 		},
 	},
 	{
@@ -2120,6 +2124,10 @@ var typesTests = []ScriptTest{
 				Expected: []sql.Row{
 					{"23:59:59.999999"},
 				},
+			},
+			{
+				Query:    "SELECT time without time zone '040506.789+08';",
+				Expected: []sql.Row{{"04:05:06.789"}},
 			},
 		},
 	},
