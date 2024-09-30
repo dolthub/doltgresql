@@ -15,6 +15,7 @@
 package types
 
 import (
+	"fmt"
 	"strings"
 	"time"
 	"unicode/utf8"
@@ -98,5 +99,20 @@ func GetServerLocation(ctx *sql.Context) (*time.Location, error) {
 	if err != nil {
 		return nil, err
 	}
-	return time.LoadLocation(val.(string))
+
+	tz := val.(string)
+	loc, err := time.LoadLocation(tz)
+	if err == nil {
+		return loc, nil
+	}
+
+	var t time.Time
+	if t, err = time.Parse("Z07", tz); err == nil {
+	} else if t, err = time.Parse("Z07:00", tz); err == nil {
+	} else if t, err = time.Parse("Z07:00:00", tz); err != nil {
+		return nil, err
+	}
+
+	_, offsetSecsUnconverted := t.Zone()
+	return time.FixedZone(fmt.Sprintf("fixed offset:%d", offsetSecsUnconverted), -offsetSecsUnconverted), nil
 }

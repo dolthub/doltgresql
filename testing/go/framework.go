@@ -417,7 +417,7 @@ func NormalizeValToString(dt types.DoltgresType, v any) any {
 			panic(err)
 		}
 		return val
-	case types.IntervalType, types.UuidType, types.DateType, types.TimeType, types.TimestampType, types.TimestampTZType:
+	case types.IntervalType, types.UuidType, types.DateType, types.TimeType, types.TimestampType:
 		// These values need to be normalized into the appropriate types
 		// before being converted to string type using the Doltgres
 		// IoOutput method.
@@ -429,6 +429,14 @@ func NormalizeValToString(dt types.DoltgresType, v any) any {
 			panic(err)
 		}
 		return tVal
+	case types.TimestampTZType:
+		// timestamptz returns a value in server timezone
+		_, offset := v.(time.Time).Zone()
+		if offset%3600 != 0 {
+			return v.(time.Time).Format("2006-01-02 15:04:05.999999999-07:00")
+		} else {
+			return v.(time.Time).Format("2006-01-02 15:04:05.999999999-07")
+		}
 	}
 
 	switch val := v.(type) {

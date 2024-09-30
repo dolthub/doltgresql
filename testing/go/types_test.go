@@ -2195,7 +2195,7 @@ var typesTests = []ScriptTest{
 			},
 		},
 	},
-	{ // TODO: timezone representation is reported via local time, need to account for that in testing?
+	{
 		Name: "Timestamp with time zone type",
 		SetUpScript: []string{
 			"CREATE TABLE t_timestamp_with_zone (id INTEGER primary key, v1 TIMESTAMP WITH TIME ZONE);",
@@ -2203,23 +2203,44 @@ var typesTests = []ScriptTest{
 		},
 		Assertions: []ScriptTestAssertion{
 			{
+				// timezone representation is reported via local time, need to account for that in testing
+				Query:    "SET timezone TO '-04:25'",
+				Expected: []sql.Row{},
+			},
+			{
 				Query: "SELECT * FROM t_timestamp_with_zone ORDER BY id;",
 				Expected: []sql.Row{
-					{1, "2022-01-01 04:34:56-08"},
-					{2, "2022-02-01 20:45:01-08"},
+					{1, "2022-01-01 16:59:56+04:25"},
+					{2, "2022-02-02 09:10:01+04:25"},
 				},
 			},
 			{
 				Query: "SELECT '2000-01-01'::timestamptz;",
 				Expected: []sql.Row{
-					{"2000-01-01 00:00:00-08"},
+					{"2000-01-01 00:00:00+04:25"},
 				},
 			},
 			{
 				Query: `SELECT '2000-01-01 00:00:00'::timestamptz;`,
 				Expected: []sql.Row{
-					{"2000-01-01 00:00:00-08"},
+					{"2000-01-01 00:00:00+04:25"},
 				},
+			},
+			{
+				// timezone representation is reported via local time, need to account for that in testing
+				Query:    "SET timezone TO '-06:00'",
+				Expected: []sql.Row{},
+			},
+			{
+				Query: "SELECT * FROM t_timestamp_with_zone ORDER BY id;",
+				Expected: []sql.Row{
+					{1, "2022-01-01 18:34:56+06"},
+					{2, "2022-02-02 10:45:01+06"},
+				},
+			},
+			{
+				Query:    "SET timezone TO default",
+				Expected: []sql.Row{},
 			},
 		},
 	},
