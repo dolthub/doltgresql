@@ -45,5 +45,23 @@ func TestCreateTable(t *testing.T) {
 				},
 			},
 		},
+		{
+			Name: "Create table with column default expression using function",
+			Assertions: []ScriptTestAssertion{
+				{
+					// Test with a function in the column default expression
+					Query:    "create table t1 (pk int primary key, c1 TEXT default length('Hello World!'));",
+					Expected: []sql.Row{},
+				},
+				{
+					Query:    "insert into t1(pk) values (1);",
+					Expected: []sql.Row{},
+				},
+				{
+					Query:    "select * from t1;",
+					Expected: []sql.Row{{1, "12"}},
+				},
+			},
+		},
 	})
 }
