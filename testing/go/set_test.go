@@ -7371,4 +7371,18 @@ var setStmts = []ScriptTest{
 			},
 		},
 	},
+	{
+		Name:  "custom settings",
+		Focus: true,
+		Assertions: []ScriptTestAssertion{
+			{
+				Query:    "SET custom.setting TO 'value'",
+				Expected: []sql.Row{},
+			},
+			{
+				Query:    "SHOW custom.setting",
+				Expected: []sql.Row{{"value"}},
+			},
+		},
+	},
 }

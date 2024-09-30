@@ -1247,7 +1247,6 @@ func TestBrokenSystemTableQueries(t *testing.T) {
 }
 
 func TestHistorySystemTable(t *testing.T) {
-	t.Skip()
 	harness := newDoltgresServerHarness(t).WithParallelism(2)
 	denginetest.RunHistorySystemTableTests(t, harness)
 }
