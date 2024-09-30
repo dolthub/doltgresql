@@ -145,8 +145,11 @@ func (b TimestampTZType) IoOutput(ctx *sql.Context, output any) (string, error) 
 	if err != nil {
 		return "", err
 	}
-	// TODO: this always displays the time with an offset relevant to the server location
-	return converted.(time.Time).Format("2006-01-02 15:04:05.999999999-07"), nil
+	serverLoc, err := GetServerLocation(ctx)
+	if err != nil {
+		return "", err
+	}
+	return converted.(time.Time).In(serverLoc).Format("2006-01-02 15:04:05.999999999-07"), nil
 }
 
 // IsPreferredType implements the DoltgresType interface.

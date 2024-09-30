@@ -91,6 +91,9 @@ func FromGmsType(typ sql.Type) DoltgresType {
 
 // GetServerLocation returns timezone value set for the server.
 func GetServerLocation(ctx *sql.Context) (*time.Location, error) {
+	if ctx == nil {
+		return time.Local, nil
+	}
 	val, err := ctx.GetSessionVariable(ctx, "timezone")
 	if err != nil {
 		return nil, err

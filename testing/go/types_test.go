@@ -2197,7 +2197,6 @@ var typesTests = []ScriptTest{
 	},
 	{ // TODO: timezone representation is reported via local time, need to account for that in testing?
 		Name: "Timestamp with time zone type",
-		Skip: true,
 		SetUpScript: []string{
 			"CREATE TABLE t_timestamp_with_zone (id INTEGER primary key, v1 TIMESTAMP WITH TIME ZONE);",
 			"INSERT INTO t_timestamp_with_zone VALUES (1, '2022-01-01 12:34:56 UTC'), (2, '2022-02-01 23:45:01 America/New_York');",
@@ -2206,8 +2205,8 @@ var typesTests = []ScriptTest{
 			{
 				Query: "SELECT * FROM t_timestamp_with_zone ORDER BY id;",
 				Expected: []sql.Row{
-					{1, "2022-01-01 12:34:56 UTC"},
-					{2, "2022-02-01 23:45:01 America/New_York"},
+					{1, "2022-01-01 04:34:56-08"},
+					{2, "2022-02-01 20:45:01-08"},
 				},
 			},
 			{
