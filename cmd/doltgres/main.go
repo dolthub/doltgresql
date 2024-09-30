@@ -20,9 +20,11 @@ import (
 	"flag"
 	"fmt"
 	"os"
+	"os/signal"
 	"path/filepath"
 	"strconv"
 	"strings"
+	"syscall"
 
 	"github.com/dolthub/dolt/go/cmd/dolt/cli"
 	"github.com/dolthub/dolt/go/cmd/dolt/commands"
@@ -218,6 +220,10 @@ func main() {
 	}
 
 	// TODO: override other aspects of cfg with command line params
+
+	var stop context.CancelFunc
+	ctx, stop = signal.NotifyContext(ctx, os.Interrupt, syscall.SIGTERM)
+	defer stop()
 
 	err = runServer(ctx, dEnv, cfg)
 	handleErrAndExitCode(err)
