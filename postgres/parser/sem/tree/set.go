@@ -37,9 +37,10 @@ var _ Statement = &SetVar{}
 
 // SetVar represents a SET or RESET <configuration_param> statement.
 type SetVar struct {
-	IsLocal bool
-	Name    string
-	Values  Exprs
+	IsLocal   bool
+	Name      string
+	Namespace string
+	Values    Exprs
 	// FromCurrent is used for SET clauses in CREATE statements only.
 	FromCurrent bool
 }
