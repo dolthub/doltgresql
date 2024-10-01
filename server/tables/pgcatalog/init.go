@@ -63,6 +63,7 @@ func Init() {
 	InitPgMatviews()
 	InitPgNamespace()
 	InitPgOpclass()
+	InitPgOperator()
 	InitPgOpfamily()
 	InitPgParameterAcl()
 	InitPgPartitionedTable()

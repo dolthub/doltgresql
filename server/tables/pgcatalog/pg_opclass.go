@@ -62,6 +62,7 @@ var pgOpclassSchema = sql.Schema{
 	{Name: "opcname", Type: pgtypes.Name, Default: nil, Nullable: false, Source: PgOpclassName},
 	{Name: "opcnamespace", Type: pgtypes.Oid, Default: nil, Nullable: false, Source: PgOpclassName},
 	{Name: "opcowner", Type: pgtypes.Oid, Default: nil, Nullable: false, Source: PgOpclassName},
+	{Name: "opcfamily", Type: pgtypes.Oid, Default: nil, Nullable: false, Source: PgOpclassName},
 	{Name: "opcintype", Type: pgtypes.Oid, Default: nil, Nullable: false, Source: PgOpclassName},
 	{Name: "opcdefault", Type: pgtypes.Bool, Default: nil, Nullable: false, Source: PgOpclassName},
 	{Name: "opckeytype", Type: pgtypes.Oid, Default: nil, Nullable: false, Source: PgOpclassName},
