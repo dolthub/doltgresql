@@ -1468,6 +1468,32 @@ func TestPgOpclass(t *testing.T) {
 	})
 }
 
+func TestPgOperator(t *testing.T) {
+	RunScripts(t, []ScriptTest{
+		{
+			Name: "pg_operator",
+			Assertions: []ScriptTestAssertion{
+				{
+					Query:    `SELECT * FROM "pg_catalog"."pg_operator";`,
+					Expected: []sql.Row{},
+				},
+				{ // Different cases and quoted, so it fails
+					Query:       `SELECT * FROM "PG_catalog"."pg_operator";`,
+					ExpectedErr: "not",
+				},
+				{ // Different cases and quoted, so it fails
+					Query:       `SELECT * FROM "pg_catalog"."PG_operator";`,
+					ExpectedErr: "not",
+				},
+				{ // Different cases but non-quoted, so it works
+					Query:    "SELECT oprname FROM PG_catalog.pg_OPERATOR ORDER BY oprname;",
+					Expected: []sql.Row{},
+				},
+			},
+		},
+	})
+}
+
 func TestPgOpfamily(t *testing.T) {
 	RunScripts(t, []ScriptTest{
 		{
@@ -2397,32 +2423,6 @@ func TestPgStatGssapi(t *testing.T) {
 				},
 				{ // Different cases but non-quoted, so it works
 					Query:    "SELECT pid FROM PG_catalog.pg_STAT_GSSAPI ORDER BY pid;",
-					Expected: []sql.Row{},
-				},
-			},
-		},
-	})
-}
-
-func TestPgStatIo(t *testing.T) {
-	RunScripts(t, []ScriptTest{
-		{
-			Name: "pg_stat_io",
-			Assertions: []ScriptTestAssertion{
-				{
-					Query:    `SELECT * FROM "pg_catalog"."pg_stat_io";`,
-					Expected: []sql.Row{},
-				},
-				{ // Different cases and quoted, so it fails
-					Query:       `SELECT * FROM "PG_catalog"."pg_stat_io";`,
-					ExpectedErr: "not",
-				},
-				{ // Different cases and quoted, so it fails
-					Query:       `SELECT * FROM "pg_catalog"."PG_stat_io";`,
-					ExpectedErr: "not",
-				},
-				{ // Different cases but non-quoted, so it works
-					Query:    "SELECT object FROM PG_catalog.pg_STAT_IO ORDER BY object;",
 					Expected: []sql.Row{},
 				},
 			},
