@@ -127,6 +127,7 @@ func RunScript(t *testing.T, script ScriptTest, normalizeRows bool) {
 
 // runScript runs the script given on the postgres connection provided
 func runScript(t *testing.T, ctx context.Context, script ScriptTest, conn *pgx.Conn, normalizeRows bool) {
+	dserver.EnableAuthentication = true
 	if script.Skip {
 		t.Skip("Skip has been set in the script")
 	}
