@@ -17,9 +17,10 @@ package types
 import (
 	"bytes"
 	"fmt"
-	"github.com/dolthub/doltgresql/postgres/parser/pgdate"
 	"reflect"
 	"time"
+
+	"github.com/dolthub/doltgresql/postgres/parser/pgdate"
 
 	"github.com/dolthub/go-mysql-server/sql"
 	"github.com/dolthub/go-mysql-server/sql/types"
