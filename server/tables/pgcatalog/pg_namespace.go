@@ -57,8 +57,6 @@ func (p PgNamespaceHandler) RowIter(ctx *sql.Context) (sql.RowIter, error) {
 	if err != nil {
 		return nil, err
 	}
-
-	schemaNames = append(schemaNames, "information_schema")
 	schemaOids = append(schemaOids, schemaOids[len(schemaOids)-1]+1)
 
 	return &pgNamespaceRowIter{

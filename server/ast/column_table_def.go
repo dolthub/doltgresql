@@ -65,6 +65,10 @@ func nodeColumnTableDef(node *tree.ColumnTableDef) (_ *vitess.ColumnDefinition, 
 	if err != nil {
 		return nil, err
 	}
+	// Wrap any default expression using a function call in parens to match MySQL's column default requirements
+	if _, ok := defaultExpr.(*vitess.FuncExpr); ok {
+		defaultExpr = &vitess.ParenExpr{Expr: defaultExpr}
+	}
 	if len(node.CheckExprs) > 0 {
 		return nil, fmt.Errorf("column-declared CHECK expressions are not yet supported")
 	}

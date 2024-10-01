@@ -12,17 +12,19 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-package information_schema
+package dtables
 
 import (
-	"github.com/dolthub/go-mysql-server/sql/information_schema"
+	"github.com/dolthub/go-mysql-server/sql"
+
+	pgtypes "github.com/dolthub/doltgresql/server/types"
+
+	"github.com/dolthub/dolt/go/libraries/doltcore/doltdb"
 )
 
-// Init handles initialization of all Postgres-specific and Doltgres-specific information_schema tables.
-func Init() {
-	information_schema.AllDatabasesWithNames = allDatabasesWithNames
-	information_schema.NewColumnsTable = newColumnsTable
-	information_schema.NewSchemataTable = newSchemataTable
-	information_schema.NewTablesTable = newTablesTable
-	information_schema.NewViewsTable = newViewsTable
+func getDocsSchema() sql.Schema {
+	return []*sql.Column{
+		{Name: doltdb.DocPkColumnName, Type: pgtypes.Text, Source: doltdb.DocTableName, PrimaryKey: true, Nullable: false},
+		{Name: doltdb.DocTextColumnName, Type: pgtypes.Text, Source: doltdb.DocTableName, PrimaryKey: false},
+	}
 }

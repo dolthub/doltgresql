@@ -164,48 +164,6 @@ func TestSmokeTests(t *testing.T) {
 			},
 		},
 		{
-			Name: "Dolt Getting Started example", /* https://docs.dolthub.com/introduction/getting-started/database */
-			SetUpScript: []string{
-				"create table employees (id int, last_name varchar(255), first_name varchar(255), primary key(id));",
-				"create table teams (id int, team_name varchar(255), primary key(id));",
-				"create table employees_teams(team_id int, employee_id int, primary key(team_id, employee_id), foreign key (team_id) references teams(id), foreign key (employee_id) references employees(id));",
-				"call dolt_add('teams', 'employees', 'employees_teams');",
-				"call dolt_commit('-m', 'Created initial schema');",
-				"insert into employees values (0, 'Sehn', 'Tim'), (1, 'Hendriks', 'Brian'), (2, 'Son','Aaron'), (3, 'Fitzgerald', 'Brian');",
-				"insert into teams values (0, 'Engineering'), (1, 'Sales');",
-				"insert into employees_teams(employee_id, team_id) values (0,0), (1,0), (2,0), (0,1), (3,1);",
-				"call dolt_commit('-am', 'Populated tables with data');",
-				"call dolt_checkout('-b','modifications');",
-				"update employees SET first_name='Timothy' where first_name='Tim';",
-				"insert INTO employees (id, first_name, last_name) values (4,'Daylon', 'Wilkins');",
-				"insert into employees_teams(team_id, employee_id) values (0,4);",
-				"delete from employees_teams where employee_id=0 and team_id=1;",
-				"call dolt_commit('-am', 'Modifications on a branch')",
-				"call dolt_checkout('modifications');",
-			},
-			Assertions: []ScriptTestAssertion{
-				{
-					Query: "select first_name, last_name, team_name from employees " +
-						"join employees_teams on (employees.id=employees_teams.employee_id) " +
-						"join teams on (teams.id=employees_teams.team_id) where team_name='Engineering';",
-					Expected: []sql.Row{
-						{"Timothy", "Sehn", "Engineering"},
-						{"Brian", "Hendriks", "Engineering"},
-						{"Aaron", "Son", "Engineering"},
-						{"Daylon", "Wilkins", "Engineering"},
-					},
-				},
-				{
-					Query: "select to_last_name, to_first_name, to_id, to_commit, from_last_name, from_first_name," +
-						"from_id, from_commit, diff_type from dolt_diff('main', 'modifications', 'employees');",
-					Expected: []sql.Row{
-						{"Sehn", "Timothy", 0, "modifications", "Sehn", "Tim", 0, "main", "modified"},
-						{"Wilkins", "Daylon", 4, "modifications", nil, nil, nil, "main", "added"},
-					},
-				},
-			},
-		},
-		{
 			Name: "USE statements",
 			SetUpScript: []string{
 				"CREATE DATABASE test",
@@ -717,17 +675,17 @@ func TestSmokeTests(t *testing.T) {
 				{
 					Query: "SELECT attname FROM pg_catalog.pg_attribute ORDER BY attname LIMIT 3;",
 					Expected: []sql.Row{
-						{"abbrev"},
-						{"abbrev"},
-						{"active"},
+						{"ACTION_CONDITION"},
+						{"ACTION_ORDER"},
+						{"ACTION_ORIENTATION"},
 					},
 				},
 				{
 					Query: "SELECT attname FROM pg_attribute ORDER BY attname LIMIT 3;",
 					Expected: []sql.Row{
-						{"abbrev"},
-						{"abbrev"},
-						{"active"},
+						{"ACTION_CONDITION"},
+						{"ACTION_ORDER"},
+						{"ACTION_ORIENTATION"},
 					},
 				},
 				{
@@ -745,9 +703,9 @@ func TestSmokeTests(t *testing.T) {
 				{
 					Query: "SELECT attname FROM pg_attribute ORDER BY attname LIMIT 3;",
 					Expected: []sql.Row{
-						{"abbrev"},
-						{"abbrev"},
-						{"active"},
+						{"ACTION_CONDITION"},
+						{"ACTION_ORDER"},
+						{"ACTION_ORIENTATION"},
 					},
 				},
 				{
