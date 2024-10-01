@@ -17,6 +17,7 @@ package initialization
 import (
 	"sync"
 
+	"github.com/dolthub/dolt/go/libraries/doltcore/servercfg"
 	"github.com/dolthub/go-mysql-server/sql"
 
 	"github.com/dolthub/doltgresql/core"
@@ -34,6 +35,7 @@ import (
 	"github.com/dolthub/doltgresql/server/tables/pgcatalog"
 	pgtypes "github.com/dolthub/doltgresql/server/types"
 	"github.com/dolthub/doltgresql/server/types/oid"
+	doltgresservercfg "github.com/dolthub/doltgresql/servercfg"
 )
 
 var once = &sync.Once{}
@@ -52,6 +54,7 @@ func Initialize() {
 		cast.Init()
 		framework.Initialize()
 		sql.GlobalParser = pgsql.NewPostgresParser()
+		servercfg.DefaultUnixSocketFilePath = doltgresservercfg.DefaultPostgresUnixSocketFilePath
 		tables.Init()
 		pgcatalog.Init()
 		information_schema.Init()
