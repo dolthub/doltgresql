@@ -15,10 +15,15 @@
 package server
 
 import (
+	"bytes"
 	"encoding/base64"
 	"fmt"
 	"net"
+	"os"
 	"strings"
+
+	"github.com/dolthub/doltgresql/server/users"
+	"github.com/dolthub/doltgresql/server/users/rfc5802"
 
 	"github.com/dolthub/go-mysql-server/sql"
 	"github.com/jackc/pgx/v5/pgproto3"
@@ -32,6 +37,18 @@ const (
 	SASLMechanism_SCRAM_SHA_256      = "SCRAM-SHA-256"
 	SASLMechanism_SCRAM_SHA_256_PLUS = "SCRAM-SHA-256-PLUS"
 )
+
+// EnableAuthentication handles whether authentication is enabled. If enabled, it verifies that the given user exists,
+// and checks that the encrypted password is derivable from the stored encrypted password. As the feature is still in
+// development, it is disabled by default. It may be enabled by supplying the environment variable
+// "DOLTGRES_ENABLE_AUTHENTICATION", or by simply setting this boolean to true.
+var EnableAuthentication = false
+
+func init() {
+	if _, ok := os.LookupEnv("DOLTGRES_ENABLE_AUTHENTICATION"); ok {
+		EnableAuthentication = true
+	}
+}
 
 // SASLBindingFlag are the flags for gs2-cbind-flag, used in SASL authentication.
 type SASLBindingFlag string
@@ -64,16 +81,16 @@ type SASLContinue struct {
 type SASLResponse struct {
 	GS2Header   string
 	Nonce       string
-	ClientProof string // Base64 encoded salt
+	ClientProof string // Base64 encoded
 	RawData     []byte // The bytes that were received in the message
 }
 
 // handleAuthentication handles authentication for the given user
 func (h *ConnectionHandler) handleAuthentication(startupMessage *pgproto3.StartupMessage) error {
-	var user string
+	var username string
 	var host string
 	var ok bool
-	if user, ok = startupMessage.Parameters["user"]; ok && len(user) > 0 {
+	if username, ok = startupMessage.Parameters["user"]; ok && len(username) > 0 {
 		if h.Conn().RemoteAddr().Network() == "unix" {
 			host = "localhost"
 		} else {
@@ -83,18 +100,16 @@ func (h *ConnectionHandler) handleAuthentication(startupMessage *pgproto3.Startu
 			}
 		}
 	} else {
-		user = "doltgres" // TODO: should we use this, or the default "postgres" since programs may default to it?
+		username = "doltgres" // TODO: should we use this, or the default "postgres" since programs may default to it?
 		host = "localhost"
 	}
-	h.mysqlConn.User = user
+	h.mysqlConn.User = username
 	h.mysqlConn.UserData = sql.MysqlConnectionUser{
-		User: user,
+		User: username,
 		Host: host,
 	}
-	// In order to skip the rest of the code without the static analyzer complaining, we'll add this check that will
-	// always fail.
-	// TODO: remove me when implementing the rest of the users
-	if _, ok := startupMessage.Parameters["will_obviously_not_exist"]; !ok {
+	// Since this is all still in development, we'll check if authentication is enabled.
+	if !EnableAuthentication {
 		return h.send(&pgproto3.AuthenticationOk{})
 	}
 	// We only support one mechanism for now.
@@ -108,6 +123,7 @@ func (h *ConnectionHandler) handleAuthentication(startupMessage *pgproto3.Startu
 	if err := h.backend.SetAuthType(pgproto3.AuthTypeSASL); err != nil {
 		return err
 	}
+	user := users.GetUser(username)
 	var saslInitial SASLInitial
 	var saslContinue SASLContinue
 	var saslResponse SASLResponse
@@ -124,7 +140,7 @@ func (h *ConnectionHandler) handleAuthentication(startupMessage *pgproto3.Startu
 			}
 			saslContinue = SASLContinue{
 				Nonce:      saslInitial.Nonce + "L3rfcNHYJY1ZVvWVs7j", // TODO: create a unique nonce
-				Salt:       "QSXCR+Q6sek8bf92",                        // TODO: read the salt for the user
+				Salt:       user.Password.Salt.ToBase64(),
 				Iterations: 4096,
 			}
 			if err = h.send(saslContinue.Encode()); err != nil {
@@ -138,7 +154,7 @@ func (h *ConnectionHandler) handleAuthentication(startupMessage *pgproto3.Startu
 			if err != nil {
 				return err
 			}
-			serverSignature, err := verifySASLClientProof(saslInitial, saslContinue, saslResponse)
+			serverSignature, err := verifySASLClientProof(user, saslInitial, saslContinue, saslResponse)
 			if err != nil {
 				return err
 			}
@@ -262,25 +278,46 @@ func readSASLResponse(gs2EncodedHeader string, nonce string, r *pgproto3.SASLRes
 // verifySASLClientProof verifies that the proof given by the client in valid. Returns the base64-encoded
 // ServerSignature, which verifies (to the client) that the server has proper access to the client's authentication
 // information.
-func verifySASLClientProof(saslInitial SASLInitial, saslContinue SASLContinue, saslResponse SASLResponse) (string, error) {
-	// TODO: implement this
-	return "", nil
+func verifySASLClientProof(user users.MockUser, saslInitial SASLInitial, saslContinue SASLContinue, saslResponse SASLResponse) (string, error) {
+	clientProof := rfc5802.Base64ToOctetString(saslResponse.ClientProof)
+	authMessage := fmt.Sprintf("%s,%s,%s", saslInitial.MessageBare(), saslContinue.Encode().Data, saslResponse.MessageWithoutProof())
+	clientSignature := rfc5802.ClientSignature(user.Password.StoredKey, authMessage)
+	if !user.Exists || len(clientProof) != len(clientSignature) {
+		return "", fmt.Errorf("invalid password") // TODO: replace with an actual error message
+	}
+	clientKey := clientSignature.Xor(clientProof)
+	storedKey := rfc5802.StoredKey(clientKey)
+	if !storedKey.Equals(user.Password.StoredKey) {
+		return "", fmt.Errorf("invalid password") // TODO: replace with an actual error message
+	}
+	serverSignature := rfc5802.ServerSignature(user.Password.ServerKey, authMessage)
+	return serverSignature.ToBase64(), nil
 }
 
 // Base64Header returns the base64-encoded GS2 header and channel binding data.
 func (si SASLInitial) Base64Header() string {
-	sb := strings.Builder{}
+	return base64.StdEncoding.EncodeToString(si.base64HeaderBytes())
+}
+
+// MessageBare returns the message without the GS2 header.
+func (si SASLInitial) MessageBare() []byte {
+	return bytes.TrimPrefix(si.RawData, si.base64HeaderBytes())
+}
+
+// base64HeaderBytes returns the GS2 header encoded as bytes.
+func (si SASLInitial) base64HeaderBytes() []byte {
+	bb := bytes.Buffer{}
 	switch si.Flag {
 	case SASLBindingFlag_NoClientSupport:
-		sb.WriteString("n,")
+		bb.WriteString("n,")
 	case SASLBindingFlag_AssumedNoServerSupport:
-		sb.WriteString("y,")
+		bb.WriteString("y,")
 	case SASLBindingFlag_Used:
-		sb.WriteString(fmt.Sprintf("p=%s,", si.BindName))
+		bb.WriteString(fmt.Sprintf("p=%s,", si.BindName))
 	}
-	sb.WriteString(si.Authzid)
-	sb.WriteRune(',')
-	return base64.StdEncoding.EncodeToString([]byte(sb.String()))
+	bb.WriteString(si.Authzid)
+	bb.WriteRune(',')
+	return bb.Bytes()
 }
 
 // Encode returns the struct as an AuthenticationSASLContinue message.
@@ -288,4 +325,17 @@ func (sc SASLContinue) Encode() *pgproto3.AuthenticationSASLContinue {
 	return &pgproto3.AuthenticationSASLContinue{
 		Data: []byte(fmt.Sprintf("r=%s,s=%s,i=%d", sc.Nonce, sc.Salt, sc.Iterations)),
 	}
+}
+
+// MessageWithoutProof returns the client-final-message-without-proof.
+func (sr SASLResponse) MessageWithoutProof() []byte {
+	// client-final-message is defined as:
+	// client-final-message-without-proof "," proof
+	// So we can simply search for ",p=" and exclude everything after that for well-conforming messages.
+	// If the message does not conform, then an error will happen later in the pipeline.
+	index := strings.LastIndex(string(sr.RawData), ",p=")
+	if index == -1 {
+		return sr.RawData
+	}
+	return sr.RawData[:index]
 }

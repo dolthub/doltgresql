@@ -25,6 +25,7 @@
 package tree
 
 import (
+	"time"
 	"unicode/utf8"
 
 	"github.com/cockroachdb/errors"
@@ -119,7 +120,7 @@ func ParseAndRequireString(
 	case types.TimestampFamily:
 		d, dependsOnContext, err = ParseDTimestamp(ctx, s, TimeFamilyPrecisionToRoundDuration(t.Precision()))
 	case types.TimestampTZFamily:
-		d, dependsOnContext, err = ParseDTimestampTZ(ctx, s, TimeFamilyPrecisionToRoundDuration(t.Precision()))
+		d, dependsOnContext, err = ParseDTimestampTZ(ctx, s, TimeFamilyPrecisionToRoundDuration(t.Precision()), time.Local)
 	case types.UuidFamily:
 		d, err = ParseDUuidFromString(s)
 	case types.EnumFamily:

@@ -104,6 +104,10 @@ type ItemSchema struct {
 	Item  sql.DatabaseSchema
 }
 
+func (is ItemSchema) IsSystemSchema() bool {
+	return is.Item.SchemaName() == "information_schema" || is.Item.SchemaName() == "pg_catalog"
+}
+
 // ItemSequence contains the relevant information to pass to the Sequence callback.
 type ItemSequence struct {
 	Index int
@@ -150,7 +154,8 @@ func IterateDatabase(ctx *sql.Context, database string, callbacks Callbacks) err
 
 	doltSession := dsess.DSessFromSess(ctx.Session)
 
-	currentDatabase, err := sqle.NewDefault(doltSession.Provider()).Analyzer.Catalog.Database(ctx, database)
+	cat := sqle.NewDefault(doltSession.Provider()).Analyzer.Catalog
+	currentDatabase, err := cat.Database(ctx, database)
 	if err != nil {
 		return err
 	}
@@ -162,6 +167,7 @@ func IterateDatabase(ctx *sql.Context, database string, callbacks Callbacks) err
 		if err != nil {
 			return err
 		}
+
 		sort.Slice(schemas, func(i, j int) bool {
 			return schemas[i].SchemaName() < schemas[j].SchemaName()
 		})
@@ -350,12 +356,20 @@ func iterateTables(ctx *sql.Context, callbacks Callbacks, itemSchema ItemSchema,
 		}
 		// Check for a column default callback
 		if callbacks.ColumnDefault != nil {
+			// System tables don't have column defaults
+			if itemSchema.IsSystemSchema() {
+				continue
+			}
 			if err = iterateColumnDefaults(ctx, callbacks, itemSchema, itemTable, &columnDefaultCount); err != nil {
 				return err
 			}
 		}
 		// Check for a foreign key callback
 		if callbacks.ForeignKey != nil {
+			// System tables don't have foreign keys
+			if itemSchema.IsSystemSchema() {
+				continue
+			}
 			if err = iterateForeignKeys(ctx, callbacks, itemSchema, itemTable, &foreignKeyCount); err != nil {
 				return err
 			}

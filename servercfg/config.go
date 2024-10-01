@@ -47,27 +47,27 @@ const (
 )
 
 const (
-	DefaultHost                    = "localhost"
-	DefaultPort                    = 5432
-	DefaultUser                    = ""
-	DefaultPass                    = ""
-	DefaultTimeout                 = 8 * 60 * 60 * 1000 // 8 hours, same as MySQL
-	DefaultReadOnly                = false
-	DefaultLogLevel                = LogLevel_Info
-	DefaultDoltTransactionCommit   = false
-	DefaultMaxConnections          = 100
-	DefaultQueryParallelism        = 0
-	DefaultPersistenceBahavior     = LoadPerisistentGlobals
-	DefaultDataDir                 = "."
-	DefaultCfgDir                  = ".doltcfg"
-	DefaultPrivilegeFilePath       = "privileges.db"
-	DefaultBranchControlFilePath   = "branch_control.db"
-	DefaultMetricsHost             = ""
-	DefaultMetricsPort             = -1
-	DefaultAllowCleartextPasswords = false
-	DefaultUnixSocketFilePath      = "/tmp/mysql.sock"
-	DefaultMaxLoggedQueryLen       = 0
-	DefaultEncodeLoggedQuery       = false
+	DefaultHost                       = "localhost"
+	DefaultPort                       = 5432
+	DefaultUser                       = ""
+	DefaultPass                       = ""
+	DefaultTimeout                    = 8 * 60 * 60 * 1000 // 8 hours, same as MySQL
+	DefaultReadOnly                   = false
+	DefaultLogLevel                   = LogLevel_Info
+	DefaultDoltTransactionCommit      = false
+	DefaultMaxConnections             = 100
+	DefaultQueryParallelism           = 0
+	DefaultPersistenceBahavior        = LoadPerisistentGlobals
+	DefaultDataDir                    = "."
+	DefaultCfgDir                     = ".doltcfg"
+	DefaultPrivilegeFilePath          = "privileges.db"
+	DefaultBranchControlFilePath      = "branch_control.db"
+	DefaultMetricsHost                = ""
+	DefaultMetricsPort                = -1
+	DefaultAllowCleartextPasswords    = false
+	DefaultPostgresUnixSocketFilePath = "/tmp/.s.PGSQL.5432"
+	DefaultMaxLoggedQueryLen          = 0
+	DefaultEncodeLoggedQuery          = false
 )
 
 // DOLTGRES_DATA_DIR is an environment variable that defines the location of DoltgreSQL databases

@@ -50,11 +50,16 @@ var extract_text_date = framework.Function2{
 	Strict:             true,
 	Callable: func(ctx *sql.Context, _ [3]pgtypes.DoltgresType, val1, val2 any) (any, error) {
 		field := val1.(string)
-		if strings.HasPrefix(strings.ToLower(field), "timezone") {
-			return nil, ErrUnitNotSupported.New(field, "date")
-		}
 		dateVal := val2.(time.Time)
-		return getFieldFromTimeVal(field, dateVal)
+		switch strings.ToLower(field) {
+		case "hour", "hours", "microsecond", "microseconds", "millisecond", "milliseconds",
+			"minute", "minutes", "second", "seconds", "timezone", "timezone_hour", "timezone_minute":
+			return nil, ErrUnitNotSupported.New(field, "date")
+		case "epoch":
+			return decimal.NewFromFloat(float64(dateVal.UnixMicro()) / 1000000), nil
+		default:
+			return getFieldFromTimeVal(field, dateVal)
+		}
 	},
 }
 
@@ -67,11 +72,15 @@ var extract_text_time = framework.Function2{
 	Strict:             true,
 	Callable: func(ctx *sql.Context, _ [3]pgtypes.DoltgresType, val1, val2 any) (any, error) {
 		field := val1.(string)
-		if strings.HasPrefix(strings.ToLower(field), "timezone") {
-			return nil, ErrUnitNotSupported.New(field, "time without time zone")
-		}
 		timeVal := val2.(time.Time)
-		return getFieldFromTimeVal(field, timeVal)
+		switch strings.ToLower(field) {
+		case "century", "centuries", "day", "days", "decade", "decades", "dow", "doy",
+			"isodow", "isoyear", "julian", "millennium", "millenniums", "month", "months",
+			"quarter", "timezone", "timezone_hour", "timezone_minute", "week", "year", "years":
+			return nil, ErrUnitNotSupported.New(field, "time without time zone")
+		default:
+			return getFieldFromTimeVal(field, timeVal)
+		}
 	},
 }
 
@@ -85,7 +94,21 @@ var extract_text_timetz = framework.Function2{
 	Callable: func(ctx *sql.Context, _ [3]pgtypes.DoltgresType, val1, val2 any) (any, error) {
 		field := val1.(string)
 		timetzVal := val2.(time.Time)
-		return getFieldFromTimeVal(field, timetzVal)
+		_, currentOffset := timetzVal.Zone()
+		switch strings.ToLower(field) {
+		case "century", "centuries", "day", "days", "decade", "decades", "dow", "doy",
+			"isodow", "isoyear", "julian", "millennium", "millenniums", "month", "months",
+			"quarter", "week", "year", "years":
+			return nil, ErrUnitNotSupported.New(field, "time with time zone")
+		case "timezone":
+			return decimal.NewFromInt(-int64(-currentOffset)), nil
+		case "timezone_hour":
+			return decimal.NewFromInt(-int64(-currentOffset / 3600)), nil
+		case "timezone_minute":
+			return decimal.NewFromInt(-int64((-currentOffset % 3600) / 60)), nil
+		default:
+			return getFieldFromTimeVal(field, timetzVal)
+		}
 	},
 }
 
@@ -98,11 +121,13 @@ var extract_text_timestamp = framework.Function2{
 	Strict:             true,
 	Callable: func(ctx *sql.Context, _ [3]pgtypes.DoltgresType, val1, val2 any) (any, error) {
 		field := val1.(string)
-		if strings.HasPrefix(strings.ToLower(field), "timezone") {
-			return nil, ErrUnitNotSupported.New(field, "timestamp without time zone")
-		}
 		tsVal := val2.(time.Time)
-		return getFieldFromTimeVal(field, tsVal)
+		switch strings.ToLower(field) {
+		case "timezone", "timezone_hour", "timezone_minute":
+			return nil, ErrUnitNotSupported.New(field, "timestamp without time zone")
+		default:
+			return getFieldFromTimeVal(field, tsVal)
+		}
 	},
 }
 
@@ -115,8 +140,24 @@ var extract_text_timestamptz = framework.Function2{
 	Strict:             true,
 	Callable: func(ctx *sql.Context, _ [3]pgtypes.DoltgresType, val1, val2 any) (any, error) {
 		field := val1.(string)
-		tstzVal := val2.(time.Time)
-		return getFieldFromTimeVal(field, tstzVal)
+		loc, err := pgtypes.GetServerLocation(ctx)
+		if err != nil {
+			return nil, err
+		}
+		tstzVal := val2.(time.Time).In(loc)
+		switch strings.ToLower(field) {
+		case "timezone":
+			// TODO: postgres seem to use server timezone regardless of input value
+			return decimal.NewFromInt(-28800), nil
+		case "timezone_hour":
+			// TODO: postgres seem to use server timezone regardless of input value
+			return decimal.NewFromInt(-8), nil
+		case "timezone_minute":
+			// TODO: postgres seem to use server timezone regardless of input value
+			return decimal.NewFromInt(0), nil
+		default:
+			return getFieldFromTimeVal(field, tstzVal)
+		}
 	},
 }
 
@@ -186,7 +227,11 @@ var extract_text_interval = framework.Function2{
 func getFieldFromTimeVal(field string, tVal time.Time) (decimal.Decimal, error) {
 	switch strings.ToLower(field) {
 	case "century", "centuries":
-		return decimal.NewFromFloat(math.Ceil(float64(tVal.Year()) / 100)), nil
+		if year := tVal.Year(); year <= 0 {
+			return decimal.NewFromFloat(math.Floor(float64(year-1) / 100)), nil
+		} else {
+			return decimal.NewFromFloat(math.Ceil(float64(year) / 100)), nil
+		}
 	case "day", "days":
 		return decimal.NewFromInt(int64(tVal.Day())), nil
 	case "decade", "decades":
@@ -231,15 +276,6 @@ func getFieldFromTimeVal(field string, tVal time.Time) (decimal.Decimal, error) 
 		w := float64(tVal.Second())
 		f := float64(tVal.Nanosecond()) / float64(1000000000)
 		return decimal.NewFromString(decimal.NewFromFloat(w + f).StringFixed(6))
-	case "timezone":
-		// TODO: postgres seem to use server timezone regardless of input value
-		return decimal.NewFromInt(-28800), nil
-	case "timezone_hour":
-		// TODO: postgres seem to use server timezone regardless of input value
-		return decimal.NewFromInt(-8), nil
-	case "timezone_minute":
-		// TODO: postgres seem to use server timezone regardless of input value
-		return decimal.NewFromInt(0), nil
 	case "week":
 		_, week := tVal.ISOWeek()
 		return decimal.NewFromInt(int64(week)), nil

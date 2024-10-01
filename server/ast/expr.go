@@ -15,14 +15,18 @@
 package ast
 
 import (
+	"context"
 	"fmt"
 	"go/constant"
 	"strings"
 
 	"github.com/dolthub/go-mysql-server/sql/expression"
 	vitess "github.com/dolthub/vitess/go/vt/sqlparser"
+	"github.com/shopspring/decimal"
 
 	"github.com/dolthub/doltgresql/postgres/parser/sem/tree"
+	"github.com/dolthub/doltgresql/postgres/parser/timeofday"
+	"github.com/dolthub/doltgresql/postgres/parser/types"
 	pgexprs "github.com/dolthub/doltgresql/server/expression"
 	"github.com/dolthub/doltgresql/server/functions/framework"
 	pgtypes "github.com/dolthub/doltgresql/server/types"
@@ -223,6 +227,18 @@ func nodeExpr(node tree.Expr) (vitess.Expr, error) {
 			// Both of these are acceptable
 		case tree.CastPrepend:
 			// used for typed literals
+			strVal, isStrVal := node.Expr.(*tree.StrVal)
+			t, isT := node.Type.(*types.T)
+			if isStrVal && isT {
+				typedExpr, err := strVal.ResolveAsType(context.TODO(), nil, t)
+				if err != nil {
+					return nil, fmt.Errorf("cannot resolve '%s' as type %s", strVal.String(), t.Name())
+				}
+				expr, err = nodeExpr(typedExpr)
+				if err != nil {
+					return nil, err
+				}
+			}
 		default:
 			return nil, fmt.Errorf("unknown cast syntax")
 		}
@@ -436,13 +452,29 @@ func nodeExpr(node tree.Expr) (vitess.Expr, error) {
 	case *tree.DCollatedString:
 		return nil, fmt.Errorf("the statement is not yet supported")
 	case *tree.DDate:
-		return nil, fmt.Errorf("the statement is not yet supported")
+		t, err := node.Date.ToTime()
+		if err != nil {
+			return nil, err
+		}
+		return vitess.InjectedExpr{
+			Expression: pgexprs.NewRawLiteralDate(t),
+		}, nil
 	case *tree.DDecimal:
-		return nil, fmt.Errorf("the statement is not yet supported")
+		// TODO: should we use apd.Decimal for Numeric type values?
+		// |Coeff| is always positive, so need to |Negative| to negate the big.Int
+		bigInt := &node.Coeff
+		if node.Negative {
+			bigInt = bigInt.Neg(bigInt)
+		}
+		return vitess.InjectedExpr{
+			Expression: pgexprs.NewRawLiteralNumeric(decimal.NewFromBigInt(bigInt, node.Exponent)),
+		}, nil
 	case *tree.DEnum:
 		return nil, fmt.Errorf("the statement is not yet supported")
 	case *tree.DFloat:
-		return nil, fmt.Errorf("the statement is not yet supported")
+		return vitess.InjectedExpr{
+			Expression: pgexprs.NewRawLiteralFloat64(float64(*node)),
+		}, nil
 	case *tree.DGeography:
 		return nil, fmt.Errorf("the statement is not yet supported")
 	case *tree.DGeometry:
@@ -450,7 +482,9 @@ func nodeExpr(node tree.Expr) (vitess.Expr, error) {
 	case *tree.DIPAddr:
 		return nil, fmt.Errorf("the statement is not yet supported")
 	case *tree.DInt:
-		return nil, fmt.Errorf("the statement is not yet supported")
+		return vitess.InjectedExpr{
+			Expression: pgexprs.NewRawLiteralInt64(int64(*node)),
+		}, nil
 	case *tree.DInterval:
 		cast, err := pgexprs.NewExplicitCastInjectable(pgtypes.Interval)
 		if err != nil {
@@ -462,25 +496,42 @@ func nodeExpr(node tree.Expr) (vitess.Expr, error) {
 			Children:   vitess.Exprs{vitess.InjectedExpr{Expression: expr}},
 		}, nil
 	case *tree.DJSON:
-		return nil, fmt.Errorf("the statement is not yet supported")
+		// JSON type is handled in string format
+		return vitess.InjectedExpr{
+			Expression: pgexprs.NewRawLiteralJSON(node.JSON.String()),
+		}, nil
 	case *tree.DOid:
-		return nil, fmt.Errorf("the statement is not yet supported")
+		return vitess.InjectedExpr{
+			Expression: pgexprs.NewRawLiteralOid(uint32(node.DInt)),
+		}, nil
 	case *tree.DOidWrapper:
-		return nil, fmt.Errorf("the statement is not yet supported")
+		return nodeExpr(node.Wrapped)
 	case *tree.DString:
-		return nil, fmt.Errorf("the statement is not yet supported")
+		return vitess.InjectedExpr{
+			Expression: pgexprs.NewUnknownLiteral(string(*node)),
+		}, nil
 	case *tree.DTime:
-		return nil, fmt.Errorf("the statement is not yet supported")
+		return vitess.InjectedExpr{
+			Expression: pgexprs.NewRawLiteralTime(timeofday.TimeOfDay(*node).ToTime()),
+		}, nil
 	case *tree.DTimeTZ:
-		return nil, fmt.Errorf("the statement is not yet supported")
+		return vitess.InjectedExpr{
+			Expression: pgexprs.NewRawLiteralTimeTZ(node.TimeTZ.ToTime()),
+		}, nil
 	case *tree.DTimestamp:
-		return nil, fmt.Errorf("the statement is not yet supported")
+		return vitess.InjectedExpr{
+			Expression: pgexprs.NewRawLiteralTimestamp(node.Time),
+		}, nil
 	case *tree.DTimestampTZ:
-		return nil, fmt.Errorf("the statement is not yet supported")
+		return vitess.InjectedExpr{
+			Expression: pgexprs.NewRawLiteralTimestampTZ(node.Time),
+		}, nil
 	case *tree.DTuple:
 		return nil, fmt.Errorf("the statement is not yet supported")
 	case *tree.DUuid:
-		return nil, fmt.Errorf("the statement is not yet supported")
+		return vitess.InjectedExpr{
+			Expression: pgexprs.NewRawLiteralUuid(node.UUID),
+		}, nil
 	case tree.DefaultVal:
 		// TODO: can we use this?
 		defVal := &vitess.Default{ColName: ""}

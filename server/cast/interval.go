@@ -15,9 +15,10 @@
 package cast
 
 import (
-	"time"
-
 	"github.com/dolthub/go-mysql-server/sql"
+
+	"github.com/dolthub/doltgresql/postgres/parser/timeofday"
+	"github.com/dolthub/doltgresql/server/functions"
 
 	"github.com/dolthub/doltgresql/postgres/parser/duration"
 	"github.com/dolthub/doltgresql/server/functions/framework"
@@ -37,10 +38,8 @@ func intervalAssignment() {
 		ToType:   pgtypes.Time,
 		Function: func(ctx *sql.Context, val any, targetType pgtypes.DoltgresType) (any, error) {
 			dur := val.(duration.Duration)
-			// truncate the month and day of the duration.
-			dur.Months = 0
-			dur.Days = 0
-			return time.Parse("15:04:05.999", dur.String())
+			// the month and day of the duration are excluded
+			return timeofday.FromInt(dur.Nanos() / functions.NanosPerMicro).ToTime(), nil
 		},
 	})
 }

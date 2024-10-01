@@ -146,10 +146,10 @@ func TestInfoSchemaColumns(t *testing.T) {
 				},
 				{
 					Query:    `SELECT p.oid AS oid, p.relname AS table_name, n.nspname as table_schema FROM pg_class AS p JOIN pg_namespace AS n ON p.relnamespace=n.oid WHERE n.nspname='public' AND p.relkind='r';`,
-					Expected: []sql.Row{{2685403136, "test_table", "public"}},
+					Expected: []sql.Row{{2686451712, "test_table", "public"}},
 				},
 				{
-					Query:    `select col_description(2685403136,ordinal_position) as comment from information_schema.columns limit 1;`,
+					Query:    `select col_description(2686451712, ordinal_position) as comment from information_schema.columns limit 1;`,
 					Expected: []sql.Row{{""}},
 				},
 			},
@@ -197,6 +197,12 @@ func TestInfoSchemaTables(t *testing.T) {
 				"create table test_table (id int)",
 			},
 			Assertions: []ScriptTestAssertion{
+				{
+					Query: `SELECT * FROM information_schema.tables WHERE table_name='test_table';`,
+					Expected: []sql.Row{
+						{"postgres", "public", "test_table", "BASE TABLE", nil, nil, nil, nil, nil, "YES", "NO", nil},
+					},
+				},
 				{
 					Query: `SELECT DISTINCT table_schema FROM information_schema.tables order by table_schema;`,
 					Expected: []sql.Row{
@@ -259,6 +265,98 @@ func TestInfoSchemaTables(t *testing.T) {
 				{
 					Query:    `SELECT "table_schema", "table_name", obj_description(('"' || "table_schema" || '"."' || "table_name" || '"')::regclass, 'pg_class') AS table_comment FROM "information_schema"."tables" WHERE ("table_schema" = 'test_schema' AND "table_name" = 'test_table2')`,
 					Expected: []sql.Row{{"test_schema", "test_table2", ""}},
+				},
+				{
+					Query:    `CREATE VIEW test_view AS SELECT * FROM test_table2;`,
+					Expected: []sql.Row{},
+				},
+				{
+					Query: `SELECT table_catalog, table_schema, table_name, table_type  FROM information_schema.tables WHERE table_schema='test_schema' OR table_schema='public';`,
+					Expected: []sql.Row{
+						{"postgres", "public", "test_table", "BASE TABLE"},
+						{"postgres", "test_schema", "test_view", "VIEW"},
+						{"postgres", "test_schema", "test_table2", "BASE TABLE"},
+					},
+				},
+			},
+		},
+	})
+}
+
+func TestInfoSchemaViews(t *testing.T) {
+	RunScripts(t, []ScriptTest{
+		{
+			Name: "information_schema.views",
+			SetUpScript: []string{
+				"create table test_table (id int)",
+				"create view test_view as select * from test_table",
+			},
+			Assertions: []ScriptTestAssertion{
+				{
+					Query: `SELECT * FROM information_schema.views order by table_schema;`,
+					Expected: []sql.Row{
+						{"postgres", "public", "test_view", "SELECT * FROM test_table", "NONE", nil, nil, nil, nil, nil},
+					},
+				},
+				{
+					Query: `SELECT DISTINCT table_schema FROM information_schema.views order by table_schema;`,
+					Expected: []sql.Row{
+						{"public"},
+					},
+				},
+				{
+					Query: `SELECT table_catalog, table_schema FROM information_schema.views group by table_catalog, table_schema order by table_schema;`,
+					Expected: []sql.Row{
+						{"postgres", "public"},
+					},
+				},
+				{
+					Query: `SELECT table_catalog, table_schema, table_name FROM information_schema.views WHERE table_schema='public';`,
+					Expected: []sql.Row{
+						{"postgres", "public", "test_view"},
+					},
+				},
+				{
+					Query:    `CREATE SCHEMA test_schema;`,
+					Expected: []sql.Row{},
+				},
+				{
+					Query:    `SET SEARCH_PATH TO test_schema;`,
+					Expected: []sql.Row{},
+				},
+				{
+					Query:    `CREATE TABLE test_table2 (id int);`,
+					Expected: []sql.Row{},
+				},
+				{
+					Query:    `CREATE VIEW test_view2 as select * from test_table2;`,
+					Expected: []sql.Row{},
+				},
+				{
+					Query: `SELECT DISTINCT table_schema FROM information_schema.views order by table_schema;`,
+					Expected: []sql.Row{
+						{"public"},
+						{"test_schema"},
+					},
+				},
+				{
+					Query: `SELECT table_catalog, table_schema FROM information_schema.views group by table_catalog, table_schema order by table_schema;`,
+					Expected: []sql.Row{
+						{"postgres", "public"},
+						{"postgres", "test_schema"},
+					},
+				},
+				{
+					Query: `SELECT table_catalog, table_schema, table_name FROM information_schema.views WHERE table_schema='test_schema';`,
+					Expected: []sql.Row{
+						{"postgres", "test_schema", "test_view2"},
+					},
+				},
+				{
+					Query: "SELECT table_catalog, table_schema, table_name, view_definition FROM information_schema.views WHERE table_schema = 'test_schema' ORDER BY table_name;",
+					Expected: []sql.Row{
+						{"postgres", "test_schema", "test_view2", "SELECT * FROM test_table2"},
+					},
 				},
 			},
 		},

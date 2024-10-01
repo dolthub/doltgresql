@@ -18,6 +18,7 @@ package cast
 func Init() {
 	initBool()
 	initChar()
+	initDate()
 	initFloat32()
 	initFloat64()
 	initInt16()
@@ -35,5 +36,8 @@ func Init() {
 	initRegtype()
 	initText()
 	initTime()
+	initTimestamp()
+	initTimestampTZ()
+	initTimeTZ()
 	initVarChar()
 }

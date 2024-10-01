@@ -70,17 +70,25 @@ func nodeAlterTableCmds(
 
 	vitessDdlCmds := make([]*vitess.DDL, 0, len(node))
 	for _, cmd := range node {
+		var err error
+		var statement *vitess.DDL
 		switch cmd := cmd.(type) {
 		case *tree.AlterTableAddConstraint:
-			statement, err := nodeAlterTableAddConstraint(cmd, tableName, ifExists)
-			if err != nil {
-				return nil, err
-			}
-			vitessDdlCmds = append(vitessDdlCmds, statement)
-
+			statement, err = nodeAlterTableAddConstraint(cmd, tableName, ifExists)
+		case *tree.AlterTableAddColumn:
+			statement, err = nodeAlterTableAddColumn(cmd, tableName, ifExists)
+		case *tree.AlterTableDropColumn:
+			statement, err = nodeAlterTableDropColumn(cmd, tableName, ifExists)
+		case *tree.AlterTableRenameColumn:
+			statement, err = nodeAlterTableRenameColumn(cmd, tableName, ifExists)
 		default:
 			return nil, fmt.Errorf("ALTER TABLE with unsupported command type %T", cmd)
 		}
+
+		if err != nil {
+			return nil, err
+		}
+		vitessDdlCmds = append(vitessDdlCmds, statement)
 	}
 
 	return vitessDdlCmds, nil
@@ -102,8 +110,90 @@ func nodeAlterTableAddConstraint(
 	switch constraintDef := node.ConstraintDef.(type) {
 	case *tree.UniqueConstraintTableDef:
 		return nodeUniqueConstraintTableDef(constraintDef, tableName, ifExists)
+	case *tree.ForeignKeyConstraintTableDef:
+		foreignKeyDefinition, err := nodeForeignKeyConstraintTableDef(constraintDef)
+		if err != nil {
+			return nil, err
+		}
+		return &vitess.DDL{
+			Action:           "alter",
+			ConstraintAction: "add",
+			Table:            tableName,
+			IfExists:         ifExists,
+			TableSpec: &vitess.TableSpec{
+				Constraints: []*vitess.ConstraintDefinition{
+					{Details: foreignKeyDefinition},
+				},
+			},
+		}, nil
+
 	default:
 		return nil, fmt.Errorf("ALTER TABLE with unsupported constraint "+
 			"definition type %T", node)
 	}
+}
+
+// nodeAlterTableAddColumn converts a tree.AlterTableAddColumn instance into an equivalent vitess.DDL instance.
+func nodeAlterTableAddColumn(node *tree.AlterTableAddColumn, tableName vitess.TableName, ifExists bool) (*vitess.DDL, error) {
+	if node.IfNotExists {
+		return nil, fmt.Errorf("IF NOT EXISTS on a column in an ADD COLUMN statement is not supported yet")
+	}
+
+	vitessColumnDef, err := nodeColumnTableDef(node.ColumnDef)
+	if err != nil {
+		return nil, err
+	}
+
+	return &vitess.DDL{
+		Action:       "alter",
+		ColumnAction: "add",
+		Table:        tableName,
+		IfExists:     ifExists,
+		Column:       vitessColumnDef.Name,
+		TableSpec: &vitess.TableSpec{
+			Columns: []*vitess.ColumnDefinition{
+				{
+					Name: vitessColumnDef.Name,
+					Type: vitessColumnDef.Type,
+				},
+			},
+		},
+	}, nil
+}
+
+// nodeAlterTableDropColumn converts a tree.AlterTableDropColumn instance into an equivalent vitess.DDL instance.
+func nodeAlterTableDropColumn(node *tree.AlterTableDropColumn, tableName vitess.TableName, ifExists bool) (*vitess.DDL, error) {
+	if node.IfExists {
+		return nil, fmt.Errorf("IF EXISTS on a column in a DROP COLUMN statement is not supported yet")
+	}
+
+	switch node.DropBehavior {
+	case tree.DropDefault:
+	case tree.DropRestrict:
+		return nil, fmt.Errorf("ALTER TABLE DROP COLUMN does not support RESTRICT option")
+	case tree.DropCascade:
+		return nil, fmt.Errorf("ALTER TABLE DROP COLUMN does not support CASCADE option")
+	default:
+		return nil, fmt.Errorf("ALTER TABLE with unsupported drop behavior %v", node.DropBehavior)
+	}
+
+	return &vitess.DDL{
+		Action:       "alter",
+		ColumnAction: "drop",
+		Table:        tableName,
+		IfExists:     ifExists,
+		Column:       vitess.NewColIdent(node.Column.String()),
+	}, nil
+}
+
+// nodeAlterTableRenameColumn converts a tree.AlterTableRenameColumn instance into an equivalent vitess.DDL instance.
+func nodeAlterTableRenameColumn(node *tree.AlterTableRenameColumn, tableName vitess.TableName, ifExists bool) (*vitess.DDL, error) {
+	return &vitess.DDL{
+		Action:       "alter",
+		ColumnAction: "rename",
+		Table:        tableName,
+		IfExists:     ifExists,
+		Column:       vitess.NewColIdent(node.Column.String()),
+		ToColumn:     vitess.NewColIdent(node.NewName.String()),
+	}, nil
 }

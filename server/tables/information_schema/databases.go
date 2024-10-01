@@ -56,21 +56,7 @@ func allDatabasesWithNames(ctx *sql.Context, cat sql.Catalog, privCheck bool) ([
 					})
 				}
 			}
-
-			if len(dbsForSchema) > 0 {
-				// TODO: information_schema should be included in the schema list
-				infoSchemaDB, err := cat.Database(ctx, sql.InformationSchemaDatabaseName)
-				if err != nil {
-					return nil, err
-				}
-				dbsForSchema = append(dbsForSchema, information_schema.DbWithNames{
-					Database:    infoSchemaDB,
-					CatalogName: sdb.Name(),
-					SchemaName:  sql.InformationSchemaDatabaseName,
-				})
-
-				dbs = append(dbs, dbsForSchema...)
-			}
+			dbs = append(dbs, dbsForSchema...)
 		}
 	}
 

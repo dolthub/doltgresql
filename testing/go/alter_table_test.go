@@ -20,6 +20,46 @@ import (
 	"github.com/dolthub/go-mysql-server/sql"
 )
 
+func TestAlterTableAddForeignKeyConstraint(t *testing.T) {
+	RunScripts(t, []ScriptTest{
+		{
+			Name: "Add Foreign Key Constraint",
+			SetUpScript: []string{
+				"create table child (pk int primary key, c1 int);",
+				"insert into child values (1,1), (2,2), (3,3);",
+				"create index idx_child_c1 on child (pk, c1);",
+				"create table parent (pk int primary key, c1 int, c2 int);",
+				"insert into parent values (1, 1, 10);",
+			},
+			Assertions: []ScriptTestAssertion{
+				{
+					Query:    "ALTER TABLE parent ADD FOREIGN KEY (c1) REFERENCES child (pk) ON DELETE CASCADE;",
+					Expected: []sql.Row{},
+				},
+				{
+					// Test that the FK constraint is working
+					Query:       "INSERT INTO parent VALUES (10, 10, 10);",
+					ExpectedErr: "Foreign key violation",
+				},
+				{
+					Query:       "ALTER TABLE parent ADD FOREIGN KEY (c2) REFERENCES child (pk);",
+					ExpectedErr: "Foreign key violation",
+				},
+				{
+					// Test an FK reference over multiple columns
+					Query:       "ALTER TABLE parent ADD FOREIGN KEY (c1, c2) REFERENCES child (pk, c1);",
+					ExpectedErr: "Foreign key violation",
+				},
+				{
+					// Unsupported syntax: MATCH PARTIAL
+					Query:       "ALTER TABLE parent ADD FOREIGN KEY (c1, c2) REFERENCES child (pk, c1) MATCH PARTIAL;",
+					ExpectedErr: "MATCH PARTIAL is not yet supported",
+				},
+			},
+		},
+	})
+}
+
 func TestAlterTableAddPrimaryKey(t *testing.T) {
 	RunScripts(t, []ScriptTest{
 		{
@@ -65,6 +105,93 @@ func TestAlterTableAddPrimaryKey(t *testing.T) {
 					Skip:     true,
 					Query:    "ALTER TABLE IF EXISTS doesNotExist ADD PRIMARY KEY (a, b);",
 					Expected: []sql.Row{},
+				},
+			},
+		},
+	})
+}
+
+func TestAlterTableAddColumn(t *testing.T) {
+	RunScripts(t, []ScriptTest{
+		{
+			Name: "Add Column",
+			SetUpScript: []string{
+				"CREATE TABLE test1 (a INT, b INT);",
+				"INSERT INTO test1 VALUES (1, 1);",
+			},
+			Assertions: []ScriptTestAssertion{
+				{
+					Query:    "ALTER TABLE test1 ADD COLUMN c INT NOT NULL DEFAULT 42;",
+					Expected: []sql.Row{},
+				},
+				{
+					Query:    "select * from test1;",
+					Expected: []sql.Row{{1, 1, 42}},
+				},
+			},
+		},
+	})
+}
+
+func TestAlterTableDropColumn(t *testing.T) {
+	RunScripts(t, []ScriptTest{
+		{
+			Name: "Drop Column",
+			SetUpScript: []string{
+				"CREATE TABLE test1 (a INT, b INT, c INT, d INT);",
+				"INSERT INTO test1 VALUES (1, 2, 3, 4);",
+			},
+			Assertions: []ScriptTestAssertion{
+				{
+					Query:    "ALTER TABLE test1 DROP COLUMN c;",
+					Expected: []sql.Row{},
+				},
+				{
+					Query:    "select * from test1;",
+					Expected: []sql.Row{{1, 2, 4}},
+				},
+				{
+					Query:    "ALTER TABLE test1 DROP COLUMN d;",
+					Expected: []sql.Row{},
+				},
+				{
+					Query:    "select * from test1;",
+					Expected: []sql.Row{{1, 2}},
+				},
+				{
+					// TODO: Skipped until we support conditional execution on existence of column
+					Skip:     true,
+					Query:    "ALTER TABLE test1 DROP COLUMN IF EXISTS zzz;",
+					Expected: []sql.Row{},
+				},
+				{
+					// TODO: Even though we're setting IF EXISTS, this query still fails with an
+					//       error about the table not existing.
+					Skip:     true,
+					Query:    "ALTER TABLE IF EXISTS doesNotExist DROP COLUMN z;",
+					Expected: []sql.Row{},
+				},
+			},
+		},
+	})
+}
+
+func TestAlterTableRenameColumn(t *testing.T) {
+	RunScripts(t, []ScriptTest{
+		{
+			Name: "Rename Column",
+			SetUpScript: []string{
+				"CREATE TABLE test1 (a INT, b INT, c INT, d INT);",
+				"INSERT INTO test1 VALUES (1, 2, 3, 4);",
+			},
+			Assertions: []ScriptTestAssertion{
+				{
+					Query:    "ALTER TABLE test1 RENAME COLUMN c to jjj;",
+					Expected: []sql.Row{},
+				},
+				{
+					Query:    "select * from test1 where jjj=3;",
+					Expected: []sql.Row{{1, 2, 3, 4}},
 				},
 			},
 		},

@@ -20,6 +20,9 @@ import (
 	"reflect"
 	"time"
 
+	"github.com/dolthub/doltgresql/postgres/parser/sem/tree"
+	"github.com/dolthub/doltgresql/postgres/parser/timeofday"
+
 	"github.com/dolthub/go-mysql-server/sql"
 	"github.com/dolthub/go-mysql-server/sql/types"
 	"github.com/dolthub/vitess/go/sqltypes"
@@ -122,12 +125,15 @@ func (b TimeType) GetSerializationID() SerializationID {
 
 // IoInput implements the DoltgresType interface.
 func (b TimeType) IoInput(ctx *sql.Context, input string) (any, error) {
-	if t, err := time.Parse("15:04:05", input); err == nil {
-		return t.UTC(), nil
-	} else if t, err = time.Parse("15:04:05.999", input); err == nil {
-		return t.UTC(), nil
+	p := b.Precision
+	if p == -1 {
+		p = 6
 	}
-	return nil, fmt.Errorf("invalid format for time")
+	t, _, err := tree.ParseDTime(nil, input, tree.TimeFamilyPrecisionToRoundDuration(int32(p)))
+	if err != nil {
+		return nil, err
+	}
+	return timeofday.TimeOfDay(*t).ToTime(), nil
 }
 
 // IoOutput implements the DoltgresType interface.
@@ -136,12 +142,7 @@ func (b TimeType) IoOutput(ctx *sql.Context, output any) (string, error) {
 	if err != nil {
 		return "", err
 	}
-	t := converted.(time.Time)
-	if t.Nanosecond() != 0 {
-		return t.Format("15:04:05.999999999"), nil
-	} else {
-		return t.Format("15:04:05"), nil
-	}
+	return converted.(time.Time).Format("15:04:05.999999999"), nil
 }
 
 // IsPreferredType implements the DoltgresType interface.

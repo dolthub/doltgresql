@@ -877,15 +877,15 @@ func TestSystemInformationFunctions(t *testing.T) {
 				{
 					Query:    `SELECT indexrelid, pg_get_expr(indpred, indrelid) FROM pg_catalog.pg_index WHERE indrelid='testing'::regclass;`,
 					Cols:     []string{"indexrelid", "pg_get_expr"},
-					Expected: []sql.Row{{1611661312, nil}},
+					Expected: []sql.Row{{1612709888, nil}},
 				},
 				{
 					Query:    `SELECT indexrelid, pg_get_expr(indpred, indrelid, true) FROM pg_catalog.pg_index WHERE indrelid='testing'::regclass;`,
-					Expected: []sql.Row{{1611661312, nil}},
+					Expected: []sql.Row{{1612709888, nil}},
 				},
 				{
 					Query:    `SELECT indexrelid, pg_get_expr(indpred, indrelid, NULL) FROM pg_catalog.pg_index WHERE indrelid='testing'::regclass;`,
-					Expected: []sql.Row{{1611661312, nil}},
+					Expected: []sql.Row{{1612709888, nil}},
 				},
 			},
 		},
@@ -981,13 +981,13 @@ func TestSchemaVisibilityInquiryFunctions(t *testing.T) {
 				{
 					Query: `SELECT c.oid, c.relname AS table_name, n.nspname AS table_schema FROM pg_catalog.pg_class c JOIN pg_namespace n ON n.oid = c.relnamespace WHERE n.nspname='myschema' OR n.nspname='testschema';`,
 					Expected: []sql.Row{
-						{2952790016, "myview", "myschema"},
-						{2684354560, "mytable", "myschema"},
-						{2419064832, "test_seq", "testschema"},
-						{1613758464, "test_table_pkey", "testschema"},
-						{1613758465, "test_index", "testschema"},
-						{1613758466, "v1", "testschema"},
-						{2687500288, "test_table", "testschema"},
+						{2953838592, "myview", "myschema"},
+						{2685403136, "mytable", "myschema"},
+						{2420113408, "test_seq", "testschema"},
+						{1614807040, "test_table_pkey", "testschema"},
+						{1614807041, "test_index", "testschema"},
+						{1614807042, "v1", "testschema"},
+						{2688548864, "test_table", "testschema"},
 					},
 				},
 				{
@@ -995,19 +995,19 @@ func TestSchemaVisibilityInquiryFunctions(t *testing.T) {
 					Expected: []sql.Row{{"testschema"}},
 				},
 				{
-					Query:    `select pg_table_is_visible(1613758465);`, // index from testschema
+					Query:    `select pg_table_is_visible(1614807041);`, // index from testschema
 					Expected: []sql.Row{{"t"}},
 				},
 				{
-					Query:    `select pg_table_is_visible(2687500288);`, // table from testschema
+					Query:    `select pg_table_is_visible(2688548864);`, // table from testschema
 					Expected: []sql.Row{{"t"}},
 				},
 				{
-					Query:    `select pg_table_is_visible(2419064832);`, // sequence from testschema
+					Query:    `select pg_table_is_visible(2420113408);`, // sequence from testschema
 					Expected: []sql.Row{{"t"}},
 				},
 				{
-					Query:    `select pg_table_is_visible(2952790016);`, // view from myschema
+					Query:    `select pg_table_is_visible(2953838592);`, // view from myschema
 					Expected: []sql.Row{{"f"}},
 				},
 				{
@@ -1019,11 +1019,11 @@ func TestSchemaVisibilityInquiryFunctions(t *testing.T) {
 					Expected: []sql.Row{{"myschema"}},
 				},
 				{
-					Query:    `select pg_table_is_visible(2952790016);`, // view from myschema
+					Query:    `select pg_table_is_visible(2953838592);`, // view from myschema
 					Expected: []sql.Row{{"t"}},
 				},
 				{
-					Query:    `select pg_table_is_visible(2684354560);`, // table from myschema
+					Query:    `select pg_table_is_visible(2685403136);`, // table from myschema
 					Expected: []sql.Row{{"t"}},
 				},
 			},
@@ -1095,12 +1095,12 @@ func TestSystemCatalogInformationFunctions(t *testing.T) {
 				{
 					Query: `SELECT c.oid, c.relname AS table_name, n.nspname AS table_schema FROM pg_catalog.pg_class c JOIN pg_namespace n ON n.oid = c.relnamespace WHERE n.nspname='myschema' OR n.nspname='public';`,
 					Expected: []sql.Row{
-						{2953838592, "test_view", "public"},
-						{2685403136, "test", "public"},
+						{2954887168, "test_view", "public"},
+						{2686451712, "test", "public"},
 					},
 				},
 				{
-					Query:    `select pg_get_viewdef(2953838592);`,
+					Query:    `select pg_get_viewdef(2954887168);`,
 					Expected: []sql.Row{{"SELECT name FROM test"}},
 				},
 			},
@@ -1111,7 +1111,298 @@ func TestSystemCatalogInformationFunctions(t *testing.T) {
 func TestDateAndTimeFunction(t *testing.T) {
 	RunScripts(t, []ScriptTest{
 		{
-			Name:        "extract",
+			Name:        "extract from date",
+			SetUpScript: []string{},
+			Assertions: []ScriptTestAssertion{
+				{
+					Query:    `SELECT EXTRACT(CENTURY FROM DATE '2022-02-02');`,
+					Expected: []sql.Row{{Numeric("21")}},
+				},
+				{
+					Query:    `SELECT EXTRACT(CENTURY FROM DATE '0002-12-31 BC');`,
+					Expected: []sql.Row{{Numeric("-1")}},
+				},
+				{
+					Query:    `SELECT EXTRACT(DAY FROM DATE '2022-02-02');`,
+					Expected: []sql.Row{{Numeric("2")}},
+				},
+				{
+					Query:    `SELECT EXTRACT(DECADE FROM DATE '2022-02-02');`,
+					Expected: []sql.Row{{Numeric("202")}},
+				},
+				{
+					Query:    `SELECT EXTRACT(DOW FROM DATE '2022-02-02');`,
+					Expected: []sql.Row{{Numeric("3")}},
+				},
+				{
+					Query:    `SELECT EXTRACT(DOY FROM DATE '2022-02-02');`,
+					Expected: []sql.Row{{Numeric("33")}},
+				},
+				{
+					Query:    `SELECT EXTRACT(EPOCH FROM DATE '2022-02-02');`,
+					Expected: []sql.Row{{Numeric("1643760000")}},
+				},
+				{
+					Query:       `SELECT EXTRACT(HOUR FROM DATE '2022-02-02');`,
+					ExpectedErr: `unit "hour" not supported for type date`,
+				},
+				{
+					Query:    `SELECT EXTRACT(ISODOW FROM DATE '2022-02-02');`,
+					Expected: []sql.Row{{Numeric("3")}},
+				},
+				{
+					Query:    `SELECT EXTRACT(ISOYEAR FROM DATE '2006-01-01');`,
+					Expected: []sql.Row{{Numeric("2005")}},
+				},
+				{
+					Query:    `SELECT EXTRACT(ISOYEAR FROM DATE '2006-01-02');`,
+					Expected: []sql.Row{{Numeric("2006")}},
+				},
+				{
+					Skip:     true, // TODO: not supported yet
+					Query:    `SELECT extract(julian from date '2021-06-23');`,
+					Expected: []sql.Row{{Numeric("2459389")}},
+				},
+				{
+					Query:       `SELECT EXTRACT(MICROSECONDS FROM DATE '2022-02-02');`,
+					ExpectedErr: `unit "microseconds" not supported for type date`,
+				},
+				{
+					Query:    `SELECT EXTRACT(MILLENNIUM FROM DATE '2022-02-02');`,
+					Expected: []sql.Row{{Numeric("3")}},
+				},
+				{
+					Query:       `SELECT EXTRACT(MILLISECONDS FROM DATE '2022-02-02');`,
+					ExpectedErr: `unit "milliseconds" not supported for type date`,
+				},
+				{
+					Query:       `SELECT EXTRACT(MINUTE FROM DATE '2022-02-02');`,
+					ExpectedErr: `unit "minute" not supported for type date`,
+				},
+				{
+					Query:    `SELECT EXTRACT(MONTH FROM DATE '2022-02-02');`,
+					Expected: []sql.Row{{Numeric("2")}},
+				},
+				{
+					Query:    `SELECT EXTRACT(QUARTER FROM DATE '2022-02-02');`,
+					Expected: []sql.Row{{Numeric("1")}},
+				},
+				{
+					Query:       `SELECT EXTRACT(SECOND FROM DATE '2022-02-02');`,
+					ExpectedErr: `unit "second" not supported for type date`,
+				},
+				{
+					Query:       `SELECT EXTRACT(TIMEZONE FROM DATE '2022-02-02');`,
+					ExpectedErr: `unit "timezone" not supported for type date`,
+				},
+				{
+					Query:       `SELECT EXTRACT(TIMEZONE_HOUR FROM DATE '2022-02-02');`,
+					ExpectedErr: `unit "timezone_hour" not supported for type date`,
+				},
+				{
+					Query:       `SELECT EXTRACT(TIMEZONE_MINUTE FROM DATE '2022-02-02');`,
+					ExpectedErr: `unit "timezone_minute" not supported for type date`,
+				},
+				{
+					Query:    `SELECT EXTRACT(WEEK FROM DATE '2022-02-02');`,
+					Expected: []sql.Row{{Numeric("5")}},
+				},
+				{
+					Query:    `SELECT EXTRACT(YEAR FROM DATE '2022-02-02');`,
+					Expected: []sql.Row{{Numeric("2022")}},
+				},
+			},
+		},
+		{
+			Name:        "extract from time without time zone",
+			SetUpScript: []string{},
+			Assertions: []ScriptTestAssertion{
+				{
+					Query:       `SELECT EXTRACT(CENTURY FROM TIME '17:12:28.5');`,
+					ExpectedErr: `unit "century" not supported for type time without time zone`,
+				},
+				{
+					Query:       `SELECT EXTRACT(DAY FROM TIME '17:12:28.5');`,
+					ExpectedErr: `unit "day" not supported for type time without time zone`,
+				},
+				{
+					Query:       `SELECT EXTRACT(DECADE FROM TIME '17:12:28.5');`,
+					ExpectedErr: `unit "decade" not supported for type time without time zone`,
+				},
+				{
+					Query:       `SELECT EXTRACT(DOW FROM TIME '17:12:28.5');`,
+					ExpectedErr: `unit "dow" not supported for type time without time zone`,
+				},
+				{
+					Query:       `SELECT EXTRACT(DOY FROM TIME '17:12:28.5');`,
+					ExpectedErr: `unit "doy" not supported for type time without time zone`,
+				},
+				{
+					Query:    `SELECT EXTRACT(EPOCH FROM TIME '17:12:28.5');`,
+					Expected: []sql.Row{{Numeric("61948.500000")}},
+				},
+				{
+					Query:    `SELECT EXTRACT(HOUR FROM TIME '17:12:28.5');`,
+					Expected: []sql.Row{{Numeric("17")}},
+				},
+				{
+					Query:       `SELECT EXTRACT(ISODOW FROM TIME '17:12:28.5');`,
+					ExpectedErr: `unit "isodow" not supported for type time without time zone`,
+				},
+				{
+					Query:       `SELECT EXTRACT(ISOYEAR FROM TIME '17:12:28.5');`,
+					ExpectedErr: `unit "isoyear" not supported for type time without time zone`,
+				},
+				{
+					Query:       `SELECT EXTRACT(JULIAN FROM TIME '17:12:28.5');`,
+					ExpectedErr: `unit "julian" not supported for type time without time zone`,
+				},
+				{
+					Query:    `SELECT EXTRACT(MICROSECONDS FROM TIME '17:12:28.5');`,
+					Expected: []sql.Row{{Numeric("28500000")}},
+				},
+				{
+					Query:       `SELECT EXTRACT(MILLENNIUM FROM TIME '17:12:28.5');`,
+					ExpectedErr: `unit "millennium" not supported for type time without time zone`,
+				},
+				{
+					Query:    `SELECT EXTRACT(MILLISECONDS FROM TIME '17:12:28.5');`,
+					Expected: []sql.Row{{Numeric("28500.000")}},
+				},
+				{
+					Query:    `SELECT EXTRACT(MINUTE FROM TIME '17:12:28.5');`,
+					Expected: []sql.Row{{Numeric("12")}},
+				},
+				{
+					Query:       `SELECT EXTRACT(MONTH FROM TIME '17:12:28.5');`,
+					ExpectedErr: `unit "month" not supported for type time without time zone`,
+				},
+				{
+					Query:       `SELECT EXTRACT(QUARTER FROM TIME '17:12:28.5');`,
+					ExpectedErr: `unit "quarter" not supported for type time without time zone`,
+				},
+				{
+					Query:    `SELECT EXTRACT(SECOND FROM TIME '17:12:28.5');`,
+					Expected: []sql.Row{{Numeric("28.500000")}},
+				},
+				{
+					Query:       `SELECT EXTRACT(TIMEZONE FROM TIME '17:12:28.5');`,
+					ExpectedErr: `unit "timezone" not supported for type time without time zone`,
+				},
+				{
+					Query:       `SELECT EXTRACT(TIMEZONE_HOUR FROM TIME '17:12:28.5');`,
+					ExpectedErr: `unit "timezone_hour" not supported for type time without time zone`,
+				},
+				{
+					Query:       `SELECT EXTRACT(TIMEZONE_MINUTE FROM TIME '17:12:28.5');`,
+					ExpectedErr: `unit "timezone_minute" not supported for type time without time zone`,
+				},
+				{
+					Query:       `SELECT EXTRACT(WEEK FROM TIME '17:12:28.5');`,
+					ExpectedErr: `unit "week" not supported for type time without time zone`,
+				},
+				{
+					Query:       `SELECT EXTRACT(YEAR FROM TIME '17:12:28.5');`,
+					ExpectedErr: `unit "year" not supported for type time without time zone`,
+				},
+			},
+		},
+		{
+			Name:        "extract from time with time zone",
+			SetUpScript: []string{},
+			Assertions: []ScriptTestAssertion{
+				{
+					Query:       `SELECT EXTRACT(CENTURY FROM TIME WITH TIME ZONE '17:12:28.5-03');`,
+					ExpectedErr: `unit "century" not supported for type time`,
+				},
+				{
+					Query:       `SELECT EXTRACT(DAY FROM TIME WITH TIME ZONE '17:12:28.5-03');`,
+					ExpectedErr: `unit "day" not supported for type time`,
+				},
+				{
+					Query:       `SELECT EXTRACT(DECADE FROM TIME WITH TIME ZONE '17:12:28.5-03');`,
+					ExpectedErr: `unit "decade" not supported for type time`,
+				},
+				{
+					Query:       `SELECT EXTRACT(DOW FROM TIME WITH TIME ZONE '17:12:28.5-03');`,
+					ExpectedErr: `unit "dow" not supported for type time`,
+				},
+				{
+					Query:       `SELECT EXTRACT(DOY FROM TIME WITH TIME ZONE '17:12:28.5-03');`,
+					ExpectedErr: `unit "doy" not supported for type time`,
+				},
+				{
+					Query:    `SELECT EXTRACT(EPOCH FROM TIME WITH TIME ZONE '17:12:28.5-03');`,
+					Expected: []sql.Row{{Numeric("72748.500000")}},
+				},
+				{
+					Query:    `SELECT EXTRACT(HOUR FROM TIME WITH TIME ZONE '17:12:28.5-03');`,
+					Expected: []sql.Row{{Numeric("17")}},
+				},
+				{
+					Query:       `SELECT EXTRACT(ISODOW FROM TIME WITH TIME ZONE '17:12:28.5-03');`,
+					ExpectedErr: `unit "isodow" not supported for type time`,
+				},
+				{
+					Query:       `SELECT EXTRACT(ISOYEAR FROM TIME WITH TIME ZONE '17:12:28.5-03');`,
+					ExpectedErr: `unit "isoyear" not supported for type time`,
+				},
+				{
+					Query:       `SELECT EXTRACT(JULIAN FROM TIME WITH TIME ZONE '17:12:28.5-03');`,
+					ExpectedErr: `unit "julian" not supported for type time`,
+				},
+				{
+					Query:    `SELECT EXTRACT(MICROSECONDS FROM TIME WITH TIME ZONE '17:12:28.5-03');`,
+					Expected: []sql.Row{{Numeric("28500000")}},
+				},
+				{
+					Query:       `SELECT EXTRACT(MILLENNIUM FROM TIME WITH TIME ZONE '17:12:28.5-03');`,
+					ExpectedErr: `unit "millennium" not supported for type time`,
+				},
+				{
+					Query:    `SELECT EXTRACT(MILLISECONDS FROM TIME WITH TIME ZONE '17:12:28.5-03');`,
+					Expected: []sql.Row{{Numeric("28500.000")}},
+				},
+				{
+					Query:    `SELECT EXTRACT(MINUTE FROM TIME WITH TIME ZONE '17:12:28.5-03');`,
+					Expected: []sql.Row{{Numeric("12")}},
+				},
+				{
+					Query:       `SELECT EXTRACT(MONTH FROM TIME WITH TIME ZONE '17:12:28.5-03');`,
+					ExpectedErr: `unit "month" not supported for type time`,
+				},
+				{
+					Query:       `SELECT EXTRACT(QUARTER FROM TIME WITH TIME ZONE '17:12:28.5-03');`,
+					ExpectedErr: `unit "quarter" not supported for type time`,
+				},
+				{
+					Query:    `SELECT EXTRACT(SECOND FROM TIME WITH TIME ZONE '17:12:28.5-03');`,
+					Expected: []sql.Row{{Numeric("28.500000")}},
+				},
+				{
+					Query:    `SELECT EXTRACT(TIMEZONE FROM TIME WITH TIME ZONE '17:12:28.5+03');`,
+					Expected: []sql.Row{{Numeric("10800")}},
+				},
+				{
+					Query:    `SELECT EXTRACT(TIMEZONE_HOUR FROM TIME WITH TIME ZONE '17:12:28.5-03');`,
+					Expected: []sql.Row{{Numeric("-3")}},
+				},
+				{
+					Query:    `SELECT EXTRACT(TIMEZONE_MINUTE FROM TIME WITH TIME ZONE '17:12:28.5-03:45');`,
+					Expected: []sql.Row{{Numeric("-45")}},
+				},
+				{
+					Query:       `SELECT EXTRACT(WEEK FROM TIME WITH TIME ZONE '17:12:28.5-03');`,
+					ExpectedErr: `unit "week" not supported for type time`,
+				},
+				{
+					Query:       `SELECT EXTRACT(YEAR FROM TIME WITH TIME ZONE '17:12:28.5-03');`,
+					ExpectedErr: `unit "year" not supported for type time`,
+				},
+			},
+		},
+		{
+			Name:        "extract from timestamp without time zone",
 			SetUpScript: []string{},
 			Assertions: []ScriptTestAssertion{
 				{
@@ -1121,16 +1412,6 @@ func TestDateAndTimeFunction(t *testing.T) {
 				{
 					Query:    `SELECT EXTRACT(CENTURY FROM TIMESTAMP '2001-02-16 20:38:40');`,
 					Expected: []sql.Row{{Numeric("21")}},
-				},
-				{
-					Skip:     true, // TODO: cannot parse calendar era
-					Query:    `SELECT EXTRACT(CENTURY FROM DATE '0001-01-01 AD');`,
-					Expected: []sql.Row{{Numeric("1")}},
-				},
-				{
-					Skip:     true, // TODO: cannot parse calendar era
-					Query:    `SELECT EXTRACT(CENTURY FROM DATE '0001-12-31 BC');`,
-					Expected: []sql.Row{{Numeric("-1")}},
 				},
 				{
 					Query:    `SELECT EXTRACT(DAY FROM TIMESTAMP '2001-02-16 20:38:40');`,
@@ -1149,10 +1430,6 @@ func TestDateAndTimeFunction(t *testing.T) {
 					Expected: []sql.Row{{Numeric("47")}},
 				},
 				{
-					Query:    `SELECT EXTRACT(EPOCH FROM TIMESTAMP WITH TIME ZONE '2001-02-16 20:38:40.12-08');`,
-					Expected: []sql.Row{{Numeric("982384720.120000")}},
-				},
-				{
 					Query:    `SELECT EXTRACT(EPOCH FROM TIMESTAMP '2001-02-16 20:38:40.12');`,
 					Expected: []sql.Row{{Numeric("982355920.120000")}},
 				},
@@ -1165,26 +1442,17 @@ func TestDateAndTimeFunction(t *testing.T) {
 					Expected: []sql.Row{{Numeric("7")}},
 				},
 				{
-					Query:    `SELECT EXTRACT(ISOYEAR FROM DATE '2006-01-01');`,
-					Expected: []sql.Row{{Numeric("2005")}},
-				},
-				{
-					Query:    `SELECT EXTRACT(ISOYEAR FROM DATE '2006-01-02');`,
-					Expected: []sql.Row{{Numeric("2006")}},
+					Query:    `SELECT EXTRACT(ISOYEAR FROM TIMESTAMP '2001-02-18 20:38:40');`,
+					Expected: []sql.Row{{Numeric("2001")}},
 				},
 				{
 					Skip:     true, // TODO: not supported yet
-					Query:    `SELECT EXTRACT(JULIAN FROM DATE '2006-01-01');`,
-					Expected: []sql.Row{{Numeric("2453737")}},
+					Query:    `SELECT EXTRACT(JULIAN FROM TIMESTAMP '2001-02-18 20:38:40');`,
+					Expected: []sql.Row{{Numeric("2451959.86018518518518518519")}},
 				},
 				{
-					Skip:     true, // TODO: not supported yet
-					Query:    `SELECT EXTRACT(JULIAN FROM TIMESTAMP '2006-01-01 12:00');`,
-					Expected: []sql.Row{{Numeric("2453737.50000000000000000000")}},
-				},
-				{
-					Query:    `SELECT EXTRACT(MICROSECONDS FROM TIME '17:12:28.5');`,
-					Expected: []sql.Row{{Numeric("28500000")}},
+					Query:    `SELECT EXTRACT(MICROSECONDS FROM TIMESTAMP '2001-02-18 20:38:40');`,
+					Expected: []sql.Row{{Numeric("40000000")}},
 				},
 				{
 					Query:    `SELECT EXTRACT(MILLENNIUM FROM TIMESTAMP '2001-02-16 20:38:40');`,
@@ -1195,8 +1463,8 @@ func TestDateAndTimeFunction(t *testing.T) {
 					Expected: []sql.Row{{Numeric("2")}},
 				},
 				{
-					Query:    `SELECT EXTRACT(MILLISECONDS FROM TIME '17:12:28.5');`,
-					Expected: []sql.Row{{Numeric("28500.000")}},
+					Query:    `SELECT EXTRACT(MILLISECONDS FROM TIMESTAMP '2000-02-16 20:38:40');`,
+					Expected: []sql.Row{{Numeric("40000.000")}},
 				},
 				{
 					Query:    `SELECT EXTRACT(MINUTE FROM TIMESTAMP '2001-02-16 20:38:40');`,
@@ -1215,8 +1483,16 @@ func TestDateAndTimeFunction(t *testing.T) {
 					Expected: []sql.Row{{Numeric("40.000000")}},
 				},
 				{
-					Query:    `SELECT EXTRACT(SECOND FROM TIME '17:12:28.5');`,
-					Expected: []sql.Row{{Numeric("28.500000")}},
+					Query:       `SELECT EXTRACT(TIMEZONE FROM TIMESTAMP '2001-02-16 20:38:40');`,
+					ExpectedErr: `unit "timezone" not supported for type timestamp without time zone`,
+				},
+				{
+					Query:       `SELECT EXTRACT(TIMEZONE_HOUR FROM TIMESTAMP '2001-02-16 20:38:40');`,
+					ExpectedErr: `unit "timezone_hour" not supported for type timestamp without time zone`,
+				},
+				{
+					Query:       `SELECT EXTRACT(TIMEZONE_MINUTE FROM TIMESTAMP '2001-02-16 20:38:40');`,
+					ExpectedErr: `unit "timezone_minute" not supported for type timestamp without time zone`,
 				},
 				{
 					Query:    `SELECT EXTRACT(WEEK FROM TIMESTAMP '2001-02-16 20:38:40');`,
@@ -1229,7 +1505,122 @@ func TestDateAndTimeFunction(t *testing.T) {
 			},
 		},
 		{
-			Name:        "extract interval",
+			// The TIMESTAMPTZ value gets converted to Local timezone / server timezone,
+			// so set the server timezone to UTC. GitHub CI runs on UTC time zone.
+			Name:        "extract from timestamp with time zone",
+			SetUpScript: []string{},
+			Assertions: []ScriptTestAssertion{
+				{
+					Query:    `SET TIMEZONE TO 'UTC';`,
+					Expected: []sql.Row{},
+				},
+				{
+					Query:    `SELECT EXTRACT(CENTURY FROM TIMESTAMP WITH TIME ZONE '2001-02-16 12:38:40.12-05');`,
+					Expected: []sql.Row{{Numeric("21")}},
+				},
+				{
+					Query:    `SELECT EXTRACT(DAY FROM TIMESTAMP WITH TIME ZONE '2001-02-16 12:38:40.12-05');`,
+					Expected: []sql.Row{{Numeric("16")}},
+				},
+				{
+					Query:    `SELECT EXTRACT(DECADE FROM TIMESTAMP WITH TIME ZONE '2001-02-16 12:38:40.12-05');`,
+					Expected: []sql.Row{{Numeric("200")}},
+				},
+				{
+					Query:    `SELECT EXTRACT(DOW FROM TIMESTAMP WITH TIME ZONE '2001-02-16 12:38:40.12-05');`,
+					Expected: []sql.Row{{Numeric("5")}},
+				},
+				{
+					Query:    `SELECT EXTRACT(DOY FROM TIMESTAMP WITH TIME ZONE '2001-02-16 12:38:40.12-05');`,
+					Expected: []sql.Row{{Numeric("47")}},
+				},
+				{
+					Query:    `SELECT EXTRACT(EPOCH FROM TIMESTAMP WITH TIME ZONE '2001-02-16 12:38:40.12-05');`,
+					Expected: []sql.Row{{Numeric("982345120.120000")}},
+				},
+				{
+					Query:    `SELECT EXTRACT(HOUR FROM TIMESTAMP WITH TIME ZONE '2001-02-16 12:38:40.12-05');`,
+					Expected: []sql.Row{{Numeric("17")}},
+				},
+				{
+					Query:    `SELECT EXTRACT(ISODOW FROM TIMESTAMP WITH TIME ZONE '2001-02-16 12:38:40.12-05');`,
+					Expected: []sql.Row{{Numeric("5")}},
+				},
+				{
+					Query:    `SELECT EXTRACT(ISOYEAR FROM TIMESTAMP WITH TIME ZONE '2001-02-16 12:38:40.12-05');`,
+					Expected: []sql.Row{{Numeric("2001")}},
+				},
+				{
+					Skip:     true, // TODO: not supported yet
+					Query:    `SELECT EXTRACT(JULIAN FROM TIMESTAMP WITH TIME ZONE '2001-02-16 12:38:40.12-05');`,
+					Expected: []sql.Row{{Numeric("2451957.73518657407407407407")}},
+				},
+				{
+					Skip:     true, // TODO: not supported yet
+					Query:    `SELECT extract(julian from '2021-06-23 7:00:00-04'::timestamptz at time zone 'UTC+12');`,
+					Expected: []sql.Row{{Numeric("2459388.95833333333333333333")}},
+				},
+				{
+					Skip:     true, // TODO: not supported yet
+					Query:    `SELECT extract(julian from '2021-06-23 8:00:00-04'::timestamptz at time zone 'UTC+12');`,
+					Expected: []sql.Row{{Numeric("2459389.0000000000000000000000000000")}},
+				},
+				{
+					Query:    `SELECT EXTRACT(MICROSECONDS FROM TIMESTAMP WITH TIME ZONE '2001-02-16 12:38:40.12-05');`,
+					Expected: []sql.Row{{Numeric("40120000")}},
+				},
+				{
+					Query:    `SELECT EXTRACT(MILLENNIUM FROM TIMESTAMP WITH TIME ZONE '2001-02-16 12:38:40.12-05');`,
+					Expected: []sql.Row{{Numeric("3")}},
+				},
+				{
+					Query:    `SELECT EXTRACT(MILLISECONDS FROM TIMESTAMP WITH TIME ZONE '2001-02-16 12:38:40.12-05');`,
+					Expected: []sql.Row{{Numeric("40120.000")}},
+				},
+				{
+					Query:    `SELECT EXTRACT(MINUTE FROM TIMESTAMP WITH TIME ZONE '2001-02-16 12:38:40.12-05');`,
+					Expected: []sql.Row{{Numeric("38")}},
+				},
+				{
+					Query:    `SELECT EXTRACT(MONTH FROM TIMESTAMP WITH TIME ZONE '2001-02-16 12:38:40.12-05');`,
+					Expected: []sql.Row{{Numeric("2")}},
+				},
+				{
+					Query:    `SELECT EXTRACT(QUARTER FROM TIMESTAMP WITH TIME ZONE '2001-02-16 12:38:40.12-05');`,
+					Expected: []sql.Row{{Numeric("1")}},
+				},
+				{
+					Query:    `SELECT EXTRACT(SECOND FROM TIMESTAMP WITH TIME ZONE '2001-02-16 12:38:40.12-05');`,
+					Expected: []sql.Row{{Numeric("40.120000")}},
+				},
+				{
+					Query:    `SELECT EXTRACT(TIMEZONE FROM TIMESTAMP WITH TIME ZONE '2001-02-16 12:38:40.12-05');`,
+					Expected: []sql.Row{{Numeric("-28800")}},
+				},
+				{
+					Query:    `SELECT EXTRACT(TIMEZONE_HOUR FROM TIMESTAMP WITH TIME ZONE '2001-02-16 12:38:40.12-05');`,
+					Expected: []sql.Row{{Numeric("-8")}},
+				},
+				{
+					Query:    `SELECT EXTRACT(TIMEZONE_MINUTE FROM TIMESTAMP WITH TIME ZONE '2001-02-16 12:38:40.12-05:45');`,
+					Expected: []sql.Row{{Numeric("0")}},
+				},
+				{
+					Query:    `SELECT EXTRACT(WEEK FROM TIMESTAMP WITH TIME ZONE '2001-02-16 12:38:40.12-05');`,
+					Expected: []sql.Row{{Numeric("7")}},
+				},
+				{
+					Query:    `SELECT EXTRACT(YEAR FROM TIMESTAMP WITH TIME ZONE '2001-02-16 12:38:40.12-05');`,
+					Expected: []sql.Row{{Numeric("2001")}},
+				},
+				{
+					Query:    `SET TIMEZONE TO DEFAULT;`,
+					Expected: []sql.Row{},
+				},
+			},
+		},
+		{
+			Name:        "extract from interval",
 			SetUpScript: []string{},
 			Assertions: []ScriptTestAssertion{
 				{
@@ -1338,6 +1729,60 @@ func TestDateAndTimeFunction(t *testing.T) {
 				{
 					Query:    `SELECT age(current_date::timestamp);`,
 					Expected: []sql.Row{{"00:00:00"}},
+				},
+			},
+		},
+		{
+			Name:        "timezone",
+			SetUpScript: []string{},
+			Assertions: []ScriptTestAssertion{
+				{
+					Query:    `select timezone(interval '2 minutes', timestamp with time zone '2001-02-16 20:38:40.12-05');`,
+					Expected: []sql.Row{{"2001-02-17 01:40:40.12"}},
+				},
+				{
+					Query:    `select timezone('UTC', timestamp with time zone '2001-02-16 20:38:40.12-05');`,
+					Expected: []sql.Row{{"2001-02-17 01:38:40.12"}},
+				},
+				{
+					Query:    `select timezone('-04:45', time with time zone '20:38:40.12-05');`,
+					Expected: []sql.Row{{"06:23:40.12+04:45"}},
+				},
+				{
+					Query:    `select timezone(interval '2 hours 2 minutes', time with time zone '20:38:40.12-05');`,
+					Expected: []sql.Row{{"03:40:40.12+02:02"}},
+				},
+				{
+					Query:    `select timezone('-04:45', timestamp '2001-02-16 20:38:40.12');`,
+					Expected: []sql.Row{{"2001-02-16 07:53:40.12-08"}},
+				},
+				{
+					Query:    `select timezone('-04:45:44', timestamp '2001-02-16 20:38:40.12');`,
+					Expected: []sql.Row{{"2001-02-16 07:52:56.12-08"}},
+				},
+				{
+					Query:    `select timezone(interval '2 hours 2 minutes', timestamp '2001-02-16 20:38:40.12');`,
+					Expected: []sql.Row{{"2001-02-16 10:36:40.12-08"}},
+				},
+				{
+					Query:    `select '2024-08-22 14:47:57 -07' at time zone 'utc';`,
+					Expected: []sql.Row{{"2024-08-22 21:47:57"}},
+				},
+				{
+					Query:    `select round(extract(epoch from '2024-08-22 13:47:57-07' at time zone 'UTC')) as startup_time;`,
+					Expected: []sql.Row{{Numeric("1724359677")}},
+				},
+				{
+					Query:    `select timestamptz '2024-08-22 13:47:57-07' at time zone 'utc';`,
+					Expected: []sql.Row{{"2024-08-22 20:47:57"}},
+				},
+				{
+					Query:    `select timestamp '2024-08-22 13:47:57-07';`,
+					Expected: []sql.Row{{"2024-08-22 13:47:57"}},
+				},
+				{
+					Query:    `select timestamp '2024-08-22 13:47:57-07' at time zone 'utc';`,
+					Expected: []sql.Row{{"2024-08-22 06:47:57-07"}},
 				},
 			},
 		},

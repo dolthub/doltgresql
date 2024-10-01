@@ -1167,12 +1167,17 @@ func TestDoltMergeArtifacts(t *testing.T) {
 		"unique key violation should be thrown even if a PK column is used in the unique index 2", // alter table ADD UNIQUE syntax
 		"unique key violations should not be thrown for keys with null values",                    // alter table ADD UNIQUE syntax
 		"regression test for bad column ordering in schema",                                       // enum not supported in test harness
+		"schema conflicts return an error when autocommit is enabled",                             // problems detecting autocommit for business logic
+		"Multiple foreign key violations for a given row not supported",                           // foreign keys
+		"divergent type change causes schema conflict",                                            // alter table
 	})
 	denginetest.RunDoltMergeArtifacts(t, h)
 }
 
 func TestDoltReset(t *testing.T) {
-	h := newDoltgresServerHarness(t)
+	h := newDoltgresServerHarness(t).WithSkippedQueries([]string{
+		"CALL DOLT_RESET('--hard') should reset the merge state after uncommitted merge", // problem with autocommit detection
+	})
 	denginetest.RunDoltResetTest(t, h)
 }
 

@@ -133,7 +133,7 @@ func ParseTimeTZ(
 	// ParseTimestamp requires a date field -- append date at the beginning
 	// if a date has not been included.
 	if !timeTZIncludesDateRegex.MatchString(s) {
-		s = "1970-01-01 " + s
+		s = currentDateAsPrefix() + " " + s
 	} else {
 		s = ReplaceLibPQTimePrefix(s)
 	}
@@ -167,46 +167,50 @@ func ParseTimeTZ(
 }
 
 // String implements the Stringer interface.
-func (t *TimeTZ) String() string {
+func (t TimeTZ) String() string {
 	tTime := t.ToTime()
 	timeComponent := tTime.Format("15:04:05.999999")
 	// 24:00:00 gets returned as 00:00:00, which is incorrect.
 	if t.TimeOfDay == timeofday.Time2400 {
 		timeComponent = "24:00:00"
 	}
-	timeZoneComponent := tTime.Format("Z07:00:00")
+	timeZoneComponent := tTime.Format("Z07")
 	// If it is UTC, .Format converts it to "Z".
 	// Fully expand this component.
 	if t.OffsetSecs == 0 {
-		timeZoneComponent = "+00:00:00"
-	}
-	// Go's time.Format functionality does not work for offsets which
-	// in the range -0s < offsetSecs < -60s, e.g. -22s offset prints as 00:00:-22.
-	// Manually correct for this.
-	if 0 < t.OffsetSecs && t.OffsetSecs < 60 {
+		timeZoneComponent = "+00"
+	} else if 0 < t.OffsetSecs && t.OffsetSecs < 60 {
+		// Go's time.Format functionality does not work for offsets which
+		// in the range -0s < offsetSecs < -60s, e.g. -22s offset prints as 00:00:-22.
+		// Manually correct for this.
 		timeZoneComponent = fmt.Sprintf("-00:00:%02d", t.OffsetSecs)
+	} else if t.OffsetSecs%60 != 0 {
+		timeZoneComponent = tTime.Format("Z07:00:00")
+	} else if t.OffsetSecs%3600 != 0 {
+		timeZoneComponent = tTime.Format("Z07:00")
 	}
+
 	return timeComponent + timeZoneComponent
 }
 
 // ToTime converts a DTimeTZ to a time.Time, corrected to the given location.
-func (t *TimeTZ) ToTime() time.Time {
+func (t TimeTZ) ToTime() time.Time {
 	loc := FixedOffsetTimeZoneToLocation(-int(t.OffsetSecs), "TimeTZ")
 	return t.TimeOfDay.ToTime().Add(time.Duration(t.OffsetSecs) * time.Second).In(loc)
 }
 
 // Round rounds a DTimeTZ to the given duration.
-func (t *TimeTZ) Round(precision time.Duration) TimeTZ {
+func (t TimeTZ) Round(precision time.Duration) TimeTZ {
 	return MakeTimeTZ(t.TimeOfDay.Round(precision), t.OffsetSecs)
 }
 
 // ToDuration returns the TimeTZ as an offset duration from UTC midnight.
-func (t *TimeTZ) ToDuration() time.Duration {
+func (t TimeTZ) ToDuration() time.Duration {
 	return t.ToTime().Sub(time.Unix(0, 0).UTC())
 }
 
 // Before returns whether the current is before the other TimeTZ.
-func (t *TimeTZ) Before(other TimeTZ) bool {
+func (t TimeTZ) Before(other TimeTZ) bool {
 	return t.ToTime().Before(other.ToTime()) || (t.ToTime().Equal(other.ToTime()) && t.OffsetSecs < other.OffsetSecs)
 }
 
@@ -216,7 +220,7 @@ func (t *TimeTZ) After(other TimeTZ) bool {
 }
 
 // Equal returns whether the TimeTZ is equal to the other TimeTZ.
-func (t *TimeTZ) Equal(other TimeTZ) bool {
+func (t TimeTZ) Equal(other TimeTZ) bool {
 	return t.TimeOfDay == other.TimeOfDay && t.OffsetSecs == other.OffsetSecs
 }
 
@@ -224,7 +228,7 @@ func (t *TimeTZ) Equal(other TimeTZ) bool {
 // (0000-01-01) with timestamps that can be parsed by date libraries.
 func ReplaceLibPQTimePrefix(s string) string {
 	if strings.HasPrefix(s, LibPQTimePrefix) {
-		return "1970-01-01" + s[len(LibPQTimePrefix):]
+		return currentDateAsPrefix() + s[len(LibPQTimePrefix):]
 	}
 	return s
 }
@@ -235,4 +239,12 @@ func FixedOffsetTimeZoneToLocation(offset int, origRepr string) *time.Location {
 	return time.FixedZone(
 		fmt.Sprintf("%s%d (%s)", fixedOffsetPrefix, offset, origRepr),
 		offset)
+}
+
+// currentDateAsPrefix will allow the timetz value to have the current time zone
+// rather than timezone of 1970-01-01 in cases of timezone undefined.
+// Go uses location to define the timezone, which can differ in cases of
+// standard vs daylight saving time.
+func currentDateAsPrefix() string {
+	return time.Now().Format("2006-01-02")
 }

@@ -20,6 +20,8 @@ import (
 	"reflect"
 	"time"
 
+	"github.com/dolthub/doltgresql/postgres/parser/sem/tree"
+
 	"github.com/dolthub/go-mysql-server/sql"
 	"github.com/dolthub/go-mysql-server/sql/types"
 	"github.com/dolthub/vitess/go/sqltypes"
@@ -119,17 +121,11 @@ func (b DateType) GetSerializationID() SerializationID {
 
 // IoInput implements the DoltgresType interface.
 func (b DateType) IoInput(ctx *sql.Context, input string) (any, error) {
-	// TODO: need support for calendar era, AD and BC
-	if t, err := time.Parse("2006-1-2", input); err == nil {
-		return t.UTC(), nil
-	} else if t, err = time.Parse("2006-1-2 -07", input); err == nil {
-		return t.UTC(), nil
-	} else if t, err = time.Parse("January 02, 2006", input); err == nil {
-		return t.UTC(), nil
-	} else if t, err = time.Parse("2006-Jan-02", input); err == nil {
-		return t.UTC(), nil
+	ddate, _, err := tree.ParseDDate(nil, input)
+	if err != nil {
+		return nil, err
 	}
-	return nil, fmt.Errorf("invalid format for date")
+	return ddate.Date.ToTime()
 }
 
 // IoOutput implements the DoltgresType interface.
