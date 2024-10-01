@@ -179,7 +179,7 @@ func NewRawLiteralTimestamp(val time.Time) *Literal {
 	}
 }
 
-// NewRawLiteralTimestampTZ returns a new *Literal containing a TIMESTAMPTZ value. This is the variant without a time zone.
+// NewRawLiteralTimestampTZ returns a new *Literal containing a TIMESTAMPTZ value. This is the variant with a time zone.
 func NewRawLiteralTimestampTZ(val time.Time) *Literal {
 	return &Literal{
 		value: val,
