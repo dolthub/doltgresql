@@ -17,10 +17,9 @@ package types
 import (
 	"bytes"
 	"fmt"
+	"github.com/dolthub/doltgresql/postgres/parser/pgdate"
 	"reflect"
 	"time"
-
-	"github.com/dolthub/doltgresql/postgres/parser/sem/tree"
 
 	"github.com/dolthub/go-mysql-server/sql"
 	"github.com/dolthub/go-mysql-server/sql/types"
@@ -121,11 +120,15 @@ func (b DateType) GetSerializationID() SerializationID {
 
 // IoInput implements the DoltgresType interface.
 func (b DateType) IoInput(ctx *sql.Context, input string) (any, error) {
-	ddate, _, err := tree.ParseDDate(nil, input)
-	if err != nil {
+	if date, _, err := pgdate.ParseDate(time.Now(), pgdate.ParseModeYMD, input); err == nil {
+		return date.ToTime()
+	} else if date, _, err = pgdate.ParseDate(time.Now(), pgdate.ParseModeDMY, input); err == nil {
+		return date.ToTime()
+	} else if date, _, err = pgdate.ParseDate(time.Now(), pgdate.ParseModeMDY, input); err == nil {
+		return date.ToTime()
+	} else {
 		return nil, err
 	}
-	return ddate.Date.ToTime()
 }
 
 // IoOutput implements the DoltgresType interface.

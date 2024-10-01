@@ -101,7 +101,6 @@ func Init() {
 	InitPgStatDatabase()
 	InitPgStatDatabaseConflicts()
 	InitPgStatGssapi()
-	InitPgStatIo()
 	InitPgStatProgressAnalyze()
 	InitPgStatProgressBasebackup()
 	InitPgStatProgressCluster()
