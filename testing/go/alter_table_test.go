@@ -110,3 +110,90 @@ func TestAlterTableAddPrimaryKey(t *testing.T) {
 		},
 	})
 }
+
+func TestAlterTableAddColumn(t *testing.T) {
+	RunScripts(t, []ScriptTest{
+		{
+			Name: "Add Column",
+			SetUpScript: []string{
+				"CREATE TABLE test1 (a INT, b INT);",
+				"INSERT INTO test1 VALUES (1, 1);",
+			},
+			Assertions: []ScriptTestAssertion{
+				{
+					Query:    "ALTER TABLE test1 ADD COLUMN c INT NOT NULL DEFAULT 42;",
+					Expected: []sql.Row{},
+				},
+				{
+					Query:    "select * from test1;",
+					Expected: []sql.Row{{1, 1, 42}},
+				},
+			},
+		},
+	})
+}
+
+func TestAlterTableDropColumn(t *testing.T) {
+	RunScripts(t, []ScriptTest{
+		{
+			Name: "Drop Column",
+			SetUpScript: []string{
+				"CREATE TABLE test1 (a INT, b INT, c INT, d INT);",
+				"INSERT INTO test1 VALUES (1, 2, 3, 4);",
+			},
+			Assertions: []ScriptTestAssertion{
+				{
+					Query:    "ALTER TABLE test1 DROP COLUMN c;",
+					Expected: []sql.Row{},
+				},
+				{
+					Query:    "select * from test1;",
+					Expected: []sql.Row{{1, 2, 4}},
+				},
+				{
+					Query:    "ALTER TABLE test1 DROP COLUMN d;",
+					Expected: []sql.Row{},
+				},
+				{
+					Query:    "select * from test1;",
+					Expected: []sql.Row{{1, 2}},
+				},
+				{
+					// TODO: Skipped until we support conditional execution on existence of column
+					Skip:     true,
+					Query:    "ALTER TABLE test1 DROP COLUMN IF EXISTS zzz;",
+					Expected: []sql.Row{},
+				},
+				{
+					// TODO: Even though we're setting IF EXISTS, this query still fails with an
+					//       error about the table not existing.
+					Skip:     true,
+					Query:    "ALTER TABLE IF EXISTS doesNotExist DROP COLUMN z;",
+					Expected: []sql.Row{},
+				},
+			},
+		},
+	})
+}
+
+func TestAlterTableRenameColumn(t *testing.T) {
+	RunScripts(t, []ScriptTest{
+		{
+			Name: "Rename Column",
+			SetUpScript: []string{
+				"CREATE TABLE test1 (a INT, b INT, c INT, d INT);",
+				"INSERT INTO test1 VALUES (1, 2, 3, 4);",
+			},
+			Assertions: []ScriptTestAssertion{
+				{
+					Query:    "ALTER TABLE test1 RENAME COLUMN c to jjj;",
+					Expected: []sql.Row{},
+				},
+				{
+					Query:    "select * from test1 where jjj=3;",
+					Expected: []sql.Row{{1, 2, 3, 4}},
+				},
+			},
+		},
+	})
+}
