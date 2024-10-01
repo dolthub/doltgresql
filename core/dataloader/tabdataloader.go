@@ -26,6 +26,9 @@ import (
 	"github.com/dolthub/doltgresql/server/types"
 )
 
+const defaultTextDelimiter = "\t"
+const defaultNullChar = "\\N"
+
 // TabularDataLoader tracks the state of a load data operation from a tabular data source.
 type TabularDataLoader struct {
 	results       LoadDataResults
@@ -51,6 +54,14 @@ func NewTabularDataLoader(ctx *sql.Context, table sql.InsertableTable, delimiter
 
 	rowInserter := table.Inserter(ctx)
 	rowInserter.StatementBegin(ctx)
+
+	if delimiterChar == "" {
+		delimiterChar = defaultTextDelimiter
+	}
+
+	if nullChar == "" {
+		nullChar = defaultNullChar
+	}
 
 	return &TabularDataLoader{
 		rowInserter:   rowInserter,
