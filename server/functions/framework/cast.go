@@ -289,15 +289,15 @@ func identityCast(ctx *sql.Context, val any, targetType pgtypes.DoltgresType) (a
 	return val, nil
 }
 
-// stringLiteralCast is used when casting from a string literal to any type, as string literals are treated special in
+// UnknownLiteralCast is used when casting from an unknown literal to any type, as unknown literals are treated special in
 // some contexts.
-func stringLiteralCast(ctx *sql.Context, val any, targetType pgtypes.DoltgresType) (any, error) {
+func UnknownLiteralCast(ctx *sql.Context, val any, targetType pgtypes.DoltgresType) (any, error) {
 	if val == nil {
 		return nil, nil
 	}
-	str, ok := val.(string)
-	if !ok {
-		return nil, fmt.Errorf("string literal was expected in I/O cast, but received: `%T`", val)
+	str, err := pgtypes.Unknown.IoOutput(ctx, val)
+	if err != nil {
+		return nil, err
 	}
 	return targetType.IoInput(ctx, str)
 }

@@ -12,32 +12,28 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-package cast
+package functions
 
 import (
-	"time"
-
 	"github.com/dolthub/go-mysql-server/sql"
 
-	"github.com/dolthub/doltgresql/server/functions"
 	"github.com/dolthub/doltgresql/server/functions/framework"
 	pgtypes "github.com/dolthub/doltgresql/server/types"
 )
 
-// initTime handles all casts that are built-in. This comprises only the "From" types.
-func initTime() {
-	timeImplicit()
+// initTxidCurrent registers the functions to the catalog.
+func initTxidCurrent() {
+	framework.RegisterFunction(txid_current)
 }
 
-// timeImplicit registers all implicit casts. This comprises only the "From" types.
-func timeImplicit() {
-	framework.MustAddImplicitTypeCast(framework.TypeCast{
-		FromType: pgtypes.Time,
-		ToType:   pgtypes.Interval,
-		Function: func(ctx *sql.Context, val any, targetType pgtypes.DoltgresType) (any, error) {
-			t := val.(time.Time)
-			dur := functions.GetIntervalDurationFromTimeComponents(0, 0, 0, int64(t.Hour()), int64(t.Minute()), int64(t.Second()), 0)
-			return dur, nil
-		},
-	})
+// txid_current represents the PostgreSQL date/time function, taking {interval, timestamp with time zone}
+var txid_current = framework.Function0{
+	Name:               "txid_current",
+	Return:             pgtypes.Int64,
+	IsNonDeterministic: true,
+	Strict:             true,
+	Callable: func(ctx *sql.Context) (any, error) {
+		// TODO: current transaction ID
+		return int64(0), nil
+	},
 }

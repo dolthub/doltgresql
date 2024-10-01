@@ -234,7 +234,7 @@ var interval_pl_time = framework.Function2{
 	Parameters: [2]pgtypes.DoltgresType{pgtypes.Interval, pgtypes.Time},
 	Strict:     true,
 	Callable: func(ctx *sql.Context, _ [3]pgtypes.DoltgresType, val1 any, val2 any) (any, error) {
-		return intervalPlusNonInterval(val1.(duration.Duration), val2.(time.Time))
+		return val2.(time.Time).Add(time.Duration(val1.(duration.Duration).Nanos())), nil
 	},
 }
 
@@ -256,7 +256,8 @@ var interval_pl_timetz = framework.Function2{
 	Parameters: [2]pgtypes.DoltgresType{pgtypes.Interval, pgtypes.TimeTZ},
 	Strict:     true,
 	Callable: func(ctx *sql.Context, _ [3]pgtypes.DoltgresType, val1 any, val2 any) (any, error) {
-		return intervalPlusNonInterval(val1.(duration.Duration), val2.(time.Time))
+		ttz := val2.(time.Time)
+		return ttz.Add(time.Duration(val1.(duration.Duration).Nanos())), nil
 	},
 }
 

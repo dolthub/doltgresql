@@ -55,16 +55,7 @@ func (ac *AssignmentCast) Eval(ctx *sql.Context, row sql.Row) (any, error) {
 	castFunc := framework.GetAssignmentCast(ac.fromType.BaseID(), ac.toType.BaseID())
 	if castFunc == nil {
 		if ac.fromType.BaseID() == pgtypes.DoltgresTypeBaseID_Unknown {
-			castFunc = func(ctx *sql.Context, val any, targetType pgtypes.DoltgresType) (any, error) {
-				if val == nil {
-					return nil, nil
-				}
-				str, err := pgtypes.Unknown.IoOutput(ctx, val)
-				if err != nil {
-					return nil, err
-				}
-				return targetType.IoInput(ctx, str)
-			}
+			castFunc = framework.UnknownLiteralCast
 		} else {
 			return nil, fmt.Errorf("ASSIGNMENT_CAST: target is of type %s but expression is of type %s: %s",
 				ac.toType.String(), ac.fromType.String(), ac.expr.String())

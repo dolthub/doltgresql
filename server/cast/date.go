@@ -15,42 +15,33 @@
 package cast
 
 import (
+	"time"
+
 	"github.com/dolthub/go-mysql-server/sql"
 
-	"github.com/dolthub/doltgresql/postgres/parser/timeofday"
-	"github.com/dolthub/doltgresql/server/functions"
-
-	"github.com/dolthub/doltgresql/postgres/parser/duration"
 	"github.com/dolthub/doltgresql/server/functions/framework"
 	pgtypes "github.com/dolthub/doltgresql/server/types"
 )
 
-// initInterval handles all casts that are built-in. This comprises only the "From" types.
-func initInterval() {
-	intervalAssignment()
-	intervalImplicit()
+// initDate handles all casts that are built-in. This comprises only the "From" types.
+func initDate() {
+	dateImplicit()
 }
 
-// intervalAssignment registers all assignment casts. This comprises only the "From" types.
-func intervalAssignment() {
-	framework.MustAddAssignmentTypeCast(framework.TypeCast{
-		FromType: pgtypes.Interval,
-		ToType:   pgtypes.Time,
+// dateImplicit registers all implicit casts. This comprises only the "From" types.
+func dateImplicit() {
+	framework.MustAddImplicitTypeCast(framework.TypeCast{
+		FromType: pgtypes.Date,
+		ToType:   pgtypes.Timestamp,
 		Function: func(ctx *sql.Context, val any, targetType pgtypes.DoltgresType) (any, error) {
-			dur := val.(duration.Duration)
-			// the month and day of the duration are excluded
-			return timeofday.FromInt(dur.Nanos() / functions.NanosPerMicro).ToTime(), nil
+			return val.(time.Time), nil
 		},
 	})
-}
-
-// intervalImplicit registers all implicit casts. This comprises only the "From" types.
-func intervalImplicit() {
 	framework.MustAddImplicitTypeCast(framework.TypeCast{
-		FromType: pgtypes.Interval,
-		ToType:   pgtypes.Interval,
+		FromType: pgtypes.Date,
+		ToType:   pgtypes.TimestampTZ,
 		Function: func(ctx *sql.Context, val any, targetType pgtypes.DoltgresType) (any, error) {
-			return val.(duration.Duration), nil
+			return val.(time.Time), nil
 		},
 	})
 }

@@ -271,6 +271,12 @@ var typesTests = []ScriptTest{
 					{"true ", "false"},
 				},
 			},
+			{
+				Query: "SELECT char 'c' = char 'c' AS true;",
+				Expected: []sql.Row{
+					{"t"},
+				},
+			},
 		},
 	},
 	{
@@ -710,6 +716,10 @@ var typesTests = []ScriptTest{
 				Query:       "INSERT INTO t_interval VALUES (3, true);",
 				ExpectedErr: `ASSIGNMENT_CAST: target is of type interval but expression is of type boolean: true`,
 			},
+			{
+				Query:    `SELECT CAST(interval '02:03' AS time) AS "02:03:00";`,
+				Expected: []sql.Row{{"02:03:00"}},
+			},
 		},
 	},
 	{
@@ -783,6 +793,12 @@ var typesTests = []ScriptTest{
 					{`{"reading": 1.230e-5}`},
 				},
 			},
+			{
+				Query: `select json '{ "a":  "\ud83d\ude04\ud83d\udc36" }' -> 'a'`,
+				Expected: []sql.Row{
+					{`"\ud83d\ude04\ud83d\udc36"`},
+				},
+			},
 		},
 	},
 	{
@@ -815,6 +831,12 @@ var typesTests = []ScriptTest{
 				Query: `SELECT '{"active":false, "balance": 7.77, "bar": "baz"}'::jsonb;`,
 				Expected: []sql.Row{
 					{`{"bar": "baz", "active": false, "balance": 7.77}`},
+				},
+			},
+			{
+				Query: `SELECT jsonb '{"a":null, "b":"qq"}' ? 'a';`,
+				Expected: []sql.Row{
+					{"t"},
 				},
 			},
 		},
@@ -1165,6 +1187,10 @@ var typesTests = []ScriptTest{
 					{4, "12345"},
 				},
 			},
+			{
+				Query:    `SELECT name 'name string' = name 'name string' AS "True";`,
+				Expected: []sql.Row{{"t"}},
+			},
 		},
 	},
 	{
@@ -1320,6 +1346,14 @@ var typesTests = []ScriptTest{
 					{3, Numeric("100.30")},
 				},
 			},
+			{
+				Query:    "SELECT numeric '10.00';",
+				Expected: []sql.Row{{Numeric("10.00")}},
+			},
+			{
+				Query:    "SELECT numeric '-10.00';",
+				Expected: []sql.Row{{Numeric("-10.00")}},
+			},
 		},
 	},
 	{
@@ -1426,6 +1460,10 @@ var typesTests = []ScriptTest{
 					{6, 0},
 					{7, 4294967295},
 				},
+			},
+			{
+				Query:    "select oid '20304';",
+				Expected: []sql.Row{{20304}},
 			},
 		},
 	},
@@ -2044,6 +2082,14 @@ var typesTests = []ScriptTest{
 					{4, nil},
 				},
 			},
+			{
+				Query:    `SELECT text 'text' || ' and unknown';`,
+				Expected: []sql.Row{{"text and unknown"}},
+			},
+			{
+				Query:    `SELECT text 'this is a text string' = text 'this is a text string' AS true;`,
+				Expected: []sql.Row{{"t"}},
+			},
 		},
 	},
 	{
@@ -2073,11 +2119,20 @@ var typesTests = []ScriptTest{
 					{"00:00:00"},
 				},
 			},
+			{
+				Query: `SELECT '23:59:59.999999'::time;`,
+				Expected: []sql.Row{
+					{"23:59:59.999999"},
+				},
+			},
+			{
+				Query:    "SELECT time without time zone '040506.789+08';",
+				Expected: []sql.Row{{"04:05:06.789"}},
+			},
 		},
 	},
 	{ // TODO: timezone representation is reported via local time, need to account for that in testing?
 		Name: "Time with time zone type",
-		Skip: true,
 		SetUpScript: []string{
 			"CREATE TABLE t_time_with_zone (id INTEGER primary key, v1 TIME WITH TIME ZONE);",
 			"INSERT INTO t_time_with_zone VALUES (1, '12:34:56 UTC'), (2, '23:45:01-0200');",
@@ -2091,10 +2146,18 @@ var typesTests = []ScriptTest{
 				},
 			},
 			{
+				Query:    `SET TIMEZONE TO 'UTC';`,
+				Expected: []sql.Row{},
+			},
+			{
 				Query: `SELECT '00:00:00'::timetz;`,
 				Expected: []sql.Row{
-					{"00:00:00-07"},
+					{"00:00:00+00"},
 				},
+			},
+			{
+				Query:    `SET TIMEZONE TO DEFAULT;`,
+				Expected: []sql.Row{},
 			},
 			{
 				Query: `SELECT '00:00:00-07'::timetz;`,
@@ -2132,32 +2195,52 @@ var typesTests = []ScriptTest{
 			},
 		},
 	},
-	{ // TODO: timezone representation is reported via local time, need to account for that in testing?
+	{
 		Name: "Timestamp with time zone type",
-		Skip: true,
 		SetUpScript: []string{
 			"CREATE TABLE t_timestamp_with_zone (id INTEGER primary key, v1 TIMESTAMP WITH TIME ZONE);",
 			"INSERT INTO t_timestamp_with_zone VALUES (1, '2022-01-01 12:34:56 UTC'), (2, '2022-02-01 23:45:01 America/New_York');",
 		},
 		Assertions: []ScriptTestAssertion{
 			{
+				// timezone representation is reported via local time, need to account for that in testing
+				Query:    "SET timezone TO '-04:25'",
+				Expected: []sql.Row{},
+			},
+			{
 				Query: "SELECT * FROM t_timestamp_with_zone ORDER BY id;",
 				Expected: []sql.Row{
-					{1, "2022-01-01 12:34:56 UTC"},
-					{2, "2022-02-01 23:45:01 America/New_York"},
+					{1, "2022-01-01 16:59:56+04:25"},
+					{2, "2022-02-02 09:10:01+04:25"},
 				},
 			},
 			{
 				Query: "SELECT '2000-01-01'::timestamptz;",
 				Expected: []sql.Row{
-					{"2000-01-01 00:00:00-08"},
+					{"2000-01-01 00:00:00+04:25"},
 				},
 			},
 			{
 				Query: `SELECT '2000-01-01 00:00:00'::timestamptz;`,
 				Expected: []sql.Row{
-					{"2000-01-01 00:00:00-08"},
+					{"2000-01-01 00:00:00+04:25"},
 				},
+			},
+			{
+				// timezone representation is reported via local time, need to account for that in testing
+				Query:    "SET timezone TO '-06:00'",
+				Expected: []sql.Row{},
+			},
+			{
+				Query: "SELECT * FROM t_timestamp_with_zone ORDER BY id;",
+				Expected: []sql.Row{
+					{1, "2022-01-01 18:34:56+06"},
+					{2, "2022-02-02 10:45:01+06"},
+				},
+			},
+			{
+				Query:    "SET timezone TO default",
+				Expected: []sql.Row{},
 			},
 		},
 	},
@@ -2209,6 +2292,10 @@ var typesTests = []ScriptTest{
 					{1, "a0eebc99-9c0b-4ef8-bb6d-6bb9bd380a11"},
 					{2, "f47ac10b-58cc-4372-a567-0e02b2c3d479"},
 				},
+			},
+			{
+				Query:    "select uuid 'a0eebc99-9c0b-4ef8-bb6d-6bb9bd380a11';",
+				Expected: []sql.Row{{"a0eebc99-9c0b-4ef8-bb6d-6bb9bd380a11"}},
 			},
 		},
 	},
@@ -2583,6 +2670,10 @@ func TestSameTypes(t *testing.T) {
 						{1, 2, 3},
 						{4, 5, 6},
 					},
+				},
+				{
+					Query:    "select int2 '2', int4 '3', int8 '4'",
+					Expected: []sql.Row{{2, 3, 4}},
 				},
 			},
 		},
