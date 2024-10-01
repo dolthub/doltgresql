@@ -20,6 +20,8 @@ import (
 	"reflect"
 	"time"
 
+	"github.com/dolthub/doltgresql/postgres/parser/sem/tree"
+
 	"github.com/dolthub/go-mysql-server/sql"
 	"github.com/dolthub/go-mysql-server/sql/types"
 	"github.com/dolthub/vitess/go/sqltypes"
@@ -122,26 +124,19 @@ func (b TimestampTZType) GetSerializationID() SerializationID {
 
 // IoInput implements the DoltgresType interface.
 func (b TimestampTZType) IoInput(ctx *sql.Context, input string) (any, error) {
-	if t, err := time.Parse("2006-01-02 15:04:05.999999999-0700", input); err == nil {
-		return t, nil
-	} else if t, err = time.Parse("2006-01-02 15:04:05.999999999-07:00", input); err == nil {
-		return t, nil
-	} else if t, err = time.Parse("2006-01-02 15:04:05.999999999-07", input); err == nil {
-		return t, nil
-	} else if t, err = time.Parse("January 01 15:04:05.999999999 2006 -0700", input); err == nil {
-		return t, nil
-	} else if t, err = time.Parse("January 01 15:04:05.999999999 2006 -07:00", input); err == nil {
-		return t, nil
-	} else if t, err = time.Parse("January 01 15:04:05.999999999 2006 -07", input); err == nil {
-		return t, nil
-	} else if t, err = time.Parse("2006-01-02", input); err == nil {
-		return t, nil
-	} else if t, err = time.Parse("2006-01-02 15:04:05.999999999", input); err == nil {
-		return t, nil
-	} else if t, err = time.Parse("2006-01-02 15:04:05.999999999 -0700", input); err == nil {
-		return t, nil
+	p := b.Precision
+	if p == -1 {
+		p = 6
 	}
-	return nil, fmt.Errorf("invalid format for timestamptz")
+	loc, err := GetServerLocation(ctx)
+	if err != nil {
+		return nil, err
+	}
+	t, _, err := tree.ParseDTimestampTZ(nil, input, tree.TimeFamilyPrecisionToRoundDuration(int32(p)), loc)
+	if err != nil {
+		return nil, err
+	}
+	return t.Time, nil
 }
 
 // IoOutput implements the DoltgresType interface.
@@ -150,8 +145,17 @@ func (b TimestampTZType) IoOutput(ctx *sql.Context, output any) (string, error) 
 	if err != nil {
 		return "", err
 	}
-	// TODO: this always displays the time with an offset relevant to the server location
-	return converted.(time.Time).Format("2006-01-02 15:04:05-07"), nil
+	serverLoc, err := GetServerLocation(ctx)
+	if err != nil {
+		return "", err
+	}
+	t := converted.(time.Time).In(serverLoc)
+	_, offset := t.Zone()
+	if offset%3600 != 0 {
+		return t.Format("2006-01-02 15:04:05.999999999-07:00"), nil
+	} else {
+		return t.Format("2006-01-02 15:04:05.999999999-07"), nil
+	}
 }
 
 // IsPreferredType implements the DoltgresType interface.

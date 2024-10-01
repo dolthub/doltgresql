@@ -921,13 +921,12 @@ func NewDTimeTZFromOffset(t timeofday.TimeOfDay, offsetSecs int32) *DTimeTZ {
 }
 
 // ParseDTimeTZ parses and returns the *DTime Datum value represented by the
-// provided string, or an error if parsing is unsuccessful.
+// provided string, or an error if parsing is unsuccessful. The |loc| used
+// to set the timezone used to parse the time value.
 //
 // The dependsOnContext return value indicates if we had to consult the
 // ParseTimeContext (either for the time or the local timezone).
-func ParseDTimeTZ(
-	ctx ParseTimeContext, s string, precision time.Duration,
-) (_ *DTimeTZ, dependsOnContext bool, _ error) {
+func ParseDTimeTZ(ctx ParseTimeContext, s string, precision time.Duration) (_ *DTimeTZ, dependsOnContext bool, _ error) {
 	now := relativeParseTime(ctx)
 	d, dependsOnContext, err := timetz.ParseTimeTZ(now, s, precision)
 	if err != nil {
@@ -1077,10 +1076,8 @@ func MustMakeDTimestampTZ(t time.Time, precision time.Duration) *DTimestampTZ {
 //
 // The dependsOnContext return value indicates if we had to consult the
 // ParseTimeContext (either for the time or the local timezone).
-func ParseDTimestampTZ(
-	ctx ParseTimeContext, s string, precision time.Duration,
-) (_ *DTimestampTZ, dependsOnContext bool, _ error) {
-	now := relativeParseTime(ctx)
+func ParseDTimestampTZ(ctx ParseTimeContext, s string, precision time.Duration, loc *time.Location) (_ *DTimestampTZ, dependsOnContext bool, _ error) {
+	now := relativeParseTime(ctx).In(loc)
 	t, dependsOnContext, err := pgdate.ParseTimestamp(now, pgdate.ParseModeYMD, s)
 	if err != nil {
 		return nil, false, err

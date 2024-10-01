@@ -24,6 +24,7 @@ import (
 	"github.com/shopspring/decimal"
 
 	"github.com/dolthub/doltgresql/postgres/parser/duration"
+	"github.com/dolthub/doltgresql/postgres/parser/uuid"
 	"github.com/dolthub/doltgresql/server/functions/framework"
 	pgtypes "github.com/dolthub/doltgresql/server/types"
 )
@@ -146,11 +147,67 @@ func NewRawLiteralNumeric(val decimal.Decimal) *Literal {
 	}
 }
 
-// NewRawLiteralTimestamp returns a new *Literal containing a time.Time value. This is the variant without a time zone.
+// NewRawLiteralDate returns a new *Literal containing a DATE value.
+func NewRawLiteralDate(date time.Time) *Literal {
+	return &Literal{
+		value: date,
+		typ:   pgtypes.Date,
+	}
+}
+
+// NewRawLiteralTime returns a new *Literal containing a TIME value.
+func NewRawLiteralTime(t time.Time) *Literal {
+	return &Literal{
+		value: t,
+		typ:   pgtypes.Time,
+	}
+}
+
+// NewRawLiteralTimeTZ returns a new *Literal containing a TIMETZ value.
+func NewRawLiteralTimeTZ(ttz time.Time) *Literal {
+	return &Literal{
+		value: ttz,
+		typ:   pgtypes.TimeTZ,
+	}
+}
+
+// NewRawLiteralTimestamp returns a new *Literal containing a TIMESTAMP value. This is the variant without a time zone.
 func NewRawLiteralTimestamp(val time.Time) *Literal {
 	return &Literal{
 		value: val,
 		typ:   pgtypes.Timestamp,
+	}
+}
+
+// NewRawLiteralTimestampTZ returns a new *Literal containing a TIMESTAMPTZ value. This is the variant with a time zone.
+func NewRawLiteralTimestampTZ(val time.Time) *Literal {
+	return &Literal{
+		value: val,
+		typ:   pgtypes.TimestampTZ,
+	}
+}
+
+// NewRawLiteralJSON returns a new *Literal containing a JSON value.
+func NewRawLiteralJSON(val string) *Literal {
+	return &Literal{
+		value: val,
+		typ:   pgtypes.Json,
+	}
+}
+
+// NewRawLiteralOid returns a new *Literal containing a OID value.
+func NewRawLiteralOid(val uint32) *Literal {
+	return &Literal{
+		value: val,
+		typ:   pgtypes.Oid,
+	}
+}
+
+// NewRawLiteralUuid returns a new *Literal containing a UUID value.
+func NewRawLiteralUuid(val uuid.UUID) *Literal {
+	return &Literal{
+		value: val,
+		typ:   pgtypes.Uuid,
 	}
 }
 

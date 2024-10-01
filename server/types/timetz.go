@@ -20,6 +20,9 @@ import (
 	"reflect"
 	"time"
 
+	"github.com/dolthub/doltgresql/postgres/parser/sem/tree"
+	"github.com/dolthub/doltgresql/postgres/parser/timetz"
+
 	"github.com/dolthub/go-mysql-server/sql"
 	"github.com/dolthub/go-mysql-server/sql/types"
 	"github.com/dolthub/vitess/go/sqltypes"
@@ -122,16 +125,19 @@ func (b TimeTZType) GetSerializationID() SerializationID {
 
 // IoInput implements the DoltgresType interface.
 func (b TimeTZType) IoInput(ctx *sql.Context, input string) (any, error) {
-	if t, err := time.Parse("15:04:05-0700", input); err == nil {
-		return t, nil
-	} else if t, err = time.Parse("15:04:05-07:00", input); err == nil {
-		return t, nil
-	} else if t, err = time.Parse("15:04:05-07", input); err == nil {
-		return t, nil
-	} else if t, err = time.Parse("15:04:05", input); err == nil {
-		return t, nil
+	p := b.Precision
+	if p == -1 {
+		p = 6
 	}
-	return nil, fmt.Errorf("invalid format for timetz")
+	loc, err := GetServerLocation(ctx)
+	if err != nil {
+		return nil, err
+	}
+	t, _, err := timetz.ParseTimeTZ(time.Now().In(loc), input, tree.TimeFamilyPrecisionToRoundDuration(int32(p)))
+	if err != nil {
+		return nil, err
+	}
+	return t.ToTime(), nil
 }
 
 // IoOutput implements the DoltgresType interface.
@@ -141,7 +147,8 @@ func (b TimeTZType) IoOutput(ctx *sql.Context, output any) (string, error) {
 		return "", err
 	}
 	// TODO: this always displays the time with an offset relevant to the server location
-	return converted.(time.Time).Format("15:04:05-07"), nil
+	t := converted.(time.Time)
+	return timetz.MakeTimeTZFromTime(t).String(), nil
 }
 
 // IsPreferredType implements the DoltgresType interface.

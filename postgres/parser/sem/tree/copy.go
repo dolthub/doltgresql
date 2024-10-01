@@ -41,6 +41,7 @@ type CopyFrom struct {
 type CopyOptions struct {
 	CopyFormat CopyFormat
 	Header     bool
+	Delimiter  string
 }
 
 var _ NodeFormatter = &CopyOptions{}
@@ -61,6 +62,9 @@ func (node *CopyFrom) Format(ctx *FmtCtx) {
 	if !node.Options.IsDefault() {
 		ctx.WriteString(" WITH ")
 		ctx.FormatNode(&node.Options)
+	}
+	if node.Options.Delimiter != "" {
+		ctx.WriteString(" DELIMITER '" + node.Options.Delimiter + "'")
 	}
 }
 
@@ -108,6 +112,13 @@ func (o *CopyOptions) CombineWith(other *CopyOptions) error {
 			return errors.New("header option specified multiple times")
 		}
 		o.Header = other.Header
+	}
+
+	if other.Delimiter != "" {
+		if o.Delimiter != "" {
+			return errors.New("delimiter option specified multiple times")
+		}
+		o.Delimiter = other.Delimiter
 	}
 
 	return nil

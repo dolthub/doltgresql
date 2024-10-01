@@ -34,8 +34,6 @@ type CopyFrom struct {
 	DatabaseName string
 	TableName    doltdb.TableName
 	File         string
-	Delimiter    string
-	Null         string
 	Stdin        bool
 	Columns      tree.NameList
 	CopyOptions  tree.CopyOptions
@@ -46,15 +44,11 @@ var _ sql.ExecSourceRel = (*CopyFrom)(nil)
 
 // NewCopyFrom returns a new *CopyFrom.
 func NewCopyFrom(databaseName string, tableName doltdb.TableName, options tree.CopyOptions, fileName string, stdin bool, columns tree.NameList) *CopyFrom {
-	var delimiterChar, nullChar string
 	switch options.CopyFormat {
+	case tree.CopyFormatCsv, tree.CopyFormatText:
+		// no-op
 	case tree.CopyFormatBinary:
 		panic("BINARY format is not supported for COPY FROM")
-	case tree.CopyFormatText:
-		delimiterChar = "\t"
-		nullChar = "\\N"
-	case tree.CopyFormatCsv:
-		delimiterChar = ","
 	default:
 		panic(fmt.Sprintf("unknown COPY FROM format: %d", options.CopyFormat))
 	}
@@ -63,8 +57,6 @@ func NewCopyFrom(databaseName string, tableName doltdb.TableName, options tree.C
 		DatabaseName: databaseName,
 		TableName:    tableName,
 		File:         fileName,
-		Delimiter:    delimiterChar,
-		Null:         nullChar,
 		Stdin:        stdin,
 		Columns:      columns,
 		CopyOptions:  options,
@@ -157,7 +149,7 @@ func (cf *CopyFrom) RowIter(ctx *sql.Context, _ sql.Row) (_ sql.RowIter, err err
 	}()
 	reader := bufio.NewReader(openFile)
 
-	dataLoader, err := dataloader.NewTabularDataLoader(ctx, insertable, cf.Delimiter, cf.Null, cf.CopyOptions.Header)
+	dataLoader, err := dataloader.NewTabularDataLoader(ctx, insertable, cf.CopyOptions.Delimiter, "", cf.CopyOptions.Header)
 	if err != nil {
 		return nil, err
 	}

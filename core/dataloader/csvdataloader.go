@@ -35,13 +35,17 @@ type CsvDataLoader struct {
 	colTypes      []types.DoltgresType
 	sch           sql.Schema
 	removeHeader  bool
+	delimiter     string
 }
 
 var _ DataLoader = (*CsvDataLoader)(nil)
 
+const defaultCsvDelimiter = ","
+
 // NewCsvDataLoader creates a new DataLoader instance that will insert records from chunks of CSV data into |table|. If
-// |header| is true, the first line of the data will be treated as a header and ignored.
-func NewCsvDataLoader(ctx *sql.Context, table sql.InsertableTable, header bool) (*CsvDataLoader, error) {
+// |header| is true, the first line of the data will be treated as a header and ignored. If |delimiter| is not the empty
+// string, it will be used as the delimiter separating value.
+func NewCsvDataLoader(ctx *sql.Context, table sql.InsertableTable, delimiter string, header bool) (*CsvDataLoader, error) {
 	colTypes, err := getColumnTypes(table.Schema())
 	if err != nil {
 		return nil, err
@@ -50,11 +54,16 @@ func NewCsvDataLoader(ctx *sql.Context, table sql.InsertableTable, header bool) 
 	rowInserter := table.Inserter(ctx)
 	rowInserter.StatementBegin(ctx)
 
+	if delimiter == "" {
+		delimiter = defaultCsvDelimiter
+	}
+
 	return &CsvDataLoader{
 		rowInserter:  rowInserter,
 		colTypes:     colTypes,
 		sch:          table.Schema(),
 		removeHeader: header,
+		delimiter:    delimiter,
 	}, nil
 }
 
@@ -63,7 +72,7 @@ func (cdl *CsvDataLoader) LoadChunk(ctx *sql.Context, data *bufio.Reader) error 
 	combinedReader := newStringPrefixReader(cdl.partialRecord, data)
 	cdl.partialRecord = ""
 
-	reader, err := newCsvReader(combinedReader)
+	reader, err := newCsvReaderWithDelimiter(combinedReader, cdl.delimiter)
 	if err != nil {
 		return err
 	}

@@ -12,32 +12,28 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-package cast
+package functions
 
 import (
-	"time"
-
 	"github.com/dolthub/go-mysql-server/sql"
 
-	"github.com/dolthub/doltgresql/server/functions"
 	"github.com/dolthub/doltgresql/server/functions/framework"
 	pgtypes "github.com/dolthub/doltgresql/server/types"
 )
 
-// initTime handles all casts that are built-in. This comprises only the "From" types.
-func initTime() {
-	timeImplicit()
+// initPgIsInRecovery registers the functions to the catalog.
+func initPgIsInRecovery() {
+	framework.RegisterFunction(pg_is_in_recovery)
 }
 
-// timeImplicit registers all implicit casts. This comprises only the "From" types.
-func timeImplicit() {
-	framework.MustAddImplicitTypeCast(framework.TypeCast{
-		FromType: pgtypes.Time,
-		ToType:   pgtypes.Interval,
-		Function: func(ctx *sql.Context, val any, targetType pgtypes.DoltgresType) (any, error) {
-			t := val.(time.Time)
-			dur := functions.GetIntervalDurationFromTimeComponents(0, 0, 0, int64(t.Hour()), int64(t.Minute()), int64(t.Second()), 0)
-			return dur, nil
-		},
-	})
+// pg_is_in_recovery represents the PostgreSQL date/time function, taking {interval, timestamp with time zone}
+var pg_is_in_recovery = framework.Function0{
+	Name:               "pg_is_in_recovery",
+	Return:             pgtypes.Bool,
+	IsNonDeterministic: true,
+	Strict:             true,
+	Callable: func(ctx *sql.Context) (any, error) {
+		// TODO: True if recovery is still in progress.
+		return false, nil
+	},
 }

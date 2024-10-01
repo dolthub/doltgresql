@@ -1045,7 +1045,8 @@ func (u *sqlSymUnion) aggregatesToDrop() []tree.AggregateToDrop {
 %type <[]tree.KVOption> kv_option_list opt_with_options opt_with_schedule_options
 %type <*tree.BackupOptions> opt_with_backup_options backup_options backup_options_list
 %type <*tree.RestoreOptions> opt_with_restore_options restore_options restore_options_list
-%type <*tree.CopyOptions> opt_with_copy_options copy_options copy_options_list
+%type <*tree.CopyOptions> copy_options copy_options_list
+%type <*tree.CopyOptions> opt_legacy_copy_options legacy_copy_options legacy_copy_options_list
 %type <str> import_format
 %type <tree.StorageParam> storage_parameter
 %type <[]tree.StorageParam> storage_parameter_list opt_table_with opt_with_storage_parameter_list attribution_list
@@ -3552,7 +3553,18 @@ call_stmt:
 // We currently support only the #2 format.
 // See the comment for CopyStmt in https://github.com/postgres/postgres/blob/master/src/backend/parser/gram.y.
 copy_from_stmt:
-  COPY table_name opt_column_list FROM SCONST opt_with_copy_options
+ COPY table_name opt_column_list FROM SCONST opt_with '(' copy_options_list ')'
+  {
+    name := $2.unresolvedObjectName().ToTableName()
+    $$.val = &tree.CopyFrom{
+       Table: name,
+       File: $5,
+       Columns: $3.nameList(),
+       Stdin: false,
+       Options: *$8.copyOptions(),
+    }
+  }
+| COPY table_name opt_column_list FROM SCONST opt_legacy_copy_options
   {
     name := $2.unresolvedObjectName().ToTableName()
     $$.val = &tree.CopyFrom{
@@ -3563,7 +3575,17 @@ copy_from_stmt:
        Options: *$6.copyOptions(),
     }
   }
-| COPY table_name opt_column_list FROM STDIN opt_with_copy_options
+| COPY table_name opt_column_list FROM STDIN opt_with '(' copy_options_list ')'
+  {
+    name := $2.unresolvedObjectName().ToTableName()
+    $$.val = &tree.CopyFrom{
+       Table: name,
+       Columns: $3.nameList(),
+       Stdin: true,
+       Options: *$8.copyOptions(),
+    }
+  }
+| COPY table_name opt_column_list FROM STDIN opt_legacy_copy_options
   {
     name := $2.unresolvedObjectName().ToTableName()
     $$.val = &tree.CopyFrom{
@@ -3574,14 +3596,47 @@ copy_from_stmt:
     }
   }
 
-opt_with_copy_options:
-  opt_with '(' copy_options_list ')'
+
+// legacy_copy_options represent the previous format that PostgreSQL supported for
+// specifying COPY FROM options. They do not use the WITH keyword and do not use parens.
+opt_legacy_copy_options:
+  legacy_copy_options_list
   {
-    $$.val = $3.copyOptions()
+    $$.val = $1.copyOptions()
   }
 | /* EMPTY */
   {
     $$.val = &tree.CopyOptions{}
+  }
+
+legacy_copy_options_list:
+  legacy_copy_options
+  {
+    $$.val = $1.copyOptions()
+  }
+| legacy_copy_options_list ',' legacy_copy_options
+  {
+    if err := $1.copyOptions().CombineWith($3.copyOptions()); err != nil {
+      return setErr(sqllex, err)
+    }
+  }
+
+legacy_copy_options:
+ BINARY
+  {
+    $$.val = &tree.CopyOptions{CopyFormat: tree.CopyFormatBinary}
+  }
+| DELIMITER SCONST
+  {
+    $$.val = &tree.CopyOptions{Delimiter: $2}
+  }
+| CSV
+  {
+    $$.val = &tree.CopyOptions{CopyFormat: tree.CopyFormatCsv}
+  }
+| HEADER
+  {
+    $$.val = &tree.CopyOptions{Header: true}
   }
 
 copy_options_list:
@@ -3616,6 +3671,10 @@ copy_options:
 | HEADER boolean_value
   {
     $$.val = &tree.CopyOptions{Header: $2.val.(bool)}
+  }
+| DELIMITER SCONST
+  {
+    $$.val = &tree.CopyOptions{Delimiter: $2}
   }
 
 // %Help: CANCEL

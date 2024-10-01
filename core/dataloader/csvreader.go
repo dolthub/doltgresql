@@ -76,6 +76,12 @@ type csvReader struct {
 // bytes go uninterpreted until we get to the SQL layer. It is currently the
 // case that newlines must be encoded as a '0xa' byte.
 func newCsvReader(r io.ReadCloser) (*csvReader, error) {
+	return newCsvReaderWithDelimiter(r, ",")
+}
+
+// newCsvReaderWithDelimiter creates a csvReader from a given ReadCloser, |r|, using
+// the |delimiter| as the field delimiter in the parsed data.
+func newCsvReaderWithDelimiter(r io.ReadCloser, delimiter string) (*csvReader, error) {
 	textReader := transform.NewReader(r, textunicode.BOMOverride(transform.Nop))
 	br := bufio.NewReaderSize(textReader, csvReadBufSize)
 
@@ -83,7 +89,7 @@ func newCsvReader(r io.ReadCloser) (*csvReader, error) {
 		closer: r,
 		bRd:    br,
 		isDone: false,
-		delim:  []byte(","),
+		delim:  []byte(delimiter),
 	}, nil
 }
 

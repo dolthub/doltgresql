@@ -12,32 +12,8 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-package cast
+package rfc5802
 
-// Init initializes all casts in this package.
-func Init() {
-	initBool()
-	initChar()
-	initDate()
-	initFloat32()
-	initFloat64()
-	initInt16()
-	initInt32()
-	initInt64()
-	initInternalChar()
-	initInterval()
-	initJson()
-	initJsonB()
-	initName()
-	initNumeric()
-	initOid()
-	initRegclass()
-	initRegproc()
-	initRegtype()
-	initText()
-	initTime()
-	initTimestamp()
-	initTimestampTZ()
-	initTimeTZ()
-	initVarChar()
-}
+// This package is meant to implement the functions defined in RFC 5802. As such, function names will be non-standard
+// compared to most other names in the project.
+// https://datatracker.ietf.org/doc/html/rfc5802

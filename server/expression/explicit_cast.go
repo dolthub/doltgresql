@@ -88,16 +88,7 @@ func (c *ExplicitCast) Eval(ctx *sql.Context, row sql.Row) (any, error) {
 	castFunction := framework.GetExplicitCast(fromType.BaseID(), c.castToType.BaseID())
 	if castFunction == nil {
 		if fromType.BaseID() == pgtypes.DoltgresTypeBaseID_Unknown {
-			castFunction = func(ctx *sql.Context, val any, targetType pgtypes.DoltgresType) (any, error) {
-				if val == nil {
-					return nil, nil
-				}
-				str, err := pgtypes.Unknown.IoOutput(ctx, val)
-				if err != nil {
-					return nil, err
-				}
-				return targetType.IoInput(ctx, str)
-			}
+			castFunction = framework.UnknownLiteralCast
 		} else {
 			return nil, fmt.Errorf("EXPLICIT CAST: cast from `%s` to `%s` does not exist: %s",
 				fromType.String(), c.castToType.String(), c.sqlChild.String())

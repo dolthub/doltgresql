@@ -20,6 +20,8 @@ import (
 	"reflect"
 	"time"
 
+	"github.com/dolthub/doltgresql/postgres/parser/sem/tree"
+
 	"github.com/dolthub/go-mysql-server/sql"
 	"github.com/dolthub/go-mysql-server/sql/types"
 	"github.com/dolthub/vitess/go/sqltypes"
@@ -122,14 +124,15 @@ func (b TimestampType) GetSerializationID() SerializationID {
 
 // IoInput implements the DoltgresType interface.
 func (b TimestampType) IoInput(ctx *sql.Context, input string) (any, error) {
-	if t, err := time.Parse("2006-01-02 15:04:05", input); err == nil {
-		return t.UTC(), nil
-	} else if t, err = time.Parse("January 01 15:04:05 2006", input); err == nil {
-		return t.UTC(), nil
-	} else if t, err = time.Parse("2006-01-02", input); err == nil {
-		return t.UTC(), nil
+	p := b.Precision
+	if p == -1 {
+		p = 6
 	}
-	return nil, fmt.Errorf("invalid format for timestamp")
+	t, _, err := tree.ParseDTimestamp(nil, input, tree.TimeFamilyPrecisionToRoundDuration(int32(p)))
+	if err != nil {
+		return nil, err
+	}
+	return t.Time, nil
 }
 
 // IoOutput implements the DoltgresType interface.
@@ -138,7 +141,7 @@ func (b TimestampType) IoOutput(ctx *sql.Context, output any) (string, error) {
 	if err != nil {
 		return "", err
 	}
-	return converted.(time.Time).Format("2006-01-02 15:04:05"), nil
+	return converted.(time.Time).Format("2006-01-02 15:04:05.999999999"), nil
 }
 
 // IsPreferredType implements the DoltgresType interface.

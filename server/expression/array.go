@@ -77,16 +77,7 @@ func (array *Array) Eval(ctx *sql.Context, row sql.Row) (any, error) {
 		castFunc := framework.GetImplicitCast(doltgresType.BaseID(), resultTyp.BaseID())
 		if castFunc == nil {
 			if doltgresType.BaseID() == pgtypes.DoltgresTypeBaseID_Unknown {
-				castFunc = func(ctx *sql.Context, val any, targetType pgtypes.DoltgresType) (any, error) {
-					if val == nil {
-						return nil, nil
-					}
-					str, err := pgtypes.Unknown.IoOutput(ctx, val)
-					if err != nil {
-						return nil, err
-					}
-					return targetType.IoInput(ctx, str)
-				}
+				castFunc = framework.UnknownLiteralCast
 			} else {
 				return nil, fmt.Errorf("cannot find cast function from %s to %s", doltgresType.String(), resultTyp.String())
 			}
