@@ -65,6 +65,8 @@ func transformSet(stmt *sqlparser.Set) ([]string, bool) {
 	for _, expr := range stmt.Exprs {
 		if expr.Scope == sqlparser.GlobalStr {
 			queries = append(queries, fmt.Sprintf("SET GLOBAL %s = %s", expr.Name, expr.Expr))
+		} else if expr.Scope == "user" {
+			queries = append(queries, fmt.Sprintf("SET doltgres_enginetest.%s = %s", expr.Name, expr.Expr))
 		} else {
 			queries = append(queries, fmt.Sprintf("SET %s = %s", expr.Name, expr.Expr))
 		}

@@ -25,7 +25,6 @@ import (
 	"github.com/dolthub/go-mysql-server/enginetest/queries"
 	"github.com/dolthub/go-mysql-server/enginetest/scriptgen/setup"
 	"github.com/dolthub/go-mysql-server/sql"
-	"github.com/dolthub/go-mysql-server/sql/types"
 	"github.com/stretchr/testify/require"
 
 	"github.com/dolthub/dolt/go/libraries/doltcore/dtestutils"
@@ -145,50 +144,21 @@ func (dcv *doltCommitValidator) CommitHash(val interface{}) (bool, string) {
 
 // Convenience test for debugging a single query. Unskip and set to the desired query.
 func TestSingleScript(t *testing.T) {
-	t.Skip()
+	// t.Skip()
 
 	var scripts = []queries.ScriptTest{
 		{
-			Name: "`Truncate table` should keep artifacts - conflicts",
+			Name: "empty table",
 			SetUpScript: []string{
-				"create table t (pk int primary key, col1 int);",
-				"call dolt_commit('-Am', 'create table');",
-				"call dolt_checkout('-b', 'other');",
-
-				"insert into t values (1, 100);",
-				"insert into t values (2, 200);",
-				"call dolt_commit('-Am', 'other commit');",
-
-				"call dolt_checkout('main');",
-				"insert into t values (1, -100);",
-				"insert into t values (2, -200);",
-				"call dolt_commit('-Am', 'main commit');",
-
-				"set dolt_allow_commit_conflicts = on;",
-				"call dolt_merge('other');",
+				"create table t (n int, c varchar(20));",
+				"call dolt_add('.')",
+				"set @Commit1 = '';",
+				"call dolt_commit_hash_out(@Commit1, '-am', 'creating table t');",
 			},
 			Assertions: []queries.ScriptTestAssertion{
 				{
-					Query: "select base_pk, base_col1, our_pk, our_col1, their_pk, their_col1 from dolt_conflicts_t;",
-					Expected: []sql.Row{
-						{nil, nil, 1, -100, 1, 100},
-						{nil, nil, 2, -200, 2, 200},
-					},
-				},
-				{
-					Query:    "truncate t;",
-					Expected: []sql.Row{{types.NewOkResult(2)}},
-				},
-				{
-					Query:    "select * from t;",
-					Expected: []sql.Row{},
-				},
-				{
-					Query: "select base_pk, base_col1, our_pk, our_col1, their_pk, their_col1 from dolt_conflicts_t;",
-					Expected: []sql.Row{
-						{nil, nil, nil, nil, 1, 100},
-						{nil, nil, nil, nil, 2, 200},
-					},
+					Query:    "select count(*) from DOLT_HISTORY_t;",
+					Expected: []sql.Row{{0}},
 				},
 			},
 		},
@@ -1252,7 +1222,6 @@ func TestBrokenSystemTableQueries(t *testing.T) {
 }
 
 func TestHistorySystemTable(t *testing.T) {
-	t.Skip()
 	harness := newDoltgresServerHarness(t).WithParallelism(2)
 	denginetest.RunHistorySystemTableTests(t, harness)
 }
