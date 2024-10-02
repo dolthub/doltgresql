@@ -263,6 +263,10 @@ func TestAlterTableSetColumnNullability(t *testing.T) {
 					Query:    "SELECT * FROM test1 where a = 2;",
 					Expected: []sql.Row{{2, nil}},
 				},
+				{
+					Query:       "ALTER TABLE test1 ALTER COLUMN b SET NOT NULL;",
+					ExpectedErr: "'b' is non-nullable but attempted to set a value of null",
+				},
 			},
 		},
 	})
@@ -287,6 +291,16 @@ func TestAlterTableAlterColumnType(t *testing.T) {
 				{
 					Query:    "INSERT INTO test1 VALUES (1, 32769);",
 					Expected: []sql.Row{},
+				},
+				{
+					Query:    "SELECT * FROM test1;",
+					Expected: []sql.Row{{1, 32769}},
+				},
+				{
+					// Attempting to change to a smaller type that doesn't support the values in the
+					// column results in an error instead of changing the type.
+					Query:       "ALTER TABLE test1 ALTER COLUMN b TYPE smallint;",
+					ExpectedErr: "smallint: unhandled type: int32",
 				},
 			},
 		},
