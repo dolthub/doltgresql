@@ -310,7 +310,7 @@ export const tableTests = [
     },
   },
   {
-    q: "SELECT * FROM dolt_diff_stat('HEAD', 'WORKING')",
+    q: "SELECT * FROM dolt_diff_stat('HEAD', 'WORKING')", // TODO: Prepared not working
     res: {
       command: "SELECT",
       rowCount: 1,

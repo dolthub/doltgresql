@@ -1829,5 +1829,49 @@ func TestStringFunction(t *testing.T) {
 				},
 			},
 		},
+		{
+			Name:        "quote_ident",
+			SetUpScript: []string{},
+			Assertions: []ScriptTestAssertion{
+				{
+					Query:    `select quote_ident('hi"bye');`,
+					Expected: []sql.Row{{`"hi""bye"`}},
+				},
+				{
+					Query:    `select quote_ident('hi""bye');`,
+					Expected: []sql.Row{{`"hi""""bye"`}},
+				},
+				{
+					Query:    `select quote_ident('hi"""bye');`,
+					Expected: []sql.Row{{`"hi""""""bye"`}},
+				},
+				{
+					Query:    `select quote_ident('hi"b"ye');`,
+					Expected: []sql.Row{{`"hi""b""ye"`}},
+				},
+			},
+		},
+		{
+			Name:        "translate",
+			SetUpScript: []string{},
+			Assertions: []ScriptTestAssertion{
+				{
+					Query:    `select translate('12345', '143', 'ax');`,
+					Expected: []sql.Row{{`a2x5`}},
+				},
+				{
+					Query:    `select translate('12345', '143', 'axs');`,
+					Expected: []sql.Row{{`a2sx5`}},
+				},
+				{
+					Query:    `select translate('12345', '143', 'axsl');`,
+					Expected: []sql.Row{{`a2sx5`}},
+				},
+				{
+					Query:    `select translate('こんにちは', 'ん', 'a');`,
+					Expected: []sql.Row{{`こaにちは`}},
+				},
+			},
+		},
 	})
 }
