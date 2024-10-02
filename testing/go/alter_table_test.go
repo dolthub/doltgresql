@@ -20,7 +20,7 @@ import (
 	"github.com/dolthub/go-mysql-server/sql"
 )
 
-func TestAlterTableAddForeignKeyConstraint(t *testing.T) {
+func TestAlterTable(t *testing.T) {
 	RunScripts(t, []ScriptTest{
 		{
 			Name: "Add Foreign Key Constraint",
@@ -57,11 +57,6 @@ func TestAlterTableAddForeignKeyConstraint(t *testing.T) {
 				},
 			},
 		},
-	})
-}
-
-func TestAlterTableAddPrimaryKey(t *testing.T) {
-	RunScripts(t, []ScriptTest{
 		{
 			Name: "Add Primary Key",
 			SetUpScript: []string{
@@ -108,11 +103,6 @@ func TestAlterTableAddPrimaryKey(t *testing.T) {
 				},
 			},
 		},
-	})
-}
-
-func TestAlterTableAddColumn(t *testing.T) {
-	RunScripts(t, []ScriptTest{
 		{
 			Name: "Add Column",
 			SetUpScript: []string{
@@ -130,11 +120,6 @@ func TestAlterTableAddColumn(t *testing.T) {
 				},
 			},
 		},
-	})
-}
-
-func TestAlterTableDropColumn(t *testing.T) {
-	RunScripts(t, []ScriptTest{
 		{
 			Name: "Drop Column",
 			SetUpScript: []string{
@@ -173,11 +158,6 @@ func TestAlterTableDropColumn(t *testing.T) {
 				},
 			},
 		},
-	})
-}
-
-func TestAlterTableRenameColumn(t *testing.T) {
-	RunScripts(t, []ScriptTest{
 		{
 			Name: "Rename Column",
 			SetUpScript: []string{
@@ -192,6 +172,112 @@ func TestAlterTableRenameColumn(t *testing.T) {
 				{
 					Query:    "select * from test1 where jjj=3;",
 					Expected: []sql.Row{{1, 2, 3, 4}},
+				},
+			},
+		},
+		{
+			Name: "Set Column Default",
+			SetUpScript: []string{
+				"CREATE TABLE test1 (a INT, b INT DEFAULT 42, c INT);",
+			},
+			Assertions: []ScriptTestAssertion{
+				{
+					Query:    "ALTER TABLE test1 ALTER COLUMN c SET DEFAULT 43;",
+					Expected: []sql.Row{},
+				},
+				{
+					Query:    "INSERT INTO test1 (a) VALUES (1);",
+					Expected: []sql.Row{},
+				},
+				{
+					Query:    "SELECT * FROM test1;",
+					Expected: []sql.Row{{1, 42, 43}},
+				},
+				{
+					Query:    "ALTER TABLE test1 ALTER COLUMN b DROP DEFAULT;",
+					Expected: []sql.Row{},
+				},
+				{
+					Query:    "INSERT INTO test1 (a) VALUES (2);",
+					Expected: []sql.Row{},
+				},
+				{
+					Query:    "SELECT * FROM test1 where a = 2;",
+					Expected: []sql.Row{{2, nil, 43}},
+				},
+				{
+					Query:    "ALTER TABLE test1 ALTER COLUMN c SET DEFAULT length('hello world');",
+					Expected: []sql.Row{},
+				},
+				{
+					Query:    "INSERT INTO test1 (a) VALUES (3);",
+					Expected: []sql.Row{},
+				},
+				{
+					Query:    "SELECT * FROM test1 where a = 3;",
+					Expected: []sql.Row{{3, nil, 11}},
+				},
+			},
+		},
+		{
+			Name: "Set Column Nullability",
+			SetUpScript: []string{
+				"CREATE TABLE test1 (a INT, b INT);",
+			},
+			Assertions: []ScriptTestAssertion{
+				{
+					Query:    "ALTER TABLE test1 ALTER COLUMN b SET NOT NULL;",
+					Expected: []sql.Row{},
+				},
+				{
+					Query:       "INSERT INTO test1 VALUES (1, NULL);",
+					ExpectedErr: "column name 'b' is non-nullable",
+				},
+				{
+					Query:    "ALTER TABLE test1 ALTER COLUMN b DROP NOT NULL;",
+					Expected: []sql.Row{},
+				},
+				{
+					Query:    "INSERT INTO test1 VALUES (2, NULL);",
+					Expected: []sql.Row{},
+				},
+				{
+					Query:    "SELECT * FROM test1 where a = 2;",
+					Expected: []sql.Row{{2, nil}},
+				},
+				{
+					Query:       "ALTER TABLE test1 ALTER COLUMN b SET NOT NULL;",
+					ExpectedErr: "'b' is non-nullable but attempted to set a value of null",
+				},
+			},
+		},
+		{
+			Name: "Alter Column Type",
+			SetUpScript: []string{
+				"CREATE TABLE test1 (a INT, b smallint);",
+			},
+			Assertions: []ScriptTestAssertion{
+				{
+					Query:       "INSERT INTO test1 VALUES (1, 32769);",
+					ExpectedErr: "smallint out of range",
+				},
+				{
+					Query:    "ALTER TABLE test1 ALTER COLUMN b TYPE INT;",
+					Expected: []sql.Row{},
+				},
+				{
+					Query:    "INSERT INTO test1 VALUES (1, 32769);",
+					Expected: []sql.Row{},
+				},
+				{
+					Query:    "SELECT * FROM test1;",
+					Expected: []sql.Row{{1, 32769}},
+				},
+				{
+					// Attempting to change to a smaller type that doesn't support the values in the
+					// column results in an error instead of changing the type.
+					Query:       "ALTER TABLE test1 ALTER COLUMN b TYPE smallint;",
+					ExpectedErr: "smallint: unhandled type: int32",
 				},
 			},
 		},
