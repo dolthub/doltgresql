@@ -561,6 +561,48 @@ var typesTests = []ScriptTest{
 					{"2022-02-02"},
 				},
 			},
+			{
+				Query: "select '2024-10-31'::date;",
+				Expected: []sql.Row{
+					{"2024-10-31"},
+				},
+			},
+			{
+				Query: "select '2024-OCT-31'::date;",
+				Expected: []sql.Row{
+					{"2024-10-31"},
+				},
+			},
+			{
+				Query: "select '20241031'::date;",
+				Expected: []sql.Row{
+					{"2024-10-31"},
+				},
+			},
+			{
+				Query: "select '2024Oct31'::date;",
+				Expected: []sql.Row{
+					{"2024-10-31"},
+				},
+			},
+			{
+				Query: "select '10 31 2024'::date;",
+				Expected: []sql.Row{
+					{"2024-10-31"},
+				},
+			},
+			{
+				Query: "select 'Oct 31 2024'::date;",
+				Expected: []sql.Row{
+					{"2024-10-31"},
+				},
+			},
+			{
+				Query: "SELECT date 'J2451187';",
+				Expected: []sql.Row{
+					{"1999-01-08"},
+				},
+			},
 		},
 	},
 	{
