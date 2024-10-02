@@ -20,7 +20,7 @@ import (
 	"github.com/dolthub/go-mysql-server/sql"
 )
 
-func TestAlterTableAddForeignKeyConstraint(t *testing.T) {
+func TestAlterTable(t *testing.T) {
 	RunScripts(t, []ScriptTest{
 		{
 			Name: "Add Foreign Key Constraint",
@@ -57,11 +57,6 @@ func TestAlterTableAddForeignKeyConstraint(t *testing.T) {
 				},
 			},
 		},
-	})
-}
-
-func TestAlterTableAddPrimaryKey(t *testing.T) {
-	RunScripts(t, []ScriptTest{
 		{
 			Name: "Add Primary Key",
 			SetUpScript: []string{
@@ -108,11 +103,6 @@ func TestAlterTableAddPrimaryKey(t *testing.T) {
 				},
 			},
 		},
-	})
-}
-
-func TestAlterTableAddColumn(t *testing.T) {
-	RunScripts(t, []ScriptTest{
 		{
 			Name: "Add Column",
 			SetUpScript: []string{
@@ -130,11 +120,6 @@ func TestAlterTableAddColumn(t *testing.T) {
 				},
 			},
 		},
-	})
-}
-
-func TestAlterTableDropColumn(t *testing.T) {
-	RunScripts(t, []ScriptTest{
 		{
 			Name: "Drop Column",
 			SetUpScript: []string{
@@ -173,11 +158,6 @@ func TestAlterTableDropColumn(t *testing.T) {
 				},
 			},
 		},
-	})
-}
-
-func TestAlterTableRenameColumn(t *testing.T) {
-	RunScripts(t, []ScriptTest{
 		{
 			Name: "Rename Column",
 			SetUpScript: []string{
@@ -195,11 +175,6 @@ func TestAlterTableRenameColumn(t *testing.T) {
 				},
 			},
 		},
-	})
-}
-
-func TestAlterTableSetColumnDefault(t *testing.T) {
-	RunScripts(t, []ScriptTest{
 		{
 			Name: "Set Column Default",
 			SetUpScript: []string{
@@ -244,11 +219,6 @@ func TestAlterTableSetColumnDefault(t *testing.T) {
 				},
 			},
 		},
-	})
-}
-
-func TestAlterTableSetColumnNullability(t *testing.T) {
-	RunScripts(t, []ScriptTest{
 		{
 			Name: "Set Column Nullability",
 			SetUpScript: []string{
@@ -281,11 +251,6 @@ func TestAlterTableSetColumnNullability(t *testing.T) {
 				},
 			},
 		},
-	})
-}
-
-func TestAlterTableAlterColumnType(t *testing.T) {
-	RunScripts(t, []ScriptTest{
 		{
 			Name: "Alter Column Type",
 			SetUpScript: []string{
