@@ -7372,8 +7372,7 @@ var setStmts = []ScriptTest{
 		},
 	},
 	{
-		Name:  "settings with namespaces",
-		Focus: true,
+		Name: "settings with namespaces",
 		Assertions: []ScriptTestAssertion{
 			{
 				Query:    "SET myvar.var_value TO 'value'",
