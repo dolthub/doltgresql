@@ -39,6 +39,16 @@ import (
 	pgtypes "github.com/dolthub/doltgresql/server/types"
 )
 
+var printErrorStackTraces = false
+
+const PrintErrorStackTracesEnvKey = "DOLTGRES_PRINT_ERROR_STACK_TRACES"
+
+func init() {
+	if _, ok := os.LookupEnv(PrintErrorStackTracesEnvKey); ok {
+		printErrorStackTraces = true
+	}
+}
+
 // Result represents a query result.
 type Result struct {
 	Fields       []pgproto3.FieldDescription `json:"fields"`
@@ -65,16 +75,6 @@ type DoltgresHandler struct {
 }
 
 var _ Handler = &DoltgresHandler{}
-
-var printErrorStackTraces = true
-
-const PrintErrorStackTracesEnvKey = "DOLTGRES_PRINT_ERROR_STACK_TRACES"
-
-func init() {
-	if _, ok := os.LookupEnv(PrintErrorStackTracesEnvKey); ok {
-		printErrorStackTraces = true
-	}
-}
 
 // ComBind implements the Handler interface.
 func (h *DoltgresHandler) ComBind(ctx context.Context, c *mysql.Conn, query string, parsedQuery mysql.ParsedQuery, bindVars map[string]sqlparser.Expr) (mysql.BoundQuery, []pgproto3.FieldDescription, error) {

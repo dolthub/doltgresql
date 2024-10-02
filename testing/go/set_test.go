@@ -7383,6 +7383,18 @@ var setStmts = []ScriptTest{
 				Query:    "SHOW myvar.var_value",
 				Expected: []sql.Row{{"value"}},
 			},
+			{
+				Query:    "select current_setting('myvar.var_value')",
+				Expected: []sql.Row{{"value"}},
+			},
+			{
+				Query:       "select current_setting('unknown_var')",
+				ExpectedErr: "unrecognized configuration parameter",
+			},
+			{
+				Query:       "show myvar.unknown_var",
+				ExpectedErr: "unrecognized configuration parameter",
+			},
 		},
 	},
 }

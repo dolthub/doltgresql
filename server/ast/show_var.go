@@ -38,24 +38,42 @@ func nodeShowVar(node *tree.ShowVar) (vitess.Statement, error) {
 
 	// TODO: this is a temporary way to get the param value for the current implementation
 	//   need better way to get these info
-	varName := vitess.NewColIdent("@@session." + node.Name)
 	// We treat namespaced variables (e.g. myvar.myvalue) as user variables.
 	// See set_var.go
-	if strings.Index(node.Name, ".") > 0 {
-		varName = vitess.NewColIdent("@" + node.Name)
-	}
-	s := &vitess.Select{
-		SelectExprs: vitess.SelectExprs{
-			&vitess.AliasedExpr{
-				Expr: &vitess.ColName{
-					Name:      varName,
-					Qualifier: vitess.TableName{},
+	isUserVar := strings.Index(node.Name, ".") > 0
+	if isUserVar {
+		varName := vitess.NewColIdent(node.Name)
+		return &vitess.Select{
+			SelectExprs: vitess.SelectExprs{
+				&vitess.AliasedExpr{
+					Expr: &vitess.FuncExpr{
+						Name: vitess.NewColIdent("current_setting"),
+						Exprs: []vitess.SelectExpr{
+							&vitess.AliasedExpr{
+								Expr: &vitess.SQLVal{Type: vitess.StrVal, Val: []byte(node.Name)},
+							},
+						},
+					},
+					StartParsePos: 7,
+					EndParsePos:   7 + len(varName.String()),
+					As:            varName,
 				},
-				StartParsePos: 7,
-				EndParsePos:   17 + len(node.Name),
-				As:            varName,
 			},
-		},
+		}, nil
+	} else {
+		varName := vitess.NewColIdent("@@session." + node.Name)
+		return &vitess.Select{
+			SelectExprs: vitess.SelectExprs{
+				&vitess.AliasedExpr{
+					Expr: &vitess.ColName{
+						Name:      varName,
+						Qualifier: vitess.TableName{},
+					},
+					StartParsePos: 7,
+					EndParsePos:   7 + len(varName.String()),
+					As:            varName,
+				},
+			},
+		}, nil
 	}
-	return s, nil
 }
