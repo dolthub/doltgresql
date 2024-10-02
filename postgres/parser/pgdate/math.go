@@ -25,6 +25,7 @@
 package pgdate
 
 import (
+	"strings"
 	"unicode"
 	"unicode/utf8"
 )
@@ -144,13 +145,15 @@ func chunk(s string, buf []stringChunk) (int, string) {
 		return true
 	}
 
+	maybeJulian := strings.HasPrefix(strings.ToLower(s), "j")
+
 	lastSeenDigit := false
 	lastSeenLetter := false
 	for offset, r := range s {
 		isDigit := unicode.IsDigit(r)
 		isLetter := unicode.IsLetter(r)
 		if isDigit || isLetter {
-			if (isDigit && lastSeenLetter) || (isLetter && lastSeenDigit) {
+			if (isDigit && lastSeenLetter && !maybeJulian) || (isLetter && lastSeenDigit) {
 				if !flush() {
 					return -1, ""
 				}

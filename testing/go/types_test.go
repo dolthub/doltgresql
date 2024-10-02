@@ -597,6 +597,12 @@ var typesTests = []ScriptTest{
 					{"2024-10-31"},
 				},
 			},
+			{
+				Query: "SELECT date 'J2451187';",
+				Expected: []sql.Row{
+					{"1999-01-08"},
+				},
+			},
 		},
 	},
 	{
