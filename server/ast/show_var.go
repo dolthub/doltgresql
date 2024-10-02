@@ -38,16 +38,22 @@ func nodeShowVar(node *tree.ShowVar) (vitess.Statement, error) {
 
 	// TODO: this is a temporary way to get the param value for the current implementation
 	//   need better way to get these info
+	varName := vitess.NewColIdent("@@session." + node.Name)
+	// We treat namespaced variables (e.g. myvar.myvalue) as user variables.
+	// See set_var.go
+	if strings.Index(node.Name, ".") > 0 {
+		varName = vitess.NewColIdent("@" + node.Name)
+	}
 	s := &vitess.Select{
 		SelectExprs: vitess.SelectExprs{
 			&vitess.AliasedExpr{
 				Expr: &vitess.ColName{
-					Name:      vitess.NewColIdent("@@session." + node.Name),
+					Name:      varName,
 					Qualifier: vitess.TableName{},
 				},
 				StartParsePos: 7,
 				EndParsePos:   17 + len(node.Name),
-				As:            vitess.NewColIdent(node.Name),
+				As:            varName,
 			},
 		},
 	}

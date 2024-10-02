@@ -7372,15 +7372,15 @@ var setStmts = []ScriptTest{
 		},
 	},
 	{
-		Name:  "custom settings",
+		Name:  "settings with namespaces",
 		Focus: true,
 		Assertions: []ScriptTestAssertion{
 			{
-				Query:    "SET custom.setting TO 'value'",
+				Query:    "SET myvar.var_value TO 'value'",
 				Expected: []sql.Row{},
 			},
 			{
-				Query:    "SHOW custom.setting",
+				Query:    "SHOW myvar.var_value",
 				Expected: []sql.Row{{"value"}},
 			},
 		},

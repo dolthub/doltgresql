@@ -19,6 +19,7 @@ import (
 	"encoding/base64"
 	"fmt"
 	"io"
+	"os"
 	"regexp"
 	"runtime/trace"
 	"sync"
@@ -65,6 +66,16 @@ type DoltgresHandler struct {
 
 var _ Handler = &DoltgresHandler{}
 
+var printErrorStackTraces = true
+
+const PrintErrorStackTracesEnvKey = "DOLTGRES_PRINT_ERROR_STACK_TRACES"
+
+func init() {
+	if _, ok := os.LookupEnv(PrintErrorStackTracesEnvKey); ok {
+		printErrorStackTraces = true
+	}
+}
+
 // ComBind implements the Handler interface.
 func (h *DoltgresHandler) ComBind(ctx context.Context, c *mysql.Conn, query string, parsedQuery mysql.ParsedQuery, bindVars map[string]sqlparser.Expr) (mysql.BoundQuery, []pgproto3.FieldDescription, error) {
 	sqlCtx, err := h.sm.NewContextWithQuery(ctx, c, query)
@@ -109,6 +120,9 @@ func (h *DoltgresHandler) ComPrepareParsed(ctx context.Context, c *mysql.Conn, q
 
 	analyzed, err := h.e.PrepareParsedQuery(sqlCtx, query, query, parsed)
 	if err != nil {
+		if printErrorStackTraces {
+			fmt.Printf("unable to prepare query: %+v\n", err)
+		}
 		logrus.WithField("query", query).Errorf("unable to prepare query: %s", err.Error())
 		err := sql.CastSQLError(err)
 		return nil, nil, err
@@ -451,7 +465,7 @@ func (h *DoltgresHandler) resultForDefaultIter(ctx *sql.Context, schema sql.Sche
 	// and calls |callback| to give them to vitess.
 	eg.Go(func() error {
 		defer pan2err()
-		//defer cancelF()
+		// defer cancelF()
 		defer wg.Done()
 		for {
 			if r == nil {

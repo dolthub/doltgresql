@@ -6032,7 +6032,7 @@ set_session_or_local_cmd:
 | set_role
 
 generic_set_single_config:
-  name "." name to_or_eq var_list
+  name '.' name to_or_eq var_list
   {
     $$.val = &tree.SetVar{Namespace: $1, Name: $3, Values: $5.exprs()}
   }
@@ -6287,7 +6287,7 @@ show_session_stmt:
 
 session_var:
   IDENT
-| IDENT "." IDENT
+| IDENT '.' IDENT
   {
     $$ = $1 + "." + $3
   }
