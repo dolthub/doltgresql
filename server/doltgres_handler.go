@@ -232,6 +232,9 @@ func (h *DoltgresHandler) doQuery(ctx context.Context, c *mysql.Conn, query stri
 
 	schema, rowIter, qFlags, err := queryExec(sqlCtx, query, parsed, analyzedPlan)
 	if err != nil {
+		if printErrorStackTraces {
+			fmt.Printf("error running query: %+v\n", err)
+		}
 		sqlCtx.GetLogger().WithError(err).Warn("error running query")
 		return err
 	}
