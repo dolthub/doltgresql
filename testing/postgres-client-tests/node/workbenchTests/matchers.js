@@ -137,3 +137,37 @@ export function tagsMatcher(data, exp) {
 
   return matcher(data.rows, exp.rows, exceptionKeys, getExceptionIsValid);
 }
+
+export function diffRowsMatcher(data, exp) {
+  const exceptionKeys = ["to_commit_date", "from_commit_date"];
+
+  function getExceptionIsValid(row, key) {
+    const val = row[key];
+    switch (key) {
+      case "to_commit_date":
+      case "from_commit_date":
+        return dateIsValid(val);
+      default:
+        return false;
+    }
+  }
+
+  return matcher(data.rows, exp.rows, exceptionKeys, getExceptionIsValid);
+}
+
+export function patchRowsMatcher(data, exp) {
+  const exceptionKeys = ["to_commit_hash", "from_commit_hash"];
+
+  function getExceptionIsValid(row, key) {
+    const val = row[key];
+    switch (key) {
+      case "to_commit_hash":
+      case "from_commit_hash":
+        return commitHashIsValid(val);
+      default:
+        return false;
+    }
+  }
+
+  return matcher(data.rows, exp.rows, exceptionKeys, getExceptionIsValid);
+}
