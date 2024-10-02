@@ -213,6 +213,11 @@ func nodeAlterTableSetDefault(node *tree.AlterTableSetDefault, tableName vitess.
 		return nil, err
 	}
 
+	// GMS requires the AST to wrap function expressions in parens
+	if _, ok := expr.(*vitess.FuncExpr); ok {
+		expr = &vitess.ParenExpr{Expr: expr}
+	}
+
 	return &vitess.DDL{
 		Action:   "alter",
 		Table:    tableName,

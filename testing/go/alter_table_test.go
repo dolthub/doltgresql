@@ -230,6 +230,18 @@ func TestAlterTableSetColumnDefault(t *testing.T) {
 					Query:    "SELECT * FROM test1 where a = 2;",
 					Expected: []sql.Row{{2, nil, 43}},
 				},
+				{
+					Query:    "ALTER TABLE test1 ALTER COLUMN c SET DEFAULT length('hello world');",
+					Expected: []sql.Row{},
+				},
+				{
+					Query:    "INSERT INTO test1 (a) VALUES (3);",
+					Expected: []sql.Row{},
+				},
+				{
+					Query:    "SELECT * FROM test1 where a = 3;",
+					Expected: []sql.Row{{3, nil, 11}},
+				},
 			},
 		},
 	})
