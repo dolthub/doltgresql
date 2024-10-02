@@ -197,3 +197,98 @@ func TestAlterTableRenameColumn(t *testing.T) {
 		},
 	})
 }
+
+func TestAlterTableSetColumnDefault(t *testing.T) {
+	RunScripts(t, []ScriptTest{
+		{
+			Name: "Set Column Default",
+			SetUpScript: []string{
+				"CREATE TABLE test1 (a INT, b INT DEFAULT 42, c INT);",
+			},
+			Assertions: []ScriptTestAssertion{
+				{
+					Query:    "ALTER TABLE test1 ALTER COLUMN c SET DEFAULT 43;",
+					Expected: []sql.Row{},
+				},
+				{
+					Query:    "INSERT INTO test1 (a) VALUES (1);",
+					Expected: []sql.Row{},
+				},
+				{
+					Query:    "SELECT * FROM test1;",
+					Expected: []sql.Row{{1, 42, 43}},
+				},
+				{
+					Query:    "ALTER TABLE test1 ALTER COLUMN b DROP DEFAULT;",
+					Expected: []sql.Row{},
+				},
+				{
+					Query:    "INSERT INTO test1 (a) VALUES (2);",
+					Expected: []sql.Row{},
+				},
+				{
+					Query:    "SELECT * FROM test1 where a = 2;",
+					Expected: []sql.Row{{2, nil, 43}},
+				},
+			},
+		},
+	})
+}
+
+func TestAlterTableSetColumnNullability(t *testing.T) {
+	RunScripts(t, []ScriptTest{
+		{
+			Name: "Set Column Nullability",
+			SetUpScript: []string{
+				"CREATE TABLE test1 (a INT, b INT);",
+			},
+			Assertions: []ScriptTestAssertion{
+				{
+					Query:    "ALTER TABLE test1 ALTER COLUMN b SET NOT NULL;",
+					Expected: []sql.Row{},
+				},
+				{
+					Query:       "INSERT INTO test1 VALUES (1, NULL);",
+					ExpectedErr: "column name 'b' is non-nullable",
+				},
+				{
+					Query:    "ALTER TABLE test1 ALTER COLUMN b DROP NOT NULL;",
+					Expected: []sql.Row{},
+				},
+				{
+					Query:    "INSERT INTO test1 VALUES (2, NULL);",
+					Expected: []sql.Row{},
+				},
+				{
+					Query:    "SELECT * FROM test1 where a = 2;",
+					Expected: []sql.Row{{2, nil}},
+				},
+			},
+		},
+	})
+}
+
+func TestAlterTableAlterColumnType(t *testing.T) {
+	RunScripts(t, []ScriptTest{
+		{
+			Name: "Alter Column Type",
+			SetUpScript: []string{
+				"CREATE TABLE test1 (a INT, b smallint);",
+			},
+			Assertions: []ScriptTestAssertion{
+				{
+					Query:       "INSERT INTO test1 VALUES (1, 32769);",
+					ExpectedErr: "smallint out of range",
+				},
+				{
+					Query:    "ALTER TABLE test1 ALTER COLUMN b TYPE INT;",
+					Expected: []sql.Row{},
+				},
+				{
+					Query:    "INSERT INTO test1 VALUES (1, 32769);",
+					Expected: []sql.Row{},
+				},
+			},
+		},
+	})
+}

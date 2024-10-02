@@ -81,6 +81,14 @@ func nodeAlterTableCmds(
 			statement, err = nodeAlterTableDropColumn(cmd, tableName, ifExists)
 		case *tree.AlterTableRenameColumn:
 			statement, err = nodeAlterTableRenameColumn(cmd, tableName, ifExists)
+		case *tree.AlterTableSetDefault:
+			statement, err = nodeAlterTableSetDefault(cmd, tableName, ifExists)
+		case *tree.AlterTableDropNotNull:
+			statement, err = nodeAlterTableDropNotNull(cmd, tableName, ifExists)
+		case *tree.AlterTableSetNotNull:
+			statement, err = nodeAlterTableSetNotNull(cmd, tableName, ifExists)
+		case *tree.AlterTableAlterColumnType:
+			statement, err = nodeAlterTableAlterColumnType(cmd, tableName, ifExists)
 		default:
 			return nil, fmt.Errorf("ALTER TABLE with unsupported command type %T", cmd)
 		}
@@ -195,5 +203,82 @@ func nodeAlterTableRenameColumn(node *tree.AlterTableRenameColumn, tableName vit
 		IfExists:     ifExists,
 		Column:       vitess.NewColIdent(node.Column.String()),
 		ToColumn:     vitess.NewColIdent(node.NewName.String()),
+	}, nil
+}
+
+// nodeAlterTableSetDefault converts a tree.AlterTableSetDefault instance into an equivalent vitess.DDL instance.
+func nodeAlterTableSetDefault(node *tree.AlterTableSetDefault, tableName vitess.TableName, ifExists bool) (*vitess.DDL, error) {
+	expr, err := nodeExpr(node.Default)
+	if err != nil {
+		return nil, err
+	}
+
+	return &vitess.DDL{
+		Action:   "alter",
+		Table:    tableName,
+		IfExists: ifExists,
+		DefaultSpec: &vitess.DefaultSpec{
+			Action: "set",
+			Column: vitess.NewColIdent(node.Column.String()),
+			Value:  expr,
+		},
+	}, nil
+}
+
+// nodeAlterTableAlterColumnType converts a tree.AlterTableAlterColumnType instance into an equivalent vitess.DDL instance.
+func nodeAlterTableAlterColumnType(node *tree.AlterTableAlterColumnType, tableName vitess.TableName, ifExists bool) (*vitess.DDL, error) {
+	if node.Collation != "" {
+		return nil, fmt.Errorf("ALTER TABLE with COLLATE is not supported yet")
+	}
+
+	if node.Using != nil {
+		return nil, fmt.Errorf("ALTER TABLE with USING is not supported yet")
+	}
+
+	convertType, resolvedType, err := nodeResolvableTypeReference(node.ToType)
+	if err != nil {
+		return nil, err
+	}
+
+	return &vitess.DDL{
+		Action:   "alter",
+		Table:    tableName,
+		IfExists: ifExists,
+		ColumnTypeSpec: &vitess.ColumnTypeSpec{
+			Column: vitess.NewColIdent(node.Column.String()),
+			Type: vitess.ColumnType{
+				Type:         convertType.Type,
+				ResolvedType: resolvedType,
+				Length:       convertType.Length,
+				Scale:        convertType.Scale,
+				Charset:      convertType.Charset,
+			},
+		},
+	}, nil
+}
+
+// nodeAlterTableDropNotNull converts a tree.AlterTableDropNotNull instance into an equivalent vitess.DDL instance.
+func nodeAlterTableDropNotNull(node *tree.AlterTableDropNotNull, tableName vitess.TableName, ifExists bool) (*vitess.DDL, error) {
+	return &vitess.DDL{
+		Action:   "alter",
+		Table:    tableName,
+		IfExists: ifExists,
+		NotNullSpec: &vitess.NotNullSpec{
+			Action: "drop",
+			Column: vitess.NewColIdent(node.Column.String()),
+		},
+	}, nil
+}
+
+// nodeAlterTableSetNotNull converts a tree.AlterTableSetNotNull instance into an equivalent vitess.DDL instance.
+func nodeAlterTableSetNotNull(node *tree.AlterTableSetNotNull, tableName vitess.TableName, ifExists bool) (*vitess.DDL, error) {
+	return &vitess.DDL{
+		Action:   "alter",
+		Table:    tableName,
+		IfExists: ifExists,
+		NotNullSpec: &vitess.NotNullSpec{
+			Action: "set",
+			Column: vitess.NewColIdent(node.Column.String()),
+		},
 	}, nil
 }
