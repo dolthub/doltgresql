@@ -46,6 +46,7 @@ func Init() {
 	initCotd()
 	initCurrentDatabase()
 	initCurrentSchema()
+	initCurrentSetting()
 	initCurrentSchemas()
 	initDegrees()
 	initDiv()

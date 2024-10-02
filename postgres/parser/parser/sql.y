@@ -6032,8 +6032,12 @@ set_session_or_local_cmd:
 | set_role
 
 generic_set_single_config:
+  name '.' name to_or_eq var_list
+  {
+    $$.val = &tree.SetVar{Namespace: $1, Name: $3, Values: $5.exprs()}
+  }
   // var_value includes DEFAULT expr
-  name to_or_eq var_list
+| name to_or_eq var_list
   {
     $$.val = &tree.SetVar{Name: $1, Values: $3.exprs()}
   }
@@ -6283,6 +6287,10 @@ show_session_stmt:
 
 session_var:
   IDENT
+| IDENT '.' IDENT
+  {
+    $$ = $1 + "." + $3
+  }
 // Although ALL, SESSION_USER and DATABASE are identifiers for the
 // purpose of SHOW, they lex as separate token types, so they need
 // separate rules.

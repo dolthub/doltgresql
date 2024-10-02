@@ -37,7 +37,7 @@ func nodeSetVar(node *tree.SetVar) (vitess.Statement, error) {
 		dbName = strings.TrimPrefix(strings.TrimSuffix(dbName, "`"), "`")
 		return &vitess.Use{DBName: vitess.NewTableIdent(dbName)}, nil
 	}
-	if !config.IsValidPostgresConfigParameter(node.Name) && !config.IsValidDoltConfigParameter(node.Name) {
+	if node.Namespace == "" && !config.IsValidPostgresConfigParameter(node.Name) && !config.IsValidDoltConfigParameter(node.Name) {
 		return nil, fmt.Errorf(`ERROR: unrecognized configuration parameter "%s"`, node.Name)
 	}
 	if node.IsLocal {
@@ -63,14 +63,26 @@ func nodeSetVar(node *tree.SetVar) (vitess.Statement, error) {
 			return nil, err
 		}
 	}
-	setStmt := &vitess.Set{
-		Exprs: vitess.SetVarExprs{&vitess.SetVarExpr{
-			Scope: vitess.SetScope_Session,
-			Name: &vitess.ColName{
-				Name: vitess.NewColIdent(node.Name),
-			},
-			Expr: expr,
-		}},
+
+	if node.Namespace == "" {
+		return &vitess.Set{
+			Exprs: vitess.SetVarExprs{&vitess.SetVarExpr{
+				Scope: vitess.SetScope_Session,
+				Name: &vitess.ColName{
+					Name: vitess.NewColIdent(node.Name),
+				},
+				Expr: expr,
+			}},
+		}, nil
+	} else {
+		return &vitess.Set{
+			Exprs: vitess.SetVarExprs{&vitess.SetVarExpr{
+				Scope: vitess.SetScope_User,
+				Name: &vitess.ColName{
+					Name: vitess.NewColIdent(fmt.Sprintf("%s.%s", node.Namespace, node.Name)),
+				},
+				Expr: expr,
+			}},
+		}, nil
 	}
-	return setStmt, nil
 }
