@@ -25,6 +25,7 @@
 package pgdate
 
 import (
+	"strings"
 	"unicode"
 	"unicode/utf8"
 )
@@ -144,14 +145,27 @@ func chunk(s string, buf []stringChunk) (int, string) {
 		return true
 	}
 
+	maybeJulian := strings.HasPrefix(strings.ToLower(s), "j")
+
+	lastSeenDigit := false
+	lastSeenLetter := false
 	for offset, r := range s {
-		if unicode.IsDigit(r) || unicode.IsLetter(r) {
+		isDigit := unicode.IsDigit(r)
+		isLetter := unicode.IsLetter(r)
+		if isDigit || isLetter {
+			if (isDigit && lastSeenLetter && !maybeJulian) || (isLetter && lastSeenDigit) {
+				if !flush() {
+					return -1, ""
+				}
+			}
 			if matchStart >= matchEnd {
 				matchStart = offset
 			}
 			// We're guarded by IsDigit() || IsLetter() above, so
 			// RuneLen() should always return a reasonable value.
 			matchEnd = offset + utf8.RuneLen(r)
+			lastSeenDigit = isDigit
+			lastSeenLetter = isLetter
 		} else if !flush() {
 			return -1, ""
 		}
