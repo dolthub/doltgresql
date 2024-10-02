@@ -53,7 +53,7 @@ func transformSelect(stmt *sqlparser.Select) ([]string, bool) {
 	if !containsUserVars(stmt) {
 		return nil, false
 	}
-	return []string{"gottem"}, true
+	return []string{formatNode(stmt)}, true
 }
 
 func containsUserVars(stmt *sqlparser.Select) bool {
@@ -121,7 +121,13 @@ func formatNode(node sqlparser.SQLNode) string {
 func PostgresNodeFormatter(buf *sqlparser.TrackedBuffer, node sqlparser.SQLNode) {
 	switch node := node.(type) {
 	case sqlparser.ColIdent:
-		buf.Myprintf("%s", node.Lowered())
+		if strings.HasPrefix(node.String(), "@@") {
+			buf.Myprintf("current_setting('.%s')", strings.TrimLeft(node.String(), "@"))
+		} else if strings.HasPrefix(node.String(), "@") {
+			buf.Myprintf("current_setting('doltgres_enginetest.%s')", strings.TrimLeft(node.String(), "@"))
+		} else {
+			buf.Myprintf("%s", node.Lowered())
+		}
 	case *sqlparser.Limit:
 		if node == nil {
 			return
