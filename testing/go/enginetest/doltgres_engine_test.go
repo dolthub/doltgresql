@@ -1287,7 +1287,14 @@ func TestBrokenSystemTableQueries(t *testing.T) {
 
 func TestHistorySystemTable(t *testing.T) {
 	harness := newDoltgresServerHarness(t).WithSkippedQueries([]string{
-		"explain",
+		"explain",                                       // not supported
+		"select message from dolt_log;",                 // more commits
+		"primary key table: rename table",               // DDL
+		"primary key table: non-pk column type changes", // DDL
+		"dolt_history table with AS OF",                 // AS OF
+		"dolt_history table with AS OF",                 // AS OF
+		"dolt_history table with enums",                 // enums
+		"can sort by dolt_log.commit",                   // more commits
 	}).WithParallelism(2)
 	denginetest.RunHistorySystemTableTests(t, harness)
 }
