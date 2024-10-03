@@ -154,28 +154,20 @@ func TestSingleScript(t *testing.T) {
 				"insert into foo1 values (1, 'Ein'), (2, 'Zwei'), (3, 'Drei');",
 				"call dolt_add('.')",
 				"call dolt_commit('-am', 'inserting into foo1', '--date', '2022-08-06T12:00:00');",
-				"set @Commit1 = (select commit_hash from dolt_log where date < '2024-01-01' order by date desc limit 1);",
+				"set @Commit1 = (select hashof('HEAD'));",
 
 				"update foo1 set de='Eins' where n=1;",
 				"call dolt_commit('-am', 'updating data in foo1', '--date', '2022-08-06T12:00:01');",
-				"set @Commit2 = (select commit_hash from dolt_log date < '2024-01-01' order by date desc limit 1);",
+				"set @Commit2 = (select hashof('HEAD'));",
 
 				"insert into foo1 values (4, 'Vier');",
 				"call dolt_commit('-am', 'inserting data in foo1', '--date', '2022-08-06T12:00:02');",
-				"set @Commit3 = (select commit_hash from dolt_log date < '2024-01-01' order by date desc limit 1);",
+				"set @Commit3 = (select hashof('HEAD'));",
 			},
 			Assertions: []queries.ScriptTestAssertion{
 				{
 					Query:    "select count(*) from DOLT_HISTORY_foO1;",
 					Expected: []sql.Row{{10}},
-				},
-				{
-					Query:    "select @Commit1, @Commit2, @Commit3",
-					Expected: []sql.Row{{"f4b1c4d", "f4b1c4e", "f4b1c4f"}},
-				},
-				{
-					Query:    "select commit_hash, message from dolt_log order by date desc",
-					Expected: []sql.Row{},
 				},
 				{
 					Query:    "select n, de from dolt_history_foo1 where commit_hash=@Commit1;",
