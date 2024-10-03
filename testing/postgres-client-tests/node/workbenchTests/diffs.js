@@ -66,25 +66,28 @@ export const diffTests = [
       rowCount: 5,
       oid: null,
       rows: [
-        // TODO: Should we distinguish which table belongs to which schema?
         { table_name: "anotherschema", staged: 0, status: "new schema" },
-        { table_name: "dolt_schemas", staged: 0, status: "new table" },
-        { table_name: "test", staged: 0, status: "modified" },
-        { table_name: "test_info", staged: 0, status: "deleted" },
-        { table_name: "testanother", staged: 0, status: "new table" },
+        {
+          table_name: "anotherschema.testanother",
+          staged: 0,
+          status: "new table",
+        },
+        { table_name: "public.dolt_schemas", staged: 0, status: "new table" },
+        { table_name: "public.test", staged: 0, status: "modified" },
+        { table_name: "public.test_info", staged: 0, status: "deleted" },
       ],
       fields: doltStatusFields,
     },
   },
   {
-    q: "SELECT * FROM dolt_diff_summary('HEAD', 'WORKING') ORDER BY to_table_name", // TODO: Prepared not working
+    q: "SELECT * FROM dolt_diff_summary('HEAD', 'WORKING') ORDER BY to_table_name;", // TODO: Prepared not working
     res: {
       command: "SELECT",
       rowCount: 4,
       oid: null,
       rows: [
         {
-          from_table_name: "test_info", // public.test_info
+          from_table_name: "public.test_info",
           to_table_name: "",
           diff_type: "dropped",
           data_change: 1,
@@ -92,24 +95,24 @@ export const diffTests = [
         },
         {
           from_table_name: "",
-          to_table_name: "dolt_schemas", // public.dolt_schemas
+          to_table_name: "anotherschema.testanother",
           diff_type: "added",
           data_change: 1,
           schema_change: 1,
-        },
-        {
-          from_table_name: "test", // public.test
-          to_table_name: "test", // public.test
-          diff_type: "modified",
-          data_change: 1,
-          schema_change: 0,
         },
         {
           from_table_name: "",
-          to_table_name: "testanother", // anotherschema.testanother
+          to_table_name: "public.dolt_schemas",
           diff_type: "added",
           data_change: 1,
           schema_change: 1,
+        },
+        {
+          from_table_name: "public.test",
+          to_table_name: "public.test",
+          diff_type: "modified",
+          data_change: 1,
+          schema_change: 0,
         },
       ],
       fields: doltDiffSummaryFields,
@@ -123,8 +126,8 @@ export const diffTests = [
       oid: null,
       rows: [
         {
-          from_table_name: "test",
-          to_table_name: "test",
+          from_table_name: "public.test",
+          to_table_name: "public.test",
           diff_type: "modified",
           data_change: 1,
           schema_change: 0,
@@ -143,7 +146,7 @@ export const diffTests = [
       rows: [
         {
           from_table_name: "",
-          to_table_name: "testanother", // anotherschema.testanother
+          to_table_name: "anotherschema.testanother",
           diff_type: "added",
           data_change: 1,
           schema_change: 1,
@@ -160,7 +163,21 @@ export const diffTests = [
       oid: null,
       rows: [
         {
-          table_name: "dolt_schemas", // public.dolt_schemas
+          table_name: "anotherschema.testanother",
+          rows_unmodified: "0",
+          rows_added: "1",
+          rows_deleted: "0",
+          rows_modified: "0",
+          cells_added: "2",
+          cells_deleted: "0",
+          cells_modified: "0",
+          old_row_count: "0",
+          new_row_count: "1",
+          old_cell_count: "0",
+          new_cell_count: "2",
+        },
+        {
+          table_name: "public.dolt_schemas",
           rows_unmodified: "0",
           rows_added: "1",
           rows_deleted: "0",
@@ -174,7 +191,7 @@ export const diffTests = [
           new_cell_count: "5",
         },
         {
-          table_name: "test", // public.test
+          table_name: "public.test",
           rows_unmodified: "2",
           rows_added: "0",
           rows_deleted: "0",
@@ -188,7 +205,7 @@ export const diffTests = [
           new_cell_count: "6",
         },
         {
-          table_name: "test_info", // public.test_info
+          table_name: "public.test_info",
           rows_unmodified: "0",
           rows_added: "0",
           rows_deleted: "1",
@@ -200,20 +217,6 @@ export const diffTests = [
           new_row_count: "0",
           old_cell_count: "3",
           new_cell_count: "0",
-        },
-        {
-          table_name: "testanother", // anotherschema.testanother
-          rows_unmodified: "0",
-          rows_added: "1",
-          rows_deleted: "0",
-          rows_modified: "0",
-          cells_added: "2",
-          cells_deleted: "0",
-          cells_modified: "0",
-          old_row_count: "0",
-          new_row_count: "1",
-          old_cell_count: "0",
-          new_cell_count: "2",
         },
       ],
       fields: doltDiffStatFields,
@@ -227,7 +230,7 @@ export const diffTests = [
       oid: null,
       rows: [
         {
-          table_name: "test_info", // public.test_info
+          table_name: "public.test_info",
           rows_unmodified: "0",
           rows_added: "0",
           rows_deleted: "1",
@@ -252,7 +255,7 @@ export const diffTests = [
       oid: null,
       rows: [
         {
-          table_name: "testanother", // anotherschema.testanother
+          table_name: "anotherschema.testanother",
           rows_unmodified: "0",
           rows_added: "1",
           rows_deleted: "0",
@@ -318,24 +321,21 @@ export const diffTests = [
     matcher: diffRowsMatcher,
   },
   {
-    skip: true, // TODO: error: table not found: testanother
-    q: "SELECT * FROM DOLT_DIFF('HEAD', 'WORKING', 'testanother') ORDER BY to_id ASC, from_id ASC LIMIT 10 OFFSET 0",
+    q: "SELECT * FROM DOLT_DIFF('HEAD', 'WORKING', 'testanother') ORDER BY to_pk ASC, from_pk ASC LIMIT 10 OFFSET 0",
     res: {
       command: "SELECT",
       rowCount: 1,
       oid: null,
       rows: [
         {
-          to_id: null,
-          to_info: null,
-          to_test_pk: null,
+          to_pk: 1,
+          to_value: 2,
           to_commit: "WORKING",
-          to_commit_date: "2023-03-09T07:53:48.614Z",
-          from_id: 1,
-          from_info: "info about test pk 0",
-          from_test_pk: 0,
+          to_commit_date: "2024-10-03T04:33:43.486Z",
+          from_pk: null,
+          from_value: null,
           from_commit: "HEAD",
-          from_commit_date: "2023-03-09T07:53:48.284Z",
+          from_commit_date: "2024-10-03T04:33:43.430Z",
           diff_type: "added",
         },
       ],
@@ -435,7 +435,7 @@ export const diffTests = [
           statement_order: "1",
           from_commit_hash: "",
           to_commit_hash: "WORKING",
-          table_name: "test_info",
+          table_name: "public.test_info",
           diff_type: "schema",
           statement: "DROP TABLE `test_info`;", // TODO: No backticks
         },
@@ -444,14 +444,14 @@ export const diffTests = [
     matcher: patchRowsMatcher,
   },
   {
-    q: "SELECT * FROM DOLT_SCHEMA_DIFF('HEAD', 'WORKING') ORDER BY to_table_name",
+    q: "SELECT * FROM DOLT_SCHEMA_DIFF('HEAD', 'WORKING') ORDER BY to_table_name;",
     res: {
       command: "SELECT",
       rowCount: 3,
       oid: null,
       rows: [
         {
-          from_table_name: "test_info",
+          from_table_name: "public.test_info",
           to_table_name: "",
           from_create_statement:
             "CREATE TABLE `test_info` (\n" + // TODO: No backticks
@@ -466,7 +466,18 @@ export const diffTests = [
         },
         {
           from_table_name: "",
-          to_table_name: "dolt_schemas",
+          to_table_name: "anotherschema.testanother",
+          from_create_statement: "",
+          to_create_statement:
+            "CREATE TABLE `testanother` (\n" +
+            "  `pk` integer NOT NULL,\n" +
+            "  `value` integer,\n" +
+            "  PRIMARY KEY (`pk`)\n" +
+            ") ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_bin;",
+        },
+        {
+          from_table_name: "",
+          to_table_name: "public.dolt_schemas",
           from_create_statement: "",
           to_create_statement:
             "CREATE TABLE `dolt_schemas` (\n" + // TODO: No backticks
@@ -476,17 +487,6 @@ export const diffTests = [
             "  `extra` json,\n" +
             "  `sql_mode` varchar(256) COLLATE utf8mb4_0900_ai_ci,\n" +
             "  PRIMARY KEY (`type`,`name`)\n" +
-            ") ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_bin;",
-        },
-        {
-          from_table_name: "",
-          to_table_name: "testanother",
-          from_create_statement: "",
-          to_create_statement:
-            "CREATE TABLE `testanother` (\n" +
-            "  `pk` integer NOT NULL,\n" +
-            "  `value` integer,\n" +
-            "  PRIMARY KEY (`pk`)\n" +
             ") ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_bin;",
         },
       ],
@@ -501,7 +501,7 @@ export const diffTests = [
       oid: null,
       rows: [
         {
-          from_table_name: "test_info",
+          from_table_name: "public.test_info",
           to_table_name: "",
           from_create_statement:
             "CREATE TABLE `test_info` (\n" + // TODO: No backticks
@@ -527,7 +527,7 @@ export const diffTests = [
       rows: [
         {
           from_table_name: "",
-          to_table_name: "testanother",
+          to_table_name: "anotherschema.testanother",
           from_create_statement: "",
           to_create_statement:
             "CREATE TABLE `testanother` (\n" +
@@ -554,14 +554,14 @@ export const diffTests = [
 
   // Three dot
   {
-    q: "SELECT * FROM dolt_diff_summary('main...HEAD')",
+    q: "SELECT * FROM dolt_diff_summary('main...HEAD') ORDER BY to_table_name",
     res: {
       command: "SELECT",
       rowCount: 4,
       oid: null,
       rows: [
         {
-          from_table_name: "test_info",
+          from_table_name: "public.test_info",
           to_table_name: "",
           diff_type: "dropped",
           data_change: 1,
@@ -569,21 +569,21 @@ export const diffTests = [
         },
         {
           from_table_name: "",
-          to_table_name: "testanother",
+          to_table_name: "anotherschema.testanother",
           diff_type: "added",
           data_change: 1,
           schema_change: 1,
         },
         {
           from_table_name: "",
-          to_table_name: "dolt_schemas",
+          to_table_name: "public.dolt_schemas",
           diff_type: "added",
           data_change: 1,
           schema_change: 1,
         },
         {
-          from_table_name: "test",
-          to_table_name: "test",
+          from_table_name: "public.test",
+          to_table_name: "public.test",
           diff_type: "modified",
           data_change: 1,
           schema_change: 0,
@@ -600,8 +600,8 @@ export const diffTests = [
       oid: null,
       rows: [
         {
-          from_table_name: "test",
-          to_table_name: "test",
+          from_table_name: "public.test",
+          to_table_name: "public.test",
           diff_type: "modified",
           data_change: 1,
           schema_change: 0,
@@ -611,28 +611,14 @@ export const diffTests = [
     },
   },
   {
-    q: "SELECT * FROM dolt_diff_stat('main...HEAD')",
+    q: "SELECT * FROM dolt_diff_stat('main...HEAD') ORDER BY table_name;",
     res: {
       command: "SELECT",
       rowCount: 4,
       oid: null,
       rows: [
         {
-          table_name: "dolt_schemas",
-          rows_unmodified: "0",
-          rows_added: "1",
-          rows_deleted: "0",
-          rows_modified: "0",
-          cells_added: "5",
-          cells_deleted: "0",
-          cells_modified: "0",
-          old_row_count: "0",
-          new_row_count: "1",
-          old_cell_count: "0",
-          new_cell_count: "5",
-        },
-        {
-          table_name: "testanother",
+          table_name: "anotherschema.testanother",
           rows_unmodified: "0",
           rows_added: "1",
           rows_deleted: "0",
@@ -646,7 +632,21 @@ export const diffTests = [
           new_cell_count: "2",
         },
         {
-          table_name: "test",
+          table_name: "public.dolt_schemas",
+          rows_unmodified: "0",
+          rows_added: "1",
+          rows_deleted: "0",
+          rows_modified: "0",
+          cells_added: "5",
+          cells_deleted: "0",
+          cells_modified: "0",
+          old_row_count: "0",
+          new_row_count: "1",
+          old_cell_count: "0",
+          new_cell_count: "5",
+        },
+        {
+          table_name: "public.test",
           rows_unmodified: "2",
           rows_added: "0",
           rows_deleted: "0",
@@ -660,7 +660,7 @@ export const diffTests = [
           new_cell_count: "6",
         },
         {
-          table_name: "test_info",
+          table_name: "public.test_info",
           rows_unmodified: "0",
           rows_added: "0",
           rows_deleted: "1",
@@ -685,7 +685,7 @@ export const diffTests = [
       oid: null,
       rows: [
         {
-          table_name: "test_info",
+          table_name: "public.test_info",
           rows_unmodified: "0",
           rows_added: "0",
           rows_deleted: "1",
@@ -714,7 +714,7 @@ export const diffTests = [
           statement_order: "1",
           from_commit_hash: "",
           to_commit_hash: "",
-          table_name: "test_info",
+          table_name: "public.test_info",
           diff_type: "schema",
           statement: "DROP TABLE `test_info`;",
         },
@@ -722,7 +722,7 @@ export const diffTests = [
           statement_order: "2",
           from_commit_hash: "",
           to_commit_hash: "",
-          table_name: "testanother",
+          table_name: "anotherschema.testanother",
           diff_type: "schema",
           statement:
             "CREATE TABLE `testanother` (\n" +
@@ -736,7 +736,7 @@ export const diffTests = [
           statement_order: "4", // TODO: why
           from_commit_hash: "",
           to_commit_hash: "",
-          table_name: "dolt_schemas",
+          table_name: "public.dolt_schemas",
           diff_type: "schema",
           statement:
             "CREATE TABLE `dolt_schemas` (\n" +
@@ -764,7 +764,7 @@ export const diffTests = [
           statement_order: "1",
           from_commit_hash: "",
           to_commit_hash: "",
-          table_name: "test_info",
+          table_name: "public.test_info",
           diff_type: "schema",
           statement: "DROP TABLE `test_info`;",
         },

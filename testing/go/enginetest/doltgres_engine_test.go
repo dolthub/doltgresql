@@ -1123,6 +1123,7 @@ func TestDoltMerge(t *testing.T) {
 		"merge with float 1.23 column default",                        // alter table
 		"merge with decimal 1.23 column default",                      // alter table
 		"merge with different types",                                  // alter table
+		"select * from dolt_status",                                   // table_name column includes schema name
 	})
 	denginetest.RunDoltMergeTests(t, h)
 }
@@ -1209,6 +1210,7 @@ func TestDoltMergeArtifacts(t *testing.T) {
 func TestDoltReset(t *testing.T) {
 	h := newDoltgresServerHarness(t).WithSkippedQueries([]string{
 		"CALL DOLT_RESET('--hard') should reset the merge state after uncommitted merge", // problem with autocommit detection
+		"select * from dolt_status", // table_name column includes schema name
 	})
 	denginetest.RunDoltResetTest(t, h)
 }

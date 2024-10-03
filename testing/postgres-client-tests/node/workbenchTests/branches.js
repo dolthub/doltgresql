@@ -48,7 +48,7 @@ export const branchTests = [
       oid: null,
       rows: [
         {
-          table_name: "test",
+          table_name: "public.test",
           staged: 0,
           status: "new table",
         },
