@@ -317,7 +317,7 @@ export const tableTests = [
       oid: null,
       rows: [
         {
-          table_name: "test_info",
+          table_name: "public.test_info",
           rows_unmodified: "1",
           rows_added: "3",
           rows_deleted: "0",
@@ -349,7 +349,7 @@ export const tableTests = [
       oid: null,
       rows: [
         {
-          table_name: "test_info",
+          table_name: "public.test_info",
           rows_unmodified: 0,
           rows_added: 3,
           rows_deleted: 0,
@@ -374,7 +374,7 @@ export const tableTests = [
       command: "SELECT",
       rowCount: 1,
       oid: null,
-      rows: [{ table_name: "test_info", staged: 0, status: "modified" }],
+      rows: [{ table_name: "public.test_info", staged: 0, status: "modified" }],
       fields: doltStatusFields,
     },
   },
@@ -394,7 +394,7 @@ export const tableTests = [
       command: "SELECT",
       rowCount: 1,
       oid: null,
-      rows: [{ table_name: "test_info", staged: 1, status: "modified" }],
+      rows: [{ table_name: "public.test_info", staged: 1, status: "modified" }],
       fields: doltStatusFields,
     },
   },
@@ -414,7 +414,7 @@ export const tableTests = [
       command: "SELECT",
       rowCount: 1,
       oid: null,
-      rows: [{ table_name: "test_info", staged: 0, status: "modified" }],
+      rows: [{ table_name: "public.test_info", staged: 0, status: "modified" }],
       fields: doltStatusFields,
     },
   },
