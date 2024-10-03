@@ -50,11 +50,12 @@ func assignTableDef(node tree.TableDef, target *vitess.DDL) error {
 		if target.TableSpec == nil {
 			target.TableSpec = &vitess.TableSpec{}
 		}
-		columnDef, err := nodeColumnTableDef(node)
+		columnDef, checkConstraints, err := nodeColumnTableDef(node)
 		if err != nil {
 			return err
 		}
 		target.TableSpec.Columns = append(target.TableSpec.Columns, columnDef)
+		target.TableSpec.Constraints = append(target.TableSpec.Constraints, checkConstraints...)
 		return nil
 	case *tree.ForeignKeyConstraintTableDef:
 		if target.TableSpec == nil {

@@ -147,7 +147,7 @@ func nodeAlterTableAddColumn(node *tree.AlterTableAddColumn, tableName vitess.Ta
 		return nil, fmt.Errorf("IF NOT EXISTS on a column in an ADD COLUMN statement is not supported yet")
 	}
 
-	vitessColumnDef, err := nodeColumnTableDef(node.ColumnDef)
+	vitessColumnDef, checkConstraints, err := nodeColumnTableDef(node.ColumnDef)
 	if err != nil {
 		return nil, err
 	}
@@ -165,6 +165,7 @@ func nodeAlterTableAddColumn(node *tree.AlterTableAddColumn, tableName vitess.Ta
 					Type: vitessColumnDef.Type,
 				},
 			},
+			Constraints: checkConstraints,
 		},
 	}, nil
 }

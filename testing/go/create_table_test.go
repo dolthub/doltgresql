@@ -63,5 +63,73 @@ func TestCreateTable(t *testing.T) {
 				},
 			},
 		},
+		{
+			Name: "Create table with table check constraint",
+			Assertions: []ScriptTestAssertion{
+				{
+					Query:    `CREATE TABLE products (name text, price numeric, discounted_price numeric, CHECK (price > discounted_price));`,
+					Expected: []sql.Row{},
+				},
+				{
+					Query:    "insert into products values ('apple', 1.20, 0.80);",
+					Expected: []sql.Row{},
+				},
+				{
+					// TODO: the correct error message: `new row for relation "products" violates check constraint "products_chk_al8efblh"`
+					Query:       "insert into products values ('peach', 1.20, 1.80);",
+					ExpectedErr: `Check constraint "products_chk_al8efblh" violated`,
+				},
+				{
+					Query:    "select * from products;",
+					Expected: []sql.Row{{"apple", Numeric("1.20"), Numeric("0.80")}},
+				},
+			},
+		},
+		{
+			Name: "Create table with column check constraint",
+			Assertions: []ScriptTestAssertion{
+				{
+					Query:    "create table mytbl (pk int, v1 int constraint v1constraint check (v1 < 100));",
+					Expected: []sql.Row{},
+				},
+				{
+					Query:    "insert into mytbl values (1, 20);",
+					Expected: []sql.Row{},
+				},
+				{
+					Query:       "insert into mytbl values (2, 200);",
+					ExpectedErr: `Check constraint "v1constraint" violated`,
+				},
+				{
+					Query:    "select * from mytbl;",
+					Expected: []sql.Row{{1, 20}},
+				},
+			},
+		},
+		{
+			Name: "Create table with multiple check constraints on a single column",
+			Assertions: []ScriptTestAssertion{
+				{
+					Query:    "create table mytbl (pk int, v1 int constraint v1constraint check (v1 < 100) check (v1 > 10));",
+					Expected: []sql.Row{},
+				},
+				{
+					Query:    "insert into mytbl values (1, 20);",
+					Expected: []sql.Row{},
+				},
+				{
+					Query:       "insert into mytbl values (2, 200);",
+					ExpectedErr: `Check constraint "v1constraint" violated`, // `new row for relation "mytbl" violates check constraint "v1c"`
+				},
+				{
+					Query:       "insert into mytbl values (3, 5);",
+					ExpectedErr: `Check constraint "mytbl_chk_vsfp88sb" violated`, // `new row for relation "mytbl" violates check constraint "v1c"`
+				},
+				{
+					Query:    "select * from mytbl;",
+					Expected: []sql.Row{{1, 20}},
+				},
+			},
+		},
 	})
 }
