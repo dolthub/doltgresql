@@ -458,6 +458,8 @@ func widenExpectedRows(t *testing.T, q string, expected []sql.Row, sch sql.Schem
 			expected[i][j] = convertedExpected
 		}
 
+		expected[i] = enginetest.WidenRow(sch, expected[i])
+
 		// OK results from GMS manifest as a nil schema in postgres, only accessible via command tags
 		if isNilOrEmptySchema && len(expected[i]) == 1 {
 			if okResult, isOkResult := expected[i][0].(gmstypes.OkResult); isOkResult {

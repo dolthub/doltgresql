@@ -148,38 +148,79 @@ func TestSingleScript(t *testing.T) {
 
 	var scripts = []queries.ScriptTest{
 		{
-			Name: "keyless table",
+			Name: "primary key table: basic cases",
 			SetUpScript: []string{
-				"create table foo1 (n int, de varchar(20));",
-				"insert into foo1 values (1, 'Ein'), (2, 'Zwei'), (3, 'Drei');",
+				"create table t1 (n int primary key, de varchar(20));",
 				"call dolt_add('.')",
-				"call dolt_commit('-am', 'inserting into foo1', '--date', '2022-08-06T12:00:00');",
-				"set @Commit1 = (select hashof('HEAD'));",
+				"insert into t1 values (1, 'Eins'), (2, 'Zwei'), (3, 'Drei');",
+				"call dolt_commit('-am', 'inserting into t1', '--date', '2022-08-06T12:00:01');",
+				"SET @Commit1 = (select hashof('HEAD'));",
 
-				"update foo1 set de='Eins' where n=1;",
-				"call dolt_commit('-am', 'updating data in foo1', '--date', '2022-08-06T12:00:01');",
-				"set @Commit2 = (select hashof('HEAD'));",
+				"alter table t1 add column fr varchar(20);",
+				"insert into t1 values (4, 'Vier', 'Quatre');",
+				"call dolt_commit('-am', 'adding column and inserting data in t1', '--date', '2022-08-06T12:00:02');",
+				"SET @Commit2 = (select hashof('HEAD'));",
 
-				"insert into foo1 values (4, 'Vier');",
-				"call dolt_commit('-am', 'inserting data in foo1', '--date', '2022-08-06T12:00:02');",
-				"set @Commit3 = (select hashof('HEAD'));",
+				"update t1 set fr='Un' where n=1;",
+				"update t1 set fr='Deux' where n=2;",
+				"call dolt_commit('-am', 'updating data in t1', '--date', '2022-08-06T12:00:03');",
+				"SET @Commit3 = (select hashof('HEAD'));",
+
+				"update t1 set de=concat(de, ', meine herren') where n>1;",
+				"call dolt_commit('-am', 'be polite when you address a gentleman', '--date', '2022-08-06T12:00:04');",
+				"SET @Commit4 = (select hashof('HEAD'));",
+
+				"delete from t1 where n=2;",
+				"call dolt_commit('-am', 'we don''t need the number 2', '--date', '2022-08-06T12:00:05');",
+				"SET @Commit5 = (select hashof('HEAD'));",
 			},
 			Assertions: []queries.ScriptTestAssertion{
 				{
-					Query:    "select count(*) from DOLT_HISTORY_foO1;",
-					Expected: []sql.Row{{10}},
+					Query:    "select count(*) from Dolt_History_t1;",
+					Expected: []sql.Row{{18}},
 				},
 				{
-					Query:    "select n, de from dolt_history_foo1 where commit_hash=@Commit1;",
-					Expected: []sql.Row{{1, "Ein"}, {2, "Zwei"}, {3, "Drei"}},
+					Query:    "select n, de, fr from dolt_history_T1 where commit_hash = @Commit1;",
+					Expected: []sql.Row{{1, "Eins", nil}, {2, "Zwei", nil}, {3, "Drei", nil}},
 				},
 				{
-					Query:    "select n, de from dolt_history_Foo1 where commit_hash=@Commit2;",
-					Expected: []sql.Row{{1, "Eins"}, {2, "Zwei"}, {3, "Drei"}},
+					Query:    "select de, fr from dolt_history_T1 where commit_hash = @Commit1;",
+					Expected: []sql.Row{{"Eins", nil}, {"Zwei", nil}, {"Drei", nil}},
 				},
 				{
-					Query:    "select n, de from dolt_history_foo1 where commit_hash=@Commit3;",
-					Expected: []sql.Row{{1, "Eins"}, {2, "Zwei"}, {3, "Drei"}, {4, "Vier"}},
+					Query:    "select n, de, fr from dolt_history_T1 where commit_hash = @Commit2;",
+					Expected: []sql.Row{{1, "Eins", nil}, {2, "Zwei", nil}, {3, "Drei", nil}, {4, "Vier", "Quatre"}},
+				},
+				{
+					Query:    "select n, de, fr from dolt_history_T1 where commit_hash = @Commit3;",
+					Expected: []sql.Row{{1, "Eins", "Un"}, {2, "Zwei", "Deux"}, {3, "Drei", nil}, {4, "Vier", "Quatre"}},
+				},
+				{
+					Query: "select n, de, fr from dolt_history_T1 where commit_hash = @Commit4;",
+					Expected: []sql.Row{
+						{1, "Eins", "Un"},
+						{2, "Zwei, meine herren", "Deux"},
+						{3, "Drei, meine herren", nil},
+						{4, "Vier, meine herren", "Quatre"},
+					},
+				},
+				{
+					Query: "select n, de, fr from dolt_history_T1 where commit_hash = @Commit5;",
+					Expected: []sql.Row{
+						{1, "Eins", "Un"},
+						{3, "Drei, meine herren", nil},
+						{4, "Vier, meine herren", "Quatre"},
+					},
+				},
+				{
+					Query: "select de, fr, commit_hash=@commit1, commit_hash=@commit2, commit_hash=@commit3, commit_hash=@commit4" +
+						" from dolt_history_T1 where n=2 order by commit_date",
+					Expected: []sql.Row{
+						{"Zwei", nil, true, false, false, false},
+						{"Zwei", nil, false, true, false, false},
+						{"Zwei", "Deux", false, false, true, false},
+						{"Zwei, meine herren", "Deux", false, false, false, true},
+					},
 				},
 			},
 		},
