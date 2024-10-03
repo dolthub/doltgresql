@@ -552,6 +552,7 @@ func (d *DoltgresHarness) EvaluateExpectedError(t *testing.T, expected string, e
 // have access to the error kind object eny longer, so we have to see if the error we get matches its pattern
 func (d *DoltgresHarness) EvaluateExpectedErrorKind(t *testing.T, expected *errors.Kind, actualErr error) {
 	pattern := strings.ReplaceAll(expected.Message, "%s", "\\w+")
+	pattern = strings.ReplaceAll(pattern, "%q", "\"\\w+\"")
 	regex, regexErr := regexp.Compile(pattern)
 	require.NoError(t, regexErr)
 
