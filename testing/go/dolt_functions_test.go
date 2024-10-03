@@ -381,7 +381,6 @@ func TestDoltFunctions(t *testing.T) {
 					},
 				},
 				{
-					Skip:  true, // TODO: ERROR: table not found: t2
 					Query: "SELECT statement_order, table_name, diff_type, statement FROM dolt_patch('HEAD', 'WORKING', 't2')",
 					Expected: []sql.Row{
 						{Numeric("1"), "testschema.t2", "schema", "CREATE TABLE `t2` (\n  `pk` integer NOT NULL,\n  PRIMARY KEY (`pk`)\n) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_bin;"},
