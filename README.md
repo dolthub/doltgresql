@@ -185,28 +185,37 @@ a standard suite of Sysbench tests.
 
 We use these same Sysbench tests to benchmark DoltgreSQL and compare the results to PostgreSQL.
 
-Here are the benchmarks for DoltgreSQL version `0.4.0`.
+Here are the benchmarks for DoltgreSQL version `0.12.0`.
 
 <!-- START_LATENCY_RESULTS_TABLE -->
 
-| Read Tests            | PostgreSQL | DoltgreSQL | Multiple |
-| --------------------- | ---------- | ---------- | -------- |
-| oltp_point_select     | 0.13       | 0.54       | 4.2      |
-| oltp_read_only        | 2.35       | 12.75      | 5.4      |
-| select_random_points  | 0.2        | 1.04       | 5.2      |
-| select_random_ranges  | 0.4        | 1.03       | 2.6      |
-| reads_mean_multiplier |            |            | 4.4      |
+| Read Tests                   | PostgreSQL | DoltgreSQL | Multiple |
+| ---------------------------- | ---------- | ---------- | -------- |
+| covering_index_scan_postgres | 1.82       | 4.25       | 2.3      |
+| groupby_scan_postgres        | 5.37       | 43.39      | 8.1      |
+| index_join_postgres          | 1.96       | 10.65      | 5.4      |
+| index_join_scan_postgres     | 0.74       | 9.56       | 12.9     |
+| index_scan_postgres          | 18.28      | 106.75     | 5.8      |
+| oltp_point_select            | 0.14       | 0.51       | 3.6      |
+| oltp_read_only               | 2.52       | 12.98      | 5.2      |
+| select_random_points         | 0.21       | 1.12       | 5.3      |
+| select_random_ranges         | 0.41       | 1.37       | 3.3      |
+| table_scan_postgres          | 18.28      | 106.75     | 5.8      |
+| types_table_scan_postgres    | 44.98      | 223.34     | 5.0      |
+| reads_mean_multiplier        |            |            | 5.7      |
 
-| Write Tests            | PostgreSQL | DoltgreSQL | Multiple |
-| ---------------------- | ---------- | ---------- | -------- |
-| oltp_insert            | 0.78       | 3.02       | 3.9      |
-| oltp_read_write        | 3.89       | 20.37      | 5.2      |
-| oltp_update_index      | 0.81       | 3.19       | 3.9      |
-| oltp_update_non_index  | 0.78       | 3.13       | 4.0      |
-| oltp_write_only        | 1.37       | 7.56       | 5.5      |
-| writes_mean_multiplier |            |            | 4.5      |
+| Write Tests                  | PostgreSQL | DoltgreSQL | Multiple |
+| ---------------------------- | ---------- | ---------- | -------- |
+| oltp_delete_insert_postgres  | 2.43       | 6.55       | 2.7      |
+| oltp_insert                  | 0.97       | 3.25       | 3.4      |
+| oltp_read_write              | 4.25       | 19.29      | 4.5      |
+| oltp_update_index            | 1.03       | 3.07       | 3.0      |
+| oltp_update_non_index        | 1.03       | 2.97       | 2.9      |
+| oltp_write_only              | 1.64       | 6.32       | 3.9      |
+| types_delete_insert_postgres | 2.03       | 6.21       | 3.1      |
+| writes_mean_multiplier       |            |            | 3.4      |
 
-| Overall Mean Multiple | 4.4 |
+| Overall Mean Multiple | 4.8 |
 | --------------------- | --- |
 
 <!-- END_LATENCY_RESULTS_TABLE -->
@@ -214,27 +223,27 @@ Here are the benchmarks for DoltgreSQL version `0.4.0`.
 
 # Correctness
 
-Dolt is [99.99% compatible](https://docs.dolthub.com/sql-reference/benchmarks/correctness) with MySQL based on a
+Dolt is [100% compatible](https://docs.dolthub.com/sql-reference/benchmarks/correctness) with MySQL based on a
 standard suite of correctness tests called `sqllogictest`.
 
 We use these same tests to measure the correctness of DoltgreSQL.
 
-Here are DoltgreSQL's sqllogictest results for version `0.5.0`. Tests that
+Here are DoltgreSQL's sqllogictest results for version `0.12.0`. Tests that
 did not run could not complete due to a timeout earlier in the run.
 
 <!-- START_CORRECTNESS_RESULTS_TABLE -->
 
 | Results     | Count   |
 | ----------- | ------- |
-| did not run | 1415    |
-| timeout     | 767635  |
-| not ok      | 3915370 |
-| ok          | 1762969 |
+| did not run | 91270   |
+| not ok      | 464029  |
+| ok          | 5135990 |
+| timeout     | 16      |
 
-| Total Tests | 5679755 |
+| Total Tests | 5691305 |
 | ----------- | ------- |
 
-| Correctness Percentage | 31.039525 |
+| Correctness Percentage | 90.242747 |
 | ---------------------- | --------- |
 
 <!-- END_CORRECTNESS_RESULTS_TABLE -->

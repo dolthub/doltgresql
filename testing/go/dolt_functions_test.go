@@ -365,15 +365,15 @@ func TestDoltFunctions(t *testing.T) {
 					},
 				},
 				{
-					Skip:  true,
 					Query: "SELECT statement_order, table_name, diff_type, statement FROM dolt_patch('HEAD', 'WORKING')",
 					Expected: []sql.Row{
 						{Numeric("1"), "public.t1", "schema", "CREATE TABLE `t1` (\n  `pk` integer NOT NULL,\n  PRIMARY KEY (`pk`)\n) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_bin;"},
 						{Numeric("2"), "public.t1", "data", "INSERT INTO `t1` (`pk`) VALUES (1);"},
+						{Numeric("3"), "testschema.t2", "schema", "CREATE TABLE `t2` (\n  `pk` integer NOT NULL,\n  PRIMARY KEY (`pk`)\n) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_bin;"},
+						{Numeric("4"), "testschema.t2", "data", "INSERT INTO `t2` (`pk`) VALUES (1);"},
 					},
 				},
 				{
-					Skip:  true,
 					Query: "SELECT statement_order, table_name, diff_type, statement FROM dolt_patch('HEAD', 'WORKING', 't1')",
 					Expected: []sql.Row{
 						{Numeric("1"), "public.t1", "schema", "CREATE TABLE `t1` (\n  `pk` integer NOT NULL,\n  PRIMARY KEY (`pk`)\n) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_bin;"},
@@ -381,22 +381,42 @@ func TestDoltFunctions(t *testing.T) {
 					},
 				},
 				{
-					Skip:  true,
-					Query: "SELECT * FROM dolt_schema_diff('HEAD', 'WORKING')",
+					Skip:  true, // TODO: ERROR: table not found: t2
+					Query: "SELECT statement_order, table_name, diff_type, statement FROM dolt_patch('HEAD', 'WORKING', 't2')",
 					Expected: []sql.Row{
-						{"", "public.t1", "", "CREATE TABLE `t1` (\n  `pk` integer NOT NULL,\n  PRIMARY KEY (`pk`)\n) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_bin;"},
+						{Numeric("1"), "testschema.t2", "schema", "CREATE TABLE `t2` (\n  `pk` integer NOT NULL,\n  PRIMARY KEY (`pk`)\n) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_bin;"},
+						{Numeric("2"), "testschema.t2", "data", "INSERT INTO `t2` (`pk`) VALUES (1);"},
 					},
 				},
 				{
-					Skip:  true,
+					Query: "SELECT * FROM dolt_schema_diff('HEAD', 'WORKING')",
+					Expected: []sql.Row{
+						{"", "public.t1", "", "CREATE TABLE `t1` (\n  `pk` integer NOT NULL,\n  PRIMARY KEY (`pk`)\n) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_bin;"},
+						{"", "testschema.t2", "", "CREATE TABLE `t2` (\n  `pk` integer NOT NULL,\n  PRIMARY KEY (`pk`)\n) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_bin;"},
+					},
+				},
+				{
 					Query: "SELECT * FROM dolt_schema_diff('HEAD', 'WORKING', 't1')",
 					Expected: []sql.Row{
 						{"", "public.t1", "", "CREATE TABLE `t1` (\n  `pk` integer NOT NULL,\n  PRIMARY KEY (`pk`)\n) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_bin;"},
 					},
 				},
 				{
+					Query: "SELECT * FROM dolt_schema_diff('HEAD', 'WORKING', 't2')",
+					Expected: []sql.Row{
+						{"", "testschema.t2", "", "CREATE TABLE `t2` (\n  `pk` integer NOT NULL,\n  PRIMARY KEY (`pk`)\n) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_bin;"},
+					},
+				},
+				{
 					Skip:  true, // ERROR: table not found: t1
 					Query: "SELECT * FROM dolt_query_diff('select * from t1 as of main', 'select * from t1')",
+					Expected: []sql.Row{
+						{"", "public.t1", "added", 1, 1},
+					},
+				},
+				{
+					Skip:  true, // ERROR: table not found: t2
+					Query: "SELECT * FROM dolt_query_diff('select * from t2 as of main', 'select * from t2')",
 					Expected: []sql.Row{
 						{"", "public.t1", "added", 1, 1},
 					},
