@@ -10883,13 +10883,14 @@ table_ref:
 numeric_table_ref table_ref_options
   {
     /* SKIP DOC */
-    $$.val = $$
+    $$ = $2
     $$.val.Expr = $1.tblExpr()
   }
 | relation_expr table_ref_options
   {
+    /* SKIP DOC */
+    $$ = $2
     name := $1.unresolvedObjectName().ToTableName()
-    $$val = $$
     $$.val.Expr = &name
   }
 | select_with_parens opt_ordinality opt_alias_clause
@@ -10958,8 +10959,9 @@ numeric_table_ref table_ref_options
   }
 
  // table_ref_options is the set of all possible combinations of AS OF and alias, since the optional versions of those
- // rules create shift/reduce conflicts if they're combined in same ruletable_ref_options:
-  opt_index_flags opt_ordinality alias_clause
+ // rules create shift/reduce conflicts if they're combined in same rule
+ table_ref_options:
+ opt_index_flags opt_ordinality alias_clause
   {
     /* SKIP DOC */
     $$.val = &tree.AliasedTableExpr{
