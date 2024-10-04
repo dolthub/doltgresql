@@ -10764,9 +10764,9 @@ values_clause:
 //  where_clause  - qualifications for joins or restrictions
 
 from_clause:
-  FROM from_list opt_as_of_clause
+  FROM from_list
   {
-    $$.val = tree.From{Tables: $2.tblExprs(), AsOf: $3.asOfClause()}
+    $$.val = tree.From{Tables: $2.tblExprs()}
   }
 | FROM error // SHOW HELP: <SOURCE>
 | /* EMPTY */
@@ -11090,6 +11090,10 @@ as_of_clause:
   AS_LA OF SYSTEM TIME a_expr
   {
     $$.val = tree.AsOfClause{Expr: $5.expr()}
+  }
+| AS_LA OF a_expr
+  {
+    $$.val = tree.AsOfClause{Expr: $3.expr()}
   }
 
 opt_as_of_clause:

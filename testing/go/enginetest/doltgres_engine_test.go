@@ -1147,7 +1147,6 @@ func TestDoltRebasePrepared(t *testing.T) {
 }
 
 func TestDoltRevert(t *testing.T) {
-	t.Skip()
 	h := newDoltgresServerHarness(t)
 	denginetest.RunDoltRevertTests(t, h)
 }

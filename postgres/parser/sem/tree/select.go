@@ -222,17 +222,12 @@ func (a *AsOfClause) Format(ctx *FmtCtx) {
 // From represents a FROM clause.
 type From struct {
 	Tables TableExprs
-	AsOf   AsOfClause
 }
 
 // Format implements the NodeFormatter interface.
 func (node *From) Format(ctx *FmtCtx) {
 	ctx.WriteString("FROM ")
 	ctx.FormatNode(&node.Tables)
-	if node.AsOf.Expr != nil {
-		ctx.WriteByte(' ')
-		ctx.FormatNode(&node.AsOf)
-	}
 }
 
 // TableExprs represents a list of table expressions.

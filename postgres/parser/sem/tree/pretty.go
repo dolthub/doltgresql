@@ -597,12 +597,6 @@ func (node *From) docRow(p *PrettyCfg) pretty.TableRow {
 		return emptyRow
 	}
 	d := node.Tables.doc(p)
-	if node.AsOf.Expr != nil {
-		d = p.nestUnder(
-			d,
-			p.Doc(&node.AsOf),
-		)
-	}
 	return p.row("FROM", d)
 }
 
