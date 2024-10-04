@@ -11122,16 +11122,43 @@ opt_alias_clause:
     $$.val = tree.AliasClause{}
   }
 
+// as_of_clause is limited to constants and a few function expressions. The entire expressoin tree is too permissive, 
+// and causes many conflicts elsewhere in the rest of the grammar.
+// These clauses are chosen carefully from the d_expr list.
 as_of_clause:
-  AS_LA OF SYSTEM TIME a_expr
+ AS_LA OF SYSTEM TIME SCONST
   {
     $$.val = tree.AsOfClause{Expr: $5.expr()}
   }
-| AS_LA OF a_expr
+| AS_LA OF SYSTEM typed_literal
+  {
+    $$.val = tree.AsOfClause{Expr: $5.expr()}
+  }
+| AS_LA OF SYSTEM TIME func_expr_common_subexpr
+  {
+    $$.val = tree.AsOfClause{Expr: $5.expr()}
+  }
+| AS_LA OF SYSTEM TIME func_application
+  {
+    $$.val = tree.AsOfClause{Expr: $5.expr()}
+  }
+| AS_LA OF SCONST
   {
     $$.val = tree.AsOfClause{Expr: $3.expr()}
   }
-
+| AS_LA OF typed_literal
+  {
+    $$.val = tree.AsOfClause{Expr: $3.expr()}
+  }
+| AS_LA OF func_expr_common_subexpr
+  {
+    $$.val = tree.AsOfClause{Expr: $3.expr()}
+  }
+| AS_LA OF func_application
+  {
+    $$.val = tree.AsOfClause{Expr: $3.expr()}
+  }
+  
 opt_as_of_clause:
   as_of_clause
 | /* EMPTY */
