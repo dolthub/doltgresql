@@ -10886,15 +10886,11 @@ numeric_table_ref table_ref_options
     $$.val = $$
     $$.val.Expr = $1.tblExpr()
   }
-| relation_expr opt_index_flags opt_ordinality opt_alias_clause
+| relation_expr table_ref_options
   {
     name := $1.unresolvedObjectName().ToTableName()
-    $$.val = &tree.AliasedTableExpr{
-      Expr:       &name,
-      IndexFlags: $2.indexFlags(),
-      Ordinality: $3.bool(),
-      As:         $4.aliasClause(),
-    }
+    $$val = $$
+    $$.val.Expr = &name
   }
 | select_with_parens opt_ordinality opt_alias_clause
   {
@@ -10961,6 +10957,8 @@ numeric_table_ref table_ref_options
     $$.val = &tree.AliasedTableExpr{Expr: &tree.StatementSource{ Statement: $2.stmt() }, Ordinality: $4.bool(), As: $5.aliasClause() }
   }
 
+// table_ref_options is the set of all possible combinations of AS OF and AS, since the optional versions of those
+// rules clauses creates shift/reduce conflicts if they're combined in same rule
 table_ref_options:
 opt_index_flags opt_ordinality alias_clause
   {
@@ -10980,17 +10978,17 @@ opt_index_flags opt_ordinality alias_clause
         AsOf:       &($3),
     }
   }
-| opt_index_flags opt_ordinality alias_clause as_of_clause
+| opt_index_flags opt_ordinality as_of_clause AS table_alias_name opt_column_list
   {
     /* SKIP DOC */
+    alias := tree.AliasClause{Alias: tree.Name($5), Cols: $6.nameList()}
     $$.val = &tree.AliasedTableExpr{
         IndexFlags: $1.indexFlags(),
         Ordinality: $2.bool(),
-        As:         $3.aliasClause(),
-        AsOf:       &($4),
+        AsOf:       &($3),
+        As:         alias,
     }
   }
-
 
 numeric_table_ref:
   '[' iconst64 opt_tableref_col_list alias_clause ']'
