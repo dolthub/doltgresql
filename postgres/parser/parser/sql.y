@@ -10971,6 +10971,26 @@ opt_index_flags opt_ordinality alias_clause
         As:         $3.aliasClause(),
     }
   }
+| opt_index_flags opt_ordinality as_of_clause
+  {
+    /* SKIP DOC */
+    $$.val = &tree.AliasedTableExpr{
+        IndexFlags: $1.indexFlags(),
+        Ordinality: $2.bool(),
+        AsOf:       &($3),
+    }
+  }
+| opt_index_flags opt_ordinality alias_clause as_of_clause
+  {
+    /* SKIP DOC */
+    $$.val = &tree.AliasedTableExpr{
+        IndexFlags: $1.indexFlags(),
+        Ordinality: $2.bool(),
+        As:         $3.aliasClause(),
+        AsOf:       &($4),
+    }
+  }
+
 
 numeric_table_ref:
   '[' iconst64 opt_tableref_col_list alias_clause ']'

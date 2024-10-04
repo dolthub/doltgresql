@@ -395,6 +395,7 @@ type AliasedTableExpr struct {
 	Ordinality bool
 	Lateral    bool
 	As         AliasClause
+	AsOf       *AsOfClause
 }
 
 // Format implements the NodeFormatter interface.
