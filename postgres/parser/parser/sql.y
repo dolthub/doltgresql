@@ -1261,7 +1261,7 @@ func (u *sqlSymUnion) aggregatesToDrop() []tree.AggregateToDrop {
 %type <bool> opt_ordinality opt_compact
 %type <*tree.Order> sortby
 %type <tree.IndexElem> index_elem index_elem_name_only partition_index_elem
-%type <tree.TableExpr> table_ref numeric_table_ref func_table
+%type <tree.TableExpr> table_ref numeric_table_ref func_table table_ref_options
 %type <tree.Exprs> rowsfrom_list
 %type <tree.Expr> rowsfrom_item
 %type <tree.TableExpr> joined_table
@@ -10880,22 +10880,11 @@ opt_index_flags:
 //
 // %SeeAlso: WEBDOCS/table-expressions.html
 table_ref:
-  numeric_table_ref opt_index_flags opt_ordinality opt_alias_clause
+numeric_table_ref table_ref_options
   {
     /* SKIP DOC */
-    $$.val = &tree.AliasedTableExpr{
-        Expr:       $1.tblExpr(),
-        IndexFlags: $2.indexFlags(),
-        Ordinality: $3.bool(),
-        As:         $4.aliasClause(),
-    }
-  }
-| numeric_table_ref as_of_clause
-  {
-    /* SKIP DOC */
-    $$.val = &tree.AliasedTableExpr{
-        Expr:       $1.tblExpr(),
-    }
+    $$.val = $$
+    $$.val.Expr = $1.tblExpr()
   }
 | relation_expr opt_index_flags opt_ordinality opt_alias_clause
   {
@@ -10970,6 +10959,17 @@ table_ref:
 | '[' row_source_extension_stmt ']' opt_ordinality opt_alias_clause
   {
     $$.val = &tree.AliasedTableExpr{Expr: &tree.StatementSource{ Statement: $2.stmt() }, Ordinality: $4.bool(), As: $5.aliasClause() }
+  }
+
+table_ref_options:
+opt_index_flags opt_ordinality alias_clause
+  {
+    /* SKIP DOC */
+    $$.val = &tree.AliasedTableExpr{
+        IndexFlags: $1.indexFlags(),
+        Ordinality: $2.bool(),
+        As:         $3.aliasClause(),
+    }
   }
 
 numeric_table_ref:
