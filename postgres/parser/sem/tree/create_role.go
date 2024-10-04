@@ -37,7 +37,7 @@ var _ Statement = &CreateRole{}
 
 // CreateRole represents a CREATE ROLE statement.
 type CreateRole struct {
-	Name        Expr
+	Name        string
 	IfNotExists bool
 	IsRole      bool
 	KVOptions   KVOptions
@@ -54,7 +54,7 @@ func (node *CreateRole) Format(ctx *FmtCtx) {
 	if node.IfNotExists {
 		ctx.WriteString("IF NOT EXISTS ")
 	}
-	ctx.FormatNode(node.Name)
+	ctx.WriteString(node.Name)
 
 	if len(node.KVOptions) > 0 {
 		ctx.WriteString(" WITH")
