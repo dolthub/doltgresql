@@ -10957,9 +10957,8 @@ numeric_table_ref table_ref_options
     $$.val = &tree.AliasedTableExpr{Expr: &tree.StatementSource{ Statement: $2.stmt() }, Ordinality: $4.bool(), As: $5.aliasClause() }
   }
 
-// table_ref_options is the set of all possible combinations of AS OF and AS, since the optional versions of those
-// rules clauses creates shift/reduce conflicts if they're combined in same rule
-table_ref_options:
+ // table_ref_options is the set of all possible combinations of AS OF and alias, since the optional versions of those
+ // rules create shift/reduce conflicts if they're combined in same ruletable_ref_options:
   opt_index_flags opt_ordinality alias_clause
   {
     /* SKIP DOC */
@@ -11130,7 +11129,7 @@ as_of_clause:
   {
     $$.val = tree.AsOfClause{Expr: $5.expr()}
   }
-| AS_LA OF SYSTEM typed_literal
+| AS_LA OF SYSTEM TIME typed_literal
   {
     $$.val = tree.AsOfClause{Expr: $5.expr()}
   }
