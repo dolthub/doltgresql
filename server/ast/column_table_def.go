@@ -24,7 +24,7 @@ import (
 )
 
 // nodeColumnTableDef handles *tree.ColumnTableDef nodes.
-func nodeColumnTableDef(node *tree.ColumnTableDef) (_ *vitess.ColumnDefinition, err error) {
+func nodeColumnTableDef(node *tree.ColumnTableDef) (*vitess.ColumnDefinition, error) {
 	if node == nil {
 		return nil, nil
 	}
@@ -69,9 +69,7 @@ func nodeColumnTableDef(node *tree.ColumnTableDef) (_ *vitess.ColumnDefinition, 
 	if _, ok := defaultExpr.(*vitess.FuncExpr); ok {
 		defaultExpr = &vitess.ParenExpr{Expr: defaultExpr}
 	}
-	if len(node.CheckExprs) > 0 {
-		return nil, fmt.Errorf("column-declared CHECK expressions are not yet supported")
-	}
+
 	var fkDef *vitess.ForeignKeyDefinition
 	if node.References.Table != nil {
 		if len(node.References.Col) == 0 {
@@ -117,7 +115,7 @@ func nodeColumnTableDef(node *tree.ColumnTableDef) (_ *vitess.ColumnDefinition, 
 			return nil, fmt.Errorf(`multiple default values specified for column "%s"`, node.Name)
 		}
 	}
-	return &vitess.ColumnDefinition{
+	colDef := &vitess.ColumnDefinition{
 		Name: vitess.NewColIdent(string(node.Name)),
 		Type: vitess.ColumnType{
 			Type:          convertType.Type,
@@ -133,5 +131,29 @@ func nodeColumnTableDef(node *tree.ColumnTableDef) (_ *vitess.ColumnDefinition, 
 			GeneratedExpr: generated,
 			Stored:        generatedStored,
 		},
-	}, nil
+	}
+
+	if len(node.CheckExprs) > 0 {
+		// TODO: vitess does not support multiple check constraint on a single column
+		if len(node.CheckExprs) > 1 {
+			return nil, fmt.Errorf("column-declared multiple CHECK expressions are not yet supported")
+		}
+		var checkConstraints = make([]*vitess.ConstraintDefinition, len(node.CheckExprs))
+		for i, checkExpr := range node.CheckExprs {
+			expr, err := nodeExpr(checkExpr.Expr)
+			if err != nil {
+				return nil, err
+			}
+			checkConstraints[i] = &vitess.ConstraintDefinition{
+				Name: string(checkExpr.ConstraintName),
+				Details: &vitess.CheckConstraintDefinition{
+					Expr:     expr,
+					Enforced: true,
+				},
+			}
+		}
+		// until we support multiple constraints in a column
+		colDef.Type.Constraint = checkConstraints[0]
+	}
+	return colDef, nil
 }
