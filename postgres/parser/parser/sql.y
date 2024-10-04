@@ -10890,6 +10890,13 @@ table_ref:
         As:         $4.aliasClause(),
     }
   }
+| numeric_table_ref as_of_clause
+  {
+    /* SKIP DOC */
+    $$.val = &tree.AliasedTableExpr{
+        Expr:       $1.tblExpr(),
+    }
+  }
 | relation_expr opt_index_flags opt_ordinality opt_alias_clause
   {
     name := $1.unresolvedObjectName().ToTableName()
