@@ -10960,7 +10960,7 @@ numeric_table_ref table_ref_options
 // table_ref_options is the set of all possible combinations of AS OF and AS, since the optional versions of those
 // rules clauses creates shift/reduce conflicts if they're combined in same rule
 table_ref_options:
-opt_index_flags opt_ordinality alias_clause
+  opt_index_flags opt_ordinality alias_clause
   {
     /* SKIP DOC */
     $$.val = &tree.AliasedTableExpr{
@@ -10982,6 +10982,17 @@ opt_index_flags opt_ordinality alias_clause
   {
     /* SKIP DOC */
     alias := tree.AliasClause{Alias: tree.Name($5), Cols: $6.nameList()}
+    $$.val = &tree.AliasedTableExpr{
+        IndexFlags: $1.indexFlags(),
+        Ordinality: $2.bool(),
+        AsOf:       &($3),
+        As:         alias,
+    }
+  }
+| opt_index_flags opt_ordinality as_of_clause table_alias_name opt_column_list
+  {
+    /* SKIP DOC */
+    alias := tree.AliasClause{Alias: tree.Name($4), Cols: $5.nameList()}
     $$.val = &tree.AliasedTableExpr{
         IndexFlags: $1.indexFlags(),
         Ordinality: $2.bool(),
