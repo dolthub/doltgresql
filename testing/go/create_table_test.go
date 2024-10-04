@@ -107,6 +107,7 @@ func TestCreateTable(t *testing.T) {
 			},
 		},
 		{
+			Skip: true, // TODO: vitess does not support multiple check constraint on a single column
 			Name: "Create table with multiple check constraints on a single column",
 			Assertions: []ScriptTestAssertion{
 				{
@@ -119,11 +120,36 @@ func TestCreateTable(t *testing.T) {
 				},
 				{
 					Query:       "insert into mytbl values (2, 200);",
-					ExpectedErr: `Check constraint "v1constraint" violated`, // `new row for relation "mytbl" violates check constraint "v1c"`
+					ExpectedErr: `Check constraint "v1constraint" violated`,
 				},
 				{
 					Query:       "insert into mytbl values (3, 5);",
-					ExpectedErr: `Check constraint "mytbl_chk_vsfp88sb" violated`, // `new row for relation "mytbl" violates check constraint "v1c"`
+					ExpectedErr: `Check constraint "mytbl_chk_vsfp88sb" violated`,
+				},
+				{
+					Query:    "select * from mytbl;",
+					Expected: []sql.Row{{1, 20}},
+				},
+			},
+		},
+		{
+			Name: "Create table with a check constraints on a single column and a table check constraint",
+			Assertions: []ScriptTestAssertion{
+				{
+					Query:    "create table mytbl (pk int, v1 int constraint v1constraint check (v1 < 100), check (v1 > 10));",
+					Expected: []sql.Row{},
+				},
+				{
+					Query:    "insert into mytbl values (1, 20);",
+					Expected: []sql.Row{},
+				},
+				{
+					Query:       "insert into mytbl values (2, 200);",
+					ExpectedErr: `Check constraint "v1constraint" violated`,
+				},
+				{
+					Query:       "insert into mytbl values (3, 5);",
+					ExpectedErr: `Check constraint "mytbl_chk_vsfp88sb" violated`,
 				},
 				{
 					Query:    "select * from mytbl;",

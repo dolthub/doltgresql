@@ -147,10 +147,13 @@ func nodeAlterTableAddColumn(node *tree.AlterTableAddColumn, tableName vitess.Ta
 		return nil, fmt.Errorf("IF NOT EXISTS on a column in an ADD COLUMN statement is not supported yet")
 	}
 
-	vitessColumnDef, checkConstraints, err := nodeColumnTableDef(node.ColumnDef)
+	vitessColumnDef, err := nodeColumnTableDef(node.ColumnDef)
 	if err != nil {
 		return nil, err
 	}
+
+	tableSpec := &vitess.TableSpec{}
+	tableSpec.AddColumn(vitessColumnDef)
 
 	return &vitess.DDL{
 		Action:       "alter",
@@ -158,15 +161,7 @@ func nodeAlterTableAddColumn(node *tree.AlterTableAddColumn, tableName vitess.Ta
 		Table:        tableName,
 		IfExists:     ifExists,
 		Column:       vitessColumnDef.Name,
-		TableSpec: &vitess.TableSpec{
-			Columns: []*vitess.ColumnDefinition{
-				{
-					Name: vitessColumnDef.Name,
-					Type: vitessColumnDef.Type,
-				},
-			},
-			Constraints: checkConstraints,
-		},
+		TableSpec:    tableSpec,
 	}, nil
 }
 

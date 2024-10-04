@@ -24,18 +24,18 @@ import (
 )
 
 // nodeColumnTableDef handles *tree.ColumnTableDef nodes.
-func nodeColumnTableDef(node *tree.ColumnTableDef) (*vitess.ColumnDefinition, []*vitess.ConstraintDefinition, error) {
+func nodeColumnTableDef(node *tree.ColumnTableDef) (*vitess.ColumnDefinition, error) {
 	if node == nil {
-		return nil, nil, nil
+		return nil, nil
 	}
 	if len(node.Nullable.ConstraintName) > 0 ||
 		len(node.DefaultExpr.ConstraintName) > 0 ||
 		len(node.UniqueConstraintName) > 0 {
-		return nil, nil, fmt.Errorf("non-foreign key column constraint names are not yet supported")
+		return nil, fmt.Errorf("non-foreign key column constraint names are not yet supported")
 	}
 	convertType, resolvedType, err := nodeResolvableTypeReference(node.Type)
 	if err != nil {
-		return nil, nil, err
+		return nil, err
 	}
 
 	var isNull vitess.BoolVal
@@ -51,7 +51,7 @@ func nodeColumnTableDef(node *tree.ColumnTableDef) (*vitess.ColumnDefinition, []
 		isNull = true
 		isNotNull = false
 	default:
-		return nil, nil, fmt.Errorf("unknown NULL type encountered")
+		return nil, fmt.Errorf("unknown NULL type encountered")
 	}
 	keyOpt := vitess.ColumnKeyOption(0) // colKeyNone, unexported for some reason
 	if node.PrimaryKey.IsPrimaryKey {
@@ -63,7 +63,7 @@ func nodeColumnTableDef(node *tree.ColumnTableDef) (*vitess.ColumnDefinition, []
 	}
 	defaultExpr, err := nodeExpr(node.DefaultExpr.Expr)
 	if err != nil {
-		return nil, nil, err
+		return nil, err
 	}
 	// Wrap any default expression using a function call in parens to match MySQL's column default requirements
 	if _, ok := defaultExpr.(*vitess.FuncExpr); ok {
@@ -73,7 +73,7 @@ func nodeColumnTableDef(node *tree.ColumnTableDef) (*vitess.ColumnDefinition, []
 	var fkDef *vitess.ForeignKeyDefinition
 	if node.References.Table != nil {
 		if len(node.References.Col) == 0 {
-			return nil, nil, fmt.Errorf("implicit primary key matching on column foreign key is not yet supported")
+			return nil, fmt.Errorf("implicit primary key matching on column foreign key is not yet supported")
 		}
 		fkDef, err = nodeForeignKeyConstraintTableDef(&tree.ForeignKeyConstraintTableDef{
 			Name:     node.References.ConstraintName,
@@ -84,7 +84,7 @@ func nodeColumnTableDef(node *tree.ColumnTableDef) (*vitess.ColumnDefinition, []
 			Match:    node.References.Match,
 		})
 		if err != nil {
-			return nil, nil, err
+			return nil, err
 		}
 	}
 	var generated vitess.Expr
@@ -92,14 +92,14 @@ func nodeColumnTableDef(node *tree.ColumnTableDef) (*vitess.ColumnDefinition, []
 	if node.Computed.Computed {
 		generated, err = nodeExpr(node.Computed.Expr)
 		if err != nil {
-			return nil, nil, err
+			return nil, err
 		}
 		//TODO: need to add support for VIRTUAL in the parser
 		generatedStored = true
 	}
 	if node.IsSerial {
 		if resolvedType == nil {
-			return nil, nil, fmt.Errorf("serial type was not resolvable")
+			return nil, fmt.Errorf("serial type was not resolvable")
 		}
 		switch resolvedType.BaseID() {
 		case pgtypes.DoltgresTypeBaseID_Int16:
@@ -109,10 +109,10 @@ func nodeColumnTableDef(node *tree.ColumnTableDef) (*vitess.ColumnDefinition, []
 		case pgtypes.DoltgresTypeBaseID_Int64:
 			resolvedType = pgtypes.Int64Serial
 		default:
-			return nil, nil, fmt.Errorf(`type "%s" cannot be serial`, resolvedType.String())
+			return nil, fmt.Errorf(`type "%s" cannot be serial`, resolvedType.String())
 		}
 		if defaultExpr != nil {
-			return nil, nil, fmt.Errorf(`multiple default values specified for column "%s"`, node.Name)
+			return nil, fmt.Errorf(`multiple default values specified for column "%s"`, node.Name)
 		}
 	}
 	colDef := &vitess.ColumnDefinition{
@@ -132,12 +132,17 @@ func nodeColumnTableDef(node *tree.ColumnTableDef) (*vitess.ColumnDefinition, []
 			Stored:        generatedStored,
 		},
 	}
-	var checkConstraints = make([]*vitess.ConstraintDefinition, len(node.CheckExprs))
+
 	if len(node.CheckExprs) > 0 {
+		// TODO: vitess does not support multiple check constraint on a single column
+		if len(node.CheckExprs) > 1 {
+			return nil, fmt.Errorf("column-declared multiple CHECK expressions are not yet supported")
+		}
+		var checkConstraints = make([]*vitess.ConstraintDefinition, len(node.CheckExprs))
 		for i, checkExpr := range node.CheckExprs {
 			expr, err := nodeExpr(checkExpr.Expr)
 			if err != nil {
-				return nil, nil, err
+				return nil, err
 			}
 			checkConstraints[i] = &vitess.ConstraintDefinition{
 				Name: string(checkExpr.ConstraintName),
@@ -147,8 +152,8 @@ func nodeColumnTableDef(node *tree.ColumnTableDef) (*vitess.ColumnDefinition, []
 				},
 			}
 		}
-		// TODO: vitess does not support multiple check constraint on a single column
+		// until we support multiple constraints in a column
 		colDef.Type.Constraint = checkConstraints[0]
 	}
-	return colDef, checkConstraints, nil
+	return colDef, nil
 }
