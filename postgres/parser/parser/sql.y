@@ -10961,7 +10961,15 @@ numeric_table_ref table_ref_options
  // table_ref_options is the set of all possible combinations of AS OF and alias, since the optional versions of those
  // rules create shift/reduce conflicts if they're combined in same rule
 table_ref_options:
- opt_index_flags opt_ordinality alias_clause
+  opt_index_flags opt_ordinality
+  {
+    /* SKIP DOC */
+    $$.val = &tree.AliasedTableExpr{
+        IndexFlags: $1.indexFlags(),
+        Ordinality: $2.bool(),
+    }
+  }
+| opt_index_flags opt_ordinality alias_clause
   {
     /* SKIP DOC */
     $$.val = &tree.AliasedTableExpr{
