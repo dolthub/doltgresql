@@ -10884,14 +10884,14 @@ numeric_table_ref table_ref_options
   {
     /* SKIP DOC */
     $$ = $2
-    $$.val.Expr = $1.tblExpr()
+    $$.val.(*tree.AliasedTableExpr).Expr = $1.tblExpr()
   }
 | relation_expr table_ref_options
   {
     /* SKIP DOC */
     $$ = $2
     name := $1.unresolvedObjectName().ToTableName()
-    $$.val.Expr = &name
+    $$.val.(*tree.AliasedTableExpr).Expr = &name
   }
 | select_with_parens opt_ordinality opt_alias_clause
   {
@@ -10960,7 +10960,7 @@ numeric_table_ref table_ref_options
 
  // table_ref_options is the set of all possible combinations of AS OF and alias, since the optional versions of those
  // rules create shift/reduce conflicts if they're combined in same rule
- table_ref_options:
+table_ref_options:
  opt_index_flags opt_ordinality alias_clause
   {
     /* SKIP DOC */
@@ -10973,20 +10973,22 @@ numeric_table_ref table_ref_options
 | opt_index_flags opt_ordinality as_of_clause
   {
     /* SKIP DOC */
+    asOf := $3.asOfClause()    
     $$.val = &tree.AliasedTableExpr{
         IndexFlags: $1.indexFlags(),
         Ordinality: $2.bool(),
-        AsOf:       &($3),
+        AsOf:       &asOf,
     }
   }
 | opt_index_flags opt_ordinality as_of_clause AS table_alias_name opt_column_list
   {
     /* SKIP DOC */
     alias := tree.AliasClause{Alias: tree.Name($5), Cols: $6.nameList()}
+    asOf := $3.asOfClause()
     $$.val = &tree.AliasedTableExpr{
         IndexFlags: $1.indexFlags(),
         Ordinality: $2.bool(),
-        AsOf:       &($3),
+        AsOf:       &asOf,
         As:         alias,
     }
   }
@@ -10994,10 +10996,11 @@ numeric_table_ref table_ref_options
   {
     /* SKIP DOC */
     alias := tree.AliasClause{Alias: tree.Name($4), Cols: $5.nameList()}
+    asOf := $3.asOfClause()
     $$.val = &tree.AliasedTableExpr{
         IndexFlags: $1.indexFlags(),
         Ordinality: $2.bool(),
-        AsOf:       &($3),
+        AsOf:       &asOf,
         As:         alias,
     }
   }
@@ -11129,7 +11132,7 @@ opt_alias_clause:
 as_of_clause:
  AS_LA OF SYSTEM TIME SCONST
   {
-    $$.val = tree.AsOfClause{Expr: $5.expr()}
+    $$.val = tree.AsOfClause{Expr: tree.NewStrVal($5)}
   }
 | AS_LA OF SYSTEM TIME typed_literal
   {
@@ -11145,7 +11148,7 @@ as_of_clause:
   }
 | AS_LA OF SCONST
   {
-    $$.val = tree.AsOfClause{Expr: $3.expr()}
+    $$.val = tree.AsOfClause{Expr: tree.NewStrVal($3)}
   }
 | AS_LA OF typed_literal
   {
