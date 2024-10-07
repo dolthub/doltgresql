@@ -31,7 +31,7 @@ func nodeAliasedTableExpr(node *tree.AliasedTableExpr) (*vitess.AliasedTableExpr
 		return nil, fmt.Errorf("index flags are not yet supported")
 	}
 	var aliasExpr vitess.SimpleTableExpr
-	
+
 	switch expr := node.Expr.(type) {
 	case *tree.TableName:
 		var err error
@@ -107,7 +107,7 @@ func nodeAliasedTableExpr(node *tree.AliasedTableExpr) (*vitess.AliasedTableExpr
 			Time: asOfExpr,
 		}
 	}
-	
+
 	return &vitess.AliasedTableExpr{
 		Expr:    aliasExpr,
 		As:      vitess.NewTableIdent(alias),

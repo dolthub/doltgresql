@@ -1205,7 +1205,7 @@ func (stmt *SelectClause) walkStmt(v Visitor) Statement {
 			ret.Exprs[i].Expr = e
 		}
 	}
-	
+
 	if stmt.Where != nil {
 		e, changed := WalkExpr(v, stmt.Where.Expr)
 		if changed {
