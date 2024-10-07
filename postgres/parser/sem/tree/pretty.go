@@ -682,6 +682,15 @@ func (node *AliasedTableExpr) doc(p *PrettyCfg) pretty.Doc {
 			p.keywordWithText(" ", "WITH ORDINALITY", ""),
 		)
 	}
+	if node.AsOf != nil {
+		d = p.nestUnder(
+			d,
+			pretty.Concat(
+				p.keywordWithText("", "AS OF SYSTEM TIME", " "),
+				p.Doc(node.AsOf),
+			),
+		)
+	}
 	if node.As.Alias != "" {
 		d = p.nestUnder(
 			d,

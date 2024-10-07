@@ -410,6 +410,10 @@ func (node *AliasedTableExpr) Format(ctx *FmtCtx) {
 	if node.Ordinality {
 		ctx.WriteString(" WITH ORDINALITY")
 	}
+	if node.AsOf != nil {
+		ctx.WriteString(" AS OF SYSTEM TIME ")
+		ctx.FormatNode(node.AsOf)
+	}
 	if node.As.Alias != "" {
 		ctx.WriteString(" AS ")
 		ctx.FormatNode(&node.As)
