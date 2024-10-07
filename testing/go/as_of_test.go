@@ -67,6 +67,53 @@ func TestAsOf(t *testing.T) {
 						{1, 1},
 					},
 				},
+				{
+					Query: `SELECT * FROM test t1 join test2 AS OF 'HEAD~' AS t2 on t1.a = t2.b`,
+					Expected: []sql.Row{
+						{1, 1},
+					},
+				},
+			},
+		},
+		{
+			Name: "Syntax variations", // There are no unit tests for the parser, so test all variations of the AS OF syntax
+			SetUpScript: []string{
+				`CREATE TABLE test (a INT)`,
+				`INSERT INTO test VALUES (1)`,
+				`CALL DOLT_COMMIT('-Am', 'new table')`,
+				`INSERT INTO test VALUES (2)`,
+				`CALL DOLT_COMMIT('-am', 'new row')`,
+				`CREATE TABLE test2 (b INT)`,
+				`INSERT INTO test2 VALUES (1)`,
+				`CALL DOLT_COMMIT('-Am', 'new table')`,
+				`INSERT INTO test2 VALUES (2)`,
+				`CALL DOLT_COMMIT('-am', 'new row')`,
+			},
+			Assertions: []ScriptTestAssertion{
+				{
+					Query: `SELECT * FROM test AS OF 'HEAD~3' AS t1 join test2 AS OF 'HEAD' AS t2 on t1.a = t2.b`,
+					Expected: []sql.Row{
+						{1, 1},
+					},
+				},
+				{
+					Query: `SELECT * FROM test AS OF 'HEAD~3' t1 join test2 AS OF 'HEAD' t2 on t1.a = t2.b`,
+					Expected: []sql.Row{
+						{1, 1},
+					},
+				},
+				{
+					Query: `SELECT * FROM test AS t1 join test2 AS OF 'HEAD~' t2 on t1.a = t2.b`,
+					Expected: []sql.Row{
+						{1, 1},
+					},
+				},
+				{
+					Query: `SELECT * FROM test AS OF SYSTEM TIME 'HEAD~3' join test2 AS t2 on test.a = t2.b`,
+					Expected: []sql.Row{
+						{1, 1},
+					},
+				},
 			},
 		},
 	})
