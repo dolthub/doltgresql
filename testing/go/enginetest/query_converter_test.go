@@ -40,9 +40,48 @@ func transformAST(query string) ([]string, bool) {
 		}
 	case *sqlparser.Set:
 		return transformSet(stmt)
+	case *sqlparser.Select:
+		return transformSelect(stmt)
 	}
 
 	return nil, false
+}
+
+// transformSelect converts a MySQL SELECT statement to a postgres-compatible SELECT statement.
+// This is a very broad surface area, so we do this very selectively
+func transformSelect(stmt *sqlparser.Select) ([]string, bool) {
+	if !containsUserVars(stmt) {
+		return nil, false
+	}
+	return []string{formatNode(stmt)}, true
+}
+
+func containsUserVars(stmt *sqlparser.Select) bool {
+	foundUserVar := false
+	detectUserVar := func(node sqlparser.SQLNode) (bool, error) {
+		switch node := node.(type) {
+		case *sqlparser.ColName:
+			if strings.HasPrefix(node.Name.String(), "@") && !strings.HasPrefix(node.Name.String(), "@@") {
+				foundUserVar = true
+				return false, nil
+			}
+		}
+		return true, nil
+	}
+
+	for _, sel := range stmt.SelectExprs {
+		sqlparser.Walk(detectUserVar, sel)
+	}
+
+	if foundUserVar {
+		return true
+	}
+
+	if stmt.Where != nil {
+		sqlparser.Walk(detectUserVar, stmt.Where)
+	}
+
+	return foundUserVar
 }
 
 func transformSet(stmt *sqlparser.Set) ([]string, bool) {
@@ -51,9 +90,7 @@ func transformSet(stmt *sqlparser.Set) ([]string, bool) {
 	// the semantics aren't quite the same, but setting autocommit to false is the same as beginning a transaction
 	// (for most scripts). Setting autocommit to true is a no-op.
 	if len(stmt.Exprs) == 1 && strings.ToLower(stmt.Exprs[0].Name.String()) == "autocommit" {
-		buf := sqlparser.NewTrackedBuffer(nil)
-		stmt.Exprs[0].Expr.Format(buf)
-		exprStr := strings.ToLower(buf.String())
+		exprStr := strings.ToLower(formatNode(stmt.Exprs[0].Expr))
 		if exprStr == "0" || exprStr == "off" || exprStr == "'off'" || exprStr == "false" {
 			queries = append(queries, "START TRANSACTION")
 			return queries, true
@@ -65,12 +102,43 @@ func transformSet(stmt *sqlparser.Set) ([]string, bool) {
 	for _, expr := range stmt.Exprs {
 		if expr.Scope == sqlparser.GlobalStr {
 			queries = append(queries, fmt.Sprintf("SET GLOBAL %s = %s", expr.Name, expr.Expr))
+		} else if expr.Scope == "user" {
+			queries = append(queries, fmt.Sprintf("SET doltgres_enginetest.%s = %s", expr.Name, formatNode(expr.Expr)))
 		} else {
 			queries = append(queries, fmt.Sprintf("SET %s = %s", expr.Name, expr.Expr))
 		}
 	}
 
 	return queries, true
+}
+
+func formatNode(node sqlparser.SQLNode) string {
+	buf := sqlparser.NewTrackedBuffer(PostgresNodeFormatter)
+	node.Format(buf)
+	return buf.String()
+}
+
+func PostgresNodeFormatter(buf *sqlparser.TrackedBuffer, node sqlparser.SQLNode) {
+	switch node := node.(type) {
+	case sqlparser.ColIdent:
+		if strings.HasPrefix(node.String(), "@@") {
+			buf.Myprintf("current_setting('.%s')", strings.TrimLeft(node.String(), "@"))
+		} else if strings.HasPrefix(node.String(), "@") {
+			buf.Myprintf("current_setting('doltgres_enginetest.%s')", strings.TrimLeft(node.String(), "@"))
+		} else {
+			buf.Myprintf("%s", node.Lowered())
+		}
+	case *sqlparser.Limit:
+		if node == nil {
+			return
+		}
+		buf.Myprintf(" limit %v", node.Rowcount)
+		if node.Offset != nil {
+			buf.Myprintf(" offset %v", node.Offset)
+		}
+	default:
+		node.Format(buf)
+	}
 }
 
 func transformCreateTable(query string, stmt *sqlparser.DDL) ([]string, bool) {

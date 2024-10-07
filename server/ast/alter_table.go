@@ -152,20 +152,16 @@ func nodeAlterTableAddColumn(node *tree.AlterTableAddColumn, tableName vitess.Ta
 		return nil, err
 	}
 
+	tableSpec := &vitess.TableSpec{}
+	tableSpec.AddColumn(vitessColumnDef)
+
 	return &vitess.DDL{
 		Action:       "alter",
 		ColumnAction: "add",
 		Table:        tableName,
 		IfExists:     ifExists,
 		Column:       vitessColumnDef.Name,
-		TableSpec: &vitess.TableSpec{
-			Columns: []*vitess.ColumnDefinition{
-				{
-					Name: vitessColumnDef.Name,
-					Type: vitessColumnDef.Type,
-				},
-			},
-		},
+		TableSpec:    tableSpec,
 	}, nil
 }
 
