@@ -25,7 +25,6 @@ import (
 	"github.com/dolthub/go-mysql-server/enginetest/queries"
 	"github.com/dolthub/go-mysql-server/enginetest/scriptgen/setup"
 	"github.com/dolthub/go-mysql-server/sql"
-	"github.com/dolthub/go-mysql-server/sql/types"
 	"github.com/stretchr/testify/require"
 
 	"github.com/dolthub/dolt/go/libraries/doltcore/dtestutils"
@@ -149,45 +148,78 @@ func TestSingleScript(t *testing.T) {
 
 	var scripts = []queries.ScriptTest{
 		{
-			Name: "`Truncate table` should keep artifacts - conflicts",
+			Name: "primary key table: basic cases",
 			SetUpScript: []string{
-				"create table t (pk int primary key, col1 int);",
-				"call dolt_commit('-Am', 'create table');",
-				"call dolt_checkout('-b', 'other');",
+				"create table t1 (n int primary key, de varchar(20));",
+				"call dolt_add('.')",
+				"insert into t1 values (1, 'Eins'), (2, 'Zwei'), (3, 'Drei');",
+				"call dolt_commit('-am', 'inserting into t1', '--date', '2022-08-06T12:00:01');",
+				"SET @Commit1 = (select hashof('HEAD'));",
 
-				"insert into t values (1, 100);",
-				"insert into t values (2, 200);",
-				"call dolt_commit('-Am', 'other commit');",
+				"alter table t1 add column fr varchar(20);",
+				"insert into t1 values (4, 'Vier', 'Quatre');",
+				"call dolt_commit('-am', 'adding column and inserting data in t1', '--date', '2022-08-06T12:00:02');",
+				"SET @Commit2 = (select hashof('HEAD'));",
 
-				"call dolt_checkout('main');",
-				"insert into t values (1, -100);",
-				"insert into t values (2, -200);",
-				"call dolt_commit('-Am', 'main commit');",
+				"update t1 set fr='Un' where n=1;",
+				"update t1 set fr='Deux' where n=2;",
+				"call dolt_commit('-am', 'updating data in t1', '--date', '2022-08-06T12:00:03');",
+				"SET @Commit3 = (select hashof('HEAD'));",
 
-				"set dolt_allow_commit_conflicts = on;",
-				"call dolt_merge('other');",
+				"update t1 set de=concat(de, ', meine herren') where n>1;",
+				"call dolt_commit('-am', 'be polite when you address a gentleman', '--date', '2022-08-06T12:00:04');",
+				"SET @Commit4 = (select hashof('HEAD'));",
+
+				"delete from t1 where n=2;",
+				"call dolt_commit('-am', 'we don''t need the number 2', '--date', '2022-08-06T12:00:05');",
+				"SET @Commit5 = (select hashof('HEAD'));",
 			},
 			Assertions: []queries.ScriptTestAssertion{
 				{
-					Query: "select base_pk, base_col1, our_pk, our_col1, their_pk, their_col1 from dolt_conflicts_t;",
+					Query:    "select count(*) from Dolt_History_t1;",
+					Expected: []sql.Row{{18}},
+				},
+				{
+					Query:    "select n, de, fr from dolt_history_T1 where commit_hash = @Commit1;",
+					Expected: []sql.Row{{1, "Eins", nil}, {2, "Zwei", nil}, {3, "Drei", nil}},
+				},
+				{
+					Query:    "select de, fr from dolt_history_T1 where commit_hash = @Commit1;",
+					Expected: []sql.Row{{"Eins", nil}, {"Zwei", nil}, {"Drei", nil}},
+				},
+				{
+					Query:    "select n, de, fr from dolt_history_T1 where commit_hash = @Commit2;",
+					Expected: []sql.Row{{1, "Eins", nil}, {2, "Zwei", nil}, {3, "Drei", nil}, {4, "Vier", "Quatre"}},
+				},
+				{
+					Query:    "select n, de, fr from dolt_history_T1 where commit_hash = @Commit3;",
+					Expected: []sql.Row{{1, "Eins", "Un"}, {2, "Zwei", "Deux"}, {3, "Drei", nil}, {4, "Vier", "Quatre"}},
+				},
+				{
+					Query: "select n, de, fr from dolt_history_T1 where commit_hash = @Commit4;",
 					Expected: []sql.Row{
-						{nil, nil, 1, -100, 1, 100},
-						{nil, nil, 2, -200, 2, 200},
+						{1, "Eins", "Un"},
+						{2, "Zwei, meine herren", "Deux"},
+						{3, "Drei, meine herren", nil},
+						{4, "Vier, meine herren", "Quatre"},
 					},
 				},
 				{
-					Query:    "truncate t;",
-					Expected: []sql.Row{{types.NewOkResult(2)}},
-				},
-				{
-					Query:    "select * from t;",
-					Expected: []sql.Row{},
-				},
-				{
-					Query: "select base_pk, base_col1, our_pk, our_col1, their_pk, their_col1 from dolt_conflicts_t;",
+					Query: "select n, de, fr from dolt_history_T1 where commit_hash = @Commit5;",
 					Expected: []sql.Row{
-						{nil, nil, nil, nil, 1, 100},
-						{nil, nil, nil, nil, 2, 200},
+						{1, "Eins", "Un"},
+						{3, "Drei, meine herren", nil},
+						{4, "Vier, meine herren", "Quatre"},
+					},
+				},
+				{
+					Query: "select de, fr, commit_hash=@commit1, commit_hash=@commit2, commit_hash=@commit3, commit_hash=@commit4" +
+						" from dolt_history_T1 where n=2 order by commit_date",
+					Expected: []sql.Row{
+						{"Zwei", nil, true, false, false, false},
+						{"Zwei", nil, false, true, false, false},
+						{"Zwei", "Deux", false, false, true, false},
+						{"Zwei, meine herren", "Deux", false, false, false, true},
 					},
 				},
 			},
@@ -1254,8 +1286,16 @@ func TestBrokenSystemTableQueries(t *testing.T) {
 }
 
 func TestHistorySystemTable(t *testing.T) {
-	t.Skip()
-	harness := newDoltgresServerHarness(t).WithParallelism(2)
+	harness := newDoltgresServerHarness(t).WithSkippedQueries([]string{
+		"explain",                                       // not supported
+		"select message from dolt_log;",                 // more commits
+		"primary key table: rename table",               // DDL
+		"primary key table: non-pk column type changes", // DDL
+		"dolt_history table with AS OF",                 // AS OF
+		"dolt_history table with AS OF",                 // AS OF
+		"dolt_history table with enums",                 // enums
+		"can sort by dolt_log.commit",                   // more commits
+	}).WithParallelism(2)
 	denginetest.RunHistorySystemTableTests(t, harness)
 }
 
