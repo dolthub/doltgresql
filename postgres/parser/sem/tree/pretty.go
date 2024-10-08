@@ -597,12 +597,6 @@ func (node *From) docRow(p *PrettyCfg) pretty.TableRow {
 		return emptyRow
 	}
 	d := node.Tables.doc(p)
-	if node.AsOf.Expr != nil {
-		d = p.nestUnder(
-			d,
-			p.Doc(&node.AsOf),
-		)
-	}
 	return p.row("FROM", d)
 }
 
@@ -686,6 +680,15 @@ func (node *AliasedTableExpr) doc(p *PrettyCfg) pretty.Doc {
 		d = pretty.Concat(
 			d,
 			p.keywordWithText(" ", "WITH ORDINALITY", ""),
+		)
+	}
+	if node.AsOf != nil {
+		d = p.nestUnder(
+			d,
+			pretty.Concat(
+				p.keywordWithText("", "AS OF SYSTEM TIME", " "),
+				p.Doc(node.AsOf),
+			),
 		)
 	}
 	if node.As.Alias != "" {

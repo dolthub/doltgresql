@@ -1261,7 +1261,7 @@ func (u *sqlSymUnion) aggregatesToDrop() []tree.AggregateToDrop {
 %type <bool> opt_ordinality opt_compact
 %type <*tree.Order> sortby
 %type <tree.IndexElem> index_elem index_elem_name_only partition_index_elem
-%type <tree.TableExpr> table_ref numeric_table_ref func_table
+%type <tree.TableExpr> table_ref numeric_table_ref func_table table_ref_options
 %type <tree.Exprs> rowsfrom_list
 %type <tree.Expr> rowsfrom_item
 %type <tree.TableExpr> joined_table
@@ -10761,9 +10761,9 @@ values_clause:
 //  where_clause  - qualifications for joins or restrictions
 
 from_clause:
-  FROM from_list opt_as_of_clause
+  FROM from_list
   {
-    $$.val = tree.From{Tables: $2.tblExprs(), AsOf: $3.asOfClause()}
+    $$.val = tree.From{Tables: $2.tblExprs()}
   }
 | FROM error // SHOW HELP: <SOURCE>
 | /* EMPTY */
@@ -10877,25 +10877,18 @@ opt_index_flags:
 //
 // %SeeAlso: WEBDOCS/table-expressions.html
 table_ref:
-  numeric_table_ref opt_index_flags opt_ordinality opt_alias_clause
+numeric_table_ref table_ref_options
   {
     /* SKIP DOC */
-    $$.val = &tree.AliasedTableExpr{
-        Expr:       $1.tblExpr(),
-        IndexFlags: $2.indexFlags(),
-        Ordinality: $3.bool(),
-        As:         $4.aliasClause(),
-    }
+    $$ = $2
+    $$.val.(*tree.AliasedTableExpr).Expr = $1.tblExpr()
   }
-| relation_expr opt_index_flags opt_ordinality opt_alias_clause
+| relation_expr table_ref_options
   {
+    /* SKIP DOC */
+    $$ = $2
     name := $1.unresolvedObjectName().ToTableName()
-    $$.val = &tree.AliasedTableExpr{
-      Expr:       &name,
-      IndexFlags: $2.indexFlags(),
-      Ordinality: $3.bool(),
-      As:         $4.aliasClause(),
-    }
+    $$.val.(*tree.AliasedTableExpr).Expr = &name
   }
 | select_with_parens opt_ordinality opt_alias_clause
   {
@@ -10960,6 +10953,61 @@ table_ref:
 | '[' row_source_extension_stmt ']' opt_ordinality opt_alias_clause
   {
     $$.val = &tree.AliasedTableExpr{Expr: &tree.StatementSource{ Statement: $2.stmt() }, Ordinality: $4.bool(), As: $5.aliasClause() }
+  }
+
+ // table_ref_options is the set of all possible combinations of AS OF and alias, since the optional versions of those
+ // rules create shift/reduce conflicts if they're combined in same rule
+table_ref_options:
+  opt_index_flags opt_ordinality
+  {
+    /* SKIP DOC */
+    $$.val = &tree.AliasedTableExpr{
+        IndexFlags: $1.indexFlags(),
+        Ordinality: $2.bool(),
+    }
+  }
+| opt_index_flags opt_ordinality alias_clause
+  {
+    /* SKIP DOC */
+    $$.val = &tree.AliasedTableExpr{
+        IndexFlags: $1.indexFlags(),
+        Ordinality: $2.bool(),
+        As:         $3.aliasClause(),
+    }
+  }
+| opt_index_flags opt_ordinality as_of_clause
+  {
+    /* SKIP DOC */
+    asOf := $3.asOfClause()    
+    $$.val = &tree.AliasedTableExpr{
+        IndexFlags: $1.indexFlags(),
+        Ordinality: $2.bool(),
+        AsOf:       &asOf,
+    }
+  }
+| opt_index_flags opt_ordinality as_of_clause AS table_alias_name opt_column_list
+  {
+    /* SKIP DOC */
+    alias := tree.AliasClause{Alias: tree.Name($5), Cols: $6.nameList()}
+    asOf := $3.asOfClause()
+    $$.val = &tree.AliasedTableExpr{
+        IndexFlags: $1.indexFlags(),
+        Ordinality: $2.bool(),
+        AsOf:       &asOf,
+        As:         alias,
+    }
+  }
+| opt_index_flags opt_ordinality as_of_clause table_alias_name opt_column_list
+  {
+    /* SKIP DOC */
+    alias := tree.AliasClause{Alias: tree.Name($4), Cols: $5.nameList()}
+    asOf := $3.asOfClause()
+    $$.val = &tree.AliasedTableExpr{
+        IndexFlags: $1.indexFlags(),
+        Ordinality: $2.bool(),
+        AsOf:       &asOf,
+        As:         alias,
+    }
   }
 
 numeric_table_ref:
@@ -11083,12 +11131,43 @@ opt_alias_clause:
     $$.val = tree.AliasClause{}
   }
 
+// as_of_clause is limited to constants and a few function expressions. The entire expressoin tree is too permissive, 
+// and causes many conflicts elsewhere in the rest of the grammar.
+// These clauses are chosen carefully from the d_expr list.
 as_of_clause:
-  AS_LA OF SYSTEM TIME a_expr
+ AS_LA OF SYSTEM TIME SCONST
+  {
+    $$.val = tree.AsOfClause{Expr: tree.NewStrVal($5)}
+  }
+| AS_LA OF SYSTEM TIME typed_literal
   {
     $$.val = tree.AsOfClause{Expr: $5.expr()}
   }
-
+| AS_LA OF SYSTEM TIME func_expr_common_subexpr
+  {
+    $$.val = tree.AsOfClause{Expr: $5.expr()}
+  }
+| AS_LA OF SYSTEM TIME func_application
+  {
+    $$.val = tree.AsOfClause{Expr: $5.expr()}
+  }
+| AS_LA OF SCONST
+  {
+    $$.val = tree.AsOfClause{Expr: tree.NewStrVal($3)}
+  }
+| AS_LA OF typed_literal
+  {
+    $$.val = tree.AsOfClause{Expr: $3.expr()}
+  }
+| AS_LA OF func_expr_common_subexpr
+  {
+    $$.val = tree.AsOfClause{Expr: $3.expr()}
+  }
+| AS_LA OF func_application
+  {
+    $$.val = tree.AsOfClause{Expr: $3.expr()}
+  }
+  
 opt_as_of_clause:
   as_of_clause
 | /* EMPTY */

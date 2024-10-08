@@ -15,8 +15,6 @@
 package ast
 
 import (
-	"fmt"
-
 	vitess "github.com/dolthub/vitess/go/vt/sqlparser"
 
 	"github.com/dolthub/doltgresql/postgres/parser/sem/tree"
@@ -27,26 +25,9 @@ func nodeFrom(node tree.From) (vitess.TableExprs, error) {
 	if len(node.Tables) == 0 {
 		return nil, nil
 	}
-	asOfExpr, err := nodeExpr(node.AsOf.Expr)
-	if err != nil {
-		return nil, err
-	}
 	tableExprs, err := nodeTableExprs(node.Tables)
 	if err != nil {
 		return nil, err
-	}
-	if asOfExpr != nil {
-		//TODO: determine if this will always be Time
-		asOf := &vitess.AsOf{
-			Time: asOfExpr,
-		}
-		for _, tableExpr := range tableExprs {
-			if aliasedTableExpr, ok := tableExpr.(*vitess.AliasedTableExpr); ok {
-				aliasedTableExpr.AsOf = asOf
-			} else {
-				return nil, fmt.Errorf("this particular usage of AS OF is not yet supported")
-			}
-		}
 	}
 	return tableExprs, err
 }

@@ -38,10 +38,6 @@ func nodeSelectClause(node *tree.SelectClause) (*vitess.Select, error) {
 	// pass along a join node.
 	// TODO: handle more than two tables, also make this more robust with handling more node types
 	if len(node.From.Tables) == 2 && node.Where != nil {
-		// We don't yet handle AS OF for rewrites
-		if node.From.AsOf.Expr != nil {
-			goto PostJoinRewrite
-		}
 		tableNames := make(map[tree.TableName]int)
 		tableAliases := make(map[tree.TableName]int)
 		// First we need to get the table names and aliases, since they'll be referenced by the filters
