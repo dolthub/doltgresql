@@ -565,7 +565,7 @@ func RunReplicationScript(t *testing.T, script ReplicationTest) {
 
 	ctx = context.Background()
 	t.Run(script.Name, func(t *testing.T) {
-		runReplicationScript(ctx, t, script, replicaConn, primaryDns)
+		runReplicationScript(ctx, t, script, replicaConn.Default, primaryDns)
 	})
 }
 

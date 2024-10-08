@@ -18,10 +18,10 @@ import "testing"
 
 func TestDropUser(t *testing.T) {
 	tests := []QueryParses{
-		Parses("DROP USER name"),
-		Parses("DROP USER IF EXISTS name"),
-		Parses("DROP USER name , name"),
-		Parses("DROP USER IF EXISTS name , name"),
+		Converts("DROP USER name"),
+		Converts("DROP USER IF EXISTS name"),
+		Converts("DROP USER name , name"),
+		Converts("DROP USER IF EXISTS name , name"),
 	}
 	RunTests(t, tests)
 }

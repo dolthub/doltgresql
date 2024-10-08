@@ -15,11 +15,14 @@
 package ast
 
 import (
+	"errors"
 	"fmt"
+	"strings"
 
 	vitess "github.com/dolthub/vitess/go/vt/sqlparser"
 
 	"github.com/dolthub/doltgresql/postgres/parser/sem/tree"
+	pgnodes "github.com/dolthub/doltgresql/server/node"
 )
 
 // nodeCreateRole handles *tree.CreateRole nodes.
@@ -27,5 +30,109 @@ func nodeCreateRole(node *tree.CreateRole) (vitess.Statement, error) {
 	if node == nil {
 		return nil, nil
 	}
-	return nil, fmt.Errorf("CREATE ROLE is not yet supported")
+	if len(node.Name) == 0 {
+		// The parser should make this impossible, but extra error checking is never bad
+		return nil, errors.New(`role name cannot be empty`)
+	}
+	createRole := &pgnodes.CreateRole{
+		Name:                      node.Name,
+		IfNotExists:               node.IfNotExists,
+		Password:                  "",
+		IsPasswordNull:            true,
+		IsSuperUser:               false,
+		CanCreateDB:               false,
+		CanCreateRoles:            false,
+		InheritPrivileges:         true,
+		CanLogin:                  !node.IsRole,
+		IsReplicationRole:         false,
+		CanBypassRowLevelSecurity: false,
+		ConnectionLimit:           -1,
+		ValidUntil:                "",
+		IsValidUntilSet:           false,
+		AddToRoles:                nil,
+		AddAsMembers:              nil,
+		AddAsAdminMembers:         nil,
+	}
+	for _, kvOption := range node.KVOptions {
+		switch strings.ToUpper(string(kvOption.Key)) {
+		case "BYPASSRLS":
+			createRole.CanBypassRowLevelSecurity = true
+		case "CONNECTION_LIMIT":
+			switch value := kvOption.Value.(type) {
+			case *tree.DInt:
+				if value == nil {
+					createRole.ConnectionLimit = -1
+				} else {
+					// We enforce that only int32 values will fit here in the parser
+					createRole.ConnectionLimit = int32(*value)
+				}
+			case tree.NullLiteral:
+				createRole.ConnectionLimit = -1
+			default:
+				return nil, fmt.Errorf(`unknown role option value (%T) for option "%s"`, kvOption.Value, kvOption.Key)
+			}
+		case "CREATEDB":
+			createRole.CanCreateDB = true
+		case "CREATEROLE":
+			createRole.CanCreateRoles = true
+		case "INHERIT":
+			createRole.InheritPrivileges = true
+		case "LOGIN":
+			createRole.CanLogin = true
+		case "NOBYPASSRLS":
+			createRole.CanBypassRowLevelSecurity = false
+		case "NOCREATEDB":
+			createRole.CanCreateDB = false
+		case "NOCREATEROLE":
+			createRole.CanCreateRoles = false
+		case "NOINHERIT":
+			createRole.InheritPrivileges = false
+		case "NOLOGIN":
+			createRole.CanLogin = false
+		case "NOREPLICATION":
+			createRole.IsReplicationRole = false
+		case "NOSUPERUSER":
+			createRole.IsSuperUser = false
+		case "PASSWORD":
+			switch value := kvOption.Value.(type) {
+			case *tree.DString:
+				if value == nil {
+					createRole.Password = ""
+					createRole.IsPasswordNull = true
+				} else {
+					createRole.Password = string(*value)
+					createRole.IsPasswordNull = false
+				}
+			case tree.NullLiteral:
+				createRole.Password = ""
+				createRole.IsPasswordNull = true
+			default:
+				return nil, fmt.Errorf(`unknown role option value (%T) for option "%s"`, kvOption.Value, kvOption.Key)
+			}
+		case "REPLICATION":
+			createRole.IsReplicationRole = true
+		case "SUPERUSER":
+			createRole.IsSuperUser = true
+		case "SYSID":
+			// This is an option that is ignored by Postgres. Assuming it used to be relevant, but not any longer.
+		case "VALID_UNTIL":
+			strVal, ok := kvOption.Value.(*tree.DString)
+			if !ok {
+				return nil, fmt.Errorf(`unknown role option value (%T) for option "%s"`, kvOption.Value, kvOption.Key)
+			}
+			if strVal == nil {
+				createRole.ValidUntil = ""
+				createRole.IsValidUntilSet = false
+			} else {
+				createRole.ValidUntil = string(*strVal)
+				createRole.IsValidUntilSet = true
+			}
+		default:
+			return nil, fmt.Errorf(`unknown role option "%s"`, kvOption.Key)
+		}
+	}
+	return vitess.InjectedStatement{
+		Statement: createRole,
+		Children:  nil,
+	}, nil
 }
