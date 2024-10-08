@@ -148,79 +148,15 @@ func TestSingleScript(t *testing.T) {
 
 	var scripts = []queries.ScriptTest{
 		{
-			Name: "primary key table: basic cases",
+			Name: "dolt_revert() detects not null violation (issue #4527)",
 			SetUpScript: []string{
-				"create table t1 (n int primary key, de varchar(20));",
-				"call dolt_add('.')",
-				"insert into t1 values (1, 'Eins'), (2, 'Zwei'), (3, 'Drei');",
-				"call dolt_commit('-am', 'inserting into t1', '--date', '2022-08-06T12:00:01');",
-				"SET @Commit1 = (select hashof('HEAD'));",
-
-				"alter table t1 add column fr varchar(20);",
-				"insert into t1 values (4, 'Vier', 'Quatre');",
-				"call dolt_commit('-am', 'adding column and inserting data in t1', '--date', '2022-08-06T12:00:02');",
-				"SET @Commit2 = (select hashof('HEAD'));",
-
-				"update t1 set fr='Un' where n=1;",
-				"update t1 set fr='Deux' where n=2;",
-				"call dolt_commit('-am', 'updating data in t1', '--date', '2022-08-06T12:00:03');",
-				"SET @Commit3 = (select hashof('HEAD'));",
-
-				"update t1 set de=concat(de, ', meine herren') where n>1;",
-				"call dolt_commit('-am', 'be polite when you address a gentleman', '--date', '2022-08-06T12:00:04');",
-				"SET @Commit4 = (select hashof('HEAD'));",
-
-				"delete from t1 where n=2;",
-				"call dolt_commit('-am', 'we don''t need the number 2', '--date', '2022-08-06T12:00:05');",
-				"SET @Commit5 = (select hashof('HEAD'));",
+				"create table test2 (pk int primary key, c0 int)",
+				"alter table test2 modify c0 int not null",
 			},
 			Assertions: []queries.ScriptTestAssertion{
 				{
-					Query:    "select count(*) from Dolt_History_t1;",
-					Expected: []sql.Row{{18}},
-				},
-				{
-					Query:    "select n, de, fr from dolt_history_T1 where commit_hash = @Commit1;",
-					Expected: []sql.Row{{1, "Eins", nil}, {2, "Zwei", nil}, {3, "Drei", nil}},
-				},
-				{
-					Query:    "select de, fr from dolt_history_T1 where commit_hash = @Commit1;",
-					Expected: []sql.Row{{"Eins", nil}, {"Zwei", nil}, {"Drei", nil}},
-				},
-				{
-					Query:    "select n, de, fr from dolt_history_T1 where commit_hash = @Commit2;",
-					Expected: []sql.Row{{1, "Eins", nil}, {2, "Zwei", nil}, {3, "Drei", nil}, {4, "Vier", "Quatre"}},
-				},
-				{
-					Query:    "select n, de, fr from dolt_history_T1 where commit_hash = @Commit3;",
-					Expected: []sql.Row{{1, "Eins", "Un"}, {2, "Zwei", "Deux"}, {3, "Drei", nil}, {4, "Vier", "Quatre"}},
-				},
-				{
-					Query: "select n, de, fr from dolt_history_T1 where commit_hash = @Commit4;",
-					Expected: []sql.Row{
-						{1, "Eins", "Un"},
-						{2, "Zwei, meine herren", "Deux"},
-						{3, "Drei, meine herren", nil},
-						{4, "Vier, meine herren", "Quatre"},
-					},
-				},
-				{
-					Query: "select n, de, fr from dolt_history_T1 where commit_hash = @Commit5;",
-					Expected: []sql.Row{
-						{1, "Eins", "Un"},
-						{3, "Drei, meine herren", nil},
-						{4, "Vier, meine herren", "Quatre"},
-					},
-				},
-				{
-					Query: "select de, fr, commit_hash=@commit1, commit_hash=@commit2, commit_hash=@commit3, commit_hash=@commit4" +
-						" from dolt_history_T1 where n=2 order by commit_date",
-					Expected: []sql.Row{
-						{"Zwei", nil, true, false, false, false},
-						{"Zwei", nil, false, true, false, false},
-						{"Zwei", "Deux", false, false, true, false},
-						{"Zwei, meine herren", "Deux", false, false, false, true},
-					},
+					Query:          "call dolt_revert('head~1');",
+					ExpectedErrStr: "revert currently does not handle constraint violations",
 				},
 			},
 		},
@@ -1147,8 +1083,10 @@ func TestDoltRebasePrepared(t *testing.T) {
 }
 
 func TestDoltRevert(t *testing.T) {
-	t.Skip()
-	h := newDoltgresServerHarness(t)
+	h := newDoltgresServerHarness(t).WithSkippedQueries([]string{
+		"dolt_revert() respects dolt_ignore",                  // ERROR: INSERT: non-Doltgres type found in destination: text
+		"dolt_revert() automatically resolves some conflicts", // panic: interface conversion: sql.Type is types.VarCharType, not types.StringType
+	})
 	denginetest.RunDoltRevertTests(t, h)
 }
 
