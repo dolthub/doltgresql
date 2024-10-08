@@ -49,6 +49,20 @@ func TestDescribe(t *testing.T) {
 						{"name", "text", "YES", "", interface {}(nil), ""},
 					},
 				},
+				{
+					Query: `DESC public.t1`,
+					Expected: []sql.Row{
+						{"id", "integer", "NO", "PRI", interface {}(nil), ""},
+						{"name", "text", "YES", "", interface {}(nil), ""},
+					},
+				},
+				{
+					Query: `DESC postgres.public.t1`,
+					Expected: []sql.Row{
+						{"id", "integer", "NO", "PRI", interface {}(nil), ""},
+						{"name", "text", "YES", "", interface {}(nil), ""},
+					},
+				},
 			},
 		},
 		{
@@ -71,7 +85,7 @@ func TestDescribe(t *testing.T) {
 					},
 				},
 				{
-					Query: `EXPLAIN t1 AS OF 'HEAD'`,
+					Query: `EXPLAIN public.t1 AS OF 'HEAD'`,
 					Expected: []sql.Row{
 						{"id", "integer", "NO", "PRI", interface {}(nil), ""},
 						{"name", "text", "YES", "", interface {}(nil), ""},
@@ -79,7 +93,7 @@ func TestDescribe(t *testing.T) {
 					},
 				},
 				{
-					Query: `DESCRIBE t1 AS OF 'HEAD~'`,
+					Query: `DESCRIBE postgres.public.t1 AS OF 'HEAD~'`,
 					Expected: []sql.Row{
 						{"id", "integer", "NO", "PRI", interface {}(nil), ""},
 						{"name", "text", "YES", "", interface {}(nil), ""},

@@ -1299,7 +1299,7 @@ func (u *sqlSymUnion) aggregatesToDrop() []tree.AggregateToDrop {
 %type <int64> signed_iconst64
 %type <int64> iconst64
 %type <tree.Expr> var_value opt_var_value opt_restart
-%type <str> unrestricted_name type_function_name type_function_name_no_crdb_extra
+%type <str> unrestricted_name type_function_name type_function_name_no_crdb_extra simple_ident
 %type <str> non_reserved_word
 %type <str> non_reserved_word_or_sconst
 %type <str> role_spec owner_to set_schema opt_role set_tablespace
@@ -14025,7 +14025,7 @@ simple_db_object_name:
 // simple_db_object_name_no_keywords is the part of db_object_name_no_keywords that recognizes
 // simple identifiers.
 simple_db_object_name_no_keywords:
-  IDENT
+  simple_ident
   {
     aIdx := sqllex.(*lexer).NewAnnotation()
     res, err := tree.NewUnresolvedObjectName(1, [3]string{$1}, aIdx)
@@ -14054,20 +14054,25 @@ complex_db_object_name:
   }
   
 complex_db_object_name_no_keywords:
-  IDENT '.' IDENT
+  simple_ident '.' simple_ident
   {
     aIdx := sqllex.(*lexer).NewAnnotation()
     res, err := tree.NewUnresolvedObjectName(2, [3]string{$3, $1}, aIdx)
     if err != nil { return setErr(sqllex, err) }
     $$.val = res
   }
-| IDENT '.' IDENT '.' IDENT
+| simple_ident '.' simple_ident '.' simple_ident
   {
     aIdx := sqllex.(*lexer).NewAnnotation()
     res, err := tree.NewUnresolvedObjectName(3, [3]string{$5, $3, $1}, aIdx)
     if err != nil { return setErr(sqllex, err) }
     $$.val = res
   }
+  
+// simple_ident is a more restricted version of restricted_name that disallows most keywords
+simple_ident:
+  IDENT
+| PUBLIC // PUBLIC is a keyword, but its use as the default schema makes it nice to include here
 
 // DB object name component -- this cannot not include any reserved
 // keyword because of ambiguity after FROM, but we've been too lax
