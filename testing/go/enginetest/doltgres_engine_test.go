@@ -1084,7 +1084,7 @@ func TestDoltRebasePrepared(t *testing.T) {
 
 func TestDoltRevert(t *testing.T) {
 	h := newDoltgresServerHarness(t).WithSkippedQueries([]string{
-		"dolt_revert() respects dolt_ignore", // ERROR: INSERT: non-Doltgres type found in destination: text
+		"dolt_revert() respects dolt_ignore",                  // ERROR: INSERT: non-Doltgres type found in destination: text
 		"dolt_revert() automatically resolves some conflicts", // panic: interface conversion: sql.Type is types.VarCharType, not types.StringType
 	})
 	denginetest.RunDoltRevertTests(t, h)

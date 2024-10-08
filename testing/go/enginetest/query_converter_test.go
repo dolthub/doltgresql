@@ -50,7 +50,7 @@ func transformAST(query string) ([]string, bool) {
 }
 
 func transformAlterTable(stmt *sqlparser.AlterTable) ([]string, bool) {
-	var outputStmts []string 
+	var outputStmts []string
 	for _, statement := range stmt.Statements {
 		converted, ok := convertDdlStatement(statement)
 		if !ok {
@@ -69,9 +69,9 @@ func convertDdlStatement(statement *sqlparser.DDL) ([]string, bool) {
 			if len(statement.TableSpec.Columns) != 1 {
 				return nil, false
 			}
-			
+
 			stmts := make([]string, 0)
-			
+
 			col := statement.TableSpec.Columns[0]
 			tableName, err := tree.NewUnresolvedObjectName(1, [3]string{statement.Table.Name.String(), "", ""}, 0)
 			if err != nil {
@@ -83,8 +83,8 @@ func convertDdlStatement(statement *sqlparser.DDL) ([]string, bool) {
 				Table: tableName,
 				Cmds: []tree.AlterTableCmd{
 					&tree.AlterTableAlterColumnType{
-						Column:    tree.Name(col.Name.String()),
-						ToType:    newType,
+						Column: tree.Name(col.Name.String()),
+						ToType: newType,
 					},
 				},
 			}
@@ -122,7 +122,7 @@ func convertDdlStatement(statement *sqlparser.DDL) ([]string, bool) {
 				ctx = formatNodeWithUnqualifiedTableNames(&alter)
 				stmts = append(stmts, ctx.String())
 			}
-			
+
 			return stmts, true
 		default:
 			return nil, false
@@ -130,10 +130,9 @@ func convertDdlStatement(statement *sqlparser.DDL) ([]string, bool) {
 	default:
 		return nil, false
 	}
-	
+
 	return nil, false
 }
-
 
 // transformSelect converts a MySQL SELECT statement to a postgres-compatible SELECT statement.
 // This is a very broad surface area, so we do this very selectively
