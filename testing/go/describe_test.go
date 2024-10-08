@@ -51,5 +51,41 @@ func TestDescribe(t *testing.T) {
 				},
 			},
 		},
+		{
+			Name: "describe table AS OF",
+			SetUpScript: []string{
+				`CREATE TABLE t1 (id INT PRIMARY KEY, name TEXT)`,
+				`call dolt_commit('-Am', 'first commit')`,
+				`ALTER TABLE t1 ADD COLUMN age INT`,
+				`call dolt_commit('-am', 'second commit')`,
+				`ALTER TABLE t1 ADD COLUMN height INT`,
+			},
+			Assertions: []ScriptTestAssertion{
+				{
+					Query: `DESC t1`,
+					Expected: []sql.Row{
+						{"id", "integer", "NO", "PRI", interface {}(nil), ""},
+						{"name", "text", "YES", "", interface {}(nil), ""},
+						{"age", "integer", "YES", "", interface {}(nil), ""},
+						{"height", "integer", "YES", "", interface {}(nil), ""},
+					},
+				},
+				{
+					Query: `EXPLAIN t1 AS OF 'HEAD'`,
+					Expected: []sql.Row{
+						{"id", "integer", "NO", "PRI", interface {}(nil), ""},
+						{"name", "text", "YES", "", interface {}(nil), ""},
+						{"age", "integer", "YES", "", interface {}(nil), ""},
+					},
+				},
+				{
+					Query: `DESCRIBE t1 AS OF 'HEAD~'`,
+					Expected: []sql.Row{
+						{"id", "integer", "NO", "PRI", interface {}(nil), ""},
+						{"name", "text", "YES", "", interface {}(nil), ""},
+					},
+				},
+			},
+		},
 	})
 }
