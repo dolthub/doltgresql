@@ -1106,7 +1106,7 @@ func (h *ConnectionHandler) send(message pgproto3.BackendMessage) error {
 // returnsRow returns whether the query returns set of rows such as SELECT and FETCH statements.
 func returnsRow(tag string) bool {
 	switch tag {
-	case "SELECT", "SHOW", "FETCH":
+	case "SELECT", "SHOW", "FETCH", "EXPLAIN":
 		return true
 	default:
 		return false
