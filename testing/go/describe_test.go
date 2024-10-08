@@ -35,6 +35,20 @@ func TestDescribe(t *testing.T) {
 						{"name", "text", "YES", "", interface {}(nil), ""},
 					},
 				},
+				{
+					Query: `DESCRIBE t1`,
+					Expected: []sql.Row{
+						{"id", "integer", "NO", "PRI", interface {}(nil), ""},
+						{"name", "text", "YES", "", interface {}(nil), ""},
+					},
+				},
+				{
+					Query: `DESC t1`,
+					Expected: []sql.Row{
+						{"id", "integer", "NO", "PRI", interface {}(nil), ""},
+						{"name", "text", "YES", "", interface {}(nil), ""},
+					},
+				},
 			},
 		},
 	})

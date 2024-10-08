@@ -954,6 +954,7 @@ func (u *sqlSymUnion) aggregatesToDrop() []tree.AggregateToDrop {
 
 %type <tree.Statement> analyze_stmt
 %type <tree.Statement> explain_stmt
+%type <tree.Statement> describe_table_stmt
 %type <tree.Statement> prepare_stmt
 %type <tree.Statement> preparable_stmt
 %type <tree.Statement> row_source_extension_stmt
@@ -5286,18 +5287,20 @@ explain_stmt:
       return setErr(sqllex, err)
     }
   }
-  // DELETE, UPDATE, etc. are non-reserved words in the grammar, so we can't use a table_name here, as it causes 
-  // conflicts with EXPLAIN UPDATE ... etc.
-| explain_verb db_object_name_no_keywords opt_as_of_clause
-  {
-    asOf := $3.asOfClause()
-    $$.val = &tree.Explain{ExplainOptions: tree.ExplainOptions{}, TableName: $2.unresolvedObjectName(), AsOf: &asOf}
-  }
 // This second error rule is necessary, because otherwise
 // preparable_stmt also provides "selectclause := '(' error ..." and
 // cause a help text for the select clause, which will be confusing in
 // the context of EXPLAIN.
 | explain_verb '(' error // SHOW HELP: EXPLAIN
+
+describe_table_stmt:
+  // DELETE, UPDATE, etc. are non-reserved words in the grammar, so we can't use a table_name here, as it causes 
+  // conflicts with EXPLAIN UPDATE ... etc.
+  explain_verb db_object_name_no_keywords opt_as_of_clause
+  {
+    asOf := $3.asOfClause()
+    $$.val = &tree.Explain{ExplainOptions: tree.ExplainOptions{}, TableName: $2.unresolvedObjectName(), AsOf: &asOf}
+  }
 
 preparable_stmt:
   alter_stmt     // help texts in sub-rule
@@ -5307,6 +5310,7 @@ preparable_stmt:
 | delete_stmt    // EXTEND WITH HELP: DELETE
 | drop_stmt      // help texts in sub-rule
 | explain_stmt   // EXTEND WITH HELP: EXPLAIN
+| describe_table_stmt
 | import_stmt    // EXTEND WITH HELP: IMPORT
 | insert_stmt    // EXTEND WITH HELP: INSERT
 | pause_stmt     // help texts in sub-rule
@@ -14732,6 +14736,7 @@ reserved_keyword:
 | DEFAULT
 | DEFERRABLE
 | DESC
+| DESCRIBE
 | DISTINCT
 | DO
 | ELEMENT
