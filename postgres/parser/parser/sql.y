@@ -5291,7 +5291,7 @@ explain_stmt:
 | explain_verb db_object_name_no_keywords opt_as_of_clause
   {
     asOf := $3.asOfClause()
-    $$.val = tree.Explain{ExplainOptions: tree.ExplainOptions{}, TableName: $2.unresolvedObjectName(), AsOf: &asOf}
+    $$.val = &tree.Explain{ExplainOptions: tree.ExplainOptions{}, TableName: $2.unresolvedObjectName(), AsOf: &asOf}
   }
 // This second error rule is necessary, because otherwise
 // preparable_stmt also provides "selectclause := '(' error ..." and
