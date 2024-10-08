@@ -31,8 +31,8 @@ func TestDescribe(t *testing.T) {
 				{
 					Query: `EXPLAIN t1`,
 					Expected: []sql.Row{
-						{"id", "INT", false, nil, nil, nil},
-						{"name", "TEXT", false, nil, nil, nil},
+						{"id", "integer", "NO", "PRI", interface {}(nil), ""},
+						{"name", "text", "YES", "", interface {}(nil), ""},
 					},
 				},
 			},

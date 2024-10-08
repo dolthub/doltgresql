@@ -234,6 +234,7 @@ func CreateServer(t *testing.T, database string) (context.Context, *pgx.Conn, *s
 			PortNumber: &port,
 			HostStr:    ptr("127.0.0.1"),
 		},
+		LogLevelStr: ptr("debug"),
 	})
 	require.NoError(t, err)
 
