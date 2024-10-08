@@ -21,6 +21,7 @@ import (
 	"github.com/dolthub/go-mysql-server/sql"
 	"github.com/dolthub/go-mysql-server/sql/plan"
 	vitess "github.com/dolthub/vitess/go/vt/sqlparser"
+	"gopkg.in/src-d/go-errors.v1"
 
 	"github.com/dolthub/doltgresql/server/auth"
 	pgtypes "github.com/dolthub/doltgresql/server/types"
@@ -31,6 +32,9 @@ type AlterRole struct {
 	Name    string
 	Options map[string]any
 }
+
+// ErrVitessChildCount is returned by WithResolvedChildren to indicate that the expected child count is incorrect.
+var ErrVitessChildCount = errors.NewKind("invalid vitess child count, expected `%d` but got `%d`")
 
 var _ sql.ExecSourceRel = (*AlterRole)(nil)
 var _ vitess.Injectable = (*AlterRole)(nil)
@@ -142,7 +146,7 @@ func (c *AlterRole) WithChildren(children ...sql.Node) (sql.Node, error) {
 // WithResolvedChildren implements the interface vitess.Injectable.
 func (c *AlterRole) WithResolvedChildren(children []any) (any, error) {
 	if len(children) != 0 {
-		return nil, fmt.Errorf("invalid vitess child count, expected `0` but got `%d`", len(children))
+		return nil, ErrVitessChildCount.New(0, len(children))
 	}
 	return c, nil
 }

@@ -34,6 +34,8 @@ func nodeAlterRole(node *tree.AlterRole) (vitess.Statement, error) {
 		// The parser should make this impossible, but extra error checking is never bad
 		return nil, errors.New(`role name cannot be empty`)
 	}
+	// Some of the keys are used as markers, and do not contain values.
+	// Therefore, the values will be nil since they're ignored.
 	options := make(map[string]any)
 	for _, kvOption := range node.KVOptions {
 		optionName := strings.ToUpper(string(kvOption.Key))

@@ -69,5 +69,8 @@ func (d DiscardStatement) WithChildren(children ...sql.Node) (sql.Node, error) {
 
 // WithResolvedChildren implements the interface vitess.Injectable.
 func (d DiscardStatement) WithResolvedChildren(children []any) (any, error) {
+	if len(children) != 0 {
+		return nil, ErrVitessChildCount.New(0, len(children))
+	}
 	return d, nil
 }
