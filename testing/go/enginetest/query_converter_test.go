@@ -130,8 +130,6 @@ func convertDdlStatement(statement *sqlparser.DDL) ([]string, bool) {
 	default:
 		return nil, false
 	}
-
-	return nil, false
 }
 
 // transformSelect converts a MySQL SELECT statement to a postgres-compatible SELECT statement.
