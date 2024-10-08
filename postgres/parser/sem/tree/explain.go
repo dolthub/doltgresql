@@ -42,6 +42,12 @@ type Explain struct {
 
 	// Statement is the statement being EXPLAINed.
 	Statement Statement
+	
+	// TableName is the alternate form of EXPLAIN, which describes the schema of a table
+	TableName *UnresolvedObjectName
+	
+	// AsOf is the point in time for EXPLAIN, only valid for TableName
+	AsOf *AsOfClause
 }
 
 // ExplainOptions contains information about the options passed to an EXPLAIN

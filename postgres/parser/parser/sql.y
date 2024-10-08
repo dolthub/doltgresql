@@ -715,7 +715,7 @@ func (u *sqlSymUnion) aggregatesToDrop() []tree.AggregateToDrop {
 %token <str> CURRENT_USER CYCLE
 
 %token <str> DATA DATABASE DATABASES DATE DAY DEALLOCATE DEC DECIMAL DECLARE
-%token <str> DEFAULT DEFAULTS DEFERRABLE DEFERRED DEFINER DELETE DELIMITER DEPENDS DESC DESERIALFUNC DESTINATION
+%token <str> DEFAULT DEFAULTS DEFERRABLE DEFERRED DEFINER DELETE DELIMITER DEPENDS DESC DESCRIBE DESERIALFUNC DESTINATION
 %token <str> DETACH DETACHED DICTIONARY DISABLE DISCARD DISTINCT DO DOMAIN DOUBLE DROP
 
 %token <str> EACH ELEMENT ELSE ENABLE ENCODING ENCRYPTION_PASSPHRASE END ENUM ENUMS ESCAPE EVENT
@@ -1131,6 +1131,7 @@ func (u *sqlSymUnion) aggregatesToDrop() []tree.AggregateToDrop {
 %type <str> db_object_name_component
 %type <*tree.UnresolvedObjectName> table_name standalone_index_name sequence_name type_name routine_name aggregate_name
 %type <*tree.UnresolvedObjectName> view_name db_object_name simple_db_object_name complex_db_object_name
+%type <*tree.UnresolvedObjectName> db_object_name_no_keywords simple_db_object_name_no_keywords complex_db_object_name_no_keywords
 %type <[]*tree.UnresolvedObjectName> type_name_list
 %type <str> schema_name opt_schema_name opt_schema opt_version tablespace_name partition_name
 %type <[]string> schema_name_list role_spec_list opt_role_list opt_owned_by_list
@@ -1168,6 +1169,7 @@ func (u *sqlSymUnion) aggregatesToDrop() []tree.AggregateToDrop {
 %type <*tree.PartitionBy> opt_partition_by partition_by
 %type <tree.PartitionByType> partition_by_type
 %type <empty> opt_all_clause
+%type <str> explain_verb
 %type <bool> distinct_clause opt_external definer_or_invoker opt_not opt_col_with_options
 %type <tree.DistinctOn> distinct_on_clause
 %type <tree.NameList> opt_column_list insert_column_list opt_stats_columns opt_of_cols
@@ -5213,6 +5215,11 @@ analyze_target:
     $$.val = $1.unresolvedObjectName()
   }
 
+explain_verb:
+  EXPLAIN
+| DESCRIBE
+| DESC
+
 // %Help: EXPLAIN - show the logical plan of a query
 // %Category: Misc
 // %Text:
@@ -5230,7 +5237,7 @@ analyze_target:
 //
 // %SeeAlso: WEBDOCS/explain.html
 explain_stmt:
-  EXPLAIN preparable_stmt
+  explain_verb preparable_stmt
   {
     var err error
     $$.val, err = tree.MakeExplain(nil /* options */, $2.stmt())
@@ -5238,8 +5245,8 @@ explain_stmt:
       return setErr(sqllex, err)
     }
   }
-| EXPLAIN error // SHOW HELP: EXPLAIN
-| EXPLAIN '(' explain_option_list ')' preparable_stmt
+| explain_verb error // SHOW HELP: EXPLAIN
+| explain_verb '(' explain_option_list ')' preparable_stmt
   {
     var err error
     $$.val, err = tree.MakeExplain($3.strs(), $5.stmt())
@@ -5247,7 +5254,7 @@ explain_stmt:
       return setErr(sqllex, err)
     }
   }
-| EXPLAIN ANALYZE preparable_stmt
+| explain_verb ANALYZE preparable_stmt
   {
     var err error
     $$.val, err = tree.MakeExplain([]string{"DISTSQL", "ANALYZE"}, $3.stmt())
@@ -5255,7 +5262,7 @@ explain_stmt:
       return setErr(sqllex, err)
     }
   }
-| EXPLAIN ANALYSE preparable_stmt
+| explain_verb ANALYSE preparable_stmt
   {
     var err error
     $$.val, err = tree.MakeExplain([]string{"DISTSQL", "ANALYZE"}, $3.stmt())
@@ -5263,7 +5270,7 @@ explain_stmt:
       return setErr(sqllex, err)
     }
   }
-| EXPLAIN ANALYZE '(' explain_option_list ')' preparable_stmt
+| explain_verb ANALYZE '(' explain_option_list ')' preparable_stmt
   {
     var err error
     $$.val, err = tree.MakeExplain(append($4.strs(), "ANALYZE"), $6.stmt())
@@ -5271,19 +5278,26 @@ explain_stmt:
       return setErr(sqllex, err)
     }
   }
-| EXPLAIN ANALYSE '(' explain_option_list ')' preparable_stmt
+| explain_verb ANALYSE '(' explain_option_list ')' preparable_stmt
   {
     var err error
     $$.val, err = tree.MakeExplain(append($4.strs(), "ANALYZE"), $6.stmt())
     if err != nil {
       return setErr(sqllex, err)
     }
+  }
+  // DELETE, UPDATE, etc. are non-reserved words in the grammar, so we can't use a table_name here, as it causes 
+  // conflicts with EXPLAIN UPDATE ... etc.
+| explain_verb db_object_name_no_keywords opt_as_of_clause
+  {
+    asOf := $3.asOfClause()
+    $$.val = tree.Explain{ExplainOptions: tree.ExplainOptions{}, TableName: $2.unresolvedObjectName(), AsOf: &asOf}
   }
 // This second error rule is necessary, because otherwise
 // preparable_stmt also provides "selectclause := '(' error ..." and
 // cause a help text for the select clause, which will be confusing in
 // the context of EXPLAIN.
-| EXPLAIN '(' error // SHOW HELP: EXPLAIN
+| explain_verb '(' error // SHOW HELP: EXPLAIN
 
 preparable_stmt:
   alter_stmt     // help texts in sub-rule
@@ -13988,10 +14002,26 @@ db_object_name:
   simple_db_object_name
 | complex_db_object_name
 
+// Version of db_object_name that does not contain any CRDB specific keywords.
+db_object_name_no_keywords:
+  simple_db_object_name_no_keywords
+| complex_db_object_name_no_keywords
+
 // simple_db_object_name is the part of db_object_name that recognizes
 // simple identifiers.
 simple_db_object_name:
   db_object_name_component
+  {
+    aIdx := sqllex.(*lexer).NewAnnotation()
+    res, err := tree.NewUnresolvedObjectName(1, [3]string{$1}, aIdx)
+    if err != nil { return setErr(sqllex, err) }
+    $$.val = res
+  }
+  
+// simple_db_object_name_no_keywords is the part of db_object_name_no_keywords that recognizes
+// simple identifiers.
+simple_db_object_name_no_keywords:
+  IDENT
   {
     aIdx := sqllex.(*lexer).NewAnnotation()
     res, err := tree.NewUnresolvedObjectName(1, [3]string{$1}, aIdx)
@@ -14012,6 +14042,22 @@ complex_db_object_name:
     $$.val = res
   }
 | db_object_name_component '.' unrestricted_name '.' unrestricted_name
+  {
+    aIdx := sqllex.(*lexer).NewAnnotation()
+    res, err := tree.NewUnresolvedObjectName(3, [3]string{$5, $3, $1}, aIdx)
+    if err != nil { return setErr(sqllex, err) }
+    $$.val = res
+  }
+  
+complex_db_object_name_no_keywords:
+  IDENT '.' IDENT
+  {
+    aIdx := sqllex.(*lexer).NewAnnotation()
+    res, err := tree.NewUnresolvedObjectName(2, [3]string{$3, $1}, aIdx)
+    if err != nil { return setErr(sqllex, err) }
+    $$.val = res
+  }
+| IDENT '.' IDENT '.' IDENT
   {
     aIdx := sqllex.(*lexer).NewAnnotation()
     res, err := tree.NewUnresolvedObjectName(3, [3]string{$5, $3, $1}, aIdx)
