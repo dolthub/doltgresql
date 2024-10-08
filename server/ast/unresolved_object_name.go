@@ -31,18 +31,18 @@ func nodeUnresolvedObjectName(node *tree.UnresolvedObjectName) (vitess.TableName
 	var schemaQual vitess.TableIdent
 
 	tableName = vitess.NewTableIdent(node.Parts[0])
-	
+
 	if node.NumParts > 1 {
 		schemaQual = vitess.NewTableIdent(node.Parts[1])
 	}
-	
+
 	if node.NumParts > 2 {
 		dbQual = vitess.NewTableIdent(node.Parts[2])
 	}
-	
+
 	return vitess.TableName{
-		Name:        tableName,
-		DbQualifier: dbQual,
+		Name:            tableName,
+		DbQualifier:     dbQual,
 		SchemaQualifier: schemaQual,
 	}, nil
 }

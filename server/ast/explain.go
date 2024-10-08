@@ -27,13 +27,13 @@ func nodeExplain(node *tree.Explain) (vitess.Statement, error) {
 	if node == nil {
 		return nil, nil
 	}
-	
+
 	if node.TableName != nil {
 		tableName, err := nodeUnresolvedObjectName(node.TableName)
 		if err != nil {
 			return nil, err
 		}
-		
+
 		var showTableOpts *vitess.ShowTablesOpt
 		if node.AsOf != nil {
 			asOf, err := nodeExpr(node.AsOf.Expr)
@@ -46,13 +46,13 @@ func nodeExplain(node *tree.Explain) (vitess.Statement, error) {
 		}
 
 		show := &vitess.Show{
-			Type: "columns",
-			Table: tableName,
+			Type:          "columns",
+			Table:         tableName,
 			ShowTablesOpt: showTableOpts,
 		}
 
 		return show, nil
 	}
-	
+
 	return nil, fmt.Errorf("EXPLAIN is not yet supported")
 }

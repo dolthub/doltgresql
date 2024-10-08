@@ -31,36 +31,36 @@ func TestDescribe(t *testing.T) {
 				{
 					Query: `EXPLAIN t1`,
 					Expected: []sql.Row{
-						{"id", "integer", "NO", "PRI", interface {}(nil), ""},
-						{"name", "text", "YES", "", interface {}(nil), ""},
+						{"id", "integer", "NO", "PRI", interface{}(nil), ""},
+						{"name", "text", "YES", "", interface{}(nil), ""},
 					},
 				},
 				{
 					Query: `DESCRIBE t1`,
 					Expected: []sql.Row{
-						{"id", "integer", "NO", "PRI", interface {}(nil), ""},
-						{"name", "text", "YES", "", interface {}(nil), ""},
+						{"id", "integer", "NO", "PRI", interface{}(nil), ""},
+						{"name", "text", "YES", "", interface{}(nil), ""},
 					},
 				},
 				{
 					Query: `DESC t1`,
 					Expected: []sql.Row{
-						{"id", "integer", "NO", "PRI", interface {}(nil), ""},
-						{"name", "text", "YES", "", interface {}(nil), ""},
+						{"id", "integer", "NO", "PRI", interface{}(nil), ""},
+						{"name", "text", "YES", "", interface{}(nil), ""},
 					},
 				},
 				{
 					Query: `DESC public.t1`,
 					Expected: []sql.Row{
-						{"id", "integer", "NO", "PRI", interface {}(nil), ""},
-						{"name", "text", "YES", "", interface {}(nil), ""},
+						{"id", "integer", "NO", "PRI", interface{}(nil), ""},
+						{"name", "text", "YES", "", interface{}(nil), ""},
 					},
 				},
 				{
 					Query: `DESC postgres.public.t1`,
 					Expected: []sql.Row{
-						{"id", "integer", "NO", "PRI", interface {}(nil), ""},
-						{"name", "text", "YES", "", interface {}(nil), ""},
+						{"id", "integer", "NO", "PRI", interface{}(nil), ""},
+						{"name", "text", "YES", "", interface{}(nil), ""},
 					},
 				},
 			},
@@ -78,25 +78,25 @@ func TestDescribe(t *testing.T) {
 				{
 					Query: `DESC t1`,
 					Expected: []sql.Row{
-						{"id", "integer", "NO", "PRI", interface {}(nil), ""},
-						{"name", "text", "YES", "", interface {}(nil), ""},
-						{"age", "integer", "YES", "", interface {}(nil), ""},
-						{"height", "integer", "YES", "", interface {}(nil), ""},
+						{"id", "integer", "NO", "PRI", interface{}(nil), ""},
+						{"name", "text", "YES", "", interface{}(nil), ""},
+						{"age", "integer", "YES", "", interface{}(nil), ""},
+						{"height", "integer", "YES", "", interface{}(nil), ""},
 					},
 				},
 				{
 					Query: `EXPLAIN public.t1 AS OF 'HEAD'`,
 					Expected: []sql.Row{
-						{"id", "integer", "NO", "PRI", interface {}(nil), ""},
-						{"name", "text", "YES", "", interface {}(nil), ""},
-						{"age", "integer", "YES", "", interface {}(nil), ""},
+						{"id", "integer", "NO", "PRI", interface{}(nil), ""},
+						{"name", "text", "YES", "", interface{}(nil), ""},
+						{"age", "integer", "YES", "", interface{}(nil), ""},
 					},
 				},
 				{
 					Query: `DESCRIBE postgres.public.t1 AS OF 'HEAD~'`,
 					Expected: []sql.Row{
-						{"id", "integer", "NO", "PRI", interface {}(nil), ""},
-						{"name", "text", "YES", "", interface {}(nil), ""},
+						{"id", "integer", "NO", "PRI", interface{}(nil), ""},
+						{"name", "text", "YES", "", interface{}(nil), ""},
 					},
 				},
 			},
