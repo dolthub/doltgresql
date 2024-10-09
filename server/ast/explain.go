@@ -42,6 +42,8 @@ func nodeExplain(node *tree.Explain) (vitess.Statement, error) {
 			}
 			showTableOpts = &vitess.ShowTablesOpt{
 				AsOf: asOf,
+				SchemaName: tableName.SchemaQualifier.String(),
+				DbName: tableName.DbQualifier.String(),
 			}
 		}
 
@@ -54,5 +56,5 @@ func nodeExplain(node *tree.Explain) (vitess.Statement, error) {
 		return show, nil
 	}
 
-	return nil, fmt.Errorf("EXPLAIN is not yet supported")
+	return nil, fmt.Errorf("This EXPLAIN syntax is not yet supported")
 }
