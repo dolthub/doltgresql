@@ -214,6 +214,8 @@ github.com/dgrijalva/jwt-go v3.2.0+incompatible/go.mod h1:E3ru+11k8xSBh+hMPgOLZm
 github.com/dgryski/go-farm v0.0.0-20190423205320-6a90982ecee2/go.mod h1:SqUrOPUnsFjfmXRMNPybcSiG0BgUW2AuFH8PAnS2iTw=
 github.com/docker/go-connections v0.4.0/go.mod h1:Gbd7IOopHjR8Iph03tsViu4nIes5XhDvyHbTtUxmeec=
 github.com/docker/go-units v0.4.0/go.mod h1:fgPhTUdO+D/Jk86RDLlptpiXQzgHJF7gydDDbaIK4Dk=
+github.com/dolthub/dolt v1.43.2-0.20241009000904-fc9fba029858 h1:+5eV9XsVBxjQOkgQzizmBNbtoTYQn9uhlu2srdxC8Tc=
+github.com/dolthub/dolt v1.43.2-0.20241009000904-fc9fba029858/go.mod h1:xg0iVm2hIFWuJbngpS+86vL9HKkGBo6hmHBB45cxFmY=
 github.com/dolthub/dolt/go v0.40.5-0.20241002235923-fdd24549db05 h1:T/XWNrqt9Nt2PmenB3ofOdXv0+zW7yCn3+tFKtQc/dk=
 github.com/dolthub/dolt/go v0.40.5-0.20241002235923-fdd24549db05/go.mod h1:TFpuCsAjYi6Hgyo1siDq6MqWWPqE9H7neQ186kjoUdc=
 github.com/dolthub/dolt/go/gen/proto/dolt/services/eventsapi v0.0.0-20240827111219-e4bb9ca3442d h1:RZkQeYOrDrOWzCxaP2ttkvg4E2TM9n8lnEsIBLKjqkM=
@@ -226,6 +228,8 @@ github.com/dolthub/go-icu-regex v0.0.0-20240916130659-0118adc6b662 h1:aC17hZD6iw
 github.com/dolthub/go-icu-regex v0.0.0-20240916130659-0118adc6b662/go.mod h1:KPUcpx070QOfJK1gNe0zx4pA5sicIK1GMikIGLKC168=
 github.com/dolthub/go-mysql-server v0.18.2-0.20241002232427-c25ce0e8480e h1:L5WKxYlGSg+OtiJUakFfEbUoca8YKTBk1Ni008EPaHI=
 github.com/dolthub/go-mysql-server v0.18.2-0.20241002232427-c25ce0e8480e/go.mod h1:kXkvkPV9LdB2oCk1wC6mX+GpOayqwlmWJMjPnrGRgAk=
+github.com/dolthub/go-mysql-server v0.18.2-0.20241008231402-7443a099ffa8 h1:dfTpuTbQIKGluu0Fqq+eywFW2FwtqQvxq7uSGH57Loc=
+github.com/dolthub/go-mysql-server v0.18.2-0.20241008231402-7443a099ffa8/go.mod h1:lGbU2bK+QNnlETdUjOOaE+UnlEUu31VaQOFKAFGyZN4=
 github.com/dolthub/gozstd v0.0.0-20240423170813-23a2903bca63 h1:OAsXLAPL4du6tfbBgK0xXHZkOlos63RdKYS3Sgw/dfI=
 github.com/dolthub/gozstd v0.0.0-20240423170813-23a2903bca63/go.mod h1:lV7lUeuDhH5thVGDCKXbatwKy2KW80L4rMT46n+Y2/Q=
 github.com/dolthub/ishell v0.0.0-20240701202509-2b217167d718 h1:lT7hE5k+0nkBdj/1UOSFwjWpNxf+LCApbRHgnCA17XE=
