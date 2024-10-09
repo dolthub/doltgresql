@@ -38,6 +38,14 @@ func TestForeignKeys(t *testing.T) {
 				},
 			},
 		},
+		{
+			Name: "foreign key with dolt_commit",
+			Focus: true,
+			SetUpScript: []string{
+				"create table test (pk int, \"value\" int, primary key(pk));",
+				"CREATE TABLE test_info (id int, info varchar(255), test_pk int, primary key(id), foreign key (test_pk) references test(pk))",
+			},
+		},
 	})
 }
 			
