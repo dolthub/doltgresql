@@ -102,7 +102,7 @@ func TestDescribe(t *testing.T) {
 			},
 		},
 		{
-			Name:  "describe table in other schema",
+			Name: "describe table in other schema",
 			SetUpScript: []string{
 				`CREATE TABLE t1 (a INT PRIMARY KEY, b TEXT)`,
 				`create schema schema2`,
