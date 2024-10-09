@@ -159,5 +159,77 @@ func TestShowTables(t *testing.T) {
 				},
 			},
 		},
+		{
+			Name: "show tables in multiple schemas, dbs",
+			Focus: true,
+			SetUpScript: []string{
+				`CREATE TABLE t1 (a INT PRIMARY KEY, name TEXT)`,
+				`CREATE TABLE t2 (b INT PRIMARY KEY, name TEXT)`,
+				`create schema schema2`,
+				`CREATE TABLE schema2.t3 (a INT PRIMARY KEY, name TEXT)`,
+				`CREATE TABLE schema2.t4 (b INT PRIMARY KEY, name TEXT)`,
+				`create database db2`,
+				`use db2`,
+				`CREATE TABLE t5 (a INT PRIMARY KEY, name TEXT)`,
+				`create schema schema3`,
+				`CREATE TABLE schema3.t6 (b INT PRIMARY KEY, name TEXT)`,
+				`use postgres`,
+			},
+			Assertions: []ScriptTestAssertion{
+				{
+					Query: `SHOW TABLES`,
+					Expected: []sql.Row{
+						{"t1"},
+						{"t2"},
+						{"t3"},
+						{"t4"},
+					},
+				},
+				{
+					Query: `SHOW TABLES from public`,
+					Expected: []sql.Row{
+						{"t1"},
+						{"t2"},
+					},
+				},
+				{
+					Query: `SHOW TABLES from schema2`,
+					Expected: []sql.Row{
+						{"t3"},
+						{"t4"},
+					},
+				},
+				{
+					Query: `SHOW TABLES from postgres.public`,
+					Expected: []sql.Row{
+						{"t1"},
+						{"t2"},
+					},
+				},
+				{
+					Query: `SHOW TABLES from postgres.schema2`,
+					Expected: []sql.Row{
+						{"t3"},
+						{"t4"},
+					},
+				},
+				{
+					Query: `SHOW TABLES from db2`,
+					ExpectedErr: "not found",
+				},
+				{
+					Query: `SHOW TABLES from db2.public`,
+					Expected: []sql.Row{
+						{"t5"},
+					},
+				},
+				{
+					Query: `SHOW TABLES from db2.schema3`,
+					Expected: []sql.Row{
+						{"t6"},
+					},
+				},
+			},
+		},
 	})
 }
