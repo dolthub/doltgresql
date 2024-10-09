@@ -181,8 +181,6 @@ func TestShowTables(t *testing.T) {
 					Expected: []sql.Row{
 						{"t1"},
 						{"t2"},
-						{"t3"},
-						{"t4"},
 					},
 				},
 				{
@@ -228,6 +226,23 @@ func TestShowTables(t *testing.T) {
 					Expected: []sql.Row{
 						{"t6"},
 					},
+				},
+				{
+					Query: `SET search_path TO 'schema2'`,
+				},
+				{
+					Query: `SHOW TABLES`,
+					Expected: []sql.Row{
+						{"t3"},
+						{"t4"},
+					},
+				},
+				{
+					Query: `SET search_path TO 'schema3'`,
+				},
+				{
+					Query: `SHOW TABLES`,
+					Expected: []sql.Row{},
 				},
 			},
 		},
