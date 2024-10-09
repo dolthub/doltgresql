@@ -264,7 +264,7 @@ func (b TextType) DeserializeValue(val []byte) (any, error) {
 func serializedStringCompare(v1 []byte, v2 []byte) int {
 	readerV1 := utils.NewReader(v1)
 	readerV2 := utils.NewReader(v2)
-	v1Bytes := utils.UnsafeAdvanceReader(readerV1, readerV1.VariableUint())
-	v2Bytes := utils.UnsafeAdvanceReader(readerV2, readerV2.VariableUint())
+	v1Bytes := utils.AdvanceReader(readerV1, readerV1.VariableUint())
+	v2Bytes := utils.AdvanceReader(readerV2, readerV2.VariableUint())
 	return bytes.Compare(v1Bytes, v2Bytes)
 }
