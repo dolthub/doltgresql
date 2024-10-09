@@ -103,3 +103,61 @@ func TestDescribe(t *testing.T) {
 		},
 	})
 }
+
+func TestShowTables(t *testing.T) {
+	RunScripts(t, []ScriptTest{
+		{
+			Name: "show tables in single schema",
+			Focus: true,
+			SetUpScript: []string{
+				`CREATE TABLE t1 (a INT PRIMARY KEY, name TEXT)`,
+				`CREATE TABLE t2 (b INT PRIMARY KEY, name TEXT)`,
+				`create schema schema2`,
+				`create database db2`,
+			},
+			Assertions: []ScriptTestAssertion{
+				{
+					Query: `SHOW TABLES`,
+					Expected: []sql.Row{
+						{"t1"},
+						{"t2"},
+					},
+				},
+				{
+					Query: `SHOW TABLES from public`,
+					Expected: []sql.Row{
+						{"t1"},
+						{"t2"},
+					},
+				},
+				{
+					Query: `SHOW TABLES from schema2`,
+					Expected: []sql.Row{},
+				},
+				{
+					Query: `SHOW TABLES from schema3`,
+					ExpectedErr: "not found",
+				},
+				{
+					Query: `SHOW TABLES from postgres.public`,
+					Expected: []sql.Row{
+						{"t1"},
+						{"t2"},
+					},
+				},
+				{
+					Query: `SHOW TABLES from postgres.schema2`,
+					Expected: []sql.Row{},
+				},
+				{
+					Query: `SHOW TABLES from postgres.schema3`,
+					ExpectedErr: "not found",
+				},
+				{
+					Query: `SHOW TABLES from db3`,
+					ExpectedErr: "not found",
+				},
+			},
+		},
+	})
+}

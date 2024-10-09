@@ -26,21 +26,17 @@ func nodeShowTables(node *tree.ShowTables) (vitess.Statement, error) {
 		return nil, nil
 	}
 	
-	var opts *vitess.ShowTablesOpt
+	var opts vitess.ShowTablesOpt
 	
 	if node.ExplicitCatalog {
-		opts = &vitess.ShowTablesOpt{
-			DbName:     node.CatalogName.String(),
-			SchemaName: node.SchemaName.String(),
-		}
+		opts.DbName= node.CatalogName.String()
+		opts.SchemaName= node.SchemaName.String()
 	} else if node.ExplicitSchema {
-		opts = &vitess.ShowTablesOpt{
-			SchemaName: node.SchemaName.String(),
-		}
+		opts.SchemaName= node.SchemaName.String()
 	}
 
 	return &vitess.Show{
 		Type:          "tables",
-		ShowTablesOpt: opts,
+		ShowTablesOpt: &opts,
 	}, nil
 }
