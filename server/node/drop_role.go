@@ -15,62 +15,79 @@
 package node
 
 import (
+	"fmt"
+
 	"github.com/dolthub/go-mysql-server/sql"
+	"github.com/dolthub/go-mysql-server/sql/plan"
 	vitess "github.com/dolthub/vitess/go/vt/sqlparser"
+
+	"github.com/dolthub/doltgresql/server/auth"
 )
 
-// DiscardStatement is just a marker type, since all functionality is handled by the connection handler,
-// rather than the engine. It has to conform to the sql.ExecSourceRel interface to be used in the handler, but this
-// functionality is all unused.
-type DiscardStatement struct{}
+// DropRole handles the DROP ROLE statement.
+type DropRole struct {
+	Names    []string
+	IfExists bool
+}
 
-var _ vitess.Injectable = DiscardStatement{}
-var _ sql.ExecSourceRel = DiscardStatement{}
+var _ sql.ExecSourceRel = (*DropRole)(nil)
+var _ vitess.Injectable = (*DropRole)(nil)
 
 // CheckPrivileges implements the interface sql.ExecSourceRel.
-func (d DiscardStatement) CheckPrivileges(ctx *sql.Context, opChecker sql.PrivilegedOperationChecker) bool {
+func (c *DropRole) CheckPrivileges(ctx *sql.Context, opChecker sql.PrivilegedOperationChecker) bool {
 	return true
 }
 
 // Children implements the interface sql.ExecSourceRel.
-func (d DiscardStatement) Children() []sql.Node {
+func (c *DropRole) Children() []sql.Node {
 	return nil
 }
 
 // IsReadOnly implements the interface sql.ExecSourceRel.
-func (d DiscardStatement) IsReadOnly() bool {
-	return true
+func (c *DropRole) IsReadOnly() bool {
+	return false
 }
 
 // Resolved implements the interface sql.ExecSourceRel.
-func (d DiscardStatement) Resolved() bool {
+func (c *DropRole) Resolved() bool {
 	return true
 }
 
 // RowIter implements the interface sql.ExecSourceRel.
-func (d DiscardStatement) RowIter(ctx *sql.Context, r sql.Row) (sql.RowIter, error) {
-	panic("DISCARD ALL should be handled by the connection handler")
+func (c *DropRole) RowIter(ctx *sql.Context, r sql.Row) (sql.RowIter, error) {
+	// TODO: handle concurrency
+	// First we'll loop over all of the names to check that they all exist
+	for _, roleName := range c.Names {
+		if !auth.RoleExists(roleName) && !c.IfExists {
+			return nil, fmt.Errorf(`role "%s" does not exist`, roleName)
+		}
+	}
+	// Then we'll loop again, dropping all of the users
+	for _, roleName := range c.Names {
+		auth.DropRole(roleName)
+	}
+	return sql.RowsToRowIter(), nil
 }
 
 // Schema implements the interface sql.ExecSourceRel.
-func (d DiscardStatement) Schema() sql.Schema {
+func (c *DropRole) Schema() sql.Schema {
 	return nil
 }
 
 // String implements the interface sql.ExecSourceRel.
-func (d DiscardStatement) String() string {
-	return "DISCARD ALL"
+func (c *DropRole) String() string {
+	return "DROP ROLE"
 }
 
 // WithChildren implements the interface sql.ExecSourceRel.
-func (d DiscardStatement) WithChildren(children ...sql.Node) (sql.Node, error) {
-	return d, nil
+func (c *DropRole) WithChildren(children ...sql.Node) (sql.Node, error) {
+	return plan.NillaryWithChildren(c, children...)
 }
 
 // WithResolvedChildren implements the interface vitess.Injectable.
-func (d DiscardStatement) WithResolvedChildren(children []any) (any, error) {
+func (c *DropRole) WithResolvedChildren(children []any) (any, error) {
 	if len(children) != 0 {
 		return nil, ErrVitessChildCount.New(0, len(children))
 	}
-	return d, nil
+	return c, nil
 }

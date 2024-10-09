@@ -6,6 +6,115 @@ import (
 	"github.com/dolthub/go-mysql-server/sql"
 )
 
+func TestInfoSchemaRevisionDb(t *testing.T) {
+	RunScripts(t, InfoSchemaRevisionDbScripts)
+}
+
+var InfoSchemaRevisionDbScripts = []ScriptTest{
+	{
+		Name: "info_schema changes with dolt_checkout",
+		SetUpScript: []string{
+			"create table t (a int primary key, b int);",
+			"select dolt_commit('-Am', 'creating table t');",
+			"select dolt_branch('b2');",
+			"select dolt_branch('b3');",
+			"select dolt_checkout('b2');",
+			"alter table t add column c int;",
+			"select dolt_commit('-am', 'added column c on branch b2');",
+			"select dolt_checkout('b3');",
+			"alter table t add column d int;",
+			"select dolt_commit('-am', 'added column d on branch b3');",
+			"select dolt_checkout('main');",
+		},
+		Assertions: []ScriptTestAssertion{
+			{
+				Query:    "select active_branch();",
+				Expected: []sql.Row{{"main"}},
+			},
+			{
+				Query:    "select column_name from information_schema.columns where table_catalog = 'postgres' and table_name = 't' order by 1;",
+				Expected: []sql.Row{{"a"}, {"b"}},
+			},
+			{
+				Query:            "select dolt_checkout('b2');",
+				SkipResultsCheck: true,
+			},
+			{
+				Query:    "select active_branch();",
+				Expected: []sql.Row{{"b2"}},
+			},
+			{
+				Query:    "select column_name from information_schema.columns where table_catalog = 'postgres' and table_name = 't' order by 1;",
+				Expected: []sql.Row{{"a"}, {"b"}, {"c"}},
+			},
+			{
+				Query:            "select dolt_checkout('b3');",
+				SkipResultsCheck: true,
+			},
+			{
+				Query:    "select active_branch();",
+				Expected: []sql.Row{{"b3"}},
+			},
+			{
+				Query:    "select column_name from information_schema.columns where table_catalog = 'postgres' and table_name = 't' order by 1;",
+				Expected: []sql.Row{{"a"}, {"b"}, {"d"}},
+			},
+		},
+	},
+	{
+		Name: "info_schema with detatched HEAD",
+		SetUpScript: []string{
+			"create table t (a int primary key, b int);",
+			"select dolt_commit('-Am', 'creating table t');",
+			"select dolt_branch('b2');",
+			"select dolt_branch('b3');",
+			"select dolt_checkout('b2');",
+			"alter table t add column c int;",
+			"select dolt_commit('-am', 'added column c on branch b2');",
+			"select dolt_tag('t2')",
+			"select dolt_checkout('b3');",
+			"alter table t add column d int;",
+			"select dolt_commit('-am', 'added column d on branch b3');",
+			"select dolt_tag('t3')",
+			"select dolt_checkout('main');",
+		},
+		Assertions: []ScriptTestAssertion{
+			{
+				Query:    "select active_branch();",
+				Expected: []sql.Row{{"main"}},
+			},
+			{
+				Query:    "select column_name from information_schema.columns where table_catalog = 'postgres' and table_name = 't' order by 1;",
+				Expected: []sql.Row{{"a"}, {"b"}},
+			},
+			{
+				Query:            "use postgres/t2;",
+				SkipResultsCheck: true,
+			},
+			{
+				Query:    "select active_branch();",
+				Expected: []sql.Row{{nil}},
+			},
+			{
+				Query:    "select column_name from information_schema.columns where table_catalog = 'postgres/t2' and table_name = 't' order by 1;",
+				Expected: []sql.Row{{"a"}, {"b"}, {"c"}},
+			},
+			{
+				Query:            "use postgres/t3;",
+				SkipResultsCheck: true,
+			},
+			{
+				Query:    "select active_branch();",
+				Expected: []sql.Row{{nil}},
+			},
+			{
+				Query:    "select column_name from information_schema.columns where table_catalog = 'postgres/t3' and table_name = 't' order by 1;",
+				Expected: []sql.Row{{"a"}, {"b"}, {"d"}},
+			},
+		},
+	},
+}
+
 func TestInfoSchemaColumns(t *testing.T) {
 	RunScripts(t, []ScriptTest{
 		{

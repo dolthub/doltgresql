@@ -33,9 +33,16 @@ func TestAsOf(t *testing.T) {
 			},
 			Assertions: []ScriptTestAssertion{
 				{
-					Query: `SELECT * FROM test AS OF 'HEAD^'`,
+					Query: `SELECT * FROM test AS OF 'HEAD^' as t1`,
 					Expected: []sql.Row{
 						{1},
+					},
+				},
+				{
+					Query: `SELECT * FROM test AS OF 'HEAD'`,
+					Expected: []sql.Row{
+						{1},
+						{2},
 					},
 				},
 			},
@@ -71,6 +78,19 @@ func TestAsOf(t *testing.T) {
 					Query: `SELECT * FROM test t1 join test2 AS OF 'HEAD~' AS t2 on t1.a = t2.b`,
 					Expected: []sql.Row{
 						{1, 1},
+					},
+				},
+				{
+					Query: `SELECT * FROM test AS OF 'HEAD~3' t1 cross join test2 AS OF 'HEAD~' t2`,
+					Expected: []sql.Row{
+						{1, 1},
+					},
+				},
+				{
+					Query: `SELECT * FROM test AS OF 'HEAD' t1 cross join test2 AS OF 'HEAD~' t2`,
+					Expected: []sql.Row{
+						{1, 1},
+						{2, 1},
 					},
 				},
 			},

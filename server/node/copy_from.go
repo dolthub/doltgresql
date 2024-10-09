@@ -193,7 +193,7 @@ func (cf *CopyFrom) WithChildren(children ...sql.Node) (sql.Node, error) {
 // WithResolvedChildren implements the interface vitess.Injectable.
 func (cf *CopyFrom) WithResolvedChildren(children []any) (any, error) {
 	if len(children) != 0 {
-		return nil, fmt.Errorf("invalid vitess child count, expected `0` but got `%d`", len(children))
+		return nil, ErrVitessChildCount.New(0, len(children))
 	}
 	return cf, nil
 }
