@@ -199,6 +199,9 @@ func CloseContextRootFinalizer(ctx *sql.Context) error {
 	}
 	if newRoot != nil {
 		if err = session.SetWorkingRoot(ctx, ctx.GetCurrentDatabase(), newRoot); err != nil {
+			if err == doltdb.ErrOperationNotSupportedInDetachedHead {
+				return nil
+			}
 			return err
 		}
 	}
