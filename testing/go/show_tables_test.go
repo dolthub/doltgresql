@@ -101,13 +101,64 @@ func TestDescribe(t *testing.T) {
 				},
 			},
 		},
+		{
+			Name:  "describe table in other schema",
+			Focus: true,
+			SetUpScript: []string{
+				`CREATE TABLE t1 (a INT PRIMARY KEY, b TEXT)`,
+				`create schema schema2`,
+				`CREATE TABLE schema2.t2 (c INT PRIMARY KEY, d TEXT)`,
+				`create schema schema3`,
+				`CREATE TABLE schema3.t2 (e INT PRIMARY KEY, f TEXT)`,
+			},
+			Assertions: []ScriptTestAssertion{
+				{
+					Query: `DESC schema2.t2`,
+					Expected: []sql.Row{
+						{"c", "integer", "NO", "PRI", interface{}(nil), ""},
+						{"d", "text", "YES", "", interface{}(nil), ""},
+					},
+				},
+				{
+					Query: `DESC postgres.schema2.t2`,
+					Expected: []sql.Row{
+						{"c", "integer", "NO", "PRI", interface{}(nil), ""},
+						{"d", "text", "YES", "", interface{}(nil), ""},
+					},
+				},
+				{
+					Query:       `DESC t2`,
+					ExpectedErr: "not found",
+				},
+				{
+					Query: `SET search_path TO 'schema2'`,
+				},
+				{
+					Query: `DESC t2`,
+					Expected: []sql.Row{
+						{"c", "integer", "NO", "PRI", interface{}(nil), ""},
+						{"d", "text", "YES", "", interface{}(nil), ""},
+					},
+				},
+				{
+					Query: "SET search_path TO 'schema3,schema2'",
+				},
+				{
+					Query: `DESC t2`,
+					Expected: []sql.Row{
+						{"e", "integer", "NO", "PRI", interface{}(nil), ""},
+						{"f", "text", "YES", "", interface{}(nil), ""},
+					},
+				},
+			},
+		},
 	})
 }
 
 func TestShowTables(t *testing.T) {
 	RunScripts(t, []ScriptTest{
 		{
-			Name: "show tables in single schema",
+			Name:  "show tables in single schema",
 			Focus: true,
 			SetUpScript: []string{
 				`CREATE TABLE t1 (a INT PRIMARY KEY, name TEXT)`,
@@ -131,11 +182,11 @@ func TestShowTables(t *testing.T) {
 					},
 				},
 				{
-					Query: `SHOW TABLES from schema2`,
+					Query:    `SHOW TABLES from schema2`,
 					Expected: []sql.Row{},
 				},
 				{
-					Query: `SHOW TABLES from schema3`,
+					Query:       `SHOW TABLES from schema3`,
 					ExpectedErr: "not found",
 				},
 				{
@@ -146,21 +197,21 @@ func TestShowTables(t *testing.T) {
 					},
 				},
 				{
-					Query: `SHOW TABLES from postgres.schema2`,
+					Query:    `SHOW TABLES from postgres.schema2`,
 					Expected: []sql.Row{},
 				},
 				{
-					Query: `SHOW TABLES from postgres.schema3`,
+					Query:       `SHOW TABLES from postgres.schema3`,
 					ExpectedErr: "not found",
 				},
 				{
-					Query: `SHOW TABLES from db3`,
+					Query:       `SHOW TABLES from db3`,
 					ExpectedErr: "not found",
 				},
 			},
 		},
 		{
-			Name: "show tables in multiple schemas, dbs",
+			Name:  "show tables in multiple schemas, dbs",
 			Focus: true,
 			SetUpScript: []string{
 				`CREATE TABLE t1 (a INT PRIMARY KEY, name TEXT)`,
@@ -181,8 +232,6 @@ func TestShowTables(t *testing.T) {
 					Expected: []sql.Row{
 						{"t1"},
 						{"t2"},
-						{"t3"},
-						{"t4"},
 					},
 				},
 				{
@@ -214,7 +263,7 @@ func TestShowTables(t *testing.T) {
 					},
 				},
 				{
-					Query: `SHOW TABLES from db2`,
+					Query:       `SHOW TABLES from db2`,
 					ExpectedErr: "not found",
 				},
 				{
@@ -228,6 +277,23 @@ func TestShowTables(t *testing.T) {
 					Expected: []sql.Row{
 						{"t6"},
 					},
+				},
+				{
+					Query: `SET search_path TO 'schema2'`,
+				},
+				{
+					Query: `SHOW TABLES`,
+					Expected: []sql.Row{
+						{"t3"},
+						{"t4"},
+					},
+				},
+				{
+					Query: `SET search_path TO 'schema3'`,
+				},
+				{
+					Query:    `SHOW TABLES`,
+					Expected: []sql.Row{},
 				},
 			},
 		},

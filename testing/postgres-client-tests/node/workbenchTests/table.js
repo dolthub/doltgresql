@@ -291,7 +291,7 @@ export const tableTests = [
   },
   {
     q: `COPY "test_info" FROM STDIN WITH (FORMAT csv, HEADER TRUE);`,
-    file: "update_test_info.csv",
+    file: "insert_test_info.csv",
     res: { command: "COPY", rowCount: 3, oid: null, rows: [], fields: [] },
   },
   {
@@ -335,10 +335,9 @@ export const tableTests = [
     },
   },
   {
-    skip: true, // TODO: DELIMITER not yet supported
     q: `COPY "test_info" FROM STDIN WITH (FORMAT csv, HEADER TRUE, DELIMITER '|');`,
-    file: "replace_test_info.psv",
-    res: { command: "COPY", rowCount: 6, oid: null, rows: [], fields: [] },
+    file: "insert_test_info.psv",
+    res: { command: "COPY", rowCount: 3, oid: null, rows: [], fields: [] },
   },
   {
     skip: true,

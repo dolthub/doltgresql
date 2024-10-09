@@ -18,10 +18,10 @@ import "testing"
 
 func TestDropRole(t *testing.T) {
 	tests := []QueryParses{
-		Parses("DROP ROLE name"),
-		Parses("DROP ROLE IF EXISTS name"),
-		Parses("DROP ROLE name , name"),
-		Parses("DROP ROLE IF EXISTS name , name"),
+		Converts("DROP ROLE name"),
+		Converts("DROP ROLE IF EXISTS name"),
+		Converts("DROP ROLE name , name"),
+		Converts("DROP ROLE IF EXISTS name , name"),
 	}
 	RunTests(t, tests)
 }

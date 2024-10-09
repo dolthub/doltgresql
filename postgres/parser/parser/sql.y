@@ -702,7 +702,7 @@ func (u *sqlSymUnion) aggregatesToDrop() []tree.AggregateToDrop {
 %token <str> BACKUP BACKUPS BASETYPE BEFORE BEGIN BETWEEN BIGINT BIGSERIAL BINARY BIT
 %token <str> FORMAT CSV HEADER
 %token <str> BUCKET_COUNT
-%token <str> BOOLEAN BOTH BOX2D BUNDLE BY
+%token <str> BOOLEAN BOTH BOX2D BUNDLE BY BYPASSRLS
 
 %token <str> CACHE CHAIN CALL CALLED CANCEL CANCELQUERY CANONICAL CASCADE CASCADED CASE CAST CATEGORY CBRT
 %token <str> CHANGEFEED CHAR CHARACTER CHARACTERISTICS CHECK CHECK_OPTION CLASS CLOSE
@@ -718,7 +718,7 @@ func (u *sqlSymUnion) aggregatesToDrop() []tree.AggregateToDrop {
 %token <str> DEFAULT DEFAULTS DEFERRABLE DEFERRED DEFINER DELETE DELIMITER DEPENDS DESC DESCRIBE DESERIALFUNC DESTINATION
 %token <str> DETACH DETACHED DICTIONARY DISABLE DISCARD DISTINCT DO DOMAIN DOUBLE DROP
 
-%token <str> EACH ELEMENT ELSE ENABLE ENCODING ENCRYPTION_PASSPHRASE END ENUM ENUMS ESCAPE EVENT
+%token <str> EACH ELEMENT ELSE ENABLE ENCODING ENCRYPTION_PASSPHRASE ENCRYPTED END ENUM ENUMS ESCAPE EVENT
 %token <str> EXCEPT EXCLUDE EXCLUDING EXISTS EXECUTE EXECUTION EXPERIMENTAL
 %token <str> EXPERIMENTAL_FINGERPRINTS EXPERIMENTAL_REPLICA
 %token <str> EXPERIMENTAL_AUDIT EXPIRATION EXPLAIN EXPORT EXPRESSION
@@ -756,7 +756,7 @@ func (u *sqlSymUnion) aggregatesToDrop() []tree.AggregateToDrop {
 %token <str> MULTIPOINTZ MULTIPOINTZM MULTIPOLYGON MULTIPOLYGONM MULTIPOLYGONZ MULTIPOLYGONZM MULTIRANGE_TYPE_NAME
 
 %token <str> NAN NAME NAMES NATURAL NEVER NEW NEXT NO NOCANCELQUERY NOCONTROLCHANGEFEED NOCONTROLJOB
-%token <str> NOCREATEDB NOCREATELOGIN NOCREATEROLE NOLOGIN NOMODIFYCLUSTERSETTING NO_INDEX_JOIN
+%token <str> NOBYPASSRLS NOCREATEDB NOCREATELOGIN NOCREATEROLE NOINHERIT NOLOGIN NOMODIFYCLUSTERSETTING NOREPLICATION NOSUPERUSER NO_INDEX_JOIN
 %token <str> NONE NORMAL NOT NOTHING NOTNULL NOVIEWACTIVITY NOWAIT NULL NULLIF NULLS NUMERIC YES
 
 %token <str> OBJECT OF OFF OFFSET OID OIDS OIDVECTOR OLD ON ONLY OPT OPTION OPTIONS OR
@@ -771,7 +771,7 @@ func (u *sqlSymUnion) aggregatesToDrop() []tree.AggregateToDrop {
 
 %token <str> RANGE RANGES READ READ_ONLY READ_WRITE REAL RECEIVE RECURSIVE RECURRING REF REFERENCES REFERENCING REFRESH
 %token <str> REGCLASS REGPROC REGPROCEDURE REGNAMESPACE REGTYPE REINDEX RELEASE REMAINDER
-%token <str> REMOVE_PATH RENAME REPEATABLE REPLACE REPLICA RESET RESTART RESTORE RESTRICT RESTRICTED RESUME
+%token <str> REMOVE_PATH RENAME REPEATABLE REPLACE REPLICA REPLICATION RESET RESTART RESTORE RESTRICT RESTRICTED RESUME
 %token <str> RETRY RETURN RETURNING RETURNS REVISION_HISTORY REVOKE RIGHT
 %token <str> ROLE ROLES ROUTINE ROUTINES ROLLBACK ROLLUP ROW ROWS RSHIFT RULE RUNNING
 
@@ -781,8 +781,8 @@ func (u *sqlSymUnion) aggregatesToDrop() []tree.AggregateToDrop {
 %token <str> SHARE SHAREABLE SHOW SIMILAR SIMPLE SKIP SKIP_MISSING_FOREIGN_KEYS
 %token <str> SKIP_MISSING_SEQUENCES SKIP_MISSING_SEQUENCE_OWNERS SKIP_MISSING_VIEWS SMALLINT SMALLSERIAL SNAPSHOT SOME
 %token <str> SORTOP SPLIT SQL SQRT SSPACE STABLE START STATEMENT STATISTICS STATUS STDIN STRATEGY STRICT STRING
-%token <str> STORAGE STORE STORED STYPE SUBSCRIPT SUBSCRIPTION SUBSTRING SUBTYPE SUBTYPE_DIFF SUBTYPE_OPCLASS SUPPORT
-%token <str> SYMMETRIC SYNTAX SYSTEM
+%token <str> STORAGE STORE STORED STYPE SUBSCRIPT SUBSCRIPTION SUBSTRING SUBTYPE SUBTYPE_DIFF SUBTYPE_OPCLASS
+%token <str> SUPERUSER SUPPORT SYMMETRIC SYNTAX SYSID SYSTEM
 
 %token <str> TABLE TABLES TABLESPACE TEMP TEMPLATE TEMPORARY TEXT THEN
 %token <str> TIES TIME TIMETZ TIMESTAMP TIMESTAMPTZ TO THROTTLING TRAILING TRACE TRACING
@@ -1295,6 +1295,7 @@ func (u *sqlSymUnion) aggregatesToDrop() []tree.AggregateToDrop {
 
 %type <*tree.NumVal> signed_iconst only_signed_iconst
 %type <*tree.NumVal> signed_fconst only_signed_fconst
+%type <int32> signed_iconst32
 %type <int32> iconst32
 %type <int64> signed_iconst64
 %type <int64> iconst64
@@ -8376,9 +8377,13 @@ truncate_stmt:
 | TRUNCATE error // SHOW HELP: TRUNCATE
 
 password_clause:
-  PASSWORD string_or_placeholder
+  PASSWORD non_reserved_word_or_sconst
   {
-    $$.val = tree.KVOption{Key: tree.Name($1), Value: $2.expr()}
+    $$.val = tree.KVOption{Key: tree.Name($1), Value: tree.NewDString($2)}
+  }
+| ENCRYPTED PASSWORD non_reserved_word_or_sconst
+  {
+    $$.val = tree.KVOption{Key: tree.Name($2), Value: tree.NewDString($3)}
   }
 | PASSWORD NULL
   {
@@ -8598,13 +8603,13 @@ opt_constraint:
 // %Text: CREATE ROLE [IF NOT EXISTS] <name> [ [WITH] <OPTIONS...> ]
 // %SeeAlso: ALTER ROLE, DROP ROLE, SHOW ROLES
 create_role_stmt:
-  CREATE role_or_group_or_user string_or_placeholder opt_role_options
+  CREATE role_or_group_or_user non_reserved_word_or_sconst opt_role_options
   {
-    $$.val = &tree.CreateRole{Name: $3.expr(), KVOptions: $4.kvOptions(), IsRole: $2.bool()}
+    $$.val = &tree.CreateRole{Name: $3, KVOptions: $4.kvOptions(), IsRole: $2.bool()}
   }
-| CREATE role_or_group_or_user IF NOT EXISTS string_or_placeholder opt_role_options
+| CREATE role_or_group_or_user IF NOT EXISTS non_reserved_word_or_sconst opt_role_options
   {
-    $$.val = &tree.CreateRole{Name: $6.expr(), IfNotExists: true, KVOptions: $7.kvOptions(), IsRole: $2.bool()}
+    $$.val = &tree.CreateRole{Name: $6, IfNotExists: true, KVOptions: $7.kvOptions(), IsRole: $2.bool()}
   }
 | CREATE role_or_group_or_user error // SHOW HELP: CREATE ROLE
 
@@ -8613,13 +8618,13 @@ create_role_stmt:
 // %Text: ALTER ROLE <name> [WITH] <options...>
 // %SeeAlso: CREATE ROLE, DROP ROLE, SHOW ROLES
 alter_role_stmt:
-  ALTER role_or_group_or_user string_or_placeholder opt_role_options
+  ALTER role_or_group_or_user non_reserved_word_or_sconst opt_role_options
 {
-  $$.val = &tree.AlterRole{Name: $3.expr(), KVOptions: $4.kvOptions(), IsRole: $2.bool()}
+  $$.val = &tree.AlterRole{Name: $3, KVOptions: $4.kvOptions(), IsRole: $2.bool()}
 }
-| ALTER role_or_group_or_user IF EXISTS string_or_placeholder opt_role_options
+| ALTER role_or_group_or_user IF EXISTS non_reserved_word_or_sconst opt_role_options
 {
-  $$.val = &tree.AlterRole{Name: $5.expr(), IfExists: true, KVOptions: $6.kvOptions(), IsRole: $2.bool()}
+  $$.val = &tree.AlterRole{Name: $5, IfExists: true, KVOptions: $6.kvOptions(), IsRole: $2.bool()}
 }
 | ALTER role_or_group_or_user error // SHOW HELP: ALTER ROLE
 
@@ -8763,35 +8768,11 @@ create_materialized_view_stmt:
   }
 
 role_option:
-  CREATEROLE
+  SUPERUSER
   {
     $$.val = tree.KVOption{Key: tree.Name($1), Value: nil}
   }
-| NOCREATEROLE
-  {
-    $$.val = tree.KVOption{Key: tree.Name($1), Value: nil}
-  }
-| LOGIN
-  {
-    $$.val = tree.KVOption{Key: tree.Name($1), Value: nil}
-  }
-| NOLOGIN
-  {
-    $$.val = tree.KVOption{Key: tree.Name($1), Value: nil}
-  }
-| CONTROLJOB
-  {
-    $$.val = tree.KVOption{Key: tree.Name($1), Value: nil}
-  }
-| NOCONTROLJOB
-  {
-   $$.val = tree.KVOption{Key: tree.Name($1), Value: nil}
-  }
-| CONTROLCHANGEFEED
-  {
-    $$.val = tree.KVOption{Key: tree.Name($1), Value: nil}
-  }
-| NOCONTROLCHANGEFEED
+| NOSUPERUSER
   {
     $$.val = tree.KVOption{Key: tree.Name($1), Value: nil}
   }
@@ -8803,35 +8784,51 @@ role_option:
   {
     $$.val = tree.KVOption{Key: tree.Name($1), Value: nil}
   }
-| CREATELOGIN
+| CREATEROLE
   {
     $$.val = tree.KVOption{Key: tree.Name($1), Value: nil}
   }
-| NOCREATELOGIN
+| NOCREATEROLE
   {
     $$.val = tree.KVOption{Key: tree.Name($1), Value: nil}
   }
-| VIEWACTIVITY
+| INHERIT
   {
     $$.val = tree.KVOption{Key: tree.Name($1), Value: nil}
   }
-| NOVIEWACTIVITY
+| NOINHERIT
   {
     $$.val = tree.KVOption{Key: tree.Name($1), Value: nil}
   }
-| CANCELQUERY
+| LOGIN
   {
     $$.val = tree.KVOption{Key: tree.Name($1), Value: nil}
   }
-| NOCANCELQUERY
+| NOLOGIN
   {
     $$.val = tree.KVOption{Key: tree.Name($1), Value: nil}
   }
-| MODIFYCLUSTERSETTING
+| REPLICATION
   {
     $$.val = tree.KVOption{Key: tree.Name($1), Value: nil}
   }
-| NOMODIFYCLUSTERSETTING
+| NOREPLICATION
+  {
+    $$.val = tree.KVOption{Key: tree.Name($1), Value: nil}
+  }
+| BYPASSRLS
+  {
+    $$.val = tree.KVOption{Key: tree.Name($1), Value: nil}
+  }
+| NOBYPASSRLS
+  {
+    $$.val = tree.KVOption{Key: tree.Name($1), Value: nil}
+  }
+| CONNECTION LIMIT signed_iconst32
+  {
+    $$.val = tree.KVOption{Key: tree.Name(fmt.Sprintf("%s_%s", $1, $2)), Value: tree.NewDInt(tree.DInt($3.val.(int32)))}
+  }
+| SYSID ICONST
   {
     $$.val = tree.KVOption{Key: tree.Name($1), Value: nil}
   }
@@ -8860,13 +8857,13 @@ opt_role_options:
   }
 
 valid_until_clause:
-  VALID UNTIL string_or_placeholder
+  VALID UNTIL non_reserved_word_or_sconst
   {
-    $$.val = tree.KVOption{Key: tree.Name(fmt.Sprintf("%s_%s",$1, $2)), Value: $3.expr()}
+    $$.val = tree.KVOption{Key: tree.Name(fmt.Sprintf("%s_%s", $1, $2)), Value: tree.NewDString($2)}
   }
 | VALID UNTIL NULL
   {
-    $$.val = tree.KVOption{Key: tree.Name(fmt.Sprintf("%s_%s",$1, $2)), Value: tree.DNull}
+    $$.val = tree.KVOption{Key: tree.Name(fmt.Sprintf("%s_%s", $1, $2)), Value: tree.DNull}
   }
 
 opt_view_recursive:
@@ -13785,6 +13782,15 @@ only_signed_fconst:
     $$.val = n
   }
 
+// signed_iconst32 is a variant of signed_iconst which only accepts (signed) integer literals that fit in an int32.
+signed_iconst32:
+  signed_iconst
+  {
+    val, err := $1.numVal().AsInt32()
+    if err != nil { return setErr(sqllex, err) }
+    $$.val = val
+  }
+
 // iconst32 accepts only unsigned integer literals that fit in an int32.
 iconst32:
   ICONST
@@ -14175,6 +14181,7 @@ unreserved_keyword:
 | BUCKET_COUNT
 | BUNDLE
 | BY
+| BYPASSRLS
 | CACHE
 | CHAIN
 | CHECK_OPTION
@@ -14245,6 +14252,7 @@ unreserved_keyword:
 | EACH
 | ENABLE
 | ENCODING
+| ENCRYPTED
 | ENCRYPTION_PASSPHRASE
 | ENUM
 | ENUMS
@@ -14392,14 +14400,18 @@ unreserved_keyword:
 | NO
 | NORMAL
 | NO_INDEX_JOIN
+| NOBYPASSRLS
 | NOCREATEDB
 | NOCREATELOGIN
 | NOCANCELQUERY
 | NOCREATEROLE
 | NOCONTROLCHANGEFEED
 | NOCONTROLJOB
+| NOINHERIT
 | NOLOGIN
 | NOMODIFYCLUSTERSETTING
+| NOREPLICATION
+| NOSUPERUSER
 | NOVIEWACTIVITY
 | NOWAIT
 | NULLS
@@ -14473,6 +14485,7 @@ unreserved_keyword:
 | REPEATABLE
 | REPLACE
 | REPLICA
+| REPLICATION
 | RESET
 | RESTART
 | RESTORE
@@ -14550,8 +14563,10 @@ unreserved_keyword:
 | SUBTYPE
 | SUBTYPE_DIFF
 | SUBTYPE_OPCLASS
+| SUPERUSER
 | SUPPORT
 | SYNTAX
+| SYSID
 | SYSTEM
 | TABLES
 | TABLESPACE

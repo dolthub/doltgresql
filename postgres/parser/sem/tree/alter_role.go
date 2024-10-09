@@ -37,7 +37,7 @@ var _ Statement = &AlterRole{}
 
 // AlterRole represents an ALTER ROLE statement.
 type AlterRole struct {
-	Name      Expr
+	Name      string
 	IfExists  bool
 	IsRole    bool
 	KVOptions KVOptions
@@ -54,7 +54,7 @@ func (node *AlterRole) Format(ctx *FmtCtx) {
 	if node.IfExists {
 		ctx.WriteString("IF EXISTS ")
 	}
-	ctx.FormatNode(node.Name)
+	ctx.WriteString(node.Name)
 
 	if len(node.KVOptions) > 0 {
 		ctx.WriteString(" WITH")
