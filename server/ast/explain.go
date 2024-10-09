@@ -41,9 +41,9 @@ func nodeExplain(node *tree.Explain) (vitess.Statement, error) {
 				return nil, err
 			}
 			showTableOpts = &vitess.ShowTablesOpt{
-				AsOf: asOf,
+				AsOf:       asOf,
 				SchemaName: tableName.SchemaQualifier.String(),
-				DbName: tableName.DbQualifier.String(),
+				DbName:     tableName.DbQualifier.String(),
 			}
 		}
 

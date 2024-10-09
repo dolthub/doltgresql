@@ -102,7 +102,7 @@ func TestDescribe(t *testing.T) {
 			},
 		},
 		{
-			Name: "describe table in other schema",
+			Name:  "describe table in other schema",
 			Focus: true,
 			SetUpScript: []string{
 				`CREATE TABLE t1 (a INT PRIMARY KEY, b TEXT)`,
@@ -127,7 +127,7 @@ func TestDescribe(t *testing.T) {
 					},
 				},
 				{
-					Query: `DESC t2`,
+					Query:       `DESC t2`,
 					ExpectedErr: "not found",
 				},
 				{
@@ -158,7 +158,7 @@ func TestDescribe(t *testing.T) {
 func TestShowTables(t *testing.T) {
 	RunScripts(t, []ScriptTest{
 		{
-			Name: "show tables in single schema",
+			Name:  "show tables in single schema",
 			Focus: true,
 			SetUpScript: []string{
 				`CREATE TABLE t1 (a INT PRIMARY KEY, name TEXT)`,
@@ -182,11 +182,11 @@ func TestShowTables(t *testing.T) {
 					},
 				},
 				{
-					Query: `SHOW TABLES from schema2`,
+					Query:    `SHOW TABLES from schema2`,
 					Expected: []sql.Row{},
 				},
 				{
-					Query: `SHOW TABLES from schema3`,
+					Query:       `SHOW TABLES from schema3`,
 					ExpectedErr: "not found",
 				},
 				{
@@ -197,21 +197,21 @@ func TestShowTables(t *testing.T) {
 					},
 				},
 				{
-					Query: `SHOW TABLES from postgres.schema2`,
+					Query:    `SHOW TABLES from postgres.schema2`,
 					Expected: []sql.Row{},
 				},
 				{
-					Query: `SHOW TABLES from postgres.schema3`,
+					Query:       `SHOW TABLES from postgres.schema3`,
 					ExpectedErr: "not found",
 				},
 				{
-					Query: `SHOW TABLES from db3`,
+					Query:       `SHOW TABLES from db3`,
 					ExpectedErr: "not found",
 				},
 			},
 		},
 		{
-			Name: "show tables in multiple schemas, dbs",
+			Name:  "show tables in multiple schemas, dbs",
 			Focus: true,
 			SetUpScript: []string{
 				`CREATE TABLE t1 (a INT PRIMARY KEY, name TEXT)`,
@@ -263,7 +263,7 @@ func TestShowTables(t *testing.T) {
 					},
 				},
 				{
-					Query: `SHOW TABLES from db2`,
+					Query:       `SHOW TABLES from db2`,
 					ExpectedErr: "not found",
 				},
 				{
@@ -292,7 +292,7 @@ func TestShowTables(t *testing.T) {
 					Query: `SET search_path TO 'schema3'`,
 				},
 				{
-					Query: `SHOW TABLES`,
+					Query:    `SHOW TABLES`,
 					Expected: []sql.Row{},
 				},
 			},
