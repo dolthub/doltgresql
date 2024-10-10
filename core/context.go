@@ -199,6 +199,11 @@ func CloseContextRootFinalizer(ctx *sql.Context) error {
 	}
 	if newRoot != nil {
 		if err = session.SetWorkingRoot(ctx, ctx.GetCurrentDatabase(), newRoot); err != nil {
+			// TODO: We need a way to see if the session has a writeable working root
+			// (new interface method on session probably), and avoid setting it if so
+			if err == doltdb.ErrOperationNotSupportedInDetachedHead {
+				return nil
+			}
 			return err
 		}
 	}

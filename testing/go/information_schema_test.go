@@ -62,7 +62,7 @@ var InfoSchemaRevisionDbScripts = []ScriptTest{
 		},
 	},
 	{
-		Name: "info_schema with detatched HEAD",
+		Name: "info_schema with detached HEAD",
 		SetUpScript: []string{
 			"create table t (a int primary key, b int);",
 			"select dolt_commit('-Am', 'creating table t');",
@@ -110,6 +110,10 @@ var InfoSchemaRevisionDbScripts = []ScriptTest{
 			{
 				Query:    "select column_name from information_schema.columns where table_catalog = 'postgres/t3' and table_name = 't' order by 1;",
 				Expected: []sql.Row{{"a"}, {"b"}, {"d"}},
+			},
+			{
+				Query:    "select relname from pg_class where oid = 't'::regclass;",
+				Expected: []sql.Row{{"t"}},
 			},
 		},
 	},
