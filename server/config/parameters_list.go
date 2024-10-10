@@ -2905,7 +2905,7 @@ var postgresConfigParameters = map[string]sql.SystemVariable{
 	// schema on the path here.
 	"search_path": &Parameter{
 		Name:      "search_path",
-		Default:   "\"$user\", public,", 
+		Default:   "\"$user\", public,",
 		Category:  "Client Connection Defaults / Statement Behavior",
 		ShortDesc: "Sets the schema search order for names that are not schema-qualified.",
 		Context:   ParameterContextUser,
