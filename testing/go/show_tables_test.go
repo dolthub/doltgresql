@@ -158,7 +158,6 @@ func TestShowTables(t *testing.T) {
 	RunScripts(t, []ScriptTest{
 		{
 			Name:  "show tables in single schema",
-			Focus: true,
 			SetUpScript: []string{
 				`CREATE TABLE t1 (a INT PRIMARY KEY, name TEXT)`,
 				`CREATE TABLE t2 (b INT PRIMARY KEY, name TEXT)`,
@@ -211,7 +210,6 @@ func TestShowTables(t *testing.T) {
 		},
 		{
 			Name:  "show tables in multiple schemas, dbs",
-			Focus: true,
 			SetUpScript: []string{
 				`CREATE TABLE t1 (a INT PRIMARY KEY, name TEXT)`,
 				`CREATE TABLE t2 (b INT PRIMARY KEY, name TEXT)`,
