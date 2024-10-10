@@ -12,7 +12,6 @@ func TestInfoSchemaRevisionDb(t *testing.T) {
 
 var InfoSchemaRevisionDbScripts = []ScriptTest{
 	{
-		// Skip: true,
 		Name: "info_schema changes with dolt_checkout",
 		SetUpScript: []string{
 			"create table t (a int primary key, b int);",
