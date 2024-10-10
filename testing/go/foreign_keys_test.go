@@ -14,7 +14,11 @@
 
 package _go
 
-import "testing"
+import (
+	"testing"
+
+	"github.com/dolthub/go-mysql-server/sql"
+)
 
 func TestForeignKeys(t *testing.T) {
 	RunScripts(t, []ScriptTest{
@@ -44,6 +48,16 @@ func TestForeignKeys(t *testing.T) {
 			SetUpScript: []string{
 				"create table test (pk int, \"value\" int, primary key(pk));",
 				"CREATE TABLE test_info (id int, info varchar(255), test_pk int, primary key(id), foreign key (test_pk) references test(pk))",
+				"INSERT INTO test VALUES (0, 0), (1, 1), (2,2)",
+				"SELECT DOLT_COMMIT('-A', '-m', 'initial commit')",
+				"INSERT INTO test_info VALUES (1, 'info about test pk 0', 0)",
+				"SELECT DOLT_COMMIT('-A', '-m', 'inserted test_info')",
+			},
+			Assertions: []ScriptTestAssertion{
+				{
+					Query: "SELECT * FROM dolt_status",
+					Expected: []sql.Row{},
+				},
 			},
 		},
 	})
