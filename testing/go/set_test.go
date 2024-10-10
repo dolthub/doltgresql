@@ -79,7 +79,7 @@ var setStmts = []ScriptTest{
 		Assertions: []ScriptTestAssertion{
 			{
 				Query:    "SHOW search_path",
-				Expected: []sql.Row{{"\"$user\", public"}},
+				Expected: []sql.Row{{"\"$user\", public,"}},
 			},
 			{
 				Query:    "SET SCHEMA 'postgres';",
@@ -5321,7 +5321,7 @@ var setStmts = []ScriptTest{
 		Assertions: []ScriptTestAssertion{
 			{
 				Query:    "SHOW search_path",
-				Expected: []sql.Row{{"\"$user\", public"}},
+				Expected: []sql.Row{{"\"$user\", public,"}},
 			},
 			{
 				Query:    "SET search_path TO 'postgres'",
@@ -5337,7 +5337,7 @@ var setStmts = []ScriptTest{
 			},
 			{
 				Query:    "SHOW search_path",
-				Expected: []sql.Row{{"\"$user\", public"}},
+				Expected: []sql.Row{{"\"$user\", public,"}},
 			},
 		},
 	},

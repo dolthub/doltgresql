@@ -40,6 +40,16 @@ const testInfoFields = [
 ];
 
 export const tableTests = [
+    {
+        q: "SET search_path TO DEFAULT",
+        res: {
+            command: "SET",
+            rowCount: null,
+            oid: null,
+            rows: [],
+            fields: [],
+        },
+    },
   {
     q: "INSERT INTO test VALUES (0, 0), (1, 1), (2,2)",
     res: {

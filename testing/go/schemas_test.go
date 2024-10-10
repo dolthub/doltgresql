@@ -518,7 +518,7 @@ var SchemaTests = []ScriptTest{
 		Assertions: []ScriptTestAssertion{
 			{
 				Query:    "SHOW search_path",
-				Expected: []sql.Row{{`"$user", public`}},
+				Expected: []sql.Row{{`"$user", public,`}},
 			},
 			{
 				Query:       "SELECT * FROM mytbl;",
