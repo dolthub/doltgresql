@@ -257,6 +257,14 @@ func ptr[T any](val T) *T {
 	return &val
 }
 
+var testServerLogLevel = "info"
+
+func init() {
+	if logLevel, ok := os.LookupEnv("TEST_SERVER_LOG_LEVEL"); ok {
+		testServerLogLevel = logLevel
+	}
+}
+
 // CreateServer creates a server with the given database, returning a connection to the server. The server will close
 // when the connection is closed (or loses its connection to the server). The accompanying WaitGroup may be used to wait
 // until the server has closed.
@@ -269,7 +277,7 @@ func CreateServer(t *testing.T, database string) (context.Context, *Connection, 
 			PortNumber: &port,
 			HostStr:    ptr("127.0.0.1"),
 		},
-		LogLevelStr: ptr("debug"),
+		LogLevelStr: ptr(testServerLogLevel),
 	})
 	require.NoError(t, err)
 
