@@ -84,7 +84,7 @@ func (c *DropSequence) RowIter(ctx *sql.Context, r sql.Row) (sql.RowIter, error)
 		}
 		return nil, fmt.Errorf(`sequence "%s" does not exist`, c.sequence)
 	}
-	collection, err := core.GetCollectionFromContext(ctx)
+	collection, err := core.GetSequencesCollectionFromContext(ctx)
 	if err != nil {
 		return nil, err
 	}

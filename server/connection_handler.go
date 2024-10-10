@@ -43,6 +43,7 @@ import (
 	"github.com/dolthub/doltgresql/server/ast"
 	pgexprs "github.com/dolthub/doltgresql/server/expression"
 	"github.com/dolthub/doltgresql/server/node"
+	pgtypes "github.com/dolthub/doltgresql/server/types"
 )
 
 // ConnectionHandler is responsible for the entire lifecycle of a user connection: receiving messages they send,
@@ -806,7 +807,7 @@ func (h *ConnectionHandler) convertBindParameters(types []uint32, formatCodes []
 			return nil, err
 		}
 
-		pgTyp, ok := OidToDoltgresType[typ]
+		pgTyp, ok := pgtypes.OidToDoltgresType[typ]
 		if !ok {
 			return nil, fmt.Errorf("unhandled oid type: %v", typ)
 		}

@@ -124,7 +124,7 @@ func (c *CreateSequence) RowIter(ctx *sql.Context, r sql.Row) (sql.RowIter, erro
 		}
 	}
 	// Create the sequence since we know it's completely valid
-	collection, err := core.GetCollectionFromContext(ctx)
+	collection, err := core.GetSequencesCollectionFromContext(ctx)
 	if err != nil {
 		return nil, err
 	}

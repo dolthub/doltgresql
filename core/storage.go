@@ -125,6 +125,15 @@ func (r rootStorage) GetSequences() hash.Hash {
 	return hash.New(hashBytes)
 }
 
+// GetDomains returns the sequence hash.
+func (r rootStorage) GetDomains() hash.Hash {
+	hashBytes := r.srv.DomainsBytes()
+	if len(hashBytes) == 0 {
+		return hash.Hash{}
+	}
+	return hash.New(hashBytes)
+}
+
 // clone returns a clone of the calling storage.
 func (r rootStorage) clone() rootStorage {
 	bs := make([]byte, len(r.srv.Table().Bytes))

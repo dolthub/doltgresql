@@ -22,12 +22,14 @@ import (
 	"github.com/dolthub/dolt/go/libraries/doltcore/sqle/resolve"
 	"github.com/dolthub/go-mysql-server/sql"
 
+	"github.com/dolthub/doltgresql/core/domains"
 	"github.com/dolthub/doltgresql/core/sequences"
 )
 
 // contextValues contains a set of objects that will be passed alongside the context.
 type contextValues struct {
 	collection *sequences.Collection
+	domains    *domains.DomainCollection
 }
 
 // getContextValues accesses the contextValues in the given context. If the context does not have a contextValues, then
@@ -155,9 +157,9 @@ func GetSqlTableFromContext(ctx *sql.Context, databaseName string, tableName dol
 	return nil, nil
 }
 
-// GetCollectionFromContext returns the given sequence collection from the context. Will always return a collection if
+// GetSequencesCollectionFromContext returns the given sequence collection from the context. Will always return a collection if
 // no error is returned.
-func GetCollectionFromContext(ctx *sql.Context) (*sequences.Collection, error) {
+func GetSequencesCollectionFromContext(ctx *sql.Context) (*sequences.Collection, error) {
 	cv, err := getContextValues(ctx)
 	if err != nil {
 		return nil, err
@@ -173,6 +175,26 @@ func GetCollectionFromContext(ctx *sql.Context) (*sequences.Collection, error) {
 		}
 	}
 	return cv.collection, nil
+}
+
+// GetDomainsCollectionFromContext returns the given domain collection from the context.
+// Will always return a collection if no error is returned.
+func GetDomainsCollectionFromContext(ctx *sql.Context) (*domains.DomainCollection, error) {
+	cv, err := getContextValues(ctx)
+	if err != nil {
+		return nil, err
+	}
+	if cv.domains == nil {
+		_, root, err := getRootFromContext(ctx)
+		if err != nil {
+			return nil, err
+		}
+		cv.domains, err = root.GetDomains(ctx)
+		if err != nil {
+			return nil, err
+		}
+	}
+	return cv.domains, nil
 }
 
 // CloseContextRootFinalizer finalizes any changes persisted within the context by writing them to the working root.

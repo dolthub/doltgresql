@@ -14,6 +14,12 @@
 
 package tree
 
+import (
+	"context"
+
+	"github.com/dolthub/doltgresql/postgres/parser/types"
+)
+
 var _ Statement = &CreateDomain{}
 
 // CreateDomain represents a CREATE DOMAIN statement.
@@ -80,4 +86,28 @@ func (node *DomainConstraint) Format(ctx *FmtCtx) {
 	} else {
 		ctx.WriteString("NULL")
 	}
+}
+
+type DomainColumn struct {
+	Typ ResolvableTypeReference
+}
+
+func (d DomainColumn) ResolvedType() *types.T {
+	return nil
+}
+
+func (d DomainColumn) String() string {
+	return "VALUE"
+}
+
+func (d DomainColumn) Format(ctx *FmtCtx) {
+	ctx.WriteString("VALUE")
+}
+
+func (d DomainColumn) Walk(_ Visitor) Expr {
+	return d
+}
+
+func (d DomainColumn) TypeCheck(ctx context.Context, semaCtx *SemaContext, desired *types.T) (TypedExpr, error) {
+	return d, nil
 }
