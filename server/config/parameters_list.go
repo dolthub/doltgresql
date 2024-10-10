@@ -2900,9 +2900,12 @@ var postgresConfigParameters = map[string]sql.SystemVariable{
 		ResetVal:  int64(4096),
 		Scope:     GetPgsqlScope(PsqlScopeSession),
 	},
+	// search_path has a hack currently: user-space dolt tables are stored with no schema, so to find them on the search
+	// path we need an empty schema path element. Instead, we should store them in the `dolt` schema and put the `dolt`
+	// schema on the path here.
 	"search_path": &Parameter{
 		Name:      "search_path",
-		Default:   "\"$user\", public",
+		Default:   "\"$user\", public,",
 		Category:  "Client Connection Defaults / Statement Behavior",
 		ShortDesc: "Sets the schema search order for names that are not schema-qualified.",
 		Context:   ParameterContextUser,

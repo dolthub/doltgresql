@@ -102,8 +102,7 @@ func TestDescribe(t *testing.T) {
 			},
 		},
 		{
-			Name:  "describe table in other schema",
-			Focus: true,
+			Name: "describe table in other schema",
 			SetUpScript: []string{
 				`CREATE TABLE t1 (a INT PRIMARY KEY, b TEXT)`,
 				`create schema schema2`,
@@ -158,8 +157,7 @@ func TestDescribe(t *testing.T) {
 func TestShowTables(t *testing.T) {
 	RunScripts(t, []ScriptTest{
 		{
-			Name:  "show tables in single schema",
-			Focus: true,
+			Name: "show tables in single schema",
 			SetUpScript: []string{
 				`CREATE TABLE t1 (a INT PRIMARY KEY, name TEXT)`,
 				`CREATE TABLE t2 (b INT PRIMARY KEY, name TEXT)`,
@@ -211,8 +209,7 @@ func TestShowTables(t *testing.T) {
 			},
 		},
 		{
-			Name:  "show tables in multiple schemas, dbs",
-			Focus: true,
+			Name: "show tables in multiple schemas, dbs",
 			SetUpScript: []string{
 				`CREATE TABLE t1 (a INT PRIMARY KEY, name TEXT)`,
 				`CREATE TABLE t2 (b INT PRIMARY KEY, name TEXT)`,

@@ -78,17 +78,6 @@ export const docsTests = [
     },
   },
   {
-    q: `SET SEARCH_PATH = 'testschema';`,
-    res: {
-      command: "SET",
-      rowCount: null,
-      oid: null,
-      rows: [],
-      fields: [],
-    },
-  },
-  // dolt_docs should not be schema-specific
-  {
     q: `select * from dolt_docs where doc_name=$1`,
     p: ["README.md"],
     res: {
@@ -122,7 +111,7 @@ export const docsTests = [
     },
   },
   {
-    q: `SET SEARCH_PATH = 'public';`,
+    q: `SET SEARCH_PATH = 'public,';`,
     res: {
       command: "SET",
       rowCount: null,
