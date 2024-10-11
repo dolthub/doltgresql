@@ -350,7 +350,7 @@ func NormalizeRow(fds []pgconn.FieldDescription, row sql.Row, normalize bool) sq
 	}
 	newRow := make(sql.Row, len(row))
 	for i := range row {
-		dt, ok := dserver.OidToDoltgresType[fds[i].DataTypeOID]
+		dt, ok := types.OidToDoltgresType[fds[i].DataTypeOID]
 		if !ok {
 			panic(fmt.Sprintf("unhandled oid type: %v", fds[i].DataTypeOID))
 		}
@@ -374,7 +374,7 @@ func NormalizeExpectedRow(fds []pgconn.FieldDescription, rows []sql.Row) []sql.R
 		} else {
 			newRow := make(sql.Row, len(row))
 			for i := range row {
-				dt, ok := dserver.OidToDoltgresType[fds[i].DataTypeOID]
+				dt, ok := types.OidToDoltgresType[fds[i].DataTypeOID]
 				if !ok {
 					panic(fmt.Sprintf("unhandled oid type: %v", fds[i].DataTypeOID))
 				}

@@ -175,7 +175,7 @@ func IterateDatabase(ctx *sql.Context, database string, callbacks Callbacks) err
 		// Within the schema iteration, we can simply
 		var sequenceMap map[string][]*sequences.Sequence
 		if callbacks.Sequence != nil {
-			collection, err := core.GetCollectionFromContext(ctx)
+			collection, err := core.GetSequencesCollectionFromContext(ctx)
 			if err != nil {
 				return err
 			}
@@ -747,7 +747,7 @@ func runNamespace(ctx *sql.Context, oid uint32, callbacks Callbacks, sortedSchem
 // runSequence is called by RunCallback to handle Section_Sequence.
 func runSequence(ctx *sql.Context, oid uint32, callbacks Callbacks, itemSchema ItemSchema) error {
 	_, _, dataIndex := ParseOID(oid)
-	collection, err := core.GetCollectionFromContext(ctx)
+	collection, err := core.GetSequencesCollectionFromContext(ctx)
 	if err != nil {
 		return err
 	}

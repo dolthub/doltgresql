@@ -29,6 +29,7 @@ import (
 	"github.com/dolthub/dolt/go/store/prolly/tree"
 	"github.com/dolthub/dolt/go/store/types"
 
+	"github.com/dolthub/doltgresql/core/domains"
 	"github.com/dolthub/doltgresql/core/sequences"
 )
 
@@ -197,6 +198,29 @@ func (root *RootValue) GetSequences(ctx context.Context) (*sequences.Collection,
 	return sequences.Deserialize(ctx, data)
 }
 
+// GetDomains returns all domains that are on the root.
+func (root *RootValue) GetDomains(ctx context.Context) (*domains.DomainCollection, error) {
+	h := root.st.GetDomains()
+	if h.IsEmpty() {
+		return domains.Deserialize(ctx, nil)
+	}
+	dataValue, err := root.vrw.ReadValue(ctx, h)
+	if err != nil {
+		return nil, err
+	}
+	dataBlob := dataValue.(types.Blob)
+	dataBlobLength := dataBlob.Len()
+	data := make([]byte, dataBlobLength)
+	n, err := dataBlob.ReadAt(context.Background(), data, 0)
+	if err != nil && err != io.EOF {
+		return nil, err
+	}
+	if uint64(n) != dataBlobLength {
+		return nil, fmt.Errorf("wanted %d bytes from blob for domains, got %d", dataBlobLength, n)
+	}
+	return domains.Deserialize(ctx, data)
+}
+
 // GetTable implements the interface doltdb.RootValue.
 func (root *RootValue) GetTable(ctx context.Context, tName doltdb.TableName) (*doltdb.Table, bool, error) {
 	tableMap, err := root.getTableMap(ctx, tName.Schema)
@@ -353,6 +377,27 @@ func (root *RootValue) NodeStore() tree.NodeStore {
 // NomsValue implements the interface doltdb.RootValue.
 func (root *RootValue) NomsValue() types.Value {
 	return root.st.nomsValue()
+}
+
+// PutDomains writes the given domains to the returned root value.
+func (root *RootValue) PutDomains(ctx context.Context, seq *sequences.Collection) (*RootValue, error) {
+	data, err := seq.Serialize(ctx)
+	if err != nil {
+		return nil, err
+	}
+	dataBlob, err := types.NewBlob(ctx, root.vrw, bytes.NewReader(data))
+	if err != nil {
+		return nil, err
+	}
+	ref, err := root.vrw.WriteValue(ctx, dataBlob)
+	if err != nil {
+		return nil, err
+	}
+	newStorage, err := root.st.SetDomains(ctx, ref.TargetHash())
+	if err != nil {
+		return nil, err
+	}
+	return root.withStorage(newStorage), nil
 }
 
 // PutForeignKeyCollection implements the interface doltdb.RootValue.

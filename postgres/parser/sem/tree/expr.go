@@ -1753,4 +1753,7 @@ func (node PartitionMaxVal) String() string   { return AsString(node) }
 func (node PartitionMinVal) String() string   { return AsString(node) }
 func (node *Placeholder) String() string      { return AsString(node) }
 func (d NullLiteral) String() string          { return AsString(d) }
-func (list *NameList) String() string         { return AsString(list) }
+func (d DomainColumn) String() string {
+	return AsString(d)
+}
+func (list *NameList) String() string { return AsString(list) }

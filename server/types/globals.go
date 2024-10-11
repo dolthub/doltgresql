@@ -23,7 +23,7 @@ import "fmt"
 // SerializationID to prevent base ID conflicts.
 type DoltgresTypeBaseID uint32
 
-//go:generate stringer -type=DoltgresTypeBaseID
+//go:generate go run golang.org/x/tools/cmd/stringer -type=DoltgresTypeBaseID
 
 const (
 	DoltgresTypeBaseID_Any DoltgresTypeBaseID = iota + 8192
@@ -93,6 +93,7 @@ const (
 	DoltgresTypeBaseID_Uuid         = DoltgresTypeBaseID(SerializationID_Uuid)
 	DoltgresTypeBaseID_VarChar      = DoltgresTypeBaseID(SerializationID_VarChar)
 	DoltgresTypeBaseID_Xid          = DoltgresTypeBaseID(SerializationID_Xid)
+	DoltgresTypeBaseId_Domain       = DoltgresTypeBaseID(SerializationId_Domain)
 )
 
 // TypeAlignment represents the alignment required when storing a value of this type.

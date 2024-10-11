@@ -24,9 +24,11 @@ const (
 	ruleId_TypeSanitizer analyzer.RuleId = iota + 1000
 	ruleId_AssignInsertCasts
 	ruleId_AssignUpdateCasts
+	ruleId_InsertContextRootFinalizer
+	ruleId_InsertOnDomainType
+	ruleId_ReplaceDomainType
 	ruleId_ReplaceIndexedTables
 	ruleId_ReplaceSerial
-	ruleId_InsertContextRootFinalizer
 )
 
 // Init adds additional rules to the analyzer to handle Doltgres-specific functionality.
@@ -35,8 +37,10 @@ func Init() {
 	analyzer.AlwaysBeforeDefault = append(analyzer.AlwaysBeforeDefault,
 		analyzer.Rule{Id: ruleId_TypeSanitizer, Apply: TypeSanitizer},
 		getAnalyzerRule(analyzer.OnceBeforeDefault, analyzer.ValidateColumnDefaultsId),
+		analyzer.Rule{Id: ruleId_InsertOnDomainType, Apply: InsertOnDomainType},
 		analyzer.Rule{Id: ruleId_AssignInsertCasts, Apply: AssignInsertCasts},
 		analyzer.Rule{Id: ruleId_AssignUpdateCasts, Apply: AssignUpdateCasts},
+		analyzer.Rule{Id: ruleId_ReplaceDomainType, Apply: ReplaceDomainType},
 		analyzer.Rule{Id: ruleId_ReplaceIndexedTables, Apply: ReplaceIndexedTables},
 	)
 

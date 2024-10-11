@@ -58,7 +58,7 @@ var nextval_text = framework.Function1{
 		default:
 			return nil, fmt.Errorf(`cannot find sequence "%s" to get its nextval`, val.(string))
 		}
-		collection, err := core.GetCollectionFromContext(ctx)
+		collection, err := core.GetSequencesCollectionFromContext(ctx)
 		if err != nil {
 			return nil, err
 		}

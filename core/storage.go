@@ -125,6 +125,35 @@ func (r rootStorage) GetSequences() hash.Hash {
 	return hash.New(hashBytes)
 }
 
+// GetDomains returns the domain hash.
+func (r rootStorage) GetDomains() hash.Hash {
+	hashBytes := r.srv.DomainsBytes()
+	if len(hashBytes) == 0 {
+		return hash.Hash{}
+	}
+	return hash.New(hashBytes)
+}
+
+// SetDomains sets the domain hash and returns a new storage object.
+func (r rootStorage) SetDomains(ctx context.Context, h hash.Hash) (rootStorage, error) {
+	if len(r.srv.DomainsBytes()) > 0 {
+		ret := r.clone()
+		copy(ret.srv.DomainsBytes(), h[:])
+		return ret, nil
+	} else {
+		// TODO: check
+		dbSchemas, err := r.GetSchemas(ctx)
+		if err != nil {
+			return rootStorage{}, err
+		}
+		msg, err := r.serializeRootValue(r.srv.TablesBytes(), dbSchemas, h[:])
+		if err != nil {
+			return rootStorage{}, err
+		}
+		return rootStorage{msg}, nil
+	}
+}
+
 // clone returns a clone of the calling storage.
 func (r rootStorage) clone() rootStorage {
 	bs := make([]byte, len(r.srv.Table().Bytes))
