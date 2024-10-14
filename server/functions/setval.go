@@ -15,6 +15,9 @@
 package functions
 
 import (
+	"fmt"
+	"strings"
+
 	"github.com/dolthub/go-mysql-server/sql"
 
 	"github.com/dolthub/doltgresql/core"
@@ -54,11 +57,38 @@ var setval_text_int64_boolean = framework.Function3{
 			return nil, err
 		}
 		// TODO: this should take a regclass as the parameter to determine the schema
-		schema, err := core.GetCurrentSchema(ctx)
+		schema, relation, err := parseRelationName(ctx, val1.(string))
 		if err != nil {
 			return nil, err
 		}
-
-		return val2.(int64), collection.SetVal(schema, val1.(string), val2.(int64), val3.(bool))
+		return val2.(int64), collection.SetVal(schema, relation, val2.(int64), val3.(bool))
 	},
+}
+
+// parseRelationName parses the schema and relation name from a relation name string, including trimming any
+// identifier quotes used in the name. For example, passing in 'public."MyTable"' would return 'public' and 'MyTable'.
+func parseRelationName(ctx *sql.Context, name string) (schema string, relation string, err error) {
+	pathElems := strings.Split(name, ".")
+	switch len(pathElems) {
+	case 1:
+		schema, err = core.GetCurrentSchema(ctx)
+		if err != nil {
+			return "", "", err
+		}
+		relation = pathElems[0]
+	case 2:
+		schema = pathElems[0]
+		relation = pathElems[1]
+	case 3:
+		// database is not used atm
+		schema = pathElems[1]
+		relation = pathElems[2]
+	default:
+		return "", "", fmt.Errorf(`cannot parse relation: %s`, name)
+	}
+
+	// Trim any quotes from the relation name
+	relation = strings.Trim(relation, `"`)
+
+	return schema, relation, nil
 }

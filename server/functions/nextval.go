@@ -15,9 +15,6 @@
 package functions
 
 import (
-	"fmt"
-	"strings"
-
 	"github.com/dolthub/go-mysql-server/sql"
 
 	"github.com/dolthub/doltgresql/core"
@@ -38,26 +35,11 @@ var nextval_text = framework.Function1{
 	IsNonDeterministic: true,
 	Strict:             true,
 	Callable: func(ctx *sql.Context, _ [2]pgtypes.DoltgresType, val any) (any, error) {
-		var schema, sequence string
-		var err error
-		pathElems := strings.Split(val.(string), ".")
-		switch len(pathElems) {
-		case 1:
-			schema, err = core.GetCurrentSchema(ctx)
-			if err != nil {
-				return nil, err
-			}
-			sequence = pathElems[0]
-		case 2:
-			schema = pathElems[0]
-			sequence = pathElems[1]
-		case 3:
-			// database is not used atm
-			schema = pathElems[1]
-			sequence = pathElems[2]
-		default:
-			return nil, fmt.Errorf(`cannot find sequence "%s" to get its nextval`, val.(string))
+		schema, sequence, err := parseRelationName(ctx, val.(string))
+		if err != nil {
+			return nil, err
 		}
+
 		collection, err := core.GetCollectionFromContext(ctx)
 		if err != nil {
 			return nil, err
