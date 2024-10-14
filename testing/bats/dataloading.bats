@@ -89,6 +89,27 @@ teardown() {
   [[ "$output" =~ "3 | 03   | 97302   | Guyane" ]] || false
 }
 
+# Tests that we can load tabular data dump files that contain quoted column names
+@test 'dataloading: tabular import, with quoted column names' {
+  # Import the data dump and assert the expected output
+  run query_server -f $BATS_TEST_DIRNAME/dataloading/tab-load-with-quoted-column-names.sql
+  [ "$status" -eq 0 ]
+  [[ "$output" =~ "COPY 3" ]] || false
+  [[ ! "$output" =~ "ERROR" ]] || false
+
+  # Check the row count of imported tables
+  run query_server -c "SELECT count(*) from Regions;"
+  [ "$status" -eq 0 ]
+  [[ "$output" =~ "3" ]] || false
+
+  # Check the inserted rows
+  run query_server -c "SELECT * from Regions;"
+  [ "$status" -eq 0 ]
+  [[ "$output" =~ "1 | 01   | 97105   | Guadeloupe" ]] || false
+  [[ "$output" =~ "2 | 02   | 97209   | Martinique" ]] || false
+  [[ "$output" =~ "3 | 03   | 97302   | Guyane" ]] || false
+}
+
 # Tests that we can load tabular data dump files that do not explicitly manage the session's transaction.
 @test 'dataloading: tabular import, no explicit tx management' {
   # Import the data dump and assert the expected output
