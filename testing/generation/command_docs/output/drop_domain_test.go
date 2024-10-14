@@ -1,4 +1,4 @@
-// Copyright 2023 Dolthub, Inc.
+// Copyright 2024 Dolthub, Inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -18,16 +18,16 @@ import "testing"
 
 func TestDropDomain(t *testing.T) {
 	tests := []QueryParses{
-		Parses("DROP DOMAIN name"),
-		Parses("DROP DOMAIN IF EXISTS name"),
+		Converts("DROP DOMAIN name"),
+		Converts("DROP DOMAIN IF EXISTS name"),
 		Parses("DROP DOMAIN name , name"),
 		Parses("DROP DOMAIN IF EXISTS name , name"),
-		Parses("DROP DOMAIN name CASCADE"),
-		Parses("DROP DOMAIN IF EXISTS name CASCADE"),
+		Converts("DROP DOMAIN name CASCADE"),
+		Converts("DROP DOMAIN IF EXISTS name CASCADE"),
 		Parses("DROP DOMAIN name , name CASCADE"),
 		Parses("DROP DOMAIN IF EXISTS name , name CASCADE"),
-		Parses("DROP DOMAIN name RESTRICT"),
-		Parses("DROP DOMAIN IF EXISTS name RESTRICT"),
+		Converts("DROP DOMAIN name RESTRICT"),
+		Converts("DROP DOMAIN IF EXISTS name RESTRICT"),
 		Parses("DROP DOMAIN name , name RESTRICT"),
 		Parses("DROP DOMAIN IF EXISTS name , name RESTRICT"),
 	}
