@@ -141,7 +141,6 @@ func (r rootStorage) SetDomains(ctx context.Context, h hash.Hash) (rootStorage, 
 		copy(ret.srv.DomainsBytes(), h[:])
 		return ret, nil
 	} else {
-		// TODO: check
 		dbSchemas, err := r.GetSchemas(ctx)
 		if err != nil {
 			return rootStorage{}, err

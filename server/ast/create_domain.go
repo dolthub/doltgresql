@@ -107,11 +107,6 @@ func verifyAndReplaceValue(typ tree.ResolvableTypeReference, expr tree.Expr) (tr
 				return false, nil, fmt.Errorf(`column "%s" does not exist`, v.String())
 			}
 			return false, tree.DomainColumn{Typ: typ}, nil
-		case *tree.ColumnItem:
-			if strings.ToLower(v.Column()) != "value" {
-				return false, nil, fmt.Errorf(`column "%s" does not exist`, v.String())
-			}
-			return false, tree.DomainColumn{Typ: typ}, nil
 		}
 		return true, visitingExpr, nil
 	})

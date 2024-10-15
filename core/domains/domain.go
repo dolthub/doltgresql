@@ -41,7 +41,6 @@ func NewDomain(ctx *sql.Context, name string, typ types.DoltgresType, defVal sql
 	checkDefs := make([]*sql.CheckDefinition, len(checks))
 	var defExpr string
 	if defVal != nil {
-		// TODO: is this the correct way to get string representation?
 		defExpr = defVal.String()
 	}
 	var err error

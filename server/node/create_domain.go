@@ -129,7 +129,6 @@ func (d *DomainColumn) Resolved() bool {
 }
 
 func (d *DomainColumn) String() string {
-	// TODO
 	return "VALUE"
 }
 
