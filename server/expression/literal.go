@@ -17,6 +17,7 @@ package expression
 import (
 	"fmt"
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/dolthub/go-mysql-server/sql"
@@ -251,6 +252,17 @@ func (l *Literal) Resolved() bool {
 
 // String implements the sql.Expression interface.
 func (l *Literal) String() string {
+	// TODO: should this look more like the GMS literal.String()?
+	switch litVal := l.value.(type) {
+	case int, int8, int16, int32, int64, uint, uint8, uint16, uint32, uint64:
+		return fmt.Sprintf("%d", litVal)
+	case string:
+		// Conversion of \' to \'\' required as this string will be interpreted by the sql engine.
+		// Backslash chars also need to be replaced.
+		escaped := strings.ReplaceAll(litVal, "'", "''")
+		escaped = strings.ReplaceAll(escaped, "\\", "\\\\")
+		return fmt.Sprintf("'%s'", escaped)
+	}
 	return fmt.Sprintf("%v", l.value)
 }
 

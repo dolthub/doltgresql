@@ -229,6 +229,7 @@ func iterateTypes(ctx *sql.Context, callbacks Callbacks) error {
 			return nil
 		}
 	}
+	// this gets all built-in types
 	for _, t := range pgtypes.GetAllTypes() {
 		if t.BaseID().HasUniqueOID() {
 			cont, err := callbacks.Type(ctx, ItemType{
@@ -243,6 +244,7 @@ func iterateTypes(ctx *sql.Context, callbacks Callbacks) error {
 			}
 		}
 	}
+	// TODO: add domain and custom types when supported
 	return nil
 }
 

@@ -16,6 +16,7 @@ package types
 
 import (
 	"fmt"
+	"gopkg.in/src-d/go-errors.v1"
 	"reflect"
 
 	"github.com/dolthub/doltgresql/utils"
@@ -25,6 +26,11 @@ import (
 	"github.com/dolthub/vitess/go/sqltypes"
 	"github.com/dolthub/vitess/go/vt/proto/query"
 )
+
+var ErrTypeAlreadyExists = errors.NewKind(`type "%s" already exists`)
+var ErrTypeDoesNotExist = errors.NewKind(`type "%s" does not exist`)
+
+// TODO: use maybe separate unresolved domain type?
 
 type DomainType struct {
 	SchemaName string

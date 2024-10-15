@@ -807,7 +807,7 @@ func (h *ConnectionHandler) convertBindParameters(types []uint32, formatCodes []
 			return nil, err
 		}
 
-		pgTyp, ok := pgtypes.OidToDoltgresType[typ]
+		pgTyp, ok := pgtypes.OidToBuildInDoltgresType[typ]
 		if !ok {
 			return nil, fmt.Errorf("unhandled oid type: %v", typ)
 		}

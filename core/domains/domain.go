@@ -68,16 +68,16 @@ type DomainCollection struct {
 
 // GetDomain returns the domain with the given schema and name.
 // Returns nil if the domain cannot be found.
-func (pgs *DomainCollection) GetDomain(schName, domainName string) *Domain {
+func (pgs *DomainCollection) GetDomain(schName, domainName string) (*Domain, bool) {
 	pgs.mutex.Lock()
 	defer pgs.mutex.Unlock()
 
 	if nameMap, ok := pgs.schemaMap[schName]; ok {
 		if domain, ok := nameMap[domainName]; ok {
-			return domain
+			return domain, true
 		}
 	}
-	return nil
+	return nil, false
 }
 
 // GetAllDomains returns a map containing all domains in the collection, grouped by the schema they're contained in.
@@ -102,11 +102,6 @@ func (pgs *DomainCollection) GetAllDomains() (domainsMap map[string][]*Domain, s
 	return
 }
 
-// HasDomain returns whether the domain is present.
-func (pgs *DomainCollection) HasDomain(schName, domainName string) bool {
-	return pgs.GetDomain(schName, domainName) != nil
-}
-
 // CreateDomain creates a new domain.
 func (pgs *DomainCollection) CreateDomain(schema string, domain *Domain) error {
 	pgs.mutex.Lock()
@@ -118,7 +113,7 @@ func (pgs *DomainCollection) CreateDomain(schema string, domain *Domain) error {
 		pgs.schemaMap[schema] = nameMap
 	}
 	if _, ok = nameMap[domain.Name]; ok {
-		return fmt.Errorf(`type "%s" already exists`, domain.Name)
+		return types.ErrTypeAlreadyExists.New(domain.Name)
 	}
 	nameMap[domain.Name] = domain
 	return nil
@@ -135,7 +130,7 @@ func (pgs *DomainCollection) DropDomain(schName, domainName string) error {
 			return nil
 		}
 	}
-	return fmt.Errorf(`type "%s" does not exist`, domainName)
+	return types.ErrTypeDoesNotExist.New(domainName)
 }
 
 // IterateDomains iterates over all domains in the collection.
@@ -237,7 +232,7 @@ func Deserialize(ctx context.Context, data []byte) (*DomainCollection, error) {
 		for j := uint64(0); j < numOfDomains; j++ {
 			domain := &Domain{}
 			domain.Name = reader.String()
-			domain.DataType = types.OidToDoltgresType[reader.Uint32()]
+			domain.DataType = types.OidToBuildInDoltgresType[reader.Uint32()]
 			domain.DefaultExpr = reader.String()
 			domain.NotNull = reader.Bool()
 			numOfChecks := reader.VariableUint()

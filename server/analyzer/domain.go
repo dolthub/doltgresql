@@ -28,13 +28,13 @@ import (
 	"github.com/dolthub/doltgresql/core"
 	"github.com/dolthub/doltgresql/postgres/parser/parser"
 	"github.com/dolthub/doltgresql/postgres/parser/sem/tree"
-	ast "github.com/dolthub/doltgresql/server/ast"
+	"github.com/dolthub/doltgresql/server/ast"
 	pgtypes "github.com/dolthub/doltgresql/server/types"
 )
 
-// ReplaceDomainType replaces a CreateTable node containing a domain type with its
+// GetDomainTypeForCreateTable replaces a CreateTable node containing a domain type with its
 // underlying type defined as retrieved from storage.
-func ReplaceDomainType(ctx *sql.Context, a *analyzer.Analyzer, node sql.Node, scope *plan.Scope, selector analyzer.RuleSelector, qFlags *sql.QueryFlags) (sql.Node, transform.TreeIdentity, error) {
+func GetDomainTypeForCreateTable(ctx *sql.Context, a *analyzer.Analyzer, node sql.Node, scope *plan.Scope, selector analyzer.RuleSelector, qFlags *sql.QueryFlags) (sql.Node, transform.TreeIdentity, error) {
 	createTable, ok := node.(*plan.CreateTable)
 	if !ok {
 		return node, transform.SameTree, nil
@@ -46,12 +46,14 @@ func ReplaceDomainType(ctx *sql.Context, a *analyzer.Analyzer, node sql.Node, sc
 			if err != nil {
 				return nil, false, err
 			}
-
 			domains, err := core.GetDomainsCollectionFromContext(ctx)
 			if err != nil {
 				return nil, false, err
 			}
-			domain := domains.GetDomain(schemaName, domainType.Name)
+			domain, exists := domains.GetDomain(schemaName, domainType.Name)
+			if !exists {
+				return node, transform.SameTree, pgtypes.ErrTypeDoesNotExist.New(domainType.Name)
+			}
 			domainType.DataType = domain.DataType
 			col.Type = domainType
 		}
@@ -67,45 +69,69 @@ func InsertOnDomainType(ctx *sql.Context, a *analyzer.Analyzer, node sql.Node, s
 		return node, transform.SameTree, nil
 	}
 
-	domains, err := core.GetDomainsCollectionFromContext(ctx)
+	n, err := resolveDomainTypeAndLoadCheckConstraints(ctx, a, insertInto, insertInto.Schema())
 	if err != nil {
-		return nil, false, err
+		return nil, transform.SameTree, err
+	}
+	return n, transform.NewTree, nil
+}
+
+// UpdateOnDomainType retrieves and assigns domain type's default value, nullable and check constraints
+// to the destination table schema and Update node's checks.
+func UpdateOnDomainType(ctx *sql.Context, a *analyzer.Analyzer, node sql.Node, scope *plan.Scope, selector analyzer.RuleSelector, qFlags *sql.QueryFlags) (sql.Node, transform.TreeIdentity, error) {
+	update, ok := node.(*plan.Update)
+	if !ok {
+		return node, transform.SameTree, nil
 	}
 
-	builder := planbuilder.New(ctx, a.Catalog, sql.GlobalParser)
+	n, err := resolveDomainTypeAndLoadCheckConstraints(ctx, a, update, update.Schema())
+	if err != nil {
+		return nil, transform.SameTree, err
+	}
+	return n, transform.NewTree, nil
+}
 
+// resolveDomainTypeAndLoadCheckConstraints retrieves and assigns domain type's default value, nullable and check constraints
+// to the destination table schema and sql.CheckConstraintNode's checks, which are sql.InsertInto and sql.Update
+func resolveDomainTypeAndLoadCheckConstraints(ctx *sql.Context, a *analyzer.Analyzer, c sql.CheckConstraintNode, schema sql.Schema) (sql.Node, error) {
+	domains, err := core.GetDomainsCollectionFromContext(ctx)
+	if err != nil {
+		return nil, err
+	}
 	// get current checks to append the domain checks to.
-	checks := insertInto.Checks()
-	destSch := insertInto.Destination.Schema()
-	for _, col := range destSch {
+	checks := c.Checks()
+	for _, col := range schema {
 		if domainType, ok := col.Type.(pgtypes.DomainType); ok {
-			schemaName, err := core.GetSchemaName(ctx, insertInto.Database(), domainType.SchemaName)
+			schemaName, err := core.GetSchemaName(ctx, nil, domainType.SchemaName)
 			if err != nil {
-				return nil, false, err
+				return nil, err
 			}
-			domain := domains.GetDomain(schemaName, domainType.Name)
+			domain, exists := domains.GetDomain(schemaName, domainType.Name)
+			if !exists {
+				return nil, pgtypes.ErrTypeDoesNotExist.New(domainType.Name)
+			}
+
 			// assign column nullable
 			col.Nullable = !domain.NotNull
 			// get domain default value and assign to the column default value
-			defVal, err := getDefault(builder, domain.DefaultExpr, col.Source, col.Type, col.Nullable)
+			defVal, err := getDefault(ctx, a, domain.DefaultExpr, col.Source, col.Type, col.Nullable)
 			if err != nil {
-				return nil, transform.SameTree, err
+				return nil, err
 			}
 			col.Default = defVal
 			// get domain checks
-			colChecks, err := getCheckConstraints(builder, col.Name, col.Source, domain.Checks)
+			colChecks, err := getCheckConstraints(ctx, a, col.Name, col.Source, domain.Checks)
 			if err != nil {
-				return nil, transform.SameTree, err
+				return nil, err
 			}
 			checks = append(checks, colChecks...)
 		}
 	}
-
-	return insertInto.WithChecks(checks), transform.NewTree, nil
+	return c.WithChecks(checks), nil
 }
 
 // getCheckConstraints takes the check constraint definitions, parses, builds and returns sql.CheckConstraints.
-func getCheckConstraints(builder *planbuilder.Builder, colName string, tblName string, checkDefs []*sql.CheckDefinition) (sql.CheckConstraints, error) {
+func getCheckConstraints(ctx *sql.Context, a *analyzer.Analyzer, colName string, tblName string, checkDefs []*sql.CheckDefinition) (sql.CheckConstraints, error) {
 	checks := make(sql.CheckConstraints, len(checkDefs))
 	for i, check := range checkDefs {
 		parsed, err := parseAndReplaceDomainCheckConstraint(fmt.Sprintf("select %s from %s", check.CheckExpression, tblName), colName, tblName)
@@ -128,6 +154,7 @@ func getCheckConstraints(builder *planbuilder.Builder, colName string, tblName s
 			}
 		}
 
+		builder := planbuilder.New(ctx, a.Catalog, sql.GlobalParser)
 		checks[i] = &sql.CheckConstraint{
 			Name:     check.Name,
 			Expr:     builder.BuildScalarWithTable(ae.Expr, selectStmt.From[0]),
@@ -139,7 +166,7 @@ func getCheckConstraints(builder *planbuilder.Builder, colName string, tblName s
 }
 
 // getDefault takes the default value definition, parses, builds and returns sql.CheckConstraints.
-func getDefault(builder *planbuilder.Builder, defExpr, tblName string, typ sql.Type, nullable bool) (*sql.ColumnDefaultValue, error) {
+func getDefault(ctx *sql.Context, a *analyzer.Analyzer, defExpr, tblName string, typ sql.Type, nullable bool) (*sql.ColumnDefaultValue, error) {
 	if defExpr == "" {
 		return nil, nil
 	}
@@ -162,6 +189,7 @@ func getDefault(builder *planbuilder.Builder, defExpr, tblName string, typ sql.T
 			return nil, err
 		}
 	}
+	builder := planbuilder.New(ctx, a.Catalog, sql.GlobalParser)
 	return builder.BuildColumnDefaultValueWithTable(ae.Expr, selectStmt.From[0], typ, nullable), nil
 }
 

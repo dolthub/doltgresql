@@ -29,6 +29,7 @@ const (
 	ruleId_ReplaceDomainType
 	ruleId_ReplaceIndexedTables
 	ruleId_ReplaceSerial
+	ruleId_UpdateOnDomainType
 )
 
 // Init adds additional rules to the analyzer to handle Doltgres-specific functionality.
@@ -38,9 +39,10 @@ func Init() {
 		analyzer.Rule{Id: ruleId_TypeSanitizer, Apply: TypeSanitizer},
 		getAnalyzerRule(analyzer.OnceBeforeDefault, analyzer.ValidateColumnDefaultsId),
 		analyzer.Rule{Id: ruleId_InsertOnDomainType, Apply: InsertOnDomainType},
+		analyzer.Rule{Id: ruleId_UpdateOnDomainType, Apply: UpdateOnDomainType},
 		analyzer.Rule{Id: ruleId_AssignInsertCasts, Apply: AssignInsertCasts},
 		analyzer.Rule{Id: ruleId_AssignUpdateCasts, Apply: AssignUpdateCasts},
-		analyzer.Rule{Id: ruleId_ReplaceDomainType, Apply: ReplaceDomainType},
+		analyzer.Rule{Id: ruleId_ReplaceDomainType, Apply: GetDomainTypeForCreateTable},
 		analyzer.Rule{Id: ruleId_ReplaceIndexedTables, Apply: ReplaceIndexedTables},
 	)
 

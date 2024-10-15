@@ -161,8 +161,8 @@ func GetAllTypes() []DoltgresType {
 	return pgTypes
 }
 
-// OidToDoltgresType is map of oid to Doltgres type.
-var OidToDoltgresType = map[uint32]DoltgresType{
+// OidToBuildInDoltgresType is map of oid to built-in Doltgres type.
+var OidToBuildInDoltgresType = map[uint32]DoltgresType{
 	uint32(oid.T_bool):             Bool,
 	uint32(oid.T_bytea):            Bytea,
 	uint32(oid.T_char):             InternalChar,

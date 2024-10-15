@@ -16,6 +16,7 @@ package node
 
 import (
 	"fmt"
+	"github.com/dolthub/doltgresql/server/types"
 
 	"github.com/dolthub/go-mysql-server/sql"
 	"github.com/dolthub/go-mysql-server/sql/plan"
@@ -76,18 +77,18 @@ func (c *DropDomain) RowIter(ctx *sql.Context, r sql.Row) (sql.RowIter, error) {
 	if err != nil {
 		return nil, err
 	}
-	domain := collection.GetDomain(schema, c.domain)
-
-	if domain == nil {
+	_, exists := collection.GetDomain(schema, c.domain)
+	if !exists {
 		if c.ifExists {
 			// TODO: issue a notice
 			return sql.RowsToRowIter(), nil
 		} else {
-			return nil, fmt.Errorf(`type "%s" does not exist`, c.domain)
+			return nil, types.ErrTypeDoesNotExist.New(c.domain)
 		}
 	}
 
 	// TODO: return nil, fmt.Errorf(`cannot drop type %s because other objects depend on it`, c.domain)
+
 	if c.cascade {
 		// TODO: handle cascade
 		return nil, fmt.Errorf(`cascading domain drops are not yet supported`)
