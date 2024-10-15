@@ -45,7 +45,7 @@ func Init() {
 	analyzer.OnceBeforeDefault = removeAnalyzerRules(analyzer.OnceBeforeDefault, analyzer.ValidateColumnDefaultsId)
 
 	// PostgreSQL doesn't have the concept of prefix lengths, so we add a rule to implicitly add them
-	analyzer.OnceBeforeDefault = append([]analyzer.Rule{{Id: ruleId_AddImplicitPrefixLengths, Apply: analyzer.AddImplicitPrefixLengths}},
+	analyzer.OnceBeforeDefault = append([]analyzer.Rule{{Id: ruleId_AddImplicitPrefixLengths, Apply: AddImplicitPrefixLengths}},
 		analyzer.OnceBeforeDefault...)
 
 	// Remove all other validation rules that do not apply to Postgres
