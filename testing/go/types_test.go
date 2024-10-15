@@ -2115,11 +2115,21 @@ var typesTests = []ScriptTest{
 			"CREATE TABLE t_text (id INTEGER primary key, v1 TEXT);",
 			"INSERT INTO t_text VALUES (1, 'Hello'), (2, 'World'), (3, ''), (4, NULL);",
 
-			// Test a table using a TEXT column in a secondary index
+			// Test a table created with a TEXT column in a unique, secondary index
 			"CREATE TABLE t_text_unique (id INTEGER primary key, v1 TEXT, v2 TEXT NOT NULL UNIQUE);",
 			"INSERT INTO t_text_unique VALUES (1, 'Hello', 'Bonjour'), (2, 'World', 'tout le monde'), (3, '', ''), (4, NULL, '!');",
 		},
 		Assertions: []ScriptTestAssertion{
+			{
+				// Use the text keyword to cast
+				Query:    `SELECT text 'text' || ' and unknown';`,
+				Expected: []sql.Row{{"text and unknown"}},
+			},
+			{
+				// Use the text keyword to cast
+				Query:    `SELECT text 'this is a text string' = text 'this is a text string' AS true;`,
+				Expected: []sql.Row{{"t"}},
+			},
 			{
 				// Basic select from a table with a TEXT column
 				Query: "SELECT * FROM t_text ORDER BY id;",
@@ -2131,20 +2141,7 @@ var typesTests = []ScriptTest{
 				},
 			},
 			{
-				Query:    `SELECT text 'text' || ' and unknown';`,
-				Expected: []sql.Row{{"text and unknown"}},
-			},
-			{
-				Query:    `SELECT text 'this is a text string' = text 'this is a text string' AS true;`,
-				Expected: []sql.Row{{"t"}},
-			},
-			{
-				Query:    `SELECT text 'this is a text string' = text 'this is a text string' AS true;`,
-				Expected: []sql.Row{{"t"}},
-			},
-			{
-				// Alter a table to add a secondary index on a TEXT column
-				//Query:    "ALTER TABLE t_text ADD CONSTRAINT v1_unique UNIQUE (v1);",
+				// Create a unique, secondary index on a TEXT column
 				Query:    "CREATE UNIQUE INDEX v1_unique ON t_text(v1);",
 				Expected: []sql.Row{},
 			},
@@ -2201,6 +2198,23 @@ var typesTests = []ScriptTest{
 				// primary indexes currently.
 				Query:       "CREATE TABLE t_text_pk (id TEXT PRIMARY KEY, col1 int);",
 				ExpectedErr: "blob/text column 'id' used in key specification without a key length",
+			},
+			{
+				// Create a table with a TEXT column to test adding a non-unique, secondary index
+				Query:    `CREATE TABLE t2 (pk int primary key, c1 TEXT);`,
+				Expected: []sql.Row{},
+			},
+			{
+				Query:    `CREATE INDEX idx1 ON t2(c1);`,
+				Expected: []sql.Row{},
+			},
+			{
+				Query:    `INSERT INTO t2 VALUES (1, 'one'), (2, 'two');`,
+				Expected: []sql.Row{},
+			},
+			{
+				Query:    `SELECT c1 from t2 order by c1;`,
+				Expected: []sql.Row{{"one"}, {"two"}},
 			},
 		},
 	},
