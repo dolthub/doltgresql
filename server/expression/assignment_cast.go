@@ -34,6 +34,10 @@ var _ sql.Expression = (*AssignmentCast)(nil)
 
 // NewAssignmentCast returns a new *AssignmentCast expression.
 func NewAssignmentCast(expr sql.Expression, fromType pgtypes.DoltgresType, toType pgtypes.DoltgresType) *AssignmentCast {
+	if toType.BaseID() == pgtypes.DoltgresTypeBaseId_Domain {
+		domain := toType.(pgtypes.DomainType)
+		toType = domain.GetBaseType()
+	}
 	return &AssignmentCast{
 		expr:     expr,
 		fromType: fromType,

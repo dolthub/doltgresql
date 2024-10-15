@@ -29,6 +29,7 @@ import (
 	"github.com/dolthub/doltgresql/postgres/parser/types"
 	pgexprs "github.com/dolthub/doltgresql/server/expression"
 	"github.com/dolthub/doltgresql/server/functions/framework"
+	pgnodes "github.com/dolthub/doltgresql/server/node"
 	pgtypes "github.com/dolthub/doltgresql/server/types"
 )
 
@@ -536,6 +537,14 @@ func nodeExpr(node tree.Expr) (vitess.Expr, error) {
 		// TODO: can we use this?
 		defVal := &vitess.Default{ColName: ""}
 		return defVal, nil
+	case tree.DomainColumn:
+		_, dataType, err := nodeResolvableTypeReference(node.Typ)
+		if err != nil {
+			return nil, err
+		}
+		return vitess.InjectedExpr{
+			Expression: &pgnodes.DomainColumn{Typ: dataType},
+		}, nil
 	case *tree.FuncExpr:
 		return nodeFuncExpr(node)
 	case *tree.IfErrExpr:

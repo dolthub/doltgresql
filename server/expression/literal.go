@@ -251,6 +251,13 @@ func (l *Literal) Resolved() bool {
 
 // String implements the sql.Expression interface.
 func (l *Literal) String() string {
+	// TODO: should this look more like the GMS literal.String()?
+	switch litVal := l.value.(type) {
+	case int, int8, int16, int32, int64, uint, uint8, uint16, uint32, uint64:
+		return fmt.Sprintf("%d", litVal)
+	case string:
+		return fmt.Sprintf("'%s'", litVal)
+	}
 	return fmt.Sprintf("%v", l.value)
 }
 
