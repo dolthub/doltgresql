@@ -22,8 +22,8 @@ import (
 	"os"
 	"strings"
 
-	"github.com/dolthub/doltgresql/server/users"
-	"github.com/dolthub/doltgresql/server/users/rfc5802"
+	"github.com/dolthub/doltgresql/server/auth"
+	"github.com/dolthub/doltgresql/server/auth/rfc5802"
 
 	"github.com/dolthub/go-mysql-server/sql"
 	"github.com/jackc/pgx/v5/pgproto3"
@@ -123,7 +123,8 @@ func (h *ConnectionHandler) handleAuthentication(startupMessage *pgproto3.Startu
 	if err := h.backend.SetAuthType(pgproto3.AuthTypeSASL); err != nil {
 		return err
 	}
-	user := users.GetUser(username)
+	// Even though we can determine whether the role exists at this point, we delay the actual error for additional security.
+	role := auth.GetRole(username)
 	var saslInitial SASLInitial
 	var saslContinue SASLContinue
 	var saslResponse SASLResponse
@@ -136,11 +137,23 @@ func (h *ConnectionHandler) handleAuthentication(startupMessage *pgproto3.Startu
 		case *pgproto3.SASLInitialResponse:
 			saslInitial, err = readSASLInitial(response)
 			if err != nil {
+				_ = h.send(&pgproto3.ErrorResponse{
+					Severity: "FATAL",
+					Code:     "XX000",
+					Message:  err.Error(),
+				})
 				return err
 			}
+			var salt string
+			if role.Password != nil {
+				salt = role.Password.Salt.ToBase64()
+			} else {
+				// We do this to get a stable salt. An unstable salt could be used to determine whether a username exists.
+				salt = rfc5802.H(rfc5802.OctetString(username))[:16].ToBase64()
+			}
 			saslContinue = SASLContinue{
-				Nonce:      saslInitial.Nonce + "L3rfcNHYJY1ZVvWVs7j", // TODO: create a unique nonce
-				Salt:       user.Password.Salt.ToBase64(),
+				Nonce:      saslInitial.Nonce + auth.GenerateRandomOctetString(16).ToBase64(),
+				Salt:       salt,
 				Iterations: 4096,
 			}
 			if err = h.send(saslContinue.Encode()); err != nil {
@@ -152,10 +165,20 @@ func (h *ConnectionHandler) handleAuthentication(startupMessage *pgproto3.Startu
 		case *pgproto3.SASLResponse:
 			saslResponse, err = readSASLResponse(saslInitial.Base64Header(), saslContinue.Nonce, response)
 			if err != nil {
+				_ = h.send(&pgproto3.ErrorResponse{
+					Severity: "FATAL",
+					Code:     "XX000",
+					Message:  err.Error(),
+				})
 				return err
 			}
-			serverSignature, err := verifySASLClientProof(user, saslInitial, saslContinue, saslResponse)
+			serverSignature, err := verifySASLClientProof(role, saslInitial, saslContinue, saslResponse)
 			if err != nil {
+				_ = h.send(&pgproto3.ErrorResponse{
+					Severity: "FATAL",
+					Code:     "28P01",
+					Message:  err.Error(),
+				})
 				return err
 			}
 			if err = h.send(&pgproto3.AuthenticationSASLFinal{
@@ -278,17 +301,21 @@ func readSASLResponse(gs2EncodedHeader string, nonce string, r *pgproto3.SASLRes
 // verifySASLClientProof verifies that the proof given by the client in valid. Returns the base64-encoded
 // ServerSignature, which verifies (to the client) that the server has proper access to the client's authentication
 // information.
-func verifySASLClientProof(user users.MockUser, saslInitial SASLInitial, saslContinue SASLContinue, saslResponse SASLResponse) (string, error) {
+func verifySASLClientProof(user auth.Role, saslInitial SASLInitial, saslContinue SASLContinue, saslResponse SASLResponse) (string, error) {
+	if !user.CanLogin || user.Password == nil {
+		return "", fmt.Errorf(`password authentication failed for user "%s"`, user.Name)
+	}
+	// TODO: check the "valid until" time
 	clientProof := rfc5802.Base64ToOctetString(saslResponse.ClientProof)
 	authMessage := fmt.Sprintf("%s,%s,%s", saslInitial.MessageBare(), saslContinue.Encode().Data, saslResponse.MessageWithoutProof())
 	clientSignature := rfc5802.ClientSignature(user.Password.StoredKey, authMessage)
-	if !user.Exists || len(clientProof) != len(clientSignature) {
-		return "", fmt.Errorf("invalid password") // TODO: replace with an actual error message
+	if len(clientProof) != len(clientSignature) {
+		return "", fmt.Errorf(`password authentication failed for user "%s"`, user.Name)
 	}
 	clientKey := clientSignature.Xor(clientProof)
 	storedKey := rfc5802.StoredKey(clientKey)
 	if !storedKey.Equals(user.Password.StoredKey) {
-		return "", fmt.Errorf("invalid password") // TODO: replace with an actual error message
+		return "", fmt.Errorf(`password authentication failed for user "%s"`, user.Name)
 	}
 	serverSignature := rfc5802.ServerSignature(user.Password.ServerKey, authMessage)
 	return serverSignature.ToBase64(), nil

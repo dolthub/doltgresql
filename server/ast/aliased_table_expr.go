@@ -31,6 +31,7 @@ func nodeAliasedTableExpr(node *tree.AliasedTableExpr) (*vitess.AliasedTableExpr
 		return nil, fmt.Errorf("index flags are not yet supported")
 	}
 	var aliasExpr vitess.SimpleTableExpr
+
 	switch expr := node.Expr.(type) {
 	case *tree.TableName:
 		var err error
@@ -94,10 +95,23 @@ func nodeAliasedTableExpr(node *tree.AliasedTableExpr) (*vitess.AliasedTableExpr
 		return nil, fmt.Errorf("unhandled table expression: `%T`", expr)
 	}
 	alias := string(node.As.Alias)
+
+	var asOf *vitess.AsOf
+	if node.AsOf != nil {
+		asOfExpr, err := nodeExpr(node.AsOf.Expr)
+		if err != nil {
+			return nil, err
+		}
+		// TODO: other forms of AS OF (not just point in time)
+		asOf = &vitess.AsOf{
+			Time: asOfExpr,
+		}
+	}
+
 	return &vitess.AliasedTableExpr{
 		Expr:    aliasExpr,
 		As:      vitess.NewTableIdent(alias),
-		AsOf:    nil,
+		AsOf:    asOf,
 		Lateral: node.Lateral,
 	}, nil
 }

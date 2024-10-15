@@ -702,7 +702,7 @@ func (u *sqlSymUnion) aggregatesToDrop() []tree.AggregateToDrop {
 %token <str> BACKUP BACKUPS BASETYPE BEFORE BEGIN BETWEEN BIGINT BIGSERIAL BINARY BIT
 %token <str> FORMAT CSV HEADER
 %token <str> BUCKET_COUNT
-%token <str> BOOLEAN BOTH BOX2D BUNDLE BY
+%token <str> BOOLEAN BOTH BOX2D BUNDLE BY BYPASSRLS
 
 %token <str> CACHE CHAIN CALL CALLED CANCEL CANCELQUERY CANONICAL CASCADE CASCADED CASE CAST CATEGORY CBRT
 %token <str> CHANGEFEED CHAR CHARACTER CHARACTERISTICS CHECK CHECK_OPTION CLASS CLOSE
@@ -715,10 +715,10 @@ func (u *sqlSymUnion) aggregatesToDrop() []tree.AggregateToDrop {
 %token <str> CURRENT_USER CYCLE
 
 %token <str> DATA DATABASE DATABASES DATE DAY DEALLOCATE DEC DECIMAL DECLARE
-%token <str> DEFAULT DEFAULTS DEFERRABLE DEFERRED DEFINER DELETE DELIMITER DEPENDS DESC DESERIALFUNC DESTINATION
+%token <str> DEFAULT DEFAULTS DEFERRABLE DEFERRED DEFINER DELETE DELIMITER DEPENDS DESC DESCRIBE DESERIALFUNC DESTINATION
 %token <str> DETACH DETACHED DICTIONARY DISABLE DISCARD DISTINCT DO DOMAIN DOUBLE DROP
 
-%token <str> EACH ELEMENT ELSE ENABLE ENCODING ENCRYPTION_PASSPHRASE END ENUM ENUMS ESCAPE EVENT
+%token <str> EACH ELEMENT ELSE ENABLE ENCODING ENCRYPTION_PASSPHRASE ENCRYPTED END ENUM ENUMS ESCAPE EVENT
 %token <str> EXCEPT EXCLUDE EXCLUDING EXISTS EXECUTE EXECUTION EXPERIMENTAL
 %token <str> EXPERIMENTAL_FINGERPRINTS EXPERIMENTAL_REPLICA
 %token <str> EXPERIMENTAL_AUDIT EXPIRATION EXPLAIN EXPORT EXPRESSION
@@ -756,7 +756,7 @@ func (u *sqlSymUnion) aggregatesToDrop() []tree.AggregateToDrop {
 %token <str> MULTIPOINTZ MULTIPOINTZM MULTIPOLYGON MULTIPOLYGONM MULTIPOLYGONZ MULTIPOLYGONZM MULTIRANGE_TYPE_NAME
 
 %token <str> NAN NAME NAMES NATURAL NEVER NEW NEXT NO NOCANCELQUERY NOCONTROLCHANGEFEED NOCONTROLJOB
-%token <str> NOCREATEDB NOCREATELOGIN NOCREATEROLE NOLOGIN NOMODIFYCLUSTERSETTING NO_INDEX_JOIN
+%token <str> NOBYPASSRLS NOCREATEDB NOCREATELOGIN NOCREATEROLE NOINHERIT NOLOGIN NOMODIFYCLUSTERSETTING NOREPLICATION NOSUPERUSER NO_INDEX_JOIN
 %token <str> NONE NORMAL NOT NOTHING NOTNULL NOVIEWACTIVITY NOWAIT NULL NULLIF NULLS NUMERIC YES
 
 %token <str> OBJECT OF OFF OFFSET OID OIDS OIDVECTOR OLD ON ONLY OPT OPTION OPTIONS OR
@@ -771,7 +771,7 @@ func (u *sqlSymUnion) aggregatesToDrop() []tree.AggregateToDrop {
 
 %token <str> RANGE RANGES READ READ_ONLY READ_WRITE REAL RECEIVE RECURSIVE RECURRING REF REFERENCES REFERENCING REFRESH
 %token <str> REGCLASS REGPROC REGPROCEDURE REGNAMESPACE REGTYPE REINDEX RELEASE REMAINDER
-%token <str> REMOVE_PATH RENAME REPEATABLE REPLACE REPLICA RESET RESTART RESTORE RESTRICT RESTRICTED RESUME
+%token <str> REMOVE_PATH RENAME REPEATABLE REPLACE REPLICA REPLICATION RESET RESTART RESTORE RESTRICT RESTRICTED RESUME
 %token <str> RETRY RETURN RETURNING RETURNS REVISION_HISTORY REVOKE RIGHT
 %token <str> ROLE ROLES ROUTINE ROUTINES ROLLBACK ROLLUP ROW ROWS RSHIFT RULE RUNNING
 
@@ -781,8 +781,8 @@ func (u *sqlSymUnion) aggregatesToDrop() []tree.AggregateToDrop {
 %token <str> SHARE SHAREABLE SHOW SIMILAR SIMPLE SKIP SKIP_MISSING_FOREIGN_KEYS
 %token <str> SKIP_MISSING_SEQUENCES SKIP_MISSING_SEQUENCE_OWNERS SKIP_MISSING_VIEWS SMALLINT SMALLSERIAL SNAPSHOT SOME
 %token <str> SORTOP SPLIT SQL SQRT SSPACE STABLE START STATEMENT STATISTICS STATUS STDIN STRATEGY STRICT STRING
-%token <str> STORAGE STORE STORED STYPE SUBSCRIPT SUBSCRIPTION SUBSTRING SUBTYPE SUBTYPE_DIFF SUBTYPE_OPCLASS SUPPORT
-%token <str> SYMMETRIC SYNTAX SYSTEM
+%token <str> STORAGE STORE STORED STYPE SUBSCRIPT SUBSCRIPTION SUBSTRING SUBTYPE SUBTYPE_DIFF SUBTYPE_OPCLASS
+%token <str> SUPERUSER SUPPORT SYMMETRIC SYNTAX SYSID SYSTEM
 
 %token <str> TABLE TABLES TABLESPACE TEMP TEMPLATE TEMPORARY TEXT THEN
 %token <str> TIES TIME TIMETZ TIMESTAMP TIMESTAMPTZ TO THROTTLING TRAILING TRACE TRACING
@@ -954,6 +954,7 @@ func (u *sqlSymUnion) aggregatesToDrop() []tree.AggregateToDrop {
 
 %type <tree.Statement> analyze_stmt
 %type <tree.Statement> explain_stmt
+%type <tree.Statement> describe_table_stmt
 %type <tree.Statement> prepare_stmt
 %type <tree.Statement> preparable_stmt
 %type <tree.Statement> row_source_extension_stmt
@@ -1131,6 +1132,7 @@ func (u *sqlSymUnion) aggregatesToDrop() []tree.AggregateToDrop {
 %type <str> db_object_name_component
 %type <*tree.UnresolvedObjectName> table_name standalone_index_name sequence_name type_name routine_name aggregate_name
 %type <*tree.UnresolvedObjectName> view_name db_object_name simple_db_object_name complex_db_object_name
+%type <*tree.UnresolvedObjectName> db_object_name_no_keywords simple_db_object_name_no_keywords complex_db_object_name_no_keywords
 %type <[]*tree.UnresolvedObjectName> type_name_list
 %type <str> schema_name opt_schema_name opt_schema opt_version tablespace_name partition_name
 %type <[]string> schema_name_list role_spec_list opt_role_list opt_owned_by_list
@@ -1168,6 +1170,7 @@ func (u *sqlSymUnion) aggregatesToDrop() []tree.AggregateToDrop {
 %type <*tree.PartitionBy> opt_partition_by partition_by
 %type <tree.PartitionByType> partition_by_type
 %type <empty> opt_all_clause
+%type <str> explain_verb
 %type <bool> distinct_clause opt_external definer_or_invoker opt_not opt_col_with_options
 %type <tree.DistinctOn> distinct_on_clause
 %type <tree.NameList> opt_column_list insert_column_list opt_stats_columns opt_of_cols
@@ -1261,7 +1264,7 @@ func (u *sqlSymUnion) aggregatesToDrop() []tree.AggregateToDrop {
 %type <bool> opt_ordinality opt_compact
 %type <*tree.Order> sortby
 %type <tree.IndexElem> index_elem index_elem_name_only partition_index_elem
-%type <tree.TableExpr> table_ref numeric_table_ref func_table
+%type <tree.TableExpr> table_ref numeric_table_ref func_table table_ref_options
 %type <tree.Exprs> rowsfrom_list
 %type <tree.Expr> rowsfrom_item
 %type <tree.TableExpr> joined_table
@@ -1292,11 +1295,12 @@ func (u *sqlSymUnion) aggregatesToDrop() []tree.AggregateToDrop {
 
 %type <*tree.NumVal> signed_iconst only_signed_iconst
 %type <*tree.NumVal> signed_fconst only_signed_fconst
+%type <int32> signed_iconst32
 %type <int32> iconst32
 %type <int64> signed_iconst64
 %type <int64> iconst64
 %type <tree.Expr> var_value opt_var_value opt_restart
-%type <str> unrestricted_name type_function_name type_function_name_no_crdb_extra
+%type <str> unrestricted_name type_function_name type_function_name_no_crdb_extra simple_ident
 %type <str> non_reserved_word
 %type <str> non_reserved_word_or_sconst
 %type <str> role_spec owner_to set_schema opt_role set_tablespace
@@ -5213,6 +5217,11 @@ analyze_target:
     $$.val = $1.unresolvedObjectName()
   }
 
+explain_verb:
+  EXPLAIN
+| DESCRIBE
+| DESC
+
 // %Help: EXPLAIN - show the logical plan of a query
 // %Category: Misc
 // %Text:
@@ -5230,7 +5239,7 @@ analyze_target:
 //
 // %SeeAlso: WEBDOCS/explain.html
 explain_stmt:
-  EXPLAIN preparable_stmt
+  explain_verb preparable_stmt
   {
     var err error
     $$.val, err = tree.MakeExplain(nil /* options */, $2.stmt())
@@ -5238,8 +5247,8 @@ explain_stmt:
       return setErr(sqllex, err)
     }
   }
-| EXPLAIN error // SHOW HELP: EXPLAIN
-| EXPLAIN '(' explain_option_list ')' preparable_stmt
+| explain_verb error // SHOW HELP: EXPLAIN
+| explain_verb '(' explain_option_list ')' preparable_stmt
   {
     var err error
     $$.val, err = tree.MakeExplain($3.strs(), $5.stmt())
@@ -5247,7 +5256,7 @@ explain_stmt:
       return setErr(sqllex, err)
     }
   }
-| EXPLAIN ANALYZE preparable_stmt
+| explain_verb ANALYZE preparable_stmt
   {
     var err error
     $$.val, err = tree.MakeExplain([]string{"DISTSQL", "ANALYZE"}, $3.stmt())
@@ -5255,7 +5264,7 @@ explain_stmt:
       return setErr(sqllex, err)
     }
   }
-| EXPLAIN ANALYSE preparable_stmt
+| explain_verb ANALYSE preparable_stmt
   {
     var err error
     $$.val, err = tree.MakeExplain([]string{"DISTSQL", "ANALYZE"}, $3.stmt())
@@ -5263,7 +5272,7 @@ explain_stmt:
       return setErr(sqllex, err)
     }
   }
-| EXPLAIN ANALYZE '(' explain_option_list ')' preparable_stmt
+| explain_verb ANALYZE '(' explain_option_list ')' preparable_stmt
   {
     var err error
     $$.val, err = tree.MakeExplain(append($4.strs(), "ANALYZE"), $6.stmt())
@@ -5271,7 +5280,7 @@ explain_stmt:
       return setErr(sqllex, err)
     }
   }
-| EXPLAIN ANALYSE '(' explain_option_list ')' preparable_stmt
+| explain_verb ANALYSE '(' explain_option_list ')' preparable_stmt
   {
     var err error
     $$.val, err = tree.MakeExplain(append($4.strs(), "ANALYZE"), $6.stmt())
@@ -5283,7 +5292,16 @@ explain_stmt:
 // preparable_stmt also provides "selectclause := '(' error ..." and
 // cause a help text for the select clause, which will be confusing in
 // the context of EXPLAIN.
-| EXPLAIN '(' error // SHOW HELP: EXPLAIN
+| explain_verb '(' error // SHOW HELP: EXPLAIN
+
+describe_table_stmt:
+  // DELETE, UPDATE, etc. are non-reserved words in the grammar, so we can't use a table_name here, as it causes 
+  // conflicts with EXPLAIN UPDATE ... etc.
+  explain_verb db_object_name_no_keywords opt_as_of_clause
+  {
+    asOf := $3.asOfClause()
+    $$.val = &tree.Explain{ExplainOptions: tree.ExplainOptions{}, TableName: $2.unresolvedObjectName(), AsOf: &asOf}
+  }
 
 preparable_stmt:
   alter_stmt     // help texts in sub-rule
@@ -5293,6 +5311,7 @@ preparable_stmt:
 | delete_stmt    // EXTEND WITH HELP: DELETE
 | drop_stmt      // help texts in sub-rule
 | explain_stmt   // EXTEND WITH HELP: EXPLAIN
+| describe_table_stmt
 | import_stmt    // EXTEND WITH HELP: IMPORT
 | insert_stmt    // EXTEND WITH HELP: INSERT
 | pause_stmt     // help texts in sub-rule
@@ -8358,9 +8377,13 @@ truncate_stmt:
 | TRUNCATE error // SHOW HELP: TRUNCATE
 
 password_clause:
-  PASSWORD string_or_placeholder
+  PASSWORD non_reserved_word_or_sconst
   {
-    $$.val = tree.KVOption{Key: tree.Name($1), Value: $2.expr()}
+    $$.val = tree.KVOption{Key: tree.Name($1), Value: tree.NewDString($2)}
+  }
+| ENCRYPTED PASSWORD non_reserved_word_or_sconst
+  {
+    $$.val = tree.KVOption{Key: tree.Name($2), Value: tree.NewDString($3)}
   }
 | PASSWORD NULL
   {
@@ -8580,13 +8603,13 @@ opt_constraint:
 // %Text: CREATE ROLE [IF NOT EXISTS] <name> [ [WITH] <OPTIONS...> ]
 // %SeeAlso: ALTER ROLE, DROP ROLE, SHOW ROLES
 create_role_stmt:
-  CREATE role_or_group_or_user string_or_placeholder opt_role_options
+  CREATE role_or_group_or_user non_reserved_word_or_sconst opt_role_options
   {
-    $$.val = &tree.CreateRole{Name: $3.expr(), KVOptions: $4.kvOptions(), IsRole: $2.bool()}
+    $$.val = &tree.CreateRole{Name: $3, KVOptions: $4.kvOptions(), IsRole: $2.bool()}
   }
-| CREATE role_or_group_or_user IF NOT EXISTS string_or_placeholder opt_role_options
+| CREATE role_or_group_or_user IF NOT EXISTS non_reserved_word_or_sconst opt_role_options
   {
-    $$.val = &tree.CreateRole{Name: $6.expr(), IfNotExists: true, KVOptions: $7.kvOptions(), IsRole: $2.bool()}
+    $$.val = &tree.CreateRole{Name: $6, IfNotExists: true, KVOptions: $7.kvOptions(), IsRole: $2.bool()}
   }
 | CREATE role_or_group_or_user error // SHOW HELP: CREATE ROLE
 
@@ -8595,13 +8618,13 @@ create_role_stmt:
 // %Text: ALTER ROLE <name> [WITH] <options...>
 // %SeeAlso: CREATE ROLE, DROP ROLE, SHOW ROLES
 alter_role_stmt:
-  ALTER role_or_group_or_user string_or_placeholder opt_role_options
+  ALTER role_or_group_or_user non_reserved_word_or_sconst opt_role_options
 {
-  $$.val = &tree.AlterRole{Name: $3.expr(), KVOptions: $4.kvOptions(), IsRole: $2.bool()}
+  $$.val = &tree.AlterRole{Name: $3, KVOptions: $4.kvOptions(), IsRole: $2.bool()}
 }
-| ALTER role_or_group_or_user IF EXISTS string_or_placeholder opt_role_options
+| ALTER role_or_group_or_user IF EXISTS non_reserved_word_or_sconst opt_role_options
 {
-  $$.val = &tree.AlterRole{Name: $5.expr(), IfExists: true, KVOptions: $6.kvOptions(), IsRole: $2.bool()}
+  $$.val = &tree.AlterRole{Name: $5, IfExists: true, KVOptions: $6.kvOptions(), IsRole: $2.bool()}
 }
 | ALTER role_or_group_or_user error // SHOW HELP: ALTER ROLE
 
@@ -8745,35 +8768,11 @@ create_materialized_view_stmt:
   }
 
 role_option:
-  CREATEROLE
+  SUPERUSER
   {
     $$.val = tree.KVOption{Key: tree.Name($1), Value: nil}
   }
-| NOCREATEROLE
-  {
-    $$.val = tree.KVOption{Key: tree.Name($1), Value: nil}
-  }
-| LOGIN
-  {
-    $$.val = tree.KVOption{Key: tree.Name($1), Value: nil}
-  }
-| NOLOGIN
-  {
-    $$.val = tree.KVOption{Key: tree.Name($1), Value: nil}
-  }
-| CONTROLJOB
-  {
-    $$.val = tree.KVOption{Key: tree.Name($1), Value: nil}
-  }
-| NOCONTROLJOB
-  {
-   $$.val = tree.KVOption{Key: tree.Name($1), Value: nil}
-  }
-| CONTROLCHANGEFEED
-  {
-    $$.val = tree.KVOption{Key: tree.Name($1), Value: nil}
-  }
-| NOCONTROLCHANGEFEED
+| NOSUPERUSER
   {
     $$.val = tree.KVOption{Key: tree.Name($1), Value: nil}
   }
@@ -8785,35 +8784,51 @@ role_option:
   {
     $$.val = tree.KVOption{Key: tree.Name($1), Value: nil}
   }
-| CREATELOGIN
+| CREATEROLE
   {
     $$.val = tree.KVOption{Key: tree.Name($1), Value: nil}
   }
-| NOCREATELOGIN
+| NOCREATEROLE
   {
     $$.val = tree.KVOption{Key: tree.Name($1), Value: nil}
   }
-| VIEWACTIVITY
+| INHERIT
   {
     $$.val = tree.KVOption{Key: tree.Name($1), Value: nil}
   }
-| NOVIEWACTIVITY
+| NOINHERIT
   {
     $$.val = tree.KVOption{Key: tree.Name($1), Value: nil}
   }
-| CANCELQUERY
+| LOGIN
   {
     $$.val = tree.KVOption{Key: tree.Name($1), Value: nil}
   }
-| NOCANCELQUERY
+| NOLOGIN
   {
     $$.val = tree.KVOption{Key: tree.Name($1), Value: nil}
   }
-| MODIFYCLUSTERSETTING
+| REPLICATION
   {
     $$.val = tree.KVOption{Key: tree.Name($1), Value: nil}
   }
-| NOMODIFYCLUSTERSETTING
+| NOREPLICATION
+  {
+    $$.val = tree.KVOption{Key: tree.Name($1), Value: nil}
+  }
+| BYPASSRLS
+  {
+    $$.val = tree.KVOption{Key: tree.Name($1), Value: nil}
+  }
+| NOBYPASSRLS
+  {
+    $$.val = tree.KVOption{Key: tree.Name($1), Value: nil}
+  }
+| CONNECTION LIMIT signed_iconst32
+  {
+    $$.val = tree.KVOption{Key: tree.Name(fmt.Sprintf("%s_%s", $1, $2)), Value: tree.NewDInt(tree.DInt($3.val.(int32)))}
+  }
+| SYSID ICONST
   {
     $$.val = tree.KVOption{Key: tree.Name($1), Value: nil}
   }
@@ -8842,13 +8857,13 @@ opt_role_options:
   }
 
 valid_until_clause:
-  VALID UNTIL string_or_placeholder
+  VALID UNTIL non_reserved_word_or_sconst
   {
-    $$.val = tree.KVOption{Key: tree.Name(fmt.Sprintf("%s_%s",$1, $2)), Value: $3.expr()}
+    $$.val = tree.KVOption{Key: tree.Name(fmt.Sprintf("%s_%s", $1, $2)), Value: tree.NewDString($2)}
   }
 | VALID UNTIL NULL
   {
-    $$.val = tree.KVOption{Key: tree.Name(fmt.Sprintf("%s_%s",$1, $2)), Value: tree.DNull}
+    $$.val = tree.KVOption{Key: tree.Name(fmt.Sprintf("%s_%s", $1, $2)), Value: tree.DNull}
   }
 
 opt_view_recursive:
@@ -10764,9 +10779,9 @@ values_clause:
 //  where_clause  - qualifications for joins or restrictions
 
 from_clause:
-  FROM from_list opt_as_of_clause
+  FROM from_list
   {
-    $$.val = tree.From{Tables: $2.tblExprs(), AsOf: $3.asOfClause()}
+    $$.val = tree.From{Tables: $2.tblExprs()}
   }
 | FROM error // SHOW HELP: <SOURCE>
 | /* EMPTY */
@@ -10880,25 +10895,18 @@ opt_index_flags:
 //
 // %SeeAlso: WEBDOCS/table-expressions.html
 table_ref:
-  numeric_table_ref opt_index_flags opt_ordinality opt_alias_clause
+numeric_table_ref table_ref_options
   {
     /* SKIP DOC */
-    $$.val = &tree.AliasedTableExpr{
-        Expr:       $1.tblExpr(),
-        IndexFlags: $2.indexFlags(),
-        Ordinality: $3.bool(),
-        As:         $4.aliasClause(),
-    }
+    $$ = $2
+    $$.val.(*tree.AliasedTableExpr).Expr = $1.tblExpr()
   }
-| relation_expr opt_index_flags opt_ordinality opt_alias_clause
+| relation_expr table_ref_options
   {
+    /* SKIP DOC */
+    $$ = $2
     name := $1.unresolvedObjectName().ToTableName()
-    $$.val = &tree.AliasedTableExpr{
-      Expr:       &name,
-      IndexFlags: $2.indexFlags(),
-      Ordinality: $3.bool(),
-      As:         $4.aliasClause(),
-    }
+    $$.val.(*tree.AliasedTableExpr).Expr = &name
   }
 | select_with_parens opt_ordinality opt_alias_clause
   {
@@ -10963,6 +10971,61 @@ table_ref:
 | '[' row_source_extension_stmt ']' opt_ordinality opt_alias_clause
   {
     $$.val = &tree.AliasedTableExpr{Expr: &tree.StatementSource{ Statement: $2.stmt() }, Ordinality: $4.bool(), As: $5.aliasClause() }
+  }
+
+ // table_ref_options is the set of all possible combinations of AS OF and alias, since the optional versions of those
+ // rules create shift/reduce conflicts if they're combined in same rule
+table_ref_options:
+  opt_index_flags opt_ordinality
+  {
+    /* SKIP DOC */
+    $$.val = &tree.AliasedTableExpr{
+        IndexFlags: $1.indexFlags(),
+        Ordinality: $2.bool(),
+    }
+  }
+| opt_index_flags opt_ordinality alias_clause
+  {
+    /* SKIP DOC */
+    $$.val = &tree.AliasedTableExpr{
+        IndexFlags: $1.indexFlags(),
+        Ordinality: $2.bool(),
+        As:         $3.aliasClause(),
+    }
+  }
+| opt_index_flags opt_ordinality as_of_clause
+  {
+    /* SKIP DOC */
+    asOf := $3.asOfClause()    
+    $$.val = &tree.AliasedTableExpr{
+        IndexFlags: $1.indexFlags(),
+        Ordinality: $2.bool(),
+        AsOf:       &asOf,
+    }
+  }
+| opt_index_flags opt_ordinality as_of_clause AS table_alias_name opt_column_list
+  {
+    /* SKIP DOC */
+    alias := tree.AliasClause{Alias: tree.Name($5), Cols: $6.nameList()}
+    asOf := $3.asOfClause()
+    $$.val = &tree.AliasedTableExpr{
+        IndexFlags: $1.indexFlags(),
+        Ordinality: $2.bool(),
+        AsOf:       &asOf,
+        As:         alias,
+    }
+  }
+| opt_index_flags opt_ordinality as_of_clause table_alias_name opt_column_list
+  {
+    /* SKIP DOC */
+    alias := tree.AliasClause{Alias: tree.Name($4), Cols: $5.nameList()}
+    asOf := $3.asOfClause()
+    $$.val = &tree.AliasedTableExpr{
+        IndexFlags: $1.indexFlags(),
+        Ordinality: $2.bool(),
+        AsOf:       &asOf,
+        As:         alias,
+    }
   }
 
 numeric_table_ref:
@@ -11086,12 +11149,43 @@ opt_alias_clause:
     $$.val = tree.AliasClause{}
   }
 
+// as_of_clause is limited to constants and a few function expressions. The entire expressoin tree is too permissive, 
+// and causes many conflicts elsewhere in the rest of the grammar.
+// These clauses are chosen carefully from the d_expr list.
 as_of_clause:
-  AS_LA OF SYSTEM TIME a_expr
+ AS_LA OF SYSTEM TIME SCONST
+  {
+    $$.val = tree.AsOfClause{Expr: tree.NewStrVal($5)}
+  }
+| AS_LA OF SYSTEM TIME typed_literal
   {
     $$.val = tree.AsOfClause{Expr: $5.expr()}
   }
-
+| AS_LA OF SYSTEM TIME func_expr_common_subexpr
+  {
+    $$.val = tree.AsOfClause{Expr: $5.expr()}
+  }
+| AS_LA OF SYSTEM TIME func_application
+  {
+    $$.val = tree.AsOfClause{Expr: $5.expr()}
+  }
+| AS_LA OF SCONST
+  {
+    $$.val = tree.AsOfClause{Expr: tree.NewStrVal($3)}
+  }
+| AS_LA OF typed_literal
+  {
+    $$.val = tree.AsOfClause{Expr: $3.expr()}
+  }
+| AS_LA OF func_expr_common_subexpr
+  {
+    $$.val = tree.AsOfClause{Expr: $3.expr()}
+  }
+| AS_LA OF func_application
+  {
+    $$.val = tree.AsOfClause{Expr: $3.expr()}
+  }
+  
 opt_as_of_clause:
   as_of_clause
 | /* EMPTY */
@@ -13688,6 +13782,15 @@ only_signed_fconst:
     $$.val = n
   }
 
+// signed_iconst32 is a variant of signed_iconst which only accepts (signed) integer literals that fit in an int32.
+signed_iconst32:
+  signed_iconst
+  {
+    val, err := $1.numVal().AsInt32()
+    if err != nil { return setErr(sqllex, err) }
+    $$.val = val
+  }
+
 // iconst32 accepts only unsigned integer literals that fit in an int32.
 iconst32:
   ICONST
@@ -13909,10 +14012,26 @@ db_object_name:
   simple_db_object_name
 | complex_db_object_name
 
+// Version of db_object_name that does not contain any CRDB specific keywords.
+db_object_name_no_keywords:
+  simple_db_object_name_no_keywords
+| complex_db_object_name_no_keywords
+
 // simple_db_object_name is the part of db_object_name that recognizes
 // simple identifiers.
 simple_db_object_name:
   db_object_name_component
+  {
+    aIdx := sqllex.(*lexer).NewAnnotation()
+    res, err := tree.NewUnresolvedObjectName(1, [3]string{$1}, aIdx)
+    if err != nil { return setErr(sqllex, err) }
+    $$.val = res
+  }
+  
+// simple_db_object_name_no_keywords is the part of db_object_name_no_keywords that recognizes
+// simple identifiers.
+simple_db_object_name_no_keywords:
+  simple_ident
   {
     aIdx := sqllex.(*lexer).NewAnnotation()
     res, err := tree.NewUnresolvedObjectName(1, [3]string{$1}, aIdx)
@@ -13939,6 +14058,27 @@ complex_db_object_name:
     if err != nil { return setErr(sqllex, err) }
     $$.val = res
   }
+  
+complex_db_object_name_no_keywords:
+  simple_ident '.' simple_ident
+  {
+    aIdx := sqllex.(*lexer).NewAnnotation()
+    res, err := tree.NewUnresolvedObjectName(2, [3]string{$3, $1}, aIdx)
+    if err != nil { return setErr(sqllex, err) }
+    $$.val = res
+  }
+| simple_ident '.' simple_ident '.' simple_ident
+  {
+    aIdx := sqllex.(*lexer).NewAnnotation()
+    res, err := tree.NewUnresolvedObjectName(3, [3]string{$5, $3, $1}, aIdx)
+    if err != nil { return setErr(sqllex, err) }
+    $$.val = res
+  }
+  
+// simple_ident is a more restricted version of restricted_name that disallows most keywords
+simple_ident:
+  IDENT
+| PUBLIC // PUBLIC is a keyword, but its use as the default schema makes it nice to include here
 
 // DB object name component -- this cannot not include any reserved
 // keyword because of ambiguity after FROM, but we've been too lax
@@ -14041,6 +14181,7 @@ unreserved_keyword:
 | BUCKET_COUNT
 | BUNDLE
 | BY
+| BYPASSRLS
 | CACHE
 | CHAIN
 | CHECK_OPTION
@@ -14111,6 +14252,7 @@ unreserved_keyword:
 | EACH
 | ENABLE
 | ENCODING
+| ENCRYPTED
 | ENCRYPTION_PASSPHRASE
 | ENUM
 | ENUMS
@@ -14258,14 +14400,18 @@ unreserved_keyword:
 | NO
 | NORMAL
 | NO_INDEX_JOIN
+| NOBYPASSRLS
 | NOCREATEDB
 | NOCREATELOGIN
 | NOCANCELQUERY
 | NOCREATEROLE
 | NOCONTROLCHANGEFEED
 | NOCONTROLJOB
+| NOINHERIT
 | NOLOGIN
 | NOMODIFYCLUSTERSETTING
+| NOREPLICATION
+| NOSUPERUSER
 | NOVIEWACTIVITY
 | NOWAIT
 | NULLS
@@ -14339,6 +14485,7 @@ unreserved_keyword:
 | REPEATABLE
 | REPLACE
 | REPLICA
+| REPLICATION
 | RESET
 | RESTART
 | RESTORE
@@ -14416,8 +14563,10 @@ unreserved_keyword:
 | SUBTYPE
 | SUBTYPE_DIFF
 | SUBTYPE_OPCLASS
+| SUPERUSER
 | SUPPORT
 | SYNTAX
+| SYSID
 | SYSTEM
 | TABLES
 | TABLESPACE
@@ -14607,6 +14756,7 @@ reserved_keyword:
 | DEFAULT
 | DEFERRABLE
 | DESC
+| DESCRIBE
 | DISTINCT
 | DO
 | ELEMENT

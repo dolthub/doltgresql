@@ -88,7 +88,7 @@ export const schemaTests = [
       oid: null,
       rows: [
         {
-          table_name: "test2",
+          table_name: "testschema.test2",
           staged: 0,
           status: "new table",
         },

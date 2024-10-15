@@ -25,7 +25,6 @@ import (
 	"github.com/dolthub/go-mysql-server/enginetest/queries"
 	"github.com/dolthub/go-mysql-server/enginetest/scriptgen/setup"
 	"github.com/dolthub/go-mysql-server/sql"
-	"github.com/dolthub/go-mysql-server/sql/types"
 	"github.com/stretchr/testify/require"
 
 	"github.com/dolthub/dolt/go/libraries/doltcore/dtestutils"
@@ -149,46 +148,15 @@ func TestSingleScript(t *testing.T) {
 
 	var scripts = []queries.ScriptTest{
 		{
-			Name: "`Truncate table` should keep artifacts - conflicts",
+			Name: "dolt_revert() detects not null violation (issue #4527)",
 			SetUpScript: []string{
-				"create table t (pk int primary key, col1 int);",
-				"call dolt_commit('-Am', 'create table');",
-				"call dolt_checkout('-b', 'other');",
-
-				"insert into t values (1, 100);",
-				"insert into t values (2, 200);",
-				"call dolt_commit('-Am', 'other commit');",
-
-				"call dolt_checkout('main');",
-				"insert into t values (1, -100);",
-				"insert into t values (2, -200);",
-				"call dolt_commit('-Am', 'main commit');",
-
-				"set dolt_allow_commit_conflicts = on;",
-				"call dolt_merge('other');",
+				"create table test2 (pk int primary key, c0 int)",
+				"alter table test2 modify c0 int not null",
 			},
 			Assertions: []queries.ScriptTestAssertion{
 				{
-					Query: "select base_pk, base_col1, our_pk, our_col1, their_pk, their_col1 from dolt_conflicts_t;",
-					Expected: []sql.Row{
-						{nil, nil, 1, -100, 1, 100},
-						{nil, nil, 2, -200, 2, 200},
-					},
-				},
-				{
-					Query:    "truncate t;",
-					Expected: []sql.Row{{types.NewOkResult(2)}},
-				},
-				{
-					Query:    "select * from t;",
-					Expected: []sql.Row{},
-				},
-				{
-					Query: "select base_pk, base_col1, our_pk, our_col1, their_pk, their_col1 from dolt_conflicts_t;",
-					Expected: []sql.Row{
-						{nil, nil, nil, nil, 1, 100},
-						{nil, nil, nil, nil, 2, 200},
-					},
+					Query:          "call dolt_revert('head~1');",
+					ExpectedErrStr: "revert currently does not handle constraint violations",
 				},
 			},
 		},
@@ -1091,6 +1059,7 @@ func TestDoltMerge(t *testing.T) {
 		"merge with float 1.23 column default",                        // alter table
 		"merge with decimal 1.23 column default",                      // alter table
 		"merge with different types",                                  // alter table
+		"select * from dolt_status",                                   // table_name column includes schema name
 	})
 	denginetest.RunDoltMergeTests(t, h)
 }
@@ -1114,8 +1083,10 @@ func TestDoltRebasePrepared(t *testing.T) {
 }
 
 func TestDoltRevert(t *testing.T) {
-	t.Skip()
-	h := newDoltgresServerHarness(t)
+	h := newDoltgresServerHarness(t).WithSkippedQueries([]string{
+		"dolt_revert() respects dolt_ignore",                  // ERROR: INSERT: non-Doltgres type found in destination: text
+		"dolt_revert() automatically resolves some conflicts", // panic: interface conversion: sql.Type is types.VarCharType, not types.StringType
+	})
 	denginetest.RunDoltRevertTests(t, h)
 }
 
@@ -1177,6 +1148,7 @@ func TestDoltMergeArtifacts(t *testing.T) {
 func TestDoltReset(t *testing.T) {
 	h := newDoltgresServerHarness(t).WithSkippedQueries([]string{
 		"CALL DOLT_RESET('--hard') should reset the merge state after uncommitted merge", // problem with autocommit detection
+		"select * from dolt_status", // table_name column includes schema name
 	})
 	denginetest.RunDoltResetTest(t, h)
 }
@@ -1252,8 +1224,16 @@ func TestBrokenSystemTableQueries(t *testing.T) {
 }
 
 func TestHistorySystemTable(t *testing.T) {
-	t.Skip()
-	harness := newDoltgresServerHarness(t).WithParallelism(2)
+	harness := newDoltgresServerHarness(t).WithSkippedQueries([]string{
+		"explain",                                       // not supported
+		"select message from dolt_log;",                 // more commits
+		"primary key table: rename table",               // DDL
+		"primary key table: non-pk column type changes", // DDL
+		"dolt_history table with AS OF",                 // AS OF
+		"dolt_history table with AS OF",                 // AS OF
+		"dolt_history table with enums",                 // enums
+		"can sort by dolt_log.commit",                   // more commits
+	}).WithParallelism(2)
 	denginetest.RunHistorySystemTableTests(t, harness)
 }
 

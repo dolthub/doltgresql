@@ -38,6 +38,7 @@ import (
 	"github.com/dolthub/doltgresql/postgres/parser/timeofday"
 	"github.com/dolthub/doltgresql/postgres/parser/uuid"
 	dserver "github.com/dolthub/doltgresql/server"
+	"github.com/dolthub/doltgresql/server/auth"
 	"github.com/dolthub/doltgresql/server/functions"
 	"github.com/dolthub/doltgresql/server/types"
 	"github.com/dolthub/doltgresql/servercfg"
@@ -84,12 +85,31 @@ type ScriptTestAssertion struct {
 	// in the test suite results.
 	Skip bool
 
+	// Username specifies the user's name to use for the command. This creates a new connection, using the given name.
+	// By default (when the string is empty), the `postgres` superuser account is used. Any consecutive queries that
+	// have the same username and password will reuse the same connection. The `postgres` superuser account will always
+	// reuse the same connection. Do note that specifying the `postgres` account manually will create a connection
+	// that is different from the primary one.
+	Username string
+	// Password specifies the password that will be used alongside the given username. This field is essentially ignored
+	// when no username is given. If a username is given and the password is empty, then it is assumed that the password
+	// is the empty string.
+	Password string
+
 	// ExpectedTag is used to check the command tag returned from the server.
 	// This is checked only if no Expected is defined
 	ExpectedTag string
 
 	// Cols is used to check the column names returned from the server.
 	Cols []string
+}
+
+// Connection contains the default and current connections.
+type Connection struct {
+	Default  *pgx.Conn
+	Current  *pgx.Conn
+	Username string
+	Password string
 }
 
 // RunScript runs the given script.
@@ -100,21 +120,24 @@ func RunScript(t *testing.T, script ScriptTest, normalizeRows bool) {
 	}
 
 	var ctx context.Context
-	var conn *pgx.Conn
+	var conn *Connection
 
 	if runOnPostgres {
-		var err error
 		ctx = context.Background()
-		conn, err = pgx.Connect(ctx, fmt.Sprintf("postgres://postgres:password@127.0.0.1:%d/%s?sslmode=disable", 5432, scriptDatabase))
+		pgxConn, err := pgx.Connect(ctx, fmt.Sprintf("postgres://postgres:password@127.0.0.1:%d/%s?sslmode=disable", 5432, scriptDatabase))
 		require.NoError(t, err)
+		conn = &Connection{
+			Default: pgxConn,
+			Current: pgxConn,
+		}
 		defer func() {
-			_ = conn.Close(ctx)
+			conn.Close(ctx)
 		}()
 	} else {
 		var controller *svcs.Controller
 		ctx, conn, controller = CreateServer(t, scriptDatabase)
 		defer func() {
-			_ = conn.Close(ctx)
+			conn.Close(ctx)
 			controller.Stop()
 			err := controller.WaitForStop()
 			require.NoError(t, err)
@@ -127,7 +150,7 @@ func RunScript(t *testing.T, script ScriptTest, normalizeRows bool) {
 }
 
 // runScript runs the script given on the postgres connection provided
-func runScript(t *testing.T, ctx context.Context, script ScriptTest, conn *pgx.Conn, normalizeRows bool) {
+func runScript(t *testing.T, ctx context.Context, script ScriptTest, conn *Connection, normalizeRows bool) {
 	dserver.EnableAuthentication = true
 	if script.Skip {
 		t.Skip("Skip has been set in the script")
@@ -144,6 +167,17 @@ func runScript(t *testing.T, ctx context.Context, script ScriptTest, conn *pgx.C
 		t.Run(assertion.Query, func(t *testing.T) {
 			if assertion.Skip {
 				t.Skip("Skip has been set in the assertion")
+			}
+			// Use the provided username and password to create a new connection (if a username has been specified).
+			// This will automatically handle connection reuse, using the default connection is no user is specified, etc.
+			if err := conn.Connect(ctx, assertion.Username, assertion.Password); err != nil {
+				if assertion.ExpectedErr != "" {
+					require.Error(t, err)
+					assert.Contains(t, err.Error(), assertion.ExpectedErr)
+				} else {
+					require.NoError(t, err)
+				}
+				return
 			}
 			// If we're skipping the results check, then we call Execute, as it uses a simplified message model.
 			if assertion.SkipResultsCheck || assertion.ExpectedErr != "" {
@@ -223,10 +257,19 @@ func ptr[T any](val T) *T {
 	return &val
 }
 
+var testServerLogLevel = "info"
+
+func init() {
+	if logLevel, ok := os.LookupEnv("TEST_SERVER_LOG_LEVEL"); ok {
+		testServerLogLevel = logLevel
+	}
+}
+
 // CreateServer creates a server with the given database, returning a connection to the server. The server will close
 // when the connection is closed (or loses its connection to the server). The accompanying WaitGroup may be used to wait
 // until the server has closed.
-func CreateServer(t *testing.T, database string) (context.Context, *pgx.Conn, *svcs.Controller) {
+func CreateServer(t *testing.T, database string) (context.Context, *Connection, *svcs.Controller) {
+	auth.ClearDatabase()
 	require.NotEmpty(t, database)
 	port := GetUnusedPort(t)
 	controller, err := dserver.RunInMemory(&servercfg.DoltgresConfig{
@@ -234,6 +277,7 @@ func CreateServer(t *testing.T, database string) (context.Context, *pgx.Conn, *s
 			PortNumber: &port,
 			HostStr:    ptr("127.0.0.1"),
 		},
+		LogLevelStr: ptr(testServerLogLevel),
 	})
 	require.NoError(t, err)
 
@@ -265,7 +309,10 @@ func CreateServer(t *testing.T, database string) (context.Context, *pgx.Conn, *s
 
 	conn, err := pgx.Connect(ctx, fmt.Sprintf("postgres://postgres:password@127.0.0.1:%d/%s", port, database))
 	require.NoError(t, err)
-	return ctx, conn, controller
+	return ctx, &Connection{
+		Default: conn,
+		Current: conn,
+	}, controller
 }
 
 // ReadRows reads all of the given rows into a slice, then closes the rows. If `normalizeRows` is true, then the rows
@@ -592,4 +639,57 @@ func Numeric(str string) pgtype.Numeric {
 		panic(err)
 	}
 	return numeric
+}
+
+// Connect replaces the Current connection with a new one, using the given username and password. If the username is
+// empty, then the default connection is used. If the username and password match the existing connection, then no new
+// connection is made.
+func (conn *Connection) Connect(ctx context.Context, username string, password string) error {
+	// Reuse the existing connection if it's the same username and password
+	if username == conn.Username && password == conn.Password && conn.Current != nil {
+		return nil
+	}
+	// Username or password has changed, so we'll close the Current connection only if it's not the default
+	if conn.Username != "" && conn.Current != nil {
+		_ = conn.Current.Close(ctx)
+	}
+	conn.Username = username
+	conn.Password = password
+	if username == "" {
+		conn.Current = conn.Default
+		return nil
+	} else {
+		var err error
+		config := conn.Default.Config()
+		conn.Current, err = pgx.Connect(ctx, fmt.Sprintf("postgres://%s:%s@127.0.0.1:%d/%s", username, password, config.Port, config.Database))
+		return err
+	}
+}
+
+// Exec calls Exec on the current connection.
+func (conn *Connection) Exec(ctx context.Context, sql string, args ...any) (pgconn.CommandTag, error) {
+	if conn.Current == nil {
+		return pgconn.CommandTag{}, errors.New("EXEC: current connection is nil")
+	}
+	return conn.Current.Exec(ctx, sql, args...)
+}
+
+// Query calls Query on the current connection.
+func (conn *Connection) Query(ctx context.Context, sql string, args ...any) (pgx.Rows, error) {
+	if conn.Current == nil {
+		return nil, errors.New("QUERY: current connection is nil")
+	}
+	return conn.Current.Query(ctx, sql, args...)
+}
+
+// Close closes the connections.
+func (conn *Connection) Close(ctx context.Context) {
+	if conn.Default != nil {
+		_ = conn.Default.Close(ctx)
+	}
+	if conn.Current != nil && conn.Current != conn.Default {
+		_ = conn.Current.Close(ctx)
+	}
+	conn.Default = nil
+	conn.Current = nil
 }

@@ -108,7 +108,7 @@ func main() {
 				if _, ok := fromFailItems[trackerToItem.Query]; !ok {
 					if !foundAnyFailDiff {
 						foundAnyFailDiff = true
-						sb.WriteString("\n## Regressions\n")
+						sb.WriteString("\n## ${\\color{red}Regressions}$\n")
 					}
 					if !foundFileDiff {
 						foundFileDiff = true
@@ -137,7 +137,7 @@ func main() {
 				if _, ok := fromSuccessItems[trackerToItem.Query]; !ok {
 					if !foundAnySuccessDiff {
 						foundAnySuccessDiff = true
-						sb.WriteString("\n## Progressions\n")
+						sb.WriteString("\n## ${\\color{lightgreen}Progressions}$\n")
 					}
 					if !foundFileDiff {
 						foundFileDiff = true

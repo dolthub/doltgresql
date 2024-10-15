@@ -650,8 +650,10 @@ func (c *CompiledFunction) evalArgs(ctx *sql.Context, row sql.Row) ([]any, error
 				args[i], _, _ = pgtypes.Float64.Convert(args[i])
 			case query.Type_DECIMAL:
 				args[i], _, _ = pgtypes.Numeric.Convert(args[i])
-			case query.Type_DATE, query.Type_DATETIME, query.Type_TIMESTAMP:
-				return nil, fmt.Errorf("need to add DoltgresType equivalents to DATETIME")
+			case query.Type_DATE:
+				args[i], _, _ = pgtypes.Date.Convert(args[i])
+			case query.Type_DATETIME, query.Type_TIMESTAMP:
+				args[i], _, _ = pgtypes.Timestamp.Convert(args[i])
 			case query.Type_CHAR, query.Type_VARCHAR, query.Type_TEXT:
 				args[i], _, _ = pgtypes.Text.Convert(args[i])
 			case query.Type_ENUM:

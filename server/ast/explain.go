@@ -27,5 +27,34 @@ func nodeExplain(node *tree.Explain) (vitess.Statement, error) {
 	if node == nil {
 		return nil, nil
 	}
-	return nil, fmt.Errorf("EXPLAIN is not yet supported")
+
+	if node.TableName != nil {
+		tableName, err := nodeUnresolvedObjectName(node.TableName)
+		if err != nil {
+			return nil, err
+		}
+
+		var showTableOpts *vitess.ShowTablesOpt
+		if node.AsOf != nil {
+			asOf, err := nodeExpr(node.AsOf.Expr)
+			if err != nil {
+				return nil, err
+			}
+			showTableOpts = &vitess.ShowTablesOpt{
+				AsOf:       asOf,
+				SchemaName: tableName.SchemaQualifier.String(),
+				DbName:     tableName.DbQualifier.String(),
+			}
+		}
+
+		show := &vitess.Show{
+			Type:          "columns",
+			Table:         tableName,
+			ShowTablesOpt: showTableOpts,
+		}
+
+		return show, nil
+	}
+
+	return nil, fmt.Errorf("This EXPLAIN syntax is not yet supported")
 }

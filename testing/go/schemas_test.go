@@ -518,7 +518,7 @@ var SchemaTests = []ScriptTest{
 		Assertions: []ScriptTestAssertion{
 			{
 				Query:    "SHOW search_path",
-				Expected: []sql.Row{{`"$user", public`}},
+				Expected: []sql.Row{{`"$user", public,`}},
 			},
 			{
 				Query:       "SELECT * FROM mytbl;",
@@ -554,7 +554,7 @@ var SchemaTests = []ScriptTest{
 			{
 				Query: "SELECT * FROM dolt_status;",
 				Expected: []sql.Row{
-					{"mytbl", 0, "new table"},
+					{"myschema.mytbl", 0, "new table"},
 					{"myschema", 0, "new schema"},
 				},
 			},
@@ -567,7 +567,7 @@ var SchemaTests = []ScriptTest{
 			{
 				Query: "SELECT * FROM dolt_status;",
 				Expected: []sql.Row{
-					{"mytbl", 1, "new table"},
+					{"myschema.mytbl", 1, "new table"},
 					{"myschema", 1, "new schema"},
 				},
 			},
@@ -597,7 +597,7 @@ var SchemaTests = []ScriptTest{
 			{
 				Query: "SELECT * FROM dolt_status;",
 				Expected: []sql.Row{
-					{"mytbl", 0, "new table"},
+					{"myschema.mytbl", 0, "new table"},
 					{"myschema", 0, "new schema"},
 				},
 			},
@@ -758,7 +758,7 @@ var SchemaTests = []ScriptTest{
 			{
 				Query: "SELECT * FROM dolt_status;",
 				Expected: []sql.Row{
-					{"mytbl", 0, "new table"},
+					{"myschema.mytbl", 0, "new table"},
 					{"myschema", 0, "new schema"},
 				},
 			},

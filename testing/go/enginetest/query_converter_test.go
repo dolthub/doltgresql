@@ -40,9 +40,133 @@ func transformAST(query string) ([]string, bool) {
 		}
 	case *sqlparser.Set:
 		return transformSet(stmt)
+	case *sqlparser.Select:
+		return transformSelect(stmt)
+	case *sqlparser.AlterTable:
+		return transformAlterTable(stmt)
 	}
 
 	return nil, false
+}
+
+func transformAlterTable(stmt *sqlparser.AlterTable) ([]string, bool) {
+	var outputStmts []string
+	for _, statement := range stmt.Statements {
+		converted, ok := convertDdlStatement(statement)
+		if !ok {
+			return nil, false
+		}
+		outputStmts = append(outputStmts, converted...)
+	}
+	return outputStmts, true
+}
+
+func convertDdlStatement(statement *sqlparser.DDL) ([]string, bool) {
+	switch statement.Action {
+	case "alter":
+		switch statement.ColumnAction {
+		case "modify":
+			if len(statement.TableSpec.Columns) != 1 {
+				return nil, false
+			}
+
+			stmts := make([]string, 0)
+
+			col := statement.TableSpec.Columns[0]
+			tableName, err := tree.NewUnresolvedObjectName(1, [3]string{statement.Table.Name.String(), "", ""}, 0)
+			if err != nil {
+				panic(err)
+			}
+
+			newType := convertTypeDef(col.Type)
+			alter := tree.AlterTable{
+				Table: tableName,
+				Cmds: []tree.AlterTableCmd{
+					&tree.AlterTableAlterColumnType{
+						Column: tree.Name(col.Name.String()),
+						ToType: newType,
+					},
+				},
+			}
+
+			ctx := formatNodeWithUnqualifiedTableNames(&alter)
+			stmts = append(stmts, ctx.String())
+
+			// constraints
+			if col.Type.NotNull {
+				alter.Cmds = []tree.AlterTableCmd{
+					&tree.AlterTableSetNotNull{
+						Column: tree.Name(col.Name.String()),
+					},
+				}
+				ctx = formatNodeWithUnqualifiedTableNames(&alter)
+				stmts = append(stmts, ctx.String())
+			} else {
+				alter.Cmds = []tree.AlterTableCmd{
+					&tree.AlterTableDropNotNull{
+						Column: tree.Name(col.Name.String()),
+					},
+				}
+				ctx = formatNodeWithUnqualifiedTableNames(&alter)
+				stmts = append(stmts, ctx.String())
+			}
+
+			// rename
+			if statement.Column.String() != col.Name.String() {
+				alter.Cmds = []tree.AlterTableCmd{
+					&tree.AlterTableRenameColumn{
+						Column:  tree.Name(statement.Column.String()),
+						NewName: tree.Name(col.Name.String()),
+					},
+				}
+				ctx = formatNodeWithUnqualifiedTableNames(&alter)
+				stmts = append(stmts, ctx.String())
+			}
+
+			return stmts, true
+		default:
+			return nil, false
+		}
+	default:
+		return nil, false
+	}
+}
+
+// transformSelect converts a MySQL SELECT statement to a postgres-compatible SELECT statement.
+// This is a very broad surface area, so we do this very selectively
+func transformSelect(stmt *sqlparser.Select) ([]string, bool) {
+	if !containsUserVars(stmt) {
+		return nil, false
+	}
+	return []string{formatNode(stmt)}, true
+}
+
+func containsUserVars(stmt *sqlparser.Select) bool {
+	foundUserVar := false
+	detectUserVar := func(node sqlparser.SQLNode) (bool, error) {
+		switch node := node.(type) {
+		case *sqlparser.ColName:
+			if strings.HasPrefix(node.Name.String(), "@") && !strings.HasPrefix(node.Name.String(), "@@") {
+				foundUserVar = true
+				return false, nil
+			}
+		}
+		return true, nil
+	}
+
+	for _, sel := range stmt.SelectExprs {
+		sqlparser.Walk(detectUserVar, sel)
+	}
+
+	if foundUserVar {
+		return true
+	}
+
+	if stmt.Where != nil {
+		sqlparser.Walk(detectUserVar, stmt.Where)
+	}
+
+	return foundUserVar
 }
 
 func transformSet(stmt *sqlparser.Set) ([]string, bool) {
@@ -51,9 +175,7 @@ func transformSet(stmt *sqlparser.Set) ([]string, bool) {
 	// the semantics aren't quite the same, but setting autocommit to false is the same as beginning a transaction
 	// (for most scripts). Setting autocommit to true is a no-op.
 	if len(stmt.Exprs) == 1 && strings.ToLower(stmt.Exprs[0].Name.String()) == "autocommit" {
-		buf := sqlparser.NewTrackedBuffer(nil)
-		stmt.Exprs[0].Expr.Format(buf)
-		exprStr := strings.ToLower(buf.String())
+		exprStr := strings.ToLower(formatNode(stmt.Exprs[0].Expr))
 		if exprStr == "0" || exprStr == "off" || exprStr == "'off'" || exprStr == "false" {
 			queries = append(queries, "START TRANSACTION")
 			return queries, true
@@ -65,12 +187,43 @@ func transformSet(stmt *sqlparser.Set) ([]string, bool) {
 	for _, expr := range stmt.Exprs {
 		if expr.Scope == sqlparser.GlobalStr {
 			queries = append(queries, fmt.Sprintf("SET GLOBAL %s = %s", expr.Name, expr.Expr))
+		} else if expr.Scope == "user" {
+			queries = append(queries, fmt.Sprintf("SET doltgres_enginetest.%s = %s", expr.Name, formatNode(expr.Expr)))
 		} else {
 			queries = append(queries, fmt.Sprintf("SET %s = %s", expr.Name, expr.Expr))
 		}
 	}
 
 	return queries, true
+}
+
+func formatNode(node sqlparser.SQLNode) string {
+	buf := sqlparser.NewTrackedBuffer(PostgresNodeFormatter)
+	node.Format(buf)
+	return buf.String()
+}
+
+func PostgresNodeFormatter(buf *sqlparser.TrackedBuffer, node sqlparser.SQLNode) {
+	switch node := node.(type) {
+	case sqlparser.ColIdent:
+		if strings.HasPrefix(node.String(), "@@") {
+			buf.Myprintf("current_setting('.%s')", strings.TrimLeft(node.String(), "@"))
+		} else if strings.HasPrefix(node.String(), "@") {
+			buf.Myprintf("current_setting('doltgres_enginetest.%s')", strings.TrimLeft(node.String(), "@"))
+		} else {
+			buf.Myprintf("%s", node.Lowered())
+		}
+	case *sqlparser.Limit:
+		if node == nil {
+			return
+		}
+		buf.Myprintf(" limit %v", node.Rowcount)
+		if node.Offset != nil {
+			buf.Myprintf(" offset %v", node.Offset)
+		}
+	default:
+		node.Format(buf)
+	}
 }
 
 func transformCreateTable(query string, stmt *sqlparser.DDL) ([]string, bool) {

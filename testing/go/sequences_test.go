@@ -404,6 +404,38 @@ func TestSequences(t *testing.T) {
 			},
 		},
 		{
+			Name: "nextval() with double-quoted identifiers",
+			SetUpScript: []string{
+				"CREATE SEQUENCE test_sequence;",
+			},
+			Assertions: []ScriptTestAssertion{
+				{
+					Query: "SELECT nextval('test_sequence');",
+					Expected: []sql.Row{
+						{1},
+					},
+				},
+				{
+					Query: "SELECT nextval('public.test_sequence');",
+					Expected: []sql.Row{
+						{2},
+					},
+				},
+				{
+					Query: `SELECT nextval('"test_sequence"');`,
+					Expected: []sql.Row{
+						{3},
+					},
+				},
+				{
+					Query: `SELECT nextval('public."test_sequence"');`,
+					Expected: []sql.Row{
+						{4},
+					},
+				},
+			},
+		},
+		{
 			Name: "nextval() in filter",
 			Skip: true, // GMS seems to call nextval once and cache the value, which is incorrect here
 			SetUpScript: []string{
@@ -538,6 +570,19 @@ func TestSequences(t *testing.T) {
 				{
 					Query:    "SELECT nextval('test4');",
 					Expected: []sql.Row{{7}},
+				},
+				{
+					Query:    "CREATE SEQUENCE test5;",
+					Expected: []sql.Row{},
+				},
+				{
+					// test with a double-quoted identifier
+					Query:    `SELECT setval('public."test5"', 100, true);`,
+					Expected: []sql.Row{{100}},
+				},
+				{
+					Query:    "SELECT nextval('test5');",
+					Expected: []sql.Row{{101}},
 				},
 			},
 		},

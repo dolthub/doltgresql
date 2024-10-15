@@ -95,8 +95,19 @@ jobs:
           echo "EOF" >> $GITHUB_OUTPUT
           echo "$output"
 
+      - name: Is PR From Fork
+        id: from_fork
+        run: |
+          if [ "${{ github.event.pull_request.head.repo.full_name }}" != "${{ github.repository }}" ]; then
+            echo "This is running from a fork, skipping commenting"
+            echo "fork=true" >> $GITHUB_OUTPUT
+          else
+            echo "This is not running from a fork"
+            echo "fork=false" >> $GITHUB_OUTPUT
+          fi
+
       - name: Post Comment
-        if: steps.build_results.outputs.program_output
+        if: steps.from_fork.outputs.fork == 'false' && steps.build_results.outputs.program_output
         uses: actions/github-script@v6
         env:
           PROGRAM_OUTPUT: ${{ steps.build_results.outputs.program_output }}

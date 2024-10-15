@@ -597,12 +597,6 @@ func (node *From) docRow(p *PrettyCfg) pretty.TableRow {
 		return emptyRow
 	}
 	d := node.Tables.doc(p)
-	if node.AsOf.Expr != nil {
-		d = p.nestUnder(
-			d,
-			p.Doc(&node.AsOf),
-		)
-	}
 	return p.row("FROM", d)
 }
 
@@ -686,6 +680,15 @@ func (node *AliasedTableExpr) doc(p *PrettyCfg) pretty.Doc {
 		d = pretty.Concat(
 			d,
 			p.keywordWithText(" ", "WITH ORDINALITY", ""),
+		)
+	}
+	if node.AsOf != nil {
+		d = p.nestUnder(
+			d,
+			pretty.Concat(
+				p.keywordWithText("", "AS OF SYSTEM TIME", " "),
+				p.Doc(node.AsOf),
+			),
 		)
 	}
 	if node.As.Alias != "" {
@@ -1125,7 +1128,7 @@ func (p *PrettyCfg) exprDocWithParen(e Expr) pretty.Doc {
 }
 
 func (node *Update) doc(p *PrettyCfg) pretty.Doc {
-	items := make([]pretty.TableRow, 8)
+	items := make([]pretty.TableRow, 0, 8)
 	items = append(items,
 		node.With.docRow(p),
 		p.row("UPDATE", p.Doc(node.Table)),
@@ -1143,7 +1146,7 @@ func (node *Update) doc(p *PrettyCfg) pretty.Doc {
 }
 
 func (node *Delete) doc(p *PrettyCfg) pretty.Doc {
-	items := make([]pretty.TableRow, 6)
+	items := make([]pretty.TableRow, 0, 6)
 	items = append(items,
 		node.With.docRow(p),
 		p.row("DELETE FROM", p.Doc(node.Table)),

@@ -8,13 +8,13 @@ require (
 	github.com/PuerkitoBio/goquery v1.8.1
 	github.com/cockroachdb/apd/v2 v2.0.3-0.20200518165714-d020e156310a
 	github.com/cockroachdb/errors v1.7.5
-	github.com/dolthub/dolt/go v0.40.5-0.20241002235923-fdd24549db05
+	github.com/dolthub/dolt/go v0.40.5-0.20241010172121-cec1febbae9e
 	github.com/dolthub/dolt/go/gen/proto/dolt/services/eventsapi v0.0.0-20240827111219-e4bb9ca3442d
 	github.com/dolthub/flatbuffers/v23 v23.3.3-dh.2
 	github.com/dolthub/go-icu-regex v0.0.0-20240916130659-0118adc6b662
-	github.com/dolthub/go-mysql-server v0.18.2-0.20241008231402-7443a099ffa8
+	github.com/dolthub/go-mysql-server v0.18.2-0.20241010075950-21582a41a6b5
 	github.com/dolthub/sqllogictest/go v0.0.0-20240618184124-ca47f9354216
-	github.com/dolthub/vitess v0.0.0-20241002230050-2c2ea65cf324
+	github.com/dolthub/vitess v0.0.0-20241009160728-54c0746cbff7
 	github.com/fatih/color v1.13.0
 	github.com/goccy/go-json v0.10.2
 	github.com/gogo/protobuf v1.3.2
@@ -68,7 +68,6 @@ require (
 	github.com/cockroachdb/sentry-go v0.6.1-cockroachdb.2 // indirect
 	github.com/davecgh/go-spew v1.1.1 // indirect
 	github.com/denisbrodbeck/machineid v1.0.1 // indirect
-	github.com/dolthub/dolt v1.43.2-0.20241009000904-fc9fba029858 // indirect
 	github.com/dolthub/fslock v0.0.3 // indirect
 	github.com/dolthub/gozstd v0.0.0-20240423170813-23a2903bca63 // indirect
 	github.com/dolthub/ishell v0.0.0-20240701202509-2b217167d718 // indirect

@@ -355,11 +355,21 @@ func (reader *Reader) RemainingBytes() uint64 {
 	return uint64(len(reader.buf)) - reader.offset
 }
 
-// UnsafeAdvanceReader reads the next N bytes from the given Reader. This is only available for specific,
-// performance-oriented circumstances, and should never be used otherwise. This is a standalone function to discourage
-// its use, as it will not show up as a function of the Reader object in most IDEs. This does not verify that N has a
-// valid length, and it does not allocate a new byte slice (returns a portion from the original byte slice).
-func UnsafeAdvanceReader(reader *Reader, n uint64) []byte {
+// AdvanceReader reads the next N bytes from the given Reader. This is only available for specific, performance-oriented
+// circumstances, and should never be used otherwise. This is a standalone function to discourage its use, as it will
+// not show up as a function of the Reader object in most IDEs. This uses a branchless comparison to limit the size of n
+// to the end of the reader, and it does not allocate a new byte slice (returns a portion from the original byte slice).
+func AdvanceReader(reader *Reader, n uint64) []byte {
+	// This branchless code makes an assumption that the reader contains less than 9223372036854775808 bytes.
+	// With this assumption, it is equivalent to the following:
+	// if reader.offset + n > uint64(len(reader.buf)) || n >= 0x8000000000000000 {
+	//     n = uint64(len(reader.buf)) - reader.offset
+	// }
+	maxN := uint64(len(reader.buf)) - reader.offset
+	delta := int64(n - maxN)
+	mask := (delta >> 63) ^ (int64(n&0x8000000000000000) >> 63)
+	n = (n & uint64(mask)) | (maxN & ^uint64(mask))
+
 	reader.offset += n
 	return reader.buf[reader.offset-n : reader.offset]
 }

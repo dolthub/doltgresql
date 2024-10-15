@@ -18,10 +18,10 @@ import "testing"
 
 func TestDropGroup(t *testing.T) {
 	tests := []QueryParses{
-		Parses("DROP GROUP name"),
-		Parses("DROP GROUP IF EXISTS name"),
-		Parses("DROP GROUP name , name"),
-		Parses("DROP GROUP IF EXISTS name , name"),
+		Converts("DROP GROUP name"),
+		Converts("DROP GROUP IF EXISTS name"),
+		Converts("DROP GROUP name , name"),
+		Converts("DROP GROUP IF EXISTS name , name"),
 	}
 	RunTests(t, tests)
 }

@@ -79,7 +79,7 @@ var setStmts = []ScriptTest{
 		Assertions: []ScriptTestAssertion{
 			{
 				Query:    "SHOW search_path",
-				Expected: []sql.Row{{"\"$user\", public"}},
+				Expected: []sql.Row{{"\"$user\", public,"}},
 			},
 			{
 				Query:    "SET SCHEMA 'postgres';",
@@ -5321,7 +5321,7 @@ var setStmts = []ScriptTest{
 		Assertions: []ScriptTestAssertion{
 			{
 				Query:    "SHOW search_path",
-				Expected: []sql.Row{{"\"$user\", public"}},
+				Expected: []sql.Row{{"\"$user\", public,"}},
 			},
 			{
 				Query:    "SET search_path TO 'postgres'",
@@ -5337,7 +5337,7 @@ var setStmts = []ScriptTest{
 			},
 			{
 				Query:    "SHOW search_path",
-				Expected: []sql.Row{{"\"$user\", public"}},
+				Expected: []sql.Row{{"\"$user\", public,"}},
 			},
 		},
 	},
@@ -7393,6 +7393,22 @@ var setStmts = []ScriptTest{
 			{
 				Query:       "show myvar.unknown_var",
 				ExpectedErr: "unrecognized configuration parameter",
+			},
+			{
+				Query:    "set myvar.var_value to (select 'a')",
+				Expected: []sql.Row{},
+			},
+			{
+				Query:    "SHOW myvar.var_value",
+				Expected: []sql.Row{{"a"}},
+			},
+			{
+				Query:    "set myvar.val2 to (select current_setting('myvar.var_value'))",
+				Expected: []sql.Row{},
+			},
+			{
+				Query:    "SHOW myvar.val2",
+				Expected: []sql.Row{{"a"}},
 			},
 		},
 	},

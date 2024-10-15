@@ -63,7 +63,8 @@ func ClientSignature(storedKey OctetString, authMessage string) OctetString {
 	return HMAC(storedKey, OctetString(authMessage))
 }
 
-// H performs the SHA256 hash function, which is the hash function used by Postgres.
+// H performs the SHA256 hash function, which is the hash function used by Postgres. The returned OctetString will
+// always have a length of 32.
 func H(str OctetString) OctetString {
 	ret := sha256.Sum256(str)
 	return ret[:]
@@ -90,13 +91,12 @@ func Normalize(str string) (string, error) {
 
 // SaltedPassword returns the salted password. The password should not have been normalized, as it is normalized within
 // the function.
-func SaltedPassword(password string, salt OctetString, i uint32) OctetString {
+func SaltedPassword(password string, salt OctetString, i uint32) (OctetString, error) {
 	normalizedPassword, err := Normalize(password)
 	if err != nil {
-		// If there is an error, then it should be fine to return the zero hash
-		return make(OctetString, 32)
+		return nil, err
 	}
-	return Hi(OctetString(normalizedPassword), salt, i)
+	return Hi(OctetString(normalizedPassword), salt, i), nil
 }
 
 // ServerKey returns the server key created using the salted password and a specific constant.

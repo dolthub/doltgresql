@@ -40,6 +40,16 @@ const testInfoFields = [
 ];
 
 export const tableTests = [
+    {
+        q: "SET search_path TO DEFAULT",
+        res: {
+            command: "SET",
+            rowCount: null,
+            oid: null,
+            rows: [],
+            fields: [],
+        },
+    },
   {
     q: "INSERT INTO test VALUES (0, 0), (1, 1), (2,2)",
     res: {
@@ -291,7 +301,7 @@ export const tableTests = [
   },
   {
     q: `COPY "test_info" FROM STDIN WITH (FORMAT csv, HEADER TRUE);`,
-    file: "update_test_info.csv",
+    file: "insert_test_info.csv",
     res: { command: "COPY", rowCount: 3, oid: null, rows: [], fields: [] },
   },
   {
@@ -317,7 +327,7 @@ export const tableTests = [
       oid: null,
       rows: [
         {
-          table_name: "test_info",
+          table_name: "public.test_info",
           rows_unmodified: "1",
           rows_added: "3",
           rows_deleted: "0",
@@ -335,10 +345,9 @@ export const tableTests = [
     },
   },
   {
-    skip: true, // TODO: DELIMITER not yet supported
     q: `COPY "test_info" FROM STDIN WITH (FORMAT csv, HEADER TRUE, DELIMITER '|');`,
-    file: "replace_test_info.psv",
-    res: { command: "COPY", rowCount: 6, oid: null, rows: [], fields: [] },
+    file: "insert_test_info.psv",
+    res: { command: "COPY", rowCount: 3, oid: null, rows: [], fields: [] },
   },
   {
     skip: true,
@@ -349,7 +358,7 @@ export const tableTests = [
       oid: null,
       rows: [
         {
-          table_name: "test_info",
+          table_name: "public.test_info",
           rows_unmodified: 0,
           rows_added: 3,
           rows_deleted: 0,
@@ -374,7 +383,7 @@ export const tableTests = [
       command: "SELECT",
       rowCount: 1,
       oid: null,
-      rows: [{ table_name: "test_info", staged: 0, status: "modified" }],
+      rows: [{ table_name: "public.test_info", staged: 0, status: "modified" }],
       fields: doltStatusFields,
     },
   },
@@ -394,7 +403,7 @@ export const tableTests = [
       command: "SELECT",
       rowCount: 1,
       oid: null,
-      rows: [{ table_name: "test_info", staged: 1, status: "modified" }],
+      rows: [{ table_name: "public.test_info", staged: 1, status: "modified" }],
       fields: doltStatusFields,
     },
   },
@@ -414,7 +423,7 @@ export const tableTests = [
       command: "SELECT",
       rowCount: 1,
       oid: null,
-      rows: [{ table_name: "test_info", staged: 0, status: "modified" }],
+      rows: [{ table_name: "public.test_info", staged: 0, status: "modified" }],
       fields: doltStatusFields,
     },
   },
