@@ -18,6 +18,7 @@ import (
 	"bufio"
 	"fmt"
 	"os"
+	"strings"
 
 	"github.com/dolthub/dolt/go/libraries/doltcore/doltdb"
 	"github.com/dolthub/go-mysql-server/sql"
@@ -109,7 +110,8 @@ func (cf *CopyFrom) Validate(ctx *sql.Context) error {
 
 		for i, col := range table.Schema() {
 			name := cf.Columns[i]
-			if name.String() != col.Name {
+			nameString := strings.Trim(name.String(), `"`)
+			if nameString != col.Name {
 				return fmt.Errorf("invalid column name list for table %s: %v", table.Name(), cf.Columns)
 			}
 		}
