@@ -67,7 +67,7 @@ func AddImplicitPrefixLengths(_ *sql.Context, _ *analyzer.Analyzer, node sql.Nod
 				colMap := schToColMap(targetSchema)
 
 				for i, _ := range index.Columns {
-					col, ok := colMap[index.Columns[i].Name]
+					col, ok := colMap[strings.ToLower(index.Columns[i].Name)]
 					if !ok {
 						return nil, false, fmt.Errorf("indexed column %s not found in schema", index.Columns[i].Name)
 					}
@@ -92,7 +92,7 @@ func AddImplicitPrefixLengths(_ *sql.Context, _ *analyzer.Analyzer, node sql.Nod
 				}
 				indexModified := false
 				for i, _ := range newColumns {
-					col, ok := colMap[newColumns[i].Name]
+					col, ok := colMap[strings.ToLower(newColumns[i].Name)]
 					if !ok {
 						return nil, false, fmt.Errorf("indexed column %s not found in schema", newColumns[i].Name)
 					}
