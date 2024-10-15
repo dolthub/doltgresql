@@ -16,13 +16,13 @@ package node
 
 import (
 	"fmt"
-	"github.com/dolthub/doltgresql/server/types"
 
 	"github.com/dolthub/go-mysql-server/sql"
 	"github.com/dolthub/go-mysql-server/sql/plan"
 	vitess "github.com/dolthub/vitess/go/vt/sqlparser"
 
 	"github.com/dolthub/doltgresql/core"
+	"github.com/dolthub/doltgresql/server/types"
 )
 
 // DropDomain handles the DROP DOMAIN statement.

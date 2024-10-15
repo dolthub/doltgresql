@@ -22,135 +22,135 @@ import (
 
 func TestDomain(t *testing.T) {
 	RunScripts(t, []ScriptTest{
-		//{
-		//	Name:        "create domain",
-		//	SetUpScript: []string{},
-		//	Assertions: []ScriptTestAssertion{
-		//		{
-		//			Query:       `CREATE DOMAIN year AS integer CONSTRAINT not_null_c NOT NULL CONSTRAINT null_c  NULL;`,
-		//			ExpectedErr: `conflicting NULL/NOT NULL constraints`,
-		//		},
-		//		{
-		//			Query:       `CREATE DOMAIN year AS integer NULL NOT NULL;`,
-		//			ExpectedErr: `conflicting NULL/NOT NULL constraints`,
-		//		},
-		//		{
-		//			Query:    `CREATE DOMAIN year AS integer DEFAULT 1999 NOT NULL CONSTRAINT year_check CHECK (((VALUE >= 1901) AND (VALUE <= 2155)));;`,
-		//			Expected: []sql.Row{},
-		//		},
-		//		{
-		//			Query:       `CREATE DOMAIN year AS integer CONSTRAINT year_check CHECK (((VALUE >= 1901) AND (VALUE <= 2155)));`,
-		//			ExpectedErr: `type "year" already exists`,
-		//		},
-		//		{
-		//			Query:    `CREATE DOMAIN year_with_check AS integer CONSTRAINT year_check CHECK (((VALUE >= 1901) AND (VALUE <= 2155)));`,
-		//			Expected: []sql.Row{},
-		//		},
-		//		{
-		//			Query:    `CREATE DOMAIN year_with_two_checks AS integer CONSTRAINT year_check_min CHECK (VALUE >= 1901) CONSTRAINT year_check_max CHECK (VALUE <= 2155);`,
-		//			Expected: []sql.Row{},
-		//		},
-		//		{
-		//			Query:       `CREATE TABLE test_table (id int primary key, v non_existing_domain);`,
-		//			ExpectedErr: `type "non_existing_domain" does not exist`,
-		//		},
-		//	},
-		//},
-		//{
-		//	Name: "create table with domain type",
-		//	SetUpScript: []string{
-		//		`CREATE DOMAIN year AS integer CONSTRAINT year_check CHECK (((VALUE >= 1901) AND (VALUE <= 2155)));`,
-		//	},
-		//	Assertions: []ScriptTestAssertion{
-		//		{
-		//			Query:    `CREATE TABLE table_with_domain (pk int primary key, y year);`,
-		//			Expected: []sql.Row{},
-		//		},
-		//		{
-		//			Query:    `INSERT INTO table_with_domain VALUES (1, 1999)`,
-		//			Expected: []sql.Row{},
-		//		},
-		//		{
-		//			// TODO: the correct error msg: `value for domain year violates check constraint "year_check"`
-		//			Query:       `INSERT INTO table_with_domain VALUES (2, 1899)`,
-		//			ExpectedErr: `Check constraint "year_check" violated`,
-		//		},
-		//		{
-		//			Query:    `SELECT * FROM table_with_domain`,
-		//			Expected: []sql.Row{{1, 1999}},
-		//		},
-		//	},
-		//},
-		//{
-		//	Name: "create table with domain type with default value",
-		//	SetUpScript: []string{
-		//		`CREATE DOMAIN year AS integer DEFAULT 2000;`,
-		//		`CREATE TABLE table_with_domain_with_default (pk int primary key, y year);`,
-		//		`INSERT INTO table_with_domain_with_default VALUES (1, 1999)`,
-		//	},
-		//	Assertions: []ScriptTestAssertion{
-		//		{
-		//			Query:    `INSERT INTO table_with_domain_with_default(pk) VALUES (2)`,
-		//			Expected: []sql.Row{},
-		//		},
-		//		{
-		//			Query:    `SELECT * FROM table_with_domain_with_default`,
-		//			Expected: []sql.Row{{1, 1999}, {2, 2000}},
-		//		},
-		//	},
-		//},
-		//{
-		//	Name: "create table with domain type with not null constraint",
-		//	SetUpScript: []string{
-		//		`CREATE DOMAIN year AS integer NOT NULL;`,
-		//		`CREATE TABLE tbl_not_null (pk int primary key, y year);`,
-		//		`INSERT INTO tbl_not_null VALUES (1, 1999)`,
-		//	},
-		//	Assertions: []ScriptTestAssertion{
-		//		{
-		//			// TODO: the correct error msg: `domain year does not allow null values`
-		//			Query:       `INSERT INTO tbl_not_null VALUES (2, null)`,
-		//			ExpectedErr: `column name 'y' is non-nullable but attempted to set a value of null`,
-		//		},
-		//		{
-		//			// TODO: the correct error msg: `domain year does not allow null values`
-		//			Query:       `INSERT INTO tbl_not_null(pk) VALUES (2)`,
-		//			ExpectedErr: `Field 'y' doesn't have a default value`,
-		//		},
-		//		{
-		//			Query:    `SELECT * FROM tbl_not_null`,
-		//			Expected: []sql.Row{{1, 1999}},
-		//		},
-		//	},
-		//},
-		//{
-		//	Name: "update on table with domain type",
-		//	SetUpScript: []string{
-		//		`CREATE DOMAIN year AS integer NOT NULL CONSTRAINT year_check_min CHECK (VALUE >= 1901) CONSTRAINT year_check_max CHECK (VALUE <= 2155);`,
-		//		`CREATE TABLE test_table (pk int primary key, y year);`,
-		//		`INSERT INTO test_table VALUES (1, 1999), (2, 2000)`,
-		//	},
-		//	Assertions: []ScriptTestAssertion{
-		//		{
-		//			Query:    `UPDATE test_table SET y = 1902 WHERE pk = 1;`,
-		//			Expected: []sql.Row{},
-		//		},
-		//		{
-		//			// TODO: the correct error msg: `value for domain year violates check constraint "year_check_min"`
-		//			Query:       `UPDATE test_table SET y = 1900 WHERE pk = 1;`,
-		//			ExpectedErr: `Check constraint "year_check_min" violated`,
-		//		},
-		//		{
-		//			// TODO: the correct error msg: `domain year does not allow null values`
-		//			Query:       `UPDATE test_table SET y = null WHERE pk = 1;`,
-		//			ExpectedErr: `column name 'y' is non-nullable but attempted to set a value of null`,
-		//		},
-		//		{
-		//			Query:    `SELECT * FROM test_table`,
-		//			Expected: []sql.Row{{1, 1902}, {2, 2000}},
-		//		},
-		//	},
-		//},
+		{
+			Name:        "create domain",
+			SetUpScript: []string{},
+			Assertions: []ScriptTestAssertion{
+				{
+					Query:       `CREATE DOMAIN year AS integer CONSTRAINT not_null_c NOT NULL CONSTRAINT null_c  NULL;`,
+					ExpectedErr: `conflicting NULL/NOT NULL constraints`,
+				},
+				{
+					Query:       `CREATE DOMAIN year AS integer NULL NOT NULL;`,
+					ExpectedErr: `conflicting NULL/NOT NULL constraints`,
+				},
+				{
+					Query:    `CREATE DOMAIN year AS integer DEFAULT 1999 NOT NULL CONSTRAINT year_check CHECK (((VALUE >= 1901) AND (VALUE <= 2155)));;`,
+					Expected: []sql.Row{},
+				},
+				{
+					Query:       `CREATE DOMAIN year AS integer CONSTRAINT year_check CHECK (((VALUE >= 1901) AND (VALUE <= 2155)));`,
+					ExpectedErr: `type "year" already exists`,
+				},
+				{
+					Query:    `CREATE DOMAIN year_with_check AS integer CONSTRAINT year_check CHECK (((VALUE >= 1901) AND (VALUE <= 2155)));`,
+					Expected: []sql.Row{},
+				},
+				{
+					Query:    `CREATE DOMAIN year_with_two_checks AS integer CONSTRAINT year_check_min CHECK (VALUE >= 1901) CONSTRAINT year_check_max CHECK (VALUE <= 2155);`,
+					Expected: []sql.Row{},
+				},
+				{
+					Query:       `CREATE TABLE test_table (id int primary key, v non_existing_domain);`,
+					ExpectedErr: `type "non_existing_domain" does not exist`,
+				},
+			},
+		},
+		{
+			Name: "create table with domain type",
+			SetUpScript: []string{
+				`CREATE DOMAIN year AS integer CONSTRAINT year_check CHECK (((VALUE >= 1901) AND (VALUE <= 2155)));`,
+			},
+			Assertions: []ScriptTestAssertion{
+				{
+					Query:    `CREATE TABLE table_with_domain (pk int primary key, y year);`,
+					Expected: []sql.Row{},
+				},
+				{
+					Query:    `INSERT INTO table_with_domain VALUES (1, 1999)`,
+					Expected: []sql.Row{},
+				},
+				{
+					// TODO: the correct error msg: `value for domain year violates check constraint "year_check"`
+					Query:       `INSERT INTO table_with_domain VALUES (2, 1899)`,
+					ExpectedErr: `Check constraint "year_check" violated`,
+				},
+				{
+					Query:    `SELECT * FROM table_with_domain`,
+					Expected: []sql.Row{{1, 1999}},
+				},
+			},
+		},
+		{
+			Name: "create table with domain type with default value",
+			SetUpScript: []string{
+				`CREATE DOMAIN year AS integer DEFAULT 2000;`,
+				`CREATE TABLE table_with_domain_with_default (pk int primary key, y year);`,
+				`INSERT INTO table_with_domain_with_default VALUES (1, 1999)`,
+			},
+			Assertions: []ScriptTestAssertion{
+				{
+					Query:    `INSERT INTO table_with_domain_with_default(pk) VALUES (2)`,
+					Expected: []sql.Row{},
+				},
+				{
+					Query:    `SELECT * FROM table_with_domain_with_default`,
+					Expected: []sql.Row{{1, 1999}, {2, 2000}},
+				},
+			},
+		},
+		{
+			Name: "create table with domain type with not null constraint",
+			SetUpScript: []string{
+				`CREATE DOMAIN year AS integer NOT NULL;`,
+				`CREATE TABLE tbl_not_null (pk int primary key, y year);`,
+				`INSERT INTO tbl_not_null VALUES (1, 1999)`,
+			},
+			Assertions: []ScriptTestAssertion{
+				{
+					// TODO: the correct error msg: `domain year does not allow null values`
+					Query:       `INSERT INTO tbl_not_null VALUES (2, null)`,
+					ExpectedErr: `column name 'y' is non-nullable but attempted to set a value of null`,
+				},
+				{
+					// TODO: the correct error msg: `domain year does not allow null values`
+					Query:       `INSERT INTO tbl_not_null(pk) VALUES (2)`,
+					ExpectedErr: `Field 'y' doesn't have a default value`,
+				},
+				{
+					Query:    `SELECT * FROM tbl_not_null`,
+					Expected: []sql.Row{{1, 1999}},
+				},
+			},
+		},
+		{
+			Name: "update on table with domain type",
+			SetUpScript: []string{
+				`CREATE DOMAIN year AS integer NOT NULL CONSTRAINT year_check_min CHECK (VALUE >= 1901) CONSTRAINT year_check_max CHECK (VALUE <= 2155);`,
+				`CREATE TABLE test_table (pk int primary key, y year);`,
+				`INSERT INTO test_table VALUES (1, 1999), (2, 2000)`,
+			},
+			Assertions: []ScriptTestAssertion{
+				{
+					Query:    `UPDATE test_table SET y = 1902 WHERE pk = 1;`,
+					Expected: []sql.Row{},
+				},
+				{
+					// TODO: the correct error msg: `value for domain year violates check constraint "year_check_min"`
+					Query:       `UPDATE test_table SET y = 1900 WHERE pk = 1;`,
+					ExpectedErr: `Check constraint "year_check_min" violated`,
+				},
+				{
+					// TODO: the correct error msg: `domain year does not allow null values`
+					Query:       `UPDATE test_table SET y = null WHERE pk = 1;`,
+					ExpectedErr: `column name 'y' is non-nullable but attempted to set a value of null`,
+				},
+				{
+					Query:    `SELECT * FROM test_table`,
+					Expected: []sql.Row{{1, 1902}, {2, 2000}},
+				},
+			},
+		},
 		{
 			Name: "domain type as text type",
 			SetUpScript: []string{

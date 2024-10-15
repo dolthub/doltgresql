@@ -16,15 +16,15 @@ package types
 
 import (
 	"fmt"
-	"gopkg.in/src-d/go-errors.v1"
 	"reflect"
-
-	"github.com/dolthub/doltgresql/utils"
 
 	"github.com/dolthub/go-mysql-server/sql"
 	"github.com/dolthub/go-mysql-server/sql/types"
 	"github.com/dolthub/vitess/go/sqltypes"
 	"github.com/dolthub/vitess/go/vt/proto/query"
+	"gopkg.in/src-d/go-errors.v1"
+
+	"github.com/dolthub/doltgresql/utils"
 )
 
 var ErrTypeAlreadyExists = errors.NewKind(`type "%s" already exists`)

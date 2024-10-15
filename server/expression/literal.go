@@ -17,7 +17,6 @@ package expression
 import (
 	"fmt"
 	"strconv"
-	"strings"
 	"time"
 
 	"github.com/dolthub/go-mysql-server/sql"
@@ -259,9 +258,9 @@ func (l *Literal) String() string {
 	case string:
 		// Conversion of \' to \'\' required as this string will be interpreted by the sql engine.
 		// Backslash chars also need to be replaced.
-		escaped := strings.ReplaceAll(litVal, "'", "''")
-		escaped = strings.ReplaceAll(escaped, "\\", "\\\\")
-		return fmt.Sprintf("'%s'", escaped)
+		//escaped := strings.ReplaceAll(litVal, "'", "''")
+		//escaped = strings.ReplaceAll(escaped, "\\", "\\\\")
+		return fmt.Sprintf("'%s'", litVal)
 	}
 	return fmt.Sprintf("%v", l.value)
 }
