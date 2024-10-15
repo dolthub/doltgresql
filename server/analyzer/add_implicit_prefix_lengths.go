@@ -16,13 +16,13 @@ package analyzer
 
 import (
 	"fmt"
-	"github.com/dolthub/go-mysql-server/sql/analyzer"
 	"strings"
 
 	"github.com/dolthub/go-mysql-server/sql"
+	"github.com/dolthub/go-mysql-server/sql/analyzer"
 	"github.com/dolthub/go-mysql-server/sql/plan"
 	"github.com/dolthub/go-mysql-server/sql/transform"
-	"github.com/dolthub/go-mysql-server/sql/types"
+	"github.com/dolthub/vitess/go/sqltypes"
 )
 
 // defaultIndexPrefixLength is the index prefix length that this analyzer rule applies automatically to TEXT columns
@@ -71,7 +71,7 @@ func AddImplicitPrefixLengths(_ *sql.Context, _ *analyzer.Analyzer, node sql.Nod
 					if !ok {
 						return nil, false, fmt.Errorf("indexed column %s not found in schema", index.Columns[i].Name)
 					}
-					if types.IsText(col.Type) && index.Columns[i].Length == 0 {
+					if col.Type.Type() == sqltypes.Text && index.Columns[i].Length == 0 {
 						index.Columns[i].Length = defaultIndexPrefixLength
 						indexModified = true
 					}
@@ -96,7 +96,7 @@ func AddImplicitPrefixLengths(_ *sql.Context, _ *analyzer.Analyzer, node sql.Nod
 					if !ok {
 						return nil, false, fmt.Errorf("indexed column %s not found in schema", newColumns[i].Name)
 					}
-					if types.IsText(col.Type) && newColumns[i].Length == 0 {
+					if col.Type.Type() == sqltypes.Text && newColumns[i].Length == 0 {
 						newColumns[i].Length = defaultIndexPrefixLength
 						indexModified = true
 					}
