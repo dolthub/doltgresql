@@ -1170,6 +1170,7 @@ func TestDoltCheckout(t *testing.T) {
 		"branch last checked out is deleted",
 		"Using non-existent refs",
 		"read-only databases", // read-only not yet implemented in harness
+		"Checkout tables from commit",
 	})
 	denginetest.RunDoltCheckoutTests(t, h)
 }
