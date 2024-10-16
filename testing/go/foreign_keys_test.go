@@ -39,14 +39,13 @@ func TestForeignKeys(t *testing.T) {
 						Query: "INSERT INTO child VALUES (2, 1)",
 					},
 					{
-						Query: "INSERT INTO child VALUES (2, 2)",
+						Query:       "INSERT INTO child VALUES (2, 2)",
 						ExpectedErr: "Foreign key violation",
 					},
 				},
 			},
 			{
-				Name:  "foreign key with dolt_add, dolt_commit",
-				Focus: true,
+				Name: "foreign key with dolt_add, dolt_commit",
 				SetUpScript: []string{
 					"create table test (pk int, \"value\" int, primary key(pk));",
 					"CREATE TABLE test_info (id int, info varchar(255), test_pk int, primary key(id), foreign key (test_pk) references test(pk))",
@@ -62,40 +61,33 @@ func TestForeignKeys(t *testing.T) {
 						},
 					},
 					{
-						Query: "SELECT dolt_commit('-am', 'new tables')",
+						Query:            "SELECT dolt_commit('-am', 'new tables')",
 						SkipResultsCheck: true,
 					},
 					{
-						Query: "SELECT * FROM dolt_status",
+						Query:    "SELECT * FROM dolt_status",
 						Expected: []sql.Row{},
 					},
 					{
-						Query: "SELECT * FROM dolt_schema_diff('HEAD', 'WORKING', 'test_info')",
+						Query:    "SELECT * FROM dolt_schema_diff('HEAD', 'WORKING', 'test_info')",
+						Expected: []sql.Row{},
+					},
+					{
+						Query:    "INSERT INTO test_info VALUES (2, 'two', 2)",
+						Expected: []sql.Row{},
+					},
+					{
+						Query:       "INSERT INTO test_info VALUES (3, 'three', 3)",
+						ExpectedErr: "Foreign key violation",
+					},
+					{
+						Query: "SELECT * FROM test_info",
 						Expected: []sql.Row{
-							{
-								"public.test_info",
-								"public.test_info",
-								"CREATE TABLE `test_info` (\n" +
-									"  `id` integer NOT NULL,\n" +
-									"  `info` varchar(255),\n" +
-									"  `test_pk` integer,\n" +
-									"  PRIMARY KEY (`id`),\n" +
-									"  KEY `test_pk` (`test_pk`)\n" +
-									") ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_bin;",
-									"CREATE TABLE `test_info` (\n" +
-									"  `id` integer NOT NULL,\n" +
-									"  `info` varchar(255),\n" +
-									"  `test_pk` integer,\n" +
-									"  PRIMARY KEY (`id`),\n" +
-									"  KEY `test_pk` (`test_pk`),\n" +
-									"  CONSTRAINT `test_info_ibfk_1` FOREIGN KEY (`test_pk`) REFERENCES `test` (`pk`) ON DELETE NO ACTION ON UPDATE NO ACTION\n" +
-									") ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_bin;",
-							},
+							{2, "two", 2},
 						},
 					},
 				},
 			},
 		},
-	)
+)
 }
-			
