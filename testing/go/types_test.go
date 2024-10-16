@@ -2111,11 +2111,27 @@ var typesTests = []ScriptTest{
 	{
 		Name: "Text type",
 		SetUpScript: []string{
+			// Test a table with a TEXT column
 			"CREATE TABLE t_text (id INTEGER primary key, v1 TEXT);",
 			"INSERT INTO t_text VALUES (1, 'Hello'), (2, 'World'), (3, ''), (4, NULL);",
+
+			// Test a table created with a TEXT column in a unique, secondary index
+			"CREATE TABLE t_text_unique (id INTEGER primary key, v1 TEXT, v2 TEXT NOT NULL UNIQUE);",
+			"INSERT INTO t_text_unique VALUES (1, 'Hello', 'Bonjour'), (2, 'World', 'tout le monde'), (3, '', ''), (4, NULL, '!');",
 		},
 		Assertions: []ScriptTestAssertion{
 			{
+				// Use the text keyword to cast
+				Query:    `SELECT text 'text' || ' and unknown';`,
+				Expected: []sql.Row{{"text and unknown"}},
+			},
+			{
+				// Use the text keyword to cast
+				Query:    `SELECT text 'this is a text string' = text 'this is a text string' AS true;`,
+				Expected: []sql.Row{{"t"}},
+			},
+			{
+				// Basic select from a table with a TEXT column
 				Query: "SELECT * FROM t_text ORDER BY id;",
 				Expected: []sql.Row{
 					{1, "Hello"},
@@ -2125,12 +2141,83 @@ var typesTests = []ScriptTest{
 				},
 			},
 			{
-				Query:    `SELECT text 'text' || ' and unknown';`,
-				Expected: []sql.Row{{"text and unknown"}},
+				// Create a unique, secondary index on a TEXT column
+				Query:    "CREATE UNIQUE INDEX v1_unique ON t_text(v1);",
+				Expected: []sql.Row{},
 			},
 			{
-				Query:    `SELECT text 'this is a text string' = text 'this is a text string' AS true;`,
-				Expected: []sql.Row{{"t"}},
+				Query: "SELECT * FROM t_text WHERE v1 = 'World';",
+				Expected: []sql.Row{
+					{2, "World"},
+				},
+			},
+			{
+				// Test the new unique constraint on the TEXT column
+				Query:       "INSERT INTO t_text VALUES (5, 'World');",
+				ExpectedErr: "unique",
+			},
+			{
+				Query: "SELECT * FROM t_text_unique WHERE v2 = '!';",
+				Expected: []sql.Row{
+					{4, nil, "!"},
+				},
+			},
+			{
+				Query: "SELECT * FROM t_text_unique WHERE v2 >= '!' ORDER BY v2;",
+				Expected: []sql.Row{
+					{4, nil, "!"},
+					{1, "Hello", "Bonjour"},
+					{2, "World", "tout le monde"},
+				},
+			},
+			{
+				// Test ordering by TEXT column in a secondary index
+				Query: "SELECT * FROM t_text_unique ORDER BY v2;",
+				Expected: []sql.Row{
+					{3, "", ""},
+					{4, nil, "!"},
+					{1, "Hello", "Bonjour"},
+					{2, "World", "tout le monde"},
+				},
+			},
+			{
+				Query: "SELECT * FROM t_text_unique ORDER BY id;",
+				Expected: []sql.Row{
+					{1, "Hello", "Bonjour"},
+					{2, "World", "tout le monde"},
+					{3, "", ""},
+					{4, nil, "!"},
+				},
+			},
+			{
+				Query:       "INSERT INTO t_text_unique VALUES (5, 'Another', 'Bonjour');",
+				ExpectedErr: "unique",
+			},
+			{
+				// Create a secondary index over multiple text fields
+				Query:    "CREATE INDEX on t_text_unique(v1, v2);",
+				Expected: []sql.Row{},
+			},
+			{
+				Query:    "SELECT id FROM t_text_unique WHERE v1='Hello' and v2='Bonjour';",
+				Expected: []sql.Row{{1}},
+			},
+			{
+				// Create a table with a TEXT column to test adding a non-unique, secondary index
+				Query:    `CREATE TABLE t2 (pk int primary key, c1 TEXT);`,
+				Expected: []sql.Row{},
+			},
+			{
+				Query:    `CREATE INDEX idx1 ON t2(c1);`,
+				Expected: []sql.Row{},
+			},
+			{
+				Query:    `INSERT INTO t2 VALUES (1, 'one'), (2, 'two');`,
+				Expected: []sql.Row{},
+			},
+			{
+				Query:    `SELECT c1 from t2 order by c1;`,
+				Expected: []sql.Row{{"one"}, {"two"}},
 			},
 		},
 	},

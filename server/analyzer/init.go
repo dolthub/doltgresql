@@ -26,6 +26,7 @@ const (
 	ruleId_AssignUpdateCasts
 	ruleId_ReplaceIndexedTables
 	ruleId_ReplaceSerial
+	ruleId_AddImplicitPrefixLengths
 	ruleId_InsertContextRootFinalizer
 )
 
@@ -41,11 +42,14 @@ func Init() {
 	)
 
 	// Column default validation was moved to occur after type sanitization, so we'll remove it from its original place
-	analyzer.OnceBeforeDefault = removeAnalyzerRules(analyzer.OnceBeforeDefault,
-		analyzer.ValidateColumnDefaultsId)
+	analyzer.OnceBeforeDefault = removeAnalyzerRules(analyzer.OnceBeforeDefault, analyzer.ValidateColumnDefaultsId)
+
+	// PostgreSQL doesn't have the concept of prefix lengths, so we add a rule to implicitly add them
+	analyzer.OnceBeforeDefault = append([]analyzer.Rule{{Id: ruleId_AddImplicitPrefixLengths, Apply: AddImplicitPrefixLengths}},
+		analyzer.OnceBeforeDefault...)
+
 	// Remove all other validation rules that do not apply to Postgres
-	analyzer.DefaultValidationRules = removeAnalyzerRules(analyzer.DefaultValidationRules,
-		analyzer.ValidateOperandsId)
+	analyzer.DefaultValidationRules = removeAnalyzerRules(analyzer.DefaultValidationRules, analyzer.ValidateOperandsId)
 
 	analyzer.OnceAfterDefault = append(analyzer.OnceAfterDefault,
 		analyzer.Rule{Id: ruleId_ReplaceSerial, Apply: ReplaceSerial},

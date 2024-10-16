@@ -18,9 +18,7 @@ CREATE TABLE Regions (
    id SERIAL UNIQUE NOT NULL,
    code VARCHAR(4) UNIQUE NOT NULL, 
    capital VARCHAR(10) NOT NULL, -- REFERENCES Towns (code),
-   -- TODO: TEXT columns do not work correctly in Doltgres yet
-   -- name TEXT UNIQUE NOT NULL
-   name VARCHAR(255) UNIQUE NOT NULL
+   name TEXT UNIQUE NOT NULL
 );
 
 -- Departments / Départements
@@ -31,21 +29,15 @@ CREATE TABLE Departments (
    capital VARCHAR(10) UNIQUE NOT NULL, -- REFERENCES Towns (code), 
              -- Actually, it is the concatenation of D.code + T.code.
    region VARCHAR(4) NOT NULL REFERENCES Regions (code),
-   -- TODO: TEXT columns do not work correctly in Doltgres yet
-   -- name TEXT UNIQUE NOT NULL
-   name VARCHAR(255) UNIQUE NOT NULL
+   name TEXT UNIQUE NOT NULL
 );
 
 -- Towns / Communes
 CREATE TABLE Towns (
    id SERIAL UNIQUE NOT NULL,
    code VARCHAR(10) NOT NULL, -- Only unique inside a department
-   -- TODO: TEXT columns do not work correctly in Doltgres yet
-   -- article TEXT,
-   article VARCHAR(255),
-   -- TODO: TEXT columns do not work correctly in Doltgres yet
-   -- name TEXT NOT NULL, -- Names are not really unique, for instance 'Sainte-Croix'
-   name VARCHAR(255) NOT NULL, -- Names are not really unique, for instance 'Sainte-Croix'
+   article TEXT,
+   name TEXT NOT NULL, -- Names are not really unique, for instance 'Sainte-Croix'
    department VARCHAR(4) NOT NULL REFERENCES Departments (code),
    UNIQUE (code, department)
    -- UNIQUE (name, department) -- Not perfectly unique but almost
