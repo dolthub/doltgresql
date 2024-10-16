@@ -552,7 +552,7 @@ func (root *RootValue) SetFeatureVersion(v doltdb.FeatureVersion) (doltdb.RootVa
 }
 
 // SetTableHash implements the interface doltdb.RootValue.
-func (root *RootValue) SetTableHash(ctx context.Context, tName string, h hash.Hash) (doltdb.RootValue, error) {
+func (root *RootValue) SetTableHash(ctx context.Context, tName doltdb.TableName, h hash.Hash) (doltdb.RootValue, error) {
 	val, err := root.vrw.ReadValue(ctx, h)
 
 	if err != nil {
@@ -565,8 +565,7 @@ func (root *RootValue) SetTableHash(ctx context.Context, tName string, h hash.Ha
 		return nil, err
 	}
 
-	// TODO: schema
-	return root.putTable(ctx, doltdb.TableName{Name: tName}, ref)
+	return root.putTable(ctx, tName, ref)
 }
 
 // VRW implements the interface doltdb.RootValue.
