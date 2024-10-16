@@ -119,7 +119,7 @@ func (root *RootValue) DebugString(ctx context.Context, transitive bool) string 
 			buf.WriteString("\nSchema ")
 			buf.WriteString(schema.Name)
 		}
-		
+
 		fkc, err := root.GetForeignKeyCollection(ctx)
 		if err == nil && fkc.Count() > 0 {
 			buf.WriteString("\nForeign Keys:")
