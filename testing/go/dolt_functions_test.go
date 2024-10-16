@@ -91,6 +91,84 @@ func TestDoltFunctions(t *testing.T) {
 			},
 		},
 		{
+			Name: "smoke test select dolt_merge dirty working set, same table",
+			SetUpScript: []string{
+				"CREATE TABLE t1 (pk int primary key);",
+				"SELECT DOLT_COMMIT('-Am', 'new table');",
+				"INSERT INTO t1 VALUES (1);",
+				"SELECT DOLT_CHECKOUT('-b', 'new-branch');",
+				"INSERT INTO t1 VALUES (2);",
+				"SELECT DOLT_COMMIT('-Am', 'new row on new branch');",
+			},
+			Assertions: []ScriptTestAssertion{
+				{
+					Query:            "SELECT DOLT_MERGE_BASE('main', 'new-branch');",
+					SkipResultsCheck: true,
+				},
+				{
+					Query: "SELECT DOLT_CHECKOUT('main');",
+					Expected: []sql.Row{
+						{"{0,\"Switched to branch 'main'\"}"},
+					},
+				},
+				{
+					Query: "SELECT * FROM dolt_status",
+					Expected: []sql.Row{
+						{"public.t1", 0, "modified"},
+					},
+				},
+				{
+					Query:       "SELECT DOLT_MERGE('new-branch', '--no-ff', '-m', 'merge new-branch into main');",
+					ExpectedErr: "error: local changes would be stomped by merge",
+				},
+				{
+					Query: "SELECT * FROM dolt_status",
+					Expected: []sql.Row{
+						{"public.t1", 0, "modified"},
+					},
+				},
+			},
+		},
+		{
+			Name: "smoke test select dolt_merge dirty working set, different tables",
+			SetUpScript: []string{
+				"CREATE TABLE t1 (pk int primary key);",
+				"SELECT DOLT_COMMIT('-Am', 'new table');",
+				"INSERT INTO t1 VALUES (1);",
+				"SELECT DOLT_CHECKOUT('-b', 'new-branch');",
+				"CREATE TABLE t2 (pk int primary key);",
+				"SELECT DOLT_COMMIT('-Am', 'new row on new branch');",
+			},
+			Assertions: []ScriptTestAssertion{
+				{
+					Query:            "SELECT DOLT_MERGE_BASE('main', 'new-branch');",
+					SkipResultsCheck: true,
+				},
+				{
+					Query: "SELECT DOLT_CHECKOUT('main');",
+					Expected: []sql.Row{
+						{"{0,\"Switched to branch 'main'\"}"},
+					},
+				},
+				{
+					Query: "SELECT * FROM dolt_status",
+					Expected: []sql.Row{
+						{"public.t1", 0, "modified"},
+					},
+				},
+				{
+					Query:            "SELECT DOLT_MERGE('new-branch', '--no-ff', '-m', 'merge new-branch into main');",
+					SkipResultsCheck: true,
+				},
+				{
+					Query: "SELECT * FROM dolt_status",
+					Expected: []sql.Row{
+						{"public.t1", 0, "modified"},
+					},
+				},
+			},
+		},
+		{
 			Name: "smoke test select dolt_reset",
 			SetUpScript: []string{
 				"CREATE TABLE t1 (pk int primary key);",
