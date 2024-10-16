@@ -22,7 +22,8 @@ import (
 	"github.com/dolthub/go-mysql-server/sql/analyzer"
 	"github.com/dolthub/go-mysql-server/sql/plan"
 	"github.com/dolthub/go-mysql-server/sql/transform"
-	"github.com/dolthub/vitess/go/sqltypes"
+
+	"github.com/dolthub/doltgresql/server/types"
 )
 
 // defaultIndexPrefixLength is the index prefix length that this analyzer rule applies automatically to TEXT columns
@@ -71,7 +72,7 @@ func AddImplicitPrefixLengths(_ *sql.Context, _ *analyzer.Analyzer, node sql.Nod
 					if !ok {
 						return nil, false, fmt.Errorf("indexed column %s not found in schema", index.Columns[i].Name)
 					}
-					if col.Type.Type() == sqltypes.Text && index.Columns[i].Length == 0 {
+					if _, ok := col.Type.(types.TextType); ok && index.Columns[i].Length == 0 {
 						index.Columns[i].Length = defaultIndexPrefixLength
 						indexModified = true
 					}
@@ -96,7 +97,7 @@ func AddImplicitPrefixLengths(_ *sql.Context, _ *analyzer.Analyzer, node sql.Nod
 					if !ok {
 						return nil, false, fmt.Errorf("indexed column %s not found in schema", newColumns[i].Name)
 					}
-					if col.Type.Type() == sqltypes.Text && newColumns[i].Length == 0 {
+					if _, ok := col.Type.(types.TextType); ok && newColumns[i].Length == 0 {
 						newColumns[i].Length = defaultIndexPrefixLength
 						indexModified = true
 					}
