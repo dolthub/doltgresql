@@ -46,7 +46,7 @@ func TestRegressions(t *testing.T) {
 			Assertions: []ScriptTestAssertion{
 				{
 					Query:    "select coalesce(null + 5, 100);",
-					Expected: []sql.Row{{"100"}},
+					Expected: []sql.Row{{100}},
 				},
 				{
 					Query:    "select coalesce(null, null, 'abc');",
