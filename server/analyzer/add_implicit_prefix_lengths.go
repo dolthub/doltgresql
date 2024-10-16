@@ -27,8 +27,9 @@ import (
 )
 
 // defaultIndexPrefixLength is the index prefix length that this analyzer rule applies automatically to TEXT columns
-// in secondary indexes.
-const defaultIndexPrefixLength = 255
+// in secondary indexes. 768 is the limit for the prefix length in MySQL and is also enforced in Dolt/GMS, so this
+// is currently the largest size we can support.
+const defaultIndexPrefixLength = 768
 
 // AddImplicitPrefixLengths searches the |node| tree for any nodes creating an index, and plugs in a default index
 // prefix length for any TEXT columns in those new indexes. This rule is intended to be used for Postgres compatibility,
@@ -66,15 +67,6 @@ func AddImplicitPrefixLengths(_ *sql.Context, _ *analyzer.Analyzer, node sql.Nod
 			for _, index := range newIndexes {
 				targetSchema := node.TargetSchema()
 				colMap := schToColMap(targetSchema)
-
-				// Don't apply prefix lengths to unique indexes – without a prefix length, a unique index
-				// will use the hash of the TEXT value to test uniqueness. This is generally a better approach,
-				// since it will use the full value to test uniqueness, instead of just the prefix. The only
-				// downside is that the duplicate value error message will contain the address, not the value.
-				if index.IsUnique() {
-					continue
-				}
-
 				for i := range index.Columns {
 					col, ok := colMap[strings.ToLower(index.Columns[i].Name)]
 					if !ok {
@@ -93,13 +85,6 @@ func AddImplicitPrefixLengths(_ *sql.Context, _ *analyzer.Analyzer, node sql.Nod
 
 		case *plan.AlterIndex:
 			if node.Action == plan.IndexAction_Create {
-				// Don't apply prefix lengths to unique indexes – without a prefix length, a unique index
-				// will use the hash of the TEXT value to test uniqueness. This is generally a better approach,
-				// since it will use the full value to test uniqueness, instead of just the prefix. The only
-				// downside is that the duplicate value error message will contain the address, not the value.
-				if node.Constraint == sql.IndexConstraint_Unique {
-					return node, transform.SameTree, nil
-				}
 				colMap := schToColMap(targetSchema)
 				newColumns := make([]sql.IndexColumn, len(node.Columns))
 				for i := range node.Columns {

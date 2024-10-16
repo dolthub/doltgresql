@@ -2194,6 +2194,15 @@ var typesTests = []ScriptTest{
 				ExpectedErr: "unique",
 			},
 			{
+				// Create a secondary index over multiple text fields
+				Query:    "CREATE INDEX on t_text_unique(v1, v2);",
+				Expected: []sql.Row{},
+			},
+			{
+				Query:    "SELECT id FROM t_text_unique WHERE v1='Hello' and v2='Bonjour';",
+				Expected: []sql.Row{{1}},
+			},
+			{
 				// Create a table with a TEXT column to test adding a non-unique, secondary index
 				Query:    `CREATE TABLE t2 (pk int primary key, c1 TEXT);`,
 				Expected: []sql.Row{},
