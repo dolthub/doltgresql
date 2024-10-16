@@ -2154,7 +2154,7 @@ var typesTests = []ScriptTest{
 			{
 				// Test the new unique constraint on the TEXT column
 				Query:       "INSERT INTO t_text VALUES (5, 'World');",
-				ExpectedErr: "duplicate unique key given: [World]",
+				ExpectedErr: "unique",
 			},
 			{
 				Query: "SELECT * FROM t_text_unique WHERE v2 = '!';",
@@ -2191,13 +2191,7 @@ var typesTests = []ScriptTest{
 			},
 			{
 				Query:       "INSERT INTO t_text_unique VALUES (5, 'Another', 'Bonjour');",
-				ExpectedErr: "duplicate unique key given: [Bonjour]",
-			},
-			{
-				// Test that TEXT types can't be used in primary keys yet – Dolt doesn't support prefix lengths in
-				// primary indexes currently.
-				Query:       "CREATE TABLE t_text_pk (id TEXT PRIMARY KEY, col1 int);",
-				ExpectedErr: "blob/text column 'id' used in key specification without a key length",
+				ExpectedErr: "unique",
 			},
 			{
 				// Create a table with a TEXT column to test adding a non-unique, secondary index

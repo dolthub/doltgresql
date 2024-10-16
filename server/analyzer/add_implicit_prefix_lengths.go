@@ -23,7 +23,7 @@ import (
 	"github.com/dolthub/go-mysql-server/sql/plan"
 	"github.com/dolthub/go-mysql-server/sql/transform"
 
-	"github.com/dolthub/doltgresql/server/types"
+	pgtypes "github.com/dolthub/doltgresql/server/types"
 )
 
 // defaultIndexPrefixLength is the index prefix length that this analyzer rule applies automatically to TEXT columns
@@ -67,12 +67,20 @@ func AddImplicitPrefixLengths(_ *sql.Context, _ *analyzer.Analyzer, node sql.Nod
 				targetSchema := node.TargetSchema()
 				colMap := schToColMap(targetSchema)
 
+				// Don't apply prefix lengths to unique indexes – without a prefix length, a unique index
+				// will use the hash of the TEXT value to test uniqueness. This is generally a better approach,
+				// since it will use the full value to test uniqueness, instead of just the prefix. The only
+				// downside is that the duplicate value error message will contain the address, not the value.
+				if index.IsUnique() {
+					continue
+				}
+
 				for i := range index.Columns {
 					col, ok := colMap[strings.ToLower(index.Columns[i].Name)]
 					if !ok {
 						return nil, false, fmt.Errorf("indexed column %s not found in schema", index.Columns[i].Name)
 					}
-					if _, ok := col.Type.(types.TextType); ok && index.Columns[i].Length == 0 {
+					if _, ok := col.Type.(pgtypes.TextType); ok && index.Columns[i].Length == 0 {
 						index.Columns[i].Length = defaultIndexPrefixLength
 						indexModified = true
 					}
@@ -85,6 +93,13 @@ func AddImplicitPrefixLengths(_ *sql.Context, _ *analyzer.Analyzer, node sql.Nod
 
 		case *plan.AlterIndex:
 			if node.Action == plan.IndexAction_Create {
+				// Don't apply prefix lengths to unique indexes – without a prefix length, a unique index
+				// will use the hash of the TEXT value to test uniqueness. This is generally a better approach,
+				// since it will use the full value to test uniqueness, instead of just the prefix. The only
+				// downside is that the duplicate value error message will contain the address, not the value.
+				if node.Constraint == sql.IndexConstraint_Unique {
+					return node, transform.SameTree, nil
+				}
 				colMap := schToColMap(targetSchema)
 				newColumns := make([]sql.IndexColumn, len(node.Columns))
 				for i := range node.Columns {
@@ -97,7 +112,7 @@ func AddImplicitPrefixLengths(_ *sql.Context, _ *analyzer.Analyzer, node sql.Nod
 					if !ok {
 						return nil, false, fmt.Errorf("indexed column %s not found in schema", newColumns[i].Name)
 					}
-					if _, ok := col.Type.(types.TextType); ok && newColumns[i].Length == 0 {
+					if _, ok := col.Type.(pgtypes.TextType); ok && newColumns[i].Length == 0 {
 						newColumns[i].Length = defaultIndexPrefixLength
 						indexModified = true
 					}
