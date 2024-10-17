@@ -116,6 +116,23 @@ func TestAlterTable(t *testing.T) {
 			},
 		},
 		{
+			Name: "Drop Constraint",
+			SetUpScript: []string{
+				"create table t1 (pk int primary key, c1 int);",
+				"ALTER TABLE t1 ADD CONSTRAINT constraint1 CHECK (c1 > 100);",
+			},
+			Assertions: []ScriptTestAssertion{
+				{
+					Query:    "ALTER TABLE t1 DROP CONSTRAINT constraint1;",
+					Expected: []sql.Row{},
+				},
+				{
+					Query:    "INSERT INTO t1 VALUES (1, 1);",
+					Expected: []sql.Row{},
+				},
+			},
+		},
+		{
 			Name: "Add Primary Key",
 			SetUpScript: []string{
 				"CREATE TABLE test1 (a INT, b INT);",

@@ -59,6 +59,36 @@ func nodeCheckConstraintTableDef(
 	}, nil
 }
 
+// nodeAlterTableDropConstraint converts a tree.AlterTableDropConstraint instance
+// into a vitess.DDL instance that can be executed by GMS. |tableName| identifies
+// the table being altered, and |ifExists| indicates whether the IF EXISTS clause
+// was specified.
+func nodeAlterTableDropConstraint(
+	node *tree.AlterTableDropConstraint,
+	tableName vitess.TableName,
+	ifExists bool) (*vitess.DDL, error) {
+
+	if node.DropBehavior == tree.DropCascade {
+		return nil, fmt.Errorf("CASCADE is not yet supported for drop constraint")
+	}
+
+	if node.IfExists {
+		return nil, fmt.Errorf("IF EXISTS is not yet supported for drop constraint")
+	}
+
+	return &vitess.DDL{
+		Action:           "alter",
+		Table:            tableName,
+		IfExists:         ifExists,
+		ConstraintAction: "drop",
+		TableSpec: &vitess.TableSpec{
+			Constraints: []*vitess.ConstraintDefinition{
+				{Name: node.Constraint.String()},
+			},
+		},
+	}, nil
+}
+
 // nodeUniqueConstraintTableDef converts a tree.UniqueConstraintTableDef instance
 // into a vitess.DDL instance that can be executed by GMS. |tableName| identifies
 // the table being altered, and |ifExists| indicates whether the IF EXISTS clause

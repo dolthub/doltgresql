@@ -79,6 +79,8 @@ func nodeAlterTableCmds(
 			statement, err = nodeAlterTableAddColumn(cmd, tableName, ifExists)
 		case *tree.AlterTableDropColumn:
 			statement, err = nodeAlterTableDropColumn(cmd, tableName, ifExists)
+		case *tree.AlterTableDropConstraint:
+			statement, err = nodeAlterTableDropConstraint(cmd, tableName, ifExists)
 		case *tree.AlterTableRenameColumn:
 			statement, err = nodeAlterTableRenameColumn(cmd, tableName, ifExists)
 		case *tree.AlterTableSetDefault:
