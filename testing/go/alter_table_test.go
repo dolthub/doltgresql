@@ -58,6 +58,37 @@ func TestAlterTable(t *testing.T) {
 			},
 		},
 		{
+			Name: "Add Unique Constraint",
+			SetUpScript: []string{
+				"create table t1 (pk int primary key, c1 int);",
+				"insert into t1 values (1,1);",
+				"create table t2 (pk int primary key, c1 int);",
+				"insert into t2 values (1,1);",
+			},
+			Assertions: []ScriptTestAssertion{
+				{
+					// Add a secondary unique index using create index
+					Query:    "CREATE UNIQUE INDEX ON t1(c1);",
+					Expected: []sql.Row{},
+				},
+				{
+					// Test that the unique constraint is working
+					Query:       "INSERT INTO t1 VALUES (2, 1);",
+					ExpectedErr: "unique",
+				},
+				{
+					// Add a secondary unique index using alter table
+					Query:    "ALTER TABLE t2 ADD CONSTRAINT uniq1 UNIQUE (c1);",
+					Expected: []sql.Row{},
+				},
+				{
+					// Test that the unique constraint is working
+					Query:       "INSERT INTO t2 VALUES (2, 1);",
+					ExpectedErr: "unique",
+				},
+			},
+		},
+		{
 			Name: "Add Primary Key",
 			SetUpScript: []string{
 				"CREATE TABLE test1 (a INT, b INT);",

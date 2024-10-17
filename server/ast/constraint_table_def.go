@@ -48,18 +48,19 @@ func nodeUniqueConstraintTableDef(
 		return nil, err
 	}
 
+	indexType := "unique"
 	if node.PrimaryKey {
-		return &vitess.DDL{
-			Action:   "alter",
-			Table:    tableName,
-			IfExists: ifExists,
-			IndexSpec: &vitess.IndexSpec{
-				Action:  "create",
-				Type:    "primary",
-				Columns: columns,
-			},
-		}, nil
-	} else {
-		return nil, fmt.Errorf("Only PRIMARY KEY constraints are supported currently")
+		indexType = "primary"
 	}
+
+	return &vitess.DDL{
+		Action:   "alter",
+		Table:    tableName,
+		IfExists: ifExists,
+		IndexSpec: &vitess.IndexSpec{
+			Action:  "create",
+			Type:    indexType,
+			Columns: columns,
+		},
+	}, nil
 }
