@@ -116,6 +116,8 @@ func nodeAlterTableAddConstraint(
 	}
 
 	switch constraintDef := node.ConstraintDef.(type) {
+	case *tree.CheckConstraintTableDef:
+		return nodeCheckConstraintTableDef(constraintDef, tableName, ifExists)
 	case *tree.UniqueConstraintTableDef:
 		return nodeUniqueConstraintTableDef(constraintDef, tableName, ifExists)
 	case *tree.ForeignKeyConstraintTableDef:

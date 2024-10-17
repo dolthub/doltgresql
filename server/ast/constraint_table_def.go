@@ -22,6 +22,43 @@ import (
 	"github.com/dolthub/doltgresql/postgres/parser/sem/tree"
 )
 
+// nodeCheckConstraintTableDef converts a tree.CheckConstraintTableDef instance
+// into a vitess.DDL instance that can be executed by GMS. |tableName| identifies
+// the table being altered, and |ifExists| indicates whether the IF EXISTS clause
+// was specified.
+func nodeCheckConstraintTableDef(
+	node *tree.CheckConstraintTableDef,
+	tableName vitess.TableName,
+	ifExists bool) (*vitess.DDL, error) {
+
+	if node.NoInherit {
+		return nil, fmt.Errorf("NO INHERIT is not yet supported for check constraints")
+	}
+
+	expr, err := nodeExpr(node.Expr)
+	if err != nil {
+		return nil, err
+	}
+
+	return &vitess.DDL{
+		Action:           "alter",
+		Table:            tableName,
+		IfExists:         ifExists,
+		ConstraintAction: "add",
+		TableSpec: &vitess.TableSpec{
+			Constraints: []*vitess.ConstraintDefinition{
+				{
+					Name: node.Name.String(),
+					Details: &vitess.CheckConstraintDefinition{
+						Expr:     expr,
+						Enforced: true,
+					},
+				},
+			},
+		},
+	}, nil
+}
+
 // nodeUniqueConstraintTableDef converts a tree.UniqueConstraintTableDef instance
 // into a vitess.DDL instance that can be executed by GMS. |tableName| identifies
 // the table being altered, and |ifExists| indicates whether the IF EXISTS clause
