@@ -31,10 +31,24 @@ type Role struct {
 	ConnectionLimit           int32                // rolconnlimit
 	Password                  *ScramSha256Password // rolpassword
 	ValidUntil                *time.Time           // rolvaliduntil
+	id                        RoleID
 }
+
+// RoleID represents a Role's ID. IDs are assigned during load and will be stable throughout the server's current
+// process. IDs are useful for referencing a specific role without using their name, since names can change. This is
+// basically a special OID specific to roles. Eventually, we'll have a proper OID system, but this is a placeholder for
+// now.
+type RoleID uint64
 
 // CreateDefaultRole creates the given role object with all default values set.
 func CreateDefaultRole(name string) Role {
+	r := createDefaultRoleWithoutID(name)
+	r.id = RoleID(userIDCounter.Add(1))
+	return r
+}
+
+// createDefaultRoleWithoutID creates a default role, but does not assign an ID.
+func createDefaultRoleWithoutID(name string) Role {
 	return Role{
 		Name:                      name,
 		IsSuperUser:               false,
@@ -47,5 +61,16 @@ func CreateDefaultRole(name string) Role {
 		ConnectionLimit:           -1,
 		Password:                  nil,
 		ValidUntil:                nil,
+		id:                        RoleID(0),
 	}
+}
+
+// ID returns this Role's ID value.
+func (r Role) ID() RoleID {
+	return r.id
+}
+
+// IsValid returns true when the role has a valid ID.
+func (r Role) IsValid() bool {
+	return r.id != RoleID(0)
 }

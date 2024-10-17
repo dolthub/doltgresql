@@ -94,6 +94,7 @@ func nodeSelectStatement(node tree.SelectStatement) (vitess.SelectStatement, err
 	if node == nil {
 		return nil, nil
 	}
+	// TODO: wrap in a transparent node that will be converted to access control checking
 	switch node := node.(type) {
 	case *tree.ParenSelect:
 		return nodeParenSelect(node)
