@@ -289,14 +289,13 @@ export const tableTests = [
 
   // Copy from tests
   {
-    skip: true, // TODO: dolt_commit above did not actually commit (foreign keys)
     q: `SELECT * FROM dolt_status`,
     res: {
       command: "SELECT",
       rowCount: 0,
       oid: null,
       rows: [],
-      fields: [],
+      fields: doltStatusFields,
     },
   },
   {
