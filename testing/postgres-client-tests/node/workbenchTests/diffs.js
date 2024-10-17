@@ -510,7 +510,7 @@ export const diffTests = [
             "  `test_pk` integer,\n" +
             "  PRIMARY KEY (`id`),\n" +
             "  KEY `test_pk` (`test_pk`)\n" +
-            "  CONSTRAINT `test_info_ibfk_1` FOREIGN KEY (`test_pk`) REFERENCES `test` (`pk`)\n" +
+            "  CONSTRAINT `test_info_ibfk_1` FOREIGN KEY (`test_pk`) REFERENCES `test` (`pk`) ON DELETE NO ACTION ON UPDATE NO ACTION\n" +
             ") ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_bin;",
           to_create_statement: "",
         },
