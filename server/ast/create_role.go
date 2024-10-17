@@ -34,6 +34,12 @@ func nodeCreateRole(node *tree.CreateRole) (vitess.Statement, error) {
 		// The parser should make this impossible, but extra error checking is never bad
 		return nil, errors.New(`role name cannot be empty`)
 	}
+	switch strings.ToUpper(node.Name) {
+	case `PUBLIC`:
+		return nil, errors.New(`role name "public" is reserved`)
+	case `CURRENT_ROLE`, `CURRENT_USER`, `SESSION_USER`:
+		return nil, fmt.Errorf(`%s cannot be used as a role name here`, strings.ToUpper(node.Name))
+	}
 	createRole := &pgnodes.CreateRole{
 		Name:                      node.Name,
 		IfNotExists:               node.IfNotExists,

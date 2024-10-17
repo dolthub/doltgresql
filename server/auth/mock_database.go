@@ -14,60 +14,95 @@
 
 package auth
 
+import "sync/atomic"
+
 // TODO: this will actually hold whatever needs to be held for proper authentication and role management.
 //  For now though, this just exists to test that passwords for users are being stored and retrieved correctly.
 
 var (
-	globalMockDatabase = MockDatabase{make(map[string]Role)}
+	globalMockDatabase MockDatabase
+	userIDCounter      atomic.Uint64
 )
 
 // MockDatabase is a temporary database to hold role passwords.
 type MockDatabase struct {
-	Roles map[string]Role
+	rolesByName     map[string]RoleID
+	rolesByID       map[RoleID]Role
+	tablePrivileges *TablePrivileges
+	ownership       *Ownership
 }
 
 // ClearDatabase clears the internal database, leaving only the default users. This is primarily for use by tests.
 func ClearDatabase() {
-	clear(globalMockDatabase.Roles)
+	clear(globalMockDatabase.rolesByName)
+	clear(globalMockDatabase.rolesByID)
 	initDefault()
 }
 
 // DropRole removes the given role from the database. If the role does not exist, then this is a no-op.
 func DropRole(name string) {
-	delete(globalMockDatabase.Roles, name)
+	if roleID, ok := globalMockDatabase.rolesByName[name]; ok {
+		delete(globalMockDatabase.rolesByName, name)
+		delete(globalMockDatabase.rolesByID, roleID)
+	}
 }
 
 // GetRole returns the role with the given name. Use RoleExists to determine if the role exists, as this will return a
 // role with the default values set if it does not exist.
 func GetRole(name string) Role {
-	role, ok := globalMockDatabase.Roles[name]
+	roleID, ok := globalMockDatabase.rolesByName[name]
 	if !ok {
-		return CreateDefaultRole(name)
+		return createDefaultRoleWithoutID(name)
 	}
-	return role
+	return globalMockDatabase.rolesByID[roleID]
+}
+
+// RenameRole renames the role with the old name to the new name. If the role does not exist, then this is a no-op.
+func RenameRole(oldName string, newName string) {
+	if roleID, ok := globalMockDatabase.rolesByName[oldName]; ok {
+		delete(globalMockDatabase.rolesByName, oldName)
+		globalMockDatabase.rolesByName[newName] = roleID
+		role := globalMockDatabase.rolesByID[roleID]
+		role.Name = newName
+		globalMockDatabase.rolesByID[roleID] = role
+	}
 }
 
 // RoleExists returns whether the given role exists.
 func RoleExists(name string) bool {
-	_, ok := globalMockDatabase.Roles[name]
+	_, ok := globalMockDatabase.rolesByName[name]
 	return ok
 }
 
 // SetRole sets the role matching the given name. This will add a role that does not yet exist, and overwrite an
 // existing role.
 func SetRole(role Role) {
+	// We want to ignore invalid roles, which should not exist outside specific circumstances (like during login)
+	if role.id == 0 {
+		return
+	}
 	// TODO: figure something out for concurrency
-	globalMockDatabase.Roles[role.Name] = role
+	if existingRole, ok := globalMockDatabase.rolesByID[role.id]; ok {
+		delete(globalMockDatabase.rolesByName, existingRole.Name)
+	}
+	globalMockDatabase.rolesByName[role.Name] = role.id
+	globalMockDatabase.rolesByID[role.ID()] = role
 }
 
 // init simply calls initDefault during program initialization.
 func init() {
+	globalMockDatabase = MockDatabase{
+		rolesByName:     make(map[string]RoleID),
+		rolesByID:       make(map[RoleID]Role),
+		tablePrivileges: NewTablePrivileges(),
+	}
 	initDefault()
 }
 
 // initDefault initializes the mock database and fills it with default users for testing.
 func initDefault() {
 	var err error
+	SetRole(CreateDefaultRole("PUBLIC"))
 	doltgres := CreateDefaultRole("doltgres")
 	doltgres.CanLogin = true
 	doltgres.Password, err = NewScramSha256Password("")
