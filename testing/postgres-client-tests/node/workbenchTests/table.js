@@ -295,7 +295,7 @@ export const tableTests = [
       rowCount: 0,
       oid: null,
       rows: [],
-      fields: [],
+      fields: doltStatusFields,
     },
   },
   {
