@@ -155,11 +155,7 @@ func (c *CompiledFunction) String() string {
 		if i > 0 {
 			sb.WriteString(", ")
 		}
-		if doltgresType, ok := param.Type().(pgtypes.DoltgresType); ok {
-			sb.WriteString(pgtypes.QuoteString(doltgresType.BaseID(), param.String()))
-		} else {
-			sb.WriteString(param.String())
-		}
+		sb.WriteString(param.String())
 	}
 	sb.WriteString(")")
 	return sb.String()
