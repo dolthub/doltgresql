@@ -155,11 +155,7 @@ func (c *CompiledFunction) String() string {
 		if i > 0 {
 			sb.WriteString(", ")
 		}
-		if doltgresType, ok := param.Type().(pgtypes.DoltgresType); ok {
-			sb.WriteString(pgtypes.QuoteString(doltgresType.BaseID(), param.String()))
-		} else {
-			sb.WriteString(param.String())
-		}
+		sb.WriteString(param.String())
 	}
 	sb.WriteString(")")
 	return sb.String()
@@ -674,6 +670,9 @@ func (c *CompiledFunction) analyzeParameters() (originalTypes []pgtypes.Doltgres
 	for i, param := range c.Arguments {
 		returnType := param.Type()
 		if extendedType, ok := returnType.(pgtypes.DoltgresType); ok {
+			if domainType, ok := extendedType.(pgtypes.DomainType); ok {
+				extendedType = domainType.UnderlyingBaseType()
+			}
 			originalTypes[i] = extendedType
 		} else {
 			// TODO: we need to remove GMS types from all of our expressions so that we can remove this

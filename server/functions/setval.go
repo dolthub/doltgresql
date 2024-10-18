@@ -52,7 +52,7 @@ var setval_text_int64_boolean = framework.Function3{
 	IsNonDeterministic: true,
 	Strict:             true,
 	Callable: func(ctx *sql.Context, _ [4]pgtypes.DoltgresType, val1 any, val2 any, val3 any) (any, error) {
-		collection, err := core.GetCollectionFromContext(ctx)
+		collection, err := core.GetSequencesCollectionFromContext(ctx)
 		if err != nil {
 			return nil, err
 		}
