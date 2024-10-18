@@ -22,7 +22,7 @@ import (
 	vitess "github.com/dolthub/vitess/go/vt/sqlparser"
 
 	"github.com/dolthub/doltgresql/core"
-	"github.com/dolthub/doltgresql/core/domains"
+	coretypes "github.com/dolthub/doltgresql/core/types"
 	"github.com/dolthub/doltgresql/server/types"
 )
 
@@ -60,19 +60,41 @@ func (c *CreateDomain) Resolved() bool {
 }
 
 func (c *CreateDomain) RowIter(ctx *sql.Context, r sql.Row) (sql.RowIter, error) {
+	// TODO: create array type with this type as base type?
+	var defExpr string
+	if c.DefaultExpr != nil {
+		defExpr = c.DefaultExpr.String()
+	}
+	checkDefs := make([]*sql.CheckDefinition, len(c.CheckConstraints))
+	var err error
+	for i, check := range c.CheckConstraints {
+		checkDefs[i], err = plan.NewCheckDefinition(ctx, check)
+		if err != nil {
+			return nil, err
+		}
+	}
+	d := types.DomainType{
+		Schema:      c.SchemaName,
+		Name:        c.Name,
+		AsType:      c.AsType,
+		DefaultExpr: defExpr,
+		NotNull:     c.IsNotNull,
+		Checks:      checkDefs,
+	}
+
+	newType, err := coretypes.NewDomainType(ctx, d, "")
+	if err != nil {
+		return nil, err
+	}
 	schema, err := core.GetSchemaName(ctx, nil, c.SchemaName)
 	if err != nil {
 		return nil, err
 	}
-	collection, err := core.GetDomainsCollectionFromContext(ctx)
+	collection, err := core.GetTypesCollectionFromContext(ctx)
 	if err != nil {
 		return nil, err
 	}
-	domain, err := domains.NewDomain(ctx, c.Name, c.AsType, c.DefaultExpr, c.IsNotNull, c.CheckConstraints)
-	if err != nil {
-		return nil, err
-	}
-	err = collection.CreateDomain(schema, domain)
+	err = collection.CreateType(schema, newType)
 	if err != nil {
 		return nil, err
 	}

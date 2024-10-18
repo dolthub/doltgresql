@@ -73,11 +73,11 @@ func (c *DropDomain) RowIter(ctx *sql.Context, r sql.Row) (sql.RowIter, error) {
 	if err != nil {
 		return nil, err
 	}
-	collection, err := core.GetDomainsCollectionFromContext(ctx)
+	collection, err := core.GetTypesCollectionFromContext(ctx)
 	if err != nil {
 		return nil, err
 	}
-	_, exists := collection.GetDomain(schema, c.domain)
+	_, exists := collection.GetType(schema, c.domain)
 	if !exists {
 		if c.ifExists {
 			// TODO: issue a notice
@@ -93,7 +93,7 @@ func (c *DropDomain) RowIter(ctx *sql.Context, r sql.Row) (sql.RowIter, error) {
 		// TODO: handle cascade
 		return nil, fmt.Errorf(`cascading domain drops are not yet supported`)
 	}
-	if err = collection.DropDomain(schema, c.domain); err != nil {
+	if err = collection.DropType(schema, c.domain); err != nil {
 		return nil, err
 	}
 	return sql.RowsToRowIter(), nil

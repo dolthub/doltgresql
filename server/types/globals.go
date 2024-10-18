@@ -129,6 +129,27 @@ const (
 	TypeCategory_InternalUseTypes    TypeCategory = "Z"
 )
 
+type TypeStorage string
+
+const (
+	TypeStorage_Plain    TypeStorage = "p"
+	TypeStorage_External TypeStorage = "e"
+	TypeStorage_Main     TypeStorage = "m"
+	TypeStorage_Extended TypeStorage = "x"
+)
+
+type TypeType string
+
+const (
+	TypeType_Base       TypeType = "b"
+	TypeType_Composite  TypeType = "c"
+	TypeType_Domain     TypeType = "d"
+	TypeType_Enum       TypeType = "e"
+	TypeType_Shell      TypeType = "p" // a pseudo-type
+	TypeType_Range      TypeType = "r"
+	TypeType_MultiRange TypeType = "m"
+)
+
 // baseIDArrayTypes contains a map of all base IDs that represent array variants.
 var baseIDArrayTypes = map[DoltgresTypeBaseID]DoltgresArrayType{}
 

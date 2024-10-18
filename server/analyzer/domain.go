@@ -25,112 +25,54 @@ import (
 	"github.com/dolthub/go-mysql-server/sql/transform"
 	vitess "github.com/dolthub/vitess/go/vt/sqlparser"
 
-	"github.com/dolthub/doltgresql/core"
 	"github.com/dolthub/doltgresql/postgres/parser/parser"
 	"github.com/dolthub/doltgresql/postgres/parser/sem/tree"
 	"github.com/dolthub/doltgresql/server/ast"
 	pgtypes "github.com/dolthub/doltgresql/server/types"
 )
 
-// GetDomainTypeForCreateTable replaces a CreateTable node containing a domain type with its
-// underlying type defined as retrieved from storage.
-func GetDomainTypeForCreateTable(ctx *sql.Context, a *analyzer.Analyzer, node sql.Node, scope *plan.Scope, selector analyzer.RuleSelector, qFlags *sql.QueryFlags) (sql.Node, transform.TreeIdentity, error) {
-	createTable, ok := node.(*plan.CreateTable)
-	if !ok {
+// AssignDomainConstraintsOnInsertAndUpdateNodes assigns domain type's default value and check constraints
+// to the destination table schema and InsertNode/Update node's checks.
+func AssignDomainConstraintsOnInsertAndUpdateNodes(ctx *sql.Context, a *analyzer.Analyzer, node sql.Node, scope *plan.Scope, selector analyzer.RuleSelector, qFlags *sql.QueryFlags) (sql.Node, transform.TreeIdentity, error) {
+	switch n := node.(type) {
+	case *plan.InsertInto:
+		return resolveDomainTypeAndLoadCheckConstraints(ctx, a, n, n.Schema())
+	case *plan.Update:
+		return resolveDomainTypeAndLoadCheckConstraints(ctx, a, n, n.Schema())
+	default:
 		return node, transform.SameTree, nil
 	}
-
-	for _, col := range createTable.PkSchema().Schema {
-		if domainType, ok := col.Type.(pgtypes.DomainType); ok {
-			schemaName, err := core.GetSchemaName(ctx, createTable.Db, domainType.SchemaName)
-			if err != nil {
-				return nil, false, err
-			}
-			domains, err := core.GetDomainsCollectionFromContext(ctx)
-			if err != nil {
-				return nil, false, err
-			}
-			domain, exists := domains.GetDomain(schemaName, domainType.Name)
-			if !exists {
-				return node, transform.SameTree, pgtypes.ErrTypeDoesNotExist.New(domainType.Name)
-			}
-			domainType.DataType = domain.DataType
-			col.Type = domainType
-		}
-	}
-	return createTable, transform.NewTree, nil
-}
-
-// InsertOnDomainType retrieves and assigns domain type's default value, nullable and check constraints
-// to the destination table schema and InsertInto node's checks.
-func InsertOnDomainType(ctx *sql.Context, a *analyzer.Analyzer, node sql.Node, scope *plan.Scope, selector analyzer.RuleSelector, qFlags *sql.QueryFlags) (sql.Node, transform.TreeIdentity, error) {
-	insertInto, ok := node.(*plan.InsertInto)
-	if !ok {
-		return node, transform.SameTree, nil
-	}
-
-	n, err := resolveDomainTypeAndLoadCheckConstraints(ctx, a, insertInto, insertInto.Schema())
-	if err != nil {
-		return nil, transform.SameTree, err
-	}
-	return n, transform.NewTree, nil
-}
-
-// UpdateOnDomainType retrieves and assigns domain type's default value, nullable and check constraints
-// to the destination table schema and Update node's checks.
-func UpdateOnDomainType(ctx *sql.Context, a *analyzer.Analyzer, node sql.Node, scope *plan.Scope, selector analyzer.RuleSelector, qFlags *sql.QueryFlags) (sql.Node, transform.TreeIdentity, error) {
-	update, ok := node.(*plan.Update)
-	if !ok {
-		return node, transform.SameTree, nil
-	}
-
-	n, err := resolveDomainTypeAndLoadCheckConstraints(ctx, a, update, update.Schema())
-	if err != nil {
-		return nil, transform.SameTree, err
-	}
-	return n, transform.NewTree, nil
 }
 
 // resolveDomainTypeAndLoadCheckConstraints retrieves and assigns domain type's default value, nullable and check constraints
-// to the destination table schema and sql.CheckConstraintNode's checks, which are sql.InsertInto and sql.Update
-func resolveDomainTypeAndLoadCheckConstraints(ctx *sql.Context, a *analyzer.Analyzer, c sql.CheckConstraintNode, schema sql.Schema) (sql.Node, error) {
-	domains, err := core.GetDomainsCollectionFromContext(ctx)
-	if err != nil {
-		return nil, err
-	}
+// to the destination table schema and InsertNode/Update node's checks.
+func resolveDomainTypeAndLoadCheckConstraints(ctx *sql.Context, a *analyzer.Analyzer, c sql.CheckConstraintNode, schema sql.Schema) (sql.Node, transform.TreeIdentity, error) {
 	// get current checks to append the domain checks to.
 	checks := c.Checks()
+	var same = transform.SameTree
 	for _, col := range schema {
 		if domainType, ok := col.Type.(pgtypes.DomainType); ok {
-			schemaName, err := core.GetSchemaName(ctx, nil, domainType.SchemaName)
-			if err != nil {
-				return nil, err
-			}
-			domain, exists := domains.GetDomain(schemaName, domainType.Name)
-			if !exists {
-				return nil, pgtypes.ErrTypeDoesNotExist.New(domainType.Name)
-			}
-
 			// assign column nullable
-			col.Nullable = !domain.NotNull
+			col.Nullable = !domainType.NotNull
 			// get domain default value and assign to the column default value
-			defVal, err := getDefault(ctx, a, domain.DefaultExpr, col.Source, col.Type, col.Nullable)
+			defVal, err := getDefault(ctx, a, domainType.DefaultExpr, col.Source, col.Type, col.Nullable)
 			if err != nil {
-				return nil, err
+				return nil, transform.SameTree, err
 			}
 			col.Default = defVal
 			// get domain checks
-			colChecks, err := getCheckConstraints(ctx, a, col.Name, col.Source, domain.Checks)
+			colChecks, err := getCheckConstraints(ctx, a, col.Name, col.Source, domainType.Checks)
 			if err != nil {
-				return nil, err
+				return nil, transform.SameTree, err
 			}
 			checks = append(checks, colChecks...)
+			same = transform.NewTree
 		}
 	}
-	return c.WithChecks(checks), nil
+	return c.WithChecks(checks), same, nil
 }
 
-// getDefault takes the default value definition, parses, builds and returns sql.CheckConstraints.
+// getDefault takes the default value definition, parses, builds and returns sql.ColumnDefaultValue.
 func getDefault(ctx *sql.Context, a *analyzer.Analyzer, defExpr, tblName string, typ sql.Type, nullable bool) (*sql.ColumnDefaultValue, error) {
 	if defExpr == "" {
 		return nil, nil
@@ -219,6 +161,6 @@ func parseAndReplaceDomainCheckConstraint(checkExpr string, colName, tblName str
 		return nil, err
 	}
 
-	stmt.AST.(*tree.Select).Select.(*tree.SelectClause).Exprs[0].Expr = updatedCheckExpr
+	exprs[0].Expr = updatedCheckExpr
 	return ast.Convert(stmt)
 }

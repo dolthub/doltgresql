@@ -35,7 +35,7 @@ func TestDomain(t *testing.T) {
 					ExpectedErr: `conflicting NULL/NOT NULL constraints`,
 				},
 				{
-					Query:    `CREATE DOMAIN year AS integer DEFAULT 1999 NOT NULL CONSTRAINT year_check CHECK (((VALUE >= 1901) AND (VALUE <= 2155)));;`,
+					Query:    `CREATE DOMAIN year AS integer DEFAULT 1999 NOT NULL CONSTRAINT year_check CHECK (((VALUE >= 1901) AND (VALUE <= 2155)));`,
 					Expected: []sql.Row{},
 				},
 				{

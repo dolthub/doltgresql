@@ -29,8 +29,8 @@ import (
 	"github.com/dolthub/dolt/go/store/prolly/tree"
 	"github.com/dolthub/dolt/go/store/types"
 
-	"github.com/dolthub/doltgresql/core/domains"
 	"github.com/dolthub/doltgresql/core/sequences"
+	pgtypes "github.com/dolthub/doltgresql/core/types"
 )
 
 const (
@@ -198,11 +198,11 @@ func (root *RootValue) GetSequences(ctx context.Context) (*sequences.Collection,
 	return sequences.Deserialize(ctx, data)
 }
 
-// GetDomains returns all domains that are on the root.
-func (root *RootValue) GetDomains(ctx context.Context) (*domains.DomainCollection, error) {
-	h := root.st.GetDomains()
+// GetTypes returns all types that are on the root.
+func (root *RootValue) GetTypes(ctx context.Context) (*pgtypes.TypeCollection, error) {
+	h := root.st.GetTypes()
 	if h.IsEmpty() {
-		return domains.Deserialize(ctx, nil)
+		return pgtypes.Deserialize(ctx, nil)
 	}
 	dataValue, err := root.vrw.ReadValue(ctx, h)
 	if err != nil {
@@ -218,7 +218,7 @@ func (root *RootValue) GetDomains(ctx context.Context) (*domains.DomainCollectio
 	if uint64(n) != dataBlobLength {
 		return nil, fmt.Errorf("wanted %d bytes from blob for domains, got %d", dataBlobLength, n)
 	}
-	return domains.Deserialize(ctx, data)
+	return pgtypes.Deserialize(ctx, data)
 }
 
 // GetTable implements the interface doltdb.RootValue.
@@ -379,8 +379,8 @@ func (root *RootValue) NomsValue() types.Value {
 	return root.st.nomsValue()
 }
 
-// PutDomains writes the given domains to the returned root value.
-func (root *RootValue) PutDomains(ctx context.Context, seq *sequences.Collection) (*RootValue, error) {
+// PutTypes writes the given types to the returned root value.
+func (root *RootValue) PutTypes(ctx context.Context, seq *sequences.Collection) (*RootValue, error) {
 	data, err := seq.Serialize(ctx)
 	if err != nil {
 		return nil, err
@@ -393,7 +393,7 @@ func (root *RootValue) PutDomains(ctx context.Context, seq *sequences.Collection
 	if err != nil {
 		return nil, err
 	}
-	newStorage, err := root.st.SetDomains(ctx, ref.TargetHash())
+	newStorage, err := root.st.SetTypes(ctx, ref.TargetHash())
 	if err != nil {
 		return nil, err
 	}

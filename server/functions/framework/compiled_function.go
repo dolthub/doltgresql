@@ -671,7 +671,7 @@ func (c *CompiledFunction) analyzeParameters() (originalTypes []pgtypes.Doltgres
 		returnType := param.Type()
 		if extendedType, ok := returnType.(pgtypes.DoltgresType); ok {
 			if domainType, ok := extendedType.(pgtypes.DomainType); ok {
-				extendedType = domainType.GetBaseType()
+				extendedType = domainType.UnderlyingBaseType()
 			}
 			originalTypes[i] = extendedType
 		} else {

@@ -22,27 +22,25 @@ import (
 
 const (
 	ruleId_TypeSanitizer analyzer.RuleId = iota + 1000
+	ruleId_AssignDomainConstraintsOnInsertAndUpdateNodes
 	ruleId_AssignInsertCasts
 	ruleId_AssignUpdateCasts
 	ruleId_InsertContextRootFinalizer
-	ruleId_InsertOnDomainType
-	ruleId_ReplaceDomainType
 	ruleId_ReplaceIndexedTables
 	ruleId_ReplaceSerial
-	ruleId_UpdateOnDomainType
+	ruleId_ResolveType
 )
 
 // Init adds additional rules to the analyzer to handle Doltgres-specific functionality.
 func Init() {
 	// IDs are basically arbitrary, we just need to ensure that they do not conflict with existing IDs
 	analyzer.AlwaysBeforeDefault = append(analyzer.AlwaysBeforeDefault,
+		analyzer.Rule{Id: ruleId_ResolveType, Apply: ResolveType},
 		analyzer.Rule{Id: ruleId_TypeSanitizer, Apply: TypeSanitizer},
+		analyzer.Rule{Id: ruleId_AssignDomainConstraintsOnInsertAndUpdateNodes, Apply: AssignDomainConstraintsOnInsertAndUpdateNodes},
 		getAnalyzerRule(analyzer.OnceBeforeDefault, analyzer.ValidateColumnDefaultsId),
-		analyzer.Rule{Id: ruleId_InsertOnDomainType, Apply: InsertOnDomainType},
-		analyzer.Rule{Id: ruleId_UpdateOnDomainType, Apply: UpdateOnDomainType},
 		analyzer.Rule{Id: ruleId_AssignInsertCasts, Apply: AssignInsertCasts},
 		analyzer.Rule{Id: ruleId_AssignUpdateCasts, Apply: AssignUpdateCasts},
-		analyzer.Rule{Id: ruleId_ReplaceDomainType, Apply: GetDomainTypeForCreateTable},
 		analyzer.Rule{Id: ruleId_ReplaceIndexedTables, Apply: ReplaceIndexedTables},
 	)
 

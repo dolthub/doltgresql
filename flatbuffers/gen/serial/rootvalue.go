@@ -201,7 +201,7 @@ func (rcv *RootValue) MutateSequences(j int, n byte) bool {
 	return false
 }
 
-func (rcv *RootValue) Domains(j int) byte {
+func (rcv *RootValue) Types(j int) byte {
 	o := flatbuffers.UOffsetT(rcv._tab.Offset(16))
 	if o != 0 {
 		a := rcv._tab.Vector(o)
@@ -210,7 +210,7 @@ func (rcv *RootValue) Domains(j int) byte {
 	return 0
 }
 
-func (rcv *RootValue) DomainsLength() int {
+func (rcv *RootValue) TypesLength() int {
 	o := flatbuffers.UOffsetT(rcv._tab.Offset(16))
 	if o != 0 {
 		return rcv._tab.VectorLen(o)
@@ -218,7 +218,7 @@ func (rcv *RootValue) DomainsLength() int {
 	return 0
 }
 
-func (rcv *RootValue) DomainsBytes() []byte {
+func (rcv *RootValue) TypesBytes() []byte {
 	o := flatbuffers.UOffsetT(rcv._tab.Offset(16))
 	if o != 0 {
 		return rcv._tab.ByteVector(o + rcv._tab.Pos)
@@ -226,7 +226,7 @@ func (rcv *RootValue) DomainsBytes() []byte {
 	return nil
 }
 
-func (rcv *RootValue) MutateDomains(j int, n byte) bool {
+func (rcv *RootValue) MutateTypes(j int, n byte) bool {
 	o := flatbuffers.UOffsetT(rcv._tab.Offset(16))
 	if o != 0 {
 		a := rcv._tab.Vector(o)

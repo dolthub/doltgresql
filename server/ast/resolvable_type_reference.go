@@ -41,10 +41,8 @@ func nodeResolvableTypeReference(typ tree.ResolvableTypeReference) (*vitess.Conv
 	case *tree.OIDTypeReference:
 		return nil, nil, fmt.Errorf("referencing types by their OID is not yet supported")
 	case *tree.UnresolvedObjectName:
-		domainName := columnType.ToTableName()
-		resolvedType = pgtypes.DomainType{
-			SchemaName: string(domainName.SchemaName),
-			Name:       string(domainName.ObjectName),
+		resolvedType = pgtypes.ResolvableType{
+			Typ: typ,
 		}
 	case *types.GeoMetadata:
 		return nil, nil, fmt.Errorf("geometry types are not yet supported")

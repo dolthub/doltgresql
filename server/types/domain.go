@@ -22,202 +22,162 @@ import (
 	"github.com/dolthub/go-mysql-server/sql/types"
 	"github.com/dolthub/vitess/go/sqltypes"
 	"github.com/dolthub/vitess/go/vt/proto/query"
-	"gopkg.in/src-d/go-errors.v1"
 
 	"github.com/dolthub/doltgresql/utils"
 )
 
-var ErrTypeAlreadyExists = errors.NewKind(`type "%s" already exists`)
-var ErrTypeDoesNotExist = errors.NewKind(`type "%s" does not exist`)
-
-// TODO: use maybe separate unresolved domain type?
-
 type DomainType struct {
-	SchemaName string
-	Name       string
-	DataType   DoltgresType
+	Schema      string
+	Name        string
+	AsType      DoltgresType
+	DefaultExpr string
+	NotNull     bool
+	Checks      []*sql.CheckDefinition
 }
 
 var _ DoltgresType = DomainType{}
 
+// Alignment implements the DoltgresType interface.
 func (d DomainType) Alignment() TypeAlignment {
-	if d.DataType == nil {
-		panic("unresolved domain")
-	}
-	return d.DataType.Alignment()
+	return d.AsType.Alignment()
 }
 
+// BaseID implements the DoltgresType interface.
 func (d DomainType) BaseID() DoltgresTypeBaseID {
 	return DoltgresTypeBaseId_Domain
 }
 
+// BaseName implements the DoltgresType interface.
 func (d DomainType) BaseName() string {
-	// TODO
 	return d.Name
 }
 
+// Category implements the DoltgresType interface.
 func (d DomainType) Category() TypeCategory {
-	if d.DataType == nil {
-		panic("unresolved domain")
-	}
-	return d.DataType.Category()
+	return d.AsType.Category()
 }
 
+// CollationCoercibility implements the DoltgresType interface.
 func (d DomainType) CollationCoercibility(ctx *sql.Context) (collation sql.CollationID, coercibility byte) {
-	if d.DataType == nil {
-		panic("unresolved domain")
-	}
-	return d.DataType.CollationCoercibility(ctx)
+	return d.AsType.CollationCoercibility(ctx)
 }
 
+// Compare implements the DoltgresType interface.
 func (d DomainType) Compare(i interface{}, i2 interface{}) (int, error) {
-	if d.DataType == nil {
-		panic("unresolved domain")
-	}
-	return d.DataType.Compare(i, i2)
+	return d.AsType.Compare(i, i2)
 }
 
+// Convert implements the DoltgresType interface.
 func (d DomainType) Convert(i interface{}) (interface{}, sql.ConvertInRange, error) {
-	if d.DataType == nil {
-		panic("unresolved domain")
-	}
-	return d.DataType.Convert(i)
+	return d.AsType.Convert(i)
 }
 
+// Equals implements the DoltgresType interface.
 func (d DomainType) Equals(otherType sql.Type) bool {
-	if d.DataType == nil {
-		panic("unresolved domain")
-	}
-	return d.DataType.Equals(otherType)
+	return d.AsType.Equals(otherType)
 }
 
+// FormatValue implements the types.ExtendedType interface.
 func (d DomainType) FormatValue(val any) (string, error) {
-	if d.DataType == nil {
-		panic("unresolved domain")
-	}
-	return d.DataType.FormatValue(val)
+	return d.AsType.FormatValue(val)
 }
 
+// GetSerializationID implements the DoltgresType interface.
 func (d DomainType) GetSerializationID() SerializationID {
 	return SerializationId_Domain
 }
 
+// IoInput implements the DoltgresType interface.
 func (d DomainType) IoInput(ctx *sql.Context, input string) (any, error) {
-	if d.DataType == nil {
-		panic("unresolved domain")
-	}
-	return d.DataType.IoInput(ctx, input)
+	return d.AsType.IoInput(ctx, input)
 }
 
+// IoOutput implements the DoltgresType interface.
 func (d DomainType) IoOutput(ctx *sql.Context, output any) (string, error) {
-	if d.DataType == nil {
-		panic("unresolved domain")
-	}
-	return d.DataType.IoOutput(ctx, output)
+	return d.AsType.IoOutput(ctx, output)
 }
 
+// IsPreferredType implements the DoltgresType interface.
 func (d DomainType) IsPreferredType() bool {
-	if d.DataType == nil {
-		panic("unresolved domain")
-	}
-	return d.DataType.IsPreferredType()
+	return d.AsType.IsPreferredType()
 }
 
+// IsUnbounded implements the DoltgresType interface.
 func (d DomainType) IsUnbounded() bool {
-	if d.DataType == nil {
-		panic("unresolved domain")
-	}
-	return d.DataType.IsUnbounded()
+	return d.AsType.IsUnbounded()
 }
 
+// MaxSerializedWidth implements the types.ExtendedType interface.
 func (d DomainType) MaxSerializedWidth() types.ExtendedTypeSerializedWidth {
-	if d.DataType == nil {
-		panic("unresolved domain")
-	}
-	return d.DataType.MaxSerializedWidth()
+	return d.AsType.MaxSerializedWidth()
 }
 
+// MaxTextResponseByteLength implements the DoltgresType interface.
 func (d DomainType) MaxTextResponseByteLength(ctx *sql.Context) uint32 {
-	if d.DataType == nil {
-		panic("unresolved domain")
-	}
-	return d.DataType.MaxTextResponseByteLength(ctx)
+	return d.AsType.MaxTextResponseByteLength(ctx)
 }
 
+// OID implements the DoltgresType interface.
 func (d DomainType) OID() uint32 {
-	if d.DataType == nil {
-		panic("unresolved domain")
-	}
-	//TODO : different oid than the AsType one
-	return d.DataType.OID()
+	//TODO: generate unique oid
+	return d.AsType.OID()
 }
 
+// Promote implements the DoltgresType interface.
 func (d DomainType) Promote() sql.Type {
-	if d.DataType == nil {
-		panic("unresolved domain")
-	}
-	return d.DataType.Promote()
+	return d.AsType.Promote()
 }
 
+// SerializedCompare implements the DoltgresType interface.
 func (d DomainType) SerializedCompare(v1 []byte, v2 []byte) (int, error) {
-	if d.DataType == nil {
-		panic("unresolved domain")
-	}
-	return d.DataType.SerializedCompare(v1, v2)
+	return d.AsType.SerializedCompare(v1, v2)
 }
 
+// SQL implements the DoltgresType interface.
 func (d DomainType) SQL(ctx *sql.Context, dest []byte, v interface{}) (sqltypes.Value, error) {
-	if d.DataType == nil {
-		panic("unresolved domain")
-	}
-	return d.DataType.SQL(ctx, dest, v)
+	return d.AsType.SQL(ctx, dest, v)
 }
 
+// String implements the DoltgresType interface.
 func (d DomainType) String() string {
-	if d.DataType == nil {
-		panic("unresolved domain")
-	}
 	return d.Name
 }
 
+// ToArrayType implements the DoltgresType interface.
 func (d DomainType) ToArrayType() DoltgresArrayType {
-	if d.DataType == nil {
-		panic("unresolved domain")
-	}
 	// TODO: allowed?
-	return d.DataType.ToArrayType()
+	return d.AsType.ToArrayType()
 }
 
+// Type implements the DoltgresType interface.
 func (d DomainType) Type() query.Type {
-	if d.DataType == nil {
-		panic("unresolved domain")
-	}
-	return d.DataType.Type()
+	return d.AsType.Type()
 }
 
+// ValueType implements the DoltgresType interface.
 func (d DomainType) ValueType() reflect.Type {
-	if d.DataType == nil {
-		panic("unresolved domain")
-	}
-	return d.DataType.ValueType()
+	return d.AsType.ValueType()
 }
 
+// Zero implements the DoltgresType interface.
 func (d DomainType) Zero() interface{} {
-	if d.DataType == nil {
-		panic("unresolved domain")
-	}
-	return d.DataType.Zero()
+	return d.AsType.Zero()
 }
 
+// SerializeType implements the types.ExtendedType interface.
 func (d DomainType) SerializeType() ([]byte, error) {
-	if d.DataType == nil {
-		panic("unresolved domain")
-	}
 	b := SerializationId_Domain.ToByteSlice(0)
 	writer := utils.NewWriter(256)
-	writer.String(d.SchemaName)
+	writer.String(d.Schema)
 	writer.String(d.Name)
-	asTyp, err := d.DataType.SerializeType()
+	writer.String(d.DefaultExpr)
+	writer.Bool(d.NotNull)
+	writer.VariableUint(uint64(len(d.Checks)))
+	for _, check := range d.Checks {
+		writer.String(check.Name)
+		writer.String(check.CheckExpression)
+	}
+	asTyp, err := d.AsType.SerializeType()
 	if err != nil {
 		return nil, err
 	}
@@ -229,40 +189,46 @@ func (d DomainType) deserializeType(version uint16, metadata []byte) (DoltgresTy
 	switch version {
 	case 0:
 		reader := utils.NewReader(metadata)
-		d.SchemaName = reader.String()
+		d.Schema = reader.String()
 		d.Name = reader.String()
+		d.DefaultExpr = reader.String()
+		d.NotNull = reader.Bool()
+		numOfChecks := reader.VariableUint()
+		for k := uint64(0); k < numOfChecks; k++ {
+			checkName := reader.String()
+			checkExpr := reader.String()
+			d.Checks = append(d.Checks, &sql.CheckDefinition{
+				Name:            checkName,
+				CheckExpression: checkExpr,
+				Enforced:        true,
+			})
+		}
 		t, err := DeserializeType(reader.RemainingBytes())
 		if err != nil {
 			return nil, err
 		}
-		d.DataType = t.(DoltgresType)
+		d.AsType = t.(DoltgresType)
 		return d, nil
 	default:
 		return nil, fmt.Errorf("version %d is not yet supported for %s", version, d.String())
 	}
 }
 
+// SerializeValue implements the types.ExtendedType interface.
 func (d DomainType) SerializeValue(val any) ([]byte, error) {
-	if d.DataType == nil {
-		panic("unresolved domain")
-	}
-	return d.DataType.SerializeValue(val)
+	return d.AsType.SerializeValue(val)
 }
 
+// DeserializeValue implements the types.ExtendedType interface.
 func (d DomainType) DeserializeValue(val []byte) (any, error) {
-	if d.DataType == nil {
-		panic("unresolved domain")
-	}
-	return d.DataType.DeserializeValue(val)
+	return d.AsType.DeserializeValue(val)
 }
 
-func (d DomainType) GetBaseType() DoltgresType {
-	if d.DataType == nil {
-		panic("unresolved domain")
-	}
-	switch t := d.DataType.(type) {
+// UnderlyingBaseType implements the DoltgresDomainType interface.
+func (d DomainType) UnderlyingBaseType() DoltgresType {
+	switch t := d.AsType.(type) {
 	case DomainType:
-		return t.GetBaseType()
+		return t.UnderlyingBaseType()
 	default:
 		// TODO: how to make sure this is an built-in type?
 		return t

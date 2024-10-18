@@ -15,6 +15,7 @@
 package core
 
 import (
+	"errors"
 	"fmt"
 
 	"github.com/dolthub/dolt/go/libraries/doltcore/doltdb"
@@ -22,14 +23,14 @@ import (
 	"github.com/dolthub/dolt/go/libraries/doltcore/sqle/resolve"
 	"github.com/dolthub/go-mysql-server/sql"
 
-	"github.com/dolthub/doltgresql/core/domains"
 	"github.com/dolthub/doltgresql/core/sequences"
+	"github.com/dolthub/doltgresql/core/types"
 )
 
 // contextValues contains a set of objects that will be passed alongside the context.
 type contextValues struct {
 	collection *sequences.Collection
-	domains    *domains.DomainCollection
+	types      *types.TypeCollection
 }
 
 // getContextValues accesses the contextValues in the given context. If the context does not have a contextValues, then
@@ -177,24 +178,24 @@ func GetSequencesCollectionFromContext(ctx *sql.Context) (*sequences.Collection,
 	return cv.collection, nil
 }
 
-// GetDomainsCollectionFromContext returns the given domain collection from the context.
+// GetTypesCollectionFromContext returns the given domain collection from the context.
 // Will always return a collection if no error is returned.
-func GetDomainsCollectionFromContext(ctx *sql.Context) (*domains.DomainCollection, error) {
+func GetTypesCollectionFromContext(ctx *sql.Context) (*types.TypeCollection, error) {
 	cv, err := getContextValues(ctx)
 	if err != nil {
 		return nil, err
 	}
-	if cv.domains == nil {
+	if cv.types == nil {
 		_, root, err := getRootFromContext(ctx)
 		if err != nil {
 			return nil, err
 		}
-		cv.domains, err = root.GetDomains(ctx)
+		cv.types, err = root.GetTypes(ctx)
 		if err != nil {
 			return nil, err
 		}
 	}
-	return cv.domains, nil
+	return cv.types, nil
 }
 
 // CloseContextRootFinalizer finalizes any changes persisted within the context by writing them to the working root.
@@ -223,7 +224,7 @@ func CloseContextRootFinalizer(ctx *sql.Context) error {
 		if err = session.SetWorkingRoot(ctx, ctx.GetCurrentDatabase(), newRoot); err != nil {
 			// TODO: We need a way to see if the session has a writeable working root
 			// (new interface method on session probably), and avoid setting it if so
-			if err == doltdb.ErrOperationNotSupportedInDetachedHead {
+			if errors.Is(err, doltdb.ErrOperationNotSupportedInDetachedHead) {
 				return nil
 			}
 			return err

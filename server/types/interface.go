@@ -20,7 +20,11 @@ import (
 	"github.com/dolthub/go-mysql-server/sql"
 	"github.com/dolthub/go-mysql-server/sql/types"
 	"github.com/lib/pq/oid"
+	"gopkg.in/src-d/go-errors.v1"
 )
+
+var ErrTypeAlreadyExists = errors.NewKind(`type "%s" already exists`)
+var ErrTypeDoesNotExist = errors.NewKind(`type "%s" does not exist`)
 
 // DoltgresType is a type that is distinct from the MySQL types in GMS.
 type DoltgresType interface {
