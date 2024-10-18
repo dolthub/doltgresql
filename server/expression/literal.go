@@ -251,7 +251,14 @@ func (l *Literal) Resolved() bool {
 
 // String implements the sql.Expression interface.
 func (l *Literal) String() string {
-	return fmt.Sprintf("%v", l.value)
+	switch litVal := l.value.(type) {
+	case int, int8, int16, int32, int64, uint, uint8, uint16, uint32, uint64:
+		return fmt.Sprintf("%d", litVal)
+	case string:
+		return fmt.Sprintf("'%s'", litVal)
+	default:
+		return fmt.Sprintf("%v", litVal)
+	}
 }
 
 // ToVitessLiteral returns the literal as a Vitess literal. This is strictly for situations where GMS is hardcoded to
