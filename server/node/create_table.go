@@ -15,11 +15,14 @@
 package node
 
 import (
+	"fmt"
+
 	"github.com/dolthub/go-mysql-server/sql"
 	"github.com/dolthub/go-mysql-server/sql/plan"
 	"github.com/dolthub/go-mysql-server/sql/rowexec"
 
 	"github.com/dolthub/doltgresql/core"
+	"github.com/dolthub/doltgresql/server/auth"
 )
 
 // CreateTable is a node that implements functionality specifically relevant to Doltgres' table creation needs.
@@ -60,6 +63,11 @@ func (c *CreateTable) Resolved() bool {
 
 // RowIter implements the interface sql.ExecSourceRel.
 func (c *CreateTable) RowIter(ctx *sql.Context, r sql.Row) (sql.RowIter, error) {
+	userRole := auth.GetRole(ctx.Client().User)
+	if !userRole.IsValid() {
+		return nil, fmt.Errorf(`role "%s" does not exist`, ctx.Client().User)
+	}
+
 	createTableIter, err := rowexec.DefaultBuilder.Build(ctx, c.gmsCreateTable, r)
 	if err != nil {
 		return nil, err
@@ -77,6 +85,11 @@ func (c *CreateTable) RowIter(ctx *sql.Context, r sql.Row) (sql.RowIter, error) 
 			return nil, err
 		}
 	}
+	auth.AddOwner(auth.OwnershipKey{
+		PrivilegeObject: auth.PrivilegeObject_TABLE,
+		Schema:          schemaName,
+		Name:            c.gmsCreateTable.Name(),
+	}, userRole.ID())
 	return createTableIter, err
 }
 

@@ -346,5 +346,51 @@ func TestAuthTests(t *testing.T) {
 				},
 			},
 		},
+		{
+			Name:  `GRANT SELECT Privilege`,
+			Focus: true,
+			SetUpScript: []string{
+				`CREATE USER user1 PASSWORD 'a';`,
+				`CREATE USER user2 PASSWORD 'b';`,
+			},
+			Assertions: []ScriptTestAssertion{
+				{
+					Query:    `CREATE TABLE test (pk INT4 PRIMARY KEY);`,
+					Username: `user1`,
+					Password: `a`,
+					Expected: []sql.Row{},
+				},
+				{
+					Query:    `INSERT INTO test VALUES (1), (5), (6);`,
+					Username: `user1`,
+					Password: `a`,
+					Expected: []sql.Row{},
+				},
+				{
+					Query:    `SELECT * FROM test ORDER BY pk`,
+					Username: `user1`,
+					Password: `a`,
+					Expected: []sql.Row{{1}, {2}, {3}},
+				},
+				{
+					Query:       `SELECT * FROM test ORDER BY pk`,
+					Username:    `user2`,
+					Password:    `b`,
+					ExpectedErr: `permissions`,
+				},
+				{
+					Query:    `GRANT SELECT ON test TO user2;`,
+					Username: `user1`,
+					Password: `a`,
+					Expected: []sql.Row{},
+				},
+				{
+					Query:    `SELECT * FROM test ORDER BY pk`,
+					Username: `user2`,
+					Password: `b`,
+					Expected: []sql.Row{{1}, {2}, {3}},
+				},
+			},
+		},
 	})
 }

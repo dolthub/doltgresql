@@ -20,11 +20,13 @@ import (
 	"github.com/dolthub/go-mysql-server/sql/analyzer"
 )
 
+// IDs are basically arbitrary, we just need to ensure that they do not conflict with existing IDs
 const (
 	ruleId_TypeSanitizer analyzer.RuleId = iota + 1000
 	ruleId_AssignInsertCasts
 	ruleId_AssignUpdateCasts
 	ruleId_ReplaceIndexedTables
+	ruleId_AccessControl
 	ruleId_ReplaceSerial
 	ruleId_AddImplicitPrefixLengths
 	ruleId_InsertContextRootFinalizer
@@ -32,13 +34,13 @@ const (
 
 // Init adds additional rules to the analyzer to handle Doltgres-specific functionality.
 func Init() {
-	// IDs are basically arbitrary, we just need to ensure that they do not conflict with existing IDs
 	analyzer.AlwaysBeforeDefault = append(analyzer.AlwaysBeforeDefault,
 		analyzer.Rule{Id: ruleId_TypeSanitizer, Apply: TypeSanitizer},
 		getAnalyzerRule(analyzer.OnceBeforeDefault, analyzer.ValidateColumnDefaultsId),
 		analyzer.Rule{Id: ruleId_AssignInsertCasts, Apply: AssignInsertCasts},
 		analyzer.Rule{Id: ruleId_AssignUpdateCasts, Apply: AssignUpdateCasts},
 		analyzer.Rule{Id: ruleId_ReplaceIndexedTables, Apply: ReplaceIndexedTables},
+		analyzer.Rule{Id: ruleId_AccessControl, Apply: AccessControl},
 	)
 
 	// Column default validation was moved to occur after type sanitization, so we'll remove it from its original place

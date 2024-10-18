@@ -30,6 +30,7 @@ import (
 
 	pgexprs "github.com/dolthub/doltgresql/server/expression"
 	"github.com/dolthub/doltgresql/server/functions/framework"
+	pgtransform "github.com/dolthub/doltgresql/server/transform"
 	pgtypes "github.com/dolthub/doltgresql/server/types"
 )
 
@@ -37,16 +38,7 @@ import (
 // to GMS types, so by taking care of all conversions here, we can ensure that Doltgres only needs to worry about its
 // own types.
 func TypeSanitizer(ctx *sql.Context, a *analyzer.Analyzer, node sql.Node, scope *plan.Scope, selector analyzer.RuleSelector, qFlags *sql.QueryFlags) (sql.Node, transform.TreeIdentity, error) {
-	node, nodeSame, err := transform.NodeWithOpaque(node, func(node sql.Node) (sql.Node, transform.TreeIdentity, error) {
-		if disjointedNode, ok := node.(plan.DisjointedChildrenNode); ok {
-			return handleDisjointedNodes(ctx, a, disjointedNode, scope, selector, TypeSanitizer, qFlags)
-		}
-		return node, transform.SameTree, nil
-	})
-	if err != nil {
-		return nil, transform.NewTree, err
-	}
-	node, exprsSame, err := transform.NodeExprsWithOpaque(node, func(expr sql.Expression) (sql.Expression, transform.TreeIdentity, error) {
+	return pgtransform.NodeExprsWithOpaque(node, func(expr sql.Expression) (sql.Expression, transform.TreeIdentity, error) {
 		// This can be updated if we find more expressions that return GMS types.
 		// These should eventually be replaced with Doltgres-equivalents over time, rendering this function unnecessary.
 		switch expr := expr.(type) {
@@ -88,10 +80,6 @@ func TypeSanitizer(ctx *sql.Context, a *analyzer.Analyzer, node sql.Node, scope 
 		}
 		return expr, transform.SameTree, nil
 	})
-	if err != nil {
-		return nil, transform.NewTree, err
-	}
-	return node, nodeSame && exprsSame, nil
 }
 
 // typeSanitizerLiterals handles literal expressions for TypeSanitizer.
