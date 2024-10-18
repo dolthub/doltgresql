@@ -20,6 +20,7 @@ import (
 	"fmt"
 	"io"
 	"sort"
+	"strconv"
 	"strings"
 
 	"github.com/dolthub/dolt/go/libraries/doltcore/doltdb"
@@ -118,6 +119,35 @@ func (root *RootValue) DebugString(ctx context.Context, transitive bool) string 
 		for _, schema := range schemas {
 			buf.WriteString("\nSchema ")
 			buf.WriteString(schema.Name)
+		}
+
+		fkc, err := root.GetForeignKeyCollection(ctx)
+		if err == nil && fkc.Count() > 0 {
+			buf.WriteString("\nForeign Keys:")
+			fkc.Iter(func(fk doltdb.ForeignKey) (stop bool, err error) {
+				buf.WriteString("\n")
+				buf.WriteString(fk.Name)
+				buf.WriteString(": ")
+				buf.WriteString(fk.TableName.String())
+				buf.WriteString("(")
+				for i, tag := range fk.ReferencedTableColumns {
+					if i > 0 {
+						buf.WriteString(",")
+					}
+					buf.WriteString(strconv.Itoa(int(tag)))
+				}
+				buf.WriteString(") ON ")
+				buf.WriteString(fk.ReferencedTableName.String())
+				buf.WriteString("(")
+				for i, tag := range fk.ReferencedTableColumns {
+					if i > 0 {
+						buf.WriteString(",")
+					}
+					buf.WriteString(strconv.Itoa(int(tag)))
+				}
+				buf.WriteString(")\n")
+				return false, nil
+			})
 		}
 	}
 
@@ -597,7 +627,7 @@ func (root *RootValue) SetFeatureVersion(v doltdb.FeatureVersion) (doltdb.RootVa
 }
 
 // SetTableHash implements the interface doltdb.RootValue.
-func (root *RootValue) SetTableHash(ctx context.Context, tName string, h hash.Hash) (doltdb.RootValue, error) {
+func (root *RootValue) SetTableHash(ctx context.Context, tName doltdb.TableName, h hash.Hash) (doltdb.RootValue, error) {
 	val, err := root.vrw.ReadValue(ctx, h)
 
 	if err != nil {
@@ -610,8 +640,7 @@ func (root *RootValue) SetTableHash(ctx context.Context, tName string, h hash.Ha
 		return nil, err
 	}
 
-	// TODO: schema
-	return root.putTable(ctx, doltdb.TableName{Name: tName}, ref)
+	return root.putTable(ctx, tName, ref)
 }
 
 // VRW implements the interface doltdb.RootValue.
