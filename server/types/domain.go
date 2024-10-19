@@ -145,7 +145,6 @@ func (d DomainType) String() string {
 
 // ToArrayType implements the DoltgresType interface.
 func (d DomainType) ToArrayType() DoltgresArrayType {
-	// TODO: allowed?
 	return d.AsType.ToArrayType()
 }
 
@@ -230,7 +229,6 @@ func (d DomainType) UnderlyingBaseType() DoltgresType {
 	case DomainType:
 		return t.UnderlyingBaseType()
 	default:
-		// TODO: how to make sure this is an built-in type?
 		return t
 	}
 }
