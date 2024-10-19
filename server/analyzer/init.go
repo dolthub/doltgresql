@@ -22,7 +22,7 @@ import (
 
 const (
 	ruleId_TypeSanitizer analyzer.RuleId = iota + 1000
-	ruleId_AssignDomainConstraintsOnInsertAndUpdateNodes
+	ruleId_AddDomainConstraints
 	ruleId_AssignInsertCasts
 	ruleId_AssignUpdateCasts
 	ruleId_ReplaceIndexedTables
@@ -38,7 +38,7 @@ func Init() {
 	analyzer.AlwaysBeforeDefault = append(analyzer.AlwaysBeforeDefault,
 		analyzer.Rule{Id: ruleId_ResolveType, Apply: ResolveType},
 		analyzer.Rule{Id: ruleId_TypeSanitizer, Apply: TypeSanitizer},
-		analyzer.Rule{Id: ruleId_AssignDomainConstraintsOnInsertAndUpdateNodes, Apply: AssignDomainConstraintsOnInsertAndUpdateNodes},
+		analyzer.Rule{Id: ruleId_AddDomainConstraints, Apply: AddDomainConstraints},
 		getAnalyzerRule(analyzer.OnceBeforeDefault, analyzer.ValidateColumnDefaultsId),
 		analyzer.Rule{Id: ruleId_AssignInsertCasts, Apply: AssignInsertCasts},
 		analyzer.Rule{Id: ruleId_AssignUpdateCasts, Apply: AssignUpdateCasts},

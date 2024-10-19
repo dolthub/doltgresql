@@ -42,23 +42,28 @@ type CreateDomain struct {
 var _ sql.ExecSourceRel = (*CreateDomain)(nil)
 var _ vitess.Injectable = (*CreateDomain)(nil)
 
+// CheckPrivileges implements the interface sql.ExecSourceRel.
 func (c *CreateDomain) CheckPrivileges(ctx *sql.Context, opChecker sql.PrivilegedOperationChecker) bool {
 	// TODO: implement privilege checking
 	return true
 }
 
+// Children implements the interface sql.ExecSourceRel.
 func (c *CreateDomain) Children() []sql.Node {
 	return nil
 }
 
+// IsReadOnly implements the interface sql.ExecSourceRel.
 func (c *CreateDomain) IsReadOnly() bool {
 	return false
 }
 
+// Resolved implements the interface sql.ExecSourceRel.
 func (c *CreateDomain) Resolved() bool {
 	return true
 }
 
+// RowIter implements the interface sql.ExecSourceRel.
 func (c *CreateDomain) RowIter(ctx *sql.Context, r sql.Row) (sql.RowIter, error) {
 	// TODO: create array type with this type as base type?
 	var defExpr string
@@ -101,26 +106,31 @@ func (c *CreateDomain) RowIter(ctx *sql.Context, r sql.Row) (sql.RowIter, error)
 	return sql.RowsToRowIter(), nil
 }
 
+// Schema implements the interface sql.ExecSourceRel.
 func (c *CreateDomain) Schema() sql.Schema {
 	return nil
 }
 
+// String implements the interface sql.ExecSourceRel.
 func (c *CreateDomain) String() string {
 	return "CREATE DOMAIN"
 }
 
+// WithChildren implements the interface sql.ExecSourceRel.
 func (c *CreateDomain) WithChildren(children ...sql.Node) (sql.Node, error) {
 	return plan.NillaryWithChildren(c, children...)
 }
 
+// WithResolvedChildren implements the interface vitess.Injectable.
 func (c *CreateDomain) WithResolvedChildren(children []any) (any, error) {
 	checksStartAt := 0
+	var defExpr sql.Expression
 	if c.HasDefault {
 		expr, ok := children[0].(sql.Expression)
 		if !ok {
 			return nil, fmt.Errorf("invalid vitess child, expected sql.Expression for Default value but got %t", children[0])
 		}
-		c.DefaultExpr = expr
+		defExpr = expr
 		checksStartAt = 1
 	}
 	var checks sql.CheckConstraints
@@ -135,10 +145,22 @@ func (c *CreateDomain) WithResolvedChildren(children []any) (any, error) {
 			Enforced: true,
 		})
 	}
-	c.CheckConstraints = checks
-	return c, nil
+	return &CreateDomain{
+		SchemaName:           c.SchemaName,
+		Name:                 c.Name,
+		AsType:               c.AsType,
+		Collation:            c.Collation,
+		HasDefault:           c.HasDefault,
+		DefaultExpr:          defExpr,
+		IsNotNull:            c.IsNotNull,
+		CheckConstraintNames: c.CheckConstraintNames,
+		CheckConstraints:     checks,
+	}, nil
 }
 
+// DomainColumn represents the column name `VALUE.
+// It is a placeholder column reference later
+// used for column defined as the domain type.
 type DomainColumn struct {
 	Typ types.DoltgresType
 }
@@ -146,30 +168,37 @@ type DomainColumn struct {
 var _ vitess.Injectable = (*DomainColumn)(nil)
 var _ sql.Expression = (*DomainColumn)(nil)
 
+// Resolved implements the interface sql.Expression.
 func (d *DomainColumn) Resolved() bool {
 	return true
 }
 
+// String implements the interface sql.Expression.
 func (d *DomainColumn) String() string {
 	return "VALUE"
 }
 
+// Type implements the interface sql.Expression.
 func (d *DomainColumn) Type() sql.Type {
 	return d.Typ
 }
 
+// IsNullable implements the interface sql.Expression.
 func (d *DomainColumn) IsNullable() bool {
 	return false
 }
 
+// Eval implements the interface sql.Expression.
 func (d *DomainColumn) Eval(ctx *sql.Context, row sql.Row) (interface{}, error) {
 	panic("DomainColumn is a placeholder expression, but Eval() was called")
 }
 
+// Children implements the interface sql.Expression.
 func (d *DomainColumn) Children() []sql.Expression {
 	return nil
 }
 
+// WithChildren implements the interface sql.Expression.
 func (d *DomainColumn) WithChildren(children ...sql.Expression) (sql.Expression, error) {
 	if len(children) != 0 {
 		return nil, sql.ErrInvalidChildrenNumber.New(d, len(children), 0)
@@ -177,6 +206,7 @@ func (d *DomainColumn) WithChildren(children ...sql.Expression) (sql.Expression,
 	return d, nil
 }
 
+// WithResolvedChildren implements the interface vitess.Injectable.
 func (d *DomainColumn) WithResolvedChildren(children []any) (any, error) {
 	if len(children) != 0 {
 		return nil, fmt.Errorf("invalid vitess child count, expected `0` but got `%d`", len(children))

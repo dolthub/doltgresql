@@ -31,9 +31,9 @@ import (
 	pgtypes "github.com/dolthub/doltgresql/server/types"
 )
 
-// AssignDomainConstraintsOnInsertAndUpdateNodes assigns domain type's default value and check constraints
+// AddDomainConstraints adds domain type's default value and check constraints
 // to the destination table schema and InsertNode/Update node's checks.
-func AssignDomainConstraintsOnInsertAndUpdateNodes(ctx *sql.Context, a *analyzer.Analyzer, node sql.Node, scope *plan.Scope, selector analyzer.RuleSelector, qFlags *sql.QueryFlags) (sql.Node, transform.TreeIdentity, error) {
+func AddDomainConstraints(ctx *sql.Context, a *analyzer.Analyzer, node sql.Node, scope *plan.Scope, selector analyzer.RuleSelector, qFlags *sql.QueryFlags) (sql.Node, transform.TreeIdentity, error) {
 	switch n := node.(type) {
 	case *plan.InsertInto:
 		return resolveDomainTypeAndLoadCheckConstraints(ctx, a, n, n.Schema())

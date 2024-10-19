@@ -26,6 +26,10 @@ import (
 	"github.com/dolthub/doltgresql/postgres/parser/sem/tree"
 )
 
+// ResolvableType represents any non-built-in type
+// that needs resolution at analyzer stage.
+// It is used for domain types, and it can be used
+// for other user-defined types we don't support yet.
 type ResolvableType struct {
 	Typ tree.ResolvableTypeReference
 }

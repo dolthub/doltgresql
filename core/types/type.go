@@ -62,14 +62,14 @@ type Type struct {
 // TypeCollection contains a collection of Types.
 type TypeCollection struct {
 	schemaMap map[string]map[string]*Type
-	mutex     *sync.Mutex
+	mutex     *sync.RWMutex
 }
 
 // GetType returns the Type with the given schema and name.
 // Returns nil if the Type cannot be found.
 func (pgs *TypeCollection) GetType(schName, typName string) (*Type, bool) {
-	pgs.mutex.Lock()
-	defer pgs.mutex.Unlock()
+	pgs.mutex.RLock()
+	defer pgs.mutex.RUnlock()
 
 	if nameMap, ok := pgs.schemaMap[schName]; ok {
 		if typ, ok := nameMap[typName]; ok {
@@ -82,8 +82,8 @@ func (pgs *TypeCollection) GetType(schName, typName string) (*Type, bool) {
 // GetDomainType returns a domain Type with the given schema and name.
 // Returns nil if the Type cannot be found. It checks for type of Type for domain type.
 func (pgs *TypeCollection) GetDomainType(schName, typName string) (*Type, bool) {
-	pgs.mutex.Lock()
-	defer pgs.mutex.Unlock()
+	pgs.mutex.RLock()
+	defer pgs.mutex.RUnlock()
 
 	if nameMap, ok := pgs.schemaMap[schName]; ok {
 		if typ, ok := nameMap[typName]; ok && typ.Typ == types.TypeType_Domain {
@@ -96,6 +96,9 @@ func (pgs *TypeCollection) GetDomainType(schName, typName string) (*Type, bool) 
 // GetAllTypes returns a map containing all types in the collection, grouped by the schema they're contained in.
 // Each type array is also sorted by the type name.
 func (pgs *TypeCollection) GetAllTypes() (typesMap map[string][]*Type, schemaNames []string, totalCount int) {
+	pgs.mutex.RLock()
+	defer pgs.mutex.RUnlock()
+
 	typesMap = make(map[string][]*Type)
 	for schemaName, nameMap := range pgs.schemaMap {
 		schemaNames = append(schemaNames, schemaName)
@@ -168,7 +171,7 @@ func (pgs *TypeCollection) Clone() *TypeCollection {
 
 	newCollection := &TypeCollection{
 		schemaMap: make(map[string]map[string]*Type),
-		mutex:     &sync.Mutex{},
+		mutex:     &sync.RWMutex{},
 	}
 	for schema, nameMap := range pgs.schemaMap {
 		if len(nameMap) == 0 {
