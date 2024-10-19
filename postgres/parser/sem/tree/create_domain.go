@@ -14,6 +14,10 @@
 
 package tree
 
+import (
+	"github.com/dolthub/doltgresql/postgres/parser/types"
+)
+
 var _ Statement = &CreateDomain{}
 
 // CreateDomain represents a CREATE DOMAIN statement.
@@ -80,4 +84,21 @@ func (node *DomainConstraint) Format(ctx *FmtCtx) {
 	} else {
 		ctx.WriteString("NULL")
 	}
+}
+
+// DomainColumn represents a VALUE keyword in domain statement.
+// It is not used directly during parsing, but replaces the ColumnItem
+// or UnresolvedName with `VALUE` as name input.
+type DomainColumn struct {
+	Typ ResolvableTypeReference
+}
+
+// ResolvedType implements the TypedExpr interface.
+func (d DomainColumn) ResolvedType() *types.T {
+	return nil
+}
+
+// Format implements the NodeFormatter interface.
+func (d DomainColumn) Format(ctx *FmtCtx) {
+	ctx.WriteString("VALUE")
 }

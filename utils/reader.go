@@ -347,12 +347,20 @@ func (reader *Reader) IsEmpty() bool {
 	return reader.offset >= uint64(len(reader.buf))
 }
 
-// RemainingBytes returns the number of bytes that have not yet been read.
-func (reader *Reader) RemainingBytes() uint64 {
+// RemainingBytesLen returns the number of bytes that have not yet been read.
+func (reader *Reader) RemainingBytesLen() uint64 {
 	if reader.IsEmpty() {
 		return 0
 	}
 	return uint64(len(reader.buf)) - reader.offset
+}
+
+// RemainingBytes returns the bytes that have not yet been read.
+func (reader *Reader) RemainingBytes() []byte {
+	if reader.IsEmpty() {
+		return nil
+	}
+	return reader.buf[reader.offset:]
 }
 
 // AdvanceReader reads the next N bytes from the given Reader. This is only available for specific, performance-oriented

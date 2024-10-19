@@ -115,7 +115,7 @@ var _ Statement = &DropDomain{}
 
 // DropDomain represents a DROP DOMAIN statement.
 type DropDomain struct {
-	Names        NameList
+	Names        TableNames
 	IfExists     bool
 	DropBehavior DropBehavior
 }

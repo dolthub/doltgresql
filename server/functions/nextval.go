@@ -40,7 +40,7 @@ var nextval_text = framework.Function1{
 			return nil, err
 		}
 
-		collection, err := core.GetCollectionFromContext(ctx)
+		collection, err := core.GetSequencesCollectionFromContext(ctx)
 		if err != nil {
 			return nil, err
 		}
