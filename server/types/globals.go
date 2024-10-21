@@ -23,7 +23,7 @@ import "fmt"
 // SerializationID to prevent base ID conflicts.
 type DoltgresTypeBaseID uint32
 
-//go:generate stringer -type=DoltgresTypeBaseID
+//go:generate go run golang.org/x/tools/cmd/stringer -type=DoltgresTypeBaseID
 
 const (
 	DoltgresTypeBaseID_Any DoltgresTypeBaseID = iota + 8192
@@ -93,6 +93,7 @@ const (
 	DoltgresTypeBaseID_Uuid         = DoltgresTypeBaseID(SerializationID_Uuid)
 	DoltgresTypeBaseID_VarChar      = DoltgresTypeBaseID(SerializationID_VarChar)
 	DoltgresTypeBaseID_Xid          = DoltgresTypeBaseID(SerializationID_Xid)
+	DoltgresTypeBaseId_Domain       = DoltgresTypeBaseID(SerializationId_Domain)
 )
 
 // TypeAlignment represents the alignment required when storing a value of this type.
@@ -126,6 +127,30 @@ const (
 	TypeCategory_BitStringTypes      TypeCategory = "V"
 	TypeCategory_UnknownTypes        TypeCategory = "X"
 	TypeCategory_InternalUseTypes    TypeCategory = "Z"
+)
+
+// TypeStorage represents the storage strategy for storing `varlena` (typlen = -1) types.
+type TypeStorage string
+
+const (
+	TypeStorage_Plain    TypeStorage = "p"
+	TypeStorage_External TypeStorage = "e"
+	TypeStorage_Main     TypeStorage = "m"
+	TypeStorage_Extended TypeStorage = "x"
+)
+
+// TypeType represents the type of types that can be created/used.
+// This includes 'base', 'composite', 'domain', 'enum', 'shell', 'range' and  'multirange'.
+type TypeType string
+
+const (
+	TypeType_Base       TypeType = "b"
+	TypeType_Composite  TypeType = "c"
+	TypeType_Domain     TypeType = "d"
+	TypeType_Enum       TypeType = "e"
+	TypeType_Shell      TypeType = "p" // a pseudo-type
+	TypeType_Range      TypeType = "r"
+	TypeType_MultiRange TypeType = "m"
 )
 
 // baseIDArrayTypes contains a map of all base IDs that represent array variants.

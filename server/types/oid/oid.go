@@ -19,7 +19,7 @@ package oid
 type Section uint8
 
 const (
-	Section_BuiltIn       Section = iota // Contains all of the OIDs that are defined when creating a Postgres database
+	Section_BuiltIn       Section = iota // Contains all of OIDs that are defined when creating a Postgres database
 	Section_Check                        // Refers to checks on tables (the dataIndex is obtained by incrementing through all tables' checks)
 	Section_Collation                    // Refers to collations
 	Section_Database                     // Refers to the database (schemaIndex does not apply, so only dataIndex should be used)

@@ -34,6 +34,8 @@ var _ sql.Expression = (*AssignmentCast)(nil)
 
 // NewAssignmentCast returns a new *AssignmentCast expression.
 func NewAssignmentCast(expr sql.Expression, fromType pgtypes.DoltgresType, toType pgtypes.DoltgresType) *AssignmentCast {
+	toType = checkForDomainType(toType)
+	fromType = checkForDomainType(fromType)
 	return &AssignmentCast{
 		expr:     expr,
 		fromType: fromType,
@@ -90,4 +92,11 @@ func (ac *AssignmentCast) WithChildren(children ...sql.Expression) (sql.Expressi
 		return nil, sql.ErrInvalidChildrenNumber.New(ac, len(children), 1)
 	}
 	return NewAssignmentCast(children[0], ac.fromType, ac.toType), nil
+}
+
+func checkForDomainType(t pgtypes.DoltgresType) pgtypes.DoltgresType {
+	if dt, ok := t.(pgtypes.DomainType); ok {
+		t = dt.UnderlyingBaseType()
+	}
+	return t
 }
