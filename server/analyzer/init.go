@@ -60,7 +60,7 @@ func Init() {
 	)
 
 	// The auto-commit rule writes the contents of the context, so we need to insert our finalizer before that
-	analyzer.OnceAfterAll = insertAnalyzerRules(analyzer.OnceAfterAll, analyzer.AutocommitId, true,
+	analyzer.OnceAfterAll = insertAnalyzerRules(analyzer.OnceAfterAll, analyzer.BacktickDefaulColumnValueNamesId, false,
 		analyzer.Rule{Id: ruleId_InsertContextRootFinalizer, Apply: InsertContextRootFinalizer})
 }
 
