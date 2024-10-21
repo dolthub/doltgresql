@@ -355,6 +355,11 @@ func (reader *Reader) RemainingBytes() uint64 {
 	return uint64(len(reader.buf)) - reader.offset
 }
 
+// BytesRead returns the number of bytes that have been read.
+func (reader *Reader) BytesRead() uint64 {
+	return reader.offset
+}
+
 // AdvanceReader reads the next N bytes from the given Reader. This is only available for specific, performance-oriented
 // circumstances, and should never be used otherwise. This is a standalone function to discourage its use, as it will
 // not show up as a function of the Reader object in most IDEs. This uses a branchless comparison to limit the size of n

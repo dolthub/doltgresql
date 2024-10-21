@@ -40,6 +40,7 @@ func NewExplicitCastInjectable(castToType sql.Type) (*ExplicitCast, error) {
 	if !ok {
 		return nil, fmt.Errorf("cast expects a Doltgres type as the target type")
 	}
+	pgtype = checkForDomainType(pgtype)
 	return &ExplicitCast{
 		sqlChild:   nil,
 		castToType: pgtype,
@@ -48,6 +49,7 @@ func NewExplicitCastInjectable(castToType sql.Type) (*ExplicitCast, error) {
 
 // NewExplicitCast returns a new *ExplicitCast expression.
 func NewExplicitCast(expr sql.Expression, toType pgtypes.DoltgresType) *ExplicitCast {
+	toType = checkForDomainType(toType)
 	return &ExplicitCast{
 		sqlChild:   expr,
 		castToType: toType,

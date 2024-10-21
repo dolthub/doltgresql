@@ -128,6 +128,7 @@ const (
 	SerializationID_XidArray              SerializationID = 95
 	SerializationID_InternalChar          SerializationID = 96
 	SerializationID_InternalCharArray     SerializationID = 97
+	SerializationId_Domain                SerializationID = 98
 )
 
 // serializationIDToType is a map from each SerializationID to its matching DoltgresType.
@@ -146,6 +147,7 @@ func init() {
 		}
 		serializationIDToType[sID] = t
 	}
+	serializationIDToType[SerializationId_Domain] = DomainType{}
 }
 
 // SerializeType is able to serialize the given extended type into a byte slice. All extended types will be defined

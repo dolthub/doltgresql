@@ -31,6 +31,7 @@ import (
 	"github.com/dolthub/dolt/go/store/types"
 
 	"github.com/dolthub/doltgresql/core/sequences"
+	"github.com/dolthub/doltgresql/core/typecollection"
 )
 
 const (
@@ -227,6 +228,29 @@ func (root *RootValue) GetSequences(ctx context.Context) (*sequences.Collection,
 	return sequences.Deserialize(ctx, data)
 }
 
+// GetTypes returns all types that are on the root.
+func (root *RootValue) GetTypes(ctx context.Context) (*typecollection.TypeCollection, error) {
+	h := root.st.GetTypes()
+	if h.IsEmpty() {
+		return typecollection.Deserialize(ctx, nil)
+	}
+	dataValue, err := root.vrw.ReadValue(ctx, h)
+	if err != nil {
+		return nil, err
+	}
+	dataBlob := dataValue.(types.Blob)
+	dataBlobLength := dataBlob.Len()
+	data := make([]byte, dataBlobLength)
+	n, err := dataBlob.ReadAt(context.Background(), data, 0)
+	if err != nil && err != io.EOF {
+		return nil, err
+	}
+	if uint64(n) != dataBlobLength {
+		return nil, fmt.Errorf("wanted %d bytes from blob for types, got %d", dataBlobLength, n)
+	}
+	return typecollection.Deserialize(ctx, data)
+}
+
 // GetTable implements the interface doltdb.RootValue.
 func (root *RootValue) GetTable(ctx context.Context, tName doltdb.TableName) (*doltdb.Table, bool, error) {
 	tableMap, err := root.getTableMap(ctx, tName.Schema)
@@ -368,11 +392,11 @@ func schemaNames(ctx context.Context, root doltdb.RootValue) ([]string, error) {
 		return nil, err
 	}
 
-	schemaNames := make([]string, len(dbSchemas)+1)
+	schNames := make([]string, len(dbSchemas)+1)
 	for i, dbSchema := range dbSchemas {
-		schemaNames[i] = dbSchema.Name
+		schNames[i] = dbSchema.Name
 	}
-	return schemaNames, nil
+	return schNames, nil
 }
 
 // NodeStore implements the interface doltdb.RootValue.
@@ -383,6 +407,27 @@ func (root *RootValue) NodeStore() tree.NodeStore {
 // NomsValue implements the interface doltdb.RootValue.
 func (root *RootValue) NomsValue() types.Value {
 	return root.st.nomsValue()
+}
+
+// PutTypes writes the given types to the returned root value.
+func (root *RootValue) PutTypes(ctx context.Context, typ *typecollection.TypeCollection) (*RootValue, error) {
+	data, err := typ.Serialize(ctx)
+	if err != nil {
+		return nil, err
+	}
+	dataBlob, err := types.NewBlob(ctx, root.vrw, bytes.NewReader(data))
+	if err != nil {
+		return nil, err
+	}
+	ref, err := root.vrw.WriteValue(ctx, dataBlob)
+	if err != nil {
+		return nil, err
+	}
+	newStorage, err := root.st.SetTypes(ctx, ref.TargetHash())
+	if err != nil {
+		return nil, err
+	}
+	return root.withStorage(newStorage), nil
 }
 
 // PutForeignKeyCollection implements the interface doltdb.RootValue.
