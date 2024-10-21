@@ -16,7 +16,6 @@ package types
 
 import (
 	"fmt"
-	"strings"
 	"time"
 	"unicode/utf8"
 
@@ -24,17 +23,6 @@ import (
 	"github.com/dolthub/go-mysql-server/sql/types"
 	"github.com/dolthub/vitess/go/vt/proto/query"
 )
-
-// QuoteString will quote the string according to the type given. This means that some types will quote, and others will
-// not, or they may quote in a special way that is unique to that type.
-func QuoteString(baseID DoltgresTypeBaseID, str string) string {
-	switch baseID {
-	case DoltgresTypeBaseID_Char, DoltgresTypeBaseID_Name, DoltgresTypeBaseID_Text, DoltgresTypeBaseID_VarChar, DoltgresTypeBaseID_Unknown:
-		return `'` + strings.ReplaceAll(str, `'`, `''`) + `'`
-	default:
-		return str
-	}
-}
 
 // truncateString returns a string that has been truncated to the given length. Uses the rune count rather than the
 // byte count. Returns the input string if it's smaller than the length. Also returns the rune count of the string.
