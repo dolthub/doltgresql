@@ -35,7 +35,7 @@ func ResolveType(ctx *sql.Context, a *analyzer.Analyzer, node sql.Node, scope *p
 			switch n.(type) {
 			case *plan.AlterPK, *plan.AddColumn, *plan.ModifyColumn, *plan.CreateTable, *plan.DropColumn:
 				// DDL nodes must resolve any new column type, continue to logic below
-				// TODO: types can be used in casting in SELECT, etc. add those nodes
+				// TODO: add nodes that use unresolved types like domain (e.g.: casting in SELECT)
 			default:
 				// other node types are not altering the schema and therefore don't need resolution of column type
 				return node, transform.SameTree, nil
@@ -60,14 +60,15 @@ func ResolveType(ctx *sql.Context, a *analyzer.Analyzer, node sql.Node, scope *p
 }
 
 // resolveResolvableType resolves any type that is unresolved yet.
-// TODO: add other types that need resolution at analyzer stage.
 func resolveResolvableType(ctx *sql.Context, typ tree.ResolvableTypeReference) (types.DoltgresType, error) {
 	switch t := typ.(type) {
 	case *tree.UnresolvedObjectName:
 		domain := t.ToTableName()
 		return resolveDomainType(ctx, string(domain.SchemaName), string(domain.ObjectName))
+	default:
+		// TODO: add other types that need resolution at analyzer stage.
+		return nil, fmt.Errorf("the given type %T is not yet supported", typ)
 	}
-	return nil, fmt.Errorf("the given type %T is not yet supported", typ)
 }
 
 // resolveDomainType resolves DomainType from given schema and domain name.
@@ -85,7 +86,7 @@ func resolveDomainType(ctx *sql.Context, schema, domainName string) (types.Doltg
 		return nil, types.ErrTypeDoesNotExist.New(domainName)
 	}
 
-	// TODO: need to account for non build-in type as base type
+	// TODO: need to resolve OID for non build-in type
 	asType, ok := types.OidToBuildInDoltgresType[domain.BaseTypeOID]
 	if !ok {
 		return nil, fmt.Errorf(`cannot resolve base type for "%s" domain type`, domainName)

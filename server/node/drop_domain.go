@@ -48,7 +48,6 @@ func NewDropDomain(ifExists bool, schema string, domain string, cascade bool) *D
 
 // CheckPrivileges implements the interface sql.ExecSourceRel.
 func (c *DropDomain) CheckPrivileges(ctx *sql.Context, opChecker sql.PrivilegedOperationChecker) bool {
-	// TODO: implement privilege checking
 	return true
 }
 
@@ -77,7 +76,7 @@ func (c *DropDomain) RowIter(ctx *sql.Context, r sql.Row) (sql.RowIter, error) {
 	if err != nil {
 		return nil, err
 	}
-	_, exists := collection.GetType(schema, c.domain)
+	_, exists := collection.GetDomainType(schema, c.domain)
 	if !exists {
 		if c.ifExists {
 			// TODO: issue a notice

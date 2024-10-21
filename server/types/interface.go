@@ -26,6 +26,41 @@ import (
 var ErrTypeAlreadyExists = errors.NewKind(`type "%s" already exists`)
 var ErrTypeDoesNotExist = errors.NewKind(`type "%s" does not exist`)
 
+// Type represents a single type.
+type Type struct {
+	Name          string
+	Owner         string // TODO: should be `uint32`.
+	Length        int16
+	PassedByVal   bool
+	Typ           TypeType
+	Category      TypeCategory
+	IsPreferred   bool
+	IsDefined     bool
+	Delimiter     string
+	RelID         uint32 // for Composite types
+	SubscriptFunc string
+	Elem          uint32
+	Array         uint32
+	InputFunc     string
+	OutputFunc    string
+	ReceiveFunc   string
+	SendFunc      string
+	ModInFunc     string
+	ModOutFunc    string
+	AnalyzeFunc   string
+	Align         TypeAlignment
+	Storage       TypeStorage
+	NotNull       bool   // for Domain types
+	BaseTypeOID   uint32 // for Domain types
+	TypMod        int32  // for Domain types
+	NDims         int32  // for Domain types
+	Collation     uint32
+	DefaulBin     string // for Domain types
+	Default       string
+	Acl           string                 // TODO: list of privileges
+	Checks        []*sql.CheckDefinition // TODO: this is not part of `pg_type` instead `pg_constraint` for Domain types.
+}
+
 // DoltgresType is a type that is distinct from the MySQL types in GMS.
 type DoltgresType interface {
 	types.ExtendedType

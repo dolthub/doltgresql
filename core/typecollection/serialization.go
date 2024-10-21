@@ -12,7 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-package types
+package typecollection
 
 import (
 	"context"
@@ -56,16 +56,16 @@ func (pgs *TypeCollection) Serialize(ctx context.Context) ([]byte, error) {
 			writer.Bool(typ.IsDefined)
 			writer.String(typ.Delimiter)
 			writer.Uint32(typ.RelID)
-			writer.String(typ.Subscript)
+			writer.String(typ.SubscriptFunc)
 			writer.Uint32(typ.Elem)
 			writer.Uint32(typ.Array)
-			writer.String(typ.Input)
-			writer.String(typ.Output)
-			writer.String(typ.Receive)
-			writer.String(typ.Send)
-			writer.String(typ.ModIn)
-			writer.String(typ.ModOut)
-			writer.String(typ.Analyze)
+			writer.String(typ.InputFunc)
+			writer.String(typ.OutputFunc)
+			writer.String(typ.ReceiveFunc)
+			writer.String(typ.SendFunc)
+			writer.String(typ.ModInFunc)
+			writer.String(typ.ModOutFunc)
+			writer.String(typ.AnalyzeFunc)
 			writer.String(string(typ.Align))
 			writer.String(string(typ.Storage))
 			writer.Bool(typ.NotNull)
@@ -92,11 +92,11 @@ func (pgs *TypeCollection) Serialize(ctx context.Context) ([]byte, error) {
 func Deserialize(ctx context.Context, data []byte) (*TypeCollection, error) {
 	if len(data) == 0 {
 		return &TypeCollection{
-			schemaMap: make(map[string]map[string]*Type),
+			schemaMap: make(map[string]map[string]*types.Type),
 			mutex:     &sync.RWMutex{},
 		}, nil
 	}
-	schemaMap := make(map[string]map[string]*Type)
+	schemaMap := make(map[string]map[string]*types.Type)
 	reader := utils.NewReader(data)
 	version := reader.VariableUint()
 	if version != 0 {
@@ -108,9 +108,9 @@ func Deserialize(ctx context.Context, data []byte) (*TypeCollection, error) {
 	for i := uint64(0); i < numOfSchemas; i++ {
 		schemaName := reader.String()
 		numOfTypes := reader.VariableUint()
-		nameMap := make(map[string]*Type)
+		nameMap := make(map[string]*types.Type)
 		for j := uint64(0); j < numOfTypes; j++ {
-			typ := &Type{}
+			typ := &types.Type{}
 			typ.Name = reader.String()
 			typ.Owner = reader.String()
 			typ.Length = reader.Int16()
@@ -121,16 +121,16 @@ func Deserialize(ctx context.Context, data []byte) (*TypeCollection, error) {
 			typ.IsDefined = reader.Bool()
 			typ.Delimiter = reader.String()
 			typ.RelID = reader.Uint32()
-			typ.Subscript = reader.String()
+			typ.SubscriptFunc = reader.String()
 			typ.Elem = reader.Uint32()
 			typ.Array = reader.Uint32()
-			typ.Input = reader.String()
-			typ.Output = reader.String()
-			typ.Receive = reader.String()
-			typ.Send = reader.String()
-			typ.ModIn = reader.String()
-			typ.ModOut = reader.String()
-			typ.Analyze = reader.String()
+			typ.InputFunc = reader.String()
+			typ.OutputFunc = reader.String()
+			typ.ReceiveFunc = reader.String()
+			typ.SendFunc = reader.String()
+			typ.ModInFunc = reader.String()
+			typ.ModOutFunc = reader.String()
+			typ.AnalyzeFunc = reader.String()
 			typ.Align = types.TypeAlignment(reader.String())
 			typ.Storage = types.TypeStorage(reader.String())
 			typ.NotNull = reader.Bool()

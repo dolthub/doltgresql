@@ -35,6 +35,52 @@ type DomainType struct {
 	Checks      []*sql.CheckDefinition
 }
 
+// NewDomainType creates new instance of domain Type.
+func NewDomainType(
+	ctx *sql.Context,
+	domain DomainType,
+	owner string, // TODO
+) (*Type, error) {
+	passedByVal := false
+	l := domain.AsType.MaxTextResponseByteLength(ctx)
+	if l&1 == 0 && l < 9 {
+		passedByVal = true
+	}
+	return &Type{
+		Name:          domain.Name,
+		Owner:         owner,
+		Length:        int16(l),
+		PassedByVal:   passedByVal,
+		Typ:           TypeType_Domain,
+		Category:      domain.AsType.Category(),
+		IsPreferred:   domain.AsType.IsPreferredType(),
+		IsDefined:     true,
+		Delimiter:     ",",
+		RelID:         0, // composite type only
+		SubscriptFunc: "",
+		Elem:          0,
+		Array:         0, // TODO: refers to array type of this type
+		InputFunc:     "domain_in",
+		OutputFunc:    "",
+		ReceiveFunc:   "domain_recv",
+		SendFunc:      "",
+		ModInFunc:     "-",
+		ModOutFunc:    "-",
+		AnalyzeFunc:   "-",
+		Align:         domain.AsType.Alignment(),
+		Storage:       TypeStorage_Plain, // TODO
+		NotNull:       domain.NotNull,
+		BaseTypeOID:   domain.AsType.OID(),
+		TypMod:        -1,
+		NDims:         0,
+		Collation:     0,
+		DefaulBin:     "",
+		Default:       domain.DefaultExpr,
+		Acl:           "",
+		Checks:        domain.Checks,
+	}, nil
+}
+
 var _ DoltgresType = DomainType{}
 
 // Alignment implements the DoltgresType interface.
@@ -163,7 +209,7 @@ func (d DomainType) Zero() interface{} {
 	return d.AsType.Zero()
 }
 
-// SerializeType implements the types.ExtendedType interface.
+// SerializeType implements the DoltgresType interface.
 func (d DomainType) SerializeType() ([]byte, error) {
 	b := SerializationId_Domain.ToByteSlice(0)
 	writer := utils.NewWriter(256)
@@ -184,6 +230,7 @@ func (d DomainType) SerializeType() ([]byte, error) {
 	return append(b, asTyp...), nil
 }
 
+// deserializeType implements the DoltgresType interface.
 func (d DomainType) deserializeType(version uint16, metadata []byte) (DoltgresType, error) {
 	switch version {
 	case 0:
@@ -202,7 +249,7 @@ func (d DomainType) deserializeType(version uint16, metadata []byte) (DoltgresTy
 				Enforced:        true,
 			})
 		}
-		t, err := DeserializeType(reader.RemainingBytes())
+		t, err := DeserializeType(metadata[reader.BytesRead():])
 		if err != nil {
 			return nil, err
 		}
@@ -223,7 +270,7 @@ func (d DomainType) DeserializeValue(val []byte) (any, error) {
 	return d.AsType.DeserializeValue(val)
 }
 
-// UnderlyingBaseType implements the DoltgresDomainType interface.
+// UnderlyingBaseType returns underlying type of the domain type that is a base type.
 func (d DomainType) UnderlyingBaseType() DoltgresType {
 	switch t := d.AsType.(type) {
 	case DomainType:

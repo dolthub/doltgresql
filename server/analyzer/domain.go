@@ -69,6 +69,9 @@ func resolveDomainTypeAndLoadCheckConstraints(ctx *sql.Context, a *analyzer.Anal
 			same = transform.NewTree
 		}
 	}
+	if same == transform.SameTree {
+		return c, same, nil
+	}
 	return c.WithChecks(checks), same, nil
 }
 

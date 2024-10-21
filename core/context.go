@@ -24,13 +24,13 @@ import (
 	"github.com/dolthub/go-mysql-server/sql"
 
 	"github.com/dolthub/doltgresql/core/sequences"
-	"github.com/dolthub/doltgresql/core/types"
+	"github.com/dolthub/doltgresql/core/typecollection"
 )
 
 // contextValues contains a set of objects that will be passed alongside the context.
 type contextValues struct {
 	collection *sequences.Collection
-	types      *types.TypeCollection
+	types      *typecollection.TypeCollection
 }
 
 // getContextValues accesses the contextValues in the given context. If the context does not have a contextValues, then
@@ -178,9 +178,9 @@ func GetSequencesCollectionFromContext(ctx *sql.Context) (*sequences.Collection,
 	return cv.collection, nil
 }
 
-// GetTypesCollectionFromContext returns the given domain collection from the context.
+// GetTypesCollectionFromContext returns the given type collection from the context.
 // Will always return a collection if no error is returned.
-func GetTypesCollectionFromContext(ctx *sql.Context) (*types.TypeCollection, error) {
+func GetTypesCollectionFromContext(ctx *sql.Context) (*typecollection.TypeCollection, error) {
 	cv, err := getContextValues(ctx)
 	if err != nil {
 		return nil, err

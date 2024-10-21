@@ -31,7 +31,7 @@ import (
 	"github.com/dolthub/dolt/go/store/types"
 
 	"github.com/dolthub/doltgresql/core/sequences"
-	pgtypes "github.com/dolthub/doltgresql/core/types"
+	"github.com/dolthub/doltgresql/core/typecollection"
 )
 
 const (
@@ -229,10 +229,10 @@ func (root *RootValue) GetSequences(ctx context.Context) (*sequences.Collection,
 }
 
 // GetTypes returns all types that are on the root.
-func (root *RootValue) GetTypes(ctx context.Context) (*pgtypes.TypeCollection, error) {
+func (root *RootValue) GetTypes(ctx context.Context) (*typecollection.TypeCollection, error) {
 	h := root.st.GetTypes()
 	if h.IsEmpty() {
-		return pgtypes.Deserialize(ctx, nil)
+		return typecollection.Deserialize(ctx, nil)
 	}
 	dataValue, err := root.vrw.ReadValue(ctx, h)
 	if err != nil {
@@ -246,9 +246,9 @@ func (root *RootValue) GetTypes(ctx context.Context) (*pgtypes.TypeCollection, e
 		return nil, err
 	}
 	if uint64(n) != dataBlobLength {
-		return nil, fmt.Errorf("wanted %d bytes from blob for domains, got %d", dataBlobLength, n)
+		return nil, fmt.Errorf("wanted %d bytes from blob for types, got %d", dataBlobLength, n)
 	}
-	return pgtypes.Deserialize(ctx, data)
+	return typecollection.Deserialize(ctx, data)
 }
 
 // GetTable implements the interface doltdb.RootValue.
@@ -392,11 +392,11 @@ func schemaNames(ctx context.Context, root doltdb.RootValue) ([]string, error) {
 		return nil, err
 	}
 
-	schemaNames := make([]string, len(dbSchemas)+1)
+	schNames := make([]string, len(dbSchemas)+1)
 	for i, dbSchema := range dbSchemas {
-		schemaNames[i] = dbSchema.Name
+		schNames[i] = dbSchema.Name
 	}
-	return schemaNames, nil
+	return schNames, nil
 }
 
 // NodeStore implements the interface doltdb.RootValue.
@@ -410,8 +410,8 @@ func (root *RootValue) NomsValue() types.Value {
 }
 
 // PutTypes writes the given types to the returned root value.
-func (root *RootValue) PutTypes(ctx context.Context, seq *sequences.Collection) (*RootValue, error) {
-	data, err := seq.Serialize(ctx)
+func (root *RootValue) PutTypes(ctx context.Context, typ *typecollection.TypeCollection) (*RootValue, error) {
+	data, err := typ.Serialize(ctx)
 	if err != nil {
 		return nil, err
 	}

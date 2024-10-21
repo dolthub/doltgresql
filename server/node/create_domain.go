@@ -22,7 +22,6 @@ import (
 	vitess "github.com/dolthub/vitess/go/vt/sqlparser"
 
 	"github.com/dolthub/doltgresql/core"
-	coretypes "github.com/dolthub/doltgresql/core/types"
 	"github.com/dolthub/doltgresql/server/types"
 )
 
@@ -44,7 +43,6 @@ var _ vitess.Injectable = (*CreateDomain)(nil)
 
 // CheckPrivileges implements the interface sql.ExecSourceRel.
 func (c *CreateDomain) CheckPrivileges(ctx *sql.Context, opChecker sql.PrivilegedOperationChecker) bool {
-	// TODO: implement privilege checking
 	return true
 }
 
@@ -87,7 +85,7 @@ func (c *CreateDomain) RowIter(ctx *sql.Context, r sql.Row) (sql.RowIter, error)
 		Checks:      checkDefs,
 	}
 
-	newType, err := coretypes.NewDomainType(ctx, d, "")
+	newType, err := types.NewDomainType(ctx, d, "")
 	if err != nil {
 		return nil, err
 	}

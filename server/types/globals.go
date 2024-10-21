@@ -129,6 +129,7 @@ const (
 	TypeCategory_InternalUseTypes    TypeCategory = "Z"
 )
 
+// TypeStorage represents the storage strategy for storing `varlena` (typlen = -1) types.
 type TypeStorage string
 
 const (
@@ -138,6 +139,8 @@ const (
 	TypeStorage_Extended TypeStorage = "x"
 )
 
+// TypeType represents the type of types that can be created/used.
+// This includes 'base', 'composite', 'domain', 'enum', 'shell', 'range' and  'multirange'.
 type TypeType string
 
 const (

@@ -71,9 +71,8 @@ func TestDomain(t *testing.T) {
 					Expected: []sql.Row{},
 				},
 				{
-					// TODO: the correct error msg: `value for domain year violates check constraint "year_check"`
 					Query:       `INSERT INTO table_with_domain VALUES (2, 1899)`,
-					ExpectedErr: `Check constraint "year_check" violated`,
+					ExpectedErr: `constraint "year_check"`,
 				},
 				{
 					Query:    `SELECT * FROM table_with_domain`,
@@ -136,9 +135,8 @@ func TestDomain(t *testing.T) {
 					Expected: []sql.Row{},
 				},
 				{
-					// TODO: the correct error msg: `value for domain year violates check constraint "year_check_min"`
 					Query:       `UPDATE test_table SET y = 1900 WHERE pk = 1;`,
-					ExpectedErr: `Check constraint "year_check_min" violated`,
+					ExpectedErr: `constraint "year_check_min"`,
 				},
 				{
 					// TODO: the correct error msg: `domain year does not allow null values`

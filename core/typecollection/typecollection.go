@@ -12,62 +12,24 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-package types
+package typecollection
 
 import (
 	"sort"
 	"sync"
 
-	"github.com/dolthub/go-mysql-server/sql"
-
 	"github.com/dolthub/doltgresql/server/types"
 )
 
-// Type represents a single type.
-type Type struct {
-	Name        string
-	Owner       string // TODO: they are of type `oid`.
-	Length      int16
-	PassedByVal bool
-	Typ         types.TypeType
-	Category    types.TypeCategory
-	IsPreferred bool
-	IsDefined   bool
-	Delimiter   string
-	RelID       uint32 // for Composite types
-	Subscript   string // TODO: these should be of `uint32` as they are of type `regproc`.
-	Elem        uint32
-	Array       uint32
-	Input       string // TODO: they are of type `regproc`.
-	Output      string // TODO: they are of type `regproc`.
-	Receive     string // TODO: they are of type `regproc`.
-	Send        string // TODO: they are of type `regproc`.
-	ModIn       string // TODO: they are of type `regproc`.
-	ModOut      string // TODO: they are of type `regproc`.
-	Analyze     string // TODO: they are of type `regproc`.
-	Align       types.TypeAlignment
-	Storage     types.TypeStorage
-	NotNull     bool   // for Domain types
-	BaseTypeOID uint32 // for Domain types
-	TypMod      int32  // for Domain types
-	NDims       int32  // for Domain types
-	Collation   uint32
-	DefaulBin   string // for Domain types // TODO: pg_node_tree => nodeToString()
-	Default     string
-	Acl         string // TODO: list of privileges
-	// TODO: this is not part of `pg_type` instead `pg_constraint` for Domain types.
-	Checks []*sql.CheckDefinition
-}
-
 // TypeCollection contains a collection of Types.
 type TypeCollection struct {
-	schemaMap map[string]map[string]*Type
+	schemaMap map[string]map[string]*types.Type
 	mutex     *sync.RWMutex
 }
 
 // GetType returns the Type with the given schema and name.
 // Returns nil if the Type cannot be found.
-func (pgs *TypeCollection) GetType(schName, typName string) (*Type, bool) {
+func (pgs *TypeCollection) GetType(schName, typName string) (*types.Type, bool) {
 	pgs.mutex.RLock()
 	defer pgs.mutex.RUnlock()
 
@@ -81,7 +43,7 @@ func (pgs *TypeCollection) GetType(schName, typName string) (*Type, bool) {
 
 // GetDomainType returns a domain Type with the given schema and name.
 // Returns nil if the Type cannot be found. It checks for type of Type for domain type.
-func (pgs *TypeCollection) GetDomainType(schName, typName string) (*Type, bool) {
+func (pgs *TypeCollection) GetDomainType(schName, typName string) (*types.Type, bool) {
 	pgs.mutex.RLock()
 	defer pgs.mutex.RUnlock()
 
@@ -95,22 +57,22 @@ func (pgs *TypeCollection) GetDomainType(schName, typName string) (*Type, bool) 
 
 // GetAllTypes returns a map containing all types in the collection, grouped by the schema they're contained in.
 // Each type array is also sorted by the type name.
-func (pgs *TypeCollection) GetAllTypes() (typesMap map[string][]*Type, schemaNames []string, totalCount int) {
+func (pgs *TypeCollection) GetAllTypes() (typesMap map[string][]*types.Type, schemaNames []string, totalCount int) {
 	pgs.mutex.RLock()
 	defer pgs.mutex.RUnlock()
 
-	typesMap = make(map[string][]*Type)
+	typesMap = make(map[string][]*types.Type)
 	for schemaName, nameMap := range pgs.schemaMap {
 		schemaNames = append(schemaNames, schemaName)
-		types := make([]*Type, 0, len(nameMap))
+		typs := make([]*types.Type, 0, len(nameMap))
 		for _, typ := range nameMap {
-			types = append(types, typ)
+			typs = append(typs, typ)
 		}
-		totalCount += len(types)
-		sort.Slice(types, func(i, j int) bool {
-			return types[i].Name < types[j].Name
+		totalCount += len(typs)
+		sort.Slice(typs, func(i, j int) bool {
+			return typs[i].Name < typs[j].Name
 		})
-		typesMap[schemaName] = types
+		typesMap[schemaName] = typs
 	}
 	sort.Slice(schemaNames, func(i, j int) bool {
 		return schemaNames[i] < schemaNames[j]
@@ -119,13 +81,13 @@ func (pgs *TypeCollection) GetAllTypes() (typesMap map[string][]*Type, schemaNam
 }
 
 // CreateType creates a new Type.
-func (pgs *TypeCollection) CreateType(schema string, typ *Type) error {
+func (pgs *TypeCollection) CreateType(schema string, typ *types.Type) error {
 	pgs.mutex.Lock()
 	defer pgs.mutex.Unlock()
 
 	nameMap, ok := pgs.schemaMap[schema]
 	if !ok {
-		nameMap = make(map[string]*Type)
+		nameMap = make(map[string]*types.Type)
 		pgs.schemaMap[schema] = nameMap
 	}
 	if _, ok = nameMap[typ.Name]; ok {
@@ -150,7 +112,7 @@ func (pgs *TypeCollection) DropType(schName, typName string) error {
 }
 
 // IterateTypes iterates over all Types in the collection.
-func (pgs *TypeCollection) IterateTypes(f func(schema string, typ *Type) error) error {
+func (pgs *TypeCollection) IterateTypes(f func(schema string, typ *types.Type) error) error {
 	pgs.mutex.Lock()
 	defer pgs.mutex.Unlock()
 
@@ -170,14 +132,14 @@ func (pgs *TypeCollection) Clone() *TypeCollection {
 	defer pgs.mutex.Unlock()
 
 	newCollection := &TypeCollection{
-		schemaMap: make(map[string]map[string]*Type),
+		schemaMap: make(map[string]map[string]*types.Type),
 		mutex:     &sync.RWMutex{},
 	}
 	for schema, nameMap := range pgs.schemaMap {
 		if len(nameMap) == 0 {
 			continue
 		}
-		clonedNameMap := make(map[string]*Type)
+		clonedNameMap := make(map[string]*types.Type)
 		for key, typ := range nameMap {
 			newType := *typ
 			clonedNameMap[key] = &newType
