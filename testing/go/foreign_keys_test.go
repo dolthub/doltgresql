@@ -286,7 +286,6 @@ func TestForeignKeys(t *testing.T) {
 			},
 			{
 				Name: "add foreign key in another schema on search path",
-				Focus: true,
 				SetUpScript: []string{
 					"create schema parent",
 					"create schema child",
@@ -306,6 +305,41 @@ func TestForeignKeys(t *testing.T) {
 					},
 					{
 						Query: "ALTER TABLE child ADD FOREIGN KEY (test_pk) REFERENCES parent(pk)",
+						SkipResultsCheck: true,
+					},
+					{
+						Query:       "INSERT INTO child VALUES (3, 'three', 3)",
+						ExpectedErr: "Foreign key violation",
+					},
+					{
+						Query: "SELECT * FROM child",
+						Expected: []sql.Row{
+							{2, "two", 2},
+						},
+					},
+				},
+			},
+			{
+				Name: "add foreign key in another schema, parent table not on search path",
+				SetUpScript: []string{
+					"create schema parent",
+					"create schema child",
+					"create schema fake",
+					"call dolt_commit('-Am', 'create schemas')",
+					"set search_path to 'child, fake'",
+					`create table parent.parent (pk int, val int, primary key(pk));`,
+					`create table fake.parent (pk int, val int, primary key(pk));`,
+					"CREATE TABLE child.child (id int, info varchar(255), test_pk int, primary key(id))",
+					"INSERT INTO parent.parent VALUES (0, 0), (1, 1), (2,2)",
+					"SELECT DOLT_COMMIT('-Am', 'new tables')",
+				},
+				Assertions: []ScriptTestAssertion{
+					{
+						Query:    "INSERT INTO child.child VALUES (2, 'two', 2)",
+						Expected: []sql.Row{},
+					},
+					{
+						Query: "ALTER TABLE child ADD FOREIGN KEY (test_pk) REFERENCES parent.parent(pk)",
 						SkipResultsCheck: true,
 					},
 					{
