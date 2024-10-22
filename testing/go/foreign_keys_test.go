@@ -304,7 +304,7 @@ func TestForeignKeys(t *testing.T) {
 						Expected: []sql.Row{},
 					},
 					{
-						Query: "ALTER TABLE child ADD FOREIGN KEY (test_pk) REFERENCES parent(pk)",
+						Query:            "ALTER TABLE child ADD FOREIGN KEY (test_pk) REFERENCES parent(pk)",
 						SkipResultsCheck: true,
 					},
 					{
@@ -339,7 +339,7 @@ func TestForeignKeys(t *testing.T) {
 						Expected: []sql.Row{},
 					},
 					{
-						Query: "ALTER TABLE child ADD FOREIGN KEY (test_pk) REFERENCES parent.parent(pk)",
+						Query:            "ALTER TABLE child ADD FOREIGN KEY (test_pk) REFERENCES parent.parent(pk)",
 						SkipResultsCheck: true,
 					},
 					{
@@ -373,7 +373,7 @@ func TestForeignKeys(t *testing.T) {
 						Expected: []sql.Row{},
 					},
 					{
-						Query: "ALTER TABLE child.child ADD FOREIGN KEY (test_pk) REFERENCES parent.parent(pk)",
+						Query:            "ALTER TABLE child.child ADD FOREIGN KEY (test_pk) REFERENCES parent.parent(pk)",
 						SkipResultsCheck: true,
 					},
 					{
@@ -410,7 +410,7 @@ func TestForeignKeys(t *testing.T) {
 						ExpectedErr: "Foreign key violation",
 					},
 					{
-						Query:       "alter table child DROP constraint child_ibfk_1",
+						Query:            "alter table child DROP constraint child_ibfk_1",
 						SkipResultsCheck: true,
 					},
 					{
@@ -441,7 +441,7 @@ func TestForeignKeys(t *testing.T) {
 						ExpectedErr: "Foreign key violation",
 					},
 					{
-						Query:       "alter table child.child DROP constraint child_ibfk_1",
+						Query:            "alter table child.child DROP constraint child_ibfk_1",
 						SkipResultsCheck: true,
 					},
 					{
