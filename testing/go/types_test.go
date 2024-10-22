@@ -1798,6 +1798,7 @@ var typesTests = []ScriptTest{
 			`CREATE TABLE testing (pk INT primary key, v1 INT UNIQUE);`,
 			`CREATE TABLE "Testing2" (pk INT primary key, v1 INT);`,
 			`CREATE VIEW testview AS SELECT * FROM testing LIMIT 1;`,
+			`CREATE SEQUENCE seq1;`,
 		},
 		Assertions: []ScriptTestAssertion{
 			{
@@ -1839,6 +1840,12 @@ var typesTests = []ScriptTest{
 				},
 			},
 			{
+				Query: `SELECT 'seq1'::regclass;`,
+				Expected: []sql.Row{
+					{"seq1"},
+				},
+			},
+			{
 				Query:       `SELECT 'Testing2'::regclass;`,
 				ExpectedErr: "does not exist",
 			},
@@ -1858,6 +1865,29 @@ var typesTests = []ScriptTest{
 				Query: "SELECT relname FROM pg_catalog.pg_class WHERE oid = 'testing'::regclass;",
 				Expected: []sql.Row{
 					{"testing"},
+				},
+			},
+			{
+				// schema-qualified relation names are not returned if the schema is on the search path
+				Query: `SELECT 'public.testing'::regclass, 'public.seq1'::regclass, 'public.testview'::regclass, 'public.testing_pkey'::regclass;`,
+				Expected: []sql.Row{
+					{"testing", "seq1", "testview", "testing_pkey"},
+				},
+			},
+			{
+				// Clear out the current search_path setting to test schema-qualified relation names
+				Query:    `SET search_path = '';`,
+				Expected: []sql.Row{},
+			},
+			{
+				// Without 'public' on search_path, we get a does not exist error
+				Query:       `SELECT 'testing'::regclass;`,
+				ExpectedErr: "does not exist",
+			},
+			{
+				Query: `SELECT 'public.testing'::regclass, 'public.seq1'::regclass, 'public.testview'::regclass, 'public.testing_pkey'::regclass;`,
+				Expected: []sql.Row{
+					{"public.testing", "public.seq1", "public.testview", "public.testing_pkey"},
 				},
 			},
 		},

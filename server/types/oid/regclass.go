@@ -20,6 +20,8 @@ import (
 
 	"github.com/dolthub/dolt/go/libraries/doltcore/sqle/resolve"
 	"github.com/dolthub/go-mysql-server/sql"
+
+	"github.com/dolthub/doltgresql/server/settings"
 )
 
 // regclass_IoInput is the implementation for IoInput that avoids circular dependencies by being declared in a separate
@@ -109,25 +111,56 @@ func regclass_IoInput(ctx *sql.Context, input string) (uint32, error) {
 // regclass_IoOutput is the implementation for IoOutput that avoids circular dependencies by being declared in a separate
 // package.
 func regclass_IoOutput(ctx *sql.Context, oid uint32) (string, error) {
+	// Find all the schemas on the search path. If a schema is on the search path, then it is not included in the
+	// output of relation name. If the relation's schema is not on the search path, then it is explicitly included.
+	schemasMap, err := settings.GetCurrentSchemasAsMap(ctx)
+	if err != nil {
+		return "", err
+	}
+
+	// The pg_catalog schema is always implicitly part of the search path
+	// https://www.postgresql.org/docs/current/ddl-schemas.html#DDL-SCHEMAS-CATALOG
+	schemasMap["pg_catalog"] = struct{}{}
+
 	output := strconv.FormatUint(uint64(oid), 10)
-	err := RunCallback(ctx, oid, Callbacks{
+	err = RunCallback(ctx, oid, Callbacks{
 		Index: func(ctx *sql.Context, schema ItemSchema, table ItemTable, index ItemIndex) (cont bool, err error) {
 			output = index.Item.ID()
 			if output == "PRIMARY" {
-				output = fmt.Sprintf("%s_pkey", index.Item.Table())
+				schemaName := schema.Item.SchemaName()
+				if _, ok := schemasMap[schemaName]; ok {
+					output = fmt.Sprintf("%s_pkey", index.Item.Table())
+				} else {
+					output = fmt.Sprintf("%s.%s_pkey", schemaName, index.Item.Table())
+				}
 			}
 			return false, nil
 		},
 		Sequence: func(ctx *sql.Context, schema ItemSchema, sequence ItemSequence) (cont bool, err error) {
-			output = sequence.Item.Name
+			schemaName := schema.Item.SchemaName()
+			if _, ok := schemasMap[schemaName]; ok {
+				output = sequence.Item.Name
+			} else {
+				output = fmt.Sprintf("%s.%s", schemaName, sequence.Item.Name)
+			}
 			return false, nil
 		},
 		Table: func(ctx *sql.Context, schema ItemSchema, table ItemTable) (cont bool, err error) {
-			output = table.Item.Name()
+			schemaName := schema.Item.SchemaName()
+			if _, ok := schemasMap[schemaName]; ok {
+				output = table.Item.Name()
+			} else {
+				output = fmt.Sprintf("%s.%s", schemaName, table.Item.Name())
+			}
 			return false, nil
 		},
 		View: func(ctx *sql.Context, schema ItemSchema, view ItemView) (cont bool, err error) {
-			output = view.Item.Name
+			schemaName := schema.Item.SchemaName()
+			if _, ok := schemasMap[schemaName]; ok {
+				output = view.Item.Name
+			} else {
+				output = fmt.Sprintf("%s.%s", schemaName, view.Item.Name)
+			}
 			return false, nil
 		},
 	})

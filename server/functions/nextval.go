@@ -24,18 +24,23 @@ import (
 
 // initNextVal registers the functions to the catalog.
 func initNextVal() {
-	framework.RegisterFunction(nextval_text)
+	framework.RegisterFunction(nextval_regclass)
 }
 
-// nextval_text represents the PostgreSQL function of the same name, taking the same parameters.
-var nextval_text = framework.Function1{
+// nextval_regclass represents the PostgreSQL function of the same name, taking the same parameters.
+var nextval_regclass = framework.Function1{
 	Name:               "nextval",
 	Return:             pgtypes.Int64,
-	Parameters:         [1]pgtypes.DoltgresType{pgtypes.Text},
+	Parameters:         [1]pgtypes.DoltgresType{pgtypes.Regclass},
 	IsNonDeterministic: true,
 	Strict:             true,
 	Callable: func(ctx *sql.Context, _ [2]pgtypes.DoltgresType, val any) (any, error) {
-		schema, sequence, err := parseRelationName(ctx, val.(string))
+		relationName, err := pgtypes.Regclass.IoOutput(ctx, val)
+		if err != nil {
+			return nil, err
+		}
+
+		schema, sequence, err := parseRelationName(ctx, relationName)
 		if err != nil {
 			return nil, err
 		}

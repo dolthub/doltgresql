@@ -202,6 +202,24 @@ func TestFunctionsOID(t *testing.T) {
 						{nil},
 					},
 				},
+				{
+					// When the relation is from a schema on the search path, it is not qualified with the schema name
+					Query: `SELECT to_regclass(('public.testing'::regclass)::text);`,
+					Expected: []sql.Row{
+						{"testing"},
+					},
+				},
+				{
+					// Clear out the current search_path setting to test fully qualified relation names
+					Query:    `SET search_path = '';`,
+					Expected: []sql.Row{},
+				},
+				{
+					Query: `SELECT to_regclass(('public.testing'::regclass)::text);`,
+					Expected: []sql.Row{
+						{"public.testing"},
+					},
+				},
 			},
 		},
 		{
