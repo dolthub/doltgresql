@@ -670,6 +670,9 @@ func (c *CompiledFunction) analyzeParameters() (originalTypes []pgtypes.Doltgres
 	for i, param := range c.Arguments {
 		returnType := param.Type()
 		if extendedType, ok := returnType.(pgtypes.DoltgresType); ok {
+			if domainType, ok := extendedType.(pgtypes.DomainType); ok {
+				extendedType = domainType.UnderlyingBaseType()
+			}
 			originalTypes[i] = extendedType
 		} else {
 			// TODO: we need to remove GMS types from all of our expressions so that we can remove this
