@@ -134,10 +134,11 @@ func TestForeignKeys(t *testing.T) {
 			},
 			{
 				Name: "foreign key in another schema with search path",
-				Skip: true, // no GMS support for schemas in foreign key defns
+				Focus: true,
 				SetUpScript: []string{
 					"create schema parent",
 					"create schema child",
+					"call dolt_commit('-Am', 'create schemas')",
 					"set search_path to 'parent, child'",
 					"create table parent.parent (pk int, \"value\" int, primary key(pk));",
 					"CREATE TABLE child.child (id int, info varchar(255), test_pk int, primary key(id), foreign key (test_pk) references parent(pk))",
