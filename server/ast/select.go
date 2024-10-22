@@ -16,6 +16,7 @@ package ast
 
 import (
 	"fmt"
+	"strings"
 
 	vitess "github.com/dolthub/vitess/go/vt/sqlparser"
 
@@ -157,10 +158,16 @@ func nodeSelectExpr(node tree.SelectExpr) (vitess.SelectExpr, error) {
 		if ce, ok := expr.(*tree.CastExpr); ok && node.As == "" {
 			node.As = tree.UnrestrictedName(tree.AsString(ce.Expr))
 		}
+		// To be consistent with vitess handling, InputExpression always gets its outer qoutes trimmed
+		inputExpression := tree.AsString(&node)
+		if strings.HasPrefix(inputExpression, "'") && strings.HasSuffix(inputExpression, "'") {
+			inputExpression = inputExpression[1 : len(inputExpression)-1]
+		}
+
 		return &vitess.AliasedExpr{
 			Expr:            vitessExpr,
 			As:              vitess.NewColIdent(string(node.As)),
-			InputExpression: tree.AsString(&node),
+			InputExpression: inputExpression,
 		}, nil
 	}
 }
