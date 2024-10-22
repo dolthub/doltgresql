@@ -138,11 +138,13 @@ func TestForeignKeys(t *testing.T) {
 				SetUpScript: []string{
 					"create schema parent",
 					"create schema child",
+					"create schema fake",
 					"call dolt_commit('-Am', 'create schemas')",
 					"set search_path to 'parent, child'",
-					"create table parent.parent (pk int, \"value\" int, primary key(pk));",
+					`create table parent.parent (pk int, val int, primary key(pk));`,
+					`create table fake.parent (pk int, val int, primary key(pk));`,
 					"CREATE TABLE child.child (id int, info varchar(255), test_pk int, primary key(id), foreign key (test_pk) references parent(pk))",
-					"INSERT INTO parent.parent VALUES (0, 0), (1, 1), (2,2)",
+					"INSERT INTO parent VALUES (0, 0), (1, 1), (2,2)",
 					"SELECT DOLT_ADD('.')",
 				},
 				Assertions: []ScriptTestAssertion{
@@ -150,6 +152,7 @@ func TestForeignKeys(t *testing.T) {
 						Query: "SELECT * FROM dolt_status",
 						Expected: []sql.Row{
 							{"child.child", 1, "new table"},
+							{"fake.parent", 1, "new table"},
 							{"parent.parent", 1, "new table"},
 						},
 					},
@@ -166,11 +169,11 @@ func TestForeignKeys(t *testing.T) {
 						Expected: []sql.Row{},
 					},
 					{
-						Query:    "INSERT INTO child.child VALUES (2, 'two', 2)",
+						Query:    "INSERT INTO child VALUES (2, 'two', 2)",
 						Expected: []sql.Row{},
 					},
 					{
-						Query:       "INSERT INTO child.child VALUES (3, 'three', 3)",
+						Query:       "INSERT INTO child VALUES (3, 'three', 3)",
 						ExpectedErr: "Foreign key violation",
 					},
 					{
@@ -182,12 +185,16 @@ func TestForeignKeys(t *testing.T) {
 				},
 			},
 			{
-				Name: "foreign key in another schema",
-				Skip: true, // no GMS support for schemas in foreign key defns
+				Name: "foreign key in another schema with search path, parent table not on search path",
+				Focus: true,
 				SetUpScript: []string{
 					"create schema parent",
 					"create schema child",
-					"create table parent.parent (pk int, \"value\" int, primary key(pk));",
+					"create schema fake",
+					"call dolt_commit('-Am', 'create schemas')",
+					"set search_path to 'child, fake'",
+					`create table parent.parent (pk int, val int, primary key(pk));`,
+					`create table fake.parent (pk int, val int, primary key(pk));`,
 					"CREATE TABLE child.child (id int, info varchar(255), test_pk int, primary key(id), foreign key (test_pk) references parent.parent(pk))",
 					"INSERT INTO parent.parent VALUES (0, 0), (1, 1), (2,2)",
 					"SELECT DOLT_ADD('.')",
@@ -197,6 +204,58 @@ func TestForeignKeys(t *testing.T) {
 						Query: "SELECT * FROM dolt_status",
 						Expected: []sql.Row{
 							{"child.child", 1, "new table"},
+							{"fake.parent", 1, "new table"},
+							{"parent.parent", 1, "new table"},
+						},
+					},
+					{
+						Query:            "SELECT dolt_commit('-am', 'new tables')",
+						SkipResultsCheck: true,
+					},
+					{
+						Query:    "SELECT * FROM dolt_status",
+						Expected: []sql.Row{},
+					},
+					{
+						Query:    "SELECT * FROM dolt_schema_diff('HEAD', 'WORKING', 'child')",
+						Expected: []sql.Row{},
+					},
+					{
+						Query:    "INSERT INTO child VALUES (2, 'two', 2)",
+						Expected: []sql.Row{},
+					},
+					{
+						Query:       "INSERT INTO child VALUES (3, 'three', 3)",
+						ExpectedErr: "Foreign key violation",
+					},
+					{
+						Query: "SELECT * FROM child.child",
+						Expected: []sql.Row{
+							{2, "two", 2},
+						},
+					},
+				},
+			},
+			{
+				Name: "foreign key in another schema, no search path",
+				Focus: true,
+				SetUpScript: []string{
+					"create schema parent",
+					"create schema child",
+					"create schema fake",
+					"call dolt_commit('-Am', 'create schemas')",
+					`create table parent.parent (pk int, val int, primary key(pk));`,
+					`create table fake.parent (pk int, val int, primary key(pk));`,
+					"CREATE TABLE child.child (id int, info varchar(255), test_pk int, primary key(id), foreign key (test_pk) references parent.parent(pk))",
+					"INSERT INTO parent.parent VALUES (0, 0), (1, 1), (2,2)",
+					"SELECT DOLT_ADD('.')",
+				},
+				Assertions: []ScriptTestAssertion{
+					{
+						Query: "SELECT * FROM dolt_status",
+						Expected: []sql.Row{
+							{"child.child", 1, "new table"},
+							{"fake.parent", 1, "new table"},
 							{"parent.parent", 1, "new table"},
 						},
 					},
