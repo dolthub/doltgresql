@@ -22,19 +22,23 @@ import (
 
 const (
 	ruleId_TypeSanitizer analyzer.RuleId = iota + 1000
+	ruleId_AddDomainConstraints
 	ruleId_AssignInsertCasts
 	ruleId_AssignUpdateCasts
 	ruleId_ReplaceIndexedTables
 	ruleId_ReplaceSerial
 	ruleId_AddImplicitPrefixLengths
 	ruleId_InsertContextRootFinalizer
+	ruleId_ResolveType
 )
 
 // Init adds additional rules to the analyzer to handle Doltgres-specific functionality.
 func Init() {
 	// IDs are basically arbitrary, we just need to ensure that they do not conflict with existing IDs
 	analyzer.AlwaysBeforeDefault = append(analyzer.AlwaysBeforeDefault,
+		analyzer.Rule{Id: ruleId_ResolveType, Apply: ResolveType},
 		analyzer.Rule{Id: ruleId_TypeSanitizer, Apply: TypeSanitizer},
+		analyzer.Rule{Id: ruleId_AddDomainConstraints, Apply: AddDomainConstraints},
 		getAnalyzerRule(analyzer.OnceBeforeDefault, analyzer.ValidateColumnDefaultsId),
 		analyzer.Rule{Id: ruleId_AssignInsertCasts, Apply: AssignInsertCasts},
 		analyzer.Rule{Id: ruleId_AssignUpdateCasts, Apply: AssignUpdateCasts},
@@ -56,7 +60,7 @@ func Init() {
 	)
 
 	// The auto-commit rule writes the contents of the context, so we need to insert our finalizer before that
-	analyzer.OnceAfterAll = insertAnalyzerRules(analyzer.OnceAfterAll, analyzer.AutocommitId, true,
+	analyzer.OnceAfterAll = insertAnalyzerRules(analyzer.OnceAfterAll, analyzer.BacktickDefaulColumnValueNamesId, false,
 		analyzer.Rule{Id: ruleId_InsertContextRootFinalizer, Apply: InsertContextRootFinalizer})
 }
 

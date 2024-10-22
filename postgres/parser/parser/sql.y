@@ -4673,13 +4673,13 @@ drop_aggregates:
   }
 
 drop_domain_stmt:
-  DROP DOMAIN name_list opt_drop_behavior
+  DROP DOMAIN table_name_list opt_drop_behavior
   {
-    $$.val = &tree.DropDomain{Names: $3.nameList(), DropBehavior: $4.dropBehavior()}
+    $$.val = &tree.DropDomain{Names: $3.tableNames(), DropBehavior: $4.dropBehavior()}
   }
-| DROP DOMAIN IF EXISTS name_list opt_drop_behavior
+| DROP DOMAIN IF EXISTS table_name_list opt_drop_behavior
   {
-    $$.val = &tree.DropDomain{Names: $5.nameList(), IfExists: true, DropBehavior: $6.dropBehavior()}
+    $$.val = &tree.DropDomain{Names: $5.tableNames(), IfExists: true, DropBehavior: $6.dropBehavior()}
   }
 
 drop_language_stmt:

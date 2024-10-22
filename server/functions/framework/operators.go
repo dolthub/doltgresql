@@ -170,6 +170,8 @@ func (o Operator) String() string {
 		return "||"
 	case Operator_BinaryEqual:
 		return "="
+	case Operator_BinaryNotEqual:
+		return "<>"
 	case Operator_BinaryGreaterThan:
 		return ">"
 	case Operator_BinaryGreaterOrEqual:

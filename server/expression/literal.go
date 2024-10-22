@@ -251,7 +251,14 @@ func (l *Literal) Resolved() bool {
 
 // String implements the sql.Expression interface.
 func (l *Literal) String() string {
-	return fmt.Sprintf("%v", l.value)
+	if l.value == nil {
+		return ""
+	}
+	str, err := l.typ.IoOutput(nil, l.value)
+	if err != nil {
+		panic("got error from IoOutput")
+	}
+	return pgtypes.QuoteString(l.typ.BaseID(), str)
 }
 
 // ToVitessLiteral returns the literal as a Vitess literal. This is strictly for situations where GMS is hardcoded to
