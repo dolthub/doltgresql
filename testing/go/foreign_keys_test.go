@@ -388,6 +388,68 @@ func TestForeignKeys(t *testing.T) {
 					},
 				},
 			},
+			{
+				Name: "drop foreign key in another schema, on search path",
+				SetUpScript: []string{
+					"create schema parent",
+					"create schema child",
+					"create schema fake",
+					"call dolt_commit('-Am', 'create schemas')",
+					"set search_path to 'child, parent'",
+					`create table parent.parent (pk int, val int, primary key(pk));`,
+					`create table fake.parent (pk int, val int, primary key(pk));`,
+					"CREATE TABLE child.child (id int, info varchar(255), test_pk int, primary key(id))",
+					"INSERT INTO parent.parent VALUES (0, 0), (1, 1), (2,2)",
+					"SELECT DOLT_COMMIT('-Am', 'new tables')",
+					"INSERT INTO child.child VALUES (2, 'two', 2)",
+					"ALTER TABLE child.child ADD FOREIGN KEY (test_pk) REFERENCES parent(pk)",
+				},
+				Assertions: []ScriptTestAssertion{
+					{
+						Query:       "INSERT INTO child.child VALUES (3, 'three', 3)",
+						ExpectedErr: "Foreign key violation",
+					},
+					{
+						Query:       "alter table child DROP constraint child_ibfk_1",
+						SkipResultsCheck: true,
+					},
+					{
+						Query:    "INSERT INTO child.child VALUES (3, 'three', 3)",
+						Expected: []sql.Row{},
+					},
+				},
+			},
+			{
+				Name: "drop foreign key in another schema, no search path",
+				Skip: true, // not getting the explicit schema name passed to the node
+				SetUpScript: []string{
+					"create schema parent",
+					"create schema child",
+					"create schema fake",
+					"call dolt_commit('-Am', 'create schemas')",
+					`create table parent.parent (pk int, val int, primary key(pk));`,
+					`create table fake.parent (pk int, val int, primary key(pk));`,
+					"CREATE TABLE child.child (id int, info varchar(255), test_pk int, primary key(id))",
+					"INSERT INTO parent.parent VALUES (0, 0), (1, 1), (2,2)",
+					"SELECT DOLT_COMMIT('-Am', 'new tables')",
+					"INSERT INTO child.child VALUES (2, 'two', 2)",
+					"ALTER TABLE child.child ADD FOREIGN KEY (test_pk) REFERENCES parent.parent(pk)",
+				},
+				Assertions: []ScriptTestAssertion{
+					{
+						Query:       "INSERT INTO child.child VALUES (3, 'three', 3)",
+						ExpectedErr: "Foreign key violation",
+					},
+					{
+						Query:       "alter table child.child DROP constraint child_ibfk_1",
+						SkipResultsCheck: true,
+					},
+					{
+						Query:    "INSERT INTO child.child VALUES (3, 'three', 3)",
+						Expected: []sql.Row{},
+					},
+				},
+			},
 		},
 	)
 }
