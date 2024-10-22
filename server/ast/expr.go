@@ -719,6 +719,9 @@ func nodeExpr(node tree.Expr) (vitess.Expr, error) {
 		return retExpr, nil
 	case *tree.StrVal:
 		// TODO: determine what to do when node.WasScannedAsBytes() is true
+		// For string literals, we mark the type as unknown, because Postgres has
+		// more permissive implicit casting rules for literals than it does for strongly
+		// typed values from a schema for example.
 		unknownLiteral := pgexprs.NewUnknownLiteral(node.RawString())
 		return vitess.InjectedExpr{
 			Expression: unknownLiteral,
