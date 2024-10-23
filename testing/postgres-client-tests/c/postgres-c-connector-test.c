@@ -13,13 +13,13 @@ char *queries[QUERIES_SIZE] = {
     "select * from test",
     "call dolt_add('-A');",
     "call dolt_commit('-m', 'my commit')",
-    "select COUNT(*) FROM dolt_log",
+    "select COUNT(*) FROM dolt.log",
     "call dolt_checkout('-b', 'mybranch')",
     "insert into test (pk, value, d1, f1, c1, t1) values (10,10, 123456.789, 420.42,'example','some text')",
     "call dolt_commit('-a', '-m', 'my commit2')",
     "call dolt_checkout('main')",
     "call dolt_merge('mybranch')",
-    "select COUNT(*) FROM dolt_log",
+    "select COUNT(*) FROM dolt.log",
 };
 
 int main(int argc, char *argv[]) {

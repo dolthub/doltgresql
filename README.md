@@ -150,7 +150,7 @@ getting_started=> call dolt_commit('-m', 'Created initial schema');
 8. View the Dolt log.
 
 ```
-getting_started=> select * from dolt_log;
+getting_started=> select * from dolt.log;
            commit_hash            | committer |       email        |        date         |          message
 ----------------------------------+-----------+--------------------+---------------------+----------------------------
  peqq98e2dl5gscvfvic71e7j6ne34533 | doltgres  | doltgres@127.0.0.1 | 2023-11-01 22:08:04 | Created initial schema

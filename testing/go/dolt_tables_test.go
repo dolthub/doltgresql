@@ -23,6 +23,27 @@ import (
 func TestUserSpaceDoltTables(t *testing.T) {
 	RunScripts(t, []ScriptTest{
 		{
+			Name: "dolt branches",
+			Assertions: []ScriptTestAssertion{
+				{
+					Query:    `SELECT name FROM dolt.branches`,
+					Expected: []sql.Row{{"main"}},
+				},
+				{
+					Query:       `SELECT * FROM dolt_branches`,
+					ExpectedErr: "table not found",
+				},
+				{
+					Query:       `SELECT * FROM public.branches`,
+					ExpectedErr: "table not found",
+				},
+				{
+					Query:       `SELECT * FROM branches`,
+					ExpectedErr: "table not found",
+				},
+			},
+		},
+		{
 			Name: "dolt docs",
 			SetUpScript: []string{
 				"INSERT INTO dolt.docs values ('README.md', 'testing')",
@@ -36,6 +57,14 @@ func TestUserSpaceDoltTables(t *testing.T) {
 				},
 				{
 					Query:       `SELECT * FROM dolt_docs`,
+					ExpectedErr: "table not found",
+				},
+				{
+					Query:       `SELECT * FROM public.docs`,
+					ExpectedErr: "table not found",
+				},
+				{
+					Query:       `SELECT * FROM docs`,
 					ExpectedErr: "table not found",
 				},
 			},

@@ -13,7 +13,7 @@ my $QUERY_RESPONSE = [
     {"call dolt_commit('-a', '-m', 'my commit2')" => '0E0' },
     {"call dolt_checkout('main')" => '0E0' },
     {"call dolt_merge('mybranch')" => '0E0' },
-    {"select COUNT(*) FROM dolt_log" => 1 },
+    {"select COUNT(*) FROM dolt.log" => 1 },
 ];
 
 my $user = $ARGV[0];

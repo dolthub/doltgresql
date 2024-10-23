@@ -580,7 +580,7 @@ var SchemaTests = []ScriptTest{
 				Expected: []sql.Row{},
 			},
 			{
-				Query: "select message from dolt_log order by date desc limit 1",
+				Query: "select message from dolt.log order by date desc limit 1",
 				Expected: []sql.Row{
 					{"new table in new schema"},
 				},
@@ -610,7 +610,7 @@ var SchemaTests = []ScriptTest{
 				Expected: []sql.Row{},
 			},
 			{
-				Query: "select message from dolt_log order by date desc limit 1",
+				Query: "select message from dolt.log order by date desc limit 1",
 				Expected: []sql.Row{
 					{"new table in new schema"},
 				},
@@ -689,7 +689,7 @@ var SchemaTests = []ScriptTest{
 				Expected: []sql.Row{},
 			},
 			{
-				Query: "select message from dolt_log order by date desc limit 1",
+				Query: "select message from dolt.log order by date desc limit 1",
 				Expected: []sql.Row{
 					{"new schema"},
 				},
