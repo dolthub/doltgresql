@@ -303,6 +303,16 @@ func (root *RootValue) GetTableNames(ctx context.Context, schemaName string) ([]
 // HandlePostMerge implements the interface doltdb.RootValue.
 func (root *RootValue) HandlePostMerge(ctx context.Context, ourRoot, theirRoot, ancRoot doltdb.RootValue) (doltdb.RootValue, error) {
 	// Handle sequences
+	_, err := root.handlePostSequencesMerge(ctx, ourRoot, theirRoot, ancRoot)
+	if err != nil {
+		return nil, err
+	}
+	// Handle types
+	return root.handlePostTypesMerge(ctx, ourRoot, theirRoot, ancRoot)
+}
+
+// handlePostSequencesMerge merges sequences.
+func (root *RootValue) handlePostSequencesMerge(ctx context.Context, ourRoot, theirRoot, ancRoot doltdb.RootValue) (doltdb.RootValue, error) {
 	ourSequence, err := ourRoot.(*RootValue).GetSequences(ctx)
 	if err != nil {
 		return nil, err
@@ -320,6 +330,27 @@ func (root *RootValue) HandlePostMerge(ctx context.Context, ourRoot, theirRoot, 
 		return nil, err
 	}
 	return root.PutSequences(ctx, mergedSequence)
+}
+
+// handlePostTypesMerge merges types.
+func (root *RootValue) handlePostTypesMerge(ctx context.Context, ourRoot, theirRoot, ancRoot doltdb.RootValue) (doltdb.RootValue, error) {
+	ourTypes, err := ourRoot.(*RootValue).GetTypes(ctx)
+	if err != nil {
+		return nil, err
+	}
+	theirTypes, err := theirRoot.(*RootValue).GetTypes(ctx)
+	if err != nil {
+		return nil, err
+	}
+	ancTypes, err := ancRoot.(*RootValue).GetTypes(ctx)
+	if err != nil {
+		return nil, err
+	}
+	mergedTypes, err := typecollection.Merge(ctx, ourTypes, theirTypes, ancTypes)
+	if err != nil {
+		return nil, err
+	}
+	return root.PutTypes(ctx, mergedTypes)
 }
 
 // HashOf implements the interface doltdb.RootValue.

@@ -28,12 +28,14 @@ var ErrTypeDoesNotExist = errors.NewKind(`type "%s" does not exist`)
 
 // Type represents a single type.
 type Type struct {
+	Oid           uint32
 	Name          string
+	Schema        string // TODO: should be `uint32`.
 	Owner         string // TODO: should be `uint32`.
 	Length        int16
 	PassedByVal   bool
-	Typ           TypeType
-	Category      TypeCategory
+	TypType       TypeType
+	TypCategory   TypeCategory
 	IsPreferred   bool
 	IsDefined     bool
 	Delimiter     string
