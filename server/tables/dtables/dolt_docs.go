@@ -24,7 +24,11 @@ import (
 
 func getDocsSchema() sql.Schema {
 	return []*sql.Column{
-		{Name: doltdb.DocPkColumnName, Type: pgtypes.Text, Source: doltdb.DocTableName, PrimaryKey: true, Nullable: false},
-		{Name: doltdb.DocTextColumnName, Type: pgtypes.Text, Source: doltdb.DocTableName, PrimaryKey: false},
+		{Name: doltdb.DocPkColumnName, Type: pgtypes.Text, Source: getDocTableName(), PrimaryKey: true, Nullable: false},
+		{Name: doltdb.DocTextColumnName, Type: pgtypes.Text, Source: getDocTableName(), PrimaryKey: false},
 	}
+}
+
+func getDocTableName() string {
+	return "docs"
 }

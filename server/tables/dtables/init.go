@@ -14,9 +14,13 @@
 
 package dtables
 
-import "github.com/dolthub/dolt/go/libraries/doltcore/sqle/dtables"
+import (
+	"github.com/dolthub/dolt/go/libraries/doltcore/doltdb"
+	"github.com/dolthub/dolt/go/libraries/doltcore/sqle/dtables"
+)
 
 // Init handles initialization of all Postgres-specific and Doltgres-specific Dolt system tables.
 func Init() {
 	dtables.GetDocsSchema = getDocsSchema
+	doltdb.GetDocTableName = getDocTableName
 }
