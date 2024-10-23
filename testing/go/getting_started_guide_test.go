@@ -71,7 +71,7 @@ func TestGettingStartedGuide(t *testing.T) {
 					Expected: []sql.Row{},
 				},
 				{
-					Query:    "select count(*) from dolt_log;",
+					Query:    "select count(*) from dolt.log;",
 					Expected: []sql.Row{{3}},
 				},
 
@@ -127,7 +127,7 @@ func TestGettingStartedGuide(t *testing.T) {
 					Expected: []sql.Row{},
 				},
 				{
-					Query: "select message from dolt_log;",
+					Query: "select message from dolt.log;",
 					Expected: []sql.Row{
 						{"Populated tables with data"},
 						{"Created initial schema"},
@@ -195,7 +195,7 @@ func TestGettingStartedGuide(t *testing.T) {
 					Expected: []sql.Row{},
 				},
 				{
-					Query: "select name, latest_commit_message from dolt_branches;",
+					Query: "select name, latest_commit_message from dolt.branches;",
 					Expected: []sql.Row{
 						{"main", "Populated tables with data"},
 						{"modifications", "Modifications on a branch"},

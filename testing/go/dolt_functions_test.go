@@ -39,13 +39,13 @@ func TestDoltFunctions(t *testing.T) {
 					SkipResultsCheck: true,
 				},
 				{
-					Query: "select count(*) from dolt_log",
+					Query: "select count(*) from dolt.log",
 					Expected: []sql.Row{
 						{3}, // initial commit, CREATE DATABASE commit, CREATE TABLE commit
 					},
 				},
 				{
-					Query: "select message from dolt_log order by date desc limit 1",
+					Query: "select message from dolt.log order by date desc limit 1",
 					Expected: []sql.Row{
 						{"new table"},
 					},
@@ -73,7 +73,7 @@ func TestDoltFunctions(t *testing.T) {
 					},
 				},
 				{
-					Query: "select count(*) from dolt_log",
+					Query: "select count(*) from dolt.log",
 					Expected: []sql.Row{
 						{3}, // initial commit, CREATE DATABASE commit, CREATE TABLE commit
 					},
@@ -83,7 +83,7 @@ func TestDoltFunctions(t *testing.T) {
 					SkipResultsCheck: true,
 				},
 				{
-					Query: "select count(*) from dolt_log",
+					Query: "select count(*) from dolt.log",
 					Expected: []sql.Row{
 						{5}, // initial commit, CREATE DATABASE commit, CREATE TABLE t1 commit, new CREATE TABLE t2 commit, merge commit
 					},

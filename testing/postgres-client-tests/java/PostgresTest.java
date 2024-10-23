@@ -46,13 +46,13 @@ public class PostgresTest {
         new PostgresTest("select * from test", null, "c1", new String[]{"hi        ","hello     "}),
         new PostgresTest("call dolt_add('-A')", 0, null, null),
         new PostgresTest("call dolt_commit('-m', 'my commit')", 0, null, null),
-        new PostgresTest("select COUNT(*) FROM dolt_log", null, 1, new String[]{"3"}),
+        new PostgresTest("select COUNT(*) FROM dolt.log", null, 1, new String[]{"3"}),
         new PostgresTest("call dolt_checkout('-b', 'mybranch')", 0, null, null),
         new PostgresTest("insert into test (pk, value, d1, c1) values (1,1,12.34,'bye')", 1, null, null),
         new PostgresTest("call dolt_commit('-a', '-m', 'my commit2')", 0, null, null),
         new PostgresTest("call dolt_checkout('main')", 0, null, null),
         new PostgresTest("call dolt_merge('mybranch')", 0, null, null),
-        new PostgresTest("select COUNT(*) FROM dolt_log", null, "COUNT", new String[]{"4"}), // returns res
+        new PostgresTest("select COUNT(*) FROM dolt.log", null, "COUNT", new String[]{"4"}), // returns res
     };
 
     public static void main(String[] args) {

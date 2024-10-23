@@ -23,4 +23,16 @@ import (
 func Init() {
 	dtables.GetDocsSchema = getDocsSchema
 	doltdb.GetDocTableName = getDocTableName
+	doltdb.GetBranchesTableName = getBranchesTableName
+	doltdb.GetLogTableName = getLogTableName
+}
+
+// getBranchesTableName returns the name of the branches table.
+func getBranchesTableName() string {
+	return "branches"
+}
+
+// getLogTableName returns the name of the branches table.
+func getLogTableName() string {
+	return "log"
 }
