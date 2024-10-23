@@ -76,7 +76,7 @@ func (c *DropDomain) RowIter(ctx *sql.Context, r sql.Row) (sql.RowIter, error) {
 	if err != nil {
 		return nil, err
 	}
-	_, exists := collection.GetDomainType(schema, c.domain)
+	domain, exists := collection.GetDomainType(schema, c.domain)
 	if !exists {
 		if c.ifExists {
 			// TODO: issue a notice
@@ -85,13 +85,36 @@ func (c *DropDomain) RowIter(ctx *sql.Context, r sql.Row) (sql.RowIter, error) {
 			return nil, types.ErrTypeDoesNotExist.New(c.domain)
 		}
 	}
-
-	// TODO: return nil, fmt.Errorf(`cannot drop type %s because other objects depend on it`, c.domain)
-
 	if c.cascade {
 		// TODO: handle cascade
 		return nil, fmt.Errorf(`cascading domain drops are not yet supported`)
 	}
+
+	// iterate on all table columns to check if this domain is currently used.
+	db, err := core.GetSqlDatabaseFromContext(ctx, "")
+	if err != nil {
+		return nil, err
+	}
+	tableNames, err := db.GetTableNames(ctx)
+	if err != nil {
+		return nil, err
+	}
+	for _, tableName := range tableNames {
+		t, ok, err := db.GetTableInsensitive(ctx, tableName)
+		if err != nil {
+			return nil, err
+		}
+		if ok {
+			for _, col := range t.Schema() {
+				if dt, isDomainType := col.Type.(types.DomainType); isDomainType {
+					if dt.Name == domain.Name {
+						return nil, fmt.Errorf(`cannot drop type %s because other objects depend on it`, c.domain)
+					}
+				}
+			}
+		}
+	}
+
 	if err = collection.DropType(schema, c.domain); err != nil {
 		return nil, err
 	}
