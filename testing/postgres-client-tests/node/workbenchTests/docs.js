@@ -1,4 +1,8 @@
-import { doltCommitFields, doltDocsFields } from "../fields.js";
+import {
+  doltCommitFields,
+  doltDocsFields,
+  doltStatusFields,
+} from "../fields.js";
 
 const readmeText = `# README
 ## My List
@@ -64,6 +68,16 @@ export const docsTests = [
       oid: null,
       rows: [{ doc_name: "README.md", doc_text: updatedReadmeText }],
       fields: [],
+    },
+  },
+  {
+    q: `SELECT * FROM dolt_status`,
+    res: {
+      command: "SELECT",
+      rowCount: 1,
+      oid: null,
+      rows: [{ table_name: "dolt.docs", staged: 0, status: "new table" }],
+      fields: doltStatusFields,
     },
   },
   {
