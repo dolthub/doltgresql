@@ -106,6 +106,10 @@ func (b TextType) Convert(val any) (any, sql.ConvertInRange, error) {
 
 // Equals implements the DoltgresType interface.
 func (b TextType) Equals(otherType sql.Type) bool {
+	if _, ok := otherType.(TextType); !ok {
+		return false
+	}
+
 	if otherExtendedType, ok := otherType.(types.ExtendedType); ok {
 		return bytes.Equal(MustSerializeType(b), MustSerializeType(otherExtendedType))
 	}
