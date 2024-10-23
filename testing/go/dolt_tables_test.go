@@ -25,14 +25,18 @@ func TestUserSpaceDoltTables(t *testing.T) {
 		{
 			Name: "dolt docs",
 			SetUpScript: []string{
-				"INSERT INTO dolt_docs values ('README.md', 'testing')",
+				"INSERT INTO dolt.docs values ('README.md', 'testing')",
 			},
 			Assertions: []ScriptTestAssertion{
 				{
-					Query: `SELECT * FROM dolt_docs`,
+					Query: `SELECT * FROM dolt.docs`,
 					Expected: []sql.Row{
 						{"README.md", "testing"},
 					},
+				},
+				{
+					Query:       `SELECT * FROM dolt_docs`,
+					ExpectedErr: "table not found",
 				},
 			},
 		},
