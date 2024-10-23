@@ -53,6 +53,7 @@ func Merge(ctx context.Context, ourCollection, theirCollection, ancCollection *T
 				mergedType.NotNull = true
 			}
 			if len(theirType.Checks) > 0 {
+				// TODO: check for duplicate check constraints
 				mergedType.Checks = append(mergedType.Checks, theirType.Checks...)
 			}
 		default:

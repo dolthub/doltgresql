@@ -16,7 +16,6 @@ package ast
 
 import (
 	"fmt"
-
 	vitess "github.com/dolthub/vitess/go/vt/sqlparser"
 
 	"github.com/dolthub/doltgresql/postgres/parser/sem/tree"
@@ -35,11 +34,13 @@ func nodeDropDomain(node *tree.DropDomain) (vitess.Statement, error) {
 	if err != nil {
 		return nil, err
 	}
-	if len(name.DbQualifier.String()) > 0 {
-		return nil, fmt.Errorf("DROP DOMAIN is currently only supported for the current database")
-	}
 	return vitess.InjectedStatement{
-		Statement: pgnodes.NewDropDomain(node.IfExists, name.SchemaQualifier.String(), name.Name.String(), node.DropBehavior == tree.DropCascade),
-		Children:  nil,
+		Statement: pgnodes.NewDropDomain(
+			node.IfExists,
+			name.DbQualifier.String(),
+			name.SchemaQualifier.String(),
+			name.Name.String(),
+			node.DropBehavior == tree.DropCascade),
+		Children: nil,
 	}, nil
 }

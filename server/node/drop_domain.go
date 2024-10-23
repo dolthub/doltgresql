@@ -27,6 +27,7 @@ import (
 
 // DropDomain handles the DROP DOMAIN statement.
 type DropDomain struct {
+	database string
 	schema   string
 	domain   string
 	ifExists bool
@@ -37,8 +38,9 @@ var _ sql.ExecSourceRel = (*DropDomain)(nil)
 var _ vitess.Injectable = (*DropDomain)(nil)
 
 // NewDropDomain returns a new *DropDomain.
-func NewDropDomain(ifExists bool, schema string, domain string, cascade bool) *DropDomain {
+func NewDropDomain(ifExists bool, db string, schema string, domain string, cascade bool) *DropDomain {
 	return &DropDomain{
+		database: db,
 		schema:   schema,
 		domain:   domain,
 		ifExists: ifExists,
@@ -68,6 +70,10 @@ func (c *DropDomain) Resolved() bool {
 
 // RowIter implements the interface sql.ExecSourceRel.
 func (c *DropDomain) RowIter(ctx *sql.Context, r sql.Row) (sql.RowIter, error) {
+	currentDb := ctx.GetCurrentDatabase()
+	if len(c.database) > 0 && c.database != currentDb {
+		return nil, fmt.Errorf("DROP DOMAIN is currently only supported for the current database")
+	}
 	schema, err := core.GetSchemaName(ctx, nil, c.schema)
 	if err != nil {
 		return nil, err
@@ -108,7 +114,9 @@ func (c *DropDomain) RowIter(ctx *sql.Context, r sql.Row) (sql.RowIter, error) {
 			for _, col := range t.Schema() {
 				if dt, isDomainType := col.Type.(types.DomainType); isDomainType {
 					if dt.Name == domain.Name {
-						return nil, fmt.Errorf(`cannot drop type %s because other objects depend on it`, c.domain)
+						// TODO: issue a detail (list of all columns and tables that uses this domain)
+						//  and a hint (when we support CASCADE)
+						return nil, fmt.Errorf(`cannot drop type %s because other objects depend on it - column %s of table %s depends on type %s'`, c.domain, col.Name, t.Name(), c.domain)
 					}
 				}
 			}

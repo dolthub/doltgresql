@@ -199,6 +199,14 @@ func TestDomain(t *testing.T) {
 					Expected: []sql.Row{},
 				},
 				{
+					Query:    `DROP DOMAIN IF EXISTS postgres.public.year;`,
+					Expected: []sql.Row{},
+				},
+				{
+					Query:       `DROP DOMAIN IF EXISTS mydb.public.year;`,
+					ExpectedErr: `DROP DOMAIN is currently only supported for the current database`,
+				},
+				{
 					Query:       `DROP DOMAIN non_existing_domain;`,
 					ExpectedErr: `type "non_existing_domain" does not exist`,
 				},
