@@ -38,6 +38,7 @@ import (
 	"strings"
 
 	"github.com/cockroachdb/errors"
+	vitess "github.com/dolthub/vitess/go/vt/sqlparser"
 
 	"github.com/dolthub/doltgresql/postgres/parser/pgcode"
 	"github.com/dolthub/doltgresql/postgres/parser/pgerror"
@@ -120,8 +121,10 @@ func (p *Parser) parseOneWithDepth(depth int, sql string) (Statement, error) {
 	if err != nil {
 		return Statement{}, err
 	}
-	if len(stmts) != 1 {
+	if len(stmts) > 1 {
 		return Statement{}, errors.AssertionFailedf("expected 1 statement, but found %d", len(stmts))
+	} else if len(stmts) == 0 {
+		return Statement{}, vitess.ErrEmpty
 	}
 	return stmts[0], nil
 }

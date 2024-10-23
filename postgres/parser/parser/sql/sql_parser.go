@@ -56,7 +56,7 @@ func (p *PostgresParser) ParseWithOptions(ctx context.Context, query string, del
 		return nil, "", "", fmt.Errorf("only a single statement at a time is currently supported")
 	}
 	if len(stmts) == 0 {
-		return nil, q, "", nil
+		return nil, q, "", vitess.ErrEmpty
 	}
 
 	vitessAST, err := ast.Convert(stmts[0])
