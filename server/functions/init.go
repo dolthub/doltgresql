@@ -106,6 +106,7 @@ func Init() {
 	initRpad()
 	initRtrim()
 	initScale()
+	initSetConfig()
 	initSetVal()
 	initShobjDescription()
 	initSign()
