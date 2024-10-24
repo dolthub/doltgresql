@@ -42,6 +42,14 @@ func TestSequences(t *testing.T) {
 					Expected: []sql.Row{{3}},
 				},
 				{
+					Query:    "SELECT nextval('test'::regclass);",
+					Expected: []sql.Row{{4}},
+				},
+				{
+					Query:       "SELECT nextval('doesnotexist'::regclass);",
+					ExpectedErr: "does not exist",
+				},
+				{
 					Query:    "DROP SEQUENCE test;",
 					Expected: []sql.Row{},
 				},

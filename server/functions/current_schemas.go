@@ -15,12 +15,11 @@
 package functions
 
 import (
-	"strings"
-
 	"github.com/dolthub/go-mysql-server/sql"
 
 	"github.com/dolthub/doltgresql/postgres/parser/sessiondata"
 	"github.com/dolthub/doltgresql/server/functions/framework"
+	"github.com/dolthub/doltgresql/server/settings"
 	pgtypes "github.com/dolthub/doltgresql/server/types"
 )
 
@@ -41,7 +40,7 @@ var current_schemas = framework.Function1{
 		if val.(bool) {
 			schemas = append(schemas, sessiondata.PgCatalogName)
 		}
-		searchPaths, err := GetCurrentSchemas(ctx)
+		searchPaths, err := settings.GetCurrentSchemas(ctx)
 		if err != nil {
 			return nil, err
 		}
@@ -50,25 +49,4 @@ var current_schemas = framework.Function1{
 		}
 		return schemas, nil
 	},
-}
-
-// GetCurrentSchemas returns all the schemas in the search_path setting, with elements like "$user" excluded
-func GetCurrentSchemas(ctx *sql.Context) ([]string, error) {
-	searchPathVar, err := ctx.GetSessionVariable(ctx, "search_path")
-	if err != nil {
-		return nil, err
-	}
-
-	pathElems := strings.Split(searchPathVar.(string), ",")
-	var path []string
-
-	for _, schemaName := range pathElems {
-		schemaName = strings.Trim(schemaName, " ")
-		if schemaName == "\"$user\"" {
-			continue
-		}
-		path = append(path, schemaName)
-	}
-
-	return path, nil
 }

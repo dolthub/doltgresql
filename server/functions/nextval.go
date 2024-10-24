@@ -25,9 +25,15 @@ import (
 // initNextVal registers the functions to the catalog.
 func initNextVal() {
 	framework.RegisterFunction(nextval_text)
+	framework.RegisterFunction(nextval_regclass)
 }
 
 // nextval_text represents the PostgreSQL function of the same name, taking the same parameters.
+//
+// TODO: Even though we can implicitly convert a text param to a regclass param, it's an expensive process
+// to convert it to a regclass, then convert the regclass back into the relation name, so we provide an overload
+// that takes a text param directly, in addition to the function form that takes a regclass. Once we can optimize
+// the regclass to text conversion, we can potentially remove this overload.
 var nextval_text = framework.Function1{
 	Name:               "nextval",
 	Return:             pgtypes.Int64,
@@ -36,6 +42,32 @@ var nextval_text = framework.Function1{
 	Strict:             true,
 	Callable: func(ctx *sql.Context, _ [2]pgtypes.DoltgresType, val any) (any, error) {
 		schema, sequence, err := parseRelationName(ctx, val.(string))
+		if err != nil {
+			return nil, err
+		}
+
+		collection, err := core.GetSequencesCollectionFromContext(ctx)
+		if err != nil {
+			return nil, err
+		}
+		return collection.NextVal(schema, sequence)
+	},
+}
+
+// nextval_regclass represents the PostgreSQL function of the same name, taking the same parameters.
+var nextval_regclass = framework.Function1{
+	Name:               "nextval",
+	Return:             pgtypes.Int64,
+	Parameters:         [1]pgtypes.DoltgresType{pgtypes.Regclass},
+	IsNonDeterministic: true,
+	Strict:             true,
+	Callable: func(ctx *sql.Context, _ [2]pgtypes.DoltgresType, val any) (any, error) {
+		relationName, err := pgtypes.Regclass.IoOutput(ctx, val)
+		if err != nil {
+			return nil, err
+		}
+
+		schema, sequence, err := parseRelationName(ctx, relationName)
 		if err != nil {
 			return nil, err
 		}
