@@ -41,6 +41,46 @@ func TestUserSpaceDoltTables(t *testing.T) {
 					Query:       `SELECT * FROM branches`,
 					ExpectedErr: "table not found",
 				},
+				{
+					Query:    `CREATE TABLE branches (id INT PRIMARY KEY)`,
+					Expected: []sql.Row{},
+				},
+				{
+					Query:    `INSERT INTO branches VALUES (1)`,
+					Expected: []sql.Row{},
+				},
+				{
+					Query:    `SELECT * FROM branches`,
+					Expected: []sql.Row{{1}},
+				},
+				{
+					Query:    `SELECT name FROM dolt.branches`,
+					Expected: []sql.Row{{"main"}},
+				},
+				{
+					Query:       `CREATE SCHEMA dolt`,
+					ExpectedErr: "schema exists",
+				},
+				{
+					Query:    "SET search_path = 'dolt'",
+					Expected: []sql.Row{},
+				},
+				{
+					Query:    `SELECT name FROM branches`,
+					Expected: []sql.Row{{"main"}},
+				},
+				{
+					Query:    `SELECT * FROM public.branches`,
+					Expected: []sql.Row{{1}},
+				},
+				{
+					Query:    "SET search_path = 'public'",
+					Expected: []sql.Row{},
+				},
+				{
+					Query:    `SELECT * FROM branches`,
+					Expected: []sql.Row{{1}},
+				},
 			},
 		},
 		{
