@@ -1060,7 +1060,8 @@ func TestDoltMerge(t *testing.T) {
 		"merge with decimal 1.23 column default",                      // alter table
 		"merge with different types",                                  // alter table
 		"select * from dolt_status",                                   // table_name column includes schema name,
-		"dolt_log",
+		"dolt_log",                                                    // dolt.log
+		"dolt_status",                                                 // dolt.status
 	})
 	denginetest.RunDoltMergeTests(t, h)
 }
@@ -1202,6 +1203,7 @@ func TestDoltTag(t *testing.T) {
 		// dolt's initialization is different which results in a different user name for the tagger,
 		// should fix the harness to match
 		"SELECT tag_name, IF(CHAR_LENGTH(tag_hash) < 0, NULL, 'not null'), tagger, email, IF(date IS NULL, NULL, 'not null'), message from dolt_tags",
+		"dolt_tags", // dolt.tags
 	})
 	denginetest.RunDoltTagTests(t, h)
 }

@@ -44,6 +44,27 @@ func TestUserSpaceDoltTables(t *testing.T) {
 			},
 		},
 		{
+			Name: "dolt tags",
+			Assertions: []ScriptTestAssertion{
+				{
+					Query:    `SELECT tag_name FROM dolt.tags`,
+					Expected: []sql.Row{},
+				},
+				{
+					Query:       `SELECT * FROM dolt_branches`,
+					ExpectedErr: "table not found",
+				},
+				{
+					Query:       `SELECT * FROM public.tags`,
+					ExpectedErr: "table not found",
+				},
+				{
+					Query:       `SELECT * FROM tags`,
+					ExpectedErr: "table not found",
+				},
+			},
+		},
+		{
 			Name: "dolt docs",
 			SetUpScript: []string{
 				"INSERT INTO dolt.docs values ('README.md', 'testing')",

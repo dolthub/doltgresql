@@ -40,16 +40,16 @@ const testInfoFields = [
 ];
 
 export const tableTests = [
-    {
-        q: "SET search_path TO DEFAULT",
-        res: {
-            command: "SET",
-            rowCount: null,
-            oid: null,
-            rows: [],
-            fields: [],
-        },
+  {
+    q: "SET search_path TO DEFAULT",
+    res: {
+      command: "SET",
+      rowCount: null,
+      oid: null,
+      rows: [],
+      fields: [],
     },
+  },
   {
     q: "INSERT INTO test VALUES (0, 0), (1, 1), (2,2)",
     res: {
@@ -289,7 +289,7 @@ export const tableTests = [
 
   // Copy from tests
   {
-    q: `SELECT * FROM dolt_status`,
+    q: `SELECT * FROM dolt.status`,
     res: {
       command: "SELECT",
       rowCount: 0,
@@ -377,7 +377,7 @@ export const tableTests = [
 
   // Add and revert load data changes
   {
-    q: `SELECT * FROM dolt_status`,
+    q: `SELECT * FROM dolt.status`,
     res: {
       command: "SELECT",
       rowCount: 1,
@@ -397,7 +397,7 @@ export const tableTests = [
     },
   },
   {
-    q: `SELECT * FROM dolt_status`,
+    q: `SELECT * FROM dolt.status`,
     res: {
       command: "SELECT",
       rowCount: 1,
@@ -417,7 +417,7 @@ export const tableTests = [
     },
   },
   {
-    q: `SELECT * FROM dolt_status`,
+    q: `SELECT * FROM dolt.status`,
     res: {
       command: "SELECT",
       rowCount: 1,
@@ -437,7 +437,7 @@ export const tableTests = [
     },
   },
   {
-    q: `SELECT * FROM dolt_status`,
+    q: `SELECT * FROM dolt.status`,
     res: {
       command: "SELECT",
       rowCount: 0,

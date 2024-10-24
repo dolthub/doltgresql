@@ -60,7 +60,7 @@ export const diffTests = [
     },
   },
   {
-    q: `SELECT * FROM dolt_status ORDER BY table_name;`,
+    q: `SELECT * FROM dolt.status ORDER BY table_name;`,
     res: {
       command: "SELECT",
       rowCount: 5,

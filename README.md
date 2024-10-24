@@ -119,7 +119,7 @@ getting_started=> \d
 7. Make a Dolt Commit.
 
 ```sql
-getting_started=> select * from dolt_status;
+getting_started=> select * from dolt.status;
    table_name           | staged |  status
 ------------------------+--------+-----------
  public.employees       | 0      | new table
@@ -132,7 +132,7 @@ getting_started=> call dolt_add('teams', 'employees', 'employees_teams');
 --------
       0
 (1 row)
-getting_started=> select * from dolt_status;
+getting_started=> select * from dolt.status;
    table_name          | staged |  status
 -----------------------+--------+-----------
 public.employees       | 1      | new table
