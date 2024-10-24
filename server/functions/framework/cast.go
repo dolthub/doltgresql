@@ -16,6 +16,7 @@ package framework
 
 import (
 	"fmt"
+	"github.com/dolthub/go-mysql-server/sql/expression"
 	"sync"
 
 	"github.com/dolthub/go-mysql-server/sql"
@@ -149,7 +150,7 @@ func GetExplicitCast(fromType pgtypes.DoltgresTypeBaseID, toType pgtypes.Doltgre
 			if err != nil {
 				return nil, err
 			}
-			return targetType.IoInput(ctx, str)
+			return IoInput(ctx, targetType, str)
 		}
 	} else if toType.GetTypeCategory() == pgtypes.TypeCategory_StringTypes {
 		// All types have a built-in assignment cast to string types, which we can reference in an explicit cast
@@ -161,7 +162,7 @@ func GetExplicitCast(fromType pgtypes.DoltgresTypeBaseID, toType pgtypes.Doltgre
 			if err != nil {
 				return nil, err
 			}
-			return targetType.IoInput(ctx, str)
+			return IoInput(ctx, targetType, str)
 		}
 	}
 	return nil
@@ -190,7 +191,7 @@ func GetAssignmentCast(fromType pgtypes.DoltgresTypeBaseID, toType pgtypes.Doltg
 			if err != nil {
 				return nil, err
 			}
-			return targetType.IoInput(ctx, str)
+			return IoInput(ctx, targetType, str)
 		}
 	}
 	return nil
@@ -299,5 +300,47 @@ func UnknownLiteralCast(ctx *sql.Context, val any, targetType pgtypes.DoltgresTy
 	if err != nil {
 		return nil, err
 	}
-	return targetType.IoInput(ctx, str)
+	return IoInput(ctx, targetType, str)
+}
+
+func IoInput(ctx *sql.Context, t pgtypes.DoltgresType, input string) (any, error) {
+	tt, ok := t.(pgtypes.Type)
+	if !ok {
+		return t.IoInput(ctx, input)
+	}
+
+	// TODO: ideally, should use NewTextLiteral() -- import cycle issue
+	inputVal, ok, err := GetFunction(tt.InputFunc, expression.NewLiteral(input, pgtypes.Text))
+	if err != nil {
+		return nil, err
+	}
+	if !ok {
+		return nil, fmt.Errorf(`function "nextval" could not be found for SERIAL default`)
+	}
+	return inputVal.Eval(ctx, nil)
+}
+
+func IoOutput(ctx *sql.Context, t pgtypes.DoltgresType, val any) (string, error) {
+	tt, ok := t.(pgtypes.Type)
+	if !ok {
+		return t.IoOutput(ctx, val)
+	}
+
+	// TODO: ideally, should use NewTextLiteral() -- import cycle issue
+	outputVal, ok, err := GetFunction(tt.OutputFunc, expression.NewLiteral(val, t))
+	if err != nil {
+		return "", err
+	}
+	if !ok {
+		return "", fmt.Errorf(`function "nextval" could not be found for SERIAL default`)
+	}
+	o, err := outputVal.Eval(ctx, nil)
+	if err != nil {
+		return "", err
+	}
+	output, ok := o.(string)
+	if !ok {
+		return "", fmt.Errorf(`expected string, got %T`, output)
+	}
+	return output, nil
 }

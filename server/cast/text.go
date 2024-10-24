@@ -65,7 +65,7 @@ func textImplicit() {
 		FromType: pgtypes.Text,
 		ToType:   pgtypes.Regclass,
 		Function: func(ctx *sql.Context, val any, targetType pgtypes.DoltgresType) (any, error) {
-			return targetType.IoInput(ctx, val.(string))
+			return framework.IoInput(ctx, targetType, val.(string))
 		},
 	})
 	framework.MustAddImplicitTypeCast(framework.TypeCast{

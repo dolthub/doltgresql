@@ -524,20 +524,11 @@ func NormalizeArrayType(dta types.DoltgresArrayType, arr []any) any {
 	for i, el := range arr {
 		newVal[i] = NormalizeVal(dta.BaseType(), el)
 	}
-	baseType := dta.BaseType()
-	if baseType == types.Bool {
-		sqlVal, err := dta.SQL(nil, nil, newVal)
-		if err != nil {
-			panic(err)
-		}
-		return sqlVal.ToString()
-	} else {
-		ret, err := dta.IoOutput(nil, newVal)
-		if err != nil {
-			panic(err)
-		}
-		return ret
+	ret, err := dta.IoOutput(nil, newVal)
+	if err != nil {
+		panic(err)
 	}
+	return ret
 }
 
 // NormalizeVal normalizes values to the Doltgres type expects, so it can be used to

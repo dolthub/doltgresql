@@ -16,6 +16,7 @@ package functions
 
 // Init initializes all functions in this package.
 func Init() {
+	initUnaryTypeIn()
 	initAbs()
 	initAcos()
 	initAcosd()

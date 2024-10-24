@@ -20,48 +20,7 @@ import (
 	"github.com/dolthub/go-mysql-server/sql"
 	"github.com/dolthub/go-mysql-server/sql/types"
 	"github.com/lib/pq/oid"
-	"gopkg.in/src-d/go-errors.v1"
 )
-
-var ErrTypeAlreadyExists = errors.NewKind(`type "%s" already exists`)
-var ErrTypeDoesNotExist = errors.NewKind(`type "%s" does not exist`)
-
-// Type represents a single type.
-type Type struct {
-	Oid           uint32
-	Name          string
-	Schema        string // TODO: should be `uint32`.
-	Owner         string // TODO: should be `uint32`.
-	Length        int16
-	PassedByVal   bool
-	TypType       TypeType
-	TypCategory   TypeCategory
-	IsPreferred   bool
-	IsDefined     bool
-	Delimiter     string
-	RelID         uint32 // for Composite types
-	SubscriptFunc string
-	Elem          uint32
-	Array         uint32
-	InputFunc     string
-	OutputFunc    string
-	ReceiveFunc   string
-	SendFunc      string
-	ModInFunc     string
-	ModOutFunc    string
-	AnalyzeFunc   string
-	Align         TypeAlignment
-	Storage       TypeStorage
-	NotNull       bool   // for Domain types
-	BaseTypeOID   uint32 // for Domain types
-	TypMod        int32  // for Domain types
-	NDims         int32  // for Domain types
-	Collation     uint32
-	DefaulBin     string // for Domain types
-	Default       string
-	Acl           string                 // TODO: list of privileges
-	Checks        []*sql.CheckDefinition // TODO: this is not part of `pg_type` instead `pg_constraint` for Domain types.
-}
 
 // DoltgresType is a type that is distinct from the MySQL types in GMS.
 type DoltgresType interface {
@@ -127,13 +86,13 @@ type DoltgresPolymorphicType interface {
 
 // typesFromBaseID contains a map from a DoltgresTypeBaseID to its originating type.
 var typesFromBaseID = map[DoltgresTypeBaseID]DoltgresType{
-	AnyArray.BaseID():          AnyArray,
-	AnyElement.BaseID():        AnyElement,
-	AnyNonArray.BaseID():       AnyNonArray,
-	BpChar.BaseID():            BpChar,
-	BpCharArray.BaseID():       BpCharArray,
-	Bool.BaseID():              Bool,
-	BoolArray.BaseID():         BoolArray,
+	AnyArray.BaseID():    AnyArray,
+	AnyElement.BaseID():  AnyElement,
+	AnyNonArray.BaseID(): AnyNonArray,
+	BpChar.BaseID():      BpChar,
+	BpCharArray.BaseID(): BpCharArray,
+	Bool.BaseID():        Bool,
+	//BoolArray.BaseID():         BoolArray,
 	Bytea.BaseID():             Bytea,
 	ByteaArray.BaseID():        ByteaArray,
 	Date.BaseID():              Date,
@@ -252,7 +211,7 @@ var OidToBuildInDoltgresType = map[uint32]DoltgresType{
 	uint32(oid.T__money):           Unknown,
 	uint32(oid.T_macaddr):          Unknown,
 	uint32(oid.T_inet):             Unknown,
-	uint32(oid.T__bool):            BoolArray,
+	//uint32(oid.T__bool):            BoolArray,
 	uint32(oid.T__bytea):           ByteaArray,
 	uint32(oid.T__char):            InternalCharArray,
 	uint32(oid.T__name):            NameArray,
