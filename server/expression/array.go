@@ -68,9 +68,9 @@ func (array *Array) Eval(ctx *sql.Context, row sql.Row) (any, error) {
 			continue
 		}
 
-		doltgresType, ok := expr.Type().(pgtypes.DoltgresType)
+		doltgresType, ok := expr.Type().(pgtypes.DoltgresTypeInterface)
 		if !ok {
-			return nil, fmt.Errorf("expected DoltgresType, but got %s", expr.Type().String())
+			return nil, fmt.Errorf("expected DoltgresTypeInterface, but got %s", expr.Type().String())
 		}
 
 		// We always cast the element, as there may be parameter restrictions in place
@@ -161,7 +161,7 @@ func (array *Array) getTargetType(children ...sql.Expression) (pgtypes.DoltgresA
 	var childrenTypes []pgtypes.DoltgresTypeBaseID
 	for _, child := range children {
 		if child != nil {
-			childType, ok := child.Type().(pgtypes.DoltgresType)
+			childType, ok := child.Type().(pgtypes.DoltgresTypeInterface)
 			if !ok {
 				// We use "anyarray" as the indeterminate/invalid type
 				return pgtypes.AnyArray, nil

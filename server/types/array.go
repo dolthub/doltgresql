@@ -31,10 +31,48 @@ import (
 	"github.com/dolthub/doltgresql/utils"
 )
 
+func CreateArrayTypeFromBaseType(baseType DoltgresType) DoltgresType {
+	return DoltgresType{
+		Oid:           baseType.Array,
+		Name:          fmt.Sprintf("_%s", baseType.Name),
+		Schema:        "pg_catalog",
+		Owner:         "doltgres", // TODO
+		Length:        int16(-1),
+		PassedByVal:   false,
+		TypType:       TypeType_Base,
+		TypCategory:   TypeCategory_ArrayTypes,
+		IsPreferred:   false,
+		IsDefined:     true,
+		Delimiter:     ",",
+		RelID:         0,
+		SubscriptFunc: "array_subscript_handler",
+		Elem:          baseType.Oid,
+		Array:         0,
+		InputFunc:     "array_in",
+		OutputFunc:    "array_out",
+		ReceiveFunc:   "array_recv",
+		SendFunc:      "array_send",
+		ModInFunc:     baseType.ModInFunc,
+		ModOutFunc:    baseType.ModOutFunc,
+		AnalyzeFunc:   "array_typanalyze",
+		Align:         baseType.Align,
+		Storage:       TypeStorage_Extended,
+		NotNull:       false,
+		BaseTypeOID:   0,
+		TypMod:        -1,
+		NDims:         0,
+		Collation:     baseType.Collation,
+		DefaulBin:     "",
+		Default:       "",
+		Acl:           "",
+		Checks:        nil,
+	}
+}
+
 // arrayContainer is a type that wraps non-array types, giving them array functionality without requiring a bespoke
 // implementation.
 type arrayContainer struct {
-	innerType       DoltgresType
+	innerType       DoltgresTypeInterface
 	serializationID SerializationID
 	oid             oid.Oid
 	funcs           arrayContainerFunctions
@@ -43,23 +81,23 @@ type arrayContainer struct {
 // arrayContainerFunctions are overrides for the default array implementations of specific functions. If they are left
 // nil, then it uses the default implementation.
 type arrayContainerFunctions struct {
-	// SQL is similar to the function with the same name that is found on sql.Type. This just takes an additional
+	// SQL is similar to the function with the same name that is found on sql.DoltgresType. This just takes an additional
 	// arrayContainer parameter.
 	SQL func(ctx *sql.Context, ac arrayContainer, dest []byte, valInterface any) (sqltypes.Value, error)
 }
 
-var _ DoltgresType = arrayContainer{}
+var _ DoltgresTypeInterface = arrayContainer{}
 var _ DoltgresArrayType = arrayContainer{}
 
 // createArrayType creates an array variant of the given type. Uses the default array implementations for all possible
 // overrides.
-func createArrayType(innerType DoltgresType, serializationID SerializationID, arrayOid oid.Oid) DoltgresArrayType {
+func createArrayType(innerType DoltgresTypeInterface, serializationID SerializationID, arrayOid oid.Oid) DoltgresArrayType {
 	return createArrayTypeWithFuncs(innerType, serializationID, arrayOid, arrayContainerFunctions{})
 }
 
 // createArrayTypeWithFuncs creates an array variant of the given type. Uses the provided function overrides if they're
 // not nil. If any are nil, then they use the default array implementations.
-func createArrayTypeWithFuncs(innerType DoltgresType, serializationID SerializationID, arrayOid oid.Oid, funcs arrayContainerFunctions) DoltgresArrayType {
+func createArrayTypeWithFuncs(innerType DoltgresTypeInterface, serializationID SerializationID, arrayOid oid.Oid, funcs arrayContainerFunctions) DoltgresArrayType {
 	if funcs.SQL == nil {
 		funcs.SQL = arrayContainerSQL
 	}
@@ -71,12 +109,12 @@ func createArrayTypeWithFuncs(innerType DoltgresType, serializationID Serializat
 	}
 }
 
-// Alignment implements the DoltgresType interface.
+// Alignment implements the DoltgresTypeInterface interface.
 func (ac arrayContainer) Alignment() TypeAlignment {
 	return ac.innerType.Alignment()
 }
 
-// BaseID implements the DoltgresType interface.
+// BaseID implements the DoltgresTypeInterface interface.
 func (ac arrayContainer) BaseID() DoltgresTypeBaseID {
 	// The serializationID might be enough, but it's technically possible for us to use the same serialization ID with
 	// different inner types, so this ensures uniqueness. It is safe to change base IDs in the future (unlike
@@ -85,27 +123,27 @@ func (ac arrayContainer) BaseID() DoltgresTypeBaseID {
 	return (1 << 31) | (DoltgresTypeBaseID(ac.serializationID) << 16) | ac.innerType.BaseID()
 }
 
-// BaseName implements the DoltgresType interface.
+// BaseName implements the DoltgresTypeInterface interface.
 func (ac arrayContainer) BaseName() string {
 	return ac.innerType.BaseName()
 }
 
 // BaseType implements the DoltgresArrayType interface.
-func (ac arrayContainer) BaseType() DoltgresType {
+func (ac arrayContainer) BaseType() DoltgresTypeInterface {
 	return ac.innerType
 }
 
-// Category implements the DoltgresType interface.
+// Category implements the DoltgresTypeInterface interface.
 func (ac arrayContainer) Category() TypeCategory {
 	return TypeCategory_ArrayTypes
 }
 
-// CollationCoercibility implements the DoltgresType interface.
+// CollationCoercibility implements the DoltgresTypeInterface interface.
 func (ac arrayContainer) CollationCoercibility(ctx *sql.Context) (collation sql.CollationID, coercibility byte) {
 	return sql.Collation_binary, 5
 }
 
-// Compare implements the DoltgresType interface.
+// Compare implements the DoltgresTypeInterface interface.
 func (ac arrayContainer) Compare(v1 any, v2 any) (int, error) {
 	if v1 == nil && v2 == nil {
 		return 0, nil
@@ -143,7 +181,7 @@ func (ac arrayContainer) Compare(v1 any, v2 any) (int, error) {
 	}
 }
 
-// Convert implements the DoltgresType interface.
+// Convert implements the DoltgresTypeInterface interface.
 func (ac arrayContainer) Convert(val any) (any, sql.ConvertInRange, error) {
 	switch val := val.(type) {
 	case []any:
@@ -155,7 +193,7 @@ func (ac arrayContainer) Convert(val any) (any, sql.ConvertInRange, error) {
 	}
 }
 
-// Equals implements the DoltgresType interface.
+// Equals implements the DoltgresTypeInterface interface.
 func (ac arrayContainer) Equals(otherType sql.Type) bool {
 	if otherExtendedType, ok := otherType.(types.ExtendedType); ok {
 		return bytes.Equal(MustSerializeType(ac), MustSerializeType(otherExtendedType))
@@ -163,7 +201,7 @@ func (ac arrayContainer) Equals(otherType sql.Type) bool {
 	return false
 }
 
-// FormatValue implements the DoltgresType interface.
+// FormatValue implements the DoltgresTypeInterface interface.
 func (ac arrayContainer) FormatValue(val any) (string, error) {
 	if val == nil {
 		return "", nil
@@ -171,12 +209,12 @@ func (ac arrayContainer) FormatValue(val any) (string, error) {
 	return ac.IoOutput(sql.NewEmptyContext(), val)
 }
 
-// GetSerializationID implements the DoltgresType interface.
+// GetSerializationID implements the DoltgresTypeInterface interface.
 func (ac arrayContainer) GetSerializationID() SerializationID {
 	return ac.serializationID
 }
 
-// IoInput implements the DoltgresType interface.
+// IoInput implements the DoltgresTypeInterface interface.
 func (ac arrayContainer) IoInput(ctx *sql.Context, input string) (any, error) {
 	if len(input) < 2 || input[0] != '{' || input[len(input)-1] != '}' {
 		// This error is regarded as a critical error, and thus we immediately return the error alongside a nil
@@ -271,7 +309,7 @@ func (ac arrayContainer) IoInput(ctx *sql.Context, input string) (any, error) {
 	return values, err
 }
 
-// IoOutput implements the DoltgresType interface.
+// IoOutput implements the DoltgresTypeInterface interface.
 func (ac arrayContainer) IoOutput(ctx *sql.Context, output any) (string, error) {
 	converted, _, err := ac.Convert(output)
 	if err != nil {
@@ -310,37 +348,37 @@ func (ac arrayContainer) IoOutput(ctx *sql.Context, output any) (string, error) 
 	return sb.String(), nil
 }
 
-// IsPreferredType implements the DoltgresType interface.
+// IsPreferredType implements the DoltgresTypeInterface interface.
 func (ac arrayContainer) IsPreferredType() bool {
 	return false
 }
 
-// IsUnbounded implements the DoltgresType interface.
+// IsUnbounded implements the DoltgresTypeInterface interface.
 func (ac arrayContainer) IsUnbounded() bool {
 	return true
 }
 
-// MaxSerializedWidth implements the DoltgresType interface.
+// MaxSerializedWidth implements the DoltgresTypeInterface interface.
 func (ac arrayContainer) MaxSerializedWidth() types.ExtendedTypeSerializedWidth {
 	return types.ExtendedTypeSerializedWidth_Unbounded
 }
 
-// MaxTextResponseByteLength implements the DoltgresType interface.
+// MaxTextResponseByteLength implements the DoltgresTypeInterface interface.
 func (ac arrayContainer) MaxTextResponseByteLength(ctx *sql.Context) uint32 {
 	return math.MaxUint32
 }
 
-// OID implements the DoltgresType interface.
+// OID implements the DoltgresTypeInterface interface.
 func (ac arrayContainer) OID() uint32 {
 	return uint32(ac.oid)
 }
 
-// Promote implements the DoltgresType interface.
+// Promote implements the DoltgresTypeInterface interface.
 func (ac arrayContainer) Promote() sql.Type {
 	return ac
 }
 
-// SerializedCompare implements the DoltgresType interface.
+// SerializedCompare implements the DoltgresTypeInterface interface.
 func (ac arrayContainer) SerializedCompare(v1 []byte, v2 []byte) (int, error) {
 	//TODO: write a far more optimized version of this that does not deserialize the entire arrays at once
 	dv1, err := ac.DeserializeValue(v1)
@@ -354,37 +392,37 @@ func (ac arrayContainer) SerializedCompare(v1 []byte, v2 []byte) (int, error) {
 	return ac.Compare(dv1, dv2)
 }
 
-// SQL implements the DoltgresType interface.
+// SQL implements the DoltgresTypeInterface interface.
 func (ac arrayContainer) SQL(ctx *sql.Context, dest []byte, valInterface any) (sqltypes.Value, error) {
 	return ac.funcs.SQL(ctx, ac, dest, valInterface)
 }
 
-// String implements the DoltgresType interface.
+// String implements the DoltgresTypeInterface interface.
 func (ac arrayContainer) String() string {
 	return ac.innerType.String() + "[]"
 }
 
-// ToArrayType implements the DoltgresType interface.
+// ToArrayType implements the DoltgresTypeInterface interface.
 func (ac arrayContainer) ToArrayType() DoltgresArrayType {
 	return ac
 }
 
-// Type implements the DoltgresType interface.
+// DoltgresType implements the DoltgresTypeInterface interface.
 func (ac arrayContainer) Type() query.Type {
 	return sqltypes.Text
 }
 
-// ValueType implements the DoltgresType interface.
+// ValueType implements the DoltgresTypeInterface interface.
 func (ac arrayContainer) ValueType() reflect.Type {
 	return reflect.TypeOf([]any{})
 }
 
-// Zero implements the DoltgresType interface.
+// Zero implements the DoltgresTypeInterface interface.
 func (ac arrayContainer) Zero() any {
 	return []any{}
 }
 
-// SerializeType implements the DoltgresType interface.
+// SerializeType implements the DoltgresTypeInterface interface.
 func (ac arrayContainer) SerializeType() ([]byte, error) {
 	innerSerialized, err := ac.innerType.SerializeType()
 	if err != nil {
@@ -396,21 +434,21 @@ func (ac arrayContainer) SerializeType() ([]byte, error) {
 	return serialized, nil
 }
 
-// deserializeType implements the DoltgresType interface.
-func (ac arrayContainer) deserializeType(version uint16, metadata []byte) (DoltgresType, error) {
+// deserializeType implements the DoltgresTypeInterface interface.
+func (ac arrayContainer) deserializeType(version uint16, metadata []byte) (DoltgresTypeInterface, error) {
 	switch version {
 	case 0:
 		innerType, err := DeserializeType(metadata)
 		if err != nil {
 			return nil, err
 		}
-		return innerType.(DoltgresType).ToArrayType(), nil
+		return innerType.(DoltgresTypeInterface).ToArrayType(), nil
 	default:
 		return nil, fmt.Errorf("version %d is not yet supported for arrays", version)
 	}
 }
 
-// SerializeValue implements the DoltgresType interface.
+// SerializeValue implements the DoltgresTypeInterface interface.
 func (ac arrayContainer) SerializeValue(valInterface any) ([]byte, error) {
 	// The binary format is as follows:
 	// The first value is always the number of serialized elements (uint32).
@@ -475,7 +513,7 @@ func (ac arrayContainer) SerializeValue(valInterface any) ([]byte, error) {
 	return outputBytes, nil
 }
 
-// DeserializeValue implements the DoltgresType interface.
+// DeserializeValue implements the DoltgresTypeInterface interface.
 func (ac arrayContainer) DeserializeValue(serializedVals []byte) (_ any, err error) {
 	// Check for the nil value, then ensure the minimum length of the slice
 	if serializedVals == nil {

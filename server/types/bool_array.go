@@ -14,8 +14,10 @@
 
 package types
 
-//// BoolArray is the array variant of Bool.
-//var BoolArray = createArrayTypeWithFuncs(Bool, SerializationID_BoolArray, oid.T__bool, arrayContainerFunctions{
+// BoolArray is the array variant of Bool.
+var BoolArray = CreateArrayTypeFromBaseType(Bool)
+
+//	createArrayTypeWithFuncs(Bool, SerializationID_BoolArray, oid.T__bool, arrayContainerFunctions{
 //	SQL: func(ctx *sql.Context, ac arrayContainer, dest []byte, valInterface any) (sqltypes.Value, error) {
 //		if valInterface == nil {
 //			return sqltypes.NULL, nil

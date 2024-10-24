@@ -105,7 +105,7 @@ func nodeExpr(node tree.Expr) (vitess.Expr, error) {
 		return nil, fmt.Errorf("ANNOTATE_TYPE is not yet supported")
 	case *tree.Array:
 		unresolvedChildren := make([]vitess.Expr, len(node.Exprs))
-		var coercedType pgtypes.DoltgresType
+		var coercedType pgtypes.DoltgresTypeInterface
 		if node.HasResolvedType() {
 			_, resolvedType, err := nodeResolvableTypeReference(node.ResolvedType())
 			if err != nil {

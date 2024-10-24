@@ -122,7 +122,7 @@ type ItemTable struct {
 	Item  sql.Table
 }
 
-// ItemType contains the relevant information to pass to the Type callback.
+// ItemType contains the relevant information to pass to the DoltgresType callback.
 type ItemType struct {
 	// TODO: add Index when we add custom types
 	OID  uint32
@@ -233,7 +233,7 @@ func iterateTypes(ctx *sql.Context, callbacks Callbacks) error {
 	for _, t := range pgtypes.GetAllTypes() {
 		if t.BaseID().HasUniqueOID() {
 			cont, err := callbacks.Type(ctx, ItemType{
-				OID:  t.OID(),
+				OID:  t.Oid,
 				Item: t,
 			})
 			if err != nil {
@@ -790,7 +790,7 @@ func runTable(ctx *sql.Context, oid uint32, callbacks Callbacks, itemSchema Item
 
 // runType is called by RunCallback to handle types within Section_BuiltIn.
 func runType(ctx *sql.Context, toid uint32, callbacks Callbacks) error {
-	if t := pgtypes.GetTypeByOID(toid); t != nil {
+	if t := pgtypes.GetTypeByOID(toid); !t.EmptyType() {
 		itemType := ItemType{
 			OID:  toid,
 			Item: t,

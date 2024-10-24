@@ -34,39 +34,73 @@ import (
 const InternalCharLength = 1
 
 // InternalChar is a single-byte internal type. In Postgres, it's displayed as "char".
-var InternalChar = InternalCharType{}
+var InternalChar = DoltgresType{
+	Oid:           uint32(oid.T_char),
+	Name:          "char",
+	Schema:        "pg_catalog",
+	Owner:         "doltgres", // TODO
+	Length:        int16(1),
+	PassedByVal:   true,
+	TypType:       TypeType_Base,
+	TypCategory:   TypeCategory_InternalUseTypes,
+	IsPreferred:   false,
+	IsDefined:     true,
+	Delimiter:     ",",
+	RelID:         0,
+	SubscriptFunc: "-",
+	Elem:          0,
+	Array:         uint32(oid.T__char),
+	InputFunc:     "charin",
+	OutputFunc:    "charout",
+	ReceiveFunc:   "charrecv",
+	SendFunc:      "charsend",
+	ModInFunc:     "-",
+	ModOutFunc:    "-",
+	AnalyzeFunc:   "-",
+	Align:         TypeAlignment_Char,
+	Storage:       TypeStorage_Plain,
+	NotNull:       false,
+	BaseTypeOID:   0,
+	TypMod:        -1,
+	NDims:         0,
+	Collation:     0,
+	DefaulBin:     "",
+	Default:       "",
+	Acl:           "",
+	Checks:        nil,
+}
 
 // InternalCharType is the type implementation of the internal PostgreSQL "char" type.
 type InternalCharType struct{}
 
-var _ DoltgresType = InternalCharType{}
+var _ DoltgresTypeInterface = InternalCharType{}
 
-// Alignment implements the DoltgresType interface.
+// Alignment implements the DoltgresTypeInterface interface.
 func (b InternalCharType) Alignment() TypeAlignment {
 	return TypeAlignment_Char
 }
 
-// BaseID implements the DoltgresType interface.
+// BaseID implements the DoltgresTypeInterface interface.
 func (b InternalCharType) BaseID() DoltgresTypeBaseID {
 	return DoltgresTypeBaseID_InternalChar
 }
 
-// BaseName implements the DoltgresType interface.
+// BaseName implements the DoltgresTypeInterface interface.
 func (b InternalCharType) BaseName() string {
 	return `"char"`
 }
 
-// Category implements the DoltgresType interface.
+// Category implements the DoltgresTypeInterface interface.
 func (b InternalCharType) Category() TypeCategory {
 	return TypeCategory_InternalUseTypes
 }
 
-// CollationCoercibility implements the DoltgresType interface.
+// CollationCoercibility implements the DoltgresTypeInterface interface.
 func (b InternalCharType) CollationCoercibility(ctx *sql.Context) (collation sql.CollationID, coercibility byte) {
 	return sql.Collation_binary, 5
 }
 
-// Compare implements the DoltgresType interface.
+// Compare implements the DoltgresTypeInterface interface.
 func (b InternalCharType) Compare(v1 any, v2 any) (int, error) {
 	if v1 == nil && v2 == nil {
 		return 0, nil
@@ -96,7 +130,7 @@ func (b InternalCharType) Compare(v1 any, v2 any) (int, error) {
 	}
 }
 
-// Convert implements the DoltgresType interface.
+// Convert implements the DoltgresTypeInterface interface.
 func (b InternalCharType) Convert(val any) (any, sql.ConvertInRange, error) {
 	switch val := val.(type) {
 	case string:
@@ -108,7 +142,7 @@ func (b InternalCharType) Convert(val any) (any, sql.ConvertInRange, error) {
 	}
 }
 
-// Equals implements the DoltgresType interface.
+// Equals implements the DoltgresTypeInterface interface.
 func (b InternalCharType) Equals(otherType sql.Type) bool {
 	if otherExtendedType, ok := otherType.(types.ExtendedType); ok {
 		return bytes.Equal(MustSerializeType(b), MustSerializeType(otherExtendedType))
@@ -116,7 +150,7 @@ func (b InternalCharType) Equals(otherType sql.Type) bool {
 	return false
 }
 
-// FormatValue implements the DoltgresType interface.
+// FormatValue implements the DoltgresTypeInterface interface.
 func (b InternalCharType) FormatValue(val any) (string, error) {
 	if val == nil {
 		return "", nil
@@ -124,12 +158,12 @@ func (b InternalCharType) FormatValue(val any) (string, error) {
 	return b.IoOutput(sql.NewEmptyContext(), val)
 }
 
-// GetSerializationID implements the DoltgresType interface.
+// GetSerializationID implements the DoltgresTypeInterface interface.
 func (b InternalCharType) GetSerializationID() SerializationID {
 	return SerializationID_InternalChar
 }
 
-// IoInput implements the DoltgresType interface.
+// IoInput implements the DoltgresTypeInterface interface.
 func (b InternalCharType) IoInput(ctx *sql.Context, input string) (any, error) {
 	c := []byte(input)
 	if uint32(len(c)) > InternalCharLength {
@@ -138,7 +172,7 @@ func (b InternalCharType) IoInput(ctx *sql.Context, input string) (any, error) {
 	return input, nil
 }
 
-// IoOutput implements the DoltgresType interface.
+// IoOutput implements the DoltgresTypeInterface interface.
 func (b InternalCharType) IoOutput(ctx *sql.Context, output any) (string, error) {
 	converted, _, err := b.Convert(output)
 	if err != nil {
@@ -151,37 +185,37 @@ func (b InternalCharType) IoOutput(ctx *sql.Context, output any) (string, error)
 	return str, nil
 }
 
-// IsPreferredType implements the DoltgresType interface.
+// IsPreferredType implements the DoltgresTypeInterface interface.
 func (b InternalCharType) IsPreferredType() bool {
 	return false
 }
 
-// IsUnbounded implements the DoltgresType interface.
+// IsUnbounded implements the DoltgresTypeInterface interface.
 func (b InternalCharType) IsUnbounded() bool {
 	return false
 }
 
-// MaxSerializedWidth implements the DoltgresType interface.
+// MaxSerializedWidth implements the DoltgresTypeInterface interface.
 func (b InternalCharType) MaxSerializedWidth() types.ExtendedTypeSerializedWidth {
 	return types.ExtendedTypeSerializedWidth_64K
 }
 
-// MaxTextResponseByteLength implements the DoltgresType interface.
+// MaxTextResponseByteLength implements the DoltgresTypeInterface interface.
 func (b InternalCharType) MaxTextResponseByteLength(ctx *sql.Context) uint32 {
 	return InternalCharLength
 }
 
-// OID implements the DoltgresType interface.
+// OID implements the DoltgresTypeInterface interface.
 func (b InternalCharType) OID() uint32 {
 	return uint32(oid.T_char)
 }
 
-// Promote implements the DoltgresType interface.
+// Promote implements the DoltgresTypeInterface interface.
 func (b InternalCharType) Promote() sql.Type {
 	return InternalChar
 }
 
-// SerializedCompare implements the DoltgresType interface.
+// SerializedCompare implements the DoltgresTypeInterface interface.
 func (b InternalCharType) SerializedCompare(v1 []byte, v2 []byte) (int, error) {
 	if len(v1) == 0 && len(v2) == 0 {
 		return 0, nil
@@ -193,7 +227,7 @@ func (b InternalCharType) SerializedCompare(v1 []byte, v2 []byte) (int, error) {
 	return serializedStringCompare(v1, v2), nil
 }
 
-// SQL implements the DoltgresType interface.
+// SQL implements the DoltgresTypeInterface interface.
 func (b InternalCharType) SQL(ctx *sql.Context, dest []byte, v any) (sqltypes.Value, error) {
 	if v == nil {
 		return sqltypes.NULL, nil
@@ -205,32 +239,32 @@ func (b InternalCharType) SQL(ctx *sql.Context, dest []byte, v any) (sqltypes.Va
 	return sqltypes.MakeTrusted(sqltypes.Text, types.AppendAndSliceBytes(dest, []byte(value))), nil
 }
 
-// String implements the DoltgresType interface.
+// String implements the DoltgresTypeInterface interface.
 func (b InternalCharType) String() string {
 	return `"char"`
 }
 
-// ToArrayType implements the DoltgresType interface.
+// ToArrayType implements the DoltgresTypeInterface interface.
 func (b InternalCharType) ToArrayType() DoltgresArrayType {
 	return InternalCharArray
 }
 
-// Type implements the DoltgresType interface.
+// DoltgresType implements the DoltgresTypeInterface interface.
 func (b InternalCharType) Type() query.Type {
 	return sqltypes.Text
 }
 
-// ValueType implements the DoltgresType interface.
+// ValueType implements the DoltgresTypeInterface interface.
 func (b InternalCharType) ValueType() reflect.Type {
 	return reflect.TypeOf("")
 }
 
-// Zero implements the DoltgresType interface.
+// Zero implements the DoltgresTypeInterface interface.
 func (b InternalCharType) Zero() any {
 	return ""
 }
 
-// SerializeType implements the DoltgresType interface.
+// SerializeType implements the DoltgresTypeInterface interface.
 func (b InternalCharType) SerializeType() ([]byte, error) {
 	t := make([]byte, serializationIDHeaderSize+4)
 	copy(t, SerializationID_InternalChar.ToByteSlice(0))
@@ -238,8 +272,8 @@ func (b InternalCharType) SerializeType() ([]byte, error) {
 	return t, nil
 }
 
-// deserializeType implements the DoltgresType interface.
-func (b InternalCharType) deserializeType(version uint16, metadata []byte) (DoltgresType, error) {
+// deserializeType implements the DoltgresTypeInterface interface.
+func (b InternalCharType) deserializeType(version uint16, metadata []byte) (DoltgresTypeInterface, error) {
 	switch version {
 	case 0:
 		return InternalCharType{}, nil
@@ -248,7 +282,7 @@ func (b InternalCharType) deserializeType(version uint16, metadata []byte) (Dolt
 	}
 }
 
-// SerializeValue implements the DoltgresType interface.
+// SerializeValue implements the DoltgresTypeInterface interface.
 func (b InternalCharType) SerializeValue(val any) ([]byte, error) {
 	if val == nil {
 		return nil, nil
@@ -263,7 +297,7 @@ func (b InternalCharType) SerializeValue(val any) ([]byte, error) {
 	return writer.Data(), nil
 }
 
-// DeserializeValue implements the DoltgresType interface.
+// DeserializeValue implements the DoltgresTypeInterface interface.
 func (b InternalCharType) DeserializeValue(val []byte) (any, error) {
 	if len(val) == 0 {
 		return nil, nil

@@ -254,7 +254,7 @@ func (l *Literal) String() string {
 	if l.value == nil {
 		return ""
 	}
-	str, err := l.typ.IoOutput(nil, l.value)
+	str, err := framework.IoOutput(nil, l.typ, l.value)
 	if err != nil {
 		panic("got error from IoOutput")
 	}

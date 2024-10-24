@@ -88,7 +88,7 @@ func newCompiledFunctionInternal(
 	c.callResolved = make([]pgtypes.DoltgresType, len(functionParameterTypes)+1)
 	hasPolymorphicParam := false
 	for i, param := range functionParameterTypes {
-		if _, ok := param.(pgtypes.DoltgresPolymorphicType); ok {
+		if param.IsPolymorphicType() {
 			// resolve will ensure that the parameter types are valid, so we can just assign them here
 			hasPolymorphicParam = true
 			c.callResolved[i] = originalTypes[i]
@@ -98,7 +98,7 @@ func newCompiledFunctionInternal(
 	}
 	returnType := fn.GetReturn()
 	c.callResolved[len(c.callResolved)-1] = returnType
-	if _, ok := returnType.(pgtypes.DoltgresPolymorphicType); ok {
+	if returnType.IsPolymorphicType() {
 		if hasPolymorphicParam {
 			c.callResolved[len(c.callResolved)-1] = c.resolvePolymorphicReturnType(functionParameterTypes, originalTypes, returnType)
 		} else {
@@ -230,12 +230,16 @@ func (c *CompiledFunction) Eval(ctx *sql.Context, row sql.Row) (interface{}, err
 			isVariadicArg := c.overload.params.variadic >= 0 && i >= len(c.overload.params.paramTypes)-1
 			if isVariadicArg {
 				targetType = targetParamTypes[c.overload.params.variadic]
-				targetArrayType, ok := targetType.(pgtypes.DoltgresArrayType)
+				targetArrayType, ok := targetType.ToArrayType()
 				if !ok {
 					// should be impossible, we check this at function compile time
 					return nil, fmt.Errorf("variadic arguments must be array types, was %T", targetType)
 				}
-				targetType = targetArrayType.BaseType()
+				targetType, ok = targetArrayType.ArrayBaseType()
+				if !ok {
+					// should be impossible, we check this at function compile time
+					return nil, fmt.Errorf("variadic arguments must be array types, was %T", targetType)
+				}
 			} else {
 				targetType = targetParamTypes[i]
 			}
@@ -412,10 +416,10 @@ func (c *CompiledFunction) typeCompatibleOverloads(fnOverloads []Overload, argTy
 		var polymorphicTargets []pgtypes.DoltgresType
 		for i := range argTypes {
 			paramType := overload.argTypes[i]
-
-			if polymorphicType, ok := paramType.GetRepresentativeType().(pgtypes.DoltgresPolymorphicType); ok && polymorphicType.IsValid(argTypes[i]) {
+			getRepresentativeType := paramType.GetRepresentativeType()
+			if getRepresentativeType.IsValidForPolymorphicType(argTypes[i]) {
 				overloadCasts[i] = identityCast
-				polymorphicParameters = append(polymorphicParameters, polymorphicType)
+				polymorphicParameters = append(polymorphicParameters, getRepresentativeType)
 				polymorphicTargets = append(polymorphicTargets, argTypes[i])
 			} else {
 				if overloadCasts[i] = GetImplicitCast(argTypes[i].BaseID(), paramType); overloadCasts[i] == nil {
@@ -534,7 +538,7 @@ func (*CompiledFunction) polymorphicTypesCompatible(paramTypes []pgtypes.Doltgre
 
 	// If one of the types is anyarray, then anyelement behaves as anynonarray, so we can convert them to anynonarray
 	for _, paramType := range paramTypes {
-		if polymorphicParamType, ok := paramType.(pgtypes.DoltgresPolymorphicType); ok && polymorphicParamType.BaseID() == pgtypes.DoltgresTypeBaseID_AnyArray {
+		if paramType.IsPolymorphicType() && paramType.BaseID() == pgtypes.DoltgresTypeBaseID_AnyArray {
 			// At least one parameter is anyarray, so copy all parameters to a new slice and replace anyelement with anynonarray
 			newParamTypes := make([]pgtypes.DoltgresType, len(paramTypes))
 			copy(newParamTypes, paramTypes)
@@ -551,20 +555,24 @@ func (*CompiledFunction) polymorphicTypesCompatible(paramTypes []pgtypes.Doltgre
 	// The base type is the type that must match between all polymorphic types.
 	var baseType pgtypes.DoltgresType
 	for i, paramType := range paramTypes {
-		if polymorphicParamType, ok := paramType.(pgtypes.DoltgresPolymorphicType); ok && exprTypes[i].BaseID() != pgtypes.DoltgresTypeBaseID_Unknown {
+		if paramType.IsPolymorphicType() && exprTypes[i].BaseID() != pgtypes.DoltgresTypeBaseID_Unknown {
 			// Although we do this check before we ever reach this function, we do it again as we may convert anyelement
 			// to anynonarray, which changes type validity
-			if !polymorphicParamType.IsValid(exprTypes[i]) {
+			if !paramType.IsValidForPolymorphicType(exprTypes[i]) {
 				return false
 			}
 			// Get the base expression type that we'll compare against
 			baseExprType := exprTypes[i]
-			if arrayBaseExprType, ok := baseExprType.(pgtypes.DoltgresArrayType); ok {
-				baseExprType = arrayBaseExprType.BaseType()
+			if baseExprType.IsArrayType() {
+				var ok bool
+				baseExprType, ok = baseExprType.ArrayBaseType()
+				if !ok {
+
+				}
 			}
 			// TODO: handle range types
 			// Check that the base expression type matches the previously-found base type
-			if baseType == nil {
+			if baseType.EmptyType() {
 				baseType = baseExprType
 			} else if baseType.BaseID() != baseExprType.BaseID() {
 				return false
@@ -579,42 +587,49 @@ func (*CompiledFunction) polymorphicTypesCompatible(paramTypes []pgtypes.Doltgre
 // the type is determined using the expression types and parameter types. This makes the assumption that everything has
 // already been validated.
 func (c *CompiledFunction) resolvePolymorphicReturnType(functionInterfaceTypes []pgtypes.DoltgresType, originalTypes []pgtypes.DoltgresType, returnType pgtypes.DoltgresType) pgtypes.DoltgresType {
-	polymorphicReturnType, ok := returnType.(pgtypes.DoltgresPolymorphicType)
-	if !ok {
+	if !returnType.IsPolymorphicType() {
 		return returnType
 	}
 	// We can use the first polymorphic non-unknown type that we find, since we can morph it into any type that we need.
 	// We've verified that all polymorphic types are compatible in a previous step, so this is safe to do.
 	var firstPolymorphicType pgtypes.DoltgresType
 	for i, functionInterfaceType := range functionInterfaceTypes {
-		if _, ok = functionInterfaceType.(pgtypes.DoltgresPolymorphicType); ok && originalTypes[i].BaseID() != pgtypes.DoltgresTypeBaseID_Unknown {
+		if functionInterfaceType.IsPolymorphicType() && originalTypes[i].BaseID() != pgtypes.DoltgresTypeBaseID_Unknown {
 			firstPolymorphicType = originalTypes[i]
 			break
 		}
 	}
 
 	// if all types are `unknown`, use `text` type
-	if firstPolymorphicType == nil {
+	if firstPolymorphicType.EmptyType() {
 		firstPolymorphicType = pgtypes.Text
 	}
 
-	switch polymorphicReturnType.BaseID() {
+	switch returnType.BaseID() {
 	case pgtypes.DoltgresTypeBaseID_AnyElement, pgtypes.DoltgresTypeBaseID_AnyNonArray:
 		// For return types, anyelement behaves the same as anynonarray.
 		// This isn't explicitly in the documentation, however it does note that:
 		// "...anynonarray and anyenum do not represent separate type variables; they are the same type as anyelement..."
 		// The implication of this being that anyelement will always return the base type even for array types,
 		// just like anynonarray would.
-		if minimalArrayType, ok := firstPolymorphicType.(pgtypes.DoltgresArrayType); ok {
-			return minimalArrayType.BaseType()
+		if firstPolymorphicType.IsArrayType() {
+			bt, ok := firstPolymorphicType.ArrayBaseType()
+			if !ok {
+				// TODO
+			}
+			return bt
 		} else {
 			return firstPolymorphicType
 		}
 	case pgtypes.DoltgresTypeBaseID_AnyArray:
 		// Array types will return themselves, so this is safe
-		return firstPolymorphicType.ToArrayType()
+		at, ok := firstPolymorphicType.ToArrayType()
+		if !ok {
+			// TODO
+		}
+		return at
 	default:
-		panic(fmt.Errorf("`%s` is not yet handled during function compilation", polymorphicReturnType.String()))
+		panic(fmt.Errorf("`%s` is not yet handled during function compilation", returnType.String()))
 	}
 }
 
@@ -670,8 +685,9 @@ func (c *CompiledFunction) analyzeParameters() (originalTypes []pgtypes.Doltgres
 	for i, param := range c.Arguments {
 		returnType := param.Type()
 		if extendedType, ok := returnType.(pgtypes.DoltgresType); ok {
-			if domainType, ok := extendedType.(pgtypes.DomainType); ok {
-				extendedType = domainType.UnderlyingBaseType()
+
+			if extendedType.TypType == pgtypes.TypeType_Domain {
+				extendedType = extendedType.DomainUnderlyingBaseType()
 			}
 			originalTypes[i] = extendedType
 		} else {

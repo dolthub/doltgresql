@@ -30,39 +30,73 @@ import (
 )
 
 // Int16 is an int16.
-var Int16 = Int16Type{}
+var Int16 = DoltgresType{
+	Oid:           uint32(oid.T_int2),
+	Name:          "int2",
+	Schema:        "pg_catalog",
+	Owner:         "doltgres", // TODO
+	Length:        int16(2),
+	PassedByVal:   true,
+	TypType:       TypeType_Base,
+	TypCategory:   TypeCategory_NumericTypes,
+	IsPreferred:   false,
+	IsDefined:     true,
+	Delimiter:     ",",
+	RelID:         0,
+	SubscriptFunc: "-",
+	Elem:          0,
+	Array:         uint32(oid.T__int2),
+	InputFunc:     "int2in",
+	OutputFunc:    "int2out",
+	ReceiveFunc:   "int2recv",
+	SendFunc:      "int2send",
+	ModInFunc:     "-",
+	ModOutFunc:    "-",
+	AnalyzeFunc:   "-",
+	Align:         TypeAlignment_Short,
+	Storage:       TypeStorage_Plain,
+	NotNull:       false,
+	BaseTypeOID:   0,
+	TypMod:        -1,
+	NDims:         0,
+	Collation:     0,
+	DefaulBin:     "",
+	Default:       "",
+	Acl:           "",
+	Checks:        nil,
+}
 
 // Int16Type is the extended type implementation of the PostgreSQL smallint.
 type Int16Type struct{}
 
-var _ DoltgresType = Int16Type{}
+var _ DoltgresTypeInterface = Int16Type{}
 
-// Alignment implements the DoltgresType interface.
+// Alignment implements the DoltgresTypeInterface interface.
 func (b Int16Type) Alignment() TypeAlignment {
 	return TypeAlignment_Short
 }
 
-// BaseID implements the DoltgresType interface.
+// BaseID implements the DoltgresTypeInterface interface.
 func (b Int16Type) BaseID() DoltgresTypeBaseID {
 	return DoltgresTypeBaseID_Int16
 }
 
-// BaseName implements the DoltgresType interface.
+// BaseName implements the DoltgresTypeInterface interface.
 func (b Int16Type) BaseName() string {
 	return "int2"
 }
 
-// Category implements the DoltgresType interface.
+// Category implements the DoltgresTypeInterface interface.
 func (b Int16Type) Category() TypeCategory {
 	return TypeCategory_NumericTypes
 }
 
-// CollationCoercibility implements the DoltgresType interface.
+// CollationCoercibility implements the DoltgresTypeInterface interface.
 func (b Int16Type) CollationCoercibility(ctx *sql.Context) (collation sql.CollationID, coercibility byte) {
 	return sql.Collation_binary, 5
 }
 
-// Compare implements the DoltgresType interface.
+// Compare implements the DoltgresTypeInterface interface.
 func (b Int16Type) Compare(v1 any, v2 any) (int, error) {
 	if v1 == nil && v2 == nil {
 		return 0, nil
@@ -92,7 +126,7 @@ func (b Int16Type) Compare(v1 any, v2 any) (int, error) {
 	}
 }
 
-// Convert implements the DoltgresType interface.
+// Convert implements the DoltgresTypeInterface interface.
 func (b Int16Type) Convert(val any) (any, sql.ConvertInRange, error) {
 	switch val := val.(type) {
 	case int16:
@@ -104,7 +138,7 @@ func (b Int16Type) Convert(val any) (any, sql.ConvertInRange, error) {
 	}
 }
 
-// Equals implements the DoltgresType interface.
+// Equals implements the DoltgresTypeInterface interface.
 func (b Int16Type) Equals(otherType sql.Type) bool {
 	if otherExtendedType, ok := otherType.(types.ExtendedType); ok {
 		return bytes.Equal(MustSerializeType(b), MustSerializeType(otherExtendedType))
@@ -112,7 +146,7 @@ func (b Int16Type) Equals(otherType sql.Type) bool {
 	return false
 }
 
-// FormatValue implements the DoltgresType interface.
+// FormatValue implements the DoltgresTypeInterface interface.
 func (b Int16Type) FormatValue(val any) (string, error) {
 	if val == nil {
 		return "", nil
@@ -120,12 +154,12 @@ func (b Int16Type) FormatValue(val any) (string, error) {
 	return b.IoOutput(sql.NewEmptyContext(), val)
 }
 
-// GetSerializationID implements the DoltgresType interface.
+// GetSerializationID implements the DoltgresTypeInterface interface.
 func (b Int16Type) GetSerializationID() SerializationID {
 	return SerializationID_Int16
 }
 
-// IoInput implements the DoltgresType interface.
+// IoInput implements the DoltgresTypeInterface interface.
 func (b Int16Type) IoInput(ctx *sql.Context, input string) (any, error) {
 	val, err := strconv.ParseInt(strings.TrimSpace(input), 10, 16)
 	if err != nil {
@@ -137,7 +171,7 @@ func (b Int16Type) IoInput(ctx *sql.Context, input string) (any, error) {
 	return int16(val), nil
 }
 
-// IoOutput implements the DoltgresType interface.
+// IoOutput implements the DoltgresTypeInterface interface.
 func (b Int16Type) IoOutput(ctx *sql.Context, output any) (string, error) {
 	converted, _, err := b.Convert(output)
 	if err != nil {
@@ -146,37 +180,37 @@ func (b Int16Type) IoOutput(ctx *sql.Context, output any) (string, error) {
 	return strconv.FormatInt(int64(converted.(int16)), 10), nil
 }
 
-// IsPreferredType implements the DoltgresType interface.
+// IsPreferredType implements the DoltgresTypeInterface interface.
 func (b Int16Type) IsPreferredType() bool {
 	return false
 }
 
-// IsUnbounded implements the DoltgresType interface.
+// IsUnbounded implements the DoltgresTypeInterface interface.
 func (b Int16Type) IsUnbounded() bool {
 	return false
 }
 
-// MaxSerializedWidth implements the DoltgresType interface.
+// MaxSerializedWidth implements the DoltgresTypeInterface interface.
 func (b Int16Type) MaxSerializedWidth() types.ExtendedTypeSerializedWidth {
 	return types.ExtendedTypeSerializedWidth_64K
 }
 
-// MaxTextResponseByteLength implements the DoltgresType interface.
+// MaxTextResponseByteLength implements the DoltgresTypeInterface interface.
 func (b Int16Type) MaxTextResponseByteLength(ctx *sql.Context) uint32 {
 	return 2
 }
 
-// OID implements the DoltgresType interface.
+// OID implements the DoltgresTypeInterface interface.
 func (b Int16Type) OID() uint32 {
 	return uint32(oid.T_int2)
 }
 
-// Promote implements the DoltgresType interface.
+// Promote implements the DoltgresTypeInterface interface.
 func (b Int16Type) Promote() sql.Type {
 	return b
 }
 
-// SerializedCompare implements the DoltgresType interface.
+// SerializedCompare implements the DoltgresTypeInterface interface.
 func (b Int16Type) SerializedCompare(v1 []byte, v2 []byte) (int, error) {
 	if len(v1) == 0 && len(v2) == 0 {
 		return 0, nil
@@ -189,7 +223,7 @@ func (b Int16Type) SerializedCompare(v1 []byte, v2 []byte) (int, error) {
 	return bytes.Compare(v1, v2), nil
 }
 
-// SQL implements the DoltgresType interface.
+// SQL implements the DoltgresTypeInterface interface.
 func (b Int16Type) SQL(ctx *sql.Context, dest []byte, v any) (sqltypes.Value, error) {
 	if v == nil {
 		return sqltypes.NULL, nil
@@ -201,38 +235,38 @@ func (b Int16Type) SQL(ctx *sql.Context, dest []byte, v any) (sqltypes.Value, er
 	return sqltypes.MakeTrusted(sqltypes.Text, types.AppendAndSliceBytes(dest, []byte(value))), nil
 }
 
-// String implements the DoltgresType interface.
+// String implements the DoltgresTypeInterface interface.
 func (b Int16Type) String() string {
 	return "smallint"
 }
 
-// ToArrayType implements the DoltgresType interface.
+// ToArrayType implements the DoltgresTypeInterface interface.
 func (b Int16Type) ToArrayType() DoltgresArrayType {
 	return Int16Array
 }
 
-// Type implements the DoltgresType interface.
+// DoltgresType implements the DoltgresTypeInterface interface.
 func (b Int16Type) Type() query.Type {
 	return sqltypes.Int16
 }
 
-// ValueType implements the DoltgresType interface.
+// ValueType implements the DoltgresTypeInterface interface.
 func (b Int16Type) ValueType() reflect.Type {
 	return reflect.TypeOf(int16(0))
 }
 
-// Zero implements the DoltgresType interface.
+// Zero implements the DoltgresTypeInterface interface.
 func (b Int16Type) Zero() any {
 	return int16(0)
 }
 
-// SerializeType implements the DoltgresType interface.
+// SerializeType implements the DoltgresTypeInterface interface.
 func (b Int16Type) SerializeType() ([]byte, error) {
 	return SerializationID_Int16.ToByteSlice(0), nil
 }
 
-// deserializeType implements the DoltgresType interface.
-func (b Int16Type) deserializeType(version uint16, metadata []byte) (DoltgresType, error) {
+// deserializeType implements the DoltgresTypeInterface interface.
+func (b Int16Type) deserializeType(version uint16, metadata []byte) (DoltgresTypeInterface, error) {
 	switch version {
 	case 0:
 		return Int16, nil
@@ -241,7 +275,7 @@ func (b Int16Type) deserializeType(version uint16, metadata []byte) (DoltgresTyp
 	}
 }
 
-// SerializeValue implements the DoltgresType interface.
+// SerializeValue implements the DoltgresTypeInterface interface.
 func (b Int16Type) SerializeValue(val any) ([]byte, error) {
 	if val == nil {
 		return nil, nil
@@ -255,7 +289,7 @@ func (b Int16Type) SerializeValue(val any) ([]byte, error) {
 	return retVal, nil
 }
 
-// DeserializeValue implements the DoltgresType interface.
+// DeserializeValue implements the DoltgresTypeInterface interface.
 func (b Int16Type) DeserializeValue(val []byte) (any, error) {
 	if len(val) == 0 {
 		return nil, nil

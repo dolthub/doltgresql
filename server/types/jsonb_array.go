@@ -14,7 +14,5 @@
 
 package types
 
-import "github.com/lib/pq/oid"
-
 // JsonBArray is the array variant of JsonB.
-var JsonBArray = createArrayType(JsonB, SerializationID_JsonBArray, oid.T__jsonb)
+var JsonBArray = CreateArrayTypeFromBaseType(JsonB) // createArrayType(JsonB, SerializationID_JsonBArray, oid.T__jsonb)

@@ -31,150 +31,150 @@ var Int16Serial = Int16TypeSerial{}
 // Int16TypeSerial is the extended type implementation of the PostgreSQL smallserial.
 type Int16TypeSerial struct{}
 
-var _ DoltgresType = Int16TypeSerial{}
+var _ DoltgresTypeInterface = Int16TypeSerial{}
 
-// Alignment implements the DoltgresType interface.
+// Alignment implements the DoltgresTypeInterface interface.
 func (b Int16TypeSerial) Alignment() TypeAlignment {
 	return TypeAlignment_Short
 }
 
-// BaseID implements the DoltgresType interface.
+// BaseID implements the DoltgresTypeInterface interface.
 func (b Int16TypeSerial) BaseID() DoltgresTypeBaseID {
 	return DoltgresTypeBaseID_Int16Serial
 }
 
-// BaseName implements the DoltgresType interface.
+// BaseName implements the DoltgresTypeInterface interface.
 func (b Int16TypeSerial) BaseName() string {
 	return "smallserial"
 }
 
-// Category implements the DoltgresType interface.
+// Category implements the DoltgresTypeInterface interface.
 func (b Int16TypeSerial) Category() TypeCategory {
 	return TypeCategory_UnknownTypes
 }
 
-// CollationCoercibility implements the DoltgresType interface.
+// CollationCoercibility implements the DoltgresTypeInterface interface.
 func (b Int16TypeSerial) CollationCoercibility(ctx *sql.Context) (collation sql.CollationID, coercibility byte) {
 	return sql.Collation_binary, 5
 }
 
-// Compare implements the DoltgresType interface.
+// Compare implements the DoltgresTypeInterface interface.
 func (b Int16TypeSerial) Compare(v1 any, v2 any) (int, error) {
 	return 0, fmt.Errorf("SERIAL types are not comparable")
 }
 
-// Convert implements the DoltgresType interface.
+// Convert implements the DoltgresTypeInterface interface.
 func (b Int16TypeSerial) Convert(val any) (any, sql.ConvertInRange, error) {
 	return nil, sql.OutOfRange, fmt.Errorf("SERIAL types are not convertable")
 }
 
-// Equals implements the DoltgresType interface.
+// Equals implements the DoltgresTypeInterface interface.
 func (b Int16TypeSerial) Equals(otherType sql.Type) bool {
 	_, ok := otherType.(Int16TypeSerial)
 	return ok
 }
 
-// FormatValue implements the DoltgresType interface.
+// FormatValue implements the DoltgresTypeInterface interface.
 func (b Int16TypeSerial) FormatValue(val any) (string, error) {
 	return "", fmt.Errorf("SERIAL types are not formattable")
 }
 
-// GetSerializationID implements the DoltgresType interface.
+// GetSerializationID implements the DoltgresTypeInterface interface.
 func (b Int16TypeSerial) GetSerializationID() SerializationID {
 	return SerializationID_Invalid
 }
 
-// IoInput implements the DoltgresType interface.
+// IoInput implements the DoltgresTypeInterface interface.
 func (b Int16TypeSerial) IoInput(ctx *sql.Context, input string) (any, error) {
 	return "", fmt.Errorf("SERIAL types cannot receive I/O input")
 }
 
-// IoOutput implements the DoltgresType interface.
+// IoOutput implements the DoltgresTypeInterface interface.
 func (b Int16TypeSerial) IoOutput(ctx *sql.Context, output any) (string, error) {
 	return "", fmt.Errorf("SERIAL types cannot produce I/O output")
 }
 
-// IsPreferredType implements the DoltgresType interface.
+// IsPreferredType implements the DoltgresTypeInterface interface.
 func (b Int16TypeSerial) IsPreferredType() bool {
 	return false
 }
 
-// IsUnbounded implements the DoltgresType interface.
+// IsUnbounded implements the DoltgresTypeInterface interface.
 func (b Int16TypeSerial) IsUnbounded() bool {
 	return false
 }
 
-// MaxSerializedWidth implements the DoltgresType interface.
+// MaxSerializedWidth implements the DoltgresTypeInterface interface.
 func (b Int16TypeSerial) MaxSerializedWidth() types.ExtendedTypeSerializedWidth {
 	return types.ExtendedTypeSerializedWidth_64K
 }
 
-// MaxTextResponseByteLength implements the DoltgresType interface.
+// MaxTextResponseByteLength implements the DoltgresTypeInterface interface.
 func (b Int16TypeSerial) MaxTextResponseByteLength(ctx *sql.Context) uint32 {
 	return 2
 }
 
-// OID implements the DoltgresType interface.
+// OID implements the DoltgresTypeInterface interface.
 func (b Int16TypeSerial) OID() uint32 {
 	return uint32(oid.T_int2)
 }
 
-// Promote implements the DoltgresType interface.
+// Promote implements the DoltgresTypeInterface interface.
 func (b Int16TypeSerial) Promote() sql.Type {
 	return b
 }
 
-// SerializedCompare implements the DoltgresType interface.
+// SerializedCompare implements the DoltgresTypeInterface interface.
 func (b Int16TypeSerial) SerializedCompare(v1 []byte, v2 []byte) (int, error) {
 	return 0, fmt.Errorf("SERIAL types are not comparable")
 }
 
-// SQL implements the DoltgresType interface.
+// SQL implements the DoltgresTypeInterface interface.
 func (b Int16TypeSerial) SQL(ctx *sql.Context, dest []byte, v any) (sqltypes.Value, error) {
 	return sqltypes.Value{}, fmt.Errorf("SERIAL types may not be passed over the wire")
 }
 
-// String implements the DoltgresType interface.
+// String implements the DoltgresTypeInterface interface.
 func (b Int16TypeSerial) String() string {
 	return "smallserial"
 }
 
-// ToArrayType implements the DoltgresType interface.
+// ToArrayType implements the DoltgresTypeInterface interface.
 func (b Int16TypeSerial) ToArrayType() DoltgresArrayType {
 	return Unknown
 }
 
-// Type implements the DoltgresType interface.
+// DoltgresType implements the DoltgresTypeInterface interface.
 func (b Int16TypeSerial) Type() query.Type {
 	return sqltypes.Int16
 }
 
-// ValueType implements the DoltgresType interface.
+// ValueType implements the DoltgresTypeInterface interface.
 func (b Int16TypeSerial) ValueType() reflect.Type {
 	return reflect.TypeOf(int16(0))
 }
 
-// Zero implements the DoltgresType interface.
+// Zero implements the DoltgresTypeInterface interface.
 func (b Int16TypeSerial) Zero() any {
 	return int16(0)
 }
 
-// SerializeType implements the DoltgresType interface.
+// SerializeType implements the DoltgresTypeInterface interface.
 func (b Int16TypeSerial) SerializeType() ([]byte, error) {
 	return nil, fmt.Errorf("SERIAL types are not serializable")
 }
 
-// deserializeType implements the DoltgresType interface.
-func (b Int16TypeSerial) deserializeType(version uint16, metadata []byte) (DoltgresType, error) {
+// deserializeType implements the DoltgresTypeInterface interface.
+func (b Int16TypeSerial) deserializeType(version uint16, metadata []byte) (DoltgresTypeInterface, error) {
 	return nil, fmt.Errorf("SERIAL types are not deserializable")
 }
 
-// SerializeValue implements the DoltgresType interface.
+// SerializeValue implements the DoltgresTypeInterface interface.
 func (b Int16TypeSerial) SerializeValue(val any) ([]byte, error) {
 	return nil, fmt.Errorf("SERIAL types are not serializable")
 }
 
-// DeserializeValue implements the DoltgresType interface.
+// DeserializeValue implements the DoltgresTypeInterface interface.
 func (b Int16TypeSerial) DeserializeValue(val []byte) (any, error) {
 	return nil, fmt.Errorf("SERIAL types are not deserializable")
 }

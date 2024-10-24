@@ -27,44 +27,78 @@ import (
 )
 
 // Regtype is the OID type for finding items in pg_type.
-var Regtype = RegtypeType{}
+var Regtype = DoltgresType{
+	Oid:           uint32(oid.T_regproc),
+	Name:          "regproc",
+	Schema:        "pg_catalog",
+	Owner:         "doltgres", // TODO
+	Length:        int16(4),
+	PassedByVal:   true,
+	TypType:       TypeType_Base,
+	TypCategory:   TypeCategory_NumericTypes,
+	IsPreferred:   false,
+	IsDefined:     true,
+	Delimiter:     ",",
+	RelID:         0,
+	SubscriptFunc: "-",
+	Elem:          0,
+	Array:         uint32(oid.T__regproc),
+	InputFunc:     "regprocin",
+	OutputFunc:    "regprocout",
+	ReceiveFunc:   "regprocrecv",
+	SendFunc:      "regprocsend",
+	ModInFunc:     "-",
+	ModOutFunc:    "-",
+	AnalyzeFunc:   "-",
+	Align:         TypeAlignment_Int,
+	Storage:       TypeStorage_Plain,
+	NotNull:       false,
+	BaseTypeOID:   0,
+	TypMod:        -1,
+	NDims:         0,
+	Collation:     0,
+	DefaulBin:     "",
+	Default:       "",
+	Acl:           "",
+	Checks:        nil,
+}
 
 // RegtypeType is the extended type implementation of the PostgreSQL regtype.
 type RegtypeType struct{}
 
-var _ DoltgresType = RegtypeType{}
+var _ DoltgresTypeInterface = RegtypeType{}
 
-// Alignment implements the DoltgresType interface.
+// Alignment implements the DoltgresTypeInterface interface.
 func (b RegtypeType) Alignment() TypeAlignment {
 	return TypeAlignment_Int
 }
 
-// BaseID implements the DoltgresType interface.
+// BaseID implements the DoltgresTypeInterface interface.
 func (b RegtypeType) BaseID() DoltgresTypeBaseID {
 	return DoltgresTypeBaseID_Regtype
 }
 
-// BaseName implements the DoltgresType interface.
+// BaseName implements the DoltgresTypeInterface interface.
 func (b RegtypeType) BaseName() string {
 	return "regtype"
 }
 
-// Category implements the DoltgresType interface.
+// Category implements the DoltgresTypeInterface interface.
 func (b RegtypeType) Category() TypeCategory {
 	return TypeCategory_NumericTypes
 }
 
-// CollationCoercibility implements the DoltgresType interface.
+// CollationCoercibility implements the DoltgresTypeInterface interface.
 func (b RegtypeType) CollationCoercibility(ctx *sql.Context) (collation sql.CollationID, coercibility byte) {
 	return sql.Collation_binary, 5
 }
 
-// Compare implements the DoltgresType interface.
+// Compare implements the DoltgresTypeInterface interface.
 func (b RegtypeType) Compare(v1 any, v2 any) (int, error) {
 	return OidType{}.Compare(v1, v2)
 }
 
-// Convert implements the DoltgresType interface.
+// Convert implements the DoltgresTypeInterface interface.
 func (b RegtypeType) Convert(val any) (any, sql.ConvertInRange, error) {
 	switch val := val.(type) {
 	case uint32:
@@ -76,7 +110,7 @@ func (b RegtypeType) Convert(val any) (any, sql.ConvertInRange, error) {
 	}
 }
 
-// Equals implements the DoltgresType interface.
+// Equals implements the DoltgresTypeInterface interface.
 func (b RegtypeType) Equals(otherType sql.Type) bool {
 	if otherExtendedType, ok := otherType.(types.ExtendedType); ok {
 		return bytes.Equal(MustSerializeType(b), MustSerializeType(otherExtendedType))
@@ -84,7 +118,7 @@ func (b RegtypeType) Equals(otherType sql.Type) bool {
 	return false
 }
 
-// FormatValue implements the DoltgresType interface.
+// FormatValue implements the DoltgresTypeInterface interface.
 func (b RegtypeType) FormatValue(val any) (string, error) {
 	if val == nil {
 		return "", nil
@@ -92,7 +126,7 @@ func (b RegtypeType) FormatValue(val any) (string, error) {
 	return b.IoOutput(sql.NewEmptyContext(), val)
 }
 
-// GetSerializationID implements the DoltgresType interface.
+// GetSerializationID implements the DoltgresTypeInterface interface.
 func (b RegtypeType) GetSerializationID() SerializationID {
 	return SerializationID_Invalid
 }
@@ -100,7 +134,7 @@ func (b RegtypeType) GetSerializationID() SerializationID {
 // Regtype_IoInput is the implementation for IoInput that is being set from another package to avoid circular dependencies.
 var Regtype_IoInput func(ctx *sql.Context, input string) (uint32, error)
 
-// IoInput implements the DoltgresType interface.
+// IoInput implements the DoltgresTypeInterface interface.
 func (b RegtypeType) IoInput(ctx *sql.Context, input string) (any, error) {
 	return Regtype_IoInput(ctx, input)
 }
@@ -108,7 +142,7 @@ func (b RegtypeType) IoInput(ctx *sql.Context, input string) (any, error) {
 // Regtype_IoOutput is the implementation for IoOutput that is being set from another package to avoid circular dependencies.
 var Regtype_IoOutput func(ctx *sql.Context, oid uint32) (string, error)
 
-// IoOutput implements the DoltgresType interface.
+// IoOutput implements the DoltgresTypeInterface interface.
 func (b RegtypeType) IoOutput(ctx *sql.Context, output any) (string, error) {
 	converted, _, err := b.Convert(output)
 	if err != nil {
@@ -117,37 +151,37 @@ func (b RegtypeType) IoOutput(ctx *sql.Context, output any) (string, error) {
 	return Regtype_IoOutput(ctx, converted.(uint32))
 }
 
-// IsPreferredType implements the DoltgresType interface.
+// IsPreferredType implements the DoltgresTypeInterface interface.
 func (b RegtypeType) IsPreferredType() bool {
 	return false
 }
 
-// IsUnbounded implements the DoltgresType interface.
+// IsUnbounded implements the DoltgresTypeInterface interface.
 func (b RegtypeType) IsUnbounded() bool {
 	return false
 }
 
-// MaxSerializedWidth implements the DoltgresType interface.
+// MaxSerializedWidth implements the DoltgresTypeInterface interface.
 func (b RegtypeType) MaxSerializedWidth() types.ExtendedTypeSerializedWidth {
 	return types.ExtendedTypeSerializedWidth_64K
 }
 
-// MaxTextResponseByteLength implements the DoltgresType interface.
+// MaxTextResponseByteLength implements the DoltgresTypeInterface interface.
 func (b RegtypeType) MaxTextResponseByteLength(ctx *sql.Context) uint32 {
 	return 4
 }
 
-// OID implements the DoltgresType interface.
+// OID implements the DoltgresTypeInterface interface.
 func (b RegtypeType) OID() uint32 {
 	return uint32(oid.T_regtype)
 }
 
-// Promote implements the DoltgresType interface.
+// Promote implements the DoltgresTypeInterface interface.
 func (b RegtypeType) Promote() sql.Type {
 	return b
 }
 
-// SerializedCompare implements the DoltgresType interface.
+// SerializedCompare implements the DoltgresTypeInterface interface.
 func (b RegtypeType) SerializedCompare(v1 []byte, v2 []byte) (int, error) {
 	if len(v1) == 0 && len(v2) == 0 {
 		return 0, nil
@@ -160,7 +194,7 @@ func (b RegtypeType) SerializedCompare(v1 []byte, v2 []byte) (int, error) {
 	return bytes.Compare(v1, v2), nil
 }
 
-// SQL implements the DoltgresType interface.
+// SQL implements the DoltgresTypeInterface interface.
 func (b RegtypeType) SQL(ctx *sql.Context, dest []byte, v any) (sqltypes.Value, error) {
 	if v == nil {
 		return sqltypes.NULL, nil
@@ -172,47 +206,47 @@ func (b RegtypeType) SQL(ctx *sql.Context, dest []byte, v any) (sqltypes.Value, 
 	return sqltypes.MakeTrusted(sqltypes.Text, types.AppendAndSliceBytes(dest, []byte(value))), nil
 }
 
-// String implements the DoltgresType interface.
+// String implements the DoltgresTypeInterface interface.
 func (b RegtypeType) String() string {
 	return "regtype"
 }
 
-// ToArrayType implements the DoltgresType interface.
+// ToArrayType implements the DoltgresTypeInterface interface.
 func (b RegtypeType) ToArrayType() DoltgresArrayType {
 	return RegtypeArray
 }
 
-// Type implements the DoltgresType interface.
+// DoltgresType implements the DoltgresTypeInterface interface.
 func (b RegtypeType) Type() query.Type {
 	return sqltypes.Text
 }
 
-// ValueType implements the DoltgresType interface.
+// ValueType implements the DoltgresTypeInterface interface.
 func (b RegtypeType) ValueType() reflect.Type {
 	return reflect.TypeOf(uint32(0))
 }
 
-// Zero implements the DoltgresType interface.
+// Zero implements the DoltgresTypeInterface interface.
 func (b RegtypeType) Zero() any {
 	return uint32(0)
 }
 
-// SerializeType implements the DoltgresType interface.
+// SerializeType implements the DoltgresTypeInterface interface.
 func (b RegtypeType) SerializeType() ([]byte, error) {
 	return nil, fmt.Errorf("%s cannot be serialized", b.String())
 }
 
-// deserializeType implements the DoltgresType interface.
-func (b RegtypeType) deserializeType(version uint16, metadata []byte) (DoltgresType, error) {
+// deserializeType implements the DoltgresTypeInterface interface.
+func (b RegtypeType) deserializeType(version uint16, metadata []byte) (DoltgresTypeInterface, error) {
 	return nil, fmt.Errorf("%s cannot be deserialized", b.String())
 }
 
-// SerializeValue implements the DoltgresType interface.
+// SerializeValue implements the DoltgresTypeInterface interface.
 func (b RegtypeType) SerializeValue(val any) ([]byte, error) {
 	return nil, fmt.Errorf("%s cannot serialize values", b.String())
 }
 
-// DeserializeValue implements the DoltgresType interface.
+// DeserializeValue implements the DoltgresTypeInterface interface.
 func (b RegtypeType) DeserializeValue(val []byte) (any, error) {
 	return nil, fmt.Errorf("%s cannot deserialize values", b.String())
 }

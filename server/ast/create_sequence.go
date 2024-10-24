@@ -62,13 +62,15 @@ func nodeCreateSequence(node *tree.CreateSequence) (vitess.Statement, error) {
 	for _, option := range node.Options {
 		switch option.Name {
 		case tree.SeqOptAs:
-			if dataType != nil {
+			if !dataType.EmptyType() {
 				return nil, fmt.Errorf("conflicting or redundant options")
 			}
-			_, dataType, err = nodeResolvableTypeReference(option.AsType)
+			_, resolvableType, err := nodeResolvableTypeReference(option.AsType)
 			if err != nil {
 				return nil, err
 			}
+			// TODO: check for valid type
+			dataType = resolvableType.ResolvedType
 			switch dataType.BaseID() {
 			case pgtypes.DoltgresTypeBaseID_Int16:
 				minValueLimit = int64(math.MinInt16)
@@ -172,14 +174,14 @@ func nodeCreateSequence(node *tree.CreateSequence) (vitess.Statement, error) {
 	} else {
 		start = maxValue
 	}
-	if dataType == nil {
+	if dataType.EmptyType() {
 		dataType = pgtypes.Int64
 	}
-	// Returns the stored procedure call with all of the options
+	// Returns the stored procedure call with all of options
 	return vitess.InjectedStatement{
 		Statement: pgnodes.NewCreateSequence(node.IfNotExists, name.SchemaQualifier.String(), &sequences.Sequence{
 			Name:        name.Name.String(),
-			DataTypeOID: dataType.OID(),
+			DataTypeOID: dataType.Oid,
 			Persistence: sequences.Persistence_Permanent,
 			Start:       start,
 			Current:     start,

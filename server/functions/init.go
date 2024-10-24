@@ -14,9 +14,21 @@
 
 package functions
 
+func initTypeFunctions() {
+	initAnyArray()
+	initAnyElement()
+	initAnyNonArray()
+	initArray()
+	initBool()
+	initBpChar()
+	initBytea()
+	initDate()
+	initDomain()
+}
+
 // Init initializes all functions in this package.
 func Init() {
-	initUnaryTypeIn()
+	initTypeFunctions()
 	initAbs()
 	initAcos()
 	initAcosd()

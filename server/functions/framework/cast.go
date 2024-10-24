@@ -16,7 +16,6 @@ package framework
 
 import (
 	"fmt"
-	"github.com/dolthub/go-mysql-server/sql/expression"
 	"sync"
 
 	"github.com/dolthub/go-mysql-server/sql"
@@ -301,46 +300,4 @@ func UnknownLiteralCast(ctx *sql.Context, val any, targetType pgtypes.DoltgresTy
 		return nil, err
 	}
 	return IoInput(ctx, targetType, str)
-}
-
-func IoInput(ctx *sql.Context, t pgtypes.DoltgresType, input string) (any, error) {
-	tt, ok := t.(pgtypes.Type)
-	if !ok {
-		return t.IoInput(ctx, input)
-	}
-
-	// TODO: ideally, should use NewTextLiteral() -- import cycle issue
-	inputVal, ok, err := GetFunction(tt.InputFunc, expression.NewLiteral(input, pgtypes.Text))
-	if err != nil {
-		return nil, err
-	}
-	if !ok {
-		return nil, fmt.Errorf(`function "nextval" could not be found for SERIAL default`)
-	}
-	return inputVal.Eval(ctx, nil)
-}
-
-func IoOutput(ctx *sql.Context, t pgtypes.DoltgresType, val any) (string, error) {
-	tt, ok := t.(pgtypes.Type)
-	if !ok {
-		return t.IoOutput(ctx, val)
-	}
-
-	// TODO: ideally, should use NewTextLiteral() -- import cycle issue
-	outputVal, ok, err := GetFunction(tt.OutputFunc, expression.NewLiteral(val, t))
-	if err != nil {
-		return "", err
-	}
-	if !ok {
-		return "", fmt.Errorf(`function "nextval" could not be found for SERIAL default`)
-	}
-	o, err := outputVal.Eval(ctx, nil)
-	if err != nil {
-		return "", err
-	}
-	output, ok := o.(string)
-	if !ok {
-		return "", fmt.Errorf(`expected string, got %T`, output)
-	}
-	return output, nil
 }

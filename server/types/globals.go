@@ -16,7 +16,7 @@ package types
 
 import "fmt"
 
-// DoltgresTypeBaseID is an ID that is common between all variations of a DoltgresType. For example, VARCHAR(3) and
+// DoltgresTypeBaseID is an ID that is common between all variations of a DoltgresTypeInterface. For example, VARCHAR(3) and
 // VARCHAR(6) are different types, however they will return the same DoltgresTypeBaseID. This ID is not suitable for
 // serialization, as it may change over time. Many types use their SerializationID as their base ID, so for types that
 // are not serializable (such as the "any" types), it is recommended that they start way after the largest
@@ -154,7 +154,7 @@ const (
 )
 
 // baseIDArrayTypes contains a map of all base IDs that represent array variants.
-var baseIDArrayTypes = map[DoltgresTypeBaseID]DoltgresArrayType{}
+var baseIDArrayTypes = map[DoltgresTypeBaseID]DoltgresType{}
 
 // baseIDCategories contains a map from all base IDs to their respective categories
 // TODO: add all of the types to each category
@@ -170,25 +170,25 @@ var oidToType = map[uint32]DoltgresType{}
 // Init reads the list of all types and creates mappings that will be used by various functions.
 func Init() {
 	for baseID, t := range typesFromBaseID {
-		if dat, ok := t.(DoltgresArrayType); ok {
-			baseIDArrayTypes[t.BaseID()] = dat
+		if t.IsArrayType() {
+			baseIDArrayTypes[t.BaseID()] = t
 		}
-		if t.IsPreferredType() {
-			preferredTypeInCategory[t.Category()] = append(preferredTypeInCategory[t.Category()], t.BaseID())
+		if t.IsPreferred {
+			preferredTypeInCategory[t.TypCategory] = append(preferredTypeInCategory[t.TypCategory], t.BaseID())
 		}
 		// Add the types to the OID map
 		if baseID.HasUniqueOID() {
-			if existingType, ok := oidToType[t.OID()]; ok {
-				panic(fmt.Errorf("OID (%d) type conflict: `%s` and `%s`", t.OID(), existingType.String(), t.String()))
+			if existingType, ok := oidToType[t.Oid]; ok {
+				panic(fmt.Errorf("OID (%d) type conflict: `%s` and `%s`", t.Oid, existingType.String(), t.String()))
 			}
-			oidToType[t.OID()] = t
-			baseIDCategories[t.BaseID()] = t.Category()
+			oidToType[t.Oid] = t
+			baseIDCategories[t.BaseID()] = t.TypCategory
 		}
 	}
 }
 
 // IsBaseIDArrayType returns whether the base ID is an array type. If it is, it also returns the type.
-func (id DoltgresTypeBaseID) IsBaseIDArrayType() (DoltgresArrayType, bool) {
+func (id DoltgresTypeBaseID) IsBaseIDArrayType() (DoltgresType, bool) {
 	dat, ok := baseIDArrayTypes[id]
 	return dat, ok
 }
@@ -241,7 +241,7 @@ func (cat TypeCategory) IsPreferredType(p DoltgresTypeBaseID) bool {
 func GetTypeByOID(oid uint32) DoltgresType {
 	t, ok := oidToType[oid]
 	if !ok {
-		return nil
+		return DoltgresType{}
 	}
 	return t
 }

@@ -18,21 +18,21 @@ import (
 	"strings"
 
 	"github.com/dolthub/go-mysql-server/sql"
-	"github.com/dolthub/go-mysql-server/sql/types"
 
 	"github.com/dolthub/doltgresql/server/functions/framework"
 	pgtypes "github.com/dolthub/doltgresql/server/types"
 )
 
-// initBinaryNotEqual registers the functions to the catalog.
-func initUnaryTypeIn() {
+// initBool registers the functions to the catalog.
+func initBool() {
 	framework.RegisterFunction(boolin)
 	framework.RegisterFunction(boolout)
 	framework.RegisterFunction(boolrecv)
 	framework.RegisterFunction(boolsend)
+	framework.RegisterFunction(btboolcmp)
 }
 
-// boolin represents the PostgreSQL function of boolean type ioInput().
+// boolin represents the PostgreSQL function of boolean type IO input.
 var boolin = framework.Function1{
 	Name:       "boolin",
 	Return:     pgtypes.Bool,
@@ -50,14 +50,13 @@ var boolin = framework.Function1{
 	},
 }
 
-// booout represents the PostgreSQL function of boolean type ioOutput().
+// boolout represents the PostgreSQL function of boolean type IO output.
 var boolout = framework.Function1{
 	Name:       "boolout",
 	Return:     pgtypes.Bool,
 	Parameters: [1]pgtypes.DoltgresType{pgtypes.Bool},
 	Strict:     true,
 	Callable: func(ctx *sql.Context, _ [2]pgtypes.DoltgresType, input any) (any, error) {
-		// TODO: should the input be converted or should be converted here?
 		if input.(bool) {
 			return "true", nil
 		} else {
@@ -66,33 +65,52 @@ var boolout = framework.Function1{
 	},
 }
 
-// boorecv represents the PostgreSQL function of the same name, taking the same parameters.
+// boolrecv represents the PostgreSQL function of boolean type IO receive.
 var boolrecv = framework.Function1{
 	Name:       "boolrecv",
 	Return:     pgtypes.Bool,
-	Parameters: [1]pgtypes.DoltgresType{pgtypes.Bool},
+	Parameters: [1]pgtypes.DoltgresType{pgtypes.Internal},
 	Strict:     true,
 	Callable: func(ctx *sql.Context, _ [2]pgtypes.DoltgresType, input any) (any, error) {
 		switch v := input.(type) {
 		case bool:
 			return v, nil
-		case nil:
-			return nil, nil
 		default:
 			return nil, pgtypes.ErrUnhandledType.New("boolean", v)
 		}
 	},
 }
 
-// boosend represents the PostgreSQL function of the same name, taking the same parameters.
+// boolsend represents the PostgreSQL function of boolean type IO send.
 var boolsend = framework.Function1{
 	Name:       "boolsend",
-	Return:     pgtypes.Text, // TODO: should it be bytea
+	Return:     pgtypes.Bytea,
 	Parameters: [1]pgtypes.DoltgresType{pgtypes.Bool},
 	Strict:     true,
-	Callable: func(ctx *sql.Context, _ [2]pgtypes.DoltgresType, input any) (any, error) {
-		// TODO: should the input be result of ioOutput or should be done here?
-		valBytes := types.AppendAndSliceBytes(nil, []byte{input.(string)[0]})
-		return string(valBytes), nil
+	Callable: func(ctx *sql.Context, _ [2]pgtypes.DoltgresType, val any) (any, error) {
+		if val.(bool) {
+			return []byte("t"), nil
+		} else {
+			return []byte("f"), nil
+		}
+	},
+}
+
+// btboolcmp represents the PostgreSQL function of boolean type byte compare.
+var btboolcmp = framework.Function2{
+	Name:       "btboolcmp",
+	Return:     pgtypes.Int32,
+	Parameters: [2]pgtypes.DoltgresType{pgtypes.Bool, pgtypes.Bool},
+	Strict:     true,
+	Callable: func(ctx *sql.Context, _ [3]pgtypes.DoltgresType, val1, val2 any) (any, error) {
+		ab := val1.(bool)
+		bb := val2.(bool)
+		if ab == bb {
+			return int32(0), nil
+		} else if !ab {
+			return int32(-1), nil
+		} else {
+			return int32(1), nil
+		}
 	},
 }

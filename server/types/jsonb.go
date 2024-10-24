@@ -35,39 +35,73 @@ import (
 )
 
 // JsonB is the deserialized and structured version of JSON that deals with JsonDocument.
-var JsonB = JsonBType{}
+var JsonB = DoltgresType{
+	Oid:           uint32(oid.T_jsonb),
+	Name:          "jsonb",
+	Schema:        "pg_catalog",
+	Owner:         "doltgres", // TODO
+	Length:        int16(-1),
+	PassedByVal:   false,
+	TypType:       TypeType_Base,
+	TypCategory:   TypeCategory_UserDefinedTypes,
+	IsPreferred:   false,
+	IsDefined:     true,
+	Delimiter:     ",",
+	RelID:         0,
+	SubscriptFunc: "jsonb_subscript_handler",
+	Elem:          0,
+	Array:         uint32(oid.T__jsonb),
+	InputFunc:     "jsonb_in",
+	OutputFunc:    "jsonb_out",
+	ReceiveFunc:   "jsonb_recv",
+	SendFunc:      "jsonb_send",
+	ModInFunc:     "-",
+	ModOutFunc:    "-",
+	AnalyzeFunc:   "-",
+	Align:         TypeAlignment_Int,
+	Storage:       TypeStorage_Extended,
+	NotNull:       false,
+	BaseTypeOID:   0,
+	TypMod:        -1,
+	NDims:         0,
+	Collation:     0,
+	DefaulBin:     "",
+	Default:       "",
+	Acl:           "",
+	Checks:        nil,
+}
 
 // JsonBType is the extended type implementation of the PostgreSQL jsonb.
 type JsonBType struct{}
 
-var _ DoltgresType = JsonBType{}
+var _ DoltgresTypeInterface = JsonBType{}
 
-// Alignment implements the DoltgresType interface.
+// Alignment implements the DoltgresTypeInterface interface.
 func (b JsonBType) Alignment() TypeAlignment {
 	return TypeAlignment_Int
 }
 
-// BaseID implements the DoltgresType interface.
+// BaseID implements the DoltgresTypeInterface interface.
 func (b JsonBType) BaseID() DoltgresTypeBaseID {
 	return DoltgresTypeBaseID_JsonB
 }
 
-// BaseName implements the DoltgresType interface.
+// BaseName implements the DoltgresTypeInterface interface.
 func (b JsonBType) BaseName() string {
 	return "jsonb"
 }
 
-// Category implements the DoltgresType interface.
+// Category implements the DoltgresTypeInterface interface.
 func (b JsonBType) Category() TypeCategory {
 	return TypeCategory_UserDefinedTypes
 }
 
-// CollationCoercibility implements the DoltgresType interface.
+// CollationCoercibility implements the DoltgresTypeInterface interface.
 func (b JsonBType) CollationCoercibility(ctx *sql.Context) (collation sql.CollationID, coercibility byte) {
 	return sql.Collation_binary, 5
 }
 
-// Compare implements the DoltgresType interface.
+// Compare implements the DoltgresTypeInterface interface.
 func (b JsonBType) Compare(v1 any, v2 any) (int, error) {
 	if v1 == nil && v2 == nil {
 		return 0, nil
@@ -91,7 +125,7 @@ func (b JsonBType) Compare(v1 any, v2 any) (int, error) {
 	return jsonValueCompare(ab.Value, bb.Value), nil
 }
 
-// Convert implements the DoltgresType interface.
+// Convert implements the DoltgresTypeInterface interface.
 func (b JsonBType) Convert(val any) (any, sql.ConvertInRange, error) {
 	switch val := val.(type) {
 	case JsonDocument:
@@ -103,7 +137,7 @@ func (b JsonBType) Convert(val any) (any, sql.ConvertInRange, error) {
 	}
 }
 
-// Equals implements the DoltgresType interface.
+// Equals implements the DoltgresTypeInterface interface.
 func (b JsonBType) Equals(otherType sql.Type) bool {
 	if otherExtendedType, ok := otherType.(types.ExtendedType); ok {
 		return bytes.Equal(MustSerializeType(b), MustSerializeType(otherExtendedType))
@@ -111,7 +145,7 @@ func (b JsonBType) Equals(otherType sql.Type) bool {
 	return false
 }
 
-// FormatValue implements the DoltgresType interface.
+// FormatValue implements the DoltgresTypeInterface interface.
 func (b JsonBType) FormatValue(val any) (string, error) {
 	if val == nil {
 		return "", nil
@@ -119,12 +153,12 @@ func (b JsonBType) FormatValue(val any) (string, error) {
 	return b.IoOutput(sql.NewEmptyContext(), val)
 }
 
-// GetSerializationID implements the DoltgresType interface.
+// GetSerializationID implements the DoltgresTypeInterface interface.
 func (b JsonBType) GetSerializationID() SerializationID {
 	return SerializationID_JsonB
 }
 
-// IoInput implements the DoltgresType interface.
+// IoInput implements the DoltgresTypeInterface interface.
 func (b JsonBType) IoInput(ctx *sql.Context, input string) (any, error) {
 	inputBytes := unsafe.Slice(unsafe.StringData(input), len(input))
 	if json.Valid(inputBytes) {
@@ -134,7 +168,7 @@ func (b JsonBType) IoInput(ctx *sql.Context, input string) (any, error) {
 	return nil, fmt.Errorf("invalid input syntax for type json")
 }
 
-// IoOutput implements the DoltgresType interface.
+// IoOutput implements the DoltgresTypeInterface interface.
 func (b JsonBType) IoOutput(ctx *sql.Context, output any) (string, error) {
 	converted, _, err := b.Convert(output)
 	if err != nil {
@@ -146,37 +180,37 @@ func (b JsonBType) IoOutput(ctx *sql.Context, output any) (string, error) {
 	return sb.String(), nil
 }
 
-// IsPreferredType implements the DoltgresType interface.
+// IsPreferredType implements the DoltgresTypeInterface interface.
 func (b JsonBType) IsPreferredType() bool {
 	return false
 }
 
-// IsUnbounded implements the DoltgresType interface.
+// IsUnbounded implements the DoltgresTypeInterface interface.
 func (b JsonBType) IsUnbounded() bool {
 	return true
 }
 
-// MaxSerializedWidth implements the DoltgresType interface.
+// MaxSerializedWidth implements the DoltgresTypeInterface interface.
 func (b JsonBType) MaxSerializedWidth() types.ExtendedTypeSerializedWidth {
 	return types.ExtendedTypeSerializedWidth_Unbounded
 }
 
-// MaxTextResponseByteLength implements the DoltgresType interface.
+// MaxTextResponseByteLength implements the DoltgresTypeInterface interface.
 func (b JsonBType) MaxTextResponseByteLength(ctx *sql.Context) uint32 {
 	return math.MaxUint32
 }
 
-// OID implements the DoltgresType interface.
+// OID implements the DoltgresTypeInterface interface.
 func (b JsonBType) OID() uint32 {
 	return uint32(oid.T_jsonb)
 }
 
-// Promote implements the DoltgresType interface.
+// Promote implements the DoltgresTypeInterface interface.
 func (b JsonBType) Promote() sql.Type {
 	return b
 }
 
-// SerializedCompare implements the DoltgresType interface.
+// SerializedCompare implements the DoltgresTypeInterface interface.
 func (b JsonBType) SerializedCompare(v1 []byte, v2 []byte) (int, error) {
 	if len(v1) == 0 && len(v2) == 0 {
 		return 0, nil
@@ -197,7 +231,7 @@ func (b JsonBType) SerializedCompare(v1 []byte, v2 []byte) (int, error) {
 	return b.Compare(v1Doc, v2Doc)
 }
 
-// SQL implements the DoltgresType interface.
+// SQL implements the DoltgresTypeInterface interface.
 func (b JsonBType) SQL(ctx *sql.Context, dest []byte, v any) (sqltypes.Value, error) {
 	if v == nil {
 		return sqltypes.NULL, nil
@@ -209,38 +243,38 @@ func (b JsonBType) SQL(ctx *sql.Context, dest []byte, v any) (sqltypes.Value, er
 	return sqltypes.MakeTrusted(sqltypes.Text, types.AppendAndSliceBytes(dest, []byte(value))), nil
 }
 
-// String implements the DoltgresType interface.
+// String implements the DoltgresTypeInterface interface.
 func (b JsonBType) String() string {
 	return "jsonb"
 }
 
-// ToArrayType implements the DoltgresType interface.
+// ToArrayType implements the DoltgresTypeInterface interface.
 func (b JsonBType) ToArrayType() DoltgresArrayType {
 	return JsonBArray
 }
 
-// Type implements the DoltgresType interface.
+// DoltgresType implements the DoltgresTypeInterface interface.
 func (b JsonBType) Type() query.Type {
 	return sqltypes.Text
 }
 
-// ValueType implements the DoltgresType interface.
+// ValueType implements the DoltgresTypeInterface interface.
 func (b JsonBType) ValueType() reflect.Type {
 	return reflect.TypeOf(JsonDocument{})
 }
 
-// Zero implements the DoltgresType interface.
+// Zero implements the DoltgresTypeInterface interface.
 func (b JsonBType) Zero() any {
 	return JsonDocument{Value: JsonValueNull(0)}
 }
 
-// SerializeType implements the DoltgresType interface.
+// SerializeType implements the DoltgresTypeInterface interface.
 func (b JsonBType) SerializeType() ([]byte, error) {
 	return SerializationID_JsonB.ToByteSlice(0), nil
 }
 
-// deserializeType implements the DoltgresType interface.
-func (b JsonBType) deserializeType(version uint16, metadata []byte) (DoltgresType, error) {
+// deserializeType implements the DoltgresTypeInterface interface.
+func (b JsonBType) deserializeType(version uint16, metadata []byte) (DoltgresTypeInterface, error) {
 	switch version {
 	case 0:
 		return JsonB, nil
@@ -249,7 +283,7 @@ func (b JsonBType) deserializeType(version uint16, metadata []byte) (DoltgresTyp
 	}
 }
 
-// SerializeValue implements the DoltgresType interface.
+// SerializeValue implements the DoltgresTypeInterface interface.
 func (b JsonBType) SerializeValue(val any) ([]byte, error) {
 	if val == nil {
 		return nil, nil
@@ -263,7 +297,7 @@ func (b JsonBType) SerializeValue(val any) ([]byte, error) {
 	return writer.Data(), nil
 }
 
-// DeserializeValue implements the DoltgresType interface.
+// DeserializeValue implements the DoltgresTypeInterface interface.
 func (b JsonBType) DeserializeValue(val []byte) (any, error) {
 	if len(val) == 0 {
 		return nil, nil

@@ -60,7 +60,7 @@ func (p PgTypeHandler) RowIter(ctx *sql.Context) (sql.RowIter, error) {
 		return nil, err
 	}
 
-	var displayTypes []pgtypes.DoltgresType
+	var displayTypes []pgtypes.DoltgresTypeInterface
 	err = oid.IterateCurrentDatabase(ctx, oid.Callbacks{
 		Type: func(ctx *sql.Context, typ oid.ItemType) (cont bool, err error) {
 			displayTypes = append(displayTypes, typ.Item)
@@ -120,7 +120,7 @@ var pgTypeSchema = sql.Schema{
 // pgTypeRowIter is the sql.RowIter for the pg_type table.
 type pgTypeRowIter struct {
 	pgCatalogOid uint32
-	types        []pgtypes.DoltgresType
+	types        []pgtypes.DoltgresTypeInterface
 	idx          int
 }
 

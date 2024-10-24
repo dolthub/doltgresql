@@ -30,7 +30,41 @@ import (
 )
 
 // Timestamp is the timestamp without a time zone. Precision is unbounded.
-var Timestamp = TimestampType{-1}
+var Timestamp = DoltgresType{
+	Oid:           uint32(oid.T_timestamp),
+	Name:          "timestamp",
+	Schema:        "pg_catalog",
+	Owner:         "doltgres", // TODO
+	Length:        int16(8),
+	PassedByVal:   true,
+	TypType:       TypeType_Base,
+	TypCategory:   TypeCategory_DateTimeTypes,
+	IsPreferred:   false,
+	IsDefined:     true,
+	Delimiter:     ",",
+	RelID:         0,
+	SubscriptFunc: "-",
+	Elem:          0,
+	Array:         uint32(oid.T__timestamp),
+	InputFunc:     "timestamp_in",
+	OutputFunc:    "timestamp_out",
+	ReceiveFunc:   "timestamp_recv",
+	SendFunc:      "timestamp_send",
+	ModInFunc:     "timestamptypmodin",
+	ModOutFunc:    "timestamptypmodout",
+	AnalyzeFunc:   "-",
+	Align:         TypeAlignment_Double,
+	Storage:       TypeStorage_Plain,
+	NotNull:       false,
+	BaseTypeOID:   0,
+	TypMod:        -1,
+	NDims:         0,
+	Collation:     0,
+	DefaulBin:     "",
+	Default:       "",
+	Acl:           "",
+	Checks:        nil,
+}
 
 // TimestampType is the extended type implementation of the PostgreSQL timestamp without time zone.
 type TimestampType struct {
@@ -38,34 +72,34 @@ type TimestampType struct {
 	Precision int8
 }
 
-var _ DoltgresType = TimestampType{}
+var _ DoltgresTypeInterface = TimestampType{}
 
-// Alignment implements the DoltgresType interface.
+// Alignment implements the DoltgresTypeInterface interface.
 func (b TimestampType) Alignment() TypeAlignment {
 	return TypeAlignment_Double
 }
 
-// BaseID implements the DoltgresType interface.
+// BaseID implements the DoltgresTypeInterface interface.
 func (b TimestampType) BaseID() DoltgresTypeBaseID {
 	return DoltgresTypeBaseID_Timestamp
 }
 
-// BaseName implements the DoltgresType interface.
+// BaseName implements the DoltgresTypeInterface interface.
 func (b TimestampType) BaseName() string {
 	return "timestamp"
 }
 
-// Category implements the DoltgresType interface.
+// Category implements the DoltgresTypeInterface interface.
 func (b TimestampType) Category() TypeCategory {
 	return TypeCategory_DateTimeTypes
 }
 
-// CollationCoercibility implements the DoltgresType interface.
+// CollationCoercibility implements the DoltgresTypeInterface interface.
 func (b TimestampType) CollationCoercibility(ctx *sql.Context) (collation sql.CollationID, coercibility byte) {
 	return sql.Collation_binary, 5
 }
 
-// Compare implements the DoltgresType interface.
+// Compare implements the DoltgresTypeInterface interface.
 func (b TimestampType) Compare(v1 any, v2 any) (int, error) {
 	if v1 == nil && v2 == nil {
 		return 0, nil
@@ -89,7 +123,7 @@ func (b TimestampType) Compare(v1 any, v2 any) (int, error) {
 	return ab.Compare(bb), nil
 }
 
-// Convert implements the DoltgresType interface.
+// Convert implements the DoltgresTypeInterface interface.
 func (b TimestampType) Convert(val any) (any, sql.ConvertInRange, error) {
 	switch val := val.(type) {
 	case time.Time:
@@ -101,7 +135,7 @@ func (b TimestampType) Convert(val any) (any, sql.ConvertInRange, error) {
 	}
 }
 
-// Equals implements the DoltgresType interface.
+// Equals implements the DoltgresTypeInterface interface.
 func (b TimestampType) Equals(otherType sql.Type) bool {
 	if otherExtendedType, ok := otherType.(types.ExtendedType); ok {
 		return bytes.Equal(MustSerializeType(b), MustSerializeType(otherExtendedType))
@@ -109,7 +143,7 @@ func (b TimestampType) Equals(otherType sql.Type) bool {
 	return false
 }
 
-// FormatValue implements the DoltgresType interface.
+// FormatValue implements the DoltgresTypeInterface interface.
 func (b TimestampType) FormatValue(val any) (string, error) {
 	if val == nil {
 		return "", nil
@@ -117,12 +151,12 @@ func (b TimestampType) FormatValue(val any) (string, error) {
 	return b.IoOutput(sql.NewEmptyContext(), val)
 }
 
-// GetSerializationID implements the DoltgresType interface.
+// GetSerializationID implements the DoltgresTypeInterface interface.
 func (b TimestampType) GetSerializationID() SerializationID {
 	return SerializationID_Timestamp
 }
 
-// IoInput implements the DoltgresType interface.
+// IoInput implements the DoltgresTypeInterface interface.
 func (b TimestampType) IoInput(ctx *sql.Context, input string) (any, error) {
 	p := b.Precision
 	if p == -1 {
@@ -135,7 +169,7 @@ func (b TimestampType) IoInput(ctx *sql.Context, input string) (any, error) {
 	return t.Time, nil
 }
 
-// IoOutput implements the DoltgresType interface.
+// IoOutput implements the DoltgresTypeInterface interface.
 func (b TimestampType) IoOutput(ctx *sql.Context, output any) (string, error) {
 	converted, _, err := b.Convert(output)
 	if err != nil {
@@ -144,37 +178,37 @@ func (b TimestampType) IoOutput(ctx *sql.Context, output any) (string, error) {
 	return converted.(time.Time).Format("2006-01-02 15:04:05.999999999"), nil
 }
 
-// IsPreferredType implements the DoltgresType interface.
+// IsPreferredType implements the DoltgresTypeInterface interface.
 func (b TimestampType) IsPreferredType() bool {
 	return false
 }
 
-// IsUnbounded implements the DoltgresType interface.
+// IsUnbounded implements the DoltgresTypeInterface interface.
 func (b TimestampType) IsUnbounded() bool {
 	return false
 }
 
-// MaxSerializedWidth implements the DoltgresType interface.
+// MaxSerializedWidth implements the DoltgresTypeInterface interface.
 func (b TimestampType) MaxSerializedWidth() types.ExtendedTypeSerializedWidth {
 	return types.ExtendedTypeSerializedWidth_64K
 }
 
-// MaxTextResponseByteLength implements the DoltgresType interface.
+// MaxTextResponseByteLength implements the DoltgresTypeInterface interface.
 func (b TimestampType) MaxTextResponseByteLength(ctx *sql.Context) uint32 {
 	return 8
 }
 
-// OID implements the DoltgresType interface.
+// OID implements the DoltgresTypeInterface interface.
 func (b TimestampType) OID() uint32 {
 	return uint32(oid.T_timestamp)
 }
 
-// Promote implements the DoltgresType interface.
+// Promote implements the DoltgresTypeInterface interface.
 func (b TimestampType) Promote() sql.Type {
 	return Timestamp
 }
 
-// SerializedCompare implements the DoltgresType interface.
+// SerializedCompare implements the DoltgresTypeInterface interface.
 func (b TimestampType) SerializedCompare(v1 []byte, v2 []byte) (int, error) {
 	if len(v1) == 0 && len(v2) == 0 {
 		return 0, nil
@@ -188,7 +222,7 @@ func (b TimestampType) SerializedCompare(v1 []byte, v2 []byte) (int, error) {
 	return bytes.Compare(v1, v2), nil
 }
 
-// SQL implements the DoltgresType interface.
+// SQL implements the DoltgresTypeInterface interface.
 func (b TimestampType) SQL(ctx *sql.Context, dest []byte, v any) (sqltypes.Value, error) {
 	if v == nil {
 		return sqltypes.NULL, nil
@@ -200,7 +234,7 @@ func (b TimestampType) SQL(ctx *sql.Context, dest []byte, v any) (sqltypes.Value
 	return sqltypes.MakeTrusted(sqltypes.Text, types.AppendAndSliceBytes(dest, []byte(value))), nil
 }
 
-// String implements the DoltgresType interface.
+// String implements the DoltgresTypeInterface interface.
 func (b TimestampType) String() string {
 	if b.Precision == -1 {
 		return "timestamp"
@@ -208,27 +242,27 @@ func (b TimestampType) String() string {
 	return fmt.Sprintf("timestamp(%d)", b.Precision)
 }
 
-// ToArrayType implements the DoltgresType interface.
+// ToArrayType implements the DoltgresTypeInterface interface.
 func (b TimestampType) ToArrayType() DoltgresArrayType {
 	return createArrayType(b, SerializationID_TimestampArray, oid.T__timestamp)
 }
 
-// Type implements the DoltgresType interface.
+// DoltgresType implements the DoltgresTypeInterface interface.
 func (b TimestampType) Type() query.Type {
 	return sqltypes.Text
 }
 
-// ValueType implements the DoltgresType interface.
+// ValueType implements the DoltgresTypeInterface interface.
 func (b TimestampType) ValueType() reflect.Type {
 	return reflect.TypeOf(time.Time{})
 }
 
-// Zero implements the DoltgresType interface.
+// Zero implements the DoltgresTypeInterface interface.
 func (b TimestampType) Zero() any {
 	return time.Time{}
 }
 
-// SerializeType implements the DoltgresType interface.
+// SerializeType implements the DoltgresTypeInterface interface.
 func (b TimestampType) SerializeType() ([]byte, error) {
 	t := make([]byte, serializationIDHeaderSize+1)
 	copy(t, SerializationID_Timestamp.ToByteSlice(0))
@@ -236,8 +270,8 @@ func (b TimestampType) SerializeType() ([]byte, error) {
 	return t, nil
 }
 
-// deserializeType implements the DoltgresType interface.
-func (b TimestampType) deserializeType(version uint16, metadata []byte) (DoltgresType, error) {
+// deserializeType implements the DoltgresTypeInterface interface.
+func (b TimestampType) deserializeType(version uint16, metadata []byte) (DoltgresTypeInterface, error) {
 	switch version {
 	case 0:
 		return TimestampType{
@@ -248,7 +282,7 @@ func (b TimestampType) deserializeType(version uint16, metadata []byte) (Doltgre
 	}
 }
 
-// SerializeValue implements the DoltgresType interface.
+// SerializeValue implements the DoltgresTypeInterface interface.
 func (b TimestampType) SerializeValue(val any) ([]byte, error) {
 	if val == nil {
 		return nil, nil
@@ -260,7 +294,7 @@ func (b TimestampType) SerializeValue(val any) ([]byte, error) {
 	return converted.(time.Time).MarshalBinary()
 }
 
-// DeserializeValue implements the DoltgresType interface.
+// DeserializeValue implements the DoltgresTypeInterface interface.
 func (b TimestampType) DeserializeValue(val []byte) (any, error) {
 	if len(val) == 0 {
 		return nil, nil

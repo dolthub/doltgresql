@@ -16,13 +16,13 @@ package types
 
 import (
 	"bytes"
-	"fmt"
+	"reflect"
+
 	"github.com/dolthub/go-mysql-server/sql"
 	"github.com/dolthub/go-mysql-server/sql/types"
 	"github.com/dolthub/vitess/go/sqltypes"
 	"github.com/dolthub/vitess/go/vt/proto/query"
 	"gopkg.in/src-d/go-errors.v1"
-	"reflect"
 )
 
 var ErrTypeAlreadyExists = errors.NewKind(`type "%s" already exists`)
@@ -31,8 +31,8 @@ var ErrTypeDoesNotExist = errors.NewKind(`type "%s" does not exist`)
 var ErrUnhandledType = errors.NewKind(`%s: unhandled type: %T`)
 var ErrInvalidSyntaxForType = errors.NewKind(`invalid input syntax for type %s: %q`)
 
-// Type represents a single type.
-type Type struct {
+// DoltgresType represents a single type.
+type DoltgresType struct {
 	Oid           uint32
 	Name          string
 	Schema        string // TODO: should be `uint32`.
@@ -69,69 +69,97 @@ type Type struct {
 
 	// These are for internal use
 	baseID                    DoltgresTypeBaseID
-	compareFunc               TypeCompareFunc
-	convertFunc               TypeConvertFunc
 	serializationID           SerializationID
-	ioInputFunc               IoInputFunc
-	ioOutputFunc              IoOutputFunc
 	isUnbounded               bool
 	maxSerializedWidth        types.ExtendedTypeSerializedWidth
 	maxTextResponseByteLength uint32
-	serializedCompareFunc     SerializedCompareFunc
-	sqlFunc                   SQLFunc
 	stringName                string
-	toArrayTypeFunc           ToArrayTypeFunc
 	queryType                 query.Type
 	valueType                 reflect.Type
 	zero                      any
-	serializeTypeFunc         SerializeTypeFunc
-	deserializeTypeFunc       DeserializeTypeFunc
-	serializeValueFunc        SerializeValueFunc
-	deserializeValueFunc      DeserializeValueFunc
 }
 
-type TypeCompareFunc func(converted1 interface{}, converted2 interface{}) (int, error)
-type TypeConvertFunc func(v interface{}) (interface{}, sql.ConvertInRange, error)
-type IoInputFunc func(ctx *sql.Context, input string) (any, error)
-type IoOutputFunc func(ctx *sql.Context, converted any) (string, error)
-type SerializedCompareFunc func(v1 []byte, v2 []byte) (int, error)
-type SQLFunc func(ioOutputStr string) (sqltypes.Value, error)
-type ToArrayTypeFunc func() DoltgresArrayType
-type SerializeTypeFunc func() ([]byte, error)
-type DeserializeTypeFunc func(version uint16, metadata []byte) (DoltgresType, error)
-type SerializeValueFunc func(val any) ([]byte, error)
-type DeserializeValueFunc func(val []byte) (any, error)
+var _ types.ExtendedType = DoltgresType{}
 
-var _ DoltgresType = Type{}
-
-// Alignment implements the DoltgresType interface.
-func (t Type) Alignment() TypeAlignment {
-	return t.Align
+func (t DoltgresType) ArrayBaseType() (DoltgresType, bool) {
+	if t.Elem == 0 {
+		return DoltgresType{}, false
+	}
+	elem, ok := OidToBuildInDoltgresType[t.Elem]
+	return elem, ok
 }
 
-// BaseID implements the DoltgresType interface.
-func (t Type) BaseID() DoltgresTypeBaseID {
+// BaseID implements the DoltgresTypeInterface interface.
+func (t DoltgresType) BaseID() DoltgresTypeBaseID {
 	return t.baseID
 }
 
-// BaseName implements the DoltgresType interface.
-func (t Type) BaseName() string {
-	return t.Name
+// IsArrayType returns true if the type is of 'array' category
+func (t DoltgresType) IsArrayType() bool {
+	return t.TypCategory == TypeCategory_ArrayTypes
 }
 
-// Category implements the DoltgresType interface.
-func (t Type) Category() TypeCategory {
-	return t.TypCategory
+func (t DoltgresType) EmptyType() bool {
+	// TODO
+	return t.Name == ""
 }
 
-// CollationCoercibility implements the DoltgresType interface.
-func (t Type) CollationCoercibility(ctx *sql.Context) (collation sql.CollationID, coercibility byte) {
+func (t DoltgresType) DomainUnderlyingBaseType() DoltgresType {
+	// TODO: account for user-defined type
+	bt, ok := OidToBuildInDoltgresType[t.BaseTypeOID]
+	if !ok {
+		// TODO
+	}
+	if bt.TypType == TypeType_Domain {
+		return bt.DomainUnderlyingBaseType()
+	} else {
+		return bt
+	}
+}
+
+// IsPolymorphicType These types are special built-in pseudo-types
+// that are used during function resolution to allow a function
+// to handle multiple types from a single definition.
+// All polymorphic types have "any" as a prefix.
+// The exception is the "any" type, which is not a polymorphic type.
+func (t DoltgresType) IsPolymorphicType() bool {
+	return t.TypType == TypeType_Pseudo
+}
+
+// IsValidForPolymorphicType returns whether the given type is valid for the calling polymorphic type.
+func (t DoltgresType) IsValidForPolymorphicType(target DoltgresType) bool {
+	// TODO: check for other pseudo types?
+	if t.TypType != TypeType_Pseudo {
+		return false
+	}
+	if t.Name == "anyarray" {
+		return target.TypCategory == TypeCategory_ArrayTypes
+	} else if t.Name == "anynonarray" {
+		return target.TypCategory != TypeCategory_ArrayTypes
+	} else if t.Name == "anyelement" {
+		return true
+	} else {
+		return false
+	}
+}
+
+// ToArrayType implements the types.ExtendedType interface.
+func (t DoltgresType) ToArrayType() (DoltgresType, bool) {
+	if t.Array == 0 {
+		return DoltgresType{}, false
+	}
+	arr, ok := OidToBuildInDoltgresType[t.Array]
+	return arr, ok
+}
+
+// CollationCoercibility implements the types.ExtendedType interface.
+func (t DoltgresType) CollationCoercibility(ctx *sql.Context) (collation sql.CollationID, coercibility byte) {
 	// TODO: seems all types are the same??
 	return sql.Collation_binary, 5
 }
 
-// Compare implements the DoltgresType interface.
-func (t Type) Compare(v1 interface{}, v2 interface{}) (int, error) {
+// Compare implements the types.ExtendedType interface.
+func (t DoltgresType) Compare(v1 interface{}, v2 interface{}) (int, error) {
 	if v1 == nil && v2 == nil {
 		return 0, nil
 	} else if v1 != nil && v2 == nil {
@@ -151,13 +179,13 @@ func (t Type) Compare(v1 interface{}, v2 interface{}) (int, error) {
 	return t.compareFunc(ac, bc)
 }
 
-// Convert implements the DoltgresType interface.
-func (t Type) Convert(v interface{}) (interface{}, sql.ConvertInRange, error) {
+// Convert implements the types.ExtendedType interface.
+func (t DoltgresType) Convert(v interface{}) (interface{}, sql.ConvertInRange, error) {
 	return t.convertFunc(v)
 }
 
-// Equals implements the DoltgresType interface.
-func (t Type) Equals(otherType sql.Type) bool {
+// Equals implements the types.ExtendedType interface.
+func (t DoltgresType) Equals(otherType sql.Type) bool {
 	// TODO: pseudo types should be true?
 	if otherExtendedType, ok := otherType.(types.ExtendedType); ok {
 		return bytes.Equal(MustSerializeType(t), MustSerializeType(otherExtendedType))
@@ -166,70 +194,35 @@ func (t Type) Equals(otherType sql.Type) bool {
 }
 
 // FormatValue implements the types.ExtendedType interface.
-func (t Type) FormatValue(val any) (string, error) {
+func (t DoltgresType) FormatValue(val any) (string, error) {
 	if val == nil {
 		return "", nil
 	}
 	return t.IoOutput(sql.NewEmptyContext(), val)
 }
 
-// GetSerializationID implements the DoltgresType interface.
-func (t Type) GetSerializationID() SerializationID {
-	return t.serializationID
-}
-
-// IoInput implements the DoltgresType interface.
-func (t Type) IoInput(ctx *sql.Context, input string) (any, error) {
-	return t.ioInputFunc(ctx, input)
-}
-
-// IoOutput implements the DoltgresType interface.
-func (t Type) IoOutput(ctx *sql.Context, output any) (string, error) {
-	converted, _, err := t.Convert(output)
-	if err != nil {
-		return "", err
-	}
-	return t.ioOutputFunc(ctx, converted)
-}
-
-// IsPreferredType implements the DoltgresType interface.
-func (t Type) IsPreferredType() bool {
-	return t.IsPreferred
-}
-
-// IsUnbounded implements the DoltgresType interface.
-func (t Type) IsUnbounded() bool {
-	return t.isUnbounded
-}
-
 // MaxSerializedWidth implements the types.ExtendedType interface.
-func (t Type) MaxSerializedWidth() types.ExtendedTypeSerializedWidth {
+func (t DoltgresType) MaxSerializedWidth() types.ExtendedTypeSerializedWidth {
 	return t.maxSerializedWidth
 }
 
-// MaxTextResponseByteLength implements the DoltgresType interface.
-func (t Type) MaxTextResponseByteLength(ctx *sql.Context) uint32 {
+// MaxTextResponseByteLength implements the types.ExtendedType interface.
+func (t DoltgresType) MaxTextResponseByteLength(ctx *sql.Context) uint32 {
 	return t.maxTextResponseByteLength
 }
 
-// OID implements the DoltgresType interface.
-func (t Type) OID() uint32 {
-	//TODO: generate unique oid
-	return t.Oid
-}
-
-// Promote implements the DoltgresType interface.
-func (t Type) Promote() sql.Type {
+// Promote implements the types.ExtendedType interface.
+func (t DoltgresType) Promote() sql.Type {
 	return t
 }
 
-// SerializedCompare implements the DoltgresType interface.
-func (t Type) SerializedCompare(v1 []byte, v2 []byte) (int, error) {
+// SerializedCompare implements the types.ExtendedType interface.
+func (t DoltgresType) SerializedCompare(v1 []byte, v2 []byte) (int, error) {
 	return t.serializedCompareFunc(v1, v2)
 }
 
-// SQL implements the DoltgresType interface.
-func (t Type) SQL(ctx *sql.Context, dest []byte, v interface{}) (sqltypes.Value, error) {
+// SQL implements the types.ExtendedType interface.
+func (t DoltgresType) SQL(ctx *sql.Context, dest []byte, v interface{}) (sqltypes.Value, error) {
 	if v == nil {
 		return sqltypes.NULL, nil
 	}
@@ -240,54 +233,28 @@ func (t Type) SQL(ctx *sql.Context, dest []byte, v interface{}) (sqltypes.Value,
 	return t.sqlFunc(value)
 }
 
-// String implements the DoltgresType interface.
-func (t Type) String() string {
+// String implements the types.ExtendedType interface.
+func (t DoltgresType) String() string {
 	return t.stringName
 }
 
-// ToArrayType implements the DoltgresType interface.
-func (t Type) ToArrayType() DoltgresArrayType {
-	return t.toArrayTypeFunc()
-}
-
-// Type implements the DoltgresType interface.
-func (t Type) Type() query.Type {
+// Type implements the types.ExtendedType interface.
+func (t DoltgresType) Type() query.Type {
 	return t.queryType
 }
 
-// ValueType implements the DoltgresType interface.
-func (t Type) ValueType() reflect.Type {
+// ValueType implements the types.ExtendedType interface.
+func (t DoltgresType) ValueType() reflect.Type {
 	return t.valueType
 }
 
-// Zero implements the DoltgresType interface.
-func (t Type) Zero() interface{} {
+// Zero implements the types.ExtendedType interface.
+func (t DoltgresType) Zero() interface{} {
 	return t.zero
 }
 
-// SerializeType implements the DoltgresType interface.
-func (t Type) SerializeType() ([]byte, error) {
-	if t.serializeTypeFunc == nil {
-		return t.serializationID.ToByteSlice(0), nil
-	}
-	return t.serializeTypeFunc()
-}
-
-// deserializeType implements the DoltgresType interface.
-func (t Type) deserializeType(version uint16, metadata []byte) (DoltgresType, error) {
-	if t.deserializeTypeFunc == nil {
-		switch version {
-		case 0:
-			return t, nil
-		default:
-			return nil, fmt.Errorf("version %d is not yet supported for %s", version, t.String())
-		}
-	}
-	return t.deserializeTypeFunc(version, metadata)
-}
-
 // SerializeValue implements the types.ExtendedType interface.
-func (t Type) SerializeValue(val any) ([]byte, error) {
+func (t DoltgresType) SerializeValue(val any) ([]byte, error) {
 	if val == nil {
 		return nil, nil
 	}
@@ -299,6 +266,6 @@ func (t Type) SerializeValue(val any) ([]byte, error) {
 }
 
 // DeserializeValue implements the types.ExtendedType interface.
-func (t Type) DeserializeValue(val []byte) (any, error) {
+func (t DoltgresType) DeserializeValue(val []byte) (any, error) {
 	return t.deserializeValueFunc(val)
 }

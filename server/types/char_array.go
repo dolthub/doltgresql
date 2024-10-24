@@ -14,7 +14,7 @@
 
 package types
 
-import "github.com/lib/pq/oid"
-
 // BpCharArray is the array variant of BpChar.
-var BpCharArray = createArrayType(BpChar, SerializationID_CharArray, oid.T__bpchar)
+var BpCharArray = CreateArrayTypeFromBaseType(BpChar)
+
+// createArrayType(BpChar, SerializationID_CharArray, oid.T__bpchar)

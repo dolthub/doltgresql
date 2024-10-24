@@ -95,8 +95,8 @@ func (ac *AssignmentCast) WithChildren(children ...sql.Expression) (sql.Expressi
 }
 
 func checkForDomainType(t pgtypes.DoltgresType) pgtypes.DoltgresType {
-	if dt, ok := t.(pgtypes.DomainType); ok {
-		t = dt.UnderlyingBaseType()
+	if t.TypType == pgtypes.TypeType_Domain {
+		t = t.DomainUnderlyingBaseType()
 	}
 	return t
 }

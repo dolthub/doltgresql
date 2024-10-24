@@ -42,6 +42,7 @@ import (
 	"github.com/dolthub/doltgresql/postgres/parser/sem/tree"
 	"github.com/dolthub/doltgresql/server/ast"
 	pgexprs "github.com/dolthub/doltgresql/server/expression"
+	"github.com/dolthub/doltgresql/server/functions/framework"
 	"github.com/dolthub/doltgresql/server/node"
 	pgtypes "github.com/dolthub/doltgresql/server/types"
 )
@@ -811,7 +812,8 @@ func (h *ConnectionHandler) convertBindParameters(types []uint32, formatCodes []
 		if !ok {
 			return nil, fmt.Errorf("unhandled oid type: %v", typ)
 		}
-		v, err := pgTyp.IoInput(nil, bindVarString)
+
+		v, err := framework.IoOutput(nil, pgTyp, bindVarString)
 		if err != nil {
 			return nil, err
 		}

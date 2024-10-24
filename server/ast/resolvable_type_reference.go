@@ -26,9 +26,9 @@ import (
 )
 
 // nodeResolvableTypeReference handles tree.ResolvableTypeReference nodes.
-func nodeResolvableTypeReference(typ tree.ResolvableTypeReference) (*vitess.ConvertType, pgtypes.DoltgresType, error) {
+func nodeResolvableTypeReference(typ tree.ResolvableTypeReference) (*vitess.ConvertType, pgtypes.ResolvableType, error) {
 	if typ == nil {
-		return nil, nil, nil
+		return nil, pgtypes.ResolvableType{}, nil
 	}
 
 	var columnTypeName string
@@ -37,27 +37,28 @@ func nodeResolvableTypeReference(typ tree.ResolvableTypeReference) (*vitess.Conv
 	var resolvedType pgtypes.DoltgresType
 	switch columnType := typ.(type) {
 	case *tree.ArrayTypeReference:
-		return nil, nil, fmt.Errorf("the given array type is not yet supported")
+		return nil, pgtypes.ResolvableType{}, fmt.Errorf("the given array type is not yet supported")
 	case *tree.OIDTypeReference:
-		return nil, nil, fmt.Errorf("referencing types by their OID is not yet supported")
+		return nil, pgtypes.ResolvableType{}, fmt.Errorf("referencing types by their OID is not yet supported")
 	case *tree.UnresolvedObjectName:
-		resolvedType = pgtypes.ResolvableType{
+		return nil, pgtypes.ResolvableType{
 			Typ: typ,
-		}
+		}, nil
 	case *types.GeoMetadata:
-		return nil, nil, fmt.Errorf("geometry types are not yet supported")
+		return nil, pgtypes.ResolvableType{}, fmt.Errorf("geometry types are not yet supported")
 	case *types.T:
 		columnTypeName = columnType.SQLStandardName()
 		if columnType.Family() == types.ArrayFamily {
 			_, baseResolvedType, err := nodeResolvableTypeReference(columnType.ArrayContents())
 			if err != nil {
-				return nil, nil, err
+				return nil, pgtypes.ResolvableType{}, err
 			}
-			resolvedType = baseResolvedType.ToArrayType()
+			baseResolvedType.IsArray = true
+			return nil, baseResolvedType, nil
 		} else if columnType.Family() == types.GeometryFamily {
-			return nil, nil, fmt.Errorf("geometry types are not yet supported")
+			return nil, pgtypes.ResolvableType{}, fmt.Errorf("geometry types are not yet supported")
 		} else if columnType.Family() == types.GeographyFamily {
-			return nil, nil, fmt.Errorf("geography types are not yet supported")
+			return nil, pgtypes.ResolvableType{}, fmt.Errorf("geography types are not yet supported")
 		} else {
 			switch columnType.Oid() {
 			case oid.T_bool:
@@ -67,17 +68,17 @@ func nodeResolvableTypeReference(typ tree.ResolvableTypeReference) (*vitess.Conv
 			case oid.T_bpchar:
 				width := uint32(columnType.Width())
 				if width > pgtypes.StringMaxLength {
-					return nil, nil, fmt.Errorf("length for type bpchar cannot exceed %d", pgtypes.StringMaxLength)
+					return nil, pgtypes.ResolvableType{}, fmt.Errorf("length for type bpchar cannot exceed %d", pgtypes.StringMaxLength)
 				}
 				if width == 0 {
 					resolvedType = pgtypes.BpChar
 				} else {
-					resolvedType = pgtypes.CharType{Length: width}
+					resolvedType = pgtypes.NewCharType(width)
 				}
 			case oid.T_char:
 				width := uint32(columnType.Width())
 				if width > pgtypes.InternalCharLength {
-					return nil, nil, fmt.Errorf("length for type \"char\" cannot exceed %d", pgtypes.InternalCharLength)
+					return nil, pgtypes.ResolvableType{}, fmt.Errorf("length for type \"char\" cannot exceed %d", pgtypes.InternalCharLength)
 				}
 				if width == 0 {
 					width = 1
@@ -107,10 +108,7 @@ func nodeResolvableTypeReference(typ tree.ResolvableTypeReference) (*vitess.Conv
 				if columnType.Precision() == 0 && columnType.Scale() == 0 {
 					resolvedType = pgtypes.Numeric
 				} else {
-					resolvedType = pgtypes.NumericType{
-						Precision: columnType.Precision(),
-						Scale:     columnType.Scale(),
-					}
+					resolvedType = pgtypes.NewNumericType(columnType.Precision(), columnType.Scale())
 				}
 			case oid.T_oid:
 				resolvedType = pgtypes.Oid
@@ -135,13 +133,13 @@ func nodeResolvableTypeReference(typ tree.ResolvableTypeReference) (*vitess.Conv
 			case oid.T_varchar:
 				width := uint32(columnType.Width())
 				if width > pgtypes.StringMaxLength {
-					return nil, nil, fmt.Errorf("length for type varchar cannot exceed %d", pgtypes.StringMaxLength)
+					return nil, pgtypes.ResolvableType{}, fmt.Errorf("length for type varchar cannot exceed %d", pgtypes.StringMaxLength)
 				}
-				resolvedType = pgtypes.VarCharType{MaxChars: width}
+				resolvedType = pgtypes.NewVarCharType(width)
 			case oid.T_xid:
 				resolvedType = pgtypes.Xid
 			default:
-				return nil, nil, fmt.Errorf("unknown type with oid: %d", uint32(columnType.Oid()))
+				return nil, pgtypes.ResolvableType{}, fmt.Errorf("unknown type with oid: %d", uint32(columnType.Oid()))
 			}
 		}
 	}
@@ -151,5 +149,5 @@ func nodeResolvableTypeReference(typ tree.ResolvableTypeReference) (*vitess.Conv
 		Length:  columnTypeLength,
 		Scale:   columnTypeScale,
 		Charset: "", // TODO
-	}, resolvedType, nil
+	}, pgtypes.ResolvableType{Typ: typ, ResolvedType: resolvedType}, nil
 }

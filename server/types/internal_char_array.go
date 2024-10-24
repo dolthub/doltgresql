@@ -14,7 +14,5 @@
 
 package types
 
-import "github.com/lib/pq/oid"
-
 // InternalCharArray is the array variant of InternalChar.
-var InternalCharArray = createArrayType(InternalChar, SerializationID_InternalCharArray, oid.T__char)
+var InternalCharArray = CreateArrayTypeFromBaseType(InternalChar) // createArrayType(InternalChar, SerializationID_InternalCharArray, oid.T__char)

@@ -22,8 +22,8 @@ import (
 	"github.com/lib/pq/oid"
 )
 
-// DoltgresType is a type that is distinct from the MySQL types in GMS.
-type DoltgresType interface {
+// DoltgresTypeInterface is a type that is distinct from the MySQL types in GMS.
+type DoltgresTypeInterface interface {
 	types.ExtendedType
 	// Alignment returns a char representing the alignment required when storing a value of this type.
 	Alignment() TypeAlignment
@@ -60,56 +60,56 @@ type DoltgresType interface {
 	// deserializeType returns a new type based on the given version and metadata. The metadata is all data after the
 	// serialization header. This is called from within the types package. To deserialize types normally, use
 	// DeserializeType, which will call this as needed.
-	deserializeType(version uint16, metadata []byte) (DoltgresType, error)
-	// ToArrayType converts the calling DoltgresType into its corresponding array type. When called on a
+	deserializeType(version uint16, metadata []byte) (DoltgresTypeInterface, error)
+	// ToArrayType converts the calling DoltgresTypeInterface into its corresponding array type. When called on a
 	// DoltgresArrayType, then it simply returns itself, as a multidimensional or nested array is equivalent to a
 	// standard array.
 	ToArrayType() DoltgresArrayType
 }
 
-// DoltgresArrayType is a DoltgresType that represents an array variant of a non-array type.
+// DoltgresArrayType is a DoltgresTypeInterface that represents an array variant of a non-array type.
 type DoltgresArrayType interface {
-	DoltgresType
+	DoltgresTypeInterface
 	// BaseType is the inner type of the array. This will always be a non-array type.
-	BaseType() DoltgresType
+	BaseType() DoltgresTypeInterface
 }
 
-// DoltgresPolymorphicType is a DoltgresType that represents one of the polymorphic types. These types are special
+// DoltgresPolymorphicType is a DoltgresTypeInterface that represents one of the polymorphic types. These types are special
 // built-in pseudo-types that are used during function resolution to allow a function to handle multiple types from a
 // single definition. All polymorphic types have "any" as a prefix. The exception is the "any" type, which is not a
 // polymorphic type.
 type DoltgresPolymorphicType interface {
-	DoltgresType
+	DoltgresTypeInterface
 	// IsValid returns whether the given type is valid for the calling polymorphic type.
-	IsValid(target DoltgresType) bool
+	IsValid(target DoltgresTypeInterface) bool
 }
 
 // typesFromBaseID contains a map from a DoltgresTypeBaseID to its originating type.
 var typesFromBaseID = map[DoltgresTypeBaseID]DoltgresType{
-	AnyArray.BaseID():    AnyArray,
-	AnyElement.BaseID():  AnyElement,
-	AnyNonArray.BaseID(): AnyNonArray,
-	BpChar.BaseID():      BpChar,
-	BpCharArray.BaseID(): BpCharArray,
-	Bool.BaseID():        Bool,
-	//BoolArray.BaseID():         BoolArray,
-	Bytea.BaseID():             Bytea,
-	ByteaArray.BaseID():        ByteaArray,
-	Date.BaseID():              Date,
-	DateArray.BaseID():         DateArray,
-	Float32.BaseID():           Float32,
-	Float32Array.BaseID():      Float32Array,
-	Float64.BaseID():           Float64,
-	Float64Array.BaseID():      Float64Array,
-	Int16.BaseID():             Int16,
-	Int16Array.BaseID():        Int16Array,
-	Int16Serial.BaseID():       Int16Serial,
-	Int32.BaseID():             Int32,
-	Int32Array.BaseID():        Int32Array,
-	Int32Serial.BaseID():       Int32Serial,
-	Int64.BaseID():             Int64,
-	Int64Array.BaseID():        Int64Array,
-	Int64Serial.BaseID():       Int64Serial,
+	AnyArray.BaseID():     AnyArray,
+	AnyElement.BaseID():   AnyElement,
+	AnyNonArray.BaseID():  AnyNonArray,
+	BpChar.BaseID():       BpChar,
+	BpCharArray.BaseID():  BpCharArray,
+	Bool.BaseID():         Bool,
+	BoolArray.BaseID():    BoolArray,
+	Bytea.BaseID():        Bytea,
+	ByteaArray.BaseID():   ByteaArray,
+	Date.BaseID():         Date,
+	DateArray.BaseID():    DateArray,
+	Float32.BaseID():      Float32,
+	Float32Array.BaseID(): Float32Array,
+	Float64.BaseID():      Float64,
+	Float64Array.BaseID(): Float64Array,
+	Int16.BaseID():        Int16,
+	Int16Array.BaseID():   Int16Array,
+	//Int16Serial.BaseID():       Int16Serial,
+	Int32.BaseID():      Int32,
+	Int32Array.BaseID(): Int32Array,
+	//Int32Serial.BaseID():       Int32Serial,
+	Int64.BaseID():      Int64,
+	Int64Array.BaseID(): Int64Array,
+	//Int64Serial.BaseID():       Int64Serial,
 	InternalChar.BaseID():      InternalChar,
 	InternalCharArray.BaseID(): InternalCharArray,
 	Interval.BaseID():          Interval,

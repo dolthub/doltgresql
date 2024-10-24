@@ -27,7 +27,7 @@ import (
 	"github.com/dolthub/doltgresql/server/types"
 )
 
-// ResolveType replaces types.ResolvableType to appropriate types.DoltgresType.
+// ResolveType replaces types.ResolvableType to appropriate types.DoltgresTypeInterface.
 func ResolveType(ctx *sql.Context, a *analyzer.Analyzer, node sql.Node, scope *plan.Scope, selector analyzer.RuleSelector, qFlags *sql.QueryFlags) (sql.Node, transform.TreeIdentity, error) {
 	return transform.Node(node, func(node sql.Node) (sql.Node, transform.TreeIdentity, error) {
 		switch n := node.(type) {
@@ -60,7 +60,7 @@ func ResolveType(ctx *sql.Context, a *analyzer.Analyzer, node sql.Node, scope *p
 }
 
 // resolveResolvableType resolves any type that is unresolved yet.
-func resolveResolvableType(ctx *sql.Context, typ tree.ResolvableTypeReference) (types.DoltgresType, error) {
+func resolveResolvableType(ctx *sql.Context, typ tree.ResolvableTypeReference) (types.DoltgresTypeInterface, error) {
 	switch t := typ.(type) {
 	case *tree.UnresolvedObjectName:
 		domain := t.ToTableName()
@@ -72,7 +72,7 @@ func resolveResolvableType(ctx *sql.Context, typ tree.ResolvableTypeReference) (
 }
 
 // resolveDomainType resolves DomainType from given schema and domain name.
-func resolveDomainType(ctx *sql.Context, schema, domainName string) (types.DoltgresType, error) {
+func resolveDomainType(ctx *sql.Context, schema, domainName string) (types.DoltgresTypeInterface, error) {
 	schema, err := core.GetSchemaName(ctx, nil, schema)
 	if err != nil {
 		return nil, err

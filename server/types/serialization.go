@@ -131,8 +131,8 @@ const (
 	SerializationId_Domain                SerializationID = 98
 )
 
-// serializationIDToType is a map from each SerializationID to its matching DoltgresType.
-var serializationIDToType = map[SerializationID]DoltgresType{}
+// serializationIDToType is a map from each SerializationID to its matching DoltgresTypeInterface.
+var serializationIDToType = map[SerializationID]DoltgresTypeInterface{}
 
 // init sets the serialization and deserialization functions.
 func init() {
@@ -153,7 +153,7 @@ func init() {
 // SerializeType is able to serialize the given extended type into a byte slice. All extended types will be defined
 // by DoltgreSQL.
 func SerializeType(extendedType types.ExtendedType) ([]byte, error) {
-	if doltgresType, ok := extendedType.(DoltgresType); ok {
+	if doltgresType, ok := extendedType.(DoltgresTypeInterface); ok {
 		return doltgresType.SerializeType()
 	}
 	return nil, fmt.Errorf("unknown type to serialize")

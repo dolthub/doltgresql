@@ -41,7 +41,7 @@ func ReplaceSerial(ctx *sql.Context, a *analyzer.Analyzer, node sql.Node, scope 
 
 	var ctSequences []*pgnodes.CreateSequence
 	for _, col := range createTable.PkSchema().Schema {
-		if doltgresType, ok := col.Type.(pgtypes.DoltgresType); ok {
+		if doltgresType, ok := col.Type.(pgtypes.DoltgresTypeInterface); ok {
 			isSerial := false
 			var maxValue int64
 			switch doltgresType.BaseID() {
@@ -104,7 +104,7 @@ func ReplaceSerial(ctx *sql.Context, a *analyzer.Analyzer, node sql.Node, scope 
 				}
 				ctSequences = append(ctSequences, pgnodes.NewCreateSequence(false, "", &sequences.Sequence{
 					Name:        sequenceName,
-					DataTypeOID: col.Type.(pgtypes.DoltgresType).OID(),
+					DataTypeOID: col.Type.(pgtypes.DoltgresTypeInterface).OID(),
 					Persistence: sequences.Persistence_Permanent,
 					Start:       1,
 					Current:     1,

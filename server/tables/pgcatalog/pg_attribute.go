@@ -141,10 +141,10 @@ func (iter *pgAttributeRowIter) Next(ctx *sql.Context) (sql.Row, error) {
 	hasDefault := col.Default != nil
 
 	typeOid := uint32(0)
-	if doltgresType, ok := col.Type.(pgtypes.DoltgresType); ok {
+	if doltgresType, ok := col.Type.(pgtypes.DoltgresTypeInterface); ok {
 		typeOid = doltgresType.OID()
 	} else {
-		// TODO: Remove once all information_schema tables are converted to use DoltgresType
+		// TODO: Remove once all information_schema tables are converted to use DoltgresTypeInterface
 		doltgresType := pgtypes.FromGmsType(col.Type)
 		typeOid = doltgresType.OID()
 	}
