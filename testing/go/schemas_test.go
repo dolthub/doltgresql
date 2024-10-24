@@ -552,7 +552,7 @@ var SchemaTests = []ScriptTest{
 		},
 		Assertions: []ScriptTestAssertion{
 			{
-				Query: "SELECT * FROM dolt_status;",
+				Query: "SELECT * FROM dolt.status;",
 				Expected: []sql.Row{
 					{"myschema.mytbl", 0, "new table"},
 					{"myschema", 0, "new schema"},
@@ -565,7 +565,7 @@ var SchemaTests = []ScriptTest{
 				},
 			},
 			{
-				Query: "SELECT * FROM dolt_status;",
+				Query: "SELECT * FROM dolt.status;",
 				Expected: []sql.Row{
 					{"myschema.mytbl", 1, "new table"},
 					{"myschema", 1, "new schema"},
@@ -576,11 +576,11 @@ var SchemaTests = []ScriptTest{
 				SkipResultsCheck: true,
 			},
 			{
-				Query:    "SELECT * FROM dolt_status;",
+				Query:    "SELECT * FROM dolt.status;",
 				Expected: []sql.Row{},
 			},
 			{
-				Query: "select message from dolt_log order by date desc limit 1",
+				Query: "select message from dolt.log order by date desc limit 1",
 				Expected: []sql.Row{
 					{"new table in new schema"},
 				},
@@ -595,7 +595,7 @@ var SchemaTests = []ScriptTest{
 		},
 		Assertions: []ScriptTestAssertion{
 			{
-				Query: "SELECT * FROM dolt_status;",
+				Query: "SELECT * FROM dolt.status;",
 				Expected: []sql.Row{
 					{"myschema.mytbl", 0, "new table"},
 					{"myschema", 0, "new schema"},
@@ -606,11 +606,11 @@ var SchemaTests = []ScriptTest{
 				SkipResultsCheck: true,
 			},
 			{
-				Query:    "SELECT * FROM dolt_status;",
+				Query:    "SELECT * FROM dolt.status;",
 				Expected: []sql.Row{},
 			},
 			{
-				Query: "select message from dolt_log order by date desc limit 1",
+				Query: "select message from dolt.log order by date desc limit 1",
 				Expected: []sql.Row{
 					{"new table in new schema"},
 				},
@@ -667,7 +667,7 @@ var SchemaTests = []ScriptTest{
 		},
 		Assertions: []ScriptTestAssertion{
 			{
-				Query:    "SELECT * FROM dolt_status;",
+				Query:    "SELECT * FROM dolt.status;",
 				Expected: []sql.Row{{"myschema", 0, "new schema"}},
 			},
 			{
@@ -677,7 +677,7 @@ var SchemaTests = []ScriptTest{
 				},
 			},
 			{
-				Query:    "SELECT * FROM dolt_status;",
+				Query:    "SELECT * FROM dolt.status;",
 				Expected: []sql.Row{{"myschema", 1, "new schema"}},
 			},
 			{
@@ -685,11 +685,11 @@ var SchemaTests = []ScriptTest{
 				SkipResultsCheck: true,
 			},
 			{
-				Query:    "SELECT * FROM dolt_status;",
+				Query:    "SELECT * FROM dolt.status;",
 				Expected: []sql.Row{},
 			},
 			{
-				Query: "select message from dolt_log order by date desc limit 1",
+				Query: "select message from dolt.log order by date desc limit 1",
 				Expected: []sql.Row{
 					{"new schema"},
 				},
@@ -718,10 +718,12 @@ var SchemaTests = []ScriptTest{
 			{
 				Query: "SELECT catalog_name, schema_name FROM information_schema.schemata;",
 				Expected: []sql.Row{
+					{"postgres", "dolt"},
 					{"postgres", "myschema"},
 					{"postgres", "pg_catalog"},
 					{"postgres", "public"},
 					{"postgres", "information_schema"},
+					{"postgres/main", "dolt"},
 					{"postgres/main", "myschema"},
 					{"postgres/main", "pg_catalog"},
 					{"postgres/main", "public"},
@@ -730,6 +732,7 @@ var SchemaTests = []ScriptTest{
 			{
 				Query: "SELECT schema_name FROM information_schema.schemata WHERE catalog_name = 'postgres/main';",
 				Expected: []sql.Row{
+					{"dolt"},
 					{"myschema"},
 					{"pg_catalog"},
 					{"public"},
@@ -739,6 +742,7 @@ var SchemaTests = []ScriptTest{
 			{
 				Query: "SELECT schema_name FROM information_schema.schemata WHERE catalog_name = 'postgres';",
 				Expected: []sql.Row{
+					{"dolt"},
 					{"myschema"},
 					{"pg_catalog"},
 					{"public"},
@@ -756,7 +760,7 @@ var SchemaTests = []ScriptTest{
 				},
 			},
 			{
-				Query: "SELECT * FROM dolt_status;",
+				Query: "SELECT * FROM dolt.status;",
 				Expected: []sql.Row{
 					{"myschema.mytbl", 0, "new table"},
 					{"myschema", 0, "new schema"},
@@ -767,7 +771,7 @@ var SchemaTests = []ScriptTest{
 				SkipResultsCheck: true,
 			},
 			{
-				Query:    "SELECT * FROM dolt_status;",
+				Query:    "SELECT * FROM dolt.status;",
 				Expected: []sql.Row{},
 			},
 			{
@@ -785,13 +789,28 @@ var SchemaTests = []ScriptTest{
 				},
 			},
 			{
+				Query:    "CREATE SCHEMA newbranchschema;",
+				Expected: []sql.Row{},
+			},
+			{
+				Query:    "SET search_path TO 'newbranchschema'",
+				Expected: []sql.Row{},
+			},
+			{
+				Query: "SELECT current_schemas(true);",
+				Expected: []sql.Row{
+					{"{pg_catalog,newbranchschema}"},
+				},
+			},
+			{
 				Query:    "CREATE TABLE mytbl2 (pk BIGINT PRIMARY KEY, v1 BIGINT);",
 				Expected: []sql.Row{},
 			},
 			{
-				Skip:  true, // TODO: pg_catalog and public are not showing up
 				Query: "SELECT schema_name FROM information_schema.schemata WHERE catalog_name = 'postgres/newbranch';",
 				Expected: []sql.Row{
+					{"dolt"},
+					{"myschema"},
 					{"newbranchschema"},
 					{"pg_catalog"},
 					{"public"},
@@ -799,19 +818,19 @@ var SchemaTests = []ScriptTest{
 				},
 			},
 			{
-				Skip:  true, // TODO: Why are pg_catalog and public not showing up?
 				Query: "SELECT schema_name FROM information_schema.schemata WHERE catalog_name = 'postgres';",
 				Expected: []sql.Row{
-					{"newbranchschema"},
+					{"dolt"},
+					{"myschema"},
 					{"pg_catalog"},
 					{"public"},
 					{"information_schema"},
 				},
 			},
 			{
-				Skip:  true, // TODO: Getting error "database schema not found: pg_catalog"
-				Query: "SELECT schemaname, tablename FROM pg_catalog.pg_tables WHERE schemaname != 'pg_catalog';",
+				Query: "SELECT schemaname, tablename FROM pg_catalog.pg_tables WHERE schemaname != 'pg_catalog' AND schemaname != 'information_schema';",
 				Expected: []sql.Row{
+					{"myschema", "mytbl"},
 					{"newbranchschema", "mytbl2"},
 				},
 			},

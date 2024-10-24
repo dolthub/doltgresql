@@ -41,7 +41,7 @@ export const logTests = [
     },
   },
   {
-    q: `SELECT * FROM dolt_log;`, // TODO: If we decide to implement AS OF, use here instead of USE statement above and below
+    q: `SELECT * FROM dolt.log;`, // TODO: If we decide to implement AS OF, use here instead of USE statement above and below
     res: {
       command: "SELECT",
       rowCount: 2,

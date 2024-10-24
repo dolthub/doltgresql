@@ -1,4 +1,8 @@
-import { doltCommitFields, doltDocsFields } from "../fields.js";
+import {
+  doltCommitFields,
+  doltDocsFields,
+  doltStatusFields,
+} from "../fields.js";
 
 const readmeText = `# README
 ## My List
@@ -11,7 +15,7 @@ const updatedReadmeText = `${readmeText}-Item 3`;
 
 export const docsTests = [
   {
-    q: "select * from dolt_docs",
+    q: "select * from dolt.docs",
     res: {
       command: "SELECT",
       rowCount: 0,
@@ -21,7 +25,7 @@ export const docsTests = [
     },
   },
   {
-    q: "INSERT INTO dolt_docs VALUES ($1, $2);",
+    q: "INSERT INTO dolt.docs VALUES ($1, $2);",
     p: ["README.md", readmeText],
     res: {
       command: "INSERT",
@@ -32,7 +36,7 @@ export const docsTests = [
     },
   },
   {
-    q: `select * from dolt_docs where doc_name=$1`,
+    q: `select * from dolt.docs where doc_name=$1`,
     p: ["README.md"],
     res: {
       command: "SELECT",
@@ -56,7 +60,7 @@ export const docsTests = [
   },
   {
     skip: true,
-    q: `select * from dolt_docs where doc_name=$1`,
+    q: `select * from dolt.docs where doc_name=$1`,
     p: ["README.md"],
     res: {
       command: "SELECT",
@@ -67,8 +71,18 @@ export const docsTests = [
     },
   },
   {
+    q: `SELECT * FROM dolt.status`,
+    res: {
+      command: "SELECT",
+      rowCount: 1,
+      oid: null,
+      rows: [{ table_name: "dolt.docs", staged: 0, status: "new table" }],
+      fields: doltStatusFields,
+    },
+  },
+  {
     q: `SELECT DOLT_COMMIT('-A', '-m', $1::text)`,
-    p: ["Add dolt_docs table"],
+    p: ["Add dolt.docs table"],
     res: {
       command: "SELECT",
       rowCount: 1,
@@ -78,7 +92,7 @@ export const docsTests = [
     },
   },
   {
-    q: `select * from dolt_docs where doc_name=$1`,
+    q: `select * from dolt.docs where doc_name=$1`,
     p: ["README.md"],
     res: {
       command: "SELECT",
@@ -89,7 +103,7 @@ export const docsTests = [
     },
   },
   {
-    q: "DELETE FROM dolt_docs WHERE doc_name=$1",
+    q: "DELETE FROM dolt.docs WHERE doc_name=$1",
     p: ["README.md"],
     res: {
       command: "DELETE",
@@ -100,7 +114,7 @@ export const docsTests = [
     },
   },
   {
-    q: `select * from dolt_docs where doc_name=$1`,
+    q: `select * from dolt.docs where doc_name=$1`,
     p: ["README.md"],
     res: {
       command: "SELECT",
@@ -121,7 +135,7 @@ export const docsTests = [
     },
   },
   {
-    q: `select * from dolt_docs where doc_name=$1`,
+    q: `select * from dolt.docs where doc_name=$1`,
     p: ["README.md"],
     res: {
       command: "SELECT",

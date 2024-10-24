@@ -108,7 +108,7 @@ const tests = [
     },
   },
   {
-    q: "select COUNT(*) FROM dolt_log",
+    q: "select COUNT(*) FROM dolt.log",
     res: {
       command: "SELECT",
       rowCount: 1,
@@ -173,7 +173,7 @@ const tests = [
     matcher: mergeMatcher,
   },
   {
-    q: "select COUNT(*) FROM dolt_log",
+    q: "select COUNT(*) FROM dolt.log",
     res: {
       command: "SELECT",
       rowCount: 1,

@@ -1059,7 +1059,9 @@ func TestDoltMerge(t *testing.T) {
 		"merge with float 1.23 column default",                        // alter table
 		"merge with decimal 1.23 column default",                      // alter table
 		"merge with different types",                                  // alter table
-		"select * from dolt_status",                                   // table_name column includes schema name
+		"select * from dolt_status",                                   // table_name column includes schema name,
+		"dolt_log",                                                    // dolt.log
+		"dolt_status",                                                 // dolt.status
 	})
 	denginetest.RunDoltMergeTests(t, h)
 }
@@ -1187,6 +1189,7 @@ func TestDoltCheckoutPrepared(t *testing.T) {
 }
 
 func TestDoltBranch(t *testing.T) {
+	t.Skip("Need to update name from dolt_branches -> dolt.branches")
 	h := newDoltgresServerHarness(t).WithSkippedQueries([]string{
 		"Create branch from startpoint",  // missing SET @var syntax
 		"Join same table at two commits", // needs different branch-qualified DB syntax
@@ -1200,6 +1203,7 @@ func TestDoltTag(t *testing.T) {
 		// dolt's initialization is different which results in a different user name for the tagger,
 		// should fix the harness to match
 		"SELECT tag_name, IF(CHAR_LENGTH(tag_hash) < 0, NULL, 'not null'), tagger, email, IF(date IS NULL, NULL, 'not null'), message from dolt_tags",
+		"dolt_tags", // dolt.tags
 	})
 	denginetest.RunDoltTagTests(t, h)
 }
@@ -1234,6 +1238,7 @@ func TestHistorySystemTable(t *testing.T) {
 		"dolt_history table with AS OF",                 // AS OF
 		"dolt_history table with enums",                 // enums
 		"can sort by dolt_log.commit",                   // more commits
+		"dolt_log",                                      // dolt.log
 	}).WithParallelism(2)
 	denginetest.RunHistorySystemTableTests(t, harness)
 }
@@ -1497,6 +1502,7 @@ func TestDoltCommit(t *testing.T) {
 		"CALL DOLT_COMMIT('-amend') works to add changes to a commit",
 		"CALL DOLT_COMMIT('-amend') works to remove changes from a commit",
 		"CALL DOLT_COMMIT('-amend') works to update a merge commit",
+		"dolt_log", // dolt.log
 	})
 	denginetest.RunDoltCommitTests(t, harness)
 }

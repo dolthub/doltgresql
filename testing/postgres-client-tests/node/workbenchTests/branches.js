@@ -41,7 +41,7 @@ export const branchTests = [
     },
   },
   {
-    q: `SELECT * FROM dolt_status;`,
+    q: `SELECT * FROM dolt.status;`,
     res: {
       command: "SELECT",
       rowCount: 1,
@@ -68,7 +68,7 @@ export const branchTests = [
     },
   },
   {
-    q: `SELECT * FROM dolt_branches LIMIT 200`,
+    q: `SELECT * FROM dolt.branches LIMIT 200`,
     res: {
       rows: [
         {
@@ -107,7 +107,7 @@ export const branchTests = [
     },
   },
   {
-    q: `SELECT COUNT(*) FROM dolt_branches LIMIT 200`,
+    q: `SELECT COUNT(*) FROM dolt.branches LIMIT 200`,
     res: {
       command: "SELECT",
       rowCount: 1,
@@ -138,7 +138,7 @@ export const branchTests = [
     },
   },
   {
-    q: `SELECT COUNT(*) FROM dolt_branches LIMIT 200`,
+    q: `SELECT COUNT(*) FROM dolt.branches LIMIT 200`,
     res: {
       command: "SELECT",
       rowCount: 1,

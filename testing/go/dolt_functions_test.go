@@ -39,13 +39,13 @@ func TestDoltFunctions(t *testing.T) {
 					SkipResultsCheck: true,
 				},
 				{
-					Query: "select count(*) from dolt_log",
+					Query: "select count(*) from dolt.log",
 					Expected: []sql.Row{
 						{3}, // initial commit, CREATE DATABASE commit, CREATE TABLE commit
 					},
 				},
 				{
-					Query: "select message from dolt_log order by date desc limit 1",
+					Query: "select message from dolt.log order by date desc limit 1",
 					Expected: []sql.Row{
 						{"new table"},
 					},
@@ -73,7 +73,7 @@ func TestDoltFunctions(t *testing.T) {
 					},
 				},
 				{
-					Query: "select count(*) from dolt_log",
+					Query: "select count(*) from dolt.log",
 					Expected: []sql.Row{
 						{3}, // initial commit, CREATE DATABASE commit, CREATE TABLE commit
 					},
@@ -83,7 +83,7 @@ func TestDoltFunctions(t *testing.T) {
 					SkipResultsCheck: true,
 				},
 				{
-					Query: "select count(*) from dolt_log",
+					Query: "select count(*) from dolt.log",
 					Expected: []sql.Row{
 						{5}, // initial commit, CREATE DATABASE commit, CREATE TABLE t1 commit, new CREATE TABLE t2 commit, merge commit
 					},
@@ -112,7 +112,7 @@ func TestDoltFunctions(t *testing.T) {
 					},
 				},
 				{
-					Query: "SELECT * FROM dolt_status",
+					Query: "SELECT * FROM dolt.status",
 					Expected: []sql.Row{
 						{"public.t1", 0, "modified"},
 					},
@@ -122,7 +122,7 @@ func TestDoltFunctions(t *testing.T) {
 					ExpectedErr: "error: local changes would be stomped by merge",
 				},
 				{
-					Query: "SELECT * FROM dolt_status",
+					Query: "SELECT * FROM dolt.status",
 					Expected: []sql.Row{
 						{"public.t1", 0, "modified"},
 					},
@@ -151,7 +151,7 @@ func TestDoltFunctions(t *testing.T) {
 					},
 				},
 				{
-					Query: "SELECT * FROM dolt_status",
+					Query: "SELECT * FROM dolt.status",
 					Expected: []sql.Row{
 						{"public.t1", 0, "modified"},
 					},
@@ -161,7 +161,7 @@ func TestDoltFunctions(t *testing.T) {
 					SkipResultsCheck: true,
 				},
 				{
-					Query: "SELECT * FROM dolt_status",
+					Query: "SELECT * FROM dolt.status",
 					Expected: []sql.Row{
 						{"public.t1", 0, "modified"},
 					},
@@ -176,7 +176,7 @@ func TestDoltFunctions(t *testing.T) {
 			},
 			Assertions: []ScriptTestAssertion{
 				{
-					Query: "SELECT * FROM dolt_status;",
+					Query: "SELECT * FROM dolt.status;",
 					Expected: []sql.Row{
 						{"public.t1", 0, "new table"},
 					},
@@ -186,7 +186,7 @@ func TestDoltFunctions(t *testing.T) {
 					Expected: []sql.Row{{"{0}"}},
 				},
 				{
-					Query: "SELECT * FROM dolt_status;",
+					Query: "SELECT * FROM dolt.status;",
 					Expected: []sql.Row{
 						{"public.t1", 1, "new table"},
 					},
@@ -196,7 +196,7 @@ func TestDoltFunctions(t *testing.T) {
 					Expected: []sql.Row{{"{0}"}},
 				},
 				{
-					Query: "SELECT * FROM dolt_status;",
+					Query: "SELECT * FROM dolt.status;",
 					Expected: []sql.Row{
 						{"public.t1", 0, "new table"},
 					},
@@ -211,7 +211,7 @@ func TestDoltFunctions(t *testing.T) {
 			},
 			Assertions: []ScriptTestAssertion{
 				{
-					Query: "SELECT * FROM dolt_status;",
+					Query: "SELECT * FROM dolt.status;",
 					Expected: []sql.Row{
 						{"public.t1", 0, "new table"},
 					},
@@ -221,7 +221,7 @@ func TestDoltFunctions(t *testing.T) {
 					Expected: []sql.Row{{"{0}"}},
 				},
 				{
-					Query:    "SELECT * FROM dolt_status;",
+					Query:    "SELECT * FROM dolt.status;",
 					Expected: []sql.Row{},
 				},
 				{
@@ -229,7 +229,7 @@ func TestDoltFunctions(t *testing.T) {
 					Expected: []sql.Row{},
 				},
 				{
-					Query: "SELECT * FROM dolt_status;",
+					Query: "SELECT * FROM dolt.status;",
 					Expected: []sql.Row{
 						{"public.t1", 0, "new table"},
 					},
@@ -241,7 +241,7 @@ func TestDoltFunctions(t *testing.T) {
 				},
 				{
 					Skip:     true,
-					Query:    "SELECT * FROM dolt_status;",
+					Query:    "SELECT * FROM dolt.status;",
 					Expected: []sql.Row{},
 				},
 			},
@@ -254,7 +254,7 @@ func TestDoltFunctions(t *testing.T) {
 			},
 			Assertions: []ScriptTestAssertion{
 				{
-					Query: "SELECT * FROM dolt_status;",
+					Query: "SELECT * FROM dolt.status;",
 					Expected: []sql.Row{
 						{"public.t1", 0, "new table"},
 					},
@@ -264,7 +264,7 @@ func TestDoltFunctions(t *testing.T) {
 					Expected: []sql.Row{{"{0}"}},
 				},
 				{
-					Query:    "SELECT * FROM dolt_status;",
+					Query:    "SELECT * FROM dolt.status;",
 					Expected: []sql.Row{},
 				},
 			},
@@ -371,7 +371,7 @@ func TestDoltFunctions(t *testing.T) {
 			},
 			Assertions: []ScriptTestAssertion{
 				{
-					Query: "SELECT * FROM dolt_status;",
+					Query: "SELECT * FROM dolt.status;",
 					Expected: []sql.Row{
 						{"public.t1", 0, "new table"},
 						{"testschema.t2", 0, "new table"},

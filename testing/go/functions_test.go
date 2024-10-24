@@ -895,15 +895,15 @@ func TestSystemInformationFunctions(t *testing.T) {
 				{
 					Query:    `SELECT indexrelid, pg_get_expr(indpred, indrelid) FROM pg_catalog.pg_index WHERE indrelid='testing'::regclass;`,
 					Cols:     []string{"indexrelid", "pg_get_expr"},
-					Expected: []sql.Row{{1612709888, nil}},
+					Expected: []sql.Row{{1613758464, nil}},
 				},
 				{
 					Query:    `SELECT indexrelid, pg_get_expr(indpred, indrelid, true) FROM pg_catalog.pg_index WHERE indrelid='testing'::regclass;`,
-					Expected: []sql.Row{{1612709888, nil}},
+					Expected: []sql.Row{{1613758464, nil}},
 				},
 				{
 					Query:    `SELECT indexrelid, pg_get_expr(indpred, indrelid, NULL) FROM pg_catalog.pg_index WHERE indrelid='testing'::regclass;`,
-					Expected: []sql.Row{{1612709888, nil}},
+					Expected: []sql.Row{{1613758464, nil}},
 				},
 			},
 		},
@@ -999,13 +999,13 @@ func TestSchemaVisibilityInquiryFunctions(t *testing.T) {
 				{
 					Query: `SELECT c.oid, c.relname AS table_name, n.nspname AS table_schema FROM pg_catalog.pg_class c JOIN pg_namespace n ON n.oid = c.relnamespace WHERE n.nspname='myschema' OR n.nspname='testschema';`,
 					Expected: []sql.Row{
-						{2953838592, "myview", "myschema"},
-						{2685403136, "mytable", "myschema"},
-						{2420113408, "test_seq", "testschema"},
-						{1614807040, "test_table_pkey", "testschema"},
-						{1614807041, "test_index", "testschema"},
-						{1614807042, "v1", "testschema"},
-						{2688548864, "test_table", "testschema"},
+						{2954887168, "myview", "myschema"},
+						{2686451712, "mytable", "myschema"},
+						{2421161984, "test_seq", "testschema"},
+						{1615855616, "test_table_pkey", "testschema"},
+						{1615855617, "test_index", "testschema"},
+						{1615855618, "v1", "testschema"},
+						{2689597440, "test_table", "testschema"},
 					},
 				},
 				{
@@ -1013,19 +1013,19 @@ func TestSchemaVisibilityInquiryFunctions(t *testing.T) {
 					Expected: []sql.Row{{"testschema"}},
 				},
 				{
-					Query:    `select pg_table_is_visible(1614807041);`, // index from testschema
+					Query:    `select pg_table_is_visible(1615855617);`, // index from testschema
 					Expected: []sql.Row{{"t"}},
 				},
 				{
-					Query:    `select pg_table_is_visible(2688548864);`, // table from testschema
+					Query:    `select pg_table_is_visible(2689597440);`, // table from testschema
 					Expected: []sql.Row{{"t"}},
 				},
 				{
-					Query:    `select pg_table_is_visible(2420113408);`, // sequence from testschema
+					Query:    `select pg_table_is_visible(2421161984);`, // sequence from testschema
 					Expected: []sql.Row{{"t"}},
 				},
 				{
-					Query:    `select pg_table_is_visible(2953838592);`, // view from myschema
+					Query:    `select pg_table_is_visible(2954887168);`, // view from myschema
 					Expected: []sql.Row{{"f"}},
 				},
 				{
@@ -1037,11 +1037,11 @@ func TestSchemaVisibilityInquiryFunctions(t *testing.T) {
 					Expected: []sql.Row{{"myschema"}},
 				},
 				{
-					Query:    `select pg_table_is_visible(2953838592);`, // view from myschema
+					Query:    `select pg_table_is_visible(2954887168);`, // view from myschema
 					Expected: []sql.Row{{"t"}},
 				},
 				{
-					Query:    `select pg_table_is_visible(2685403136);`, // table from myschema
+					Query:    `select pg_table_is_visible(2686451712);`, // table from myschema
 					Expected: []sql.Row{{"t"}},
 				},
 			},
@@ -1113,12 +1113,12 @@ func TestSystemCatalogInformationFunctions(t *testing.T) {
 				{
 					Query: `SELECT c.oid, c.relname AS table_name, n.nspname AS table_schema FROM pg_catalog.pg_class c JOIN pg_namespace n ON n.oid = c.relnamespace WHERE n.nspname='myschema' OR n.nspname='public';`,
 					Expected: []sql.Row{
-						{2954887168, "test_view", "public"},
-						{2686451712, "test", "public"},
+						{2955935744, "test_view", "public"},
+						{2687500288, "test", "public"},
 					},
 				},
 				{
-					Query:    `select pg_get_viewdef(2954887168);`,
+					Query:    `select pg_get_viewdef(2955935744);`,
 					Expected: []sql.Row{{"SELECT name FROM test"}},
 				},
 			},

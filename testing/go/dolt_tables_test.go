@@ -23,16 +23,110 @@ import (
 func TestUserSpaceDoltTables(t *testing.T) {
 	RunScripts(t, []ScriptTest{
 		{
+			Name: "dolt branches",
+			Assertions: []ScriptTestAssertion{
+				{
+					Query:    `SELECT name FROM dolt.branches`,
+					Expected: []sql.Row{{"main"}},
+				},
+				{
+					Query:       `SELECT * FROM dolt_branches`,
+					ExpectedErr: "table not found",
+				},
+				{
+					Query:       `SELECT * FROM public.branches`,
+					ExpectedErr: "table not found",
+				},
+				{
+					Query:       `SELECT * FROM branches`,
+					ExpectedErr: "table not found",
+				},
+				{
+					Query:    `CREATE TABLE branches (id INT PRIMARY KEY)`,
+					Expected: []sql.Row{},
+				},
+				{
+					Query:    `INSERT INTO branches VALUES (1)`,
+					Expected: []sql.Row{},
+				},
+				{
+					Query:    `SELECT * FROM branches`,
+					Expected: []sql.Row{{1}},
+				},
+				{
+					Query:    `SELECT name FROM dolt.branches`,
+					Expected: []sql.Row{{"main"}},
+				},
+				{
+					Query:       `CREATE SCHEMA dolt`,
+					ExpectedErr: "schema exists",
+				},
+				{
+					Query:    "SET search_path = 'dolt'",
+					Expected: []sql.Row{},
+				},
+				{
+					Query:    `SELECT name FROM branches`,
+					Expected: []sql.Row{{"main"}},
+				},
+				{
+					Query:    `SELECT * FROM public.branches`,
+					Expected: []sql.Row{{1}},
+				},
+				{
+					Query:    "SET search_path = 'public'",
+					Expected: []sql.Row{},
+				},
+				{
+					Query:    `SELECT * FROM branches`,
+					Expected: []sql.Row{{1}},
+				},
+			},
+		},
+		{
+			Name: "dolt tags",
+			Assertions: []ScriptTestAssertion{
+				{
+					Query:    `SELECT tag_name FROM dolt.tags`,
+					Expected: []sql.Row{},
+				},
+				{
+					Query:       `SELECT * FROM dolt_branches`,
+					ExpectedErr: "table not found",
+				},
+				{
+					Query:       `SELECT * FROM public.tags`,
+					ExpectedErr: "table not found",
+				},
+				{
+					Query:       `SELECT * FROM tags`,
+					ExpectedErr: "table not found",
+				},
+			},
+		},
+		{
 			Name: "dolt docs",
 			SetUpScript: []string{
-				"INSERT INTO dolt_docs values ('README.md', 'testing')",
+				"INSERT INTO dolt.docs values ('README.md', 'testing')",
 			},
 			Assertions: []ScriptTestAssertion{
 				{
-					Query: `SELECT * FROM dolt_docs`,
+					Query: `SELECT * FROM dolt.docs`,
 					Expected: []sql.Row{
 						{"README.md", "testing"},
 					},
+				},
+				{
+					Query:       `SELECT * FROM dolt_docs`,
+					ExpectedErr: "table not found",
+				},
+				{
+					Query:       `SELECT * FROM public.docs`,
+					ExpectedErr: "table not found",
+				},
+				{
+					Query:       `SELECT * FROM docs`,
+					ExpectedErr: "table not found",
 				},
 			},
 		},

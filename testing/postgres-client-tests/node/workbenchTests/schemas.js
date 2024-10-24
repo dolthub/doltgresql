@@ -81,7 +81,7 @@ export const schemaTests = [
     },
   },
   {
-    q: `SELECT * FROM dolt_status;`,
+    q: `SELECT * FROM dolt.status;`,
     res: {
       command: "SELECT",
       rowCount: 2,
@@ -102,9 +102,10 @@ export const schemaTests = [
     p: [`${dbName}/schemabranch`],
     res: {
       command: "SELECT",
-      rowCount: 4,
+      rowCount: 5,
       oid: null,
       rows: [
+        { schema_name: "dolt" },
         { schema_name: "pg_catalog" },
         { schema_name: "public" },
         { schema_name: "testschema" },
@@ -171,9 +172,10 @@ export const schemaTests = [
     p: [`${dbName}/main`],
     res: {
       command: "SELECT",
-      rowCount: 3,
+      rowCount: 4,
       oid: null,
       rows: [
+        { schema_name: "dolt" },
         { schema_name: "pg_catalog" },
         { schema_name: "public" },
         { schema_name: "information_schema" },

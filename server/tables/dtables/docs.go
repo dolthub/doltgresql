@@ -22,9 +22,15 @@ import (
 	"github.com/dolthub/dolt/go/libraries/doltcore/doltdb"
 )
 
+// getDocsSchema returns the schema for the docs table.
 func getDocsSchema() sql.Schema {
 	return []*sql.Column{
-		{Name: doltdb.DocPkColumnName, Type: pgtypes.Text, Source: doltdb.DocTableName, PrimaryKey: true, Nullable: false},
-		{Name: doltdb.DocTextColumnName, Type: pgtypes.Text, Source: doltdb.DocTableName, PrimaryKey: false},
+		{Name: doltdb.DocPkColumnName, Type: pgtypes.Text, Source: getDocTableName(), PrimaryKey: true, Nullable: false},
+		{Name: doltdb.DocTextColumnName, Type: pgtypes.Text, Source: getDocTableName(), PrimaryKey: false},
 	}
+}
+
+// getDocTableName returns the name of the docs table.
+func getDocTableName() string {
+	return "docs"
 }
