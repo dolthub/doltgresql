@@ -552,7 +552,7 @@ var SchemaTests = []ScriptTest{
 		},
 		Assertions: []ScriptTestAssertion{
 			{
-				Query: "SELECT * FROM dolt_status;",
+				Query: "SELECT * FROM dolt.status;",
 				Expected: []sql.Row{
 					{"myschema.mytbl", 0, "new table"},
 					{"myschema", 0, "new schema"},
@@ -565,7 +565,7 @@ var SchemaTests = []ScriptTest{
 				},
 			},
 			{
-				Query: "SELECT * FROM dolt_status;",
+				Query: "SELECT * FROM dolt.status;",
 				Expected: []sql.Row{
 					{"myschema.mytbl", 1, "new table"},
 					{"myschema", 1, "new schema"},
@@ -576,7 +576,7 @@ var SchemaTests = []ScriptTest{
 				SkipResultsCheck: true,
 			},
 			{
-				Query:    "SELECT * FROM dolt_status;",
+				Query:    "SELECT * FROM dolt.status;",
 				Expected: []sql.Row{},
 			},
 			{
@@ -595,7 +595,7 @@ var SchemaTests = []ScriptTest{
 		},
 		Assertions: []ScriptTestAssertion{
 			{
-				Query: "SELECT * FROM dolt_status;",
+				Query: "SELECT * FROM dolt.status;",
 				Expected: []sql.Row{
 					{"myschema.mytbl", 0, "new table"},
 					{"myschema", 0, "new schema"},
@@ -606,7 +606,7 @@ var SchemaTests = []ScriptTest{
 				SkipResultsCheck: true,
 			},
 			{
-				Query:    "SELECT * FROM dolt_status;",
+				Query:    "SELECT * FROM dolt.status;",
 				Expected: []sql.Row{},
 			},
 			{
@@ -667,7 +667,7 @@ var SchemaTests = []ScriptTest{
 		},
 		Assertions: []ScriptTestAssertion{
 			{
-				Query:    "SELECT * FROM dolt_status;",
+				Query:    "SELECT * FROM dolt.status;",
 				Expected: []sql.Row{{"myschema", 0, "new schema"}},
 			},
 			{
@@ -677,7 +677,7 @@ var SchemaTests = []ScriptTest{
 				},
 			},
 			{
-				Query:    "SELECT * FROM dolt_status;",
+				Query:    "SELECT * FROM dolt.status;",
 				Expected: []sql.Row{{"myschema", 1, "new schema"}},
 			},
 			{
@@ -685,7 +685,7 @@ var SchemaTests = []ScriptTest{
 				SkipResultsCheck: true,
 			},
 			{
-				Query:    "SELECT * FROM dolt_status;",
+				Query:    "SELECT * FROM dolt.status;",
 				Expected: []sql.Row{},
 			},
 			{
@@ -760,7 +760,7 @@ var SchemaTests = []ScriptTest{
 				},
 			},
 			{
-				Query: "SELECT * FROM dolt_status;",
+				Query: "SELECT * FROM dolt.status;",
 				Expected: []sql.Row{
 					{"myschema.mytbl", 0, "new table"},
 					{"myschema", 0, "new schema"},
@@ -771,7 +771,7 @@ var SchemaTests = []ScriptTest{
 				SkipResultsCheck: true,
 			},
 			{
-				Query:    "SELECT * FROM dolt_status;",
+				Query:    "SELECT * FROM dolt.status;",
 				Expected: []sql.Row{},
 			},
 			{

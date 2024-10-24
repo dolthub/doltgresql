@@ -34,7 +34,7 @@ func TestGettingStartedGuide(t *testing.T) {
 			Assertions: []ScriptTestAssertion{
 				// Make a Dolt Commit
 				{
-					Query: "select * from dolt_status;",
+					Query: "select * from dolt.status;",
 					Expected: []sql.Row{
 						{"public.employees", 0, "new table"},
 						{"public.employees_teams", 0, "new table"},
@@ -46,7 +46,7 @@ func TestGettingStartedGuide(t *testing.T) {
 					Expected: []sql.Row{},
 				},
 				{
-					Query: "select * from dolt_status;",
+					Query: "select * from dolt.status;",
 					Expected: []sql.Row{
 						{"public.employees", 1, "new table"},
 						{"public.employees_teams", 1, "new table"},
@@ -67,7 +67,7 @@ func TestGettingStartedGuide(t *testing.T) {
 					Expected: []sql.Row{},
 				},
 				{
-					Query:    "select * from dolt_status;",
+					Query:    "select * from dolt.status;",
 					Expected: []sql.Row{},
 				},
 				{
@@ -102,7 +102,7 @@ func TestGettingStartedGuide(t *testing.T) {
 
 				// Examine the Diff
 				{
-					Query: "select * from dolt_status order by table_name;",
+					Query: "select * from dolt.status order by table_name;",
 					Expected: []sql.Row{
 						{"public.employees", 0, "modified"},
 						{"public.employees_teams", 0, "modified"},
@@ -123,7 +123,7 @@ func TestGettingStartedGuide(t *testing.T) {
 					Expected: []sql.Row{},
 				},
 				{
-					Query:    "select * from dolt_status order by table_name;",
+					Query:    "select * from dolt.status order by table_name;",
 					Expected: []sql.Row{},
 				},
 				{

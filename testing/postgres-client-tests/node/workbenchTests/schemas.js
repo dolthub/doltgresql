@@ -81,7 +81,7 @@ export const schemaTests = [
     },
   },
   {
-    q: `SELECT * FROM dolt_status;`,
+    q: `SELECT * FROM dolt.status;`,
     res: {
       command: "SELECT",
       rowCount: 2,
