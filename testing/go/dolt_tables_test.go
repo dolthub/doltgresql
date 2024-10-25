@@ -30,8 +30,18 @@ func TestUserSpaceDoltTables(t *testing.T) {
 					Expected: []sql.Row{{"main"}},
 				},
 				{
-					Query:       `SELECT * FROM dolt_branches`,
-					ExpectedErr: "table not found",
+					Query:    `SELECT name FROM dolt_branches`,
+					Expected: []sql.Row{{"main"}},
+				},
+				{
+					Skip:     true, // TODO: referencing items outside the schema or database is not yet supported
+					Query:    `SELECT dolt.branches.name FROM dolt.branches`,
+					Expected: []sql.Row{{"main"}},
+				},
+				{
+					Skip:     true, // TODO: ERROR: table not found: dolt_branches
+					Query:    `SELECT dolt_branches.name FROM dolt_branches`,
+					Expected: []sql.Row{{"main"}},
 				},
 				{
 					Query:       `SELECT * FROM public.branches`,
@@ -84,6 +94,63 @@ func TestUserSpaceDoltTables(t *testing.T) {
 			},
 		},
 		{
+			Name: "dolt log",
+			Assertions: []ScriptTestAssertion{
+				{
+					Query:    `SELECT count(*) FROM dolt.log`,
+					Expected: []sql.Row{{2}},
+				},
+				{
+					Query:    `SELECT count(*) FROM dolt_log`,
+					Expected: []sql.Row{{2}},
+				},
+				{
+					Query:       `SELECT * FROM public.log`,
+					ExpectedErr: "table not found",
+				},
+				{
+					Query:       `SELECT * FROM log`,
+					ExpectedErr: "table not found",
+				},
+				{
+					Query:    `CREATE TABLE log (id INT PRIMARY KEY)`,
+					Expected: []sql.Row{},
+				},
+				{
+					Query:    `INSERT INTO log VALUES (1)`,
+					Expected: []sql.Row{},
+				},
+				{
+					Query:    `SELECT * FROM log`,
+					Expected: []sql.Row{{1}},
+				},
+				{
+					Query:    `SELECT count(*) FROM dolt.log`,
+					Expected: []sql.Row{{2}},
+				},
+				{
+					Query:    "SET search_path = 'dolt'",
+					Expected: []sql.Row{},
+				},
+				{
+					Query:    `SELECT count(*) FROM log`,
+					Expected: []sql.Row{{2}},
+				},
+				{
+					Query:    `SELECT * FROM public.log`,
+					Expected: []sql.Row{{1}},
+				},
+				{
+					Query:    "SET search_path = 'public'",
+					Expected: []sql.Row{},
+				},
+				{
+					Query:    `SELECT * FROM log`,
+					Expected: []sql.Row{{1}},
+				},
+			},
+		},
+		{
 			Name: "dolt tags",
 			Assertions: []ScriptTestAssertion{
 				{
@@ -91,8 +158,8 @@ func TestUserSpaceDoltTables(t *testing.T) {
 					Expected: []sql.Row{},
 				},
 				{
-					Query:       `SELECT * FROM dolt_branches`,
-					ExpectedErr: "table not found",
+					Query:    `SELECT * FROM dolt_tags`,
+					Expected: []sql.Row{},
 				},
 				{
 					Query:       `SELECT * FROM public.tags`,
@@ -117,8 +184,10 @@ func TestUserSpaceDoltTables(t *testing.T) {
 					},
 				},
 				{
-					Query:       `SELECT * FROM dolt_docs`,
-					ExpectedErr: "table not found",
+					Query: `SELECT * FROM dolt_docs`,
+					Expected: []sql.Row{
+						{"README.md", "testing"},
+					},
 				},
 				{
 					Query:       `SELECT * FROM public.docs`,
