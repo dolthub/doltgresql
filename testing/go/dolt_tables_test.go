@@ -91,6 +91,14 @@ func TestUserSpaceDoltTables(t *testing.T) {
 					Query:    `SELECT * FROM branches`,
 					Expected: []sql.Row{{1}},
 				},
+				{
+					Query:    "SET search_path = 'public,dolt'",
+					Expected: []sql.Row{},
+				},
+				{
+					Query:    `SELECT * FROM branches`,
+					Expected: []sql.Row{{1}},
+				},
 			},
 		},
 		{
