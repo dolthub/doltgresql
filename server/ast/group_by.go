@@ -15,6 +15,7 @@
 package ast
 
 import (
+	pgexprs "github.com/dolthub/doltgresql/server/expression"
 	vitess "github.com/dolthub/vitess/go/vt/sqlparser"
 
 	"github.com/dolthub/doltgresql/postgres/parser/sem/tree"
@@ -25,6 +26,25 @@ func nodeGroupBy(node tree.GroupBy) (vitess.GroupBy, error) {
 	if len(node) == 0 {
 		return nil, nil
 	}
-	exprs, err := nodeExprs(tree.Exprs(node))
-	return vitess.GroupBy(exprs), err
+	
+	groupBys := make(vitess.GroupBy, len(node))
+	var err error
+	for i, expr := range node {
+		groupBys[i], err = nodeExpr(expr)
+		if err != nil {
+			return nil, err
+		}
+		
+		// GMS order by is hardcoded to expect vitess.SQLVal for expressions such as `ORDER BY 1`.
+		// In addition, there is the requirement that columns in the order by also need to be referenced somewhere in
+		// the query, which is not a requirement for Postgres. Whenever we add that functionality, we also need to
+		// remove the dependency on vitess.SQLVal. For now, we'll just convert our literals to a vitess.SQLVal.
+		if injectedExpr, ok := groupBys[i].(vitess.InjectedExpr); ok {
+			if literal, ok := injectedExpr.Expression.(*pgexprs.Literal); ok {
+				groupBys[i] = literal.ToVitessLiteral()
+			}
+		}
+	}
+	
+	return groupBys, nil
 }
