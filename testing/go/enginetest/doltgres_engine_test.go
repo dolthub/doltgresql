@@ -245,8 +245,12 @@ func TestInfoSchema(t *testing.T) {
 }
 
 func TestColumnAliases(t *testing.T) {
-	t.Skip()
-	h := newDoltgresServerHarness(t)
+	h := newDoltgresServerHarness(t).WithSkippedQueries([]string{
+		"SELECT s as coL1, SUM(i) coL2 FROM mytable group by 1 order by 2", // incorrect result
+		"SELECT s as Date, SUM(i) TimeStamp FROM mytable group by 1 order by 2", // ERROR: at or near "timestamp": syntax error
+		"select \"foo\" as dummy, (select dummy)", // Unhandled OID 705
+		"SELECT 1 as a, (select a) as b from dual", // table not found: dual
+	})
 	defer h.Close()
 	enginetest.TestColumnAliases(t, h)
 }
