@@ -46,12 +46,13 @@ func (pgs *TypeCollection) Serialize(ctx context.Context) ([]byte, error) {
 		writer.VariableUint(uint64(len(nameMapKeys)))
 		for _, nameMapKey := range nameMapKeys {
 			typ := nameMap[nameMapKey]
+			writer.Uint32(typ.Oid)
 			writer.String(typ.Name)
 			writer.String(typ.Owner)
 			writer.Int16(typ.Length)
 			writer.Bool(typ.PassedByVal)
-			writer.String(string(typ.Typ))
-			writer.String(string(typ.Category))
+			writer.String(string(typ.TypType))
+			writer.String(string(typ.TypCategory))
 			writer.Bool(typ.IsPreferred)
 			writer.Bool(typ.IsDefined)
 			writer.String(typ.Delimiter)
@@ -110,13 +111,14 @@ func Deserialize(ctx context.Context, data []byte) (*TypeCollection, error) {
 		numOfTypes := reader.VariableUint()
 		nameMap := make(map[string]*types.Type)
 		for j := uint64(0); j < numOfTypes; j++ {
-			typ := &types.Type{}
+			typ := &types.Type{Schema: schemaName}
+			typ.Oid = reader.Uint32()
 			typ.Name = reader.String()
 			typ.Owner = reader.String()
 			typ.Length = reader.Int16()
 			typ.PassedByVal = reader.Bool()
-			typ.Typ = types.TypeType(reader.String())
-			typ.Category = types.TypeCategory(reader.String())
+			typ.TypType = types.TypeType(reader.String())
+			typ.TypCategory = types.TypeCategory(reader.String())
 			typ.IsPreferred = reader.Bool()
 			typ.IsDefined = reader.Bool()
 			typ.Delimiter = reader.String()

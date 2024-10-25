@@ -148,7 +148,7 @@ const (
 	TypeType_Composite  TypeType = "c"
 	TypeType_Domain     TypeType = "d"
 	TypeType_Enum       TypeType = "e"
-	TypeType_Shell      TypeType = "p" // a pseudo-type
+	TypeType_Pseudo     TypeType = "p"
 	TypeType_Range      TypeType = "r"
 	TypeType_MultiRange TypeType = "m"
 )

@@ -48,7 +48,7 @@ func (pgs *TypeCollection) GetDomainType(schName, typName string) (*types.Type, 
 	defer pgs.mutex.RUnlock()
 
 	if nameMap, ok := pgs.schemaMap[schName]; ok {
-		if typ, ok := nameMap[typName]; ok && typ.Typ == types.TypeType_Domain {
+		if typ, ok := nameMap[typName]; ok && typ.TypType == types.TypeType_Domain {
 			return typ, true
 		}
 	}

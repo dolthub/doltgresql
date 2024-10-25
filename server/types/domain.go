@@ -38,46 +38,53 @@ type DomainType struct {
 // NewDomainType creates new instance of domain Type.
 func NewDomainType(
 	ctx *sql.Context,
-	domain DomainType,
+	schema string,
+	name string,
+	asType DoltgresType,
+	defaultExpr string,
+	notNull bool,
+	checks []*sql.CheckDefinition,
 	owner string, // TODO
 ) (*Type, error) {
 	passedByVal := false
-	l := domain.AsType.MaxTextResponseByteLength(ctx)
+	l := asType.MaxTextResponseByteLength(ctx)
 	if l&1 == 0 && l < 9 {
 		passedByVal = true
 	}
 	return &Type{
-		Name:          domain.Name,
+		Oid:           0, // TODO: generate unique OID
+		Name:          name,
+		Schema:        schema,
 		Owner:         owner,
 		Length:        int16(l),
 		PassedByVal:   passedByVal,
-		Typ:           TypeType_Domain,
-		Category:      domain.AsType.Category(),
-		IsPreferred:   domain.AsType.IsPreferredType(),
+		TypType:       TypeType_Domain,
+		TypCategory:   asType.Category(),
+		IsPreferred:   asType.IsPreferredType(),
 		IsDefined:     true,
 		Delimiter:     ",",
-		RelID:         0, // composite type only
+		RelID:         0,
 		SubscriptFunc: "",
 		Elem:          0,
 		Array:         0, // TODO: refers to array type of this type
 		InputFunc:     "domain_in",
-		OutputFunc:    "",
+		OutputFunc:    "", // TODO: base type's out function
 		ReceiveFunc:   "domain_recv",
-		SendFunc:      "",
+		SendFunc:      "", // TODO: base type's send function
 		ModInFunc:     "-",
 		ModOutFunc:    "-",
 		AnalyzeFunc:   "-",
-		Align:         domain.AsType.Alignment(),
-		Storage:       TypeStorage_Plain, // TODO
-		NotNull:       domain.NotNull,
-		BaseTypeOID:   domain.AsType.OID(),
+		Align:         asType.Alignment(),
+		Storage:       TypeStorage_Plain, // TODO: base type's storage
+		NotNull:       notNull,
+		BaseTypeOID:   asType.OID(),
 		TypMod:        -1,
 		NDims:         0,
 		Collation:     0,
 		DefaulBin:     "",
-		Default:       domain.DefaultExpr,
+		Default:       defaultExpr,
 		Acl:           "",
-		Checks:        domain.Checks,
+		Checks:        checks,
 	}, nil
 }
 

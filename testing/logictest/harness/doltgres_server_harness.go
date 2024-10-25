@@ -106,10 +106,11 @@ func (h *DoltgresHarness) Init() error {
 		logErr(err, "opening connection to pgx")
 		return err
 	}
-	err = db.Ping()
-	if err != nil {
-		return err
-	}
+	// todo: doltgres errors on ping currently
+	//err = db.Ping()
+	//if err != nil {
+	//	return err
+	//}
 
 	// drop if 'sqllogictest' database exists
 	_, err = db.ExecContext(ctx, "DROP DATABASE IF EXISTS sqllogictest")

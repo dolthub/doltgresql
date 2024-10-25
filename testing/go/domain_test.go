@@ -176,7 +176,6 @@ func TestDomain(t *testing.T) {
 			},
 		},
 		{
-			Skip: true, // TODO: support DROP DOMAIN in separate PR
 			Name: "drop domain",
 			SetUpScript: []string{
 				`CREATE DOMAIN year AS integer CONSTRAINT year_check CHECK (((VALUE >= 1901) AND (VALUE <= 2155)));`,
@@ -198,6 +197,14 @@ func TestDomain(t *testing.T) {
 				{
 					Query:    `DROP DOMAIN IF EXISTS year;`,
 					Expected: []sql.Row{},
+				},
+				{
+					Query:    `DROP DOMAIN IF EXISTS postgres.public.year;`,
+					Expected: []sql.Row{},
+				},
+				{
+					Query:       `DROP DOMAIN IF EXISTS mydb.public.year;`,
+					ExpectedErr: `DROP DOMAIN is currently only supported for the current database`,
 				},
 				{
 					Query:       `DROP DOMAIN non_existing_domain;`,

@@ -76,16 +76,8 @@ func (c *CreateDomain) RowIter(ctx *sql.Context, r sql.Row) (sql.RowIter, error)
 			return nil, err
 		}
 	}
-	d := types.DomainType{
-		Schema:      c.SchemaName,
-		Name:        c.Name,
-		AsType:      c.AsType,
-		DefaultExpr: defExpr,
-		NotNull:     c.IsNotNull,
-		Checks:      checkDefs,
-	}
 
-	newType, err := types.NewDomainType(ctx, d, "")
+	newType, err := types.NewDomainType(ctx, c.SchemaName, c.Name, c.AsType, defExpr, c.IsNotNull, checkDefs, "")
 	if err != nil {
 		return nil, err
 	}

@@ -130,6 +130,7 @@ func RunScript(t *testing.T, script ScriptTest, normalizeRows bool) {
 			Default: pgxConn,
 			Current: pgxConn,
 		}
+		require.NoError(t, pgxConn.Ping(ctx))
 		defer func() {
 			conn.Close(ctx)
 		}()
@@ -309,6 +310,9 @@ func CreateServer(t *testing.T, database string) (context.Context, *Connection, 
 
 	conn, err := pgx.Connect(ctx, fmt.Sprintf("postgres://postgres:password@127.0.0.1:%d/%s", port, database))
 	require.NoError(t, err)
+
+	// Ping the connection to test that it's alive, and also to test that Doltgres handles empty queries correctly
+	require.NoError(t, conn.Ping(ctx))
 	return ctx, &Connection{
 		Default: conn,
 		Current: conn,

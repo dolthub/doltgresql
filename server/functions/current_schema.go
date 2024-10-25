@@ -18,6 +18,7 @@ import (
 	"github.com/dolthub/go-mysql-server/sql"
 
 	"github.com/dolthub/doltgresql/server/functions/framework"
+	"github.com/dolthub/doltgresql/server/settings"
 	pgtypes "github.com/dolthub/doltgresql/server/types"
 )
 
@@ -33,7 +34,7 @@ var current_schema = framework.Function0{
 	IsNonDeterministic: true,
 	Strict:             true,
 	Callable: func(ctx *sql.Context) (any, error) {
-		schemas, err := GetCurrentSchemas(ctx)
+		schemas, err := settings.GetCurrentSchemas(ctx)
 		if err != nil {
 			return nil, err
 		}

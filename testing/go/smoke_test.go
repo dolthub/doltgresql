@@ -71,6 +71,18 @@ func TestSmokeTests(t *testing.T) {
 					Query:    "SELECT NULL = NULL",
 					Expected: []sql.Row{{nil}},
 				},
+				{
+					Query:    ";",
+					Expected: []sql.Row{},
+				},
+				{
+					Query:    " ; ",
+					Expected: []sql.Row{},
+				},
+				{
+					Query:    "-- this is only a comment",
+					Expected: []sql.Row{},
+				},
 			},
 		},
 		{
