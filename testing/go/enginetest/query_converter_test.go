@@ -135,7 +135,7 @@ func convertDdlStatement(statement *sqlparser.DDL) ([]string, bool) {
 // transformSelect converts a MySQL SELECT statement to a postgres-compatible SELECT statement.
 // This is a very broad surface area, so we do this very selectively
 func transformSelect(stmt *sqlparser.Select) ([]string, bool) {
-	if shouldRewriteSelect(stmt) {
+	if !shouldRewriteSelect(stmt) {
 		return nil, false
 	}
 	return []string{formatNode(stmt)}, true
@@ -151,6 +151,11 @@ func containsBinaryConversion(stmt *sqlparser.Select) bool {
 	fn := func(node sqlparser.SQLNode) (bool, error) {
 		switch node := node.(type) {
 		case *sqlparser.BinaryExpr:
+			if node.Operator == "binary " {
+				foundBinaryConversionExpr = true
+				return false, nil
+			}
+		case *sqlparser.UnaryExpr:
 			if node.Operator == "binary " {
 				foundBinaryConversionExpr = true
 				return false, nil

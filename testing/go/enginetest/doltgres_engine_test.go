@@ -144,47 +144,38 @@ func (dcv *doltCommitValidator) CommitHash(val interface{}) (bool, string) {
 
 // Convenience test for debugging a single query. Unskip and set to the desired query.
 func TestSingleScript(t *testing.T) {
-	// t.Skip()
+	t.Skip()
 
 	var scripts = []queries.ScriptTest{
 		{
-			Name: "Basic order by/group by cases",
+			Name: "Group by BINARY: https://github.com/dolthub/dolt/issues/6179",
 			SetUpScript: []string{
-				"use mydb;",
-				"create table members (id bigint primary key, team text);",
-				"insert into members values (3,'red'), (4,'red'),(5,'orange'),(6,'orange'),(7,'orange'),(8,'purple');",
+				"create table t (s varchar(100));",
+				"insert into t values ('abc'), ('def');",
+				"create table t1 (b binary(3));",
+				"insert into t1 values ('abc'), ('abc'), ('def'), ('abc'), ('def');",
 			},
 			Assertions: []queries.ScriptTestAssertion{
 				{
-					Query:    "SELECT DISTINCT BINARY t1.id as id FROM members AS t1 JOIN members AS t2 ON t1.id = t2.id WHERE t1.id > 0 ORDER BY BINARY t1.id",
-					Expected: []sql.Row{{[]uint8{0x33}}, {[]uint8{0x34}}, {[]uint8{0x35}}, {[]uint8{0x36}}, {[]uint8{0x37}}, {[]uint8{0x38}}},
+					Query: "select binary s from t group by binary s order by binary s",
+					Expected: []sql.Row{
+						{[]uint8("abc")},
+						{[]uint8("def")},
+					},
 				},
 				{
-					Query:    "SELECT DISTINCT BINARY t1.id as id FROM members AS t1 JOIN members AS t2 ON t1.id = t2.id WHERE t1.id > 0 ORDER BY t1.id",
-					Expected: []sql.Row{{[]uint8{0x33}}, {[]uint8{0x34}}, {[]uint8{0x35}}, {[]uint8{0x36}}, {[]uint8{0x37}}, {[]uint8{0x38}}},
+					Query: "select count(b), b from t1 group by b order by b",
+					Expected: []sql.Row{
+						{3, []uint8("abc")},
+						{2, []uint8("def")},
+					},
 				},
 				{
-					Query:    "SELECT DISTINCT t1.id as id FROM members AS t1 JOIN members AS t2 ON t1.id = t2.id WHERE t2.id > 0 ORDER BY t1.id",
-					Expected: []sql.Row{{3}, {4}, {5}, {6}, {7}, {8}},
-				},
-				{
-					// aliases from outer scopes can be used in a subquery's having clause.
-					// https://github.com/dolthub/dolt/issues/4723
-					Query:    "SELECT id as alias1, (SELECT alias1+1 group by alias1 having alias1 > 0) FROM members where id < 6;",
-					Expected: []sql.Row{{3, 4}, {4, 5}, {5, 6}},
-				},
-				{
-					// columns from outer scopes can be used in a subquery's having clause.
-					// https://github.com/dolthub/dolt/issues/4723
-					Query:    "SELECT id, (SELECT UPPER(team) having id > 3) as upper_team FROM members where id < 6;",
-					Expected: []sql.Row{{3, nil}, {4, "RED"}, {5, "ORANGE"}},
-				},
-				{
-					// When there is ambiguity between a reference in an outer scope and a reference in the current
-					// scope, the reference in the innermost scope will be used.
-					// https://github.com/dolthub/dolt/issues/4723
-					Query:    "SELECT id, (SELECT -1 as id having id < 10) as upper_team FROM members where id < 6;",
-					Expected: []sql.Row{{3, -1}, {4, -1}, {5, -1}},
+					Query: "select binary s from t group by binary s order by s",
+					Expected: []sql.Row{
+						{[]uint8("abc")},
+						{[]uint8("def")},
+					},
 				},
 			},
 		},
@@ -284,7 +275,12 @@ func TestColumnAliases(t *testing.T) {
 }
 
 func TestOrderByGroupBy(t *testing.T) {
-	h := newDoltgresServerHarness(t)
+	h := newDoltgresServerHarness(t).WithSkippedQueries([]string{
+		"Group by with decimal columns", // syntax error
+		"Validation for use of non-aggregated columns with implicit grouping of all rows", // bad error matching
+		"group by with any_value()", // @@ vars not supported
+		"group by with strict errors", // @@ vars not supported
+	})
 	defer h.Close()
 	enginetest.TestOrderByGroupBy(t, h)
 }
