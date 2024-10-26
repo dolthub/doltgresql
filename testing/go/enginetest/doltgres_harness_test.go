@@ -34,6 +34,7 @@ import (
 	"github.com/dolthub/go-mysql-server/sql"
 	"github.com/dolthub/go-mysql-server/sql/analyzer"
 	gmstypes "github.com/dolthub/go-mysql-server/sql/types"
+	"github.com/dolthub/vitess/go/sqltypes"
 	vitess "github.com/dolthub/vitess/go/vt/sqlparser"
 	_ "github.com/jackc/pgx/v4/stdlib"
 	"github.com/jackc/pgx/v5"
@@ -848,8 +849,12 @@ func columns(rows pgx.Rows) (sql.Schema, []interface{}, error) {
 			colVal := gosql.NullTime{}
 			columnVals = append(columnVals, &colVal)
 			schema = append(schema, &sql.Column{Name: field.Name, Type: gmstypes.Timestamp, Nullable: true})
+		case uint32(oid.T_bytea):
+			colVal := gosql.NullString{}
+			columnVals = append(columnVals, &colVal)
+			schema = append(schema, &sql.Column{Name: field.Name, Type: gmstypes.MustCreateBinary(sqltypes.Binary, 100), Nullable: true})
 		case uint32(oid.T_json):
-			colVal := gosql.NullByte{}
+			colVal := gosql.NullString{}
 			columnVals = append(columnVals, &colVal)
 			schema = append(schema, &sql.Column{Name: field.Name, Type: gmstypes.JSON, Nullable: true})
 		default:

@@ -144,19 +144,47 @@ func (dcv *doltCommitValidator) CommitHash(val interface{}) (bool, string) {
 
 // Convenience test for debugging a single query. Unskip and set to the desired query.
 func TestSingleScript(t *testing.T) {
-	t.Skip()
+	// t.Skip()
 
 	var scripts = []queries.ScriptTest{
 		{
-			Name: "dolt_revert() detects not null violation (issue #4527)",
+			Name: "Basic order by/group by cases",
 			SetUpScript: []string{
-				"create table test2 (pk int primary key, c0 int)",
-				"alter table test2 modify c0 int not null",
+				"use mydb;",
+				"create table members (id bigint primary key, team text);",
+				"insert into members values (3,'red'), (4,'red'),(5,'orange'),(6,'orange'),(7,'orange'),(8,'purple');",
 			},
 			Assertions: []queries.ScriptTestAssertion{
 				{
-					Query:          "call dolt_revert('head~1');",
-					ExpectedErrStr: "revert currently does not handle constraint violations",
+					Query:    "SELECT DISTINCT BINARY t1.id as id FROM members AS t1 JOIN members AS t2 ON t1.id = t2.id WHERE t1.id > 0 ORDER BY BINARY t1.id",
+					Expected: []sql.Row{{[]uint8{0x33}}, {[]uint8{0x34}}, {[]uint8{0x35}}, {[]uint8{0x36}}, {[]uint8{0x37}}, {[]uint8{0x38}}},
+				},
+				{
+					Query:    "SELECT DISTINCT BINARY t1.id as id FROM members AS t1 JOIN members AS t2 ON t1.id = t2.id WHERE t1.id > 0 ORDER BY t1.id",
+					Expected: []sql.Row{{[]uint8{0x33}}, {[]uint8{0x34}}, {[]uint8{0x35}}, {[]uint8{0x36}}, {[]uint8{0x37}}, {[]uint8{0x38}}},
+				},
+				{
+					Query:    "SELECT DISTINCT t1.id as id FROM members AS t1 JOIN members AS t2 ON t1.id = t2.id WHERE t2.id > 0 ORDER BY t1.id",
+					Expected: []sql.Row{{3}, {4}, {5}, {6}, {7}, {8}},
+				},
+				{
+					// aliases from outer scopes can be used in a subquery's having clause.
+					// https://github.com/dolthub/dolt/issues/4723
+					Query:    "SELECT id as alias1, (SELECT alias1+1 group by alias1 having alias1 > 0) FROM members where id < 6;",
+					Expected: []sql.Row{{3, 4}, {4, 5}, {5, 6}},
+				},
+				{
+					// columns from outer scopes can be used in a subquery's having clause.
+					// https://github.com/dolthub/dolt/issues/4723
+					Query:    "SELECT id, (SELECT UPPER(team) having id > 3) as upper_team FROM members where id < 6;",
+					Expected: []sql.Row{{3, nil}, {4, "RED"}, {5, "ORANGE"}},
+				},
+				{
+					// When there is ambiguity between a reference in an outer scope and a reference in the current
+					// scope, the reference in the innermost scope will be used.
+					// https://github.com/dolthub/dolt/issues/4723
+					Query:    "SELECT id, (SELECT -1 as id having id < 10) as upper_team FROM members where id < 6;",
+					Expected: []sql.Row{{3, -1}, {4, -1}, {5, -1}},
 				},
 			},
 		},
@@ -256,7 +284,6 @@ func TestColumnAliases(t *testing.T) {
 }
 
 func TestOrderByGroupBy(t *testing.T) {
-	t.Skip()
 	h := newDoltgresServerHarness(t)
 	defer h.Close()
 	enginetest.TestOrderByGroupBy(t, h)
