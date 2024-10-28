@@ -37,7 +37,9 @@ func transformAST(query string) ([]string, bool) {
 	case *sqlparser.DDL:
 		if stmt.Action == "create" {
 			return transformCreateTable(query, stmt)
-		}
+		} else if stmt.Action == "drop" {
+			return transformDrop(query, stmt)
+		} 
 	case *sqlparser.Set:
 		return transformSet(stmt)
 	case *sqlparser.Select:
@@ -47,6 +49,10 @@ func transformAST(query string) ([]string, bool) {
 	}
 
 	return nil, false
+}
+
+func transformDrop(query string, stmt *sqlparser.DDL) ([]string, bool) {
+	return nil, false	
 }
 
 func transformAlterTable(stmt *sqlparser.AlterTable) ([]string, bool) {
@@ -64,69 +70,92 @@ func transformAlterTable(stmt *sqlparser.AlterTable) ([]string, bool) {
 func convertDdlStatement(statement *sqlparser.DDL) ([]string, bool) {
 	switch statement.Action {
 	case "alter":
-		switch statement.ColumnAction {
-		case "modify":
-			if len(statement.TableSpec.Columns) != 1 {
+		if statement.ColumnAction != "" {
+			switch statement.ColumnAction {
+			case "modify":
+				if len(statement.TableSpec.Columns) != 1 {
+					return nil, false
+				}
+
+				stmts := make([]string, 0)
+
+				col := statement.TableSpec.Columns[0]
+				tableName, err := tree.NewUnresolvedObjectName(1, [3]string{statement.Table.Name.String(), "", ""}, 0)
+				if err != nil {
+					panic(err)
+				}
+
+				newType := convertTypeDef(col.Type)
+				alter := tree.AlterTable{
+					Table: tableName,
+					Cmds: []tree.AlterTableCmd{
+						&tree.AlterTableAlterColumnType{
+							Column: tree.Name(col.Name.String()),
+							ToType: newType,
+						},
+					},
+				}
+
+				ctx := formatNodeWithUnqualifiedTableNames(&alter)
+				stmts = append(stmts, ctx.String())
+
+				// constraints
+				if col.Type.NotNull {
+					alter.Cmds = []tree.AlterTableCmd{
+						&tree.AlterTableSetNotNull{
+							Column: tree.Name(col.Name.String()),
+						},
+					}
+					ctx = formatNodeWithUnqualifiedTableNames(&alter)
+					stmts = append(stmts, ctx.String())
+				} else {
+					alter.Cmds = []tree.AlterTableCmd{
+						&tree.AlterTableDropNotNull{
+							Column: tree.Name(col.Name.String()),
+						},
+					}
+					ctx = formatNodeWithUnqualifiedTableNames(&alter)
+					stmts = append(stmts, ctx.String())
+				}
+
+				// rename
+				if statement.Column.String() != col.Name.String() {
+					alter.Cmds = []tree.AlterTableCmd{
+						&tree.AlterTableRenameColumn{
+							Column:  tree.Name(statement.Column.String()),
+							NewName: tree.Name(col.Name.String()),
+						},
+					}
+					ctx = formatNodeWithUnqualifiedTableNames(&alter)
+					stmts = append(stmts, ctx.String())
+				}
+
+				return stmts, true
+			default:
 				return nil, false
 			}
-
-			stmts := make([]string, 0)
-
-			col := statement.TableSpec.Columns[0]
-			tableName, err := tree.NewUnresolvedObjectName(1, [3]string{statement.Table.Name.String(), "", ""}, 0)
-			if err != nil {
-				panic(err)
-			}
-
-			newType := convertTypeDef(col.Type)
-			alter := tree.AlterTable{
-				Table: tableName,
-				Cmds: []tree.AlterTableCmd{
-					&tree.AlterTableAlterColumnType{
-						Column: tree.Name(col.Name.String()),
-						ToType: newType,
-					},
-				},
-			}
-
-			ctx := formatNodeWithUnqualifiedTableNames(&alter)
-			stmts = append(stmts, ctx.String())
-
-			// constraints
-			if col.Type.NotNull {
-				alter.Cmds = []tree.AlterTableCmd{
-					&tree.AlterTableSetNotNull{
-						Column: tree.Name(col.Name.String()),
-					},
-				}
-				ctx = formatNodeWithUnqualifiedTableNames(&alter)
-				stmts = append(stmts, ctx.String())
-			} else {
-				alter.Cmds = []tree.AlterTableCmd{
-					&tree.AlterTableDropNotNull{
-						Column: tree.Name(col.Name.String()),
-					},
-				}
-				ctx = formatNodeWithUnqualifiedTableNames(&alter)
-				stmts = append(stmts, ctx.String())
-			}
-
-			// rename
-			if statement.Column.String() != col.Name.String() {
-				alter.Cmds = []tree.AlterTableCmd{
-					&tree.AlterTableRenameColumn{
-						Column:  tree.Name(statement.Column.String()),
-						NewName: tree.Name(col.Name.String()),
-					},
-				}
-				ctx = formatNodeWithUnqualifiedTableNames(&alter)
-				stmts = append(stmts, ctx.String())
-			}
-
-			return stmts, true
-		default:
-			return nil, false
 		}
+		if statement.IndexSpec != nil {
+			switch statement.IndexSpec.Action {
+			case "drop":
+				tableName := tree.NewTableName(tree.Name(""), tree.Name(statement.Table.Name.String()))
+				dropIndex := tree.DropIndex{
+					IndexList:    tree.TableIndexNames{
+						{
+							Table:  *tableName,
+							Index: tree.UnrestrictedName(statement.IndexSpec.ToName.String()),
+					  },
+					},
+				}
+				
+				ctx := formatNodeWithUnqualifiedTableNames(&dropIndex)
+				return []string{ctx.String()}, true
+			default:
+				return nil, false
+			}
+		}
+		
+		return nil, false
 	default:
 		return nil, false
 	}

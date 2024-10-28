@@ -286,14 +286,12 @@ func TestOrderByGroupBy(t *testing.T) {
 }
 
 func TestAmbiguousColumnResolution(t *testing.T) {
-	t.Skip()
 	h := newDoltgresServerHarness(t)
 	defer h.Close()
 	enginetest.TestAmbiguousColumnResolution(t, h)
 }
 
 func TestInsertInto(t *testing.T) {
-	t.Skip()
 	h := newDoltgresServerHarness(t)
 	defer h.Close()
 	enginetest.TestInsertInto(t, h)
