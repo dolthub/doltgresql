@@ -286,7 +286,7 @@ func (h *DoltgresHandler) executeQuery(ctx *sql.Context, query string, parsed sq
 // executeBoundPlan is a QueryExecutor that calls QueryWithBindings on the given engine using the given query and parsed
 // statement, which may be nil.
 func (h *DoltgresHandler) executeBoundPlan(ctx *sql.Context, query string, _ sqlparser.Statement, plan sql.Node) (sql.Schema, sql.RowIter, *sql.QueryFlags, error) {
-	return h.e.PrepQueryPlanForExecution(ctx, query, plan)
+	return h.e.PrepQueryPlanForExecution(ctx, query, plan, nil)
 }
 
 // maybeReleaseAllLocks makes a best effort attempt to release all locks on the given connection. If the attempt fails,
