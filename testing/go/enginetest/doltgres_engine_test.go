@@ -148,15 +148,34 @@ func TestSingleScript(t *testing.T) {
 
 	var scripts = []queries.ScriptTest{
 		{
-			Name: "dolt_revert() detects not null violation (issue #4527)",
+			Name: "Group by BINARY: https://github.com/dolthub/dolt/issues/6179",
 			SetUpScript: []string{
-				"create table test2 (pk int primary key, c0 int)",
-				"alter table test2 modify c0 int not null",
+				"create table t (s varchar(100));",
+				"insert into t values ('abc'), ('def');",
+				"create table t1 (b binary(3));",
+				"insert into t1 values ('abc'), ('abc'), ('def'), ('abc'), ('def');",
 			},
 			Assertions: []queries.ScriptTestAssertion{
 				{
-					Query:          "call dolt_revert('head~1');",
-					ExpectedErrStr: "revert currently does not handle constraint violations",
+					Query: "select binary s from t group by binary s order by binary s",
+					Expected: []sql.Row{
+						{[]uint8("abc")},
+						{[]uint8("def")},
+					},
+				},
+				{
+					Query: "select count(b), b from t1 group by b order by b",
+					Expected: []sql.Row{
+						{3, []uint8("abc")},
+						{2, []uint8("def")},
+					},
+				},
+				{
+					Query: "select binary s from t group by binary s order by s",
+					Expected: []sql.Row{
+						{[]uint8("abc")},
+						{[]uint8("def")},
+					},
 				},
 			},
 		},
@@ -245,15 +264,23 @@ func TestInfoSchema(t *testing.T) {
 }
 
 func TestColumnAliases(t *testing.T) {
-	t.Skip()
-	h := newDoltgresServerHarness(t)
+	h := newDoltgresServerHarness(t).WithSkippedQueries([]string{
+		"SELECT s as coL1, SUM(i) coL2 FROM mytable group by 1 order by 2",      // incorrect result
+		"SELECT s as Date, SUM(i) TimeStamp FROM mytable group by 1 order by 2", // ERROR: at or near "timestamp": syntax error
+		"select \"foo\" as dummy, (select dummy)",                               // Unhandled OID 705
+		"SELECT 1 as a, (select a) as b from dual",                              // table not found: dual
+	})
 	defer h.Close()
 	enginetest.TestColumnAliases(t, h)
 }
 
 func TestOrderByGroupBy(t *testing.T) {
-	t.Skip()
-	h := newDoltgresServerHarness(t)
+	h := newDoltgresServerHarness(t).WithSkippedQueries([]string{
+		"Group by with decimal columns", // syntax error
+		"Validation for use of non-aggregated columns with implicit grouping of all rows", // bad error matching
+		"group by with any_value()",   // @@ vars not supported
+		"group by with strict errors", // @@ vars not supported
+	})
 	defer h.Close()
 	enginetest.TestOrderByGroupBy(t, h)
 }
