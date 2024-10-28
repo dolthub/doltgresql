@@ -99,6 +99,10 @@ func TestUserSpaceDoltTables(t *testing.T) {
 					Query:    `SELECT * FROM branches`,
 					Expected: []sql.Row{{1}},
 				},
+				{
+					Query:    `SELECT * FROM BRANCHES`,
+					Expected: []sql.Row{{1}},
+				},
 			},
 		},
 		{
