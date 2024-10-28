@@ -15,8 +15,9 @@
 package ast
 
 import (
-	pgexprs "github.com/dolthub/doltgresql/server/expression"
 	vitess "github.com/dolthub/vitess/go/vt/sqlparser"
+
+	pgexprs "github.com/dolthub/doltgresql/server/expression"
 
 	"github.com/dolthub/doltgresql/postgres/parser/sem/tree"
 )
@@ -26,7 +27,7 @@ func nodeGroupBy(node tree.GroupBy) (vitess.GroupBy, error) {
 	if len(node) == 0 {
 		return nil, nil
 	}
-	
+
 	groupBys := make(vitess.GroupBy, len(node))
 	var err error
 	for i, expr := range node {
@@ -34,7 +35,7 @@ func nodeGroupBy(node tree.GroupBy) (vitess.GroupBy, error) {
 		if err != nil {
 			return nil, err
 		}
-		
+
 		// GMS order by is hardcoded to expect vitess.SQLVal for expressions such as `ORDER BY 1`.
 		// In addition, there is the requirement that columns in the order by also need to be referenced somewhere in
 		// the query, which is not a requirement for Postgres. Whenever we add that functionality, we also need to
@@ -45,6 +46,6 @@ func nodeGroupBy(node tree.GroupBy) (vitess.GroupBy, error) {
 			}
 		}
 	}
-	
+
 	return groupBys, nil
 }
