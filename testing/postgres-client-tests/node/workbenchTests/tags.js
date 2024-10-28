@@ -3,7 +3,7 @@ import { tagsMatcher } from "./matchers.js";
 
 export const tagsTests = [
   {
-    q: "SELECT * FROM dolt_tags ORDER BY date DESC",
+    q: "SELECT * FROM dolt.tags ORDER BY date DESC",
     res: {
       command: "SELECT",
       rowCount: 0,
@@ -24,7 +24,7 @@ export const tagsTests = [
     },
   },
   {
-    q: "SELECT * FROM dolt_tags ORDER BY date DESC",
+    q: "SELECT * FROM dolt.tags ORDER BY date DESC",
     res: {
       command: "SELECT",
       rowCount: 1,
@@ -55,7 +55,7 @@ export const tagsTests = [
     },
   },
   {
-    q: "SELECT * FROM dolt_tags ORDER BY date DESC",
+    q: "SELECT * FROM dolt.tags ORDER BY date DESC",
     res: {
       command: "SELECT",
       rowCount: 2,
@@ -94,7 +94,7 @@ export const tagsTests = [
     },
   },
   {
-    q: "SELECT * FROM dolt_tags ORDER BY date DESC",
+    q: "SELECT * FROM dolt.tags ORDER BY date DESC",
     res: {
       command: "SELECT",
       rowCount: 1,

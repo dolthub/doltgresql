@@ -54,7 +54,7 @@ func TestForeignKeys(t *testing.T) {
 				},
 				Assertions: []ScriptTestAssertion{
 					{
-						Query: "SELECT * FROM dolt_status",
+						Query: "SELECT * FROM dolt.status",
 						Expected: []sql.Row{
 							{"public.test", 1, "new table"},
 							{"public.test_info", 1, "new table"},
@@ -65,7 +65,7 @@ func TestForeignKeys(t *testing.T) {
 						SkipResultsCheck: true,
 					},
 					{
-						Query:    "SELECT * FROM dolt_status",
+						Query:    "SELECT * FROM dolt.status",
 						Expected: []sql.Row{},
 					},
 					{
@@ -98,7 +98,7 @@ func TestForeignKeys(t *testing.T) {
 				},
 				Assertions: []ScriptTestAssertion{
 					{
-						Query: "SELECT * FROM dolt_status",
+						Query: "SELECT * FROM dolt.status",
 						Expected: []sql.Row{
 							{"public.child", 1, "new table"},
 							{"public.parent", 1, "new table"},
@@ -109,7 +109,7 @@ func TestForeignKeys(t *testing.T) {
 						SkipResultsCheck: true,
 					},
 					{
-						Query:    "SELECT * FROM dolt_status",
+						Query:    "SELECT * FROM dolt.status",
 						Expected: []sql.Row{},
 					},
 					{
@@ -199,7 +199,7 @@ func TestForeignKeys(t *testing.T) {
 				},
 				Assertions: []ScriptTestAssertion{
 					{
-						Query: "SELECT * FROM dolt_status",
+						Query: "SELECT * FROM dolt.status",
 						Expected: []sql.Row{
 							{"child.child", 1, "new table"},
 							{"fake.parent", 1, "new table"},
@@ -261,7 +261,7 @@ func TestForeignKeys(t *testing.T) {
 						SkipResultsCheck: true,
 					},
 					{
-						Query:    "SELECT * FROM dolt_status",
+						Query:    "SELECT * FROM dolt.status",
 						Expected: []sql.Row{},
 					},
 					{

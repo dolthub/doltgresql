@@ -1059,7 +1059,7 @@ func TestDoltMerge(t *testing.T) {
 		"merge with float 1.23 column default",                        // alter table
 		"merge with decimal 1.23 column default",                      // alter table
 		"merge with different types",                                  // alter table
-		"select * from dolt_status",                                   // table_name column includes schema name
+		"select * from dolt_status",                                   // table_name column includes schema name,
 	})
 	denginetest.RunDoltMergeTests(t, h)
 }
@@ -1234,6 +1234,7 @@ func TestHistorySystemTable(t *testing.T) {
 		"dolt_history table with AS OF",                 // AS OF
 		"dolt_history table with enums",                 // enums
 		"can sort by dolt_log.commit",                   // more commits
+		"select dolt_log.commit_hash",                   // table name
 	}).WithParallelism(2)
 	denginetest.RunHistorySystemTableTests(t, harness)
 }
