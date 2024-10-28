@@ -391,12 +391,12 @@ var pgCatalogTests = []ScriptTest{
 			{
 				Query:    `SELECT * FROM "pg_catalog"."pg_namespace" WHERE nspname=$1;`,
 				BindVars: []any{"testschema"},
-				Expected: []sql.Row{{1879048195, "testschema", 0, nil}},
+				Expected: []sql.Row{{1879048196, "testschema", 0, nil}},
 			},
 			{
 				Query:    `SELECT * FROM "pg_catalog"."pg_namespace" WHERE oid=$1;`,
-				BindVars: []any{1879048195},
-				Expected: []sql.Row{{1879048195, "testschema", 0, nil}},
+				BindVars: []any{1879048196},
+				Expected: []sql.Row{{1879048196, "testschema", 0, nil}},
 			},
 		},
 	},
@@ -430,13 +430,13 @@ var pgCatalogTests = []ScriptTest{
 FROM pg_catalog.pg_class c
 LEFT OUTER JOIN pg_catalog.pg_description d ON d.objoid=c.oid AND d.objsubid=0 AND d.classoid='pg_class'::regclass
 WHERE c.relnamespace=$1 AND c.relkind not in ('i','I','c');`,
-				BindVars: []any{1879048195},
-				Expected: []sql.Row{{2687500288, nil, nil, ""}},
+				BindVars: []any{1879048196},
+				Expected: []sql.Row{{2688548864, nil, nil, ""}},
 			},
 			{
 				Query:    `select c.oid,pg_catalog.pg_total_relation_size(c.oid) as total_rel_size,pg_catalog.pg_relation_size(c.oid) as rel_size FROM pg_class c WHERE c.relnamespace=$1;`,
-				BindVars: []any{1879048195},
-				Expected: []sql.Row{{1613758464, 0, 0}, {2687500288, 0, 0}},
+				BindVars: []any{1879048196},
+				Expected: []sql.Row{{1614807040, 0, 0}, {2688548864, 0, 0}},
 			},
 			{
 				Query: `SELECT c.relname, a.attrelid, a.attname, a.atttypid, pg_catalog.pg_get_expr(ad.adbin, ad.adrelid, true) as def_value,dsc.description,dep.objid 
@@ -446,8 +446,8 @@ LEFT OUTER JOIN pg_catalog.pg_attrdef ad ON (a.attrelid=ad.adrelid AND a.attnum 
 LEFT OUTER JOIN pg_catalog.pg_description dsc ON (c.oid=dsc.objoid AND a.attnum = dsc.objsubid) 
 LEFT OUTER JOIN pg_depend dep on dep.refobjid = a.attrelid AND dep.deptype = 'i' and dep.refobjsubid = a.attnum and dep.classid = dep.refclassid 
 WHERE NOT a.attisdropped AND c.relkind not in ('i','I','c') AND c.oid=$1 ORDER BY a.attnum`,
-				BindVars: []any{2687500288},
-				Expected: []sql.Row{{"testtable", 2687500288, "id", 23, nil, nil, nil}, {"testtable", 2687500288, "v1", 25, nil, nil, nil}},
+				BindVars: []any{2688548864},
+				Expected: []sql.Row{{"testtable", 2688548864, "id", 23, nil, nil, nil}, {"testtable", 2688548864, "v1", 25, nil, nil, nil}},
 			},
 		},
 	},

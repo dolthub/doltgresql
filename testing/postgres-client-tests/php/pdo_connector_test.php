@@ -17,7 +17,7 @@
         "call dolt_commit('-a', '-m', 'my commit2')" => 0,
         "call dolt_checkout('main')" => 0,
         "call dolt_merge('mybranch')" => 0,
-        "select COUNT(*) FROM dolt_log" => 1
+        "select COUNT(*) FROM dolt.log" => 1
     ];
 
     foreach ($queries as $query => $expected) {
