@@ -259,10 +259,10 @@ func TestInfoSchemaColumns(t *testing.T) {
 				},
 				{
 					Query:    `SELECT p.oid AS oid, p.relname AS table_name, n.nspname as table_schema FROM pg_class AS p JOIN pg_namespace AS n ON p.relnamespace=n.oid WHERE n.nspname='public' AND p.relkind='r';`,
-					Expected: []sql.Row{{2686451712, "test_table", "public"}},
+					Expected: []sql.Row{{2687500288, "test_table", "public"}},
 				},
 				{
-					Query:    `select col_description(2686451712, ordinal_position) as comment from information_schema.columns limit 1;`,
+					Query:    `select col_description(2687500288, ordinal_position) as comment from information_schema.columns limit 1;`,
 					Expected: []sql.Row{{""}},
 				},
 			},
@@ -282,6 +282,7 @@ func TestInfoSchemaSchemata(t *testing.T) {
 				{
 					Query: `SELECT catalog_name, schema_name FROM information_schema.schemata order by schema_name;`,
 					Expected: []sql.Row{
+						{"newdb", "dolt"},
 						{"newdb", "information_schema"},
 						{"newdb", "pg_catalog"},
 						{"newdb", "public"},
@@ -291,6 +292,7 @@ func TestInfoSchemaSchemata(t *testing.T) {
 				{
 					Query: `SELECT * FROM information_schema.schemata order by schema_name;`,
 					Expected: []sql.Row{
+						{"newdb", "dolt", "", nil, nil, nil, nil},
 						{"newdb", "information_schema", "", nil, nil, nil, nil},
 						{"newdb", "pg_catalog", "", nil, nil, nil, nil},
 						{"newdb", "public", "", nil, nil, nil, nil},

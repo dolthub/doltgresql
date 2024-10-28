@@ -15,7 +15,7 @@ export const mergeTests = [
     matcher: mergeBaseMatcher,
   },
   {
-    q: `SELECT * FROM dolt_status`,
+    q: `SELECT * FROM dolt.status`,
     res: {
       command: "SELECT",
       rowCount: 0,
