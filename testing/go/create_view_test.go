@@ -67,15 +67,18 @@ var createViewStmts = []ScriptTest{
 			},
 			{
 				Query:       "select v2 from testview order by pk;",
-				ExpectedErr: "table not found: testview",
+				ExpectedErr: "iew 'postgres.testview' references invalid table(s) or column(s) or function(s) or definer/invoker of view lack rights to use them",
 			},
 			{
 				Query:    "select v2 from testschema.testview order by pk;",
 				Expected: []sql.Row{{"a"}, {"b"}, {"c"}},
 			},
 			{
-				Query:    "select name from dolt_schemas;",
-				Expected: []sql.Row{{"myview"}},
+				Query: "select name, schema_name from dolt_schemas;",
+				Expected: []sql.Row{
+					{"myview", "myschema"},
+					{"testview", "testschema"},
+				},
 			},
 			{
 				Query: "SET search_path = 'testschema';",
@@ -86,7 +89,7 @@ var createViewStmts = []ScriptTest{
 			},
 			{
 				Query:       "select * from myview order by pk; /* err */",
-				ExpectedErr: "table not found: myview",
+				ExpectedErr: "iew 'postgres.myview' references invalid table(s) or column(s) or function(s) or definer/invoker of view lack rights to use them",
 			},
 			{
 				Query:    "select v1 from myschema.myview order by pk;",
@@ -97,8 +100,11 @@ var createViewStmts = []ScriptTest{
 				Expected: []sql.Row{{"a"}, {"b"}, {"c"}},
 			},
 			{
-				Query:    "select name from dolt_schemas;",
-				Expected: []sql.Row{{"testview"}},
+				Query: "select name, schema_name from dolt_schemas;",
+				Expected: []sql.Row{
+					{"myview", "myschema"},
+					{"testview", "testschema"},
+				},
 			},
 
 			{
@@ -110,18 +116,12 @@ var createViewStmts = []ScriptTest{
 				Expected: []sql.Row{{"testschema, myschema"}},
 			},
 			{
-				Skip:     true, // TODO: Should be able to resolve views from all schema in search_path
 				Query:    "select v1 from myview order by pk;",
 				Expected: []sql.Row{{4}, {5}, {6}},
 			},
 			{
 				Query:    "select v2 from testview order by pk;",
 				Expected: []sql.Row{{"a"}, {"b"}, {"c"}},
-			},
-			{
-				Skip:     true, // TODO: Should be able to resolve views from all schema in search_path
-				Query:    "select name from dolt_schemas;",
-				Expected: []sql.Row{{"testview"}, {"myview"}},
 			},
 		},
 	},

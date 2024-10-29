@@ -16,6 +16,7 @@ package oid
 
 import (
 	"sort"
+	"strings"
 
 	"github.com/dolthub/dolt/go/libraries/doltcore/sqle/dsess"
 	"github.com/dolthub/dolt/go/libraries/doltcore/sqlserver"
@@ -312,15 +313,17 @@ func iterateViews(ctx *sql.Context, callbacks Callbacks, itemSchema ItemSchema) 
 			return views[i].Name < views[j].Name
 		})
 		for viewIndex, view := range views {
-			itemView := ItemView{
-				Index: viewIndex,
-				OID:   CreateOID(Section_View, itemSchema.Index, viewIndex),
-				Item:  view,
-			}
-			if cont, err := callbacks.View(ctx, itemSchema, itemView); err != nil {
-				return err
-			} else if !cont {
-				return nil
+			if strings.EqualFold(view.SchemaName, itemSchema.Item.SchemaName()) {
+				itemView := ItemView{
+					Index: viewIndex,
+					OID:   CreateOID(Section_View, itemSchema.Index, viewIndex),
+					Item:  view,
+				}
+				if cont, err := callbacks.View(ctx, itemSchema, itemView); err != nil {
+					return err
+				} else if !cont {
+					return nil
+				}
 			}
 		}
 	}
@@ -812,6 +815,10 @@ func runView(ctx *sql.Context, oid uint32, callbacks Callbacks, itemSchema ItemS
 			return views[i].Name < views[j].Name
 		})
 		if dataIndex >= len(views) {
+			return nil
+		}
+		view := views[dataIndex]
+		if !strings.EqualFold(view.SchemaName, itemSchema.Item.SchemaName()) {
 			return nil
 		}
 		itemView := ItemView{

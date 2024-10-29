@@ -16,6 +16,7 @@ package dtables
 
 import (
 	"github.com/dolthub/dolt/go/libraries/doltcore/doltdb"
+	"github.com/dolthub/dolt/go/libraries/doltcore/sqle"
 	"github.com/dolthub/dolt/go/libraries/doltcore/sqle/dtables"
 )
 
@@ -30,9 +31,11 @@ func Init() {
 	doltdb.GetDiffTableName = getDiffTableName
 	doltdb.GetLogTableName = getLogTableName
 	doltdb.GetMergeStatusTableName = getMergeStatusTableName
+	doltdb.GetProceduresTableName = getProceduresTableName
 	doltdb.GetRemoteBranchesTableName = getRemoteBranchesTableName
 	doltdb.GetRemotesTableName = getRemotesTableName
 	doltdb.GetSchemaConflictsTableName = getSchemaConflictsTableName
+	doltdb.GetSchemasTableName = getSchemasTableName
 	doltdb.GetStatusTableName = getStatusTableName
 	doltdb.GetTableOfTablesInConflictName = getTableOfTablesInConflictName
 	doltdb.GetTableOfTablesWithViolationsName = getTableOfTablesWithViolationsName
@@ -40,6 +43,7 @@ func Init() {
 
 	// Schemas
 	dtables.GetDocsSchema = getDocsSchema
+	sqle.GetSchemasSchema = getSchemasSchema
 }
 
 // getBranchesTableName returns the name of the branches table.
@@ -75,6 +79,11 @@ func getLogTableName() string {
 // getMergeStatusTableName returns the name of the merge status table.
 func getMergeStatusTableName() string {
 	return "merge_status"
+}
+
+// getProceduresTableName returns the name of the procedures table.
+func getProceduresTableName() string {
+	return "procedures"
 }
 
 // getRemoteBranchesTableName returns the name of the remote branches table.

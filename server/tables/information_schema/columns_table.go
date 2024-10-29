@@ -212,63 +212,83 @@ func getRowsFromTable(ctx *sql.Context, db information_schema.DbWithNames, t sql
 	return rows, nil
 }
 
+// viewsInDatabase returns all views defined on the database schema given.
+func viewsInDatabase(ctx *sql.Context, db information_schema.DbWithNames) ([]sql.ViewDefinition, error) {
+	var views []sql.ViewDefinition
+
+	if vdb, ok := db.Database.(sql.ViewDatabase); ok {
+		dbViews, err := vdb.AllViews(ctx)
+		if err != nil {
+			return nil, err
+		}
+
+		for _, view := range dbViews {
+			if strings.EqualFold(view.SchemaName, db.SchemaName) {
+				views = append(views, view)
+			}
+		}
+	}
+
+	return views, nil
+}
+
 // getRowsFromViews returns array or rows for columns for all views for given database.
 func getRowsFromViews(ctx *sql.Context, db information_schema.DbWithNames) ([]sql.Row, error) {
 	var rows []sql.Row
 	// TODO: View Definition is lacking information to properly fill out these table
 	// TODO: Should somehow get reference to table(s) view is referencing
 	// TODO: Each column that view references should also show up as unique entries as well
-	views, err := information_schema.ViewsInDatabase(ctx, db.Database)
+	views, err := viewsInDatabase(ctx, db)
 	if err != nil {
 		return nil, err
 	}
 
 	for _, view := range views {
 		rows = append(rows, sql.Row{
-			db.CatalogName, // table_catalog
-			db.SchemaName,  // table_schema
-			view.Name,      // table_name
-			"",             // column_name
-			int32(0),       // ordinal_position
-			nil,            // column_default
-			"YES",          // is_nullable
-			nil,            // data_type
-			nil,            // character_maximum_length
-			nil,            // character_octet_length
-			nil,            // numeric_precision
-			nil,            // numeric_precision_radix
-			nil,            // numeric_scale
-			nil,            // datetime_precision
-			nil,            // interval_type
-			nil,            // interval_precision
-			nil,            // character_set_catalog
-			nil,            // character_set_schema
-			nil,            // character_set_name
-			nil,            // collation_catalog
-			nil,            // collation_schema
-			nil,            // collation_name
-			nil,            // domain_catalog
-			nil,            // domain_schema
-			nil,            // domain_name
-			nil,            // udt_catalog
-			nil,            // udt_schema
-			nil,            // udt_name
-			nil,            // scope_catalog
-			nil,            // scope_schema
-			nil,            // scope_name
-			nil,            // maximum_cardinality
-			nil,            // dtd_identifier
-			"NO",           // is_self_referencing
-			"NO",           // is_identity
-			nil,            // identity_generation
-			nil,            // identity_start
-			nil,            // identity_increment
-			nil,            // identity_maximum
-			nil,            // identity_minimum
-			"NO",           // identity_cycle
-			"NO",           // is_generated
-			nil,            // generation_expression
-			"YES",          // is_updatable
+			db.CatalogName,  // table_catalog
+			view.SchemaName, // table_schema
+			view.Name,       // table_name
+			"",              // column_name
+			int32(0),        // ordinal_position
+			nil,             // column_default
+			"YES",           // is_nullable
+			nil,             // data_type
+			nil,             // character_maximum_length
+			nil,             // character_octet_length
+			nil,             // numeric_precision
+			nil,             // numeric_precision_radix
+			nil,             // numeric_scale
+			nil,             // datetime_precision
+			nil,             // interval_type
+			nil,             // interval_precision
+			nil,             // character_set_catalog
+			nil,             // character_set_schema
+			nil,             // character_set_name
+			nil,             // collation_catalog
+			nil,             // collation_schema
+			nil,             // collation_name
+			nil,             // domain_catalog
+			nil,             // domain_schema
+			nil,             // domain_name
+			nil,             // udt_catalog
+			nil,             // udt_schema
+			nil,             // udt_name
+			nil,             // scope_catalog
+			nil,             // scope_schema
+			nil,             // scope_name
+			nil,             // maximum_cardinality
+			nil,             // dtd_identifier
+			"NO",            // is_self_referencing
+			"NO",            // is_identity
+			nil,             // identity_generation
+			nil,             // identity_start
+			nil,             // identity_increment
+			nil,             // identity_maximum
+			nil,             // identity_minimum
+			"NO",            // identity_cycle
+			"NO",            // is_generated
+			nil,             // generation_expression
+			"YES",           // is_updatable
 		})
 	}
 

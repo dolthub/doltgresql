@@ -526,7 +526,7 @@ var SchemaTests = []ScriptTest{
 			},
 			{
 				Query:       "SELECT * FROM myvw;",
-				ExpectedErr: "table not found",
+				ExpectedErr: "View 'postgres.myvw' references invalid table(s) or column(s) or function(s) or definer/invoker of view lack rights to use them",
 			},
 			{
 				Query: "SELECT * FROM myschema.mytbl;",
