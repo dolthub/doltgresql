@@ -25,6 +25,7 @@ import (
 	"github.com/dolthub/go-mysql-server/enginetest/queries"
 	"github.com/dolthub/go-mysql-server/enginetest/scriptgen/setup"
 	"github.com/dolthub/go-mysql-server/sql"
+	"github.com/dolthub/go-mysql-server/sql/types"
 	"github.com/stretchr/testify/require"
 
 	"github.com/dolthub/dolt/go/libraries/doltcore/dtestutils"
@@ -57,6 +58,21 @@ func TestQueries(t *testing.T) {
 	h := newDoltgresServerHarness(t)
 	defer h.Close()
 	enginetest.TestQueries(t, h)
+}
+
+func TestSingleWriteQuery(t *testing.T) {
+	// t.Skip()
+	h := newDoltgresServerHarness(t)
+	defer h.Close()
+
+	test := queries.WriteQueryTest{
+		WriteQuery:          "INSERT INTO mytable (i,s) values (1, 'hello') ON DUPLICATE KEY UPDATE s='hello'",
+		ExpectedWriteResult: []sql.Row{{types.NewOkResult(2)}},
+		SelectQuery:         "SELECT * FROM mytable WHERE i = 1",
+		ExpectedSelect:      []sql.Row{{int64(1), "hello"}},
+	}
+
+	enginetest.RunWriteQueryTest(t, h, test)
 }
 
 func TestSingleQuery(t *testing.T) {
