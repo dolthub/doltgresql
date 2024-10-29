@@ -64,11 +64,15 @@ func transformInsert(stmt *sqlparser.Insert) ([]string, bool) {
 		
 		rows := selectForInsert(stmt.Rows)
 		
+		onConflict := tree.OnConflict{
+			Exprs: convertUpdateExprs(sqlparser.AssignmentExprs(stmt.OnDup)),
+		}
+		
 		insert := tree.Insert{
 			Table:      tableName,
 			Columns:    colList,
 			Rows:       rows,
-			OnConflict: nil,
+			OnConflict: &onConflict,
 		}
 		
 		ctx := formatNodeWithUnqualifiedTableNames(&insert)
@@ -76,6 +80,17 @@ func transformInsert(stmt *sqlparser.Insert) ([]string, bool) {
 	}
 
 	return nil, false
+}
+
+func convertUpdateExprs(exprs sqlparser.AssignmentExprs) tree.UpdateExprs {
+	updateExprs := make(tree.UpdateExprs, len(exprs))
+	for i, expr := range exprs {
+		updateExprs[i] = &tree.UpdateExpr{
+			Names: tree.NameList{tree.Name(expr.Name.String())},
+			Expr:  convertExpr(expr.Expr),
+		}
+	}
+	return updateExprs
 }
 
 func selectForInsert(rows sqlparser.InsertRows) *tree.Select {
