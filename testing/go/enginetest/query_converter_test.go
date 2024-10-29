@@ -44,11 +44,17 @@ func transformAST(query string) ([]string, bool) {
 		return transformSet(stmt)
 	case *sqlparser.Select:
 		return transformSelect(stmt)
+	case *sqlparser.Insert:
+		return transformInsert(stmt)
 	case *sqlparser.AlterTable:
 		return transformAlterTable(stmt)
 	}
 
 	return nil, false
+}
+
+func transformInsert(stmt *sqlparser.Insert) ([]string, bool) {
+	
 }
 
 func transformDrop(query string, stmt *sqlparser.DDL) ([]string, bool) {

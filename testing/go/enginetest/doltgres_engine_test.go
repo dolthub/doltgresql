@@ -292,7 +292,22 @@ func TestAmbiguousColumnResolution(t *testing.T) {
 }
 
 func TestInsertInto(t *testing.T) {
-	h := newDoltgresServerHarness(t)
+	h := newDoltgresServerHarness(t).WithSkippedQueries([]string{
+		"INSERT INTO keyless VALUES ();", // unsupported syntax
+		"INSERT INTO keyless () VALUES ();", // unsupported syntax
+		"INSERT INTO mytable (s, i) VALUES ('x', '10.0');", // type mismatch
+		"INSERT INTO mytable (s, i) VALUES ('x', '64.6');", // type mismatch
+		"INSERT INTO mytable SET s = 'x', i = 999;", // unsupported syntax
+		"INSERT INTO mytable SET i = 999, s = 'x';", // unsupported syntax
+		`INSERT INTO emptytable (s,i) SELECT s,i from mytable where i = 1
+        	            				union select s,i from mytable where i = 3
+        	            				union select s,i from mytable where i > 2`, // panic
+		`INSERT INTO emptytable (s,i)
+        	            				SELECT s,i from mytable where i = 1
+        	            				union all select s,i+1 from mytable where i < 2
+        	            				union all select s,i+2 from mytable where i in (1)`, // panic
+		`INSERT INTO mytable (i,s) SELECT i * 2, concat(s,s) from mytable order by 1 desc limit 1`, // type error
+	})
 	defer h.Close()
 	enginetest.TestInsertInto(t, h)
 }

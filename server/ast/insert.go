@@ -31,16 +31,30 @@ func nodeInsert(node *tree.Insert) (*vitess.Insert, error) {
 		return nil, fmt.Errorf("RETURNING is not yet supported")
 	}
 	var ignore string
+	var onDuplicate vitess.OnDup
+	
 	if node.OnConflict != nil {
-		// Currently, only ON CONFLICT DO NOTHING is supported, which is equivalent to INSERT IGNORE in GMS
-		if node.OnConflict.Columns != nil ||
-			node.OnConflict.ArbiterPredicate != nil ||
-			node.OnConflict.Exprs != nil ||
-			node.OnConflict.Where != nil ||
-			!node.OnConflict.DoNothing {
-			return nil, fmt.Errorf("the ON CONFLICT clause provided is not yet supported")
+		// ON CONFLICT DO NOTHING is equivalent to INSERT IGNORE in GMS
+		ignoreErrors := node.OnConflict.Columns == nil &&
+				node.OnConflict.ArbiterPredicate == nil &&
+				node.OnConflict.Exprs == nil &&
+				node.OnConflict.Where == nil &&
+				node.OnConflict.DoNothing
+		
+		if ignoreErrors {
+			ignore = vitess.IgnoreStr
+		} else if supportedOnDuplicateKey(node.OnConflict) {
+			// TODO: we are ignoring the column names, which are used to infer which index under conflict is to be checked 
+			updateExprs, err := nodeUpdateExprs(node.OnConflict.Exprs)
+			if err != nil {
+				return nil, err
+			}
+			for _, updateExpr := range updateExprs {
+				onDuplicate = append(onDuplicate, updateExpr)
+			}
 		}
-		ignore = vitess.IgnoreStr
+		
+		return nil, fmt.Errorf("the ON CONFLICT clause provided is not yet supported")
 	}
 	var tableName vitess.TableName
 	switch node := node.Table.(type) {
@@ -89,5 +103,16 @@ func nodeInsert(node *tree.Insert) (*vitess.Insert, error) {
 		With:    with,
 		Columns: columns,
 		Rows:    rows,
+		OnDup:   onDuplicate,
 	}, nil
+}
+
+func supportedOnDuplicateKey(conflict *tree.OnConflict) bool {
+	if conflict.ArbiterPredicate != nil {
+		return false
+	}
+	if conflict.Where != nil {
+		return false
+	}
+	return true
 }
