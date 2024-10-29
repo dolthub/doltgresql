@@ -39,7 +39,6 @@ func TestUserSpaceDoltTables(t *testing.T) {
 					Expected: []sql.Row{{"main"}},
 				},
 				{
-					Skip:     true, // TODO: ERROR: table not found: dolt_branches
 					Query:    `SELECT dolt_branches.name FROM dolt_branches`,
 					Expected: []sql.Row{{"main"}},
 				},
@@ -106,6 +105,326 @@ func TestUserSpaceDoltTables(t *testing.T) {
 			},
 		},
 		{
+			Name: "dolt column diff",
+			SetUpScript: []string{
+				"CREATE TABLE test (id INT PRIMARY KEY)",
+				"SELECT dolt_commit('-Am', 'test commit')",
+			},
+			Assertions: []ScriptTestAssertion{
+				{
+					Query:    `SELECT table_name, column_name FROM dolt.column_diff`,
+					Expected: []sql.Row{{"public.test", "id"}},
+				},
+				{
+					Query:    `SELECT table_name, column_name FROM dolt_column_diff`,
+					Expected: []sql.Row{{"public.test", "id"}},
+				},
+				{
+					Skip:     true, // TODO: referencing items outside the schema or database is not yet supported
+					Query:    `SELECT dolt.column_diff.commit_hash FROM dolt.column_diff`,
+					Expected: []sql.Row{},
+				},
+				{
+					Query:    `SELECT dolt_column_diff.table_name, dolt_column_diff.column_name FROM dolt_column_diff`,
+					Expected: []sql.Row{{"public.test", "id"}},
+				},
+				{
+					Query:       `SELECT * FROM public.column_diff`,
+					ExpectedErr: "table not found",
+				},
+				{
+					Query:       `SELECT * FROM column_diff`,
+					ExpectedErr: "table not found",
+				},
+				{
+					Query:    `CREATE TABLE column_diff (id INT PRIMARY KEY)`,
+					Expected: []sql.Row{},
+				},
+				{
+					Query:    `INSERT INTO column_diff VALUES (1)`,
+					Expected: []sql.Row{},
+				},
+				{
+					Query:    `SELECT * FROM column_diff`,
+					Expected: []sql.Row{{1}},
+				},
+				{
+					Query:    `SELECT table_name, column_name FROM dolt.column_diff WHERE table_name = 'public.test'`,
+					Expected: []sql.Row{{"public.test", "id"}},
+				},
+				{
+					Query:    "SET search_path = 'dolt'",
+					Expected: []sql.Row{},
+				},
+				{
+					Query:    `SELECT table_name, column_name FROM column_diff WHERE table_name = 'public.test'`,
+					Expected: []sql.Row{{"public.test", "id"}},
+				},
+				{
+					Query:    `SELECT * FROM public.column_diff`,
+					Expected: []sql.Row{{1}},
+				},
+				{
+					Query:    "SET search_path = 'public'",
+					Expected: []sql.Row{},
+				},
+				{
+					Query:    `SELECT * FROM column_diff`,
+					Expected: []sql.Row{{1}},
+				},
+				{
+					Query:    "SET search_path = 'public,dolt'",
+					Expected: []sql.Row{},
+				},
+				{
+					Query:    `SELECT * FROM column_diff`,
+					Expected: []sql.Row{{1}},
+				},
+				{
+					Query:    `SELECT * FROM COLUMN_DIFF`,
+					Expected: []sql.Row{{1}},
+				},
+			},
+		},
+		{
+			Name: "dolt commit ancestors",
+			Assertions: []ScriptTestAssertion{
+				{
+					Query:    `SELECT count(*) FROM dolt.commit_ancestors`,
+					Expected: []sql.Row{{2}},
+				},
+				{
+					Query:    `SELECT count(*) FROM dolt_commit_ancestors`,
+					Expected: []sql.Row{{2}},
+				},
+				{
+					Skip:     true, // TODO: referencing items outside the schema or database is not yet supported
+					Query:    `SELECT dolt.commit_ancestors.parent_index FROM dolt.commit_ancestors`,
+					Expected: []sql.Row{{0}, {0}},
+				},
+				{
+					Query:    `SELECT dolt_commit_ancestors.parent_index FROM dolt_commit_ancestors`,
+					Expected: []sql.Row{{0}, {0}},
+				},
+				{
+					Query:       `SELECT * FROM public.commit_ancestors`,
+					ExpectedErr: "table not found",
+				},
+				{
+					Query:       `SELECT * FROM commit_ancestors`,
+					ExpectedErr: "table not found",
+				},
+				{
+					Query:    `CREATE TABLE commit_ancestors (id INT PRIMARY KEY)`,
+					Expected: []sql.Row{},
+				},
+				{
+					Query:    `INSERT INTO commit_ancestors VALUES (1)`,
+					Expected: []sql.Row{},
+				},
+				{
+					Query:    `SELECT * FROM commit_ancestors`,
+					Expected: []sql.Row{{1}},
+				},
+				{
+					Query:    `SELECT count(*) FROM dolt.commit_ancestors`,
+					Expected: []sql.Row{{2}},
+				},
+				{
+					Query:    "SET search_path = 'dolt'",
+					Expected: []sql.Row{},
+				},
+				{
+					Query:    `SELECT count(*) FROM commit_ancestors`,
+					Expected: []sql.Row{{2}},
+				},
+				{
+					Query:    `SELECT * FROM public.commit_ancestors`,
+					Expected: []sql.Row{{1}},
+				},
+				{
+					Query:    "SET search_path = 'public'",
+					Expected: []sql.Row{},
+				},
+				{
+					Query:    `SELECT * FROM commit_ancestors`,
+					Expected: []sql.Row{{1}},
+				},
+				{
+					Query:    "SET search_path = 'public,dolt'",
+					Expected: []sql.Row{},
+				},
+				{
+					Query:    `SELECT * FROM commit_ancestors`,
+					Expected: []sql.Row{{1}},
+				},
+				{
+					Query:    `SELECT * FROM COMMIT_ANCESTORS`,
+					Expected: []sql.Row{{1}},
+				},
+			},
+		},
+		{
+			Name: "dolt commits",
+			Assertions: []ScriptTestAssertion{
+				{
+					Query:    `SELECT count(*) FROM dolt.commits`,
+					Expected: []sql.Row{{2}},
+				},
+				{
+					Query:    `SELECT count(*) FROM dolt_commits`,
+					Expected: []sql.Row{{2}},
+				},
+				{
+					Skip:     true, // TODO: referencing items outside the schema or database is not yet supported
+					Query:    `SELECT dolt.commits.message FROM dolt.commits`,
+					Expected: []sql.Row{{"CREATE DATABASE"}, {"Initialize data repository"}},
+				},
+				{
+					Query:    `SELECT dolt_commits.message FROM dolt_commits`,
+					Expected: []sql.Row{{"CREATE DATABASE"}, {"Initialize data repository"}},
+				},
+				{
+					Query:       `SELECT * FROM public.commits`,
+					ExpectedErr: "table not found",
+				},
+				{
+					Query:       `SELECT * FROM commits`,
+					ExpectedErr: "table not found",
+				},
+				{
+					Query:    `CREATE TABLE commits (id INT PRIMARY KEY)`,
+					Expected: []sql.Row{},
+				},
+				{
+					Query:    `INSERT INTO commits VALUES (1)`,
+					Expected: []sql.Row{},
+				},
+				{
+					Query:    `SELECT * FROM commits`,
+					Expected: []sql.Row{{1}},
+				},
+				{
+					Query:    `SELECT count(*) FROM dolt.commits`,
+					Expected: []sql.Row{{2}},
+				},
+				{
+					Query:    "SET search_path = 'dolt'",
+					Expected: []sql.Row{},
+				},
+				{
+					Query:    `SELECT count(*) FROM commits`,
+					Expected: []sql.Row{{2}},
+				},
+				{
+					Query:    `SELECT * FROM public.commits`,
+					Expected: []sql.Row{{1}},
+				},
+				{
+					Query:    "SET search_path = 'public'",
+					Expected: []sql.Row{},
+				},
+				{
+					Query:    `SELECT * FROM commits`,
+					Expected: []sql.Row{{1}},
+				},
+				{
+					Query:    "SET search_path = 'public,dolt'",
+					Expected: []sql.Row{},
+				},
+				{
+					Query:    `SELECT * FROM commits`,
+					Expected: []sql.Row{{1}},
+				},
+				{
+					Query:    `SELECT * FROM COMMITS`,
+					Expected: []sql.Row{{1}},
+				},
+			},
+		},
+		{
+			Name: "dolt diff",
+			SetUpScript: []string{
+				"CREATE TABLE test (id INT PRIMARY KEY)",
+				"SELECT dolt_commit('-Am', 'test commit')",
+			},
+			Assertions: []ScriptTestAssertion{
+				{
+					Query:    `SELECT table_name FROM dolt.diff`,
+					Expected: []sql.Row{{"public.test"}},
+				},
+				{
+					Query:    `SELECT table_name FROM dolt_diff`,
+					Expected: []sql.Row{{"public.test"}},
+				},
+				{
+					Skip:     true, // TODO: referencing items outside the schema or database is not yet supported
+					Query:    `SELECT dolt.diff.table_name FROM dolt.diff`,
+					Expected: []sql.Row{{"public.test"}},
+				},
+				{
+					Query:    `SELECT dolt_diff.table_name FROM dolt_diff`,
+					Expected: []sql.Row{{"public.test"}},
+				},
+				{
+					Query:       `SELECT * FROM public.diff`,
+					ExpectedErr: "table not found",
+				},
+				{
+					Query:       `SELECT * FROM diff`,
+					ExpectedErr: "table not found",
+				},
+				{
+					Query:    `CREATE TABLE diff (id INT PRIMARY KEY)`,
+					Expected: []sql.Row{},
+				},
+				{
+					Query:    `INSERT INTO diff VALUES (1)`,
+					Expected: []sql.Row{},
+				},
+				{
+					Query:    `SELECT * FROM diff`,
+					Expected: []sql.Row{{1}},
+				},
+				{
+					Query:    `SELECT table_name FROM dolt.diff WHERE table_name = 'public.test'`,
+					Expected: []sql.Row{{"public.test"}},
+				},
+				{
+					Query:    "SET search_path = 'dolt'",
+					Expected: []sql.Row{},
+				},
+				{
+					Query:    `SELECT table_name FROM diff WHERE table_name = 'public.test'`,
+					Expected: []sql.Row{{"public.test"}},
+				},
+				{
+					Query:    `SELECT * FROM public.diff`,
+					Expected: []sql.Row{{1}},
+				},
+				{
+					Query:    "SET search_path = 'public'",
+					Expected: []sql.Row{},
+				},
+				{
+					Query:    `SELECT * FROM diff`,
+					Expected: []sql.Row{{1}},
+				},
+				{
+					Query:    "SET search_path = 'public,dolt'",
+					Expected: []sql.Row{},
+				},
+				{
+					Query:    `SELECT * FROM diff`,
+					Expected: []sql.Row{{1}},
+				},
+				{
+					Query:    `SELECT * FROM DIFF`,
+					Expected: []sql.Row{{1}},
+				},
+			},
+		},
+		{
 			Name: "dolt log",
 			Assertions: []ScriptTestAssertion{
 				{
@@ -164,14 +483,26 @@ func TestUserSpaceDoltTables(t *testing.T) {
 		},
 		{
 			Name: "dolt tags",
+			SetUpScript: []string{
+				"SELECT dolt_tag('v1')",
+			},
 			Assertions: []ScriptTestAssertion{
 				{
 					Query:    `SELECT tag_name FROM dolt.tags`,
-					Expected: []sql.Row{},
+					Expected: []sql.Row{{"v1"}},
 				},
 				{
-					Query:    `SELECT * FROM dolt_tags`,
-					Expected: []sql.Row{},
+					Query:    `SELECT tag_name FROM dolt_tags`,
+					Expected: []sql.Row{{"v1"}},
+				},
+				{
+					Skip:     true, // TODO: referencing items outside the schema or database is not yet supported
+					Query:    `SELECT dolt.tags.tag_name FROM dolt.tags`,
+					Expected: []sql.Row{{"v1"}},
+				},
+				{
+					Query:    `SELECT dolt_tags.tag_name FROM dolt_tags`,
+					Expected: []sql.Row{{"v1"}},
 				},
 				{
 					Query:       `SELECT * FROM public.tags`,
@@ -180,6 +511,58 @@ func TestUserSpaceDoltTables(t *testing.T) {
 				{
 					Query:       `SELECT * FROM tags`,
 					ExpectedErr: "table not found",
+				},
+				{
+					Query:    `CREATE TABLE tags (id INT PRIMARY KEY)`,
+					Expected: []sql.Row{},
+				},
+				{
+					Query:    `INSERT INTO tags VALUES (1)`,
+					Expected: []sql.Row{},
+				},
+				{
+					Query:    `SELECT * FROM tags`,
+					Expected: []sql.Row{{1}},
+				},
+				{
+					Query:    `SELECT tag_name FROM dolt.tags`,
+					Expected: []sql.Row{{"v1"}},
+				},
+				{
+					Query:       `CREATE SCHEMA dolt`,
+					ExpectedErr: "schema exists",
+				},
+				{
+					Query:    "SET search_path = 'dolt'",
+					Expected: []sql.Row{},
+				},
+				{
+					Query:    `SELECT tag_name FROM tags`,
+					Expected: []sql.Row{{"v1"}},
+				},
+				{
+					Query:    `SELECT * FROM public.tags`,
+					Expected: []sql.Row{{1}},
+				},
+				{
+					Query:    "SET search_path = 'public'",
+					Expected: []sql.Row{},
+				},
+				{
+					Query:    `SELECT * FROM tags`,
+					Expected: []sql.Row{{1}},
+				},
+				{
+					Query:    "SET search_path = 'public,dolt'",
+					Expected: []sql.Row{},
+				},
+				{
+					Query:    `SELECT * FROM tags`,
+					Expected: []sql.Row{{1}},
+				},
+				{
+					Query:    `SELECT * FROM TAGS`,
+					Expected: []sql.Row{{1}},
 				},
 			},
 		},
@@ -202,12 +585,229 @@ func TestUserSpaceDoltTables(t *testing.T) {
 					},
 				},
 				{
+					Skip:     true, // TODO: referencing items outside the schema or database is not yet supported
+					Query:    `SELECT dolt.docs.doc_name FROM dolt.docs`,
+					Expected: []sql.Row{{"README.md"}},
+				},
+				{
+					Skip:     true, // TODO: table not found: dolt_docs
+					Query:    `SELECT dolt_docs.doc_name FROM dolt_docs`,
+					Expected: []sql.Row{{"README.md"}},
+				},
+				{
 					Query:       `SELECT * FROM public.docs`,
 					ExpectedErr: "table not found",
 				},
 				{
 					Query:       `SELECT * FROM docs`,
 					ExpectedErr: "table not found",
+				},
+				{
+					Query:    `CREATE TABLE docs (id INT PRIMARY KEY)`,
+					Expected: []sql.Row{},
+				},
+				{
+					Query:    `INSERT INTO docs VALUES (1)`,
+					Expected: []sql.Row{},
+				},
+				{
+					Query:    `SELECT * FROM docs`,
+					Expected: []sql.Row{{1}},
+				},
+				{
+					Query:    `SELECT doc_name FROM dolt.docs`,
+					Expected: []sql.Row{{"README.md"}},
+				},
+				{
+					Query:    "SET search_path = 'dolt'",
+					Expected: []sql.Row{},
+				},
+				{
+					Query:    `SELECT doc_name FROM docs`,
+					Expected: []sql.Row{{"README.md"}},
+				},
+				{
+					Query:    `SELECT * FROM public.docs`,
+					Expected: []sql.Row{{1}},
+				},
+				{
+					Query:    "SET search_path = 'public'",
+					Expected: []sql.Row{},
+				},
+				{
+					Query:    `SELECT * FROM docs`,
+					Expected: []sql.Row{{1}},
+				},
+				{
+					Query:    "SET search_path = 'public,dolt'",
+					Expected: []sql.Row{},
+				},
+				{
+					Query:    `SELECT * FROM docs`,
+					Expected: []sql.Row{{1}},
+				},
+				{
+					Query:    `SELECT * FROM DOCS`,
+					Expected: []sql.Row{{1}},
+				},
+			},
+		},
+		{
+			Name: "dolt remote branches",
+			Assertions: []ScriptTestAssertion{
+				{
+					Query:    `SELECT name FROM dolt.remote_branches`,
+					Expected: []sql.Row{},
+				},
+				{
+					Query:    `SELECT name FROM dolt_remote_branches`,
+					Expected: []sql.Row{},
+				},
+				{
+					Skip:     true, // TODO: referencing items outside the schema or database is not yet supported
+					Query:    `SELECT dolt.remote_branches.name FROM dolt.remote_branches`,
+					Expected: []sql.Row{},
+				},
+				{
+					Query:    `SELECT dolt_remote_branches.name FROM dolt_remote_branches`,
+					Expected: []sql.Row{},
+				},
+				{
+					Query:       `SELECT * FROM public.remote_branches`,
+					ExpectedErr: "table not found",
+				},
+				{
+					Query:       `SELECT * FROM remote_branches`,
+					ExpectedErr: "table not found",
+				},
+				{
+					Query:    `CREATE TABLE remote_branches (id INT PRIMARY KEY)`,
+					Expected: []sql.Row{},
+				},
+				{
+					Query:    `INSERT INTO remote_branches VALUES (1)`,
+					Expected: []sql.Row{},
+				},
+				{
+					Query:    `SELECT * FROM remote_branches`,
+					Expected: []sql.Row{{1}},
+				},
+				{
+					Query:    `SELECT name FROM dolt.remote_branches`,
+					Expected: []sql.Row{},
+				},
+				{
+					Query:    "SET search_path = 'dolt'",
+					Expected: []sql.Row{},
+				},
+				{
+					Query:    `SELECT name FROM remote_branches`,
+					Expected: []sql.Row{},
+				},
+				{
+					Query:    `SELECT * FROM public.remote_branches`,
+					Expected: []sql.Row{{1}},
+				},
+				{
+					Query:    "SET search_path = 'public'",
+					Expected: []sql.Row{},
+				},
+				{
+					Query:    `SELECT * FROM remote_branches`,
+					Expected: []sql.Row{{1}},
+				},
+				{
+					Query:    "SET search_path = 'public,dolt'",
+					Expected: []sql.Row{},
+				},
+				{
+					Query:    `SELECT * FROM remote_branches`,
+					Expected: []sql.Row{{1}},
+				},
+				{
+					Query:    `SELECT * FROM REMOTE_BRANCHES`,
+					Expected: []sql.Row{{1}},
+				},
+			},
+		},
+		{
+			Name: "dolt remotes",
+			SetUpScript: []string{
+				"SELECT dolt_remote('add', 'origin', 'https://doltremoteapi.dolthub.com/dolthub/test')",
+			},
+			Assertions: []ScriptTestAssertion{
+				{
+					Query:    `SELECT name FROM dolt.remotes`,
+					Expected: []sql.Row{{"origin"}},
+				},
+				{
+					Query:    `SELECT name FROM dolt_remotes`,
+					Expected: []sql.Row{{"origin"}},
+				},
+				{
+					Skip:     true, // TODO: referencing items outside the schema or database is not yet supported
+					Query:    `SELECT dolt.remotes.name FROM dolt.remotes`,
+					Expected: []sql.Row{{"origin"}},
+				},
+				{
+					Query:    `SELECT dolt_remotes.name FROM dolt_remotes`,
+					Expected: []sql.Row{{"origin"}},
+				},
+				{
+					Query:       `SELECT * FROM public.remotes`,
+					ExpectedErr: "table not found",
+				},
+				{
+					Query:       `SELECT * FROM remotes`,
+					ExpectedErr: "table not found",
+				},
+				{
+					Query:    `CREATE TABLE remotes (id INT PRIMARY KEY)`,
+					Expected: []sql.Row{},
+				},
+				{
+					Query:    `INSERT INTO remotes VALUES (1)`,
+					Expected: []sql.Row{},
+				},
+				{
+					Query:    `SELECT * FROM remotes`,
+					Expected: []sql.Row{{1}},
+				},
+				{
+					Query:    `SELECT name FROM dolt.remotes`,
+					Expected: []sql.Row{{"origin"}},
+				},
+				{
+					Query:    "SET search_path = 'dolt'",
+					Expected: []sql.Row{},
+				},
+				{
+					Query:    `SELECT name FROM remotes`,
+					Expected: []sql.Row{{"origin"}},
+				},
+				{
+					Query:    `SELECT * FROM public.remotes`,
+					Expected: []sql.Row{{1}},
+				},
+				{
+					Query:    "SET search_path = 'public'",
+					Expected: []sql.Row{},
+				},
+				{
+					Query:    `SELECT * FROM remotes`,
+					Expected: []sql.Row{{1}},
+				},
+				{
+					Query:    "SET search_path = 'public,dolt'",
+					Expected: []sql.Row{},
+				},
+				{
+					Query:    `SELECT * FROM remotes`,
+					Expected: []sql.Row{{1}},
+				},
+				{
+					Query:    `SELECT * FROM REMOTES`,
+					Expected: []sql.Row{{1}},
 				},
 			},
 		},
