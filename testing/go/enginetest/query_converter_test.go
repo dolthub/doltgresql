@@ -54,7 +54,153 @@ func transformAST(query string) ([]string, bool) {
 }
 
 func transformInsert(stmt *sqlparser.Insert) ([]string, bool) {
+	// only bother translating inserts if there's an ON DUPLICATE KEY UPDATE clause, maybe revisit this later
+	if len(stmt.OnDup) > 0 {
+		tableName := tree.NewTableName(tree.Name(stmt.Table.DbQualifier.String()), tree.Name(stmt.Table.Name.String()))
+		colList := make(tree.NameList, len(stmt.Columns))
+		for i, col := range stmt.Columns {
+			colList[i] = tree.Name(col.String())
+		}
+		
+		rows := selectForInsert(stmt.Rows)
+		
+		insert := tree.Insert{
+			Table:      tableName,
+			Columns:    colList,
+			Rows:       rows,
+			OnConflict: nil,
+		}
+		
+		ctx := formatNodeWithUnqualifiedTableNames(&insert)
+		return []string{ctx.String()}, true
+	}
+
+	return nil, false
+}
+
+func selectForInsert(rows sqlparser.InsertRows) *tree.Select {
+	switch rows := rows.(type) {
+	case sqlparser.Values:
+		return &tree.Select{
+			Select:  &tree.ValuesClause{
+				Rows: insertValuesToExprs(rows),
+			},
+		}
+	case *sqlparser.Select:
+		return &tree.Select{
+			Select: convertSelect(rows),
+		}
+	case *sqlparser.ParenSelect:
+		return &tree.Select{
+			Select:  &tree.ParenSelect{
+				Select: convertParentSelect(rows.Select),
+			},
+		}
+	default:
+		panic(fmt.Sprintf("unhandled type: %T", rows))
+	}
+}
+
+func convertParentSelect(statement sqlparser.SelectStatement) *tree.Select {
+	switch statement := statement.(type) {
+	case *sqlparser.Select:
+		sel := convertSelect(statement)
+		return &tree.Select{
+			Select: sel,
+		}
+	default:
+		panic(fmt.Sprintf("unhandled type: %T", statement))
+	}
+}
+
+func convertSelect(sel *sqlparser.Select) *tree.SelectClause {
+	panic("implement me")
+}
+
+func insertValuesToExprs(values sqlparser.Values) []tree.Exprs {
+	exprs := make([]tree.Exprs, len(values))
+	for i, row := range values {
+		exprs[i] = make(tree.Exprs, len(row))
+		for j, val := range row {
+			exprs[i][j] = convertValue(val)
+		}
+	}
+	return exprs	
+}
+
+func convertValue(val sqlparser.Expr) tree.Expr {
+	switch val := val.(type) {
+	case *sqlparser.SQLVal:
+		return convertSQLVal(val)
+	case *sqlparser.NullVal:
+		return tree.DNull
+	case *sqlparser.FuncExpr:
+		return convertFuncExpr(val)
+	default:
+		panic(fmt.Sprintf("unhandled type: %T", val))
+	}
+}
+
+func convertFuncExpr(val *sqlparser.FuncExpr) tree.Expr {
+	fnName := tree.NewUnresolvedName(val.Name.String())
+	exprs := make(tree.Exprs, len(val.Exprs))
 	
+	for i, expr := range val.Exprs {
+		exprs[i] = convertSelectExpr(expr)
+	}
+	return &tree.FuncExpr{
+		Func:      tree.ResolvableFunctionReference{
+			FunctionReference: fnName,
+		},
+		Exprs:     nil,
+	}
+}
+
+func convertSelectExpr(expr sqlparser.SelectExpr) tree.Expr {
+	switch val := expr.(type) {
+	case *sqlparser.AliasedExpr:
+		return convertExpr(val.Expr)
+	default:
+		panic(fmt.Sprintf("unhandled type: %T", val))
+	}
+}
+
+func convertExpr(expr sqlparser.Expr) tree.Expr {
+	switch val := expr.(type) {
+	case *sqlparser.SQLVal:
+		return convertSQLVal(val)
+	case *sqlparser.ColName:
+		return tree.NewStrVal(val.Name.String())
+	case *sqlparser.FuncExpr:
+		return convertFuncExpr(val)
+	default:
+		panic(fmt.Sprintf("unhandled type: %T", val))
+	}
+}
+
+func convertSQLVal(val *sqlparser.SQLVal) tree.Expr {
+	switch val.Type {
+	case sqlparser.StrVal:
+		return tree.NewStrVal(string(val.Val))
+	case sqlparser.IntVal:
+		i, err := strconv.Atoi(string(val.Val))
+		if err != nil {
+			panic(err)
+		}
+		return tree.NewDInt(tree.DInt(i))
+	case sqlparser.FloatVal:
+		f, err := strconv.ParseFloat(string(val.Val), 64)
+		if err != nil {
+			panic(err)
+		}
+		return tree.NewDFloat(tree.DFloat(f))
+	case sqlparser.HexVal:
+		return tree.NewStrVal(fmt.Sprintf("x'%s'", val.Val))
+	case sqlparser.HexNum:
+		return tree.NewStrVal(fmt.Sprintf("x'%s'", val.Val))
+	default:
+		panic(fmt.Sprintf("unhandled type: %v", val.Type))
+	}
 }
 
 func transformDrop(query string, stmt *sqlparser.DDL) ([]string, bool) {
