@@ -21,12 +21,25 @@ import (
 
 // Init handles initialization of all Postgres-specific and Doltgres-specific Dolt system tables.
 func Init() {
-	dtables.GetDocsSchema = getDocsSchema
-	doltdb.GetDocTableName = getDocTableName
+	// Table names
 	doltdb.GetBranchesTableName = getBranchesTableName
+	doltdb.GetDocTableName = getDocTableName
+	doltdb.GetColumnDiffTableName = getColumnDiffTableName
+	doltdb.GetCommitAncestorsTableName = getCommitAncestorsTableName
+	doltdb.GetCommitsTableName = getCommitsTableName
+	doltdb.GetDiffTableName = getDiffTableName
 	doltdb.GetLogTableName = getLogTableName
+	doltdb.GetMergeStatusTableName = getMergeStatusTableName
+	doltdb.GetRemoteBranchesTableName = getRemoteBranchesTableName
+	doltdb.GetRemotesTableName = getRemotesTableName
+	doltdb.GetSchemaConflictsTableName = getSchemaConflictsTableName
 	doltdb.GetStatusTableName = getStatusTableName
+	doltdb.GetTableOfTablesInConflictName = getTableOfTablesInConflictName
+	doltdb.GetTableOfTablesWithViolationsName = getTableOfTablesWithViolationsName
 	doltdb.GetTagsTableName = getTagsTableName
+
+	// Schemas
+	dtables.GetDocsSchema = getDocsSchema
 }
 
 // getBranchesTableName returns the name of the branches table.
@@ -34,14 +47,64 @@ func getBranchesTableName() string {
 	return "branches"
 }
 
+// getColumnDiffTableName returns the name of the column diff table.
+func getColumnDiffTableName() string {
+	return "column_diff"
+}
+
+// getCommitAncestorsTableName returns the name of the commit ancestors table.
+func getCommitAncestorsTableName() string {
+	return "commit_ancestors"
+}
+
+// getCommitsTableName returns the name of the commits table.
+func getCommitsTableName() string {
+	return "commits"
+}
+
+// getDiffTableName returns the name of the diff table.
+func getDiffTableName() string {
+	return "diff"
+}
+
 // getLogTableName returns the name of the branches table.
 func getLogTableName() string {
 	return "log"
 }
 
+// getMergeStatusTableName returns the name of the merge status table.
+func getMergeStatusTableName() string {
+	return "merge_status"
+}
+
+// getRemoteBranchesTableName returns the name of the remote branches table.
+func getRemoteBranchesTableName() string {
+	return "remote_branches"
+}
+
+// getRemotesTableName returns the name of the remotes table.
+func getRemotesTableName() string {
+	return "remotes"
+}
+
+// getSchemaConflictsTableName returns the name of the schema conflicts table.
+func getSchemaConflictsTableName() string {
+	return "schema_conflicts"
+}
+
 // getStatusTableName returns the name of the status table.
 func getStatusTableName() string {
 	return "status"
+}
+
+// getTableOfTablesInConflictName returns the name of the conflicts table.
+func getTableOfTablesInConflictName() string {
+	return "conflicts"
+}
+
+// getTableOfTablesWithViolationsName returns the name of the constraint violations table.
+func getTableOfTablesWithViolationsName() string {
+	return "constraint_violations"
 }
 
 // getTagsTableName returns the name of the tags table.
