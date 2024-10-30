@@ -52,9 +52,9 @@ func nodeInsert(node *tree.Insert) (*vitess.Insert, error) {
 			for _, updateExpr := range updateExprs {
 				onDuplicate = append(onDuplicate, updateExpr)
 			}
+		} else {
+			return nil, fmt.Errorf("the ON CONFLICT clause provided is not yet supported")
 		}
-		
-		return nil, fmt.Errorf("the ON CONFLICT clause provided is not yet supported")
 	}
 	var tableName vitess.TableName
 	switch node := node.Table.(type) {

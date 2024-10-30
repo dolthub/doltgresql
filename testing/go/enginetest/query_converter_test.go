@@ -66,7 +66,7 @@ func transformInsert(stmt *sqlparser.Insert) ([]string, bool) {
 		
 		onConflict := tree.OnConflict{
 			Exprs: convertUpdateExprs(sqlparser.AssignmentExprs(stmt.OnDup)),
-			Columns: tree.NameList{tree.Name("fake")},
+			Columns: tree.NameList{tree.Name("fake")}, // column list ignored but must be present for valid syntax
 		}
 		
 		insert := tree.Insert{
