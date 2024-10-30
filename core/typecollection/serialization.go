@@ -34,7 +34,7 @@ func (pgs *TypeCollection) Serialize(ctx context.Context) ([]byte, error) {
 	pgs.mutex.Lock()
 	defer pgs.mutex.Unlock()
 
-	// Write all the Types to the writer
+	// Write all the types to the writer
 	writer := utils.NewWriter(256)
 	writer.VariableUint(0) // Version
 	schemaMapKeys := utils.GetMapKeysSorted(pgs.schemaMap)
@@ -46,7 +46,7 @@ func (pgs *TypeCollection) Serialize(ctx context.Context) ([]byte, error) {
 		writer.VariableUint(uint64(len(nameMapKeys)))
 		for _, nameMapKey := range nameMapKeys {
 			typ := nameMap[nameMapKey]
-			writer.Uint32(typ.Oid)
+			writer.Uint32(typ.OID)
 			writer.String(typ.Name)
 			writer.String(typ.Owner)
 			writer.Int16(typ.Length)
@@ -93,11 +93,11 @@ func (pgs *TypeCollection) Serialize(ctx context.Context) ([]byte, error) {
 func Deserialize(ctx context.Context, data []byte) (*TypeCollection, error) {
 	if len(data) == 0 {
 		return &TypeCollection{
-			schemaMap: make(map[string]map[string]*types.Type),
+			schemaMap: make(map[string]map[string]types.DoltgresType),
 			mutex:     &sync.RWMutex{},
 		}, nil
 	}
-	schemaMap := make(map[string]map[string]*types.Type)
+	schemaMap := make(map[string]map[string]types.DoltgresType)
 	reader := utils.NewReader(data)
 	version := reader.VariableUint()
 	if version != 0 {
@@ -109,10 +109,10 @@ func Deserialize(ctx context.Context, data []byte) (*TypeCollection, error) {
 	for i := uint64(0); i < numOfSchemas; i++ {
 		schemaName := reader.String()
 		numOfTypes := reader.VariableUint()
-		nameMap := make(map[string]*types.Type)
+		nameMap := make(map[string]types.DoltgresType)
 		for j := uint64(0); j < numOfTypes; j++ {
-			typ := &types.Type{Schema: schemaName}
-			typ.Oid = reader.Uint32()
+			typ := types.DoltgresType{Schema: schemaName}
+			typ.OID = reader.Uint32()
 			typ.Name = reader.String()
 			typ.Owner = reader.String()
 			typ.Length = reader.Int16()

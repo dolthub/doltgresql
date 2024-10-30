@@ -15,9 +15,7 @@
 package pgcatalog
 
 import (
-	"fmt"
 	"io"
-	"math"
 
 	"github.com/dolthub/go-mysql-server/sql"
 
@@ -134,117 +132,40 @@ func (iter *pgTypeRowIter) Next(ctx *sql.Context) (sql.Row, error) {
 	iter.idx++
 	typ := iter.types[iter.idx-1]
 
-	var (
-		typName         = typ.BaseName()
-		typLen          int16
-		typByVal        = false
-		typType         = "b"
-		typCat          = typ.Category()
-		typAlign        = string(typ.Alignment())
-		typStorage      = "p"
-		typSubscript    = "-"
-		typConvFnPrefix = typ.BaseName()
-		typConvFnSep    = ""
-		typAnalyze      = "-"
-		typModIn        = "-"
-		typModOut       = "-"
-	)
-
-	if l := typ.MaxTextResponseByteLength(ctx); l == math.MaxUint32 {
-		typLen = -1
-	} else {
-		typLen = int16(l)
-		// TODO: below can be of different value for some exceptions
-		typByVal = true
-		typStorage = "x"
-	}
-
-	// TODO: use the type information to fill these rather than manually doing it
-	switch t := typ.(type) {
-	case pgtypes.UnknownType:
-		typLen = -2
-	case pgtypes.NumericType:
-		typStorage = "m"
-	case pgtypes.JsonType:
-		typConvFnSep = "_"
-		typStorage = "x"
-	case pgtypes.UuidType:
-		typConvFnSep = "_"
-	case pgtypes.DoltgresArrayType:
-		typStorage = "x"
-		typConvFnSep = "_"
-		if _, ok := typ.(pgtypes.DoltgresPolymorphicType); !ok {
-			typSubscript = "array_subscript_handler"
-			typConvFnPrefix = "array"
-			typAnalyze = "array_typanalyze"
-			typName = fmt.Sprintf("_%s", typName)
-		} else {
-			typType = "p"
-		}
-		if _, ok := t.BaseType().(pgtypes.InternalCharType); ok {
-			typName = "_char"
-		}
-	case pgtypes.InternalCharType:
-		typName = "char"
-		typConvFnPrefix = "char"
-		typStorage = "p"
-	case pgtypes.CharType:
-		typModIn = "bpchartypmodin"
-		typModOut = "bpchartypmodout"
-		typStorage = "x"
-	case pgtypes.DoltgresPolymorphicType:
-		typType = "p"
-		typConvFnSep = "_"
-		typByVal = true
-	}
-
-	typIn := fmt.Sprintf("%s%sin", typConvFnPrefix, typConvFnSep)
-	typOut := fmt.Sprintf("%s%sout", typConvFnPrefix, typConvFnSep)
-	typRec := fmt.Sprintf("%s%srecv", typConvFnPrefix, typConvFnSep)
-	typSend := fmt.Sprintf("%s%ssend", typConvFnPrefix, typConvFnSep)
-
-	// Non array polymorphic types do not have a receive or send functions
-	if _, ok := typ.(pgtypes.DoltgresPolymorphicType); ok {
-		if _, ok := typ.(pgtypes.DoltgresArrayType); !ok {
-			typRec = "-"
-			typSend = "-"
-		}
-	}
-
 	// TODO: not all columns are populated
 	return sql.Row{
-		typ.OID(),             //oid
-		typName,               //typname
-		iter.pgCatalogOid,     //typnamespace
-		uint32(0),             //typowner
-		typLen,                //typlen
-		typByVal,              //typbyval
-		typType,               //typtype
-		string(typCat),        //typcategory
-		typ.IsPreferredType(), //typispreferred
-		true,                  //typisdefined
-		",",                   //typdelim
-		uint32(0),             //typrelid
-		typSubscript,          //typsubscript
-		uint32(0),             //typelem
-		uint32(0),             //typarray
-		typIn,                 //typinput
-		typOut,                //typoutput
-		typRec,                //typreceive
-		typSend,               //typsend
-		typModIn,              //typmodin
-		typModOut,             //typmodout
-		typAnalyze,            //typanalyze
-		typAlign,              //typalign
-		typStorage,            //typstorage
-		false,                 //typnotnull
-		uint32(0),             //typbasetype
-		int32(0),              //typtypmod
-		int32(0),              //typndims
-		uint32(0),             //typcollation
-		nil,                   //typdefaultbin
-		nil,                   //typdefault
-		nil,                   //typacl
+		typ.OID,                 //oid
+		typ.Name,                //typname
+		iter.pgCatalogOid,       //typnamespace
+		uint32(0),               //typowner
+		typ.Length,              //typlen
+		typ.PassedByVal,         //typbyval
+		typ.TypType,             //typtype
+		string(typ.TypCategory), //typcategory
+		typ.IsPreferred,         //typispreferred
+		typ.IsDefined,           //typisdefined
+		typ.Delimiter,           //typdelim
+		typ.RelID,               //typrelid
+		typ.SubscriptFunc,       //typsubscript
+		typ.Elem,                //typelem
+		typ.Array,               //typarray
+		typ.InputFunc,           //typinput
+		typ.OutputFunc,          //typoutput
+		typ.ReceiveFunc,         //typreceive
+		typ.SendFunc,            //typsend
+		typ.ModInFunc,           //typmodin
+		typ.ModOutFunc,          //typmodout
+		typ.AnalyzeFunc,         //typanalyze
+		string(typ.Align),       //typalign
+		string(typ.Storage),     //typstorage
+		typ.NotNull,             //typnotnull
+		typ.BaseTypeOID,         //typbasetype
+		typ.TypMod,              //typtypmod
+		typ.NDims,               //typndims
+		typ.Collation,           //typcollation
+		typ.DefaulBin,           //typdefaultbin
+		typ.Default,             //typdefault
+		typ.Acl,                 //typacl
 	}, nil
 }
 

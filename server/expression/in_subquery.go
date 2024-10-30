@@ -22,6 +22,7 @@ import (
 	"github.com/dolthub/go-mysql-server/sql/plan"
 	"github.com/dolthub/go-mysql-server/sql/types"
 	vitess "github.com/dolthub/vitess/go/vt/sqlparser"
+	"github.com/lib/pq/oid"
 
 	"github.com/dolthub/doltgresql/server/functions/framework"
 	pgtypes "github.com/dolthub/doltgresql/server/types"
@@ -212,7 +213,7 @@ func (in *InSubquery) WithChildren(children ...sql.Expression) (sql.Expression, 
 			if compFuncs[i] == nil {
 				return nil, fmt.Errorf("operator does not exist: %s = %s", leftType.String(), rightType.String())
 			}
-			if compFuncs[i].Type().(pgtypes.DoltgresType).BaseID() != pgtypes.DoltgresTypeBaseID_Bool {
+			if compFuncs[i].Type().(pgtypes.DoltgresType).OID != uint32(oid.T_bool) {
 				// This should never happen, but this is just to be safe
 				return nil, fmt.Errorf("%T: found equality comparison that does not return a bool", in)
 			}

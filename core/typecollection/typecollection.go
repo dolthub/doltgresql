@@ -23,13 +23,17 @@ import (
 
 // TypeCollection contains a collection of Types.
 type TypeCollection struct {
-	schemaMap map[string]map[string]*types.Type
+	schemaMap map[string]map[string]types.DoltgresType
 	mutex     *sync.RWMutex
 }
 
-// GetType returns the Type with the given schema and name.
-// Returns nil if the Type cannot be found.
-func (pgs *TypeCollection) GetType(schName, typName string) (*types.Type, bool) {
+func AllBuildInTypes() {
+	// TODO: create new one? or add to current one && how to get the current one?
+}
+
+// GetType returns the DoltgresType with the given schema and name.
+// Returns nil if the DoltgresType cannot be found.
+func (pgs *TypeCollection) GetType(schName, typName string) (types.DoltgresType, bool) {
 	pgs.mutex.RLock()
 	defer pgs.mutex.RUnlock()
 
@@ -38,12 +42,12 @@ func (pgs *TypeCollection) GetType(schName, typName string) (*types.Type, bool) 
 			return typ, true
 		}
 	}
-	return nil, false
+	return types.DoltgresType{}, false
 }
 
-// GetDomainType returns a domain Type with the given schema and name.
-// Returns nil if the Type cannot be found. It checks for type of Type for domain type.
-func (pgs *TypeCollection) GetDomainType(schName, typName string) (*types.Type, bool) {
+// GetDomainType returns a domain DoltgresType with the given schema and name.
+// Returns nil if the DoltgresType cannot be found. It checks for type of DoltgresType for domain type.
+func (pgs *TypeCollection) GetDomainType(schName, typName string) (types.DoltgresType, bool) {
 	pgs.mutex.RLock()
 	defer pgs.mutex.RUnlock()
 
@@ -52,19 +56,19 @@ func (pgs *TypeCollection) GetDomainType(schName, typName string) (*types.Type, 
 			return typ, true
 		}
 	}
-	return nil, false
+	return types.DoltgresType{}, false
 }
 
 // GetAllTypes returns a map containing all types in the collection, grouped by the schema they're contained in.
 // Each type array is also sorted by the type name.
-func (pgs *TypeCollection) GetAllTypes() (typesMap map[string][]*types.Type, schemaNames []string, totalCount int) {
+func (pgs *TypeCollection) GetAllTypes() (typesMap map[string][]types.DoltgresType, schemaNames []string, totalCount int) {
 	pgs.mutex.RLock()
 	defer pgs.mutex.RUnlock()
 
-	typesMap = make(map[string][]*types.Type)
+	typesMap = make(map[string][]types.DoltgresType)
 	for schemaName, nameMap := range pgs.schemaMap {
 		schemaNames = append(schemaNames, schemaName)
-		typs := make([]*types.Type, 0, len(nameMap))
+		typs := make([]types.DoltgresType, 0, len(nameMap))
 		for _, typ := range nameMap {
 			typs = append(typs, typ)
 		}
@@ -74,20 +78,26 @@ func (pgs *TypeCollection) GetAllTypes() (typesMap map[string][]*types.Type, sch
 		})
 		typesMap[schemaName] = typs
 	}
+
+	// TODO: add built-in types
+	//builtInDoltgresTypes := types.GetAllTypes()
+	//for _, dt := range builtInDoltgresTypes {
+	//
+	//}
 	sort.Slice(schemaNames, func(i, j int) bool {
 		return schemaNames[i] < schemaNames[j]
 	})
 	return
 }
 
-// CreateType creates a new Type.
-func (pgs *TypeCollection) CreateType(schema string, typ *types.Type) error {
+// CreateType creates a new DoltgresType.
+func (pgs *TypeCollection) CreateType(schema string, typ types.DoltgresType) error {
 	pgs.mutex.Lock()
 	defer pgs.mutex.Unlock()
 
 	nameMap, ok := pgs.schemaMap[schema]
 	if !ok {
-		nameMap = make(map[string]*types.Type)
+		nameMap = make(map[string]types.DoltgresType)
 		pgs.schemaMap[schema] = nameMap
 	}
 	if _, ok = nameMap[typ.Name]; ok {
@@ -97,7 +107,7 @@ func (pgs *TypeCollection) CreateType(schema string, typ *types.Type) error {
 	return nil
 }
 
-// DropType drops an existing Type.
+// DropType drops an existing DoltgresType.
 func (pgs *TypeCollection) DropType(schName, typName string) error {
 	pgs.mutex.Lock()
 	defer pgs.mutex.Unlock()
@@ -112,7 +122,7 @@ func (pgs *TypeCollection) DropType(schName, typName string) error {
 }
 
 // IterateTypes iterates over all Types in the collection.
-func (pgs *TypeCollection) IterateTypes(f func(schema string, typ *types.Type) error) error {
+func (pgs *TypeCollection) IterateTypes(f func(schema string, typ types.DoltgresType) error) error {
 	pgs.mutex.Lock()
 	defer pgs.mutex.Unlock()
 
@@ -132,17 +142,17 @@ func (pgs *TypeCollection) Clone() *TypeCollection {
 	defer pgs.mutex.Unlock()
 
 	newCollection := &TypeCollection{
-		schemaMap: make(map[string]map[string]*types.Type),
+		schemaMap: make(map[string]map[string]types.DoltgresType),
 		mutex:     &sync.RWMutex{},
 	}
 	for schema, nameMap := range pgs.schemaMap {
 		if len(nameMap) == 0 {
 			continue
 		}
-		clonedNameMap := make(map[string]*types.Type)
+		clonedNameMap := make(map[string]types.DoltgresType)
 		for key, typ := range nameMap {
-			newType := *typ
-			clonedNameMap[key] = &newType
+			newType := typ
+			clonedNameMap[key] = newType
 		}
 		newCollection.schemaMap[schema] = clonedNameMap
 	}

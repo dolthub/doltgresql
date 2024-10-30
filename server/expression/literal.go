@@ -21,6 +21,7 @@ import (
 
 	"github.com/dolthub/go-mysql-server/sql"
 	vitess "github.com/dolthub/vitess/go/vt/sqlparser"
+	"github.com/lib/pq/oid"
 	"github.com/shopspring/decimal"
 
 	"github.com/dolthub/doltgresql/postgres/parser/duration"
@@ -254,33 +255,33 @@ func (l *Literal) String() string {
 	if l.value == nil {
 		return ""
 	}
-	str, err := l.typ.IoOutput(nil, l.value)
+	str, err := framework.IoOutput(nil, l.typ, l.value)
 	if err != nil {
-		panic("got error from IoOutput")
+		panic(fmt.Sprintf("got error from IoOutput: %s", err.Error()))
 	}
-	return pgtypes.QuoteString(l.typ.BaseID(), str)
+	return pgtypes.QuoteString(oid.Oid(l.typ.OID), str)
 }
 
 // ToVitessLiteral returns the literal as a Vitess literal. This is strictly for situations where GMS is hardcoded to
 // expect a Vitess literal. This should only be used as a temporary measure, as the GMS code needs to be updated, or the
 // equivalent functionality should be built into Doltgres (recommend the second approach).
 func (l *Literal) ToVitessLiteral() *vitess.SQLVal {
-	switch l.typ.BaseID() {
-	case pgtypes.DoltgresTypeBaseID_Bool:
+	switch oid.Oid(l.typ.OID) {
+	case oid.T_bool:
 		if l.value.(bool) {
 			return vitess.NewIntVal([]byte("1"))
 		} else {
 			return vitess.NewIntVal([]byte("0"))
 		}
-	case pgtypes.DoltgresTypeBaseID_Int32:
+	case oid.T_int4:
 		return vitess.NewIntVal([]byte(strconv.FormatInt(int64(l.value.(int32)), 10)))
-	case pgtypes.DoltgresTypeBaseID_Int64:
+	case oid.T_int8:
 		return vitess.NewIntVal([]byte(strconv.FormatInt(l.value.(int64), 10)))
-	case pgtypes.DoltgresTypeBaseID_Numeric:
+	case oid.T_numeric:
 		return vitess.NewFloatVal([]byte(l.value.(decimal.Decimal).String()))
-	case pgtypes.DoltgresTypeBaseID_Text:
+	case oid.T_text:
 		return vitess.NewStrVal([]byte(l.value.(string)))
-	case pgtypes.DoltgresTypeBaseID_Unknown:
+	case oid.T_unknown:
 		if l.value == nil {
 			return nil
 		} else if str, ok := l.value.(string); ok {

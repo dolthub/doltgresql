@@ -111,8 +111,8 @@ func nodeExpr(node tree.Expr) (vitess.Expr, error) {
 			if err != nil {
 				return nil, err
 			}
-			if arrayType, ok := resolvedType.(pgtypes.DoltgresArrayType); ok {
-				coercedType = arrayType
+			if resolvedType.IsArrayType() {
+				coercedType = resolvedType
 			} else {
 				return nil, fmt.Errorf("array has invalid resolved type")
 			}
@@ -250,7 +250,7 @@ func nodeExpr(node tree.Expr) (vitess.Expr, error) {
 		}
 
 		// If we have the resolved type, then we've got a Doltgres type instead of a GMS type
-		if resolvedType != nil {
+		if !resolvedType.EmptyType() {
 			cast, err := pgexprs.NewExplicitCastInjectable(resolvedType)
 			if err != nil {
 				return nil, err

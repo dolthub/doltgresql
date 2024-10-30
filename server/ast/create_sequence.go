@@ -19,6 +19,7 @@ import (
 	"math"
 
 	vitess "github.com/dolthub/vitess/go/vt/sqlparser"
+	"github.com/lib/pq/oid"
 
 	"github.com/dolthub/doltgresql/core/sequences"
 	"github.com/dolthub/doltgresql/postgres/parser/sem/tree"
@@ -62,21 +63,23 @@ func nodeCreateSequence(node *tree.CreateSequence) (vitess.Statement, error) {
 	for _, option := range node.Options {
 		switch option.Name {
 		case tree.SeqOptAs:
-			if dataType != nil {
+			if !dataType.EmptyType() {
 				return nil, fmt.Errorf("conflicting or redundant options")
 			}
-			_, dataType, err = nodeResolvableTypeReference(option.AsType)
+			_, resolvableType, err := nodeResolvableTypeReference(option.AsType)
 			if err != nil {
 				return nil, err
 			}
-			switch dataType.BaseID() {
-			case pgtypes.DoltgresTypeBaseID_Int16:
+			// TODO: check for valid type
+			dataType = resolvableType
+			switch oid.Oid(dataType.OID) {
+			case oid.T_int2:
 				minValueLimit = int64(math.MinInt16)
 				maxValueLimit = int64(math.MaxInt16)
-			case pgtypes.DoltgresTypeBaseID_Int32:
+			case oid.T_int4:
 				minValueLimit = int64(math.MinInt32)
 				maxValueLimit = int64(math.MaxInt32)
-			case pgtypes.DoltgresTypeBaseID_Int64:
+			case oid.T_int8:
 				minValueLimit = int64(math.MinInt64)
 				maxValueLimit = int64(math.MaxInt64)
 			default:
@@ -172,14 +175,14 @@ func nodeCreateSequence(node *tree.CreateSequence) (vitess.Statement, error) {
 	} else {
 		start = maxValue
 	}
-	if dataType == nil {
+	if dataType.EmptyType() {
 		dataType = pgtypes.Int64
 	}
-	// Returns the stored procedure call with all of the options
+	// Returns the stored procedure call with all of options
 	return vitess.InjectedStatement{
 		Statement: pgnodes.NewCreateSequence(node.IfNotExists, name.SchemaQualifier.String(), &sequences.Sequence{
 			Name:        name.Name.String(),
-			DataTypeOID: dataType.OID(),
+			DataTypeOID: dataType.OID,
 			Persistence: sequences.Persistence_Permanent,
 			Start:       start,
 			Current:     start,

@@ -1,0 +1,40 @@
+package types
+
+import "github.com/lib/pq/oid"
+
+// Internal is an internal type. // TODO: internal means it accepts 'any' type??
+var Internal = DoltgresType{
+	OID:           uint32(oid.T_internal),
+	Name:          "internal",
+	Schema:        "pg_catalog",
+	Owner:         "doltgres", // TODO
+	Length:        int16(8),
+	PassedByVal:   true,
+	TypType:       TypeType_Pseudo,
+	TypCategory:   TypeCategory_PseudoTypes,
+	IsPreferred:   false,
+	IsDefined:     true,
+	Delimiter:     ",",
+	RelID:         0,
+	SubscriptFunc: "-",
+	Elem:          0,
+	Array:         0,
+	InputFunc:     "internal_in",
+	OutputFunc:    "internal_out",
+	ReceiveFunc:   "-",
+	SendFunc:      "-",
+	ModInFunc:     "-",
+	ModOutFunc:    "-",
+	AnalyzeFunc:   "-",
+	Align:         TypeAlignment_Double,
+	Storage:       TypeStorage_Plain,
+	NotNull:       false,
+	BaseTypeOID:   0,
+	TypMod:        -1,
+	NDims:         0,
+	Collation:     0,
+	DefaulBin:     "",
+	Default:       "",
+	Acl:           "",
+	Checks:        nil,
+}

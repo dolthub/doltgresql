@@ -112,7 +112,7 @@ func (c *DropDomain) RowIter(ctx *sql.Context, r sql.Row) (sql.RowIter, error) {
 		}
 		if ok {
 			for _, col := range t.Schema() {
-				if dt, isDomainType := col.Type.(types.DomainType); isDomainType {
+				if dt, isDoltgresType := col.Type.(types.DoltgresType); isDoltgresType && dt.TypType == types.TypeType_Domain {
 					if dt.Name == domain.Name {
 						// TODO: issue a detail (list of all columns and tables that uses this domain)
 						//  and a hint (when we support CASCADE)

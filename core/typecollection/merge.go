@@ -24,12 +24,12 @@ import (
 // Merge handles merging sequences on our root and their root.
 func Merge(ctx context.Context, ourCollection, theirCollection, ancCollection *TypeCollection) (*TypeCollection, error) {
 	mergedCollection := ourCollection.Clone()
-	err := theirCollection.IterateTypes(func(schema string, theirType *types.Type) error {
+	err := theirCollection.IterateTypes(func(schema string, theirType types.DoltgresType) error {
 		// If we don't have the type, then we simply add it
 		mergedType, exists := mergedCollection.GetType(schema, theirType.Name)
 		if !exists {
-			newSeq := *theirType
-			return mergedCollection.CreateType(schema, &newSeq)
+			newSeq := theirType
+			return mergedCollection.CreateType(schema, newSeq)
 		}
 
 		// Different types with the same name cannot be merged. (e.g.: 'domain' type and 'base' type with the same name)

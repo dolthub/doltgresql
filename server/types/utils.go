@@ -15,6 +15,7 @@
 package types
 
 import (
+	"bytes"
 	"fmt"
 	"strings"
 	"time"
@@ -23,13 +24,17 @@ import (
 	"github.com/dolthub/go-mysql-server/sql"
 	"github.com/dolthub/go-mysql-server/sql/types"
 	"github.com/dolthub/vitess/go/vt/proto/query"
+	"github.com/lib/pq/oid"
+
+	"github.com/dolthub/doltgresql/utils"
 )
 
-// QuoteString will quote the string according to the type given. This means that some types will quote, and others will
+// QuoteString will quote the string according to the type given.
+// This means that some types will quote, and others will
 // not, or they may quote in a special way that is unique to that type.
-func QuoteString(baseID DoltgresTypeBaseID, str string) string {
-	switch baseID {
-	case DoltgresTypeBaseID_Char, DoltgresTypeBaseID_Name, DoltgresTypeBaseID_Text, DoltgresTypeBaseID_VarChar, DoltgresTypeBaseID_Unknown:
+func QuoteString(typOid oid.Oid, str string) string {
+	switch typOid {
+	case oid.T_char, oid.T_bpchar, oid.T_name, oid.T_text, oid.T_varchar, oid.T_unknown:
 		return `'` + strings.ReplaceAll(str, `'`, `''`) + `'`
 	default:
 		return str
@@ -115,4 +120,16 @@ func GetServerLocation(ctx *sql.Context) (*time.Location, error) {
 
 	_, offsetSecsUnconverted := t.Zone()
 	return time.FixedZone(fmt.Sprintf("fixed offset:%d", offsetSecsUnconverted), -offsetSecsUnconverted), nil
+}
+
+// serializedStringCompare handles the efficient comparison of two strings that have been serialized using utils.Writer.
+// The writer writes the string by prepending the string length, which prevents direct comparison of the byte slices. We
+// thus read the string length manually, and extract the byte slices without converting to a string. This function
+// assumes that neither byte slice is nil or empty.
+func serializedStringCompare(v1 []byte, v2 []byte) int {
+	readerV1 := utils.NewReader(v1)
+	readerV2 := utils.NewReader(v2)
+	v1Bytes := utils.AdvanceReader(readerV1, readerV1.VariableUint())
+	v2Bytes := utils.AdvanceReader(readerV2, readerV2.VariableUint())
+	return bytes.Compare(v1Bytes, v2Bytes)
 }

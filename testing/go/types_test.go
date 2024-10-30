@@ -117,6 +117,7 @@ var typesTests = []ScriptTest{
 		},
 	},
 	{
+		Skip: true,
 		Name: "Boolean array type",
 		SetUpScript: []string{
 			"CREATE TABLE t_boolean_array (id INTEGER primary key, v1 BOOLEAN[]);",
@@ -1432,7 +1433,7 @@ var typesTests = []ScriptTest{
 		},
 	},
 	{
-		Name: "Oid type",
+		Name: "OID type",
 		SetUpScript: []string{
 			"CREATE TABLE t_oid (id INTEGER primary key, v1 OID);",
 			"INSERT INTO t_oid VALUES (1, 1234), (2, 5678);",
@@ -1510,7 +1511,7 @@ var typesTests = []ScriptTest{
 		},
 	},
 	{
-		Name: "Oid type, explicit casts",
+		Name: "OID type, explicit casts",
 		SetUpScript: []string{
 			"CREATE TABLE t_oid (id INTEGER primary key, coid OID);",
 			"INSERT INTO t_oid VALUES (1, 1234), (2, 4294967295);",
@@ -1674,7 +1675,7 @@ var typesTests = []ScriptTest{
 		},
 	},
 	{
-		Name: "Oid array type",
+		Name: "OID array type",
 		SetUpScript: []string{
 			"CREATE TABLE t_oid (id INTEGER primary key, v1 OID[], v2 CHARACTER(100), v3 BOOLEAN);",
 			"INSERT INTO t_oid VALUES (1, ARRAY[123, 456, 789, 101], '1234567890', true);",

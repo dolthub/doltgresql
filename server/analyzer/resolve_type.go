@@ -15,15 +15,12 @@
 package analyzer
 
 import (
-	"fmt"
-
 	"github.com/dolthub/go-mysql-server/sql"
 	"github.com/dolthub/go-mysql-server/sql/analyzer"
 	"github.com/dolthub/go-mysql-server/sql/plan"
 	"github.com/dolthub/go-mysql-server/sql/transform"
 
 	"github.com/dolthub/doltgresql/core"
-	"github.com/dolthub/doltgresql/postgres/parser/sem/tree"
 	"github.com/dolthub/doltgresql/server/types"
 )
 
@@ -43,8 +40,8 @@ func ResolveType(ctx *sql.Context, a *analyzer.Analyzer, node sql.Node, scope *p
 
 			var same = transform.SameTree
 			for _, col := range n.TargetSchema() {
-				if rt, ok := col.Type.(types.ResolvableType); ok {
-					dt, err := resolveResolvableType(ctx, rt.Typ)
+				if rt, ok := col.Type.(types.DoltgresType); ok && !rt.Resolved() {
+					dt, err := resolveType(ctx, rt)
 					if err != nil {
 						return nil, transform.SameTree, err
 					}
@@ -59,45 +56,19 @@ func ResolveType(ctx *sql.Context, a *analyzer.Analyzer, node sql.Node, scope *p
 	})
 }
 
-// resolveResolvableType resolves any type that is unresolved yet.
-func resolveResolvableType(ctx *sql.Context, typ tree.ResolvableTypeReference) (types.DoltgresType, error) {
-	switch t := typ.(type) {
-	case *tree.UnresolvedObjectName:
-		domain := t.ToTableName()
-		return resolveDomainType(ctx, string(domain.SchemaName), string(domain.ObjectName))
-	default:
-		// TODO: add other types that need resolution at analyzer stage.
-		return nil, fmt.Errorf("the given type %T is not yet supported", typ)
-	}
-}
-
-// resolveDomainType resolves DomainType from given schema and domain name.
-func resolveDomainType(ctx *sql.Context, schema, domainName string) (types.DoltgresType, error) {
-	schema, err := core.GetSchemaName(ctx, nil, schema)
+// resolveDomainType resolves any type that is unresolved yet. (e.g.: domain types)
+func resolveType(ctx *sql.Context, typ types.DoltgresType) (types.DoltgresType, error) {
+	schema, err := core.GetSchemaName(ctx, nil, typ.Schema)
 	if err != nil {
-		return nil, err
+		return types.DoltgresType{}, err
 	}
-	domains, err := core.GetTypesCollectionFromContext(ctx)
+	typs, err := core.GetTypesCollectionFromContext(ctx)
 	if err != nil {
-		return nil, err
+		return types.DoltgresType{}, err
 	}
-	domain, exists := domains.GetDomainType(schema, domainName)
+	typ, exists := typs.GetType(schema, typ.Name)
 	if !exists {
-		return nil, types.ErrTypeDoesNotExist.New(domainName)
+		return types.DoltgresType{}, types.ErrTypeDoesNotExist.New(typ.Name)
 	}
-
-	// TODO: need to resolve OID for non build-in type
-	asType, ok := types.OidToBuildInDoltgresType[domain.BaseTypeOID]
-	if !ok {
-		return nil, fmt.Errorf(`cannot resolve base type for "%s" domain type`, domainName)
-	}
-
-	return types.DomainType{
-		Schema:      schema,
-		Name:        domainName,
-		AsType:      asType,
-		DefaultExpr: domain.Default,
-		NotNull:     domain.NotNull,
-		Checks:      domain.Checks,
-	}, nil
+	return typ, nil
 }

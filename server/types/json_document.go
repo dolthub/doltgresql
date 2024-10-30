@@ -16,8 +16,10 @@ package types
 
 import (
 	"fmt"
+	"sort"
 	"strings"
 
+	"github.com/goccy/go-json"
 	"github.com/shopspring/decimal"
 
 	"github.com/dolthub/doltgresql/utils"
@@ -124,8 +126,8 @@ func JsonValueCopy(value JsonValue) JsonValue {
 	}
 }
 
-// jsonValueCompare compares two values.
-func jsonValueCompare(v1 JsonValue, v2 JsonValue) int {
+// JsonValueCompare compares two values.
+func JsonValueCompare(v1 JsonValue, v2 JsonValue) int {
 	// Some types sort before others, so we'll check those first
 	v1TypeSortOrder := jsonValueTypeSortOrder(v1)
 	v2TypeSortOrder := jsonValueTypeSortOrder(v2)
@@ -151,7 +153,7 @@ func jsonValueCompare(v1 JsonValue, v2 JsonValue) int {
 			} else if v1.Items[i].Key > v2.Items[i].Key {
 				return 1
 			} else {
-				innerCmp := jsonValueCompare(v1.Items[i].Value, v2.Items[i].Value)
+				innerCmp := JsonValueCompare(v1.Items[i].Value, v2.Items[i].Value)
 				if innerCmp != 0 {
 					return innerCmp
 				}
@@ -166,7 +168,7 @@ func jsonValueCompare(v1 JsonValue, v2 JsonValue) int {
 			return 1
 		}
 		for i := 0; i < len(v1); i++ {
-			innerCmp := jsonValueCompare(v1[i], v2[i])
+			innerCmp := JsonValueCompare(v1[i], v2[i])
 			if innerCmp != 0 {
 				return innerCmp
 			}
@@ -294,8 +296,8 @@ func jsonValueDeserialize(reader *utils.Reader) (_ JsonValue, err error) {
 	}
 }
 
-// jsonValueFormatter is the recursive formatter for JSON values.
-func jsonValueFormatter(sb *strings.Builder, value JsonValue) {
+// JsonValueFormatter is the recursive formatter for JSON values.
+func JsonValueFormatter(sb *strings.Builder, value JsonValue) {
 	switch value := value.(type) {
 	case JsonValueObject:
 		sb.WriteRune('{')
@@ -306,7 +308,7 @@ func jsonValueFormatter(sb *strings.Builder, value JsonValue) {
 			sb.WriteRune('"')
 			sb.WriteString(strings.ReplaceAll(item.Key, `"`, `\"`))
 			sb.WriteString(`": `)
-			jsonValueFormatter(sb, item.Value)
+			JsonValueFormatter(sb, item.Value)
 		}
 		sb.WriteRune('}')
 	case JsonValueArray:
@@ -315,7 +317,7 @@ func jsonValueFormatter(sb *strings.Builder, value JsonValue) {
 			if i > 0 {
 				sb.WriteString(", ")
 			}
-			jsonValueFormatter(sb, item)
+			JsonValueFormatter(sb, item)
 		}
 		sb.WriteRune(']')
 	case JsonValueString:
@@ -332,5 +334,71 @@ func jsonValueFormatter(sb *strings.Builder, value JsonValue) {
 		}
 	case JsonValueNull:
 		sb.WriteString(`null`)
+	}
+}
+
+// UnmarshalToJsonDocument converts a JSON document byte slice into the actual JSON document.
+func UnmarshalToJsonDocument(val []byte) (JsonDocument, error) {
+	var decoded interface{}
+	if err := json.Unmarshal(val, &decoded); err != nil {
+		return JsonDocument{}, err
+	}
+	jsonValue, err := ConvertToJsonDocument(decoded)
+	if err != nil {
+		return JsonDocument{}, err
+	}
+	return JsonDocument{Value: jsonValue}, nil
+}
+
+// ConvertToJsonDocument recursively constructs a valid JsonDocument based on the structures returned by the decoder.
+func ConvertToJsonDocument(val interface{}) (JsonValue, error) {
+	var err error
+	switch val := val.(type) {
+	case map[string]interface{}:
+		keys := utils.GetMapKeys(val)
+		sort.Slice(keys, func(i, j int) bool {
+			// Key length is sorted before key contents
+			if len(keys[i]) < len(keys[j]) {
+				return true
+			} else if len(keys[i]) > len(keys[j]) {
+				return false
+			} else {
+				return keys[i] < keys[j]
+			}
+		})
+		items := make([]JsonValueObjectItem, len(val))
+		index := make(map[string]int)
+		for i, key := range keys {
+			items[i].Key = key
+			items[i].Value, err = ConvertToJsonDocument(val[key])
+			if err != nil {
+				return nil, err
+			}
+			index[key] = i
+		}
+		return JsonValueObject{
+			Items: items,
+			Index: index,
+		}, nil
+	case []interface{}:
+		values := make(JsonValueArray, len(val))
+		for i, item := range val {
+			values[i], err = ConvertToJsonDocument(item)
+			if err != nil {
+				return nil, err
+			}
+		}
+		return values, nil
+	case string:
+		return JsonValueString(val), nil
+	case float64:
+		// TODO: handle this as a proper numeric as float64 is not precise enough
+		return JsonValueNumber(decimal.NewFromFloat(val)), nil
+	case bool:
+		return JsonValueBoolean(val), nil
+	case nil:
+		return JsonValueNull(0), nil
+	default:
+		return nil, fmt.Errorf("unexpected type while constructing JsonDocument: %T", val)
 	}
 }

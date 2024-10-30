@@ -1999,7 +1999,7 @@ type DOidWrapper struct {
 	Oid     oid.Oid
 }
 
-// wrapWithOid wraps a Datum with a custom Oid.
+// wrapWithOid wraps a Datum with a custom OID.
 func wrapWithOid(d Datum, oid oid.Oid) Datum {
 	switch v := d.(type) {
 	case nil:
@@ -2008,7 +2008,7 @@ func wrapWithOid(d Datum, oid oid.Oid) Datum {
 	case *DString:
 	case *DArray:
 	case NullLiteral, *DOidWrapper:
-		panic(errors.AssertionFailedf("cannot wrap %T with an Oid", v))
+		panic(errors.AssertionFailedf("cannot wrap %T with an OID", v))
 	default:
 		// Currently only *DInt, *DString, *DArray are hooked up to work with
 		// *DOidWrapper. To support another base Datum type, replace all type

@@ -25,6 +25,7 @@ import (
 	"github.com/dolthub/doltgresql/server/analyzer"
 	"github.com/dolthub/doltgresql/server/cast"
 	"github.com/dolthub/doltgresql/server/config"
+	"github.com/dolthub/doltgresql/server/expression"
 	"github.com/dolthub/doltgresql/server/functions"
 	"github.com/dolthub/doltgresql/server/functions/binary"
 	"github.com/dolthub/doltgresql/server/functions/framework"
@@ -46,10 +47,12 @@ func Initialize() {
 		core.Init()
 		analyzer.Init()
 		config.Init()
+		framework.Init()
 		pgtypes.Init()
 		oid.Init()
 		binary.Init()
 		unary.Init()
+		expression.Init()
 		functions.Init()
 		cast.Init()
 		framework.Initialize()

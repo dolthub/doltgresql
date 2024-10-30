@@ -21,5 +21,5 @@ import (
 // information_schema columns are one of these 5 types https://www.postgresql.org/docs/current/infoschema-datatypes.html
 var cardinal_number = pgtypes.Int32
 var character_data = pgtypes.Text
-var sql_identifier = pgtypes.VarCharType{MaxChars: 64}
-var yes_or_no = pgtypes.VarCharType{MaxChars: 3}
+var sql_identifier = pgtypes.NewVarCharType(64)
+var yes_or_no = pgtypes.NewVarCharType(3)

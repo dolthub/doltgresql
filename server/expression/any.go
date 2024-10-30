@@ -19,6 +19,7 @@ import (
 
 	"github.com/dolthub/go-mysql-server/sql"
 	"github.com/dolthub/go-mysql-server/sql/plan"
+	"github.com/lib/pq/oid"
 
 	"github.com/dolthub/doltgresql/server/functions/framework"
 	pgtypes "github.com/dolthub/doltgresql/server/types"
@@ -302,7 +303,7 @@ func anySubqueryWithChildren(anyExpr *AnyExpr, sub *plan.Subquery) (sql.Expressi
 			if compFuncs[i] == nil {
 				return nil, fmt.Errorf("operator does not exist: %s = %s", leftType.String(), rightType.String())
 			}
-			if compFuncs[i].Type().(pgtypes.DoltgresType).BaseID() != pgtypes.DoltgresTypeBaseID_Bool {
+			if compFuncs[i].Type().(pgtypes.DoltgresType).OID != uint32(oid.T_bool) {
 				// This should never happen, but this is just to be safe
 				return nil, fmt.Errorf("%T: found equality comparison that does not return a bool", anyExpr)
 			}
@@ -321,11 +322,14 @@ func anySubqueryWithChildren(anyExpr *AnyExpr, sub *plan.Subquery) (sql.Expressi
 
 // anyExpressionWithChildren resolves the comparison functions for a sql.Expression.
 func anyExpressionWithChildren(anyExpr *AnyExpr) (sql.Expression, error) {
-	arrType, ok := anyExpr.rightExpr.Type().(pgtypes.DoltgresArrayType)
+	arrType, ok := anyExpr.rightExpr.Type().(pgtypes.DoltgresType)
 	if !ok {
 		return nil, fmt.Errorf("expected right child to be a DoltgresType but got `%T`", anyExpr.rightExpr)
 	}
-	rightType := arrType.BaseType()
+	rightType, ok := arrType.ArrayBaseType()
+	if !ok {
+		// TODO
+	}
 
 	op, err := framework.GetOperatorFromString(anyExpr.subOperator)
 	if err != nil {
@@ -340,7 +344,7 @@ func anyExpressionWithChildren(anyExpr *AnyExpr) (sql.Expression, error) {
 		if compFunc == nil {
 			return nil, fmt.Errorf("operator does not exist: %s = %s", leftType.String(), rightType.String())
 		}
-		if compFunc.Type().(pgtypes.DoltgresType).BaseID() != pgtypes.DoltgresTypeBaseID_Bool {
+		if compFunc.Type().(pgtypes.DoltgresType).OID != uint32(oid.T_bool) {
 			// This should never happen, but this is just to be safe
 			return nil, fmt.Errorf("%T: found equality comparison that does not return a bool", anyExpr)
 		}

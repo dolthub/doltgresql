@@ -16,7 +16,7 @@ package index
 
 import pgtypes "github.com/dolthub/doltgresql/server/types"
 
-// indexBuilderColumn is a column within an indexBuilderElement, containing all of the expressions that should be
+// indexBuilderColumn is a column within an indexBuilderElement, containing all expressions that should be
 // applied to a column while iterating over the index.
 type indexBuilderColumn struct {
 	exprs []indexBuilderExpr

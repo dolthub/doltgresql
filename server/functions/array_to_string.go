@@ -66,11 +66,12 @@ var array_to_string_anyarray_text_text = framework.Function3{
 // getStringArrFromAnyArray takes inputs of any array, delimiter and null entry replacement. It uses the IoOutput() of the
 // base type of the AnyArray type to get string representation of array elements.
 func getStringArrFromAnyArray(ctx *sql.Context, anyArrayType pgtypes.DoltgresType, arr []any, delimiter string, nullEntry any) (string, error) {
-	baseType := anyArrayType.ToArrayType().BaseType()
+	// TODO: need to get base type from AnyArray type to get IoOutput value
+	//baseType, ok := anyArrayType.ToArrayType().BaseType()
 	strs := make([]string, 0)
 	for _, el := range arr {
 		if el != nil {
-			v, err := baseType.IoOutput(ctx, el)
+			v, err := framework.IoOutput(ctx, anyArrayType, el)
 			if err != nil {
 				return "", err
 			}

@@ -47,7 +47,7 @@ func (o *Overloads) Add(function FunctionInterface) error {
 
 	if function.VariadicIndex() >= 0 {
 		varArgsType := function.GetParameters()[function.VariadicIndex()]
-		if _, ok := varArgsType.(pgtypes.DoltgresArrayType); !ok {
+		if !varArgsType.IsArrayType() {
 			return fmt.Errorf("variadic parameter must be an array type for function `%s`", function.GetName())
 		}
 	}
@@ -64,13 +64,14 @@ func keyForParamTypes(types []pgtypes.DoltgresType) string {
 		if i > 0 {
 			sb.WriteByte(',')
 		}
-		sb.WriteString(typ.BaseID().String())
+		// TODO: check
+		sb.WriteString(typ.String())
 	}
 	return sb.String()
 }
 
 // keyForParamTypes returns a string key to match an overload with the given parameter types.
-func keyForBaseIds(types []pgtypes.DoltgresTypeBaseID) string {
+func keyForBaseIds(types []pgtypes.DoltgresType) string {
 	sb := strings.Builder{}
 	for i, typ := range types {
 		if i > 0 {
@@ -82,10 +83,10 @@ func keyForBaseIds(types []pgtypes.DoltgresTypeBaseID) string {
 }
 
 // baseIdsForTypes returns the base IDs of the given types.
-func (o *Overloads) baseIdsForTypes(types []pgtypes.DoltgresType) []pgtypes.DoltgresTypeBaseID {
-	baseIds := make([]pgtypes.DoltgresTypeBaseID, len(types))
+func (o *Overloads) baseIdsForTypes(types []pgtypes.DoltgresType) []pgtypes.DoltgresType {
+	baseIds := make([]pgtypes.DoltgresType, len(types))
 	for i, t := range types {
-		baseIds[i] = t.BaseID()
+		baseIds[i] = t
 	}
 	return baseIds
 }
@@ -100,7 +101,7 @@ func (o *Overloads) overloadsForParams(numParams int) []Overload {
 			// Variadic functions may only match when the function is declared with parameters that are fewer or equal
 			// to our target length. If our target length is less, then we cannot expand, so we do not treat it as
 			// variadic.
-			extendedParams := make([]pgtypes.DoltgresTypeBaseID, numParams)
+			extendedParams := make([]pgtypes.DoltgresType, numParams)
 			copy(extendedParams, params[:variadicIndex])
 			// This is copying the parameters after the variadic index, so we need to add 1. We subtract the declared
 			// parameter count from the target parameter count to obtain the additional parameter count.
@@ -108,7 +109,9 @@ func (o *Overloads) overloadsForParams(numParams int) []Overload {
 			copy(extendedParams[firstValueAfterVariadic:], params[variadicIndex+1:])
 			// ToArrayType immediately followed by BaseType is a way to get the base type without having to cast.
 			// For array types, ToArrayType causes them to return themselves.
-			variadicBaseType := overload.GetParameters()[variadicIndex].ToArrayType().BaseType().BaseID()
+			arrType, _ := overload.GetParameters()[variadicIndex].ToArrayType()
+			baseType, _ := arrType.ArrayBaseType()
+			variadicBaseType := baseType
 			for variadicParamIdx := 0; variadicParamIdx < 1+(numParams-len(params)); variadicParamIdx++ {
 				extendedParams[variadicParamIdx+variadicIndex] = variadicBaseType
 			}
@@ -140,7 +143,7 @@ func (o *Overloads) ExactMatchForTypes(types []pgtypes.DoltgresType) (FunctionIn
 
 // ExactMatchForBaseIds returns the function that exactly matches the given parameter types, or nil if no overload with
 // those types exists.
-func (o *Overloads) ExactMatchForBaseIds(types ...pgtypes.DoltgresTypeBaseID) (FunctionInterface, bool) {
+func (o *Overloads) ExactMatchForBaseIds(types ...pgtypes.DoltgresType) (FunctionInterface, bool) {
 	key := keyForBaseIds(types)
 	fn, ok := o.ByParamType[key]
 	return fn, ok
@@ -152,10 +155,10 @@ type Overload struct {
 	// function is the actual function to call to invoke this overload
 	function FunctionInterface
 	// paramTypes is the base IDs of the parameters that the function expects
-	paramTypes []pgtypes.DoltgresTypeBaseID
+	paramTypes []pgtypes.DoltgresType
 	// argTypes is the base IDs of the parameters that the function expects, extended to match the number of args
 	// provided in the case of a variadic function.
-	argTypes []pgtypes.DoltgresTypeBaseID
+	argTypes []pgtypes.DoltgresType
 	// variadic is the index of the variadic parameter, or -1 if the function is not variadic
 	variadic int
 }

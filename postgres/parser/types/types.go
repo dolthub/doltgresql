@@ -60,7 +60,7 @@ import (
 // for a subset of types. See the method comments for more details.
 //
 //	Family        - equivalence group of the type (enumeration)
-//	Oid           - Postgres Object ID that describes the type (enumeration)
+//	OID           - Postgres Object ID that describes the type (enumeration)
 //	Precision     - maximum accuracy of the type (numeric)
 //	Width         - maximum size or scale of the type (numeric)
 //	Locale        - location which governs sorting, formatting, etc. (string)
@@ -79,7 +79,7 @@ import (
 // struct overrides the Marshal/Unmarshal methods in order to map to/from older
 // persisted InternalType representations. For example, older versions of
 // InternalType (previously called ColumnType) used a VisibleType field to
-// represent INT2, whereas newer versions use Width/Oid. Unmarshal upgrades from
+// represent INT2, whereas newer versions use Width/OID. Unmarshal upgrades from
 // this old format to the new, and Marshal downgrades, thus preserving backwards
 // compatibility.
 //
@@ -1528,7 +1528,7 @@ func (t *T) SQLStandardNameWithTypmod(haveTypmod bool, typmod int) string {
 		case oid.T_xid:
 			return "xid"
 		default:
-			panic(errors.AssertionFailedf("unexpected Oid: %v", errors.Safe(t.Oid())))
+			panic(errors.AssertionFailedf("unexpected OID: %v", errors.Safe(t.Oid())))
 		}
 	case StringFamily, CollatedStringFamily:
 		switch t.Oid() {
@@ -2036,7 +2036,7 @@ func (t *T) upgradeType() error {
 			t.InternalType.TimePrecisionIsSet = true
 		}
 	case StringFamily, CollatedStringFamily:
-		// Map string-related visible types to corresponding Oid values.
+		// Map string-related visible types to corresponding OID values.
 		switch t.InternalType.VisibleType {
 		case visibleVARCHAR:
 			t.InternalType.Oid = oid.T_varchar
@@ -2124,7 +2124,7 @@ func (t *T) upgradeType() error {
 	}
 
 	// Clear the deprecated visible types, since they are now handled by the
-	// Width or Oid fields.
+	// Width or OID fields.
 	t.InternalType.VisibleType = 0
 
 	// If locale is not set, always set it to the empty string, in order to avoid
@@ -2198,7 +2198,7 @@ func (t *T) downgradeType() error {
 		case oid.T_name:
 			t.InternalType.Family = name
 		default:
-			return errors.AssertionFailedf("unexpected Oid: %d", t.Oid())
+			return errors.AssertionFailedf("unexpected OID: %d", t.Oid())
 		}
 
 	case ArrayFamily:
