@@ -270,7 +270,7 @@ func TestDoltFunctions(t *testing.T) {
 			},
 		},
 		{
-			Name: "smoke test select dolt_diff functions and tables",
+			Name: "smoke test select dolt diff functions and tables",
 			SetUpScript: []string{
 				"CREATE TABLE t1 (pk int primary key);",
 				"INSERT INTO t1 VALUES (1);",
@@ -320,7 +320,7 @@ func TestDoltFunctions(t *testing.T) {
 					},
 				},
 				{
-					Query: "SELECT * FROM dolt_diff",
+					Query: "SELECT * FROM dolt.diff",
 					Expected: []sql.Row{
 						{"WORKING", "public.t1", nil, nil, nil, nil, 1, 1},
 					},
@@ -361,7 +361,7 @@ func TestDoltFunctions(t *testing.T) {
 			},
 		},
 		{
-			Name: "smoke test select dolt_diff functions and tables for multiple schemas",
+			Name: "smoke test select dolt diff functions and tables for multiple schemas",
 			SetUpScript: []string{
 				"CREATE TABLE t1 (pk int primary key);",
 				"INSERT INTO t1 VALUES (1);",
@@ -436,7 +436,7 @@ func TestDoltFunctions(t *testing.T) {
 					},
 				},
 				{
-					Query: "SELECT * FROM dolt_diff",
+					Query: "SELECT * FROM dolt.diff",
 					Expected: []sql.Row{
 						{"WORKING", "public.t1", nil, nil, nil, nil, 1, 1},
 						{"WORKING", "testschema.t2", nil, nil, nil, nil, 1, 1},

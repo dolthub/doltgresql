@@ -34,6 +34,10 @@ func TestUserSpaceDoltTables(t *testing.T) {
 					Expected: []sql.Row{{"main"}},
 				},
 				{
+					Query:    `SELECT branches.name FROM dolt.branches`,
+					Expected: []sql.Row{{"main"}},
+				},
+				{
 					Skip:     true, // TODO: referencing items outside the schema or database is not yet supported
 					Query:    `SELECT dolt.branches.name FROM dolt.branches`,
 					Expected: []sql.Row{{"main"}},
@@ -343,6 +347,190 @@ func TestUserSpaceDoltTables(t *testing.T) {
 			},
 		},
 		{
+			Name: "dolt conflicts",
+			SetUpScript: []string{
+				"START TRANSACTION",
+				"CREATE TABLE test (id INT PRIMARY KEY, col1 TEXT)",
+				"SELECT dolt_commit('-Am', 'first commit')",
+				"SELECT dolt_branch('b1')",
+				"SELECT dolt_checkout('-b', 'b2')",
+				"INSERT INTO test VALUES (1, 'a')",
+				"SELECT dolt_commit('-Am', 'commit b2')",
+				"SELECT dolt_checkout('b1')",
+				"INSERT INTO test VALUES (1, 'b')",
+				"SELECT dolt_commit('-Am', 'commit b1')",
+				"SELECT dolt_checkout('main')",
+				"SELECT dolt_merge('b1')",
+				"SELECT dolt_merge('b2')",
+			},
+			Assertions: []ScriptTestAssertion{
+				{
+					Query:    `SELECT * FROM dolt.conflicts`,
+					Expected: []sql.Row{{"test", Numeric("1")}},
+				},
+				{
+					Query:    `SELECT * FROM dolt_conflicts`,
+					Expected: []sql.Row{{"test", Numeric("1")}},
+				},
+				{
+					Skip:     true, // TODO: referencing items outside the schema or database is not yet supported
+					Query:    `SELECT dolt.conflicts.table FROM dolt.conflicts`,
+					Expected: []sql.Row{{"test"}},
+				},
+				{
+					Query:    `SELECT dolt_conflicts.table FROM dolt_conflicts`,
+					Expected: []sql.Row{{"test"}},
+				},
+				{
+					Query:       `SELECT * FROM public.conflicts`,
+					ExpectedErr: "table not found",
+				},
+				{
+					Query:       `SELECT * FROM conflicts`,
+					ExpectedErr: "table not found",
+				},
+				{
+					Query:    `CREATE TABLE conflicts (id INT PRIMARY KEY)`,
+					Expected: []sql.Row{},
+				},
+				{
+					Query:    `INSERT INTO conflicts VALUES (1)`,
+					Expected: []sql.Row{},
+				},
+				{
+					Query:    `SELECT * FROM conflicts`,
+					Expected: []sql.Row{{1}},
+				},
+				{
+					Query:    `SELECT * FROM dolt.conflicts`,
+					Expected: []sql.Row{{"test", Numeric("1")}},
+				},
+				{
+					Query:    "SET search_path = 'dolt'",
+					Expected: []sql.Row{},
+				},
+				{
+					Query:    `SELECT * FROM conflicts`,
+					Expected: []sql.Row{{"test", Numeric("1")}},
+				},
+				{
+					Query:    `SELECT * FROM public.conflicts`,
+					Expected: []sql.Row{{1}},
+				},
+				{
+					Query:    "SET search_path = 'public'",
+					Expected: []sql.Row{},
+				},
+				{
+					Query:    `SELECT * FROM conflicts`,
+					Expected: []sql.Row{{1}},
+				},
+				{
+					Query:    "SET search_path = 'public,dolt'",
+					Expected: []sql.Row{},
+				},
+				{
+					Query:    `SELECT * FROM conflicts`,
+					Expected: []sql.Row{{1}},
+				},
+				{
+					Query:    `SELECT * FROM CONFLICTS`,
+					Expected: []sql.Row{{1}},
+				},
+			},
+		},
+		{
+			Name: "dolt constraint violations",
+			SetUpScript: []string{
+				"CREATE TABLE otherTable (pk int primary key);",
+				"CREATE TABLE test (pk int primary key, col1 int unique);",
+				"SELECT dolt_commit('-Am', 'initial commit');",
+				"SELECT dolt_branch('branch1');",
+				"INSERT INTO test (pk, col1) VALUES (1, 1);",
+				"SELECT dolt_commit('-am', 'insert on main');",
+				"SELECT dolt_checkout('branch1');",
+				"INSERT INTO test (pk, col1) VALUES (2, 1);",
+				"SELECT dolt_commit('-am', 'insert on branch1');",
+				"START TRANSACTION",
+				"SELECT dolt_merge('main', '--squash')",
+			},
+			Assertions: []ScriptTestAssertion{
+				{
+					Query:    `SELECT * FROM dolt.constraint_violations`,
+					Expected: []sql.Row{{"test", Numeric("2")}},
+				},
+				{
+					Query:    `SELECT * FROM dolt_constraint_violations`,
+					Expected: []sql.Row{{"test", Numeric("2")}},
+				},
+				{
+					Skip:     true, // TODO: referencing items outside the schema or database is not yet supported
+					Query:    `SELECT dolt.constraint_violations.table FROM dolt.constraint_violations`,
+					Expected: []sql.Row{{"test"}},
+				},
+				{
+					Query:    `SELECT dolt_constraint_violations.table FROM dolt_constraint_violations`,
+					Expected: []sql.Row{{"test"}},
+				},
+				{
+					Query:       `SELECT * FROM public.constraint_violations`,
+					ExpectedErr: "table not found",
+				},
+				{
+					Query:       `SELECT * FROM constraint_violations`,
+					ExpectedErr: "table not found",
+				},
+				{
+					Query:    `CREATE TABLE constraint_violations (id INT PRIMARY KEY)`,
+					Expected: []sql.Row{},
+				},
+				{
+					Query:    `INSERT INTO constraint_violations VALUES (1)`,
+					Expected: []sql.Row{},
+				},
+				{
+					Query:    `SELECT * FROM constraint_violations`,
+					Expected: []sql.Row{{1}},
+				},
+				{
+					Query:    `SELECT * FROM dolt.constraint_violations`,
+					Expected: []sql.Row{{"test", Numeric("2")}},
+				},
+				{
+					Query:    "SET search_path = 'dolt'",
+					Expected: []sql.Row{},
+				},
+				{
+					Query:    `SELECT * FROM constraint_violations`,
+					Expected: []sql.Row{{"test", Numeric("2")}},
+				},
+				{
+					Query:    `SELECT * FROM public.constraint_violations`,
+					Expected: []sql.Row{{1}},
+				},
+				{
+					Query:    "SET search_path = 'public'",
+					Expected: []sql.Row{},
+				},
+				{
+					Query:    `SELECT * FROM constraint_violations`,
+					Expected: []sql.Row{{1}},
+				},
+				{
+					Query:    "SET search_path = 'public,dolt'",
+					Expected: []sql.Row{},
+				},
+				{
+					Query:    `SELECT * FROM constraint_violations`,
+					Expected: []sql.Row{{1}},
+				},
+				{
+					Query:    `SELECT * FROM CONSTRAINT_VIOLATIONS`,
+					Expected: []sql.Row{{1}},
+				},
+			},
+		},
+		{
 			Name: "dolt diff",
 			SetUpScript: []string{
 				"CREATE TABLE test (id INT PRIMARY KEY)",
@@ -477,6 +665,84 @@ func TestUserSpaceDoltTables(t *testing.T) {
 				},
 				{
 					Query:    `SELECT * FROM log`,
+					Expected: []sql.Row{{1}},
+				},
+			},
+		},
+		{
+			Name: "dolt merge status",
+			Assertions: []ScriptTestAssertion{
+				{
+					Query:    `SELECT is_merging FROM dolt.merge_status`,
+					Expected: []sql.Row{{0}},
+				},
+				{
+					Query:    `SELECT is_merging FROM dolt_merge_status`,
+					Expected: []sql.Row{{0}},
+				},
+				{
+					Skip:     true, // TODO: referencing items outside the schema or database is not yet supported
+					Query:    `SELECT dolt.merge_status.is_merging FROM dolt.merge_status`,
+					Expected: []sql.Row{{0}},
+				},
+				{
+					Query:    `SELECT dolt_merge_status.is_merging FROM dolt_merge_status`,
+					Expected: []sql.Row{{0}},
+				},
+				{
+					Query:       `SELECT * FROM public.merge_status`,
+					ExpectedErr: "table not found",
+				},
+				{
+					Query:       `SELECT * FROM merge_status`,
+					ExpectedErr: "table not found",
+				},
+				{
+					Query:    `CREATE TABLE merge_status (id INT PRIMARY KEY)`,
+					Expected: []sql.Row{},
+				},
+				{
+					Query:    `INSERT INTO merge_status VALUES (1)`,
+					Expected: []sql.Row{},
+				},
+				{
+					Query:    `SELECT * FROM merge_status`,
+					Expected: []sql.Row{{1}},
+				},
+				{
+					Query:    `SELECT is_merging FROM dolt.merge_status`,
+					Expected: []sql.Row{{0}},
+				},
+				{
+					Query:    "SET search_path = 'dolt'",
+					Expected: []sql.Row{},
+				},
+				{
+					Query:    `SELECT is_merging FROM merge_status`,
+					Expected: []sql.Row{{0}},
+				},
+				{
+					Query:    `SELECT * FROM public.merge_status`,
+					Expected: []sql.Row{{1}},
+				},
+				{
+					Query:    "SET search_path = 'public'",
+					Expected: []sql.Row{},
+				},
+				{
+					Query:    `SELECT * FROM merge_status`,
+					Expected: []sql.Row{{1}},
+				},
+				{
+					Query:    "SET search_path = 'public,dolt'",
+					Expected: []sql.Row{},
+				},
+				{
+					Query:    `SELECT * FROM merge_status`,
+					Expected: []sql.Row{{1}},
+				},
+				{
+					Query:    `SELECT * FROM MERGE_STATUS`,
 					Expected: []sql.Row{{1}},
 				},
 			},
@@ -807,6 +1073,96 @@ func TestUserSpaceDoltTables(t *testing.T) {
 				},
 				{
 					Query:    `SELECT * FROM REMOTES`,
+					Expected: []sql.Row{{1}},
+				},
+			},
+		},
+		{
+			Name: "dolt schema conflicts",
+			SetUpScript: []string{
+				"CREATE TABLE test (pk int primary key, c0 varchar(20))",
+				"SELECT dolt_commit('-Am', 'added table t')",
+				"SELECT dolt_checkout('-b', 'other')",
+				"ALTER TABLE test ALTER COLUMN c0 TYPE int",
+				"SELECT dolt_commit('-am', 'altered t on branch other')",
+				"SELECT dolt_checkout('main')",
+				"ALTER TABLE test ALTER COLUMN c0 TYPE date",
+				"SELECT dolt_commit('-am', 'altered t on branch main')",
+				"START TRANSACTION",
+				"SELECT dolt_merge('other')",
+			},
+			Assertions: []ScriptTestAssertion{
+				{
+					Query:    `SELECT table_name FROM dolt.schema_conflicts`,
+					Expected: []sql.Row{{"test"}},
+				},
+				{
+					Query:    `SELECT table_name FROM dolt_schema_conflicts`,
+					Expected: []sql.Row{{"test"}},
+				},
+				{
+					Skip:     true, // TODO: referencing items outside the schema or database is not yet supported
+					Query:    `SELECT dolt.schema_conflicts.table_name FROM dolt.schema_conflicts`,
+					Expected: []sql.Row{{"test"}},
+				},
+				{
+					Query:    `SELECT dolt_schema_conflicts.table_name FROM dolt_schema_conflicts`,
+					Expected: []sql.Row{{"test"}},
+				},
+				{
+					Query:       `SELECT * FROM public.schema_conflicts`,
+					ExpectedErr: "table not found",
+				},
+				{
+					Query:       `SELECT * FROM schema_conflicts`,
+					ExpectedErr: "table not found",
+				},
+				{
+					Query:    `CREATE TABLE schema_conflicts (id INT PRIMARY KEY)`,
+					Expected: []sql.Row{},
+				},
+				{
+					Query:    `INSERT INTO schema_conflicts VALUES (1)`,
+					Expected: []sql.Row{},
+				},
+				{
+					Query:    `SELECT * FROM schema_conflicts`,
+					Expected: []sql.Row{{1}},
+				},
+				{
+					Query:    `SELECT table_name FROM dolt.schema_conflicts`,
+					Expected: []sql.Row{{"test"}},
+				},
+				{
+					Query:    "SET search_path = 'dolt'",
+					Expected: []sql.Row{},
+				},
+				{
+					Query:    `SELECT table_name FROM schema_conflicts`,
+					Expected: []sql.Row{{"test"}},
+				},
+				{
+					Query:    `SELECT * FROM public.schema_conflicts`,
+					Expected: []sql.Row{{1}},
+				},
+				{
+					Query:    "SET search_path = 'public'",
+					Expected: []sql.Row{},
+				},
+				{
+					Query:    `SELECT * FROM schema_conflicts`,
+					Expected: []sql.Row{{1}},
+				},
+				{
+					Query:    "SET search_path = 'public,dolt'",
+					Expected: []sql.Row{},
+				},
+				{
+					Query:    `SELECT * FROM schema_conflicts`,
+					Expected: []sql.Row{{1}},
+				},
+				{
+					Query:    `SELECT * FROM SCHEMA_CONFLICTS`,
 					Expected: []sql.Row{{1}},
 				},
 			},
