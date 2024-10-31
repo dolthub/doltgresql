@@ -69,6 +69,10 @@ func (rf *ContextRootFinalizer) RowIter(ctx *sql.Context, r sql.Row) (sql.RowIte
 	if childIter == nil {
 		childIter = sql.RowsToRowIter()
 	}
+	childIter, _, err = rowexec.AddAccumulatorIter(ctx, childIter)
+	if err != nil {
+		return nil, err
+	}
 	return &rootFinalizerIter{childIter: childIter}, nil
 }
 
