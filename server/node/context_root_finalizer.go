@@ -70,7 +70,7 @@ func (rf *ContextRootFinalizer) RowIter(ctx *sql.Context, r sql.Row) (sql.RowIte
 		childIter = sql.RowsToRowIter()
 	}
 
-	childIter, _ = rowexec.FinalizeIters(ctx, rf.child, nil, childIter)
+	childIter, _ = rowexec.AddAccumulatorIter(ctx, childIter)
 	return &rootFinalizerIter{childIter: childIter}, nil
 }
 
