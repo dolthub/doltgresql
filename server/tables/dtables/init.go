@@ -38,6 +38,9 @@ func Init() {
 	doltdb.GetTableOfTablesWithViolationsName = getTableOfTablesWithViolationsName
 	doltdb.GetTagsTableName = getTagsTableName
 
+	// Prefixes
+	doltdb.GetDoltHistoryTablePrefix = getDoltHistoryTablePrefix
+
 	// Schemas
 	dtables.GetDocsSchema = getDocsSchema
 }
@@ -65,6 +68,11 @@ func getCommitsTableName() string {
 // getDiffTableName returns the name of the diff table.
 func getDiffTableName() string {
 	return "diff"
+}
+
+// getDoltHistoryTablePrefix returns the prefix for the dolt history table.
+func getDoltHistoryTablePrefix() string {
+	return "history_"
 }
 
 // getLogTableName returns the name of the branches table.

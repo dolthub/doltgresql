@@ -109,6 +109,128 @@ func TestUserSpaceDoltTables(t *testing.T) {
 			},
 		},
 		{
+			Skip: true, // TODO: dolt blame will not work until the first query (with clause) works
+			Name: "dolt blame with tablename",
+			SetUpScript: []string{
+				"CREATE TABLE test (id INT PRIMARY KEY)",
+				"INSERT INTO test VALUES (1)",
+				"SELECT dolt_commit('-Am', 'test commit', '--author', 'John Doe <johndoe@example.com>')",
+			},
+			Assertions: []ScriptTestAssertion{
+				{
+					// TODO: WITH is not yet supported (SQLSTATE XX000)
+					Query: `WITH sorted_diffs_by_pk
+									AS (SELECT
+													"to_id",
+													to_commit,
+													to_commit_date,
+													diff_type,
+													ROW_NUMBER() OVER (
+															PARTITION BY coalesce("to_id", "from_id")
+															ORDER BY coalesce(to_commit_date, from_commit_date) DESC
+													) row_num
+											FROM "dolt_diff_test"
+										)
+									SELECT
+											sd."to_id" AS "id",
+											dl.committer,
+											dl.email,
+											dl.message
+									FROM
+											sorted_diffs_by_pk as sd,
+											dolt_log as dl
+									WHERE
+											dl.commit_hash = sd.to_commit
+											and sd.row_num = 1
+											and sd.diff_type <> 'removed'
+									ORDER BY
+													sd."to_id" ASC;`,
+					Expected: []sql.Row{{1, "John Doe", "johndoe@example.com", "test commit"}},
+				},
+				{
+					Query:    `SELECT id, committer FROM dolt.blame_test`,
+					Expected: []sql.Row{{1, "John Doe"}},
+				},
+				{
+					Query:    `SELECT id, committer FROM dolt_blame_test`,
+					Expected: []sql.Row{{1, "John Doe"}},
+				},
+				{
+					Query:    `SELECT blame_test.name FROM dolt.blame_test`,
+					Expected: []sql.Row{{"main"}},
+				},
+				{
+					Skip:     true, // TODO: referencing items outside the schema or database is not yet supported
+					Query:    `SELECT dolt.blame_test.name FROM dolt.blame_test`,
+					Expected: []sql.Row{{"main"}},
+				},
+				{
+					Query:    `SELECT dolt_blame_test.name FROM dolt_blame_test`,
+					Expected: []sql.Row{{"main"}},
+				},
+				{
+					Query:       `SELECT * FROM public.blame_test`,
+					ExpectedErr: "table not found",
+				},
+				{
+					Query:       `SELECT * FROM blame_test`,
+					ExpectedErr: "table not found",
+				},
+				{
+					Query:    `CREATE TABLE blame_test (id INT PRIMARY KEY)`,
+					Expected: []sql.Row{},
+				},
+				{
+					Query:    `INSERT INTO blame_test VALUES (1)`,
+					Expected: []sql.Row{},
+				},
+				{
+					Query:    `SELECT * FROM blame_test`,
+					Expected: []sql.Row{{1}},
+				},
+				{
+					Query:    `SELECT name FROM dolt.blame_test`,
+					Expected: []sql.Row{{"main"}},
+				},
+				{
+					Query:       `CREATE SCHEMA dolt`,
+					ExpectedErr: "schema exists",
+				},
+				{
+					Query:    "SET search_path = 'dolt'",
+					Expected: []sql.Row{},
+				},
+				{
+					Query:    `SELECT name FROM blame_test`,
+					Expected: []sql.Row{{"main"}},
+				},
+				{
+					Query:    `SELECT * FROM public.blame_test`,
+					Expected: []sql.Row{{1}},
+				},
+				{
+					Query:    "SET search_path = 'public'",
+					Expected: []sql.Row{},
+				},
+				{
+					Query:    `SELECT * FROM blame_test`,
+					Expected: []sql.Row{{1}},
+				},
+				{
+					Query:    "SET search_path = 'public,dolt'",
+					Expected: []sql.Row{},
+				},
+				{
+					Query:    `SELECT * FROM blame_test`,
+					Expected: []sql.Row{{1}},
+				},
+				{
+					Query:    `SELECT * FROM BLAME_TEST`,
+					Expected: []sql.Row{{1}},
+				},
+			},
+		},
+		{
 			Name: "dolt column diff",
 			SetUpScript: []string{
 				"CREATE TABLE test (id INT PRIMARY KEY)",
@@ -609,6 +731,139 @@ func TestUserSpaceDoltTables(t *testing.T) {
 				{
 					Query:    `SELECT * FROM DIFF`,
 					Expected: []sql.Row{{1}},
+				},
+			},
+		},
+		{
+			Name: "dolt history with tablename",
+			SetUpScript: []string{
+				"CREATE TABLE test (id INT PRIMARY KEY)",
+				"INSERT INTO test VALUES (10)",
+				"SELECT dolt_commit('-Am', 'test commit', '--author', 'John Doe <johndoe@example.com>')",
+			},
+			Assertions: []ScriptTestAssertion{
+				{
+					Query:    `SELECT id, committer FROM dolt.history_test`,
+					Expected: []sql.Row{{10, "John Doe"}},
+				},
+				{
+					Query:    `SELECT id, committer FROM dolt_history_test`,
+					Expected: []sql.Row{{10, "John Doe"}},
+				},
+				{
+					Query:    `SELECT history_test.id FROM dolt.history_test`,
+					Expected: []sql.Row{{10}},
+				},
+				{
+					Skip:     true, // TODO: referencing items outside the schema or database is not yet supported
+					Query:    `SELECT dolt.history_test.id FROM dolt.history_test`,
+					Expected: []sql.Row{{10}},
+				},
+				{
+					Query:    `SELECT dolt_history_test.id FROM dolt_history_test`,
+					Expected: []sql.Row{{10}},
+				},
+				{
+					Query:       `SELECT * FROM public.history_test`,
+					ExpectedErr: "table not found",
+				},
+				{
+					Query:       `SELECT * FROM history_test`,
+					ExpectedErr: "table not found",
+				},
+				{
+					Query:    `CREATE TABLE history_test (id INT PRIMARY KEY)`,
+					Expected: []sql.Row{},
+				},
+				{
+					Query:    `INSERT INTO history_test VALUES (1)`,
+					Expected: []sql.Row{},
+				},
+				{
+					Query:    `SELECT * FROM history_test`,
+					Expected: []sql.Row{{1}},
+				},
+				{
+					Query:    `SELECT id FROM dolt.history_test`,
+					Expected: []sql.Row{{10}},
+				},
+				{
+
+					Query:    "SET search_path = 'dolt'",
+					Expected: []sql.Row{},
+				},
+				// TODO: Should this work without public on the search_path?
+				{
+					Query:       `SELECT id FROM history_test`,
+					ExpectedErr: "table not found",
+				},
+				{
+					Query:    "SET search_path = 'dolt,public'",
+					Expected: []sql.Row{},
+				},
+				{
+					Query:    `SELECT id FROM history_test`,
+					Expected: []sql.Row{{10}},
+				},
+				{
+					Query:    `SELECT * FROM public.history_test`,
+					Expected: []sql.Row{{1}},
+				},
+				{
+					Query:    "SET search_path = 'public'",
+					Expected: []sql.Row{},
+				},
+				{
+					Query:    `SELECT * FROM history_test`,
+					Expected: []sql.Row{{1}},
+				},
+				{
+					Query:    "SET search_path = 'public,dolt'",
+					Expected: []sql.Row{},
+				},
+				{
+					Query:    `SELECT * FROM history_test`,
+					Expected: []sql.Row{{1}},
+				},
+				{
+					Query:    `SELECT * FROM HISTORY_TEST`,
+					Expected: []sql.Row{{1}},
+				},
+				{
+					Query:    `CREATE SCHEMA newschema`,
+					Expected: []sql.Row{},
+				},
+				{
+					Query:    "SET search_path = 'newschema'",
+					Expected: []sql.Row{},
+				},
+				{
+					Query:    `CREATE TABLE test_sch (id INT PRIMARY KEY)`,
+					Expected: []sql.Row{},
+				},
+				{
+					Query:    `INSERT INTO test_sch VALUES (11)`,
+					Expected: []sql.Row{},
+				},
+				{
+					Skip:     true, // TODO: Need way to specify schema of base table
+					Query:    `SELECT id FROM dolt.history_test_sch`,
+					Expected: []sql.Row{{11}},
+				},
+				{
+					Skip:     true, // TODO: Need way to specify schema of base table
+					Query:    `SELECT id FROM dolt_history_test_sch`,
+					Expected: []sql.Row{{11}},
+				},
+				{
+					Skip:     true, // TODO: Need way to specify schema of base table
+					Query:    `SELECT id, committer FROM dolt.history_test`,
+					Expected: []sql.Row{{10, "John Doe"}},
+				},
+				{
+					Skip:     true, // TODO: Need way to specify schema of base table
+					Query:    `SELECT id, committer FROM dolt_history_test`,
+					Expected: []sql.Row{{10, "John Doe"}},
 				},
 			},
 		},
