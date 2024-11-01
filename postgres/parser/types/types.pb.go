@@ -33,7 +33,7 @@ const (
 	// BoolFamily is the family of boolean true/false types.
 	//
 	//   Canonical: types.Bool
-	//   OID      : T_bool
+	//   Oid      : T_bool
 	//
 	// Examples:
 	//   BOOL
@@ -42,7 +42,7 @@ const (
 	// IntFamily is the family of signed integer types.
 	//
 	//   Canonical: types.Int
-	//   OID      : T_int8, T_int4, T_int2
+	//   Oid      : T_int8, T_int4, T_int2
 	//   Width    : 64, 32, 16
 	//
 	// Examples:
@@ -54,7 +54,7 @@ const (
 	// FloatFamily is the family of base-2 floating-point types (IEEE 754).
 	//
 	//   Canonical: types.Float
-	//   OID      : T_float8, T_float4
+	//   Oid      : T_float8, T_float4
 	//   Width    : 64, 32
 	//
 	// Examples:
@@ -65,7 +65,7 @@ const (
 	// DecimalFamily is the family of base-10 floating and fixed point types.
 	//
 	//   Canonical    : types.Decimal
-	//   OID          : T_numeric
+	//   Oid          : T_numeric
 	//   Precision    : max # decimal digits (0 = no specified limit)
 	//   Width (Scale): # digits after decimal point (0 = no specified limit)
 	//
@@ -79,7 +79,7 @@ const (
 	// no time component.
 	//
 	//   Canonical: types.Date
-	//   OID      : T_date
+	//   Oid      : T_date
 	//
 	// Examples:
 	//   DATE
@@ -92,7 +92,7 @@ const (
 	// is supported.
 	//
 	//   Canonical: types.Timestamp
-	//   OID      : T_timestamp
+	//   Oid      : T_timestamp
 	//   Precision: fractional seconds (3 = ms, 0,6 = us, 9 = ns, etc.)
 	//
 	// Examples:
@@ -104,7 +104,7 @@ const (
 	// Currently, only microsecond precision is supported.
 	//
 	//   Canonical: types.Interval
-	//   OID      : T_interval
+	//   Oid      : T_interval
 	//
 	// Examples:
 	//   INTERVAL
@@ -118,7 +118,7 @@ const (
 	// TODO(andyk): "char" should have default width of 1 as well, but doesn't.
 	//
 	//   Canonical: types.String
-	//   OID      : T_text, T_varchar, T_bpchar, T_char
+	//   Oid      : T_text, T_varchar, T_bpchar, T_char
 	//   Width    : max # characters (0 = no specified limit)
 	//
 	// Examples:
@@ -131,7 +131,7 @@ const (
 	// BytesFamily is the family of types containing a list of raw byte values.
 	//
 	//   Canonical: types.BYTES
-	//   OID      : T_bytea
+	//   Oid      : T_bytea
 	//
 	// Examples:
 	//   BYTES
@@ -143,7 +143,7 @@ const (
 	// precision). Currently, only microsecond precision is supported.
 	//
 	//   Canonical: types.TimestampTZ
-	//   OID      : T_timestamptz
+	//   Oid      : T_timestamptz
 	//   Precision: fractional seconds (3 = ms, 0,6 = us, 9 = ns, etc.)
 	//
 	// Examples:
@@ -156,7 +156,7 @@ const (
 	// for various character-based operations such as sorting, pattern matching,
 	// and builtin functions like lower and upper.
 	//
-	//   OID      : T_text, T_varchar, T_bpchar, T_char
+	//   Oid      : T_text, T_varchar, T_bpchar, T_char
 	//   Width    : max # characters (0 = no specified limit)
 	//   Locale   : name of locale (e.g. EN or DE)
 	//
@@ -169,8 +169,8 @@ const (
 	// values. Oids are integer values that identify some object in the database,
 	// like a type, relation, or procedure.
 	//
-	//   Canonical: types.OID
-	//   OID      : T_oid, T_regclass, T_regproc, T_regprocedure, T_regtype,
+	//   Canonical: types.Oid
+	//   Oid      : T_oid, T_regclass, T_regproc, T_regprocedure, T_regtype,
 	//              T_regnamespace
 	//
 	// Examples:
@@ -188,7 +188,7 @@ const (
 	// transferred through DistSQL streams.
 	//
 	//   Canonical: types.Unknown
-	//   OID      : T_unknown
+	//   Oid      : T_unknown
 	//
 	UnknownFamily Family = 13
 	// UuidFamily is the family of types containing universally unique
@@ -197,7 +197,7 @@ const (
 	// values.
 	//
 	//   Canonical: types.Uuid
-	//   OID      : T_uuid
+	//   Oid      : T_uuid
 	//
 	// Examples:
 	//   UUID
@@ -220,7 +220,7 @@ const (
 	// Notice that each array OID has double underscores to distinguish it from
 	// the OID of the scalar type it contains.
 	//
-	//   OID          : T__int, T__text, T__numeric, etc.
+	//   Oid          : T__int, T__text, T__numeric, etc.
 	//   ArrayContents: types.T of the array element type
 	//
 	// Examples:
@@ -234,7 +234,7 @@ const (
 	// identifiers (e.g. 192.168.100.128/25 or FE80:CD00:0:CDE:1257:0:211E:729C).
 	//
 	//   Canonical: types.INet
-	//   OID      : T_inet
+	//   Oid      : T_inet
 	//
 	// Examples:
 	//   INET
@@ -246,7 +246,7 @@ const (
 	// microsecond precision is supported.
 	//
 	//   Canonical: types.Time
-	//   OID      : T_time
+	//   Oid      : T_time
 	//   Precision: fractional seconds (3 = ms, 0,6 = us, 9 = ns, etc.)
 	//
 	// Examples:
@@ -259,7 +259,7 @@ const (
 	// in a decomposed binary format.
 	//
 	//   Canonical: types.Jsonb
-	//   OID      : T_jsonb
+	//   Oid      : T_jsonb
 	//
 	// Examples:
 	//   JSON
@@ -272,7 +272,7 @@ const (
 	// microsecond precision is supported.
 	//
 	//   Canonical: types.TimeTZ
-	//   OID      : T_timetz
+	//   Oid      : T_timetz
 	//   Precision: fractional seconds (3 = ms, 0,6 = us, 9 = ns, etc.)
 	//
 	// Examples:
@@ -285,7 +285,7 @@ const (
 	// CRDB does not support tuple types as column types, but it is possible to
 	// construct tuples using the ROW function or tuple construction syntax.
 	//
-	//   OID          : T_record
+	//   Oid          : T_record
 	//   TupleContents: []*types.T of each tuple field
 	//   TupleLabels  : []string of each tuple label
 	//
@@ -301,7 +301,7 @@ const (
 	// default width limit of 1.
 	//
 	//   Canonical: types.VarBit
-	//   OID      : T_varbit, T_bit
+	//   Oid      : T_varbit, T_bit
 	//   Width    : max # of bits (0 = no specified limit)
 	//
 	// Examples:
@@ -315,7 +315,7 @@ const (
 	// which is compatible with PostGIS's Geometry implementation.
 	//
 	//   Canonical: types.Geometry
-	//   OID      : oidext.T_geometry
+	//   Oid      : oidext.T_geometry
 	//
 	// Examples:
 	//   GEOMETRY
@@ -326,7 +326,7 @@ const (
 	// which is compatible with PostGIS's Geography implementation.
 	//
 	//   Canonical: types.Geography
-	//   OID      : oidext.T_geography
+	//   Oid      : oidext.T_geography
 	//
 	// Examples:
 	//   GEOGRAPHY
@@ -342,7 +342,7 @@ const (
 	// with PostGIS's box2d implementation.
 	//
 	//   Canonical: types.Box2D
-	//   OID      : oidext.T_box2d
+	//   Oid      : oidext.T_box2d
 	//
 	// Examples:
 	//   Box2D
@@ -354,7 +354,7 @@ const (
 	// of any type, and so use this type in their static definitions.
 	//
 	//   Canonical: types.Any
-	//   OID      : T_anyelement
+	//   Oid      : T_anyelement
 	//
 	AnyFamily Family = 100
 )
@@ -585,7 +585,7 @@ var xxx_messageInfo_GeoMetadata proto.InternalMessageInfo
 type PersistentUserDefinedTypeMetadata struct {
 	// ArrayTypeOID is the OID of the array type for this user defined type. It
 	// is only set for user defined types that aren't arrays.
-	ArrayTypeOID github_com_lib_pq_oid.Oid `protobuf:"varint,2,opt,name=array_type_oid,json=arrayTypeOid,customtype=github.com/lib/pq/oid.OID" json:"array_type_oid"`
+	ArrayTypeOID github_com_lib_pq_oid.Oid `protobuf:"varint,2,opt,name=array_type_oid,json=arrayTypeOid,customtype=github.com/lib/pq/oid.Oid" json:"array_type_oid"`
 }
 
 func (m *PersistentUserDefinedTypeMetadata) Reset()         { *m = PersistentUserDefinedTypeMetadata{} }
@@ -683,7 +683,7 @@ type InternalType struct {
 	// method for more details. For user-defined types, the OID value is an
 	// offset (oidext.CockroachPredefinedOIDMax) away from the stable_type_id
 	// field. This makes it easy to retrieve a type descriptor by OID.
-	Oid github_com_lib_pq_oid.Oid `protobuf:"varint,10,opt,name=oid,customtype=github.com/lib/pq/oid.OID" json:"oid"`
+	Oid github_com_lib_pq_oid.Oid `protobuf:"varint,10,opt,name=oid,customtype=github.com/lib/pq/oid.Oid" json:"oid"`
 	// ArrayContents returns the type of array elements. This is nil for non-ARRAY
 	// types.
 	ArrayContents *T `protobuf:"bytes,11,opt,name=array_contents,json=arrayContents" json:"array_contents,omitempty"`
@@ -1584,7 +1584,7 @@ func (m *InternalType) Unmarshal(dAtA []byte) error {
 			iNdEx = postIndex
 		case 10:
 			if wireType != 0 {
-				return fmt.Errorf("proto: wrong wireType = %d for field OID", wireType)
+				return fmt.Errorf("proto: wrong wireType = %d for field Oid", wireType)
 			}
 			m.Oid = 0
 			for shift := uint(0); ; shift += 7 {

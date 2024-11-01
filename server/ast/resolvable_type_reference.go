@@ -42,7 +42,8 @@ func nodeResolvableTypeReference(typ tree.ResolvableTypeReference) (*vitess.Conv
 		return nil, pgtypes.DoltgresType{}, fmt.Errorf("referencing types by their OID is not yet supported")
 	case *tree.UnresolvedObjectName:
 		tn := columnType.ToTableName()
-		return nil, pgtypes.NewUnresolvedDoltgresType(string(tn.SchemaName), string(tn.ObjectName)), nil
+		columnTypeName = string(tn.ObjectName)
+		resolvedType = pgtypes.NewUnresolvedDoltgresType(string(tn.SchemaName), string(tn.ObjectName))
 	case *types.GeoMetadata:
 		return nil, pgtypes.DoltgresType{}, fmt.Errorf("geometry types are not yet supported")
 	case *types.T:
@@ -53,9 +54,10 @@ func nodeResolvableTypeReference(typ tree.ResolvableTypeReference) (*vitess.Conv
 				return nil, pgtypes.DoltgresType{}, err
 			}
 			if baseResolvedType.Resolved() {
-				// TODO
+				// currently the built-in types will be resolved, so it can retrieve its array type
 				resolvedType, _ = baseResolvedType.ToArrayType()
 			} else {
+				// TODO: handle array type of non-built-in types
 				baseResolvedType.TypCategory = pgtypes.TypeCategory_ArrayTypes
 				resolvedType = baseResolvedType
 			}

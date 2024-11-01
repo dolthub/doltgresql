@@ -21,7 +21,7 @@ import (
 	pgtypes "github.com/dolthub/doltgresql/server/types"
 )
 
-// Init handles the assignment of the NewTextLiteral function for the functions package used for types.
+// Init handles the assignment of the Literal function for the functions package used for types.
 func Init() {
 	framework.NewTextLiteral = func(stringValue string) sql.Expression {
 		return &Literal{

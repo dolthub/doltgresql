@@ -33,9 +33,9 @@ var errOutOfRange = errors.NewKind("%s out of range")
 func handleStringCast(str string, targetType pgtypes.DoltgresType) (string, error) {
 	switch oid.Oid(targetType.OID) {
 	case oid.T_bpchar:
-		//if targetType.IsUnbounded() {
-		//	return str, nil
-		//}
+		if targetType.Length == -1 {
+			return str, nil
+		}
 		length := uint32(targetType.Length)
 		str, runeLength := truncateString(str, length)
 		if runeLength > length {
@@ -53,9 +53,9 @@ func handleStringCast(str string, targetType pgtypes.DoltgresType) (string, erro
 		str, _ := truncateString(str, uint32(targetType.Length))
 		return str, nil
 	case oid.T_varchar:
-		//if targetType.IsUnbounded() {
-		//	return str, nil
-		//}
+		if targetType.Length == -1 {
+			return str, nil
+		}
 		length := uint32(targetType.Length)
 		str, runeLength := truncateString(str, length)
 		if runeLength > length {

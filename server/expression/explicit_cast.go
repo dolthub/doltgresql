@@ -103,8 +103,8 @@ func (c *ExplicitCast) Eval(ctx *sql.Context, row sql.Row) (any, error) {
 		// is a way to intentionally truncate the data. All string types will always return the truncated result, even
 		// during an error, so it's safe to use.
 		castToType := c.castToType
-		if c.castToType.IsArrayType() {
-			castToType, _ = c.castToType.ArrayBaseType()
+		if bt, ok := c.castToType.ArrayBaseType(); ok {
+			castToType = bt
 		}
 		// A nil result will be returned if there's a critical error, which we should never ignore.
 		if castToType.TypCategory != pgtypes.TypeCategory_StringTypes || castResult == nil {

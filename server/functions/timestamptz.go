@@ -50,7 +50,7 @@ var timestamptz_in = framework.Function3{
 		//if b.Precision == -1 {
 		//	p = b.Precision
 		//}
-		loc, err := pgtypes.GetServerLocation(ctx)
+		loc, err := GetServerLocation(ctx)
 		if err != nil {
 			return nil, err
 		}
@@ -69,7 +69,7 @@ var timestamptz_out = framework.Function1{
 	Parameters: [1]pgtypes.DoltgresType{pgtypes.TimestampTZ},
 	Strict:     true,
 	Callable: func(ctx *sql.Context, _ [2]pgtypes.DoltgresType, val any) (any, error) {
-		serverLoc, err := pgtypes.GetServerLocation(ctx)
+		serverLoc, err := GetServerLocation(ctx)
 		if err != nil {
 			return "", err
 		}
@@ -107,7 +107,7 @@ var timestamptz_send = framework.Function1{
 	Parameters: [1]pgtypes.DoltgresType{pgtypes.TimestampTZ},
 	Strict:     true,
 	Callable: func(ctx *sql.Context, _ [2]pgtypes.DoltgresType, val any) (any, error) {
-		serverLoc, err := pgtypes.GetServerLocation(ctx)
+		serverLoc, err := GetServerLocation(ctx)
 		if err != nil {
 			return "", err
 		}

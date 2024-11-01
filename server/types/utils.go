@@ -15,18 +15,12 @@
 package types
 
 import (
-	"bytes"
-	"fmt"
 	"strings"
-	"time"
-	"unicode/utf8"
 
 	"github.com/dolthub/go-mysql-server/sql"
 	"github.com/dolthub/go-mysql-server/sql/types"
 	"github.com/dolthub/vitess/go/vt/proto/query"
 	"github.com/lib/pq/oid"
-
-	"github.com/dolthub/doltgresql/utils"
 )
 
 // QuoteString will quote the string according to the type given.
@@ -39,22 +33,6 @@ func QuoteString(typOid oid.Oid, str string) string {
 	default:
 		return str
 	}
-}
-
-// truncateString returns a string that has been truncated to the given length. Uses the rune count rather than the
-// byte count. Returns the input string if it's smaller than the length. Also returns the rune count of the string.
-func truncateString(val string, runeLimit uint32) (string, uint32) {
-	runeLength := uint32(utf8.RuneCountInString(val))
-	if runeLength > runeLimit {
-		// TODO: figure out if there's a faster way to truncate based on rune count
-		startString := val
-		for i := uint32(0); i < runeLimit; i++ {
-			_, size := utf8.DecodeRuneInString(val)
-			val = val[size:]
-		}
-		return startString[:len(startString)-len(val)], runeLength
-	}
-	return val, runeLength
 }
 
 // FromGmsType returns a DoltgresType that is most similar to the given GMS type.
@@ -93,43 +71,4 @@ func FromGmsType(typ sql.Type) DoltgresType {
 	default:
 		return Unknown
 	}
-}
-
-// GetServerLocation returns timezone value set for the server.
-func GetServerLocation(ctx *sql.Context) (*time.Location, error) {
-	if ctx == nil {
-		return time.Local, nil
-	}
-	val, err := ctx.GetSessionVariable(ctx, "timezone")
-	if err != nil {
-		return nil, err
-	}
-
-	tz := val.(string)
-	loc, err := time.LoadLocation(tz)
-	if err == nil {
-		return loc, nil
-	}
-
-	var t time.Time
-	if t, err = time.Parse("Z07", tz); err == nil {
-	} else if t, err = time.Parse("Z07:00", tz); err == nil {
-	} else if t, err = time.Parse("Z07:00:00", tz); err != nil {
-		return nil, err
-	}
-
-	_, offsetSecsUnconverted := t.Zone()
-	return time.FixedZone(fmt.Sprintf("fixed offset:%d", offsetSecsUnconverted), -offsetSecsUnconverted), nil
-}
-
-// serializedStringCompare handles the efficient comparison of two strings that have been serialized using utils.Writer.
-// The writer writes the string by prepending the string length, which prevents direct comparison of the byte slices. We
-// thus read the string length manually, and extract the byte slices without converting to a string. This function
-// assumes that neither byte slice is nil or empty.
-func serializedStringCompare(v1 []byte, v2 []byte) int {
-	readerV1 := utils.NewReader(v1)
-	readerV2 := utils.NewReader(v2)
-	v1Bytes := utils.AdvanceReader(readerV1, readerV1.VariableUint())
-	v2Bytes := utils.AdvanceReader(readerV2, readerV2.VariableUint())
-	return bytes.Compare(v1Bytes, v2Bytes)
 }

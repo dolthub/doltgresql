@@ -179,7 +179,7 @@ func (array *Array) getTargetType(children ...sql.Expression) (pgtypes.DoltgresT
 	}
 	at, ok := targetType.ToArrayType()
 	if !ok {
-		return pgtypes.DoltgresType{}, fmt.Errorf("cannot have array type", err.Error())
+		return pgtypes.DoltgresType{}, fmt.Errorf("cannot get array type from %s", targetType.Name)
 	}
 	return at, nil
 }

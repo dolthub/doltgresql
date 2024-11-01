@@ -372,13 +372,12 @@ func getCharAndCollNamesAndCharMaxAndOctetLens(ctx *sql.Context, colType sql.Typ
 	switch t := colType.(type) {
 	case pgtypes.DoltgresType:
 		if t.TypCategory == pgtypes.TypeCategory_StringTypes {
-			// TODO
-			//if t.IsUnbounded() {
-			//	charOctetLen = int32(maxCharacterOctetLength)
-			//} else {
-			charOctetLen = int32(t.Length) * 4
-			charMaxLen = int32(t.Length)
-			//}
+			if t.Length == -1 {
+				charOctetLen = int32(maxCharacterOctetLength)
+			} else {
+				charOctetLen = int32(t.Length) * 4
+				charMaxLen = int32(t.Length)
+			}
 		}
 	}
 

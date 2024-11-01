@@ -18,7 +18,7 @@ import (
 	"github.com/lib/pq/oid"
 )
 
-// Any is a type that may contain any type. // TODO ??
+// Any is a type that may contain any type.
 var Any = DoltgresType{
 	OID:           uint32(oid.T_any),
 	Name:          "any",

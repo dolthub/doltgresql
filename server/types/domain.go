@@ -29,7 +29,7 @@ func NewDomainType(
 	owner string, // TODO
 ) (DoltgresType, error) {
 	return DoltgresType{
-		OID:           0, // TODO: generate unique OID
+		OID:           asType.OID, // TODO: generate unique OID, using underlying type OID for now
 		Name:          name,
 		Schema:        schema,
 		Owner:         owner,

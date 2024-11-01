@@ -146,7 +146,7 @@ func (a *subqueryAnyExpr) eval(ctx *sql.Context, subOperator string, row sql.Row
 	for i, rightValue := range rightValues {
 		a.arrayLiterals[i].value = rightValue
 	}
-	// Now we can loop over all of the comparison functions, as they'll reference their respective values
+	// Now we can loop over all comparison functions, as they'll reference their respective values
 	for _, compFunc := range a.compFuncs {
 		result, err := compFunc.Eval(ctx, row)
 		if err != nil {
@@ -328,7 +328,7 @@ func anyExpressionWithChildren(anyExpr *AnyExpr) (sql.Expression, error) {
 	}
 	rightType, ok := arrType.ArrayBaseType()
 	if !ok {
-		// TODO
+		return nil, fmt.Errorf("expected right child to be an array DoltgresType but got `%T`", arrType)
 	}
 
 	op, err := framework.GetOperatorFromString(anyExpr.subOperator)

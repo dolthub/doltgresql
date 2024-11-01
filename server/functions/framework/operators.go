@@ -55,7 +55,7 @@ const (
 // unaryFunction represents the signature for a unary function.
 type unaryFunction struct {
 	Operator Operator
-	Type     uint32 // oid?
+	TypeOid  uint32
 }
 
 // binaryFunction represents the signature for a binary function.
@@ -92,7 +92,7 @@ func RegisterUnaryFunction(operator Operator, f Function1) {
 	RegisterFunction(f)
 	sig := unaryFunction{
 		Operator: operator,
-		Type:     f.Parameters[0].OID,
+		TypeOid:  f.Parameters[0].OID,
 	}
 	if existingFunction, ok := unaryFunctions[sig]; ok {
 		panic(fmt.Errorf("duplicate unary function for `%s`: `%s` and `%s`",

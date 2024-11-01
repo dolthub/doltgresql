@@ -70,32 +70,11 @@ func keyForParamTypes(types []pgtypes.DoltgresType) string {
 	return sb.String()
 }
 
-// keyForParamTypes returns a string key to match an overload with the given parameter types.
-func keyForBaseIds(types []pgtypes.DoltgresType) string {
-	sb := strings.Builder{}
-	for i, typ := range types {
-		if i > 0 {
-			sb.WriteByte(',')
-		}
-		sb.WriteString(typ.String())
-	}
-	return sb.String()
-}
-
-// baseIdsForTypes returns the base IDs of the given types.
-func (o *Overloads) baseIdsForTypes(types []pgtypes.DoltgresType) []pgtypes.DoltgresType {
-	baseIds := make([]pgtypes.DoltgresType, len(types))
-	for i, t := range types {
-		baseIds[i] = t
-	}
-	return baseIds
-}
-
 // overloadsForParams returns all overloads matching the number of params given, without regard for types.
 func (o *Overloads) overloadsForParams(numParams int) []Overload {
 	results := make([]Overload, 0, len(o.AllOverloads))
 	for _, overload := range o.AllOverloads {
-		params := o.baseIdsForTypes(overload.GetParameters())
+		params := overload.GetParameters()
 		variadicIndex := overload.VariadicIndex()
 		if variadicIndex >= 0 && len(params) <= numParams {
 			// Variadic functions may only match when the function is declared with parameters that are fewer or equal
@@ -135,16 +114,8 @@ func (o *Overloads) overloadsForParams(numParams int) []Overload {
 
 // ExactMatchForTypes returns the function that exactly matches the given parameter types, or nil if no overload with
 // those types exists.
-func (o *Overloads) ExactMatchForTypes(types []pgtypes.DoltgresType) (FunctionInterface, bool) {
+func (o *Overloads) ExactMatchForTypes(types ...pgtypes.DoltgresType) (FunctionInterface, bool) {
 	key := keyForParamTypes(types)
-	fn, ok := o.ByParamType[key]
-	return fn, ok
-}
-
-// ExactMatchForBaseIds returns the function that exactly matches the given parameter types, or nil if no overload with
-// those types exists.
-func (o *Overloads) ExactMatchForBaseIds(types ...pgtypes.DoltgresType) (FunctionInterface, bool) {
-	key := keyForBaseIds(types)
 	fn, ok := o.ByParamType[key]
 	return fn, ok
 }

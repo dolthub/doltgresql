@@ -42,7 +42,7 @@ var array_in = framework.Function3{
 	Callable: func(ctx *sql.Context, _ [4]pgtypes.DoltgresType, val1, val2, val3 any) (any, error) {
 		input := val1.(string)
 		oid := val2.(uint32) // TODO: is this oid of base type??
-		// TODO: what is the third typmod
+		//typmod := val3.(int32) // TODO: how to use it?
 		baseType := pgtypes.OidToBuildInDoltgresType[oid]
 		if len(input) < 2 || input[0] != '{' || input[len(input)-1] != '}' {
 			// This error is regarded as a critical error, and thus we immediately return the error alongside a nil
@@ -145,12 +145,6 @@ var array_out = framework.Function1{
 	Parameters: [1]pgtypes.DoltgresType{pgtypes.AnyArray},
 	Strict:     true,
 	Callable: func(ctx *sql.Context, t [2]pgtypes.DoltgresType, val any) (any, error) {
-		// TODO: should the input be converted or should be converted here?
-		//converted, _, err := ac.Convert(output)
-		//if err != nil {
-		//	return "", err
-		//}
-
 		arrType := t[0]
 		if !arrType.IsArrayType() {
 			// TODO: shouldn't happen but check??
@@ -205,7 +199,7 @@ var array_recv = framework.Function3{
 	Callable: func(ctx *sql.Context, _ [4]pgtypes.DoltgresType, val1, val2, val3 any) (any, error) {
 		input := val1.(string)
 		oid := val2.(uint32) // TODO: is this oid of base type??
-		// TODO: what is the third argument for??
+		//typmod := val3.(int32) // TODO: how to use it?
 		baseType := pgtypes.OidToBuildInDoltgresType[oid]
 		return framework.IoReceive(ctx, baseType, input)
 	},

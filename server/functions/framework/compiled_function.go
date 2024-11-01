@@ -234,16 +234,12 @@ func (c *CompiledFunction) Eval(ctx *sql.Context, row sql.Row) (interface{}, err
 			isVariadicArg := c.overload.params.variadic >= 0 && i >= len(c.overload.params.paramTypes)-1
 			if isVariadicArg {
 				targetType = targetParamTypes[c.overload.params.variadic]
-				targetArrayType, ok := targetType.ToArrayType()
+				bt, ok := targetType.ArrayBaseType()
 				if !ok {
 					// should be impossible, we check this at function compile time
 					return nil, fmt.Errorf("variadic arguments must be array types, was %T", targetType)
 				}
-				targetType, ok = targetArrayType.ArrayBaseType()
-				if !ok {
-					// should be impossible, we check this at function compile time
-					return nil, fmt.Errorf("variadic arguments must be array types, was %T", targetType)
-				}
+				targetType = bt
 			} else {
 				targetType = targetParamTypes[i]
 			}
@@ -302,19 +298,18 @@ func (c *CompiledFunction) resolve(
 ) (overloadMatch, error) {
 
 	// First check for an exact match
-	exactMatch, found := overloads.ExactMatchForTypes(argTypes)
+	exactMatch, found := overloads.ExactMatchForTypes(argTypes...)
 	if found {
-		baseTypes := overloads.baseIdsForTypes(argTypes)
 		return overloadMatch{
 			params: Overload{
 				function:   exactMatch,
-				paramTypes: baseTypes,
-				argTypes:   baseTypes,
+				paramTypes: argTypes,
+				argTypes:   argTypes,
 				variadic:   -1,
 			},
 		}, nil
 	}
-	// There are no exact matches, so now we'll look through all of the overloads to determine the best match. This is
+	// There are no exact matches, so now we'll look through all overloads to determine the best match. This is
 	// much more work, but there's a performance penalty for runtime overload resolution in Postgres as well.
 	if c.IsOperator {
 		return c.resolveOperator(argTypes, overloads, fnOverloads)
@@ -341,7 +336,7 @@ func (c *CompiledFunction) resolveOperator(argTypes []pgtypes.DoltgresType, over
 				casts[1] = UnknownLiteralCast
 				typ = argTypes[0]
 			}
-			if exactMatch, ok := overloads.ExactMatchForBaseIds(typ, typ); ok {
+			if exactMatch, ok := overloads.ExactMatchForTypes(typ, typ); ok {
 				return overloadMatch{
 					params: Overload{
 						function:   exactMatch,
@@ -606,29 +601,29 @@ func (c *CompiledFunction) resolvePolymorphicReturnType(functionInterfaceTypes [
 		firstPolymorphicType = pgtypes.Text
 	}
 
-	switch returnType.OID {
-	case uint32(oid.T_anyelement), uint32(oid.T_anynonarray):
+	switch oid.Oid(returnType.OID) {
+	case oid.T_anyelement, oid.T_anynonarray:
 		// For return types, anyelement behaves the same as anynonarray.
 		// This isn't explicitly in the documentation, however it does note that:
 		// "...anynonarray and anyenum do not represent separate type variables; they are the same type as anyelement..."
 		// The implication of this being that anyelement will always return the base type even for array types,
 		// just like anynonarray would.
-		if firstPolymorphicType.IsArrayType() {
-			bt, ok := firstPolymorphicType.ArrayBaseType()
-			if !ok {
-				// TODO
-			}
+		if bt, ok := firstPolymorphicType.ArrayBaseType(); ok {
 			return bt
 		} else {
 			return firstPolymorphicType
 		}
-	case uint32(oid.T_anyarray):
+	case oid.T_anyarray:
 		// Array types will return themselves, so this is safe
-		at, ok := firstPolymorphicType.ToArrayType()
-		if !ok {
-			// TODO
+		if firstPolymorphicType.IsArrayType() {
+			return firstPolymorphicType
+		} else {
+			at, ok := firstPolymorphicType.ToArrayType()
+			if !ok {
+				panic(fmt.Errorf("cannot get array type for %s", firstPolymorphicType.String()))
+			}
+			return at
 		}
-		return at
 	default:
 		panic(fmt.Errorf("`%s` is not yet handled during function compilation", returnType.String()))
 	}

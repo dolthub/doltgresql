@@ -69,7 +69,7 @@ var pgStatsExtSchema = sql.Schema{
 	{Name: "n_distinct", Type: pgtypes.Text, Default: nil, Nullable: true, Source: PgStatsExtName},   // TODO: pg_ndistinct type AND collation C
 	{Name: "dependencies", Type: pgtypes.Text, Default: nil, Nullable: true, Source: PgStatsExtName}, // TODO: pg_dependencies type AND collation C
 	{Name: "most_common_vals", Type: pgtypes.TextArray, Default: nil, Nullable: true, Source: PgStatsExtName},
-	{Name: "most_common_val_nulls", Type: pgtypes.Bool, Default: nil, Nullable: true, Source: PgStatsExtName},
+	{Name: "most_common_val_nulls", Type: pgtypes.BoolArray, Default: nil, Nullable: true, Source: PgStatsExtName},
 	{Name: "most_common_freqs", Type: pgtypes.Float64Array, Default: nil, Nullable: true, Source: PgStatsExtName},
 	{Name: "most_common_base_freqs", Type: pgtypes.Float64Array, Default: nil, Nullable: true, Source: PgStatsExtName},
 }

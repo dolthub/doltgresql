@@ -16,11 +16,32 @@ package types
 
 import (
 	"fmt"
+	"github.com/dolthub/go-mysql-server/sql/types"
 
 	"github.com/dolthub/go-mysql-server/sql"
 
 	"github.com/dolthub/doltgresql/utils"
 )
+
+// init sets the serialization and deserialization functions.
+func init() {
+	types.SetExtendedTypeSerializers(SerializeType, DeserializeType)
+}
+
+// SerializeType is able to serialize the given extended type into a byte slice. All extended types will be defined
+// by DoltgreSQL.
+func SerializeType(extendedType types.ExtendedType) ([]byte, error) {
+	if doltgresType, ok := extendedType.(DoltgresType); ok {
+		return doltgresType.Serialize(), nil
+	}
+	return nil, fmt.Errorf("unknown type to serialize")
+}
+
+// DeserializeType is able to deserialize the given serialized type into an appropriate extended type. All extended
+// types will be defined by DoltgreSQL.
+func DeserializeType(serializedType []byte) (types.ExtendedType, error) {
+	return Deserialize(serializedType)
+}
 
 // Serialize returns the DoltgresType as a byte slice.
 func (t DoltgresType) Serialize() []byte {

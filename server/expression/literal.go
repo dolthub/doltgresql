@@ -257,7 +257,7 @@ func (l *Literal) String() string {
 	}
 	str, err := framework.IoOutput(nil, l.typ, l.value)
 	if err != nil {
-		panic(fmt.Sprintf("got error from IoOutput: %s", err.Error()))
+		panic(fmt.Sprintf("attempted to get string output for Literal: %s", err.Error()))
 	}
 	return pgtypes.QuoteString(oid.Oid(l.typ.OID), str)
 }

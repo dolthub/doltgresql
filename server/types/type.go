@@ -249,8 +249,29 @@ func (t DoltgresType) String() string {
 
 // Type implements the types.ExtendedType interface.
 func (t DoltgresType) Type() query.Type {
-	// TODO
-	return sqltypes.Text
+	switch t.TypCategory {
+	case TypeCategory_ArrayTypes:
+		return sqltypes.Text
+	case TypeCategory_BooleanTypes:
+		return sqltypes.Text
+	case TypeCategory_CompositeTypes, TypeCategory_EnumTypes, TypeCategory_GeometricTypes, TypeCategory_NetworkAddressTypes,
+		TypeCategory_RangeTypes, TypeCategory_PseudoTypes, TypeCategory_UserDefinedTypes, TypeCategory_BitStringTypes,
+		TypeCategory_InternalUseTypes:
+		// TODO
+		return sqltypes.Text
+	case TypeCategory_DateTimeTypes:
+		return sqltypes.Text
+	case TypeCategory_NumericTypes:
+		// decimal.Zero
+		return sqltypes.Int64
+	case TypeCategory_StringTypes, TypeCategory_UnknownTypes:
+		return sqltypes.Text
+	case TypeCategory_TimespanTypes:
+		return sqltypes.Text
+	default:
+		// shouldn't happen
+		return sqltypes.Text
+	}
 }
 
 // ValueType implements the types.ExtendedType interface.

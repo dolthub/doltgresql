@@ -45,7 +45,7 @@ func nodeCreateSequence(node *tree.CreateSequence) (vitess.Statement, error) {
 	if len(name.DbQualifier.String()) > 0 {
 		return nil, fmt.Errorf("CREATE SEQUENCE is currently only supported for the current database")
 	}
-	// Read all of the options and check whether they've been set (if not, we'll use the defaults)
+	// Read all options and check whether they've been set (if not, we'll use the defaults)
 	minValueLimit := int64(math.MinInt64)
 	maxValueLimit := int64(math.MaxInt64)
 	increment := int64(1)
@@ -66,12 +66,10 @@ func nodeCreateSequence(node *tree.CreateSequence) (vitess.Statement, error) {
 			if !dataType.EmptyType() {
 				return nil, fmt.Errorf("conflicting or redundant options")
 			}
-			_, resolvableType, err := nodeResolvableTypeReference(option.AsType)
+			_, dataType, err = nodeResolvableTypeReference(option.AsType)
 			if err != nil {
 				return nil, err
 			}
-			// TODO: check for valid type
-			dataType = resolvableType
 			switch oid.Oid(dataType.OID) {
 			case oid.T_int2:
 				minValueLimit = int64(math.MinInt16)
@@ -143,7 +141,7 @@ func nodeCreateSequence(node *tree.CreateSequence) (vitess.Statement, error) {
 			return nil, fmt.Errorf("unknown CREATE SEQUENCE option")
 		}
 	}
-	// Determine what all of the values should be based on what was set and what is inferred, as well as perform
+	// Determine what all values should be based on what was set and what is inferred, as well as perform
 	// validation for options that make sense
 	if minValueSet {
 		if minValue < minValueLimit || minValue > maxValueLimit {
@@ -178,7 +176,7 @@ func nodeCreateSequence(node *tree.CreateSequence) (vitess.Statement, error) {
 	if dataType.EmptyType() {
 		dataType = pgtypes.Int64
 	}
-	// Returns the stored procedure call with all of options
+	// Returns the stored procedure call with all options
 	return vitess.InjectedStatement{
 		Statement: pgnodes.NewCreateSequence(node.IfNotExists, name.SchemaQualifier.String(), &sequences.Sequence{
 			Name:        name.Name.String(),

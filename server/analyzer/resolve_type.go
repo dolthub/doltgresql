@@ -56,7 +56,7 @@ func ResolveType(ctx *sql.Context, a *analyzer.Analyzer, node sql.Node, scope *p
 	})
 }
 
-// resolveDomainType resolves any type that is unresolved yet. (e.g.: domain types)
+// resolveType resolves any type that is unresolved yet. (e.g.: domain types)
 func resolveType(ctx *sql.Context, typ types.DoltgresType) (types.DoltgresType, error) {
 	schema, err := core.GetSchemaName(ctx, nil, typ.Schema)
 	if err != nil {

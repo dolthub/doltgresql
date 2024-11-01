@@ -15,6 +15,7 @@
 package functions
 
 import (
+	"fmt"
 	"time"
 
 	"github.com/dolthub/go-mysql-server/sql"
@@ -51,7 +52,7 @@ var timetz_in = framework.Function3{
 		//if b.Precision == -1 {
 		//	p = b.Precision
 		//}
-		loc, err := pgtypes.GetServerLocation(ctx)
+		loc, err := GetServerLocation(ctx)
 		if err != nil {
 			return nil, err
 		}
@@ -141,4 +142,31 @@ var timetz_cmp = framework.Function2{
 		bb := val2.(time.Time)
 		return int32(ab.Compare(bb)), nil
 	},
+}
+
+// GetServerLocation returns timezone value set for the server.
+func GetServerLocation(ctx *sql.Context) (*time.Location, error) {
+	if ctx == nil {
+		return time.Local, nil
+	}
+	val, err := ctx.GetSessionVariable(ctx, "timezone")
+	if err != nil {
+		return nil, err
+	}
+
+	tz := val.(string)
+	loc, err := time.LoadLocation(tz)
+	if err == nil {
+		return loc, nil
+	}
+
+	var t time.Time
+	if t, err = time.Parse("Z07", tz); err == nil {
+	} else if t, err = time.Parse("Z07:00", tz); err == nil {
+	} else if t, err = time.Parse("Z07:00:00", tz); err != nil {
+		return nil, err
+	}
+
+	_, offsetSecsUnconverted := t.Zone()
+	return time.FixedZone(fmt.Sprintf("fixed offset:%d", offsetSecsUnconverted), -offsetSecsUnconverted), nil
 }
