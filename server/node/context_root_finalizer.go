@@ -69,8 +69,6 @@ func (rf *ContextRootFinalizer) RowIter(ctx *sql.Context, r sql.Row) (sql.RowIte
 	if childIter == nil {
 		childIter = sql.RowsToRowIter()
 	}
-
-	childIter, _ = rowexec.AddAccumulatorIter(ctx, childIter)
 	return &rootFinalizerIter{childIter: childIter}, nil
 }
 
@@ -101,7 +99,7 @@ type rootFinalizerIter struct {
 	childIter sql.RowIter
 }
 
-var _ sql.RowIter = (*rootFinalizerIter)(nil)
+var _ sql.CustomRowIter = (*rootFinalizerIter)(nil)
 
 // Next implements the interface sql.RowIter.
 func (r *rootFinalizerIter) Next(ctx *sql.Context) (sql.Row, error) {
@@ -117,3 +115,18 @@ func (r *rootFinalizerIter) Close(ctx *sql.Context) error {
 	}
 	return core.CloseContextRootFinalizer(ctx)
 }
+
+// GetChildIter implements the interface sql.CustomRowIter.
+func (r *rootFinalizerIter) GetChildIter() sql.RowIter {
+	return r.childIter
+}
+
+// SetChildIter implements the interface sql.CustomRowIter.
+func (r *rootFinalizerIter) SetChildIter(childIter sql.RowIter) sql.RowIter {
+	nr := *r
+	nr.childIter = childIter
+	return &nr
+}
+
+
+
