@@ -127,6 +127,3 @@ func (r *rootFinalizerIter) SetChildIter(childIter sql.RowIter) sql.RowIter {
 	nr.childIter = childIter
 	return &nr
 }
-
-
-
