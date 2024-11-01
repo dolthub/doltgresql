@@ -99,7 +99,7 @@ type rootFinalizerIter struct {
 	childIter sql.RowIter
 }
 
-var _ sql.CustomRowIter = (*rootFinalizerIter)(nil)
+var _ sql.MutableRowIter = (*rootFinalizerIter)(nil)
 
 // Next implements the interface sql.RowIter.
 func (r *rootFinalizerIter) Next(ctx *sql.Context) (sql.Row, error) {
@@ -121,8 +121,8 @@ func (r *rootFinalizerIter) GetChildIter() sql.RowIter {
 	return r.childIter
 }
 
-// SetChildIter implements the interface sql.CustomRowIter.
-func (r *rootFinalizerIter) SetChildIter(childIter sql.RowIter) sql.RowIter {
+// WithChildIter implements the interface sql.CustomRowIter.
+func (r *rootFinalizerIter) WithChildIter(childIter sql.RowIter) sql.RowIter {
 	nr := *r
 	nr.childIter = childIter
 	return &nr
