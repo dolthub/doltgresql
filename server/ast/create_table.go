@@ -27,15 +27,6 @@ func nodeCreateTable(node *tree.CreateTable) (*vitess.DDL, error) {
 	if node == nil {
 		return nil, nil
 	}
-	if node.PartitionBy != nil {
-		switch node.PartitionBy.Type {
-		case tree.PartitionByList:
-			if len(node.PartitionBy.Elems) != 1 {
-				return nil, fmt.Errorf("PARTITION BY LIST must have a single column or expression")
-			}
-		}
-		return nil, fmt.Errorf("PARTITION BY is not yet supported")
-	}
 	if len(node.StorageParams) > 0 {
 		return nil, fmt.Errorf("storage parameters are not yet supported")
 	}
@@ -86,5 +77,17 @@ func nodeCreateTable(node *tree.CreateTable) (*vitess.DDL, error) {
 	if err = assignTableDefs(node.Defs, ddl); err != nil {
 		return nil, err
 	}
+	if node.PartitionBy != nil {
+		switch node.PartitionBy.Type {
+		case tree.PartitionByList:
+			if len(node.PartitionBy.Elems) != 1 {
+				return nil, fmt.Errorf("PARTITION BY LIST must have a single column or expression")
+			}
+		}
+		// TODO: fill this in
+		ddl.TableSpec.PartitionOpt = &vitess.PartitionOption{}
+		//return nil, fmt.Errorf("PARTITION BY is not yet supported")
+	}
+
 	return ddl, nil
 }
