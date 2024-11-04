@@ -46,12 +46,6 @@ func NewDropSequence(ifExists bool, schema string, sequence string, cascade bool
 	}
 }
 
-// CheckPrivileges implements the interface sql.ExecSourceRel.
-func (c *DropSequence) CheckPrivileges(ctx *sql.Context, opChecker sql.PrivilegedOperationChecker) bool {
-	// TODO: implement privilege checking
-	return true
-}
-
 // Children implements the interface sql.ExecSourceRel.
 func (c *DropSequence) Children() []sql.Node {
 	return nil
