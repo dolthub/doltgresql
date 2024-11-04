@@ -84,9 +84,12 @@ func nodeCreateTable(node *tree.CreateTable) (*vitess.DDL, error) {
 				return nil, fmt.Errorf("PARTITION BY LIST must have a single column or expression")
 			}
 		}
-		// TODO: fill this in
-		ddl.TableSpec.PartitionOpt = &vitess.PartitionOption{}
-		//return nil, fmt.Errorf("PARTITION BY is not yet supported")
+
+		// GMS does not support PARTITION BY, so we parse it and ignore it
+		ddl.TableSpec.PartitionOpt = &vitess.PartitionOption{
+			PartitionType: string(node.PartitionBy.Type),
+			Expr:          vitess.NewColName(string(node.PartitionBy.Elems[0].Column)),
+		}
 	}
 
 	return ddl, nil
