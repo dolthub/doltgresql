@@ -64,8 +64,6 @@ func nodeAlterTableCmds(
 
 	if len(node) == 0 {
 		return nil, fmt.Errorf("no commands specified for ALTER TABLE statement")
-	} else if len(node) > 1 {
-		return nil, fmt.Errorf("ALTER TABLE with multiple commands is not yet supported")
 	}
 
 	vitessDdlCmds := make([]*vitess.DDL, 0, len(node))
