@@ -46,12 +46,6 @@ func NewCreateSequence(ifNotExists bool, schema string, sequence *sequences.Sequ
 	}
 }
 
-// CheckPrivileges implements the interface sql.ExecSourceRel.
-func (c *CreateSequence) CheckPrivileges(ctx *sql.Context, opChecker sql.PrivilegedOperationChecker) bool {
-	// TODO: implement privilege checking
-	return true
-}
-
 // Children implements the interface sql.ExecSourceRel.
 func (c *CreateSequence) Children() []sql.Node {
 	return nil

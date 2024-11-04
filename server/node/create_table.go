@@ -38,11 +38,6 @@ func NewCreateTable(createTable *plan.CreateTable, sequences []*CreateSequence) 
 	}
 }
 
-// CheckPrivileges implements the interface sql.ExecSourceRel.
-func (c *CreateTable) CheckPrivileges(ctx *sql.Context, opChecker sql.PrivilegedOperationChecker) bool {
-	return c.gmsCreateTable.CheckPrivileges(ctx, opChecker)
-}
-
 // Children implements the interface sql.ExecSourceRel.
 func (c *CreateTable) Children() []sql.Node {
 	return c.gmsCreateTable.Children()

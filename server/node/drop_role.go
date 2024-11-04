@@ -33,11 +33,6 @@ type DropRole struct {
 var _ sql.ExecSourceRel = (*DropRole)(nil)
 var _ vitess.Injectable = (*DropRole)(nil)
 
-// CheckPrivileges implements the interface sql.ExecSourceRel.
-func (c *DropRole) CheckPrivileges(ctx *sql.Context, opChecker sql.PrivilegedOperationChecker) bool {
-	return true
-}
-
 // Children implements the interface sql.ExecSourceRel.
 func (c *DropRole) Children() []sql.Node {
 	return nil

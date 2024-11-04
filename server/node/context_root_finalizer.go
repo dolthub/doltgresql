@@ -35,11 +35,6 @@ func NewContextRootFinalizer(child sql.Node) *ContextRootFinalizer {
 	}
 }
 
-// CheckPrivileges implements the interface sql.ExecSourceRel.
-func (rf *ContextRootFinalizer) CheckPrivileges(ctx *sql.Context, opChecker sql.PrivilegedOperationChecker) bool {
-	return rf.child.CheckPrivileges(ctx, opChecker)
-}
-
 // Child returns the single child of this node
 func (rf *ContextRootFinalizer) Child() sql.Node {
 	return rf.child

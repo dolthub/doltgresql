@@ -51,11 +51,6 @@ type CreateRole struct {
 var _ sql.ExecSourceRel = (*CreateRole)(nil)
 var _ vitess.Injectable = (*CreateRole)(nil)
 
-// CheckPrivileges implements the interface sql.ExecSourceRel.
-func (c *CreateRole) CheckPrivileges(ctx *sql.Context, opChecker sql.PrivilegedOperationChecker) bool {
-	return true
-}
-
 // Children implements the interface sql.ExecSourceRel.
 func (c *CreateRole) Children() []sql.Node {
 	return nil
