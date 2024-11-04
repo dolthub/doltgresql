@@ -62,12 +62,11 @@ var uuid_recv = framework.Function1{
 	Parameters: [1]pgtypes.DoltgresType{pgtypes.Internal},
 	Strict:     true,
 	Callable: func(ctx *sql.Context, _ [2]pgtypes.DoltgresType, val any) (any, error) {
-		switch val := val.(type) {
-		case uuid.UUID:
-			return val, nil
-		default:
-			return nil, pgtypes.ErrUnhandledType.New("uuid", val)
+		data := val.([]byte)
+		if len(data) == 0 {
+			return nil, nil
 		}
+		return uuid.FromBytes(data)
 	},
 }
 
@@ -78,7 +77,7 @@ var uuid_send = framework.Function1{
 	Parameters: [1]pgtypes.DoltgresType{pgtypes.Uuid},
 	Strict:     true,
 	Callable: func(ctx *sql.Context, _ [2]pgtypes.DoltgresType, val any) (any, error) {
-		return []byte(val.(uuid.UUID).String()), nil
+		return val.(uuid.UUID).GetBytes(), nil
 	},
 }
 

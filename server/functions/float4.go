@@ -15,6 +15,8 @@
 package functions
 
 import (
+	"encoding/binary"
+	"math"
 	"strconv"
 	"strings"
 
@@ -67,12 +69,14 @@ var float4recv = framework.Function1{
 	Parameters: [1]pgtypes.DoltgresType{pgtypes.Internal},
 	Strict:     true,
 	Callable: func(ctx *sql.Context, _ [2]pgtypes.DoltgresType, val any) (any, error) {
-		switch val := val.(type) {
-		case float32:
-			return val, nil
-		default:
-			return nil, pgtypes.ErrUnhandledType.New("float4", val)
+		data := val.([]byte)
+		unsignedBits := binary.BigEndian.Uint32(data)
+		if unsignedBits&(1<<31) != 0 {
+			unsignedBits ^= 1 << 31
+		} else {
+			unsignedBits = ^unsignedBits
 		}
+		return math.Float32frombits(unsignedBits), nil
 	},
 }
 
@@ -83,7 +87,17 @@ var float4send = framework.Function1{
 	Parameters: [1]pgtypes.DoltgresType{pgtypes.Float32},
 	Strict:     true,
 	Callable: func(ctx *sql.Context, _ [2]pgtypes.DoltgresType, val any) (any, error) {
-		return []byte(strconv.FormatFloat(float64(val.(float32)), 'g', -1, 32)), nil
+		f32 := val.(float32)
+		retVal := make([]byte, 4)
+		// Make the serialized form trivially comparable using bytes.Compare: https://stackoverflow.com/a/54557561
+		unsignedBits := math.Float32bits(f32)
+		if f32 >= 0 {
+			unsignedBits ^= 1 << 31
+		} else {
+			unsignedBits = ^unsignedBits
+		}
+		binary.BigEndian.PutUint32(retVal, unsignedBits)
+		return retVal, nil
 	},
 }
 

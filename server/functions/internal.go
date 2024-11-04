@@ -32,9 +32,8 @@ var internal_in = framework.Function1{
 	Return:     pgtypes.Internal,
 	Parameters: [1]pgtypes.DoltgresType{pgtypes.Text}, // cstring
 	Callable: func(ctx *sql.Context, _ [2]pgtypes.DoltgresType, val any) (any, error) {
-		//input := val.(string)
 		// TODO
-		return nil, nil
+		return []byte(val.(string)), nil
 	},
 }
 
@@ -46,6 +45,6 @@ var internal_out = framework.Function1{
 	Strict:     true,
 	Callable: func(ctx *sql.Context, _ [2]pgtypes.DoltgresType, val any) (any, error) {
 		// TODO
-		return nil, nil
+		return string(val.([]byte)), nil
 	},
 }

@@ -15,6 +15,8 @@
 package functions
 
 import (
+	"bytes"
+	"encoding/binary"
 	"fmt"
 	"strings"
 
@@ -197,11 +199,41 @@ var array_recv = framework.Function3{
 	Parameters: [3]pgtypes.DoltgresType{pgtypes.Internal, pgtypes.Oid, pgtypes.Int32},
 	Strict:     true,
 	Callable: func(ctx *sql.Context, _ [4]pgtypes.DoltgresType, val1, val2, val3 any) (any, error) {
-		input := val1.(string)
+		data := val1.([]byte)
 		oid := val2.(uint32) // TODO: is this oid of base type??
 		//typmod := val3.(int32) // TODO: how to use it?
 		baseType := pgtypes.OidToBuildInDoltgresType[oid]
-		return framework.IoReceive(ctx, baseType, input)
+		if bt, ok := baseType.ArrayBaseType(); ok {
+			baseType = bt
+		}
+		// Check for the nil value, then ensure the minimum length of the slice
+		if len(data) == 0 {
+			return nil, nil
+		}
+		if len(data) < 4 {
+			return nil, fmt.Errorf("deserializing non-nil array value has invalid length of %d", len(data))
+		}
+		// Grab the number of elements and construct an output slice of the appropriate size
+		elementCount := binary.LittleEndian.Uint32(data)
+		output := make([]any, elementCount)
+		// Read all elements
+		for i := uint32(0); i < elementCount; i++ {
+			// We read from i+1 to account for the element count at the beginning
+			offset := binary.LittleEndian.Uint32(data[(i+1)*4:])
+			// If the value is null, then we can skip it, since the output slice default initializes all values to nil
+			if data[offset] == 1 {
+				continue
+			}
+			// The element data is everything from the offset to the next offset, excluding the null determinant
+			nextOffset := binary.LittleEndian.Uint32(data[(i+2)*4:])
+			o, err := framework.IoReceive(ctx, baseType, data[offset+1:nextOffset])
+			if err != nil {
+				return nil, err
+			}
+			output[i] = o
+		}
+		// Returns all read elements
+		return output, nil
 	},
 }
 
@@ -223,37 +255,47 @@ var array_send = framework.Function1{
 			return nil, fmt.Errorf(`cannot find base type for array type`)
 		}
 
-		sb := strings.Builder{}
-		sb.WriteRune('{')
-		for i, v := range val.([]any) {
-			if i > 0 {
-				sb.WriteString(",")
+		vals := val.([]any)
+
+		bb := bytes.Buffer{}
+		// Write the element count to a buffer. We're using an array since it's stack-allocated, so no need for pooling.
+		var elementCount [4]byte
+		binary.LittleEndian.PutUint32(elementCount[:], uint32(len(vals)))
+		bb.Write(elementCount[:])
+		// Create an array that contains the offsets for each value. Since we can't update the offset portion of the buffer
+		// as we determine the offsets, we have to track them outside the buffer. We'll overwrite the buffer later with the
+		// correct offsets. The last offset represents the end of the slice, which simplifies the logic for reading elements
+		// using the "current offset to next offset" strategy. We use a byte slice since the buffer only works with byte
+		// slices.
+		offsets := make([]byte, (len(vals)+1)*4)
+		bb.Write(offsets)
+		// The starting offset for the first element is Count(uint32) + (NumberOfElementOffsets * sizeof(uint32))
+		currentOffset := uint32(4 + (len(vals)+1)*4)
+		for i := range vals {
+			// Write the current offset
+			binary.LittleEndian.PutUint32(offsets[i*4:], currentOffset)
+			// Handle serialization of the value
+			// TODO: ARRAYs may be multidimensional, such as ARRAY[[4,2],[6,3]], which isn't accounted for here
+			serializedVal, err := framework.IoSend(ctx, baseType, vals[i])
+			if err != nil {
+				return nil, err
 			}
-			if v != nil {
-				str, err := framework.IoSend(ctx, baseType, v)
-				if err != nil {
-					return "", err
-				}
-				shouldQuote := false
-				for _, r := range str {
-					switch r {
-					case ' ', ',', '{', '}', '\\', '"':
-						shouldQuote = true
-					}
-				}
-				if shouldQuote || strings.EqualFold(string(str), "NULL") {
-					sb.WriteRune('"')
-					sb.WriteString(strings.ReplaceAll(string(str), `"`, `\"`))
-					sb.WriteRune('"')
-				} else {
-					sb.WriteString(string(str))
-				}
+			// Handle the nil case and non-nil case
+			if serializedVal == nil {
+				bb.WriteByte(1)
+				currentOffset += 1
 			} else {
-				sb.WriteString("NULL")
+				bb.WriteByte(0)
+				bb.Write(serializedVal)
+				currentOffset += 1 + uint32(len(serializedVal))
 			}
 		}
-		sb.WriteRune('}')
-		return []byte(sb.String()), nil
+		// Write the final offset, which will equal the length of the serialized slice
+		binary.LittleEndian.PutUint32(offsets[len(offsets)-4:], currentOffset)
+		// Get the final output, and write the updated offsets to it
+		outputBytes := bb.Bytes()
+		copy(outputBytes[4:], offsets)
+		return outputBytes, nil
 	},
 }
 

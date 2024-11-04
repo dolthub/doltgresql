@@ -15,6 +15,7 @@
 package functions
 
 import (
+	"github.com/dolthub/doltgresql/utils"
 	"github.com/dolthub/go-mysql-server/sql"
 
 	"github.com/dolthub/doltgresql/server/functions/framework"
@@ -63,12 +64,12 @@ var namerecv = framework.Function1{
 	Parameters: [1]pgtypes.DoltgresType{pgtypes.Internal},
 	Strict:     true,
 	Callable: func(ctx *sql.Context, _ [2]pgtypes.DoltgresType, val any) (any, error) {
-		switch val := val.(type) {
-		case string:
-			return val, nil
-		default:
-			return nil, pgtypes.ErrUnhandledType.New("name", val)
+		data := val.([]byte)
+		if len(data) == 0 {
+			return nil, nil
 		}
+		reader := utils.NewReader(data)
+		return reader.String(), nil
 	},
 }
 
@@ -79,8 +80,10 @@ var namesend = framework.Function1{
 	Parameters: [1]pgtypes.DoltgresType{pgtypes.Name},
 	Strict:     true,
 	Callable: func(ctx *sql.Context, _ [2]pgtypes.DoltgresType, val any) (any, error) {
-		str, _ := truncateString(val.(string), pgtypes.NameLength)
-		return []byte(str), nil
+		str := val.(string)
+		writer := utils.NewWriter(uint64(len(str) + 1))
+		writer.String(str)
+		return writer.Data(), nil
 	},
 }
 

@@ -35,6 +35,7 @@ func nodeResolvableTypeReference(typ tree.ResolvableTypeReference) (*vitess.Conv
 	var columnTypeLength *vitess.SQLVal
 	var columnTypeScale *vitess.SQLVal
 	var resolvedType pgtypes.DoltgresType
+	var err error
 	switch columnType := typ.(type) {
 	case *tree.ArrayTypeReference:
 		return nil, pgtypes.DoltgresType{}, fmt.Errorf("the given array type is not yet supported")
@@ -114,7 +115,10 @@ func nodeResolvableTypeReference(typ tree.ResolvableTypeReference) (*vitess.Conv
 				if columnType.Precision() == 0 && columnType.Scale() == 0 {
 					resolvedType = pgtypes.Numeric
 				} else {
-					resolvedType = pgtypes.NewNumericType(columnType.Precision(), columnType.Scale())
+					resolvedType, err = pgtypes.NewNumericType(columnType.Precision(), columnType.Scale())
+					if err != nil {
+						return nil, pgtypes.DoltgresType{}, err
+					}
 				}
 			case oid.T_oid:
 				resolvedType = pgtypes.Oid

@@ -15,6 +15,7 @@
 package functions
 
 import (
+	"encoding/binary"
 	"strconv"
 	"strings"
 
@@ -69,12 +70,11 @@ var int8recv = framework.Function1{
 	Parameters: [1]pgtypes.DoltgresType{pgtypes.Internal},
 	Strict:     true,
 	Callable: func(ctx *sql.Context, _ [2]pgtypes.DoltgresType, val any) (any, error) {
-		switch val := val.(type) {
-		case int64:
-			return val, nil
-		default:
-			return nil, pgtypes.ErrUnhandledType.New("int8", val)
+		data := val.([]byte)
+		if len(data) == 0 {
+			return nil, nil
 		}
+		return int64(binary.BigEndian.Uint64(data) - (1 << 63)), nil
 	},
 }
 
@@ -85,7 +85,9 @@ var int8send = framework.Function1{
 	Parameters: [1]pgtypes.DoltgresType{pgtypes.Int64},
 	Strict:     true,
 	Callable: func(ctx *sql.Context, _ [2]pgtypes.DoltgresType, val any) (any, error) {
-		return []byte(strconv.FormatInt(val.(int64), 10)), nil
+		retVal := make([]byte, 8)
+		binary.BigEndian.PutUint64(retVal, uint64(val.(int64))+(1<<63))
+		return retVal, nil
 	},
 }
 

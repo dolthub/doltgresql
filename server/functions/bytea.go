@@ -17,6 +17,7 @@ package functions
 import (
 	"bytes"
 	"encoding/hex"
+	"github.com/dolthub/doltgresql/utils"
 	"strings"
 
 	"github.com/dolthub/go-mysql-server/sql"
@@ -68,12 +69,12 @@ var bytearecv = framework.Function1{
 	Parameters: [1]pgtypes.DoltgresType{pgtypes.Internal},
 	Strict:     true,
 	Callable: func(ctx *sql.Context, _ [2]pgtypes.DoltgresType, val any) (any, error) {
-		switch v := val.(type) {
-		case []byte:
-			return v, nil
-		default:
-			return nil, pgtypes.ErrUnhandledType.New("bytea", v)
+		data := val.([]byte)
+		if len(data) == 0 {
+			return nil, nil
 		}
+		reader := utils.NewReader(data)
+		return reader.ByteSlice(), nil
 	},
 }
 
@@ -84,7 +85,10 @@ var byteasend = framework.Function1{
 	Parameters: [1]pgtypes.DoltgresType{pgtypes.Bytea},
 	Strict:     true,
 	Callable: func(ctx *sql.Context, _ [2]pgtypes.DoltgresType, val any) (any, error) {
-		return val, nil
+		str := val.([]byte)
+		writer := utils.NewWriter(uint64(len(str) + 4))
+		writer.ByteSlice(str)
+		return writer.Data(), nil
 	},
 }
 

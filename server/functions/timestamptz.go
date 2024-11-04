@@ -90,13 +90,18 @@ var timestamptz_recv = framework.Function3{
 	Parameters: [3]pgtypes.DoltgresType{pgtypes.Internal, pgtypes.Oid, pgtypes.Int32}, // cstring
 	Strict:     true,
 	Callable: func(ctx *sql.Context, _ [4]pgtypes.DoltgresType, val1, val2, val3 any) (any, error) {
-		// TODO
-		switch val := val1.(type) {
-		case time.Time:
-			return val, nil
-		default:
-			return nil, pgtypes.ErrUnhandledType.New("timestamptz", val)
+		data := val1.([]byte)
+		//oid := val2.(uint32)
+		//typmod := val3.(int32)
+		// TODO: decode typmod to precision
+		if len(data) == 0 {
+			return nil, nil
 		}
+		t := time.Time{}
+		if err := t.UnmarshalBinary(data); err != nil {
+			return nil, err
+		}
+		return t, nil
 	},
 }
 
@@ -107,17 +112,7 @@ var timestamptz_send = framework.Function1{
 	Parameters: [1]pgtypes.DoltgresType{pgtypes.TimestampTZ},
 	Strict:     true,
 	Callable: func(ctx *sql.Context, _ [2]pgtypes.DoltgresType, val any) (any, error) {
-		serverLoc, err := GetServerLocation(ctx)
-		if err != nil {
-			return "", err
-		}
-		t := val.(time.Time).In(serverLoc)
-		_, offset := t.Zone()
-		if offset%3600 != 0 {
-			return []byte(t.Format("2006-01-02 15:04:05.999999999-07:00")), nil
-		} else {
-			return []byte(t.Format("2006-01-02 15:04:05.999999999-07")), nil
-		}
+		return val.(time.Time).MarshalBinary()
 	},
 }
 

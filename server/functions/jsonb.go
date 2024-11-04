@@ -15,6 +15,7 @@
 package functions
 
 import (
+	"github.com/dolthub/doltgresql/utils"
 	"strings"
 	"unsafe"
 
@@ -71,12 +72,13 @@ var jsonb_recv = framework.Function1{
 	Parameters: [1]pgtypes.DoltgresType{pgtypes.Internal},
 	Strict:     true,
 	Callable: func(ctx *sql.Context, _ [2]pgtypes.DoltgresType, val any) (any, error) {
-		switch val := val.(type) {
-		case string:
-			return val, nil
-		default:
-			return nil, pgtypes.ErrUnhandledType.New("jsonb", val)
+		data := val.([]byte)
+		if len(data) == 0 {
+			return nil, nil
 		}
+		reader := utils.NewReader(data)
+		jsonValue, err := pgtypes.JsonValueDeserialize(reader)
+		return pgtypes.JsonDocument{Value: jsonValue}, err
 	},
 }
 
@@ -87,10 +89,9 @@ var jsonb_send = framework.Function1{
 	Parameters: [1]pgtypes.DoltgresType{pgtypes.JsonB},
 	Strict:     true,
 	Callable: func(ctx *sql.Context, _ [2]pgtypes.DoltgresType, val any) (any, error) {
-		sb := strings.Builder{}
-		sb.Grow(256)
-		pgtypes.JsonValueFormatter(&sb, val.(pgtypes.JsonDocument).Value)
-		return []byte(sb.String()), nil
+		writer := utils.NewWriter(256)
+		pgtypes.JsonValueSerialize(writer, val.(pgtypes.JsonDocument).Value)
+		return writer.Data(), nil
 	},
 }
 

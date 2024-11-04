@@ -38,14 +38,14 @@ var boolin = framework.Function1{
 	Return:     pgtypes.Bool,
 	Parameters: [1]pgtypes.DoltgresType{pgtypes.Text},
 	Strict:     true,
-	Callable: func(ctx *sql.Context, _ [2]pgtypes.DoltgresType, input any) (any, error) {
-		input = strings.TrimSpace(strings.ToLower(input.(string)))
-		if input == "true" || input == "t" || input == "yes" || input == "on" || input == "1" {
+	Callable: func(ctx *sql.Context, _ [2]pgtypes.DoltgresType, val any) (any, error) {
+		val = strings.TrimSpace(strings.ToLower(val.(string)))
+		if val == "true" || val == "t" || val == "yes" || val == "on" || val == "1" {
 			return true, nil
-		} else if input == "false" || input == "f" || input == "no" || input == "off" || input == "0" {
+		} else if val == "false" || val == "f" || val == "no" || val == "off" || val == "0" {
 			return false, nil
 		} else {
-			return nil, pgtypes.ErrInvalidSyntaxForType.New("boolean", input)
+			return nil, pgtypes.ErrInvalidSyntaxForType.New("boolean", val)
 		}
 	},
 }
@@ -56,8 +56,8 @@ var boolout = framework.Function1{
 	Return:     pgtypes.Bool,
 	Parameters: [1]pgtypes.DoltgresType{pgtypes.Bool},
 	Strict:     true,
-	Callable: func(ctx *sql.Context, _ [2]pgtypes.DoltgresType, input any) (any, error) {
-		if input.(bool) {
+	Callable: func(ctx *sql.Context, _ [2]pgtypes.DoltgresType, val any) (any, error) {
+		if val.(bool) {
 			return "true", nil
 		} else {
 			return "false", nil
@@ -71,13 +71,12 @@ var boolrecv = framework.Function1{
 	Return:     pgtypes.Bool,
 	Parameters: [1]pgtypes.DoltgresType{pgtypes.Internal},
 	Strict:     true,
-	Callable: func(ctx *sql.Context, _ [2]pgtypes.DoltgresType, input any) (any, error) {
-		switch v := input.(type) {
-		case bool:
-			return v, nil
-		default:
-			return nil, pgtypes.ErrUnhandledType.New("boolean", v)
+	Callable: func(ctx *sql.Context, _ [2]pgtypes.DoltgresType, val any) (any, error) {
+		data := val.([]byte)
+		if len(data) == 0 {
+			return nil, nil
 		}
+		return data[0] != 0, nil
 	},
 }
 
@@ -89,9 +88,9 @@ var boolsend = framework.Function1{
 	Strict:     true,
 	Callable: func(ctx *sql.Context, _ [2]pgtypes.DoltgresType, val any) (any, error) {
 		if val.(bool) {
-			return []byte("t"), nil
+			return []byte{1}, nil
 		} else {
-			return []byte("f"), nil
+			return []byte{0}, nil
 		}
 	},
 }

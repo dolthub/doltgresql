@@ -16,6 +16,7 @@ package functions
 
 import (
 	"fmt"
+	"github.com/dolthub/doltgresql/utils"
 
 	"github.com/dolthub/go-mysql-server/sql"
 
@@ -78,13 +79,13 @@ var varcharrecv = framework.Function3{
 	Parameters: [3]pgtypes.DoltgresType{pgtypes.Internal, pgtypes.Oid, pgtypes.Int32},
 	Strict:     true,
 	Callable: func(ctx *sql.Context, _ [4]pgtypes.DoltgresType, val1, val2, val3 any) (any, error) {
-		// TODO: should the value be converted here according to typmod?
-		switch v := val1.(type) {
-		case string:
-			return v, nil
-		default:
-			return nil, pgtypes.ErrUnhandledType.New("varchar", v)
+		data := val1.([]byte)
+		// TODO: typmod
+		if len(data) == 0 {
+			return nil, nil
 		}
+		reader := utils.NewReader(data)
+		return reader.String(), nil
 	},
 }
 
@@ -95,12 +96,10 @@ var varcharsend = framework.Function1{
 	Parameters: [1]pgtypes.DoltgresType{pgtypes.VarChar},
 	Strict:     true,
 	Callable: func(ctx *sql.Context, _ [2]pgtypes.DoltgresType, val any) (any, error) {
-		// TODO
-		//if b.IsUnbounded() {
-		//	return val.(string), nil
-		//}
-		//str, _ := truncateString(converted.(string), b.MaxChars)
-		return []byte(val.(string)), nil
+		str := val.(string)
+		writer := utils.NewWriter(uint64(len(str) + 4))
+		writer.String(str)
+		return writer.Data(), nil
 	},
 }
 

@@ -15,6 +15,7 @@
 package functions
 
 import (
+	"encoding/binary"
 	"strconv"
 	"strings"
 
@@ -71,12 +72,11 @@ var oidrecv = framework.Function1{
 	Parameters: [1]pgtypes.DoltgresType{pgtypes.Internal},
 	Strict:     true,
 	Callable: func(ctx *sql.Context, _ [2]pgtypes.DoltgresType, val any) (any, error) {
-		switch val := val.(type) {
-		case uint32:
-			return val, nil
-		default:
-			return nil, pgtypes.ErrUnhandledType.New("oid", val)
+		data := val.([]byte)
+		if len(data) == 0 {
+			return nil, nil
 		}
+		return binary.BigEndian.Uint32(data), nil
 	},
 }
 
@@ -87,7 +87,9 @@ var oidsend = framework.Function1{
 	Parameters: [1]pgtypes.DoltgresType{pgtypes.Oid},
 	Strict:     true,
 	Callable: func(ctx *sql.Context, _ [2]pgtypes.DoltgresType, val any) (any, error) {
-		return []byte(strconv.FormatUint(uint64(val.(uint32)), 10)), nil
+		retVal := make([]byte, 4)
+		binary.BigEndian.PutUint32(retVal, val.(uint32))
+		return retVal, nil
 	},
 }
 

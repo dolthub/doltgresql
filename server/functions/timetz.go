@@ -83,13 +83,18 @@ var timetz_recv = framework.Function3{
 	Parameters: [3]pgtypes.DoltgresType{pgtypes.Internal, pgtypes.Oid, pgtypes.Int32}, // cstring
 	Strict:     true,
 	Callable: func(ctx *sql.Context, _ [4]pgtypes.DoltgresType, val1, val2, val3 any) (any, error) {
-		// TODO
-		switch val := val1.(type) {
-		case time.Time:
-			return val, nil
-		default:
-			return nil, pgtypes.ErrUnhandledType.New("timetz", val)
+		data := val1.([]byte)
+		//oid := val2.(uint32)
+		//typmod := val3.(int32)
+		// TODO: decode typmod to precision
+		if len(data) == 0 {
+			return nil, nil
 		}
+		t := time.Time{}
+		if err := t.UnmarshalBinary(data); err != nil {
+			return nil, err
+		}
+		return t, nil
 	},
 }
 
@@ -100,8 +105,7 @@ var timetz_send = framework.Function1{
 	Parameters: [1]pgtypes.DoltgresType{pgtypes.TimeTZ},
 	Strict:     true,
 	Callable: func(ctx *sql.Context, _ [2]pgtypes.DoltgresType, val any) (any, error) {
-		// TODO: this always displays the time with an offset relevant to the server location
-		return []byte(timetz.MakeTimeTZFromTime(val.(time.Time)).String()), nil
+		return val.(time.Time).MarshalBinary()
 	},
 }
 

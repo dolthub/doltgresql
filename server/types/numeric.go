@@ -15,6 +15,8 @@
 package types
 
 import (
+	"fmt"
+	"github.com/dolthub/go-mysql-server/sql"
 	"github.com/lib/pq/oid"
 
 	"github.com/shopspring/decimal"
@@ -72,7 +74,16 @@ var Numeric = DoltgresType{
 	Checks:        nil,
 }
 
-func NewNumericType(precision, scale int32) DoltgresType {
-	// TODO: implement precision and scale
-	return Numeric
+func NewNumericType(precision, scale int32) (DoltgresType, error) {
+	newNumericType := Numeric
+	val, err := TypModIn(sql.NewEmptyContext(), newNumericType, []any{fmt.Sprint(precision), fmt.Sprint(scale)})
+	if err != nil {
+		return DoltgresType{}, err
+	}
+	typmod, ok := val.(int32)
+	if !ok {
+		return DoltgresType{}, fmt.Errorf("expected int32, but received %T", val)
+	}
+	newNumericType.SetDefinedTypeModifier(typmod)
+	return newNumericType, nil
 }

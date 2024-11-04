@@ -15,6 +15,7 @@
 package functions
 
 import (
+	"encoding/binary"
 	"github.com/dolthub/go-mysql-server/sql"
 
 	"github.com/dolthub/doltgresql/server/functions/framework"
@@ -58,12 +59,11 @@ var regclassrecv = framework.Function1{
 	Parameters: [1]pgtypes.DoltgresType{pgtypes.Internal},
 	Strict:     true,
 	Callable: func(ctx *sql.Context, _ [2]pgtypes.DoltgresType, val any) (any, error) {
-		switch val := val.(type) {
-		case uint32:
-			return val, nil
-		default:
-			return nil, pgtypes.ErrUnhandledType.New("regclass", val)
+		data := val.([]byte)
+		if len(data) == 0 {
+			return nil, nil
 		}
+		return binary.BigEndian.Uint32(data), nil
 	},
 }
 
@@ -74,10 +74,8 @@ var regclasssend = framework.Function1{
 	Parameters: [1]pgtypes.DoltgresType{pgtypes.Regclass},
 	Strict:     true,
 	Callable: func(ctx *sql.Context, _ [2]pgtypes.DoltgresType, val any) (any, error) {
-		str, err := pgtypes.Regclass_IoOutput(ctx, val.(uint32))
-		if err != nil {
-			return nil, err
-		}
-		return []byte(str), nil
+		retVal := make([]byte, 4)
+		binary.BigEndian.PutUint32(retVal, val.(uint32))
+		return retVal, nil
 	},
 }

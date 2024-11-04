@@ -17,6 +17,7 @@ package functions
 import (
 	"bytes"
 	"fmt"
+	"github.com/dolthub/doltgresql/utils"
 	"strings"
 	"unicode/utf8"
 
@@ -92,13 +93,13 @@ var bpcharrecv = framework.Function3{
 	Parameters: [3]pgtypes.DoltgresType{pgtypes.Internal, pgtypes.Oid, pgtypes.Int32},
 	Strict:     true,
 	Callable: func(ctx *sql.Context, _ [4]pgtypes.DoltgresType, val1, val2, val3 any) (any, error) {
-		// TODO: should there be length check?
-		switch v := val1.(type) {
-		case string:
-			return v, nil
-		default:
-			return nil, pgtypes.ErrUnhandledType.New("bpchar", v)
+		// TODO: use typmod
+		data := val1.([]byte)
+		if len(data) == 0 {
+			return nil, nil
 		}
+		reader := utils.NewReader(data)
+		return reader.String(), nil
 	},
 }
 
@@ -109,7 +110,10 @@ var bpcharsend = framework.Function1{
 	Parameters: [1]pgtypes.DoltgresType{pgtypes.BpChar},
 	Strict:     true,
 	Callable: func(ctx *sql.Context, _ [2]pgtypes.DoltgresType, val any) (any, error) {
-		return []byte(val.(string)), nil
+		str := val.(string)
+		writer := utils.NewWriter(uint64(len(str) + 4))
+		writer.String(str)
+		return writer.Data(), nil
 	},
 }
 

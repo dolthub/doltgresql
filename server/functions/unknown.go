@@ -15,6 +15,7 @@
 package functions
 
 import (
+	"github.com/dolthub/doltgresql/utils"
 	"github.com/dolthub/go-mysql-server/sql"
 
 	"github.com/dolthub/doltgresql/server/functions/framework"
@@ -58,12 +59,12 @@ var unknownrecv = framework.Function1{
 	Parameters: [1]pgtypes.DoltgresType{pgtypes.Internal},
 	Strict:     true,
 	Callable: func(ctx *sql.Context, _ [2]pgtypes.DoltgresType, val any) (any, error) {
-		switch val := val.(type) {
-		case string:
-			return val, nil
-		default:
-			return nil, pgtypes.ErrUnhandledType.New("unknown", val)
+		data := val.([]byte)
+		if len(data) == 0 {
+			return nil, nil
 		}
+		reader := utils.NewReader(data)
+		return reader.String(), nil
 	},
 }
 
@@ -74,6 +75,9 @@ var unknownsend = framework.Function1{
 	Parameters: [1]pgtypes.DoltgresType{pgtypes.Unknown},
 	Strict:     true,
 	Callable: func(ctx *sql.Context, _ [2]pgtypes.DoltgresType, val any) (any, error) {
-		return []byte(val.(string)), nil
+		str := val.(string)
+		writer := utils.NewWriter(uint64(len(str) + 4))
+		writer.String(str)
+		return writer.Data(), nil
 	},
 }

@@ -15,6 +15,8 @@
 package functions
 
 import (
+	"fmt"
+	"strconv"
 	"strings"
 
 	"github.com/dolthub/go-mysql-server/sql"
@@ -43,11 +45,19 @@ var numeric_in = framework.Function3{
 	Strict:     true,
 	Callable: func(ctx *sql.Context, _ [4]pgtypes.DoltgresType, val1, val2, val3 any) (any, error) {
 		input := val1.(string)
+		typmod := val3.(int32)
+		precision, scale := getPrecisionAndScaleFromTypmod(typmod)
 		val, err := decimal.NewFromString(strings.TrimSpace(input))
 		if err != nil {
 			return nil, pgtypes.ErrInvalidSyntaxForType.New("numeric", input)
 		}
-		return val, nil
+		str := val.StringFixed(scale)
+		parts := strings.Split(str, ".")
+		if int32(len(parts[0])) > precision-scale {
+			// TODO: split error message to ERROR and DETAIL
+			return nil, fmt.Errorf("numeric field overflow - A field with precision %v, scale %v must round to an absolute value less than 10^%v", precision, scale, precision-scale)
+		}
+		return decimal.NewFromString(str)
 	},
 }
 
@@ -59,10 +69,6 @@ var numeric_out = framework.Function1{
 	Strict:     true,
 	Callable: func(ctx *sql.Context, t [2]pgtypes.DoltgresType, val any) (any, error) {
 		dec := val.(decimal.Decimal)
-		//scale := b.Scale
-		//if scale == -1 {
-		//	scale = dec.Exponent() * -1
-		//}
 		return dec.StringFixed(dec.Exponent() * -1), nil
 	},
 }
@@ -74,13 +80,15 @@ var numeric_recv = framework.Function3{
 	Parameters: [3]pgtypes.DoltgresType{pgtypes.Internal, pgtypes.Oid, pgtypes.Int32},
 	Strict:     true,
 	Callable: func(ctx *sql.Context, _ [4]pgtypes.DoltgresType, val1, val2, val3 any) (any, error) {
-		// TODO: should the value be converted here according to typmod?
-		switch v := val1.(type) {
-		case decimal.Decimal:
-			return v, nil
-		default:
-			return nil, pgtypes.ErrUnhandledType.New("numeric", v)
+		data := val1.([]byte)
+		//typmod := val3.(int32)
+		//precision, scale := getPrecisionAndScaleFromTypmod(typmod)
+		if len(data) == 0 {
+			return nil, nil
 		}
+		retVal := decimal.NewFromInt(0)
+		err := retVal.UnmarshalBinary(data)
+		return retVal, err
 	},
 }
 
@@ -91,8 +99,7 @@ var numeric_send = framework.Function1{
 	Parameters: [1]pgtypes.DoltgresType{pgtypes.Numeric},
 	Strict:     true,
 	Callable: func(ctx *sql.Context, _ [2]pgtypes.DoltgresType, val any) (any, error) {
-		dec := val.(decimal.Decimal)
-		return []byte(dec.StringFixed(dec.Exponent() * -1)), nil
+		return val.(decimal.Decimal).MarshalBinary()
 	},
 }
 
@@ -103,8 +110,35 @@ var numerictypmodin = framework.Function1{
 	Parameters: [1]pgtypes.DoltgresType{pgtypes.TextArray}, // cstring[]
 	Strict:     true,
 	Callable: func(ctx *sql.Context, _ [2]pgtypes.DoltgresType, val any) (any, error) {
-		// TODO: typmod=(precision<<16)∣scale
-		return nil, nil
+		arr := val.([]any)
+		if len(arr) == 0 {
+			return nil, pgtypes.ErrTypmodArrayMustBe1D.New()
+		} else if len(arr) > 2 {
+			return nil, pgtypes.ErrInvalidTypeModifier.New("NUMERIC")
+		}
+
+		p, err := strconv.ParseInt(arr[0].(string), 10, 32)
+		if err != nil {
+			return nil, err
+		}
+		if p < 1 || p > 1000 {
+			return nil, fmt.Errorf("NUMERIC precision 100000 must be between 1 and 1000")
+		}
+		precision := int32(p)
+		scale := int32(0)
+		if len(arr) == 2 {
+			s, err := strconv.ParseInt(arr[1].(string), 10, 32)
+			if err != nil {
+				return nil, err
+			}
+			if s < -1000 || s > 1000 {
+				return nil, fmt.Errorf("NUMERIC scale 20000 must be between -1000 and 1000")
+			}
+			scale = int32(s)
+		}
+
+		typmod := (precision << 16) | scale
+		return typmod, nil
 	},
 }
 
@@ -115,10 +149,9 @@ var numerictypmodout = framework.Function1{
 	Parameters: [1]pgtypes.DoltgresType{pgtypes.Int32},
 	Strict:     true,
 	Callable: func(ctx *sql.Context, _ [2]pgtypes.DoltgresType, val any) (any, error) {
-		// TODO
-		// Precision = typmod & 0xFFFF
-		// Scale = (typmod >> 16) & 0xFFFF
-		return nil, nil
+		typmod := val.(int32)
+		precision, scale := getPrecisionAndScaleFromTypmod(typmod)
+		return fmt.Sprintf("(%v,%v)", precision, scale), nil
 	},
 }
 
@@ -133,4 +166,10 @@ var numeric_cmp = framework.Function2{
 		bb := val2.(decimal.Decimal)
 		return int32(ab.Cmp(bb)), nil
 	},
+}
+
+func getPrecisionAndScaleFromTypmod(typmod int32) (int32, int32) {
+	precision := typmod & 0xFFFF
+	scale := (typmod >> 16) & 0xFFFF
+	return precision, scale
 }

@@ -15,6 +15,7 @@
 package functions
 
 import (
+	"github.com/dolthub/doltgresql/utils"
 	"github.com/dolthub/go-mysql-server/sql"
 
 	"github.com/dolthub/doltgresql/postgres/parser/duration"
@@ -43,7 +44,7 @@ var interval_in = framework.Function3{
 	Callable: func(ctx *sql.Context, _ [4]pgtypes.DoltgresType, val1, val2, val3 any) (any, error) {
 		input := val1.(string)
 		//oid := val2.(uint32)
-		//typmod := val3.(int32) // precision?
+		//typmod := val3.(int32)
 		dInterval, err := tree.ParseDInterval(input)
 		if err != nil {
 			return nil, err
@@ -54,7 +55,7 @@ var interval_in = framework.Function3{
 
 // interval_out represents the PostgreSQL function of interval type IO output.
 var interval_out = framework.Function1{
-	Name:       "byteaout",
+	Name:       "interval_out",
 	Return:     pgtypes.Text, // cstring
 	Parameters: [1]pgtypes.DoltgresType{pgtypes.Interval},
 	Strict:     true,
@@ -65,30 +66,41 @@ var interval_out = framework.Function1{
 
 // interval_recv represents the PostgreSQL function of interval type IO receive.
 var interval_recv = framework.Function3{
-	Name:       "bytearecv",
+	Name:       "interval_recv",
 	Return:     pgtypes.Interval,
 	Parameters: [3]pgtypes.DoltgresType{pgtypes.Internal, pgtypes.Oid, pgtypes.Int32},
 	Strict:     true,
 	Callable: func(ctx *sql.Context, _ [4]pgtypes.DoltgresType, val1, val2, val3 any) (any, error) {
+		data := val1.([]byte)
 		//oid := val2.(uint32)
-		//typmod := val3.(int32) // precision?
-		switch v := val1.(type) {
-		case duration.Duration:
-			return v, nil
-		default:
-			return nil, pgtypes.ErrUnhandledType.New("interval", v)
+		//typmod := val3.(int32) // precision
+		if len(data) == 0 {
+			return nil, nil
 		}
+		reader := utils.NewReader(data)
+		sortNanos := reader.Int64()
+		months := reader.Int32()
+		days := reader.Int32()
+		return duration.Decode(sortNanos, int64(months), int64(days))
 	},
 }
 
 // interval_send represents the PostgreSQL function of interval type IO send.
 var interval_send = framework.Function1{
-	Name:       "byteasend",
+	Name:       "interval_send",
 	Return:     pgtypes.Bytea,
 	Parameters: [1]pgtypes.DoltgresType{pgtypes.Interval},
 	Strict:     true,
 	Callable: func(ctx *sql.Context, _ [2]pgtypes.DoltgresType, val any) (any, error) {
-		return []byte(val.(duration.Duration).String()), nil
+		sortNanos, months, days, err := val.(duration.Duration).Encode()
+		if err != nil {
+			return nil, err
+		}
+		writer := utils.NewWriter(0)
+		writer.Int64(sortNanos)
+		writer.Int32(int32(months))
+		writer.Int32(int32(days))
+		return writer.Data(), nil
 	},
 }
 
@@ -99,8 +111,8 @@ var intervaltypmodin = framework.Function1{
 	Parameters: [1]pgtypes.DoltgresType{pgtypes.TextArray}, // cstring[]
 	Strict:     true,
 	Callable: func(ctx *sql.Context, _ [2]pgtypes.DoltgresType, val any) (any, error) {
-		// TODO
-		return nil, nil
+		// TODO: implement interval fields and precision
+		return int32(0), nil
 	},
 }
 
@@ -111,8 +123,8 @@ var intervaltypmodout = framework.Function1{
 	Parameters: [1]pgtypes.DoltgresType{pgtypes.Int32},
 	Strict:     true,
 	Callable: func(ctx *sql.Context, _ [2]pgtypes.DoltgresType, val any) (any, error) {
-		// TODO
-		return nil, nil
+		// TODO: implement interval fields and precision
+		return "", nil
 	},
 }
 

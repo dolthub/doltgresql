@@ -16,6 +16,8 @@ package types
 
 import (
 	"bytes"
+	"github.com/lib/pq/oid"
+	"math"
 	"reflect"
 	"time"
 
@@ -26,15 +28,15 @@ import (
 	"gopkg.in/src-d/go-errors.v1"
 
 	"github.com/dolthub/doltgresql/postgres/parser/duration"
-	"github.com/dolthub/doltgresql/utils"
 )
 
 var ErrTypeAlreadyExists = errors.NewKind(`type "%s" already exists`)
 var ErrTypeDoesNotExist = errors.NewKind(`type "%s" does not exist`)
-
 var ErrUnhandledType = errors.NewKind(`%s: unhandled type: %T`)
 var ErrInvalidSyntaxForType = errors.NewKind(`invalid input syntax for type %s: %q`)
 var ErrValueIsOutOfRangeForType = errors.NewKind(`value %q is out of range for type %s`)
+var ErrTypmodArrayMustBe1D = errors.NewKind(`typmod array must be one-dimensional`)
+var ErrInvalidTypeModifier = errors.NewKind(`invalid %s type modifier`)
 
 // DoltgresType represents a single type.
 type DoltgresType struct {
@@ -73,9 +75,18 @@ type DoltgresType struct {
 	Checks        []*sql.CheckDefinition // TODO: this is not part of `pg_type` instead `pg_constraint` for Domain types.
 
 	// These are for internal use
-	isSerial     bool // TODO: to replace serial types
-	isUnresolved bool
+	isSerial            bool // TODO: to replace serial types
+	isUnresolved        bool
+	nonDomainTypMod     int32 // TODO: where do we store this if not here?
+	baseTypeForInternal uint32
 }
+
+var IoOutput func(ctx *sql.Context, t DoltgresType, val any) (string, error)
+var IoReceive func(ctx *sql.Context, t DoltgresType, val any) (any, error)
+var IoSend func(ctx *sql.Context, t DoltgresType, val any) ([]byte, error)
+var IoCompare func(ctx *sql.Context, t DoltgresType, v1, v2 any) (int, error)
+var TypModIn func(ctx *sql.Context, t DoltgresType, val []any) (any, error)
+var TypModOut func(ctx *sql.Context, t DoltgresType, val int32) (any, error)
 
 var _ types.ExtendedType = DoltgresType{}
 
@@ -137,13 +148,14 @@ func (t DoltgresType) IsValidForPolymorphicType(target DoltgresType) bool {
 	if t.TypType != TypeType_Pseudo {
 		return false
 	}
-	if t.Name == "anyarray" {
+	switch oid.Oid(t.OID) {
+	case oid.T_anyarray:
 		return target.TypCategory == TypeCategory_ArrayTypes
-	} else if t.Name == "anynonarray" {
+	case oid.T_anynonarray:
 		return target.TypCategory != TypeCategory_ArrayTypes
-	} else if t.Name == "anyelement" {
+	case oid.T_anyelement, oid.T_any, oid.T_internal:
 		return true
-	} else {
+	default:
 		return false
 	}
 }
@@ -159,26 +171,17 @@ func (t DoltgresType) ToArrayType() (DoltgresType, bool) {
 
 // CollationCoercibility implements the types.ExtendedType interface.
 func (t DoltgresType) CollationCoercibility(ctx *sql.Context) (collation sql.CollationID, coercibility byte) {
-	// TODO: seems all types are the same??
 	return sql.Collation_binary, 5
 }
-
-var IoCompare func(ctx *sql.Context, t DoltgresType, v1, v2 any) (int, error)
 
 // Compare implements the types.ExtendedType interface.
 func (t DoltgresType) Compare(v1 interface{}, v2 interface{}) (int, error) {
 	return IoCompare(sql.NewEmptyContext(), t, v1, v2)
 }
 
-var IoReceive func(ctx *sql.Context, t DoltgresType, val any) (any, error)
-
 // Convert implements the types.ExtendedType interface.
 func (t DoltgresType) Convert(v interface{}) (interface{}, sql.ConvertInRange, error) {
-	val, err := IoReceive(sql.NewEmptyContext(), t, v)
-	if err != nil {
-		return nil, false, err
-	}
-	return val, true, nil
+	return v, true, nil
 }
 
 // Equals implements the types.ExtendedType interface.
@@ -188,8 +191,6 @@ func (t DoltgresType) Equals(otherType sql.Type) bool {
 	}
 	return false
 }
-
-var IoOutput func(ctx *sql.Context, t DoltgresType, val any) (string, error)
 
 // FormatValue implements the types.ExtendedType interface.
 func (t DoltgresType) FormatValue(val any) (string, error) {
@@ -202,13 +203,37 @@ func (t DoltgresType) FormatValue(val any) (string, error) {
 // MaxSerializedWidth implements the types.ExtendedType interface.
 func (t DoltgresType) MaxSerializedWidth() types.ExtendedTypeSerializedWidth {
 	// TODO
-	return types.ExtendedTypeSerializedWidth_64K
+	switch t.TypCategory {
+	case TypeCategory_ArrayTypes:
+		return types.ExtendedTypeSerializedWidth_Unbounded
+	case TypeCategory_BooleanTypes:
+		return types.ExtendedTypeSerializedWidth_64K
+	case TypeCategory_CompositeTypes, TypeCategory_EnumTypes, TypeCategory_GeometricTypes, TypeCategory_NetworkAddressTypes,
+		TypeCategory_RangeTypes, TypeCategory_PseudoTypes, TypeCategory_UserDefinedTypes, TypeCategory_BitStringTypes,
+		TypeCategory_InternalUseTypes:
+		return types.ExtendedTypeSerializedWidth_Unbounded
+	case TypeCategory_DateTimeTypes:
+		return types.ExtendedTypeSerializedWidth_64K
+	case TypeCategory_NumericTypes:
+		return types.ExtendedTypeSerializedWidth_64K
+	case TypeCategory_StringTypes, TypeCategory_UnknownTypes:
+		return types.ExtendedTypeSerializedWidth_Unbounded
+	case TypeCategory_TimespanTypes:
+		return types.ExtendedTypeSerializedWidth_64K
+	default:
+		// shouldn't happen
+		return types.ExtendedTypeSerializedWidth_Unbounded
+	}
 }
 
 // MaxTextResponseByteLength implements the types.ExtendedType interface.
 func (t DoltgresType) MaxTextResponseByteLength(ctx *sql.Context) uint32 {
 	// TODO
-	return 1
+	if t.Length == -1 {
+		return math.MaxUint32
+	} else {
+		return uint32(t.Length)
+	}
 }
 
 // Promote implements the types.ExtendedType interface.
@@ -306,8 +331,6 @@ func (t DoltgresType) Zero() interface{} {
 	}
 }
 
-var IoSend func(ctx *sql.Context, t DoltgresType, val any) ([]byte, error)
-
 // SerializeValue implements the types.ExtendedType interface.
 func (t DoltgresType) SerializeValue(val any) ([]byte, error) {
 	if val == nil {
@@ -323,16 +346,26 @@ func (t DoltgresType) SerializeValue(val any) ([]byte, error) {
 
 // DeserializeValue implements the types.ExtendedType interface.
 func (t DoltgresType) DeserializeValue(val []byte) (any, error) {
-	// TODO: how to deserialize?
 	if len(val) == 0 {
 		return nil, nil
 	}
-	reader := utils.NewReader(val)
-	return reader.String(), nil
+	return IoReceive(sql.NewEmptyContext(), t, val)
 }
 
 // IsSerial returns whether the type is serial type.
 // This is true for int16serial, int32serial and int64serial types.
 func (t DoltgresType) IsSerial() bool {
 	return t.isSerial
+}
+
+func (t DoltgresType) SetDefinedTypeModifier(tm int32) {
+	t.nonDomainTypMod = tm
+}
+
+func (t DoltgresType) DefinedTypeModifier() int32 {
+	return t.nonDomainTypMod
+}
+
+func (t DoltgresType) BaseTypeForInternalType() uint32 {
+	return t.baseTypeForInternal
 }

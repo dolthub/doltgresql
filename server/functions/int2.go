@@ -15,6 +15,7 @@
 package functions
 
 import (
+	"encoding/binary"
 	"strconv"
 	"strings"
 
@@ -72,12 +73,11 @@ var int2recv = framework.Function1{
 	Parameters: [1]pgtypes.DoltgresType{pgtypes.Internal},
 	Strict:     true,
 	Callable: func(ctx *sql.Context, _ [2]pgtypes.DoltgresType, val any) (any, error) {
-		switch val := val.(type) {
-		case int16:
-			return val, nil
-		default:
-			return nil, pgtypes.ErrUnhandledType.New("int2", val)
+		data := val.([]byte)
+		if len(data) == 0 {
+			return nil, nil
 		}
+		return int16(binary.BigEndian.Uint16(data) - (1 << 15)), nil
 	},
 }
 
@@ -88,7 +88,9 @@ var int2send = framework.Function1{
 	Parameters: [1]pgtypes.DoltgresType{pgtypes.Int16},
 	Strict:     true,
 	Callable: func(ctx *sql.Context, _ [2]pgtypes.DoltgresType, val any) (any, error) {
-		return []byte(strconv.FormatInt(int64(val.(int16)), 10)), nil
+		retVal := make([]byte, 2)
+		binary.BigEndian.PutUint16(retVal, uint16(val.(int16))+(1<<15))
+		return retVal, nil
 	},
 }
 

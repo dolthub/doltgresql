@@ -71,12 +71,15 @@ var date_recv = framework.Function1{
 	Parameters: [1]pgtypes.DoltgresType{pgtypes.Internal},
 	Strict:     true,
 	Callable: func(ctx *sql.Context, _ [2]pgtypes.DoltgresType, val any) (any, error) {
-		switch v := val.(type) {
-		case time.Time:
-			return v, nil
-		default:
-			return nil, pgtypes.ErrUnhandledType.New("date", v)
+		data := val.([]byte)
+		if len(data) == 0 {
+			return nil, nil
 		}
+		t := time.Time{}
+		if err := t.UnmarshalBinary(data); err != nil {
+			return nil, err
+		}
+		return t, nil
 	},
 }
 
@@ -87,7 +90,7 @@ var date_send = framework.Function1{
 	Parameters: [1]pgtypes.DoltgresType{pgtypes.Date},
 	Strict:     true,
 	Callable: func(ctx *sql.Context, _ [2]pgtypes.DoltgresType, val any) (any, error) {
-		return []byte(val.(time.Time).Format("2006-01-02")), nil
+		return val.(time.Time).MarshalBinary()
 	},
 }
 

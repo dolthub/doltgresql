@@ -15,6 +15,7 @@
 package functions
 
 import (
+	"github.com/dolthub/doltgresql/utils"
 	"strings"
 
 	"github.com/dolthub/go-mysql-server/sql"
@@ -70,33 +71,32 @@ var charrecv = framework.Function1{
 	Parameters: [1]pgtypes.DoltgresType{pgtypes.Internal},
 	Strict:     true,
 	Callable: func(ctx *sql.Context, _ [2]pgtypes.DoltgresType, val any) (any, error) {
-		switch v := val.(type) {
-		case string:
-			return v, nil
-		default:
-			return nil, pgtypes.ErrUnhandledType.New("char", v)
+		data := val.([]byte)
+		if len(data) == 0 {
+			return nil, nil
 		}
+		reader := utils.NewReader(data)
+		return reader.String(), nil
 	},
 }
 
 // charsend represents the PostgreSQL function of "char" type IO send.
 var charsend = framework.Function1{
-	Name:       "byteasend",
+	Name:       "charsend",
 	Return:     pgtypes.Bytea,
 	Parameters: [1]pgtypes.DoltgresType{pgtypes.InternalChar},
 	Strict:     true,
 	Callable: func(ctx *sql.Context, _ [2]pgtypes.DoltgresType, val any) (any, error) {
 		str := val.(string)
-		if uint32(len(str)) > pgtypes.InternalCharLength {
-			return str[:pgtypes.InternalCharLength], nil
-		}
-		return []byte(str), nil
+		writer := utils.NewWriter(uint64(len(str) + 4))
+		writer.String(str)
+		return writer.Data(), nil
 	},
 }
 
 // btcharcmp represents the PostgreSQL function of "char" type compare.
 var btcharcmp = framework.Function2{
-	Name:       "charcmp",
+	Name:       "btcharcmp",
 	Return:     pgtypes.Int32,
 	Parameters: [2]pgtypes.DoltgresType{pgtypes.InternalChar, pgtypes.InternalChar},
 	Strict:     true,

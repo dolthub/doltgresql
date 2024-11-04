@@ -2,7 +2,7 @@ package types
 
 import "github.com/lib/pq/oid"
 
-// Internal is an internal type. // TODO: internal means it accepts 'any' type??
+// Internal is an internal type, which means `external binary` type.
 var Internal = DoltgresType{
 	OID:           uint32(oid.T_internal),
 	Name:          "internal",
@@ -37,4 +37,10 @@ var Internal = DoltgresType{
 	Default:       "",
 	Acl:           "",
 	Checks:        nil,
+}
+
+func NewInternalTypeWithBaseType(t uint32) DoltgresType {
+	it := Internal
+	it.baseTypeForInternal = t
+	return it
 }

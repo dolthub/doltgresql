@@ -38,8 +38,12 @@ var _ sql.Expression = (*Array)(nil)
 // NewArray returns a new *Array.
 func NewArray(coercedType sql.Type) (*Array, error) {
 	var arrayCoercedType pgtypes.DoltgresType
-	if dat, ok := coercedType.(pgtypes.DoltgresType); ok && dat.IsArrayType() {
-		arrayCoercedType = dat
+	if dt, ok := coercedType.(pgtypes.DoltgresType); ok {
+		if dt.IsArrayType() {
+			arrayCoercedType = dt
+		} else if !dt.EmptyType() {
+			return nil, fmt.Errorf("cannot cast array to %s", coercedType.String())
+		}
 	} else if coercedType != nil {
 		return nil, fmt.Errorf("cannot cast array to %s", coercedType.String())
 	}

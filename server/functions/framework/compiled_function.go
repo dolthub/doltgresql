@@ -617,6 +617,8 @@ func (c *CompiledFunction) resolvePolymorphicReturnType(functionInterfaceTypes [
 		// Array types will return themselves, so this is safe
 		if firstPolymorphicType.IsArrayType() {
 			return firstPolymorphicType
+		} else if firstPolymorphicType.OID == uint32(oid.T_internal) {
+			return pgtypes.OidToBuildInDoltgresType[firstPolymorphicType.BaseTypeForInternalType()]
 		} else {
 			at, ok := firstPolymorphicType.ToArrayType()
 			if !ok {
@@ -624,6 +626,8 @@ func (c *CompiledFunction) resolvePolymorphicReturnType(functionInterfaceTypes [
 			}
 			return at
 		}
+	case oid.T_any:
+		return firstPolymorphicType
 	default:
 		panic(fmt.Errorf("`%s` is not yet handled during function compilation", returnType.String()))
 	}

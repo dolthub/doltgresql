@@ -66,9 +66,9 @@ func resolveType(ctx *sql.Context, typ types.DoltgresType) (types.DoltgresType, 
 	if err != nil {
 		return types.DoltgresType{}, err
 	}
-	typ, exists := typs.GetType(schema, typ.Name)
+	resolvedTyp, exists := typs.GetType(schema, typ.Name)
 	if !exists {
 		return types.DoltgresType{}, types.ErrTypeDoesNotExist.New(typ.Name)
 	}
-	return typ, nil
+	return resolvedTyp, nil
 }
