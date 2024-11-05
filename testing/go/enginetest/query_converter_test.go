@@ -137,7 +137,64 @@ func convertParentSelect(statement sqlparser.SelectStatement) *tree.Select {
 }
 
 func convertSelect(sel *sqlparser.Select) *tree.SelectClause {
-	panic("implement me")
+	return &tree.SelectClause{
+		Distinct:    sel.QueryOpts.Distinct,
+		Exprs:       convertSelectExprs(sel.SelectExprs),
+		From:        convertFrom(sel.From),
+		Where:       convertWhere(sel.Where),
+		GroupBy:     convertGroupBy(sel.GroupBy),
+		Having:      convertHaving(sel.Having),
+	}
+}
+
+func convertHaving(having *sqlparser.Where) *tree.Where {
+	return convertWhere(having)
+}
+
+func convertGroupBy(groupBy sqlparser.GroupBy) tree.GroupBy {
+	 return convertExprs(sqlparser.Exprs(groupBy))
+}
+
+func convertWhere(where *sqlparser.Where) *tree.Where {
+	if where == nil {
+		return nil
+	}
+	return &tree.Where{
+		Expr: convertExpr(where.Expr),
+	}
+}
+
+func convertFrom(from sqlparser.TableExprs) tree.From {
+	tables := make(tree.TableExprs, len(from))
+	
+	for i, table := range from {
+		tables[i] = convertTableExpr(table)
+	}
+	return tree.From{
+		Tables: tables,
+	}
+}
+
+func convertTableExpr(table sqlparser.TableExpr) tree.TableExpr {
+	switch table := table.(type) {
+	case *sqlparser.AliasedTableExpr:
+		return &tree.AliasedTableExpr{
+			Expr:       nil,
+			As:         tree.AliasClause{
+				Alias: tree.Name(table.As.String()),
+			},
+		}
+	default:
+		panic(fmt.Sprintf("unhandled type: %T", table))
+	}
+}
+
+func convertSelectExprs(exprs sqlparser.SelectExprs) tree.SelectExprs {
+	es := make(tree.SelectExprs, len(exprs))
+	for i, expr := range exprs {
+		es[i] = convertSelectExpr(expr)
+	}
+	return es
 }
 
 func insertValuesToExprs(values sqlparser.Values) []tree.Exprs {
@@ -169,7 +226,8 @@ func convertFuncExpr(val *sqlparser.FuncExpr) tree.Expr {
 	exprs := make(tree.Exprs, len(val.Exprs))
 	
 	for i, expr := range val.Exprs {
-		exprs[i] = convertSelectExpr(expr)
+		e := convertSelectExpr(expr)
+		exprs[i] = e.Expr
 	}
 	return &tree.FuncExpr{
 		Func:      tree.ResolvableFunctionReference{
@@ -179,13 +237,29 @@ func convertFuncExpr(val *sqlparser.FuncExpr) tree.Expr {
 	}
 }
 
-func convertSelectExpr(expr sqlparser.SelectExpr) tree.Expr {
+func convertSelectExpr(expr sqlparser.SelectExpr) tree.SelectExpr {
 	switch val := expr.(type) {
 	case *sqlparser.AliasedExpr:
-		return convertExpr(val.Expr)
+		e := convertExpr(val.Expr)
+		return tree.SelectExpr{
+			Expr: e,
+			As:   tree.UnrestrictedName(val.As.String()),
+		}
+	case *sqlparser.StarExpr:
+		return tree.SelectExpr{
+			Expr: tree.StarExpr(),
+		}
 	default:
 		panic(fmt.Sprintf("unhandled type: %T", val))
 	}
+}
+
+func convertExprs(exprs sqlparser.Exprs) []tree.Expr {
+	es := make([]tree.Expr, len(exprs))
+	for i, expr := range exprs {
+		es[i] = convertExpr(expr)
+	}
+	return es
 }
 
 func convertExpr(expr sqlparser.Expr) tree.Expr {
@@ -196,8 +270,45 @@ func convertExpr(expr sqlparser.Expr) tree.Expr {
 		return tree.NewStrVal(val.Name.String())
 	case *sqlparser.FuncExpr:
 		return convertFuncExpr(val)
+	case *sqlparser.ValuesFuncExpr:
+		return tree.NewStrVal(val.Name.String())
+	case *sqlparser.BinaryExpr:
+		return convertBinaryExpr(val)
 	default:
 		panic(fmt.Sprintf("unhandled type: %T", val))
+	}
+}
+
+func convertBinaryExpr(val *sqlparser.BinaryExpr) tree.Expr {
+	var op tree.BinaryOperator	
+	switch val.Operator {
+	case sqlparser.BitAndStr:
+		op = tree.Bitand
+	case sqlparser.BitOrStr:
+		op = tree.Bitor
+	case sqlparser.BitXorStr:
+		op = tree.Bitxor
+	case sqlparser.PlusStr:
+		op = tree.Plus
+	case sqlparser.MinusStr:
+		op = tree.Minus
+	case sqlparser.MultStr:
+		op = tree.Mult
+	case sqlparser.DivStr:
+		op = tree.Div
+	case sqlparser.ModStr:
+		op = tree.Mod
+	case sqlparser.ShiftLeftStr:
+		op = tree.LShift
+	case sqlparser.ShiftRightStr:
+		op = tree.RShift
+	}
+	
+	return &tree.BinaryExpr{
+		Operator: op,
+		Left:     convertExpr(val.Left),
+		Right:    convertExpr(val.Right),
+		// Fn:       nil,
 	}
 }
 
