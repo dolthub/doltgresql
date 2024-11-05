@@ -1140,6 +1140,18 @@ func TestConvertQuery(t *testing.T) {
 				"SET dolt_transaction_commit = 'off'",
 			},
 		},
+		{
+			input: "INSERT INTO foo (a, b) VALUES (1, 2), (3, 4) on duplicate key update a = 5",
+			expected: []string{
+				"INSERT INTO foo(a, b) VALUES (1, 2), (3, 4) ON CONFLICT (fake) DO UPDATE SET a = 5",
+			},
+		},
+		{
+			input: "INSERT INTO foo VALUES (1, 2), (3, 4) on duplicate key update a = 5",
+			expected: []string{
+				"INSERT INTO foo VALUES (1, 2), (3, 4) ON CONFLICT (fake) DO UPDATE SET a = 5",
+			},
+		},
 	}
 
 	for _, test := range tests {
