@@ -90,15 +90,14 @@ func main() {
 		(float64(fromFail)/float64(fromTotal))*100.0,
 		(float64(toFail)/float64(toTotal))*100.0))
 	if len(trackersFrom) == len(trackersTo) {
+		// Handle regressions (which we'll display first)
 		foundAnyFailDiff := false
-		foundAnySuccessDiff := false
 		for trackerIdx := range trackersFrom {
 			// They're sorted, so this should always hold true.
 			// This will really only fail if the tests were updated.
 			if trackersFrom[trackerIdx].File != trackersTo[trackerIdx].File {
 				continue
 			}
-			// Handle regressions (which we'll display first)
 			foundFileDiff := false
 			fromFailItems := make(map[string]struct{})
 			for _, trackerFromItem := range trackersFrom[trackerIdx].FailPartialItems {
@@ -127,8 +126,16 @@ func main() {
 					sb.WriteString("```\n")
 				}
 			}
-			// Handle progressions (which we'll display second)
-			foundFileDiff = false
+		}
+		// Handle progressions (which we'll display second)
+		foundAnySuccessDiff := false
+		for trackerIdx := range trackersFrom {
+			// They're sorted, so this should always hold true.
+			// This will really only fail if the tests were updated.
+			if trackersFrom[trackerIdx].File != trackersTo[trackerIdx].File {
+				continue
+			}
+			foundFileDiff := false
 			fromSuccessItems := make(map[string]struct{})
 			for _, trackerFromItem := range trackersFrom[trackerIdx].SuccessItems {
 				fromSuccessItems[trackerFromItem.Query] = struct{}{}
