@@ -40,11 +40,6 @@ var ErrVitessChildCount = errors.NewKind("invalid vitess child count, expected `
 var _ sql.ExecSourceRel = (*AlterRole)(nil)
 var _ vitess.Injectable = (*AlterRole)(nil)
 
-// CheckPrivileges implements the interface sql.ExecSourceRel.
-func (c *AlterRole) CheckPrivileges(ctx *sql.Context, opChecker sql.PrivilegedOperationChecker) bool {
-	return true
-}
-
 // Children implements the interface sql.ExecSourceRel.
 func (c *AlterRole) Children() []sql.Node {
 	return nil

@@ -35,11 +35,6 @@ func NewContextRootFinalizer(child sql.Node) *ContextRootFinalizer {
 	}
 }
 
-// CheckPrivileges implements the interface sql.ExecSourceRel.
-func (rf *ContextRootFinalizer) CheckPrivileges(ctx *sql.Context, opChecker sql.PrivilegedOperationChecker) bool {
-	return rf.child.CheckPrivileges(ctx, opChecker)
-}
-
 // Child returns the single child of this node
 func (rf *ContextRootFinalizer) Child() sql.Node {
 	return rf.child
@@ -99,7 +94,7 @@ type rootFinalizerIter struct {
 	childIter sql.RowIter
 }
 
-var _ sql.RowIter = (*rootFinalizerIter)(nil)
+var _ sql.MutableRowIter = (*rootFinalizerIter)(nil)
 
 // Next implements the interface sql.RowIter.
 func (r *rootFinalizerIter) Next(ctx *sql.Context) (sql.Row, error) {
@@ -114,4 +109,16 @@ func (r *rootFinalizerIter) Close(ctx *sql.Context) error {
 		return err
 	}
 	return core.CloseContextRootFinalizer(ctx)
+}
+
+// GetChildIter implements the interface sql.CustomRowIter.
+func (r *rootFinalizerIter) GetChildIter() sql.RowIter {
+	return r.childIter
+}
+
+// WithChildIter implements the interface sql.CustomRowIter.
+func (r *rootFinalizerIter) WithChildIter(childIter sql.RowIter) sql.RowIter {
+	nr := *r
+	nr.childIter = childIter
+	return &nr
 }

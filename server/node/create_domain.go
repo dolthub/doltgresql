@@ -41,11 +41,6 @@ type CreateDomain struct {
 var _ sql.ExecSourceRel = (*CreateDomain)(nil)
 var _ vitess.Injectable = (*CreateDomain)(nil)
 
-// CheckPrivileges implements the interface sql.ExecSourceRel.
-func (c *CreateDomain) CheckPrivileges(ctx *sql.Context, opChecker sql.PrivilegedOperationChecker) bool {
-	return true
-}
-
 // Children implements the interface sql.ExecSourceRel.
 func (c *CreateDomain) Children() []sql.Node {
 	return nil

@@ -798,6 +798,10 @@ func (d *DoltgresQueryEngine) EngineAnalyzer() *analyzer.Analyzer {
 	}
 }
 
+func (d *DoltgresQueryEngine) EngineEventScheduler() sql.EventScheduler {
+	return nil
+}
+
 func (d *DoltgresQueryEngine) EnginePreparedDataCache() *gms.PreparedDataCache {
 	panic("implement me")
 }

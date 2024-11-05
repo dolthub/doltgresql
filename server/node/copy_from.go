@@ -30,6 +30,8 @@ import (
 	"github.com/dolthub/doltgresql/postgres/parser/sem/tree"
 )
 
+// TODO: Privilege Checking: https://www.postgresql.org/docs/15/sql-copy.html
+
 // CopyFrom handles the COPY ... FROM ... statement.
 type CopyFrom struct {
 	DatabaseName string
@@ -62,13 +64,6 @@ func NewCopyFrom(databaseName string, tableName doltdb.TableName, options tree.C
 		Columns:      columns,
 		CopyOptions:  options,
 	}
-}
-
-// CheckPrivileges implements the interface sql.ExecSourceRel.
-func (cf *CopyFrom) CheckPrivileges(ctx *sql.Context, opChecker sql.PrivilegedOperationChecker) bool {
-	// https://www.postgresql.org/docs/15/sql-copy.html
-	// ... database superusers or users who are granted one of the roles `pg_read_server_files`, `pg_write_server_files`, or `pg_execute_server_program` ...
-	return true
 }
 
 // Children implements the interface sql.ExecSourceRel.

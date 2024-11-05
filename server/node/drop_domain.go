@@ -48,11 +48,6 @@ func NewDropDomain(ifExists bool, db string, schema string, domain string, casca
 	}
 }
 
-// CheckPrivileges implements the interface sql.ExecSourceRel.
-func (c *DropDomain) CheckPrivileges(ctx *sql.Context, opChecker sql.PrivilegedOperationChecker) bool {
-	return true
-}
-
 // Children implements the interface sql.ExecSourceRel.
 func (c *DropDomain) Children() []sql.Node {
 	return nil
