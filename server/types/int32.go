@@ -53,4 +53,6 @@ var Int32 = DoltgresType{
 	Default:       "",
 	Acl:           "",
 	Checks:        nil,
+
+	internalName: "integer",
 }

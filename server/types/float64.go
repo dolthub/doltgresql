@@ -53,4 +53,6 @@ var Float64 = DoltgresType{
 	Default:       "",
 	Acl:           "",
 	Checks:        nil,
+
+	internalName: "double precision",
 }

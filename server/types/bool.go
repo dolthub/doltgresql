@@ -52,4 +52,6 @@ var Bool = DoltgresType{
 	Default:       "",
 	Acl:           "",
 	Checks:        nil,
+
+	internalName: "boolean",
 }

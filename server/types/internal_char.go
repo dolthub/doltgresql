@@ -56,4 +56,6 @@ var InternalChar = DoltgresType{
 	Default:       "",
 	Acl:           "",
 	Checks:        nil,
+
+	internalName: `"char"`,
 }

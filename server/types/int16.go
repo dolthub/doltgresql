@@ -53,4 +53,6 @@ var Int16 = DoltgresType{
 	Default:       "",
 	Acl:           "",
 	Checks:        nil,
+
+	internalName: "smallint",
 }

@@ -53,5 +53,7 @@ func CreateArrayTypeFromBaseType(baseType DoltgresType) DoltgresType {
 		Default:       "",
 		Acl:           "",
 		Checks:        nil,
+
+		internalName: fmt.Sprintf("%s[]", baseType.String()),
 	}
 }

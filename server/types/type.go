@@ -16,6 +16,8 @@ package types
 
 import (
 	"bytes"
+	"fmt"
+	"github.com/dolthub/doltgresql/postgres/parser/uuid"
 	"github.com/lib/pq/oid"
 	"math"
 	"reflect"
@@ -79,6 +81,7 @@ type DoltgresType struct {
 	isUnresolved        bool
 	nonDomainTypMod     int32 // TODO: where do we store this if not here?
 	baseTypeForInternal uint32
+	internalName        string // TODO?
 }
 
 var IoOutput func(ctx *sql.Context, t DoltgresType, val any) (string, error)
@@ -181,7 +184,67 @@ func (t DoltgresType) Compare(v1 interface{}, v2 interface{}) (int, error) {
 
 // Convert implements the types.ExtendedType interface.
 func (t DoltgresType) Convert(v interface{}) (interface{}, sql.ConvertInRange, error) {
-	return v, true, nil
+	if v == nil {
+		return nil, sql.InRange, nil
+	}
+	// TODO: should assignment cast, but need info on 'from type'
+	switch oid.Oid(t.OID) {
+	case oid.T_bool:
+		if _, ok := v.(bool); ok {
+			return v, sql.InRange, nil
+		}
+	case oid.T_bytea:
+		if _, ok := v.([]byte); ok {
+			return v, sql.InRange, nil
+		}
+	case oid.T_bpchar, oid.T_char, oid.T_json, oid.T_name, oid.T_text, oid.T_unknown, oid.T_varchar:
+		if _, ok := v.(string); ok {
+			return v, sql.InRange, nil
+		}
+	case oid.T_date, oid.T_time, oid.T_timestamp, oid.T_timestamptz, oid.T_timetz:
+		if _, ok := v.(time.Time); ok {
+			return v, sql.InRange, nil
+		}
+	case oid.T_float4:
+		if _, ok := v.(float32); ok {
+			return v, sql.InRange, nil
+		}
+	case oid.T_float8:
+		if _, ok := v.(float64); ok {
+			return v, sql.InRange, nil
+		}
+	case oid.T_int2:
+		if _, ok := v.(int16); ok {
+			return v, sql.InRange, nil
+		}
+	case oid.T_int4:
+		if _, ok := v.(int32); ok {
+			return v, sql.InRange, nil
+		}
+	case oid.T_int8:
+		if _, ok := v.(int64); ok {
+			return v, sql.InRange, nil
+		}
+	case oid.T_interval:
+		if _, ok := v.(duration.Duration); ok {
+			return v, sql.InRange, nil
+		}
+	case oid.T_jsonb:
+		if _, ok := v.(JsonDocument); ok {
+			return v, sql.InRange, nil
+		}
+	case oid.T_oid, oid.T_regclass, oid.T_regproc, oid.T_regtype, oid.T_xid:
+		if _, ok := v.(uint32); ok {
+			return v, sql.InRange, nil
+		}
+	case oid.T_uuid:
+		if _, ok := v.(uuid.UUID); ok {
+			return v, sql.InRange, nil
+		}
+	default:
+		return v, sql.InRange, nil
+	}
+	return nil, sql.OutOfRange, fmt.Errorf("%s: unhandled type: %T", t.String(), v)
 }
 
 // Equals implements the types.ExtendedType interface.
@@ -269,7 +332,10 @@ func (t DoltgresType) SQL(ctx *sql.Context, dest []byte, v interface{}) (sqltype
 
 // String implements the types.ExtendedType interface.
 func (t DoltgresType) String() string {
-	return t.Name
+	if t.internalName == "" {
+		return t.Name
+	}
+	return t.internalName
 }
 
 // Type implements the types.ExtendedType interface.

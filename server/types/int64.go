@@ -53,4 +53,6 @@ var Int64 = DoltgresType{
 	Default:       "",
 	Acl:           "",
 	Checks:        nil,
+
+	internalName: "bigint",
 }
