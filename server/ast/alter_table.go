@@ -285,3 +285,47 @@ func nodeAlterTableSetNotNull(node *tree.AlterTableSetNotNull, tableName vitess.
 		},
 	}, nil
 }
+
+// nodeAlterTableSetNotNull converts a tree.AlterTablePartition instance into an equivalent vitess.DDL instance.
+func nodeAlterTablePartition(node *tree.AlterTablePartition) (*vitess.AlterTable, error) {
+	if node == nil {
+		return nil, nil
+	}
+
+	// TODO: This is an incomplete translation because our GMS implementation doesn't support the MySQL
+	//   equivalent of these statements either. Regardless, these are all no-ops.
+	treeTableName := node.Name.ToTableName()
+	tableName, err := nodeTableName(&treeTableName)
+	if err != nil {
+		return nil, err
+	}
+
+	switch node.Spec.Type {
+	case tree.PartitionBoundIn:
+	case tree.PartitionBoundFromTo:
+	case tree.PartitionBoundWith:
+	default:
+		return nil, fmt.Errorf("ALTER TABLE with unsupported partition type %v", node.Spec.Type)
+	}
+
+	partitionDef := &vitess.PartitionDefinition{
+		Name: vitess.NewColIdent(node.Partition.String()),
+	}
+
+	actionStr := ""
+	if node.IsDetach {
+		actionStr = vitess.DropStr
+	} else {
+		actionStr = vitess.AddStr
+	}
+
+	partitionSpec := &vitess.PartitionSpec{
+		Action:      actionStr,
+		Definitions: []*vitess.PartitionDefinition{partitionDef},
+	}
+
+	return &vitess.AlterTable{
+		Table:          tableName,
+		PartitionSpecs: []*vitess.PartitionSpec{partitionSpec},
+	}, nil
+}

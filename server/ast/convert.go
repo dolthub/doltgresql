@@ -44,6 +44,8 @@ func Convert(postgresStmt parser.Statement) (vitess.Statement, error) {
 		return nodeAlterSequence(stmt)
 	case *tree.AlterTable:
 		return nodeAlterTable(stmt)
+	case *tree.AlterTablePartition:
+		return nodeAlterTablePartition(stmt)
 	case *tree.AlterTableSetSchema:
 		return nodeAlterTableSetSchema(stmt)
 	case *tree.AlterType:
