@@ -286,12 +286,14 @@ func nodeAlterTableSetNotNull(node *tree.AlterTableSetNotNull, tableName vitess.
 	}, nil
 }
 
-// nodeAlterTableSetNotNull converts a tree.AlterTableSetNotNull instance into an equivalent vitess.DDL instance.
+// nodeAlterTableSetNotNull converts a tree.AlterTablePartition instance into an equivalent vitess.DDL instance.
 func nodeAlterTablePartition(node *tree.AlterTablePartition) (*vitess.AlterTable, error) {
 	if node == nil {
 		return nil, nil
 	}
 
+	// TODO: This is an incomplete translation because our GMS implementation doesn't support the MySQL
+	//   equivalent of these statements either. Regardless, these are all no-ops.
 	treeTableName := node.Name.ToTableName()
 	tableName, err := nodeTableName(&treeTableName)
 	if err != nil {
