@@ -118,7 +118,7 @@ func TestUserSpaceDoltTables(t *testing.T) {
 			},
 			Assertions: []ScriptTestAssertion{
 				{
-					// TODO: WITH is not yet supported (SQLSTATE XX000)
+					// TODO: WITH is not yet supported
 					Query: `WITH sorted_diffs_by_pk
 									AS (SELECT
 													"to_id",
@@ -148,85 +148,48 @@ func TestUserSpaceDoltTables(t *testing.T) {
 					Expected: []sql.Row{{1, "John Doe", "johndoe@example.com", "test commit"}},
 				},
 				{
-					Query:    `SELECT id, committer FROM dolt.blame_test`,
-					Expected: []sql.Row{{1, "John Doe"}},
-				},
-				{
 					Query:    `SELECT id, committer FROM dolt_blame_test`,
-					Expected: []sql.Row{{1, "John Doe"}},
+					Expected: []sql.Row{{10, "John Doe"}},
 				},
 				{
-					Query:    `SELECT blame_test.name FROM dolt.blame_test`,
-					Expected: []sql.Row{{"main"}},
+					Query:    `SELECT id, committer FROM public.dolt_blame_test`,
+					Expected: []sql.Row{{10, "John Doe"}},
 				},
 				{
-					Skip:     true, // TODO: referencing items outside the schema or database is not yet supported
-					Query:    `SELECT dolt.blame_test.name FROM dolt.blame_test`,
-					Expected: []sql.Row{{"main"}},
+					Query:    `SELECT dolt_blame_test.id FROM public.dolt_blame_test`,
+					Expected: []sql.Row{{10}},
 				},
 				{
-					Query:    `SELECT dolt_blame_test.name FROM dolt_blame_test`,
-					Expected: []sql.Row{{"main"}},
-				},
-				{
-					Query:       `SELECT * FROM public.blame_test`,
+					Query:       `SELECT * FROM other.dolt_blame_test`,
 					ExpectedErr: "table not found",
 				},
 				{
-					Query:       `SELECT * FROM blame_test`,
-					ExpectedErr: "table not found",
-				},
-				{
-					Query:    `CREATE TABLE blame_test (id INT PRIMARY KEY)`,
+					Query:    `CREATE SCHEMA newschema`,
 					Expected: []sql.Row{},
 				},
 				{
-					Query:    `INSERT INTO blame_test VALUES (1)`,
+					Query:    "SET search_path = 'newschema'",
 					Expected: []sql.Row{},
 				},
 				{
-					Query:    `SELECT * FROM blame_test`,
-					Expected: []sql.Row{{1}},
-				},
-				{
-					Query:    `SELECT name FROM dolt.blame_test`,
-					Expected: []sql.Row{{"main"}},
-				},
-				{
-					Query:       `CREATE SCHEMA dolt`,
-					ExpectedErr: "schema exists",
-				},
-				{
-					Query:    "SET search_path = 'dolt'",
+					Query:    `CREATE TABLE test_sch (id INT PRIMARY KEY)`,
 					Expected: []sql.Row{},
 				},
 				{
-					Query:    `SELECT name FROM blame_test`,
-					Expected: []sql.Row{{"main"}},
-				},
-				{
-					Query:    `SELECT * FROM public.blame_test`,
-					Expected: []sql.Row{{1}},
-				},
-				{
-					Query:    "SET search_path = 'public'",
+					Query:    `INSERT INTO test_sch VALUES (11)`,
 					Expected: []sql.Row{},
 				},
 				{
-					Query:    `SELECT * FROM blame_test`,
-					Expected: []sql.Row{{1}},
-				},
-				{
-					Query:    "SET search_path = 'public,dolt'",
+					Query:    `SELECT dolt_commit('-Am', 'add test_sch')`,
 					Expected: []sql.Row{},
 				},
 				{
-					Query:    `SELECT * FROM blame_test`,
-					Expected: []sql.Row{{1}},
+					Query:    `SELECT id FROM newschema.dolt_blame_test_sch`,
+					Expected: []sql.Row{{11}},
 				},
 				{
-					Query:    `SELECT * FROM BLAME_TEST`,
-					Expected: []sql.Row{{1}},
+					Query:    `SELECT id, committer FROM public.dolt_blame_test`,
+					Expected: []sql.Row{{10, "John Doe"}},
 				},
 			},
 		},
@@ -387,6 +350,81 @@ func TestUserSpaceDoltTables(t *testing.T) {
 				{
 					Query:    `SELECT * FROM COMMIT_ANCESTORS`,
 					Expected: []sql.Row{{1}},
+				},
+			},
+		},
+		{
+			Skip: true, // TODO: dolt_commit_diff_* tables must be filtered to a single 'to_commit'
+			Name: "dolt commit diff with tablename",
+			SetUpScript: []string{
+				"CREATE TABLE test (id INT PRIMARY KEY)",
+				"INSERT INTO test VALUES (10)",
+				"SELECT dolt_commit('-Am', 'test commit 1')",
+			},
+			Assertions: []ScriptTestAssertion{
+				{
+					Query:    `SELECT from_id, to_id, diff_type FROM dolt_commit_diff_test WHERE from_commit=HASHOF('HEAD^1') AND to_commit=HASHOF('HEAD')`,
+					Expected: []sql.Row{{nil, 10, "added"}},
+				},
+				{
+					Query:    `SELECT from_id, to_id, diff_type FROM public.dolt_commit_diff_test WHERE from_commit=HASHOF('HEAD^1') AND to_commit=HASHOF('HEAD')`,
+					Expected: []sql.Row{{nil, 10, "added"}},
+				},
+				{
+					Query:    `SELECT dolt_commit_diff_test.to_id FROM public.dolt_commit_diff_test WHERE from_commit=HASHOF('HEAD^1') AND to_commit=HASHOF('HEAD')`,
+					Expected: []sql.Row{{10}},
+				},
+				{
+					Query:       `SELECT * FROM other.dolt_commit_diff_test`,
+					ExpectedErr: "database schema not found",
+				},
+				{
+					Query:       `SELECT * FROM public.dolt_commit_diff_none`,
+					ExpectedErr: "table not found",
+				},
+				{
+					Query:    `CREATE SCHEMA newschema`,
+					Expected: []sql.Row{},
+				},
+				{
+					Query:    "SET search_path = 'newschema'",
+					Expected: []sql.Row{},
+				},
+				{
+					Query:    `CREATE TABLE test_sch (id INT PRIMARY KEY)`,
+					Expected: []sql.Row{},
+				},
+				{
+					Query:    `INSERT INTO test_sch VALUES (11)`,
+					Expected: []sql.Row{},
+				},
+				{
+					Query:            `SELECT dolt_commit('-Am', 'add test_sch')`,
+					SkipResultsCheck: true,
+				},
+				{
+					Query:    `SELECT from_id, to_id, diff_type FROM newschema.dolt_commit_diff_test_sch WHERE from_commit=HASHOF('HEAD^1') AND to_commit=HASHOF('HEAD')`,
+					Expected: []sql.Row{{nil, 11, "added"}},
+				},
+				{
+					Query:    `SELECT from_id, to_id, diff_type FROM dolt_commit_diff_test_sch WHERE from_commit=HASHOF('HEAD^1') AND to_commit=HASHOF('HEAD')`,
+					Expected: []sql.Row{{nil, 11, "added"}},
+				},
+				{
+					Query:       `SELECT from_id, to_id, diff_type FROM dolt_commit_diff_test WHERE from_commit=HASHOF('HEAD^1') AND to_commit=HASHOF('HEAD')`,
+					ExpectedErr: "table not found",
+				},
+				{
+					Query:    `SELECT to_id, diff_type FROM public.dolt_commit_diff_test WHERE from_commit=HASHOF('HEAD^2') AND to_commit=HASHOF('HEAD^1')`,
+					Expected: []sql.Row{{11, "added"}},
+				},
+				{
+					Query:       `SELECT to_id FROM public.dolt_commit_diff_test_sch WHERE from_commit=HASHOF('HEAD^2') AND to_commit=HASHOF('HEAD^1')`,
+					ExpectedErr: "table not found",
+				},
+				{
+					Query:       `SELECT to_id, diff_type FROM newschema.dolt_commit_diff_test WHERE from_commit=HASHOF('HEAD^1') AND to_commit=HASHOF('HEAD')`,
+					ExpectedErr: "table not found",
 				},
 			},
 		},
@@ -562,6 +600,98 @@ func TestUserSpaceDoltTables(t *testing.T) {
 			},
 		},
 		{
+			Name: "dolt conflicts with tablename",
+			SetUpScript: []string{
+				"START TRANSACTION",
+				"CREATE TABLE test (id INT PRIMARY KEY, col1 TEXT)",
+				"SELECT dolt_commit('-Am', 'first commit')",
+				"SELECT dolt_branch('b1')",
+				"SELECT dolt_checkout('-b', 'b2')",
+				"INSERT INTO test VALUES (1, 'a')",
+				"SELECT dolt_commit('-Am', 'commit b2')",
+				"SELECT dolt_checkout('b1')",
+				"INSERT INTO test VALUES (1, 'b')",
+				"SELECT dolt_commit('-Am', 'commit b1')",
+				"SELECT dolt_checkout('main')",
+				"SELECT dolt_merge('b1')",
+				"SELECT dolt_merge('b2')",
+			},
+			Assertions: []ScriptTestAssertion{
+				{
+					Query:    `SELECT base_id, base_col1, our_id, our_col1, their_id, their_col1 FROM dolt_conflicts_test`,
+					Expected: []sql.Row{{nil, nil, 1, "b", 1, "a"}},
+				},
+				{
+					Query:    `SELECT our_col1, their_col1 FROM public.dolt_conflicts_test`,
+					Expected: []sql.Row{{"b", "a"}},
+				},
+				{
+					Query:    `SELECT dolt_conflicts_test.their_col1 FROM public.dolt_conflicts_test`,
+					Expected: []sql.Row{{"a"}},
+				},
+				{
+					Query:       `SELECT * FROM other.dolt_conflicts_test`,
+					ExpectedErr: "database schema not found",
+				},
+				{
+					Query:       `SELECT * FROM public.dolt_conflicts_none`,
+					ExpectedErr: "table not found",
+				},
+				{
+					Query:    `DELETE FROM public.dolt_conflicts_test`,
+					Expected: []sql.Row{},
+				},
+				{
+					Query:    `SELECT base_id, base_col1, our_id, our_col1, their_id, their_col1 FROM dolt_conflicts_test`,
+					Expected: []sql.Row{},
+				},
+				{
+					Query:    `CREATE SCHEMA newschema`,
+					Expected: []sql.Row{},
+				},
+				{
+					Query:    "SET search_path = 'newschema'",
+					Expected: []sql.Row{},
+				},
+				{
+					Query:    `CREATE TABLE test_sch (id INT PRIMARY KEY)`,
+					Expected: []sql.Row{},
+				},
+				{
+					Query:    `INSERT INTO test_sch VALUES (11)`,
+					Expected: []sql.Row{},
+				},
+				{
+					Query:            `SELECT dolt_commit('-Am', 'add test_sch')`,
+					SkipResultsCheck: true,
+				},
+				{
+					Query:    `SELECT * FROM newschema.dolt_conflicts_test_sch`,
+					Expected: []sql.Row{},
+				},
+				{
+					Query:    `SELECT * FROM dolt_conflicts_test_sch`,
+					Expected: []sql.Row{},
+				},
+				{
+					Query:       `SELECT * FROM dolt_conflicts_test`,
+					ExpectedErr: "table not found",
+				},
+				{
+					Query:    `SELECT * FROM public.dolt_conflicts_test`,
+					Expected: []sql.Row{},
+				},
+				{
+					Query:       `SELECT id FROM public.dolt_conflicts_test_sch`,
+					ExpectedErr: "table not found",
+				},
+				{
+					Query:       `SELECT * FROM newschema.dolt_conflicts_test`,
+					ExpectedErr: "table not found",
+				},
+			},
+		},
+		{
 			Name: "dolt constraint violations",
 			SetUpScript: []string{
 				"CREATE TABLE otherTable (pk int primary key);",
@@ -653,6 +783,102 @@ func TestUserSpaceDoltTables(t *testing.T) {
 			},
 		},
 		{
+			Name: "dolt constraint violations with tablename",
+			SetUpScript: []string{
+				"CREATE TABLE otherTable (pk int primary key);",
+				"CREATE TABLE test (pk int primary key, col1 int unique);",
+				"SELECT dolt_commit('-Am', 'initial commit');",
+				"SELECT dolt_branch('branch1');",
+				"INSERT INTO test (pk, col1) VALUES (1, 1);",
+				"SELECT dolt_commit('-am', 'insert on main');",
+				"SELECT dolt_checkout('branch1');",
+				"INSERT INTO test (pk, col1) VALUES (2, 1);",
+				"SELECT dolt_commit('-am', 'insert on branch1');",
+				"START TRANSACTION",
+				"SELECT dolt_merge('main', '--squash')",
+			},
+			Assertions: []ScriptTestAssertion{
+				{
+					Query: `SELECT violation_type, pk, col1 FROM dolt_constraint_violations_test`,
+					Expected: []sql.Row{
+						{"unique index", 1, 1},
+						{"unique index", 2, 1},
+					},
+				},
+				{
+					Query: `SELECT violation_type, pk, col1 FROM public.dolt_constraint_violations_test`,
+					Expected: []sql.Row{
+						{"unique index", 1, 1},
+						{"unique index", 2, 1},
+					},
+				},
+				{
+					Query:    `SELECT dolt_constraint_violations_test.violation_type FROM public.dolt_constraint_violations_test`,
+					Expected: []sql.Row{{"unique index"}, {"unique index"}},
+				},
+				{
+					Query:       `SELECT * FROM other.dolt_constraint_violations_test`,
+					ExpectedErr: "database schema not found",
+				},
+				{
+					Query:       `SELECT * FROM public.dolt_constraint_violations_none`,
+					ExpectedErr: "table not found",
+				},
+				{
+					Query:    `DELETE FROM public.dolt_constraint_violations_test`,
+					Expected: []sql.Row{},
+				},
+				{
+					Query:    `SELECT * FROM dolt_constraint_violations_test`,
+					Expected: []sql.Row{},
+				},
+				{
+					Query:    `CREATE SCHEMA newschema`,
+					Expected: []sql.Row{},
+				},
+				{
+					Query:    "SET search_path = 'newschema'",
+					Expected: []sql.Row{},
+				},
+				{
+					Query:    `CREATE TABLE test_sch (id INT PRIMARY KEY)`,
+					Expected: []sql.Row{},
+				},
+				{
+					Query:    `INSERT INTO test_sch VALUES (11)`,
+					Expected: []sql.Row{},
+				},
+				{
+					Query:            `SELECT dolt_commit('-Am', 'add test_sch')`,
+					SkipResultsCheck: true,
+				},
+				{
+					Query:    `SELECT * FROM newschema.dolt_constraint_violations_test_sch`,
+					Expected: []sql.Row{},
+				},
+				{
+					Query:    `SELECT * FROM dolt_constraint_violations_test_sch`,
+					Expected: []sql.Row{},
+				},
+				{
+					Query:       `SELECT * FROM dolt_constraint_violations_test`,
+					ExpectedErr: "table not found",
+				},
+				{
+					Query:    `SELECT * FROM public.dolt_constraint_violations_test`,
+					Expected: []sql.Row{},
+				},
+				{
+					Query:       `SELECT id FROM public.dolt_constraint_violations_test_sch`,
+					ExpectedErr: "table not found",
+				},
+				{
+					Query:       `SELECT * FROM newschema.dolt_constraint_violations_test`,
+					ExpectedErr: "table not found",
+				},
+			},
+		},
+		{
 			Name: "dolt diff",
 			SetUpScript: []string{
 				"CREATE TABLE test (id INT PRIMARY KEY)",
@@ -735,99 +961,32 @@ func TestUserSpaceDoltTables(t *testing.T) {
 			},
 		},
 		{
-			Name: "dolt history with tablename",
+			Name: "dolt diff with tablename",
 			SetUpScript: []string{
 				"CREATE TABLE test (id INT PRIMARY KEY)",
 				"INSERT INTO test VALUES (10)",
-				"SELECT dolt_commit('-Am', 'test commit', '--author', 'John Doe <johndoe@example.com>')",
+				"SELECT dolt_commit('-Am', 'test commit 1')",
 			},
 			Assertions: []ScriptTestAssertion{
 				{
-					Query:    `SELECT id, committer FROM dolt.history_test`,
-					Expected: []sql.Row{{10, "John Doe"}},
+					Query:    `SELECT from_id, to_id, diff_type FROM dolt_diff_test WHERE to_commit=HASHOF('HEAD')`,
+					Expected: []sql.Row{{nil, 10, "added"}},
 				},
 				{
-					Query:    `SELECT id, committer FROM dolt_history_test`,
-					Expected: []sql.Row{{10, "John Doe"}},
+					Query:    `SELECT from_id, to_id, diff_type FROM public.dolt_diff_test WHERE to_commit=HASHOF('HEAD')`,
+					Expected: []sql.Row{{nil, 10, "added"}},
 				},
 				{
-					Query:    `SELECT history_test.id FROM dolt.history_test`,
+					Query:    `SELECT dolt_diff_test.to_id FROM public.dolt_diff_test WHERE to_commit=HASHOF('HEAD')`,
 					Expected: []sql.Row{{10}},
 				},
 				{
-					Skip:     true, // TODO: referencing items outside the schema or database is not yet supported
-					Query:    `SELECT dolt.history_test.id FROM dolt.history_test`,
-					Expected: []sql.Row{{10}},
+					Query:       `SELECT * FROM other.dolt_diff_test`,
+					ExpectedErr: "database schema not found",
 				},
 				{
-					Query:    `SELECT dolt_history_test.id FROM dolt_history_test`,
-					Expected: []sql.Row{{10}},
-				},
-				{
-					Query:       `SELECT * FROM public.history_test`,
+					Query:       `SELECT * FROM public.dolt_diff_none`,
 					ExpectedErr: "table not found",
-				},
-				{
-					Query:       `SELECT * FROM history_test`,
-					ExpectedErr: "table not found",
-				},
-				{
-					Query:    `CREATE TABLE history_test (id INT PRIMARY KEY)`,
-					Expected: []sql.Row{},
-				},
-				{
-					Query:    `INSERT INTO history_test VALUES (1)`,
-					Expected: []sql.Row{},
-				},
-				{
-					Query:    `SELECT * FROM history_test`,
-					Expected: []sql.Row{{1}},
-				},
-				{
-					Query:    `SELECT id FROM dolt.history_test`,
-					Expected: []sql.Row{{10}},
-				},
-				{
-
-					Query:    "SET search_path = 'dolt'",
-					Expected: []sql.Row{},
-				},
-				// TODO: Should this work without public on the search_path?
-				{
-					Query:       `SELECT id FROM history_test`,
-					ExpectedErr: "table not found",
-				},
-				{
-					Query:    "SET search_path = 'dolt,public'",
-					Expected: []sql.Row{},
-				},
-				{
-					Query:    `SELECT id FROM history_test`,
-					Expected: []sql.Row{{10}},
-				},
-				{
-					Query:    `SELECT * FROM public.history_test`,
-					Expected: []sql.Row{{1}},
-				},
-				{
-					Query:    "SET search_path = 'public'",
-					Expected: []sql.Row{},
-				},
-				{
-					Query:    `SELECT * FROM history_test`,
-					Expected: []sql.Row{{1}},
-				},
-				{
-					Query:    "SET search_path = 'public,dolt'",
-					Expected: []sql.Row{},
-				},
-				{
-					Query:    `SELECT * FROM history_test`,
-					Expected: []sql.Row{{1}},
-				},
-				{
-					Query:    `SELECT * FROM HISTORY_TEST`,
-					Expected: []sql.Row{{1}},
 				},
 				{
 					Query:    `CREATE SCHEMA newschema`,
@@ -846,24 +1005,107 @@ func TestUserSpaceDoltTables(t *testing.T) {
 					Expected: []sql.Row{},
 				},
 				{
-					Skip:     true, // TODO: Need way to specify schema of base table
-					Query:    `SELECT id FROM dolt.history_test_sch`,
-					Expected: []sql.Row{{11}},
+					Query:            `SELECT dolt_commit('-Am', 'add test_sch')`,
+					SkipResultsCheck: true,
 				},
 				{
-					Skip:     true, // TODO: Need way to specify schema of base table
-					Query:    `SELECT id FROM dolt_history_test_sch`,
-					Expected: []sql.Row{{11}},
+					Query:    `SELECT from_id, to_id, diff_type FROM newschema.dolt_diff_test_sch WHERE  to_commit=HASHOF('HEAD')`,
+					Expected: []sql.Row{{nil, 11, "added"}},
 				},
 				{
-					Skip:     true, // TODO: Need way to specify schema of base table
-					Query:    `SELECT id, committer FROM dolt.history_test`,
-					Expected: []sql.Row{{10, "John Doe"}},
+					Query:    `SELECT from_id, to_id, diff_type FROM dolt_diff_test_sch WHERE to_commit=HASHOF('HEAD')`,
+					Expected: []sql.Row{{nil, 11, "added"}},
 				},
 				{
-					Skip:     true, // TODO: Need way to specify schema of base table
+					Query:       `SELECT from_id, to_id, diff_type FROM dolt_diff_test WHERE to_commit=HASHOF('HEAD')`,
+					ExpectedErr: "table not found",
+				},
+				{
+					Query:    `SELECT from_id, to_id, diff_type FROM public.dolt_diff_test WHERE to_commit=HASHOF('HEAD^1')`,
+					Expected: []sql.Row{{nil, 10, "added"}},
+				},
+				{
+					Query:       `SELECT to_id FROM public.dolt_diff_test_sch WHERE to_commit=HASHOF('HEAD^1')`,
+					ExpectedErr: "table not found",
+				},
+				{
+					Query:       `SELECT to_id FROM newschema.dolt_diff_test WHERE to_commit=HASHOF('HEAD')`,
+					ExpectedErr: "table not found",
+				},
+			},
+		},
+		{
+			Name: "dolt history with tablename",
+			SetUpScript: []string{
+				"CREATE TABLE test (id INT PRIMARY KEY)",
+				"INSERT INTO test VALUES (10)",
+				"SELECT dolt_commit('-Am', 'test commit', '--author', 'John Doe <johndoe@example.com>')",
+			},
+			Assertions: []ScriptTestAssertion{
+				{
 					Query:    `SELECT id, committer FROM dolt_history_test`,
 					Expected: []sql.Row{{10, "John Doe"}},
+				},
+				{
+					Query:    `SELECT id, committer FROM public.dolt_history_test`,
+					Expected: []sql.Row{{10, "John Doe"}},
+				},
+				{
+					Query:    `SELECT dolt_history_test.id FROM public.dolt_history_test`,
+					Expected: []sql.Row{{10}},
+				},
+				{
+					Query:       `SELECT * FROM other.dolt_history_test`,
+					ExpectedErr: "database schema not found",
+				},
+				{
+					Query:       `SELECT * FROM public.dolt_history_none`,
+					ExpectedErr: "table not found",
+				},
+				{
+					Query:    `CREATE SCHEMA newschema`,
+					Expected: []sql.Row{},
+				},
+				{
+					Query:    "SET search_path = 'newschema'",
+					Expected: []sql.Row{},
+				},
+				{
+					Query:    `CREATE TABLE test_sch (id INT PRIMARY KEY)`,
+					Expected: []sql.Row{},
+				},
+				{
+					Query:    `INSERT INTO test_sch VALUES (11)`,
+					Expected: []sql.Row{},
+				},
+				{
+					Query:            `SELECT dolt_commit('-Am', 'add test_sch', '--author', 'Another Doe <adoe@example.com>')`,
+					SkipResultsCheck: true,
+				},
+				{
+					Query:    `SELECT id, committer FROM newschema.dolt_history_test_sch`,
+					Expected: []sql.Row{{11, "Another Doe"}},
+				},
+				{
+					Query:    `SELECT id, committer FROM dolt_history_test_sch`,
+					Expected: []sql.Row{{11, "Another Doe"}},
+				},
+				{
+					Query:       `SELECT id, committer FROM dolt_history_test`,
+					ExpectedErr: "table not found",
+				},
+				{
+					Skip:     true, // TODO: Returning rows for both commits
+					Query:    `SELECT id, committer FROM public.dolt_history_test`,
+					Expected: []sql.Row{{10, "John Doe"}},
+				},
+				{
+					Query:       `SELECT id FROM public.dolt_history_test_sch`,
+					ExpectedErr: "table not found",
+				},
+				{
+					Query:       `SELECT id, committer FROM newschema.dolt_history_test`,
+					ExpectedErr: "table not found",
 				},
 			},
 		},
@@ -1439,6 +1681,83 @@ func TestUserSpaceDoltTables(t *testing.T) {
 							"NO_ENGINE_SUBSTITUTION,ONLY_FULL_GROUP_BY,STRICT_TRANS_TABLES",
 						},
 					},
+				},
+			},
+		},
+		{
+			Name: "dolt workspace with tablename",
+			SetUpScript: []string{
+				"CREATE TABLE test (id INT PRIMARY KEY)",
+				"INSERT INTO test VALUES (10)",
+			},
+			Assertions: []ScriptTestAssertion{
+				{
+					Query:    `SELECT id, staged, from_id, to_id FROM dolt_workspace_test`,
+					Expected: []sql.Row{{Numeric("0"), 0, nil, 10}},
+				},
+				{
+					Query:    `SELECT id, staged, from_id, to_id FROM public.dolt_workspace_test`,
+					Expected: []sql.Row{{Numeric("0"), 0, nil, 10}},
+				},
+				{
+					Query:    `SELECT dolt_workspace_test.id FROM public.dolt_workspace_test`,
+					Expected: []sql.Row{{Numeric("0")}},
+				},
+				{
+					Query:       `SELECT * FROM other.dolt_workspace_test`,
+					ExpectedErr: "database schema not found",
+				},
+				{
+					Skip:        true, // TODO: Should fail with table not found if table does not exist in working set?
+					Query:       `SELECT * FROM public.dolt_workspace_none`,
+					ExpectedErr: "table not found",
+				},
+				{
+					Query:    `CREATE SCHEMA newschema`,
+					Expected: []sql.Row{},
+				},
+				{
+					Query:    "SET search_path = 'newschema'",
+					Expected: []sql.Row{},
+				},
+				{
+					Query:    `CREATE TABLE test_sch (id INT PRIMARY KEY)`,
+					Expected: []sql.Row{},
+				},
+				{
+					Query:    `INSERT INTO test_sch VALUES (11)`,
+					Expected: []sql.Row{},
+				},
+				{
+					Query:    `SELECT dolt_add('test_sch')`,
+					Expected: []sql.Row{{"{0}"}},
+				},
+				{
+					Query:    `SELECT id, staged, from_id, to_id FROM newschema.dolt_workspace_test_sch`,
+					Expected: []sql.Row{{Numeric("0"), 1, nil, 11}},
+				},
+				{
+					Query:    `SELECT id, staged, from_id, to_id FROM dolt_workspace_test_sch`,
+					Expected: []sql.Row{{Numeric("0"), 1, nil, 11}},
+				},
+				{
+					Skip:        true,
+					Query:       `SELECT * FROM dolt_workspace_test`,
+					ExpectedErr: "table not found",
+				},
+				{
+					Query:    `SELECT id, staged, from_id, to_id FROM public.dolt_workspace_test`,
+					Expected: []sql.Row{{Numeric("0"), 0, nil, 10}},
+				},
+				{
+					Skip:        true,
+					Query:       `SELECT * FROM public.dolt_workspace_test_sch`,
+					ExpectedErr: "table not found",
+				},
+				{
+					Skip:        true,
+					Query:       `SELECT * FROM newschema.dolt_workspace_test`,
+					ExpectedErr: "table not found",
 				},
 			},
 		},
