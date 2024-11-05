@@ -72,7 +72,7 @@ func AssignInsertCasts(ctx *sql.Context, a *analyzer.Analyzer, node sql.Node, sc
 				}
 			}
 		}
-		return insertInto.WithSource(plan.NewValues(newValues)), transform.NewTree, nil
+		insertInto = insertInto.WithSource(plan.NewValues(newValues))
 	} else {
 		sourceSchema := insertInto.Source.Schema()
 		projections := make([]sql.Expression, len(sourceSchema))
@@ -90,6 +90,23 @@ func AssignInsertCasts(ctx *sql.Context, a *analyzer.Analyzer, node sql.Node, sc
 				projections[i] = pgexprs.NewAssignmentCast(getField, fromColType, toColType)
 			}
 		}
-		return insertInto.WithSource(plan.NewProject(projections, insertInto.Source)), transform.NewTree, nil
+		insertInto = insertInto.WithSource(plan.NewProject(projections, insertInto.Source))
 	}
+	
+	// handle on conflict clause if present
+	if len(insertInto.OnDupExprs) > 0 {
+		newDupExprs, err := assignUpdateFieldCasts(insertInto.OnDupExprs)
+		if err != nil {
+			return nil, false, err
+		}
+		// TODO: this relies on a particular implementation detail InsertInto.WithExpressions
+		newInsertInto, err := insertInto.WithExpressions(append(newDupExprs, insertInto.Checks().ToExpressions()...)...)
+		if err != nil {
+			return nil, false, err
+		}
+		
+		insertInto = newInsertInto.(*plan.InsertInto)
+	}
+	
+	return insertInto, transform.NewTree, nil
 }
