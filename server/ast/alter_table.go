@@ -285,3 +285,45 @@ func nodeAlterTableSetNotNull(node *tree.AlterTableSetNotNull, tableName vitess.
 		},
 	}, nil
 }
+
+// nodeAlterTableSetNotNull converts a tree.AlterTableSetNotNull instance into an equivalent vitess.DDL instance.
+func nodeAlterTablePartition(node *tree.AlterTablePartition) (*vitess.AlterTable, error) {
+	if node == nil {
+		return nil, nil
+	}
+
+	treeTableName := node.Name.ToTableName()
+	tableName, err := nodeTableName(&treeTableName)
+	if err != nil {
+		return nil, err
+	}
+
+	switch node.Spec.Type {
+	case tree.PartitionBoundIn:
+	case tree.PartitionBoundFromTo:
+	case tree.PartitionBoundWith:
+	default:
+		return nil, fmt.Errorf("ALTER TABLE with unsupported partition type %v", node.Spec.Type)
+	}
+
+	partitionDef := &vitess.PartitionDefinition{
+		Name: vitess.NewColIdent(node.Partition.String()),
+	}
+
+	actionStr := ""
+	if node.IsDetach {
+		actionStr = vitess.DropStr
+	} else {
+		actionStr = vitess.AddStr
+	}
+
+	partitionSpec := &vitess.PartitionSpec{
+		Action:      actionStr,
+		Definitions: []*vitess.PartitionDefinition{partitionDef},
+	}
+
+	return &vitess.AlterTable{
+		Table:          tableName,
+		PartitionSpecs: []*vitess.PartitionSpec{partitionSpec},
+	}, nil
+}
