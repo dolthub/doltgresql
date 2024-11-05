@@ -68,10 +68,14 @@ func TestSingleWriteQuery(t *testing.T) {
 	h.Setup(setup.MydbData, setup.MytableData, setup.Mytable_del_idxData, setup.KeylessData, setup.Keyless_idxData, setup.NiltableData, setup.TypestableData, setup.EmptytableData, setup.AutoincrementData, setup.OthertableData, setup.Othertable_del_idxData)
 	
 	test := queries.WriteQueryTest{
-		WriteQuery:          "INSERT INTO mytable (i,s) values (1, 'hello') ON DUPLICATE KEY UPDATE s='hello'",
+		WriteQuery:          `INSERT INTO othertable VALUES ("fourth", 1) ON DUPLICATE KEY UPDATE s2="fourth"`,
 		ExpectedWriteResult: []sql.Row{{types.NewOkResult(2)}},
-		SelectQuery:         "SELECT * FROM mytable WHERE i = 1",
-		ExpectedSelect:      []sql.Row{{int64(1), "hello"}},
+		SelectQuery:         "SELECT * FROM othertable",
+		ExpectedSelect: []sql.Row{
+			sql.NewRow("first", int64(3)),
+			sql.NewRow("second", int64(2)),
+			sql.NewRow("fourth", int64(1)),
+		},
 	}
 
 	enginetest.RunWriteQueryTest(t, h, test)

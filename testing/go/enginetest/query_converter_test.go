@@ -57,9 +57,13 @@ func transformInsert(stmt *sqlparser.Insert) ([]string, bool) {
 	// only bother translating inserts if there's an ON DUPLICATE KEY UPDATE clause, maybe revisit this later
 	if len(stmt.OnDup) > 0 {
 		tableName := tree.NewTableName(tree.Name(stmt.Table.DbQualifier.String()), tree.Name(stmt.Table.Name.String()))
-		colList := make(tree.NameList, len(stmt.Columns))
-		for i, col := range stmt.Columns {
-			colList[i] = tree.Name(col.String())
+		
+		var colList tree.NameList
+		if len(stmt.Columns) > 0 {
+			colList = make(tree.NameList, len(stmt.Columns))
+			for i, col := range stmt.Columns {
+				colList[i] = tree.Name(col.String())
+			}
 		}
 		
 		rows := selectForInsert(stmt.Rows)
