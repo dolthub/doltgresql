@@ -1708,9 +1708,8 @@ func TestUserSpaceDoltTables(t *testing.T) {
 					ExpectedErr: "database schema not found",
 				},
 				{
-					Skip:        true, // TODO: Should fail with table not found if table does not exist in working set?
-					Query:       `SELECT * FROM public.dolt_workspace_none`,
-					ExpectedErr: "table not found",
+					Query:    `SELECT * FROM public.dolt_workspace_none`,
+					Expected: []sql.Row{}, // dolt_workspace empty for unknown table
 				},
 				{
 					Query:    `CREATE SCHEMA newschema`,
@@ -1741,23 +1740,20 @@ func TestUserSpaceDoltTables(t *testing.T) {
 					Expected: []sql.Row{{Numeric("0"), 1, nil, 11}},
 				},
 				{
-					Skip:        true,
-					Query:       `SELECT * FROM dolt_workspace_test`,
-					ExpectedErr: "table not found",
+					Query:    `SELECT * FROM dolt_workspace_test`,
+					Expected: []sql.Row{}, // dolt_workspace empty for unknown table
 				},
 				{
 					Query:    `SELECT id, staged, from_id, to_id FROM public.dolt_workspace_test`,
 					Expected: []sql.Row{{Numeric("0"), 0, nil, 10}},
 				},
 				{
-					Skip:        true,
-					Query:       `SELECT * FROM public.dolt_workspace_test_sch`,
-					ExpectedErr: "table not found",
+					Query:    `SELECT * FROM public.dolt_workspace_test_sch`,
+					Expected: []sql.Row{}, // dolt_workspace empty for unknown table
 				},
 				{
-					Skip:        true,
-					Query:       `SELECT * FROM newschema.dolt_workspace_test`,
-					ExpectedErr: "table not found",
+					Query:    `SELECT * FROM newschema.dolt_workspace_test`,
+					Expected: []sql.Row{}, // dolt_workspace empty for unknown table
 				},
 			},
 		},
