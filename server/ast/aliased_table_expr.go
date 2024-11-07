@@ -67,6 +67,7 @@ func nodeAliasedTableExpr(node *tree.AliasedTableExpr) (*vitess.AliasedTableExpr
 			if len(inSelect.From) == 1 {
 				if valuesStmt, ok := inSelect.From[0].(*vitess.ValuesStatement); ok {
 					aliasExpr = valuesStmt
+					break
 				}
 			}
 		}
