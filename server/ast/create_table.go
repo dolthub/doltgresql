@@ -66,10 +66,10 @@ func nodeCreateTable(node *tree.CreateTable) (*vitess.DDL, error) {
 	}
 	var optLike *vitess.OptLike
 	if len(node.Inherits) > 0 {
-		if len(node.Defs) > 0 {
-			// TODO: we should error here, but correctness test are silently passing
-			// return nil, fmt.Errorf("INHERITS with TableDefs is not yet supported")
-		}
+		// TODO: we should error here, but correctness test are silently passing
+		//if len(node.Defs) > 0 {
+		//	return nil, fmt.Errorf("INHERITS with TableDefs is not yet supported")
+		//}
 		for i, table := range node.Inherits {
 			if i > 0 {
 				return nil, fmt.Errorf("Multiple INHERITS is not yet supported")
