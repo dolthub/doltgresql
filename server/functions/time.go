@@ -131,9 +131,9 @@ var timetypmodout = framework.Function1{
 
 // time_cmp represents the PostgreSQL function of time type compare.
 var time_cmp = framework.Function2{
-	Name:       "bttime_cmp",
+	Name:       "time_cmp",
 	Return:     pgtypes.Int32,
-	Parameters: [2]pgtypes.DoltgresType{pgtypes.Text, pgtypes.Text},
+	Parameters: [2]pgtypes.DoltgresType{pgtypes.Time, pgtypes.Time},
 	Strict:     true,
 	Callable: func(ctx *sql.Context, _ [3]pgtypes.DoltgresType, val1, val2 any) (any, error) {
 		ab := val1.(time.Time)

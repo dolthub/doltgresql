@@ -24,7 +24,7 @@ var Int32 = DoltgresType{
 	Name:          "int4",
 	Schema:        "pg_catalog",
 	Owner:         "doltgres", // TODO
-	Length:        int16(4),
+	TypLength:     int16(4),
 	PassedByVal:   true,
 	TypType:       TypeType_Base,
 	TypCategory:   TypeCategory_NumericTypes,
@@ -48,10 +48,10 @@ var Int32 = DoltgresType{
 	BaseTypeOID:   0,
 	TypMod:        -1,
 	NDims:         0,
-	Collation:     0,
+	TypCollation:  0,
 	DefaulBin:     "",
 	Default:       "",
-	Acl:           "",
+	Acl:           nil,
 	Checks:        nil,
 
 	internalName: "integer",

@@ -16,9 +16,7 @@ package types
 
 import (
 	"fmt"
-	"github.com/dolthub/go-mysql-server/sql"
 	"github.com/lib/pq/oid"
-
 	"github.com/shopspring/decimal"
 )
 
@@ -43,7 +41,7 @@ var Numeric = DoltgresType{
 	Name:          "numeric",
 	Schema:        "pg_catalog",
 	Owner:         "doltgres", // TODO
-	Length:        int16(-1),
+	TypLength:     int16(-1),
 	PassedByVal:   false,
 	TypType:       TypeType_Base,
 	TypCategory:   TypeCategory_NumericTypes,
@@ -67,23 +65,30 @@ var Numeric = DoltgresType{
 	BaseTypeOID:   0,
 	TypMod:        -1,
 	NDims:         0,
-	Collation:     0,
+	TypCollation:  0,
 	DefaulBin:     "",
 	Default:       "",
-	Acl:           "",
+	Acl:           nil,
 	Checks:        nil,
+	AttTypMod:     -1,
 }
 
 func NewNumericType(precision, scale int32) (DoltgresType, error) {
 	newNumericType := Numeric
-	val, err := TypModIn(sql.NewEmptyContext(), newNumericType, []any{fmt.Sprint(precision), fmt.Sprint(scale)})
+	typmod, err := GetTypmodFromPrecisionAndScale(precision, scale)
 	if err != nil {
 		return DoltgresType{}, err
 	}
-	typmod, ok := val.(int32)
-	if !ok {
-		return DoltgresType{}, fmt.Errorf("expected int32, but received %T", val)
-	}
-	newNumericType.SetDefinedTypeModifier(typmod)
+	newNumericType.AttTypMod = typmod
 	return newNumericType, nil
+}
+
+func GetTypmodFromPrecisionAndScale(precision, scale int32) (int32, error) {
+	if precision < 1 || precision > 1000 {
+		return 0, fmt.Errorf("NUMERIC precision %v must be between 1 and 1000", precision)
+	}
+	if scale < -1000 || scale > 1000 {
+		return 0, fmt.Errorf("NUMERIC scale 20000 must be between -1000 and 1000")
+	}
+	return (precision << 16) | scale, nil
 }

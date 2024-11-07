@@ -50,7 +50,7 @@ func TestFunctionsMath(t *testing.T) {
 				},
 				{
 					Query:       `SELECT cbrt(v4) FROM test ORDER BY pk;`,
-					ExpectedErr: "function cbrt(varchar(255)) does not exist",
+					ExpectedErr: "function cbrt(character varying) does not exist",
 				},
 				{
 					Query: `SELECT cbrt('64');`,
@@ -90,7 +90,7 @@ func TestFunctionsMath(t *testing.T) {
 				},
 				{
 					Query:       `SELECT gcd(v4, 10) FROM test ORDER BY pk;`,
-					ExpectedErr: "function gcd(varchar(255), integer) does not exist",
+					ExpectedErr: "function gcd(character varying, integer) does not exist",
 				},
 				{
 					Query: `SELECT gcd(36, '48');`,
@@ -137,7 +137,7 @@ func TestFunctionsMath(t *testing.T) {
 				},
 				{
 					Query:       `SELECT lcm(v4, 10) FROM test ORDER BY pk;`,
-					ExpectedErr: "function lcm(varchar(255), integer) does not exist",
+					ExpectedErr: "function lcm(character varying, integer) does not exist",
 				},
 				{
 					Query: `SELECT lcm(36, '48');`,

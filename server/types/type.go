@@ -46,7 +46,7 @@ type DoltgresType struct {
 	Name          string
 	Schema        string // TODO: should be `uint32`.
 	Owner         string // TODO: should be `uint32`.
-	Length        int16
+	TypLength     int16
 	PassedByVal   bool
 	TypType       TypeType
 	TypCategory   TypeCategory
@@ -70,26 +70,27 @@ type DoltgresType struct {
 	BaseTypeOID   uint32 // for Domain types
 	TypMod        int32  // for Domain types
 	NDims         int32  // for Domain types
-	Collation     uint32
+	TypCollation  uint32
 	DefaulBin     string // for Domain types
 	Default       string
-	Acl           string                 // TODO: list of privileges
+	Acl           []string               // TODO: list of privileges
 	Checks        []*sql.CheckDefinition // TODO: this is not part of `pg_type` instead `pg_constraint` for Domain types.
+	AttTypMod     int32                  // TODO: should be stored in pg_attribute.atttypmod
+	internalName  string                 // TODO: Name and internalName differ for some types. e.g.: "int2" vs "smallint"
 
 	// These are for internal use
 	isSerial            bool // TODO: to replace serial types
 	isUnresolved        bool
-	nonDomainTypMod     int32 // TODO: where do we store this if not here?
 	baseTypeForInternal uint32
-	internalName        string // TODO?
+
+	strTypeLength uint32
 }
 
 var IoOutput func(ctx *sql.Context, t DoltgresType, val any) (string, error)
 var IoReceive func(ctx *sql.Context, t DoltgresType, val any) (any, error)
 var IoSend func(ctx *sql.Context, t DoltgresType, val any) ([]byte, error)
 var IoCompare func(ctx *sql.Context, t DoltgresType, v1, v2 any) (int, error)
-var TypModIn func(ctx *sql.Context, t DoltgresType, val []any) (any, error)
-var TypModOut func(ctx *sql.Context, t DoltgresType, val int32) (any, error)
+var SQL func(ctx *sql.Context, t DoltgresType, val any) (string, error)
 
 var _ types.ExtendedType = DoltgresType{}
 
@@ -106,10 +107,12 @@ func (t DoltgresType) Resolved() bool {
 }
 
 func (t DoltgresType) ArrayBaseType() (DoltgresType, bool) {
-	if t.Elem == 0 {
+	if t.TypCategory != TypeCategory_ArrayTypes || t.Elem == 0 {
 		return DoltgresType{}, false
 	}
 	elem, ok := OidToBuildInDoltgresType[t.Elem]
+	// TODO
+	elem.AttTypMod = t.AttTypMod
 	return elem, ok
 }
 
@@ -142,7 +145,7 @@ func (t DoltgresType) DomainUnderlyingBaseType() DoltgresType {
 // All polymorphic types have "any" as a prefix.
 // The exception is the "any" type, which is not a polymorphic type.
 func (t DoltgresType) IsPolymorphicType() bool {
-	return t.TypCategory == TypeCategory_PseudoTypes
+	return t.TypType == TypeType_Pseudo
 }
 
 // IsValidForPolymorphicType returns whether the given type is valid for the calling polymorphic type.
@@ -169,6 +172,8 @@ func (t DoltgresType) ToArrayType() (DoltgresType, bool) {
 		return DoltgresType{}, false
 	}
 	arr, ok := OidToBuildInDoltgresType[t.Array]
+	// TODO: currently storing typ mod of base type in array type
+	arr.AttTypMod = t.AttTypMod
 	return arr, ok
 }
 
@@ -265,7 +270,7 @@ func (t DoltgresType) FormatValue(val any) (string, error) {
 
 // MaxSerializedWidth implements the types.ExtendedType interface.
 func (t DoltgresType) MaxSerializedWidth() types.ExtendedTypeSerializedWidth {
-	// TODO
+	// TODO: need better way to get accurate result
 	switch t.TypCategory {
 	case TypeCategory_ArrayTypes:
 		return types.ExtendedTypeSerializedWidth_Unbounded
@@ -292,10 +297,10 @@ func (t DoltgresType) MaxSerializedWidth() types.ExtendedTypeSerializedWidth {
 // MaxTextResponseByteLength implements the types.ExtendedType interface.
 func (t DoltgresType) MaxTextResponseByteLength(ctx *sql.Context) uint32 {
 	// TODO
-	if t.Length == -1 {
+	if t.TypLength == -1 {
 		return math.MaxUint32
 	} else {
-		return uint32(t.Length)
+		return uint32(t.TypLength)
 	}
 }
 
@@ -321,7 +326,7 @@ func (t DoltgresType) SQL(ctx *sql.Context, dest []byte, v interface{}) (sqltype
 	if v == nil {
 		return sqltypes.NULL, nil
 	}
-	value, err := IoOutput(ctx, t, v)
+	value, err := SQL(ctx, t, v)
 	if err != nil {
 		return sqltypes.Value{}, err
 	}
@@ -340,6 +345,7 @@ func (t DoltgresType) String() string {
 
 // Type implements the types.ExtendedType interface.
 func (t DoltgresType) Type() query.Type {
+	// TODO: need better way to get accurate result
 	switch t.TypCategory {
 	case TypeCategory_ArrayTypes:
 		return sqltypes.Text
@@ -353,9 +359,26 @@ func (t DoltgresType) Type() query.Type {
 	case TypeCategory_DateTimeTypes:
 		return sqltypes.Text
 	case TypeCategory_NumericTypes:
-		// decimal.Zero
-		return sqltypes.Int64
+		switch oid.Oid(t.OID) {
+		case oid.T_float4:
+			return sqltypes.Float32
+		case oid.T_float8:
+			return sqltypes.Float64
+		case oid.T_int2:
+			return sqltypes.Int16
+		case oid.T_int4:
+			return sqltypes.Int32
+		case oid.T_int8:
+			return sqltypes.Int64
+		case oid.T_numeric:
+			return sqltypes.Decimal
+		default:
+			return sqltypes.Int64
+		}
 	case TypeCategory_StringTypes, TypeCategory_UnknownTypes:
+		if t.OID == uint32(oid.T_varchar) {
+			return sqltypes.VarChar
+		}
 		return sqltypes.Text
 	case TypeCategory_TimespanTypes:
 		return sqltypes.Text
@@ -372,6 +395,7 @@ func (t DoltgresType) ValueType() reflect.Type {
 
 // Zero implements the types.ExtendedType interface.
 func (t DoltgresType) Zero() interface{} {
+	// TODO: need better way to get accurate result
 	switch t.TypCategory {
 	case TypeCategory_ArrayTypes:
 		return []any{}
@@ -424,14 +448,53 @@ func (t DoltgresType) IsSerial() bool {
 	return t.isSerial
 }
 
-func (t DoltgresType) SetDefinedTypeModifier(tm int32) {
-	t.nonDomainTypMod = tm
-}
-
-func (t DoltgresType) DefinedTypeModifier() int32 {
-	return t.nonDomainTypMod
-}
-
 func (t DoltgresType) BaseTypeForInternalType() uint32 {
 	return t.baseTypeForInternal
+}
+
+// CharacterSet implements the sql.StringType interface.
+func (t DoltgresType) CharacterSet() sql.CharacterSetID {
+	// TODO: only varchar has charset info.
+	if t.OID == uint32(oid.T_varchar) {
+		return sql.CharacterSet_binary // TODO
+	} else {
+		return sql.CharacterSet_Unspecified
+	}
+}
+
+// Collation implements the sql.StringType interface.
+func (t DoltgresType) Collation() sql.CollationID {
+	// TODO: only varchar has collation info.
+	if t.OID == uint32(oid.T_varchar) {
+		return sql.Collation_Default // TODO
+	} else {
+		return sql.Collation_Unspecified
+	}
+}
+
+// Length implements the sql.StringType interface.
+func (t DoltgresType) Length() int64 {
+	// TODO: varchar only, typmod here?
+	if t.TypLength == -1 {
+		return 100
+	}
+	return int64(t.TypLength)
+}
+
+// MaxByteLength implements the sql.StringType interface.
+func (t DoltgresType) MaxByteLength() int64 {
+	// TODO: varchar only, typmod here?
+	if t.TypLength == -1 {
+		return 100 * 4
+	}
+	return int64(t.TypLength) * 4
+}
+
+// MaxCharacterLength implements the sql.StringType interface.
+func (t DoltgresType) MaxCharacterLength() int64 {
+	// TODO: varchar only, typmod here?
+	if t.TypLength == -1 {
+		return 100
+	}
+	return int64(t.TypLength)
 }

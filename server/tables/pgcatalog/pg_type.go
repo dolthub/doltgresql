@@ -131,16 +131,17 @@ func (iter *pgTypeRowIter) Next(ctx *sql.Context) (sql.Row, error) {
 	}
 	iter.idx++
 	typ := iter.types[iter.idx-1]
+	// TODO: typ.Acl is stored as []string
+	typAcl := []any(nil)
 
-	// TODO: not all columns are populated
 	return sql.Row{
 		typ.OID,                 //oid
 		typ.Name,                //typname
 		iter.pgCatalogOid,       //typnamespace
 		uint32(0),               //typowner
-		typ.Length,              //typlen
+		typ.TypLength,           //typlen
 		typ.PassedByVal,         //typbyval
-		typ.TypType,             //typtype
+		string(typ.TypType),     //typtype
 		string(typ.TypCategory), //typcategory
 		typ.IsPreferred,         //typispreferred
 		typ.IsDefined,           //typisdefined
@@ -162,10 +163,10 @@ func (iter *pgTypeRowIter) Next(ctx *sql.Context) (sql.Row, error) {
 		typ.BaseTypeOID,         //typbasetype
 		typ.TypMod,              //typtypmod
 		typ.NDims,               //typndims
-		typ.Collation,           //typcollation
+		typ.TypCollation,        //typcollation
 		typ.DefaulBin,           //typdefaultbin
 		typ.Default,             //typdefault
-		typ.Acl,                 //typacl
+		typAcl,                  //typacl
 	}, nil
 }
 

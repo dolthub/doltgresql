@@ -43,9 +43,10 @@ var array_in = framework.Function3{
 	Strict:     true,
 	Callable: func(ctx *sql.Context, _ [4]pgtypes.DoltgresType, val1, val2, val3 any) (any, error) {
 		input := val1.(string)
-		oid := val2.(uint32) // TODO: is this oid of base type??
-		//typmod := val3.(int32) // TODO: how to use it?
+		oid := val2.(uint32)   // TODO: is this oid of base type??
+		typmod := val3.(int32) // TODO: how to use it?
 		baseType := pgtypes.OidToBuildInDoltgresType[oid]
+		baseType.AttTypMod = typmod
 		if len(input) < 2 || input[0] != '{' || input[len(input)-1] != '}' {
 			// This error is regarded as a critical error, and thus we immediately return the error alongside a nil
 			// value. Returning a nil value is a signal to not ignore the error.
@@ -157,38 +158,8 @@ var array_out = framework.Function1{
 			// TODO: shouldn't happen but check??
 			return nil, fmt.Errorf(`cannot find base type for array type`)
 		}
-
-		sb := strings.Builder{}
-		sb.WriteRune('{')
-		for i, v := range val.([]any) {
-			if i > 0 {
-				sb.WriteString(",")
-			}
-			if v != nil {
-				str, err := framework.IoOutput(ctx, baseType, v)
-				if err != nil {
-					return "", err
-				}
-				shouldQuote := false
-				for _, r := range str {
-					switch r {
-					case ' ', ',', '{', '}', '\\', '"':
-						shouldQuote = true
-					}
-				}
-				if shouldQuote || strings.EqualFold(str, "NULL") {
-					sb.WriteRune('"')
-					sb.WriteString(strings.ReplaceAll(str, `"`, `\"`))
-					sb.WriteRune('"')
-				} else {
-					sb.WriteString(str)
-				}
-			} else {
-				sb.WriteString("NULL")
-			}
-		}
-		sb.WriteRune('}')
-		return sb.String(), nil
+		baseType.AttTypMod = arrType.AttTypMod
+		return framework.ArrToString(ctx, val.([]any), baseType, false)
 	},
 }
 

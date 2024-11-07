@@ -18,6 +18,7 @@ import (
 	"bytes"
 	"fmt"
 	"github.com/dolthub/doltgresql/utils"
+	"strconv"
 	"strings"
 	"unicode/utf8"
 
@@ -46,20 +47,21 @@ var bpcharin = framework.Function3{
 	Strict:     true,
 	Callable: func(ctx *sql.Context, _ [4]pgtypes.DoltgresType, val1, val2, val3 any) (any, error) {
 		input := val1.(string)
-		oid := val2.(uint32) // TODO: what is this for?
 		typmod := val3.(int32)
-		baseType := pgtypes.OidToBuildInDoltgresType[oid]
-		if typmod == -1 {
-			return input, nil
-		} else {
-			input, runeLength := truncateString(input, typmod)
-			if runeLength > typmod {
-				return input, fmt.Errorf("value too long for type %s", baseType.String())
-			} else if runeLength < typmod {
-				return input + strings.Repeat(" ", int(typmod-runeLength)), nil
-			} else {
-				return input, nil
+		maxChars := int32(pgtypes.StringMaxLength)
+		if typmod != -1 {
+			maxChars = GetMaxCharsFromTypmod(typmod)
+			if maxChars < pgtypes.StringUnbounded {
+				maxChars = pgtypes.StringMaxLength
 			}
+		}
+		input, runeLength := truncateString(input, maxChars)
+		if runeLength > maxChars {
+			return input, fmt.Errorf("value too long for type varying(%v)", maxChars)
+		} else if runeLength < maxChars {
+			return input + strings.Repeat(" ", int(maxChars-runeLength)), nil
+		} else {
+			return input, nil
 		}
 	},
 }
@@ -71,15 +73,17 @@ var bpcharout = framework.Function1{
 	Parameters: [1]pgtypes.DoltgresType{pgtypes.BpChar},
 	Strict:     true,
 	Callable: func(ctx *sql.Context, t [2]pgtypes.DoltgresType, val any) (any, error) {
-		// TODO: need length information OR is it expected to be within length limit?
 		typ := t[0]
-		typLen := int32(typ.Length)
-		if typLen == -1 {
+		if typ.AttTypMod == -1 {
+			return val.(string), nil
+		}
+		maxChars := GetMaxCharsFromTypmod(typ.AttTypMod)
+		if maxChars < 1 {
 			return val.(string), nil
 		} else {
-			str, runeCount := truncateString(val.(string), typLen)
-			if runeCount < typLen {
-				return str + strings.Repeat(" ", int(typLen-runeCount)), nil
+			str, runeCount := truncateString(val.(string), maxChars)
+			if runeCount < maxChars {
+				return str + strings.Repeat(" ", int(maxChars-runeCount)), nil
 			}
 			return str, nil
 		}
@@ -93,11 +97,11 @@ var bpcharrecv = framework.Function3{
 	Parameters: [3]pgtypes.DoltgresType{pgtypes.Internal, pgtypes.Oid, pgtypes.Int32},
 	Strict:     true,
 	Callable: func(ctx *sql.Context, _ [4]pgtypes.DoltgresType, val1, val2, val3 any) (any, error) {
-		// TODO: use typmod
 		data := val1.([]byte)
 		if len(data) == 0 {
 			return nil, nil
 		}
+		// TODO: use typmod?
 		reader := utils.NewReader(data)
 		return reader.String(), nil
 	},
@@ -124,8 +128,7 @@ var bpchartypmodin = framework.Function1{
 	Parameters: [1]pgtypes.DoltgresType{pgtypes.TextArray}, // cstring[]
 	Strict:     true,
 	Callable: func(ctx *sql.Context, _ [2]pgtypes.DoltgresType, val any) (any, error) {
-		// TODO
-		return nil, nil
+		return getTypModFromStringArr("char", val.([]any))
 	},
 }
 
@@ -136,8 +139,12 @@ var bpchartypmodout = framework.Function1{
 	Parameters: [1]pgtypes.DoltgresType{pgtypes.Int32},
 	Strict:     true,
 	Callable: func(ctx *sql.Context, _ [2]pgtypes.DoltgresType, val any) (any, error) {
-		// TODO
-		return nil, nil
+		typmod := val.(int32)
+		if typmod < 5 {
+			return "", nil
+		}
+		maxChars := GetMaxCharsFromTypmod(typmod)
+		return fmt.Sprintf("(%v)", maxChars), nil
 	},
 }
 
@@ -166,4 +173,22 @@ func truncateString(val string, runeLimit int32) (string, int32) {
 		return startString[:len(startString)-len(val)], runeLength
 	}
 	return val, runeLength
+}
+
+func GetMaxCharsFromTypmod(typmod int32) int32 {
+	return typmod - 4
+}
+
+func getTypModFromStringArr(typName string, inputArr []any) (int32, error) {
+	if len(inputArr) == 0 {
+		return 0, pgtypes.ErrTypmodArrayMustBe1D.New()
+	} else if len(inputArr) > 1 {
+		return 0, fmt.Errorf("invalid type modifier")
+	}
+
+	l, err := strconv.ParseInt(inputArr[0].(string), 10, 32)
+	if err != nil {
+		return 0, err
+	}
+	return pgtypes.GetTypModFromMaxChars(typName, int32(l))
 }

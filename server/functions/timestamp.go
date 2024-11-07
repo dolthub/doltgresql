@@ -130,9 +130,9 @@ var timestamptypmodout = framework.Function1{
 
 // timestamp_cmp represents the PostgreSQL function of timestamp type compare.
 var timestamp_cmp = framework.Function2{
-	Name:       "bttimestamp_cmp",
+	Name:       "timestamp_cmp",
 	Return:     pgtypes.Int32,
-	Parameters: [2]pgtypes.DoltgresType{pgtypes.Text, pgtypes.Text},
+	Parameters: [2]pgtypes.DoltgresType{pgtypes.Timestamp, pgtypes.Timestamp},
 	Strict:     true,
 	Callable: func(ctx *sql.Context, _ [3]pgtypes.DoltgresType, val1, val2 any) (any, error) {
 		ab := val1.(time.Time)

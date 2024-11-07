@@ -15,6 +15,7 @@
 package information_schema
 
 import (
+	"github.com/dolthub/doltgresql/server/functions"
 	"strings"
 
 	"github.com/dolthub/go-mysql-server/sql"
@@ -303,9 +304,6 @@ func getDataAndUdtType(colType sql.Type, colName string) (string, string) {
 	dgType, ok := colType.(pgtypes.DoltgresType)
 	if ok {
 		udtName = dgType.Name
-		if udtName == `"char"` {
-			udtName = `char`
-		}
 		if t, ok := partypes.OidToType[oid.Oid(dgType.OID)]; ok {
 			dataType = t.SQLStandardName()
 		}
@@ -334,13 +332,9 @@ func getColumnPrecisionAndScale(colType sql.Type) (interface{}, interface{}, int
 		case oid.T_numeric:
 			var precision interface{}
 			var scale interface{}
-			// TODO
-			//if t.Precision >= 0 {
-			//	precision = int32(t.Precision)
-			//}
-			//if t.Scale >= 0 {
-			//	scale = int32(t.Scale)
-			//}
+			if dgt.AttTypMod != -1 {
+				precision, scale = functions.GetPrecisionAndScaleFromTypmod(dgt.AttTypMod)
+			}
 			return precision, int32(10), scale
 		default:
 			return nil, nil, nil
@@ -372,12 +366,19 @@ func getCharAndCollNamesAndCharMaxAndOctetLens(ctx *sql.Context, colType sql.Typ
 	switch t := colType.(type) {
 	case pgtypes.DoltgresType:
 		if t.TypCategory == pgtypes.TypeCategory_StringTypes {
-			if t.Length == -1 {
+			if t.AttTypMod == -1 {
 				charOctetLen = int32(maxCharacterOctetLength)
 			} else {
-				charOctetLen = int32(t.Length) * 4
-				charMaxLen = int32(t.Length)
+				l := functions.GetMaxCharsFromTypmod(t.AttTypMod)
+				charOctetLen = l * 4
+				charMaxLen = l
 			}
+			//if t.TypLength == -1 {
+			//	charOctetLen = int32(maxCharacterOctetLength)
+			//} else {
+			//	charOctetLen = int32(t.TypLength) * 4
+			//	charMaxLen = int32(t.TypLength)
+			//}
 		}
 	}
 

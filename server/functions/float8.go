@@ -47,7 +47,7 @@ var float8in = framework.Function1{
 		if err != nil {
 			return nil, pgtypes.ErrInvalidSyntaxForType.New("float8", input)
 		}
-		return float32(fVal), nil
+		return fVal, nil
 	},
 }
 

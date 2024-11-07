@@ -24,7 +24,7 @@ var Text = DoltgresType{
 	Name:          "text",
 	Schema:        "pg_catalog",
 	Owner:         "doltgres", // TODO
-	Length:        int16(-1),
+	TypLength:     int16(-1),
 	PassedByVal:   false,
 	TypType:       TypeType_Base,
 	TypCategory:   TypeCategory_StringTypes,
@@ -48,9 +48,10 @@ var Text = DoltgresType{
 	BaseTypeOID:   0,
 	TypMod:        -1,
 	NDims:         0,
-	Collation:     100,
+	TypCollation:  100,
 	DefaulBin:     "",
 	Default:       "",
-	Acl:           "",
+	Acl:           nil,
 	Checks:        nil,
+	AttTypMod:     -1,
 }

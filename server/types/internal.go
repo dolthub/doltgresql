@@ -8,7 +8,7 @@ var Internal = DoltgresType{
 	Name:          "internal",
 	Schema:        "pg_catalog",
 	Owner:         "doltgres", // TODO
-	Length:        int16(8),
+	TypLength:     int16(8),
 	PassedByVal:   true,
 	TypType:       TypeType_Pseudo,
 	TypCategory:   TypeCategory_PseudoTypes,
@@ -32,10 +32,10 @@ var Internal = DoltgresType{
 	BaseTypeOID:   0,
 	TypMod:        -1,
 	NDims:         0,
-	Collation:     0,
+	TypCollation:  0,
 	DefaulBin:     "",
 	Default:       "",
-	Acl:           "",
+	Acl:           nil,
 	Checks:        nil,
 }
 

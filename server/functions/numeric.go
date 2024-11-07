@@ -45,12 +45,15 @@ var numeric_in = framework.Function3{
 	Strict:     true,
 	Callable: func(ctx *sql.Context, _ [4]pgtypes.DoltgresType, val1, val2, val3 any) (any, error) {
 		input := val1.(string)
-		typmod := val3.(int32)
-		precision, scale := getPrecisionAndScaleFromTypmod(typmod)
 		val, err := decimal.NewFromString(strings.TrimSpace(input))
 		if err != nil {
 			return nil, pgtypes.ErrInvalidSyntaxForType.New("numeric", input)
 		}
+		typmod := val3.(int32)
+		if typmod == -1 {
+			return val, nil
+		}
+		precision, scale := GetPrecisionAndScaleFromTypmod(typmod)
 		str := val.StringFixed(scale)
 		parts := strings.Split(str, ".")
 		if int32(len(parts[0])) > precision-scale {
@@ -68,8 +71,14 @@ var numeric_out = framework.Function1{
 	Parameters: [1]pgtypes.DoltgresType{pgtypes.Numeric},
 	Strict:     true,
 	Callable: func(ctx *sql.Context, t [2]pgtypes.DoltgresType, val any) (any, error) {
+		typ := t[0]
 		dec := val.(decimal.Decimal)
-		return dec.StringFixed(dec.Exponent() * -1), nil
+		if typ.AttTypMod == -1 {
+			return dec.StringFixed(dec.Exponent() * -1), nil
+		} else {
+			_, s := GetPrecisionAndScaleFromTypmod(typ.AttTypMod)
+			return dec.StringFixed(s), nil
+		}
 	},
 }
 
@@ -121,9 +130,6 @@ var numerictypmodin = framework.Function1{
 		if err != nil {
 			return nil, err
 		}
-		if p < 1 || p > 1000 {
-			return nil, fmt.Errorf("NUMERIC precision 100000 must be between 1 and 1000")
-		}
 		precision := int32(p)
 		scale := int32(0)
 		if len(arr) == 2 {
@@ -131,14 +137,9 @@ var numerictypmodin = framework.Function1{
 			if err != nil {
 				return nil, err
 			}
-			if s < -1000 || s > 1000 {
-				return nil, fmt.Errorf("NUMERIC scale 20000 must be between -1000 and 1000")
-			}
 			scale = int32(s)
 		}
-
-		typmod := (precision << 16) | scale
-		return typmod, nil
+		return pgtypes.GetTypmodFromPrecisionAndScale(precision, scale)
 	},
 }
 
@@ -150,7 +151,7 @@ var numerictypmodout = framework.Function1{
 	Strict:     true,
 	Callable: func(ctx *sql.Context, _ [2]pgtypes.DoltgresType, val any) (any, error) {
 		typmod := val.(int32)
-		precision, scale := getPrecisionAndScaleFromTypmod(typmod)
+		precision, scale := GetPrecisionAndScaleFromTypmod(typmod)
 		return fmt.Sprintf("(%v,%v)", precision, scale), nil
 	},
 }
@@ -168,8 +169,8 @@ var numeric_cmp = framework.Function2{
 	},
 }
 
-func getPrecisionAndScaleFromTypmod(typmod int32) (int32, int32) {
-	precision := typmod & 0xFFFF
-	scale := (typmod >> 16) & 0xFFFF
+func GetPrecisionAndScaleFromTypmod(typmod int32) (int32, int32) {
+	scale := typmod & 0xFFFF
+	precision := (typmod >> 16) & 0xFFFF
 	return precision, scale
 }

@@ -2,8 +2,9 @@ package framework
 
 import (
 	"fmt"
-
 	"github.com/dolthub/go-mysql-server/sql"
+	"github.com/lib/pq/oid"
+	"strings"
 
 	pgtypes "github.com/dolthub/doltgresql/server/types"
 )
@@ -18,18 +19,25 @@ var NewLiteral func(input any, t pgtypes.DoltgresType) sql.Expression
 
 // IoInput converts input string value to given type value.
 func IoInput(ctx *sql.Context, t pgtypes.DoltgresType, input string) (any, error) {
+	receivedVal := NewTextLiteral(input)
 	var cf *CompiledFunction
 	var ok bool
 	var err error
-	if t.ModInFunc != "-" {
-		// TODO: there should be better way to check for typmod used
-		typmod := t.DefinedTypeModifier()
-		cf, ok, err = GetFunction(t.InputFunc, NewTextLiteral(input), NewLiteral(t.OID, pgtypes.Oid), NewLiteral(typmod, pgtypes.Int32))
+	if bt, isArray := t.ArrayBaseType(); isArray {
+		typmod := int32(0)
+		if bt.ModInFunc != "-" {
+			typmod = t.AttTypMod
+		}
+		cf, ok, err = GetFunction(t.InputFunc, receivedVal, NewLiteral(bt.OID, pgtypes.Oid), NewLiteral(typmod, pgtypes.Int32))
 	} else if t.TypType == pgtypes.TypeType_Domain {
 		oid := t.DomainUnderlyingBaseType().OID
-		cf, ok, err = GetFunction(t.InputFunc, NewTextLiteral(input), NewLiteral(oid, pgtypes.Oid), NewLiteral(t.TypMod, pgtypes.Int32))
+		cf, ok, err = GetFunction(t.InputFunc, receivedVal, NewLiteral(oid, pgtypes.Oid), NewLiteral(t.TypMod, pgtypes.Int32))
+	} else if t.ModInFunc != "-" {
+		// TODO: there should be better way to check for typmod used
+		typmod := t.AttTypMod
+		cf, ok, err = GetFunction(t.InputFunc, receivedVal, NewLiteral(t.OID, pgtypes.Oid), NewLiteral(typmod, pgtypes.Int32))
 	} else {
-		cf, ok, err = GetFunction(t.InputFunc, NewTextLiteral(input))
+		cf, ok, err = GetFunction(t.InputFunc, receivedVal)
 	}
 	if err != nil {
 		return nil, err
@@ -75,7 +83,7 @@ func IoReceive(ctx *sql.Context, t pgtypes.DoltgresType, val any) (any, error) {
 	var err error
 	if t.ModInFunc != "-" {
 		// TODO: there should be better way to check for typmod used
-		typmod := t.DefinedTypeModifier()
+		typmod := t.AttTypMod
 		cf, ok, err = GetFunction(t.ReceiveFunc, receivedVal, NewLiteral(t.OID, pgtypes.Oid), NewLiteral(typmod, pgtypes.Int32))
 	} else if t.TypType == pgtypes.TypeType_Domain {
 		// TODO: if domain type, send underlyting base type OID
@@ -83,7 +91,7 @@ func IoReceive(ctx *sql.Context, t pgtypes.DoltgresType, val any) (any, error) {
 	} else if bt, isArray := t.ArrayBaseType(); isArray {
 		typmod := int32(0)
 		if bt.ModInFunc != "-" {
-			typmod = t.DefinedTypeModifier()
+			typmod = t.AttTypMod
 		}
 		cf, ok, err = GetFunction(t.ReceiveFunc, receivedVal, NewLiteral(bt.OID, pgtypes.Oid), NewLiteral(typmod, pgtypes.Int32))
 	} else {
@@ -133,7 +141,7 @@ func IoSend(ctx *sql.Context, t pgtypes.DoltgresType, val any) ([]byte, error) {
 // TypModIn encodes given text array value to type modifier in int32 format.
 func TypModIn(ctx *sql.Context, t pgtypes.DoltgresType, val []any) (any, error) {
 	// takes []string and return int32
-	if t.ModInFunc != "-" {
+	if t.ModInFunc == "-" {
 		return nil, fmt.Errorf("typmodin function for type '%s' doesn't exist", t.Name)
 	}
 	v, ok, err := GetFunction(t.ModInFunc, NewLiteral(val, pgtypes.TextArray))
@@ -141,7 +149,7 @@ func TypModIn(ctx *sql.Context, t pgtypes.DoltgresType, val []any) (any, error) 
 		return nil, err
 	}
 	if !ok {
-		return nil, ErrFunctionDoesNotExist.New(t.InputFunc)
+		return nil, ErrFunctionDoesNotExist.New(t.ModInFunc)
 	}
 	return v.Eval(ctx, nil)
 }
@@ -157,9 +165,20 @@ func TypModOut(ctx *sql.Context, t pgtypes.DoltgresType, val int32) (any, error)
 		return nil, err
 	}
 	if !ok {
-		return nil, ErrFunctionDoesNotExist.New(t.InputFunc)
+		return nil, ErrFunctionDoesNotExist.New(t.ModOutFunc)
 	}
-	return v.Eval(ctx, nil)
+	o, err := v.Eval(ctx, nil)
+	if err != nil {
+		return nil, err
+	}
+	if o == nil {
+		return nil, nil
+	}
+	output, ok := o.(string)
+	if !ok {
+		return nil, fmt.Errorf(`expected string, got %T`, output)
+	}
+	return output, nil
 }
 
 // IoCompare compares given two values using the given type. // TODO: both values should have types. e.g. compare between float32 and float64
@@ -183,7 +202,7 @@ func IoCompare(ctx *sql.Context, t pgtypes.DoltgresType, v1, v2 any) (int, error
 		return 0, err
 	}
 	if !ok {
-		return 0, ErrFunctionDoesNotExist.New(t.InputFunc)
+		return 0, ErrFunctionDoesNotExist.New(f)
 	}
 
 	i, err := v.Eval(ctx, nil)
@@ -216,4 +235,72 @@ var temporaryTypeToCompareFunctionMapping = map[uint32]string{
 	pgtypes.TimestampTZ.OID:  "timestamptz_cmp",
 	pgtypes.TimeTZ.OID:       "timetz_cmp",
 	pgtypes.Uuid.OID:         "uuid_cmp",
+	pgtypes.VarChar.OID:      "bttextcmp", // TODO: if there is no cmp function for the type, use preferred type's cmp function?
+}
+
+// SQL converts given type value to output string.
+func SQL(ctx *sql.Context, t pgtypes.DoltgresType, val any) (string, error) {
+	if bt, isArray := t.ArrayBaseType(); isArray {
+		if bt.ModInFunc != "-" {
+			bt.AttTypMod = t.AttTypMod
+		}
+		return ArrToString(ctx, val.([]any), bt, true)
+	}
+	// calling `out` function
+	outputVal, ok, err := GetFunction(t.OutputFunc, NewLiteral(val, t))
+	if err != nil {
+		return "", err
+	}
+	if !ok {
+		return "", ErrFunctionDoesNotExist.New(t.OutputFunc)
+	}
+	o, err := outputVal.Eval(ctx, nil)
+	if err != nil {
+		return "", err
+	}
+	output, ok := o.(string)
+	if t.OID == uint32(oid.T_bool) {
+		output = string(output[0])
+	}
+	if !ok {
+		return "", fmt.Errorf(`expected string, got %T`, output)
+	}
+	return output, nil
+}
+
+func ArrToString(ctx *sql.Context, arr []any, baseType pgtypes.DoltgresType, trimBool bool) (string, error) {
+	sb := strings.Builder{}
+	sb.WriteRune('{')
+	for i, v := range arr {
+		if i > 0 {
+			sb.WriteString(",")
+		}
+		if v != nil {
+			str, err := IoOutput(ctx, baseType, v)
+			if err != nil {
+				return "", err
+			}
+			if baseType.OID == uint32(oid.T_bool) && trimBool {
+				str = string(str[0])
+			}
+			shouldQuote := false
+			for _, r := range str {
+				switch r {
+				case ' ', ',', '{', '}', '\\', '"':
+					shouldQuote = true
+				}
+			}
+			if shouldQuote || strings.EqualFold(str, "NULL") {
+				sb.WriteRune('"')
+				sb.WriteString(strings.ReplaceAll(str, `"`, `\"`))
+				sb.WriteRune('"')
+			} else {
+				sb.WriteString(str)
+			}
+		} else {
+			sb.WriteString("NULL")
+		}
+	}
+	sb.WriteRune('}')
+	return sb.String(), nil
 }

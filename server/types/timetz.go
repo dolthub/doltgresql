@@ -24,7 +24,7 @@ var TimeTZ = DoltgresType{
 	Name:          "timetz",
 	Schema:        "pg_catalog",
 	Owner:         "doltgres", // TODO
-	Length:        int16(12),
+	TypLength:     int16(12),
 	PassedByVal:   true,
 	TypType:       TypeType_Base,
 	TypCategory:   TypeCategory_DateTimeTypes,
@@ -48,10 +48,10 @@ var TimeTZ = DoltgresType{
 	BaseTypeOID:   0,
 	TypMod:        -1,
 	NDims:         0,
-	Collation:     0,
+	TypCollation:  0,
 	DefaulBin:     "",
 	Default:       "",
-	Acl:           "",
+	Acl:           nil,
 	Checks:        nil,
 }
 

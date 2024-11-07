@@ -24,7 +24,7 @@ var Date = DoltgresType{
 	Name:          "date",
 	Schema:        "pg_catalog",
 	Owner:         "doltgres", // TODO
-	Length:        int16(4),
+	TypLength:     int16(4),
 	PassedByVal:   true,
 	TypType:       TypeType_Base,
 	TypCategory:   TypeCategory_DateTimeTypes,
@@ -48,9 +48,9 @@ var Date = DoltgresType{
 	BaseTypeOID:   0,
 	TypMod:        -1,
 	NDims:         0,
-	Collation:     0,
+	TypCollation:  0,
 	DefaulBin:     "",
 	Default:       "",
-	Acl:           "",
+	Acl:           nil,
 	Checks:        nil,
 }

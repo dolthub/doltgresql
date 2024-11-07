@@ -60,7 +60,11 @@ func regtype_IoInput(ctx *sql.Context, input string) (uint32, error) {
 	resultOid := uint32(0)
 	err = IterateCurrentDatabase(ctx, Callbacks{
 		Type: func(ctx *sql.Context, typ ItemType) (cont bool, err error) {
-			if typeName == typ.Item.String() || typeName == typ.Item.Name || (typeName == "char" && typ.Item.Name == "bpchar") {
+			tin := typ.Item.Name
+			if tin == "char" {
+				tin = `"char"`
+			}
+			if typeName == typ.Item.String() || typeName == tin || (typeName == "char" && tin == "bpchar") {
 				resultOid = typ.OID
 				return false, nil
 			} else if t, ok := types.OidToType[oid.Oid(typ.OID)]; ok && typeName == t.SQLStandardName() {

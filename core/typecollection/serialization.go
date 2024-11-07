@@ -49,7 +49,7 @@ func (pgs *TypeCollection) Serialize(ctx context.Context) ([]byte, error) {
 			writer.Uint32(typ.OID)
 			writer.String(typ.Name)
 			writer.String(typ.Owner)
-			writer.Int16(typ.Length)
+			writer.Int16(typ.TypLength)
 			writer.Bool(typ.PassedByVal)
 			writer.String(string(typ.TypType))
 			writer.String(string(typ.TypCategory))
@@ -73,10 +73,13 @@ func (pgs *TypeCollection) Serialize(ctx context.Context) ([]byte, error) {
 			writer.Uint32(typ.BaseTypeOID)
 			writer.Int32(typ.TypMod)
 			writer.Int32(typ.NDims)
-			writer.Uint32(typ.Collation)
+			writer.Uint32(typ.TypCollation)
 			writer.String(typ.DefaulBin)
 			writer.String(typ.Default)
-			writer.String(typ.Acl)
+			writer.VariableUint(uint64(len(typ.Acl)))
+			for _, ac := range typ.Acl {
+				writer.String(ac)
+			}
 			writer.VariableUint(uint64(len(typ.Checks)))
 			for _, check := range typ.Checks {
 				writer.String(check.Name)
@@ -115,7 +118,7 @@ func Deserialize(ctx context.Context, data []byte) (*TypeCollection, error) {
 			typ.OID = reader.Uint32()
 			typ.Name = reader.String()
 			typ.Owner = reader.String()
-			typ.Length = reader.Int16()
+			typ.TypLength = reader.Int16()
 			typ.PassedByVal = reader.Bool()
 			typ.TypType = types.TypeType(reader.String())
 			typ.TypCategory = types.TypeCategory(reader.String())
@@ -139,10 +142,14 @@ func Deserialize(ctx context.Context, data []byte) (*TypeCollection, error) {
 			typ.BaseTypeOID = reader.Uint32()
 			typ.TypMod = reader.Int32()
 			typ.NDims = reader.Int32()
-			typ.Collation = reader.Uint32()
+			typ.TypCollation = reader.Uint32()
 			typ.DefaulBin = reader.String()
 			typ.Default = reader.String()
-			typ.Acl = reader.String()
+			numOfAcl := reader.VariableUint()
+			for k := uint64(0); k < numOfAcl; k++ {
+				ac := reader.String()
+				typ.Acl = append(typ.Acl, ac)
+			}
 			numOfChecks := reader.VariableUint()
 			for k := uint64(0); k < numOfChecks; k++ {
 				checkName := reader.String()

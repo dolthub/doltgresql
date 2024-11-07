@@ -357,6 +357,8 @@ func NormalizeRow(fds []pgconn.FieldDescription, row sql.Row, normalize bool) sq
 	newRow := make(sql.Row, len(row))
 	for i := range row {
 		dt, ok := types.OidToBuildInDoltgresType[fds[i].DataTypeOID]
+		// TODO: need to set the typmod!
+		dt.AttTypMod = -1
 		if !ok {
 			panic(fmt.Sprintf("unhandled oid type: %v", fds[i].DataTypeOID))
 		}
@@ -530,7 +532,7 @@ func NormalizeArrayType(dt types.DoltgresType, arr []any) any {
 		}
 		newVal[i] = NormalizeVal(bt, el)
 	}
-	ret, err := framework.IoOutput(nil, dt, newVal)
+	ret, err := framework.SQL(nil, dt, newVal)
 	if err != nil {
 		panic(err)
 	}

@@ -85,7 +85,7 @@ var uuid_send = framework.Function1{
 var uuid_cmp = framework.Function2{
 	Name:       "uuid_cmp",
 	Return:     pgtypes.Int32,
-	Parameters: [2]pgtypes.DoltgresType{pgtypes.Oid, pgtypes.Oid},
+	Parameters: [2]pgtypes.DoltgresType{pgtypes.Uuid, pgtypes.Uuid},
 	Strict:     true,
 	Callable: func(ctx *sql.Context, _ [3]pgtypes.DoltgresType, val1, val2 any) (any, error) {
 		ab := val1.(uuid.UUID)

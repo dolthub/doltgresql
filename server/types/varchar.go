@@ -16,6 +16,7 @@ package types
 
 import (
 	"github.com/lib/pq/oid"
+	"gopkg.in/src-d/go-errors.v1"
 )
 
 const (
@@ -28,13 +29,16 @@ const (
 	StringUnbounded = 0
 )
 
+var ErrLengthMustBeAtLeast1 = errors.NewKind(`length for type %s must be at least 1`)
+var ErrLengthCannotExceed = errors.NewKind(`length for type %s cannot exceed 10485760`)
+
 // VarChar is a varchar that has an unbounded length.
 var VarChar = DoltgresType{
 	OID:           uint32(oid.T_varchar),
 	Name:          "varchar",
 	Schema:        "pg_catalog",
 	Owner:         "doltgres", // TODO
-	Length:        int16(-1),
+	TypLength:     int16(-1),
 	PassedByVal:   false,
 	TypType:       TypeType_Base,
 	TypCategory:   TypeCategory_StringTypes,
@@ -58,15 +62,42 @@ var VarChar = DoltgresType{
 	BaseTypeOID:   0,
 	TypMod:        -1,
 	NDims:         0,
-	Collation:     100,
+	TypCollation:  100,
 	DefaulBin:     "",
 	Default:       "",
-	Acl:           "",
+	Acl:           nil,
 	Checks:        nil,
+	AttTypMod:     -1,
+	internalName:  "character varying",
 }
 
-func NewVarCharType(maxChars uint32) DoltgresType {
-	// TODO: maxChars represents the maximum number of characters that the type may hold.
-	//  When this is zero, we treat it as completely unbounded (which is still limited by the field size limit).
-	return VarChar
+// NewVarCharType takes maxChars representing the maximum number of characters that the type may hold
+func NewVarCharType(maxChars int32) (DoltgresType, error) {
+	var err error
+	newType := VarChar
+	newType.AttTypMod, err = GetTypModFromMaxChars("varchar", maxChars)
+	if err != nil {
+		return DoltgresType{}, err
+	}
+	return newType, nil
+}
+
+// MustCreateNewVarCharType panics if used with out-of-bound value.
+func MustCreateNewVarCharType(maxChars int32) DoltgresType {
+	var err error
+	newType := VarChar
+	newType.AttTypMod, err = GetTypModFromMaxChars("varchar", maxChars)
+	if err != nil {
+		panic(err)
+	}
+	return newType
+}
+
+func GetTypModFromMaxChars(typName string, l int32) (int32, error) {
+	if l < 1 {
+		return 0, ErrLengthMustBeAtLeast1.New(typName)
+	} else if l > StringMaxLength {
+		return 0, ErrLengthCannotExceed.New(typName)
+	}
+	return l + 4, nil
 }

@@ -76,11 +76,14 @@ func nodeResolvableTypeReference(typ tree.ResolvableTypeReference) (*vitess.Conv
 				width := uint32(columnType.Width())
 				if width > pgtypes.StringMaxLength {
 					return nil, pgtypes.DoltgresType{}, fmt.Errorf("length for type bpchar cannot exceed %d", pgtypes.StringMaxLength)
-				}
-				if width == 0 {
+				} else if width == 0 {
+					// TODO: need to differentiate between definitions 'bpchar' (valid) and 'char(0)' (invalid)
 					resolvedType = pgtypes.BpChar
 				} else {
-					resolvedType = pgtypes.NewCharType(width)
+					resolvedType, err = pgtypes.NewCharType(int32(width))
+					if err != nil {
+						return nil, pgtypes.DoltgresType{}, err
+					}
 				}
 			case oid.T_char:
 				width := uint32(columnType.Width())
@@ -144,8 +147,15 @@ func nodeResolvableTypeReference(typ tree.ResolvableTypeReference) (*vitess.Conv
 				width := uint32(columnType.Width())
 				if width > pgtypes.StringMaxLength {
 					return nil, pgtypes.DoltgresType{}, fmt.Errorf("length for type varchar cannot exceed %d", pgtypes.StringMaxLength)
+				} else if width == 0 {
+					// TODO: need to differentiate between definitions 'varchar' (valid) and 'varchar(0)' (invalid)
+					resolvedType = pgtypes.VarChar
+				} else {
+					resolvedType, err = pgtypes.NewVarCharType(int32(width))
 				}
-				resolvedType = pgtypes.NewVarCharType(width)
+				if err != nil {
+					return nil, pgtypes.DoltgresType{}, err
+				}
 			case oid.T_xid:
 				resolvedType = pgtypes.Xid
 			default:

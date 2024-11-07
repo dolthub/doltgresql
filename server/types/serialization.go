@@ -52,7 +52,7 @@ func (t DoltgresType) Serialize() []byte {
 	writer.String(t.Name)
 	writer.String(t.Schema)
 	writer.String(t.Owner)
-	writer.Int16(t.Length)
+	writer.Int16(t.TypLength)
 	writer.Bool(t.PassedByVal)
 	writer.String(string(t.TypType))
 	writer.String(string(t.TypCategory))
@@ -76,15 +76,21 @@ func (t DoltgresType) Serialize() []byte {
 	writer.Uint32(t.BaseTypeOID)
 	writer.Int32(t.TypMod)
 	writer.Int32(t.NDims)
-	writer.Uint32(t.Collation)
+	writer.Uint32(t.TypCollation)
 	writer.String(t.DefaulBin)
 	writer.String(t.Default)
-	writer.String(t.Acl)
+	writer.VariableUint(uint64(len(t.Acl)))
+	for _, ac := range t.Acl {
+		writer.String(ac)
+	}
 	writer.VariableUint(uint64(len(t.Checks)))
 	for _, check := range t.Checks {
 		writer.String(check.Name)
 		writer.String(check.CheckExpression)
 	}
+	writer.Int32(t.AttTypMod)
+	// TODO: get rid this?
+	writer.String(t.internalName)
 	return writer.Data()
 }
 
@@ -106,7 +112,7 @@ func Deserialize(data []byte) (DoltgresType, error) {
 	typ.Name = reader.String()
 	typ.Schema = reader.String()
 	typ.Owner = reader.String()
-	typ.Length = reader.Int16()
+	typ.TypLength = reader.Int16()
 	typ.PassedByVal = reader.Bool()
 	typ.TypType = TypeType(reader.String())
 	typ.TypCategory = TypeCategory(reader.String())
@@ -130,10 +136,14 @@ func Deserialize(data []byte) (DoltgresType, error) {
 	typ.BaseTypeOID = reader.Uint32()
 	typ.TypMod = reader.Int32()
 	typ.NDims = reader.Int32()
-	typ.Collation = reader.Uint32()
+	typ.TypCollation = reader.Uint32()
 	typ.DefaulBin = reader.String()
 	typ.Default = reader.String()
-	typ.Acl = reader.String()
+	numOfAcl := reader.VariableUint()
+	for k := uint64(0); k < numOfAcl; k++ {
+		ac := reader.String()
+		typ.Acl = append(typ.Acl, ac)
+	}
 	numOfChecks := reader.VariableUint()
 	for k := uint64(0); k < numOfChecks; k++ {
 		checkName := reader.String()
@@ -144,6 +154,9 @@ func Deserialize(data []byte) (DoltgresType, error) {
 			Enforced:        true,
 		})
 	}
+	typ.AttTypMod = reader.Int32()
+	// TODO: get rid this?
+	typ.internalName = reader.String()
 	if !reader.IsEmpty() {
 		return DoltgresType{}, fmt.Errorf("extra data found while deserializing type %s", typ.Name)
 	}

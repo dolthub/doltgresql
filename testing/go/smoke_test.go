@@ -358,7 +358,7 @@ func TestSmokeTests(t *testing.T) {
 				},
 				{
 					Query:       "SELECT ARRAY[1::int8, 2::varchar];",
-					ExpectedErr: "ARRAY types bigint and varchar cannot be matched",
+					ExpectedErr: "ARRAY types bigint and character varying cannot be matched",
 				},
 			},
 		},

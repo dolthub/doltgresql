@@ -9,6 +9,5 @@ func Init() {
 	pgtypes.IoReceive = IoReceive
 	pgtypes.IoSend = IoSend
 	pgtypes.IoCompare = IoCompare
-	pgtypes.TypModIn = TypModIn
-	pgtypes.TypModOut = TypModOut
+	pgtypes.SQL = SQL
 }

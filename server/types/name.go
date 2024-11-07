@@ -27,7 +27,7 @@ var Name = DoltgresType{
 	Name:          "name",
 	Schema:        "pg_catalog",
 	Owner:         "doltgres", // TODO
-	Length:        int16(64),
+	TypLength:     int16(64),
 	PassedByVal:   false,
 	TypType:       TypeType_Base,
 	TypCategory:   TypeCategory_StringTypes,
@@ -51,9 +51,9 @@ var Name = DoltgresType{
 	BaseTypeOID:   0,
 	TypMod:        -1,
 	NDims:         0,
-	Collation:     950,
+	TypCollation:  950,
 	DefaulBin:     "",
 	Default:       "",
-	Acl:           "",
+	Acl:           nil,
 	Checks:        nil,
 }

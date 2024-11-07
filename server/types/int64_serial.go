@@ -22,7 +22,7 @@ var Int64Serial = DoltgresType{
 	Name:          "bigserial",
 	Schema:        "pg_catalog",
 	Owner:         "doltgres", // TODO
-	Length:        int16(8),
+	TypLength:     int16(8),
 	PassedByVal:   true,
 	TypType:       TypeType_Base,
 	TypCategory:   TypeCategory_NumericTypes,
@@ -46,10 +46,10 @@ var Int64Serial = DoltgresType{
 	BaseTypeOID:   0,
 	TypMod:        -1,
 	NDims:         0,
-	Collation:     0,
+	TypCollation:  0,
 	DefaulBin:     "",
 	Default:       "",
-	Acl:           "",
+	Acl:           nil,
 	Checks:        nil,
 	// used internally
 	isSerial: true,

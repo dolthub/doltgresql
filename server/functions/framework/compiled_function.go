@@ -92,12 +92,17 @@ func newCompiledFunctionInternal(
 	c.callResolved = make([]pgtypes.DoltgresType, len(functionParameterTypes)+1)
 	hasPolymorphicParam := false
 	for i, param := range functionParameterTypes {
-		if param.IsPolymorphicType() {
+		if param.IsPolymorphicType() || param.OID == uint32(oid.T_text) {
 			// resolve will ensure that the parameter types are valid, so we can just assign them here
 			hasPolymorphicParam = true
 			c.callResolved[i] = originalTypes[i]
 		} else {
 			c.callResolved[i] = param
+			if d, ok := args[i].Type().(pgtypes.DoltgresType); ok {
+				// TODO: find better workaround to keep the type of the argument as parameter type
+				//  (they currently differ with type modifier information)
+				c.callResolved[i] = d
+			}
 		}
 	}
 	returnType := fn.GetReturn()
@@ -211,7 +216,7 @@ func (c *CompiledFunction) Eval(ctx *sql.Context, row sql.Row) (interface{}, err
 		return nil, c.stashedErr
 	}
 
-	// Evaluate all of the arguments.
+	// Evaluate all arguments.
 	args, err := c.evalArgs(ctx, row)
 	if err != nil {
 		return nil, err
@@ -514,7 +519,7 @@ func (c *CompiledFunction) unknownTypeCategoryMatches(argTypes []pgtypes.Doltgre
 	// TODO: implement the remainder of step 4.e. from the documentation (following code assumes it has been implemented)
 	// ...
 
-	// If we've discarded every function, then we'll actually return all of the original candidates
+	// If we've discarded every function, then we'll actually return all original candidates
 	if len(matches) == 0 {
 		return candidates, true
 	}
@@ -551,7 +556,7 @@ func (*CompiledFunction) polymorphicTypesCompatible(paramTypes []pgtypes.Doltgre
 	// The base type is the type that must match between all polymorphic types.
 	var baseType pgtypes.DoltgresType
 	for i, paramType := range paramTypes {
-		if paramType.IsPolymorphicType() {
+		if paramType.IsPolymorphicType() && exprTypes[i].OID != uint32(oid.T_unknown) {
 			// Although we do this check before we ever reach this function, we do it again as we may convert anyelement
 			// to anynonarray, which changes type validity
 			if !paramType.IsValidForPolymorphicType(exprTypes[i]) {
@@ -590,7 +595,7 @@ func (c *CompiledFunction) resolvePolymorphicReturnType(functionInterfaceTypes [
 	// We've verified that all polymorphic types are compatible in a previous step, so this is safe to do.
 	var firstPolymorphicType pgtypes.DoltgresType
 	for i, functionInterfaceType := range functionInterfaceTypes {
-		if functionInterfaceType.IsPolymorphicType() {
+		if functionInterfaceType.IsPolymorphicType() && originalTypes[i].OID != uint32(oid.T_unknown) {
 			firstPolymorphicType = originalTypes[i]
 			break
 		}
@@ -684,8 +689,7 @@ func (c *CompiledFunction) analyzeParameters() (originalTypes []pgtypes.Doltgres
 	originalTypes = make([]pgtypes.DoltgresType, len(c.Arguments))
 	for i, param := range c.Arguments {
 		returnType := param.Type()
-		if extendedType, ok := returnType.(pgtypes.DoltgresType); ok {
-
+		if extendedType, ok := returnType.(pgtypes.DoltgresType); ok && !extendedType.EmptyType() {
 			if extendedType.TypType == pgtypes.TypeType_Domain {
 				extendedType = extendedType.DomainUnderlyingBaseType()
 			}

@@ -24,7 +24,7 @@ var BpChar = DoltgresType{
 	Name:          "bpchar",
 	Schema:        "pg_catalog",
 	Owner:         "doltgres", // TODO
-	Length:        int16(-1),
+	TypLength:     int16(-1),
 	PassedByVal:   false,
 	TypType:       TypeType_Base,
 	TypCategory:   TypeCategory_StringTypes,
@@ -48,18 +48,20 @@ var BpChar = DoltgresType{
 	BaseTypeOID:   0,
 	TypMod:        -1,
 	NDims:         0,
-	Collation:     100,
+	TypCollation:  100,
 	DefaulBin:     "",
 	Default:       "",
-	Acl:           "",
+	Acl:           nil,
 	Checks:        nil,
+	AttTypMod:     -1,
 }
 
-func NewCharType(length uint32) DoltgresType {
-	// TODO: maxChars represents the maximum number of characters that the type may hold.
-	//  When this is zero, we treat it as completely unbounded (which is still limited by the field size limit).
-	// how would this be differentiated in casting when oids are use????
-	bpChar := BpChar
-	bpChar.Length = int16(length)
-	return bpChar
+func NewCharType(length int32) (DoltgresType, error) {
+	var err error
+	newType := BpChar
+	newType.AttTypMod, err = GetTypModFromMaxChars("char", length)
+	if err != nil {
+		return DoltgresType{}, err
+	}
+	return newType, nil
 }

@@ -17,7 +17,6 @@ package functions
 import (
 	"fmt"
 	"github.com/dolthub/doltgresql/utils"
-
 	"github.com/dolthub/go-mysql-server/sql"
 
 	"github.com/dolthub/doltgresql/server/functions/framework"
@@ -43,13 +42,13 @@ var varcharin = framework.Function3{
 	Callable: func(ctx *sql.Context, _ [4]pgtypes.DoltgresType, val1, val2, val3 any) (any, error) {
 		input := val1.(string)
 		typmod := val3.(int32)
-		maxChars := typmod //TODO: decode
-		if maxChars == pgtypes.StringUnbounded {
+		maxChars := GetMaxCharsFromTypmod(typmod)
+		if maxChars < pgtypes.StringUnbounded {
 			return input, nil
 		}
 		input, runeLength := truncateString(input, maxChars)
 		if runeLength > maxChars {
-			return input, fmt.Errorf("value too long for type %s", "varchar")
+			return input, fmt.Errorf("value too long for type varying(%v)", maxChars)
 		} else {
 			return input, nil
 		}
@@ -63,12 +62,14 @@ var varcharout = framework.Function1{
 	Parameters: [1]pgtypes.DoltgresType{pgtypes.VarChar},
 	Strict:     true,
 	Callable: func(ctx *sql.Context, t [2]pgtypes.DoltgresType, val any) (any, error) {
-		// TODO
-		//if b.IsUnbounded() {
-		//	return val.(string), nil
-		//}
-		//str, _ := truncateString(converted.(string), b.MaxChars)
-		return val.(string), nil
+		v := val.(string)
+		typ := t[0]
+		if typ.AttTypMod != -1 {
+			str, _ := truncateString(v, GetMaxCharsFromTypmod(typ.AttTypMod))
+			return str, nil
+		} else {
+			return v, nil
+		}
 	},
 }
 
@@ -80,10 +81,10 @@ var varcharrecv = framework.Function3{
 	Strict:     true,
 	Callable: func(ctx *sql.Context, _ [4]pgtypes.DoltgresType, val1, val2, val3 any) (any, error) {
 		data := val1.([]byte)
-		// TODO: typmod
 		if len(data) == 0 {
 			return nil, nil
 		}
+		// TODO: use typmod?
 		reader := utils.NewReader(data)
 		return reader.String(), nil
 	},
@@ -110,8 +111,7 @@ var varchartypmodin = framework.Function1{
 	Parameters: [1]pgtypes.DoltgresType{pgtypes.TextArray}, // cstring[]
 	Strict:     true,
 	Callable: func(ctx *sql.Context, _ [2]pgtypes.DoltgresType, val any) (any, error) {
-		// TODO: typmod=(precision<<16)∣scale
-		return nil, nil
+		return getTypModFromStringArr("varchar", val.([]any))
 	},
 }
 
@@ -122,9 +122,11 @@ var varchartypmodout = framework.Function1{
 	Parameters: [1]pgtypes.DoltgresType{pgtypes.Int32},
 	Strict:     true,
 	Callable: func(ctx *sql.Context, _ [2]pgtypes.DoltgresType, val any) (any, error) {
-		// TODO
-		// Precision = typmod & 0xFFFF
-		// Scale = (typmod >> 16) & 0xFFFF
-		return nil, nil
+		typmod := val.(int32)
+		if typmod < 5 {
+			return "", nil
+		}
+		maxChars := GetMaxCharsFromTypmod(typmod)
+		return fmt.Sprintf("(%v)", maxChars), nil
 	},
 }

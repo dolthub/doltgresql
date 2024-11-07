@@ -16,6 +16,7 @@ package cast
 
 import (
 	"fmt"
+	"github.com/dolthub/doltgresql/server/functions"
 	"strings"
 	"unicode/utf8"
 
@@ -33,10 +34,14 @@ var errOutOfRange = errors.NewKind("%s out of range")
 func handleStringCast(str string, targetType pgtypes.DoltgresType) (string, error) {
 	switch oid.Oid(targetType.OID) {
 	case oid.T_bpchar:
-		if targetType.Length == -1 {
+		if targetType.AttTypMod == -1 {
 			return str, nil
 		}
-		length := uint32(targetType.Length)
+		maxChars, err := pgtypes.GetTypModFromMaxChars("char", targetType.AttTypMod)
+		if err != nil {
+			return "", err
+		}
+		length := uint32(maxChars)
 		str, runeLength := truncateString(str, length)
 		if runeLength > length {
 			return str, fmt.Errorf("value too long for type %s", targetType.String())
@@ -50,13 +55,13 @@ func handleStringCast(str string, targetType pgtypes.DoltgresType) (string, erro
 		return str, nil
 	case oid.T_name:
 		// Name seems to never throw an error, regardless of the context or how long the input is
-		str, _ := truncateString(str, uint32(targetType.Length))
+		str, _ := truncateString(str, uint32(targetType.TypLength))
 		return str, nil
 	case oid.T_varchar:
-		if targetType.Length == -1 {
+		if targetType.AttTypMod == -1 {
 			return str, nil
 		}
-		length := uint32(targetType.Length)
+		length := uint32(functions.GetMaxCharsFromTypmod(targetType.AttTypMod))
 		str, runeLength := truncateString(str, length)
 		if runeLength > length {
 			return str, fmt.Errorf("value too long for type %s", targetType.String())

@@ -33,7 +33,7 @@ func NewDomainType(
 		Name:          name,
 		Schema:        schema,
 		Owner:         owner,
-		Length:        asType.Length,
+		TypLength:     asType.TypLength,
 		PassedByVal:   asType.PassedByVal,
 		TypType:       TypeType_Domain,
 		TypCategory:   asType.TypCategory,
@@ -57,10 +57,10 @@ func NewDomainType(
 		BaseTypeOID:   asType.OID,
 		TypMod:        -1,
 		NDims:         0,
-		Collation:     0,
+		TypCollation:  0,
 		DefaulBin:     "",
 		Default:       defaultExpr,
-		Acl:           "",
+		Acl:           nil,
 		Checks:        checks,
 	}, nil
 }
