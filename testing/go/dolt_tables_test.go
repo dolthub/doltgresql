@@ -426,6 +426,31 @@ func TestUserSpaceDoltTables(t *testing.T) {
 					Query:       `SELECT to_id, diff_type FROM newschema.dolt_commit_diff_test WHERE from_commit=HASHOF('HEAD^1') AND to_commit=HASHOF('HEAD')`,
 					ExpectedErr: "table not found",
 				},
+				{
+					// Same name as table in public schema
+					Query:    `CREATE TABLE test (id INT PRIMARY KEY)`,
+					Expected: []sql.Row{},
+				},
+				{
+					Query:    `INSERT INTO test VALUES (12)`,
+					Expected: []sql.Row{},
+				},
+				{
+					Query:            `SELECT dolt_commit('-Am', 'add test')`,
+					SkipResultsCheck: true,
+				},
+				{
+					Query:    `SELECT from_id, to_id, diff_type FROM newschema.dolt_commit_diff_test WHERE from_commit=HASHOF('HEAD~1') AND to_commit=HASHOF('HEAD')`,
+					Expected: []sql.Row{{nil, 12, "added"}},
+				},
+				{
+					Query:    `SELECT from_id, to_id, diff_type FROM dolt_commit_diff_test WHERE from_commit=HASHOF('HEAD~1') AND to_commit=HASHOF('HEAD')`,
+					Expected: []sql.Row{{nil, 12, "added"}},
+				},
+				{
+					Query:    `SELECT from_id, to_id, diff_type FROM public.dolt_commit_diff_test WHERE from_commit=HASHOF('HEAD~3') AND to_commit=HASHOF('HEAD~2')`,
+					Expected: []sql.Row{{nil, 10, "added"}},
+				},
 			},
 		},
 		{
@@ -689,6 +714,32 @@ func TestUserSpaceDoltTables(t *testing.T) {
 					Query:       `SELECT * FROM newschema.dolt_conflicts_test`,
 					ExpectedErr: "table not found",
 				},
+				{
+					// Same name as table in public schema
+					Query:    `CREATE TABLE test (id INT PRIMARY KEY)`,
+					Expected: []sql.Row{},
+				},
+				{
+					Query:    `INSERT INTO test VALUES (12)`,
+					Expected: []sql.Row{},
+				},
+				// TODO: Create conflict to test correct table
+				{
+					Query:            `SELECT dolt_commit('-Am', 'add test')`,
+					SkipResultsCheck: true,
+				},
+				{
+					Query:    `SELECT * FROM newschema.dolt_conflicts_test`,
+					Expected: []sql.Row{},
+				},
+				{
+					Query:    `SELECT * FROM dolt_conflicts_test`,
+					Expected: []sql.Row{},
+				},
+				{
+					Query:    `SELECT * FROM public.dolt_conflicts_test`,
+					Expected: []sql.Row{},
+				},
 			},
 		},
 		{
@@ -876,6 +927,32 @@ func TestUserSpaceDoltTables(t *testing.T) {
 					Query:       `SELECT * FROM newschema.dolt_constraint_violations_test`,
 					ExpectedErr: "table not found",
 				},
+				{
+					// Same name as table in public schema
+					Query:    `CREATE TABLE test (id INT PRIMARY KEY)`,
+					Expected: []sql.Row{},
+				},
+				{
+					Query:    `INSERT INTO test VALUES (12)`,
+					Expected: []sql.Row{},
+				},
+				{
+					Query:            `SELECT dolt_commit('-Am', 'add test')`,
+					SkipResultsCheck: true,
+				},
+				// TODO: Create constraint violation to test correct table
+				{
+					Query:    `SELECT * FROM newschema.dolt_constraint_violations_test`,
+					Expected: []sql.Row{},
+				},
+				{
+					Query:    `SELECT * FROM dolt_constraint_violations_test`,
+					Expected: []sql.Row{},
+				},
+				{
+					Query:    `SELECT * FROM public.dolt_constraint_violations_test`,
+					Expected: []sql.Row{},
+				},
 			},
 		},
 		{
@@ -973,7 +1050,15 @@ func TestUserSpaceDoltTables(t *testing.T) {
 					Expected: []sql.Row{{nil, 10, "added"}},
 				},
 				{
+					Query:    `SELECT from_id, to_id, diff_type FROM doLt_DIff_tEst WHERE to_commit=HASHOF('HEAD')`,
+					Expected: []sql.Row{{nil, 10, "added"}},
+				},
+				{
 					Query:    `SELECT from_id, to_id, diff_type FROM public.dolt_diff_test WHERE to_commit=HASHOF('HEAD')`,
+					Expected: []sql.Row{{nil, 10, "added"}},
+				},
+				{
+					Query:    `SELECT from_id, to_id, diff_type FROM public.doLt_DIff_tEst WHERE to_commit=HASHOF('HEAD')`,
 					Expected: []sql.Row{{nil, 10, "added"}},
 				},
 				{
@@ -986,6 +1071,10 @@ func TestUserSpaceDoltTables(t *testing.T) {
 				},
 				{
 					Query:       `SELECT * FROM public.dolt_diff_none`,
+					ExpectedErr: "table not found",
+				},
+				{
+					Query:       `SELECT * FROM dolt_diff_none`,
 					ExpectedErr: "table not found",
 				},
 				{
@@ -1031,6 +1120,47 @@ func TestUserSpaceDoltTables(t *testing.T) {
 				{
 					Query:       `SELECT to_id FROM newschema.dolt_diff_test WHERE to_commit=HASHOF('HEAD')`,
 					ExpectedErr: "table not found",
+				},
+				{
+					// Same name as table in public schema
+					Query:    `CREATE TABLE test (id INT PRIMARY KEY)`,
+					Expected: []sql.Row{},
+				},
+				{
+					Query:    `INSERT INTO test VALUES (12)`,
+					Expected: []sql.Row{},
+				},
+				{
+					Query:            `SELECT dolt_commit('-Am', 'add test')`,
+					SkipResultsCheck: true,
+				},
+				{
+					Query:    `SELECT from_id, to_id, diff_type FROM newschema.dolt_diff_test WHERE  to_commit=HASHOF('HEAD')`,
+					Expected: []sql.Row{{nil, 12, "added"}},
+				},
+				{
+					Query:    `SELECT from_id, to_id, diff_type FROM dolt_diff_test WHERE to_commit=HASHOF('HEAD')`,
+					Expected: []sql.Row{{nil, 12, "added"}},
+				},
+				{
+					Query:    `SELECT from_id, to_id, diff_type FROM public.dolt_diff_test WHERE to_commit=HASHOF('HEAD~2')`,
+					Expected: []sql.Row{{nil, 10, "added"}},
+				},
+				{
+					Query:    "SET search_path = 'newschema,public'",
+					Expected: []sql.Row{},
+				},
+				{
+					Query:    `SELECT from_id, to_id, diff_type FROM dolt_diff_test WHERE to_commit=HASHOF('HEAD')`,
+					Expected: []sql.Row{{nil, 12, "added"}},
+				},
+				{
+					Query:    "SET search_path = 'public,newschema'",
+					Expected: []sql.Row{},
+				},
+				{
+					Query:    `SELECT from_id, to_id, diff_type FROM dolt_diff_test WHERE to_commit=HASHOF('HEAD~2')`,
+					Expected: []sql.Row{{nil, 10, "added"}},
 				},
 			},
 		},
@@ -1095,7 +1225,7 @@ func TestUserSpaceDoltTables(t *testing.T) {
 					ExpectedErr: "table not found",
 				},
 				{
-					Skip:     true, // TODO: Returning rows for both commits
+					Skip:     true, // TODO: Returning rows for both tables
 					Query:    `SELECT id, committer FROM public.dolt_history_test`,
 					Expected: []sql.Row{{10, "John Doe"}},
 				},
@@ -1106,6 +1236,40 @@ func TestUserSpaceDoltTables(t *testing.T) {
 				{
 					Query:       `SELECT id, committer FROM newschema.dolt_history_test`,
 					ExpectedErr: "table not found",
+				},
+				{
+					// Same name as table in public schema
+					Query:    `CREATE TABLE test (id INT PRIMARY KEY)`,
+					Expected: []sql.Row{},
+				},
+				{
+					Query:    `INSERT INTO test VALUES (12)`,
+					Expected: []sql.Row{},
+				},
+				{
+					Query:            `SELECT dolt_commit('-Am', 'add test')`,
+					SkipResultsCheck: true,
+				},
+				{
+					Query:    `SELECT id, committer FROM newschema.dolt_history_test`,
+					Expected: []sql.Row{{12, "postgres"}},
+				},
+				{
+					Query:    `SELECT id, committer FROM dolt_history_test`,
+					Expected: []sql.Row{{12, "postgres"}},
+				},
+				{
+					Skip:     true, // TODO: Returning rows for all tables
+					Query:    `SELECT id, committer FROM public.dolt_history_test`,
+					Expected: []sql.Row{{10, "John Doe"}},
+				},
+				{
+					Query:    "SET search_path = 'newschema,public'",
+					Expected: []sql.Row{},
+				},
+				{
+					Query:    `SELECT id, committer FROM dolt_history_test`,
+					Expected: []sql.Row{{12, "postgres"}},
 				},
 			},
 		},
@@ -1754,6 +1918,35 @@ func TestUserSpaceDoltTables(t *testing.T) {
 				{
 					Query:    `SELECT * FROM newschema.dolt_workspace_test`,
 					Expected: []sql.Row{}, // dolt_workspace empty for unknown table
+				},
+				{
+					// Same name as table in public schema
+					Query:    `CREATE TABLE test (id INT PRIMARY KEY)`,
+					Expected: []sql.Row{},
+				},
+				{
+					Query:    `INSERT INTO test VALUES (12)`,
+					Expected: []sql.Row{},
+				},
+				{
+					Query:    `SELECT id, staged, from_id, to_id FROM newschema.dolt_workspace_test`,
+					Expected: []sql.Row{{Numeric("0"), 0, nil, 12}},
+				},
+				{
+					Query:    `SELECT id, staged, from_id, to_id FROM dolt_workspace_test`,
+					Expected: []sql.Row{{Numeric("0"), 0, nil, 12}},
+				},
+				{
+					Query:    `SELECT id, staged, from_id, to_id FROM public.dolt_workspace_test`,
+					Expected: []sql.Row{{Numeric("0"), 0, nil, 10}},
+				},
+				{
+					Query:    "SET search_path = 'newschema,public'",
+					Expected: []sql.Row{},
+				},
+				{
+					Query:    `SELECT id, staged, from_id, to_id FROM dolt_workspace_test`,
+					Expected: []sql.Row{{Numeric("0"), 0, nil, 12}},
 				},
 			},
 		},
