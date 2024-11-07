@@ -17,8 +17,6 @@ package types
 import (
 	"bytes"
 	"fmt"
-	"github.com/dolthub/doltgresql/postgres/parser/uuid"
-	"github.com/lib/pq/oid"
 	"math"
 	"reflect"
 	"time"
@@ -27,9 +25,11 @@ import (
 	"github.com/dolthub/go-mysql-server/sql/types"
 	"github.com/dolthub/vitess/go/sqltypes"
 	"github.com/dolthub/vitess/go/vt/proto/query"
+	"github.com/lib/pq/oid"
 	"gopkg.in/src-d/go-errors.v1"
 
 	"github.com/dolthub/doltgresql/postgres/parser/duration"
+	"github.com/dolthub/doltgresql/postgres/parser/uuid"
 )
 
 var ErrTypeAlreadyExists = errors.NewKind(`type "%s" already exists`)
@@ -82,8 +82,6 @@ type DoltgresType struct {
 	isSerial            bool // TODO: to replace serial types
 	isUnresolved        bool
 	baseTypeForInternal uint32
-
-	strTypeLength uint32
 }
 
 var IoOutput func(ctx *sql.Context, t DoltgresType, val any) (string, error)
@@ -127,10 +125,10 @@ func (t DoltgresType) EmptyType() bool {
 }
 
 func (t DoltgresType) DomainUnderlyingBaseType() DoltgresType {
-	// TODO: account for user-defined type
+	// TODO: handle user-defined type
 	bt, ok := OidToBuildInDoltgresType[t.BaseTypeOID]
 	if !ok {
-		// TODO
+		panic(fmt.Sprintf("unable to get DoltgresType from OID: %v", t.BaseTypeOID))
 	}
 	if bt.TypType == TypeType_Domain {
 		return bt.DomainUnderlyingBaseType()

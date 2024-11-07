@@ -564,12 +564,8 @@ func (*CompiledFunction) polymorphicTypesCompatible(paramTypes []pgtypes.Doltgre
 			}
 			// Get the base expression type that we'll compare against
 			baseExprType := exprTypes[i]
-			if baseExprType.IsArrayType() {
-				var ok bool
-				baseExprType, ok = baseExprType.ArrayBaseType()
-				if !ok {
-
-				}
+			if abt, ok := baseExprType.ArrayBaseType(); ok {
+				baseExprType = abt
 			}
 			// TODO: handle range types
 			// Check that the base expression type matches the previously-found base type

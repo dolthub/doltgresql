@@ -16,6 +16,7 @@ package functions
 
 import (
 	"encoding/binary"
+
 	"github.com/dolthub/go-mysql-server/sql"
 
 	"github.com/dolthub/doltgresql/server/functions/framework"

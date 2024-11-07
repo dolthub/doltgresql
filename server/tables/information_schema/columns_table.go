@@ -15,7 +15,6 @@
 package information_schema
 
 import (
-	"github.com/dolthub/doltgresql/server/functions"
 	"strings"
 
 	"github.com/dolthub/go-mysql-server/sql"
@@ -26,6 +25,7 @@ import (
 	"github.com/lib/pq/oid"
 
 	partypes "github.com/dolthub/doltgresql/postgres/parser/types"
+	"github.com/dolthub/doltgresql/server/functions"
 	pgtypes "github.com/dolthub/doltgresql/server/types"
 )
 

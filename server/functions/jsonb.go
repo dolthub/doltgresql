@@ -15,7 +15,6 @@
 package functions
 
 import (
-	"github.com/dolthub/doltgresql/utils"
 	"strings"
 	"unsafe"
 
@@ -24,6 +23,7 @@ import (
 
 	"github.com/dolthub/doltgresql/server/functions/framework"
 	pgtypes "github.com/dolthub/doltgresql/server/types"
+	"github.com/dolthub/doltgresql/utils"
 )
 
 func initJsonB() {

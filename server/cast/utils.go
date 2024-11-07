@@ -16,13 +16,13 @@ package cast
 
 import (
 	"fmt"
-	"github.com/dolthub/doltgresql/server/functions"
 	"strings"
 	"unicode/utf8"
 
 	"github.com/lib/pq/oid"
 	"gopkg.in/src-d/go-errors.v1"
 
+	"github.com/dolthub/doltgresql/server/functions"
 	pgtypes "github.com/dolthub/doltgresql/server/types"
 )
 

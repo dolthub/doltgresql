@@ -2,9 +2,10 @@ package framework
 
 import (
 	"fmt"
+	"strings"
+
 	"github.com/dolthub/go-mysql-server/sql"
 	"github.com/lib/pq/oid"
-	"strings"
 
 	pgtypes "github.com/dolthub/doltgresql/server/types"
 )

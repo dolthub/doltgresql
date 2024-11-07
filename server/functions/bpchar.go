@@ -17,7 +17,6 @@ package functions
 import (
 	"bytes"
 	"fmt"
-	"github.com/dolthub/doltgresql/utils"
 	"strconv"
 	"strings"
 	"unicode/utf8"
@@ -26,6 +25,7 @@ import (
 
 	"github.com/dolthub/doltgresql/server/functions/framework"
 	pgtypes "github.com/dolthub/doltgresql/server/types"
+	"github.com/dolthub/doltgresql/utils"
 )
 
 // initBpChar registers the functions to the catalog.

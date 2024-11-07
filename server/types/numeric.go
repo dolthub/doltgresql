@@ -16,6 +16,7 @@ package types
 
 import (
 	"fmt"
+
 	"github.com/lib/pq/oid"
 	"github.com/shopspring/decimal"
 )
