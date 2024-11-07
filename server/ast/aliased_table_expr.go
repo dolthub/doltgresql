@@ -58,6 +58,19 @@ func nodeAliasedTableExpr(node *tree.AliasedTableExpr) (*vitess.AliasedTableExpr
 			return nil, fmt.Errorf("unhandled subquery table expression: `%T`", tableExpr)
 		}
 
+		// If the subquery is a VALUES statement, it should be represented more directly
+		innerSelect := selectStmt
+		if parentSelect, ok := innerSelect.(*vitess.ParenSelect); ok {
+			innerSelect = parentSelect.Select
+		}
+		if inSelect, ok := innerSelect.(*vitess.Select); ok {
+			if len(inSelect.From) == 1 {
+				if valuesStmt, ok := inSelect.From[0].(*vitess.ValuesStatement); ok {
+					aliasExpr = valuesStmt
+				}
+			}
+		}
+
 		subquery := &vitess.Subquery{
 			Select: selectStmt,
 		}
