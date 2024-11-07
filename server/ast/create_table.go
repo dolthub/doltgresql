@@ -77,6 +77,24 @@ func nodeCreateTable(node *tree.CreateTable) (*vitess.DDL, error) {
 	if err = assignTableDefs(node.Defs, ddl); err != nil {
 		return nil, err
 	}
+	for i, table := range node.Inherits {
+		// TODO: also check for schemas along with inherits
+		if i > 0 {
+			return nil, fmt.Errorf("Multiple INHERITS is not yet supported")
+		}
+		if len(node.Defs) > 0 {
+			return nil, fmt.Errorf("INHERITS with TableDefs is not yet supported")
+		}
+		likeTable, err := nodeTableName(&table)
+		if err != nil {
+			return nil, err
+		}
+		optLike := &vitess.OptLike{
+			LikeTable: likeTable,
+		}
+		ddl.OptLike = optLike
+	}
+
 	if node.PartitionBy != nil {
 		switch node.PartitionBy.Type {
 		case tree.PartitionByList:
