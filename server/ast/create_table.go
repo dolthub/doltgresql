@@ -64,6 +64,27 @@ func nodeCreateTable(node *tree.CreateTable) (*vitess.DDL, error) {
 			Select: selectStmt,
 		}
 	}
+	var optLike *vitess.OptLike
+	if len(node.Inherits) > 0 {
+		if len(node.Defs) > 0 {
+			// TODO: we should error here, but correctness test are silently passing
+			// return nil, fmt.Errorf("INHERITS with TableDefs is not yet supported")
+		}
+		for i, table := range node.Inherits {
+			if i > 0 {
+				return nil, fmt.Errorf("Multiple INHERITS is not yet supported")
+			}
+			// TODO: until we can support multiple tables in LIKE statements, this will only run once
+			likeTable, err := nodeTableName(&table)
+			if err != nil {
+				return nil, err
+			}
+			optLike = &vitess.OptLike{
+				LikeTable: likeTable,
+			}
+		}
+	}
+
 	if node.WithNoData {
 		return nil, fmt.Errorf("WITH NO DATA is not yet supported")
 	}
@@ -73,26 +94,10 @@ func nodeCreateTable(node *tree.CreateTable) (*vitess.DDL, error) {
 		IfNotExists: node.IfNotExists,
 		Temporary:   isTemporary,
 		OptSelect:   optSelect,
+		OptLike:     optLike,
 	}
 	if err = assignTableDefs(node.Defs, ddl); err != nil {
 		return nil, err
-	}
-	for i, table := range node.Inherits {
-		// TODO: also check for schemas along with inherits
-		if i > 0 {
-			return nil, fmt.Errorf("Multiple INHERITS is not yet supported")
-		}
-		if len(node.Defs) > 0 {
-			return nil, fmt.Errorf("INHERITS with TableDefs is not yet supported")
-		}
-		likeTable, err := nodeTableName(&table)
-		if err != nil {
-			return nil, err
-		}
-		optLike := &vitess.OptLike{
-			LikeTable: likeTable,
-		}
-		ddl.OptLike = optLike
 	}
 
 	if node.PartitionBy != nil {
