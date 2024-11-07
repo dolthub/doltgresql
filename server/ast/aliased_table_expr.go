@@ -66,6 +66,13 @@ func nodeAliasedTableExpr(node *tree.AliasedTableExpr) (*vitess.AliasedTableExpr
 		if inSelect, ok := innerSelect.(*vitess.Select); ok {
 			if len(inSelect.From) == 1 {
 				if valuesStmt, ok := inSelect.From[0].(*vitess.ValuesStatement); ok {
+					if len(node.As.Cols) > 0 {
+						columns := make([]vitess.ColIdent, len(node.As.Cols))
+						for i := range node.As.Cols {
+							columns[i] = vitess.NewColIdent(string(node.As.Cols[i]))
+						}
+						valuesStmt.Columns = columns
+					}
 					aliasExpr = valuesStmt
 					break
 				}
