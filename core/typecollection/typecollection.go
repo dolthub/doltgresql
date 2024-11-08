@@ -76,10 +76,6 @@ func (pgs *TypeCollection) GetAllTypes() (typesMap map[string][]types.DoltgresTy
 	}
 
 	// TODO: add built-in types
-	//builtInDoltgresTypes := types.GetAllTypes()
-	//for _, dt := range builtInDoltgresTypes {
-	//
-	//}
 	sort.Slice(schemaNames, func(i, j int) bool {
 		return schemaNames[i] < schemaNames[j]
 	})

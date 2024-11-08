@@ -135,11 +135,7 @@ func (cdl *CsvDataLoader) LoadChunk(ctx *sql.Context, data *bufio.Reader) error 
 			if record[i] == nil {
 				row[i] = nil
 			} else {
-				str, err := framework.IoOutput(ctx, cdl.colTypes[i], record[i])
-				if err != nil {
-					return err
-				}
-				row[i], err = framework.IoInput(ctx, cdl.colTypes[i], str)
+				row[i], err = framework.IoInput(ctx, cdl.colTypes[i], fmt.Sprintf("%v", record[i]))
 				if err != nil {
 					return err
 				}

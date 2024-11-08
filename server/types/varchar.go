@@ -101,3 +101,7 @@ func GetTypModFromMaxChars(typName string, l int32) (int32, error) {
 	}
 	return l + 4, nil
 }
+
+func GetMaxCharsFromTypmod(typmod int32) int32 {
+	return typmod - 4
+}

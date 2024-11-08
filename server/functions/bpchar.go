@@ -50,7 +50,7 @@ var bpcharin = framework.Function3{
 		typmod := val3.(int32)
 		maxChars := int32(pgtypes.StringMaxLength)
 		if typmod != -1 {
-			maxChars = GetMaxCharsFromTypmod(typmod)
+			maxChars = pgtypes.GetMaxCharsFromTypmod(typmod)
 			if maxChars < pgtypes.StringUnbounded {
 				maxChars = pgtypes.StringMaxLength
 			}
@@ -77,7 +77,7 @@ var bpcharout = framework.Function1{
 		if typ.AttTypMod == -1 {
 			return val.(string), nil
 		}
-		maxChars := GetMaxCharsFromTypmod(typ.AttTypMod)
+		maxChars := pgtypes.GetMaxCharsFromTypmod(typ.AttTypMod)
 		if maxChars < 1 {
 			return val.(string), nil
 		} else {
@@ -143,7 +143,7 @@ var bpchartypmodout = framework.Function1{
 		if typmod < 5 {
 			return "", nil
 		}
-		maxChars := GetMaxCharsFromTypmod(typmod)
+		maxChars := pgtypes.GetMaxCharsFromTypmod(typmod)
 		return fmt.Sprintf("(%v)", maxChars), nil
 	},
 }
@@ -173,10 +173,6 @@ func truncateString(val string, runeLimit int32) (string, int32) {
 		return startString[:len(startString)-len(val)], runeLength
 	}
 	return val, runeLength
-}
-
-func GetMaxCharsFromTypmod(typmod int32) int32 {
-	return typmod - 4
 }
 
 func getTypModFromStringArr(typName string, inputArr []any) (int32, error) {

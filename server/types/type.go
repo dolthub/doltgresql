@@ -17,6 +17,7 @@ package types
 import (
 	"bytes"
 	"fmt"
+	"github.com/dolthub/doltgresql/utils"
 	"math"
 	"reflect"
 	"time"
@@ -26,6 +27,7 @@ import (
 	"github.com/dolthub/vitess/go/sqltypes"
 	"github.com/dolthub/vitess/go/vt/proto/query"
 	"github.com/lib/pq/oid"
+	"github.com/shopspring/decimal"
 	"gopkg.in/src-d/go-errors.v1"
 
 	"github.com/dolthub/doltgresql/postgres/parser/duration"
@@ -105,18 +107,17 @@ func (t DoltgresType) Resolved() bool {
 }
 
 func (t DoltgresType) ArrayBaseType() (DoltgresType, bool) {
-	if t.TypCategory != TypeCategory_ArrayTypes || t.Elem == 0 {
+	if !t.IsArrayType() {
 		return DoltgresType{}, false
 	}
 	elem, ok := OidToBuildInDoltgresType[t.Elem]
-	// TODO
 	elem.AttTypMod = t.AttTypMod
 	return elem, ok
 }
 
 // IsArrayType returns true if the type is of 'array' category
 func (t DoltgresType) IsArrayType() bool {
-	return t.TypCategory == TypeCategory_ArrayTypes
+	return t.TypCategory == TypeCategory_ArrayTypes && t.Elem != 0
 }
 
 func (t DoltgresType) EmptyType() bool {
@@ -148,7 +149,6 @@ func (t DoltgresType) IsPolymorphicType() bool {
 
 // IsValidForPolymorphicType returns whether the given type is valid for the calling polymorphic type.
 func (t DoltgresType) IsValidForPolymorphicType(target DoltgresType) bool {
-	// TODO: check for other pseudo types?
 	if t.TypType != TypeType_Pseudo {
 		return false
 	}
@@ -164,13 +164,15 @@ func (t DoltgresType) IsValidForPolymorphicType(target DoltgresType) bool {
 	}
 }
 
-// ToArrayType implements the types.ExtendedType interface.
 func (t DoltgresType) ToArrayType() (DoltgresType, bool) {
+	if t.TypCategory == TypeCategory_ArrayTypes {
+		// For array types, ToArrayType causes them to return themselves.
+		return t, true
+	}
 	if t.Array == 0 {
 		return DoltgresType{}, false
 	}
 	arr, ok := OidToBuildInDoltgresType[t.Array]
-	// TODO: currently storing typ mod of base type in array type
 	arr.AttTypMod = t.AttTypMod
 	return arr, ok
 }
@@ -294,8 +296,14 @@ func (t DoltgresType) MaxSerializedWidth() types.ExtendedTypeSerializedWidth {
 
 // MaxTextResponseByteLength implements the types.ExtendedType interface.
 func (t DoltgresType) MaxTextResponseByteLength(ctx *sql.Context) uint32 {
-	// TODO
-	if t.TypLength == -1 {
+	if t.OID == uint32(oid.T_varchar) {
+		l := t.Length()
+		if l == StringUnbounded {
+			return math.MaxUint32
+		} else {
+			return uint32(l * 4)
+		}
+	} else if t.TypLength == -1 {
 		return math.MaxUint32
 	} else {
 		return uint32(t.TypLength)
@@ -316,7 +324,24 @@ func (t DoltgresType) SerializedCompare(v1 []byte, v2 []byte) (int, error) {
 	} else if len(v1) == 0 && len(v2) > 0 {
 		return -1, nil
 	}
+
+	if t.TypCategory == TypeCategory_StringTypes {
+		return serializedStringCompare(v1, v2), nil
+	}
+
 	return bytes.Compare(v1, v2), nil
+}
+
+// serializedStringCompare handles the efficient comparison of two strings that have been serialized using utils.Writer.
+// The writer writes the string by prepending the string length, which prevents direct comparison of the byte slices. We
+// thus read the string length manually, and extract the byte slices without converting to a string. This function
+// assumes that neither byte slice is nil or empty.
+func serializedStringCompare(v1 []byte, v2 []byte) int {
+	readerV1 := utils.NewReader(v1)
+	readerV2 := utils.NewReader(v2)
+	v1Bytes := utils.AdvanceReader(readerV1, readerV1.VariableUint())
+	v2Bytes := utils.AdvanceReader(readerV2, readerV2.VariableUint())
+	return bytes.Compare(v1Bytes, v2Bytes)
 }
 
 // SQL implements the types.ExtendedType interface.
@@ -407,8 +432,22 @@ func (t DoltgresType) Zero() interface{} {
 	case TypeCategory_DateTimeTypes:
 		return time.Time{}
 	case TypeCategory_NumericTypes:
-		// decimal.Zero
-		return 0
+		switch oid.Oid(t.OID) {
+		case oid.T_float4:
+			return float32(0)
+		case oid.T_float8:
+			return float64(0)
+		case oid.T_int2:
+			return int16(0)
+		case oid.T_int4:
+			return int32(0)
+		case oid.T_int8:
+			return int64(0)
+		case oid.T_numeric:
+			return decimal.Zero
+		default:
+			return int64(0)
+		}
 	case TypeCategory_StringTypes, TypeCategory_UnknownTypes:
 		return ""
 	case TypeCategory_TimespanTypes:
@@ -472,27 +511,34 @@ func (t DoltgresType) Collation() sql.CollationID {
 
 // Length implements the sql.StringType interface.
 func (t DoltgresType) Length() int64 {
-	// TODO: varchar only, typmod here?
-	if t.TypLength == -1 {
-		return 100
+	if t.OID == uint32(oid.T_varchar) {
+		if t.AttTypMod == -1 {
+			return StringUnbounded
+		} else {
+			return int64(GetMaxCharsFromTypmod(t.AttTypMod))
+		}
 	}
-	return int64(t.TypLength)
+	return int64(0)
 }
 
 // MaxByteLength implements the sql.StringType interface.
 func (t DoltgresType) MaxByteLength() int64 {
-	// TODO: varchar only, typmod here?
-	if t.TypLength == -1 {
-		return 100 * 4
+	if t.OID == uint32(oid.T_varchar) {
+		return t.Length() * 4
+	} else if t.TypLength == -1 {
+		return StringUnbounded
+	} else {
+		return int64(t.TypLength) * 4
 	}
-	return int64(t.TypLength) * 4
 }
 
 // MaxCharacterLength implements the sql.StringType interface.
 func (t DoltgresType) MaxCharacterLength() int64 {
-	// TODO: varchar only, typmod here?
-	if t.TypLength == -1 {
-		return 100
+	if t.OID == uint32(oid.T_varchar) {
+		return t.Length()
+	} else if t.TypLength == -1 {
+		return StringUnbounded
+	} else {
+		return int64(t.TypLength)
 	}
-	return int64(t.TypLength)
 }

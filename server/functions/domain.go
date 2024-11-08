@@ -33,11 +33,11 @@ var domain_in = framework.Function3{
 	Return:     pgtypes.Any,
 	Parameters: [3]pgtypes.DoltgresType{pgtypes.Text, pgtypes.Oid, pgtypes.Int32}, // cstring
 	Callable: func(ctx *sql.Context, _ [4]pgtypes.DoltgresType, val1, val2, val3 any) (any, error) {
-		// TODO
 		str := val1.(string)
-		oid := val2.(uint32)
-
-		t := pgtypes.OidToBuildInDoltgresType[oid]
+		baseTypeOid := val2.(uint32)
+		t := pgtypes.OidToBuildInDoltgresType[baseTypeOid]
+		typmod := val3.(int32)
+		t.AttTypMod = typmod
 		return framework.IoInput(ctx, t, str)
 	},
 }
@@ -48,11 +48,11 @@ var domain_recv = framework.Function3{
 	Return:     pgtypes.Any,
 	Parameters: [3]pgtypes.DoltgresType{pgtypes.Internal, pgtypes.Oid, pgtypes.Int32},
 	Callable: func(ctx *sql.Context, _ [4]pgtypes.DoltgresType, val1, val2, val3 any) (any, error) {
-		// TODO
 		data := val1.([]byte)
-		oid := val2.(uint32)
-
-		t := pgtypes.OidToBuildInDoltgresType[oid]
+		baseTypeOid := val2.(uint32)
+		t := pgtypes.OidToBuildInDoltgresType[baseTypeOid]
+		typmod := val3.(int32)
+		t.AttTypMod = typmod
 		return framework.IoReceive(ctx, t, data)
 	},
 }

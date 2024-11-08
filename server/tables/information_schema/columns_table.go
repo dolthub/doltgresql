@@ -369,16 +369,10 @@ func getCharAndCollNamesAndCharMaxAndOctetLens(ctx *sql.Context, colType sql.Typ
 			if t.AttTypMod == -1 {
 				charOctetLen = int32(maxCharacterOctetLength)
 			} else {
-				l := functions.GetMaxCharsFromTypmod(t.AttTypMod)
+				l := pgtypes.GetMaxCharsFromTypmod(t.AttTypMod)
 				charOctetLen = l * 4
 				charMaxLen = l
 			}
-			//if t.TypLength == -1 {
-			//	charOctetLen = int32(maxCharacterOctetLength)
-			//} else {
-			//	charOctetLen = int32(t.TypLength) * 4
-			//	charMaxLen = int32(t.TypLength)
-			//}
 		}
 	}
 

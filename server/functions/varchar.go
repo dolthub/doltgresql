@@ -43,7 +43,7 @@ var varcharin = framework.Function3{
 	Callable: func(ctx *sql.Context, _ [4]pgtypes.DoltgresType, val1, val2, val3 any) (any, error) {
 		input := val1.(string)
 		typmod := val3.(int32)
-		maxChars := GetMaxCharsFromTypmod(typmod)
+		maxChars := pgtypes.GetMaxCharsFromTypmod(typmod)
 		if maxChars < pgtypes.StringUnbounded {
 			return input, nil
 		}
@@ -66,7 +66,7 @@ var varcharout = framework.Function1{
 		v := val.(string)
 		typ := t[0]
 		if typ.AttTypMod != -1 {
-			str, _ := truncateString(v, GetMaxCharsFromTypmod(typ.AttTypMod))
+			str, _ := truncateString(v, pgtypes.GetMaxCharsFromTypmod(typ.AttTypMod))
 			return str, nil
 		} else {
 			return v, nil
@@ -85,7 +85,6 @@ var varcharrecv = framework.Function3{
 		if len(data) == 0 {
 			return nil, nil
 		}
-		// TODO: use typmod?
 		reader := utils.NewReader(data)
 		return reader.String(), nil
 	},
@@ -127,7 +126,7 @@ var varchartypmodout = framework.Function1{
 		if typmod < 5 {
 			return "", nil
 		}
-		maxChars := GetMaxCharsFromTypmod(typmod)
+		maxChars := pgtypes.GetMaxCharsFromTypmod(typmod)
 		return fmt.Sprintf("(%v)", maxChars), nil
 	},
 }

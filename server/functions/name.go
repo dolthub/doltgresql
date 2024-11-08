@@ -109,7 +109,7 @@ var btnamecmp = framework.Function2{
 
 // btnametextcmp represents the PostgreSQL function of name type compare with text.
 var btnametextcmp = framework.Function2{
-	Name:       "btnamecmp",
+	Name:       "btnametextcmp",
 	Return:     pgtypes.Int32,
 	Parameters: [2]pgtypes.DoltgresType{pgtypes.Name, pgtypes.Text},
 	Strict:     true,

@@ -812,7 +812,6 @@ func (h *ConnectionHandler) convertBindParameters(types []uint32, formatCodes []
 		if !ok {
 			return nil, fmt.Errorf("unhandled oid type: %v", typ)
 		}
-
 		v, err := framework.IoInput(sql.NewEmptyContext(), pgTyp, bindVarString)
 		if err != nil {
 			return nil, err

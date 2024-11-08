@@ -18,6 +18,7 @@ import (
 	"fmt"
 )
 
+// CreateArrayTypeFromBaseType create array type from given type.
 func CreateArrayTypeFromBaseType(baseType DoltgresType) DoltgresType {
 	return DoltgresType{
 		OID:           baseType.Array,
@@ -53,7 +54,6 @@ func CreateArrayTypeFromBaseType(baseType DoltgresType) DoltgresType {
 		Default:       "",
 		Acl:           nil,
 		Checks:        nil,
-
-		internalName: fmt.Sprintf("%s[]", baseType.String()),
+		internalName:  fmt.Sprintf("%s[]", baseType.String()),
 	}
 }

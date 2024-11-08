@@ -271,7 +271,10 @@ func getCast(mutex *sync.RWMutex,
 					// Some errors are optional depending on the context, so we'll still process all values even
 					// after an error is received.
 					var nErr error
-					targetBaseType, _ := targetType.ArrayBaseType()
+					targetBaseType, ok := targetType.ArrayBaseType()
+					if !ok {
+						return nil, fmt.Errorf("cannot get base type from %s", targetType.Name)
+					}
 					newVals[i], nErr = baseCast(ctx, oldVal, targetBaseType)
 					if nErr != nil && err == nil {
 						err = nErr

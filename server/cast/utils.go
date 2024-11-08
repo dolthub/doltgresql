@@ -22,7 +22,6 @@ import (
 	"github.com/lib/pq/oid"
 	"gopkg.in/src-d/go-errors.v1"
 
-	"github.com/dolthub/doltgresql/server/functions"
 	pgtypes "github.com/dolthub/doltgresql/server/types"
 )
 
@@ -61,7 +60,7 @@ func handleStringCast(str string, targetType pgtypes.DoltgresType) (string, erro
 		if targetType.AttTypMod == -1 {
 			return str, nil
 		}
-		length := uint32(functions.GetMaxCharsFromTypmod(targetType.AttTypMod))
+		length := uint32(pgtypes.GetMaxCharsFromTypmod(targetType.AttTypMod))
 		str, runeLength := truncateString(str, length)
 		if runeLength > length {
 			return str, fmt.Errorf("value too long for type %s", targetType.String())

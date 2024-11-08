@@ -25,6 +25,9 @@ import (
 	"github.com/dolthub/go-mysql-server/sql"
 	"github.com/stretchr/testify/require"
 
+	"github.com/dolthub/doltgresql/server/expression"
+	"github.com/dolthub/doltgresql/server/functions"
+	"github.com/dolthub/doltgresql/server/functions/framework"
 	"github.com/dolthub/doltgresql/server/types"
 )
 
@@ -32,6 +35,11 @@ import (
 func TestCsvDataLoader(t *testing.T) {
 	db := memory.NewDatabase("mydb")
 	provider := memory.NewDBProvider(db)
+	// cannot call initialize.Initialize(), so call necessary Init() functions.
+	framework.Init()
+	expression.Init()
+	functions.Init()
+	framework.Initialize()
 
 	ctx := &sql.Context{
 		Context: context.Background(),

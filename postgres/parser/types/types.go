@@ -2124,7 +2124,7 @@ func (t *T) upgradeType() error {
 	}
 
 	// Clear the deprecated visible types, since they are now handled by the
-	// Width or OID fields.
+	// Width or Oid fields.
 	t.InternalType.VisibleType = 0
 
 	// If locale is not set, always set it to the empty string, in order to avoid

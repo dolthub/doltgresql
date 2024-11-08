@@ -92,6 +92,7 @@ func newCompiledFunctionInternal(
 	c.callResolved = make([]pgtypes.DoltgresType, len(functionParameterTypes)+1)
 	hasPolymorphicParam := false
 	for i, param := range functionParameterTypes {
+		// TODO: we use 'text' type for 'cstring' type, which is polymorphic type
 		if param.IsPolymorphicType() || param.OID == uint32(oid.T_text) {
 			// resolve will ensure that the parameter types are valid, so we can just assign them here
 			hasPolymorphicParam = true
