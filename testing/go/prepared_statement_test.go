@@ -27,7 +27,6 @@ func TestPreparedStatements(t *testing.T) {
 }
 
 func TestPreparedPgCatalog(t *testing.T) {
-	t.Skip() // TODO: investigate, it hangs
 	RunScripts(t, pgCatalogTests)
 }
 
@@ -440,6 +439,7 @@ WHERE c.relnamespace=$1 AND c.relkind not in ('i','I','c');`,
 				Expected: []sql.Row{{1614807040, 0, 0}, {2688548864, 0, 0}},
 			},
 			{
+				Skip: true, // TODO: hangs, need to investigate
 				Query: `SELECT c.relname, a.attrelid, a.attname, a.atttypid, pg_catalog.pg_get_expr(ad.adbin, ad.adrelid, true) as def_value,dsc.description,dep.objid 
 FROM pg_catalog.pg_attribute a 
 INNER JOIN pg_catalog.pg_class c ON (a.attrelid=c.oid) 
