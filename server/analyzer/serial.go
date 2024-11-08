@@ -42,7 +42,7 @@ func ReplaceSerial(ctx *sql.Context, a *analyzer.Analyzer, node sql.Node, scope 
 	var ctSequences []*pgnodes.CreateSequence
 	for _, col := range createTable.PkSchema().Schema {
 		if doltgresType, ok := col.Type.(pgtypes.DoltgresType); ok {
-			if doltgresType.IsSerial() {
+			if doltgresType.IsSerialType() {
 				var maxValue int64
 				switch doltgresType.Name {
 				case "smallserial":

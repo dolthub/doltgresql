@@ -570,7 +570,7 @@ func (*CompiledFunction) polymorphicTypesCompatible(paramTypes []pgtypes.Doltgre
 			}
 			// TODO: handle range types
 			// Check that the base expression type matches the previously-found base type
-			if baseType.EmptyType() {
+			if baseType.IsEmptyType() {
 				baseType = baseExprType
 			} else if baseType.OID != baseExprType.OID {
 				return false
@@ -599,7 +599,7 @@ func (c *CompiledFunction) resolvePolymorphicReturnType(functionInterfaceTypes [
 	}
 
 	// if all types are `unknown`, use `text` type
-	if firstPolymorphicType.EmptyType() {
+	if firstPolymorphicType.IsEmptyType() {
 		firstPolymorphicType = pgtypes.Text
 	}
 
@@ -620,7 +620,7 @@ func (c *CompiledFunction) resolvePolymorphicReturnType(functionInterfaceTypes [
 		if firstPolymorphicType.IsArrayType() {
 			return firstPolymorphicType
 		} else if firstPolymorphicType.OID == uint32(oid.T_internal) {
-			return pgtypes.OidToBuildInDoltgresType[firstPolymorphicType.BaseTypeForInternalType()]
+			return pgtypes.OidToBuildInDoltgresType[firstPolymorphicType.BaseTypeForInternal]
 		} else {
 			at, ok := firstPolymorphicType.ToArrayType()
 			if !ok {
@@ -686,7 +686,7 @@ func (c *CompiledFunction) analyzeParameters() (originalTypes []pgtypes.Doltgres
 	originalTypes = make([]pgtypes.DoltgresType, len(c.Arguments))
 	for i, param := range c.Arguments {
 		returnType := param.Type()
-		if extendedType, ok := returnType.(pgtypes.DoltgresType); ok && !extendedType.EmptyType() {
+		if extendedType, ok := returnType.(pgtypes.DoltgresType); ok && !extendedType.IsEmptyType() {
 			if extendedType.TypType == pgtypes.TypeType_Domain {
 				extendedType = extendedType.DomainUnderlyingBaseType()
 			}

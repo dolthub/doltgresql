@@ -99,7 +99,7 @@ func nodeColumnTableDef(ctx *Context, node *tree.ColumnTableDef) (*vitess.Column
 		generatedStored = true
 	}
 	if node.IsSerial {
-		if resolvedType.EmptyType() {
+		if resolvedType.IsEmptyType() {
 			return nil, fmt.Errorf("serial type was not resolvable")
 		}
 		switch oid.Oid(resolvedType.OID) {

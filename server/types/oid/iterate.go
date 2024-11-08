@@ -788,7 +788,7 @@ func runTable(ctx *sql.Context, oid uint32, callbacks Callbacks, itemSchema Item
 
 // runType is called by RunCallback to handle types within Section_BuiltIn.
 func runType(ctx *sql.Context, toid uint32, callbacks Callbacks) error {
-	if t := pgtypes.GetTypeByOID(toid); !t.EmptyType() {
+	if t := pgtypes.GetTypeByOID(toid); !t.IsEmptyType() {
 		itemType := ItemType{
 			OID:  toid,
 			Item: t,

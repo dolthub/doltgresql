@@ -41,6 +41,6 @@ var Internal = DoltgresType{
 
 func NewInternalTypeWithBaseType(t uint32) DoltgresType {
 	it := Internal
-	it.baseTypeForInternal = t
+	it.BaseTypeForInternal = t
 	return it
 }

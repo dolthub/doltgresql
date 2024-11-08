@@ -22,11 +22,11 @@ import (
 const (
 	// StringMaxLength is the maximum number of characters (not bytes) that a Char, VarChar, or BpChar may contain.
 	StringMaxLength = 10485760
+	// stringInline is the maximum number of characters (not bytes) that are "guaranteed" to fit inline.
+	stringInline = 16383
 	// StringUnbounded is used to represent that a type does not define a limit on the strings that it accepts. Values
 	// are still limited by the field size limit, but it won't be enforced by the type.
 	StringUnbounded = 0
-	// stringInline is the maximum number of characters (not bytes) that are "guaranteed" to fit inline.
-	//stringInline = 16383
 )
 
 var ErrLengthMustBeAtLeast1 = errors.NewKind(`length for type %s must be at least 1`)

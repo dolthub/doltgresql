@@ -17,7 +17,6 @@ package types
 import (
 	"bytes"
 	"fmt"
-	"github.com/dolthub/doltgresql/utils"
 	"math"
 	"reflect"
 	"time"
@@ -32,6 +31,7 @@ import (
 
 	"github.com/dolthub/doltgresql/postgres/parser/duration"
 	"github.com/dolthub/doltgresql/postgres/parser/uuid"
+	"github.com/dolthub/doltgresql/utils"
 )
 
 var ErrTypeAlreadyExists = errors.NewKind(`type "%s" already exists`)
@@ -83,7 +83,7 @@ type DoltgresType struct {
 	// These are for internal use
 	isSerial            bool // TODO: to replace serial types
 	isUnresolved        bool
-	baseTypeForInternal uint32
+	BaseTypeForInternal uint32 // used for INTERNAL type only
 }
 
 var IoOutput func(ctx *sql.Context, t DoltgresType, val any) (string, error)
@@ -102,10 +102,8 @@ func NewUnresolvedDoltgresType(sch, name string) DoltgresType {
 	}
 }
 
-func (t DoltgresType) Resolved() bool {
-	return !t.isUnresolved
-}
-
+// ArrayBaseType returns a base type of this array type if it exists.
+// If this type is not an array type, it returns false.
 func (t DoltgresType) ArrayBaseType() (DoltgresType, bool) {
 	if !t.IsArrayType() {
 		return DoltgresType{}, false
@@ -115,66 +113,24 @@ func (t DoltgresType) ArrayBaseType() (DoltgresType, bool) {
 	return elem, ok
 }
 
-// IsArrayType returns true if the type is of 'array' category
-func (t DoltgresType) IsArrayType() bool {
-	return t.TypCategory == TypeCategory_ArrayTypes && t.Elem != 0
-}
-
-func (t DoltgresType) EmptyType() bool {
-	// TODO
-	return t.OID == 0 && t.Name == ""
-}
-
-func (t DoltgresType) DomainUnderlyingBaseType() DoltgresType {
-	// TODO: handle user-defined type
-	bt, ok := OidToBuildInDoltgresType[t.BaseTypeOID]
-	if !ok {
-		panic(fmt.Sprintf("unable to get DoltgresType from OID: %v", t.BaseTypeOID))
-	}
-	if bt.TypType == TypeType_Domain {
-		return bt.DomainUnderlyingBaseType()
+// CharacterSet implements the sql.StringType interface.
+func (t DoltgresType) CharacterSet() sql.CharacterSetID {
+	// TODO: only varchar has charset info.
+	if t.OID == uint32(oid.T_varchar) {
+		return sql.CharacterSet_binary // TODO
 	} else {
-		return bt
+		return sql.CharacterSet_Unspecified
 	}
 }
 
-// IsPolymorphicType These types are special built-in pseudo-types
-// that are used during function resolution to allow a function
-// to handle multiple types from a single definition.
-// All polymorphic types have "any" as a prefix.
-// The exception is the "any" type, which is not a polymorphic type.
-func (t DoltgresType) IsPolymorphicType() bool {
-	return t.TypType == TypeType_Pseudo
-}
-
-// IsValidForPolymorphicType returns whether the given type is valid for the calling polymorphic type.
-func (t DoltgresType) IsValidForPolymorphicType(target DoltgresType) bool {
-	if t.TypType != TypeType_Pseudo {
-		return false
+// Collation implements the sql.StringType interface.
+func (t DoltgresType) Collation() sql.CollationID {
+	// TODO: only varchar has collation info.
+	if t.OID == uint32(oid.T_varchar) {
+		return sql.Collation_Default // TODO
+	} else {
+		return sql.Collation_Unspecified
 	}
-	switch oid.Oid(t.OID) {
-	case oid.T_anyarray:
-		return target.TypCategory == TypeCategory_ArrayTypes
-	case oid.T_anynonarray:
-		return target.TypCategory != TypeCategory_ArrayTypes
-	case oid.T_anyelement, oid.T_any, oid.T_internal:
-		return true
-	default:
-		return false
-	}
-}
-
-func (t DoltgresType) ToArrayType() (DoltgresType, bool) {
-	if t.TypCategory == TypeCategory_ArrayTypes {
-		// For array types, ToArrayType causes them to return themselves.
-		return t, true
-	}
-	if t.Array == 0 {
-		return DoltgresType{}, false
-	}
-	arr, ok := OidToBuildInDoltgresType[t.Array]
-	arr.AttTypMod = t.AttTypMod
-	return arr, ok
 }
 
 // CollationCoercibility implements the types.ExtendedType interface.
@@ -252,6 +208,21 @@ func (t DoltgresType) Convert(v interface{}) (interface{}, sql.ConvertInRange, e
 	return nil, sql.OutOfRange, fmt.Errorf("%s: unhandled type: %T", t.String(), v)
 }
 
+// DomainUnderlyingBaseType returns an underlying base type of this domain type.
+// It can be a nested domain type, so it recursively searches for a valid base type.
+func (t DoltgresType) DomainUnderlyingBaseType() DoltgresType {
+	// TODO: handle user-defined type
+	bt, ok := OidToBuildInDoltgresType[t.BaseTypeOID]
+	if !ok {
+		panic(fmt.Sprintf("unable to get DoltgresType from OID: %v", t.BaseTypeOID))
+	}
+	if bt.TypType == TypeType_Domain {
+		return bt.DomainUnderlyingBaseType()
+	} else {
+		return bt
+	}
+}
+
 // Equals implements the types.ExtendedType interface.
 func (t DoltgresType) Equals(otherType sql.Type) bool {
 	if otherExtendedType, ok := otherType.(DoltgresType); ok {
@@ -266,6 +237,88 @@ func (t DoltgresType) FormatValue(val any) (string, error) {
 		return "", nil
 	}
 	return IoOutput(sql.NewEmptyContext(), t, val)
+}
+
+// IsArrayType returns true if the type is of 'array' category
+func (t DoltgresType) IsArrayType() bool {
+	return t.TypCategory == TypeCategory_ArrayTypes && t.Elem != 0
+}
+
+// IsEmptyType returns true if the type has no valid OID or Name.
+func (t DoltgresType) IsEmptyType() bool {
+	return t.OID == 0 && t.Name == ""
+}
+
+// IsPolymorphicType types are special built-in pseudo-types
+// that are used during function resolution to allow a function
+// to handle multiple types from a single definition.
+// All polymorphic types have "any" as a prefix.
+// The exception is the "any" type, which is not a polymorphic type.
+func (t DoltgresType) IsPolymorphicType() bool {
+	return t.TypType == TypeType_Pseudo
+}
+
+// IsResolvedType whether the type is resolved and has complete information.
+// This is used to resolve types during analyzing when non-built-in type is used.
+func (t DoltgresType) IsResolvedType() bool {
+	return !t.isUnresolved
+}
+
+// IsSerialType returns whether the type is serial type.
+// This is true for int16serial, int32serial and int64serial types.
+func (t DoltgresType) IsSerialType() bool {
+	return t.isSerial
+}
+
+// IsValidForPolymorphicType returns whether the given type is valid for the calling polymorphic type.
+func (t DoltgresType) IsValidForPolymorphicType(target DoltgresType) bool {
+	if !t.IsPolymorphicType() {
+		return false
+	}
+	switch oid.Oid(t.OID) {
+	case oid.T_anyarray:
+		return target.TypCategory == TypeCategory_ArrayTypes
+	case oid.T_anynonarray:
+		return target.TypCategory != TypeCategory_ArrayTypes
+	case oid.T_anyelement, oid.T_any, oid.T_internal:
+		return true
+	default:
+		return false
+	}
+}
+
+// Length implements the sql.StringType interface.
+func (t DoltgresType) Length() int64 {
+	if t.OID == uint32(oid.T_varchar) {
+		if t.AttTypMod == -1 {
+			return StringUnbounded
+		} else {
+			return int64(GetMaxCharsFromTypmod(t.AttTypMod))
+		}
+	}
+	return int64(0)
+}
+
+// MaxByteLength implements the sql.StringType interface.
+func (t DoltgresType) MaxByteLength() int64 {
+	if t.OID == uint32(oid.T_varchar) {
+		return t.Length() * 4
+	} else if t.TypLength == -1 {
+		return StringUnbounded
+	} else {
+		return int64(t.TypLength) * 4
+	}
+}
+
+// MaxCharacterLength implements the sql.StringType interface.
+func (t DoltgresType) MaxCharacterLength() int64 {
+	if t.OID == uint32(oid.T_varchar) {
+		return t.Length()
+	} else if t.TypLength == -1 {
+		return StringUnbounded
+	} else {
+		return int64(t.TypLength)
+	}
 }
 
 // MaxSerializedWidth implements the types.ExtendedType interface.
@@ -285,6 +338,12 @@ func (t DoltgresType) MaxSerializedWidth() types.ExtendedTypeSerializedWidth {
 	case TypeCategory_NumericTypes:
 		return types.ExtendedTypeSerializedWidth_64K
 	case TypeCategory_StringTypes, TypeCategory_UnknownTypes:
+		if t.OID == uint32(oid.T_varchar) {
+			l := t.Length()
+			if l != StringUnbounded && l <= stringInline {
+				return types.ExtendedTypeSerializedWidth_64K
+			}
+		}
 		return types.ExtendedTypeSerializedWidth_Unbounded
 	case TypeCategory_TimespanTypes:
 		return types.ExtendedTypeSerializedWidth_64K
@@ -332,18 +391,6 @@ func (t DoltgresType) SerializedCompare(v1 []byte, v2 []byte) (int, error) {
 	return bytes.Compare(v1, v2), nil
 }
 
-// serializedStringCompare handles the efficient comparison of two strings that have been serialized using utils.Writer.
-// The writer writes the string by prepending the string length, which prevents direct comparison of the byte slices. We
-// thus read the string length manually, and extract the byte slices without converting to a string. This function
-// assumes that neither byte slice is nil or empty.
-func serializedStringCompare(v1 []byte, v2 []byte) int {
-	readerV1 := utils.NewReader(v1)
-	readerV2 := utils.NewReader(v2)
-	v1Bytes := utils.AdvanceReader(readerV1, readerV1.VariableUint())
-	v2Bytes := utils.AdvanceReader(readerV2, readerV2.VariableUint())
-	return bytes.Compare(v1Bytes, v2Bytes)
-}
-
 // SQL implements the types.ExtendedType interface.
 func (t DoltgresType) SQL(ctx *sql.Context, dest []byte, v interface{}) (sqltypes.Value, error) {
 	if v == nil {
@@ -364,6 +411,20 @@ func (t DoltgresType) String() string {
 		return t.Name
 	}
 	return t.internalName
+}
+
+// ToArrayType returns an array type and whether it exists.
+// For array types, ToArrayType causes them to return themselves.
+func (t DoltgresType) ToArrayType() (DoltgresType, bool) {
+	if t.IsArrayType() {
+		return t, true
+	}
+	if t.Array == 0 {
+		return DoltgresType{}, false
+	}
+	arr, ok := OidToBuildInDoltgresType[t.Array]
+	arr.AttTypMod = t.AttTypMod
+	return arr, ok
 }
 
 // Type implements the types.ExtendedType interface.
@@ -479,66 +540,14 @@ func (t DoltgresType) DeserializeValue(val []byte) (any, error) {
 	return IoReceive(sql.NewEmptyContext(), t, val)
 }
 
-// IsSerial returns whether the type is serial type.
-// This is true for int16serial, int32serial and int64serial types.
-func (t DoltgresType) IsSerial() bool {
-	return t.isSerial
-}
-
-func (t DoltgresType) BaseTypeForInternalType() uint32 {
-	return t.baseTypeForInternal
-}
-
-// CharacterSet implements the sql.StringType interface.
-func (t DoltgresType) CharacterSet() sql.CharacterSetID {
-	// TODO: only varchar has charset info.
-	if t.OID == uint32(oid.T_varchar) {
-		return sql.CharacterSet_binary // TODO
-	} else {
-		return sql.CharacterSet_Unspecified
-	}
-}
-
-// Collation implements the sql.StringType interface.
-func (t DoltgresType) Collation() sql.CollationID {
-	// TODO: only varchar has collation info.
-	if t.OID == uint32(oid.T_varchar) {
-		return sql.Collation_Default // TODO
-	} else {
-		return sql.Collation_Unspecified
-	}
-}
-
-// Length implements the sql.StringType interface.
-func (t DoltgresType) Length() int64 {
-	if t.OID == uint32(oid.T_varchar) {
-		if t.AttTypMod == -1 {
-			return StringUnbounded
-		} else {
-			return int64(GetMaxCharsFromTypmod(t.AttTypMod))
-		}
-	}
-	return int64(0)
-}
-
-// MaxByteLength implements the sql.StringType interface.
-func (t DoltgresType) MaxByteLength() int64 {
-	if t.OID == uint32(oid.T_varchar) {
-		return t.Length() * 4
-	} else if t.TypLength == -1 {
-		return StringUnbounded
-	} else {
-		return int64(t.TypLength) * 4
-	}
-}
-
-// MaxCharacterLength implements the sql.StringType interface.
-func (t DoltgresType) MaxCharacterLength() int64 {
-	if t.OID == uint32(oid.T_varchar) {
-		return t.Length()
-	} else if t.TypLength == -1 {
-		return StringUnbounded
-	} else {
-		return int64(t.TypLength)
-	}
+// serializedStringCompare handles the efficient comparison of two strings that have been serialized using utils.Writer.
+// The writer writes the string by prepending the string length, which prevents direct comparison of the byte slices. We
+// thus read the string length manually, and extract the byte slices without converting to a string. This function
+// assumes that neither byte slice is nil nor empty.
+func serializedStringCompare(v1 []byte, v2 []byte) int {
+	readerV1 := utils.NewReader(v1)
+	readerV2 := utils.NewReader(v2)
+	v1Bytes := utils.AdvanceReader(readerV1, readerV1.VariableUint())
+	v2Bytes := utils.AdvanceReader(readerV2, readerV2.VariableUint())
+	return bytes.Compare(v1Bytes, v2Bytes)
 }

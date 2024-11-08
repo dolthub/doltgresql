@@ -54,7 +54,7 @@ func nodeResolvableTypeReference(ctx *Context, typ tree.ResolvableTypeReference)
 			if err != nil {
 				return nil, pgtypes.DoltgresType{}, err
 			}
-			if baseResolvedType.Resolved() {
+			if baseResolvedType.IsResolvedType() {
 				// currently the built-in types will be resolved, so it can retrieve its array type
 				var ok bool
 				resolvedType, ok = baseResolvedType.ToArrayType()

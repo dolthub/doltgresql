@@ -19,8 +19,6 @@ import (
 	"fmt"
 	"sync"
 
-	"github.com/dolthub/go-mysql-server/sql"
-
 	"github.com/dolthub/doltgresql/server/types"
 	"github.com/dolthub/doltgresql/utils"
 )
@@ -46,45 +44,8 @@ func (pgs *TypeCollection) Serialize(ctx context.Context) ([]byte, error) {
 		writer.VariableUint(uint64(len(nameMapKeys)))
 		for _, nameMapKey := range nameMapKeys {
 			typ := nameMap[nameMapKey]
-			writer.Uint32(typ.OID)
-			writer.String(typ.Name)
-			writer.String(typ.Owner)
-			writer.Int16(typ.TypLength)
-			writer.Bool(typ.PassedByVal)
-			writer.String(string(typ.TypType))
-			writer.String(string(typ.TypCategory))
-			writer.Bool(typ.IsPreferred)
-			writer.Bool(typ.IsDefined)
-			writer.String(typ.Delimiter)
-			writer.Uint32(typ.RelID)
-			writer.String(typ.SubscriptFunc)
-			writer.Uint32(typ.Elem)
-			writer.Uint32(typ.Array)
-			writer.String(typ.InputFunc)
-			writer.String(typ.OutputFunc)
-			writer.String(typ.ReceiveFunc)
-			writer.String(typ.SendFunc)
-			writer.String(typ.ModInFunc)
-			writer.String(typ.ModOutFunc)
-			writer.String(typ.AnalyzeFunc)
-			writer.String(string(typ.Align))
-			writer.String(string(typ.Storage))
-			writer.Bool(typ.NotNull)
-			writer.Uint32(typ.BaseTypeOID)
-			writer.Int32(typ.TypMod)
-			writer.Int32(typ.NDims)
-			writer.Uint32(typ.TypCollation)
-			writer.String(typ.DefaulBin)
-			writer.String(typ.Default)
-			writer.VariableUint(uint64(len(typ.Acl)))
-			for _, ac := range typ.Acl {
-				writer.String(ac)
-			}
-			writer.VariableUint(uint64(len(typ.Checks)))
-			for _, check := range typ.Checks {
-				writer.String(check.Name)
-				writer.String(check.CheckExpression)
-			}
+			data := typ.Serialize()
+			writer.ByteSlice(data)
 		}
 	}
 
@@ -114,51 +75,10 @@ func Deserialize(ctx context.Context, data []byte) (*TypeCollection, error) {
 		numOfTypes := reader.VariableUint()
 		nameMap := make(map[string]types.DoltgresType)
 		for j := uint64(0); j < numOfTypes; j++ {
-			typ := types.DoltgresType{Schema: schemaName}
-			typ.OID = reader.Uint32()
-			typ.Name = reader.String()
-			typ.Owner = reader.String()
-			typ.TypLength = reader.Int16()
-			typ.PassedByVal = reader.Bool()
-			typ.TypType = types.TypeType(reader.String())
-			typ.TypCategory = types.TypeCategory(reader.String())
-			typ.IsPreferred = reader.Bool()
-			typ.IsDefined = reader.Bool()
-			typ.Delimiter = reader.String()
-			typ.RelID = reader.Uint32()
-			typ.SubscriptFunc = reader.String()
-			typ.Elem = reader.Uint32()
-			typ.Array = reader.Uint32()
-			typ.InputFunc = reader.String()
-			typ.OutputFunc = reader.String()
-			typ.ReceiveFunc = reader.String()
-			typ.SendFunc = reader.String()
-			typ.ModInFunc = reader.String()
-			typ.ModOutFunc = reader.String()
-			typ.AnalyzeFunc = reader.String()
-			typ.Align = types.TypeAlignment(reader.String())
-			typ.Storage = types.TypeStorage(reader.String())
-			typ.NotNull = reader.Bool()
-			typ.BaseTypeOID = reader.Uint32()
-			typ.TypMod = reader.Int32()
-			typ.NDims = reader.Int32()
-			typ.TypCollation = reader.Uint32()
-			typ.DefaulBin = reader.String()
-			typ.Default = reader.String()
-			numOfAcl := reader.VariableUint()
-			for k := uint64(0); k < numOfAcl; k++ {
-				ac := reader.String()
-				typ.Acl = append(typ.Acl, ac)
-			}
-			numOfChecks := reader.VariableUint()
-			for k := uint64(0); k < numOfChecks; k++ {
-				checkName := reader.String()
-				checkExpr := reader.String()
-				typ.Checks = append(typ.Checks, &sql.CheckDefinition{
-					Name:            checkName,
-					CheckExpression: checkExpr,
-					Enforced:        true,
-				})
+			typData := reader.ByteSlice()
+			typ, err := types.Deserialize(typData)
+			if err != nil {
+				return nil, err
 			}
 			nameMap[typ.Name] = typ
 		}

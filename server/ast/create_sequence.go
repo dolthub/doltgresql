@@ -63,7 +63,7 @@ func nodeCreateSequence(ctx *Context, node *tree.CreateSequence) (vitess.Stateme
 	for _, option := range node.Options {
 		switch option.Name {
 		case tree.SeqOptAs:
-			if !dataType.EmptyType() {
+			if !dataType.IsEmptyType() {
 				return nil, fmt.Errorf("conflicting or redundant options")
 			}
 			_, dataType, err = nodeResolvableTypeReference(ctx, option.AsType)
@@ -173,7 +173,7 @@ func nodeCreateSequence(ctx *Context, node *tree.CreateSequence) (vitess.Stateme
 	} else {
 		start = maxValue
 	}
-	if dataType.EmptyType() {
+	if dataType.IsEmptyType() {
 		dataType = pgtypes.Int64
 	}
 	// Returns the stored procedure call with all options

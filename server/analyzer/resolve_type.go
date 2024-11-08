@@ -40,7 +40,7 @@ func ResolveType(ctx *sql.Context, a *analyzer.Analyzer, node sql.Node, scope *p
 
 			var same = transform.SameTree
 			for _, col := range n.TargetSchema() {
-				if rt, ok := col.Type.(types.DoltgresType); ok && !rt.Resolved() {
+				if rt, ok := col.Type.(types.DoltgresType); ok && !rt.IsResolvedType() {
 					dt, err := resolveType(ctx, rt)
 					if err != nil {
 						return nil, transform.SameTree, err
