@@ -66,27 +66,17 @@ func nodeCreateTable(node *tree.CreateTable) (*vitess.DDL, error) {
 	}
 	var optLike *vitess.OptLike
 	if len(node.Inherits) > 0 {
-		// TODO: we should error here, but correctness test are silently passing
-		//if len(node.Defs) > 0 {
-		//	return nil, fmt.Errorf("INHERITS with TableDefs is not yet supported")
-		//}
-		for i, table := range node.Inherits {
-			if i > 0 {
-				// TODO: we should error here, but correctness test are silently passing
-				//return nil, fmt.Errorf("Multiple INHERITS is not yet supported")
-				break
-			}
-			// TODO: until we can support multiple tables in LIKE statements, this will only run once
-			likeTable, err := nodeTableName(&table)
-			if err != nil {
-				return nil, err
-			}
-			optLike = &vitess.OptLike{
-				LikeTable: likeTable,
-			}
+		optLike = &vitess.OptLike{
+			LikeTables: []vitess.TableName{},
 		}
+		for _, table := range node.Inherits {
+		// TODO: until we can support multiple tables in LIKE statements, this will only run once
+		likeTable, err := nodeTableName(&table)
+		if err != nil {
+			return nil, err
+		}
+		optLike.LikeTables = append(optLike.LikeTables, likeTable)
 	}
-
 	if node.WithNoData {
 		return nil, fmt.Errorf("WITH NO DATA is not yet supported")
 	}
