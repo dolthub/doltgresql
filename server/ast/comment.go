@@ -23,7 +23,7 @@ import (
 )
 
 // nodeComment handles *tree.Comment nodes.
-func nodeComment(node *tree.Comment) (vitess.Statement, error) {
+func nodeComment(ctx *Context, node *tree.Comment) (vitess.Statement, error) {
 	if node == nil {
 		return nil, nil
 	}

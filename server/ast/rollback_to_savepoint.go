@@ -21,7 +21,7 @@ import (
 )
 
 // nodeRollbackToSavepoint handles *tree.RollbackToSavepoint nodes.
-func nodeRollbackToSavepoint(node *tree.RollbackToSavepoint) (*vitess.RollbackSavepoint, error) {
+func nodeRollbackToSavepoint(ctx *Context, node *tree.RollbackToSavepoint) (*vitess.RollbackSavepoint, error) {
 	if node == nil {
 		return nil, nil
 	}

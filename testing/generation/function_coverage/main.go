@@ -33,7 +33,7 @@ type Assertion struct {
 }
 
 func main() {
-	initialization.Initialize()
+	initialization.Initialize(nil)
 	rootFolder, err := utils.GetRootFolder()
 	if err != nil {
 		fmt.Printf("%s\n", err.Error())

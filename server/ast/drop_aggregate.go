@@ -23,12 +23,12 @@ import (
 )
 
 // nodeDropAggregate handles *tree.DropAggregate nodes.
-func nodeDropAggregate(node *tree.DropAggregate) (vitess.Statement, error) {
+func nodeDropAggregate(ctx *Context, node *tree.DropAggregate) (vitess.Statement, error) {
 	if node == nil {
 		return nil, nil
 	}
 	for _, agg := range node.Aggregates {
-		if err := validateAggArgMode(agg.AggSig.Args, agg.AggSig.OrderByArgs); err != nil {
+		if err := validateAggArgMode(ctx, agg.AggSig.Args, agg.AggSig.OrderByArgs); err != nil {
 			return nil, err
 		}
 	}

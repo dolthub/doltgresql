@@ -28,13 +28,13 @@ import (
 // defs, such as columns, and they're therefore dependent on columns being handled first. It is up to the caller to
 // ensure that all defs have been ordered properly before calling. assignTableDefs handles the sort for you, so this
 // notice is only relevant when individually calling assignTableDef.
-func assignTableDef(node tree.TableDef, target *vitess.DDL) error {
+func assignTableDef(ctx *Context, node tree.TableDef, target *vitess.DDL) error {
 	switch node := node.(type) {
 	case *tree.CheckConstraintTableDef:
 		if target.TableSpec == nil {
 			target.TableSpec = &vitess.TableSpec{}
 		}
-		expr, err := nodeExpr(node.Expr)
+		expr, err := nodeExpr(ctx, node.Expr)
 		if err != nil {
 			return err
 		}
@@ -50,7 +50,7 @@ func assignTableDef(node tree.TableDef, target *vitess.DDL) error {
 		if target.TableSpec == nil {
 			target.TableSpec = &vitess.TableSpec{}
 		}
-		columnDef, err := nodeColumnTableDef(node)
+		columnDef, err := nodeColumnTableDef(ctx, node)
 		if err != nil {
 			return err
 		}
@@ -60,7 +60,7 @@ func assignTableDef(node tree.TableDef, target *vitess.DDL) error {
 		if target.TableSpec == nil {
 			target.TableSpec = &vitess.TableSpec{}
 		}
-		fkDef, err := nodeForeignKeyConstraintTableDef(node)
+		fkDef, err := nodeForeignKeyConstraintTableDef(ctx, node)
 		if err != nil {
 			return err
 		}
@@ -73,7 +73,7 @@ func assignTableDef(node tree.TableDef, target *vitess.DDL) error {
 		if target.TableSpec == nil {
 			target.TableSpec = &vitess.TableSpec{}
 		}
-		indexDef, err := nodeIndexTableDef(node)
+		indexDef, err := nodeIndexTableDef(ctx, node)
 		if err != nil {
 			return err
 		}
@@ -83,7 +83,7 @@ func assignTableDef(node tree.TableDef, target *vitess.DDL) error {
 		if len(node.Options) > 0 {
 			return fmt.Errorf("options for LIKE are not yet supported")
 		}
-		tableName, err := nodeTableName(&node.Name)
+		tableName, err := nodeTableName(ctx, &node.Name)
 		if err != nil {
 			return err
 		}
@@ -95,7 +95,7 @@ func assignTableDef(node tree.TableDef, target *vitess.DDL) error {
 		if target.TableSpec == nil {
 			target.TableSpec = &vitess.TableSpec{}
 		}
-		indexDef, err := nodeIndexTableDef(&node.IndexTableDef)
+		indexDef, err := nodeIndexTableDef(ctx, &node.IndexTableDef)
 		if err != nil {
 			return err
 		}
@@ -125,7 +125,7 @@ func assignTableDef(node tree.TableDef, target *vitess.DDL) error {
 // assignTableDefs handles tree.TableDefs nodes for *vitess.DDL targets. This also sorts table defs by whether they're
 // dependent on other table defs evaluating first. Some table defs, such as indexes, affect other defs, such as columns,
 // and they're therefore dependent on columns being handled first.
-func assignTableDefs(node tree.TableDefs, target *vitess.DDL) error {
+func assignTableDefs(ctx *Context, node tree.TableDefs, target *vitess.DDL) error {
 	sortedNode := make(tree.TableDefs, len(node))
 	copy(sortedNode, node)
 	sort.Slice(sortedNode, func(i, j int) bool {
@@ -143,7 +143,7 @@ func assignTableDefs(node tree.TableDefs, target *vitess.DDL) error {
 		return cmps[0] < cmps[1]
 	})
 	for i := range sortedNode {
-		if err := assignTableDef(sortedNode[i], target); err != nil {
+		if err := assignTableDef(ctx, sortedNode[i], target); err != nil {
 			return err
 		}
 	}

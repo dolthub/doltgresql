@@ -21,11 +21,11 @@ import (
 )
 
 // nodeFrom handles *tree.From nodes.
-func nodeFrom(node tree.From) (vitess.TableExprs, error) {
+func nodeFrom(ctx *Context, node tree.From) (vitess.TableExprs, error) {
 	if len(node.Tables) == 0 {
 		return nil, nil
 	}
-	tableExprs, err := nodeTableExprs(node.Tables)
+	tableExprs, err := nodeTableExprs(ctx, node.Tables)
 	if err != nil {
 		return nil, err
 	}

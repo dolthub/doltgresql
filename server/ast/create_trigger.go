@@ -23,6 +23,6 @@ import (
 )
 
 // nodeCreateTrigger handles *tree.CreateTrigger nodes.
-func nodeCreateTrigger(node *tree.CreateTrigger) (vitess.Statement, error) {
+func nodeCreateTrigger(ctx *Context, node *tree.CreateTrigger) (vitess.Statement, error) {
 	return nil, fmt.Errorf("CREATE TRIGGER statement is not yet supported")
 }

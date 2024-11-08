@@ -23,7 +23,7 @@ import (
 )
 
 // nodeShowSessions handles *tree.ShowSessions nodes.
-func nodeShowSessions(node *tree.ShowSessions) (vitess.Statement, error) {
+func nodeShowSessions(ctx *Context, node *tree.ShowSessions) (vitess.Statement, error) {
 	if node == nil {
 		return nil, nil
 	}

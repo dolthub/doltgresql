@@ -21,11 +21,11 @@ import (
 )
 
 // nodeRenameColumn handles *tree.RenameColumn nodes.
-func nodeRenameColumn(node *tree.RenameColumn) (*vitess.AlterTable, error) {
+func nodeRenameColumn(ctx *Context, node *tree.RenameColumn) (*vitess.AlterTable, error) {
 	if node == nil {
 		return nil, nil
 	}
-	tableName, err := nodeTableName(&node.Table)
+	tableName, err := nodeTableName(ctx, &node.Table)
 	if err != nil {
 		return nil, err
 	}

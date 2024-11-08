@@ -12,6 +12,7 @@ wait_for_connection() {
   timeout=$2
   user=${SQL_USER:-postgres}
   end_time=$((SECONDS+($timeout/1000)))
+  nativevar PGPASSWORD "password" /w
 
   while [ $SECONDS -lt $end_time ]; do
     run psql -U $user -h localhost -p $port -c "SELECT 1;" doltgres
@@ -28,7 +29,8 @@ wait_for_connection() {
 
 start_sql_server() {
     DEFAULT_DB="$1"
-    DEFAULT_DB="${DEFAULT_DB:=doltgres}"
+    DEFAULT_DB="${DEFAULT_DB:=postgres}"
+    nativevar PGPASSWORD "password" /w
     nativevar DEFAULT_DB "$DEFAULT_DB" /w
     logFile="$2"
     PORT=$( definePORT )
@@ -51,6 +53,7 @@ start_sql_server() {
 start_sql_server_with_args() {
     DEFAULT_DB=""
     nativevar DEFAULT_DB "$DEFAULT_DB" /w
+    nativevar PGPASSWORD "password" /w
 
     echo "running doltgres $@"
     doltgres "$@" &
@@ -106,7 +109,7 @@ defineCONFIG() {
       dolt_transaction_commit: false
 
     user:
-      name: "doltgres"
+      name: "postgres"
       password: "password"
 
     listener:

@@ -23,7 +23,7 @@ import (
 )
 
 // nodeAlterIndex handles *tree.AlterIndex nodes.
-func nodeAlterIndex(node *tree.AlterIndex) (vitess.Statement, error) {
+func nodeAlterIndex(ctx *Context, node *tree.AlterIndex) (vitess.Statement, error) {
 	if node == nil {
 		return nil, nil
 	}

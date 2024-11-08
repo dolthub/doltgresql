@@ -23,7 +23,7 @@ import (
 )
 
 // nodeShowQueries handles *tree.ShowQueries nodes.
-func nodeShowQueries(node *tree.ShowQueries) (vitess.Statement, error) {
+func nodeShowQueries(ctx *Context, node *tree.ShowQueries) (vitess.Statement, error) {
 	if node == nil {
 		return nil, nil
 	}

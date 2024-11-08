@@ -20,6 +20,7 @@ import (
 	"github.com/dolthub/go-mysql-server/sql/analyzer"
 )
 
+// IDs are basically arbitrary, we just need to ensure that they do not conflict with existing IDs
 const (
 	ruleId_TypeSanitizer analyzer.RuleId = iota + 1000
 	ruleId_AddDomainConstraints
@@ -27,6 +28,7 @@ const (
 	ruleId_AssignUpdateCasts
 	ruleId_ReplaceIndexedTables
 	ruleId_ReplaceSerial
+	ruleId_ReplaceDropTable
 	ruleId_AddImplicitPrefixLengths
 	ruleId_InsertContextRootFinalizer
 	ruleId_ResolveType
@@ -34,7 +36,6 @@ const (
 
 // Init adds additional rules to the analyzer to handle Doltgres-specific functionality.
 func Init() {
-	// IDs are basically arbitrary, we just need to ensure that they do not conflict with existing IDs
 	analyzer.AlwaysBeforeDefault = append(analyzer.AlwaysBeforeDefault,
 		analyzer.Rule{Id: ruleId_ResolveType, Apply: ResolveType},
 		analyzer.Rule{Id: ruleId_TypeSanitizer, Apply: TypeSanitizer},
@@ -57,6 +58,7 @@ func Init() {
 
 	analyzer.OnceAfterDefault = append(analyzer.OnceAfterDefault,
 		analyzer.Rule{Id: ruleId_ReplaceSerial, Apply: ReplaceSerial},
+		analyzer.Rule{Id: ruleId_ReplaceDropTable, Apply: ReplaceDropTable},
 	)
 
 	// The auto-commit rule writes the contents of the context, so we need to insert our finalizer before that

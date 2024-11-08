@@ -23,7 +23,7 @@ import (
 )
 
 // nodeUnsplit handles *tree.Unsplit nodes.
-func nodeUnsplit(node *tree.Unsplit) (vitess.Statement, error) {
+func nodeUnsplit(ctx *Context, node *tree.Unsplit) (vitess.Statement, error) {
 	if node == nil {
 		return nil, nil
 	}

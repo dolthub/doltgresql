@@ -23,7 +23,7 @@ import (
 )
 
 // nodeCancelSessions handles *tree.CancelSessions nodes.
-func nodeCancelSessions(node *tree.CancelSessions) (vitess.Statement, error) {
+func nodeCancelSessions(ctx *Context, node *tree.CancelSessions) (vitess.Statement, error) {
 	if node == nil {
 		return nil, nil
 	}

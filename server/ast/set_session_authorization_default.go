@@ -23,7 +23,7 @@ import (
 )
 
 // nodeSetSessionAuthorization handles *tree.SetSessionAuthorization nodes.
-func nodeSetSessionAuthorization(node *tree.SetSessionAuthorization) (vitess.Statement, error) {
+func nodeSetSessionAuthorization(ctx *Context, node *tree.SetSessionAuthorization) (vitess.Statement, error) {
 	if node == nil {
 		return nil, nil
 	}

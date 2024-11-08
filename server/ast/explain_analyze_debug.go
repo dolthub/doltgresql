@@ -23,7 +23,7 @@ import (
 )
 
 // nodeExplainAnalyzeDebug handles *tree.ExplainAnalyzeDebug nodes.
-func nodeExplainAnalyzeDebug(node *tree.ExplainAnalyzeDebug) (vitess.Statement, error) {
+func nodeExplainAnalyzeDebug(ctx *Context, node *tree.ExplainAnalyzeDebug) (vitess.Statement, error) {
 	if node == nil {
 		return nil, nil
 	}

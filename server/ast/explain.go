@@ -23,20 +23,20 @@ import (
 )
 
 // nodeExplain handles *tree.Explain nodes.
-func nodeExplain(node *tree.Explain) (vitess.Statement, error) {
+func nodeExplain(ctx *Context, node *tree.Explain) (vitess.Statement, error) {
 	if node == nil {
 		return nil, nil
 	}
 
 	if node.TableName != nil {
-		tableName, err := nodeUnresolvedObjectName(node.TableName)
+		tableName, err := nodeUnresolvedObjectName(ctx, node.TableName)
 		if err != nil {
 			return nil, err
 		}
 
 		var showTableOpts *vitess.ShowTablesOpt
 		if node.AsOf != nil {
-			asOf, err := nodeExpr(node.AsOf.Expr)
+			asOf, err := nodeExpr(ctx, node.AsOf.Expr)
 			if err != nil {
 				return nil, err
 			}

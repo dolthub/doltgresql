@@ -3,7 +3,7 @@ start_doltgres_server() {
   mkdir $REPO_NAME
   cd $REPO_NAME
 
-  USER="doltgres"
+  USER="postgres"
   PORT=$( definePORT )
   CONFIG=$( defineCONFIG $PORT )
   echo "$CONFIG" > config.yaml
@@ -30,7 +30,7 @@ teardown_doltgres_repo() {
 }
 
 query_server() {
-  psql -U "${USER:-postgres}" -h localhost -p $PORT "$@" doltgres
+  PGPASSWORD="password" psql -U "${USER:-postgres}" -h localhost -p $PORT "$@" doltgres
 }
 
 definePORT() {
@@ -56,7 +56,7 @@ defineCONFIG() {
     dolt_transaction_commit: false
 
   user:
-    name: "doltgres"
+    name: "postgres"
     password: "password"
 
   listener:

@@ -23,7 +23,7 @@ import (
 )
 
 // nodeShowPartitions handles *tree.ShowPartitions nodes.
-func nodeShowPartitions(node *tree.ShowPartitions) (vitess.Statement, error) {
+func nodeShowPartitions(ctx *Context, node *tree.ShowPartitions) (vitess.Statement, error) {
 	if node == nil {
 		return nil, nil
 	}

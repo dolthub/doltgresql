@@ -24,11 +24,11 @@ import (
 )
 
 // nodeSelectClause handles tree.SelectClause nodes.
-func nodeSelectClause(node *tree.SelectClause) (*vitess.Select, error) {
+func nodeSelectClause(ctx *Context, node *tree.SelectClause) (*vitess.Select, error) {
 	if node == nil {
 		return nil, nil
 	}
-	selectExprs, err := nodeSelectExprs(node.Exprs)
+	selectExprs, err := nodeSelectExprs(ctx, node.Exprs)
 	if err != nil {
 		return nil, err
 	}
@@ -109,7 +109,7 @@ func nodeSelectClause(node *tree.SelectClause) (*vitess.Select, error) {
 		node.Where = nil
 	}
 PostJoinRewrite:
-	from, err := nodeFrom(node.From)
+	from, err := nodeFrom(ctx, node.From)
 	if err != nil {
 		return nil, err
 	}
@@ -162,19 +162,19 @@ PostJoinRewrite:
 	if len(node.DistinctOn) > 0 {
 		return nil, fmt.Errorf("DISTINCT ON is not yet supported")
 	}
-	where, err := nodeWhere(node.Where)
+	where, err := nodeWhere(ctx, node.Where)
 	if err != nil {
 		return nil, err
 	}
-	having, err := nodeWhere(node.Having)
+	having, err := nodeWhere(ctx, node.Having)
 	if err != nil {
 		return nil, err
 	}
-	groupBy, err := nodeGroupBy(node.GroupBy)
+	groupBy, err := nodeGroupBy(ctx, node.GroupBy)
 	if err != nil {
 		return nil, err
 	}
-	window, err := nodeWindow(node.Window)
+	window, err := nodeWindow(ctx, node.Window)
 	if err != nil {
 		return nil, err
 	}

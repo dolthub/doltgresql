@@ -24,7 +24,7 @@ import (
 )
 
 // nodeColumnTableDef handles *tree.ColumnTableDef nodes.
-func nodeColumnTableDef(node *tree.ColumnTableDef) (*vitess.ColumnDefinition, error) {
+func nodeColumnTableDef(ctx *Context, node *tree.ColumnTableDef) (*vitess.ColumnDefinition, error) {
 	if node == nil {
 		return nil, nil
 	}
@@ -33,7 +33,7 @@ func nodeColumnTableDef(node *tree.ColumnTableDef) (*vitess.ColumnDefinition, er
 		len(node.UniqueConstraintName) > 0 {
 		return nil, fmt.Errorf("non-foreign key column constraint names are not yet supported")
 	}
-	convertType, resolvedType, err := nodeResolvableTypeReference(node.Type)
+	convertType, resolvedType, err := nodeResolvableTypeReference(ctx, node.Type)
 	if err != nil {
 		return nil, err
 	}
@@ -61,7 +61,7 @@ func nodeColumnTableDef(node *tree.ColumnTableDef) (*vitess.ColumnDefinition, er
 	} else if node.Unique {
 		keyOpt = 3 // colKeyUnique
 	}
-	defaultExpr, err := nodeExpr(node.DefaultExpr.Expr)
+	defaultExpr, err := nodeExpr(ctx, node.DefaultExpr.Expr)
 	if err != nil {
 		return nil, err
 	}
@@ -75,7 +75,7 @@ func nodeColumnTableDef(node *tree.ColumnTableDef) (*vitess.ColumnDefinition, er
 		if len(node.References.Col) == 0 {
 			return nil, fmt.Errorf("implicit primary key matching on column foreign key is not yet supported")
 		}
-		fkDef, err = nodeForeignKeyConstraintTableDef(&tree.ForeignKeyConstraintTableDef{
+		fkDef, err = nodeForeignKeyConstraintTableDef(ctx, &tree.ForeignKeyConstraintTableDef{
 			Name:     node.References.ConstraintName,
 			Table:    *node.References.Table,
 			FromCols: tree.NameList{node.Name},
@@ -90,7 +90,7 @@ func nodeColumnTableDef(node *tree.ColumnTableDef) (*vitess.ColumnDefinition, er
 	var generated vitess.Expr
 	var generatedStored vitess.BoolVal
 	if node.Computed.Computed {
-		generated, err = nodeExpr(node.Computed.Expr)
+		generated, err = nodeExpr(ctx, node.Computed.Expr)
 		if err != nil {
 			return nil, err
 		}
@@ -140,7 +140,7 @@ func nodeColumnTableDef(node *tree.ColumnTableDef) (*vitess.ColumnDefinition, er
 		}
 		var checkConstraints = make([]*vitess.ConstraintDefinition, len(node.CheckExprs))
 		for i, checkExpr := range node.CheckExprs {
-			expr, err := nodeExpr(checkExpr.Expr)
+			expr, err := nodeExpr(ctx, checkExpr.Expr)
 			if err != nil {
 				return nil, err
 			}

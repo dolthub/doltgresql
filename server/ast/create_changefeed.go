@@ -23,7 +23,7 @@ import (
 )
 
 // nodeCreateChangefeed handles *tree.CreateChangefeed nodes.
-func nodeCreateChangefeed(node *tree.CreateChangefeed) (vitess.Statement, error) {
+func nodeCreateChangefeed(ctx *Context, node *tree.CreateChangefeed) (vitess.Statement, error) {
 	if node == nil {
 		return nil, nil
 	}

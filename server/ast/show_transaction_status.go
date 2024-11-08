@@ -23,7 +23,7 @@ import (
 )
 
 // nodeShowTransactionStatus handles *tree.ShowTransactionStatus nodes.
-func nodeShowTransactionStatus(node *tree.ShowTransactionStatus) (vitess.Statement, error) {
+func nodeShowTransactionStatus(ctx *Context, node *tree.ShowTransactionStatus) (vitess.Statement, error) {
 	if node == nil {
 		return nil, nil
 	}

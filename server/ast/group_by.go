@@ -23,7 +23,7 @@ import (
 )
 
 // nodeGroupBy handles tree.GroupBy nodes.
-func nodeGroupBy(node tree.GroupBy) (vitess.GroupBy, error) {
+func nodeGroupBy(ctx *Context, node tree.GroupBy) (vitess.GroupBy, error) {
 	if len(node) == 0 {
 		return nil, nil
 	}
@@ -31,7 +31,7 @@ func nodeGroupBy(node tree.GroupBy) (vitess.GroupBy, error) {
 	groupBys := make(vitess.GroupBy, len(node))
 	var err error
 	for i, expr := range node {
-		groupBys[i], err = nodeExpr(expr)
+		groupBys[i], err = nodeExpr(ctx, expr)
 		if err != nil {
 			return nil, err
 		}

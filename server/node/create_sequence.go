@@ -25,6 +25,7 @@ import (
 
 	"github.com/dolthub/doltgresql/core"
 	"github.com/dolthub/doltgresql/core/sequences"
+	"github.com/dolthub/doltgresql/server/auth"
 )
 
 // CreateSequence handles the CREATE SEQUENCE statement, along with SERIAL type definitions.
@@ -63,6 +64,14 @@ func (c *CreateSequence) Resolved() bool {
 
 // RowIter implements the interface sql.ExecSourceRel.
 func (c *CreateSequence) RowIter(ctx *sql.Context, r sql.Row) (sql.RowIter, error) {
+	var userRole auth.Role
+	auth.LockRead(func() {
+		userRole = auth.GetRole(ctx.Client().User)
+	})
+	if !userRole.IsValid() {
+		return nil, fmt.Errorf(`role "%s" does not exist`, ctx.Client().User)
+	}
+
 	if strings.HasPrefix(strings.ToLower(c.sequence.Name), "dolt") {
 		return nil, fmt.Errorf("sequences cannot be prefixed with 'dolt'")
 	}
@@ -123,6 +132,17 @@ func (c *CreateSequence) RowIter(ctx *sql.Context, r sql.Row) (sql.RowIter, erro
 		return nil, err
 	}
 	if err = collection.CreateSequence(schema, c.sequence); err != nil {
+		return nil, err
+	}
+	auth.LockWrite(func() {
+		auth.RemoveOwner(auth.OwnershipKey{
+			PrivilegeObject: auth.PrivilegeObject_SEQUENCE,
+			Schema:          schema,
+			Name:            c.sequence.Name,
+		}, userRole.ID())
+		err = auth.PersistChanges()
+	})
+	if err != nil {
 		return nil, err
 	}
 	return sql.RowsToRowIter(), nil

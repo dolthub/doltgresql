@@ -25,255 +25,256 @@ import (
 
 // Convert converts a Postgres AST into a Vitess AST.
 func Convert(postgresStmt parser.Statement) (vitess.Statement, error) {
+	ctx := NewContext()
 	switch stmt := postgresStmt.AST.(type) {
 	case *tree.AlterAggregate:
-		return nodeAlterAggregate(stmt)
+		return nodeAlterAggregate(ctx, stmt)
 	case *tree.AlterDatabase:
-		return nodeAlterDatabase(stmt)
+		return nodeAlterDatabase(ctx, stmt)
 	case *tree.AlterFunction:
-		return nodeAlterFunction(stmt)
+		return nodeAlterFunction(ctx, stmt)
 	case *tree.AlterIndex:
-		return nodeAlterIndex(stmt)
+		return nodeAlterIndex(ctx, stmt)
 	case *tree.AlterProcedure:
-		return nodeAlterProcedure(stmt)
+		return nodeAlterProcedure(ctx, stmt)
 	case *tree.AlterRole:
-		return nodeAlterRole(stmt)
+		return nodeAlterRole(ctx, stmt)
 	case *tree.AlterSchema:
-		return nodeAlterSchema(stmt)
+		return nodeAlterSchema(ctx, stmt)
 	case *tree.AlterSequence:
-		return nodeAlterSequence(stmt)
+		return nodeAlterSequence(ctx, stmt)
 	case *tree.AlterTable:
-		return nodeAlterTable(stmt)
+		return nodeAlterTable(ctx, stmt)
 	case *tree.AlterTablePartition:
-		return nodeAlterTablePartition(stmt)
+		return nodeAlterTablePartition(ctx, stmt)
 	case *tree.AlterTableSetSchema:
-		return nodeAlterTableSetSchema(stmt)
+		return nodeAlterTableSetSchema(ctx, stmt)
 	case *tree.AlterType:
-		return nodeAlterType(stmt)
+		return nodeAlterType(ctx, stmt)
 	case *tree.Analyze:
-		return nodeAnalyze(stmt)
+		return nodeAnalyze(ctx, stmt)
 	case *tree.Backup:
-		return nodeBackup(stmt)
+		return nodeBackup(ctx, stmt)
 	case *tree.BeginTransaction:
-		return nodeBeginTransaction(stmt)
+		return nodeBeginTransaction(ctx, stmt)
 	case *tree.Call:
-		return nodeCall(stmt)
+		return nodeCall(ctx, stmt)
 	case *tree.CancelQueries:
-		return nodeCancelQueries(stmt)
+		return nodeCancelQueries(ctx, stmt)
 	case *tree.CancelSessions:
-		return nodeCancelSessions(stmt)
+		return nodeCancelSessions(ctx, stmt)
 	case *tree.CannedOptPlan:
-		return nodeCannedOptPlan(stmt)
+		return nodeCannedOptPlan(ctx, stmt)
 	case *tree.Comment:
-		return nodeComment(stmt)
+		return nodeComment(ctx, stmt)
 	case *tree.CommitTransaction:
-		return nodeCommitTransaction(stmt)
+		return nodeCommitTransaction(ctx, stmt)
 	case *tree.ControlJobs:
-		return nodeControlJobs(stmt)
+		return nodeControlJobs(ctx, stmt)
 	case *tree.ControlJobsForSchedules:
-		return nodeControlJobsForSchedules(stmt)
+		return nodeControlJobsForSchedules(ctx, stmt)
 	case *tree.ControlSchedules:
-		return nodeControlSchedules(stmt)
+		return nodeControlSchedules(ctx, stmt)
 	case *tree.CopyFrom:
-		return nodeCopyFrom(stmt)
+		return nodeCopyFrom(ctx, stmt)
 	case *tree.CreateAggregate:
-		return nodeCreateAggregate(stmt)
+		return nodeCreateAggregate(ctx, stmt)
 	case *tree.CreateChangefeed:
-		return nodeCreateChangefeed(stmt)
+		return nodeCreateChangefeed(ctx, stmt)
 	case *tree.CreateDatabase:
-		return nodeCreateDatabase(stmt)
+		return nodeCreateDatabase(ctx, stmt)
 	case *tree.CreateDomain:
-		return nodeCreateDomain(stmt)
+		return nodeCreateDomain(ctx, stmt)
 	case *tree.CreateFunction:
-		return nodeCreateFunction(stmt)
+		return nodeCreateFunction(ctx, stmt)
 	case *tree.CreateIndex:
-		return nodeCreateIndex(stmt)
+		return nodeCreateIndex(ctx, stmt)
 	case *tree.CreateProcedure:
-		return nodeCreateProcedure(stmt)
+		return nodeCreateProcedure(ctx, stmt)
 	case *tree.CreateRole:
-		return nodeCreateRole(stmt)
+		return nodeCreateRole(ctx, stmt)
 	case *tree.CreateSchema:
-		return nodeCreateSchema(stmt)
+		return nodeCreateSchema(ctx, stmt)
 	case *tree.CreateSequence:
-		return nodeCreateSequence(stmt)
+		return nodeCreateSequence(ctx, stmt)
 	case *tree.CreateStats:
-		return nodeCreateStats(stmt)
+		return nodeCreateStats(ctx, stmt)
 	case *tree.CreateTable:
-		return nodeCreateTable(stmt)
+		return nodeCreateTable(ctx, stmt)
 	case *tree.CreateTrigger:
-		return nodeCreateTrigger(stmt)
+		return nodeCreateTrigger(ctx, stmt)
 	case *tree.CreateType:
-		return nodeCreateType(stmt)
+		return nodeCreateType(ctx, stmt)
 	case *tree.CreateView:
-		return nodeCreateView(stmt)
+		return nodeCreateView(ctx, stmt)
 	case *tree.Deallocate:
-		return nodeDeallocate(stmt)
+		return nodeDeallocate(ctx, stmt)
 	case *tree.Delete:
-		return nodeDelete(stmt)
+		return nodeDelete(ctx, stmt)
 	case *tree.Discard:
-		return nodeDiscard(stmt)
+		return nodeDiscard(ctx, stmt)
 	case *tree.DropAggregate:
-		return nodeDropAggregate(stmt)
+		return nodeDropAggregate(ctx, stmt)
 	case *tree.DropDatabase:
-		return nodeDropDatabase(stmt)
+		return nodeDropDatabase(ctx, stmt)
 	case *tree.DropDomain:
-		return nodeDropDomain(stmt)
+		return nodeDropDomain(ctx, stmt)
 	case *tree.DropIndex:
-		return nodeDropIndex(stmt)
+		return nodeDropIndex(ctx, stmt)
 	case *tree.DropRole:
-		return nodeDropRole(stmt)
+		return nodeDropRole(ctx, stmt)
 	case *tree.DropSchema:
-		return nodeDropSchema(stmt)
+		return nodeDropSchema(ctx, stmt)
 	case *tree.DropSequence:
-		return nodeDropSequence(stmt)
+		return nodeDropSequence(ctx, stmt)
 	case *tree.DropTable:
-		return nodeDropTable(stmt)
+		return nodeDropTable(ctx, stmt)
 	case *tree.DropTrigger:
-		return nodeDropTrigger(stmt)
+		return nodeDropTrigger(ctx, stmt)
 	case *tree.DropType:
-		return nodeDropType(stmt)
+		return nodeDropType(ctx, stmt)
 	case *tree.DropView:
-		return nodeDropView(stmt)
+		return nodeDropView(ctx, stmt)
 	case *tree.Execute:
-		return nodeExecute(stmt)
+		return nodeExecute(ctx, stmt)
 	case *tree.Explain:
-		return nodeExplain(stmt)
+		return nodeExplain(ctx, stmt)
 	case *tree.ExplainAnalyzeDebug:
-		return nodeExplainAnalyzeDebug(stmt)
+		return nodeExplainAnalyzeDebug(ctx, stmt)
 	case *tree.Export:
-		return nodeExport(stmt)
+		return nodeExport(ctx, stmt)
 	case *tree.Grant:
-		return nodeGrant(stmt)
+		return nodeGrant(ctx, stmt)
 	case *tree.GrantRole:
-		return nodeGrantRole(stmt)
+		return nodeGrantRole(ctx, stmt)
 	case *tree.Import:
-		return nodeImport(stmt)
+		return nodeImport(ctx, stmt)
 	case *tree.Insert:
-		return nodeInsert(stmt)
+		return nodeInsert(ctx, stmt)
 	case *tree.ParenSelect:
-		return nodeParenSelect(stmt)
+		return nodeParenSelect(ctx, stmt)
 	case *tree.Prepare:
-		return nodePrepare(stmt)
+		return nodePrepare(ctx, stmt)
 	case *tree.RefreshMaterializedView:
-		return nodeRefreshMaterializedView(stmt)
+		return nodeRefreshMaterializedView(ctx, stmt)
 	case *tree.ReleaseSavepoint:
-		return nodeReleaseSavepoint(stmt)
+		return nodeReleaseSavepoint(ctx, stmt)
 	case *tree.Relocate:
-		return nodeRelocate(stmt)
+		return nodeRelocate(ctx, stmt)
 	case *tree.RenameColumn:
-		return nodeRenameColumn(stmt)
+		return nodeRenameColumn(ctx, stmt)
 	case *tree.RenameDatabase:
-		return nodeRenameDatabase(stmt)
+		return nodeRenameDatabase(ctx, stmt)
 	case *tree.RenameIndex:
-		return nodeRenameIndex(stmt)
+		return nodeRenameIndex(ctx, stmt)
 	case *tree.RenameTable:
-		return nodeRenameTable(stmt)
+		return nodeRenameTable(ctx, stmt)
 	case *tree.ReparentDatabase:
-		return nodeReparentDatabase(stmt)
+		return nodeReparentDatabase(ctx, stmt)
 	case *tree.Restore:
-		return nodeRestore(stmt)
+		return nodeRestore(ctx, stmt)
 	case *tree.Revoke:
-		return nodeRevoke(stmt)
+		return nodeRevoke(ctx, stmt)
 	case *tree.RevokeRole:
-		return nodeRevokeRole(stmt)
+		return nodeRevokeRole(ctx, stmt)
 	case *tree.RollbackToSavepoint:
-		return nodeRollbackToSavepoint(stmt)
+		return nodeRollbackToSavepoint(ctx, stmt)
 	case *tree.RollbackTransaction:
-		return nodeRollbackTransaction(stmt)
+		return nodeRollbackTransaction(ctx, stmt)
 	case *tree.Savepoint:
-		return nodeSavepoint(stmt)
+		return nodeSavepoint(ctx, stmt)
 	case *tree.Scatter:
-		return nodeScatter(stmt)
+		return nodeScatter(ctx, stmt)
 	case *tree.ScheduledBackup:
-		return nodeScheduledBackup(stmt)
+		return nodeScheduledBackup(ctx, stmt)
 	case *tree.Scrub:
-		return nodeScrub(stmt)
+		return nodeScrub(ctx, stmt)
 	case *tree.Select:
-		return nodeSelect(stmt)
+		return nodeSelect(ctx, stmt)
 	case *tree.SelectClause:
-		return nodeSelectClause(stmt)
+		return nodeSelectClause(ctx, stmt)
 	case *tree.SetSessionAuthorization:
-		return nodeSetSessionAuthorization(stmt)
+		return nodeSetSessionAuthorization(ctx, stmt)
 	case *tree.SetSessionCharacteristics:
-		return nodeSetSessionCharacteristics(stmt)
+		return nodeSetSessionCharacteristics(ctx, stmt)
 	case *tree.SetTransaction:
-		return nodeSetTransaction(stmt)
+		return nodeSetTransaction(ctx, stmt)
 	case *tree.SetVar:
-		return nodeSetVar(stmt)
+		return nodeSetVar(ctx, stmt)
 	case *tree.ShowBackup:
-		return nodeShowBackup(stmt)
+		return nodeShowBackup(ctx, stmt)
 	case *tree.ShowColumns:
-		return nodeShowColumns(stmt)
+		return nodeShowColumns(ctx, stmt)
 	case *tree.ShowConstraints:
-		return nodeShowConstraints(stmt)
+		return nodeShowConstraints(ctx, stmt)
 	case *tree.ShowCreate:
-		return nodeShowCreate(stmt)
+		return nodeShowCreate(ctx, stmt)
 	case *tree.ShowDatabaseIndexes:
-		return nodeShowDatabaseIndexes(stmt)
+		return nodeShowDatabaseIndexes(ctx, stmt)
 	case *tree.ShowDatabases:
-		return nodeShowDatabases(stmt)
+		return nodeShowDatabases(ctx, stmt)
 	case *tree.ShowEnums:
-		return nodeShowEnums(stmt)
+		return nodeShowEnums(ctx, stmt)
 	case *tree.ShowFingerprints:
-		return nodeShowFingerprints(stmt)
+		return nodeShowFingerprints(ctx, stmt)
 	case *tree.ShowGrants:
-		return nodeShowGrants(stmt)
+		return nodeShowGrants(ctx, stmt)
 	case *tree.ShowHistogram:
-		return nodeShowHistogram(stmt)
+		return nodeShowHistogram(ctx, stmt)
 	case *tree.ShowIndexes:
-		return nodeShowIndexes(stmt)
+		return nodeShowIndexes(ctx, stmt)
 	case *tree.ShowJobs:
-		return nodeShowJobs(stmt)
+		return nodeShowJobs(ctx, stmt)
 	case *tree.ShowLastQueryStatistics:
-		return nodeShowLastQueryStatistics(stmt)
+		return nodeShowLastQueryStatistics(ctx, stmt)
 	case *tree.ShowPartitions:
-		return nodeShowPartitions(stmt)
+		return nodeShowPartitions(ctx, stmt)
 	case *tree.ShowQueries:
-		return nodeShowQueries(stmt)
+		return nodeShowQueries(ctx, stmt)
 	case *tree.ShowRoleGrants:
-		return nodeShowRoleGrants(stmt)
+		return nodeShowRoleGrants(ctx, stmt)
 	case *tree.ShowRoles:
-		return nodeShowRoles(stmt)
+		return nodeShowRoles(ctx, stmt)
 	case *tree.ShowSavepointStatus:
-		return nodeShowSavepointStatus(stmt)
+		return nodeShowSavepointStatus(ctx, stmt)
 	case *tree.ShowSchedules:
-		return nodeShowSchedules(stmt)
+		return nodeShowSchedules(ctx, stmt)
 	case *tree.ShowSchemas:
-		return nodeShowSchemas(stmt)
+		return nodeShowSchemas(ctx, stmt)
 	case *tree.ShowSequences:
-		return nodeShowSequences(stmt)
+		return nodeShowSequences(ctx, stmt)
 	case *tree.ShowSessions:
-		return nodeShowSessions(stmt)
+		return nodeShowSessions(ctx, stmt)
 	case *tree.ShowSyntax:
-		return nodeShowSyntax(stmt)
+		return nodeShowSyntax(ctx, stmt)
 	case *tree.ShowTableStats:
-		return nodeShowTableStats(stmt)
+		return nodeShowTableStats(ctx, stmt)
 	case *tree.ShowTables:
-		return nodeShowTables(stmt)
+		return nodeShowTables(ctx, stmt)
 	case *tree.ShowTraceForSession:
-		return nodeShowTraceForSession(stmt)
+		return nodeShowTraceForSession(ctx, stmt)
 	case *tree.ShowTransactionStatus:
-		return nodeShowTransactionStatus(stmt)
+		return nodeShowTransactionStatus(ctx, stmt)
 	case *tree.ShowTransactions:
-		return nodeShowTransactions(stmt)
+		return nodeShowTransactions(ctx, stmt)
 	case *tree.ShowTypes:
-		return nodeShowTypes(stmt)
+		return nodeShowTypes(ctx, stmt)
 	case *tree.ShowUsers:
-		return nodeShowUsers(stmt)
+		return nodeShowUsers(ctx, stmt)
 	case *tree.ShowVar:
-		return nodeShowVar(stmt)
+		return nodeShowVar(ctx, stmt)
 	case *tree.Split:
-		return nodeSplit(stmt)
+		return nodeSplit(ctx, stmt)
 	case *tree.Truncate:
-		return nodeTruncate(stmt)
+		return nodeTruncate(ctx, stmt)
 	case *tree.UnionClause:
-		return nodeUnionClause(stmt)
+		return nodeUnionClause(ctx, stmt)
 	case *tree.Unsplit:
-		return nodeUnsplit(stmt)
+		return nodeUnsplit(ctx, stmt)
 	case *tree.Update:
-		return nodeUpdate(stmt)
+		return nodeUpdate(ctx, stmt)
 	case *tree.ValuesClause:
-		return nodeValuesClause(stmt)
+		return nodeValuesClause(ctx, stmt)
 	case nil:
 		return nil, nil
 	default:

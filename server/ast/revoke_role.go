@@ -23,7 +23,7 @@ import (
 )
 
 // nodeRevokeRole handles *tree.RevokeRole nodes.
-func nodeRevokeRole(node *tree.RevokeRole) (vitess.Statement, error) {
+func nodeRevokeRole(ctx *Context, node *tree.RevokeRole) (vitess.Statement, error) {
 	if node == nil {
 		return nil, nil
 	}
