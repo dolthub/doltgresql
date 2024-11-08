@@ -180,7 +180,7 @@ func TestCreateTableInherit(t *testing.T) {
 					Expected: []sql.Row{},
 				},
 				{
-					Query:    "select * from t4;",
+					Query: "select * from t4;",
 					Expected: []sql.Row{
 						{1, 2, 3, 4},
 					},
@@ -195,7 +195,7 @@ func TestCreateTableInherit(t *testing.T) {
 					Expected: []sql.Row{},
 				},
 				{
-					Query:    "select * from t111;",
+					Query: "select * from t111;",
 					Expected: []sql.Row{
 						{1},
 					},
@@ -210,7 +210,7 @@ func TestCreateTableInherit(t *testing.T) {
 					Expected: []sql.Row{},
 				},
 				{
-					Query:    "select * from t1t1;",
+					Query: "select * from t1t1;",
 					Expected: []sql.Row{
 						{1},
 					},
