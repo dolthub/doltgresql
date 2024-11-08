@@ -182,11 +182,16 @@ func convertFrom(from sqlparser.TableExprs) tree.From {
 func convertTableExpr(table sqlparser.TableExpr) tree.TableExpr {
 	switch table := table.(type) {
 	case *sqlparser.AliasedTableExpr:
-		return &tree.AliasedTableExpr{
-			Expr:       nil,
-			As:         tree.AliasClause{
-				Alias: tree.Name(table.As.String()),
-			},
+		switch tableExpr := table.Expr.(type) {
+		case sqlparser.TableName:
+			return &tree.AliasedTableExpr{
+				Expr:       tree.NewTableName(tree.Name(tableExpr.DbQualifier.String()), tree.Name(tableExpr.Name.String())),
+				As:         tree.AliasClause{
+					Alias: tree.Name(table.As.String()),
+				},
+			}
+		default:
+			panic(fmt.Sprintf("unhandled type: %T", table))
 		}
 	default:
 		panic(fmt.Sprintf("unhandled type: %T", table))

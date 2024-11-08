@@ -64,17 +64,18 @@ func TestSingleWriteQuery(t *testing.T) {
 	// t.Skip()
 	h := newDoltgresServerHarness(t)
 	defer h.Close()
-	
+
 	h.Setup(setup.MydbData, setup.MytableData, setup.Mytable_del_idxData, setup.KeylessData, setup.Keyless_idxData, setup.NiltableData, setup.TypestableData, setup.EmptytableData, setup.AutoincrementData, setup.OthertableData, setup.Othertable_del_idxData)
-	
+
 	test := queries.WriteQueryTest{
-		WriteQuery:          `INSERT INTO othertable VALUES ("fourth", 1) ON DUPLICATE KEY UPDATE s2="fourth"`,
+		WriteQuery: `INSERT INTO emptytable (s,i) SELECT s,i from mytable where i = 1
+			union select s,i from mytable where i = 3
+			union select s,i from mytable where i > 2`,
 		ExpectedWriteResult: []sql.Row{{types.NewOkResult(2)}},
-		SelectQuery:         "SELECT * FROM othertable",
+		SelectQuery:         "SELECT * FROM emptytable ORDER BY i,s",
 		ExpectedSelect: []sql.Row{
-			sql.NewRow("first", int64(3)),
-			sql.NewRow("second", int64(2)),
-			sql.NewRow("fourth", int64(1)),
+			{int64(1), "first row"},
+			{int64(3), "third row"},
 		},
 	}
 
@@ -170,34 +171,19 @@ func TestSingleScript(t *testing.T) {
 
 	var scripts = []queries.ScriptTest{
 		{
-			Name: "Group by BINARY: https://github.com/dolthub/dolt/issues/6179",
+			Name: "insert on duplicate key update errors",
 			SetUpScript: []string{
-				"create table t (s varchar(100));",
-				"insert into t values ('abc'), ('def');",
-				"create table t1 (b binary(3));",
-				"insert into t1 values ('abc'), ('abc'), ('def'), ('abc'), ('def');",
+				`create table a (i int primary key)`,
+				`create table b (i int primary key)`,
 			},
 			Assertions: []queries.ScriptTestAssertion{
 				{
-					Query: "select binary s from t group by binary s order by binary s",
-					Expected: []sql.Row{
-						{[]uint8("abc")},
-						{[]uint8("def")},
-					},
+					Query:       `insert into a (select * from b) on duplicate key update i = i`,
+					ExpectedErr: sql.ErrAmbiguousColumnName,
 				},
 				{
-					Query: "select count(b), b from t1 group by b order by b",
-					Expected: []sql.Row{
-						{3, []uint8("abc")},
-						{2, []uint8("def")},
-					},
-				},
-				{
-					Query: "select binary s from t group by binary s order by s",
-					Expected: []sql.Row{
-						{[]uint8("abc")},
-						{[]uint8("def")},
-					},
+					Query:       `insert into a (select * from b) on duplicate key update b.i = a.i`,
+					ExpectedErr: sql.ErrTableNotFound,
 				},
 			},
 		},
@@ -321,14 +307,30 @@ func TestInsertInto(t *testing.T) {
 		"INSERT INTO mytable (s, i) VALUES ('x', '64.6');", // type mismatch
 		"INSERT INTO mytable SET s = 'x', i = 999;", // unsupported syntax
 		"INSERT INTO mytable SET i = 999, s = 'x';", // unsupported syntax
-		`INSERT INTO emptytable (s,i) SELECT s,i from mytable where i = 1
-        	            				union select s,i from mytable where i = 3
-        	            				union select s,i from mytable where i > 2`, // panic
-		`INSERT INTO emptytable (s,i)
-        	            				SELECT s,i from mytable where i = 1
-        	            				union all select s,i+1 from mytable where i < 2
-        	            				union all select s,i+2 from mytable where i in (1)`, // panic
 		`INSERT INTO mytable (i,s) SELECT i * 2, concat(s,s) from mytable order by 1 desc limit 1`, // type error
+		"INSERT INTO mytable VALUES (999, _binary 'x');", // unsupported syntax
+		"INSERT INTO mytable SET i = 999, s = _binary 'x';", // unsupported syntax
+		"INSERT INTO mytable (i,s) values (1,'hi') ON DUPLICATE KEY UPDATE s=VALUES(s)", // unsupported syntax
+		"INSERT INTO mytable (s,i) values ('dup',1) ON DUPLICATE KEY UPDATE s=CONCAT(VALUES(s), 'licate')", // unsupported syntax
+		"INSERT INTO mytable (i,s) values (1,'mar'), (2,'par') ON DUPLICATE KEY UPDATE s=CONCAT(VALUES(s), 'tial')", // bad translation
+		"INSERT INTO mytable (i,s) values (1,'maybe') ON DUPLICATE KEY UPDATE i=VALUES(i)+8000, s=VALUES(s)", // unsupported syntax
+		`insert into keyless (c0, c1) select a.c0, a.c1 from (select 1, 1) as a(c0, c1) join keyless on a.c0 = keyless.c0`, // missing result element, needs investigation
+		"with t (i,f) as (select 4,'fourth row' from dual) insert into mytable select i,f from t", // WITH unsupported syntax
+		"with recursive t (i,f) as (select 4,4 from dual union all select i + 1, i + 1 from t where i < 5) insert into mytable select i,f from t", // WITH unsupported syntax
+		"issue 6675: on duplicate rearranged getfield indexes from select source", // panic
+		"issue 4857: insert cte column alias with table alias qualify panic", // WITH unsupported syntax
+		"sql_mode=NO_auto_value_ON_ZERO", // unsupported
+		"explicit DEFAULT", // enum type unsupported
+		"Try INSERT IGNORE with primary key, non null, and single row violations", // insert ignore not supported
+		"Insert on duplicate key references table in subquery",  // bad translation?
+		"Insert on duplicate key references table in aliased subquery", // bad translation?
+		"insert on duplicate key update errors", // failing
+		"Insert on duplicate key references table in subquery with join", // untranslated
+		"INSERT INTO ... SELECT works properly with ENUM", // enum unsupported
+		"INSERT INTO ... SELECT works properly with SET", // set unsupported
+		"INSERT INTO ... SELECT with TEXT types", // typecasts needed
+		"check IN TUPLE constraint with duplicate key update", // error not being thrown
+		"INSERT IGNORE works with FK Violations", // ignore not supported
 	})
 	defer h.Close()
 	enginetest.TestInsertInto(t, h)
