@@ -23,7 +23,7 @@ import (
 )
 
 // nodeDropIndex handles *tree.DropIndex nodes.
-func nodeDropIndex(node *tree.DropIndex) (*vitess.AlterTable, error) {
+func nodeDropIndex(ctx *Context, node *tree.DropIndex) (*vitess.AlterTable, error) {
 	if node == nil || len(node.IndexList) == 0 {
 		return nil, nil
 	}
@@ -44,7 +44,7 @@ func nodeDropIndex(node *tree.DropIndex) (*vitess.AlterTable, error) {
 	var tableName vitess.TableName
 	ddls := make([]*vitess.DDL, len(node.IndexList))
 	for i, index := range node.IndexList {
-		newTableName, err := nodeTableName(&index.Table)
+		newTableName, err := nodeTableName(ctx, &index.Table)
 		if err != nil {
 			return nil, err
 		}

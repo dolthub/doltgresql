@@ -20,6 +20,7 @@ export function getConfig() {
     port: port,
     database: dbName,
     user: user,
+    password: "password",
   };
 }
 

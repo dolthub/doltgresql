@@ -20,19 +20,20 @@ import (
 	vitess "github.com/dolthub/vitess/go/vt/sqlparser"
 
 	"github.com/dolthub/doltgresql/postgres/parser/sem/tree"
+	"github.com/dolthub/doltgresql/server/auth"
 )
 
 // nodeTableExpr handles tree.TableExpr nodes.
-func nodeTableExpr(node tree.TableExpr) (vitess.TableExpr, error) {
+func nodeTableExpr(ctx *Context, node tree.TableExpr) (vitess.TableExpr, error) {
 	switch node := node.(type) {
 	case *tree.AliasedTableExpr:
-		return nodeAliasedTableExpr(node)
+		return nodeAliasedTableExpr(ctx, node)
 	case *tree.JoinTableExpr:
-		left, err := nodeTableExpr(node.Left)
+		left, err := nodeTableExpr(ctx, node.Left)
 		if err != nil {
 			return nil, err
 		}
-		right, err := nodeTableExpr(node.Right)
+		right, err := nodeTableExpr(ctx, node.Right)
 		if err != nil {
 			return nil, err
 		}
@@ -41,7 +42,7 @@ func nodeTableExpr(node tree.TableExpr) (vitess.TableExpr, error) {
 		case tree.NaturalJoinCond:
 			// Nothing to do, the default value is equivalent
 		case *tree.OnJoinCond:
-			onExpr, err := nodeExpr(treeCondition.Expr)
+			onExpr, err := nodeExpr(ctx, treeCondition.Expr)
 			if err != nil {
 				return nil, err
 			}
@@ -90,7 +91,7 @@ func nodeTableExpr(node tree.TableExpr) (vitess.TableExpr, error) {
 			Condition: condition,
 		}, nil
 	case *tree.ParenTableExpr:
-		tableExpr, err := nodeTableExpr(node.Expr)
+		tableExpr, err := nodeTableExpr(ctx, node.Expr)
 		if err != nil {
 			return nil, err
 		}
@@ -98,7 +99,7 @@ func nodeTableExpr(node tree.TableExpr) (vitess.TableExpr, error) {
 			Exprs: vitess.TableExprs{tableExpr},
 		}, nil
 	case *tree.RowsFromExpr:
-		exprs, err := nodeExprs(node.Items)
+		exprs, err := nodeExprs(ctx, node.Items)
 		if err != nil {
 			return nil, err
 		}
@@ -114,24 +115,34 @@ func nodeTableExpr(node tree.TableExpr) (vitess.TableExpr, error) {
 	case *tree.StatementSource:
 		return nil, fmt.Errorf("this statement is not yet supported")
 	case *tree.Subquery:
-		return nodeSubqueryToTableExpr(node)
+		return nodeSubqueryToTableExpr(ctx, node)
 	case *tree.TableName:
-		tableName, err := nodeTableName(node)
+		tableName, err := nodeTableName(ctx, node)
 		if err != nil {
 			return nil, err
 		}
 		return &vitess.AliasedTableExpr{
 			Expr: tableName,
+			Auth: vitess.AuthInformation{
+				AuthType:    ctx.Auth().PeekAuthType(),
+				TargetType:  auth.AuthTargetType_SingleTableIdentifier,
+				TargetNames: []string{tableName.SchemaQualifier.String(), tableName.Name.String()},
+			},
 		}, nil
 	case *tree.TableRef:
 		return nil, fmt.Errorf("table refs are not yet supported")
 	case *tree.UnresolvedObjectName:
-		tableName, err := nodeUnresolvedObjectName(node)
+		tableName, err := nodeUnresolvedObjectName(ctx, node)
 		if err != nil {
 			return nil, err
 		}
 		return &vitess.AliasedTableExpr{
 			Expr: tableName,
+			Auth: vitess.AuthInformation{
+				AuthType:    ctx.Auth().PeekAuthType(),
+				TargetType:  auth.AuthTargetType_SingleTableIdentifier,
+				TargetNames: []string{tableName.SchemaQualifier.String(), tableName.Name.String()},
+			},
 		}, nil
 	default:
 		return nil, fmt.Errorf("unknown table expression: `%T`", node)
@@ -139,14 +150,14 @@ func nodeTableExpr(node tree.TableExpr) (vitess.TableExpr, error) {
 }
 
 // nodeTableExprs handles tree.TableExprs nodes.
-func nodeTableExprs(node tree.TableExprs) (vitess.TableExprs, error) {
+func nodeTableExprs(ctx *Context, node tree.TableExprs) (vitess.TableExprs, error) {
 	if len(node) == 0 {
 		return nil, nil
 	}
 	exprs := make(vitess.TableExprs, len(node))
 	for i := range node {
 		var err error
-		exprs[i], err = nodeTableExpr(node[i])
+		exprs[i], err = nodeTableExpr(ctx, node[i])
 		if err != nil {
 			return nil, err
 		}

@@ -19,7 +19,6 @@ import (
 	"encoding/base64"
 	"fmt"
 	"net"
-	"os"
 	"strings"
 
 	"github.com/dolthub/doltgresql/server/auth"
@@ -39,16 +38,8 @@ const (
 )
 
 // EnableAuthentication handles whether authentication is enabled. If enabled, it verifies that the given user exists,
-// and checks that the encrypted password is derivable from the stored encrypted password. As the feature is still in
-// development, it is disabled by default. It may be enabled by supplying the environment variable
-// "DOLTGRES_ENABLE_AUTHENTICATION", or by simply setting this boolean to true.
-var EnableAuthentication = false
-
-func init() {
-	if _, ok := os.LookupEnv("DOLTGRES_ENABLE_AUTHENTICATION"); ok {
-		EnableAuthentication = true
-	}
-}
+// and checks that the encrypted password is derivable from the stored encrypted password.
+var EnableAuthentication = true
 
 // SASLBindingFlag are the flags for gs2-cbind-flag, used in SASL authentication.
 type SASLBindingFlag string
@@ -108,7 +99,7 @@ func (h *ConnectionHandler) handleAuthentication(startupMessage *pgproto3.Startu
 		User: username,
 		Host: host,
 	}
-	// Since this is all still in development, we'll check if authentication is enabled.
+	// Currently, regression tests disable authentication, since we can't just replay the messages due to nonces.
 	if !EnableAuthentication {
 		return h.send(&pgproto3.AuthenticationOk{})
 	}

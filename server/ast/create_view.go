@@ -24,7 +24,7 @@ import (
 )
 
 // nodeCreateView handles *tree.CreateView nodes.
-func nodeCreateView(node *tree.CreateView) (*vitess.DDL, error) {
+func nodeCreateView(ctx *Context, node *tree.CreateView) (*vitess.DDL, error) {
 	if node == nil {
 		return nil, nil
 	}
@@ -77,11 +77,11 @@ func nodeCreateView(node *tree.CreateView) (*vitess.DDL, error) {
 	default:
 	}
 
-	tableName, err := nodeTableName(&node.Name)
+	tableName, err := nodeTableName(ctx, &node.Name)
 	if err != nil {
 		return nil, err
 	}
-	selectStmt, err := nodeSelectStatement(node.AsSource.Select)
+	selectStmt, err := nodeSelectStatement(ctx, node.AsSource.Select)
 	if err != nil {
 		return nil, err
 	}

@@ -23,7 +23,7 @@ import (
 )
 
 // nodeShowConstraints handles *tree.ShowConstraints nodes.
-func nodeShowConstraints(node *tree.ShowConstraints) (vitess.Statement, error) {
+func nodeShowConstraints(ctx *Context, node *tree.ShowConstraints) (vitess.Statement, error) {
 	if node == nil {
 		return nil, nil
 	}

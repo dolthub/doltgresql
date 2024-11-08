@@ -23,7 +23,7 @@ import (
 )
 
 // nodeAlterSequence handles *tree.AlterSequence nodes.
-func nodeAlterSequence(node *tree.AlterSequence) (vitess.Statement, error) {
+func nodeAlterSequence(ctx *Context, node *tree.AlterSequence) (vitess.Statement, error) {
 	if node == nil {
 		return nil, nil
 	}

@@ -46,10 +46,12 @@ teardown_common() {
 }
 
 query_server() {
+    nativevar PGPASSWORD "password" /w
     psql -U "${SQL_USER:-postgres}" -h localhost -p $PORT "$@" doltgres
 }
 
 query_server_for_db() {
+    nativevar PGPASSWORD "password" /w
     local db_name=${1:-doltgres}
     shift
     psql -U "${SQL_USER:-postgres}" -h localhost -p $PORT "$@" $db_name

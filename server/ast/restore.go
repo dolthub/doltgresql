@@ -23,7 +23,7 @@ import (
 )
 
 // nodeRestore handles *tree.Restore nodes.
-func nodeRestore(node *tree.Restore) (vitess.Statement, error) {
+func nodeRestore(ctx *Context, node *tree.Restore) (vitess.Statement, error) {
 	if node == nil {
 		return nil, nil
 	}

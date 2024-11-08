@@ -23,7 +23,7 @@ import (
 )
 
 // nodeShowFingerprints handles *tree.ShowFingerprints nodes.
-func nodeShowFingerprints(node *tree.ShowFingerprints) (vitess.Statement, error) {
+func nodeShowFingerprints(ctx *Context, node *tree.ShowFingerprints) (vitess.Statement, error) {
 	if node == nil {
 		return nil, nil
 	}

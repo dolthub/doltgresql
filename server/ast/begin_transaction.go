@@ -23,7 +23,7 @@ import (
 )
 
 // nodeBeginTransaction handles *tree.BeginTransaction nodes.
-func nodeBeginTransaction(node *tree.BeginTransaction) (*vitess.Begin, error) {
+func nodeBeginTransaction(ctx *Context, node *tree.BeginTransaction) (*vitess.Begin, error) {
 	if node == nil {
 		return nil, nil
 	}

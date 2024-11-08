@@ -27,6 +27,7 @@ import (
 // the table being altered, and |ifExists| indicates whether the IF EXISTS clause
 // was specified.
 func nodeCheckConstraintTableDef(
+	ctx *Context,
 	node *tree.CheckConstraintTableDef,
 	tableName vitess.TableName,
 	ifExists bool) (*vitess.DDL, error) {
@@ -35,7 +36,7 @@ func nodeCheckConstraintTableDef(
 		return nil, fmt.Errorf("NO INHERIT is not yet supported for check constraints")
 	}
 
-	expr, err := nodeExpr(node.Expr)
+	expr, err := nodeExpr(ctx, node.Expr)
 	if err != nil {
 		return nil, err
 	}
@@ -64,6 +65,7 @@ func nodeCheckConstraintTableDef(
 // the table being altered, and |ifExists| indicates whether the IF EXISTS clause
 // was specified.
 func nodeAlterTableDropConstraint(
+	ctx *Context,
 	node *tree.AlterTableDropConstraint,
 	tableName vitess.TableName,
 	ifExists bool) (*vitess.DDL, error) {
@@ -94,6 +96,7 @@ func nodeAlterTableDropConstraint(
 // the table being altered, and |ifExists| indicates whether the IF EXISTS clause
 // was specified.
 func nodeUniqueConstraintTableDef(
+	ctx *Context,
 	node *tree.UniqueConstraintTableDef,
 	tableName vitess.TableName,
 	ifExists bool) (*vitess.DDL, error) {
@@ -110,7 +113,7 @@ func nodeUniqueConstraintTableDef(
 		return nil, fmt.Errorf("NULLS NOT DISTINCT is not yet supported")
 	}
 
-	columns, err := nodeIndexElemList(node.Columns)
+	columns, err := nodeIndexElemList(ctx, node.Columns)
 	if err != nil {
 		return nil, err
 	}

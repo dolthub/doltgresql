@@ -23,7 +23,7 @@ import (
 )
 
 // nodeAlterType handles *tree.AlterType nodes.
-func nodeAlterType(node *tree.AlterType) (vitess.Statement, error) {
+func nodeAlterType(ctx *Context, node *tree.AlterType) (vitess.Statement, error) {
 	if node == nil {
 		return nil, nil
 	}

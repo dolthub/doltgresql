@@ -152,7 +152,6 @@ func RunScript(t *testing.T, script ScriptTest, normalizeRows bool) {
 
 // runScript runs the script given on the postgres connection provided
 func runScript(t *testing.T, ctx context.Context, script ScriptTest, conn *Connection, normalizeRows bool) {
-	dserver.EnableAuthentication = true
 	if script.Skip {
 		t.Skip("Skip has been set in the script")
 	}
@@ -270,7 +269,6 @@ func init() {
 // when the connection is closed (or loses its connection to the server). The accompanying WaitGroup may be used to wait
 // until the server has closed.
 func CreateServer(t *testing.T, database string) (context.Context, *Connection, *svcs.Controller) {
-	auth.ClearDatabase()
 	require.NotEmpty(t, database)
 	port := GetUnusedPort(t)
 	controller, err := dserver.RunInMemory(&servercfg.DoltgresConfig{
@@ -281,6 +279,7 @@ func CreateServer(t *testing.T, database string) (context.Context, *Connection, 
 		LogLevelStr: ptr(testServerLogLevel),
 	})
 	require.NoError(t, err)
+	auth.ClearDatabase()
 
 	fmt.Printf("port is %d\n", port)
 

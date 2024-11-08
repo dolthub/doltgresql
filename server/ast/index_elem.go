@@ -24,7 +24,7 @@ import (
 )
 
 // nodeIndexElemList converts a tree.IndexElemList to a slice of vitess.IndexColumn.
-func nodeIndexElemList(node tree.IndexElemList) ([]*vitess.IndexColumn, error) {
+func nodeIndexElemList(ctx *Context, node tree.IndexElemList) ([]*vitess.IndexColumn, error) {
 	vitessIndexColumns := make([]*vitess.IndexColumn, 0, len(node))
 	for _, inputColumn := range node {
 		if inputColumn.Expr != nil {

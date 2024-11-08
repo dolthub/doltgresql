@@ -24,7 +24,7 @@ import (
 
 // nodeIndexTableDef handles *tree.IndexTableDef nodes. The parser does not store type information in the index
 // definition (PRIMARY KEY, UNIQUE, etc.) so it must be added to this definition by the caller.
-func nodeIndexTableDef(node *tree.IndexTableDef) (*vitess.IndexDefinition, error) {
+func nodeIndexTableDef(ctx *Context, node *tree.IndexTableDef) (*vitess.IndexDefinition, error) {
 	if node == nil {
 		return nil, nil
 	}
@@ -38,7 +38,7 @@ func nodeIndexTableDef(node *tree.IndexTableDef) (*vitess.IndexDefinition, error
 		return nil, fmt.Errorf("tablespace is not yet supported")
 	}
 
-	columns, err := nodeIndexElemList(node.Columns)
+	columns, err := nodeIndexElemList(ctx, node.Columns)
 	if err != nil {
 		return nil, err
 	}

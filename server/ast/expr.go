@@ -34,14 +34,14 @@ import (
 )
 
 // nodeExprs handles tree.Exprs nodes.
-func nodeExprs(node tree.Exprs) (vitess.Exprs, error) {
+func nodeExprs(ctx *Context, node tree.Exprs) (vitess.Exprs, error) {
 	if len(node) == 0 {
 		return nil, nil
 	}
 	exprs := make(vitess.Exprs, len(node))
 	for i := range node {
 		var err error
-		if exprs[i], err = nodeExpr(node[i]); err != nil {
+		if exprs[i], err = nodeExpr(ctx, node[i]); err != nil {
 			return nil, err
 		}
 	}
@@ -49,51 +49,51 @@ func nodeExprs(node tree.Exprs) (vitess.Exprs, error) {
 }
 
 // nodeCompositeDatum handles tree.CompositeDatum nodes.
-func nodeCompositeDatum(node tree.CompositeDatum) (vitess.Expr, error) {
-	return nodeExpr(node)
+func nodeCompositeDatum(ctx *Context, node tree.CompositeDatum) (vitess.Expr, error) {
+	return nodeExpr(ctx, node)
 }
 
 // nodeConstant handles tree.Constant nodes.
-func nodeConstant(node tree.Constant) (vitess.Expr, error) {
-	return nodeExpr(node)
+func nodeConstant(ctx *Context, node tree.Constant) (vitess.Expr, error) {
+	return nodeExpr(ctx, node)
 }
 
 // nodeDatum handles tree.Datum nodes.
-func nodeDatum(node tree.Datum) (vitess.Expr, error) {
-	return nodeExpr(node)
+func nodeDatum(ctx *Context, node tree.Datum) (vitess.Expr, error) {
+	return nodeExpr(ctx, node)
 }
 
 // nodeSubqueryExpr handles tree.SubqueryExpr nodes.
-func nodeSubqueryExpr(node tree.SubqueryExpr) (vitess.Expr, error) {
-	return nodeExpr(node)
+func nodeSubqueryExpr(ctx *Context, node tree.SubqueryExpr) (vitess.Expr, error) {
+	return nodeExpr(ctx, node)
 }
 
 // nodeTypedExpr handles tree.TypedExpr nodes.
-func nodeTypedExpr(node tree.TypedExpr) (vitess.Expr, error) {
-	return nodeExpr(node)
+func nodeTypedExpr(ctx *Context, node tree.TypedExpr) (vitess.Expr, error) {
+	return nodeExpr(ctx, node)
 }
 
 // nodeVariableExpr handles tree.VariableExpr nodes.
-func nodeVariableExpr(node tree.VariableExpr) (vitess.Expr, error) {
-	return nodeExpr(node)
+func nodeVariableExpr(ctx *Context, node tree.VariableExpr) (vitess.Expr, error) {
+	return nodeExpr(ctx, node)
 }
 
 // nodeVarName handles tree.VarName nodes.
-func nodeVarName(node tree.VarName) (vitess.Expr, error) {
-	return nodeExpr(node)
+func nodeVarName(ctx *Context, node tree.VarName) (vitess.Expr, error) {
+	return nodeExpr(ctx, node)
 }
 
 // nodeExpr handles tree.Expr nodes.
-func nodeExpr(node tree.Expr) (vitess.Expr, error) {
+func nodeExpr(ctx *Context, node tree.Expr) (vitess.Expr, error) {
 	switch node := node.(type) {
 	case *tree.AllColumnsSelector:
 		return nil, fmt.Errorf("table.* syntax is not yet supported in this context")
 	case *tree.AndExpr:
-		left, err := nodeExpr(node.Left)
+		left, err := nodeExpr(ctx, node.Left)
 		if err != nil {
 			return nil, err
 		}
-		right, err := nodeExpr(node.Right)
+		right, err := nodeExpr(ctx, node.Right)
 		if err != nil {
 			return nil, err
 		}
@@ -107,7 +107,7 @@ func nodeExpr(node tree.Expr) (vitess.Expr, error) {
 		unresolvedChildren := make([]vitess.Expr, len(node.Exprs))
 		var coercedType pgtypes.DoltgresType
 		if node.HasResolvedType() {
-			_, resolvedType, err := nodeResolvableTypeReference(node.ResolvedType())
+			_, resolvedType, err := nodeResolvableTypeReference(ctx, node.ResolvedType())
 			if err != nil {
 				return nil, err
 			}
@@ -119,7 +119,7 @@ func nodeExpr(node tree.Expr) (vitess.Expr, error) {
 		}
 		for i, arrayExpr := range node.Exprs {
 			var err error
-			unresolvedChildren[i], err = nodeExpr(arrayExpr)
+			unresolvedChildren[i], err = nodeExpr(ctx, arrayExpr)
 			if err != nil {
 				return nil, err
 			}
@@ -135,11 +135,11 @@ func nodeExpr(node tree.Expr) (vitess.Expr, error) {
 	case *tree.ArrayFlatten:
 		return nil, fmt.Errorf("flattening arrays is not yet supported")
 	case *tree.BinaryExpr:
-		left, err := nodeExpr(node.Left)
+		left, err := nodeExpr(ctx, node.Left)
 		if err != nil {
 			return nil, err
 		}
-		right, err := nodeExpr(node.Right)
+		right, err := nodeExpr(ctx, node.Right)
 		if err != nil {
 			return nil, err
 		}
@@ -189,17 +189,17 @@ func nodeExpr(node tree.Expr) (vitess.Expr, error) {
 			Children:   vitess.Exprs{left, right},
 		}, nil
 	case *tree.CaseExpr:
-		expr, err := nodeExpr(node.Expr)
+		expr, err := nodeExpr(ctx, node.Expr)
 		if err != nil {
 			return nil, err
 		}
 		whens := make([]*vitess.When, len(node.Whens))
 		for i := range node.Whens {
-			val, err := nodeExpr(node.Whens[i].Val)
+			val, err := nodeExpr(ctx, node.Whens[i].Val)
 			if err != nil {
 				return nil, err
 			}
-			cond, err := nodeExpr(node.Whens[i].Cond)
+			cond, err := nodeExpr(ctx, node.Whens[i].Cond)
 			if err != nil {
 				return nil, err
 			}
@@ -208,7 +208,7 @@ func nodeExpr(node tree.Expr) (vitess.Expr, error) {
 				Cond: cond,
 			}
 		}
-		else_, err := nodeExpr(node.Else)
+		else_, err := nodeExpr(ctx, node.Else)
 		if err != nil {
 			return nil, err
 		}
@@ -218,7 +218,7 @@ func nodeExpr(node tree.Expr) (vitess.Expr, error) {
 			Else:  else_,
 		}, nil
 	case *tree.CastExpr:
-		expr, err := nodeExpr(node.Expr)
+		expr, err := nodeExpr(ctx, node.Expr)
 		if err != nil {
 			return nil, err
 		}
@@ -235,7 +235,7 @@ func nodeExpr(node tree.Expr) (vitess.Expr, error) {
 				if err != nil {
 					return nil, fmt.Errorf("cannot resolve '%s' as type %s", strVal.String(), t.Name())
 				}
-				expr, err = nodeExpr(typedExpr)
+				expr, err = nodeExpr(ctx, typedExpr)
 				if err != nil {
 					return nil, err
 				}
@@ -244,7 +244,7 @@ func nodeExpr(node tree.Expr) (vitess.Expr, error) {
 			return nil, fmt.Errorf("unknown cast syntax")
 		}
 
-		convertType, resolvedType, err := nodeResolvableTypeReference(node.Type)
+		convertType, resolvedType, err := nodeResolvableTypeReference(ctx, node.Type)
 		if err != nil {
 			return nil, err
 		}
@@ -272,7 +272,7 @@ func nodeExpr(node tree.Expr) (vitess.Expr, error) {
 		}
 
 	case *tree.CoalesceExpr:
-		exprs, err := nodeExprsToSelectExprs(node.Exprs)
+		exprs, err := nodeExprsToSelectExprs(ctx, node.Exprs)
 		if err != nil {
 			return nil, err
 		}
@@ -300,11 +300,11 @@ func nodeExpr(node tree.Expr) (vitess.Expr, error) {
 	case *tree.CommentOnColumn:
 		return nil, fmt.Errorf("comment on column is not yet supported")
 	case *tree.ComparisonExpr:
-		left, err := nodeExpr(node.Left)
+		left, err := nodeExpr(ctx, node.Left)
 		if err != nil {
 			return nil, err
 		}
-		right, err := nodeExpr(node.Right)
+		right, err := nodeExpr(ctx, node.Right)
 		if err != nil {
 			return nil, err
 		}
@@ -506,7 +506,7 @@ func nodeExpr(node tree.Expr) (vitess.Expr, error) {
 			Expression: pgexprs.NewRawLiteralOid(uint32(node.DInt)),
 		}, nil
 	case *tree.DOidWrapper:
-		return nodeExpr(node.Wrapped)
+		return nodeExpr(ctx, node.Wrapped)
 	case *tree.DString:
 		return vitess.InjectedExpr{
 			Expression: pgexprs.NewUnknownLiteral(string(*node)),
@@ -538,7 +538,7 @@ func nodeExpr(node tree.Expr) (vitess.Expr, error) {
 		defVal := &vitess.Default{ColName: ""}
 		return defVal, nil
 	case tree.DomainColumn:
-		_, dataType, err := nodeResolvableTypeReference(node.Typ)
+		_, dataType, err := nodeResolvableTypeReference(ctx, node.Typ)
 		if err != nil {
 			return nil, err
 		}
@@ -546,19 +546,19 @@ func nodeExpr(node tree.Expr) (vitess.Expr, error) {
 			Expression: &pgnodes.DomainColumn{Typ: dataType},
 		}, nil
 	case *tree.FuncExpr:
-		return nodeFuncExpr(node)
+		return nodeFuncExpr(ctx, node)
 	case *tree.IfErrExpr:
 		return nil, fmt.Errorf("IFERROR is not yet supported")
 	case *tree.IfExpr:
-		cond, err := nodeExpr(node.Cond)
+		cond, err := nodeExpr(ctx, node.Cond)
 		if err != nil {
 			return nil, err
 		}
-		trueVal, err := nodeExpr(node.True)
+		trueVal, err := nodeExpr(ctx, node.True)
 		if err != nil {
 			return nil, err
 		}
-		falseVal, err := nodeExpr(node.Else)
+		falseVal, err := nodeExpr(ctx, node.Else)
 		if err != nil {
 			return nil, err
 		}
@@ -584,7 +584,7 @@ func nodeExpr(node tree.Expr) (vitess.Expr, error) {
 	case *tree.IndirectionExpr:
 		return nil, fmt.Errorf("subscripts are not yet supported")
 	case *tree.IsNotNullExpr:
-		expr, err := nodeExpr(node.Expr)
+		expr, err := nodeExpr(ctx, node.Expr)
 		if err != nil {
 			return nil, err
 		}
@@ -593,7 +593,7 @@ func nodeExpr(node tree.Expr) (vitess.Expr, error) {
 			Expr:     expr,
 		}, nil
 	case *tree.IsNullExpr:
-		expr, err := nodeExpr(node.Expr)
+		expr, err := nodeExpr(ctx, node.Expr)
 		if err != nil {
 			return nil, err
 		}
@@ -604,7 +604,7 @@ func nodeExpr(node tree.Expr) (vitess.Expr, error) {
 	case *tree.IsOfTypeExpr:
 		return nil, fmt.Errorf("IS OF is not yet supported")
 	case *tree.NotExpr:
-		expr, err := nodeExpr(node.Expr)
+		expr, err := nodeExpr(ctx, node.Expr)
 		if err != nil {
 			return nil, err
 		}
@@ -612,12 +612,12 @@ func nodeExpr(node tree.Expr) (vitess.Expr, error) {
 			Expr: expr,
 		}, nil
 	case *tree.NullIfExpr:
-		expr1, err := nodeExprToSelectExpr(node.Expr1)
+		expr1, err := nodeExprToSelectExpr(ctx, node.Expr1)
 		if err != nil {
 			return nil, err
 		}
 
-		expr2, err := nodeExprToSelectExpr(node.Expr2)
+		expr2, err := nodeExprToSelectExpr(ctx, node.Expr2)
 		if err != nil {
 			return nil, err
 		}
@@ -644,11 +644,11 @@ func nodeExpr(node tree.Expr) (vitess.Expr, error) {
 			return nil, fmt.Errorf("unknown number format")
 		}
 	case *tree.OrExpr:
-		left, err := nodeExpr(node.Left)
+		left, err := nodeExpr(ctx, node.Left)
 		if err != nil {
 			return nil, err
 		}
-		right, err := nodeExpr(node.Right)
+		right, err := nodeExpr(ctx, node.Right)
 		if err != nil {
 			return nil, err
 		}
@@ -657,7 +657,7 @@ func nodeExpr(node tree.Expr) (vitess.Expr, error) {
 			Right: right,
 		}, nil
 	case *tree.ParenExpr:
-		expr, err := nodeExpr(node.Expr)
+		expr, err := nodeExpr(ctx, node.Expr)
 		if err != nil {
 			return nil, err
 		}
@@ -673,15 +673,15 @@ func nodeExpr(node tree.Expr) (vitess.Expr, error) {
 		mysqlBindVarIdx := node.Idx + 1
 		return vitess.NewValArg([]byte(fmt.Sprintf(":v%d", mysqlBindVarIdx))), nil
 	case *tree.RangeCond:
-		left, err := nodeExpr(node.Left)
+		left, err := nodeExpr(ctx, node.Left)
 		if err != nil {
 			return nil, err
 		}
-		from, err := nodeExpr(node.From)
+		from, err := nodeExpr(ctx, node.From)
 		if err != nil {
 			return nil, err
 		}
-		to, err := nodeExpr(node.To)
+		to, err := nodeExpr(ctx, node.To)
 		if err != nil {
 			return nil, err
 		}
@@ -727,7 +727,7 @@ func nodeExpr(node tree.Expr) (vitess.Expr, error) {
 			Expression: unknownLiteral,
 		}, nil
 	case *tree.Subquery:
-		return nodeSubquery(node)
+		return nodeSubquery(ctx, node)
 	case *tree.Tuple:
 		if len(node.Labels) > 0 {
 			return nil, fmt.Errorf("tuple labels are not yet supported")
@@ -736,7 +736,7 @@ func nodeExpr(node tree.Expr) (vitess.Expr, error) {
 			return nil, fmt.Errorf("ROW keyword for tuples not yet supported")
 		}
 
-		valTuple, err := nodeExprs(node.Exprs)
+		valTuple, err := nodeExprs(ctx, node.Exprs)
 		if err != nil {
 			return nil, err
 		}
@@ -744,7 +744,7 @@ func nodeExpr(node tree.Expr) (vitess.Expr, error) {
 	case *tree.TupleStar:
 		return nil, fmt.Errorf("(E).* is not yet supported")
 	case *tree.UnaryExpr:
-		expr, err := nodeExpr(node.Expr)
+		expr, err := nodeExpr(ctx, node.Expr)
 		if err != nil {
 			return nil, err
 		}

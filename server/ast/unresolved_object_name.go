@@ -21,7 +21,7 @@ import (
 )
 
 // nodeUnresolvedObjectName handles *tree.UnresolvedObjectName nodes.
-func nodeUnresolvedObjectName(node *tree.UnresolvedObjectName) (vitess.TableName, error) {
+func nodeUnresolvedObjectName(ctx *Context, node *tree.UnresolvedObjectName) (vitess.TableName, error) {
 	if node == nil {
 		return vitess.TableName{}, nil
 	}

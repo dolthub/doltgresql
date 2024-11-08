@@ -23,7 +23,7 @@ import (
 )
 
 // nodeShowTypes handles *tree.ShowTypes nodes.
-func nodeShowTypes(node *tree.ShowTypes) (vitess.Statement, error) {
+func nodeShowTypes(ctx *Context, node *tree.ShowTypes) (vitess.Statement, error) {
 	if node == nil {
 		return nil, nil
 	}

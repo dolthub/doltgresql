@@ -23,7 +23,7 @@ import (
 )
 
 // nodeShowColumns handles *tree.ShowColumns nodes.
-func nodeShowColumns(node *tree.ShowColumns) (vitess.Statement, error) {
+func nodeShowColumns(ctx *Context, node *tree.ShowColumns) (vitess.Statement, error) {
 	if node == nil {
 		return nil, nil
 	}

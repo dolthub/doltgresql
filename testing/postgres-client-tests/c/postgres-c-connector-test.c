@@ -30,7 +30,7 @@ int main(int argc, char *argv[]) {
     // Connect to the database
     // conninfo is a string of keywords and values separated by spaces.
     char conninfo[100];
-    sprintf(conninfo, "dbname=doltgres user=%s host=localhost port=%d", user, port);
+    sprintf(conninfo, "dbname=doltgres user=%s password=password host=localhost port=%d", user, port);
 
     // Create a connection
     PGconn *conn = PQconnectdb(conninfo);

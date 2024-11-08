@@ -23,19 +23,19 @@ import (
 )
 
 // nodeLimit handles *tree.Limit nodes.
-func nodeLimit(node *tree.Limit) (*vitess.Limit, error) {
+func nodeLimit(ctx *Context, node *tree.Limit) (*vitess.Limit, error) {
 	if node == nil || (node.Count == nil && node.Offset == nil) {
 		return nil, nil
 	}
 	var count vitess.Expr
 	if !node.LimitAll {
 		var err error
-		count, err = nodeExpr(node.Count)
+		count, err = nodeExpr(ctx, node.Count)
 		if err != nil {
 			return nil, err
 		}
 	}
-	offset, err := nodeExpr(node.Offset)
+	offset, err := nodeExpr(ctx, node.Offset)
 	if err != nil {
 		return nil, err
 	}

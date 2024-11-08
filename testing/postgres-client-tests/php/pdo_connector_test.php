@@ -3,7 +3,7 @@
     $port = $argv[2];
     $db = 'doltgres';
 
-    $conn = new PDO("pgsql:host=localhost;port={$port};dbname={$db}", $user, '');
+    $conn = new PDO("pgsql:host=localhost;port={$port};dbname={$db}", $user, 'password');
     $conn->setAttribute(PDO::ATTR_ERRMODE, PDO::ERRMODE_EXCEPTION);
 
     $queries = [

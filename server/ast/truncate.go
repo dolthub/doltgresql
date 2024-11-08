@@ -20,10 +20,11 @@ import (
 	vitess "github.com/dolthub/vitess/go/vt/sqlparser"
 
 	"github.com/dolthub/doltgresql/postgres/parser/sem/tree"
+	"github.com/dolthub/doltgresql/server/auth"
 )
 
 // nodeTruncate handles *tree.Truncate nodes.
-func nodeTruncate(node *tree.Truncate) (*vitess.DDL, error) {
+func nodeTruncate(ctx *Context, node *tree.Truncate) (*vitess.DDL, error) {
 	if node == nil || len(node.Tables) == 0 {
 		return nil, nil
 	}
@@ -38,12 +39,17 @@ func nodeTruncate(node *tree.Truncate) (*vitess.DDL, error) {
 	if len(node.Tables) > 1 {
 		return nil, fmt.Errorf("truncating multiple tables at once is not yet supported")
 	}
-	tableName, err := nodeTableName(&node.Tables[0])
+	tableName, err := nodeTableName(ctx, &node.Tables[0])
 	if err != nil {
 		return nil, err
 	}
 	return &vitess.DDL{
 		Action: vitess.TruncateStr,
 		Table:  tableName,
+		Auth: vitess.AuthInformation{
+			AuthType:    auth.AuthType_TRUNCATE,
+			TargetType:  auth.AuthTargetType_SingleTableIdentifier,
+			TargetNames: []string{tableName.SchemaQualifier.String(), tableName.Name.String()},
+		},
 	}, nil
 }

@@ -23,7 +23,7 @@ import (
 )
 
 // nodeGrantRole handles *tree.GrantRole nodes.
-func nodeGrantRole(node *tree.GrantRole) (vitess.Statement, error) {
+func nodeGrantRole(ctx *Context, node *tree.GrantRole) (vitess.Statement, error) {
 	if node == nil {
 		return nil, nil
 	}

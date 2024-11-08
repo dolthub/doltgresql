@@ -23,7 +23,7 @@ import (
 )
 
 // nodeCreateDatabase handles *tree.CreateDatabase nodes.
-func nodeCreateDatabase(node *tree.CreateDatabase) (*vitess.DBDDL, error) {
+func nodeCreateDatabase(ctx *Context, node *tree.CreateDatabase) (*vitess.DBDDL, error) {
 	if len(node.Owner) > 0 {
 		return nil, fmt.Errorf("OWNER clause is not yet supported")
 	}

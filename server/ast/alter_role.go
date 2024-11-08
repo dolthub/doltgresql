@@ -26,7 +26,7 @@ import (
 )
 
 // nodeAlterRole handles *tree.AlterRole nodes.
-func nodeAlterRole(node *tree.AlterRole) (vitess.Statement, error) {
+func nodeAlterRole(ctx *Context, node *tree.AlterRole) (vitess.Statement, error) {
 	if node == nil {
 		return nil, nil
 	}

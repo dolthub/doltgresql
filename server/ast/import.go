@@ -23,7 +23,7 @@ import (
 )
 
 // nodeImport handles *tree.Import nodes.
-func nodeImport(node *tree.Import) (vitess.Statement, error) {
+func nodeImport(ctx *Context, node *tree.Import) (vitess.Statement, error) {
 	if node == nil {
 		return nil, nil
 	}

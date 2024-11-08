@@ -25,7 +25,7 @@ import (
 )
 
 // nodeCopyFrom handles *tree.CopyFrom nodes.
-func nodeCopyFrom(node *tree.CopyFrom) (vitess.Statement, error) {
+func nodeCopyFrom(ctx *Context, node *tree.CopyFrom) (vitess.Statement, error) {
 	if node == nil {
 		return nil, nil
 	}
