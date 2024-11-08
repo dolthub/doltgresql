@@ -70,12 +70,12 @@ func nodeCreateTable(node *tree.CreateTable) (*vitess.DDL, error) {
 			LikeTables: []vitess.TableName{},
 		}
 		for _, table := range node.Inherits {
-		// TODO: until we can support multiple tables in LIKE statements, this will only run once
-		likeTable, err := nodeTableName(&table)
-		if err != nil {
-			return nil, err
+			likeTable, err := nodeTableName(&table)
+			if err != nil {
+				return nil, err
+			}
+			optLike.LikeTables = append(optLike.LikeTables, likeTable)
 		}
-		optLike.LikeTables = append(optLike.LikeTables, likeTable)
 	}
 	if node.WithNoData {
 		return nil, fmt.Errorf("WITH NO DATA is not yet supported")
