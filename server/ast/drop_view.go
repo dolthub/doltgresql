@@ -23,7 +23,7 @@ import (
 )
 
 // nodeDropView handles *tree.DropView nodes.
-func nodeDropView(node *tree.DropView) (*vitess.DDL, error) {
+func nodeDropView(ctx *Context, node *tree.DropView) (*vitess.DDL, error) {
 	if node == nil || len(node.Names) == 0 {
 		return nil, nil
 	}
@@ -38,7 +38,7 @@ func nodeDropView(node *tree.DropView) (*vitess.DDL, error) {
 	tableNames := make([]vitess.TableName, len(node.Names))
 	for i := range node.Names {
 		var err error
-		tableNames[i], err = nodeTableName(&node.Names[i])
+		tableNames[i], err = nodeTableName(ctx, &node.Names[i])
 		if err != nil {
 			return nil, err
 		}

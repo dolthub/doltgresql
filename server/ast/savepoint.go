@@ -21,7 +21,7 @@ import (
 )
 
 // nodeSavepoint handles *tree.Savepoint nodes.
-func nodeSavepoint(node *tree.Savepoint) (*vitess.Savepoint, error) {
+func nodeSavepoint(ctx *Context, node *tree.Savepoint) (*vitess.Savepoint, error) {
 	if node == nil {
 		return nil, nil
 	}

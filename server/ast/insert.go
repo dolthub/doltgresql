@@ -20,13 +20,17 @@ import (
 	vitess "github.com/dolthub/vitess/go/vt/sqlparser"
 
 	"github.com/dolthub/doltgresql/postgres/parser/sem/tree"
+	"github.com/dolthub/doltgresql/server/auth"
 )
 
 // nodeInsert handles *tree.Insert nodes.
-func nodeInsert(node *tree.Insert) (*vitess.Insert, error) {
+func nodeInsert(ctx *Context, node *tree.Insert) (*vitess.Insert, error) {
 	if node == nil {
 		return nil, nil
 	}
+	ctx.Auth().PushAuthType(auth.AuthType_INSERT)
+	defer ctx.Auth().PopAuthType()
+
 	if _, ok := node.Returning.(*tree.NoReturningClause); !ok {
 		return nil, fmt.Errorf("RETURNING is not yet supported")
 	}
@@ -48,7 +52,7 @@ func nodeInsert(node *tree.Insert) (*vitess.Insert, error) {
 		return nil, fmt.Errorf("aliased inserts are not yet supported")
 	case *tree.TableName:
 		var err error
-		tableName, err = nodeTableName(node)
+		tableName, err = nodeTableName(ctx, node)
 		if err != nil {
 			return nil, err
 		}
@@ -64,12 +68,12 @@ func nodeInsert(node *tree.Insert) (*vitess.Insert, error) {
 			columns[i] = vitess.NewColIdent(string(node.Columns[i]))
 		}
 	}
-	with, err := nodeWith(node.With)
+	with, err := nodeWith(ctx, node.With)
 	if err != nil {
 		return nil, err
 	}
 	var rows vitess.InsertRows
-	rows, err = nodeSelect(node.Rows)
+	rows, err = nodeSelect(ctx, node.Rows)
 	if err != nil {
 		return nil, err
 	}
@@ -89,5 +93,10 @@ func nodeInsert(node *tree.Insert) (*vitess.Insert, error) {
 		With:    with,
 		Columns: columns,
 		Rows:    rows,
+		Auth: vitess.AuthInformation{
+			AuthType:    auth.AuthType_INSERT,
+			TargetType:  auth.AuthTargetType_SingleTableIdentifier,
+			TargetNames: []string{tableName.SchemaQualifier.String(), tableName.Name.String()},
+		},
 	}, nil
 }

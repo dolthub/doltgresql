@@ -23,7 +23,7 @@ import (
 )
 
 // nodeShowUsers handles *tree.ShowUsers nodes.
-func nodeShowUsers(node *tree.ShowUsers) (vitess.Statement, error) {
+func nodeShowUsers(ctx *Context, node *tree.ShowUsers) (vitess.Statement, error) {
 	if node == nil {
 		return nil, nil
 	}

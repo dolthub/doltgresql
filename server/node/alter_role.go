@@ -57,10 +57,19 @@ func (c *AlterRole) Resolved() bool {
 
 // RowIter implements the interface sql.ExecSourceRel.
 func (c *AlterRole) RowIter(ctx *sql.Context, r sql.Row) (sql.RowIter, error) {
-	if !auth.RoleExists(c.Name) {
-		return nil, fmt.Errorf(`role "%s" does not exist`, c.Name)
+	var role auth.Role
+	var err error
+	auth.LockRead(func() {
+		if !auth.RoleExists(c.Name) {
+			err = fmt.Errorf(`role "%s" does not exist`, c.Name)
+		} else {
+			role = auth.GetRole(c.Name)
+		}
+	})
+	if err != nil {
+		return nil, err
 	}
-	role := auth.GetRole(c.Name)
+
 	for optionName, optionValue := range c.Options {
 		switch optionName {
 		case "BYPASSRLS":
@@ -120,7 +129,13 @@ func (c *AlterRole) RowIter(ctx *sql.Context, r sql.Row) (sql.RowIter, error) {
 			return nil, fmt.Errorf(`unknown role option "%s"`, optionName)
 		}
 	}
-	auth.SetRole(role)
+	auth.LockWrite(func() {
+		auth.SetRole(role)
+		err = auth.PersistChanges()
+	})
+	if err != nil {
+		return nil, err
+	}
 	return sql.RowsToRowIter(), nil
 }
 

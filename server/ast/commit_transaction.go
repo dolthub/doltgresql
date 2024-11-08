@@ -21,7 +21,7 @@ import (
 )
 
 // nodeCommitTransaction handles *tree.CommitTransaction nodes.
-func nodeCommitTransaction(node *tree.CommitTransaction) (*vitess.Commit, error) {
+func nodeCommitTransaction(ctx *Context, node *tree.CommitTransaction) (*vitess.Commit, error) {
 	if node == nil {
 		return nil, nil
 	}

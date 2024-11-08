@@ -26,7 +26,7 @@ import (
 )
 
 // nodeResolvableTypeReference handles tree.ResolvableTypeReference nodes.
-func nodeResolvableTypeReference(typ tree.ResolvableTypeReference) (*vitess.ConvertType, pgtypes.DoltgresType, error) {
+func nodeResolvableTypeReference(ctx *Context, typ tree.ResolvableTypeReference) (*vitess.ConvertType, pgtypes.DoltgresType, error) {
 	if typ == nil {
 		return nil, pgtypes.DoltgresType{}, nil
 	}
@@ -50,7 +50,7 @@ func nodeResolvableTypeReference(typ tree.ResolvableTypeReference) (*vitess.Conv
 	case *types.T:
 		columnTypeName = columnType.SQLStandardName()
 		if columnType.Family() == types.ArrayFamily {
-			_, baseResolvedType, err := nodeResolvableTypeReference(columnType.ArrayContents())
+			_, baseResolvedType, err := nodeResolvableTypeReference(ctx, columnType.ArrayContents())
 			if err != nil {
 				return nil, pgtypes.DoltgresType{}, err
 			}

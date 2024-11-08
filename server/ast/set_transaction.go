@@ -23,7 +23,7 @@ import (
 )
 
 // nodeSetTransaction handles *tree.SetTransaction nodes.
-func nodeSetTransaction(node *tree.SetTransaction) (vitess.Statement, error) {
+func nodeSetTransaction(ctx *Context, node *tree.SetTransaction) (vitess.Statement, error) {
 	if node == nil {
 		return nil, nil
 	}

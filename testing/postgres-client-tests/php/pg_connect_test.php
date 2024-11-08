@@ -3,7 +3,7 @@
     $port = $argv[2];
     $db = 'doltgres';
 
-    $conn = pg_connect("host = localhost port = $port dbname = $db user = $user")
+    $conn = pg_connect("host = localhost port = $port dbname = $db user = $user password = 'password'")
     or die('Could not connect: ' . pg_result_error());
 
     $queries = [

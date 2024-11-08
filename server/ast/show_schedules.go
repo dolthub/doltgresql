@@ -23,7 +23,7 @@ import (
 )
 
 // nodeShowSchedules handles *tree.ShowSchedules nodes.
-func nodeShowSchedules(node *tree.ShowSchedules) (vitess.Statement, error) {
+func nodeShowSchedules(ctx *Context, node *tree.ShowSchedules) (vitess.Statement, error) {
 	if node == nil {
 		return nil, nil
 	}

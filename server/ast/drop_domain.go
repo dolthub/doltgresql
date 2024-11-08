@@ -24,14 +24,14 @@ import (
 )
 
 // nodeDropDomain handles *tree.DropDomain nodes.
-func nodeDropDomain(node *tree.DropDomain) (vitess.Statement, error) {
+func nodeDropDomain(ctx *Context, node *tree.DropDomain) (vitess.Statement, error) {
 	if node == nil {
 		return nil, nil
 	}
 	if len(node.Names) != 1 {
 		return nil, fmt.Errorf("dropping multiple domains in DROP DOMAIN is not yet supported")
 	}
-	name, err := nodeTableName(&node.Names[0])
+	name, err := nodeTableName(ctx, &node.Names[0])
 	if err != nil {
 		return nil, err
 	}

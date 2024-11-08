@@ -23,7 +23,7 @@ import (
 )
 
 // nodeScheduledBackup handles *tree.ScheduledBackup nodes.
-func nodeScheduledBackup(node *tree.ScheduledBackup) (vitess.Statement, error) {
+func nodeScheduledBackup(ctx *Context, node *tree.ScheduledBackup) (vitess.Statement, error) {
 	if node == nil {
 		return nil, nil
 	}

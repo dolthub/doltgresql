@@ -20,40 +20,44 @@ import (
 	vitess "github.com/dolthub/vitess/go/vt/sqlparser"
 
 	"github.com/dolthub/doltgresql/postgres/parser/sem/tree"
+	"github.com/dolthub/doltgresql/server/auth"
 )
 
 // nodeUpdate handles *tree.Update nodes.
-func nodeUpdate(node *tree.Update) (*vitess.Update, error) {
+func nodeUpdate(ctx *Context, node *tree.Update) (*vitess.Update, error) {
 	if node == nil {
 		return nil, nil
 	}
+	ctx.Auth().PushAuthType(auth.AuthType_UPDATE)
+	defer ctx.Auth().PopAuthType()
+
 	if _, ok := node.Returning.(*tree.NoReturningClause); !ok {
 		return nil, fmt.Errorf("RETURNING is not yet supported")
 	}
 	if len(node.From) > 0 {
 		return nil, fmt.Errorf("FROM is not yet supported")
 	}
-	with, err := nodeWith(node.With)
+	with, err := nodeWith(ctx, node.With)
 	if err != nil {
 		return nil, err
 	}
-	table, err := nodeTableExpr(node.Table)
+	table, err := nodeTableExpr(ctx, node.Table)
 	if err != nil {
 		return nil, err
 	}
-	exprs, err := nodeUpdateExprs(node.Exprs)
+	exprs, err := nodeUpdateExprs(ctx, node.Exprs)
 	if err != nil {
 		return nil, err
 	}
-	where, err := nodeWhere(node.Where)
+	where, err := nodeWhere(ctx, node.Where)
 	if err != nil {
 		return nil, err
 	}
-	orderBy, err := nodeOrderBy(node.OrderBy)
+	orderBy, err := nodeOrderBy(ctx, node.OrderBy)
 	if err != nil {
 		return nil, err
 	}
-	limit, err := nodeLimit(node.Limit)
+	limit, err := nodeLimit(ctx, node.Limit)
 	if err != nil {
 		return nil, err
 	}

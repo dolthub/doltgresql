@@ -23,7 +23,7 @@ import (
 )
 
 // nodeDropSchema handles *tree.DropSchema nodes.
-func nodeDropSchema(node *tree.DropSchema) (vitess.Statement, error) {
+func nodeDropSchema(ctx *Context, node *tree.DropSchema) (vitess.Statement, error) {
 	// TODO: disallow dropping pg_catalog for now
 	if node == nil {
 		return nil, nil

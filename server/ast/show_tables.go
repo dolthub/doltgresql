@@ -21,7 +21,7 @@ import (
 )
 
 // nodeShowTables handles *tree.ShowTables nodes.
-func nodeShowTables(node *tree.ShowTables) (vitess.Statement, error) {
+func nodeShowTables(ctx *Context, node *tree.ShowTables) (vitess.Statement, error) {
 	if node == nil {
 		return nil, nil
 	}

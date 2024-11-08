@@ -23,7 +23,7 @@ import (
 )
 
 // nodeRenameTable handles *tree.RenameTable nodes.
-func nodeRenameTable(node *tree.RenameTable) (*vitess.DDL, error) {
+func nodeRenameTable(ctx *Context, node *tree.RenameTable) (*vitess.DDL, error) {
 	if node == nil {
 		return nil, nil
 	}
@@ -33,11 +33,11 @@ func nodeRenameTable(node *tree.RenameTable) (*vitess.DDL, error) {
 	if node.IsMaterialized {
 		return nil, fmt.Errorf("RENAME MATERIALIZED VIEW is not yet supported")
 	}
-	fromName, err := nodeUnresolvedObjectName(node.Name)
+	fromName, err := nodeUnresolvedObjectName(ctx, node.Name)
 	if err != nil {
 		return nil, err
 	}
-	toName, err := nodeUnresolvedObjectName(node.NewName)
+	toName, err := nodeUnresolvedObjectName(ctx, node.NewName)
 	if err != nil {
 		return nil, err
 	}

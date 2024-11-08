@@ -23,7 +23,7 @@ import (
 )
 
 // nodeRefreshMaterializedView handles *tree.RefreshMaterializedView nodes.
-func nodeRefreshMaterializedView(node *tree.RefreshMaterializedView) (vitess.Statement, error) {
+func nodeRefreshMaterializedView(ctx *Context, node *tree.RefreshMaterializedView) (vitess.Statement, error) {
 	if node == nil {
 		return nil, nil
 	}

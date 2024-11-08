@@ -50,8 +50,8 @@ export const mergeTests = [
         {
           commit_hash: "",
           message: "Merge mybranch into main",
-          committer: "doltgres",
-          email: "doltgres@127.0.0.1",
+          committer: "postgres",
+          email: "postgres@127.0.0.1",
           date: "",
           parents: ["", ""],
         },
@@ -65,8 +65,8 @@ export const mergeTests = [
         },
         {
           commit_hash: "",
-          committer: "doltgres",
-          email: "doltgres@127.0.0.1",
+          committer: "postgres",
+          email: "postgres@127.0.0.1",
           date: "",
           message: "CREATE DATABASE",
           parents: [""],

@@ -23,7 +23,7 @@ import (
 )
 
 // nodeExecute handles *tree.Execute nodes.
-func nodeExecute(node *tree.Execute) (vitess.Statement, error) {
+func nodeExecute(ctx *Context, node *tree.Execute) (vitess.Statement, error) {
 	if node == nil {
 		return nil, nil
 	}

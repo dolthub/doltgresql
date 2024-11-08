@@ -17,12 +17,14 @@ package initialization
 import (
 	"sync"
 
+	"github.com/dolthub/dolt/go/libraries/doltcore/env"
 	"github.com/dolthub/dolt/go/libraries/doltcore/servercfg"
 	"github.com/dolthub/go-mysql-server/sql"
 
 	"github.com/dolthub/doltgresql/core"
 	pgsql "github.com/dolthub/doltgresql/postgres/parser/parser/sql"
 	"github.com/dolthub/doltgresql/server/analyzer"
+	"github.com/dolthub/doltgresql/server/auth"
 	"github.com/dolthub/doltgresql/server/cast"
 	"github.com/dolthub/doltgresql/server/config"
 	"github.com/dolthub/doltgresql/server/expression"
@@ -42,9 +44,10 @@ import (
 var once = &sync.Once{}
 
 // Initialize initializes each package across the project. This function should be used instead of an init() function.
-func Initialize() {
+func Initialize(dEnv *env.DoltEnv) {
 	once.Do(func() {
 		core.Init()
+		auth.Init(dEnv)
 		analyzer.Init()
 		config.Init()
 		framework.Init()

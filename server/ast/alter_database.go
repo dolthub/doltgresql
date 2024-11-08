@@ -23,7 +23,7 @@ import (
 )
 
 // nodeAlterDatabase handles *tree.AlterDatabase nodes.
-func nodeAlterDatabase(node *tree.AlterDatabase) (vitess.Statement, error) {
+func nodeAlterDatabase(ctx *Context, node *tree.AlterDatabase) (vitess.Statement, error) {
 	if node == nil {
 		return nil, nil
 	}

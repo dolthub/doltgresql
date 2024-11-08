@@ -23,7 +23,7 @@ import (
 )
 
 // nodeReparentDatabase handles *tree.ReparentDatabase nodes.
-func nodeReparentDatabase(node *tree.ReparentDatabase) (vitess.Statement, error) {
+func nodeReparentDatabase(ctx *Context, node *tree.ReparentDatabase) (vitess.Statement, error) {
 	if node == nil {
 		return nil, nil
 	}

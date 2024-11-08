@@ -23,7 +23,7 @@ import (
 )
 
 // nodeShowSyntax handles *tree.ShowSyntax nodes.
-func nodeShowSyntax(node *tree.ShowSyntax) (vitess.Statement, error) {
+func nodeShowSyntax(ctx *Context, node *tree.ShowSyntax) (vitess.Statement, error) {
 	if node == nil {
 		return nil, nil
 	}

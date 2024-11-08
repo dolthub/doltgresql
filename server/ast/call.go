@@ -23,7 +23,7 @@ import (
 )
 
 // nodeCall handles *tree.Call nodes.
-func nodeCall(node *tree.Call) (*vitess.Call, error) {
+func nodeCall(ctx *Context, node *tree.Call) (*vitess.Call, error) {
 	if node == nil {
 		return nil, nil
 	}
@@ -58,7 +58,7 @@ func nodeCall(node *tree.Call) (*vitess.Call, error) {
 	default:
 		return nil, fmt.Errorf("unknown function reference")
 	}
-	exprs, err := nodeExprs(node.Procedure.Exprs)
+	exprs, err := nodeExprs(ctx, node.Procedure.Exprs)
 	if err != nil {
 		return nil, err
 	}

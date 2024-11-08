@@ -28,7 +28,7 @@ import (
 )
 
 // nodeCreateSequence handles *tree.CreateSequence nodes.
-func nodeCreateSequence(node *tree.CreateSequence) (vitess.Statement, error) {
+func nodeCreateSequence(ctx *Context, node *tree.CreateSequence) (vitess.Statement, error) {
 	if node == nil {
 		return nil, nil
 	}
@@ -38,7 +38,7 @@ func nodeCreateSequence(node *tree.CreateSequence) (vitess.Statement, error) {
 	if node.Persistence.IsUnlogged() {
 		return nil, fmt.Errorf("unlogged sequences are not yet supported")
 	}
-	name, err := nodeTableName(&node.Name)
+	name, err := nodeTableName(ctx, &node.Name)
 	if err != nil {
 		return nil, err
 	}
@@ -66,7 +66,7 @@ func nodeCreateSequence(node *tree.CreateSequence) (vitess.Statement, error) {
 			if !dataType.EmptyType() {
 				return nil, fmt.Errorf("conflicting or redundant options")
 			}
-			_, dataType, err = nodeResolvableTypeReference(option.AsType)
+			_, dataType, err = nodeResolvableTypeReference(ctx, option.AsType)
 			if err != nil {
 				return nil, err
 			}
@@ -88,7 +88,7 @@ func nodeCreateSequence(node *tree.CreateSequence) (vitess.Statement, error) {
 		case tree.SeqOptNoCycle:
 			cycle = false
 		case tree.SeqOptOwnedBy:
-			expr, err := nodeExpr(option.ColumnItemVal)
+			expr, err := nodeExpr(ctx, option.ColumnItemVal)
 			if err != nil {
 				return nil, err
 			}

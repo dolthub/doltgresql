@@ -23,11 +23,11 @@ import (
 )
 
 // nodeCreateAggregate handles *tree.CreateAggregate nodes.
-func nodeCreateAggregate(node *tree.CreateAggregate) (vitess.Statement, error) {
+func nodeCreateAggregate(ctx *Context, node *tree.CreateAggregate) (vitess.Statement, error) {
 	if node == nil {
 		return nil, nil
 	}
-	if err := validateAggArgMode(node.Args, node.OrderByArgs); err != nil {
+	if err := validateAggArgMode(ctx, node.Args, node.OrderByArgs); err != nil {
 		return nil, err
 	}
 	return nil, fmt.Errorf("CREATE AGGREGATE is not yet supported")
@@ -35,7 +35,7 @@ func nodeCreateAggregate(node *tree.CreateAggregate) (vitess.Statement, error) {
 
 // validateAggArgMode checks routine arguments for `OUT` and `INOUT` modes,
 // which cannot be used for AGGREGATE arguments.
-func validateAggArgMode(args, orderByArgs tree.RoutineArgs) error {
+func validateAggArgMode(ctx *Context, args, orderByArgs tree.RoutineArgs) error {
 	for _, sig := range args {
 		if sig.Mode == tree.RoutineArgModeOut || sig.Mode == tree.RoutineArgModeInout {
 			return fmt.Errorf("aggregate functions do not support OUT or INOUT arguments")

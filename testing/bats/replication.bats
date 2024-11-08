@@ -54,5 +54,5 @@ teardown() {
 }
 
 postgres_primary_query() {
-    PGPASSWORD=password psql -U "postgres" -h 127.0.0.1 -p 5432 "dbname=postgres replication=database" -c "$@" doltgres
+    PGPASSWORD="password" psql -U "postgres" -h 127.0.0.1 -p 5432 "dbname=postgres replication=database" -c "$@" doltgres
 }

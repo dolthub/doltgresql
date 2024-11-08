@@ -23,7 +23,7 @@ import (
 )
 
 // nodeExport handles *tree.Export nodes.
-func nodeExport(node *tree.Export) (vitess.Statement, error) {
+func nodeExport(ctx *Context, node *tree.Export) (vitess.Statement, error) {
 	if node == nil {
 		return nil, nil
 	}

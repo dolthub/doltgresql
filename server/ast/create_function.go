@@ -23,8 +23,8 @@ import (
 )
 
 // nodeCreateFunction handles *tree.CreateFunction nodes.
-func nodeCreateFunction(node *tree.CreateFunction) (vitess.Statement, error) {
-	err := verifyRedundantRoutineOption(node.Options)
+func nodeCreateFunction(ctx *Context, node *tree.CreateFunction) (vitess.Statement, error) {
+	err := verifyRedundantRoutineOption(ctx, node.Options)
 	if err != nil {
 		return nil, err
 	}
@@ -33,7 +33,7 @@ func nodeCreateFunction(node *tree.CreateFunction) (vitess.Statement, error) {
 
 // verifyRedundantRoutineOption checks for each option defined only once.
 // If there is multiple definition of the same option, it returns an error.
-func verifyRedundantRoutineOption(options []tree.RoutineOption) error {
+func verifyRedundantRoutineOption(ctx *Context, options []tree.RoutineOption) error {
 	var optDefined = make(map[tree.FunctionOption]struct{})
 	for _, opt := range options {
 		if _, ok := optDefined[opt.OptionType]; ok {

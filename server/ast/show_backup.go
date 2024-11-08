@@ -23,7 +23,7 @@ import (
 )
 
 // nodeShowBackup handles *tree.ShowBackup nodes.
-func nodeShowBackup(node *tree.ShowBackup) (vitess.Statement, error) {
+func nodeShowBackup(ctx *Context, node *tree.ShowBackup) (vitess.Statement, error) {
 	if node == nil {
 		return nil, nil
 	}

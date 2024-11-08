@@ -23,7 +23,7 @@ import (
 )
 
 // nodeCreateTable handles *tree.CreateTable nodes.
-func nodeCreateTable(node *tree.CreateTable) (*vitess.DDL, error) {
+func nodeCreateTable(ctx *Context, node *tree.CreateTable) (*vitess.DDL, error) {
 	if node == nil {
 		return nil, nil
 	}
@@ -33,7 +33,7 @@ func nodeCreateTable(node *tree.CreateTable) (*vitess.DDL, error) {
 	if node.OnCommit != tree.CreateTableOnCommitUnset {
 		return nil, fmt.Errorf("ON COMMIT is not yet supported")
 	}
-	tableName, err := nodeTableName(&node.Table)
+	tableName, err := nodeTableName(ctx, &node.Table)
 	if err != nil {
 		return nil, err
 	}
@@ -56,7 +56,7 @@ func nodeCreateTable(node *tree.CreateTable) (*vitess.DDL, error) {
 		return nil, fmt.Errorf("TABLESPACE is not yet supported")
 	}
 	if node.AsSource != nil {
-		selectStmt, err := nodeSelect(node.AsSource)
+		selectStmt, err := nodeSelect(ctx, node.AsSource)
 		if err != nil {
 			return nil, err
 		}
@@ -74,7 +74,7 @@ func nodeCreateTable(node *tree.CreateTable) (*vitess.DDL, error) {
 		Temporary:   isTemporary,
 		OptSelect:   optSelect,
 	}
-	if err = assignTableDefs(node.Defs, ddl); err != nil {
+	if err = assignTableDefs(ctx, node.Defs, ddl); err != nil {
 		return nil, err
 	}
 	if node.PartitionBy != nil {

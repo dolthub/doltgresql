@@ -118,8 +118,5 @@ func ReplaceSerial(ctx *sql.Context, a *analyzer.Analyzer, node sql.Node, scope 
 			}
 		}
 	}
-	if len(ctSequences) == 0 {
-		return node, transform.SameTree, nil
-	}
 	return pgnodes.NewCreateTable(createTable, ctSequences), transform.NewTree, nil
 }
