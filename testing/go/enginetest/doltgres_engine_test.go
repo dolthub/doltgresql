@@ -167,23 +167,18 @@ func (dcv *doltCommitValidator) CommitHash(val interface{}) (bool, string) {
 
 // Convenience test for debugging a single query. Unskip and set to the desired query.
 func TestSingleScript(t *testing.T) {
-	t.Skip()
+	// t.Skip()
 
 	var scripts = []queries.ScriptTest{
 		{
-			Name: "insert on duplicate key update errors",
+			Name: "INSERT Case Sensitivity",
 			SetUpScript: []string{
-				`create table a (i int primary key)`,
-				`create table b (i int primary key)`,
+				"CREATE TABLE test (PK int PRIMARY KEY);",
 			},
 			Assertions: []queries.ScriptTestAssertion{
 				{
-					Query:       `insert into a (select * from b) on duplicate key update i = i`,
-					ExpectedErr: sql.ErrAmbiguousColumnName,
-				},
-				{
-					Query:       `insert into a (select * from b) on duplicate key update b.i = a.i`,
-					ExpectedErr: sql.ErrTableNotFound,
+					Query:    "insert into test(pk) values (1)",
+					Expected: []sql.Row{{types.NewOkResult(1)}},
 				},
 			},
 		},
