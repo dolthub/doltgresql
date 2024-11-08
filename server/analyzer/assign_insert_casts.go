@@ -16,6 +16,7 @@ package analyzer
 
 import (
 	"fmt"
+	"strings"
 
 	"github.com/dolthub/go-mysql-server/sql"
 	"github.com/dolthub/go-mysql-server/sql/analyzer"
@@ -42,12 +43,12 @@ func AssignInsertCasts(ctx *sql.Context, a *analyzer.Analyzer, node sql.Node, sc
 		if !ok {
 			return nil, transform.NewTree, fmt.Errorf("INSERT: non-Doltgres type found in destination: %s", col.Type.String())
 		}
-		destinationNameToType[col.Name] = colType
+		destinationNameToType[strings.ToLower(col.Name)] = colType
 	}
 	// Create the destination type slice that will match each inserted column
 	destinationTypes := make([]pgtypes.DoltgresType, len(insertInto.ColumnNames))
 	for i, colName := range insertInto.ColumnNames {
-		destinationTypes[i], ok = destinationNameToType[colName]
+		destinationTypes[i], ok = destinationNameToType[strings.ToLower(colName)]
 		if !ok {
 			return nil, transform.NewTree, fmt.Errorf("INSERT: cannot find destination column with name `%s`", colName)
 		}
