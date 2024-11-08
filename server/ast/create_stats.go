@@ -23,7 +23,7 @@ import (
 )
 
 // nodeCreateStats handles *tree.CreateStats nodes.
-func nodeCreateStats(node *tree.CreateStats) (vitess.Statement, error) {
+func nodeCreateStats(ctx *Context, node *tree.CreateStats) (vitess.Statement, error) {
 	if node == nil {
 		return nil, nil
 	}

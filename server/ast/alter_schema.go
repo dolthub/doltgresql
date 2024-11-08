@@ -23,7 +23,7 @@ import (
 )
 
 // nodeAlterSchema handles *tree.AlterSchema nodes.
-func nodeAlterSchema(node *tree.AlterSchema) (vitess.Statement, error) {
+func nodeAlterSchema(ctx *Context, node *tree.AlterSchema) (vitess.Statement, error) {
 	if node == nil {
 		return nil, nil
 	}

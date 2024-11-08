@@ -17,15 +17,64 @@ package ast
 import (
 	"fmt"
 
+	"github.com/dolthub/dolt/go/libraries/doltcore/doltdb"
 	vitess "github.com/dolthub/vitess/go/vt/sqlparser"
 
+	"github.com/dolthub/doltgresql/postgres/parser/privilege"
 	"github.com/dolthub/doltgresql/postgres/parser/sem/tree"
+	"github.com/dolthub/doltgresql/server/auth"
+	pgnodes "github.com/dolthub/doltgresql/server/node"
 )
 
 // nodeRevoke handles *tree.Revoke nodes.
-func nodeRevoke(node *tree.Revoke) (vitess.Statement, error) {
+func nodeRevoke(ctx *Context, node *tree.Revoke) (vitess.Statement, error) {
 	if node == nil {
 		return nil, nil
 	}
-	return nil, fmt.Errorf("REVOKE is not yet supported")
+	var revokeTable *pgnodes.RevokeTable
+	switch node.Targets.TargetType {
+	case privilege.Table:
+		tables := make([]doltdb.TableName, len(node.Targets.Tables))
+		for i, table := range node.Targets.Tables {
+			normalizedTable, err := table.NormalizeTablePattern()
+			if err != nil {
+				return nil, err
+			}
+			switch normalizedTable := normalizedTable.(type) {
+			case *tree.TableName:
+				if normalizedTable.ExplicitCatalog {
+					return nil, fmt.Errorf("revoking privileges from other databases is not yet supported")
+				}
+				tables[i] = doltdb.TableName{
+					Name:   string(normalizedTable.ObjectName),
+					Schema: string(normalizedTable.SchemaName),
+				}
+			case *tree.AllTablesSelector:
+				return nil, fmt.Errorf("selecting all tables in a schema is not yet supported")
+			default:
+				return nil, fmt.Errorf(`unexpected table type in REVOKE: %T`, normalizedTable)
+			}
+		}
+		privileges, err := convertPrivilegeKinds(auth.PrivilegeObject_TABLE, node.Privileges)
+		if err != nil {
+			return nil, err
+		}
+		revokeTable = &pgnodes.RevokeTable{
+			Privileges:         privileges,
+			Tables:             tables,
+			AllTablesInSchemas: nil,
+		}
+	default:
+		return nil, fmt.Errorf("this form of REVOKE is not yet supported")
+	}
+	return vitess.InjectedStatement{
+		Statement: &pgnodes.Revoke{
+			RevokeTable:    revokeTable,
+			FromRoles:      node.Grantees,
+			GrantedBy:      node.GrantedBy,
+			GrantOptionFor: node.GrantOptionFor,
+			Cascade:        node.DropBehavior == tree.DropCascade,
+		},
+		Children: nil,
+	}, nil
 }

@@ -23,7 +23,7 @@ import (
 )
 
 // nodeShowSavepointStatus handles *tree.ShowSavepointStatus nodes.
-func nodeShowSavepointStatus(node *tree.ShowSavepointStatus) (vitess.Statement, error) {
+func nodeShowSavepointStatus(ctx *Context, node *tree.ShowSavepointStatus) (vitess.Statement, error) {
 	if node == nil {
 		return nil, nil
 	}

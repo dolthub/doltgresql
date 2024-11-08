@@ -23,7 +23,7 @@ import (
 )
 
 // nodeShowTraceForSession handles *tree.ShowTraceForSession nodes.
-func nodeShowTraceForSession(node *tree.ShowTraceForSession) (vitess.Statement, error) {
+func nodeShowTraceForSession(ctx *Context, node *tree.ShowTraceForSession) (vitess.Statement, error) {
 	if node == nil {
 		return nil, nil
 	}

@@ -23,7 +23,7 @@ import (
 )
 
 // nodePrepare handles *tree.Prepare nodes.
-func nodePrepare(node *tree.Prepare) (vitess.Statement, error) {
+func nodePrepare(ctx *Context, node *tree.Prepare) (vitess.Statement, error) {
 	if node == nil {
 		return nil, nil
 	}

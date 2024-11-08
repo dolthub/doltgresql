@@ -23,7 +23,7 @@ import (
 )
 
 // nodeShowHistogram handles *tree.ShowHistogram nodes.
-func nodeShowHistogram(node *tree.ShowHistogram) (vitess.Statement, error) {
+func nodeShowHistogram(ctx *Context, node *tree.ShowHistogram) (vitess.Statement, error) {
 	if node == nil {
 		return nil, nil
 	}

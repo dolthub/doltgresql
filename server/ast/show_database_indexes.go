@@ -23,7 +23,7 @@ import (
 )
 
 // nodeShowDatabaseIndexes handles *tree.ShowDatabaseIndexes nodes.
-func nodeShowDatabaseIndexes(node *tree.ShowDatabaseIndexes) (vitess.Statement, error) {
+func nodeShowDatabaseIndexes(ctx *Context, node *tree.ShowDatabaseIndexes) (vitess.Statement, error) {
 	if node == nil {
 		return nil, nil
 	}

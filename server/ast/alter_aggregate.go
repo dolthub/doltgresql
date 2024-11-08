@@ -23,11 +23,11 @@ import (
 )
 
 // nodeAlterAggregate handles *tree.AlterAggregate nodes.
-func nodeAlterAggregate(node *tree.AlterAggregate) (vitess.Statement, error) {
+func nodeAlterAggregate(ctx *Context, node *tree.AlterAggregate) (vitess.Statement, error) {
 	if node == nil {
 		return nil, nil
 	}
-	if err := validateAggArgMode(node.AggSig.Args, node.AggSig.OrderByArgs); err != nil {
+	if err := validateAggArgMode(ctx, node.AggSig.Args, node.AggSig.OrderByArgs); err != nil {
 		return nil, err
 	}
 	return nil, fmt.Errorf("ALTER AGGREGATE is not yet supported")

@@ -23,21 +23,17 @@ import (
 )
 
 // nodeTableName handles *tree.TableName nodes.
-func nodeTableName(node *tree.TableName) (vitess.TableName, error) {
+func nodeTableName(ctx *Context, node *tree.TableName) (vitess.TableName, error) {
 	if node == nil {
 		return vitess.TableName{}, nil
 	}
-
 	var dbName, schemaName vitess.TableIdent
-
 	if node.ExplicitCatalog {
 		dbName = vitess.NewTableIdent(string(node.CatalogName))
 	}
-
 	if node.ExplicitSchema {
 		schemaName = vitess.NewTableIdent(string(node.SchemaName))
 	}
-
 	// for the information_schema schema, we treat it as a database name to make queries against it work with the engine
 	// TODO: this is a hack, we need to handle information_schema differently for doltgres, and as a true schema in each db
 	if strings.EqualFold(schemaName.String(), "information_schema") {

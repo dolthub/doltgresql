@@ -21,7 +21,7 @@ import (
 )
 
 // nodeReleaseSavepoint handles *tree.ReleaseSavepoint nodes.
-func nodeReleaseSavepoint(node *tree.ReleaseSavepoint) (*vitess.ReleaseSavepoint, error) {
+func nodeReleaseSavepoint(ctx *Context, node *tree.ReleaseSavepoint) (*vitess.ReleaseSavepoint, error) {
 	if node == nil {
 		return nil, nil
 	}

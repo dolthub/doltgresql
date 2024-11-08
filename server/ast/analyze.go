@@ -23,7 +23,7 @@ import (
 )
 
 // nodeAnalyze handles *tree.Analyze nodes.
-func nodeAnalyze(node *tree.Analyze) (vitess.Statement, error) {
+func nodeAnalyze(ctx *Context, node *tree.Analyze) (vitess.Statement, error) {
 	if node == nil {
 		return nil, nil
 	}

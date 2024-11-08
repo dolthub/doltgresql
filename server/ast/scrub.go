@@ -23,7 +23,7 @@ import (
 )
 
 // nodeScrub handles *tree.Scrub nodes.
-func nodeScrub(node *tree.Scrub) (vitess.Statement, error) {
+func nodeScrub(ctx *Context, node *tree.Scrub) (vitess.Statement, error) {
 	if node == nil {
 		return nil, nil
 	}

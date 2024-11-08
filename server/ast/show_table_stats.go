@@ -23,7 +23,7 @@ import (
 )
 
 // nodeShowTableStats handles *tree.ShowTableStats nodes.
-func nodeShowTableStats(node *tree.ShowTableStats) (vitess.Statement, error) {
+func nodeShowTableStats(ctx *Context, node *tree.ShowTableStats) (vitess.Statement, error) {
 	if node == nil {
 		return nil, nil
 	}

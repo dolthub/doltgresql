@@ -23,7 +23,7 @@ import (
 )
 
 // nodeFuncExpr handles *tree.FuncExpr nodes.
-func nodeFuncExpr(node *tree.FuncExpr) (*vitess.FuncExpr, error) {
+func nodeFuncExpr(ctx *Context, node *tree.FuncExpr) (*vitess.FuncExpr, error) {
 	if node == nil {
 		return nil, nil
 	}
@@ -61,11 +61,11 @@ func nodeFuncExpr(node *tree.FuncExpr) (*vitess.FuncExpr, error) {
 	default:
 		return nil, fmt.Errorf("unknown function spec type %d", node.Type)
 	}
-	windowDef, err := nodeWindowDef(node.WindowDef)
+	windowDef, err := nodeWindowDef(ctx, node.WindowDef)
 	if err != nil {
 		return nil, err
 	}
-	exprs, err := nodeExprsToSelectExprs(node.Exprs)
+	exprs, err := nodeExprsToSelectExprs(ctx, node.Exprs)
 	if err != nil {
 		return nil, err
 	}

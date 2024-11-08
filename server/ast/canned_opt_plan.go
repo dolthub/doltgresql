@@ -23,7 +23,7 @@ import (
 )
 
 // nodeCannedOptPlan handles *tree.CannedOptPlan nodes.
-func nodeCannedOptPlan(node *tree.CannedOptPlan) (vitess.Statement, error) {
+func nodeCannedOptPlan(ctx *Context, node *tree.CannedOptPlan) (vitess.Statement, error) {
 	if node == nil {
 		return nil, nil
 	}

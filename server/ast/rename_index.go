@@ -23,7 +23,7 @@ import (
 )
 
 // nodeRenameIndex handles *tree.RenameIndex nodes.
-func nodeRenameIndex(node *tree.RenameIndex) (vitess.Statement, error) {
+func nodeRenameIndex(ctx *Context, node *tree.RenameIndex) (vitess.Statement, error) {
 	if node == nil {
 		return nil, nil
 	}

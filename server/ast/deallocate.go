@@ -21,7 +21,7 @@ import (
 )
 
 // nodeDeallocate handles *tree.Deallocate nodes.
-func nodeDeallocate(node *tree.Deallocate) (*vitess.Deallocate, error) {
+func nodeDeallocate(ctx *Context, node *tree.Deallocate) (*vitess.Deallocate, error) {
 	if node == nil {
 		return nil, nil
 	}

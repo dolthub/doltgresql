@@ -23,7 +23,7 @@ import (
 )
 
 // nodeShowRoles handles *tree.ShowRoles nodes.
-func nodeShowRoles(node *tree.ShowRoles) (vitess.Statement, error) {
+func nodeShowRoles(ctx *Context, node *tree.ShowRoles) (vitess.Statement, error) {
 	if node == nil {
 		return nil, nil
 	}

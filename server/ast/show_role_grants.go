@@ -23,7 +23,7 @@ import (
 )
 
 // nodeShowRoleGrants handles *tree.ShowRoleGrants nodes.
-func nodeShowRoleGrants(node *tree.ShowRoleGrants) (vitess.Statement, error) {
+func nodeShowRoleGrants(ctx *Context, node *tree.ShowRoleGrants) (vitess.Statement, error) {
 	if node == nil {
 		return nil, nil
 	}

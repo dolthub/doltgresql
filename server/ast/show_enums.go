@@ -23,7 +23,7 @@ import (
 )
 
 // nodeShowEnums handles *tree.ShowEnums nodes.
-func nodeShowEnums(node *tree.ShowEnums) (vitess.Statement, error) {
+func nodeShowEnums(ctx *Context, node *tree.ShowEnums) (vitess.Statement, error) {
 	if node == nil {
 		return nil, nil
 	}

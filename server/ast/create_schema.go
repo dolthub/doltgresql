@@ -21,7 +21,7 @@ import (
 )
 
 // nodeCreateSchema handles *tree.CreateSchema nodes.
-func nodeCreateSchema(node *tree.CreateSchema) (vitess.Statement, error) {
+func nodeCreateSchema(ctx *Context, node *tree.CreateSchema) (vitess.Statement, error) {
 	if node == nil {
 		return nil, nil
 	}

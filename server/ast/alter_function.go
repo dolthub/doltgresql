@@ -23,8 +23,8 @@ import (
 )
 
 // nodeAlterFunction handles *tree.AlterFunction nodes.
-func nodeAlterFunction(node *tree.AlterFunction) (vitess.Statement, error) {
-	err := verifyRedundantRoutineOption(node.Options)
+func nodeAlterFunction(ctx *Context, node *tree.AlterFunction) (vitess.Statement, error) {
+	err := verifyRedundantRoutineOption(ctx, node.Options)
 	if err != nil {
 		return nil, err
 	}

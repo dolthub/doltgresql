@@ -21,13 +21,13 @@ import (
 )
 
 // nodeValuesClause handles tree.ValuesClause nodes.
-func nodeValuesClause(node *tree.ValuesClause) (*vitess.Select, error) {
+func nodeValuesClause(ctx *Context, node *tree.ValuesClause) (*vitess.Select, error) {
 	if node == nil {
 		return nil, nil
 	}
 	valTuples := make([]vitess.ValTuple, len(node.Rows))
 	for i := range node.Rows {
-		exprs, err := nodeExprs(node.Rows[i])
+		exprs, err := nodeExprs(ctx, node.Rows[i])
 		if err != nil {
 			return nil, err
 		}

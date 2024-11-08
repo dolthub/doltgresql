@@ -17,6 +17,7 @@ package ast
 import (
 	"fmt"
 
+	"github.com/cockroachdb/errors"
 	vitess "github.com/dolthub/vitess/go/vt/sqlparser"
 
 	"github.com/dolthub/doltgresql/postgres/parser/sem/tree"
@@ -24,7 +25,7 @@ import (
 )
 
 // nodeDropRole handles *tree.DropRole nodes.
-func nodeDropRole(node *tree.DropRole) (vitess.Statement, error) {
+func nodeDropRole(ctx *Context, node *tree.DropRole) (vitess.Statement, error) {
 	if node == nil {
 		return nil, nil
 	}
@@ -35,6 +36,13 @@ func nodeDropRole(node *tree.DropRole) (vitess.Statement, error) {
 			names = append(names, name.RawString())
 		default:
 			return nil, fmt.Errorf("unknown type `%T` for DROP ROLE name", name)
+		}
+	}
+	// Rather than account for every string type for error checking, we can just do it in a second loop
+	for _, name := range names {
+		switch name {
+		case `public`, `current_role`, `current_user`, `session_user`:
+			return nil, errors.New("cannot use special role specifier in DROP ROLE")
 		}
 	}
 	return vitess.InjectedStatement{

@@ -23,7 +23,7 @@ import (
 )
 
 // nodeDropType handles *tree.DropType nodes.
-func nodeDropType(node *tree.DropType) (vitess.Statement, error) {
+func nodeDropType(ctx *Context, node *tree.DropType) (vitess.Statement, error) {
 	if node == nil {
 		return nil, nil
 	}

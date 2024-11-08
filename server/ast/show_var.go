@@ -24,7 +24,7 @@ import (
 )
 
 // nodeShowVar handles *tree.ShowVar nodes.
-func nodeShowVar(node *tree.ShowVar) (vitess.Statement, error) {
+func nodeShowVar(ctx *Context, node *tree.ShowVar) (vitess.Statement, error) {
 	if node == nil {
 		return nil, nil
 	}

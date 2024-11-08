@@ -23,7 +23,7 @@ import (
 )
 
 // nodeSplit handles *tree.Split nodes.
-func nodeSplit(node *tree.Split) (vitess.Statement, error) {
+func nodeSplit(ctx *Context, node *tree.Split) (vitess.Statement, error) {
 	if node == nil {
 		return nil, nil
 	}

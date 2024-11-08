@@ -23,13 +23,13 @@ import (
 )
 
 // nodeWindow handles *tree.Window nodes.
-func nodeWindow(node tree.Window) (vitess.Window, error) {
+func nodeWindow(ctx *Context, node tree.Window) (vitess.Window, error) {
 	if len(node) == 0 {
 		return nil, nil
 	}
 	windows := make(vitess.Window, len(node))
 	for i, def := range node {
-		windowDef, err := nodeWindowDef(def)
+		windowDef, err := nodeWindowDef(ctx, def)
 		if err != nil {
 			return nil, err
 		}
@@ -39,15 +39,15 @@ func nodeWindow(node tree.Window) (vitess.Window, error) {
 }
 
 // nodeWindowDef handles *tree.WindowDef nodes.
-func nodeWindowDef(node *tree.WindowDef) (*vitess.WindowDef, error) {
+func nodeWindowDef(ctx *Context, node *tree.WindowDef) (*vitess.WindowDef, error) {
 	if node == nil {
 		return nil, nil
 	}
-	partitionBy, err := nodeExprs(node.Partitions)
+	partitionBy, err := nodeExprs(ctx, node.Partitions)
 	if err != nil {
 		return nil, err
 	}
-	orderBy, err := nodeOrderBy(node.OrderBy)
+	orderBy, err := nodeOrderBy(ctx, node.OrderBy)
 	if err != nil {
 		return nil, err
 	}
@@ -84,7 +84,7 @@ func nodeWindowDef(node *tree.WindowDef) (*vitess.WindowDef, error) {
 			default:
 				return nil, fmt.Errorf("unknown window frame bound type")
 			}
-			boundExpr, err := nodeExpr(bound.OffsetExpr)
+			boundExpr, err := nodeExpr(ctx, bound.OffsetExpr)
 			if err != nil {
 				return nil, err
 			}

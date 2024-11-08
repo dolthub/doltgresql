@@ -23,7 +23,7 @@ import (
 )
 
 // nodeControlJobs handles *tree.ControlJobs nodes.
-func nodeControlJobs(node *tree.ControlJobs) (vitess.Statement, error) {
+func nodeControlJobs(ctx *Context, node *tree.ControlJobs) (vitess.Statement, error) {
 	if node == nil {
 		return nil, nil
 	}
@@ -31,7 +31,7 @@ func nodeControlJobs(node *tree.ControlJobs) (vitess.Statement, error) {
 }
 
 // nodeControlJobsForSchedules handles *tree.ControlJobsForSchedules nodes.
-func nodeControlJobsForSchedules(node *tree.ControlJobsForSchedules) (vitess.Statement, error) {
+func nodeControlJobsForSchedules(ctx *Context, node *tree.ControlJobsForSchedules) (vitess.Statement, error) {
 	if node == nil {
 		return nil, nil
 	}

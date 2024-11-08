@@ -23,7 +23,7 @@ import (
 )
 
 // nodeControlSchedules handles *tree.ControlSchedules nodes.
-func nodeControlSchedules(node *tree.ControlSchedules) (vitess.Statement, error) {
+func nodeControlSchedules(ctx *Context, node *tree.ControlSchedules) (vitess.Statement, error) {
 	if node == nil {
 		return nil, nil
 	}

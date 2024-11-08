@@ -23,7 +23,7 @@ import (
 )
 
 // nodeShowLastQueryStatistics handles *tree.ShowLastQueryStatistics nodes.
-func nodeShowLastQueryStatistics(node *tree.ShowLastQueryStatistics) (vitess.Statement, error) {
+func nodeShowLastQueryStatistics(ctx *Context, node *tree.ShowLastQueryStatistics) (vitess.Statement, error) {
 	if node == nil {
 		return nil, nil
 	}
