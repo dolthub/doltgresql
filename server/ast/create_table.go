@@ -70,7 +70,7 @@ func nodeCreateTable(ctx *Context, node *tree.CreateTable) (*vitess.DDL, error) 
 			LikeTables: []vitess.TableName{},
 		}
 		for _, table := range node.Inherits {
-			likeTable, err := nodeTableName(&table)
+			likeTable, err := nodeTableName(ctx, &table)
 			if err != nil {
 				return nil, err
 			}
