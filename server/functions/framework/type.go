@@ -10,17 +10,13 @@ import (
 	pgtypes "github.com/dolthub/doltgresql/server/types"
 )
 
-// NewTextLiteral is the implementation for NewTextLiteral function
-// that is being set from expression package to avoid circular dependencies.
-var NewTextLiteral func(input string) sql.Expression
-
 // NewLiteral is the implementation for NewLiteral function
 // that is being set from expression package to avoid circular dependencies.
 var NewLiteral func(input any, t pgtypes.DoltgresType) sql.Expression
 
 // IoInput converts input string value to given type value.
 func IoInput(ctx *sql.Context, t pgtypes.DoltgresType, input string) (any, error) {
-	receivedVal := NewTextLiteral(input)
+	receivedVal := NewLiteral(input, pgtypes.Text) // maybe use UNKNOWN type?
 	return receiveInputFunction(ctx, t.InputFunc, t, receivedVal)
 }
 

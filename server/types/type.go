@@ -456,7 +456,12 @@ func (t DoltgresType) Type() query.Type {
 			return sqltypes.Int64
 		case oid.T_numeric:
 			return sqltypes.Decimal
+		case oid.T_oid:
+			return sqltypes.Uint32
+		case oid.T_regclass, oid.T_regproc, oid.T_regtype:
+			return sqltypes.Text
 		default:
+			// TODO
 			return sqltypes.Int64
 		}
 	case TypeCategory_StringTypes, TypeCategory_UnknownTypes:
@@ -506,7 +511,10 @@ func (t DoltgresType) Zero() interface{} {
 			return int64(0)
 		case oid.T_numeric:
 			return decimal.Zero
+		case oid.T_oid, oid.T_regclass, oid.T_regproc, oid.T_regtype:
+			return uint32(0)
 		default:
+			// TODO
 			return int64(0)
 		}
 	case TypeCategory_StringTypes, TypeCategory_UnknownTypes:

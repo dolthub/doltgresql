@@ -23,12 +23,6 @@ import (
 
 // Init handles the assignment of the Literal function for the functions package used for types.
 func Init() {
-	framework.NewTextLiteral = func(stringValue string) sql.Expression {
-		return &Literal{
-			value: stringValue,
-			typ:   pgtypes.Text,
-		}
-	}
 	framework.NewLiteral = func(val interface{}, t pgtypes.DoltgresType) sql.Expression {
 		return &Literal{
 			value: val,
