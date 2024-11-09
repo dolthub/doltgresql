@@ -183,8 +183,31 @@ func convertSelectStatement(sel sqlparser.SelectStatement) tree.SelectStatement 
 	switch sel := sel.(type) {
 	case *sqlparser.Select:
 		return convertSelect(sel)
+	case *sqlparser.SetOp:
+		return convertSetOp(sel)
 	default:
 		panic(fmt.Sprintf("unhandled type: %T", sel))
+	}
+}
+
+func convertSetOp(sel *sqlparser.SetOp) tree.SelectStatement {
+	switch sel.Type {
+	case sqlparser.UnionStr:
+		left := convertSelectStatement(sel.Left)
+		right := convertSelectStatement(sel.Right)
+		return &tree.UnionClause{
+			Type: tree.UnionOp,
+			Left: selectFromSelectClause(left.(*tree.SelectClause)),
+			Right: selectFromSelectClause(right.(*tree.SelectClause)),
+		}
+	default:
+		panic(fmt.Sprintf("unhandled type: %s", sel.Type))
+	}
+}
+
+func selectFromSelectClause(clause *tree.SelectClause) *tree.Select {
+	return &tree.Select{
+		Select: clause,
 	}
 }
 
@@ -336,31 +359,37 @@ func convertSubquery(val *sqlparser.Subquery) tree.Expr {
 }
 
 func convertComparisonExpr(val *sqlparser.ComparisonExpr) tree.Expr {
-	var op tree.BinaryOperator
+	var op tree.ComparisonOperator
 	switch val.Operator {
-	case sqlparser.BitAndStr:
-		op = tree.Bitand
-	case sqlparser.BitOrStr:
-		op = tree.Bitor
-	case sqlparser.BitXorStr:
-		op = tree.Bitxor
-	case sqlparser.PlusStr:
-		op = tree.Plus
-	case sqlparser.MinusStr:
-		op = tree.Minus
-	case sqlparser.MultStr:
-		op = tree.Mult
-	case sqlparser.DivStr:
-		op = tree.Div
-	case sqlparser.ModStr:
-		op = tree.Mod
-	case sqlparser.ShiftLeftStr:
-		op = tree.LShift
-	case sqlparser.ShiftRightStr:
-		op = tree.RShift
+	case sqlparser.EqualStr:
+		op = tree.EQ
+	case sqlparser.LessThanStr:
+		op = tree.LT
+	case sqlparser.LessEqualStr:
+		op = tree.LE
+	case sqlparser.GreaterThanStr:
+		op = tree.GT
+	case sqlparser.GreaterEqualStr:
+		op = tree.GE
+	case sqlparser.NotEqualStr:
+		op = tree.NE
+	case sqlparser.InStr:
+		op = tree.In
+	case sqlparser.NotInStr:
+		op = tree.NotIn
+	case sqlparser.LikeStr:
+		op = tree.Like
+	case sqlparser.NotLikeStr:
+		op = tree.NotLike
+	case sqlparser.RegexpStr:
+		op = tree.RegMatch
+	case sqlparser.NotRegexpStr:
+		op = tree.NotRegMatch
+	default:
+		panic(fmt.Sprintf("unhandled operator: %s", val.Operator))
 	}
 
-	return &tree.BinaryExpr{
+	return &tree.ComparisonExpr{
 		Operator: op,
 		Left:     convertExpr(val.Left),
 		Right:    convertExpr(val.Right),
@@ -391,6 +420,8 @@ func convertBinaryExpr(val *sqlparser.BinaryExpr) tree.Expr {
 		op = tree.LShift
 	case sqlparser.ShiftRightStr:
 		op = tree.RShift
+	default:
+		panic(fmt.Sprintf("unhandled operator: %s", val.Operator))
 	}
 	
 	return &tree.BinaryExpr{

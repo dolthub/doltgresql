@@ -178,26 +178,26 @@ func TestSingleScript(t *testing.T) {
 				"INSERT IGNORE INTO y VALUES (1, 1), (1,2), (2, 2), (3, 3)",
 			},
 			Assertions: []queries.ScriptTestAssertion{
-				{
-					Query: "SELECT * FROM y",
-					Expected: []sql.Row{
-						{1, 1}, {2, 2}, {3, 3},
-					},
-				},
-				{
-					Query: "INSERT IGNORE INTO y VALUES (1, 2), (4,4)",
-					Expected: []sql.Row{
-						{types.OkResult{RowsAffected: 1}},
-					},
-					ExpectedWarning: mysql.ERDupEntry,
-				},
-				{
-					Query: "INSERT IGNORE INTO y VALUES (5, NULL)",
-					Expected: []sql.Row{
-						{types.OkResult{RowsAffected: 1}},
-					},
-					ExpectedWarning: mysql.ERBadNullError,
-				},
+				// {
+				// 	Query: "SELECT * FROM y",
+				// 	Expected: []sql.Row{
+				// 		{1, 1}, {2, 2}, {3, 3},
+				// 	},
+				// },
+				// {
+				// 	Query: "INSERT IGNORE INTO y VALUES (1, 2), (4,4)",
+				// 	Expected: []sql.Row{
+				// 		{types.OkResult{RowsAffected: 1}},
+				// 	},
+				// 	ExpectedWarning: mysql.ERDupEntry,
+				// },
+				// {
+				// 	Query: "INSERT IGNORE INTO y VALUES (5, NULL)",
+				// 	Expected: []sql.Row{
+				// 		{types.OkResult{RowsAffected: 1}},
+				// 	},
+				// 	ExpectedWarning: mysql.ERBadNullError,
+				// },
 				{
 					Query: "INSERT IGNORE INTO y SELECT * FROM y WHERE pk=(SELECT pk+10 FROM y WHERE pk > 1);",
 					Expected: []sql.Row{

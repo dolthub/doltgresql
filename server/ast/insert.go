@@ -35,8 +35,7 @@ func nodeInsert(node *tree.Insert) (*vitess.Insert, error) {
 	
 	if node.OnConflict != nil {
 		// ON CONFLICT DO NOTHING is equivalent to INSERT IGNORE in GMS
-		ignoreErrors := node.OnConflict.Columns == nil &&
-				node.OnConflict.ArbiterPredicate == nil &&
+		ignoreErrors := node.OnConflict.ArbiterPredicate == nil &&
 				node.OnConflict.Exprs == nil &&
 				node.OnConflict.Where == nil &&
 				node.OnConflict.DoNothing
