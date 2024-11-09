@@ -66,7 +66,7 @@ func transformInsert(stmt *sqlparser.Insert) ([]string, bool) {
 			}
 		}
 		
-		rows := selectForInsert(stmt.Rows)
+		rows := rowsForInsert(stmt.Rows)
 		
 		onConflict := tree.OnConflict{
 			Exprs: convertUpdateExprs(sqlparser.AssignmentExprs(stmt.OnDup)),
@@ -81,6 +81,34 @@ func transformInsert(stmt *sqlparser.Insert) ([]string, bool) {
 			Returning: &tree.NoReturningClause{},
 		}
 		
+		ctx := formatNodeWithUnqualifiedTableNames(&insert)
+		return []string{ctx.String()}, true
+	} else if stmt.Ignore == "ignore " {
+		tableName := tree.NewTableName(tree.Name(stmt.Table.DbQualifier.String()), tree.Name(stmt.Table.Name.String()))
+		
+		var colList tree.NameList
+		if len(stmt.Columns) > 0 {
+			colList = make(tree.NameList, len(stmt.Columns))
+			for i, col := range stmt.Columns {
+				colList[i] = tree.Name(col.String())
+			}
+		}
+
+		rows := rowsForInsert(stmt.Rows)
+
+		onConflict := tree.OnConflict{
+			Columns:          tree.NameList{tree.Name("fake")}, // column list ignored but must be present for valid syntax
+			DoNothing:        true,
+		}
+
+		insert := tree.Insert{
+			Table:      tableName,
+			Columns:    colList,
+			Rows:       rows,
+			OnConflict: &onConflict,
+			Returning: &tree.NoReturningClause{},
+		}
+
 		ctx := formatNodeWithUnqualifiedTableNames(&insert)
 		return []string{ctx.String()}, true
 	}
@@ -99,7 +127,7 @@ func convertUpdateExprs(exprs sqlparser.AssignmentExprs) tree.UpdateExprs {
 	return updateExprs
 }
 
-func selectForInsert(rows sqlparser.InsertRows) *tree.Select {
+func rowsForInsert(rows sqlparser.InsertRows) *tree.Select {
 	switch rows := rows.(type) {
 	case sqlparser.Values:
 		return &tree.Select{
@@ -148,6 +176,15 @@ func convertSelect(sel *sqlparser.Select) *tree.SelectClause {
 		Where:       convertWhere(sel.Where),
 		GroupBy:     convertGroupBy(sel.GroupBy),
 		Having:      convertHaving(sel.Having),
+	}
+}
+
+func convertSelectStatement(sel sqlparser.SelectStatement) tree.SelectStatement {
+	switch sel := sel.(type) {
+	case *sqlparser.Select:
+		return convertSelect(sel)
+	default:
+		panic(fmt.Sprintf("unhandled type: %T", sel))
 	}
 }
 
@@ -283,8 +320,51 @@ func convertExpr(expr sqlparser.Expr) tree.Expr {
 		return tree.NewStrVal(val.Name.String())
 	case *sqlparser.BinaryExpr:
 		return convertBinaryExpr(val)
+	case *sqlparser.ComparisonExpr:
+		return convertComparisonExpr(val)
+	case *sqlparser.Subquery:
+		return convertSubquery(val)
 	default:
 		panic(fmt.Sprintf("unhandled type: %T", val))
+	}
+}
+
+func convertSubquery(val *sqlparser.Subquery) tree.Expr {
+	return &tree.Subquery{
+		Select: convertSelectStatement(val.Select),
+	}
+}
+
+func convertComparisonExpr(val *sqlparser.ComparisonExpr) tree.Expr {
+	var op tree.BinaryOperator
+	switch val.Operator {
+	case sqlparser.BitAndStr:
+		op = tree.Bitand
+	case sqlparser.BitOrStr:
+		op = tree.Bitor
+	case sqlparser.BitXorStr:
+		op = tree.Bitxor
+	case sqlparser.PlusStr:
+		op = tree.Plus
+	case sqlparser.MinusStr:
+		op = tree.Minus
+	case sqlparser.MultStr:
+		op = tree.Mult
+	case sqlparser.DivStr:
+		op = tree.Div
+	case sqlparser.ModStr:
+		op = tree.Mod
+	case sqlparser.ShiftLeftStr:
+		op = tree.LShift
+	case sqlparser.ShiftRightStr:
+		op = tree.RShift
+	}
+
+	return &tree.BinaryExpr{
+		Operator: op,
+		Left:     convertExpr(val.Left),
+		Right:    convertExpr(val.Right),
+		// Fn:       nil,
 	}
 }
 

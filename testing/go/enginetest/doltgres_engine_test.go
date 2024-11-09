@@ -26,6 +26,7 @@ import (
 	"github.com/dolthub/go-mysql-server/enginetest/scriptgen/setup"
 	"github.com/dolthub/go-mysql-server/sql"
 	"github.com/dolthub/go-mysql-server/sql/types"
+	"github.com/dolthub/vitess/go/mysql"
 	"github.com/stretchr/testify/require"
 
 	"github.com/dolthub/dolt/go/libraries/doltcore/dtestutils"
@@ -171,14 +172,66 @@ func TestSingleScript(t *testing.T) {
 
 	var scripts = []queries.ScriptTest{
 		{
-			Name: "INSERT Case Sensitivity",
+			Name: "Try INSERT IGNORE with primary key, non null, and single row violations",
 			SetUpScript: []string{
-				"CREATE TABLE test (PK int PRIMARY KEY);",
+				"CREATE TABLE y (pk int primary key, c1 int NOT NULL);",
+				"INSERT IGNORE INTO y VALUES (1, 1), (1,2), (2, 2), (3, 3)",
 			},
 			Assertions: []queries.ScriptTestAssertion{
 				{
-					Query:    "insert into test(pk) values (1)",
-					Expected: []sql.Row{{types.NewOkResult(1)}},
+					Query: "SELECT * FROM y",
+					Expected: []sql.Row{
+						{1, 1}, {2, 2}, {3, 3},
+					},
+				},
+				{
+					Query: "INSERT IGNORE INTO y VALUES (1, 2), (4,4)",
+					Expected: []sql.Row{
+						{types.OkResult{RowsAffected: 1}},
+					},
+					ExpectedWarning: mysql.ERDupEntry,
+				},
+				{
+					Query: "INSERT IGNORE INTO y VALUES (5, NULL)",
+					Expected: []sql.Row{
+						{types.OkResult{RowsAffected: 1}},
+					},
+					ExpectedWarning: mysql.ERBadNullError,
+				},
+				{
+					Query: "INSERT IGNORE INTO y SELECT * FROM y WHERE pk=(SELECT pk+10 FROM y WHERE pk > 1);",
+					Expected: []sql.Row{
+						{types.OkResult{RowsAffected: 0}},
+					},
+					ExpectedWarning: mysql.ERSubqueryNo1Row,
+				},
+				{
+					Query: "INSERT IGNORE INTO y SELECT 10, 0 FROM dual WHERE 1=(SELECT 1 FROM dual UNION SELECT 2 FROM dual);",
+					Expected: []sql.Row{
+						{types.OkResult{RowsAffected: 0}},
+					},
+					ExpectedWarning: mysql.ERSubqueryNo1Row,
+				},
+				{
+					Query: "INSERT IGNORE INTO y SELECT 11, 0 FROM dual WHERE 1=(SELECT 1 FROM dual UNION SELECT 2 FROM dual) UNION SELECT 12, 0 FROM dual;",
+					Expected: []sql.Row{
+						{types.OkResult{RowsAffected: 1}},
+					},
+					ExpectedWarning: mysql.ERSubqueryNo1Row,
+				},
+				{
+					Query: "INSERT IGNORE INTO y SELECT 13, 0 FROM dual UNION SELECT 14, 0 FROM dual WHERE 1=(SELECT 1 FROM dual UNION SELECT 2 FROM dual);",
+					Expected: []sql.Row{
+						{types.OkResult{RowsAffected: 1}},
+					},
+					ExpectedWarning: mysql.ERSubqueryNo1Row,
+				},
+				{
+					Query: "INSERT IGNORE INTO y VALUES (3, 8)",
+					Expected: []sql.Row{
+						{types.OkResult{RowsAffected: 0}},
+					},
+					ExpectedWarning: mysql.ERDupEntry,
 				},
 			},
 		},
@@ -316,7 +369,7 @@ func TestInsertInto(t *testing.T) {
 		"issue 4857: insert cte column alias with table alias qualify panic", // WITH unsupported syntax
 		"sql_mode=NO_auto_value_ON_ZERO", // unsupported
 		"explicit DEFAULT", // enum type unsupported
-		"Try INSERT IGNORE with primary key, non null, and single row violations", // insert ignore not supported
+		// "Try INSERT IGNORE with primary key, non null, and single row violations", // insert ignore not supported
 		"Insert on duplicate key references table in subquery",  // bad translation?
 		"Insert on duplicate key references table in aliased subquery", // bad translation?
 		"insert on duplicate key update errors", // failing
