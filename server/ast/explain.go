@@ -64,12 +64,10 @@ func nodeExplain(ctx *Context, node *tree.Explain) (vitess.Statement, error) {
 		}
 		explain := &vitess.Explain{
 			ExplainFormat: vitess.TreeStr,
-			Statement: selectStmt,
+			Statement:     selectStmt,
 		}
 		return explain, nil
 	}
-
-
 
 	return nil, fmt.Errorf("This EXPLAIN syntax is not yet supported")
 }

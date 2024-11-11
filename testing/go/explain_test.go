@@ -36,7 +36,7 @@ func TestExplain(t *testing.T) {
 					},
 				},
 				{
-					Skip:  true, // Need to properly support explain options
+					Skip: true, // Need to properly support explain options
 					Query: `
 EXPLAIN 
 (
@@ -57,7 +57,7 @@ EXPLAIN
 					},
 				},
 				{
-					Skip:  true, // Need to properly support explain options
+					Skip: true, // Need to properly support explain options
 					Query: `
 EXPLAIN 
 (
