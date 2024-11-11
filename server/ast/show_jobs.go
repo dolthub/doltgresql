@@ -23,7 +23,7 @@ import (
 )
 
 // nodeShowJobs handles *tree.ShowJobs nodes.
-func nodeShowJobs(node *tree.ShowJobs) (vitess.Statement, error) {
+func nodeShowJobs(ctx *Context, node *tree.ShowJobs) (vitess.Statement, error) {
 	if node == nil {
 		return nil, nil
 	}

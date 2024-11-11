@@ -1316,7 +1316,6 @@ func TestHistorySystemTable(t *testing.T) {
 		"dolt_history table with AS OF",                 // AS OF
 		"dolt_history table with enums",                 // enums
 		"can sort by dolt_log.commit",                   // more commits
-		"select dolt_log.commit_hash",                   // table name
 	}).WithParallelism(2)
 	denginetest.RunHistorySystemTableTests(t, harness)
 }

@@ -24,14 +24,14 @@ import (
 )
 
 // nodeSubquery handles *tree.Subquery nodes.
-func nodeSubquery(node *tree.Subquery) (*vitess.Subquery, error) {
+func nodeSubquery(ctx *Context, node *tree.Subquery) (*vitess.Subquery, error) {
 	if node == nil {
 		return nil, nil
 	}
 	if node.Exists {
 		return nil, fmt.Errorf("EXISTS is not yet supported")
 	}
-	selectStmt, err := nodeSelectStatement(node.Select)
+	selectStmt, err := nodeSelectStatement(ctx, node.Select)
 	if err != nil {
 		return nil, err
 	}
@@ -41,8 +41,8 @@ func nodeSubquery(node *tree.Subquery) (*vitess.Subquery, error) {
 }
 
 // nodeSubquery handles *tree.Subquery nodes, returning a vitess.TableExpr.
-func nodeSubqueryToTableExpr(node *tree.Subquery) (vitess.TableExpr, error) {
-	subquery, err := nodeSubquery(node)
+func nodeSubqueryToTableExpr(ctx *Context, node *tree.Subquery) (vitess.TableExpr, error) {
+	subquery, err := nodeSubquery(ctx, node)
 	if err != nil {
 		return nil, err
 	}

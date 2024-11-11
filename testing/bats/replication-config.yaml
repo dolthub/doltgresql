@@ -6,7 +6,7 @@ behavior:
   dolt_transaction_commit: false
 
 user:
-  name: "doltgres"
+  name: "postgres"
   password: "password"
 
 listener:

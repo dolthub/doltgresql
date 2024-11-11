@@ -23,7 +23,7 @@ import (
 )
 
 // nodeShowCreate handles *tree.ShowCreate nodes.
-func nodeShowCreate(node *tree.ShowCreate) (vitess.Statement, error) {
+func nodeShowCreate(ctx *Context, node *tree.ShowCreate) (vitess.Statement, error) {
 	if node == nil {
 		return nil, nil
 	}

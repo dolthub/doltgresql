@@ -24,7 +24,7 @@ import (
 )
 
 // nodeCreateIndex handles *tree.CreateIndex nodes.
-func nodeCreateIndex(node *tree.CreateIndex) (*vitess.AlterTable, error) {
+func nodeCreateIndex(ctx *Context, node *tree.CreateIndex) (*vitess.AlterTable, error) {
 	if node == nil {
 		return nil, nil
 	}
@@ -37,7 +37,7 @@ func nodeCreateIndex(node *tree.CreateIndex) (*vitess.AlterTable, error) {
 	if node.Predicate != nil {
 		return nil, fmt.Errorf("WHERE is not yet supported")
 	}
-	indexDef, err := nodeIndexTableDef(&tree.IndexTableDef{
+	indexDef, err := nodeIndexTableDef(ctx, &tree.IndexTableDef{
 		Name:        node.Name,
 		Columns:     node.Columns,
 		IndexParams: node.IndexParams,
@@ -45,7 +45,7 @@ func nodeCreateIndex(node *tree.CreateIndex) (*vitess.AlterTable, error) {
 	if err != nil {
 		return nil, err
 	}
-	tableName, err := nodeTableName(&node.Table)
+	tableName, err := nodeTableName(ctx, &node.Table)
 	if err != nil {
 		return nil, err
 	}

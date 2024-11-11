@@ -23,7 +23,7 @@ import (
 )
 
 // nodeForeignKeyConstraintTableDef handles *tree.ForeignKeyConstraintTableDef nodes.
-func nodeForeignKeyConstraintTableDef(node *tree.ForeignKeyConstraintTableDef) (*vitess.ForeignKeyDefinition, error) {
+func nodeForeignKeyConstraintTableDef(ctx *Context, node *tree.ForeignKeyConstraintTableDef) (*vitess.ForeignKeyDefinition, error) {
 	if node == nil {
 		return nil, nil
 	}
@@ -37,7 +37,7 @@ func nodeForeignKeyConstraintTableDef(node *tree.ForeignKeyConstraintTableDef) (
 	default:
 		return nil, fmt.Errorf("unknown foreign key MATCH strategy")
 	}
-	tableName, err := nodeTableName(&node.Table)
+	tableName, err := nodeTableName(ctx, &node.Table)
 	if err != nil {
 		return nil, err
 	}

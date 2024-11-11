@@ -20,10 +20,11 @@ import (
 	vitess "github.com/dolthub/vitess/go/vt/sqlparser"
 
 	"github.com/dolthub/doltgresql/postgres/parser/sem/tree"
+	"github.com/dolthub/doltgresql/server/auth"
 )
 
 // nodeAliasedTableExpr handles *tree.AliasedTableExpr nodes.
-func nodeAliasedTableExpr(node *tree.AliasedTableExpr) (*vitess.AliasedTableExpr, error) {
+func nodeAliasedTableExpr(ctx *Context, node *tree.AliasedTableExpr) (*vitess.AliasedTableExpr, error) {
 	if node.Ordinality {
 		return nil, fmt.Errorf("ordinality is not yet supported")
 	}
@@ -31,16 +32,22 @@ func nodeAliasedTableExpr(node *tree.AliasedTableExpr) (*vitess.AliasedTableExpr
 		return nil, fmt.Errorf("index flags are not yet supported")
 	}
 	var aliasExpr vitess.SimpleTableExpr
+	var authInfo vitess.AuthInformation
 
 	switch expr := node.Expr.(type) {
 	case *tree.TableName:
-		var err error
-		aliasExpr, err = nodeTableName(expr)
+		tableName, err := nodeTableName(ctx, expr)
 		if err != nil {
 			return nil, err
 		}
+		aliasExpr = tableName
+		authInfo = vitess.AuthInformation{
+			AuthType:    ctx.Auth().PeekAuthType(),
+			TargetType:  auth.AuthTargetType_SingleTableIdentifier,
+			TargetNames: []string{tableName.SchemaQualifier.String(), tableName.Name.String()},
+		}
 	case *tree.Subquery:
-		tableExpr, err := nodeTableExpr(expr)
+		tableExpr, err := nodeTableExpr(ctx, expr)
 		if err != nil {
 			return nil, err
 		}
@@ -58,6 +65,27 @@ func nodeAliasedTableExpr(node *tree.AliasedTableExpr) (*vitess.AliasedTableExpr
 			return nil, fmt.Errorf("unhandled subquery table expression: `%T`", tableExpr)
 		}
 
+		// If the subquery is a VALUES statement, it should be represented more directly
+		innerSelect := selectStmt
+		if parentSelect, ok := innerSelect.(*vitess.ParenSelect); ok {
+			innerSelect = parentSelect.Select
+		}
+		if inSelect, ok := innerSelect.(*vitess.Select); ok {
+			if len(inSelect.From) == 1 {
+				if valuesStmt, ok := inSelect.From[0].(*vitess.ValuesStatement); ok {
+					if len(node.As.Cols) > 0 {
+						columns := make([]vitess.ColIdent, len(node.As.Cols))
+						for i := range node.As.Cols {
+							columns[i] = vitess.NewColIdent(string(node.As.Cols[i]))
+						}
+						valuesStmt.Columns = columns
+					}
+					aliasExpr = valuesStmt
+					break
+				}
+			}
+		}
+
 		subquery := &vitess.Subquery{
 			Select: selectStmt,
 		}
@@ -71,7 +99,7 @@ func nodeAliasedTableExpr(node *tree.AliasedTableExpr) (*vitess.AliasedTableExpr
 		}
 		aliasExpr = subquery
 	case *tree.RowsFromExpr:
-		tableExpr, err := nodeTableExpr(expr)
+		tableExpr, err := nodeTableExpr(ctx, expr)
 		if err != nil {
 			return nil, err
 		}
@@ -98,7 +126,7 @@ func nodeAliasedTableExpr(node *tree.AliasedTableExpr) (*vitess.AliasedTableExpr
 
 	var asOf *vitess.AsOf
 	if node.AsOf != nil {
-		asOfExpr, err := nodeExpr(node.AsOf.Expr)
+		asOfExpr, err := nodeExpr(ctx, node.AsOf.Expr)
 		if err != nil {
 			return nil, err
 		}
@@ -113,5 +141,6 @@ func nodeAliasedTableExpr(node *tree.AliasedTableExpr) (*vitess.AliasedTableExpr
 		As:      vitess.NewTableIdent(alias),
 		AsOf:    asOf,
 		Lateral: node.Lateral,
+		Auth:    authInfo,
 	}, nil
 }

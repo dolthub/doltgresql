@@ -23,7 +23,7 @@ import (
 )
 
 // nodeDropDatabase handles *tree.DropDatabase nodes.
-func nodeDropDatabase(node *tree.DropDatabase) (*vitess.DBDDL, error) {
+func nodeDropDatabase(ctx *Context, node *tree.DropDatabase) (*vitess.DBDDL, error) {
 	if node == nil {
 		return nil, nil
 	}

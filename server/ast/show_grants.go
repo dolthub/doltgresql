@@ -23,7 +23,7 @@ import (
 )
 
 // nodeShowGrants handles *tree.ShowGrants nodes.
-func nodeShowGrants(node *tree.ShowGrants) (vitess.Statement, error) {
+func nodeShowGrants(ctx *Context, node *tree.ShowGrants) (vitess.Statement, error) {
 	if node == nil {
 		return nil, nil
 	}

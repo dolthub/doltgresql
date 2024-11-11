@@ -23,7 +23,7 @@ import (
 )
 
 // nodeScatter handles *tree.Scatter nodes.
-func nodeScatter(node *tree.Scatter) (vitess.Statement, error) {
+func nodeScatter(ctx *Context, node *tree.Scatter) (vitess.Statement, error) {
 	if node == nil {
 		return nil, nil
 	}

@@ -24,7 +24,7 @@ import (
 )
 
 // nodeOrderBy handles *tree.OrderBy nodes.
-func nodeOrderBy(node tree.OrderBy) (vitess.OrderBy, error) {
+func nodeOrderBy(ctx *Context, node tree.OrderBy) (vitess.OrderBy, error) {
 	if len(node) == 0 {
 		return nil, nil
 	}
@@ -60,7 +60,7 @@ func nodeOrderBy(node tree.OrderBy) (vitess.OrderBy, error) {
 		default:
 			return nil, fmt.Errorf("unknown NULL ordering in ORDER BY")
 		}
-		expr, err := nodeExpr(node[i].Expr)
+		expr, err := nodeExpr(ctx, node[i].Expr)
 		if err != nil {
 			return nil, err
 		}

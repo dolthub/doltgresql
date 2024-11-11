@@ -93,7 +93,7 @@ func getDefault(ctx *sql.Context, a *analyzer.Analyzer, defExpr, tblName string,
 	if !ok {
 		return nil, sql.ErrInvalidColumnDefaultValue.New(defExpr)
 	}
-	builder := planbuilder.New(ctx, a.Catalog, sql.GlobalParser)
+	builder := planbuilder.New(ctx, a.Catalog, nil, sql.GlobalParser)
 	return builder.BuildColumnDefaultValueWithTable(ae.Expr, selectStmt.From[0], typ, nullable), nil
 }
 
@@ -115,7 +115,7 @@ func getCheckConstraints(ctx *sql.Context, a *analyzer.Analyzer, colName string,
 			return nil, sql.ErrInvalidCheckConstraint.New(check.CheckExpression)
 		}
 
-		builder := planbuilder.New(ctx, a.Catalog, sql.GlobalParser)
+		builder := planbuilder.New(ctx, a.Catalog, nil, sql.GlobalParser)
 		checks[i] = &sql.CheckConstraint{
 			Name:     check.Name,
 			Expr:     builder.BuildScalarWithTable(ae.Expr, selectStmt.From[0]),

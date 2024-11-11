@@ -23,7 +23,7 @@ import (
 )
 
 // nodeShowIndexes handles *tree.ShowIndexes nodes.
-func nodeShowIndexes(node *tree.ShowIndexes) (vitess.Statement, error) {
+func nodeShowIndexes(ctx *Context, node *tree.ShowIndexes) (vitess.Statement, error) {
 	if node == nil {
 		return nil, nil
 	}

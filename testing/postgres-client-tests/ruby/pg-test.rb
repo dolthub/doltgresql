@@ -26,7 +26,7 @@ queries = [
 ]
 
 # Smoke test the queries to make sure nothing blows up
-conn = PG::Connection.new(:host => "localhost", :user => user, :dbname => db, :port => port)
+conn = PG::Connection.new(:host => "localhost", :user => user, :dbname => db, :port => port, :password => "password")
 queries.each do |query|
   res = conn.query(query)
 end

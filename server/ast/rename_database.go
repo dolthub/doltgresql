@@ -23,7 +23,7 @@ import (
 )
 
 // nodeRenameDatabase handles *tree.RenameDatabase nodes.
-func nodeRenameDatabase(node *tree.RenameDatabase) (vitess.Statement, error) {
+func nodeRenameDatabase(ctx *Context, node *tree.RenameDatabase) (vitess.Statement, error) {
 	if node == nil {
 		return nil, nil
 	}

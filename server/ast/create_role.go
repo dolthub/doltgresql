@@ -26,13 +26,19 @@ import (
 )
 
 // nodeCreateRole handles *tree.CreateRole nodes.
-func nodeCreateRole(node *tree.CreateRole) (vitess.Statement, error) {
+func nodeCreateRole(ctx *Context, node *tree.CreateRole) (vitess.Statement, error) {
 	if node == nil {
 		return nil, nil
 	}
 	if len(node.Name) == 0 {
 		// The parser should make this impossible, but extra error checking is never bad
 		return nil, errors.New(`role name cannot be empty`)
+	}
+	switch node.Name {
+	case `public`:
+		return nil, errors.New(`role name "public" is reserved`)
+	case `current_role`, `current_user`, `session_user`:
+		return nil, fmt.Errorf(`%s cannot be used as a role name here`, strings.ToUpper(node.Name))
 	}
 	createRole := &pgnodes.CreateRole{
 		Name:                      node.Name,

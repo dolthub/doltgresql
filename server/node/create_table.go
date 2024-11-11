@@ -15,11 +15,14 @@
 package node
 
 import (
+	"fmt"
+
 	"github.com/dolthub/go-mysql-server/sql"
 	"github.com/dolthub/go-mysql-server/sql/plan"
 	"github.com/dolthub/go-mysql-server/sql/rowexec"
 
 	"github.com/dolthub/doltgresql/core"
+	"github.com/dolthub/doltgresql/server/auth"
 )
 
 // CreateTable is a node that implements functionality specifically relevant to Doltgres' table creation needs.
@@ -36,11 +39,6 @@ func NewCreateTable(createTable *plan.CreateTable, sequences []*CreateSequence) 
 		gmsCreateTable: createTable,
 		sequences:      sequences,
 	}
-}
-
-// CheckPrivileges implements the interface sql.ExecSourceRel.
-func (c *CreateTable) CheckPrivileges(ctx *sql.Context, opChecker sql.PrivilegedOperationChecker) bool {
-	return c.gmsCreateTable.CheckPrivileges(ctx, opChecker)
 }
 
 // Children implements the interface sql.ExecSourceRel.
@@ -60,6 +58,14 @@ func (c *CreateTable) Resolved() bool {
 
 // RowIter implements the interface sql.ExecSourceRel.
 func (c *CreateTable) RowIter(ctx *sql.Context, r sql.Row) (sql.RowIter, error) {
+	var userRole auth.Role
+	auth.LockRead(func() {
+		userRole = auth.GetRole(ctx.Client().User)
+	})
+	if !userRole.IsValid() {
+		return nil, fmt.Errorf(`role "%s" does not exist`, ctx.Client().User)
+	}
+
 	createTableIter, err := rowexec.DefaultBuilder.Build(ctx, c.gmsCreateTable, r)
 	if err != nil {
 		return nil, err
@@ -76,6 +82,18 @@ func (c *CreateTable) RowIter(ctx *sql.Context, r sql.Row) (sql.RowIter, error) 
 			_ = createTableIter.Close(ctx)
 			return nil, err
 		}
+	}
+
+	auth.LockWrite(func() {
+		auth.AddOwner(auth.OwnershipKey{
+			PrivilegeObject: auth.PrivilegeObject_TABLE,
+			Schema:          schemaName,
+			Name:            c.gmsCreateTable.Name(),
+		}, userRole.ID())
+		err = auth.PersistChanges()
+	})
+	if err != nil {
+		return nil, err
 	}
 	return createTableIter, err
 }

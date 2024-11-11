@@ -25,7 +25,7 @@ import (
 )
 
 // nodeSetVar handles *tree.SetVar nodes.
-func nodeSetVar(node *tree.SetVar) (vitess.Statement, error) {
+func nodeSetVar(ctx *Context, node *tree.SetVar) (vitess.Statement, error) {
 	if node == nil {
 		return nil, nil
 	}
@@ -58,7 +58,7 @@ func nodeSetVar(node *tree.SetVar) (vitess.Statement, error) {
 			Name: vitess.NewColIdent(strings.Join(vals, ", ")),
 		}
 	} else {
-		expr, err = nodeExpr(node.Values[0])
+		expr, err = nodeExpr(ctx, node.Values[0])
 		if err != nil {
 			return nil, err
 		}

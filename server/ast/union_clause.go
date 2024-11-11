@@ -23,15 +23,15 @@ import (
 )
 
 // nodeUnionClause handles tree.UnionClause nodes.
-func nodeUnionClause(node *tree.UnionClause) (*vitess.SetOp, error) {
+func nodeUnionClause(ctx *Context, node *tree.UnionClause) (*vitess.SetOp, error) {
 	if node == nil {
 		return nil, nil
 	}
-	left, err := nodeSelect(node.Left)
+	left, err := nodeSelect(ctx, node.Left)
 	if err != nil {
 		return nil, err
 	}
-	right, err := nodeSelect(node.Right)
+	right, err := nodeSelect(ctx, node.Right)
 	if err != nil {
 		return nil, err
 	}

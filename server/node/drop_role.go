@@ -33,11 +33,6 @@ type DropRole struct {
 var _ sql.ExecSourceRel = (*DropRole)(nil)
 var _ vitess.Injectable = (*DropRole)(nil)
 
-// CheckPrivileges implements the interface sql.ExecSourceRel.
-func (c *DropRole) CheckPrivileges(ctx *sql.Context, opChecker sql.PrivilegedOperationChecker) bool {
-	return true
-}
-
 // Children implements the interface sql.ExecSourceRel.
 func (c *DropRole) Children() []sql.Node {
 	return nil
@@ -55,16 +50,29 @@ func (c *DropRole) Resolved() bool {
 
 // RowIter implements the interface sql.ExecSourceRel.
 func (c *DropRole) RowIter(ctx *sql.Context, r sql.Row) (sql.RowIter, error) {
-	// TODO: handle concurrency
+	// TODO: disallow dropping the role if it owns anything
 	// First we'll loop over all of the names to check that they all exist
-	for _, roleName := range c.Names {
-		if !auth.RoleExists(roleName) && !c.IfExists {
-			return nil, fmt.Errorf(`role "%s" does not exist`, roleName)
+	var err error
+	auth.LockRead(func() {
+		for _, roleName := range c.Names {
+			if !auth.RoleExists(roleName) && !c.IfExists {
+				err = fmt.Errorf(`role "%s" does not exist`, roleName)
+				break
+			}
 		}
+	})
+	if err != nil {
+		return nil, err
 	}
 	// Then we'll loop again, dropping all of the users
-	for _, roleName := range c.Names {
-		auth.DropRole(roleName)
+	auth.LockWrite(func() {
+		for _, roleName := range c.Names {
+			auth.DropRole(roleName)
+		}
+		err = auth.PersistChanges()
+	})
+	if err != nil {
+		return nil, err
 	}
 	return sql.RowsToRowIter(), nil
 }

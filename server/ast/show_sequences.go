@@ -23,7 +23,7 @@ import (
 )
 
 // nodeShowSequences handles *tree.ShowSequences nodes.
-func nodeShowSequences(node *tree.ShowSequences) (vitess.Statement, error) {
+func nodeShowSequences(ctx *Context, node *tree.ShowSequences) (vitess.Statement, error) {
 	if node == nil {
 		return nil, nil
 	}

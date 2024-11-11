@@ -23,11 +23,11 @@ import (
 )
 
 // nodeWhere handles *tree.Where nodes.
-func nodeWhere(node *tree.Where) (*vitess.Where, error) {
+func nodeWhere(ctx *Context, node *tree.Where) (*vitess.Where, error) {
 	if node == nil {
 		return nil, nil
 	}
-	expr, err := nodeExpr(node.Expr)
+	expr, err := nodeExpr(ctx, node.Expr)
 	if err != nil {
 		return nil, err
 	}

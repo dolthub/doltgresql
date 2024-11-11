@@ -21,11 +21,11 @@ import (
 )
 
 // nodeParenSelect handles tree.ParenSelect nodes.
-func nodeParenSelect(node *tree.ParenSelect) (*vitess.ParenSelect, error) {
+func nodeParenSelect(ctx *Context, node *tree.ParenSelect) (*vitess.ParenSelect, error) {
 	if node == nil {
 		return nil, nil
 	}
-	select_, err := nodeSelect(node.Select)
+	select_, err := nodeSelect(ctx, node.Select)
 	if err != nil {
 		return nil, err
 	}

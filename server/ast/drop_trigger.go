@@ -23,7 +23,7 @@ import (
 )
 
 // nodeDropTrigger handles *tree.DropTrigger nodes.
-func nodeDropTrigger(node *tree.DropTrigger) (*vitess.DDL, error) {
+func nodeDropTrigger(ctx *Context, node *tree.DropTrigger) (*vitess.DDL, error) {
 	// NOTE: specific table that the trigger is on cannot be specified
 	switch node.DropBehavior {
 	case tree.DropDefault:

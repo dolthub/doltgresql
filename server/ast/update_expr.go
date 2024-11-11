@@ -21,11 +21,11 @@ import (
 )
 
 // nodeUpdateExpr handles *tree.UpdateExpr nodes.
-func nodeUpdateExpr(node *tree.UpdateExpr) (vitess.AssignmentExprs, error) {
+func nodeUpdateExpr(ctx *Context, node *tree.UpdateExpr) (vitess.AssignmentExprs, error) {
 	if node == nil {
 		return nil, nil
 	}
-	expr, err := nodeExpr(node.Expr)
+	expr, err := nodeExpr(ctx, node.Expr)
 	if err != nil {
 		return nil, err
 	}
@@ -42,13 +42,13 @@ func nodeUpdateExpr(node *tree.UpdateExpr) (vitess.AssignmentExprs, error) {
 }
 
 // nodeUpdateExprs handles tree.UpdateExprs nodes.
-func nodeUpdateExprs(node tree.UpdateExprs) (vitess.AssignmentExprs, error) {
+func nodeUpdateExprs(ctx *Context, node tree.UpdateExprs) (vitess.AssignmentExprs, error) {
 	if len(node) == 0 {
 		return nil, nil
 	}
 	var assignmentExprs vitess.AssignmentExprs
 	for i := range node {
-		newAssignmentExprs, err := nodeUpdateExpr(node[i])
+		newAssignmentExprs, err := nodeUpdateExpr(ctx, node[i])
 		if err != nil {
 			return nil, err
 		}

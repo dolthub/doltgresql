@@ -23,7 +23,7 @@ import (
 )
 
 // nodeSetSessionCharacteristics handles *tree.SetSessionCharacteristics nodes.
-func nodeSetSessionCharacteristics(node *tree.SetSessionCharacteristics) (vitess.Statement, error) {
+func nodeSetSessionCharacteristics(ctx *Context, node *tree.SetSessionCharacteristics) (vitess.Statement, error) {
 	if node == nil {
 		return nil, nil
 	}

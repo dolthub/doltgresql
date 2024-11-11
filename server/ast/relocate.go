@@ -23,7 +23,7 @@ import (
 )
 
 // nodeRelocate handles *tree.Relocate nodes.
-func nodeRelocate(node *tree.Relocate) (vitess.Statement, error) {
+func nodeRelocate(ctx *Context, node *tree.Relocate) (vitess.Statement, error) {
 	if node == nil {
 		return nil, nil
 	}

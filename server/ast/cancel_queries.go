@@ -23,7 +23,7 @@ import (
 )
 
 // nodeCancelQueries handles *tree.CancelQueries nodes.
-func nodeCancelQueries(node *tree.CancelQueries) (vitess.Statement, error) {
+func nodeCancelQueries(ctx *Context, node *tree.CancelQueries) (vitess.Statement, error) {
 	if node == nil {
 		return nil, nil
 	}

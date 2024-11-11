@@ -22,6 +22,7 @@ import (
 	vitess "github.com/dolthub/vitess/go/vt/sqlparser"
 
 	"github.com/dolthub/doltgresql/core"
+	"github.com/dolthub/doltgresql/server/auth"
 	"github.com/dolthub/doltgresql/server/types"
 )
 
@@ -41,11 +42,6 @@ type CreateDomain struct {
 var _ sql.ExecSourceRel = (*CreateDomain)(nil)
 var _ vitess.Injectable = (*CreateDomain)(nil)
 
-// CheckPrivileges implements the interface sql.ExecSourceRel.
-func (c *CreateDomain) CheckPrivileges(ctx *sql.Context, opChecker sql.PrivilegedOperationChecker) bool {
-	return true
-}
-
 // Children implements the interface sql.ExecSourceRel.
 func (c *CreateDomain) Children() []sql.Node {
 	return nil
@@ -63,6 +59,14 @@ func (c *CreateDomain) Resolved() bool {
 
 // RowIter implements the interface sql.ExecSourceRel.
 func (c *CreateDomain) RowIter(ctx *sql.Context, r sql.Row) (sql.RowIter, error) {
+	var userRole auth.Role
+	auth.LockRead(func() {
+		userRole = auth.GetRole(ctx.Client().User)
+	})
+	if !userRole.IsValid() {
+		return nil, fmt.Errorf(`role "%s" does not exist`, ctx.Client().User)
+	}
+
 	// TODO: create array type with this type as base type?
 	var defExpr string
 	if c.DefaultExpr != nil {
@@ -90,6 +94,18 @@ func (c *CreateDomain) RowIter(ctx *sql.Context, r sql.Row) (sql.RowIter, error)
 		return nil, err
 	}
 	err = collection.CreateType(schema, newType)
+	if err != nil {
+		return nil, err
+	}
+
+	auth.LockWrite(func() {
+		auth.AddOwner(auth.OwnershipKey{
+			PrivilegeObject: auth.PrivilegeObject_DOMAIN,
+			Schema:          schema,
+			Name:            c.Name,
+		}, userRole.ID())
+		err = auth.PersistChanges()
+	})
 	if err != nil {
 		return nil, err
 	}

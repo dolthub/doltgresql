@@ -23,8 +23,8 @@ import (
 )
 
 // nodeCreateProcedure handles *tree.CreateProcedure nodes.
-func nodeCreateProcedure(node *tree.CreateProcedure) (vitess.Statement, error) {
-	err := verifyRedundantRoutineOption(node.Options)
+func nodeCreateProcedure(ctx *Context, node *tree.CreateProcedure) (vitess.Statement, error) {
+	err := verifyRedundantRoutineOption(ctx, node.Options)
 	if err != nil {
 		return nil, err
 	}

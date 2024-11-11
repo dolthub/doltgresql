@@ -23,7 +23,7 @@ import (
 )
 
 // nodeShowSchemas handles *tree.ShowSchemas nodes.
-func nodeShowSchemas(node *tree.ShowSchemas) (vitess.Statement, error) {
+func nodeShowSchemas(ctx *Context, node *tree.ShowSchemas) (vitess.Statement, error) {
 	if node == nil {
 		return nil, nil
 	}

@@ -45,7 +45,7 @@ import (
 // Version should have a new line that follows, else the formatter will fail the PR created by the release GH action
 
 const (
-	Version = "0.13.0"
+	Version = "0.14.0"
 
 	DefUserName  = "postres"
 	DefUserEmail = "postgres@somewhere.com"
@@ -85,7 +85,7 @@ func RunInMemory(cfg *servercfg.DoltgresConfig) (*svcs.Controller, error) {
 // runServer starts the server based on the given args, using the provided file system as the backing store.
 // The returned WaitGroup may be used to wait for the server to close.
 func runServer(ctx context.Context, cfg *servercfg.DoltgresConfig, dEnv *env.DoltEnv) (*svcs.Controller, error) {
-	initialization.Initialize()
+	initialization.Initialize(dEnv)
 
 	if dEnv.HasDoltDataDir() {
 		cwd, _ := dEnv.FS.Abs(".")

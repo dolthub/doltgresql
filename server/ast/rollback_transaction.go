@@ -21,7 +21,7 @@ import (
 )
 
 // nodeRollbackTransaction handles *tree.RollbackTransaction nodes.
-func nodeRollbackTransaction(node *tree.RollbackTransaction) (*vitess.Rollback, error) {
+func nodeRollbackTransaction(ctx *Context, node *tree.RollbackTransaction) (*vitess.Rollback, error) {
 	if node == nil {
 		return nil, nil
 	}

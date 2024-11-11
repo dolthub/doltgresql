@@ -74,8 +74,8 @@ export const branchTests = [
         {
           name: "main",
           hash: "",
-          latest_committer: "doltgres",
-          latest_committer_email: "doltgres@127.0.0.1",
+          latest_committer: "postgres",
+          latest_committer_email: "postgres@127.0.0.1",
           latest_commit_date: "",
           latest_commit_message: "CREATE DATABASE",
           remote: "",

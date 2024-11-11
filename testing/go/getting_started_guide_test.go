@@ -210,11 +210,8 @@ func TestGettingStartedGuide(t *testing.T) {
 					Expected: []sql.Row{{0, "Sehn", "Tim"}, {1, "Hendriks", "Brian"}, {2, "Son", "Aaron"}, {3, "Fitzgerald", "Brian"}},
 				},
 				{
-					// TODO: AS OF queries are not support yet.
-					//       https://github.com/dolthub/doltgresql/issues/39
-					Skip:     true,
-					Query:    "select * from employees as of modifications;",
-					Expected: []sql.Row{{0, "Sehn", "Tim"}, {1, "Hendriks", "Brian"}, {2, "Son", "Aaron"}, {3, "Fitzgerald", "Brian"}},
+					Query:    "select * from employees as of 'modifications';",
+					Expected: []sql.Row{{0, "Sehn", "Timothy"}, {1, "Hendriks", "Brian"}, {2, "Son", "Aaron"}, {3, "Fitzgerald", "Brian"}, {4, "Wilkins", "Daylon"}},
 				},
 				{
 					// TODO: This query panics: runtime error: slice bounds out of range [:1233] with capacity 260

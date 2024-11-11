@@ -27,11 +27,6 @@ type DiscardStatement struct{}
 var _ vitess.Injectable = DiscardStatement{}
 var _ sql.ExecSourceRel = DiscardStatement{}
 
-// CheckPrivileges implements the interface sql.ExecSourceRel.
-func (d DiscardStatement) CheckPrivileges(ctx *sql.Context, opChecker sql.PrivilegedOperationChecker) bool {
-	return true
-}
-
 // Children implements the interface sql.ExecSourceRel.
 func (d DiscardStatement) Children() []sql.Node {
 	return nil

@@ -24,7 +24,7 @@ import (
 )
 
 // nodeDiscard handles *tree.Discard nodes.
-func nodeDiscard(discard *tree.Discard) (vitess.Statement, error) {
+func nodeDiscard(ctx *Context, discard *tree.Discard) (vitess.Statement, error) {
 	if discard == nil {
 		return nil, nil
 	}

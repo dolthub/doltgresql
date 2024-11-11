@@ -23,7 +23,7 @@ import (
 )
 
 // nodeDropTable handles *tree.DropTable nodes.
-func nodeDropTable(node *tree.DropTable) (*vitess.DDL, error) {
+func nodeDropTable(ctx *Context, node *tree.DropTable) (*vitess.DDL, error) {
 	if node == nil || len(node.Names) == 0 {
 		return nil, nil
 	}
@@ -38,7 +38,7 @@ func nodeDropTable(node *tree.DropTable) (*vitess.DDL, error) {
 	tableNames := make([]vitess.TableName, len(node.Names))
 	for i := range node.Names {
 		var err error
-		tableNames[i], err = nodeTableName(&node.Names[i])
+		tableNames[i], err = nodeTableName(ctx, &node.Names[i])
 		if err != nil {
 			return nil, err
 		}

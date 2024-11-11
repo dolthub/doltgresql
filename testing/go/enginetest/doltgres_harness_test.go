@@ -614,7 +614,7 @@ func (d *DoltgresQueryEngine) AnalyzeQuery(s *sql.Context, s2 string) (sql.Node,
 }
 
 // TODO: random port
-var doltgresNoDbDsn = fmt.Sprintf("postgresql://doltgres:password@127.0.0.1:%d/?sslmode=disable", port)
+var doltgresNoDbDsn = fmt.Sprintf("postgresql://doltgres:@127.0.0.1:%d/?sslmode=disable", port)
 
 func (d *DoltgresQueryEngine) Query(ctx *sql.Context, query string) (sql.Schema, sql.RowIter, *sql.QueryFlags, error) {
 	db, err := d.getConnection()
@@ -788,6 +788,10 @@ func (d *DoltgresQueryEngine) EngineAnalyzer() *analyzer.Analyzer {
 	return &analyzer.Analyzer{
 		Catalog: &analyzer.Catalog{},
 	}
+}
+
+func (d *DoltgresQueryEngine) EngineEventScheduler() sql.EventScheduler {
+	return nil
 }
 
 func (d *DoltgresQueryEngine) EnginePreparedDataCache() *gms.PreparedDataCache {

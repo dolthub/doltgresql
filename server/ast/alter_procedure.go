@@ -23,8 +23,8 @@ import (
 )
 
 // nodeAlterProcedure handles *tree.AlterProcedure nodes.
-func nodeAlterProcedure(node *tree.AlterProcedure) (vitess.Statement, error) {
-	err := verifyRedundantRoutineOption(node.Options)
+func nodeAlterProcedure(ctx *Context, node *tree.AlterProcedure) (vitess.Statement, error) {
+	err := verifyRedundantRoutineOption(ctx, node.Options)
 	if err != nil {
 		return nil, err
 	}

@@ -25,15 +25,15 @@ import (
 )
 
 // nodeCreateDomain handles *tree.CreateDomain nodes.
-func nodeCreateDomain(node *tree.CreateDomain) (vitess.Statement, error) {
+func nodeCreateDomain(ctx *Context, node *tree.CreateDomain) (vitess.Statement, error) {
 	if node == nil {
 		return nil, nil
 	}
-	name, err := nodeUnresolvedObjectName(node.TypeName)
+	name, err := nodeUnresolvedObjectName(ctx, node.TypeName)
 	if err != nil {
 		return nil, err
 	}
-	_, dataType, err := nodeResolvableTypeReference(node.DataType)
+	_, dataType, err := nodeResolvableTypeReference(ctx, node.DataType)
 	if err != nil {
 		return nil, err
 	}
@@ -42,7 +42,7 @@ func nodeCreateDomain(node *tree.CreateDomain) (vitess.Statement, error) {
 	}
 	var children []vitess.Expr
 	if node.Default != nil {
-		defExpr, err := nodeExpr(node.Default)
+		defExpr, err := nodeExpr(ctx, node.Default)
 		if err != nil {
 			return nil, err
 		}
@@ -63,7 +63,7 @@ func nodeCreateDomain(node *tree.CreateDomain) (vitess.Statement, error) {
 				return nil, err
 			}
 
-			expr, err := nodeExpr(check)
+			expr, err := nodeExpr(ctx, check)
 			if err != nil {
 				return nil, err
 			}

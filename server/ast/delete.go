@@ -20,33 +20,37 @@ import (
 	vitess "github.com/dolthub/vitess/go/vt/sqlparser"
 
 	"github.com/dolthub/doltgresql/postgres/parser/sem/tree"
+	"github.com/dolthub/doltgresql/server/auth"
 )
 
 // nodeDelete handles *tree.Delete nodes.
-func nodeDelete(node *tree.Delete) (*vitess.Delete, error) {
+func nodeDelete(ctx *Context, node *tree.Delete) (*vitess.Delete, error) {
 	if node == nil {
 		return nil, nil
 	}
+	ctx.Auth().PushAuthType(auth.AuthType_DELETE)
+	defer ctx.Auth().PopAuthType()
+
 	if _, ok := node.Returning.(*tree.NoReturningClause); !ok {
 		return nil, fmt.Errorf("RETURNING is not yet supported")
 	}
-	with, err := nodeWith(node.With)
+	with, err := nodeWith(ctx, node.With)
 	if err != nil {
 		return nil, err
 	}
-	table, err := nodeTableExpr(node.Table)
+	table, err := nodeTableExpr(ctx, node.Table)
 	if err != nil {
 		return nil, err
 	}
-	where, err := nodeWhere(node.Where)
+	where, err := nodeWhere(ctx, node.Where)
 	if err != nil {
 		return nil, err
 	}
-	orderBy, err := nodeOrderBy(node.OrderBy)
+	orderBy, err := nodeOrderBy(ctx, node.OrderBy)
 	if err != nil {
 		return nil, err
 	}
-	limit, err := nodeLimit(node.Limit)
+	limit, err := nodeLimit(ctx, node.Limit)
 	if err != nil {
 		return nil, err
 	}

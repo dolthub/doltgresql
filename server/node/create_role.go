@@ -51,11 +51,6 @@ type CreateRole struct {
 var _ sql.ExecSourceRel = (*CreateRole)(nil)
 var _ vitess.Injectable = (*CreateRole)(nil)
 
-// CheckPrivileges implements the interface sql.ExecSourceRel.
-func (c *CreateRole) CheckPrivileges(ctx *sql.Context, opChecker sql.PrivilegedOperationChecker) bool {
-	return true
-}
-
 // Children implements the interface sql.ExecSourceRel.
 func (c *CreateRole) Children() []sql.Node {
 	return nil
@@ -73,14 +68,21 @@ func (c *CreateRole) Resolved() bool {
 
 // RowIter implements the interface sql.ExecSourceRel.
 func (c *CreateRole) RowIter(ctx *sql.Context, r sql.Row) (sql.RowIter, error) {
-	if auth.RoleExists(c.Name) {
+	var roleExists bool
+	auth.LockRead(func() {
+		roleExists = auth.RoleExists(c.Name)
+	})
+	if roleExists {
 		if c.IfNotExists {
 			return sql.RowsToRowIter(), nil
 		}
 		return nil, fmt.Errorf(`role "%s" already exists`, c.Name)
 	}
 
-	role := auth.CreateDefaultRole(c.Name)
+	var role auth.Role
+	auth.LockWrite(func() {
+		role = auth.CreateDefaultRole(c.Name)
+	})
 	if !c.IsPasswordNull {
 		password, err := auth.NewScramSha256Password(c.Password)
 		if err != nil {
@@ -114,7 +116,14 @@ func (c *CreateRole) RowIter(ctx *sql.Context, r sql.Row) (sql.RowIter, error) {
 		return nil, errors.New("ADMIN is not yet supported")
 	}
 
-	auth.SetRole(role)
+	var err error
+	auth.LockWrite(func() {
+		auth.SetRole(role)
+		err = auth.PersistChanges()
+	})
+	if err != nil {
+		return nil, err
+	}
 	return sql.RowsToRowIter(), nil
 }
 

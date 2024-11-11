@@ -11,8 +11,8 @@ export const logTests = [
       rows: [
         {
           commit_hash: "",
-          committer: "doltgres",
-          email: "doltgres@127.0.0.1",
+          committer: "postgres",
+          email: "postgres@127.0.0.1",
           date: "",
           message: "CREATE DATABASE",
           parents: ["3orrg69ou1loj2ph21guie3r2lf8bsab"],
@@ -56,8 +56,8 @@ export const logTests = [
         },
         {
           commit_hash: "",
-          committer: "doltgres",
-          email: "doltgres@127.0.0.1",
+          committer: "postgres",
+          email: "postgres@127.0.0.1",
           date: "",
           message: "CREATE DATABASE",
         },

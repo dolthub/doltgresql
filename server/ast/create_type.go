@@ -23,7 +23,7 @@ import (
 )
 
 // nodeCreateType handles *tree.CreateType nodes.
-func nodeCreateType(node *tree.CreateType) (vitess.Statement, error) {
+func nodeCreateType(ctx *Context, node *tree.CreateType) (vitess.Statement, error) {
 	if node == nil {
 		return nil, nil
 	}

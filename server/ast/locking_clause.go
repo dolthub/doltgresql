@@ -23,7 +23,7 @@ import (
 )
 
 // nodeLockingClause handles *tree.LockingClause nodes.
-func nodeLockingClause(node tree.LockingClause) (vitess.Statement, error) {
+func nodeLockingClause(ctx *Context, node tree.LockingClause) (vitess.Statement, error) {
 	if len(node) == 0 {
 		return nil, nil
 	}

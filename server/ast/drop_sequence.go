@@ -24,14 +24,14 @@ import (
 )
 
 // nodeDropSequence handles *tree.DropSequence nodes.
-func nodeDropSequence(node *tree.DropSequence) (vitess.Statement, error) {
+func nodeDropSequence(ctx *Context, node *tree.DropSequence) (vitess.Statement, error) {
 	if node == nil {
 		return nil, nil
 	}
 	if len(node.Names) != 1 {
 		return nil, fmt.Errorf("dropping multiple sequences in DROP SEQUENCE is not yet supported")
 	}
-	name, err := nodeTableName(&node.Names[0])
+	name, err := nodeTableName(ctx, &node.Names[0])
 	if err != nil {
 		return nil, err
 	}

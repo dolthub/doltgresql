@@ -23,7 +23,7 @@ import (
 )
 
 // nodeWith handles *tree.With nodes.
-func nodeWith(node *tree.With) (*vitess.With, error) {
+func nodeWith(ctx *Context, node *tree.With) (*vitess.With, error) {
 	if node == nil {
 		return nil, nil
 	}

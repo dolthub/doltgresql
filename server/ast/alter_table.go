@@ -23,18 +23,18 @@ import (
 )
 
 // nodeAlterTable handles *tree.AlterTable nodes.
-func nodeAlterTable(node *tree.AlterTable) (*vitess.AlterTable, error) {
+func nodeAlterTable(ctx *Context, node *tree.AlterTable) (*vitess.AlterTable, error) {
 	if node == nil {
 		return nil, nil
 	}
 
 	treeTableName := node.Table.ToTableName()
-	tableName, err := nodeTableName(&treeTableName)
+	tableName, err := nodeTableName(ctx, &treeTableName)
 	if err != nil {
 		return nil, err
 	}
 
-	statements, err := nodeAlterTableCmds(node.Cmds, tableName, node.IfExists)
+	statements, err := nodeAlterTableCmds(ctx, node.Cmds, tableName, node.IfExists)
 	if err != nil {
 		return nil, err
 	}
@@ -46,7 +46,7 @@ func nodeAlterTable(node *tree.AlterTable) (*vitess.AlterTable, error) {
 }
 
 // nodeAlterTableSetSchema handles *tree.AlterTableSetSchema nodes.
-func nodeAlterTableSetSchema(node *tree.AlterTableSetSchema) (vitess.Statement, error) {
+func nodeAlterTableSetSchema(ctx *Context, node *tree.AlterTableSetSchema) (vitess.Statement, error) {
 	if node == nil {
 		return nil, nil
 	}
@@ -58,14 +58,13 @@ func nodeAlterTableSetSchema(node *tree.AlterTableSetSchema) (vitess.Statement, 
 // being altered, and |ifExists| indicates whether the IF EXISTS clause was
 // specified.
 func nodeAlterTableCmds(
+	ctx *Context,
 	node tree.AlterTableCmds,
 	tableName vitess.TableName,
 	ifExists bool) ([]*vitess.DDL, error) {
 
 	if len(node) == 0 {
 		return nil, fmt.Errorf("no commands specified for ALTER TABLE statement")
-	} else if len(node) > 1 {
-		return nil, fmt.Errorf("ALTER TABLE with multiple commands is not yet supported")
 	}
 
 	vitessDdlCmds := make([]*vitess.DDL, 0, len(node))
@@ -74,23 +73,23 @@ func nodeAlterTableCmds(
 		var statement *vitess.DDL
 		switch cmd := cmd.(type) {
 		case *tree.AlterTableAddConstraint:
-			statement, err = nodeAlterTableAddConstraint(cmd, tableName, ifExists)
+			statement, err = nodeAlterTableAddConstraint(ctx, cmd, tableName, ifExists)
 		case *tree.AlterTableAddColumn:
-			statement, err = nodeAlterTableAddColumn(cmd, tableName, ifExists)
+			statement, err = nodeAlterTableAddColumn(ctx, cmd, tableName, ifExists)
 		case *tree.AlterTableDropColumn:
-			statement, err = nodeAlterTableDropColumn(cmd, tableName, ifExists)
+			statement, err = nodeAlterTableDropColumn(ctx, cmd, tableName, ifExists)
 		case *tree.AlterTableDropConstraint:
-			statement, err = nodeAlterTableDropConstraint(cmd, tableName, ifExists)
+			statement, err = nodeAlterTableDropConstraint(ctx, cmd, tableName, ifExists)
 		case *tree.AlterTableRenameColumn:
-			statement, err = nodeAlterTableRenameColumn(cmd, tableName, ifExists)
+			statement, err = nodeAlterTableRenameColumn(ctx, cmd, tableName, ifExists)
 		case *tree.AlterTableSetDefault:
-			statement, err = nodeAlterTableSetDefault(cmd, tableName, ifExists)
+			statement, err = nodeAlterTableSetDefault(ctx, cmd, tableName, ifExists)
 		case *tree.AlterTableDropNotNull:
-			statement, err = nodeAlterTableDropNotNull(cmd, tableName, ifExists)
+			statement, err = nodeAlterTableDropNotNull(ctx, cmd, tableName, ifExists)
 		case *tree.AlterTableSetNotNull:
-			statement, err = nodeAlterTableSetNotNull(cmd, tableName, ifExists)
+			statement, err = nodeAlterTableSetNotNull(ctx, cmd, tableName, ifExists)
 		case *tree.AlterTableAlterColumnType:
-			statement, err = nodeAlterTableAlterColumnType(cmd, tableName, ifExists)
+			statement, err = nodeAlterTableAlterColumnType(ctx, cmd, tableName, ifExists)
 		default:
 			return nil, fmt.Errorf("ALTER TABLE with unsupported command type %T", cmd)
 		}
@@ -109,6 +108,7 @@ func nodeAlterTableCmds(
 // the table being altered, and |ifExists| indicates whether the IF EXISTS clause
 // was specified.
 func nodeAlterTableAddConstraint(
+	ctx *Context,
 	node *tree.AlterTableAddConstraint,
 	tableName vitess.TableName,
 	ifExists bool) (*vitess.DDL, error) {
@@ -119,11 +119,11 @@ func nodeAlterTableAddConstraint(
 
 	switch constraintDef := node.ConstraintDef.(type) {
 	case *tree.CheckConstraintTableDef:
-		return nodeCheckConstraintTableDef(constraintDef, tableName, ifExists)
+		return nodeCheckConstraintTableDef(ctx, constraintDef, tableName, ifExists)
 	case *tree.UniqueConstraintTableDef:
-		return nodeUniqueConstraintTableDef(constraintDef, tableName, ifExists)
+		return nodeUniqueConstraintTableDef(ctx, constraintDef, tableName, ifExists)
 	case *tree.ForeignKeyConstraintTableDef:
-		foreignKeyDefinition, err := nodeForeignKeyConstraintTableDef(constraintDef)
+		foreignKeyDefinition, err := nodeForeignKeyConstraintTableDef(ctx, constraintDef)
 		if err != nil {
 			return nil, err
 		}
@@ -146,12 +146,12 @@ func nodeAlterTableAddConstraint(
 }
 
 // nodeAlterTableAddColumn converts a tree.AlterTableAddColumn instance into an equivalent vitess.DDL instance.
-func nodeAlterTableAddColumn(node *tree.AlterTableAddColumn, tableName vitess.TableName, ifExists bool) (*vitess.DDL, error) {
+func nodeAlterTableAddColumn(ctx *Context, node *tree.AlterTableAddColumn, tableName vitess.TableName, ifExists bool) (*vitess.DDL, error) {
 	if node.IfNotExists {
 		return nil, fmt.Errorf("IF NOT EXISTS on a column in an ADD COLUMN statement is not supported yet")
 	}
 
-	vitessColumnDef, err := nodeColumnTableDef(node.ColumnDef)
+	vitessColumnDef, err := nodeColumnTableDef(ctx, node.ColumnDef)
 	if err != nil {
 		return nil, err
 	}
@@ -170,7 +170,7 @@ func nodeAlterTableAddColumn(node *tree.AlterTableAddColumn, tableName vitess.Ta
 }
 
 // nodeAlterTableDropColumn converts a tree.AlterTableDropColumn instance into an equivalent vitess.DDL instance.
-func nodeAlterTableDropColumn(node *tree.AlterTableDropColumn, tableName vitess.TableName, ifExists bool) (*vitess.DDL, error) {
+func nodeAlterTableDropColumn(ctx *Context, node *tree.AlterTableDropColumn, tableName vitess.TableName, ifExists bool) (*vitess.DDL, error) {
 	if node.IfExists {
 		return nil, fmt.Errorf("IF EXISTS on a column in a DROP COLUMN statement is not supported yet")
 	}
@@ -195,7 +195,7 @@ func nodeAlterTableDropColumn(node *tree.AlterTableDropColumn, tableName vitess.
 }
 
 // nodeAlterTableRenameColumn converts a tree.AlterTableRenameColumn instance into an equivalent vitess.DDL instance.
-func nodeAlterTableRenameColumn(node *tree.AlterTableRenameColumn, tableName vitess.TableName, ifExists bool) (*vitess.DDL, error) {
+func nodeAlterTableRenameColumn(ctx *Context, node *tree.AlterTableRenameColumn, tableName vitess.TableName, ifExists bool) (*vitess.DDL, error) {
 	return &vitess.DDL{
 		Action:       "alter",
 		ColumnAction: "rename",
@@ -207,8 +207,8 @@ func nodeAlterTableRenameColumn(node *tree.AlterTableRenameColumn, tableName vit
 }
 
 // nodeAlterTableSetDefault converts a tree.AlterTableSetDefault instance into an equivalent vitess.DDL instance.
-func nodeAlterTableSetDefault(node *tree.AlterTableSetDefault, tableName vitess.TableName, ifExists bool) (*vitess.DDL, error) {
-	expr, err := nodeExpr(node.Default)
+func nodeAlterTableSetDefault(ctx *Context, node *tree.AlterTableSetDefault, tableName vitess.TableName, ifExists bool) (*vitess.DDL, error) {
+	expr, err := nodeExpr(ctx, node.Default)
 	if err != nil {
 		return nil, err
 	}
@@ -231,7 +231,7 @@ func nodeAlterTableSetDefault(node *tree.AlterTableSetDefault, tableName vitess.
 }
 
 // nodeAlterTableAlterColumnType converts a tree.AlterTableAlterColumnType instance into an equivalent vitess.DDL instance.
-func nodeAlterTableAlterColumnType(node *tree.AlterTableAlterColumnType, tableName vitess.TableName, ifExists bool) (*vitess.DDL, error) {
+func nodeAlterTableAlterColumnType(ctx *Context, node *tree.AlterTableAlterColumnType, tableName vitess.TableName, ifExists bool) (*vitess.DDL, error) {
 	if node.Collation != "" {
 		return nil, fmt.Errorf("ALTER TABLE with COLLATE is not supported yet")
 	}
@@ -240,7 +240,7 @@ func nodeAlterTableAlterColumnType(node *tree.AlterTableAlterColumnType, tableNa
 		return nil, fmt.Errorf("ALTER TABLE with USING is not supported yet")
 	}
 
-	convertType, resolvedType, err := nodeResolvableTypeReference(node.ToType)
+	convertType, resolvedType, err := nodeResolvableTypeReference(ctx, node.ToType)
 	if err != nil {
 		return nil, err
 	}
@@ -263,7 +263,7 @@ func nodeAlterTableAlterColumnType(node *tree.AlterTableAlterColumnType, tableNa
 }
 
 // nodeAlterTableDropNotNull converts a tree.AlterTableDropNotNull instance into an equivalent vitess.DDL instance.
-func nodeAlterTableDropNotNull(node *tree.AlterTableDropNotNull, tableName vitess.TableName, ifExists bool) (*vitess.DDL, error) {
+func nodeAlterTableDropNotNull(ctx *Context, node *tree.AlterTableDropNotNull, tableName vitess.TableName, ifExists bool) (*vitess.DDL, error) {
 	return &vitess.DDL{
 		Action:   "alter",
 		Table:    tableName,
@@ -276,7 +276,7 @@ func nodeAlterTableDropNotNull(node *tree.AlterTableDropNotNull, tableName vites
 }
 
 // nodeAlterTableSetNotNull converts a tree.AlterTableSetNotNull instance into an equivalent vitess.DDL instance.
-func nodeAlterTableSetNotNull(node *tree.AlterTableSetNotNull, tableName vitess.TableName, ifExists bool) (*vitess.DDL, error) {
+func nodeAlterTableSetNotNull(ctx *Context, node *tree.AlterTableSetNotNull, tableName vitess.TableName, ifExists bool) (*vitess.DDL, error) {
 	return &vitess.DDL{
 		Action:   "alter",
 		Table:    tableName,
@@ -285,5 +285,49 @@ func nodeAlterTableSetNotNull(node *tree.AlterTableSetNotNull, tableName vitess.
 			Action: "set",
 			Column: vitess.NewColIdent(node.Column.String()),
 		},
+	}, nil
+}
+
+// nodeAlterTableSetNotNull converts a tree.AlterTablePartition instance into an equivalent vitess.DDL instance.
+func nodeAlterTablePartition(ctx *Context, node *tree.AlterTablePartition) (*vitess.AlterTable, error) {
+	if node == nil {
+		return nil, nil
+	}
+
+	// TODO: This is an incomplete translation because our GMS implementation doesn't support the MySQL
+	//   equivalent of these statements either. Regardless, these are all no-ops.
+	treeTableName := node.Name.ToTableName()
+	tableName, err := nodeTableName(ctx, &treeTableName)
+	if err != nil {
+		return nil, err
+	}
+
+	switch node.Spec.Type {
+	case tree.PartitionBoundIn:
+	case tree.PartitionBoundFromTo:
+	case tree.PartitionBoundWith:
+	default:
+		return nil, fmt.Errorf("ALTER TABLE with unsupported partition type %v", node.Spec.Type)
+	}
+
+	partitionDef := &vitess.PartitionDefinition{
+		Name: vitess.NewColIdent(node.Partition.String()),
+	}
+
+	actionStr := ""
+	if node.IsDetach {
+		actionStr = vitess.DropStr
+	} else {
+		actionStr = vitess.AddStr
+	}
+
+	partitionSpec := &vitess.PartitionSpec{
+		Action:      actionStr,
+		Definitions: []*vitess.PartitionDefinition{partitionDef},
+	}
+
+	return &vitess.AlterTable{
+		Table:          tableName,
+		PartitionSpecs: []*vitess.PartitionSpec{partitionSpec},
 	}, nil
 }

@@ -22,7 +22,7 @@ my $db   = "doltgres";
 
 my $dsn = "DBI:Pg:database=$db;host=127.0.0.1;port=$port";
 # Connect to the database
-my $dbh = DBI->connect($dsn, $user, "", { PrintError => 0, RaiseError => 1 });
+my $dbh = DBI->connect($dsn, $user, "password", { PrintError => 0, RaiseError => 1 });
 die "failed to connect to database:DBI->errstr()" unless($dbh);
 
 foreach my $query_response ( @{$QUERY_RESPONSE} ) {
