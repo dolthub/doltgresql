@@ -1204,7 +1204,7 @@ func (u *sqlSymUnion) aggregatesToDrop() []tree.AggregateToDrop {
 
 %type <bool> all_or_distinct opt_cascade opt_if_exists opt_restrict opt_trusted opt_procedural
 %type <bool> with_comment opt_with_force opt_create_as_with_data
-%type <bool> boolean_value
+%type <bool> boolean_value boolean_opt
 %type <empty> join_outer
 %type <tree.JoinCond> join_qual
 %type <str> join_type
@@ -5344,13 +5344,23 @@ row_source_extension_stmt:
 | upsert_stmt       // EXTEND WITH HELP: UPSERT
 
 explain_option_list:
-  explain_option_name
+  explain_option_name boolean_opt // boolean_opt is ignored
   {
     $$.val = []string{$1}
   }
-| explain_option_list ',' explain_option_name
+| explain_option_list ',' explain_option_name boolean_opt
   {
     $$.val = append($1.strs(), $3)
+  }
+
+boolean_opt:
+  /* EMPTY */
+  {
+    $$.val = false
+  }
+| boolean_value
+  {
+    $$.val = $1
   }
 
 // %Help: PREPARE - prepare a statement for later execution
