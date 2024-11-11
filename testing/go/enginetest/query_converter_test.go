@@ -39,7 +39,7 @@ func transformAST(query string) ([]string, bool) {
 			return transformCreateTable(query, stmt)
 		} else if stmt.Action == "drop" {
 			return transformDrop(query, stmt)
-		} 
+		}
 	case *sqlparser.Set:
 		return transformSet(stmt)
 	case *sqlparser.Select:
@@ -57,7 +57,7 @@ func transformInsert(stmt *sqlparser.Insert) ([]string, bool) {
 	// only bother translating inserts if there's an ON DUPLICATE KEY UPDATE clause, maybe revisit this later
 	if len(stmt.OnDup) > 0 {
 		tableName := tree.NewTableName(tree.Name(stmt.Table.DbQualifier.String()), tree.Name(stmt.Table.Name.String()))
-		
+
 		var colList tree.NameList
 		if len(stmt.Columns) > 0 {
 			colList = make(tree.NameList, len(stmt.Columns))
@@ -65,27 +65,27 @@ func transformInsert(stmt *sqlparser.Insert) ([]string, bool) {
 				colList[i] = tree.Name(col.String())
 			}
 		}
-		
+
 		rows := rowsForInsert(stmt.Rows)
-		
+
 		onConflict := tree.OnConflict{
-			Exprs: convertUpdateExprs(sqlparser.AssignmentExprs(stmt.OnDup)),
+			Exprs:   convertUpdateExprs(sqlparser.AssignmentExprs(stmt.OnDup)),
 			Columns: tree.NameList{tree.Name("fake")}, // column list ignored but must be present for valid syntax
 		}
-		
+
 		insert := tree.Insert{
 			Table:      tableName,
 			Columns:    colList,
 			Rows:       rows,
 			OnConflict: &onConflict,
-			Returning: &tree.NoReturningClause{},
+			Returning:  &tree.NoReturningClause{},
 		}
-		
+
 		ctx := formatNodeWithUnqualifiedTableNames(&insert)
 		return []string{ctx.String()}, true
 	} else if stmt.Ignore == "ignore " {
 		tableName := tree.NewTableName(tree.Name(stmt.Table.DbQualifier.String()), tree.Name(stmt.Table.Name.String()))
-		
+
 		var colList tree.NameList
 		if len(stmt.Columns) > 0 {
 			colList = make(tree.NameList, len(stmt.Columns))
@@ -97,8 +97,8 @@ func transformInsert(stmt *sqlparser.Insert) ([]string, bool) {
 		rows := rowsForInsert(stmt.Rows)
 
 		onConflict := tree.OnConflict{
-			Columns:          tree.NameList{tree.Name("fake")}, // column list ignored but must be present for valid syntax
-			DoNothing:        true,
+			Columns:   tree.NameList{tree.Name("fake")}, // column list ignored but must be present for valid syntax
+			DoNothing: true,
 		}
 
 		insert := tree.Insert{
@@ -106,7 +106,7 @@ func transformInsert(stmt *sqlparser.Insert) ([]string, bool) {
 			Columns:    colList,
 			Rows:       rows,
 			OnConflict: &onConflict,
-			Returning: &tree.NoReturningClause{},
+			Returning:  &tree.NoReturningClause{},
 		}
 
 		ctx := formatNodeWithUnqualifiedTableNames(&insert)
@@ -131,7 +131,7 @@ func rowsForInsert(rows sqlparser.InsertRows) *tree.Select {
 	switch rows := rows.(type) {
 	case sqlparser.Values:
 		return &tree.Select{
-			Select:  &tree.ValuesClause{
+			Select: &tree.ValuesClause{
 				Rows: insertValuesToExprs(rows),
 			},
 		}
@@ -141,13 +141,13 @@ func rowsForInsert(rows sqlparser.InsertRows) *tree.Select {
 		}
 	case *sqlparser.ParenSelect:
 		return &tree.Select{
-			Select:  &tree.ParenSelect{
+			Select: &tree.ParenSelect{
 				Select: convertParentSelect(rows.Select),
 			},
 		}
 	case *sqlparser.AliasedValues:
 		return &tree.Select{
-			Select:  &tree.ValuesClause{
+			Select: &tree.ValuesClause{
 				Rows: insertValuesToExprs(rows.Values),
 			},
 		}
@@ -174,12 +174,12 @@ func convertParentSelect(statement sqlparser.SelectStatement) *tree.Select {
 
 func convertSelect(sel *sqlparser.Select) *tree.SelectClause {
 	return &tree.SelectClause{
-		Distinct:    sel.QueryOpts.Distinct,
-		Exprs:       convertSelectExprs(sel.SelectExprs),
-		From:        convertFrom(sel.From),
-		Where:       convertWhere(sel.Where),
-		GroupBy:     convertGroupBy(sel.GroupBy),
-		Having:      convertHaving(sel.Having),
+		Distinct: sel.QueryOpts.Distinct,
+		Exprs:    convertSelectExprs(sel.SelectExprs),
+		From:     convertFrom(sel.From),
+		Where:    convertWhere(sel.Where),
+		GroupBy:  convertGroupBy(sel.GroupBy),
+		Having:   convertHaving(sel.Having),
 	}
 }
 
@@ -200,8 +200,8 @@ func convertSetOp(sel *sqlparser.SetOp) tree.SelectStatement {
 		left := convertSelectStatement(sel.Left)
 		right := convertSelectStatement(sel.Right)
 		return &tree.UnionClause{
-			Type: tree.UnionOp,
-			Left: selectFromSelectClause(left.(*tree.SelectClause)),
+			Type:  tree.UnionOp,
+			Left:  selectFromSelectClause(left.(*tree.SelectClause)),
 			Right: selectFromSelectClause(right.(*tree.SelectClause)),
 		}
 	default:
@@ -220,7 +220,7 @@ func convertHaving(having *sqlparser.Where) *tree.Where {
 }
 
 func convertGroupBy(groupBy sqlparser.GroupBy) tree.GroupBy {
-	 return convertExprs(sqlparser.Exprs(groupBy))
+	return convertExprs(sqlparser.Exprs(groupBy))
 }
 
 func convertWhere(where *sqlparser.Where) *tree.Where {
@@ -235,7 +235,7 @@ func convertWhere(where *sqlparser.Where) *tree.Where {
 
 func convertFrom(from sqlparser.TableExprs) tree.From {
 	tables := make(tree.TableExprs, len(from))
-	
+
 	for i, table := range from {
 		tables[i] = convertTableExpr(table)
 	}
@@ -250,8 +250,8 @@ func convertTableExpr(table sqlparser.TableExpr) tree.TableExpr {
 		switch tableExpr := table.Expr.(type) {
 		case sqlparser.TableName:
 			return &tree.AliasedTableExpr{
-				Expr:       tree.NewTableName(tree.Name(tableExpr.DbQualifier.String()), tree.Name(tableExpr.Name.String())),
-				As:         tree.AliasClause{
+				Expr: tree.NewTableName(tree.Name(tableExpr.DbQualifier.String()), tree.Name(tableExpr.Name.String())),
+				As: tree.AliasClause{
 					Alias: tree.Name(table.As.String()),
 				},
 			}
@@ -279,7 +279,7 @@ func insertValuesToExprs(values sqlparser.Values) []tree.Exprs {
 			exprs[i][j] = convertValue(val)
 		}
 	}
-	return exprs	
+	return exprs
 }
 
 func convertValue(val sqlparser.Expr) tree.Expr {
@@ -298,16 +298,16 @@ func convertValue(val sqlparser.Expr) tree.Expr {
 func convertFuncExpr(val *sqlparser.FuncExpr) tree.Expr {
 	fnName := tree.NewUnresolvedName(val.Name.String())
 	exprs := make(tree.Exprs, len(val.Exprs))
-	
+
 	for i, expr := range val.Exprs {
 		e := convertSelectExpr(expr)
 		exprs[i] = e.Expr
 	}
 	return &tree.FuncExpr{
-		Func:      tree.ResolvableFunctionReference{
+		Func: tree.ResolvableFunctionReference{
 			FunctionReference: fnName,
 		},
-		Exprs:     nil,
+		Exprs: nil,
 	}
 }
 
@@ -410,7 +410,7 @@ func convertComparisonExpr(val *sqlparser.ComparisonExpr) tree.Expr {
 }
 
 func convertBinaryExpr(val *sqlparser.BinaryExpr) tree.Expr {
-	var op tree.BinaryOperator	
+	var op tree.BinaryOperator
 	switch val.Operator {
 	case sqlparser.BitAndStr:
 		op = tree.Bitand
@@ -435,7 +435,7 @@ func convertBinaryExpr(val *sqlparser.BinaryExpr) tree.Expr {
 	default:
 		panic(fmt.Sprintf("unhandled operator: %s", val.Operator))
 	}
-	
+
 	return &tree.BinaryExpr{
 		Operator: op,
 		Left:     convertExpr(val.Left),
@@ -470,7 +470,7 @@ func convertSQLVal(val *sqlparser.SQLVal) tree.Expr {
 }
 
 func transformDrop(query string, stmt *sqlparser.DDL) ([]string, bool) {
-	return nil, false	
+	return nil, false
 }
 
 func transformAlterTable(stmt *sqlparser.AlterTable) ([]string, bool) {
@@ -558,21 +558,21 @@ func convertDdlStatement(statement *sqlparser.DDL) ([]string, bool) {
 			case "drop":
 				tableName := tree.NewTableName(tree.Name(""), tree.Name(statement.Table.Name.String()))
 				dropIndex := tree.DropIndex{
-					IndexList:    tree.TableIndexNames{
+					IndexList: tree.TableIndexNames{
 						{
-							Table:  *tableName,
+							Table: *tableName,
 							Index: tree.UnrestrictedName(statement.IndexSpec.ToName.String()),
-					  },
+						},
 					},
 				}
-				
+
 				ctx := formatNodeWithUnqualifiedTableNames(&dropIndex)
 				return []string{ctx.String()}, true
 			default:
 				return nil, false
 			}
 		}
-		
+
 		return nil, false
 	default:
 		return nil, false
@@ -747,7 +747,7 @@ func transformCreateTable(query string, stmt *sqlparser.DDL) ([]string, bool) {
 				ConstraintName tree.Name
 			}{
 				Expr:           convertExpr(col.Type.Default),
-				ConstraintName: "",  // TODO
+				ConstraintName: "", // TODO
 			},
 			CheckExprs: nil, // TODO
 		})
@@ -764,26 +764,25 @@ func transformCreateTable(query string, stmt *sqlparser.DDL) ([]string, bool) {
 			for i, col := range index.Columns {
 				colName := col.Column.String()
 				indexCols[i] = tree.IndexElem{
-					Column:     tree.Name(colName),
+					Column: tree.Name(colName),
 				}
 			}
-			
-			
+
 			indexDef := &tree.UniqueConstraintTableDef{
 				PrimaryKey: true,
 				IndexTableDef: tree.IndexTableDef{
 					Columns: indexCols,
 				},
 			}
-			
+
 			createTable.Defs = append(createTable.Defs, indexDef)
 		}
 	}
 
 	ctx := formatNodeWithUnqualifiedTableNames(&createTable)
 	query = ctx.String()
-	
-	// this is a very odd quirk for only the char type, not sure why the postgres parser does this but it doesn't 
+
+	// this is a very odd quirk for only the char type, not sure why the postgres parser does this but it doesn't
 	// parse in a CREATE TABLE statement
 	query = strings.ReplaceAll(query, `"char"`, `char`)
 	queries = append(queries, query)
@@ -1266,7 +1265,7 @@ func TestConvertQuery(t *testing.T) {
 			},
 		},
 		{
-			input: "CREATE TABLE foo (a INT, b int, primary key (b,a))",
+			input:    "CREATE TABLE foo (a INT, b int, primary key (b,a))",
 			expected: []string{"CREATE TABLE foo (a INTEGER NULL, b INTEGER NULL, PRIMARY KEY (b, a))"},
 		},
 		{

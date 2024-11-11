@@ -227,7 +227,7 @@ func sanitizeQuery(s string) (bool, string) {
 			return false, ""
 		}
 	}
-	
+
 	s = commentClause.ReplaceAllString(s, "")
 	return true, s
 }

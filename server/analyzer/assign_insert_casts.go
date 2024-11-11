@@ -93,7 +93,7 @@ func AssignInsertCasts(ctx *sql.Context, a *analyzer.Analyzer, node sql.Node, sc
 		}
 		insertInto = insertInto.WithSource(plan.NewProject(projections, insertInto.Source))
 	}
-	
+
 	// handle on conflict clause if present
 	if len(insertInto.OnDupExprs) > 0 {
 		newDupExprs, err := assignUpdateFieldCasts(insertInto.OnDupExprs)
@@ -105,9 +105,9 @@ func AssignInsertCasts(ctx *sql.Context, a *analyzer.Analyzer, node sql.Node, sc
 		if err != nil {
 			return nil, false, err
 		}
-		
+
 		insertInto = newInsertInto.(*plan.InsertInto)
 	}
-	
+
 	return insertInto, transform.NewTree, nil
 }

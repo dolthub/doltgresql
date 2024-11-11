@@ -29,11 +29,11 @@ func TestInsert(t *testing.T) {
 			},
 			Assertions: []ScriptTestAssertion{
 				{
-					Query: "INSERT INTO mytable (id, name) VALUES (1, 'hello')",
+					Query:            "INSERT INTO mytable (id, name) VALUES (1, 'hello')",
 					SkipResultsCheck: true,
 				},
 				{
-					Query: "INSERT INTO mytable (ID, naME) VALUES (2, 'world')",
+					Query:            "INSERT INTO mytable (ID, naME) VALUES (2, 'world')",
 					SkipResultsCheck: true,
 				},
 				{
@@ -52,11 +52,11 @@ func TestInsert(t *testing.T) {
 			},
 			Assertions: []ScriptTestAssertion{
 				{
-					Query: "INSERT INTO mytable (id, name) VALUES (1, 'hello')",
+					Query:            "INSERT INTO mytable (id, name) VALUES (1, 'hello')",
 					SkipResultsCheck: true,
 				},
 				{
-					Query: "INSERT INTO mytable (ID, naME) VALUES (2, 'world')",
+					Query:            "INSERT INTO mytable (ID, naME) VALUES (2, 'world')",
 					SkipResultsCheck: true,
 				},
 				{
@@ -76,19 +76,19 @@ func TestInsert(t *testing.T) {
 			},
 			Assertions: []ScriptTestAssertion{
 				{
-					Query: "INSERT INTO mytable (id, name) VALUES (1, 'hello')",
+					Query:            "INSERT INTO mytable (id, name) VALUES (1, 'hello')",
 					SkipResultsCheck: true,
 				},
 				{
-					Query: "INSERT INTO mytable (ID, naME) VALUES (2, 'world')",
+					Query:            "INSERT INTO mytable (ID, naME) VALUES (2, 'world')",
 					SkipResultsCheck: true,
 				},
 				{
-					Query: "INSERT INTO mytable (ID, naME) VALUES (1, 'world') ON CONFLICT (id) DO UPDATE SET name = 'world'",
+					Query:            "INSERT INTO mytable (ID, naME) VALUES (1, 'world') ON CONFLICT (id) DO UPDATE SET name = 'world'",
 					SkipResultsCheck: true,
 				},
 				{
-					Query: "INSERT INTO mytable (ID, naME) VALUES (2, 'hello') ON CONFLICT (id) DO UPDATE SET name = 'conflict'",
+					Query:            "INSERT INTO mytable (ID, naME) VALUES (2, 'hello') ON CONFLICT (id) DO UPDATE SET name = 'conflict'",
 					SkipResultsCheck: true,
 				},
 				{
@@ -112,15 +112,15 @@ func TestInsert(t *testing.T) {
 					},
 				},
 				{
-					Query: "INSERT INTO t2 (id, c1, c2) VALUES (1, 'hello', 'world'), (2, 'world', 'hello')",
+					Query:            "INSERT INTO t2 (id, c1, c2) VALUES (1, 'hello', 'world'), (2, 'world', 'hello')",
 					SkipResultsCheck: true,
 				},
 				{
-					Query: "INSERT INTO t2 (id, c1, c2) VALUES (1, 'hello', 'world') ON CONFLICT (id) DO UPDATE SET c1 = 'conflict', c2 = c1",
+					Query:            "INSERT INTO t2 (id, c1, c2) VALUES (1, 'hello', 'world') ON CONFLICT (id) DO UPDATE SET c1 = 'conflict', c2 = c1",
 					SkipResultsCheck: true,
 				},
 				{
-					Query: "INSERT INTO t2 (id, c1, c2) VALUES (2, 'hello', 'world') ON CONFLICT (id) DO UPDATE SET c2 = c1",
+					Query:            "INSERT INTO t2 (id, c1, c2) VALUES (2, 'hello', 'world') ON CONFLICT (id) DO UPDATE SET c2 = c1",
 					SkipResultsCheck: true,
 				},
 				{

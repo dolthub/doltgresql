@@ -36,18 +36,18 @@ func nodeInsert(ctx *Context, node *tree.Insert) (*vitess.Insert, error) {
 	}
 	var ignore string
 	var onDuplicate vitess.OnDup
-	
+
 	if node.OnConflict != nil {
 		// ON CONFLICT DO NOTHING is equivalent to INSERT IGNORE in GMS
 		ignoreErrors := node.OnConflict.ArbiterPredicate == nil &&
-				node.OnConflict.Exprs == nil &&
-				node.OnConflict.Where == nil &&
-				node.OnConflict.DoNothing
-		
+			node.OnConflict.Exprs == nil &&
+			node.OnConflict.Where == nil &&
+			node.OnConflict.DoNothing
+
 		if ignoreErrors {
 			ignore = vitess.IgnoreStr
 		} else if supportedOnDuplicateKey(node.OnConflict) {
-			// TODO: we are ignoring the column names, which are used to infer which index under conflict is to be checked 
+			// TODO: we are ignoring the column names, which are used to infer which index under conflict is to be checked
 			updateExprs, err := nodeUpdateExprs(ctx, node.OnConflict.Exprs)
 			if err != nil {
 				return nil, err
