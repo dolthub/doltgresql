@@ -115,16 +115,30 @@ const (
 	ExplainFlagEnv
 	ExplainFlagCatalog
 	ExplainFlagDebug
+	ExplainFlagCosts
+	ExplainFlagSettings
+	ExplainFlagBuffers
+	ExplainFlagWAL
+	ExplainFlagTiming
+	ExplainFlagSummary
+	ExplainFlagFormat
 	numExplainFlags = iota
 )
 
 var explainFlagStrings = [...]string{
-	ExplainFlagVerbose: "VERBOSE",
-	ExplainFlagTypes:   "TYPES",
-	ExplainFlagAnalyze: "ANALYZE",
-	ExplainFlagEnv:     "ENV",
-	ExplainFlagCatalog: "CATALOG",
-	ExplainFlagDebug:   "DEBUG",
+	ExplainFlagVerbose:  "VERBOSE",
+	ExplainFlagTypes:    "TYPES",
+	ExplainFlagAnalyze:  "ANALYZE",
+	ExplainFlagEnv:      "ENV",
+	ExplainFlagCatalog:  "CATALOG",
+	ExplainFlagDebug:    "DEBUG",
+	ExplainFlagCosts:    "COSTS",
+	ExplainFlagSettings: "SETTINGS",
+	ExplainFlagBuffers:  "BUFFERS",
+	ExplainFlagWAL:      "WAL",
+	ExplainFlagTiming:   "TIMING",
+	ExplainFlagSummary:  "SUMMARY",
+	ExplainFlagFormat:   "FORMAT",
 }
 
 var explainFlagStringMap = func() map[string]ExplainFlag {
