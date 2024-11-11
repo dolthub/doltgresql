@@ -61,6 +61,27 @@ EXPLAIN
 					Query: `
 EXPLAIN 
 (
+	ANALYZE ON, 
+	VERBOSE OFF, 
+	COSTS TRUE, 
+	SETTINGS FALSE,
+	BUFFERS,
+	WAL,
+	TIMING,
+	SUMMARY,
+	FORMAT TEXT
+) 
+	SELECT * FROM t;
+`,
+					Expected: []sql.Row{
+						{"Seq Scan on t  (cost=0.00..35.50 rows=2550 width=4)"},
+					},
+				},
+				{
+					Skip: true, // Need to properly support explain options
+					Query: `
+EXPLAIN 
+(
 	NOTAVALIDOPTION
 ) 
 	SELECT * FROM t;
