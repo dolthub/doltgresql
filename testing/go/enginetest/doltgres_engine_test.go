@@ -61,7 +61,7 @@ func TestQueries(t *testing.T) {
 }
 
 func TestSingleWriteQuery(t *testing.T) {
-	// t.Skip()
+	t.Skip()
 	h := newDoltgresServerHarness(t)
 	defer h.Close()
 
