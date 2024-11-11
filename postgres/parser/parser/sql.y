@@ -797,7 +797,9 @@ func (u *sqlSymUnion) aggregatesToDrop() []tree.AggregateToDrop {
 
 %token <str> WHEN WHERE WINDOW WITH WITHIN WITHOUT WORK WRAPPER WRITE
 
-%token <str> YEAR
+%token <str> XML
+
+%token <str> YAML YEAR
 
 %token <str> ZONE
 
@@ -1204,7 +1206,7 @@ func (u *sqlSymUnion) aggregatesToDrop() []tree.AggregateToDrop {
 
 %type <bool> all_or_distinct opt_cascade opt_if_exists opt_restrict opt_trusted opt_procedural
 %type <bool> with_comment opt_with_force opt_create_as_with_data
-%type <bool> boolean_value boolean_opt
+%type <bool> boolean_value
 %type <empty> join_outer
 %type <tree.JoinCond> join_qual
 %type <str> join_type
@@ -1275,7 +1277,7 @@ func (u *sqlSymUnion) aggregatesToDrop() []tree.AggregateToDrop {
 %type <tree.AsOfClause> as_of_clause opt_as_of_clause
 %type <tree.Expr> opt_changefeed_sink
 
-%type <str> explain_option_name
+%type <str> explain_option_name explain_option_value
 %type <[]string> explain_option_list opt_enum_val_list enum_val_list
 
 %type <tree.ResolvableTypeReference> typename simple_typename cast_target
@@ -5344,32 +5346,28 @@ row_source_extension_stmt:
 | upsert_stmt       // EXTEND WITH HELP: UPSERT
 
 explain_option_list:
-  explain_option_name boolean_opt // boolean_opt is ignored
+  explain_option_name explain_option_value // boolean_opt is ignored
   {
     $$.val = []string{$1}
   }
-| explain_option_list ',' explain_option_name boolean_opt
+| explain_option_list ',' explain_option_name explain_option_value
   {
     $$.val = append($1.strs(), $3)
   }
 
-boolean_opt:
+explain_option_value:
   /* EMPTY */
   {
-    $$.val = false
+    $$ = ""
   }
+| TRUE
+| FALSE
 | OFF
-  {
-    $$.val = false
-  }
 | ON
-  {
-    $$.val = true
-  }
-| boolean_value
-  {
-    $$.val = $1
-  }
+| TEXT
+| XML
+| JSON
+| YAML
 
 // %Help: PREPARE - prepare a statement for later execution
 // %Category: Misc
@@ -13932,7 +13930,9 @@ table_name:            db_object_name
 
 standalone_index_name: db_object_name
 
-explain_option_name:   non_reserved_word
+explain_option_name:
+  non_reserved_word
+| ANALYZE
 
 cursor_name:           name
 
@@ -14630,6 +14630,8 @@ unreserved_keyword:
 | WITHOUT
 | WRITE
 | YEAR
+| XML
+| YAML
 | YES
 | ZONE
 
