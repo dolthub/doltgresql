@@ -338,6 +338,8 @@ func convertExprs(exprs sqlparser.Exprs) []tree.Expr {
 
 func convertExpr(expr sqlparser.Expr) tree.Expr {
 	switch val := expr.(type) {
+	case nil:
+		return nil
 	case *sqlparser.SQLVal:
 		return convertSQLVal(val)
 	case *sqlparser.ColName:
@@ -744,7 +746,7 @@ func transformCreateTable(query string, stmt *sqlparser.DDL) ([]string, bool) {
 				Expr           tree.Expr
 				ConstraintName tree.Name
 			}{
-				Expr:           nil, // TODO
+				Expr:           convertExpr(col.Type.Default),
 				ConstraintName: "",  // TODO
 			},
 			CheckExprs: nil, // TODO
@@ -752,7 +754,12 @@ func transformCreateTable(query string, stmt *sqlparser.DDL) ([]string, bool) {
 	}
 
 	ctx := formatNodeWithUnqualifiedTableNames(&createTable)
-	queries = append(queries, ctx.String())
+	query = ctx.String()
+	
+	// this is a very odd quirk for only the char type, not sure why the postgres parser does this but it doesn't 
+	// parse in a CREATE TABLE statement
+	query = strings.ReplaceAll(query, `"char"`, `char`)
+	queries = append(queries, query)
 
 	// If there are additional (non-primary key) indexes defined, each one gets its own additional statement
 	if len(stmt.TableSpec.Indexes) > 0 {
