@@ -151,6 +151,10 @@ func rowsForInsert(rows sqlparser.InsertRows) *tree.Select {
 				Rows: insertValuesToExprs(rows.Values),
 			},
 		}
+	case *sqlparser.SetOp:
+		return &tree.Select{
+			Select: convertSelectStatement(rows),
+		}
 	default:
 		panic(fmt.Sprintf("unhandled type: %T", rows))
 	}
@@ -224,6 +228,7 @@ func convertWhere(where *sqlparser.Where) *tree.Where {
 		return nil
 	}
 	return &tree.Where{
+		Type: tree.AstWhere,
 		Expr: convertExpr(where.Expr),
 	}
 }
@@ -336,7 +341,7 @@ func convertExpr(expr sqlparser.Expr) tree.Expr {
 	case *sqlparser.SQLVal:
 		return convertSQLVal(val)
 	case *sqlparser.ColName:
-		return tree.NewStrVal(val.Name.String())
+		return tree.NewUnresolvedName(val.Name.String())
 	case *sqlparser.FuncExpr:
 		return convertFuncExpr(val)
 	case *sqlparser.ValuesFuncExpr:
@@ -354,7 +359,12 @@ func convertExpr(expr sqlparser.Expr) tree.Expr {
 
 func convertSubquery(val *sqlparser.Subquery) tree.Expr {
 	return &tree.Subquery{
-		Select: convertSelectStatement(val.Select),
+		Select: &tree.ParenSelect{
+			// TODO: order by, limit
+			Select: &tree.Select{
+				Select: convertSelectStatement(val.Select),
+			},
+		},
 	}
 }
 
