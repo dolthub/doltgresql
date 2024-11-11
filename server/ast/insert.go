@@ -48,7 +48,7 @@ func nodeInsert(ctx *Context, node *tree.Insert) (*vitess.Insert, error) {
 			ignore = vitess.IgnoreStr
 		} else if supportedOnDuplicateKey(node.OnConflict) {
 			// TODO: we are ignoring the column names, which are used to infer which index under conflict is to be checked 
-			updateExprs, err := nodeUpdateExprs(node.OnConflict.Exprs)
+			updateExprs, err := nodeUpdateExprs(ctx, node.OnConflict.Exprs)
 			if err != nil {
 				return nil, err
 			}
