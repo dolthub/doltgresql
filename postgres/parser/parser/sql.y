@@ -5358,6 +5358,14 @@ boolean_opt:
   {
     $$.val = false
   }
+| OFF
+  {
+    $$.val = false
+  }
+| ON
+  {
+    $$.val = true
+  }
 | boolean_value
   {
     $$.val = $1
