@@ -167,7 +167,7 @@ func (dcv *doltCommitValidator) CommitHash(val interface{}) (bool, string) {
 
 // Convenience test for debugging a single query. Unskip and set to the desired query.
 func TestSingleScript(t *testing.T) {
-	// t.Skip()
+	t.Skip()
 
 	var scripts = []queries.ScriptTest{
 		{
@@ -195,10 +195,6 @@ func TestSingleScript(t *testing.T) {
 				},
 				{
 					Query:       "INSERT into t2 VALUES (1, 1);",
-					ExpectedErr: sql.ErrPrimaryKeyViolation,
-				},
-				{
-					Query:       "show create table t2;",
 					ExpectedErr: sql.ErrPrimaryKeyViolation,
 				},
 				{

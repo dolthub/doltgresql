@@ -1266,6 +1266,10 @@ func TestConvertQuery(t *testing.T) {
 			},
 		},
 		{
+			input: "CREATE TABLE foo (a INT, b int, primary key (b,a))",
+			expected: []string{"CREATE TABLE foo (a INTEGER NULL, b INTEGER NULL, PRIMARY KEY (b, a))"},
+		},
+		{
 			input: "CREATE TABLE foo (a INT primary key, b int, c int, key (c,b))",
 			expected: []string{
 				"CREATE TABLE foo (a INTEGER NOT NULL PRIMARY KEY, b INTEGER NULL, c INTEGER NULL)",
