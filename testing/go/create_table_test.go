@@ -176,11 +176,11 @@ func TestCreateTableInherit(t *testing.T) {
 					Expected: []sql.Row{},
 				},
 				{
-					Query:    "insert into t4 values (1, 2, 3, 4);",
+					Query:    "insert into t4(a, b, c, d) values (1, 2, 3, 4);",
 					Expected: []sql.Row{},
 				},
 				{
-					Query: "select * from t4;",
+					Query: "select a, b, c, d from t4;",
 					Expected: []sql.Row{
 						{1, 2, 3, 4},
 					},
@@ -191,7 +191,7 @@ func TestCreateTableInherit(t *testing.T) {
 					Expected: []sql.Row{},
 				},
 				{
-					Query:    "insert into t111 values (1);",
+					Query:    "insert into t111(a) values (1);",
 					Expected: []sql.Row{},
 				},
 				{
@@ -206,11 +206,26 @@ func TestCreateTableInherit(t *testing.T) {
 					Expected: []sql.Row{},
 				},
 				{
-					Query:    "insert into t1t1 values (1);",
+					Query:    "insert into t1t1(a) values (1);",
 					Expected: []sql.Row{},
 				},
 				{
 					Query: "select * from t1t1;",
+					Expected: []sql.Row{
+						{1},
+					},
+				},
+
+				{
+					Query:    "create table TT1t1 (A int) inherits (t1);",
+					Expected: []sql.Row{},
+				},
+				{
+					Query:    "insert into TT1t1(a) values (1);",
+					Expected: []sql.Row{},
+				},
+				{
+					Query: "select * from TT1t1;",
 					Expected: []sql.Row{
 						{1},
 					},
