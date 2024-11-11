@@ -753,6 +753,33 @@ func transformCreateTable(query string, stmt *sqlparser.DDL) ([]string, bool) {
 		})
 	}
 
+	// convert any primary key indexes
+	if len(stmt.TableSpec.Indexes) > 0 {
+		for _, index := range stmt.TableSpec.Indexes {
+			if !index.Info.Primary {
+				continue
+			}
+
+			indexCols := make(tree.IndexElemList, len(index.Columns))
+			for i, col := range index.Columns {
+				colName := col.Column.String()
+				indexCols[i] = tree.IndexElem{
+					Column:     tree.Name(colName),
+				}
+			}
+			
+			
+			indexDef := &tree.UniqueConstraintTableDef{
+				PrimaryKey: true,
+				IndexTableDef: tree.IndexTableDef{
+					Columns: indexCols,
+				},
+			}
+			
+			createTable.Defs = append(createTable.Defs, indexDef)
+		}
+	}
+
 	ctx := formatNodeWithUnqualifiedTableNames(&createTable)
 	query = ctx.String()
 	

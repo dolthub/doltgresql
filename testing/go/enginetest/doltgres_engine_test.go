@@ -171,14 +171,39 @@ func TestSingleScript(t *testing.T) {
 
 	var scripts = []queries.ScriptTest{
 		{
-			Name: "INSERT string with exact char length but extra byte length",
+			Name: "Insert throws primary key violations",
 			SetUpScript: []string{
-				"CREATE TABLE city (id int PRIMARY KEY, district char(20) NOT NULL DEFAULT '');",
+				"CREATE TABLE t (pk int PRIMARY key);",
+				"CREATE TABLE t2 (pk1 int, pk2 int, PRIMARY KEY (pk1, pk2));",
 			},
 			Assertions: []queries.ScriptTestAssertion{
 				{
-					Query:    "INSERT INTO city VALUES (1,'San Pedro de Macorís');",
-					Expected: []sql.Row{{types.NewOkResult(1)}},
+					Query:    "INSERT INTO t VALUES (1), (2);",
+					Expected: []sql.Row{{types.NewOkResult(2)}},
+				},
+				{
+					Query:       "INSERT into t VALUES (1);",
+					ExpectedErr: sql.ErrPrimaryKeyViolation,
+				},
+				{
+					Query:    "SELECT * from t;",
+					Expected: []sql.Row{{1}, {2}},
+				},
+				{
+					Query:    "INSERT into t2 VALUES (1, 1), (2, 2);",
+					Expected: []sql.Row{{types.NewOkResult(2)}},
+				},
+				{
+					Query:       "INSERT into t2 VALUES (1, 1);",
+					ExpectedErr: sql.ErrPrimaryKeyViolation,
+				},
+				{
+					Query:       "show create table t2;",
+					ExpectedErr: sql.ErrPrimaryKeyViolation,
+				},
+				{
+					Query:    "SELECT * from t2;",
+					Expected: []sql.Row{{1, 1}, {2, 2}},
 				},
 			},
 		},
@@ -319,6 +344,8 @@ func TestInsertInto(t *testing.T) {
 		// "Try INSERT IGNORE with primary key, non null, and single row violations", // insert ignore not supported
 		"Insert on duplicate key references table in subquery",  // bad translation?
 		"Insert on duplicate key references table in aliased subquery", // bad translation?
+		"Insert on duplicate key references table in cte", // CTE not supported
+		"insert on duplicate key with incorrect row alias", // column "c" could not be found in any table in scope
 		"insert on duplicate key update errors", // failing
 		"Insert on duplicate key references table in subquery with join", // untranslated
 		"INSERT INTO ... SELECT works properly with ENUM", // enum unsupported
