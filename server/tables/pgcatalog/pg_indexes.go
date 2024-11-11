@@ -23,7 +23,6 @@ import (
 
 	"github.com/dolthub/doltgresql/server/tables"
 	pgtypes "github.com/dolthub/doltgresql/server/types"
-	"github.com/dolthub/doltgresql/server/types/oid"
 )
 
 // PgIndexesName is a constant to the pg_indexes name.
@@ -46,23 +45,21 @@ func (p PgIndexesHandler) Name() string {
 
 // RowIter implements the interface tables.Handler.
 func (p PgIndexesHandler) RowIter(ctx *sql.Context) (sql.RowIter, error) {
-	var indexes []sql.Index
-	var schemas []string
-
-	err := oid.IterateCurrentDatabase(ctx, oid.Callbacks{
-		Index: func(ctx *sql.Context, schema oid.ItemSchema, table oid.ItemTable, index oid.ItemIndex) (cont bool, err error) {
-			indexes = append(indexes, index.Item)
-			schemas = append(schemas, schema.Item.SchemaName())
-			return true, nil
-		},
-	})
+	// Use cached data from this process if it exists
+	pgCatalogCache, err := getPgCatalogCache(ctx)
 	if err != nil {
 		return nil, err
 	}
 
+	if pgCatalogCache.indexes == nil {
+		if err := cacheIndexMetadata(ctx, pgCatalogCache); err != nil {
+			return nil, err
+		}
+	}
+
 	return &pgIndexesRowIter{
-		indexes: indexes,
-		schemas: schemas,
+		indexes: pgCatalogCache.indexes,
+		schemas: pgCatalogCache.indexSchemas,
 		idx:     0,
 	}, nil
 }

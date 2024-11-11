@@ -29,8 +29,9 @@ import (
 
 // contextValues contains a set of objects that will be passed alongside the context.
 type contextValues struct {
-	collection *sequences.Collection
-	types      *typecollection.TypeCollection
+	collection     *sequences.Collection
+	types          *typecollection.TypeCollection
+	pgCatalogCache any
 }
 
 // getContextValues accesses the contextValues in the given context. If the context does not have a contextValues, then
@@ -61,6 +62,33 @@ func getRootFromContext(ctx *sql.Context) (*dsess.DoltSession, *RootValue, error
 		return nil, nil, fmt.Errorf("cannot find the database while fetching root from context")
 	}
 	return session, state.WorkingRoot().(*RootValue), nil
+}
+
+// GetPgCatalogCache returns a cache of data for pg_catalog tables. This function should only be used by
+// pg_catalog table handlers. The catalog cache instance stores generated pg_catalog table data so that
+// it only has to generated table data once per query.
+//
+// TODO: The return type here is currently any, to avoid a package import cycle. This could be cleaned up by
+// introducing a new interface type, in a package that does not depend on core or pgcatalog packages.
+func GetPgCatalogCache(ctx *sql.Context) (any, error) {
+	cv, err := getContextValues(ctx)
+	if err != nil {
+		return nil, err
+	}
+	return cv.pgCatalogCache, nil
+}
+
+// SetPgCatalogCache sets |pgCatalogCache| as the catalog cache instance for this session.
+//
+// TODO: The return type here is currently any, to avoid a package import cycle. This could be cleaned up by
+// introducing a new interface type, in a package that does not depend on core or pgcatalog packages.
+func SetPgCatalogCache(ctx *sql.Context, pgCatalogCache any) error {
+	cv, err := getContextValues(ctx)
+	if err != nil {
+		return err
+	}
+	cv.pgCatalogCache = pgCatalogCache
+	return nil
 }
 
 // GetDoltTableFromContext returns the Dolt table from the context. Returns nil if no table was found.
