@@ -112,13 +112,13 @@ func nodeInsert(ctx *Context, node *tree.Insert) (*vitess.Insert, error) {
 // isIgnore returns true if the ON CONFLICT clause provided is equivalent to INSERT IGNORE in GMS
 func isIgnore(conflict *tree.OnConflict) bool {
 	return conflict.ArbiterPredicate == nil &&
-			conflict.Exprs == nil &&
-			conflict.Where == nil &&
-			conflict.DoNothing
+		conflict.Exprs == nil &&
+		conflict.Where == nil &&
+		conflict.DoNothing
 }
 
-// supportedOnConflictClause returns true if the ON CONFLICT clause given can be represented as 
-// an ON DUPLICATE KEY UPDATE clause in GMS 
+// supportedOnConflictClause returns true if the ON CONFLICT clause given can be represented as
+// an ON DUPLICATE KEY UPDATE clause in GMS
 func supportedOnConflictClause(conflict *tree.OnConflict) bool {
 	if conflict.ArbiterPredicate != nil {
 		return false
