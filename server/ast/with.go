@@ -30,8 +30,8 @@ func nodeCTE(ctx *Context, node *tree.CTE) (*vitess.CommonTableExpr, error) {
 
 	alias := vitess.NewTableIdent(string(node.Name.Alias))
 	cols := make([]vitess.ColIdent, len(node.Name.Cols))
-	for _, col := range node.Name.Cols {
-		cols = append(cols, vitess.NewColIdent(string(col)))
+	for i, col := range node.Name.Cols {
+		cols[i] = vitess.NewColIdent(string(col))
 	}
 
 	subSelect, ok := node.Stmt.(*tree.Select)
