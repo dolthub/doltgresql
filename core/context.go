@@ -80,7 +80,7 @@ func GetPgCatalogCache(ctx *sql.Context) (any, error) {
 
 // SetPgCatalogCache sets |pgCatalogCache| as the catalog cache instance for this session.
 //
-// TODO: The return type here is currently any, to avoid a package import cycle. This could be cleaned up by
+// TODO: The input type here is currently any, to avoid a package import cycle. This could be cleaned up by
 // introducing a new interface type, in a package that does not depend on core or pgcatalog packages.
 func SetPgCatalogCache(ctx *sql.Context, pgCatalogCache any) error {
 	cv, err := getContextValues(ctx)

@@ -77,12 +77,18 @@ type pgCatalogCache struct {
 	tableSchemas []string
 }
 
+// newPgCatalogCache creates a new pgCatalogCache, with the query/process ID set to |pid|. The PID is important,
+// since pgCatalogCache instances only cache data for the duration of a single query.
 func newPgCatalogCache(pid uint64) *pgCatalogCache {
 	return &pgCatalogCache{
 		pid: pid,
 	}
 }
 
+// getPgCatalogCache returns the pgCatalogCache instance for the current query in this session. If no cache exists
+// yet, then a new one is created and returned. Note that pgCatalogCache only caches catalog data for a single query,
+// so if the PID of the current context does not match the PID of the context when the pgCatalogCache was created,
+// then a new cache will be created.
 func getPgCatalogCache(ctx *sql.Context) (*pgCatalogCache, error) {
 	untypedPgCatalogCache, err := core.GetPgCatalogCache(ctx)
 	if err != nil {
@@ -102,6 +108,8 @@ func getPgCatalogCache(ctx *sql.Context) (*pgCatalogCache, error) {
 	return cache, nil
 }
 
+// initializeNewPgCatalogCache creates a new pgCatalogCache instance and sets it in the context. This function should
+// not be used directly, and should only be used directly by getPgCatalogCache(*sql.Context).
 func initializeNewPgCatalogCache(ctx *sql.Context) (*pgCatalogCache, error) {
 	cache := newPgCatalogCache(ctx.Pid())
 	if err := core.SetPgCatalogCache(ctx, cache); err != nil {
