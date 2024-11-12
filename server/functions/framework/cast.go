@@ -256,8 +256,8 @@ func getCast(mutex *sync.RWMutex,
 	// If there isn't a direct mapping, then we need to check if the types are array variants.
 	// As long as the base types are convertable, the array variants are also convertable.
 	if fromType.IsArrayType() && toType.IsArrayType() {
-		fromBaseType, _ := fromType.ArrayBaseType()
-		toBaseType, _ := toType.ArrayBaseType()
+		fromBaseType := fromType.ArrayBaseType()
+		toBaseType := toType.ArrayBaseType()
 		if baseCast := outerFunc(fromBaseType, toBaseType); baseCast != nil {
 			// We use a closure that can unwrap the slice, since conversion functions expect a singular non-nil value
 			return func(ctx *sql.Context, vals any, targetType pgtypes.DoltgresType) (any, error) {
@@ -271,10 +271,7 @@ func getCast(mutex *sync.RWMutex,
 					// Some errors are optional depending on the context, so we'll still process all values even
 					// after an error is received.
 					var nErr error
-					targetBaseType, ok := targetType.ArrayBaseType()
-					if !ok {
-						return nil, fmt.Errorf("cannot get base type from %s", targetType.Name)
-					}
+					targetBaseType := targetType.ArrayBaseType()
 					newVals[i], nErr = baseCast(ctx, oldVal, targetBaseType)
 					if nErr != nil && err == nil {
 						err = nErr

@@ -15,4 +15,4 @@
 package types
 
 // Float32Array is the array variant of Float32.
-var Float32Array = CreateArrayTypeFromBaseType(Float32) // createArrayType(Float32, SerializationID_Float32Array, oid.T__float4)
+var Float32Array = CreateArrayTypeFromBaseType(Float32)

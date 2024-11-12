@@ -40,7 +40,7 @@ func initInt2() {
 var int2in = framework.Function1{
 	Name:       "int2in",
 	Return:     pgtypes.Int16,
-	Parameters: [1]pgtypes.DoltgresType{pgtypes.Text}, // cstring
+	Parameters: [1]pgtypes.DoltgresType{pgtypes.Cstring},
 	Strict:     true,
 	Callable: func(ctx *sql.Context, _ [2]pgtypes.DoltgresType, val any) (any, error) {
 		input := val.(string)
@@ -58,7 +58,7 @@ var int2in = framework.Function1{
 // int2out represents the PostgreSQL function of int2 type IO output.
 var int2out = framework.Function1{
 	Name:       "int2out",
-	Return:     pgtypes.Text, // cstring
+	Return:     pgtypes.Cstring,
 	Parameters: [1]pgtypes.DoltgresType{pgtypes.Int16},
 	Strict:     true,
 	Callable: func(ctx *sql.Context, _ [2]pgtypes.DoltgresType, val any) (any, error) {

@@ -54,4 +54,5 @@ var Text = DoltgresType{
 	Acl:           nil,
 	Checks:        nil,
 	AttTypMod:     -1,
+	CompareFunc:   "bttextcmp",
 }

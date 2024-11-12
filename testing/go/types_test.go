@@ -117,7 +117,6 @@ var typesTests = []ScriptTest{
 		},
 	},
 	{
-		Skip: true,
 		Name: "Boolean array type",
 		SetUpScript: []string{
 			"CREATE TABLE t_boolean_array (id INTEGER primary key, v1 BOOLEAN[]);",

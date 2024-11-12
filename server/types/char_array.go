@@ -16,5 +16,3 @@ package types
 
 // BpCharArray is the array variant of BpChar.
 var BpCharArray = CreateArrayTypeFromBaseType(BpChar)
-
-// createArrayType(BpChar, SerializationID_CharArray, oid.T__bpchar)

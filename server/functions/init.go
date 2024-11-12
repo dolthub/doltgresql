@@ -14,6 +14,7 @@
 
 package functions
 
+// initTypeFunctions initializes all functions related to types in this package.
 func initTypeFunctions() {
 	initAny()
 	initAnyArray()

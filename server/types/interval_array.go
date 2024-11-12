@@ -15,4 +15,4 @@
 package types
 
 // IntervalArray is the array variant of Interval.
-var IntervalArray = CreateArrayTypeFromBaseType(Interval) // createArrayType(Interval, SerializationID_IntervalArray, oid.T__interval)
+var IntervalArray = CreateArrayTypeFromBaseType(Interval)

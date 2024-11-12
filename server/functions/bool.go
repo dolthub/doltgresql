@@ -36,7 +36,7 @@ func initBool() {
 var boolin = framework.Function1{
 	Name:       "boolin",
 	Return:     pgtypes.Bool,
-	Parameters: [1]pgtypes.DoltgresType{pgtypes.Text},
+	Parameters: [1]pgtypes.DoltgresType{pgtypes.Cstring},
 	Strict:     true,
 	Callable: func(ctx *sql.Context, _ [2]pgtypes.DoltgresType, val any) (any, error) {
 		val = strings.TrimSpace(strings.ToLower(val.(string)))
@@ -53,7 +53,7 @@ var boolin = framework.Function1{
 // boolout represents the PostgreSQL function of boolean type IO output.
 var boolout = framework.Function1{
 	Name:       "boolout",
-	Return:     pgtypes.Bool,
+	Return:     pgtypes.Cstring,
 	Parameters: [1]pgtypes.DoltgresType{pgtypes.Bool},
 	Strict:     true,
 	Callable: func(ctx *sql.Context, _ [2]pgtypes.DoltgresType, val any) (any, error) {

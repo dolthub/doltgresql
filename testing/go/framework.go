@@ -387,7 +387,7 @@ func NormalizeExpectedRow(fds []pgconn.FieldDescription, rows []sql.Row) []sql.R
 				}
 				if dt.OID == uint32(oid.T_json) {
 					newRow[i] = UnmarshalAndMarshalJsonString(row[i].(string))
-				} else if arrBaseType, ok := dt.ArrayBaseType(); ok && arrBaseType.OID == uint32(oid.T_json) {
+				} else if dt.IsArrayType() && dt.ArrayBaseType().OID == uint32(oid.T_json) {
 					v, err := framework.IoInput(nil, dt, row[i].(string))
 					if err != nil {
 						panic(err)
@@ -525,11 +525,7 @@ func NormalizeValToString(dt types.DoltgresType, v any) any {
 func NormalizeArrayType(dt types.DoltgresType, arr []any) any {
 	newVal := make([]any, len(arr))
 	for i, el := range arr {
-		bt, ok := dt.ArrayBaseType()
-		if !ok {
-			panic("cannot get base type from array type")
-		}
-		newVal[i] = NormalizeVal(bt, el)
+		newVal[i] = NormalizeVal(dt.ArrayBaseType(), el)
 	}
 	ret, err := framework.SQL(nil, dt, newVal)
 	if err != nil {
@@ -583,8 +579,8 @@ func NormalizeVal(dt types.DoltgresType, v any) any {
 		return u
 	case []any:
 		baseType := dt
-		if abt, ok := baseType.ArrayBaseType(); ok {
-			baseType = abt
+		if baseType.IsArrayType() {
+			baseType = baseType.ArrayBaseType()
 		}
 		newVal := make([]any, len(val))
 		for i, el := range val {

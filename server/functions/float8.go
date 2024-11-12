@@ -26,6 +26,7 @@ import (
 	pgtypes "github.com/dolthub/doltgresql/server/types"
 )
 
+// initFloat8 registers the functions to the catalog.
 func initFloat8() {
 	framework.RegisterFunction(float8in)
 	framework.RegisterFunction(float8out)
@@ -39,7 +40,7 @@ func initFloat8() {
 var float8in = framework.Function1{
 	Name:       "float8in",
 	Return:     pgtypes.Float64,
-	Parameters: [1]pgtypes.DoltgresType{pgtypes.Text}, // cstring
+	Parameters: [1]pgtypes.DoltgresType{pgtypes.Cstring},
 	Strict:     true,
 	Callable: func(ctx *sql.Context, _ [2]pgtypes.DoltgresType, val any) (any, error) {
 		input := val.(string)
@@ -54,7 +55,7 @@ var float8in = framework.Function1{
 // float8out represents the PostgreSQL function of float8 type IO output.
 var float8out = framework.Function1{
 	Name:       "float8out",
-	Return:     pgtypes.Text, // cstring
+	Return:     pgtypes.Cstring,
 	Parameters: [1]pgtypes.DoltgresType{pgtypes.Float64},
 	Strict:     true,
 	Callable: func(ctx *sql.Context, _ [2]pgtypes.DoltgresType, val any) (any, error) {

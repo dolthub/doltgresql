@@ -15,4 +15,4 @@
 package types
 
 // Int32Array is the array variant of Int32.
-var Int32Array = CreateArrayTypeFromBaseType(Int32) // createArrayType(Int32, SerializationID_Int32Array, oid.T__int4)
+var Int32Array = CreateArrayTypeFromBaseType(Int32)

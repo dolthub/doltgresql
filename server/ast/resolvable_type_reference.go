@@ -56,11 +56,7 @@ func nodeResolvableTypeReference(ctx *Context, typ tree.ResolvableTypeReference)
 			}
 			if baseResolvedType.IsResolvedType() {
 				// currently the built-in types will be resolved, so it can retrieve its array type
-				var ok bool
-				resolvedType, ok = baseResolvedType.ToArrayType()
-				if !ok {
-					return nil, pgtypes.DoltgresType{}, fmt.Errorf("cannot get array type from resolved type: %s", baseResolvedType.Name)
-				}
+				resolvedType = baseResolvedType.ToArrayType()
 			} else {
 				// TODO: handle array type of non-built-in types
 				baseResolvedType.TypCategory = pgtypes.TypeCategory_ArrayTypes
@@ -122,7 +118,7 @@ func nodeResolvableTypeReference(ctx *Context, typ tree.ResolvableTypeReference)
 				if columnType.Precision() == 0 && columnType.Scale() == 0 {
 					resolvedType = pgtypes.Numeric
 				} else {
-					resolvedType, err = pgtypes.NewNumericType(columnType.Precision(), columnType.Scale())
+					resolvedType, err = pgtypes.NewNumericTypeWithPrecisionAndScale(columnType.Precision(), columnType.Scale())
 					if err != nil {
 						return nil, pgtypes.DoltgresType{}, err
 					}

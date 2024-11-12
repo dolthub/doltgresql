@@ -37,7 +37,7 @@ func initUuid() {
 var uuid_in = framework.Function1{
 	Name:       "uuid_in",
 	Return:     pgtypes.Uuid,
-	Parameters: [1]pgtypes.DoltgresType{pgtypes.Text}, // cstring
+	Parameters: [1]pgtypes.DoltgresType{pgtypes.Cstring},
 	Strict:     true,
 	Callable: func(ctx *sql.Context, _ [2]pgtypes.DoltgresType, val any) (any, error) {
 		return uuid.FromString(val.(string))
@@ -47,7 +47,7 @@ var uuid_in = framework.Function1{
 // uuid_out represents the PostgreSQL function of uuid type IO output.
 var uuid_out = framework.Function1{
 	Name:       "uuid_out",
-	Return:     pgtypes.Text, // cstring
+	Return:     pgtypes.Cstring,
 	Parameters: [1]pgtypes.DoltgresType{pgtypes.Uuid},
 	Strict:     true,
 	Callable: func(ctx *sql.Context, _ [2]pgtypes.DoltgresType, val any) (any, error) {

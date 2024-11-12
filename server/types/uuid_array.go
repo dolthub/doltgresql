@@ -15,4 +15,4 @@
 package types
 
 // UuidArray is the array variant of Uuid.
-var UuidArray = CreateArrayTypeFromBaseType(Uuid) // createArrayType(Uuid, SerializationID_UuidArray, oid.T__uuid)
+var UuidArray = CreateArrayTypeFromBaseType(Uuid)

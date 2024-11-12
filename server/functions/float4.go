@@ -26,6 +26,7 @@ import (
 	pgtypes "github.com/dolthub/doltgresql/server/types"
 )
 
+// initFloat4 registers the functions to the catalog.
 func initFloat4() {
 	framework.RegisterFunction(float4in)
 	framework.RegisterFunction(float4out)
@@ -39,7 +40,7 @@ func initFloat4() {
 var float4in = framework.Function1{
 	Name:       "float4in",
 	Return:     pgtypes.Float32,
-	Parameters: [1]pgtypes.DoltgresType{pgtypes.Text}, // cstring
+	Parameters: [1]pgtypes.DoltgresType{pgtypes.Cstring},
 	Strict:     true,
 	Callable: func(ctx *sql.Context, _ [2]pgtypes.DoltgresType, val any) (any, error) {
 		input := val.(string)
@@ -54,7 +55,7 @@ var float4in = framework.Function1{
 // float4out represents the PostgreSQL function of float4 type IO output.
 var float4out = framework.Function1{
 	Name:       "float4out",
-	Return:     pgtypes.Text, // cstring
+	Return:     pgtypes.Cstring,
 	Parameters: [1]pgtypes.DoltgresType{pgtypes.Float32},
 	Strict:     true,
 	Callable: func(ctx *sql.Context, _ [2]pgtypes.DoltgresType, val any) (any, error) {

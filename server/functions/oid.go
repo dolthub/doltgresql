@@ -38,7 +38,7 @@ func initOid() {
 var oidin = framework.Function1{
 	Name:       "oidin",
 	Return:     pgtypes.Oid,
-	Parameters: [1]pgtypes.DoltgresType{pgtypes.Text}, // cstring
+	Parameters: [1]pgtypes.DoltgresType{pgtypes.Cstring},
 	Strict:     true,
 	Callable: func(ctx *sql.Context, _ [2]pgtypes.DoltgresType, val any) (any, error) {
 		input := val.(string)
@@ -57,7 +57,7 @@ var oidin = framework.Function1{
 // oidout represents the PostgreSQL function of oid type IO output.
 var oidout = framework.Function1{
 	Name:       "oidout",
-	Return:     pgtypes.Text, // cstring
+	Return:     pgtypes.Cstring,
 	Parameters: [1]pgtypes.DoltgresType{pgtypes.Oid},
 	Strict:     true,
 	Callable: func(ctx *sql.Context, _ [2]pgtypes.DoltgresType, val any) (any, error) {

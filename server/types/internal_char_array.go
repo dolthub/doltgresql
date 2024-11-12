@@ -15,4 +15,4 @@
 package types
 
 // InternalCharArray is the array variant of InternalChar.
-var InternalCharArray = CreateArrayTypeFromBaseType(InternalChar) // createArrayType(InternalChar, SerializationID_InternalCharArray, oid.T__char)
+var InternalCharArray = CreateArrayTypeFromBaseType(InternalChar)

@@ -35,7 +35,7 @@ func initRegclass() {
 var regclassin = framework.Function1{
 	Name:       "regclassin",
 	Return:     pgtypes.Regclass,
-	Parameters: [1]pgtypes.DoltgresType{pgtypes.Text}, // cstring
+	Parameters: [1]pgtypes.DoltgresType{pgtypes.Cstring},
 	Strict:     true,
 	Callable: func(ctx *sql.Context, _ [2]pgtypes.DoltgresType, val any) (any, error) {
 		return pgtypes.Regclass_IoInput(ctx, val.(string))
@@ -45,7 +45,7 @@ var regclassin = framework.Function1{
 // regclassout represents the PostgreSQL function of regclass type IO output.
 var regclassout = framework.Function1{
 	Name:       "regclassout",
-	Return:     pgtypes.Text, // cstring
+	Return:     pgtypes.Cstring,
 	Parameters: [1]pgtypes.DoltgresType{pgtypes.Regclass},
 	Strict:     true,
 	Callable: func(ctx *sql.Context, _ [2]pgtypes.DoltgresType, val any) (any, error) {

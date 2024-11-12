@@ -53,6 +53,7 @@ var Int16 = DoltgresType{
 	Default:       "",
 	Acl:           nil,
 	Checks:        nil,
-
-	internalName: "smallint",
+	AttTypMod:     -1,
+	CompareFunc:   "btint2cmp",
+	InternalName:  "smallint",
 }

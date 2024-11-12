@@ -53,6 +53,7 @@ var Float32 = DoltgresType{
 	Default:       "",
 	Acl:           nil,
 	Checks:        nil,
-
-	internalName: "real",
+	AttTypMod:     -1,
+	CompareFunc:   "btfloat4cmp",
+	InternalName:  "real",
 }

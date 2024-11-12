@@ -72,19 +72,22 @@ var Numeric = DoltgresType{
 	Acl:           nil,
 	Checks:        nil,
 	AttTypMod:     -1,
+	CompareFunc:   "numeric_cmp",
 }
 
-func NewNumericType(precision, scale int32) (DoltgresType, error) {
-	newNumericType := Numeric
-	typmod, err := GetTypmodFromPrecisionAndScale(precision, scale)
+// NewNumericTypeWithPrecisionAndScale returns Numeric type with typmod set.
+func NewNumericTypeWithPrecisionAndScale(precision, scale int32) (DoltgresType, error) {
+	newType := Numeric
+	typmod, err := GetTypmodFromNumericPrecisionAndScale(precision, scale)
 	if err != nil {
 		return DoltgresType{}, err
 	}
-	newNumericType.AttTypMod = typmod
-	return newNumericType, nil
+	newType.AttTypMod = typmod
+	return newType, nil
 }
 
-func GetTypmodFromPrecisionAndScale(precision, scale int32) (int32, error) {
+// GetTypmodFromNumericPrecisionAndScale takes Numeric type precision and scale and returns the type modifier value.
+func GetTypmodFromNumericPrecisionAndScale(precision, scale int32) (int32, error) {
 	if precision < 1 || precision > 1000 {
 		return 0, fmt.Errorf("NUMERIC precision %v must be between 1 and 1000", precision)
 	}
@@ -92,4 +95,11 @@ func GetTypmodFromPrecisionAndScale(precision, scale int32) (int32, error) {
 		return 0, fmt.Errorf("NUMERIC scale 20000 must be between -1000 and 1000")
 	}
 	return (precision << 16) | scale, nil
+}
+
+// GetPrecisionAndScaleFromTypmod takes Numeric type modifier and returns precision and scale values.
+func GetPrecisionAndScaleFromTypmod(typmod int32) (int32, int32) {
+	scale := typmod & 0xFFFF
+	precision := (typmod >> 16) & 0xFFFF
+	return precision, scale
 }

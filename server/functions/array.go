@@ -24,9 +24,10 @@ import (
 
 	"github.com/dolthub/doltgresql/server/functions/framework"
 	pgtypes "github.com/dolthub/doltgresql/server/types"
+	"github.com/dolthub/doltgresql/utils"
 )
 
-// initBinaryNotEqual registers the functions to the catalog.
+// initArray registers the functions to the catalog.
 func initArray() {
 	framework.RegisterFunction(array_in)
 	framework.RegisterFunction(array_out)
@@ -39,7 +40,7 @@ func initArray() {
 var array_in = framework.Function3{
 	Name:       "array_in",
 	Return:     pgtypes.AnyArray,
-	Parameters: [3]pgtypes.DoltgresType{pgtypes.Text, pgtypes.Oid, pgtypes.Int32}, // cstring
+	Parameters: [3]pgtypes.DoltgresType{pgtypes.Cstring, pgtypes.Oid, pgtypes.Int32},
 	Strict:     true,
 	Callable: func(ctx *sql.Context, _ [4]pgtypes.DoltgresType, val1, val2, val3 any) (any, error) {
 		input := val1.(string)
@@ -144,16 +145,12 @@ var array_in = framework.Function3{
 // array_out represents the PostgreSQL function of array type IO output.
 var array_out = framework.Function1{
 	Name:       "array_out",
-	Return:     pgtypes.Text, // cstring
+	Return:     pgtypes.Cstring,
 	Parameters: [1]pgtypes.DoltgresType{pgtypes.AnyArray},
 	Strict:     true,
 	Callable: func(ctx *sql.Context, t [2]pgtypes.DoltgresType, val any) (any, error) {
 		arrType := t[0]
-		baseType, ok := arrType.ArrayBaseType()
-		if !ok {
-			// shouldn't happen, but checking here
-			return nil, fmt.Errorf(`expected array type, but got %s`, arrType.Name)
-		}
+		baseType := arrType.ArrayBaseType()
 		baseType.AttTypMod = arrType.AttTypMod
 		return framework.ArrToString(ctx, val.([]any), baseType, false)
 	},
@@ -210,11 +207,7 @@ var array_send = framework.Function1{
 	Strict:     true,
 	Callable: func(ctx *sql.Context, t [2]pgtypes.DoltgresType, val any) (any, error) {
 		arrType := t[0]
-		baseType, ok := arrType.ArrayBaseType()
-		if !ok {
-			// shouldn't happen, but checking here
-			return nil, fmt.Errorf(`expected array type, but got %s`, arrType.Name)
-		}
+		baseType := arrType.ArrayBaseType()
 		vals := val.([]any)
 
 		bb := bytes.Buffer{}
@@ -266,7 +259,32 @@ var btarraycmp = framework.Function2{
 	Parameters: [2]pgtypes.DoltgresType{pgtypes.AnyArray, pgtypes.AnyArray},
 	Strict:     true,
 	Callable: func(ctx *sql.Context, t [3]pgtypes.DoltgresType, val1, val2 any) (any, error) {
-		// TODO
-		return int32(1), nil
+		at := t[0]
+		bt := t[1]
+		if !at.Equals(bt) {
+			// TODO: currently, types should match.
+			// Technically, does not have to e.g.: float4 vs float8
+			return nil, fmt.Errorf("different type comparison is not supported yet")
+		}
+
+		ab := val1.([]any)
+		bb := val2.([]any)
+		minLength := utils.Min(len(ab), len(bb))
+		for i := 0; i < minLength; i++ {
+			res, err := framework.IoCompare(ctx, at.ArrayBaseType(), ab[i], bb[i])
+			if err != nil {
+				return 0, err
+			}
+			if res != 0 {
+				return res, nil
+			}
+		}
+		if len(ab) == len(bb) {
+			return int32(0), nil
+		} else if len(ab) < len(bb) {
+			return int32(-1), nil
+		} else {
+			return int32(1), nil
+		}
 	},
 }

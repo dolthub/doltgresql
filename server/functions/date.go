@@ -37,7 +37,7 @@ func initDate() {
 var date_in = framework.Function1{
 	Name:       "date_in",
 	Return:     pgtypes.Date,
-	Parameters: [1]pgtypes.DoltgresType{pgtypes.Text}, // cstring
+	Parameters: [1]pgtypes.DoltgresType{pgtypes.Cstring},
 	Strict:     true,
 	Callable: func(ctx *sql.Context, _ [2]pgtypes.DoltgresType, val any) (any, error) {
 		input := val.(string)
@@ -56,7 +56,7 @@ var date_in = framework.Function1{
 // date_out represents the PostgreSQL function of date type IO output.
 var date_out = framework.Function1{
 	Name:       "date_out",
-	Return:     pgtypes.Text, // cstring
+	Return:     pgtypes.Cstring,
 	Parameters: [1]pgtypes.DoltgresType{pgtypes.Date},
 	Strict:     true,
 	Callable: func(ctx *sql.Context, _ [2]pgtypes.DoltgresType, val any) (any, error) {

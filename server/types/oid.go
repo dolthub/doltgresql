@@ -53,4 +53,6 @@ var Oid = DoltgresType{
 	Default:       "",
 	Acl:           nil,
 	Checks:        nil,
+	AttTypMod:     -1,
+	CompareFunc:   "btoidcmp",
 }

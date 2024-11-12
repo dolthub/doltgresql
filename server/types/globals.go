@@ -139,11 +139,6 @@ var typesFromOID = map[uint32]DoltgresType{
 	XidArray.OID:          XidArray,
 }
 
-// Init reads the list of all types and creates mappings that will be used by various functions.
-func Init() {
-	// Add built-in types to typecollection
-}
-
 // GetTypeByOID returns the DoltgresType matching the given OID. If the OID does not match a type, then nil is returned.
 func GetTypeByOID(oid uint32) DoltgresType {
 	t, ok := typesFromOID[oid]

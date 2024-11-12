@@ -15,6 +15,8 @@
 package types
 
 import (
+	"fmt"
+
 	"github.com/lib/pq/oid"
 )
 
@@ -53,10 +55,35 @@ var Time = DoltgresType{
 	Default:       "",
 	Acl:           nil,
 	Checks:        nil,
+	AttTypMod:     -1,
+	CompareFunc:   "time_cmp",
 }
 
-// TimeType is the extended type implementation of the PostgreSQL time without time zone.
-type TimeType struct {
-	// TODO: implement precision
-	Precision int8
+// NewTimeType returns Time type with typmod set. // TODO: implement precision
+func NewTimeType(precision int32) (DoltgresType, error) {
+	newType := Time
+	typmod, err := GetTypmodFromTimePrecision(precision)
+	if err != nil {
+		return DoltgresType{}, err
+	}
+	newType.AttTypMod = typmod
+	return newType, nil
+}
+
+// GetTypmodFromTimePrecision takes Time type precision and returns the type modifier value.
+func GetTypmodFromTimePrecision(precision int32) (int32, error) {
+	if precision < 0 {
+		// TIME(-1) precision must not be negative
+		return 0, fmt.Errorf("TIME(%v) precision must be not be negative", precision)
+	}
+	if precision > 6 {
+		precision = 6
+		//WARNING:  TIME(7) precision reduced to maximum allowed, 6
+	}
+	return precision, nil
+}
+
+// GetTimePrecisionFromTypMod takes Time type modifier and returns precision value.
+func GetTimePrecisionFromTypMod(typmod int32) int32 {
+	return typmod
 }

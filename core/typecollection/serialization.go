@@ -76,11 +76,12 @@ func Deserialize(ctx context.Context, data []byte) (*TypeCollection, error) {
 		nameMap := make(map[string]types.DoltgresType)
 		for j := uint64(0); j < numOfTypes; j++ {
 			typData := reader.ByteSlice()
-			typ, err := types.Deserialize(typData)
+			typ, err := types.DeserializeType(typData)
 			if err != nil {
 				return nil, err
 			}
-			nameMap[typ.Name] = typ
+			dt := typ.(types.DoltgresType)
+			nameMap[dt.Name] = dt
 		}
 		schemaMap[schemaName] = nameMap
 	}

@@ -35,7 +35,7 @@ func initUnknown() {
 var unknownin = framework.Function1{
 	Name:       "unknownin",
 	Return:     pgtypes.Unknown,
-	Parameters: [1]pgtypes.DoltgresType{pgtypes.Text}, // cstring
+	Parameters: [1]pgtypes.DoltgresType{pgtypes.Cstring},
 	Strict:     true,
 	Callable: func(ctx *sql.Context, _ [2]pgtypes.DoltgresType, val any) (any, error) {
 		return val.(string), nil
@@ -45,7 +45,7 @@ var unknownin = framework.Function1{
 // unknownout represents the PostgreSQL function of unknown type IO output.
 var unknownout = framework.Function1{
 	Name:       "unknownout",
-	Return:     pgtypes.Text, // cstring
+	Return:     pgtypes.Cstring,
 	Parameters: [1]pgtypes.DoltgresType{pgtypes.Unknown},
 	Strict:     true,
 	Callable: func(ctx *sql.Context, _ [2]pgtypes.DoltgresType, val any) (any, error) {

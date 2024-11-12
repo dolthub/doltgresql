@@ -15,4 +15,4 @@
 package types
 
 // JsonBArray is the array variant of JsonB.
-var JsonBArray = CreateArrayTypeFromBaseType(JsonB) // createArrayType(JsonB, SerializationID_JsonBArray, oid.T__jsonb)
+var JsonBArray = CreateArrayTypeFromBaseType(JsonB)

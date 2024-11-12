@@ -37,7 +37,7 @@ func initXid() {
 var xidin = framework.Function1{
 	Name:       "xidin",
 	Return:     pgtypes.Xid,
-	Parameters: [1]pgtypes.DoltgresType{pgtypes.Text}, // cstring
+	Parameters: [1]pgtypes.DoltgresType{pgtypes.Cstring},
 	Strict:     true,
 	Callable: func(ctx *sql.Context, _ [2]pgtypes.DoltgresType, val any) (any, error) {
 		input := val.(string)
@@ -52,7 +52,7 @@ var xidin = framework.Function1{
 // xidout represents the PostgreSQL function of xid type IO output.
 var xidout = framework.Function1{
 	Name:       "xidout",
-	Return:     pgtypes.Text, // cstring
+	Return:     pgtypes.Cstring,
 	Parameters: [1]pgtypes.DoltgresType{pgtypes.Xid},
 	Strict:     true,
 	Callable: func(ctx *sql.Context, _ [2]pgtypes.DoltgresType, val any) (any, error) {

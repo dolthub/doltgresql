@@ -15,4 +15,4 @@
 package types
 
 // JsonArray is the array variant of Json.
-var JsonArray = CreateArrayTypeFromBaseType(Json) // createArrayType(Json, SerializationID_JsonArray, oid.T__json)
+var JsonArray = CreateArrayTypeFromBaseType(Json)

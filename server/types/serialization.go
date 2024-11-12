@@ -40,69 +40,12 @@ func SerializeType(extendedType types.ExtendedType) ([]byte, error) {
 // DeserializeType is able to deserialize the given serialized type into an appropriate extended type. All extended
 // types will be defined by DoltgreSQL.
 func DeserializeType(serializedType []byte) (types.ExtendedType, error) {
-	return Deserialize(serializedType)
-}
-
-// Serialize returns the DoltgresType as a byte slice.
-func (t DoltgresType) Serialize() []byte {
-	writer := utils.NewWriter(256)
-	writer.VariableUint(0) // Version
-	// Write the type to the writer
-	writer.Uint32(t.OID)
-	writer.String(t.Name)
-	writer.String(t.Schema)
-	writer.String(t.Owner)
-	writer.Int16(t.TypLength)
-	writer.Bool(t.PassedByVal)
-	writer.String(string(t.TypType))
-	writer.String(string(t.TypCategory))
-	writer.Bool(t.IsPreferred)
-	writer.Bool(t.IsDefined)
-	writer.String(t.Delimiter)
-	writer.Uint32(t.RelID)
-	writer.String(t.SubscriptFunc)
-	writer.Uint32(t.Elem)
-	writer.Uint32(t.Array)
-	writer.String(t.InputFunc)
-	writer.String(t.OutputFunc)
-	writer.String(t.ReceiveFunc)
-	writer.String(t.SendFunc)
-	writer.String(t.ModInFunc)
-	writer.String(t.ModOutFunc)
-	writer.String(t.AnalyzeFunc)
-	writer.String(string(t.Align))
-	writer.String(string(t.Storage))
-	writer.Bool(t.NotNull)
-	writer.Uint32(t.BaseTypeOID)
-	writer.Int32(t.TypMod)
-	writer.Int32(t.NDims)
-	writer.Uint32(t.TypCollation)
-	writer.String(t.DefaulBin)
-	writer.String(t.Default)
-	writer.VariableUint(uint64(len(t.Acl)))
-	for _, ac := range t.Acl {
-		writer.String(ac)
-	}
-	writer.VariableUint(uint64(len(t.Checks)))
-	for _, check := range t.Checks {
-		writer.String(check.Name)
-		writer.String(check.CheckExpression)
-	}
-	writer.Int32(t.AttTypMod)
-	// TODO: get rid this?
-	writer.String(t.internalName)
-	return writer.Data()
-}
-
-// Deserialize returns the Collection that was serialized in the byte slice.
-// Returns an empty Collection if data is nil or empty.
-func Deserialize(data []byte) (DoltgresType, error) {
-	if len(data) == 0 {
+	if len(serializedType) == 0 {
 		return DoltgresType{}, fmt.Errorf("deserializing empty type data")
 	}
 
 	typ := DoltgresType{}
-	reader := utils.NewReader(data)
+	reader := utils.NewReader(serializedType)
 	version := reader.VariableUint()
 	if version != 0 {
 		return DoltgresType{}, fmt.Errorf("version %d of types is not supported, please upgrade the server", version)
@@ -155,12 +98,63 @@ func Deserialize(data []byte) (DoltgresType, error) {
 		})
 	}
 	typ.AttTypMod = reader.Int32()
-	// TODO: get rid this?
-	typ.internalName = reader.String()
+	typ.CompareFunc = reader.String()
+	typ.InternalName = reader.String()
 	if !reader.IsEmpty() {
 		return DoltgresType{}, fmt.Errorf("extra data found while deserializing type %s", typ.Name)
 	}
 
 	// Return the deserialized object
 	return typ, nil
+}
+
+// Serialize returns the DoltgresType as a byte slice.
+func (t DoltgresType) Serialize() []byte {
+	writer := utils.NewWriter(256)
+	writer.VariableUint(0) // Version
+	// Write the type to the writer
+	writer.Uint32(t.OID)
+	writer.String(t.Name)
+	writer.String(t.Schema)
+	writer.String(t.Owner)
+	writer.Int16(t.TypLength)
+	writer.Bool(t.PassedByVal)
+	writer.String(string(t.TypType))
+	writer.String(string(t.TypCategory))
+	writer.Bool(t.IsPreferred)
+	writer.Bool(t.IsDefined)
+	writer.String(t.Delimiter)
+	writer.Uint32(t.RelID)
+	writer.String(t.SubscriptFunc)
+	writer.Uint32(t.Elem)
+	writer.Uint32(t.Array)
+	writer.String(t.InputFunc)
+	writer.String(t.OutputFunc)
+	writer.String(t.ReceiveFunc)
+	writer.String(t.SendFunc)
+	writer.String(t.ModInFunc)
+	writer.String(t.ModOutFunc)
+	writer.String(t.AnalyzeFunc)
+	writer.String(string(t.Align))
+	writer.String(string(t.Storage))
+	writer.Bool(t.NotNull)
+	writer.Uint32(t.BaseTypeOID)
+	writer.Int32(t.TypMod)
+	writer.Int32(t.NDims)
+	writer.Uint32(t.TypCollation)
+	writer.String(t.DefaulBin)
+	writer.String(t.Default)
+	writer.VariableUint(uint64(len(t.Acl)))
+	for _, ac := range t.Acl {
+		writer.String(ac)
+	}
+	writer.VariableUint(uint64(len(t.Checks)))
+	for _, check := range t.Checks {
+		writer.String(check.Name)
+		writer.String(check.CheckExpression)
+	}
+	writer.Int32(t.AttTypMod)
+	writer.String(t.CompareFunc)
+	writer.String(t.InternalName)
+	return writer.Data()
 }

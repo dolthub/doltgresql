@@ -15,13 +15,56 @@
 package types
 
 import (
+	"bytes"
 	"strings"
 
 	"github.com/dolthub/go-mysql-server/sql"
 	"github.com/dolthub/go-mysql-server/sql/types"
 	"github.com/dolthub/vitess/go/vt/proto/query"
 	"github.com/lib/pq/oid"
+	"gopkg.in/src-d/go-errors.v1"
+
+	"github.com/dolthub/doltgresql/utils"
 )
+
+// ErrTypeAlreadyExists is returned when creating given type when it already exists.
+var ErrTypeAlreadyExists = errors.NewKind(`type "%s" already exists`)
+
+// ErrTypeDoesNotExist is returned when using given type that does not exist.
+var ErrTypeDoesNotExist = errors.NewKind(`type "%s" does not exist`)
+
+// ErrUnhandledType is returned when the type of value does not match given type.
+var ErrUnhandledType = errors.NewKind(`%s: unhandled type: %T`)
+
+// ErrInvalidSyntaxForType is returned when the type of value is invalid for given type.
+var ErrInvalidSyntaxForType = errors.NewKind(`invalid input syntax for type %s: %q`)
+
+// ErrValueIsOutOfRangeForType is returned when the value is out-of-range for given type.
+var ErrValueIsOutOfRangeForType = errors.NewKind(`value %q is out of range for type %s`)
+
+// ErrTypmodArrayMustBe1D is returned when type modifier value is empty array.
+var ErrTypmodArrayMustBe1D = errors.NewKind(`typmod array must be one-dimensional`)
+
+// ErrInvalidTypMod is returned when given value is invalid for type modifier.
+var ErrInvalidTypMod = errors.NewKind(`invalid %s type modifier`)
+
+// IoOutput is the implementation for IoOutput that is being set from another package to avoid circular dependencies.
+var IoOutput func(ctx *sql.Context, t DoltgresType, val any) (string, error)
+
+// IoReceive is the implementation for IoOutput that is being set from another package to avoid circular dependencies.
+var IoReceive func(ctx *sql.Context, t DoltgresType, val any) (any, error)
+
+// IoSend is the implementation for IoOutput that is being set from another package to avoid circular dependencies.
+var IoSend func(ctx *sql.Context, t DoltgresType, val any) ([]byte, error)
+
+// TypModOut is the implementation for IoOutput that is being set from another package to avoid circular dependencies.
+var TypModOut func(ctx *sql.Context, t DoltgresType, val int32) (string, error)
+
+// IoCompare is the implementation for IoOutput that is being set from another package to avoid circular dependencies.
+var IoCompare func(ctx *sql.Context, t DoltgresType, v1, v2 any) (int32, error)
+
+// SQL is the implementation for IoOutput that is being set from another package to avoid circular dependencies.
+var SQL func(ctx *sql.Context, t DoltgresType, val any) (string, error)
 
 // QuoteString will quote the string according to the type given.
 // This means that some types will quote, and others will
@@ -71,4 +114,16 @@ func FromGmsType(typ sql.Type) DoltgresType {
 	default:
 		return Unknown
 	}
+}
+
+// serializedStringCompare handles the efficient comparison of two strings that have been serialized using utils.Writer.
+// The writer writes the string by prepending the string length, which prevents direct comparison of the byte slices. We
+// thus read the string length manually, and extract the byte slices without converting to a string. This function
+// assumes that neither byte slice is nil nor empty.
+func serializedStringCompare(v1 []byte, v2 []byte) int {
+	readerV1 := utils.NewReader(v1)
+	readerV2 := utils.NewReader(v2)
+	v1Bytes := utils.AdvanceReader(readerV1, readerV1.VariableUint())
+	v2Bytes := utils.AdvanceReader(readerV2, readerV2.VariableUint())
+	return bytes.Compare(v1Bytes, v2Bytes)
 }

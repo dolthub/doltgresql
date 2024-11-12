@@ -39,7 +39,7 @@ func initTimestamp() {
 var timestamp_in = framework.Function3{
 	Name:       "timestamp_in",
 	Return:     pgtypes.Timestamp,
-	Parameters: [3]pgtypes.DoltgresType{pgtypes.Text, pgtypes.Oid, pgtypes.Int32}, // cstring
+	Parameters: [3]pgtypes.DoltgresType{pgtypes.Cstring, pgtypes.Oid, pgtypes.Int32},
 	Strict:     true,
 	Callable: func(ctx *sql.Context, _ [4]pgtypes.DoltgresType, val1, val2, val3 any) (any, error) {
 		input := val1.(string)
@@ -61,7 +61,7 @@ var timestamp_in = framework.Function3{
 // timestamp_out represents the PostgreSQL function of timestamp type IO output.
 var timestamp_out = framework.Function1{
 	Name:       "timestamp_out",
-	Return:     pgtypes.Text, // cstring
+	Return:     pgtypes.Cstring,
 	Parameters: [1]pgtypes.DoltgresType{pgtypes.Timestamp},
 	Strict:     true,
 	Callable: func(ctx *sql.Context, _ [2]pgtypes.DoltgresType, val any) (any, error) {
@@ -73,7 +73,7 @@ var timestamp_out = framework.Function1{
 var timestamp_recv = framework.Function3{
 	Name:       "timestamp_recv",
 	Return:     pgtypes.Timestamp,
-	Parameters: [3]pgtypes.DoltgresType{pgtypes.Internal, pgtypes.Oid, pgtypes.Int32}, // cstring
+	Parameters: [3]pgtypes.DoltgresType{pgtypes.Internal, pgtypes.Oid, pgtypes.Int32},
 	Strict:     true,
 	Callable: func(ctx *sql.Context, _ [4]pgtypes.DoltgresType, val1, val2, val3 any) (any, error) {
 		data := val1.([]byte)
@@ -106,7 +106,7 @@ var timestamp_send = framework.Function1{
 var timestamptypmodin = framework.Function1{
 	Name:       "timestamptypmodin",
 	Return:     pgtypes.Int32,
-	Parameters: [1]pgtypes.DoltgresType{pgtypes.TextArray}, // cstring[]
+	Parameters: [1]pgtypes.DoltgresType{pgtypes.CstringArray},
 	Strict:     true,
 	Callable: func(ctx *sql.Context, _ [2]pgtypes.DoltgresType, val any) (any, error) {
 		// TODO: typmod=(precision<<16)∣scale
@@ -117,7 +117,7 @@ var timestamptypmodin = framework.Function1{
 // timestamptypmodout represents the PostgreSQL function of timestamp type IO typmod output.
 var timestamptypmodout = framework.Function1{
 	Name:       "timestamptypmodout",
-	Return:     pgtypes.Text, // cstring
+	Return:     pgtypes.Cstring,
 	Parameters: [1]pgtypes.DoltgresType{pgtypes.Int32},
 	Strict:     true,
 	Callable: func(ctx *sql.Context, _ [2]pgtypes.DoltgresType, val any) (any, error) {

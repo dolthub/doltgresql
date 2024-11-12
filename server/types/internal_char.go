@@ -57,5 +57,6 @@ var InternalChar = DoltgresType{
 	Acl:           nil,
 	Checks:        nil,
 	AttTypMod:     -1,
-	internalName:  `"char"`,
+	CompareFunc:   "btcharcmp",
+	InternalName:  `"char"`,
 }

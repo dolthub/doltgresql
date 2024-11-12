@@ -35,7 +35,7 @@ func initRegproc() {
 var regprocin = framework.Function1{
 	Name:       "regprocin",
 	Return:     pgtypes.Regproc,
-	Parameters: [1]pgtypes.DoltgresType{pgtypes.Text}, // cstring
+	Parameters: [1]pgtypes.DoltgresType{pgtypes.Cstring},
 	Strict:     true,
 	Callable: func(ctx *sql.Context, _ [2]pgtypes.DoltgresType, val any) (any, error) {
 		return pgtypes.Regproc_IoInput(ctx, val.(string))
@@ -45,7 +45,7 @@ var regprocin = framework.Function1{
 // regprocout represents the PostgreSQL function of regproc type IO output.
 var regprocout = framework.Function1{
 	Name:       "regprocout",
-	Return:     pgtypes.Text, // cstring
+	Return:     pgtypes.Cstring,
 	Parameters: [1]pgtypes.DoltgresType{pgtypes.Regproc},
 	Strict:     true,
 	Callable: func(ctx *sql.Context, _ [2]pgtypes.DoltgresType, val any) (any, error) {

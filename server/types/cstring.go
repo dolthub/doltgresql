@@ -18,31 +18,31 @@ import (
 	"github.com/lib/pq/oid"
 )
 
-// Interval is the interval type.
-var Interval = DoltgresType{
-	OID:           uint32(oid.T_interval),
-	Name:          "interval",
+// Cstring is the cstring type.
+var Cstring = DoltgresType{
+	OID:           uint32(oid.T_cstring),
+	Name:          "cstring",
 	Schema:        "pg_catalog",
 	Owner:         "doltgres", // TODO
-	TypLength:     int16(16),
+	TypLength:     int16(-2),
 	PassedByVal:   false,
-	TypType:       TypeType_Base,
-	TypCategory:   TypeCategory_TimespanTypes,
-	IsPreferred:   true,
+	TypType:       TypeType_Pseudo,
+	TypCategory:   TypeCategory_PseudoTypes,
+	IsPreferred:   false,
 	IsDefined:     true,
 	Delimiter:     ",",
 	RelID:         0,
 	SubscriptFunc: "-",
 	Elem:          0,
-	Array:         uint32(oid.T__interval),
-	InputFunc:     "interval_in",
-	OutputFunc:    "interval_out",
-	ReceiveFunc:   "interval_recv",
-	SendFunc:      "interval_send",
-	ModInFunc:     "intervaltypmodin",
-	ModOutFunc:    "intervaltypmodout",
+	Array:         uint32(oid.T__cstring),
+	InputFunc:     "cstring_in",
+	OutputFunc:    "cstring_out",
+	ReceiveFunc:   "cstring_recv",
+	SendFunc:      "cstring_send",
+	ModInFunc:     "-",
+	ModOutFunc:    "-",
 	AnalyzeFunc:   "-",
-	Align:         TypeAlignment_Double,
+	Align:         TypeAlignment_Char,
 	Storage:       TypeStorage_Plain,
 	NotNull:       false,
 	BaseTypeOID:   0,
@@ -54,5 +54,5 @@ var Interval = DoltgresType{
 	Acl:           nil,
 	Checks:        nil,
 	AttTypMod:     -1,
-	CompareFunc:   "interval_cmp",
+	CompareFunc:   "-",
 }

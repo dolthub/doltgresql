@@ -15,4 +15,4 @@
 package types
 
 // TimeArray is the array variant of Time.
-var TimeArray = CreateArrayTypeFromBaseType(Time) // createArrayType(Time, SerializationID_TimeArray, oid.T__time)
+var TimeArray = CreateArrayTypeFromBaseType(Time)

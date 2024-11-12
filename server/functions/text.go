@@ -37,7 +37,7 @@ func initText() {
 var textin = framework.Function1{
 	Name:       "textin",
 	Return:     pgtypes.Text,
-	Parameters: [1]pgtypes.DoltgresType{pgtypes.Text}, // cstring
+	Parameters: [1]pgtypes.DoltgresType{pgtypes.Cstring},
 	Strict:     true,
 	Callable: func(ctx *sql.Context, _ [2]pgtypes.DoltgresType, val any) (any, error) {
 		return val.(string), nil
@@ -47,7 +47,7 @@ var textin = framework.Function1{
 // textout represents the PostgreSQL function of text type IO output.
 var textout = framework.Function1{
 	Name:       "textout",
-	Return:     pgtypes.Text, // cstring
+	Return:     pgtypes.Cstring,
 	Parameters: [1]pgtypes.DoltgresType{pgtypes.Text},
 	Strict:     true,
 	Callable: func(ctx *sql.Context, _ [2]pgtypes.DoltgresType, val any) (any, error) {

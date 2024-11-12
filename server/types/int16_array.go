@@ -15,4 +15,4 @@
 package types
 
 // Int16Array is the array variant of Int16.
-var Int16Array = CreateArrayTypeFromBaseType(Int16) // createArrayType(Int16, SerializationID_Int16Array, oid.T__int2)
+var Int16Array = CreateArrayTypeFromBaseType(Int16)

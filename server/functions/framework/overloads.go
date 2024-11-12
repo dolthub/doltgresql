@@ -64,7 +64,6 @@ func keyForParamTypes(types []pgtypes.DoltgresType) string {
 		if i > 0 {
 			sb.WriteByte(',')
 		}
-		// TODO: check
 		sb.WriteString(typ.String())
 	}
 	return sb.String()
@@ -88,15 +87,7 @@ func (o *Overloads) overloadsForParams(numParams int) []Overload {
 			copy(extendedParams[firstValueAfterVariadic:], params[variadicIndex+1:])
 			// ToArrayType immediately followed by BaseType is a way to get the base type without having to cast.
 			// For array types, ToArrayType causes them to return themselves.
-			arrType, ok := overload.GetParameters()[variadicIndex].ToArrayType()
-			if !ok {
-				continue
-			}
-			baseType, ok := arrType.ArrayBaseType()
-			if !ok {
-				continue
-			}
-			variadicBaseType := baseType
+			variadicBaseType := overload.GetParameters()[variadicIndex].ToArrayType().ArrayBaseType()
 			for variadicParamIdx := 0; variadicParamIdx < 1+(numParams-len(params)); variadicParamIdx++ {
 				extendedParams[variadicParamIdx+variadicIndex] = variadicBaseType
 			}

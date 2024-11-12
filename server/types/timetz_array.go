@@ -15,4 +15,4 @@
 package types
 
 // TimeTZArray is the array variant of TimeTZ.
-var TimeTZArray = CreateArrayTypeFromBaseType(TimeTZ) // createArrayType(TimeTZ, SerializationID_TimeTZArray, oid.T__timetz)
+var TimeTZArray = CreateArrayTypeFromBaseType(TimeTZ)

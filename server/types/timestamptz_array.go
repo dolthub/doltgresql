@@ -15,4 +15,4 @@
 package types
 
 // TimestampTZArray is the array variant of TimestampTZ.
-var TimestampTZArray = CreateArrayTypeFromBaseType(TimestampTZ) // createArrayType(TimestampTZ, SerializationID_TimestampTZArray, oid.T__timestamptz)
+var TimestampTZArray = CreateArrayTypeFromBaseType(TimestampTZ)

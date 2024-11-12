@@ -41,7 +41,7 @@ func initNumeric() {
 var numeric_in = framework.Function3{
 	Name:       "numeric_in",
 	Return:     pgtypes.Numeric,
-	Parameters: [3]pgtypes.DoltgresType{pgtypes.Text, pgtypes.Oid, pgtypes.Int32}, // cstring
+	Parameters: [3]pgtypes.DoltgresType{pgtypes.Cstring, pgtypes.Oid, pgtypes.Int32},
 	Strict:     true,
 	Callable: func(ctx *sql.Context, _ [4]pgtypes.DoltgresType, val1, val2, val3 any) (any, error) {
 		input := val1.(string)
@@ -53,7 +53,7 @@ var numeric_in = framework.Function3{
 		if typmod == -1 {
 			return val, nil
 		}
-		precision, scale := GetPrecisionAndScaleFromTypmod(typmod)
+		precision, scale := pgtypes.GetPrecisionAndScaleFromTypmod(typmod)
 		str := val.StringFixed(scale)
 		parts := strings.Split(str, ".")
 		if int32(len(parts[0])) > precision-scale {
@@ -67,7 +67,7 @@ var numeric_in = framework.Function3{
 // numeric_out represents the PostgreSQL function of numeric type IO output.
 var numeric_out = framework.Function1{
 	Name:       "numeric_out",
-	Return:     pgtypes.Text, // cstring
+	Return:     pgtypes.Cstring,
 	Parameters: [1]pgtypes.DoltgresType{pgtypes.Numeric},
 	Strict:     true,
 	Callable: func(ctx *sql.Context, t [2]pgtypes.DoltgresType, val any) (any, error) {
@@ -76,7 +76,7 @@ var numeric_out = framework.Function1{
 		if typ.AttTypMod == -1 {
 			return dec.StringFixed(dec.Exponent() * -1), nil
 		} else {
-			_, s := GetPrecisionAndScaleFromTypmod(typ.AttTypMod)
+			_, s := pgtypes.GetPrecisionAndScaleFromTypmod(typ.AttTypMod)
 			return dec.StringFixed(s), nil
 		}
 	},
@@ -116,14 +116,14 @@ var numeric_send = framework.Function1{
 var numerictypmodin = framework.Function1{
 	Name:       "numerictypmodin",
 	Return:     pgtypes.Int32,
-	Parameters: [1]pgtypes.DoltgresType{pgtypes.TextArray}, // cstring[]
+	Parameters: [1]pgtypes.DoltgresType{pgtypes.CstringArray},
 	Strict:     true,
 	Callable: func(ctx *sql.Context, _ [2]pgtypes.DoltgresType, val any) (any, error) {
 		arr := val.([]any)
 		if len(arr) == 0 {
 			return nil, pgtypes.ErrTypmodArrayMustBe1D.New()
 		} else if len(arr) > 2 {
-			return nil, pgtypes.ErrInvalidTypeModifier.New("NUMERIC")
+			return nil, pgtypes.ErrInvalidTypMod.New("NUMERIC")
 		}
 
 		p, err := strconv.ParseInt(arr[0].(string), 10, 32)
@@ -139,19 +139,19 @@ var numerictypmodin = framework.Function1{
 			}
 			scale = int32(s)
 		}
-		return pgtypes.GetTypmodFromPrecisionAndScale(precision, scale)
+		return pgtypes.GetTypmodFromNumericPrecisionAndScale(precision, scale)
 	},
 }
 
 // numerictypmodout represents the PostgreSQL function of numeric type IO typmod output.
 var numerictypmodout = framework.Function1{
 	Name:       "numerictypmodout",
-	Return:     pgtypes.Text, // cstring
+	Return:     pgtypes.Cstring,
 	Parameters: [1]pgtypes.DoltgresType{pgtypes.Int32},
 	Strict:     true,
 	Callable: func(ctx *sql.Context, _ [2]pgtypes.DoltgresType, val any) (any, error) {
 		typmod := val.(int32)
-		precision, scale := GetPrecisionAndScaleFromTypmod(typmod)
+		precision, scale := pgtypes.GetPrecisionAndScaleFromTypmod(typmod)
 		return fmt.Sprintf("(%v,%v)", precision, scale), nil
 	},
 }
@@ -167,10 +167,4 @@ var numeric_cmp = framework.Function2{
 		bb := val2.(decimal.Decimal)
 		return int32(ab.Cmp(bb)), nil
 	},
-}
-
-func GetPrecisionAndScaleFromTypmod(typmod int32) (int32, int32) {
-	scale := typmod & 0xFFFF
-	precision := (typmod >> 16) & 0xFFFF
-	return precision, scale
 }

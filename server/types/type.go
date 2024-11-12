@@ -27,20 +27,10 @@ import (
 	"github.com/dolthub/vitess/go/vt/proto/query"
 	"github.com/lib/pq/oid"
 	"github.com/shopspring/decimal"
-	"gopkg.in/src-d/go-errors.v1"
 
 	"github.com/dolthub/doltgresql/postgres/parser/duration"
 	"github.com/dolthub/doltgresql/postgres/parser/uuid"
-	"github.com/dolthub/doltgresql/utils"
 )
-
-var ErrTypeAlreadyExists = errors.NewKind(`type "%s" already exists`)
-var ErrTypeDoesNotExist = errors.NewKind(`type "%s" does not exist`)
-var ErrUnhandledType = errors.NewKind(`%s: unhandled type: %T`)
-var ErrInvalidSyntaxForType = errors.NewKind(`invalid input syntax for type %s: %q`)
-var ErrValueIsOutOfRangeForType = errors.NewKind(`value %q is out of range for type %s`)
-var ErrTypmodArrayMustBe1D = errors.NewKind(`typmod array must be one-dimensional`)
-var ErrInvalidTypeModifier = errors.NewKind(`invalid %s type modifier`)
 
 // DoltgresType represents a single type.
 type DoltgresType struct {
@@ -75,60 +65,61 @@ type DoltgresType struct {
 	TypCollation  uint32
 	DefaulBin     string // for Domain types
 	Default       string
-	Acl           []string               // TODO: list of privileges
-	Checks        []*sql.CheckDefinition // TODO: this is not part of `pg_type` instead `pg_constraint` for Domain types.
-	AttTypMod     int32                  // TODO: should be stored in pg_attribute.atttypmod
-	internalName  string                 // TODO: Name and internalName differ for some types. e.g.: "int2" vs "smallint"
+	Acl           []string // TODO: list of privileges
 
-	// These are for internal use
-	isSerial            bool // TODO: to replace serial types
-	isUnresolved        bool
+	// Below are not part of pg_type fields
+	Checks       []*sql.CheckDefinition // TODO: should be in `pg_constraint` for Domain types
+	AttTypMod    int32                  // TODO: should be in `pg_attribute.atttypmod`
+	CompareFunc  string                 // TODO: should be in `pg_amproc`
+	InternalName string                 // Name and InternalName differ for some types. e.g.: "int2" vs "smallint"
+
+	// Below are not stored
+	IsSerial            bool   // used for serial types only (e.g.: smallserial)
 	BaseTypeForInternal uint32 // used for INTERNAL type only
 }
 
-var IoOutput func(ctx *sql.Context, t DoltgresType, val any) (string, error)
-var IoReceive func(ctx *sql.Context, t DoltgresType, val any) (any, error)
-var IoSend func(ctx *sql.Context, t DoltgresType, val any) ([]byte, error)
-var IoCompare func(ctx *sql.Context, t DoltgresType, v1, v2 any) (int, error)
-var SQL func(ctx *sql.Context, t DoltgresType, val any) (string, error)
-
 var _ types.ExtendedType = DoltgresType{}
 
+// NewUnresolvedDoltgresType returns DoltgresType that is not resolved.
+// The type will have 0 as OID and the schema and name defined with given values.
 func NewUnresolvedDoltgresType(sch, name string) DoltgresType {
 	return DoltgresType{
-		Name:         name,
-		Schema:       sch,
-		isUnresolved: true,
+		OID:    0,
+		Name:   name,
+		Schema: sch,
 	}
 }
 
-// ArrayBaseType returns a base type of this array type if it exists.
-// If this type is not an array type, it returns false.
-func (t DoltgresType) ArrayBaseType() (DoltgresType, bool) {
+// ArrayBaseType returns a base type of given array type.
+// If this type is not an array type, it returns itself.
+func (t DoltgresType) ArrayBaseType() DoltgresType {
 	if !t.IsArrayType() {
-		return DoltgresType{}, false
+		return t
 	}
 	elem, ok := OidToBuildInDoltgresType[t.Elem]
+	if !ok {
+		panic(fmt.Sprintf("cannot get base type from: %s", t.Name))
+	}
 	elem.AttTypMod = t.AttTypMod
-	return elem, ok
+	return elem
 }
 
 // CharacterSet implements the sql.StringType interface.
 func (t DoltgresType) CharacterSet() sql.CharacterSetID {
-	// TODO: only varchar has charset info.
-	if t.OID == uint32(oid.T_varchar) {
-		return sql.CharacterSet_binary // TODO
-	} else {
+	switch oid.Oid(t.OID) {
+	case oid.T_varchar, oid.T_text, oid.T_name:
+		return sql.CharacterSet_binary
+	default:
 		return sql.CharacterSet_Unspecified
 	}
 }
 
 // Collation implements the sql.StringType interface.
 func (t DoltgresType) Collation() sql.CollationID {
-	// TODO: only varchar has collation info.
-	if t.OID == uint32(oid.T_varchar) {
-		return sql.Collation_Default // TODO
-	} else {
+	switch oid.Oid(t.OID) {
+	case oid.T_varchar, oid.T_text, oid.T_name:
+		return sql.Collation_Default
+	default:
 		return sql.Collation_Unspecified
 	}
 }
@@ -140,7 +131,8 @@ func (t DoltgresType) CollationCoercibility(ctx *sql.Context) (collation sql.Col
 
 // Compare implements the types.ExtendedType interface.
 func (t DoltgresType) Compare(v1 interface{}, v2 interface{}) (int, error) {
-	return IoCompare(sql.NewEmptyContext(), t, v1, v2)
+	res, err := IoCompare(sql.NewEmptyContext(), t, v1, v2)
+	return int(res), err
 }
 
 // Convert implements the types.ExtendedType interface.
@@ -148,7 +140,6 @@ func (t DoltgresType) Convert(v interface{}) (interface{}, sql.ConvertInRange, e
 	if v == nil {
 		return nil, sql.InRange, nil
 	}
-	// TODO: should assignment cast, but need info on 'from type'
 	switch oid.Oid(t.OID) {
 	case oid.T_bool:
 		if _, ok := v.(bool); ok {
@@ -205,7 +196,7 @@ func (t DoltgresType) Convert(v interface{}) (interface{}, sql.ConvertInRange, e
 	default:
 		return v, sql.InRange, nil
 	}
-	return nil, sql.OutOfRange, fmt.Errorf("%s: unhandled type: %T", t.String(), v)
+	return nil, sql.OutOfRange, ErrUnhandledType.New(t.String(), v)
 }
 
 // DomainUnderlyingBaseType returns an underlying base type of this domain type.
@@ -255,48 +246,55 @@ func (t DoltgresType) IsEmptyType() bool {
 // All polymorphic types have "any" as a prefix.
 // The exception is the "any" type, which is not a polymorphic type.
 func (t DoltgresType) IsPolymorphicType() bool {
-	return t.TypType == TypeType_Pseudo
-}
-
-// IsResolvedType whether the type is resolved and has complete information.
-// This is used to resolve types during analyzing when non-built-in type is used.
-func (t DoltgresType) IsResolvedType() bool {
-	return !t.isUnresolved
-}
-
-// IsSerialType returns whether the type is serial type.
-// This is true for int16serial, int32serial and int64serial types.
-func (t DoltgresType) IsSerialType() bool {
-	return t.isSerial
-}
-
-// IsValidForPolymorphicType returns whether the given type is valid for the calling polymorphic type.
-func (t DoltgresType) IsValidForPolymorphicType(target DoltgresType) bool {
-	if !t.IsPolymorphicType() {
-		return false
-	}
 	switch oid.Oid(t.OID) {
-	case oid.T_anyarray:
-		return target.TypCategory == TypeCategory_ArrayTypes
-	case oid.T_anynonarray:
-		return target.TypCategory != TypeCategory_ArrayTypes
-	case oid.T_anyelement, oid.T_any, oid.T_internal:
+	case oid.T_anyelement, oid.T_anyarray, oid.T_anynonarray:
+		// TODO: add other polymorphic types
+		// https://www.postgresql.org/docs/15/extend-type-system.html#EXTEND-TYPES-POLYMORPHIC-TABLE
 		return true
 	default:
 		return false
 	}
 }
 
+// IsResolvedType whether the type is resolved and has complete information.
+// This is used to resolve types during analyzing when non-built-in type is used.
+func (t DoltgresType) IsResolvedType() bool {
+	// temporary serial types have 0 OID but are resolved.
+	return t.OID != 0 || t.IsSerial
+}
+
+// IsValidForPolymorphicType returns whether the given type is valid for the calling polymorphic type.
+func (t DoltgresType) IsValidForPolymorphicType(target DoltgresType) bool {
+	switch oid.Oid(t.OID) {
+	case oid.T_anyelement:
+		return true
+	case oid.T_anyarray:
+		return target.TypCategory == TypeCategory_ArrayTypes
+	case oid.T_anynonarray:
+		return target.TypCategory != TypeCategory_ArrayTypes
+	default:
+		// TODO: add other polymorphic types
+		// https://www.postgresql.org/docs/15/extend-type-system.html#EXTEND-TYPES-POLYMORPHIC-TABLE
+		return false
+	}
+}
+
 // Length implements the sql.StringType interface.
 func (t DoltgresType) Length() int64 {
-	if t.OID == uint32(oid.T_varchar) {
+	switch oid.Oid(t.OID) {
+	case oid.T_varchar:
 		if t.AttTypMod == -1 {
 			return StringUnbounded
 		} else {
-			return int64(GetMaxCharsFromTypmod(t.AttTypMod))
+			return int64(GetCharLengthFromTypmod(t.AttTypMod))
 		}
+	case oid.T_text:
+		return StringUnbounded
+	case oid.T_name:
+		return int64(t.TypLength)
+	default:
+		return int64(0)
 	}
-	return int64(0)
 }
 
 // MaxByteLength implements the sql.StringType interface.
@@ -374,6 +372,16 @@ func (t DoltgresType) Promote() sql.Type {
 	return t
 }
 
+// ReceiveFuncExists returns whether IO receive function exists for this type.
+func (t DoltgresType) ReceiveFuncExists() bool {
+	return t.ReceiveFunc != "-"
+}
+
+// SendFuncExists returns whether IO send function exists for this type.
+func (t DoltgresType) SendFuncExists() bool {
+	return t.SendFunc != "-"
+}
+
 // SerializedCompare implements the types.ExtendedType interface.
 func (t DoltgresType) SerializedCompare(v1 []byte, v2 []byte) (int, error) {
 	if len(v1) == 0 && len(v2) == 0 {
@@ -407,24 +415,30 @@ func (t DoltgresType) SQL(ctx *sql.Context, dest []byte, v interface{}) (sqltype
 
 // String implements the types.ExtendedType interface.
 func (t DoltgresType) String() string {
-	if t.internalName == "" {
-		return t.Name
+	str := t.InternalName
+	if t.InternalName == "" {
+		str = t.Name
 	}
-	return t.internalName
+	if t.AttTypMod != -1 {
+		if l, err := TypModOut(sql.NewEmptyContext(), t, t.AttTypMod); err == nil {
+			str = fmt.Sprintf("%s%s", str, l)
+		}
+	}
+	return str
 }
 
-// ToArrayType returns an array type and whether it exists.
+// ToArrayType returns an array type of given base type.
 // For array types, ToArrayType causes them to return themselves.
-func (t DoltgresType) ToArrayType() (DoltgresType, bool) {
+func (t DoltgresType) ToArrayType() DoltgresType {
 	if t.IsArrayType() {
-		return t, true
-	}
-	if t.Array == 0 {
-		return DoltgresType{}, false
+		return t
 	}
 	arr, ok := OidToBuildInDoltgresType[t.Array]
+	if !ok {
+		panic(fmt.Sprintf("cannot get array type from: %s", t.Name))
+	}
 	arr.AttTypMod = t.AttTypMod
-	return arr, ok
+	return arr
 }
 
 // Type implements the types.ExtendedType interface.
@@ -532,12 +546,7 @@ func (t DoltgresType) SerializeValue(val any) ([]byte, error) {
 	if val == nil {
 		return nil, nil
 	}
-	converted, _, err := t.Convert(val)
-	if err != nil {
-		return nil, err
-	}
-	// TODO: use converted value or not needed?
-	return IoSend(sql.NewEmptyContext(), t, converted)
+	return IoSend(sql.NewEmptyContext(), t, val)
 }
 
 // DeserializeValue implements the types.ExtendedType interface.
@@ -546,16 +555,4 @@ func (t DoltgresType) DeserializeValue(val []byte) (any, error) {
 		return nil, nil
 	}
 	return IoReceive(sql.NewEmptyContext(), t, val)
-}
-
-// serializedStringCompare handles the efficient comparison of two strings that have been serialized using utils.Writer.
-// The writer writes the string by prepending the string length, which prevents direct comparison of the byte slices. We
-// thus read the string length manually, and extract the byte slices without converting to a string. This function
-// assumes that neither byte slice is nil nor empty.
-func serializedStringCompare(v1 []byte, v2 []byte) int {
-	readerV1 := utils.NewReader(v1)
-	readerV2 := utils.NewReader(v2)
-	v1Bytes := utils.AdvanceReader(readerV1, readerV1.VariableUint())
-	v2Bytes := utils.AdvanceReader(readerV2, readerV2.VariableUint())
-	return bytes.Compare(v1Bytes, v2Bytes)
 }

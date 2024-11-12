@@ -15,4 +15,4 @@
 package types
 
 // OidArray is the array variant of Oid.
-var OidArray = CreateArrayTypeFromBaseType(Oid) // createArrayType(Oid, SerializationID_OidArray, oid.T__oid)
+var OidArray = CreateArrayTypeFromBaseType(Oid)

@@ -41,7 +41,7 @@ func initTimeTZ() {
 var timetz_in = framework.Function3{
 	Name:       "timetz_in",
 	Return:     pgtypes.TimeTZ,
-	Parameters: [3]pgtypes.DoltgresType{pgtypes.Text, pgtypes.Oid, pgtypes.Int32}, // cstring
+	Parameters: [3]pgtypes.DoltgresType{pgtypes.Cstring, pgtypes.Oid, pgtypes.Int32},
 	Strict:     true,
 	Callable: func(ctx *sql.Context, _ [4]pgtypes.DoltgresType, val1, val2, val3 any) (any, error) {
 		input := val1.(string)
@@ -67,7 +67,7 @@ var timetz_in = framework.Function3{
 // timetz_out represents the PostgreSQL function of timetz type IO output.
 var timetz_out = framework.Function1{
 	Name:       "timetz_out",
-	Return:     pgtypes.Text, // cstring
+	Return:     pgtypes.Cstring,
 	Parameters: [1]pgtypes.DoltgresType{pgtypes.TimeTZ},
 	Strict:     true,
 	Callable: func(ctx *sql.Context, _ [2]pgtypes.DoltgresType, val any) (any, error) {
@@ -80,7 +80,7 @@ var timetz_out = framework.Function1{
 var timetz_recv = framework.Function3{
 	Name:       "timetz_recv",
 	Return:     pgtypes.TimeTZ,
-	Parameters: [3]pgtypes.DoltgresType{pgtypes.Internal, pgtypes.Oid, pgtypes.Int32}, // cstring
+	Parameters: [3]pgtypes.DoltgresType{pgtypes.Internal, pgtypes.Oid, pgtypes.Int32},
 	Strict:     true,
 	Callable: func(ctx *sql.Context, _ [4]pgtypes.DoltgresType, val1, val2, val3 any) (any, error) {
 		data := val1.([]byte)
@@ -113,7 +113,7 @@ var timetz_send = framework.Function1{
 var timetztypmodin = framework.Function1{
 	Name:       "timetztypmodin",
 	Return:     pgtypes.Int32,
-	Parameters: [1]pgtypes.DoltgresType{pgtypes.TextArray}, // cstring[]
+	Parameters: [1]pgtypes.DoltgresType{pgtypes.CstringArray},
 	Strict:     true,
 	Callable: func(ctx *sql.Context, _ [2]pgtypes.DoltgresType, val any) (any, error) {
 		// TODO: typmod=(precision<<16)∣scale
@@ -124,7 +124,7 @@ var timetztypmodin = framework.Function1{
 // timetztypmodout represents the PostgreSQL function of timetz type IO typmod output.
 var timetztypmodout = framework.Function1{
 	Name:       "timetztypmodout",
-	Return:     pgtypes.Text, // cstring
+	Return:     pgtypes.Cstring,
 	Parameters: [1]pgtypes.DoltgresType{pgtypes.Int32},
 	Strict:     true,
 	Callable: func(ctx *sql.Context, _ [2]pgtypes.DoltgresType, val any) (any, error) {

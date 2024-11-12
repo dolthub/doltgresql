@@ -16,5 +16,3 @@ package types
 
 // ByteaArray is the array variant of Bytea.
 var ByteaArray = CreateArrayTypeFromBaseType(Bytea)
-
-// createArrayType(Bytea, SerializationID_ByteaArray, oid.T__bytea)

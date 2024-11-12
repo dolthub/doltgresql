@@ -15,4 +15,4 @@
 package types
 
 // NameArray is the array variant of Name.
-var NameArray = CreateArrayTypeFromBaseType(Name) // createArrayType(Name, SerializationID_NameArray, oid.T__name)
+var NameArray = CreateArrayTypeFromBaseType(Name)

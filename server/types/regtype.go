@@ -54,6 +54,8 @@ var Regtype = DoltgresType{
 	Default:       "",
 	Acl:           nil,
 	Checks:        nil,
+	AttTypMod:     -1,
+	CompareFunc:   "-",
 }
 
 // Regtype_IoInput is the implementation for IoInput that is being set from another package to avoid circular dependencies.

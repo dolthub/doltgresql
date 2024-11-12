@@ -40,7 +40,7 @@ func initInt8() {
 var int8in = framework.Function1{
 	Name:       "int8in",
 	Return:     pgtypes.Int64,
-	Parameters: [1]pgtypes.DoltgresType{pgtypes.Text}, // cstring
+	Parameters: [1]pgtypes.DoltgresType{pgtypes.Cstring},
 	Strict:     true,
 	Callable: func(ctx *sql.Context, _ [2]pgtypes.DoltgresType, val any) (any, error) {
 		input := val.(string)
@@ -55,7 +55,7 @@ var int8in = framework.Function1{
 // int8out represents the PostgreSQL function of int8 type IO output.
 var int8out = framework.Function1{
 	Name:       "int8out",
-	Return:     pgtypes.Text, // cstring
+	Return:     pgtypes.Cstring,
 	Parameters: [1]pgtypes.DoltgresType{pgtypes.Int64},
 	Strict:     true,
 	Callable: func(ctx *sql.Context, _ [2]pgtypes.DoltgresType, val any) (any, error) {

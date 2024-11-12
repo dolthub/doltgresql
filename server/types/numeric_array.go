@@ -15,4 +15,4 @@
 package types
 
 // NumericArray is the array variant of Numeric.
-var NumericArray = CreateArrayTypeFromBaseType(Numeric) // createArrayType(Numeric, SerializationID_NumericArray, oid.T__numeric)
+var NumericArray = CreateArrayTypeFromBaseType(Numeric)

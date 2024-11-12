@@ -15,4 +15,4 @@
 package types
 
 // Float64Array is the array variant of Float64.
-var Float64Array = CreateArrayTypeFromBaseType(Float64) // createArrayType(Float64, SerializationID_Float64Array, oid.T__float8)
+var Float64Array = CreateArrayTypeFromBaseType(Float64)

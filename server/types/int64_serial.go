@@ -51,6 +51,7 @@ var Int64Serial = DoltgresType{
 	Default:       "",
 	Acl:           nil,
 	Checks:        nil,
-	// used internally
-	isSerial: true,
+	AttTypMod:     -1,
+	CompareFunc:   "btint8cmp",
+	IsSerial:      true,
 }

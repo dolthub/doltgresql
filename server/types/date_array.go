@@ -16,6 +16,3 @@ package types
 
 // DateArray is the day, month, and year array.
 var DateArray = CreateArrayTypeFromBaseType(Date)
-
-//// DateArray is the array variant of Date.
-//var DateArray = createArrayType(Date, SerializationID_DateArray, oid.T__date)

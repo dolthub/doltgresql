@@ -53,10 +53,17 @@ var Timestamp = DoltgresType{
 	Default:       "",
 	Acl:           nil,
 	Checks:        nil,
+	AttTypMod:     -1,
+	CompareFunc:   "timestamp_cmp",
 }
 
-// TimestampType is the extended type implementation of the PostgreSQL timestamp without time zone.
-type TimestampType struct {
-	// TODO: implement precision
-	Precision int8
+// NewTimestampType returns Timestamp type with typmod set. // TODO: implement precision
+func NewTimestampType(precision int32) (DoltgresType, error) {
+	newType := Timestamp
+	typmod, err := GetTypmodFromTimePrecision(precision)
+	if err != nil {
+		return DoltgresType{}, err
+	}
+	newType.AttTypMod = typmod
+	return newType, nil
 }

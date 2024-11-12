@@ -39,7 +39,7 @@ func initBytea() {
 var byteain = framework.Function1{
 	Name:       "byteain",
 	Return:     pgtypes.Bytea,
-	Parameters: [1]pgtypes.DoltgresType{pgtypes.Text}, // cstring
+	Parameters: [1]pgtypes.DoltgresType{pgtypes.Cstring},
 	Strict:     true,
 	Callable: func(ctx *sql.Context, _ [2]pgtypes.DoltgresType, val any) (any, error) {
 		input := val.(string)
@@ -54,7 +54,7 @@ var byteain = framework.Function1{
 // byteaout represents the PostgreSQL function of bytea type IO output.
 var byteaout = framework.Function1{
 	Name:       "byteaout",
-	Return:     pgtypes.Text, // cstring
+	Return:     pgtypes.Cstring,
 	Parameters: [1]pgtypes.DoltgresType{pgtypes.Bytea},
 	Strict:     true,
 	Callable: func(ctx *sql.Context, _ [2]pgtypes.DoltgresType, val any) (any, error) {

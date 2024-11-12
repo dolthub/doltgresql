@@ -27,6 +27,7 @@ import (
 	pgtypes "github.com/dolthub/doltgresql/server/types"
 )
 
+// ErrFunctionDoesNotExist is returned when the function in use cannot be found.
 var ErrFunctionDoesNotExist = errors.NewKind(`function %s does not exist`)
 
 // CompiledFunction is an expression that represents a fully-analyzed PostgreSQL function.
@@ -92,16 +93,14 @@ func newCompiledFunctionInternal(
 	c.callResolved = make([]pgtypes.DoltgresType, len(functionParameterTypes)+1)
 	hasPolymorphicParam := false
 	for i, param := range functionParameterTypes {
-		// TODO: we use 'text' type for 'cstring' type, which is polymorphic type
-		if param.IsPolymorphicType() || param.OID == uint32(oid.T_text) {
+		if param.IsPolymorphicType() {
 			// resolve will ensure that the parameter types are valid, so we can just assign them here
 			hasPolymorphicParam = true
 			c.callResolved[i] = originalTypes[i]
 		} else {
 			c.callResolved[i] = param
 			if d, ok := args[i].Type().(pgtypes.DoltgresType); ok {
-				// TODO: find better workaround to keep the type of the argument as parameter type
-				//  (they currently differ with type modifier information)
+				// TODO: `param` is a default type which does not have type modifier set
 				c.callResolved[i] = d
 			}
 		}
@@ -111,9 +110,11 @@ func newCompiledFunctionInternal(
 	if returnType.IsPolymorphicType() {
 		if hasPolymorphicParam {
 			c.callResolved[len(c.callResolved)-1] = c.resolvePolymorphicReturnType(functionParameterTypes, originalTypes, returnType)
+		} else if c.Name == "array_in" || c.Name == "array_recv" {
+			// TODO: `array_in` and `array_recv` functions don't follow this rule
+			// The return type should resolve to the type of OID value passed in as second argument.
 		} else {
-			c.stashedErr = fmt.Errorf("A result of type %s requires at least one input of type "+
-				"anyelement, anyarray, anynonarray, anyenum, anyrange, or anymultirange.", returnType.String())
+			c.stashedErr = fmt.Errorf("A result of type %s requires at least one input of type anyelement, anyarray, anynonarray, anyenum, anyrange, or anymultirange.", returnType.String())
 			return c
 		}
 	}
@@ -240,12 +241,11 @@ func (c *CompiledFunction) Eval(ctx *sql.Context, row sql.Row) (interface{}, err
 			isVariadicArg := c.overload.params.variadic >= 0 && i >= len(c.overload.params.paramTypes)-1
 			if isVariadicArg {
 				targetType = targetParamTypes[c.overload.params.variadic]
-				bt, ok := targetType.ArrayBaseType()
-				if !ok {
+				if !targetType.IsArrayType() {
 					// should be impossible, we check this at function compile time
 					return nil, fmt.Errorf("variadic arguments must be array types, was %T", targetType)
 				}
-				targetType = bt
+				targetType = targetType.ArrayBaseType()
 			} else {
 				targetType = targetParamTypes[i]
 			}
@@ -421,10 +421,9 @@ func (c *CompiledFunction) typeCompatibleOverloads(fnOverloads []Overload, argTy
 		var polymorphicTargets []pgtypes.DoltgresType
 		for i := range argTypes {
 			paramType := overload.argTypes[i]
-			getRepresentativeType := paramType
-			if getRepresentativeType.IsValidForPolymorphicType(argTypes[i]) {
+			if paramType.IsValidForPolymorphicType(argTypes[i]) {
 				overloadCasts[i] = identityCast
-				polymorphicParameters = append(polymorphicParameters, getRepresentativeType)
+				polymorphicParameters = append(polymorphicParameters, paramType)
 				polymorphicTargets = append(polymorphicTargets, argTypes[i])
 			} else {
 				if overloadCasts[i] = GetImplicitCast(argTypes[i], paramType); overloadCasts[i] == nil {
@@ -540,7 +539,7 @@ func (*CompiledFunction) polymorphicTypesCompatible(paramTypes []pgtypes.Doltgre
 
 	// If one of the types is anyarray, then anyelement behaves as anynonarray, so we can convert them to anynonarray
 	for _, paramType := range paramTypes {
-		if paramType.IsPolymorphicType() && paramType.OID == uint32(oid.T_anyarray) {
+		if paramType.OID == uint32(oid.T_anyarray) {
 			// At least one parameter is anyarray, so copy all parameters to a new slice and replace anyelement with anynonarray
 			newParamTypes := make([]pgtypes.DoltgresType, len(paramTypes))
 			copy(newParamTypes, paramTypes)
@@ -565,8 +564,8 @@ func (*CompiledFunction) polymorphicTypesCompatible(paramTypes []pgtypes.Doltgre
 			}
 			// Get the base expression type that we'll compare against
 			baseExprType := exprTypes[i]
-			if abt, ok := baseExprType.ArrayBaseType(); ok {
-				baseExprType = abt
+			if baseExprType.IsArrayType() {
+				baseExprType = baseExprType.ArrayBaseType()
 			}
 			// TODO: handle range types
 			// Check that the base expression type matches the previously-found base type
@@ -610,8 +609,8 @@ func (c *CompiledFunction) resolvePolymorphicReturnType(functionInterfaceTypes [
 		// "...anynonarray and anyenum do not represent separate type variables; they are the same type as anyelement..."
 		// The implication of this being that anyelement will always return the base type even for array types,
 		// just like anynonarray would.
-		if bt, ok := firstPolymorphicType.ArrayBaseType(); ok {
-			return bt
+		if firstPolymorphicType.IsArrayType() {
+			return firstPolymorphicType.ArrayBaseType()
 		} else {
 			return firstPolymorphicType
 		}
@@ -622,14 +621,8 @@ func (c *CompiledFunction) resolvePolymorphicReturnType(functionInterfaceTypes [
 		} else if firstPolymorphicType.OID == uint32(oid.T_internal) {
 			return pgtypes.OidToBuildInDoltgresType[firstPolymorphicType.BaseTypeForInternal]
 		} else {
-			at, ok := firstPolymorphicType.ToArrayType()
-			if !ok {
-				panic(fmt.Errorf("cannot get array type for %s", firstPolymorphicType.String()))
-			}
-			return at
+			return firstPolymorphicType.ToArrayType()
 		}
-	case oid.T_any:
-		return firstPolymorphicType
 	default:
 		panic(fmt.Errorf("`%s` is not yet handled during function compilation", returnType.String()))
 	}

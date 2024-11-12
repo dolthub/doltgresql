@@ -14,5 +14,5 @@
 
 package types
 
-// RegclassArray is the array variant of Regclass.
-var RegclassArray = CreateArrayTypeFromBaseType(Regclass)
+// CstringArray is the cstring type.
+var CstringArray = CreateArrayTypeFromBaseType(Cstring)

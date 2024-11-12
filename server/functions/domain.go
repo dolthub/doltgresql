@@ -31,7 +31,7 @@ func initDomain() {
 var domain_in = framework.Function3{
 	Name:       "domain_in",
 	Return:     pgtypes.Any,
-	Parameters: [3]pgtypes.DoltgresType{pgtypes.Text, pgtypes.Oid, pgtypes.Int32}, // cstring
+	Parameters: [3]pgtypes.DoltgresType{pgtypes.Cstring, pgtypes.Oid, pgtypes.Int32},
 	Callable: func(ctx *sql.Context, _ [4]pgtypes.DoltgresType, val1, val2, val3 any) (any, error) {
 		str := val1.(string)
 		baseTypeOid := val2.(uint32)

@@ -60,10 +60,7 @@ func (array *Array) Children() []sql.Expression {
 
 // Eval implements the sql.Expression interface.
 func (array *Array) Eval(ctx *sql.Context, row sql.Row) (any, error) {
-	resultTyp, ok := array.coercedType.ArrayBaseType()
-	if !ok {
-		return nil, fmt.Errorf("cannot get base type to %s", array.coercedType.Name)
-	}
+	resultTyp := array.coercedType.ArrayBaseType()
 	values := make([]any, len(array.children))
 	for i, expr := range array.children {
 		val, err := expr.Eval(ctx, row)
@@ -181,9 +178,5 @@ func (array *Array) getTargetType(children ...sql.Expression) (pgtypes.DoltgresT
 	if err != nil {
 		return pgtypes.DoltgresType{}, fmt.Errorf("ARRAY %s", err.Error())
 	}
-	at, ok := targetType.ToArrayType()
-	if !ok {
-		return pgtypes.DoltgresType{}, fmt.Errorf("cannot get array type from %s", targetType.Name)
-	}
-	return at, nil
+	return targetType.ToArrayType(), nil
 }

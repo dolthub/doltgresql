@@ -18,7 +18,8 @@ import (
 	"github.com/lib/pq/oid"
 )
 
-// AnyArray is an array that may contain elements of any type.
+// AnyArray is a pseudo-type that can represent any type
+// that is an array type that may contain elements of any type.
 var AnyArray = DoltgresType{
 	OID:           uint32(oid.T_anyarray),
 	Name:          "anyarray",
@@ -53,4 +54,6 @@ var AnyArray = DoltgresType{
 	Default:       "",
 	Acl:           nil,
 	Checks:        nil,
+	AttTypMod:     -1,
+	CompareFunc:   "btarraycmp",
 }

@@ -40,7 +40,7 @@ func initInterval() {
 var interval_in = framework.Function3{
 	Name:       "interval_in",
 	Return:     pgtypes.Interval,
-	Parameters: [3]pgtypes.DoltgresType{pgtypes.Text, pgtypes.Oid, pgtypes.Int32}, // cstring
+	Parameters: [3]pgtypes.DoltgresType{pgtypes.Cstring, pgtypes.Oid, pgtypes.Int32},
 	Strict:     true,
 	Callable: func(ctx *sql.Context, _ [4]pgtypes.DoltgresType, val1, val2, val3 any) (any, error) {
 		input := val1.(string)
@@ -57,7 +57,7 @@ var interval_in = framework.Function3{
 // interval_out represents the PostgreSQL function of interval type IO output.
 var interval_out = framework.Function1{
 	Name:       "interval_out",
-	Return:     pgtypes.Text, // cstring
+	Return:     pgtypes.Cstring,
 	Parameters: [1]pgtypes.DoltgresType{pgtypes.Interval},
 	Strict:     true,
 	Callable: func(ctx *sql.Context, t [2]pgtypes.DoltgresType, val any) (any, error) {
@@ -109,7 +109,7 @@ var interval_send = framework.Function1{
 var intervaltypmodin = framework.Function1{
 	Name:       "intervaltypmodin",
 	Return:     pgtypes.Int32,
-	Parameters: [1]pgtypes.DoltgresType{pgtypes.TextArray}, // cstring[]
+	Parameters: [1]pgtypes.DoltgresType{pgtypes.CstringArray},
 	Strict:     true,
 	Callable: func(ctx *sql.Context, _ [2]pgtypes.DoltgresType, val any) (any, error) {
 		// TODO: implement interval fields and precision
@@ -120,7 +120,7 @@ var intervaltypmodin = framework.Function1{
 // intervaltypmodout represents the PostgreSQL function of interval type IO typmod output.
 var intervaltypmodout = framework.Function1{
 	Name:       "intervaltypmodout",
-	Return:     pgtypes.Text, // cstring
+	Return:     pgtypes.Cstring,
 	Parameters: [1]pgtypes.DoltgresType{pgtypes.Int32},
 	Strict:     true,
 	Callable: func(ctx *sql.Context, _ [2]pgtypes.DoltgresType, val any) (any, error) {

@@ -20,6 +20,10 @@ import (
 
 // CreateArrayTypeFromBaseType create array type from given type.
 func CreateArrayTypeFromBaseType(baseType DoltgresType) DoltgresType {
+	align := TypeAlignment_Int
+	if baseType.Align == TypeAlignment_Double {
+		align = TypeAlignment_Double
+	}
 	return DoltgresType{
 		OID:           baseType.Array,
 		Name:          fmt.Sprintf("_%s", baseType.Name),
@@ -43,7 +47,7 @@ func CreateArrayTypeFromBaseType(baseType DoltgresType) DoltgresType {
 		ModInFunc:     baseType.ModInFunc,
 		ModOutFunc:    baseType.ModOutFunc,
 		AnalyzeFunc:   "array_typanalyze",
-		Align:         baseType.Align,
+		Align:         align,
 		Storage:       TypeStorage_Extended,
 		NotNull:       false,
 		BaseTypeOID:   0,
@@ -54,6 +58,8 @@ func CreateArrayTypeFromBaseType(baseType DoltgresType) DoltgresType {
 		Default:       "",
 		Acl:           nil,
 		Checks:        nil,
-		internalName:  fmt.Sprintf("%s[]", baseType.String()),
+		InternalName:  fmt.Sprintf("%s[]", baseType.String()),
+		AttTypMod:     baseType.AttTypMod, // TODO: check
+		CompareFunc:   "btarraycmp",
 	}
 }

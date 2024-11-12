@@ -53,4 +53,6 @@ var Uuid = DoltgresType{
 	Default:       "",
 	Acl:           nil,
 	Checks:        nil,
+	AttTypMod:     -1,
+	CompareFunc:   "uuid_cmp",
 }

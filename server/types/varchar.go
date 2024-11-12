@@ -29,7 +29,10 @@ const (
 	StringUnbounded = 0
 )
 
+// ErrLengthMustBeAtLeast1 is returned when given character length is less than 1.
 var ErrLengthMustBeAtLeast1 = errors.NewKind(`length for type %s must be at least 1`)
+
+// ErrLengthCannotExceed is returned when given character length exceeds the upper bound, 10485760.
 var ErrLengthCannotExceed = errors.NewKind(`length for type %s cannot exceed 10485760`)
 
 // VarChar is a varchar that has an unbounded length.
@@ -68,14 +71,15 @@ var VarChar = DoltgresType{
 	Acl:           nil,
 	Checks:        nil,
 	AttTypMod:     -1,
-	internalName:  "character varying",
+	CompareFunc:   "bttextcmp", // TODO: temporarily added
 }
 
-// NewVarCharType takes maxChars representing the maximum number of characters that the type may hold
+// NewVarCharType returns VarChar type with type modifier set
+// representing the maximum number of characters that the type may hold.
 func NewVarCharType(maxChars int32) (DoltgresType, error) {
 	var err error
 	newType := VarChar
-	newType.AttTypMod, err = GetTypModFromMaxChars("varchar", maxChars)
+	newType.AttTypMod, err = GetTypModFromCharLength("varchar", maxChars)
 	if err != nil {
 		return DoltgresType{}, err
 	}
@@ -84,16 +88,15 @@ func NewVarCharType(maxChars int32) (DoltgresType, error) {
 
 // MustCreateNewVarCharType panics if used with out-of-bound value.
 func MustCreateNewVarCharType(maxChars int32) DoltgresType {
-	var err error
-	newType := VarChar
-	newType.AttTypMod, err = GetTypModFromMaxChars("varchar", maxChars)
+	newType, err := NewVarCharType(maxChars)
 	if err != nil {
 		panic(err)
 	}
 	return newType
 }
 
-func GetTypModFromMaxChars(typName string, l int32) (int32, error) {
+// GetTypModFromCharLength takes character type and its length and returns the type modifier value.
+func GetTypModFromCharLength(typName string, l int32) (int32, error) {
 	if l < 1 {
 		return 0, ErrLengthMustBeAtLeast1.New(typName)
 	} else if l > StringMaxLength {
@@ -102,6 +105,7 @@ func GetTypModFromMaxChars(typName string, l int32) (int32, error) {
 	return l + 4, nil
 }
 
-func GetMaxCharsFromTypmod(typmod int32) int32 {
+// GetCharLengthFromTypmod takes character type modifier and returns length value.
+func GetCharLengthFromTypmod(typmod int32) int32 {
 	return typmod - 4
 }

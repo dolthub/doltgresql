@@ -21,6 +21,7 @@ import (
 	pgtypes "github.com/dolthub/doltgresql/server/types"
 )
 
+// initAnyArray registers the functions to the catalog.
 func initAnyArray() {
 	framework.RegisterFunction(anyarray_in)
 	framework.RegisterFunction(anyarray_out)
@@ -32,7 +33,7 @@ func initAnyArray() {
 var anyarray_in = framework.Function1{
 	Name:       "anyarray_in",
 	Return:     pgtypes.AnyArray,
-	Parameters: [1]pgtypes.DoltgresType{pgtypes.Text}, // cstring
+	Parameters: [1]pgtypes.DoltgresType{pgtypes.Cstring},
 	Strict:     true,
 	Callable: func(ctx *sql.Context, _ [2]pgtypes.DoltgresType, val any) (any, error) {
 		// TODO
@@ -43,7 +44,7 @@ var anyarray_in = framework.Function1{
 // anyarray_out represents the PostgreSQL function of anyarray type IO output.
 var anyarray_out = framework.Function1{
 	Name:       "anyarray_out",
-	Return:     pgtypes.Text, // cstring
+	Return:     pgtypes.Cstring,
 	Parameters: [1]pgtypes.DoltgresType{pgtypes.AnyArray},
 	Strict:     true,
 	Callable: func(ctx *sql.Context, _ [2]pgtypes.DoltgresType, val any) (any, error) {

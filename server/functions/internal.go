@@ -21,6 +21,7 @@ import (
 	pgtypes "github.com/dolthub/doltgresql/server/types"
 )
 
+// initInternal registers the functions to the catalog.
 func initInternal() {
 	framework.RegisterFunction(internal_in)
 	framework.RegisterFunction(internal_out)
@@ -30,7 +31,7 @@ func initInternal() {
 var internal_in = framework.Function1{
 	Name:       "internal_in",
 	Return:     pgtypes.Internal,
-	Parameters: [1]pgtypes.DoltgresType{pgtypes.Text}, // cstring
+	Parameters: [1]pgtypes.DoltgresType{pgtypes.Cstring},
 	Callable: func(ctx *sql.Context, _ [2]pgtypes.DoltgresType, val any) (any, error) {
 		// TODO
 		return []byte(val.(string)), nil
@@ -40,7 +41,7 @@ var internal_in = framework.Function1{
 // internal_out represents the PostgreSQL function of internal type IO output.
 var internal_out = framework.Function1{
 	Name:       "internal_out",
-	Return:     pgtypes.Text, // cstring
+	Return:     pgtypes.Cstring,
 	Parameters: [1]pgtypes.DoltgresType{pgtypes.Internal},
 	Strict:     true,
 	Callable: func(ctx *sql.Context, _ [2]pgtypes.DoltgresType, val any) (any, error) {

@@ -15,4 +15,4 @@
 package types
 
 // VarCharArray is the array variant of VarChar.
-var VarCharArray = CreateArrayTypeFromBaseType(VarChar) // createArrayType(VarChar, SerializationID_VarCharArray, oid.T__varchar)
+var VarCharArray = CreateArrayTypeFromBaseType(VarChar)

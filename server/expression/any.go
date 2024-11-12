@@ -326,11 +326,7 @@ func anyExpressionWithChildren(anyExpr *AnyExpr) (sql.Expression, error) {
 	if !ok {
 		return nil, fmt.Errorf("expected right child to be a DoltgresType but got `%T`", anyExpr.rightExpr)
 	}
-	rightType, ok := arrType.ArrayBaseType()
-	if !ok {
-		return nil, fmt.Errorf("expected right child to be an array DoltgresType but got `%T`", arrType)
-	}
-
+	rightType := arrType.ArrayBaseType()
 	op, err := framework.GetOperatorFromString(anyExpr.subOperator)
 	if err != nil {
 		return nil, err

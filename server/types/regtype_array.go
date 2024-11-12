@@ -15,4 +15,4 @@
 package types
 
 // RegtypeArray is the array variant of Regtype.
-var RegtypeArray = CreateArrayTypeFromBaseType(Regtype) // createArrayType(Regtype, SerializationID_Invalid, oid.T__regtype)
+var RegtypeArray = CreateArrayTypeFromBaseType(Regtype)

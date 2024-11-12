@@ -15,4 +15,4 @@
 package types
 
 // TimestampArray is the array variant of Timestamp.
-var TimestampArray = CreateArrayTypeFromBaseType(Timestamp) // createArrayType(Timestamp, SerializationID_TimestampArray, oid.T__timestamp)
+var TimestampArray = CreateArrayTypeFromBaseType(Timestamp)

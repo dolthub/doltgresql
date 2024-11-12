@@ -53,10 +53,17 @@ var TimeTZ = DoltgresType{
 	Default:       "",
 	Acl:           nil,
 	Checks:        nil,
+	AttTypMod:     -1,
+	CompareFunc:   "timetz_cmp",
 }
 
-// TimeTZType is the extended type implementation of the PostgreSQL time with time zone.
-type TimeTZType struct {
-	// TODO: implement precision
-	Precision int8
+// NewTimeTZType returns TimeTZ type with typmod set. // TODO: implement precision
+func NewTimeTZType(precision int32) (DoltgresType, error) {
+	newType := TimeTZ
+	typmod, err := GetTypmodFromTimePrecision(precision)
+	if err != nil {
+		return DoltgresType{}, err
+	}
+	newType.AttTypMod = typmod
+	return newType, nil
 }

@@ -18,6 +18,7 @@ import (
 	"github.com/lib/pq/oid"
 )
 
+// Bool is the bool type.
 var Bool = DoltgresType{
 	OID:           uint32(oid.T_bool),
 	Name:          "bool",
@@ -52,6 +53,7 @@ var Bool = DoltgresType{
 	Default:       "",
 	Acl:           nil,
 	Checks:        nil,
-
-	internalName: "boolean",
+	AttTypMod:     -1,
+	CompareFunc:   "btboolcmp",
+	InternalName:  "boolean",
 }

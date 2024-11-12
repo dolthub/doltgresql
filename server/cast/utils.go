@@ -36,7 +36,7 @@ func handleStringCast(str string, targetType pgtypes.DoltgresType) (string, erro
 		if targetType.AttTypMod == -1 {
 			return str, nil
 		}
-		maxChars, err := pgtypes.GetTypModFromMaxChars("char", targetType.AttTypMod)
+		maxChars, err := pgtypes.GetTypModFromCharLength("char", targetType.AttTypMod)
 		if err != nil {
 			return "", err
 		}
@@ -60,7 +60,7 @@ func handleStringCast(str string, targetType pgtypes.DoltgresType) (string, erro
 		if targetType.AttTypMod == -1 {
 			return str, nil
 		}
-		length := uint32(pgtypes.GetMaxCharsFromTypmod(targetType.AttTypMod))
+		length := uint32(pgtypes.GetCharLengthFromTypmod(targetType.AttTypMod))
 		str, runeLength := truncateString(str, length)
 		if runeLength > length {
 			return str, fmt.Errorf("value too long for type %s", targetType.String())

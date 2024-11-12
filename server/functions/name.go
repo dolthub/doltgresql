@@ -37,7 +37,7 @@ func initName() {
 var namein = framework.Function1{
 	Name:       "namein",
 	Return:     pgtypes.Name,
-	Parameters: [1]pgtypes.DoltgresType{pgtypes.Text}, // cstring
+	Parameters: [1]pgtypes.DoltgresType{pgtypes.Cstring},
 	Strict:     true,
 	Callable: func(ctx *sql.Context, _ [2]pgtypes.DoltgresType, val any) (any, error) {
 		input := val.(string)
@@ -49,7 +49,7 @@ var namein = framework.Function1{
 // nameout represents the PostgreSQL function of name type IO output.
 var nameout = framework.Function1{
 	Name:       "nameout",
-	Return:     pgtypes.Text, // cstring
+	Return:     pgtypes.Cstring,
 	Parameters: [1]pgtypes.DoltgresType{pgtypes.Name},
 	Strict:     true,
 	Callable: func(ctx *sql.Context, _ [2]pgtypes.DoltgresType, val any) (any, error) {

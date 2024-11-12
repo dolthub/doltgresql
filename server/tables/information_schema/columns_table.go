@@ -25,7 +25,6 @@ import (
 	"github.com/lib/pq/oid"
 
 	partypes "github.com/dolthub/doltgresql/postgres/parser/types"
-	"github.com/dolthub/doltgresql/server/functions"
 	pgtypes "github.com/dolthub/doltgresql/server/types"
 )
 
@@ -333,7 +332,7 @@ func getColumnPrecisionAndScale(colType sql.Type) (interface{}, interface{}, int
 			var precision interface{}
 			var scale interface{}
 			if dgt.AttTypMod != -1 {
-				precision, scale = functions.GetPrecisionAndScaleFromTypmod(dgt.AttTypMod)
+				precision, scale = pgtypes.GetPrecisionAndScaleFromTypmod(dgt.AttTypMod)
 			}
 			return precision, int32(10), scale
 		default:
@@ -369,7 +368,7 @@ func getCharAndCollNamesAndCharMaxAndOctetLens(ctx *sql.Context, colType sql.Typ
 			if t.AttTypMod == -1 {
 				charOctetLen = int32(maxCharacterOctetLength)
 			} else {
-				l := pgtypes.GetMaxCharsFromTypmod(t.AttTypMod)
+				l := pgtypes.GetCharLengthFromTypmod(t.AttTypMod)
 				charOctetLen = l * 4
 				charMaxLen = l
 			}

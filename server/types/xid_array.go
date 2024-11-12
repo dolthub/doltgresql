@@ -15,4 +15,4 @@
 package types
 
 // XidArray is the array variant of Xid.
-var XidArray = CreateArrayTypeFromBaseType(Xid) // createArrayType(Xid, SerializationID_XidArray, oid.T__xid)
+var XidArray = CreateArrayTypeFromBaseType(Xid)

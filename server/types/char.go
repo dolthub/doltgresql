@@ -54,12 +54,13 @@ var BpChar = DoltgresType{
 	Acl:           nil,
 	Checks:        nil,
 	AttTypMod:     -1,
+	CompareFunc:   "bpcharcmp",
 }
 
 func NewCharType(length int32) (DoltgresType, error) {
 	var err error
 	newType := BpChar
-	newType.AttTypMod, err = GetTypModFromMaxChars("char", length)
+	newType.AttTypMod, err = GetTypModFromCharLength("char", length)
 	if err != nil {
 		return DoltgresType{}, err
 	}

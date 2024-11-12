@@ -56,4 +56,6 @@ var Name = DoltgresType{
 	Default:       "",
 	Acl:           nil,
 	Checks:        nil,
+	AttTypMod:     -1,
+	CompareFunc:   "btnamecmp",
 }

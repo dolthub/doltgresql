@@ -25,9 +25,9 @@ func TestSerializationConsistency(t *testing.T) {
 	for _, typ := range typesFromOID {
 		t.Run(typ.String(), func(t *testing.T) {
 			serializedType := typ.Serialize()
-			dt, err := Deserialize(serializedType)
+			dt, err := DeserializeType(serializedType)
 			require.NoError(t, err)
-			require.Equal(t, typ, dt)
+			require.Equal(t, typ, dt.(DoltgresType))
 		})
 	}
 }

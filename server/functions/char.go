@@ -37,7 +37,7 @@ func initChar() {
 var charin = framework.Function1{
 	Name:       "charin",
 	Return:     pgtypes.InternalChar,
-	Parameters: [1]pgtypes.DoltgresType{pgtypes.Text}, // cstring
+	Parameters: [1]pgtypes.DoltgresType{pgtypes.Cstring},
 	Strict:     true,
 	Callable: func(ctx *sql.Context, _ [2]pgtypes.DoltgresType, val any) (any, error) {
 		input := val.(string)
@@ -52,7 +52,7 @@ var charin = framework.Function1{
 // charout represents the PostgreSQL function of "char" type IO output.
 var charout = framework.Function1{
 	Name:       "charout",
-	Return:     pgtypes.Text, // cstring
+	Return:     pgtypes.Cstring,
 	Parameters: [1]pgtypes.DoltgresType{pgtypes.InternalChar},
 	Strict:     true,
 	Callable: func(ctx *sql.Context, t [2]pgtypes.DoltgresType, val any) (any, error) {

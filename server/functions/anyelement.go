@@ -21,6 +21,7 @@ import (
 	pgtypes "github.com/dolthub/doltgresql/server/types"
 )
 
+// initAnyElement registers the functions to the catalog.
 func initAnyElement() {
 	framework.RegisterFunction(anyelement_in)
 	framework.RegisterFunction(anyelement_out)
@@ -30,7 +31,7 @@ func initAnyElement() {
 var anyelement_in = framework.Function1{
 	Name:       "anyelement_in",
 	Return:     pgtypes.AnyElement,
-	Parameters: [1]pgtypes.DoltgresType{pgtypes.Text}, // cstring
+	Parameters: [1]pgtypes.DoltgresType{pgtypes.Cstring},
 	Strict:     true,
 	Callable: func(ctx *sql.Context, _ [2]pgtypes.DoltgresType, val any) (any, error) {
 		// TODO
@@ -41,7 +42,7 @@ var anyelement_in = framework.Function1{
 // anyelement_out represents the PostgreSQL function of anyelement type IO output.
 var anyelement_out = framework.Function1{
 	Name:       "anyelement_out",
-	Return:     pgtypes.Text, // cstring
+	Return:     pgtypes.Cstring,
 	Parameters: [1]pgtypes.DoltgresType{pgtypes.AnyElement},
 	Strict:     true,
 	Callable: func(ctx *sql.Context, _ [2]pgtypes.DoltgresType, val any) (any, error) {

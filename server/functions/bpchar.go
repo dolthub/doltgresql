@@ -43,14 +43,14 @@ func initBpChar() {
 var bpcharin = framework.Function3{
 	Name:       "bpcharin",
 	Return:     pgtypes.BpChar,
-	Parameters: [3]pgtypes.DoltgresType{pgtypes.Text, pgtypes.Oid, pgtypes.Int32}, // cstring
+	Parameters: [3]pgtypes.DoltgresType{pgtypes.Cstring, pgtypes.Oid, pgtypes.Int32},
 	Strict:     true,
 	Callable: func(ctx *sql.Context, _ [4]pgtypes.DoltgresType, val1, val2, val3 any) (any, error) {
 		input := val1.(string)
 		typmod := val3.(int32)
 		maxChars := int32(pgtypes.StringMaxLength)
 		if typmod != -1 {
-			maxChars = pgtypes.GetMaxCharsFromTypmod(typmod)
+			maxChars = pgtypes.GetCharLengthFromTypmod(typmod)
 			if maxChars < pgtypes.StringUnbounded {
 				maxChars = pgtypes.StringMaxLength
 			}
@@ -69,7 +69,7 @@ var bpcharin = framework.Function3{
 // bpcharout represents the PostgreSQL function of bpchar type IO output.
 var bpcharout = framework.Function1{
 	Name:       "bpcharout",
-	Return:     pgtypes.Text, // cstring
+	Return:     pgtypes.Cstring,
 	Parameters: [1]pgtypes.DoltgresType{pgtypes.BpChar},
 	Strict:     true,
 	Callable: func(ctx *sql.Context, t [2]pgtypes.DoltgresType, val any) (any, error) {
@@ -77,7 +77,7 @@ var bpcharout = framework.Function1{
 		if typ.AttTypMod == -1 {
 			return val.(string), nil
 		}
-		maxChars := pgtypes.GetMaxCharsFromTypmod(typ.AttTypMod)
+		maxChars := pgtypes.GetCharLengthFromTypmod(typ.AttTypMod)
 		if maxChars < 1 {
 			return val.(string), nil
 		} else {
@@ -125,7 +125,7 @@ var bpcharsend = framework.Function1{
 var bpchartypmodin = framework.Function1{
 	Name:       "bpchartypmodin",
 	Return:     pgtypes.Int32,
-	Parameters: [1]pgtypes.DoltgresType{pgtypes.TextArray}, // cstring[]
+	Parameters: [1]pgtypes.DoltgresType{pgtypes.CstringArray},
 	Strict:     true,
 	Callable: func(ctx *sql.Context, _ [2]pgtypes.DoltgresType, val any) (any, error) {
 		return getTypModFromStringArr("char", val.([]any))
@@ -135,7 +135,7 @@ var bpchartypmodin = framework.Function1{
 // bpchartypmodout represents the PostgreSQL function of bpchar type IO typmod output.
 var bpchartypmodout = framework.Function1{
 	Name:       "bpchartypmodout",
-	Return:     pgtypes.Text, // cstring
+	Return:     pgtypes.Cstring,
 	Parameters: [1]pgtypes.DoltgresType{pgtypes.Int32},
 	Strict:     true,
 	Callable: func(ctx *sql.Context, _ [2]pgtypes.DoltgresType, val any) (any, error) {
@@ -143,7 +143,7 @@ var bpchartypmodout = framework.Function1{
 		if typmod < 5 {
 			return "", nil
 		}
-		maxChars := pgtypes.GetMaxCharsFromTypmod(typmod)
+		maxChars := pgtypes.GetCharLengthFromTypmod(typmod)
 		return fmt.Sprintf("(%v)", maxChars), nil
 	},
 }
@@ -186,5 +186,5 @@ func getTypModFromStringArr(typName string, inputArr []any) (int32, error) {
 	if err != nil {
 		return 0, err
 	}
-	return pgtypes.GetTypModFromMaxChars(typName, int32(l))
+	return pgtypes.GetTypModFromCharLength(typName, int32(l))
 }

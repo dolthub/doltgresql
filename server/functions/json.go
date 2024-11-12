@@ -24,6 +24,7 @@ import (
 	pgtypes "github.com/dolthub/doltgresql/server/types"
 )
 
+// initJson registers the functions to the catalog.
 func initJson() {
 	framework.RegisterFunction(json_in)
 	framework.RegisterFunction(json_out)
@@ -35,7 +36,7 @@ func initJson() {
 var json_in = framework.Function1{
 	Name:       "json_in",
 	Return:     pgtypes.Json,
-	Parameters: [1]pgtypes.DoltgresType{pgtypes.Text}, // cstring
+	Parameters: [1]pgtypes.DoltgresType{pgtypes.Cstring},
 	Strict:     true,
 	Callable: func(ctx *sql.Context, _ [2]pgtypes.DoltgresType, val any) (any, error) {
 		input := val.(string)
@@ -49,7 +50,7 @@ var json_in = framework.Function1{
 // json_out represents the PostgreSQL function of json type IO output.
 var json_out = framework.Function1{
 	Name:       "json_out",
-	Return:     pgtypes.Text, // cstring
+	Return:     pgtypes.Cstring,
 	Parameters: [1]pgtypes.DoltgresType{pgtypes.Json},
 	Strict:     true,
 	Callable: func(ctx *sql.Context, _ [2]pgtypes.DoltgresType, val any) (any, error) {

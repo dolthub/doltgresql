@@ -53,6 +53,7 @@ var Int32 = DoltgresType{
 	Default:       "",
 	Acl:           nil,
 	Checks:        nil,
-
-	internalName: "integer",
+	AttTypMod:     -1,
+	CompareFunc:   "btint4cmp",
+	InternalName:  "integer",
 }

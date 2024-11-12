@@ -53,6 +53,7 @@ var Int64 = DoltgresType{
 	Default:       "",
 	Acl:           nil,
 	Checks:        nil,
-
-	internalName: "bigint",
+	AttTypMod:     -1,
+	CompareFunc:   "btint8cmp",
+	InternalName:  "bigint",
 }
