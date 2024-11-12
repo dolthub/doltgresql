@@ -46,7 +46,7 @@ If you are interested in using Doltgres now or in the future, please:
 1. Download the latest release of `doltgres`
 2. Put `doltgres` on your `PATH`
 
-3. Run `doltgres`. This will create a `doltgres` user and a `doltgres` database in `~/doltgres/databases` (add the `--data-dir` argument or change the `DOLTGRES_DATA_DIR` environment variable to use a different directory).
+3. Run `doltgres`. This will create a `postgres` user with the password `password` and a `doltgres` database in `~/doltgres/databases` (add the `--data-dir` argument or change the `DOLTGRES_DATA_DIR` environment variable to use a different directory).
 
 ```bash
 $ doltgres
@@ -54,18 +54,19 @@ Successfully initialized dolt data repository.
 Starting server with Config HP="localhost:5432"|T="28800000"|R="false"|L="info"|S="/tmp/mysql.sock"
 ```
 
-4. Make sure you have Postgres version 15 or higher installed. I used Homebrew to install Postgres on my Mac.
-   This requires I manually add `/opt/homebrew/opt/postgresql@15/bin` to my path. On Postgres version 14 or lower,
-   `\` commands (ie. `\d`, `\l`) do not yet work with Doltgres.
+4. Make sure you have Postgres version 15 or higher installed. I used Homebrew to install Postgres on my Mac, and
+   then manually added `/opt/homebrew/opt/postgresql@15/bin` to my path. On Postgres version 14 or lower,
+   `\` commands (i.e. `\d`, `\l`) do not yet work with Doltgres.
 
 ```
 export PATH="/opt/homebrew/opt/postgresql@15/bin:$PATH"
 ```
 
-5. Open a new terminal. Connect with the following command: `psql -h localhost -U doltgres`. This will connect to the `doltgres` database with the `doltgres` user.
+5. Open a new terminal. Connect with the following command: `psql -h localhost -U postgres doltgres` and enter the default password (`password`) when prompted. This will connect to the `doltgres` database with the `postgres` user.
 
 ```bash
-$ psql -h 127.0.0.1 -U doltgres
+$ psql -h 127.0.0.1 -U postgres doltgres
+Password for user postgres: 
 psql (15.4 (Homebrew), server 15.0)
 Type "help" for help.
 
