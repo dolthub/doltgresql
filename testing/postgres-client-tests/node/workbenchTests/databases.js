@@ -59,9 +59,9 @@ export const databaseTests = [
       rowCount: 3,
       oid: null,
       rows: [
+        { datname: "new_db" },
         { datname: dbName },
         { datname: `${dbName}/main` },
-        { datname: "new_db" },
       ],
       fields: [
         {

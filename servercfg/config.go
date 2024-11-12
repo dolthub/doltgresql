@@ -49,8 +49,8 @@ const (
 const (
 	DefaultHost                       = "localhost"
 	DefaultPort                       = 5432
-	DefaultUser                       = ""
-	DefaultPass                       = ""
+	DefaultUser                       = "postgres"
+	DefaultPass                       = "password"
 	DefaultTimeout                    = 8 * 60 * 60 * 1000 // 8 hours, same as MySQL
 	DefaultReadOnly                   = false
 	DefaultLogLevel                   = LogLevel_Info
@@ -228,7 +228,7 @@ func (cfg *DoltgresConfig) Port() int {
 
 func (cfg *DoltgresConfig) User() string {
 	if cfg.UserConfig == nil || cfg.UserConfig.Name == nil {
-		return "doltgres"
+		return "postgres"
 	}
 
 	return *cfg.UserConfig.Name
@@ -236,7 +236,7 @@ func (cfg *DoltgresConfig) User() string {
 
 func (cfg *DoltgresConfig) Password() string {
 	if cfg.UserConfig == nil || cfg.UserConfig.Password == nil {
-		return ""
+		return "password"
 	}
 
 	return *cfg.UserConfig.Password

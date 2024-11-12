@@ -37,8 +37,8 @@ import (
 
 const (
 	dsn               = "postgresql://postgres:password@localhost:5432/sqllogictest?sslmode=disable"
-	doltgresNoDbDsn   = "postgresql://doltgres:password@127.0.0.1:5432/?sslmode=disable"
-	doltgresWithDbDsn = "postgresql://doltgres:password@0.0.0.0:5432/sqllogictest?sslmode=disable"
+	doltgresNoDbDsn   = "postgresql://postgres:password@127.0.0.1:5432/?sslmode=disable"
+	doltgresWithDbDsn = "postgresql://postgres:password@0.0.0.0:5432/sqllogictest?sslmode=disable"
 	doltgresDBDir     = "doltgresDatabases"
 	serverLogFile     = "server.log"
 	harnessLogFile    = "harness.log"

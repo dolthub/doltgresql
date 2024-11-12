@@ -205,8 +205,11 @@ func CreateServer(t *testing.T, database string) (context.Context, *pgx.Conn, *s
 		}
 
 		defer conn.Close(ctx)
-		_, err = conn.Exec(ctx, fmt.Sprintf("CREATE DATABASE %s;", database))
-		return err
+		if database != "postgres" {
+			_, err = conn.Exec(ctx, fmt.Sprintf("CREATE DATABASE %s;", database))
+			return err
+		}
+		return nil
 	}()
 	require.NoError(t, err)
 

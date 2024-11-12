@@ -39,14 +39,14 @@ teardown() {
     start_sql_server_with_args "-config=replication-config.yaml"
         
     # Create the table that already exists on the primary before doing any inserts on the primary
-    query_server doltgres -c "create table public.t1 (a int primary key, b int)"
+    query_server postgres -c "create table public.t1 (a int primary key, b int)"
 
     # this insert on the primary should now replicate to the replica
     postgres_primary_query "insert into t1 values (1, 2)"
     sleep 1
 
-    query_server doltgres -c "select * from public.t1" -t
-    run query_server doltgres -c "select * from public.t1" -t
+    query_server postgres -c "select * from public.t1" -t
+    run query_server postgres -c "select * from public.t1" -t
     [ "$status" -eq 0 ]
     [[ "$output" =~ "1 | 2" ]] || false
 

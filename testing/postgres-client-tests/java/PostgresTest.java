@@ -62,7 +62,7 @@ public class PostgresTest {
         String port = args[1];
 
         try {
-            String url = "jdbc:postgresql://127.0.0.1:" + port + "/doltgres";
+            String url = "jdbc:postgresql://127.0.0.1:" + port + "/postgres";
             String password = "password";
 
             conn = DriverManager.getConnection(url, user, password);

@@ -46,7 +46,7 @@ If you are interested in using Doltgres now or in the future, please:
 1. Download the latest release of `doltgres`
 2. Put `doltgres` on your `PATH`
 
-3. Run `doltgres`. This will create a `doltgres` user and a `doltgres` database in `~/doltgres/databases` (add the `--data-dir` argument or change the `DOLTGRES_DATA_DIR` environment variable to use a different directory).
+3. Run `doltgres`. This will create a `postgres` user and a `postgres` database in `~/doltgres/databases` (add the `--data-dir` argument or change the `DOLTGRES_DATA_DIR` environment variable to use a different directory).
 
 ```bash
 $ doltgres
@@ -56,32 +56,32 @@ Starting server with Config HP="localhost:5432"|T="28800000"|R="false"|L="info"|
 
 4. Make sure you have Postgres version 15 or higher installed. I used Homebrew to install Postgres on my Mac.
    This requires I manually add `/opt/homebrew/opt/postgresql@15/bin` to my path. On Postgres version 14 or lower,
-   `\` commands (ie. `\d`, `\l`) do not yet work with Doltgres.
+   `\` commands (ie. `\d`, `\l`) do not yet work with Doltgres. We only need Postgres in order to use PSQL, so feel free to skip this step if you already have a Postgres client. Doltgres does not depend on any Postgres code.
 
 ```
 export PATH="/opt/homebrew/opt/postgresql@15/bin:$PATH"
 ```
 
-5. Open a new terminal. Connect with the following command: `psql -h localhost -U doltgres`. This will connect to the `doltgres` database with the `doltgres` user.
+5. Open a new terminal. Connect with the following command: `psql -h localhost -U postgres`. This will connect to the `postgres` database with the `postgres` user. The default password will be `password`.
 
 ```bash
-$ psql -h 127.0.0.1 -U doltgres
+$ psql -h 127.0.0.1 -U postgres
 psql (15.4 (Homebrew), server 15.0)
 Type "help" for help.
 
-doltgres=>
+postgres=>
 ```
 
 6. Create a `getting_started` database. Create the `getting_started` example tables.
 
 ```sql
-doltgres=> create database getting_started;
+postgres=> create database getting_started;
 --
 (0 rows)
 
-doltgres=> \c getting_started;
+postgres=> \c getting_started;
 psql (15.4 (Homebrew), server 15.0)
-You are now connected to database "getting_started" as user "doltgres".
+You are now connected to database "getting_started" as user "postgres".
 getting_started=> create table employees (
     id int8,
     last_name text,
@@ -153,7 +153,7 @@ getting_started=> call dolt_commit('-m', 'Created initial schema');
 getting_started=> select * from dolt.log;
            commit_hash            | committer |       email        |        date         |          message
 ----------------------------------+-----------+--------------------+---------------------+----------------------------
- peqq98e2dl5gscvfvic71e7j6ne34533 | doltgres  | doltgres@127.0.0.1 | 2023-11-01 22:08:04 | Created initial schema
+ peqq98e2dl5gscvfvic71e7j6ne34533 | postgres  | postgres@127.0.0.1 | 2023-11-01 22:08:04 | Created initial schema
  in7bk735qa6p6rv6i3s797jjem2pg4ru | timsehn   | tim@dolthub.com    | 2023-11-01 22:04:03 | Initialize data repository
 (2 rows)
 ```
