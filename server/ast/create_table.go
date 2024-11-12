@@ -91,6 +91,8 @@ func nodeCreateTable(ctx *Context, node *tree.CreateTable) (*vitess.DDL, error) 
 			Expr:          vitess.NewColName(string(node.PartitionBy.Elems[0].Column)),
 		}
 	}
-
+	if node.PartitionOf.Table() != "" {
+		return nil, fmt.Errorf("PARTITION OF is not yet supported")
+	}
 	return ddl, nil
 }
