@@ -157,7 +157,7 @@ func dbInitDefault() {
 	doltgres.CanCreateRoles = true
 	doltgres.CanCreateDB = true
 	doltgres.CanLogin = true
-	doltgres.Password, err = NewScramSha256Password("")
+	doltgres.Password, err = NewScramSha256Password("doltgres")
 	if err != nil {
 		panic(err)
 	}
@@ -167,7 +167,7 @@ func dbInitDefault() {
 	postgres.CanCreateRoles = true
 	postgres.CanCreateDB = true
 	postgres.CanLogin = true
-	postgres.Password, err = NewScramSha256Password("password")
+	postgres.Password, err = NewScramSha256Password("postgres")
 	if err != nil {
 		panic(err)
 	}

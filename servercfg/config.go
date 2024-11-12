@@ -49,8 +49,8 @@ const (
 const (
 	DefaultHost                       = "localhost"
 	DefaultPort                       = 5432
-	DefaultUser                       = ""
-	DefaultPass                       = ""
+	DefaultUser                       = "doltgres"
+	DefaultPass                       = "doltgres"
 	DefaultTimeout                    = 8 * 60 * 60 * 1000 // 8 hours, same as MySQL
 	DefaultReadOnly                   = false
 	DefaultLogLevel                   = LogLevel_Info
