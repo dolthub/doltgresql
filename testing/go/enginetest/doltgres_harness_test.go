@@ -217,8 +217,6 @@ var skippedSetupWords = []string{
 }
 
 var commentClause = regexp.MustCompile(`(?i)comment '.*?'`)
-var createIndexStatement = regexp.MustCompile(`(?i)create( unique)? index`)
-var alterTableStatement = regexp.MustCompile(`(?i)alter table`)
 
 // sanitizeQuery strips the query string given of any unsupported constructs without attempting to actually convert
 // to Postgres syntax.
@@ -227,13 +225,6 @@ func sanitizeQuery(s string) (bool, string) {
 		if strings.Contains(s, word) {
 			return false, ""
 		}
-	}
-
-	if createIndexStatement.MatchString(s) {
-		return false, ""
-	}
-	if alterTableStatement.MatchString(s) {
-		return false, ""
 	}
 
 	s = commentClause.ReplaceAllString(s, "")

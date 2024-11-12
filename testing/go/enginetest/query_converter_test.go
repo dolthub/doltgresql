@@ -36,16 +36,440 @@ func transformAST(query string) ([]string, bool) {
 	switch stmt := stmt.(type) {
 	case *sqlparser.DDL:
 		if stmt.Action == "create" {
-			return transformCreateTable(query, stmt)
+			return transformCreateTable(stmt)
+		} else if stmt.Action == "drop" {
+			return transformDrop(query, stmt)
 		}
 	case *sqlparser.Set:
 		return transformSet(stmt)
 	case *sqlparser.Select:
 		return transformSelect(stmt)
+	case *sqlparser.Insert:
+		return transformInsert(stmt)
 	case *sqlparser.AlterTable:
 		return transformAlterTable(stmt)
 	}
 
+	return nil, false
+}
+
+func transformInsert(stmt *sqlparser.Insert) ([]string, bool) {
+	// only bother translating inserts if there's an ON DUPLICATE KEY UPDATE clause, maybe revisit this later
+	if len(stmt.OnDup) > 0 {
+		tableName := tree.NewTableName(tree.Name(stmt.Table.DbQualifier.String()), tree.Name(stmt.Table.Name.String()))
+
+		var colList tree.NameList
+		if len(stmt.Columns) > 0 {
+			colList = make(tree.NameList, len(stmt.Columns))
+			for i, col := range stmt.Columns {
+				colList[i] = tree.Name(col.String())
+			}
+		}
+
+		rows := rowsForInsert(stmt.Rows)
+
+		onConflict := tree.OnConflict{
+			Exprs:   convertUpdateExprs(sqlparser.AssignmentExprs(stmt.OnDup)),
+			Columns: tree.NameList{tree.Name("fake")}, // column list ignored but must be present for valid syntax
+		}
+
+		insert := tree.Insert{
+			Table:      tableName,
+			Columns:    colList,
+			Rows:       rows,
+			OnConflict: &onConflict,
+			Returning:  &tree.NoReturningClause{},
+		}
+
+		ctx := formatNodeWithUnqualifiedTableNames(&insert)
+		return []string{ctx.String()}, true
+	} else if stmt.Ignore == "ignore " {
+		tableName := tree.NewTableName(tree.Name(stmt.Table.DbQualifier.String()), tree.Name(stmt.Table.Name.String()))
+
+		var colList tree.NameList
+		if len(stmt.Columns) > 0 {
+			colList = make(tree.NameList, len(stmt.Columns))
+			for i, col := range stmt.Columns {
+				colList[i] = tree.Name(col.String())
+			}
+		}
+
+		rows := rowsForInsert(stmt.Rows)
+
+		onConflict := tree.OnConflict{
+			Columns:   tree.NameList{tree.Name("fake")}, // column list ignored but must be present for valid syntax
+			DoNothing: true,
+		}
+
+		insert := tree.Insert{
+			Table:      tableName,
+			Columns:    colList,
+			Rows:       rows,
+			OnConflict: &onConflict,
+			Returning:  &tree.NoReturningClause{},
+		}
+
+		ctx := formatNodeWithUnqualifiedTableNames(&insert)
+		return []string{ctx.String()}, true
+	}
+
+	return nil, false
+}
+
+func convertUpdateExprs(exprs sqlparser.AssignmentExprs) tree.UpdateExprs {
+	updateExprs := make(tree.UpdateExprs, len(exprs))
+	for i, expr := range exprs {
+		updateExprs[i] = &tree.UpdateExpr{
+			Names: tree.NameList{tree.Name(expr.Name.String())},
+			Expr:  convertExpr(expr.Expr),
+		}
+	}
+	return updateExprs
+}
+
+func rowsForInsert(rows sqlparser.InsertRows) *tree.Select {
+	switch rows := rows.(type) {
+	case sqlparser.Values:
+		return &tree.Select{
+			Select: &tree.ValuesClause{
+				Rows: insertValuesToExprs(rows),
+			},
+		}
+	case *sqlparser.Select:
+		return &tree.Select{
+			Select: convertSelect(rows),
+		}
+	case *sqlparser.ParenSelect:
+		return &tree.Select{
+			Select: &tree.ParenSelect{
+				Select: convertParentSelect(rows.Select),
+			},
+		}
+	case *sqlparser.AliasedValues:
+		return &tree.Select{
+			Select: &tree.ValuesClause{
+				Rows: insertValuesToExprs(rows.Values),
+			},
+		}
+	case *sqlparser.SetOp:
+		return &tree.Select{
+			Select: convertSelectStatement(rows),
+		}
+	default:
+		panic(fmt.Sprintf("unhandled type: %T", rows))
+	}
+}
+
+func convertParentSelect(statement sqlparser.SelectStatement) *tree.Select {
+	switch statement := statement.(type) {
+	case *sqlparser.Select:
+		sel := convertSelect(statement)
+		return &tree.Select{
+			Select: sel,
+		}
+	default:
+		panic(fmt.Sprintf("unhandled type: %T", statement))
+	}
+}
+
+func convertSelect(sel *sqlparser.Select) *tree.SelectClause {
+	return &tree.SelectClause{
+		Distinct: sel.QueryOpts.Distinct,
+		Exprs:    convertSelectExprs(sel.SelectExprs),
+		From:     convertFrom(sel.From),
+		Where:    convertWhere(sel.Where),
+		GroupBy:  convertGroupBy(sel.GroupBy),
+		Having:   convertHaving(sel.Having),
+	}
+}
+
+func convertSelectStatement(sel sqlparser.SelectStatement) tree.SelectStatement {
+	switch sel := sel.(type) {
+	case *sqlparser.Select:
+		return convertSelect(sel)
+	case *sqlparser.SetOp:
+		return convertSetOp(sel)
+	default:
+		panic(fmt.Sprintf("unhandled type: %T", sel))
+	}
+}
+
+func convertSetOp(sel *sqlparser.SetOp) tree.SelectStatement {
+	switch sel.Type {
+	case sqlparser.UnionStr:
+		left := convertSelectStatement(sel.Left)
+		right := convertSelectStatement(sel.Right)
+		return &tree.UnionClause{
+			Type:  tree.UnionOp,
+			Left:  selectFromSelectClause(left.(*tree.SelectClause)),
+			Right: selectFromSelectClause(right.(*tree.SelectClause)),
+		}
+	default:
+		panic(fmt.Sprintf("unhandled type: %s", sel.Type))
+	}
+}
+
+func selectFromSelectClause(clause *tree.SelectClause) *tree.Select {
+	return &tree.Select{
+		Select: clause,
+	}
+}
+
+func convertHaving(having *sqlparser.Where) *tree.Where {
+	return convertWhere(having)
+}
+
+func convertGroupBy(groupBy sqlparser.GroupBy) tree.GroupBy {
+	return convertExprs(sqlparser.Exprs(groupBy))
+}
+
+func convertWhere(where *sqlparser.Where) *tree.Where {
+	if where == nil {
+		return nil
+	}
+	return &tree.Where{
+		Type: tree.AstWhere,
+		Expr: convertExpr(where.Expr),
+	}
+}
+
+func convertFrom(from sqlparser.TableExprs) tree.From {
+	tables := make(tree.TableExprs, len(from))
+
+	for i, table := range from {
+		tables[i] = convertTableExpr(table)
+	}
+	return tree.From{
+		Tables: tables,
+	}
+}
+
+func convertTableExpr(table sqlparser.TableExpr) tree.TableExpr {
+	switch table := table.(type) {
+	case *sqlparser.AliasedTableExpr:
+		switch tableExpr := table.Expr.(type) {
+		case sqlparser.TableName:
+			return &tree.AliasedTableExpr{
+				Expr: tree.NewTableName(tree.Name(tableExpr.DbQualifier.String()), tree.Name(tableExpr.Name.String())),
+				As: tree.AliasClause{
+					Alias: tree.Name(table.As.String()),
+				},
+			}
+		default:
+			panic(fmt.Sprintf("unhandled type: %T", table))
+		}
+	default:
+		panic(fmt.Sprintf("unhandled type: %T", table))
+	}
+}
+
+func convertSelectExprs(exprs sqlparser.SelectExprs) tree.SelectExprs {
+	es := make(tree.SelectExprs, len(exprs))
+	for i, expr := range exprs {
+		es[i] = convertSelectExpr(expr)
+	}
+	return es
+}
+
+func insertValuesToExprs(values sqlparser.Values) []tree.Exprs {
+	exprs := make([]tree.Exprs, len(values))
+	for i, row := range values {
+		exprs[i] = make(tree.Exprs, len(row))
+		for j, val := range row {
+			exprs[i][j] = convertValue(val)
+		}
+	}
+	return exprs
+}
+
+func convertValue(val sqlparser.Expr) tree.Expr {
+	switch val := val.(type) {
+	case *sqlparser.SQLVal:
+		return convertSQLVal(val)
+	case *sqlparser.NullVal:
+		return tree.DNull
+	case *sqlparser.FuncExpr:
+		return convertFuncExpr(val)
+	default:
+		panic(fmt.Sprintf("unhandled type: %T", val))
+	}
+}
+
+func convertFuncExpr(val *sqlparser.FuncExpr) tree.Expr {
+	fnName := tree.NewUnresolvedName(val.Name.String())
+	exprs := make(tree.Exprs, len(val.Exprs))
+
+	for i, expr := range val.Exprs {
+		e := convertSelectExpr(expr)
+		exprs[i] = e.Expr
+	}
+	return &tree.FuncExpr{
+		Func: tree.ResolvableFunctionReference{
+			FunctionReference: fnName,
+		},
+		Exprs: nil,
+	}
+}
+
+func convertSelectExpr(expr sqlparser.SelectExpr) tree.SelectExpr {
+	switch val := expr.(type) {
+	case *sqlparser.AliasedExpr:
+		e := convertExpr(val.Expr)
+		return tree.SelectExpr{
+			Expr: e,
+			As:   tree.UnrestrictedName(val.As.String()),
+		}
+	case *sqlparser.StarExpr:
+		return tree.SelectExpr{
+			Expr: tree.StarExpr(),
+		}
+	default:
+		panic(fmt.Sprintf("unhandled type: %T", val))
+	}
+}
+
+func convertExprs(exprs sqlparser.Exprs) []tree.Expr {
+	es := make([]tree.Expr, len(exprs))
+	for i, expr := range exprs {
+		es[i] = convertExpr(expr)
+	}
+	return es
+}
+
+func convertExpr(expr sqlparser.Expr) tree.Expr {
+	switch val := expr.(type) {
+	case nil:
+		return nil
+	case *sqlparser.SQLVal:
+		return convertSQLVal(val)
+	case *sqlparser.ColName:
+		return tree.NewUnresolvedName(val.Name.String())
+	case *sqlparser.FuncExpr:
+		return convertFuncExpr(val)
+	case *sqlparser.ValuesFuncExpr:
+		return tree.NewStrVal(val.Name.String())
+	case *sqlparser.BinaryExpr:
+		return convertBinaryExpr(val)
+	case *sqlparser.ComparisonExpr:
+		return convertComparisonExpr(val)
+	case *sqlparser.Subquery:
+		return convertSubquery(val)
+	default:
+		panic(fmt.Sprintf("unhandled type: %T", val))
+	}
+}
+
+func convertSubquery(val *sqlparser.Subquery) tree.Expr {
+	return &tree.Subquery{
+		Select: &tree.ParenSelect{
+			// TODO: order by, limit
+			Select: &tree.Select{
+				Select: convertSelectStatement(val.Select),
+			},
+		},
+	}
+}
+
+func convertComparisonExpr(val *sqlparser.ComparisonExpr) tree.Expr {
+	var op tree.ComparisonOperator
+	switch val.Operator {
+	case sqlparser.EqualStr:
+		op = tree.EQ
+	case sqlparser.LessThanStr:
+		op = tree.LT
+	case sqlparser.LessEqualStr:
+		op = tree.LE
+	case sqlparser.GreaterThanStr:
+		op = tree.GT
+	case sqlparser.GreaterEqualStr:
+		op = tree.GE
+	case sqlparser.NotEqualStr:
+		op = tree.NE
+	case sqlparser.InStr:
+		op = tree.In
+	case sqlparser.NotInStr:
+		op = tree.NotIn
+	case sqlparser.LikeStr:
+		op = tree.Like
+	case sqlparser.NotLikeStr:
+		op = tree.NotLike
+	case sqlparser.RegexpStr:
+		op = tree.RegMatch
+	case sqlparser.NotRegexpStr:
+		op = tree.NotRegMatch
+	default:
+		panic(fmt.Sprintf("unhandled operator: %s", val.Operator))
+	}
+
+	return &tree.ComparisonExpr{
+		Operator: op,
+		Left:     convertExpr(val.Left),
+		Right:    convertExpr(val.Right),
+		// Fn:       nil,
+	}
+}
+
+func convertBinaryExpr(val *sqlparser.BinaryExpr) tree.Expr {
+	var op tree.BinaryOperator
+	switch val.Operator {
+	case sqlparser.BitAndStr:
+		op = tree.Bitand
+	case sqlparser.BitOrStr:
+		op = tree.Bitor
+	case sqlparser.BitXorStr:
+		op = tree.Bitxor
+	case sqlparser.PlusStr:
+		op = tree.Plus
+	case sqlparser.MinusStr:
+		op = tree.Minus
+	case sqlparser.MultStr:
+		op = tree.Mult
+	case sqlparser.DivStr:
+		op = tree.Div
+	case sqlparser.ModStr:
+		op = tree.Mod
+	case sqlparser.ShiftLeftStr:
+		op = tree.LShift
+	case sqlparser.ShiftRightStr:
+		op = tree.RShift
+	default:
+		panic(fmt.Sprintf("unhandled operator: %s", val.Operator))
+	}
+
+	return &tree.BinaryExpr{
+		Operator: op,
+		Left:     convertExpr(val.Left),
+		Right:    convertExpr(val.Right),
+		// Fn:       nil,
+	}
+}
+
+func convertSQLVal(val *sqlparser.SQLVal) tree.Expr {
+	switch val.Type {
+	case sqlparser.StrVal:
+		return tree.NewStrVal(string(val.Val))
+	case sqlparser.IntVal:
+		i, err := strconv.Atoi(string(val.Val))
+		if err != nil {
+			panic(err)
+		}
+		return tree.NewDInt(tree.DInt(i))
+	case sqlparser.FloatVal:
+		f, err := strconv.ParseFloat(string(val.Val), 64)
+		if err != nil {
+			panic(err)
+		}
+		return tree.NewDFloat(tree.DFloat(f))
+	case sqlparser.HexVal:
+		return tree.NewStrVal(fmt.Sprintf("x'%s'", val.Val))
+	case sqlparser.HexNum:
+		return tree.NewStrVal(fmt.Sprintf("x'%s'", val.Val))
+	default:
+		panic(fmt.Sprintf("unhandled type: %v", val.Type))
+	}
+}
+
+func transformDrop(query string, stmt *sqlparser.DDL) ([]string, bool) {
 	return nil, false
 }
 
@@ -64,69 +488,92 @@ func transformAlterTable(stmt *sqlparser.AlterTable) ([]string, bool) {
 func convertDdlStatement(statement *sqlparser.DDL) ([]string, bool) {
 	switch statement.Action {
 	case "alter":
-		switch statement.ColumnAction {
-		case "modify":
-			if len(statement.TableSpec.Columns) != 1 {
+		if statement.ColumnAction != "" {
+			switch statement.ColumnAction {
+			case "modify":
+				if len(statement.TableSpec.Columns) != 1 {
+					return nil, false
+				}
+
+				stmts := make([]string, 0)
+
+				col := statement.TableSpec.Columns[0]
+				tableName, err := tree.NewUnresolvedObjectName(1, [3]string{statement.Table.Name.String(), "", ""}, 0)
+				if err != nil {
+					panic(err)
+				}
+
+				newType := convertTypeDef(col.Type)
+				alter := tree.AlterTable{
+					Table: tableName,
+					Cmds: []tree.AlterTableCmd{
+						&tree.AlterTableAlterColumnType{
+							Column: tree.Name(col.Name.String()),
+							ToType: newType,
+						},
+					},
+				}
+
+				ctx := formatNodeWithUnqualifiedTableNames(&alter)
+				stmts = append(stmts, ctx.String())
+
+				// constraints
+				if col.Type.NotNull {
+					alter.Cmds = []tree.AlterTableCmd{
+						&tree.AlterTableSetNotNull{
+							Column: tree.Name(col.Name.String()),
+						},
+					}
+					ctx = formatNodeWithUnqualifiedTableNames(&alter)
+					stmts = append(stmts, ctx.String())
+				} else {
+					alter.Cmds = []tree.AlterTableCmd{
+						&tree.AlterTableDropNotNull{
+							Column: tree.Name(col.Name.String()),
+						},
+					}
+					ctx = formatNodeWithUnqualifiedTableNames(&alter)
+					stmts = append(stmts, ctx.String())
+				}
+
+				// rename
+				if statement.Column.String() != col.Name.String() {
+					alter.Cmds = []tree.AlterTableCmd{
+						&tree.AlterTableRenameColumn{
+							Column:  tree.Name(statement.Column.String()),
+							NewName: tree.Name(col.Name.String()),
+						},
+					}
+					ctx = formatNodeWithUnqualifiedTableNames(&alter)
+					stmts = append(stmts, ctx.String())
+				}
+
+				return stmts, true
+			default:
 				return nil, false
 			}
-
-			stmts := make([]string, 0)
-
-			col := statement.TableSpec.Columns[0]
-			tableName, err := tree.NewUnresolvedObjectName(1, [3]string{statement.Table.Name.String(), "", ""}, 0)
-			if err != nil {
-				panic(err)
-			}
-
-			newType := convertTypeDef(col.Type)
-			alter := tree.AlterTable{
-				Table: tableName,
-				Cmds: []tree.AlterTableCmd{
-					&tree.AlterTableAlterColumnType{
-						Column: tree.Name(col.Name.String()),
-						ToType: newType,
-					},
-				},
-			}
-
-			ctx := formatNodeWithUnqualifiedTableNames(&alter)
-			stmts = append(stmts, ctx.String())
-
-			// constraints
-			if col.Type.NotNull {
-				alter.Cmds = []tree.AlterTableCmd{
-					&tree.AlterTableSetNotNull{
-						Column: tree.Name(col.Name.String()),
-					},
-				}
-				ctx = formatNodeWithUnqualifiedTableNames(&alter)
-				stmts = append(stmts, ctx.String())
-			} else {
-				alter.Cmds = []tree.AlterTableCmd{
-					&tree.AlterTableDropNotNull{
-						Column: tree.Name(col.Name.String()),
-					},
-				}
-				ctx = formatNodeWithUnqualifiedTableNames(&alter)
-				stmts = append(stmts, ctx.String())
-			}
-
-			// rename
-			if statement.Column.String() != col.Name.String() {
-				alter.Cmds = []tree.AlterTableCmd{
-					&tree.AlterTableRenameColumn{
-						Column:  tree.Name(statement.Column.String()),
-						NewName: tree.Name(col.Name.String()),
-					},
-				}
-				ctx = formatNodeWithUnqualifiedTableNames(&alter)
-				stmts = append(stmts, ctx.String())
-			}
-
-			return stmts, true
-		default:
-			return nil, false
 		}
+		if statement.IndexSpec != nil {
+			switch statement.IndexSpec.Action {
+			case "drop":
+				tableName := tree.NewTableName(tree.Name(""), tree.Name(statement.Table.Name.String()))
+				dropIndex := tree.DropIndex{
+					IndexList: tree.TableIndexNames{
+						{
+							Table: *tableName,
+							Index: tree.UnrestrictedName(statement.IndexSpec.ToName.String()),
+						},
+					},
+				}
+
+				ctx := formatNodeWithUnqualifiedTableNames(&dropIndex)
+				return []string{ctx.String()}, true
+			default:
+				return nil, false
+			}
+		}
+
+		return nil, false
 	default:
 		return nil, false
 	}
@@ -266,7 +713,7 @@ func PostgresNodeFormatter(buf *sqlparser.TrackedBuffer, node sqlparser.SQLNode)
 	}
 }
 
-func transformCreateTable(query string, stmt *sqlparser.DDL) ([]string, bool) {
+func transformCreateTable(stmt *sqlparser.DDL) ([]string, bool) {
 	if stmt.TableSpec == nil {
 		return nil, false
 	}
@@ -299,15 +746,46 @@ func transformCreateTable(query string, stmt *sqlparser.DDL) ([]string, bool) {
 				Expr           tree.Expr
 				ConstraintName tree.Name
 			}{
-				Expr:           nil, // TODO
-				ConstraintName: "",  // TODO
+				Expr:           convertExpr(col.Type.Default),
+				ConstraintName: "", // TODO
 			},
 			CheckExprs: nil, // TODO
 		})
 	}
 
+	// convert any primary key indexes
+	if len(stmt.TableSpec.Indexes) > 0 {
+		for _, index := range stmt.TableSpec.Indexes {
+			if !index.Info.Primary {
+				continue
+			}
+
+			indexCols := make(tree.IndexElemList, len(index.Columns))
+			for i, col := range index.Columns {
+				colName := col.Column.String()
+				indexCols[i] = tree.IndexElem{
+					Column: tree.Name(colName),
+				}
+			}
+
+			indexDef := &tree.UniqueConstraintTableDef{
+				PrimaryKey: true,
+				IndexTableDef: tree.IndexTableDef{
+					Columns: indexCols,
+				},
+			}
+
+			createTable.Defs = append(createTable.Defs, indexDef)
+		}
+	}
+
 	ctx := formatNodeWithUnqualifiedTableNames(&createTable)
-	queries = append(queries, ctx.String())
+	query := ctx.String()
+
+	// this is a very odd quirk for only the char type, not sure why the postgres parser does this but it doesn't
+	// parse in a CREATE TABLE statement
+	query = strings.ReplaceAll(query, `"char"`, `char`)
+	queries = append(queries, query)
 
 	// If there are additional (non-primary key) indexes defined, each one gets its own additional statement
 	if len(stmt.TableSpec.Indexes) > 0 {
@@ -787,6 +1265,10 @@ func TestConvertQuery(t *testing.T) {
 			},
 		},
 		{
+			input:    "CREATE TABLE foo (a INT, b int, primary key (b,a))",
+			expected: []string{"CREATE TABLE foo (a INTEGER NULL, b INTEGER NULL, PRIMARY KEY (b, a))"},
+		},
+		{
 			input: "CREATE TABLE foo (a INT primary key, b int, c int, key (c,b))",
 			expected: []string{
 				"CREATE TABLE foo (a INTEGER NOT NULL PRIMARY KEY, b INTEGER NULL, c INTEGER NULL)",
@@ -819,6 +1301,18 @@ func TestConvertQuery(t *testing.T) {
 			expected: []string{
 				"SET autocommit = 1",
 				"SET dolt_transaction_commit = 'off'",
+			},
+		},
+		{
+			input: "INSERT INTO foo (a, b) VALUES (1, 2), (3, 4) on duplicate key update a = 5",
+			expected: []string{
+				"INSERT INTO foo(a, b) VALUES (1, 2), (3, 4) ON CONFLICT (fake) DO UPDATE SET a = 5",
+			},
+		},
+		{
+			input: "INSERT INTO foo VALUES (1, 2), (3, 4) on duplicate key update a = 5",
+			expected: []string{
+				"INSERT INTO foo VALUES (1, 2), (3, 4) ON CONFLICT (fake) DO UPDATE SET a = 5",
 			},
 		},
 	}

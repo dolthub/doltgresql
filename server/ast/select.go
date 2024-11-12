@@ -55,7 +55,7 @@ func nodeSelect(ctx *Context, node *tree.Select) (vitess.SelectStatement, error)
 
 	switch selectStmt := selectStmt.(type) {
 	case *vitess.ParenSelect:
-		//TODO: figure out if this is even correct, not sure what statement would produce this AST
+		// TODO: figure out if this is even correct, not sure what statement would produce this AST
 		// perhaps we should use the inner select statement, but maybe it has its own order by, limit, etc.
 		return &vitess.Select{
 			SelectExprs: vitess.SelectExprs{
@@ -144,13 +144,15 @@ func nodeSelectExpr(ctx *Context, node tree.SelectExpr) (vitess.SelectExpr, erro
 			if expr.NumParts == 2 {
 				tableName.Name = vitess.NewTableIdent(expr.Parts[1])
 			}
+			// We don't set the InputExpression for ColName expressions. This matches the behavior in vitess's
+			// post-processing found in ast.go. Input expressions are load bearing for some parts of plan building
+			// so we need to match the behavior exactly.
 			return &vitess.AliasedExpr{
 				Expr: &vitess.ColName{
 					Name:      vitess.NewColIdent(expr.Parts[0]),
 					Qualifier: tableName,
 				},
-				As:              vitess.NewColIdent(string(node.As)),
-				InputExpression: tree.AsString(&node),
+				As: vitess.NewColIdent(string(node.As)),
 			}, nil
 		}
 	default:
