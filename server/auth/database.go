@@ -15,10 +15,11 @@
 package auth
 
 import (
-	"github.com/dolthub/doltgresql/server/types"
 	"os"
 	"sync"
 	"sync/atomic"
+
+	"github.com/dolthub/doltgresql/server/types"
 
 	"github.com/dolthub/dolt/go/libraries/doltcore/env"
 	"github.com/dolthub/dolt/go/libraries/utils/filesys"

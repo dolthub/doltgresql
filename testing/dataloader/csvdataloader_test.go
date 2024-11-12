@@ -12,7 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-package dataloader
+package _dataloader
 
 import (
 	"bufio"
@@ -25,9 +25,8 @@ import (
 	"github.com/dolthub/go-mysql-server/sql"
 	"github.com/stretchr/testify/require"
 
-	"github.com/dolthub/doltgresql/server/expression"
-	"github.com/dolthub/doltgresql/server/functions"
-	"github.com/dolthub/doltgresql/server/functions/framework"
+	"github.com/dolthub/doltgresql/core/dataloader"
+	"github.com/dolthub/doltgresql/server/initialization"
 	"github.com/dolthub/doltgresql/server/types"
 )
 
@@ -35,11 +34,7 @@ import (
 func TestCsvDataLoader(t *testing.T) {
 	db := memory.NewDatabase("mydb")
 	provider := memory.NewDBProvider(db)
-	// cannot call initialize.Initialize(), so call necessary Init() functions.
-	framework.Init()
-	expression.Init()
-	functions.Init()
-	framework.Initialize()
+	initialization.Initialize(nil)
 
 	ctx := &sql.Context{
 		Context: context.Background(),
@@ -55,7 +50,7 @@ func TestCsvDataLoader(t *testing.T) {
 	// Tests that a basic CSV document can be loaded as a single chunk.
 	t.Run("basic case", func(t *testing.T) {
 		table := memory.NewTable(db, "myTable", pkSchema, nil)
-		dataLoader, err := NewCsvDataLoader(ctx, table, ",", false)
+		dataLoader, err := dataloader.NewCsvDataLoader(ctx, table, ",", false)
 		require.NoError(t, err)
 
 		// Load all the data as a single chunk
@@ -77,7 +72,7 @@ func TestCsvDataLoader(t *testing.T) {
 	// partial record must be buffered and prepended to the next chunk.
 	t.Run("record split across two chunks", func(t *testing.T) {
 		table := memory.NewTable(db, "myTable", pkSchema, nil)
-		dataLoader, err := NewCsvDataLoader(ctx, table, ",", false)
+		dataLoader, err := dataloader.NewCsvDataLoader(ctx, table, ",", false)
 		require.NoError(t, err)
 
 		// Load the first chunk
@@ -106,7 +101,7 @@ func TestCsvDataLoader(t *testing.T) {
 	// header row is present.
 	t.Run("record split across two chunks, with header", func(t *testing.T) {
 		table := memory.NewTable(db, "myTable", pkSchema, nil)
-		dataLoader, err := NewCsvDataLoader(ctx, table, ",", true)
+		dataLoader, err := dataloader.NewCsvDataLoader(ctx, table, ",", true)
 		require.NoError(t, err)
 
 		// Load the first chunk
@@ -135,7 +130,7 @@ func TestCsvDataLoader(t *testing.T) {
 	// across two chunks.
 	t.Run("quoted newlines across two chunks", func(t *testing.T) {
 		table := memory.NewTable(db, "myTable", pkSchema, nil)
-		dataLoader, err := NewCsvDataLoader(ctx, table, ",", false)
+		dataLoader, err := dataloader.NewCsvDataLoader(ctx, table, ",", false)
 		require.NoError(t, err)
 
 		// Load the first chunk
@@ -163,7 +158,7 @@ func TestCsvDataLoader(t *testing.T) {
 	// Test that calling Abort() does not insert any data into the table.
 	t.Run("abort cancels data load", func(t *testing.T) {
 		table := memory.NewTable(db, "myTable", pkSchema, nil)
-		dataLoader, err := NewCsvDataLoader(ctx, table, ",", false)
+		dataLoader, err := dataloader.NewCsvDataLoader(ctx, table, ",", false)
 		require.NoError(t, err)
 
 		// Load the first chunk
@@ -188,7 +183,7 @@ func TestCsvDataLoader(t *testing.T) {
 	// and a header row is present.
 	t.Run("delimiter='|', record split across two chunks, with header", func(t *testing.T) {
 		table := memory.NewTable(db, "myTable", pkSchema, nil)
-		dataLoader, err := NewCsvDataLoader(ctx, table, "|", true)
+		dataLoader, err := dataloader.NewCsvDataLoader(ctx, table, "|", true)
 		require.NoError(t, err)
 
 		// Load the first chunk

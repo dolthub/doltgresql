@@ -20,7 +20,6 @@ import (
 
 	"github.com/dolthub/go-mysql-server/sql"
 	"github.com/dolthub/go-mysql-server/sql/expression"
-	"github.com/dolthub/vitess/go/vt/proto/query"
 	"github.com/lib/pq/oid"
 	"gopkg.in/src-d/go-errors.v1"
 
@@ -98,11 +97,11 @@ func newCompiledFunctionInternal(
 			hasPolymorphicParam = true
 			c.callResolved[i] = originalTypes[i]
 		} else {
-			c.callResolved[i] = param
 			if d, ok := args[i].Type().(pgtypes.DoltgresType); ok {
-				// TODO: `param` is a default type which does not have type modifier set
-				c.callResolved[i] = d
+				// `param` is a default type which does not have type modifier set
+				param.AttTypMod = d.AttTypMod
 			}
+			c.callResolved[i] = param
 		}
 	}
 	returnType := fn.GetReturn()
@@ -639,36 +638,11 @@ func (c *CompiledFunction) evalArgs(ctx *sql.Context, row sql.Row) ([]any, error
 		}
 		// TODO: once we remove GMS types from all of our expressions, we can remove this step which ensures the correct type
 		if _, ok := arg.Type().(pgtypes.DoltgresType); !ok {
-			switch arg.Type().Type() {
-			case query.Type_INT8, query.Type_INT16:
-				args[i], _, _ = pgtypes.Int16.Convert(args[i])
-			case query.Type_INT24, query.Type_INT32:
-				args[i], _, _ = pgtypes.Int32.Convert(args[i])
-			case query.Type_INT64:
-				args[i], _, _ = pgtypes.Int64.Convert(args[i])
-			case query.Type_UINT8, query.Type_UINT16, query.Type_UINT24, query.Type_UINT32, query.Type_UINT64:
-				args[i], _, _ = pgtypes.Int64.Convert(args[i])
-			case query.Type_YEAR:
-				args[i], _, _ = pgtypes.Int16.Convert(args[i])
-			case query.Type_FLOAT32:
-				args[i], _, _ = pgtypes.Float32.Convert(args[i])
-			case query.Type_FLOAT64:
-				args[i], _, _ = pgtypes.Float64.Convert(args[i])
-			case query.Type_DECIMAL:
-				args[i], _, _ = pgtypes.Numeric.Convert(args[i])
-			case query.Type_DATE:
-				args[i], _, _ = pgtypes.Date.Convert(args[i])
-			case query.Type_DATETIME, query.Type_TIMESTAMP:
-				args[i], _, _ = pgtypes.Timestamp.Convert(args[i])
-			case query.Type_CHAR, query.Type_VARCHAR, query.Type_TEXT:
-				args[i], _, _ = pgtypes.Text.Convert(args[i])
-			case query.Type_ENUM:
-				args[i], _, _ = pgtypes.Int16.Convert(args[i])
-			case query.Type_SET:
-				args[i], _, _ = pgtypes.Int64.Convert(args[i])
-			default:
-				return nil, fmt.Errorf("encountered a GMS type that cannot be handled")
+			dt, err := pgtypes.FromGmsTypeToDoltgresType(arg.Type())
+			if err != nil {
+				return nil, err
 			}
+			args[i], _, _ = dt.Convert(args[i])
 		}
 	}
 	return args, nil
@@ -686,36 +660,11 @@ func (c *CompiledFunction) analyzeParameters() (originalTypes []pgtypes.Doltgres
 			originalTypes[i] = extendedType
 		} else {
 			// TODO: we need to remove GMS types from all of our expressions so that we can remove this
-			switch param.Type().Type() {
-			case query.Type_INT8, query.Type_INT16:
-				originalTypes[i] = pgtypes.Int16
-			case query.Type_INT24, query.Type_INT32:
-				originalTypes[i] = pgtypes.Int32
-			case query.Type_INT64:
-				originalTypes[i] = pgtypes.Int64
-			case query.Type_UINT8, query.Type_UINT16, query.Type_UINT24, query.Type_UINT32, query.Type_UINT64:
-				originalTypes[i] = pgtypes.Int64
-			case query.Type_YEAR:
-				originalTypes[i] = pgtypes.Int16
-			case query.Type_FLOAT32:
-				originalTypes[i] = pgtypes.Float32
-			case query.Type_FLOAT64:
-				originalTypes[i] = pgtypes.Float64
-			case query.Type_DECIMAL:
-				originalTypes[i] = pgtypes.Numeric
-			case query.Type_DATE, query.Type_DATETIME, query.Type_TIMESTAMP:
-				originalTypes[i] = pgtypes.Timestamp
-			case query.Type_CHAR, query.Type_VARCHAR, query.Type_TEXT:
-				originalTypes[i] = pgtypes.Text
-			case query.Type_ENUM:
-				originalTypes[i] = pgtypes.Int16
-			case query.Type_SET:
-				originalTypes[i] = pgtypes.Int64
-			case query.Type_NULL_TYPE:
-				originalTypes[i] = pgtypes.Unknown
-			default:
-				return nil, fmt.Errorf("encountered a type that does not conform to the DoltgresType interface: %T", param.Type())
+			dt, err := pgtypes.FromGmsTypeToDoltgresType(param.Type())
+			if err != nil {
+				return nil, err
 			}
+			originalTypes[i] = dt
 		}
 	}
 	return originalTypes, nil

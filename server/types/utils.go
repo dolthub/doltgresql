@@ -16,6 +16,8 @@ package types
 
 import (
 	"bytes"
+	"fmt"
+
 	"github.com/dolthub/go-mysql-server/sql"
 	"github.com/dolthub/go-mysql-server/sql/types"
 	"github.com/dolthub/vitess/go/vt/proto/query"
@@ -65,39 +67,53 @@ var SQL func(ctx *sql.Context, t DoltgresType, val any) (string, error)
 
 // FromGmsType returns a DoltgresType that is most similar to the given GMS type.
 func FromGmsType(typ sql.Type) DoltgresType {
+	dt, err := FromGmsTypeToDoltgresType(typ)
+	if err != nil {
+		return Unknown
+	}
+	return dt
+}
+
+func FromGmsTypeToDoltgresType(typ sql.Type) (DoltgresType, error) {
 	switch typ.Type() {
-	case query.Type_INT8:
+	case query.Type_INT8, query.Type_INT16:
 		// Special treatment for boolean types when we can detect them
 		if typ == types.Boolean {
-			return Bool
+			return Bool, nil
 		}
-		return Int32
-	case query.Type_INT16, query.Type_INT24, query.Type_INT32, query.Type_YEAR, query.Type_ENUM:
-		return Int32
-	case query.Type_INT64, query.Type_SET, query.Type_BIT, query.Type_UINT8, query.Type_UINT16, query.Type_UINT24, query.Type_UINT32:
-		return Int64
-	case query.Type_UINT64:
-		return Numeric
+		return Int16, nil
+	case query.Type_INT24, query.Type_INT32:
+		return Int32, nil
+	case query.Type_INT64:
+		return Int64, nil
+	case query.Type_UINT8, query.Type_UINT16, query.Type_UINT24, query.Type_UINT32, query.Type_UINT64:
+		return Int64, nil
+	case query.Type_YEAR:
+		return Int16, nil
 	case query.Type_FLOAT32:
-		return Float32
+		return Float32, nil
 	case query.Type_FLOAT64:
-		return Float64
+		return Float64, nil
 	case query.Type_DECIMAL:
-		return Numeric
-	case query.Type_DATE, query.Type_DATETIME, query.Type_TIMESTAMP:
-		return Timestamp
+		return Numeric, nil
+	case query.Type_DATE:
+		return Date, nil
 	case query.Type_TIME:
-		return Text
+		return Text, nil
+	case query.Type_DATETIME, query.Type_TIMESTAMP:
+		return Timestamp, nil
 	case query.Type_CHAR, query.Type_VARCHAR, query.Type_TEXT, query.Type_BINARY, query.Type_VARBINARY, query.Type_BLOB:
-		return Text
+		return Text, nil
 	case query.Type_JSON:
-		return Json
-	case query.Type_NULL_TYPE:
-		return Unknown
-	case query.Type_GEOMETRY:
-		return Unknown
+		return Json, nil
+	case query.Type_ENUM:
+		return Int16, nil
+	case query.Type_SET:
+		return Int64, nil
+	case query.Type_NULL_TYPE, query.Type_GEOMETRY:
+		return Unknown, nil
 	default:
-		return Unknown
+		return DoltgresType{}, fmt.Errorf("encountered a GMS type that cannot be handled")
 	}
 }
 

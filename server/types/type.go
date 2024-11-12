@@ -395,7 +395,6 @@ func (t DoltgresType) SerializedCompare(v1 []byte, v2 []byte) (int, error) {
 	if t.TypCategory == TypeCategory_StringTypes {
 		return serializedStringCompare(v1, v2), nil
 	}
-
 	return bytes.Compare(v1, v2), nil
 }
 
@@ -452,7 +451,6 @@ func (t DoltgresType) Type() query.Type {
 	case TypeCategory_CompositeTypes, TypeCategory_EnumTypes, TypeCategory_GeometricTypes, TypeCategory_NetworkAddressTypes,
 		TypeCategory_RangeTypes, TypeCategory_PseudoTypes, TypeCategory_UserDefinedTypes, TypeCategory_BitStringTypes,
 		TypeCategory_InternalUseTypes:
-		// TODO
 		return sqltypes.Text
 	case TypeCategory_DateTimeTypes:
 		return sqltypes.Text
@@ -507,7 +505,6 @@ func (t DoltgresType) Zero() interface{} {
 	case TypeCategory_CompositeTypes, TypeCategory_EnumTypes, TypeCategory_GeometricTypes, TypeCategory_NetworkAddressTypes,
 		TypeCategory_RangeTypes, TypeCategory_PseudoTypes, TypeCategory_UserDefinedTypes, TypeCategory_BitStringTypes,
 		TypeCategory_InternalUseTypes:
-		// TODO
 		return any(nil)
 	case TypeCategory_DateTimeTypes:
 		return time.Time{}

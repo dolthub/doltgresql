@@ -67,7 +67,7 @@ func (c *CreateDomain) RowIter(ctx *sql.Context, r sql.Row) (sql.RowIter, error)
 		return nil, fmt.Errorf(`role "%s" does not exist`, ctx.Client().User)
 	}
 
-	// TODO: create array type with this type as base type?
+	// TODO: create array type with this type as base type
 	var defExpr string
 	if c.DefaultExpr != nil {
 		defExpr = c.DefaultExpr.String()
