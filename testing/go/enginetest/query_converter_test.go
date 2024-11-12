@@ -36,7 +36,7 @@ func transformAST(query string) ([]string, bool) {
 	switch stmt := stmt.(type) {
 	case *sqlparser.DDL:
 		if stmt.Action == "create" {
-			return transformCreateTable(query, stmt)
+			return transformCreateTable(stmt)
 		} else if stmt.Action == "drop" {
 			return transformDrop(query, stmt)
 		}
@@ -713,7 +713,7 @@ func PostgresNodeFormatter(buf *sqlparser.TrackedBuffer, node sqlparser.SQLNode)
 	}
 }
 
-func transformCreateTable(query string, stmt *sqlparser.DDL) ([]string, bool) {
+func transformCreateTable(stmt *sqlparser.DDL) ([]string, bool) {
 	if stmt.TableSpec == nil {
 		return nil, false
 	}
@@ -780,7 +780,7 @@ func transformCreateTable(query string, stmt *sqlparser.DDL) ([]string, bool) {
 	}
 
 	ctx := formatNodeWithUnqualifiedTableNames(&createTable)
-	query = ctx.String()
+	query := ctx.String()
 
 	// this is a very odd quirk for only the char type, not sure why the postgres parser does this but it doesn't
 	// parse in a CREATE TABLE statement

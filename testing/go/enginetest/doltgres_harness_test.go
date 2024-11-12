@@ -217,7 +217,6 @@ var skippedSetupWords = []string{
 }
 
 var commentClause = regexp.MustCompile(`(?i)comment '.*?'`)
-var alterTableStatement = regexp.MustCompile(`(?i)alter table`)
 
 // sanitizeQuery strips the query string given of any unsupported constructs without attempting to actually convert
 // to Postgres syntax.
