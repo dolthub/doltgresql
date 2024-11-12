@@ -88,7 +88,8 @@ func assignTableDef(ctx *Context, node tree.TableDef, target *vitess.DDL) error 
 			return err
 		}
 		target.OptLike = &vitess.OptLike{
-			LikeTables: []vitess.TableName{tableName},
+			LikeTable: tableName,
+			//LikeTables: []vitess.TableName{tableName},
 		}
 		return nil
 	case *tree.UniqueConstraintTableDef:
