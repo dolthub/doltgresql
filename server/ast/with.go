@@ -15,10 +15,11 @@
 package ast
 
 import (
-		"fmt"
-vitess "github.com/dolthub/vitess/go/vt/sqlparser"
+	"fmt"
 
 	"github.com/dolthub/doltgresql/postgres/parser/sem/tree"
+
+	vitess "github.com/dolthub/vitess/go/vt/sqlparser"
 )
 
 // TODO: move this else where
@@ -51,7 +52,7 @@ func nodeCTE(ctx *Context, node *tree.CTE) (*vitess.CommonTableExpr, error) {
 	return &vitess.CommonTableExpr{
 		AliasedTableExpr: &vitess.AliasedTableExpr{
 			Expr: subQuery,
-			As: alias,
+			As:   alias,
 			Auth: vitess.AuthInformation{AuthType: vitess.AuthType_IGNORE},
 		},
 		Columns: cols,
