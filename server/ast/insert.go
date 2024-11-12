@@ -38,15 +38,9 @@ func nodeInsert(ctx *Context, node *tree.Insert) (*vitess.Insert, error) {
 	var onDuplicate vitess.OnDup
 
 	if node.OnConflict != nil {
-		// ON CONFLICT DO NOTHING is equivalent to INSERT IGNORE in GMS
-		ignoreErrors := node.OnConflict.ArbiterPredicate == nil &&
-			node.OnConflict.Exprs == nil &&
-			node.OnConflict.Where == nil &&
-			node.OnConflict.DoNothing
-
-		if ignoreErrors {
+		if isIgnore(node.OnConflict) {
 			ignore = vitess.IgnoreStr
-		} else if supportedOnDuplicateKey(node.OnConflict) {
+		} else if supportedOnConflictClause(node.OnConflict) {
 			// TODO: we are ignoring the column names, which are used to infer which index under conflict is to be checked
 			updateExprs, err := nodeUpdateExprs(ctx, node.OnConflict.Exprs)
 			if err != nil {
@@ -91,7 +85,7 @@ func nodeInsert(ctx *Context, node *tree.Insert) (*vitess.Insert, error) {
 		return nil, err
 	}
 
-	// GMS For a ValuesStatement with simple rows, GMS expects AliasedValues
+	// For a ValuesStatement with simple rows, GMS expects AliasedValues
 	if vSelect, ok := rows.(*vitess.Select); ok && len(vSelect.From) == 1 {
 		if valsStmt, ok := vSelect.From[0].(*vitess.ValuesStatement); ok {
 			rows = &vitess.AliasedValues{
@@ -115,7 +109,17 @@ func nodeInsert(ctx *Context, node *tree.Insert) (*vitess.Insert, error) {
 	}, nil
 }
 
-func supportedOnDuplicateKey(conflict *tree.OnConflict) bool {
+// isIgnore returns true if the ON CONFLICT clause provided is equivalent to INSERT IGNORE in GMS
+func isIgnore(conflict *tree.OnConflict) bool {
+	return conflict.ArbiterPredicate == nil &&
+			conflict.Exprs == nil &&
+			conflict.Where == nil &&
+			conflict.DoNothing
+}
+
+// supportedOnConflictClause returns true if the ON CONFLICT clause given can be represented as 
+// an ON DUPLICATE KEY UPDATE clause in GMS 
+func supportedOnConflictClause(conflict *tree.OnConflict) bool {
 	if conflict.ArbiterPredicate != nil {
 		return false
 	}
