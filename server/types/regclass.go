@@ -24,7 +24,6 @@ var Regclass = DoltgresType{
 	OID:           uint32(oid.T_regclass),
 	Name:          "regclass",
 	Schema:        "pg_catalog",
-	Owner:         "doltgres", // TODO
 	TypLength:     int16(4),
 	PassedByVal:   true,
 	TypType:       TypeType_Base,

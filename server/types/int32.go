@@ -23,7 +23,6 @@ var Int32 = DoltgresType{
 	OID:           uint32(oid.T_int4),
 	Name:          "int4",
 	Schema:        "pg_catalog",
-	Owner:         "doltgres", // TODO
 	TypLength:     int16(4),
 	PassedByVal:   true,
 	TypType:       TypeType_Base,

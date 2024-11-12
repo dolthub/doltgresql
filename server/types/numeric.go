@@ -41,7 +41,6 @@ var Numeric = DoltgresType{
 	OID:           uint32(oid.T_numeric),
 	Name:          "numeric",
 	Schema:        "pg_catalog",
-	Owner:         "doltgres", // TODO
 	TypLength:     int16(-1),
 	PassedByVal:   false,
 	TypType:       TypeType_Base,

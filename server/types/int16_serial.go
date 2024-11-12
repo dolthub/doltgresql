@@ -21,7 +21,6 @@ var Int16Serial = DoltgresType{
 	OID:           0, // doesn't have unique OID
 	Name:          "smallserial",
 	Schema:        "pg_catalog",
-	Owner:         "doltgres", // TODO
 	TypLength:     int16(2),
 	PassedByVal:   true,
 	TypType:       TypeType_Base,

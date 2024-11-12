@@ -25,7 +25,6 @@ var Time = DoltgresType{
 	OID:           uint32(oid.T_time),
 	Name:          "time",
 	Schema:        "pg_catalog",
-	Owner:         "doltgres", // TODO
 	TypLength:     int16(8),
 	PassedByVal:   true,
 	TypType:       TypeType_Base,

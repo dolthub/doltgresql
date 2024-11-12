@@ -23,7 +23,6 @@ var Float64 = DoltgresType{
 	OID:           uint32(oid.T_float8),
 	Name:          "float8",
 	Schema:        "pg_catalog",
-	Owner:         "doltgres", // TODO
 	TypLength:     int16(8),
 	PassedByVal:   true,
 	TypType:       TypeType_Base,

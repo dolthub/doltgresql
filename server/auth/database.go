@@ -15,6 +15,7 @@
 package auth
 
 import (
+	"github.com/dolthub/doltgresql/server/types"
 	"os"
 	"sync"
 	"sync/atomic"
@@ -172,4 +173,18 @@ func dbInitDefault() {
 		panic(err)
 	}
 	SetRole(postgres)
+	typesInitDefault()
+}
+
+// typesInitDefault adds owner to built-in types.
+func typesInitDefault() {
+	postgresRole := GetRole("postgres")
+	allTypes := types.GetAllTypes()
+	for _, typ := range allTypes {
+		AddOwner(OwnershipKey{
+			PrivilegeObject: PrivilegeObject_TYPE,
+			Schema:          "pg_catalog",
+			Name:            typ.Name,
+		}, postgresRole.ID())
+	}
 }

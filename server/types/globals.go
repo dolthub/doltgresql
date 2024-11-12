@@ -82,12 +82,14 @@ var typesFromOID = map[uint32]DoltgresType{
 	AnyArray.OID:          AnyArray,
 	AnyElement.OID:        AnyElement,
 	AnyNonArray.OID:       AnyNonArray,
-	BpChar.OID:            BpChar,
-	BpCharArray.OID:       BpCharArray,
 	Bool.OID:              Bool,
 	BoolArray.OID:         BoolArray,
+	BpChar.OID:            BpChar,
+	BpCharArray.OID:       BpCharArray,
 	Bytea.OID:             Bytea,
 	ByteaArray.OID:        ByteaArray,
+	Cstring.OID:           Cstring,
+	CstringArray.OID:      CstringArray,
 	Date.OID:              Date,
 	DateArray.OID:         DateArray,
 	Float32.OID:           Float32,
@@ -100,6 +102,7 @@ var typesFromOID = map[uint32]DoltgresType{
 	Int32Array.OID:        Int32Array,
 	Int64.OID:             Int64,
 	Int64Array.OID:        Int64Array,
+	Internal.OID:          Internal,
 	InternalChar.OID:      InternalChar,
 	InternalCharArray.OID: InternalCharArray,
 	Interval.OID:          Interval,
@@ -130,16 +133,17 @@ var typesFromOID = map[uint32]DoltgresType{
 	TimestampTZArray.OID:  TimestampTZArray,
 	TimeTZ.OID:            TimeTZ,
 	TimeTZArray.OID:       TimeTZArray,
+	Unknown.OID:           Unknown,
 	Uuid.OID:              Uuid,
 	UuidArray.OID:         UuidArray,
-	Unknown.OID:           Unknown,
 	VarChar.OID:           VarChar,
 	VarCharArray.OID:      VarCharArray,
 	Xid.OID:               Xid,
 	XidArray.OID:          XidArray,
 }
 
-// GetTypeByOID returns the DoltgresType matching the given OID. If the OID does not match a type, then nil is returned.
+// GetTypeByOID returns the DoltgresType matching the given OID.
+// If the OID does not match a type, then nil is returned.
 func GetTypeByOID(oid uint32) DoltgresType {
 	t, ok := typesFromOID[oid]
 	if !ok {
@@ -148,7 +152,8 @@ func GetTypeByOID(oid uint32) DoltgresType {
 	return t
 }
 
-// GetAllTypes returns a slice containing all registered types. The slice is sorted by each type's base ID.
+// GetAllTypes returns a slice containing all registered types.
+// The slice is sorted by each type's OID.
 func GetAllTypes() []DoltgresType {
 	pgTypes := make([]DoltgresType, 0, len(typesFromOID))
 	for _, typ := range typesFromOID {

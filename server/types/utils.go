@@ -16,12 +16,9 @@ package types
 
 import (
 	"bytes"
-	"strings"
-
 	"github.com/dolthub/go-mysql-server/sql"
 	"github.com/dolthub/go-mysql-server/sql/types"
 	"github.com/dolthub/vitess/go/vt/proto/query"
-	"github.com/lib/pq/oid"
 	"gopkg.in/src-d/go-errors.v1"
 
 	"github.com/dolthub/doltgresql/utils"
@@ -65,18 +62,6 @@ var IoCompare func(ctx *sql.Context, t DoltgresType, v1, v2 any) (int32, error)
 
 // SQL is the implementation for IoOutput that is being set from another package to avoid circular dependencies.
 var SQL func(ctx *sql.Context, t DoltgresType, val any) (string, error)
-
-// QuoteString will quote the string according to the type given.
-// This means that some types will quote, and others will
-// not, or they may quote in a special way that is unique to that type.
-func QuoteString(typOid oid.Oid, str string) string {
-	switch typOid {
-	case oid.T_char, oid.T_bpchar, oid.T_name, oid.T_text, oid.T_varchar, oid.T_unknown:
-		return `'` + strings.ReplaceAll(str, `'`, `''`) + `'`
-	default:
-		return str
-	}
-}
 
 // FromGmsType returns a DoltgresType that is most similar to the given GMS type.
 func FromGmsType(typ sql.Type) DoltgresType {

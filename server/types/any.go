@@ -23,7 +23,6 @@ var Any = DoltgresType{
 	OID:           uint32(oid.T_any),
 	Name:          "any",
 	Schema:        "pg_catalog",
-	Owner:         "doltgres", // TODO
 	TypLength:     int16(4),
 	PassedByVal:   true,
 	TypType:       TypeType_Pseudo,

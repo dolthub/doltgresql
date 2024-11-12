@@ -28,7 +28,6 @@ func CreateArrayTypeFromBaseType(baseType DoltgresType) DoltgresType {
 		OID:           baseType.Array,
 		Name:          fmt.Sprintf("_%s", baseType.Name),
 		Schema:        "pg_catalog",
-		Owner:         "doltgres", // TODO
 		TypLength:     int16(-1),
 		PassedByVal:   false,
 		TypType:       TypeType_Base,

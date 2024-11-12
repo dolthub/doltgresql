@@ -23,7 +23,6 @@ var TimeTZ = DoltgresType{
 	OID:           uint32(oid.T_timetz),
 	Name:          "timetz",
 	Schema:        "pg_catalog",
-	Owner:         "doltgres", // TODO
 	TypLength:     int16(12),
 	PassedByVal:   true,
 	TypType:       TypeType_Base,

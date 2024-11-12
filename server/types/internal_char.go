@@ -26,7 +26,6 @@ var InternalChar = DoltgresType{
 	OID:           uint32(oid.T_char),
 	Name:          "char",
 	Schema:        "pg_catalog",
-	Owner:         "doltgres", // TODO
 	TypLength:     int16(InternalCharLength),
 	PassedByVal:   true,
 	TypType:       TypeType_Base,

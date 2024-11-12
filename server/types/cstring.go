@@ -23,7 +23,6 @@ var Cstring = DoltgresType{
 	OID:           uint32(oid.T_cstring),
 	Name:          "cstring",
 	Schema:        "pg_catalog",
-	Owner:         "doltgres", // TODO
 	TypLength:     int16(-2),
 	PassedByVal:   false,
 	TypType:       TypeType_Pseudo,

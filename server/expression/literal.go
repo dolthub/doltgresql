@@ -17,6 +17,7 @@ package expression
 import (
 	"fmt"
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/dolthub/go-mysql-server/sql"
@@ -259,7 +260,12 @@ func (l *Literal) String() string {
 	if err != nil {
 		panic(fmt.Sprintf("attempted to get string output for Literal: %s", err.Error()))
 	}
-	return pgtypes.QuoteString(oid.Oid(l.typ.OID), str)
+	switch oid.Oid(l.typ.OID) {
+	case oid.T_char, oid.T_bpchar, oid.T_name, oid.T_text, oid.T_varchar, oid.T_unknown:
+		return `'` + strings.ReplaceAll(str, `'`, `''`) + `'`
+	default:
+		return str
+	}
 }
 
 // ToVitessLiteral returns the literal as a Vitess literal. This is strictly for situations where GMS is hardcoded to

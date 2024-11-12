@@ -23,7 +23,6 @@ var BpChar = DoltgresType{
 	OID:           uint32(oid.T_bpchar),
 	Name:          "bpchar",
 	Schema:        "pg_catalog",
-	Owner:         "doltgres", // TODO
 	TypLength:     int16(-1),
 	PassedByVal:   false,
 	TypType:       TypeType_Base,
