@@ -69,8 +69,21 @@ func AssignUpdateCasts(ctx *sql.Context, a *analyzer.Analyzer, node sql.Node, sc
 
 // assignUpdateCastsHandleSource handles the *plan.UpdateSource portion of AssignUpdateCasts.
 func assignUpdateCastsHandleSource(updateSource *plan.UpdateSource) (*plan.UpdateSource, error) {
-	newUpdateExprs := make([]sql.Expression, len(updateSource.UpdateExprs))
-	for i, updateExpr := range updateSource.UpdateExprs {
+	updateExprs := updateSource.UpdateExprs
+	newUpdateExprs, err := assignUpdateFieldCasts(updateExprs)
+	if err != nil {
+		return nil, err
+	}
+	newUpdateSource, err := updateSource.WithExpressions(newUpdateExprs...)
+	if err != nil {
+		return nil, err
+	}
+	return newUpdateSource.(*plan.UpdateSource), nil
+}
+
+func assignUpdateFieldCasts(updateExprs []sql.Expression) ([]sql.Expression, error) {
+	newUpdateExprs := make([]sql.Expression, len(updateExprs))
+	for i, updateExpr := range updateExprs {
 		setField, ok := updateExpr.(*expression.SetField)
 		if !ok {
 			return nil, fmt.Errorf("UPDATE: assumption that expression is always SetField is incorrect: %T", updateExpr)
@@ -94,9 +107,5 @@ func assignUpdateCastsHandleSource(updateSource *plan.UpdateSource) (*plan.Updat
 			newUpdateExprs[i] = newSetField
 		}
 	}
-	newUpdateSource, err := updateSource.WithExpressions(newUpdateExprs...)
-	if err != nil {
-		return nil, err
-	}
-	return newUpdateSource.(*plan.UpdateSource), nil
+	return newUpdateExprs, nil
 }

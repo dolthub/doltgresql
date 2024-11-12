@@ -35,16 +35,23 @@ func nodeInsert(ctx *Context, node *tree.Insert) (*vitess.Insert, error) {
 		return nil, fmt.Errorf("RETURNING is not yet supported")
 	}
 	var ignore string
+	var onDuplicate vitess.OnDup
+
 	if node.OnConflict != nil {
-		// Currently, only ON CONFLICT DO NOTHING is supported, which is equivalent to INSERT IGNORE in GMS
-		if node.OnConflict.Columns != nil ||
-			node.OnConflict.ArbiterPredicate != nil ||
-			node.OnConflict.Exprs != nil ||
-			node.OnConflict.Where != nil ||
-			!node.OnConflict.DoNothing {
+		if isIgnore(node.OnConflict) {
+			ignore = vitess.IgnoreStr
+		} else if supportedOnConflictClause(node.OnConflict) {
+			// TODO: we are ignoring the column names, which are used to infer which index under conflict is to be checked
+			updateExprs, err := nodeUpdateExprs(ctx, node.OnConflict.Exprs)
+			if err != nil {
+				return nil, err
+			}
+			for _, updateExpr := range updateExprs {
+				onDuplicate = append(onDuplicate, updateExpr)
+			}
+		} else {
 			return nil, fmt.Errorf("the ON CONFLICT clause provided is not yet supported")
 		}
-		ignore = vitess.IgnoreStr
 	}
 	var tableName vitess.TableName
 	switch node := node.Table.(type) {
@@ -78,7 +85,7 @@ func nodeInsert(ctx *Context, node *tree.Insert) (*vitess.Insert, error) {
 		return nil, err
 	}
 
-	// GMS For a ValuesStatement with simple rows, GMS expects AliasedValues
+	// For a ValuesStatement with simple rows, GMS expects AliasedValues
 	if vSelect, ok := rows.(*vitess.Select); ok && len(vSelect.From) == 1 {
 		if valsStmt, ok := vSelect.From[0].(*vitess.ValuesStatement); ok {
 			rows = &vitess.AliasedValues{
@@ -93,10 +100,31 @@ func nodeInsert(ctx *Context, node *tree.Insert) (*vitess.Insert, error) {
 		With:    with,
 		Columns: columns,
 		Rows:    rows,
+		OnDup:   onDuplicate,
 		Auth: vitess.AuthInformation{
 			AuthType:    auth.AuthType_INSERT,
 			TargetType:  auth.AuthTargetType_SingleTableIdentifier,
 			TargetNames: []string{tableName.SchemaQualifier.String(), tableName.Name.String()},
 		},
 	}, nil
+}
+
+// isIgnore returns true if the ON CONFLICT clause provided is equivalent to INSERT IGNORE in GMS
+func isIgnore(conflict *tree.OnConflict) bool {
+	return conflict.ArbiterPredicate == nil &&
+		conflict.Exprs == nil &&
+		conflict.Where == nil &&
+		conflict.DoNothing
+}
+
+// supportedOnConflictClause returns true if the ON CONFLICT clause given can be represented as
+// an ON DUPLICATE KEY UPDATE clause in GMS
+func supportedOnConflictClause(conflict *tree.OnConflict) bool {
+	if conflict.ArbiterPredicate != nil {
+		return false
+	}
+	if conflict.Where != nil {
+		return false
+	}
+	return true
 }
