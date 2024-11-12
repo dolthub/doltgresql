@@ -159,3 +159,78 @@ func TestCreateTable(t *testing.T) {
 		},
 	})
 }
+
+func TestCreateTableInherit(t *testing.T) {
+	RunScripts(t, []ScriptTest{
+		{
+			Name: "Create table with inheritance",
+			SetUpScript: []string{
+				"create table t1 (a int);",
+				"create table t2 (b int);",
+				"create table t3 (c int);",
+				"create table t11 (a int);",
+			},
+			Assertions: []ScriptTestAssertion{
+				{
+					Query:    "create table t4 (d int) inherits (t1, t2, t3);",
+					Expected: []sql.Row{},
+				},
+				{
+					Query:    "insert into t4(a, b, c, d) values (1, 2, 3, 4);",
+					Expected: []sql.Row{},
+				},
+				{
+					Query: "select * from t4;",
+					Expected: []sql.Row{
+						{1, 2, 3, 4},
+					},
+				},
+
+				{
+					Query:    "create table t111 () inherits (t1, t11);",
+					Expected: []sql.Row{},
+				},
+				{
+					Query:    "insert into t111(a) values (1);",
+					Expected: []sql.Row{},
+				},
+				{
+					Query: "select * from t111;",
+					Expected: []sql.Row{
+						{1},
+					},
+				},
+
+				{
+					Query:    "create table t1t1 (a int) inherits (t1);",
+					Expected: []sql.Row{},
+				},
+				{
+					Query:    "insert into t1t1(a) values (1);",
+					Expected: []sql.Row{},
+				},
+				{
+					Query: "select * from t1t1;",
+					Expected: []sql.Row{
+						{1},
+					},
+				},
+
+				{
+					Query:    "create table TT1t1 (A int) inherits (t1);",
+					Expected: []sql.Row{},
+				},
+				{
+					Query:    "insert into TT1t1(a) values (1);",
+					Expected: []sql.Row{},
+				},
+				{
+					Query: "select * from TT1t1;",
+					Expected: []sql.Row{
+						{1},
+					},
+				},
+			},
+		},
+	})
+}

@@ -64,6 +64,19 @@ func nodeCreateTable(ctx *Context, node *tree.CreateTable) (*vitess.DDL, error) 
 			Select: selectStmt,
 		}
 	}
+	var optLike *vitess.OptLike
+	if len(node.Inherits) > 0 {
+		optLike = &vitess.OptLike{
+			LikeTables: []vitess.TableName{},
+		}
+		for _, table := range node.Inherits {
+			likeTable, err := nodeTableName(ctx, &table)
+			if err != nil {
+				return nil, err
+			}
+			optLike.LikeTables = append(optLike.LikeTables, likeTable)
+		}
+	}
 	if node.WithNoData {
 		return nil, fmt.Errorf("WITH NO DATA is not yet supported")
 	}
@@ -73,10 +86,12 @@ func nodeCreateTable(ctx *Context, node *tree.CreateTable) (*vitess.DDL, error) 
 		IfNotExists: node.IfNotExists,
 		Temporary:   isTemporary,
 		OptSelect:   optSelect,
+		OptLike:     optLike,
 	}
 	if err = assignTableDefs(ctx, node.Defs, ddl); err != nil {
 		return nil, err
 	}
+
 	if node.PartitionBy != nil {
 		switch node.PartitionBy.Type {
 		case tree.PartitionByList:
@@ -91,6 +106,8 @@ func nodeCreateTable(ctx *Context, node *tree.CreateTable) (*vitess.DDL, error) 
 			Expr:          vitess.NewColName(string(node.PartitionBy.Elems[0].Column)),
 		}
 	}
-
+	if node.PartitionOf.Table() != "" {
+		return nil, fmt.Errorf("PARTITION OF is not yet supported")
+	}
 	return ddl, nil
 }
