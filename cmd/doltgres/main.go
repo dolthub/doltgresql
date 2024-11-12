@@ -22,6 +22,7 @@ import (
 	"os"
 	"os/signal"
 	"path/filepath"
+	"runtime"
 	"strconv"
 	"strings"
 	"syscall"
@@ -203,7 +204,9 @@ func main() {
 	restoreIO := cli.InitIO()
 	defer restoreIO()
 
-	warnIfMaxFilesTooLow()
+	if runtime.GOOS != "windows" {
+		warnIfMaxFilesTooLow()
+	}
 
 	fs := filesys.LocalFS
 	// dEnv will be reloaded at server start to point to the data dir on the server config
