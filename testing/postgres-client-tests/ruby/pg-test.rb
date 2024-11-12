@@ -7,7 +7,7 @@ extend Test::Unit::Assertions
 
 user = ARGV[0]
 port = ARGV[1]
-db   = "doltgres"
+db   = "postgres"
 
 queries = [
   "create table test (pk int, value int, d1 decimal(9, 3), f1 float, c1 char(10), t1 text, primary key(pk))",

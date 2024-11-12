@@ -71,9 +71,6 @@ func CreateDoltgresServer() (controller *svcs.Controller, port int, err error) {
 		if err != nil {
 			return err
 		}
-
-		defer conn.Close(ctx)
-		_, err = conn.Exec(ctx, "CREATE DATABASE postgres;")
-		return err
+		return conn.Close(ctx)
 	}()
 }

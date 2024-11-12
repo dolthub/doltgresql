@@ -21,7 +21,6 @@ teardown() {
     run query_server -c "\l"
     [ "$status" -eq 0 ]
     [[ "$output" =~ "postgres" ]] || false
-    [[ "$output" =~ "doltgres" ]] || false
 }
 
 @test 'psql-commands: \dt' {
