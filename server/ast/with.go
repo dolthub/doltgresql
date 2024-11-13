@@ -22,7 +22,6 @@ import (
 	vitess "github.com/dolthub/vitess/go/vt/sqlparser"
 )
 
-// TODO: move this else where
 // nodeWith handles *tree.CTE nodes.
 func nodeCTE(ctx *Context, node *tree.CTE) (*vitess.CommonTableExpr, error) {
 	if node == nil {
