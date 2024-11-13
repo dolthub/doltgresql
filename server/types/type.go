@@ -131,7 +131,7 @@ func (t DoltgresType) CollationCoercibility(ctx *sql.Context) (collation sql.Col
 
 // Compare implements the types.ExtendedType interface.
 func (t DoltgresType) Compare(v1 interface{}, v2 interface{}) (int, error) {
-	res, err := IoCompare(t, v1, v2)
+	res, err := IoCompare(nil, t, v1, v2)
 	return int(res), err
 }
 
@@ -227,7 +227,7 @@ func (t DoltgresType) FormatValue(val any) (string, error) {
 	if val == nil {
 		return "", nil
 	}
-	return IoOutput(sql.NewEmptyContext(), t, val)
+	return IoOutput(nil, t, val)
 }
 
 // IsArrayType returns true if the type is of 'array' category
@@ -419,7 +419,7 @@ func (t DoltgresType) String() string {
 		str = t.Name
 	}
 	if t.AttTypMod != -1 {
-		if l, err := TypModOut(sql.NewEmptyContext(), t, t.AttTypMod); err == nil {
+		if l, err := TypModOut(nil, t, t.AttTypMod); err == nil {
 			str = fmt.Sprintf("%s%s", str, l)
 		}
 	}
@@ -543,7 +543,7 @@ func (t DoltgresType) SerializeValue(val any) ([]byte, error) {
 	if val == nil {
 		return nil, nil
 	}
-	return IoSend(sql.NewEmptyContext(), t, val)
+	return IoSend(nil, t, val)
 }
 
 // DeserializeValue implements the types.ExtendedType interface.
@@ -551,5 +551,5 @@ func (t DoltgresType) DeserializeValue(val []byte) (any, error) {
 	if len(val) == 0 {
 		return nil, nil
 	}
-	return IoReceive(sql.NewEmptyContext(), t, val)
+	return IoReceive(nil, t, val)
 }

@@ -271,7 +271,7 @@ var btarraycmp = framework.Function2{
 		bb := val2.([]any)
 		minLength := utils.Min(len(ab), len(bb))
 		for i := 0; i < minLength; i++ {
-			res, err := framework.IoCompare(at.ArrayBaseType(), ab[i], bb[i])
+			res, err := framework.IoCompare(ctx, at.ArrayBaseType(), ab[i], bb[i])
 			if err != nil {
 				return 0, err
 			}
