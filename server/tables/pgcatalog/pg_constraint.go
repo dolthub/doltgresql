@@ -45,117 +45,125 @@ func (p PgConstraintHandler) Name() string {
 
 // RowIter implements the interface tables.Handler.
 func (p PgConstraintHandler) RowIter(ctx *sql.Context) (sql.RowIter, error) {
-	var constraints []pgConstraint
-	tableOIDs := make(map[uint32]map[string]uint32)
-	tableColToIdxMap := make(map[string]int16)
-
-	// We iterate over all of the tables first to obtain their OIDs, which we'll need to reference for foreign keys
-	err := oid.IterateCurrentDatabase(ctx, oid.Callbacks{
-		Table: func(ctx *sql.Context, schema oid.ItemSchema, table oid.ItemTable) (cont bool, err error) {
-			inner, ok := tableOIDs[schema.OID]
-			if !ok {
-				inner = make(map[string]uint32)
-				tableOIDs[schema.OID] = inner
-			}
-			inner[table.Item.Name()] = table.OID
-
-			for i, col := range table.Item.Schema() {
-				tableColToIdxMap[fmt.Sprintf("%s.%s", table.Item.Name(), col.Name)] = int16(i + 1)
-			}
-
-			return true, nil
-		},
-	})
+	// Use cached data from this process if it exists
+	pgCatalogCache, err := getPgCatalogCache(ctx)
 	if err != nil {
 		return nil, err
 	}
 
-	// Then we iterate over everything to fill our constraints
-	err = oid.IterateCurrentDatabase(ctx, oid.Callbacks{
-		Check: func(ctx *sql.Context, schema oid.ItemSchema, table oid.ItemTable, check oid.ItemCheck) (cont bool, err error) {
-			constraints = append(constraints, pgConstraint{
-				oid:         check.OID,
-				name:        check.Item.Name,
-				schemaOid:   schema.OID,
-				conType:     "c",
-				tableOid:    table.OID,
-				idxOid:      uint32(0),
-				tableRefOid: uint32(0),
-			})
-			return true, nil
-		},
-		ForeignKey: func(ctx *sql.Context, schema oid.ItemSchema, table oid.ItemTable, foreignKey oid.ItemForeignKey) (cont bool, err error) {
-			conKey := make([]any, len(foreignKey.Item.Columns))
-			for i, expr := range foreignKey.Item.Columns {
-				conKey[i] = tableColToIdxMap[expr]
-			}
+	if pgCatalogCache.pgConstraints == nil {
+		var constraints []pgConstraint
+		tableOIDs := make(map[uint32]map[string]uint32)
+		tableColToIdxMap := make(map[string]int16)
 
-			parentTableColToIdxMap := make(map[string]int16)
-			parentTable, ok, err := schema.Item.GetTableInsensitive(ctx, foreignKey.Item.ParentTable)
-			if err != nil {
-				return false, err
-			} else if ok {
-				for i, col := range parentTable.Schema() {
-					parentTableColToIdxMap[col.Name] = int16(i + 1)
+		// We iterate over all tables first to obtain their OIDs, which we'll need to reference for foreign keys
+		err := oid.IterateCurrentDatabase(ctx, oid.Callbacks{
+			Table: func(ctx *sql.Context, schema oid.ItemSchema, table oid.ItemTable) (cont bool, err error) {
+				inner, ok := tableOIDs[schema.OID]
+				if !ok {
+					inner = make(map[string]uint32)
+					tableOIDs[schema.OID] = inner
 				}
-			}
+				inner[table.Item.Name()] = table.OID
 
-			conFkey := make([]any, len(foreignKey.Item.ParentColumns))
-			for i, expr := range foreignKey.Item.ParentColumns {
-				conFkey[i] = parentTableColToIdxMap[expr]
-			}
-
-			constraints = append(constraints, pgConstraint{
-				oid:          foreignKey.OID,
-				name:         foreignKey.Item.Name,
-				schemaOid:    schema.OID,
-				conType:      "f",
-				tableOid:     tableOIDs[schema.OID][foreignKey.Item.Table],
-				idxOid:       foreignKey.OID,
-				tableRefOid:  tableOIDs[schema.OID][foreignKey.Item.ParentTable],
-				fkUpdateType: getFKAction(foreignKey.Item.OnUpdate),
-				fkDeleteType: getFKAction(foreignKey.Item.OnDelete),
-				fkMatchType:  "s",
-				conKey:       conKey,
-				conFkey:      conFkey,
-			})
-			return true, nil
-		},
-		Index: func(ctx *sql.Context, schema oid.ItemSchema, table oid.ItemTable, index oid.ItemIndex) (cont bool, err error) {
-			conType := "p"
-			if index.Item.ID() != "PRIMARY" {
-				if index.Item.IsUnique() {
-					conType = "u"
-				} else {
-					conType = "f"
+				for i, col := range table.Item.Schema() {
+					tableColToIdxMap[fmt.Sprintf("%s.%s", table.Item.Name(), col.Name)] = int16(i + 1)
 				}
-			}
+				return true, nil
+			},
+		})
+		if err != nil {
+			return nil, err
+		}
 
-			conKey := make([]any, len(index.Item.Expressions()))
-			for i, expr := range index.Item.Expressions() {
-				conKey[i] = tableColToIdxMap[expr]
-			}
+		// Then we iterate over everything to fill our constraints
+		err = oid.IterateCurrentDatabase(ctx, oid.Callbacks{
+			Check: func(ctx *sql.Context, schema oid.ItemSchema, table oid.ItemTable, check oid.ItemCheck) (cont bool, err error) {
+				constraints = append(constraints, pgConstraint{
+					oid:         check.OID,
+					name:        check.Item.Name,
+					schemaOid:   schema.OID,
+					conType:     "c",
+					tableOid:    table.OID,
+					idxOid:      uint32(0),
+					tableRefOid: uint32(0),
+				})
+				return true, nil
+			},
+			ForeignKey: func(ctx *sql.Context, schema oid.ItemSchema, table oid.ItemTable, foreignKey oid.ItemForeignKey) (cont bool, err error) {
+				conKey := make([]any, len(foreignKey.Item.Columns))
+				for i, expr := range foreignKey.Item.Columns {
+					conKey[i] = tableColToIdxMap[expr]
+				}
 
-			constraints = append(constraints, pgConstraint{
-				oid:         index.OID,
-				name:        getIndexName(index.Item),
-				schemaOid:   schema.OID,
-				conType:     conType,
-				tableOid:    table.OID,
-				idxOid:      index.OID,
-				tableRefOid: uint32(0),
-				conKey:      conKey,
-				conFkey:     nil,
-			})
-			return true, nil
-		},
-	})
-	if err != nil {
-		return nil, err
+				parentTableColToIdxMap := make(map[string]int16)
+				parentTable, ok, err := schema.Item.GetTableInsensitive(ctx, foreignKey.Item.ParentTable)
+				if err != nil {
+					return false, err
+				} else if ok {
+					for i, col := range parentTable.Schema() {
+						parentTableColToIdxMap[col.Name] = int16(i + 1)
+					}
+				}
+
+				conFkey := make([]any, len(foreignKey.Item.ParentColumns))
+				for i, expr := range foreignKey.Item.ParentColumns {
+					conFkey[i] = parentTableColToIdxMap[expr]
+				}
+
+				constraints = append(constraints, pgConstraint{
+					oid:          foreignKey.OID,
+					name:         foreignKey.Item.Name,
+					schemaOid:    schema.OID,
+					conType:      "f",
+					tableOid:     tableOIDs[schema.OID][foreignKey.Item.Table],
+					idxOid:       foreignKey.OID,
+					tableRefOid:  tableOIDs[schema.OID][foreignKey.Item.ParentTable],
+					fkUpdateType: getFKAction(foreignKey.Item.OnUpdate),
+					fkDeleteType: getFKAction(foreignKey.Item.OnDelete),
+					fkMatchType:  "s",
+					conKey:       conKey,
+					conFkey:      conFkey,
+				})
+				return true, nil
+			},
+			Index: func(ctx *sql.Context, schema oid.ItemSchema, table oid.ItemTable, index oid.ItemIndex) (cont bool, err error) {
+				conType := "p"
+				if index.Item.ID() != "PRIMARY" {
+					if index.Item.IsUnique() {
+						conType = "u"
+					} else {
+						conType = "f"
+					}
+				}
+
+				conKey := make([]any, len(index.Item.Expressions()))
+				for i, expr := range index.Item.Expressions() {
+					conKey[i] = tableColToIdxMap[expr]
+				}
+
+				constraints = append(constraints, pgConstraint{
+					oid:         index.OID,
+					name:        getIndexName(index.Item),
+					schemaOid:   schema.OID,
+					conType:     conType,
+					tableOid:    table.OID,
+					idxOid:      index.OID,
+					tableRefOid: uint32(0),
+					conKey:      conKey,
+					conFkey:     nil,
+				})
+				return true, nil
+			},
+		})
+		if err != nil {
+			return nil, err
+		}
+		pgCatalogCache.pgConstraints = constraints
 	}
 
 	return &pgConstraintRowIter{
-		constraints: constraints,
+		constraints: pgCatalogCache.pgConstraints,
 		idx:         0,
 	}, nil
 }

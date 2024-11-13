@@ -1,7 +1,7 @@
 <?php
     $user = $argv[1];
     $port = $argv[2];
-    $db = 'doltgres';
+    $db = 'postgres';
 
     $conn = new PDO("pgsql:host=localhost;port={$port};dbname={$db}", $user, 'password');
     $conn->setAttribute(PDO::ATTR_ERRMODE, PDO::ERRMODE_EXCEPTION);

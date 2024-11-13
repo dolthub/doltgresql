@@ -19,7 +19,7 @@ teardown() {
   run query_server --csv -c "SELECT current_database();"
   [ "$status" -eq 0 ]
   [[ "$output" =~ "current_database" ]] || false
-  [[ "$output" =~ "doltgres" ]] || false
+  [[ "$output" =~ "postgres" ]] || false
   [ "${#lines[@]}" -eq 2 ]
 
   run query_server --csv -c "SELECT attname FROM pg_catalog.pg_attribute WHERE attname = 'pk';"

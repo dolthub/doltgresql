@@ -44,31 +44,46 @@ func (p PgTypeHandler) Name() string {
 
 // RowIter implements the interface tables.Handler.
 func (p PgTypeHandler) RowIter(ctx *sql.Context) (sql.RowIter, error) {
-	var pgCatalogOid uint32
-	err := oid.IterateCurrentDatabase(ctx, oid.Callbacks{
-		Schema: func(ctx *sql.Context, schema oid.ItemSchema) (cont bool, err error) {
-			if schema.Item.SchemaName() == PgCatalogName {
-				pgCatalogOid = schema.OID
-				return false, nil
-			}
-			return true, nil
-		},
-	})
+	// Use cached data from this process if it exists
+	pgCatalogCache, err := getPgCatalogCache(ctx)
 	if err != nil {
 		return nil, err
 	}
 
-	var displayTypes []pgtypes.DoltgresType
-	err = oid.IterateCurrentDatabase(ctx, oid.Callbacks{
-		Type: func(ctx *sql.Context, typ oid.ItemType) (cont bool, err error) {
-			displayTypes = append(displayTypes, typ.Item)
-			return true, nil
-		},
-	})
-	if err != nil {
-		return nil, err
+	if pgCatalogCache.types == nil {
+		var pgCatalogOid uint32
+		err := oid.IterateCurrentDatabase(ctx, oid.Callbacks{
+			Schema: func(ctx *sql.Context, schema oid.ItemSchema) (cont bool, err error) {
+				if schema.Item.SchemaName() == PgCatalogName {
+					pgCatalogOid = schema.OID
+					return false, nil
+				}
+				return true, nil
+			},
+		})
+		if err != nil {
+			return nil, err
+		}
+
+		var types []pgtypes.DoltgresType
+		err = oid.IterateCurrentDatabase(ctx, oid.Callbacks{
+			Type: func(ctx *sql.Context, typ oid.ItemType) (cont bool, err error) {
+				types = append(types, typ.Item)
+				return true, nil
+			},
+		})
+		if err != nil {
+			return nil, err
+		}
+		pgCatalogCache.types = types
+		pgCatalogCache.pgCatalogOid = pgCatalogOid
 	}
-	return &pgTypeRowIter{pgCatalogOid: pgCatalogOid, types: displayTypes, idx: 0}, nil
+
+	return &pgTypeRowIter{
+		pgCatalogOid: pgCatalogCache.pgCatalogOid,
+		types:        pgCatalogCache.types,
+		idx:          0,
+	}, nil
 }
 
 // Schema implements the interface tables.Handler.

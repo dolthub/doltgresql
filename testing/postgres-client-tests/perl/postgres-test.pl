@@ -18,7 +18,7 @@ my $QUERY_RESPONSE = [
 
 my $user = $ARGV[0];
 my $port = $ARGV[1];
-my $db   = "doltgres";
+my $db   = "postgres";
 
 my $dsn = "DBI:Pg:database=$db;host=127.0.0.1;port=$port";
 # Connect to the database

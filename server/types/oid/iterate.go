@@ -18,6 +18,7 @@ import (
 	"sort"
 
 	"github.com/dolthub/dolt/go/libraries/doltcore/sqle/dsess"
+	"github.com/dolthub/dolt/go/libraries/doltcore/sqlserver"
 	sqle "github.com/dolthub/go-mysql-server"
 	"github.com/dolthub/go-mysql-server/sql"
 	"github.com/dolthub/go-mysql-server/sql/expression/function"
@@ -152,9 +153,7 @@ func IterateDatabase(ctx *sql.Context, database string, callbacks Callbacks) err
 		}
 	}
 
-	doltSession := dsess.DSessFromSess(ctx.Session)
-
-	cat := sqle.NewDefault(doltSession.Provider()).Analyzer.Catalog
+	cat := sqlserver.GetRunningServer().Engine.Analyzer.Catalog
 	currentDatabase, err := cat.Database(ctx, database)
 	if err != nil {
 		return err

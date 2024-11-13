@@ -91,7 +91,7 @@ func (h *ConnectionHandler) handleAuthentication(startupMessage *pgproto3.Startu
 			}
 		}
 	} else {
-		username = "doltgres" // TODO: should we use this, or the default "postgres" since programs may default to it?
+		username = "postgres"
 		host = "localhost"
 	}
 	h.mysqlConn.User = username

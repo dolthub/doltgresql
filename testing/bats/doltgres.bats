@@ -40,7 +40,7 @@ teardown() {
     [[ "$output" =~ "1 | 2" ]] || false
 
     # databases should get created in home/doltgres/databases by default
-    [ -d test-home/doltgres/databases/doltgres ]
+    [ -d test-home/doltgres/databases/postgres ]
 }
 
 @test 'doltgres: data-dir param' {
@@ -60,7 +60,7 @@ teardown() {
     [ "$status" -eq 0 ]
     [[ "$output" =~ "1 | 2" ]] || false
 
-    [ -d test/doltgres ]
+    [ -d test/postgres ]
 }
 
 @test 'doltgres: data dir in env var' {
@@ -80,7 +80,7 @@ teardown() {
     [ "$status" -eq 0 ]
     [[ "$output" =~ "1 | 2" ]] || false
 
-    [ -d test/doltgres ]
+    [ -d test/postgres ]
 }
 
 @test 'doltgres: implicit config.yaml' {
@@ -95,8 +95,8 @@ behavior:
   dolt_transaction_commit: false
 
 user:
-  name: ""
-  password: ""
+  name: "postgres"
+  password: "password"
 
 listener:
   host: localhost
@@ -122,7 +122,7 @@ EOF
     [ "$status" -eq 0 ]
     [[ "$output" =~ "1 | 2" ]] || false
 
-    [ -d test/doltgres ]
+    [ -d test/postgres ]
 }
 
 @test 'doltgres: config.yaml without data dir' {
@@ -137,8 +137,8 @@ behavior:
   dolt_transaction_commit: false
 
 user:
-  name: ""
-  password: ""
+  name: "postgres"
+  password: "password"
 
 listener:
   host: localhost
@@ -164,7 +164,7 @@ EOF
     [ "$status" -eq 0 ]
     [[ "$output" =~ "1 | 2" ]] || false
 
-    [ -d test-home/doltgres/databases/doltgres ]
+    [ -d test-home/doltgres/databases/postgres ]
 }
 
 @test 'doltgres: config file override with explicit config.yaml' {
@@ -179,8 +179,8 @@ behavior:
   dolt_transaction_commit: false
 
 user:
-  name: ""
-  password: ""
+  name: "postgres"
+  password: "password"
 
 listener:
   host: localhost
@@ -207,8 +207,8 @@ EOF
     [ "$status" -eq 0 ]
     [[ "$output" =~ "1 | 2" ]] || false
 
-    [ ! -d test/doltgres ]
-    [ -d local-override/doltgres ]
+    [ ! -d test/postgres ]
+    [ -d local-override/postgres ]
 }
 
 @test 'doltgres: config file override with implicit config.yaml' {
@@ -223,8 +223,8 @@ behavior:
   dolt_transaction_commit: false
 
 user:
-  name: ""
-  password: ""
+  name: "postgres"
+  password: "password"
 
 listener:
   host: localhost
@@ -251,8 +251,8 @@ EOF
     [ "$status" -eq 0 ]
     [[ "$output" =~ "1 | 2" ]] || false
 
-    [ ! -d test/doltgres ]
-    [ -d local-override/doltgres ]
+    [ ! -d test/postgres ]
+    [ -d local-override/postgres ]
 }
 
 @test 'doltgres: config file' {
@@ -265,7 +265,7 @@ EOF
     
     run cat log.txt
     [[ ! "$output" =~ "Author identity unknown" ]] || false
-    [ -d "doltgres" ]
+    [ -d "postgres" ]
 
     query_server -c "create table t1 (a int primary key, b int)"
     query_server -c "insert into t1 values (1,2)"
@@ -286,8 +286,8 @@ behavior:
   dolt_transaction_commit: false
 
 user:
-  name: ""
-  password: ""
+  name: "postgres"
+  password: "password"
 
 listener:
   host: localhost
@@ -335,16 +335,15 @@ EOF
 }
 
 @test 'doltgres: DOLTGRES_DATA_DIR set to current dir' {
-    [ ! -d "doltgres" ]
+    [ ! -d "postgres" ]
     export DOLTGRES_DATA_DIR="$(pwd)"
     start_sql_server > log.txt 2>&1
 
     run cat log.txt
     [[ ! "$output" =~ "Author identity unknown" ]] || false
-    [ -d "doltgres" ]
+    [ -d "postgres" ]
 
     run query_server -c "\l"
     [ "$status" -eq 0 ]
-    [[ "$output" =~ "doltgres" ]] || false
     [[ "$output" =~ "postgres" ]] || false
 }

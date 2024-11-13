@@ -44,24 +44,33 @@ func (p PgNamespaceHandler) Name() string {
 
 // RowIter implements the interface tables.Handler.
 func (p PgNamespaceHandler) RowIter(ctx *sql.Context) (sql.RowIter, error) {
-	var schemaNames []string
-	var schemaOids []uint32
-
-	err := oid.IterateCurrentDatabase(ctx, oid.Callbacks{
-		Schema: func(ctx *sql.Context, schema oid.ItemSchema) (cont bool, err error) {
-			schemaNames = append(schemaNames, schema.Item.SchemaName())
-			schemaOids = append(schemaOids, schema.OID)
-			return true, nil
-		},
-	})
+	// Use cached data from this process if it exists
+	pgCatalogCache, err := getPgCatalogCache(ctx)
 	if err != nil {
 		return nil, err
 	}
-	schemaOids = append(schemaOids, schemaOids[len(schemaOids)-1]+1)
+
+	if pgCatalogCache.schemaOids == nil {
+		var schemaNames []string
+		var schemaOids []uint32
+		err := oid.IterateCurrentDatabase(ctx, oid.Callbacks{
+			Schema: func(ctx *sql.Context, schema oid.ItemSchema) (cont bool, err error) {
+				schemaNames = append(schemaNames, schema.Item.SchemaName())
+				schemaOids = append(schemaOids, schema.OID)
+				return true, nil
+			},
+		})
+		if err != nil {
+			return nil, err
+		}
+		schemaOids = append(schemaOids, schemaOids[len(schemaOids)-1]+1)
+		pgCatalogCache.schemaNames = schemaNames
+		pgCatalogCache.schemaOids = schemaOids
+	}
 
 	return &pgNamespaceRowIter{
-		schemas: schemaNames,
-		oids:    schemaOids,
+		schemas: pgCatalogCache.schemaNames,
+		oids:    pgCatalogCache.schemaOids,
 		idx:     0,
 	}, nil
 }

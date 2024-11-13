@@ -3,7 +3,7 @@ const user = args[0];
 const port = args[1];
 const version = args[2];
 
-export const dbName = "doltgres";
+export const dbName = "postgres";
 
 export function getArgs() {
   return { user, port };

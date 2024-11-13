@@ -1820,10 +1820,6 @@ var typesTests = []ScriptTest{
 				},
 			},
 			{
-				Query:       `SELECT 'doltgres.public.testing'::regclass;`,
-				ExpectedErr: "does not exist",
-			},
-			{
 				Query:       `SELECT 'doesnotexist.public.testing'::regclass;`,
 				ExpectedErr: "database not found",
 			},

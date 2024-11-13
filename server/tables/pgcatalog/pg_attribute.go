@@ -44,28 +44,39 @@ func (p PgAttributeHandler) Name() string {
 
 // RowIter implements the interface tables.Handler.
 func (p PgAttributeHandler) RowIter(ctx *sql.Context) (sql.RowIter, error) {
-	var cols []*sql.Column
-	var tableOIDs []uint32
-	var colIdxs []int
-
-	err := oid.IterateCurrentDatabase(ctx, oid.Callbacks{
-		Table: func(ctx *sql.Context, _ oid.ItemSchema, table oid.ItemTable) (cont bool, err error) {
-			for i, col := range table.Item.Schema() {
-				cols = append(cols, col)
-				colIdxs = append(colIdxs, i)
-				tableOIDs = append(tableOIDs, table.OID)
-			}
-			return true, nil
-		},
-	})
+	// Use cached data from this process if it exists
+	pgCatalogCache, err := getPgCatalogCache(ctx)
 	if err != nil {
 		return nil, err
 	}
 
+	if pgCatalogCache.attributeCols == nil {
+		var cols []*sql.Column
+		var tableOIDs []uint32
+		var colIdxs []int
+
+		err := oid.IterateCurrentDatabase(ctx, oid.Callbacks{
+			Table: func(ctx *sql.Context, _ oid.ItemSchema, table oid.ItemTable) (cont bool, err error) {
+				for i, col := range table.Item.Schema() {
+					cols = append(cols, col)
+					colIdxs = append(colIdxs, i)
+					tableOIDs = append(tableOIDs, table.OID)
+				}
+				return true, nil
+			},
+		})
+		if err != nil {
+			return nil, err
+		}
+		pgCatalogCache.attributeCols = cols
+		pgCatalogCache.attributeColIdxs = colIdxs
+		pgCatalogCache.attributeTableOIDs = tableOIDs
+	}
+
 	return &pgAttributeRowIter{
-		cols:      cols,
-		colIdxs:   colIdxs,
-		tableOIDs: tableOIDs,
+		cols:      pgCatalogCache.attributeCols,
+		colIdxs:   pgCatalogCache.attributeColIdxs,
+		tableOIDs: pgCatalogCache.attributeTableOIDs,
 		idx:       0,
 	}, nil
 }

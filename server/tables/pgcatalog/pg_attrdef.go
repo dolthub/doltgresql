@@ -44,23 +44,32 @@ func (p PgAttrdefHandler) Name() string {
 
 // RowIter implements the interface tables.Handler.
 func (p PgAttrdefHandler) RowIter(ctx *sql.Context) (sql.RowIter, error) {
-	var cols []oid.ItemColumnDefault
-	var tableOIDs []uint32
-
-	err := oid.IterateCurrentDatabase(ctx, oid.Callbacks{
-		ColumnDefault: func(ctx *sql.Context, _ oid.ItemSchema, table oid.ItemTable, col oid.ItemColumnDefault) (cont bool, err error) {
-			cols = append(cols, col)
-			tableOIDs = append(tableOIDs, table.OID)
-			return true, nil
-		},
-	})
+	// Use cached data from this process if it exists
+	pgCatalogCache, err := getPgCatalogCache(ctx)
 	if err != nil {
 		return nil, err
 	}
 
+	if pgCatalogCache.attrdefCols == nil {
+		var attrdefCols []oid.ItemColumnDefault
+		var attrdefTableOIDs []uint32
+		err := oid.IterateCurrentDatabase(ctx, oid.Callbacks{
+			ColumnDefault: func(ctx *sql.Context, _ oid.ItemSchema, table oid.ItemTable, col oid.ItemColumnDefault) (cont bool, err error) {
+				attrdefCols = append(attrdefCols, col)
+				attrdefTableOIDs = append(attrdefTableOIDs, table.OID)
+				return true, nil
+			},
+		})
+		if err != nil {
+			return nil, err
+		}
+		pgCatalogCache.attrdefCols = attrdefCols
+		pgCatalogCache.attrdefTableOIDs = attrdefTableOIDs
+	}
+
 	return &pgAttrdefRowIter{
-		cols:      cols,
-		tableOIDs: tableOIDs,
+		cols:      pgCatalogCache.attrdefCols,
+		tableOIDs: pgCatalogCache.attrdefTableOIDs,
 		idx:       0,
 	}, nil
 }

@@ -154,16 +154,6 @@ func dbInitDefault() {
 	var err error
 	public := CreateDefaultRole("public")
 	SetRole(public)
-	doltgres := CreateDefaultRole("doltgres")
-	doltgres.IsSuperUser = true
-	doltgres.CanCreateRoles = true
-	doltgres.CanCreateDB = true
-	doltgres.CanLogin = true
-	doltgres.Password, err = NewScramSha256Password("")
-	if err != nil {
-		panic(err)
-	}
-	SetRole(doltgres)
 	postgres := CreateDefaultRole("postgres")
 	postgres.IsSuperUser = true
 	postgres.CanCreateRoles = true
