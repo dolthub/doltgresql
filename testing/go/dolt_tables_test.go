@@ -109,7 +109,7 @@ func TestUserSpaceDoltTables(t *testing.T) {
 			},
 		},
 		{
-			Skip: true,
+			Skip: true, // TODO: dolt blame will not work until the first query (with clause) works
 			Name: "dolt blame with tablename",
 			SetUpScript: []string{
 				"CREATE TABLE test (id INT PRIMARY KEY)",
