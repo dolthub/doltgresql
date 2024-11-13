@@ -26,7 +26,7 @@ func TestWithStatements(t *testing.T) {
 
 var WithStatementTests = []ScriptTest{
 	{
-		Name:        "basic values statements",
+		Name: "basic values statements",
 		SetUpScript: []string{
 			"create table t (i int primary key);",
 			"insert into t values (1), (2), (3);",
