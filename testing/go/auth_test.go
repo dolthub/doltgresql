@@ -466,6 +466,13 @@ func TestAuthTests(t *testing.T) {
 					Expected: []sql.Row{{1}, {6}, {7}},
 				},
 				{
+					Skip:     true, // CTEs are seen as different tables
+					Query:    `WITH cte AS (SELECT * FROM test ORDER BY pk) SELECT * FROM cte;`,
+					Username: `user1`,
+					Password: `a`,
+					Expected: []sql.Row{{1}, {6}, {7}},
+				},
+				{
 					Query:    `INSERT INTO test VALUES (10);`,
 					Username: `user1`,
 					Password: `a`,
