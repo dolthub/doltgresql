@@ -90,6 +90,8 @@ func nodeAlterTableCmds(
 			statement, err = nodeAlterTableSetNotNull(ctx, cmd, tableName, ifExists)
 		case *tree.AlterTableAlterColumnType:
 			statement, err = nodeAlterTableAlterColumnType(ctx, cmd, tableName, ifExists)
+		case *tree.AlterTableOwner:
+			statement, err = nodeAlterTableOwner(ctx, cmd, tableName, ifExists)
 		default:
 			return nil, fmt.Errorf("ALTER TABLE with unsupported command type %T", cmd)
 		}
@@ -259,6 +261,18 @@ func nodeAlterTableAlterColumnType(ctx *Context, node *tree.AlterTableAlterColum
 				Charset:      convertType.Charset,
 			},
 		},
+	}, nil
+}
+
+// nodeAlterTableOwner creates a vitess.DDL action to change a table's owner. This action is different from other table
+// DDL actions, because the owner information lives in the Doltgres layer, so we need to process it in this layer,
+// instead of sending it to the engine in the GMS layer to process.
+func nodeAlterTableOwner(_ *Context, node *tree.AlterTableOwner, tableName vitess.TableName, ifExists bool) (*vitess.DDL, error) {
+	return &vitess.DDL{
+		Action:   "alter",
+		Table:    tableName,
+		IfExists: ifExists,
+		User:     vitess.AccountName{Name: node.Owner},
 	}, nil
 }
 

@@ -426,6 +426,22 @@ func (h *ConnectionHandler) handleQuery(message *pgproto3.Query) (endOfMessages 
 // and any error that occurred while handling the query.
 func (h *ConnectionHandler) handleQueryOutsideEngine(query ConvertedQuery) (handled bool, endOfMessages bool, err error) {
 	switch stmt := query.AST.(type) {
+	case *sqlparser.AlterTable:
+		// Look for ALTER TABLE OWNER actions. These need to be handled in the Doltgres layer, so error
+		// out if we find a mix of ALTER TABLE OWNER and other actions in the same statement.
+		//
+		// TODO: a cleaner solution would be for Doltgres to implement an interface for ownership changes
+		// so that GMS could call into to handle table/sequence/view/etc ownership changes.
+		for _, ddlAction := range stmt.Statements {
+			if ddlAction.User.Name != "" {
+				if len(stmt.Statements) == 1 {
+					return true, true, h.handleAlterTableOwner(stmt.Table, ddlAction.User.Name)
+				} else {
+					return false, true, fmt.Errorf("unable to handle ALTER TABLE OWNER actions mixed with " +
+						"other ALTER actions in the same statement")
+				}
+			}
+		}
 	case *sqlparser.Deallocate:
 		// TODO: handle ALL keyword
 		return true, true, h.deallocatePreparedStatement(stmt.Name, h.preparedStatements, query, h.Conn())
@@ -765,6 +781,15 @@ func (h *ConnectionHandler) handleCopyFail(_ *pgproto3.CopyFail) (stop bool, end
 	// We send back endOfMessage=true, since the COPY FAIL message ends the COPY DATA flow and the server is ready
 	// to accept the next query now.
 	return false, true, nil
+}
+
+// handleAlterTableOwner handles an ALTER TABLE OWNER statement, returning any error that occurs. This statement is
+// special because the GMS engine doesn't support altering the ownership of tables, or other entities, so it needs
+// to be handled at the Doltgres layer.
+// TODO: In the future, it would be cleaner to create an optional interface that providers could implement
+// that would allow them to plug in handling for these types of ownership operations.
+func (h *ConnectionHandler) handleAlterTableOwner(tableName sqlparser.TableName, userName string) error {
+	return fmt.Errorf("ALTER TABLE OWNER is not yet supported")
 }
 
 // startTransaction checks to see if the current session has a transaction started yet or not, and if not,

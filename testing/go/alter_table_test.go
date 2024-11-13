@@ -356,5 +356,28 @@ func TestAlterTable(t *testing.T) {
 				},
 			},
 		},
+		{
+			// TODO: Table ownership metadata is not supported yet
+			Skip: true,
+			Name: "Alter Table Owner",
+			SetUpScript: []string{
+				"CREATE TABLE test1 (a INT, b smallint);",
+				"CREATE USER user1;",
+			},
+			Assertions: []ScriptTestAssertion{
+				{
+					Query:    "SELECT tableowner FROM pg_tables WHERE tablename = 'test1';",
+					Expected: []sql.Row{{"postgres"}},
+				},
+				{
+					Query:    "ALTER TABLE test1 OWNER TO user1;",
+					Expected: []sql.Row{},
+				},
+				{
+					Query:    "SELECT tableowner FROM pg_tables WHERE tablename = 'test1';",
+					Expected: []sql.Row{{"user1"}},
+				},
+			},
+		},
 	})
 }
