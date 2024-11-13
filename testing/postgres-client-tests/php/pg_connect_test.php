@@ -1,7 +1,7 @@
 <?php
     $user = $argv[1];
     $port = $argv[2];
-    $db = 'doltgres';
+    $db = 'postgres';
 
     $conn = pg_connect("host = localhost port = $port dbname = $db user = $user password = 'password'")
     or die('Could not connect: ' . pg_result_error());

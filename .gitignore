@@ -22,3 +22,4 @@ testing/go/regression/out
 
 # ignore doltgres db created
 doltgres
+postgres

@@ -5806,8 +5806,12 @@ var setStmts = []ScriptTest{
 				Expected: []sql.Row{{int64(0)}},
 			},
 			{
-				Query:       "SET statement_timeout TO '0'",
-				ExpectedErr: "is a read only variable",
+				Query:    "SET statement_timeout TO '42'",
+				Expected: []sql.Row{},
+			},
+			{
+				Query:    "SHOW statement_timeout",
+				Expected: []sql.Row{{int64(42)}},
 			},
 		},
 	},

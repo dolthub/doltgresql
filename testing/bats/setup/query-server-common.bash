@@ -15,7 +15,7 @@ wait_for_connection() {
   nativevar PGPASSWORD "password" /w
 
   while [ $SECONDS -lt $end_time ]; do
-    run psql -U $user -h localhost -p $port -c "SELECT 1;" doltgres
+    run psql -U $user -h localhost -p $port -c "SELECT 1;" postgres
     if [ $status -eq 0 ]; then
       echo "Connected successfully!"
       return 0

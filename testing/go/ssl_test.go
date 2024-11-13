@@ -78,10 +78,7 @@ func TestSSL(t *testing.T) {
 		if err != nil {
 			return err
 		}
-
-		defer conn.Close(ctx)
-		_, err = conn.Exec(ctx, "CREATE DATABASE postgres;")
-		return err
+		return conn.Close(ctx)
 	}()
 	require.NoError(t, err)
 

@@ -45,21 +45,32 @@ func (p PgSequenceHandler) Name() string {
 
 // RowIter implements the interface tables.Handler.
 func (p PgSequenceHandler) RowIter(ctx *sql.Context) (sql.RowIter, error) {
-	var allSequences []*sequences.Sequence
-	var oids []uint32
-	err := oid.IterateCurrentDatabase(ctx, oid.Callbacks{
-		Sequence: func(ctx *sql.Context, _ oid.ItemSchema, sequence oid.ItemSequence) (cont bool, err error) {
-			allSequences = append(allSequences, sequence.Item)
-			oids = append(oids, sequence.OID)
-			return true, nil
-		},
-	})
+	// Use cached data from this process if it exists
+	pgCatalogCache, err := getPgCatalogCache(ctx)
 	if err != nil {
 		return nil, err
 	}
+
+	if pgCatalogCache.sequences == nil {
+		var sequences []*sequences.Sequence
+		var sequenceOids []uint32
+		err := oid.IterateCurrentDatabase(ctx, oid.Callbacks{
+			Sequence: func(ctx *sql.Context, _ oid.ItemSchema, sequence oid.ItemSequence) (cont bool, err error) {
+				sequences = append(sequences, sequence.Item)
+				sequenceOids = append(sequenceOids, sequence.OID)
+				return true, nil
+			},
+		})
+		if err != nil {
+			return nil, err
+		}
+		pgCatalogCache.sequences = sequences
+		pgCatalogCache.sequenceOids = sequenceOids
+	}
+
 	return &pgSequenceRowIter{
-		sequences: allSequences,
-		oids:      oids,
+		sequences: pgCatalogCache.sequences,
+		oids:      pgCatalogCache.sequenceOids,
 		idx:       0,
 	}, nil
 }
