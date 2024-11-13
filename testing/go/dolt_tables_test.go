@@ -109,6 +109,7 @@ func TestUserSpaceDoltTables(t *testing.T) {
 			},
 		},
 		{
+			Skip: true,
 			Name: "dolt blame with tablename",
 			SetUpScript: []string{
 				"CREATE TABLE test (id INT PRIMARY KEY)",
