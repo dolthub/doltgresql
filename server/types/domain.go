@@ -20,6 +20,7 @@ import (
 
 // NewDomainType creates new instance of domain DoltgresType.
 func NewDomainType(
+	ctx *sql.Context,
 	schema string,
 	name string,
 	asType DoltgresType,
@@ -27,7 +28,7 @@ func NewDomainType(
 	notNull bool,
 	checks []*sql.CheckDefinition,
 	owner string, // TODO
-) (DoltgresType, error) {
+) DoltgresType {
 	return DoltgresType{
 		OID:           asType.OID, // TODO: generate unique OID, using underlying type OID for now
 		Name:          name,
@@ -64,5 +65,5 @@ func NewDomainType(
 		Checks:        checks,
 		AttTypMod:     -1,
 		CompareFunc:   asType.CompareFunc,
-	}, nil
+	}
 }

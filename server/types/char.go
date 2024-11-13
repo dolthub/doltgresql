@@ -56,6 +56,7 @@ var BpChar = DoltgresType{
 	CompareFunc:   "bpcharcmp",
 }
 
+// NewCharType returns BpChar type with typmod set.
 func NewCharType(length int32) (DoltgresType, error) {
 	var err error
 	newType := BpChar

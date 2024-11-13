@@ -66,6 +66,7 @@ var IoCompare func(ctx *sql.Context, t DoltgresType, v1, v2 any) (int32, error)
 var SQL func(ctx *sql.Context, t DoltgresType, val any) (string, error)
 
 // FromGmsType returns a DoltgresType that is most similar to the given GMS type.
+// It returns UNKNOWN type for GMS types that are not handled.
 func FromGmsType(typ sql.Type) DoltgresType {
 	dt, err := FromGmsTypeToDoltgresType(typ)
 	if err != nil {
@@ -74,6 +75,8 @@ func FromGmsType(typ sql.Type) DoltgresType {
 	return dt
 }
 
+// FromGmsTypeToDoltgresType returns a DoltgresType that is most similar to the given GMS type.
+// It errors if GMS type is not handled.
 func FromGmsTypeToDoltgresType(typ sql.Type) (DoltgresType, error) {
 	switch typ.Type() {
 	case query.Type_INT8, query.Type_INT16:
