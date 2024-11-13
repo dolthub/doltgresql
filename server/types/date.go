@@ -209,7 +209,7 @@ func (b DateType) ToArrayType() DoltgresArrayType {
 
 // Type implements the DoltgresType interface.
 func (b DateType) Type() query.Type {
-	return sqltypes.Text
+	return sqltypes.Date
 }
 
 // ValueType implements the DoltgresType interface.

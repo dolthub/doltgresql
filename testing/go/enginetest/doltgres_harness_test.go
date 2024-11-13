@@ -543,8 +543,12 @@ func (d *DoltgresHarness) EvaluateExpectedError(t *testing.T, expected string, e
 // EvaluateExpectedErrorKind is a harness extension that gives us more control over matching expected errors. We don't
 // have access to the error kind object eny longer, so we have to see if the error we get matches its pattern
 func (d *DoltgresHarness) EvaluateExpectedErrorKind(t *testing.T, expected *errors.Kind, actualErr error) {
-	pattern := strings.ReplaceAll(expected.Message, "%s", "\\w+")
-	pattern = strings.ReplaceAll(pattern, "%q", "\"\\w+\"")
+	pattern := strings.ReplaceAll(expected.Message, "*", "\\*")
+	pattern = strings.ReplaceAll(pattern, "(", "\\(")
+	pattern = strings.ReplaceAll(pattern, ")", "\\)")
+	pattern = strings.ReplaceAll(pattern, "%s", ".+")
+	pattern = strings.ReplaceAll(pattern, "%q", "\".+\"")
+	pattern = strings.ReplaceAll(pattern, "%v", ".+?")
 	regex, regexErr := regexp.Compile(pattern)
 	require.NoError(t, regexErr)
 

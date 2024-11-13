@@ -171,35 +171,23 @@ func TestSingleScript(t *testing.T) {
 
 	var scripts = []queries.ScriptTest{
 		{
-			Name: "Insert throws primary key violations",
+			Name: "people tables",
 			SetUpScript: []string{
-				"CREATE TABLE t (pk int PRIMARY key);",
-				"CREATE TABLE t2 (pk1 int, pk2 int, PRIMARY KEY (pk1, pk2));",
+				"CREATE TABLE `people` (   `dob` date NOT NULL," +
+					"   `first_name` varchar(20) NOT NULL," +
+					"   `last_name` varchar(20) NOT NULL," +
+					"   `middle_name` varchar(20) NOT NULL," +
+					"   `height_inches` bigint NOT NULL," +
+					"   `gender` bigint NOT NULL," +
+					"   PRIMARY KEY (`dob`,`first_name`,`last_name`,`middle_name`) )",
+				`insert into people values ('1970-12-1'::date, 'jon', 'smith', 'a', 72, 0)`,
 			},
 			Assertions: []queries.ScriptTestAssertion{
 				{
-					Query:    "INSERT INTO t VALUES (1), (2);",
-					Expected: []sql.Row{{types.NewOkResult(2)}},
-				},
-				{
-					Query:       "INSERT into t VALUES (1);",
-					ExpectedErr: sql.ErrPrimaryKeyViolation,
-				},
-				{
-					Query:    "SELECT * from t;",
-					Expected: []sql.Row{{1}, {2}},
-				},
-				{
-					Query:    "INSERT into t2 VALUES (1, 1), (2, 2);",
-					Expected: []sql.Row{{types.NewOkResult(2)}},
-				},
-				{
-					Query:       "INSERT into t2 VALUES (1, 1);",
-					ExpectedErr: sql.ErrPrimaryKeyViolation,
-				},
-				{
-					Query:    "SELECT * from t2;",
-					Expected: []sql.Row{{1, 1}, {2, 2}},
+					Query: "select * from people order by dob",
+					Expected: []sql.Row{
+						{"1970-12-01", "jon", "smith", "a", int64(72), int64(0)},
+					},
 				},
 			},
 		},
@@ -459,16 +447,16 @@ func TestUpdate(t *testing.T) {
 	enginetest.TestUpdate(t, h)
 }
 
-func TestUpdateIgnore(t *testing.T) {
-	t.Skip()
-	h := newDoltgresServerHarness(t)
-	defer h.Close()
-	enginetest.TestUpdateIgnore(t, h)
-}
-
 func TestUpdateErrors(t *testing.T) {
-	t.Skip()
-	h := newDoltgresServerHarness(t)
+	h := newDoltgresServerHarness(t).WithSkippedQueries([]string{
+		`UPDATE keyless INNER JOIN one_pk on keyless.c0 = one_pk.pk SET keyless.c0 = keyless.c0 + 1`,
+		// `UPDATE people set height_inches = null where height_inches < 100`,
+		// `UPDATE people SET height_inches = IF(SUM(height_inches) % 2 = 0, 42, height_inches)`,
+		// `UPDATE people SET height_inches = IF(SUM(*) % 2 = 0, 42, height_inches)`,
+		// `UPDATE people SET height_inches = IF(ROW_NUMBER() OVER() % 2 = 0, 42, height_inches)`,
+		"try updating string that is too long", // works but error message doesn't match
+		"UPDATE mytable SET s = 'hi' LIMIT -1;", // unsupported syntax 
+	})
 	defer h.Close()
 	enginetest.TestUpdateErrors(t, h)
 }
