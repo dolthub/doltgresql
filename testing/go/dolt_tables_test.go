@@ -109,7 +109,6 @@ func TestUserSpaceDoltTables(t *testing.T) {
 			},
 		},
 		{
-			Skip: true, // TODO: dolt blame will not work until the first query (with clause) works
 			Name: "dolt blame with tablename",
 			SetUpScript: []string{
 				"CREATE TABLE test (id INT PRIMARY KEY)",
@@ -118,7 +117,6 @@ func TestUserSpaceDoltTables(t *testing.T) {
 			},
 			Assertions: []ScriptTestAssertion{
 				{
-					// TODO: WITH is not yet supported
 					Query: `WITH sorted_diffs_by_pk
 									AS (SELECT
 													"to_id",
