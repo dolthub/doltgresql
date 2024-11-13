@@ -172,7 +172,11 @@ func TestPgAttribute(t *testing.T) {
 					Expected: []sql.Row{{0}},
 				},
 				{
-					Skip: true, // This test times out, needs some analysis to figure out why, possible a 5-table join of generated tables with no indexes is just too much
+					// TODO: Even with the caching added to prevent having to regenerate pg_catalog table data
+					//       multiple times within the same query, this massive query still times out. The problem
+					//       is that this query joins over 7 tables and without a way to do index lookups into the
+					//       table data, we end up iterating over the results over and over.
+					Skip: true,
 					Query: `SELECT "con"."conname" AS "constraint_name", 
        "con"."nspname" AS "table_schema", 
        "con"."relname" AS "table_name", 
@@ -546,9 +550,11 @@ func TestPgClass(t *testing.T) {
 			},
 			Assertions: []ScriptTestAssertion{
 				{
+					// TODO: Now that catalog data is cached for each query, this query no longer iterates the database
+					//       100k times, and this query executes in a couple seconds. This is still slow and should
+					//       be improved with lookup index support now that we have cached data available.
 					Query:    `SELECT ix.relname AS index_name, upper(am.amname) AS index_algorithm FROM pg_index i JOIN pg_class t ON t.oid = i.indrelid JOIN pg_class ix ON ix.oid = i.indexrelid JOIN pg_namespace n ON t.relnamespace = n.oid JOIN pg_am AS am ON ix.relam = am.oid WHERE t.relname = 'foo' AND n.nspname = 'public';`,
 					Expected: []sql.Row{{"foo_pkey", "BTREE"}, {"b", "BTREE"}, {"b_2", "BTREE"}}, // TODO: should follow Postgres index naming convention: "foo_pkey", "foo_b_idx", "foo_b_a_idx"
-					Skip:     true,                                                               // test hangs
 				},
 			},
 		},
@@ -1159,7 +1165,6 @@ func TestPgIndex(t *testing.T) {
 					Expected: []sql.Row{{1614807040}, {1614807041}, {1614807042}},
 				},
 				{
-					Skip:  true, // TODO: Timing out
 					Query: "SELECT i.indexrelid, i.indrelid, c.relname, t.relname  FROM pg_catalog.pg_index i JOIN pg_catalog.pg_class c ON i.indexrelid = c.oid JOIN pg_catalog.pg_class t ON i.indrelid = t.oid;",
 					Expected: []sql.Row{
 						{1614807040, 2688548864, "testing_pkey", "testing"},

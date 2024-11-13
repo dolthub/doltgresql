@@ -45,59 +45,68 @@ func (p PgClassHandler) Name() string {
 
 // RowIter implements the interface tables.Handler.
 func (p PgClassHandler) RowIter(ctx *sql.Context) (sql.RowIter, error) {
-	var classes []pgClass
-	tableHasIndexes := make(map[uint32]struct{})
-
-	err := oid.IterateCurrentDatabase(ctx, oid.Callbacks{
-		Index: func(ctx *sql.Context, schema oid.ItemSchema, table oid.ItemTable, index oid.ItemIndex) (cont bool, err error) {
-			tableHasIndexes[table.OID] = struct{}{}
-			classes = append(classes, pgClass{
-				oid:        index.OID,
-				name:       getIndexName(index.Item),
-				hasIndexes: false,
-				kind:       "i",
-				schemaOid:  schema.OID,
-			})
-			return true, nil
-		},
-		Table: func(ctx *sql.Context, schema oid.ItemSchema, table oid.ItemTable) (cont bool, err error) {
-			_, hasIndexes := tableHasIndexes[table.OID]
-			classes = append(classes, pgClass{
-				oid:        table.OID,
-				name:       table.Item.Name(),
-				hasIndexes: hasIndexes,
-				kind:       "r",
-				schemaOid:  schema.OID,
-			})
-			return true, nil
-		},
-		View: func(ctx *sql.Context, schema oid.ItemSchema, view oid.ItemView) (cont bool, err error) {
-			classes = append(classes, pgClass{
-				oid:        view.OID,
-				name:       view.Item.Name,
-				hasIndexes: false,
-				kind:       "v",
-				schemaOid:  schema.OID,
-			})
-			return true, nil
-		},
-		Sequence: func(ctx *sql.Context, schema oid.ItemSchema, sequence oid.ItemSequence) (cont bool, err error) {
-			classes = append(classes, pgClass{
-				oid:        sequence.OID,
-				name:       sequence.Item.Name,
-				hasIndexes: false,
-				kind:       "S",
-				schemaOid:  schema.OID,
-			})
-			return true, nil
-		},
-	})
+	// Use cached data from this process if it exists
+	pgCatalogCache, err := getPgCatalogCache(ctx)
 	if err != nil {
 		return nil, err
 	}
 
+	if pgCatalogCache.pgClasses == nil {
+		var classes []pgClass
+		tableHasIndexes := make(map[uint32]struct{})
+
+		err := oid.IterateCurrentDatabase(ctx, oid.Callbacks{
+			Index: func(ctx *sql.Context, schema oid.ItemSchema, table oid.ItemTable, index oid.ItemIndex) (cont bool, err error) {
+				tableHasIndexes[table.OID] = struct{}{}
+				classes = append(classes, pgClass{
+					oid:        index.OID,
+					name:       getIndexName(index.Item),
+					hasIndexes: false,
+					kind:       "i",
+					schemaOid:  schema.OID,
+				})
+				return true, nil
+			},
+			Table: func(ctx *sql.Context, schema oid.ItemSchema, table oid.ItemTable) (cont bool, err error) {
+				_, hasIndexes := tableHasIndexes[table.OID]
+				classes = append(classes, pgClass{
+					oid:        table.OID,
+					name:       table.Item.Name(),
+					hasIndexes: hasIndexes,
+					kind:       "r",
+					schemaOid:  schema.OID,
+				})
+				return true, nil
+			},
+			View: func(ctx *sql.Context, schema oid.ItemSchema, view oid.ItemView) (cont bool, err error) {
+				classes = append(classes, pgClass{
+					oid:        view.OID,
+					name:       view.Item.Name,
+					hasIndexes: false,
+					kind:       "v",
+					schemaOid:  schema.OID,
+				})
+				return true, nil
+			},
+			Sequence: func(ctx *sql.Context, schema oid.ItemSchema, sequence oid.ItemSequence) (cont bool, err error) {
+				classes = append(classes, pgClass{
+					oid:        sequence.OID,
+					name:       sequence.Item.Name,
+					hasIndexes: false,
+					kind:       "S",
+					schemaOid:  schema.OID,
+				})
+				return true, nil
+			},
+		})
+		if err != nil {
+			return nil, err
+		}
+		pgCatalogCache.pgClasses = classes
+	}
+
 	return &pgClassRowIter{
-		classes: classes,
+		classes: pgCatalogCache.pgClasses,
 		idx:     0,
 	}, nil
 }
