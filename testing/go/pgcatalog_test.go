@@ -550,7 +550,6 @@ func TestPgClass(t *testing.T) {
 			},
 			Assertions: []ScriptTestAssertion{
 				{
-					Skip: true, // TODO: times out
 					// TODO: Now that catalog data is cached for each query, this query no longer iterates the database
 					//       100k times, and this query executes in a couple seconds. This is still slow and should
 					//       be improved with lookup index support now that we have cached data available.

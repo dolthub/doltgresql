@@ -170,7 +170,7 @@ func TypModOut(ctx *sql.Context, t pgtypes.DoltgresType, val int32) (string, err
 
 // IoCompare compares given two values using the given type.
 // TODO: both values should have types. E.g.: to compare between float32 and float64
-func IoCompare(ctx *sql.Context, t pgtypes.DoltgresType, v1, v2 any) (int32, error) {
+func IoCompare(t pgtypes.DoltgresType, v1, v2 any) (int32, error) {
 	if v1 == nil && v2 == nil {
 		return 0, nil
 	} else if v1 != nil && v2 == nil {
@@ -192,7 +192,7 @@ func IoCompare(ctx *sql.Context, t pgtypes.DoltgresType, v1, v2 any) (int32, err
 		return 0, ErrFunctionDoesNotExist.New(t.CompareFunc)
 	}
 
-	i, err := v.Eval(ctx, nil)
+	i, err := v.Eval(nil, nil)
 	if err != nil {
 		return 0, err
 	}

@@ -131,7 +131,7 @@ func (t DoltgresType) CollationCoercibility(ctx *sql.Context) (collation sql.Col
 
 // Compare implements the types.ExtendedType interface.
 func (t DoltgresType) Compare(v1 interface{}, v2 interface{}) (int, error) {
-	res, err := IoCompare(sql.NewEmptyContext(), t, v1, v2)
+	res, err := IoCompare(t, v1, v2)
 	return int(res), err
 }
 

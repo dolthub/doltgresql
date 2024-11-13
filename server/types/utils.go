@@ -60,7 +60,7 @@ var IoSend func(ctx *sql.Context, t DoltgresType, val any) ([]byte, error)
 var TypModOut func(ctx *sql.Context, t DoltgresType, val int32) (string, error)
 
 // IoCompare is the implementation for IoOutput that is being set from another package to avoid circular dependencies.
-var IoCompare func(ctx *sql.Context, t DoltgresType, v1, v2 any) (int32, error)
+var IoCompare func(t DoltgresType, v1, v2 any) (int32, error)
 
 // SQL is the implementation for IoOutput that is being set from another package to avoid circular dependencies.
 var SQL func(ctx *sql.Context, t DoltgresType, val any) (string, error)
