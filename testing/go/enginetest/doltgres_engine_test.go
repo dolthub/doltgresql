@@ -450,10 +450,6 @@ func TestUpdate(t *testing.T) {
 func TestUpdateErrors(t *testing.T) {
 	h := newDoltgresServerHarness(t).WithSkippedQueries([]string{
 		`UPDATE keyless INNER JOIN one_pk on keyless.c0 = one_pk.pk SET keyless.c0 = keyless.c0 + 1`,
-		// `UPDATE people set height_inches = null where height_inches < 100`,
-		// `UPDATE people SET height_inches = IF(SUM(height_inches) % 2 = 0, 42, height_inches)`,
-		// `UPDATE people SET height_inches = IF(SUM(*) % 2 = 0, 42, height_inches)`,
-		// `UPDATE people SET height_inches = IF(ROW_NUMBER() OVER() % 2 = 0, 42, height_inches)`,
 		"try updating string that is too long", // works but error message doesn't match
 		"UPDATE mytable SET s = 'hi' LIMIT -1;", // unsupported syntax 
 	})
@@ -462,10 +458,22 @@ func TestUpdateErrors(t *testing.T) {
 }
 
 func TestDeleteFrom(t *testing.T) {
-	t.Skip()
-	h := newDoltgresServerHarness(t)
+	h := newDoltgresServerHarness(t).WithSkippedQueries([]string{
+		"DELETE FROM mytable ORDER BY i DESC LIMIT 1 OFFSET 1;", // offset is unsupported syntax
+		"DELETE FROM mytable WHERE (i,s) = (1, 'first row');", // type error, needs investigation
+		"with t (n) as (select (1) from dual) delete from mytable where i in (select n from t)",
+		"with recursive t (n) as (select (1) from dual union all select n + 1 from t where n < 2) delete from mytable where i in (select n from t)",
+	})
 	defer h.Close()
-	enginetest.TestDelete(t, h)
+
+	// We've inlined part of engineTest.TestDeleteFrom here because that method tests many queries for join deletions
+	// that would be tedious to write out as skips
+	h.Setup(setup.MydbData, setup.MytableData, setup.TabletestData)
+	t.Run("Delete from single table", func(t *testing.T) {
+		for _, tt := range queries.DeleteTests {
+			enginetest.RunWriteQueryTest(t, h, tt)
+		}
+	})
 }
 
 func TestDeleteFromErrors(t *testing.T) {
