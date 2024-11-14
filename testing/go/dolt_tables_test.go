@@ -1576,6 +1576,76 @@ func TestUserSpaceDoltTables(t *testing.T) {
 					Query:    `SELECT * FROM DOCS`,
 					Expected: []sql.Row{{1}},
 				},
+				{
+					Query:    "SET search_path = 'public'",
+					Expected: []sql.Row{},
+				},
+				{
+					Query:    `DELETE FROM dolt.docs WHERE doc_name = 'README.md'`,
+					Expected: []sql.Row{},
+				},
+				{
+					Query:    `SELECT * FROM dolt.docs`,
+					Expected: []sql.Row{},
+				},
+				{
+					Query:    `DELETE FROM dolt_docs WHERE doc_name = 'README.md'`,
+					Expected: []sql.Row{},
+				},
+				// TODO: Test dolt.docs in diffs
+			},
+		},
+		{
+			Name:        "dolt procedures",
+			SetUpScript: []string{
+				// TODO: Create procedure when supported
+			},
+			Assertions: []ScriptTestAssertion{
+				{
+					Query:    `SELECT * FROM dolt_procedures`,
+					Expected: []sql.Row{},
+				},
+				{
+					Query:    `SELECT * FROM public.dolt_procedures`,
+					Expected: []sql.Row{},
+				},
+				{
+					Query:    `SELECT dolt_procedures.name FROM public.dolt_procedures`,
+					Expected: []sql.Row{},
+				},
+				{
+					Query:       `SELECT name FROM other.dolt_procedures`,
+					ExpectedErr: "database schema not found",
+				},
+				// TODO: Add diff tests when create procedure works
+				{
+					Query:    `CREATE SCHEMA newschema`,
+					Expected: []sql.Row{},
+				},
+				{
+					Query:    "SET search_path = 'newschema'",
+					Expected: []sql.Row{},
+				},
+				{
+					Query:    `SELECT * FROM newschema.dolt_procedures`,
+					Expected: []sql.Row{},
+				},
+				{
+					Query:    `SELECT name FROM dolt_procedures`,
+					Expected: []sql.Row{},
+				},
+				{
+					Query:    `SELECT name FROM public.dolt_procedures`,
+					Expected: []sql.Row{},
+				},
+				{
+					Query:    "SET search_path = 'newschema,public'",
+					Expected: []sql.Row{},
+				},
+				{
+					Query:    `SELECT name FROM dolt_procedures`,
+					Expected: []sql.Row{},
+				},
 			},
 		},
 		{
@@ -1831,6 +1901,7 @@ func TestUserSpaceDoltTables(t *testing.T) {
 			Name: "dolt schemas",
 			SetUpScript: []string{
 				"create view myView as select 2 + 2",
+				// TODO: Add more tests when triggers and events work in doltgres
 			},
 			Assertions: []ScriptTestAssertion{
 				{
@@ -1843,6 +1914,145 @@ func TestUserSpaceDoltTables(t *testing.T) {
 							"{\"CreatedAt\":0}",
 							"NO_ENGINE_SUBSTITUTION,ONLY_FULL_GROUP_BY,STRICT_TRANS_TABLES",
 						},
+					},
+				},
+				{
+					Query: `SELECT * FROM public.dolt_schemas`,
+					Expected: []sql.Row{
+						{
+							"view",
+							"myview",
+							"create view myView as select 2 + 2",
+							"{\"CreatedAt\":0}",
+							"NO_ENGINE_SUBSTITUTION,ONLY_FULL_GROUP_BY,STRICT_TRANS_TABLES",
+						},
+					},
+				},
+				{
+					Query:    `SELECT dolt_schemas.name FROM public.dolt_schemas`,
+					Expected: []sql.Row{{"myview"}},
+				},
+				{
+					Query:       `SELECT name FROM other.dolt_schemas`,
+					ExpectedErr: "database schema not found",
+				},
+				{
+					Query: `SELECT * FROM dolt_diff_summary('main', 'WORKING')`,
+					Expected: []sql.Row{
+						{"", "public.dolt_schemas", "added", 1, 1},
+					},
+				},
+				{
+					Query: `SELECT * FROM dolt_diff_summary('main', 'WORKING', 'dolt_schemas')`,
+					Expected: []sql.Row{
+						{"", "public.dolt_schemas", "added", 1, 1},
+					},
+				},
+				{
+					Query: `SELECT * FROM dolt_diff_summary('main', 'WORKING', 'dolt_schemas')`,
+					Expected: []sql.Row{
+						{"", "public.dolt_schemas", "added", 1, 1},
+					},
+				},
+				{
+					Query: `SELECT diff_type, from_name, to_name FROM dolt_diff('main', 'WORKING', 'dolt_schemas')`,
+					Expected: []sql.Row{
+						{"added", nil, "myview"},
+					},
+				},
+				{
+					Query: `SELECT diff_type, from_name, to_name FROM dolt_diff('main', 'WORKING', 'dolt_schemas')`,
+					Expected: []sql.Row{
+						{"added", nil, "myview"},
+					},
+				},
+				{
+					Query:    `CREATE SCHEMA newschema`,
+					Expected: []sql.Row{},
+				},
+				{
+					Query:    "SET search_path = 'newschema'",
+					Expected: []sql.Row{},
+				},
+				{
+					Query:    `CREATE VIEW testView AS SELECT 1 + 1`,
+					Expected: []sql.Row{},
+				},
+				{
+					Query: `SELECT * FROM newschema.dolt_schemas`,
+					Expected: []sql.Row{
+						{
+							"view",
+							"testview",
+							"CREATE VIEW testView AS SELECT 1 + 1",
+							"{\"CreatedAt\":0}",
+							"NO_ENGINE_SUBSTITUTION,ONLY_FULL_GROUP_BY,STRICT_TRANS_TABLES",
+						},
+					},
+				},
+				{
+					Query:    `SELECT name FROM dolt_schemas`,
+					Expected: []sql.Row{{"testview"}},
+				},
+				{
+					Query: "SELECT table_schema, table_name FROM information_schema.views",
+					Expected: []sql.Row{
+						{"newschema", "testview"},
+						{"public", "myview"},
+					},
+				},
+				{
+					Query: `SELECT * FROM dolt_diff_summary('main', 'WORKING', 'dolt_schemas')`,
+					Expected: []sql.Row{
+						{"", "newschema.dolt_schemas", "added", 1, 1},
+					},
+				},
+				{
+					Skip:  true, // TODO: Should be able to specify schema
+					Query: `SELECT * FROM dolt_diff_summary('main', 'WORKING', 'public.dolt_schemas')`,
+					Expected: []sql.Row{
+						{"", "public.dolt_schemas", "added", 1, 1},
+					},
+				},
+				{
+					Query:    `SELECT name FROM public.dolt_schemas`,
+					Expected: []sql.Row{{"myview"}},
+				},
+				{
+					Query:       "DROP VIEW myView",
+					ExpectedErr: "the view postgres.myview does not exist",
+				},
+				{
+					Skip:     true, // TODO: Should work
+					Query:    "DROP VIEW public.myView",
+					Expected: []sql.Row{},
+				},
+				{
+					Skip:     true, // TODO: Adds to current schema instead of public schema
+					Query:    "create view public.myNewView as select 3 + 3",
+					Expected: []sql.Row{},
+				},
+				{
+					Skip:     true,
+					Query:    `SELECT name FROM public.dolt_schemas`,
+					Expected: []sql.Row{{"myview", "mynewview"}},
+				},
+				{
+					Query:    `SELECT name FROM dolt_schemas`,
+					Expected: []sql.Row{{"testview"}},
+				},
+				{
+					Query:    "SET search_path = 'newschema,public'",
+					Expected: []sql.Row{},
+				},
+				{
+					Query:    `SELECT name FROM dolt_schemas`,
+					Expected: []sql.Row{{"testview"}},
+				},
+				{
+					Query: `SELECT * FROM dolt_diff_summary('main', 'WORKING', 'dolt_schemas')`,
+					Expected: []sql.Row{
+						{"", "newschema.dolt_schemas", "added", 1, 1},
 					},
 				},
 			},
