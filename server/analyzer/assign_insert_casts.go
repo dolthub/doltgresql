@@ -62,6 +62,7 @@ func AssignInsertCasts(ctx *sql.Context, a *analyzer.Analyzer, node sql.Node, sc
 		for rowIndex, rowExprs := range values.ExpressionTuples {
 			newValues[rowIndex] = make([]sql.Expression, len(rowExprs))
 			for columnIndex, colExpr := range rowExprs {
+				// Null ColumnDefaultValues or empty DefaultValues are not properly typed in TypeSanitizer, so we must handle them here
 				colExprType := colExpr.Type()
 				if colExprType == nil || colExprType == types.Null {
 					colExprType = pgtypes.UnknownType{}
