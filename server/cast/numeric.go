@@ -16,7 +16,6 @@ package cast
 
 import (
 	"fmt"
-
 	"github.com/dolthub/go-mysql-server/sql"
 	"github.com/shopspring/decimal"
 
@@ -89,8 +88,7 @@ func numericImplicit() {
 		FromType: pgtypes.Numeric,
 		ToType:   pgtypes.Numeric,
 		Function: func(ctx *sql.Context, val any, targetType pgtypes.DoltgresType) (any, error) {
-			// TODO: handle precision and scale
-			return val, nil
+			return pgtypes.GetNumericValueWithTypmod(val.(decimal.Decimal), targetType.AttTypMod)
 		},
 	})
 }

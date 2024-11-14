@@ -50,17 +50,7 @@ var numeric_in = framework.Function3{
 			return nil, pgtypes.ErrInvalidSyntaxForType.New("numeric", input)
 		}
 		typmod := val3.(int32)
-		if typmod == -1 {
-			return val, nil
-		}
-		precision, scale := pgtypes.GetPrecisionAndScaleFromTypmod(typmod)
-		str := val.StringFixed(scale)
-		parts := strings.Split(str, ".")
-		if int32(len(parts[0])) > precision-scale {
-			// TODO: split error message to ERROR and DETAIL
-			return nil, fmt.Errorf("numeric field overflow - A field with precision %v, scale %v must round to an absolute value less than 10^%v", precision, scale, precision-scale)
-		}
-		return decimal.NewFromString(str)
+		return pgtypes.GetNumericValueWithTypmod(val, typmod)
 	},
 }
 

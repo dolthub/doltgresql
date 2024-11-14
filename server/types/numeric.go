@@ -16,6 +16,7 @@ package types
 
 import (
 	"fmt"
+	"strings"
 
 	"github.com/lib/pq/oid"
 	"github.com/shopspring/decimal"
@@ -101,4 +102,20 @@ func GetPrecisionAndScaleFromTypmod(typmod int32) (int32, int32) {
 	scale := typmod & 0xFFFF
 	precision := (typmod >> 16) & 0xFFFF
 	return precision, scale
+}
+
+// GetNumericValueWithTypmod returns either given numeric value or truncated or error
+// depending on the precision and scale decoded from given type modifier value.
+func GetNumericValueWithTypmod(val decimal.Decimal, typmod int32) (decimal.Decimal, error) {
+	if typmod == -1 {
+		return val, nil
+	}
+	precision, scale := GetPrecisionAndScaleFromTypmod(typmod)
+	str := val.StringFixed(scale)
+	parts := strings.Split(str, ".")
+	if int32(len(parts[0])) > precision-scale && val.IntPart() != 0 {
+		// TODO: split error message to ERROR and DETAIL
+		return decimal.Decimal{}, fmt.Errorf("numeric field overflow - A field with precision %v, scale %v must round to an absolute value less than 10^%v", precision, scale, precision-scale)
+	}
+	return decimal.NewFromString(str)
 }

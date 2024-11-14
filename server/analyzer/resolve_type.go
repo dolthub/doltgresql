@@ -27,30 +27,44 @@ import (
 // ResolveType replaces types.ResolvableType to appropriate types.DoltgresType.
 func ResolveType(ctx *sql.Context, a *analyzer.Analyzer, node sql.Node, scope *plan.Scope, selector analyzer.RuleSelector, qFlags *sql.QueryFlags) (sql.Node, transform.TreeIdentity, error) {
 	return transform.Node(node, func(node sql.Node) (sql.Node, transform.TreeIdentity, error) {
+		var same = transform.SameTree
 		switch n := node.(type) {
-		case sql.SchemaTarget:
-			switch n.(type) {
-			case *plan.AlterPK, *plan.AddColumn, *plan.ModifyColumn, *plan.CreateTable, *plan.DropColumn:
-				// DDL nodes must resolve any new column type, continue to logic below
-				// TODO: add nodes that use unresolved types like domain (e.g.: casting in SELECT)
-			default:
-				// other node types are not altering the schema and therefore don't need resolution of column type
-				return node, transform.SameTree, nil
-			}
-
-			var same = transform.SameTree
+		case *plan.CreateTable:
 			for _, col := range n.TargetSchema() {
 				if rt, ok := col.Type.(types.DoltgresType); ok && !rt.IsResolvedType() {
 					dt, err := resolveType(ctx, rt)
 					if err != nil {
-						return nil, transform.SameTree, err
+						return nil, transform.NewTree, err
 					}
 					same = transform.NewTree
 					col.Type = dt
 				}
 			}
 			return node, same, nil
+		case *plan.AddColumn:
+			col := n.Column()
+			if rt, ok := col.Type.(types.DoltgresType); ok && !rt.IsResolvedType() {
+				dt, err := resolveType(ctx, rt)
+				if err != nil {
+					return nil, transform.NewTree, err
+				}
+				same = transform.NewTree
+				col.Type = dt
+			}
+			return node, same, nil
+		case *plan.ModifyColumn:
+			col := n.NewColumn()
+			if rt, ok := col.Type.(types.DoltgresType); ok && !rt.IsResolvedType() {
+				dt, err := resolveType(ctx, rt)
+				if err != nil {
+					return nil, transform.NewTree, err
+				}
+				same = transform.NewTree
+				col.Type = dt
+			}
+			return node, same, nil
 		default:
+			// TODO: add nodes that use unresolved types like domain
 			return node, transform.SameTree, nil
 		}
 	})
