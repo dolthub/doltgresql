@@ -34,6 +34,7 @@ func initArray() {
 	framework.RegisterFunction(array_recv)
 	framework.RegisterFunction(array_send)
 	framework.RegisterFunction(btarraycmp)
+	framework.RegisterFunction(array_subscript_handler)
 }
 
 // array_in represents the PostgreSQL function of array type IO input.
@@ -286,5 +287,17 @@ var btarraycmp = framework.Function2{
 		} else {
 			return int32(1), nil
 		}
+	},
+}
+
+// array_subscript_handler represents the PostgreSQL function of array type subscript handler.
+var array_subscript_handler = framework.Function1{
+	Name:       "array_subscript_handler",
+	Return:     pgtypes.Internal,
+	Parameters: [1]pgtypes.DoltgresType{pgtypes.Internal},
+	Strict:     true,
+	Callable: func(ctx *sql.Context, t [2]pgtypes.DoltgresType, val any) (any, error) {
+		// TODO
+		return []byte{}, nil
 	},
 }
