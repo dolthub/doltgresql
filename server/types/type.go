@@ -17,7 +17,6 @@ package types
 import (
 	"bytes"
 	"fmt"
-	"github.com/dolthub/doltgresql/utils"
 	"math"
 	"reflect"
 	"time"
@@ -31,6 +30,7 @@ import (
 
 	"github.com/dolthub/doltgresql/postgres/parser/duration"
 	"github.com/dolthub/doltgresql/postgres/parser/uuid"
+	"github.com/dolthub/doltgresql/utils"
 )
 
 // DoltgresType represents a single type.
