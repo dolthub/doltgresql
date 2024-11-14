@@ -733,7 +733,7 @@ func nodeExpr(ctx *Context, node tree.Expr) (vitess.Expr, error) {
 			return nil, fmt.Errorf("tuple labels are not yet supported")
 		}
 		if node.Row {
-			return nil, fmt.Errorf("ROW keyword for tuples not yet supported")
+			//return nil, fmt.Errorf("ROW keyword for tuples not yet supported")
 		}
 
 		valTuple, err := nodeExprs(ctx, node.Exprs)
