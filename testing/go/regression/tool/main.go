@@ -128,32 +128,32 @@ func main() {
 			}
 		}
 		// Handle progressions (which we'll display second)
-		foundAnySuccessDiff := false
-		for trackerIdx := range trackersFrom {
-			// They're sorted, so this should always hold true.
-			// This will really only fail if the tests were updated.
-			if trackersFrom[trackerIdx].File != trackersTo[trackerIdx].File {
-				continue
-			}
-			foundFileDiff := false
-			fromSuccessItems := make(map[string]struct{})
-			for _, trackerFromItem := range trackersFrom[trackerIdx].SuccessItems {
-				fromSuccessItems[trackerFromItem.Query] = struct{}{}
-			}
-			for _, trackerToItem := range trackersTo[trackerIdx].SuccessItems {
-				if _, ok := fromSuccessItems[trackerToItem.Query]; !ok {
-					if !foundAnySuccessDiff {
-						foundAnySuccessDiff = true
-						sb.WriteString("\n## ${\\color{lightgreen}Progressions}$\n")
-					}
-					if !foundFileDiff {
-						foundFileDiff = true
-						sb.WriteString(fmt.Sprintf("### %s\n", trackersFrom[trackerIdx].File))
-					}
-					sb.WriteString(fmt.Sprintf("```\nQUERY: %s\n```\n", trackerToItem.Query))
-				}
-			}
-		}
+		//foundAnySuccessDiff := false
+		//for trackerIdx := range trackersFrom {
+		//	// They're sorted, so this should always hold true.
+		//	// This will really only fail if the tests were updated.
+		//	if trackersFrom[trackerIdx].File != trackersTo[trackerIdx].File {
+		//		continue
+		//	}
+		//	foundFileDiff := false
+		//	fromSuccessItems := make(map[string]struct{})
+		//	for _, trackerFromItem := range trackersFrom[trackerIdx].SuccessItems {
+		//		fromSuccessItems[trackerFromItem.Query] = struct{}{}
+		//	}
+		//	for _, trackerToItem := range trackersTo[trackerIdx].SuccessItems {
+		//		if _, ok := fromSuccessItems[trackerToItem.Query]; !ok {
+		//			if !foundAnySuccessDiff {
+		//				foundAnySuccessDiff = true
+		//				sb.WriteString("\n## ${\\color{lightgreen}Progressions}$\n")
+		//			}
+		//			if !foundFileDiff {
+		//				foundFileDiff = true
+		//				sb.WriteString(fmt.Sprintf("### %s\n", trackersFrom[trackerIdx].File))
+		//			}
+		//			sb.WriteString(fmt.Sprintf("```\nQUERY: %s\n```\n", trackerToItem.Query))
+		//		}
+		//	}
+		//}
 	}
 	sb.WriteString("[^1]: These are tests that we're marking as `Successful`, however they do not match the expected output in some way. This is due to small differences, such as different wording on the error messages, or the column names being incorrect while the data itself is correct.")
 	fmt.Println(sb.String())
