@@ -45,7 +45,7 @@ func nodeLimit(ctx *Context, node *tree.Limit) (*vitess.Limit, error) {
 	if injectedExpr, ok := count.(vitess.InjectedExpr); ok {
 		if literal, ok := injectedExpr.Expression.(*pgexprs.Literal); ok {
 			l := literal.Value()
-			limitValue, err := int64Value(l)
+			limitValue, err := int64ValueForLimit(l)
 			if err != nil {
 				return nil, err
 			}
@@ -60,7 +60,7 @@ func nodeLimit(ctx *Context, node *tree.Limit) (*vitess.Limit, error) {
 	if injectedExpr, ok := offset.(vitess.InjectedExpr); ok {
 		if literal, ok := injectedExpr.Expression.(*pgexprs.Literal); ok {
 			o := literal.Value()
-			offsetVal, err := int64Value(o)
+			offsetVal, err := int64ValueForLimit(o)
 			if err != nil {
 				return nil, err
 			}
@@ -78,8 +78,8 @@ func nodeLimit(ctx *Context, node *tree.Limit) (*vitess.Limit, error) {
 	}, nil
 }
 
-// int64Value converts a literal value to an int64
-func int64Value(l any) (int64, error) {
+// int64ValueForLimit converts a literal value to an int64
+func int64ValueForLimit(l any) (int64, error) {
 	var limitValue int64
 	switch l := l.(type) {
 	case int:
@@ -93,7 +93,7 @@ func int64Value(l any) (int64, error) {
 	case float32:
 		limitValue = int64(l)
 	default:
-		return 0, fmt.Errorf("unsupported limit value type %T", l)
+		return 0, fmt.Errorf("unsupported limit/offset value type %T", l)
 	}
 	return limitValue, nil
 }
