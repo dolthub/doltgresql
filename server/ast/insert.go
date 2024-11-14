@@ -87,9 +87,11 @@ func nodeInsert(ctx *Context, node *tree.Insert) (*vitess.Insert, error) {
 
 	// For a ValuesStatement with simple rows, GMS expects AliasedValues
 	if vSelect, ok := rows.(*vitess.Select); ok && len(vSelect.From) == 1 {
-		if valsStmt, ok := vSelect.From[0].(*vitess.ValuesStatement); ok {
-			rows = &vitess.AliasedValues{
-				Values: valsStmt.Rows,
+		if aliasedStmt, ok := vSelect.From[0].(*vitess.AliasedTableExpr); ok {
+			if valsStmt, ok := aliasedStmt.Expr.(*vitess.ValuesStatement); ok {
+				rows = &vitess.AliasedValues{
+					Values: valsStmt.Rows,
+				}
 			}
 		}
 	}

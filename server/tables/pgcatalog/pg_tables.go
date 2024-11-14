@@ -44,24 +44,33 @@ func (p PgTablesHandler) Name() string {
 
 // RowIter implements the interface tables.Handler.
 func (p PgTablesHandler) RowIter(ctx *sql.Context) (sql.RowIter, error) {
-	var tables []sql.Table
-	var schemas []string
-
-	// TODO: This should include a few information_schema tables
-	err := oid.IterateCurrentDatabase(ctx, oid.Callbacks{
-		Table: func(ctx *sql.Context, schema oid.ItemSchema, table oid.ItemTable) (cont bool, err error) {
-			tables = append(tables, table.Item)
-			schemas = append(schemas, schema.Item.SchemaName())
-			return true, nil
-		},
-	})
+	// Use cached data from this process if it exists
+	pgCatalogCache, err := getPgCatalogCache(ctx)
 	if err != nil {
 		return nil, err
 	}
 
+	if pgCatalogCache.tables == nil {
+		var tables []sql.Table
+		var tableSchemas []string
+		// TODO: This should include a few information_schema tables
+		err := oid.IterateCurrentDatabase(ctx, oid.Callbacks{
+			Table: func(ctx *sql.Context, schema oid.ItemSchema, table oid.ItemTable) (cont bool, err error) {
+				tables = append(tables, table.Item)
+				tableSchemas = append(tableSchemas, schema.Item.SchemaName())
+				return true, nil
+			},
+		})
+		if err != nil {
+			return nil, err
+		}
+		pgCatalogCache.tables = tables
+		pgCatalogCache.tableSchemas = tableSchemas
+	}
+
 	return &pgTablesRowIter{
-		tables:  tables,
-		schemas: schemas,
+		tables:  pgCatalogCache.tables,
+		schemas: pgCatalogCache.tableSchemas,
 		idx:     0,
 	}, nil
 }

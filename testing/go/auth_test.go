@@ -430,6 +430,12 @@ func TestAuthTests(t *testing.T) {
 					ExpectedErr: `denied`,
 				},
 				{
+					Query:       `WITH cte AS (SELECT * FROM test ORDER BY pk) SELECT * FROM cte;`,
+					Username:    `user1`,
+					Password:    `a`,
+					ExpectedErr: `denied`,
+				},
+				{
 					Query:       `INSERT INTO test VALUES (10);`,
 					Username:    `user1`,
 					Password:    `a`,
@@ -455,6 +461,13 @@ func TestAuthTests(t *testing.T) {
 				},
 				{
 					Query:    `SELECT * FROM test ORDER BY pk;`,
+					Username: `user1`,
+					Password: `a`,
+					Expected: []sql.Row{{1}, {6}, {7}},
+				},
+				{
+					Skip:     true, // CTEs are seen as different tables
+					Query:    `WITH cte AS (SELECT * FROM test ORDER BY pk) SELECT * FROM cte;`,
 					Username: `user1`,
 					Password: `a`,
 					Expected: []sql.Row{{1}, {6}, {7}},

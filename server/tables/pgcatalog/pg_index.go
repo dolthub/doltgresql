@@ -45,26 +45,22 @@ func (p PgIndexHandler) Name() string {
 
 // RowIter implements the interface tables.Handler.
 func (p PgIndexHandler) RowIter(ctx *sql.Context) (sql.RowIter, error) {
-	var indexes []sql.Index
-	var indexOIDs []uint32
-	var tableOIDs []uint32
-
-	err := oid.IterateCurrentDatabase(ctx, oid.Callbacks{
-		Index: func(ctx *sql.Context, schema oid.ItemSchema, table oid.ItemTable, index oid.ItemIndex) (cont bool, err error) {
-			indexes = append(indexes, index.Item)
-			tableOIDs = append(tableOIDs, table.OID)
-			indexOIDs = append(indexOIDs, index.OID)
-			return true, nil
-		},
-	})
+	// Use cached data from this process if it exists
+	pgCatalogCache, err := getPgCatalogCache(ctx)
 	if err != nil {
 		return nil, err
 	}
 
+	if pgCatalogCache.indexes == nil {
+		if err := cacheIndexMetadata(ctx, pgCatalogCache); err != nil {
+			return nil, err
+		}
+	}
+
 	return &pgIndexRowIter{
-		indexes: indexes,
-		idxOIDs: indexOIDs,
-		tblOIDs: tableOIDs,
+		indexes: pgCatalogCache.indexes,
+		idxOIDs: pgCatalogCache.indexOIDs,
+		tblOIDs: pgCatalogCache.indexTableOIDs,
 		idx:     0,
 	}, nil
 }
@@ -150,5 +146,34 @@ func (iter *pgIndexRowIter) Next(ctx *sql.Context) (sql.Row, error) {
 
 // Close implements the interface sql.RowIter.
 func (iter *pgIndexRowIter) Close(ctx *sql.Context) error {
+	return nil
+}
+
+// cacheIndexMetadata iterates over the indexes in the current database and caches their metadata in |cache|. This
+// cache holds pg_catalog data for the duration of a single query so that we don't have to generate the same pg_catalog
+// data when multiple tables are joined together.
+func cacheIndexMetadata(ctx *sql.Context, cache *pgCatalogCache) error {
+	var indexes []sql.Index
+	var indexSchemas []string
+	var indexOIDs []uint32
+	var tableOIDs []uint32
+
+	err := oid.IterateCurrentDatabase(ctx, oid.Callbacks{
+		Index: func(ctx *sql.Context, schema oid.ItemSchema, table oid.ItemTable, index oid.ItemIndex) (cont bool, err error) {
+			indexes = append(indexes, index.Item)
+			indexSchemas = append(indexSchemas, schema.Item.SchemaName())
+			indexOIDs = append(indexOIDs, index.OID)
+			tableOIDs = append(tableOIDs, table.OID)
+			return true, nil
+		},
+	})
+	if err != nil {
+		return err
+	}
+
+	cache.indexes = indexes
+	cache.indexOIDs = indexOIDs
+	cache.indexTableOIDs = tableOIDs
+	cache.indexSchemas = indexSchemas
 	return nil
 }

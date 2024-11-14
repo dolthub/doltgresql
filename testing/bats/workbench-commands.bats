@@ -56,7 +56,7 @@ SQL
   run query_server -c "SELECT * FROM current_database();"
   [ "$status" -eq 0 ]
   verify_column_name "$output" "current_database"
-  [[ "$output" =~ "doltgres" ]] || false
+  [[ "$output" =~ "postgres" ]] || false
 
   run query_server -c "CREATE DATABASE newdb;"
   [ "$status" -eq 0 ]

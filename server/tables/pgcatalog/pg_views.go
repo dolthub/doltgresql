@@ -47,23 +47,32 @@ func (p PgViewsHandler) Name() string {
 
 // RowIter implements the interface tables.Handler.
 func (p PgViewsHandler) RowIter(ctx *sql.Context) (sql.RowIter, error) {
-	var views []sql.ViewDefinition
-	var schemas []string
-
-	err := oid.IterateCurrentDatabase(ctx, oid.Callbacks{
-		View: func(ctx *sql.Context, schema oid.ItemSchema, view oid.ItemView) (cont bool, err error) {
-			views = append(views, view.Item)
-			schemas = append(schemas, schema.Item.SchemaName())
-			return true, nil
-		},
-	})
+	// Use cached data from this process if it exists
+	pgCatalogCache, err := getPgCatalogCache(ctx)
 	if err != nil {
 		return nil, err
 	}
 
+	if pgCatalogCache.views == nil {
+		var views []sql.ViewDefinition
+		var viewSchemas []string
+		err := oid.IterateCurrentDatabase(ctx, oid.Callbacks{
+			View: func(ctx *sql.Context, schema oid.ItemSchema, view oid.ItemView) (cont bool, err error) {
+				views = append(views, view.Item)
+				viewSchemas = append(viewSchemas, schema.Item.SchemaName())
+				return true, nil
+			},
+		})
+		if err != nil {
+			return nil, err
+		}
+		pgCatalogCache.views = views
+		pgCatalogCache.viewSchemas = viewSchemas
+	}
+
 	return &pgViewsRowIter{
-		views:   views,
-		schemas: schemas,
+		views:   pgCatalogCache.views,
+		schemas: pgCatalogCache.viewSchemas,
 		idx:     0,
 	}, nil
 }

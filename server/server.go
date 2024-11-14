@@ -45,11 +45,11 @@ import (
 // Version should have a new line that follows, else the formatter will fail the PR created by the release GH action
 
 const (
-	Version = "0.14.0"
+	Version = "0.14.1"
 
 	DefUserName  = "postres"
 	DefUserEmail = "postgres@somewhere.com"
-	DoltgresDir  = "doltgres"
+	DoltgresDir  = "postgres"
 )
 
 func init() {
@@ -135,7 +135,7 @@ func runServer(ctx context.Context, cfg *servercfg.DoltgresConfig, dEnv *env.Dol
 		workingDir, _ := dataDirFs.Abs(".")
 		// The else branch means that there's a Doltgres item, so we need to error if it's a file since we
 		// enforce the creation of a Doltgres database/directory, which would create a name conflict with the file
-		return nil, fmt.Errorf("Attempted to create the default `doltgres` database at `%s`, but a file with "+
+		return nil, fmt.Errorf("Attempted to create the default `postgres` database at `%s`, but a file with "+
 			"the same name was found. Either remove the file, change the directory using the `--data-dir` argument, "+
 			"or change the environment variable `%s` so that it points to a different directory.", workingDir, servercfg.DOLTGRES_DATA_DIR)
 	}
@@ -165,7 +165,7 @@ func runServer(ctx context.Context, cfg *servercfg.DoltgresConfig, dEnv *env.Dol
 	}
 
 	if createDoltgresDatabase {
-		err = createDatabase(ssCfg, "doltgres")
+		err = createDatabase(ssCfg, "postgres")
 		if err != nil {
 			return nil, err
 		}
@@ -183,12 +183,7 @@ func runServer(ctx context.Context, cfg *servercfg.DoltgresConfig, dEnv *env.Dol
 // createDatabase creates the database named on the local server using the configuration values to connect, returning
 // any error
 func createDatabase(cfg doltservercfg.ServerConfig, dbName string) error {
-	dsn := fmt.Sprintf(
-		"postgres://%s:%s@localhost:%d",
-		cfg.User(),
-		cfg.Password(),
-		cfg.Port(),
-	)
+	dsn := fmt.Sprintf("postgres://postgres:password@localhost:%d", cfg.Port())
 
 	// Connect to the server and create the default database with the given name.
 	ctx := context.Background()
@@ -232,7 +227,7 @@ func startReplication(cfg *servercfg.DoltgresConfig, ssCfg doltservercfg.ServerC
 		ssCfg.User(),
 		ssCfg.Password(),
 		ssCfg.Port(),
-		"doltgres", // TODO: this needs to come from config
+		"postgres", // TODO: this needs to come from config
 	)
 
 	replicator, err := logrepl.NewLogicalReplicator(walFilePath, primaryDns, replicationDns)
