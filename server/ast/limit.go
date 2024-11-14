@@ -19,9 +19,8 @@ import (
 
 	vitess "github.com/dolthub/vitess/go/vt/sqlparser"
 
-	pgexprs "github.com/dolthub/doltgresql/server/expression"
-
 	"github.com/dolthub/doltgresql/postgres/parser/sem/tree"
+	pgexprs "github.com/dolthub/doltgresql/server/expression"
 )
 
 // nodeLimit handles *tree.Limit nodes.
@@ -82,17 +81,17 @@ func nodeLimit(ctx *Context, node *tree.Limit) (*vitess.Limit, error) {
 // int64Value converts a literal value to an int64
 func int64Value(l any) (int64, error) {
 	var limitValue int64
-	switch l.(type) {
+	switch l := l.(type) {
 	case int:
-		limitValue = int64(l.(int))
+		limitValue = int64(l)
 	case int32:
-		limitValue = int64(l.(int32))
+		limitValue = int64(l)
 	case int64:
-		limitValue = l.(int64)
+		limitValue = l
 	case float64:
-		limitValue = int64(l.(float64))
+		limitValue = int64(l)
 	case float32:
-		limitValue = int64(l.(float32))
+		limitValue = int64(l)
 	default:
 		return 0, fmt.Errorf("unsupported limit value type %T", l)
 	}

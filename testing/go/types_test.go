@@ -922,13 +922,13 @@ var typesTests = []ScriptTest{
 		},
 	},
 	{
-		Name: "JSON key",
+		Name:        "JSON key",
 		SetUpScript: []string{},
 		Assertions: []ScriptTestAssertion{
 			{
-				Query: "CREATE TABLE t_json (id JSON primary key, v1 JSON);",
+				Query:       "CREATE TABLE t_json (id JSON primary key, v1 JSON);",
 				ExpectedErr: "data type json has no default operator class for access method \"btree\"",
-				Skip: true, // current error message is blob/text column 'id' used in key specification without a key length 
+				Skip:        true, // current error message is blob/text column 'id' used in key specification without a key length
 			},
 		},
 	},

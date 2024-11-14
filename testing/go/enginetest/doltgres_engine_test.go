@@ -450,8 +450,8 @@ func TestUpdate(t *testing.T) {
 func TestUpdateErrors(t *testing.T) {
 	h := newDoltgresServerHarness(t).WithSkippedQueries([]string{
 		`UPDATE keyless INNER JOIN one_pk on keyless.c0 = one_pk.pk SET keyless.c0 = keyless.c0 + 1`,
-		"try updating string that is too long", // works but error message doesn't match
-		"UPDATE mytable SET s = 'hi' LIMIT -1;", // unsupported syntax 
+		"try updating string that is too long",  // works but error message doesn't match
+		"UPDATE mytable SET s = 'hi' LIMIT -1;", // unsupported syntax
 	})
 	defer h.Close()
 	enginetest.TestUpdateErrors(t, h)
@@ -460,7 +460,7 @@ func TestUpdateErrors(t *testing.T) {
 func TestDeleteFrom(t *testing.T) {
 	h := newDoltgresServerHarness(t).WithSkippedQueries([]string{
 		"DELETE FROM mytable ORDER BY i DESC LIMIT 1 OFFSET 1;", // offset is unsupported syntax
-		"DELETE FROM mytable WHERE (i,s) = (1, 'first row');", // type error, needs investigation
+		"DELETE FROM mytable WHERE (i,s) = (1, 'first row');",   // type error, needs investigation
 		"with t (n) as (select (1) from dual) delete from mytable where i in (select n from t)",
 		"with recursive t (n) as (select (1) from dual union all select n + 1 from t where n < 2) delete from mytable where i in (select n from t)",
 	})
@@ -479,7 +479,7 @@ func TestDeleteFrom(t *testing.T) {
 func TestDeleteFromErrors(t *testing.T) {
 	h := newDoltgresServerHarness(t)
 	defer h.Close()
-	
+
 	// These tests are overspecified to mysql-specific errors and include some syntax we don't support, so we redefine
 	// the subset we're interested in checking here
 	h.Setup(setup.MydbData, setup.MytableData, setup.TabletestData)
