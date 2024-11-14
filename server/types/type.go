@@ -17,6 +17,7 @@ package types
 import (
 	"bytes"
 	"fmt"
+	"github.com/dolthub/doltgresql/utils"
 	"math"
 	"reflect"
 	"time"
@@ -131,6 +132,7 @@ func (t DoltgresType) CollationCoercibility(ctx *sql.Context) (collation sql.Col
 
 // Compare implements the types.ExtendedType interface.
 func (t DoltgresType) Compare(v1 interface{}, v2 interface{}) (int, error) {
+	// TODO: use IoCompare
 	if v1 == nil && v2 == nil {
 		return 0, nil
 	} else if v1 != nil && v2 == nil {
@@ -230,6 +232,28 @@ func (t DoltgresType) Compare(v1 interface{}, v2 interface{}) (int, error) {
 	case uuid.UUID:
 		bb := v2.(uuid.UUID)
 		return bytes.Compare(ab.GetBytesMut(), bb.GetBytesMut()), nil
+	case []any:
+		if !t.IsArrayType() {
+			return 0, fmt.Errorf("array value received in Compare for non array type")
+		}
+		bb := v2.([]any)
+		minLength := utils.Min(len(ab), len(bb))
+		for i := 0; i < minLength; i++ {
+			res, err := t.ArrayBaseType().Compare(ab[i], bb[i])
+			if err != nil {
+				return 0, err
+			}
+			if res != 0 {
+				return res, nil
+			}
+		}
+		if len(ab) == len(bb) {
+			return 0, nil
+		} else if len(ab) < len(bb) {
+			return -1, nil
+		} else {
+			return 1, nil
+		}
 	default:
 		return 0, fmt.Errorf("unhandled type %T in Compare", v1)
 	}
