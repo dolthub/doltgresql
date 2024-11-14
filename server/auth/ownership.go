@@ -45,6 +45,14 @@ func AddOwner(key OwnershipKey, role RoleID) {
 	ownerMap[role] = struct{}{}
 }
 
+// SetOwners adds |roles| as an owner for the entity identified by |key| to the global database.
+func SetOwners(key OwnershipKey, roles ...RoleID) {
+	RemoveOwners(key, GetOwners(key)...)
+	for _, role := range roles {
+		AddOwner(key, role)
+	}
+}
+
 // GetOwners returns all owners matching the given key.
 func GetOwners(key OwnershipKey) []RoleID {
 	if ownerMap, ok := globalDatabase.ownership.Data[key]; ok {
@@ -69,6 +77,13 @@ func RemoveOwner(key OwnershipKey, role RoleID) {
 		if len(ownerMap) == 0 {
 			delete(globalDatabase.ownership.Data, key)
 		}
+	}
+}
+
+// RemoveOwners removes all specified |roles| as owners for the entity |key| from the global database.
+func RemoveOwners(key OwnershipKey, roles ...RoleID) {
+	for _, role := range roles {
+		RemoveOwner(key, role)
 	}
 }
 

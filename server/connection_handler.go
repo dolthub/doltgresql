@@ -27,7 +27,9 @@ import (
 	"strings"
 	"sync/atomic"
 
+	"github.com/dolthub/dolt/go/libraries/doltcore/doltdb"
 	"github.com/dolthub/dolt/go/libraries/doltcore/sqle/dsess"
+	"github.com/dolthub/dolt/go/libraries/doltcore/sqle/resolve"
 	"github.com/dolthub/dolt/go/libraries/doltcore/sqlserver"
 	"github.com/dolthub/go-mysql-server/sql"
 	"github.com/dolthub/vitess/go/mysql"
@@ -41,6 +43,7 @@ import (
 	"github.com/dolthub/doltgresql/postgres/parser/parser"
 	"github.com/dolthub/doltgresql/postgres/parser/sem/tree"
 	"github.com/dolthub/doltgresql/server/ast"
+	"github.com/dolthub/doltgresql/server/auth"
 	pgexprs "github.com/dolthub/doltgresql/server/expression"
 	"github.com/dolthub/doltgresql/server/node"
 	pgtypes "github.com/dolthub/doltgresql/server/types"
@@ -435,10 +438,10 @@ func (h *ConnectionHandler) handleQueryOutsideEngine(query ConvertedQuery) (hand
 		for _, ddlAction := range stmt.Statements {
 			if ddlAction.User.Name != "" {
 				if len(stmt.Statements) == 1 {
-					return true, true, h.handleAlterTableOwner(stmt.Table, ddlAction.User.Name)
+					return true, true, h.handleAlterTableOwner(stmt.Table, ddlAction.User.Name, query)
 				} else {
-					return false, true, fmt.Errorf("unable to handle ALTER TABLE OWNER actions mixed with " +
-						"other ALTER actions in the same statement")
+					return true, true, fmt.Errorf("unable to handle ALTER TABLE OWNER actions " +
+						"mixed with other ALTER actions in the same statement")
 				}
 			}
 		}
@@ -788,8 +791,79 @@ func (h *ConnectionHandler) handleCopyFail(_ *pgproto3.CopyFail) (stop bool, end
 // to be handled at the Doltgres layer.
 // TODO: In the future, it would be cleaner to create an optional interface that providers could implement
 // that would allow them to plug in handling for these types of ownership operations.
-func (h *ConnectionHandler) handleAlterTableOwner(tableName sqlparser.TableName, userName string) error {
-	return fmt.Errorf("ALTER TABLE OWNER is not yet supported")
+func (h *ConnectionHandler) handleAlterTableOwner(tableName sqlparser.TableName, roleName string, query ConvertedQuery) (err error) {
+	sqlCtx, err := h.doltgresHandler.NewContext(context.Background(), h.mysqlConn, "")
+	if err != nil {
+		return err
+	}
+
+	// Assert that the connected user is a superuser
+	currentUser := auth.GetRole(sqlCtx.Client().User)
+	if !currentUser.IsValid() {
+		return fmt.Errorf(`unable to load role information for "%s"`, sqlCtx.Client().User)
+	}
+	if !currentUser.IsSuperUser {
+		return fmt.Errorf("only superusers can currently change table ownership")
+	}
+
+	if !tableName.DbQualifier.IsEmpty() {
+		if tableName.DbQualifier.String() != sqlCtx.GetCurrentDatabase() {
+			return fmt.Errorf("Targeting a different database " +
+				"other than the current database is not supported for ALTER TABLE OWNER")
+		}
+	}
+
+	// Search the search path to find the schema if no schema name was provided
+	schemaName := tableName.SchemaQualifier.String()
+	if tableName.SchemaQualifier.IsEmpty() {
+		doltSession := dsess.DSessFromSess(sqlCtx.Session)
+		roots, ok := doltSession.GetRoots(sqlCtx, sqlCtx.GetCurrentDatabase())
+		if !ok {
+			return fmt.Errorf("unable to get roots")
+		}
+		foundTableName, _, ok, err := resolve.TableWithSearchPath(
+			sqlCtx, roots.Working, tableName.Name.String())
+		if err != nil {
+			return err
+		}
+		if !ok {
+			return fmt.Errorf(`relation "%s" does not exist`, tableName.String())
+		}
+		schemaName = foundTableName.Schema
+	}
+
+	// Validate the table
+	table, err := core.GetSqlTableFromContext(sqlCtx, "", doltdb.TableName{
+		Schema: schemaName,
+		Name:   tableName.Name.String(),
+	})
+	if err != nil {
+		return err
+	}
+	if table == nil {
+		return fmt.Errorf(`relation "%s" does not exist`, tableName.String())
+	}
+
+	if !auth.RoleExists(roleName) {
+		return fmt.Errorf("role %s does not exist", roleName)
+	}
+	role := auth.GetRole(roleName)
+
+	auth.LockWrite(func() {
+		auth.SetOwners(auth.OwnershipKey{
+			PrivilegeObject: auth.PrivilegeObject_TABLE,
+			Schema:          schemaName,
+			Name:            tableName.Name.String(),
+		}, role.ID())
+		err = auth.PersistChanges()
+	})
+	if err != nil {
+		return err
+	}
+
+	return h.send(&pgproto3.CommandComplete{
+		CommandTag: []byte(query.StatementTag),
+	})
 }
 
 // startTransaction checks to see if the current session has a transaction started yet or not, and if not,

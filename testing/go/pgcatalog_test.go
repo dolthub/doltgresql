@@ -3517,7 +3517,7 @@ func TestPgTables(t *testing.T) {
 			Assertions: []ScriptTestAssertion{
 				{
 					Query:    `SELECT * FROM "pg_catalog"."pg_tables" WHERE tablename='testing';`,
-					Expected: []sql.Row{{"testschema", "testing", "", "", "t", "f", "f", "f"}},
+					Expected: []sql.Row{{"testschema", "testing", "postgres", "", "t", "f", "f", "f"}},
 				},
 				{
 					Query:    `SELECT count(*) FROM "pg_catalog"."pg_tables" WHERE schemaname='pg_catalog';`,

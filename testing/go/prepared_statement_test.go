@@ -409,7 +409,7 @@ var pgCatalogTests = []ScriptTest{
 			{
 				Query:    `SELECT * FROM "pg_catalog"."pg_tables" WHERE tablename=$1;`,
 				BindVars: []any{"testing"},
-				Expected: []sql.Row{{"public", "testing", "", "", "t", "f", "f", "f"}},
+				Expected: []sql.Row{{"public", "testing", "postgres", "", "t", "f", "f", "f"}},
 			},
 			{
 				Query:    `SELECT count(*) FROM "pg_catalog"."pg_tables" WHERE schemaname=$1;`,

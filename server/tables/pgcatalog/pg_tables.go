@@ -15,10 +15,12 @@
 package pgcatalog
 
 import (
+	"fmt"
 	"io"
 
 	"github.com/dolthub/go-mysql-server/sql"
 
+	"github.com/dolthub/doltgresql/server/auth"
 	"github.com/dolthub/doltgresql/server/tables"
 	pgtypes "github.com/dolthub/doltgresql/server/types"
 	"github.com/dolthub/doltgresql/server/types/oid"
@@ -125,11 +127,33 @@ func (iter *pgTablesRowIter) Next(ctx *sql.Context) (sql.Row, error) {
 		}
 	}
 
+	var err error
+	ownerName := ""
+	auth.LockRead(func() {
+		owners := auth.GetOwners(auth.OwnershipKey{
+			PrivilegeObject: auth.PrivilegeObject_TABLE,
+			Schema:          schema,
+			Name:            table.Name(),
+		})
+		// TODO: Current auth code allows multiple owners for entities. For now, while we discuss
+		//       that approach, we're just grabbing the first owner.
+		if len(owners) > 0 {
+			role, ok := auth.GetRoleById(owners[0])
+			if !ok {
+				err = fmt.Errorf("unable to load role with id %d", owners[0])
+			}
+			ownerName = role.Name
+		}
+	})
+	if err != nil {
+		return nil, err
+	}
+
 	// TODO: Implement the rest of these pg_tables columns
 	return sql.Row{
 		schema,       // schemaname
 		table.Name(), // tablename
-		"",           // tableowner
+		ownerName,    // tableowner
 		"",           // tablespace
 		hasIndexes,   // hasindexes
 		false,        // hasrules

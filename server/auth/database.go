@@ -42,10 +42,16 @@ type Database struct {
 	tablePrivileges *TablePrivileges
 }
 
-// ClearDatabase clears the internal database, leaving only the default users. This is primarily for use by tests.
+// ClearDatabase clears the internal database, leaving only the default "public" and "postgres" users. This is
+// intended only for use by tests.
 func ClearDatabase() {
 	clear(globalDatabase.rolesByName)
-	clear(globalDatabase.rolesByID)
+	for name, roleId := range globalDatabase.rolesByName {
+		if name != "public" && name != "postgres" {
+			delete(globalDatabase.rolesByName, name)
+			delete(globalDatabase.rolesByID, roleId)
+		}
+	}
 	dbInitDefault()
 }
 
@@ -66,6 +72,14 @@ func GetRole(name string) Role {
 		return createDefaultRoleWithoutID(name)
 	}
 	return globalDatabase.rolesByID[roleID]
+}
+
+// GetRoleById returns the role with the given |id|. If a role with that ID exists, |ok| will be
+// true, otherwise it will be false. Note that this behavior is different from GetRole(string), since
+// we cannot create and return a default role without a name.
+func GetRoleById(id RoleID) (role Role, ok bool) {
+	role, ok = globalDatabase.rolesByID[id]
+	return role, ok
 }
 
 // RenameRole renames the role with the old name to the new name. If the role does not exist, then this is a no-op.

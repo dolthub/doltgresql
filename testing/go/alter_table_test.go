@@ -357,25 +357,58 @@ func TestAlterTable(t *testing.T) {
 			},
 		},
 		{
-			// TODO: Table ownership metadata is not supported yet
-			Skip: true,
 			Name: "Alter Table Owner",
 			SetUpScript: []string{
 				"CREATE TABLE test1 (a INT, b smallint);",
+				"CREATE TABLE test2 (a INT, b smallint);",
 				"CREATE USER user1;",
+				"CREATE DATABASE db2;",
 			},
 			Assertions: []ScriptTestAssertion{
 				{
-					Query:    "SELECT tableowner FROM pg_tables WHERE tablename = 'test1';",
-					Expected: []sql.Row{{"postgres"}},
+					Query:    "SELECT tableowner FROM pg_tables WHERE tablename in ('test1', 'test2');",
+					Expected: []sql.Row{{"postgres"}, {"postgres"}},
 				},
 				{
+					// If the table is in another database, an error is returned
+					Query:       "ALTER TABLE db2.public.t1 OWNER TO user1;",
+					ExpectedErr: "different database other than the current database is not supported",
+				},
+				{
+					// If the table doesn't exist, an error is returned
+					Query:       "ALTER TABLE doesnotexist OWNER TO user1;",
+					ExpectedErr: "does not exist",
+				},
+				{
+					// If the table doesn't exist, an error is returned
+					Query:       "ALTER TABLE public.doesnotexist OWNER TO user1;",
+					ExpectedErr: "does not exist",
+				},
+				{
+					// If the user doesn't exist, an error is returned
+					Query:       "ALTER TABLE public.test1 OWNER TO doesnotexist;",
+					ExpectedErr: "does not exist",
+				},
+				{
+					// With no schema specified, the search path will be used to find the table
 					Query:    "ALTER TABLE test1 OWNER TO user1;",
 					Expected: []sql.Row{},
 				},
 				{
 					Query:    "SELECT tableowner FROM pg_tables WHERE tablename = 'test1';",
 					Expected: []sql.Row{{"user1"}},
+				},
+				{
+					Query:    "ALTER TABLE public.test2 OWNER TO user1;",
+					Expected: []sql.Row{},
+				},
+				{
+					Query:    "SELECT tableowner FROM pg_tables WHERE tablename = 'test2';",
+					Expected: []sql.Row{{"user1"}},
+				},
+				{
+					Query:       "alter table test1 add column c1 varchar(200), owner to user1;",
+					ExpectedErr: "ALTER TABLE OWNER actions mixed with other ALTER actions",
 				},
 			},
 		},
