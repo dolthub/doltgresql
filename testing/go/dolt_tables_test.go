@@ -1933,6 +1933,10 @@ func TestUserSpaceDoltTables(t *testing.T) {
 					Expected: []sql.Row{{"myview"}},
 				},
 				{
+					Query:    `SELECT * FROM public.myview`,
+					Expected: []sql.Row{{4}},
+				},
+				{
 					Query:       `SELECT name FROM other.dolt_schemas`,
 					ExpectedErr: "database schema not found",
 				},
@@ -1973,6 +1977,14 @@ func TestUserSpaceDoltTables(t *testing.T) {
 				{
 					Query:    "SET search_path = 'newschema'",
 					Expected: []sql.Row{},
+				},
+				{
+					Query:       `SELECT * FROM myview`,
+					ExpectedErr: "table not found: myview",
+				},
+				{
+					Query:    `SELECT * FROM public.myview`,
+					Expected: []sql.Row{{4}},
 				},
 				{
 					Query:    `CREATE VIEW testView AS SELECT 1 + 1`,
@@ -2023,19 +2035,20 @@ func TestUserSpaceDoltTables(t *testing.T) {
 					ExpectedErr: "the view postgres.myview does not exist",
 				},
 				{
-					Skip:     true, // TODO: Should work
 					Query:    "DROP VIEW public.myView",
 					Expected: []sql.Row{},
 				},
 				{
-					Skip:     true, // TODO: Adds to current schema instead of public schema
+					Query:    `SELECT name FROM public.dolt_schemas`,
+					Expected: []sql.Row{},
+				},
+				{
 					Query:    "create view public.myNewView as select 3 + 3",
 					Expected: []sql.Row{},
 				},
 				{
-					Skip:     true,
 					Query:    `SELECT name FROM public.dolt_schemas`,
-					Expected: []sql.Row{{"myview", "mynewview"}},
+					Expected: []sql.Row{{"mynewview"}},
 				},
 				{
 					Query:    `SELECT name FROM dolt_schemas`,
@@ -2054,6 +2067,45 @@ func TestUserSpaceDoltTables(t *testing.T) {
 					Expected: []sql.Row{
 						{"", "newschema.dolt_schemas", "added", 1, 1},
 					},
+				},
+				// Test same view name on different schemas
+				{
+					Query:    "SET search_path = 'public'",
+					Expected: []sql.Row{},
+				},
+				{
+					Query:    `CREATE VIEW testView AS SELECT 4 + 4`,
+					Expected: []sql.Row{},
+				},
+				{
+					Query: `SELECT name, fragment FROM dolt_schemas`,
+					Expected: []sql.Row{
+						{"mynewview", "create view public.myNewView as select 3 + 3"},
+						{"testview", "CREATE VIEW testView AS SELECT 4 + 4"},
+					},
+				},
+				{
+					Query:    `SELECT name, fragment FROM newschema.dolt_schemas`,
+					Expected: []sql.Row{{"testview", "CREATE VIEW testView AS SELECT 1 + 1"}},
+				},
+				{
+					Query: `SELECT name, fragment FROM dolt_schemas`,
+					Expected: []sql.Row{
+						{"mynewview", "create view public.myNewView as select 3 + 3"},
+						{"testview", "CREATE VIEW testView AS SELECT 4 + 4"},
+					},
+				},
+				{
+					Query:    "DROP VIEW newschema.testView",
+					Expected: []sql.Row{},
+				},
+				{
+					Query:    `SELECT name FROM newschema.dolt_schemas`,
+					Expected: []sql.Row{},
+				},
+				{
+					Query:    `SELECT name FROM dolt_schemas`,
+					Expected: []sql.Row{{"mynewview"}, {"testview"}},
 				},
 			},
 		},
