@@ -33,19 +33,15 @@ func nodeValuesClause(ctx *Context, node *tree.ValuesClause) (*vitess.Select, er
 		}
 		valTuples[i] = vitess.ValTuple(exprs)
 	}
-	//TODO: ValuesStatement might need to be aliased
-	//TODO: is the SelectExprs necessary?
 	return &vitess.Select{
 		SelectExprs: vitess.SelectExprs{
-			&vitess.StarExpr{
-				TableName: vitess.TableName{
-					Name: vitess.NewTableIdent("*"),
-				},
-			},
+			&vitess.StarExpr{},
 		},
 		From: vitess.TableExprs{
-			&vitess.ValuesStatement{
-				Rows: valTuples,
+			&vitess.AliasedTableExpr{
+				Expr: &vitess.ValuesStatement{
+					Rows: valTuples,
+				},
 			},
 		},
 	}, nil

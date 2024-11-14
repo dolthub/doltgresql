@@ -97,6 +97,9 @@ func (h *AuthorizationHandler) HandleAuth(ctx *sql.Context, aqs sql.Authorizatio
 
 	var privileges []Privilege
 	switch auth.AuthType {
+	case AuthType_IGNORE:
+		// This means that authorization is being handled elsewhere (such as a child or parent), and should be ignored here
+		return nil
 	case AuthType_DELETE:
 		privileges = []Privilege{Privilege_DELETE}
 	case AuthType_INSERT:

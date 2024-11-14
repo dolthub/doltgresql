@@ -577,7 +577,14 @@ func (t DoltgresType) Type() query.Type {
 		TypeCategory_InternalUseTypes:
 		return sqltypes.Text
 	case TypeCategory_DateTimeTypes:
-		return sqltypes.Text
+		switch oid.Oid(t.OID) {
+		case oid.T_date:
+			return sqltypes.Date
+		case oid.T_time:
+			return sqltypes.Time
+		default:
+			return sqltypes.Timestamp
+		}
 	case TypeCategory_NumericTypes:
 		switch oid.Oid(t.OID) {
 		case oid.T_float4:

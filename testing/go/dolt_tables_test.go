@@ -118,7 +118,6 @@ func TestUserSpaceDoltTables(t *testing.T) {
 			},
 			Assertions: []ScriptTestAssertion{
 				{
-					// TODO: WITH is not yet supported
 					Query: `WITH sorted_diffs_by_pk
 									AS (SELECT
 													"to_id",

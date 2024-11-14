@@ -23,6 +23,7 @@ import (
 	"github.com/dolthub/go-mysql-server/sql/expression"
 	"github.com/dolthub/go-mysql-server/sql/plan"
 	"github.com/dolthub/go-mysql-server/sql/transform"
+	"github.com/dolthub/go-mysql-server/sql/types"
 
 	pgexprs "github.com/dolthub/doltgresql/server/expression"
 	pgtypes "github.com/dolthub/doltgresql/server/types"
@@ -60,7 +61,12 @@ func AssignInsertCasts(ctx *sql.Context, a *analyzer.Analyzer, node sql.Node, sc
 		for rowIndex, rowExprs := range values.ExpressionTuples {
 			newValues[rowIndex] = make([]sql.Expression, len(rowExprs))
 			for columnIndex, colExpr := range rowExprs {
-				fromColType, ok := colExpr.Type().(pgtypes.DoltgresType)
+				// Null ColumnDefaultValues or empty DefaultValues are not properly typed in TypeSanitizer, so we must handle them here
+				colExprType := colExpr.Type()
+				if colExprType == nil || colExprType == types.Null {
+					colExprType = pgtypes.Unknown
+				}
+				fromColType, ok := colExprType.(pgtypes.DoltgresType)
 				if !ok {
 					return nil, transform.NewTree, fmt.Errorf("INSERT: non-Doltgres type found in values source: %s", fromColType.String())
 				}
