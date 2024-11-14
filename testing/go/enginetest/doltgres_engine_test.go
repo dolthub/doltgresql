@@ -477,10 +477,42 @@ func TestDeleteFrom(t *testing.T) {
 }
 
 func TestDeleteFromErrors(t *testing.T) {
-	t.Skip()
 	h := newDoltgresServerHarness(t)
 	defer h.Close()
-	enginetest.TestDeleteErrors(t, h)
+	
+	// These tests are overspecified to mysql-specific errors and include some syntax we don't support, so we redefine
+	// the subset we're interested in checking here
+	h.Setup(setup.MydbData, setup.MytableData, setup.TabletestData)
+	deleteScripts := []queries.ScriptTest{
+		{
+			Name: "DELETE FROM error cases",
+			Assertions: []queries.ScriptTestAssertion{
+				{
+					Query:          "DELETE FROM invalidtable WHERE x < 1;",
+					ExpectedErrStr: "table not found: invalidtable",
+				},
+				{
+					Query:          "DELETE FROM mytable WHERE z = 'dne';",
+					ExpectedErrStr: "column \"z\" could not be found in any table in scope",
+				},
+				{
+					Query:          "DELETE FROM mytable LIMIT -1;",
+					ExpectedErrStr: "LIMIT must be greater than or equal to 0",
+				},
+				{
+					Query:          "DELETE mytable WHERE i = 1;",
+					ExpectedErrStr: "syntax error",
+				},
+				{
+					Query:          "DELETE FROM (SELECT * FROM mytable) mytable WHERE i = 1;",
+					ExpectedErrStr: "syntax error",
+				},
+			},
+		},
+	}
+	for _, tt := range deleteScripts {
+		enginetest.TestScript(t, h, tt)
+	}
 }
 
 func TestSpatialDelete(t *testing.T) {

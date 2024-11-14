@@ -15,6 +15,8 @@
 package ast
 
 import (
+	"fmt"
+
 	vitess "github.com/dolthub/vitess/go/vt/sqlparser"
 
 	pgexprs "github.com/dolthub/doltgresql/server/expression"
@@ -43,11 +45,31 @@ func nodeLimit(ctx *Context, node *tree.Limit) (*vitess.Limit, error) {
 	// We need to remove the hard dependency, but for now, we'll just convert our literals to a vitess.SQLVal.
 	if injectedExpr, ok := count.(vitess.InjectedExpr); ok {
 		if literal, ok := injectedExpr.Expression.(*pgexprs.Literal); ok {
+			l := literal.Value()
+			limitValue, err := int64Value(l)
+			if err != nil {
+				return nil, err
+			}
+
+			if limitValue < 0 {
+				return nil, fmt.Errorf("LIMIT must be greater than or equal to 0")
+			}
+
 			count = literal.ToVitessLiteral()
 		}
 	}
 	if injectedExpr, ok := offset.(vitess.InjectedExpr); ok {
 		if literal, ok := injectedExpr.Expression.(*pgexprs.Literal); ok {
+			o := literal.Value()
+			offsetVal, err := int64Value(o)
+			if err != nil {
+				return nil, err
+			}
+
+			if offsetVal < 0 {
+				return nil, fmt.Errorf("OFFSET must be greater than or equal to 0")
+			}
+
 			offset = literal.ToVitessLiteral()
 		}
 	}
@@ -55,4 +77,24 @@ func nodeLimit(ctx *Context, node *tree.Limit) (*vitess.Limit, error) {
 		Offset:   offset,
 		Rowcount: count,
 	}, nil
+}
+
+// int64Value converts a literal value to an int64
+func int64Value(l any) (int64, error) {
+	var limitValue int64
+	switch l.(type) {
+	case int:
+		limitValue = int64(l.(int))
+	case int32:
+		limitValue = int64(l.(int32))
+	case int64:
+		limitValue = l.(int64)
+	case float64:
+		limitValue = int64(l.(float64))
+	case float32:
+		limitValue = int64(l.(float32))
+	default:
+		return 0, fmt.Errorf("unsupported limit value type %T", l)
+	}
+	return limitValue, nil
 }
