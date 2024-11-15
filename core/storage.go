@@ -183,7 +183,7 @@ func (r rootStorage) GetFeatureVersion() doltdb.FeatureVersion {
 // getAddressMap returns the address map from within this storage object.
 func (r rootStorage) getAddressMap(vrw types.ValueReadWriter, ns tree.NodeStore) (prolly.AddressMap, error) {
 	tbytes := r.srv.TablesBytes()
-	node, err := shim.NodeFromValue(types.SerialMessage(tbytes))
+	node, _, err := shim.NodeFromValue(types.SerialMessage(tbytes))
 	if err != nil {
 		return prolly.AddressMap{}, err
 	}
