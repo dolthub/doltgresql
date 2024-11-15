@@ -132,5 +132,23 @@ func TestInsert(t *testing.T) {
 				},
 			},
 		},
+		{
+			Name: "null and unspecified default values",
+			SetUpScript: []string{
+				"CREATE TABLE t (i INT DEFAULT NULL, j INT)",
+			},
+			Assertions: []ScriptTestAssertion{
+				{
+					Query:            "INSERT INTO t VALUES (default, default)",
+					SkipResultsCheck: true,
+				},
+				{
+					Query: "SELECT * FROM t",
+					Expected: []sql.Row{
+						{nil, nil},
+					},
+				},
+			},
+		},
 	})
 }

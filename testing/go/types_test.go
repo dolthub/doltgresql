@@ -42,6 +42,21 @@ var typesTests = []ScriptTest{
 		},
 	},
 	{
+		Name: "Bigint key",
+		SetUpScript: []string{
+			"CREATE TABLE t_bigint (id BIGINT primary key, v1 BIGINT);",
+			"INSERT INTO t_bigint VALUES (1, 123456789012345), (2, 987654321098765);",
+		},
+		Assertions: []ScriptTestAssertion{
+			{
+				Query: "SELECT * FROM t_bigint WHERE id = 1 ORDER BY id;",
+				Expected: []sql.Row{
+					{1, 123456789012345},
+				},
+			},
+		},
+	},
+	{
 		Name: "Bigint array type",
 		SetUpScript: []string{
 			"CREATE TABLE t_bigint (id INTEGER primary key, v1 BIGINT[]);",
@@ -71,6 +86,22 @@ var typesTests = []ScriptTest{
 				Expected: []sql.Row{
 					{1, []byte{0xDA}},
 					{2, []byte{0x2B}},
+				},
+			},
+		},
+	},
+	{
+		Name: "Bit key",
+		Skip: true,
+		SetUpScript: []string{
+			"CREATE TABLE t_bit (id BIT(8) primary key, v1 BIT(8));",
+			"INSERT INTO t_bit VALUES (B'11011010', B'11011010'), (B'00101011', B'00101011');",
+		},
+		Assertions: []ScriptTestAssertion{
+			{
+				Query: "SELECT * FROM t_bit WHERE id = B'11011010' ORDER BY id;",
+				Expected: []sql.Row{
+					{[]byte{0xDA}, []byte{0xDA}},
 				},
 			},
 		},
@@ -112,6 +143,23 @@ var typesTests = []ScriptTest{
 				Expected: []sql.Row{
 					{2, "f"},
 					{1, "t"},
+				},
+			},
+		},
+	},
+	{
+		Name: "Boolean key",
+		Skip: true, // blob/text column 'id' used in key specification without a key length
+		SetUpScript: []string{
+			"CREATE TABLE t_boolean (id boolean primary key, v1 BOOLEAN);",
+			"INSERT INTO t_boolean VALUES (true, true), (false, 'false')",
+		},
+		Assertions: []ScriptTestAssertion{
+			{
+				Query: "SELECT * FROM t_boolean where id ORDER BY id;",
+				Skip:  true, // Proper NULL-ordering has not yet been implemented
+				Expected: []sql.Row{
+					{"t", "t"},
 				},
 			},
 		},
@@ -190,6 +238,21 @@ var typesTests = []ScriptTest{
 		},
 	},
 	{
+		Name: "Bigserial key",
+		SetUpScript: []string{
+			"CREATE TABLE t_bigserial (id BIGSERIAL primary key, v1 BIGSERIAL);",
+			"INSERT INTO t_bigserial VALUES (123456789012345, 123456789012345), (987654321098765, 987654321098765);",
+		},
+		Assertions: []ScriptTestAssertion{
+			{
+				Query: "SELECT * FROM t_bigserial where ID = 987654321098765 ORDER BY id;",
+				Expected: []sql.Row{
+					{987654321098765, 987654321098765},
+				},
+			},
+		},
+	},
+	{
 		Name: "Bit varying type",
 		Skip: true,
 		SetUpScript: []string{
@@ -243,6 +306,22 @@ var typesTests = []ScriptTest{
 		},
 	},
 	{
+		Name: "Bytea key",
+		Skip: true, // blob/text column 'id' used in key specification without a key length
+		SetUpScript: []string{
+			"CREATE TABLE t_bytea (id BYTEA primary key, v1 BYTEA);",
+			"INSERT INTO t_bytea VALUES (E'\\\\xCAFEBABE', E'\\\\xDEADBEEF'), ('\\xBADD00D5', '\\xC0FFEE');",
+		},
+		Assertions: []ScriptTestAssertion{
+			{
+				Query: "SELECT * FROM t_bytea WHERE ID = E'\\\\xCAFEBABE' ORDER BY id;",
+				Expected: []sql.Row{
+					{[]byte{0xCA, 0xFE, 0xBA, 0xBE}, []byte{0xDE, 0xAD, 0xBE, 0xEF}},
+				},
+			},
+		},
+	},
+	{
 		Name: "Character type",
 		SetUpScript: []string{
 			"CREATE TABLE t_character (id INTEGER primary key, v1 CHARACTER(5));",
@@ -275,6 +354,22 @@ var typesTests = []ScriptTest{
 				Query: "SELECT char 'c' = char 'c' AS true;",
 				Expected: []sql.Row{
 					{"t"},
+				},
+			},
+		},
+	},
+	{
+		Name: "Character key",
+		Skip: true, // blob/text column 'id' used in key specification without a key length
+		SetUpScript: []string{
+			"CREATE TABLE t_character (id CHAR(5) primary key, v1 CHARACTER(5));",
+			"INSERT INTO t_character VALUES ('abcde', 'fghjk'), ('vwxyz', '12345')",
+		},
+		Assertions: []ScriptTestAssertion{
+			{
+				Query: "SELECT * FROM t_character WHERE ID = 'vwxyz' ORDER BY id;",
+				Expected: []sql.Row{
+					{"vwxyz", "12345"},
 				},
 			},
 		},
@@ -606,6 +701,21 @@ var typesTests = []ScriptTest{
 		},
 	},
 	{
+		Name: "Date key",
+		SetUpScript: []string{
+			"CREATE TABLE t_date (id DATE primary key, v1 DATE);",
+			"INSERT INTO t_date VALUES ('2025-01-01', '2023-01-01'), ('2026-01-01', '2023-02-02');",
+		},
+		Assertions: []ScriptTestAssertion{
+			{
+				Query: "SELECT * FROM t_date where Id = '2025-01-01' ORDER BY id;",
+				Expected: []sql.Row{
+					{"2025-01-01", "2023-01-01"},
+				},
+			},
+		},
+	},
+	{
 		Name: "Double precision type",
 		SetUpScript: []string{
 			"CREATE TABLE t_double_precision (id INTEGER primary key, v1 DOUBLE PRECISION);",
@@ -617,6 +727,21 @@ var typesTests = []ScriptTest{
 				Expected: []sql.Row{
 					{1, 123.456},
 					{2, 789.012},
+				},
+			},
+		},
+	},
+	{
+		Name: "Double precision key",
+		SetUpScript: []string{
+			"CREATE TABLE t_double_precision (id DOUBLE PRECISION primary key, v1 DOUBLE PRECISION);",
+			"INSERT INTO t_double_precision VALUES (456.789, 123.456), (123.456, 789.012);",
+		},
+		Assertions: []ScriptTestAssertion{
+			{
+				Query: "SELECT * FROM t_double_precision WHERE id = 456.789 ORDER BY id;",
+				Expected: []sql.Row{
+					{456.789, 123.456},
 				},
 			},
 		},
@@ -765,6 +890,22 @@ var typesTests = []ScriptTest{
 		},
 	},
 	{
+		Name: "Interval key",
+		Skip: true, // blob/text column 'id' used in key specification without a key length
+		SetUpScript: []string{
+			"CREATE TABLE t_interval (id interval primary key, v1 INTERVAL);",
+			"INSERT INTO t_interval VALUES ('1 hour', '1 day 3 hours'), ('2 days', '23 hours 30 minutes');",
+		},
+		Assertions: []ScriptTestAssertion{
+			{
+				Query: "SELECT * FROM t_interval WHERE id = '1 hour' ORDER BY id;",
+				Expected: []sql.Row{
+					{"01:00:00", "1 day 03:00:00"},
+				},
+			},
+		},
+	},
+	{
 		Name: "Interval array type",
 		SetUpScript: []string{
 			"CREATE TABLE t_interval_array (id INTEGER primary key, v1 INTERVAL[]);",
@@ -777,6 +918,17 @@ var typesTests = []ScriptTest{
 					{1, `{"1 day 03:00:00","5 days 02:00:00"}`},
 					{2, `{"3 years 3 mons 700 days 133:17:36.789",200:00:00}`},
 				},
+			},
+		},
+	},
+	{
+		Name:        "JSON key",
+		SetUpScript: []string{},
+		Assertions: []ScriptTestAssertion{
+			{
+				Query:       "CREATE TABLE t_json (id JSON primary key, v1 JSON);",
+				ExpectedErr: "data type json has no default operator class for access method \"btree\"",
+				Skip:        true, // current error message is blob/text column 'id' used in key specification without a key length
 			},
 		},
 	},
@@ -1236,6 +1388,22 @@ var typesTests = []ScriptTest{
 		},
 	},
 	{
+		Name: "Name key",
+		Skip: true, // blob/text column 'id' used in key specification without a key length
+		SetUpScript: []string{
+			"CREATE TABLE t_name (id NAME primary key, v1 NAME);",
+			"INSERT INTO t_name VALUES ('wxyz', 'abcdefghij'), ('abcd', 'klmnopqrst');",
+		},
+		Assertions: []ScriptTestAssertion{
+			{
+				Query: "SELECT * FROM t_name WHERE id = 'wxyz' ORDER BY id;",
+				Expected: []sql.Row{
+					{"wxyz", "abcdefghij"},
+				},
+			},
+		},
+	},
+	{
 		Name: "Name type, explicit casts",
 		SetUpScript: []string{
 			"CREATE TABLE t_name (id INTEGER primary key, v1 NAME);",
@@ -1395,6 +1563,22 @@ var typesTests = []ScriptTest{
 			{
 				Query:    "SELECT numeric '-10.00';",
 				Expected: []sql.Row{{Numeric("-10.00")}},
+			},
+		},
+	},
+	{
+		Name: "Numeric key",
+		Skip: true, // error decoding binary: Int.GobDecode: encoding version 57 not supported
+		SetUpScript: []string{
+			"CREATE TABLE t_numeric (id numeric(5,2) primary key, v1 NUMERIC(5,2));",
+			"INSERT INTO t_numeric VALUES (123.45, 67.89), (67.89, 100.3);",
+		},
+		Assertions: []ScriptTestAssertion{
+			{
+				Query: "SELECT * FROM t_numeric WHERE ID = 123.45 ORDER BY id;",
+				Expected: []sql.Row{
+					{Numeric("123.45"), Numeric("67.89")},
+				},
 			},
 		},
 	},
@@ -1777,6 +1961,21 @@ var typesTests = []ScriptTest{
 		},
 	},
 	{
+		Name: "Real key",
+		SetUpScript: []string{
+			"CREATE TABLE t_real (id REAL primary key, v1 REAL);",
+			"INSERT INTO t_real VALUES (123.875, 67.125), (67.125, 123.875);",
+		},
+		Assertions: []ScriptTestAssertion{
+			{
+				Query: "SELECT * FROM t_real WHERE ID = 123.875 ORDER BY id;",
+				Expected: []sql.Row{
+					{123.875, 67.125},
+				},
+			},
+		},
+	},
+	{
 		Name: "Real array type",
 		SetUpScript: []string{
 			"CREATE TABLE t_real (id INTEGER primary key, v1 REAL[]);",
@@ -2087,6 +2286,21 @@ var typesTests = []ScriptTest{
 		},
 	},
 	{
+		Name: "Smallint key",
+		SetUpScript: []string{
+			"CREATE TABLE t_smallint (id smallint primary key, v1 SMALLINT);",
+			"INSERT INTO t_smallint VALUES (1, 42), (2, 99);",
+		},
+		Assertions: []ScriptTestAssertion{
+			{
+				Query: "SELECT * FROM t_smallint WHERE ID = 1 ORDER BY id;",
+				Expected: []sql.Row{
+					{1, 42},
+				},
+			},
+		},
+	},
+	{
 		Name: "Smallint array type",
 		SetUpScript: []string{
 			"CREATE TABLE t_smallint (id INTEGER primary key, v1 SMALLINT[]);",
@@ -2119,6 +2333,21 @@ var typesTests = []ScriptTest{
 		},
 	},
 	{
+		Name: "Smallserial key",
+		SetUpScript: []string{
+			"CREATE TABLE t_smallserial (id smallserial primary key, v1 SMALLSERIAL);",
+			"INSERT INTO t_smallserial (v1) VALUES (42), (99);",
+		},
+		Assertions: []ScriptTestAssertion{
+			{
+				Query: "SELECT * FROM t_smallserial WHERE ID = 1 ORDER BY id;",
+				Expected: []sql.Row{
+					{1, 42},
+				},
+			},
+		},
+	},
+	{
 		Name: "Serial type",
 		SetUpScript: []string{
 			"CREATE TABLE t_serial (id SERIAL primary key, v1 SERIAL);",
@@ -2129,6 +2358,12 @@ var typesTests = []ScriptTest{
 				Query: "SELECT * FROM t_serial ORDER BY id;",
 				Expected: []sql.Row{
 					{1, 123},
+					{2, 456},
+				},
+			},
+			{
+				Query: "SELECT * FROM t_serial WHERE ID = 2 ORDER BY id;",
+				Expected: []sql.Row{
 					{2, 456},
 				},
 			},
@@ -2248,6 +2483,22 @@ var typesTests = []ScriptTest{
 		},
 	},
 	{
+		Name: "Text key",
+		Skip: true, //  blob/text column 'id' used in key specification without a key length
+		SetUpScript: []string{
+			"CREATE TABLE t_text (id TEXT primary key, v1 TEXT);",
+			"INSERT INTO t_text VALUES ('Hello', 'World'), ('goodbye', 'cruel world');",
+		},
+		Assertions: []ScriptTestAssertion{
+			{
+				Query: "SELECT * FROM t_text where id = 'goodbye' ORDER BY id;",
+				Expected: []sql.Row{
+					{"goodbye", "cruel world"},
+				},
+			},
+		},
+	},
+	{
 		Name: "Time without time zone type",
 		SetUpScript: []string{
 			"CREATE TABLE t_time_without_zone (id INTEGER primary key, v1 TIME);",
@@ -2283,6 +2534,22 @@ var typesTests = []ScriptTest{
 			{
 				Query:    "SELECT time without time zone '040506.789+08';",
 				Expected: []sql.Row{{"04:05:06.789"}},
+			},
+		},
+	},
+	{
+		Name: "Time without time zone key",
+		Skip: true, //  blob/text column 'id' used in key specification without a key length
+		SetUpScript: []string{
+			"CREATE TABLE t_time_without_zone (id TIME primary key, v1 TIME);",
+			"INSERT INTO t_time_without_zone VALUES ('12:34:56', '23:45:01'), ('23:45:01', '12:34:56');",
+		},
+		Assertions: []ScriptTestAssertion{
+			{
+				Query: "SELECT * FROM t_time_without_zone WHERE ID = '12:34:56' ORDER BY id;",
+				Expected: []sql.Row{
+					{"12:34:56", "23:45:01"},
+				},
 			},
 		},
 	},
@@ -2451,6 +2718,22 @@ var typesTests = []ScriptTest{
 			{
 				Query:    "select uuid 'a0eebc99-9c0b-4ef8-bb6d-6bb9bd380a11';",
 				Expected: []sql.Row{{"a0eebc99-9c0b-4ef8-bb6d-6bb9bd380a11"}},
+			},
+		},
+	},
+	{
+		Name: "Uuid key",
+		Skip: true, // blob/text column 'id' used in key specification without a key length
+		SetUpScript: []string{
+			"CREATE TABLE t_uuid (id UUID primary key, v1 UUID);",
+			"INSERT INTO t_uuid VALUES ('f47ac10b58cc4372a567-0e02b2c3d479', 'a0eebc99-9c0b-4ef8-bb6d-6bb9bd380a11'), ('a0eebc99-9c0b-4ef8-bb6d-6bb9bd380a11', 'f47ac10b58cc4372a567-0e02b2c3d479');",
+		},
+		Assertions: []ScriptTestAssertion{
+			{
+				Query: "SELECT * FROM t_uuid WHERE ID = 'f47ac10b58cc4372a567-0e02b2c3d479' ORDER BY id;",
+				Expected: []sql.Row{
+					{"f47ac10b58cc4372a567-0e02b2c3d479", "a0eebc99-9c0b-4ef8-bb6d-6bb9bd380a11"},
+				},
 			},
 		},
 	},
