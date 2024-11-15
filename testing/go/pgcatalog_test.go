@@ -3911,6 +3911,23 @@ func TestPgType(t *testing.T) {
 				},
 			},
 		},
+		{
+			Name: "pg_type with regproc",
+			Assertions: []ScriptTestAssertion{
+				{
+					Skip:     true, // TODO: use regproc type instead of text type.
+					Query:    `SELECT t1.oid, t1.typname, t1.typelem FROM pg_type AS t1 WHERE t1.typelem != 0 AND t1.typsubscript = 0;`,
+					Expected: []sql.Row{},
+				},
+				{
+					Skip: true, // TODO: use regproc type instead of text type.
+					Query: `SELECT t1.oid, t1.typname as basetype, t2.typname as arraytype, t2.typsubscript
+					FROM   pg_type t1 LEFT JOIN pg_type t2 ON (t1.typarray = t2.oid)
+					WHERE  t1.typarray <> 0 AND (t2.oid IS NULL OR t2.typsubscript <> 'array_subscript_handler'::regproc);`,
+					Expected: []sql.Row{},
+				},
+			},
+		},
 	})
 }
 

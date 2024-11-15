@@ -125,6 +125,9 @@ func (b *BinaryOperator) WithResolvedChildren(children []any) (any, error) {
 	}
 	funcName := "internal_binary_operator_func_" + b.operator.String()
 	compiledFunc := framework.GetBinaryFunction(b.operator).Compile(funcName, left, right)
+	if err := compiledFunc.StashedError(); err != nil {
+		return nil, err
+	}
 	if compiledFunc == nil {
 		return nil, fmt.Errorf("operator does not exist: %s %s %s",
 			left.Type().String(), b.operator.String(), right.Type().String())
