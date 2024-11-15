@@ -69,6 +69,11 @@ jobs:
           go test --timeout=20m ./... --count=1
           cp ../out/results.trackers ../out/results1.trackers
 
+      - name: Checkout DoltgreSQL
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha }}
+
       - name: Check result trackers
         id: check_trackers
         if: steps.merge_main.outputs.skip == 'false'
