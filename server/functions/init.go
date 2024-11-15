@@ -133,6 +133,7 @@ func Init() {
 	initPgIsInRecovery()
 	initPgPostmasterStartTime()
 	initPgRelationSize()
+	initPgGetSerialSequence()
 	initPgStatGetNumscans()
 	initPgTableIsVisible()
 	initPgTableSize()
