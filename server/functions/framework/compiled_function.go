@@ -20,6 +20,7 @@ import (
 
 	"github.com/dolthub/go-mysql-server/sql"
 	"github.com/dolthub/go-mysql-server/sql/expression"
+	"github.com/dolthub/vitess/go/sqltypes"
 	"github.com/dolthub/vitess/go/vt/proto/query"
 
 	pgtypes "github.com/dolthub/doltgresql/server/types"
@@ -702,6 +703,8 @@ func (c *CompiledFunction) analyzeParameters() (originalTypes []pgtypes.Doltgres
 			case query.Type_SET:
 				originalTypes[i] = pgtypes.Int64
 			case query.Type_NULL_TYPE:
+				originalTypes[i] = pgtypes.Unknown
+			case sqltypes.Expression:
 				originalTypes[i] = pgtypes.Unknown
 			default:
 				return nil, fmt.Errorf("encountered a type that does not conform to the DoltgresType interface: %T", param.Type())

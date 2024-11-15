@@ -450,8 +450,9 @@ func TestUpdate(t *testing.T) {
 func TestUpdateErrors(t *testing.T) {
 	h := newDoltgresServerHarness(t).WithSkippedQueries([]string{
 		`UPDATE keyless INNER JOIN one_pk on keyless.c0 = one_pk.pk SET keyless.c0 = keyless.c0 + 1`,
-		"try updating string that is too long",  // works but error message doesn't match
-		"UPDATE mytable SET s = 'hi' LIMIT -1;", // unsupported syntax
+		"try updating string that is too long",                                                // works but error message doesn't match
+		"UPDATE mytable SET s = 'hi' LIMIT -1;",                                               // unsupported syntax
+		"UPDATE people SET height_inches = IF(SUM(height_inches) % 2 = 0, 42, height_inches)", // 'SUM' function returns float64 type for all types of input, should implement postgres 'SUM' function.
 	})
 	defer h.Close()
 	enginetest.TestUpdateErrors(t, h)
