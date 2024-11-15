@@ -2096,7 +2096,11 @@ func TestUserSpaceDoltTables(t *testing.T) {
 					},
 				},
 				{
-					Query:    "DROP VIEW newschema.testView",
+					Query:    "DROP VIEW IF EXISTS noexist.testView",
+					Expected: []sql.Row{},
+				},
+				{
+					Query:    "DROP VIEW IF EXISTS newschema.testView",
 					Expected: []sql.Row{},
 				},
 				{
