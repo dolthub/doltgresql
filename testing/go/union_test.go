@@ -15,10 +15,10 @@
 package _go
 
 import (
-	"github.com/dolthub/go-mysql-server/sql"
-"testing"
+	"testing"
 
-	)
+	"github.com/dolthub/go-mysql-server/sql"
+)
 
 func TestUnion(t *testing.T) {
 	RunScripts(t, []ScriptTest{
@@ -53,6 +53,74 @@ func TestUnion(t *testing.T) {
 						{123},
 						{456},
 						{789},
+					},
+				},
+			},
+		},
+	})
+}
+
+func TestIntersect(t *testing.T) {
+	RunScripts(t, []ScriptTest{
+		{
+			Name: "intersect tests",
+			SetUpScript: []string{
+				`CREATE TABLE t1 (i INT PRIMARY KEY);`,
+				`CREATE TABLE t2 (j INT PRIMARY KEY);`,
+				`INSERT INTO t1 VALUES (1), (2), (3);`,
+				`INSERT INTO t2 VALUES (2), (3), (4);`,
+			},
+			Assertions: []ScriptTestAssertion{
+				{
+					Query: `SELECT * FROM t1 INTERSECT SELECT * FROM t2;`,
+					Expected: []sql.Row{
+						{2},
+						{3},
+					},
+				},
+				{
+					Query: `SELECT 123 INTERSECT SELECT 456;`,
+					Expected: []sql.Row{
+					},
+				},
+				{
+					Query: `SELECT * FROM (VALUES (123), (456)) a INTERSECT SELECT * FROM (VALUES (456), (789)) b;`,
+					Expected: []sql.Row{
+						{456},
+					},
+				},
+			},
+		},
+	})
+}
+
+func TestExcept(t *testing.T) {
+	RunScripts(t, []ScriptTest{
+		{
+			Name: "except tests",
+			SetUpScript: []string{
+				`CREATE TABLE t1 (i INT PRIMARY KEY);`,
+				`CREATE TABLE t2 (j INT PRIMARY KEY);`,
+				`INSERT INTO t1 VALUES (1), (2), (3);`,
+				`INSERT INTO t2 VALUES (2), (3), (4);`,
+			},
+			Assertions: []ScriptTestAssertion{
+				{
+					Query: `SELECT * FROM t1 EXCEPT SELECT * FROM t2;`,
+					Expected: []sql.Row{
+						{1},
+					},
+				},
+				{
+					Query: `SELECT 123 EXCEPT SELECT 456;`,
+					Expected: []sql.Row{
+						{123},
+					},
+				},
+				{
+					Query: `SELECT * FROM (VALUES (123), (456)) a EXCEPT SELECT * FROM (VALUES (456), (789)) b;`,
+					Expected: []sql.Row{
+						{123},
 					},
 				},
 			},
