@@ -92,6 +92,7 @@ func main() {
 	if len(trackersFrom) == len(trackersTo) {
 		// Handle regressions (which we'll display first)
 		foundAnyFailDiff := false
+		countRegression := 0
 		for trackerIdx := range trackersFrom {
 			// They're sorted, so this should always hold true.
 			// This will really only fail if the tests were updated.
@@ -105,55 +106,68 @@ func main() {
 			}
 			for _, trackerToItem := range trackersTo[trackerIdx].FailPartialItems {
 				if _, ok := fromFailItems[trackerToItem.Query]; !ok {
-					if !foundAnyFailDiff {
-						foundAnyFailDiff = true
-						sb.WriteString("\n## ${\\color{red}Regressions}$\n")
+					if countRegression <= 50 {
+						if !foundAnyFailDiff {
+							foundAnyFailDiff = true
+							sb.WriteString("\n## ${\\color{red}Regressions}$\n")
+						}
+						if !foundFileDiff {
+							foundFileDiff = true
+							sb.WriteString(fmt.Sprintf("### %s\n", trackersFrom[trackerIdx].File))
+						}
+						sb.WriteString(fmt.Sprintf("```\nQUERY:          %s\n", trackerToItem.Query))
+						if len(trackerToItem.ExpectedError) != 0 {
+							sb.WriteString(fmt.Sprintf("EXPECTED ERROR: %s\n", trackerToItem.ExpectedError))
+						}
+						if len(trackerToItem.UnexpectedError) != 0 {
+							sb.WriteString(fmt.Sprintf("RECEIVED ERROR: %s\n", trackerToItem.UnexpectedError))
+						}
+						for _, partial := range trackerToItem.PartialSuccess {
+							sb.WriteString(fmt.Sprintf("PARTIAL:        %s\n", partial))
+						}
+						sb.WriteString("```\n")
 					}
-					if !foundFileDiff {
-						foundFileDiff = true
-						sb.WriteString(fmt.Sprintf("### %s\n", trackersFrom[trackerIdx].File))
-					}
-					sb.WriteString(fmt.Sprintf("```\nQUERY:          %s\n", trackerToItem.Query))
-					if len(trackerToItem.ExpectedError) != 0 {
-						sb.WriteString(fmt.Sprintf("EXPECTED ERROR: %s\n", trackerToItem.ExpectedError))
-					}
-					if len(trackerToItem.UnexpectedError) != 0 {
-						sb.WriteString(fmt.Sprintf("RECEIVED ERROR: %s\n", trackerToItem.UnexpectedError))
-					}
-					for _, partial := range trackerToItem.PartialSuccess {
-						sb.WriteString(fmt.Sprintf("PARTIAL:        %s\n", partial))
-					}
-					sb.WriteString("```\n")
+					countRegression += 1
 				}
 			}
 		}
-		//// Handle progressions (which we'll display second)
-		//foundAnySuccessDiff := false
-		//for trackerIdx := range trackersFrom {
-		//	// They're sorted, so this should always hold true.
-		//	// This will really only fail if the tests were updated.
-		//	if trackersFrom[trackerIdx].File != trackersTo[trackerIdx].File {
-		//		continue
-		//	}
-		//	foundFileDiff := false
-		//	fromSuccessItems := make(map[string]struct{})
-		//	for _, trackerFromItem := range trackersFrom[trackerIdx].SuccessItems {
-		//		fromSuccessItems[trackerFromItem.Query] = struct{}{}
-		//	}
-		//	for _, trackerToItem := range trackersTo[trackerIdx].SuccessItems {
-		//		if _, ok := fromSuccessItems[trackerToItem.Query]; !ok {
-		//			if !foundAnySuccessDiff {
-		//				foundAnySuccessDiff = true
-		//				sb.WriteString("\n## ${\\color{lightgreen}Progressions}$\n")
-		//			}
-		//			if !foundFileDiff {
-		//				foundFileDiff = true
-		//				sb.WriteString(fmt.Sprintf("### %s\n", trackersFrom[trackerIdx].File))
-		//			}
-		//			sb.WriteString(fmt.Sprintf("```\nQUERY: %s\n```\n", trackerToItem.Query))
-		//		}
-		//	}
-		//}
+		if countRegression > 0 {
+			sb.WriteString(fmt.Sprintf("\n## ${\\color{red}Total Regressions: %v}$\n", countRegression))
+		}
+		// Handle progressions (which we'll display second)
+		foundAnySuccessDiff := false
+		countProgression := 0
+		for trackerIdx := range trackersFrom {
+			// They're sorted, so this should always hold true.
+			// This will really only fail if the tests were updated.
+			if trackersFrom[trackerIdx].File != trackersTo[trackerIdx].File {
+				continue
+			}
+			foundFileDiff := false
+			fromSuccessItems := make(map[string]struct{})
+			for _, trackerFromItem := range trackersFrom[trackerIdx].SuccessItems {
+				fromSuccessItems[trackerFromItem.Query] = struct{}{}
+			}
+			for _, trackerToItem := range trackersTo[trackerIdx].SuccessItems {
+				if _, ok := fromSuccessItems[trackerToItem.Query]; !ok {
+					if countProgression <= 50 {
+						if !foundAnySuccessDiff {
+							foundAnySuccessDiff = true
+							sb.WriteString("\n## ${\\color{lightgreen}Progressions}$\n")
+						}
+						if !foundFileDiff {
+							foundFileDiff = true
+							sb.WriteString(fmt.Sprintf("### %s\n", trackersFrom[trackerIdx].File))
+						}
+						sb.WriteString(fmt.Sprintf("```\nQUERY: %s\n```\n", trackerToItem.Query))
+					}
+					countProgression += 1
+				}
+			}
+		}
+		if countProgression > 0 {
+			sb.WriteString(fmt.Sprintf("\n## ${\\color{lightgreen}Total Progressions: %v}$\n", countProgression))
+		}
 	}
 	sb.WriteString("[^1]: These are tests that we're marking as `Successful`, however they do not match the expected output in some way. This is due to small differences, such as different wording on the error messages, or the column names being incorrect while the data itself is correct.")
 	fmt.Println(sb.String())
