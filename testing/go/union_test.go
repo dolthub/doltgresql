@@ -79,9 +79,8 @@ func TestIntersect(t *testing.T) {
 					},
 				},
 				{
-					Query: `SELECT 123 INTERSECT SELECT 456;`,
-					Expected: []sql.Row{
-					},
+					Query:    `SELECT 123 INTERSECT SELECT 456;`,
+					Expected: []sql.Row{},
 				},
 				{
 					Query: `SELECT * FROM (VALUES (123), (456)) a INTERSECT SELECT * FROM (VALUES (456), (789)) b;`,
