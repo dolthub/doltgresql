@@ -101,9 +101,11 @@ func nodeCreateTable(ctx *Context, node *tree.CreateTable) (*vitess.DDL, error) 
 		}
 
 		// GMS does not support PARTITION BY, so we parse it and ignore it
-		ddl.TableSpec.PartitionOpt = &vitess.PartitionOption{
-			PartitionType: string(node.PartitionBy.Type),
-			Expr:          vitess.NewColName(string(node.PartitionBy.Elems[0].Column)),
+		if ddl.TableSpec != nil {
+			ddl.TableSpec.PartitionOpt = &vitess.PartitionOption{
+				PartitionType: string(node.PartitionBy.Type),
+				Expr:          vitess.NewColName(string(node.PartitionBy.Elems[0].Column)),
+			}
 		}
 	}
 	if node.PartitionOf.Table() != "" {
