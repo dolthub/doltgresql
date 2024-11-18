@@ -69,15 +69,6 @@ jobs:
           go test --timeout=20m ./... --count=1
           cp ../out/results.trackers ../out/results1.trackers
 
-      - name: Switch to PR branch
-        id: checkout_doltgresql_pr
-        if: steps.merge_main.outputs.skip == 'false'
-        continue-on-error: true
-        run: |
-          git reset --hard
-          git checkout ${{ github.event.pull_request.head.sha }}
-          ./postgres/parser/build.sh
-
       - name: Check result trackers
         id: check_trackers
         if: steps.merge_main.outputs.skip == 'false'
