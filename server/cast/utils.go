@@ -19,6 +19,7 @@ import (
 	"strings"
 	"unicode/utf8"
 
+	"github.com/lib/pq/oid"
 	"gopkg.in/src-d/go-errors.v1"
 
 	pgtypes "github.com/dolthub/doltgresql/server/types"
@@ -30,33 +31,38 @@ var errOutOfRange = errors.NewKind("%s out of range")
 // handleStringCast handles casts to the string types that may have length restrictions. Returns an error if other types
 // are passed in. Will always return the correct string, even on error, as some contexts may ignore the error.
 func handleStringCast(str string, targetType pgtypes.DoltgresType) (string, error) {
-	switch targetType := targetType.(type) {
-	case pgtypes.CharType:
-		if targetType.IsUnbounded() {
+	switch oid.Oid(targetType.OID) {
+	case oid.T_bpchar:
+		if targetType.AttTypMod == -1 {
 			return str, nil
-		} else {
-			str, runeLength := truncateString(str, targetType.Length)
-			if runeLength > targetType.Length {
-				return str, fmt.Errorf("value too long for type %s", targetType.String())
-			} else if runeLength < targetType.Length {
-				return str + strings.Repeat(" ", int(targetType.Length-runeLength)), nil
-			} else {
-				return str, nil
-			}
 		}
-	case pgtypes.InternalCharType:
+		maxChars, err := pgtypes.GetTypModFromCharLength("char", targetType.AttTypMod)
+		if err != nil {
+			return "", err
+		}
+		length := uint32(maxChars)
+		str, runeLength := truncateString(str, length)
+		if runeLength > length {
+			return str, fmt.Errorf("value too long for type %s", targetType.String())
+		} else if runeLength < length {
+			return str + strings.Repeat(" ", int(length-runeLength)), nil
+		} else {
+			return str, nil
+		}
+	case oid.T_char:
 		str, _ := truncateString(str, pgtypes.InternalCharLength)
 		return str, nil
-	case pgtypes.NameType:
+	case oid.T_name:
 		// Name seems to never throw an error, regardless of the context or how long the input is
-		str, _ := truncateString(str, targetType.Length)
+		str, _ := truncateString(str, uint32(targetType.TypLength))
 		return str, nil
-	case pgtypes.VarCharType:
-		if targetType.IsUnbounded() {
+	case oid.T_varchar:
+		if targetType.AttTypMod == -1 {
 			return str, nil
 		}
-		str, runeLength := truncateString(str, targetType.MaxChars)
-		if runeLength > targetType.MaxChars {
+		length := uint32(pgtypes.GetCharLengthFromTypmod(targetType.AttTypMod))
+		str, runeLength := truncateString(str, length)
+		if runeLength > length {
 			return str, fmt.Errorf("value too long for type %s", targetType.String())
 		} else {
 			return str, nil

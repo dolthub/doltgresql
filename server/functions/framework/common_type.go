@@ -17,54 +17,56 @@ package framework
 import (
 	"fmt"
 
+	"github.com/lib/pq/oid"
+
 	pgtypes "github.com/dolthub/doltgresql/server/types"
 )
 
 // FindCommonType returns the common type that given types can convert to.
 // https://www.postgresql.org/docs/15/typeconv-union-case.html
-func FindCommonType(types []pgtypes.DoltgresTypeBaseID) (pgtypes.DoltgresTypeBaseID, error) {
-	var candidateType = pgtypes.DoltgresTypeBaseID_Unknown
+func FindCommonType(types []pgtypes.DoltgresType) (pgtypes.DoltgresType, error) {
+	var candidateType = pgtypes.Unknown
 	var fail = false
-	for _, typBaseID := range types {
-		if typBaseID == candidateType {
+	for _, typ := range types {
+		if typ.OID == candidateType.OID {
 			continue
-		} else if candidateType == pgtypes.DoltgresTypeBaseID_Unknown {
-			candidateType = typBaseID
+		} else if candidateType.OID == uint32(oid.T_unknown) {
+			candidateType = typ
 		} else {
-			candidateType = pgtypes.DoltgresTypeBaseID_Unknown
+			candidateType = pgtypes.Unknown
 			fail = true
 		}
 	}
 	if !fail {
-		if candidateType == pgtypes.DoltgresTypeBaseID_Unknown {
-			return pgtypes.DoltgresTypeBaseID_Text, nil
+		if candidateType.OID == uint32(oid.T_unknown) {
+			return pgtypes.Text, nil
 		}
 		return candidateType, nil
 	}
-	for _, typBaseID := range types {
-		if candidateType == pgtypes.DoltgresTypeBaseID_Unknown {
-			candidateType = typBaseID
+	for _, typ := range types {
+		if candidateType.OID == uint32(oid.T_unknown) {
+			candidateType = typ
 		}
-		if typBaseID != pgtypes.DoltgresTypeBaseID_Unknown && candidateType.GetTypeCategory() != typBaseID.GetTypeCategory() {
-			return 0, fmt.Errorf("types %s and %s cannot be matched", candidateType.GetRepresentativeType().String(), typBaseID.GetRepresentativeType().String())
+		if typ.OID != uint32(oid.T_unknown) && candidateType.TypCategory != typ.TypCategory {
+			return pgtypes.DoltgresType{}, fmt.Errorf("types %s and %s cannot be matched", candidateType.String(), typ.String())
 		}
 	}
 
 	var preferredTypeFound = false
-	for _, typBaseID := range types {
-		if typBaseID == pgtypes.DoltgresTypeBaseID_Unknown {
+	for _, typ := range types {
+		if typ.OID == uint32(oid.T_unknown) {
 			continue
-		} else if GetImplicitCast(typBaseID, candidateType) != nil {
+		} else if GetImplicitCast(typ, candidateType) != nil {
 			continue
-		} else if GetImplicitCast(candidateType, typBaseID) == nil {
-			return 0, fmt.Errorf("cannot find implicit cast function from %s to %s", candidateType.String(), typBaseID.String())
+		} else if GetImplicitCast(candidateType, typ) == nil {
+			return pgtypes.DoltgresType{}, fmt.Errorf("cannot find implicit cast function from %s to %s", candidateType.String(), typ.String())
 		} else if !preferredTypeFound {
-			if candidateType.GetRepresentativeType().IsPreferredType() {
-				candidateType = typBaseID
+			if candidateType.IsPreferred {
+				candidateType = typ
 				preferredTypeFound = true
 			}
 		} else {
-			return 0, fmt.Errorf("found another preferred candidate type")
+			return pgtypes.DoltgresType{}, fmt.Errorf("found another preferred candidate type")
 		}
 	}
 	return candidateType, nil

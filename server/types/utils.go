@@ -15,104 +15,119 @@
 package types
 
 import (
+	"bytes"
 	"fmt"
-	"strings"
-	"time"
-	"unicode/utf8"
 
 	"github.com/dolthub/go-mysql-server/sql"
 	"github.com/dolthub/go-mysql-server/sql/types"
 	"github.com/dolthub/vitess/go/vt/proto/query"
+	"gopkg.in/src-d/go-errors.v1"
+
+	"github.com/dolthub/doltgresql/utils"
 )
 
-// QuoteString will quote the string according to the type given. This means that some types will quote, and others will
-// not, or they may quote in a special way that is unique to that type.
-func QuoteString(baseID DoltgresTypeBaseID, str string) string {
-	switch baseID {
-	case DoltgresTypeBaseID_Char, DoltgresTypeBaseID_Name, DoltgresTypeBaseID_Text, DoltgresTypeBaseID_VarChar, DoltgresTypeBaseID_Unknown:
-		return `'` + strings.ReplaceAll(str, `'`, `''`) + `'`
-	default:
-		return str
-	}
-}
+// ErrTypeAlreadyExists is returned when creating given type when it already exists.
+var ErrTypeAlreadyExists = errors.NewKind(`type "%s" already exists`)
 
-// truncateString returns a string that has been truncated to the given length. Uses the rune count rather than the
-// byte count. Returns the input string if it's smaller than the length. Also returns the rune count of the string.
-func truncateString(val string, runeLimit uint32) (string, uint32) {
-	runeLength := uint32(utf8.RuneCountInString(val))
-	if runeLength > runeLimit {
-		// TODO: figure out if there's a faster way to truncate based on rune count
-		startString := val
-		for i := uint32(0); i < runeLimit; i++ {
-			_, size := utf8.DecodeRuneInString(val)
-			val = val[size:]
-		}
-		return startString[:len(startString)-len(val)], runeLength
-	}
-	return val, runeLength
-}
+// ErrTypeDoesNotExist is returned when using given type that does not exist.
+var ErrTypeDoesNotExist = errors.NewKind(`type "%s" does not exist`)
+
+// ErrUnhandledType is returned when the type of value does not match given type.
+var ErrUnhandledType = errors.NewKind(`%s: unhandled type: %T`)
+
+// ErrInvalidSyntaxForType is returned when the type of value is invalid for given type.
+var ErrInvalidSyntaxForType = errors.NewKind(`invalid input syntax for type %s: %q`)
+
+// ErrValueIsOutOfRangeForType is returned when the value is out-of-range for given type.
+var ErrValueIsOutOfRangeForType = errors.NewKind(`value %q is out of range for type %s`)
+
+// ErrTypmodArrayMustBe1D is returned when type modifier value is empty array.
+var ErrTypmodArrayMustBe1D = errors.NewKind(`typmod array must be one-dimensional`)
+
+// ErrInvalidTypMod is returned when given value is invalid for type modifier.
+var ErrInvalidTypMod = errors.NewKind(`invalid %s type modifier`)
+
+// IoOutput is the implementation for IoOutput that is being set from another package to avoid circular dependencies.
+var IoOutput func(ctx *sql.Context, t DoltgresType, val any) (string, error)
+
+// IoReceive is the implementation for IoOutput that is being set from another package to avoid circular dependencies.
+var IoReceive func(ctx *sql.Context, t DoltgresType, val any) (any, error)
+
+// IoSend is the implementation for IoOutput that is being set from another package to avoid circular dependencies.
+var IoSend func(ctx *sql.Context, t DoltgresType, val any) ([]byte, error)
+
+// TypModOut is the implementation for IoOutput that is being set from another package to avoid circular dependencies.
+var TypModOut func(ctx *sql.Context, t DoltgresType, val int32) (string, error)
+
+// IoCompare is the implementation for IoOutput that is being set from another package to avoid circular dependencies.
+var IoCompare func(ctx *sql.Context, t DoltgresType, v1, v2 any) (int32, error)
+
+// SQL is the implementation for IoOutput that is being set from another package to avoid circular dependencies.
+var SQL func(ctx *sql.Context, t DoltgresType, val any) (string, error)
 
 // FromGmsType returns a DoltgresType that is most similar to the given GMS type.
+// It returns UNKNOWN type for GMS types that are not handled.
 func FromGmsType(typ sql.Type) DoltgresType {
+	dt, err := FromGmsTypeToDoltgresType(typ)
+	if err != nil {
+		return Unknown
+	}
+	return dt
+}
+
+// FromGmsTypeToDoltgresType returns a DoltgresType that is most similar to the given GMS type.
+// It errors if GMS type is not handled.
+func FromGmsTypeToDoltgresType(typ sql.Type) (DoltgresType, error) {
 	switch typ.Type() {
-	case query.Type_INT8:
+	case query.Type_INT8, query.Type_INT16:
 		// Special treatment for boolean types when we can detect them
 		if typ == types.Boolean {
-			return Bool
+			return Bool, nil
 		}
-		return Int32
-	case query.Type_INT16, query.Type_INT24, query.Type_INT32, query.Type_YEAR, query.Type_ENUM:
-		return Int32
-	case query.Type_INT64, query.Type_SET, query.Type_BIT, query.Type_UINT8, query.Type_UINT16, query.Type_UINT24, query.Type_UINT32:
-		return Int64
-	case query.Type_UINT64:
-		return Numeric
+		return Int16, nil
+	case query.Type_INT24, query.Type_INT32:
+		return Int32, nil
+	case query.Type_INT64:
+		return Int64, nil
+	case query.Type_UINT8, query.Type_UINT16, query.Type_UINT24, query.Type_UINT32, query.Type_UINT64:
+		return Int64, nil
+	case query.Type_YEAR:
+		return Int16, nil
 	case query.Type_FLOAT32:
-		return Float32
+		return Float32, nil
 	case query.Type_FLOAT64:
-		return Float64
+		return Float64, nil
 	case query.Type_DECIMAL:
-		return Numeric
-	case query.Type_DATE, query.Type_DATETIME, query.Type_TIMESTAMP:
-		return Timestamp
+		return Numeric, nil
+	case query.Type_DATE:
+		return Date, nil
 	case query.Type_TIME:
-		return Text
+		return Text, nil
+	case query.Type_DATETIME, query.Type_TIMESTAMP:
+		return Timestamp, nil
 	case query.Type_CHAR, query.Type_VARCHAR, query.Type_TEXT, query.Type_BINARY, query.Type_VARBINARY, query.Type_BLOB:
-		return Text
+		return Text, nil
 	case query.Type_JSON:
-		return Json
-	case query.Type_NULL_TYPE:
-		return Unknown
-	case query.Type_GEOMETRY:
-		return Unknown
+		return Json, nil
+	case query.Type_ENUM:
+		return Int16, nil
+	case query.Type_SET:
+		return Int64, nil
+	case query.Type_NULL_TYPE, query.Type_GEOMETRY:
+		return Unknown, nil
 	default:
-		return Unknown
+		return DoltgresType{}, fmt.Errorf("encountered a GMS type that cannot be handled")
 	}
 }
 
-// GetServerLocation returns timezone value set for the server.
-func GetServerLocation(ctx *sql.Context) (*time.Location, error) {
-	if ctx == nil {
-		return time.Local, nil
-	}
-	val, err := ctx.GetSessionVariable(ctx, "timezone")
-	if err != nil {
-		return nil, err
-	}
-
-	tz := val.(string)
-	loc, err := time.LoadLocation(tz)
-	if err == nil {
-		return loc, nil
-	}
-
-	var t time.Time
-	if t, err = time.Parse("Z07", tz); err == nil {
-	} else if t, err = time.Parse("Z07:00", tz); err == nil {
-	} else if t, err = time.Parse("Z07:00:00", tz); err != nil {
-		return nil, err
-	}
-
-	_, offsetSecsUnconverted := t.Zone()
-	return time.FixedZone(fmt.Sprintf("fixed offset:%d", offsetSecsUnconverted), -offsetSecsUnconverted), nil
+// serializedStringCompare handles the efficient comparison of two strings that have been serialized using utils.Writer.
+// The writer writes the string by prepending the string length, which prevents direct comparison of the byte slices. We
+// thus read the string length manually, and extract the byte slices without converting to a string. This function
+// assumes that neither byte slice is nil nor empty.
+func serializedStringCompare(v1 []byte, v2 []byte) int {
+	readerV1 := utils.NewReader(v1)
+	readerV2 := utils.NewReader(v2)
+	v1Bytes := utils.AdvanceReader(readerV1, readerV1.VariableUint())
+	v2Bytes := utils.AdvanceReader(readerV2, readerV2.VariableUint())
+	return bytes.Compare(v1Bytes, v2Bytes)
 }
