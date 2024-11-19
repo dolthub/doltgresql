@@ -14,7 +14,5 @@
 
 package types
 
-import "github.com/lib/pq/oid"
-
 // RegtypeArray is the array variant of Regtype.
-var RegtypeArray = createArrayType(Regtype, SerializationID_Invalid, oid.T__regtype)
+var RegtypeArray = CreateArrayTypeFromBaseType(Regtype)

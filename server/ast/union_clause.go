@@ -50,8 +50,11 @@ func nodeUnionClause(ctx *Context, node *tree.UnionClause) (*vitess.SetOp, error
 			unionType = vitess.IntersectStr
 		}
 	case tree.ExceptOp:
-		// This is not implemented on the GMS side, so we'll throw an appropriate error here
-		return nil, fmt.Errorf("EXCEPT is not yet supported")
+		if node.All {
+			unionType = vitess.ExceptAllStr
+		} else {
+			unionType = vitess.ExceptStr
+		}
 	default:
 		return nil, fmt.Errorf("unknown type of UNION operator: `%s`", node.Type.String())
 	}

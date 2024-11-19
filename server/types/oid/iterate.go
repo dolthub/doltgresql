@@ -123,7 +123,7 @@ type ItemTable struct {
 	Item  sql.Table
 }
 
-// ItemType contains the relevant information to pass to the Type callback.
+// ItemType contains the relevant information to pass to the DoltgresType callback.
 type ItemType struct {
 	// TODO: add Index when we add custom types
 	OID  uint32
@@ -161,7 +161,7 @@ func IterateDatabase(ctx *sql.Context, database string, callbacks Callbacks) err
 
 	// Then we'll iterate over everything that is contained within a schema
 	if currentSchemaDatabase, ok := currentDatabase.(sql.SchemaDatabase); ok && callbacks.iteratesOverSchemas() {
-		// Load and sort all of the schemas by name ascending
+		// Load and sort all schemas by name ascending
 		schemas, err := currentSchemaDatabase.AllSchemas(ctx)
 		if err != nil {
 			return err
@@ -214,7 +214,7 @@ func iterateFunctions(ctx *sql.Context, callbacks Callbacks) error {
 // iterateTypes is called by IterateCurrentDatabase to handle types
 func iterateTypes(ctx *sql.Context, callbacks Callbacks) error {
 	// We only iterate over the types that are present in the pg_type table.
-	// This means that we ignore the schema if one is given and it's not equal to "pg_catalog".
+	// This means that we ignore the schema if one is given and not equal to "pg_catalog".
 	// If no schemas were given, then we'll automatically look for the types in "pg_catalog".
 	if len(callbacks.SearchSchemas) > 0 {
 		containsPgCatalog := false
@@ -230,17 +230,15 @@ func iterateTypes(ctx *sql.Context, callbacks Callbacks) error {
 	}
 	// this gets all built-in types
 	for _, t := range pgtypes.GetAllTypes() {
-		if t.BaseID().HasUniqueOID() {
-			cont, err := callbacks.Type(ctx, ItemType{
-				OID:  t.OID(),
-				Item: t,
-			})
-			if err != nil {
-				return err
-			}
-			if !cont {
-				return nil
-			}
+		cont, err := callbacks.Type(ctx, ItemType{
+			OID:  t.OID,
+			Item: t,
+		})
+		if err != nil {
+			return err
+		}
+		if !cont {
+			return nil
 		}
 	}
 	// TODO: add domain and custom types when supported
@@ -789,7 +787,7 @@ func runTable(ctx *sql.Context, oid uint32, callbacks Callbacks, itemSchema Item
 
 // runType is called by RunCallback to handle types within Section_BuiltIn.
 func runType(ctx *sql.Context, toid uint32, callbacks Callbacks) error {
-	if t := pgtypes.GetTypeByOID(toid); t != nil {
+	if t := pgtypes.GetTypeByOID(toid); !t.IsEmptyType() {
 		itemType := ItemType{
 			OID:  toid,
 			Item: t,

@@ -70,7 +70,7 @@ func float32Assignment() {
 		FromType: pgtypes.Float32,
 		ToType:   pgtypes.Numeric,
 		Function: func(ctx *sql.Context, val any, targetType pgtypes.DoltgresType) (any, error) {
-			return decimal.NewFromFloat(float64(val.(float32))), nil
+			return pgtypes.GetNumericValueWithTypmod(decimal.NewFromFloat(float64(val.(float32))), targetType.AttTypMod)
 		},
 	})
 }
