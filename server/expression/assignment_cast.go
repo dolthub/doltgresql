@@ -18,7 +18,6 @@ import (
 	"fmt"
 
 	"github.com/dolthub/go-mysql-server/sql"
-	"github.com/lib/pq/oid"
 
 	"github.com/dolthub/doltgresql/server/functions/framework"
 	pgtypes "github.com/dolthub/doltgresql/server/types"
@@ -55,9 +54,9 @@ func (ac *AssignmentCast) Eval(ctx *sql.Context, row sql.Row) (any, error) {
 	if err != nil || val == nil {
 		return val, err
 	}
-	castFunc := framework.GetAssignmentCast(ac.fromType, ac.toType)
+	castFunc := framework.GetAssignmentCast(ac.fromType.BaseID(), ac.toType.BaseID())
 	if castFunc == nil {
-		if ac.fromType.OID == uint32(oid.T_unknown) {
+		if ac.fromType.BaseID() == pgtypes.DoltgresTypeBaseID_Unknown {
 			castFunc = framework.UnknownLiteralCast
 		} else {
 			return nil, fmt.Errorf("ASSIGNMENT_CAST: target is of type %s but expression is of type %s: %s",
@@ -96,8 +95,8 @@ func (ac *AssignmentCast) WithChildren(children ...sql.Expression) (sql.Expressi
 }
 
 func checkForDomainType(t pgtypes.DoltgresType) pgtypes.DoltgresType {
-	if t.TypType == pgtypes.TypeType_Domain {
-		t = t.DomainUnderlyingBaseType()
+	if dt, ok := t.(pgtypes.DomainType); ok {
+		t = dt.UnderlyingBaseType()
 	}
 	return t
 }

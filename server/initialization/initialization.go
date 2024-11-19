@@ -27,7 +27,6 @@ import (
 	"github.com/dolthub/doltgresql/server/auth"
 	"github.com/dolthub/doltgresql/server/cast"
 	"github.com/dolthub/doltgresql/server/config"
-	"github.com/dolthub/doltgresql/server/expression"
 	"github.com/dolthub/doltgresql/server/functions"
 	"github.com/dolthub/doltgresql/server/functions/binary"
 	"github.com/dolthub/doltgresql/server/functions/framework"
@@ -36,6 +35,7 @@ import (
 	"github.com/dolthub/doltgresql/server/tables/dtables"
 	"github.com/dolthub/doltgresql/server/tables/information_schema"
 	"github.com/dolthub/doltgresql/server/tables/pgcatalog"
+	pgtypes "github.com/dolthub/doltgresql/server/types"
 	"github.com/dolthub/doltgresql/server/types/oid"
 	doltgresservercfg "github.com/dolthub/doltgresql/servercfg"
 )
@@ -49,11 +49,10 @@ func Initialize(dEnv *env.DoltEnv) {
 		auth.Init(dEnv)
 		analyzer.Init()
 		config.Init()
-		framework.Init()
+		pgtypes.Init()
 		oid.Init()
 		binary.Init()
 		unary.Init()
-		expression.Init()
 		functions.Init()
 		cast.Init()
 		framework.Initialize()

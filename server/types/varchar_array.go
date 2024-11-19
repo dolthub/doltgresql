@@ -14,5 +14,9 @@
 
 package types
 
+import (
+	"github.com/lib/pq/oid"
+)
+
 // VarCharArray is the array variant of VarChar.
-var VarCharArray = CreateArrayTypeFromBaseType(VarChar)
+var VarCharArray = createArrayType(VarChar, SerializationID_VarCharArray, oid.T__varchar)

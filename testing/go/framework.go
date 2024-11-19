@@ -30,7 +30,6 @@ import (
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgconn"
 	"github.com/jackc/pgx/v5/pgtype"
-	"github.com/lib/pq/oid"
 	"github.com/shopspring/decimal"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -41,7 +40,6 @@ import (
 	dserver "github.com/dolthub/doltgresql/server"
 	"github.com/dolthub/doltgresql/server/auth"
 	"github.com/dolthub/doltgresql/server/functions"
-	"github.com/dolthub/doltgresql/server/functions/framework"
 	"github.com/dolthub/doltgresql/server/types"
 	"github.com/dolthub/doltgresql/servercfg"
 )
@@ -359,8 +357,6 @@ func NormalizeRow(fds []pgconn.FieldDescription, row sql.Row, normalize bool) sq
 	newRow := make(sql.Row, len(row))
 	for i := range row {
 		dt, ok := types.OidToBuildInDoltgresType[fds[i].DataTypeOID]
-		// TODO: need to set the typmod!
-		dt.AttTypMod = -1
 		if !ok {
 			panic(fmt.Sprintf("unhandled oid type: %v", fds[i].DataTypeOID))
 		}
@@ -388,10 +384,10 @@ func NormalizeExpectedRow(fds []pgconn.FieldDescription, rows []sql.Row) []sql.R
 				if !ok {
 					panic(fmt.Sprintf("unhandled oid type: %v", fds[i].DataTypeOID))
 				}
-				if dt.OID == uint32(oid.T_json) {
+				if dt == types.Json {
 					newRow[i] = UnmarshalAndMarshalJsonString(row[i].(string))
-				} else if dt.IsArrayType() && dt.ArrayBaseType().OID == uint32(oid.T_json) {
-					v, err := framework.IoInput(nil, dt, row[i].(string))
+				} else if dta, ok := dt.(types.DoltgresArrayType); ok && dta.BaseType() == types.Json {
+					v, err := dta.IoInput(nil, row[i].(string))
 					if err != nil {
 						panic(err)
 					}
@@ -400,7 +396,7 @@ func NormalizeExpectedRow(fds []pgconn.FieldDescription, rows []sql.Row) []sql.R
 					for j, el := range arr {
 						newArr[j] = UnmarshalAndMarshalJsonString(el.(string))
 					}
-					ret, err := framework.IoOutput(nil, dt, newArr)
+					ret, err := dt.IoOutput(nil, newArr)
 					if err != nil {
 						panic(err)
 					}
@@ -439,28 +435,28 @@ func UnmarshalAndMarshalJsonString(val string) string {
 // There are an infinite number of ways to represent the same value in-memory,
 // so we must at least normalize Numeric values.
 func NormalizeValToString(dt types.DoltgresType, v any) any {
-	switch oid.Oid(dt.OID) {
-	case oid.T_json:
+	switch t := dt.(type) {
+	case types.JsonType:
 		str, err := json.Marshal(v)
 		if err != nil {
 			panic(err)
 		}
-		ret, err := framework.IoOutput(nil, dt, string(str))
+		ret, err := t.IoOutput(nil, string(str))
 		if err != nil {
 			panic(err)
 		}
 		return ret
-	case oid.T_jsonb:
-		jv, err := types.ConvertToJsonDocument(v)
+	case types.JsonBType:
+		jv, err := t.ConvertToJsonDocument(v)
 		if err != nil {
 			panic(err)
 		}
-		str, err := framework.IoOutput(nil, dt, types.JsonDocument{Value: jv})
+		str, err := t.IoOutput(nil, types.JsonDocument{Value: jv})
 		if err != nil {
 			panic(err)
 		}
 		return str
-	case oid.T_char:
+	case types.InternalCharType:
 		if v == nil {
 			return nil
 		}
@@ -470,24 +466,24 @@ func NormalizeValToString(dt types.DoltgresType, v any) any {
 		} else {
 			b = []byte{uint8(v.(int32))}
 		}
-		val, err := framework.IoOutput(nil, dt, string(b))
+		val, err := t.IoOutput(nil, string(b))
 		if err != nil {
 			panic(err)
 		}
 		return val
-	case oid.T_interval, oid.T_uuid, oid.T_date, oid.T_time, oid.T_timestamp:
+	case types.IntervalType, types.UuidType, types.DateType, types.TimeType, types.TimestampType:
 		// These values need to be normalized into the appropriate types
 		// before being converted to string type using the Doltgres
 		// IoOutput method.
 		if v == nil {
 			return nil
 		}
-		tVal, err := framework.IoOutput(nil, dt, NormalizeVal(dt, v))
+		tVal, err := dt.IoOutput(nil, NormalizeVal(dt, v))
 		if err != nil {
 			panic(err)
 		}
 		return tVal
-	case oid.T_timestamptz:
+	case types.TimestampTZType:
 		// timestamptz returns a value in server timezone
 		_, offset := v.(time.Time).Zone()
 		if offset%3600 != 0 {
@@ -516,8 +512,8 @@ func NormalizeValToString(dt types.DoltgresType, v any) any {
 			return Numeric(decStr)
 		}
 	case []any:
-		if dt.IsArrayType() {
-			return NormalizeArrayType(dt, val)
+		if dta, ok := dt.(types.DoltgresArrayType); ok {
+			return NormalizeArrayType(dta, val)
 		}
 	}
 	return v
@@ -525,31 +521,40 @@ func NormalizeValToString(dt types.DoltgresType, v any) any {
 
 // NormalizeArrayType normalizes array types by normalizing its elements first,
 // then to a string using the type IoOutput method.
-func NormalizeArrayType(dt types.DoltgresType, arr []any) any {
+func NormalizeArrayType(dta types.DoltgresArrayType, arr []any) any {
 	newVal := make([]any, len(arr))
 	for i, el := range arr {
-		newVal[i] = NormalizeVal(dt.ArrayBaseType(), el)
+		newVal[i] = NormalizeVal(dta.BaseType(), el)
 	}
-	ret, err := framework.SQL(nil, dt, newVal)
-	if err != nil {
-		panic(err)
+	baseType := dta.BaseType()
+	if baseType == types.Bool {
+		sqlVal, err := dta.SQL(nil, nil, newVal)
+		if err != nil {
+			panic(err)
+		}
+		return sqlVal.ToString()
+	} else {
+		ret, err := dta.IoOutput(nil, newVal)
+		if err != nil {
+			panic(err)
+		}
+		return ret
 	}
-	return ret
 }
 
 // NormalizeVal normalizes values to the Doltgres type expects, so it can be used to
 // convert the values using the given Doltgres type. This is used to normalize array
 // types as the type conversion expects certain type values.
 func NormalizeVal(dt types.DoltgresType, v any) any {
-	switch oid.Oid(dt.OID) {
-	case oid.T_json:
+	switch t := dt.(type) {
+	case types.JsonType:
 		str, err := json.Marshal(v)
 		if err != nil {
 			panic(err)
 		}
 		return string(str)
-	case oid.T_jsonb:
-		jv, err := types.ConvertToJsonDocument(v)
+	case types.JsonBType:
+		jv, err := t.ConvertToJsonDocument(v)
 		if err != nil {
 			panic(err)
 		}
@@ -582,8 +587,8 @@ func NormalizeVal(dt types.DoltgresType, v any) any {
 		return u
 	case []any:
 		baseType := dt
-		if baseType.IsArrayType() {
-			baseType = baseType.ArrayBaseType()
+		if dta, ok := baseType.(types.DoltgresArrayType); ok {
+			baseType = dta.BaseType()
 		}
 		newVal := make([]any, len(val))
 		for i, el := range val {

@@ -14,5 +14,7 @@
 
 package types
 
+import "github.com/lib/pq/oid"
+
 // JsonArray is the array variant of Json.
-var JsonArray = CreateArrayTypeFromBaseType(Json)
+var JsonArray = createArrayType(Json, SerializationID_JsonArray, oid.T__json)

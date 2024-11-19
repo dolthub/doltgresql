@@ -63,7 +63,7 @@ var PgConversionSchema = sql.Schema{
 	{Name: "conowner", Type: pgtypes.Oid, Default: nil, Nullable: false, Source: PgConversionName},
 	{Name: "conforencoding", Type: pgtypes.Int32, Default: nil, Nullable: false, Source: PgConversionName},
 	{Name: "contoencoding", Type: pgtypes.Int32, Default: nil, Nullable: false, Source: PgConversionName},
-	{Name: "conproc", Type: pgtypes.Text, Default: nil, Nullable: false, Source: PgConversionName}, // TODO: regproc type
+	{Name: "conproc", Type: pgtypes.Text, Default: nil, Nullable: false, Source: PgConversionName}, // TODDO: regproc type
 	{Name: "condefault", Type: pgtypes.Bool, Default: nil, Nullable: false, Source: PgConversionName},
 }
 

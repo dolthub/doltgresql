@@ -14,5 +14,7 @@
 
 package types
 
+import "github.com/lib/pq/oid"
+
 // Int32Array is the array variant of Int32.
-var Int32Array = CreateArrayTypeFromBaseType(Int32)
+var Int32Array = createArrayType(Int32, SerializationID_Int32Array, oid.T__int4)

@@ -14,5 +14,7 @@
 
 package types
 
+import "github.com/lib/pq/oid"
+
 // RegclassArray is the array variant of Regclass.
-var RegclassArray = CreateArrayTypeFromBaseType(Regclass)
+var RegclassArray = createArrayType(Regclass, SerializationID_Invalid, oid.T__regclass)

@@ -14,5 +14,7 @@
 
 package types
 
+import "github.com/lib/pq/oid"
+
 // Float64Array is the array variant of Float64.
-var Float64Array = CreateArrayTypeFromBaseType(Float64)
+var Float64Array = createArrayType(Float64, SerializationID_Float64Array, oid.T__float8)
