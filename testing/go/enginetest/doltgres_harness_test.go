@@ -788,8 +788,11 @@ func unwrapResultColumn(v any) (any, error) {
 func (d *DoltgresQueryEngine) EngineAnalyzer() *analyzer.Analyzer {
 	// TODO: this is a shim to get simple tests to work, we need to restructure the tests to not require access to
 	//  an analyzer
+	catalog := &analyzer.Catalog{}
+	catalog.AuthHandler = sql.GetAuthorizationHandlerFactory().CreateHandler(catalog)
+
 	return &analyzer.Analyzer{
-		Catalog: &analyzer.Catalog{},
+		Catalog: catalog,
 	}
 }
 
