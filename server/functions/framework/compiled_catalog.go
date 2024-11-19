@@ -16,7 +16,7 @@ package framework
 
 import "github.com/dolthub/go-mysql-server/sql"
 
-// compiledCatalog contains all of PostgreSQL functions in their compiled forms.
+// compiledCatalog contains all of the PostgreSQL functions in their compiled forms.
 var compiledCatalog = map[string]sql.CreateFuncNArgs{}
 
 // GetFunction returns the compiled function with the given name and parameters. Returns false if the function could not

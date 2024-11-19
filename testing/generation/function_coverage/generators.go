@@ -166,14 +166,14 @@ var uuidValueGenerators = utils.Or(
 )
 
 // valueMappings contains the value generators for the given type.
-var valueMappings = map[uint32]utils.StatementGenerator{
-	pgtypes.Bool.OID:    booleanValueGenerators,
-	pgtypes.Float32.OID: float32ValueGenerators,
-	pgtypes.Float64.OID: float64ValueGenerators,
-	pgtypes.Int16.OID:   int16ValueGenerators,
-	pgtypes.Int32.OID:   int32ValueGenerators,
-	pgtypes.Int64.OID:   int64ValueGenerators,
-	pgtypes.Numeric.OID: numericValueGenerators,
-	pgtypes.Uuid.OID:    uuidValueGenerators,
-	pgtypes.VarChar.OID: stringValueGenerators,
+var valueMappings = map[pgtypes.DoltgresTypeBaseID]utils.StatementGenerator{
+	pgtypes.Bool.BaseID():    booleanValueGenerators,
+	pgtypes.Float32.BaseID(): float32ValueGenerators,
+	pgtypes.Float64.BaseID(): float64ValueGenerators,
+	pgtypes.Int16.BaseID():   int16ValueGenerators,
+	pgtypes.Int32.BaseID():   int32ValueGenerators,
+	pgtypes.Int64.BaseID():   int64ValueGenerators,
+	pgtypes.Numeric.BaseID(): numericValueGenerators,
+	pgtypes.Uuid.BaseID():    uuidValueGenerators,
+	pgtypes.VarChar.BaseID(): stringValueGenerators,
 }

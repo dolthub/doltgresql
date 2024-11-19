@@ -28,44 +28,36 @@ import (
 // nodeResolvableTypeReference handles tree.ResolvableTypeReference nodes.
 func nodeResolvableTypeReference(ctx *Context, typ tree.ResolvableTypeReference) (*vitess.ConvertType, pgtypes.DoltgresType, error) {
 	if typ == nil {
-		return nil, pgtypes.DoltgresType{}, nil
+		return nil, nil, nil
 	}
 
 	var columnTypeName string
 	var columnTypeLength *vitess.SQLVal
 	var columnTypeScale *vitess.SQLVal
 	var resolvedType pgtypes.DoltgresType
-	var err error
 	switch columnType := typ.(type) {
 	case *tree.ArrayTypeReference:
-		return nil, pgtypes.DoltgresType{}, fmt.Errorf("the given array type is not yet supported")
+		return nil, nil, fmt.Errorf("the given array type is not yet supported")
 	case *tree.OIDTypeReference:
-		return nil, pgtypes.DoltgresType{}, fmt.Errorf("referencing types by their OID is not yet supported")
+		return nil, nil, fmt.Errorf("referencing types by their OID is not yet supported")
 	case *tree.UnresolvedObjectName:
-		tn := columnType.ToTableName()
-		columnTypeName = string(tn.ObjectName)
-		resolvedType = pgtypes.NewUnresolvedDoltgresType(string(tn.SchemaName), string(tn.ObjectName))
+		resolvedType = pgtypes.ResolvableType{
+			Typ: typ,
+		}
 	case *types.GeoMetadata:
-		return nil, pgtypes.DoltgresType{}, fmt.Errorf("geometry types are not yet supported")
+		return nil, nil, fmt.Errorf("geometry types are not yet supported")
 	case *types.T:
 		columnTypeName = columnType.SQLStandardName()
 		if columnType.Family() == types.ArrayFamily {
 			_, baseResolvedType, err := nodeResolvableTypeReference(ctx, columnType.ArrayContents())
 			if err != nil {
-				return nil, pgtypes.DoltgresType{}, err
+				return nil, nil, err
 			}
-			if baseResolvedType.IsResolvedType() {
-				// currently the built-in types will be resolved, so it can retrieve its array type
-				resolvedType = baseResolvedType.ToArrayType()
-			} else {
-				// TODO: handle array type of non-built-in types
-				baseResolvedType.TypCategory = pgtypes.TypeCategory_ArrayTypes
-				resolvedType = baseResolvedType
-			}
+			resolvedType = baseResolvedType.ToArrayType()
 		} else if columnType.Family() == types.GeometryFamily {
-			return nil, pgtypes.DoltgresType{}, fmt.Errorf("geometry types are not yet supported")
+			return nil, nil, fmt.Errorf("geometry types are not yet supported")
 		} else if columnType.Family() == types.GeographyFamily {
-			return nil, pgtypes.DoltgresType{}, fmt.Errorf("geography types are not yet supported")
+			return nil, nil, fmt.Errorf("geography types are not yet supported")
 		} else {
 			switch columnType.Oid() {
 			case oid.T_bool:
@@ -75,20 +67,17 @@ func nodeResolvableTypeReference(ctx *Context, typ tree.ResolvableTypeReference)
 			case oid.T_bpchar:
 				width := uint32(columnType.Width())
 				if width > pgtypes.StringMaxLength {
-					return nil, pgtypes.DoltgresType{}, fmt.Errorf("length for type bpchar cannot exceed %d", pgtypes.StringMaxLength)
-				} else if width == 0 {
-					// TODO: need to differentiate between definitions 'bpchar' (valid) and 'char(0)' (invalid)
+					return nil, nil, fmt.Errorf("length for type bpchar cannot exceed %d", pgtypes.StringMaxLength)
+				}
+				if width == 0 {
 					resolvedType = pgtypes.BpChar
 				} else {
-					resolvedType, err = pgtypes.NewCharType(int32(width))
-					if err != nil {
-						return nil, pgtypes.DoltgresType{}, err
-					}
+					resolvedType = pgtypes.CharType{Length: width}
 				}
 			case oid.T_char:
 				width := uint32(columnType.Width())
 				if width > pgtypes.InternalCharLength {
-					return nil, pgtypes.DoltgresType{}, fmt.Errorf("length for type \"char\" cannot exceed %d", pgtypes.InternalCharLength)
+					return nil, nil, fmt.Errorf("length for type \"char\" cannot exceed %d", pgtypes.InternalCharLength)
 				}
 				if width == 0 {
 					width = 1
@@ -118,9 +107,9 @@ func nodeResolvableTypeReference(ctx *Context, typ tree.ResolvableTypeReference)
 				if columnType.Precision() == 0 && columnType.Scale() == 0 {
 					resolvedType = pgtypes.Numeric
 				} else {
-					resolvedType, err = pgtypes.NewNumericTypeWithPrecisionAndScale(columnType.Precision(), columnType.Scale())
-					if err != nil {
-						return nil, pgtypes.DoltgresType{}, err
+					resolvedType = pgtypes.NumericType{
+						Precision: columnType.Precision(),
+						Scale:     columnType.Scale(),
 					}
 				}
 			case oid.T_oid:
@@ -146,20 +135,13 @@ func nodeResolvableTypeReference(ctx *Context, typ tree.ResolvableTypeReference)
 			case oid.T_varchar:
 				width := uint32(columnType.Width())
 				if width > pgtypes.StringMaxLength {
-					return nil, pgtypes.DoltgresType{}, fmt.Errorf("length for type varchar cannot exceed %d", pgtypes.StringMaxLength)
-				} else if width == 0 {
-					// TODO: need to differentiate between definitions 'varchar' (valid) and 'varchar(0)' (invalid)
-					resolvedType = pgtypes.VarChar
-				} else {
-					resolvedType, err = pgtypes.NewVarCharType(int32(width))
+					return nil, nil, fmt.Errorf("length for type varchar cannot exceed %d", pgtypes.StringMaxLength)
 				}
-				if err != nil {
-					return nil, pgtypes.DoltgresType{}, err
-				}
+				resolvedType = pgtypes.VarCharType{MaxChars: width}
 			case oid.T_xid:
 				resolvedType = pgtypes.Xid
 			default:
-				return nil, pgtypes.DoltgresType{}, fmt.Errorf("unknown type with oid: %d", uint32(columnType.Oid()))
+				return nil, nil, fmt.Errorf("unknown type with oid: %d", uint32(columnType.Oid()))
 			}
 		}
 	}

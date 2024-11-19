@@ -14,5 +14,7 @@
 
 package types
 
+import "github.com/lib/pq/oid"
+
 // NumericArray is the array variant of Numeric.
-var NumericArray = CreateArrayTypeFromBaseType(Numeric)
+var NumericArray = createArrayType(Numeric, SerializationID_NumericArray, oid.T__numeric)

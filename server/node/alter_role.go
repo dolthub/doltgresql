@@ -24,7 +24,6 @@ import (
 	"gopkg.in/src-d/go-errors.v1"
 
 	"github.com/dolthub/doltgresql/server/auth"
-	"github.com/dolthub/doltgresql/server/functions/framework"
 	pgtypes "github.com/dolthub/doltgresql/server/types"
 )
 
@@ -118,7 +117,7 @@ func (c *AlterRole) RowIter(ctx *sql.Context, r sql.Row) (sql.RowIter, error) {
 			if timeString == nil {
 				role.ValidUntil = nil
 			} else {
-				validUntilAny, err := framework.IoInput(ctx, pgtypes.TimestampTZ, *timeString)
+				validUntilAny, err := pgtypes.TimestampTZ.IoInput(ctx, *timeString)
 				if err != nil {
 					return nil, err
 				}

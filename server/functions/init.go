@@ -14,48 +14,8 @@
 
 package functions
 
-// initTypeFunctions initializes all functions related to types in this package.
-func initTypeFunctions() {
-	initAny()
-	initAnyArray()
-	initAnyElement()
-	initAnyNonArray()
-	initArray()
-	initBool()
-	initBpChar()
-	initBytea()
-	initChar()
-	initDate()
-	initDomain()
-	initFloat4()
-	initFloat8()
-	initInt2()
-	initInt4()
-	initInt8()
-	initInternal()
-	initInterval()
-	initJson()
-	initJsonB()
-	initName()
-	initNumeric()
-	initOid()
-	initRegclass()
-	initRegproc()
-	initRegtype()
-	initText()
-	initTime()
-	initTimestamp()
-	initTimestampTZ()
-	initTimeTZ()
-	initUnknown()
-	initUuid()
-	initVarChar()
-	initXid()
-}
-
 // Init initializes all functions in this package.
 func Init() {
-	initTypeFunctions()
 	initAbs()
 	initAcos()
 	initAcosd()

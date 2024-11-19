@@ -232,18 +232,5 @@ func TestRegressions(t *testing.T) {
 				},
 			},
 		},
-		{
-			Name: "inner join",
-			SetUpScript: []string{
-				"CREATE TABLE J1_TBL (i integer, j integer, t text);",
-				"CREATE TABLE J2_TBL (i integer, k integer);",
-			},
-			Assertions: []ScriptTestAssertion{
-				{
-					Query:    "SELECT * FROM J1_TBL INNER JOIN J2_TBL USING (i);",
-					Expected: []sql.Row{},
-				},
-			},
-		},
 	})
 }

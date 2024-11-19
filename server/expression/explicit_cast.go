@@ -20,7 +20,6 @@ import (
 	"github.com/dolthub/go-mysql-server/sql"
 	"github.com/dolthub/go-mysql-server/sql/expression"
 	vitess "github.com/dolthub/vitess/go/vt/sqlparser"
-	"github.com/lib/pq/oid"
 
 	"github.com/dolthub/doltgresql/server/functions/framework"
 	pgtypes "github.com/dolthub/doltgresql/server/types"
@@ -88,9 +87,9 @@ func (c *ExplicitCast) Eval(ctx *sql.Context, row sql.Row) (any, error) {
 		return nil, nil
 	}
 
-	castFunction := framework.GetExplicitCast(fromType, c.castToType)
+	castFunction := framework.GetExplicitCast(fromType.BaseID(), c.castToType.BaseID())
 	if castFunction == nil {
-		if fromType.OID == uint32(oid.T_unknown) {
+		if fromType.BaseID() == pgtypes.DoltgresTypeBaseID_Unknown {
 			castFunction = framework.UnknownLiteralCast
 		} else {
 			return nil, fmt.Errorf("EXPLICIT CAST: cast from `%s` to `%s` does not exist: %s",
@@ -102,12 +101,12 @@ func (c *ExplicitCast) Eval(ctx *sql.Context, row sql.Row) (any, error) {
 		// For string types and string array types, we intentionally ignore the error as using a length-restricted cast
 		// is a way to intentionally truncate the data. All string types will always return the truncated result, even
 		// during an error, so it's safe to use.
-		castToType := c.castToType
-		if c.castToType.IsArrayType() {
-			castToType = c.castToType.ArrayBaseType()
+		baseID := c.castToType.BaseID()
+		if arrayType, ok := c.castToType.BaseID().IsBaseIDArrayType(); ok {
+			baseID = arrayType.BaseType().BaseID()
 		}
 		// A nil result will be returned if there's a critical error, which we should never ignore.
-		if castToType.TypCategory != pgtypes.TypeCategory_StringTypes || castResult == nil {
+		if baseID.GetTypeCategory() != pgtypes.TypeCategory_StringTypes || castResult == nil {
 			return nil, err
 		}
 	}

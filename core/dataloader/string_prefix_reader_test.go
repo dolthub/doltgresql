@@ -12,14 +12,12 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-package _dataloader
+package dataloader
 
 import (
 	"bytes"
 	"io"
 	"testing"
-
-	"github.com/dolthub/doltgresql/core/dataloader"
 
 	"github.com/stretchr/testify/require"
 )
@@ -28,7 +26,7 @@ func TestStringPrefixReader(t *testing.T) {
 	t.Run("Read prefix and all data in single call", func(t *testing.T) {
 		prefix := "prefix"
 		reader := bytes.NewReader([]byte("0123456789"))
-		prefixReader := dataloader.NewStringPrefixReader(prefix, reader)
+		prefixReader := newStringPrefixReader(prefix, reader)
 
 		data := make([]byte, 100)
 		bytesRead, err := prefixReader.Read(data)
@@ -44,7 +42,7 @@ func TestStringPrefixReader(t *testing.T) {
 	t.Run("Read part of prefix", func(t *testing.T) {
 		prefix := "prefix"
 		reader := bytes.NewReader([]byte("0123456789"))
-		prefixReader := dataloader.NewStringPrefixReader(prefix, reader)
+		prefixReader := newStringPrefixReader(prefix, reader)
 
 		data := make([]byte, 5)
 		bytesRead, err := prefixReader.Read(data)
@@ -79,7 +77,7 @@ func TestStringPrefixReader(t *testing.T) {
 	t.Run("Read to prefix boundary", func(t *testing.T) {
 		prefix := "prefix"
 		reader := bytes.NewReader([]byte("0123456789"))
-		prefixReader := dataloader.NewStringPrefixReader(prefix, reader)
+		prefixReader := newStringPrefixReader(prefix, reader)
 
 		data := make([]byte, 6)
 		bytesRead, err := prefixReader.Read(data)

@@ -120,7 +120,7 @@ var timezone_text_timestamp = framework.Function2{
 		if err != nil {
 			return nil, err
 		}
-		serverLoc, err := GetServerLocation(ctx)
+		serverLoc, err := pgtypes.GetServerLocation(ctx)
 		if err != nil {
 			return nil, err
 		}
@@ -138,7 +138,7 @@ var timezone_interval_timestamp = framework.Function2{
 	Callable: func(ctx *sql.Context, _ [3]pgtypes.DoltgresType, val1, val2 any) (any, error) {
 		dur := val1.(duration.Duration)
 		timeVal := val2.(time.Time)
-		serverLoc, err := GetServerLocation(ctx)
+		serverLoc, err := pgtypes.GetServerLocation(ctx)
 		if err != nil {
 			return nil, err
 		}

@@ -51,17 +51,17 @@ func resolveDomainTypeAndLoadCheckConstraints(ctx *sql.Context, a *analyzer.Anal
 	checks := c.Checks()
 	var same = transform.SameTree
 	for _, col := range schema {
-		if dt, ok := col.Type.(pgtypes.DoltgresType); ok && dt.TypType == pgtypes.TypeType_Domain {
+		if domainType, ok := col.Type.(pgtypes.DomainType); ok {
 			// assign column nullable
-			col.Nullable = !dt.NotNull
+			col.Nullable = !domainType.NotNull
 			// get domain default value and assign to the column default value
-			defVal, err := getDefault(ctx, a, dt.Default, col.Source, col.Type, col.Nullable)
+			defVal, err := getDefault(ctx, a, domainType.DefaultExpr, col.Source, col.Type, col.Nullable)
 			if err != nil {
 				return nil, transform.SameTree, err
 			}
 			col.Default = defVal
 			// get domain checks
-			colChecks, err := getCheckConstraints(ctx, a, col.Name, col.Source, dt.Checks)
+			colChecks, err := getCheckConstraints(ctx, a, col.Name, col.Source, domainType.Checks)
 			if err != nil {
 				return nil, transform.SameTree, err
 			}

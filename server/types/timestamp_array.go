@@ -14,5 +14,7 @@
 
 package types
 
+import "github.com/lib/pq/oid"
+
 // TimestampArray is the array variant of Timestamp.
-var TimestampArray = CreateArrayTypeFromBaseType(Timestamp)
+var TimestampArray = createArrayType(Timestamp, SerializationID_TimestampArray, oid.T__timestamp)
