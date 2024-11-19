@@ -14,7 +14,5 @@
 
 package types
 
-import "github.com/lib/pq/oid"
-
 // UuidArray is the array variant of Uuid.
-var UuidArray = createArrayType(Uuid, SerializationID_UuidArray, oid.T__uuid)
+var UuidArray = CreateArrayTypeFromBaseType(Uuid)

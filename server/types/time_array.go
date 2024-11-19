@@ -14,7 +14,5 @@
 
 package types
 
-import "github.com/lib/pq/oid"
-
 // TimeArray is the array variant of Time.
-var TimeArray = createArrayType(Time, SerializationID_TimeArray, oid.T__time)
+var TimeArray = CreateArrayTypeFromBaseType(Time)

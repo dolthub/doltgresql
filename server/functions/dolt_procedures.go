@@ -119,7 +119,7 @@ func drainRowIter(ctx *sql.Context, rowIter sql.RowIter) (any, error) {
 			return nil, err
 		}
 
-		castFn := framework.GetExplicitCast(fromType, pgtypes.Text.BaseID())
+		castFn := framework.GetExplicitCast(fromType, pgtypes.Text)
 		textVal, err := castFn(ctx, row[i], pgtypes.Text)
 		if err != nil {
 			return nil, err
@@ -130,18 +130,18 @@ func drainRowIter(ctx *sql.Context, rowIter sql.RowIter) (any, error) {
 	return rowSlice, nil
 }
 
-func typeForElement(v any) (pgtypes.DoltgresTypeBaseID, error) {
+func typeForElement(v any) (pgtypes.DoltgresType, error) {
 	switch x := v.(type) {
 	case int64:
-		return pgtypes.Int64.BaseID(), nil
+		return pgtypes.Int64, nil
 	case int32:
-		return pgtypes.Int32.BaseID(), nil
+		return pgtypes.Int32, nil
 	case int16, int8:
-		return pgtypes.Int16.BaseID(), nil
+		return pgtypes.Int16, nil
 	case string:
-		return pgtypes.Text.BaseID(), nil
+		return pgtypes.Text, nil
 	default:
-		return 0, fmt.Errorf("dolt_procedures: unsupported type %T", x)
+		return pgtypes.DoltgresType{}, fmt.Errorf("dolt_procedures: unsupported type %T", x)
 	}
 }
 

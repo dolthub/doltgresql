@@ -140,7 +140,7 @@ var extract_text_timestamptz = framework.Function2{
 	Strict:             true,
 	Callable: func(ctx *sql.Context, _ [3]pgtypes.DoltgresType, val1, val2 any) (any, error) {
 		field := val1.(string)
-		loc, err := pgtypes.GetServerLocation(ctx)
+		loc, err := GetServerLocation(ctx)
 		if err != nil {
 			return nil, err
 		}
