@@ -102,4 +102,5 @@ WHERE pg_class.oid=indexrelid
 	AND indrelid=pg_class_2.oid
 	AND pg_class_2.relname = 'clstr_tst'
 	AND indisclustered;`,
+	`SELECT 1 FROM pg_catalog.pg_constraint WHERE conrelid = i.indrelid AND conindid = i.indexrelid`,
 }
