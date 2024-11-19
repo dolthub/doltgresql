@@ -14,7 +14,5 @@
 
 package types
 
-import "github.com/lib/pq/oid"
-
 // XidArray is the array variant of Xid.
-var XidArray = createArrayType(Xid, SerializationID_XidArray, oid.T__xid)
+var XidArray = CreateArrayTypeFromBaseType(Xid)

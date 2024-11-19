@@ -14,7 +14,5 @@
 
 package types
 
-import "github.com/lib/pq/oid"
-
 // TimestampTZArray is the array variant of TimestampTZ.
-var TimestampTZArray = createArrayType(TimestampTZ, SerializationID_TimestampTZArray, oid.T__timestamptz)
+var TimestampTZArray = CreateArrayTypeFromBaseType(TimestampTZ)

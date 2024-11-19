@@ -41,7 +41,7 @@ var to_regproc_text = framework.Function1{
 		if _, err := strconv.ParseUint(val1.(string), 10, 32); err == nil {
 			return nil, nil
 		}
-		oid, err := pgtypes.Regproc.IoInput(ctx, val1.(string))
+		oid, err := framework.IoInput(ctx, pgtypes.Regproc, val1.(string))
 		if err != nil {
 			// Specifically for the "does not exist" and "more than one function" errors, we return nil instead of the error.
 			// https://www.postgresql.org/docs/15/functions-info.html#FUNCTIONS-INFO-CATALOG-TABLE

@@ -14,7 +14,5 @@
 
 package types
 
-import "github.com/lib/pq/oid"
-
 // IntervalArray is the array variant of Interval.
-var IntervalArray = createArrayType(Interval, SerializationID_IntervalArray, oid.T__interval)
+var IntervalArray = CreateArrayTypeFromBaseType(Interval)

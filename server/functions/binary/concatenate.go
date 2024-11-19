@@ -44,7 +44,7 @@ var anytextcat = framework.Function2{
 	Strict:     true,
 	Callable: func(ctx *sql.Context, paramsAndReturn [3]pgtypes.DoltgresType, val1 any, val2 any) (any, error) {
 		valType := paramsAndReturn[0]
-		val1String, err := valType.IoOutput(ctx, val1)
+		val1String, err := framework.IoOutput(ctx, valType, val1)
 		if err != nil {
 			return nil, err
 		}
@@ -130,7 +130,7 @@ var textanycat = framework.Function2{
 	Strict:     true,
 	Callable: func(ctx *sql.Context, paramsAndReturn [3]pgtypes.DoltgresType, val1 any, val2 any) (any, error) {
 		valType := paramsAndReturn[1]
-		val2String, err := valType.IoOutput(ctx, val2)
+		val2String, err := framework.IoOutput(ctx, valType, val2)
 		if err != nil {
 			return nil, err
 		}

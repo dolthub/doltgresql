@@ -20,6 +20,7 @@ import (
 
 	"github.com/dolthub/go-mysql-server/sql"
 	vitess "github.com/dolthub/vitess/go/vt/sqlparser"
+	"github.com/lib/pq/oid"
 
 	"github.com/dolthub/doltgresql/server/functions/framework"
 	pgtypes "github.com/dolthub/doltgresql/server/types"
@@ -28,7 +29,7 @@ import (
 // Array represents an ARRAY[...] expression.
 type Array struct {
 	children    []sql.Expression
-	coercedType pgtypes.DoltgresArrayType
+	coercedType pgtypes.DoltgresType
 }
 
 var _ vitess.Injectable = (*Array)(nil)
@@ -36,9 +37,13 @@ var _ sql.Expression = (*Array)(nil)
 
 // NewArray returns a new *Array.
 func NewArray(coercedType sql.Type) (*Array, error) {
-	var arrayCoercedType pgtypes.DoltgresArrayType
-	if dat, ok := coercedType.(pgtypes.DoltgresArrayType); ok {
-		arrayCoercedType = dat
+	var arrayCoercedType pgtypes.DoltgresType
+	if dt, ok := coercedType.(pgtypes.DoltgresType); ok {
+		if dt.IsArrayType() {
+			arrayCoercedType = dt
+		} else if !dt.IsEmptyType() {
+			return nil, fmt.Errorf("cannot cast array to %s", coercedType.String())
+		}
 	} else if coercedType != nil {
 		return nil, fmt.Errorf("cannot cast array to %s", coercedType.String())
 	}
@@ -55,7 +60,7 @@ func (array *Array) Children() []sql.Expression {
 
 // Eval implements the sql.Expression interface.
 func (array *Array) Eval(ctx *sql.Context, row sql.Row) (any, error) {
-	resultTyp := array.coercedType.BaseType()
+	resultTyp := array.coercedType.ArrayBaseType()
 	values := make([]any, len(array.children))
 	for i, expr := range array.children {
 		val, err := expr.Eval(ctx, row)
@@ -74,9 +79,9 @@ func (array *Array) Eval(ctx *sql.Context, row sql.Row) (any, error) {
 		}
 
 		// We always cast the element, as there may be parameter restrictions in place
-		castFunc := framework.GetImplicitCast(doltgresType.BaseID(), resultTyp.BaseID())
+		castFunc := framework.GetImplicitCast(doltgresType, resultTyp)
 		if castFunc == nil {
-			if doltgresType.BaseID() == pgtypes.DoltgresTypeBaseID_Unknown {
+			if doltgresType.OID == uint32(oid.T_unknown) {
 				castFunc = framework.UnknownLiteralCast
 			} else {
 				return nil, fmt.Errorf("cannot find cast function from %s to %s", doltgresType.String(), resultTyp.String())
@@ -157,8 +162,8 @@ func (array *Array) WithResolvedChildren(children []any) (any, error) {
 
 // getTargetType returns the evaluated type for this expression.
 // Returns the "anyarray" type if the type combination is invalid.
-func (array *Array) getTargetType(children ...sql.Expression) (pgtypes.DoltgresArrayType, error) {
-	var childrenTypes []pgtypes.DoltgresTypeBaseID
+func (array *Array) getTargetType(children ...sql.Expression) (pgtypes.DoltgresType, error) {
+	var childrenTypes []pgtypes.DoltgresType
 	for _, child := range children {
 		if child != nil {
 			childType, ok := child.Type().(pgtypes.DoltgresType)
@@ -166,12 +171,12 @@ func (array *Array) getTargetType(children ...sql.Expression) (pgtypes.DoltgresA
 				// We use "anyarray" as the indeterminate/invalid type
 				return pgtypes.AnyArray, nil
 			}
-			childrenTypes = append(childrenTypes, childType.BaseID())
+			childrenTypes = append(childrenTypes, childType)
 		}
 	}
 	targetType, err := framework.FindCommonType(childrenTypes)
 	if err != nil {
-		return nil, fmt.Errorf("ARRAY %s", err.Error())
+		return pgtypes.DoltgresType{}, fmt.Errorf("ARRAY %s", err.Error())
 	}
-	return targetType.GetRepresentativeType().ToArrayType(), nil
+	return targetType.ToArrayType(), nil
 }
