@@ -89,8 +89,14 @@ func nodeInsert(ctx *Context, node *tree.Insert) (*vitess.Insert, error) {
 	if vSelect, ok := rows.(*vitess.Select); ok && len(vSelect.From) == 1 {
 		if aliasedStmt, ok := vSelect.From[0].(*vitess.AliasedTableExpr); ok {
 			if valsStmt, ok := aliasedStmt.Expr.(*vitess.ValuesStatement); ok {
+				var vals vitess.Values
+				if len(valsStmt.Rows) == 0 {
+					vals = []vitess.ValTuple{{}}
+				} else {
+					vals = valsStmt.Rows
+				}
 				rows = &vitess.AliasedValues{
-					Values: valsStmt.Rows,
+					Values: vals,
 				}
 			}
 		}

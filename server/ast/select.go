@@ -30,7 +30,9 @@ func nodeSelect(ctx *Context, node *tree.Select) (vitess.SelectStatement, error)
 		return nil, nil
 	}
 	if node.Select == nil {
-		return nil, fmt.Errorf("internal: select clause should not be null")
+		node.Select = &tree.ValuesClause{
+			Rows: []tree.Exprs{},
+		}
 	}
 	selectStmt, err := nodeSelectStatement(ctx, node.Select)
 	if err != nil {
