@@ -30,8 +30,7 @@ var NewLiteral func(input any, t pgtypes.DoltgresType) sql.Expression
 
 // IoInput converts input string value to given type value.
 func IoInput(ctx *sql.Context, t pgtypes.DoltgresType, input string) (any, error) {
-	receivedVal := NewLiteral(input, pgtypes.Cstring)
-	return receiveInputFunction(ctx, t.InputFunc, t, receivedVal)
+	return receiveInputFunction(ctx, t.InputFunc, t, pgtypes.Cstring, input)
 }
 
 // IoOutput converts given type value to output string.
@@ -54,8 +53,7 @@ func IoReceive(ctx *sql.Context, t pgtypes.DoltgresType, val any) (any, error) {
 		return nil, fmt.Errorf("receive function for type '%s' doesn't exist", t.Name)
 	}
 
-	receivedVal := NewLiteral(val, pgtypes.NewInternalTypeWithBaseType(t.OID))
-	return receiveInputFunction(ctx, t.ReceiveFunc, t, receivedVal)
+	return receiveInputFunction(ctx, t.ReceiveFunc, t, pgtypes.NewInternalTypeWithBaseType(t.OID), val)
 }
 
 // IoSend converts given type value to a byte array.
@@ -80,44 +78,27 @@ func IoSend(ctx *sql.Context, t pgtypes.DoltgresType, val any) ([]byte, error) {
 }
 
 // receiveInputFunction handles given IoInput and IoReceive functions.
-func receiveInputFunction(ctx *sql.Context, funcName string, t pgtypes.DoltgresType, val sql.Expression) (any, error) {
-	var cf *CompiledFunction
-	var ok bool
-	var err error
-	if t.IsArrayType() {
-		baseType := t.ArrayBaseType()
+func receiveInputFunction(ctx *sql.Context, funcName string, origType, argType pgtypes.DoltgresType, val any) (any, error) {
+	if origType.IsArrayType() {
+		baseType := origType.ArrayBaseType()
 		typmod := int32(0)
 		if baseType.ModInFunc != "-" {
-			typmod = t.AttTypMod
+			typmod = origType.AttTypMod
 		}
-		cf, ok, err = GetFunction(funcName, val, NewLiteral(baseType.OID, pgtypes.Oid), NewLiteral(typmod, pgtypes.Int32))
-	} else if t.TypType == pgtypes.TypeType_Domain {
-		baseType := t.DomainUnderlyingBaseType()
-		cf, ok, err = GetFunction(funcName, val, NewLiteral(baseType.OID, pgtypes.Oid), NewLiteral(t.AttTypMod, pgtypes.Int32))
-	} else if t.ModInFunc != "-" {
-		cf, ok, err = GetFunction(funcName, val, NewLiteral(t.OID, pgtypes.Oid), NewLiteral(t.AttTypMod, pgtypes.Int32))
+		return getFunctionWithoutValidationForTypes(ctx, funcName, []pgtypes.DoltgresType{argType, pgtypes.Oid, pgtypes.Int32}, []any{val, baseType.OID, typmod})
+	} else if origType.TypType == pgtypes.TypeType_Domain {
+		baseType := origType.DomainUnderlyingBaseType()
+		return getFunctionWithoutValidationForTypes(ctx, funcName, []pgtypes.DoltgresType{argType, pgtypes.Oid, pgtypes.Int32}, []any{val, baseType.OID, origType.AttTypMod})
+	} else if origType.ModInFunc != "-" {
+		return getFunctionWithoutValidationForTypes(ctx, funcName, []pgtypes.DoltgresType{argType, pgtypes.Oid, pgtypes.Int32}, []any{val, origType.OID, origType.AttTypMod})
 	} else {
-		cf, ok, err = GetFunction(funcName, val)
+		return getFunctionWithoutValidationForTypes(ctx, funcName, []pgtypes.DoltgresType{argType}, []any{val})
 	}
-	if err != nil {
-		return nil, err
-	}
-	if !ok {
-		return nil, ErrFunctionDoesNotExist.New(funcName)
-	}
-	return cf.Eval(ctx, nil)
 }
 
 // sendOutputFunction handles given IoOutput and IoSend functions.
 func sendOutputFunction(ctx *sql.Context, funcName string, t pgtypes.DoltgresType, val any) (any, error) {
-	outputVal, ok, err := GetFunction(funcName, NewLiteral(val, t))
-	if err != nil {
-		return nil, err
-	}
-	if !ok {
-		return nil, ErrFunctionDoesNotExist.New(funcName)
-	}
-	return outputVal.Eval(ctx, nil)
+	return getFunctionWithoutValidationForTypes(ctx, funcName, []pgtypes.DoltgresType{t}, []any{val})
 }
 
 // TypModIn encodes given text array value to type modifier in int32 format.
@@ -184,15 +165,7 @@ func IoCompare(ctx *sql.Context, t pgtypes.DoltgresType, v1, v2 any) (int32, err
 		return 0, fmt.Errorf("compare function does not exist for %s type", t.Name)
 	}
 
-	v, ok, err := GetFunction(t.CompareFunc, NewLiteral(v1, t), NewLiteral(v2, t))
-	if err != nil {
-		return 0, err
-	}
-	if !ok {
-		return 0, ErrFunctionDoesNotExist.New(t.CompareFunc)
-	}
-
-	i, err := v.Eval(ctx, nil)
+	i, err := getFunctionWithoutValidationForTypes(ctx, t.CompareFunc, []pgtypes.DoltgresType{t, t}, []any{v1, v2})
 	if err != nil {
 		return 0, err
 	}
@@ -272,4 +245,43 @@ func ArrToString(ctx *sql.Context, arr []any, baseType pgtypes.DoltgresType, tri
 	}
 	sb.WriteRune('}')
 	return sb.String(), nil
+}
+
+// getFunctionWithoutValidationForTypes
+func getFunctionWithoutValidationForTypes(ctx *sql.Context, funcName string, paramTypes []pgtypes.DoltgresType, args []any) (any, error) {
+	// get function and do Callable immediately
+	overloads, ok := Catalog[funcName]
+	if !ok {
+		return nil, ErrFunctionDoesNotExist.New(funcName)
+	}
+	//There should only be one function
+	if len(overloads) != 1 {
+		return nil, fmt.Errorf("expected only one function named: %s", funcName)
+	}
+	function := overloads[0]
+
+	if function.IsStrict() {
+		for i := range args {
+			if args[i] == nil {
+				return nil, nil
+			}
+		}
+	}
+
+	funcTypes := append(paramTypes, function.GetReturn())
+	// Call the function
+	switch f := function.(type) {
+	case Function0:
+		return f.Callable(ctx)
+	case Function1:
+		return f.Callable(ctx, ([2]pgtypes.DoltgresType)(funcTypes), args[0])
+	case Function2:
+		return f.Callable(ctx, ([3]pgtypes.DoltgresType)(funcTypes), args[0], args[1])
+	case Function3:
+		return f.Callable(ctx, ([4]pgtypes.DoltgresType)(funcTypes), args[0], args[1], args[2])
+	case Function4:
+		return f.Callable(ctx, ([5]pgtypes.DoltgresType)(funcTypes), args[0], args[1], args[2], args[3])
+	default:
+		return nil, fmt.Errorf("unknown function type in type functions")
+	}
 }

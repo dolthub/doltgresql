@@ -173,3 +173,7 @@ func compileFunctions() {
 		binaryAggregatePermutations[operator] = overload.overloadsForParams(2)
 	}
 }
+
+func getFromCatalog(funcName string) []FunctionInterface {
+	return Catalog[funcName]
+}

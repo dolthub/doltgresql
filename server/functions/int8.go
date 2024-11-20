@@ -59,6 +59,9 @@ var int8out = framework.Function1{
 	Parameters: [1]pgtypes.DoltgresType{pgtypes.Int64},
 	Strict:     true,
 	Callable: func(ctx *sql.Context, _ [2]pgtypes.DoltgresType, val any) (any, error) {
+		if val == nil {
+			return nil, nil
+		}
 		return strconv.FormatInt(val.(int64), 10), nil
 	},
 }
@@ -85,6 +88,9 @@ var int8send = framework.Function1{
 	Parameters: [1]pgtypes.DoltgresType{pgtypes.Int64},
 	Strict:     true,
 	Callable: func(ctx *sql.Context, _ [2]pgtypes.DoltgresType, val any) (any, error) {
+		if val == nil {
+			return nil, nil
+		}
 		retVal := make([]byte, 8)
 		binary.BigEndian.PutUint64(retVal, uint64(val.(int64))+(1<<63))
 		return retVal, nil

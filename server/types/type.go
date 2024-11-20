@@ -30,7 +30,6 @@ import (
 
 	"github.com/dolthub/doltgresql/postgres/parser/duration"
 	"github.com/dolthub/doltgresql/postgres/parser/uuid"
-	"github.com/dolthub/doltgresql/utils"
 )
 
 // DoltgresType represents a single type.
@@ -133,130 +132,135 @@ func (t DoltgresType) CollationCoercibility(ctx *sql.Context) (collation sql.Col
 // Compare implements the types.ExtendedType interface.
 func (t DoltgresType) Compare(v1 interface{}, v2 interface{}) (int, error) {
 	// TODO: use IoCompare
-	if v1 == nil && v2 == nil {
-		return 0, nil
-	} else if v1 != nil && v2 == nil {
-		return 1, nil
-	} else if v1 == nil && v2 != nil {
-		return -1, nil
+	i, err := IoCompare(nil, t, v1, v2)
+	if err != nil {
+		return 0, err
 	}
-
-	switch ab := v1.(type) {
-	case bool:
-		bb := v2.(bool)
-		if ab == bb {
-			return 0, nil
-		} else if !ab {
-			return -1, nil
-		} else {
-			return 1, nil
-		}
-	case float32:
-		bb := v2.(float32)
-		if ab == bb {
-			return 0, nil
-		} else if ab < bb {
-			return -1, nil
-		} else {
-			return 1, nil
-		}
-	case float64:
-		bb := v2.(float64)
-		if ab == bb {
-			return 0, nil
-		} else if ab < bb {
-			return -1, nil
-		} else {
-			return 1, nil
-		}
-	case int16:
-		bb := v2.(int16)
-		if ab == bb {
-			return 0, nil
-		} else if ab < bb {
-			return -1, nil
-		} else {
-			return 1, nil
-		}
-	case int32:
-		bb := v2.(int32)
-		if ab == bb {
-			return 0, nil
-		} else if ab < bb {
-			return -1, nil
-		} else {
-			return 1, nil
-		}
-	case int64:
-		bb := v2.(int64)
-		if ab == bb {
-			return 0, nil
-		} else if ab < bb {
-			return -1, nil
-		} else {
-			return 1, nil
-		}
-	case uint32:
-		bb := v2.(uint32)
-		if ab == bb {
-			return 0, nil
-		} else if ab < bb {
-			return -1, nil
-		} else {
-			return 1, nil
-		}
-	case string:
-		bb := v2.(string)
-		if ab == bb {
-			return 0, nil
-		} else if ab < bb {
-			return -1, nil
-		} else {
-			return 1, nil
-		}
-	case []byte:
-		bb := v2.([]byte)
-		return bytes.Compare(ab, bb), nil
-	case time.Time:
-		bb := v2.(time.Time)
-		return ab.Compare(bb), nil
-	case duration.Duration:
-		bb := v2.(duration.Duration)
-		return ab.Compare(bb), nil
-	case JsonDocument:
-		bb := v2.(JsonDocument)
-		return JsonValueCompare(ab.Value, bb.Value), nil
-	case decimal.Decimal:
-		bb := v2.(decimal.Decimal)
-		return ab.Cmp(bb), nil
-	case uuid.UUID:
-		bb := v2.(uuid.UUID)
-		return bytes.Compare(ab.GetBytesMut(), bb.GetBytesMut()), nil
-	case []any:
-		if !t.IsArrayType() {
-			return 0, fmt.Errorf("array value received in Compare for non array type")
-		}
-		bb := v2.([]any)
-		minLength := utils.Min(len(ab), len(bb))
-		for i := 0; i < minLength; i++ {
-			res, err := t.ArrayBaseType().Compare(ab[i], bb[i])
-			if err != nil {
-				return 0, err
-			}
-			if res != 0 {
-				return res, nil
-			}
-		}
-		if len(ab) == len(bb) {
-			return 0, nil
-		} else if len(ab) < len(bb) {
-			return -1, nil
-		} else {
-			return 1, nil
-		}
-	default:
-		return 0, fmt.Errorf("unhandled type %T in Compare", v1)
-	}
+	return int(i), nil
+	//if v1 == nil && v2 == nil {
+	//	return 0, nil
+	//} else if v1 != nil && v2 == nil {
+	//	return 1, nil
+	//} else if v1 == nil && v2 != nil {
+	//	return -1, nil
+	//}
+	//
+	//switch ab := v1.(type) {
+	//case bool:
+	//	bb := v2.(bool)
+	//	if ab == bb {
+	//		return 0, nil
+	//	} else if !ab {
+	//		return -1, nil
+	//	} else {
+	//		return 1, nil
+	//	}
+	//case float32:
+	//	bb := v2.(float32)
+	//	if ab == bb {
+	//		return 0, nil
+	//	} else if ab < bb {
+	//		return -1, nil
+	//	} else {
+	//		return 1, nil
+	//	}
+	//case float64:
+	//	bb := v2.(float64)
+	//	if ab == bb {
+	//		return 0, nil
+	//	} else if ab < bb {
+	//		return -1, nil
+	//	} else {
+	//		return 1, nil
+	//	}
+	//case int16:
+	//	bb := v2.(int16)
+	//	if ab == bb {
+	//		return 0, nil
+	//	} else if ab < bb {
+	//		return -1, nil
+	//	} else {
+	//		return 1, nil
+	//	}
+	//case int32:
+	//	bb := v2.(int32)
+	//	if ab == bb {
+	//		return 0, nil
+	//	} else if ab < bb {
+	//		return -1, nil
+	//	} else {
+	//		return 1, nil
+	//	}
+	//case int64:
+	//	bb := v2.(int64)
+	//	if ab == bb {
+	//		return 0, nil
+	//	} else if ab < bb {
+	//		return -1, nil
+	//	} else {
+	//		return 1, nil
+	//	}
+	//case uint32:
+	//	bb := v2.(uint32)
+	//	if ab == bb {
+	//		return 0, nil
+	//	} else if ab < bb {
+	//		return -1, nil
+	//	} else {
+	//		return 1, nil
+	//	}
+	//case string:
+	//	bb := v2.(string)
+	//	if ab == bb {
+	//		return 0, nil
+	//	} else if ab < bb {
+	//		return -1, nil
+	//	} else {
+	//		return 1, nil
+	//	}
+	//case []byte:
+	//	bb := v2.([]byte)
+	//	return bytes.Compare(ab, bb), nil
+	//case time.Time:
+	//	bb := v2.(time.Time)
+	//	return ab.Compare(bb), nil
+	//case duration.Duration:
+	//	bb := v2.(duration.Duration)
+	//	return ab.Compare(bb), nil
+	//case JsonDocument:
+	//	bb := v2.(JsonDocument)
+	//	return JsonValueCompare(ab.Value, bb.Value), nil
+	//case decimal.Decimal:
+	//	bb := v2.(decimal.Decimal)
+	//	return ab.Cmp(bb), nil
+	//case uuid.UUID:
+	//	bb := v2.(uuid.UUID)
+	//	return bytes.Compare(ab.GetBytesMut(), bb.GetBytesMut()), nil
+	//case []any:
+	//	if !t.IsArrayType() {
+	//		return 0, fmt.Errorf("array value received in Compare for non array type")
+	//	}
+	//	bb := v2.([]any)
+	//	minLength := utils.Min(len(ab), len(bb))
+	//	for i := 0; i < minLength; i++ {
+	//		res, err := t.ArrayBaseType().Compare(ab[i], bb[i])
+	//		if err != nil {
+	//			return 0, err
+	//		}
+	//		if res != 0 {
+	//			return res, nil
+	//		}
+	//	}
+	//	if len(ab) == len(bb) {
+	//		return 0, nil
+	//	} else if len(ab) < len(bb) {
+	//		return -1, nil
+	//	} else {
+	//		return 1, nil
+	//	}
+	//default:
+	//	return 0, fmt.Errorf("unhandled type %T in Compare", v1)
+	//}
 }
 
 // Convert implements the types.ExtendedType interface.
