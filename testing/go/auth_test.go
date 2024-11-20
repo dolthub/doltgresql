@@ -351,6 +351,8 @@ func TestAuthTests(t *testing.T) {
 			SetUpScript: []string{
 				`CREATE USER user1 PASSWORD 'a';`,
 				`CREATE USER user2 PASSWORD 'b';`,
+				`GRANT ALL PRIVILEGES ON SCHEMA public TO user1;`,
+				`GRANT ALL PRIVILEGES ON SCHEMA public TO user2;`,
 			},
 			Assertions: []ScriptTestAssertion{
 				{

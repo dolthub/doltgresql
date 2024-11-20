@@ -727,7 +727,7 @@ func nodeExpr(ctx *Context, node tree.Expr) (vitess.Expr, error) {
 			Expression: unknownLiteral,
 		}, nil
 	case *tree.Subquery:
-		return nodeSubquery(ctx, node)
+		return nodeSubqueryOrExists(ctx, node)
 	case *tree.Tuple:
 		if len(node.Labels) > 0 {
 			return nil, fmt.Errorf("tuple labels are not yet supported")

@@ -1,0 +1,129 @@
+name: Mini Sysbench
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened]
+
+permissions:
+  contents: read
+  pull-requests: write
+
+jobs:
+  mini-sysbench:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout DoltgreSQL
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha }}
+
+      - name: Setup Git User
+        uses: fregante/setup-git-user@v2
+
+      - name: Install Go
+        uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+
+      - name: Install Sysbench
+        run: |
+          curl -s https://packagecloud.io/install/repositories/akopytov/sysbench/script.deb.sh | sudo bash
+          sudo apt -y install sysbench
+
+      - name: Test PR branch
+        id: test_doltgresql_pr
+        continue-on-error: true
+        run: |
+          ./postgres/parser/build.sh
+          ./scripts/quick_sysbench.sh
+          mv ./scripts/mini_sysbench/results.log ./scripts/mini_sysbench/results1.log
+          cat ./scripts/mini_sysbench/results1.log
+
+      - name: Test main branch
+        id: test_doltgresql_main
+        continue-on-error: true
+        run: |
+          git reset --hard
+          git fetch --all --unshallow
+          git checkout origin/main
+          ./postgres/parser/build.sh
+          ./scripts/quick_sysbench.sh
+          mv ./scripts/mini_sysbench/results.log ./scripts/mini_sysbench/results2.log
+          cat ./scripts/mini_sysbench/results2.log
+
+      - name: Check Sysbench Logs
+        id: check_logs
+        run: |
+          cd scripts/mini_sysbench
+          if [[ -f "results1.log" && -f "results2.log" ]]; then
+            echo "logs_exist=true" >> $GITHUB_OUTPUT
+            echo "logs exist"
+          else
+            echo "logs_exist=false" >> $GITHUB_OUTPUT
+            echo "One of the branches could not successfully run the benchmarks."
+            echo "Please review them for errors, which should be fixed."
+            exit 1
+          fi
+
+      - name: Build Sysbench Results Comment
+        id: build_results
+        if: steps.check_logs.outputs.logs_exist == 'true'
+        run: |
+          cd testing/go/benchmark
+          output=$(go run .)
+          echo "program_output<<EOF" >> $GITHUB_OUTPUT
+          echo "$output" >> $GITHUB_OUTPUT
+          echo "EOF" >> $GITHUB_OUTPUT
+          echo "$output"
+
+      - name: Is PR From Fork
+        id: from_fork
+        run: |
+          if [ "${{ github.event.pull_request.head.repo.full_name }}" != "${{ github.repository }}" ]; then
+            echo "This is running from a fork, skipping commenting"
+            echo "fork=true" >> $GITHUB_OUTPUT
+          else
+            echo "This is not running from a fork"
+            echo "fork=false" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Post Comment
+        if: steps.from_fork.outputs.fork == 'false' && steps.build_results.outputs.program_output
+        uses: actions/github-script@v6
+        env:
+          PROGRAM_OUTPUT: ${{ steps.build_results.outputs.program_output }}
+        with:
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          script: |
+            const commentMarker = '<!-- go-run-output-sysbench -->'
+            const output = process.env.PROGRAM_OUTPUT
+            const body = `${commentMarker}\n${output}`
+
+            // List comments on the PR
+            const { data: comments } = await github.rest.issues.listComments({
+              issue_number: context.issue.number,
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+            })
+
+            // Check if a comment already exists
+            const comment = comments.find(comment => comment.body.includes(commentMarker))
+
+            if (comment) {
+              // Update the existing comment
+              await github.rest.issues.updateComment({
+                comment_id: comment.id,
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                body: body
+              })
+            } else {
+              // Create a new comment
+              await github.rest.issues.createComment({
+                issue_number: context.issue.number,
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                body: body
+              })
+            }

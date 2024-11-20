@@ -20,6 +20,9 @@ integration-tests/bats/batsee_results
 testing/logictest/*.log
 testing/go/regression/out
 
+# ignore sysbench
+scripts/mini_sysbench
+
 # ignore doltgres db created
 doltgres
 postgres

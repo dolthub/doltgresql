@@ -38,16 +38,24 @@ var (
 // Database contains all information pertaining to authorization and privileges. This is a global structure that is
 // shared between all branches.
 type Database struct {
-	rolesByName     map[string]RoleID
-	rolesByID       map[RoleID]Role
-	ownership       *Ownership
-	tablePrivileges *TablePrivileges
+	rolesByName        map[string]RoleID
+	rolesByID          map[RoleID]Role
+	ownership          *Ownership
+	databasePrivileges *DatabasePrivileges
+	schemaPrivileges   *SchemaPrivileges
+	tablePrivileges    *TablePrivileges
+	roleMembership     *RoleMembership
 }
 
 // ClearDatabase clears the internal database, leaving only the default users. This is primarily for use by tests.
 func ClearDatabase() {
 	clear(globalDatabase.rolesByName)
 	clear(globalDatabase.rolesByID)
+	clear(globalDatabase.ownership.Data)
+	clear(globalDatabase.databasePrivileges.Data)
+	clear(globalDatabase.schemaPrivileges.Data)
+	clear(globalDatabase.tablePrivileges.Data)
+	clear(globalDatabase.roleMembership.Data)
 	dbInitDefault()
 }
 
@@ -56,7 +64,7 @@ func DropRole(name string) {
 	if roleID, ok := globalDatabase.rolesByName[name]; ok {
 		delete(globalDatabase.rolesByName, name)
 		delete(globalDatabase.rolesByID, roleID)
-
+		// TODO: remove from ownership, schema privileges, table privileges, and role membership
 	}
 }
 
@@ -101,6 +109,11 @@ func SetRole(role Role) {
 	globalDatabase.rolesByID[role.ID()] = role
 }
 
+// IsSuperUser returns whether the given role is a SUPERUSER.
+func IsSuperUser(role RoleID) bool {
+	return globalDatabase.rolesByID[role].IsSuperUser
+}
+
 // LockRead takes an anonymous function and runs it while using a read lock. This ensures that the lock is automatically
 // released once the function finishes.
 func LockRead(f func()) {
@@ -121,10 +134,13 @@ func LockWrite(f func()) {
 // terribly wrong.
 func dbInit(dEnv *env.DoltEnv) {
 	globalDatabase = Database{
-		rolesByName:     make(map[string]RoleID),
-		rolesByID:       make(map[RoleID]Role),
-		ownership:       NewOwnership(),
-		tablePrivileges: NewTablePrivileges(),
+		rolesByName:        make(map[string]RoleID),
+		rolesByID:          make(map[RoleID]Role),
+		ownership:          NewOwnership(),
+		databasePrivileges: NewDatabasePrivileges(),
+		schemaPrivileges:   NewSchemaPrivileges(),
+		tablePrivileges:    NewTablePrivileges(),
+		roleMembership:     NewRoleMembership(),
 	}
 	globalLock = &sync.RWMutex{}
 	if dEnv != nil {

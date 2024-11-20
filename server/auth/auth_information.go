@@ -21,6 +21,7 @@ const (
 	AuthType_CONNECT      = "CONNECT"
 	AuthType_CREATE       = "CREATE"
 	AuthType_DELETE       = "DELETE"
+	AuthType_DROPTABLE    = "DROPTABLE"
 	AuthType_EXECUTE      = "EXECUTE"
 	AuthType_INSERT       = "INSERT"
 	AuthType_REFERENCES   = "REFERENCES"
@@ -35,11 +36,9 @@ const (
 
 // These AuthTargetType_ enums are used as the TargetType in vitess.AuthInformation.
 const (
-	AuthTargetType_Ignore                   = "IGNORE"
-	AuthTargetType_DatabaseIdentifiers      = "DB_IDENTS"
-	AuthTargetType_Global                   = "GLOBAL"
-	AuthTargetType_MultipleTableIdentifiers = "DB_TABLE_IDENTS"
-	AuthTargetType_SingleTableIdentifier    = "DB_TABLE_IDENT"
-	AuthTargetType_TableColumn              = "DB_TABLE_COLUMN_IDENT"
-	AuthTargetType_TODO                     = "TODO"
+	AuthTargetType_Ignore              = "IGNORE"
+	AuthTargetType_DatabaseIdentifiers = "DB_IDENTS"
+	AuthTargetType_SchemaIdentifiers   = "DB_SCH_IDENTS"
+	AuthTargetType_TableIdentifiers    = "DB_SCH_TABLE_IDENTS"
+	AuthTargetType_TODO                = "TODO"
 )

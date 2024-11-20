@@ -37,6 +37,7 @@ func NewOwnership() *Ownership {
 
 // AddOwner adds the given role as an owner to the global database.
 func AddOwner(key OwnershipKey, role RoleID) {
+	key = key.normalize()
 	ownerMap, ok := globalDatabase.ownership.Data[key]
 	if !ok {
 		ownerMap = make(map[RoleID]struct{})
@@ -47,14 +48,16 @@ func AddOwner(key OwnershipKey, role RoleID) {
 
 // GetOwners returns all owners matching the given key.
 func GetOwners(key OwnershipKey) []RoleID {
+	key = key.normalize()
 	if ownerMap, ok := globalDatabase.ownership.Data[key]; ok {
 		return utils.GetMapKeysSorted(ownerMap)
 	}
 	return nil
 }
 
-// IsOwner returns whether the given owner has an entry for the key.
+// IsOwner returns whether the given role is an owner for the key.
 func IsOwner(key OwnershipKey, role RoleID) bool {
+	key = key.normalize()
 	if ownerMap, ok := globalDatabase.ownership.Data[key]; ok {
 		_, ok = ownerMap[role]
 		return ok
@@ -62,14 +65,59 @@ func IsOwner(key OwnershipKey, role RoleID) bool {
 	return false
 }
 
+// HasOwnerAccess returns whether the given role has access to the ownership of an object, along with the ID of the true
+// owner (which may be the same as the given role).
+func HasOwnerAccess(key OwnershipKey, role RoleID) RoleID {
+	if IsSuperUser(role) {
+		owners := GetOwners(key)
+		if len(owners) == 0 {
+			// This may happen if the privilege file is deleted
+			return role
+		}
+		// Although there may be multiple owners, we'll only return the first one.
+		// Postgres already allows for non-determinism with multiple membership paths, so this is fine.
+		return owners[0]
+	}
+	if IsOwner(key, role) {
+		return role
+	}
+	for _, group := range GetAllGroupsWithMember(role, true) {
+		if returnedID := HasOwnerAccess(key, group); returnedID.IsValid() {
+			return returnedID
+		}
+	}
+	return 0
+}
+
 // RemoveOwner removes the role as an owner from the global database.
 func RemoveOwner(key OwnershipKey, role RoleID) {
+	key = key.normalize()
 	if ownerMap, ok := globalDatabase.ownership.Data[key]; ok {
 		delete(ownerMap, role)
 		if len(ownerMap) == 0 {
 			delete(globalDatabase.ownership.Data, key)
 		}
 	}
+}
+
+// normalize accounts for and corrects any potential variation for specific object types.
+func (key OwnershipKey) normalize() OwnershipKey {
+	if key.PrivilegeObject == PrivilegeObject_SCHEMA {
+		if len(key.Schema) == 0 {
+			return OwnershipKey{
+				PrivilegeObject: PrivilegeObject_SCHEMA,
+				Schema:          key.Name,
+				Name:            key.Name,
+			}
+		} else if len(key.Name) == 0 {
+			return OwnershipKey{
+				PrivilegeObject: PrivilegeObject_SCHEMA,
+				Schema:          key.Schema,
+				Name:            key.Schema,
+			}
+		}
+	}
+	return key
 }
 
 // serialize writes the Ownership to the given writer.

@@ -43,8 +43,8 @@ func nodeAliasedTableExpr(ctx *Context, node *tree.AliasedTableExpr) (*vitess.Al
 		aliasExpr = tableName
 		authInfo = vitess.AuthInformation{
 			AuthType:    ctx.Auth().PeekAuthType(),
-			TargetType:  auth.AuthTargetType_SingleTableIdentifier,
-			TargetNames: []string{tableName.SchemaQualifier.String(), tableName.Name.String()},
+			TargetType:  auth.AuthTargetType_TableIdentifiers,
+			TargetNames: []string{tableName.DbQualifier.String(), tableName.SchemaQualifier.String(), tableName.Name.String()},
 		}
 	case *tree.Subquery:
 		tableExpr, err := nodeTableExpr(ctx, expr)
