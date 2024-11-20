@@ -107,7 +107,7 @@ func main() {
 			}
 			for _, trackerToItem := range trackersTo[trackerIdx].FailPartialItems {
 				if _, ok := fromFailItems[trackerToItem.Query]; !ok {
-					if totalRegressions <= 50 {
+					if totalRegressions < 40 {
 						if !foundAnyFailDiff {
 							foundAnyFailDiff = true
 							sb.WriteString("\n## ${\\color{red}Regressions__&&&&&&}$\n")
@@ -147,7 +147,7 @@ func main() {
 			}
 			for _, trackerToItem := range trackersTo[trackerIdx].SuccessItems {
 				if _, ok := fromSuccessItems[trackerToItem.Query]; !ok {
-					if totalProgressions <= 50 {
+					if totalProgressions < 40 {
 						if !foundAnySuccessDiff {
 							foundAnySuccessDiff = true
 							sb.WriteString("\n## ${\\color{lightgreen}Progressions__&&&&&&}$\n")
