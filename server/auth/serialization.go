@@ -42,8 +42,14 @@ func (db *Database) serialize() []byte {
 	}
 	// Write the ownership
 	db.ownership.serialize(writer)
+	// Write the database privileges
+	db.databasePrivileges.serialize(writer)
+	// Write the schema privileges
+	db.schemaPrivileges.serialize(writer)
 	// Write the table privileges
 	db.tablePrivileges.serialize(writer)
+	// Write the role chain
+	db.roleMembership.serialize(writer)
 	return writer.Data()
 }
 
@@ -76,7 +82,13 @@ func (db *Database) deserializeV0(reader *utils.Reader) error {
 	}
 	// Read the ownership
 	db.ownership.deserialize(0, reader)
+	// Read the database privileges
+	db.databasePrivileges.deserialize(0, reader)
+	// Read the schema privileges
+	db.schemaPrivileges.deserialize(0, reader)
 	// Read the table privileges
 	db.tablePrivileges.deserialize(0, reader)
+	// Read the role chain
+	db.roleMembership.deserialize(0, reader)
 	return nil
 }

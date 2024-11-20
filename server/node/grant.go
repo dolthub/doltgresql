@@ -30,25 +30,39 @@ import (
 // Grant handles all of the GRANT statements.
 type Grant struct {
 	GrantTable      *GrantTable
+	GrantSchema     *GrantSchema
+	GrantDatabase   *GrantDatabase
+	GrantRole       *GrantRole
 	ToRoles         []string
-	WithGrantOption bool // Does not apply to the GRANT <roles> TO <roles> statement
+	WithGrantOption bool // This is "WITH ADMIN OPTION" for GrantRole only
 	GrantedBy       string
 }
 
 // GrantTable specifically handles the GRANT ... ON TABLE statement.
 type GrantTable struct {
-	Privileges         []auth.Privilege
-	Tables             []doltdb.TableName
-	AllTablesInSchemas []string
+	Privileges []auth.Privilege
+	Tables     []doltdb.TableName
+}
+
+// GrantSchema specifically handles the GRANT ... ON SCHEMA statement.
+type GrantSchema struct {
+	Privileges []auth.Privilege
+	Schemas    []string
+}
+
+// GrantDatabase specifically handles the GRANT ... ON DATABASE statement.
+type GrantDatabase struct {
+	Privileges []auth.Privilege
+	Databases  []string
+}
+
+// GrantRole specifically handles the GRANT <roles> TO <roles> statement.
+type GrantRole struct {
+	Groups []string
 }
 
 var _ sql.ExecSourceRel = (*Grant)(nil)
 var _ vitess.Injectable = (*Grant)(nil)
-
-// CheckPrivileges implements the interface sql.ExecSourceRel.
-func (g *Grant) CheckPrivileges(ctx *sql.Context, opChecker sql.PrivilegedOperationChecker) bool {
-	return true
-}
 
 // Children implements the interface sql.ExecSourceRel.
 func (g *Grant) Children() []sql.Node {
@@ -71,71 +85,20 @@ func (g *Grant) RowIter(ctx *sql.Context, r sql.Row) (sql.RowIter, error) {
 	auth.LockWrite(func() {
 		switch {
 		case g.GrantTable != nil:
-			if len(g.GrantTable.AllTablesInSchemas) > 0 {
-				err = fmt.Errorf("granting privileges to all tables in the schema is not yet supported")
+			if err = g.grantTable(ctx); err != nil {
 				return
 			}
-			roles := make([]auth.Role, len(g.ToRoles))
-			// First we'll verify that all of the roles exist
-			for i, roleName := range g.ToRoles {
-				roles[i] = auth.GetRole(roleName)
-				if !roles[i].IsValid() {
-					err = fmt.Errorf(`role "%s" does not exist`, roleName)
-					return
-				}
-			}
-			// Then we'll check that the role that is granting the privileges exists
-			userRole := auth.GetRole(ctx.Client().User)
-			if !userRole.IsValid() {
-				err = fmt.Errorf(`role "%s" does not exist`, ctx.Client().User)
+		case g.GrantSchema != nil:
+			if err = g.grantSchema(ctx); err != nil {
 				return
 			}
-			var grantedByID auth.RoleID
-			if len(g.GrantedBy) != 0 {
-				// TODO: check the role chain to see if this session's user can assume this role
-				grantedByRole := auth.GetRole(g.GrantedBy)
-				if !grantedByRole.IsValid() {
-					err = fmt.Errorf(`role "%s" does not exist`, g.GrantedBy)
-					return
-				}
-				grantedByID = grantedByRole.ID()
-				// TODO: check if owners may arbitrarily set the GRANTED BY
-				if !userRole.IsSuperUser {
-					err = errors.New("REVOKE currently only allows superusers to set GRANTED BY")
-					return
-				}
-			} else {
-				grantedByID = userRole.ID()
+		case g.GrantDatabase != nil:
+			if err = g.grantDatabase(ctx); err != nil {
+				return
 			}
-			// Next we'll assign all of the privileges to each role
-			for _, role := range roles {
-				for _, table := range g.GrantTable.Tables {
-					var schemaName string
-					schemaName, err = core.GetSchemaName(ctx, nil, table.Schema)
-					if err != nil {
-						return
-					}
-					key := auth.TablePrivilegeKey{
-						Role:  role.ID(),
-						Table: doltdb.TableName{Name: table.Name, Schema: schemaName},
-					}
-					isOwner := auth.IsOwner(auth.OwnershipKey{
-						PrivilegeObject: auth.PrivilegeObject_TABLE,
-						Schema:          schemaName,
-						Name:            table.Name,
-					}, userRole.ID())
-					for _, privilege := range g.GrantTable.Privileges {
-						if !userRole.IsSuperUser && !isOwner && !auth.HasTablePrivilegeGrantOption(key, privilege) {
-							// TODO: grab the actual error message
-							err = fmt.Errorf(`role "%s" does not have permission to grant this privilege`, userRole.Name)
-							return
-						}
-						auth.AddTablePrivilege(key, auth.GrantedPrivilege{
-							Privilege: privilege,
-							GrantedBy: grantedByID,
-						}, g.WithGrantOption)
-					}
-				}
+		case g.GrantRole != nil:
+			if err = g.grantRole(ctx); err != nil {
+				return
 			}
 		default:
 			err = fmt.Errorf("GRANT statement is not yet supported")
@@ -175,4 +138,156 @@ func (g *Grant) WithResolvedChildren(children []any) (any, error) {
 		return nil, ErrVitessChildCount.New(0, len(children))
 	}
 	return g, nil
+}
+
+// common handles the initial logic for each GRANT statement. `roles` are the `ToRoles`. `userRole` is the role of the
+// session's selected user.
+func (g *Grant) common(ctx *sql.Context) (roles []auth.Role, userRole auth.Role, err error) {
+	roles = make([]auth.Role, len(g.ToRoles))
+	// First we'll verify that all of the roles exist
+	for i, roleName := range g.ToRoles {
+		roles[i] = auth.GetRole(roleName)
+		if !roles[i].IsValid() {
+			return nil, auth.Role{}, fmt.Errorf(`role "%s" does not exist`, roleName)
+		}
+	}
+	// Then we'll check that the role that is granting the privileges exists
+	userRole = auth.GetRole(ctx.Client().User)
+	if !userRole.IsValid() {
+		return nil, auth.Role{}, fmt.Errorf(`role "%s" does not exist`, ctx.Client().User)
+	}
+	if len(g.GrantedBy) != 0 {
+		grantedByRole := auth.GetRole(g.GrantedBy)
+		if !grantedByRole.IsValid() {
+			return nil, auth.Role{}, fmt.Errorf(`role "%s" does not exist`, g.GrantedBy)
+		}
+		if userRole.ID() != grantedByRole.ID() {
+			// TODO: grab the actual error message
+			return nil, auth.Role{}, errors.New("GRANTED BY may only be set to the calling user")
+		}
+	}
+	return roles, userRole, nil
+}
+
+// grantTable handles *GrantTable from within RowIter.
+func (g *Grant) grantTable(ctx *sql.Context) error {
+	roles, userRole, err := g.common(ctx)
+	if err != nil {
+		return err
+	}
+	for _, role := range roles {
+		for _, table := range g.GrantTable.Tables {
+			schemaName, err := core.GetSchemaName(ctx, nil, table.Schema)
+			if err != nil {
+				return err
+			}
+			key := auth.TablePrivilegeKey{
+				Role:  userRole.ID(),
+				Table: doltdb.TableName{Name: table.Name, Schema: schemaName},
+			}
+			for _, privilege := range g.GrantTable.Privileges {
+				grantedBy := auth.HasTablePrivilegeGrantOption(key, privilege)
+				if !grantedBy.IsValid() {
+					// TODO: grab the actual error message
+					return fmt.Errorf(`role "%s" does not have permission to grant this privilege`, userRole.Name)
+				}
+				auth.AddTablePrivilege(auth.TablePrivilegeKey{
+					Role:  role.ID(),
+					Table: doltdb.TableName{Name: table.Name, Schema: schemaName},
+				}, auth.GrantedPrivilege{
+					Privilege: privilege,
+					GrantedBy: grantedBy,
+				}, g.WithGrantOption)
+			}
+		}
+	}
+	return nil
+}
+
+// grantSchema handles *GrantSchema from within RowIter.
+func (g *Grant) grantSchema(ctx *sql.Context) error {
+	roles, userRole, err := g.common(ctx)
+	if err != nil {
+		return err
+	}
+	for _, role := range roles {
+		for _, schema := range g.GrantSchema.Schemas {
+			key := auth.SchemaPrivilegeKey{
+				Role:   userRole.ID(),
+				Schema: schema,
+			}
+			for _, privilege := range g.GrantSchema.Privileges {
+				grantedBy := auth.HasSchemaPrivilegeGrantOption(key, privilege)
+				if !grantedBy.IsValid() {
+					// TODO: grab the actual error message
+					return fmt.Errorf(`role "%s" does not have permission to grant this privilege`, userRole.Name)
+				}
+				auth.AddSchemaPrivilege(auth.SchemaPrivilegeKey{
+					Role:   role.ID(),
+					Schema: schema,
+				}, auth.GrantedPrivilege{
+					Privilege: privilege,
+					GrantedBy: grantedBy,
+				}, g.WithGrantOption)
+			}
+		}
+	}
+	return nil
+}
+
+// grantDatabase handles *GrantDatabase from within RowIter.
+func (g *Grant) grantDatabase(ctx *sql.Context) error {
+	roles, userRole, err := g.common(ctx)
+	if err != nil {
+		return err
+	}
+	for _, role := range roles {
+		for _, database := range g.GrantDatabase.Databases {
+			key := auth.DatabasePrivilegeKey{
+				Role: userRole.ID(),
+				Name: database,
+			}
+			for _, privilege := range g.GrantDatabase.Privileges {
+				grantedBy := auth.HasDatabasePrivilegeGrantOption(key, privilege)
+				if !grantedBy.IsValid() {
+					// TODO: grab the actual error message
+					return fmt.Errorf(`role "%s" does not have permission to grant this privilege`, userRole.Name)
+				}
+				auth.AddDatabasePrivilege(auth.DatabasePrivilegeKey{
+					Role: role.ID(),
+					Name: database,
+				}, auth.GrantedPrivilege{
+					Privilege: privilege,
+					GrantedBy: grantedBy,
+				}, g.WithGrantOption)
+			}
+		}
+	}
+	return nil
+}
+
+// grantRole handles *GrantRole from within RowIter.
+func (g *Grant) grantRole(ctx *sql.Context) error {
+	members, userRole, err := g.common(ctx)
+	if err != nil {
+		return err
+	}
+	groups := make([]auth.Role, len(g.GrantRole.Groups))
+	for i, groupName := range g.GrantRole.Groups {
+		groups[i] = auth.GetRole(groupName)
+		if !groups[i].IsValid() {
+			return fmt.Errorf(`role "%s" does not exist`, groupName)
+		}
+	}
+	for _, member := range members {
+		for _, group := range groups {
+			memberGroupID, _, withAdminOption := auth.IsRoleAMember(userRole.ID(), group.ID())
+			if !memberGroupID.IsValid() || !withAdminOption {
+				// TODO: grab the actual error message
+				return fmt.Errorf(`role "%s" does not have permission to grant role "%s"`, userRole.Name, group.Name)
+			}
+			auth.AddMemberToGroup(member.ID(), group.ID(), g.WithGrantOption, memberGroupID)
+		}
+	}
+	return nil
 }

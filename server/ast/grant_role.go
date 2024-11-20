@@ -15,7 +15,7 @@
 package ast
 
 import (
-	"fmt"
+	pgnodes "github.com/dolthub/doltgresql/server/node"
 
 	vitess "github.com/dolthub/vitess/go/vt/sqlparser"
 
@@ -27,5 +27,15 @@ func nodeGrantRole(ctx *Context, node *tree.GrantRole) (vitess.Statement, error)
 	if node == nil {
 		return nil, nil
 	}
-	return nil, fmt.Errorf("GRANT ROLE is not yet supported")
+	return vitess.InjectedStatement{
+		Statement: &pgnodes.Grant{
+			GrantRole: &pgnodes.GrantRole{
+				Groups: node.Roles.ToStrings(),
+			},
+			ToRoles:         node.Members,
+			WithGrantOption: len(node.WithOption) > 0,
+			GrantedBy:       node.GrantedBy,
+		},
+		Children: nil,
+	}, nil
 }
