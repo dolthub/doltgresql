@@ -89,10 +89,11 @@ func main() {
 	sb.WriteString(fmt.Sprintf("| Failures | %.4f%% | %.4f%% |\n",
 		(float64(fromFail)/float64(fromTotal))*100.0,
 		(float64(toFail)/float64(toTotal))*100.0))
+	totalRegressions := 0
+	totalProgressions := 0
 	if len(trackersFrom) == len(trackersTo) {
 		// Handle regressions (which we'll display first)
 		foundAnyFailDiff := false
-		countRegression := 0
 		for trackerIdx := range trackersFrom {
 			// They're sorted, so this should always hold true.
 			// This will really only fail if the tests were updated.
@@ -106,10 +107,10 @@ func main() {
 			}
 			for _, trackerToItem := range trackersTo[trackerIdx].FailPartialItems {
 				if _, ok := fromFailItems[trackerToItem.Query]; !ok {
-					if countRegression <= 50 {
+					if totalRegressions <= 50 {
 						if !foundAnyFailDiff {
 							foundAnyFailDiff = true
-							sb.WriteString("\n## ${\\color{red}Regressions}$\n")
+							sb.WriteString("\n## ${\\color{red}Regressions__&&&&&&}$\n")
 						}
 						if !foundFileDiff {
 							foundFileDiff = true
@@ -127,16 +128,12 @@ func main() {
 						}
 						sb.WriteString("```\n")
 					}
-					countRegression += 1
+					totalRegressions += 1
 				}
 			}
 		}
-		if countRegression > 0 {
-			sb.WriteString(fmt.Sprintf("\n## ${\\color{red}Total Regressions: %v}$\n", countRegression))
-		}
 		// Handle progressions (which we'll display second)
 		foundAnySuccessDiff := false
-		countProgression := 0
 		for trackerIdx := range trackersFrom {
 			// They're sorted, so this should always hold true.
 			// This will really only fail if the tests were updated.
@@ -150,10 +147,10 @@ func main() {
 			}
 			for _, trackerToItem := range trackersTo[trackerIdx].SuccessItems {
 				if _, ok := fromSuccessItems[trackerToItem.Query]; !ok {
-					if countProgression <= 50 {
+					if totalProgressions <= 50 {
 						if !foundAnySuccessDiff {
 							foundAnySuccessDiff = true
-							sb.WriteString("\n## ${\\color{lightgreen}Progressions}$\n")
+							sb.WriteString("\n## ${\\color{lightgreen}Progressions__&&&&&&}$\n")
 						}
 						if !foundFileDiff {
 							foundFileDiff = true
@@ -161,16 +158,16 @@ func main() {
 						}
 						sb.WriteString(fmt.Sprintf("```\nQUERY: %s\n```\n", trackerToItem.Query))
 					}
-					countProgression += 1
+					totalProgressions += 1
 				}
 			}
 		}
-		if countProgression > 0 {
-			sb.WriteString(fmt.Sprintf("\n## ${\\color{lightgreen}Total Progressions: %v}$\n", countProgression))
-		}
 	}
 	sb.WriteString("[^1]: These are tests that we're marking as `Successful`, however they do not match the expected output in some way. This is due to small differences, such as different wording on the error messages, or the column names being incorrect while the data itself is correct.")
-	fmt.Println(sb.String())
+	output := sb.String()
+	output = strings.ReplaceAll(output, "Regressions__&&&&&&", fmt.Sprintf("Regressions (%d)", totalRegressions))
+	output = strings.ReplaceAll(output, "Progressions__&&&&&&", fmt.Sprintf("Progressions (%d)", totalProgressions))
+	fmt.Println(output)
 }
 
 func updateResults() {

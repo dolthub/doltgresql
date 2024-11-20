@@ -32,10 +32,12 @@ func nodeGrant(ctx *Context, node *tree.Grant) (vitess.Statement, error) {
 		return nil, nil
 	}
 	var grantTable *pgnodes.GrantTable
+	var grantSchema *pgnodes.GrantSchema
+	var grantDatabase *pgnodes.GrantDatabase
 	switch node.Targets.TargetType {
 	case privilege.Table:
-		tables := make([]doltdb.TableName, len(node.Targets.Tables))
-		for i, table := range node.Targets.Tables {
+		tables := make([]doltdb.TableName, 0, len(node.Targets.Tables)+len(node.Targets.InSchema))
+		for _, table := range node.Targets.Tables {
 			normalizedTable, err := table.NormalizeTablePattern()
 			if err != nil {
 				return nil, err
@@ -45,24 +47,50 @@ func nodeGrant(ctx *Context, node *tree.Grant) (vitess.Statement, error) {
 				if normalizedTable.ExplicitCatalog {
 					return nil, fmt.Errorf("granting privileges to other databases is not yet supported")
 				}
-				tables[i] = doltdb.TableName{
+				tables = append(tables, doltdb.TableName{
 					Name:   string(normalizedTable.ObjectName),
 					Schema: string(normalizedTable.SchemaName),
-				}
+				})
 			case *tree.AllTablesSelector:
-				return nil, fmt.Errorf("selecting all tables in a schema is not yet supported")
+				tables = append(tables, doltdb.TableName{
+					Name:   "",
+					Schema: string(normalizedTable.SchemaName),
+				})
 			default:
 				return nil, fmt.Errorf(`unexpected table type in GRANT: %T`, normalizedTable)
 			}
+		}
+		for _, schema := range node.Targets.InSchema {
+			tables = append(tables, doltdb.TableName{
+				Name:   "",
+				Schema: schema,
+			})
 		}
 		privileges, err := convertPrivilegeKinds(auth.PrivilegeObject_TABLE, node.Privileges)
 		if err != nil {
 			return nil, err
 		}
 		grantTable = &pgnodes.GrantTable{
-			Privileges:         privileges,
-			Tables:             tables,
-			AllTablesInSchemas: nil,
+			Privileges: privileges,
+			Tables:     tables,
+		}
+	case privilege.Schema:
+		privileges, err := convertPrivilegeKinds(auth.PrivilegeObject_SCHEMA, node.Privileges)
+		if err != nil {
+			return nil, err
+		}
+		grantSchema = &pgnodes.GrantSchema{
+			Privileges: privileges,
+			Schemas:    node.Targets.Names,
+		}
+	case privilege.Database:
+		privileges, err := convertPrivilegeKinds(auth.PrivilegeObject_DATABASE, node.Privileges)
+		if err != nil {
+			return nil, err
+		}
+		grantDatabase = &pgnodes.GrantDatabase{
+			Privileges: privileges,
+			Databases:  node.Targets.Databases.ToStrings(),
 		}
 	default:
 		return nil, fmt.Errorf("this form of GRANT is not yet supported")
@@ -70,6 +98,9 @@ func nodeGrant(ctx *Context, node *tree.Grant) (vitess.Statement, error) {
 	return vitess.InjectedStatement{
 		Statement: &pgnodes.Grant{
 			GrantTable:      grantTable,
+			GrantSchema:     grantSchema,
+			GrantDatabase:   grantDatabase,
+			GrantRole:       nil,
 			ToRoles:         node.Grantees,
 			WithGrantOption: node.WithGrantOption,
 			GrantedBy:       node.GrantedBy,

@@ -48,8 +48,8 @@ func nodeTruncate(ctx *Context, node *tree.Truncate) (*vitess.DDL, error) {
 		Table:  tableName,
 		Auth: vitess.AuthInformation{
 			AuthType:    auth.AuthType_TRUNCATE,
-			TargetType:  auth.AuthTargetType_SingleTableIdentifier,
-			TargetNames: []string{tableName.SchemaQualifier.String(), tableName.Name.String()},
+			TargetType:  auth.AuthTargetType_TableIdentifiers,
+			TargetNames: []string{tableName.DbQualifier.String(), tableName.SchemaQualifier.String(), tableName.Name.String()},
 		},
 	}, nil
 }

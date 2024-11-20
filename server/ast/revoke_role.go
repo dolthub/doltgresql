@@ -15,7 +15,7 @@
 package ast
 
 import (
-	"fmt"
+	pgnodes "github.com/dolthub/doltgresql/server/node"
 
 	vitess "github.com/dolthub/vitess/go/vt/sqlparser"
 
@@ -27,5 +27,16 @@ func nodeRevokeRole(ctx *Context, node *tree.RevokeRole) (vitess.Statement, erro
 	if node == nil {
 		return nil, nil
 	}
-	return nil, fmt.Errorf("REVOKE ROLE is not yet supported")
+	return vitess.InjectedStatement{
+		Statement: &pgnodes.Revoke{
+			RevokeRole: &pgnodes.RevokeRole{
+				Groups: node.Roles.ToStrings(),
+			},
+			FromRoles:      node.Members,
+			GrantedBy:      node.GrantedBy,
+			GrantOptionFor: len(node.Option) > 0,
+			Cascade:        node.DropBehavior == tree.DropCascade,
+		},
+		Children: nil,
+	}, nil
 }
