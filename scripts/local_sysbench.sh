@@ -2,7 +2,7 @@
 set -e
 set -o pipefail
 
-SYSBENCH_TEST="select_random_ranges"
+SYSBENCH_TEST="covering_index_scan_postgres"
 WORKING_DIR=`mktemp -d`
 PPROF=1
 PORT=5433
