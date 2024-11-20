@@ -38,7 +38,7 @@ jobs:
           ./postgres/parser/build.sh
           ./scripts/quick_sysbench.sh
           mv ./scripts/mini_sysbench/results.log ./scripts/mini_sysbench/results1.log
-          echo ./scripts/mini_sysbench/results1.log
+          cat ./scripts/mini_sysbench/results1.log
 
       - name: Test main branch
         id: test_doltgresql_main
@@ -50,7 +50,7 @@ jobs:
           ./postgres/parser/build.sh
           ./scripts/quick_sysbench.sh
           mv ./scripts/mini_sysbench/results.log ./scripts/mini_sysbench/results2.log
-          echo ./scripts/mini_sysbench/results2.log
+          cat ./scripts/mini_sysbench/results2.log
 
       - name: Check Sysbench Logs
         id: check_logs
