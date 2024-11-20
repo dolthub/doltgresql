@@ -62,7 +62,7 @@ var nextval_regclass = framework.Function1{
 	IsNonDeterministic: true,
 	Strict:             true,
 	Callable: func(ctx *sql.Context, _ [2]pgtypes.DoltgresType, val any) (any, error) {
-		relationName, err := framework.IoOutput(ctx, pgtypes.Regclass, val)
+		relationName, err := pgtypes.Regclass.IoOutput(ctx, val)
 		if err != nil {
 			return nil, err
 		}

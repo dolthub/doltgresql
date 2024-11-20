@@ -30,6 +30,7 @@ import (
 
 	"github.com/dolthub/doltgresql/postgres/parser/duration"
 	"github.com/dolthub/doltgresql/postgres/parser/uuid"
+	"github.com/dolthub/doltgresql/utils"
 )
 
 // DoltgresType represents a single type.
@@ -132,135 +133,130 @@ func (t DoltgresType) CollationCoercibility(ctx *sql.Context) (collation sql.Col
 // Compare implements the types.ExtendedType interface.
 func (t DoltgresType) Compare(v1 interface{}, v2 interface{}) (int, error) {
 	// TODO: use IoCompare
-	i, err := IoCompare(nil, t, v1, v2)
-	if err != nil {
-		return 0, err
+	if v1 == nil && v2 == nil {
+		return 0, nil
+	} else if v1 != nil && v2 == nil {
+		return 1, nil
+	} else if v1 == nil && v2 != nil {
+		return -1, nil
 	}
-	return int(i), nil
-	//if v1 == nil && v2 == nil {
-	//	return 0, nil
-	//} else if v1 != nil && v2 == nil {
-	//	return 1, nil
-	//} else if v1 == nil && v2 != nil {
-	//	return -1, nil
-	//}
-	//
-	//switch ab := v1.(type) {
-	//case bool:
-	//	bb := v2.(bool)
-	//	if ab == bb {
-	//		return 0, nil
-	//	} else if !ab {
-	//		return -1, nil
-	//	} else {
-	//		return 1, nil
-	//	}
-	//case float32:
-	//	bb := v2.(float32)
-	//	if ab == bb {
-	//		return 0, nil
-	//	} else if ab < bb {
-	//		return -1, nil
-	//	} else {
-	//		return 1, nil
-	//	}
-	//case float64:
-	//	bb := v2.(float64)
-	//	if ab == bb {
-	//		return 0, nil
-	//	} else if ab < bb {
-	//		return -1, nil
-	//	} else {
-	//		return 1, nil
-	//	}
-	//case int16:
-	//	bb := v2.(int16)
-	//	if ab == bb {
-	//		return 0, nil
-	//	} else if ab < bb {
-	//		return -1, nil
-	//	} else {
-	//		return 1, nil
-	//	}
-	//case int32:
-	//	bb := v2.(int32)
-	//	if ab == bb {
-	//		return 0, nil
-	//	} else if ab < bb {
-	//		return -1, nil
-	//	} else {
-	//		return 1, nil
-	//	}
-	//case int64:
-	//	bb := v2.(int64)
-	//	if ab == bb {
-	//		return 0, nil
-	//	} else if ab < bb {
-	//		return -1, nil
-	//	} else {
-	//		return 1, nil
-	//	}
-	//case uint32:
-	//	bb := v2.(uint32)
-	//	if ab == bb {
-	//		return 0, nil
-	//	} else if ab < bb {
-	//		return -1, nil
-	//	} else {
-	//		return 1, nil
-	//	}
-	//case string:
-	//	bb := v2.(string)
-	//	if ab == bb {
-	//		return 0, nil
-	//	} else if ab < bb {
-	//		return -1, nil
-	//	} else {
-	//		return 1, nil
-	//	}
-	//case []byte:
-	//	bb := v2.([]byte)
-	//	return bytes.Compare(ab, bb), nil
-	//case time.Time:
-	//	bb := v2.(time.Time)
-	//	return ab.Compare(bb), nil
-	//case duration.Duration:
-	//	bb := v2.(duration.Duration)
-	//	return ab.Compare(bb), nil
-	//case JsonDocument:
-	//	bb := v2.(JsonDocument)
-	//	return JsonValueCompare(ab.Value, bb.Value), nil
-	//case decimal.Decimal:
-	//	bb := v2.(decimal.Decimal)
-	//	return ab.Cmp(bb), nil
-	//case uuid.UUID:
-	//	bb := v2.(uuid.UUID)
-	//	return bytes.Compare(ab.GetBytesMut(), bb.GetBytesMut()), nil
-	//case []any:
-	//	if !t.IsArrayType() {
-	//		return 0, fmt.Errorf("array value received in Compare for non array type")
-	//	}
-	//	bb := v2.([]any)
-	//	minLength := utils.Min(len(ab), len(bb))
-	//	for i := 0; i < minLength; i++ {
-	//		res, err := t.ArrayBaseType().Compare(ab[i], bb[i])
-	//		if err != nil {
-	//			return 0, err
-	//		}
-	//		if res != 0 {
-	//			return res, nil
-	//		}
-	//	}
-	//	if len(ab) == len(bb) {
-	//		return 0, nil
-	//	} else if len(ab) < len(bb) {
-	//		return -1, nil
-	//	} else {
-	//		return 1, nil
-	//	}
-	//default:
-	//	return 0, fmt.Errorf("unhandled type %T in Compare", v1)
-	//}
+
+	switch ab := v1.(type) {
+	case bool:
+		bb := v2.(bool)
+		if ab == bb {
+			return 0, nil
+		} else if !ab {
+			return -1, nil
+		} else {
+			return 1, nil
+		}
+	case float32:
+		bb := v2.(float32)
+		if ab == bb {
+			return 0, nil
+		} else if ab < bb {
+			return -1, nil
+		} else {
+			return 1, nil
+		}
+	case float64:
+		bb := v2.(float64)
+		if ab == bb {
+			return 0, nil
+		} else if ab < bb {
+			return -1, nil
+		} else {
+			return 1, nil
+		}
+	case int16:
+		bb := v2.(int16)
+		if ab == bb {
+			return 0, nil
+		} else if ab < bb {
+			return -1, nil
+		} else {
+			return 1, nil
+		}
+	case int32:
+		bb := v2.(int32)
+		if ab == bb {
+			return 0, nil
+		} else if ab < bb {
+			return -1, nil
+		} else {
+			return 1, nil
+		}
+	case int64:
+		bb := v2.(int64)
+		if ab == bb {
+			return 0, nil
+		} else if ab < bb {
+			return -1, nil
+		} else {
+			return 1, nil
+		}
+	case uint32:
+		bb := v2.(uint32)
+		if ab == bb {
+			return 0, nil
+		} else if ab < bb {
+			return -1, nil
+		} else {
+			return 1, nil
+		}
+	case string:
+		bb := v2.(string)
+		if ab == bb {
+			return 0, nil
+		} else if ab < bb {
+			return -1, nil
+		} else {
+			return 1, nil
+		}
+	case []byte:
+		bb := v2.([]byte)
+		return bytes.Compare(ab, bb), nil
+	case time.Time:
+		bb := v2.(time.Time)
+		return ab.Compare(bb), nil
+	case duration.Duration:
+		bb := v2.(duration.Duration)
+		return ab.Compare(bb), nil
+	case JsonDocument:
+		bb := v2.(JsonDocument)
+		return JsonValueCompare(ab.Value, bb.Value), nil
+	case decimal.Decimal:
+		bb := v2.(decimal.Decimal)
+		return ab.Cmp(bb), nil
+	case uuid.UUID:
+		bb := v2.(uuid.UUID)
+		return bytes.Compare(ab.GetBytesMut(), bb.GetBytesMut()), nil
+	case []any:
+		if !t.IsArrayType() {
+			return 0, fmt.Errorf("array value received in Compare for non array type")
+		}
+		bb := v2.([]any)
+		minLength := utils.Min(len(ab), len(bb))
+		for i := 0; i < minLength; i++ {
+			res, err := t.ArrayBaseType().Compare(ab[i], bb[i])
+			if err != nil {
+				return 0, err
+			}
+			if res != 0 {
+				return res, nil
+			}
+		}
+		if len(ab) == len(bb) {
+			return 0, nil
+		} else if len(ab) < len(bb) {
+			return -1, nil
+		} else {
+			return 1, nil
+		}
+	default:
+		return 0, fmt.Errorf("unhandled type %T in Compare", v1)
+	}
 }
 
 // Convert implements the types.ExtendedType interface.
@@ -355,7 +351,7 @@ func (t DoltgresType) FormatValue(val any) (string, error) {
 	if val == nil {
 		return "", nil
 	}
-	return IoOutput(nil, t, val)
+	return t.IoOutput(nil, val)
 }
 
 // IsArrayType returns true if the type is of 'array' category
@@ -531,7 +527,7 @@ func (t DoltgresType) SQL(ctx *sql.Context, dest []byte, v interface{}) (sqltype
 	if v == nil {
 		return sqltypes.NULL, nil
 	}
-	value, err := SQL(ctx, t, v)
+	value, err := sqlString(ctx, t, v)
 	if err != nil {
 		return sqltypes.Value{}, err
 	}
@@ -547,7 +543,7 @@ func (t DoltgresType) String() string {
 		str = t.Name
 	}
 	if t.AttTypMod != -1 {
-		if l, err := TypModOut(nil, t, t.AttTypMod); err == nil {
+		if l, err := t.TypModOut(nil, t.AttTypMod); err == nil {
 			str = fmt.Sprintf("%s%s", str, l)
 		}
 	}
@@ -678,7 +674,21 @@ func (t DoltgresType) SerializeValue(val any) ([]byte, error) {
 	if val == nil {
 		return nil, nil
 	}
-	return IoSend(nil, t, val)
+	if !t.SendFuncExists() {
+		return nil, fmt.Errorf("send function for type '%s' doesn't exist", t.Name)
+	}
+	o, err := sendOutputFunction(nil, t.SendFunc, t, val)
+	if err != nil {
+		return nil, err
+	}
+	if o == nil {
+		return nil, nil
+	}
+	output, ok := o.([]byte)
+	if !ok {
+		return nil, fmt.Errorf(`expected []byte, got %T`, output)
+	}
+	return output, nil
 }
 
 // DeserializeValue implements the types.ExtendedType interface.
@@ -686,5 +696,60 @@ func (t DoltgresType) DeserializeValue(val []byte) (any, error) {
 	if len(val) == 0 {
 		return nil, nil
 	}
-	return IoReceive(nil, t, val)
+	if !t.ReceiveFuncExists() {
+		return nil, fmt.Errorf("receive function for type '%s' doesn't exist", t.Name)
+	}
+	return receiveInputFunction(nil, t.ReceiveFunc, t, NewInternalTypeWithBaseType(t.OID), val)
+}
+
+// IoInput converts input string value to given type value.
+func (t DoltgresType) IoInput(ctx *sql.Context, input string) (any, error) {
+	return receiveInputFunction(ctx, t.InputFunc, t, Cstring, input)
+}
+
+// IoOutput converts given type value to output string.
+func (t DoltgresType) IoOutput(ctx *sql.Context, val any) (string, error) {
+	o, err := sendOutputFunction(ctx, t.OutputFunc, t, val)
+	if err != nil {
+		return "", err
+	}
+	output, ok := o.(string)
+	if !ok {
+		return "", fmt.Errorf(`expected string, got %T`, output)
+	}
+	return output, nil
+}
+
+// TypModIn encodes given text array value to type modifier in int32 format.
+func (t DoltgresType) TypModIn(ctx *sql.Context, val []any) (int32, error) {
+	// takes []string and return int32
+	if t.ModInFunc == "-" {
+		return 0, fmt.Errorf("typmodin function for type '%s' doesn't exist", t.Name)
+	}
+	o, err := GetFunctionForTypes(ctx, t.ModInFunc, []DoltgresType{CstringArray}, []any{val})
+	if err != nil {
+		return 0, err
+	}
+	output, ok := o.(int32)
+	if !ok {
+		return 0, fmt.Errorf(`expected int32, got %T`, output)
+	}
+	return output, nil
+}
+
+// TypModOut decodes type modifier in int32 format to string representation of it.
+func (t DoltgresType) TypModOut(ctx *sql.Context, val int32) (string, error) {
+	// takes int32 and returns string
+	if t.ModOutFunc == "-" {
+		return "", fmt.Errorf("typmodout function for type '%s' doesn't exist", t.Name)
+	}
+	o, err := GetFunctionForTypes(ctx, t.ModOutFunc, []DoltgresType{Int32}, []any{val})
+	if err != nil {
+		return "", err
+	}
+	output, ok := o.(string)
+	if !ok {
+		return "", fmt.Errorf(`expected string, got %T`, output)
+	}
+	return output, nil
 }

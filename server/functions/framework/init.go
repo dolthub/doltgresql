@@ -20,10 +20,5 @@ import (
 
 // Init handles the assignment of the IO functions for the types package.
 func Init() {
-	types.IoOutput = IoOutput
-	types.IoReceive = IoReceive
-	types.IoSend = IoSend
-	types.IoCompare = IoCompare
-	types.SQL = SQL
-	types.TypModOut = TypModOut
+	types.GetFunctionForTypes = GetFunctionWithoutValidationForTypes
 }

@@ -24,7 +24,6 @@ import (
 	"github.com/dolthub/go-mysql-server/sql"
 	"github.com/sirupsen/logrus"
 
-	"github.com/dolthub/doltgresql/server/functions/framework"
 	"github.com/dolthub/doltgresql/server/types"
 )
 
@@ -135,7 +134,7 @@ func (cdl *CsvDataLoader) LoadChunk(ctx *sql.Context, data *bufio.Reader) error 
 			if record[i] == nil {
 				row[i] = nil
 			} else {
-				row[i], err = framework.IoInput(ctx, cdl.colTypes[i], fmt.Sprintf("%v", record[i]))
+				row[i], err = cdl.colTypes[i].IoInput(ctx, fmt.Sprintf("%v", record[i]))
 				if err != nil {
 					return err
 				}

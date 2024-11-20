@@ -70,7 +70,7 @@ func getStringArrFromAnyArray(ctx *sql.Context, arrType pgtypes.DoltgresType, ar
 	strs := make([]string, 0)
 	for _, el := range arr {
 		if el != nil {
-			v, err := framework.IoOutput(ctx, baseType, el)
+			v, err := baseType.IoOutput(ctx, el)
 			if err != nil {
 				return "", err
 			}

@@ -96,7 +96,7 @@ var array_in = framework.Function3{
 						innerValue = nil
 					} else {
 						var nErr error
-						innerValue, nErr = framework.IoInput(ctx, baseType, str)
+						innerValue, nErr = baseType.IoInput(ctx, str)
 						if nErr != nil && err == nil {
 							// This is a non-critical error, therefore the error may be ignored at a higher layer (such as
 							// an explicit cast) and the inner type will still return a valid result, so we must allow the
@@ -127,7 +127,7 @@ var array_in = framework.Function3{
 					innerValue = nil
 				} else {
 					var nErr error
-					innerValue, nErr = framework.IoInput(ctx, baseType, str)
+					innerValue, nErr = baseType.IoInput(ctx, str)
 					if nErr != nil && err == nil {
 						// This is a non-critical error, therefore the error may be ignored at a higher layer (such as
 						// an explicit cast) and the inner type will still return a valid result, so we must allow the
@@ -153,7 +153,7 @@ var array_out = framework.Function1{
 		arrType := t[0]
 		baseType := arrType.ArrayBaseType()
 		baseType.AttTypMod = arrType.AttTypMod
-		return framework.ArrToString(ctx, val.([]any), baseType, false)
+		return pgtypes.ArrToString(ctx, val.([]any), baseType, false)
 	},
 }
 
@@ -189,7 +189,7 @@ var array_recv = framework.Function3{
 			}
 			// The element data is everything from the offset to the next offset, excluding the null determinant
 			nextOffset := binary.LittleEndian.Uint32(data[(i+2)*4:])
-			o, err := framework.IoReceive(ctx, baseType, data[offset+1:nextOffset])
+			o, err := baseType.DeserializeValue(data[offset+1 : nextOffset])
 			if err != nil {
 				return nil, err
 			}
@@ -230,7 +230,7 @@ var array_send = framework.Function1{
 			binary.LittleEndian.PutUint32(offsets[i*4:], currentOffset)
 			// Handle serialization of the value
 			// TODO: ARRAYs may be multidimensional, such as ARRAY[[4,2],[6,3]], which isn't accounted for here
-			serializedVal, err := framework.IoSend(ctx, baseType, vals[i])
+			serializedVal, err := baseType.SerializeValue(vals[i])
 			if err != nil {
 				return nil, err
 			}
@@ -272,7 +272,7 @@ var btarraycmp = framework.Function2{
 		bb := val2.([]any)
 		minLength := utils.Min(len(ab), len(bb))
 		for i := 0; i < minLength; i++ {
-			res, err := framework.IoCompare(ctx, at.ArrayBaseType(), ab[i], bb[i])
+			res, err := at.ArrayBaseType().Compare(ab[i], bb[i])
 			if err != nil {
 				return 0, err
 			}

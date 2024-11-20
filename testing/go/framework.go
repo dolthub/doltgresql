@@ -41,7 +41,6 @@ import (
 	dserver "github.com/dolthub/doltgresql/server"
 	"github.com/dolthub/doltgresql/server/auth"
 	"github.com/dolthub/doltgresql/server/functions"
-	"github.com/dolthub/doltgresql/server/functions/framework"
 	"github.com/dolthub/doltgresql/server/types"
 	"github.com/dolthub/doltgresql/servercfg"
 )
@@ -391,7 +390,7 @@ func NormalizeExpectedRow(fds []pgconn.FieldDescription, rows []sql.Row) []sql.R
 				if dt.OID == uint32(oid.T_json) {
 					newRow[i] = UnmarshalAndMarshalJsonString(row[i].(string))
 				} else if dt.IsArrayType() && dt.ArrayBaseType().OID == uint32(oid.T_json) {
-					v, err := framework.IoInput(nil, dt, row[i].(string))
+					v, err := dt.IoInput(nil, row[i].(string))
 					if err != nil {
 						panic(err)
 					}
@@ -400,7 +399,7 @@ func NormalizeExpectedRow(fds []pgconn.FieldDescription, rows []sql.Row) []sql.R
 					for j, el := range arr {
 						newArr[j] = UnmarshalAndMarshalJsonString(el.(string))
 					}
-					ret, err := framework.IoOutput(nil, dt, newArr)
+					ret, err := dt.IoOutput(nil, newArr)
 					if err != nil {
 						panic(err)
 					}
@@ -445,7 +444,7 @@ func NormalizeValToString(dt types.DoltgresType, v any) any {
 		if err != nil {
 			panic(err)
 		}
-		ret, err := framework.IoOutput(nil, dt, string(str))
+		ret, err := dt.IoOutput(nil, string(str))
 		if err != nil {
 			panic(err)
 		}
@@ -455,7 +454,7 @@ func NormalizeValToString(dt types.DoltgresType, v any) any {
 		if err != nil {
 			panic(err)
 		}
-		str, err := framework.IoOutput(nil, dt, types.JsonDocument{Value: jv})
+		str, err := dt.IoOutput(nil, types.JsonDocument{Value: jv})
 		if err != nil {
 			panic(err)
 		}
@@ -470,7 +469,7 @@ func NormalizeValToString(dt types.DoltgresType, v any) any {
 		} else {
 			b = []byte{uint8(v.(int32))}
 		}
-		val, err := framework.IoOutput(nil, dt, string(b))
+		val, err := dt.IoOutput(nil, string(b))
 		if err != nil {
 			panic(err)
 		}
@@ -482,7 +481,7 @@ func NormalizeValToString(dt types.DoltgresType, v any) any {
 		if v == nil {
 			return nil
 		}
-		tVal, err := framework.IoOutput(nil, dt, NormalizeVal(dt, v))
+		tVal, err := dt.IoOutput(nil, NormalizeVal(dt, v))
 		if err != nil {
 			panic(err)
 		}
@@ -530,11 +529,20 @@ func NormalizeArrayType(dt types.DoltgresType, arr []any) any {
 	for i, el := range arr {
 		newVal[i] = NormalizeVal(dt.ArrayBaseType(), el)
 	}
-	ret, err := framework.SQL(nil, dt, newVal)
-	if err != nil {
-		panic(err)
+	baseType := dt.ArrayBaseType()
+	if baseType.OID == uint32(oid.T_bool) {
+		sqlVal, err := dt.SQL(nil, nil, newVal)
+		if err != nil {
+			panic(err)
+		}
+		return sqlVal.ToString()
+	} else {
+		ret, err := dt.IoOutput(nil, newVal)
+		if err != nil {
+			panic(err)
+		}
+		return ret
 	}
-	return ret
 }
 
 // NormalizeVal normalizes values to the Doltgres type expects, so it can be used to

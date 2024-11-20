@@ -37,7 +37,7 @@ func internalCharAssignment() {
 		FromType: pgtypes.InternalChar,
 		ToType:   pgtypes.BpChar,
 		Function: func(ctx *sql.Context, val any, targetType pgtypes.DoltgresType) (any, error) {
-			return framework.IoInput(ctx, targetType, val.(string))
+			return targetType.IoInput(ctx, val.(string))
 		},
 	})
 	framework.MustAddAssignmentTypeCast(framework.TypeCast{

@@ -17,10 +17,12 @@ package types
 import (
 	"bytes"
 	"fmt"
+	"strings"
 
 	"github.com/dolthub/go-mysql-server/sql"
 	"github.com/dolthub/go-mysql-server/sql/types"
 	"github.com/dolthub/vitess/go/vt/proto/query"
+	"github.com/lib/pq/oid"
 	"gopkg.in/src-d/go-errors.v1"
 
 	"github.com/dolthub/doltgresql/utils"
@@ -47,23 +49,7 @@ var ErrTypmodArrayMustBe1D = errors.NewKind(`typmod array must be one-dimensiona
 // ErrInvalidTypMod is returned when given value is invalid for type modifier.
 var ErrInvalidTypMod = errors.NewKind(`invalid %s type modifier`)
 
-// IoOutput is the implementation for IoOutput that is being set from another package to avoid circular dependencies.
-var IoOutput func(ctx *sql.Context, t DoltgresType, val any) (string, error)
-
-// IoReceive is the implementation for IoOutput that is being set from another package to avoid circular dependencies.
-var IoReceive func(ctx *sql.Context, t DoltgresType, val any) (any, error)
-
-// IoSend is the implementation for IoOutput that is being set from another package to avoid circular dependencies.
-var IoSend func(ctx *sql.Context, t DoltgresType, val any) ([]byte, error)
-
-// TypModOut is the implementation for IoOutput that is being set from another package to avoid circular dependencies.
-var TypModOut func(ctx *sql.Context, t DoltgresType, val int32) (string, error)
-
-// IoCompare is the implementation for IoOutput that is being set from another package to avoid circular dependencies.
-var IoCompare func(ctx *sql.Context, t DoltgresType, v1, v2 any) (int32, error)
-
-// SQL is the implementation for IoOutput that is being set from another package to avoid circular dependencies.
-var SQL func(ctx *sql.Context, t DoltgresType, val any) (string, error)
+var GetFunctionForTypes func(ctx *sql.Context, funcName string, paramTypes []DoltgresType, args []any) (any, error)
 
 // FromGmsType returns a DoltgresType that is most similar to the given GMS type.
 // It returns UNKNOWN type for GMS types that are not handled.
@@ -130,4 +116,119 @@ func serializedStringCompare(v1 []byte, v2 []byte) int {
 	v1Bytes := utils.AdvanceReader(readerV1, readerV1.VariableUint())
 	v2Bytes := utils.AdvanceReader(readerV2, readerV2.VariableUint())
 	return bytes.Compare(v1Bytes, v2Bytes)
+}
+
+// receiveInputFunction handles given IoInput and IoReceive functions.
+func receiveInputFunction(ctx *sql.Context, funcName string, origType, argType DoltgresType, val any) (any, error) {
+	if origType.IsArrayType() {
+		baseType := origType.ArrayBaseType()
+		typmod := int32(0)
+		if baseType.ModInFunc != "-" {
+			typmod = origType.AttTypMod
+		}
+		return GetFunctionForTypes(ctx, funcName, []DoltgresType{argType, Oid, Int32}, []any{val, baseType.OID, typmod})
+	} else if origType.TypType == TypeType_Domain {
+		baseType := origType.DomainUnderlyingBaseType()
+		return GetFunctionForTypes(ctx, funcName, []DoltgresType{argType, Oid, Int32}, []any{val, baseType.OID, origType.AttTypMod})
+	} else if origType.ModInFunc != "-" {
+		return GetFunctionForTypes(ctx, funcName, []DoltgresType{argType, Oid, Int32}, []any{val, origType.OID, origType.AttTypMod})
+	} else {
+		return GetFunctionForTypes(ctx, funcName, []DoltgresType{argType}, []any{val})
+	}
+}
+
+// sendOutputFunction handles given IoOutput and IoSend functions.
+func sendOutputFunction(ctx *sql.Context, funcName string, t DoltgresType, val any) (any, error) {
+	return GetFunctionForTypes(ctx, funcName, []DoltgresType{t}, []any{val})
+}
+
+// sqlString converts given type value to output string. This is the same as IoOutput function
+// with an exception to BOOLEAN type. It returns "t" instead of "true".
+func sqlString(ctx *sql.Context, t DoltgresType, val any) (string, error) {
+	if t.IsArrayType() {
+		baseType := t.ArrayBaseType()
+		if baseType.ModInFunc != "-" {
+			baseType.AttTypMod = t.AttTypMod
+		}
+		return ArrToString(ctx, val.([]any), baseType, true)
+	}
+	// calling `out` function
+	o, err := GetFunctionForTypes(ctx, t.OutputFunc, []DoltgresType{t}, []any{val})
+	if err != nil {
+		return "", err
+	}
+	output, ok := o.(string)
+	if t.OID == uint32(oid.T_bool) {
+		output = string(output[0])
+	}
+	if !ok {
+		return "", fmt.Errorf(`expected string, got %T`, output)
+	}
+	return output, nil
+}
+
+// ArrToString is used for array_out function. |trimBool| parameter allows replacing
+// boolean result of "true" to "t" if the function is `Type.SQL()`.
+func ArrToString(ctx *sql.Context, arr []any, baseType DoltgresType, trimBool bool) (string, error) {
+	sb := strings.Builder{}
+	sb.WriteRune('{')
+	for i, v := range arr {
+		if i > 0 {
+			sb.WriteString(",")
+		}
+		if v != nil {
+			str, err := baseType.IoOutput(ctx, v)
+			if err != nil {
+				return "", err
+			}
+			if baseType.OID == uint32(oid.T_bool) && trimBool {
+				str = string(str[0])
+			}
+			shouldQuote := false
+			for _, r := range str {
+				switch r {
+				case ' ', ',', '{', '}', '\\', '"':
+					shouldQuote = true
+				}
+			}
+			if shouldQuote || strings.EqualFold(str, "NULL") {
+				sb.WriteRune('"')
+				sb.WriteString(strings.ReplaceAll(str, `"`, `\"`))
+				sb.WriteRune('"')
+			} else {
+				sb.WriteString(str)
+			}
+		} else {
+			sb.WriteString("NULL")
+		}
+	}
+	sb.WriteRune('}')
+	return sb.String(), nil
+}
+
+// IoCompare compares given two values using the given type.
+// TODO: both values should have types. E.g.: to compare between float32 and float64
+func IoCompare(ctx *sql.Context, t DoltgresType, v1, v2 any) (int32, error) {
+	if v1 == nil && v2 == nil {
+		return 0, nil
+	} else if v1 != nil && v2 == nil {
+		return 1, nil
+	} else if v1 == nil && v2 != nil {
+		return -1, nil
+	}
+
+	if t.CompareFunc == "-" {
+		// TODO: use the type category's preferred type's compare function?
+		return 0, fmt.Errorf("compare function does not exist for %s type", t.Name)
+	}
+
+	i, err := GetFunctionForTypes(ctx, t.CompareFunc, []DoltgresType{t, t}, []any{v1, v2})
+	if err != nil {
+		return 0, err
+	}
+	output, ok := i.(int32)
+	if !ok {
+		return 0, fmt.Errorf(`expected int32, got %T`, output)
+	}
+	return output, nil
 }

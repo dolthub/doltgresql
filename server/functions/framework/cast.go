@@ -145,11 +145,11 @@ func GetExplicitCast(fromType pgtypes.DoltgresType, toType pgtypes.DoltgresType)
 			if val == nil {
 				return nil, nil
 			}
-			str, err := IoOutput(ctx, fromType, val)
+			str, err := fromType.IoOutput(ctx, val)
 			if err != nil {
 				return nil, err
 			}
-			return IoInput(ctx, targetType, str)
+			return targetType.IoInput(ctx, str)
 		}
 	} else if toType.TypCategory == pgtypes.TypeCategory_StringTypes {
 		// All types have a built-in assignment cast to string types, which we can reference in an explicit cast
@@ -157,11 +157,11 @@ func GetExplicitCast(fromType pgtypes.DoltgresType, toType pgtypes.DoltgresType)
 			if val == nil {
 				return nil, nil
 			}
-			str, err := IoOutput(ctx, fromType, val)
+			str, err := fromType.IoOutput(ctx, val)
 			if err != nil {
 				return nil, err
 			}
-			return IoInput(ctx, targetType, str)
+			return targetType.IoInput(ctx, str)
 		}
 	}
 	return nil
@@ -186,11 +186,11 @@ func GetAssignmentCast(fromType pgtypes.DoltgresType, toType pgtypes.DoltgresTyp
 			if val == nil {
 				return nil, nil
 			}
-			str, err := IoOutput(ctx, fromType, val)
+			str, err := fromType.IoOutput(ctx, val)
 			if err != nil {
 				return nil, err
 			}
-			return IoInput(ctx, targetType, str)
+			return targetType.IoInput(ctx, str)
 		}
 	}
 	return nil
@@ -296,9 +296,9 @@ func UnknownLiteralCast(ctx *sql.Context, val any, targetType pgtypes.DoltgresTy
 	if val == nil {
 		return nil, nil
 	}
-	str, err := IoOutput(ctx, pgtypes.Unknown, val)
+	str, err := pgtypes.Unknown.IoOutput(ctx, val)
 	if err != nil {
 		return nil, err
 	}
-	return IoInput(ctx, targetType, str)
+	return targetType.IoInput(ctx, str)
 }

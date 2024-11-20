@@ -2,9 +2,9 @@
 set -e
 set -o pipefail
 
-SYSBENCH_TEST="oltp_point_select"
+SYSBENCH_TEST="select_random_ranges"
 WORKING_DIR=`mktemp -d`
-PPROF=0
+PPROF=1
 PORT=5433
 
 # parse options
@@ -74,11 +74,13 @@ pwd
 doltgres --data-dir=. --config "config.yaml" 2> prepare.log &
 SERVER_PID="$!"
 
+# Give the server a chance to start
+sleep 2
+
 echo $SERVER_PID
 
-PGPASSWORD="password" psql -U="postgres" --host="0.0.0.0" --port=$PORT -c="create database sbtest"
-
-echo "created db"
+PGPASSWORD="password" psql -U "postgres" --host "0.0.0.0" --port $PORT -c "create database sbtest" postgres
+echo "created sbtest database"
 
 # stop it if it crashes
 cleanup() {

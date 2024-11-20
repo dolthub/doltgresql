@@ -256,7 +256,7 @@ func (l *Literal) String() string {
 	if l.value == nil {
 		return ""
 	}
-	str, err := framework.IoOutput(nil, l.typ, l.value)
+	str, err := l.typ.IoOutput(nil, l.value)
 	if err != nil {
 		panic(fmt.Sprintf("attempted to get string output for Literal: %s", err.Error()))
 	}
