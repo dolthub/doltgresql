@@ -147,7 +147,7 @@ func main() {
 			}
 			for _, trackerToItem := range trackersTo[trackerIdx].SuccessItems {
 				if _, ok := fromSuccessItems[trackerToItem.Query]; !ok {
-					if totalProgressions < 40 {
+					if totalProgressions < 39 {
 						if !foundAnySuccessDiff {
 							foundAnySuccessDiff = true
 							sb.WriteString("\n## ${\\color{lightgreen}Progressions__&&&&&&}$\n")
