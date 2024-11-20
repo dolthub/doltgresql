@@ -16,6 +16,8 @@ package dtables
 
 import (
 	"github.com/dolthub/dolt/go/libraries/doltcore/doltdb"
+	"github.com/dolthub/dolt/go/libraries/doltcore/sqle"
+	"github.com/dolthub/dolt/go/libraries/doltcore/sqle/dprocedures"
 	"github.com/dolthub/dolt/go/libraries/doltcore/sqle/dtables"
 )
 
@@ -28,8 +30,10 @@ func Init() {
 	doltdb.GetCommitAncestorsTableName = getCommitAncestorsTableName
 	doltdb.GetCommitsTableName = getCommitsTableName
 	doltdb.GetDiffTableName = getDiffTableName
+	// doltdb.GetIgnoreTableName = getIgnoreTableName
 	doltdb.GetLogTableName = getLogTableName
 	doltdb.GetMergeStatusTableName = getMergeStatusTableName
+	// doltdb.GetRebaseTableName = getRebaseTableName
 	doltdb.GetRemoteBranchesTableName = getRemoteBranchesTableName
 	doltdb.GetRemotesTableName = getRemotesTableName
 	doltdb.GetSchemaConflictsTableName = getSchemaConflictsTableName
@@ -40,6 +44,12 @@ func Init() {
 
 	// Schemas
 	dtables.GetDocsSchema = getDocsSchema
+	// dtables.GetDoltIgnoreSchema = getDoltIgnoreSchema
+	dprocedures.GetDoltRebaseSystemTableSchema = getRebaseSchema
+
+	// Conversions
+	sqle.ConvertRebasePlanStepToRow = convertRebasePlanStepToRow
+	sqle.ConvertRowToRebasePlanStep = convertRowToRebasePlanStep
 }
 
 // getBranchesTableName returns the name of the branches table.

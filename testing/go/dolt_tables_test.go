@@ -1649,6 +1649,102 @@ func TestUserSpaceDoltTables(t *testing.T) {
 			},
 		},
 		{
+			Name: "dolt rebase",
+			SetUpScript: []string{
+				// create a simple table
+				"create table t (pk int primary key);",
+				"select dolt_commit('-Am', 'creating table t');",
+
+				// create a new branch that we'll add more commits to later
+				"select dolt_branch('branch1');",
+
+				// create another commit on the main branch, right after where branch1 branched off
+				"insert into t values (0);",
+				"select dolt_commit('-am', 'inserting row 0');",
+
+				// switch to branch1 and create three more commits that each insert one row
+				"select dolt_checkout('branch1');",
+				"insert into t values (1);",
+				"select dolt_commit('-am', 'inserting row 1');",
+				"insert into t values (2);",
+				"select dolt_commit('-am', 'inserting row 2');",
+				"insert into t values (3);",
+				"select dolt_commit('-am', 'inserting row 3');",
+			},
+			Assertions: []ScriptTestAssertion{
+				{
+					Query: "select message from dolt_log;",
+					Expected: []sql.Row{
+						{"inserting row 3"},
+						{"inserting row 2"},
+						{"inserting row 1"},
+						{"creating table t"},
+						{"CREATE DATABASE"},
+						{"Initialize data repository"},
+					},
+				},
+				{
+					Query:    `select dolt_rebase('-i', 'main');`,
+					Expected: []sql.Row{{"{0,\"interactive rebase started on branch dolt_rebase_branch1; adjust the rebase plan in the dolt_rebase table, then continue rebasing by calling dolt_rebase('--continue')\"}"}},
+				},
+				{
+					Query: "select rebase_order, action, commit_message from dolt_rebase order by rebase_order;",
+					Expected: []sql.Row{
+						{float64(1), "pick", "inserting row 1"},
+						{float64(2), "pick", "inserting row 2"},
+						{float64(3), "pick", "inserting row 3"},
+					},
+				},
+				{
+					Skip:  true, // TODO: Support dolt.rebase
+					Query: "select rebase_order, action, commit_message from dolt.rebase order by rebase_order;",
+					Expected: []sql.Row{
+						{float64(1), "pick", "inserting row 1"},
+						{float64(2), "pick", "inserting row 2"},
+						{float64(3), "pick", "inserting row 3"},
+					},
+				},
+				{
+					Query:    "update dolt_rebase set action='reword', commit_message='insert rows' where rebase_order=1;",
+					Expected: []sql.Row{},
+				},
+				{
+					Query:    "update dolt_rebase set action='drop' where rebase_order=2;",
+					Expected: []sql.Row{},
+				},
+				{
+					Query:    "update dolt_rebase set action='fixup' where rebase_order=3;",
+					Expected: []sql.Row{},
+				},
+				{
+					Query:    "update dolt_rebase set action='fixup' where rebase_order=3;",
+					Expected: []sql.Row{},
+				},
+				{
+					Query:    "select dolt_rebase('--continue');",
+					Expected: []sql.Row{{"{0,\"Successfully rebased and updated refs/heads/branch1\"}"}},
+				},
+				{
+					Query: "select message from dolt_log;",
+					Expected: []sql.Row{
+						{"insert rows"},
+						{"inserting row 0"},
+						{"creating table t"},
+						{"CREATE DATABASE"},
+						{"Initialize data repository"},
+					},
+				},
+				{
+					Query:       "select * from dolt_rebase;",
+					ExpectedErr: "table not found: dolt_rebase",
+				},
+				{
+					Query:       "select * from dolt.rebase;",
+					ExpectedErr: "table not found: rebase",
+				},
+			},
+		},
+		{
 			Name: "dolt remote branches",
 			Assertions: []ScriptTestAssertion{
 				{
