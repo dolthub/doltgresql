@@ -30,7 +30,6 @@ func initToChar() {
 	framework.RegisterFunction(to_char_timestamp)
 }
 
-
 // to_char_timestamp represents the PostgreSQL function of the same name, taking the same parameters.
 // Postgres date formatting: https://www.postgresql.org/docs/8.1/functions-formatting.html
 var to_char_timestamp = framework.Function2{
@@ -69,11 +68,11 @@ var to_char_timestamp = framework.Function2{
 				format = format[2:]
 
 			case strings.HasPrefix(format, "ms") || strings.HasPrefix(format, "MS"):
-				result += fmt.Sprintf("%03d", timestamp.Nanosecond() / 1_000_000)
+				result += fmt.Sprintf("%03d", timestamp.Nanosecond()/1_000_000)
 				format = format[2:]
 
 			case strings.HasPrefix(format, "us") || strings.HasPrefix(format, "US"):
-				result += fmt.Sprintf("%06d", timestamp.Nanosecond() / 1_000)
+				result += fmt.Sprintf("%06d", timestamp.Nanosecond()/1_000)
 				format = format[2:]
 
 			case strings.HasPrefix(format, "am") || strings.HasPrefix(format, "pm"):
@@ -192,7 +191,7 @@ var to_char_timestamp = framework.Function2{
 				format = format[2:]
 
 			case strings.HasPrefix(format, "d") || strings.HasPrefix(format, "D"):
-				result += fmt.Sprintf("%d", timestamp.Weekday() + 1)
+				result += fmt.Sprintf("%d", timestamp.Weekday()+1)
 				format = format[1:]
 
 			case strings.HasPrefix(format, "ww") || strings.HasPrefix(format, "WW"):
@@ -240,4 +239,3 @@ var to_char_timestamp = framework.Function2{
 		return result, nil
 	},
 }
-
