@@ -16,7 +16,14 @@ package types
 
 import (
 	"github.com/dolthub/go-mysql-server/sql"
+	"gopkg.in/src-d/go-errors.v1"
 )
+
+// ErrDomainDoesNotAllowNullValues is returned when given value is NULL and a domain is non-nullable.
+var ErrDomainDoesNotAllowNullValues = errors.NewKind(`domain %s does not allow null values`)
+
+// ErrDomainValueViolatesCheckConstraint is returned when given value violates a domain check.
+var ErrDomainValueViolatesCheckConstraint = errors.NewKind(`value for domain %s violates check constraint "%s"`)
 
 // NewDomainType creates new instance of domain DoltgresType.
 func NewDomainType(

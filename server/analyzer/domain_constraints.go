@@ -55,13 +55,13 @@ func resolveDomainTypeAndLoadCheckConstraints(ctx *sql.Context, a *analyzer.Anal
 			// assign column nullable
 			col.Nullable = !dt.NotNull
 			// get domain default value and assign to the column default value
-			defVal, err := getDefault(ctx, a, dt.Default, col.Source, col.Type, col.Nullable)
+			defVal, err := getDomainDefault(ctx, a, dt.Default, col.Source, col.Type, col.Nullable)
 			if err != nil {
 				return nil, transform.SameTree, err
 			}
 			col.Default = defVal
 			// get domain checks
-			colChecks, err := getCheckConstraints(ctx, a, col.Name, col.Source, dt.Checks)
+			colChecks, err := getDomainCheckConstraintsForTable(ctx, a, col.Name, col.Source, dt.Checks)
 			if err != nil {
 				return nil, transform.SameTree, err
 			}
@@ -75,8 +75,8 @@ func resolveDomainTypeAndLoadCheckConstraints(ctx *sql.Context, a *analyzer.Anal
 	return c.WithChecks(checks), same, nil
 }
 
-// getDefault takes the default value definition, parses, builds and returns sql.ColumnDefaultValue.
-func getDefault(ctx *sql.Context, a *analyzer.Analyzer, defExpr, tblName string, typ sql.Type, nullable bool) (*sql.ColumnDefaultValue, error) {
+// getDomainDefault takes the default value definition, parses, builds and returns sql.ColumnDefaultValue.
+func getDomainDefault(ctx *sql.Context, a *analyzer.Analyzer, defExpr, tblName string, typ sql.Type, nullable bool) (*sql.ColumnDefaultValue, error) {
 	if defExpr == "" {
 		return nil, nil
 	}
@@ -97,28 +97,22 @@ func getDefault(ctx *sql.Context, a *analyzer.Analyzer, defExpr, tblName string,
 	return builder.BuildColumnDefaultValueWithTable(ae.Expr, selectStmt.From[0], typ, nullable), nil
 }
 
-// getCheckConstraints takes the check constraint definitions, parses, builds and returns sql.CheckConstraints.
-func getCheckConstraints(ctx *sql.Context, a *analyzer.Analyzer, colName string, tblName string, checkDefs []*sql.CheckDefinition) (sql.CheckConstraints, error) {
+// getDomainCheckConstraintsForTable takes the check constraint definitions, parses, builds and returns sql.CheckConstraints.
+func getDomainCheckConstraintsForTable(ctx *sql.Context, a *analyzer.Analyzer, colName string, tblName string, checkDefs []*sql.CheckDefinition) (sql.CheckConstraints, error) {
 	checks := make(sql.CheckConstraints, len(checkDefs))
 	for i, check := range checkDefs {
-		parsed, err := parseAndReplaceDomainCheckConstraint(check.CheckExpression, colName, tblName)
+		q := fmt.Sprintf("select %s from %s", check.CheckExpression, tblName)
+		checkExpr, err := parseAndReplaceDomainCheckConstraint(ctx, a, check.CheckExpression, q, &tree.ColumnItem{
+			ColumnName: tree.Name(colName),
+			TableName:  &tree.UnresolvedObjectName{NumParts: 1, Parts: [3]string{tblName}},
+		})
 		if err != nil {
 			return nil, err
 		}
-		selectStmt, ok := parsed.(*vitess.Select)
-		if !ok || len(selectStmt.SelectExprs) != 1 {
-			return nil, sql.ErrInvalidCheckConstraint.New(check.CheckExpression)
-		}
-		expr := selectStmt.SelectExprs[0]
-		ae, ok := expr.(*vitess.AliasedExpr)
-		if !ok {
-			return nil, sql.ErrInvalidCheckConstraint.New(check.CheckExpression)
-		}
 
-		builder := planbuilder.New(ctx, a.Catalog, nil, sql.GlobalParser)
 		checks[i] = &sql.CheckConstraint{
 			Name:     check.Name,
-			Expr:     builder.BuildScalarWithTable(ae.Expr, selectStmt.From[0]),
+			Expr:     checkExpr,
 			Enforced: true,
 		}
 	}
@@ -127,9 +121,10 @@ func getCheckConstraints(ctx *sql.Context, a *analyzer.Analyzer, colName string,
 }
 
 // parseAndReplaceDomainCheckConstraint parses check constraint and replaces the `VALUE` column
-// reference with resolved column given table and column names.
-func parseAndReplaceDomainCheckConstraint(checkExpr string, colName, tblName string) (vitess.Statement, error) {
-	stmt, err := parser.ParseOne(fmt.Sprintf("select %s from %s", checkExpr, tblName))
+// reference with given Expr including resolved column given table and column names or DomainColumn.
+// It returns built check expression.
+func parseAndReplaceDomainCheckConstraint(ctx *sql.Context, a *analyzer.Analyzer, checkExpr, query string, replacesValue tree.Expr) (sql.Expression, error) {
+	stmt, err := parser.ParseOne(query)
 	if err != nil {
 		return nil, err
 	}
@@ -153,17 +148,34 @@ func parseAndReplaceDomainCheckConstraint(checkExpr string, colName, tblName str
 			if strings.ToLower(v.String()) != "value" {
 				return false, nil, fmt.Errorf(`column "%s" does not exist`, v.String())
 			}
-			return false, &tree.ColumnItem{
-				ColumnName: tree.Name(colName),
-				TableName:  &tree.UnresolvedObjectName{NumParts: 1, Parts: [3]string{tblName}},
-			}, nil
+			return false, replacesValue, nil
 		}
 		return true, visitingExpr, nil
 	})
 	if err != nil {
 		return nil, err
 	}
-
 	exprs[0].Expr = updatedCheckExpr
-	return ast.Convert(stmt)
+
+	parsed, err := ast.Convert(stmt)
+	if err != nil {
+		return nil, err
+	}
+
+	convertedSelectStmt, ok := parsed.(*vitess.Select)
+	if !ok || len(convertedSelectStmt.SelectExprs) != 1 {
+		return nil, sql.ErrInvalidCheckConstraint.New(checkExpr)
+	}
+	expr := convertedSelectStmt.SelectExprs[0]
+	ae, ok := expr.(*vitess.AliasedExpr)
+	if !ok {
+		return nil, sql.ErrInvalidCheckConstraint.New(checkExpr)
+	}
+
+	builder := planbuilder.New(ctx, a.Catalog, nil, sql.GlobalParser)
+	var tblExpr vitess.TableExpr
+	if len(convertedSelectStmt.From) == 1 {
+		tblExpr = convertedSelectStmt.From[0]
+	}
+	return builder.BuildScalarWithTable(ae.Expr, tblExpr), nil
 }

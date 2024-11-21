@@ -28,8 +28,10 @@ import (
 
 // ExplicitCast represents a VALUE::TYPE expression.
 type ExplicitCast struct {
-	sqlChild   sql.Expression
-	castToType pgtypes.DoltgresType
+	sqlChild       sql.Expression
+	castToType     pgtypes.DoltgresType
+	domainNullable bool
+	domainChecks   sql.CheckConstraints
 }
 
 var _ vitess.Injectable = (*ExplicitCast)(nil)
@@ -41,7 +43,6 @@ func NewExplicitCastInjectable(castToType sql.Type) (*ExplicitCast, error) {
 	if !ok {
 		return nil, fmt.Errorf("cast expects a Doltgres type as the target type")
 	}
-	pgtype = checkForDomainType(pgtype)
 	return &ExplicitCast{
 		sqlChild:   nil,
 		castToType: pgtype,
@@ -85,10 +86,14 @@ func (c *ExplicitCast) Eval(ctx *sql.Context, row sql.Row) (any, error) {
 		fromType = gmsCast.DoltgresType()
 	}
 	if val == nil {
+		if c.castToType.TypType == pgtypes.TypeType_Domain && !c.domainNullable {
+			return nil, pgtypes.ErrDomainDoesNotAllowNullValues.New(c.castToType.Name)
+		}
 		return nil, nil
 	}
 
-	castFunction := framework.GetExplicitCast(fromType, c.castToType)
+	baseCastToType := checkForDomainType(c.castToType)
+	castFunction := framework.GetExplicitCast(fromType, baseCastToType)
 	if castFunction == nil {
 		if fromType.OID == uint32(oid.T_unknown) {
 			castFunction = framework.UnknownLiteralCast
@@ -111,6 +116,19 @@ func (c *ExplicitCast) Eval(ctx *sql.Context, row sql.Row) (any, error) {
 			return nil, err
 		}
 	}
+
+	if c.castToType.TypType == pgtypes.TypeType_Domain {
+		for _, check := range c.domainChecks {
+			res, err := sql.EvaluateCondition(ctx, check.Expr, sql.Row{})
+			if err != nil {
+				return nil, err
+			}
+			if sql.IsFalse(res) {
+				return nil, pgtypes.ErrDomainValueViolatesCheckConstraint.New(c.castToType.Name, check.Name)
+			}
+		}
+	}
+
 	return castResult, nil
 }
 
@@ -162,4 +180,20 @@ func (c *ExplicitCast) WithResolvedChildren(children []any) (any, error) {
 		sqlChild:   resolvedExpression,
 		castToType: c.castToType,
 	}, nil
+}
+
+// WithCastToType returns a copy of the expression with castToType replaced.
+func (c *ExplicitCast) WithCastToType(t pgtypes.DoltgresType) sql.Expression {
+	ec := *c
+	ec.castToType = t
+	return &ec
+}
+
+// WithDomainCastToType returns a copy of the expression with castToType replaced and domain constraints defined.
+func (c *ExplicitCast) WithDomainCastToType(t pgtypes.DoltgresType, nullable bool, checks sql.CheckConstraints) sql.Expression {
+	ec := *c
+	ec.castToType = t
+	ec.domainNullable = nullable
+	ec.domainChecks = checks
+	return &ec
 }

@@ -212,5 +212,42 @@ func TestDomain(t *testing.T) {
 				},
 			},
 		},
+		{
+			Name: "cast to domain type",
+			SetUpScript: []string{
+				`CREATE DOMAIN year_not_null AS integer NOT NULL CONSTRAINT year_check CHECK (((VALUE >= 1901) AND (VALUE <= 2155)));`,
+				`CREATE TABLE test_table (year integer);`,
+				`INSERT INTO test_table VALUES (2000), (2024);`,
+			},
+			Assertions: []ScriptTestAssertion{
+				{
+					Query:    `SELECT 1903::year_not_null;`,
+					Expected: []sql.Row{{1903}},
+				},
+				{
+					Query:    `SELECT 1903::year_not_null::text;`,
+					Expected: []sql.Row{{"1903"}},
+				},
+				{
+					Query:       `SELECT 1900::year_not_null;`,
+					ExpectedErr: `value for domain year_not_null violates check constraint "year_check"`,
+				},
+				{
+					Query:       `SELECT NULL::year_not_null;`,
+					ExpectedErr: `domain year_not_null does not allow null values`,
+				},
+				{
+					Query:    `SELECT year::year_not_null from test_table order by year;`,
+					Expected: []sql.Row{{2000}, {2024}},
+				},
+				{
+					Query: `INSERT INTO test_table VALUES (null);`,
+				},
+				{
+					Query:       `SELECT year::year_not_null from test_table;`,
+					ExpectedErr: `domain year_not_null does not allow null values`,
+				},
+			},
+		},
 	})
 }
