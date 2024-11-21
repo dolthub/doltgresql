@@ -126,20 +126,20 @@ func receiveInputFunction(ctx *sql.Context, funcName string, origType, argType D
 		if baseType.ModInFunc != "-" {
 			typmod = origType.AttTypMod
 		}
-		return GetFunctionForTypes(ctx, funcName, []DoltgresType{argType, Oid, Int32}, []any{val, baseType.OID, typmod})
+		return GetFunctionAndEvaluateForTypes(ctx, funcName, []DoltgresType{argType, Oid, Int32}, []any{val, baseType.OID, typmod})
 	} else if origType.TypType == TypeType_Domain {
 		baseType := origType.DomainUnderlyingBaseType()
-		return GetFunctionForTypes(ctx, funcName, []DoltgresType{argType, Oid, Int32}, []any{val, baseType.OID, origType.AttTypMod})
+		return GetFunctionAndEvaluateForTypes(ctx, funcName, []DoltgresType{argType, Oid, Int32}, []any{val, baseType.OID, origType.AttTypMod})
 	} else if origType.ModInFunc != "-" {
-		return GetFunctionForTypes(ctx, funcName, []DoltgresType{argType, Oid, Int32}, []any{val, origType.OID, origType.AttTypMod})
+		return GetFunctionAndEvaluateForTypes(ctx, funcName, []DoltgresType{argType, Oid, Int32}, []any{val, origType.OID, origType.AttTypMod})
 	} else {
-		return GetFunctionForTypes(ctx, funcName, []DoltgresType{argType}, []any{val})
+		return GetFunctionAndEvaluateForTypes(ctx, funcName, []DoltgresType{argType}, []any{val})
 	}
 }
 
 // sendOutputFunction handles given IoOutput and IoSend functions.
 func sendOutputFunction(ctx *sql.Context, funcName string, t DoltgresType, val any) (any, error) {
-	return GetFunctionForTypes(ctx, funcName, []DoltgresType{t}, []any{val})
+	return GetFunctionAndEvaluateForTypes(ctx, funcName, []DoltgresType{t}, []any{val})
 }
 
 // sqlString converts given type value to output string. This is the same as IoOutput function
@@ -153,7 +153,7 @@ func sqlString(ctx *sql.Context, t DoltgresType, val any) (string, error) {
 		return ArrToString(ctx, val.([]any), baseType, true)
 	}
 	// calling `out` function
-	o, err := GetFunctionForTypes(ctx, t.OutputFunc, []DoltgresType{t}, []any{val})
+	o, err := GetFunctionAndEvaluateForTypes(ctx, t.OutputFunc, []DoltgresType{t}, []any{val})
 	if err != nil {
 		return "", err
 	}
@@ -222,7 +222,7 @@ func IoCompare(ctx *sql.Context, t DoltgresType, v1, v2 any) (int32, error) {
 		return 0, fmt.Errorf("compare function does not exist for %s type", t.Name)
 	}
 
-	i, err := GetFunctionForTypes(ctx, t.CompareFunc, []DoltgresType{t, t}, []any{v1, v2})
+	i, err := GetFunctionAndEvaluateForTypes(ctx, t.CompareFunc, []DoltgresType{t, t}, []any{v1, v2})
 	if err != nil {
 		return 0, err
 	}

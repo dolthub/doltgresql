@@ -726,7 +726,7 @@ func (t DoltgresType) TypModIn(ctx *sql.Context, val []any) (int32, error) {
 	if t.ModInFunc == "-" {
 		return 0, fmt.Errorf("typmodin function for type '%s' doesn't exist", t.Name)
 	}
-	o, err := GetFunctionForTypes(ctx, t.ModInFunc, []DoltgresType{CstringArray}, []any{val})
+	o, err := GetFunctionAndEvaluateForTypes(ctx, t.ModInFunc, []DoltgresType{CstringArray}, []any{val})
 	if err != nil {
 		return 0, err
 	}
@@ -743,7 +743,7 @@ func (t DoltgresType) TypModOut(ctx *sql.Context, val int32) (string, error) {
 	if t.ModOutFunc == "-" {
 		return "", fmt.Errorf("typmodout function for type '%s' doesn't exist", t.Name)
 	}
-	o, err := GetFunctionForTypes(ctx, t.ModOutFunc, []DoltgresType{Int32}, []any{val})
+	o, err := GetFunctionAndEvaluateForTypes(ctx, t.ModOutFunc, []DoltgresType{Int32}, []any{val})
 	if err != nil {
 		return "", err
 	}
