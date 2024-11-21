@@ -955,6 +955,152 @@ func TestUserSpaceDoltTables(t *testing.T) {
 			},
 		},
 		{
+			Name: "dolt docs",
+			SetUpScript: []string{
+				"INSERT INTO dolt.docs values ('README.md', 'testing')",
+			},
+			Assertions: []ScriptTestAssertion{
+				{
+					Query: `SELECT * FROM dolt.docs`,
+					Expected: []sql.Row{
+						{"README.md", "testing"},
+					},
+				},
+				{
+					Query: `SELECT * FROM dolt_docs`,
+					Expected: []sql.Row{
+						{"README.md", "testing"},
+					},
+				},
+				{
+					Skip:     true, // TODO: referencing items outside the schema or database is not yet supported
+					Query:    `SELECT dolt.docs.doc_name FROM dolt.docs`,
+					Expected: []sql.Row{{"README.md"}},
+				},
+				{
+					Skip:     true, // TODO: table not found: dolt_docs
+					Query:    `SELECT dolt_docs.doc_name FROM dolt_docs`,
+					Expected: []sql.Row{{"README.md"}},
+				},
+				{
+					Query:       `SELECT * FROM public.docs`,
+					ExpectedErr: "table not found",
+				},
+				{
+					Query:       `SELECT * FROM docs`,
+					ExpectedErr: "table not found",
+				},
+				{
+					Query: `SELECT * FROM dolt_diff_summary('main', 'WORKING')`,
+					Expected: []sql.Row{
+						{"", "dolt.docs", "added", 1, 1},
+					},
+				},
+				{
+					Query: `SELECT * FROM dolt_diff_summary('main', 'WORKING', 'docs')`,
+					Expected: []sql.Row{
+						{"", "dolt.docs", "added", 1, 1},
+					},
+				},
+				{
+					Skip:  true, // TODO: we should support this
+					Query: `SELECT * FROM dolt_diff_summary('main', 'WORKING', 'dolt_docs')`,
+					Expected: []sql.Row{
+						{"", "dolt_docs", "added", 1, 1},
+					},
+				},
+				{
+					Skip:  true, // TODO: we should support this or a --schema flag
+					Query: `SELECT * FROM dolt_diff_summary('main', 'WORKING', 'dolt.docs')`,
+					Expected: []sql.Row{
+						{"", "dolt.docs", "added", 1, 1},
+					},
+				},
+				{
+					Query: `SELECT * FROM dolt_diff_summary('main', 'WORKING', 'docs')`,
+					Expected: []sql.Row{
+						{"", "dolt.docs", "added", 1, 1},
+					},
+				},
+				{
+					Query: `SELECT diff_type, from_doc_name, to_doc_name FROM dolt_diff('main', 'WORKING', 'docs')`,
+					Expected: []sql.Row{
+						{"added", nil, "README.md"},
+					},
+				},
+				{
+					Query: `SELECT diff_type, from_doc_name, to_doc_name FROM dolt_diff('main', 'WORKING', 'docs')`,
+					Expected: []sql.Row{
+						{"added", nil, "README.md"},
+					},
+				},
+				{
+					Query:    `CREATE TABLE docs (id INT PRIMARY KEY)`,
+					Expected: []sql.Row{},
+				},
+				{
+					Query:    `INSERT INTO docs VALUES (1)`,
+					Expected: []sql.Row{},
+				},
+				{
+					Query:    `SELECT * FROM docs`,
+					Expected: []sql.Row{{1}},
+				},
+				{
+					Query:    `SELECT doc_name FROM dolt.docs`,
+					Expected: []sql.Row{{"README.md"}},
+				},
+				{
+					Query:    "SET search_path = 'dolt'",
+					Expected: []sql.Row{},
+				},
+				{
+					Query:    `SELECT doc_name FROM docs`,
+					Expected: []sql.Row{{"README.md"}},
+				},
+				{
+					Query:    `SELECT * FROM public.docs`,
+					Expected: []sql.Row{{1}},
+				},
+				{
+					Query:    "SET search_path = 'public'",
+					Expected: []sql.Row{},
+				},
+				{
+					Query:    `SELECT * FROM docs`,
+					Expected: []sql.Row{{1}},
+				},
+				{
+					Query:    "SET search_path = 'public,dolt'",
+					Expected: []sql.Row{},
+				},
+				{
+					Query:    `SELECT * FROM docs`,
+					Expected: []sql.Row{{1}},
+				},
+				{
+					Query:    `SELECT * FROM DOCS`,
+					Expected: []sql.Row{{1}},
+				},
+				{
+					Query:    "SET search_path = 'public'",
+					Expected: []sql.Row{},
+				},
+				{
+					Query:    `DELETE FROM dolt.docs WHERE doc_name = 'README.md'`,
+					Expected: []sql.Row{},
+				},
+				{
+					Query:    `SELECT * FROM dolt.docs`,
+					Expected: []sql.Row{},
+				},
+				{
+					Query:    `DELETE FROM dolt_docs WHERE doc_name = 'README.md'`,
+					Expected: []sql.Row{},
+				},
+			},
+		},
+		{
 			Name: "dolt diff",
 			SetUpScript: []string{
 				"CREATE TABLE test (id INT PRIMARY KEY)",
@@ -1659,109 +1805,6 @@ func TestUserSpaceDoltTables(t *testing.T) {
 					Query:    `SELECT * FROM TAGS`,
 					Expected: []sql.Row{{1}},
 				},
-			},
-		},
-		{
-			Name: "dolt docs",
-			SetUpScript: []string{
-				"INSERT INTO dolt.docs values ('README.md', 'testing')",
-			},
-			Assertions: []ScriptTestAssertion{
-				{
-					Query: `SELECT * FROM dolt.docs`,
-					Expected: []sql.Row{
-						{"README.md", "testing"},
-					},
-				},
-				{
-					Query: `SELECT * FROM dolt_docs`,
-					Expected: []sql.Row{
-						{"README.md", "testing"},
-					},
-				},
-				{
-					Skip:     true, // TODO: referencing items outside the schema or database is not yet supported
-					Query:    `SELECT dolt.docs.doc_name FROM dolt.docs`,
-					Expected: []sql.Row{{"README.md"}},
-				},
-				{
-					Skip:     true, // TODO: table not found: dolt_docs
-					Query:    `SELECT dolt_docs.doc_name FROM dolt_docs`,
-					Expected: []sql.Row{{"README.md"}},
-				},
-				{
-					Query:       `SELECT * FROM public.docs`,
-					ExpectedErr: "table not found",
-				},
-				{
-					Query:       `SELECT * FROM docs`,
-					ExpectedErr: "table not found",
-				},
-				{
-					Query:    `CREATE TABLE docs (id INT PRIMARY KEY)`,
-					Expected: []sql.Row{},
-				},
-				{
-					Query:    `INSERT INTO docs VALUES (1)`,
-					Expected: []sql.Row{},
-				},
-				{
-					Query:    `SELECT * FROM docs`,
-					Expected: []sql.Row{{1}},
-				},
-				{
-					Query:    `SELECT doc_name FROM dolt.docs`,
-					Expected: []sql.Row{{"README.md"}},
-				},
-				{
-					Query:    "SET search_path = 'dolt'",
-					Expected: []sql.Row{},
-				},
-				{
-					Query:    `SELECT doc_name FROM docs`,
-					Expected: []sql.Row{{"README.md"}},
-				},
-				{
-					Query:    `SELECT * FROM public.docs`,
-					Expected: []sql.Row{{1}},
-				},
-				{
-					Query:    "SET search_path = 'public'",
-					Expected: []sql.Row{},
-				},
-				{
-					Query:    `SELECT * FROM docs`,
-					Expected: []sql.Row{{1}},
-				},
-				{
-					Query:    "SET search_path = 'public,dolt'",
-					Expected: []sql.Row{},
-				},
-				{
-					Query:    `SELECT * FROM docs`,
-					Expected: []sql.Row{{1}},
-				},
-				{
-					Query:    `SELECT * FROM DOCS`,
-					Expected: []sql.Row{{1}},
-				},
-				{
-					Query:    "SET search_path = 'public'",
-					Expected: []sql.Row{},
-				},
-				{
-					Query:    `DELETE FROM dolt.docs WHERE doc_name = 'README.md'`,
-					Expected: []sql.Row{},
-				},
-				{
-					Query:    `SELECT * FROM dolt.docs`,
-					Expected: []sql.Row{},
-				},
-				{
-					Query:    `DELETE FROM dolt_docs WHERE doc_name = 'README.md'`,
-					Expected: []sql.Row{},
-				},
-				// TODO: Test dolt.docs in diffs
 			},
 		},
 		{
