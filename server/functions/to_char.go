@@ -61,7 +61,7 @@ var to_char_timestamp = framework.Function2{
 				result += timestamp.Format("04")
 				format = format[2:]
 
-			case strings.HasPrefix(format, "ssss") || strings.HasPrefix(format, "SSSS"):
+			case strings.HasPrefix(format, "ssss") || strings.HasPrefix(format, "SSSS") || strings.HasPrefix(format, "sssss") || strings.HasPrefix(format, "SSSSS"):
 				return nil, fmt.Errorf("seconds past midnight not supported")
 
 			case strings.HasPrefix(format, "ss") || strings.HasPrefix(format, "SS"):
@@ -192,7 +192,7 @@ var to_char_timestamp = framework.Function2{
 				format = format[2:]
 
 			case strings.HasPrefix(format, "d") || strings.HasPrefix(format, "D"):
-				result += fmt.Sprintf("%d", timestamp.Weekday())
+				result += fmt.Sprintf("%d", timestamp.Weekday() + 1)
 				format = format[1:]
 
 			case strings.HasPrefix(format, "ww") || strings.HasPrefix(format, "WW"):
