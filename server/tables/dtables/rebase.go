@@ -25,8 +25,6 @@ import (
 	"github.com/shopspring/decimal"
 )
 
-var rebaseNumericType = pgtypes.NumericType{Precision: 6, Scale: 2}
-
 // getRebaseSchema returns the schema for the rebase table.
 func getRebaseSchema() sql.Schema {
 	return []*sql.Column{
@@ -37,6 +35,7 @@ func getRebaseSchema() sql.Schema {
 	}
 }
 
+// convertRebasePlanStepToRow converts a RebasePlanStep to a sql.Row.
 func convertRebasePlanStepToRow(planMember rebase.RebasePlanStep) (sql.Row, error) {
 	actionEnumValue := dprocedures.RebaseActionEnumType.IndexOf(strings.ToLower(planMember.Action))
 	if actionEnumValue == -1 {
@@ -51,6 +50,7 @@ func convertRebasePlanStepToRow(planMember rebase.RebasePlanStep) (sql.Row, erro
 	}, nil
 }
 
+// convertRowToRebasePlanStep converts a sql.Row to a RebasePlanStep.
 func convertRowToRebasePlanStep(row sql.Row) (rebase.RebasePlanStep, error) {
 	order, ok := row[0].(float32)
 	if !ok {
@@ -73,9 +73,4 @@ func convertRowToRebasePlanStep(row sql.Row) (rebase.RebasePlanStep, error) {
 		CommitHash:  row[2].(string),
 		CommitMsg:   row[3].(string),
 	}, nil
-}
-
-// getRebaseTableName returns the name of the rebase table.
-func getRebaseTableName() string {
-	return "dolt_rebase"
 }

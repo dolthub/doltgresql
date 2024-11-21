@@ -30,10 +30,8 @@ func Init() {
 	doltdb.GetCommitAncestorsTableName = getCommitAncestorsTableName
 	doltdb.GetCommitsTableName = getCommitsTableName
 	doltdb.GetDiffTableName = getDiffTableName
-	// doltdb.GetIgnoreTableName = getIgnoreTableName
 	doltdb.GetLogTableName = getLogTableName
 	doltdb.GetMergeStatusTableName = getMergeStatusTableName
-	// doltdb.GetRebaseTableName = getRebaseTableName
 	doltdb.GetRemoteBranchesTableName = getRemoteBranchesTableName
 	doltdb.GetRemotesTableName = getRemotesTableName
 	doltdb.GetSchemaConflictsTableName = getSchemaConflictsTableName

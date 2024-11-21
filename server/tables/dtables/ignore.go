@@ -25,6 +25,7 @@ import (
 	"github.com/dolthub/dolt/go/store/val"
 )
 
+// getDoltIgnoreSchema returns the schema for the dolt_ignore table.
 func getDoltIgnoreSchema() sql.Schema {
 	return []*sql.Column{
 		{Name: "pattern", Type: pgtypes.Text, Source: doltdb.IgnoreTableName, PrimaryKey: true},
@@ -32,6 +33,7 @@ func getDoltIgnoreSchema() sql.Schema {
 	}
 }
 
+// convertTupleToIgnoreBoolean reads a boolean from a tuple and returns it.
 func convertTupleToIgnoreBoolean(valueDesc val.TupleDesc, valueTuple val.Tuple) (bool, error) {
 	extendedTuple := val.NewTupleDescriptorWithArgs(
 		val.TupleDescriptorArgs{Comparator: valueDesc.Comparator(), Handlers: valueDesc.Handlers},
