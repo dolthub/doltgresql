@@ -20,5 +20,5 @@ import (
 
 // Init handles the assignment of the IO functions for the types package.
 func Init() {
-	types.GetFunctionForTypes = GetFunctionWithoutValidationForTypes
+	types.GetFunctionAndEvaluateForTypes = getFunctionAndEvaluateForTypes
 }

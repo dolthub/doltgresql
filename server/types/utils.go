@@ -49,7 +49,7 @@ var ErrTypmodArrayMustBe1D = errors.NewKind(`typmod array must be one-dimensiona
 // ErrInvalidTypMod is returned when given value is invalid for type modifier.
 var ErrInvalidTypMod = errors.NewKind(`invalid %s type modifier`)
 
-var GetFunctionForTypes func(ctx *sql.Context, funcName string, paramTypes []DoltgresType, args []any) (any, error)
+var GetFunctionAndEvaluateForTypes func(ctx *sql.Context, funcName string, paramTypes []DoltgresType, args []any) (any, error)
 
 // FromGmsType returns a DoltgresType that is most similar to the given GMS type.
 // It returns UNKNOWN type for GMS types that are not handled.

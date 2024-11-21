@@ -22,8 +22,8 @@ import (
 	pgtypes "github.com/dolthub/doltgresql/server/types"
 )
 
-// GetFunctionWithoutValidationForTypes
-func GetFunctionWithoutValidationForTypes(ctx *sql.Context, funcName string, paramTypes []pgtypes.DoltgresType, args []any) (any, error) {
+// getFunctionAndEvaluateForTypes is a shortcut to getting CompiledFunction and evaluating the output result.
+func getFunctionAndEvaluateForTypes(ctx *sql.Context, funcName string, paramTypes []pgtypes.DoltgresType, args []any) (any, error) {
 	// get function and do Callable immediately
 	overloads, ok := Catalog[funcName]
 	if !ok {
