@@ -1292,6 +1292,37 @@ func TestUserSpaceDoltTables(t *testing.T) {
 					},
 				},
 				{
+					Query: `SELECT * FROM public.dolt_ignore`,
+					Expected: []sql.Row{
+						{"generated_*", "t"},
+						{"generated_exception", "f"},
+					},
+				},
+				{
+					Query: `SELECT dolt_ignore.pattern FROM public.dolt_ignore`,
+					Expected: []sql.Row{
+						{"generated_*"},
+						{"generated_exception"},
+					},
+				},
+				{
+					Query:       `SELECT name FROM other.dolt_ignore`,
+					ExpectedErr: "database schema not found",
+				},
+				{
+					Query: `SELECT * FROM dolt_diff_summary('main', 'WORKING')`,
+					Expected: []sql.Row{
+						{"", "public.dolt_ignore", "added", 1, 1},
+					},
+				},
+				{
+					Query: `SELECT diff_type, from_pattern, to_pattern FROM dolt_diff('main', 'WORKING', 'dolt_ignore')`,
+					Expected: []sql.Row{
+						{"added", nil, "generated_*"},
+						{"added", nil, "generated_exception"},
+					},
+				},
+				{
 					Query:    "CREATE TABLE foo (pk int);",
 					Expected: []sql.Row{},
 				},
@@ -1310,13 +1341,104 @@ func TestUserSpaceDoltTables(t *testing.T) {
 				{
 					Query: "SELECT * FROM dolt_status;",
 					Expected: []sql.Row{
-						{"dolt_ignore", 1, "new table"},
+						{"public.dolt_ignore", 1, "new table"},
 						{"public.foo", 1, "new table"},
 						{"public.generated_exception", 1, "new table"},
 						{"public.generated_foo", 0, "new table"},
 					},
 				},
-				// TODO: Test tables in different schemas
+				{
+					Query:    `CREATE SCHEMA newschema`,
+					Expected: []sql.Row{},
+				},
+				{
+					Query:    "INSERT INTO newschema.dolt_ignore VALUES ('test_*', true)",
+					Expected: []sql.Row{},
+				},
+				{
+					Query:    "SET search_path = 'newschema'",
+					Expected: []sql.Row{},
+				},
+				{
+					Query: `SELECT * FROM dolt_ignore`,
+					Expected: []sql.Row{
+						{"test_*", "t"},
+					},
+				},
+				{
+					// Should ignore generated_expected table in newschema but not in public
+					Query:    "INSERT INTO dolt_ignore VALUES ('generated_exception', true)",
+					Expected: []sql.Row{},
+				},
+				{
+					Query: `SELECT * FROM dolt_ignore`,
+					Expected: []sql.Row{
+						{"generated_exception", "t"},
+						{"test_*", "t"},
+					},
+				},
+				{
+					Query: `SELECT * FROM newschema.dolt_ignore`,
+					Expected: []sql.Row{
+						{"generated_exception", "t"},
+						{"test_*", "t"},
+					},
+				},
+				{
+					Query: `SELECT * FROM public.dolt_ignore`,
+					Expected: []sql.Row{
+						{"generated_*", "t"},
+						{"generated_exception", "f"},
+					},
+				},
+				{
+					Query: `SELECT * FROM dolt_diff_summary('main', 'WORKING', 'dolt_ignore')`,
+					Expected: []sql.Row{
+						{"", "newschema.dolt_ignore", "added", 1, 1},
+					},
+				},
+				{
+					Query: `SELECT pattern FROM public.dolt_ignore`,
+					Expected: []sql.Row{
+						{"generated_*"},
+						{"generated_exception"},
+					},
+				},
+				{
+					Query:    "CREATE TABLE foo (pk int);",
+					Expected: []sql.Row{},
+				},
+				{
+					Query:    "CREATE TABLE test_foo (pk int);",
+					Expected: []sql.Row{},
+				},
+				{
+					Query:    "CREATE TABLE generated_foo (pk int);",
+					Expected: []sql.Row{},
+				},
+				{
+					Query:    "CREATE TABLE generated_exception (pk int);",
+					Expected: []sql.Row{},
+				},
+				{
+					Query:    "SELECT dolt_add('-A');",
+					Expected: []sql.Row{{"{0}"}},
+				},
+				{
+					Query: "SELECT * FROM dolt_status ORDER BY table_name;",
+					Expected: []sql.Row{
+						{"newschema", 1, "new schema"},
+						{"newschema.dolt_ignore", 1, "new table"},
+						{"newschema.foo", 1, "new table"},
+						{"newschema.generated_exception", 0, "new table"},
+						{"newschema.generated_foo", 1, "new table"},
+						{"newschema.test_foo", 0, "new table"},
+						{"public.dolt_ignore", 1, "new table"},
+						{"public.foo", 1, "new table"},
+						{"public.generated_exception", 1, "new table"},
+						{"public.generated_foo", 0, "new table"},
+					},
+				},
 			},
 		},
 		{
