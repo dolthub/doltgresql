@@ -44,10 +44,11 @@ func Init() {
 
 	// Schemas
 	dtables.GetDocsSchema = getDocsSchema
-	// dtables.GetDoltIgnoreSchema = getDoltIgnoreSchema
+	dtables.GetDoltIgnoreSchema = getDoltIgnoreSchema
 	dprocedures.GetDoltRebaseSystemTableSchema = getRebaseSchema
 
 	// Conversions
+	doltdb.ConvertTupleToIgnoreBoolean = convertTupleToIgnoreBoolean
 	sqle.ConvertRebasePlanStepToRow = convertRebasePlanStepToRow
 	sqle.ConvertRowToRebasePlanStep = convertRowToRebasePlanStep
 }

@@ -1273,6 +1273,53 @@ func TestUserSpaceDoltTables(t *testing.T) {
 			},
 		},
 		{
+			Name:        "dolt ignore",
+			SetUpScript: []string{},
+			Assertions: []ScriptTestAssertion{
+				{
+					Query:    `SELECT * FROM dolt_ignore`,
+					Expected: []sql.Row{},
+				},
+				{
+					Query:    "INSERT INTO dolt_ignore VALUES ('generated_*', true), ('generated_exception', false)",
+					Expected: []sql.Row{},
+				},
+				{
+					Query: `SELECT * FROM dolt_ignore`,
+					Expected: []sql.Row{
+						{"generated_*", "t"},
+						{"generated_exception", "f"},
+					},
+				},
+				{
+					Query:    "CREATE TABLE foo (pk int);",
+					Expected: []sql.Row{},
+				},
+				{
+					Query:    "CREATE TABLE generated_foo (pk int);",
+					Expected: []sql.Row{},
+				},
+				{
+					Query:    "CREATE TABLE generated_exception (pk int);",
+					Expected: []sql.Row{},
+				},
+				{
+					Query:    "SELECT dolt_add('-A');",
+					Expected: []sql.Row{{"{0}"}},
+				},
+				{
+					Query: "SELECT * FROM dolt_status;",
+					Expected: []sql.Row{
+						{"dolt_ignore", 1, "new table"},
+						{"public.foo", 1, "new table"},
+						{"public.generated_exception", 1, "new table"},
+						{"public.generated_foo", 0, "new table"},
+					},
+				},
+				// TODO: Test tables in different schemas
+			},
+		},
+		{
 			Name: "dolt log",
 			Assertions: []ScriptTestAssertion{
 				{
