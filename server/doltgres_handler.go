@@ -134,7 +134,7 @@ func (h *DoltgresHandler) ComPrepareParsed(ctx context.Context, c *mysql.Conn, q
 		fields = []pgproto3.FieldDescription{
 			{
 				Name:         []byte("Rows"),
-				DataTypeOID:  pgtypes.Int32.OID,
+				DataTypeOID:  pgtypes.Int32.OID(),
 				DataTypeSize: int16(pgtypes.Int32.MaxTextResponseByteLength(nil)),
 			},
 		}
@@ -323,7 +323,7 @@ func schemaToFieldDescriptions(ctx *sql.Context, s sql.Schema) []pgproto3.FieldD
 		var oid uint32
 		var err error
 		if doltgresType, ok := c.Type.(pgtypes.DoltgresType); ok {
-			oid = doltgresType.OID
+			oid = doltgresType.OID()
 		} else {
 			oid, err = VitessTypeToObjectID(c.Type.Type())
 			if err != nil {

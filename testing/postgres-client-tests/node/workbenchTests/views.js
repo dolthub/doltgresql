@@ -113,7 +113,7 @@ export const viewsTests = [
           tableID: 0,
           columnID: 0,
           dataTypeID: 19,
-          dataTypeSize: 64,
+          dataTypeSize: 252,
           dataTypeModifier: -1,
           format: "text",
         },

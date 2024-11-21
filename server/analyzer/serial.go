@@ -42,20 +42,23 @@ func ReplaceSerial(ctx *sql.Context, a *analyzer.Analyzer, node sql.Node, scope 
 	var ctSequences []*pgnodes.CreateSequence
 	for _, col := range createTable.PkSchema().Schema {
 		if doltgresType, ok := col.Type.(pgtypes.DoltgresType); ok {
-			if doltgresType.IsSerial {
-				var maxValue int64
-				switch doltgresType.Name {
-				case "smallserial":
-					col.Type = pgtypes.Int16
-					maxValue = 32767
-				case "serial":
-					col.Type = pgtypes.Int32
-					maxValue = 2147483647
-				case "bigserial":
-					col.Type = pgtypes.Int64
-					maxValue = 9223372036854775807
-				}
-
+			isSerial := false
+			var maxValue int64
+			switch doltgresType.BaseID() {
+			case pgtypes.DoltgresTypeBaseID_Int16Serial:
+				isSerial = true
+				col.Type = pgtypes.Int16
+				maxValue = 32767
+			case pgtypes.DoltgresTypeBaseID_Int32Serial:
+				isSerial = true
+				col.Type = pgtypes.Int32
+				maxValue = 2147483647
+			case pgtypes.DoltgresTypeBaseID_Int64Serial:
+				isSerial = true
+				col.Type = pgtypes.Int64
+				maxValue = 9223372036854775807
+			}
+			if isSerial {
 				baseSequenceName := fmt.Sprintf("%s_%s_seq", createTable.Name(), col.Name)
 				sequenceName := baseSequenceName
 				schemaName, err := core.GetSchemaName(ctx, createTable.Db, "")
@@ -101,7 +104,7 @@ func ReplaceSerial(ctx *sql.Context, a *analyzer.Analyzer, node sql.Node, scope 
 				}
 				ctSequences = append(ctSequences, pgnodes.NewCreateSequence(false, "", &sequences.Sequence{
 					Name:        sequenceName,
-					DataTypeOID: col.Type.(pgtypes.DoltgresType).OID,
+					DataTypeOID: col.Type.(pgtypes.DoltgresType).OID(),
 					Persistence: sequences.Persistence_Permanent,
 					Start:       1,
 					Current:     1,

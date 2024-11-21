@@ -14,5 +14,9 @@
 
 package types
 
+import (
+	"github.com/lib/pq/oid"
+)
+
 // ByteaArray is the array variant of Bytea.
-var ByteaArray = CreateArrayTypeFromBaseType(Bytea)
+var ByteaArray = createArrayType(Bytea, SerializationID_ByteaArray, oid.T__bytea)

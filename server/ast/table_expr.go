@@ -125,8 +125,8 @@ func nodeTableExpr(ctx *Context, node tree.TableExpr) (vitess.TableExpr, error) 
 			Expr: tableName,
 			Auth: vitess.AuthInformation{
 				AuthType:    ctx.Auth().PeekAuthType(),
-				TargetType:  auth.AuthTargetType_SingleTableIdentifier,
-				TargetNames: []string{tableName.SchemaQualifier.String(), tableName.Name.String()},
+				TargetType:  auth.AuthTargetType_TableIdentifiers,
+				TargetNames: []string{tableName.DbQualifier.String(), tableName.SchemaQualifier.String(), tableName.Name.String()},
 			},
 		}, nil
 	case *tree.TableRef:
@@ -140,8 +140,8 @@ func nodeTableExpr(ctx *Context, node tree.TableExpr) (vitess.TableExpr, error) 
 			Expr: tableName,
 			Auth: vitess.AuthInformation{
 				AuthType:    ctx.Auth().PeekAuthType(),
-				TargetType:  auth.AuthTargetType_SingleTableIdentifier,
-				TargetNames: []string{tableName.SchemaQualifier.String(), tableName.Name.String()},
+				TargetType:  auth.AuthTargetType_TableIdentifiers,
+				TargetNames: []string{tableName.DbQualifier.String(), tableName.SchemaQualifier.String(), tableName.Name.String()},
 			},
 		}, nil
 	default:

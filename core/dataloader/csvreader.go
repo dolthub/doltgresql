@@ -67,7 +67,7 @@ type csvReader struct {
 	fieldsPerRecord int
 }
 
-// NewCsvReader creates a csvReader from a given ReadCloser.
+// newCsvReader creates a csvReader from a given ReadCloser.
 //
 // The interpretation of the bytes of the supplied reader is a little murky. If
 // there is a UTF8, UTF16LE or UTF16BE BOM as the first bytes read, then the
@@ -75,7 +75,7 @@ type csvReader struct {
 // encoding. If we are not in any of those marked encodings, then some of the
 // bytes go uninterpreted until we get to the SQL layer. It is currently the
 // case that newlines must be encoded as a '0xa' byte.
-func NewCsvReader(r io.ReadCloser) (*csvReader, error) {
+func newCsvReader(r io.ReadCloser) (*csvReader, error) {
 	return newCsvReaderWithDelimiter(r, ",")
 }
 

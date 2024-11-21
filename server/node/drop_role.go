@@ -52,11 +52,22 @@ func (c *DropRole) Resolved() bool {
 func (c *DropRole) RowIter(ctx *sql.Context, r sql.Row) (sql.RowIter, error) {
 	// TODO: disallow dropping the role if it owns anything
 	// First we'll loop over all of the names to check that they all exist
+	var userRole auth.Role
+	var roles []auth.Role
 	var err error
 	auth.LockRead(func() {
+		userRole = auth.GetRole(ctx.Client().User)
 		for _, roleName := range c.Names {
-			if !auth.RoleExists(roleName) && !c.IfExists {
+			role := auth.GetRole(roleName)
+			if role.IsValid() {
+				roles = append(roles, role)
+			} else if !c.IfExists {
 				err = fmt.Errorf(`role "%s" does not exist`, roleName)
+				break
+			}
+			if !userRole.IsSuperUser && (role.IsSuperUser || !userRole.CanCreateRoles) {
+				// TODO: grab the actual error message
+				err = fmt.Errorf(`role "%s" does not have permission to drop role "%s"`, userRole.Name, role.Name)
 				break
 			}
 		}
@@ -66,8 +77,8 @@ func (c *DropRole) RowIter(ctx *sql.Context, r sql.Row) (sql.RowIter, error) {
 	}
 	// Then we'll loop again, dropping all of the users
 	auth.LockWrite(func() {
-		for _, roleName := range c.Names {
-			auth.DropRole(roleName)
+		for _, role := range roles {
+			auth.DropRole(role.Name)
 		}
 		err = auth.PersistChanges()
 	})

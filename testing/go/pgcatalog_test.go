@@ -553,11 +553,7 @@ func TestPgClass(t *testing.T) {
 					// TODO: Now that catalog data is cached for each query, this query no longer iterates the database
 					//       100k times, and this query executes in a couple seconds. This is still slow and should
 					//       be improved with lookup index support now that we have cached data available.
-					Query: `SELECT ix.relname AS index_name, upper(am.amname) AS index_algorithm FROM pg_index i 
-JOIN pg_class t ON t.oid = i.indrelid 
-JOIN pg_class ix ON ix.oid = i.indexrelid 
-JOIN pg_namespace n ON t.relnamespace = n.oid 
-JOIN pg_am AS am ON ix.relam = am.oid WHERE t.relname = 'foo' AND n.nspname = 'public';`,
+					Query:    `SELECT ix.relname AS index_name, upper(am.amname) AS index_algorithm FROM pg_index i JOIN pg_class t ON t.oid = i.indrelid JOIN pg_class ix ON ix.oid = i.indexrelid JOIN pg_namespace n ON t.relnamespace = n.oid JOIN pg_am AS am ON ix.relam = am.oid WHERE t.relname = 'foo' AND n.nspname = 'public';`,
 					Expected: []sql.Row{{"foo_pkey", "BTREE"}, {"b", "BTREE"}, {"b_2", "BTREE"}}, // TODO: should follow Postgres index naming convention: "foo_pkey", "foo_b_idx", "foo_b_a_idx"
 				},
 			},
@@ -3815,7 +3811,7 @@ func TestPgType(t *testing.T) {
 			Assertions: []ScriptTestAssertion{
 				{
 					Query:    `SELECT * FROM "pg_catalog"."pg_type" WHERE typname = 'float8';`,
-					Expected: []sql.Row{{701, "float8", 1879048194, 0, 8, "t", "b", "N", "t", "t", ",", 0, "-", 0, 1022, "float8in", "float8out", "float8recv", "float8send", "-", "-", "-", "d", "p", "f", 0, -1, 0, 0, "", "", "{}"}},
+					Expected: []sql.Row{{701, "float8", 1879048194, 0, 8, "t", "b", "N", "t", "t", ",", 0, "-", 0, 0, "float8in", "float8out", "float8recv", "float8send", "-", "-", "-", "d", "x", "f", 0, 0, 0, 0, nil, nil, nil}},
 				},
 				{ // Different cases and quoted, so it fails
 					Query:       `SELECT * FROM "PG_catalog"."pg_type";`,
@@ -3836,13 +3832,6 @@ func TestPgType(t *testing.T) {
 						{"varchar"},
 					},
 				},
-				{
-					Skip: true, // TODO: use regproc type instead of text type.
-					Query: `SELECT t1.oid, t1.typname as basetype, t2.typname as arraytype, t2.typsubscript
-					FROM   pg_type t1 LEFT JOIN pg_type t2 ON (t1.typarray = t2.oid)
-					WHERE  t1.typarray <> 0 AND (t2.oid IS NULL OR t2.typsubscript <> 'array_subscript_handler'::regproc);`,
-					Expected: []sql.Row{},
-				},
 			},
 		},
 		{
@@ -3850,7 +3839,7 @@ func TestPgType(t *testing.T) {
 			Assertions: []ScriptTestAssertion{
 				{
 					Query:    `SELECT * FROM "pg_catalog"."pg_type" WHERE oid='float8'::regtype;`,
-					Expected: []sql.Row{{701, "float8", 1879048194, 0, 8, "t", "b", "N", "t", "t", ",", 0, "-", 0, 1022, "float8in", "float8out", "float8recv", "float8send", "-", "-", "-", "d", "p", "f", 0, -1, 0, 0, "", "", "{}"}},
+					Expected: []sql.Row{{701, "float8", 1879048194, 0, 8, "t", "b", "N", "t", "t", ",", 0, "-", 0, 0, "float8in", "float8out", "float8recv", "float8send", "-", "-", "-", "d", "x", "f", 0, 0, 0, 0, nil, nil, nil}},
 				},
 				{
 					Query:    `SELECT oid, typname FROM "pg_catalog"."pg_type" WHERE oid='double precision'::regtype;`,
@@ -3898,27 +3887,27 @@ func TestPgType(t *testing.T) {
 				},
 				{
 					Query:    `SELECT * FROM "pg_catalog"."pg_type" WHERE oid='integer[]'::regtype;`,
-					Expected: []sql.Row{{1007, "_int4", 1879048194, 0, -1, "f", "b", "A", "f", "t", ",", 0, "array_subscript_handler", 23, 0, "array_in", "array_out", "array_recv", "array_send", "-", "-", "array_typanalyze", "i", "x", "f", 0, -1, 0, 0, "", "", "{}"}},
+					Expected: []sql.Row{{1007, "_int4", 1879048194, 0, -1, "f", "b", "A", "f", "t", ",", 0, "array_subscript_handler", 0, 0, "array_in", "array_out", "array_recv", "array_send", "-", "-", "array_typanalyze", "i", "x", "f", 0, 0, 0, 0, nil, nil, nil}},
 				},
 				{
 					Query:    `SELECT * FROM "pg_catalog"."pg_type" WHERE oid='anyarray'::regtype;`,
-					Expected: []sql.Row{{2277, "anyarray", 1879048194, 0, -1, "f", "p", "P", "f", "t", ",", 0, "-", 0, 0, "anyarray_in", "anyarray_out", "anyarray_recv", "anyarray_send", "-", "-", "-", "d", "x", "f", 0, -1, 0, 0, "", "", "{}"}},
+					Expected: []sql.Row{{2277, "anyarray", 1879048194, 0, -1, "f", "p", "P", "f", "t", ",", 0, "-", 0, 0, "anyarray_in", "anyarray_out", "anyarray_recv", "anyarray_send", "-", "-", "-", "d", "x", "f", 0, 0, 0, 0, nil, nil, nil}},
 				},
 				{
 					Query:    `SELECT * FROM "pg_catalog"."pg_type" WHERE oid='anyelement'::regtype;`,
-					Expected: []sql.Row{{2283, "anyelement", 1879048194, 0, 4, "t", "p", "P", "f", "t", ",", 0, "-", 0, 0, "anyelement_in", "anyelement_out", "-", "-", "-", "-", "-", "i", "p", "f", 0, -1, 0, 0, "", "", "{}"}},
+					Expected: []sql.Row{{2283, "anyelement", 1879048194, 0, -1, "t", "p", "P", "f", "t", ",", 0, "-", 0, 0, "anyelement_in", "anyelement_out", "-", "-", "-", "-", "-", "i", "p", "f", 0, 0, 0, 0, nil, nil, nil}},
 				},
 				{
 					Query:    `SELECT * FROM "pg_catalog"."pg_type" WHERE oid='json'::regtype;`,
-					Expected: []sql.Row{{114, "json", 1879048194, 0, -1, "f", "b", "U", "f", "t", ",", 0, "-", 0, 199, "json_in", "json_out", "json_recv", "json_send", "-", "-", "-", "i", "x", "f", 0, -1, 0, 0, "", "", "{}"}},
+					Expected: []sql.Row{{114, "json", 1879048194, 0, -1, "f", "b", "U", "f", "t", ",", 0, "-", 0, 0, "json_in", "json_out", "json_recv", "json_send", "-", "-", "-", "i", "x", "f", 0, 0, 0, 0, nil, nil, nil}},
 				},
 				{
 					Query:    `SELECT * FROM "pg_catalog"."pg_type" WHERE oid='char'::regtype;`,
-					Expected: []sql.Row{{1042, "bpchar", 1879048194, 0, -1, "f", "b", "S", "f", "t", ",", 0, "-", 0, 1014, "bpcharin", "bpcharout", "bpcharrecv", "bpcharsend", "bpchartypmodin", "bpchartypmodout", "-", "i", "x", "f", 0, -1, 0, 100, "", "", "{}"}},
+					Expected: []sql.Row{{1042, "bpchar", 1879048194, 0, -1, "f", "b", "S", "f", "t", ",", 0, "-", 0, 0, "bpcharin", "bpcharout", "bpcharrecv", "bpcharsend", "bpchartypmodin", "bpchartypmodout", "-", "i", "x", "f", 0, 0, 0, 0, nil, nil, nil}},
 				},
 				{
 					Query:    `SELECT * FROM "pg_catalog"."pg_type" WHERE oid='"char"'::regtype;`,
-					Expected: []sql.Row{{18, "char", 1879048194, 0, 1, "t", "b", "Z", "f", "t", ",", 0, "-", 0, 1002, "charin", "charout", "charrecv", "charsend", "-", "-", "-", "c", "p", "f", 0, -1, 0, 0, "", "", "{}"}},
+					Expected: []sql.Row{{18, "char", 1879048194, 0, 1, "t", "b", "Z", "f", "t", ",", 0, "-", 0, 0, "charin", "charout", "charrecv", "charsend", "-", "-", "-", "c", "p", "f", 0, 0, 0, 0, nil, nil, nil}},
 				},
 			},
 		},

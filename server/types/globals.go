@@ -14,10 +14,86 @@
 
 package types
 
-import (
-	"sort"
+import "fmt"
 
-	"github.com/lib/pq/oid"
+// DoltgresTypeBaseID is an ID that is common between all variations of a DoltgresType. For example, VARCHAR(3) and
+// VARCHAR(6) are different types, however they will return the same DoltgresTypeBaseID. This ID is not suitable for
+// serialization, as it may change over time. Many types use their SerializationID as their base ID, so for types that
+// are not serializable (such as the "any" types), it is recommended that they start way after the largest
+// SerializationID to prevent base ID conflicts.
+type DoltgresTypeBaseID uint32
+
+//go:generate go run golang.org/x/tools/cmd/stringer -type=DoltgresTypeBaseID
+
+const (
+	DoltgresTypeBaseID_Any DoltgresTypeBaseID = iota + 8192
+	DoltgresTypeBaseID_AnyElement
+	DoltgresTypeBaseID_AnyArray
+	DoltgresTypeBaseID_AnyNonArray
+	DoltgresTypeBaseID_AnyEnum
+	DoltgresTypeBaseID_AnyRange
+	DoltgresTypeBaseID_AnyMultirange
+	DoltgresTypeBaseID_AnyCompatible
+	DoltgresTypeBaseID_AnyCompatibleArray
+	DoltgresTypeBaseID_AnyCompatibleNonArray
+	DoltgresTypeBaseID_AnyCompatibleRange
+	DoltgresTypeBaseID_AnyCompatibleMultirange
+	DoltgresTypeBaseID_CString
+	DoltgresTypeBaseID_Internal
+	DoltgresTypeBaseID_Language_Handler
+	DoltgresTypeBaseID_FDW_Handler
+	DoltgresTypeBaseID_Table_AM_Handler
+	DoltgresTypeBaseID_Index_AM_Handler
+	DoltgresTypeBaseID_TSM_Handler
+	DoltgresTypeBaseID_Record
+	DoltgresTypeBaseID_Trigger
+	DoltgresTypeBaseID_Event_Trigger
+	DoltgresTypeBaseID_PG_DDL_Command
+	DoltgresTypeBaseID_Void
+	DoltgresTypeBaseID_Unknown
+	DoltgresTypeBaseID_Int16Serial
+	DoltgresTypeBaseID_Int32Serial
+	DoltgresTypeBaseID_Int64Serial
+	DoltgresTypeBaseID_Regclass
+	DoltgresTypeBaseID_Regcollation
+	DoltgresTypeBaseID_Regconfig
+	DoltgresTypeBaseID_Regdictionary
+	DoltgresTypeBaseID_Regnamespace
+	DoltgresTypeBaseID_Regoper
+	DoltgresTypeBaseID_Regoperator
+	DoltgresTypeBaseID_Regproc
+	DoltgresTypeBaseID_Regprocedure
+	DoltgresTypeBaseID_Regrole
+	DoltgresTypeBaseID_Regtype
+)
+
+const (
+	DoltgresTypeBaseID_Bool         = DoltgresTypeBaseID(SerializationID_Bool)
+	DoltgresTypeBaseID_Bytea        = DoltgresTypeBaseID(SerializationID_Bytea)
+	DoltgresTypeBaseID_Char         = DoltgresTypeBaseID(SerializationID_Char)
+	DoltgresTypeBaseID_Date         = DoltgresTypeBaseID(SerializationID_Date)
+	DoltgresTypeBaseID_Float32      = DoltgresTypeBaseID(SerializationID_Float32)
+	DoltgresTypeBaseID_Float64      = DoltgresTypeBaseID(SerializationID_Float64)
+	DoltgresTypeBaseID_Int16        = DoltgresTypeBaseID(SerializationID_Int16)
+	DoltgresTypeBaseID_Int32        = DoltgresTypeBaseID(SerializationID_Int32)
+	DoltgresTypeBaseID_Int64        = DoltgresTypeBaseID(SerializationID_Int64)
+	DoltgresTypeBaseID_InternalChar = DoltgresTypeBaseID(SerializationID_InternalChar)
+	DoltgresTypeBaseID_Interval     = DoltgresTypeBaseID(SerializationID_Interval)
+	DoltgresTypeBaseID_Json         = DoltgresTypeBaseID(SerializationID_Json)
+	DoltgresTypeBaseID_JsonB        = DoltgresTypeBaseID(SerializationID_JsonB)
+	DoltgresTypeBaseID_Name         = DoltgresTypeBaseID(SerializationID_Name)
+	DoltgresTypeBaseID_Null         = DoltgresTypeBaseID(SerializationID_Null)
+	DoltgresTypeBaseID_Numeric      = DoltgresTypeBaseID(SerializationID_Numeric)
+	DoltgresTypeBaseID_Oid          = DoltgresTypeBaseID(SerializationID_Oid)
+	DoltgresTypeBaseID_Text         = DoltgresTypeBaseID(SerializationID_Text)
+	DoltgresTypeBaseID_Time         = DoltgresTypeBaseID(SerializationID_Time)
+	DoltgresTypeBaseID_Timestamp    = DoltgresTypeBaseID(SerializationID_Timestamp)
+	DoltgresTypeBaseID_TimestampTZ  = DoltgresTypeBaseID(SerializationID_TimestampTZ)
+	DoltgresTypeBaseID_TimeTZ       = DoltgresTypeBaseID(SerializationID_TimeTZ)
+	DoltgresTypeBaseID_Uuid         = DoltgresTypeBaseID(SerializationID_Uuid)
+	DoltgresTypeBaseID_VarChar      = DoltgresTypeBaseID(SerializationID_VarChar)
+	DoltgresTypeBaseID_Xid          = DoltgresTypeBaseID(SerializationID_Xid)
+	DoltgresTypeBaseId_Domain       = DoltgresTypeBaseID(SerializationId_Domain)
 )
 
 // TypeAlignment represents the alignment required when storing a value of this type.
@@ -77,261 +153,95 @@ const (
 	TypeType_MultiRange TypeType = "m"
 )
 
-// typesFromOID contains a map from a OID to its originating type.
-var typesFromOID = map[uint32]DoltgresType{
-	AnyArray.OID:          AnyArray,
-	AnyElement.OID:        AnyElement,
-	AnyNonArray.OID:       AnyNonArray,
-	Bool.OID:              Bool,
-	BoolArray.OID:         BoolArray,
-	BpChar.OID:            BpChar,
-	BpCharArray.OID:       BpCharArray,
-	Bytea.OID:             Bytea,
-	ByteaArray.OID:        ByteaArray,
-	Cstring.OID:           Cstring,
-	CstringArray.OID:      CstringArray,
-	Date.OID:              Date,
-	DateArray.OID:         DateArray,
-	Float32.OID:           Float32,
-	Float32Array.OID:      Float32Array,
-	Float64.OID:           Float64,
-	Float64Array.OID:      Float64Array,
-	Int16.OID:             Int16,
-	Int16Array.OID:        Int16Array,
-	Int32.OID:             Int32,
-	Int32Array.OID:        Int32Array,
-	Int64.OID:             Int64,
-	Int64Array.OID:        Int64Array,
-	Internal.OID:          Internal,
-	InternalChar.OID:      InternalChar,
-	InternalCharArray.OID: InternalCharArray,
-	Interval.OID:          Interval,
-	IntervalArray.OID:     IntervalArray,
-	Json.OID:              Json,
-	JsonArray.OID:         JsonArray,
-	JsonB.OID:             JsonB,
-	JsonBArray.OID:        JsonBArray,
-	Name.OID:              Name,
-	NameArray.OID:         NameArray,
-	Numeric.OID:           Numeric,
-	NumericArray.OID:      NumericArray,
-	Oid.OID:               Oid,
-	OidArray.OID:          OidArray,
-	Regclass.OID:          Regclass,
-	RegclassArray.OID:     RegclassArray,
-	Regproc.OID:           Regproc,
-	RegprocArray.OID:      RegprocArray,
-	Regtype.OID:           Regtype,
-	RegtypeArray.OID:      RegtypeArray,
-	Text.OID:              Text,
-	TextArray.OID:         TextArray,
-	Time.OID:              Time,
-	TimeArray.OID:         TimeArray,
-	Timestamp.OID:         Timestamp,
-	TimestampArray.OID:    TimestampArray,
-	TimestampTZ.OID:       TimestampTZ,
-	TimestampTZArray.OID:  TimestampTZArray,
-	TimeTZ.OID:            TimeTZ,
-	TimeTZArray.OID:       TimeTZArray,
-	Unknown.OID:           Unknown,
-	Uuid.OID:              Uuid,
-	UuidArray.OID:         UuidArray,
-	VarChar.OID:           VarChar,
-	VarCharArray.OID:      VarCharArray,
-	Xid.OID:               Xid,
-	XidArray.OID:          XidArray,
+// baseIDArrayTypes contains a map of all base IDs that represent array variants.
+var baseIDArrayTypes = map[DoltgresTypeBaseID]DoltgresArrayType{}
+
+// baseIDCategories contains a map from all base IDs to their respective categories
+// TODO: add all of the types to each category
+var baseIDCategories = map[DoltgresTypeBaseID]TypeCategory{}
+
+// preferredTypeInCategory contains a map from each type category to that category's preferred type.
+// TODO: add all of the preferred types
+var preferredTypeInCategory = map[TypeCategory][]DoltgresTypeBaseID{}
+
+// oidToType holds a reference from a given OID to its type.
+var oidToType = map[uint32]DoltgresType{}
+
+// Init reads the list of all types and creates mappings that will be used by various functions.
+func Init() {
+	for baseID, t := range typesFromBaseID {
+		if dat, ok := t.(DoltgresArrayType); ok {
+			baseIDArrayTypes[t.BaseID()] = dat
+		}
+		if t.IsPreferredType() {
+			preferredTypeInCategory[t.Category()] = append(preferredTypeInCategory[t.Category()], t.BaseID())
+		}
+		// Add the types to the OID map
+		if baseID.HasUniqueOID() {
+			if existingType, ok := oidToType[t.OID()]; ok {
+				panic(fmt.Errorf("OID (%d) type conflict: `%s` and `%s`", t.OID(), existingType.String(), t.String()))
+			}
+			oidToType[t.OID()] = t
+			baseIDCategories[t.BaseID()] = t.Category()
+		}
+	}
 }
 
-// GetTypeByOID returns the DoltgresType matching the given OID.
-// If the OID does not match a type, then nil is returned.
+// IsBaseIDArrayType returns whether the base ID is an array type. If it is, it also returns the type.
+func (id DoltgresTypeBaseID) IsBaseIDArrayType() (DoltgresArrayType, bool) {
+	dat, ok := baseIDArrayTypes[id]
+	return dat, ok
+}
+
+// GetTypeCategory returns the TypeCategory that this base ID belongs to. Returns Unknown if the ID does not belong to a
+// category.
+func (id DoltgresTypeBaseID) GetTypeCategory() TypeCategory {
+	if tc, ok := baseIDCategories[id]; ok {
+		return tc
+	}
+	return TypeCategory_UnknownTypes
+}
+
+// GetRepresentativeType returns the representative type of the base ID. This is usually the unbounded version or
+// equivalent.
+func (id DoltgresTypeBaseID) GetRepresentativeType() DoltgresType {
+	if t, ok := typesFromBaseID[id]; ok {
+		return t
+	}
+	return Unknown
+}
+
+// HasUniqueOID returns whether the type belonging to the base ID has a unique OID. This will be true for most types.
+// Examples of types that do not have unique OIDs are the serial types, since they're not actual types.
+func (id DoltgresTypeBaseID) HasUniqueOID() bool {
+	switch id {
+	case DoltgresTypeBaseID_Null,
+		DoltgresTypeBaseID_Int16Serial,
+		DoltgresTypeBaseID_Int32Serial,
+		DoltgresTypeBaseID_Int64Serial:
+		return false
+	default:
+		return true
+	}
+}
+
+// IsPreferredType returns whether the type passed is a preferred type for this TypeCategory.
+func (cat TypeCategory) IsPreferredType(p DoltgresTypeBaseID) bool {
+	if pts, ok := preferredTypeInCategory[cat]; ok {
+		for _, pt := range pts {
+			if pt == p {
+				return true
+			}
+		}
+	}
+	return false
+}
+
+// GetTypeByOID returns the DoltgresType matching the given OID. If the OID does not match a type, then nil is returned.
 func GetTypeByOID(oid uint32) DoltgresType {
-	t, ok := typesFromOID[oid]
+	t, ok := oidToType[oid]
 	if !ok {
-		return DoltgresType{}
+		return nil
 	}
 	return t
-}
-
-// GetAllTypes returns a slice containing all registered types.
-// The slice is sorted by each type's OID.
-func GetAllTypes() []DoltgresType {
-	pgTypes := make([]DoltgresType, 0, len(typesFromOID))
-	for _, typ := range typesFromOID {
-		pgTypes = append(pgTypes, typ)
-	}
-	sort.Slice(pgTypes, func(i, j int) bool {
-		return pgTypes[i].OID < pgTypes[j].OID
-	})
-	return pgTypes
-}
-
-// OidToBuildInDoltgresType is a map of oid to built-in Doltgres type.
-var OidToBuildInDoltgresType = map[uint32]DoltgresType{
-	uint32(oid.T_bool):             Bool,
-	uint32(oid.T_bytea):            Bytea,
-	uint32(oid.T_char):             InternalChar,
-	uint32(oid.T_name):             Name,
-	uint32(oid.T_int8):             Int64,
-	uint32(oid.T_int2):             Int16,
-	uint32(oid.T_int2vector):       Unknown,
-	uint32(oid.T_int4):             Int32,
-	uint32(oid.T_regproc):          Regproc,
-	uint32(oid.T_text):             Text,
-	uint32(oid.T_oid):              Oid,
-	uint32(oid.T_tid):              Unknown,
-	uint32(oid.T_xid):              Xid,
-	uint32(oid.T_cid):              Unknown,
-	uint32(oid.T_oidvector):        Unknown,
-	uint32(oid.T_pg_ddl_command):   Unknown,
-	uint32(oid.T_pg_type):          Unknown,
-	uint32(oid.T_pg_attribute):     Unknown,
-	uint32(oid.T_pg_proc):          Unknown,
-	uint32(oid.T_pg_class):         Unknown,
-	uint32(oid.T_json):             Json,
-	uint32(oid.T_xml):              Unknown,
-	uint32(oid.T__xml):             Unknown,
-	uint32(oid.T_pg_node_tree):     Unknown,
-	uint32(oid.T__json):            JsonArray,
-	uint32(oid.T_smgr):             Unknown,
-	uint32(oid.T_index_am_handler): Unknown,
-	uint32(oid.T_point):            Unknown,
-	uint32(oid.T_lseg):             Unknown,
-	uint32(oid.T_path):             Unknown,
-	uint32(oid.T_box):              Unknown,
-	uint32(oid.T_polygon):          Unknown,
-	uint32(oid.T_line):             Unknown,
-	uint32(oid.T__line):            Unknown,
-	uint32(oid.T_cidr):             Unknown,
-	uint32(oid.T__cidr):            Unknown,
-	uint32(oid.T_float4):           Float32,
-	uint32(oid.T_float8):           Float64,
-	uint32(oid.T_abstime):          Unknown,
-	uint32(oid.T_reltime):          Unknown,
-	uint32(oid.T_tinterval):        Unknown,
-	uint32(oid.T_unknown):          Unknown,
-	uint32(oid.T_circle):           Unknown,
-	uint32(oid.T__circle):          Unknown,
-	uint32(oid.T_money):            Unknown,
-	uint32(oid.T__money):           Unknown,
-	uint32(oid.T_macaddr):          Unknown,
-	uint32(oid.T_inet):             Unknown,
-	uint32(oid.T__bool):            BoolArray,
-	uint32(oid.T__bytea):           ByteaArray,
-	uint32(oid.T__char):            InternalCharArray,
-	uint32(oid.T__name):            NameArray,
-	uint32(oid.T__int2):            Int16Array,
-	uint32(oid.T__int2vector):      Unknown,
-	uint32(oid.T__int4):            Int32Array,
-	uint32(oid.T__regproc):         RegprocArray,
-	uint32(oid.T__text):            TextArray,
-	uint32(oid.T__tid):             Unknown,
-	uint32(oid.T__xid):             XidArray,
-	uint32(oid.T__cid):             Unknown,
-	uint32(oid.T__oidvector):       Unknown,
-	uint32(oid.T__bpchar):          BpCharArray,
-	uint32(oid.T__varchar):         VarCharArray,
-	uint32(oid.T__int8):            Int64Array,
-	uint32(oid.T__point):           Unknown,
-	uint32(oid.T__lseg):            Unknown,
-	uint32(oid.T__path):            Unknown,
-	uint32(oid.T__box):             Unknown,
-	uint32(oid.T__float4):          Float32Array,
-	uint32(oid.T__float8):          Float64Array,
-	uint32(oid.T__abstime):         Unknown,
-	uint32(oid.T__reltime):         Unknown,
-	uint32(oid.T__tinterval):       Unknown,
-	uint32(oid.T__polygon):         Unknown,
-	uint32(oid.T__oid):             OidArray,
-	uint32(oid.T_aclitem):          Unknown,
-	uint32(oid.T__aclitem):         Unknown,
-	uint32(oid.T__macaddr):         Unknown,
-	uint32(oid.T__inet):            Unknown,
-	uint32(oid.T_bpchar):           BpChar,
-	uint32(oid.T_varchar):          VarChar,
-	uint32(oid.T_date):             Date,
-	uint32(oid.T_time):             Time,
-	uint32(oid.T_timestamp):        Timestamp,
-	uint32(oid.T__timestamp):       TimestampArray,
-	uint32(oid.T__date):            DateArray,
-	uint32(oid.T__time):            TimeArray,
-	uint32(oid.T_timestamptz):      TimestampTZ,
-	uint32(oid.T__timestamptz):     TimestampTZArray,
-	uint32(oid.T_interval):         Interval,
-	uint32(oid.T__interval):        IntervalArray,
-	uint32(oid.T__numeric):         NumericArray,
-	uint32(oid.T_pg_database):      Unknown,
-	uint32(oid.T__cstring):         Unknown,
-	uint32(oid.T_timetz):           TimeTZ,
-	uint32(oid.T__timetz):          TimeTZArray,
-	uint32(oid.T_bit):              Unknown,
-	uint32(oid.T__bit):             Unknown,
-	uint32(oid.T_varbit):           Unknown,
-	uint32(oid.T__varbit):          Unknown,
-	uint32(oid.T_numeric):          Numeric,
-	uint32(oid.T_refcursor):        Unknown,
-	uint32(oid.T__refcursor):       Unknown,
-	uint32(oid.T_regprocedure):     Unknown,
-	uint32(oid.T_regoper):          Unknown,
-	uint32(oid.T_regoperator):      Unknown,
-	uint32(oid.T_regclass):         Regclass,
-	uint32(oid.T_regtype):          Regtype,
-	uint32(oid.T__regprocedure):    Unknown,
-	uint32(oid.T__regoper):         Unknown,
-	uint32(oid.T__regoperator):     Unknown,
-	uint32(oid.T__regclass):        RegclassArray,
-	uint32(oid.T__regtype):         RegtypeArray,
-	uint32(oid.T_record):           Unknown,
-	uint32(oid.T_cstring):          Unknown,
-	uint32(oid.T_any):              Unknown,
-	uint32(oid.T_anyarray):         AnyArray,
-	uint32(oid.T_void):             Unknown,
-	uint32(oid.T_trigger):          Unknown,
-	uint32(oid.T_language_handler): Unknown,
-	uint32(oid.T_internal):         Unknown,
-	uint32(oid.T_opaque):           Unknown,
-	uint32(oid.T_anyelement):       AnyElement,
-	uint32(oid.T__record):          Unknown,
-	uint32(oid.T_anynonarray):      AnyNonArray,
-	uint32(oid.T_pg_authid):        Unknown,
-	uint32(oid.T_pg_auth_members):  Unknown,
-	uint32(oid.T__txid_snapshot):   Unknown,
-	uint32(oid.T_uuid):             Uuid,
-	uint32(oid.T__uuid):            UuidArray,
-	uint32(oid.T_txid_snapshot):    Unknown,
-	uint32(oid.T_fdw_handler):      Unknown,
-	uint32(oid.T_pg_lsn):           Unknown,
-	uint32(oid.T__pg_lsn):          Unknown,
-	uint32(oid.T_tsm_handler):      Unknown,
-	uint32(oid.T_anyenum):          Unknown,
-	uint32(oid.T_tsvector):         Unknown,
-	uint32(oid.T_tsquery):          Unknown,
-	uint32(oid.T_gtsvector):        Unknown,
-	uint32(oid.T__tsvector):        Unknown,
-	uint32(oid.T__gtsvector):       Unknown,
-	uint32(oid.T__tsquery):         Unknown,
-	uint32(oid.T_regconfig):        Unknown,
-	uint32(oid.T__regconfig):       Unknown,
-	uint32(oid.T_regdictionary):    Unknown,
-	uint32(oid.T__regdictionary):   Unknown,
-	uint32(oid.T_jsonb):            JsonB,
-	uint32(oid.T__jsonb):           JsonBArray,
-	uint32(oid.T_anyrange):         Unknown,
-	uint32(oid.T_event_trigger):    Unknown,
-	uint32(oid.T_int4range):        Unknown,
-	uint32(oid.T__int4range):       Unknown,
-	uint32(oid.T_numrange):         Unknown,
-	uint32(oid.T__numrange):        Unknown,
-	uint32(oid.T_tsrange):          Unknown,
-	uint32(oid.T__tsrange):         Unknown,
-	uint32(oid.T_tstzrange):        Unknown,
-	uint32(oid.T__tstzrange):       Unknown,
-	uint32(oid.T_daterange):        Unknown,
-	uint32(oid.T__daterange):       Unknown,
-	uint32(oid.T_int8range):        Unknown,
-	uint32(oid.T__int8range):       Unknown,
-	uint32(oid.T_pg_shseclabel):    Unknown,
-	uint32(oid.T_regnamespace):     Unknown,
-	uint32(oid.T__regnamespace):    Unknown,
-	uint32(oid.T_regrole):          Unknown,
-	uint32(oid.T__regrole):         Unknown,
 }

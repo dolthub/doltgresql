@@ -111,8 +111,8 @@ func nodeInsert(ctx *Context, node *tree.Insert) (*vitess.Insert, error) {
 		OnDup:   onDuplicate,
 		Auth: vitess.AuthInformation{
 			AuthType:    auth.AuthType_INSERT,
-			TargetType:  auth.AuthTargetType_SingleTableIdentifier,
-			TargetNames: []string{tableName.SchemaQualifier.String(), tableName.Name.String()},
+			TargetType:  auth.AuthTargetType_TableIdentifiers,
+			TargetNames: []string{tableName.DbQualifier.String(), tableName.SchemaQualifier.String(), tableName.Name.String()},
 		},
 	}, nil
 }

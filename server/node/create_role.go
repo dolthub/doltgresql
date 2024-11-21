@@ -24,7 +24,6 @@ import (
 	vitess "github.com/dolthub/vitess/go/vt/sqlparser"
 
 	"github.com/dolthub/doltgresql/server/auth"
-	"github.com/dolthub/doltgresql/server/functions/framework"
 	pgtypes "github.com/dolthub/doltgresql/server/types"
 )
 
@@ -69,10 +68,15 @@ func (c *CreateRole) Resolved() bool {
 
 // RowIter implements the interface sql.ExecSourceRel.
 func (c *CreateRole) RowIter(ctx *sql.Context, r sql.Row) (sql.RowIter, error) {
+	var userRole auth.Role
 	var roleExists bool
 	auth.LockRead(func() {
 		roleExists = auth.RoleExists(c.Name)
+		userRole = auth.GetRole(ctx.Client().User)
 	})
+	if !userRole.IsValid() {
+		return nil, fmt.Errorf(`role "%s" does not exist`, ctx.Client().User)
+	}
 	if roleExists {
 		if c.IfNotExists {
 			return sql.RowsToRowIter(), nil
@@ -80,6 +84,10 @@ func (c *CreateRole) RowIter(ctx *sql.Context, r sql.Row) (sql.RowIter, error) {
 		return nil, fmt.Errorf(`role "%s" already exists`, c.Name)
 	}
 
+	if !userRole.IsSuperUser && (!userRole.CanCreateRoles || c.IsSuperUser) {
+		// TODO: grab the actual error message
+		return nil, fmt.Errorf(`role "%s" does not have permission to create the role`, userRole.Name)
+	}
 	var role auth.Role
 	auth.LockWrite(func() {
 		role = auth.CreateDefaultRole(c.Name)
@@ -100,7 +108,7 @@ func (c *CreateRole) RowIter(ctx *sql.Context, r sql.Row) (sql.RowIter, error) {
 	role.CanBypassRowLevelSecurity = c.CanBypassRowLevelSecurity
 	role.ConnectionLimit = c.ConnectionLimit
 	if c.IsValidUntilSet {
-		validUntilAny, err := framework.IoInput(ctx, pgtypes.TimestampTZ, c.ValidUntil)
+		validUntilAny, err := pgtypes.TimestampTZ.IoInput(ctx, c.ValidUntil)
 		if err != nil {
 			return nil, err
 		}

@@ -14,5 +14,7 @@
 
 package types
 
+import "github.com/lib/pq/oid"
+
 // TextArray is the array variant of Text.
-var TextArray = CreateArrayTypeFromBaseType(Text)
+var TextArray = createArrayType(Text, SerializationID_TextArray, oid.T__text)

@@ -1546,7 +1546,6 @@ var typesTests = []ScriptTest{
 		SetUpScript: []string{
 			"CREATE TABLE t_numeric (id INTEGER primary key, v1 NUMERIC(5,2));",
 			"INSERT INTO t_numeric VALUES (1, 123.45), (2, 67.89), (3, 100.3);",
-			"CREATE TABLE fract_only (id int, val numeric(4,4));",
 		},
 		Assertions: []ScriptTestAssertion{
 			{
@@ -1558,28 +1557,12 @@ var typesTests = []ScriptTest{
 				},
 			},
 			{
-				Query:    "INSERT INTO fract_only VALUES (1, '0.0');",
-				Expected: []sql.Row{},
-			},
-			{
 				Query:    "SELECT numeric '10.00';",
 				Expected: []sql.Row{{Numeric("10.00")}},
 			},
 			{
 				Query:    "SELECT numeric '-10.00';",
 				Expected: []sql.Row{{Numeric("-10.00")}},
-			},
-			{
-				Query:    "select 0.03::numeric(3,3);",
-				Expected: []sql.Row{{Numeric("0.030")}},
-			},
-			{
-				Query:       "select 1.03::numeric(2,2);",
-				ExpectedErr: `numeric field overflow`,
-			},
-			{
-				Query:       "select 1.03::float4::numeric(2,2);",
-				ExpectedErr: `numeric field overflow`,
 			},
 		},
 	},

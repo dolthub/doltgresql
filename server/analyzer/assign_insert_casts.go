@@ -64,7 +64,7 @@ func AssignInsertCasts(ctx *sql.Context, a *analyzer.Analyzer, node sql.Node, sc
 				// Null ColumnDefaultValues or empty DefaultValues are not properly typed in TypeSanitizer, so we must handle them here
 				colExprType := colExpr.Type()
 				if colExprType == nil || colExprType == types.Null {
-					colExprType = pgtypes.Unknown
+					colExprType = pgtypes.UnknownType{}
 				}
 				fromColType, ok := colExprType.(pgtypes.DoltgresType)
 				if !ok {

@@ -19,7 +19,6 @@ import (
 
 	"github.com/dolthub/go-mysql-server/sql"
 	"github.com/dolthub/go-mysql-server/sql/plan"
-	"github.com/lib/pq/oid"
 
 	"github.com/dolthub/doltgresql/server/functions/framework"
 	pgtypes "github.com/dolthub/doltgresql/server/types"
@@ -146,7 +145,7 @@ func (a *subqueryAnyExpr) eval(ctx *sql.Context, subOperator string, row sql.Row
 	for i, rightValue := range rightValues {
 		a.arrayLiterals[i].value = rightValue
 	}
-	// Now we can loop over all comparison functions, as they'll reference their respective values
+	// Now we can loop over all of the comparison functions, as they'll reference their respective values
 	for _, compFunc := range a.compFuncs {
 		result, err := compFunc.Eval(ctx, row)
 		if err != nil {
@@ -303,7 +302,7 @@ func anySubqueryWithChildren(anyExpr *AnyExpr, sub *plan.Subquery) (sql.Expressi
 			if compFuncs[i] == nil {
 				return nil, fmt.Errorf("operator does not exist: %s = %s", leftType.String(), rightType.String())
 			}
-			if compFuncs[i].Type().(pgtypes.DoltgresType).OID != uint32(oid.T_bool) {
+			if compFuncs[i].Type().(pgtypes.DoltgresType).BaseID() != pgtypes.DoltgresTypeBaseID_Bool {
 				// This should never happen, but this is just to be safe
 				return nil, fmt.Errorf("%T: found equality comparison that does not return a bool", anyExpr)
 			}
@@ -322,11 +321,12 @@ func anySubqueryWithChildren(anyExpr *AnyExpr, sub *plan.Subquery) (sql.Expressi
 
 // anyExpressionWithChildren resolves the comparison functions for a sql.Expression.
 func anyExpressionWithChildren(anyExpr *AnyExpr) (sql.Expression, error) {
-	arrType, ok := anyExpr.rightExpr.Type().(pgtypes.DoltgresType)
+	arrType, ok := anyExpr.rightExpr.Type().(pgtypes.DoltgresArrayType)
 	if !ok {
 		return nil, fmt.Errorf("expected right child to be a DoltgresType but got `%T`", anyExpr.rightExpr)
 	}
-	rightType := arrType.ArrayBaseType()
+	rightType := arrType.BaseType()
+
 	op, err := framework.GetOperatorFromString(anyExpr.subOperator)
 	if err != nil {
 		return nil, err
@@ -340,7 +340,7 @@ func anyExpressionWithChildren(anyExpr *AnyExpr) (sql.Expression, error) {
 		if compFunc == nil {
 			return nil, fmt.Errorf("operator does not exist: %s = %s", leftType.String(), rightType.String())
 		}
-		if compFunc.Type().(pgtypes.DoltgresType).OID != uint32(oid.T_bool) {
+		if compFunc.Type().(pgtypes.DoltgresType).BaseID() != pgtypes.DoltgresTypeBaseID_Bool {
 			// This should never happen, but this is just to be safe
 			return nil, fmt.Errorf("%T: found equality comparison that does not return a bool", anyExpr)
 		}

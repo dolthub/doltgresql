@@ -14,5 +14,7 @@
 
 package types
 
+import "github.com/lib/pq/oid"
+
 // RegprocArray is the array variant of Regproc.
-var RegprocArray = CreateArrayTypeFromBaseType(Regproc)
+var RegprocArray = createArrayType(Regproc, SerializationID_Invalid, oid.T__regproc)

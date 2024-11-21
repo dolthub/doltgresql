@@ -12,14 +12,12 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-package _dataloader
+package dataloader
 
 import (
 	"bytes"
 	"io"
 	"testing"
-
-	"github.com/dolthub/doltgresql/core/dataloader"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -74,7 +72,7 @@ bash"
 // TestCsvReader tests various cases of CSV data parsing.
 func TestCsvReader(t *testing.T) {
 	t.Run("basic CSV data", func(t *testing.T) {
-		csvReader, err := dataloader.NewCsvReader(newReader(basicCsvData))
+		csvReader, err := newCsvReader(newReader(basicCsvData))
 		require.NoError(t, err)
 
 		// Read the first row
@@ -97,7 +95,7 @@ func TestCsvReader(t *testing.T) {
 	})
 
 	t.Run("wrong number of fields", func(t *testing.T) {
-		csvReader, err := dataloader.NewCsvReader(newReader(wrongNumberOfFieldsCsvData))
+		csvReader, err := newCsvReader(newReader(wrongNumberOfFieldsCsvData))
 		require.NoError(t, err)
 
 		// Read the first row
@@ -116,7 +114,7 @@ func TestCsvReader(t *testing.T) {
 	})
 
 	t.Run("incomplete line, no newline ending", func(t *testing.T) {
-		csvReader, err := dataloader.NewCsvReader(newReader(partialLineErrorCsvData))
+		csvReader, err := newCsvReader(newReader(partialLineErrorCsvData))
 		require.NoError(t, err)
 
 		// Read the first row
@@ -144,7 +142,7 @@ func TestCsvReader(t *testing.T) {
 	})
 
 	t.Run("null and empty string quoting", func(t *testing.T) {
-		csvReader, err := dataloader.NewCsvReader(newReader(nullAndEmptyStringQuotingCsvData))
+		csvReader, err := newCsvReader(newReader(nullAndEmptyStringQuotingCsvData))
 		require.NoError(t, err)
 
 		// Read the first row
@@ -162,7 +160,7 @@ func TestCsvReader(t *testing.T) {
 	})
 
 	t.Run("quote escaping", func(t *testing.T) {
-		csvReader, err := dataloader.NewCsvReader(newReader(escapedQuotesCsvData))
+		csvReader, err := newCsvReader(newReader(escapedQuotesCsvData))
 		require.NoError(t, err)
 
 		// Read the first row
@@ -181,7 +179,7 @@ func TestCsvReader(t *testing.T) {
 	})
 
 	t.Run("quoted newlines", func(t *testing.T) {
-		csvReader, err := dataloader.NewCsvReader(newReader(newLineInQuotedFieldCsvData))
+		csvReader, err := newCsvReader(newReader(newLineInQuotedFieldCsvData))
 		require.NoError(t, err)
 
 		// Read the first row
@@ -197,7 +195,7 @@ func TestCsvReader(t *testing.T) {
 	})
 
 	t.Run("quoted end of data marker", func(t *testing.T) {
-		csvReader, err := dataloader.NewCsvReader(newReader(endOfDataMarkerCsvData))
+		csvReader, err := newCsvReader(newReader(endOfDataMarkerCsvData))
 		require.NoError(t, err)
 
 		// Read the first row

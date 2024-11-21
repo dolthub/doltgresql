@@ -19,7 +19,6 @@ import (
 	"math"
 
 	vitess "github.com/dolthub/vitess/go/vt/sqlparser"
-	"github.com/lib/pq/oid"
 
 	"github.com/dolthub/doltgresql/core/sequences"
 	"github.com/dolthub/doltgresql/postgres/parser/sem/tree"
@@ -45,7 +44,7 @@ func nodeCreateSequence(ctx *Context, node *tree.CreateSequence) (vitess.Stateme
 	if len(name.DbQualifier.String()) > 0 {
 		return nil, fmt.Errorf("CREATE SEQUENCE is currently only supported for the current database")
 	}
-	// Read all options and check whether they've been set (if not, we'll use the defaults)
+	// Read all of the options and check whether they've been set (if not, we'll use the defaults)
 	minValueLimit := int64(math.MinInt64)
 	maxValueLimit := int64(math.MaxInt64)
 	increment := int64(1)
@@ -63,21 +62,21 @@ func nodeCreateSequence(ctx *Context, node *tree.CreateSequence) (vitess.Stateme
 	for _, option := range node.Options {
 		switch option.Name {
 		case tree.SeqOptAs:
-			if !dataType.IsEmptyType() {
+			if dataType != nil {
 				return nil, fmt.Errorf("conflicting or redundant options")
 			}
 			_, dataType, err = nodeResolvableTypeReference(ctx, option.AsType)
 			if err != nil {
 				return nil, err
 			}
-			switch oid.Oid(dataType.OID) {
-			case oid.T_int2:
+			switch dataType.BaseID() {
+			case pgtypes.DoltgresTypeBaseID_Int16:
 				minValueLimit = int64(math.MinInt16)
 				maxValueLimit = int64(math.MaxInt16)
-			case oid.T_int4:
+			case pgtypes.DoltgresTypeBaseID_Int32:
 				minValueLimit = int64(math.MinInt32)
 				maxValueLimit = int64(math.MaxInt32)
-			case oid.T_int8:
+			case pgtypes.DoltgresTypeBaseID_Int64:
 				minValueLimit = int64(math.MinInt64)
 				maxValueLimit = int64(math.MaxInt64)
 			default:
@@ -141,7 +140,7 @@ func nodeCreateSequence(ctx *Context, node *tree.CreateSequence) (vitess.Stateme
 			return nil, fmt.Errorf("unknown CREATE SEQUENCE option")
 		}
 	}
-	// Determine what all values should be based on what was set and what is inferred, as well as perform
+	// Determine what all of the values should be based on what was set and what is inferred, as well as perform
 	// validation for options that make sense
 	if minValueSet {
 		if minValue < minValueLimit || minValue > maxValueLimit {
@@ -173,14 +172,14 @@ func nodeCreateSequence(ctx *Context, node *tree.CreateSequence) (vitess.Stateme
 	} else {
 		start = maxValue
 	}
-	if dataType.IsEmptyType() {
+	if dataType == nil {
 		dataType = pgtypes.Int64
 	}
-	// Returns the stored procedure call with all options
+	// Returns the stored procedure call with all of the options
 	return vitess.InjectedStatement{
 		Statement: pgnodes.NewCreateSequence(node.IfNotExists, name.SchemaQualifier.String(), &sequences.Sequence{
 			Name:        name.Name.String(),
-			DataTypeOID: dataType.OID,
+			DataTypeOID: dataType.OID(),
 			Persistence: sequences.Persistence_Permanent,
 			Start:       start,
 			Current:     start,

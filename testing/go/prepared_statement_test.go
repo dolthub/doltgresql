@@ -379,21 +379,6 @@ var preparedStatementTests = []ScriptTest{
 			},
 		},
 	},
-	{
-		Name: "pg_get_viewdef function",
-		SetUpScript: []string{
-			"CREATE TABLE test (id int, name text)",
-			"INSERT INTO test VALUES (1,'desk'), (2,'chair')",
-			"CREATE VIEW test_view AS SELECT name FROM test",
-		},
-		Assertions: []ScriptTestAssertion{
-			{
-				Query:    `select pg_get_viewdef($1::regclass);`,
-				BindVars: []any{"test_view"},
-				Expected: []sql.Row{{"SELECT name FROM test"}},
-			},
-		},
-	},
 }
 
 var pgCatalogTests = []ScriptTest{

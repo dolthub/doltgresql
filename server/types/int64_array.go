@@ -14,5 +14,7 @@
 
 package types
 
+import "github.com/lib/pq/oid"
+
 // Int64Array is the array variant of Int64.
-var Int64Array = CreateArrayTypeFromBaseType(Int64)
+var Int64Array = createArrayType(Int64, SerializationID_Int64Array, oid.T__int8)
