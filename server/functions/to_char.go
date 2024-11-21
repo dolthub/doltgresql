@@ -126,8 +126,6 @@ var to_char_timestamp = framework.Function2{
 				return nil, fmt.Errorf("ISO year not supported")
 			case strings.HasPrefix(format, "iy") || strings.HasPrefix(format, "IY"):
 				return nil, fmt.Errorf("ISO year not supported")
-			case strings.HasPrefix(format, "i") || strings.HasPrefix(format, "I"):
-				return nil, fmt.Errorf("ISO year not supported")
 
 			case strings.HasPrefix(format, "bc") || strings.HasPrefix(format, "ad"):
 				return nil, fmt.Errorf("era indicator not supported")
@@ -201,6 +199,9 @@ var to_char_timestamp = framework.Function2{
 				_, week := timestamp.ISOWeek()
 				result += fmt.Sprintf("%02d", week)
 				format = format[2:]
+
+			case strings.HasPrefix(format, "i") || strings.HasPrefix(format, "I"):
+				return nil, fmt.Errorf("ISO year not supported")
 
 			case strings.HasPrefix(format, "w") || strings.HasPrefix(format, "W"):
 				return nil, fmt.Errorf("week of month not supported")
