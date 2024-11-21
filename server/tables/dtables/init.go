@@ -32,6 +32,7 @@ func Init() {
 	doltdb.GetDiffTableName = getDiffTableName
 	doltdb.GetLogTableName = getLogTableName
 	doltdb.GetMergeStatusTableName = getMergeStatusTableName
+	doltdb.GetRebaseTableName = getRebaseTableName
 	doltdb.GetRemoteBranchesTableName = getRemoteBranchesTableName
 	doltdb.GetRemotesTableName = getRemotesTableName
 	doltdb.GetSchemaConflictsTableName = getSchemaConflictsTableName

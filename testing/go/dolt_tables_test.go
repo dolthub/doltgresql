@@ -1865,7 +1865,6 @@ func TestUserSpaceDoltTables(t *testing.T) {
 					},
 				},
 				{
-					Skip:  true, // TODO: Support dolt.rebase
 					Query: "select rebase_order, action, commit_message from dolt.rebase order by rebase_order;",
 					Expected: []sql.Row{
 						{float64(1), "pick", "inserting row 1"},
@@ -1874,11 +1873,100 @@ func TestUserSpaceDoltTables(t *testing.T) {
 					},
 				},
 				{
-					Query:    "update dolt_rebase set action='reword', commit_message='insert rows' where rebase_order=1;",
+					Query: "select rebase.commit_message from dolt.rebase order by rebase_order;",
+					Expected: []sql.Row{
+						{"inserting row 1"},
+						{"inserting row 2"},
+						{"inserting row 3"},
+					},
+				},
+				{
+					Skip:  true, // TODO: table not found: dolt_rebase
+					Query: "select dolt_rebase.commit_message from dolt_rebase order by rebase_order;",
+					Expected: []sql.Row{
+						{"inserting row 1"},
+						{"inserting row 2"},
+						{"inserting row 3"},
+					},
+				},
+				{
+					Query:       `SELECT * FROM public.rebase`,
+					ExpectedErr: "table not found",
+				},
+				{
+					Query:       `SELECT * FROM rebase`,
+					ExpectedErr: "table not found",
+				},
+				{
+					Query:    `CREATE TABLE rebase (id INT PRIMARY KEY)`,
 					Expected: []sql.Row{},
 				},
 				{
-					Query:    "update dolt_rebase set action='drop' where rebase_order=2;",
+					Query:    `INSERT INTO rebase VALUES (1)`,
+					Expected: []sql.Row{},
+				},
+				{
+					Query:    `SELECT * FROM rebase`,
+					Expected: []sql.Row{{1}},
+				},
+				{
+					Query: `SELECT commit_message FROM dolt.rebase`,
+					Expected: []sql.Row{
+						{"inserting row 1"},
+						{"inserting row 2"},
+						{"inserting row 3"},
+					},
+				},
+				{
+					Query:       `CREATE SCHEMA dolt`,
+					ExpectedErr: "schema exists",
+				},
+				{
+					Query:    "SET search_path = 'dolt'",
+					Expected: []sql.Row{},
+				},
+				{
+					Query: `SELECT commit_message FROM rebase`,
+					Expected: []sql.Row{
+						{"inserting row 1"},
+						{"inserting row 2"},
+						{"inserting row 3"}},
+				},
+				{
+					Query:    `SELECT * FROM public.rebase`,
+					Expected: []sql.Row{{1}},
+				},
+				{
+					Query:    "SET search_path = 'public'",
+					Expected: []sql.Row{},
+				},
+				{
+					Query:    `SELECT * FROM rebase`,
+					Expected: []sql.Row{{1}},
+				},
+				{
+					Query:    "SET search_path = 'public,dolt'",
+					Expected: []sql.Row{},
+				},
+				{
+					Query:    `SELECT * FROM rebase`,
+					Expected: []sql.Row{{1}},
+				},
+				{
+					Query:    `SELECT * FROM REBASE`,
+					Expected: []sql.Row{{1}},
+				},
+				{
+					// Remove created table so we can continue with the rebase
+					Query:    `DROP TABLE public.rebase;`,
+					Expected: []sql.Row{},
+				},
+				{
+					Query:    "update dolt.rebase set action='reword', commit_message='insert rows' where rebase_order=1;",
+					Expected: []sql.Row{},
+				},
+				{
+					Query:    "update dolt.rebase set action='drop' where rebase_order=2;",
 					Expected: []sql.Row{},
 				},
 				{
@@ -1886,8 +1974,20 @@ func TestUserSpaceDoltTables(t *testing.T) {
 					Expected: []sql.Row{},
 				},
 				{
-					Query:    "update dolt_rebase set action='fixup' where rebase_order=3;",
-					Expected: []sql.Row{},
+					Query: "select rebase_order, action, commit_message from dolt_rebase order by rebase_order;",
+					Expected: []sql.Row{
+						{float64(1), "reword", "insert rows"},
+						{float64(2), "drop", "inserting row 2"},
+						{float64(3), "fixup", "inserting row 3"},
+					},
+				},
+				{
+					Query: "select rebase_order, action, commit_message from dolt.rebase order by rebase_order;",
+					Expected: []sql.Row{
+						{float64(1), "reword", "insert rows"},
+						{float64(2), "drop", "inserting row 2"},
+						{float64(3), "fixup", "inserting row 3"},
+					},
 				},
 				{
 					Query:    "select dolt_rebase('--continue');",
