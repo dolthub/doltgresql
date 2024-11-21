@@ -47,6 +47,7 @@ func initTypeFunctions() {
 	initTimestamp()
 	initTimestampTZ()
 	initTimeTZ()
+	initToChar()
 	initUnknown()
 	initUuid()
 	initVarChar()
