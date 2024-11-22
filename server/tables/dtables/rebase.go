@@ -75,3 +75,8 @@ func convertRowToRebasePlanStep(row sql.Row) (rebase.RebasePlanStep, error) {
 		CommitMsg:   row[3].(string),
 	}, nil
 }
+
+// getRebaseTableName returns the name of the rebase table.
+func getRebaseTableName() string {
+	return "rebase"
+}
