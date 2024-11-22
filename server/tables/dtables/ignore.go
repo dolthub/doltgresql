@@ -17,12 +17,11 @@ package dtables
 import (
 	"fmt"
 
+	"github.com/dolthub/dolt/go/libraries/doltcore/doltdb"
+	"github.com/dolthub/dolt/go/store/val"
 	"github.com/dolthub/go-mysql-server/sql"
 
 	pgtypes "github.com/dolthub/doltgresql/server/types"
-
-	"github.com/dolthub/dolt/go/libraries/doltcore/doltdb"
-	"github.com/dolthub/dolt/go/store/val"
 )
 
 // getDoltIgnoreSchema returns the schema for the dolt_ignore table.
