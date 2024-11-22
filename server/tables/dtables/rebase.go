@@ -20,9 +20,10 @@ import (
 
 	"github.com/dolthub/dolt/go/libraries/doltcore/rebase"
 	"github.com/dolthub/dolt/go/libraries/doltcore/sqle/dprocedures"
-	pgtypes "github.com/dolthub/doltgresql/server/types"
 	"github.com/dolthub/go-mysql-server/sql"
 	"github.com/shopspring/decimal"
+
+	pgtypes "github.com/dolthub/doltgresql/server/types"
 )
 
 // getRebaseSchema returns the schema for the rebase table.
