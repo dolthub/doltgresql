@@ -16,6 +16,8 @@ package dtables
 
 import (
 	"github.com/dolthub/dolt/go/libraries/doltcore/doltdb"
+	"github.com/dolthub/dolt/go/libraries/doltcore/sqle"
+	"github.com/dolthub/dolt/go/libraries/doltcore/sqle/dprocedures"
 	"github.com/dolthub/dolt/go/libraries/doltcore/sqle/dtables"
 )
 
@@ -40,6 +42,13 @@ func Init() {
 
 	// Schemas
 	dtables.GetDocsSchema = getDocsSchema
+	dtables.GetDoltIgnoreSchema = getDoltIgnoreSchema
+	dprocedures.GetDoltRebaseSystemTableSchema = getRebaseSchema
+
+	// Conversions
+	doltdb.ConvertTupleToIgnoreBoolean = convertTupleToIgnoreBoolean
+	sqle.ConvertRebasePlanStepToRow = convertRebasePlanStepToRow
+	sqle.ConvertRowToRebasePlanStep = convertRowToRebasePlanStep
 }
 
 // getBranchesTableName returns the name of the branches table.
