@@ -351,7 +351,26 @@ func (t DoltgresType) FormatValue(val any) (string, error) {
 	if val == nil {
 		return "", nil
 	}
+	// TODO: need valid sql.Context
 	return t.IoOutput(nil, val)
+}
+
+// IoInput converts input string value to given type value.
+func (t DoltgresType) IoInput(ctx *sql.Context, input string) (any, error) {
+	return receiveInputFunction(ctx, t.InputFunc, t, Cstring, input)
+}
+
+// IoOutput converts given type value to output string.
+func (t DoltgresType) IoOutput(ctx *sql.Context, val any) (string, error) {
+	o, err := sendOutputFunction(ctx, t.OutputFunc, t, val)
+	if err != nil {
+		return "", err
+	}
+	output, ok := o.(string)
+	if !ok {
+		return "", fmt.Errorf(`expected string, got %T`, output)
+	}
+	return output, nil
 }
 
 // IsArrayType returns true if the type is of 'array' category
@@ -543,6 +562,7 @@ func (t DoltgresType) String() string {
 		str = t.Name
 	}
 	if t.AttTypMod != -1 {
+		// TODO: need valid sql.Context
 		if l, err := t.TypModOut(nil, t.AttTypMod); err == nil {
 			str = fmt.Sprintf("%s%s", str, l)
 		}
@@ -620,6 +640,40 @@ func (t DoltgresType) Type() query.Type {
 	}
 }
 
+// TypModIn encodes given text array value to type modifier in int32 format.
+func (t DoltgresType) TypModIn(ctx *sql.Context, val []any) (int32, error) {
+	// takes []cstring and return int32
+	if t.ModInFunc == "-" {
+		return 0, fmt.Errorf("typmodin function for type '%s' doesn't exist", t.Name)
+	}
+	o, err := GetFunctionAndEvaluateForTypes(ctx, t.ModInFunc, []DoltgresType{CstringArray}, []any{val})
+	if err != nil {
+		return 0, err
+	}
+	output, ok := o.(int32)
+	if !ok {
+		return 0, fmt.Errorf(`expected int32, got %T`, output)
+	}
+	return output, nil
+}
+
+// TypModOut decodes type modifier in int32 format to string representation of it.
+func (t DoltgresType) TypModOut(ctx *sql.Context, val int32) (string, error) {
+	// takes int32 and returns cstring
+	if t.ModOutFunc == "-" {
+		return "", fmt.Errorf("typmodout function for type '%s' doesn't exist", t.Name)
+	}
+	o, err := GetFunctionAndEvaluateForTypes(ctx, t.ModOutFunc, []DoltgresType{Int32}, []any{val})
+	if err != nil {
+		return "", err
+	}
+	output, ok := o.(string)
+	if !ok {
+		return "", fmt.Errorf(`expected string, got %T`, output)
+	}
+	return output, nil
+}
+
 // ValueType implements the types.ExtendedType interface.
 func (t DoltgresType) ValueType() reflect.Type {
 	return reflect.TypeOf(t.Zero())
@@ -677,6 +731,7 @@ func (t DoltgresType) SerializeValue(val any) ([]byte, error) {
 	if !t.SendFuncExists() {
 		return nil, fmt.Errorf("send function for type '%s' doesn't exist", t.Name)
 	}
+	// TODO: need valid sql.Context
 	o, err := sendOutputFunction(nil, t.SendFunc, t, val)
 	if err != nil {
 		return nil, err
@@ -699,57 +754,6 @@ func (t DoltgresType) DeserializeValue(val []byte) (any, error) {
 	if !t.ReceiveFuncExists() {
 		return nil, fmt.Errorf("receive function for type '%s' doesn't exist", t.Name)
 	}
+	// TODO: need valid sql.Context
 	return receiveInputFunction(nil, t.ReceiveFunc, t, NewInternalTypeWithBaseType(t.OID), val)
-}
-
-// IoInput converts input string value to given type value.
-func (t DoltgresType) IoInput(ctx *sql.Context, input string) (any, error) {
-	return receiveInputFunction(ctx, t.InputFunc, t, Cstring, input)
-}
-
-// IoOutput converts given type value to output string.
-func (t DoltgresType) IoOutput(ctx *sql.Context, val any) (string, error) {
-	o, err := sendOutputFunction(ctx, t.OutputFunc, t, val)
-	if err != nil {
-		return "", err
-	}
-	output, ok := o.(string)
-	if !ok {
-		return "", fmt.Errorf(`expected string, got %T`, output)
-	}
-	return output, nil
-}
-
-// TypModIn encodes given text array value to type modifier in int32 format.
-func (t DoltgresType) TypModIn(ctx *sql.Context, val []any) (int32, error) {
-	// takes []string and return int32
-	if t.ModInFunc == "-" {
-		return 0, fmt.Errorf("typmodin function for type '%s' doesn't exist", t.Name)
-	}
-	o, err := GetFunctionAndEvaluateForTypes(ctx, t.ModInFunc, []DoltgresType{CstringArray}, []any{val})
-	if err != nil {
-		return 0, err
-	}
-	output, ok := o.(int32)
-	if !ok {
-		return 0, fmt.Errorf(`expected int32, got %T`, output)
-	}
-	return output, nil
-}
-
-// TypModOut decodes type modifier in int32 format to string representation of it.
-func (t DoltgresType) TypModOut(ctx *sql.Context, val int32) (string, error) {
-	// takes int32 and returns string
-	if t.ModOutFunc == "-" {
-		return "", fmt.Errorf("typmodout function for type '%s' doesn't exist", t.Name)
-	}
-	o, err := GetFunctionAndEvaluateForTypes(ctx, t.ModOutFunc, []DoltgresType{Int32}, []any{val})
-	if err != nil {
-		return "", err
-	}
-	output, ok := o.(string)
-	if !ok {
-		return "", fmt.Errorf(`expected string, got %T`, output)
-	}
-	return output, nil
 }

@@ -390,6 +390,7 @@ func NormalizeExpectedRow(fds []pgconn.FieldDescription, rows []sql.Row) []sql.R
 				if dt.OID == uint32(oid.T_json) {
 					newRow[i] = UnmarshalAndMarshalJsonString(row[i].(string))
 				} else if dt.IsArrayType() && dt.ArrayBaseType().OID == uint32(oid.T_json) {
+					// TODO: need to have valid sql.Context
 					v, err := dt.IoInput(nil, row[i].(string))
 					if err != nil {
 						panic(err)
@@ -399,7 +400,7 @@ func NormalizeExpectedRow(fds []pgconn.FieldDescription, rows []sql.Row) []sql.R
 					for j, el := range arr {
 						newArr[j] = UnmarshalAndMarshalJsonString(el.(string))
 					}
-					ret, err := dt.IoOutput(nil, newArr)
+					ret, err := dt.FormatValue(newArr)
 					if err != nil {
 						panic(err)
 					}
@@ -444,7 +445,7 @@ func NormalizeValToString(dt types.DoltgresType, v any) any {
 		if err != nil {
 			panic(err)
 		}
-		ret, err := dt.IoOutput(nil, string(str))
+		ret, err := dt.FormatValue(string(str))
 		if err != nil {
 			panic(err)
 		}
@@ -454,7 +455,7 @@ func NormalizeValToString(dt types.DoltgresType, v any) any {
 		if err != nil {
 			panic(err)
 		}
-		str, err := dt.IoOutput(nil, types.JsonDocument{Value: jv})
+		str, err := dt.FormatValue(types.JsonDocument{Value: jv})
 		if err != nil {
 			panic(err)
 		}
@@ -469,7 +470,7 @@ func NormalizeValToString(dt types.DoltgresType, v any) any {
 		} else {
 			b = []byte{uint8(v.(int32))}
 		}
-		val, err := dt.IoOutput(nil, string(b))
+		val, err := dt.FormatValue(string(b))
 		if err != nil {
 			panic(err)
 		}
@@ -481,7 +482,7 @@ func NormalizeValToString(dt types.DoltgresType, v any) any {
 		if v == nil {
 			return nil
 		}
-		tVal, err := dt.IoOutput(nil, NormalizeVal(dt, v))
+		tVal, err := dt.FormatValue(NormalizeVal(dt, v))
 		if err != nil {
 			panic(err)
 		}
@@ -531,13 +532,13 @@ func NormalizeArrayType(dt types.DoltgresType, arr []any) any {
 	}
 	baseType := dt.ArrayBaseType()
 	if baseType.OID == uint32(oid.T_bool) {
-		sqlVal, err := dt.SQL(nil, nil, newVal)
+		sqlVal, err := dt.SQL(sql.NewEmptyContext(), nil, newVal)
 		if err != nil {
 			panic(err)
 		}
 		return sqlVal.ToString()
 	} else {
-		ret, err := dt.IoOutput(nil, newVal)
+		ret, err := dt.FormatValue(newVal)
 		if err != nil {
 			panic(err)
 		}

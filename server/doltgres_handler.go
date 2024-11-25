@@ -34,8 +34,10 @@ import (
 	"github.com/dolthub/vitess/go/mysql"
 	"github.com/dolthub/vitess/go/vt/sqlparser"
 	"github.com/jackc/pgx/v5/pgproto3"
+	"github.com/jackc/pgx/v5/pgtype"
 	"github.com/sirupsen/logrus"
 
+	pgexprs "github.com/dolthub/doltgresql/server/expression"
 	pgtypes "github.com/dolthub/doltgresql/server/types"
 )
 
@@ -47,6 +49,14 @@ func init() {
 	if _, ok := os.LookupEnv(PrintErrorStackTracesEnvKey); ok {
 		printErrorStackTraces = true
 	}
+}
+
+// BindVariables represents arrays of types, format codes and parameters
+// used to convert given parameters to binding variables map.
+type BindVariables struct {
+	varTypes    []uint32
+	formatCodes []int16
+	parameters  [][]byte
 }
 
 // Result represents a query result.
@@ -72,12 +82,13 @@ type DoltgresHandler struct {
 	sm                *server.SessionManager
 	readTimeout       time.Duration
 	encodeLoggedQuery bool
+	pgTypeMap         *pgtype.Map
 }
 
 var _ Handler = &DoltgresHandler{}
 
 // ComBind implements the Handler interface.
-func (h *DoltgresHandler) ComBind(ctx context.Context, c *mysql.Conn, query string, parsedQuery mysql.ParsedQuery, bindVars map[string]sqlparser.Expr) (mysql.BoundQuery, []pgproto3.FieldDescription, error) {
+func (h *DoltgresHandler) ComBind(ctx context.Context, c *mysql.Conn, query string, parsedQuery mysql.ParsedQuery, bindVars BindVariables) (mysql.BoundQuery, []pgproto3.FieldDescription, error) {
 	sqlCtx, err := h.sm.NewContextWithQuery(ctx, c, query)
 	if err != nil {
 		return nil, nil, err
@@ -88,7 +99,12 @@ func (h *DoltgresHandler) ComBind(ctx context.Context, c *mysql.Conn, query stri
 		return nil, nil, fmt.Errorf("parsedQuery must be a sqlparser.Statement, but got %T", parsedQuery)
 	}
 
-	queryPlan, err := h.e.BoundQueryPlan(sqlCtx, query, stmt, bindVars)
+	bvs, err := h.convertBindParameters(sqlCtx, bindVars.varTypes, bindVars.formatCodes, bindVars.parameters)
+	if err != nil {
+		return nil, nil, err
+	}
+
+	queryPlan, err := h.e.BoundQueryPlan(sqlCtx, query, stmt, bvs)
 	if err != nil {
 		return nil, nil, err
 	}
@@ -194,6 +210,30 @@ func (h *DoltgresHandler) NewConnection(c *mysql.Conn) {
 // NewContext implements the Handler interface.
 func (h *DoltgresHandler) NewContext(ctx context.Context, c *mysql.Conn, query string) (*sql.Context, error) {
 	return h.sm.NewContext(ctx, c, query)
+}
+
+// convertBindParameters handles the conversion from bind parameters to variable values.
+func (h *DoltgresHandler) convertBindParameters(ctx *sql.Context, types []uint32, formatCodes []int16, values [][]byte) (map[string]sqlparser.Expr, error) {
+	bindings := make(map[string]sqlparser.Expr, len(values))
+	for i := range values {
+		typ := types[i]
+		var bindVarString string
+		// We'll rely on a library to decode each format, which will deal with text and binary representations for us
+		if err := h.pgTypeMap.Scan(typ, formatCodes[i], values[i], &bindVarString); err != nil {
+			return nil, err
+		}
+
+		pgTyp, ok := pgtypes.OidToBuildInDoltgresType[typ]
+		if !ok {
+			return nil, fmt.Errorf("unhandled oid type: %v", typ)
+		}
+		v, err := pgTyp.IoInput(ctx, bindVarString)
+		if err != nil {
+			return nil, err
+		}
+		bindings[fmt.Sprintf("v%d", i+1)] = sqlparser.InjectedExpr{Expression: pgexprs.NewUnsafeLiteral(v, pgTyp)}
+	}
+	return bindings, nil
 }
 
 var queryLoggingRegex = regexp.MustCompile(`[\r\n\t ]+`)
@@ -321,9 +361,11 @@ func schemaToFieldDescriptions(ctx *sql.Context, s sql.Schema) []pgproto3.FieldD
 	fields := make([]pgproto3.FieldDescription, len(s))
 	for i, c := range s {
 		var oid uint32
+		var typmod = int32(-1)
 		var err error
 		if doltgresType, ok := c.Type.(pgtypes.DoltgresType); ok {
 			oid = doltgresType.OID
+			typmod = doltgresType.AttTypMod // pg_attribute.atttypmod
 		} else {
 			oid, err = VitessTypeToObjectID(c.Type.Type())
 			if err != nil {
@@ -342,7 +384,7 @@ func schemaToFieldDescriptions(ctx *sql.Context, s sql.Schema) []pgproto3.FieldD
 			TableAttributeNumber: uint16(0),
 			DataTypeOID:          oid,
 			DataTypeSize:         int16(c.Type.MaxTextResponseByteLength(ctx)),
-			TypeModifier:         int32(-1), // TODO: used for domain type, which we don't support yet
+			TypeModifier:         typmod,
 			Format:               int16(0),
 		}
 	}

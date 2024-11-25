@@ -25,7 +25,7 @@ import (
 
 type Handler interface {
 	// ComBind is called when a connection receives a request to bind a prepared statement to a set of values.
-	ComBind(ctx context.Context, c *mysql.Conn, query string, parsedQuery mysql.ParsedQuery, bindVars map[string]sqlparser.Expr) (mysql.BoundQuery, []pgproto3.FieldDescription, error)
+	ComBind(ctx context.Context, c *mysql.Conn, query string, parsedQuery mysql.ParsedQuery, bindVars BindVariables) (mysql.BoundQuery, []pgproto3.FieldDescription, error)
 	// ComExecuteBound is called when a connection receives a request to execute a prepared statement that has already bound to a set of values.
 	ComExecuteBound(ctx context.Context, conn *mysql.Conn, query string, boundQuery mysql.BoundQuery, callback func(*Result) error) error
 	// ComPrepareParsed is called when a connection receives a prepared statement query that has already been parsed.
