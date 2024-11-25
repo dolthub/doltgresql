@@ -367,7 +367,7 @@ export const schemaNameField = {
   columnID: 0,
   dataTypeID: 1043,
   dataTypeSize: 256,
-  dataTypeModifier: -1,
+  dataTypeModifier: 68,
   format: "text",
 };
 
