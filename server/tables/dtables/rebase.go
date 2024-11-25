@@ -30,7 +30,7 @@ import (
 func getRebaseSchema() sql.Schema {
 	return []*sql.Column{
 		{Name: "rebase_order", Type: pgtypes.Float32, Nullable: false, PrimaryKey: true}, // TODO: cannot have numeric key
-		{Name: "action", Type: pgtypes.VarCharType{MaxChars: 6}, Nullable: false},        // TODO: Should be enum(pick, squash, fixup, drop, reword)
+		{Name: "action", Type: pgtypes.MustCreateNewVarCharType(6), Nullable: false},     // TODO: Should be enum(pick, squash, fixup, drop, reword)
 		{Name: "commit_hash", Type: pgtypes.Text, Nullable: false},
 		{Name: "commit_message", Type: pgtypes.Text, Nullable: false},
 	}
