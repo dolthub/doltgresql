@@ -110,10 +110,14 @@ func helpWithFunction(sqllex sqlLexer, f tree.ResolvableFunctionReference) int {
 		return 1
 	}
 
+	helpCategory := "unknown function"
+	if d != nil {
+		helpCategory = d.Category
+	}
 	msg := HelpMessage{
 		Function: f.String(),
 		HelpMessageBody: HelpMessageBody{
-			Category: d.Category,
+			Category: helpCategory,
 		},
 	}
 
@@ -125,19 +129,21 @@ func helpWithFunction(sqllex sqlLexer, f tree.ResolvableFunctionReference) int {
 	// documentation, so we need to also combine the descriptions
 	// together.
 	lastInfo := ""
-	for i, overload := range d.Definition {
-		b := overload.(*tree.Overload)
-		if b.Info != "" && b.Info != lastInfo {
-			if i > 0 {
-				fmt.Fprintln(w, "---")
+	if d != nil {
+		for i, overload := range d.Definition {
+			b := overload.(*tree.Overload)
+			if b.Info != "" && b.Info != lastInfo {
+				if i > 0 {
+					fmt.Fprintln(w, "---")
+				}
+				fmt.Fprintf(w, "\n%s\n\n", b.Info)
+				fmt.Fprintln(w, "Signature")
 			}
-			fmt.Fprintf(w, "\n%s\n\n", b.Info)
-			fmt.Fprintln(w, "Signature")
-		}
-		lastInfo = b.Info
+			lastInfo = b.Info
 
-		simplifyRet := d.Class == tree.GeneratorClass
-		fmt.Fprintf(w, "%s%s\n", d.Name, b.Signature(simplifyRet))
+			simplifyRet := d.Class == tree.GeneratorClass
+			fmt.Fprintf(w, "%s%s\n", d.Name, b.Signature(simplifyRet))
+		}
 	}
 	_ = w.Flush()
 	msg.Text = buf.String()
