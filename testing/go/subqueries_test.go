@@ -161,3 +161,49 @@ ORDER BY 1;`,
 		},
 	})
 }
+
+func TestExistSubquery(t *testing.T) {
+	RunScripts(t, []ScriptTest{
+		{
+			Name: "basic case",
+			SetUpScript: []string{
+				`CREATE TABLE test (id INT PRIMARY KEY);`,
+				`INSERT INTO test VALUES (1), (3), (2);`,
+			},
+			Assertions: []ScriptTestAssertion{
+				{
+					Query: `SELECT * FROM test WHERE EXISTS (SELECT 123);`,
+					Expected: []sql.Row{
+						{1},
+						{2},
+						{3},
+					},
+				},
+				{
+					Query:    `SELECT * FROM test WHERE NOT EXISTS (SELECT 123);`,
+					Expected: []sql.Row{},
+				},
+				{
+					Query: `SELECT 123 WHERE EXISTS (SELECT * FROM test);`,
+					Expected: []sql.Row{
+						{123},
+					},
+				},
+				{
+					Query:    `SELECT 123 WHERE EXISTS (SELECT * FROM test WHERE id > 10);`,
+					Expected: []sql.Row{},
+				},
+				{
+					Query:    `SELECT 123 WHERE NOT EXISTS (SELECT * FROM test);`,
+					Expected: []sql.Row{},
+				},
+				{
+					Query: `SELECT 123 WHERE NOT EXISTS (SELECT * FROM test WHERE id > 10);`,
+					Expected: []sql.Row{
+						{123},
+					},
+				},
+			},
+		},
+	})
+}

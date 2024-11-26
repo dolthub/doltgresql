@@ -89,6 +89,8 @@ func main() {
 	sb.WriteString(fmt.Sprintf("| Failures | %.4f%% | %.4f%% |\n",
 		(float64(fromFail)/float64(fromTotal))*100.0,
 		(float64(toFail)/float64(toTotal))*100.0))
+	totalRegressions := 0
+	totalProgressions := 0
 	if len(trackersFrom) == len(trackersTo) {
 		// Handle regressions (which we'll display first)
 		foundAnyFailDiff := false
@@ -105,25 +107,28 @@ func main() {
 			}
 			for _, trackerToItem := range trackersTo[trackerIdx].FailPartialItems {
 				if _, ok := fromFailItems[trackerToItem.Query]; !ok {
-					if !foundAnyFailDiff {
-						foundAnyFailDiff = true
-						sb.WriteString("\n## ${\\color{red}Regressions}$\n")
+					if totalRegressions < 40 {
+						if !foundAnyFailDiff {
+							foundAnyFailDiff = true
+							sb.WriteString("\n## ${\\color{red}Regressions__&&&&&&}$\n")
+						}
+						if !foundFileDiff {
+							foundFileDiff = true
+							sb.WriteString(fmt.Sprintf("### %s\n", trackersFrom[trackerIdx].File))
+						}
+						sb.WriteString(fmt.Sprintf("```\nQUERY:          %s\n", trackerToItem.Query))
+						if len(trackerToItem.ExpectedError) != 0 {
+							sb.WriteString(fmt.Sprintf("EXPECTED ERROR: %s\n", trackerToItem.ExpectedError))
+						}
+						if len(trackerToItem.UnexpectedError) != 0 {
+							sb.WriteString(fmt.Sprintf("RECEIVED ERROR: %s\n", trackerToItem.UnexpectedError))
+						}
+						for _, partial := range trackerToItem.PartialSuccess {
+							sb.WriteString(fmt.Sprintf("PARTIAL:        %s\n", partial))
+						}
+						sb.WriteString("```\n")
 					}
-					if !foundFileDiff {
-						foundFileDiff = true
-						sb.WriteString(fmt.Sprintf("### %s\n", trackersFrom[trackerIdx].File))
-					}
-					sb.WriteString(fmt.Sprintf("```\nQUERY:          %s\n", trackerToItem.Query))
-					if len(trackerToItem.ExpectedError) != 0 {
-						sb.WriteString(fmt.Sprintf("EXPECTED ERROR: %s\n", trackerToItem.ExpectedError))
-					}
-					if len(trackerToItem.UnexpectedError) != 0 {
-						sb.WriteString(fmt.Sprintf("RECEIVED ERROR: %s\n", trackerToItem.UnexpectedError))
-					}
-					for _, partial := range trackerToItem.PartialSuccess {
-						sb.WriteString(fmt.Sprintf("PARTIAL:        %s\n", partial))
-					}
-					sb.WriteString("```\n")
+					totalRegressions += 1
 				}
 			}
 		}
@@ -142,21 +147,27 @@ func main() {
 			}
 			for _, trackerToItem := range trackersTo[trackerIdx].SuccessItems {
 				if _, ok := fromSuccessItems[trackerToItem.Query]; !ok {
-					if !foundAnySuccessDiff {
-						foundAnySuccessDiff = true
-						sb.WriteString("\n## ${\\color{lightgreen}Progressions}$\n")
+					if totalProgressions < 40 {
+						if !foundAnySuccessDiff {
+							foundAnySuccessDiff = true
+							sb.WriteString("\n## ${\\color{lightgreen}Progressions__&&&&&&}$\n")
+						}
+						if !foundFileDiff {
+							foundFileDiff = true
+							sb.WriteString(fmt.Sprintf("### %s\n", trackersFrom[trackerIdx].File))
+						}
+						sb.WriteString(fmt.Sprintf("```\nQUERY: %s\n```\n", trackerToItem.Query))
 					}
-					if !foundFileDiff {
-						foundFileDiff = true
-						sb.WriteString(fmt.Sprintf("### %s\n", trackersFrom[trackerIdx].File))
-					}
-					sb.WriteString(fmt.Sprintf("```\nQUERY: %s\n```\n", trackerToItem.Query))
+					totalProgressions += 1
 				}
 			}
 		}
 	}
 	sb.WriteString("[^1]: These are tests that we're marking as `Successful`, however they do not match the expected output in some way. This is due to small differences, such as different wording on the error messages, or the column names being incorrect while the data itself is correct.")
-	fmt.Println(sb.String())
+	output := sb.String()
+	output = strings.ReplaceAll(output, "Regressions__&&&&&&", fmt.Sprintf("Regressions (%d)", totalRegressions))
+	output = strings.ReplaceAll(output, "Progressions__&&&&&&", fmt.Sprintf("Progressions (%d)", totalProgressions))
+	fmt.Println(output)
 }
 
 func updateResults() {

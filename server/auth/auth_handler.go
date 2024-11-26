@@ -17,6 +17,7 @@ package auth
 import (
 	"errors"
 	"fmt"
+	"strings"
 
 	"github.com/dolthub/dolt/go/libraries/doltcore/doltdb"
 	"github.com/dolthub/go-mysql-server/sql"
@@ -100,8 +101,24 @@ func (h *AuthorizationHandler) HandleAuth(ctx *sql.Context, aqs sql.Authorizatio
 	case AuthType_IGNORE:
 		// This means that authorization is being handled elsewhere (such as a child or parent), and should be ignored here
 		return nil
+	case AuthType_CREATE:
+		privileges = []Privilege{Privilege_CREATE}
 	case AuthType_DELETE:
 		privileges = []Privilege{Privilege_DELETE}
+	case AuthType_DROPTABLE:
+		if len(auth.TargetNames)%3 != 0 {
+			return fmt.Errorf("table identifiers has an unsupported count: %d", len(auth.TargetNames))
+		}
+		for i := 0; i < len(auth.TargetNames); i += 3 {
+			// TODO: handle database
+			if id := HasOwnerAccess(OwnershipKey{
+				PrivilegeObject: PrivilegeObject_TABLE,
+				Schema:          auth.TargetNames[i+1],
+				Name:            auth.TargetNames[i+2],
+			}, state.role.ID()); !id.IsValid() {
+				return fmt.Errorf("permission denied for table %s", auth.TargetNames[i+2])
+			}
+		}
 	case AuthType_INSERT:
 		privileges = []Privilege{Privilege_INSERT}
 	case AuthType_SELECT:
@@ -122,28 +139,73 @@ func (h *AuthorizationHandler) HandleAuth(ctx *sql.Context, aqs sql.Authorizatio
 	switch auth.TargetType {
 	case AuthTargetType_Ignore:
 		// This means that the AuthType did not need a TargetType, so we can safely ignore it
-	case AuthTargetType_SingleTableIdentifier:
-		schemaName, err := core.GetSchemaName(ctx, nil, auth.TargetNames[0])
-		if err != nil {
-			return sql.ErrTableNotFound.New(auth.TargetNames[1])
+	case AuthTargetType_DatabaseIdentifiers:
+		for _, database := range auth.TargetNames {
+			database = h.dbName(ctx, database)
+			roleDatabaseKey := DatabasePrivilegeKey{
+				Role: state.role.ID(),
+				Name: database,
+			}
+			publicDatabaseKey := DatabasePrivilegeKey{
+				Role: state.public.ID(),
+				Name: database,
+			}
+			for _, privilege := range privileges {
+				if !HasDatabasePrivilege(roleDatabaseKey, privilege) && !HasDatabasePrivilege(publicDatabaseKey, privilege) {
+					return fmt.Errorf("permission denied for database %s", database)
+				}
+			}
 		}
-		ownerKey := OwnershipKey{
-			PrivilegeObject: PrivilegeObject_TABLE,
-			Schema:          schemaName,
-			Name:            auth.TargetNames[1],
+	case AuthTargetType_SchemaIdentifiers:
+		if len(auth.TargetNames)%2 != 0 {
+			return fmt.Errorf("schema identifiers has an unsupported count: %d", len(auth.TargetNames))
 		}
-		roleTableKey := TablePrivilegeKey{
-			Role:  state.role.ID(),
-			Table: doltdb.TableName{Name: auth.TargetNames[1], Schema: schemaName},
+		for i := 0; i < len(auth.TargetNames); i += 2 {
+			// TODO: handle database
+			schemaName, err := core.GetSchemaName(ctx, nil, auth.TargetNames[i+1])
+			if err != nil {
+				// If this fails, then there's an issue with the search path.
+				// This will error later in the process, so we'll pass auth for now.
+				return nil
+			}
+			roleSchemaKey := SchemaPrivilegeKey{
+				Role:   state.role.ID(),
+				Schema: schemaName,
+			}
+			publicSchemaKey := SchemaPrivilegeKey{
+				Role:   state.public.ID(),
+				Schema: schemaName,
+			}
+			for _, privilege := range privileges {
+				if !HasSchemaPrivilege(roleSchemaKey, privilege) && !HasSchemaPrivilege(publicSchemaKey, privilege) {
+					return fmt.Errorf("permission denied for schema %s", schemaName)
+				}
+			}
 		}
-		publicTableKey := TablePrivilegeKey{
-			Role:  state.public.ID(),
-			Table: doltdb.TableName{Name: auth.TargetNames[1], Schema: schemaName},
+	case AuthTargetType_TableIdentifiers:
+		if len(auth.TargetNames)%3 != 0 {
+			return fmt.Errorf("table identifiers has an unsupported count: %d", len(auth.TargetNames))
 		}
-		for _, privilege := range privileges {
-			if !state.role.IsSuperUser && !IsOwner(ownerKey, state.role.ID()) &&
-				!HasTablePrivilege(roleTableKey, privilege) && !HasTablePrivilege(publicTableKey, privilege) {
-				return fmt.Errorf("permission denied for table %s", auth.TargetNames[1])
+		for i := 0; i < len(auth.TargetNames); i += 3 {
+			// TODO: handle database
+			schemaName, err := core.GetSchemaName(ctx, nil, auth.TargetNames[i+1])
+			if err != nil {
+				// If this fails, then there's an issue with the search path.
+				// This will error later in the process, so we'll pass auth for now.
+				return nil
+			}
+			roleTableKey := TablePrivilegeKey{
+				Role:  state.role.ID(),
+				Table: doltdb.TableName{Name: auth.TargetNames[i+2], Schema: schemaName},
+			}
+			publicTableKey := TablePrivilegeKey{
+				Role:  state.public.ID(),
+				Table: doltdb.TableName{Name: auth.TargetNames[i+2], Schema: schemaName},
+			}
+			for _, privilege := range privileges {
+				if !HasTablePrivilege(roleTableKey, privilege) && !HasTablePrivilege(publicTableKey, privilege) {
+					return fmt.Errorf("permission denied for table %s", auth.TargetNames[i+2])
+				}
 			}
 		}
 	case AuthTargetType_TODO:
@@ -208,4 +270,15 @@ func (h *AuthorizationHandler) CheckTable(ctx *sql.Context, aqs sql.Authorizatio
 	}
 	// TODO: implement this
 	return nil
+}
+
+// dbName uses the current database from the context if a database is not specified, otherwise it returns the given
+// database name.
+func (h *AuthorizationHandler) dbName(ctx *sql.Context, dbName string) string {
+	if len(dbName) == 0 {
+		dbName = ctx.GetCurrentDatabase()
+	}
+	// Revision databases take the form "dbname/revision", so we must split the revision from the database name
+	splitDbName := strings.SplitN(dbName, "/", 2)
+	return splitDbName[0]
 }

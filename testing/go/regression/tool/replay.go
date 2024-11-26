@@ -454,7 +454,7 @@ ListenerLoop:
 					}
 				}
 				for _, failQuery := range options.FailQueries {
-					if message.String == failQuery {
+					if strings.Contains(message.String, failQuery) {
 						tracker.Failed++
 						tracker.AddFailure(ReplayTrackerItem{
 							Query:           message.String,

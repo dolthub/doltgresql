@@ -64,7 +64,7 @@ func nodeWith(ctx *Context, node *tree.With) (*vitess.With, error) {
 		return nil, nil
 	}
 
-	ctes := make([]vitess.TableExpr, len(node.CTEList))
+	ctes := make([]*vitess.CommonTableExpr, len(node.CTEList))
 	for i, cte := range node.CTEList {
 		var err error
 		ctes[i], err = nodeCTE(ctx, cte)

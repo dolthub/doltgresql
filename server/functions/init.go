@@ -121,6 +121,7 @@ func Init() {
 	initTand()
 	initTanh()
 	initTimezone()
+	initToChar()
 	initToHex()
 	initToRegclass()
 	initToRegproc()

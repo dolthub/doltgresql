@@ -20,6 +20,7 @@ import (
 	vitess "github.com/dolthub/vitess/go/vt/sqlparser"
 
 	"github.com/dolthub/doltgresql/postgres/parser/sem/tree"
+	"github.com/dolthub/doltgresql/server/auth"
 )
 
 // nodeCreateTable handles *tree.CreateTable nodes.
@@ -87,6 +88,11 @@ func nodeCreateTable(ctx *Context, node *tree.CreateTable) (*vitess.DDL, error) 
 		Temporary:   isTemporary,
 		OptSelect:   optSelect,
 		OptLike:     optLike,
+		Auth: vitess.AuthInformation{
+			AuthType:    auth.AuthType_CREATE,
+			TargetType:  auth.AuthTargetType_SchemaIdentifiers,
+			TargetNames: []string{tableName.DbQualifier.String(), tableName.SchemaQualifier.String()},
+		},
 	}
 	if err = assignTableDefs(ctx, node.Defs, ddl); err != nil {
 		return nil, err
@@ -101,9 +107,11 @@ func nodeCreateTable(ctx *Context, node *tree.CreateTable) (*vitess.DDL, error) 
 		}
 
 		// GMS does not support PARTITION BY, so we parse it and ignore it
-		ddl.TableSpec.PartitionOpt = &vitess.PartitionOption{
-			PartitionType: string(node.PartitionBy.Type),
-			Expr:          vitess.NewColName(string(node.PartitionBy.Elems[0].Column)),
+		if ddl.TableSpec != nil {
+			ddl.TableSpec.PartitionOpt = &vitess.PartitionOption{
+				PartitionType: string(node.PartitionBy.Type),
+				Expr:          vitess.NewColName(string(node.PartitionBy.Elems[0].Column)),
+			}
 		}
 	}
 	if node.PartitionOf.Table() != "" {

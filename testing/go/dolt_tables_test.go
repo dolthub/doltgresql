@@ -955,6 +955,152 @@ func TestUserSpaceDoltTables(t *testing.T) {
 			},
 		},
 		{
+			Name: "dolt docs",
+			SetUpScript: []string{
+				"INSERT INTO dolt.docs values ('README.md', 'testing')",
+			},
+			Assertions: []ScriptTestAssertion{
+				{
+					Query: `SELECT * FROM dolt.docs`,
+					Expected: []sql.Row{
+						{"README.md", "testing"},
+					},
+				},
+				{
+					Query: `SELECT * FROM dolt_docs`,
+					Expected: []sql.Row{
+						{"README.md", "testing"},
+					},
+				},
+				{
+					Skip:     true, // TODO: referencing items outside the schema or database is not yet supported
+					Query:    `SELECT dolt.docs.doc_name FROM dolt.docs`,
+					Expected: []sql.Row{{"README.md"}},
+				},
+				{
+					Skip:     true, // TODO: table not found: dolt_docs
+					Query:    `SELECT dolt_docs.doc_name FROM dolt_docs`,
+					Expected: []sql.Row{{"README.md"}},
+				},
+				{
+					Query:       `SELECT * FROM public.docs`,
+					ExpectedErr: "table not found",
+				},
+				{
+					Query:       `SELECT * FROM docs`,
+					ExpectedErr: "table not found",
+				},
+				{
+					Query: `SELECT * FROM dolt_diff_summary('main', 'WORKING')`,
+					Expected: []sql.Row{
+						{"", "dolt.docs", "added", 1, 1},
+					},
+				},
+				{
+					Query: `SELECT * FROM dolt_diff_summary('main', 'WORKING', 'docs')`,
+					Expected: []sql.Row{
+						{"", "dolt.docs", "added", 1, 1},
+					},
+				},
+				{
+					Skip:  true, // TODO: we should support this
+					Query: `SELECT * FROM dolt_diff_summary('main', 'WORKING', 'dolt_docs')`,
+					Expected: []sql.Row{
+						{"", "dolt_docs", "added", 1, 1},
+					},
+				},
+				{
+					Skip:  true, // TODO: we should support this or a --schema flag
+					Query: `SELECT * FROM dolt_diff_summary('main', 'WORKING', 'dolt.docs')`,
+					Expected: []sql.Row{
+						{"", "dolt.docs", "added", 1, 1},
+					},
+				},
+				{
+					Query: `SELECT * FROM dolt_diff_summary('main', 'WORKING', 'docs')`,
+					Expected: []sql.Row{
+						{"", "dolt.docs", "added", 1, 1},
+					},
+				},
+				{
+					Query: `SELECT diff_type, from_doc_name, to_doc_name FROM dolt_diff('main', 'WORKING', 'docs')`,
+					Expected: []sql.Row{
+						{"added", nil, "README.md"},
+					},
+				},
+				{
+					Query: `SELECT diff_type, from_doc_name, to_doc_name FROM dolt_diff('main', 'WORKING', 'docs')`,
+					Expected: []sql.Row{
+						{"added", nil, "README.md"},
+					},
+				},
+				{
+					Query:    `CREATE TABLE docs (id INT PRIMARY KEY)`,
+					Expected: []sql.Row{},
+				},
+				{
+					Query:    `INSERT INTO docs VALUES (1)`,
+					Expected: []sql.Row{},
+				},
+				{
+					Query:    `SELECT * FROM docs`,
+					Expected: []sql.Row{{1}},
+				},
+				{
+					Query:    `SELECT doc_name FROM dolt.docs`,
+					Expected: []sql.Row{{"README.md"}},
+				},
+				{
+					Query:    "SET search_path = 'dolt'",
+					Expected: []sql.Row{},
+				},
+				{
+					Query:    `SELECT doc_name FROM docs`,
+					Expected: []sql.Row{{"README.md"}},
+				},
+				{
+					Query:    `SELECT * FROM public.docs`,
+					Expected: []sql.Row{{1}},
+				},
+				{
+					Query:    "SET search_path = 'public'",
+					Expected: []sql.Row{},
+				},
+				{
+					Query:    `SELECT * FROM docs`,
+					Expected: []sql.Row{{1}},
+				},
+				{
+					Query:    "SET search_path = 'public,dolt'",
+					Expected: []sql.Row{},
+				},
+				{
+					Query:    `SELECT * FROM docs`,
+					Expected: []sql.Row{{1}},
+				},
+				{
+					Query:    `SELECT * FROM DOCS`,
+					Expected: []sql.Row{{1}},
+				},
+				{
+					Query:    "SET search_path = 'public'",
+					Expected: []sql.Row{},
+				},
+				{
+					Query:    `DELETE FROM dolt.docs WHERE doc_name = 'README.md'`,
+					Expected: []sql.Row{},
+				},
+				{
+					Query:    `SELECT * FROM dolt.docs`,
+					Expected: []sql.Row{},
+				},
+				{
+					Query:    `DELETE FROM dolt_docs WHERE doc_name = 'README.md'`,
+					Expected: []sql.Row{},
+				},
+			},
+		},
+		{
 			Name: "dolt diff",
 			SetUpScript: []string{
 				"CREATE TABLE test (id INT PRIMARY KEY)",
@@ -1273,6 +1419,175 @@ func TestUserSpaceDoltTables(t *testing.T) {
 			},
 		},
 		{
+			Name:        "dolt ignore",
+			SetUpScript: []string{},
+			Assertions: []ScriptTestAssertion{
+				{
+					Query:    `SELECT * FROM dolt_ignore`,
+					Expected: []sql.Row{},
+				},
+				{
+					Query:    "INSERT INTO dolt_ignore VALUES ('generated_*', true), ('generated_exception', false)",
+					Expected: []sql.Row{},
+				},
+				{
+					Query: `SELECT * FROM dolt_ignore`,
+					Expected: []sql.Row{
+						{"generated_*", "t"},
+						{"generated_exception", "f"},
+					},
+				},
+				{
+					Query: `SELECT * FROM public.dolt_ignore`,
+					Expected: []sql.Row{
+						{"generated_*", "t"},
+						{"generated_exception", "f"},
+					},
+				},
+				{
+					Query: `SELECT dolt_ignore.pattern FROM public.dolt_ignore`,
+					Expected: []sql.Row{
+						{"generated_*"},
+						{"generated_exception"},
+					},
+				},
+				{
+					Query:       `SELECT name FROM other.dolt_ignore`,
+					ExpectedErr: "database schema not found",
+				},
+				{
+					Query: `SELECT * FROM dolt_diff_summary('main', 'WORKING')`,
+					Expected: []sql.Row{
+						{"", "public.dolt_ignore", "added", 1, 1},
+					},
+				},
+				{
+					Query: `SELECT diff_type, from_pattern, to_pattern FROM dolt_diff('main', 'WORKING', 'dolt_ignore')`,
+					Expected: []sql.Row{
+						{"added", nil, "generated_*"},
+						{"added", nil, "generated_exception"},
+					},
+				},
+				{
+					Query:    "CREATE TABLE foo (pk int);",
+					Expected: []sql.Row{},
+				},
+				{
+					Query:    "CREATE TABLE generated_foo (pk int);",
+					Expected: []sql.Row{},
+				},
+				{
+					Query:    "CREATE TABLE generated_exception (pk int);",
+					Expected: []sql.Row{},
+				},
+				{
+					Query:    "SELECT dolt_add('-A');",
+					Expected: []sql.Row{{"{0}"}},
+				},
+				{
+					Query: "SELECT * FROM dolt_status;",
+					Expected: []sql.Row{
+						{"public.dolt_ignore", 1, "new table"},
+						{"public.foo", 1, "new table"},
+						{"public.generated_exception", 1, "new table"},
+						{"public.generated_foo", 0, "new table"},
+					},
+				},
+				{
+					Query:    `CREATE SCHEMA newschema`,
+					Expected: []sql.Row{},
+				},
+				{
+					Query:    "INSERT INTO newschema.dolt_ignore VALUES ('test_*', true)",
+					Expected: []sql.Row{},
+				},
+				{
+					Query:    "SET search_path = 'newschema'",
+					Expected: []sql.Row{},
+				},
+				{
+					Query: `SELECT * FROM dolt_ignore`,
+					Expected: []sql.Row{
+						{"test_*", "t"},
+					},
+				},
+				{
+					// Should ignore generated_expected table in newschema but not in public
+					Query:    "INSERT INTO dolt_ignore VALUES ('generated_exception', true)",
+					Expected: []sql.Row{},
+				},
+				{
+					Query: `SELECT * FROM dolt_ignore`,
+					Expected: []sql.Row{
+						{"generated_exception", "t"},
+						{"test_*", "t"},
+					},
+				},
+				{
+					Query: `SELECT * FROM newschema.dolt_ignore`,
+					Expected: []sql.Row{
+						{"generated_exception", "t"},
+						{"test_*", "t"},
+					},
+				},
+				{
+					Query: `SELECT * FROM public.dolt_ignore`,
+					Expected: []sql.Row{
+						{"generated_*", "t"},
+						{"generated_exception", "f"},
+					},
+				},
+				{
+					Query: `SELECT * FROM dolt_diff_summary('main', 'WORKING', 'dolt_ignore')`,
+					Expected: []sql.Row{
+						{"", "newschema.dolt_ignore", "added", 1, 1},
+					},
+				},
+				{
+					Query: `SELECT pattern FROM public.dolt_ignore`,
+					Expected: []sql.Row{
+						{"generated_*"},
+						{"generated_exception"},
+					},
+				},
+				{
+					Query:    "CREATE TABLE foo (pk int);",
+					Expected: []sql.Row{},
+				},
+				{
+					Query:    "CREATE TABLE test_foo (pk int);",
+					Expected: []sql.Row{},
+				},
+				{
+					Query:    "CREATE TABLE generated_foo (pk int);",
+					Expected: []sql.Row{},
+				},
+				{
+					Query:    "CREATE TABLE generated_exception (pk int);",
+					Expected: []sql.Row{},
+				},
+				{
+					Query:    "SELECT dolt_add('-A');",
+					Expected: []sql.Row{{"{0}"}},
+				},
+				{
+					Query: "SELECT * FROM dolt_status ORDER BY table_name;",
+					Expected: []sql.Row{
+						{"newschema", 1, "new schema"},
+						{"newschema.dolt_ignore", 1, "new table"},
+						{"newschema.foo", 1, "new table"},
+						{"newschema.generated_exception", 0, "new table"},
+						{"newschema.generated_foo", 1, "new table"},
+						{"newschema.test_foo", 0, "new table"},
+						{"public.dolt_ignore", 1, "new table"},
+						{"public.foo", 1, "new table"},
+						{"public.generated_exception", 1, "new table"},
+						{"public.generated_foo", 0, "new table"},
+					},
+				},
+			},
+		},
+		{
 			Name: "dolt log",
 			Assertions: []ScriptTestAssertion{
 				{
@@ -1493,67 +1808,175 @@ func TestUserSpaceDoltTables(t *testing.T) {
 			},
 		},
 		{
-			Name: "dolt docs",
+			Name:        "dolt procedures",
 			SetUpScript: []string{
-				"INSERT INTO dolt.docs values ('README.md', 'testing')",
+				// TODO: Create procedure when supported
 			},
 			Assertions: []ScriptTestAssertion{
 				{
-					Query: `SELECT * FROM dolt.docs`,
-					Expected: []sql.Row{
-						{"README.md", "testing"},
-					},
-				},
-				{
-					Query: `SELECT * FROM dolt_docs`,
-					Expected: []sql.Row{
-						{"README.md", "testing"},
-					},
-				},
-				{
-					Skip:     true, // TODO: referencing items outside the schema or database is not yet supported
-					Query:    `SELECT dolt.docs.doc_name FROM dolt.docs`,
-					Expected: []sql.Row{{"README.md"}},
-				},
-				{
-					Skip:     true, // TODO: table not found: dolt_docs
-					Query:    `SELECT dolt_docs.doc_name FROM dolt_docs`,
-					Expected: []sql.Row{{"README.md"}},
-				},
-				{
-					Query:       `SELECT * FROM public.docs`,
-					ExpectedErr: "table not found",
-				},
-				{
-					Query:       `SELECT * FROM docs`,
-					ExpectedErr: "table not found",
-				},
-				{
-					Query:    `CREATE TABLE docs (id INT PRIMARY KEY)`,
+					Query:    `SELECT * FROM dolt_procedures`,
 					Expected: []sql.Row{},
 				},
 				{
-					Query:    `INSERT INTO docs VALUES (1)`,
+					Query:    `SELECT * FROM public.dolt_procedures`,
 					Expected: []sql.Row{},
 				},
 				{
-					Query:    `SELECT * FROM docs`,
+					Query:    `SELECT dolt_procedures.name FROM public.dolt_procedures`,
+					Expected: []sql.Row{},
+				},
+				{
+					Query:       `SELECT name FROM other.dolt_procedures`,
+					ExpectedErr: "database schema not found",
+				},
+				// TODO: Add diff tests when create procedure works
+				{
+					Query:    `CREATE SCHEMA newschema`,
+					Expected: []sql.Row{},
+				},
+				{
+					Query:    "SET search_path = 'newschema'",
+					Expected: []sql.Row{},
+				},
+				{
+					Query:    `SELECT * FROM newschema.dolt_procedures`,
+					Expected: []sql.Row{},
+				},
+				{
+					Query:    `SELECT name FROM dolt_procedures`,
+					Expected: []sql.Row{},
+				},
+				{
+					Query:    `SELECT name FROM public.dolt_procedures`,
+					Expected: []sql.Row{},
+				},
+				{
+					Query:    "SET search_path = 'newschema,public'",
+					Expected: []sql.Row{},
+				},
+				{
+					Query:    `SELECT name FROM dolt_procedures`,
+					Expected: []sql.Row{},
+				},
+			},
+		},
+		{
+			Name: "dolt rebase",
+			SetUpScript: []string{
+				// create a simple table
+				"create table t (pk int primary key);",
+				"select dolt_commit('-Am', 'creating table t');",
+
+				// create a new branch that we'll add more commits to later
+				"select dolt_branch('branch1');",
+
+				// create another commit on the main branch, right after where branch1 branched off
+				"insert into t values (0);",
+				"select dolt_commit('-am', 'inserting row 0');",
+
+				// switch to branch1 and create three more commits that each insert one row
+				"select dolt_checkout('branch1');",
+				"insert into t values (1);",
+				"select dolt_commit('-am', 'inserting row 1');",
+				"insert into t values (2);",
+				"select dolt_commit('-am', 'inserting row 2');",
+				"insert into t values (3);",
+				"select dolt_commit('-am', 'inserting row 3');",
+			},
+			Assertions: []ScriptTestAssertion{
+				{
+					Query: "select message from dolt_log;",
+					Expected: []sql.Row{
+						{"inserting row 3"},
+						{"inserting row 2"},
+						{"inserting row 1"},
+						{"creating table t"},
+						{"CREATE DATABASE"},
+						{"Initialize data repository"},
+					},
+				},
+				{
+					Query:    `select dolt_rebase('-i', 'main');`,
+					Expected: []sql.Row{{"{0,\"interactive rebase started on branch dolt_rebase_branch1; adjust the rebase plan in the dolt_rebase table, then continue rebasing by calling dolt_rebase('--continue')\"}"}},
+				},
+				{
+					Query: "select rebase_order, action, commit_message from dolt_rebase order by rebase_order;",
+					Expected: []sql.Row{
+						{float64(1), "pick", "inserting row 1"},
+						{float64(2), "pick", "inserting row 2"},
+						{float64(3), "pick", "inserting row 3"},
+					},
+				},
+				{
+					Query: "select rebase_order, action, commit_message from dolt.rebase order by rebase_order;",
+					Expected: []sql.Row{
+						{float64(1), "pick", "inserting row 1"},
+						{float64(2), "pick", "inserting row 2"},
+						{float64(3), "pick", "inserting row 3"},
+					},
+				},
+				{
+					Query: "select rebase.commit_message from dolt.rebase order by rebase_order;",
+					Expected: []sql.Row{
+						{"inserting row 1"},
+						{"inserting row 2"},
+						{"inserting row 3"},
+					},
+				},
+				{
+					Skip:  true, // TODO: table not found: dolt_rebase
+					Query: "select dolt_rebase.commit_message from dolt_rebase order by rebase_order;",
+					Expected: []sql.Row{
+						{"inserting row 1"},
+						{"inserting row 2"},
+						{"inserting row 3"},
+					},
+				},
+				{
+					Query:       `SELECT * FROM public.rebase`,
+					ExpectedErr: "table not found",
+				},
+				{
+					Query:       `SELECT * FROM rebase`,
+					ExpectedErr: "table not found",
+				},
+				{
+					Query:    `CREATE TABLE rebase (id INT PRIMARY KEY)`,
+					Expected: []sql.Row{},
+				},
+				{
+					Query:    `INSERT INTO rebase VALUES (1)`,
+					Expected: []sql.Row{},
+				},
+				{
+					Query:    `SELECT * FROM rebase`,
 					Expected: []sql.Row{{1}},
 				},
 				{
-					Query:    `SELECT doc_name FROM dolt.docs`,
-					Expected: []sql.Row{{"README.md"}},
+					Query: `SELECT commit_message FROM dolt.rebase`,
+					Expected: []sql.Row{
+						{"inserting row 1"},
+						{"inserting row 2"},
+						{"inserting row 3"},
+					},
+				},
+				{
+					Query:       `CREATE SCHEMA dolt`,
+					ExpectedErr: "schema exists",
 				},
 				{
 					Query:    "SET search_path = 'dolt'",
 					Expected: []sql.Row{},
 				},
 				{
-					Query:    `SELECT doc_name FROM docs`,
-					Expected: []sql.Row{{"README.md"}},
+					Query: `SELECT commit_message FROM rebase`,
+					Expected: []sql.Row{
+						{"inserting row 1"},
+						{"inserting row 2"},
+						{"inserting row 3"}},
 				},
 				{
-					Query:    `SELECT * FROM public.docs`,
+					Query:    `SELECT * FROM public.rebase`,
 					Expected: []sql.Row{{1}},
 				},
 				{
@@ -1561,7 +1984,7 @@ func TestUserSpaceDoltTables(t *testing.T) {
 					Expected: []sql.Row{},
 				},
 				{
-					Query:    `SELECT * FROM docs`,
+					Query:    `SELECT * FROM rebase`,
 					Expected: []sql.Row{{1}},
 				},
 				{
@@ -1569,12 +1992,67 @@ func TestUserSpaceDoltTables(t *testing.T) {
 					Expected: []sql.Row{},
 				},
 				{
-					Query:    `SELECT * FROM docs`,
+					Query:    `SELECT * FROM rebase`,
 					Expected: []sql.Row{{1}},
 				},
 				{
-					Query:    `SELECT * FROM DOCS`,
+					Query:    `SELECT * FROM REBASE`,
 					Expected: []sql.Row{{1}},
+				},
+				{
+					// Remove created table so we can continue with the rebase
+					Query:    `DROP TABLE public.rebase;`,
+					Expected: []sql.Row{},
+				},
+				{
+					Query:    "update dolt.rebase set action='reword', commit_message='insert rows' where rebase_order=1;",
+					Expected: []sql.Row{},
+				},
+				{
+					Query:    "update dolt.rebase set action='drop' where rebase_order=2;",
+					Expected: []sql.Row{},
+				},
+				{
+					Query:    "update dolt_rebase set action='fixup' where rebase_order=3;",
+					Expected: []sql.Row{},
+				},
+				{
+					Query: "select rebase_order, action, commit_message from dolt_rebase order by rebase_order;",
+					Expected: []sql.Row{
+						{float64(1), "reword", "insert rows"},
+						{float64(2), "drop", "inserting row 2"},
+						{float64(3), "fixup", "inserting row 3"},
+					},
+				},
+				{
+					Query: "select rebase_order, action, commit_message from dolt.rebase order by rebase_order;",
+					Expected: []sql.Row{
+						{float64(1), "reword", "insert rows"},
+						{float64(2), "drop", "inserting row 2"},
+						{float64(3), "fixup", "inserting row 3"},
+					},
+				},
+				{
+					Query:    "select dolt_rebase('--continue');",
+					Expected: []sql.Row{{"{0,\"Successfully rebased and updated refs/heads/branch1\"}"}},
+				},
+				{
+					Query: "select message from dolt_log;",
+					Expected: []sql.Row{
+						{"insert rows"},
+						{"inserting row 0"},
+						{"creating table t"},
+						{"CREATE DATABASE"},
+						{"Initialize data repository"},
+					},
+				},
+				{
+					Query:       "select * from dolt_rebase;",
+					ExpectedErr: "table not found: dolt_rebase",
+				},
+				{
+					Query:       "select * from dolt.rebase;",
+					ExpectedErr: "table not found: rebase",
 				},
 			},
 		},
@@ -1831,6 +2309,7 @@ func TestUserSpaceDoltTables(t *testing.T) {
 			Name: "dolt schemas",
 			SetUpScript: []string{
 				"create view myView as select 2 + 2",
+				// TODO: Add more tests when triggers and events work in doltgres
 			},
 			Assertions: []ScriptTestAssertion{
 				{
@@ -1844,6 +2323,201 @@ func TestUserSpaceDoltTables(t *testing.T) {
 							"NO_ENGINE_SUBSTITUTION,ONLY_FULL_GROUP_BY,STRICT_TRANS_TABLES",
 						},
 					},
+				},
+				{
+					Query: `SELECT * FROM public.dolt_schemas`,
+					Expected: []sql.Row{
+						{
+							"view",
+							"myview",
+							"create view myView as select 2 + 2",
+							"{\"CreatedAt\":0}",
+							"NO_ENGINE_SUBSTITUTION,ONLY_FULL_GROUP_BY,STRICT_TRANS_TABLES",
+						},
+					},
+				},
+				{
+					Query:    `SELECT dolt_schemas.name FROM public.dolt_schemas`,
+					Expected: []sql.Row{{"myview"}},
+				},
+				{
+					Query:    `SELECT * FROM public.myview`,
+					Expected: []sql.Row{{4}},
+				},
+				{
+					Query:       `SELECT name FROM other.dolt_schemas`,
+					ExpectedErr: "database schema not found",
+				},
+				{
+					Query: `SELECT * FROM dolt_diff_summary('main', 'WORKING')`,
+					Expected: []sql.Row{
+						{"", "public.dolt_schemas", "added", 1, 1},
+					},
+				},
+				{
+					Query: `SELECT * FROM dolt_diff_summary('main', 'WORKING', 'dolt_schemas')`,
+					Expected: []sql.Row{
+						{"", "public.dolt_schemas", "added", 1, 1},
+					},
+				},
+				{
+					Query: `SELECT * FROM dolt_diff_summary('main', 'WORKING', 'dolt_schemas')`,
+					Expected: []sql.Row{
+						{"", "public.dolt_schemas", "added", 1, 1},
+					},
+				},
+				{
+					Query: `SELECT diff_type, from_name, to_name FROM dolt_diff('main', 'WORKING', 'dolt_schemas')`,
+					Expected: []sql.Row{
+						{"added", nil, "myview"},
+					},
+				},
+				{
+					Query: `SELECT diff_type, from_name, to_name FROM dolt_diff('main', 'WORKING', 'dolt_schemas')`,
+					Expected: []sql.Row{
+						{"added", nil, "myview"},
+					},
+				},
+				{
+					Query:    `CREATE SCHEMA newschema`,
+					Expected: []sql.Row{},
+				},
+				{
+					Query:    "SET search_path = 'newschema'",
+					Expected: []sql.Row{},
+				},
+				{
+					Query:       `SELECT * FROM myview`,
+					ExpectedErr: "table not found: myview",
+				},
+				{
+					Query:    `SELECT * FROM public.myview`,
+					Expected: []sql.Row{{4}},
+				},
+				{
+					Query:    `CREATE VIEW testView AS SELECT 1 + 1`,
+					Expected: []sql.Row{},
+				},
+				{
+					Query: `SELECT * FROM newschema.dolt_schemas`,
+					Expected: []sql.Row{
+						{
+							"view",
+							"testview",
+							"CREATE VIEW testView AS SELECT 1 + 1",
+							"{\"CreatedAt\":0}",
+							"NO_ENGINE_SUBSTITUTION,ONLY_FULL_GROUP_BY,STRICT_TRANS_TABLES",
+						},
+					},
+				},
+				{
+					Query:    `SELECT name FROM dolt_schemas`,
+					Expected: []sql.Row{{"testview"}},
+				},
+				{
+					Query: "SELECT table_schema, table_name FROM information_schema.views",
+					Expected: []sql.Row{
+						{"newschema", "testview"},
+						{"public", "myview"},
+					},
+				},
+				{
+					Query: `SELECT * FROM dolt_diff_summary('main', 'WORKING', 'dolt_schemas')`,
+					Expected: []sql.Row{
+						{"", "newschema.dolt_schemas", "added", 1, 1},
+					},
+				},
+				{
+					Skip:  true, // TODO: Should be able to specify schema
+					Query: `SELECT * FROM dolt_diff_summary('main', 'WORKING', 'public.dolt_schemas')`,
+					Expected: []sql.Row{
+						{"", "public.dolt_schemas", "added", 1, 1},
+					},
+				},
+				{
+					Query:    `SELECT name FROM public.dolt_schemas`,
+					Expected: []sql.Row{{"myview"}},
+				},
+				{
+					Query:       "DROP VIEW myView",
+					ExpectedErr: "the view postgres.myview does not exist",
+				},
+				{
+					Query:    "DROP VIEW public.myView",
+					Expected: []sql.Row{},
+				},
+				{
+					Query:    `SELECT name FROM public.dolt_schemas`,
+					Expected: []sql.Row{},
+				},
+				{
+					Query:    "create view public.myNewView as select 3 + 3",
+					Expected: []sql.Row{},
+				},
+				{
+					Query:    `SELECT name FROM public.dolt_schemas`,
+					Expected: []sql.Row{{"mynewview"}},
+				},
+				{
+					Query:    `SELECT name FROM dolt_schemas`,
+					Expected: []sql.Row{{"testview"}},
+				},
+				{
+					Query:    "SET search_path = 'newschema,public'",
+					Expected: []sql.Row{},
+				},
+				{
+					Query:    `SELECT name FROM dolt_schemas`,
+					Expected: []sql.Row{{"testview"}},
+				},
+				{
+					Query: `SELECT * FROM dolt_diff_summary('main', 'WORKING', 'dolt_schemas')`,
+					Expected: []sql.Row{
+						{"", "newschema.dolt_schemas", "added", 1, 1},
+					},
+				},
+				// Test same view name on different schemas
+				{
+					Query:    "SET search_path = 'public'",
+					Expected: []sql.Row{},
+				},
+				{
+					Query:    `CREATE VIEW testView AS SELECT 4 + 4`,
+					Expected: []sql.Row{},
+				},
+				{
+					Query: `SELECT name, fragment FROM dolt_schemas`,
+					Expected: []sql.Row{
+						{"mynewview", "create view public.myNewView as select 3 + 3"},
+						{"testview", "CREATE VIEW testView AS SELECT 4 + 4"},
+					},
+				},
+				{
+					Query:    `SELECT name, fragment FROM newschema.dolt_schemas`,
+					Expected: []sql.Row{{"testview", "CREATE VIEW testView AS SELECT 1 + 1"}},
+				},
+				{
+					Query: `SELECT name, fragment FROM dolt_schemas`,
+					Expected: []sql.Row{
+						{"mynewview", "create view public.myNewView as select 3 + 3"},
+						{"testview", "CREATE VIEW testView AS SELECT 4 + 4"},
+					},
+				},
+				{
+					Query:    "DROP VIEW IF EXISTS noexist.testView",
+					Expected: []sql.Row{},
+				},
+				{
+					Query:    "DROP VIEW IF EXISTS newschema.testView",
+					Expected: []sql.Row{},
+				},
+				{
+					Query:    `SELECT name FROM newschema.dolt_schemas`,
+					Expected: []sql.Row{},
+				},
+				{
+					Query:    `SELECT name FROM dolt_schemas`,
+					Expected: []sql.Row{{"mynewview"}, {"testview"}},
 				},
 			},
 		},
