@@ -21,18 +21,21 @@ import (
 )
 
 // IDs are basically arbitrary, we just need to ensure that they do not conflict with existing IDs
+// Comments are to match the Stringer formatting rules in the original rule definition file, but we can't generate
+// human-readable strings for these extended types because they are in another package.
+// We could move these into the main GMS package to fix this deficit, if we wanted.
 const (
-	ruleId_TypeSanitizer analyzer.RuleId = iota + 1000
-	ruleId_AddDomainConstraints
-	ruleId_AssignInsertCasts
-	ruleId_AssignUpdateCasts
-	ruleId_ReplaceIndexedTables
-	ruleId_ReplaceSerial
-	ruleId_ReplaceDropTable
-	ruleId_AddImplicitPrefixLengths
-	ruleId_InsertContextRootFinalizer
-	ruleId_ResolveType
-	ruleId_ReplaceArithmeticExpressions
+	ruleId_TypeSanitizer                analyzer.RuleId = iota + 1000 // typeSanitizer
+	ruleId_AddDomainConstraints                                       // addDomainConstraints
+	ruleId_AssignInsertCasts                                          // assignInsertCasts
+	ruleId_AssignUpdateCasts                                          // assignUpdateCasts
+	ruleId_ReplaceIndexedTables                                       // replaceIndexedTables
+	ruleId_ReplaceSerial                                              // replaceSerial
+	ruleId_ReplaceDropTable                                           // replaceDropTable
+	ruleId_AddImplicitPrefixLengths                                   // addImplicitPrefixLengths
+	ruleId_InsertContextRootFinalizer                                 // insertContextRootFinalizer
+	ruleId_ResolveType                                                // resolveType
+	ruleId_ReplaceArithmeticExpressions                               // replaceArithmeticExpressions
 )
 
 // Init adds additional rules to the analyzer to handle Doltgres-specific functionality.
