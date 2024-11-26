@@ -1970,3 +1970,31 @@ func TestFormatFunctions(t *testing.T) {
 		},
 	})
 }
+
+func TestUnknownFunctions(t *testing.T) {
+	RunScripts(t, []ScriptTest{
+		{
+			Name:        "unknown functions",
+			SetUpScript: []string{},
+			Assertions: []ScriptTestAssertion{
+				{
+					Query:       `SELECT unknown_func();`,
+					ExpectedErr: `function: 'unknown_func' not found`,
+				},
+			},
+		},
+		{
+			Name: "Unsupported group_concat syntax",
+			SetUpScript: []string{
+				"CREATE TABLE x (pk int)",
+				"INSERT INTO x VALUES (1),(2),(3),(4),(NULL)",
+			},
+			Assertions: []ScriptTestAssertion{
+				{
+					Query:       `SELECT group_concat(pk ORDER BY pk) FROM x;`,
+					ExpectedErr: "is not yet supported", // error message is kind of nonsensical, we just want to make sure there isn't a panic
+				},
+			},
+		},
+	})
+}
