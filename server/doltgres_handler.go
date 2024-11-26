@@ -223,7 +223,7 @@ func (h *DoltgresHandler) convertBindParameters(ctx *sql.Context, types []uint32
 			return nil, err
 		}
 
-		pgTyp, ok := pgtypes.OidToBuildInDoltgresType[typ]
+		pgTyp, ok := pgtypes.OidToBuiltInDoltgresType[typ]
 		if !ok {
 			return nil, fmt.Errorf("unhandled oid type: %v", typ)
 		}
@@ -462,8 +462,10 @@ func (h *DoltgresHandler) resultForDefaultIter(ctx *sql.Context, schema sql.Sche
 	var rowChan = make(chan sql.Row, 512)
 
 	pan2err := func() {
-		if recoveredPanic := recover(); recoveredPanic != nil {
-			returnErr = fmt.Errorf("DoltgresHandler caught panic: %v", recoveredPanic)
+		if HandlePanics {
+			if recoveredPanic := recover(); recoveredPanic != nil {
+				returnErr = fmt.Errorf("DoltgresHandler caught panic: %v", recoveredPanic)
+			}
 		}
 	}
 

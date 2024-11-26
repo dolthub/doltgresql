@@ -37,7 +37,7 @@ type InSubquery struct {
 	// These are assigned in WithChildren, so refer there for more information.
 	leftLiteral   *Literal
 	rightLiterals []*Literal
-	compFuncs     []*framework.CompiledFunction
+	compFuncs     []framework.Function
 }
 
 var _ vitess.Injectable = (*InSubquery)(nil)
@@ -200,7 +200,7 @@ func (in *InSubquery) WithChildren(children ...sql.Expression) (sql.Expression, 
 		sch := sq.Query.Schema()
 		leftLiteral := &Literal{typ: leftType}
 		rightLiterals := make([]*Literal, len(sch))
-		compFuncs := make([]*framework.CompiledFunction, len(sch))
+		compFuncs := make([]framework.Function, len(sch))
 		allValidChildren := true
 		for i, rightCol := range sch {
 			rightType, ok := rightCol.Type.(pgtypes.DoltgresType)

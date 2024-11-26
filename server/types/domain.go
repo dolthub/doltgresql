@@ -16,6 +16,7 @@ package types
 
 import (
 	"github.com/dolthub/go-mysql-server/sql"
+	"github.com/lib/pq/oid"
 )
 
 // NewDomainType creates new instance of domain DoltgresType.
@@ -42,16 +43,16 @@ func NewDomainType(
 		IsDefined:     true,
 		Delimiter:     ",",
 		RelID:         0,
-		SubscriptFunc: "",
+		SubscriptFunc: toFuncID("-"),
 		Elem:          0,
 		Array:         0, // TODO: refers to array type of this type
-		InputFunc:     "domain_in",
+		InputFunc:     toFuncID("domain_in", oid.T_cstring, oid.T_oid, oid.T_int4),
 		OutputFunc:    asType.OutputFunc,
-		ReceiveFunc:   "domain_recv",
+		ReceiveFunc:   toFuncID("domain_recv", oid.T_internal, oid.T_oid, oid.T_int4),
 		SendFunc:      asType.SendFunc,
 		ModInFunc:     asType.ModInFunc,
 		ModOutFunc:    asType.ModOutFunc,
-		AnalyzeFunc:   "-",
+		AnalyzeFunc:   toFuncID("-"),
 		Align:         asType.Align,
 		Storage:       asType.Storage,
 		NotNull:       notNull,

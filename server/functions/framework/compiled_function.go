@@ -29,6 +29,13 @@ import (
 // ErrFunctionDoesNotExist is returned when the function in use cannot be found.
 var ErrFunctionDoesNotExist = errors.NewKind(`function %s does not exist`)
 
+// Function is an expression that represents either a CompiledFunction or a QuickFunction.
+type Function interface {
+	sql.FunctionExpression
+	sql.NonDeterministicExpression
+	specificFuncImpl()
+}
+
 // CompiledFunction is an expression that represents a fully-analyzed PostgreSQL function.
 type CompiledFunction struct {
 	Name          string
@@ -209,6 +216,15 @@ func (c *CompiledFunction) IsNonDeterministic() bool {
 	return true
 }
 
+// IsVariadic returns whether this function has any variadic parameters.
+func (c *CompiledFunction) IsVariadic() bool {
+	if c.overload.Valid() {
+		return c.overload.params.variadic != -1
+	}
+	// Compilation must have errored, so we'll just return true
+	return true
+}
+
 // Eval implements the interface sql.Expression.
 func (c *CompiledFunction) Eval(ctx *sql.Context, row sql.Row) (interface{}, error) {
 	// If we have a stashed error, then we should return that now. Errors are stashed when they're supposed to be
@@ -217,23 +233,30 @@ func (c *CompiledFunction) Eval(ctx *sql.Context, row sql.Row) (interface{}, err
 		return nil, c.stashedErr
 	}
 
-	// Evaluate all arguments.
-	args, err := c.evalArgs(ctx, row)
-	if err != nil {
-		return nil, err
-	}
-
-	if c.overload.Function().IsStrict() {
-		for i := range args {
-			if args[i] == nil {
-				return nil, nil
+	// Evaluate all arguments, returning immediately if we encounter a null argument and the function is marked STRICT
+	var err error
+	isStrict := c.overload.Function().IsStrict()
+	args := make([]any, len(c.Arguments))
+	for i, arg := range c.Arguments {
+		args[i], err = arg.Eval(ctx, row)
+		if err != nil {
+			return nil, err
+		}
+		// TODO: once we remove GMS types from all of our expressions, we can remove this step which ensures the correct type
+		if _, ok := arg.Type().(pgtypes.DoltgresType); !ok {
+			dt, err := pgtypes.FromGmsTypeToDoltgresType(arg.Type())
+			if err != nil {
+				return nil, err
 			}
+			args[i], _, _ = dt.Convert(args[i])
+		}
+		if args[i] == nil && isStrict {
+			return nil, nil
 		}
 	}
 
-	targetParamTypes := c.overload.Function().GetParameters()
-
 	if len(c.overload.casts) > 0 {
+		targetParamTypes := c.overload.Function().GetParameters()
 		for i, arg := range args {
 			// For variadic params, we need to identify the corresponding target type
 			var targetType pgtypes.DoltgresType
@@ -292,6 +315,43 @@ func (c *CompiledFunction) WithChildren(children ...sql.Expression) (sql.Express
 
 	// We have to re-resolve here, since the change in children may require it (e.g. we have more type info than we did)
 	return newCompiledFunctionInternal(c.Name, children, c.overloads, c.fnOverloads, c.IsOperator), nil
+}
+
+// GetQuickFunction returns the QuickFunction form of this function, if it exists. If one does not exist, then this
+// return nil.
+func (c *CompiledFunction) GetQuickFunction() QuickFunction {
+	if c.stashedErr != nil || !c.Resolved() || !c.overload.Valid() || c.overload.params.variadic != -1 ||
+		len(c.overload.casts) > 0 {
+		return nil
+	}
+	switch f := c.overload.Function().(type) {
+	case Function1:
+		return &QuickFunction1{
+			Name:         c.Name,
+			Argument:     c.Arguments[0],
+			IsStrict:     c.overload.Function().IsStrict(),
+			callResolved: ([2]pgtypes.DoltgresType)(c.callResolved),
+			function:     f,
+		}
+	case Function2:
+		return &QuickFunction2{
+			Name:         c.Name,
+			Arguments:    ([2]sql.Expression)(c.Arguments),
+			IsStrict:     c.overload.Function().IsStrict(),
+			callResolved: ([3]pgtypes.DoltgresType)(c.callResolved),
+			function:     f,
+		}
+	case Function3:
+		return &QuickFunction3{
+			Name:         c.Name,
+			Arguments:    ([3]sql.Expression)(c.Arguments),
+			IsStrict:     c.overload.Function().IsStrict(),
+			callResolved: ([4]pgtypes.DoltgresType)(c.callResolved),
+			function:     f,
+		}
+	default:
+		return nil
+	}
 }
 
 // resolve returns an overloadMatch that either matches the given parameters exactly, or is a viable match after casting.
@@ -618,34 +678,13 @@ func (c *CompiledFunction) resolvePolymorphicReturnType(functionInterfaceTypes [
 		if firstPolymorphicType.IsArrayType() {
 			return firstPolymorphicType
 		} else if firstPolymorphicType.OID == uint32(oid.T_internal) {
-			return pgtypes.OidToBuildInDoltgresType[firstPolymorphicType.BaseTypeForInternal]
+			return pgtypes.OidToBuiltInDoltgresType[firstPolymorphicType.BaseTypeForInternal]
 		} else {
 			return firstPolymorphicType.ToArrayType()
 		}
 	default:
 		panic(fmt.Errorf("`%s` is not yet handled during function compilation", returnType.String()))
 	}
-}
-
-// evalArgs evaluates the function args within an Eval call.
-func (c *CompiledFunction) evalArgs(ctx *sql.Context, row sql.Row) ([]any, error) {
-	args := make([]any, len(c.Arguments))
-	for i, arg := range c.Arguments {
-		var err error
-		args[i], err = arg.Eval(ctx, row)
-		if err != nil {
-			return nil, err
-		}
-		// TODO: once we remove GMS types from all of our expressions, we can remove this step which ensures the correct type
-		if _, ok := arg.Type().(pgtypes.DoltgresType); !ok {
-			dt, err := pgtypes.FromGmsTypeToDoltgresType(arg.Type())
-			if err != nil {
-				return nil, err
-			}
-			args[i], _, _ = dt.Convert(args[i])
-		}
-	}
-	return args, nil
 }
 
 // analyzeParameters analyzes the parameters within an Eval call.
@@ -669,3 +708,6 @@ func (c *CompiledFunction) analyzeParameters() (originalTypes []pgtypes.Doltgres
 	}
 	return originalTypes, nil
 }
+
+// specificFuncImpl implements the interface sql.Expression.
+func (*CompiledFunction) specificFuncImpl() {}

@@ -162,16 +162,16 @@ func (iter *pgTypeRowIter) Next(ctx *sql.Context) (sql.Row, error) {
 		typ.IsDefined,           //typisdefined
 		typ.Delimiter,           //typdelim
 		typ.RelID,               //typrelid
-		typ.SubscriptFunc,       //typsubscript
+		typ.SubscriptFuncName(), //typsubscript
 		typ.Elem,                //typelem
 		typ.Array,               //typarray
-		typ.InputFunc,           //typinput
-		typ.OutputFunc,          //typoutput
-		typ.ReceiveFunc,         //typreceive
-		typ.SendFunc,            //typsend
-		typ.ModInFunc,           //typmodin
-		typ.ModOutFunc,          //typmodout
-		typ.AnalyzeFunc,         //typanalyze
+		typ.InputFuncName(),     //typinput
+		typ.OutputFuncName(),    //typoutput
+		typ.ReceiveFuncName(),   //typreceive
+		typ.SendFuncName(),      //typsend
+		typ.ModInFuncName(),     //typmodin
+		typ.ModOutFuncName(),    //typmodout
+		typ.AnalyzeFuncName(),   //typanalyze
 		string(typ.Align),       //typalign
 		string(typ.Storage),     //typstorage
 		typ.NotNull,             //typnotnull

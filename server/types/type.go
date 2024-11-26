@@ -47,16 +47,16 @@ type DoltgresType struct {
 	IsDefined     bool
 	Delimiter     string
 	RelID         uint32 // for Composite types
-	SubscriptFunc string
+	SubscriptFunc uint32
 	Elem          uint32
 	Array         uint32
-	InputFunc     string
-	OutputFunc    string
-	ReceiveFunc   string
-	SendFunc      string
-	ModInFunc     string
-	ModOutFunc    string
-	AnalyzeFunc   string
+	InputFunc     uint32
+	OutputFunc    uint32
+	ReceiveFunc   uint32
+	SendFunc      uint32
+	ModInFunc     uint32
+	ModOutFunc    uint32
+	AnalyzeFunc   uint32
 	Align         TypeAlignment
 	Storage       TypeStorage
 	NotNull       bool   // for Domain types
@@ -71,7 +71,7 @@ type DoltgresType struct {
 	// Below are not part of pg_type fields
 	Checks       []*sql.CheckDefinition // TODO: should be in `pg_constraint` for Domain types
 	AttTypMod    int32                  // TODO: should be in `pg_attribute.atttypmod`
-	CompareFunc  string                 // TODO: should be in `pg_amproc`
+	CompareFunc  uint32                 // TODO: should be in `pg_amproc`
 	InternalName string                 // Name and InternalName differ for some types. e.g.: "int2" vs "smallint"
 
 	// Below are not stored
@@ -91,13 +91,18 @@ func NewUnresolvedDoltgresType(sch, name string) DoltgresType {
 	}
 }
 
+// AnalyzeFuncName returns the name that would be displayed in pg_type for the `typanalyze` field.
+func (t DoltgresType) AnalyzeFuncName() string {
+	return globalFunctionRegistry.GetString(t.AnalyzeFunc)
+}
+
 // ArrayBaseType returns a base type of given array type.
 // If this type is not an array type, it returns itself.
 func (t DoltgresType) ArrayBaseType() DoltgresType {
 	if !t.IsArrayType() {
 		return t
 	}
-	elem, ok := OidToBuildInDoltgresType[t.Elem]
+	elem, ok := OidToBuiltInDoltgresType[t.Elem]
 	if !ok {
 		panic(fmt.Sprintf("cannot get base type from: %s", t.Name))
 	}
@@ -327,7 +332,7 @@ func (t DoltgresType) Convert(v interface{}) (interface{}, sql.ConvertInRange, e
 // It can be a nested domain type, so it recursively searches for a valid base type.
 func (t DoltgresType) DomainUnderlyingBaseType() DoltgresType {
 	// TODO: handle user-defined type
-	bt, ok := OidToBuildInDoltgresType[t.BaseTypeOID]
+	bt, ok := OidToBuiltInDoltgresType[t.BaseTypeOID]
 	if !ok {
 		panic(fmt.Sprintf("unable to get DoltgresType from OID: %v", t.BaseTypeOID))
 	}
@@ -355,22 +360,40 @@ func (t DoltgresType) FormatValue(val any) (string, error) {
 	return t.IoOutput(nil, val)
 }
 
+// InputFuncName returns the name that would be displayed in pg_type for the `typinput` field.
+func (t DoltgresType) InputFuncName() string {
+	return globalFunctionRegistry.GetString(t.InputFunc)
+}
+
 // IoInput converts input string value to given type value.
 func (t DoltgresType) IoInput(ctx *sql.Context, input string) (any, error) {
-	return receiveInputFunction(ctx, t.InputFunc, t, Cstring, input)
+	if t.ModInFunc != 0 || t.TypType == TypeType_Domain || t.IsArrayType() {
+		if t.Elem != 0 {
+			return globalFunctionRegistry.GetFunction(t.InputFunc).CallVariadic(ctx, input, t.Elem, t.AttTypMod)
+		} else {
+			return globalFunctionRegistry.GetFunction(t.InputFunc).CallVariadic(ctx, input, t.OID, t.AttTypMod)
+		}
+	} else {
+		return globalFunctionRegistry.GetFunction(t.InputFunc).CallVariadic(ctx, input)
+	}
 }
 
 // IoOutput converts given type value to output string.
 func (t DoltgresType) IoOutput(ctx *sql.Context, val any) (string, error) {
-	o, err := sendOutputFunction(ctx, t.OutputFunc, t, val)
+	var o any
+	var err error
+	if t.ModInFunc != 0 || t.IsArrayType() {
+		send := globalFunctionRegistry.GetFunction(t.OutputFunc)
+		resolvedTypes := send.ResolvedTypes()
+		resolvedTypes[0] = t
+		o, err = send.WithResolvedTypes(resolvedTypes).(QuickFunction).CallVariadic(ctx, val)
+	} else {
+		o, err = globalFunctionRegistry.GetFunction(t.OutputFunc).CallVariadic(ctx, val)
+	}
 	if err != nil {
 		return "", err
 	}
-	output, ok := o.(string)
-	if !ok {
-		return "", fmt.Errorf(`expected string, got %T`, output)
-	}
-	return output, nil
+	return o.(string), nil
 }
 
 // IsArrayType returns true if the type is of 'array' category
@@ -510,19 +533,34 @@ func (t DoltgresType) MaxTextResponseByteLength(ctx *sql.Context) uint32 {
 	}
 }
 
+// ModInFuncName returns the name that would be displayed in pg_type for the `typmodin` field.
+func (t DoltgresType) ModInFuncName() string {
+	return globalFunctionRegistry.GetString(t.ModInFunc)
+}
+
+// ModOutFuncName returns the name that would be displayed in pg_type for the `typmodout` field.
+func (t DoltgresType) ModOutFuncName() string {
+	return globalFunctionRegistry.GetString(t.ModOutFunc)
+}
+
+// OutputFuncName returns the name that would be displayed in pg_type for the `typoutput` field.
+func (t DoltgresType) OutputFuncName() string {
+	return globalFunctionRegistry.GetString(t.OutputFunc)
+}
+
 // Promote implements the types.ExtendedType interface.
 func (t DoltgresType) Promote() sql.Type {
 	return t
 }
 
-// ReceiveFuncExists returns whether IO receive function exists for this type.
-func (t DoltgresType) ReceiveFuncExists() bool {
-	return t.ReceiveFunc != "-"
+// ReceiveFuncName returns the name that would be displayed in pg_type for the `typreceive` field.
+func (t DoltgresType) ReceiveFuncName() string {
+	return globalFunctionRegistry.GetString(t.ReceiveFunc)
 }
 
-// SendFuncExists returns whether IO send function exists for this type.
-func (t DoltgresType) SendFuncExists() bool {
-	return t.SendFunc != "-"
+// SendFuncName returns the name that would be displayed in pg_type for the `typsend` field.
+func (t DoltgresType) SendFuncName() string {
+	return globalFunctionRegistry.GetString(t.SendFunc)
 }
 
 // SerializedCompare implements the types.ExtendedType interface.
@@ -570,17 +608,23 @@ func (t DoltgresType) String() string {
 	return str
 }
 
+// SubscriptFuncName returns the name that would be displayed in pg_type for the `typsubscript` field.
+func (t DoltgresType) SubscriptFuncName() string {
+	return globalFunctionRegistry.GetString(t.SubscriptFunc)
+}
+
 // ToArrayType returns an array type of given base type.
 // For array types, ToArrayType causes them to return themselves.
 func (t DoltgresType) ToArrayType() DoltgresType {
 	if t.IsArrayType() {
 		return t
 	}
-	arr, ok := OidToBuildInDoltgresType[t.Array]
+	arr, ok := OidToBuiltInDoltgresType[t.Array]
 	if !ok {
 		panic(fmt.Sprintf("cannot get array type from: %s", t.Name))
 	}
 	arr.AttTypMod = t.AttTypMod
+	arr.InternalName = fmt.Sprintf("%s[]", t.String())
 	return arr
 }
 
@@ -642,11 +686,10 @@ func (t DoltgresType) Type() query.Type {
 
 // TypModIn encodes given text array value to type modifier in int32 format.
 func (t DoltgresType) TypModIn(ctx *sql.Context, val []any) (int32, error) {
-	// takes []cstring and return int32
-	if t.ModInFunc == "-" {
+	if t.ModInFunc == 0 {
 		return 0, fmt.Errorf("typmodin function for type '%s' doesn't exist", t.Name)
 	}
-	o, err := GetFunctionAndEvaluateForTypes(ctx, t.ModInFunc, []DoltgresType{CstringArray}, []any{val})
+	o, err := globalFunctionRegistry.GetFunction(t.ModInFunc).CallVariadic(ctx, val)
 	if err != nil {
 		return 0, err
 	}
@@ -659,11 +702,10 @@ func (t DoltgresType) TypModIn(ctx *sql.Context, val []any) (int32, error) {
 
 // TypModOut decodes type modifier in int32 format to string representation of it.
 func (t DoltgresType) TypModOut(ctx *sql.Context, val int32) (string, error) {
-	// takes int32 and returns cstring
-	if t.ModOutFunc == "-" {
+	if t.ModOutFunc == 0 {
 		return "", fmt.Errorf("typmodout function for type '%s' doesn't exist", t.Name)
 	}
-	o, err := GetFunctionAndEvaluateForTypes(ctx, t.ModOutFunc, []DoltgresType{Int32}, []any{val})
+	o, err := globalFunctionRegistry.GetFunction(t.ModOutFunc).CallVariadic(ctx, val)
 	if err != nil {
 		return "", err
 	}
@@ -728,22 +770,20 @@ func (t DoltgresType) SerializeValue(val any) ([]byte, error) {
 	if val == nil {
 		return nil, nil
 	}
-	if !t.SendFuncExists() {
-		return nil, fmt.Errorf("send function for type '%s' doesn't exist", t.Name)
+	var o any
+	var err error
+	if t.ModInFunc != 0 || t.IsArrayType() {
+		send := globalFunctionRegistry.GetFunction(t.SendFunc)
+		resolvedTypes := send.ResolvedTypes()
+		resolvedTypes[0] = t
+		o, err = send.WithResolvedTypes(resolvedTypes).(QuickFunction).CallVariadic(nil, val)
+	} else {
+		o, err = globalFunctionRegistry.GetFunction(t.SendFunc).CallVariadic(nil, val)
 	}
-	// TODO: need valid sql.Context
-	o, err := sendOutputFunction(nil, t.SendFunc, t, val)
-	if err != nil {
+	if err != nil || o == nil {
 		return nil, err
 	}
-	if o == nil {
-		return nil, nil
-	}
-	output, ok := o.([]byte)
-	if !ok {
-		return nil, fmt.Errorf(`expected []byte, got %T`, output)
-	}
-	return output, nil
+	return o.([]byte), nil
 }
 
 // DeserializeValue implements the types.ExtendedType interface.
@@ -751,9 +791,13 @@ func (t DoltgresType) DeserializeValue(val []byte) (any, error) {
 	if len(val) == 0 {
 		return nil, nil
 	}
-	if !t.ReceiveFuncExists() {
-		return nil, fmt.Errorf("receive function for type '%s' doesn't exist", t.Name)
+	if t.ModInFunc != 0 || t.TypType == TypeType_Domain || t.IsArrayType() {
+		if t.Elem != 0 {
+			return globalFunctionRegistry.GetFunction(t.ReceiveFunc).CallVariadic(nil, val, t.Elem, t.AttTypMod)
+		} else {
+			return globalFunctionRegistry.GetFunction(t.ReceiveFunc).CallVariadic(nil, val, t.OID, t.AttTypMod)
+		}
+	} else {
+		return globalFunctionRegistry.GetFunction(t.ReceiveFunc).CallVariadic(nil, val)
 	}
-	// TODO: need valid sql.Context
-	return receiveInputFunction(nil, t.ReceiveFunc, t, NewInternalTypeWithBaseType(t.OID), val)
 }

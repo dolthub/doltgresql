@@ -26,7 +26,7 @@ import (
 // UnaryOperator represents a VALUE OPERATOR VALUE expression.
 type UnaryOperator struct {
 	operator     framework.Operator
-	compiledFunc *framework.CompiledFunction
+	compiledFunc framework.Function
 }
 
 var _ vitess.Injectable = (*UnaryOperator)(nil)
@@ -63,7 +63,14 @@ func (b *UnaryOperator) String() string {
 		return fmt.Sprintf("%s?", b.operator.String())
 	}
 	// We know that we'll always have one parameter here
-	return fmt.Sprintf("%s%s", b.operator.String(), b.compiledFunc.Arguments[0].String())
+	switch f := b.compiledFunc.(type) {
+	case *framework.CompiledFunction:
+		return fmt.Sprintf("%s%s", b.operator.String(), f.Arguments[0].String())
+	case *framework.QuickFunction1:
+		return fmt.Sprintf("%s%s", b.operator.String(), f.Argument.String())
+	default:
+		return fmt.Sprintf("unexpected unary operator function type: %T", b.compiledFunc)
+	}
 }
 
 // Type implements the sql.Expression interface.
@@ -82,7 +89,7 @@ func (b *UnaryOperator) WithChildren(children ...sql.Expression) (sql.Expression
 	}
 	return &UnaryOperator{
 		operator:     b.operator,
-		compiledFunc: compiledFunc.(*framework.CompiledFunction),
+		compiledFunc: compiledFunc.(framework.Function),
 	}, nil
 }
 

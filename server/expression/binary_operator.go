@@ -27,7 +27,7 @@ import (
 // BinaryOperator represents a VALUE OPERATOR VALUE expression.
 type BinaryOperator struct {
 	operator     framework.Operator
-	compiledFunc *framework.CompiledFunction
+	compiledFunc framework.Function
 }
 
 var _ vitess.Injectable = (*BinaryOperator)(nil)
@@ -71,8 +71,16 @@ func (b *BinaryOperator) String() string {
 		return fmt.Sprintf("? %s ?", b.operator.String())
 	}
 	// We know that we'll always have two parameters here
-	return fmt.Sprintf("%s %s %s",
-		b.compiledFunc.Arguments[0].String(), b.operator.String(), b.compiledFunc.Arguments[1].String())
+	switch f := b.compiledFunc.(type) {
+	case *framework.CompiledFunction:
+		return fmt.Sprintf("%s %s %s",
+			f.Arguments[0].String(), b.operator.String(), f.Arguments[1].String())
+	case *framework.QuickFunction2:
+		return fmt.Sprintf("%s %s %s",
+			f.Arguments[0].String(), b.operator.String(), f.Arguments[1].String())
+	default:
+		return fmt.Sprintf("unexpected binary operator function type: %T", b.compiledFunc)
+	}
 }
 
 // SwapParameters implements the expression.Equality interface.
@@ -106,7 +114,7 @@ func (b *BinaryOperator) WithChildren(children ...sql.Expression) (sql.Expressio
 	}
 	return &BinaryOperator{
 		operator:     b.operator,
-		compiledFunc: compiledFunc.(*framework.CompiledFunction),
+		compiledFunc: compiledFunc.(framework.Function),
 	}, nil
 }
 
@@ -143,11 +151,25 @@ func (b *BinaryOperator) Operator() framework.Operator {
 // Left implements the expression.BinaryExpression interface.
 func (b *BinaryOperator) Left() sql.Expression {
 	// We know that we'll always have two parameters here
-	return b.compiledFunc.Arguments[0]
+	switch f := b.compiledFunc.(type) {
+	case *framework.CompiledFunction:
+		return f.Arguments[0]
+	case *framework.QuickFunction2:
+		return f.Arguments[0]
+	default:
+		return nil
+	}
 }
 
 // Right implements the expression.BinaryExpression interface.
 func (b *BinaryOperator) Right() sql.Expression {
 	// We know that we'll always have two parameters here
-	return b.compiledFunc.Arguments[1]
+	switch f := b.compiledFunc.(type) {
+	case *framework.CompiledFunction:
+		return f.Arguments[1]
+	case *framework.QuickFunction2:
+		return f.Arguments[1]
+	default:
+		return nil
+	}
 }

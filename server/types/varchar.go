@@ -48,16 +48,16 @@ var VarChar = DoltgresType{
 	IsDefined:     true,
 	Delimiter:     ",",
 	RelID:         0,
-	SubscriptFunc: "-",
+	SubscriptFunc: toFuncID("-"),
 	Elem:          0,
 	Array:         uint32(oid.T__varchar),
-	InputFunc:     "varcharin",
-	OutputFunc:    "varcharout",
-	ReceiveFunc:   "varcharrecv",
-	SendFunc:      "varcharsend",
-	ModInFunc:     "varchartypmodin",
-	ModOutFunc:    "varchartypmodout",
-	AnalyzeFunc:   "-",
+	InputFunc:     toFuncID("varcharin", oid.T_cstring, oid.T_oid, oid.T_int4),
+	OutputFunc:    toFuncID("varcharout", oid.T_varchar),
+	ReceiveFunc:   toFuncID("varcharrecv", oid.T_internal, oid.T_oid, oid.T_int4),
+	SendFunc:      toFuncID("varcharsend", oid.T_varchar),
+	ModInFunc:     toFuncID("varchartypmodin", oid.T__cstring),
+	ModOutFunc:    toFuncID("varchartypmodout", oid.T_int4),
+	AnalyzeFunc:   toFuncID("-"),
 	Align:         TypeAlignment_Int,
 	Storage:       TypeStorage_Extended,
 	NotNull:       false,
@@ -70,7 +70,7 @@ var VarChar = DoltgresType{
 	Acl:           nil,
 	Checks:        nil,
 	AttTypMod:     -1,
-	CompareFunc:   "bttextcmp", // TODO: temporarily added
+	CompareFunc:   toFuncID("bttextcmp", oid.T_text, oid.T_text), // TODO: temporarily added
 }
 
 // NewVarCharType returns VarChar type with type modifier set
