@@ -32,6 +32,7 @@ const (
 	ruleId_AddImplicitPrefixLengths
 	ruleId_InsertContextRootFinalizer
 	ruleId_ResolveType
+	ruleId_ReplaceArithmeticExpressions
 )
 
 // Init adds additional rules to the analyzer to handle Doltgres-specific functionality.
@@ -59,6 +60,7 @@ func Init() {
 	analyzer.OnceAfterDefault = append(analyzer.OnceAfterDefault,
 		analyzer.Rule{Id: ruleId_ReplaceSerial, Apply: ReplaceSerial},
 		analyzer.Rule{Id: ruleId_ReplaceDropTable, Apply: ReplaceDropTable},
+		analyzer.Rule{Id: ruleId_ReplaceArithmeticExpressions, Apply: ReplaceArithmeticExpressions},
 	)
 
 	// The auto-commit rule writes the contents of the context, so we need to insert our finalizer before that
