@@ -581,14 +581,14 @@ func TestConvertPrepared(t *testing.T) {
 func TestScripts(t *testing.T) {
 	t.Skip()
 	h := newDoltgresServerHarness(t).WithSkippedQueries(append(newFormatSkippedScripts, []string{
-		"filter pushdown through join uppercase name", // syntax error (join without on)
+		"filter pushdown through join uppercase name",             // syntax error (join without on)
 		"issue 7958, update join uppercase table name validation", // update join syntax not supported
-		"Dolt issue 7957, update join matched rows", // update join syntax not supported
-		"update join with update trigger different value", // update join syntax not supported
-		"update join with update trigger same value", // update join syntax not supported
-		"update join with update trigger", // update join syntax not supported
-		"update join with update trigger if condition", // update join syntax not supported
-		"alter nil enum", // enum type unsupported
+		"Dolt issue 7957, update join matched rows",               // update join syntax not supported
+		"update join with update trigger different value",         // update join syntax not supported
+		"update join with update trigger same value",              // update join syntax not supported
+		"update join with update trigger",                         // update join syntax not supported
+		"update join with update trigger if condition",            // update join syntax not supported
+		"alter nil enum",      // enum type unsupported
 		"alter keyless table", // enum type unsupported
 	}...))
 	defer h.Close()

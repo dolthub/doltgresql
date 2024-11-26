@@ -15,13 +15,14 @@
 package analyzer
 
 import (
-	"github.com/dolthub/doltgresql/server/expression"
-	"github.com/dolthub/doltgresql/server/functions/framework"
 	"github.com/dolthub/go-mysql-server/sql"
 	"github.com/dolthub/go-mysql-server/sql/analyzer"
 	gms_expression "github.com/dolthub/go-mysql-server/sql/expression"
 	"github.com/dolthub/go-mysql-server/sql/plan"
 	"github.com/dolthub/go-mysql-server/sql/transform"
+
+	"github.com/dolthub/doltgresql/server/expression"
+	"github.com/dolthub/doltgresql/server/functions/framework"
 )
 
 func ReplaceArithmeticExpressions(ctx *sql.Context, a *analyzer.Analyzer, node sql.Node, scope *plan.Scope, selector analyzer.RuleSelector, qFlags *sql.QueryFlags) (sql.Node, transform.TreeIdentity, error) {
