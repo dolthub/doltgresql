@@ -1723,6 +1723,129 @@ func TestUserSpaceDoltTables(t *testing.T) {
 			},
 		},
 		{
+			Name: "dolt statistics",
+			SetUpScript: []string{
+				"CREATE TABLE horses (id int primary key, name varchar(10));",
+				"CREATE INDEX horses_name_idx ON horses(name);",
+				"insert into horses select x, 'Steve' from (with recursive inputs(x) as (select 1 union select x+1 from inputs where x < 1000) select * from inputs) dt;",
+			},
+			Assertions: []ScriptTestAssertion{
+				{
+					Query:    `ANALYZE horses;`,
+					Expected: []sql.Row{},
+				},
+				{
+					Query: `SELECT database_name, table_name, index_name, row_count, distinct_count, columns, upper_bound, upper_bound_cnt FROM dolt_statistics ORDER BY index_name`,
+					Expected: []sql.Row{
+						{"postgres", "horses", "horses_name_idx", 306, 1, "name", "Steve", 306},
+						{"postgres", "horses", "horses_name_idx", 167, 1, "name", "Steve", 167},
+						{"postgres", "horses", "horses_name_idx", 197, 1, "name", "Steve", 197},
+						{"postgres", "horses", "horses_name_idx", 320, 1, "name", "Steve", 320},
+						{"postgres", "horses", "horses_name_idx", 10, 1, "name", "Steve", 10},
+						{"postgres", "horses", "primary", 347, 347, "id", "347", 1},
+						{"postgres", "horses", "primary", 404, 404, "id", "751", 1},
+						{"postgres", "horses", "primary", 203, 203, "id", "954", 1},
+						{"postgres", "horses", "primary", 46, 46, "id", "1000", 1},
+					},
+				},
+				{
+					Query:    `SELECT count(*) FROM dolt_statistics`,
+					Expected: []sql.Row{{9}},
+				},
+				{
+					Query:    `SELECT count(*) FROM public.dolt_statistics`,
+					Expected: []sql.Row{{9}},
+				},
+				{
+					Query:    `SELECT dolt_statistics.index_name FROM public.dolt_statistics GROUP BY index_name ORDER BY index_name`,
+					Expected: []sql.Row{{"horses_name_idx"}, {"primary"}},
+				},
+				{
+					Query:       `SELECT name FROM other.dolt_statistics`,
+					ExpectedErr: "database schema not found",
+				},
+				{
+					Query:    `CREATE SCHEMA newschema`,
+					Expected: []sql.Row{},
+				},
+				{
+					Query:    "SET search_path = 'newschema'",
+					Expected: []sql.Row{},
+				},
+				{
+					Query:    `SELECT count(*) FROM dolt_statistics`,
+					Expected: []sql.Row{{0}},
+				},
+				{
+					Query:    "CREATE TABLE horses2 (id int primary key, name varchar(10));",
+					Expected: []sql.Row{},
+				},
+				{
+					Query:    "CREATE INDEX horses2_name_idx ON horses2(name);",
+					Expected: []sql.Row{},
+				},
+				{
+					Query:    "insert into horses2 select x, 'Steve' from (with recursive inputs(x) as (select 1 union select x+1 from inputs where x < 1000) select * from inputs) dt;",
+					Expected: []sql.Row{},
+				},
+				{
+					Query:    `ANALYZE horses2;`,
+					Expected: []sql.Row{},
+				},
+				{
+					Query:    `SELECT dolt_statistics.index_name FROM dolt_statistics GROUP BY index_name ORDER BY index_name`,
+					Expected: []sql.Row{{"horses2_name_idx"}, {"primary"}},
+				},
+				{
+					Query:    `SELECT dolt_statistics.index_name FROM newschema.dolt_statistics GROUP BY index_name ORDER BY index_name`,
+					Expected: []sql.Row{{"horses2_name_idx"}, {"primary"}},
+				},
+				{
+					Query:    `SELECT dolt_statistics.index_name FROM public.dolt_statistics GROUP BY index_name ORDER BY index_name`,
+					Expected: []sql.Row{{"horses_name_idx"}, {"primary"}},
+				},
+				// Same table name, different schema
+				{
+					Query:    "CREATE TABLE horses (id int primary key, name varchar(10));",
+					Expected: []sql.Row{},
+				},
+				{
+					Query:    "CREATE INDEX horses3_name_idx ON horses(name);",
+					Expected: []sql.Row{},
+				},
+				{
+					Query:    "insert into horses select x, 'Steve' from (with recursive inputs(x) as (select 1 union select x+1 from inputs where x < 1000) select * from inputs) dt;",
+					Expected: []sql.Row{},
+				},
+				{
+					Query:    `ANALYZE horses;`,
+					Expected: []sql.Row{},
+				},
+				{
+					Query: `SELECT table_name, index_name FROM dolt_statistics GROUP BY table_name, index_name ORDER BY table_name, index_name`,
+					Expected: []sql.Row{
+						{"horses", "horses3_name_idx"},
+						{"horses", "primary"},
+						{"horses2", "horses2_name_idx"},
+						{"horses2", "primary"},
+					},
+				},
+				{
+					Query: `SELECT table_name, index_name FROM newschema.dolt_statistics GROUP BY table_name, index_name ORDER BY table_name, index_name`,
+					Expected: []sql.Row{
+						{"horses", "horses3_name_idx"},
+						{"horses", "primary"},
+						{"horses2", "horses2_name_idx"},
+						{"horses2", "primary"},
+					},
+				},
+				{
+					Query:    `SELECT table_name, index_name FROM public.dolt_statistics GROUP BY index_name ORDER BY index_name`,
+					Expected: []sql.Row{{"horses", "horses_name_idx"}, {"horses", "primary"}},
+				},
+			},
+		},
+		{
 			Name: "dolt tags",
 			SetUpScript: []string{
 				"SELECT dolt_tag('v1')",
