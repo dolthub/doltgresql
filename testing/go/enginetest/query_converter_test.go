@@ -956,6 +956,21 @@ func convertTypeDef(columnType sqlparser.ColumnType) tree.ResolvableTypeReferenc
 				Oid:    oid.T_json,
 			},
 		}
+	case "boolean":
+		return &types.T{
+			InternalType: types.InternalType{
+				Family: types.BoolFamily,
+				Oid:    oid.T_bool,
+			},
+		}
+	case "year":
+		return &types.T{
+			InternalType: types.InternalType{
+				Family: types.IntFamily,
+				Width:  16,
+				Oid:    oid.T_int2,
+			},
+		}
 	case "geometry", "point", "linestring", "polygon", "multipoint", "multilinestring", "multipolygon", "geometrycollection":
 		panic(fmt.Sprintf("unhandled type: %s", columnType.Type))
 	default:
