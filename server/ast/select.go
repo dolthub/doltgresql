@@ -57,26 +57,26 @@ func nodeSelect(ctx *Context, node *tree.Select) (vitess.SelectStatement, error)
 
 	switch selectStmt := selectStmt.(type) {
 	case *vitess.ParenSelect:
-		// TODO: figure out if this is even correct, not sure what statement would produce this AST
-		// perhaps we should use the inner select statement, but maybe it has its own order by, limit, etc.
-		return &vitess.Select{
-			SelectExprs: vitess.SelectExprs{
-				&vitess.StarExpr{
-					TableName: vitess.TableName{
-						Name: vitess.NewTableIdent("*"),
+		return &vitess.ParenSelect{
+			Select: &vitess.Select{
+				SelectExprs: vitess.SelectExprs{
+					&vitess.StarExpr{
+						TableName: vitess.TableName{
+							Name: vitess.NewTableIdent("*"),
+						},
 					},
 				},
-			},
-			From: vitess.TableExprs{
-				&vitess.AliasedTableExpr{
-					Expr: &vitess.Subquery{
-						Select: selectStmt,
+				From: vitess.TableExprs{
+					&vitess.AliasedTableExpr{
+						Expr: &vitess.Subquery{
+							Select: selectStmt,
+						},
 					},
 				},
+				OrderBy: orderBy,
+				With:    with,
+				Limit:   limit,
 			},
-			OrderBy: orderBy,
-			With:    with,
-			Limit:   limit,
 		}, nil
 	case *vitess.Select:
 		selectStmt.OrderBy = orderBy

@@ -171,19 +171,19 @@ func TestSingleScript(t *testing.T) {
 
 	var scripts = []queries.ScriptTest{
 		{
-			Name: "division and int division operation on negative, small and big value for decimal type column of table",
+			Name: "intersection and except tests",
 			SetUpScript: []string{
-				"create table t (d decimal(25,10) primary key);",
-				"insert into t values (-4990), (2), (22336578);",
+				"create table b (m int, n int);",
+				"insert into b values (1,2), (1,3), (3,4);",
+				"create table c (m int, n int);",
+				"insert into c values (1,3), (1,3), (3,4);",
 			},
 			Assertions: []queries.ScriptTestAssertion{
 				{
-					Query:    "select d div 314990 from t order by d;",
-					Expected: []sql.Row{{0}, {0}, {70}},
-				},
-				{
-					Query:    "select d / 314990 from t order by d;",
-					Expected: []sql.Row{{"-0.01584177275469"}, {"0.00000634940792"}, {"70.91202260389219"}},
+					Query: "(table b order by m limit 1 offset 1) intersect (table c order by m limit 1);",
+					Expected: []sql.Row{
+						{1, 3},
+					},
 				},
 			},
 		},
