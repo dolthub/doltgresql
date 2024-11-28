@@ -57,27 +57,7 @@ func nodeSelect(ctx *Context, node *tree.Select) (vitess.SelectStatement, error)
 
 	switch selectStmt := selectStmt.(type) {
 	case *vitess.ParenSelect:
-		return &vitess.ParenSelect{
-			Select: &vitess.Select{
-				SelectExprs: vitess.SelectExprs{
-					&vitess.StarExpr{
-						TableName: vitess.TableName{
-							Name: vitess.NewTableIdent("*"),
-						},
-					},
-				},
-				From: vitess.TableExprs{
-					&vitess.AliasedTableExpr{
-						Expr: &vitess.Subquery{
-							Select: selectStmt,
-						},
-					},
-				},
-				OrderBy: orderBy,
-				With:    with,
-				Limit:   limit,
-			},
-		}, nil
+		return selectStmt, nil
 	case *vitess.Select:
 		selectStmt.OrderBy = orderBy
 		selectStmt.With = with
