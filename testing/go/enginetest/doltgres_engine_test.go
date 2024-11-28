@@ -572,55 +572,27 @@ func TestScripts(t *testing.T) {
 		"filter pushdown through join uppercase name", // syntax error (join without on)
 		"alter nil enum", // enum type unsupported
 		"issue 7958, update join uppercase table name validation", // update join syntax not supported
-		// "histogram bucket merging error for implementor buckets",
-		// "GMS issue 2369",
-		// "index match only exact string, no prefix",
-		// "keyless unique index bug",
-		// "Dolt issue 7957, update join matched rows",
+		"Dolt issue 7957, update join matched rows", // update join syntax not supported
 		"update join with update trigger different value", // update join syntax not supported
 		"update join with update trigger same value", // update join syntax not supported
 		"update join with update trigger", // update join syntax not supported
 		"update join with update trigger if condition", // update join syntax not supported
-		// "GMS issue 2349",
 		"missing indexes", // unsupported test harness setup
-		// "correctness test indexes",
-		// "update exponential parsing",
-		// "set op schema merge",
 		// "intersection and except tests",
-		// "create table casing",
 		// "alter table out of range value error of column type change",
 		"alter keyless table", // enum type unsupported
 		// "topN stable output",
 		"enums with default, case-sensitive collation (utf8mb4_0900_bin)",
 		"enums with case-insensitive collation (utf8mb4_0900_ai_ci)",
-		// "failed statements data validation for INSERT, UPDATE",
-		// "failed statements data validation for DELETE, REPLACE",
-		// "delete with in clause",
-		// "sqllogictest evidence/slt_lang_aggfunc.test",
-		// "sqllogictest index/commute/10/slt_good_1.test",
-		// "3 tables, linear join",
-		// "3 tables, v join",
-		// "3 tables, linear join, indexes on A,C",
-		// "4 tables, linear join",
-		// "4 tables, linear join, index on D",
-		// "4 tables, left join, indexes on all tables",
-		// "4 tables, linear join, index on B, D",
-		// "4 tables, all joined to A",
-		// "4 tables, all joined to D",
-		// "5 tables, complex join conditions",
 		"UUIDs used in the wild.", // unsupported type: VARBINARY
 		// "Test cases on select into statement",
 		// "CrossDB Queries",
-		// "Top-level DECLARE statements",
 		"last_insert_uuid() behavior",  // unhandled type: *sqlparser.ParenExpr
 		"last_insert_id() behavior", // unsupported feature
 		"last_insert_id(expr) behavior", // unsupported feature
 		"last_insert_id(default) behavior", // unsupported feature
-		// "row_count() behavior",
-		// "same alias names for result column name and alias table column name",
-		// "found_rows() behavior",
-		// "INSERT INTO ... SELECT with AUTO_INCREMENT",
-		// "Indexed Join On Keyless Table",
+		"row_count() behavior", // unsupported function
+		"found_rows() behavior", // unsupported function
 		"Group Concat Queries", // unsupported syntax
 		// "CONVERT USING still converts between incompatible character sets",
 		// "ALTER TABLE, ALTER COLUMN SET , DROP DEFAULT",
@@ -631,17 +603,13 @@ func TestScripts(t *testing.T) {
 		// "unix_timestamp with non UTC timezone",
 		// "Issue #499", // https://github.com/dolthub/go-mysql-server/issues/499
 		"WHERE clause considers ENUM/SET types for comparisons",
-		// "Slightly more complex example for the Exists Clause",
 		// "Simple Update Join test that manipulates two tables",
 		// "Partial indexes are used and return the expected result",
 		// "Multiple indexes on the same columns in a different order",
 		"Ensure proper DECIMAL support (found by fuzzer)", // unsupported type: SET
 		// "Ensure scale is not rounded when inserting to DECIMAL type through float64",
-		// "JOIN on non-index-prefix columns do not panic (Dolt Issue #2366)",
 		"Show create table with various keys and constraints", // error in harness query converter
 		"show create table with duplicate primary key", // error in harness query converter
-		// "table with defaults, insert with on duplicate key update",
-		// "delete from table with misordered pks",
 		// "recreate primary key rebuilds secondary indexes",
 		// "Handle hex number to binary conversion",
 		// "Multialter DDL with ADD/DROP Primary Key",
@@ -656,9 +624,6 @@ func TestScripts(t *testing.T) {
 		"failed conversion shows warning", // unsupported syntax
 		"Describe with expressions and views work correctly", // error in harness query converter
 		// "Check support for deprecated BINARY attribute after character set",
-		// "sum() and avg() on DECIMAL type column returns the DECIMAL type result",
-		// "sum() and avg() on non-DECIMAL type column returns the DOUBLE type result",
-		// "compare DECIMAL type columns with different precision and scale",
 		// "basic test on tables dual and `dual`",
 		// "having clause without groupby clause, all rows implicitly form a single aggregate group",
 		// "using having and group by clauses in subquery ",
@@ -669,7 +634,6 @@ func TestScripts(t *testing.T) {
 		// "arithmetic bit operations on int, float and decimal types",
 		// "year type behavior", // unsupported type: YEAR
 		"INSERT IGNORE correctly truncates column data", // unhandled type: ENUM
-		// "scientific notation for floats",
 		// "INSERT IGNORE throws an error when json is badly formatted",
 		// "hash lookup for joins works with binary",
 		"enum columns work as expected in when clauses", // enums not supported
@@ -681,21 +645,16 @@ func TestScripts(t *testing.T) {
 		// "drop table if exists on unknown table shows warning",
 		"find_in_set tests", // unsupported type set
 		// "coalesce tests",
-		// "Keyless Table with Unique Index",
 		// "renaming views with RENAME TABLE ... TO .. statement",
 		// "renaming views with ALTER TABLE ... RENAME .. statement should fail",
 		// "timezone default settings",
 		// "current time functions",
 		// "timestamp timezone conversion",
-		// "test index scan over floats",
-		// "empty table update",
 		// "case insensitive index handling",
 		// "different cases of function name should result in the same outcome",
 		// "UNIX_TIMESTAMP function usage with session different time zones",
 		// "Querying existing view that references non-existing table",
 		// "Multi-db Aliasing",
-		// "order by with index",
-		// "Point lookups with dropped filters",
 		"Complex Filter Index Scan", // panic in index lookup, needs investigation
 		"update columns with default", // unsupported create table statement (harness problem)
 		// "int index with float filter",
@@ -707,22 +666,16 @@ func TestScripts(t *testing.T) {
 		// "subquery with range heap join",
 		// "resolve foreign key on indexed update",
 		// "between type conversion",
-		// "case sensitive subquery column names",
 		// "bool and string",
 		// "bool and int",
 		// "update with left join with some missing rows",
-		// "count distinct decimals",
 		// "range query convert int to string zero value",
 		// "group by having with conflicting aliases test",
-		// "dividing has different rounding behavior",
 		"complicated range tree", // panic in index lookup, needs investigation
-		// "many joins with chain of ANDs",
 		"preserve now()", // harness error
 		// "binary type primary key",
-		// "varchar primary key",
 		// "varbinary primary key",
 		// "primary key order",
-		// "test json search",
 		// "test show create database",
 		// "test create database with modified server variables",
 		// "test index naming",
@@ -731,13 +684,12 @@ func TestScripts(t *testing.T) {
 		// "unix_timestamp script tests",
 		// "name_const queries",
 		// "mismatched collation using hash in tuples",
-		// "not null not unique index works on server engine",
-		// "validate_password_strength and validate_password.length",
-		// "validate_password_strength and validate_password.number_count",
-		// "validate_password_strength and validate_password.mixed_case_count",
-		// "validate_password_strength and validate_password.special_char_count",
+		"validate_password_strength and validate_password.length", // unsupported 
+		"validate_password_strength and validate_password.number_count", // unsupported
+		"validate_password_strength and validate_password.mixed_case_count", // unsupported
+		"validate_password_strength and validate_password.special_char_count", // unsupported 	
 		"preserve enums through alter statements", // enum types unsupported
-		// "coalesce with system types",
+		"coalesce with system types", // unsupported
 		"multi enum return types", // enum types unsupported
 		"enum cast to int and string", // enum types unsupported
 	}...))

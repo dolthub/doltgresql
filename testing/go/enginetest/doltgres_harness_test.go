@@ -546,6 +546,7 @@ func (d *DoltgresHarness) EvaluateExpectedErrorKind(t *testing.T, expected *erro
 	pattern := strings.ReplaceAll(expected.Message, "*", "\\*")
 	pattern = strings.ReplaceAll(pattern, "(", "\\(")
 	pattern = strings.ReplaceAll(pattern, ")", "\\)")
+	pattern = strings.ReplaceAll(pattern, "%d", "\\d+")
 	pattern = strings.ReplaceAll(pattern, "%s", ".+")
 	pattern = strings.ReplaceAll(pattern, "%q", "\".+\"")
 	pattern = strings.ReplaceAll(pattern, "%v", ".+?")
