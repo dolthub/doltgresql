@@ -165,8 +165,8 @@ func GetAllTypes() []DoltgresType {
 	return pgTypes
 }
 
-// OidToBuildInDoltgresType is a map of oid to built-in Doltgres type.
-var OidToBuildInDoltgresType = map[uint32]DoltgresType{
+// OidToBuiltInDoltgresType is a map of oid to built-in Doltgres type.
+var OidToBuiltInDoltgresType = map[uint32]DoltgresType{
 	uint32(oid.T_bool):             Bool,
 	uint32(oid.T_bytea):            Bytea,
 	uint32(oid.T_char):             InternalChar,
@@ -260,7 +260,7 @@ var OidToBuildInDoltgresType = map[uint32]DoltgresType{
 	uint32(oid.T__interval):        IntervalArray,
 	uint32(oid.T__numeric):         NumericArray,
 	uint32(oid.T_pg_database):      Unknown,
-	uint32(oid.T__cstring):         Unknown,
+	uint32(oid.T__cstring):         CstringArray,
 	uint32(oid.T_timetz):           TimeTZ,
 	uint32(oid.T__timetz):          TimeTZArray,
 	uint32(oid.T_bit):              Unknown,
@@ -281,13 +281,13 @@ var OidToBuildInDoltgresType = map[uint32]DoltgresType{
 	uint32(oid.T__regclass):        RegclassArray,
 	uint32(oid.T__regtype):         RegtypeArray,
 	uint32(oid.T_record):           Unknown,
-	uint32(oid.T_cstring):          Unknown,
+	uint32(oid.T_cstring):          Cstring,
 	uint32(oid.T_any):              Unknown,
 	uint32(oid.T_anyarray):         AnyArray,
 	uint32(oid.T_void):             Unknown,
 	uint32(oid.T_trigger):          Unknown,
 	uint32(oid.T_language_handler): Unknown,
-	uint32(oid.T_internal):         Unknown,
+	uint32(oid.T_internal):         Internal,
 	uint32(oid.T_opaque):           Unknown,
 	uint32(oid.T_anyelement):       AnyElement,
 	uint32(oid.T__record):          Unknown,

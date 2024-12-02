@@ -16,6 +16,8 @@ package types
 
 import (
 	"fmt"
+
+	"github.com/lib/pq/oid"
 )
 
 // CreateArrayTypeFromBaseType create array type from given type.
@@ -36,16 +38,16 @@ func CreateArrayTypeFromBaseType(baseType DoltgresType) DoltgresType {
 		IsDefined:     true,
 		Delimiter:     ",",
 		RelID:         0,
-		SubscriptFunc: "array_subscript_handler",
+		SubscriptFunc: toFuncID("array_subscript_handler", oid.T_internal),
 		Elem:          baseType.OID,
 		Array:         0,
-		InputFunc:     "array_in",
-		OutputFunc:    "array_out",
-		ReceiveFunc:   "array_recv",
-		SendFunc:      "array_send",
+		InputFunc:     toFuncID("array_in", oid.T_cstring, oid.T_oid, oid.T_int4),
+		OutputFunc:    toFuncID("array_out", oid.T_anyarray),
+		ReceiveFunc:   toFuncID("array_recv", oid.T_internal, oid.T_oid, oid.T_int4),
+		SendFunc:      toFuncID("array_send", oid.T_anyarray),
 		ModInFunc:     baseType.ModInFunc,
 		ModOutFunc:    baseType.ModOutFunc,
-		AnalyzeFunc:   "array_typanalyze",
+		AnalyzeFunc:   toFuncID("array_typanalyze", oid.T_internal),
 		Align:         align,
 		Storage:       TypeStorage_Extended,
 		NotNull:       false,
@@ -57,8 +59,8 @@ func CreateArrayTypeFromBaseType(baseType DoltgresType) DoltgresType {
 		Default:       "",
 		Acl:           nil,
 		Checks:        nil,
-		InternalName:  fmt.Sprintf("%s[]", baseType.String()),
-		AttTypMod:     baseType.AttTypMod, // TODO: check
-		CompareFunc:   "btarraycmp",
+		InternalName:  fmt.Sprintf("%s[]", baseType.Name), // This will be set to the proper name in ToArrayType
+		AttTypMod:     baseType.AttTypMod,                 // TODO: check
+		CompareFunc:   toFuncID("btarraycmp", oid.T_anyarray, oid.T_anyarray),
 	}
 }

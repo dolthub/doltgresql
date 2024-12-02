@@ -41,7 +41,7 @@ type subqueryAnyExpr struct {
 	rightSub      *plan.Subquery
 	staticLiteral *Literal
 	arrayLiterals []*Literal
-	compFuncs     []*framework.CompiledFunction
+	compFuncs     []framework.Function
 }
 
 // expressionAnyExpr represents the resolved comparison function for a sql.Expression.
@@ -49,7 +49,7 @@ type expressionAnyExpr struct {
 	rightExpr     sql.Expression
 	staticLiteral *Literal
 	arrayLiteral  *Literal
-	compFunc      *framework.CompiledFunction
+	compFunc      framework.Function
 }
 
 // NewAnyExpr creates a new AnyExpr expression.
@@ -296,7 +296,7 @@ func anySubqueryWithChildren(anyExpr *AnyExpr, sub *plan.Subquery) (sql.Expressi
 		staticLiteral := &Literal{typ: leftType}
 		arrayLiterals := make([]*Literal, len(subTypes))
 		// Each expression may be a different type (which is valid), so we need a comparison function for each expression.
-		compFuncs := make([]*framework.CompiledFunction, len(subTypes))
+		compFuncs := make([]framework.Function, len(subTypes))
 		for i, rightType := range subTypes {
 			arrayLiterals[i] = &Literal{typ: rightType}
 			compFuncs[i] = framework.GetBinaryFunction(op).Compile("internal_any_comparison", staticLiteral, arrayLiterals[i])
