@@ -171,37 +171,73 @@ func TestSingleScript(t *testing.T) {
 
 	var scripts = []queries.ScriptTest{
 		{
-			Name: "failed statements data validation for DELETE, REPLACE",
+			Name: "ALTER TABLE, ALTER COLUMN SET , DROP DEFAULT",
 			SetUpScript: []string{
-				"CREATE TABLE test (pk BIGINT PRIMARY KEY, v1 BIGINT, INDEX (v1));",
-				"INSERT INTO test VALUES (1,1), (4,4), (5,5);",
-				"CREATE TABLE test2 (pk BIGINT PRIMARY KEY, CONSTRAINT fk_test FOREIGN KEY (pk) REFERENCES test (v1));",
-				"INSERT INTO test2 VALUES (4);",
+				"CREATE TABLE test (pk BIGINT PRIMARY KEY, v1 BIGINT NOT NULL DEFAULT 88);",
 			},
 			Assertions: []queries.ScriptTestAssertion{
 				{
-					Query:       "DELETE FROM test WHERE pk > 0;",
-					ExpectedErr: sql.ErrForeignKeyParentViolation,
+					Query:    "INSERT INTO test (pk) VALUES (1);",
+					Expected: []sql.Row{{types.NewOkResult(1)}},
 				},
 				{
 					Query:    "SELECT * FROM test;",
-					Expected: []sql.Row{{1, 1}, {4, 4}, {5, 5}},
+					Expected: []sql.Row{{1, 88}},
 				},
 				{
-					Query:    "SELECT * FROM test2;",
-					Expected: []sql.Row{{4}},
+					Query:    "ALTER TABLE test ALTER v1 SET DEFAULT (CONVERT('42', SIGNED));",
+					Expected: []sql.Row{{types.NewOkResult(0)}},
 				},
 				{
-					Query:       "REPLACE INTO test VALUES (1,7), (4,8), (5,9);",
-					ExpectedErr: sql.ErrForeignKeyParentViolation,
+					Query:    "INSERT INTO test (pk) VALUES (2);",
+					Expected: []sql.Row{{types.NewOkResult(1)}},
 				},
 				{
 					Query:    "SELECT * FROM test;",
-					Expected: []sql.Row{{1, 1}, {4, 4}, {5, 5}},
+					Expected: []sql.Row{{1, 88}, {2, 42}},
 				},
 				{
-					Query:    "SELECT * FROM test2;",
-					Expected: []sql.Row{{4}},
+					Query:       "ALTER TABLE test ALTER v2 SET DEFAULT 1;",
+					ExpectedErr: sql.ErrTableColumnNotFound,
+				},
+				{
+					Query:    "ALTER TABLE test ALTER v1 DROP DEFAULT;",
+					Expected: []sql.Row{{types.NewOkResult(0)}},
+				},
+				{
+					Query:       "INSERT INTO test (pk) VALUES (3);",
+					ExpectedErr: sql.ErrInsertIntoNonNullableDefaultNullColumn,
+				},
+				{
+					Query:       "ALTER TABLE test ALTER v2 DROP DEFAULT;",
+					ExpectedErr: sql.ErrTableColumnNotFound,
+				},
+				{ // Just confirms that the last INSERT didn't do anything
+					Query:    "SELECT * FROM test;",
+					Expected: []sql.Row{{1, 88}, {2, 42}},
+				},
+				{
+					Query:    "ALTER TABLE test ALTER v1 SET DEFAULT 100, alter v1 DROP DEFAULT",
+					Expected: []sql.Row{{types.NewOkResult(0)}},
+				},
+				{
+					Query:       "INSERT INTO test (pk) VALUES (2);",
+					ExpectedErr: sql.ErrInsertIntoNonNullableDefaultNullColumn,
+				},
+				{
+					Query:    "ALTER TABLE test ALTER v1 SET DEFAULT 100, alter v1 SET DEFAULT 200",
+					Expected: []sql.Row{{types.NewOkResult(0)}},
+				},
+				{
+					Query:       "ALTER TABLE test DROP COLUMN v1, alter v1 SET DEFAULT 5000",
+					ExpectedErr: sql.ErrTableColumnNotFound,
+				},
+				{
+					Query: "DESCRIBE test",
+					Expected: []sql.Row{
+						{"pk", "bigint", "NO", "PRI", nil, ""},
+						{"v1", "bigint", "NO", "", "200", ""},
+					},
 				},
 			},
 		},
@@ -616,9 +652,10 @@ func TestScripts(t *testing.T) {
 		"with recursive cte as ((select * from xy order by y asc limit 1 offset 1) union (select * from xy order by y asc limit 1 offset 2)) select * from cte", // invalid type: bigint  
 		"enums with default, case-sensitive collation (utf8mb4_0900_bin)",
 		"enums with case-insensitive collation (utf8mb4_0900_ai_ci)",
+		"REPLACE INTO test VALUES (1,7), (4,8), (5,9);", // REPLACE unsupported, not easy to translate
 		"UUIDs used in the wild.", // unsupported type: VARBINARY
-		// "Test cases on select into statement",
-		// "CrossDB Queries",
+		"Test cases on select into statement", // unsupported syntax
+		"CrossDB Queries", // needs harness work to properly qualify the names
 		"last_insert_uuid() behavior",  // unhandled type: *sqlparser.ParenExpr
 		"last_insert_id() behavior", // unsupported feature
 		"last_insert_id(expr) behavior", // unsupported feature
@@ -626,7 +663,7 @@ func TestScripts(t *testing.T) {
 		"row_count() behavior", // unsupported function
 		"found_rows() behavior", // unsupported function
 		"Group Concat Queries", // unsupported syntax
-		// "CONVERT USING still converts between incompatible character sets",
+		"CONVERT USING still converts between incompatible character sets", // unsupported syntax
 		// "ALTER TABLE, ALTER COLUMN SET , DROP DEFAULT",
 		// "Run through some complex queries with DISTINCT and aggregates",
 		// "Nested Subquery projections (NTC)",
