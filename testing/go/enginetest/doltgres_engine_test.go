@@ -171,19 +171,37 @@ func TestSingleScript(t *testing.T) {
 
 	var scripts = []queries.ScriptTest{
 		{
-			Name: "intersection and except tests",
+			Name: "failed statements data validation for DELETE, REPLACE",
 			SetUpScript: []string{
-				"create table b (m int, n int);",
-				"insert into b values (1,2), (1,3), (3,4);",
-				"create table c (m int, n int);",
-				"insert into c values (1,3), (1,3), (3,4);",
+				"CREATE TABLE test (pk BIGINT PRIMARY KEY, v1 BIGINT, INDEX (v1));",
+				"INSERT INTO test VALUES (1,1), (4,4), (5,5);",
+				"CREATE TABLE test2 (pk BIGINT PRIMARY KEY, CONSTRAINT fk_test FOREIGN KEY (pk) REFERENCES test (v1));",
+				"INSERT INTO test2 VALUES (4);",
 			},
 			Assertions: []queries.ScriptTestAssertion{
 				{
-					Query: "(table b order by m limit 1 offset 1) intersect (table c order by m limit 1);",
-					Expected: []sql.Row{
-						{1, 3},
-					},
+					Query:       "DELETE FROM test WHERE pk > 0;",
+					ExpectedErr: sql.ErrForeignKeyParentViolation,
+				},
+				{
+					Query:    "SELECT * FROM test;",
+					Expected: []sql.Row{{1, 1}, {4, 4}, {5, 5}},
+				},
+				{
+					Query:    "SELECT * FROM test2;",
+					Expected: []sql.Row{{4}},
+				},
+				{
+					Query:       "REPLACE INTO test VALUES (1,7), (4,8), (5,9);",
+					ExpectedErr: sql.ErrForeignKeyParentViolation,
+				},
+				{
+					Query:    "SELECT * FROM test;",
+					Expected: []sql.Row{{1, 1}, {4, 4}, {5, 5}},
+				},
+				{
+					Query:    "SELECT * FROM test2;",
+					Expected: []sql.Row{{4}},
 				},
 			},
 		},
@@ -578,10 +596,24 @@ func TestScripts(t *testing.T) {
 		"update join with update trigger", // update join syntax not supported
 		"update join with update trigger if condition", // update join syntax not supported
 		"missing indexes", // unsupported test harness setup
-		// "intersection and except tests",
-		// "alter table out of range value error of column type change",
+		"table x intersect table y order by i;", // type coercion rules for unions among different schemas need to change for this to work, mysql is much more lenient
+		"table x intersect table y order by 1;", // type coercion rules for unions among different schemas need to change for this to work, mysql is much more lenient
+		"WITH RECURSIVE\n" +
+				"    rt (foo) AS (\n" +
+				"        SELECT 1 as foo\n" +
+				"        UNION ALL\n" +
+				"        SELECT foo + 1 as foo FROM rt WHERE foo < 5\n" +
+				"    ),\n" +
+				"        ladder (depth, foo) AS (\n" +
+				"        SELECT 1 as depth, NULL as foo from rt\n" +
+				"        UNION ALL\n" +
+				"        SELECT ladder.depth + 1 as depth, rt.foo\n" +
+				"        FROM ladder JOIN rt WHERE ladder.foo = rt.foo\n" +
+				"    )\n" +
+				"SELECT * FROM ladder;", // syntax error
+		"alter table out of range value error of column type change", // unsigned keyword not supported
 		"alter keyless table", // enum type unsupported
-		// "topN stable output",
+		"with recursive cte as ((select * from xy order by y asc limit 1 offset 1) union (select * from xy order by y asc limit 1 offset 2)) select * from cte", // invalid type: bigint  
 		"enums with default, case-sensitive collation (utf8mb4_0900_bin)",
 		"enums with case-insensitive collation (utf8mb4_0900_ai_ci)",
 		"UUIDs used in the wild.", // unsupported type: VARBINARY

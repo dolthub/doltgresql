@@ -778,7 +778,7 @@ func transformCreateTable(stmt *sqlparser.DDL) ([]string, bool) {
 			createTable.Defs = append(createTable.Defs, indexDef)
 		}
 	}
-
+	
 	ctx := formatNodeWithUnqualifiedTableNames(&createTable)
 	query := ctx.String()
 
@@ -814,7 +814,86 @@ func transformCreateTable(stmt *sqlparser.DDL) ([]string, bool) {
 		}
 	}
 
+	// convert constraints into separate statements as well
+	for _, c := range stmt.TableSpec.Constraints {
+		switch c := c.Details.(type) {
+		case *sqlparser.ForeignKeyDefinition:
+			queries = append(queries, createForeignKeyStatement(createTable.Table, c))
+		case *sqlparser.CheckConstraintDefinition:
+		default:
+			// do nothing, unsupported
+		} 
+	}
+
 	return queries, true
+}
+
+func createForeignKeyStatement(table tree.TableName, c *sqlparser.ForeignKeyDefinition) string {
+	name, err := tree.NewUnresolvedObjectName(1, [3]string{table.Table(), "", ""}, 0)
+	if err != nil {
+		panic(err)
+	}
+	
+	alter := tree.AlterTable{
+		Table: name,
+	}
+	
+	var fromCols, toCols tree.NameList
+	for _, col := range c.Source {
+		fromCols = append(fromCols, tree.Name(col.String()))
+	}
+	for _, col := range c.ReferencedColumns {
+		toCols = append(toCols, tree.Name(col.String()))
+	}
+	
+	onDelete := translateRefAction(c.OnDelete)
+	onUpdate := translateRefAction(c.OnUpdate)
+
+	alter.Cmds = append(alter.Cmds, &tree.AlterTableAddConstraint{
+		ConstraintDef: &tree.ForeignKeyConstraintTableDef{
+			FromCols: fromCols,
+			Table:    tree.MakeTableName(tree.Name(""), tree.Name(c.ReferencedTable.Name.String())),
+			ToCols:   toCols,
+			Actions: tree.ReferenceActions{
+				Delete: onDelete,
+				Update: onUpdate,
+			},
+		},
+	})
+
+	ctx := formatNodeWithUnqualifiedTableNames(&alter)
+	return ctx.String()
+}
+
+func translateRefAction(action sqlparser.ReferenceAction) tree.RefAction {
+	switch action {
+	case sqlparser.Cascade:
+		return tree.RefAction{
+			Action: tree.Cascade,
+		}
+	case sqlparser.SetNull:
+		return  tree.RefAction{
+			Action: tree.SetNull,
+		}
+	case sqlparser.NoAction:
+		return  tree.RefAction{
+			Action: tree.NoAction,
+		}
+	case sqlparser.Restrict:
+		return  tree.RefAction{
+			Action: tree.Restrict,
+		}
+	case sqlparser.SetDefault:
+		return  tree.RefAction{
+			Action: tree.SetDefault,
+		}
+	case sqlparser.DefaultAction:
+		return  tree.RefAction{
+			Action: tree.Restrict, // is this correct?
+		}
+	default:
+		panic(fmt.Sprintf("unhandled on delete action: %v", action))
+	}
 }
 
 // The default formatter always qualifies table names with db name and schema name, which we don't want in most cases
