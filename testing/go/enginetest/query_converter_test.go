@@ -1405,6 +1405,12 @@ func TestConvertQuery(t *testing.T) {
 			},
 		},
 		{
+			input:    "CREATE TABLE test (pk BIGINT PRIMARY KEY AUTO_INCREMENT, v1 BIGINT);",
+			expected: []string{
+				"CREATE SEQUENCE seq_0",
+				"CREATE TABLE test (pk BIGINT NOT NULL DEFAULT nextval('seq_0') PRIMARY KEY, v1 BIGINT NULL)"},
+		},
+		{
 			input:    "CREATE TABLE foo (a INT, b int, primary key (b,a))",
 			expected: []string{"CREATE TABLE foo (a INTEGER NULL, b INTEGER NULL, PRIMARY KEY (b, a))"},
 		},

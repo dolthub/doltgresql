@@ -171,72 +171,24 @@ func TestSingleScript(t *testing.T) {
 
 	var scripts = []queries.ScriptTest{
 		{
-			Name: "ALTER TABLE, ALTER COLUMN SET , DROP DEFAULT",
+			Name: "auto increment column",
 			SetUpScript: []string{
-				"CREATE TABLE test (pk BIGINT PRIMARY KEY, v1 BIGINT NOT NULL DEFAULT 88);",
+				"CREATE TABLE test (pk BIGINT PRIMARY KEY AUTO_INCREMENT, v1 BIGINT);",
 			},
 			Assertions: []queries.ScriptTestAssertion{
 				{
-					Query:    "INSERT INTO test (pk) VALUES (1);",
+					Query:    "INSERT INTO test (v1) VALUES (1);",
 					Expected: []sql.Row{{types.NewOkResult(1)}},
 				},
 				{
-					Query:    "SELECT * FROM test;",
-					Expected: []sql.Row{{1, 88}},
-				},
-				{
-					Query:    "ALTER TABLE test ALTER v1 SET DEFAULT (CONVERT('42', SIGNED));",
-					Expected: []sql.Row{{types.NewOkResult(0)}},
-				},
-				{
-					Query:    "INSERT INTO test (pk) VALUES (2);",
+					Query:    "INSERT INTO test (v1) VALUES (1);",
 					Expected: []sql.Row{{types.NewOkResult(1)}},
 				},
 				{
-					Query:    "SELECT * FROM test;",
-					Expected: []sql.Row{{1, 88}, {2, 42}},
-				},
-				{
-					Query:       "ALTER TABLE test ALTER v2 SET DEFAULT 1;",
-					ExpectedErr: sql.ErrTableColumnNotFound,
-				},
-				{
-					Query:    "ALTER TABLE test ALTER v1 DROP DEFAULT;",
-					Expected: []sql.Row{{types.NewOkResult(0)}},
-				},
-				{
-					Query:       "INSERT INTO test (pk) VALUES (3);",
-					ExpectedErr: sql.ErrInsertIntoNonNullableDefaultNullColumn,
-				},
-				{
-					Query:       "ALTER TABLE test ALTER v2 DROP DEFAULT;",
-					ExpectedErr: sql.ErrTableColumnNotFound,
-				},
-				{ // Just confirms that the last INSERT didn't do anything
-					Query:    "SELECT * FROM test;",
-					Expected: []sql.Row{{1, 88}, {2, 42}},
-				},
-				{
-					Query:    "ALTER TABLE test ALTER v1 SET DEFAULT 100, alter v1 DROP DEFAULT",
-					Expected: []sql.Row{{types.NewOkResult(0)}},
-				},
-				{
-					Query:       "INSERT INTO test (pk) VALUES (2);",
-					ExpectedErr: sql.ErrInsertIntoNonNullableDefaultNullColumn,
-				},
-				{
-					Query:    "ALTER TABLE test ALTER v1 SET DEFAULT 100, alter v1 SET DEFAULT 200",
-					Expected: []sql.Row{{types.NewOkResult(0)}},
-				},
-				{
-					Query:       "ALTER TABLE test DROP COLUMN v1, alter v1 SET DEFAULT 5000",
-					ExpectedErr: sql.ErrTableColumnNotFound,
-				},
-				{
-					Query: "DESCRIBE test",
+					Query: "select * from test",
 					Expected: []sql.Row{
-						{"pk", "bigint", "NO", "PRI", nil, ""},
-						{"v1", "bigint", "NO", "", "200", ""},
+						{1,1},
+						{2,1},
 					},
 				},
 			},
