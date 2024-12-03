@@ -1113,11 +1113,11 @@ func TestUserSpaceDoltTables(t *testing.T) {
 				},
 				{
 					Query:    `SELECT table_name, committer, email, message, data_change, schema_change FROM dolt.diff`,
-					Expected: []sql.Row{{"public.test", "postgres", "postgres@127.0.0.1", "test commit", 0, 1}},
+					Expected: []sql.Row{{"public.test", "postgres", "postgres@127.0.0.1", "test commit", "f", "t"}},
 				},
 				{
 					Query:    `SELECT table_name, data_change, schema_change FROM dolt.diff WHERE data_change=false`,
-					Expected: []sql.Row{{"public.test", 0, 1}},
+					Expected: []sql.Row{{"public.test", "f", "t"}},
 				},
 				{
 					Query:    `SELECT table_name, data_change, schema_change FROM dolt.diff WHERE schema_change=false`,
