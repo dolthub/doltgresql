@@ -713,6 +713,8 @@ func PostgresNodeFormatter(buf *sqlparser.TrackedBuffer, node sqlparser.SQLNode)
 	}
 }
 
+var sequenceNum int
+
 func transformCreateTable(stmt *sqlparser.DDL) ([]string, bool) {
 	if stmt.TableSpec == nil {
 		return nil, false
@@ -724,7 +726,20 @@ func transformCreateTable(stmt *sqlparser.DDL) ([]string, bool) {
 	}
 
 	var queries []string
+	var autoIncColumn string
 	for _, col := range stmt.TableSpec.Columns {
+		defVal := convertExpr(col.Type.Default)
+		
+		if col.Type.Autoincrement {
+			autoIncColumn = col.Name.String()
+			defVal = &tree.FuncExpr{
+				Func:      tree.WrapFunction("nextval"),
+				Exprs:     []tree.Expr{
+					tree.NewStrVal(fmt.Sprintf("seq_%d", sequenceNum)),
+				},
+			}
+		}
+
 		createTable.Defs = append(createTable.Defs, &tree.ColumnTableDef{
 			Name:      tree.Name(col.Name.String()),
 			Type:      convertTypeDef(col.Type),
@@ -746,7 +761,7 @@ func transformCreateTable(stmt *sqlparser.DDL) ([]string, bool) {
 				Expr           tree.Expr
 				ConstraintName tree.Name
 			}{
-				Expr:           convertExpr(col.Type.Default),
+				Expr:           defVal,
 				ConstraintName: "", // TODO
 			},
 			CheckExprs: nil, // TODO
@@ -777,6 +792,11 @@ func transformCreateTable(stmt *sqlparser.DDL) ([]string, bool) {
 
 			createTable.Defs = append(createTable.Defs, indexDef)
 		}
+	}
+	
+	if autoIncColumn != "" {
+		queries = append(queries, fmt.Sprintf("CREATE SEQUENCE seq_%d", sequenceNum))
+		sequenceNum++
 	}
 	
 	ctx := formatNodeWithUnqualifiedTableNames(&createTable)

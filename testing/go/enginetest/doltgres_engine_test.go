@@ -664,7 +664,7 @@ func TestScripts(t *testing.T) {
 		"found_rows() behavior", // unsupported function
 		"Group Concat Queries", // unsupported syntax
 		"CONVERT USING still converts between incompatible character sets", // unsupported syntax
-		// "ALTER TABLE, ALTER COLUMN SET , DROP DEFAULT",
+		"ALTER TABLE, ALTER COLUMN SET , DROP DEFAULT", // mostly working, some default expressions not supported
 		// "Run through some complex queries with DISTINCT and aggregates",
 		// "Nested Subquery projections (NTC)",
 		// "CREATE TABLE SELECT Queries",
