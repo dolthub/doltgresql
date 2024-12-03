@@ -45,6 +45,7 @@ func Init() {
 	dtables.GetDocsSchema = getDocsSchema
 	dtables.GetDoltIgnoreSchema = getDoltIgnoreSchema
 	dprocedures.GetDoltRebaseSystemTableSchema = getRebaseSchema
+	dtables.GetDoltWorkspaceBaseSqlSchema = getDoltWorkspaceBaseSqlSchema
 
 	// Conversions
 	doltdb.ConvertTupleToIgnoreBoolean = convertTupleToIgnoreBoolean

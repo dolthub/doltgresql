@@ -1112,6 +1112,18 @@ func TestUserSpaceDoltTables(t *testing.T) {
 					Expected: []sql.Row{{"public.test"}},
 				},
 				{
+					Query:    `SELECT table_name, committer, email, message, data_change, schema_change FROM dolt.diff`,
+					Expected: []sql.Row{{"public.test", "postgres", "postgres@127.0.0.1", "test commit", 0, 1}},
+				},
+				{
+					Query:    `SELECT table_name, data_change, schema_change FROM dolt.diff WHERE data_change=false`,
+					Expected: []sql.Row{{"public.test", 0, 1}},
+				},
+				{
+					Query:    `SELECT table_name, data_change, schema_change FROM dolt.diff WHERE schema_change=false`,
+					Expected: []sql.Row{},
+				},
+				{
 					Query:    `SELECT table_name FROM dolt_diff`,
 					Expected: []sql.Row{{"public.test"}},
 				},
@@ -1434,6 +1446,12 @@ func TestUserSpaceDoltTables(t *testing.T) {
 					Query: `SELECT * FROM dolt_ignore`,
 					Expected: []sql.Row{
 						{"generated_*", "t"},
+						{"generated_exception", "f"},
+					},
+				},
+				{
+					Query: `SELECT * FROM dolt_ignore WHERE ignored=false`,
+					Expected: []sql.Row{
 						{"generated_exception", "f"},
 					},
 				},
@@ -2653,15 +2671,15 @@ func TestUserSpaceDoltTables(t *testing.T) {
 			Assertions: []ScriptTestAssertion{
 				{
 					Query:    `SELECT id, staged, from_id, to_id FROM dolt_workspace_test`,
-					Expected: []sql.Row{{Numeric("0"), 0, nil, 10}},
+					Expected: []sql.Row{{0, "f", nil, 10}},
 				},
 				{
 					Query:    `SELECT id, staged, from_id, to_id FROM public.dolt_workspace_test`,
-					Expected: []sql.Row{{Numeric("0"), 0, nil, 10}},
+					Expected: []sql.Row{{0, "f", nil, 10}},
 				},
 				{
 					Query:    `SELECT dolt_workspace_test.id FROM public.dolt_workspace_test`,
-					Expected: []sql.Row{{Numeric("0")}},
+					Expected: []sql.Row{{0}},
 				},
 				{
 					Query:       `SELECT * FROM other.dolt_workspace_test`,
@@ -2693,11 +2711,19 @@ func TestUserSpaceDoltTables(t *testing.T) {
 				},
 				{
 					Query:    `SELECT id, staged, from_id, to_id FROM newschema.dolt_workspace_test_sch`,
-					Expected: []sql.Row{{Numeric("0"), 1, nil, 11}},
+					Expected: []sql.Row{{0, "t", nil, 11}},
 				},
 				{
 					Query:    `SELECT id, staged, from_id, to_id FROM dolt_workspace_test_sch`,
-					Expected: []sql.Row{{Numeric("0"), 1, nil, 11}},
+					Expected: []sql.Row{{0, "t", nil, 11}},
+				},
+				{
+					Query:    `SELECT id, staged, from_id, to_id FROM dolt_workspace_test_sch WHERE staged=true`,
+					Expected: []sql.Row{{0, "t", nil, 11}},
+				},
+				{
+					Query:    `SELECT id, staged, from_id, to_id FROM dolt_workspace_test_sch WHERE staged=false`,
+					Expected: []sql.Row{},
 				},
 				{
 					Query:    `SELECT * FROM dolt_workspace_test`,
@@ -2705,7 +2731,7 @@ func TestUserSpaceDoltTables(t *testing.T) {
 				},
 				{
 					Query:    `SELECT id, staged, from_id, to_id FROM public.dolt_workspace_test`,
-					Expected: []sql.Row{{Numeric("0"), 0, nil, 10}},
+					Expected: []sql.Row{{0, "f", nil, 10}},
 				},
 				{
 					Query:    `SELECT * FROM public.dolt_workspace_test_sch`,
@@ -2726,15 +2752,15 @@ func TestUserSpaceDoltTables(t *testing.T) {
 				},
 				{
 					Query:    `SELECT id, staged, from_id, to_id FROM newschema.dolt_workspace_test`,
-					Expected: []sql.Row{{Numeric("0"), 0, nil, 12}},
+					Expected: []sql.Row{{0, "f", nil, 12}},
 				},
 				{
 					Query:    `SELECT id, staged, from_id, to_id FROM dolt_workspace_test`,
-					Expected: []sql.Row{{Numeric("0"), 0, nil, 12}},
+					Expected: []sql.Row{{0, "f", nil, 12}},
 				},
 				{
 					Query:    `SELECT id, staged, from_id, to_id FROM public.dolt_workspace_test`,
-					Expected: []sql.Row{{Numeric("0"), 0, nil, 10}},
+					Expected: []sql.Row{{0, "f", nil, 10}},
 				},
 				{
 					Query:    "SET search_path = 'newschema,public'",
@@ -2742,7 +2768,7 @@ func TestUserSpaceDoltTables(t *testing.T) {
 				},
 				{
 					Query:    `SELECT id, staged, from_id, to_id FROM dolt_workspace_test`,
-					Expected: []sql.Row{{Numeric("0"), 0, nil, 12}},
+					Expected: []sql.Row{{0, "f", nil, 12}},
 				},
 			},
 		},
