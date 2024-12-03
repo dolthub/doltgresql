@@ -61,21 +61,21 @@ func TestQueries(t *testing.T) {
 }
 
 func TestSingleWriteQuery(t *testing.T) {
-	t.Skip()
+	// t.Skip()
 	h := newDoltgresServerHarness(t)
 	defer h.Close()
 
-	h.Setup(setup.MydbData, setup.MytableData, setup.Mytable_del_idxData, setup.KeylessData, setup.Keyless_idxData, setup.NiltableData, setup.TypestableData, setup.EmptytableData, setup.AutoincrementData, setup.OthertableData, setup.Othertable_del_idxData)
+	h.Setup(setup.MydbData, setup.AutoincrementData)
 
-	test := queries.WriteQueryTest{
-		WriteQuery: `INSERT INTO emptytable (s,i) SELECT s,i from mytable where i = 1
-			union select s,i from mytable where i = 3
-			union select s,i from mytable where i > 2`,
-		ExpectedWriteResult: []sql.Row{{types.NewOkResult(2)}},
-		SelectQuery:         "SELECT * FROM emptytable ORDER BY i,s",
+	test := queries.WriteQueryTest	{
+		WriteQuery:          "INSERT INTO auto_increment_tbl (c0) values (44)",
+		ExpectedWriteResult: []sql.Row{{types.OkResult{RowsAffected: 1, InsertID: 4}}},
+		SelectQuery:         "SELECT * FROM auto_increment_tbl ORDER BY pk",
 		ExpectedSelect: []sql.Row{
-			{int64(1), "first row"},
-			{int64(3), "third row"},
+			{1, 11},
+			{2, 22},
+			{3, 33},
+			{4, 44},
 		},
 	}
 
@@ -171,24 +171,19 @@ func TestSingleScript(t *testing.T) {
 
 	var scripts = []queries.ScriptTest{
 		{
-			Name: "auto increment column",
+			Name: "insert into sparse auto_increment table",
 			SetUpScript: []string{
-				"CREATE TABLE test (pk BIGINT PRIMARY KEY AUTO_INCREMENT, v1 BIGINT);",
+				"create table auto (pk int primary key auto_increment)",
+				"insert into auto values (10), (20), (30)",
+				"insert into auto values (NULL)",
+				"insert into auto values (40)",
+				"insert into auto values (0)",
 			},
 			Assertions: []queries.ScriptTestAssertion{
 				{
-					Query:    "INSERT INTO test (v1) VALUES (1);",
-					Expected: []sql.Row{{types.NewOkResult(1)}},
-				},
-				{
-					Query:    "INSERT INTO test (v1) VALUES (1);",
-					Expected: []sql.Row{{types.NewOkResult(1)}},
-				},
-				{
-					Query: "select * from test",
+					Query: "select * from auto order by 1",
 					Expected: []sql.Row{
-						{1,1},
-						{2,1},
+						{10}, {20}, {30}, {31}, {40}, {41},
 					},
 				},
 			},
@@ -339,6 +334,10 @@ func TestInsertInto(t *testing.T) {
 		"INSERT INTO ... SELECT with TEXT types",                         // typecasts needed
 		"check IN TUPLE constraint with duplicate key update",            // error not being thrown
 		"INSERT IGNORE works with FK Violations",                         // ignore not supported
+		"INSERT INTO auto_increment_tbl values (NULL, 44)", // auto inc semantics different
+		"INSERT INTO auto_increment_tbl values (0, 44)", // auto inc semantics different
+		"INSERT INTO auto_increment_tbl values (NULL, 44), (NULL, 55), (9, 99), (NULL, 110), (NULL, 121)", // auto inc semantics different
+		"INSERT INTO auto_increment_tbl (c0) SELECT 44 FROM dual", // dual table not supported
 	})
 	defer h.Close()
 	enginetest.TestInsertInto(t, h)
