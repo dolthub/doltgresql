@@ -1407,6 +1407,16 @@ func (node *FuncExpr) Format(ctx *FmtCtx) {
 			}
 		}
 	}
+	
+	ctx.WriteString("(")
+	for i, e := range node.Exprs {
+		if i > 0 {
+			ctx.WriteString(", ")
+		}
+		ctx.FormatNode(e)
+	}
+	ctx.WriteString(")")
+	
 	if node.AggType == OrderedSetAgg && len(node.OrderBy) > 0 {
 		ctx.WriteString(" WITHIN GROUP (")
 		ctx.FormatNode(&node.OrderBy)

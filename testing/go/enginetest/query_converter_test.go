@@ -7,6 +7,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/dolthub/doltgresql/postgres/parser/parser"
 	"github.com/dolthub/go-mysql-server/sql"
 	"github.com/dolthub/vitess/go/vt/sqlparser"
 	"github.com/lib/pq/oid"
@@ -1351,6 +1352,31 @@ func TestNormalizeStrings(t *testing.T) {
 		t.Run(test.input, func(t *testing.T) {
 			actual := normalizeStrings(test.input)
 			require.Equal(t, test.expected, actual)
+		})
+	}
+}
+
+// TestPostgresQueryFormat is a utility function to test how postgres parses and formats queries
+func TestPostgresQueryFormat(t *testing.T) {
+	type test struct {
+		input    string
+		expected string
+	}
+	tests := []test{
+		{
+			input:    "CREATE TABLE foo (a INT primary key default nextval('myseq'))",
+			expected: "CREATE TABLE foo (a INTEGER DEFAULT nextval('myseq') PRIMARY KEY)",
+		},
+	}
+
+	for _, test := range tests {
+		t.Run(test.input, func(t *testing.T) {
+			s, err := parser.Parse(test.input)
+			require.NoError(t, err)
+			
+			ctx := formatNodeWithUnqualifiedTableNames(s[0].AST)
+			query := ctx.String()
+			require.Equal(t, test.expected, query)
 		})
 	}
 }

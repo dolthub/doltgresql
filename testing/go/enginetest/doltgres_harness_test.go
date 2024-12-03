@@ -207,9 +207,8 @@ func commitScripts(dbs []string) []setup.SetupScript {
 }
 
 var skippedSetupWords = []string{
-	"auto_increment",
-	"y_idx",
-	"xy_hasnull_idx",
+	// "y_idx",
+	// "xy_hasnull_idx",
 	"typestable",     // lots of work to do
 	"datetime_table", // invalid timestamp format
 	"foo.othertable", // ERROR: database schema not found: foo (errno 1105)
