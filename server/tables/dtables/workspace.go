@@ -15,8 +15,9 @@
 package dtables
 
 import (
-	pgtypes "github.com/dolthub/doltgresql/server/types"
 	"github.com/dolthub/go-mysql-server/sql"
+
+	pgtypes "github.com/dolthub/doltgresql/server/types"
 )
 
 // getDoltWorkspaceBaseSqlSchema returns the base sql schema for the dolt_workspace_* table.
