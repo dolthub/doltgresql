@@ -76,7 +76,7 @@ export const docsTests = [
       command: "SELECT",
       rowCount: 1,
       oid: null,
-      rows: [{ table_name: "dolt.docs", staged: 0, status: "new table" }],
+      rows: [{ table_name: "dolt.docs", staged: "f", status: "new table" }],
       fields: doltStatusFields,
     },
   },

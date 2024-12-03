@@ -45,6 +45,7 @@ func Init() {
 	dtables.GetDocsSchema = getDocsSchema
 	dtables.GetDoltIgnoreSchema = getDoltIgnoreSchema
 	dprocedures.GetDoltRebaseSystemTableSchema = getRebaseSchema
+	dtables.GetDoltStatusSchema = getDoltStatusSchema
 	dtables.GetUnscopedDoltDiffSchema = getUnscopedDoltDiffSchema
 	dtables.GetDoltWorkspaceBaseSqlSchema = getDoltWorkspaceBaseSqlSchema
 
@@ -74,11 +75,6 @@ func getCommitsTableName() string {
 	return "commits"
 }
 
-// getDiffTableName returns the name of the diff table.
-func getDiffTableName() string {
-	return "diff"
-}
-
 // getLogTableName returns the name of the branches table.
 func getLogTableName() string {
 	return "log"
@@ -102,11 +98,6 @@ func getRemotesTableName() string {
 // getSchemaConflictsTableName returns the name of the schema conflicts table.
 func getSchemaConflictsTableName() string {
 	return "schema_conflicts"
-}
-
-// getStatusTableName returns the name of the status table.
-func getStatusTableName() string {
-	return "status"
 }
 
 // getTableOfTablesInConflictName returns the name of the conflicts table.

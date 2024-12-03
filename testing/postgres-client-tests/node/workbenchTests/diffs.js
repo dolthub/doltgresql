@@ -69,7 +69,7 @@ export const diffTests = [
         { table_name: "anotherschema", staged: 0, status: "new schema" },
         {
           table_name: "anotherschema.testanother",
-          staged: 0,
+          staged: "f",
           status: "new table",
         },
         { table_name: "public.dolt_schemas", staged: 0, status: "new table" },

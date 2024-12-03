@@ -20,6 +20,7 @@ import (
 	pgtypes "github.com/dolthub/doltgresql/server/types"
 )
 
+// getUnscopedDoltDiffSchema returns the schema for the diff table.
 func getUnscopedDoltDiffSchema(dbName, tableName string) sql.Schema {
 	return []*sql.Column{
 		{Name: "commit_hash", Type: pgtypes.Text, Source: tableName, PrimaryKey: true, DatabaseSource: dbName},
@@ -31,4 +32,9 @@ func getUnscopedDoltDiffSchema(dbName, tableName string) sql.Schema {
 		{Name: "data_change", Type: pgtypes.Bool, Source: tableName, PrimaryKey: false, DatabaseSource: dbName},
 		{Name: "schema_change", Type: pgtypes.Bool, Source: tableName, PrimaryKey: false, DatabaseSource: dbName},
 	}
+}
+
+// getDiffTableName returns the name of the diff table.
+func getDiffTableName() string {
+	return "diff"
 }

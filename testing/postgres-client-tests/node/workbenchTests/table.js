@@ -382,7 +382,9 @@ export const tableTests = [
       command: "SELECT",
       rowCount: 1,
       oid: null,
-      rows: [{ table_name: "public.test_info", staged: 0, status: "modified" }],
+      rows: [
+        { table_name: "public.test_info", staged: "f", status: "modified" },
+      ],
       fields: doltStatusFields,
     },
   },
@@ -402,7 +404,9 @@ export const tableTests = [
       command: "SELECT",
       rowCount: 1,
       oid: null,
-      rows: [{ table_name: "public.test_info", staged: 1, status: "modified" }],
+      rows: [
+        { table_name: "public.test_info", staged: "t", status: "modified" },
+      ],
       fields: doltStatusFields,
     },
   },
@@ -422,7 +426,9 @@ export const tableTests = [
       command: "SELECT",
       rowCount: 1,
       oid: null,
-      rows: [{ table_name: "public.test_info", staged: 0, status: "modified" }],
+      rows: [
+        { table_name: "public.test_info", staged: "f", status: "modified" },
+      ],
       fields: doltStatusFields,
     },
   },

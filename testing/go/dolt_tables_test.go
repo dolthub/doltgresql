@@ -1505,10 +1505,10 @@ func TestUserSpaceDoltTables(t *testing.T) {
 				{
 					Query: "SELECT * FROM dolt_status;",
 					Expected: []sql.Row{
-						{"public.dolt_ignore", 1, "new table"},
-						{"public.foo", 1, "new table"},
-						{"public.generated_exception", 1, "new table"},
-						{"public.generated_foo", 0, "new table"},
+						{"public.dolt_ignore", "t", "new table"},
+						{"public.foo", "t", "new table"},
+						{"public.generated_exception", "t", "new table"},
+						{"public.generated_foo", "f", "new table"},
 					},
 				},
 				{
@@ -1591,16 +1591,16 @@ func TestUserSpaceDoltTables(t *testing.T) {
 				{
 					Query: "SELECT * FROM dolt_status ORDER BY table_name;",
 					Expected: []sql.Row{
-						{"newschema", 1, "new schema"},
-						{"newschema.dolt_ignore", 1, "new table"},
-						{"newschema.foo", 1, "new table"},
-						{"newschema.generated_exception", 0, "new table"},
-						{"newschema.generated_foo", 1, "new table"},
-						{"newschema.test_foo", 0, "new table"},
-						{"public.dolt_ignore", 1, "new table"},
-						{"public.foo", 1, "new table"},
-						{"public.generated_exception", 1, "new table"},
-						{"public.generated_foo", 0, "new table"},
+						{"newschema", "t", "new schema"},
+						{"newschema.dolt_ignore", "t", "new table"},
+						{"newschema.foo", "t", "new table"},
+						{"newschema.generated_exception", "f", "new table"},
+						{"newschema.generated_foo", "t", "new table"},
+						{"newschema.test_foo", "f", "new table"},
+						{"public.dolt_ignore", "t", "new table"},
+						{"public.foo", "t", "new table"},
+						{"public.generated_exception", "t", "new table"},
+						{"public.generated_foo", "f", "new table"},
 					},
 				},
 			},
@@ -1860,6 +1860,91 @@ func TestUserSpaceDoltTables(t *testing.T) {
 				{
 					Query:    `SELECT table_name, index_name FROM public.dolt_statistics GROUP BY index_name ORDER BY index_name`,
 					Expected: []sql.Row{{"horses", "horses_name_idx"}, {"horses", "primary"}},
+				},
+			},
+		},
+		{
+			Name: "dolt status",
+			SetUpScript: []string{
+				"CREATE TABLE t (id INT PRIMARY KEY)",
+			},
+			Assertions: []ScriptTestAssertion{
+				{
+					Query:    `SELECT * FROM dolt.status`,
+					Expected: []sql.Row{{"public.t", "f", "new table"}},
+				},
+				{
+					Query:    `SELECT * FROM dolt_status`,
+					Expected: []sql.Row{{"public.t", "f", "new table"}},
+				},
+				{
+					Query:    `SELECT * FROM dolt.status WHERE staged=true`,
+					Expected: []sql.Row{},
+				},
+				{
+					Skip:     true, // TODO: referencing items outside the schema or database is not yet supported
+					Query:    `SELECT dolt.status.table_name FROM dolt.status`,
+					Expected: []sql.Row{{"public.t"}},
+				},
+				{
+					Query:    `SELECT dolt_status.table_name FROM dolt_status`,
+					Expected: []sql.Row{{"public.t"}},
+				},
+				{
+					Query:       `SELECT * FROM public.status`,
+					ExpectedErr: "table not found",
+				},
+				{
+					Query:       `SELECT * FROM status`,
+					ExpectedErr: "table not found",
+				},
+				{
+					Query:    `CREATE TABLE status (id INT PRIMARY KEY)`,
+					Expected: []sql.Row{},
+				},
+				{
+					Query:    `INSERT INTO status VALUES (1)`,
+					Expected: []sql.Row{},
+				},
+				{
+					Query:    `SELECT * FROM status`,
+					Expected: []sql.Row{{1}},
+				},
+				{
+					Query:    `SELECT table_name FROM dolt.status`,
+					Expected: []sql.Row{{"public.status"}, {"public.t"}},
+				},
+				{
+					Query:    "SET search_path = 'dolt'",
+					Expected: []sql.Row{},
+				},
+				{
+					Query:    `SELECT table_name FROM status`,
+					Expected: []sql.Row{{"public.status"}, {"public.t"}},
+				},
+				{
+					Query:    `SELECT * FROM public.status`,
+					Expected: []sql.Row{{1}},
+				},
+				{
+					Query:    "SET search_path = 'public'",
+					Expected: []sql.Row{},
+				},
+				{
+					Query:    `SELECT * FROM status`,
+					Expected: []sql.Row{{1}},
+				},
+				{
+					Query:    "SET search_path = 'public,dolt'",
+					Expected: []sql.Row{},
+				},
+				{
+					Query:    `SELECT * FROM status`,
+					Expected: []sql.Row{{1}},
+				},
+				{
+					Query:    `SELECT * FROM STATUS`,
+					Expected: []sql.Row{{1}},
 				},
 			},
 		},
