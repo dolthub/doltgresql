@@ -31,7 +31,7 @@ type TypeCastFunction func(ctx *sql.Context, val any, targetType pgtypes.Doltgre
 
 // getCastFunction is used to recursively call the cast function for when the inner logic sees that it has two array
 // types. This sidesteps providing
-type getCastFunction func(fromType pgtypes.DoltgresType, toType pgtypes.DoltgresType) TypeCastFunction
+type getCastFunction func(fromType uint32, toType uint32) TypeCastFunction
 
 // TypeCast is used to cast from one type to another.
 type TypeCast struct {
@@ -109,9 +109,9 @@ func GetPotentialExplicitCasts(fromType uint32) []pgtypes.DoltgresType {
 }
 
 // GetPotentialAssignmentCasts returns all registered assignment and implicit type casts from the given type.
-func GetPotentialAssignmentCasts(fromType uint32) []pgtypes.DoltgresType {
-	assignment := getPotentialCasts(assignmentTypeCastMutex, assignmentTypeCastsArray, fromType)
-	implicit := GetPotentialImplicitCasts(fromType)
+func GetPotentialAssignmentCasts(fromTypeOid uint32) []pgtypes.DoltgresType {
+	assignment := getPotentialCasts(assignmentTypeCastMutex, assignmentTypeCastsArray, fromTypeOid)
+	implicit := GetPotentialImplicitCasts(fromTypeOid)
 	both := make([]pgtypes.DoltgresType, len(assignment)+len(implicit))
 	copy(both, assignment)
 	copy(both[len(assignment):], implicit)
@@ -119,24 +119,28 @@ func GetPotentialAssignmentCasts(fromType uint32) []pgtypes.DoltgresType {
 }
 
 // GetPotentialImplicitCasts returns all registered implicit type casts from the given type.
-func GetPotentialImplicitCasts(fromType uint32) []pgtypes.DoltgresType {
-	return getPotentialCasts(implicitTypeCastMutex, implicitTypeCastsArray, fromType)
+func GetPotentialImplicitCasts(toTypeOid uint32) []pgtypes.DoltgresType {
+	return getPotentialCasts(implicitTypeCastMutex, implicitTypeCastsArray, toTypeOid)
 }
 
 // GetExplicitCast returns the explicit type cast function that will cast the "from" type to the "to" type. Returns nil
 // if such a cast is not valid.
-func GetExplicitCast(fromType pgtypes.DoltgresType, toType pgtypes.DoltgresType) TypeCastFunction {
-	if tcf := getCast(explicitTypeCastMutex, explicitTypeCastsMap, fromType, toType, GetExplicitCast); tcf != nil {
+func GetExplicitCast(fromTypeOid, toTypeOid uint32) TypeCastFunction {
+	if tcf := getCast(explicitTypeCastMutex, explicitTypeCastsMap, fromTypeOid, toTypeOid, GetExplicitCast); tcf != nil {
 		return tcf
-	} else if tcf = getCast(assignmentTypeCastMutex, assignmentTypeCastsMap, fromType, toType, GetExplicitCast); tcf != nil {
+	} else if tcf = getCast(assignmentTypeCastMutex, assignmentTypeCastsMap, fromTypeOid, toTypeOid, GetExplicitCast); tcf != nil {
 		return tcf
-	} else if tcf = getCast(implicitTypeCastMutex, implicitTypeCastsMap, fromType, toType, GetExplicitCast); tcf != nil {
+	} else if tcf = getCast(implicitTypeCastMutex, implicitTypeCastsMap, fromTypeOid, toTypeOid, GetExplicitCast); tcf != nil {
 		return tcf
 	}
+
+	fromType := pgtypes.OidToBuiltInDoltgresType[fromTypeOid]
+	toType := pgtypes.OidToBuiltInDoltgresType[toTypeOid]
+
 	// We check for the identity after checking the maps, as the identity may be overridden (such as for types that have
 	// parameters). If one of the types are a string type, then we do not use the identity, and use the I/O conversions
 	// below.
-	if fromType.OID == toType.OID && toType.TypCategory != pgtypes.TypeCategory_StringTypes && fromType.TypCategory != pgtypes.TypeCategory_StringTypes {
+	if fromTypeOid == toTypeOid && toType.TypCategory != pgtypes.TypeCategory_StringTypes && fromType.TypCategory != pgtypes.TypeCategory_StringTypes {
 		return identityCast
 	}
 	// All types have a built-in explicit cast from string types: https://www.postgresql.org/docs/15/sql-createcast.html
@@ -169,12 +173,16 @@ func GetExplicitCast(fromType pgtypes.DoltgresType, toType pgtypes.DoltgresType)
 
 // GetAssignmentCast returns the assignment type cast function that will cast the "from" type to the "to" type. Returns
 // nil if such a cast is not valid.
-func GetAssignmentCast(fromType pgtypes.DoltgresType, toType pgtypes.DoltgresType) TypeCastFunction {
-	if tcf := getCast(assignmentTypeCastMutex, assignmentTypeCastsMap, fromType, toType, GetAssignmentCast); tcf != nil {
+func GetAssignmentCast(fromTypeOid, toTypeOid uint32) TypeCastFunction {
+	if tcf := getCast(assignmentTypeCastMutex, assignmentTypeCastsMap, fromTypeOid, toTypeOid, GetAssignmentCast); tcf != nil {
 		return tcf
-	} else if tcf = getCast(implicitTypeCastMutex, implicitTypeCastsMap, fromType, toType, GetAssignmentCast); tcf != nil {
+	} else if tcf = getCast(implicitTypeCastMutex, implicitTypeCastsMap, fromTypeOid, toTypeOid, GetAssignmentCast); tcf != nil {
 		return tcf
 	}
+
+	fromType := pgtypes.OidToBuiltInDoltgresType[fromTypeOid]
+	toType := pgtypes.OidToBuiltInDoltgresType[toTypeOid]
+
 	// We check for the identity after checking the maps, as the identity may be overridden (such as for types that have
 	// parameters). If the "to" type is a string type, then we do not use the identity, and use the I/O conversion below.
 	if fromType.OID == toType.OID && fromType.TypCategory != pgtypes.TypeCategory_StringTypes {
@@ -198,13 +206,13 @@ func GetAssignmentCast(fromType pgtypes.DoltgresType, toType pgtypes.DoltgresTyp
 
 // GetImplicitCast returns the implicit type cast function that will cast the "from" type to the "to" type. Returns nil
 // if such a cast is not valid.
-func GetImplicitCast(fromType pgtypes.DoltgresType, toType pgtypes.DoltgresType) TypeCastFunction {
-	if tcf := getCast(implicitTypeCastMutex, implicitTypeCastsMap, fromType, toType, GetImplicitCast); tcf != nil {
+func GetImplicitCast(fromTypeOid, toTypeOid uint32) TypeCastFunction {
+	if tcf := getCast(implicitTypeCastMutex, implicitTypeCastsMap, fromTypeOid, toTypeOid, GetImplicitCast); tcf != nil {
 		return tcf
 	}
 	// We check for the identity after checking the maps, as the identity may be overridden (such as for types that have
 	// parameters).
-	if fromType.OID == toType.OID {
+	if fromTypeOid == toTypeOid {
 		return identityCast
 	}
 	return nil
@@ -244,21 +252,25 @@ func getPotentialCasts(mutex *sync.RWMutex, castArray map[uint32][]pgtypes.Doltg
 // not valid.
 func getCast(mutex *sync.RWMutex,
 	castMap map[uint32]map[uint32]TypeCastFunction,
-	fromType pgtypes.DoltgresType, toType pgtypes.DoltgresType, outerFunc getCastFunction) TypeCastFunction {
+	fromTypeOid, toTypeOid uint32, outerFunc getCastFunction) TypeCastFunction {
 	mutex.RLock()
 	defer mutex.RUnlock()
 
-	if toMap, ok := castMap[fromType.OID]; ok {
-		if f, ok := toMap[toType.OID]; ok {
+	if toMap, ok := castMap[fromTypeOid]; ok {
+		if f, ok := toMap[toTypeOid]; ok {
 			return f
 		}
 	}
+
+	fromType := pgtypes.OidToBuiltInDoltgresType[fromTypeOid]
+	toType := pgtypes.OidToBuiltInDoltgresType[toTypeOid]
+
 	// If there isn't a direct mapping, then we need to check if the types are array variants.
 	// As long as the base types are convertable, the array variants are also convertable.
 	if fromType.IsArrayType() && toType.IsArrayType() {
 		fromBaseType := fromType.ArrayBaseType()
 		toBaseType := toType.ArrayBaseType()
-		if baseCast := outerFunc(fromBaseType, toBaseType); baseCast != nil {
+		if baseCast := outerFunc(fromBaseType.OID, toBaseType.OID); baseCast != nil {
 			// We use a closure that can unwrap the slice, since conversion functions expect a singular non-nil value
 			return func(ctx *sql.Context, vals any, targetType pgtypes.DoltgresType) (any, error) {
 				var err error

@@ -24,50 +24,55 @@ import (
 
 // FindCommonType returns the common type that given types can convert to.
 // https://www.postgresql.org/docs/15/typeconv-union-case.html
-func FindCommonType(types []pgtypes.DoltgresType) (pgtypes.DoltgresType, error) {
-	var candidateType = pgtypes.Unknown
+func FindCommonType(typOids []uint32) (uint32, error) {
+	var candidateTypeOid = pgtypes.Unknown.OID
 	var fail = false
-	for _, typ := range types {
-		if typ.OID == candidateType.OID {
+	for _, typOid := range typOids {
+		if typOid == candidateTypeOid {
 			continue
-		} else if candidateType.OID == uint32(oid.T_unknown) {
-			candidateType = typ
+		} else if candidateTypeOid == uint32(oid.T_unknown) {
+			candidateTypeOid = typOid
 		} else {
-			candidateType = pgtypes.Unknown
+			candidateTypeOid = pgtypes.Unknown.OID
 			fail = true
 		}
 	}
 	if !fail {
-		if candidateType.OID == uint32(oid.T_unknown) {
-			return pgtypes.Text, nil
+		if candidateTypeOid == uint32(oid.T_unknown) {
+			return pgtypes.Text.OID, nil
 		}
-		return candidateType, nil
+		return candidateTypeOid, nil
 	}
-	for _, typ := range types {
-		if candidateType.OID == uint32(oid.T_unknown) {
-			candidateType = typ
+	for _, typOid := range typOids {
+		if candidateTypeOid == uint32(oid.T_unknown) {
+			candidateTypeOid = typOid
 		}
-		if typ.OID != uint32(oid.T_unknown) && candidateType.TypCategory != typ.TypCategory {
-			return pgtypes.DoltgresType{}, fmt.Errorf("types %s and %s cannot be matched", candidateType.String(), typ.String())
+		candidateType := pgtypes.OidToBuiltInDoltgresType[candidateTypeOid]
+		typ := pgtypes.OidToBuiltInDoltgresType[typOid]
+		if typOid != uint32(oid.T_unknown) && candidateType.TypCategory != typ.TypCategory {
+			return 0, fmt.Errorf("types %s and %s cannot be matched", candidateType.String(), typ.String())
 		}
 	}
 
 	var preferredTypeFound = false
-	for _, typ := range types {
-		if typ.OID == uint32(oid.T_unknown) {
+	for _, typOid := range typOids {
+		if typOid == uint32(oid.T_unknown) {
 			continue
-		} else if GetImplicitCast(typ, candidateType) != nil {
+		} else if GetImplicitCast(typOid, candidateTypeOid) != nil {
 			continue
-		} else if GetImplicitCast(candidateType, typ) == nil {
-			return pgtypes.DoltgresType{}, fmt.Errorf("cannot find implicit cast function from %s to %s", candidateType.String(), typ.String())
+		} else if GetImplicitCast(candidateTypeOid, typOid) == nil {
+			candidateType := pgtypes.OidToBuiltInDoltgresType[candidateTypeOid]
+			typ := pgtypes.OidToBuiltInDoltgresType[typOid]
+			return 0, fmt.Errorf("cannot find implicit cast function from %s to %s", candidateType.String(), typ.String())
 		} else if !preferredTypeFound {
+			candidateType := pgtypes.OidToBuiltInDoltgresType[candidateTypeOid]
 			if candidateType.IsPreferred {
-				candidateType = typ
+				candidateTypeOid = typOid
 				preferredTypeFound = true
 			}
 		} else {
-			return pgtypes.DoltgresType{}, fmt.Errorf("found another preferred candidate type")
+			return 0, fmt.Errorf("found another preferred candidate type")
 		}
 	}
-	return candidateType, nil
+	return candidateTypeOid, nil
 }

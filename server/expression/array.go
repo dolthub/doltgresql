@@ -79,7 +79,7 @@ func (array *Array) Eval(ctx *sql.Context, row sql.Row) (any, error) {
 		}
 
 		// We always cast the element, as there may be parameter restrictions in place
-		castFunc := framework.GetImplicitCast(doltgresType, resultTyp)
+		castFunc := framework.GetImplicitCast(doltgresType.OID, resultTyp.OID)
 		if castFunc == nil {
 			if doltgresType.OID == uint32(oid.T_unknown) {
 				castFunc = framework.UnknownLiteralCast
@@ -163,7 +163,7 @@ func (array *Array) WithResolvedChildren(children []any) (any, error) {
 // getTargetType returns the evaluated type for this expression.
 // Returns the "anyarray" type if the type combination is invalid.
 func (array *Array) getTargetType(children ...sql.Expression) (pgtypes.DoltgresType, error) {
-	var childrenTypes []pgtypes.DoltgresType
+	var childrenTypeOids []uint32
 	for _, child := range children {
 		if child != nil {
 			childType, ok := child.Type().(pgtypes.DoltgresType)
@@ -171,12 +171,13 @@ func (array *Array) getTargetType(children ...sql.Expression) (pgtypes.DoltgresT
 				// We use "anyarray" as the indeterminate/invalid type
 				return pgtypes.AnyArray, nil
 			}
-			childrenTypes = append(childrenTypes, childType)
+			childrenTypeOids = append(childrenTypeOids, childType.OID)
 		}
 	}
-	targetType, err := framework.FindCommonType(childrenTypes)
+	targetTypeOid, err := framework.FindCommonType(childrenTypeOids)
 	if err != nil {
 		return pgtypes.DoltgresType{}, fmt.Errorf("ARRAY %s", err.Error())
 	}
+	targetType := pgtypes.OidToBuiltInDoltgresType[targetTypeOid]
 	return targetType.ToArrayType(), nil
 }

@@ -88,7 +88,7 @@ func (c *ExplicitCast) Eval(ctx *sql.Context, row sql.Row) (any, error) {
 		return nil, nil
 	}
 
-	castFunction := framework.GetExplicitCast(fromType, c.castToType)
+	castFunction := framework.GetExplicitCast(fromType.OID, c.castToType.OID)
 	if castFunction == nil {
 		if fromType.OID == uint32(oid.T_unknown) {
 			castFunction = framework.UnknownLiteralCast

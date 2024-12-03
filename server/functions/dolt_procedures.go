@@ -119,7 +119,7 @@ func drainRowIter(ctx *sql.Context, rowIter sql.RowIter) (any, error) {
 			return nil, err
 		}
 
-		castFn := framework.GetExplicitCast(fromType, pgtypes.Text)
+		castFn := framework.GetExplicitCast(fromType.OID, pgtypes.Text.OID)
 		textVal, err := castFn(ctx, row[i], pgtypes.Text)
 		if err != nil {
 			return nil, err
