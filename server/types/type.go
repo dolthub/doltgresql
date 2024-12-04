@@ -599,12 +599,12 @@ func (t *DoltgresType) String() string {
 	if t.InternalName == "" {
 		str = t.Name
 	}
-	//if t.AttTypMod != -1 {
-	//	// TODO: need valid sql.Context
-	//	if l, err := t.TypModOut(nil, t.AttTypMod); err == nil {
-	//		str = fmt.Sprintf("%s%s", str, l)
-	//	}
-	//}
+	if t.AttTypMod != -1 {
+		// TODO: need valid sql.Context
+		if l, err := t.TypModOut(nil, t.AttTypMod); err == nil {
+			str = fmt.Sprintf("%s%s", str, l)
+		}
+	}
 	return str
 }
 
