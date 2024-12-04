@@ -60,7 +60,7 @@ func CreateArrayTypeFromBaseType(baseType *DoltgresType) *DoltgresType {
 		Acl:           nil,
 		Checks:        nil,
 		InternalName:  fmt.Sprintf("%s[]", baseType.Name), // This will be set to the proper name in ToArrayType
-		//attTypMod:     baseType.attTypMod,                 // TODO: check
-		CompareFunc: toFuncID("btarraycmp", oid.T_anyarray, oid.T_anyarray),
+		attTypMod:     baseType.attTypMod,                 // TODO: check
+		CompareFunc:   toFuncID("btarraycmp", oid.T_anyarray, oid.T_anyarray),
 	}
 }

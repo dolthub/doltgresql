@@ -106,7 +106,7 @@ func (t *DoltgresType) ArrayBaseType() *DoltgresType {
 	if !ok {
 		panic(fmt.Sprintf("cannot get base type from: %s", t.Name))
 	}
-	newElem := *elem.WithAttTypMod(t.GetAttTypMod())
+	newElem := *elem.WithAttTypMod(t.attTypMod)
 	return &newElem
 }
 
@@ -628,7 +628,7 @@ func (t *DoltgresType) ToArrayType() *DoltgresType {
 	if !ok {
 		panic(fmt.Sprintf("cannot get array type from: %s", t.Name))
 	}
-	newArr := *arr.WithAttTypMod(t.GetAttTypMod())
+	newArr := *arr.WithAttTypMod(t.attTypMod)
 	newArr.InternalName = fmt.Sprintf("%s[]", t.String())
 	return &newArr
 }
