@@ -27,14 +27,14 @@ import (
 // AssignmentCast handles assignment casts.
 type AssignmentCast struct {
 	expr     sql.Expression
-	fromType pgtypes.DoltgresType
-	toType   pgtypes.DoltgresType
+	fromType *pgtypes.DoltgresType
+	toType   *pgtypes.DoltgresType
 }
 
 var _ sql.Expression = (*AssignmentCast)(nil)
 
 // NewAssignmentCast returns a new *AssignmentCast expression.
-func NewAssignmentCast(expr sql.Expression, fromType pgtypes.DoltgresType, toType pgtypes.DoltgresType) *AssignmentCast {
+func NewAssignmentCast(expr sql.Expression, fromType *pgtypes.DoltgresType, toType *pgtypes.DoltgresType) *AssignmentCast {
 	toType = checkForDomainType(toType)
 	fromType = checkForDomainType(fromType)
 	return &AssignmentCast{
@@ -95,7 +95,7 @@ func (ac *AssignmentCast) WithChildren(children ...sql.Expression) (sql.Expressi
 	return NewAssignmentCast(children[0], ac.fromType, ac.toType), nil
 }
 
-func checkForDomainType(t pgtypes.DoltgresType) pgtypes.DoltgresType {
+func checkForDomainType(t *pgtypes.DoltgresType) *pgtypes.DoltgresType {
 	if t.TypType == pgtypes.TypeType_Domain {
 		t = t.DomainUnderlyingBaseType()
 	}

@@ -30,11 +30,11 @@ type QuickFunction interface {
 	// The implementation will not verify that the correct number of arguments have been passed.
 	CallVariadic(ctx *sql.Context, args ...any) (interface{}, error)
 	// ResolvedTypes returns the types that were resolved with this function.
-	ResolvedTypes() []pgtypes.DoltgresType
+	ResolvedTypes() []*pgtypes.DoltgresType
 	// WithResolvedTypes returns a new QuickFunction with the replaced resolved types. The implementation will not
 	// verify that the new types are correct in any way. This returns a QuickFunction, however it's typed as "any" due
 	// to potential import cycles.
-	WithResolvedTypes(newTypes []pgtypes.DoltgresType) any
+	WithResolvedTypes(newTypes []*pgtypes.DoltgresType) any
 }
 
 // QuickFunction1 is an implementation of QuickFunction that handles a single parameter.
@@ -42,7 +42,7 @@ type QuickFunction1 struct {
 	Name         string
 	Argument     sql.Expression
 	IsStrict     bool
-	callResolved [2]pgtypes.DoltgresType
+	callResolved [2]*pgtypes.DoltgresType
 	function     Function1
 }
 
@@ -113,17 +113,17 @@ func (q *QuickFunction1) CallVariadic(ctx *sql.Context, args ...any) (interface{
 }
 
 // ResolvedTypes implements the interface QuickFunction.
-func (q *QuickFunction1) ResolvedTypes() []pgtypes.DoltgresType {
+func (q *QuickFunction1) ResolvedTypes() []*pgtypes.DoltgresType {
 	return q.callResolved[:]
 }
 
 // WithResolvedTypes implements the interface QuickFunction.
-func (q *QuickFunction1) WithResolvedTypes(newTypes []pgtypes.DoltgresType) any {
+func (q *QuickFunction1) WithResolvedTypes(newTypes []*pgtypes.DoltgresType) any {
 	return &QuickFunction1{
 		Name:         q.Name,
 		Argument:     q.Argument,
 		IsStrict:     q.IsStrict,
-		callResolved: [2]pgtypes.DoltgresType(newTypes),
+		callResolved: [2]*pgtypes.DoltgresType(newTypes),
 		function:     q.function,
 	}
 }
@@ -146,7 +146,7 @@ type QuickFunction2 struct {
 	Name         string
 	Arguments    [2]sql.Expression
 	IsStrict     bool
-	callResolved [3]pgtypes.DoltgresType
+	callResolved [3]*pgtypes.DoltgresType
 	function     Function2
 }
 
@@ -221,17 +221,17 @@ func (q *QuickFunction2) CallVariadic(ctx *sql.Context, args ...any) (interface{
 }
 
 // ResolvedTypes implements the interface QuickFunction.
-func (q *QuickFunction2) ResolvedTypes() []pgtypes.DoltgresType {
+func (q *QuickFunction2) ResolvedTypes() []*pgtypes.DoltgresType {
 	return q.callResolved[:]
 }
 
 // WithResolvedTypes implements the interface QuickFunction.
-func (q *QuickFunction2) WithResolvedTypes(newTypes []pgtypes.DoltgresType) any {
+func (q *QuickFunction2) WithResolvedTypes(newTypes []*pgtypes.DoltgresType) any {
 	return &QuickFunction2{
 		Name:         q.Name,
 		Arguments:    q.Arguments,
 		IsStrict:     q.IsStrict,
-		callResolved: [3]pgtypes.DoltgresType(newTypes),
+		callResolved: [3]*pgtypes.DoltgresType(newTypes),
 		function:     q.function,
 	}
 }
@@ -254,7 +254,7 @@ type QuickFunction3 struct {
 	Name         string
 	Arguments    [3]sql.Expression
 	IsStrict     bool
-	callResolved [4]pgtypes.DoltgresType
+	callResolved [4]*pgtypes.DoltgresType
 	function     Function3
 }
 
@@ -329,17 +329,17 @@ func (q *QuickFunction3) CallVariadic(ctx *sql.Context, args ...any) (interface{
 }
 
 // ResolvedTypes implements the interface QuickFunction.
-func (q *QuickFunction3) ResolvedTypes() []pgtypes.DoltgresType {
+func (q *QuickFunction3) ResolvedTypes() []*pgtypes.DoltgresType {
 	return q.callResolved[:]
 }
 
 // WithResolvedTypes implements the interface QuickFunction.
-func (q *QuickFunction3) WithResolvedTypes(newTypes []pgtypes.DoltgresType) any {
+func (q *QuickFunction3) WithResolvedTypes(newTypes []*pgtypes.DoltgresType) any {
 	return &QuickFunction3{
 		Name:         q.Name,
 		Arguments:    q.Arguments,
 		IsStrict:     q.IsStrict,
-		callResolved: [4]pgtypes.DoltgresType(newTypes),
+		callResolved: [4]*pgtypes.DoltgresType(newTypes),
 		function:     q.function,
 	}
 }

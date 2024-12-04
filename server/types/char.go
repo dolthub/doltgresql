@@ -19,7 +19,7 @@ import (
 )
 
 // BpChar is a char that has an unbounded length.
-var BpChar = DoltgresType{
+var BpChar = &DoltgresType{
 	OID:           uint32(oid.T_bpchar),
 	Name:          "bpchar",
 	Schema:        "pg_catalog",
@@ -57,12 +57,12 @@ var BpChar = DoltgresType{
 }
 
 // NewCharType returns BpChar type with typmod set.
-func NewCharType(length int32) (DoltgresType, error) {
+func NewCharType(length int32) (*DoltgresType, error) {
 	var err error
-	newType := BpChar
+	newType := *BpChar
 	newType.AttTypMod, err = GetTypModFromCharLength("char", length)
 	if err != nil {
-		return DoltgresType{}, err
+		return nil, err
 	}
-	return newType, nil
+	return &newType, nil
 }

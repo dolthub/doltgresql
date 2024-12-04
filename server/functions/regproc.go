@@ -35,9 +35,9 @@ func initRegproc() {
 var regprocin = framework.Function1{
 	Name:       "regprocin",
 	Return:     pgtypes.Regproc,
-	Parameters: [1]pgtypes.DoltgresType{pgtypes.Cstring},
+	Parameters: [1]*pgtypes.DoltgresType{pgtypes.Cstring},
 	Strict:     true,
-	Callable: func(ctx *sql.Context, _ [2]pgtypes.DoltgresType, val any) (any, error) {
+	Callable: func(ctx *sql.Context, _ [2]*pgtypes.DoltgresType, val any) (any, error) {
 		return pgtypes.Regproc_IoInput(ctx, val.(string))
 	},
 }
@@ -46,9 +46,9 @@ var regprocin = framework.Function1{
 var regprocout = framework.Function1{
 	Name:       "regprocout",
 	Return:     pgtypes.Cstring,
-	Parameters: [1]pgtypes.DoltgresType{pgtypes.Regproc},
+	Parameters: [1]*pgtypes.DoltgresType{pgtypes.Regproc},
 	Strict:     true,
-	Callable: func(ctx *sql.Context, _ [2]pgtypes.DoltgresType, val any) (any, error) {
+	Callable: func(ctx *sql.Context, _ [2]*pgtypes.DoltgresType, val any) (any, error) {
 		return pgtypes.Regproc_IoOutput(ctx, val.(uint32))
 	},
 }
@@ -57,9 +57,9 @@ var regprocout = framework.Function1{
 var regprocrecv = framework.Function1{
 	Name:       "regprocrecv",
 	Return:     pgtypes.Regproc,
-	Parameters: [1]pgtypes.DoltgresType{pgtypes.Internal},
+	Parameters: [1]*pgtypes.DoltgresType{pgtypes.Internal},
 	Strict:     true,
-	Callable: func(ctx *sql.Context, _ [2]pgtypes.DoltgresType, val any) (any, error) {
+	Callable: func(ctx *sql.Context, _ [2]*pgtypes.DoltgresType, val any) (any, error) {
 		data := val.([]byte)
 		if len(data) == 0 {
 			return nil, nil
@@ -72,9 +72,9 @@ var regprocrecv = framework.Function1{
 var regprocsend = framework.Function1{
 	Name:       "regprocsend",
 	Return:     pgtypes.Bytea,
-	Parameters: [1]pgtypes.DoltgresType{pgtypes.Regproc},
+	Parameters: [1]*pgtypes.DoltgresType{pgtypes.Regproc},
 	Strict:     true,
-	Callable: func(ctx *sql.Context, _ [2]pgtypes.DoltgresType, val any) (any, error) {
+	Callable: func(ctx *sql.Context, _ [2]*pgtypes.DoltgresType, val any) (any, error) {
 		retVal := make([]byte, 4)
 		binary.BigEndian.PutUint32(retVal, val.(uint32))
 		return retVal, nil

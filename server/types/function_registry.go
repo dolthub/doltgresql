@@ -30,13 +30,13 @@ const functionNameSplitter = ";"
 // QuickFunction is an interface redefinition of the one defined in the `server/functions/framework` package to avoid cycles.
 type QuickFunction interface {
 	CallVariadic(ctx *sql.Context, args ...any) (interface{}, error)
-	ResolvedTypes() []DoltgresType
-	WithResolvedTypes(newTypes []DoltgresType) any
+	ResolvedTypes() []*DoltgresType
+	WithResolvedTypes(newTypes []*DoltgresType) any
 }
 
 // LoadFunctionFromCatalog returns the function matching the given name and parameter types. This is intended solely for
 // functions that are used for types, as the returned functions are not valid using the Eval function.
-var LoadFunctionFromCatalog func(funcName string, parameterTypes []DoltgresType) any
+var LoadFunctionFromCatalog func(funcName string, parameterTypes []*DoltgresType) any
 
 // functionRegistry is a local registry that holds a mapping from ID to QuickFunction. This is done as types are now
 // passed by struct, meaning that we need to cache the loading of functions somewhere. In addition, we don't yet support
@@ -143,18 +143,19 @@ func (*functionRegistry) nameWithoutParams(funcString string) string {
 
 // nameWithParams returns the name and parameter types from the given function string. Return false if there were issues
 // with the OID parameters.
-func (*functionRegistry) nameWithParams(funcString string) (string, []DoltgresType, bool) {
+func (*functionRegistry) nameWithParams(funcString string) (string, []*DoltgresType, bool) {
 	parts := strings.Split(funcString, functionNameSplitter)
 	if len(parts) == 1 {
 		return parts[0], nil, true
 	}
-	dTypes := make([]DoltgresType, len(parts)-1)
+	dTypes := make([]*DoltgresType, len(parts)-1)
 	for i := 1; i < len(parts); i++ {
 		oidVal, err := strconv.Atoi(parts[i])
 		if err != nil {
 			return parts[0], nil, false
 		}
-		typ, ok := OidToBuiltInDoltgresType[uint32(oidVal)]
+		oid := uint32(oidVal)
+		typ, ok := OidToBuiltInDoltgresType[oid]
 		if !ok {
 			return parts[0], nil, false
 		}

@@ -52,9 +52,9 @@ func initBinaryMinus() {
 var float4mi = framework.Function2{
 	Name:       "float4mi",
 	Return:     pgtypes.Float32,
-	Parameters: [2]pgtypes.DoltgresType{pgtypes.Float32, pgtypes.Float32},
+	Parameters: [2]*pgtypes.DoltgresType{pgtypes.Float32, pgtypes.Float32},
 	Strict:     true,
-	Callable: func(ctx *sql.Context, _ [3]pgtypes.DoltgresType, val1 any, val2 any) (any, error) {
+	Callable: func(ctx *sql.Context, _ [3]*pgtypes.DoltgresType, val1 any, val2 any) (any, error) {
 		return val1.(float32) - val2.(float32), nil
 	},
 }
@@ -63,9 +63,9 @@ var float4mi = framework.Function2{
 var float48mi = framework.Function2{
 	Name:       "float48mi",
 	Return:     pgtypes.Float64,
-	Parameters: [2]pgtypes.DoltgresType{pgtypes.Float32, pgtypes.Float64},
+	Parameters: [2]*pgtypes.DoltgresType{pgtypes.Float32, pgtypes.Float64},
 	Strict:     true,
-	Callable: func(ctx *sql.Context, _ [3]pgtypes.DoltgresType, val1 any, val2 any) (any, error) {
+	Callable: func(ctx *sql.Context, _ [3]*pgtypes.DoltgresType, val1 any, val2 any) (any, error) {
 		return float64(val1.(float32)) - val2.(float64), nil
 	},
 }
@@ -74,9 +74,9 @@ var float48mi = framework.Function2{
 var float8mi = framework.Function2{
 	Name:       "float8mi",
 	Return:     pgtypes.Float64,
-	Parameters: [2]pgtypes.DoltgresType{pgtypes.Float64, pgtypes.Float64},
+	Parameters: [2]*pgtypes.DoltgresType{pgtypes.Float64, pgtypes.Float64},
 	Strict:     true,
-	Callable: func(ctx *sql.Context, _ [3]pgtypes.DoltgresType, val1 any, val2 any) (any, error) {
+	Callable: func(ctx *sql.Context, _ [3]*pgtypes.DoltgresType, val1 any, val2 any) (any, error) {
 		return val1.(float64) - val2.(float64), nil
 	},
 }
@@ -85,9 +85,9 @@ var float8mi = framework.Function2{
 var float84mi = framework.Function2{
 	Name:       "float84mi",
 	Return:     pgtypes.Float64,
-	Parameters: [2]pgtypes.DoltgresType{pgtypes.Float64, pgtypes.Float32},
+	Parameters: [2]*pgtypes.DoltgresType{pgtypes.Float64, pgtypes.Float32},
 	Strict:     true,
-	Callable: func(ctx *sql.Context, _ [3]pgtypes.DoltgresType, val1 any, val2 any) (any, error) {
+	Callable: func(ctx *sql.Context, _ [3]*pgtypes.DoltgresType, val1 any, val2 any) (any, error) {
 		return val1.(float64) - float64(val2.(float32)), nil
 	},
 }
@@ -96,9 +96,9 @@ var float84mi = framework.Function2{
 var int2mi = framework.Function2{
 	Name:       "int2mi",
 	Return:     pgtypes.Int16,
-	Parameters: [2]pgtypes.DoltgresType{pgtypes.Int16, pgtypes.Int16},
+	Parameters: [2]*pgtypes.DoltgresType{pgtypes.Int16, pgtypes.Int16},
 	Strict:     true,
-	Callable: func(ctx *sql.Context, _ [3]pgtypes.DoltgresType, val1 any, val2 any) (any, error) {
+	Callable: func(ctx *sql.Context, _ [3]*pgtypes.DoltgresType, val1 any, val2 any) (any, error) {
 		result := int64(val1.(int16)) - int64(val2.(int16))
 		if result > math.MaxInt16 || result < math.MinInt16 {
 			return nil, fmt.Errorf("smallint out of range")
@@ -111,9 +111,9 @@ var int2mi = framework.Function2{
 var int24mi = framework.Function2{
 	Name:       "int24mi",
 	Return:     pgtypes.Int32,
-	Parameters: [2]pgtypes.DoltgresType{pgtypes.Int16, pgtypes.Int32},
+	Parameters: [2]*pgtypes.DoltgresType{pgtypes.Int16, pgtypes.Int32},
 	Strict:     true,
-	Callable: func(ctx *sql.Context, _ [3]pgtypes.DoltgresType, val1 any, val2 any) (any, error) {
+	Callable: func(ctx *sql.Context, _ [3]*pgtypes.DoltgresType, val1 any, val2 any) (any, error) {
 		result := int64(val1.(int16)) - int64(val2.(int32))
 		if result > math.MaxInt16 || result < math.MinInt16 {
 			return nil, fmt.Errorf("integer out of range")
@@ -126,9 +126,9 @@ var int24mi = framework.Function2{
 var int28mi = framework.Function2{
 	Name:       "int28mi",
 	Return:     pgtypes.Int64,
-	Parameters: [2]pgtypes.DoltgresType{pgtypes.Int16, pgtypes.Int64},
+	Parameters: [2]*pgtypes.DoltgresType{pgtypes.Int16, pgtypes.Int64},
 	Strict:     true,
-	Callable: func(ctx *sql.Context, _ [3]pgtypes.DoltgresType, val1 any, val2 any) (any, error) {
+	Callable: func(ctx *sql.Context, _ [3]*pgtypes.DoltgresType, val1 any, val2 any) (any, error) {
 		return minusOverflow(int64(val1.(int16)), val2.(int64))
 	},
 }
@@ -137,9 +137,9 @@ var int28mi = framework.Function2{
 var int4mi = framework.Function2{
 	Name:       "int4mi",
 	Return:     pgtypes.Int32,
-	Parameters: [2]pgtypes.DoltgresType{pgtypes.Int32, pgtypes.Int32},
+	Parameters: [2]*pgtypes.DoltgresType{pgtypes.Int32, pgtypes.Int32},
 	Strict:     true,
-	Callable: func(ctx *sql.Context, _ [3]pgtypes.DoltgresType, val1 any, val2 any) (any, error) {
+	Callable: func(ctx *sql.Context, _ [3]*pgtypes.DoltgresType, val1 any, val2 any) (any, error) {
 		result := int64(val1.(int32)) - int64(val2.(int32))
 		if result > math.MaxInt32 || result < math.MinInt32 {
 			return nil, fmt.Errorf("integer out of range")
@@ -152,9 +152,9 @@ var int4mi = framework.Function2{
 var int42mi = framework.Function2{
 	Name:       "int42mi",
 	Return:     pgtypes.Int32,
-	Parameters: [2]pgtypes.DoltgresType{pgtypes.Int32, pgtypes.Int16},
+	Parameters: [2]*pgtypes.DoltgresType{pgtypes.Int32, pgtypes.Int16},
 	Strict:     true,
-	Callable: func(ctx *sql.Context, _ [3]pgtypes.DoltgresType, val1 any, val2 any) (any, error) {
+	Callable: func(ctx *sql.Context, _ [3]*pgtypes.DoltgresType, val1 any, val2 any) (any, error) {
 		result := int64(val1.(int32)) - int64(val2.(int16))
 		if result > math.MaxInt32 || result < math.MinInt32 {
 			return nil, fmt.Errorf("integer out of range")
@@ -167,9 +167,9 @@ var int42mi = framework.Function2{
 var int48mi = framework.Function2{
 	Name:       "int48mi",
 	Return:     pgtypes.Int64,
-	Parameters: [2]pgtypes.DoltgresType{pgtypes.Int32, pgtypes.Int64},
+	Parameters: [2]*pgtypes.DoltgresType{pgtypes.Int32, pgtypes.Int64},
 	Strict:     true,
-	Callable: func(ctx *sql.Context, _ [3]pgtypes.DoltgresType, val1 any, val2 any) (any, error) {
+	Callable: func(ctx *sql.Context, _ [3]*pgtypes.DoltgresType, val1 any, val2 any) (any, error) {
 		return minusOverflow(int64(val1.(int32)), val2.(int64))
 	},
 }
@@ -178,9 +178,9 @@ var int48mi = framework.Function2{
 var int8mi = framework.Function2{
 	Name:       "int8mi",
 	Return:     pgtypes.Int64,
-	Parameters: [2]pgtypes.DoltgresType{pgtypes.Int64, pgtypes.Int64},
+	Parameters: [2]*pgtypes.DoltgresType{pgtypes.Int64, pgtypes.Int64},
 	Strict:     true,
-	Callable: func(ctx *sql.Context, _ [3]pgtypes.DoltgresType, val1 any, val2 any) (any, error) {
+	Callable: func(ctx *sql.Context, _ [3]*pgtypes.DoltgresType, val1 any, val2 any) (any, error) {
 		return minusOverflow(val1.(int64), val2.(int64))
 	},
 }
@@ -189,9 +189,9 @@ var int8mi = framework.Function2{
 var int82mi = framework.Function2{
 	Name:       "int82mi",
 	Return:     pgtypes.Int64,
-	Parameters: [2]pgtypes.DoltgresType{pgtypes.Int64, pgtypes.Int16},
+	Parameters: [2]*pgtypes.DoltgresType{pgtypes.Int64, pgtypes.Int16},
 	Strict:     true,
-	Callable: func(ctx *sql.Context, _ [3]pgtypes.DoltgresType, val1 any, val2 any) (any, error) {
+	Callable: func(ctx *sql.Context, _ [3]*pgtypes.DoltgresType, val1 any, val2 any) (any, error) {
 		return minusOverflow(val1.(int64), int64(val2.(int16)))
 	},
 }
@@ -200,9 +200,9 @@ var int82mi = framework.Function2{
 var int84mi = framework.Function2{
 	Name:       "int84mi",
 	Return:     pgtypes.Int64,
-	Parameters: [2]pgtypes.DoltgresType{pgtypes.Int64, pgtypes.Int32},
+	Parameters: [2]*pgtypes.DoltgresType{pgtypes.Int64, pgtypes.Int32},
 	Strict:     true,
-	Callable: func(ctx *sql.Context, _ [3]pgtypes.DoltgresType, val1 any, val2 any) (any, error) {
+	Callable: func(ctx *sql.Context, _ [3]*pgtypes.DoltgresType, val1 any, val2 any) (any, error) {
 		return minusOverflow(val1.(int64), int64(val2.(int32)))
 	},
 }
@@ -211,9 +211,9 @@ var int84mi = framework.Function2{
 var interval_mi = framework.Function2{
 	Name:       "interval_mi",
 	Return:     pgtypes.Interval,
-	Parameters: [2]pgtypes.DoltgresType{pgtypes.Interval, pgtypes.Interval},
+	Parameters: [2]*pgtypes.DoltgresType{pgtypes.Interval, pgtypes.Interval},
 	Strict:     true,
-	Callable: func(ctx *sql.Context, _ [3]pgtypes.DoltgresType, val1 any, val2 any) (any, error) {
+	Callable: func(ctx *sql.Context, _ [3]*pgtypes.DoltgresType, val1 any, val2 any) (any, error) {
 		dur1 := val1.(duration.Duration)
 		dur2 := val2.(duration.Duration)
 		return dur1.Sub(dur2), nil
@@ -224,9 +224,9 @@ var interval_mi = framework.Function2{
 var numeric_sub = framework.Function2{
 	Name:       "numeric_sub",
 	Return:     pgtypes.Numeric,
-	Parameters: [2]pgtypes.DoltgresType{pgtypes.Numeric, pgtypes.Numeric},
+	Parameters: [2]*pgtypes.DoltgresType{pgtypes.Numeric, pgtypes.Numeric},
 	Strict:     true,
-	Callable: func(ctx *sql.Context, _ [3]pgtypes.DoltgresType, val1 any, val2 any) (any, error) {
+	Callable: func(ctx *sql.Context, _ [3]*pgtypes.DoltgresType, val1 any, val2 any) (any, error) {
 		return val1.(decimal.Decimal).Sub(val2.(decimal.Decimal)), nil
 	},
 }

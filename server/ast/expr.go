@@ -17,6 +17,7 @@ package ast
 import (
 	"context"
 	"fmt"
+	"github.com/dolthub/go-mysql-server/sql"
 	"go/constant"
 	"strings"
 
@@ -105,7 +106,7 @@ func nodeExpr(ctx *Context, node tree.Expr) (vitess.Expr, error) {
 		return nil, fmt.Errorf("ANNOTATE_TYPE is not yet supported")
 	case *tree.Array:
 		unresolvedChildren := make([]vitess.Expr, len(node.Exprs))
-		var coercedType pgtypes.DoltgresType
+		var coercedType sql.Type
 		if node.HasResolvedType() {
 			_, resolvedType, err := nodeResolvableTypeReference(ctx, node.ResolvedType())
 			if err != nil {

@@ -39,9 +39,9 @@ func initBytea() {
 var byteain = framework.Function1{
 	Name:       "byteain",
 	Return:     pgtypes.Bytea,
-	Parameters: [1]pgtypes.DoltgresType{pgtypes.Cstring},
+	Parameters: [1]*pgtypes.DoltgresType{pgtypes.Cstring},
 	Strict:     true,
-	Callable: func(ctx *sql.Context, _ [2]pgtypes.DoltgresType, val any) (any, error) {
+	Callable: func(ctx *sql.Context, _ [2]*pgtypes.DoltgresType, val any) (any, error) {
 		input := val.(string)
 		if strings.HasPrefix(input, `\x`) {
 			return hex.DecodeString(input[2:])
@@ -55,9 +55,9 @@ var byteain = framework.Function1{
 var byteaout = framework.Function1{
 	Name:       "byteaout",
 	Return:     pgtypes.Cstring,
-	Parameters: [1]pgtypes.DoltgresType{pgtypes.Bytea},
+	Parameters: [1]*pgtypes.DoltgresType{pgtypes.Bytea},
 	Strict:     true,
-	Callable: func(ctx *sql.Context, _ [2]pgtypes.DoltgresType, val any) (any, error) {
+	Callable: func(ctx *sql.Context, _ [2]*pgtypes.DoltgresType, val any) (any, error) {
 		return `\x` + hex.EncodeToString(val.([]byte)), nil
 	},
 }
@@ -66,9 +66,9 @@ var byteaout = framework.Function1{
 var bytearecv = framework.Function1{
 	Name:       "bytearecv",
 	Return:     pgtypes.Bytea,
-	Parameters: [1]pgtypes.DoltgresType{pgtypes.Internal},
+	Parameters: [1]*pgtypes.DoltgresType{pgtypes.Internal},
 	Strict:     true,
-	Callable: func(ctx *sql.Context, _ [2]pgtypes.DoltgresType, val any) (any, error) {
+	Callable: func(ctx *sql.Context, _ [2]*pgtypes.DoltgresType, val any) (any, error) {
 		data := val.([]byte)
 		if len(data) == 0 {
 			return nil, nil
@@ -82,9 +82,9 @@ var bytearecv = framework.Function1{
 var byteasend = framework.Function1{
 	Name:       "byteasend",
 	Return:     pgtypes.Bytea,
-	Parameters: [1]pgtypes.DoltgresType{pgtypes.Bytea},
+	Parameters: [1]*pgtypes.DoltgresType{pgtypes.Bytea},
 	Strict:     true,
-	Callable: func(ctx *sql.Context, _ [2]pgtypes.DoltgresType, val any) (any, error) {
+	Callable: func(ctx *sql.Context, _ [2]*pgtypes.DoltgresType, val any) (any, error) {
 		str := val.([]byte)
 		writer := utils.NewWriter(uint64(len(str) + 4))
 		writer.ByteSlice(str)
@@ -96,9 +96,9 @@ var byteasend = framework.Function1{
 var byteacmp = framework.Function2{
 	Name:       "byteacmp",
 	Return:     pgtypes.Int32,
-	Parameters: [2]pgtypes.DoltgresType{pgtypes.Bytea, pgtypes.Bytea},
+	Parameters: [2]*pgtypes.DoltgresType{pgtypes.Bytea, pgtypes.Bytea},
 	Strict:     true,
-	Callable: func(ctx *sql.Context, _ [3]pgtypes.DoltgresType, val1, val2 any) (any, error) {
+	Callable: func(ctx *sql.Context, _ [3]*pgtypes.DoltgresType, val1, val2 any) (any, error) {
 		return int32(bytes.Compare(val1.([]byte), val2.([]byte))), nil
 	},
 }

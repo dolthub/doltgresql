@@ -30,7 +30,7 @@ var errOutOfRange = errors.NewKind("%s out of range")
 
 // handleStringCast handles casts to the string types that may have length restrictions. Returns an error if other types
 // are passed in. Will always return the correct string, even on error, as some contexts may ignore the error.
-func handleStringCast(str string, targetType pgtypes.DoltgresType) (string, error) {
+func handleStringCast(str string, targetType *pgtypes.DoltgresType) (string, error) {
 	switch oid.Oid(targetType.OID) {
 	case oid.T_bpchar:
 		if targetType.AttTypMod == -1 {

@@ -43,9 +43,9 @@ func initBpChar() {
 var bpcharin = framework.Function3{
 	Name:       "bpcharin",
 	Return:     pgtypes.BpChar,
-	Parameters: [3]pgtypes.DoltgresType{pgtypes.Cstring, pgtypes.Oid, pgtypes.Int32},
+	Parameters: [3]*pgtypes.DoltgresType{pgtypes.Cstring, pgtypes.Oid, pgtypes.Int32},
 	Strict:     true,
-	Callable: func(ctx *sql.Context, _ [4]pgtypes.DoltgresType, val1, val2, val3 any) (any, error) {
+	Callable: func(ctx *sql.Context, _ [4]*pgtypes.DoltgresType, val1, val2, val3 any) (any, error) {
 		input := val1.(string)
 		typmod := val3.(int32)
 		maxChars := int32(pgtypes.StringMaxLength)
@@ -70,9 +70,9 @@ var bpcharin = framework.Function3{
 var bpcharout = framework.Function1{
 	Name:       "bpcharout",
 	Return:     pgtypes.Cstring,
-	Parameters: [1]pgtypes.DoltgresType{pgtypes.BpChar},
+	Parameters: [1]*pgtypes.DoltgresType{pgtypes.BpChar},
 	Strict:     true,
-	Callable: func(ctx *sql.Context, t [2]pgtypes.DoltgresType, val any) (any, error) {
+	Callable: func(ctx *sql.Context, t [2]*pgtypes.DoltgresType, val any) (any, error) {
 		typ := t[0]
 		if typ.AttTypMod == -1 {
 			return val.(string), nil
@@ -94,9 +94,9 @@ var bpcharout = framework.Function1{
 var bpcharrecv = framework.Function3{
 	Name:       "bpcharrecv",
 	Return:     pgtypes.BpChar,
-	Parameters: [3]pgtypes.DoltgresType{pgtypes.Internal, pgtypes.Oid, pgtypes.Int32},
+	Parameters: [3]*pgtypes.DoltgresType{pgtypes.Internal, pgtypes.Oid, pgtypes.Int32},
 	Strict:     true,
-	Callable: func(ctx *sql.Context, _ [4]pgtypes.DoltgresType, val1, val2, val3 any) (any, error) {
+	Callable: func(ctx *sql.Context, _ [4]*pgtypes.DoltgresType, val1, val2, val3 any) (any, error) {
 		data := val1.([]byte)
 		if len(data) == 0 {
 			return nil, nil
@@ -111,9 +111,9 @@ var bpcharrecv = framework.Function3{
 var bpcharsend = framework.Function1{
 	Name:       "bpcharsend",
 	Return:     pgtypes.Bytea,
-	Parameters: [1]pgtypes.DoltgresType{pgtypes.BpChar},
+	Parameters: [1]*pgtypes.DoltgresType{pgtypes.BpChar},
 	Strict:     true,
-	Callable: func(ctx *sql.Context, _ [2]pgtypes.DoltgresType, val any) (any, error) {
+	Callable: func(ctx *sql.Context, _ [2]*pgtypes.DoltgresType, val any) (any, error) {
 		str := val.(string)
 		writer := utils.NewWriter(uint64(len(str) + 4))
 		writer.String(str)
@@ -125,9 +125,9 @@ var bpcharsend = framework.Function1{
 var bpchartypmodin = framework.Function1{
 	Name:       "bpchartypmodin",
 	Return:     pgtypes.Int32,
-	Parameters: [1]pgtypes.DoltgresType{pgtypes.CstringArray},
+	Parameters: [1]*pgtypes.DoltgresType{pgtypes.CstringArray},
 	Strict:     true,
-	Callable: func(ctx *sql.Context, _ [2]pgtypes.DoltgresType, val any) (any, error) {
+	Callable: func(ctx *sql.Context, _ [2]*pgtypes.DoltgresType, val any) (any, error) {
 		return getTypModFromStringArr("char", val.([]any))
 	},
 }
@@ -136,9 +136,9 @@ var bpchartypmodin = framework.Function1{
 var bpchartypmodout = framework.Function1{
 	Name:       "bpchartypmodout",
 	Return:     pgtypes.Cstring,
-	Parameters: [1]pgtypes.DoltgresType{pgtypes.Int32},
+	Parameters: [1]*pgtypes.DoltgresType{pgtypes.Int32},
 	Strict:     true,
-	Callable: func(ctx *sql.Context, _ [2]pgtypes.DoltgresType, val any) (any, error) {
+	Callable: func(ctx *sql.Context, _ [2]*pgtypes.DoltgresType, val any) (any, error) {
 		typmod := val.(int32)
 		if typmod < 5 {
 			return "", nil
@@ -152,9 +152,9 @@ var bpchartypmodout = framework.Function1{
 var bpcharcmp = framework.Function2{
 	Name:       "bpcharcmp",
 	Return:     pgtypes.Int32,
-	Parameters: [2]pgtypes.DoltgresType{pgtypes.BpChar, pgtypes.BpChar},
+	Parameters: [2]*pgtypes.DoltgresType{pgtypes.BpChar, pgtypes.BpChar},
 	Strict:     true,
-	Callable: func(ctx *sql.Context, _ [3]pgtypes.DoltgresType, val1, val2 any) (any, error) {
+	Callable: func(ctx *sql.Context, _ [3]*pgtypes.DoltgresType, val1, val2 any) (any, error) {
 		return int32(bytes.Compare([]byte(val1.(string)), []byte(val2.(string)))), nil
 	},
 }

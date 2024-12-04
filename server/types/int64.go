@@ -19,7 +19,7 @@ import (
 )
 
 // Int64 is an int64.
-var Int64 = DoltgresType{
+var Int64 = &DoltgresType{
 	OID:           uint32(oid.T_int8),
 	Name:          "int8",
 	Schema:        "pg_catalog",

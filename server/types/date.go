@@ -19,7 +19,7 @@ import (
 )
 
 // Date is the day, month, and year.
-var Date = DoltgresType{
+var Date = &DoltgresType{
 	OID:           uint32(oid.T_date),
 	Name:          "date",
 	Schema:        "pg_catalog",

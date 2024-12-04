@@ -29,7 +29,7 @@ import (
 // Array represents an ARRAY[...] expression.
 type Array struct {
 	children    []sql.Expression
-	coercedType pgtypes.DoltgresType
+	coercedType *pgtypes.DoltgresType
 }
 
 var _ vitess.Injectable = (*Array)(nil)
@@ -37,8 +37,8 @@ var _ sql.Expression = (*Array)(nil)
 
 // NewArray returns a new *Array.
 func NewArray(coercedType sql.Type) (*Array, error) {
-	var arrayCoercedType pgtypes.DoltgresType
-	if dt, ok := coercedType.(pgtypes.DoltgresType); ok {
+	var arrayCoercedType *pgtypes.DoltgresType
+	if dt, ok := coercedType.(*pgtypes.DoltgresType); ok {
 		if dt.IsArrayType() {
 			arrayCoercedType = dt
 		} else if !dt.IsEmptyType() {
@@ -73,7 +73,7 @@ func (array *Array) Eval(ctx *sql.Context, row sql.Row) (any, error) {
 			continue
 		}
 
-		doltgresType, ok := expr.Type().(pgtypes.DoltgresType)
+		doltgresType, ok := expr.Type().(*pgtypes.DoltgresType)
 		if !ok {
 			return nil, fmt.Errorf("expected DoltgresType, but got %s", expr.Type().String())
 		}
@@ -162,11 +162,11 @@ func (array *Array) WithResolvedChildren(children []any) (any, error) {
 
 // getTargetType returns the evaluated type for this expression.
 // Returns the "anyarray" type if the type combination is invalid.
-func (array *Array) getTargetType(children ...sql.Expression) (pgtypes.DoltgresType, error) {
+func (array *Array) getTargetType(children ...sql.Expression) (*pgtypes.DoltgresType, error) {
 	var childrenTypeOids []uint32
 	for _, child := range children {
 		if child != nil {
-			childType, ok := child.Type().(pgtypes.DoltgresType)
+			childType, ok := child.Type().(*pgtypes.DoltgresType)
 			if !ok {
 				// We use "anyarray" as the indeterminate/invalid type
 				return pgtypes.AnyArray, nil
@@ -176,7 +176,7 @@ func (array *Array) getTargetType(children ...sql.Expression) (pgtypes.DoltgresT
 	}
 	targetTypeOid, err := framework.FindCommonType(childrenTypeOids)
 	if err != nil {
-		return pgtypes.DoltgresType{}, fmt.Errorf("ARRAY %s", err.Error())
+		return nil, fmt.Errorf("ARRAY %s", err.Error())
 	}
 	targetType := pgtypes.OidToBuiltInDoltgresType[targetTypeOid]
 	return targetType.ToArrayType(), nil

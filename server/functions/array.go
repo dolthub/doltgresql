@@ -41,9 +41,9 @@ func initArray() {
 var array_in = framework.Function3{
 	Name:       "array_in",
 	Return:     pgtypes.AnyArray,
-	Parameters: [3]pgtypes.DoltgresType{pgtypes.Cstring, pgtypes.Oid, pgtypes.Int32},
+	Parameters: [3]*pgtypes.DoltgresType{pgtypes.Cstring, pgtypes.Oid, pgtypes.Int32},
 	Strict:     true,
-	Callable: func(ctx *sql.Context, _ [4]pgtypes.DoltgresType, val1, val2, val3 any) (any, error) {
+	Callable: func(ctx *sql.Context, _ [4]*pgtypes.DoltgresType, val1, val2, val3 any) (any, error) {
 		input := val1.(string)
 		baseTypeOid := val2.(uint32)
 		baseType := pgtypes.OidToBuiltInDoltgresType[baseTypeOid]
@@ -147,9 +147,9 @@ var array_in = framework.Function3{
 var array_out = framework.Function1{
 	Name:       "array_out",
 	Return:     pgtypes.Cstring,
-	Parameters: [1]pgtypes.DoltgresType{pgtypes.AnyArray},
+	Parameters: [1]*pgtypes.DoltgresType{pgtypes.AnyArray},
 	Strict:     true,
-	Callable: func(ctx *sql.Context, t [2]pgtypes.DoltgresType, val any) (any, error) {
+	Callable: func(ctx *sql.Context, t [2]*pgtypes.DoltgresType, val any) (any, error) {
 		arrType := t[0]
 		baseType := arrType.ArrayBaseType()
 		baseType.AttTypMod = arrType.AttTypMod
@@ -161,9 +161,9 @@ var array_out = framework.Function1{
 var array_recv = framework.Function3{
 	Name:       "array_recv",
 	Return:     pgtypes.AnyArray,
-	Parameters: [3]pgtypes.DoltgresType{pgtypes.Internal, pgtypes.Oid, pgtypes.Int32},
+	Parameters: [3]*pgtypes.DoltgresType{pgtypes.Internal, pgtypes.Oid, pgtypes.Int32},
 	Strict:     true,
-	Callable: func(ctx *sql.Context, _ [4]pgtypes.DoltgresType, val1, val2, val3 any) (any, error) {
+	Callable: func(ctx *sql.Context, _ [4]*pgtypes.DoltgresType, val1, val2, val3 any) (any, error) {
 		data := val1.([]byte)
 		baseTypeOid := val2.(uint32)
 		baseType := pgtypes.OidToBuiltInDoltgresType[baseTypeOid]
@@ -204,9 +204,9 @@ var array_recv = framework.Function3{
 var array_send = framework.Function1{
 	Name:       "array_send",
 	Return:     pgtypes.Bytea,
-	Parameters: [1]pgtypes.DoltgresType{pgtypes.AnyArray},
+	Parameters: [1]*pgtypes.DoltgresType{pgtypes.AnyArray},
 	Strict:     true,
-	Callable: func(ctx *sql.Context, t [2]pgtypes.DoltgresType, val any) (any, error) {
+	Callable: func(ctx *sql.Context, t [2]*pgtypes.DoltgresType, val any) (any, error) {
 		arrType := t[0]
 		baseType := arrType.ArrayBaseType()
 		vals := val.([]any)
@@ -257,9 +257,9 @@ var array_send = framework.Function1{
 var btarraycmp = framework.Function2{
 	Name:       "btarraycmp",
 	Return:     pgtypes.Int32,
-	Parameters: [2]pgtypes.DoltgresType{pgtypes.AnyArray, pgtypes.AnyArray},
+	Parameters: [2]*pgtypes.DoltgresType{pgtypes.AnyArray, pgtypes.AnyArray},
 	Strict:     true,
-	Callable: func(ctx *sql.Context, t [3]pgtypes.DoltgresType, val1, val2 any) (any, error) {
+	Callable: func(ctx *sql.Context, t [3]*pgtypes.DoltgresType, val1, val2 any) (any, error) {
 		at := t[0]
 		bt := t[1]
 		if !at.Equals(bt) {
@@ -294,9 +294,9 @@ var btarraycmp = framework.Function2{
 var array_subscript_handler = framework.Function1{
 	Name:       "array_subscript_handler",
 	Return:     pgtypes.Internal,
-	Parameters: [1]pgtypes.DoltgresType{pgtypes.Internal},
+	Parameters: [1]*pgtypes.DoltgresType{pgtypes.Internal},
 	Strict:     true,
-	Callable: func(ctx *sql.Context, t [2]pgtypes.DoltgresType, val any) (any, error) {
+	Callable: func(ctx *sql.Context, t [2]*pgtypes.DoltgresType, val any) (any, error) {
 		// TODO
 		return []byte{}, nil
 	},

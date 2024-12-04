@@ -29,7 +29,7 @@ import (
 // ExplicitCast represents a VALUE::TYPE expression.
 type ExplicitCast struct {
 	sqlChild   sql.Expression
-	castToType pgtypes.DoltgresType
+	castToType *pgtypes.DoltgresType
 }
 
 var _ vitess.Injectable = (*ExplicitCast)(nil)
@@ -37,7 +37,7 @@ var _ sql.Expression = (*ExplicitCast)(nil)
 
 // NewExplicitCastInjectable returns an incomplete *ExplicitCast that must be resolved through the vitess.Injectable interface.
 func NewExplicitCastInjectable(castToType sql.Type) (*ExplicitCast, error) {
-	pgtype, ok := castToType.(pgtypes.DoltgresType)
+	pgtype, ok := castToType.(*pgtypes.DoltgresType)
 	if !ok {
 		return nil, fmt.Errorf("cast expects a Doltgres type as the target type")
 	}
@@ -49,7 +49,7 @@ func NewExplicitCastInjectable(castToType sql.Type) (*ExplicitCast, error) {
 }
 
 // NewExplicitCast returns a new *ExplicitCast expression.
-func NewExplicitCast(expr sql.Expression, toType pgtypes.DoltgresType) *ExplicitCast {
+func NewExplicitCast(expr sql.Expression, toType *pgtypes.DoltgresType) *ExplicitCast {
 	toType = checkForDomainType(toType)
 	return &ExplicitCast{
 		sqlChild:   expr,
@@ -73,7 +73,7 @@ func (c *ExplicitCast) Eval(ctx *sql.Context, row sql.Row) (any, error) {
 	if err != nil {
 		return nil, err
 	}
-	fromType, ok := c.sqlChild.Type().(pgtypes.DoltgresType)
+	fromType, ok := c.sqlChild.Type().(*pgtypes.DoltgresType)
 	if !ok {
 		// We'll leverage GMSCast to handle the conversion from a GMS type to a Doltgres type.
 		// Rather than re-evaluating the expression, we put the result in a literal.

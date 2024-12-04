@@ -33,9 +33,9 @@ func initChr() {
 var chr_int32 = framework.Function1{
 	Name:       "chr",
 	Return:     pgtypes.Text,
-	Parameters: [1]pgtypes.DoltgresType{pgtypes.Int32},
+	Parameters: [1]*pgtypes.DoltgresType{pgtypes.Int32},
 	Strict:     true,
-	Callable: func(ctx *sql.Context, _ [2]pgtypes.DoltgresType, val1Interface any) (any, error) {
+	Callable: func(ctx *sql.Context, _ [2]*pgtypes.DoltgresType, val1Interface any) (any, error) {
 		val1 := val1Interface.(int32)
 		if val1 == 0 {
 			return nil, fmt.Errorf("null character not permitted")

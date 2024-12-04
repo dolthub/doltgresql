@@ -22,7 +22,7 @@ import (
 const InternalCharLength = 1
 
 // InternalChar is a single-byte internal type. In Postgres, it's displayed as "char".
-var InternalChar = DoltgresType{
+var InternalChar = &DoltgresType{
 	OID:           uint32(oid.T_char),
 	Name:          "char",
 	Schema:        "pg_catalog",

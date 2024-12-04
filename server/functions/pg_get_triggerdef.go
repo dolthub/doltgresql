@@ -33,10 +33,10 @@ func initPgGetTriggerDef() {
 var pg_get_triggerdef_oid = framework.Function1{
 	Name:               "pg_get_triggerdef",
 	Return:             pgtypes.Text,
-	Parameters:         [1]pgtypes.DoltgresType{pgtypes.Oid},
+	Parameters:         [1]*pgtypes.DoltgresType{pgtypes.Oid},
 	IsNonDeterministic: true,
 	Strict:             true,
-	Callable: func(ctx *sql.Context, _ [2]pgtypes.DoltgresType, val any) (any, error) {
+	Callable: func(ctx *sql.Context, _ [2]*pgtypes.DoltgresType, val any) (any, error) {
 		// TODO: triggers are not supported yet
 		return "", nil
 	},
@@ -46,10 +46,10 @@ var pg_get_triggerdef_oid = framework.Function1{
 var pg_get_triggerdef_oid_bool = framework.Function2{
 	Name:               "pg_get_triggerdef",
 	Return:             pgtypes.Text,
-	Parameters:         [2]pgtypes.DoltgresType{pgtypes.Oid, pgtypes.Bool},
+	Parameters:         [2]*pgtypes.DoltgresType{pgtypes.Oid, pgtypes.Bool},
 	IsNonDeterministic: true,
 	Strict:             true,
-	Callable: func(ctx *sql.Context, _ [3]pgtypes.DoltgresType, val1, val2 any) (any, error) {
+	Callable: func(ctx *sql.Context, _ [3]*pgtypes.DoltgresType, val1, val2 any) (any, error) {
 		pretty := val2.(bool)
 		if pretty {
 			return "", fmt.Errorf("pretty printing is not yet supported")

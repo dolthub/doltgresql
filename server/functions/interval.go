@@ -40,9 +40,9 @@ func initInterval() {
 var interval_in = framework.Function3{
 	Name:       "interval_in",
 	Return:     pgtypes.Interval,
-	Parameters: [3]pgtypes.DoltgresType{pgtypes.Cstring, pgtypes.Oid, pgtypes.Int32},
+	Parameters: [3]*pgtypes.DoltgresType{pgtypes.Cstring, pgtypes.Oid, pgtypes.Int32},
 	Strict:     true,
-	Callable: func(ctx *sql.Context, _ [4]pgtypes.DoltgresType, val1, val2, val3 any) (any, error) {
+	Callable: func(ctx *sql.Context, _ [4]*pgtypes.DoltgresType, val1, val2, val3 any) (any, error) {
 		input := val1.(string)
 		//oid := val2.(uint32)
 		//typmod := val3.(int32)
@@ -58,9 +58,9 @@ var interval_in = framework.Function3{
 var interval_out = framework.Function1{
 	Name:       "interval_out",
 	Return:     pgtypes.Cstring,
-	Parameters: [1]pgtypes.DoltgresType{pgtypes.Interval},
+	Parameters: [1]*pgtypes.DoltgresType{pgtypes.Interval},
 	Strict:     true,
-	Callable: func(ctx *sql.Context, t [2]pgtypes.DoltgresType, val any) (any, error) {
+	Callable: func(ctx *sql.Context, t [2]*pgtypes.DoltgresType, val any) (any, error) {
 		return val.(duration.Duration).String(), nil
 	},
 }
@@ -69,9 +69,9 @@ var interval_out = framework.Function1{
 var interval_recv = framework.Function3{
 	Name:       "interval_recv",
 	Return:     pgtypes.Interval,
-	Parameters: [3]pgtypes.DoltgresType{pgtypes.Internal, pgtypes.Oid, pgtypes.Int32},
+	Parameters: [3]*pgtypes.DoltgresType{pgtypes.Internal, pgtypes.Oid, pgtypes.Int32},
 	Strict:     true,
-	Callable: func(ctx *sql.Context, _ [4]pgtypes.DoltgresType, val1, val2, val3 any) (any, error) {
+	Callable: func(ctx *sql.Context, _ [4]*pgtypes.DoltgresType, val1, val2, val3 any) (any, error) {
 		data := val1.([]byte)
 		//oid := val2.(uint32)
 		//typmod := val3.(int32) // precision
@@ -90,9 +90,9 @@ var interval_recv = framework.Function3{
 var interval_send = framework.Function1{
 	Name:       "interval_send",
 	Return:     pgtypes.Bytea,
-	Parameters: [1]pgtypes.DoltgresType{pgtypes.Interval},
+	Parameters: [1]*pgtypes.DoltgresType{pgtypes.Interval},
 	Strict:     true,
-	Callable: func(ctx *sql.Context, _ [2]pgtypes.DoltgresType, val any) (any, error) {
+	Callable: func(ctx *sql.Context, _ [2]*pgtypes.DoltgresType, val any) (any, error) {
 		sortNanos, months, days, err := val.(duration.Duration).Encode()
 		if err != nil {
 			return nil, err
@@ -109,9 +109,9 @@ var interval_send = framework.Function1{
 var intervaltypmodin = framework.Function1{
 	Name:       "intervaltypmodin",
 	Return:     pgtypes.Int32,
-	Parameters: [1]pgtypes.DoltgresType{pgtypes.CstringArray},
+	Parameters: [1]*pgtypes.DoltgresType{pgtypes.CstringArray},
 	Strict:     true,
-	Callable: func(ctx *sql.Context, _ [2]pgtypes.DoltgresType, val any) (any, error) {
+	Callable: func(ctx *sql.Context, _ [2]*pgtypes.DoltgresType, val any) (any, error) {
 		// TODO: implement interval fields and precision
 		return int32(0), nil
 	},
@@ -121,9 +121,9 @@ var intervaltypmodin = framework.Function1{
 var intervaltypmodout = framework.Function1{
 	Name:       "intervaltypmodout",
 	Return:     pgtypes.Cstring,
-	Parameters: [1]pgtypes.DoltgresType{pgtypes.Int32},
+	Parameters: [1]*pgtypes.DoltgresType{pgtypes.Int32},
 	Strict:     true,
-	Callable: func(ctx *sql.Context, _ [2]pgtypes.DoltgresType, val any) (any, error) {
+	Callable: func(ctx *sql.Context, _ [2]*pgtypes.DoltgresType, val any) (any, error) {
 		// TODO: implement interval fields and precision
 		return "", nil
 	},
@@ -133,9 +133,9 @@ var intervaltypmodout = framework.Function1{
 var interval_cmp = framework.Function2{
 	Name:       "interval_cmp",
 	Return:     pgtypes.Int32,
-	Parameters: [2]pgtypes.DoltgresType{pgtypes.Interval, pgtypes.Interval},
+	Parameters: [2]*pgtypes.DoltgresType{pgtypes.Interval, pgtypes.Interval},
 	Strict:     true,
-	Callable: func(ctx *sql.Context, _ [3]pgtypes.DoltgresType, val1, val2 any) (any, error) {
+	Callable: func(ctx *sql.Context, _ [3]*pgtypes.DoltgresType, val1, val2 any) (any, error) {
 		ab := val1.(duration.Duration)
 		bb := val2.(duration.Duration)
 		return int32(ab.Compare(bb)), nil

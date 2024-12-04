@@ -38,16 +38,16 @@ func AssignInsertCasts(ctx *sql.Context, a *analyzer.Analyzer, node sql.Node, sc
 	// First we'll make a map for each column, so that it's easier to match a name to a type. We also ensure that the
 	// types use Doltgres types, as casts rely on them. At this point, we shouldn't have any GMS types floating around
 	// anymore, so no need to include a lot of additional code to handle them.
-	destinationNameToType := make(map[string]pgtypes.DoltgresType)
+	destinationNameToType := make(map[string]*pgtypes.DoltgresType)
 	for _, col := range insertInto.Destination.Schema() {
-		colType, ok := col.Type.(pgtypes.DoltgresType)
+		colType, ok := col.Type.(*pgtypes.DoltgresType)
 		if !ok {
 			return nil, transform.NewTree, fmt.Errorf("INSERT: non-Doltgres type found in destination: %s", col.Type.String())
 		}
 		destinationNameToType[strings.ToLower(col.Name)] = colType
 	}
 	// Create the destination type slice that will match each inserted column
-	destinationTypes := make([]pgtypes.DoltgresType, len(insertInto.ColumnNames))
+	destinationTypes := make([]*pgtypes.DoltgresType, len(insertInto.ColumnNames))
 	for i, colName := range insertInto.ColumnNames {
 		destinationTypes[i], ok = destinationNameToType[strings.ToLower(colName)]
 		if !ok {
@@ -66,7 +66,7 @@ func AssignInsertCasts(ctx *sql.Context, a *analyzer.Analyzer, node sql.Node, sc
 				if colExprType == nil || colExprType == types.Null {
 					colExprType = pgtypes.Unknown
 				}
-				fromColType, ok := colExprType.(pgtypes.DoltgresType)
+				fromColType, ok := colExprType.(*pgtypes.DoltgresType)
 				if !ok {
 					return nil, transform.NewTree, fmt.Errorf("INSERT: non-Doltgres type found in values source: %s", fromColType.String())
 				}
@@ -84,7 +84,7 @@ func AssignInsertCasts(ctx *sql.Context, a *analyzer.Analyzer, node sql.Node, sc
 		sourceSchema := insertInto.Source.Schema()
 		projections := make([]sql.Expression, len(sourceSchema))
 		for i, col := range sourceSchema {
-			fromColType, ok := col.Type.(pgtypes.DoltgresType)
+			fromColType, ok := col.Type.(*pgtypes.DoltgresType)
 			if !ok {
 				return nil, transform.NewTree, fmt.Errorf("INSERT: non-Doltgres type found in source: %s", fromColType.String())
 			}

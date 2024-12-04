@@ -69,7 +69,7 @@ type pgCatalogCache struct {
 	viewSchemas []string
 
 	// pg_types
-	types        []pgtypes.DoltgresType
+	types        []*pgtypes.DoltgresType
 	pgCatalogOid uint32
 
 	// pg_tables

@@ -31,10 +31,10 @@ func initLpad() {
 var lpad_text_int32 = framework.Function2{
 	Name:       "lpad",
 	Return:     pgtypes.Text,
-	Parameters: [2]pgtypes.DoltgresType{pgtypes.Text, pgtypes.Int32},
+	Parameters: [2]*pgtypes.DoltgresType{pgtypes.Text, pgtypes.Int32},
 	Strict:     true,
-	Callable: func(ctx *sql.Context, _ [3]pgtypes.DoltgresType, val1 any, val2 any) (any, error) {
-		var unusedTypes [4]pgtypes.DoltgresType
+	Callable: func(ctx *sql.Context, _ [3]*pgtypes.DoltgresType, val1 any, val2 any) (any, error) {
+		var unusedTypes [4]*pgtypes.DoltgresType
 		return lpad_text_int32_text.Callable(ctx, unusedTypes, val1, val2, " ")
 	},
 }
@@ -43,9 +43,9 @@ var lpad_text_int32 = framework.Function2{
 var lpad_text_int32_text = framework.Function3{
 	Name:       "lpad",
 	Return:     pgtypes.Text,
-	Parameters: [3]pgtypes.DoltgresType{pgtypes.Text, pgtypes.Int32, pgtypes.Text},
+	Parameters: [3]*pgtypes.DoltgresType{pgtypes.Text, pgtypes.Int32, pgtypes.Text},
 	Strict:     true,
-	Callable: func(ctx *sql.Context, _ [4]pgtypes.DoltgresType, str any, length any, fill any) (any, error) {
+	Callable: func(ctx *sql.Context, _ [4]*pgtypes.DoltgresType, str any, length any, fill any) (any, error) {
 		if length.(int32) <= 0 {
 			return "", nil
 		}

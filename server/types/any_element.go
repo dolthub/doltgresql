@@ -19,7 +19,7 @@ import (
 )
 
 // AnyElement is a pseudo-type that can represent any type.
-var AnyElement = DoltgresType{
+var AnyElement = &DoltgresType{
 	OID:           uint32(oid.T_anyelement),
 	Name:          "anyelement",
 	Schema:        "pg_catalog",

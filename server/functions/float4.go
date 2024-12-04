@@ -40,9 +40,9 @@ func initFloat4() {
 var float4in = framework.Function1{
 	Name:       "float4in",
 	Return:     pgtypes.Float32,
-	Parameters: [1]pgtypes.DoltgresType{pgtypes.Cstring},
+	Parameters: [1]*pgtypes.DoltgresType{pgtypes.Cstring},
 	Strict:     true,
-	Callable: func(ctx *sql.Context, _ [2]pgtypes.DoltgresType, val any) (any, error) {
+	Callable: func(ctx *sql.Context, _ [2]*pgtypes.DoltgresType, val any) (any, error) {
 		input := val.(string)
 		fVal, err := strconv.ParseFloat(strings.TrimSpace(input), 32)
 		if err != nil {
@@ -56,9 +56,9 @@ var float4in = framework.Function1{
 var float4out = framework.Function1{
 	Name:       "float4out",
 	Return:     pgtypes.Cstring,
-	Parameters: [1]pgtypes.DoltgresType{pgtypes.Float32},
+	Parameters: [1]*pgtypes.DoltgresType{pgtypes.Float32},
 	Strict:     true,
-	Callable: func(ctx *sql.Context, _ [2]pgtypes.DoltgresType, val any) (any, error) {
+	Callable: func(ctx *sql.Context, _ [2]*pgtypes.DoltgresType, val any) (any, error) {
 		return strconv.FormatFloat(float64(val.(float32)), 'f', -1, 32), nil
 	},
 }
@@ -67,9 +67,9 @@ var float4out = framework.Function1{
 var float4recv = framework.Function1{
 	Name:       "float4recv",
 	Return:     pgtypes.Float32,
-	Parameters: [1]pgtypes.DoltgresType{pgtypes.Internal},
+	Parameters: [1]*pgtypes.DoltgresType{pgtypes.Internal},
 	Strict:     true,
-	Callable: func(ctx *sql.Context, _ [2]pgtypes.DoltgresType, val any) (any, error) {
+	Callable: func(ctx *sql.Context, _ [2]*pgtypes.DoltgresType, val any) (any, error) {
 		data := val.([]byte)
 		unsignedBits := binary.BigEndian.Uint32(data)
 		if unsignedBits&(1<<31) != 0 {
@@ -85,9 +85,9 @@ var float4recv = framework.Function1{
 var float4send = framework.Function1{
 	Name:       "float4send",
 	Return:     pgtypes.Bytea,
-	Parameters: [1]pgtypes.DoltgresType{pgtypes.Float32},
+	Parameters: [1]*pgtypes.DoltgresType{pgtypes.Float32},
 	Strict:     true,
-	Callable: func(ctx *sql.Context, _ [2]pgtypes.DoltgresType, val any) (any, error) {
+	Callable: func(ctx *sql.Context, _ [2]*pgtypes.DoltgresType, val any) (any, error) {
 		f32 := val.(float32)
 		retVal := make([]byte, 4)
 		// Make the serialized form trivially comparable using bytes.Compare: https://stackoverflow.com/a/54557561
@@ -106,9 +106,9 @@ var float4send = framework.Function1{
 var btfloat4cmp = framework.Function2{
 	Name:       "btfloat4cmp",
 	Return:     pgtypes.Int32,
-	Parameters: [2]pgtypes.DoltgresType{pgtypes.Float32, pgtypes.Float32},
+	Parameters: [2]*pgtypes.DoltgresType{pgtypes.Float32, pgtypes.Float32},
 	Strict:     true,
-	Callable: func(ctx *sql.Context, _ [3]pgtypes.DoltgresType, val1, val2 any) (any, error) {
+	Callable: func(ctx *sql.Context, _ [3]*pgtypes.DoltgresType, val1, val2 any) (any, error) {
 		ab := val1.(float32)
 		bb := val2.(float32)
 		if ab == bb {
@@ -125,9 +125,9 @@ var btfloat4cmp = framework.Function2{
 var btfloat48cmp = framework.Function2{
 	Name:       "btfloat48cmp",
 	Return:     pgtypes.Int32,
-	Parameters: [2]pgtypes.DoltgresType{pgtypes.Float32, pgtypes.Float64},
+	Parameters: [2]*pgtypes.DoltgresType{pgtypes.Float32, pgtypes.Float64},
 	Strict:     true,
-	Callable: func(ctx *sql.Context, _ [3]pgtypes.DoltgresType, val1, val2 any) (any, error) {
+	Callable: func(ctx *sql.Context, _ [3]*pgtypes.DoltgresType, val1, val2 any) (any, error) {
 		ab := float64(val1.(float32))
 		bb := val2.(float64)
 		if ab == bb {

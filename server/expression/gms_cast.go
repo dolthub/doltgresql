@@ -52,9 +52,9 @@ func (c *GMSCast) Child() sql.Expression {
 }
 
 // DoltgresType returns the DoltgresType that the cast evaluates to. This is the same value that is returned by Type().
-func (c *GMSCast) DoltgresType() pgtypes.DoltgresType {
+func (c *GMSCast) DoltgresType() *pgtypes.DoltgresType {
 	// GMSCast shouldn't receive a DoltgresType, but we shouldn't error if it happens
-	if t, ok := c.sqlChild.Type().(pgtypes.DoltgresType); ok {
+	if t, ok := c.sqlChild.Type().(*pgtypes.DoltgresType); ok {
 		return t
 	}
 
@@ -71,7 +71,7 @@ func (c *GMSCast) Eval(ctx *sql.Context, row sql.Row) (any, error) {
 		return nil, nil
 	}
 	// GMSCast shouldn't receive a DoltgresType, but we shouldn't error if it happens
-	if _, ok := c.sqlChild.Type().(pgtypes.DoltgresType); ok {
+	if _, ok := c.sqlChild.Type().(*pgtypes.DoltgresType); ok {
 		return val, nil
 	}
 	sqlTyp := c.sqlChild.Type()

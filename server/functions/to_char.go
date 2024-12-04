@@ -35,9 +35,9 @@ func initToChar() {
 var to_char_timestamp = framework.Function2{
 	Name:       "to_char",
 	Return:     pgtypes.Text,
-	Parameters: [2]pgtypes.DoltgresType{pgtypes.Timestamp, pgtypes.Text},
+	Parameters: [2]*pgtypes.DoltgresType{pgtypes.Timestamp, pgtypes.Text},
 	Strict:     true,
-	Callable: func(ctx *sql.Context, _ [3]pgtypes.DoltgresType, val1, val2 any) (any, error) {
+	Callable: func(ctx *sql.Context, _ [3]*pgtypes.DoltgresType, val1, val2 any) (any, error) {
 		timestamp := val1.(time.Time)
 		format := val2.(string)
 

@@ -19,7 +19,7 @@ import (
 )
 
 // TimeTZ is the time with a time zone. Precision is unbounded.
-var TimeTZ = DoltgresType{
+var TimeTZ = &DoltgresType{
 	OID:           uint32(oid.T_timetz),
 	Name:          "timetz",
 	Schema:        "pg_catalog",
@@ -57,12 +57,12 @@ var TimeTZ = DoltgresType{
 }
 
 // NewTimeTZType returns TimeTZ type with typmod set. // TODO: implement precision
-func NewTimeTZType(precision int32) (DoltgresType, error) {
-	newType := TimeTZ
+func NewTimeTZType(precision int32) (*DoltgresType, error) {
+	newType := *TimeTZ
 	typmod, err := GetTypmodFromTimePrecision(precision)
 	if err != nil {
-		return DoltgresType{}, err
+		return nil, err
 	}
 	newType.AttTypMod = typmod
-	return newType, nil
+	return &newType, nil
 }

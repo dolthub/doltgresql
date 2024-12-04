@@ -71,7 +71,7 @@ func keyForParamTypes(types []uint32) string {
 }
 
 // baseIdsForTypes returns the base IDs of the given types.
-func (o *Overloads) oidsForTypes(types []pgtypes.DoltgresType) []uint32 {
+func (o *Overloads) oidsForTypes(types []*pgtypes.DoltgresType) []uint32 {
 	baseIds := make([]uint32, len(types))
 	for i, t := range types {
 		baseIds[i] = t.OID

@@ -438,7 +438,7 @@ func UnmarshalAndMarshalJsonString(val string) string {
 // |normalizeNumeric| defines whether to normalize Numeric values into either Numeric type or string type.
 // There are an infinite number of ways to represent the same value in-memory,
 // so we must at least normalize Numeric values.
-func NormalizeValToString(dt types.DoltgresType, v any) any {
+func NormalizeValToString(dt *types.DoltgresType, v any) any {
 	switch oid.Oid(dt.OID) {
 	case oid.T_json:
 		str, err := json.Marshal(v)
@@ -525,7 +525,7 @@ func NormalizeValToString(dt types.DoltgresType, v any) any {
 
 // NormalizeArrayType normalizes array types by normalizing its elements first,
 // then to a string using the type IoOutput method.
-func NormalizeArrayType(dt types.DoltgresType, arr []any) any {
+func NormalizeArrayType(dt *types.DoltgresType, arr []any) any {
 	newVal := make([]any, len(arr))
 	for i, el := range arr {
 		newVal[i] = NormalizeVal(dt.ArrayBaseType(), el)
@@ -549,7 +549,7 @@ func NormalizeArrayType(dt types.DoltgresType, arr []any) any {
 // NormalizeVal normalizes values to the Doltgres type expects, so it can be used to
 // convert the values using the given Doltgres type. This is used to normalize array
 // types as the type conversion expects certain type values.
-func NormalizeVal(dt types.DoltgresType, v any) any {
+func NormalizeVal(dt *types.DoltgresType, v any) any {
 	switch oid.Oid(dt.OID) {
 	case oid.T_json:
 		str, err := json.Marshal(v)

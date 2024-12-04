@@ -30,10 +30,10 @@ func initPgIndexesSize() {
 var pg_indexes_size_regclass = framework.Function1{
 	Name:               "pg_indexes_size",
 	Return:             pgtypes.Int64,
-	Parameters:         [1]pgtypes.DoltgresType{pgtypes.Regclass},
+	Parameters:         [1]*pgtypes.DoltgresType{pgtypes.Regclass},
 	IsNonDeterministic: true,
 	Strict:             true,
-	Callable: func(ctx *sql.Context, _ [2]pgtypes.DoltgresType, val any) (any, error) {
+	Callable: func(ctx *sql.Context, _ [2]*pgtypes.DoltgresType, val any) (any, error) {
 		// TODO: Total disk space used by indexes attached to the specified table
 		return int64(0), nil
 	},

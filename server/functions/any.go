@@ -31,9 +31,9 @@ func initAny() {
 var any_in = framework.Function1{
 	Name:       "any_in",
 	Return:     pgtypes.Any,
-	Parameters: [1]pgtypes.DoltgresType{pgtypes.Cstring},
+	Parameters: [1]*pgtypes.DoltgresType{pgtypes.Cstring},
 	Strict:     true,
-	Callable: func(ctx *sql.Context, _ [2]pgtypes.DoltgresType, val any) (any, error) {
+	Callable: func(ctx *sql.Context, _ [2]*pgtypes.DoltgresType, val any) (any, error) {
 		// TODO
 		return nil, nil
 	},
@@ -43,9 +43,9 @@ var any_in = framework.Function1{
 var any_out = framework.Function1{
 	Name:       "any_out",
 	Return:     pgtypes.Cstring,
-	Parameters: [1]pgtypes.DoltgresType{pgtypes.Any},
+	Parameters: [1]*pgtypes.DoltgresType{pgtypes.Any},
 	Strict:     true,
-	Callable: func(ctx *sql.Context, _ [2]pgtypes.DoltgresType, val any) (any, error) {
+	Callable: func(ctx *sql.Context, _ [2]*pgtypes.DoltgresType, val any) (any, error) {
 		// TODO
 		return "", nil
 	},

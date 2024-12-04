@@ -19,7 +19,7 @@ import (
 )
 
 // Bytea is the byte string type.
-var Bytea = DoltgresType{
+var Bytea = &DoltgresType{
 	OID:           uint32(oid.T_bytea),
 	Name:          "bytea",
 	Schema:        "pg_catalog",

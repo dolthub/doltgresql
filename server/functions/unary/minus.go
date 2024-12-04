@@ -42,9 +42,9 @@ func initUnaryMinus() {
 var float4um = framework.Function1{
 	Name:       "float4um",
 	Return:     pgtypes.Float32,
-	Parameters: [1]pgtypes.DoltgresType{pgtypes.Float32},
+	Parameters: [1]*pgtypes.DoltgresType{pgtypes.Float32},
 	Strict:     true,
-	Callable: func(ctx *sql.Context, _ [2]pgtypes.DoltgresType, val1 any) (any, error) {
+	Callable: func(ctx *sql.Context, _ [2]*pgtypes.DoltgresType, val1 any) (any, error) {
 		return -(val1.(float32)), nil
 	},
 }
@@ -53,9 +53,9 @@ var float4um = framework.Function1{
 var float8um = framework.Function1{
 	Name:       "float8um",
 	Return:     pgtypes.Float64,
-	Parameters: [1]pgtypes.DoltgresType{pgtypes.Float64},
+	Parameters: [1]*pgtypes.DoltgresType{pgtypes.Float64},
 	Strict:     true,
-	Callable: func(ctx *sql.Context, _ [2]pgtypes.DoltgresType, val1 any) (any, error) {
+	Callable: func(ctx *sql.Context, _ [2]*pgtypes.DoltgresType, val1 any) (any, error) {
 		return -(val1.(float64)), nil
 	},
 }
@@ -64,9 +64,9 @@ var float8um = framework.Function1{
 var int2um = framework.Function1{
 	Name:       "int2um",
 	Return:     pgtypes.Int16,
-	Parameters: [1]pgtypes.DoltgresType{pgtypes.Int16},
+	Parameters: [1]*pgtypes.DoltgresType{pgtypes.Int16},
 	Strict:     true,
-	Callable: func(ctx *sql.Context, _ [2]pgtypes.DoltgresType, val1 any) (any, error) {
+	Callable: func(ctx *sql.Context, _ [2]*pgtypes.DoltgresType, val1 any) (any, error) {
 		return -(val1.(int16)), nil
 	},
 }
@@ -75,9 +75,9 @@ var int2um = framework.Function1{
 var int4um = framework.Function1{
 	Name:       "int4um",
 	Return:     pgtypes.Int32,
-	Parameters: [1]pgtypes.DoltgresType{pgtypes.Int32},
+	Parameters: [1]*pgtypes.DoltgresType{pgtypes.Int32},
 	Strict:     true,
-	Callable: func(ctx *sql.Context, _ [2]pgtypes.DoltgresType, val1 any) (any, error) {
+	Callable: func(ctx *sql.Context, _ [2]*pgtypes.DoltgresType, val1 any) (any, error) {
 		return -(val1.(int32)), nil
 	},
 }
@@ -86,9 +86,9 @@ var int4um = framework.Function1{
 var int8um = framework.Function1{
 	Name:       "int8um",
 	Return:     pgtypes.Int64,
-	Parameters: [1]pgtypes.DoltgresType{pgtypes.Int64},
+	Parameters: [1]*pgtypes.DoltgresType{pgtypes.Int64},
 	Strict:     true,
-	Callable: func(ctx *sql.Context, _ [2]pgtypes.DoltgresType, val1 any) (any, error) {
+	Callable: func(ctx *sql.Context, _ [2]*pgtypes.DoltgresType, val1 any) (any, error) {
 		return -(val1.(int64)), nil
 	},
 }
@@ -97,9 +97,9 @@ var int8um = framework.Function1{
 var interval_um = framework.Function1{
 	Name:       "interval_um",
 	Return:     pgtypes.Interval,
-	Parameters: [1]pgtypes.DoltgresType{pgtypes.Interval},
+	Parameters: [1]*pgtypes.DoltgresType{pgtypes.Interval},
 	Strict:     true,
-	Callable: func(ctx *sql.Context, _ [2]pgtypes.DoltgresType, val1 any) (any, error) {
+	Callable: func(ctx *sql.Context, _ [2]*pgtypes.DoltgresType, val1 any) (any, error) {
 		dur := val1.(duration.Duration)
 		return dur.Mul(-1), nil
 	},
@@ -109,9 +109,9 @@ var interval_um = framework.Function1{
 var numeric_uminus = framework.Function1{
 	Name:       "numeric_uminus",
 	Return:     pgtypes.Numeric,
-	Parameters: [1]pgtypes.DoltgresType{pgtypes.Numeric},
+	Parameters: [1]*pgtypes.DoltgresType{pgtypes.Numeric},
 	Strict:     true,
-	Callable: func(ctx *sql.Context, _ [2]pgtypes.DoltgresType, val1 any) (any, error) {
+	Callable: func(ctx *sql.Context, _ [2]*pgtypes.DoltgresType, val1 any) (any, error) {
 		return val1.(decimal.Decimal).Neg(), nil
 	},
 }

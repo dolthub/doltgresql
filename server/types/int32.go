@@ -19,7 +19,7 @@ import (
 )
 
 // Int32 is an int32.
-var Int32 = DoltgresType{
+var Int32 = &DoltgresType{
 	OID:           uint32(oid.T_int4),
 	Name:          "int4",
 	Schema:        "pg_catalog",

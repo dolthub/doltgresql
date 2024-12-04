@@ -19,7 +19,7 @@ import (
 )
 
 // Float32 is an float32.
-var Float32 = DoltgresType{
+var Float32 = &DoltgresType{
 	OID:           uint32(oid.T_float4),
 	Name:          "float4",
 	Schema:        "pg_catalog",

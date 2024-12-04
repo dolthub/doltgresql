@@ -23,6 +23,6 @@ import (
 // LiteralInterface is used to prevent import cycles, since we can't reference pgexprs.Literal from this package.
 type LiteralInterface interface {
 	sql.Expression
-	GetDoltgresType() pgtypes.DoltgresType
+	GetDoltgresType() *pgtypes.DoltgresType
 	ConformsToLiteralInterface()
 }

@@ -19,7 +19,7 @@ import (
 )
 
 // Text is the text type.
-var Text = DoltgresType{
+var Text = &DoltgresType{
 	OID:           uint32(oid.T_text),
 	Name:          "text",
 	Schema:        "pg_catalog",

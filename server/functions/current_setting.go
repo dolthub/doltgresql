@@ -32,9 +32,9 @@ func initCurrentSetting() {
 var current_setting = framework.Function1{
 	Name:       "current_setting",
 	Return:     pgtypes.Text, // TODO: it would be nice to support non-text values as well, but this is all postgres supports
-	Parameters: [1]pgtypes.DoltgresType{pgtypes.Text},
+	Parameters: [1]*pgtypes.DoltgresType{pgtypes.Text},
 	Strict:     true,
-	Callable: func(ctx *sql.Context, _ [2]pgtypes.DoltgresType, val1 any) (any, error) {
+	Callable: func(ctx *sql.Context, _ [2]*pgtypes.DoltgresType, val1 any) (any, error) {
 		s := val1.(string)
 		_, variable, err := ctx.GetUserVariable(ctx, s)
 		if err != nil {

@@ -37,9 +37,9 @@ func initText() {
 var textin = framework.Function1{
 	Name:       "textin",
 	Return:     pgtypes.Text,
-	Parameters: [1]pgtypes.DoltgresType{pgtypes.Cstring},
+	Parameters: [1]*pgtypes.DoltgresType{pgtypes.Cstring},
 	Strict:     true,
-	Callable: func(ctx *sql.Context, _ [2]pgtypes.DoltgresType, val any) (any, error) {
+	Callable: func(ctx *sql.Context, _ [2]*pgtypes.DoltgresType, val any) (any, error) {
 		return val.(string), nil
 	},
 }
@@ -48,9 +48,9 @@ var textin = framework.Function1{
 var textout = framework.Function1{
 	Name:       "textout",
 	Return:     pgtypes.Cstring,
-	Parameters: [1]pgtypes.DoltgresType{pgtypes.Text},
+	Parameters: [1]*pgtypes.DoltgresType{pgtypes.Text},
 	Strict:     true,
-	Callable: func(ctx *sql.Context, _ [2]pgtypes.DoltgresType, val any) (any, error) {
+	Callable: func(ctx *sql.Context, _ [2]*pgtypes.DoltgresType, val any) (any, error) {
 		return val.(string), nil
 	},
 }
@@ -59,9 +59,9 @@ var textout = framework.Function1{
 var textrecv = framework.Function1{
 	Name:       "textrecv",
 	Return:     pgtypes.Text,
-	Parameters: [1]pgtypes.DoltgresType{pgtypes.Internal},
+	Parameters: [1]*pgtypes.DoltgresType{pgtypes.Internal},
 	Strict:     true,
-	Callable: func(ctx *sql.Context, _ [2]pgtypes.DoltgresType, val any) (any, error) {
+	Callable: func(ctx *sql.Context, _ [2]*pgtypes.DoltgresType, val any) (any, error) {
 		data := val.([]byte)
 		if len(data) == 0 {
 			return nil, nil
@@ -75,9 +75,9 @@ var textrecv = framework.Function1{
 var textsend = framework.Function1{
 	Name:       "textsend",
 	Return:     pgtypes.Bytea,
-	Parameters: [1]pgtypes.DoltgresType{pgtypes.Text},
+	Parameters: [1]*pgtypes.DoltgresType{pgtypes.Text},
 	Strict:     true,
-	Callable: func(ctx *sql.Context, _ [2]pgtypes.DoltgresType, val any) (any, error) {
+	Callable: func(ctx *sql.Context, _ [2]*pgtypes.DoltgresType, val any) (any, error) {
 		str := val.(string)
 		writer := utils.NewWriter(uint64(len(str) + 4))
 		writer.String(str)
@@ -89,9 +89,9 @@ var textsend = framework.Function1{
 var bttextcmp = framework.Function2{
 	Name:       "bttextcmp",
 	Return:     pgtypes.Int32,
-	Parameters: [2]pgtypes.DoltgresType{pgtypes.Text, pgtypes.Text},
+	Parameters: [2]*pgtypes.DoltgresType{pgtypes.Text, pgtypes.Text},
 	Strict:     true,
-	Callable: func(ctx *sql.Context, _ [3]pgtypes.DoltgresType, val1, val2 any) (any, error) {
+	Callable: func(ctx *sql.Context, _ [3]*pgtypes.DoltgresType, val1, val2 any) (any, error) {
 		ab := val1.(string)
 		bb := val2.(string)
 		if ab == bb {
@@ -108,9 +108,9 @@ var bttextcmp = framework.Function2{
 var bttextnamecmp = framework.Function2{
 	Name:       "bttextnamecmp",
 	Return:     pgtypes.Int32,
-	Parameters: [2]pgtypes.DoltgresType{pgtypes.Text, pgtypes.Text},
+	Parameters: [2]*pgtypes.DoltgresType{pgtypes.Text, pgtypes.Text},
 	Strict:     true,
-	Callable: func(ctx *sql.Context, _ [3]pgtypes.DoltgresType, val1, val2 any) (any, error) {
+	Callable: func(ctx *sql.Context, _ [3]*pgtypes.DoltgresType, val1, val2 any) (any, error) {
 		ab := val1.(string)
 		bb := val2.(string)
 		if ab == bb {

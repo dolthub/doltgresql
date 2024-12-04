@@ -33,9 +33,9 @@ func initQuoteIdent() {
 var quote_ident_text = framework.Function1{
 	Name:       "quote_ident",
 	Return:     pgtypes.Text,
-	Parameters: [1]pgtypes.DoltgresType{pgtypes.Text},
+	Parameters: [1]*pgtypes.DoltgresType{pgtypes.Text},
 	Strict:     true,
-	Callable: func(ctx *sql.Context, _ [2]pgtypes.DoltgresType, val any) (any, error) {
+	Callable: func(ctx *sql.Context, _ [2]*pgtypes.DoltgresType, val any) (any, error) {
 		return fmt.Sprintf(`"%s"`, strings.Replace(val.(string), "\"", "\"\"", -1)), nil
 	},
 }

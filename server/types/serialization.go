@@ -31,7 +31,7 @@ func init() {
 // SerializeType is able to serialize the given extended type into a byte slice. All extended types will be defined
 // by DoltgreSQL.
 func SerializeType(extendedType types.ExtendedType) ([]byte, error) {
-	if doltgresType, ok := extendedType.(DoltgresType); ok {
+	if doltgresType, ok := extendedType.(*DoltgresType); ok {
 		return doltgresType.Serialize(), nil
 	}
 	return nil, fmt.Errorf("unknown type to serialize")
@@ -41,14 +41,14 @@ func SerializeType(extendedType types.ExtendedType) ([]byte, error) {
 // types will be defined by DoltgreSQL.
 func DeserializeType(serializedType []byte) (types.ExtendedType, error) {
 	if len(serializedType) == 0 {
-		return DoltgresType{}, fmt.Errorf("deserializing empty type data")
+		return nil, fmt.Errorf("deserializing empty type data")
 	}
 
-	typ := DoltgresType{}
+	typ := &DoltgresType{}
 	reader := utils.NewReader(serializedType)
 	version := reader.VariableUint()
 	if version != 0 {
-		return DoltgresType{}, fmt.Errorf("version %d of types is not supported, please upgrade the server", version)
+		return nil, fmt.Errorf("version %d of types is not supported, please upgrade the server", version)
 	}
 
 	typ.OID = reader.Uint32()
@@ -101,7 +101,7 @@ func DeserializeType(serializedType []byte) (types.ExtendedType, error) {
 	typ.CompareFunc = globalFunctionRegistry.StringToID(reader.String())
 	typ.InternalName = reader.String()
 	if !reader.IsEmpty() {
-		return DoltgresType{}, fmt.Errorf("extra data found while deserializing type %s", typ.Name)
+		return nil, fmt.Errorf("extra data found while deserializing type %s", typ.Name)
 	}
 
 	// Return the deserialized object
@@ -109,7 +109,7 @@ func DeserializeType(serializedType []byte) (types.ExtendedType, error) {
 }
 
 // Serialize returns the DoltgresType as a byte slice.
-func (t DoltgresType) Serialize() []byte {
+func (t *DoltgresType) Serialize() []byte {
 	writer := utils.NewWriter(256)
 	writer.VariableUint(0) // Version
 	// Write the type to the writer

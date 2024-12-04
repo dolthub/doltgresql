@@ -35,9 +35,9 @@ func initPgGetConstraintdef() {
 var pg_get_constraintdef_oid = framework.Function1{
 	Name:       "pg_get_constraintdef",
 	Return:     pgtypes.Text,
-	Parameters: [1]pgtypes.DoltgresType{pgtypes.Oid},
+	Parameters: [1]*pgtypes.DoltgresType{pgtypes.Oid},
 	Strict:     true,
-	Callable: func(ctx *sql.Context, _ [2]pgtypes.DoltgresType, val1 any) (any, error) {
+	Callable: func(ctx *sql.Context, _ [2]*pgtypes.DoltgresType, val1 any) (any, error) {
 		oidVal := val1.(uint32)
 		def, err := getConstraintDef(ctx, oidVal)
 		return def, err
@@ -48,9 +48,9 @@ var pg_get_constraintdef_oid = framework.Function1{
 var pg_get_constraintdef_oid_bool = framework.Function2{
 	Name:       "pg_get_constraintdef",
 	Return:     pgtypes.Text,
-	Parameters: [2]pgtypes.DoltgresType{pgtypes.Oid, pgtypes.Bool},
+	Parameters: [2]*pgtypes.DoltgresType{pgtypes.Oid, pgtypes.Bool},
 	Strict:     true,
-	Callable: func(ctx *sql.Context, _ [3]pgtypes.DoltgresType, val1, val2 any) (any, error) {
+	Callable: func(ctx *sql.Context, _ [3]*pgtypes.DoltgresType, val1, val2 any) (any, error) {
 		oidVal := val1.(uint32)
 		pretty := val2.(bool)
 		if pretty {

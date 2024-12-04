@@ -51,7 +51,7 @@ var ErrInvalidTypMod = errors.NewKind(`invalid %s type modifier`)
 
 // FromGmsType returns a DoltgresType that is most similar to the given GMS type.
 // It returns UNKNOWN type for GMS types that are not handled.
-func FromGmsType(typ sql.Type) DoltgresType {
+func FromGmsType(typ sql.Type) *DoltgresType {
 	dt, err := FromGmsTypeToDoltgresType(typ)
 	if err != nil {
 		return Unknown
@@ -61,7 +61,7 @@ func FromGmsType(typ sql.Type) DoltgresType {
 
 // FromGmsTypeToDoltgresType returns a DoltgresType that is most similar to the given GMS type.
 // It errors if GMS type is not handled.
-func FromGmsTypeToDoltgresType(typ sql.Type) (DoltgresType, error) {
+func FromGmsTypeToDoltgresType(typ sql.Type) (*DoltgresType, error) {
 	switch typ.Type() {
 	case query.Type_INT8, query.Type_INT16:
 		// Special treatment for boolean types when we can detect them
@@ -100,7 +100,7 @@ func FromGmsTypeToDoltgresType(typ sql.Type) (DoltgresType, error) {
 	case query.Type_NULL_TYPE, query.Type_GEOMETRY:
 		return Unknown, nil
 	default:
-		return DoltgresType{}, fmt.Errorf("encountered a GMS type that cannot be handled")
+		return nil, fmt.Errorf("encountered a GMS type that cannot be handled")
 	}
 }
 
@@ -118,7 +118,7 @@ func serializedStringCompare(v1 []byte, v2 []byte) int {
 
 // sqlString converts given type value to output string. This is the same as IoOutput function
 // with an exception to BOOLEAN type. It returns "t" instead of "true".
-func sqlString(ctx *sql.Context, t DoltgresType, val any) (string, error) {
+func sqlString(ctx *sql.Context, t *DoltgresType, val any) (string, error) {
 	if t.IsArrayType() {
 		baseType := t.ArrayBaseType()
 		if baseType.ModInFunc != 0 {
@@ -131,7 +131,7 @@ func sqlString(ctx *sql.Context, t DoltgresType, val any) (string, error) {
 
 // ArrToString is used for array_out function. |trimBool| parameter allows replacing
 // boolean result of "true" to "t" if the function is `Type.SQL()`.
-func ArrToString(ctx *sql.Context, arr []any, baseType DoltgresType, trimBool bool) (string, error) {
+func ArrToString(ctx *sql.Context, arr []any, baseType *DoltgresType, trimBool bool) (string, error) {
 	sb := strings.Builder{}
 	sb.WriteRune('{')
 	for i, v := range arr {

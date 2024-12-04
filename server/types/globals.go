@@ -78,7 +78,7 @@ const (
 )
 
 // typesFromOID contains a map from a OID to its originating type.
-var typesFromOID = map[uint32]DoltgresType{
+var typesFromOID = map[uint32]*DoltgresType{
 	AnyArray.OID:          AnyArray,
 	AnyElement.OID:        AnyElement,
 	AnyNonArray.OID:       AnyNonArray,
@@ -144,18 +144,19 @@ var typesFromOID = map[uint32]DoltgresType{
 
 // GetTypeByOID returns the DoltgresType matching the given OID.
 // If the OID does not match a type, then nil is returned.
-func GetTypeByOID(oid uint32) DoltgresType {
+func GetTypeByOID(oid uint32) *DoltgresType {
 	t, ok := typesFromOID[oid]
 	if !ok {
-		return DoltgresType{}
+		// TODO: return UNKNOWN?
+		return nil
 	}
 	return t
 }
 
 // GetAllTypes returns a slice containing all registered types.
 // The slice is sorted by each type's OID.
-func GetAllTypes() []DoltgresType {
-	pgTypes := make([]DoltgresType, 0, len(typesFromOID))
+func GetAllTypes() []*DoltgresType {
+	pgTypes := make([]*DoltgresType, 0, len(typesFromOID))
 	for _, typ := range typesFromOID {
 		pgTypes = append(pgTypes, typ)
 	}
@@ -166,7 +167,7 @@ func GetAllTypes() []DoltgresType {
 }
 
 // OidToBuiltInDoltgresType is a map of oid to built-in Doltgres type.
-var OidToBuiltInDoltgresType = map[uint32]DoltgresType{
+var OidToBuiltInDoltgresType = map[uint32]*DoltgresType{
 	uint32(oid.T_bool):             Bool,
 	uint32(oid.T_bytea):            Bytea,
 	uint32(oid.T_char):             InternalChar,

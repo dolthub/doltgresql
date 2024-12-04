@@ -37,9 +37,9 @@ func initUuid() {
 var uuid_in = framework.Function1{
 	Name:       "uuid_in",
 	Return:     pgtypes.Uuid,
-	Parameters: [1]pgtypes.DoltgresType{pgtypes.Cstring},
+	Parameters: [1]*pgtypes.DoltgresType{pgtypes.Cstring},
 	Strict:     true,
-	Callable: func(ctx *sql.Context, _ [2]pgtypes.DoltgresType, val any) (any, error) {
+	Callable: func(ctx *sql.Context, _ [2]*pgtypes.DoltgresType, val any) (any, error) {
 		return uuid.FromString(val.(string))
 	},
 }
@@ -48,9 +48,9 @@ var uuid_in = framework.Function1{
 var uuid_out = framework.Function1{
 	Name:       "uuid_out",
 	Return:     pgtypes.Cstring,
-	Parameters: [1]pgtypes.DoltgresType{pgtypes.Uuid},
+	Parameters: [1]*pgtypes.DoltgresType{pgtypes.Uuid},
 	Strict:     true,
-	Callable: func(ctx *sql.Context, _ [2]pgtypes.DoltgresType, val any) (any, error) {
+	Callable: func(ctx *sql.Context, _ [2]*pgtypes.DoltgresType, val any) (any, error) {
 		return val.(uuid.UUID).String(), nil
 	},
 }
@@ -59,9 +59,9 @@ var uuid_out = framework.Function1{
 var uuid_recv = framework.Function1{
 	Name:       "uuid_recv",
 	Return:     pgtypes.Uuid,
-	Parameters: [1]pgtypes.DoltgresType{pgtypes.Internal},
+	Parameters: [1]*pgtypes.DoltgresType{pgtypes.Internal},
 	Strict:     true,
-	Callable: func(ctx *sql.Context, _ [2]pgtypes.DoltgresType, val any) (any, error) {
+	Callable: func(ctx *sql.Context, _ [2]*pgtypes.DoltgresType, val any) (any, error) {
 		data := val.([]byte)
 		if len(data) == 0 {
 			return nil, nil
@@ -74,9 +74,9 @@ var uuid_recv = framework.Function1{
 var uuid_send = framework.Function1{
 	Name:       "uuid_send",
 	Return:     pgtypes.Bytea,
-	Parameters: [1]pgtypes.DoltgresType{pgtypes.Uuid},
+	Parameters: [1]*pgtypes.DoltgresType{pgtypes.Uuid},
 	Strict:     true,
-	Callable: func(ctx *sql.Context, _ [2]pgtypes.DoltgresType, val any) (any, error) {
+	Callable: func(ctx *sql.Context, _ [2]*pgtypes.DoltgresType, val any) (any, error) {
 		return val.(uuid.UUID).GetBytes(), nil
 	},
 }
@@ -85,9 +85,9 @@ var uuid_send = framework.Function1{
 var uuid_cmp = framework.Function2{
 	Name:       "uuid_cmp",
 	Return:     pgtypes.Int32,
-	Parameters: [2]pgtypes.DoltgresType{pgtypes.Uuid, pgtypes.Uuid},
+	Parameters: [2]*pgtypes.DoltgresType{pgtypes.Uuid, pgtypes.Uuid},
 	Strict:     true,
-	Callable: func(ctx *sql.Context, _ [3]pgtypes.DoltgresType, val1, val2 any) (any, error) {
+	Callable: func(ctx *sql.Context, _ [3]*pgtypes.DoltgresType, val1, val2 any) (any, error) {
 		ab := val1.(uuid.UUID)
 		bb := val2.(uuid.UUID)
 		return int32(bytes.Compare(ab.GetBytesMut(), bb.GetBytesMut())), nil

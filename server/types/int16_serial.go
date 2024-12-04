@@ -17,7 +17,7 @@ package types
 import "github.com/lib/pq/oid"
 
 // Int16Serial is an int16 serial type.
-var Int16Serial = DoltgresType{
+var Int16Serial = &DoltgresType{
 	OID:           0, // doesn't have unique OID
 	Name:          "smallserial",
 	Schema:        "pg_catalog",

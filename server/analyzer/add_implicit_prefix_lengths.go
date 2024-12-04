@@ -73,7 +73,7 @@ func AddImplicitPrefixLengths(_ *sql.Context, _ *analyzer.Analyzer, node sql.Nod
 					if !ok {
 						return nil, false, fmt.Errorf("indexed column %s not found in schema", index.Columns[i].Name)
 					}
-					if dt, ok := col.Type.(pgtypes.DoltgresType); ok && dt.OID == uint32(oid.T_text) && index.Columns[i].Length == 0 {
+					if dt, ok := col.Type.(*pgtypes.DoltgresType); ok && dt.OID == uint32(oid.T_text) && index.Columns[i].Length == 0 {
 						index.Columns[i].Length = defaultIndexPrefixLength
 						indexModified = true
 					}
@@ -98,7 +98,7 @@ func AddImplicitPrefixLengths(_ *sql.Context, _ *analyzer.Analyzer, node sql.Nod
 					if !ok {
 						return nil, false, fmt.Errorf("indexed column %s not found in schema", newColumns[i].Name)
 					}
-					if dt, ok := col.Type.(pgtypes.DoltgresType); ok && dt.OID == uint32(oid.T_text) && newColumns[i].Length == 0 {
+					if dt, ok := col.Type.(*pgtypes.DoltgresType); ok && dt.OID == uint32(oid.T_text) && newColumns[i].Length == 0 {
 						newColumns[i].Length = defaultIndexPrefixLength
 						indexModified = true
 					}

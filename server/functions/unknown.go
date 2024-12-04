@@ -35,9 +35,9 @@ func initUnknown() {
 var unknownin = framework.Function1{
 	Name:       "unknownin",
 	Return:     pgtypes.Unknown,
-	Parameters: [1]pgtypes.DoltgresType{pgtypes.Cstring},
+	Parameters: [1]*pgtypes.DoltgresType{pgtypes.Cstring},
 	Strict:     true,
-	Callable: func(ctx *sql.Context, _ [2]pgtypes.DoltgresType, val any) (any, error) {
+	Callable: func(ctx *sql.Context, _ [2]*pgtypes.DoltgresType, val any) (any, error) {
 		return val.(string), nil
 	},
 }
@@ -46,9 +46,9 @@ var unknownin = framework.Function1{
 var unknownout = framework.Function1{
 	Name:       "unknownout",
 	Return:     pgtypes.Cstring,
-	Parameters: [1]pgtypes.DoltgresType{pgtypes.Unknown},
+	Parameters: [1]*pgtypes.DoltgresType{pgtypes.Unknown},
 	Strict:     true,
-	Callable: func(ctx *sql.Context, _ [2]pgtypes.DoltgresType, val any) (any, error) {
+	Callable: func(ctx *sql.Context, _ [2]*pgtypes.DoltgresType, val any) (any, error) {
 		return val.(string), nil
 	},
 }
@@ -57,9 +57,9 @@ var unknownout = framework.Function1{
 var unknownrecv = framework.Function1{
 	Name:       "unknownrecv",
 	Return:     pgtypes.Unknown,
-	Parameters: [1]pgtypes.DoltgresType{pgtypes.Internal},
+	Parameters: [1]*pgtypes.DoltgresType{pgtypes.Internal},
 	Strict:     true,
-	Callable: func(ctx *sql.Context, _ [2]pgtypes.DoltgresType, val any) (any, error) {
+	Callable: func(ctx *sql.Context, _ [2]*pgtypes.DoltgresType, val any) (any, error) {
 		data := val.([]byte)
 		reader := utils.NewReader(data)
 		return reader.String(), nil
@@ -70,9 +70,9 @@ var unknownrecv = framework.Function1{
 var unknownsend = framework.Function1{
 	Name:       "unknownsend",
 	Return:     pgtypes.Bytea,
-	Parameters: [1]pgtypes.DoltgresType{pgtypes.Unknown},
+	Parameters: [1]*pgtypes.DoltgresType{pgtypes.Unknown},
 	Strict:     true,
-	Callable: func(ctx *sql.Context, _ [2]pgtypes.DoltgresType, val any) (any, error) {
+	Callable: func(ctx *sql.Context, _ [2]*pgtypes.DoltgresType, val any) (any, error) {
 		str := val.(string)
 		writer := utils.NewWriter(uint64(len(str) + 4))
 		writer.String(str)

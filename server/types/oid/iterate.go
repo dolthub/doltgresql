@@ -127,7 +127,7 @@ type ItemTable struct {
 type ItemType struct {
 	// TODO: add Index when we add custom types
 	OID  uint32
-	Item pgtypes.DoltgresType
+	Item *pgtypes.DoltgresType
 }
 
 // ItemView contains the relevant information to pass to the View callback.

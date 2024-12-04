@@ -19,7 +19,7 @@ import (
 )
 
 // Any is a type that may contain any type.
-var Any = DoltgresType{
+var Any = &DoltgresType{
 	OID:           uint32(oid.T_any),
 	Name:          "any",
 	Schema:        "pg_catalog",

@@ -24,7 +24,7 @@ import (
 // Merge handles merging types on our root and their root.
 func Merge(ctx context.Context, ourCollection, theirCollection, ancCollection *TypeCollection) (*TypeCollection, error) {
 	mergedCollection := ourCollection.Clone()
-	err := theirCollection.IterateTypes(func(schema string, theirType types.DoltgresType) error {
+	err := theirCollection.IterateTypes(func(schema string, theirType *types.DoltgresType) error {
 		// If we don't have the type, then we simply add it
 		mergedType, exists := mergedCollection.GetType(schema, theirType.Name)
 		if !exists {

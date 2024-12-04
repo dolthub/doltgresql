@@ -19,7 +19,7 @@ import (
 )
 
 // Bool is the bool type.
-var Bool = DoltgresType{
+var Bool = &DoltgresType{
 	OID:           uint32(oid.T_bool),
 	Name:          "bool",
 	Schema:        "pg_catalog",

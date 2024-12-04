@@ -31,9 +31,9 @@ func initAnyNonArray() {
 var anynonarray_in = framework.Function1{
 	Name:       "anynonarray_in",
 	Return:     pgtypes.AnyNonArray,
-	Parameters: [1]pgtypes.DoltgresType{pgtypes.Cstring},
+	Parameters: [1]*pgtypes.DoltgresType{pgtypes.Cstring},
 	Strict:     true,
-	Callable: func(ctx *sql.Context, _ [2]pgtypes.DoltgresType, val any) (any, error) {
+	Callable: func(ctx *sql.Context, _ [2]*pgtypes.DoltgresType, val any) (any, error) {
 		// TODO
 		return nil, nil
 	},
@@ -43,9 +43,9 @@ var anynonarray_in = framework.Function1{
 var anynonarray_out = framework.Function1{
 	Name:       "anynonarray_out",
 	Return:     pgtypes.Cstring,
-	Parameters: [1]pgtypes.DoltgresType{pgtypes.AnyNonArray},
+	Parameters: [1]*pgtypes.DoltgresType{pgtypes.AnyNonArray},
 	Strict:     true,
-	Callable: func(ctx *sql.Context, _ [2]pgtypes.DoltgresType, val any) (any, error) {
+	Callable: func(ctx *sql.Context, _ [2]*pgtypes.DoltgresType, val any) (any, error) {
 		// TODO
 		return "", nil
 	},

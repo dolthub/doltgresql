@@ -20,7 +20,7 @@ import (
 
 // AnyArray is a pseudo-type that can represent any type
 // that is an array type that may contain elements of any type.
-var AnyArray = DoltgresType{
+var AnyArray = &DoltgresType{
 	OID:           uint32(oid.T_anyarray),
 	Name:          "anyarray",
 	Schema:        "pg_catalog",

@@ -31,8 +31,8 @@ func initInternal() {
 var internal_in = framework.Function1{
 	Name:       "internal_in",
 	Return:     pgtypes.Internal,
-	Parameters: [1]pgtypes.DoltgresType{pgtypes.Cstring},
-	Callable: func(ctx *sql.Context, _ [2]pgtypes.DoltgresType, val any) (any, error) {
+	Parameters: [1]*pgtypes.DoltgresType{pgtypes.Cstring},
+	Callable: func(ctx *sql.Context, _ [2]*pgtypes.DoltgresType, val any) (any, error) {
 		// TODO
 		return []byte(val.(string)), nil
 	},
@@ -42,9 +42,9 @@ var internal_in = framework.Function1{
 var internal_out = framework.Function1{
 	Name:       "internal_out",
 	Return:     pgtypes.Cstring,
-	Parameters: [1]pgtypes.DoltgresType{pgtypes.Internal},
+	Parameters: [1]*pgtypes.DoltgresType{pgtypes.Internal},
 	Strict:     true,
-	Callable: func(ctx *sql.Context, _ [2]pgtypes.DoltgresType, val any) (any, error) {
+	Callable: func(ctx *sql.Context, _ [2]*pgtypes.DoltgresType, val any) (any, error) {
 		// TODO
 		return string(val.([]byte)), nil
 	},

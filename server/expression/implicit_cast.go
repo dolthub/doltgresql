@@ -26,14 +26,14 @@ import (
 // ImplicitCast handles implicit casts.
 type ImplicitCast struct {
 	expr     sql.Expression
-	fromType pgtypes.DoltgresType
-	toType   pgtypes.DoltgresType
+	fromType *pgtypes.DoltgresType
+	toType   *pgtypes.DoltgresType
 }
 
 var _ sql.Expression = (*ImplicitCast)(nil)
 
 // NewImplicitCast returns a new *ImplicitCast expression.
-func NewImplicitCast(expr sql.Expression, fromType pgtypes.DoltgresType, toType pgtypes.DoltgresType) *ImplicitCast {
+func NewImplicitCast(expr sql.Expression, fromType *pgtypes.DoltgresType, toType *pgtypes.DoltgresType) *ImplicitCast {
 	toType = checkForDomainType(toType)
 	fromType = checkForDomainType(fromType)
 	return &ImplicitCast{

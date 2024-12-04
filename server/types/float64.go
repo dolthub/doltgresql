@@ -19,7 +19,7 @@ import (
 )
 
 // Float64 is an float64.
-var Float64 = DoltgresType{
+var Float64 = &DoltgresType{
 	OID:           uint32(oid.T_float8),
 	Name:          "float8",
 	Schema:        "pg_catalog",

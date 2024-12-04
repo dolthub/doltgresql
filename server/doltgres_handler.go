@@ -363,7 +363,7 @@ func schemaToFieldDescriptions(ctx *sql.Context, s sql.Schema) []pgproto3.FieldD
 		var oid uint32
 		var typmod = int32(-1)
 		var err error
-		if doltgresType, ok := c.Type.(pgtypes.DoltgresType); ok {
+		if doltgresType, ok := c.Type.(*pgtypes.DoltgresType); ok {
 			oid = doltgresType.OID
 			typmod = doltgresType.AttTypMod // pg_attribute.atttypmod
 		} else {

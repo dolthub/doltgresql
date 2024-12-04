@@ -19,7 +19,7 @@ import (
 )
 
 // Uuid is the UUID type.
-var Uuid = DoltgresType{
+var Uuid = &DoltgresType{
 	OID:           uint32(oid.T_uuid),
 	Name:          "uuid",
 	Schema:        "pg_catalog",

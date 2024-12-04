@@ -19,7 +19,7 @@ import (
 )
 
 // Cstring is the cstring type.
-var Cstring = DoltgresType{
+var Cstring = &DoltgresType{
 	OID:           uint32(oid.T_cstring),
 	Name:          "cstring",
 	Schema:        "pg_catalog",

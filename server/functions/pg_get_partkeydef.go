@@ -31,10 +31,10 @@ func initPgGetPartKeyDef() {
 var pg_get_partkeydef_oid = framework.Function1{
 	Name:               "pg_get_partkeydef",
 	Return:             pgtypes.Text,
-	Parameters:         [1]pgtypes.DoltgresType{pgtypes.Oid},
+	Parameters:         [1]*pgtypes.DoltgresType{pgtypes.Oid},
 	IsNonDeterministic: true,
 	Strict:             true,
-	Callable: func(ctx *sql.Context, _ [2]pgtypes.DoltgresType, val any) (any, error) {
+	Callable: func(ctx *sql.Context, _ [2]*pgtypes.DoltgresType, val any) (any, error) {
 		err := oid.RunCallback(ctx, val.(uint32), oid.Callbacks{
 			Table: func(ctx *sql.Context, schema oid.ItemSchema, table oid.ItemTable) (cont bool, err error) {
 				// TODO: sql.Table does not have sufficient information about partition

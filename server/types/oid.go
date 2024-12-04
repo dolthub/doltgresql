@@ -19,7 +19,7 @@ import (
 )
 
 // Oid is a data type used for identifying internal objects. It is implemented as an unsigned 32-bit integer.
-var Oid = DoltgresType{
+var Oid = &DoltgresType{
 	OID:           uint32(oid.T_oid),
 	Name:          "oid",
 	Schema:        "pg_catalog",

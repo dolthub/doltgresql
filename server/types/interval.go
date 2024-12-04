@@ -19,7 +19,7 @@ import (
 )
 
 // Interval is the interval type.
-var Interval = DoltgresType{
+var Interval = &DoltgresType{
 	OID:           uint32(oid.T_interval),
 	Name:          "interval",
 	Schema:        "pg_catalog",

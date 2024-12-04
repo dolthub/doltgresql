@@ -33,9 +33,9 @@ func initFactorial() {
 var factorial_int64 = framework.Function1{
 	Name:       "factorial",
 	Return:     pgtypes.Numeric,
-	Parameters: [1]pgtypes.DoltgresType{pgtypes.Int64},
+	Parameters: [1]*pgtypes.DoltgresType{pgtypes.Int64},
 	Strict:     true,
-	Callable: func(ctx *sql.Context, _ [2]pgtypes.DoltgresType, val1Interface any) (any, error) {
+	Callable: func(ctx *sql.Context, _ [2]*pgtypes.DoltgresType, val1Interface any) (any, error) {
 		val1 := val1Interface.(int64)
 		if val1 < 0 {
 			return nil, fmt.Errorf("factorial of a negative number is undefined")

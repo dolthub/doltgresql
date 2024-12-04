@@ -40,9 +40,9 @@ func initInt8() {
 var int8in = framework.Function1{
 	Name:       "int8in",
 	Return:     pgtypes.Int64,
-	Parameters: [1]pgtypes.DoltgresType{pgtypes.Cstring},
+	Parameters: [1]*pgtypes.DoltgresType{pgtypes.Cstring},
 	Strict:     true,
-	Callable: func(ctx *sql.Context, _ [2]pgtypes.DoltgresType, val any) (any, error) {
+	Callable: func(ctx *sql.Context, _ [2]*pgtypes.DoltgresType, val any) (any, error) {
 		input := val.(string)
 		iVal, err := strconv.ParseInt(strings.TrimSpace(input), 10, 64)
 		if err != nil {
@@ -56,9 +56,9 @@ var int8in = framework.Function1{
 var int8out = framework.Function1{
 	Name:       "int8out",
 	Return:     pgtypes.Cstring,
-	Parameters: [1]pgtypes.DoltgresType{pgtypes.Int64},
+	Parameters: [1]*pgtypes.DoltgresType{pgtypes.Int64},
 	Strict:     true,
-	Callable: func(ctx *sql.Context, _ [2]pgtypes.DoltgresType, val any) (any, error) {
+	Callable: func(ctx *sql.Context, _ [2]*pgtypes.DoltgresType, val any) (any, error) {
 		if val == nil {
 			return nil, nil
 		}
@@ -70,9 +70,9 @@ var int8out = framework.Function1{
 var int8recv = framework.Function1{
 	Name:       "int8recv",
 	Return:     pgtypes.Int64,
-	Parameters: [1]pgtypes.DoltgresType{pgtypes.Internal},
+	Parameters: [1]*pgtypes.DoltgresType{pgtypes.Internal},
 	Strict:     true,
-	Callable: func(ctx *sql.Context, _ [2]pgtypes.DoltgresType, val any) (any, error) {
+	Callable: func(ctx *sql.Context, _ [2]*pgtypes.DoltgresType, val any) (any, error) {
 		data := val.([]byte)
 		if len(data) == 0 {
 			return nil, nil
@@ -85,9 +85,9 @@ var int8recv = framework.Function1{
 var int8send = framework.Function1{
 	Name:       "int8send",
 	Return:     pgtypes.Bytea,
-	Parameters: [1]pgtypes.DoltgresType{pgtypes.Int64},
+	Parameters: [1]*pgtypes.DoltgresType{pgtypes.Int64},
 	Strict:     true,
-	Callable: func(ctx *sql.Context, _ [2]pgtypes.DoltgresType, val any) (any, error) {
+	Callable: func(ctx *sql.Context, _ [2]*pgtypes.DoltgresType, val any) (any, error) {
 		retVal := make([]byte, 8)
 		binary.BigEndian.PutUint64(retVal, uint64(val.(int64))+(1<<63))
 		return retVal, nil
@@ -98,9 +98,9 @@ var int8send = framework.Function1{
 var btint8cmp = framework.Function2{
 	Name:       "btint8cmp",
 	Return:     pgtypes.Int32,
-	Parameters: [2]pgtypes.DoltgresType{pgtypes.Int64, pgtypes.Int64},
+	Parameters: [2]*pgtypes.DoltgresType{pgtypes.Int64, pgtypes.Int64},
 	Strict:     true,
-	Callable: func(ctx *sql.Context, _ [3]pgtypes.DoltgresType, val1, val2 any) (any, error) {
+	Callable: func(ctx *sql.Context, _ [3]*pgtypes.DoltgresType, val1, val2 any) (any, error) {
 		ab := val1.(int64)
 		bb := val2.(int64)
 		if ab == bb {
@@ -117,9 +117,9 @@ var btint8cmp = framework.Function2{
 var btint82cmp = framework.Function2{
 	Name:       "btint82cmp",
 	Return:     pgtypes.Int32,
-	Parameters: [2]pgtypes.DoltgresType{pgtypes.Int64, pgtypes.Int16},
+	Parameters: [2]*pgtypes.DoltgresType{pgtypes.Int64, pgtypes.Int16},
 	Strict:     true,
-	Callable: func(ctx *sql.Context, _ [3]pgtypes.DoltgresType, val1, val2 any) (any, error) {
+	Callable: func(ctx *sql.Context, _ [3]*pgtypes.DoltgresType, val1, val2 any) (any, error) {
 		ab := val1.(int64)
 		bb := int64(val2.(int16))
 		if ab == bb {
@@ -136,9 +136,9 @@ var btint82cmp = framework.Function2{
 var btint84cmp = framework.Function2{
 	Name:       "btint84cmp",
 	Return:     pgtypes.Int32,
-	Parameters: [2]pgtypes.DoltgresType{pgtypes.Int64, pgtypes.Int32},
+	Parameters: [2]*pgtypes.DoltgresType{pgtypes.Int64, pgtypes.Int32},
 	Strict:     true,
-	Callable: func(ctx *sql.Context, _ [3]pgtypes.DoltgresType, val1, val2 any) (any, error) {
+	Callable: func(ctx *sql.Context, _ [3]*pgtypes.DoltgresType, val1, val2 any) (any, error) {
 		ab := val1.(int64)
 		bb := int64(val2.(int32))
 		if ab == bb {

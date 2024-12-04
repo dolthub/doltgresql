@@ -30,9 +30,9 @@ func initLength() {
 var length_text = framework.Function1{
 	Name:       "length",
 	Return:     pgtypes.Int32,
-	Parameters: [1]pgtypes.DoltgresType{pgtypes.Text},
+	Parameters: [1]*pgtypes.DoltgresType{pgtypes.Text},
 	Strict:     true,
-	Callable: func(ctx *sql.Context, _ [2]pgtypes.DoltgresType, val1 any) (any, error) {
+	Callable: func(ctx *sql.Context, _ [2]*pgtypes.DoltgresType, val1 any) (any, error) {
 		return int32(len([]rune(val1.(string)))), nil
 	},
 }

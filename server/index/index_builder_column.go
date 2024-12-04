@@ -21,5 +21,5 @@ import pgtypes "github.com/dolthub/doltgresql/server/types"
 // to a column while iterating over the index.
 type indexBuilderColumn struct {
 	exprs []indexBuilderExpr
-	typ   pgtypes.DoltgresType
+	typ   *pgtypes.DoltgresType
 }
