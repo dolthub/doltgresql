@@ -315,7 +315,6 @@ func TestInsertInto(t *testing.T) {
 		"insert on duplicate key update errors",                                                                                                   // failing
 		"Insert on duplicate key references table in subquery with join",                                                                          // untranslated
 		"INSERT INTO ... SELECT with TEXT types",                                                                                                  // typecasts needed
-		// "check IN TUPLE constraint with duplicate key update",                                                                                     // error not being thrown
 	})
 	defer h.Close()
 	enginetest.TestInsertInto(t, h)

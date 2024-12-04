@@ -356,9 +356,19 @@ func convertExpr(expr sqlparser.Expr) tree.Expr {
 	case *sqlparser.Subquery:
 		return convertSubquery(val)
 	case *sqlparser.ParenExpr: return convertExpr(val.Expr)
+	case sqlparser.ValTuple:
+		return convertValTuple(val)
 	default:
 		panic(fmt.Sprintf("unhandled type: %T", val))
 	}
+}
+
+func convertValTuple(val sqlparser.ValTuple) tree.Expr {
+ 	exprs := make([]tree.Expr, len(val))
+	for i, expr := range val {
+		exprs[i] = convertExpr(expr)
+	}
+	return &tree.Tuple{Exprs: exprs}
 }
 
 func convertSubquery(val *sqlparser.Subquery) tree.Expr {
@@ -741,7 +751,7 @@ func transformCreateTable(stmt *sqlparser.DDL) ([]string, bool) {
 				},
 			}
 		}
-
+		
 		createTable.Defs = append(createTable.Defs, &tree.ColumnTableDef{
 			Name:      tree.Name(col.Name.String()),
 			Type:      convertTypeDef(col.Type),
@@ -842,12 +852,33 @@ func transformCreateTable(stmt *sqlparser.DDL) ([]string, bool) {
 		case *sqlparser.ForeignKeyDefinition:
 			queries = append(queries, createForeignKeyStatement(createTable.Table, c))
 		case *sqlparser.CheckConstraintDefinition:
+			queries = append(queries, createCheckConstraintStatement(createTable.Table, c))
 		default:
 			// do nothing, unsupported
 		} 
 	}
 
 	return queries, true
+}
+
+func createCheckConstraintStatement(table tree.TableName, c *sqlparser.CheckConstraintDefinition) string {
+	name, err := tree.NewUnresolvedObjectName(1, [3]string{table.Table(), "", ""}, 0)
+	if err != nil {
+		panic(err)
+	}
+
+	alter := tree.AlterTable{
+		Table: name,
+	}
+	
+	alter.Cmds = append(alter.Cmds, &tree.AlterTableAddConstraint{
+		ConstraintDef: &tree.CheckConstraintTableDef{
+			Expr:      convertExpr(c.Expr),
+		},
+	})
+
+	ctx := formatNodeWithUnqualifiedTableNames(&alter)
+	return ctx.String()
 }
 
 func createForeignKeyStatement(table tree.TableName, c *sqlparser.ForeignKeyDefinition) string {
