@@ -62,6 +62,7 @@ type DoltgresHarness struct {
 var _ denginetest.DoltEnginetestHarness = &DoltgresHarness{}
 var _ enginetest.SkippingHarness = &DoltgresHarness{}
 var _ enginetest.ResultEvaluationHarness = &DoltgresHarness{}
+var _ enginetest.DialectHarness = &DoltgresHarness{}
 
 func (d *DoltgresHarness) ValidateEngine(ctx *sql.Context, e *gms.Engine) error {
 	// TODO
@@ -70,6 +71,10 @@ func (d *DoltgresHarness) ValidateEngine(ctx *sql.Context, e *gms.Engine) error 
 
 func (d *DoltgresHarness) UseLocalFileSystem() {
 	d.useLocalFilesystem = true
+}
+
+func (d *DoltgresHarness) Dialect() string {
+	return "postgres"
 }
 
 func (d *DoltgresHarness) Session() *dsess.DoltSession {

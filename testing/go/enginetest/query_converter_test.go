@@ -355,6 +355,7 @@ func convertExpr(expr sqlparser.Expr) tree.Expr {
 		return convertComparisonExpr(val)
 	case *sqlparser.Subquery:
 		return convertSubquery(val)
+	case *sqlparser.ParenExpr: return convertExpr(val.Expr)
 	default:
 		panic(fmt.Sprintf("unhandled type: %T", val))
 	}
