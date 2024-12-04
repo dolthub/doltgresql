@@ -27,7 +27,7 @@ func TestSerializationConsistency(t *testing.T) {
 			serializedType := typ.Serialize()
 			dt, err := DeserializeType(serializedType)
 			require.NoError(t, err)
-			require.Equal(t, typ, dt.(DoltgresType))
+			require.Equal(t, typ, dt.(*DoltgresType))
 		})
 	}
 }

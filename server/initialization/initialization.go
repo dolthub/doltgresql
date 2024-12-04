@@ -15,7 +15,6 @@
 package initialization
 
 import (
-	"github.com/dolthub/doltgresql/server/functions/framework"
 	"sync"
 
 	"github.com/dolthub/dolt/go/libraries/doltcore/env"
@@ -30,6 +29,7 @@ import (
 	"github.com/dolthub/doltgresql/server/config"
 	"github.com/dolthub/doltgresql/server/functions"
 	"github.com/dolthub/doltgresql/server/functions/binary"
+	"github.com/dolthub/doltgresql/server/functions/framework"
 	"github.com/dolthub/doltgresql/server/functions/unary"
 	"github.com/dolthub/doltgresql/server/tables"
 	"github.com/dolthub/doltgresql/server/tables/dtables"
