@@ -167,23 +167,39 @@ func (dcv *doltCommitValidator) CommitHash(val interface{}) (bool, string) {
 
 // Convenience test for debugging a single query. Unskip and set to the desired query.
 func TestSingleScript(t *testing.T) {
-	// t.Skip()
+	t.Skip()
 
 	var scripts = []queries.ScriptTest{
 		{
-			Name: "insert into sparse auto_increment table",
+			Name: "GMS issue 2369",
 			SetUpScript: []string{
-				"create table auto (pk int primary key auto_increment)",
-				"insert into auto values (10), (20), (30)",
-				"insert into auto values (NULL)",
-				"insert into auto values (40)",
-				"insert into auto values (0)",
+				`CREATE TABLE table1 (
+	id int NOT NULL AUTO_INCREMENT,
+	name text,
+	parentId int DEFAULT NULL,
+	PRIMARY KEY (id),
+	CONSTRAINT myConstraint FOREIGN KEY (parentId) REFERENCES table1 (id) ON DELETE CASCADE
+)`,
 			},
 			Assertions: []queries.ScriptTestAssertion{
 				{
-					Query: "select * from auto order by 1",
+					Query:    "INSERT INTO table1 (name, parentId) VALUES ('tbl1 row 1', NULL);",
+					Expected: []sql.Row{{types.OkResult{RowsAffected: 1, InsertID: 1}}},
+				},
+				{
+					Query:    "INSERT INTO table1 (name, parentId) VALUES ('tbl1 row 2', 1);",
+					Expected: []sql.Row{{types.OkResult{RowsAffected: 1, InsertID: 2}}},
+				},
+				{
+					Query:    "INSERT INTO table1 (name, parentId) VALUES ('tbl1 row 3', NULL);",
+					Expected: []sql.Row{{types.OkResult{RowsAffected: 1, InsertID: 3}}},
+				},
+				{
+					Query: "select * from table1",
 					Expected: []sql.Row{
-						{10}, {20}, {30}, {31}, {40}, {41},
+						{1, "tbl1 row 1", nil},
+						{2, "tbl1 row 2", 1},
+						{3, "tbl1 row 3", nil},
 					},
 				},
 			},
@@ -550,9 +566,8 @@ func TestConvertPrepared(t *testing.T) {
 
 func TestScripts(t *testing.T) {
 	// t.Skip()
-	h := newDoltgresServerHarness(t).WithSkippedQueries(append(newFormatSkippedScripts, []string{
+	h := newDoltgresServerHarness(t).WithSkippedQueries([]string{
 		"filter pushdown through join uppercase name", // syntax error (join without on)
-		"alter nil enum", // enum type unsupported
 		"issue 7958, update join uppercase table name validation", // update join syntax not supported
 		"Dolt issue 7957, update join matched rows", // update join syntax not supported
 		"update join with update trigger different value", // update join syntax not supported
@@ -575,31 +590,11 @@ func TestScripts(t *testing.T) {
 				"        FROM ladder JOIN rt WHERE ladder.foo = rt.foo\n" +
 				"    )\n" +
 				"SELECT * FROM ladder;", // syntax error
-		"alter table out of range value error of column type change", // unsigned keyword not supported
-		"alter keyless table", // enum type unsupported
 		"with recursive cte as ((select * from xy order by y asc limit 1 offset 1) union (select * from xy order by y asc limit 1 offset 2)) select * from cte", // invalid type: bigint  
-		"enums with default, case-sensitive collation (utf8mb4_0900_bin)",
-		"enums with case-insensitive collation (utf8mb4_0900_ai_ci)",
-		"REPLACE INTO test VALUES (1,7), (4,8), (5,9);", // REPLACE unsupported, not easy to translate
-		"UUIDs used in the wild.", // unsupported type: VARBINARY
-		"Test cases on select into statement", // unsupported syntax
 		"CrossDB Queries", // needs harness work to properly qualify the names
-		"last_insert_uuid() behavior",  // unhandled type: *sqlparser.ParenExpr
-		"last_insert_id() behavior", // unsupported feature
-		"last_insert_id(expr) behavior", // unsupported feature
-		"last_insert_id(default) behavior", // unsupported feature
-		"row_count() behavior", // unsupported function
-		"found_rows() behavior", // unsupported function
-		"Group Concat Queries", // unsupported syntax
-		"CONVERT USING still converts between incompatible character sets", // unsupported syntax
-		"ALTER TABLE, ALTER COLUMN SET , DROP DEFAULT", // mostly working, some default expressions not supported
-		// "Run through some complex queries with DISTINCT and aggregates",
-		// "Nested Subquery projections (NTC)",
-		// "CREATE TABLE SELECT Queries",
-		// "unix_timestamp function usage",
-		// "unix_timestamp with non UTC timezone",
-		// "Issue #499", // https://github.com/dolthub/go-mysql-server/issues/499
-		"WHERE clause considers ENUM/SET types for comparisons",
+		"SELECT rand(10) FROM tab1 GROUP BY tab1.col1", // different rand() behavior
+		"Nested Subquery projections (NTC)", // ERROR: blob/text column 'id' used in key specification without a key length
+		"CREATE TABLE SELECT Queries", // ERROR: TableCopier only accepts CreateTable or TableNode as the destination
 		// "Simple Update Join test that manipulates two tables",
 		// "Partial indexes are used and return the expected result",
 		// "Multiple indexes on the same columns in a different order",
@@ -689,7 +684,7 @@ func TestScripts(t *testing.T) {
 		"coalesce with system types", // unsupported
 		"multi enum return types", // enum types unsupported
 		"enum cast to int and string", // enum types unsupported
-	}...))
+	})
 	defer h.Close()
 	enginetest.TestScripts(t, h)
 }
@@ -1862,9 +1857,8 @@ func TestDeleteQueriesPrepared(t *testing.T) {
 
 func TestScriptsPrepared(t *testing.T) {
 	t.Skip()
-	skipped := newFormatSkippedScripts
 	skipPreparedTests(t)
-	h := newDoltgresServerHarness(t).WithSkippedQueries(skipped)
+	h := newDoltgresServerHarness(t)
 	defer h.Close()
 	enginetest.TestScriptsPrepared(t, h)
 }
@@ -2049,12 +2043,6 @@ func TestCreateDatabaseErrorCleansUp(t *testing.T) {
 // todo: the dolt_stat functions should be concurrency tested
 func TestStatsAutoRefreshConcurrency(t *testing.T) {
 	t.Skip("port test from Dolt")
-}
-
-var newFormatSkippedScripts = []string{
-	// Different query plans
-	"Partial indexes are used and return the expected result",
-	"Multiple indexes on the same columns in a different order",
 }
 
 func skipPreparedTests(t *testing.T) {

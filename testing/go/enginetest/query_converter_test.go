@@ -358,6 +358,8 @@ func convertExpr(expr sqlparser.Expr) tree.Expr {
 	case *sqlparser.ParenExpr: return convertExpr(val.Expr)
 	case sqlparser.ValTuple:
 		return convertValTuple(val)
+	case *sqlparser.NullVal:
+		return tree.DNull
 	default:
 		panic(fmt.Sprintf("unhandled type: %T", val))
 	}
