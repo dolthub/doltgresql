@@ -571,11 +571,15 @@ func convertDdlStatement(statement *sqlparser.DDL) ([]string, bool) {
 			switch statement.IndexSpec.Action {
 			case "drop":
 				tableName := tree.NewTableName(tree.Name(""), tree.Name(statement.Table.Name.String()))
+				indexName := statement.IndexSpec.ToName.String()
+				if statement.IndexSpec.Type == "primary" {
+					indexName = "PRIMARY"
+				}
 				dropIndex := tree.DropIndex{
 					IndexList: tree.TableIndexNames{
 						{
 							Table: *tableName,
-							Index: tree.UnrestrictedName(statement.IndexSpec.ToName.String()),
+							Index: tree.UnrestrictedName(indexName),
 						},
 					},
 				}

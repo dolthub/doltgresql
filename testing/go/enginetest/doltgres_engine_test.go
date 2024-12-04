@@ -171,36 +171,29 @@ func TestSingleScript(t *testing.T) {
 
 	var scripts = []queries.ScriptTest{
 		{
-			Name: "GMS issue 2369",
+			Name: "recreate primary key rebuilds secondary indexes",
 			SetUpScript: []string{
-				`CREATE TABLE table1 (
-	id int NOT NULL AUTO_INCREMENT,
-	name text,
-	parentId int DEFAULT NULL,
-	PRIMARY KEY (id),
-	CONSTRAINT myConstraint FOREIGN KEY (parentId) REFERENCES table1 (id) ON DELETE CASCADE
-)`,
+				"create table a (x int, y int, z int, primary key (x,y,z), index idx1 (y))",
+				"insert into a values (1,2,3), (4,5,6), (7,8,9)",
+				"alter table a drop primary key",
+				"alter table a add primary key (y,z,x)",
 			},
 			Assertions: []queries.ScriptTestAssertion{
 				{
-					Query:    "INSERT INTO table1 (name, parentId) VALUES ('tbl1 row 1', NULL);",
-					Expected: []sql.Row{{types.OkResult{RowsAffected: 1, InsertID: 1}}},
+					Query:    "delete from a where y = 2",
+					Expected: []sql.Row{{types.NewOkResult(1)}},
 				},
 				{
-					Query:    "INSERT INTO table1 (name, parentId) VALUES ('tbl1 row 2', 1);",
-					Expected: []sql.Row{{types.OkResult{RowsAffected: 1, InsertID: 2}}},
+					Query:    "delete from a where y = 2",
+					Expected: []sql.Row{{types.NewOkResult(0)}},
 				},
 				{
-					Query:    "INSERT INTO table1 (name, parentId) VALUES ('tbl1 row 3', NULL);",
-					Expected: []sql.Row{{types.OkResult{RowsAffected: 1, InsertID: 3}}},
+					Query:    "select * from a where y = 2",
+					Expected: []sql.Row{},
 				},
 				{
-					Query: "select * from table1",
-					Expected: []sql.Row{
-						{1, "tbl1 row 1", nil},
-						{2, "tbl1 row 2", 1},
-						{3, "tbl1 row 3", nil},
-					},
+					Query:    "select * from a where y = 5",
+					Expected: []sql.Row{{4, 5, 6}},
 				},
 			},
 		},
@@ -602,7 +595,7 @@ func TestScripts(t *testing.T) {
 		// "Ensure scale is not rounded when inserting to DECIMAL type through float64",
 		"Show create table with various keys and constraints", // error in harness query converter
 		"show create table with duplicate primary key", // error in harness query converter
-		// "recreate primary key rebuilds secondary indexes",
+		"recreate primary key rebuilds secondary indexes", // currently no way to drop primary key in doltgres
 		// "Handle hex number to binary conversion",
 		// "Multialter DDL with ADD/DROP Primary Key",
 		// "Multialter DDL with ADD/DROP INDEX",
