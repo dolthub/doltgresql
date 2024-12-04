@@ -20,7 +20,7 @@ import (
 	pgtypes "github.com/dolthub/doltgresql/server/types"
 )
 
-// getDoltStatusSchema returns the schema for the dolt_status table.
+// getDoltStatusSchema returns the schema for the status table.
 func getDoltStatusSchema(tableName string) sql.Schema {
 	return []*sql.Column{
 		{Name: "table_name", Type: pgtypes.Text, Source: tableName, PrimaryKey: true, Nullable: false},

@@ -44,6 +44,7 @@ func Init() {
 	// Schemas
 	dtables.GetDocsSchema = getDocsSchema
 	dtables.GetDoltIgnoreSchema = getDoltIgnoreSchema
+	dtables.GetDoltMergeStatusSchema = getDoltMergeStatusSchema
 	dprocedures.GetDoltRebaseSystemTableSchema = getRebaseSchema
 	dtables.GetDoltStatusSchema = getDoltStatusSchema
 	dtables.GetUnscopedDoltDiffSchema = getUnscopedDoltDiffSchema
@@ -78,11 +79,6 @@ func getCommitsTableName() string {
 // getLogTableName returns the name of the branches table.
 func getLogTableName() string {
 	return "log"
-}
-
-// getMergeStatusTableName returns the name of the merge status table.
-func getMergeStatusTableName() string {
-	return "merge_status"
 }
 
 // getRemoteBranchesTableName returns the name of the remote branches table.

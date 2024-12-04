@@ -1667,20 +1667,24 @@ func TestUserSpaceDoltTables(t *testing.T) {
 			Assertions: []ScriptTestAssertion{
 				{
 					Query:    `SELECT is_merging FROM dolt.merge_status`,
-					Expected: []sql.Row{{0}},
+					Expected: []sql.Row{{"f"}},
+				},
+				{
+					Query:    `SELECT is_merging FROM dolt.merge_status WHERE is_merging=true`,
+					Expected: []sql.Row{},
 				},
 				{
 					Query:    `SELECT is_merging FROM dolt_merge_status`,
-					Expected: []sql.Row{{0}},
+					Expected: []sql.Row{{"f"}},
 				},
 				{
 					Skip:     true, // TODO: referencing items outside the schema or database is not yet supported
 					Query:    `SELECT dolt.merge_status.is_merging FROM dolt.merge_status`,
-					Expected: []sql.Row{{0}},
+					Expected: []sql.Row{{"f"}},
 				},
 				{
 					Query:    `SELECT dolt_merge_status.is_merging FROM dolt_merge_status`,
-					Expected: []sql.Row{{0}},
+					Expected: []sql.Row{{"f"}},
 				},
 				{
 					Query:       `SELECT * FROM public.merge_status`,
@@ -1704,7 +1708,7 @@ func TestUserSpaceDoltTables(t *testing.T) {
 				},
 				{
 					Query:    `SELECT is_merging FROM dolt.merge_status`,
-					Expected: []sql.Row{{0}},
+					Expected: []sql.Row{{"f"}},
 				},
 				{
 					Query:    "SET search_path = 'dolt'",
@@ -1712,7 +1716,7 @@ func TestUserSpaceDoltTables(t *testing.T) {
 				},
 				{
 					Query:    `SELECT is_merging FROM merge_status`,
-					Expected: []sql.Row{{0}},
+					Expected: []sql.Row{{"f"}},
 				},
 				{
 					Query:    `SELECT * FROM public.merge_status`,
