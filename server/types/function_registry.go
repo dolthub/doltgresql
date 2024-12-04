@@ -154,8 +154,7 @@ func (*functionRegistry) nameWithParams(funcString string) (string, []*DoltgresT
 		if err != nil {
 			return parts[0], nil, false
 		}
-		oid := uint32(oidVal)
-		typ, ok := OidToBuiltInDoltgresType[oid]
+		typ, ok := OidToBuiltInDoltgresType[uint32(oidVal)]
 		if !ok {
 			return parts[0], nil, false
 		}

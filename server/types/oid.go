@@ -52,6 +52,6 @@ var Oid = &DoltgresType{
 	Default:       "",
 	Acl:           nil,
 	Checks:        nil,
-	AttTypMod:     -1,
+	attTypMod:     -1,
 	CompareFunc:   toFuncID("btoidcmp", oid.T_oid, oid.T_oid),
 }

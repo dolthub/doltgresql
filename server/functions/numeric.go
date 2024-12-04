@@ -63,10 +63,11 @@ var numeric_out = framework.Function1{
 	Callable: func(ctx *sql.Context, t [2]*pgtypes.DoltgresType, val any) (any, error) {
 		typ := t[0]
 		dec := val.(decimal.Decimal)
-		if typ.AttTypMod == -1 {
+		tm := typ.GetAttTypMod()
+		if tm == -1 {
 			return dec.StringFixed(dec.Exponent() * -1), nil
 		} else {
-			_, s := pgtypes.GetPrecisionAndScaleFromTypmod(typ.AttTypMod)
+			_, s := pgtypes.GetPrecisionAndScaleFromTypmod(tm)
 			return dec.StringFixed(s), nil
 		}
 	},

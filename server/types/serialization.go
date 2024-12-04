@@ -97,7 +97,7 @@ func DeserializeType(serializedType []byte) (types.ExtendedType, error) {
 			Enforced:        true,
 		})
 	}
-	typ.AttTypMod = reader.Int32()
+	typ.attTypMod = reader.Int32()
 	typ.CompareFunc = globalFunctionRegistry.StringToID(reader.String())
 	typ.InternalName = reader.String()
 	if !reader.IsEmpty() {
@@ -153,7 +153,7 @@ func (t *DoltgresType) Serialize() []byte {
 		writer.String(check.Name)
 		writer.String(check.CheckExpression)
 	}
-	writer.Int32(t.AttTypMod)
+	writer.Int32(t.attTypMod)
 	writer.String(globalFunctionRegistry.GetFullString(t.CompareFunc))
 	writer.String(t.InternalName)
 	return writer.Data()

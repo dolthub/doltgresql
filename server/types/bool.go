@@ -53,7 +53,7 @@ var Bool = &DoltgresType{
 	Default:       "",
 	Acl:           nil,
 	Checks:        nil,
-	AttTypMod:     -1,
+	attTypMod:     -1,
 	CompareFunc:   toFuncID("btboolcmp", oid.T_bool, oid.T_bool),
 	InternalName:  "boolean",
 }

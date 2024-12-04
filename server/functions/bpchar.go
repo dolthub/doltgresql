@@ -74,10 +74,11 @@ var bpcharout = framework.Function1{
 	Strict:     true,
 	Callable: func(ctx *sql.Context, t [2]*pgtypes.DoltgresType, val any) (any, error) {
 		typ := t[0]
-		if typ.AttTypMod == -1 {
+		tm := typ.GetAttTypMod()
+		if tm == -1 {
 			return val.(string), nil
 		}
-		maxChars := pgtypes.GetCharLengthFromTypmod(typ.AttTypMod)
+		maxChars := pgtypes.GetCharLengthFromTypmod(tm)
 		if maxChars < 1 {
 			return val.(string), nil
 		} else {

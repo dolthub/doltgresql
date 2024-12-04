@@ -55,6 +55,6 @@ var Name = &DoltgresType{
 	Default:       "",
 	Acl:           nil,
 	Checks:        nil,
-	AttTypMod:     -1,
+	attTypMod:     -1,
 	CompareFunc:   toFuncID("btnamecmp", oid.T_name, oid.T_name),
 }

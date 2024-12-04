@@ -52,6 +52,6 @@ var Interval = &DoltgresType{
 	Default:       "",
 	Acl:           nil,
 	Checks:        nil,
-	AttTypMod:     -1,
+	attTypMod:     -1,
 	CompareFunc:   toFuncID("interval_cmp", oid.T_interval, oid.T_interval),
 }

@@ -48,7 +48,7 @@ var array_in = framework.Function3{
 		baseTypeOid := val2.(uint32)
 		baseType := pgtypes.OidToBuiltInDoltgresType[baseTypeOid]
 		typmod := val3.(int32)
-		baseType.AttTypMod = typmod
+		baseType = baseType.WithAttTypMod(typmod)
 		if len(input) < 2 || input[0] != '{' || input[len(input)-1] != '}' {
 			// This error is regarded as a critical error, and thus we immediately return the error alongside a nil
 			// value. Returning a nil value is a signal to not ignore the error.
@@ -152,7 +152,6 @@ var array_out = framework.Function1{
 	Callable: func(ctx *sql.Context, t [2]*pgtypes.DoltgresType, val any) (any, error) {
 		arrType := t[0]
 		baseType := arrType.ArrayBaseType()
-		baseType.AttTypMod = arrType.AttTypMod
 		return pgtypes.ArrToString(ctx, val.([]any), baseType, false)
 	},
 }
@@ -168,7 +167,7 @@ var array_recv = framework.Function3{
 		baseTypeOid := val2.(uint32)
 		baseType := pgtypes.OidToBuiltInDoltgresType[baseTypeOid]
 		typmod := val3.(int32)
-		baseType.AttTypMod = typmod
+		baseType = baseType.WithAttTypMod(typmod)
 		// Check for the nil value, then ensure the minimum length of the slice
 		if len(data) == 0 {
 			return nil, nil

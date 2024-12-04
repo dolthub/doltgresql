@@ -52,7 +52,7 @@ var Int64 = &DoltgresType{
 	Default:       "",
 	Acl:           nil,
 	Checks:        nil,
-	AttTypMod:     -1,
+	attTypMod:     -1,
 	CompareFunc:   toFuncID("btint8cmp", oid.T_int8, oid.T_int8),
 	InternalName:  "bigint",
 }

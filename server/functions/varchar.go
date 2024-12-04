@@ -65,8 +65,9 @@ var varcharout = framework.Function1{
 	Callable: func(ctx *sql.Context, t [2]*pgtypes.DoltgresType, val any) (any, error) {
 		v := val.(string)
 		typ := t[0]
-		if typ.AttTypMod != -1 {
-			str, _ := truncateString(v, pgtypes.GetCharLengthFromTypmod(typ.AttTypMod))
+		tm := typ.GetAttTypMod()
+		if tm != -1 {
+			str, _ := truncateString(v, pgtypes.GetCharLengthFromTypmod(tm))
 			return str, nil
 		} else {
 			return v, nil

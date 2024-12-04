@@ -52,6 +52,6 @@ var JsonB = &DoltgresType{
 	Default:       "",
 	Acl:           nil,
 	Checks:        nil,
-	AttTypMod:     -1,
+	attTypMod:     -1,
 	CompareFunc:   toFuncID("jsonb_cmp", oid.T_jsonb, oid.T_jsonb),
 }

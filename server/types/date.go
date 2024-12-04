@@ -52,6 +52,6 @@ var Date = &DoltgresType{
 	Default:       "",
 	Acl:           nil,
 	Checks:        nil,
-	AttTypMod:     -1,
+	attTypMod:     -1,
 	CompareFunc:   toFuncID("date_cmp", oid.T_date, oid.T_date),
 }

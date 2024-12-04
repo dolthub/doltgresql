@@ -70,7 +70,7 @@ type DoltgresType struct {
 
 	// Below are not part of pg_type fields
 	Checks       []*sql.CheckDefinition // TODO: should be in `pg_constraint` for Domain types
-	AttTypMod    int32                  // TODO: should be in `pg_attribute.atttypmod`
+	attTypMod    int32                  // TODO: should be in `pg_attribute.atttypmod`
 	CompareFunc  uint32                 // TODO: should be in `pg_amproc`
 	InternalName string                 // Name and InternalName differ for some types. e.g.: "int2" vs "smallint"
 
@@ -106,8 +106,8 @@ func (t *DoltgresType) ArrayBaseType() *DoltgresType {
 	if !ok {
 		panic(fmt.Sprintf("cannot get base type from: %s", t.Name))
 	}
-	elem.AttTypMod = t.AttTypMod
-	return elem
+	newElem := *elem.WithAttTypMod(t.GetAttTypMod())
+	return &newElem
 }
 
 // CharacterSet implements the sql.StringType interface.
@@ -360,6 +360,11 @@ func (t *DoltgresType) FormatValue(val any) (string, error) {
 	return t.IoOutput(nil, val)
 }
 
+// GetAttTypMod returns the attTypMod field of the type.
+func (t *DoltgresType) GetAttTypMod() int32 {
+	return t.attTypMod
+}
+
 // InputFuncName returns the name that would be displayed in pg_type for the `typinput` field.
 func (t *DoltgresType) InputFuncName() string {
 	return globalFunctionRegistry.GetString(t.InputFunc)
@@ -369,9 +374,9 @@ func (t *DoltgresType) InputFuncName() string {
 func (t *DoltgresType) IoInput(ctx *sql.Context, input string) (any, error) {
 	if t.ModInFunc != 0 || t.TypType == TypeType_Domain || t.IsArrayType() {
 		if t.Elem != 0 {
-			return globalFunctionRegistry.GetFunction(t.InputFunc).CallVariadic(ctx, input, t.Elem, t.AttTypMod)
+			return globalFunctionRegistry.GetFunction(t.InputFunc).CallVariadic(ctx, input, t.Elem, t.attTypMod)
 		} else {
-			return globalFunctionRegistry.GetFunction(t.InputFunc).CallVariadic(ctx, input, t.OID, t.AttTypMod)
+			return globalFunctionRegistry.GetFunction(t.InputFunc).CallVariadic(ctx, input, t.OID, t.attTypMod)
 		}
 	} else {
 		return globalFunctionRegistry.GetFunction(t.InputFunc).CallVariadic(ctx, input)
@@ -449,10 +454,10 @@ func (t *DoltgresType) IsValidForPolymorphicType(target *DoltgresType) bool {
 func (t *DoltgresType) Length() int64 {
 	switch oid.Oid(t.OID) {
 	case oid.T_varchar:
-		if t.AttTypMod == -1 {
+		if t.attTypMod == -1 {
 			return StringUnbounded
 		} else {
-			return int64(GetCharLengthFromTypmod(t.AttTypMod))
+			return int64(GetCharLengthFromTypmod(t.attTypMod))
 		}
 	case oid.T_text:
 		return StringUnbounded
@@ -599,9 +604,9 @@ func (t *DoltgresType) String() string {
 	if t.InternalName == "" {
 		str = t.Name
 	}
-	if t.AttTypMod != -1 {
+	if t.attTypMod != -1 {
 		// TODO: need valid sql.Context
-		if l, err := t.TypModOut(nil, t.AttTypMod); err == nil {
+		if l, err := t.TypModOut(nil, t.attTypMod); err == nil {
 			str = fmt.Sprintf("%s%s", str, l)
 		}
 	}
@@ -623,9 +628,9 @@ func (t *DoltgresType) ToArrayType() *DoltgresType {
 	if !ok {
 		panic(fmt.Sprintf("cannot get array type from: %s", t.Name))
 	}
-	arr.AttTypMod = t.AttTypMod
-	arr.InternalName = fmt.Sprintf("%s[]", t.String())
-	return arr
+	newArr := *arr.WithAttTypMod(t.GetAttTypMod())
+	newArr.InternalName = fmt.Sprintf("%s[]", t.String())
+	return &newArr
 }
 
 // Type implements the types.ExtendedType interface.
@@ -721,6 +726,16 @@ func (t *DoltgresType) ValueType() reflect.Type {
 	return reflect.TypeOf(t.Zero())
 }
 
+// WithAttTypMod returns a copy of the type with attTypMod
+// defined with given value. This function should be used
+// to set attTypMod only, as it creates a copy of the type
+// to avoid updating the original type.
+func (t *DoltgresType) WithAttTypMod(tm int32) *DoltgresType {
+	newDt := *t
+	newDt.attTypMod = tm
+	return &newDt
+}
+
 // Zero implements the types.ExtendedType interface.
 func (t *DoltgresType) Zero() interface{} {
 	// TODO: need better way to get accurate result
@@ -793,9 +808,9 @@ func (t *DoltgresType) DeserializeValue(val []byte) (any, error) {
 	}
 	if t.ModInFunc != 0 || t.TypType == TypeType_Domain || t.IsArrayType() {
 		if t.Elem != 0 {
-			return globalFunctionRegistry.GetFunction(t.ReceiveFunc).CallVariadic(nil, val, t.Elem, t.AttTypMod)
+			return globalFunctionRegistry.GetFunction(t.ReceiveFunc).CallVariadic(nil, val, t.Elem, t.attTypMod)
 		} else {
-			return globalFunctionRegistry.GetFunction(t.ReceiveFunc).CallVariadic(nil, val, t.OID, t.AttTypMod)
+			return globalFunctionRegistry.GetFunction(t.ReceiveFunc).CallVariadic(nil, val, t.OID, t.attTypMod)
 		}
 	} else {
 		return globalFunctionRegistry.GetFunction(t.ReceiveFunc).CallVariadic(nil, val)

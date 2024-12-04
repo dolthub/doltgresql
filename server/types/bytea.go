@@ -52,6 +52,6 @@ var Bytea = &DoltgresType{
 	Default:       "",
 	Acl:           nil,
 	Checks:        nil,
-	AttTypMod:     -1,
+	attTypMod:     -1,
 	CompareFunc:   toFuncID("byteacmp", oid.T_bytea, oid.T_bytea),
 }

@@ -69,19 +69,18 @@ var VarChar = &DoltgresType{
 	Default:       "",
 	Acl:           nil,
 	Checks:        nil,
-	AttTypMod:     -1,
+	attTypMod:     -1,
 	CompareFunc:   toFuncID("bttextcmp", oid.T_text, oid.T_text), // TODO: temporarily added
 }
 
 // NewVarCharType returns VarChar type with type modifier set
 // representing the maximum number of characters that the type may hold.
 func NewVarCharType(maxChars int32) (*DoltgresType, error) {
-	var err error
-	newType := *VarChar
-	newType.AttTypMod, err = GetTypModFromCharLength("varchar", maxChars)
+	typmod, err := GetTypModFromCharLength("varchar", maxChars)
 	if err != nil {
 		return nil, err
 	}
+	newType := *VarChar.WithAttTypMod(typmod)
 	return &newType, nil
 }
 

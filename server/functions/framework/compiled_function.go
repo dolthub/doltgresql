@@ -106,7 +106,7 @@ func newCompiledFunctionInternal(
 		} else {
 			if d, ok := args[i].Type().(*pgtypes.DoltgresType); ok {
 				// `param` is a default type which does not have type modifier set
-				param.AttTypMod = d.AttTypMod
+				param = param.WithAttTypMod(d.GetAttTypMod())
 			}
 			c.callResolved[i] = param
 		}

@@ -331,8 +331,9 @@ func getColumnPrecisionAndScale(colType sql.Type) (interface{}, interface{}, int
 		case oid.T_numeric:
 			var precision interface{}
 			var scale interface{}
-			if dgt.AttTypMod != -1 {
-				precision, scale = pgtypes.GetPrecisionAndScaleFromTypmod(dgt.AttTypMod)
+			tm := dgt.GetAttTypMod()
+			if tm != -1 {
+				precision, scale = pgtypes.GetPrecisionAndScaleFromTypmod(tm)
 			}
 			return precision, int32(10), scale
 		default:
@@ -365,10 +366,11 @@ func getCharAndCollNamesAndCharMaxAndOctetLens(ctx *sql.Context, colType sql.Typ
 	switch t := colType.(type) {
 	case *pgtypes.DoltgresType:
 		if t.TypCategory == pgtypes.TypeCategory_StringTypes {
-			if t.AttTypMod == -1 {
+			tm := t.GetAttTypMod()
+			if tm == -1 {
 				charOctetLen = int32(maxCharacterOctetLength)
 			} else {
-				l := pgtypes.GetCharLengthFromTypmod(t.AttTypMod)
+				l := pgtypes.GetCharLengthFromTypmod(tm)
 				charOctetLen = l * 4
 				charMaxLen = l
 			}

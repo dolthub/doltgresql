@@ -55,7 +55,7 @@ var InternalChar = &DoltgresType{
 	Default:       "",
 	Acl:           nil,
 	Checks:        nil,
-	AttTypMod:     -1,
+	attTypMod:     -1,
 	CompareFunc:   toFuncID("btcharcmp", oid.T_char, oid.T_char),
 	InternalName:  `"char"`,
 }

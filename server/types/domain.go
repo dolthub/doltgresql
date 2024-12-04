@@ -64,7 +64,7 @@ func NewDomainType(
 		Default:       defaultExpr,
 		Acl:           nil,
 		Checks:        checks,
-		AttTypMod:     -1,
+		attTypMod:     -1,
 		CompareFunc:   asType.CompareFunc,
 	}
 }

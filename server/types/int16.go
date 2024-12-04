@@ -52,7 +52,7 @@ var Int16 = &DoltgresType{
 	Default:       "",
 	Acl:           nil,
 	Checks:        nil,
-	AttTypMod:     -1,
+	attTypMod:     -1,
 	CompareFunc:   toFuncID("btint2cmp", oid.T_int2, oid.T_int2),
 	InternalName:  "smallint",
 }

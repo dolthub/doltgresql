@@ -358,8 +358,7 @@ func NormalizeRow(fds []pgconn.FieldDescription, row sql.Row, normalize bool) sq
 	newRow := make(sql.Row, len(row))
 	for i := range row {
 		dt, ok := types.OidToBuiltInDoltgresType[fds[i].DataTypeOID]
-		// TODO: need to set the typmod!
-		dt.AttTypMod = -1
+		dt = dt.WithAttTypMod(fds[i].TypeModifier)
 		if !ok {
 			panic(fmt.Sprintf("unhandled oid type: %v", fds[i].DataTypeOID))
 		}

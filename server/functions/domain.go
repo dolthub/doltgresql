@@ -37,7 +37,7 @@ var domain_in = framework.Function3{
 		baseTypeOid := val2.(uint32)
 		t := pgtypes.OidToBuiltInDoltgresType[baseTypeOid]
 		typmod := val3.(int32)
-		t.AttTypMod = typmod
+		t = t.WithAttTypMod(typmod)
 		return t.IoInput(ctx, str)
 	},
 }
@@ -52,7 +52,7 @@ var domain_recv = framework.Function3{
 		baseTypeOid := val2.(uint32)
 		t := pgtypes.OidToBuiltInDoltgresType[baseTypeOid]
 		typmod := val3.(int32)
-		t.AttTypMod = typmod
+		t = t.WithAttTypMod(typmod)
 		return t.DeserializeValue(data)
 	},
 }

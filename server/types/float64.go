@@ -52,7 +52,7 @@ var Float64 = &DoltgresType{
 	Default:       "",
 	Acl:           nil,
 	Checks:        nil,
-	AttTypMod:     -1,
+	attTypMod:     -1,
 	CompareFunc:   toFuncID("btfloat8cmp", oid.T_float8, oid.T_float8),
 	InternalName:  "double precision",
 }

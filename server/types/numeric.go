@@ -71,18 +71,17 @@ var Numeric = &DoltgresType{
 	Default:       "",
 	Acl:           nil,
 	Checks:        nil,
-	AttTypMod:     -1,
+	attTypMod:     -1,
 	CompareFunc:   toFuncID("numeric_cmp", oid.T_numeric, oid.T_numeric),
 }
 
 // NewNumericTypeWithPrecisionAndScale returns Numeric type with typmod set.
 func NewNumericTypeWithPrecisionAndScale(precision, scale int32) (*DoltgresType, error) {
-	newType := *Numeric
 	typmod, err := GetTypmodFromNumericPrecisionAndScale(precision, scale)
 	if err != nil {
 		return nil, err
 	}
-	newType.AttTypMod = typmod
+	newType := *Numeric.WithAttTypMod(typmod)
 	return &newType, nil
 }
 

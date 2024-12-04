@@ -52,6 +52,6 @@ var Uuid = &DoltgresType{
 	Default:       "",
 	Acl:           nil,
 	Checks:        nil,
-	AttTypMod:     -1,
+	attTypMod:     -1,
 	CompareFunc:   toFuncID("uuid_cmp", oid.T_uuid, oid.T_uuid),
 }

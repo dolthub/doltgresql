@@ -52,17 +52,16 @@ var Timestamp = &DoltgresType{
 	Default:       "",
 	Acl:           nil,
 	Checks:        nil,
-	AttTypMod:     -1,
+	attTypMod:     -1,
 	CompareFunc:   toFuncID("timestamp_cmp", oid.T_timestamp, oid.T_timestamp),
 }
 
 // NewTimestampType returns Timestamp type with typmod set. // TODO: implement precision
 func NewTimestampType(precision int32) (*DoltgresType, error) {
-	newType := *Timestamp
 	typmod, err := GetTypmodFromTimePrecision(precision)
 	if err != nil {
 		return nil, err
 	}
-	newType.AttTypMod = typmod
+	newType := *Timestamp.WithAttTypMod(typmod)
 	return &newType, nil
 }

@@ -52,6 +52,6 @@ var Text = &DoltgresType{
 	Default:       "",
 	Acl:           nil,
 	Checks:        nil,
-	AttTypMod:     -1,
+	attTypMod:     -1,
 	CompareFunc:   toFuncID("bttextcmp", oid.T_text, oid.T_text),
 }

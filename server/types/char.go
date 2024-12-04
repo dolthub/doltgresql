@@ -52,17 +52,16 @@ var BpChar = &DoltgresType{
 	Default:       "",
 	Acl:           nil,
 	Checks:        nil,
-	AttTypMod:     -1,
+	attTypMod:     -1,
 	CompareFunc:   toFuncID("bpcharcmp", oid.T_bpchar, oid.T_bpchar),
 }
 
 // NewCharType returns BpChar type with typmod set.
 func NewCharType(length int32) (*DoltgresType, error) {
-	var err error
-	newType := *BpChar
-	newType.AttTypMod, err = GetTypModFromCharLength("char", length)
+	typmod, err := GetTypModFromCharLength("char", length)
 	if err != nil {
 		return nil, err
 	}
+	newType := *BpChar.WithAttTypMod(typmod)
 	return &newType, nil
 }

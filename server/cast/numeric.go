@@ -89,7 +89,7 @@ func numericImplicit() {
 		FromType: pgtypes.Numeric,
 		ToType:   pgtypes.Numeric,
 		Function: func(ctx *sql.Context, val any, targetType *pgtypes.DoltgresType) (any, error) {
-			return pgtypes.GetNumericValueWithTypmod(val.(decimal.Decimal), targetType.AttTypMod)
+			return pgtypes.GetNumericValueWithTypmod(val.(decimal.Decimal), targetType.GetAttTypMod())
 		},
 	})
 }

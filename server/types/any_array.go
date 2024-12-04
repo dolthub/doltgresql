@@ -53,6 +53,6 @@ var AnyArray = &DoltgresType{
 	Default:       "",
 	Acl:           nil,
 	Checks:        nil,
-	AttTypMod:     -1,
+	attTypMod:     -1,
 	CompareFunc:   toFuncID("btarraycmp", oid.T_anyarray, oid.T_anyarray),
 }

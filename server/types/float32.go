@@ -52,7 +52,7 @@ var Float32 = &DoltgresType{
 	Default:       "",
 	Acl:           nil,
 	Checks:        nil,
-	AttTypMod:     -1,
+	attTypMod:     -1,
 	CompareFunc:   toFuncID("btfloat4cmp", oid.T_float4, oid.T_float4),
 	InternalName:  "real",
 }

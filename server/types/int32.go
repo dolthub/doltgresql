@@ -52,7 +52,7 @@ var Int32 = &DoltgresType{
 	Default:       "",
 	Acl:           nil,
 	Checks:        nil,
-	AttTypMod:     -1,
+	attTypMod:     -1,
 	CompareFunc:   toFuncID("btint4cmp", oid.T_int4, oid.T_int4),
 	InternalName:  "integer",
 }

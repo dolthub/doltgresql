@@ -121,9 +121,6 @@ func serializedStringCompare(v1 []byte, v2 []byte) int {
 func sqlString(ctx *sql.Context, t *DoltgresType, val any) (string, error) {
 	if t.IsArrayType() {
 		baseType := t.ArrayBaseType()
-		if baseType.ModInFunc != 0 {
-			baseType.AttTypMod = t.AttTypMod
-		}
 		return ArrToString(ctx, val.([]any), baseType, true)
 	}
 	return t.IoOutput(ctx, val)

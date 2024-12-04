@@ -54,18 +54,17 @@ var Time = &DoltgresType{
 	Default:       "",
 	Acl:           nil,
 	Checks:        nil,
-	AttTypMod:     -1,
+	attTypMod:     -1,
 	CompareFunc:   toFuncID("time_cmp", oid.T_time, oid.T_time),
 }
 
 // NewTimeType returns Time type with typmod set. // TODO: implement precision
 func NewTimeType(precision int32) (*DoltgresType, error) {
-	newType := *Time
 	typmod, err := GetTypmodFromTimePrecision(precision)
 	if err != nil {
 		return nil, err
 	}
-	newType.AttTypMod = typmod
+	newType := *Time.WithAttTypMod(typmod)
 	return &newType, nil
 }
 
