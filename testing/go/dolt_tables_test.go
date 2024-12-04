@@ -849,18 +849,22 @@ func TestUserSpaceDoltTables(t *testing.T) {
 			},
 			Assertions: []ScriptTestAssertion{
 				{
-					Query: `SELECT violation_type, pk, col1 FROM dolt_constraint_violations_test`,
+					Query: `SELECT violation_type, pk, col1, violation_info FROM dolt_constraint_violations_test`,
 					Expected: []sql.Row{
-						{"unique index", 1, 1},
-						{"unique index", 2, 1},
+						{"unique index", 1, 1, `{"Columns": ["col1"], "Name": "col1"}`},
+						{"unique index", 2, 1, `{"Columns": ["col1"], "Name": "col1"}`},
 					},
 				},
 				{
-					Query: `SELECT violation_type, pk, col1 FROM public.dolt_constraint_violations_test`,
+					Query: `SELECT violation_type, pk, col1, violation_info FROM public.dolt_constraint_violations_test`,
 					Expected: []sql.Row{
-						{"unique index", 1, 1},
-						{"unique index", 2, 1},
+						{"unique index", 1, 1, `{"Columns": ["col1"], "Name": "col1"}`},
+						{"unique index", 2, 1, `{"Columns": ["col1"], "Name": "col1"}`},
 					},
+				},
+				{
+					Query:    `SELECT * FROM public.dolt_constraint_violations_test WHERE violation_type = 'foreign key'`,
+					Expected: []sql.Row{},
 				},
 				{
 					Query:    `SELECT dolt_constraint_violations_test.violation_type FROM public.dolt_constraint_violations_test`,

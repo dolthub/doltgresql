@@ -16,6 +16,7 @@ package dtables
 
 import (
 	"github.com/dolthub/dolt/go/libraries/doltcore/doltdb"
+	"github.com/dolthub/dolt/go/libraries/doltcore/merge"
 	"github.com/dolthub/dolt/go/libraries/doltcore/sqle"
 	"github.com/dolthub/dolt/go/libraries/doltcore/sqle/dprocedures"
 	"github.com/dolthub/dolt/go/libraries/doltcore/sqle/dtables"
@@ -43,6 +44,7 @@ func Init() {
 
 	// Schemas
 	dtables.GetDocsSchema = getDocsSchema
+	dtables.GetDoltConstraintViolationsBaseSqlSchema = getDoltConstraintViolationsBaseSqlSchema
 	dtables.GetDoltIgnoreSchema = getDoltIgnoreSchema
 	dtables.GetDoltMergeStatusSchema = getDoltMergeStatusSchema
 	dprocedures.GetDoltRebaseSystemTableSchema = getRebaseSchema
@@ -54,6 +56,8 @@ func Init() {
 	doltdb.ConvertTupleToIgnoreBoolean = convertTupleToIgnoreBoolean
 	sqle.ConvertRebasePlanStepToRow = convertRebasePlanStepToRow
 	sqle.ConvertRowToRebasePlanStep = convertRowToRebasePlanStep
+	merge.MapCVType = mapCVType
+	merge.UnmapCVType = unmapCVType
 }
 
 // getBranchesTableName returns the name of the branches table.
