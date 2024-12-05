@@ -25,7 +25,6 @@ import (
 	"github.com/dolthub/go-mysql-server/enginetest/queries"
 	"github.com/dolthub/go-mysql-server/enginetest/scriptgen/setup"
 	"github.com/dolthub/go-mysql-server/sql"
-	"github.com/dolthub/go-mysql-server/sql/plan"
 	"github.com/dolthub/go-mysql-server/sql/types"
 	"github.com/stretchr/testify/require"
 
@@ -172,65 +171,33 @@ func TestSingleScript(t *testing.T) {
 
 	var scripts = []queries.ScriptTest{
 		{
-			Name: "update columns with default",
+			Name: "strings vs decimals with trailing 0s in IN exprs",
 			SetUpScript: []string{
-				"create table t (i int default 10, j varchar(128) default (concat('abc', 'def')));",
-				"insert into t values (100, 'a'), (200, 'b');",
-				"create table t2 (i int);",
-				"insert into t2 values (1), (2), (3);",
+				"create table t (v varchar(100));",
+				"insert into t values ('0'), ('0.0'), ('123'), ('123.0');",
+				"create table t_idx (v varchar(100));",
+				"create index idx on t_idx(v);",
+				"insert into t_idx values ('0'), ('0.0'), ('123'), ('123.0');",
 			},
 			Assertions: []queries.ScriptTestAssertion{
 				{
-					Query: "update t set i = default where i = 100;",
+					Skip:  true,
+					Query: "select * from t where (v in (0.0, 123));",
 					Expected: []sql.Row{
-						{types.OkResult{RowsAffected: 1, Info: plan.UpdateInfo{Matched: 1, Updated: 1}}},
+						{"0"},
+						{"0.0"},
+						{"123"},
+						{"123.0"},
 					},
 				},
 				{
-					Query: "select * from t order by i",
+					Skip:  true,
+					Query: "select * from t_idx where (v in (0.0, 123));",
 					Expected: []sql.Row{
-						{10, "a"},
-						{200, "b"},
-					},
-				},
-				{
-					Query: "update t set j = default where i = 200;",
-					Expected: []sql.Row{
-						{types.OkResult{RowsAffected: 1, Info: plan.UpdateInfo{Matched: 1, Updated: 1}}},
-					},
-				},
-				{
-					Query: "select * from t order by i",
-					Expected: []sql.Row{
-						{10, "a"},
-						{200, "abcdef"},
-					},
-				},
-				{
-					Query: "update t set i = default, j = default;",
-					Expected: []sql.Row{
-						{types.OkResult{RowsAffected: 2, Info: plan.UpdateInfo{Matched: 2, Updated: 2}}},
-					},
-				},
-				{
-					Query: "select * from t order by i",
-					Expected: []sql.Row{
-						{10, "abcdef"},
-						{10, "abcdef"},
-					},
-				},
-				{
-					Query: "update t2 set i = default",
-					Expected: []sql.Row{
-						{types.OkResult{RowsAffected: 3, Info: plan.UpdateInfo{Matched: 3, Updated: 3}}},
-					},
-				},
-				{
-					Query: "select * from t2",
-					Expected: []sql.Row{
-						{nil},
-						{nil},
-						{nil},
+						{"0"},
+						{"0.0"},
+						{"123"},
+						{"123.0"},
 					},
 				},
 			},
@@ -653,29 +620,19 @@ func TestScripts(t *testing.T) {
 		"select * from t0 where i > 0.1 or i >= 0.1 order by i;", // incorrect result, needs a fix
 		"int secondary index with float filter", // panic
 		"select count(*) from t where (f in (null, cast(0.8 as float)));", // incorrect result, needs a fix
-		// "strings in tuple are properly hashed",
-		// "strings vs decimals with trailing 0s in IN exprs",
-		// "subquery with range heap join",
-		// "resolve foreign key on indexed update",
-		// "between type conversion",
-		// "bool and string",
-		// "bool and int",
-		// "update with left join with some missing rows",
-		// "range query convert int to string zero value",
-		// "group by having with conflicting aliases test",
+		"update with left join with some missing rows", // need to translate update joins
+		"SELECT - col2 AS col0 FROM tab2 GROUP BY col0, col2 HAVING NOT + + col2 <= - col0;", // incorrect result
+		"SELECT -col2 AS col0 FROM tab2 GROUP BY col0, col2 HAVING NOT col2 <= - col0;", // incorrect result
+		"SELECT -col2 AS col0 FROM tab2 GROUP BY col0, col2 HAVING col2 > -col0;", // incorrect result
+		"select col2-100 as col0 from tab2 group by col0 having col0 > 0;", // incorrect result
 		"complicated range tree", // panic in index lookup, needs investigation
 		"preserve now()", // harness error
-		// "binary type primary key",
-		// "varbinary primary key",
-		// "primary key order",
-		// "test show create database",
-		// "test create database with modified server variables",
-		// "test index naming",
-		// "test parenthesized tables",
-		// "invalid utf8 encoding strings",
-		// "unix_timestamp script tests",
-		// "name_const queries",
-		// "mismatched collation using hash in tuples",
+		"binary type primary key", // ERROR: blob/text column 'b' used in key specification without a key length
+		"varbinary primary key", // ERROR: blob/text column 'b' used in key specification without a key length
+		"insert into t1 (a, b) values ('1234567890', '12345')", // different error message
+		"insert into t2 (a, b) values ('1234567890', '12345')", // different error message
+		"invalid utf8 encoding strings", // need to investigate why some strings aren't giving errors, might be a harness error
+		"mismatched collation using hash in tuples", // ERROR: plan is not resolved because of node '*plan.Project' 
 		"validate_password_strength and validate_password.length", // unsupported 
 		"validate_password_strength and validate_password.number_count", // unsupported
 		"validate_password_strength and validate_password.mixed_case_count", // unsupported
