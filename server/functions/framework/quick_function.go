@@ -135,13 +135,7 @@ func (q *QuickFunction1) Children() []sql.Expression {
 
 // WithChildren implements the interface sql.Expression.
 func (q *QuickFunction1) WithChildren(children ...sql.Expression) (sql.Expression, error) {
-	if len(children) != 1 {
-		return nil, sql.ErrInvalidChildrenNumber.New(len(children), 1)
-	}
-
-	newFunc := *q
-	newFunc.Argument = children[0]
-	return &newFunc, nil
+	return nil, fmt.Errorf("cannot change the children for `%T`", q)
 }
 
 // specificFuncImpl implements the interface sql.Expression.
@@ -249,13 +243,7 @@ func (q *QuickFunction2) Children() []sql.Expression {
 
 // WithChildren implements the interface sql.Expression.
 func (q *QuickFunction2) WithChildren(children ...sql.Expression) (sql.Expression, error) {
-	if len(children) != 2 {
-		return nil, sql.ErrInvalidChildrenNumber.New(len(children), 2)
-	}
-
-	newFunc := *q
-	newFunc.Arguments = ([2]sql.Expression)(children)
-	return &newFunc, nil
+	return nil, fmt.Errorf("cannot change the children for `%T`", q)
 }
 
 // specificFuncImpl implements the interface sql.Expression.
@@ -363,13 +351,7 @@ func (q *QuickFunction3) Children() []sql.Expression {
 
 // WithChildren implements the interface sql.Expression.
 func (q *QuickFunction3) WithChildren(children ...sql.Expression) (sql.Expression, error) {
-	if len(children) != 3 {
-		return nil, sql.ErrInvalidChildrenNumber.New(len(children), 3)
-	}
-
-	newFunc := *q
-	newFunc.Arguments = ([3]sql.Expression)(children)
-	return &newFunc, nil
+	return nil, fmt.Errorf("cannot change the children for `%T`", q)
 }
 
 // specificFuncImpl implements the interface sql.Expression.

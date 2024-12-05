@@ -36,9 +36,9 @@ func TestGettingStartedGuide(t *testing.T) {
 				{
 					Query: "select * from dolt.status;",
 					Expected: []sql.Row{
-						{"public.employees", 0, "new table"},
-						{"public.employees_teams", 0, "new table"},
-						{"public.teams", 0, "new table"},
+						{"public.employees", "f", "new table"},
+						{"public.employees_teams", "f", "new table"},
+						{"public.teams", "f", "new table"},
 					},
 				},
 				{
@@ -48,9 +48,9 @@ func TestGettingStartedGuide(t *testing.T) {
 				{
 					Query: "select * from dolt.status;",
 					Expected: []sql.Row{
-						{"public.employees", 1, "new table"},
-						{"public.employees_teams", 1, "new table"},
-						{"public.teams", 1, "new table"},
+						{"public.employees", "t", "new table"},
+						{"public.employees_teams", "t", "new table"},
+						{"public.teams", "t", "new table"},
 					},
 				},
 				{
@@ -104,9 +104,9 @@ func TestGettingStartedGuide(t *testing.T) {
 				{
 					Query: "select * from dolt.status order by table_name;",
 					Expected: []sql.Row{
-						{"public.employees", 0, "modified"},
-						{"public.employees_teams", 0, "modified"},
-						{"public.teams", 0, "modified"},
+						{"public.employees", "f", "modified"},
+						{"public.employees_teams", "f", "modified"},
+						{"public.teams", "f", "modified"},
 					},
 				},
 				{

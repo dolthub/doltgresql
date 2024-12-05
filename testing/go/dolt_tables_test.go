@@ -849,18 +849,22 @@ func TestUserSpaceDoltTables(t *testing.T) {
 			},
 			Assertions: []ScriptTestAssertion{
 				{
-					Query: `SELECT violation_type, pk, col1 FROM dolt_constraint_violations_test`,
+					Query: `SELECT violation_type, pk, col1, violation_info FROM dolt_constraint_violations_test`,
 					Expected: []sql.Row{
-						{"unique index", 1, 1},
-						{"unique index", 2, 1},
+						{"unique index", 1, 1, `{"Columns": ["col1"], "Name": "col1"}`},
+						{"unique index", 2, 1, `{"Columns": ["col1"], "Name": "col1"}`},
 					},
 				},
 				{
-					Query: `SELECT violation_type, pk, col1 FROM public.dolt_constraint_violations_test`,
+					Query: `SELECT violation_type, pk, col1, violation_info FROM public.dolt_constraint_violations_test`,
 					Expected: []sql.Row{
-						{"unique index", 1, 1},
-						{"unique index", 2, 1},
+						{"unique index", 1, 1, `{"Columns": ["col1"], "Name": "col1"}`},
+						{"unique index", 2, 1, `{"Columns": ["col1"], "Name": "col1"}`},
 					},
+				},
+				{
+					Query:    `SELECT * FROM public.dolt_constraint_violations_test WHERE violation_type = 'foreign key'`,
+					Expected: []sql.Row{},
 				},
 				{
 					Query:    `SELECT dolt_constraint_violations_test.violation_type FROM public.dolt_constraint_violations_test`,
@@ -1505,10 +1509,10 @@ func TestUserSpaceDoltTables(t *testing.T) {
 				{
 					Query: "SELECT * FROM dolt_status;",
 					Expected: []sql.Row{
-						{"public.dolt_ignore", 1, "new table"},
-						{"public.foo", 1, "new table"},
-						{"public.generated_exception", 1, "new table"},
-						{"public.generated_foo", 0, "new table"},
+						{"public.dolt_ignore", "t", "new table"},
+						{"public.foo", "t", "new table"},
+						{"public.generated_exception", "t", "new table"},
+						{"public.generated_foo", "f", "new table"},
 					},
 				},
 				{
@@ -1591,16 +1595,16 @@ func TestUserSpaceDoltTables(t *testing.T) {
 				{
 					Query: "SELECT * FROM dolt_status ORDER BY table_name;",
 					Expected: []sql.Row{
-						{"newschema", 1, "new schema"},
-						{"newschema.dolt_ignore", 1, "new table"},
-						{"newschema.foo", 1, "new table"},
-						{"newschema.generated_exception", 0, "new table"},
-						{"newschema.generated_foo", 1, "new table"},
-						{"newschema.test_foo", 0, "new table"},
-						{"public.dolt_ignore", 1, "new table"},
-						{"public.foo", 1, "new table"},
-						{"public.generated_exception", 1, "new table"},
-						{"public.generated_foo", 0, "new table"},
+						{"newschema", "t", "new schema"},
+						{"newschema.dolt_ignore", "t", "new table"},
+						{"newschema.foo", "t", "new table"},
+						{"newschema.generated_exception", "f", "new table"},
+						{"newschema.generated_foo", "t", "new table"},
+						{"newschema.test_foo", "f", "new table"},
+						{"public.dolt_ignore", "t", "new table"},
+						{"public.foo", "t", "new table"},
+						{"public.generated_exception", "t", "new table"},
+						{"public.generated_foo", "f", "new table"},
 					},
 				},
 			},
@@ -1667,20 +1671,24 @@ func TestUserSpaceDoltTables(t *testing.T) {
 			Assertions: []ScriptTestAssertion{
 				{
 					Query:    `SELECT is_merging FROM dolt.merge_status`,
-					Expected: []sql.Row{{0}},
+					Expected: []sql.Row{{"f"}},
+				},
+				{
+					Query:    `SELECT is_merging FROM dolt.merge_status WHERE is_merging=true`,
+					Expected: []sql.Row{},
 				},
 				{
 					Query:    `SELECT is_merging FROM dolt_merge_status`,
-					Expected: []sql.Row{{0}},
+					Expected: []sql.Row{{"f"}},
 				},
 				{
 					Skip:     true, // TODO: referencing items outside the schema or database is not yet supported
 					Query:    `SELECT dolt.merge_status.is_merging FROM dolt.merge_status`,
-					Expected: []sql.Row{{0}},
+					Expected: []sql.Row{{"f"}},
 				},
 				{
 					Query:    `SELECT dolt_merge_status.is_merging FROM dolt_merge_status`,
-					Expected: []sql.Row{{0}},
+					Expected: []sql.Row{{"f"}},
 				},
 				{
 					Query:       `SELECT * FROM public.merge_status`,
@@ -1704,7 +1712,7 @@ func TestUserSpaceDoltTables(t *testing.T) {
 				},
 				{
 					Query:    `SELECT is_merging FROM dolt.merge_status`,
-					Expected: []sql.Row{{0}},
+					Expected: []sql.Row{{"f"}},
 				},
 				{
 					Query:    "SET search_path = 'dolt'",
@@ -1712,7 +1720,7 @@ func TestUserSpaceDoltTables(t *testing.T) {
 				},
 				{
 					Query:    `SELECT is_merging FROM merge_status`,
-					Expected: []sql.Row{{0}},
+					Expected: []sql.Row{{"f"}},
 				},
 				{
 					Query:    `SELECT * FROM public.merge_status`,
@@ -1860,6 +1868,91 @@ func TestUserSpaceDoltTables(t *testing.T) {
 				{
 					Query:    `SELECT table_name, index_name FROM public.dolt_statistics GROUP BY index_name ORDER BY index_name`,
 					Expected: []sql.Row{{"horses", "horses_name_idx"}, {"horses", "primary"}},
+				},
+			},
+		},
+		{
+			Name: "dolt status",
+			SetUpScript: []string{
+				"CREATE TABLE t (id INT PRIMARY KEY)",
+			},
+			Assertions: []ScriptTestAssertion{
+				{
+					Query:    `SELECT * FROM dolt.status`,
+					Expected: []sql.Row{{"public.t", "f", "new table"}},
+				},
+				{
+					Query:    `SELECT * FROM dolt_status`,
+					Expected: []sql.Row{{"public.t", "f", "new table"}},
+				},
+				{
+					Query:    `SELECT * FROM dolt.status WHERE staged=true`,
+					Expected: []sql.Row{},
+				},
+				{
+					Skip:     true, // TODO: referencing items outside the schema or database is not yet supported
+					Query:    `SELECT dolt.status.table_name FROM dolt.status`,
+					Expected: []sql.Row{{"public.t"}},
+				},
+				{
+					Query:    `SELECT dolt_status.table_name FROM dolt_status`,
+					Expected: []sql.Row{{"public.t"}},
+				},
+				{
+					Query:       `SELECT * FROM public.status`,
+					ExpectedErr: "table not found",
+				},
+				{
+					Query:       `SELECT * FROM status`,
+					ExpectedErr: "table not found",
+				},
+				{
+					Query:    `CREATE TABLE status (id INT PRIMARY KEY)`,
+					Expected: []sql.Row{},
+				},
+				{
+					Query:    `INSERT INTO status VALUES (1)`,
+					Expected: []sql.Row{},
+				},
+				{
+					Query:    `SELECT * FROM status`,
+					Expected: []sql.Row{{1}},
+				},
+				{
+					Query:    `SELECT table_name FROM dolt.status`,
+					Expected: []sql.Row{{"public.status"}, {"public.t"}},
+				},
+				{
+					Query:    "SET search_path = 'dolt'",
+					Expected: []sql.Row{},
+				},
+				{
+					Query:    `SELECT table_name FROM status`,
+					Expected: []sql.Row{{"public.status"}, {"public.t"}},
+				},
+				{
+					Query:    `SELECT * FROM public.status`,
+					Expected: []sql.Row{{1}},
+				},
+				{
+					Query:    "SET search_path = 'public'",
+					Expected: []sql.Row{},
+				},
+				{
+					Query:    `SELECT * FROM status`,
+					Expected: []sql.Row{{1}},
+				},
+				{
+					Query:    "SET search_path = 'public,dolt'",
+					Expected: []sql.Row{},
+				},
+				{
+					Query:    `SELECT * FROM status`,
+					Expected: []sql.Row{{1}},
+				},
+				{
+					Query:    `SELECT * FROM STATUS`,
+					Expected: []sql.Row{{1}},
 				},
 			},
 		},
