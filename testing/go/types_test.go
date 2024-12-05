@@ -165,6 +165,31 @@ var typesTests = []ScriptTest{
 		},
 	},
 	{
+		Name: "boolean indexes",
+		Skip: true, // panic
+		SetUpScript: []string{
+			"create table t (b bool);",
+			"insert into t values (false);",
+			"create table t_idx (b bool);",
+			"create index idx on t_idx(b);",
+			"insert into t_idx values (false);",
+		},
+		Assertions: []ScriptTestAssertion{
+			{
+				Query: "select * from t where (b in (false));",
+				Expected: []sql.Row{
+					{0},
+				},
+			},
+			{
+				Query: "select * from t_idx where (b in (false));",
+				Expected: []sql.Row{
+					{0},
+				},
+			},
+		},
+	},
+	{
 		Name: "Boolean array type",
 		SetUpScript: []string{
 			"CREATE TABLE t_boolean_array (id INTEGER primary key, v1 BOOLEAN[]);",
