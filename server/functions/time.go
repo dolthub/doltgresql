@@ -40,9 +40,9 @@ func initTime() {
 var time_in = framework.Function3{
 	Name:       "time_in",
 	Return:     pgtypes.Time,
-	Parameters: [3]pgtypes.DoltgresType{pgtypes.Cstring, pgtypes.Oid, pgtypes.Int32},
+	Parameters: [3]*pgtypes.DoltgresType{pgtypes.Cstring, pgtypes.Oid, pgtypes.Int32},
 	Strict:     true,
-	Callable: func(ctx *sql.Context, _ [4]pgtypes.DoltgresType, val1, val2, val3 any) (any, error) {
+	Callable: func(ctx *sql.Context, _ [4]*pgtypes.DoltgresType, val1, val2, val3 any) (any, error) {
 		input := val1.(string)
 		//oid := val2.(uint32)
 		//typmod := val3.(int32)
@@ -63,9 +63,9 @@ var time_in = framework.Function3{
 var time_out = framework.Function1{
 	Name:       "time_out",
 	Return:     pgtypes.Cstring,
-	Parameters: [1]pgtypes.DoltgresType{pgtypes.Time},
+	Parameters: [1]*pgtypes.DoltgresType{pgtypes.Time},
 	Strict:     true,
-	Callable: func(ctx *sql.Context, _ [2]pgtypes.DoltgresType, val any) (any, error) {
+	Callable: func(ctx *sql.Context, _ [2]*pgtypes.DoltgresType, val any) (any, error) {
 		return val.(time.Time).Format("15:04:05.999999999"), nil
 	},
 }
@@ -74,9 +74,9 @@ var time_out = framework.Function1{
 var time_recv = framework.Function3{
 	Name:       "time_recv",
 	Return:     pgtypes.Time,
-	Parameters: [3]pgtypes.DoltgresType{pgtypes.Internal, pgtypes.Oid, pgtypes.Int32},
+	Parameters: [3]*pgtypes.DoltgresType{pgtypes.Internal, pgtypes.Oid, pgtypes.Int32},
 	Strict:     true,
-	Callable: func(ctx *sql.Context, _ [4]pgtypes.DoltgresType, val1, val2, val3 any) (any, error) {
+	Callable: func(ctx *sql.Context, _ [4]*pgtypes.DoltgresType, val1, val2, val3 any) (any, error) {
 		data := val1.([]byte)
 		//oid := val2.(uint32)
 		//typmod := val3.(int32)
@@ -96,9 +96,9 @@ var time_recv = framework.Function3{
 var time_send = framework.Function1{
 	Name:       "time_send",
 	Return:     pgtypes.Bytea,
-	Parameters: [1]pgtypes.DoltgresType{pgtypes.Time},
+	Parameters: [1]*pgtypes.DoltgresType{pgtypes.Time},
 	Strict:     true,
-	Callable: func(ctx *sql.Context, _ [2]pgtypes.DoltgresType, val any) (any, error) {
+	Callable: func(ctx *sql.Context, _ [2]*pgtypes.DoltgresType, val any) (any, error) {
 		return val.(time.Time).MarshalBinary()
 	},
 }
@@ -107,9 +107,9 @@ var time_send = framework.Function1{
 var timetypmodin = framework.Function1{
 	Name:       "timetypmodin",
 	Return:     pgtypes.Int32,
-	Parameters: [1]pgtypes.DoltgresType{pgtypes.CstringArray},
+	Parameters: [1]*pgtypes.DoltgresType{pgtypes.CstringArray},
 	Strict:     true,
-	Callable: func(ctx *sql.Context, _ [2]pgtypes.DoltgresType, val any) (any, error) {
+	Callable: func(ctx *sql.Context, _ [2]*pgtypes.DoltgresType, val any) (any, error) {
 		// TODO: typmod=(precision<<16)∣scale
 		return nil, nil
 	},
@@ -119,9 +119,9 @@ var timetypmodin = framework.Function1{
 var timetypmodout = framework.Function1{
 	Name:       "timetypmodout",
 	Return:     pgtypes.Cstring,
-	Parameters: [1]pgtypes.DoltgresType{pgtypes.Int32},
+	Parameters: [1]*pgtypes.DoltgresType{pgtypes.Int32},
 	Strict:     true,
-	Callable: func(ctx *sql.Context, _ [2]pgtypes.DoltgresType, val any) (any, error) {
+	Callable: func(ctx *sql.Context, _ [2]*pgtypes.DoltgresType, val any) (any, error) {
 		// TODO
 		// Precision = typmod & 0xFFFF
 		// Scale = (typmod >> 16) & 0xFFFF
@@ -133,9 +133,9 @@ var timetypmodout = framework.Function1{
 var time_cmp = framework.Function2{
 	Name:       "time_cmp",
 	Return:     pgtypes.Int32,
-	Parameters: [2]pgtypes.DoltgresType{pgtypes.Time, pgtypes.Time},
+	Parameters: [2]*pgtypes.DoltgresType{pgtypes.Time, pgtypes.Time},
 	Strict:     true,
-	Callable: func(ctx *sql.Context, _ [3]pgtypes.DoltgresType, val1, val2 any) (any, error) {
+	Callable: func(ctx *sql.Context, _ [3]*pgtypes.DoltgresType, val1, val2 any) (any, error) {
 		ab := val1.(time.Time)
 		bb := val2.(time.Time)
 		return int32(ab.Compare(bb)), nil

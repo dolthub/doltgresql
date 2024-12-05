@@ -12,13 +12,26 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-package framework
+package output
 
 import (
-	"github.com/dolthub/doltgresql/server/types"
+	"testing"
+
+	"github.com/dolthub/go-mysql-server/sql"
 )
 
-// Init handles the assignment of the IO functions for the types package.
-func Init() {
-	types.GetFunctionAndEvaluateForTypes = getFunctionAndEvaluateForTypes
+func Test_ToChar(t *testing.T) {
+	RunScripts(t, []ScriptTest{
+		{
+			Name: "to_char",
+			Assertions: []ScriptTestAssertion{
+				{
+					Query: `SELECT to_char(timestamp '2021-09-15 21:43:56.123456789', 'YYYY-MM-DD HH24:MI:SS.MS');`,
+					Expected: []sql.Row{
+						{"2021-09-15 21:43:56.123"},
+					},
+				},
+			},
+		},
+	})
 }

@@ -32,7 +32,7 @@ type CsvDataLoader struct {
 	results       LoadDataResults
 	partialRecord string
 	rowInserter   sql.RowInserter
-	colTypes      []types.DoltgresType
+	colTypes      []*types.DoltgresType
 	sch           sql.Schema
 	removeHeader  bool
 	delimiter     string

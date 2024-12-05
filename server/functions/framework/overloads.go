@@ -58,7 +58,7 @@ func (o *Overloads) Add(function FunctionInterface) error {
 }
 
 // keyForParamTypes returns a string key to match an overload with the given parameter types.
-func keyForParamTypes(types []pgtypes.DoltgresType) string {
+func keyForParamTypes(types []*pgtypes.DoltgresType) string {
 	sb := strings.Builder{}
 	for i, typ := range types {
 		if i > 0 {
@@ -79,7 +79,7 @@ func (o *Overloads) overloadsForParams(numParams int) []Overload {
 			// Variadic functions may only match when the function is declared with parameters that are fewer or equal
 			// to our target length. If our target length is less, then we cannot expand, so we do not treat it as
 			// variadic.
-			extendedParams := make([]pgtypes.DoltgresType, numParams)
+			extendedParams := make([]*pgtypes.DoltgresType, numParams)
 			copy(extendedParams, params[:variadicIndex])
 			// This is copying the parameters after the variadic index, so we need to add 1. We subtract the declared
 			// parameter count from the target parameter count to obtain the additional parameter count.
@@ -111,7 +111,7 @@ func (o *Overloads) overloadsForParams(numParams int) []Overload {
 
 // ExactMatchForTypes returns the function that exactly matches the given parameter types, or nil if no overload with
 // those types exists.
-func (o *Overloads) ExactMatchForTypes(types ...pgtypes.DoltgresType) (FunctionInterface, bool) {
+func (o *Overloads) ExactMatchForTypes(types ...*pgtypes.DoltgresType) (FunctionInterface, bool) {
 	key := keyForParamTypes(types)
 	fn, ok := o.ByParamType[key]
 	return fn, ok
@@ -123,10 +123,10 @@ type Overload struct {
 	// function is the actual function to call to invoke this overload
 	function FunctionInterface
 	// paramTypes is the base IDs of the parameters that the function expects
-	paramTypes []pgtypes.DoltgresType
+	paramTypes []*pgtypes.DoltgresType
 	// argTypes is the base IDs of the parameters that the function expects, extended to match the number of args
 	// provided in the case of a variadic function.
-	argTypes []pgtypes.DoltgresType
+	argTypes []*pgtypes.DoltgresType
 	// variadic is the index of the variadic parameter, or -1 if the function is not variadic
 	variadic int
 }

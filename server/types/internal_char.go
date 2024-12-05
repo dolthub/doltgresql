@@ -22,7 +22,7 @@ import (
 const InternalCharLength = 1
 
 // InternalChar is a single-byte internal type. In Postgres, it's displayed as "char".
-var InternalChar = DoltgresType{
+var InternalChar = &DoltgresType{
 	OID:           uint32(oid.T_char),
 	Name:          "char",
 	Schema:        "pg_catalog",
@@ -34,16 +34,16 @@ var InternalChar = DoltgresType{
 	IsDefined:     true,
 	Delimiter:     ",",
 	RelID:         0,
-	SubscriptFunc: "-",
+	SubscriptFunc: toFuncID("-"),
 	Elem:          0,
 	Array:         uint32(oid.T__char),
-	InputFunc:     "charin",
-	OutputFunc:    "charout",
-	ReceiveFunc:   "charrecv",
-	SendFunc:      "charsend",
-	ModInFunc:     "-",
-	ModOutFunc:    "-",
-	AnalyzeFunc:   "-",
+	InputFunc:     toFuncID("charin", oid.T_cstring),
+	OutputFunc:    toFuncID("charout", oid.T_char),
+	ReceiveFunc:   toFuncID("charrecv", oid.T_internal),
+	SendFunc:      toFuncID("charsend", oid.T_char),
+	ModInFunc:     toFuncID("-"),
+	ModOutFunc:    toFuncID("-"),
+	AnalyzeFunc:   toFuncID("-"),
 	Align:         TypeAlignment_Char,
 	Storage:       TypeStorage_Plain,
 	NotNull:       false,
@@ -55,7 +55,7 @@ var InternalChar = DoltgresType{
 	Default:       "",
 	Acl:           nil,
 	Checks:        nil,
-	AttTypMod:     -1,
-	CompareFunc:   "btcharcmp",
+	attTypMod:     -1,
+	CompareFunc:   toFuncID("btcharcmp", oid.T_char, oid.T_char),
 	InternalName:  `"char"`,
 }

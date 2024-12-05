@@ -19,7 +19,7 @@ import (
 )
 
 // TimeTZ is the time with a time zone. Precision is unbounded.
-var TimeTZ = DoltgresType{
+var TimeTZ = &DoltgresType{
 	OID:           uint32(oid.T_timetz),
 	Name:          "timetz",
 	Schema:        "pg_catalog",
@@ -31,16 +31,16 @@ var TimeTZ = DoltgresType{
 	IsDefined:     true,
 	Delimiter:     ",",
 	RelID:         0,
-	SubscriptFunc: "-",
+	SubscriptFunc: toFuncID("-"),
 	Elem:          0,
 	Array:         uint32(oid.T__timetz),
-	InputFunc:     "timetz_in",
-	OutputFunc:    "timetz_out",
-	ReceiveFunc:   "timetz_recv",
-	SendFunc:      "timetz_send",
-	ModInFunc:     "timetztypmodin",
-	ModOutFunc:    "timetztypmodout",
-	AnalyzeFunc:   "-",
+	InputFunc:     toFuncID("timetz_in", oid.T_cstring, oid.T_oid, oid.T_int4),
+	OutputFunc:    toFuncID("timetz_out", oid.T_timetz),
+	ReceiveFunc:   toFuncID("timetz_recv", oid.T_internal, oid.T_oid, oid.T_int4),
+	SendFunc:      toFuncID("timetz_send", oid.T_timetz),
+	ModInFunc:     toFuncID("timetztypmodin", oid.T__cstring),
+	ModOutFunc:    toFuncID("timetztypmodout", oid.T_int4),
+	AnalyzeFunc:   toFuncID("-"),
 	Align:         TypeAlignment_Double,
 	Storage:       TypeStorage_Plain,
 	NotNull:       false,
@@ -52,17 +52,16 @@ var TimeTZ = DoltgresType{
 	Default:       "",
 	Acl:           nil,
 	Checks:        nil,
-	AttTypMod:     -1,
-	CompareFunc:   "timetz_cmp",
+	attTypMod:     -1,
+	CompareFunc:   toFuncID("timetz_cmp", oid.T_timetz, oid.T_timetz),
 }
 
 // NewTimeTZType returns TimeTZ type with typmod set. // TODO: implement precision
-func NewTimeTZType(precision int32) (DoltgresType, error) {
-	newType := TimeTZ
+func NewTimeTZType(precision int32) (*DoltgresType, error) {
 	typmod, err := GetTypmodFromTimePrecision(precision)
 	if err != nil {
-		return DoltgresType{}, err
+		return nil, err
 	}
-	newType.AttTypMod = typmod
-	return newType, nil
+	newType := *TimeTZ.WithAttTypMod(typmod)
+	return &newType, nil
 }

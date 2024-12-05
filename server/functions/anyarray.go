@@ -33,9 +33,9 @@ func initAnyArray() {
 var anyarray_in = framework.Function1{
 	Name:       "anyarray_in",
 	Return:     pgtypes.AnyArray,
-	Parameters: [1]pgtypes.DoltgresType{pgtypes.Cstring},
+	Parameters: [1]*pgtypes.DoltgresType{pgtypes.Cstring},
 	Strict:     true,
-	Callable: func(ctx *sql.Context, _ [2]pgtypes.DoltgresType, val any) (any, error) {
+	Callable: func(ctx *sql.Context, _ [2]*pgtypes.DoltgresType, val any) (any, error) {
 		// TODO
 		return []any{}, nil
 	},
@@ -45,9 +45,9 @@ var anyarray_in = framework.Function1{
 var anyarray_out = framework.Function1{
 	Name:       "anyarray_out",
 	Return:     pgtypes.Cstring,
-	Parameters: [1]pgtypes.DoltgresType{pgtypes.AnyArray},
+	Parameters: [1]*pgtypes.DoltgresType{pgtypes.AnyArray},
 	Strict:     true,
-	Callable: func(ctx *sql.Context, _ [2]pgtypes.DoltgresType, val any) (any, error) {
+	Callable: func(ctx *sql.Context, _ [2]*pgtypes.DoltgresType, val any) (any, error) {
 		// TODO
 		return "", nil
 	},
@@ -57,9 +57,9 @@ var anyarray_out = framework.Function1{
 var anyarray_recv = framework.Function1{
 	Name:       "anyarray_recv",
 	Return:     pgtypes.AnyArray,
-	Parameters: [1]pgtypes.DoltgresType{pgtypes.Internal},
+	Parameters: [1]*pgtypes.DoltgresType{pgtypes.Internal},
 	Strict:     true,
-	Callable: func(ctx *sql.Context, _ [2]pgtypes.DoltgresType, val any) (any, error) {
+	Callable: func(ctx *sql.Context, _ [2]*pgtypes.DoltgresType, val any) (any, error) {
 		// TODO
 		return []any{}, nil
 	},
@@ -69,9 +69,9 @@ var anyarray_recv = framework.Function1{
 var anyarray_send = framework.Function1{
 	Name:       "anyarray_send",
 	Return:     pgtypes.Bytea,
-	Parameters: [1]pgtypes.DoltgresType{pgtypes.AnyArray},
+	Parameters: [1]*pgtypes.DoltgresType{pgtypes.AnyArray},
 	Strict:     true,
-	Callable: func(ctx *sql.Context, _ [2]pgtypes.DoltgresType, val any) (any, error) {
+	Callable: func(ctx *sql.Context, _ [2]*pgtypes.DoltgresType, val any) (any, error) {
 		// TODO
 		return []byte{}, nil
 	},

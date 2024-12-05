@@ -357,9 +357,9 @@ func NormalizeRow(fds []pgconn.FieldDescription, row sql.Row, normalize bool) sq
 	}
 	newRow := make(sql.Row, len(row))
 	for i := range row {
-		dt, ok := types.OidToBuildInDoltgresType[fds[i].DataTypeOID]
+		dt, ok := types.OidToBuiltInDoltgresType[fds[i].DataTypeOID]
 		// TODO: need to set the typmod!
-		dt.AttTypMod = -1
+		dt = dt.WithAttTypMod(-1)
 		if !ok {
 			panic(fmt.Sprintf("unhandled oid type: %v", fds[i].DataTypeOID))
 		}
@@ -383,13 +383,14 @@ func NormalizeExpectedRow(fds []pgconn.FieldDescription, rows []sql.Row) []sql.R
 		} else {
 			newRow := make(sql.Row, len(row))
 			for i := range row {
-				dt, ok := types.OidToBuildInDoltgresType[fds[i].DataTypeOID]
+				dt, ok := types.OidToBuiltInDoltgresType[fds[i].DataTypeOID]
 				if !ok {
 					panic(fmt.Sprintf("unhandled oid type: %v", fds[i].DataTypeOID))
 				}
 				if dt.OID == uint32(oid.T_json) {
 					newRow[i] = UnmarshalAndMarshalJsonString(row[i].(string))
 				} else if dt.IsArrayType() && dt.ArrayBaseType().OID == uint32(oid.T_json) {
+					// TODO: need to have valid sql.Context
 					v, err := dt.IoInput(nil, row[i].(string))
 					if err != nil {
 						panic(err)
@@ -399,7 +400,7 @@ func NormalizeExpectedRow(fds []pgconn.FieldDescription, rows []sql.Row) []sql.R
 					for j, el := range arr {
 						newArr[j] = UnmarshalAndMarshalJsonString(el.(string))
 					}
-					ret, err := dt.IoOutput(nil, newArr)
+					ret, err := dt.FormatValue(newArr)
 					if err != nil {
 						panic(err)
 					}
@@ -437,14 +438,14 @@ func UnmarshalAndMarshalJsonString(val string) string {
 // |normalizeNumeric| defines whether to normalize Numeric values into either Numeric type or string type.
 // There are an infinite number of ways to represent the same value in-memory,
 // so we must at least normalize Numeric values.
-func NormalizeValToString(dt types.DoltgresType, v any) any {
+func NormalizeValToString(dt *types.DoltgresType, v any) any {
 	switch oid.Oid(dt.OID) {
 	case oid.T_json:
 		str, err := json.Marshal(v)
 		if err != nil {
 			panic(err)
 		}
-		ret, err := dt.IoOutput(nil, string(str))
+		ret, err := dt.FormatValue(string(str))
 		if err != nil {
 			panic(err)
 		}
@@ -454,7 +455,7 @@ func NormalizeValToString(dt types.DoltgresType, v any) any {
 		if err != nil {
 			panic(err)
 		}
-		str, err := dt.IoOutput(nil, types.JsonDocument{Value: jv})
+		str, err := dt.FormatValue(types.JsonDocument{Value: jv})
 		if err != nil {
 			panic(err)
 		}
@@ -469,7 +470,7 @@ func NormalizeValToString(dt types.DoltgresType, v any) any {
 		} else {
 			b = []byte{uint8(v.(int32))}
 		}
-		val, err := dt.IoOutput(nil, string(b))
+		val, err := dt.FormatValue(string(b))
 		if err != nil {
 			panic(err)
 		}
@@ -481,7 +482,7 @@ func NormalizeValToString(dt types.DoltgresType, v any) any {
 		if v == nil {
 			return nil
 		}
-		tVal, err := dt.IoOutput(nil, NormalizeVal(dt, v))
+		tVal, err := dt.FormatValue(NormalizeVal(dt, v))
 		if err != nil {
 			panic(err)
 		}
@@ -524,20 +525,20 @@ func NormalizeValToString(dt types.DoltgresType, v any) any {
 
 // NormalizeArrayType normalizes array types by normalizing its elements first,
 // then to a string using the type IoOutput method.
-func NormalizeArrayType(dt types.DoltgresType, arr []any) any {
+func NormalizeArrayType(dt *types.DoltgresType, arr []any) any {
 	newVal := make([]any, len(arr))
 	for i, el := range arr {
 		newVal[i] = NormalizeVal(dt.ArrayBaseType(), el)
 	}
 	baseType := dt.ArrayBaseType()
 	if baseType.OID == uint32(oid.T_bool) {
-		sqlVal, err := dt.SQL(nil, nil, newVal)
+		sqlVal, err := dt.SQL(sql.NewEmptyContext(), nil, newVal)
 		if err != nil {
 			panic(err)
 		}
 		return sqlVal.ToString()
 	} else {
-		ret, err := dt.IoOutput(nil, newVal)
+		ret, err := dt.FormatValue(newVal)
 		if err != nil {
 			panic(err)
 		}
@@ -548,7 +549,7 @@ func NormalizeArrayType(dt types.DoltgresType, arr []any) any {
 // NormalizeVal normalizes values to the Doltgres type expects, so it can be used to
 // convert the values using the given Doltgres type. This is used to normalize array
 // types as the type conversion expects certain type values.
-func NormalizeVal(dt types.DoltgresType, v any) any {
+func NormalizeVal(dt *types.DoltgresType, v any) any {
 	switch oid.Oid(dt.OID) {
 	case oid.T_json:
 		str, err := json.Marshal(v)

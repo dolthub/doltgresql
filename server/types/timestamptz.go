@@ -19,7 +19,7 @@ import (
 )
 
 // TimestampTZ is the timestamp with a time zone. Precision is unbounded.
-var TimestampTZ = DoltgresType{
+var TimestampTZ = &DoltgresType{
 	OID:           uint32(oid.T_timestamptz),
 	Name:          "timestamptz",
 	Schema:        "pg_catalog",
@@ -31,16 +31,16 @@ var TimestampTZ = DoltgresType{
 	IsDefined:     true,
 	Delimiter:     ",",
 	RelID:         0,
-	SubscriptFunc: "-",
+	SubscriptFunc: toFuncID("-"),
 	Elem:          0,
 	Array:         uint32(oid.T__timestamptz),
-	InputFunc:     "timestamptz_in",
-	OutputFunc:    "timestamptz_out",
-	ReceiveFunc:   "timestamptz_recv",
-	SendFunc:      "timestamptz_send",
-	ModInFunc:     "timestamptztypmodin",
-	ModOutFunc:    "timestamptztypmodout",
-	AnalyzeFunc:   "-",
+	InputFunc:     toFuncID("timestamptz_in", oid.T_cstring, oid.T_oid, oid.T_int4),
+	OutputFunc:    toFuncID("timestamptz_out", oid.T_timestamptz),
+	ReceiveFunc:   toFuncID("timestamptz_recv", oid.T_internal, oid.T_oid, oid.T_int4),
+	SendFunc:      toFuncID("timestamptz_send", oid.T_timestamptz),
+	ModInFunc:     toFuncID("timestamptztypmodin", oid.T__cstring),
+	ModOutFunc:    toFuncID("timestamptztypmodout", oid.T_int4),
+	AnalyzeFunc:   toFuncID("-"),
 	Align:         TypeAlignment_Double,
 	Storage:       TypeStorage_Plain,
 	NotNull:       false,
@@ -52,17 +52,16 @@ var TimestampTZ = DoltgresType{
 	Default:       "",
 	Acl:           nil,
 	Checks:        nil,
-	AttTypMod:     -1,
-	CompareFunc:   "timestamptz_cmp",
+	attTypMod:     -1,
+	CompareFunc:   toFuncID("timestamptz_cmp", oid.T_timestamptz, oid.T_timestamptz),
 }
 
 // NewTimestampTZType returns TimestampTZ type with typmod set. // TODO: implement precision
-func NewTimestampTZType(precision int32) (DoltgresType, error) {
-	newType := TimestampTZ
+func NewTimestampTZType(precision int32) (*DoltgresType, error) {
 	typmod, err := GetTypmodFromTimePrecision(precision)
 	if err != nil {
-		return DoltgresType{}, err
+		return nil, err
 	}
-	newType.AttTypMod = typmod
-	return newType, nil
+	newType := *TimestampTZ.WithAttTypMod(typmod)
+	return &newType, nil
 }

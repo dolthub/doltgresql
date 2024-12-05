@@ -30,8 +30,8 @@ func initArrayAppend() {
 var array_append_anyarray_anyelement = framework.Function2{
 	Name:       "array_append",
 	Return:     pgtypes.AnyArray,
-	Parameters: [2]pgtypes.DoltgresType{pgtypes.AnyArray, pgtypes.AnyElement},
-	Callable: func(ctx *sql.Context, _ [3]pgtypes.DoltgresType, val1 any, val2 any) (any, error) {
+	Parameters: [2]*pgtypes.DoltgresType{pgtypes.AnyArray, pgtypes.AnyElement},
+	Callable: func(ctx *sql.Context, _ [3]*pgtypes.DoltgresType, val1 any, val2 any) (any, error) {
 		if val1 == nil {
 			return []any{val2}, nil
 		}

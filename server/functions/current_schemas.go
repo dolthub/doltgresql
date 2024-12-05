@@ -32,10 +32,10 @@ func initCurrentSchemas() {
 var current_schemas = framework.Function1{
 	Name:               "current_schemas",
 	Return:             pgtypes.NameArray,
-	Parameters:         [1]pgtypes.DoltgresType{pgtypes.Bool},
+	Parameters:         [1]*pgtypes.DoltgresType{pgtypes.Bool},
 	IsNonDeterministic: true,
 	Strict:             true,
-	Callable: func(ctx *sql.Context, _ [2]pgtypes.DoltgresType, val any) (any, error) {
+	Callable: func(ctx *sql.Context, _ [2]*pgtypes.DoltgresType, val any) (any, error) {
 		schemas := make([]any, 0)
 		if val.(bool) {
 			schemas = append(schemas, sessiondata.PgCatalogName)

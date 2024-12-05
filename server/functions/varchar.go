@@ -38,9 +38,9 @@ func initVarChar() {
 var varcharin = framework.Function3{
 	Name:       "varcharin",
 	Return:     pgtypes.VarChar,
-	Parameters: [3]pgtypes.DoltgresType{pgtypes.Cstring, pgtypes.Oid, pgtypes.Int32},
+	Parameters: [3]*pgtypes.DoltgresType{pgtypes.Cstring, pgtypes.Oid, pgtypes.Int32},
 	Strict:     true,
-	Callable: func(ctx *sql.Context, _ [4]pgtypes.DoltgresType, val1, val2, val3 any) (any, error) {
+	Callable: func(ctx *sql.Context, _ [4]*pgtypes.DoltgresType, val1, val2, val3 any) (any, error) {
 		input := val1.(string)
 		typmod := val3.(int32)
 		maxChars := pgtypes.GetCharLengthFromTypmod(typmod)
@@ -60,13 +60,14 @@ var varcharin = framework.Function3{
 var varcharout = framework.Function1{
 	Name:       "varcharout",
 	Return:     pgtypes.Cstring,
-	Parameters: [1]pgtypes.DoltgresType{pgtypes.VarChar},
+	Parameters: [1]*pgtypes.DoltgresType{pgtypes.VarChar},
 	Strict:     true,
-	Callable: func(ctx *sql.Context, t [2]pgtypes.DoltgresType, val any) (any, error) {
+	Callable: func(ctx *sql.Context, t [2]*pgtypes.DoltgresType, val any) (any, error) {
 		v := val.(string)
 		typ := t[0]
-		if typ.AttTypMod != -1 {
-			str, _ := truncateString(v, pgtypes.GetCharLengthFromTypmod(typ.AttTypMod))
+		tm := typ.GetAttTypMod()
+		if tm != -1 {
+			str, _ := truncateString(v, pgtypes.GetCharLengthFromTypmod(tm))
 			return str, nil
 		} else {
 			return v, nil
@@ -78,9 +79,9 @@ var varcharout = framework.Function1{
 var varcharrecv = framework.Function3{
 	Name:       "varcharrecv",
 	Return:     pgtypes.VarChar,
-	Parameters: [3]pgtypes.DoltgresType{pgtypes.Internal, pgtypes.Oid, pgtypes.Int32},
+	Parameters: [3]*pgtypes.DoltgresType{pgtypes.Internal, pgtypes.Oid, pgtypes.Int32},
 	Strict:     true,
-	Callable: func(ctx *sql.Context, _ [4]pgtypes.DoltgresType, val1, val2, val3 any) (any, error) {
+	Callable: func(ctx *sql.Context, _ [4]*pgtypes.DoltgresType, val1, val2, val3 any) (any, error) {
 		data := val1.([]byte)
 		if len(data) == 0 {
 			return nil, nil
@@ -94,9 +95,9 @@ var varcharrecv = framework.Function3{
 var varcharsend = framework.Function1{
 	Name:       "varcharsend",
 	Return:     pgtypes.Bytea,
-	Parameters: [1]pgtypes.DoltgresType{pgtypes.VarChar},
+	Parameters: [1]*pgtypes.DoltgresType{pgtypes.VarChar},
 	Strict:     true,
-	Callable: func(ctx *sql.Context, _ [2]pgtypes.DoltgresType, val any) (any, error) {
+	Callable: func(ctx *sql.Context, _ [2]*pgtypes.DoltgresType, val any) (any, error) {
 		str := val.(string)
 		writer := utils.NewWriter(uint64(len(str) + 4))
 		writer.String(str)
@@ -108,9 +109,9 @@ var varcharsend = framework.Function1{
 var varchartypmodin = framework.Function1{
 	Name:       "varchartypmodin",
 	Return:     pgtypes.Int32,
-	Parameters: [1]pgtypes.DoltgresType{pgtypes.CstringArray},
+	Parameters: [1]*pgtypes.DoltgresType{pgtypes.CstringArray},
 	Strict:     true,
-	Callable: func(ctx *sql.Context, _ [2]pgtypes.DoltgresType, val any) (any, error) {
+	Callable: func(ctx *sql.Context, _ [2]*pgtypes.DoltgresType, val any) (any, error) {
 		return getTypModFromStringArr("varchar", val.([]any))
 	},
 }
@@ -119,9 +120,9 @@ var varchartypmodin = framework.Function1{
 var varchartypmodout = framework.Function1{
 	Name:       "varchartypmodout",
 	Return:     pgtypes.Cstring,
-	Parameters: [1]pgtypes.DoltgresType{pgtypes.Int32},
+	Parameters: [1]*pgtypes.DoltgresType{pgtypes.Int32},
 	Strict:     true,
-	Callable: func(ctx *sql.Context, _ [2]pgtypes.DoltgresType, val any) (any, error) {
+	Callable: func(ctx *sql.Context, _ [2]*pgtypes.DoltgresType, val any) (any, error) {
 		typmod := val.(int32)
 		if typmod < 5 {
 			return "", nil

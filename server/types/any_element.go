@@ -19,7 +19,7 @@ import (
 )
 
 // AnyElement is a pseudo-type that can represent any type.
-var AnyElement = DoltgresType{
+var AnyElement = &DoltgresType{
 	OID:           uint32(oid.T_anyelement),
 	Name:          "anyelement",
 	Schema:        "pg_catalog",
@@ -31,16 +31,16 @@ var AnyElement = DoltgresType{
 	IsDefined:     true,
 	Delimiter:     ",",
 	RelID:         0,
-	SubscriptFunc: "-",
+	SubscriptFunc: toFuncID("-"),
 	Elem:          0,
 	Array:         0,
-	InputFunc:     "anyelement_in",
-	OutputFunc:    "anyelement_out",
-	ReceiveFunc:   "-",
-	SendFunc:      "-",
-	ModInFunc:     "-",
-	ModOutFunc:    "-",
-	AnalyzeFunc:   "-",
+	InputFunc:     toFuncID("anyelement_in", oid.T_cstring),
+	OutputFunc:    toFuncID("anyelement_out", oid.T_anyelement),
+	ReceiveFunc:   toFuncID("-"),
+	SendFunc:      toFuncID("-"),
+	ModInFunc:     toFuncID("-"),
+	ModOutFunc:    toFuncID("-"),
+	AnalyzeFunc:   toFuncID("-"),
 	Align:         TypeAlignment_Int,
 	Storage:       TypeStorage_Plain,
 	NotNull:       false,
@@ -52,6 +52,6 @@ var AnyElement = DoltgresType{
 	Default:       "",
 	Acl:           nil,
 	Checks:        nil,
-	AttTypMod:     -1,
-	CompareFunc:   "-",
+	attTypMod:     -1,
+	CompareFunc:   toFuncID("-"),
 }

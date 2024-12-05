@@ -17,7 +17,7 @@ package types
 import "github.com/lib/pq/oid"
 
 // Int64Serial is an int64 serial type.
-var Int64Serial = DoltgresType{
+var Int64Serial = &DoltgresType{
 	OID:           0, // doesn't have unique OID
 	Name:          "bigserial",
 	Schema:        "pg_catalog",
@@ -29,16 +29,16 @@ var Int64Serial = DoltgresType{
 	IsDefined:     true,
 	Delimiter:     ",",
 	RelID:         0,
-	SubscriptFunc: "-",
+	SubscriptFunc: toFuncID("-"),
 	Elem:          0,
 	Array:         uint32(oid.T__int8),
-	InputFunc:     "int8in",
-	OutputFunc:    "int8out",
-	ReceiveFunc:   "int8recv",
-	SendFunc:      "int8send",
-	ModInFunc:     "-",
-	ModOutFunc:    "-",
-	AnalyzeFunc:   "-",
+	InputFunc:     toFuncID("int8in", oid.T_cstring),
+	OutputFunc:    toFuncID("int8out", oid.T_int8),
+	ReceiveFunc:   toFuncID("int8recv"),
+	SendFunc:      toFuncID("int8send"),
+	ModInFunc:     toFuncID("-"),
+	ModOutFunc:    toFuncID("-"),
+	AnalyzeFunc:   toFuncID("-"),
 	Align:         TypeAlignment_Double,
 	Storage:       TypeStorage_Plain,
 	NotNull:       false,
@@ -50,7 +50,7 @@ var Int64Serial = DoltgresType{
 	Default:       "",
 	Acl:           nil,
 	Checks:        nil,
-	AttTypMod:     -1,
-	CompareFunc:   "btint8cmp",
+	attTypMod:     -1,
+	CompareFunc:   toFuncID("btint8cmp", oid.T_int8, oid.T_int8),
 	IsSerial:      true,
 }

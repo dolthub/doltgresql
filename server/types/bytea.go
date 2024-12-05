@@ -19,7 +19,7 @@ import (
 )
 
 // Bytea is the byte string type.
-var Bytea = DoltgresType{
+var Bytea = &DoltgresType{
 	OID:           uint32(oid.T_bytea),
 	Name:          "bytea",
 	Schema:        "pg_catalog",
@@ -31,16 +31,16 @@ var Bytea = DoltgresType{
 	IsDefined:     true,
 	Delimiter:     ",",
 	RelID:         0,
-	SubscriptFunc: "-",
+	SubscriptFunc: toFuncID("-"),
 	Elem:          0,
 	Array:         uint32(oid.T__bytea),
-	InputFunc:     "byteain",
-	OutputFunc:    "byteaout",
-	ReceiveFunc:   "bytearecv",
-	SendFunc:      "byteasend",
-	ModInFunc:     "-",
-	ModOutFunc:    "-",
-	AnalyzeFunc:   "-",
+	InputFunc:     toFuncID("byteain", oid.T_cstring),
+	OutputFunc:    toFuncID("byteaout", oid.T_bytea),
+	ReceiveFunc:   toFuncID("bytearecv", oid.T_internal),
+	SendFunc:      toFuncID("byteasend", oid.T_bytea),
+	ModInFunc:     toFuncID("-"),
+	ModOutFunc:    toFuncID("-"),
+	AnalyzeFunc:   toFuncID("-"),
 	Align:         TypeAlignment_Int,
 	Storage:       TypeStorage_Extended,
 	NotNull:       false,
@@ -52,6 +52,6 @@ var Bytea = DoltgresType{
 	Default:       "",
 	Acl:           nil,
 	Checks:        nil,
-	AttTypMod:     -1,
-	CompareFunc:   "byteacmp",
+	attTypMod:     -1,
+	CompareFunc:   toFuncID("byteacmp", oid.T_bytea, oid.T_bytea),
 }

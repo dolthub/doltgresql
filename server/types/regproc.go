@@ -20,7 +20,7 @@ import (
 )
 
 // Regproc is the OID type for finding function names.
-var Regproc = DoltgresType{
+var Regproc = &DoltgresType{
 	OID:           uint32(oid.T_regproc),
 	Name:          "regproc",
 	Schema:        "pg_catalog",
@@ -32,16 +32,16 @@ var Regproc = DoltgresType{
 	IsDefined:     true,
 	Delimiter:     ",",
 	RelID:         0,
-	SubscriptFunc: "-",
+	SubscriptFunc: toFuncID("-"),
 	Elem:          0,
 	Array:         uint32(oid.T__regproc),
-	InputFunc:     "regprocin",
-	OutputFunc:    "regprocout",
-	ReceiveFunc:   "regprocrecv",
-	SendFunc:      "regprocsend",
-	ModInFunc:     "-",
-	ModOutFunc:    "-",
-	AnalyzeFunc:   "-",
+	InputFunc:     toFuncID("regprocin", oid.T_cstring),
+	OutputFunc:    toFuncID("regprocout", oid.T_regproc),
+	ReceiveFunc:   toFuncID("regprocrecv", oid.T_internal),
+	SendFunc:      toFuncID("regprocsend", oid.T_regproc),
+	ModInFunc:     toFuncID("-"),
+	ModOutFunc:    toFuncID("-"),
+	AnalyzeFunc:   toFuncID("-"),
 	Align:         TypeAlignment_Int,
 	Storage:       TypeStorage_Plain,
 	NotNull:       false,
@@ -53,8 +53,8 @@ var Regproc = DoltgresType{
 	Default:       "",
 	Acl:           nil,
 	Checks:        nil,
-	AttTypMod:     -1,
-	CompareFunc:   "-",
+	attTypMod:     -1,
+	CompareFunc:   toFuncID("-"),
 }
 
 // Regproc_IoInput is the implementation for IoInput that is being set from another package to avoid circular dependencies.

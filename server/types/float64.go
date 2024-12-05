@@ -19,7 +19,7 @@ import (
 )
 
 // Float64 is an float64.
-var Float64 = DoltgresType{
+var Float64 = &DoltgresType{
 	OID:           uint32(oid.T_float8),
 	Name:          "float8",
 	Schema:        "pg_catalog",
@@ -31,16 +31,16 @@ var Float64 = DoltgresType{
 	IsDefined:     true,
 	Delimiter:     ",",
 	RelID:         0,
-	SubscriptFunc: "-",
+	SubscriptFunc: toFuncID("-"),
 	Elem:          0,
 	Array:         uint32(oid.T__float8),
-	InputFunc:     "float8in",
-	OutputFunc:    "float8out",
-	ReceiveFunc:   "float8recv",
-	SendFunc:      "float8send",
-	ModInFunc:     "-",
-	ModOutFunc:    "-",
-	AnalyzeFunc:   "-",
+	InputFunc:     toFuncID("float8in", oid.T_cstring),
+	OutputFunc:    toFuncID("float8out", oid.T_float8),
+	ReceiveFunc:   toFuncID("float8recv", oid.T_internal),
+	SendFunc:      toFuncID("float8send", oid.T_float8),
+	ModInFunc:     toFuncID("-"),
+	ModOutFunc:    toFuncID("-"),
+	AnalyzeFunc:   toFuncID("-"),
 	Align:         TypeAlignment_Double,
 	Storage:       TypeStorage_Plain,
 	NotNull:       false,
@@ -52,7 +52,7 @@ var Float64 = DoltgresType{
 	Default:       "",
 	Acl:           nil,
 	Checks:        nil,
-	AttTypMod:     -1,
-	CompareFunc:   "btfloat8cmp",
+	attTypMod:     -1,
+	CompareFunc:   toFuncID("btfloat8cmp", oid.T_float8, oid.T_float8),
 	InternalName:  "double precision",
 }

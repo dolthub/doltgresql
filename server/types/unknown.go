@@ -19,7 +19,7 @@ import (
 )
 
 // Unknown represents an invalid or indeterminate type. This is primarily used internally.
-var Unknown = DoltgresType{
+var Unknown = &DoltgresType{
 	OID:           uint32(oid.T_unknown),
 	Name:          "unknown",
 	Schema:        "pg_catalog",
@@ -31,16 +31,16 @@ var Unknown = DoltgresType{
 	IsDefined:     true,
 	Delimiter:     ",",
 	RelID:         0,
-	SubscriptFunc: "-",
+	SubscriptFunc: toFuncID("-"),
 	Elem:          0,
 	Array:         0,
-	InputFunc:     "unknownin",
-	OutputFunc:    "unknownout",
-	ReceiveFunc:   "unknownrecv",
-	SendFunc:      "unknownsend",
-	ModInFunc:     "-",
-	ModOutFunc:    "-",
-	AnalyzeFunc:   "-",
+	InputFunc:     toFuncID("unknownin", oid.T_cstring),
+	OutputFunc:    toFuncID("unknownout", oid.T_unknown),
+	ReceiveFunc:   toFuncID("unknownrecv", oid.T_internal),
+	SendFunc:      toFuncID("unknownsend", oid.T_unknown),
+	ModInFunc:     toFuncID("-"),
+	ModOutFunc:    toFuncID("-"),
+	AnalyzeFunc:   toFuncID("-"),
 	Align:         TypeAlignment_Char,
 	Storage:       TypeStorage_Plain,
 	NotNull:       false,
@@ -52,6 +52,6 @@ var Unknown = DoltgresType{
 	Default:       "",
 	Acl:           nil,
 	Checks:        nil,
-	AttTypMod:     -1,
-	CompareFunc:   "-",
+	attTypMod:     -1,
+	CompareFunc:   toFuncID("-"),
 }

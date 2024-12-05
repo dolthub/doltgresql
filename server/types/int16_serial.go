@@ -17,7 +17,7 @@ package types
 import "github.com/lib/pq/oid"
 
 // Int16Serial is an int16 serial type.
-var Int16Serial = DoltgresType{
+var Int16Serial = &DoltgresType{
 	OID:           0, // doesn't have unique OID
 	Name:          "smallserial",
 	Schema:        "pg_catalog",
@@ -29,16 +29,16 @@ var Int16Serial = DoltgresType{
 	IsDefined:     true,
 	Delimiter:     ",",
 	RelID:         0,
-	SubscriptFunc: "-",
+	SubscriptFunc: toFuncID("-"),
 	Elem:          0,
 	Array:         uint32(oid.T__int2),
-	InputFunc:     "int2in",
-	OutputFunc:    "int2out",
-	ReceiveFunc:   "int2recv",
-	SendFunc:      "int2send",
-	ModInFunc:     "-",
-	ModOutFunc:    "-",
-	AnalyzeFunc:   "-",
+	InputFunc:     toFuncID("int2in", oid.T_cstring),
+	OutputFunc:    toFuncID("int2out", oid.T_int2),
+	ReceiveFunc:   toFuncID("int2recv"),
+	SendFunc:      toFuncID("int2send"),
+	ModInFunc:     toFuncID("-"),
+	ModOutFunc:    toFuncID("-"),
+	AnalyzeFunc:   toFuncID("-"),
 	Align:         TypeAlignment_Short,
 	Storage:       TypeStorage_Plain,
 	NotNull:       false,
@@ -50,7 +50,7 @@ var Int16Serial = DoltgresType{
 	Default:       "",
 	Acl:           nil,
 	Checks:        nil,
-	AttTypMod:     -1,
-	CompareFunc:   "btint2cmp",
+	attTypMod:     -1,
+	CompareFunc:   toFuncID("btint2cmp", oid.T_int2, oid.T_int2),
 	IsSerial:      true,
 }

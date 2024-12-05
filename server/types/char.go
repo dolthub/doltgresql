@@ -19,7 +19,7 @@ import (
 )
 
 // BpChar is a char that has an unbounded length.
-var BpChar = DoltgresType{
+var BpChar = &DoltgresType{
 	OID:           uint32(oid.T_bpchar),
 	Name:          "bpchar",
 	Schema:        "pg_catalog",
@@ -31,16 +31,16 @@ var BpChar = DoltgresType{
 	IsDefined:     true,
 	Delimiter:     ",",
 	RelID:         0,
-	SubscriptFunc: "-",
+	SubscriptFunc: toFuncID("-"),
 	Elem:          0,
 	Array:         uint32(oid.T__bpchar),
-	InputFunc:     "bpcharin",
-	OutputFunc:    "bpcharout",
-	ReceiveFunc:   "bpcharrecv",
-	SendFunc:      "bpcharsend",
-	ModInFunc:     "bpchartypmodin",
-	ModOutFunc:    "bpchartypmodout",
-	AnalyzeFunc:   "-",
+	InputFunc:     toFuncID("bpcharin", oid.T_cstring, oid.T_oid, oid.T_int4),
+	OutputFunc:    toFuncID("bpcharout", oid.T_bpchar),
+	ReceiveFunc:   toFuncID("bpcharrecv", oid.T_internal, oid.T_oid, oid.T_int4),
+	SendFunc:      toFuncID("bpcharsend", oid.T_bpchar),
+	ModInFunc:     toFuncID("bpchartypmodin", oid.T__cstring),
+	ModOutFunc:    toFuncID("bpchartypmodout", oid.T_int4),
+	AnalyzeFunc:   toFuncID("-"),
 	Align:         TypeAlignment_Int,
 	Storage:       TypeStorage_Extended,
 	NotNull:       false,
@@ -52,17 +52,16 @@ var BpChar = DoltgresType{
 	Default:       "",
 	Acl:           nil,
 	Checks:        nil,
-	AttTypMod:     -1,
-	CompareFunc:   "bpcharcmp",
+	attTypMod:     -1,
+	CompareFunc:   toFuncID("bpcharcmp", oid.T_bpchar, oid.T_bpchar),
 }
 
 // NewCharType returns BpChar type with typmod set.
-func NewCharType(length int32) (DoltgresType, error) {
-	var err error
-	newType := BpChar
-	newType.AttTypMod, err = GetTypModFromCharLength("char", length)
+func NewCharType(length int32) (*DoltgresType, error) {
+	typmod, err := GetTypModFromCharLength("char", length)
 	if err != nil {
-		return DoltgresType{}, err
+		return nil, err
 	}
-	return newType, nil
+	newType := *BpChar.WithAttTypMod(typmod)
+	return &newType, nil
 }

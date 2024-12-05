@@ -15,8 +15,10 @@
 package types
 
 import (
-	"github.com/dolthub/go-mysql-server/sql"
 	"gopkg.in/src-d/go-errors.v1"
+
+	"github.com/dolthub/go-mysql-server/sql"
+	"github.com/lib/pq/oid"
 )
 
 // ErrDomainDoesNotAllowNullValues is returned when given value is NULL and a domain is non-nullable.
@@ -30,13 +32,13 @@ func NewDomainType(
 	ctx *sql.Context,
 	schema string,
 	name string,
-	asType DoltgresType,
+	asType *DoltgresType,
 	defaultExpr string,
 	notNull bool,
 	checks []*sql.CheckDefinition,
 	owner string, // TODO
-) DoltgresType {
-	return DoltgresType{
+) *DoltgresType {
+	return &DoltgresType{
 		OID:           asType.OID, // TODO: generate unique OID, using underlying type OID for now
 		Name:          name,
 		Schema:        schema,
@@ -49,16 +51,16 @@ func NewDomainType(
 		IsDefined:     true,
 		Delimiter:     ",",
 		RelID:         0,
-		SubscriptFunc: "",
+		SubscriptFunc: toFuncID("-"),
 		Elem:          0,
 		Array:         0, // TODO: refers to array type of this type
-		InputFunc:     "domain_in",
+		InputFunc:     toFuncID("domain_in", oid.T_cstring, oid.T_oid, oid.T_int4),
 		OutputFunc:    asType.OutputFunc,
-		ReceiveFunc:   "domain_recv",
+		ReceiveFunc:   toFuncID("domain_recv", oid.T_internal, oid.T_oid, oid.T_int4),
 		SendFunc:      asType.SendFunc,
 		ModInFunc:     asType.ModInFunc,
 		ModOutFunc:    asType.ModOutFunc,
-		AnalyzeFunc:   "-",
+		AnalyzeFunc:   toFuncID("-"),
 		Align:         asType.Align,
 		Storage:       asType.Storage,
 		NotNull:       notNull,
@@ -70,7 +72,7 @@ func NewDomainType(
 		Default:       defaultExpr,
 		Acl:           nil,
 		Checks:        checks,
-		AttTypMod:     -1,
+		attTypMod:     -1,
 		CompareFunc:   asType.CompareFunc,
 	}
 }

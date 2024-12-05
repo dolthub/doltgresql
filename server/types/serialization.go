@@ -31,7 +31,7 @@ func init() {
 // SerializeType is able to serialize the given extended type into a byte slice. All extended types will be defined
 // by DoltgreSQL.
 func SerializeType(extendedType types.ExtendedType) ([]byte, error) {
-	if doltgresType, ok := extendedType.(DoltgresType); ok {
+	if doltgresType, ok := extendedType.(*DoltgresType); ok {
 		return doltgresType.Serialize(), nil
 	}
 	return nil, fmt.Errorf("unknown type to serialize")
@@ -41,14 +41,14 @@ func SerializeType(extendedType types.ExtendedType) ([]byte, error) {
 // types will be defined by DoltgreSQL.
 func DeserializeType(serializedType []byte) (types.ExtendedType, error) {
 	if len(serializedType) == 0 {
-		return DoltgresType{}, fmt.Errorf("deserializing empty type data")
+		return nil, fmt.Errorf("deserializing empty type data")
 	}
 
-	typ := DoltgresType{}
+	typ := &DoltgresType{}
 	reader := utils.NewReader(serializedType)
 	version := reader.VariableUint()
 	if version != 0 {
-		return DoltgresType{}, fmt.Errorf("version %d of types is not supported, please upgrade the server", version)
+		return nil, fmt.Errorf("version %d of types is not supported, please upgrade the server", version)
 	}
 
 	typ.OID = reader.Uint32()
@@ -63,16 +63,16 @@ func DeserializeType(serializedType []byte) (types.ExtendedType, error) {
 	typ.IsDefined = reader.Bool()
 	typ.Delimiter = reader.String()
 	typ.RelID = reader.Uint32()
-	typ.SubscriptFunc = reader.String()
+	typ.SubscriptFunc = globalFunctionRegistry.StringToID(reader.String())
 	typ.Elem = reader.Uint32()
 	typ.Array = reader.Uint32()
-	typ.InputFunc = reader.String()
-	typ.OutputFunc = reader.String()
-	typ.ReceiveFunc = reader.String()
-	typ.SendFunc = reader.String()
-	typ.ModInFunc = reader.String()
-	typ.ModOutFunc = reader.String()
-	typ.AnalyzeFunc = reader.String()
+	typ.InputFunc = globalFunctionRegistry.StringToID(reader.String())
+	typ.OutputFunc = globalFunctionRegistry.StringToID(reader.String())
+	typ.ReceiveFunc = globalFunctionRegistry.StringToID(reader.String())
+	typ.SendFunc = globalFunctionRegistry.StringToID(reader.String())
+	typ.ModInFunc = globalFunctionRegistry.StringToID(reader.String())
+	typ.ModOutFunc = globalFunctionRegistry.StringToID(reader.String())
+	typ.AnalyzeFunc = globalFunctionRegistry.StringToID(reader.String())
 	typ.Align = TypeAlignment(reader.String())
 	typ.Storage = TypeStorage(reader.String())
 	typ.NotNull = reader.Bool()
@@ -97,11 +97,11 @@ func DeserializeType(serializedType []byte) (types.ExtendedType, error) {
 			Enforced:        true,
 		})
 	}
-	typ.AttTypMod = reader.Int32()
-	typ.CompareFunc = reader.String()
+	typ.attTypMod = reader.Int32()
+	typ.CompareFunc = globalFunctionRegistry.StringToID(reader.String())
 	typ.InternalName = reader.String()
 	if !reader.IsEmpty() {
-		return DoltgresType{}, fmt.Errorf("extra data found while deserializing type %s", typ.Name)
+		return nil, fmt.Errorf("extra data found while deserializing type %s", typ.Name)
 	}
 
 	// Return the deserialized object
@@ -109,7 +109,7 @@ func DeserializeType(serializedType []byte) (types.ExtendedType, error) {
 }
 
 // Serialize returns the DoltgresType as a byte slice.
-func (t DoltgresType) Serialize() []byte {
+func (t *DoltgresType) Serialize() []byte {
 	writer := utils.NewWriter(256)
 	writer.VariableUint(0) // Version
 	// Write the type to the writer
@@ -125,16 +125,16 @@ func (t DoltgresType) Serialize() []byte {
 	writer.Bool(t.IsDefined)
 	writer.String(t.Delimiter)
 	writer.Uint32(t.RelID)
-	writer.String(t.SubscriptFunc)
+	writer.String(globalFunctionRegistry.GetFullString(t.SubscriptFunc))
 	writer.Uint32(t.Elem)
 	writer.Uint32(t.Array)
-	writer.String(t.InputFunc)
-	writer.String(t.OutputFunc)
-	writer.String(t.ReceiveFunc)
-	writer.String(t.SendFunc)
-	writer.String(t.ModInFunc)
-	writer.String(t.ModOutFunc)
-	writer.String(t.AnalyzeFunc)
+	writer.String(globalFunctionRegistry.GetFullString(t.InputFunc))
+	writer.String(globalFunctionRegistry.GetFullString(t.OutputFunc))
+	writer.String(globalFunctionRegistry.GetFullString(t.ReceiveFunc))
+	writer.String(globalFunctionRegistry.GetFullString(t.SendFunc))
+	writer.String(globalFunctionRegistry.GetFullString(t.ModInFunc))
+	writer.String(globalFunctionRegistry.GetFullString(t.ModOutFunc))
+	writer.String(globalFunctionRegistry.GetFullString(t.AnalyzeFunc))
 	writer.String(string(t.Align))
 	writer.String(string(t.Storage))
 	writer.Bool(t.NotNull)
@@ -153,8 +153,8 @@ func (t DoltgresType) Serialize() []byte {
 		writer.String(check.Name)
 		writer.String(check.CheckExpression)
 	}
-	writer.Int32(t.AttTypMod)
-	writer.String(t.CompareFunc)
+	writer.Int32(t.attTypMod)
+	writer.String(globalFunctionRegistry.GetFullString(t.CompareFunc))
 	writer.String(t.InternalName)
 	return writer.Data()
 }

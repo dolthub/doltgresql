@@ -19,7 +19,7 @@ import (
 )
 
 // Cstring is the cstring type.
-var Cstring = DoltgresType{
+var Cstring = &DoltgresType{
 	OID:           uint32(oid.T_cstring),
 	Name:          "cstring",
 	Schema:        "pg_catalog",
@@ -31,16 +31,16 @@ var Cstring = DoltgresType{
 	IsDefined:     true,
 	Delimiter:     ",",
 	RelID:         0,
-	SubscriptFunc: "-",
+	SubscriptFunc: toFuncID("-"),
 	Elem:          0,
 	Array:         uint32(oid.T__cstring),
-	InputFunc:     "cstring_in",
-	OutputFunc:    "cstring_out",
-	ReceiveFunc:   "cstring_recv",
-	SendFunc:      "cstring_send",
-	ModInFunc:     "-",
-	ModOutFunc:    "-",
-	AnalyzeFunc:   "-",
+	InputFunc:     toFuncID("cstring_in", oid.T_cstring),
+	OutputFunc:    toFuncID("cstring_out", oid.T_cstring),
+	ReceiveFunc:   toFuncID("cstring_recv", oid.T_internal),
+	SendFunc:      toFuncID("cstring_send", oid.T_cstring),
+	ModInFunc:     toFuncID("-"),
+	ModOutFunc:    toFuncID("-"),
+	AnalyzeFunc:   toFuncID("-"),
 	Align:         TypeAlignment_Char,
 	Storage:       TypeStorage_Plain,
 	NotNull:       false,
@@ -52,6 +52,6 @@ var Cstring = DoltgresType{
 	Default:       "",
 	Acl:           nil,
 	Checks:        nil,
-	AttTypMod:     -1,
-	CompareFunc:   "-",
+	attTypMod:     -1,
+	CompareFunc:   toFuncID("-"),
 }

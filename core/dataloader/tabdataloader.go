@@ -34,7 +34,7 @@ type TabularDataLoader struct {
 	results       LoadDataResults
 	partialLine   string
 	rowInserter   sql.RowInserter
-	colTypes      []types.DoltgresType
+	colTypes      []*types.DoltgresType
 	sch           sql.Schema
 	delimiterChar string
 	nullChar      string

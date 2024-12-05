@@ -19,7 +19,7 @@ import (
 )
 
 // Bool is the bool type.
-var Bool = DoltgresType{
+var Bool = &DoltgresType{
 	OID:           uint32(oid.T_bool),
 	Name:          "bool",
 	Schema:        "pg_catalog",
@@ -32,16 +32,16 @@ var Bool = DoltgresType{
 	IsDefined:     true,
 	Delimiter:     ",",
 	RelID:         0,
-	SubscriptFunc: "-",
+	SubscriptFunc: toFuncID("-"),
 	Elem:          0,
 	Array:         uint32(oid.T__bool),
-	InputFunc:     "boolin",
-	OutputFunc:    "boolout",
-	ReceiveFunc:   "boolrecv",
-	SendFunc:      "boolsend",
-	ModInFunc:     "-",
-	ModOutFunc:    "-",
-	AnalyzeFunc:   "-",
+	InputFunc:     toFuncID("boolin", oid.T_cstring),
+	OutputFunc:    toFuncID("boolout", oid.T_bool),
+	ReceiveFunc:   toFuncID("boolrecv", oid.T_internal),
+	SendFunc:      toFuncID("boolsend", oid.T_bool),
+	ModInFunc:     toFuncID("-"),
+	ModOutFunc:    toFuncID("-"),
+	AnalyzeFunc:   toFuncID("-"),
 	Align:         TypeAlignment_Char,
 	Storage:       TypeStorage_Plain,
 	NotNull:       false,
@@ -53,7 +53,7 @@ var Bool = DoltgresType{
 	Default:       "",
 	Acl:           nil,
 	Checks:        nil,
-	AttTypMod:     -1,
-	CompareFunc:   "btboolcmp",
+	attTypMod:     -1,
+	CompareFunc:   toFuncID("btboolcmp", oid.T_bool, oid.T_bool),
 	InternalName:  "boolean",
 }

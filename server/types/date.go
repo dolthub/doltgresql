@@ -19,7 +19,7 @@ import (
 )
 
 // Date is the day, month, and year.
-var Date = DoltgresType{
+var Date = &DoltgresType{
 	OID:           uint32(oid.T_date),
 	Name:          "date",
 	Schema:        "pg_catalog",
@@ -31,16 +31,16 @@ var Date = DoltgresType{
 	IsDefined:     true,
 	Delimiter:     ",",
 	RelID:         0,
-	SubscriptFunc: "-",
+	SubscriptFunc: toFuncID("-"),
 	Elem:          0,
 	Array:         uint32(oid.T__date),
-	InputFunc:     "date_in",
-	OutputFunc:    "date_out",
-	ReceiveFunc:   "date_recv",
-	SendFunc:      "date_send",
-	ModInFunc:     "-",
-	ModOutFunc:    "-",
-	AnalyzeFunc:   "-",
+	InputFunc:     toFuncID("date_in", oid.T_cstring),
+	OutputFunc:    toFuncID("date_out", oid.T_date),
+	ReceiveFunc:   toFuncID("date_recv", oid.T_internal),
+	SendFunc:      toFuncID("date_send", oid.T_date),
+	ModInFunc:     toFuncID("-"),
+	ModOutFunc:    toFuncID("-"),
+	AnalyzeFunc:   toFuncID("-"),
 	Align:         TypeAlignment_Int,
 	Storage:       TypeStorage_Plain,
 	NotNull:       false,
@@ -52,6 +52,6 @@ var Date = DoltgresType{
 	Default:       "",
 	Acl:           nil,
 	Checks:        nil,
-	AttTypMod:     -1,
-	CompareFunc:   "date_cmp",
+	attTypMod:     -1,
+	CompareFunc:   toFuncID("date_cmp", oid.T_date, oid.T_date),
 }

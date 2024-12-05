@@ -41,7 +41,7 @@ type subqueryAnyExpr struct {
 	rightSub      *plan.Subquery
 	staticLiteral *Literal
 	arrayLiterals []*Literal
-	compFuncs     []*framework.CompiledFunction
+	compFuncs     []framework.Function
 }
 
 // expressionAnyExpr represents the resolved comparison function for a sql.Expression.
@@ -49,7 +49,7 @@ type expressionAnyExpr struct {
 	rightExpr     sql.Expression
 	staticLiteral *Literal
 	arrayLiteral  *Literal
-	compFunc      *framework.CompiledFunction
+	compFunc      framework.Function
 }
 
 // NewAnyExpr creates a new AnyExpr expression.
@@ -277,9 +277,9 @@ func (a *AnyExpr) DebugString() string {
 // anySubqueryWithChildren resolves the comparison functions for a plan.Subquery.
 func anySubqueryWithChildren(anyExpr *AnyExpr, sub *plan.Subquery) (sql.Expression, error) {
 	schema := sub.Query.Schema()
-	subTypes := make([]pgtypes.DoltgresType, len(schema))
+	subTypes := make([]*pgtypes.DoltgresType, len(schema))
 	for i, col := range schema {
-		dgType, ok := col.Type.(pgtypes.DoltgresType)
+		dgType, ok := col.Type.(*pgtypes.DoltgresType)
 		if !ok {
 			return nil, fmt.Errorf("expected right child to be a DoltgresType but got `%T`", sub)
 		}
@@ -291,19 +291,19 @@ func anySubqueryWithChildren(anyExpr *AnyExpr, sub *plan.Subquery) (sql.Expressi
 		return nil, err
 	}
 
-	if leftType, ok := anyExpr.leftExpr.Type().(pgtypes.DoltgresType); ok {
+	if leftType, ok := anyExpr.leftExpr.Type().(*pgtypes.DoltgresType); ok {
 		// Resolve comparison functions once and reuse the functions in Eval.
 		staticLiteral := &Literal{typ: leftType}
 		arrayLiterals := make([]*Literal, len(subTypes))
 		// Each expression may be a different type (which is valid), so we need a comparison function for each expression.
-		compFuncs := make([]*framework.CompiledFunction, len(subTypes))
+		compFuncs := make([]framework.Function, len(subTypes))
 		for i, rightType := range subTypes {
 			arrayLiterals[i] = &Literal{typ: rightType}
 			compFuncs[i] = framework.GetBinaryFunction(op).Compile("internal_any_comparison", staticLiteral, arrayLiterals[i])
 			if compFuncs[i] == nil {
 				return nil, fmt.Errorf("operator does not exist: %s = %s", leftType.String(), rightType.String())
 			}
-			if compFuncs[i].Type().(pgtypes.DoltgresType).OID != uint32(oid.T_bool) {
+			if compFuncs[i].Type().(*pgtypes.DoltgresType).OID != uint32(oid.T_bool) {
 				// This should never happen, but this is just to be safe
 				return nil, fmt.Errorf("%T: found equality comparison that does not return a bool", anyExpr)
 			}
@@ -322,7 +322,7 @@ func anySubqueryWithChildren(anyExpr *AnyExpr, sub *plan.Subquery) (sql.Expressi
 
 // anyExpressionWithChildren resolves the comparison functions for a sql.Expression.
 func anyExpressionWithChildren(anyExpr *AnyExpr) (sql.Expression, error) {
-	arrType, ok := anyExpr.rightExpr.Type().(pgtypes.DoltgresType)
+	arrType, ok := anyExpr.rightExpr.Type().(*pgtypes.DoltgresType)
 	if !ok {
 		return nil, fmt.Errorf("expected right child to be a DoltgresType but got `%T`", anyExpr.rightExpr)
 	}
@@ -332,7 +332,7 @@ func anyExpressionWithChildren(anyExpr *AnyExpr) (sql.Expression, error) {
 		return nil, err
 	}
 
-	if leftType, ok := anyExpr.leftExpr.Type().(pgtypes.DoltgresType); ok {
+	if leftType, ok := anyExpr.leftExpr.Type().(*pgtypes.DoltgresType); ok {
 		// Resolve comparison function once and reuse the function in Eval.
 		staticLiteral := &Literal{typ: leftType}
 		arrayLiteral := &Literal{typ: rightType}
@@ -340,7 +340,7 @@ func anyExpressionWithChildren(anyExpr *AnyExpr) (sql.Expression, error) {
 		if compFunc == nil {
 			return nil, fmt.Errorf("operator does not exist: %s = %s", leftType.String(), rightType.String())
 		}
-		if compFunc.Type().(pgtypes.DoltgresType).OID != uint32(oid.T_bool) {
+		if compFunc.Type().(*pgtypes.DoltgresType).OID != uint32(oid.T_bool) {
 			// This should never happen, but this is just to be safe
 			return nil, fmt.Errorf("%T: found equality comparison that does not return a bool", anyExpr)
 		}

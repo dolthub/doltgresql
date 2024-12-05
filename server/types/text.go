@@ -19,7 +19,7 @@ import (
 )
 
 // Text is the text type.
-var Text = DoltgresType{
+var Text = &DoltgresType{
 	OID:           uint32(oid.T_text),
 	Name:          "text",
 	Schema:        "pg_catalog",
@@ -31,16 +31,16 @@ var Text = DoltgresType{
 	IsDefined:     true,
 	Delimiter:     ",",
 	RelID:         0,
-	SubscriptFunc: "-",
+	SubscriptFunc: toFuncID("-"),
 	Elem:          0,
 	Array:         uint32(oid.T__text),
-	InputFunc:     "textin",
-	OutputFunc:    "textout",
-	ReceiveFunc:   "textrecv",
-	SendFunc:      "textsend",
-	ModInFunc:     "-",
-	ModOutFunc:    "-",
-	AnalyzeFunc:   "-",
+	InputFunc:     toFuncID("textin", oid.T_cstring),
+	OutputFunc:    toFuncID("textout", oid.T_text),
+	ReceiveFunc:   toFuncID("textrecv", oid.T_internal),
+	SendFunc:      toFuncID("textsend", oid.T_text),
+	ModInFunc:     toFuncID("-"),
+	ModOutFunc:    toFuncID("-"),
+	AnalyzeFunc:   toFuncID("-"),
 	Align:         TypeAlignment_Int,
 	Storage:       TypeStorage_Extended,
 	NotNull:       false,
@@ -52,6 +52,6 @@ var Text = DoltgresType{
 	Default:       "",
 	Acl:           nil,
 	Checks:        nil,
-	AttTypMod:     -1,
-	CompareFunc:   "bttextcmp",
+	attTypMod:     -1,
+	CompareFunc:   toFuncID("bttextcmp", oid.T_text, oid.T_text),
 }

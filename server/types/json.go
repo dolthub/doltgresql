@@ -19,7 +19,7 @@ import (
 )
 
 // Json is the standard JSON type.
-var Json = DoltgresType{
+var Json = &DoltgresType{
 	OID:           uint32(oid.T_json),
 	Name:          "json",
 	Schema:        "pg_catalog",
@@ -31,16 +31,16 @@ var Json = DoltgresType{
 	IsDefined:     true,
 	Delimiter:     ",",
 	RelID:         0,
-	SubscriptFunc: "-",
+	SubscriptFunc: toFuncID("-"),
 	Elem:          0,
 	Array:         uint32(oid.T__json),
-	InputFunc:     "json_in",
-	OutputFunc:    "json_out",
-	ReceiveFunc:   "json_recv",
-	SendFunc:      "json_send",
-	ModInFunc:     "-",
-	ModOutFunc:    "-",
-	AnalyzeFunc:   "-",
+	InputFunc:     toFuncID("json_in", oid.T_cstring),
+	OutputFunc:    toFuncID("json_out", oid.T_json),
+	ReceiveFunc:   toFuncID("json_recv", oid.T_internal),
+	SendFunc:      toFuncID("json_send", oid.T_json),
+	ModInFunc:     toFuncID("-"),
+	ModOutFunc:    toFuncID("-"),
+	AnalyzeFunc:   toFuncID("-"),
 	Align:         TypeAlignment_Int,
 	Storage:       TypeStorage_Extended,
 	NotNull:       false,
@@ -52,6 +52,6 @@ var Json = DoltgresType{
 	Default:       "",
 	Acl:           nil,
 	Checks:        nil,
-	AttTypMod:     -1,
-	CompareFunc:   "-",
+	attTypMod:     -1,
+	CompareFunc:   toFuncID("-"),
 }

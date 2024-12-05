@@ -17,7 +17,7 @@ package types
 import "github.com/lib/pq/oid"
 
 // Int32Serial is an int32 serial type.
-var Int32Serial = DoltgresType{
+var Int32Serial = &DoltgresType{
 	OID:           0, // doesn't have unique OID
 	Name:          "serial",
 	Schema:        "pg_catalog",
@@ -29,16 +29,16 @@ var Int32Serial = DoltgresType{
 	IsDefined:     true,
 	Delimiter:     ",",
 	RelID:         0,
-	SubscriptFunc: "-",
+	SubscriptFunc: toFuncID("-"),
 	Elem:          0,
 	Array:         uint32(oid.T__int4),
-	InputFunc:     "int4in",
-	OutputFunc:    "int4out",
-	ReceiveFunc:   "int4recv",
-	SendFunc:      "int4send",
-	ModInFunc:     "-",
-	ModOutFunc:    "-",
-	AnalyzeFunc:   "-",
+	InputFunc:     toFuncID("int4in", oid.T_cstring),
+	OutputFunc:    toFuncID("int4out", oid.T_int4),
+	ReceiveFunc:   toFuncID("int4recv"),
+	SendFunc:      toFuncID("int4send"),
+	ModInFunc:     toFuncID("-"),
+	ModOutFunc:    toFuncID("-"),
+	AnalyzeFunc:   toFuncID("-"),
 	Align:         TypeAlignment_Int,
 	Storage:       TypeStorage_Plain,
 	NotNull:       false,
@@ -50,7 +50,7 @@ var Int32Serial = DoltgresType{
 	Default:       "",
 	Acl:           nil,
 	Checks:        nil,
-	AttTypMod:     -1,
-	CompareFunc:   "btint4cmp",
+	attTypMod:     -1,
+	CompareFunc:   toFuncID("btint4cmp", oid.T_int4, oid.T_int4),
 	IsSerial:      true,
 }

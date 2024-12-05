@@ -38,7 +38,7 @@ var (
 )
 
 // Numeric is a precise and unbounded decimal value.
-var Numeric = DoltgresType{
+var Numeric = &DoltgresType{
 	OID:           uint32(oid.T_numeric),
 	Name:          "numeric",
 	Schema:        "pg_catalog",
@@ -50,16 +50,16 @@ var Numeric = DoltgresType{
 	IsDefined:     true,
 	Delimiter:     ",",
 	RelID:         0,
-	SubscriptFunc: "-",
+	SubscriptFunc: toFuncID("-"),
 	Elem:          0,
 	Array:         uint32(oid.T__numeric),
-	InputFunc:     "numeric_in",
-	OutputFunc:    "numeric_out",
-	ReceiveFunc:   "numeric_recv",
-	SendFunc:      "numeric_send",
-	ModInFunc:     "numerictypmodin",
-	ModOutFunc:    "numerictypmodout",
-	AnalyzeFunc:   "-",
+	InputFunc:     toFuncID("numeric_in", oid.T_cstring, oid.T_oid, oid.T_int4),
+	OutputFunc:    toFuncID("numeric_out", oid.T_numeric),
+	ReceiveFunc:   toFuncID("numeric_recv", oid.T_internal, oid.T_oid, oid.T_int4),
+	SendFunc:      toFuncID("numeric_send", oid.T_numeric),
+	ModInFunc:     toFuncID("numerictypmodin", oid.T__cstring),
+	ModOutFunc:    toFuncID("numerictypmodout", oid.T_int4),
+	AnalyzeFunc:   toFuncID("-"),
 	Align:         TypeAlignment_Int,
 	Storage:       TypeStorage_Main,
 	NotNull:       false,
@@ -71,19 +71,18 @@ var Numeric = DoltgresType{
 	Default:       "",
 	Acl:           nil,
 	Checks:        nil,
-	AttTypMod:     -1,
-	CompareFunc:   "numeric_cmp",
+	attTypMod:     -1,
+	CompareFunc:   toFuncID("numeric_cmp", oid.T_numeric, oid.T_numeric),
 }
 
 // NewNumericTypeWithPrecisionAndScale returns Numeric type with typmod set.
-func NewNumericTypeWithPrecisionAndScale(precision, scale int32) (DoltgresType, error) {
-	newType := Numeric
+func NewNumericTypeWithPrecisionAndScale(precision, scale int32) (*DoltgresType, error) {
 	typmod, err := GetTypmodFromNumericPrecisionAndScale(precision, scale)
 	if err != nil {
-		return DoltgresType{}, err
+		return nil, err
 	}
-	newType.AttTypMod = typmod
-	return newType, nil
+	newType := *Numeric.WithAttTypMod(typmod)
+	return &newType, nil
 }
 
 // GetTypmodFromNumericPrecisionAndScale takes Numeric type precision and scale and returns the type modifier value.

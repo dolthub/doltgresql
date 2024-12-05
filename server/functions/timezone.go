@@ -41,10 +41,10 @@ func initTimezone() {
 var timezone_interval_timestamptz = framework.Function2{
 	Name:               "timezone",
 	Return:             pgtypes.Timestamp,
-	Parameters:         [2]pgtypes.DoltgresType{pgtypes.Interval, pgtypes.TimestampTZ},
+	Parameters:         [2]*pgtypes.DoltgresType{pgtypes.Interval, pgtypes.TimestampTZ},
 	IsNonDeterministic: true,
 	Strict:             true,
-	Callable: func(ctx *sql.Context, _ [3]pgtypes.DoltgresType, val1, val2 any) (any, error) {
+	Callable: func(ctx *sql.Context, _ [3]*pgtypes.DoltgresType, val1, val2 any) (any, error) {
 		dur := val1.(duration.Duration)
 		t := val2.(time.Time)
 		return t.UTC().Add(time.Duration(dur.Nanos())), nil
@@ -55,10 +55,10 @@ var timezone_interval_timestamptz = framework.Function2{
 var timezone_text_timestamptz = framework.Function2{
 	Name:               "timezone",
 	Return:             pgtypes.Timestamp,
-	Parameters:         [2]pgtypes.DoltgresType{pgtypes.Text, pgtypes.TimestampTZ},
+	Parameters:         [2]*pgtypes.DoltgresType{pgtypes.Text, pgtypes.TimestampTZ},
 	IsNonDeterministic: true,
 	Strict:             true,
-	Callable: func(ctx *sql.Context, _ [3]pgtypes.DoltgresType, val1, val2 any) (any, error) {
+	Callable: func(ctx *sql.Context, _ [3]*pgtypes.DoltgresType, val1, val2 any) (any, error) {
 		tz := val1.(string)
 		timeVal := val2.(time.Time)
 		newOffset, err := convertTzToOffsetSecs(tz)
@@ -73,10 +73,10 @@ var timezone_text_timestamptz = framework.Function2{
 var timezone_text_timetz = framework.Function2{
 	Name:               "timezone",
 	Return:             pgtypes.TimeTZ,
-	Parameters:         [2]pgtypes.DoltgresType{pgtypes.Text, pgtypes.TimeTZ},
+	Parameters:         [2]*pgtypes.DoltgresType{pgtypes.Text, pgtypes.TimeTZ},
 	IsNonDeterministic: true,
 	Strict:             true,
-	Callable: func(ctx *sql.Context, _ [3]pgtypes.DoltgresType, val1, val2 any) (any, error) {
+	Callable: func(ctx *sql.Context, _ [3]*pgtypes.DoltgresType, val1, val2 any) (any, error) {
 		tz := val1.(string)
 		timeVal := val2.(time.Time)
 		newOffset, err := convertTzToOffsetSecs(tz)
@@ -93,10 +93,10 @@ var timezone_text_timetz = framework.Function2{
 var timezone_interval_timetz = framework.Function2{
 	Name:               "timezone",
 	Return:             pgtypes.TimeTZ,
-	Parameters:         [2]pgtypes.DoltgresType{pgtypes.Interval, pgtypes.TimeTZ},
+	Parameters:         [2]*pgtypes.DoltgresType{pgtypes.Interval, pgtypes.TimeTZ},
 	IsNonDeterministic: true,
 	Strict:             true,
-	Callable: func(ctx *sql.Context, _ [3]pgtypes.DoltgresType, val1, val2 any) (any, error) {
+	Callable: func(ctx *sql.Context, _ [3]*pgtypes.DoltgresType, val1, val2 any) (any, error) {
 		dur := val1.(duration.Duration)
 		timeVal := val2.(time.Time)
 		newOffset := int32(dur.Nanos() / NanosPerSec)
@@ -110,10 +110,10 @@ var timezone_interval_timetz = framework.Function2{
 var timezone_text_timestamp = framework.Function2{
 	Name:               "timezone",
 	Return:             pgtypes.TimestampTZ,
-	Parameters:         [2]pgtypes.DoltgresType{pgtypes.Text, pgtypes.Timestamp},
+	Parameters:         [2]*pgtypes.DoltgresType{pgtypes.Text, pgtypes.Timestamp},
 	IsNonDeterministic: true,
 	Strict:             true,
-	Callable: func(ctx *sql.Context, _ [3]pgtypes.DoltgresType, val1, val2 any) (any, error) {
+	Callable: func(ctx *sql.Context, _ [3]*pgtypes.DoltgresType, val1, val2 any) (any, error) {
 		tz := val1.(string)
 		timeVal := val2.(time.Time)
 		newOffset, err := convertTzToOffsetSecs(tz)
@@ -132,10 +132,10 @@ var timezone_text_timestamp = framework.Function2{
 var timezone_interval_timestamp = framework.Function2{
 	Name:               "timezone",
 	Return:             pgtypes.TimestampTZ,
-	Parameters:         [2]pgtypes.DoltgresType{pgtypes.Interval, pgtypes.Timestamp},
+	Parameters:         [2]*pgtypes.DoltgresType{pgtypes.Interval, pgtypes.Timestamp},
 	IsNonDeterministic: true,
 	Strict:             true,
-	Callable: func(ctx *sql.Context, _ [3]pgtypes.DoltgresType, val1, val2 any) (any, error) {
+	Callable: func(ctx *sql.Context, _ [3]*pgtypes.DoltgresType, val1, val2 any) (any, error) {
 		dur := val1.(duration.Duration)
 		timeVal := val2.(time.Time)
 		serverLoc, err := GetServerLocation(ctx)

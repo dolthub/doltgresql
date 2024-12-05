@@ -49,11 +49,9 @@ var ErrTypmodArrayMustBe1D = errors.NewKind(`typmod array must be one-dimensiona
 // ErrInvalidTypMod is returned when given value is invalid for type modifier.
 var ErrInvalidTypMod = errors.NewKind(`invalid %s type modifier`)
 
-var GetFunctionAndEvaluateForTypes func(ctx *sql.Context, funcName string, paramTypes []DoltgresType, args []any) (any, error)
-
 // FromGmsType returns a DoltgresType that is most similar to the given GMS type.
 // It returns UNKNOWN type for GMS types that are not handled.
-func FromGmsType(typ sql.Type) DoltgresType {
+func FromGmsType(typ sql.Type) *DoltgresType {
 	dt, err := FromGmsTypeToDoltgresType(typ)
 	if err != nil {
 		return Unknown
@@ -63,7 +61,7 @@ func FromGmsType(typ sql.Type) DoltgresType {
 
 // FromGmsTypeToDoltgresType returns a DoltgresType that is most similar to the given GMS type.
 // It errors if GMS type is not handled.
-func FromGmsTypeToDoltgresType(typ sql.Type) (DoltgresType, error) {
+func FromGmsTypeToDoltgresType(typ sql.Type) (*DoltgresType, error) {
 	switch typ.Type() {
 	case query.Type_INT8, query.Type_INT16:
 		// Special treatment for boolean types when we can detect them
@@ -102,7 +100,7 @@ func FromGmsTypeToDoltgresType(typ sql.Type) (DoltgresType, error) {
 	case query.Type_NULL_TYPE, query.Type_GEOMETRY:
 		return Unknown, nil
 	default:
-		return DoltgresType{}, fmt.Errorf("encountered a GMS type that cannot be handled")
+		return nil, fmt.Errorf("encountered a GMS type that cannot be handled")
 	}
 }
 
@@ -118,58 +116,19 @@ func serializedStringCompare(v1 []byte, v2 []byte) int {
 	return bytes.Compare(v1Bytes, v2Bytes)
 }
 
-// receiveInputFunction handles given IoInput and IoReceive functions.
-func receiveInputFunction(ctx *sql.Context, funcName string, origType, argType DoltgresType, val any) (any, error) {
-	if origType.IsArrayType() {
-		baseType := origType.ArrayBaseType()
-		typmod := int32(0)
-		if baseType.ModInFunc != "-" {
-			typmod = origType.AttTypMod
-		}
-		return GetFunctionAndEvaluateForTypes(ctx, funcName, []DoltgresType{argType, Oid, Int32}, []any{val, baseType.OID, typmod})
-	} else if origType.TypType == TypeType_Domain {
-		baseType := origType.DomainUnderlyingBaseType()
-		return GetFunctionAndEvaluateForTypes(ctx, funcName, []DoltgresType{argType, Oid, Int32}, []any{val, baseType.OID, origType.AttTypMod})
-	} else if origType.ModInFunc != "-" {
-		return GetFunctionAndEvaluateForTypes(ctx, funcName, []DoltgresType{argType, Oid, Int32}, []any{val, origType.OID, origType.AttTypMod})
-	} else {
-		return GetFunctionAndEvaluateForTypes(ctx, funcName, []DoltgresType{argType}, []any{val})
-	}
-}
-
-// sendOutputFunction handles given IoOutput and IoSend functions.
-func sendOutputFunction(ctx *sql.Context, funcName string, t DoltgresType, val any) (any, error) {
-	return GetFunctionAndEvaluateForTypes(ctx, funcName, []DoltgresType{t}, []any{val})
-}
-
 // sqlString converts given type value to output string. This is the same as IoOutput function
 // with an exception to BOOLEAN type. It returns "t" instead of "true".
-func sqlString(ctx *sql.Context, t DoltgresType, val any) (string, error) {
+func sqlString(ctx *sql.Context, t *DoltgresType, val any) (string, error) {
 	if t.IsArrayType() {
 		baseType := t.ArrayBaseType()
-		if baseType.ModInFunc != "-" {
-			baseType.AttTypMod = t.AttTypMod
-		}
 		return ArrToString(ctx, val.([]any), baseType, true)
 	}
-	// calling `out` function
-	o, err := GetFunctionAndEvaluateForTypes(ctx, t.OutputFunc, []DoltgresType{t}, []any{val})
-	if err != nil {
-		return "", err
-	}
-	output, ok := o.(string)
-	if t.OID == uint32(oid.T_bool) {
-		output = string(output[0])
-	}
-	if !ok {
-		return "", fmt.Errorf(`expected string, got %T`, output)
-	}
-	return output, nil
+	return t.IoOutput(ctx, val)
 }
 
 // ArrToString is used for array_out function. |trimBool| parameter allows replacing
 // boolean result of "true" to "t" if the function is `Type.SQL()`.
-func ArrToString(ctx *sql.Context, arr []any, baseType DoltgresType, trimBool bool) (string, error) {
+func ArrToString(ctx *sql.Context, arr []any, baseType *DoltgresType, trimBool bool) (string, error) {
 	sb := strings.Builder{}
 	sb.WriteRune('{')
 	for i, v := range arr {
@@ -204,31 +163,4 @@ func ArrToString(ctx *sql.Context, arr []any, baseType DoltgresType, trimBool bo
 	}
 	sb.WriteRune('}')
 	return sb.String(), nil
-}
-
-// IoCompare compares given two values using the given type.
-// TODO: both values should have types. E.g.: to compare between float32 and float64
-func IoCompare(ctx *sql.Context, t DoltgresType, v1, v2 any) (int32, error) {
-	if v1 == nil && v2 == nil {
-		return 0, nil
-	} else if v1 != nil && v2 == nil {
-		return 1, nil
-	} else if v1 == nil && v2 != nil {
-		return -1, nil
-	}
-
-	if t.CompareFunc == "-" {
-		// TODO: use the type category's preferred type's compare function?
-		return 0, fmt.Errorf("compare function does not exist for %s type", t.Name)
-	}
-
-	i, err := GetFunctionAndEvaluateForTypes(ctx, t.CompareFunc, []DoltgresType{t, t}, []any{v1, v2})
-	if err != nil {
-		return 0, err
-	}
-	output, ok := i.(int32)
-	if !ok {
-		return 0, fmt.Errorf(`expected int32, got %T`, output)
-	}
-	return output, nil
 }

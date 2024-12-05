@@ -48,7 +48,6 @@ func Initialize(dEnv *env.DoltEnv) {
 		auth.Init(dEnv)
 		analyzer.Init()
 		config.Init()
-		framework.Init()
 		oid.Init()
 		binary.Init()
 		unary.Init()

@@ -19,7 +19,7 @@ import (
 )
 
 // Int32 is an int32.
-var Int32 = DoltgresType{
+var Int32 = &DoltgresType{
 	OID:           uint32(oid.T_int4),
 	Name:          "int4",
 	Schema:        "pg_catalog",
@@ -31,16 +31,16 @@ var Int32 = DoltgresType{
 	IsDefined:     true,
 	Delimiter:     ",",
 	RelID:         0,
-	SubscriptFunc: "-",
+	SubscriptFunc: toFuncID("-"),
 	Elem:          0,
 	Array:         uint32(oid.T__int4),
-	InputFunc:     "int4in",
-	OutputFunc:    "int4out",
-	ReceiveFunc:   "int4recv",
-	SendFunc:      "int4send",
-	ModInFunc:     "-",
-	ModOutFunc:    "-",
-	AnalyzeFunc:   "-",
+	InputFunc:     toFuncID("int4in", oid.T_cstring),
+	OutputFunc:    toFuncID("int4out", oid.T_int4),
+	ReceiveFunc:   toFuncID("int4recv", oid.T_internal),
+	SendFunc:      toFuncID("int4send", oid.T_int4),
+	ModInFunc:     toFuncID("-"),
+	ModOutFunc:    toFuncID("-"),
+	AnalyzeFunc:   toFuncID("-"),
 	Align:         TypeAlignment_Int,
 	Storage:       TypeStorage_Plain,
 	NotNull:       false,
@@ -52,7 +52,7 @@ var Int32 = DoltgresType{
 	Default:       "",
 	Acl:           nil,
 	Checks:        nil,
-	AttTypMod:     -1,
-	CompareFunc:   "btint4cmp",
+	attTypMod:     -1,
+	CompareFunc:   toFuncID("btint4cmp", oid.T_int4, oid.T_int4),
 	InternalName:  "integer",
 }

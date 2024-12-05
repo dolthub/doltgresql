@@ -19,7 +19,7 @@ import (
 )
 
 // Timestamp is the timestamp without a time zone. Precision is unbounded.
-var Timestamp = DoltgresType{
+var Timestamp = &DoltgresType{
 	OID:           uint32(oid.T_timestamp),
 	Name:          "timestamp",
 	Schema:        "pg_catalog",
@@ -31,16 +31,16 @@ var Timestamp = DoltgresType{
 	IsDefined:     true,
 	Delimiter:     ",",
 	RelID:         0,
-	SubscriptFunc: "-",
+	SubscriptFunc: toFuncID("-"),
 	Elem:          0,
 	Array:         uint32(oid.T__timestamp),
-	InputFunc:     "timestamp_in",
-	OutputFunc:    "timestamp_out",
-	ReceiveFunc:   "timestamp_recv",
-	SendFunc:      "timestamp_send",
-	ModInFunc:     "timestamptypmodin",
-	ModOutFunc:    "timestamptypmodout",
-	AnalyzeFunc:   "-",
+	InputFunc:     toFuncID("timestamp_in", oid.T_cstring, oid.T_oid, oid.T_int4),
+	OutputFunc:    toFuncID("timestamp_out", oid.T_timestamp),
+	ReceiveFunc:   toFuncID("timestamp_recv", oid.T_internal, oid.T_oid, oid.T_int4),
+	SendFunc:      toFuncID("timestamp_send", oid.T_timestamp),
+	ModInFunc:     toFuncID("timestamptypmodin", oid.T__cstring),
+	ModOutFunc:    toFuncID("timestamptypmodout", oid.T_int4),
+	AnalyzeFunc:   toFuncID("-"),
 	Align:         TypeAlignment_Double,
 	Storage:       TypeStorage_Plain,
 	NotNull:       false,
@@ -52,17 +52,16 @@ var Timestamp = DoltgresType{
 	Default:       "",
 	Acl:           nil,
 	Checks:        nil,
-	AttTypMod:     -1,
-	CompareFunc:   "timestamp_cmp",
+	attTypMod:     -1,
+	CompareFunc:   toFuncID("timestamp_cmp", oid.T_timestamp, oid.T_timestamp),
 }
 
 // NewTimestampType returns Timestamp type with typmod set. // TODO: implement precision
-func NewTimestampType(precision int32) (DoltgresType, error) {
-	newType := Timestamp
+func NewTimestampType(precision int32) (*DoltgresType, error) {
 	typmod, err := GetTypmodFromTimePrecision(precision)
 	if err != nil {
-		return DoltgresType{}, err
+		return nil, err
 	}
-	newType.AttTypMod = typmod
-	return newType, nil
+	newType := *Timestamp.WithAttTypMod(typmod)
+	return &newType, nil
 }

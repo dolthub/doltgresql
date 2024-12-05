@@ -19,7 +19,7 @@ import (
 )
 
 // Any is a type that may contain any type.
-var Any = DoltgresType{
+var Any = &DoltgresType{
 	OID:           uint32(oid.T_any),
 	Name:          "any",
 	Schema:        "pg_catalog",
@@ -31,16 +31,16 @@ var Any = DoltgresType{
 	IsDefined:     true,
 	Delimiter:     ",",
 	RelID:         0,
-	SubscriptFunc: "-",
+	SubscriptFunc: toFuncID("-"),
 	Elem:          0,
 	Array:         0,
-	InputFunc:     "any_in",
-	OutputFunc:    "any_out",
-	ReceiveFunc:   "-",
-	SendFunc:      "-",
-	ModInFunc:     "-",
-	ModOutFunc:    "-",
-	AnalyzeFunc:   "-",
+	InputFunc:     toFuncID("any_in", oid.T_cstring),
+	OutputFunc:    toFuncID("any_out", oid.T_any),
+	ReceiveFunc:   toFuncID("-"),
+	SendFunc:      toFuncID("-"),
+	ModInFunc:     toFuncID("-"),
+	ModOutFunc:    toFuncID("-"),
+	AnalyzeFunc:   toFuncID("-"),
 	Align:         TypeAlignment_Int,
 	Storage:       TypeStorage_Plain,
 	NotNull:       false,
@@ -52,6 +52,6 @@ var Any = DoltgresType{
 	Default:       "",
 	Acl:           nil,
 	Checks:        nil,
-	AttTypMod:     -1,
-	CompareFunc:   "-",
+	attTypMod:     -1,
+	CompareFunc:   toFuncID("-"),
 }

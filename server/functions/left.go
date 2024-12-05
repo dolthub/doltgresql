@@ -30,9 +30,9 @@ func initLeft() {
 var left_text_int32 = framework.Function2{
 	Name:       "left",
 	Return:     pgtypes.Text,
-	Parameters: [2]pgtypes.DoltgresType{pgtypes.Text, pgtypes.Int32},
+	Parameters: [2]*pgtypes.DoltgresType{pgtypes.Text, pgtypes.Int32},
 	Strict:     true,
-	Callable: func(ctx *sql.Context, _ [3]pgtypes.DoltgresType, strInt any, nInt any) (any, error) {
+	Callable: func(ctx *sql.Context, _ [3]*pgtypes.DoltgresType, strInt any, nInt any) (any, error) {
 		str := strInt.(string)
 		n := nInt.(int32)
 		if n >= 0 {

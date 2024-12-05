@@ -35,7 +35,7 @@ type InTuple struct {
 	// These are assigned in WithChildren, so refer there for more information.
 	staticLiteral *Literal
 	arrayLiterals []*Literal
-	compFuncs     []*framework.CompiledFunction
+	compFuncs     []framework.Function
 }
 
 var _ vitess.Injectable = (*BinaryOperator)(nil)
@@ -58,13 +58,23 @@ func (it *InTuple) Children() []sql.Expression {
 // Decay returns the expression as a series of OR expressions. The behavior is not the same, however it allows some
 // paths to simplify their expression handling (such as filters).
 func (it *InTuple) Decay() sql.Expression {
-	it.compFuncs[0].Arguments = []sql.Expression{it.leftExpr, it.rightExpr[0]}
+	switch f := it.compFuncs[0].(type) {
+	case *framework.CompiledFunction:
+		f.Arguments = []sql.Expression{it.leftExpr, it.rightExpr[0]}
+	case *framework.QuickFunction2:
+		f.Arguments = [2]sql.Expression{it.leftExpr, it.rightExpr[0]}
+	}
 	var expr sql.Expression = &BinaryOperator{
 		operator:     framework.Operator_BinaryEqual,
 		compiledFunc: it.compFuncs[0],
 	}
 	for i := 1; i < len(it.rightExpr); i++ {
-		it.compFuncs[i].Arguments = []sql.Expression{it.leftExpr, it.rightExpr[i]}
+		switch f := it.compFuncs[i].(type) {
+		case *framework.CompiledFunction:
+			f.Arguments = []sql.Expression{it.leftExpr, it.rightExpr[i]}
+		case *framework.QuickFunction2:
+			f.Arguments = [2]sql.Expression{it.leftExpr, it.rightExpr[i]}
+		}
 		expr = expression.NewOr(expr, &BinaryOperator{
 			operator:     framework.Operator_BinaryEqual,
 			compiledFunc: it.compFuncs[i],
@@ -176,7 +186,7 @@ func (it *InTuple) WithChildren(children ...sql.Expression) (sql.Expression, err
 	}
 	// We'll only resolve the comparison functions once we have all Doltgres types.
 	// We may see GMS types during some analyzer steps, so we should wait until those are done.
-	if leftType, ok := children[0].Type().(pgtypes.DoltgresType); ok {
+	if leftType, ok := children[0].Type().(*pgtypes.DoltgresType); ok {
 		// Rather than finding and resolving a comparison function every time we call Eval, we resolve them once and
 		// reuse the functions. We also want to avoid re-assigning the parameters of the comparison functions since that
 		// will also cause the functions to resolve again. To do this, we store expressions within our struct that the
@@ -188,10 +198,10 @@ func (it *InTuple) WithChildren(children ...sql.Expression) (sql.Expression, err
 		staticLiteral := &Literal{typ: leftType}
 		arrayLiterals := make([]*Literal, len(rightTuple))
 		// Each expression may be a different type (which is valid), so we need a comparison function for each expression.
-		compFuncs := make([]*framework.CompiledFunction, len(rightTuple))
+		compFuncs := make([]framework.Function, len(rightTuple))
 		allValidChildren := true
 		for i, rightExpr := range rightTuple {
-			rightType, ok := rightExpr.Type().(pgtypes.DoltgresType)
+			rightType, ok := rightExpr.Type().(*pgtypes.DoltgresType)
 			if !ok {
 				allValidChildren = false
 				break
@@ -201,7 +211,7 @@ func (it *InTuple) WithChildren(children ...sql.Expression) (sql.Expression, err
 			if compFuncs[i] == nil {
 				return nil, fmt.Errorf("operator does not exist: %s = %s", leftType.String(), rightType.String())
 			}
-			if compFuncs[i].Type().(pgtypes.DoltgresType).OID != uint32(oid.T_bool) {
+			if compFuncs[i].Type().(*pgtypes.DoltgresType).OID != uint32(oid.T_bool) {
 				// This should never happen, but this is just to be safe
 				return nil, fmt.Errorf("%T: found equality comparison that does not return a bool", it)
 			}

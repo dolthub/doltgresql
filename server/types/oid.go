@@ -19,7 +19,7 @@ import (
 )
 
 // Oid is a data type used for identifying internal objects. It is implemented as an unsigned 32-bit integer.
-var Oid = DoltgresType{
+var Oid = &DoltgresType{
 	OID:           uint32(oid.T_oid),
 	Name:          "oid",
 	Schema:        "pg_catalog",
@@ -31,16 +31,16 @@ var Oid = DoltgresType{
 	IsDefined:     true,
 	Delimiter:     ",",
 	RelID:         0,
-	SubscriptFunc: "-",
+	SubscriptFunc: toFuncID("-"),
 	Elem:          0,
 	Array:         uint32(oid.T__oid),
-	InputFunc:     "oidin",
-	OutputFunc:    "oidout",
-	ReceiveFunc:   "oidrecv",
-	SendFunc:      "oidsend",
-	ModInFunc:     "-",
-	ModOutFunc:    "-",
-	AnalyzeFunc:   "-",
+	InputFunc:     toFuncID("oidin", oid.T_cstring),
+	OutputFunc:    toFuncID("oidout", oid.T_oid),
+	ReceiveFunc:   toFuncID("oidrecv", oid.T_internal),
+	SendFunc:      toFuncID("oidsend", oid.T_oid),
+	ModInFunc:     toFuncID("-"),
+	ModOutFunc:    toFuncID("-"),
+	AnalyzeFunc:   toFuncID("-"),
 	Align:         TypeAlignment_Int,
 	Storage:       TypeStorage_Plain,
 	NotNull:       false,
@@ -52,6 +52,6 @@ var Oid = DoltgresType{
 	Default:       "",
 	Acl:           nil,
 	Checks:        nil,
-	AttTypMod:     -1,
-	CompareFunc:   "btoidcmp",
+	attTypMod:     -1,
+	CompareFunc:   toFuncID("btoidcmp", oid.T_oid, oid.T_oid),
 }

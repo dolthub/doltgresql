@@ -19,7 +19,7 @@ import (
 )
 
 // Int16 is an int16.
-var Int16 = DoltgresType{
+var Int16 = &DoltgresType{
 	OID:           uint32(oid.T_int2),
 	Name:          "int2",
 	Schema:        "pg_catalog",
@@ -31,16 +31,16 @@ var Int16 = DoltgresType{
 	IsDefined:     true,
 	Delimiter:     ",",
 	RelID:         0,
-	SubscriptFunc: "-",
+	SubscriptFunc: toFuncID("-"),
 	Elem:          0,
 	Array:         uint32(oid.T__int2),
-	InputFunc:     "int2in",
-	OutputFunc:    "int2out",
-	ReceiveFunc:   "int2recv",
-	SendFunc:      "int2send",
-	ModInFunc:     "-",
-	ModOutFunc:    "-",
-	AnalyzeFunc:   "-",
+	InputFunc:     toFuncID("int2in", oid.T_cstring),
+	OutputFunc:    toFuncID("int2out", oid.T_int2),
+	ReceiveFunc:   toFuncID("int2recv", oid.T_internal),
+	SendFunc:      toFuncID("int2send", oid.T_int2),
+	ModInFunc:     toFuncID("-"),
+	ModOutFunc:    toFuncID("-"),
+	AnalyzeFunc:   toFuncID("-"),
 	Align:         TypeAlignment_Short,
 	Storage:       TypeStorage_Plain,
 	NotNull:       false,
@@ -52,7 +52,7 @@ var Int16 = DoltgresType{
 	Default:       "",
 	Acl:           nil,
 	Checks:        nil,
-	AttTypMod:     -1,
-	CompareFunc:   "btint2cmp",
+	attTypMod:     -1,
+	CompareFunc:   toFuncID("btint2cmp", oid.T_int2, oid.T_int2),
 	InternalName:  "smallint",
 }

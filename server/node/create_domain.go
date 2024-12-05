@@ -30,7 +30,7 @@ import (
 type CreateDomain struct {
 	SchemaName           string
 	Name                 string
-	AsType               types.DoltgresType
+	AsType               *types.DoltgresType
 	Collation            string
 	HasDefault           bool
 	DefaultExpr          sql.Expression
@@ -166,7 +166,7 @@ func (c *CreateDomain) WithResolvedChildren(children []any) (any, error) {
 // It is a placeholder column reference later
 // used for column defined as the domain type.
 type DomainColumn struct {
-	Typ types.DoltgresType
+	Typ *types.DoltgresType
 }
 
 var _ vitess.Injectable = (*DomainColumn)(nil)
@@ -184,6 +184,9 @@ func (d *DomainColumn) String() string {
 
 // Type implements the interface sql.Expression.
 func (d *DomainColumn) Type() sql.Type {
+	if d.Typ.IsEmptyType() {
+		return types.Unknown
+	}
 	return d.Typ
 }
 

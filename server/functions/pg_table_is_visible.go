@@ -32,10 +32,10 @@ func initPgTableIsVisible() {
 var pg_table_is_visible_oid = framework.Function1{
 	Name:               "pg_table_is_visible",
 	Return:             pgtypes.Bool,
-	Parameters:         [1]pgtypes.DoltgresType{pgtypes.Oid},
+	Parameters:         [1]*pgtypes.DoltgresType{pgtypes.Oid},
 	IsNonDeterministic: true,
 	Strict:             true,
-	Callable: func(ctx *sql.Context, _ [2]pgtypes.DoltgresType, val any) (any, error) {
+	Callable: func(ctx *sql.Context, _ [2]*pgtypes.DoltgresType, val any) (any, error) {
 		oidVal := val.(uint32)
 		paths, err := resolve.SearchPath(ctx)
 		if err != nil {

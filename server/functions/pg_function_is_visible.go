@@ -32,10 +32,10 @@ func initPgFunctionIsVisible() {
 var pg_function_is_visible_oid = framework.Function1{
 	Name:               "pg_function_is_visible",
 	Return:             pgtypes.Bool,
-	Parameters:         [1]pgtypes.DoltgresType{pgtypes.Oid},
+	Parameters:         [1]*pgtypes.DoltgresType{pgtypes.Oid},
 	IsNonDeterministic: true,
 	Strict:             true,
-	Callable: func(ctx *sql.Context, _ [2]pgtypes.DoltgresType, val any) (any, error) {
+	Callable: func(ctx *sql.Context, _ [2]*pgtypes.DoltgresType, val any) (any, error) {
 		var found bool
 		err := oid.RunCallback(ctx, val.(uint32), oid.Callbacks{
 			Function: func(ctx *sql.Context, function oid.ItemFunction) (cont bool, err error) {

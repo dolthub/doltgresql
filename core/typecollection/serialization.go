@@ -57,11 +57,11 @@ func (pgs *TypeCollection) Serialize(ctx context.Context) ([]byte, error) {
 func Deserialize(ctx context.Context, data []byte) (*TypeCollection, error) {
 	if len(data) == 0 {
 		return &TypeCollection{
-			schemaMap: make(map[string]map[string]types.DoltgresType),
+			schemaMap: make(map[string]map[string]*types.DoltgresType),
 			mutex:     &sync.RWMutex{},
 		}, nil
 	}
-	schemaMap := make(map[string]map[string]types.DoltgresType)
+	schemaMap := make(map[string]map[string]*types.DoltgresType)
 	reader := utils.NewReader(data)
 	version := reader.VariableUint()
 	if version != 0 {
@@ -73,14 +73,14 @@ func Deserialize(ctx context.Context, data []byte) (*TypeCollection, error) {
 	for i := uint64(0); i < numOfSchemas; i++ {
 		schemaName := reader.String()
 		numOfTypes := reader.VariableUint()
-		nameMap := make(map[string]types.DoltgresType)
+		nameMap := make(map[string]*types.DoltgresType)
 		for j := uint64(0); j < numOfTypes; j++ {
 			typData := reader.ByteSlice()
 			typ, err := types.DeserializeType(typData)
 			if err != nil {
 				return nil, err
 			}
-			dt := typ.(types.DoltgresType)
+			dt := typ.(*types.DoltgresType)
 			nameMap[dt.Name] = dt
 		}
 		schemaMap[schemaName] = nameMap

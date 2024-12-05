@@ -52,7 +52,7 @@ func nodeCreateSequence(ctx *Context, node *tree.CreateSequence) (vitess.Stateme
 	var minValue int64
 	var maxValue int64
 	var start int64
-	var dataType pgtypes.DoltgresType
+	var dataType *pgtypes.DoltgresType
 	var ownerTableName string
 	var ownerColumnName string
 	minValueSet := false

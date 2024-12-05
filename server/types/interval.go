@@ -19,7 +19,7 @@ import (
 )
 
 // Interval is the interval type.
-var Interval = DoltgresType{
+var Interval = &DoltgresType{
 	OID:           uint32(oid.T_interval),
 	Name:          "interval",
 	Schema:        "pg_catalog",
@@ -31,16 +31,16 @@ var Interval = DoltgresType{
 	IsDefined:     true,
 	Delimiter:     ",",
 	RelID:         0,
-	SubscriptFunc: "-",
+	SubscriptFunc: toFuncID("-"),
 	Elem:          0,
 	Array:         uint32(oid.T__interval),
-	InputFunc:     "interval_in",
-	OutputFunc:    "interval_out",
-	ReceiveFunc:   "interval_recv",
-	SendFunc:      "interval_send",
-	ModInFunc:     "intervaltypmodin",
-	ModOutFunc:    "intervaltypmodout",
-	AnalyzeFunc:   "-",
+	InputFunc:     toFuncID("interval_in", oid.T_cstring, oid.T_oid, oid.T_int4),
+	OutputFunc:    toFuncID("interval_out", oid.T_interval),
+	ReceiveFunc:   toFuncID("interval_recv", oid.T_internal, oid.T_oid, oid.T_int4),
+	SendFunc:      toFuncID("interval_send", oid.T_interval),
+	ModInFunc:     toFuncID("intervaltypmodin", oid.T__cstring),
+	ModOutFunc:    toFuncID("intervaltypmodout", oid.T_int4),
+	AnalyzeFunc:   toFuncID("-"),
 	Align:         TypeAlignment_Double,
 	Storage:       TypeStorage_Plain,
 	NotNull:       false,
@@ -52,6 +52,6 @@ var Interval = DoltgresType{
 	Default:       "",
 	Acl:           nil,
 	Checks:        nil,
-	AttTypMod:     -1,
-	CompareFunc:   "interval_cmp",
+	attTypMod:     -1,
+	CompareFunc:   toFuncID("interval_cmp", oid.T_interval, oid.T_interval),
 }

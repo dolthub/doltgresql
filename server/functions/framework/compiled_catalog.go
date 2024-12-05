@@ -14,7 +14,11 @@
 
 package framework
 
-import "github.com/dolthub/go-mysql-server/sql"
+import (
+	"github.com/dolthub/go-mysql-server/sql"
+
+	pgtypes "github.com/dolthub/doltgresql/server/types"
+)
 
 // compiledCatalog contains all of PostgreSQL functions in their compiled forms.
 var compiledCatalog = map[string]sql.CreateFuncNArgs{}
@@ -30,4 +34,38 @@ func GetFunction(functionName string, params ...sql.Expression) (*CompiledFuncti
 		return expr.(*CompiledFunction), true, nil
 	}
 	return nil, false, nil
+}
+
+// dummyExpression is a simple expression that exists solely to capture type information for a parameter. This is used
+// exclusively by the getQuickFunctionForTypes function.
+type dummyExpression struct {
+	t *pgtypes.DoltgresType
+}
+
+var _ sql.Expression = dummyExpression{}
+
+func (d dummyExpression) Resolved() bool   { return true }
+func (d dummyExpression) String() string   { return d.t.String() }
+func (d dummyExpression) Type() sql.Type   { return d.t }
+func (d dummyExpression) IsNullable() bool { return false }
+func (d dummyExpression) Eval(ctx *sql.Context, row sql.Row) (interface{}, error) {
+	panic("cannot Eval dummyExpression")
+}
+func (d dummyExpression) Children() []sql.Expression { return nil }
+func (d dummyExpression) WithChildren(children ...sql.Expression) (sql.Expression, error) {
+	return d, nil
+}
+
+// getQuickFunctionForTypes is used by the types package to load quick functions. This is declared here to work around
+// import cycles. Returns nil if a QuickFunction could not be constructed.
+func getQuickFunctionForTypes(functionName string, params []*pgtypes.DoltgresType) any {
+	exprs := make([]sql.Expression, len(params))
+	for i := range params {
+		exprs[i] = dummyExpression{t: params[i]}
+	}
+	cf, ok, err := GetFunction(functionName, exprs...)
+	if err != nil || !ok {
+		return nil
+	}
+	return cf.GetQuickFunction()
 }

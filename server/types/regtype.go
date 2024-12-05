@@ -20,7 +20,7 @@ import (
 )
 
 // Regtype is the OID type for finding items in pg_type.
-var Regtype = DoltgresType{
+var Regtype = &DoltgresType{
 	OID:           uint32(oid.T_regtype),
 	Name:          "regtype",
 	Schema:        "pg_catalog",
@@ -32,16 +32,16 @@ var Regtype = DoltgresType{
 	IsDefined:     true,
 	Delimiter:     ",",
 	RelID:         0,
-	SubscriptFunc: "-",
+	SubscriptFunc: toFuncID("-"),
 	Elem:          0,
 	Array:         uint32(oid.T__regtype),
-	InputFunc:     "regtypein",
-	OutputFunc:    "regtypeout",
-	ReceiveFunc:   "regtyperecv",
-	SendFunc:      "regtypesend",
-	ModInFunc:     "-",
-	ModOutFunc:    "-",
-	AnalyzeFunc:   "-",
+	InputFunc:     toFuncID("regtypein", oid.T_cstring),
+	OutputFunc:    toFuncID("regtypeout", oid.T_regtype),
+	ReceiveFunc:   toFuncID("regtyperecv", oid.T_internal),
+	SendFunc:      toFuncID("regtypesend", oid.T_regtype),
+	ModInFunc:     toFuncID("-"),
+	ModOutFunc:    toFuncID("-"),
+	AnalyzeFunc:   toFuncID("-"),
 	Align:         TypeAlignment_Int,
 	Storage:       TypeStorage_Plain,
 	NotNull:       false,
@@ -53,8 +53,8 @@ var Regtype = DoltgresType{
 	Default:       "",
 	Acl:           nil,
 	Checks:        nil,
-	AttTypMod:     -1,
-	CompareFunc:   "-",
+	attTypMod:     -1,
+	CompareFunc:   toFuncID("-"),
 }
 
 // Regtype_IoInput is the implementation for IoInput that is being set from another package to avoid circular dependencies.

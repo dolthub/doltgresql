@@ -1893,3 +1893,80 @@ func TestStringFunction(t *testing.T) {
 		},
 	})
 }
+
+func TestFormatFunctions(t *testing.T) {
+	RunScripts(t, []ScriptTest{
+		{
+			Name:        "test to_char",
+			SetUpScript: []string{},
+			Assertions: []ScriptTestAssertion{
+				{
+					Query: `SELECT to_char(timestamp '2021-09-15 21:43:56.123456789', 'YYYY-MM-DD HH24:MI:SS.MS');`,
+					Expected: []sql.Row{
+						{"2021-09-15 21:43:56.123"},
+					},
+				},
+				{
+					Query: `SELECT to_char(timestamp '2021-09-15 21:43:56.123456789', 'HH HH12 HH24 hh hh12 hh24 H h hH Hh');`,
+					Expected: []sql.Row{
+						{"09 09 21 09 09 21 H h hH Hh"},
+					},
+				},
+				{
+					Query: `SELECT to_char(timestamp '2021-09-15 21:43:56.123456789', 'MI mi M m');`,
+					Expected: []sql.Row{
+						{"43 43 M m"},
+					},
+				},
+				{
+					Query: `SELECT to_char(timestamp '2021-09-15 21:43:56.123456789', 'SS ss S s MS ms Ms mS US us Us uS');`,
+					Expected: []sql.Row{
+						{"56 56 S s 123 123 Ms mS 123457 123457 Us uS"},
+					},
+				},
+				{
+					Query: `SELECT to_char(timestamp '2021-09-15 21:43:56.123456789', 'Y,YYY y,yyy YYYY yyyy YYY yyy YY yy Y y');`,
+					Expected: []sql.Row{
+						{"2,021 2,021 2021 2021 021 021 21 21 1 1"},
+					},
+				},
+				{
+					Query: `SELECT to_char(timestamp '2021-09-15 21:43:56.123456789', 'MONTH Month month MON Mon mon MM mm Mm mM');`,
+					Expected: []sql.Row{
+						{"SEPTEMBER September september SEP Sep sep 09 09 Mm mM"},
+					},
+				},
+				{
+					Query: `SELECT to_char(timestamp '2021-09-15 21:43:56.123456789', 'DAY Day day DDD ddd DY Dy dy DD dd D d');`,
+					Expected: []sql.Row{
+						{"WEDNESDAY Wednesday wednesday 258 258 WED Wed wed 15 15 4 4"},
+					},
+				},
+				{
+					Query: `SELECT to_char(timestamp '2021-09-15 21:43:56.123456789', 'DAY Day day DDD ddd DY Dy dy DD dd D d');`,
+					Expected: []sql.Row{
+						{"WEDNESDAY Wednesday wednesday 258 258 WED Wed wed 15 15 4 4"},
+					},
+				},
+				{
+					Query: `SELECT to_char(timestamp '2021-09-15 21:43:56.123456789', 'IW iw');`,
+					Expected: []sql.Row{
+						{"37 37"},
+					},
+				},
+				{
+					Query: `SELECT to_char(timestamp '2021-09-15 21:43:56.123456789', 'AM PM am pm A.M. P.M. a.m. p.m.');`,
+					Expected: []sql.Row{
+						{"PM PM pm pm P.M. P.M. p.m. p.m."},
+					},
+				},
+				{
+					Query: `SELECT to_char(timestamp '2021-09-15 21:43:56.123456789', 'Q q');`,
+					Expected: []sql.Row{
+						{"3 3"},
+					},
+				},
+			},
+		},
+	})
+}

@@ -19,7 +19,7 @@ import (
 )
 
 // Uuid is the UUID type.
-var Uuid = DoltgresType{
+var Uuid = &DoltgresType{
 	OID:           uint32(oid.T_uuid),
 	Name:          "uuid",
 	Schema:        "pg_catalog",
@@ -31,16 +31,16 @@ var Uuid = DoltgresType{
 	IsDefined:     true,
 	Delimiter:     ",",
 	RelID:         0,
-	SubscriptFunc: "-",
+	SubscriptFunc: toFuncID("-"),
 	Elem:          0,
 	Array:         uint32(oid.T__uuid),
-	InputFunc:     "uuid_in",
-	OutputFunc:    "uuid_out",
-	ReceiveFunc:   "uuid_recv",
-	SendFunc:      "uuid_send",
-	ModInFunc:     "-",
-	ModOutFunc:    "-",
-	AnalyzeFunc:   "-",
+	InputFunc:     toFuncID("uuid_in", oid.T_cstring),
+	OutputFunc:    toFuncID("uuid_out", oid.T_uuid),
+	ReceiveFunc:   toFuncID("uuid_recv", oid.T_internal),
+	SendFunc:      toFuncID("uuid_send", oid.T_uuid),
+	ModInFunc:     toFuncID("-"),
+	ModOutFunc:    toFuncID("-"),
+	AnalyzeFunc:   toFuncID("-"),
 	Align:         TypeAlignment_Char,
 	Storage:       TypeStorage_Plain,
 	NotNull:       false,
@@ -52,6 +52,6 @@ var Uuid = DoltgresType{
 	Default:       "",
 	Acl:           nil,
 	Checks:        nil,
-	AttTypMod:     -1,
-	CompareFunc:   "uuid_cmp",
+	attTypMod:     -1,
+	CompareFunc:   toFuncID("uuid_cmp", oid.T_uuid, oid.T_uuid),
 }

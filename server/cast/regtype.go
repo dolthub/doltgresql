@@ -32,14 +32,14 @@ func regtypeAssignment() {
 	framework.MustAddAssignmentTypeCast(framework.TypeCast{
 		FromType: pgtypes.Regtype,
 		ToType:   pgtypes.Int32,
-		Function: func(ctx *sql.Context, val any, targetType pgtypes.DoltgresType) (any, error) {
+		Function: func(ctx *sql.Context, val any, targetType *pgtypes.DoltgresType) (any, error) {
 			return int32(val.(uint32)), nil
 		},
 	})
 	framework.MustAddAssignmentTypeCast(framework.TypeCast{
 		FromType: pgtypes.Regtype,
 		ToType:   pgtypes.Int64,
-		Function: func(ctx *sql.Context, val any, targetType pgtypes.DoltgresType) (any, error) {
+		Function: func(ctx *sql.Context, val any, targetType *pgtypes.DoltgresType) (any, error) {
 			return int64(val.(uint32)), nil
 		},
 	})
@@ -50,7 +50,7 @@ func regtypeImplicit() {
 	framework.MustAddImplicitTypeCast(framework.TypeCast{
 		FromType: pgtypes.Regtype,
 		ToType:   pgtypes.Oid,
-		Function: func(ctx *sql.Context, val any, targetType pgtypes.DoltgresType) (any, error) {
+		Function: func(ctx *sql.Context, val any, targetType *pgtypes.DoltgresType) (any, error) {
 			return val, nil
 		},
 	})

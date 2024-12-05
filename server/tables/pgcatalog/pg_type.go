@@ -65,7 +65,7 @@ func (p PgTypeHandler) RowIter(ctx *sql.Context) (sql.RowIter, error) {
 			return nil, err
 		}
 
-		var types []pgtypes.DoltgresType
+		var types []*pgtypes.DoltgresType
 		err = oid.IterateCurrentDatabase(ctx, oid.Callbacks{
 			Type: func(ctx *sql.Context, typ oid.ItemType) (cont bool, err error) {
 				types = append(types, typ.Item)
@@ -133,7 +133,7 @@ var pgTypeSchema = sql.Schema{
 // pgTypeRowIter is the sql.RowIter for the pg_type table.
 type pgTypeRowIter struct {
 	pgCatalogOid uint32
-	types        []pgtypes.DoltgresType
+	types        []*pgtypes.DoltgresType
 	idx          int
 }
 
@@ -162,16 +162,16 @@ func (iter *pgTypeRowIter) Next(ctx *sql.Context) (sql.Row, error) {
 		typ.IsDefined,           //typisdefined
 		typ.Delimiter,           //typdelim
 		typ.RelID,               //typrelid
-		typ.SubscriptFunc,       //typsubscript
+		typ.SubscriptFuncName(), //typsubscript
 		typ.Elem,                //typelem
 		typ.Array,               //typarray
-		typ.InputFunc,           //typinput
-		typ.OutputFunc,          //typoutput
-		typ.ReceiveFunc,         //typreceive
-		typ.SendFunc,            //typsend
-		typ.ModInFunc,           //typmodin
-		typ.ModOutFunc,          //typmodout
-		typ.AnalyzeFunc,         //typanalyze
+		typ.InputFuncName(),     //typinput
+		typ.OutputFuncName(),    //typoutput
+		typ.ReceiveFuncName(),   //typreceive
+		typ.SendFuncName(),      //typsend
+		typ.ModInFuncName(),     //typmodin
+		typ.ModOutFuncName(),    //typmodout
+		typ.AnalyzeFuncName(),   //typanalyze
 		string(typ.Align),       //typalign
 		string(typ.Storage),     //typstorage
 		typ.NotNull,             //typnotnull

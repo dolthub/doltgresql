@@ -19,7 +19,7 @@ import (
 )
 
 // Float32 is an float32.
-var Float32 = DoltgresType{
+var Float32 = &DoltgresType{
 	OID:           uint32(oid.T_float4),
 	Name:          "float4",
 	Schema:        "pg_catalog",
@@ -31,16 +31,16 @@ var Float32 = DoltgresType{
 	IsDefined:     true,
 	Delimiter:     ",",
 	RelID:         0,
-	SubscriptFunc: "-",
+	SubscriptFunc: toFuncID("-"),
 	Elem:          0,
 	Array:         uint32(oid.T__float4),
-	InputFunc:     "float4in",
-	OutputFunc:    "float4out",
-	ReceiveFunc:   "float4recv",
-	SendFunc:      "float4send",
-	ModInFunc:     "-",
-	ModOutFunc:    "-",
-	AnalyzeFunc:   "-",
+	InputFunc:     toFuncID("float4in", oid.T_cstring),
+	OutputFunc:    toFuncID("float4out", oid.T_float4),
+	ReceiveFunc:   toFuncID("float4recv", oid.T_internal),
+	SendFunc:      toFuncID("float4send", oid.T_float4),
+	ModInFunc:     toFuncID("-"),
+	ModOutFunc:    toFuncID("-"),
+	AnalyzeFunc:   toFuncID("-"),
 	Align:         TypeAlignment_Int,
 	Storage:       TypeStorage_Plain,
 	NotNull:       false,
@@ -52,7 +52,7 @@ var Float32 = DoltgresType{
 	Default:       "",
 	Acl:           nil,
 	Checks:        nil,
-	AttTypMod:     -1,
-	CompareFunc:   "btfloat4cmp",
+	attTypMod:     -1,
+	CompareFunc:   toFuncID("btfloat4cmp", oid.T_float4, oid.T_float4),
 	InternalName:  "real",
 }

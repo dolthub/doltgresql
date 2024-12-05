@@ -19,7 +19,7 @@ import (
 )
 
 // JsonB is the deserialized and structured version of JSON that deals with JsonDocument.
-var JsonB = DoltgresType{
+var JsonB = &DoltgresType{
 	OID:           uint32(oid.T_jsonb),
 	Name:          "jsonb",
 	Schema:        "pg_catalog",
@@ -31,16 +31,16 @@ var JsonB = DoltgresType{
 	IsDefined:     true,
 	Delimiter:     ",",
 	RelID:         0,
-	SubscriptFunc: "jsonb_subscript_handler",
+	SubscriptFunc: toFuncID("jsonb_subscript_handler", oid.T_internal),
 	Elem:          0,
 	Array:         uint32(oid.T__jsonb),
-	InputFunc:     "jsonb_in",
-	OutputFunc:    "jsonb_out",
-	ReceiveFunc:   "jsonb_recv",
-	SendFunc:      "jsonb_send",
-	ModInFunc:     "-",
-	ModOutFunc:    "-",
-	AnalyzeFunc:   "-",
+	InputFunc:     toFuncID("jsonb_in", oid.T_cstring),
+	OutputFunc:    toFuncID("jsonb_out", oid.T_jsonb),
+	ReceiveFunc:   toFuncID("jsonb_recv", oid.T_internal),
+	SendFunc:      toFuncID("jsonb_send", oid.T_jsonb),
+	ModInFunc:     toFuncID("-"),
+	ModOutFunc:    toFuncID("-"),
+	AnalyzeFunc:   toFuncID("-"),
 	Align:         TypeAlignment_Int,
 	Storage:       TypeStorage_Extended,
 	NotNull:       false,
@@ -52,6 +52,6 @@ var JsonB = DoltgresType{
 	Default:       "",
 	Acl:           nil,
 	Checks:        nil,
-	AttTypMod:     -1,
-	CompareFunc:   "jsonb_cmp",
+	attTypMod:     -1,
+	CompareFunc:   toFuncID("jsonb_cmp", oid.T_jsonb, oid.T_jsonb),
 }

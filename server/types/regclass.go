@@ -20,7 +20,7 @@ import (
 )
 
 // Regclass is the OID type for finding items in pg_class.
-var Regclass = DoltgresType{
+var Regclass = &DoltgresType{
 	OID:           uint32(oid.T_regclass),
 	Name:          "regclass",
 	Schema:        "pg_catalog",
@@ -32,16 +32,16 @@ var Regclass = DoltgresType{
 	IsDefined:     true,
 	Delimiter:     ",",
 	RelID:         0,
-	SubscriptFunc: "-",
+	SubscriptFunc: toFuncID("-"),
 	Elem:          0,
 	Array:         uint32(oid.T__regclass),
-	InputFunc:     "regclassin",
-	OutputFunc:    "regclassout",
-	ReceiveFunc:   "regclassrecv",
-	SendFunc:      "regclasssend",
-	ModInFunc:     "-",
-	ModOutFunc:    "-",
-	AnalyzeFunc:   "-",
+	InputFunc:     toFuncID("regclassin", oid.T_cstring),
+	OutputFunc:    toFuncID("regclassout", oid.T_regclass),
+	ReceiveFunc:   toFuncID("regclassrecv", oid.T_internal),
+	SendFunc:      toFuncID("regclasssend", oid.T_regclass),
+	ModInFunc:     toFuncID("-"),
+	ModOutFunc:    toFuncID("-"),
+	AnalyzeFunc:   toFuncID("-"),
 	Align:         TypeAlignment_Int,
 	Storage:       TypeStorage_Plain,
 	NotNull:       false,
@@ -53,8 +53,8 @@ var Regclass = DoltgresType{
 	Default:       "",
 	Acl:           nil,
 	Checks:        nil,
-	AttTypMod:     -1,
-	CompareFunc:   "-",
+	attTypMod:     -1,
+	CompareFunc:   toFuncID("-"),
 }
 
 // Regclass_IoInput is the implementation for IoInput that is being set from another package to avoid circular dependencies.
