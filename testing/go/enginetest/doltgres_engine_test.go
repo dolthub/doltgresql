@@ -1269,6 +1269,9 @@ func TestDoltMerge(t *testing.T) {
 		"merge with decimal 1.23 column default",                      // alter table
 		"merge with different types",                                  // alter table
 		"select * from dolt_status",                                   // table_name column includes schema name,
+		"dolt_merge() (3way) works with no auto increment overlap", // sequencing doesn't work globally after merge, need to decide product behavior
+		"dolt_merge() (3way) with a gap in an auto increment key", // sequencing doesn't work globally after merge, need to decide product behavior
+		"dolt_merge() with a gap in an auto increment key", // unsupported insert statements (need to call next_val, not insert NULL)
 	})
 	denginetest.RunDoltMergeTests(t, h)
 }
