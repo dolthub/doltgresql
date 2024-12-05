@@ -1455,6 +1455,7 @@ func TestConvertQuery(t *testing.T) {
 	type test struct {
 		input    string
 		expected []string
+		pattern bool
 	}
 	tests := []test{
 		{
@@ -1476,9 +1477,11 @@ func TestConvertQuery(t *testing.T) {
 		},
 		{
 			input: "CREATE TABLE test (pk BIGINT PRIMARY KEY AUTO_INCREMENT, v1 BIGINT);",
+			// this is a pattern match because when run with other tests in the same process, the name of the sequence created is changed
+			pattern: true,
 			expected: []string{
-				"CREATE SEQUENCE seq_0",
-				"CREATE TABLE test (pk BIGINT NOT NULL DEFAULT nextval('seq_0') PRIMARY KEY, v1 BIGINT NULL)"},
+				"CREATE SEQUENCE .+",
+				"CREATE TABLE test \\(pk BIGINT NOT NULL DEFAULT nextval\\('.+'\\) PRIMARY KEY, v1 BIGINT NULL\\)"},
 		},
 		{
 			input:    "CREATE TABLE foo (a INT, b int, primary key (b,a))",
@@ -1536,7 +1539,14 @@ func TestConvertQuery(t *testing.T) {
 	for _, test := range tests {
 		t.Run(test.input, func(t *testing.T) {
 			actual := convertQuery(test.input)
-			require.Equal(t, test.expected, actual)
+			if test.pattern {
+				require.Equal(t, len(test.expected), len(actual))
+				for i := range test.expected {
+					require.Regexp(t, test.expected[i], actual[i])
+				}
+			} else {
+				require.Equal(t, test.expected, actual)
+			}
 		})
 	}
 }
