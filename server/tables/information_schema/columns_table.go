@@ -300,7 +300,7 @@ func getRowsFromDatabase(ctx *sql.Context, db information_schema.DbWithNames, al
 func getDataAndUdtType(colType sql.Type, colName string) (string, string) {
 	udtName := ""
 	dataType := ""
-	dgType, ok := colType.(pgtypes.DoltgresType)
+	dgType, ok := colType.(*pgtypes.DoltgresType)
 	if ok {
 		udtName = dgType.Name
 		if t, ok := partypes.OidToType[oid.Oid(dgType.OID)]; ok {
@@ -320,7 +320,7 @@ func getDataAndUdtType(colType sql.Type, colName string) (string, string) {
 // getColumnPrecisionAndScale returns the precision or a number of postgres type. For non-numeric or decimal types this
 // function should return nil,nil.
 func getColumnPrecisionAndScale(colType sql.Type) (interface{}, interface{}, interface{}) {
-	dgt, ok := colType.(pgtypes.DoltgresType)
+	dgt, ok := colType.(*pgtypes.DoltgresType)
 	if ok {
 		switch oid.Oid(dgt.OID) {
 		// TODO: BitType
@@ -331,8 +331,9 @@ func getColumnPrecisionAndScale(colType sql.Type) (interface{}, interface{}, int
 		case oid.T_numeric:
 			var precision interface{}
 			var scale interface{}
-			if dgt.AttTypMod != -1 {
-				precision, scale = pgtypes.GetPrecisionAndScaleFromTypmod(dgt.AttTypMod)
+			tm := dgt.GetAttTypMod()
+			if tm != -1 {
+				precision, scale = pgtypes.GetPrecisionAndScaleFromTypmod(tm)
 			}
 			return precision, int32(10), scale
 		default:
@@ -363,12 +364,13 @@ func getCharAndCollNamesAndCharMaxAndOctetLens(ctx *sql.Context, colType sql.Typ
 	}
 
 	switch t := colType.(type) {
-	case pgtypes.DoltgresType:
+	case *pgtypes.DoltgresType:
 		if t.TypCategory == pgtypes.TypeCategory_StringTypes {
-			if t.AttTypMod == -1 {
+			tm := t.GetAttTypMod()
+			if tm == -1 {
 				charOctetLen = int32(maxCharacterOctetLength)
 			} else {
-				l := pgtypes.GetCharLengthFromTypmod(t.AttTypMod)
+				l := pgtypes.GetCharLengthFromTypmod(tm)
 				charOctetLen = l * 4
 				charMaxLen = l
 			}
@@ -379,7 +381,7 @@ func getCharAndCollNamesAndCharMaxAndOctetLens(ctx *sql.Context, colType sql.Typ
 }
 
 func getDatetimePrecision(colType sql.Type) interface{} {
-	if dgType, ok := colType.(pgtypes.DoltgresType); ok {
+	if dgType, ok := colType.(*pgtypes.DoltgresType); ok {
 		switch oid.Oid(dgType.OID) {
 		case oid.T_date:
 			return int32(0)

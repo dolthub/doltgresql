@@ -36,9 +36,9 @@ func initJson() {
 var json_in = framework.Function1{
 	Name:       "json_in",
 	Return:     pgtypes.Json,
-	Parameters: [1]pgtypes.DoltgresType{pgtypes.Cstring},
+	Parameters: [1]*pgtypes.DoltgresType{pgtypes.Cstring},
 	Strict:     true,
-	Callable: func(ctx *sql.Context, _ [2]pgtypes.DoltgresType, val any) (any, error) {
+	Callable: func(ctx *sql.Context, _ [2]*pgtypes.DoltgresType, val any) (any, error) {
 		input := val.(string)
 		if json.Valid(unsafe.Slice(unsafe.StringData(input), len(input))) {
 			return input, nil
@@ -51,9 +51,9 @@ var json_in = framework.Function1{
 var json_out = framework.Function1{
 	Name:       "json_out",
 	Return:     pgtypes.Cstring,
-	Parameters: [1]pgtypes.DoltgresType{pgtypes.Json},
+	Parameters: [1]*pgtypes.DoltgresType{pgtypes.Json},
 	Strict:     true,
-	Callable: func(ctx *sql.Context, _ [2]pgtypes.DoltgresType, val any) (any, error) {
+	Callable: func(ctx *sql.Context, _ [2]*pgtypes.DoltgresType, val any) (any, error) {
 		return val.(string), nil
 	},
 }
@@ -62,9 +62,9 @@ var json_out = framework.Function1{
 var json_recv = framework.Function1{
 	Name:       "json_recv",
 	Return:     pgtypes.Json,
-	Parameters: [1]pgtypes.DoltgresType{pgtypes.Internal},
+	Parameters: [1]*pgtypes.DoltgresType{pgtypes.Internal},
 	Strict:     true,
-	Callable: func(ctx *sql.Context, _ [2]pgtypes.DoltgresType, val any) (any, error) {
+	Callable: func(ctx *sql.Context, _ [2]*pgtypes.DoltgresType, val any) (any, error) {
 		data := val.([]byte)
 		if len(data) == 0 {
 			return nil, nil
@@ -77,9 +77,9 @@ var json_recv = framework.Function1{
 var json_send = framework.Function1{
 	Name:       "json_send",
 	Return:     pgtypes.Bytea,
-	Parameters: [1]pgtypes.DoltgresType{pgtypes.Json},
+	Parameters: [1]*pgtypes.DoltgresType{pgtypes.Json},
 	Strict:     true,
-	Callable: func(ctx *sql.Context, _ [2]pgtypes.DoltgresType, val any) (any, error) {
+	Callable: func(ctx *sql.Context, _ [2]*pgtypes.DoltgresType, val any) (any, error) {
 		return []byte(val.(string)), nil
 	},
 }

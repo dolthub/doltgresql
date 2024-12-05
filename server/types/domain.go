@@ -24,13 +24,13 @@ func NewDomainType(
 	ctx *sql.Context,
 	schema string,
 	name string,
-	asType DoltgresType,
+	asType *DoltgresType,
 	defaultExpr string,
 	notNull bool,
 	checks []*sql.CheckDefinition,
 	owner string, // TODO
-) DoltgresType {
-	return DoltgresType{
+) *DoltgresType {
+	return &DoltgresType{
 		OID:           asType.OID, // TODO: generate unique OID, using underlying type OID for now
 		Name:          name,
 		Schema:        schema,
@@ -64,7 +64,7 @@ func NewDomainType(
 		Default:       defaultExpr,
 		Acl:           nil,
 		Checks:        checks,
-		AttTypMod:     -1,
+		attTypMod:     -1,
 		CompareFunc:   asType.CompareFunc,
 	}
 }

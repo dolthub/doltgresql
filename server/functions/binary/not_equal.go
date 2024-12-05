@@ -76,9 +76,9 @@ func initBinaryNotEqual() {
 var boolne = framework.Function2{
 	Name:       "boolne",
 	Return:     pgtypes.Bool,
-	Parameters: [2]pgtypes.DoltgresType{pgtypes.Bool, pgtypes.Bool},
+	Parameters: [2]*pgtypes.DoltgresType{pgtypes.Bool, pgtypes.Bool},
 	Strict:     true,
-	Callable: func(ctx *sql.Context, _ [3]pgtypes.DoltgresType, val1 any, val2 any) (any, error) {
+	Callable: func(ctx *sql.Context, _ [3]*pgtypes.DoltgresType, val1 any, val2 any) (any, error) {
 		res, err := pgtypes.Bool.Compare(val1.(bool), val2.(bool))
 		return res != 0, err
 	},
@@ -88,9 +88,9 @@ var boolne = framework.Function2{
 var bpcharne = framework.Function2{
 	Name:       "bpcharne",
 	Return:     pgtypes.Bool,
-	Parameters: [2]pgtypes.DoltgresType{pgtypes.BpChar, pgtypes.BpChar},
+	Parameters: [2]*pgtypes.DoltgresType{pgtypes.BpChar, pgtypes.BpChar},
 	Strict:     true,
-	Callable: func(ctx *sql.Context, _ [3]pgtypes.DoltgresType, val1 any, val2 any) (any, error) {
+	Callable: func(ctx *sql.Context, _ [3]*pgtypes.DoltgresType, val1 any, val2 any) (any, error) {
 		res, err := pgtypes.BpChar.Compare(val1.(string), val2.(string))
 		return res != 0, err
 	},
@@ -100,9 +100,9 @@ var bpcharne = framework.Function2{
 var byteane = framework.Function2{
 	Name:       "byteane",
 	Return:     pgtypes.Bool,
-	Parameters: [2]pgtypes.DoltgresType{pgtypes.Bytea, pgtypes.Bytea},
+	Parameters: [2]*pgtypes.DoltgresType{pgtypes.Bytea, pgtypes.Bytea},
 	Strict:     true,
-	Callable: func(ctx *sql.Context, _ [3]pgtypes.DoltgresType, val1 any, val2 any) (any, error) {
+	Callable: func(ctx *sql.Context, _ [3]*pgtypes.DoltgresType, val1 any, val2 any) (any, error) {
 		res, err := pgtypes.Bytea.Compare(val1.([]byte), val2.([]byte))
 		return res != 0, err
 	},
@@ -112,9 +112,9 @@ var byteane = framework.Function2{
 var charne = framework.Function2{
 	Name:       "charne",
 	Return:     pgtypes.Bool,
-	Parameters: [2]pgtypes.DoltgresType{pgtypes.InternalChar, pgtypes.InternalChar},
+	Parameters: [2]*pgtypes.DoltgresType{pgtypes.InternalChar, pgtypes.InternalChar},
 	Strict:     true,
-	Callable: func(ctx *sql.Context, _ [3]pgtypes.DoltgresType, val1 any, val2 any) (any, error) {
+	Callable: func(ctx *sql.Context, _ [3]*pgtypes.DoltgresType, val1 any, val2 any) (any, error) {
 		res, err := pgtypes.InternalChar.Compare(val1.(string), val2.(string))
 		return res != 0, err
 	},
@@ -124,9 +124,9 @@ var charne = framework.Function2{
 var date_ne = framework.Function2{
 	Name:       "date_ne",
 	Return:     pgtypes.Bool,
-	Parameters: [2]pgtypes.DoltgresType{pgtypes.Date, pgtypes.Date},
+	Parameters: [2]*pgtypes.DoltgresType{pgtypes.Date, pgtypes.Date},
 	Strict:     true,
-	Callable: func(ctx *sql.Context, _ [3]pgtypes.DoltgresType, val1 any, val2 any) (any, error) {
+	Callable: func(ctx *sql.Context, _ [3]*pgtypes.DoltgresType, val1 any, val2 any) (any, error) {
 		res, err := pgtypes.Date.Compare(val1.(time.Time), val2.(time.Time))
 		return res != 0, err
 	},
@@ -136,9 +136,9 @@ var date_ne = framework.Function2{
 var date_ne_timestamp = framework.Function2{
 	Name:       "date_ne_timestamp",
 	Return:     pgtypes.Bool,
-	Parameters: [2]pgtypes.DoltgresType{pgtypes.Date, pgtypes.Timestamp},
+	Parameters: [2]*pgtypes.DoltgresType{pgtypes.Date, pgtypes.Timestamp},
 	Strict:     true,
-	Callable: func(ctx *sql.Context, _ [3]pgtypes.DoltgresType, val1 any, val2 any) (any, error) {
+	Callable: func(ctx *sql.Context, _ [3]*pgtypes.DoltgresType, val1 any, val2 any) (any, error) {
 		res := val1.(time.Time).Compare(val2.(time.Time))
 		return res != 0, nil
 	},
@@ -148,9 +148,9 @@ var date_ne_timestamp = framework.Function2{
 var date_ne_timestamptz = framework.Function2{
 	Name:       "date_ne_timestamptz",
 	Return:     pgtypes.Bool,
-	Parameters: [2]pgtypes.DoltgresType{pgtypes.Date, pgtypes.TimestampTZ},
+	Parameters: [2]*pgtypes.DoltgresType{pgtypes.Date, pgtypes.TimestampTZ},
 	Strict:     true,
-	Callable: func(ctx *sql.Context, _ [3]pgtypes.DoltgresType, val1 any, val2 any) (any, error) {
+	Callable: func(ctx *sql.Context, _ [3]*pgtypes.DoltgresType, val1 any, val2 any) (any, error) {
 		res := val1.(time.Time).Compare(val2.(time.Time))
 		return res != 0, nil
 	},
@@ -160,9 +160,9 @@ var date_ne_timestamptz = framework.Function2{
 var float4ne = framework.Function2{
 	Name:       "float4ne",
 	Return:     pgtypes.Bool,
-	Parameters: [2]pgtypes.DoltgresType{pgtypes.Float32, pgtypes.Float32},
+	Parameters: [2]*pgtypes.DoltgresType{pgtypes.Float32, pgtypes.Float32},
 	Strict:     true,
-	Callable: func(ctx *sql.Context, _ [3]pgtypes.DoltgresType, val1 any, val2 any) (any, error) {
+	Callable: func(ctx *sql.Context, _ [3]*pgtypes.DoltgresType, val1 any, val2 any) (any, error) {
 		res, err := pgtypes.Float32.Compare(val1.(float32), val2.(float32))
 		return res != 0, err
 	},
@@ -172,9 +172,9 @@ var float4ne = framework.Function2{
 var float48ne = framework.Function2{
 	Name:       "float48ne",
 	Return:     pgtypes.Bool,
-	Parameters: [2]pgtypes.DoltgresType{pgtypes.Float32, pgtypes.Float64},
+	Parameters: [2]*pgtypes.DoltgresType{pgtypes.Float32, pgtypes.Float64},
 	Strict:     true,
-	Callable: func(ctx *sql.Context, _ [3]pgtypes.DoltgresType, val1 any, val2 any) (any, error) {
+	Callable: func(ctx *sql.Context, _ [3]*pgtypes.DoltgresType, val1 any, val2 any) (any, error) {
 		res, err := pgtypes.Float64.Compare(float64(val1.(float32)), val2.(float64))
 		return res != 0, err
 	},
@@ -184,9 +184,9 @@ var float48ne = framework.Function2{
 var float84ne = framework.Function2{
 	Name:       "float84ne",
 	Return:     pgtypes.Bool,
-	Parameters: [2]pgtypes.DoltgresType{pgtypes.Float64, pgtypes.Float32},
+	Parameters: [2]*pgtypes.DoltgresType{pgtypes.Float64, pgtypes.Float32},
 	Strict:     true,
-	Callable: func(ctx *sql.Context, _ [3]pgtypes.DoltgresType, val1 any, val2 any) (any, error) {
+	Callable: func(ctx *sql.Context, _ [3]*pgtypes.DoltgresType, val1 any, val2 any) (any, error) {
 		res, err := pgtypes.Float64.Compare(val1.(float64), float64(val2.(float32)))
 		return res != 0, err
 	},
@@ -196,9 +196,9 @@ var float84ne = framework.Function2{
 var float8ne = framework.Function2{
 	Name:       "float8ne",
 	Return:     pgtypes.Bool,
-	Parameters: [2]pgtypes.DoltgresType{pgtypes.Float64, pgtypes.Float64},
+	Parameters: [2]*pgtypes.DoltgresType{pgtypes.Float64, pgtypes.Float64},
 	Strict:     true,
-	Callable: func(ctx *sql.Context, _ [3]pgtypes.DoltgresType, val1 any, val2 any) (any, error) {
+	Callable: func(ctx *sql.Context, _ [3]*pgtypes.DoltgresType, val1 any, val2 any) (any, error) {
 		res, err := pgtypes.Float64.Compare(val1.(float64), val2.(float64))
 		return res != 0, err
 	},
@@ -208,9 +208,9 @@ var float8ne = framework.Function2{
 var int2ne = framework.Function2{
 	Name:       "int2ne",
 	Return:     pgtypes.Bool,
-	Parameters: [2]pgtypes.DoltgresType{pgtypes.Int16, pgtypes.Int16},
+	Parameters: [2]*pgtypes.DoltgresType{pgtypes.Int16, pgtypes.Int16},
 	Strict:     true,
-	Callable: func(ctx *sql.Context, _ [3]pgtypes.DoltgresType, val1 any, val2 any) (any, error) {
+	Callable: func(ctx *sql.Context, _ [3]*pgtypes.DoltgresType, val1 any, val2 any) (any, error) {
 		res, err := pgtypes.Int16.Compare(val1.(int16), val2.(int16))
 		return res != 0, err
 	},
@@ -220,9 +220,9 @@ var int2ne = framework.Function2{
 var int24ne = framework.Function2{
 	Name:       "int24ne",
 	Return:     pgtypes.Bool,
-	Parameters: [2]pgtypes.DoltgresType{pgtypes.Int16, pgtypes.Int32},
+	Parameters: [2]*pgtypes.DoltgresType{pgtypes.Int16, pgtypes.Int32},
 	Strict:     true,
-	Callable: func(ctx *sql.Context, _ [3]pgtypes.DoltgresType, val1 any, val2 any) (any, error) {
+	Callable: func(ctx *sql.Context, _ [3]*pgtypes.DoltgresType, val1 any, val2 any) (any, error) {
 		res, err := pgtypes.Int32.Compare(int32(val1.(int16)), val2.(int32))
 		return res != 0, err
 	},
@@ -232,9 +232,9 @@ var int24ne = framework.Function2{
 var int28ne = framework.Function2{
 	Name:       "int28ne",
 	Return:     pgtypes.Bool,
-	Parameters: [2]pgtypes.DoltgresType{pgtypes.Int16, pgtypes.Int64},
+	Parameters: [2]*pgtypes.DoltgresType{pgtypes.Int16, pgtypes.Int64},
 	Strict:     true,
-	Callable: func(ctx *sql.Context, _ [3]pgtypes.DoltgresType, val1 any, val2 any) (any, error) {
+	Callable: func(ctx *sql.Context, _ [3]*pgtypes.DoltgresType, val1 any, val2 any) (any, error) {
 		res, err := pgtypes.Int64.Compare(int64(val1.(int16)), val2.(int64))
 		return res != 0, err
 	},
@@ -244,9 +244,9 @@ var int28ne = framework.Function2{
 var int42ne = framework.Function2{
 	Name:       "int42ne",
 	Return:     pgtypes.Bool,
-	Parameters: [2]pgtypes.DoltgresType{pgtypes.Int32, pgtypes.Int16},
+	Parameters: [2]*pgtypes.DoltgresType{pgtypes.Int32, pgtypes.Int16},
 	Strict:     true,
-	Callable: func(ctx *sql.Context, _ [3]pgtypes.DoltgresType, val1 any, val2 any) (any, error) {
+	Callable: func(ctx *sql.Context, _ [3]*pgtypes.DoltgresType, val1 any, val2 any) (any, error) {
 		res, err := pgtypes.Int32.Compare(val1.(int32), int32(val2.(int16)))
 		return res != 0, err
 	},
@@ -256,9 +256,9 @@ var int42ne = framework.Function2{
 var int4ne = framework.Function2{
 	Name:       "int4ne",
 	Return:     pgtypes.Bool,
-	Parameters: [2]pgtypes.DoltgresType{pgtypes.Int32, pgtypes.Int32},
+	Parameters: [2]*pgtypes.DoltgresType{pgtypes.Int32, pgtypes.Int32},
 	Strict:     true,
-	Callable: func(ctx *sql.Context, _ [3]pgtypes.DoltgresType, val1 any, val2 any) (any, error) {
+	Callable: func(ctx *sql.Context, _ [3]*pgtypes.DoltgresType, val1 any, val2 any) (any, error) {
 		res, err := pgtypes.Int32.Compare(val1.(int32), val2.(int32))
 		return res != 0, err
 	},
@@ -268,9 +268,9 @@ var int4ne = framework.Function2{
 var int48ne = framework.Function2{
 	Name:       "int48ne",
 	Return:     pgtypes.Bool,
-	Parameters: [2]pgtypes.DoltgresType{pgtypes.Int32, pgtypes.Int64},
+	Parameters: [2]*pgtypes.DoltgresType{pgtypes.Int32, pgtypes.Int64},
 	Strict:     true,
-	Callable: func(ctx *sql.Context, _ [3]pgtypes.DoltgresType, val1 any, val2 any) (any, error) {
+	Callable: func(ctx *sql.Context, _ [3]*pgtypes.DoltgresType, val1 any, val2 any) (any, error) {
 		res, err := pgtypes.Int64.Compare(int64(val1.(int32)), val2.(int64))
 		return res != 0, err
 	},
@@ -280,9 +280,9 @@ var int48ne = framework.Function2{
 var int82ne = framework.Function2{
 	Name:       "int82ne",
 	Return:     pgtypes.Bool,
-	Parameters: [2]pgtypes.DoltgresType{pgtypes.Int64, pgtypes.Int16},
+	Parameters: [2]*pgtypes.DoltgresType{pgtypes.Int64, pgtypes.Int16},
 	Strict:     true,
-	Callable: func(ctx *sql.Context, _ [3]pgtypes.DoltgresType, val1 any, val2 any) (any, error) {
+	Callable: func(ctx *sql.Context, _ [3]*pgtypes.DoltgresType, val1 any, val2 any) (any, error) {
 		res, err := pgtypes.Int64.Compare(val1.(int64), int64(val2.(int16)))
 		return res != 0, err
 	},
@@ -292,9 +292,9 @@ var int82ne = framework.Function2{
 var int84ne = framework.Function2{
 	Name:       "int84ne",
 	Return:     pgtypes.Bool,
-	Parameters: [2]pgtypes.DoltgresType{pgtypes.Int64, pgtypes.Int32},
+	Parameters: [2]*pgtypes.DoltgresType{pgtypes.Int64, pgtypes.Int32},
 	Strict:     true,
-	Callable: func(ctx *sql.Context, _ [3]pgtypes.DoltgresType, val1 any, val2 any) (any, error) {
+	Callable: func(ctx *sql.Context, _ [3]*pgtypes.DoltgresType, val1 any, val2 any) (any, error) {
 		res, err := pgtypes.Int64.Compare(val1.(int64), int64(val2.(int32)))
 		return res != 0, err
 	},
@@ -304,9 +304,9 @@ var int84ne = framework.Function2{
 var int8ne = framework.Function2{
 	Name:       "int8ne",
 	Return:     pgtypes.Bool,
-	Parameters: [2]pgtypes.DoltgresType{pgtypes.Int64, pgtypes.Int64},
+	Parameters: [2]*pgtypes.DoltgresType{pgtypes.Int64, pgtypes.Int64},
 	Strict:     true,
-	Callable: func(ctx *sql.Context, _ [3]pgtypes.DoltgresType, val1 any, val2 any) (any, error) {
+	Callable: func(ctx *sql.Context, _ [3]*pgtypes.DoltgresType, val1 any, val2 any) (any, error) {
 		res, err := pgtypes.Int64.Compare(val1.(int64), val2.(int64))
 		return res != 0, err
 	},
@@ -316,9 +316,9 @@ var int8ne = framework.Function2{
 var interval_ne = framework.Function2{
 	Name:       "interval_ne",
 	Return:     pgtypes.Bool,
-	Parameters: [2]pgtypes.DoltgresType{pgtypes.Interval, pgtypes.Interval},
+	Parameters: [2]*pgtypes.DoltgresType{pgtypes.Interval, pgtypes.Interval},
 	Strict:     true,
-	Callable: func(ctx *sql.Context, _ [3]pgtypes.DoltgresType, val1 any, val2 any) (any, error) {
+	Callable: func(ctx *sql.Context, _ [3]*pgtypes.DoltgresType, val1 any, val2 any) (any, error) {
 		res, err := pgtypes.Interval.Compare(val1.(duration.Duration), val2.(duration.Duration))
 		return res != 0, err
 	},
@@ -328,9 +328,9 @@ var interval_ne = framework.Function2{
 var jsonb_ne = framework.Function2{
 	Name:       "jsonb_ne",
 	Return:     pgtypes.Bool,
-	Parameters: [2]pgtypes.DoltgresType{pgtypes.JsonB, pgtypes.JsonB},
+	Parameters: [2]*pgtypes.DoltgresType{pgtypes.JsonB, pgtypes.JsonB},
 	Strict:     true,
-	Callable: func(ctx *sql.Context, _ [3]pgtypes.DoltgresType, val1 any, val2 any) (any, error) {
+	Callable: func(ctx *sql.Context, _ [3]*pgtypes.DoltgresType, val1 any, val2 any) (any, error) {
 		res, err := pgtypes.JsonB.Compare(val1.(pgtypes.JsonDocument), val2.(pgtypes.JsonDocument))
 		return res != 0, err
 	},
@@ -340,9 +340,9 @@ var jsonb_ne = framework.Function2{
 var namene = framework.Function2{
 	Name:       "namene",
 	Return:     pgtypes.Bool,
-	Parameters: [2]pgtypes.DoltgresType{pgtypes.Name, pgtypes.Name},
+	Parameters: [2]*pgtypes.DoltgresType{pgtypes.Name, pgtypes.Name},
 	Strict:     true,
-	Callable: func(ctx *sql.Context, _ [3]pgtypes.DoltgresType, val1 any, val2 any) (any, error) {
+	Callable: func(ctx *sql.Context, _ [3]*pgtypes.DoltgresType, val1 any, val2 any) (any, error) {
 		res, err := pgtypes.Name.Compare(val1.(string), val2.(string))
 		return res != 0, err
 	},
@@ -352,9 +352,9 @@ var namene = framework.Function2{
 var namenetext = framework.Function2{
 	Name:       "namenetext",
 	Return:     pgtypes.Bool,
-	Parameters: [2]pgtypes.DoltgresType{pgtypes.Name, pgtypes.Text},
+	Parameters: [2]*pgtypes.DoltgresType{pgtypes.Name, pgtypes.Text},
 	Strict:     true,
-	Callable: func(ctx *sql.Context, _ [3]pgtypes.DoltgresType, val1 any, val2 any) (any, error) {
+	Callable: func(ctx *sql.Context, _ [3]*pgtypes.DoltgresType, val1 any, val2 any) (any, error) {
 		res, err := pgtypes.Text.Compare(val1.(string), val2.(string))
 		return res != 0, err
 	},
@@ -364,9 +364,9 @@ var namenetext = framework.Function2{
 var numeric_ne = framework.Function2{
 	Name:       "numeric_ne",
 	Return:     pgtypes.Bool,
-	Parameters: [2]pgtypes.DoltgresType{pgtypes.Numeric, pgtypes.Numeric},
+	Parameters: [2]*pgtypes.DoltgresType{pgtypes.Numeric, pgtypes.Numeric},
 	Strict:     true,
-	Callable: func(ctx *sql.Context, _ [3]pgtypes.DoltgresType, val1 any, val2 any) (any, error) {
+	Callable: func(ctx *sql.Context, _ [3]*pgtypes.DoltgresType, val1 any, val2 any) (any, error) {
 		res, err := pgtypes.Numeric.Compare(val1.(decimal.Decimal), val2.(decimal.Decimal))
 		return res != 0, err
 	},
@@ -376,9 +376,9 @@ var numeric_ne = framework.Function2{
 var oidne = framework.Function2{
 	Name:       "oidne",
 	Return:     pgtypes.Bool,
-	Parameters: [2]pgtypes.DoltgresType{pgtypes.Oid, pgtypes.Oid},
+	Parameters: [2]*pgtypes.DoltgresType{pgtypes.Oid, pgtypes.Oid},
 	Strict:     true,
-	Callable: func(ctx *sql.Context, _ [3]pgtypes.DoltgresType, val1 any, val2 any) (any, error) {
+	Callable: func(ctx *sql.Context, _ [3]*pgtypes.DoltgresType, val1 any, val2 any) (any, error) {
 		res, err := pgtypes.Oid.Compare(val1.(uint32), val2.(uint32))
 		return res != 0, err
 	},
@@ -388,9 +388,9 @@ var oidne = framework.Function2{
 var textnename = framework.Function2{
 	Name:       "textnename",
 	Return:     pgtypes.Bool,
-	Parameters: [2]pgtypes.DoltgresType{pgtypes.Text, pgtypes.Name},
+	Parameters: [2]*pgtypes.DoltgresType{pgtypes.Text, pgtypes.Name},
 	Strict:     true,
-	Callable: func(ctx *sql.Context, _ [3]pgtypes.DoltgresType, val1 any, val2 any) (any, error) {
+	Callable: func(ctx *sql.Context, _ [3]*pgtypes.DoltgresType, val1 any, val2 any) (any, error) {
 		res, err := pgtypes.Text.Compare(val1.(string), val2.(string))
 		return res != 0, err
 	},
@@ -400,9 +400,9 @@ var textnename = framework.Function2{
 var text_ne = framework.Function2{
 	Name:       "text_ne",
 	Return:     pgtypes.Bool,
-	Parameters: [2]pgtypes.DoltgresType{pgtypes.Text, pgtypes.Text},
+	Parameters: [2]*pgtypes.DoltgresType{pgtypes.Text, pgtypes.Text},
 	Strict:     true,
-	Callable: func(ctx *sql.Context, _ [3]pgtypes.DoltgresType, val1 any, val2 any) (any, error) {
+	Callable: func(ctx *sql.Context, _ [3]*pgtypes.DoltgresType, val1 any, val2 any) (any, error) {
 		res, err := pgtypes.Text.Compare(val1.(string), val2.(string))
 		return res != 0, err
 	},
@@ -412,9 +412,9 @@ var text_ne = framework.Function2{
 var time_ne = framework.Function2{
 	Name:       "time_ne",
 	Return:     pgtypes.Bool,
-	Parameters: [2]pgtypes.DoltgresType{pgtypes.Time, pgtypes.Time},
+	Parameters: [2]*pgtypes.DoltgresType{pgtypes.Time, pgtypes.Time},
 	Strict:     true,
-	Callable: func(ctx *sql.Context, _ [3]pgtypes.DoltgresType, val1 any, val2 any) (any, error) {
+	Callable: func(ctx *sql.Context, _ [3]*pgtypes.DoltgresType, val1 any, val2 any) (any, error) {
 		res, err := pgtypes.Time.Compare(val1.(time.Time), val2.(time.Time))
 		return res != 0, err
 	},
@@ -424,9 +424,9 @@ var time_ne = framework.Function2{
 var timestamp_ne_date = framework.Function2{
 	Name:       "timestamp_ne_date",
 	Return:     pgtypes.Bool,
-	Parameters: [2]pgtypes.DoltgresType{pgtypes.Timestamp, pgtypes.Date},
+	Parameters: [2]*pgtypes.DoltgresType{pgtypes.Timestamp, pgtypes.Date},
 	Strict:     true,
-	Callable: func(ctx *sql.Context, _ [3]pgtypes.DoltgresType, val1 any, val2 any) (any, error) {
+	Callable: func(ctx *sql.Context, _ [3]*pgtypes.DoltgresType, val1 any, val2 any) (any, error) {
 		res := val1.(time.Time).Compare(val2.(time.Time))
 		return res != 0, nil
 	},
@@ -436,9 +436,9 @@ var timestamp_ne_date = framework.Function2{
 var timestamp_ne = framework.Function2{
 	Name:       "timestamp_ne",
 	Return:     pgtypes.Bool,
-	Parameters: [2]pgtypes.DoltgresType{pgtypes.Timestamp, pgtypes.Timestamp},
+	Parameters: [2]*pgtypes.DoltgresType{pgtypes.Timestamp, pgtypes.Timestamp},
 	Strict:     true,
-	Callable: func(ctx *sql.Context, _ [3]pgtypes.DoltgresType, val1 any, val2 any) (any, error) {
+	Callable: func(ctx *sql.Context, _ [3]*pgtypes.DoltgresType, val1 any, val2 any) (any, error) {
 		res, err := pgtypes.Timestamp.Compare(val1.(time.Time), val2.(time.Time))
 		return res != 0, err
 	},
@@ -448,9 +448,9 @@ var timestamp_ne = framework.Function2{
 var timestamp_ne_timestamptz = framework.Function2{
 	Name:       "timestamp_ne_timestamptz",
 	Return:     pgtypes.Bool,
-	Parameters: [2]pgtypes.DoltgresType{pgtypes.Timestamp, pgtypes.TimestampTZ},
+	Parameters: [2]*pgtypes.DoltgresType{pgtypes.Timestamp, pgtypes.TimestampTZ},
 	Strict:     true,
-	Callable: func(ctx *sql.Context, _ [3]pgtypes.DoltgresType, val1 any, val2 any) (any, error) {
+	Callable: func(ctx *sql.Context, _ [3]*pgtypes.DoltgresType, val1 any, val2 any) (any, error) {
 		res, err := pgtypes.TimestampTZ.Compare(val1.(time.Time), val2.(time.Time))
 		return res != 0, err
 	},
@@ -460,9 +460,9 @@ var timestamp_ne_timestamptz = framework.Function2{
 var timestamptz_ne_date = framework.Function2{
 	Name:       "timestamptz_ne_date",
 	Return:     pgtypes.Bool,
-	Parameters: [2]pgtypes.DoltgresType{pgtypes.TimestampTZ, pgtypes.Date},
+	Parameters: [2]*pgtypes.DoltgresType{pgtypes.TimestampTZ, pgtypes.Date},
 	Strict:     true,
-	Callable: func(ctx *sql.Context, _ [3]pgtypes.DoltgresType, val1 any, val2 any) (any, error) {
+	Callable: func(ctx *sql.Context, _ [3]*pgtypes.DoltgresType, val1 any, val2 any) (any, error) {
 		res := val1.(time.Time).Compare(val2.(time.Time))
 		return res != 0, nil
 	},
@@ -472,9 +472,9 @@ var timestamptz_ne_date = framework.Function2{
 var timestamptz_ne_timestamp = framework.Function2{
 	Name:       "timestamptz_ne_timestamp",
 	Return:     pgtypes.Bool,
-	Parameters: [2]pgtypes.DoltgresType{pgtypes.TimestampTZ, pgtypes.Timestamp},
+	Parameters: [2]*pgtypes.DoltgresType{pgtypes.TimestampTZ, pgtypes.Timestamp},
 	Strict:     true,
-	Callable: func(ctx *sql.Context, _ [3]pgtypes.DoltgresType, val1 any, val2 any) (any, error) {
+	Callable: func(ctx *sql.Context, _ [3]*pgtypes.DoltgresType, val1 any, val2 any) (any, error) {
 		res, err := pgtypes.TimestampTZ.Compare(val1.(time.Time), val2.(time.Time))
 		return res != 0, err
 	},
@@ -484,9 +484,9 @@ var timestamptz_ne_timestamp = framework.Function2{
 var timestamptz_ne = framework.Function2{
 	Name:       "timestamptz_ne",
 	Return:     pgtypes.Bool,
-	Parameters: [2]pgtypes.DoltgresType{pgtypes.TimestampTZ, pgtypes.TimestampTZ},
+	Parameters: [2]*pgtypes.DoltgresType{pgtypes.TimestampTZ, pgtypes.TimestampTZ},
 	Strict:     true,
-	Callable: func(ctx *sql.Context, _ [3]pgtypes.DoltgresType, val1 any, val2 any) (any, error) {
+	Callable: func(ctx *sql.Context, _ [3]*pgtypes.DoltgresType, val1 any, val2 any) (any, error) {
 		res, err := pgtypes.TimestampTZ.Compare(val1.(time.Time), val2.(time.Time))
 		return res != 0, err
 	},
@@ -496,9 +496,9 @@ var timestamptz_ne = framework.Function2{
 var timetz_ne = framework.Function2{
 	Name:       "timetz_ne",
 	Return:     pgtypes.Bool,
-	Parameters: [2]pgtypes.DoltgresType{pgtypes.TimeTZ, pgtypes.TimeTZ},
+	Parameters: [2]*pgtypes.DoltgresType{pgtypes.TimeTZ, pgtypes.TimeTZ},
 	Strict:     true,
-	Callable: func(ctx *sql.Context, _ [3]pgtypes.DoltgresType, val1 any, val2 any) (any, error) {
+	Callable: func(ctx *sql.Context, _ [3]*pgtypes.DoltgresType, val1 any, val2 any) (any, error) {
 		res, err := pgtypes.TimeTZ.Compare(val1.(time.Time), val2.(time.Time))
 		return res != 0, err
 	},
@@ -508,9 +508,9 @@ var timetz_ne = framework.Function2{
 var uuid_ne = framework.Function2{
 	Name:       "uuid_ne",
 	Return:     pgtypes.Bool,
-	Parameters: [2]pgtypes.DoltgresType{pgtypes.Uuid, pgtypes.Uuid},
+	Parameters: [2]*pgtypes.DoltgresType{pgtypes.Uuid, pgtypes.Uuid},
 	Strict:     true,
-	Callable: func(ctx *sql.Context, _ [3]pgtypes.DoltgresType, val1 any, val2 any) (any, error) {
+	Callable: func(ctx *sql.Context, _ [3]*pgtypes.DoltgresType, val1 any, val2 any) (any, error) {
 		res, err := pgtypes.Uuid.Compare(val1.(uuid.UUID), val2.(uuid.UUID))
 		return res != 0, err
 	},
@@ -520,9 +520,9 @@ var uuid_ne = framework.Function2{
 var xidneqint4 = framework.Function2{
 	Name:       "xidneqint4",
 	Return:     pgtypes.Bool,
-	Parameters: [2]pgtypes.DoltgresType{pgtypes.Xid, pgtypes.Int32},
+	Parameters: [2]*pgtypes.DoltgresType{pgtypes.Xid, pgtypes.Int32},
 	Strict:     true,
-	Callable: func(ctx *sql.Context, _ [3]pgtypes.DoltgresType, val1 any, val2 any) (any, error) {
+	Callable: func(ctx *sql.Context, _ [3]*pgtypes.DoltgresType, val1 any, val2 any) (any, error) {
 		// TODO: investigate the edge cases
 		res, err := pgtypes.Int64.Compare(int64(val1.(uint32)), int64(val2.(int32)))
 		return res != 0, err
@@ -533,9 +533,9 @@ var xidneqint4 = framework.Function2{
 var xidneq = framework.Function2{
 	Name:       "xidneq",
 	Return:     pgtypes.Bool,
-	Parameters: [2]pgtypes.DoltgresType{pgtypes.Xid, pgtypes.Xid},
+	Parameters: [2]*pgtypes.DoltgresType{pgtypes.Xid, pgtypes.Xid},
 	Strict:     true,
-	Callable: func(ctx *sql.Context, _ [3]pgtypes.DoltgresType, val1 any, val2 any) (any, error) {
+	Callable: func(ctx *sql.Context, _ [3]*pgtypes.DoltgresType, val1 any, val2 any) (any, error) {
 		res, err := pgtypes.Xid.Compare(val1.(uint32), val2.(uint32))
 		return res != 0, err
 	},

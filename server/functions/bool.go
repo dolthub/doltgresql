@@ -36,9 +36,9 @@ func initBool() {
 var boolin = framework.Function1{
 	Name:       "boolin",
 	Return:     pgtypes.Bool,
-	Parameters: [1]pgtypes.DoltgresType{pgtypes.Cstring},
+	Parameters: [1]*pgtypes.DoltgresType{pgtypes.Cstring},
 	Strict:     true,
-	Callable: func(ctx *sql.Context, _ [2]pgtypes.DoltgresType, val any) (any, error) {
+	Callable: func(ctx *sql.Context, _ [2]*pgtypes.DoltgresType, val any) (any, error) {
 		val = strings.TrimSpace(strings.ToLower(val.(string)))
 		if val == "true" || val == "t" || val == "yes" || val == "on" || val == "1" {
 			return true, nil
@@ -54,9 +54,9 @@ var boolin = framework.Function1{
 var boolout = framework.Function1{
 	Name:       "boolout",
 	Return:     pgtypes.Cstring,
-	Parameters: [1]pgtypes.DoltgresType{pgtypes.Bool},
+	Parameters: [1]*pgtypes.DoltgresType{pgtypes.Bool},
 	Strict:     true,
-	Callable: func(ctx *sql.Context, _ [2]pgtypes.DoltgresType, val any) (any, error) {
+	Callable: func(ctx *sql.Context, _ [2]*pgtypes.DoltgresType, val any) (any, error) {
 		if val.(bool) {
 			return "true", nil
 		} else {
@@ -69,9 +69,9 @@ var boolout = framework.Function1{
 var boolrecv = framework.Function1{
 	Name:       "boolrecv",
 	Return:     pgtypes.Bool,
-	Parameters: [1]pgtypes.DoltgresType{pgtypes.Internal},
+	Parameters: [1]*pgtypes.DoltgresType{pgtypes.Internal},
 	Strict:     true,
-	Callable: func(ctx *sql.Context, _ [2]pgtypes.DoltgresType, val any) (any, error) {
+	Callable: func(ctx *sql.Context, _ [2]*pgtypes.DoltgresType, val any) (any, error) {
 		data := val.([]byte)
 		if len(data) == 0 {
 			return nil, nil
@@ -84,9 +84,9 @@ var boolrecv = framework.Function1{
 var boolsend = framework.Function1{
 	Name:       "boolsend",
 	Return:     pgtypes.Bytea,
-	Parameters: [1]pgtypes.DoltgresType{pgtypes.Bool},
+	Parameters: [1]*pgtypes.DoltgresType{pgtypes.Bool},
 	Strict:     true,
-	Callable: func(ctx *sql.Context, _ [2]pgtypes.DoltgresType, val any) (any, error) {
+	Callable: func(ctx *sql.Context, _ [2]*pgtypes.DoltgresType, val any) (any, error) {
 		if val.(bool) {
 			return []byte{1}, nil
 		} else {
@@ -99,9 +99,9 @@ var boolsend = framework.Function1{
 var btboolcmp = framework.Function2{
 	Name:       "btboolcmp",
 	Return:     pgtypes.Int32,
-	Parameters: [2]pgtypes.DoltgresType{pgtypes.Bool, pgtypes.Bool},
+	Parameters: [2]*pgtypes.DoltgresType{pgtypes.Bool, pgtypes.Bool},
 	Strict:     true,
-	Callable: func(ctx *sql.Context, _ [3]pgtypes.DoltgresType, val1, val2 any) (any, error) {
+	Callable: func(ctx *sql.Context, _ [3]*pgtypes.DoltgresType, val1, val2 any) (any, error) {
 		ab := val1.(bool)
 		bb := val2.(bool)
 		if ab == bb {

@@ -38,7 +38,7 @@ func SplitDisjunction(expr sql.Expression) []sql.Expression {
 		// We should check to see if we need to preserve the cast on each child individually
 		split := SplitDisjunction(expr.Child())
 		for i := range split {
-			if _, ok := split[i].Type().(pgtypes.DoltgresType); !ok {
+			if _, ok := split[i].Type().(*pgtypes.DoltgresType); !ok {
 				split[i] = pgexprs.NewGMSCast(split[i])
 			}
 		}
@@ -65,7 +65,7 @@ func SplitConjunction(expr sql.Expression) []sql.Expression {
 		// We should check to see if we need to preserve the cast on each child individually
 		split := SplitConjunction(expr.Child())
 		for i := range split {
-			if _, ok := split[i].Type().(pgtypes.DoltgresType); !ok {
+			if _, ok := split[i].Type().(*pgtypes.DoltgresType); !ok {
 				split[i] = pgexprs.NewGMSCast(split[i])
 			}
 		}

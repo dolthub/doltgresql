@@ -21,7 +21,7 @@ import (
 )
 
 // Time is the time without a time zone. Precision is unbounded.
-var Time = DoltgresType{
+var Time = &DoltgresType{
 	OID:           uint32(oid.T_time),
 	Name:          "time",
 	Schema:        "pg_catalog",
@@ -54,19 +54,18 @@ var Time = DoltgresType{
 	Default:       "",
 	Acl:           nil,
 	Checks:        nil,
-	AttTypMod:     -1,
+	attTypMod:     -1,
 	CompareFunc:   toFuncID("time_cmp", oid.T_time, oid.T_time),
 }
 
 // NewTimeType returns Time type with typmod set. // TODO: implement precision
-func NewTimeType(precision int32) (DoltgresType, error) {
-	newType := Time
+func NewTimeType(precision int32) (*DoltgresType, error) {
 	typmod, err := GetTypmodFromTimePrecision(precision)
 	if err != nil {
-		return DoltgresType{}, err
+		return nil, err
 	}
-	newType.AttTypMod = typmod
-	return newType, nil
+	newType := *Time.WithAttTypMod(typmod)
+	return &newType, nil
 }
 
 // GetTypmodFromTimePrecision takes Time type precision and returns the type modifier value.

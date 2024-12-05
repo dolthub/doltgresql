@@ -12,30 +12,19 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-package functions
+package dtables
 
 import (
-	"fmt"
-	"strings"
-
 	"github.com/dolthub/go-mysql-server/sql"
 
-	"github.com/dolthub/doltgresql/server/functions/framework"
 	pgtypes "github.com/dolthub/doltgresql/server/types"
 )
 
-// initQuoteIdent registers the functions to the catalog.
-func initQuoteIdent() {
-	framework.RegisterFunction(quote_ident_text)
-}
-
-// quote_ident_text represents the PostgreSQL function of the same name, taking the same parameters.
-var quote_ident_text = framework.Function1{
-	Name:       "quote_ident",
-	Return:     pgtypes.Text,
-	Parameters: [1]*pgtypes.DoltgresType{pgtypes.Text},
-	Strict:     true,
-	Callable: func(ctx *sql.Context, _ [2]*pgtypes.DoltgresType, val any) (any, error) {
-		return fmt.Sprintf(`"%s"`, strings.Replace(val.(string), "\"", "\"\"", -1)), nil
-	},
+// getDoltWorkspaceBaseSqlSchema returns the base sql schema for the dolt_workspace_* table.
+func getDoltWorkspaceBaseSqlSchema() sql.Schema {
+	return []*sql.Column{
+		{Name: "id", Type: pgtypes.Int64, PrimaryKey: true, Nullable: false},
+		{Name: "staged", Type: pgtypes.Bool, Nullable: false},
+		{Name: "diff_type", Type: pgtypes.Text, Nullable: false},
+	}
 }

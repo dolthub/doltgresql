@@ -36,7 +36,7 @@ func intervalAssignment() {
 	framework.MustAddAssignmentTypeCast(framework.TypeCast{
 		FromType: pgtypes.Interval,
 		ToType:   pgtypes.Time,
-		Function: func(ctx *sql.Context, val any, targetType pgtypes.DoltgresType) (any, error) {
+		Function: func(ctx *sql.Context, val any, targetType *pgtypes.DoltgresType) (any, error) {
 			dur := val.(duration.Duration)
 			// the month and day of the duration are excluded
 			return timeofday.FromInt(dur.Nanos() / functions.NanosPerMicro).ToTime(), nil
@@ -49,7 +49,7 @@ func intervalImplicit() {
 	framework.MustAddImplicitTypeCast(framework.TypeCast{
 		FromType: pgtypes.Interval,
 		ToType:   pgtypes.Interval,
-		Function: func(ctx *sql.Context, val any, targetType pgtypes.DoltgresType) (any, error) {
+		Function: func(ctx *sql.Context, val any, targetType *pgtypes.DoltgresType) (any, error) {
 			return val.(duration.Duration), nil
 		},
 	})

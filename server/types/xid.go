@@ -19,7 +19,7 @@ import (
 )
 
 // Xid is a data type used for internal transaction IDs. It is implemented as an unsigned 32 bit integer.
-var Xid = DoltgresType{
+var Xid = &DoltgresType{
 	OID:           uint32(oid.T_xid),
 	Name:          "xid",
 	Schema:        "pg_catalog",
@@ -52,6 +52,6 @@ var Xid = DoltgresType{
 	Default:       "",
 	Acl:           nil,
 	Checks:        nil,
-	AttTypMod:     -1,
+	attTypMod:     -1,
 	CompareFunc:   toFuncID("-"),
 }

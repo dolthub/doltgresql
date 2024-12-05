@@ -19,7 +19,7 @@ import (
 )
 
 // Json is the standard JSON type.
-var Json = DoltgresType{
+var Json = &DoltgresType{
 	OID:           uint32(oid.T_json),
 	Name:          "json",
 	Schema:        "pg_catalog",
@@ -52,6 +52,6 @@ var Json = DoltgresType{
 	Default:       "",
 	Acl:           nil,
 	Checks:        nil,
-	AttTypMod:     -1,
+	attTypMod:     -1,
 	CompareFunc:   toFuncID("-"),
 }

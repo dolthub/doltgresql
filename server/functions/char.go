@@ -37,9 +37,9 @@ func initChar() {
 var charin = framework.Function1{
 	Name:       "charin",
 	Return:     pgtypes.InternalChar,
-	Parameters: [1]pgtypes.DoltgresType{pgtypes.Cstring},
+	Parameters: [1]*pgtypes.DoltgresType{pgtypes.Cstring},
 	Strict:     true,
-	Callable: func(ctx *sql.Context, _ [2]pgtypes.DoltgresType, val any) (any, error) {
+	Callable: func(ctx *sql.Context, _ [2]*pgtypes.DoltgresType, val any) (any, error) {
 		input := val.(string)
 		c := []byte(input)
 		if uint32(len(c)) > pgtypes.InternalCharLength {
@@ -53,9 +53,9 @@ var charin = framework.Function1{
 var charout = framework.Function1{
 	Name:       "charout",
 	Return:     pgtypes.Cstring,
-	Parameters: [1]pgtypes.DoltgresType{pgtypes.InternalChar},
+	Parameters: [1]*pgtypes.DoltgresType{pgtypes.InternalChar},
 	Strict:     true,
-	Callable: func(ctx *sql.Context, t [2]pgtypes.DoltgresType, val any) (any, error) {
+	Callable: func(ctx *sql.Context, t [2]*pgtypes.DoltgresType, val any) (any, error) {
 		str := val.(string)
 		if uint32(len(str)) > pgtypes.InternalCharLength {
 			return str[:pgtypes.InternalCharLength], nil
@@ -68,9 +68,9 @@ var charout = framework.Function1{
 var charrecv = framework.Function1{
 	Name:       "charrecv",
 	Return:     pgtypes.InternalChar,
-	Parameters: [1]pgtypes.DoltgresType{pgtypes.Internal},
+	Parameters: [1]*pgtypes.DoltgresType{pgtypes.Internal},
 	Strict:     true,
-	Callable: func(ctx *sql.Context, _ [2]pgtypes.DoltgresType, val any) (any, error) {
+	Callable: func(ctx *sql.Context, _ [2]*pgtypes.DoltgresType, val any) (any, error) {
 		data := val.([]byte)
 		if len(data) == 0 {
 			return nil, nil
@@ -84,9 +84,9 @@ var charrecv = framework.Function1{
 var charsend = framework.Function1{
 	Name:       "charsend",
 	Return:     pgtypes.Bytea,
-	Parameters: [1]pgtypes.DoltgresType{pgtypes.InternalChar},
+	Parameters: [1]*pgtypes.DoltgresType{pgtypes.InternalChar},
 	Strict:     true,
-	Callable: func(ctx *sql.Context, _ [2]pgtypes.DoltgresType, val any) (any, error) {
+	Callable: func(ctx *sql.Context, _ [2]*pgtypes.DoltgresType, val any) (any, error) {
 		str := val.(string)
 		writer := utils.NewWriter(uint64(len(str) + 4))
 		writer.String(str)
@@ -98,9 +98,9 @@ var charsend = framework.Function1{
 var btcharcmp = framework.Function2{
 	Name:       "btcharcmp",
 	Return:     pgtypes.Int32,
-	Parameters: [2]pgtypes.DoltgresType{pgtypes.InternalChar, pgtypes.InternalChar},
+	Parameters: [2]*pgtypes.DoltgresType{pgtypes.InternalChar, pgtypes.InternalChar},
 	Strict:     true,
-	Callable: func(ctx *sql.Context, _ [3]pgtypes.DoltgresType, val1, val2 any) (any, error) {
+	Callable: func(ctx *sql.Context, _ [3]*pgtypes.DoltgresType, val1, val2 any) (any, error) {
 		ab := strings.TrimRight(val1.(string), " ")
 		bb := strings.TrimRight(val2.(string), " ")
 		if ab == bb {

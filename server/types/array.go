@@ -21,12 +21,12 @@ import (
 )
 
 // CreateArrayTypeFromBaseType create array type from given type.
-func CreateArrayTypeFromBaseType(baseType DoltgresType) DoltgresType {
+func CreateArrayTypeFromBaseType(baseType *DoltgresType) *DoltgresType {
 	align := TypeAlignment_Int
 	if baseType.Align == TypeAlignment_Double {
 		align = TypeAlignment_Double
 	}
-	return DoltgresType{
+	return &DoltgresType{
 		OID:           baseType.Array,
 		Name:          fmt.Sprintf("_%s", baseType.Name),
 		Schema:        "pg_catalog",
@@ -60,7 +60,7 @@ func CreateArrayTypeFromBaseType(baseType DoltgresType) DoltgresType {
 		Acl:           nil,
 		Checks:        nil,
 		InternalName:  fmt.Sprintf("%s[]", baseType.Name), // This will be set to the proper name in ToArrayType
-		AttTypMod:     baseType.AttTypMod,                 // TODO: check
+		attTypMod:     baseType.attTypMod,                 // TODO: check
 		CompareFunc:   toFuncID("btarraycmp", oid.T_anyarray, oid.T_anyarray),
 	}
 }

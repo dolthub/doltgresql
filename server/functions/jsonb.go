@@ -39,9 +39,9 @@ func initJsonB() {
 var jsonb_in = framework.Function1{
 	Name:       "jsonb_in",
 	Return:     pgtypes.JsonB,
-	Parameters: [1]pgtypes.DoltgresType{pgtypes.Cstring},
+	Parameters: [1]*pgtypes.DoltgresType{pgtypes.Cstring},
 	Strict:     true,
-	Callable: func(ctx *sql.Context, _ [2]pgtypes.DoltgresType, val any) (any, error) {
+	Callable: func(ctx *sql.Context, _ [2]*pgtypes.DoltgresType, val any) (any, error) {
 		input := val.(string)
 		inputBytes := unsafe.Slice(unsafe.StringData(input), len(input))
 		if json.Valid(inputBytes) {
@@ -56,9 +56,9 @@ var jsonb_in = framework.Function1{
 var jsonb_out = framework.Function1{
 	Name:       "jsonb_out",
 	Return:     pgtypes.Cstring,
-	Parameters: [1]pgtypes.DoltgresType{pgtypes.JsonB},
+	Parameters: [1]*pgtypes.DoltgresType{pgtypes.JsonB},
 	Strict:     true,
-	Callable: func(ctx *sql.Context, _ [2]pgtypes.DoltgresType, val any) (any, error) {
+	Callable: func(ctx *sql.Context, _ [2]*pgtypes.DoltgresType, val any) (any, error) {
 		sb := strings.Builder{}
 		sb.Grow(256)
 		pgtypes.JsonValueFormatter(&sb, val.(pgtypes.JsonDocument).Value)
@@ -70,9 +70,9 @@ var jsonb_out = framework.Function1{
 var jsonb_recv = framework.Function1{
 	Name:       "jsonb_recv",
 	Return:     pgtypes.JsonB,
-	Parameters: [1]pgtypes.DoltgresType{pgtypes.Internal},
+	Parameters: [1]*pgtypes.DoltgresType{pgtypes.Internal},
 	Strict:     true,
-	Callable: func(ctx *sql.Context, _ [2]pgtypes.DoltgresType, val any) (any, error) {
+	Callable: func(ctx *sql.Context, _ [2]*pgtypes.DoltgresType, val any) (any, error) {
 		data := val.([]byte)
 		if len(data) == 0 {
 			return nil, nil
@@ -87,9 +87,9 @@ var jsonb_recv = framework.Function1{
 var jsonb_send = framework.Function1{
 	Name:       "jsonb_send",
 	Return:     pgtypes.Bytea,
-	Parameters: [1]pgtypes.DoltgresType{pgtypes.JsonB},
+	Parameters: [1]*pgtypes.DoltgresType{pgtypes.JsonB},
 	Strict:     true,
-	Callable: func(ctx *sql.Context, _ [2]pgtypes.DoltgresType, val any) (any, error) {
+	Callable: func(ctx *sql.Context, _ [2]*pgtypes.DoltgresType, val any) (any, error) {
 		writer := utils.NewWriter(256)
 		pgtypes.JsonValueSerialize(writer, val.(pgtypes.JsonDocument).Value)
 		return writer.Data(), nil
@@ -100,9 +100,9 @@ var jsonb_send = framework.Function1{
 var jsonb_cmp = framework.Function2{
 	Name:       "jsonb_cmp",
 	Return:     pgtypes.Int32,
-	Parameters: [2]pgtypes.DoltgresType{pgtypes.JsonB, pgtypes.JsonB},
+	Parameters: [2]*pgtypes.DoltgresType{pgtypes.JsonB, pgtypes.JsonB},
 	Strict:     true,
-	Callable: func(ctx *sql.Context, _ [3]pgtypes.DoltgresType, val1, val2 any) (any, error) {
+	Callable: func(ctx *sql.Context, _ [3]*pgtypes.DoltgresType, val1, val2 any) (any, error) {
 		ab := val1.(pgtypes.JsonDocument)
 		bb := val2.(pgtypes.JsonDocument)
 		return int32(pgtypes.JsonValueCompare(ab.Value, bb.Value)), nil

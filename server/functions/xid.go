@@ -37,9 +37,9 @@ func initXid() {
 var xidin = framework.Function1{
 	Name:       "xidin",
 	Return:     pgtypes.Xid,
-	Parameters: [1]pgtypes.DoltgresType{pgtypes.Cstring},
+	Parameters: [1]*pgtypes.DoltgresType{pgtypes.Cstring},
 	Strict:     true,
-	Callable: func(ctx *sql.Context, _ [2]pgtypes.DoltgresType, val any) (any, error) {
+	Callable: func(ctx *sql.Context, _ [2]*pgtypes.DoltgresType, val any) (any, error) {
 		input := val.(string)
 		uVal, err := strconv.ParseInt(strings.TrimSpace(input), 10, 64)
 		if err != nil {
@@ -53,9 +53,9 @@ var xidin = framework.Function1{
 var xidout = framework.Function1{
 	Name:       "xidout",
 	Return:     pgtypes.Cstring,
-	Parameters: [1]pgtypes.DoltgresType{pgtypes.Xid},
+	Parameters: [1]*pgtypes.DoltgresType{pgtypes.Xid},
 	Strict:     true,
-	Callable: func(ctx *sql.Context, _ [2]pgtypes.DoltgresType, val any) (any, error) {
+	Callable: func(ctx *sql.Context, _ [2]*pgtypes.DoltgresType, val any) (any, error) {
 		return strconv.FormatUint(uint64(val.(uint32)), 10), nil
 	},
 }
@@ -64,9 +64,9 @@ var xidout = framework.Function1{
 var xidrecv = framework.Function1{
 	Name:       "xidrecv",
 	Return:     pgtypes.Xid,
-	Parameters: [1]pgtypes.DoltgresType{pgtypes.Internal},
+	Parameters: [1]*pgtypes.DoltgresType{pgtypes.Internal},
 	Strict:     true,
-	Callable: func(ctx *sql.Context, _ [2]pgtypes.DoltgresType, val any) (any, error) {
+	Callable: func(ctx *sql.Context, _ [2]*pgtypes.DoltgresType, val any) (any, error) {
 		data := val.([]byte)
 		if len(data) == 0 {
 			return nil, nil
@@ -79,9 +79,9 @@ var xidrecv = framework.Function1{
 var xidsend = framework.Function1{
 	Name:       "xidsend",
 	Return:     pgtypes.Bytea,
-	Parameters: [1]pgtypes.DoltgresType{pgtypes.Xid},
+	Parameters: [1]*pgtypes.DoltgresType{pgtypes.Xid},
 	Strict:     true,
-	Callable: func(ctx *sql.Context, _ [2]pgtypes.DoltgresType, val any) (any, error) {
+	Callable: func(ctx *sql.Context, _ [2]*pgtypes.DoltgresType, val any) (any, error) {
 		retVal := make([]byte, 4)
 		binary.BigEndian.PutUint32(retVal, val.(uint32))
 		return retVal, nil

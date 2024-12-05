@@ -35,9 +35,9 @@ func initRound() {
 var round_float64 = framework.Function1{
 	Name:       "round",
 	Return:     pgtypes.Float64,
-	Parameters: [1]pgtypes.DoltgresType{pgtypes.Float64},
+	Parameters: [1]*pgtypes.DoltgresType{pgtypes.Float64},
 	Strict:     true,
-	Callable: func(ctx *sql.Context, _ [2]pgtypes.DoltgresType, val1 any) (any, error) {
+	Callable: func(ctx *sql.Context, _ [2]*pgtypes.DoltgresType, val1 any) (any, error) {
 		if val1 == nil {
 			return nil, nil
 		}
@@ -49,9 +49,9 @@ var round_float64 = framework.Function1{
 var round_numeric = framework.Function1{
 	Name:       "round",
 	Return:     pgtypes.Numeric,
-	Parameters: [1]pgtypes.DoltgresType{pgtypes.Numeric},
+	Parameters: [1]*pgtypes.DoltgresType{pgtypes.Numeric},
 	Strict:     true,
-	Callable: func(ctx *sql.Context, _ [2]pgtypes.DoltgresType, val1 any) (any, error) {
+	Callable: func(ctx *sql.Context, _ [2]*pgtypes.DoltgresType, val1 any) (any, error) {
 		if val1 == nil {
 			return nil, nil
 		}
@@ -63,9 +63,9 @@ var round_numeric = framework.Function1{
 var round_numeric_int64 = framework.Function2{
 	Name:       "round",
 	Return:     pgtypes.Numeric,
-	Parameters: [2]pgtypes.DoltgresType{pgtypes.Numeric, pgtypes.Int64},
+	Parameters: [2]*pgtypes.DoltgresType{pgtypes.Numeric, pgtypes.Int64},
 	Strict:     true,
-	Callable: func(ctx *sql.Context, _ [3]pgtypes.DoltgresType, val1 any, val2 any) (any, error) {
+	Callable: func(ctx *sql.Context, _ [3]*pgtypes.DoltgresType, val1 any, val2 any) (any, error) {
 		return val1.(decimal.Decimal).Round(int32(val2.(int64))), nil
 	},
 }

@@ -88,11 +88,11 @@ func assignUpdateFieldCasts(updateExprs []sql.Expression) ([]sql.Expression, err
 		if !ok {
 			return nil, fmt.Errorf("UPDATE: assumption that expression is always SetField is incorrect: %T", updateExpr)
 		}
-		fromType, ok := setField.RightChild.Type().(pgtypes.DoltgresType)
+		fromType, ok := setField.RightChild.Type().(*pgtypes.DoltgresType)
 		if !ok {
 			return nil, fmt.Errorf("UPDATE: non-Doltgres type found in source: %s", setField.RightChild.String())
 		}
-		toType, ok := setField.LeftChild.Type().(pgtypes.DoltgresType)
+		toType, ok := setField.LeftChild.Type().(*pgtypes.DoltgresType)
 		if !ok {
 			return nil, fmt.Errorf("UPDATE: non-Doltgres type found in destination: %s", setField.LeftChild.String())
 		}

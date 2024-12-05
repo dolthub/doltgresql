@@ -34,7 +34,7 @@ import (
 // Literal represents a raw literal (number, string, etc.).
 type Literal struct {
 	value any
-	typ   pgtypes.DoltgresType
+	typ   *pgtypes.DoltgresType
 }
 
 var _ vitess.Injectable = (*Literal)(nil)
@@ -216,7 +216,7 @@ func NewRawLiteralUuid(val uuid.UUID) *Literal {
 // NewUnsafeLiteral returns a new *Literal containing the given value and type. This should almost never be used, as
 // it does not perform any checking and circumvents type safety, which may lead to hard-to-debug errors. This is
 // currently only used within the analyzer, and will likely be removed in the future.
-func NewUnsafeLiteral(val any, t pgtypes.DoltgresType) *Literal {
+func NewUnsafeLiteral(val any, t *pgtypes.DoltgresType) *Literal {
 	return &Literal{
 		value: val,
 		typ:   t,
@@ -237,7 +237,7 @@ func (l *Literal) Eval(ctx *sql.Context, row sql.Row) (any, error) {
 }
 
 // GetDoltgresType implements the framework.LiteralInterface interface.
-func (l *Literal) GetDoltgresType() pgtypes.DoltgresType {
+func (l *Literal) GetDoltgresType() *pgtypes.DoltgresType {
 	return l.typ
 }
 

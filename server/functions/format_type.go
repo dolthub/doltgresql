@@ -32,8 +32,8 @@ func initFormatType() {
 var format_type = framework.Function2{
 	Name:       "format_type",
 	Return:     pgtypes.Text,
-	Parameters: [2]pgtypes.DoltgresType{pgtypes.Oid, pgtypes.Int32},
-	Callable: func(ctx *sql.Context, _ [3]pgtypes.DoltgresType, val1, val2 any) (any, error) {
+	Parameters: [2]*pgtypes.DoltgresType{pgtypes.Oid, pgtypes.Int32},
+	Callable: func(ctx *sql.Context, _ [3]*pgtypes.DoltgresType, val1, val2 any) (any, error) {
 		if val1 == nil {
 			return nil, nil
 		}

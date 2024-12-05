@@ -35,7 +35,7 @@ func jsonbExplicit() {
 	framework.MustAddExplicitTypeCast(framework.TypeCast{
 		FromType: pgtypes.JsonB,
 		ToType:   pgtypes.Bool,
-		Function: func(ctx *sql.Context, val any, targetType pgtypes.DoltgresType) (any, error) {
+		Function: func(ctx *sql.Context, val any, targetType *pgtypes.DoltgresType) (any, error) {
 			switch value := val.(pgtypes.JsonDocument).Value.(type) {
 			case pgtypes.JsonValueObject:
 				return nil, fmt.Errorf("cannot cast jsonb object to type %s", targetType.String())
@@ -57,7 +57,7 @@ func jsonbExplicit() {
 	framework.MustAddExplicitTypeCast(framework.TypeCast{
 		FromType: pgtypes.JsonB,
 		ToType:   pgtypes.Float32,
-		Function: func(ctx *sql.Context, val any, targetType pgtypes.DoltgresType) (any, error) {
+		Function: func(ctx *sql.Context, val any, targetType *pgtypes.DoltgresType) (any, error) {
 			switch value := val.(pgtypes.JsonDocument).Value.(type) {
 			case pgtypes.JsonValueObject:
 				return nil, fmt.Errorf("cannot cast jsonb object to type %s", targetType.String())
@@ -80,7 +80,7 @@ func jsonbExplicit() {
 	framework.MustAddExplicitTypeCast(framework.TypeCast{
 		FromType: pgtypes.JsonB,
 		ToType:   pgtypes.Float64,
-		Function: func(ctx *sql.Context, val any, targetType pgtypes.DoltgresType) (any, error) {
+		Function: func(ctx *sql.Context, val any, targetType *pgtypes.DoltgresType) (any, error) {
 			switch value := val.(pgtypes.JsonDocument).Value.(type) {
 			case pgtypes.JsonValueObject:
 				return nil, fmt.Errorf("cannot cast jsonb object to type %s", targetType.String())
@@ -103,7 +103,7 @@ func jsonbExplicit() {
 	framework.MustAddExplicitTypeCast(framework.TypeCast{
 		FromType: pgtypes.JsonB,
 		ToType:   pgtypes.Int16,
-		Function: func(ctx *sql.Context, val any, targetType pgtypes.DoltgresType) (any, error) {
+		Function: func(ctx *sql.Context, val any, targetType *pgtypes.DoltgresType) (any, error) {
 			switch value := val.(pgtypes.JsonDocument).Value.(type) {
 			case pgtypes.JsonValueObject:
 				return nil, fmt.Errorf("cannot cast jsonb object to type %s", targetType.String())
@@ -129,7 +129,7 @@ func jsonbExplicit() {
 	framework.MustAddExplicitTypeCast(framework.TypeCast{
 		FromType: pgtypes.JsonB,
 		ToType:   pgtypes.Int32,
-		Function: func(ctx *sql.Context, val any, targetType pgtypes.DoltgresType) (any, error) {
+		Function: func(ctx *sql.Context, val any, targetType *pgtypes.DoltgresType) (any, error) {
 			switch value := val.(pgtypes.JsonDocument).Value.(type) {
 			case pgtypes.JsonValueObject:
 				return nil, fmt.Errorf("cannot cast jsonb object to type %s", targetType.String())
@@ -155,7 +155,7 @@ func jsonbExplicit() {
 	framework.MustAddExplicitTypeCast(framework.TypeCast{
 		FromType: pgtypes.JsonB,
 		ToType:   pgtypes.Int64,
-		Function: func(ctx *sql.Context, val any, targetType pgtypes.DoltgresType) (any, error) {
+		Function: func(ctx *sql.Context, val any, targetType *pgtypes.DoltgresType) (any, error) {
 			switch value := val.(pgtypes.JsonDocument).Value.(type) {
 			case pgtypes.JsonValueObject:
 				return nil, fmt.Errorf("cannot cast jsonb object to type %s", targetType.String())
@@ -181,7 +181,7 @@ func jsonbExplicit() {
 	framework.MustAddExplicitTypeCast(framework.TypeCast{
 		FromType: pgtypes.JsonB,
 		ToType:   pgtypes.Numeric,
-		Function: func(ctx *sql.Context, val any, targetType pgtypes.DoltgresType) (any, error) {
+		Function: func(ctx *sql.Context, val any, targetType *pgtypes.DoltgresType) (any, error) {
 			switch value := val.(pgtypes.JsonDocument).Value.(type) {
 			case pgtypes.JsonValueObject:
 				return nil, fmt.Errorf("cannot cast jsonb object to type %s", targetType.String())
@@ -207,7 +207,7 @@ func jsonbAssignment() {
 	framework.MustAddAssignmentTypeCast(framework.TypeCast{
 		FromType: pgtypes.JsonB,
 		ToType:   pgtypes.Json,
-		Function: func(ctx *sql.Context, val any, targetType pgtypes.DoltgresType) (any, error) {
+		Function: func(ctx *sql.Context, val any, targetType *pgtypes.DoltgresType) (any, error) {
 			return pgtypes.JsonB.IoOutput(ctx, val)
 		},
 	})

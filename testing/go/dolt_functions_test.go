@@ -322,7 +322,7 @@ func TestDoltFunctions(t *testing.T) {
 				{
 					Query: "SELECT * FROM dolt.diff",
 					Expected: []sql.Row{
-						{"WORKING", "public.t1", nil, nil, nil, nil, 1, 1},
+						{"WORKING", "public.t1", nil, nil, nil, nil, "t", "t"},
 					},
 				},
 				{
@@ -438,8 +438,8 @@ func TestDoltFunctions(t *testing.T) {
 				{
 					Query: "SELECT * FROM dolt.diff",
 					Expected: []sql.Row{
-						{"WORKING", "public.t1", nil, nil, nil, nil, 1, 1},
-						{"WORKING", "testschema.t2", nil, nil, nil, nil, 1, 1},
+						{"WORKING", "public.t1", nil, nil, nil, nil, "t", "t"},
+						{"WORKING", "testschema.t2", nil, nil, nil, nil, "t", "t"},
 					},
 				},
 				{

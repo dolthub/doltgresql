@@ -19,7 +19,7 @@ import (
 )
 
 // AnyNonArray is a pseudo-type that can represent any type that isn't an array type.
-var AnyNonArray = DoltgresType{
+var AnyNonArray = &DoltgresType{
 	OID:           uint32(oid.T_anynonarray),
 	Name:          "anynonarray",
 	Schema:        "pg_catalog",
@@ -52,6 +52,6 @@ var AnyNonArray = DoltgresType{
 	Default:       "",
 	Acl:           nil,
 	Checks:        nil,
-	AttTypMod:     -1,
+	attTypMod:     -1,
 	CompareFunc:   toFuncID("-"),
 }

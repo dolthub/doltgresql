@@ -58,7 +58,7 @@ func NewIndexBuilder(ctx *sql.Context, indexes []sql.Index) (*IndexBuilder, erro
 			columnName := strings.Replace(columnType.Expression, index.Table()+".", "", 1)
 			columnMap[columnName] = columnIndex
 			var ok bool
-			columns[columnIndex].typ, ok = columnType.Type.(pgtypes.DoltgresType)
+			columns[columnIndex].typ, ok = columnType.Type.(*pgtypes.DoltgresType)
 			if !ok {
 				return nil, fmt.Errorf("encountered a GMS type in the index `%s` on table `%s`", index.ID(), index.Table())
 			}
@@ -190,7 +190,7 @@ func (ib *IndexBuilder) convertBinaryExpression(ctx *sql.Context, expr *pgexprs.
 			operator = framework.Operator_BinaryGreaterOrEqual
 		}
 	}
-	valueType, ok := valueExpr.Type().(pgtypes.DoltgresType)
+	valueType, ok := valueExpr.Type().(*pgtypes.DoltgresType)
 	if !ok {
 		return indexBuilderExpr{isValid: false}
 	}

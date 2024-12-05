@@ -20,7 +20,7 @@ import (
 )
 
 // Regclass is the OID type for finding items in pg_class.
-var Regclass = DoltgresType{
+var Regclass = &DoltgresType{
 	OID:           uint32(oid.T_regclass),
 	Name:          "regclass",
 	Schema:        "pg_catalog",
@@ -53,7 +53,7 @@ var Regclass = DoltgresType{
 	Default:       "",
 	Acl:           nil,
 	Checks:        nil,
-	AttTypMod:     -1,
+	attTypMod:     -1,
 	CompareFunc:   toFuncID("-"),
 }
 

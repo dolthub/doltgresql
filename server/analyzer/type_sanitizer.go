@@ -54,7 +54,7 @@ func TypeSanitizer(ctx *sql.Context, a *analyzer.Analyzer, node sql.Node, scope 
 				case "Count", "CountDistinct", "GroupConcat", "JSONObjectAgg", "Sum":
 				default:
 					// Some GMS functions wrap Doltgres parameters, so we'll only handle those that return GMS types
-					if _, ok := expr.Type().(pgtypes.DoltgresType); !ok {
+					if _, ok := expr.Type().(*pgtypes.DoltgresType); !ok {
 						return pgexprs.NewGMSCast(expr), transform.NewTree, nil
 					}
 				}
@@ -63,11 +63,11 @@ func TypeSanitizer(ctx *sql.Context, a *analyzer.Analyzer, node sql.Node, scope 
 			// Due to how interfaces work, we sometimes pass (*ColumnDefaultValue)(nil), so we have to check for it
 			if expr != nil && expr.Expr != nil {
 				defaultExpr := expr.Expr
-				if _, ok := defaultExpr.Type().(pgtypes.DoltgresType); !ok {
+				if _, ok := defaultExpr.Type().(*pgtypes.DoltgresType); !ok {
 					defaultExpr = pgexprs.NewGMSCast(defaultExpr)
 				}
-				defaultExprType := defaultExpr.Type().(pgtypes.DoltgresType)
-				outType, ok := expr.OutType.(pgtypes.DoltgresType)
+				defaultExprType := defaultExpr.Type().(*pgtypes.DoltgresType)
+				outType, ok := expr.OutType.(*pgtypes.DoltgresType)
 				if !ok {
 					return nil, transform.NewTree, fmt.Errorf("default values must have a non-GMS OutType: `%s`", expr.OutType.String())
 				}
@@ -85,7 +85,7 @@ func TypeSanitizer(ctx *sql.Context, a *analyzer.Analyzer, node sql.Node, scope 
 // typeSanitizerLiterals handles literal expressions for TypeSanitizer.
 func typeSanitizerLiterals(gmsLiteral *expression.Literal) (sql.Expression, transform.TreeIdentity, error) {
 	// GMS may resolve Doltgres literals and then stick them in GMS literals, so we have to account for that here
-	if doltgresType, ok := gmsLiteral.Type().(pgtypes.DoltgresType); ok {
+	if doltgresType, ok := gmsLiteral.Type().(*pgtypes.DoltgresType); ok {
 		return pgexprs.NewUnsafeLiteral(gmsLiteral.Value(), doltgresType), transform.NewTree, nil
 	}
 	switch gmsLiteral.Type().Type() {

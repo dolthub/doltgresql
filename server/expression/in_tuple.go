@@ -186,7 +186,7 @@ func (it *InTuple) WithChildren(children ...sql.Expression) (sql.Expression, err
 	}
 	// We'll only resolve the comparison functions once we have all Doltgres types.
 	// We may see GMS types during some analyzer steps, so we should wait until those are done.
-	if leftType, ok := children[0].Type().(pgtypes.DoltgresType); ok {
+	if leftType, ok := children[0].Type().(*pgtypes.DoltgresType); ok {
 		// Rather than finding and resolving a comparison function every time we call Eval, we resolve them once and
 		// reuse the functions. We also want to avoid re-assigning the parameters of the comparison functions since that
 		// will also cause the functions to resolve again. To do this, we store expressions within our struct that the
@@ -201,7 +201,7 @@ func (it *InTuple) WithChildren(children ...sql.Expression) (sql.Expression, err
 		compFuncs := make([]framework.Function, len(rightTuple))
 		allValidChildren := true
 		for i, rightExpr := range rightTuple {
-			rightType, ok := rightExpr.Type().(pgtypes.DoltgresType)
+			rightType, ok := rightExpr.Type().(*pgtypes.DoltgresType)
 			if !ok {
 				allValidChildren = false
 				break
@@ -211,7 +211,7 @@ func (it *InTuple) WithChildren(children ...sql.Expression) (sql.Expression, err
 			if compFuncs[i] == nil {
 				return nil, fmt.Errorf("operator does not exist: %s = %s", leftType.String(), rightType.String())
 			}
-			if compFuncs[i].Type().(pgtypes.DoltgresType).OID != uint32(oid.T_bool) {
+			if compFuncs[i].Type().(*pgtypes.DoltgresType).OID != uint32(oid.T_bool) {
 				// This should never happen, but this is just to be safe
 				return nil, fmt.Errorf("%T: found equality comparison that does not return a bool", it)
 			}

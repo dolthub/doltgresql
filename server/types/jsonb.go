@@ -19,7 +19,7 @@ import (
 )
 
 // JsonB is the deserialized and structured version of JSON that deals with JsonDocument.
-var JsonB = DoltgresType{
+var JsonB = &DoltgresType{
 	OID:           uint32(oid.T_jsonb),
 	Name:          "jsonb",
 	Schema:        "pg_catalog",
@@ -52,6 +52,6 @@ var JsonB = DoltgresType{
 	Default:       "",
 	Acl:           nil,
 	Checks:        nil,
-	AttTypMod:     -1,
+	attTypMod:     -1,
 	CompareFunc:   toFuncID("jsonb_cmp", oid.T_jsonb, oid.T_jsonb),
 }

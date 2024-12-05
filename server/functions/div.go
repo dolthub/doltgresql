@@ -33,9 +33,9 @@ func initDiv() {
 var div_numeric = framework.Function2{
 	Name:       "div",
 	Return:     pgtypes.Numeric,
-	Parameters: [2]pgtypes.DoltgresType{pgtypes.Numeric, pgtypes.Numeric},
+	Parameters: [2]*pgtypes.DoltgresType{pgtypes.Numeric, pgtypes.Numeric},
 	Strict:     true,
-	Callable: func(ctx *sql.Context, _ [3]pgtypes.DoltgresType, val1Interface any, val2Interface any) (any, error) {
+	Callable: func(ctx *sql.Context, _ [3]*pgtypes.DoltgresType, val1Interface any, val2Interface any) (any, error) {
 		val1 := val1Interface.(decimal.Decimal)
 		val2 := val2Interface.(decimal.Decimal)
 		if val2.Cmp(decimal.Zero) == 0 {

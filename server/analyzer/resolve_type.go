@@ -31,7 +31,7 @@ func ResolveType(ctx *sql.Context, a *analyzer.Analyzer, node sql.Node, scope *p
 		switch n := node.(type) {
 		case *plan.CreateTable:
 			for _, col := range n.TargetSchema() {
-				if rt, ok := col.Type.(types.DoltgresType); ok && !rt.IsResolvedType() {
+				if rt, ok := col.Type.(*types.DoltgresType); ok && !rt.IsResolvedType() {
 					dt, err := resolveType(ctx, rt)
 					if err != nil {
 						return nil, transform.NewTree, err
@@ -43,7 +43,7 @@ func ResolveType(ctx *sql.Context, a *analyzer.Analyzer, node sql.Node, scope *p
 			return node, same, nil
 		case *plan.AddColumn:
 			col := n.Column()
-			if rt, ok := col.Type.(types.DoltgresType); ok && !rt.IsResolvedType() {
+			if rt, ok := col.Type.(*types.DoltgresType); ok && !rt.IsResolvedType() {
 				dt, err := resolveType(ctx, rt)
 				if err != nil {
 					return nil, transform.NewTree, err
@@ -54,7 +54,7 @@ func ResolveType(ctx *sql.Context, a *analyzer.Analyzer, node sql.Node, scope *p
 			return node, same, nil
 		case *plan.ModifyColumn:
 			col := n.NewColumn()
-			if rt, ok := col.Type.(types.DoltgresType); ok && !rt.IsResolvedType() {
+			if rt, ok := col.Type.(*types.DoltgresType); ok && !rt.IsResolvedType() {
 				dt, err := resolveType(ctx, rt)
 				if err != nil {
 					return nil, transform.NewTree, err
@@ -71,18 +71,18 @@ func ResolveType(ctx *sql.Context, a *analyzer.Analyzer, node sql.Node, scope *p
 }
 
 // resolveType resolves any type that is unresolved yet. (e.g.: domain types)
-func resolveType(ctx *sql.Context, typ types.DoltgresType) (types.DoltgresType, error) {
+func resolveType(ctx *sql.Context, typ *types.DoltgresType) (*types.DoltgresType, error) {
 	schema, err := core.GetSchemaName(ctx, nil, typ.Schema)
 	if err != nil {
-		return types.DoltgresType{}, err
+		return nil, err
 	}
 	typs, err := core.GetTypesCollectionFromContext(ctx)
 	if err != nil {
-		return types.DoltgresType{}, err
+		return nil, err
 	}
 	resolvedTyp, exists := typs.GetType(schema, typ.Name)
 	if !exists {
-		return types.DoltgresType{}, types.ErrTypeDoesNotExist.New(typ.Name)
+		return nil, types.ErrTypeDoesNotExist.New(typ.Name)
 	}
 	return resolvedTyp, nil
 }

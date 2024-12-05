@@ -33,9 +33,9 @@ func initToHex() {
 var to_hex_int32 = framework.Function1{
 	Name:       "to_hex",
 	Return:     pgtypes.Text,
-	Parameters: [1]pgtypes.DoltgresType{pgtypes.Int32},
+	Parameters: [1]*pgtypes.DoltgresType{pgtypes.Int32},
 	Strict:     true,
-	Callable: func(ctx *sql.Context, _ [2]pgtypes.DoltgresType, val1 any) (any, error) {
+	Callable: func(ctx *sql.Context, _ [2]*pgtypes.DoltgresType, val1 any) (any, error) {
 		return fmt.Sprintf("%x", uint64(val1.(int32))), nil
 	},
 }
@@ -44,9 +44,9 @@ var to_hex_int32 = framework.Function1{
 var to_hex_int64 = framework.Function1{
 	Name:       "to_hex",
 	Return:     pgtypes.Text,
-	Parameters: [1]pgtypes.DoltgresType{pgtypes.Int64},
+	Parameters: [1]*pgtypes.DoltgresType{pgtypes.Int64},
 	Strict:     true,
-	Callable: func(ctx *sql.Context, _ [2]pgtypes.DoltgresType, val1 any) (any, error) {
+	Callable: func(ctx *sql.Context, _ [2]*pgtypes.DoltgresType, val1 any) (any, error) {
 		return fmt.Sprintf("%x", uint64(val1.(int64))), nil
 	},
 }

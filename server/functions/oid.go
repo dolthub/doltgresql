@@ -38,9 +38,9 @@ func initOid() {
 var oidin = framework.Function1{
 	Name:       "oidin",
 	Return:     pgtypes.Oid,
-	Parameters: [1]pgtypes.DoltgresType{pgtypes.Cstring},
+	Parameters: [1]*pgtypes.DoltgresType{pgtypes.Cstring},
 	Strict:     true,
-	Callable: func(ctx *sql.Context, _ [2]pgtypes.DoltgresType, val any) (any, error) {
+	Callable: func(ctx *sql.Context, _ [2]*pgtypes.DoltgresType, val any) (any, error) {
 		input := val.(string)
 		uVal, err := strconv.ParseInt(strings.TrimSpace(input), 10, 64)
 		if err != nil {
@@ -58,9 +58,9 @@ var oidin = framework.Function1{
 var oidout = framework.Function1{
 	Name:       "oidout",
 	Return:     pgtypes.Cstring,
-	Parameters: [1]pgtypes.DoltgresType{pgtypes.Oid},
+	Parameters: [1]*pgtypes.DoltgresType{pgtypes.Oid},
 	Strict:     true,
-	Callable: func(ctx *sql.Context, _ [2]pgtypes.DoltgresType, val any) (any, error) {
+	Callable: func(ctx *sql.Context, _ [2]*pgtypes.DoltgresType, val any) (any, error) {
 		return strconv.FormatUint(uint64(val.(uint32)), 10), nil
 	},
 }
@@ -69,9 +69,9 @@ var oidout = framework.Function1{
 var oidrecv = framework.Function1{
 	Name:       "oidrecv",
 	Return:     pgtypes.Oid,
-	Parameters: [1]pgtypes.DoltgresType{pgtypes.Internal},
+	Parameters: [1]*pgtypes.DoltgresType{pgtypes.Internal},
 	Strict:     true,
-	Callable: func(ctx *sql.Context, _ [2]pgtypes.DoltgresType, val any) (any, error) {
+	Callable: func(ctx *sql.Context, _ [2]*pgtypes.DoltgresType, val any) (any, error) {
 		data := val.([]byte)
 		if len(data) == 0 {
 			return nil, nil
@@ -84,9 +84,9 @@ var oidrecv = framework.Function1{
 var oidsend = framework.Function1{
 	Name:       "oidsend",
 	Return:     pgtypes.Bytea,
-	Parameters: [1]pgtypes.DoltgresType{pgtypes.Oid},
+	Parameters: [1]*pgtypes.DoltgresType{pgtypes.Oid},
 	Strict:     true,
-	Callable: func(ctx *sql.Context, _ [2]pgtypes.DoltgresType, val any) (any, error) {
+	Callable: func(ctx *sql.Context, _ [2]*pgtypes.DoltgresType, val any) (any, error) {
 		retVal := make([]byte, 4)
 		binary.BigEndian.PutUint32(retVal, val.(uint32))
 		return retVal, nil
@@ -97,9 +97,9 @@ var oidsend = framework.Function1{
 var btoidcmp = framework.Function2{
 	Name:       "btoidcmp",
 	Return:     pgtypes.Int32,
-	Parameters: [2]pgtypes.DoltgresType{pgtypes.Oid, pgtypes.Oid},
+	Parameters: [2]*pgtypes.DoltgresType{pgtypes.Oid, pgtypes.Oid},
 	Strict:     true,
-	Callable: func(ctx *sql.Context, _ [3]pgtypes.DoltgresType, val1, val2 any) (any, error) {
+	Callable: func(ctx *sql.Context, _ [3]*pgtypes.DoltgresType, val1, val2 any) (any, error) {
 		ab := val1.(uint32)
 		bb := val2.(uint32)
 		if ab == bb {

@@ -17,7 +17,7 @@ package types
 import "github.com/lib/pq/oid"
 
 // Internal is an internal type, which means `external binary` type.
-var Internal = DoltgresType{
+var Internal = &DoltgresType{
 	OID:           uint32(oid.T_internal),
 	Name:          "internal",
 	Schema:        "pg_catalog",
@@ -50,13 +50,13 @@ var Internal = DoltgresType{
 	Default:       "",
 	Acl:           nil,
 	Checks:        nil,
-	AttTypMod:     -1,
+	attTypMod:     -1,
 	CompareFunc:   toFuncID("-"),
 }
 
 // NewInternalTypeWithBaseType returns Internal type with
 // internal base type set with given type.
-func NewInternalTypeWithBaseType(t uint32) DoltgresType {
+func NewInternalTypeWithBaseType(t uint32) *DoltgresType {
 	it := Internal
 	it.BaseTypeForInternal = t
 	return it

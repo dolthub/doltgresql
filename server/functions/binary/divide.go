@@ -51,9 +51,9 @@ func initBinaryDivide() {
 var float4div = framework.Function2{
 	Name:       "float4div",
 	Return:     pgtypes.Float32,
-	Parameters: [2]pgtypes.DoltgresType{pgtypes.Float32, pgtypes.Float32},
+	Parameters: [2]*pgtypes.DoltgresType{pgtypes.Float32, pgtypes.Float32},
 	Strict:     true,
-	Callable: func(ctx *sql.Context, _ [3]pgtypes.DoltgresType, val1 any, val2 any) (any, error) {
+	Callable: func(ctx *sql.Context, _ [3]*pgtypes.DoltgresType, val1 any, val2 any) (any, error) {
 		if val2.(float32) == 0 {
 			return nil, fmt.Errorf("division by zero")
 		}
@@ -65,9 +65,9 @@ var float4div = framework.Function2{
 var float48div = framework.Function2{
 	Name:       "float48div",
 	Return:     pgtypes.Float64,
-	Parameters: [2]pgtypes.DoltgresType{pgtypes.Float32, pgtypes.Float64},
+	Parameters: [2]*pgtypes.DoltgresType{pgtypes.Float32, pgtypes.Float64},
 	Strict:     true,
-	Callable: func(ctx *sql.Context, _ [3]pgtypes.DoltgresType, val1 any, val2 any) (any, error) {
+	Callable: func(ctx *sql.Context, _ [3]*pgtypes.DoltgresType, val1 any, val2 any) (any, error) {
 		if val2.(float64) == 0 {
 			return nil, fmt.Errorf("division by zero")
 		}
@@ -79,9 +79,9 @@ var float48div = framework.Function2{
 var float8div = framework.Function2{
 	Name:       "float8div",
 	Return:     pgtypes.Float64,
-	Parameters: [2]pgtypes.DoltgresType{pgtypes.Float64, pgtypes.Float64},
+	Parameters: [2]*pgtypes.DoltgresType{pgtypes.Float64, pgtypes.Float64},
 	Strict:     true,
-	Callable: func(ctx *sql.Context, _ [3]pgtypes.DoltgresType, val1 any, val2 any) (any, error) {
+	Callable: func(ctx *sql.Context, _ [3]*pgtypes.DoltgresType, val1 any, val2 any) (any, error) {
 		if val2.(float64) == 0 {
 			return nil, fmt.Errorf("division by zero")
 		}
@@ -93,9 +93,9 @@ var float8div = framework.Function2{
 var float84div = framework.Function2{
 	Name:       "float84div",
 	Return:     pgtypes.Float64,
-	Parameters: [2]pgtypes.DoltgresType{pgtypes.Float64, pgtypes.Float32},
+	Parameters: [2]*pgtypes.DoltgresType{pgtypes.Float64, pgtypes.Float32},
 	Strict:     true,
-	Callable: func(ctx *sql.Context, _ [3]pgtypes.DoltgresType, val1 any, val2 any) (any, error) {
+	Callable: func(ctx *sql.Context, _ [3]*pgtypes.DoltgresType, val1 any, val2 any) (any, error) {
 		if val2.(float32) == 0 {
 			return nil, fmt.Errorf("division by zero")
 		}
@@ -107,9 +107,9 @@ var float84div = framework.Function2{
 var int2div = framework.Function2{
 	Name:       "int2div",
 	Return:     pgtypes.Int16,
-	Parameters: [2]pgtypes.DoltgresType{pgtypes.Int16, pgtypes.Int16},
+	Parameters: [2]*pgtypes.DoltgresType{pgtypes.Int16, pgtypes.Int16},
 	Strict:     true,
-	Callable: func(ctx *sql.Context, _ [3]pgtypes.DoltgresType, val1 any, val2 any) (any, error) {
+	Callable: func(ctx *sql.Context, _ [3]*pgtypes.DoltgresType, val1 any, val2 any) (any, error) {
 		if val2.(int16) == 0 {
 			return nil, fmt.Errorf("division by zero")
 		}
@@ -121,9 +121,9 @@ var int2div = framework.Function2{
 var int24div = framework.Function2{
 	Name:       "int24div",
 	Return:     pgtypes.Int32,
-	Parameters: [2]pgtypes.DoltgresType{pgtypes.Int16, pgtypes.Int32},
+	Parameters: [2]*pgtypes.DoltgresType{pgtypes.Int16, pgtypes.Int32},
 	Strict:     true,
-	Callable: func(ctx *sql.Context, _ [3]pgtypes.DoltgresType, val1 any, val2 any) (any, error) {
+	Callable: func(ctx *sql.Context, _ [3]*pgtypes.DoltgresType, val1 any, val2 any) (any, error) {
 		if val2.(int32) == 0 {
 			return nil, fmt.Errorf("division by zero")
 		}
@@ -135,9 +135,9 @@ var int24div = framework.Function2{
 var int28div = framework.Function2{
 	Name:       "int28div",
 	Return:     pgtypes.Int64,
-	Parameters: [2]pgtypes.DoltgresType{pgtypes.Int16, pgtypes.Int64},
+	Parameters: [2]*pgtypes.DoltgresType{pgtypes.Int16, pgtypes.Int64},
 	Strict:     true,
-	Callable: func(ctx *sql.Context, _ [3]pgtypes.DoltgresType, val1 any, val2 any) (any, error) {
+	Callable: func(ctx *sql.Context, _ [3]*pgtypes.DoltgresType, val1 any, val2 any) (any, error) {
 		if val2.(int64) == 0 {
 			return nil, fmt.Errorf("division by zero")
 		}
@@ -149,9 +149,9 @@ var int28div = framework.Function2{
 var int4div = framework.Function2{
 	Name:       "int4div",
 	Return:     pgtypes.Int32,
-	Parameters: [2]pgtypes.DoltgresType{pgtypes.Int32, pgtypes.Int32},
+	Parameters: [2]*pgtypes.DoltgresType{pgtypes.Int32, pgtypes.Int32},
 	Strict:     true,
-	Callable: func(ctx *sql.Context, _ [3]pgtypes.DoltgresType, val1 any, val2 any) (any, error) {
+	Callable: func(ctx *sql.Context, _ [3]*pgtypes.DoltgresType, val1 any, val2 any) (any, error) {
 		if val2.(int32) == 0 {
 			return nil, fmt.Errorf("division by zero")
 		}
@@ -163,9 +163,9 @@ var int4div = framework.Function2{
 var int42div = framework.Function2{
 	Name:       "int42div",
 	Return:     pgtypes.Int32,
-	Parameters: [2]pgtypes.DoltgresType{pgtypes.Int32, pgtypes.Int16},
+	Parameters: [2]*pgtypes.DoltgresType{pgtypes.Int32, pgtypes.Int16},
 	Strict:     true,
-	Callable: func(ctx *sql.Context, _ [3]pgtypes.DoltgresType, val1 any, val2 any) (any, error) {
+	Callable: func(ctx *sql.Context, _ [3]*pgtypes.DoltgresType, val1 any, val2 any) (any, error) {
 		if val2.(int16) == 0 {
 			return nil, fmt.Errorf("division by zero")
 		}
@@ -177,9 +177,9 @@ var int42div = framework.Function2{
 var int48div = framework.Function2{
 	Name:       "int48div",
 	Return:     pgtypes.Int64,
-	Parameters: [2]pgtypes.DoltgresType{pgtypes.Int32, pgtypes.Int64},
+	Parameters: [2]*pgtypes.DoltgresType{pgtypes.Int32, pgtypes.Int64},
 	Strict:     true,
-	Callable: func(ctx *sql.Context, _ [3]pgtypes.DoltgresType, val1 any, val2 any) (any, error) {
+	Callable: func(ctx *sql.Context, _ [3]*pgtypes.DoltgresType, val1 any, val2 any) (any, error) {
 		if val2.(int64) == 0 {
 			return nil, fmt.Errorf("division by zero")
 		}
@@ -191,9 +191,9 @@ var int48div = framework.Function2{
 var int8div = framework.Function2{
 	Name:       "int8div",
 	Return:     pgtypes.Int64,
-	Parameters: [2]pgtypes.DoltgresType{pgtypes.Int64, pgtypes.Int64},
+	Parameters: [2]*pgtypes.DoltgresType{pgtypes.Int64, pgtypes.Int64},
 	Strict:     true,
-	Callable: func(ctx *sql.Context, _ [3]pgtypes.DoltgresType, val1 any, val2 any) (any, error) {
+	Callable: func(ctx *sql.Context, _ [3]*pgtypes.DoltgresType, val1 any, val2 any) (any, error) {
 		if val2.(int64) == 0 {
 			return nil, fmt.Errorf("division by zero")
 		}
@@ -205,9 +205,9 @@ var int8div = framework.Function2{
 var int82div = framework.Function2{
 	Name:       "int82div",
 	Return:     pgtypes.Int64,
-	Parameters: [2]pgtypes.DoltgresType{pgtypes.Int64, pgtypes.Int16},
+	Parameters: [2]*pgtypes.DoltgresType{pgtypes.Int64, pgtypes.Int16},
 	Strict:     true,
-	Callable: func(ctx *sql.Context, _ [3]pgtypes.DoltgresType, val1 any, val2 any) (any, error) {
+	Callable: func(ctx *sql.Context, _ [3]*pgtypes.DoltgresType, val1 any, val2 any) (any, error) {
 		if val2.(int16) == 0 {
 			return nil, fmt.Errorf("division by zero")
 		}
@@ -219,9 +219,9 @@ var int82div = framework.Function2{
 var int84div = framework.Function2{
 	Name:       "int84div",
 	Return:     pgtypes.Int64,
-	Parameters: [2]pgtypes.DoltgresType{pgtypes.Int64, pgtypes.Int32},
+	Parameters: [2]*pgtypes.DoltgresType{pgtypes.Int64, pgtypes.Int32},
 	Strict:     true,
-	Callable: func(ctx *sql.Context, _ [3]pgtypes.DoltgresType, val1 any, val2 any) (any, error) {
+	Callable: func(ctx *sql.Context, _ [3]*pgtypes.DoltgresType, val1 any, val2 any) (any, error) {
 		if val2.(int32) == 0 {
 			return nil, fmt.Errorf("division by zero")
 		}
@@ -233,9 +233,9 @@ var int84div = framework.Function2{
 var interval_div = framework.Function2{
 	Name:       "interval_div",
 	Return:     pgtypes.Interval,
-	Parameters: [2]pgtypes.DoltgresType{pgtypes.Interval, pgtypes.Float64},
+	Parameters: [2]*pgtypes.DoltgresType{pgtypes.Interval, pgtypes.Float64},
 	Strict:     true,
-	Callable: func(ctx *sql.Context, _ [3]pgtypes.DoltgresType, val1 any, val2 any) (any, error) {
+	Callable: func(ctx *sql.Context, _ [3]*pgtypes.DoltgresType, val1 any, val2 any) (any, error) {
 		if val2.(float64) == 0 {
 			return nil, fmt.Errorf("division by zero")
 		}
@@ -247,9 +247,9 @@ var interval_div = framework.Function2{
 var numeric_div = framework.Function2{
 	Name:       "numeric_div",
 	Return:     pgtypes.Numeric,
-	Parameters: [2]pgtypes.DoltgresType{pgtypes.Numeric, pgtypes.Numeric},
+	Parameters: [2]*pgtypes.DoltgresType{pgtypes.Numeric, pgtypes.Numeric},
 	Strict:     true,
-	Callable: func(ctx *sql.Context, _ [3]pgtypes.DoltgresType, val1 any, val2 any) (any, error) {
+	Callable: func(ctx *sql.Context, _ [3]*pgtypes.DoltgresType, val1 any, val2 any) (any, error) {
 		if val2.(decimal.Decimal).Equal(decimal.Zero) {
 			return nil, fmt.Errorf("division by zero")
 		}

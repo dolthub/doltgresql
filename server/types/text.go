@@ -19,7 +19,7 @@ import (
 )
 
 // Text is the text type.
-var Text = DoltgresType{
+var Text = &DoltgresType{
 	OID:           uint32(oid.T_text),
 	Name:          "text",
 	Schema:        "pg_catalog",
@@ -52,6 +52,6 @@ var Text = DoltgresType{
 	Default:       "",
 	Acl:           nil,
 	Checks:        nil,
-	AttTypMod:     -1,
+	attTypMod:     -1,
 	CompareFunc:   toFuncID("bttextcmp", oid.T_text, oid.T_text),
 }

@@ -37,10 +37,10 @@ func initNextVal() {
 var nextval_text = framework.Function1{
 	Name:               "nextval",
 	Return:             pgtypes.Int64,
-	Parameters:         [1]pgtypes.DoltgresType{pgtypes.Text},
+	Parameters:         [1]*pgtypes.DoltgresType{pgtypes.Text},
 	IsNonDeterministic: true,
 	Strict:             true,
-	Callable: func(ctx *sql.Context, _ [2]pgtypes.DoltgresType, val any) (any, error) {
+	Callable: func(ctx *sql.Context, _ [2]*pgtypes.DoltgresType, val any) (any, error) {
 		schema, sequence, err := parseRelationName(ctx, val.(string))
 		if err != nil {
 			return nil, err
@@ -58,10 +58,10 @@ var nextval_text = framework.Function1{
 var nextval_regclass = framework.Function1{
 	Name:               "nextval",
 	Return:             pgtypes.Int64,
-	Parameters:         [1]pgtypes.DoltgresType{pgtypes.Regclass},
+	Parameters:         [1]*pgtypes.DoltgresType{pgtypes.Regclass},
 	IsNonDeterministic: true,
 	Strict:             true,
-	Callable: func(ctx *sql.Context, _ [2]pgtypes.DoltgresType, val any) (any, error) {
+	Callable: func(ctx *sql.Context, _ [2]*pgtypes.DoltgresType, val any) (any, error) {
 		relationName, err := pgtypes.Regclass.IoOutput(ctx, val)
 		if err != nil {
 			return nil, err

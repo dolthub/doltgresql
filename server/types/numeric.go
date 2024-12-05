@@ -38,7 +38,7 @@ var (
 )
 
 // Numeric is a precise and unbounded decimal value.
-var Numeric = DoltgresType{
+var Numeric = &DoltgresType{
 	OID:           uint32(oid.T_numeric),
 	Name:          "numeric",
 	Schema:        "pg_catalog",
@@ -71,19 +71,18 @@ var Numeric = DoltgresType{
 	Default:       "",
 	Acl:           nil,
 	Checks:        nil,
-	AttTypMod:     -1,
+	attTypMod:     -1,
 	CompareFunc:   toFuncID("numeric_cmp", oid.T_numeric, oid.T_numeric),
 }
 
 // NewNumericTypeWithPrecisionAndScale returns Numeric type with typmod set.
-func NewNumericTypeWithPrecisionAndScale(precision, scale int32) (DoltgresType, error) {
-	newType := Numeric
+func NewNumericTypeWithPrecisionAndScale(precision, scale int32) (*DoltgresType, error) {
 	typmod, err := GetTypmodFromNumericPrecisionAndScale(precision, scale)
 	if err != nil {
-		return DoltgresType{}, err
+		return nil, err
 	}
-	newType.AttTypMod = typmod
-	return newType, nil
+	newType := *Numeric.WithAttTypMod(typmod)
+	return &newType, nil
 }
 
 // GetTypmodFromNumericPrecisionAndScale takes Numeric type precision and scale and returns the type modifier value.

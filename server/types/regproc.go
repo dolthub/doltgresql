@@ -20,7 +20,7 @@ import (
 )
 
 // Regproc is the OID type for finding function names.
-var Regproc = DoltgresType{
+var Regproc = &DoltgresType{
 	OID:           uint32(oid.T_regproc),
 	Name:          "regproc",
 	Schema:        "pg_catalog",
@@ -53,7 +53,7 @@ var Regproc = DoltgresType{
 	Default:       "",
 	Acl:           nil,
 	Checks:        nil,
-	AttTypMod:     -1,
+	attTypMod:     -1,
 	CompareFunc:   toFuncID("-"),
 }
 

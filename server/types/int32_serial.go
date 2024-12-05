@@ -17,7 +17,7 @@ package types
 import "github.com/lib/pq/oid"
 
 // Int32Serial is an int32 serial type.
-var Int32Serial = DoltgresType{
+var Int32Serial = &DoltgresType{
 	OID:           0, // doesn't have unique OID
 	Name:          "serial",
 	Schema:        "pg_catalog",
@@ -50,7 +50,7 @@ var Int32Serial = DoltgresType{
 	Default:       "",
 	Acl:           nil,
 	Checks:        nil,
-	AttTypMod:     -1,
+	attTypMod:     -1,
 	CompareFunc:   toFuncID("btint4cmp", oid.T_int4, oid.T_int4),
 	IsSerial:      true,
 }

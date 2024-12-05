@@ -37,9 +37,9 @@ func initDate() {
 var date_in = framework.Function1{
 	Name:       "date_in",
 	Return:     pgtypes.Date,
-	Parameters: [1]pgtypes.DoltgresType{pgtypes.Cstring},
+	Parameters: [1]*pgtypes.DoltgresType{pgtypes.Cstring},
 	Strict:     true,
-	Callable: func(ctx *sql.Context, _ [2]pgtypes.DoltgresType, val any) (any, error) {
+	Callable: func(ctx *sql.Context, _ [2]*pgtypes.DoltgresType, val any) (any, error) {
 		input := val.(string)
 		if date, _, err := pgdate.ParseDate(time.Now(), pgdate.ParseModeYMD, input); err == nil {
 			return date.ToTime()
@@ -57,9 +57,9 @@ var date_in = framework.Function1{
 var date_out = framework.Function1{
 	Name:       "date_out",
 	Return:     pgtypes.Cstring,
-	Parameters: [1]pgtypes.DoltgresType{pgtypes.Date},
+	Parameters: [1]*pgtypes.DoltgresType{pgtypes.Date},
 	Strict:     true,
-	Callable: func(ctx *sql.Context, _ [2]pgtypes.DoltgresType, val any) (any, error) {
+	Callable: func(ctx *sql.Context, _ [2]*pgtypes.DoltgresType, val any) (any, error) {
 		return val.(time.Time).Format("2006-01-02"), nil
 	},
 }
@@ -68,9 +68,9 @@ var date_out = framework.Function1{
 var date_recv = framework.Function1{
 	Name:       "date_recv",
 	Return:     pgtypes.Date,
-	Parameters: [1]pgtypes.DoltgresType{pgtypes.Internal},
+	Parameters: [1]*pgtypes.DoltgresType{pgtypes.Internal},
 	Strict:     true,
-	Callable: func(ctx *sql.Context, _ [2]pgtypes.DoltgresType, val any) (any, error) {
+	Callable: func(ctx *sql.Context, _ [2]*pgtypes.DoltgresType, val any) (any, error) {
 		data := val.([]byte)
 		if len(data) == 0 {
 			return nil, nil
@@ -87,9 +87,9 @@ var date_recv = framework.Function1{
 var date_send = framework.Function1{
 	Name:       "date_send",
 	Return:     pgtypes.Bytea,
-	Parameters: [1]pgtypes.DoltgresType{pgtypes.Date},
+	Parameters: [1]*pgtypes.DoltgresType{pgtypes.Date},
 	Strict:     true,
-	Callable: func(ctx *sql.Context, _ [2]pgtypes.DoltgresType, val any) (any, error) {
+	Callable: func(ctx *sql.Context, _ [2]*pgtypes.DoltgresType, val any) (any, error) {
 		return val.(time.Time).MarshalBinary()
 	},
 }
@@ -98,9 +98,9 @@ var date_send = framework.Function1{
 var date_cmp = framework.Function2{
 	Name:       "date_cmp",
 	Return:     pgtypes.Int32,
-	Parameters: [2]pgtypes.DoltgresType{pgtypes.Date, pgtypes.Date},
+	Parameters: [2]*pgtypes.DoltgresType{pgtypes.Date, pgtypes.Date},
 	Strict:     true,
-	Callable: func(ctx *sql.Context, _ [3]pgtypes.DoltgresType, val1, val2 any) (any, error) {
+	Callable: func(ctx *sql.Context, _ [3]*pgtypes.DoltgresType, val1, val2 any) (any, error) {
 		ab := val1.(time.Time)
 		bb := val2.(time.Time)
 		return int32(ab.Compare(bb)), nil

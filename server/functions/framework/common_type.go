@@ -24,7 +24,7 @@ import (
 
 // FindCommonType returns the common type that given types can convert to.
 // https://www.postgresql.org/docs/15/typeconv-union-case.html
-func FindCommonType(types []pgtypes.DoltgresType) (pgtypes.DoltgresType, error) {
+func FindCommonType(types []*pgtypes.DoltgresType) (*pgtypes.DoltgresType, error) {
 	var candidateType = pgtypes.Unknown
 	var fail = false
 	for _, typ := range types {
@@ -48,7 +48,7 @@ func FindCommonType(types []pgtypes.DoltgresType) (pgtypes.DoltgresType, error) 
 			candidateType = typ
 		}
 		if typ.OID != uint32(oid.T_unknown) && candidateType.TypCategory != typ.TypCategory {
-			return pgtypes.DoltgresType{}, fmt.Errorf("types %s and %s cannot be matched", candidateType.String(), typ.String())
+			return nil, fmt.Errorf("types %s and %s cannot be matched", candidateType.String(), typ.String())
 		}
 	}
 
@@ -59,14 +59,14 @@ func FindCommonType(types []pgtypes.DoltgresType) (pgtypes.DoltgresType, error) 
 		} else if GetImplicitCast(typ, candidateType) != nil {
 			continue
 		} else if GetImplicitCast(candidateType, typ) == nil {
-			return pgtypes.DoltgresType{}, fmt.Errorf("cannot find implicit cast function from %s to %s", candidateType.String(), typ.String())
+			return nil, fmt.Errorf("cannot find implicit cast function from %s to %s", candidateType.String(), typ.String())
 		} else if !preferredTypeFound {
 			if candidateType.IsPreferred {
 				candidateType = typ
 				preferredTypeFound = true
 			}
 		} else {
-			return pgtypes.DoltgresType{}, fmt.Errorf("found another preferred candidate type")
+			return nil, fmt.Errorf("found another preferred candidate type")
 		}
 	}
 	return candidateType, nil

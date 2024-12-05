@@ -36,7 +36,7 @@ func float32Assignment() {
 	framework.MustAddAssignmentTypeCast(framework.TypeCast{
 		FromType: pgtypes.Float32,
 		ToType:   pgtypes.Int16,
-		Function: func(ctx *sql.Context, valInterface any, targetType pgtypes.DoltgresType) (any, error) {
+		Function: func(ctx *sql.Context, valInterface any, targetType *pgtypes.DoltgresType) (any, error) {
 			val := float32(math.RoundToEven(float64(valInterface.(float32))))
 			if val > 32767 || val < -32768 {
 				return nil, fmt.Errorf("smallint out of range")
@@ -47,7 +47,7 @@ func float32Assignment() {
 	framework.MustAddAssignmentTypeCast(framework.TypeCast{
 		FromType: pgtypes.Float32,
 		ToType:   pgtypes.Int32,
-		Function: func(ctx *sql.Context, valInterface any, targetType pgtypes.DoltgresType) (any, error) {
+		Function: func(ctx *sql.Context, valInterface any, targetType *pgtypes.DoltgresType) (any, error) {
 			val := float32(math.RoundToEven(float64(valInterface.(float32))))
 			if val > 2147483647 || val < -2147483648 {
 				return nil, fmt.Errorf("integer out of range")
@@ -58,7 +58,7 @@ func float32Assignment() {
 	framework.MustAddAssignmentTypeCast(framework.TypeCast{
 		FromType: pgtypes.Float32,
 		ToType:   pgtypes.Int64,
-		Function: func(ctx *sql.Context, valInterface any, targetType pgtypes.DoltgresType) (any, error) {
+		Function: func(ctx *sql.Context, valInterface any, targetType *pgtypes.DoltgresType) (any, error) {
 			val := float32(math.RoundToEven(float64(valInterface.(float32))))
 			if val > 9223372036854775807 || val < -9223372036854775808 {
 				return nil, fmt.Errorf("bigint out of range")
@@ -69,8 +69,8 @@ func float32Assignment() {
 	framework.MustAddAssignmentTypeCast(framework.TypeCast{
 		FromType: pgtypes.Float32,
 		ToType:   pgtypes.Numeric,
-		Function: func(ctx *sql.Context, val any, targetType pgtypes.DoltgresType) (any, error) {
-			return pgtypes.GetNumericValueWithTypmod(decimal.NewFromFloat(float64(val.(float32))), targetType.AttTypMod)
+		Function: func(ctx *sql.Context, val any, targetType *pgtypes.DoltgresType) (any, error) {
+			return pgtypes.GetNumericValueWithTypmod(decimal.NewFromFloat(float64(val.(float32))), targetType.GetAttTypMod())
 		},
 	})
 }
@@ -80,7 +80,7 @@ func float32Implicit() {
 	framework.MustAddImplicitTypeCast(framework.TypeCast{
 		FromType: pgtypes.Float32,
 		ToType:   pgtypes.Float64,
-		Function: func(ctx *sql.Context, val any, targetType pgtypes.DoltgresType) (any, error) {
+		Function: func(ctx *sql.Context, val any, targetType *pgtypes.DoltgresType) (any, error) {
 			return float64(val.(float32)), nil
 		},
 	})

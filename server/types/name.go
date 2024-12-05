@@ -22,7 +22,7 @@ import (
 const NameLength = 63
 
 // Name is a 63-byte internal type for object names.
-var Name = DoltgresType{
+var Name = &DoltgresType{
 	OID:           uint32(oid.T_name),
 	Name:          "name",
 	Schema:        "pg_catalog",
@@ -55,6 +55,6 @@ var Name = DoltgresType{
 	Default:       "",
 	Acl:           nil,
 	Checks:        nil,
-	AttTypMod:     -1,
+	attTypMod:     -1,
 	CompareFunc:   toFuncID("btnamecmp", oid.T_name, oid.T_name),
 }

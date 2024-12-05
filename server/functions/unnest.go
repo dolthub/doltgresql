@@ -32,9 +32,9 @@ func initUnnest() {
 var unnest = framework.Function1{
 	Name:       "unnest",
 	Return:     pgtypes.AnyElement, // TODO: Should return setof AnyElement
-	Parameters: [1]pgtypes.DoltgresType{pgtypes.AnyArray},
+	Parameters: [1]*pgtypes.DoltgresType{pgtypes.AnyArray},
 	Strict:     true,
-	Callable: func(ctx *sql.Context, _ [2]pgtypes.DoltgresType, val1 any) (any, error) {
+	Callable: func(ctx *sql.Context, _ [2]*pgtypes.DoltgresType, val1 any) (any, error) {
 		valArr := val1.([]interface{})
 		if len(valArr) == 0 {
 			return nil, nil

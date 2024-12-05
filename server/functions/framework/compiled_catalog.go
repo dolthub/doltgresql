@@ -39,7 +39,7 @@ func GetFunction(functionName string, params ...sql.Expression) (*CompiledFuncti
 // dummyExpression is a simple expression that exists solely to capture type information for a parameter. This is used
 // exclusively by the getQuickFunctionForTypes function.
 type dummyExpression struct {
-	t pgtypes.DoltgresType
+	t *pgtypes.DoltgresType
 }
 
 var _ sql.Expression = dummyExpression{}
@@ -58,7 +58,7 @@ func (d dummyExpression) WithChildren(children ...sql.Expression) (sql.Expressio
 
 // getQuickFunctionForTypes is used by the types package to load quick functions. This is declared here to work around
 // import cycles. Returns nil if a QuickFunction could not be constructed.
-func getQuickFunctionForTypes(functionName string, params []pgtypes.DoltgresType) any {
+func getQuickFunctionForTypes(functionName string, params []*pgtypes.DoltgresType) any {
 	exprs := make([]sql.Expression, len(params))
 	for i := range params {
 		exprs[i] = dummyExpression{t: params[i]}

@@ -19,7 +19,7 @@ import (
 )
 
 // Int16 is an int16.
-var Int16 = DoltgresType{
+var Int16 = &DoltgresType{
 	OID:           uint32(oid.T_int2),
 	Name:          "int2",
 	Schema:        "pg_catalog",
@@ -52,7 +52,7 @@ var Int16 = DoltgresType{
 	Default:       "",
 	Acl:           nil,
 	Checks:        nil,
-	AttTypMod:     -1,
+	attTypMod:     -1,
 	CompareFunc:   toFuncID("btint2cmp", oid.T_int2, oid.T_int2),
 	InternalName:  "smallint",
 }

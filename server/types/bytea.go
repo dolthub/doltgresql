@@ -19,7 +19,7 @@ import (
 )
 
 // Bytea is the byte string type.
-var Bytea = DoltgresType{
+var Bytea = &DoltgresType{
 	OID:           uint32(oid.T_bytea),
 	Name:          "bytea",
 	Schema:        "pg_catalog",
@@ -52,6 +52,6 @@ var Bytea = DoltgresType{
 	Default:       "",
 	Acl:           nil,
 	Checks:        nil,
-	AttTypMod:     -1,
+	attTypMod:     -1,
 	CompareFunc:   toFuncID("byteacmp", oid.T_bytea, oid.T_bytea),
 }

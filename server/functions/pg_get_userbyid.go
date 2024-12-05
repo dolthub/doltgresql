@@ -30,10 +30,10 @@ func initPgGetUserbyid() {
 var pg_get_userbyid_oid = framework.Function1{
 	Name:               "pg_get_userbyid",
 	Return:             pgtypes.Text,
-	Parameters:         [1]pgtypes.DoltgresType{pgtypes.Oid},
+	Parameters:         [1]*pgtypes.DoltgresType{pgtypes.Oid},
 	IsNonDeterministic: true,
 	Strict:             true,
-	Callable: func(ctx *sql.Context, _ [2]pgtypes.DoltgresType, val any) (any, error) {
+	Callable: func(ctx *sql.Context, _ [2]*pgtypes.DoltgresType, val any) (any, error) {
 		// TODO: roles are not supported yet
 		return "unknown OID()", nil
 	},

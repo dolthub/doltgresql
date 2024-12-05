@@ -38,9 +38,9 @@ func initUnaryPlus() {
 var float4up = framework.Function1{
 	Name:       "float4up",
 	Return:     pgtypes.Float32,
-	Parameters: [1]pgtypes.DoltgresType{pgtypes.Float32},
+	Parameters: [1]*pgtypes.DoltgresType{pgtypes.Float32},
 	Strict:     true,
-	Callable: func(ctx *sql.Context, _ [2]pgtypes.DoltgresType, val1 any) (any, error) {
+	Callable: func(ctx *sql.Context, _ [2]*pgtypes.DoltgresType, val1 any) (any, error) {
 		return val1, nil
 	},
 }
@@ -49,9 +49,9 @@ var float4up = framework.Function1{
 var float8up = framework.Function1{
 	Name:       "float8up",
 	Return:     pgtypes.Float64,
-	Parameters: [1]pgtypes.DoltgresType{pgtypes.Float64},
+	Parameters: [1]*pgtypes.DoltgresType{pgtypes.Float64},
 	Strict:     true,
-	Callable: func(ctx *sql.Context, _ [2]pgtypes.DoltgresType, val1 any) (any, error) {
+	Callable: func(ctx *sql.Context, _ [2]*pgtypes.DoltgresType, val1 any) (any, error) {
 		return val1, nil
 	},
 }
@@ -60,9 +60,9 @@ var float8up = framework.Function1{
 var int2up = framework.Function1{
 	Name:       "int2up",
 	Return:     pgtypes.Int16,
-	Parameters: [1]pgtypes.DoltgresType{pgtypes.Int16},
+	Parameters: [1]*pgtypes.DoltgresType{pgtypes.Int16},
 	Strict:     true,
-	Callable: func(ctx *sql.Context, _ [2]pgtypes.DoltgresType, val1 any) (any, error) {
+	Callable: func(ctx *sql.Context, _ [2]*pgtypes.DoltgresType, val1 any) (any, error) {
 		return val1, nil
 	},
 }
@@ -71,9 +71,9 @@ var int2up = framework.Function1{
 var int4up = framework.Function1{
 	Name:       "int4up",
 	Return:     pgtypes.Int32,
-	Parameters: [1]pgtypes.DoltgresType{pgtypes.Int32},
+	Parameters: [1]*pgtypes.DoltgresType{pgtypes.Int32},
 	Strict:     true,
-	Callable: func(ctx *sql.Context, _ [2]pgtypes.DoltgresType, val1 any) (any, error) {
+	Callable: func(ctx *sql.Context, _ [2]*pgtypes.DoltgresType, val1 any) (any, error) {
 		return val1, nil
 	},
 }
@@ -82,9 +82,9 @@ var int4up = framework.Function1{
 var int8up = framework.Function1{
 	Name:       "int8up",
 	Return:     pgtypes.Int64,
-	Parameters: [1]pgtypes.DoltgresType{pgtypes.Int64},
+	Parameters: [1]*pgtypes.DoltgresType{pgtypes.Int64},
 	Strict:     true,
-	Callable: func(ctx *sql.Context, _ [2]pgtypes.DoltgresType, val1 any) (any, error) {
+	Callable: func(ctx *sql.Context, _ [2]*pgtypes.DoltgresType, val1 any) (any, error) {
 		return val1, nil
 	},
 }
@@ -93,9 +93,9 @@ var int8up = framework.Function1{
 var numeric_uplus = framework.Function1{
 	Name:       "numeric_uplus",
 	Return:     pgtypes.Numeric,
-	Parameters: [1]pgtypes.DoltgresType{pgtypes.Numeric},
+	Parameters: [1]*pgtypes.DoltgresType{pgtypes.Numeric},
 	Strict:     true,
-	Callable: func(ctx *sql.Context, _ [2]pgtypes.DoltgresType, val1 any) (any, error) {
+	Callable: func(ctx *sql.Context, _ [2]*pgtypes.DoltgresType, val1 any) (any, error) {
 		return val1, nil
 	},
 }

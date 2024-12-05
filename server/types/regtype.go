@@ -20,7 +20,7 @@ import (
 )
 
 // Regtype is the OID type for finding items in pg_type.
-var Regtype = DoltgresType{
+var Regtype = &DoltgresType{
 	OID:           uint32(oid.T_regtype),
 	Name:          "regtype",
 	Schema:        "pg_catalog",
@@ -53,7 +53,7 @@ var Regtype = DoltgresType{
 	Default:       "",
 	Acl:           nil,
 	Checks:        nil,
-	AttTypMod:     -1,
+	attTypMod:     -1,
 	CompareFunc:   toFuncID("-"),
 }
 

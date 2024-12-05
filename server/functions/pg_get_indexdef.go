@@ -34,10 +34,10 @@ func initPgGetIndexDef() {
 var pg_get_indexdef_oid = framework.Function1{
 	Name:               "pg_get_indexdef",
 	Return:             pgtypes.Text,
-	Parameters:         [1]pgtypes.DoltgresType{pgtypes.Oid},
+	Parameters:         [1]*pgtypes.DoltgresType{pgtypes.Oid},
 	IsNonDeterministic: true,
 	Strict:             true,
-	Callable: func(ctx *sql.Context, _ [2]pgtypes.DoltgresType, val any) (any, error) {
+	Callable: func(ctx *sql.Context, _ [2]*pgtypes.DoltgresType, val any) (any, error) {
 		oidVal := val.(uint32)
 		err := oid.RunCallback(ctx, oidVal, oid.Callbacks{
 			Index: func(ctx *sql.Context, schema oid.ItemSchema, table oid.ItemTable, index oid.ItemIndex) (cont bool, err error) {
@@ -56,10 +56,10 @@ var pg_get_indexdef_oid = framework.Function1{
 var pg_get_indexdef_oid_integer_bool = framework.Function3{
 	Name:               "pg_get_indexdef",
 	Return:             pgtypes.Text,
-	Parameters:         [3]pgtypes.DoltgresType{pgtypes.Oid, pgtypes.Int32, pgtypes.Bool},
+	Parameters:         [3]*pgtypes.DoltgresType{pgtypes.Oid, pgtypes.Int32, pgtypes.Bool},
 	IsNonDeterministic: true,
 	Strict:             true,
-	Callable: func(ctx *sql.Context, _ [4]pgtypes.DoltgresType, val1, val2, val3 any) (any, error) {
+	Callable: func(ctx *sql.Context, _ [4]*pgtypes.DoltgresType, val1, val2, val3 any) (any, error) {
 		oidVal := val1.(uint32)
 		colNo := val2.(int32)
 		pretty := val3.(bool)

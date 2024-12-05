@@ -36,7 +36,7 @@ var ErrLengthMustBeAtLeast1 = errors.NewKind(`length for type %s must be at leas
 var ErrLengthCannotExceed = errors.NewKind(`length for type %s cannot exceed 10485760`)
 
 // VarChar is a varchar that has an unbounded length.
-var VarChar = DoltgresType{
+var VarChar = &DoltgresType{
 	OID:           uint32(oid.T_varchar),
 	Name:          "varchar",
 	Schema:        "pg_catalog",
@@ -69,24 +69,23 @@ var VarChar = DoltgresType{
 	Default:       "",
 	Acl:           nil,
 	Checks:        nil,
-	AttTypMod:     -1,
+	attTypMod:     -1,
 	CompareFunc:   toFuncID("bttextcmp", oid.T_text, oid.T_text), // TODO: temporarily added
 }
 
 // NewVarCharType returns VarChar type with type modifier set
 // representing the maximum number of characters that the type may hold.
-func NewVarCharType(maxChars int32) (DoltgresType, error) {
-	var err error
-	newType := VarChar
-	newType.AttTypMod, err = GetTypModFromCharLength("varchar", maxChars)
+func NewVarCharType(maxChars int32) (*DoltgresType, error) {
+	typmod, err := GetTypModFromCharLength("varchar", maxChars)
 	if err != nil {
-		return DoltgresType{}, err
+		return nil, err
 	}
-	return newType, nil
+	newType := *VarChar.WithAttTypMod(typmod)
+	return &newType, nil
 }
 
 // MustCreateNewVarCharType panics if used with out-of-bound value.
-func MustCreateNewVarCharType(maxChars int32) DoltgresType {
+func MustCreateNewVarCharType(maxChars int32) *DoltgresType {
 	newType, err := NewVarCharType(maxChars)
 	if err != nil {
 		panic(err)
