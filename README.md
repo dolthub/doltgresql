@@ -122,9 +122,9 @@ getting_started=> \d
 getting_started=> select * from dolt.status;
    table_name           | staged |  status
 ------------------------+--------+-----------
- public.employees       | 0      | new table
- public.employees_teams | 0      | new table
- public.teams           | 0      | new table
+ public.employees       | f      | new table
+ public.employees_teams | f      | new table
+ public.teams           | f      | new table
 (3 rows)
 
 getting_started=> call dolt_add('teams', 'employees', 'employees_teams');
@@ -135,9 +135,9 @@ getting_started=> call dolt_add('teams', 'employees', 'employees_teams');
 getting_started=> select * from dolt.status;
    table_name          | staged |  status
 -----------------------+--------+-----------
-public.employees       | 1      | new table
-public.employees_teams | 1      | new table
-public.teams           | 1      | new table
+public.employees       | t      | new table
+public.employees_teams | t      | new table
+public.teams           | t      | new table
 (3 rows)
 
 getting_started=> call dolt_commit('-m', 'Created initial schema');

@@ -554,8 +554,8 @@ var SchemaTests = []ScriptTest{
 			{
 				Query: "SELECT * FROM dolt.status;",
 				Expected: []sql.Row{
-					{"myschema.mytbl", 0, "new table"},
-					{"myschema", 0, "new schema"},
+					{"myschema.mytbl", "f", "new table"},
+					{"myschema", "f", "new schema"},
 				},
 			},
 			{
@@ -567,8 +567,8 @@ var SchemaTests = []ScriptTest{
 			{
 				Query: "SELECT * FROM dolt.status;",
 				Expected: []sql.Row{
-					{"myschema.mytbl", 1, "new table"},
-					{"myschema", 1, "new schema"},
+					{"myschema.mytbl", "t", "new table"},
+					{"myschema", "t", "new schema"},
 				},
 			},
 			{
@@ -597,8 +597,8 @@ var SchemaTests = []ScriptTest{
 			{
 				Query: "SELECT * FROM dolt.status;",
 				Expected: []sql.Row{
-					{"myschema.mytbl", 0, "new table"},
-					{"myschema", 0, "new schema"},
+					{"myschema.mytbl", "f", "new table"},
+					{"myschema", "f", "new schema"},
 				},
 			},
 			{
@@ -668,7 +668,7 @@ var SchemaTests = []ScriptTest{
 		Assertions: []ScriptTestAssertion{
 			{
 				Query:    "SELECT * FROM dolt.status;",
-				Expected: []sql.Row{{"myschema", 0, "new schema"}},
+				Expected: []sql.Row{{"myschema", "f", "new schema"}},
 			},
 			{
 				Query: "select dolt_add('.')",
@@ -678,7 +678,7 @@ var SchemaTests = []ScriptTest{
 			},
 			{
 				Query:    "SELECT * FROM dolt.status;",
-				Expected: []sql.Row{{"myschema", 1, "new schema"}},
+				Expected: []sql.Row{{"myschema", "t", "new schema"}},
 			},
 			{
 				Query:            "select dolt_commit('-m', 'new schema')",
@@ -762,8 +762,8 @@ var SchemaTests = []ScriptTest{
 			{
 				Query: "SELECT * FROM dolt.status;",
 				Expected: []sql.Row{
-					{"myschema.mytbl", 0, "new table"},
-					{"myschema", 0, "new schema"},
+					{"myschema.mytbl", "f", "new table"},
+					{"myschema", "f", "new schema"},
 				},
 			},
 			{
