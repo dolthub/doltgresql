@@ -16,6 +16,7 @@ package dtables
 
 import (
 	"github.com/dolthub/dolt/go/libraries/doltcore/doltdb"
+	"github.com/dolthub/dolt/go/libraries/doltcore/merge"
 	"github.com/dolthub/dolt/go/libraries/doltcore/sqle"
 	"github.com/dolthub/dolt/go/libraries/doltcore/sqle/dprocedures"
 	"github.com/dolthub/dolt/go/libraries/doltcore/sqle/dtables"
@@ -43,8 +44,11 @@ func Init() {
 
 	// Schemas
 	dtables.GetDocsSchema = getDocsSchema
+	dtables.GetDoltConstraintViolationsBaseSqlSchema = getDoltConstraintViolationsBaseSqlSchema
 	dtables.GetDoltIgnoreSchema = getDoltIgnoreSchema
+	dtables.GetDoltMergeStatusSchema = getDoltMergeStatusSchema
 	dprocedures.GetDoltRebaseSystemTableSchema = getRebaseSchema
+	dtables.GetDoltStatusSchema = getDoltStatusSchema
 	dtables.GetUnscopedDoltDiffSchema = getUnscopedDoltDiffSchema
 	dtables.GetDoltWorkspaceBaseSqlSchema = getDoltWorkspaceBaseSqlSchema
 
@@ -52,6 +56,8 @@ func Init() {
 	doltdb.ConvertTupleToIgnoreBoolean = convertTupleToIgnoreBoolean
 	sqle.ConvertRebasePlanStepToRow = convertRebasePlanStepToRow
 	sqle.ConvertRowToRebasePlanStep = convertRowToRebasePlanStep
+	merge.MapCVType = mapCVType
+	merge.UnmapCVType = unmapCVType
 }
 
 // getBranchesTableName returns the name of the branches table.
@@ -74,19 +80,9 @@ func getCommitsTableName() string {
 	return "commits"
 }
 
-// getDiffTableName returns the name of the diff table.
-func getDiffTableName() string {
-	return "diff"
-}
-
 // getLogTableName returns the name of the branches table.
 func getLogTableName() string {
 	return "log"
-}
-
-// getMergeStatusTableName returns the name of the merge status table.
-func getMergeStatusTableName() string {
-	return "merge_status"
 }
 
 // getRemoteBranchesTableName returns the name of the remote branches table.
@@ -102,11 +98,6 @@ func getRemotesTableName() string {
 // getSchemaConflictsTableName returns the name of the schema conflicts table.
 func getSchemaConflictsTableName() string {
 	return "schema_conflicts"
-}
-
-// getStatusTableName returns the name of the status table.
-func getStatusTableName() string {
-	return "status"
 }
 
 // getTableOfTablesInConflictName returns the name of the conflicts table.

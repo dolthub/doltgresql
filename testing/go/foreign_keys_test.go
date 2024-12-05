@@ -56,8 +56,8 @@ func TestForeignKeys(t *testing.T) {
 					{
 						Query: "SELECT * FROM dolt.status",
 						Expected: []sql.Row{
-							{"public.test", 1, "new table"},
-							{"public.test_info", 1, "new table"},
+							{"public.test", "t", "new table"},
+							{"public.test_info", "t", "new table"},
 						},
 					},
 					{
@@ -100,8 +100,8 @@ func TestForeignKeys(t *testing.T) {
 					{
 						Query: "SELECT * FROM dolt.status",
 						Expected: []sql.Row{
-							{"public.child", 1, "new table"},
-							{"public.parent", 1, "new table"},
+							{"public.child", "t", "new table"},
+							{"public.parent", "t", "new table"},
 						},
 					},
 					{
@@ -150,9 +150,9 @@ func TestForeignKeys(t *testing.T) {
 					{
 						Query: "SELECT * FROM dolt_status",
 						Expected: []sql.Row{
-							{"child.child", 1, "new table"},
-							{"fake.parent", 1, "new table"},
-							{"parent.parent", 1, "new table"},
+							{"child.child", "t", "new table"},
+							{"fake.parent", "t", "new table"},
+							{"parent.parent", "t", "new table"},
 						},
 					},
 					{
@@ -201,9 +201,9 @@ func TestForeignKeys(t *testing.T) {
 					{
 						Query: "SELECT * FROM dolt.status",
 						Expected: []sql.Row{
-							{"child.child", 1, "new table"},
-							{"fake.parent", 1, "new table"},
-							{"parent.parent", 1, "new table"},
+							{"child.child", "t", "new table"},
+							{"fake.parent", "t", "new table"},
+							{"parent.parent", "t", "new table"},
 						},
 					},
 					{
@@ -251,9 +251,9 @@ func TestForeignKeys(t *testing.T) {
 					{
 						Query: "SELECT * FROM dolt_status",
 						Expected: []sql.Row{
-							{"child.child", 1, "new table"},
-							{"fake.parent", 1, "new table"},
-							{"parent.parent", 1, "new table"},
+							{"child.child", "t", "new table"},
+							{"fake.parent", "t", "new table"},
+							{"parent.parent", "t", "new table"},
 						},
 					},
 					{
