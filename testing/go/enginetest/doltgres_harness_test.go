@@ -705,6 +705,8 @@ func getDmlResult(rows pgx.Rows) (sql.Row, bool) {
 		return sql.NewRow(gmstypes.NewOkResult(int(tag.RowsAffected()))), true
 	case tag.Delete():
 		return sql.NewRow(gmstypes.NewOkResult(int(tag.RowsAffected()))), true
+	case strings.HasPrefix(tag.String(), "RENAME TABLE"):
+		return sql.NewRow(gmstypes.NewOkResult(0)), true
 	case strings.HasPrefix(tag.String(), "DROP TABLE"):
 		return sql.NewRow(gmstypes.NewOkResult(0)), true
 	case strings.HasPrefix(tag.String(), "CREATE TABLE"):
