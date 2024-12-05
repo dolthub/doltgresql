@@ -36,9 +36,9 @@ func TestGettingStartedGuide(t *testing.T) {
 				{
 					Query: "select * from dolt.status;",
 					Expected: []sql.Row{
-						{"public.employees", 0, "new table"},
-						{"public.employees_teams", 0, "new table"},
-						{"public.teams", 0, "new table"},
+						{"public.employees", "f", "new table"},
+						{"public.employees_teams", "f", "new table"},
+						{"public.teams", "f", "new table"},
 					},
 				},
 				{
@@ -48,9 +48,9 @@ func TestGettingStartedGuide(t *testing.T) {
 				{
 					Query: "select * from dolt.status;",
 					Expected: []sql.Row{
-						{"public.employees", 1, "new table"},
-						{"public.employees_teams", 1, "new table"},
-						{"public.teams", 1, "new table"},
+						{"public.employees", "t", "new table"},
+						{"public.employees_teams", "t", "new table"},
+						{"public.teams", "t", "new table"},
 					},
 				},
 				{
@@ -104,9 +104,9 @@ func TestGettingStartedGuide(t *testing.T) {
 				{
 					Query: "select * from dolt.status order by table_name;",
 					Expected: []sql.Row{
-						{"public.employees", 0, "modified"},
-						{"public.employees_teams", 0, "modified"},
-						{"public.teams", 0, "modified"},
+						{"public.employees", "f", "modified"},
+						{"public.employees_teams", "f", "modified"},
+						{"public.teams", "f", "modified"},
 					},
 				},
 				{
@@ -136,14 +136,14 @@ func TestGettingStartedGuide(t *testing.T) {
 					},
 				},
 				{
-					Query: "select table_name, message, data_change, schema_change from dolt_diff order by date desc, table_name;",
+					Query: "select table_name, message, data_change, schema_change from dolt.diff order by date desc, table_name;",
 					Expected: []sql.Row{
-						{"public.employees", "Populated tables with data", 1, 0},
-						{"public.employees_teams", "Populated tables with data", 1, 0},
-						{"public.teams", "Populated tables with data", 1, 0},
-						{"public.employees", "Created initial schema", 0, 1},
-						{"public.employees_teams", "Created initial schema", 0, 1},
-						{"public.teams", "Created initial schema", 0, 1},
+						{"public.employees", "Populated tables with data", "t", "f"},
+						{"public.employees_teams", "Populated tables with data", "t", "f"},
+						{"public.teams", "Populated tables with data", "t", "f"},
+						{"public.employees", "Created initial schema", "f", "t"},
+						{"public.employees_teams", "Created initial schema", "f", "t"},
+						{"public.teams", "Created initial schema", "f", "t"},
 					},
 				},
 

@@ -849,18 +849,22 @@ func TestUserSpaceDoltTables(t *testing.T) {
 			},
 			Assertions: []ScriptTestAssertion{
 				{
-					Query: `SELECT violation_type, pk, col1 FROM dolt_constraint_violations_test`,
+					Query: `SELECT violation_type, pk, col1, violation_info FROM dolt_constraint_violations_test`,
 					Expected: []sql.Row{
-						{"unique index", 1, 1},
-						{"unique index", 2, 1},
+						{"unique index", 1, 1, `{"Columns": ["col1"], "Name": "col1"}`},
+						{"unique index", 2, 1, `{"Columns": ["col1"], "Name": "col1"}`},
 					},
 				},
 				{
-					Query: `SELECT violation_type, pk, col1 FROM public.dolt_constraint_violations_test`,
+					Query: `SELECT violation_type, pk, col1, violation_info FROM public.dolt_constraint_violations_test`,
 					Expected: []sql.Row{
-						{"unique index", 1, 1},
-						{"unique index", 2, 1},
+						{"unique index", 1, 1, `{"Columns": ["col1"], "Name": "col1"}`},
+						{"unique index", 2, 1, `{"Columns": ["col1"], "Name": "col1"}`},
 					},
+				},
+				{
+					Query:    `SELECT * FROM public.dolt_constraint_violations_test WHERE violation_type = 'foreign key'`,
+					Expected: []sql.Row{},
 				},
 				{
 					Query:    `SELECT dolt_constraint_violations_test.violation_type FROM public.dolt_constraint_violations_test`,
@@ -1110,6 +1114,18 @@ func TestUserSpaceDoltTables(t *testing.T) {
 				{
 					Query:    `SELECT table_name FROM dolt.diff`,
 					Expected: []sql.Row{{"public.test"}},
+				},
+				{
+					Query:    `SELECT table_name, committer, email, message, data_change, schema_change FROM dolt.diff`,
+					Expected: []sql.Row{{"public.test", "postgres", "postgres@127.0.0.1", "test commit", "f", "t"}},
+				},
+				{
+					Query:    `SELECT table_name, data_change, schema_change FROM dolt.diff WHERE data_change=false`,
+					Expected: []sql.Row{{"public.test", "f", "t"}},
+				},
+				{
+					Query:    `SELECT table_name, data_change, schema_change FROM dolt.diff WHERE schema_change=false`,
+					Expected: []sql.Row{},
 				},
 				{
 					Query:    `SELECT table_name FROM dolt_diff`,
@@ -1438,6 +1454,12 @@ func TestUserSpaceDoltTables(t *testing.T) {
 					},
 				},
 				{
+					Query: `SELECT * FROM dolt_ignore WHERE ignored=false`,
+					Expected: []sql.Row{
+						{"generated_exception", "f"},
+					},
+				},
+				{
 					Query: `SELECT * FROM public.dolt_ignore`,
 					Expected: []sql.Row{
 						{"generated_*", "t"},
@@ -1487,10 +1509,10 @@ func TestUserSpaceDoltTables(t *testing.T) {
 				{
 					Query: "SELECT * FROM dolt_status;",
 					Expected: []sql.Row{
-						{"public.dolt_ignore", 1, "new table"},
-						{"public.foo", 1, "new table"},
-						{"public.generated_exception", 1, "new table"},
-						{"public.generated_foo", 0, "new table"},
+						{"public.dolt_ignore", "t", "new table"},
+						{"public.foo", "t", "new table"},
+						{"public.generated_exception", "t", "new table"},
+						{"public.generated_foo", "f", "new table"},
 					},
 				},
 				{
@@ -1573,16 +1595,16 @@ func TestUserSpaceDoltTables(t *testing.T) {
 				{
 					Query: "SELECT * FROM dolt_status ORDER BY table_name;",
 					Expected: []sql.Row{
-						{"newschema", 1, "new schema"},
-						{"newschema.dolt_ignore", 1, "new table"},
-						{"newschema.foo", 1, "new table"},
-						{"newschema.generated_exception", 0, "new table"},
-						{"newschema.generated_foo", 1, "new table"},
-						{"newschema.test_foo", 0, "new table"},
-						{"public.dolt_ignore", 1, "new table"},
-						{"public.foo", 1, "new table"},
-						{"public.generated_exception", 1, "new table"},
-						{"public.generated_foo", 0, "new table"},
+						{"newschema", "t", "new schema"},
+						{"newschema.dolt_ignore", "t", "new table"},
+						{"newschema.foo", "t", "new table"},
+						{"newschema.generated_exception", "f", "new table"},
+						{"newschema.generated_foo", "t", "new table"},
+						{"newschema.test_foo", "f", "new table"},
+						{"public.dolt_ignore", "t", "new table"},
+						{"public.foo", "t", "new table"},
+						{"public.generated_exception", "t", "new table"},
+						{"public.generated_foo", "f", "new table"},
 					},
 				},
 			},
@@ -1649,20 +1671,24 @@ func TestUserSpaceDoltTables(t *testing.T) {
 			Assertions: []ScriptTestAssertion{
 				{
 					Query:    `SELECT is_merging FROM dolt.merge_status`,
-					Expected: []sql.Row{{0}},
+					Expected: []sql.Row{{"f"}},
+				},
+				{
+					Query:    `SELECT is_merging FROM dolt.merge_status WHERE is_merging=true`,
+					Expected: []sql.Row{},
 				},
 				{
 					Query:    `SELECT is_merging FROM dolt_merge_status`,
-					Expected: []sql.Row{{0}},
+					Expected: []sql.Row{{"f"}},
 				},
 				{
 					Skip:     true, // TODO: referencing items outside the schema or database is not yet supported
 					Query:    `SELECT dolt.merge_status.is_merging FROM dolt.merge_status`,
-					Expected: []sql.Row{{0}},
+					Expected: []sql.Row{{"f"}},
 				},
 				{
 					Query:    `SELECT dolt_merge_status.is_merging FROM dolt_merge_status`,
-					Expected: []sql.Row{{0}},
+					Expected: []sql.Row{{"f"}},
 				},
 				{
 					Query:       `SELECT * FROM public.merge_status`,
@@ -1686,7 +1712,7 @@ func TestUserSpaceDoltTables(t *testing.T) {
 				},
 				{
 					Query:    `SELECT is_merging FROM dolt.merge_status`,
-					Expected: []sql.Row{{0}},
+					Expected: []sql.Row{{"f"}},
 				},
 				{
 					Query:    "SET search_path = 'dolt'",
@@ -1694,7 +1720,7 @@ func TestUserSpaceDoltTables(t *testing.T) {
 				},
 				{
 					Query:    `SELECT is_merging FROM merge_status`,
-					Expected: []sql.Row{{0}},
+					Expected: []sql.Row{{"f"}},
 				},
 				{
 					Query:    `SELECT * FROM public.merge_status`,
@@ -1718,6 +1744,214 @@ func TestUserSpaceDoltTables(t *testing.T) {
 				},
 				{
 					Query:    `SELECT * FROM MERGE_STATUS`,
+					Expected: []sql.Row{{1}},
+				},
+			},
+		},
+		{
+			Name: "dolt statistics",
+			SetUpScript: []string{
+				"CREATE TABLE horses (id int primary key, name varchar(10));",
+				"CREATE INDEX horses_name_idx ON horses(name);",
+				"insert into horses select x, 'Steve' from (with recursive inputs(x) as (select 1 union select x+1 from inputs where x < 1000) select * from inputs) dt;",
+			},
+			Assertions: []ScriptTestAssertion{
+				{
+					Query:    `ANALYZE horses;`,
+					Expected: []sql.Row{},
+				},
+				{
+					Query: `SELECT database_name, table_name, index_name, row_count, distinct_count, columns, upper_bound, upper_bound_cnt FROM dolt_statistics ORDER BY index_name`,
+					Expected: []sql.Row{
+						{"postgres", "horses", "horses_name_idx", 306, 1, "name", "Steve", 306},
+						{"postgres", "horses", "horses_name_idx", 167, 1, "name", "Steve", 167},
+						{"postgres", "horses", "horses_name_idx", 197, 1, "name", "Steve", 197},
+						{"postgres", "horses", "horses_name_idx", 320, 1, "name", "Steve", 320},
+						{"postgres", "horses", "horses_name_idx", 10, 1, "name", "Steve", 10},
+						{"postgres", "horses", "primary", 347, 347, "id", "347", 1},
+						{"postgres", "horses", "primary", 404, 404, "id", "751", 1},
+						{"postgres", "horses", "primary", 203, 203, "id", "954", 1},
+						{"postgres", "horses", "primary", 46, 46, "id", "1000", 1},
+					},
+				},
+				{
+					Query:    `SELECT count(*) FROM dolt_statistics`,
+					Expected: []sql.Row{{9}},
+				},
+				{
+					Query:    `SELECT count(*) FROM public.dolt_statistics`,
+					Expected: []sql.Row{{9}},
+				},
+				{
+					Query:    `SELECT dolt_statistics.index_name FROM public.dolt_statistics GROUP BY index_name ORDER BY index_name`,
+					Expected: []sql.Row{{"horses_name_idx"}, {"primary"}},
+				},
+				{
+					Query:       `SELECT name FROM other.dolt_statistics`,
+					ExpectedErr: "database schema not found",
+				},
+				{
+					Query:    `CREATE SCHEMA newschema`,
+					Expected: []sql.Row{},
+				},
+				{
+					Query:    "SET search_path = 'newschema'",
+					Expected: []sql.Row{},
+				},
+				{
+					Query:    `SELECT count(*) FROM dolt_statistics`,
+					Expected: []sql.Row{{0}},
+				},
+				{
+					Query:    "CREATE TABLE horses2 (id int primary key, name varchar(10));",
+					Expected: []sql.Row{},
+				},
+				{
+					Query:    "CREATE INDEX horses2_name_idx ON horses2(name);",
+					Expected: []sql.Row{},
+				},
+				{
+					Query:    "insert into horses2 select x, 'Steve' from (with recursive inputs(x) as (select 1 union select x+1 from inputs where x < 1000) select * from inputs) dt;",
+					Expected: []sql.Row{},
+				},
+				{
+					Query:    `ANALYZE horses2;`,
+					Expected: []sql.Row{},
+				},
+				{
+					Query:    `SELECT dolt_statistics.index_name FROM dolt_statistics GROUP BY index_name ORDER BY index_name`,
+					Expected: []sql.Row{{"horses2_name_idx"}, {"primary"}},
+				},
+				{
+					Query:    `SELECT dolt_statistics.index_name FROM newschema.dolt_statistics GROUP BY index_name ORDER BY index_name`,
+					Expected: []sql.Row{{"horses2_name_idx"}, {"primary"}},
+				},
+				{
+					Query:    `SELECT dolt_statistics.index_name FROM public.dolt_statistics GROUP BY index_name ORDER BY index_name`,
+					Expected: []sql.Row{{"horses_name_idx"}, {"primary"}},
+				},
+				// Same table name, different schema
+				{
+					Query:    "CREATE TABLE horses (id int primary key, name varchar(10));",
+					Expected: []sql.Row{},
+				},
+				{
+					Query:    "CREATE INDEX horses3_name_idx ON horses(name);",
+					Expected: []sql.Row{},
+				},
+				{
+					Query:    "insert into horses select x, 'Steve' from (with recursive inputs(x) as (select 1 union select x+1 from inputs where x < 1000) select * from inputs) dt;",
+					Expected: []sql.Row{},
+				},
+				{
+					Query:    `ANALYZE horses;`,
+					Expected: []sql.Row{},
+				},
+				{
+					Query: `SELECT table_name, index_name FROM dolt_statistics GROUP BY table_name, index_name ORDER BY table_name, index_name`,
+					Expected: []sql.Row{
+						{"horses", "horses3_name_idx"},
+						{"horses", "primary"},
+						{"horses2", "horses2_name_idx"},
+						{"horses2", "primary"},
+					},
+				},
+				{
+					Query: `SELECT table_name, index_name FROM newschema.dolt_statistics GROUP BY table_name, index_name ORDER BY table_name, index_name`,
+					Expected: []sql.Row{
+						{"horses", "horses3_name_idx"},
+						{"horses", "primary"},
+						{"horses2", "horses2_name_idx"},
+						{"horses2", "primary"},
+					},
+				},
+				{
+					Query:    `SELECT table_name, index_name FROM public.dolt_statistics GROUP BY index_name ORDER BY index_name`,
+					Expected: []sql.Row{{"horses", "horses_name_idx"}, {"horses", "primary"}},
+				},
+			},
+		},
+		{
+			Name: "dolt status",
+			SetUpScript: []string{
+				"CREATE TABLE t (id INT PRIMARY KEY)",
+			},
+			Assertions: []ScriptTestAssertion{
+				{
+					Query:    `SELECT * FROM dolt.status`,
+					Expected: []sql.Row{{"public.t", "f", "new table"}},
+				},
+				{
+					Query:    `SELECT * FROM dolt_status`,
+					Expected: []sql.Row{{"public.t", "f", "new table"}},
+				},
+				{
+					Query:    `SELECT * FROM dolt.status WHERE staged=true`,
+					Expected: []sql.Row{},
+				},
+				{
+					Skip:     true, // TODO: referencing items outside the schema or database is not yet supported
+					Query:    `SELECT dolt.status.table_name FROM dolt.status`,
+					Expected: []sql.Row{{"public.t"}},
+				},
+				{
+					Query:    `SELECT dolt_status.table_name FROM dolt_status`,
+					Expected: []sql.Row{{"public.t"}},
+				},
+				{
+					Query:       `SELECT * FROM public.status`,
+					ExpectedErr: "table not found",
+				},
+				{
+					Query:       `SELECT * FROM status`,
+					ExpectedErr: "table not found",
+				},
+				{
+					Query:    `CREATE TABLE status (id INT PRIMARY KEY)`,
+					Expected: []sql.Row{},
+				},
+				{
+					Query:    `INSERT INTO status VALUES (1)`,
+					Expected: []sql.Row{},
+				},
+				{
+					Query:    `SELECT * FROM status`,
+					Expected: []sql.Row{{1}},
+				},
+				{
+					Query:    `SELECT table_name FROM dolt.status`,
+					Expected: []sql.Row{{"public.status"}, {"public.t"}},
+				},
+				{
+					Query:    "SET search_path = 'dolt'",
+					Expected: []sql.Row{},
+				},
+				{
+					Query:    `SELECT table_name FROM status`,
+					Expected: []sql.Row{{"public.status"}, {"public.t"}},
+				},
+				{
+					Query:    `SELECT * FROM public.status`,
+					Expected: []sql.Row{{1}},
+				},
+				{
+					Query:    "SET search_path = 'public'",
+					Expected: []sql.Row{},
+				},
+				{
+					Query:    `SELECT * FROM status`,
+					Expected: []sql.Row{{1}},
+				},
+				{
+					Query:    "SET search_path = 'public,dolt'",
+					Expected: []sql.Row{},
+				},
+				{
+					Query:    `SELECT * FROM status`,
+					Expected: []sql.Row{{1}},
+				},
+				{
+					Query:    `SELECT * FROM STATUS`,
 					Expected: []sql.Row{{1}},
 				},
 			},
@@ -2530,15 +2764,15 @@ func TestUserSpaceDoltTables(t *testing.T) {
 			Assertions: []ScriptTestAssertion{
 				{
 					Query:    `SELECT id, staged, from_id, to_id FROM dolt_workspace_test`,
-					Expected: []sql.Row{{Numeric("0"), 0, nil, 10}},
+					Expected: []sql.Row{{0, "f", nil, 10}},
 				},
 				{
 					Query:    `SELECT id, staged, from_id, to_id FROM public.dolt_workspace_test`,
-					Expected: []sql.Row{{Numeric("0"), 0, nil, 10}},
+					Expected: []sql.Row{{0, "f", nil, 10}},
 				},
 				{
 					Query:    `SELECT dolt_workspace_test.id FROM public.dolt_workspace_test`,
-					Expected: []sql.Row{{Numeric("0")}},
+					Expected: []sql.Row{{0}},
 				},
 				{
 					Query:       `SELECT * FROM other.dolt_workspace_test`,
@@ -2570,11 +2804,19 @@ func TestUserSpaceDoltTables(t *testing.T) {
 				},
 				{
 					Query:    `SELECT id, staged, from_id, to_id FROM newschema.dolt_workspace_test_sch`,
-					Expected: []sql.Row{{Numeric("0"), 1, nil, 11}},
+					Expected: []sql.Row{{0, "t", nil, 11}},
 				},
 				{
 					Query:    `SELECT id, staged, from_id, to_id FROM dolt_workspace_test_sch`,
-					Expected: []sql.Row{{Numeric("0"), 1, nil, 11}},
+					Expected: []sql.Row{{0, "t", nil, 11}},
+				},
+				{
+					Query:    `SELECT id, staged, from_id, to_id FROM dolt_workspace_test_sch WHERE staged=true`,
+					Expected: []sql.Row{{0, "t", nil, 11}},
+				},
+				{
+					Query:    `SELECT id, staged, from_id, to_id FROM dolt_workspace_test_sch WHERE staged=false`,
+					Expected: []sql.Row{},
 				},
 				{
 					Query:    `SELECT * FROM dolt_workspace_test`,
@@ -2582,7 +2824,7 @@ func TestUserSpaceDoltTables(t *testing.T) {
 				},
 				{
 					Query:    `SELECT id, staged, from_id, to_id FROM public.dolt_workspace_test`,
-					Expected: []sql.Row{{Numeric("0"), 0, nil, 10}},
+					Expected: []sql.Row{{0, "f", nil, 10}},
 				},
 				{
 					Query:    `SELECT * FROM public.dolt_workspace_test_sch`,
@@ -2603,15 +2845,15 @@ func TestUserSpaceDoltTables(t *testing.T) {
 				},
 				{
 					Query:    `SELECT id, staged, from_id, to_id FROM newschema.dolt_workspace_test`,
-					Expected: []sql.Row{{Numeric("0"), 0, nil, 12}},
+					Expected: []sql.Row{{0, "f", nil, 12}},
 				},
 				{
 					Query:    `SELECT id, staged, from_id, to_id FROM dolt_workspace_test`,
-					Expected: []sql.Row{{Numeric("0"), 0, nil, 12}},
+					Expected: []sql.Row{{0, "f", nil, 12}},
 				},
 				{
 					Query:    `SELECT id, staged, from_id, to_id FROM public.dolt_workspace_test`,
-					Expected: []sql.Row{{Numeric("0"), 0, nil, 10}},
+					Expected: []sql.Row{{0, "f", nil, 10}},
 				},
 				{
 					Query:    "SET search_path = 'newschema,public'",
@@ -2619,7 +2861,7 @@ func TestUserSpaceDoltTables(t *testing.T) {
 				},
 				{
 					Query:    `SELECT id, staged, from_id, to_id FROM dolt_workspace_test`,
-					Expected: []sql.Row{{Numeric("0"), 0, nil, 12}},
+					Expected: []sql.Row{{0, "f", nil, 12}},
 				},
 			},
 		},

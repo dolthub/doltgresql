@@ -114,7 +114,7 @@ func TestDoltFunctions(t *testing.T) {
 				{
 					Query: "SELECT * FROM dolt.status",
 					Expected: []sql.Row{
-						{"public.t1", 0, "modified"},
+						{"public.t1", "f", "modified"},
 					},
 				},
 				{
@@ -124,7 +124,7 @@ func TestDoltFunctions(t *testing.T) {
 				{
 					Query: "SELECT * FROM dolt.status",
 					Expected: []sql.Row{
-						{"public.t1", 0, "modified"},
+						{"public.t1", "f", "modified"},
 					},
 				},
 			},
@@ -153,7 +153,7 @@ func TestDoltFunctions(t *testing.T) {
 				{
 					Query: "SELECT * FROM dolt.status",
 					Expected: []sql.Row{
-						{"public.t1", 0, "modified"},
+						{"public.t1", "f", "modified"},
 					},
 				},
 				{
@@ -163,7 +163,7 @@ func TestDoltFunctions(t *testing.T) {
 				{
 					Query: "SELECT * FROM dolt.status",
 					Expected: []sql.Row{
-						{"public.t1", 0, "modified"},
+						{"public.t1", "f", "modified"},
 					},
 				},
 			},
@@ -178,7 +178,7 @@ func TestDoltFunctions(t *testing.T) {
 				{
 					Query: "SELECT * FROM dolt.status;",
 					Expected: []sql.Row{
-						{"public.t1", 0, "new table"},
+						{"public.t1", "f", "new table"},
 					},
 				},
 				{
@@ -188,7 +188,7 @@ func TestDoltFunctions(t *testing.T) {
 				{
 					Query: "SELECT * FROM dolt.status;",
 					Expected: []sql.Row{
-						{"public.t1", 1, "new table"},
+						{"public.t1", "t", "new table"},
 					},
 				},
 				{
@@ -198,7 +198,7 @@ func TestDoltFunctions(t *testing.T) {
 				{
 					Query: "SELECT * FROM dolt.status;",
 					Expected: []sql.Row{
-						{"public.t1", 0, "new table"},
+						{"public.t1", "f", "new table"},
 					},
 				},
 			},
@@ -213,7 +213,7 @@ func TestDoltFunctions(t *testing.T) {
 				{
 					Query: "SELECT * FROM dolt.status;",
 					Expected: []sql.Row{
-						{"public.t1", 0, "new table"},
+						{"public.t1", "f", "new table"},
 					},
 				},
 				{
@@ -231,7 +231,7 @@ func TestDoltFunctions(t *testing.T) {
 				{
 					Query: "SELECT * FROM dolt.status;",
 					Expected: []sql.Row{
-						{"public.t1", 0, "new table"},
+						{"public.t1", "f", "new table"},
 					},
 				},
 				{
@@ -256,7 +256,7 @@ func TestDoltFunctions(t *testing.T) {
 				{
 					Query: "SELECT * FROM dolt.status;",
 					Expected: []sql.Row{
-						{"public.t1", 0, "new table"},
+						{"public.t1", "f", "new table"},
 					},
 				},
 				{
@@ -322,7 +322,7 @@ func TestDoltFunctions(t *testing.T) {
 				{
 					Query: "SELECT * FROM dolt.diff",
 					Expected: []sql.Row{
-						{"WORKING", "public.t1", nil, nil, nil, nil, 1, 1},
+						{"WORKING", "public.t1", nil, nil, nil, nil, "t", "t"},
 					},
 				},
 				{
@@ -373,9 +373,9 @@ func TestDoltFunctions(t *testing.T) {
 				{
 					Query: "SELECT * FROM dolt.status;",
 					Expected: []sql.Row{
-						{"public.t1", 0, "new table"},
-						{"testschema.t2", 0, "new table"},
-						{"testschema", 0, "new schema"},
+						{"public.t1", "f", "new table"},
+						{"testschema.t2", "f", "new table"},
+						{"testschema", "f", "new schema"},
 					},
 				},
 				{
@@ -438,8 +438,8 @@ func TestDoltFunctions(t *testing.T) {
 				{
 					Query: "SELECT * FROM dolt.diff",
 					Expected: []sql.Row{
-						{"WORKING", "public.t1", nil, nil, nil, nil, 1, 1},
-						{"WORKING", "testschema.t2", nil, nil, nil, nil, 1, 1},
+						{"WORKING", "public.t1", nil, nil, nil, nil, "t", "t"},
+						{"WORKING", "testschema.t2", nil, nil, nil, nil, "t", "t"},
 					},
 				},
 				{
