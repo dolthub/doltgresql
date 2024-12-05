@@ -100,14 +100,22 @@ func (b *BinaryOperator) WithChildren(children ...sql.Expression) (sql.Expressio
 	if len(children) != 2 {
 		return nil, sql.ErrInvalidChildrenNumber.New(b, len(children), 2)
 	}
-	compiledFunc, err := b.compiledFunc.WithChildren(children...)
-	if err != nil {
-		return nil, err
+	if b.compiledFunc != nil {
+		compiledFunc, err := b.compiledFunc.WithChildren(children...)
+		if err != nil {
+			return nil, err
+		}
+		return &BinaryOperator{
+			operator:     b.operator,
+			compiledFunc: compiledFunc.(*framework.CompiledFunction),
+		}, nil
+	} else {
+		binOp, err := b.WithResolvedChildren([]any{children[0], children[1]})
+		if err != nil {
+			return nil, err
+		}
+		return binOp.(sql.Expression), nil
 	}
-	return &BinaryOperator{
-		operator:     b.operator,
-		compiledFunc: compiledFunc.(*framework.CompiledFunction),
-	}, nil
 }
 
 // WithResolvedChildren implements the vitess.InjectableExpression interface.
