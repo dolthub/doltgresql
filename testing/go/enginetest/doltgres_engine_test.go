@@ -563,7 +563,6 @@ func TestConvertPrepared(t *testing.T) {
 }
 
 func TestScripts(t *testing.T) {
-	// t.Skip()
 	h := newDoltgresServerHarness(t).WithSkippedQueries([]string{
 		"filter pushdown through join uppercase name", // syntax error (join without on)
 		"issue 7958, update join uppercase table name validation", // update join syntax not supported
