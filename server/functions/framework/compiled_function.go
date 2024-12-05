@@ -80,7 +80,7 @@ func newCompiledFunctionInternal(
 		return c
 	}
 	// Next we'll resolve the overload based on the parameters given.
-	overload, err := c.resolve(overloads, fnOverloads, overloads.oidsForTypes(originalTypes))
+	overload, err := c.resolve(overloads, fnOverloads, originalTypes)
 	if err != nil {
 		c.stashedErr = err
 		return c
@@ -356,7 +356,7 @@ func (c *CompiledFunction) GetQuickFunction() QuickFunction {
 
 // resolve returns an overloadMatch that either matches the given parameters exactly, or is a viable match after casting.
 // Returns an invalid overloadMatch if a viable match is not found.
-func (c *CompiledFunction) resolve(overloads *Overloads, fnOverloads []Overload, argTypes []uint32) (overloadMatch, error) {
+func (c *CompiledFunction) resolve(overloads *Overloads, fnOverloads []Overload, argTypes []*pgtypes.DoltgresType) (overloadMatch, error) {
 	// First check for an exact match
 	exactMatch, found := overloads.ExactMatchForTypes(argTypes...)
 	if found {
@@ -380,28 +380,28 @@ func (c *CompiledFunction) resolve(overloads *Overloads, fnOverloads []Overload,
 
 // resolveOperator resolves an operator according to the rules defined by Postgres.
 // https://www.postgresql.org/docs/15/typeconv-oper.html
-func (c *CompiledFunction) resolveOperator(argTypeOids []uint32, overloads *Overloads, fnOverloads []Overload) (overloadMatch, error) {
+func (c *CompiledFunction) resolveOperator(argTypes []*pgtypes.DoltgresType, overloads *Overloads, fnOverloads []Overload) (overloadMatch, error) {
 	// Binary operators treat unknown literals as the other type, so we'll account for that here to see if we can find
 	// an "exact" match.
-	if len(argTypeOids) == 2 {
-		leftUnknownType := argTypeOids[0] == uint32(oid.T_unknown)
-		rightUnknownType := argTypeOids[1] == uint32(oid.T_unknown)
+	if len(argTypes) == 2 {
+		leftUnknownType := argTypes[0].OID == uint32(oid.T_unknown)
+		rightUnknownType := argTypes[1].OID == uint32(oid.T_unknown)
 		if (leftUnknownType && !rightUnknownType) || (!leftUnknownType && rightUnknownType) {
-			var typ uint32
+			var typ *pgtypes.DoltgresType
 			casts := []TypeCastFunction{identityCast, identityCast}
 			if leftUnknownType {
 				casts[0] = UnknownLiteralCast
-				typ = argTypeOids[1]
+				typ = argTypes[1]
 			} else {
 				casts[1] = UnknownLiteralCast
-				typ = argTypeOids[0]
+				typ = argTypes[0]
 			}
 			if exactMatch, ok := overloads.ExactMatchForTypes(typ, typ); ok {
 				return overloadMatch{
 					params: Overload{
 						function:   exactMatch,
-						paramTypes: []uint32{typ, typ},
-						argTypes:   []uint32{typ, typ},
+						paramTypes: []*pgtypes.DoltgresType{typ, typ},
+						argTypes:   []*pgtypes.DoltgresType{typ, typ},
 						variadic:   -1,
 					},
 					casts: casts,
@@ -410,12 +410,12 @@ func (c *CompiledFunction) resolveOperator(argTypeOids []uint32, overloads *Over
 		}
 	}
 	// From this point, the steps appear to be the same for functions and operators
-	return c.resolveFunction(argTypeOids, fnOverloads)
+	return c.resolveFunction(argTypes, fnOverloads)
 }
 
 // resolveFunction resolves a function according to the rules defined by Postgres.
 // https://www.postgresql.org/docs/15/typeconv-func.html
-func (c *CompiledFunction) resolveFunction(argTypes []uint32, overloads []Overload) (overloadMatch, error) {
+func (c *CompiledFunction) resolveFunction(argTypes []*pgtypes.DoltgresType, overloads []Overload) (overloadMatch, error) {
 	// First we'll discard all overloads that do not have implicitly-convertible param types
 	compatibleOverloads := c.typeCompatibleOverloads(overloads, argTypes)
 
@@ -465,25 +465,23 @@ func (c *CompiledFunction) resolveFunction(argTypes []uint32, overloads []Overlo
 // typeCompatibleOverloads returns all overloads that have a matching number of params whose types can be
 // implicitly converted to the ones provided. This is the set of all possible overloads that could be used with the
 // param types provided.
-func (c *CompiledFunction) typeCompatibleOverloads(fnOverloads []Overload, argTypeOids []uint32) []overloadMatch {
+func (c *CompiledFunction) typeCompatibleOverloads(fnOverloads []Overload, argTypes []*pgtypes.DoltgresType) []overloadMatch {
 	var compatible []overloadMatch
 	for _, overload := range fnOverloads {
 		isConvertible := true
-		overloadCasts := make([]TypeCastFunction, len(argTypeOids))
+		overloadCasts := make([]TypeCastFunction, len(argTypes))
 		// Polymorphic parameters must be gathered so that we can later verify that they all have matching base types
-		var polymorphicParameters []uint32
-		var polymorphicTargets []uint32
-		for i := range argTypeOids {
-			paramTypeOid := overload.argTypes[i]
-			paramType := pgtypes.OidToBuiltInDoltgresType[paramTypeOid]
-			argType := pgtypes.OidToBuiltInDoltgresType[argTypeOids[i]]
-			if paramType.IsValidForPolymorphicType(argType) {
+		var polymorphicParameters []*pgtypes.DoltgresType
+		var polymorphicTargets []*pgtypes.DoltgresType
+		for i := range argTypes {
+			paramType := overload.argTypes[i]
+			if paramType.IsValidForPolymorphicType(argTypes[i]) {
 				overloadCasts[i] = identityCast
-				polymorphicParameters = append(polymorphicParameters, paramTypeOid)
-				polymorphicTargets = append(polymorphicTargets, argTypeOids[i])
+				polymorphicParameters = append(polymorphicParameters, paramType)
+				polymorphicTargets = append(polymorphicTargets, argTypes[i])
 			} else {
-				if overloadCasts[i] = GetImplicitCast(argTypeOids[i], paramTypeOid); overloadCasts[i] == nil {
-					if argTypeOids[i] == uint32(oid.T_unknown) {
+				if overloadCasts[i] = GetImplicitCast(argTypes[i], paramType); overloadCasts[i] == nil {
+					if argTypes[i].OID == uint32(oid.T_unknown) {
 						overloadCasts[i] = UnknownLiteralCast
 					} else {
 						isConvertible = false
@@ -502,14 +500,14 @@ func (c *CompiledFunction) typeCompatibleOverloads(fnOverloads []Overload, argTy
 
 // closestTypeMatches returns the set of overload candidates that have the most exact type matches for the arg types
 // provided.
-func (*CompiledFunction) closestTypeMatches(argTypes []uint32, candidates []overloadMatch) []overloadMatch {
+func (*CompiledFunction) closestTypeMatches(argTypes []*pgtypes.DoltgresType, candidates []overloadMatch) []overloadMatch {
 	matchCount := 0
 	var matches []overloadMatch
 	for _, cand := range candidates {
 		currentMatchCount := 0
 		for argIdx := range argTypes {
 			argType := cand.params.argTypes[argIdx]
-			if argTypes[argIdx] == argType || argTypes[argIdx] == uint32(oid.T_unknown) {
+			if argTypes[argIdx].OID == argType.OID || argTypes[argIdx].OID == uint32(oid.T_unknown) {
 				currentMatchCount++
 			}
 		}
@@ -524,14 +522,14 @@ func (*CompiledFunction) closestTypeMatches(argTypes []uint32, candidates []over
 }
 
 // preferredTypeMatches returns the overload candidates that have the most preferred types for args that require casts.
-func (*CompiledFunction) preferredTypeMatches(argTypeOids []uint32, candidates []overloadMatch) []overloadMatch {
+func (*CompiledFunction) preferredTypeMatches(argTypes []*pgtypes.DoltgresType, candidates []overloadMatch) []overloadMatch {
 	preferredCount := 0
 	var preferredOverloads []overloadMatch
 	for _, cand := range candidates {
 		currentPreferredCount := 0
-		for argIdx := range argTypeOids {
-			paramTypeOid := cand.params.argTypes[argIdx]
-			if argType := pgtypes.OidToBuiltInDoltgresType[paramTypeOid]; argTypeOids[argIdx] != paramTypeOid && argType.IsPreferred {
+		for argIdx := range argTypes {
+			argType := cand.params.argTypes[argIdx]
+			if argTypes[argIdx].OID != argType.OID && argType.IsPreferred {
 				currentPreferredCount++
 			}
 		}
@@ -548,18 +546,18 @@ func (*CompiledFunction) preferredTypeMatches(argTypeOids []uint32, candidates [
 
 // unknownTypeCategoryMatches checks the type categories of `unknown` types. These types have an inherent bias toward
 // the string category since an `unknown` literal resembles a string. Returns false if the resolution should fail.
-func (c *CompiledFunction) unknownTypeCategoryMatches(argTypes []uint32, candidates []overloadMatch) ([]overloadMatch, bool) {
+func (c *CompiledFunction) unknownTypeCategoryMatches(argTypes []*pgtypes.DoltgresType, candidates []overloadMatch) ([]overloadMatch, bool) {
 	matches := make([]overloadMatch, len(candidates))
 	copy(matches, candidates)
 	// For our first loop, we'll filter matches based on whether they accept the string category
 	for argIdx := range argTypes {
 		// We're only concerned with `unknown` types
-		if argTypes[argIdx] != uint32(oid.T_unknown) {
+		if argTypes[argIdx].OID != uint32(oid.T_unknown) {
 			continue
 		}
 		var newMatches []overloadMatch
 		for _, match := range matches {
-			if m := pgtypes.OidToBuiltInDoltgresType[match.params.argTypes[argIdx]]; m.TypCategory == pgtypes.TypeCategory_StringTypes {
+			if match.params.argTypes[argIdx].TypCategory == pgtypes.TypeCategory_StringTypes {
 				newMatches = append(newMatches, match)
 			}
 		}
@@ -584,50 +582,50 @@ func (c *CompiledFunction) unknownTypeCategoryMatches(argTypes []uint32, candida
 }
 
 // polymorphicTypesCompatible returns whether any polymorphic types given are compatible with the expression types given
-func (*CompiledFunction) polymorphicTypesCompatible(paramTypeOids []uint32, exprTypeOids []uint32) bool {
-	if len(paramTypeOids) != len(exprTypeOids) {
+func (*CompiledFunction) polymorphicTypesCompatible(paramTypes []*pgtypes.DoltgresType, exprTypes []*pgtypes.DoltgresType) bool {
+	if len(paramTypes) != len(exprTypes) {
 		return false
 	}
 	// If there are less than two parameters then we don't even need to check
-	if len(paramTypeOids) < 2 {
+	if len(paramTypes) < 2 {
 		return true
 	}
 
 	// If one of the types is anyarray, then anyelement behaves as anynonarray, so we can convert them to anynonarray
-	for _, paramTypeOid := range paramTypeOids {
-		if paramTypeOid == uint32(oid.T_anyarray) {
+	for _, paramType := range paramTypes {
+		if paramType.OID == uint32(oid.T_anyarray) {
 			// At least one parameter is anyarray, so copy all parameters to a new slice and replace anyelement with anynonarray
-			newParamTypeOids := make([]uint32, len(paramTypeOids))
-			copy(newParamTypeOids, paramTypeOids)
-			for i := range newParamTypeOids {
-				if paramTypeOids[i] == uint32(oid.T_anyelement) {
-					newParamTypeOids[i] = pgtypes.AnyNonArray.OID
+			newParamTypes := make([]*pgtypes.DoltgresType, len(paramTypes))
+			copy(newParamTypes, paramTypes)
+			for i := range newParamTypes {
+				if paramTypes[i].OID == uint32(oid.T_anyelement) {
+					newParamTypes[i] = pgtypes.AnyNonArray
 				}
 			}
-			paramTypeOids = newParamTypeOids
+			paramTypes = newParamTypes
 			break
 		}
 	}
 
 	// The base type is the type that must match between all polymorphic types.
-	var baseTypeOid uint32
-	for i, paramTypeOid := range paramTypeOids {
-		if paramType := pgtypes.OidToBuiltInDoltgresType[paramTypeOid]; paramType.IsPolymorphicType() && exprTypeOids[i] != uint32(oid.T_unknown) {
+	var baseType *pgtypes.DoltgresType
+	for i, paramType := range paramTypes {
+		if paramType.IsPolymorphicType() && exprTypes[i].OID != uint32(oid.T_unknown) {
 			// Although we do this check before we ever reach this function, we do it again as we may convert anyelement
 			// to anynonarray, which changes type validity
-			if exprType := pgtypes.OidToBuiltInDoltgresType[exprTypeOids[i]]; !paramType.IsValidForPolymorphicType(exprType) {
+			if !paramType.IsValidForPolymorphicType(exprTypes[i]) {
 				return false
 			}
 			// Get the base expression type that we'll compare against
-			baseExprTypeOid := exprTypeOids[i]
-			if baseExprType := pgtypes.OidToBuiltInDoltgresType[baseExprTypeOid]; baseExprType.IsArrayType() {
-				baseExprTypeOid = baseExprType.ArrayBaseType().OID
+			baseExprType := exprTypes[i]
+			if baseExprType.IsArrayType() {
+				baseExprType = baseExprType.ArrayBaseType()
 			}
 			// TODO: handle range types
 			// Check that the base expression type matches the previously-found base type
-			if baseTypeOid == 0 {
-				baseTypeOid = baseExprTypeOid
-			} else if baseTypeOid != baseExprTypeOid {
+			if baseType.IsEmptyType() {
+				baseType = baseExprType
+			} else if baseType.OID != baseExprType.OID {
 				return false
 			}
 		}

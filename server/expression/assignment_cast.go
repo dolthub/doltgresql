@@ -55,7 +55,7 @@ func (ac *AssignmentCast) Eval(ctx *sql.Context, row sql.Row) (any, error) {
 	if err != nil || val == nil {
 		return val, err
 	}
-	castFunc := framework.GetAssignmentCast(ac.fromType.OID, ac.toType.OID)
+	castFunc := framework.GetAssignmentCast(ac.fromType, ac.toType)
 	if castFunc == nil {
 		if ac.fromType.OID == uint32(oid.T_unknown) {
 			castFunc = framework.UnknownLiteralCast

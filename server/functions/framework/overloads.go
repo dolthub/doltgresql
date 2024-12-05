@@ -40,7 +40,7 @@ func NewOverloads() *Overloads {
 // Add adds the given function to the overload collection. Returns an error if the there's a problem with the
 // function's declaration.
 func (o *Overloads) Add(function FunctionInterface) error {
-	key := keyForParamTypes(o.oidsForTypes(function.GetParameters()))
+	key := keyForParamTypes(function.GetParameters())
 	if _, ok := o.ByParamType[key]; ok {
 		return fmt.Errorf("duplicate function overload for `%s`", function.GetName())
 	}
@@ -58,38 +58,28 @@ func (o *Overloads) Add(function FunctionInterface) error {
 }
 
 // keyForParamTypes returns a string key to match an overload with the given parameter types.
-func keyForParamTypes(types []uint32) string {
+func keyForParamTypes(types []*pgtypes.DoltgresType) string {
 	sb := strings.Builder{}
 	for i, typ := range types {
 		if i > 0 {
 			sb.WriteByte(',')
 		}
-		t := pgtypes.OidToBuiltInDoltgresType[typ]
-		sb.WriteString(t.String())
+		sb.WriteString(typ.String())
 	}
 	return sb.String()
-}
-
-// baseIdsForTypes returns the base IDs of the given types.
-func (o *Overloads) oidsForTypes(types []*pgtypes.DoltgresType) []uint32 {
-	baseIds := make([]uint32, len(types))
-	for i, t := range types {
-		baseIds[i] = t.OID
-	}
-	return baseIds
 }
 
 // overloadsForParams returns all overloads matching the number of params given, without regard for types.
 func (o *Overloads) overloadsForParams(numParams int) []Overload {
 	results := make([]Overload, 0, len(o.AllOverloads))
 	for _, overload := range o.AllOverloads {
-		params := o.oidsForTypes(overload.GetParameters())
+		params := overload.GetParameters()
 		variadicIndex := overload.VariadicIndex()
 		if variadicIndex >= 0 && len(params) <= numParams {
 			// Variadic functions may only match when the function is declared with parameters that are fewer or equal
 			// to our target length. If our target length is less, then we cannot expand, so we do not treat it as
 			// variadic.
-			extendedParams := make([]uint32, numParams)
+			extendedParams := make([]*pgtypes.DoltgresType, numParams)
 			copy(extendedParams, params[:variadicIndex])
 			// This is copying the parameters after the variadic index, so we need to add 1. We subtract the declared
 			// parameter count from the target parameter count to obtain the additional parameter count.
@@ -97,7 +87,7 @@ func (o *Overloads) overloadsForParams(numParams int) []Overload {
 			copy(extendedParams[firstValueAfterVariadic:], params[variadicIndex+1:])
 			// ToArrayType immediately followed by BaseType is a way to get the base type without having to cast.
 			// For array types, ToArrayType causes them to return themselves.
-			variadicBaseType := overload.GetParameters()[variadicIndex].ToArrayType().ArrayBaseType().OID
+			variadicBaseType := overload.GetParameters()[variadicIndex].ToArrayType().ArrayBaseType()
 			for variadicParamIdx := 0; variadicParamIdx < 1+(numParams-len(params)); variadicParamIdx++ {
 				extendedParams[variadicParamIdx+variadicIndex] = variadicBaseType
 			}
@@ -121,7 +111,7 @@ func (o *Overloads) overloadsForParams(numParams int) []Overload {
 
 // ExactMatchForTypes returns the function that exactly matches the given parameter types, or nil if no overload with
 // those types exists.
-func (o *Overloads) ExactMatchForTypes(types ...uint32) (FunctionInterface, bool) {
+func (o *Overloads) ExactMatchForTypes(types ...*pgtypes.DoltgresType) (FunctionInterface, bool) {
 	key := keyForParamTypes(types)
 	fn, ok := o.ByParamType[key]
 	return fn, ok
@@ -133,10 +123,10 @@ type Overload struct {
 	// function is the actual function to call to invoke this overload
 	function FunctionInterface
 	// paramTypes is the base IDs of the parameters that the function expects
-	paramTypes []uint32
+	paramTypes []*pgtypes.DoltgresType
 	// argTypes is the base IDs of the parameters that the function expects, extended to match the number of args
 	// provided in the case of a variadic function.
-	argTypes []uint32
+	argTypes []*pgtypes.DoltgresType
 	// variadic is the index of the variadic parameter, or -1 if the function is not variadic
 	variadic int
 }

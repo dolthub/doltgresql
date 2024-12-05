@@ -54,7 +54,7 @@ func (ic *ImplicitCast) Eval(ctx *sql.Context, row sql.Row) (any, error) {
 	if err != nil || val == nil {
 		return val, err
 	}
-	castFunc := framework.GetImplicitCast(ic.fromType.OID, ic.toType.OID)
+	castFunc := framework.GetImplicitCast(ic.fromType, ic.toType)
 	if castFunc == nil {
 		return nil, fmt.Errorf("target is of type %s but expression is of type %s", ic.toType.String(), ic.fromType.String())
 	}
