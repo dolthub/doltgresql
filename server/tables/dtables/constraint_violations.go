@@ -25,7 +25,7 @@ import (
 func getDoltConstraintViolationsBaseSqlSchema() sql.Schema {
 	return []*sql.Column{
 		{Name: "from_root_ish", Type: pgtypes.Text, PrimaryKey: false, Nullable: true},
-		{Name: "violation_type", Type: pgtypes.VarCharType{MaxChars: 16}, PrimaryKey: true},
+		{Name: "violation_type", Type: pgtypes.MustCreateNewVarCharType(16), PrimaryKey: true},
 	}
 }
 
