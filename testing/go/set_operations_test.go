@@ -105,7 +105,7 @@ func TestSetOperations(t *testing.T) {
 					},
 				},
 				{
-					Query: "(table b order by m limit 1 offset 1) except (table c order by m limit 1);",
+					Query:    "(table b order by m limit 1 offset 1) except (table c order by m limit 1);",
 					Expected: []sql.Row{},
 				},
 			},

@@ -81,11 +81,11 @@ func TestUpdate(t *testing.T) {
 				},
 				{
 					Query: "update t2 set i = default",
-					Skip: true, // UPDATE: non-Doltgres type found in source
+					Skip:  true, // UPDATE: non-Doltgres type found in source
 				},
 				{
 					Query: "select * from t2",
-					Skip: true, // skipped because of above
+					Skip:  true, // skipped because of above
 					Expected: []sql.Row{
 						{nil},
 						{nil},

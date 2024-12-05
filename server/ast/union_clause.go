@@ -58,7 +58,7 @@ func nodeUnionClause(ctx *Context, node *tree.UnionClause) (*vitess.SetOp, error
 	default:
 		return nil, fmt.Errorf("unknown type of UNION operator: `%s`", node.Type.String())
 	}
-	
+
 	// TODO next: the types here are incorrect for parenthetical table statements
 	// Need to compare with the vitess result to see what the correct type is here
 	return &vitess.SetOp{

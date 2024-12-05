@@ -357,7 +357,7 @@ func TestAlterTable(t *testing.T) {
 			},
 		},
 		{
-			Name: "Rename table",
+			Name:  "Rename table",
 			Focus: true,
 			SetUpScript: []string{
 				"create schema s1",
@@ -371,11 +371,11 @@ func TestAlterTable(t *testing.T) {
 			},
 			Assertions: []ScriptTestAssertion{
 				{
-					Query:    "ALTER TABLE doesnotexist RENAME TO t3;",
+					Query:       "ALTER TABLE doesnotexist RENAME TO t3;",
 					ExpectedErr: "not found",
 				},
 				{
-					Query:    "ALTER TABLE t1 RENAME TO t3;",
+					Query: "ALTER TABLE t1 RENAME TO t3;",
 				},
 				{
 					Query: "SELECT * FROM t3;",
@@ -390,16 +390,16 @@ func TestAlterTable(t *testing.T) {
 					},
 				},
 				{
-					Query: "SELECT * FROM t1;",
+					Query:       "SELECT * FROM t1;",
 					ExpectedErr: "not found",
 				},
 				{
-					Query:    "ALTER TABLE t3 RENAME TO t2;",
+					Query:       "ALTER TABLE t3 RENAME TO t2;",
 					ExpectedErr: "already exists",
 				},
 				{
 					Query: "ALTER TABLE s1.t1 RENAME TO t4;",
-					Skip: true, // schema names not supported yet
+					Skip:  true, // schema names not supported yet
 				},
 				{
 					Query: "SELECT * FROM s1.t4;",
