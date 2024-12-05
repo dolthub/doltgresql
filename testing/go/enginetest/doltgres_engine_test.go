@@ -167,33 +167,53 @@ func (dcv *doltCommitValidator) CommitHash(val interface{}) (bool, string) {
 
 // Convenience test for debugging a single query. Unskip and set to the desired query.
 func TestSingleScript(t *testing.T) {
-	t.Skip()
+	// t.Skip()
 
 	var scripts = []queries.ScriptTest{
 		{
-			Name: "recreate primary key rebuilds secondary indexes",
+			Name: "Querying existing view that references non-existing table",
 			SetUpScript: []string{
-				"create table a (x int, y int, z int, primary key (x,y,z), index idx1 (y))",
-				"insert into a values (1,2,3), (4,5,6), (7,8,9)",
-				"alter table a drop primary key",
-				"alter table a add primary key (y,z,x)",
+				"CREATE TABLE a(id int primary key, col1 int);",
+				"CREATE VIEW b AS SELECT * FROM a;",
+				"CREATE VIEW f AS SELECT col1 AS npk FROM a;",
+				"RENAME TABLE a TO d;",
 			},
 			Assertions: []queries.ScriptTestAssertion{
 				{
-					Query:    "delete from a where y = 2",
-					Expected: []sql.Row{{types.NewOkResult(1)}},
+					Query:       "CREATE VIEW g AS SELECT * FROM nonexistenttable;",
+					ExpectedErr: sql.ErrTableNotFound,
 				},
 				{
-					Query:    "delete from a where y = 2",
+					// TODO: ALTER VIEWs are not supported
+					Skip:        true,
+					Query:       "ALTER VIEW b AS SELECT * FROM nonexistenttable;",
+					ExpectedErr: sql.ErrTableNotFound,
+				},
+				{
+					Query:       "SELECT * FROM b;",
+					ExpectedErr: sql.ErrInvalidRefInView,
+				},
+				{
+					Query:    "RENAME TABLE d TO a;",
 					Expected: []sql.Row{{types.NewOkResult(0)}},
 				},
 				{
-					Query:    "select * from a where y = 2",
+					Query:    "SELECT * FROM b;",
 					Expected: []sql.Row{},
 				},
 				{
-					Query:    "select * from a where y = 5",
-					Expected: []sql.Row{{4, 5, 6}},
+					Query:    "ALTER TABLE a RENAME COLUMN col1 TO newcol;",
+					Expected: []sql.Row{{types.NewOkResult(0)}},
+				},
+				{
+					// TODO: View definition should have 'SELECT *' be expanded to each column of the referenced table
+					Skip:        true,
+					Query:       "SELECT * FROM b;",
+					ExpectedErr: sql.ErrInvalidRefInView,
+				},
+				{
+					Query:       "SELECT * FROM f;",
+					ExpectedErr: sql.ErrInvalidRefInView,
 				},
 			},
 		},
@@ -596,48 +616,18 @@ func TestScripts(t *testing.T) {
 		"Show create table with various keys and constraints", // error in harness query converter
 		"show create table with duplicate primary key", // error in harness query converter
 		"recreate primary key rebuilds secondary indexes", // currently no way to drop primary key in doltgres
-		// "Handle hex number to binary conversion",
-		// "Multialter DDL with ADD/DROP Primary Key",
-		// "Multialter DDL with ADD/DROP INDEX",
-		// "ALTER AUTO INCREMENT TABLE ADD column",
-		// "alter json column default; from scorewarrior: https://github.com/dolthub/dolt/issues/4543",
-		// "ALTER TABLE MULTI ADD/DROP COLUMN",
-		// "describe and show columns with various keys and constraints",
-		// "ALTER TABLE MODIFY column with multiple UNIQUE KEYS",
-		// "ALTER TABLE MODIFY column with multiple KEYS",
-		// "join index lookups do not handle filters",
-		"failed conversion shows warning", // unsupported syntax
-		"Describe with expressions and views work correctly", // error in harness query converter
-		// "Check support for deprecated BINARY attribute after character set",
-		// "basic test on tables dual and `dual`",
-		// "having clause without groupby clause, all rows implicitly form a single aggregate group",
-		// "using having and group by clauses in subquery ",
-		// "can't create view with same name as existing table",
-		// "can't create table with same name as existing view",
-		// "'/' division operation result in decimal or float",
-		// "'%' mod operation result in decimal or float",
-		// "arithmetic bit operations on int, float and decimal types",
-		// "year type behavior", // unsupported type: YEAR
-		"INSERT IGNORE correctly truncates column data", // unhandled type: ENUM
-		// "INSERT IGNORE throws an error when json is badly formatted",
-		// "hash lookup for joins works with binary",
-		"enum columns work as expected in when clauses", // enums not supported
-		"SET and ENUM properly handle integers using UPDATE and DELETE statements", // enum and set not supported
-		// "identical expressions over different windows should produce different results",
-		// "windows without ORDER BY should be treated as RANGE BETWEEN UNBOUNDED PRECEDING AND UNBOUNDED FOLLOWING",
-		// "decimal literals should be parsed correctly",
+		"Handle hex number to binary conversion", // ERROR: can't convert 0x7ED0599B to decimal: exponent is not numeric
+		"join index lookups do not handle filters", // need a different join syntax (no ON clause not supported in postgres)
+		"select count(*) from numbers group by val having count(*) < val;", // ERROR: unable to find field with index 1 in row of 1 columns
+		"using having and group by clauses in subquery ", // lots of index errors, something very broken
+		"can't create view with same name as existing table", // error message wrong
+		"arithmetic bit operations on int, float and decimal types", // the power operator is not yet supported
+		"INSERT IGNORE throws an error when json is badly formatted", // error messages don't match
+		"identical expressions over different windows should produce different results", // ERROR: integer: unhandled type: float64
+		"windows without ORDER BY should be treated as RANGE BETWEEN UNBOUNDED PRECEDING AND UNBOUNDED FOLLOWING", // ERROR: integer: unhandled type: float64
+		"decimal literals should be parsed correctly", // ERROR: text: unhandled type: decimal.Decimal (error in harness)
 		"division and int division operation on negative, small and big value for decimal type column of table", // numeric keys broken
-		// "drop table if exists on unknown table shows warning",
-		"find_in_set tests", // unsupported type set
-		// "coalesce tests",
-		// "renaming views with RENAME TABLE ... TO .. statement",
-		// "renaming views with ALTER TABLE ... RENAME .. statement should fail",
-		// "timezone default settings",
-		// "current time functions",
-		// "timestamp timezone conversion",
-		// "case insensitive index handling",
-		// "different cases of function name should result in the same outcome",
-		// "UNIX_TIMESTAMP function usage with session different time zones",
+		"different cases of function name should result in the same outcome", // ERROR: blob/text column 'b' used in key specification without a key length
 		// "Querying existing view that references non-existing table",
 		// "Multi-db Aliasing",
 		"Complex Filter Index Scan", // panic in index lookup, needs investigation

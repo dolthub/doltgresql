@@ -36,10 +36,13 @@ func transformAST(query string) ([]string, bool) {
 
 	switch stmt := stmt.(type) {
 	case *sqlparser.DDL:
-		if stmt.Action == "create" {
-			return transformCreateTable(stmt)
-		} else if stmt.Action == "drop" {
-			return transformDrop(query, stmt)
+		switch stmt.Action {
+		case "create":
+				return transformCreateTable(stmt)
+		case "drop":
+				return transformDrop(query, stmt)
+		case "rename":
+			return transformRename(stmt)
 		}
 	case *sqlparser.Set:
 		return transformSet(stmt)
@@ -54,10 +57,21 @@ func transformAST(query string) ([]string, bool) {
 	return nil, false
 }
 
+func transformRename(stmt *sqlparser.DDL) ([]string, bool) {
+	rename := &tree.RenameTable{
+		Name:           TableNameToUnresolvedObjectName(stmt.FromTables[0]),
+		NewName:        TableNameToUnresolvedObjectName(stmt.ToTables[0]),
+	}
+
+	ctx := formatNodeWithUnqualifiedTableNames(rename)
+	return []string{ctx.String()}, true
+}
+
 func transformInsert(stmt *sqlparser.Insert) ([]string, bool) {
 	// only bother translating inserts if there's an ON DUPLICATE KEY UPDATE clause, maybe revisit this later
+	table := stmt.Table
 	if len(stmt.OnDup) > 0 {
-		tableName := tree.NewTableName(tree.Name(stmt.Table.DbQualifier.String()), tree.Name(stmt.Table.Name.String()))
+		tableName := translateTableName(table)
 
 		var colList tree.NameList
 		if len(stmt.Columns) > 0 {
@@ -85,7 +99,7 @@ func transformInsert(stmt *sqlparser.Insert) ([]string, bool) {
 		ctx := formatNodeWithUnqualifiedTableNames(&insert)
 		return []string{ctx.String()}, true
 	} else if stmt.Ignore == "ignore " {
-		tableName := tree.NewTableName(tree.Name(stmt.Table.DbQualifier.String()), tree.Name(stmt.Table.Name.String()))
+		tableName := tree.NewTableName(tree.Name(table.DbQualifier.String()), tree.Name(table.Name.String()))
 
 		var colList tree.NameList
 		if len(stmt.Columns) > 0 {
@@ -115,6 +129,22 @@ func transformInsert(stmt *sqlparser.Insert) ([]string, bool) {
 	}
 
 	return nil, false
+}
+
+func translateTableName(table sqlparser.TableName) *tree.TableName {
+	return tree.NewTableName(tree.Name(table.DbQualifier.String()), tree.Name(table.Name.String()))
+}
+
+func TableNameToUnresolvedObjectName(table sqlparser.TableName) *tree.UnresolvedObjectName {
+	if !table.DbQualifier.IsEmpty() {
+		panic(fmt.Sprintf("unhandled case: db qualifier present %v", table))
+	}
+	
+	name, err := tree.NewUnresolvedObjectName(1, [3]string{table.Name.String(), "", ""}, 0)
+	if err != nil {
+		panic(err)
+	}
+	return name
 }
 
 func convertUpdateExprs(exprs sqlparser.AssignmentExprs) tree.UpdateExprs {
@@ -484,6 +514,7 @@ func convertSQLVal(val *sqlparser.SQLVal) tree.Expr {
 }
 
 func transformDrop(query string, stmt *sqlparser.DDL) ([]string, bool) {
+	// TODO
 	return nil, false
 }
 

@@ -864,6 +864,10 @@ func columns(rows pgx.Rows) (sql.Schema, []interface{}, error) {
 			colVal := gosql.NullString{}
 			columnVals = append(columnVals, &colVal)
 			schema = append(schema, &sql.Column{Name: field.Name, Type: gmstypes.JSON, Nullable: true})
+		case uint32(oid.T_unknown): // TODO: this should not be returned
+			colVal := gosql.NullString{}
+			columnVals = append(columnVals, &colVal)
+			schema = append(schema, &sql.Column{Name: field.Name, Type: gmstypes.MustCreateBinary(sqltypes.Binary, 100), Nullable: true})
 		default:
 			return nil, nil, fmt.Errorf("Unhandled OID %d", field.DataTypeOID)
 		}
