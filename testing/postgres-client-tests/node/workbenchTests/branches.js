@@ -49,7 +49,7 @@ export const branchTests = [
       rows: [
         {
           table_name: "public.test",
-          staged: "f",
+          staged: false,
           status: "new table",
         },
       ],

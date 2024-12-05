@@ -383,7 +383,7 @@ export const tableTests = [
       rowCount: 1,
       oid: null,
       rows: [
-        { table_name: "public.test_info", staged: "f", status: "modified" },
+        { table_name: "public.test_info", staged: false, status: "modified" },
       ],
       fields: doltStatusFields,
     },
@@ -405,7 +405,7 @@ export const tableTests = [
       rowCount: 1,
       oid: null,
       rows: [
-        { table_name: "public.test_info", staged: "t", status: "modified" },
+        { table_name: "public.test_info", staged: true, status: "modified" },
       ],
       fields: doltStatusFields,
     },
@@ -427,7 +427,7 @@ export const tableTests = [
       rowCount: 1,
       oid: null,
       rows: [
-        { table_name: "public.test_info", staged: "f", status: "modified" },
+        { table_name: "public.test_info", staged: false, status: "modified" },
       ],
       fields: doltStatusFields,
     },

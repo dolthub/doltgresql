@@ -89,10 +89,10 @@ export const schemaTests = [
       rows: [
         {
           table_name: "testschema.test2",
-          staged: "f",
+          staged: false,
           status: "new table",
         },
-        { table_name: "testschema", staged: "f", status: "new schema" },
+        { table_name: "testschema", staged: false, status: "new schema" },
       ],
       fields: doltStatusFields,
     },
