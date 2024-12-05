@@ -25,6 +25,7 @@ import (
 	"github.com/dolthub/go-mysql-server/enginetest/queries"
 	"github.com/dolthub/go-mysql-server/enginetest/scriptgen/setup"
 	"github.com/dolthub/go-mysql-server/sql"
+	"github.com/dolthub/go-mysql-server/sql/plan"
 	"github.com/dolthub/go-mysql-server/sql/types"
 	"github.com/stretchr/testify/require"
 
@@ -171,49 +172,66 @@ func TestSingleScript(t *testing.T) {
 
 	var scripts = []queries.ScriptTest{
 		{
-			Name: "Querying existing view that references non-existing table",
+			Name: "update columns with default",
 			SetUpScript: []string{
-				"CREATE TABLE a(id int primary key, col1 int);",
-				"CREATE VIEW b AS SELECT * FROM a;",
-				"CREATE VIEW f AS SELECT col1 AS npk FROM a;",
-				"RENAME TABLE a TO d;",
+				"create table t (i int default 10, j varchar(128) default (concat('abc', 'def')));",
+				"insert into t values (100, 'a'), (200, 'b');",
+				"create table t2 (i int);",
+				"insert into t2 values (1), (2), (3);",
 			},
 			Assertions: []queries.ScriptTestAssertion{
 				{
-					Query:       "CREATE VIEW g AS SELECT * FROM nonexistenttable;",
-					ExpectedErr: sql.ErrTableNotFound,
+					Query: "update t set i = default where i = 100;",
+					Expected: []sql.Row{
+						{types.OkResult{RowsAffected: 1, Info: plan.UpdateInfo{Matched: 1, Updated: 1}}},
+					},
 				},
 				{
-					// TODO: ALTER VIEWs are not supported
-					Skip:        true,
-					Query:       "ALTER VIEW b AS SELECT * FROM nonexistenttable;",
-					ExpectedErr: sql.ErrTableNotFound,
+					Query: "select * from t order by i",
+					Expected: []sql.Row{
+						{10, "a"},
+						{200, "b"},
+					},
 				},
 				{
-					Query:       "SELECT * FROM b;",
-					ExpectedErr: sql.ErrInvalidRefInView,
+					Query: "update t set j = default where i = 200;",
+					Expected: []sql.Row{
+						{types.OkResult{RowsAffected: 1, Info: plan.UpdateInfo{Matched: 1, Updated: 1}}},
+					},
 				},
 				{
-					Query:    "RENAME TABLE d TO a;",
-					Expected: []sql.Row{{types.NewOkResult(0)}},
+					Query: "select * from t order by i",
+					Expected: []sql.Row{
+						{10, "a"},
+						{200, "abcdef"},
+					},
 				},
 				{
-					Query:    "SELECT * FROM b;",
-					Expected: []sql.Row{},
+					Query: "update t set i = default, j = default;",
+					Expected: []sql.Row{
+						{types.OkResult{RowsAffected: 2, Info: plan.UpdateInfo{Matched: 2, Updated: 2}}},
+					},
 				},
 				{
-					Query:    "ALTER TABLE a RENAME COLUMN col1 TO newcol;",
-					Expected: []sql.Row{{types.NewOkResult(0)}},
+					Query: "select * from t order by i",
+					Expected: []sql.Row{
+						{10, "abcdef"},
+						{10, "abcdef"},
+					},
 				},
 				{
-					// TODO: View definition should have 'SELECT *' be expanded to each column of the referenced table
-					Skip:        true,
-					Query:       "SELECT * FROM b;",
-					ExpectedErr: sql.ErrInvalidRefInView,
+					Query: "update t2 set i = default",
+					Expected: []sql.Row{
+						{types.OkResult{RowsAffected: 3, Info: plan.UpdateInfo{Matched: 3, Updated: 3}}},
+					},
 				},
 				{
-					Query:       "SELECT * FROM f;",
-					ExpectedErr: sql.ErrInvalidRefInView,
+					Query: "select * from t2",
+					Expected: []sql.Row{
+						{nil},
+						{nil},
+						{nil},
+					},
 				},
 			},
 		},
@@ -628,10 +646,10 @@ func TestScripts(t *testing.T) {
 		"decimal literals should be parsed correctly", // ERROR: text: unhandled type: decimal.Decimal (error in harness)
 		"division and int division operation on negative, small and big value for decimal type column of table", // numeric keys broken
 		"different cases of function name should result in the same outcome", // ERROR: blob/text column 'b' used in key specification without a key length
-		// "Querying existing view that references non-existing table",
-		// "Multi-db Aliasing",
-		"Complex Filter Index Scan", // panic in index lookup, needs investigation
-		"update columns with default", // unsupported create table statement (harness problem)
+		"Multi-db Aliasing", // need harness support for qualified table names
+		"Complex Filter Index Scan #2", // panic in index lookup, needs investigation
+		"Complex Filter Index Scan #3", // panic in index lookup, needs investigation
+		// "update columns with default", // unsupported create table statement (harness problem)
 		// "int index with float filter",
 		// "int secondary index with float filter",
 		// "decimal and float in tuple",

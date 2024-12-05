@@ -338,7 +338,7 @@ func convertFuncExpr(val *sqlparser.FuncExpr) tree.Expr {
 		Func: tree.ResolvableFunctionReference{
 			FunctionReference: fnName,
 		},
-		Exprs: nil,
+		Exprs: exprs,
 	}
 }
 
