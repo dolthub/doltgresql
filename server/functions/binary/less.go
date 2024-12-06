@@ -38,6 +38,7 @@ func initBinaryLessThan() {
 	framework.RegisterBinaryFunction(framework.Operator_BinaryLessThan, date_lt)
 	framework.RegisterBinaryFunction(framework.Operator_BinaryLessThan, date_lt_timestamp)
 	framework.RegisterBinaryFunction(framework.Operator_BinaryLessThan, date_lt_timestamptz)
+	framework.RegisterBinaryFunction(framework.Operator_BinaryLessThan, enum_lt)
 	framework.RegisterBinaryFunction(framework.Operator_BinaryLessThan, float4lt)
 	framework.RegisterBinaryFunction(framework.Operator_BinaryLessThan, float48lt)
 	framework.RegisterBinaryFunction(framework.Operator_BinaryLessThan, float84lt)
@@ -151,6 +152,18 @@ var date_lt_timestamptz = framework.Function2{
 	Callable: func(ctx *sql.Context, _ [3]*pgtypes.DoltgresType, val1 any, val2 any) (any, error) {
 		res := val1.(time.Time).Compare(val2.(time.Time))
 		return res == -1, nil
+	},
+}
+
+// enum_lt represents the PostgreSQL function of the same name, taking the same parameters.
+var enum_lt = framework.Function2{
+	Name:       "enum_lt",
+	Return:     pgtypes.Bool,
+	Parameters: [2]*pgtypes.DoltgresType{pgtypes.AnyEnum, pgtypes.AnyEnum},
+	Strict:     true,
+	Callable: func(ctx *sql.Context, t [3]*pgtypes.DoltgresType, val1 any, val2 any) (any, error) {
+		res, err := t[0].Compare(val1, val2)
+		return res == -1, err
 	},
 }
 

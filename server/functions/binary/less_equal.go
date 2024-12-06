@@ -38,6 +38,7 @@ func initBinaryLessOrEqual() {
 	framework.RegisterBinaryFunction(framework.Operator_BinaryLessOrEqual, date_le)
 	framework.RegisterBinaryFunction(framework.Operator_BinaryLessOrEqual, date_le_timestamp)
 	framework.RegisterBinaryFunction(framework.Operator_BinaryLessOrEqual, date_le_timestamptz)
+	framework.RegisterBinaryFunction(framework.Operator_BinaryLessOrEqual, enum_le)
 	framework.RegisterBinaryFunction(framework.Operator_BinaryLessOrEqual, float4le)
 	framework.RegisterBinaryFunction(framework.Operator_BinaryLessOrEqual, float48le)
 	framework.RegisterBinaryFunction(framework.Operator_BinaryLessOrEqual, float84le)
@@ -151,6 +152,18 @@ var date_le_timestamptz = framework.Function2{
 	Callable: func(ctx *sql.Context, _ [3]*pgtypes.DoltgresType, val1 any, val2 any) (any, error) {
 		res := val1.(time.Time).Compare(val2.(time.Time))
 		return res <= 0, nil
+	},
+}
+
+// enum_le represents the PostgreSQL function of the same name, taking the same parameters.
+var enum_le = framework.Function2{
+	Name:       "enum_le",
+	Return:     pgtypes.Bool,
+	Parameters: [2]*pgtypes.DoltgresType{pgtypes.AnyEnum, pgtypes.AnyEnum},
+	Strict:     true,
+	Callable: func(ctx *sql.Context, t [3]*pgtypes.DoltgresType, val1 any, val2 any) (any, error) {
+		res, err := t[0].Compare(val1, val2)
+		return res <= 0, err
 	},
 }
 

@@ -69,10 +69,12 @@ type DoltgresType struct {
 	Acl           []string // TODO: list of privileges
 
 	// Below are not part of pg_type fields
-	Checks       []*sql.CheckDefinition // TODO: should be in `pg_constraint` for Domain types
-	attTypMod    int32                  // TODO: should be in `pg_attribute.atttypmod`
-	CompareFunc  uint32                 // TODO: should be in `pg_amproc`
-	InternalName string                 // Name and InternalName differ for some types. e.g.: "int2" vs "smallint"
+	Checks         []*sql.CheckDefinition // TODO: should be in `pg_constraint` for Domain types
+	attTypMod      int32                  // TODO: should be in `pg_attribute.atttypmod`
+	CompareFunc    uint32                 // TODO: should be in `pg_amproc`
+	InternalName   string                 // Name and InternalName differ for some types. e.g.: "int2" vs "smallint"
+	EnumLabels     map[string]EnumLabel   // TODO: should be in `pg_enum`
+	CompositeAttrs []CompositeAttribute   // TODO: should be in `pg_attribute`
 
 	// Below are not stored
 	IsSerial            bool   // used for serial types only (e.g.: smallserial)
@@ -144,6 +146,18 @@ func (t *DoltgresType) Compare(v1 interface{}, v2 interface{}) (int, error) {
 		return 1, nil
 	} else if v1 == nil && v2 != nil {
 		return -1, nil
+	}
+
+	if t.TypType == TypeType_Enum {
+		// TODO: temporary solution to getting the enum type into the 'enum_cmp' function
+		qf := globalFunctionRegistry.GetFunction(t.CompareFunc)
+		resTypes := qf.ResolvedTypes()
+		newFunc := qf.WithResolvedTypes([]*DoltgresType{t, t, resTypes[len(resTypes)-1]})
+		i, err := newFunc.(QuickFunction).CallVariadic(nil, v1, v2)
+		if err != nil {
+			return 0, err
+		}
+		return int(i.(int32)), nil
 	}
 
 	switch ab := v1.(type) {
@@ -378,6 +392,8 @@ func (t *DoltgresType) IoInput(ctx *sql.Context, input string) (any, error) {
 		} else {
 			return globalFunctionRegistry.GetFunction(t.InputFunc).CallVariadic(ctx, input, t.OID, t.attTypMod)
 		}
+	} else if t.TypType == TypeType_Enum {
+		return globalFunctionRegistry.GetFunction(t.InputFunc).CallVariadic(ctx, input, t.OID)
 	} else {
 		return globalFunctionRegistry.GetFunction(t.InputFunc).CallVariadic(ctx, input)
 	}
@@ -418,7 +434,7 @@ func (t *DoltgresType) IsEmptyType() bool {
 // The exception is the "any" type, which is not a polymorphic type.
 func (t *DoltgresType) IsPolymorphicType() bool {
 	switch oid.Oid(t.OID) {
-	case oid.T_anyelement, oid.T_anyarray, oid.T_anynonarray:
+	case oid.T_anyelement, oid.T_anyarray, oid.T_anynonarray, oid.T_anyenum, oid.T_anyrange:
 		// TODO: add other polymorphic types
 		// https://www.postgresql.org/docs/15/extend-type-system.html#EXTEND-TYPES-POLYMORPHIC-TABLE
 		return true
@@ -443,6 +459,10 @@ func (t *DoltgresType) IsValidForPolymorphicType(target *DoltgresType) bool {
 		return target.TypCategory == TypeCategory_ArrayTypes
 	case oid.T_anynonarray:
 		return target.TypCategory != TypeCategory_ArrayTypes
+	case oid.T_anyenum:
+		return target.TypCategory == TypeCategory_EnumTypes
+	case oid.T_anyrange:
+		return target.TypCategory == TypeCategory_RangeTypes
 	default:
 		// TODO: add other polymorphic types
 		// https://www.postgresql.org/docs/15/extend-type-system.html#EXTEND-TYPES-POLYMORPHIC-TABLE
@@ -812,6 +832,8 @@ func (t *DoltgresType) DeserializeValue(val []byte) (any, error) {
 		} else {
 			return globalFunctionRegistry.GetFunction(t.ReceiveFunc).CallVariadic(nil, val, t.OID, t.attTypMod)
 		}
+	} else if t.TypType == TypeType_Enum {
+		return globalFunctionRegistry.GetFunction(t.ReceiveFunc).CallVariadic(nil, val, t.OID)
 	} else {
 		return globalFunctionRegistry.GetFunction(t.ReceiveFunc).CallVariadic(nil, val)
 	}

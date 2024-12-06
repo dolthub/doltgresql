@@ -63,6 +63,8 @@ var pgEnumSchema = sql.Schema{
 	{Name: "enumlabel", Type: pgtypes.Name, Default: nil, Nullable: false, Source: PgEnumName},
 }
 
+// TODO: add unique constraint "pg_enum_typid_label_index"
+
 // pgEnumRowIter is the sql.RowIter for the pg_enum table.
 type pgEnumRowIter struct {
 }

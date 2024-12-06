@@ -20,6 +20,7 @@ import (
 	vitess "github.com/dolthub/vitess/go/vt/sqlparser"
 
 	"github.com/dolthub/doltgresql/postgres/parser/sem/tree"
+	pgnodes "github.com/dolthub/doltgresql/server/node"
 )
 
 // nodeCreateType handles *tree.CreateType nodes.
@@ -27,5 +28,42 @@ func nodeCreateType(ctx *Context, node *tree.CreateType) (vitess.Statement, erro
 	if node == nil {
 		return nil, nil
 	}
-	return nil, fmt.Errorf("CREATE TYPE is not yet supported")
+	name, err := nodeUnresolvedObjectName(ctx, node.TypeName)
+	if err != nil {
+		return nil, err
+	}
+	schemaName := name.SchemaQualifier.String()
+	typName := name.Name.String()
+	var createTypeNode *pgnodes.CreateType
+	switch node.Variety {
+	case tree.Composite:
+		typs := make([]pgnodes.CompositeAsType, len(node.Composite.Types))
+		for i, t := range node.Composite.Types {
+			_, dataType, err := nodeResolvableTypeReference(ctx, t.Type)
+			if err != nil {
+				return nil, err
+			}
+			typs[i] = pgnodes.CompositeAsType{
+				AttrName:  t.AttrName,
+				Typ:       dataType,
+				Collation: t.Collate,
+			}
+		}
+		createTypeNode = pgnodes.NewCreateCompositeType(schemaName, typName, typs)
+	case tree.Enum:
+		createTypeNode = pgnodes.NewCreateEnumType(schemaName, typName, node.Enum.Labels)
+	case tree.Range:
+		return nil, fmt.Errorf("CREATE RANGE TYPE is not yet supported")
+	case tree.Base:
+		return nil, fmt.Errorf("CREATE BASE TYPE is not yet supported")
+	case tree.Shell:
+		createTypeNode = pgnodes.NewCreateShellType(schemaName, typName)
+	case tree.Domain:
+		// NOT POSSIBLE
+		return nil, fmt.Errorf("use CREATE DOMAIN to create domain type")
+	}
+
+	return vitess.InjectedStatement{
+		Statement: createTypeNode,
+	}, nil
 }

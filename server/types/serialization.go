@@ -99,6 +99,40 @@ func DeserializeType(serializedType []byte) (types.ExtendedType, error) {
 	}
 	typ.attTypMod = reader.Int32()
 	typ.CompareFunc = globalFunctionRegistry.StringToID(reader.String())
+	numOfEnumLabels := reader.VariableUint()
+	if numOfEnumLabels > 0 {
+		typ.EnumLabels = make(map[string]EnumLabel)
+		for k := uint64(0); k < numOfEnumLabels; k++ {
+			oid := reader.Uint32()
+			enumOid := reader.Uint32()
+			sortOrder := reader.Float32()
+			label := reader.String()
+			typ.EnumLabels[label] = EnumLabel{
+				OID:        oid,
+				EnumTypOid: enumOid,
+				SortOrder:  sortOrder,
+				Label:      label,
+			}
+		}
+	}
+	numOfCompAttrs := reader.VariableUint()
+	if numOfCompAttrs > 0 {
+		typ.CompositeAttrs = make([]CompositeAttribute, numOfCompAttrs)
+		for k := uint64(0); k < numOfCompAttrs; k++ {
+			relOid := reader.Uint32()
+			name := reader.String()
+			typOid := reader.Uint32()
+			num := reader.Int16()
+			collation := reader.String()
+			typ.CompositeAttrs[k] = CompositeAttribute{
+				relOid:    relOid,
+				name:      name,
+				typOid:    typOid,
+				num:       num,
+				collation: collation,
+			}
+		}
+	}
 	typ.InternalName = reader.String()
 	if !reader.IsEmpty() {
 		return nil, fmt.Errorf("extra data found while deserializing type %s", typ.Name)
@@ -155,6 +189,25 @@ func (t *DoltgresType) Serialize() []byte {
 	}
 	writer.Int32(t.attTypMod)
 	writer.String(globalFunctionRegistry.GetFullString(t.CompareFunc))
+	writer.VariableUint(uint64(len(t.EnumLabels)))
+	if t.EnumLabels != nil {
+		for _, l := range t.EnumLabels {
+			writer.Uint32(l.OID)
+			writer.Uint32(l.EnumTypOid)
+			writer.Float32(l.SortOrder)
+			writer.String(l.Label)
+		}
+	}
+	writer.VariableUint(uint64(len(t.CompositeAttrs)))
+	if t.CompositeAttrs != nil {
+		for _, l := range t.CompositeAttrs {
+			writer.Uint32(l.relOid)
+			writer.String(l.name)
+			writer.Uint32(l.typOid)
+			writer.Int16(l.num)
+			writer.String(l.collation)
+		}
+	}
 	writer.String(t.InternalName)
 	return writer.Data()
 }

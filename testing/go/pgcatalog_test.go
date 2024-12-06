@@ -3922,6 +3922,36 @@ func TestPgType(t *testing.T) {
 				},
 			},
 		},
+		{
+			Skip: true,
+			Name: "user defined type",
+			SetUpScript: []string{
+				`CREATE DOMAIN domain_type AS INTEGER NOT NULL;`,
+				`CREATE TYPE enum_type AS ENUM ('1','2','3')`,
+			},
+			Assertions: []ScriptTestAssertion{
+				{
+					// TODO: should have unique OID for the type and array type
+					Query:    `SELECT * FROM "pg_catalog"."pg_type" WHERE typname = 'domain_type';`,
+					Expected: []sql.Row{{23, "domain_type", 1879048194, 0, 4, "t", "d", "N", "f", "t", ",", 0, "-", 0, 0, "domain_in", "int4out", "domain_recv", "int4send", "-", "-", "-", "i", "p", "t", 23, -1, 0, 0, "", "", "{}"}},
+				},
+				{
+					// TODO: should have unique OID for the type and element type
+					Query:    `SELECT * FROM "pg_catalog"."pg_type" WHERE typname = '_domain_type';`,
+					Expected: []sql.Row{{0, "_domain_type", 1879048194, 0, -1, "f", "b", "A", "f", "t", ",", 0, "array_subscript_handler", 23, 0, "array_in", "array_out", "array_recv", "array_send", "-", "-", "array_typanalyze", "i", "x", "f", 0, -1, 0, 0, "", "", "{}"}},
+				},
+				{
+					// TODO: should have unique OID for the type and array type
+					Query:    `SELECT * FROM "pg_catalog"."pg_type" WHERE typname = 'enum_type';`,
+					Expected: []sql.Row{{0, "enum_type", 1879048194, 0, 4, "t", "e", "E", "f", "t", ",", 0, "-", 0, 0, "enum_in", "enum_out", "enum_recv", "enum_send", "-", "-", "-", "i", "p", "f", 0, -1, 0, 0, "", "", "{}"}},
+				},
+				{
+					// TODO: should have unique OID for the type and element type
+					Query:    `SELECT * FROM "pg_catalog"."pg_type" WHERE typname = '_enum_type';`,
+					Expected: []sql.Row{{0, "_enum_type", 1879048194, 0, -1, "f", "b", "A", "f", "t", ",", 0, "array_subscript_handler", 0, 0, "array_in", "array_out", "array_recv", "array_send", "-", "-", "array_typanalyze", "i", "x", "f", 0, -1, 0, 0, "", "", "{}"}},
+				},
+			},
+		},
 	})
 }
 

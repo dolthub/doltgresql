@@ -67,20 +67,6 @@ func (c *CreateDomain) RowIter(ctx *sql.Context, r sql.Row) (sql.RowIter, error)
 		return nil, fmt.Errorf(`role "%s" does not exist`, ctx.Client().User)
 	}
 
-	// TODO: create array type with this type as base type
-	var defExpr string
-	if c.DefaultExpr != nil {
-		defExpr = c.DefaultExpr.String()
-	}
-	checkDefs := make([]*sql.CheckDefinition, len(c.CheckConstraints))
-	var err error
-	for i, check := range c.CheckConstraints {
-		checkDefs[i], err = plan.NewCheckDefinition(ctx, check)
-		if err != nil {
-			return nil, err
-		}
-	}
-
 	schema, err := core.GetSchemaName(ctx, nil, c.SchemaName)
 	if err != nil {
 		return nil, err
@@ -90,8 +76,35 @@ func (c *CreateDomain) RowIter(ctx *sql.Context, r sql.Row) (sql.RowIter, error)
 		return nil, err
 	}
 
-	newType := types.NewDomainType(ctx, c.SchemaName, c.Name, c.AsType, defExpr, c.IsNotNull, checkDefs, "")
+	if collection.HasType(c.SchemaName, c.Name) {
+		return nil, types.ErrTypeAlreadyExists.New(c.Name)
+	}
+
+	// TODO: generate unique OIDs
+	oid := c.AsType.OID // using underlying type OID for now
+	arrayOid := uint32(0)
+
+	var defExpr string
+	if c.DefaultExpr != nil {
+		defExpr = c.DefaultExpr.String()
+	}
+
+	checkDefs := make([]*sql.CheckDefinition, len(c.CheckConstraints))
+	for i, check := range c.CheckConstraints {
+		checkDefs[i], err = plan.NewCheckDefinition(ctx, check)
+		if err != nil {
+			return nil, err
+		}
+	}
+
+	newType := types.NewDomainType(ctx, c.SchemaName, c.Name, userRole.Name, c.AsType, defExpr, c.IsNotNull, checkDefs, arrayOid, oid)
 	err = collection.CreateType(schema, newType)
+	if err != nil {
+		return nil, err
+	}
+
+	arrayType := types.CreateArrayTypeFromBaseType(newType)
+	err = collection.CreateType(schema, arrayType)
 	if err != nil {
 		return nil, err
 	}

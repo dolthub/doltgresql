@@ -130,6 +130,10 @@ func (c *DropDomain) RowIter(ctx *sql.Context, r sql.Row) (sql.RowIter, error) {
 	if err = collection.DropType(schema, c.domain); err != nil {
 		return nil, err
 	}
+	arrayType := fmt.Sprintf(`_%s`, c.domain)
+	if err = collection.DropType(schema, arrayType); err != nil {
+		return nil, err
+	}
 	auth.LockWrite(func() {
 		auth.RemoveOwner(auth.OwnershipKey{
 			PrivilegeObject: auth.PrivilegeObject_DOMAIN,

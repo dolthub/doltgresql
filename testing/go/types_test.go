@@ -3210,3 +3210,75 @@ func TestSameTypes(t *testing.T) {
 		},
 	})
 }
+
+func TestEnumTypes(t *testing.T) {
+	RunScripts(t, enumTypeTests)
+}
+
+var enumTypeTests = []ScriptTest{
+	{
+		Skip: true,
+		Name: "create enum type",
+		Assertions: []ScriptTestAssertion{
+			{
+				Query:       `CREATE TYPE mood AS ENUM ('ok','ok');`,
+				ExpectedErr: `duplicate key value violates unique constraint "pg_enum_typid_label_index"`,
+			},
+			{
+				Query:    `CREATE TYPE empty_mood AS ENUM ();`,
+				Expected: []sql.Row{},
+			},
+			{
+				Query:    `CREATE TYPE mood AS ENUM ('sad', 'ok', 'happy');`,
+				Expected: []sql.Row{},
+			},
+		},
+	},
+	{
+		Name: "create enum type",
+		SetUpScript: []string{
+			`CREATE TYPE mood AS ENUM ('sad', 'ok', 'happy')`,
+		},
+		Assertions: []ScriptTestAssertion{
+			{
+				Query:    `CREATE TABLE person (name text, current_mood mood);`,
+				Expected: []sql.Row{},
+			},
+			{
+				Query:    `INSERT INTO person VALUES ('Moe', 'happy'), ('Larry', 'sad'), ('Curly', 'ok');`,
+				Expected: []sql.Row{},
+			},
+			{
+				Query:    `SELECT * FROM person;`,
+				Expected: []sql.Row{{"Moe", "happy"}, {"Curly", "ok"}, {"Larry", "sad"}},
+			},
+			{
+				Query:    `SELECT * FROM person WHERE current_mood = 'happy';`,
+				Expected: []sql.Row{{"Moe", "happy"}},
+			},
+			{
+				Query:    `SELECT * FROM person WHERE current_mood > 'sad';`,
+				Expected: []sql.Row{{"Moe", "happy"}, {"Curly", "ok"}},
+			},
+			{
+				Query:    `SELECT * FROM person WHERE current_mood > 'sad' ORDER BY current_mood;`,
+				Expected: []sql.Row{{"Curly", "ok"}, {"Moe", "happy"}},
+			},
+		},
+	},
+	{
+		Skip: true,
+		Name: "create enum type",
+		SetUpScript: []string{
+			`CREATE TYPE mood AS ENUM ('sad', 'ok', 'happy')`,
+		},
+		Assertions: []ScriptTestAssertion{
+			{
+				// oid of type 'mood' = 16675
+				Query:    `select enum_in('sad'::cstring, 16675);`,
+				Expected: []sql.Row{{"sad"}},
+			},
+		},
+	},
+	//
+}

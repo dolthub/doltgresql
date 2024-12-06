@@ -116,8 +116,9 @@ func newCompiledFunctionInternal(
 	if returnType.IsPolymorphicType() {
 		if hasPolymorphicParam {
 			c.callResolved[len(c.callResolved)-1] = c.resolvePolymorphicReturnType(functionParameterTypes, originalTypes, returnType)
-		} else if c.Name == "array_in" || c.Name == "array_recv" {
+		} else if c.Name == "array_in" || c.Name == "array_recv" || c.Name == "enum_in" || c.Name == "enum_recv" || c.Name == "anyenum_in" || c.Name == "anyenum_recv" {
 			// TODO: `array_in` and `array_recv` functions don't follow this rule
+			//  or input value in format of string and byte array are an exception to this rule?
 			// The return type should resolve to the type of OID value passed in as second argument.
 		} else {
 			c.stashedErr = fmt.Errorf("A result of type %s requires at least one input of type anyelement, anyarray, anynonarray, anyenum, anyrange, or anymultirange.", returnType.String())

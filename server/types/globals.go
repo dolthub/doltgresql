@@ -81,6 +81,7 @@ const (
 var typesFromOID = map[uint32]*DoltgresType{
 	AnyArray.OID:          AnyArray,
 	AnyElement.OID:        AnyElement,
+	AnyEnum.OID:           AnyEnum,
 	AnyNonArray.OID:       AnyNonArray,
 	Bool.OID:              Bool,
 	BoolArray.OID:         BoolArray,
@@ -117,6 +118,8 @@ var typesFromOID = map[uint32]*DoltgresType{
 	NumericArray.OID:      NumericArray,
 	Oid.OID:               Oid,
 	OidArray.OID:          OidArray,
+	Record.OID:            Record,
+	RecordArray.OID:       RecordArray,
 	Regclass.OID:          Regclass,
 	RegclassArray.OID:     RegclassArray,
 	Regproc.OID:           Regproc,
@@ -138,6 +141,7 @@ var typesFromOID = map[uint32]*DoltgresType{
 	UuidArray.OID:         UuidArray,
 	VarChar.OID:           VarChar,
 	VarCharArray.OID:      VarCharArray,
+	Void.OID:              Void,
 	Xid.OID:               Xid,
 	XidArray.OID:          XidArray,
 }
@@ -153,9 +157,9 @@ func GetTypeByOID(oid uint32) *DoltgresType {
 	return t
 }
 
-// GetAllTypes returns a slice containing all registered types.
+// GetAllBuitInTypes returns a slice containing all registered types.
 // The slice is sorted by each type's OID.
-func GetAllTypes() []*DoltgresType {
+func GetAllBuitInTypes() []*DoltgresType {
 	pgTypes := make([]*DoltgresType, 0, len(typesFromOID))
 	for _, typ := range typesFromOID {
 		pgTypes = append(pgTypes, typ)
@@ -281,17 +285,17 @@ var OidToBuiltInDoltgresType = map[uint32]*DoltgresType{
 	uint32(oid.T__regoperator):     Unknown,
 	uint32(oid.T__regclass):        RegclassArray,
 	uint32(oid.T__regtype):         RegtypeArray,
-	uint32(oid.T_record):           Unknown,
+	uint32(oid.T_record):           Record,
 	uint32(oid.T_cstring):          Cstring,
-	uint32(oid.T_any):              Unknown,
+	uint32(oid.T_any):              Any,
 	uint32(oid.T_anyarray):         AnyArray,
-	uint32(oid.T_void):             Unknown,
+	uint32(oid.T_void):             Void,
 	uint32(oid.T_trigger):          Unknown,
 	uint32(oid.T_language_handler): Unknown,
 	uint32(oid.T_internal):         Internal,
 	uint32(oid.T_opaque):           Unknown,
 	uint32(oid.T_anyelement):       AnyElement,
-	uint32(oid.T__record):          Unknown,
+	uint32(oid.T__record):          RecordArray,
 	uint32(oid.T_anynonarray):      AnyNonArray,
 	uint32(oid.T_pg_authid):        Unknown,
 	uint32(oid.T_pg_auth_members):  Unknown,
@@ -303,7 +307,7 @@ var OidToBuiltInDoltgresType = map[uint32]*DoltgresType{
 	uint32(oid.T_pg_lsn):           Unknown,
 	uint32(oid.T__pg_lsn):          Unknown,
 	uint32(oid.T_tsm_handler):      Unknown,
-	uint32(oid.T_anyenum):          Unknown,
+	uint32(oid.T_anyenum):          AnyEnum,
 	uint32(oid.T_tsvector):         Unknown,
 	uint32(oid.T_tsquery):          Unknown,
 	uint32(oid.T_gtsvector):        Unknown,

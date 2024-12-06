@@ -30,16 +30,15 @@ var ErrDomainValueViolatesCheckConstraint = errors.NewKind(`value for domain %s 
 // NewDomainType creates new instance of domain DoltgresType.
 func NewDomainType(
 	ctx *sql.Context,
-	schema string,
-	name string,
+	schema, name, owner string,
 	asType *DoltgresType,
 	defaultExpr string,
 	notNull bool,
 	checks []*sql.CheckDefinition,
-	owner string, // TODO
+	arrayOid, typOid uint32,
 ) *DoltgresType {
 	return &DoltgresType{
-		OID:           asType.OID, // TODO: generate unique OID, using underlying type OID for now
+		OID:           typOid,
 		Name:          name,
 		Schema:        schema,
 		Owner:         owner,
@@ -53,7 +52,7 @@ func NewDomainType(
 		RelID:         0,
 		SubscriptFunc: toFuncID("-"),
 		Elem:          0,
-		Array:         0, // TODO: refers to array type of this type
+		Array:         arrayOid,
 		InputFunc:     toFuncID("domain_in", oid.T_cstring, oid.T_oid, oid.T_int4),
 		OutputFunc:    asType.OutputFunc,
 		ReceiveFunc:   toFuncID("domain_recv", oid.T_internal, oid.T_oid, oid.T_int4),
