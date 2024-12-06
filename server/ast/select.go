@@ -155,7 +155,7 @@ func nodeSelectExpr(ctx *Context, node tree.SelectExpr) (vitess.SelectExpr, erro
 	}
 }
 
-// inputExpressionForSelectExpr returns the input expression for a tree.SelectExpr. 
+// inputExpressionForSelectExpr returns the input expression for a tree.SelectExpr.
 // Postgres has specific handling for function calls that differs from the default printing behavior.
 func inputExpressionForSelectExpr(node tree.SelectExpr) string {
 	inputExpression := tree.AsStringWithFlags(&node, tree.FmtOmitFunctionArgs)
