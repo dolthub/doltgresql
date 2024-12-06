@@ -39,7 +39,9 @@ var _ sql.Expression = (*Array)(nil)
 func NewArray(coercedType sql.Type) (*Array, error) {
 	var arrayCoercedType *pgtypes.DoltgresType
 	if dt, ok := coercedType.(*pgtypes.DoltgresType); ok {
-		if dt.IsArrayType() {
+		if dt.IsEmptyType() {
+			// DoltgresType pointer can be nil
+		} else if dt.IsArrayType() {
 			arrayCoercedType = dt
 		} else if !dt.IsEmptyType() {
 			return nil, fmt.Errorf("cannot cast array to %s", coercedType.String())
