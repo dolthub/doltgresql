@@ -1455,7 +1455,7 @@ func TestConvertQuery(t *testing.T) {
 	type test struct {
 		input    string
 		expected []string
-		pattern bool
+		pattern  bool
 	}
 	tests := []test{
 		{
