@@ -24,6 +24,7 @@ import (
 const (
 	ruleId_TypeSanitizer analyzer.RuleId = iota + 1000
 	ruleId_AddDomainConstraints
+	ruleId_AddDomainConstraintsToCasts
 	ruleId_AssignInsertCasts
 	ruleId_AssignUpdateCasts
 	ruleId_ReplaceIndexedTables
@@ -66,6 +67,8 @@ func Init() {
 	// We also should optimize functions last, since other rules may change the underlying expressions, potentially changing their return types.
 	analyzer.OnceAfterAll = insertAnalyzerRules(analyzer.OnceAfterAll, analyzer.BacktickDefaulColumnValueNamesId, false,
 		analyzer.Rule{Id: ruleId_OptimizeFunctions, Apply: OptimizeFunctions},
+		// AddDomainConstraintsToCasts needs to run after 'assignExecIndexes' rule in GMS.
+		analyzer.Rule{Id: ruleId_AddDomainConstraintsToCasts, Apply: AddDomainConstraintsToCasts},
 		analyzer.Rule{Id: ruleId_InsertContextRootFinalizer, Apply: InsertContextRootFinalizer})
 }
 

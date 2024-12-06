@@ -119,7 +119,7 @@ func (c *ExplicitCast) Eval(ctx *sql.Context, row sql.Row) (any, error) {
 
 	if c.castToType.TypType == pgtypes.TypeType_Domain {
 		for _, check := range c.domainChecks {
-			res, err := sql.EvaluateCondition(ctx, check.Expr, sql.Row{})
+			res, err := sql.EvaluateCondition(ctx, check.Expr, sql.Row{castResult})
 			if err != nil {
 				return nil, err
 			}
@@ -162,8 +162,10 @@ func (c *ExplicitCast) WithChildren(children ...sql.Expression) (sql.Expression,
 		return nil, sql.ErrInvalidChildrenNumber.New(c, len(children), 1)
 	}
 	return &ExplicitCast{
-		sqlChild:   children[0],
-		castToType: c.castToType,
+		sqlChild:       children[0],
+		castToType:     c.castToType,
+		domainNullable: c.domainNullable,
+		domainChecks:   c.domainChecks,
 	}, nil
 }
 
@@ -177,8 +179,10 @@ func (c *ExplicitCast) WithResolvedChildren(children []any) (any, error) {
 		return nil, fmt.Errorf("expected vitess child to be an expression but has type `%T`", children[0])
 	}
 	return &ExplicitCast{
-		sqlChild:   resolvedExpression,
-		castToType: c.castToType,
+		sqlChild:       resolvedExpression,
+		castToType:     c.castToType,
+		domainNullable: c.domainNullable,
+		domainChecks:   c.domainChecks,
 	}, nil
 }
 
@@ -189,10 +193,9 @@ func (c *ExplicitCast) WithCastToType(t *pgtypes.DoltgresType) sql.Expression {
 	return &ec
 }
 
-// WithDomainCastToType returns a copy of the expression with castToType replaced and domain constraints defined.
-func (c *ExplicitCast) WithDomainCastToType(t *pgtypes.DoltgresType, nullable bool, checks sql.CheckConstraints) sql.Expression {
+// WithDomainConstraints returns a copy of the expression with domain constraints defined.
+func (c *ExplicitCast) WithDomainConstraints(nullable bool, checks sql.CheckConstraints) sql.Expression {
 	ec := *c
-	ec.castToType = t
 	ec.domainNullable = nullable
 	ec.domainChecks = checks
 	return &ec

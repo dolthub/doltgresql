@@ -15,22 +15,18 @@
 package analyzer
 
 import (
-	"fmt"
-
 	"github.com/dolthub/go-mysql-server/sql"
 	"github.com/dolthub/go-mysql-server/sql/analyzer"
 	"github.com/dolthub/go-mysql-server/sql/plan"
 	"github.com/dolthub/go-mysql-server/sql/transform"
 
 	"github.com/dolthub/doltgresql/core"
-	"github.com/dolthub/doltgresql/postgres/parser/sem/tree"
 	"github.com/dolthub/doltgresql/server/expression"
-	"github.com/dolthub/doltgresql/server/node"
 	pgtransform "github.com/dolthub/doltgresql/server/transform"
-	"github.com/dolthub/doltgresql/server/types"
+	pgtypes "github.com/dolthub/doltgresql/server/types"
 )
 
-// ResolveType replaces types.ResolvableType to appropriate types.DoltgresType.
+// ResolveType replaces types.ResolvableType to appropriate pgtypes.DoltgresType.
 func ResolveType(ctx *sql.Context, a *analyzer.Analyzer, node sql.Node, scope *plan.Scope, selector analyzer.RuleSelector, qFlags *sql.QueryFlags) (sql.Node, transform.TreeIdentity, error) {
 	n, sameExpr, err := ResolveTypeForExprs(ctx, a, node, scope, selector, qFlags)
 	if err != nil {
@@ -45,14 +41,14 @@ func ResolveType(ctx *sql.Context, a *analyzer.Analyzer, node sql.Node, scope *p
 	return n, sameExpr && sameNode, nil
 }
 
-// ResolveTypeForNodes replaces types.ResolvableType to appropriate types.DoltgresType.
+// ResolveTypeForNodes replaces types.ResolvableType to appropriate pgtypes.DoltgresType.
 func ResolveTypeForNodes(ctx *sql.Context, a *analyzer.Analyzer, node sql.Node, scope *plan.Scope, selector analyzer.RuleSelector, qFlags *sql.QueryFlags) (sql.Node, transform.TreeIdentity, error) {
 	return transform.Node(node, func(node sql.Node) (sql.Node, transform.TreeIdentity, error) {
 		var same = transform.SameTree
 		switch n := node.(type) {
 		case *plan.CreateTable:
 			for _, col := range n.TargetSchema() {
-				if rt, ok := col.Type.(*types.DoltgresType); ok && !rt.IsResolvedType() {
+				if rt, ok := col.Type.(*pgtypes.DoltgresType); ok && !rt.IsResolvedType() {
 					dt, err := resolveType(ctx, rt)
 					if err != nil {
 						return nil, transform.NewTree, err
@@ -64,7 +60,7 @@ func ResolveTypeForNodes(ctx *sql.Context, a *analyzer.Analyzer, node sql.Node, 
 			return node, same, nil
 		case *plan.AddColumn:
 			col := n.Column()
-			if rt, ok := col.Type.(*types.DoltgresType); ok && !rt.IsResolvedType() {
+			if rt, ok := col.Type.(*pgtypes.DoltgresType); ok && !rt.IsResolvedType() {
 				dt, err := resolveType(ctx, rt)
 				if err != nil {
 					return nil, transform.NewTree, err
@@ -75,7 +71,7 @@ func ResolveTypeForNodes(ctx *sql.Context, a *analyzer.Analyzer, node sql.Node, 
 			return node, same, nil
 		case *plan.ModifyColumn:
 			col := n.NewColumn()
-			if rt, ok := col.Type.(*types.DoltgresType); ok && !rt.IsResolvedType() {
+			if rt, ok := col.Type.(*pgtypes.DoltgresType); ok && !rt.IsResolvedType() {
 				dt, err := resolveType(ctx, rt)
 				if err != nil {
 					return nil, transform.NewTree, err
@@ -91,28 +87,19 @@ func ResolveTypeForNodes(ctx *sql.Context, a *analyzer.Analyzer, node sql.Node, 
 	})
 }
 
-// ResolveTypeForExprs replaces types.ResolvableType to appropriate types.DoltgresType.
+// ResolveTypeForExprs replaces types.ResolvableType to appropriate pgtypes.DoltgresType.
 func ResolveTypeForExprs(ctx *sql.Context, a *analyzer.Analyzer, node sql.Node, scope *plan.Scope, selector analyzer.RuleSelector, qFlags *sql.QueryFlags) (sql.Node, transform.TreeIdentity, error) {
 	return pgtransform.NodeExprsWithOpaque(node, func(expr sql.Expression) (sql.Expression, transform.TreeIdentity, error) {
 		var same = transform.SameTree
 		switch e := expr.(type) {
 		case *expression.ExplicitCast:
-			if rt, ok := e.Type().(*types.DoltgresType); ok && !rt.IsResolvedType() {
+			if rt, ok := e.Type().(*pgtypes.DoltgresType); ok && !rt.IsResolvedType() {
 				dt, err := resolveType(ctx, rt)
 				if err != nil {
 					return nil, transform.NewTree, err
 				}
 				same = transform.NewTree
-				if dt.TypType == types.TypeType_Domain {
-					nullable := !dt.NotNull
-					colChecks, err := getDomainCheckConstraintsForCast(ctx, a, dt.Checks, e.Child())
-					if err != nil {
-						return nil, transform.NewTree, err
-					}
-					expr = e.WithDomainCastToType(dt, nullable, colChecks)
-				} else {
-					expr = e.WithCastToType(dt)
-				}
+				expr = e.WithCastToType(dt)
 			}
 			return expr, same, nil
 		default:
@@ -123,7 +110,7 @@ func ResolveTypeForExprs(ctx *sql.Context, a *analyzer.Analyzer, node sql.Node, 
 }
 
 // resolveType resolves any type that is unresolved yet. (e.g.: domain types)
-func resolveType(ctx *sql.Context, typ *types.DoltgresType) (*types.DoltgresType, error) {
+func resolveType(ctx *sql.Context, typ *pgtypes.DoltgresType) (*pgtypes.DoltgresType, error) {
 	schema, err := core.GetSchemaName(ctx, nil, typ.Schema)
 	if err != nil {
 		return nil, err
@@ -134,36 +121,7 @@ func resolveType(ctx *sql.Context, typ *types.DoltgresType) (*types.DoltgresType
 	}
 	resolvedTyp, exists := typs.GetType(schema, typ.Name)
 	if !exists {
-		return nil, types.ErrTypeDoesNotExist.New(typ.Name)
+		return nil, pgtypes.ErrTypeDoesNotExist.New(typ.Name)
 	}
 	return resolvedTyp, nil
-}
-
-// getDomainCheckConstraintsForCast takes the check constraint definitions, parses, builds and returns sql.CheckConstraints.
-func getDomainCheckConstraintsForCast(ctx *sql.Context, a *analyzer.Analyzer, checkDefs []*sql.CheckDefinition, value sql.Expression) (sql.CheckConstraints, error) {
-	checks := make(sql.CheckConstraints, len(checkDefs))
-	for i, check := range checkDefs {
-		q := fmt.Sprintf("select %s", check.CheckExpression)
-		checkExpr, err := parseAndReplaceDomainCheckConstraint(ctx, a, check.CheckExpression, q, tree.DomainColumn{})
-		if err != nil {
-			return nil, err
-		}
-
-		// replace DomainColumn with given sql.Expression
-		checkExpr, _, _ = transform.Expr(checkExpr, func(expr sql.Expression) (sql.Expression, transform.TreeIdentity, error) {
-			switch e := expr.(type) {
-			case *node.DomainColumn:
-				expr = value
-				return expr, transform.NewTree, nil
-			default:
-				return e, transform.SameTree, nil
-			}
-		})
-		checks[i] = &sql.CheckConstraint{
-			Name:     check.Name,
-			Expr:     checkExpr,
-			Enforced: true,
-		}
-	}
-	return checks, nil
 }

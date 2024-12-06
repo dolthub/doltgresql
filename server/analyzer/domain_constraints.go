@@ -28,6 +28,9 @@ import (
 	"github.com/dolthub/doltgresql/postgres/parser/parser"
 	"github.com/dolthub/doltgresql/postgres/parser/sem/tree"
 	"github.com/dolthub/doltgresql/server/ast"
+	"github.com/dolthub/doltgresql/server/expression"
+	"github.com/dolthub/doltgresql/server/node"
+	pgtransform "github.com/dolthub/doltgresql/server/transform"
 	pgtypes "github.com/dolthub/doltgresql/server/types"
 )
 
@@ -36,17 +39,17 @@ import (
 func AddDomainConstraints(ctx *sql.Context, a *analyzer.Analyzer, node sql.Node, scope *plan.Scope, selector analyzer.RuleSelector, qFlags *sql.QueryFlags) (sql.Node, transform.TreeIdentity, error) {
 	switch n := node.(type) {
 	case *plan.InsertInto:
-		return resolveDomainTypeAndLoadCheckConstraints(ctx, a, n, n.Schema())
+		return loadDomainConstraints(ctx, a, n, n.Schema())
 	case *plan.Update:
-		return resolveDomainTypeAndLoadCheckConstraints(ctx, a, n, n.Schema())
+		return loadDomainConstraints(ctx, a, n, n.Schema())
 	default:
 		return node, transform.SameTree, nil
 	}
 }
 
-// resolveDomainTypeAndLoadCheckConstraints retrieves and assigns domain type's default value, nullable and check constraints
+// loadDomainConstraints retrieves and assigns domain type's default value, nullable and check constraints
 // to the destination table schema and InsertNode/Update node's checks.
-func resolveDomainTypeAndLoadCheckConstraints(ctx *sql.Context, a *analyzer.Analyzer, c sql.CheckConstraintNode, schema sql.Schema) (sql.Node, transform.TreeIdentity, error) {
+func loadDomainConstraints(ctx *sql.Context, a *analyzer.Analyzer, c sql.CheckConstraintNode, schema sql.Schema) (sql.Node, transform.TreeIdentity, error) {
 	// get current checks to append the domain checks to.
 	checks := c.Checks()
 	var same = transform.SameTree
@@ -117,6 +120,58 @@ func getDomainCheckConstraintsForTable(ctx *sql.Context, a *analyzer.Analyzer, c
 		}
 	}
 
+	return checks, nil
+}
+
+// AddDomainConstraintsToCasts adds domain type's constraints to cast expressions.
+func AddDomainConstraintsToCasts(ctx *sql.Context, a *analyzer.Analyzer, node sql.Node, scope *plan.Scope, selector analyzer.RuleSelector, qFlags *sql.QueryFlags) (sql.Node, transform.TreeIdentity, error) {
+	return pgtransform.NodeExprsWithOpaque(node, func(expr sql.Expression) (sql.Expression, transform.TreeIdentity, error) {
+		var same = transform.SameTree
+		switch e := expr.(type) {
+		case *expression.ExplicitCast:
+			if rt, ok := e.Type().(*pgtypes.DoltgresType); ok && rt.TypType == pgtypes.TypeType_Domain {
+				// the domain type should be resolved by this point
+				colChecks, err := getDomainCheckConstraintsForCast(ctx, a, rt.Checks, e.Child())
+				if err != nil {
+					return nil, transform.NewTree, err
+				}
+				same = transform.NewTree
+				expr = e.WithDomainConstraints(!rt.NotNull, colChecks)
+			}
+			return expr, same, nil
+		default:
+			// TODO: add ASSIGNMENT, IMPLICIT cast and other expressions that use domain types
+			return e, transform.SameTree, nil
+		}
+	})
+}
+
+// getDomainCheckConstraintsForCast takes the check constraint definitions, parses, builds and returns sql.CheckConstraints.
+func getDomainCheckConstraintsForCast(ctx *sql.Context, a *analyzer.Analyzer, checkDefs []*sql.CheckDefinition, value sql.Expression) (sql.CheckConstraints, error) {
+	checks := make(sql.CheckConstraints, len(checkDefs))
+	for i, check := range checkDefs {
+		q := fmt.Sprintf("select %s", check.CheckExpression)
+		checkExpr, err := parseAndReplaceDomainCheckConstraint(ctx, a, check.CheckExpression, q, tree.DomainColumn{})
+		if err != nil {
+			return nil, err
+		}
+
+		// replace DomainColumn with given sql.Expression
+		checkExpr, _, _ = transform.Expr(checkExpr, func(expr sql.Expression) (sql.Expression, transform.TreeIdentity, error) {
+			switch e := expr.(type) {
+			case *node.DomainColumn:
+				expr = value
+				return expr, transform.NewTree, nil
+			default:
+				return e, transform.SameTree, nil
+			}
+		})
+		checks[i] = &sql.CheckConstraint{
+			Name:     check.Name,
+			Expr:     checkExpr,
+			Enforced: true,
+		}
+	}
 	return checks, nil
 }
 
