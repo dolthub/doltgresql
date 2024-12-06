@@ -30,10 +30,10 @@ func initPgTableSize() {
 var pg_table_size_regclass = framework.Function1{
 	Name:               "pg_table_size",
 	Return:             pgtypes.Int64,
-	Parameters:         [1]pgtypes.DoltgresType{pgtypes.Regclass},
+	Parameters:         [1]*pgtypes.DoltgresType{pgtypes.Regclass},
 	IsNonDeterministic: true,
 	Strict:             true,
-	Callable: func(ctx *sql.Context, _ [2]pgtypes.DoltgresType, val any) (any, error) {
+	Callable: func(ctx *sql.Context, _ [2]*pgtypes.DoltgresType, val any) (any, error) {
 		// TODO: Disk space used by the specified table, excluding indexes (but including TOAST, free space map, and visibility map)
 		return int64(0), nil
 	},

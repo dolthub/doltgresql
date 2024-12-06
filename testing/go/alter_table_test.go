@@ -193,6 +193,14 @@ func TestAlterTable(t *testing.T) {
 					Query:    "select * from test1;",
 					Expected: []sql.Row{{1, 1, 42}},
 				},
+				{
+					Query:       "ALTER TABLE test1 ADD COLUMN l non_existing_type;",
+					ExpectedErr: `type "non_existing_type" does not exist`,
+				},
+				{
+					Query:    `ALTER TABLE test1 ADD COLUMN m xid;`,
+					Expected: []sql.Row{},
+				},
 			},
 		},
 		{

@@ -34,9 +34,9 @@ func initPower() {
 var power_float64_float64 = framework.Function2{
 	Name:       "power",
 	Return:     pgtypes.Float64,
-	Parameters: [2]pgtypes.DoltgresType{pgtypes.Float64, pgtypes.Float64},
+	Parameters: [2]*pgtypes.DoltgresType{pgtypes.Float64, pgtypes.Float64},
 	Strict:     true,
-	Callable: func(ctx *sql.Context, _ [3]pgtypes.DoltgresType, val1 any, val2 any) (any, error) {
+	Callable: func(ctx *sql.Context, _ [3]*pgtypes.DoltgresType, val1 any, val2 any) (any, error) {
 		return math.Pow(val1.(float64), val2.(float64)), nil
 	},
 }
@@ -45,9 +45,9 @@ var power_float64_float64 = framework.Function2{
 var power_numeric_numeric = framework.Function2{
 	Name:       "power",
 	Return:     pgtypes.Numeric,
-	Parameters: [2]pgtypes.DoltgresType{pgtypes.Numeric, pgtypes.Numeric},
+	Parameters: [2]*pgtypes.DoltgresType{pgtypes.Numeric, pgtypes.Numeric},
 	Strict:     true,
-	Callable: func(ctx *sql.Context, _ [3]pgtypes.DoltgresType, val1 any, val2 any) (any, error) {
+	Callable: func(ctx *sql.Context, _ [3]*pgtypes.DoltgresType, val1 any, val2 any) (any, error) {
 		if val1 == nil || val2 == nil {
 			return nil, nil
 		}

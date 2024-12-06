@@ -35,11 +35,11 @@ func initSetVal() {
 var setval_text_int64 = framework.Function2{
 	Name:               "setval",
 	Return:             pgtypes.Int64,
-	Parameters:         [2]pgtypes.DoltgresType{pgtypes.Text, pgtypes.Int64},
+	Parameters:         [2]*pgtypes.DoltgresType{pgtypes.Text, pgtypes.Int64},
 	IsNonDeterministic: true,
 	Strict:             true,
-	Callable: func(ctx *sql.Context, _ [3]pgtypes.DoltgresType, val1 any, val2 any) (any, error) {
-		var unusedTypes [4]pgtypes.DoltgresType
+	Callable: func(ctx *sql.Context, _ [3]*pgtypes.DoltgresType, val1 any, val2 any) (any, error) {
+		var unusedTypes [4]*pgtypes.DoltgresType
 		return setval_text_int64_boolean.Callable(ctx, unusedTypes, val1, val2, true)
 	},
 }
@@ -48,10 +48,10 @@ var setval_text_int64 = framework.Function2{
 var setval_text_int64_boolean = framework.Function3{
 	Name:               "setval",
 	Return:             pgtypes.Int64,
-	Parameters:         [3]pgtypes.DoltgresType{pgtypes.Text, pgtypes.Int64, pgtypes.Bool},
+	Parameters:         [3]*pgtypes.DoltgresType{pgtypes.Text, pgtypes.Int64, pgtypes.Bool},
 	IsNonDeterministic: true,
 	Strict:             true,
-	Callable: func(ctx *sql.Context, _ [4]pgtypes.DoltgresType, val1 any, val2 any, val3 any) (any, error) {
+	Callable: func(ctx *sql.Context, _ [4]*pgtypes.DoltgresType, val1 any, val2 any, val3 any) (any, error) {
 		collection, err := core.GetSequencesCollectionFromContext(ctx)
 		if err != nil {
 			return nil, err

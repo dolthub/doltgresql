@@ -31,10 +31,10 @@ func initLtrim() {
 var ltrim_text = framework.Function1{
 	Name:       "ltrim",
 	Return:     pgtypes.Text,
-	Parameters: [1]pgtypes.DoltgresType{pgtypes.Text},
+	Parameters: [1]*pgtypes.DoltgresType{pgtypes.Text},
 	Strict:     true,
-	Callable: func(ctx *sql.Context, _ [2]pgtypes.DoltgresType, val1 any) (any, error) {
-		var unusedTypes [3]pgtypes.DoltgresType
+	Callable: func(ctx *sql.Context, _ [2]*pgtypes.DoltgresType, val1 any) (any, error) {
+		var unusedTypes [3]*pgtypes.DoltgresType
 		return ltrim_text_text.Callable(ctx, unusedTypes, val1, " ")
 	},
 }
@@ -43,9 +43,9 @@ var ltrim_text = framework.Function1{
 var ltrim_text_text = framework.Function2{
 	Name:       "ltrim",
 	Return:     pgtypes.Text,
-	Parameters: [2]pgtypes.DoltgresType{pgtypes.Text, pgtypes.Text},
+	Parameters: [2]*pgtypes.DoltgresType{pgtypes.Text, pgtypes.Text},
 	Strict:     true,
-	Callable: func(ctx *sql.Context, _ [3]pgtypes.DoltgresType, str any, characters any) (any, error) {
+	Callable: func(ctx *sql.Context, _ [3]*pgtypes.DoltgresType, str any, characters any) (any, error) {
 		runes := []rune(str.(string))
 		trimChars := make(map[rune]struct{})
 		for _, c := range characters.(string) {

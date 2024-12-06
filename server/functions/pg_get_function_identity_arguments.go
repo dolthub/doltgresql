@@ -31,10 +31,10 @@ func initPgGetFunctionIdentityArguments() {
 var pg_get_function_identity_arguments_oid = framework.Function1{
 	Name:               "pg_get_function_identity_arguments",
 	Return:             pgtypes.Text,
-	Parameters:         [1]pgtypes.DoltgresType{pgtypes.Oid},
+	Parameters:         [1]*pgtypes.DoltgresType{pgtypes.Oid},
 	IsNonDeterministic: true,
 	Strict:             true,
-	Callable: func(ctx *sql.Context, _ [2]pgtypes.DoltgresType, val any) (any, error) {
+	Callable: func(ctx *sql.Context, _ [2]*pgtypes.DoltgresType, val any) (any, error) {
 		oidVal := val.(uint32)
 		err := oid.RunCallback(ctx, oidVal, oid.Callbacks{
 			Function: func(ctx *sql.Context, function oid.ItemFunction) (cont bool, err error) {

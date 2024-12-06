@@ -35,7 +35,7 @@ func int64Assignment() {
 	framework.MustAddAssignmentTypeCast(framework.TypeCast{
 		FromType: pgtypes.Int64,
 		ToType:   pgtypes.Int16,
-		Function: func(ctx *sql.Context, val any, targetType pgtypes.DoltgresType) (any, error) {
+		Function: func(ctx *sql.Context, val any, targetType *pgtypes.DoltgresType) (any, error) {
 			if val.(int64) > 32767 || val.(int64) < -32768 {
 				return nil, fmt.Errorf("smallint out of range")
 			}
@@ -45,7 +45,7 @@ func int64Assignment() {
 	framework.MustAddAssignmentTypeCast(framework.TypeCast{
 		FromType: pgtypes.Int64,
 		ToType:   pgtypes.Int32,
-		Function: func(ctx *sql.Context, val any, targetType pgtypes.DoltgresType) (any, error) {
+		Function: func(ctx *sql.Context, val any, targetType *pgtypes.DoltgresType) (any, error) {
 			if val.(int64) > 2147483647 || val.(int64) < -2147483648 {
 				return nil, fmt.Errorf("integer out of range")
 			}
@@ -59,28 +59,28 @@ func int64Implicit() {
 	framework.MustAddImplicitTypeCast(framework.TypeCast{
 		FromType: pgtypes.Int64,
 		ToType:   pgtypes.Float32,
-		Function: func(ctx *sql.Context, val any, targetType pgtypes.DoltgresType) (any, error) {
+		Function: func(ctx *sql.Context, val any, targetType *pgtypes.DoltgresType) (any, error) {
 			return float32(val.(int64)), nil
 		},
 	})
 	framework.MustAddImplicitTypeCast(framework.TypeCast{
 		FromType: pgtypes.Int64,
 		ToType:   pgtypes.Float64,
-		Function: func(ctx *sql.Context, val any, targetType pgtypes.DoltgresType) (any, error) {
+		Function: func(ctx *sql.Context, val any, targetType *pgtypes.DoltgresType) (any, error) {
 			return float64(val.(int64)), nil
 		},
 	})
 	framework.MustAddImplicitTypeCast(framework.TypeCast{
 		FromType: pgtypes.Int64,
 		ToType:   pgtypes.Numeric,
-		Function: func(ctx *sql.Context, val any, targetType pgtypes.DoltgresType) (any, error) {
+		Function: func(ctx *sql.Context, val any, targetType *pgtypes.DoltgresType) (any, error) {
 			return decimal.NewFromInt(val.(int64)), nil
 		},
 	})
 	framework.MustAddImplicitTypeCast(framework.TypeCast{
 		FromType: pgtypes.Int64,
 		ToType:   pgtypes.Oid,
-		Function: func(ctx *sql.Context, val any, targetType pgtypes.DoltgresType) (any, error) {
+		Function: func(ctx *sql.Context, val any, targetType *pgtypes.DoltgresType) (any, error) {
 			if val.(int64) > pgtypes.MaxUint32 || val.(int64) < 0 {
 				return nil, errOutOfRange.New(targetType.String())
 			}
@@ -90,7 +90,7 @@ func int64Implicit() {
 	framework.MustAddImplicitTypeCast(framework.TypeCast{
 		FromType: pgtypes.Int64,
 		ToType:   pgtypes.Regclass,
-		Function: func(ctx *sql.Context, val any, targetType pgtypes.DoltgresType) (any, error) {
+		Function: func(ctx *sql.Context, val any, targetType *pgtypes.DoltgresType) (any, error) {
 			if val.(int64) > pgtypes.MaxUint32 || val.(int64) < 0 {
 				return nil, errOutOfRange.New(targetType.String())
 			}
@@ -100,7 +100,7 @@ func int64Implicit() {
 	framework.MustAddImplicitTypeCast(framework.TypeCast{
 		FromType: pgtypes.Int64,
 		ToType:   pgtypes.Regproc,
-		Function: func(ctx *sql.Context, val any, targetType pgtypes.DoltgresType) (any, error) {
+		Function: func(ctx *sql.Context, val any, targetType *pgtypes.DoltgresType) (any, error) {
 			if val.(int64) > pgtypes.MaxUint32 || val.(int64) < 0 {
 				return nil, errOutOfRange.New(targetType.String())
 			}
@@ -110,7 +110,7 @@ func int64Implicit() {
 	framework.MustAddImplicitTypeCast(framework.TypeCast{
 		FromType: pgtypes.Int64,
 		ToType:   pgtypes.Regtype,
-		Function: func(ctx *sql.Context, val any, targetType pgtypes.DoltgresType) (any, error) {
+		Function: func(ctx *sql.Context, val any, targetType *pgtypes.DoltgresType) (any, error) {
 			if val.(int64) > pgtypes.MaxUint32 || val.(int64) < 0 {
 				return nil, errOutOfRange.New(targetType.String())
 			}

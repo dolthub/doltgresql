@@ -34,7 +34,7 @@ func timeTZAssignment() {
 	framework.MustAddAssignmentTypeCast(framework.TypeCast{
 		FromType: pgtypes.TimeTZ,
 		ToType:   pgtypes.Time,
-		Function: func(ctx *sql.Context, val any, targetType pgtypes.DoltgresType) (any, error) {
+		Function: func(ctx *sql.Context, val any, targetType *pgtypes.DoltgresType) (any, error) {
 			return val.(time.Time), nil
 		},
 	})
@@ -45,7 +45,7 @@ func timeTZImplicit() {
 	framework.MustAddImplicitTypeCast(framework.TypeCast{
 		FromType: pgtypes.TimeTZ,
 		ToType:   pgtypes.TimeTZ,
-		Function: func(ctx *sql.Context, val any, targetType pgtypes.DoltgresType) (any, error) {
+		Function: func(ctx *sql.Context, val any, targetType *pgtypes.DoltgresType) (any, error) {
 			return val.(time.Time), nil
 		},
 	})

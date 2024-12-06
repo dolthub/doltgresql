@@ -18,6 +18,7 @@ import (
 	"fmt"
 
 	vitess "github.com/dolthub/vitess/go/vt/sqlparser"
+	"github.com/lib/pq/oid"
 
 	"github.com/dolthub/doltgresql/postgres/parser/sem/tree"
 	pgtypes "github.com/dolthub/doltgresql/server/types"
@@ -98,15 +99,15 @@ func nodeColumnTableDef(ctx *Context, node *tree.ColumnTableDef) (*vitess.Column
 		generatedStored = true
 	}
 	if node.IsSerial {
-		if resolvedType == nil {
+		if resolvedType.IsEmptyType() {
 			return nil, fmt.Errorf("serial type was not resolvable")
 		}
-		switch resolvedType.BaseID() {
-		case pgtypes.DoltgresTypeBaseID_Int16:
+		switch oid.Oid(resolvedType.OID) {
+		case oid.T_int2:
 			resolvedType = pgtypes.Int16Serial
-		case pgtypes.DoltgresTypeBaseID_Int32:
+		case oid.T_int4:
 			resolvedType = pgtypes.Int32Serial
-		case pgtypes.DoltgresTypeBaseID_Int64:
+		case oid.T_int8:
 			resolvedType = pgtypes.Int64Serial
 		default:
 			return nil, fmt.Errorf(`type "%s" cannot be serial`, resolvedType.String())

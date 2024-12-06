@@ -33,8 +33,8 @@ func initSetConfig() {
 var set_config_text_text_boolean = framework.Function3{
 	Name:       "set_config",
 	Return:     pgtypes.Text,
-	Parameters: [3]pgtypes.DoltgresType{pgtypes.Text, pgtypes.Text, pgtypes.Bool},
-	Callable: func(ctx *sql.Context, _ [4]pgtypes.DoltgresType, settingName any, newValue any, isLocal any) (any, error) {
+	Parameters: [3]*pgtypes.DoltgresType{pgtypes.Text, pgtypes.Text, pgtypes.Bool},
+	Callable: func(ctx *sql.Context, _ [4]*pgtypes.DoltgresType, settingName any, newValue any, isLocal any) (any, error) {
 		if settingName == nil {
 			return nil, fmt.Errorf("NULL value not allowed for configuration setting name")
 		}

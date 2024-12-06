@@ -44,17 +44,17 @@ func initDoltProcedures() {
 		framework.RegisterFunction(framework.Function1{
 			Name:       procDef.Name,
 			Return:     pgtypes.TextArray,
-			Parameters: [1]pgtypes.DoltgresType{pgtypes.TextArray},
+			Parameters: [1]*pgtypes.DoltgresType{pgtypes.TextArray},
 			Variadic:   true,
 			Callable:   callable,
 		})
 	}
 }
 
-func callableForDoltProcedure(p *plan.ExternalProcedure, funcVal reflect.Value) func(ctx *sql.Context, paramsAndReturn [2]pgtypes.DoltgresType, val1 any) (any, error) {
+func callableForDoltProcedure(p *plan.ExternalProcedure, funcVal reflect.Value) func(ctx *sql.Context, paramsAndReturn [2]*pgtypes.DoltgresType, val1 any) (any, error) {
 	funcType := funcVal.Type()
 
-	return func(ctx *sql.Context, paramsAndReturn [2]pgtypes.DoltgresType, val1 any) (any, error) {
+	return func(ctx *sql.Context, paramsAndReturn [2]*pgtypes.DoltgresType, val1 any) (any, error) {
 		values, ok := val1.([]any)
 		if !ok {
 			return nil, sql.ErrExternalProcedureInvalidParamType.New(reflect.TypeOf(val1).String())
@@ -119,7 +119,7 @@ func drainRowIter(ctx *sql.Context, rowIter sql.RowIter) (any, error) {
 			return nil, err
 		}
 
-		castFn := framework.GetExplicitCast(fromType, pgtypes.Text.BaseID())
+		castFn := framework.GetExplicitCast(fromType, pgtypes.Text)
 		textVal, err := castFn(ctx, row[i], pgtypes.Text)
 		if err != nil {
 			return nil, err
@@ -130,18 +130,18 @@ func drainRowIter(ctx *sql.Context, rowIter sql.RowIter) (any, error) {
 	return rowSlice, nil
 }
 
-func typeForElement(v any) (pgtypes.DoltgresTypeBaseID, error) {
+func typeForElement(v any) (*pgtypes.DoltgresType, error) {
 	switch x := v.(type) {
 	case int64:
-		return pgtypes.Int64.BaseID(), nil
+		return pgtypes.Int64, nil
 	case int32:
-		return pgtypes.Int32.BaseID(), nil
+		return pgtypes.Int32, nil
 	case int16, int8:
-		return pgtypes.Int16.BaseID(), nil
+		return pgtypes.Int16, nil
 	case string:
-		return pgtypes.Text.BaseID(), nil
+		return pgtypes.Text, nil
 	default:
-		return 0, fmt.Errorf("dolt_procedures: unsupported type %T", x)
+		return nil, fmt.Errorf("dolt_procedures: unsupported type %T", x)
 	}
 }
 

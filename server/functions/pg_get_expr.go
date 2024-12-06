@@ -33,9 +33,9 @@ func initPgGetExpr() {
 var pg_get_expr_pgnodetree_oid = framework.Function2{
 	Name:       "pg_get_expr",
 	Return:     pgtypes.Text,
-	Parameters: [2]pgtypes.DoltgresType{pgtypes.Text, pgtypes.Oid}, // TODO: First parameter should be pg_node_tree
+	Parameters: [2]*pgtypes.DoltgresType{pgtypes.Text, pgtypes.Oid}, // TODO: First parameter should be pg_node_tree
 	Strict:     true,
-	Callable: func(ctx *sql.Context, _ [3]pgtypes.DoltgresType, val1, val2 any) (any, error) {
+	Callable: func(ctx *sql.Context, _ [3]*pgtypes.DoltgresType, val1, val2 any) (any, error) {
 		// TODO: Implement this when the pg_node_tree type exists
 		return nil, fmt.Errorf("pg_get_expr is not yet supported")
 	},
@@ -45,9 +45,9 @@ var pg_get_expr_pgnodetree_oid = framework.Function2{
 var pg_get_expr_pgnodetree_oid_bool = framework.Function3{
 	Name:       "pg_get_expr",
 	Return:     pgtypes.Text,
-	Parameters: [3]pgtypes.DoltgresType{pgtypes.Text, pgtypes.Oid, pgtypes.Bool}, // TODO: First parameter should be pg_node_tree
+	Parameters: [3]*pgtypes.DoltgresType{pgtypes.Text, pgtypes.Oid, pgtypes.Bool}, // TODO: First parameter should be pg_node_tree
 	Strict:     true,
-	Callable: func(ctx *sql.Context, _ [4]pgtypes.DoltgresType, val1, val2, val3 any) (any, error) {
+	Callable: func(ctx *sql.Context, _ [4]*pgtypes.DoltgresType, val1, val2, val3 any) (any, error) {
 		// TODO: Implement this when the pg_node_tree type exists
 		return nil, fmt.Errorf("pg_get_expr is not yet supported")
 	},

@@ -16,8 +16,6 @@ package framework
 
 import (
 	"fmt"
-
-	pgtypes "github.com/dolthub/doltgresql/server/types"
 )
 
 // Operator is a unary or binary operator.
@@ -57,14 +55,14 @@ const (
 // unaryFunction represents the signature for a unary function.
 type unaryFunction struct {
 	Operator Operator
-	Type     pgtypes.DoltgresTypeBaseID
+	TypeOid  uint32
 }
 
 // binaryFunction represents the signature for a binary function.
 type binaryFunction struct {
 	Operator Operator
-	Left     pgtypes.DoltgresTypeBaseID
-	Right    pgtypes.DoltgresTypeBaseID
+	Left     uint32
+	Right    uint32
 }
 
 var (
@@ -94,7 +92,7 @@ func RegisterUnaryFunction(operator Operator, f Function1) {
 	RegisterFunction(f)
 	sig := unaryFunction{
 		Operator: operator,
-		Type:     f.Parameters[0].BaseID(),
+		TypeOid:  f.Parameters[0].OID,
 	}
 	if existingFunction, ok := unaryFunctions[sig]; ok {
 		panic(fmt.Errorf("duplicate unary function for `%s`: `%s` and `%s`",
@@ -113,8 +111,8 @@ func RegisterBinaryFunction(operator Operator, f Function2) {
 	RegisterFunction(f)
 	sig := binaryFunction{
 		Operator: operator,
-		Left:     f.Parameters[0].BaseID(),
-		Right:    f.Parameters[1].BaseID(),
+		Left:     f.Parameters[0].OID,
+		Right:    f.Parameters[1].OID,
 	}
 	if existingFunction, ok := binaryFunctions[sig]; ok {
 		panic(fmt.Errorf("duplicate binary function for `%s`: `%s` and `%s`",

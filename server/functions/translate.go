@@ -30,9 +30,9 @@ func initTranslate() {
 var translate_text_text_text = framework.Function3{
 	Name:       "translate",
 	Return:     pgtypes.Text,
-	Parameters: [3]pgtypes.DoltgresType{pgtypes.Text, pgtypes.Text, pgtypes.Text},
+	Parameters: [3]*pgtypes.DoltgresType{pgtypes.Text, pgtypes.Text, pgtypes.Text},
 	Strict:     true,
-	Callable: func(ctx *sql.Context, _ [4]pgtypes.DoltgresType, val1, val2, val3 any) (any, error) {
+	Callable: func(ctx *sql.Context, _ [4]*pgtypes.DoltgresType, val1, val2, val3 any) (any, error) {
 		str := val1.(string)
 		from := []rune(val2.(string))
 		to := []rune(val3.(string))

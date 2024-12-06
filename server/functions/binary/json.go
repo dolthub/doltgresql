@@ -56,15 +56,15 @@ func initJSON() {
 var json_array_element = framework.Function2{
 	Name:       "json_array_element",
 	Return:     pgtypes.Json,
-	Parameters: [2]pgtypes.DoltgresType{pgtypes.Json, pgtypes.Int32},
+	Parameters: [2]*pgtypes.DoltgresType{pgtypes.Json, pgtypes.Int32},
 	Strict:     true,
-	Callable: func(ctx *sql.Context, _ [3]pgtypes.DoltgresType, val1 any, val2 any) (any, error) {
+	Callable: func(ctx *sql.Context, _ [3]*pgtypes.DoltgresType, val1 any, val2 any) (any, error) {
 		// TODO: make a bespoke implementation that preserves whitespace
 		newVal, err := pgtypes.JsonB.IoInput(ctx, val1.(string))
 		if err != nil {
 			return nil, err
 		}
-		var unusedTypes [3]pgtypes.DoltgresType
+		var unusedTypes [3]*pgtypes.DoltgresType
 		retVal, err := jsonb_array_element.Callable(ctx, unusedTypes, newVal, val2)
 		if err != nil {
 			return nil, err
@@ -80,9 +80,9 @@ var json_array_element = framework.Function2{
 var jsonb_array_element = framework.Function2{
 	Name:       "jsonb_array_element",
 	Return:     pgtypes.JsonB,
-	Parameters: [2]pgtypes.DoltgresType{pgtypes.JsonB, pgtypes.Int32},
+	Parameters: [2]*pgtypes.DoltgresType{pgtypes.JsonB, pgtypes.Int32},
 	Strict:     true,
-	Callable: func(ctx *sql.Context, _ [3]pgtypes.DoltgresType, val1 any, val2 any) (any, error) {
+	Callable: func(ctx *sql.Context, _ [3]*pgtypes.DoltgresType, val1 any, val2 any) (any, error) {
 		array, ok := val1.(pgtypes.JsonDocument).Value.(pgtypes.JsonValueArray)
 		if !ok {
 			return nil, nil
@@ -102,15 +102,15 @@ var jsonb_array_element = framework.Function2{
 var json_object_field = framework.Function2{
 	Name:       "json_object_field",
 	Return:     pgtypes.Json,
-	Parameters: [2]pgtypes.DoltgresType{pgtypes.Json, pgtypes.Text},
+	Parameters: [2]*pgtypes.DoltgresType{pgtypes.Json, pgtypes.Text},
 	Strict:     true,
-	Callable: func(ctx *sql.Context, _ [3]pgtypes.DoltgresType, val1 any, val2 any) (any, error) {
+	Callable: func(ctx *sql.Context, _ [3]*pgtypes.DoltgresType, val1 any, val2 any) (any, error) {
 		// TODO: make a bespoke implementation that preserves whitespace
 		newVal, err := pgtypes.JsonB.IoInput(ctx, val1.(string))
 		if err != nil {
 			return nil, err
 		}
-		var unusedTypes [3]pgtypes.DoltgresType
+		var unusedTypes [3]*pgtypes.DoltgresType
 		retVal, err := jsonb_object_field.Callable(ctx, unusedTypes, newVal, val2)
 		if err != nil {
 			return nil, err
@@ -126,9 +126,9 @@ var json_object_field = framework.Function2{
 var jsonb_object_field = framework.Function2{
 	Name:       "jsonb_object_field",
 	Return:     pgtypes.JsonB,
-	Parameters: [2]pgtypes.DoltgresType{pgtypes.JsonB, pgtypes.Text},
+	Parameters: [2]*pgtypes.DoltgresType{pgtypes.JsonB, pgtypes.Text},
 	Strict:     true,
-	Callable: func(ctx *sql.Context, _ [3]pgtypes.DoltgresType, val1 any, val2 any) (any, error) {
+	Callable: func(ctx *sql.Context, _ [3]*pgtypes.DoltgresType, val1 any, val2 any) (any, error) {
 		object, ok := val1.(pgtypes.JsonDocument).Value.(pgtypes.JsonValueObject)
 		if !ok {
 			return nil, nil
@@ -145,15 +145,15 @@ var jsonb_object_field = framework.Function2{
 var json_array_element_text = framework.Function2{
 	Name:       "json_array_element_text",
 	Return:     pgtypes.Text,
-	Parameters: [2]pgtypes.DoltgresType{pgtypes.Json, pgtypes.Int32},
+	Parameters: [2]*pgtypes.DoltgresType{pgtypes.Json, pgtypes.Int32},
 	Strict:     true,
-	Callable: func(ctx *sql.Context, _ [3]pgtypes.DoltgresType, val1 any, val2 any) (any, error) {
+	Callable: func(ctx *sql.Context, _ [3]*pgtypes.DoltgresType, val1 any, val2 any) (any, error) {
 		// TODO: make a bespoke implementation that preserves whitespace
 		newVal, err := pgtypes.JsonB.IoInput(ctx, val1.(string))
 		if err != nil {
 			return nil, err
 		}
-		var unusedTypes [3]pgtypes.DoltgresType
+		var unusedTypes [3]*pgtypes.DoltgresType
 		return jsonb_array_element_text.Callable(ctx, unusedTypes, newVal, val2)
 	},
 }
@@ -162,9 +162,9 @@ var json_array_element_text = framework.Function2{
 var jsonb_array_element_text = framework.Function2{
 	Name:       "jsonb_array_element_text",
 	Return:     pgtypes.Text,
-	Parameters: [2]pgtypes.DoltgresType{pgtypes.JsonB, pgtypes.Int32},
+	Parameters: [2]*pgtypes.DoltgresType{pgtypes.JsonB, pgtypes.Int32},
 	Strict:     true,
-	Callable: func(ctx *sql.Context, dt [3]pgtypes.DoltgresType, val1 any, val2 any) (any, error) {
+	Callable: func(ctx *sql.Context, dt [3]*pgtypes.DoltgresType, val1 any, val2 any) (any, error) {
 		doc, err := jsonb_array_element.Callable(ctx, dt, val1, val2)
 		if err != nil || doc == nil {
 			return nil, err
@@ -182,15 +182,15 @@ var jsonb_array_element_text = framework.Function2{
 var json_object_field_text = framework.Function2{
 	Name:       "json_object_field_text",
 	Return:     pgtypes.Text,
-	Parameters: [2]pgtypes.DoltgresType{pgtypes.Json, pgtypes.Text},
+	Parameters: [2]*pgtypes.DoltgresType{pgtypes.Json, pgtypes.Text},
 	Strict:     true,
-	Callable: func(ctx *sql.Context, _ [3]pgtypes.DoltgresType, val1 any, val2 any) (any, error) {
+	Callable: func(ctx *sql.Context, _ [3]*pgtypes.DoltgresType, val1 any, val2 any) (any, error) {
 		// TODO: make a bespoke implementation that preserves whitespace
 		newVal, err := pgtypes.JsonB.IoInput(ctx, val1.(string))
 		if err != nil {
 			return nil, err
 		}
-		var unusedTypes [3]pgtypes.DoltgresType
+		var unusedTypes [3]*pgtypes.DoltgresType
 		return jsonb_object_field_text.Callable(ctx, unusedTypes, newVal, val2)
 	},
 }
@@ -199,9 +199,9 @@ var json_object_field_text = framework.Function2{
 var jsonb_object_field_text = framework.Function2{
 	Name:       "jsonb_object_field_text",
 	Return:     pgtypes.Text,
-	Parameters: [2]pgtypes.DoltgresType{pgtypes.JsonB, pgtypes.Text},
+	Parameters: [2]*pgtypes.DoltgresType{pgtypes.JsonB, pgtypes.Text},
 	Strict:     true,
-	Callable: func(ctx *sql.Context, dt [3]pgtypes.DoltgresType, val1 any, val2 any) (any, error) {
+	Callable: func(ctx *sql.Context, dt [3]*pgtypes.DoltgresType, val1 any, val2 any) (any, error) {
 		doc, err := jsonb_object_field.Callable(ctx, dt, val1, val2)
 		if err != nil || doc == nil {
 			return nil, err
@@ -219,15 +219,15 @@ var jsonb_object_field_text = framework.Function2{
 var json_extract_path = framework.Function2{
 	Name:       "json_extract_path",
 	Return:     pgtypes.Json,
-	Parameters: [2]pgtypes.DoltgresType{pgtypes.Json, pgtypes.TextArray},
+	Parameters: [2]*pgtypes.DoltgresType{pgtypes.Json, pgtypes.TextArray},
 	Strict:     true,
-	Callable: func(ctx *sql.Context, _ [3]pgtypes.DoltgresType, val1 any, val2 any) (any, error) {
+	Callable: func(ctx *sql.Context, _ [3]*pgtypes.DoltgresType, val1 any, val2 any) (any, error) {
 		// TODO: make a bespoke implementation that preserves whitespace
 		newVal, err := pgtypes.JsonB.IoInput(ctx, val1.(string))
 		if err != nil {
 			return nil, err
 		}
-		var unusedTypes [3]pgtypes.DoltgresType
+		var unusedTypes [3]*pgtypes.DoltgresType
 		retVal, err := jsonb_extract_path.Callable(ctx, unusedTypes, newVal, val2)
 		if err != nil {
 			return nil, err
@@ -243,9 +243,9 @@ var json_extract_path = framework.Function2{
 var jsonb_extract_path = framework.Function2{
 	Name:       "jsonb_extract_path",
 	Return:     pgtypes.JsonB,
-	Parameters: [2]pgtypes.DoltgresType{pgtypes.JsonB, pgtypes.TextArray},
+	Parameters: [2]*pgtypes.DoltgresType{pgtypes.JsonB, pgtypes.TextArray},
 	Strict:     true,
-	Callable: func(ctx *sql.Context, _ [3]pgtypes.DoltgresType, val1 any, val2 any) (any, error) {
+	Callable: func(ctx *sql.Context, _ [3]*pgtypes.DoltgresType, val1 any, val2 any) (any, error) {
 		value := val1.(pgtypes.JsonDocument).Value
 		paths := val2.([]interface{})
 		for _, path := range paths {
@@ -279,15 +279,15 @@ var jsonb_extract_path = framework.Function2{
 var json_extract_path_text = framework.Function2{
 	Name:       "json_extract_path_text",
 	Return:     pgtypes.Text,
-	Parameters: [2]pgtypes.DoltgresType{pgtypes.Json, pgtypes.TextArray},
+	Parameters: [2]*pgtypes.DoltgresType{pgtypes.Json, pgtypes.TextArray},
 	Strict:     true,
-	Callable: func(ctx *sql.Context, _ [3]pgtypes.DoltgresType, val1 any, val2 any) (any, error) {
+	Callable: func(ctx *sql.Context, _ [3]*pgtypes.DoltgresType, val1 any, val2 any) (any, error) {
 		// TODO: make a bespoke implementation that preserves whitespace
 		newVal, err := pgtypes.JsonB.IoInput(ctx, val1.(string))
 		if err != nil {
 			return nil, err
 		}
-		var unusedTypes [3]pgtypes.DoltgresType
+		var unusedTypes [3]*pgtypes.DoltgresType
 		return jsonb_extract_path_text.Callable(ctx, unusedTypes, newVal, val2)
 	},
 }
@@ -296,9 +296,9 @@ var json_extract_path_text = framework.Function2{
 var jsonb_extract_path_text = framework.Function2{
 	Name:       "jsonb_extract_path_text",
 	Return:     pgtypes.Text,
-	Parameters: [2]pgtypes.DoltgresType{pgtypes.JsonB, pgtypes.TextArray},
+	Parameters: [2]*pgtypes.DoltgresType{pgtypes.JsonB, pgtypes.TextArray},
 	Strict:     true,
-	Callable: func(ctx *sql.Context, dt [3]pgtypes.DoltgresType, val1 any, val2 any) (any, error) {
+	Callable: func(ctx *sql.Context, dt [3]*pgtypes.DoltgresType, val1 any, val2 any) (any, error) {
 		doc, err := jsonb_extract_path.Callable(ctx, dt, val1, val2)
 		if err != nil || doc == nil {
 			return nil, err
@@ -316,9 +316,9 @@ var jsonb_extract_path_text = framework.Function2{
 var jsonb_contains = framework.Function2{
 	Name:       "jsonb_contains",
 	Return:     pgtypes.Bool,
-	Parameters: [2]pgtypes.DoltgresType{pgtypes.JsonB, pgtypes.JsonB},
+	Parameters: [2]*pgtypes.DoltgresType{pgtypes.JsonB, pgtypes.JsonB},
 	Strict:     true,
-	Callable: func(ctx *sql.Context, _ [3]pgtypes.DoltgresType, val1 any, val2 any) (any, error) {
+	Callable: func(ctx *sql.Context, _ [3]*pgtypes.DoltgresType, val1 any, val2 any) (any, error) {
 		return nil, fmt.Errorf("JSON contains is not yet supported")
 	},
 }
@@ -327,9 +327,9 @@ var jsonb_contains = framework.Function2{
 var jsonb_contained = framework.Function2{
 	Name:       "jsonb_contained",
 	Return:     pgtypes.Bool,
-	Parameters: [2]pgtypes.DoltgresType{pgtypes.JsonB, pgtypes.JsonB},
+	Parameters: [2]*pgtypes.DoltgresType{pgtypes.JsonB, pgtypes.JsonB},
 	Strict:     true,
-	Callable: func(ctx *sql.Context, dt [3]pgtypes.DoltgresType, val1 any, val2 any) (any, error) {
+	Callable: func(ctx *sql.Context, dt [3]*pgtypes.DoltgresType, val1 any, val2 any) (any, error) {
 		return jsonb_contains.Callable(ctx, dt, val2, val1)
 	},
 }
@@ -338,9 +338,9 @@ var jsonb_contained = framework.Function2{
 var jsonb_exists = framework.Function2{
 	Name:       "jsonb_exists",
 	Return:     pgtypes.Bool,
-	Parameters: [2]pgtypes.DoltgresType{pgtypes.JsonB, pgtypes.Text},
+	Parameters: [2]*pgtypes.DoltgresType{pgtypes.JsonB, pgtypes.Text},
 	Strict:     true,
-	Callable: func(ctx *sql.Context, _ [3]pgtypes.DoltgresType, val1 any, val2 any) (any, error) {
+	Callable: func(ctx *sql.Context, _ [3]*pgtypes.DoltgresType, val1 any, val2 any) (any, error) {
 		switch value := val1.(pgtypes.JsonDocument).Value.(type) {
 		case pgtypes.JsonValueObject:
 			_, ok := value.Index[val2.(string)]
@@ -366,9 +366,9 @@ var jsonb_exists = framework.Function2{
 var jsonb_exists_any = framework.Function2{
 	Name:       "jsonb_exists_any",
 	Return:     pgtypes.Bool,
-	Parameters: [2]pgtypes.DoltgresType{pgtypes.JsonB, pgtypes.TextArray},
+	Parameters: [2]*pgtypes.DoltgresType{pgtypes.JsonB, pgtypes.TextArray},
 	Strict:     true,
-	Callable: func(ctx *sql.Context, _ [3]pgtypes.DoltgresType, val1 any, val2 any) (any, error) {
+	Callable: func(ctx *sql.Context, _ [3]*pgtypes.DoltgresType, val1 any, val2 any) (any, error) {
 		keys := val2.([]interface{})
 		switch value := val1.(pgtypes.JsonDocument).Value.(type) {
 		case pgtypes.JsonValueObject:
@@ -406,9 +406,9 @@ var jsonb_exists_any = framework.Function2{
 var jsonb_exists_all = framework.Function2{
 	Name:       "jsonb_exists_all",
 	Return:     pgtypes.Bool,
-	Parameters: [2]pgtypes.DoltgresType{pgtypes.JsonB, pgtypes.TextArray},
+	Parameters: [2]*pgtypes.DoltgresType{pgtypes.JsonB, pgtypes.TextArray},
 	Strict:     true,
-	Callable: func(ctx *sql.Context, _ [3]pgtypes.DoltgresType, val1 any, val2 any) (any, error) {
+	Callable: func(ctx *sql.Context, _ [3]*pgtypes.DoltgresType, val1 any, val2 any) (any, error) {
 		keys := val2.([]interface{})
 		switch value := val1.(pgtypes.JsonDocument).Value.(type) {
 		case pgtypes.JsonValueObject:
@@ -451,9 +451,9 @@ var jsonb_exists_all = framework.Function2{
 var jsonb_delete_text = framework.Function2{
 	Name:       "jsonb_delete",
 	Return:     pgtypes.JsonB,
-	Parameters: [2]pgtypes.DoltgresType{pgtypes.JsonB, pgtypes.Text},
+	Parameters: [2]*pgtypes.DoltgresType{pgtypes.JsonB, pgtypes.Text},
 	Strict:     true,
-	Callable: func(ctx *sql.Context, _ [3]pgtypes.DoltgresType, val1 any, val2 any) (any, error) {
+	Callable: func(ctx *sql.Context, _ [3]*pgtypes.DoltgresType, val1 any, val2 any) (any, error) {
 		return nil, fmt.Errorf("JSON deletions are not yet supported")
 	},
 }
@@ -462,9 +462,9 @@ var jsonb_delete_text = framework.Function2{
 var jsonb_delete_text_array = framework.Function2{
 	Name:       "jsonb_delete",
 	Return:     pgtypes.JsonB,
-	Parameters: [2]pgtypes.DoltgresType{pgtypes.JsonB, pgtypes.TextArray},
+	Parameters: [2]*pgtypes.DoltgresType{pgtypes.JsonB, pgtypes.TextArray},
 	Strict:     true,
-	Callable: func(ctx *sql.Context, _ [3]pgtypes.DoltgresType, val1 any, val2 any) (any, error) {
+	Callable: func(ctx *sql.Context, _ [3]*pgtypes.DoltgresType, val1 any, val2 any) (any, error) {
 		return nil, fmt.Errorf("JSON deletions are not yet supported")
 	},
 }
@@ -473,9 +473,9 @@ var jsonb_delete_text_array = framework.Function2{
 var jsonb_delete_int32 = framework.Function2{
 	Name:       "jsonb_delete",
 	Return:     pgtypes.JsonB,
-	Parameters: [2]pgtypes.DoltgresType{pgtypes.JsonB, pgtypes.Int32},
+	Parameters: [2]*pgtypes.DoltgresType{pgtypes.JsonB, pgtypes.Int32},
 	Strict:     true,
-	Callable: func(ctx *sql.Context, _ [3]pgtypes.DoltgresType, val1 any, val2 any) (any, error) {
+	Callable: func(ctx *sql.Context, _ [3]*pgtypes.DoltgresType, val1 any, val2 any) (any, error) {
 		return nil, fmt.Errorf("JSON deletions are not yet supported")
 	},
 }

@@ -30,10 +30,10 @@ func initPgEncodingToChar() {
 var pg_encoding_to_char_int = framework.Function1{
 	Name:               "pg_encoding_to_char",
 	Return:             pgtypes.Name,
-	Parameters:         [1]pgtypes.DoltgresType{pgtypes.Int32},
+	Parameters:         [1]*pgtypes.DoltgresType{pgtypes.Int32},
 	IsNonDeterministic: true,
 	Strict:             true,
-	Callable: func(ctx *sql.Context, _ [2]pgtypes.DoltgresType, val any) (any, error) {
+	Callable: func(ctx *sql.Context, _ [2]*pgtypes.DoltgresType, val any) (any, error) {
 		encoding := val.(int32)
 		if encoding == int32(6) {
 			return "UTF8", nil

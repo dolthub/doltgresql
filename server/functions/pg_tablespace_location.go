@@ -30,10 +30,10 @@ func initPgTablespaceLocation() {
 var pg_tablespace_location_oid = framework.Function1{
 	Name:               "pg_tablespace_location",
 	Return:             pgtypes.Text,
-	Parameters:         [1]pgtypes.DoltgresType{pgtypes.Oid},
+	Parameters:         [1]*pgtypes.DoltgresType{pgtypes.Oid},
 	IsNonDeterministic: true,
 	Strict:             true,
-	Callable: func(ctx *sql.Context, _ [2]pgtypes.DoltgresType, val any) (any, error) {
+	Callable: func(ctx *sql.Context, _ [2]*pgtypes.DoltgresType, val any) (any, error) {
 		return "", nil
 	},
 }

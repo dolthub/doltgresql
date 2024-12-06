@@ -116,8 +116,8 @@ func extractBindVarTypes(queryPlan sql.Node) ([]uint32, error) {
 		switch e := expr.(type) {
 		case *expression.BindVar:
 			var typOid uint32
-			if doltgresType, ok := e.Type().(pgtypes.DoltgresType); ok {
-				typOid = doltgresType.OID()
+			if doltgresType, ok := e.Type().(*pgtypes.DoltgresType); ok {
+				typOid = doltgresType.OID
 			} else {
 				// TODO: should remove usage non doltgres type
 				typOid, err = VitessTypeToObjectID(e.Type().Type())
@@ -130,8 +130,8 @@ func extractBindVarTypes(queryPlan sql.Node) ([]uint32, error) {
 		case *pgexprs.ExplicitCast:
 			if bindVar, ok := e.Child().(*expression.BindVar); ok {
 				var typOid uint32
-				if doltgresType, ok := bindVar.Type().(pgtypes.DoltgresType); ok {
-					typOid = doltgresType.OID()
+				if doltgresType, ok := bindVar.Type().(*pgtypes.DoltgresType); ok {
+					typOid = doltgresType.OID
 				} else {
 					typOid, err = VitessTypeToObjectID(e.Type().Type())
 					if err != nil {

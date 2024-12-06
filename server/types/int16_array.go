@@ -14,7 +14,5 @@
 
 package types
 
-import "github.com/lib/pq/oid"
-
 // Int16Array is the array variant of Int16.
-var Int16Array = createArrayType(Int16, SerializationID_Int16Array, oid.T__int2)
+var Int16Array = CreateArrayTypeFromBaseType(Int16)

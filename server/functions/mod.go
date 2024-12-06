@@ -36,9 +36,9 @@ func initMod() {
 var mod_int16_int16 = framework.Function2{
 	Name:       "mod",
 	Return:     pgtypes.Int16,
-	Parameters: [2]pgtypes.DoltgresType{pgtypes.Int16, pgtypes.Int16},
+	Parameters: [2]*pgtypes.DoltgresType{pgtypes.Int16, pgtypes.Int16},
 	Strict:     true,
-	Callable: func(ctx *sql.Context, _ [3]pgtypes.DoltgresType, val1 any, val2 any) (any, error) {
+	Callable: func(ctx *sql.Context, _ [3]*pgtypes.DoltgresType, val1 any, val2 any) (any, error) {
 		if val2.(int16) == 0 {
 			return nil, fmt.Errorf("division by zero")
 		}
@@ -50,9 +50,9 @@ var mod_int16_int16 = framework.Function2{
 var mod_int32_int32 = framework.Function2{
 	Name:       "mod",
 	Return:     pgtypes.Int32,
-	Parameters: [2]pgtypes.DoltgresType{pgtypes.Int32, pgtypes.Int32},
+	Parameters: [2]*pgtypes.DoltgresType{pgtypes.Int32, pgtypes.Int32},
 	Strict:     true,
-	Callable: func(ctx *sql.Context, _ [3]pgtypes.DoltgresType, val1 any, val2 any) (any, error) {
+	Callable: func(ctx *sql.Context, _ [3]*pgtypes.DoltgresType, val1 any, val2 any) (any, error) {
 		if val2.(int32) == 0 {
 			return nil, fmt.Errorf("division by zero")
 		}
@@ -64,9 +64,9 @@ var mod_int32_int32 = framework.Function2{
 var mod_int64_int64 = framework.Function2{
 	Name:       "mod",
 	Return:     pgtypes.Int64,
-	Parameters: [2]pgtypes.DoltgresType{pgtypes.Int64, pgtypes.Int64},
+	Parameters: [2]*pgtypes.DoltgresType{pgtypes.Int64, pgtypes.Int64},
 	Strict:     true,
-	Callable: func(ctx *sql.Context, _ [3]pgtypes.DoltgresType, val1 any, val2 any) (any, error) {
+	Callable: func(ctx *sql.Context, _ [3]*pgtypes.DoltgresType, val1 any, val2 any) (any, error) {
 		if val2.(int64) == 0 {
 			return nil, fmt.Errorf("division by zero")
 		}
@@ -78,9 +78,9 @@ var mod_int64_int64 = framework.Function2{
 var mod_numeric_numeric = framework.Function2{
 	Name:       "mod",
 	Return:     pgtypes.Numeric,
-	Parameters: [2]pgtypes.DoltgresType{pgtypes.Numeric, pgtypes.Numeric},
+	Parameters: [2]*pgtypes.DoltgresType{pgtypes.Numeric, pgtypes.Numeric},
 	Strict:     true,
-	Callable: func(ctx *sql.Context, _ [3]pgtypes.DoltgresType, val1 any, val2 any) (any, error) {
+	Callable: func(ctx *sql.Context, _ [3]*pgtypes.DoltgresType, val1 any, val2 any) (any, error) {
 		if val2.(decimal.Decimal).Cmp(decimal.Zero) == 0 {
 			return nil, fmt.Errorf("division by zero")
 		}

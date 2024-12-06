@@ -33,9 +33,9 @@ func initSubstr() {
 var substr_text_int32 = framework.Function2{
 	Name:       "substr",
 	Return:     pgtypes.Text,
-	Parameters: [2]pgtypes.DoltgresType{pgtypes.Text, pgtypes.Int32},
+	Parameters: [2]*pgtypes.DoltgresType{pgtypes.Text, pgtypes.Int32},
 	Strict:     true,
-	Callable: func(ctx *sql.Context, _ [3]pgtypes.DoltgresType, str any, start any) (any, error) {
+	Callable: func(ctx *sql.Context, _ [3]*pgtypes.DoltgresType, str any, start any) (any, error) {
 		runes := []rune(str.(string))
 		if start.(int32) < 1 {
 			start = int32(1)
@@ -53,9 +53,9 @@ var substr_text_int32 = framework.Function2{
 var substr_text_int32_int32 = framework.Function3{
 	Name:       "substr",
 	Return:     pgtypes.Text,
-	Parameters: [3]pgtypes.DoltgresType{pgtypes.Text, pgtypes.Int32, pgtypes.Int32},
+	Parameters: [3]*pgtypes.DoltgresType{pgtypes.Text, pgtypes.Int32, pgtypes.Int32},
 	Strict:     true,
-	Callable: func(ctx *sql.Context, _ [4]pgtypes.DoltgresType, str any, startInt any, countInt any) (any, error) {
+	Callable: func(ctx *sql.Context, _ [4]*pgtypes.DoltgresType, str any, startInt any, countInt any) (any, error) {
 		start := startInt.(int32)
 		count := countInt.(int32)
 		runes := []rune(str.(string))

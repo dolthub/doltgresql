@@ -32,9 +32,9 @@ func initReplace() {
 var replace_text_text_text = framework.Function3{
 	Name:       "replace",
 	Return:     pgtypes.Text,
-	Parameters: [3]pgtypes.DoltgresType{pgtypes.Text, pgtypes.Text, pgtypes.Text},
+	Parameters: [3]*pgtypes.DoltgresType{pgtypes.Text, pgtypes.Text, pgtypes.Text},
 	Strict:     true,
-	Callable: func(ctx *sql.Context, _ [4]pgtypes.DoltgresType, str any, from any, to any) (any, error) {
+	Callable: func(ctx *sql.Context, _ [4]*pgtypes.DoltgresType, str any, from any, to any) (any, error) {
 		if len(from.(string)) == 0 {
 			return str, nil
 		}
