@@ -153,7 +153,7 @@ const (
 	// rather than string literals. For example, the bytes \x40 will be formatted
 	// as b'\x40' rather than '\x40'.
 	fmtFormatByteLiterals
-	
+
 	// FmtOmitFunctionArgs instructs the pretty-printer to omit function arguments
 	FmtOmitFunctionArgs
 )
