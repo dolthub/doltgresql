@@ -3,7 +3,7 @@ FROM postgres:16
 ENV POSTGRES_PASSWORD=password
 ENV POSTGRES_USER=postgres
 
-ENV GO_VERSION=1.22.0
+ENV GO_VERSION=1.23.3
 
 # Install Go
 RUN apt-get update && \

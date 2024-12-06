@@ -20,7 +20,6 @@ import (
 	"go/constant"
 	"strings"
 
-	"github.com/dolthub/go-mysql-server/sql"
 	"github.com/dolthub/go-mysql-server/sql/expression"
 	vitess "github.com/dolthub/vitess/go/vt/sqlparser"
 	"github.com/shopspring/decimal"
@@ -106,7 +105,7 @@ func nodeExpr(ctx *Context, node tree.Expr) (vitess.Expr, error) {
 		return nil, fmt.Errorf("ANNOTATE_TYPE is not yet supported")
 	case *tree.Array:
 		unresolvedChildren := make([]vitess.Expr, len(node.Exprs))
-		var coercedType sql.Type
+		var coercedType *pgtypes.DoltgresType
 		if node.HasResolvedType() {
 			_, resolvedType, err := nodeResolvableTypeReference(ctx, node.ResolvedType())
 			if err != nil {
