@@ -32,10 +32,8 @@ func (pgs *TypeCollection) Serialize(ctx context.Context) ([]byte, error) {
 	pgs.mutex.Lock()
 	defer pgs.mutex.Unlock()
 
-	if _, ok := pgs.schemaMap["pg_catalog"]; ok {
-		// TODO: technically, can create type in pg_catalog schema
-		delete(pgs.schemaMap, "pg_catalog")
-	}
+	// TODO: technically, can create type in pg_catalog schema
+	delete(pgs.schemaMap, "pg_catalog")
 
 	// Write all the types to the writer
 	writer := utils.NewWriter(256)
