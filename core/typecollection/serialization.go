@@ -38,6 +38,10 @@ func (pgs *TypeCollection) Serialize(ctx context.Context) ([]byte, error) {
 	schemaMapKeys := utils.GetMapKeysSorted(pgs.schemaMap)
 	writer.VariableUint(uint64(len(schemaMapKeys)))
 	for _, schemaMapKey := range schemaMapKeys {
+		if schemaMapKey == "pg_catalog" {
+			// TODO: technically, can create type in pg_catalog schema
+			continue
+		}
 		nameMap := pgs.schemaMap[schemaMapKey]
 		writer.String(schemaMapKey)
 		nameMapKeys := utils.GetMapKeysSorted(nameMap)

@@ -39,6 +39,10 @@ var typesTests = []ScriptTest{
 					{2, 987654321098765},
 				},
 			},
+			{
+				Query:    `SELECT 1::pg_catalog.int8;`,
+				Expected: []sql.Row{{1}},
+			},
 		},
 	},
 	{

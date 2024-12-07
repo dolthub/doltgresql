@@ -109,7 +109,7 @@ func ResolveTypeForExprs(ctx *sql.Context, a *analyzer.Analyzer, node sql.Node, 
 	})
 }
 
-// resolveType resolves any type that is unresolved yet. (e.g.: domain types)
+// resolveType resolves any type that is unresolved yet. (e.g.: domain types, built-in types that schema specified, etc.)
 func resolveType(ctx *sql.Context, typ *pgtypes.DoltgresType) (*pgtypes.DoltgresType, error) {
 	schema, err := core.GetSchemaName(ctx, nil, typ.Schema)
 	if err != nil {

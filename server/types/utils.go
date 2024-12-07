@@ -49,6 +49,9 @@ var ErrTypmodArrayMustBe1D = errors.NewKind(`typmod array must be one-dimensiona
 // ErrInvalidTypMod is returned when given value is invalid for type modifier.
 var ErrInvalidTypMod = errors.NewKind(`invalid %s type modifier`)
 
+// ErrCannotDropType is returned when given type is system/pg_catalog type.
+var ErrCannotDropType = errors.NewKind(`cannot drop type %s because it is required by the database system`)
+
 // FromGmsType returns a DoltgresType that is most similar to the given GMS type.
 // It returns UNKNOWN type for GMS types that are not handled.
 func FromGmsType(typ sql.Type) *DoltgresType {
