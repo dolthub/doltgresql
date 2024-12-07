@@ -36,14 +36,14 @@ func internalCharAssignment() {
 	framework.MustAddAssignmentTypeCast(framework.TypeCast{
 		FromType: pgtypes.InternalChar,
 		ToType:   pgtypes.BpChar,
-		Function: func(ctx *sql.Context, val any, targetType pgtypes.DoltgresType) (any, error) {
+		Function: func(ctx *sql.Context, val any, targetType *pgtypes.DoltgresType) (any, error) {
 			return targetType.IoInput(ctx, val.(string))
 		},
 	})
 	framework.MustAddAssignmentTypeCast(framework.TypeCast{
 		FromType: pgtypes.InternalChar,
 		ToType:   pgtypes.VarChar,
-		Function: func(ctx *sql.Context, val any, targetType pgtypes.DoltgresType) (any, error) {
+		Function: func(ctx *sql.Context, val any, targetType *pgtypes.DoltgresType) (any, error) {
 			return handleStringCast(val.(string), targetType)
 		},
 	})
@@ -54,7 +54,7 @@ func internalCharExplicit() {
 	framework.MustAddExplicitTypeCast(framework.TypeCast{
 		FromType: pgtypes.InternalChar,
 		ToType:   pgtypes.Int32,
-		Function: func(ctx *sql.Context, val any, targetType pgtypes.DoltgresType) (any, error) {
+		Function: func(ctx *sql.Context, val any, targetType *pgtypes.DoltgresType) (any, error) {
 			s := val.(string)
 			if len(s) == 0 {
 				return int32(0), nil
@@ -76,7 +76,7 @@ func internalCharImplicit() {
 	framework.MustAddImplicitTypeCast(framework.TypeCast{
 		FromType: pgtypes.InternalChar,
 		ToType:   pgtypes.Text,
-		Function: func(ctx *sql.Context, val any, targetType pgtypes.DoltgresType) (any, error) {
+		Function: func(ctx *sql.Context, val any, targetType *pgtypes.DoltgresType) (any, error) {
 			return val, nil
 		},
 	})

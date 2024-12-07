@@ -32,7 +32,7 @@ func boolExplicit() {
 	framework.MustAddExplicitTypeCast(framework.TypeCast{
 		FromType: pgtypes.Bool,
 		ToType:   pgtypes.Int32,
-		Function: func(ctx *sql.Context, val any, targetType pgtypes.DoltgresType) (any, error) {
+		Function: func(ctx *sql.Context, val any, targetType *pgtypes.DoltgresType) (any, error) {
 			if val.(bool) {
 				return int32(1), nil
 			} else {
@@ -47,7 +47,7 @@ func boolAssignment() {
 	framework.MustAddAssignmentTypeCast(framework.TypeCast{
 		FromType: pgtypes.Bool,
 		ToType:   pgtypes.BpChar,
-		Function: func(ctx *sql.Context, val any, targetType pgtypes.DoltgresType) (any, error) {
+		Function: func(ctx *sql.Context, val any, targetType *pgtypes.DoltgresType) (any, error) {
 			str := "false"
 			if val.(bool) {
 				str = "true"
@@ -58,7 +58,7 @@ func boolAssignment() {
 	framework.MustAddAssignmentTypeCast(framework.TypeCast{
 		FromType: pgtypes.Bool,
 		ToType:   pgtypes.Name,
-		Function: func(ctx *sql.Context, val any, targetType pgtypes.DoltgresType) (any, error) {
+		Function: func(ctx *sql.Context, val any, targetType *pgtypes.DoltgresType) (any, error) {
 			str := "f"
 			if val.(bool) {
 				str = "t"
@@ -69,7 +69,7 @@ func boolAssignment() {
 	framework.MustAddAssignmentTypeCast(framework.TypeCast{
 		FromType: pgtypes.Bool,
 		ToType:   pgtypes.Text,
-		Function: func(ctx *sql.Context, val any, targetType pgtypes.DoltgresType) (any, error) {
+		Function: func(ctx *sql.Context, val any, targetType *pgtypes.DoltgresType) (any, error) {
 			if val.(bool) {
 				return "true", nil
 			} else {
@@ -80,7 +80,7 @@ func boolAssignment() {
 	framework.MustAddAssignmentTypeCast(framework.TypeCast{
 		FromType: pgtypes.Bool,
 		ToType:   pgtypes.VarChar,
-		Function: func(ctx *sql.Context, val any, targetType pgtypes.DoltgresType) (any, error) {
+		Function: func(ctx *sql.Context, val any, targetType *pgtypes.DoltgresType) (any, error) {
 			str := "false"
 			if val.(bool) {
 				str = "true"

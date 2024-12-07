@@ -300,20 +300,17 @@ func getRowsFromDatabase(ctx *sql.Context, db information_schema.DbWithNames, al
 func getDataAndUdtType(colType sql.Type, colName string) (string, string) {
 	udtName := ""
 	dataType := ""
-	dgType, ok := colType.(pgtypes.DoltgresType)
+	dgType, ok := colType.(*pgtypes.DoltgresType)
 	if ok {
-		udtName = dgType.BaseName()
-		if udtName == `"char"` {
-			udtName = `char`
-		}
-		if t, ok := partypes.OidToType[oid.Oid(dgType.OID())]; ok {
+		udtName = dgType.Name
+		if t, ok := partypes.OidToType[oid.Oid(dgType.OID)]; ok {
 			dataType = t.SQLStandardName()
 		}
 	} else {
 		dtdId := strings.Split(strings.Split(colType.String(), " COLLATE")[0], " CHARACTER SET")[0]
 
 		// The DATA_TYPE value is the type name only with no other information
-		dataType := strings.Split(dtdId, "(")[0]
+		dataType = strings.Split(dtdId, "(")[0]
 		dataType = strings.Split(dataType, " ")[0]
 		udtName = dataType
 	}
@@ -323,22 +320,20 @@ func getDataAndUdtType(colType sql.Type, colName string) (string, string) {
 // getColumnPrecisionAndScale returns the precision or a number of postgres type. For non-numeric or decimal types this
 // function should return nil,nil.
 func getColumnPrecisionAndScale(colType sql.Type) (interface{}, interface{}, interface{}) {
-	dgt, ok := colType.(pgtypes.DoltgresType)
+	dgt, ok := colType.(*pgtypes.DoltgresType)
 	if ok {
-		switch t := dgt.(type) {
+		switch oid.Oid(dgt.OID) {
 		// TODO: BitType
-		case pgtypes.Float32Type, pgtypes.Float64Type:
+		case oid.T_float4, oid.T_float8:
 			return typeToNumericPrecision[colType.Type()], int32(2), nil
-		case pgtypes.Int16Type, pgtypes.Int32Type, pgtypes.Int64Type:
+		case oid.T_int2, oid.T_int4, oid.T_int8:
 			return typeToNumericPrecision[colType.Type()], int32(2), int32(0)
-		case pgtypes.NumericType:
+		case oid.T_numeric:
 			var precision interface{}
 			var scale interface{}
-			if t.Precision >= 0 {
-				precision = int32(t.Precision)
-			}
-			if t.Scale >= 0 {
-				scale = int32(t.Scale)
+			tm := dgt.GetAttTypMod()
+			if tm != -1 {
+				precision, scale = pgtypes.GetPrecisionAndScaleFromTypmod(tm)
 			}
 			return precision, int32(10), scale
 		default:
@@ -369,21 +364,16 @@ func getCharAndCollNamesAndCharMaxAndOctetLens(ctx *sql.Context, colType sql.Typ
 	}
 
 	switch t := colType.(type) {
-	case pgtypes.TextType:
-		charOctetLen = int32(maxCharacterOctetLength)
-	case pgtypes.VarCharType:
-		if t.IsUnbounded() {
-			charOctetLen = int32(maxCharacterOctetLength)
-		} else {
-			charOctetLen = int32(t.MaxChars) * 4
-			charMaxLen = int32(t.MaxChars)
-		}
-	case pgtypes.CharType:
-		if t.IsUnbounded() {
-			charOctetLen = int32(maxCharacterOctetLength)
-		} else {
-			charOctetLen = int32(t.Length) * 4
-			charMaxLen = int32(t.Length)
+	case *pgtypes.DoltgresType:
+		if t.TypCategory == pgtypes.TypeCategory_StringTypes {
+			tm := t.GetAttTypMod()
+			if tm == -1 {
+				charOctetLen = int32(maxCharacterOctetLength)
+			} else {
+				l := pgtypes.GetCharLengthFromTypmod(tm)
+				charOctetLen = l * 4
+				charMaxLen = l
+			}
 		}
 	}
 
@@ -391,11 +381,11 @@ func getCharAndCollNamesAndCharMaxAndOctetLens(ctx *sql.Context, colType sql.Typ
 }
 
 func getDatetimePrecision(colType sql.Type) interface{} {
-	if dgType, ok := colType.(pgtypes.DoltgresType); ok {
-		switch dgType.(type) {
-		case pgtypes.DateType:
+	if dgType, ok := colType.(*pgtypes.DoltgresType); ok {
+		switch oid.Oid(dgType.OID) {
+		case oid.T_date:
 			return int32(0)
-		case pgtypes.TimeType, pgtypes.TimeTZType, pgtypes.TimestampType, pgtypes.TimestampTZType:
+		case oid.T_time, oid.T_timetz, oid.T_timestamp, oid.T_timestamptz:
 			// TODO: TIME length not yet supported
 			return int32(6)
 		default:

@@ -40,9 +40,9 @@ func initBinaryConcatenate() {
 var anytextcat = framework.Function2{
 	Name:       "anytextcat",
 	Return:     pgtypes.Text,
-	Parameters: [2]pgtypes.DoltgresType{pgtypes.AnyNonArray, pgtypes.Text},
+	Parameters: [2]*pgtypes.DoltgresType{pgtypes.AnyNonArray, pgtypes.Text},
 	Strict:     true,
-	Callable: func(ctx *sql.Context, paramsAndReturn [3]pgtypes.DoltgresType, val1 any, val2 any) (any, error) {
+	Callable: func(ctx *sql.Context, paramsAndReturn [3]*pgtypes.DoltgresType, val1 any, val2 any) (any, error) {
 		valType := paramsAndReturn[0]
 		val1String, err := valType.IoOutput(ctx, val1)
 		if err != nil {
@@ -56,9 +56,9 @@ var anytextcat = framework.Function2{
 var byteacat = framework.Function2{
 	Name:       "byteacat",
 	Return:     pgtypes.Bytea,
-	Parameters: [2]pgtypes.DoltgresType{pgtypes.Bytea, pgtypes.Bytea},
+	Parameters: [2]*pgtypes.DoltgresType{pgtypes.Bytea, pgtypes.Bytea},
 	Strict:     true,
-	Callable: func(ctx *sql.Context, paramsAndReturn [3]pgtypes.DoltgresType, val1 any, val2 any) (any, error) {
+	Callable: func(ctx *sql.Context, paramsAndReturn [3]*pgtypes.DoltgresType, val1 any, val2 any) (any, error) {
 		v1 := val1.([]byte)
 		v2 := val2.([]byte)
 		copied := make([]byte, len(v1)+len(v2))
@@ -72,9 +72,9 @@ var byteacat = framework.Function2{
 var jsonb_concat = framework.Function2{
 	Name:       "jsonb_concat",
 	Return:     pgtypes.JsonB,
-	Parameters: [2]pgtypes.DoltgresType{pgtypes.JsonB, pgtypes.JsonB},
+	Parameters: [2]*pgtypes.DoltgresType{pgtypes.JsonB, pgtypes.JsonB},
 	Strict:     true,
-	Callable: func(ctx *sql.Context, _ [3]pgtypes.DoltgresType, val1Interface any, val2Interface any) (any, error) {
+	Callable: func(ctx *sql.Context, _ [3]*pgtypes.DoltgresType, val1Interface any, val2Interface any) (any, error) {
 		val1 := val1Interface.(pgtypes.JsonDocument).Value
 		val2 := val2Interface.(pgtypes.JsonDocument).Value
 		// First we'll merge objects if they're both objects
@@ -126,9 +126,9 @@ var jsonb_concat = framework.Function2{
 var textanycat = framework.Function2{
 	Name:       "textanycat",
 	Return:     pgtypes.Text,
-	Parameters: [2]pgtypes.DoltgresType{pgtypes.Text, pgtypes.AnyNonArray},
+	Parameters: [2]*pgtypes.DoltgresType{pgtypes.Text, pgtypes.AnyNonArray},
 	Strict:     true,
-	Callable: func(ctx *sql.Context, paramsAndReturn [3]pgtypes.DoltgresType, val1 any, val2 any) (any, error) {
+	Callable: func(ctx *sql.Context, paramsAndReturn [3]*pgtypes.DoltgresType, val1 any, val2 any) (any, error) {
 		valType := paramsAndReturn[1]
 		val2String, err := valType.IoOutput(ctx, val2)
 		if err != nil {
@@ -142,9 +142,9 @@ var textanycat = framework.Function2{
 var textcat = framework.Function2{
 	Name:       "textcat",
 	Return:     pgtypes.Text,
-	Parameters: [2]pgtypes.DoltgresType{pgtypes.Text, pgtypes.Text},
+	Parameters: [2]*pgtypes.DoltgresType{pgtypes.Text, pgtypes.Text},
 	Strict:     true,
-	Callable: func(ctx *sql.Context, _ [3]pgtypes.DoltgresType, val1 any, val2 any) (any, error) {
+	Callable: func(ctx *sql.Context, _ [3]*pgtypes.DoltgresType, val1 any, val2 any) (any, error) {
 		return val1.(string) + val2.(string), nil
 	},
 }

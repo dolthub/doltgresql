@@ -31,10 +31,10 @@ func initPgRelationSize() {
 var pg_relation_size_regclass = framework.Function1{
 	Name:               "pg_relation_size",
 	Return:             pgtypes.Int64,
-	Parameters:         [1]pgtypes.DoltgresType{pgtypes.Regclass},
+	Parameters:         [1]*pgtypes.DoltgresType{pgtypes.Regclass},
 	IsNonDeterministic: true,
 	Strict:             true,
-	Callable: func(ctx *sql.Context, _ [2]pgtypes.DoltgresType, val any) (any, error) {
+	Callable: func(ctx *sql.Context, _ [2]*pgtypes.DoltgresType, val any) (any, error) {
 		// TODO: on-disk size in bytes of one fork of that relation
 		//  used by 'main' by default.
 		return int64(0), nil
@@ -45,10 +45,10 @@ var pg_relation_size_regclass = framework.Function1{
 var pg_relation_size_regclass_text = framework.Function2{
 	Name:               "pg_relation_size",
 	Return:             pgtypes.Int64,
-	Parameters:         [2]pgtypes.DoltgresType{pgtypes.Regclass, pgtypes.Text},
+	Parameters:         [2]*pgtypes.DoltgresType{pgtypes.Regclass, pgtypes.Text},
 	IsNonDeterministic: true,
 	Strict:             true,
-	Callable: func(ctx *sql.Context, _ [3]pgtypes.DoltgresType, val1, val2 any) (any, error) {
+	Callable: func(ctx *sql.Context, _ [3]*pgtypes.DoltgresType, val1, val2 any) (any, error) {
 		// TODO: on-disk size in bytes of one fork of that relation
 		//  used by the specified fork ('main', 'fsm', 'vm', or 'init')
 		return int64(0), nil

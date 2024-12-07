@@ -25,7 +25,7 @@ const testInfoFields = [
     columnID: 0,
     dataTypeID: 1043,
     dataTypeSize: 1020,
-    dataTypeModifier: -1,
+    dataTypeModifier: 259,
     format: "text",
   },
   {
@@ -109,7 +109,7 @@ export const tableTests = [
           columnID: 0,
           dataTypeID: 1043,
           dataTypeSize: 256,
-          dataTypeModifier: -1,
+          dataTypeModifier: 68,
           format: "text",
         },
         {
@@ -118,7 +118,7 @@ export const tableTests = [
           columnID: 0,
           dataTypeID: 1043,
           dataTypeSize: 256,
-          dataTypeModifier: -1,
+          dataTypeModifier: 68,
           format: "text",
         },
         {
@@ -127,7 +127,7 @@ export const tableTests = [
           columnID: 0,
           dataTypeID: 1043,
           dataTypeSize: 12,
-          dataTypeModifier: -1,
+          dataTypeModifier: 7,
           format: "text",
         },
         {
@@ -225,7 +225,7 @@ export const tableTests = [
           columnID: 0,
           dataTypeID: 1043,
           dataTypeSize: 256,
-          dataTypeModifier: -1,
+          dataTypeModifier: 68,
           format: "text",
         },
         {
@@ -234,7 +234,7 @@ export const tableTests = [
           columnID: 0,
           dataTypeID: 1043,
           dataTypeSize: 256,
-          dataTypeModifier: -1,
+          dataTypeModifier: 68,
           format: "text",
         },
       ],

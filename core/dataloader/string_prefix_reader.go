@@ -27,9 +27,9 @@ type stringPrefixReader struct {
 
 var _ io.ReadCloser = (*stringPrefixReader)(nil)
 
-// newStringPrefixReader creates a new stringPrefixReader that first returns the data in |prefix| and
+// NewStringPrefixReader creates a new stringPrefixReader that first returns the data in |prefix| and
 // then returns data from |reader|.
-func newStringPrefixReader(prefix string, reader io.Reader) *stringPrefixReader {
+func NewStringPrefixReader(prefix string, reader io.Reader) *stringPrefixReader {
 	return &stringPrefixReader{
 		prefix: prefix,
 		reader: reader,

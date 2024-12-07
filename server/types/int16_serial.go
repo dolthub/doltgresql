@@ -14,167 +14,43 @@
 
 package types
 
-import (
-	"fmt"
-	"reflect"
-
-	"github.com/dolthub/go-mysql-server/sql"
-	"github.com/dolthub/go-mysql-server/sql/types"
-	"github.com/dolthub/vitess/go/sqltypes"
-	"github.com/dolthub/vitess/go/vt/proto/query"
-	"github.com/lib/pq/oid"
-)
+import "github.com/lib/pq/oid"
 
 // Int16Serial is an int16 serial type.
-var Int16Serial = Int16TypeSerial{}
-
-// Int16TypeSerial is the extended type implementation of the PostgreSQL smallserial.
-type Int16TypeSerial struct{}
-
-var _ DoltgresType = Int16TypeSerial{}
-
-// Alignment implements the DoltgresType interface.
-func (b Int16TypeSerial) Alignment() TypeAlignment {
-	return TypeAlignment_Short
-}
-
-// BaseID implements the DoltgresType interface.
-func (b Int16TypeSerial) BaseID() DoltgresTypeBaseID {
-	return DoltgresTypeBaseID_Int16Serial
-}
-
-// BaseName implements the DoltgresType interface.
-func (b Int16TypeSerial) BaseName() string {
-	return "smallserial"
-}
-
-// Category implements the DoltgresType interface.
-func (b Int16TypeSerial) Category() TypeCategory {
-	return TypeCategory_UnknownTypes
-}
-
-// CollationCoercibility implements the DoltgresType interface.
-func (b Int16TypeSerial) CollationCoercibility(ctx *sql.Context) (collation sql.CollationID, coercibility byte) {
-	return sql.Collation_binary, 5
-}
-
-// Compare implements the DoltgresType interface.
-func (b Int16TypeSerial) Compare(v1 any, v2 any) (int, error) {
-	return 0, fmt.Errorf("SERIAL types are not comparable")
-}
-
-// Convert implements the DoltgresType interface.
-func (b Int16TypeSerial) Convert(val any) (any, sql.ConvertInRange, error) {
-	return nil, sql.OutOfRange, fmt.Errorf("SERIAL types are not convertable")
-}
-
-// Equals implements the DoltgresType interface.
-func (b Int16TypeSerial) Equals(otherType sql.Type) bool {
-	_, ok := otherType.(Int16TypeSerial)
-	return ok
-}
-
-// FormatValue implements the DoltgresType interface.
-func (b Int16TypeSerial) FormatValue(val any) (string, error) {
-	return "", fmt.Errorf("SERIAL types are not formattable")
-}
-
-// GetSerializationID implements the DoltgresType interface.
-func (b Int16TypeSerial) GetSerializationID() SerializationID {
-	return SerializationID_Invalid
-}
-
-// IoInput implements the DoltgresType interface.
-func (b Int16TypeSerial) IoInput(ctx *sql.Context, input string) (any, error) {
-	return "", fmt.Errorf("SERIAL types cannot receive I/O input")
-}
-
-// IoOutput implements the DoltgresType interface.
-func (b Int16TypeSerial) IoOutput(ctx *sql.Context, output any) (string, error) {
-	return "", fmt.Errorf("SERIAL types cannot produce I/O output")
-}
-
-// IsPreferredType implements the DoltgresType interface.
-func (b Int16TypeSerial) IsPreferredType() bool {
-	return false
-}
-
-// IsUnbounded implements the DoltgresType interface.
-func (b Int16TypeSerial) IsUnbounded() bool {
-	return false
-}
-
-// MaxSerializedWidth implements the DoltgresType interface.
-func (b Int16TypeSerial) MaxSerializedWidth() types.ExtendedTypeSerializedWidth {
-	return types.ExtendedTypeSerializedWidth_64K
-}
-
-// MaxTextResponseByteLength implements the DoltgresType interface.
-func (b Int16TypeSerial) MaxTextResponseByteLength(ctx *sql.Context) uint32 {
-	return 2
-}
-
-// OID implements the DoltgresType interface.
-func (b Int16TypeSerial) OID() uint32 {
-	return uint32(oid.T_int2)
-}
-
-// Promote implements the DoltgresType interface.
-func (b Int16TypeSerial) Promote() sql.Type {
-	return b
-}
-
-// SerializedCompare implements the DoltgresType interface.
-func (b Int16TypeSerial) SerializedCompare(v1 []byte, v2 []byte) (int, error) {
-	return 0, fmt.Errorf("SERIAL types are not comparable")
-}
-
-// SQL implements the DoltgresType interface.
-func (b Int16TypeSerial) SQL(ctx *sql.Context, dest []byte, v any) (sqltypes.Value, error) {
-	return sqltypes.Value{}, fmt.Errorf("SERIAL types may not be passed over the wire")
-}
-
-// String implements the DoltgresType interface.
-func (b Int16TypeSerial) String() string {
-	return "smallserial"
-}
-
-// ToArrayType implements the DoltgresType interface.
-func (b Int16TypeSerial) ToArrayType() DoltgresArrayType {
-	return Unknown
-}
-
-// Type implements the DoltgresType interface.
-func (b Int16TypeSerial) Type() query.Type {
-	return sqltypes.Int16
-}
-
-// ValueType implements the DoltgresType interface.
-func (b Int16TypeSerial) ValueType() reflect.Type {
-	return reflect.TypeOf(int16(0))
-}
-
-// Zero implements the DoltgresType interface.
-func (b Int16TypeSerial) Zero() any {
-	return int16(0)
-}
-
-// SerializeType implements the DoltgresType interface.
-func (b Int16TypeSerial) SerializeType() ([]byte, error) {
-	return nil, fmt.Errorf("SERIAL types are not serializable")
-}
-
-// deserializeType implements the DoltgresType interface.
-func (b Int16TypeSerial) deserializeType(version uint16, metadata []byte) (DoltgresType, error) {
-	return nil, fmt.Errorf("SERIAL types are not deserializable")
-}
-
-// SerializeValue implements the DoltgresType interface.
-func (b Int16TypeSerial) SerializeValue(val any) ([]byte, error) {
-	return nil, fmt.Errorf("SERIAL types are not serializable")
-}
-
-// DeserializeValue implements the DoltgresType interface.
-func (b Int16TypeSerial) DeserializeValue(val []byte) (any, error) {
-	return nil, fmt.Errorf("SERIAL types are not deserializable")
+var Int16Serial = &DoltgresType{
+	OID:           0, // doesn't have unique OID
+	Name:          "smallserial",
+	Schema:        "pg_catalog",
+	TypLength:     int16(2),
+	PassedByVal:   true,
+	TypType:       TypeType_Base,
+	TypCategory:   TypeCategory_NumericTypes,
+	IsPreferred:   false,
+	IsDefined:     true,
+	Delimiter:     ",",
+	RelID:         0,
+	SubscriptFunc: toFuncID("-"),
+	Elem:          0,
+	Array:         uint32(oid.T__int2),
+	InputFunc:     toFuncID("int2in", oid.T_cstring),
+	OutputFunc:    toFuncID("int2out", oid.T_int2),
+	ReceiveFunc:   toFuncID("int2recv"),
+	SendFunc:      toFuncID("int2send"),
+	ModInFunc:     toFuncID("-"),
+	ModOutFunc:    toFuncID("-"),
+	AnalyzeFunc:   toFuncID("-"),
+	Align:         TypeAlignment_Short,
+	Storage:       TypeStorage_Plain,
+	NotNull:       false,
+	BaseTypeOID:   0,
+	TypMod:        -1,
+	NDims:         0,
+	TypCollation:  0,
+	DefaulBin:     "",
+	Default:       "",
+	Acl:           nil,
+	Checks:        nil,
+	attTypMod:     -1,
+	CompareFunc:   toFuncID("btint2cmp", oid.T_int2, oid.T_int2),
+	IsSerial:      true,
 }

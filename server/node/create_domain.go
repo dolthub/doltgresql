@@ -30,7 +30,7 @@ import (
 type CreateDomain struct {
 	SchemaName           string
 	Name                 string
-	AsType               types.DoltgresType
+	AsType               *types.DoltgresType
 	Collation            string
 	HasDefault           bool
 	DefaultExpr          sql.Expression
@@ -67,7 +67,7 @@ func (c *CreateDomain) RowIter(ctx *sql.Context, r sql.Row) (sql.RowIter, error)
 		return nil, fmt.Errorf(`role "%s" does not exist`, ctx.Client().User)
 	}
 
-	// TODO: create array type with this type as base type?
+	// TODO: create array type with this type as base type
 	var defExpr string
 	if c.DefaultExpr != nil {
 		defExpr = c.DefaultExpr.String()
@@ -81,10 +81,6 @@ func (c *CreateDomain) RowIter(ctx *sql.Context, r sql.Row) (sql.RowIter, error)
 		}
 	}
 
-	newType, err := types.NewDomainType(ctx, c.SchemaName, c.Name, c.AsType, defExpr, c.IsNotNull, checkDefs, "")
-	if err != nil {
-		return nil, err
-	}
 	schema, err := core.GetSchemaName(ctx, nil, c.SchemaName)
 	if err != nil {
 		return nil, err
@@ -93,6 +89,8 @@ func (c *CreateDomain) RowIter(ctx *sql.Context, r sql.Row) (sql.RowIter, error)
 	if err != nil {
 		return nil, err
 	}
+
+	newType := types.NewDomainType(ctx, c.SchemaName, c.Name, c.AsType, defExpr, c.IsNotNull, checkDefs, "")
 	err = collection.CreateType(schema, newType)
 	if err != nil {
 		return nil, err
@@ -168,7 +166,7 @@ func (c *CreateDomain) WithResolvedChildren(children []any) (any, error) {
 // It is a placeholder column reference later
 // used for column defined as the domain type.
 type DomainColumn struct {
-	Typ types.DoltgresType
+	Typ *types.DoltgresType
 }
 
 var _ vitess.Injectable = (*DomainColumn)(nil)

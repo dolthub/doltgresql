@@ -41,9 +41,7 @@ import (
 	"github.com/dolthub/doltgresql/postgres/parser/parser"
 	"github.com/dolthub/doltgresql/postgres/parser/sem/tree"
 	"github.com/dolthub/doltgresql/server/ast"
-	pgexprs "github.com/dolthub/doltgresql/server/expression"
 	"github.com/dolthub/doltgresql/server/node"
-	pgtypes "github.com/dolthub/doltgresql/server/types"
 )
 
 // ConnectionHandler is responsible for the entire lifecycle of a user connection: receiving messages they send,
@@ -54,8 +52,8 @@ type ConnectionHandler struct {
 	portals            map[string]PortalData
 	doltgresHandler    *DoltgresHandler
 	backend            *pgproto3.Backend
-	pgTypeMap          *pgtype.Map
-	waitForSync        bool
+
+	waitForSync bool
 	// copyFromStdinState is set when this connection is in the COPY FROM STDIN mode, meaning it is waiting on
 	// COPY DATA messages from the client to import data into tables.
 	copyFromStdinState *copyFromStdinState
@@ -96,6 +94,7 @@ func NewConnectionHandler(conn net.Conn, handler mysql.Handler) *ConnectionHandl
 		sm:                server.SessionManager(),
 		readTimeout:       0,     // cfg.ConnReadTimeout,
 		encodeLoggedQuery: false, // cfg.EncodeLoggedQuery,
+		pgTypeMap:         pgtype.NewMap(),
 	}
 
 	return &ConnectionHandler{
@@ -104,7 +103,6 @@ func NewConnectionHandler(conn net.Conn, handler mysql.Handler) *ConnectionHandl
 		portals:            portals,
 		doltgresHandler:    doltgresHandler,
 		backend:            pgproto3.NewBackend(conn, conn),
-		pgTypeMap:          pgtype.NewMap(),
 	}
 }
 
@@ -541,12 +539,16 @@ func (h *ConnectionHandler) handleBind(message *pgproto3.Bind) error {
 		return h.send(&pgproto3.BindComplete{})
 	}
 
-	bindVars, err := h.convertBindParameters(preparedData.BindVarTypes, message.ParameterFormatCodes, message.Parameters)
-	if err != nil {
-		return err
-	}
-
-	analyzedPlan, fields, err := h.doltgresHandler.ComBind(context.Background(), h.mysqlConn, preparedData.Query.String, preparedData.Query.AST, bindVars)
+	analyzedPlan, fields, err := h.doltgresHandler.ComBind(
+		context.Background(),
+		h.mysqlConn,
+		preparedData.Query.String,
+		preparedData.Query.AST,
+		BindVariables{
+			varTypes:    preparedData.BindVarTypes,
+			formatCodes: message.ParameterFormatCodes,
+			parameters:  message.Parameters,
+		})
 	if err != nil {
 		return err
 	}
@@ -794,30 +796,6 @@ func (h *ConnectionHandler) deallocatePreparedStatement(name string, preparedSta
 	return h.send(&pgproto3.CommandComplete{
 		CommandTag: []byte(query.StatementTag),
 	})
-}
-
-// convertBindParameters handles the conversion from bind parameters to variable values.
-func (h *ConnectionHandler) convertBindParameters(types []uint32, formatCodes []int16, values [][]byte) (map[string]sqlparser.Expr, error) {
-	bindings := make(map[string]sqlparser.Expr, len(values))
-	for i := range values {
-		typ := types[i]
-		var bindVarString string
-		// We'll rely on a library to decode each format, which will deal with text and binary representations for us
-		if err := h.pgTypeMap.Scan(typ, formatCodes[i], values[i], &bindVarString); err != nil {
-			return nil, err
-		}
-
-		pgTyp, ok := pgtypes.OidToBuildInDoltgresType[typ]
-		if !ok {
-			return nil, fmt.Errorf("unhandled oid type: %v", typ)
-		}
-		v, err := pgTyp.IoInput(nil, bindVarString)
-		if err != nil {
-			return nil, err
-		}
-		bindings[fmt.Sprintf("v%d", i+1)] = sqlparser.InjectedExpr{Expression: pgexprs.NewUnsafeLiteral(v, pgTyp)}
-	}
-	return bindings, nil
 }
 
 // query runs the given query and sends a CommandComplete message to the client

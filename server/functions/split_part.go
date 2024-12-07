@@ -34,9 +34,9 @@ func initSplitPart() {
 var split_part_text_text_int32 = framework.Function3{
 	Name:       "split_part",
 	Return:     pgtypes.Text,
-	Parameters: [3]pgtypes.DoltgresType{pgtypes.Text, pgtypes.Text, pgtypes.Int32},
+	Parameters: [3]*pgtypes.DoltgresType{pgtypes.Text, pgtypes.Text, pgtypes.Int32},
 	Strict:     true,
-	Callable: func(ctx *sql.Context, _ [4]pgtypes.DoltgresType, str any, delimiter any, n any) (any, error) {
+	Callable: func(ctx *sql.Context, _ [4]*pgtypes.DoltgresType, str any, delimiter any, n any) (any, error) {
 		if n.(int32) == 0 {
 			return nil, fmt.Errorf("field position must not be zero")
 		}

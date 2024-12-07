@@ -32,14 +32,14 @@ func nameAssignment() {
 	framework.MustAddAssignmentTypeCast(framework.TypeCast{
 		FromType: pgtypes.Name,
 		ToType:   pgtypes.BpChar,
-		Function: func(ctx *sql.Context, val any, targetType pgtypes.DoltgresType) (any, error) {
+		Function: func(ctx *sql.Context, val any, targetType *pgtypes.DoltgresType) (any, error) {
 			return handleStringCast(val.(string), targetType)
 		},
 	})
 	framework.MustAddAssignmentTypeCast(framework.TypeCast{
 		FromType: pgtypes.Name,
 		ToType:   pgtypes.VarChar,
-		Function: func(ctx *sql.Context, val any, targetType pgtypes.DoltgresType) (any, error) {
+		Function: func(ctx *sql.Context, val any, targetType *pgtypes.DoltgresType) (any, error) {
 			return handleStringCast(val.(string), targetType)
 		},
 	})
@@ -50,7 +50,7 @@ func nameImplicit() {
 	framework.MustAddImplicitTypeCast(framework.TypeCast{
 		FromType: pgtypes.Name,
 		ToType:   pgtypes.Text,
-		Function: func(ctx *sql.Context, val any, targetType pgtypes.DoltgresType) (any, error) {
+		Function: func(ctx *sql.Context, val any, targetType *pgtypes.DoltgresType) (any, error) {
 			return val, nil
 		},
 	})

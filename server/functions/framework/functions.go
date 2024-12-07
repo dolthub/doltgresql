@@ -25,9 +25,9 @@ type FunctionInterface interface {
 	// GetName returns the name of the function. The name is case-insensitive, so the casing does not matter.
 	GetName() string
 	// GetReturn returns the return type.
-	GetReturn() pgtypes.DoltgresType
+	GetReturn() *pgtypes.DoltgresType
 	// GetParameters returns the parameter types for the function.
-	GetParameters() []pgtypes.DoltgresType
+	GetParameters() []*pgtypes.DoltgresType
 	// VariadicIndex returns the index of the variadic parameter, if it exists, or -1 otherwise
 	VariadicIndex() int
 	// GetExpectedParameterCount returns the number of parameters that are valid for this function.
@@ -44,7 +44,7 @@ type FunctionInterface interface {
 // Function0 is a function that does not take any parameters.
 type Function0 struct {
 	Name               string
-	Return             pgtypes.DoltgresType
+	Return             *pgtypes.DoltgresType
 	IsNonDeterministic bool
 	Strict             bool
 	Callable           func(ctx *sql.Context) (any, error)
@@ -54,12 +54,12 @@ type Function0 struct {
 // when the parameter (and possibly return type) is a polymorphic type. The return type is the last type in the array.
 type Function1 struct {
 	Name               string
-	Return             pgtypes.DoltgresType
-	Parameters         [1]pgtypes.DoltgresType
+	Return             *pgtypes.DoltgresType
+	Parameters         [1]*pgtypes.DoltgresType
 	Variadic           bool
 	IsNonDeterministic bool
 	Strict             bool
-	Callable           func(ctx *sql.Context, paramsAndReturn [2]pgtypes.DoltgresType, val1 any) (any, error)
+	Callable           func(ctx *sql.Context, paramsAndReturn [2]*pgtypes.DoltgresType, val1 any) (any, error)
 }
 
 // Function2 is a function that takes two parameters. The parameter and return types are passed into the Callable
@@ -67,12 +67,12 @@ type Function1 struct {
 // last type in the array.
 type Function2 struct {
 	Name               string
-	Return             pgtypes.DoltgresType
-	Parameters         [2]pgtypes.DoltgresType
+	Return             *pgtypes.DoltgresType
+	Parameters         [2]*pgtypes.DoltgresType
 	Variadic           bool
 	IsNonDeterministic bool
 	Strict             bool
-	Callable           func(ctx *sql.Context, paramsAndReturn [3]pgtypes.DoltgresType, val1 any, val2 any) (any, error)
+	Callable           func(ctx *sql.Context, paramsAndReturn [3]*pgtypes.DoltgresType, val1 any, val2 any) (any, error)
 }
 
 // Function3 is a function that takes three parameters. The parameter and return types are passed into the Callable
@@ -80,12 +80,12 @@ type Function2 struct {
 // last type in the array.
 type Function3 struct {
 	Name               string
-	Return             pgtypes.DoltgresType
-	Parameters         [3]pgtypes.DoltgresType
+	Return             *pgtypes.DoltgresType
+	Parameters         [3]*pgtypes.DoltgresType
 	Variadic           bool
 	IsNonDeterministic bool
 	Strict             bool
-	Callable           func(ctx *sql.Context, paramsAndReturn [4]pgtypes.DoltgresType, val1 any, val2 any, val3 any) (any, error)
+	Callable           func(ctx *sql.Context, paramsAndReturn [4]*pgtypes.DoltgresType, val1 any, val2 any, val3 any) (any, error)
 }
 
 // Function4 is a function that takes four parameters. The parameter and return types are passed into the Callable
@@ -93,12 +93,12 @@ type Function3 struct {
 // last type in the array.
 type Function4 struct {
 	Name               string
-	Return             pgtypes.DoltgresType
-	Parameters         [4]pgtypes.DoltgresType
+	Return             *pgtypes.DoltgresType
+	Parameters         [4]*pgtypes.DoltgresType
 	Variadic           bool
 	IsNonDeterministic bool
 	Strict             bool
-	Callable           func(ctx *sql.Context, paramsAndReturn [5]pgtypes.DoltgresType, val1 any, val2 any, val3 any, val4 any) (any, error)
+	Callable           func(ctx *sql.Context, paramsAndReturn [5]*pgtypes.DoltgresType, val1 any, val2 any, val3 any, val4 any) (any, error)
 }
 
 var _ FunctionInterface = Function0{}
@@ -111,10 +111,10 @@ var _ FunctionInterface = Function4{}
 func (f Function0) GetName() string { return f.Name }
 
 // GetReturn implements the FunctionInterface interface.
-func (f Function0) GetReturn() pgtypes.DoltgresType { return f.Return }
+func (f Function0) GetReturn() *pgtypes.DoltgresType { return f.Return }
 
 // GetParameters implements the FunctionInterface interface.
-func (f Function0) GetParameters() []pgtypes.DoltgresType { return nil }
+func (f Function0) GetParameters() []*pgtypes.DoltgresType { return nil }
 
 func (f Function0) VariadicIndex() int {
 	return -1
@@ -136,10 +136,10 @@ func (f Function0) enforceInterfaceInheritance(error) {}
 func (f Function1) GetName() string { return f.Name }
 
 // GetReturn implements the FunctionInterface interface.
-func (f Function1) GetReturn() pgtypes.DoltgresType { return f.Return }
+func (f Function1) GetReturn() *pgtypes.DoltgresType { return f.Return }
 
 // GetParameters implements the FunctionInterface interface.
-func (f Function1) GetParameters() []pgtypes.DoltgresType { return f.Parameters[:] }
+func (f Function1) GetParameters() []*pgtypes.DoltgresType { return f.Parameters[:] }
 
 // VariadicIndex implements the FunctionInterface interface.
 func (f Function1) VariadicIndex() int {
@@ -166,10 +166,10 @@ func (f Function1) enforceInterfaceInheritance(error) {}
 func (f Function2) GetName() string { return f.Name }
 
 // GetReturn implements the FunctionInterface interface.
-func (f Function2) GetReturn() pgtypes.DoltgresType { return f.Return }
+func (f Function2) GetReturn() *pgtypes.DoltgresType { return f.Return }
 
 // GetParameters implements the FunctionInterface interface.
-func (f Function2) GetParameters() []pgtypes.DoltgresType { return f.Parameters[:] }
+func (f Function2) GetParameters() []*pgtypes.DoltgresType { return f.Parameters[:] }
 
 // VariadicIndex implements the FunctionInterface interface.
 func (f Function2) VariadicIndex() int {
@@ -196,10 +196,10 @@ func (f Function2) enforceInterfaceInheritance(error) {}
 func (f Function3) GetName() string { return f.Name }
 
 // GetReturn implements the FunctionInterface interface.
-func (f Function3) GetReturn() pgtypes.DoltgresType { return f.Return }
+func (f Function3) GetReturn() *pgtypes.DoltgresType { return f.Return }
 
 // GetParameters implements the FunctionInterface interface.
-func (f Function3) GetParameters() []pgtypes.DoltgresType { return f.Parameters[:] }
+func (f Function3) GetParameters() []*pgtypes.DoltgresType { return f.Parameters[:] }
 
 // VariadicIndex implements the FunctionInterface interface.
 func (f Function3) VariadicIndex() int {
@@ -226,10 +226,10 @@ func (f Function3) enforceInterfaceInheritance(error) {}
 func (f Function4) GetName() string { return f.Name }
 
 // GetReturn implements the FunctionInterface interface.
-func (f Function4) GetReturn() pgtypes.DoltgresType { return f.Return }
+func (f Function4) GetReturn() *pgtypes.DoltgresType { return f.Return }
 
 // GetParameters implements the FunctionInterface interface.
-func (f Function4) GetParameters() []pgtypes.DoltgresType { return f.Parameters[:] }
+func (f Function4) GetParameters() []*pgtypes.DoltgresType { return f.Parameters[:] }
 
 // VariadicIndex implements the FunctionInterface interface.
 func (f Function4) VariadicIndex() int {

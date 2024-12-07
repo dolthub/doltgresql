@@ -18,6 +18,8 @@ import (
 	"fmt"
 	"strings"
 
+	pgtypes "github.com/dolthub/doltgresql/server/types"
+
 	"github.com/dolthub/go-mysql-server/sql"
 	"github.com/dolthub/go-mysql-server/sql/expression/function"
 )
@@ -65,6 +67,7 @@ func Initialize() {
 	}
 	initializedFunctions = true
 
+	pgtypes.LoadFunctionFromCatalog = getQuickFunctionForTypes
 	replaceGmsBuiltIns()
 	validateFunctions()
 	compileFunctions()

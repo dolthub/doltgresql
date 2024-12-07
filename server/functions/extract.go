@@ -45,10 +45,10 @@ var ErrUnitNotSupported = errors.NewKind("unit \"%s\" not supported for type %s"
 var extract_text_date = framework.Function2{
 	Name:               "extract",
 	Return:             pgtypes.Numeric,
-	Parameters:         [2]pgtypes.DoltgresType{pgtypes.Text, pgtypes.Date},
+	Parameters:         [2]*pgtypes.DoltgresType{pgtypes.Text, pgtypes.Date},
 	IsNonDeterministic: true,
 	Strict:             true,
-	Callable: func(ctx *sql.Context, _ [3]pgtypes.DoltgresType, val1, val2 any) (any, error) {
+	Callable: func(ctx *sql.Context, _ [3]*pgtypes.DoltgresType, val1, val2 any) (any, error) {
 		field := val1.(string)
 		dateVal := val2.(time.Time)
 		switch strings.ToLower(field) {
@@ -67,10 +67,10 @@ var extract_text_date = framework.Function2{
 var extract_text_time = framework.Function2{
 	Name:               "extract",
 	Return:             pgtypes.Numeric,
-	Parameters:         [2]pgtypes.DoltgresType{pgtypes.Text, pgtypes.Time},
+	Parameters:         [2]*pgtypes.DoltgresType{pgtypes.Text, pgtypes.Time},
 	IsNonDeterministic: true,
 	Strict:             true,
-	Callable: func(ctx *sql.Context, _ [3]pgtypes.DoltgresType, val1, val2 any) (any, error) {
+	Callable: func(ctx *sql.Context, _ [3]*pgtypes.DoltgresType, val1, val2 any) (any, error) {
 		field := val1.(string)
 		timeVal := val2.(time.Time)
 		switch strings.ToLower(field) {
@@ -88,10 +88,10 @@ var extract_text_time = framework.Function2{
 var extract_text_timetz = framework.Function2{
 	Name:               "extract",
 	Return:             pgtypes.Numeric,
-	Parameters:         [2]pgtypes.DoltgresType{pgtypes.Text, pgtypes.TimeTZ},
+	Parameters:         [2]*pgtypes.DoltgresType{pgtypes.Text, pgtypes.TimeTZ},
 	IsNonDeterministic: true,
 	Strict:             true,
-	Callable: func(ctx *sql.Context, _ [3]pgtypes.DoltgresType, val1, val2 any) (any, error) {
+	Callable: func(ctx *sql.Context, _ [3]*pgtypes.DoltgresType, val1, val2 any) (any, error) {
 		field := val1.(string)
 		timetzVal := val2.(time.Time)
 		_, currentOffset := timetzVal.Zone()
@@ -116,10 +116,10 @@ var extract_text_timetz = framework.Function2{
 var extract_text_timestamp = framework.Function2{
 	Name:               "extract",
 	Return:             pgtypes.Numeric,
-	Parameters:         [2]pgtypes.DoltgresType{pgtypes.Text, pgtypes.Timestamp},
+	Parameters:         [2]*pgtypes.DoltgresType{pgtypes.Text, pgtypes.Timestamp},
 	IsNonDeterministic: true,
 	Strict:             true,
-	Callable: func(ctx *sql.Context, _ [3]pgtypes.DoltgresType, val1, val2 any) (any, error) {
+	Callable: func(ctx *sql.Context, _ [3]*pgtypes.DoltgresType, val1, val2 any) (any, error) {
 		field := val1.(string)
 		tsVal := val2.(time.Time)
 		switch strings.ToLower(field) {
@@ -135,12 +135,12 @@ var extract_text_timestamp = framework.Function2{
 var extract_text_timestamptz = framework.Function2{
 	Name:               "extract",
 	Return:             pgtypes.Numeric,
-	Parameters:         [2]pgtypes.DoltgresType{pgtypes.Text, pgtypes.TimestampTZ},
+	Parameters:         [2]*pgtypes.DoltgresType{pgtypes.Text, pgtypes.TimestampTZ},
 	IsNonDeterministic: true,
 	Strict:             true,
-	Callable: func(ctx *sql.Context, _ [3]pgtypes.DoltgresType, val1, val2 any) (any, error) {
+	Callable: func(ctx *sql.Context, _ [3]*pgtypes.DoltgresType, val1, val2 any) (any, error) {
 		field := val1.(string)
-		loc, err := pgtypes.GetServerLocation(ctx)
+		loc, err := GetServerLocation(ctx)
 		if err != nil {
 			return nil, err
 		}
@@ -171,10 +171,10 @@ const (
 var extract_text_interval = framework.Function2{
 	Name:               "extract",
 	Return:             pgtypes.Numeric,
-	Parameters:         [2]pgtypes.DoltgresType{pgtypes.Text, pgtypes.Interval},
+	Parameters:         [2]*pgtypes.DoltgresType{pgtypes.Text, pgtypes.Interval},
 	IsNonDeterministic: true,
 	Strict:             true,
-	Callable: func(ctx *sql.Context, _ [3]pgtypes.DoltgresType, val1, val2 any) (any, error) {
+	Callable: func(ctx *sql.Context, _ [3]*pgtypes.DoltgresType, val1, val2 any) (any, error) {
 		field := val1.(string)
 		dur := val2.(duration.Duration)
 		switch strings.ToLower(field) {

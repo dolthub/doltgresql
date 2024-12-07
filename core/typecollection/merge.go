@@ -21,15 +21,14 @@ import (
 	"github.com/dolthub/doltgresql/server/types"
 )
 
-// Merge handles merging sequences on our root and their root.
+// Merge handles merging types on our root and their root.
 func Merge(ctx context.Context, ourCollection, theirCollection, ancCollection *TypeCollection) (*TypeCollection, error) {
 	mergedCollection := ourCollection.Clone()
-	err := theirCollection.IterateTypes(func(schema string, theirType *types.Type) error {
+	err := theirCollection.IterateTypes(func(schema string, theirType *types.DoltgresType) error {
 		// If we don't have the type, then we simply add it
 		mergedType, exists := mergedCollection.GetType(schema, theirType.Name)
 		if !exists {
-			newSeq := *theirType
-			return mergedCollection.CreateType(schema, &newSeq)
+			return mergedCollection.CreateType(schema, theirType)
 		}
 
 		// Different types with the same name cannot be merged. (e.g.: 'domain' type and 'base' type with the same name)

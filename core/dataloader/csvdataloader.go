@@ -32,7 +32,7 @@ type CsvDataLoader struct {
 	results       LoadDataResults
 	partialRecord string
 	rowInserter   sql.RowInserter
-	colTypes      []types.DoltgresType
+	colTypes      []*types.DoltgresType
 	sch           sql.Schema
 	removeHeader  bool
 	delimiter     string
@@ -69,7 +69,7 @@ func NewCsvDataLoader(ctx *sql.Context, table sql.InsertableTable, delimiter str
 
 // LoadChunk implements the DataLoader interface
 func (cdl *CsvDataLoader) LoadChunk(ctx *sql.Context, data *bufio.Reader) error {
-	combinedReader := newStringPrefixReader(cdl.partialRecord, data)
+	combinedReader := NewStringPrefixReader(cdl.partialRecord, data)
 	cdl.partialRecord = ""
 
 	reader, err := newCsvReaderWithDelimiter(combinedReader, cdl.delimiter)

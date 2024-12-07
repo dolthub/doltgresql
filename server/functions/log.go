@@ -36,9 +36,9 @@ func initLog() {
 var log_float64 = framework.Function1{
 	Name:       "log",
 	Return:     pgtypes.Float64,
-	Parameters: [1]pgtypes.DoltgresType{pgtypes.Float64},
+	Parameters: [1]*pgtypes.DoltgresType{pgtypes.Float64},
 	Strict:     true,
-	Callable: func(ctx *sql.Context, _ [2]pgtypes.DoltgresType, val1Interface any) (any, error) {
+	Callable: func(ctx *sql.Context, _ [2]*pgtypes.DoltgresType, val1Interface any) (any, error) {
 		val1 := val1Interface.(float64)
 		if val1 == 0 {
 			return nil, fmt.Errorf("cannot take logarithm of zero")
@@ -53,9 +53,9 @@ var log_float64 = framework.Function1{
 var log_numeric = framework.Function1{
 	Name:       "log",
 	Return:     pgtypes.Numeric,
-	Parameters: [1]pgtypes.DoltgresType{pgtypes.Numeric},
+	Parameters: [1]*pgtypes.DoltgresType{pgtypes.Numeric},
 	Strict:     true,
-	Callable: func(ctx *sql.Context, _ [2]pgtypes.DoltgresType, val1Interface any) (any, error) {
+	Callable: func(ctx *sql.Context, _ [2]*pgtypes.DoltgresType, val1Interface any) (any, error) {
 		if val1Interface == nil {
 			return nil, nil
 		}
@@ -75,9 +75,9 @@ var log_numeric = framework.Function1{
 var log_numeric_numeric = framework.Function2{
 	Name:       "log",
 	Return:     pgtypes.Numeric,
-	Parameters: [2]pgtypes.DoltgresType{pgtypes.Numeric, pgtypes.Numeric},
+	Parameters: [2]*pgtypes.DoltgresType{pgtypes.Numeric, pgtypes.Numeric},
 	Strict:     true,
-	Callable: func(ctx *sql.Context, _ [3]pgtypes.DoltgresType, val1Interface any, val2Interface any) (any, error) {
+	Callable: func(ctx *sql.Context, _ [3]*pgtypes.DoltgresType, val1Interface any, val2Interface any) (any, error) {
 		if val1Interface == nil || val2Interface == nil {
 			return nil, nil
 		}

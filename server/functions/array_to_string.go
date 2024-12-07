@@ -34,10 +34,10 @@ func initArrayToString() {
 var array_to_string_anyarray_text = framework.Function2{
 	Name:               "array_to_string",
 	Return:             pgtypes.Text,
-	Parameters:         [2]pgtypes.DoltgresType{pgtypes.AnyArray, pgtypes.Text},
+	Parameters:         [2]*pgtypes.DoltgresType{pgtypes.AnyArray, pgtypes.Text},
 	IsNonDeterministic: true,
 	Strict:             true,
-	Callable: func(ctx *sql.Context, paramsAndReturn [3]pgtypes.DoltgresType, val1, val2 any) (any, error) {
+	Callable: func(ctx *sql.Context, paramsAndReturn [3]*pgtypes.DoltgresType, val1, val2 any) (any, error) {
 		arr := val1.([]any)
 		delimiter := val2.(string)
 		return getStringArrFromAnyArray(ctx, paramsAndReturn[0], arr, delimiter, nil)
@@ -48,10 +48,10 @@ var array_to_string_anyarray_text = framework.Function2{
 var array_to_string_anyarray_text_text = framework.Function3{
 	Name:               "array_to_string",
 	Return:             pgtypes.Text,
-	Parameters:         [3]pgtypes.DoltgresType{pgtypes.AnyArray, pgtypes.Text, pgtypes.Text},
+	Parameters:         [3]*pgtypes.DoltgresType{pgtypes.AnyArray, pgtypes.Text, pgtypes.Text},
 	IsNonDeterministic: true,
 	Strict:             false,
-	Callable: func(ctx *sql.Context, paramsAndReturn [4]pgtypes.DoltgresType, val1, val2, val3 any) (any, error) {
+	Callable: func(ctx *sql.Context, paramsAndReturn [4]*pgtypes.DoltgresType, val1, val2, val3 any) (any, error) {
 		if val1 == nil {
 			return nil, fmt.Errorf("could not determine polymorphic type because input has type unknown")
 		} else if val2 == nil {
@@ -65,8 +65,8 @@ var array_to_string_anyarray_text_text = framework.Function3{
 
 // getStringArrFromAnyArray takes inputs of any array, delimiter and null entry replacement. It uses the IoOutput() of the
 // base type of the AnyArray type to get string representation of array elements.
-func getStringArrFromAnyArray(ctx *sql.Context, anyArrayType pgtypes.DoltgresType, arr []any, delimiter string, nullEntry any) (string, error) {
-	baseType := anyArrayType.ToArrayType().BaseType()
+func getStringArrFromAnyArray(ctx *sql.Context, arrType *pgtypes.DoltgresType, arr []any, delimiter string, nullEntry any) (string, error) {
+	baseType := arrType.ArrayBaseType()
 	strs := make([]string, 0)
 	for _, el := range arr {
 		if el != nil {

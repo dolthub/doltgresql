@@ -30,9 +30,9 @@ func initAscii() {
 var ascii_text = framework.Function1{
 	Name:       "ascii",
 	Return:     pgtypes.Int32,
-	Parameters: [1]pgtypes.DoltgresType{pgtypes.Text},
+	Parameters: [1]*pgtypes.DoltgresType{pgtypes.Text},
 	Strict:     true,
-	Callable: func(ctx *sql.Context, _ [2]pgtypes.DoltgresType, val1Interface any) (any, error) {
+	Callable: func(ctx *sql.Context, _ [2]*pgtypes.DoltgresType, val1Interface any) (any, error) {
 		val1 := val1Interface.(string)
 		if len(val1) == 0 {
 			return int32(0), nil
