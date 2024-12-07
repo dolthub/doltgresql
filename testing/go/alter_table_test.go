@@ -365,7 +365,7 @@ func TestAlterTable(t *testing.T) {
 			},
 		},
 		{
-			Name:  "Rename table",
+			Name: "Rename table",
 			SetUpScript: []string{
 				"create schema s1",
 				"create schema s2",
