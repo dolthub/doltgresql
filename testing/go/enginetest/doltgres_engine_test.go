@@ -61,21 +61,21 @@ func TestQueries(t *testing.T) {
 }
 
 func TestSingleWriteQuery(t *testing.T) {
-	t.Skip()
+	// t.Skip()
 	h := newDoltgresServerHarness(t)
 	defer h.Close()
 
-	h.Setup(setup.MydbData, setup.MytableData, setup.Mytable_del_idxData, setup.KeylessData, setup.Keyless_idxData, setup.NiltableData, setup.TypestableData, setup.EmptytableData, setup.AutoincrementData, setup.OthertableData, setup.Othertable_del_idxData)
+	h.Setup(setup.MydbData, setup.AutoincrementData)
 
 	test := queries.WriteQueryTest{
-		WriteQuery: `INSERT INTO emptytable (s,i) SELECT s,i from mytable where i = 1
-			union select s,i from mytable where i = 3
-			union select s,i from mytable where i > 2`,
-		ExpectedWriteResult: []sql.Row{{types.NewOkResult(2)}},
-		SelectQuery:         "SELECT * FROM emptytable ORDER BY i,s",
+		WriteQuery:          "INSERT INTO auto_increment_tbl (c0) values (44)",
+		ExpectedWriteResult: []sql.Row{{types.OkResult{RowsAffected: 1, InsertID: 4}}},
+		SelectQuery:         "SELECT * FROM auto_increment_tbl ORDER BY pk",
 		ExpectedSelect: []sql.Row{
-			{int64(1), "first row"},
-			{int64(3), "third row"},
+			{1, 11},
+			{2, 22},
+			{3, 33},
+			{4, 44},
 		},
 	}
 
@@ -171,22 +171,33 @@ func TestSingleScript(t *testing.T) {
 
 	var scripts = []queries.ScriptTest{
 		{
-			Name: "people tables",
+			Name: "strings vs decimals with trailing 0s in IN exprs",
 			SetUpScript: []string{
-				"CREATE TABLE `people` (   `dob` date NOT NULL," +
-					"   `first_name` varchar(20) NOT NULL," +
-					"   `last_name` varchar(20) NOT NULL," +
-					"   `middle_name` varchar(20) NOT NULL," +
-					"   `height_inches` bigint NOT NULL," +
-					"   `gender` bigint NOT NULL," +
-					"   PRIMARY KEY (`dob`,`first_name`,`last_name`,`middle_name`) )",
-				`insert into people values ('1970-12-1'::date, 'jon', 'smith', 'a', 72, 0)`,
+				"create table t (v varchar(100));",
+				"insert into t values ('0'), ('0.0'), ('123'), ('123.0');",
+				"create table t_idx (v varchar(100));",
+				"create index idx on t_idx(v);",
+				"insert into t_idx values ('0'), ('0.0'), ('123'), ('123.0');",
 			},
 			Assertions: []queries.ScriptTestAssertion{
 				{
-					Query: "select * from people order by dob",
+					Skip:  true,
+					Query: "select * from t where (v in (0.0, 123));",
 					Expected: []sql.Row{
-						{"1970-12-01", "jon", "smith", "a", int64(72), int64(0)},
+						{"0"},
+						{"0.0"},
+						{"123"},
+						{"123.0"},
+					},
+				},
+				{
+					Skip:  true,
+					Query: "select * from t_idx where (v in (0.0, 123));",
+					Expected: []sql.Row{
+						{"0"},
+						{"0.0"},
+						{"123"},
+						{"123.0"},
 					},
 				},
 			},
@@ -305,38 +316,19 @@ func TestAmbiguousColumnResolution(t *testing.T) {
 
 func TestInsertInto(t *testing.T) {
 	h := newDoltgresServerHarness(t).WithSkippedQueries([]string{
-		"INSERT INTO keyless VALUES ();",                                                                                                          // unsupported syntax
-		"INSERT INTO keyless () VALUES ();",                                                                                                       // unsupported syntax
-		"INSERT INTO mytable (s, i) VALUES ('x', '10.0');",                                                                                        // type mismatch
-		"INSERT INTO mytable (s, i) VALUES ('x', '64.6');",                                                                                        // type mismatch
-		"INSERT INTO mytable SET s = 'x', i = 999;",                                                                                               // unsupported syntax
-		"INSERT INTO mytable SET i = 999, s = 'x';",                                                                                               // unsupported syntax
-		`INSERT INTO mytable (i,s) SELECT i * 2, concat(s,s) from mytable order by 1 desc limit 1`,                                                // type error
-		"INSERT INTO mytable VALUES (999, _binary 'x');",                                                                                          // unsupported syntax
-		"INSERT INTO mytable SET i = 999, s = _binary 'x';",                                                                                       // unsupported syntax
-		"INSERT INTO mytable (i,s) values (1,'hi') ON DUPLICATE KEY UPDATE s=VALUES(s)",                                                           // unsupported syntax
-		"INSERT INTO mytable (s,i) values ('dup',1) ON DUPLICATE KEY UPDATE s=CONCAT(VALUES(s), 'licate')",                                        // unsupported syntax
-		"INSERT INTO mytable (i,s) values (1,'mar'), (2,'par') ON DUPLICATE KEY UPDATE s=CONCAT(VALUES(s), 'tial')",                               // bad translation
-		"INSERT INTO mytable (i,s) values (1,'maybe') ON DUPLICATE KEY UPDATE i=VALUES(i)+8000, s=VALUES(s)",                                      // unsupported syntax
 		`insert into keyless (c0, c1) select a.c0, a.c1 from (select 1, 1) as a(c0, c1) join keyless on a.c0 = keyless.c0`,                        // missing result element, needs investigation
+		`INSERT INTO mytable (i,s) SELECT i * 2, concat(s,s) from mytable order by 1 desc limit 1`,                                                // invalid type: bigint
 		"with t (i,f) as (select 4,'fourth row' from dual) insert into mytable select i,f from t",                                                 // WITH unsupported syntax
 		"with recursive t (i,f) as (select 4,4 from dual union all select i + 1, i + 1 from t where i < 5) insert into mytable select i,f from t", // WITH unsupported syntax
 		"issue 6675: on duplicate rearranged getfield indexes from select source",                                                                 // panic
 		"issue 4857: insert cte column alias with table alias qualify panic",                                                                      // WITH unsupported syntax
-		"sql_mode=NO_auto_value_ON_ZERO",                                                                                                          // unsupported
-		"explicit DEFAULT",                                                                                                                        // enum type unsupported
-		// "Try INSERT IGNORE with primary key, non null, and single row violations", // insert ignore not supported
-		"Insert on duplicate key references table in subquery",           // bad translation?
-		"Insert on duplicate key references table in aliased subquery",   // bad translation?
-		"Insert on duplicate key references table in cte",                // CTE not supported
-		"insert on duplicate key with incorrect row alias",               // column "c" could not be found in any table in scope
-		"insert on duplicate key update errors",                          // failing
-		"Insert on duplicate key references table in subquery with join", // untranslated
-		"INSERT INTO ... SELECT works properly with ENUM",                // enum unsupported
-		"INSERT INTO ... SELECT works properly with SET",                 // set unsupported
-		"INSERT INTO ... SELECT with TEXT types",                         // typecasts needed
-		"check IN TUPLE constraint with duplicate key update",            // error not being thrown
-		"INSERT IGNORE works with FK Violations",                         // ignore not supported
+		"Insert on duplicate key references table in subquery",                                                                                    // bad translation?
+		"Insert on duplicate key references table in aliased subquery",                                                                            // bad translation?
+		"Insert on duplicate key references table in cte",                                                                                         // CTE not supported
+		"insert on duplicate key with incorrect row alias",                                                                                        // column "c" could not be found in any table in scope
+		"insert on duplicate key update errors",                                                                                                   // failing
+		"Insert on duplicate key references table in subquery with join",                                                                          // untranslated
+		"INSERT INTO ... SELECT with TEXT types",                                                                                                  // typecasts needed
 	})
 	defer h.Close()
 	enginetest.TestInsertInto(t, h)
@@ -571,8 +563,87 @@ func TestConvertPrepared(t *testing.T) {
 }
 
 func TestScripts(t *testing.T) {
-	t.Skip()
-	h := newDoltgresServerHarness(t).WithSkippedQueries(newFormatSkippedScripts)
+	h := newDoltgresServerHarness(t).WithSkippedQueries([]string{
+		"filter pushdown through join uppercase name",             // syntax error (join without on)
+		"issue 7958, update join uppercase table name validation", // update join syntax not supported
+		"Dolt issue 7957, update join matched rows",               // update join syntax not supported
+		"update join with update trigger different value",         // update join syntax not supported
+		"update join with update trigger same value",              // update join syntax not supported
+		"update join with update trigger",                         // update join syntax not supported
+		"update join with update trigger if condition",            // update join syntax not supported
+		"missing indexes",                       // unsupported test harness setup
+		"table x intersect table y order by i;", // type coercion rules for unions among different schemas need to change for this to work, mysql is much more lenient
+		"table x intersect table y order by 1;", // type coercion rules for unions among different schemas need to change for this to work, mysql is much more lenient
+		"WITH RECURSIVE\n" +
+			"    rt (foo) AS (\n" +
+			"        SELECT 1 as foo\n" +
+			"        UNION ALL\n" +
+			"        SELECT foo + 1 as foo FROM rt WHERE foo < 5\n" +
+			"    ),\n" +
+			"        ladder (depth, foo) AS (\n" +
+			"        SELECT 1 as depth, NULL as foo from rt\n" +
+			"        UNION ALL\n" +
+			"        SELECT ladder.depth + 1 as depth, rt.foo\n" +
+			"        FROM ladder JOIN rt WHERE ladder.foo = rt.foo\n" +
+			"    )\n" +
+			"SELECT * FROM ladder;", // syntax error
+		"with recursive cte as ((select * from xy order by y asc limit 1 offset 1) union (select * from xy order by y asc limit 1 offset 2)) select * from cte", // invalid type: bigint
+		"CrossDB Queries", // needs harness work to properly qualify the names
+		"SELECT rand(10) FROM tab1 GROUP BY tab1.col1", // different rand() behavior
+		"Nested Subquery projections (NTC)",            // ERROR: blob/text column 'id' used in key specification without a key length
+		"CREATE TABLE SELECT Queries",                  // ERROR: TableCopier only accepts CreateTable or TableNode as the destination
+		// "Simple Update Join test that manipulates two tables",
+		// "Partial indexes are used and return the expected result",
+		// "Multiple indexes on the same columns in a different order",
+		"Ensure proper DECIMAL support (found by fuzzer)", // unsupported type: SET
+		// "Ensure scale is not rounded when inserting to DECIMAL type through float64",
+		"Show create table with various keys and constraints",                                                     // error in harness query converter
+		"show create table with duplicate primary key",                                                            // error in harness query converter
+		"recreate primary key rebuilds secondary indexes",                                                         // currently no way to drop primary key in doltgres
+		"Handle hex number to binary conversion",                                                                  // ERROR: can't convert 0x7ED0599B to decimal: exponent is not numeric
+		"join index lookups do not handle filters",                                                                // need a different join syntax (no ON clause not supported in postgres)
+		"select count(*) from numbers group by val having count(*) < val;",                                        // ERROR: unable to find field with index 1 in row of 1 columns
+		"using having and group by clauses in subquery ",                                                          // lots of index errors, something very broken
+		"can't create view with same name as existing table",                                                      // error message wrong
+		"arithmetic bit operations on int, float and decimal types",                                               // the power operator is not yet supported
+		"INSERT IGNORE throws an error when json is badly formatted",                                              // error messages don't match
+		"identical expressions over different windows should produce different results",                           // ERROR: integer: unhandled type: float64
+		"windows without ORDER BY should be treated as RANGE BETWEEN UNBOUNDED PRECEDING AND UNBOUNDED FOLLOWING", // ERROR: integer: unhandled type: float64
+		"decimal literals should be parsed correctly",                                                             // ERROR: text: unhandled type: decimal.Decimal (error in harness)
+		"division and int division operation on negative, small and big value for decimal type column of table",   // numeric keys broken
+		"different cases of function name should result in the same outcome",                                      // ERROR: blob/text column 'b' used in key specification without a key length
+		"Multi-db Aliasing",                                                                  // need harness support for qualified table names
+		"Complex Filter Index Scan #2",                                                       // panic in index lookup, needs investigation
+		"Complex Filter Index Scan #3",                                                       // panic in index lookup, needs investigation
+		"update columns with default",                                                        // broken, see repro in update_test.go
+		"select * from t0 where i > 0.1 or i >= 0.1 order by i;",                             // incorrect result, needs a fix
+		"int secondary index with float filter",                                              // panic
+		"select count(*) from t where (f in (null, cast(0.8 as float)));",                    // incorrect result, needs a fix
+		"update with left join with some missing rows",                                       // need to translate update joins
+		"SELECT - col2 AS col0 FROM tab2 GROUP BY col0, col2 HAVING NOT + + col2 <= - col0;", // incorrect result
+		"SELECT -col2 AS col0 FROM tab2 GROUP BY col0, col2 HAVING NOT col2 <= - col0;",      // incorrect result
+		"SELECT -col2 AS col0 FROM tab2 GROUP BY col0, col2 HAVING col2 > -col0;",            // incorrect result
+		"select col2-100 as col0 from tab2 group by col0 having col0 > 0;",                   // incorrect result
+		"complicated range tree",                                                             // panic in index lookup, needs investigation
+		"preserve now()",                                                                     // harness error
+		"binary type primary key",                                                            // ERROR: blob/text column 'b' used in key specification without a key length
+		"varbinary primary key",                                                              // ERROR: blob/text column 'b' used in key specification without a key length
+		"insert into t1 (a, b) values ('1234567890', '12345')",                               // different error message
+		"insert into t2 (a, b) values ('1234567890', '12345')",                               // different error message
+		"invalid utf8 encoding strings",                                                      // need to investigate why some strings aren't giving errors, might be a harness error
+		"mismatched collation using hash in tuples",                                          // ERROR: plan is not resolved because of node '*plan.Project'
+		"validate_password_strength and validate_password.length",                            // unsupported
+		"validate_password_strength and validate_password.number_count",                      // unsupported
+		"validate_password_strength and validate_password.mixed_case_count",                  // unsupported
+		"validate_password_strength and validate_password.special_char_count",                // unsupported
+		"preserve enums through alter statements",                                            // enum types unsupported
+		"coalesce with system types",                                                         // unsupported
+		"multi enum return types",                                                            // enum types unsupported
+		"enum cast to int and string",                                                        // enum types unsupported
+		"select * from vt where v = cast('def' as char(6));",                                 // incorrect result
+		"select * from vt where v < cast('def' as char(6));",                                 // incorrect result
+		"select * from vt where v >= cast('def' as char(6));",                                // incorrect result
+	})
 	defer h.Close()
 	enginetest.TestScripts(t, h)
 }
@@ -1201,6 +1272,9 @@ func TestDoltMerge(t *testing.T) {
 		"merge with decimal 1.23 column default",                      // alter table
 		"merge with different types",                                  // alter table
 		"select * from dolt_status",                                   // table_name column includes schema name,
+		"dolt_merge() (3way) works with no auto increment overlap",    // sequencing doesn't work globally after merge, need to decide product behavior
+		"dolt_merge() (3way) with a gap in an auto increment key",     // sequencing doesn't work globally after merge, need to decide product behavior
+		"dolt_merge() with a gap in an auto increment key",            // unsupported insert statements (need to call next_val, not insert NULL)
 	})
 	denginetest.RunDoltMergeTests(t, h)
 }
@@ -1745,9 +1819,8 @@ func TestDeleteQueriesPrepared(t *testing.T) {
 
 func TestScriptsPrepared(t *testing.T) {
 	t.Skip()
-	skipped := newFormatSkippedScripts
 	skipPreparedTests(t)
-	h := newDoltgresServerHarness(t).WithSkippedQueries(skipped)
+	h := newDoltgresServerHarness(t)
 	defer h.Close()
 	enginetest.TestScriptsPrepared(t, h)
 }
@@ -1932,12 +2005,6 @@ func TestCreateDatabaseErrorCleansUp(t *testing.T) {
 // todo: the dolt_stat functions should be concurrency tested
 func TestStatsAutoRefreshConcurrency(t *testing.T) {
 	t.Skip("port test from Dolt")
-}
-
-var newFormatSkippedScripts = []string{
-	// Different query plans
-	"Partial indexes are used and return the expected result",
-	"Multiple indexes on the same columns in a different order",
 }
 
 func skipPreparedTests(t *testing.T) {
