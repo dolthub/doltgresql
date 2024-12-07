@@ -640,6 +640,9 @@ func TestScripts(t *testing.T) {
 		"coalesce with system types",                                                         // unsupported
 		"multi enum return types",                                                            // enum types unsupported
 		"enum cast to int and string",                                                        // enum types unsupported
+		"select * from vt where v = cast('def' as char(6));",                                 // incorrect result
+		"select * from vt where v < cast('def' as char(6));",                                 // incorrect result
+		"select * from vt where v >= cast('def' as char(6));",                                // incorrect result
 	})
 	defer h.Close()
 	enginetest.TestScripts(t, h)
