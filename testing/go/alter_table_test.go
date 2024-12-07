@@ -364,5 +364,58 @@ func TestAlterTable(t *testing.T) {
 				},
 			},
 		},
+		{
+			Name: "Rename table",
+			SetUpScript: []string{
+				"create schema s1",
+				"create schema s2",
+				"CREATE TABLE t1 (a INT, b INT);",
+				"INSERT INTO t1 VALUES (1, 2);",
+				"CREATE TABLE t2 (c INT, d INT);",
+				"INSERT INTO t2 VALUES (3, 4);",
+				"create table s1.t1 (e INT, f INT);",
+				"INSERT INTO s1.t1 VALUES (5, 6);",
+			},
+			Assertions: []ScriptTestAssertion{
+				{
+					Query:       "ALTER TABLE doesnotexist RENAME TO t3;",
+					ExpectedErr: "not found",
+				},
+				{
+					Query: "ALTER TABLE t1 RENAME TO t3;",
+				},
+				{
+					Query: "SELECT * FROM t3;",
+					Expected: []sql.Row{
+						{1, 2},
+					},
+				},
+				{
+					Query: "SELECT * FROM public.t3;",
+					Expected: []sql.Row{
+						{1, 2},
+					},
+				},
+				{
+					Query:       "SELECT * FROM t1;",
+					ExpectedErr: "not found",
+				},
+				{
+					Query:       "ALTER TABLE t3 RENAME TO t2;",
+					ExpectedErr: "already exists",
+				},
+				{
+					Query: "ALTER TABLE s1.t1 RENAME TO t4;",
+					Skip:  true, // schema names not supported yet
+				},
+				{
+					Query: "SELECT * FROM s1.t4;",
+					Expected: []sql.Row{
+						{5, 6},
+					},
+					Skip: true, // schema names not supported yet
+				},
+			},
+		},
 	})
 }

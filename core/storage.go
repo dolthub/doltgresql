@@ -231,7 +231,7 @@ func (r rootStorage) EditTablesMap(ctx context.Context, vrw types.ValueReadWrite
 	ae := am.Editor()
 	for _, e := range edits {
 		if e.old_name.Name != "" {
-			oldaddr, err := am.Get(ctx, e.old_name.Name)
+			oldaddr, err := am.Get(ctx, encodeTableNameForAddressMap(e.old_name))
 			if err != nil {
 				return rootStorage{}, err
 			}
@@ -245,7 +245,7 @@ func (r rootStorage) EditTablesMap(ctx context.Context, vrw types.ValueReadWrite
 			if !newaddr.IsEmpty() {
 				return rootStorage{}, doltdb.ErrTableExists
 			}
-			err = ae.Delete(ctx, e.old_name.Name)
+			err = ae.Delete(ctx, encodeTableNameForAddressMap(e.old_name))
 			if err != nil {
 				return rootStorage{}, err
 			}

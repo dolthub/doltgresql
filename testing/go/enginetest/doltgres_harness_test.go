@@ -62,6 +62,7 @@ type DoltgresHarness struct {
 var _ denginetest.DoltEnginetestHarness = &DoltgresHarness{}
 var _ enginetest.SkippingHarness = &DoltgresHarness{}
 var _ enginetest.ResultEvaluationHarness = &DoltgresHarness{}
+var _ enginetest.DialectHarness = &DoltgresHarness{}
 
 func (d *DoltgresHarness) ValidateEngine(ctx *sql.Context, e *gms.Engine) error {
 	// TODO
@@ -70,6 +71,10 @@ func (d *DoltgresHarness) ValidateEngine(ctx *sql.Context, e *gms.Engine) error 
 
 func (d *DoltgresHarness) UseLocalFileSystem() {
 	d.useLocalFilesystem = true
+}
+
+func (d *DoltgresHarness) Dialect() string {
+	return "postgres"
 }
 
 func (d *DoltgresHarness) Session() *dsess.DoltSession {
@@ -207,9 +212,6 @@ func commitScripts(dbs []string) []setup.SetupScript {
 }
 
 var skippedSetupWords = []string{
-	"auto_increment",
-	"y_idx",
-	"xy_hasnull_idx",
 	"typestable",     // lots of work to do
 	"datetime_table", // invalid timestamp format
 	"foo.othertable", // ERROR: database schema not found: foo (errno 1105)
@@ -546,6 +548,7 @@ func (d *DoltgresHarness) EvaluateExpectedErrorKind(t *testing.T, expected *erro
 	pattern := strings.ReplaceAll(expected.Message, "*", "\\*")
 	pattern = strings.ReplaceAll(pattern, "(", "\\(")
 	pattern = strings.ReplaceAll(pattern, ")", "\\)")
+	pattern = strings.ReplaceAll(pattern, "%d", "\\d+")
 	pattern = strings.ReplaceAll(pattern, "%s", ".+")
 	pattern = strings.ReplaceAll(pattern, "%q", "\".+\"")
 	pattern = strings.ReplaceAll(pattern, "%v", ".+?")
@@ -702,9 +705,13 @@ func getDmlResult(rows pgx.Rows) (sql.Row, bool) {
 		return sql.NewRow(gmstypes.NewOkResult(int(tag.RowsAffected()))), true
 	case tag.Delete():
 		return sql.NewRow(gmstypes.NewOkResult(int(tag.RowsAffected()))), true
+	case strings.HasPrefix(tag.String(), "RENAME TABLE"):
+		return sql.NewRow(gmstypes.NewOkResult(0)), true
 	case strings.HasPrefix(tag.String(), "DROP TABLE"):
 		return sql.NewRow(gmstypes.NewOkResult(0)), true
 	case strings.HasPrefix(tag.String(), "CREATE TABLE"):
+		return sql.NewRow(gmstypes.NewOkResult(0)), true
+	case strings.HasPrefix(tag.String(), "ALTER TABLE"):
 		return sql.NewRow(gmstypes.NewOkResult(0)), true
 	case strings.HasPrefix(tag.String(), "TRUNCATE"):
 		return sql.NewRow(gmstypes.NewOkResult(0)), true
@@ -788,8 +795,11 @@ func unwrapResultColumn(v any) (any, error) {
 func (d *DoltgresQueryEngine) EngineAnalyzer() *analyzer.Analyzer {
 	// TODO: this is a shim to get simple tests to work, we need to restructure the tests to not require access to
 	//  an analyzer
+	catalog := &analyzer.Catalog{}
+	catalog.AuthHandler = sql.GetAuthorizationHandlerFactory().CreateHandler(catalog)
+
 	return &analyzer.Analyzer{
-		Catalog: &analyzer.Catalog{},
+		Catalog: catalog,
 	}
 }
 
@@ -856,6 +866,10 @@ func columns(rows pgx.Rows) (sql.Schema, []interface{}, error) {
 			colVal := gosql.NullString{}
 			columnVals = append(columnVals, &colVal)
 			schema = append(schema, &sql.Column{Name: field.Name, Type: gmstypes.JSON, Nullable: true})
+		case uint32(oid.T_unknown): // TODO: this should not be returned
+			colVal := gosql.NullString{}
+			columnVals = append(columnVals, &colVal)
+			schema = append(schema, &sql.Column{Name: field.Name, Type: gmstypes.MustCreateBinary(sqltypes.Binary, 100), Nullable: true})
 		default:
 			return nil, nil, fmt.Errorf("Unhandled OID %d", field.DataTypeOID)
 		}
