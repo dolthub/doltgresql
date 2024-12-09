@@ -17,7 +17,11 @@ package types
 import (
 	"github.com/dolthub/go-mysql-server/sql"
 	"github.com/lib/pq/oid"
+	"gopkg.in/src-d/go-errors.v1"
 )
+
+// ErrInvalidInputValueForEnum is returned when the input value does not match given enum type's labels.
+var ErrInvalidInputValueForEnum = errors.NewKind(`invalid input value for enum %s: "%s"`)
 
 // NewEnumType creates new instance of enum DoltgresType.
 func NewEnumType(ctx *sql.Context, schema, name, owner string, arrayOid, typOid uint32, labels map[string]EnumLabel) *DoltgresType {

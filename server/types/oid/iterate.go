@@ -148,6 +148,7 @@ func IterateDatabase(ctx *sql.Context, database string, callbacks Callbacks) err
 		}
 	}
 	if callbacks.Type != nil {
+		// TODO: user-defined types
 		if err := iterateTypes(ctx, callbacks); err != nil {
 			return err
 		}

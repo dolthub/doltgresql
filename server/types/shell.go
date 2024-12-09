@@ -17,7 +17,11 @@ package types
 import (
 	"github.com/dolthub/go-mysql-server/sql"
 	"github.com/lib/pq/oid"
+	"gopkg.in/src-d/go-errors.v1"
 )
+
+// ErrTypeIsOnlyAShell is returned when given shell type is attempted to be used.
+var ErrTypeIsOnlyAShell = errors.NewKind(`type "%s" is only a shell`)
 
 // NewShellType creates new instance of shell DoltgresType.
 func NewShellType(ctx *sql.Context, schema, name, owner string, typOid uint32) *DoltgresType {

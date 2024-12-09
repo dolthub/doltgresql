@@ -16,12 +16,12 @@ package functions
 
 import (
 	"fmt"
-	"github.com/dolthub/go-mysql-server/sql"
 
-	"github.com/dolthub/doltgresql/utils"
+	"github.com/dolthub/go-mysql-server/sql"
 
 	"github.com/dolthub/doltgresql/server/functions/framework"
 	pgtypes "github.com/dolthub/doltgresql/server/types"
+	"github.com/dolthub/doltgresql/utils"
 )
 
 // initEnum registers the functions to the catalog.
@@ -123,11 +123,11 @@ var enum_cmp = framework.Function2{
 		}
 		abLabel, ok := enumType.EnumLabels[ab]
 		if !ok {
-			return nil, fmt.Errorf(`invalid input value for enum my_enum: %s`, ab)
+			return nil, pgtypes.ErrInvalidInputValueForEnum.New(enumType.Name, ab)
 		}
 		bbLabel, ok := enumType.EnumLabels[bb]
 		if !ok {
-			return nil, fmt.Errorf(`invalid input value for enum my_enum: %s`, bb)
+			return nil, pgtypes.ErrInvalidInputValueForEnum.New(enumType.Name, bb)
 		}
 		if abLabel.SortOrder == bbLabel.SortOrder {
 			return int32(0), nil

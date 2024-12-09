@@ -3246,7 +3246,6 @@ func TestEnumTypes(t *testing.T) {
 
 var enumTypeTests = []ScriptTest{
 	{
-		Skip: true,
 		Name: "create enum type",
 		Assertions: []ScriptTestAssertion{
 			{
@@ -3297,7 +3296,24 @@ var enumTypeTests = []ScriptTest{
 	},
 	{
 		Skip: true,
-		Name: "create enum type",
+		Name: "enum type cast",
+		SetUpScript: []string{
+			`CREATE TYPE mood AS ENUM ('sad', 'ok', 'happy')`,
+		},
+		Assertions: []ScriptTestAssertion{
+			{
+				Query:    `select 'sad'::mood`,
+				Expected: []sql.Row{{"sad"}},
+			},
+			{
+				Query:       `select 'invalid'::mood`,
+				ExpectedErr: `invalid input value for enum mood: "invalid"`,
+			},
+		},
+	},
+	{
+		Skip: true,
+		Name: "enum type function",
 		SetUpScript: []string{
 			`CREATE TYPE mood AS ENUM ('sad', 'ok', 'happy')`,
 		},
@@ -3309,5 +3325,22 @@ var enumTypeTests = []ScriptTest{
 			},
 		},
 	},
-	//
+}
+
+func TestShellTypes(t *testing.T) {
+	RunScripts(t, []ScriptTest{
+		{
+			Name: "shell type use cases",
+			Assertions: []ScriptTestAssertion{
+				{
+					Query:    `CREATE TYPE undefined_type;`,
+					Expected: []sql.Row{},
+				},
+				{
+					Query:       `select 1::undefined_type;`,
+					ExpectedErr: `type "undefined_type" is only a shell`,
+				},
+			},
+		},
+	})
 }

@@ -149,7 +149,7 @@ func (t *DoltgresType) Compare(v1 interface{}, v2 interface{}) (int, error) {
 	}
 
 	if t.TypType == TypeType_Enum {
-		// TODO: temporary solution to getting the enum type into the 'enum_cmp' function
+		// TODO: temporary solution to getting the enum type (which has label info) into the 'enum_cmp' function
 		qf := globalFunctionRegistry.GetFunction(t.CompareFunc)
 		resTypes := qf.ResolvedTypes()
 		newFunc := qf.WithResolvedTypes([]*DoltgresType{t, t, resTypes[len(resTypes)-1]})
