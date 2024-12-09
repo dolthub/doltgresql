@@ -56,8 +56,6 @@ const (
 	DefaultLogLevel                   = LogLevel_Info
 	DefaultDoltTransactionCommit      = false
 	DefaultMaxConnections             = 100
-	DefaultQueryParallelism           = 0
-	DefaultPersistenceBahavior        = LoadPerisistentGlobals
 	DefaultDataDir                    = "."
 	DefaultCfgDir                     = ".doltcfg"
 	DefaultPrivilegeFilePath          = "privileges.db"
@@ -75,11 +73,6 @@ const DOLTGRES_DATA_DIR = "DOLTGRES_DATA_DIR"
 
 // DOLTGRES_DATA_DIR_DEFAULT is the portion to append to the user's home directory if DOLTGRES_DATA_DIR has not been specified
 const DOLTGRES_DATA_DIR_DEFAULT = "doltgres/databases"
-
-const (
-	IgnorePeristentGlobals = "ignore"
-	LoadPerisistentGlobals = "load"
-)
 
 var ConfigHelp = "Supported fields in the config.yaml file, and their default values, " +
 	"are as follows:\n\n" + DefaultServerConfig().String()
@@ -295,14 +288,6 @@ func (cfg *DoltgresConfig) MaxConnections() uint64 {
 	return 0
 }
 
-func (cfg *DoltgresConfig) QueryParallelism() int {
-	if cfg.PerformanceConfig == nil || cfg.PerformanceConfig.QueryParallelism == nil {
-		return 1
-	}
-
-	return *cfg.PerformanceConfig.QueryParallelism
-}
-
 func (cfg *DoltgresConfig) TLSKey() string {
 	if cfg.ListenerConfig == nil || cfg.ListenerConfig.TLSKey == nil {
 		return ""
@@ -341,10 +326,6 @@ func (cfg *DoltgresConfig) ShouldEncodeLoggedQuery() bool {
 	}
 
 	return *cfg.EncodeLoggedQuery
-}
-
-func (cfg *DoltgresConfig) PersistenceBehavior() string {
-	return "load"
 }
 
 func (cfg *DoltgresConfig) DisableClientMultiStatements() bool {
@@ -505,7 +486,6 @@ func DefaultServerConfig() *DoltgresConfig {
 			WriteTimeoutMillis:      Ptr(uint64(DefaultTimeout)),
 			AllowCleartextPasswords: Ptr(DefaultAllowCleartextPasswords),
 		},
-		PerformanceConfig: &DoltgresPerformanceConfig{QueryParallelism: Ptr(DefaultQueryParallelism)},
 
 		DataDirStr:        Ptr(dataDir),
 		CfgDirStr:         Ptr(filepath.Join(DefaultDataDir, DefaultCfgDir)),
