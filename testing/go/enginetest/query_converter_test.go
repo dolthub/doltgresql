@@ -12,6 +12,7 @@ import (
 	"github.com/lib/pq/oid"
 	"github.com/stretchr/testify/require"
 
+	"github.com/dolthub/doltgresql/postgres/parser/parser"
 	"github.com/dolthub/doltgresql/postgres/parser/sem/tree"
 	"github.com/dolthub/doltgresql/postgres/parser/types"
 )
@@ -35,10 +36,13 @@ func transformAST(query string) ([]string, bool) {
 
 	switch stmt := stmt.(type) {
 	case *sqlparser.DDL:
-		if stmt.Action == "create" {
+		switch stmt.Action {
+		case "create":
 			return transformCreateTable(stmt)
-		} else if stmt.Action == "drop" {
+		case "drop":
 			return transformDrop(query, stmt)
+		case "rename":
+			return transformRename(stmt)
 		}
 	case *sqlparser.Set:
 		return transformSet(stmt)
@@ -53,10 +57,21 @@ func transformAST(query string) ([]string, bool) {
 	return nil, false
 }
 
+func transformRename(stmt *sqlparser.DDL) ([]string, bool) {
+	rename := &tree.RenameTable{
+		Name:    TableNameToUnresolvedObjectName(stmt.FromTables[0]),
+		NewName: TableNameToUnresolvedObjectName(stmt.ToTables[0]),
+	}
+
+	ctx := formatNodeWithUnqualifiedTableNames(rename)
+	return []string{ctx.String()}, true
+}
+
 func transformInsert(stmt *sqlparser.Insert) ([]string, bool) {
 	// only bother translating inserts if there's an ON DUPLICATE KEY UPDATE clause, maybe revisit this later
+	table := stmt.Table
 	if len(stmt.OnDup) > 0 {
-		tableName := tree.NewTableName(tree.Name(stmt.Table.DbQualifier.String()), tree.Name(stmt.Table.Name.String()))
+		tableName := translateTableName(table)
 
 		var colList tree.NameList
 		if len(stmt.Columns) > 0 {
@@ -84,7 +99,7 @@ func transformInsert(stmt *sqlparser.Insert) ([]string, bool) {
 		ctx := formatNodeWithUnqualifiedTableNames(&insert)
 		return []string{ctx.String()}, true
 	} else if stmt.Ignore == "ignore " {
-		tableName := tree.NewTableName(tree.Name(stmt.Table.DbQualifier.String()), tree.Name(stmt.Table.Name.String()))
+		tableName := tree.NewTableName(tree.Name(table.DbQualifier.String()), tree.Name(table.Name.String()))
 
 		var colList tree.NameList
 		if len(stmt.Columns) > 0 {
@@ -114,6 +129,22 @@ func transformInsert(stmt *sqlparser.Insert) ([]string, bool) {
 	}
 
 	return nil, false
+}
+
+func translateTableName(table sqlparser.TableName) *tree.TableName {
+	return tree.NewTableName(tree.Name(table.DbQualifier.String()), tree.Name(table.Name.String()))
+}
+
+func TableNameToUnresolvedObjectName(table sqlparser.TableName) *tree.UnresolvedObjectName {
+	if !table.DbQualifier.IsEmpty() {
+		panic(fmt.Sprintf("unhandled case: db qualifier present %v", table))
+	}
+
+	name, err := tree.NewUnresolvedObjectName(1, [3]string{table.Name.String(), "", ""}, 0)
+	if err != nil {
+		panic(err)
+	}
+	return name
 }
 
 func convertUpdateExprs(exprs sqlparser.AssignmentExprs) tree.UpdateExprs {
@@ -307,7 +338,7 @@ func convertFuncExpr(val *sqlparser.FuncExpr) tree.Expr {
 		Func: tree.ResolvableFunctionReference{
 			FunctionReference: fnName,
 		},
-		Exprs: nil,
+		Exprs: exprs,
 	}
 }
 
@@ -354,9 +385,23 @@ func convertExpr(expr sqlparser.Expr) tree.Expr {
 		return convertComparisonExpr(val)
 	case *sqlparser.Subquery:
 		return convertSubquery(val)
+	case *sqlparser.ParenExpr:
+		return convertExpr(val.Expr)
+	case sqlparser.ValTuple:
+		return convertValTuple(val)
+	case *sqlparser.NullVal:
+		return tree.DNull
 	default:
 		panic(fmt.Sprintf("unhandled type: %T", val))
 	}
+}
+
+func convertValTuple(val sqlparser.ValTuple) tree.Expr {
+	exprs := make([]tree.Expr, len(val))
+	for i, expr := range val {
+		exprs[i] = convertExpr(expr)
+	}
+	return &tree.Tuple{Exprs: exprs}
 }
 
 func convertSubquery(val *sqlparser.Subquery) tree.Expr {
@@ -470,6 +515,7 @@ func convertSQLVal(val *sqlparser.SQLVal) tree.Expr {
 }
 
 func transformDrop(query string, stmt *sqlparser.DDL) ([]string, bool) {
+	// TODO
 	return nil, false
 }
 
@@ -557,11 +603,15 @@ func convertDdlStatement(statement *sqlparser.DDL) ([]string, bool) {
 			switch statement.IndexSpec.Action {
 			case "drop":
 				tableName := tree.NewTableName(tree.Name(""), tree.Name(statement.Table.Name.String()))
+				indexName := statement.IndexSpec.ToName.String()
+				if statement.IndexSpec.Type == "primary" {
+					indexName = "PRIMARY"
+				}
 				dropIndex := tree.DropIndex{
 					IndexList: tree.TableIndexNames{
 						{
 							Table: *tableName,
-							Index: tree.UnrestrictedName(statement.IndexSpec.ToName.String()),
+							Index: tree.UnrestrictedName(indexName),
 						},
 					},
 				}
@@ -713,6 +763,8 @@ func PostgresNodeFormatter(buf *sqlparser.TrackedBuffer, node sqlparser.SQLNode)
 	}
 }
 
+var sequenceNum int
+
 func transformCreateTable(stmt *sqlparser.DDL) ([]string, bool) {
 	if stmt.TableSpec == nil {
 		return nil, false
@@ -724,7 +776,20 @@ func transformCreateTable(stmt *sqlparser.DDL) ([]string, bool) {
 	}
 
 	var queries []string
+	var autoIncColumn string
 	for _, col := range stmt.TableSpec.Columns {
+		defVal := convertExpr(col.Type.Default)
+
+		if col.Type.Autoincrement {
+			autoIncColumn = col.Name.String()
+			defVal = &tree.FuncExpr{
+				Func: tree.WrapFunction("nextval"),
+				Exprs: []tree.Expr{
+					tree.NewStrVal(fmt.Sprintf("seq_%d", sequenceNum)),
+				},
+			}
+		}
+
 		createTable.Defs = append(createTable.Defs, &tree.ColumnTableDef{
 			Name:      tree.Name(col.Name.String()),
 			Type:      convertTypeDef(col.Type),
@@ -746,7 +811,7 @@ func transformCreateTable(stmt *sqlparser.DDL) ([]string, bool) {
 				Expr           tree.Expr
 				ConstraintName tree.Name
 			}{
-				Expr:           convertExpr(col.Type.Default),
+				Expr:           defVal,
 				ConstraintName: "", // TODO
 			},
 			CheckExprs: nil, // TODO
@@ -777,6 +842,11 @@ func transformCreateTable(stmt *sqlparser.DDL) ([]string, bool) {
 
 			createTable.Defs = append(createTable.Defs, indexDef)
 		}
+	}
+
+	if autoIncColumn != "" {
+		queries = append(queries, fmt.Sprintf("CREATE SEQUENCE seq_%d", sequenceNum))
+		sequenceNum++
 	}
 
 	ctx := formatNodeWithUnqualifiedTableNames(&createTable)
@@ -814,7 +884,107 @@ func transformCreateTable(stmt *sqlparser.DDL) ([]string, bool) {
 		}
 	}
 
+	// convert constraints into separate statements as well
+	for _, c := range stmt.TableSpec.Constraints {
+		switch c := c.Details.(type) {
+		case *sqlparser.ForeignKeyDefinition:
+			queries = append(queries, createForeignKeyStatement(createTable.Table, c))
+		case *sqlparser.CheckConstraintDefinition:
+			queries = append(queries, createCheckConstraintStatement(createTable.Table, c))
+		default:
+			// do nothing, unsupported
+		}
+	}
+
 	return queries, true
+}
+
+func createCheckConstraintStatement(table tree.TableName, c *sqlparser.CheckConstraintDefinition) string {
+	name, err := tree.NewUnresolvedObjectName(1, [3]string{table.Table(), "", ""}, 0)
+	if err != nil {
+		panic(err)
+	}
+
+	alter := tree.AlterTable{
+		Table: name,
+	}
+
+	alter.Cmds = append(alter.Cmds, &tree.AlterTableAddConstraint{
+		ConstraintDef: &tree.CheckConstraintTableDef{
+			Expr: convertExpr(c.Expr),
+		},
+	})
+
+	ctx := formatNodeWithUnqualifiedTableNames(&alter)
+	return ctx.String()
+}
+
+func createForeignKeyStatement(table tree.TableName, c *sqlparser.ForeignKeyDefinition) string {
+	name, err := tree.NewUnresolvedObjectName(1, [3]string{table.Table(), "", ""}, 0)
+	if err != nil {
+		panic(err)
+	}
+
+	alter := tree.AlterTable{
+		Table: name,
+	}
+
+	var fromCols, toCols tree.NameList
+	for _, col := range c.Source {
+		fromCols = append(fromCols, tree.Name(col.String()))
+	}
+	for _, col := range c.ReferencedColumns {
+		toCols = append(toCols, tree.Name(col.String()))
+	}
+
+	onDelete := translateRefAction(c.OnDelete)
+	onUpdate := translateRefAction(c.OnUpdate)
+
+	alter.Cmds = append(alter.Cmds, &tree.AlterTableAddConstraint{
+		ConstraintDef: &tree.ForeignKeyConstraintTableDef{
+			FromCols: fromCols,
+			Table:    tree.MakeTableName(tree.Name(""), tree.Name(c.ReferencedTable.Name.String())),
+			ToCols:   toCols,
+			Actions: tree.ReferenceActions{
+				Delete: onDelete,
+				Update: onUpdate,
+			},
+		},
+	})
+
+	ctx := formatNodeWithUnqualifiedTableNames(&alter)
+	return ctx.String()
+}
+
+func translateRefAction(action sqlparser.ReferenceAction) tree.RefAction {
+	switch action {
+	case sqlparser.Cascade:
+		return tree.RefAction{
+			Action: tree.Cascade,
+		}
+	case sqlparser.SetNull:
+		return tree.RefAction{
+			Action: tree.SetNull,
+		}
+	case sqlparser.NoAction:
+		return tree.RefAction{
+			Action: tree.NoAction,
+		}
+	case sqlparser.Restrict:
+		return tree.RefAction{
+			Action: tree.Restrict,
+		}
+	case sqlparser.SetDefault:
+		return tree.RefAction{
+			Action: tree.SetDefault,
+		}
+	case sqlparser.DefaultAction:
+		return tree.RefAction{
+			Action: tree.Restrict, // is this correct?
+		}
+	default:
+		panic(fmt.Sprintf("unhandled on delete action: %v", action))
+	}
 }
 
 // The default formatter always qualifies table names with db name and schema name, which we don't want in most cases
@@ -954,6 +1124,21 @@ func convertTypeDef(columnType sqlparser.ColumnType) tree.ResolvableTypeReferenc
 				Family: types.JsonFamily,
 				Width:  int32FromSqlVal(columnType.Length),
 				Oid:    oid.T_json,
+			},
+		}
+	case "boolean":
+		return &types.T{
+			InternalType: types.InternalType{
+				Family: types.BoolFamily,
+				Oid:    oid.T_bool,
+			},
+		}
+	case "year":
+		return &types.T{
+			InternalType: types.InternalType{
+				Family: types.IntFamily,
+				Width:  16,
+				Oid:    oid.T_int2,
 			},
 		}
 	case "geometry", "point", "linestring", "polygon", "multipoint", "multilinestring", "multipolygon", "geometrycollection":
@@ -1241,10 +1426,36 @@ func TestNormalizeStrings(t *testing.T) {
 	}
 }
 
+// TestPostgresQueryFormat is a utility function to test how postgres parses and formats queries
+func TestPostgresQueryFormat(t *testing.T) {
+	type test struct {
+		input    string
+		expected string
+	}
+	tests := []test{
+		{
+			input:    "CREATE TABLE foo (a INT primary key default nextval('myseq'))",
+			expected: "CREATE TABLE foo (a INTEGER DEFAULT nextval('myseq') PRIMARY KEY)",
+		},
+	}
+
+	for _, test := range tests {
+		t.Run(test.input, func(t *testing.T) {
+			s, err := parser.Parse(test.input)
+			require.NoError(t, err)
+
+			ctx := formatNodeWithUnqualifiedTableNames(s[0].AST)
+			query := ctx.String()
+			require.Equal(t, test.expected, query)
+		})
+	}
+}
+
 func TestConvertQuery(t *testing.T) {
 	type test struct {
 		input    string
 		expected []string
+		pattern  bool
 	}
 	tests := []test{
 		{
@@ -1263,6 +1474,14 @@ func TestConvertQuery(t *testing.T) {
 				"CREATE TABLE foo (a INTEGER NOT NULL PRIMARY KEY, b INTEGER NULL)",
 				"CREATE INDEX ON foo ( b ASC ) NULLS NOT DISTINCT ",
 			},
+		},
+		{
+			input: "CREATE TABLE test (pk BIGINT PRIMARY KEY AUTO_INCREMENT, v1 BIGINT);",
+			// this is a pattern match because when run with other tests in the same process, the name of the sequence created is changed
+			pattern: true,
+			expected: []string{
+				"CREATE SEQUENCE .+",
+				"CREATE TABLE test \\(pk BIGINT NOT NULL DEFAULT nextval\\('.+'\\) PRIMARY KEY, v1 BIGINT NULL\\)"},
 		},
 		{
 			input:    "CREATE TABLE foo (a INT, b int, primary key (b,a))",
@@ -1320,7 +1539,14 @@ func TestConvertQuery(t *testing.T) {
 	for _, test := range tests {
 		t.Run(test.input, func(t *testing.T) {
 			actual := convertQuery(test.input)
-			require.Equal(t, test.expected, actual)
+			if test.pattern {
+				require.Equal(t, len(test.expected), len(actual))
+				for i := range test.expected {
+					require.Regexp(t, test.expected[i], actual[i])
+				}
+			} else {
+				require.Equal(t, test.expected, actual)
+			}
 		})
 	}
 }

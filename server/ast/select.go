@@ -57,27 +57,7 @@ func nodeSelect(ctx *Context, node *tree.Select) (vitess.SelectStatement, error)
 
 	switch selectStmt := selectStmt.(type) {
 	case *vitess.ParenSelect:
-		// TODO: figure out if this is even correct, not sure what statement would produce this AST
-		// perhaps we should use the inner select statement, but maybe it has its own order by, limit, etc.
-		return &vitess.Select{
-			SelectExprs: vitess.SelectExprs{
-				&vitess.StarExpr{
-					TableName: vitess.TableName{
-						Name: vitess.NewTableIdent("*"),
-					},
-				},
-			},
-			From: vitess.TableExprs{
-				&vitess.AliasedTableExpr{
-					Expr: &vitess.Subquery{
-						Select: selectStmt,
-					},
-				},
-			},
-			OrderBy: orderBy,
-			With:    with,
-			Limit:   limit,
-		}, nil
+		return selectStmt, nil
 	case *vitess.Select:
 		selectStmt.OrderBy = orderBy
 		selectStmt.With = with
@@ -166,18 +146,24 @@ func nodeSelectExpr(ctx *Context, node tree.SelectExpr) (vitess.SelectExpr, erro
 		if ce, ok := expr.(*tree.CastExpr); ok && node.As == "" {
 			node.As = tree.UnrestrictedName(tree.AsString(ce.Expr))
 		}
-		// To be consistent with vitess handling, InputExpression always gets its outer qoutes trimmed
-		inputExpression := tree.AsString(&node)
-		if strings.HasPrefix(inputExpression, "'") && strings.HasSuffix(inputExpression, "'") {
-			inputExpression = inputExpression[1 : len(inputExpression)-1]
-		}
 
 		return &vitess.AliasedExpr{
 			Expr:            vitessExpr,
 			As:              vitess.NewColIdent(string(node.As)),
-			InputExpression: inputExpression,
+			InputExpression: inputExpressionForSelectExpr(node),
 		}, nil
 	}
+}
+
+// inputExpressionForSelectExpr returns the input expression for a tree.SelectExpr.
+// Postgres has specific handling for function calls that differs from the default printing behavior.
+func inputExpressionForSelectExpr(node tree.SelectExpr) string {
+	inputExpression := tree.AsStringWithFlags(&node, tree.FmtOmitFunctionArgs)
+	// To be consistent with vitess handling, InputExpression always gets its outer quotes trimmed
+	if strings.HasPrefix(inputExpression, "'") && strings.HasSuffix(inputExpression, "'") {
+		inputExpression = inputExpression[1 : len(inputExpression)-1]
+	}
+	return inputExpression
 }
 
 // nodeSelectExprs handles tree.SelectExprs nodes.

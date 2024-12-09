@@ -21,18 +21,23 @@ import (
 )
 
 // IDs are basically arbitrary, we just need to ensure that they do not conflict with existing IDs
+// Comments are to match the Stringer formatting rules in the original rule definition file, but we can't generate
+// human-readable strings for these extended types because they are in another package.
+// We could move these into the main GMS package to fix this deficit, if we wanted.
 const (
-	ruleId_TypeSanitizer analyzer.RuleId = iota + 1000
-	ruleId_AddDomainConstraints
-	ruleId_AssignInsertCasts
-	ruleId_AssignUpdateCasts
-	ruleId_ReplaceIndexedTables
-	ruleId_ReplaceSerial
-	ruleId_ReplaceDropTable
-	ruleId_AddImplicitPrefixLengths
-	ruleId_InsertContextRootFinalizer
-	ruleId_ResolveType
-	ruleId_OptimizeFunctions
+	ruleId_TypeSanitizer        analyzer.RuleId = iota + 1000 // typeSanitizer
+	ruleId_AddDomainConstraints                               // addDomainConstraints
+	ruleId_AddDomainConstraintsToCasts
+	ruleId_AssignInsertCasts            // assignInsertCasts
+	ruleId_AssignUpdateCasts            // assignUpdateCasts
+	ruleId_ReplaceIndexedTables         // replaceIndexedTables
+	ruleId_ReplaceSerial                // replaceSerial
+	ruleId_ReplaceDropTable             // replaceDropTable
+	ruleId_AddImplicitPrefixLengths     // addImplicitPrefixLengths
+	ruleId_InsertContextRootFinalizer   // insertContextRootFinalizer
+	ruleId_ResolveType                  // resolveType
+	ruleId_ReplaceArithmeticExpressions // replaceArithmeticExpressions
+	ruleId_OptimizeFunctions            // optimizeFunctions
 )
 
 // Init adds additional rules to the analyzer to handle Doltgres-specific functionality.
@@ -60,12 +65,15 @@ func Init() {
 	analyzer.OnceAfterDefault = append(analyzer.OnceAfterDefault,
 		analyzer.Rule{Id: ruleId_ReplaceSerial, Apply: ReplaceSerial},
 		analyzer.Rule{Id: ruleId_ReplaceDropTable, Apply: ReplaceDropTable},
+		analyzer.Rule{Id: ruleId_ReplaceArithmeticExpressions, Apply: ReplaceArithmeticExpressions},
 	)
 
 	// The auto-commit rule writes the contents of the context, so we need to insert our finalizer before that.
 	// We also should optimize functions last, since other rules may change the underlying expressions, potentially changing their return types.
 	analyzer.OnceAfterAll = insertAnalyzerRules(analyzer.OnceAfterAll, analyzer.BacktickDefaulColumnValueNamesId, false,
 		analyzer.Rule{Id: ruleId_OptimizeFunctions, Apply: OptimizeFunctions},
+		// AddDomainConstraintsToCasts needs to run after 'assignExecIndexes' rule in GMS.
+		analyzer.Rule{Id: ruleId_AddDomainConstraintsToCasts, Apply: AddDomainConstraintsToCasts},
 		analyzer.Rule{Id: ruleId_InsertContextRootFinalizer, Apply: InsertContextRootFinalizer})
 }
 

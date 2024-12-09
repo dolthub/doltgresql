@@ -39,6 +39,10 @@ var typesTests = []ScriptTest{
 					{2, 987654321098765},
 				},
 			},
+			{
+				Query:    `SELECT 1::pg_catalog.int8;`,
+				Expected: []sql.Row{{1}},
+			},
 		},
 	},
 	{
@@ -160,6 +164,31 @@ var typesTests = []ScriptTest{
 				Skip:  true, // Proper NULL-ordering has not yet been implemented
 				Expected: []sql.Row{
 					{"t", "t"},
+				},
+			},
+		},
+	},
+	{
+		Name: "boolean indexes",
+		Skip: true, // panic
+		SetUpScript: []string{
+			"create table t (b bool);",
+			"insert into t values (false);",
+			"create table t_idx (b bool);",
+			"create index idx on t_idx(b);",
+			"insert into t_idx values (false);",
+		},
+		Assertions: []ScriptTestAssertion{
+			{
+				Query: "select * from t where (b in (false));",
+				Expected: []sql.Row{
+					{0},
+				},
+			},
+			{
+				Query: "select * from t_idx where (b in (false));",
+				Expected: []sql.Row{
+					{0},
 				},
 			},
 		},

@@ -39,11 +39,13 @@ func (pgs *TypeCollection) Clone() *TypeCollection {
 	for schema, nameMap := range pgs.schemaMap {
 		if len(nameMap) == 0 {
 			continue
+		} else if schema == "pg_catalog" {
+			// TODO: technically, can create type in pg_catalog schema
+			continue
 		}
 		clonedNameMap := make(map[string]*types.DoltgresType)
 		for key, typ := range nameMap {
 			clonedNameMap[key] = typ
-
 		}
 		newCollection.schemaMap[schema] = clonedNameMap
 	}
@@ -51,14 +53,14 @@ func (pgs *TypeCollection) Clone() *TypeCollection {
 }
 
 // CreateType creates a new type.
-func (pgs *TypeCollection) CreateType(schema string, typ *types.DoltgresType) error {
+func (pgs *TypeCollection) CreateType(schName string, typ *types.DoltgresType) error {
 	pgs.mutex.Lock()
 	defer pgs.mutex.Unlock()
 
-	nameMap, ok := pgs.schemaMap[schema]
+	nameMap, ok := pgs.schemaMap[schName]
 	if !ok {
 		nameMap = make(map[string]*types.DoltgresType)
-		pgs.schemaMap[schema] = nameMap
+		pgs.schemaMap[schName] = nameMap
 	}
 	if _, ok = nameMap[typ.Name]; ok {
 		return types.ErrTypeAlreadyExists.New(typ.Name)
@@ -71,6 +73,11 @@ func (pgs *TypeCollection) CreateType(schema string, typ *types.DoltgresType) er
 func (pgs *TypeCollection) DropType(schName, typName string) error {
 	pgs.mutex.Lock()
 	defer pgs.mutex.Unlock()
+
+	if schName == "pg_catalog" {
+		// TODO: check if it's built-in type (technically, can create type in pg_catalog schema)
+		return types.ErrCannotDropType.New(typName)
+	}
 
 	if nameMap, ok := pgs.schemaMap[schName]; ok {
 		if _, ok = nameMap[typName]; ok {
@@ -87,6 +94,7 @@ func (pgs *TypeCollection) GetAllTypes() (typesMap map[string][]*types.DoltgresT
 	pgs.mutex.RLock()
 	defer pgs.mutex.RUnlock()
 
+	pgs.addSupportedBuiltInTypes()
 	typesMap = make(map[string][]*types.DoltgresType)
 	for schemaName, nameMap := range pgs.schemaMap {
 		schemaNames = append(schemaNames, schemaName)
@@ -101,13 +109,6 @@ func (pgs *TypeCollection) GetAllTypes() (typesMap map[string][]*types.DoltgresT
 		typesMap[schemaName] = typs
 	}
 
-	// add built-in types
-	builtInTypes := types.GetAllBuitInTypes()
-	sort.Slice(builtInTypes, func(i, j int) bool {
-		return builtInTypes[i].Name < builtInTypes[j].Name
-	})
-	typesMap["pg_catalog"] = builtInTypes
-
 	sort.Slice(schemaNames, func(i, j int) bool {
 		return schemaNames[i] < schemaNames[j]
 	})
@@ -117,13 +118,12 @@ func (pgs *TypeCollection) GetAllTypes() (typesMap map[string][]*types.DoltgresT
 // GetDomainType returns a domain type with the given schema and name.
 // Returns nil if the type cannot be found. It checks for domain type.
 func (pgs *TypeCollection) GetDomainType(schName, typName string) (*types.DoltgresType, bool) {
-	pgs.mutex.RLock()
-	defer pgs.mutex.RUnlock()
-
-	if nameMap, ok := pgs.schemaMap[schName]; ok {
-		if typ, ok := nameMap[typName]; ok && typ.TypType == types.TypeType_Domain {
-			return typ, true
-		}
+	t, exists := pgs.GetType(schName, typName)
+	if !exists {
+		return nil, exists
+	}
+	if t.TypType == types.TypeType_Domain {
+		return t, exists
 	}
 	return nil, false
 }
@@ -134,22 +134,22 @@ func (pgs *TypeCollection) GetType(schName, typName string) (*types.DoltgresType
 	pgs.mutex.RLock()
 	defer pgs.mutex.RUnlock()
 
+	pgs.addSupportedBuiltInTypes()
 	if nameMap, ok := pgs.schemaMap[schName]; ok {
 		if typ, ok := nameMap[typName]; ok {
 			return typ, true
 		}
 	}
+
 	return nil, false
 }
 
 // GetTypeByOID returns the type matching given OID.
 func (pgs *TypeCollection) GetTypeByOID(oid uint32) (*types.DoltgresType, bool) {
-	// temporary way to get type by OID
-	bt, ok := types.OidToBuiltInDoltgresType[oid]
-	if ok {
-		return bt, ok
-	}
-	// TODO: maybe there should be a map to types with OID as key?
+	pgs.mutex.RLock()
+	defer pgs.mutex.RUnlock()
+
+	pgs.addSupportedBuiltInTypes()
 	for _, nameMap := range pgs.schemaMap {
 		for _, typ := range nameMap {
 			if typ.OID == oid {
@@ -165,6 +165,7 @@ func (pgs *TypeCollection) HasType(schema string, typName string) bool {
 	pgs.mutex.Lock()
 	defer pgs.mutex.Unlock()
 
+	pgs.addSupportedBuiltInTypes()
 	nameMap, ok := pgs.schemaMap[schema]
 	if !ok {
 		nameMap = make(map[string]*types.DoltgresType)
@@ -179,6 +180,7 @@ func (pgs *TypeCollection) IterateTypes(f func(schema string, typ *types.Doltgre
 	pgs.mutex.Lock()
 	defer pgs.mutex.Unlock()
 
+	pgs.addSupportedBuiltInTypes()
 	for schema, nameMap := range pgs.schemaMap {
 		for _, t := range nameMap {
 			if err := f(schema, t); err != nil {
@@ -187,4 +189,17 @@ func (pgs *TypeCollection) IterateTypes(f func(schema string, typ *types.Doltgre
 		}
 	}
 	return nil
+}
+
+// addSupportedBuiltInTypes adds supported built-in types in the type collection map
+// with 'pg_catalog' schema as key. It doesn't add if 'pg_catalog' entry exists in the map.
+func (pgs *TypeCollection) addSupportedBuiltInTypes() {
+	if _, ok := pgs.schemaMap["pg_catalog"]; !ok {
+		// add built-in types
+		pgCatTypeMap := make(map[string]*types.DoltgresType)
+		for _, t := range types.GetAllBuitInTypes() {
+			pgCatTypeMap[t.Name] = t
+		}
+		pgs.schemaMap["pg_catalog"] = pgCatTypeMap
+	}
 }
