@@ -184,6 +184,9 @@ func (d *DomainColumn) String() string {
 
 // Type implements the interface sql.Expression.
 func (d *DomainColumn) Type() sql.Type {
+	if d.Typ.IsEmptyType() {
+		return types.Unknown
+	}
 	return d.Typ
 }
 

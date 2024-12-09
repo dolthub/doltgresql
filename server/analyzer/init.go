@@ -25,18 +25,19 @@ import (
 // human-readable strings for these extended types because they are in another package.
 // We could move these into the main GMS package to fix this deficit, if we wanted.
 const (
-	ruleId_TypeSanitizer                analyzer.RuleId = iota + 1000 // typeSanitizer
-	ruleId_AddDomainConstraints                                       // addDomainConstraints
-	ruleId_AssignInsertCasts                                          // assignInsertCasts
-	ruleId_AssignUpdateCasts                                          // assignUpdateCasts
-	ruleId_ReplaceIndexedTables                                       // replaceIndexedTables
-	ruleId_ReplaceSerial                                              // replaceSerial
-	ruleId_ReplaceDropTable                                           // replaceDropTable
-	ruleId_AddImplicitPrefixLengths                                   // addImplicitPrefixLengths
-	ruleId_InsertContextRootFinalizer                                 // insertContextRootFinalizer
-	ruleId_ResolveType                                                // resolveType
-	ruleId_ReplaceArithmeticExpressions                               // replaceArithmeticExpressions
-	ruleId_OptimizeFunctions                                          // optimizeFunctions
+	ruleId_TypeSanitizer        analyzer.RuleId = iota + 1000 // typeSanitizer
+	ruleId_AddDomainConstraints                               // addDomainConstraints
+	ruleId_AddDomainConstraintsToCasts
+	ruleId_AssignInsertCasts            // assignInsertCasts
+	ruleId_AssignUpdateCasts            // assignUpdateCasts
+	ruleId_ReplaceIndexedTables         // replaceIndexedTables
+	ruleId_ReplaceSerial                // replaceSerial
+	ruleId_ReplaceDropTable             // replaceDropTable
+	ruleId_AddImplicitPrefixLengths     // addImplicitPrefixLengths
+	ruleId_InsertContextRootFinalizer   // insertContextRootFinalizer
+	ruleId_ResolveType                  // resolveType
+	ruleId_ReplaceArithmeticExpressions // replaceArithmeticExpressions
+	ruleId_OptimizeFunctions            // optimizeFunctions
 )
 
 // Init adds additional rules to the analyzer to handle Doltgres-specific functionality.
@@ -71,6 +72,8 @@ func Init() {
 	// We also should optimize functions last, since other rules may change the underlying expressions, potentially changing their return types.
 	analyzer.OnceAfterAll = insertAnalyzerRules(analyzer.OnceAfterAll, analyzer.BacktickDefaulColumnValueNamesId, false,
 		analyzer.Rule{Id: ruleId_OptimizeFunctions, Apply: OptimizeFunctions},
+		// AddDomainConstraintsToCasts needs to run after 'assignExecIndexes' rule in GMS.
+		analyzer.Rule{Id: ruleId_AddDomainConstraintsToCasts, Apply: AddDomainConstraintsToCasts},
 		analyzer.Rule{Id: ruleId_InsertContextRootFinalizer, Apply: InsertContextRootFinalizer})
 }
 

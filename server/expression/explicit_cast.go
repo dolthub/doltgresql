@@ -28,8 +28,10 @@ import (
 
 // ExplicitCast represents a VALUE::TYPE expression.
 type ExplicitCast struct {
-	sqlChild   sql.Expression
-	castToType *pgtypes.DoltgresType
+	sqlChild       sql.Expression
+	castToType     *pgtypes.DoltgresType
+	domainNullable bool
+	domainChecks   sql.CheckConstraints
 }
 
 var _ vitess.Injectable = (*ExplicitCast)(nil)
@@ -41,7 +43,6 @@ func NewExplicitCastInjectable(castToType sql.Type) (*ExplicitCast, error) {
 	if !ok {
 		return nil, fmt.Errorf("cast expects a Doltgres type as the target type")
 	}
-	pgtype = checkForDomainType(pgtype)
 	return &ExplicitCast{
 		sqlChild:   nil,
 		castToType: pgtype,
@@ -85,10 +86,14 @@ func (c *ExplicitCast) Eval(ctx *sql.Context, row sql.Row) (any, error) {
 		fromType = gmsCast.DoltgresType()
 	}
 	if val == nil {
+		if c.castToType.TypType == pgtypes.TypeType_Domain && !c.domainNullable {
+			return nil, pgtypes.ErrDomainDoesNotAllowNullValues.New(c.castToType.Name)
+		}
 		return nil, nil
 	}
 
-	castFunction := framework.GetExplicitCast(fromType, c.castToType)
+	baseCastToType := checkForDomainType(c.castToType)
+	castFunction := framework.GetExplicitCast(fromType, baseCastToType)
 	if castFunction == nil {
 		if fromType.OID == uint32(oid.T_unknown) {
 			castFunction = framework.UnknownLiteralCast
@@ -111,6 +116,19 @@ func (c *ExplicitCast) Eval(ctx *sql.Context, row sql.Row) (any, error) {
 			return nil, err
 		}
 	}
+
+	if c.castToType.TypType == pgtypes.TypeType_Domain {
+		for _, check := range c.domainChecks {
+			res, err := sql.EvaluateCondition(ctx, check.Expr, sql.Row{castResult})
+			if err != nil {
+				return nil, err
+			}
+			if sql.IsFalse(res) {
+				return nil, pgtypes.ErrDomainValueViolatesCheckConstraint.New(c.castToType.Name, check.Name)
+			}
+		}
+	}
+
 	return castResult, nil
 }
 
@@ -144,8 +162,10 @@ func (c *ExplicitCast) WithChildren(children ...sql.Expression) (sql.Expression,
 		return nil, sql.ErrInvalidChildrenNumber.New(c, len(children), 1)
 	}
 	return &ExplicitCast{
-		sqlChild:   children[0],
-		castToType: c.castToType,
+		sqlChild:       children[0],
+		castToType:     c.castToType,
+		domainNullable: c.domainNullable,
+		domainChecks:   c.domainChecks,
 	}, nil
 }
 
@@ -159,7 +179,24 @@ func (c *ExplicitCast) WithResolvedChildren(children []any) (any, error) {
 		return nil, fmt.Errorf("expected vitess child to be an expression but has type `%T`", children[0])
 	}
 	return &ExplicitCast{
-		sqlChild:   resolvedExpression,
-		castToType: c.castToType,
+		sqlChild:       resolvedExpression,
+		castToType:     c.castToType,
+		domainNullable: c.domainNullable,
+		domainChecks:   c.domainChecks,
 	}, nil
+}
+
+// WithCastToType returns a copy of the expression with castToType replaced.
+func (c *ExplicitCast) WithCastToType(t *pgtypes.DoltgresType) sql.Expression {
+	ec := *c
+	ec.castToType = t
+	return &ec
+}
+
+// WithDomainConstraints returns a copy of the expression with domain constraints defined.
+func (c *ExplicitCast) WithDomainConstraints(nullable bool, checks sql.CheckConstraints) sql.Expression {
+	ec := *c
+	ec.domainNullable = nullable
+	ec.domainChecks = checks
+	return &ec
 }
