@@ -158,7 +158,7 @@ func (c *DropDomain) RowIter(ctx *sql.Context, r sql.Row) (sql.RowIter, error) {
 	if err != nil {
 		return nil, err
 	}
-	
+
 	return sql.RowsToRowIter(), nil
 }
 
