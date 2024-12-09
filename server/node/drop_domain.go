@@ -130,10 +130,6 @@ func (c *DropDomain) RowIter(ctx *sql.Context, r sql.Row) (sql.RowIter, error) {
 	if err = collection.DropType(schema, c.domain); err != nil {
 		return nil, err
 	}
-	arrayType := fmt.Sprintf(`_%s`, c.domain)
-	if err = collection.DropType(schema, arrayType); err != nil {
-		return nil, err
-	}
 	auth.LockWrite(func() {
 		auth.RemoveOwner(auth.OwnershipKey{
 			PrivilegeObject: auth.PrivilegeObject_DOMAIN,
@@ -145,6 +141,24 @@ func (c *DropDomain) RowIter(ctx *sql.Context, r sql.Row) (sql.RowIter, error) {
 	if err != nil {
 		return nil, err
 	}
+
+	// drop array type of this type
+	arrayTypeName := fmt.Sprintf(`_%s`, c.domain)
+	if err = collection.DropType(schema, arrayTypeName); err != nil {
+		return nil, err
+	}
+	auth.LockWrite(func() {
+		auth.RemoveOwner(auth.OwnershipKey{
+			PrivilegeObject: auth.PrivilegeObject_DOMAIN,
+			Schema:          schema,
+			Name:            arrayTypeName,
+		}, userRole.ID())
+		err = auth.PersistChanges()
+	})
+	if err != nil {
+		return nil, err
+	}
+	
 	return sql.RowsToRowIter(), nil
 }
 

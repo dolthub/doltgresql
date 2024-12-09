@@ -102,13 +102,6 @@ func (c *CreateDomain) RowIter(ctx *sql.Context, r sql.Row) (sql.RowIter, error)
 	if err != nil {
 		return nil, err
 	}
-
-	arrayType := types.CreateArrayTypeFromBaseType(newType)
-	err = collection.CreateType(schema, arrayType)
-	if err != nil {
-		return nil, err
-	}
-
 	auth.LockWrite(func() {
 		auth.AddOwner(auth.OwnershipKey{
 			PrivilegeObject: auth.PrivilegeObject_DOMAIN,
@@ -120,6 +113,25 @@ func (c *CreateDomain) RowIter(ctx *sql.Context, r sql.Row) (sql.RowIter, error)
 	if err != nil {
 		return nil, err
 	}
+
+	// create array type of this type
+	arrayType := types.CreateArrayTypeFromBaseType(newType)
+	err = collection.CreateType(schema, arrayType)
+	if err != nil {
+		return nil, err
+	}
+	auth.LockWrite(func() {
+		auth.AddOwner(auth.OwnershipKey{
+			PrivilegeObject: auth.PrivilegeObject_DOMAIN,
+			Schema:          schema,
+			Name:            arrayType.Name,
+		}, userRole.ID())
+		err = auth.PersistChanges()
+	})
+	if err != nil {
+		return nil, err
+	}
+
 	return sql.RowsToRowIter(), nil
 }
 

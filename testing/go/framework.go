@@ -359,7 +359,7 @@ func NormalizeRow(fds []pgconn.FieldDescription, row sql.Row, normalize bool) sq
 	for i := range row {
 		dt, ok := types.OidToBuiltInDoltgresType[fds[i].DataTypeOID]
 		if !ok {
-			// Try using text type
+			// try using text type
 			dt = types.Text
 		}
 		newRow[i] = NormalizeValToString(dt, row[i])
