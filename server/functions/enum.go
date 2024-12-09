@@ -40,26 +40,9 @@ var enum_in = framework.Function2{
 	Parameters: [2]*pgtypes.DoltgresType{pgtypes.Cstring, pgtypes.Oid},
 	Strict:     true,
 	Callable: func(ctx *sql.Context, _ [3]*pgtypes.DoltgresType, val1, val2 any) (any, error) {
-		// typOid := val2.(string) // TODO: should be `uint32`
-		// v := val1.(string)
-		// typeColl, err := core.GetTypesCollectionFromContext(ctx)
-		// if err != nil {
-		// 	return nil, err
-		// }
-		// dt, ok := typeColl.GetType("public", typOid) // TODO: should use GetTypeByOID
-		// if !ok {
-		// 	return nil, fmt.Errorf(`cache lookup failed for type %s`, typOid)
-		// }
-		// if dt.EnumLabels == nil {
-		// 	return nil, fmt.Errorf(`enum label lookup failed for type %s`, typOid)
-		// }
-		// label, ok := dt.EnumLabels[v]
-		// if !ok {
-		// 	return nil, fmt.Errorf(`invalid input value for enum my_enum: %s`, v)
-		// }
-		// // TODO: get type using OID, which should connect to enum labels.
-		// //  not checking for now
-		//  return label.SortOrder, nil
+		// typOid := val2.(uint32)
+		// TODO: get type using given OID, which should give access to enum labels.
+		//  should return the index of label?
 		return val1.(string), nil
 	},
 }
@@ -71,6 +54,7 @@ var enum_out = framework.Function1{
 	Parameters: [1]*pgtypes.DoltgresType{pgtypes.AnyEnum},
 	Strict:     true,
 	Callable: func(ctx *sql.Context, _ [2]*pgtypes.DoltgresType, val any) (any, error) {
+		// TODO: should return the index of label?
 		return val.(string), nil
 	},
 }
@@ -83,8 +67,8 @@ var enum_recv = framework.Function2{
 	Strict:     true,
 	Callable: func(ctx *sql.Context, _ [3]*pgtypes.DoltgresType, val1, val2 any) (any, error) {
 		// typOid := val2.(uint32)
-		// TODO: get type using OID, which should connect to enum labels.
-		//  not checking for now
+		// TODO: get type using given OID, which should give access to enum labels.
+		//  should return the index of label?
 		data := val1.([]byte)
 		if len(data) == 0 {
 			return nil, nil
@@ -101,6 +85,7 @@ var enum_send = framework.Function1{
 	Parameters: [1]*pgtypes.DoltgresType{pgtypes.AnyEnum},
 	Strict:     true,
 	Callable: func(ctx *sql.Context, _ [2]*pgtypes.DoltgresType, val any) (any, error) {
+		// TODO: should return the index of label?
 		str := val.(string)
 		writer := utils.NewWriter(uint64(len(str) + 4))
 		writer.String(str)

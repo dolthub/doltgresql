@@ -74,11 +74,6 @@ func (pgs *TypeCollection) DropType(schName, typName string) error {
 	pgs.mutex.Lock()
 	defer pgs.mutex.Unlock()
 
-	if schName == "pg_catalog" {
-		// TODO: check if it's built-in type (technically, can create type in pg_catalog schema)
-		return types.ErrCannotDropType.New(typName)
-	}
-
 	if nameMap, ok := pgs.schemaMap[schName]; ok {
 		if _, ok = nameMap[typName]; ok {
 			delete(nameMap, typName)

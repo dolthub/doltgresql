@@ -100,6 +100,7 @@ func (c *CreateType) RowIter(ctx *sql.Context, r sql.Row) (sql.RowIter, error) {
 	}
 
 	if collection.HasType(c.SchemaName, c.Name) {
+		// TODO: if the existing type is array type, it updates the array type name and creates the new type.
 		return nil, types.ErrTypeAlreadyExists.New(c.Name)
 	}
 
@@ -141,14 +142,6 @@ func (c *CreateType) RowIter(ctx *sql.Context, r sql.Row) (sql.RowIter, error) {
 	if err != nil {
 		return nil, err
 	}
-	if c.typType != types.TypeType_Pseudo {
-		arrayType := types.CreateArrayTypeFromBaseType(newType)
-		err = collection.CreateType(schema, arrayType)
-		if err != nil {
-			return nil, err
-		}
-	}
-
 	auth.LockWrite(func() {
 		auth.AddOwner(auth.OwnershipKey{
 			PrivilegeObject: auth.PrivilegeObject_TYPE,
@@ -159,6 +152,26 @@ func (c *CreateType) RowIter(ctx *sql.Context, r sql.Row) (sql.RowIter, error) {
 	})
 	if err != nil {
 		return nil, err
+	}
+
+	// create array type for defined types
+	if newType.IsDefined {
+		arrayType := types.CreateArrayTypeFromBaseType(newType)
+		err = collection.CreateType(schema, arrayType)
+		if err != nil {
+			return nil, err
+		}
+		auth.LockWrite(func() {
+			auth.AddOwner(auth.OwnershipKey{
+				PrivilegeObject: auth.PrivilegeObject_TYPE,
+				Schema:          schema,
+				Name:            arrayType.Name,
+			}, userRole.ID())
+			err = auth.PersistChanges()
+		})
+		if err != nil {
+			return nil, err
+		}
 	}
 
 	return sql.RowsToRowIter(), nil

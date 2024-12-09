@@ -3295,6 +3295,35 @@ var enumTypeTests = []ScriptTest{
 		},
 	},
 	{
+		Name: "drop enum type",
+		SetUpScript: []string{
+			`CREATE TYPE mood AS ENUM ('sad', 'ok', 'happy')`,
+			`CREATE TYPE empty_enum AS ENUM ()`,
+		},
+		Assertions: []ScriptTestAssertion{
+			{
+				Query:       `DROP TYPE mood, empty_enum;`,
+				ExpectedErr: `dropping multiple types in DROP TYPE is not yet supported`,
+			},
+			{
+				Query:    `DROP TYPE empty_enum;`,
+				Expected: []sql.Row{},
+			},
+			{
+				Query:       `DROP TYPE empty_enum;`,
+				ExpectedErr: `type "empty_enum" does not exist`,
+			},
+			{
+				Query:    `DROP TYPE IF EXISTS empty_enum;`,
+				Expected: []sql.Row{},
+			},
+			{
+				Query:       `DROP TYPE _mood;`,
+				ExpectedErr: `cannot drop type mood[] because type mood requires it`,
+			},
+		},
+	},
+	{
 		Skip: true,
 		Name: "enum type cast",
 		SetUpScript: []string{
@@ -3325,6 +3354,32 @@ var enumTypeTests = []ScriptTest{
 			},
 		},
 	},
+	{
+		Skip: true,
+		Name: "create type with existing array type name updates the name of the array type",
+		Assertions: []ScriptTestAssertion{
+			{
+				Query:    `CREATE TYPE my_type AS ENUM ();`,
+				Expected: []sql.Row{},
+			},
+			{
+				Query:    `CREATE TYPE _my_type;`,
+				Expected: []sql.Row{},
+			},
+			{
+				Query:    `SELECT typname from pg_type where typname like '%my_type'`,
+				Expected: []sql.Row{{"my_type"}, {"_my_type"}, {"__my_type"}},
+			},
+			{
+				Query:    `DROP TYPE my_type;`,
+				Expected: []sql.Row{},
+			},
+			{
+				Query:    `DROP TYPE _my_type;`,
+				Expected: []sql.Row{},
+			},
+		},
+	},
 }
 
 func TestShellTypes(t *testing.T) {
@@ -3339,6 +3394,14 @@ func TestShellTypes(t *testing.T) {
 				{
 					Query:       `select 1::undefined_type;`,
 					ExpectedErr: `type "undefined_type" is only a shell`,
+				},
+				{
+					Query:    `DROP TYPE undefined_type;`,
+					Expected: []sql.Row{},
+				},
+				{
+					Query:    `DROP TYPE IF EXISTS undefined_type;`,
+					Expected: []sql.Row{},
 				},
 			},
 		},

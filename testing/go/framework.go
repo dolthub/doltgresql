@@ -361,10 +361,7 @@ func NormalizeRow(fds []pgconn.FieldDescription, row sql.Row, normalize bool) sq
 		if !ok {
 			// Try using text type
 			dt = types.Text
-			//panic(fmt.Sprintf("unhandled oid type: %v", fds[i].DataTypeOID))
 		}
-		// TODO: need to set the typmod!
-		dt = dt.WithAttTypMod(-1)
 		newRow[i] = NormalizeValToString(dt, row[i])
 		if normalize {
 			newRow[i] = NormalizeIntsAndFloats(newRow[i])
@@ -389,7 +386,6 @@ func NormalizeExpectedRow(fds []pgconn.FieldDescription, rows []sql.Row) []sql.R
 				if !ok {
 					// try using text type
 					dt = types.Text
-					//panic(fmt.Sprintf("unhandled oid type: %v", fds[i].DataTypeOID))
 				}
 				if dt.OID == uint32(oid.T_json) {
 					newRow[i] = UnmarshalAndMarshalJsonString(row[i].(string))

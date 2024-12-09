@@ -38,6 +38,7 @@ var void_in = framework.Function2{
 	Parameters: [2]*pgtypes.DoltgresType{pgtypes.Cstring, pgtypes.Oid},
 	Strict:     true,
 	Callable: func(ctx *sql.Context, _ [3]*pgtypes.DoltgresType, val1, val2 any) (any, error) {
+		// TODO
 		return val1.(string), nil
 	},
 }
@@ -49,6 +50,7 @@ var void_out = framework.Function1{
 	Parameters: [1]*pgtypes.DoltgresType{pgtypes.Void},
 	Strict:     true,
 	Callable: func(ctx *sql.Context, _ [2]*pgtypes.DoltgresType, val any) (any, error) {
+		// TODO
 		return val.(string), nil
 	},
 }
@@ -60,6 +62,7 @@ var void_recv = framework.Function2{
 	Parameters: [2]*pgtypes.DoltgresType{pgtypes.Internal, pgtypes.Oid},
 	Strict:     true,
 	Callable: func(ctx *sql.Context, _ [3]*pgtypes.DoltgresType, val1, val2 any) (any, error) {
+		// TODO
 		data := val1.([]byte)
 		if len(data) == 0 {
 			return nil, nil
@@ -76,6 +79,7 @@ var void_send = framework.Function1{
 	Parameters: [1]*pgtypes.DoltgresType{pgtypes.Void},
 	Strict:     true,
 	Callable: func(ctx *sql.Context, _ [2]*pgtypes.DoltgresType, val any) (any, error) {
+		// TODO
 		str := val.(string)
 		writer := utils.NewWriter(uint64(len(str) + 4))
 		writer.String(str)

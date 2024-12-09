@@ -20,6 +20,7 @@ import (
 	vitess "github.com/dolthub/vitess/go/vt/sqlparser"
 
 	"github.com/dolthub/doltgresql/postgres/parser/sem/tree"
+	pgnodes "github.com/dolthub/doltgresql/server/node"
 )
 
 // nodeDropType handles *tree.DropType nodes.
@@ -27,5 +28,17 @@ func nodeDropType(ctx *Context, node *tree.DropType) (vitess.Statement, error) {
 	if node == nil {
 		return nil, nil
 	}
-	return nil, fmt.Errorf("DROP TYPE is not yet supported")
+	if len(node.Names) != 1 {
+		return nil, fmt.Errorf("dropping multiple types in DROP TYPE is not yet supported")
+	}
+	tn := node.Names[0].ToTableName()
+	return vitess.InjectedStatement{
+		Statement: pgnodes.NewDropType(
+			node.IfExists,
+			tn.Catalog(),
+			tn.Schema(),
+			tn.Object(),
+			node.DropBehavior == tree.DropCascade),
+		Children: nil,
+	}, nil
 }
