@@ -215,9 +215,10 @@ func startReplication(cfg *servercfg.DoltgresConfig, ssCfg doltservercfg.ServerC
 
 	walFilePath := filepath.Join(ssCfg.CfgDir(), "pg_wal_location")
 	primaryDns := fmt.Sprintf(
-		"postgres://%s:%s@127.0.0.1:%d/%s",
+		"postgres://%s:%s@%s:%d/%s",
 		*cfg.PostgresReplicationConfig.PostgresUser,
 		*cfg.PostgresReplicationConfig.PostgresPassword,
+		*cfg.PostgresReplicationConfig.PostgresServerAddress,
 		*cfg.PostgresReplicationConfig.PostgresPort,
 		*cfg.PostgresReplicationConfig.PostgresDatabase,
 	)
