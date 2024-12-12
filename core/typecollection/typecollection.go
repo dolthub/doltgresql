@@ -74,11 +74,6 @@ func (pgs *TypeCollection) DropType(schName, typName string) error {
 	pgs.mutex.Lock()
 	defer pgs.mutex.Unlock()
 
-	if schName == "pg_catalog" {
-		// TODO: check if it's built-in type (technically, can create type in pg_catalog schema)
-		return types.ErrCannotDropType.New(typName)
-	}
-
 	if nameMap, ok := pgs.schemaMap[schName]; ok {
 		if _, ok = nameMap[typName]; ok {
 			delete(nameMap, typName)
@@ -197,7 +192,7 @@ func (pgs *TypeCollection) addSupportedBuiltInTypes() {
 	if _, ok := pgs.schemaMap["pg_catalog"]; !ok {
 		// add built-in types
 		pgCatTypeMap := make(map[string]*types.DoltgresType)
-		for _, t := range types.GetAllTypes() {
+		for _, t := range types.GetAllBuitInTypes() {
 			pgCatTypeMap[t.Name] = t
 		}
 		pgs.schemaMap["pg_catalog"] = pgCatTypeMap

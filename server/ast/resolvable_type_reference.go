@@ -44,8 +44,8 @@ func nodeResolvableTypeReference(ctx *Context, typ tree.ResolvableTypeReference)
 		return nil, nil, fmt.Errorf("referencing types by their OID is not yet supported")
 	case *tree.UnresolvedObjectName:
 		tn := columnType.ToTableName()
-		columnTypeName = string(tn.ObjectName)
-		resolvedType = pgtypes.NewUnresolvedDoltgresType(string(tn.SchemaName), string(tn.ObjectName))
+		columnTypeName = tn.Object()
+		resolvedType = pgtypes.NewUnresolvedDoltgresType(tn.Schema(), columnTypeName)
 	case *types.GeoMetadata:
 		return nil, nil, fmt.Errorf("geometry types are not yet supported")
 	case *types.T:

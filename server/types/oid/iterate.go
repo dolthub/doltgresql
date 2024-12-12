@@ -148,6 +148,7 @@ func IterateDatabase(ctx *sql.Context, database string, callbacks Callbacks) err
 		}
 	}
 	if callbacks.Type != nil {
+		// TODO: user-defined types
 		if err := iterateTypes(ctx, callbacks); err != nil {
 			return err
 		}
@@ -213,35 +214,31 @@ func iterateFunctions(ctx *sql.Context, callbacks Callbacks) error {
 
 // iterateTypes is called by IterateCurrentDatabase to handle types
 func iterateTypes(ctx *sql.Context, callbacks Callbacks) error {
+	coll, err := core.GetTypesCollectionFromContext(ctx)
+	if err != nil {
+		return err
+	}
+	typMap, _, _ := coll.GetAllTypes()
 	// We only iterate over the types that are present in the pg_type table.
-	// This means that we ignore the schema if one is given and not equal to "pg_catalog".
 	// If no schemas were given, then we'll automatically look for the types in "pg_catalog".
-	if len(callbacks.SearchSchemas) > 0 {
-		containsPgCatalog := false
-		for _, schema := range callbacks.SearchSchemas {
-			if schema == "pg_catalog" {
-				containsPgCatalog = true
-				break
+	if len(callbacks.SearchSchemas) == 0 {
+		callbacks.SearchSchemas = append(callbacks.SearchSchemas, "pg_catalog")
+	}
+	for _, schema := range callbacks.SearchSchemas {
+		// this gets all built-in types
+		for _, t := range typMap[schema] {
+			cont, err := callbacks.Type(ctx, ItemType{
+				OID:  t.OID,
+				Item: t,
+			})
+			if err != nil {
+				return err
+			}
+			if !cont {
+				return nil
 			}
 		}
-		if !containsPgCatalog {
-			return nil
-		}
 	}
-	// this gets all built-in types
-	for _, t := range pgtypes.GetAllTypes() {
-		cont, err := callbacks.Type(ctx, ItemType{
-			OID:  t.OID,
-			Item: t,
-		})
-		if err != nil {
-			return err
-		}
-		if !cont {
-			return nil
-		}
-	}
-	// TODO: add domain and custom types when supported
 	return nil
 }
 
@@ -887,6 +884,7 @@ func (iter Callbacks) iteratesOverSchemas() bool {
 		iter.Schema != nil ||
 		iter.Sequence != nil ||
 		iter.Table != nil ||
+		iter.Type != nil ||
 		iter.View != nil
 }
 

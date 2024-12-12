@@ -99,7 +99,11 @@ func ResolveTypeForExprs(ctx *sql.Context, a *analyzer.Analyzer, node sql.Node, 
 					return nil, transform.NewTree, err
 				}
 				same = transform.NewTree
-				expr = e.WithCastToType(dt)
+				if !dt.IsDefined {
+					return nil, transform.NewTree, pgtypes.ErrTypeIsOnlyAShell.New(dt.Name)
+				} else {
+					expr = e.WithCastToType(dt)
+				}
 			}
 			return expr, same, nil
 		default:

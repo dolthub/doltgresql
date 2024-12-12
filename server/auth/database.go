@@ -185,8 +185,10 @@ func dbInitDefault() {
 
 // typesInitDefault adds owner to built-in types.
 func typesInitDefault() {
+	// adding all built-in types as user-defined
+	// types are added during creation.
 	postgresRole := GetRole("postgres")
-	allTypes := types.GetAllTypes()
+	allTypes := types.GetAllBuitInTypes()
 	for _, typ := range allTypes {
 		AddOwner(OwnershipKey{
 			PrivilegeObject: PrivilegeObject_TYPE,

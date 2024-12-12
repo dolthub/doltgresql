@@ -358,10 +358,9 @@ func NormalizeRow(fds []pgconn.FieldDescription, row sql.Row, normalize bool) sq
 	newRow := make(sql.Row, len(row))
 	for i := range row {
 		dt, ok := types.OidToBuiltInDoltgresType[fds[i].DataTypeOID]
-		// TODO: need to set the typmod!
-		dt = dt.WithAttTypMod(-1)
 		if !ok {
-			panic(fmt.Sprintf("unhandled oid type: %v", fds[i].DataTypeOID))
+			// try using text type
+			dt = types.Text
 		}
 		newRow[i] = NormalizeValToString(dt, row[i])
 		if normalize {
@@ -385,7 +384,8 @@ func NormalizeExpectedRow(fds []pgconn.FieldDescription, rows []sql.Row) []sql.R
 			for i := range row {
 				dt, ok := types.OidToBuiltInDoltgresType[fds[i].DataTypeOID]
 				if !ok {
-					panic(fmt.Sprintf("unhandled oid type: %v", fds[i].DataTypeOID))
+					// try using text type
+					dt = types.Text
 				}
 				if dt.OID == uint32(oid.T_json) {
 					newRow[i] = UnmarshalAndMarshalJsonString(row[i].(string))

@@ -23,6 +23,7 @@ import (
 	"github.com/lib/pq/oid"
 
 	"github.com/dolthub/doltgresql/postgres/parser/types"
+	pgtypes "github.com/dolthub/doltgresql/server/types"
 )
 
 // regtype_IoInput is the implementation for IoInput that avoids circular dependencies by being declared in a separate
@@ -78,7 +79,7 @@ func regtype_IoInput(ctx *sql.Context, input string) (uint32, error) {
 	if err != nil || resultOid != 0 {
 		return resultOid, err
 	}
-	return 0, fmt.Errorf(`type "%s" does not exist`, input)
+	return 0, pgtypes.ErrTypeDoesNotExist.New(input)
 }
 
 // regtype_IoOutput is the implementation for IoOutput that avoids circular dependencies by being declared in a separate
@@ -89,6 +90,8 @@ func regtype_IoOutput(ctx *sql.Context, toid uint32) (string, error) {
 		Type: func(ctx *sql.Context, typ ItemType) (cont bool, err error) {
 			if t, ok := types.OidToType[oid.Oid(toid)]; ok {
 				output = t.SQLStandardName()
+			} else {
+				output = typ.Item.String()
 			}
 			return false, nil
 		},
