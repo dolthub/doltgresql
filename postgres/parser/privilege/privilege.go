@@ -57,6 +57,7 @@ const (
 	USAGE
 	SET
 	ALTERSYSTEM
+	DROP
 )
 
 // ObjectType represents objects that can have privileges.
@@ -98,34 +99,9 @@ const (
 	Routine ObjectType = "routine" // it includes both functions and procedures
 )
 
-// Predefined sets of privileges.
-var (
-	AllPrivileges         = List{ALL, SELECT, INSERT, UPDATE, DELETE, TRUNCATE, REFERENCES, TRIGGER, CREATE, CONNECT, TEMPORARY, EXECUTE, USAGE, SET, ALTERSYSTEM}
-	ReadData              = List{ALL, SELECT}
-	ReadWriteData         = List{ALL, SELECT, INSERT, DELETE, UPDATE}
-	DatabasePrivileges    = List{ALL, CREATE, CONNECT, TEMPORARY}
-	LargeObjectPrivileges = List{ALL, SELECT, UPDATE}
-	ParameterPrivileges   = List{ALL, SET, ALTERSYSTEM}
-	TablePrivileges       = List{ALL, SELECT, INSERT, UPDATE, DELETE, TRUNCATE, REFERENCES, TRIGGER}
-	TableColumnPrivileges = List{ALL, SELECT, INSERT, UPDATE, REFERENCES}
-	SequencePrivileges    = List{ALL, SELECT, UPDATE, USAGE}
-	SchemaPrivileges      = List{ALL, CREATE, USAGE}
-
-	// UsagePrivilege is used for domains, foreign data wrappers, foreign servers, languages and types
-	UsagePrivilege = List{ALL, USAGE}
-	// ExecutePrivilege is used for functions and procedures
-	ExecutePrivilege = List{ALL, EXECUTE}
-)
-
 // Mask returns the bitmask for a given privilege.
 func (k Kind) Mask() uint32 {
 	return 1 << k
-}
-
-// ByValue is just an array of privilege kinds sorted by value.
-var ByValue = [...]Kind{
-	ALL, SELECT, INSERT, UPDATE, DELETE, TRUNCATE, REFERENCES,
-	TRIGGER, CREATE, CONNECT, TEMPORARY, EXECUTE, USAGE, SET, ALTERSYSTEM,
 }
 
 // ByName is a map of string -> kind value.
@@ -146,6 +122,7 @@ var ByName = map[string]Kind{
 	"TEMPORARY":    TEMPORARY,
 	"SET":          SET,
 	"ALTER SYSTEM": ALTERSYSTEM,
+	"DROP":         DROP,
 }
 
 // List is a list of privileges.

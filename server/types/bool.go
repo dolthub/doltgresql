@@ -23,7 +23,6 @@ var Bool = &DoltgresType{
 	OID:           uint32(oid.T_bool),
 	Name:          "bool",
 	Schema:        "pg_catalog",
-	Owner:         "doltgres",
 	TypLength:     int16(1),
 	PassedByVal:   true,
 	TypType:       TypeType_Base,

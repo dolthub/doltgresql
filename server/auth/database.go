@@ -19,8 +19,6 @@ import (
 	"sync"
 	"sync/atomic"
 
-	"github.com/dolthub/doltgresql/server/types"
-
 	"github.com/dolthub/dolt/go/libraries/doltcore/env"
 	"github.com/dolthub/dolt/go/libraries/utils/filesys"
 )
@@ -40,7 +38,6 @@ var (
 type Database struct {
 	rolesByName        map[string]RoleID
 	rolesByID          map[RoleID]Role
-	ownership          *Ownership
 	databasePrivileges *DatabasePrivileges
 	schemaPrivileges   *SchemaPrivileges
 	tablePrivileges    *TablePrivileges
@@ -51,7 +48,6 @@ type Database struct {
 func ClearDatabase() {
 	clear(globalDatabase.rolesByName)
 	clear(globalDatabase.rolesByID)
-	clear(globalDatabase.ownership.Data)
 	clear(globalDatabase.databasePrivileges.Data)
 	clear(globalDatabase.schemaPrivileges.Data)
 	clear(globalDatabase.tablePrivileges.Data)
@@ -136,7 +132,6 @@ func dbInit(dEnv *env.DoltEnv) {
 	globalDatabase = Database{
 		rolesByName:        make(map[string]RoleID),
 		rolesByID:          make(map[RoleID]Role),
-		ownership:          NewOwnership(),
 		databasePrivileges: NewDatabasePrivileges(),
 		schemaPrivileges:   NewSchemaPrivileges(),
 		tablePrivileges:    NewTablePrivileges(),
@@ -180,20 +175,4 @@ func dbInitDefault() {
 		panic(err)
 	}
 	SetRole(postgres)
-	typesInitDefault()
-}
-
-// typesInitDefault adds owner to built-in types.
-func typesInitDefault() {
-	// adding all built-in types as user-defined
-	// types are added during creation.
-	postgresRole := GetRole("postgres")
-	allTypes := types.GetAllBuitInTypes()
-	for _, typ := range allTypes {
-		AddOwner(OwnershipKey{
-			PrivilegeObject: PrivilegeObject_TYPE,
-			Schema:          "pg_catalog",
-			Name:            typ.Name,
-		}, postgresRole.ID())
-	}
 }

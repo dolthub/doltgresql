@@ -111,7 +111,6 @@ func ReplaceSerial(ctx *sql.Context, a *analyzer.Analyzer, node sql.Node, scope 
 					Cache:       1,
 					Cycle:       false,
 					IsAtEnd:     false,
-					OwnerUser:   "",
 					OwnerTable:  createTable.Name(),
 					OwnerColumn: col.Name,
 				}))

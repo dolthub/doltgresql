@@ -144,33 +144,11 @@ func (c *CreateType) RowIter(ctx *sql.Context, r sql.Row) (sql.RowIter, error) {
 	if err != nil {
 		return nil, err
 	}
-	auth.LockWrite(func() {
-		auth.AddOwner(auth.OwnershipKey{
-			PrivilegeObject: auth.PrivilegeObject_TYPE,
-			Schema:          schema,
-			Name:            c.Name,
-		}, userRole.ID())
-		err = auth.PersistChanges()
-	})
-	if err != nil {
-		return nil, err
-	}
 
 	// create array type for defined types
 	if newType.IsDefined {
 		arrayType := types.CreateArrayTypeFromBaseType(newType)
 		err = collection.CreateType(schema, arrayType)
-		if err != nil {
-			return nil, err
-		}
-		auth.LockWrite(func() {
-			auth.AddOwner(auth.OwnershipKey{
-				PrivilegeObject: auth.PrivilegeObject_TYPE,
-				Schema:          schema,
-				Name:            arrayType.Name,
-			}, userRole.ID())
-			err = auth.PersistChanges()
-		})
 		if err != nil {
 			return nil, err
 		}

@@ -33,6 +33,7 @@ const (
 	Privilege_USAGE        = "U"
 	Privilege_SET          = "s"
 	Privilege_ALTER_SYSTEM = "A"
+	Privilege_DROP         = "Y"
 )
 
 // PrivilegeObject is the database object that privileges are applied to.
@@ -79,6 +80,7 @@ func GetAllPrivileges() []Privilege {
 		Privilege_USAGE,
 		Privilege_SET,
 		Privilege_ALTER_SYSTEM,
+		Privilege_DROP,
 	}
 }
 
@@ -138,6 +140,8 @@ func (p Privilege) String() string {
 		return "SET"
 	case Privilege_ALTER_SYSTEM:
 		return "ALTER SYSTEM"
+	case Privilege_DROP:
+		return "DROP"
 	default:
 		return "UNKNOWN"
 	}
@@ -147,33 +151,33 @@ func (p Privilege) String() string {
 func (po PrivilegeObject) AllPrivileges() []Privilege {
 	switch po {
 	case PrivilegeObject_DATABASE:
-		return []Privilege{Privilege_CREATE, Privilege_TEMPORARY, Privilege_CONNECT}
+		return []Privilege{Privilege_CREATE, Privilege_TEMPORARY, Privilege_CONNECT, Privilege_DROP}
 	case PrivilegeObject_DOMAIN:
-		return []Privilege{Privilege_USAGE}
+		return []Privilege{Privilege_USAGE, Privilege_DROP}
 	case PrivilegeObject_FUNCTION:
-		return []Privilege{Privilege_EXECUTE}
+		return []Privilege{Privilege_EXECUTE, Privilege_DROP}
 	case PrivilegeObject_FOREIGN_DATA_WRAPPER:
-		return []Privilege{Privilege_USAGE}
+		return []Privilege{Privilege_USAGE, Privilege_DROP}
 	case PrivilegeObject_FOREIGN_SERVER:
-		return []Privilege{Privilege_USAGE}
+		return []Privilege{Privilege_USAGE, Privilege_DROP}
 	case PrivilegeObject_LANGUAGE:
-		return []Privilege{Privilege_USAGE}
+		return []Privilege{Privilege_USAGE, Privilege_DROP}
 	case PrivilegeObject_LARGE_OBJECT:
-		return []Privilege{Privilege_SELECT, Privilege_UPDATE}
+		return []Privilege{Privilege_SELECT, Privilege_UPDATE, Privilege_DROP}
 	case PrivilegeObject_PARAMETER:
-		return []Privilege{Privilege_SET, Privilege_ALTER_SYSTEM}
+		return []Privilege{Privilege_SET, Privilege_ALTER_SYSTEM, Privilege_DROP}
 	case PrivilegeObject_SCHEMA:
-		return []Privilege{Privilege_USAGE, Privilege_CREATE}
+		return []Privilege{Privilege_USAGE, Privilege_CREATE, Privilege_DROP}
 	case PrivilegeObject_SEQUENCE:
-		return []Privilege{Privilege_SELECT, Privilege_UPDATE, Privilege_USAGE}
+		return []Privilege{Privilege_SELECT, Privilege_UPDATE, Privilege_USAGE, Privilege_DROP}
 	case PrivilegeObject_TABLE:
-		return []Privilege{Privilege_INSERT, Privilege_SELECT, Privilege_UPDATE, Privilege_DELETE, Privilege_TRUNCATE, Privilege_REFERENCES, Privilege_TRIGGER}
+		return []Privilege{Privilege_INSERT, Privilege_SELECT, Privilege_UPDATE, Privilege_DELETE, Privilege_TRUNCATE, Privilege_REFERENCES, Privilege_TRIGGER, Privilege_DROP}
 	case PrivilegeObject_TABLE_COLUMN:
-		return []Privilege{Privilege_INSERT, Privilege_SELECT, Privilege_UPDATE, Privilege_REFERENCES}
+		return []Privilege{Privilege_INSERT, Privilege_SELECT, Privilege_UPDATE, Privilege_REFERENCES, Privilege_DROP}
 	case PrivilegeObject_TABLESPACE:
-		return []Privilege{Privilege_CREATE}
+		return []Privilege{Privilege_CREATE, Privilege_DROP}
 	case PrivilegeObject_TYPE:
-		return []Privilege{Privilege_USAGE}
+		return []Privilege{Privilege_USAGE, Privilege_DROP}
 	default:
 		panic("unknown privilege object")
 	}

@@ -51,7 +51,6 @@ type Sequence struct {
 	Cache       int64
 	Cycle       bool
 	IsAtEnd     bool
-	OwnerUser   string
 	OwnerTable  string
 	OwnerColumn string
 }

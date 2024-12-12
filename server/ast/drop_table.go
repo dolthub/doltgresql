@@ -53,7 +53,7 @@ func nodeDropTable(ctx *Context, node *tree.DropTable) (*vitess.DDL, error) {
 		IfExists:   node.IfExists,
 		Auth: vitess.AuthInformation{
 			AuthType:    auth.AuthType_DROPTABLE,
-			TargetType:  auth.AuthTargetType_Ignore,
+			TargetType:  auth.AuthTargetType_TableIdentifiers,
 			TargetNames: authTableNames,
 		},
 	}, nil
