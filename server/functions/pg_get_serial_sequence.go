@@ -37,11 +37,11 @@ func initPgGetSerialSequence() {
 var pg_get_serial_sequence_text_text = framework.Function2{
 	Name:               "pg_get_serial_sequence",
 	Return:             pgtypes.Text,
-	Parameters:         [2]pgtypes.DoltgresType{pgtypes.Text, pgtypes.Text},
+	Parameters:         [2]*pgtypes.DoltgresType{pgtypes.Text, pgtypes.Text},
 	Variadic:           false,
 	IsNonDeterministic: false,
 	Strict:             true,
-	Callable: func(ctx *sql.Context, paramsAndReturn [3]pgtypes.DoltgresType, val1 any, val2 any) (any, error) {
+	Callable: func(ctx *sql.Context, paramsAndReturn [3]*pgtypes.DoltgresType, val1 any, val2 any) (any, error) {
 		tableName := val1.(string)
 		columnName := val2.(string)
 
