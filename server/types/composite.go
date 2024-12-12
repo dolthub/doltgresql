@@ -20,12 +20,11 @@ import (
 )
 
 // NewCompositeType creates new instance of composite DoltgresType.
-func NewCompositeType(ctx *sql.Context, schema, name, owner string, relId, arrayOid, typOid uint32, attrs []CompositeAttribute) *DoltgresType {
+func NewCompositeType(ctx *sql.Context, schema, name string, relId, arrayOid, typOid uint32, attrs []CompositeAttribute) *DoltgresType {
 	return &DoltgresType{
 		OID:            typOid,
 		Name:           name,
 		Schema:         schema,
-		Owner:          owner,
 		TypLength:      -1,
 		PassedByVal:    false,
 		TypType:        TypeType_Composite,

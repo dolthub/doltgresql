@@ -40,6 +40,8 @@ type CreateType struct {
 	typType types.TypeType
 }
 
+// CompositeAsType represents an attribute name
+// and data type for a composite type.
 type CompositeAsType struct {
 	AttrName  string
 	Typ       *types.DoltgresType
@@ -108,7 +110,7 @@ func (c *CreateType) RowIter(ctx *sql.Context, r sql.Row) (sql.RowIter, error) {
 	switch c.typType {
 	case types.TypeType_Pseudo:
 		typOid := uint32(0) // TODO: generate unique OID for type
-		newType = types.NewShellType(ctx, c.SchemaName, c.Name, userRole.Name, typOid)
+		newType = types.NewShellType(ctx, c.SchemaName, c.Name, typOid)
 	case types.TypeType_Enum:
 		arrayOid := uint32(0) // TODO: generate unique OID for array type
 		typOid := uint32(0)   // TODO: generate unique OID for type
@@ -122,7 +124,7 @@ func (c *CreateType) RowIter(ctx *sql.Context, r sql.Row) (sql.RowIter, error) {
 			el := types.NewEnumLabel(ctx, labelOid, typOid, float32(i+1), l)
 			enumLabelMap[l] = el
 		}
-		newType = types.NewEnumType(ctx, c.SchemaName, c.Name, userRole.Name, arrayOid, typOid, enumLabelMap)
+		newType = types.NewEnumType(ctx, c.SchemaName, c.Name, arrayOid, typOid, enumLabelMap)
 		// TODO: store labels somewhere
 	case types.TypeType_Composite:
 		arrayOid := uint32(0) // TODO: generate unique OID for array type
@@ -133,7 +135,7 @@ func (c *CreateType) RowIter(ctx *sql.Context, r sql.Row) (sql.RowIter, error) {
 		for i, a := range c.AsTypes {
 			attrs[i] = types.NewCompositeAttribute(ctx, relId, a.AttrName, a.Typ.OID, int16(i+1), a.Collation)
 		}
-		newType = types.NewCompositeType(ctx, c.SchemaName, c.Name, userRole.Name, relId, arrayOid, typOid, attrs)
+		newType = types.NewCompositeType(ctx, c.SchemaName, c.Name, relId, arrayOid, typOid, attrs)
 	default:
 		return nil, fmt.Errorf("create type as %s is not supported", c.typType)
 	}

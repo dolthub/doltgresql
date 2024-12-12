@@ -97,7 +97,7 @@ func (c *CreateDomain) RowIter(ctx *sql.Context, r sql.Row) (sql.RowIter, error)
 		}
 	}
 
-	newType := types.NewDomainType(ctx, c.SchemaName, c.Name, userRole.Name, c.AsType, defExpr, c.IsNotNull, checkDefs, arrayOid, oid)
+	newType := types.NewDomainType(ctx, c.SchemaName, c.Name, c.AsType, defExpr, c.IsNotNull, checkDefs, arrayOid, oid)
 	err = collection.CreateType(schema, newType)
 	if err != nil {
 		return nil, err

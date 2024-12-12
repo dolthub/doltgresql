@@ -24,12 +24,11 @@ import (
 var ErrInvalidInputValueForEnum = errors.NewKind(`invalid input value for enum %s: "%s"`)
 
 // NewEnumType creates new instance of enum DoltgresType.
-func NewEnumType(ctx *sql.Context, schema, name, owner string, arrayOid, typOid uint32, labels map[string]EnumLabel) *DoltgresType {
+func NewEnumType(ctx *sql.Context, schema, name string, arrayOid, typOid uint32, labels map[string]EnumLabel) *DoltgresType {
 	return &DoltgresType{
 		OID:           typOid,
 		Name:          name,
 		Schema:        schema,
-		Owner:         owner,
 		TypLength:     4,
 		PassedByVal:   true,
 		TypType:       TypeType_Enum,

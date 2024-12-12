@@ -24,12 +24,11 @@ import (
 var ErrTypeIsOnlyAShell = errors.NewKind(`type "%s" is only a shell`)
 
 // NewShellType creates new instance of shell DoltgresType.
-func NewShellType(ctx *sql.Context, schema, name, owner string, typOid uint32) *DoltgresType {
+func NewShellType(ctx *sql.Context, schema, name string, typOid uint32) *DoltgresType {
 	return &DoltgresType{
 		OID:           typOid,
 		Name:          name,
 		Schema:        schema,
-		Owner:         owner,
 		TypLength:     4,
 		PassedByVal:   true,
 		TypType:       TypeType_Pseudo,
