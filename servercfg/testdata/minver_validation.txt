@@ -36,7 +36,7 @@ PrivilegeFile *string 0.7.4 privilege_file,omitempty
 BranchControlFile *string 0.7.4 branch_control_file,omitempty
 Vars []servercfg.DoltgresUserSessionVars 0.7.4 user_session_vars,omitempty
 -Name string 0.0.0 name
--Vars map[string]string 0.0.0 vars,omitempty
+-Vars map[string]interface{} 0.0.0 vars,omitempty
 SystemVariables map[string]interface{} 0.7.4 system_variables,omitempty
 Jwks []servercfg.JwksConfig 0.7.4 jwks,omitempty
 -Name string 0.0.0 name
