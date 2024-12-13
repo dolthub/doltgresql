@@ -190,7 +190,6 @@ func nodeCreateSequence(ctx *Context, node *tree.CreateSequence) (vitess.Stateme
 			Cache:       1,
 			Cycle:       cycle,
 			IsAtEnd:     false,
-			OwnerUser:   "",
 			OwnerTable:  ownerTableName,
 			OwnerColumn: ownerColumnName,
 		}),

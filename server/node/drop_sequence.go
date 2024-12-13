@@ -23,7 +23,6 @@ import (
 	vitess "github.com/dolthub/vitess/go/vt/sqlparser"
 
 	"github.com/dolthub/doltgresql/core"
-	"github.com/dolthub/doltgresql/server/auth"
 )
 
 // DropSequence handles the DROP SEQUENCE statement.
@@ -64,14 +63,6 @@ func (c *DropSequence) Resolved() bool {
 
 // RowIter implements the interface sql.ExecSourceRel.
 func (c *DropSequence) RowIter(ctx *sql.Context, r sql.Row) (sql.RowIter, error) {
-	var userRole auth.Role
-	auth.LockRead(func() {
-		userRole = auth.GetRole(ctx.Client().User)
-	})
-	if !userRole.IsValid() {
-		return nil, fmt.Errorf(`role "%s" does not exist`, ctx.Client().User)
-	}
-
 	schema, err := core.GetSchemaName(ctx, nil, c.schema)
 	if err != nil {
 		return nil, err
@@ -100,17 +91,6 @@ func (c *DropSequence) RowIter(ctx *sql.Context, r sql.Row) (sql.RowIter, error)
 		}
 	}
 	if err = collection.DropSequence(doltdb.TableName{Name: c.sequence, Schema: schema}); err != nil {
-		return nil, err
-	}
-	auth.LockWrite(func() {
-		auth.RemoveOwner(auth.OwnershipKey{
-			PrivilegeObject: auth.PrivilegeObject_SEQUENCE,
-			Schema:          schema,
-			Name:            c.sequence,
-		}, userRole.ID())
-		err = auth.PersistChanges()
-	})
-	if err != nil {
 		return nil, err
 	}
 	return sql.RowsToRowIter(), nil

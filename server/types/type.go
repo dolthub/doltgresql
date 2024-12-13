@@ -38,7 +38,6 @@ type DoltgresType struct {
 	OID           uint32
 	Name          string
 	Schema        string // TODO: should be `uint32`.
-	Owner         string // TODO: should be `uint32`.
 	TypLength     int16
 	PassedByVal   bool
 	TypType       TypeType

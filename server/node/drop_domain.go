@@ -22,7 +22,6 @@ import (
 	vitess "github.com/dolthub/vitess/go/vt/sqlparser"
 
 	"github.com/dolthub/doltgresql/core"
-	"github.com/dolthub/doltgresql/server/auth"
 	"github.com/dolthub/doltgresql/server/types"
 )
 
@@ -66,14 +65,6 @@ func (c *DropDomain) Resolved() bool {
 
 // RowIter implements the interface sql.ExecSourceRel.
 func (c *DropDomain) RowIter(ctx *sql.Context, r sql.Row) (sql.RowIter, error) {
-	var userRole auth.Role
-	auth.LockRead(func() {
-		userRole = auth.GetRole(ctx.Client().User)
-	})
-	if !userRole.IsValid() {
-		return nil, fmt.Errorf(`role "%s" does not exist`, ctx.Client().User)
-	}
-
 	currentDb := ctx.GetCurrentDatabase()
 	if len(c.database) > 0 && c.database != currentDb {
 		return nil, fmt.Errorf("DROP DOMAIN is currently only supported for the current database")
@@ -130,32 +121,10 @@ func (c *DropDomain) RowIter(ctx *sql.Context, r sql.Row) (sql.RowIter, error) {
 	if err = collection.DropType(schema, c.domain); err != nil {
 		return nil, err
 	}
-	auth.LockWrite(func() {
-		auth.RemoveOwner(auth.OwnershipKey{
-			PrivilegeObject: auth.PrivilegeObject_DOMAIN,
-			Schema:          schema,
-			Name:            c.domain,
-		}, userRole.ID())
-		err = auth.PersistChanges()
-	})
-	if err != nil {
-		return nil, err
-	}
 
 	// drop array type of this type
 	arrayTypeName := fmt.Sprintf(`_%s`, c.domain)
 	if err = collection.DropType(schema, arrayTypeName); err != nil {
-		return nil, err
-	}
-	auth.LockWrite(func() {
-		auth.RemoveOwner(auth.OwnershipKey{
-			PrivilegeObject: auth.PrivilegeObject_DOMAIN,
-			Schema:          schema,
-			Name:            arrayTypeName,
-		}, userRole.ID())
-		err = auth.PersistChanges()
-	})
-	if err != nil {
 		return nil, err
 	}
 

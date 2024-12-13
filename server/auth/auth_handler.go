@@ -106,19 +106,7 @@ func (h *AuthorizationHandler) HandleAuth(ctx *sql.Context, aqs sql.Authorizatio
 	case AuthType_DELETE:
 		privileges = []Privilege{Privilege_DELETE}
 	case AuthType_DROPTABLE:
-		if len(auth.TargetNames)%3 != 0 {
-			return fmt.Errorf("table identifiers has an unsupported count: %d", len(auth.TargetNames))
-		}
-		for i := 0; i < len(auth.TargetNames); i += 3 {
-			// TODO: handle database
-			if id := HasOwnerAccess(OwnershipKey{
-				PrivilegeObject: PrivilegeObject_TABLE,
-				Schema:          auth.TargetNames[i+1],
-				Name:            auth.TargetNames[i+2],
-			}, state.role.ID()); !id.IsValid() {
-				return fmt.Errorf("permission denied for table %s", auth.TargetNames[i+2])
-			}
-		}
+		privileges = []Privilege{Privilege_DROP}
 	case AuthType_INSERT:
 		privileges = []Privilege{Privilege_INSERT}
 	case AuthType_SELECT:

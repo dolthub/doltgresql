@@ -53,7 +53,6 @@ func (pgs *Collection) Serialize(ctx context.Context) ([]byte, error) {
 			writer.Int64(sequence.Cache)
 			writer.Bool(sequence.Cycle)
 			writer.Bool(sequence.IsAtEnd)
-			writer.String(sequence.OwnerUser)
 			writer.String(sequence.OwnerTable)
 			writer.String(sequence.OwnerColumn)
 		}
@@ -97,7 +96,6 @@ func Deserialize(ctx context.Context, data []byte) (*Collection, error) {
 			sequence.Cache = reader.Int64()
 			sequence.Cycle = reader.Bool()
 			sequence.IsAtEnd = reader.Bool()
-			sequence.OwnerUser = reader.String()
 			sequence.OwnerTable = reader.String()
 			sequence.OwnerColumn = reader.String()
 			nameMap[sequence.Name] = sequence

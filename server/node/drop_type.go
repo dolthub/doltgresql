@@ -143,33 +143,11 @@ func (c *DropType) RowIter(ctx *sql.Context, r sql.Row) (sql.RowIter, error) {
 	if err = collection.DropType(schema, c.typName); err != nil {
 		return nil, err
 	}
-	auth.LockWrite(func() {
-		auth.RemoveOwner(auth.OwnershipKey{
-			PrivilegeObject: auth.PrivilegeObject_TYPE,
-			Schema:          schema,
-			Name:            c.typName,
-		}, userRole.ID())
-		err = auth.PersistChanges()
-	})
-	if err != nil {
-		return nil, err
-	}
 
 	// undefined/shell type doesn't create array type.
 	if typ.IsDefined {
 		arrayTypeName := fmt.Sprintf(`_%s`, c.typName)
 		if err = collection.DropType(schema, arrayTypeName); err != nil {
-			return nil, err
-		}
-		auth.LockWrite(func() {
-			auth.RemoveOwner(auth.OwnershipKey{
-				PrivilegeObject: auth.PrivilegeObject_TYPE,
-				Schema:          schema,
-				Name:            arrayTypeName,
-			}, userRole.ID())
-			err = auth.PersistChanges()
-		})
-		if err != nil {
 			return nil, err
 		}
 	}

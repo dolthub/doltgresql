@@ -22,7 +22,6 @@ import (
 	vitess "github.com/dolthub/vitess/go/vt/sqlparser"
 
 	"github.com/dolthub/doltgresql/core"
-	"github.com/dolthub/doltgresql/server/auth"
 	"github.com/dolthub/doltgresql/server/types"
 )
 
@@ -59,14 +58,6 @@ func (c *CreateDomain) Resolved() bool {
 
 // RowIter implements the interface sql.ExecSourceRel.
 func (c *CreateDomain) RowIter(ctx *sql.Context, r sql.Row) (sql.RowIter, error) {
-	var userRole auth.Role
-	auth.LockRead(func() {
-		userRole = auth.GetRole(ctx.Client().User)
-	})
-	if !userRole.IsValid() {
-		return nil, fmt.Errorf(`role "%s" does not exist`, ctx.Client().User)
-	}
-
 	schema, err := core.GetSchemaName(ctx, nil, c.SchemaName)
 	if err != nil {
 		return nil, err
@@ -102,32 +93,10 @@ func (c *CreateDomain) RowIter(ctx *sql.Context, r sql.Row) (sql.RowIter, error)
 	if err != nil {
 		return nil, err
 	}
-	auth.LockWrite(func() {
-		auth.AddOwner(auth.OwnershipKey{
-			PrivilegeObject: auth.PrivilegeObject_DOMAIN,
-			Schema:          schema,
-			Name:            c.Name,
-		}, userRole.ID())
-		err = auth.PersistChanges()
-	})
-	if err != nil {
-		return nil, err
-	}
 
 	// create array type of this type
 	arrayType := types.CreateArrayTypeFromBaseType(newType)
 	err = collection.CreateType(schema, arrayType)
-	if err != nil {
-		return nil, err
-	}
-	auth.LockWrite(func() {
-		auth.AddOwner(auth.OwnershipKey{
-			PrivilegeObject: auth.PrivilegeObject_DOMAIN,
-			Schema:          schema,
-			Name:            arrayType.Name,
-		}, userRole.ID())
-		err = auth.PersistChanges()
-	})
 	if err != nil {
 		return nil, err
 	}
