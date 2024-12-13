@@ -9,7 +9,7 @@ I will assume familiarity with the Go toolchain.
 
 ## Getting Set Up
 
-1. **Star the repository**: Since you're about to contribute to the project, why not give us a star to show your support? �
+1. **Star the repository**: Since you're about to contribute to the project, why not give us a star to show your support? ⭐️
 2. **Install the latest [Go](https://go.dev/dl/)**: We generally attempt to stay up-to-date with the latest version of Go.
    For the specific version in use, you may check the [go.mod](https://github.com/dolthub/doltgresql/blob/main/go.mod) file.
 3. **Install PSQL 15**: Although we do not use PostgreSQL, we do use the PSQL client (for [PostgreSQL 15](https://www.postgresql.org/download/)) for testing.
