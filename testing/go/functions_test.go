@@ -907,6 +907,58 @@ func TestSystemInformationFunctions(t *testing.T) {
 				},
 			},
 		},
+		{
+			Name: "pg_get_serial_sequence",
+			SetUpScript: []string{
+				`create table t0 (id INTEGER NOT NULL PRIMARY KEY);`,
+				`create table t1 (id SERIAL PRIMARY KEY);`,
+				`create sequence t2_id_seq START 1 INCREMENT 3;`,
+				`create table t2 (id INTEGER NOT NULL DEFAULT nextval('t2_id_seq'));`,
+				// TODO: ALTER SEQUENCE OWNED BY is not supported yet. When the sequence is created
+				//       explicitly, separate from the column, the owner must be udpated before
+				//       pg_get_serial_sequence() will identify it.
+				//`ALTER SEQUENCE t2_id_seq OWNED BY t2.id;`,
+			},
+			Assertions: []ScriptTestAssertion{
+				{
+					Query:       `SELECT pg_get_serial_sequence('doesnotexist.t1', 'id');`,
+					ExpectedErr: "does not exist",
+				},
+				{
+					Query:       `SELECT pg_get_serial_sequence('doesnotexist', 'id');`,
+					ExpectedErr: "does not exist",
+				},
+				{
+					Query:       `SELECT pg_get_serial_sequence('t0', 'doesnotexist');`,
+					ExpectedErr: "does not exist",
+				},
+				{
+					// No sequence for column returns null
+					Query:    `SELECT pg_get_serial_sequence('t0', 'id');`,
+					Cols:     []string{"pg_get_serial_sequence"},
+					Expected: []sql.Row{{nil}},
+				},
+				{
+					Query:    `SELECT pg_get_serial_sequence('public.t1', 'id');`,
+					Cols:     []string{"pg_get_serial_sequence"},
+					Expected: []sql.Row{{"public.t1_id_seq"}},
+				},
+				{
+					// Test with no schema specified
+					Query:    `SELECT pg_get_serial_sequence('t1', 'id');`,
+					Cols:     []string{"pg_get_serial_sequence"},
+					Expected: []sql.Row{{"public.t1_id_seq"}},
+				},
+				{
+					// TODO: This test shouldn't pass until we're able to use
+					//       ALTER SEQUENCE OWNED BY to set the owning column.
+					Skip:     true,
+					Query:    `SELECT pg_get_serial_sequence('t2', 'id');`,
+					Cols:     []string{"pg_get_serial_sequence"},
+					Expected: []sql.Row{{"public.t2_id_seq"}},
+				},
+			},
+		},
 	})
 }
 
