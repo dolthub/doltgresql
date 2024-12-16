@@ -111,6 +111,9 @@ func NewConnectionHandler(conn net.Conn, handler mysql.Handler) *ConnectionHandl
 		encodeLoggedQuery: false, // cfg.EncodeLoggedQuery,
 		pgTypeMap:         pgtype.NewMap(),
 	}
+	// if csqlserver.MetricsListener != nil {
+	// 	doltgresHandler.sel = csqlserver.MetricsListener
+	// }
 
 	return &ConnectionHandler{
 		mysqlConn:          mysqlConn,

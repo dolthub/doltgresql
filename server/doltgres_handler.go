@@ -84,6 +84,7 @@ type DoltgresHandler struct {
 	readTimeout       time.Duration
 	encodeLoggedQuery bool
 	pgTypeMap         *pgtype.Map
+	sel               server.ServerEventListener
 }
 
 var _ Handler = &DoltgresHandler{}
@@ -120,9 +121,18 @@ func (h *DoltgresHandler) ComExecuteBound(ctx context.Context, conn *mysql.Conn,
 		return fmt.Errorf("boundQuery must be a sql.Node, but got %T", boundQuery)
 	}
 
+	start := time.Now()
+	if h.sel != nil {
+		h.sel.QueryStarted()
+	}
+
 	err := h.doQuery(ctx, conn, query, nil, analyzedPlan, h.executeBoundPlan, callback)
 	if err != nil {
 		err = sql.CastSQLError(err)
+	}
+
+	if h.sel != nil {
+		h.sel.QueryCompleted(err == nil, time.Since(start))
 	}
 
 	return err
@@ -163,10 +173,20 @@ func (h *DoltgresHandler) ComPrepareParsed(ctx context.Context, c *mysql.Conn, q
 
 // ComQuery implements the Handler interface.
 func (h *DoltgresHandler) ComQuery(ctx context.Context, c *mysql.Conn, query string, parsed sqlparser.Statement, callback func(*Result) error) error {
+	start := time.Now()
+	if h.sel != nil {
+		h.sel.QueryStarted()
+	}
+
 	err := h.doQuery(ctx, c, query, parsed, nil, h.executeQuery, callback)
 	if err != nil {
 		err = sql.CastSQLError(err)
 	}
+
+	if h.sel != nil {
+		h.sel.QueryCompleted(err == nil, time.Since(start))
+	}
+
 	return err
 }
 
@@ -191,6 +211,12 @@ func (h *DoltgresHandler) ComResetConnection(c *mysql.Conn) error {
 
 // ConnectionClosed implements the Handler interface.
 func (h *DoltgresHandler) ConnectionClosed(c *mysql.Conn) {
+	defer func() {
+		if h.sel != nil {
+			h.sel.ClientDisconnected()
+		}
+	}()
+
 	defer h.sm.RemoveConn(c)
 	defer h.e.CloseSession(c.ConnectionID)
 
@@ -201,6 +227,10 @@ func (h *DoltgresHandler) ConnectionClosed(c *mysql.Conn) {
 
 // NewConnection implements the Handler interface.
 func (h *DoltgresHandler) NewConnection(c *mysql.Conn) {
+	if h.sel != nil {
+		h.sel.ClientConnected()
+	}
+
 	h.sm.AddConn(c)
 	sql.StatusVariables.IncrementGlobal("Connections", 1)
 

@@ -34,6 +34,14 @@ func TestUserSpaceDoltTables(t *testing.T) {
 					Expected: []sql.Row{{"main"}},
 				},
 				{
+					Query:            `DESCRIBE dolt.branches`,
+					SkipResultsCheck: true,
+				},
+				{
+					Query:            `DESCRIBE dolt_branches`,
+					SkipResultsCheck: true,
+				},
+				{
 					Query:    `SELECT branches.name FROM dolt.branches`,
 					Expected: []sql.Row{{"main"}},
 				},
@@ -208,6 +216,14 @@ func TestUserSpaceDoltTables(t *testing.T) {
 					Expected: []sql.Row{{"public.test", "id"}},
 				},
 				{
+					Query:            `DESCRIBE dolt.column_diff`,
+					SkipResultsCheck: true,
+				},
+				{
+					Query:            `DESCRIBE dolt_column_diff`,
+					SkipResultsCheck: true,
+				},
+				{
 					Skip:     true, // TODO: referencing items outside the schema or database is not yet supported
 					Query:    `SELECT dolt.column_diff.commit_hash FROM dolt.column_diff`,
 					Expected: []sql.Row{},
@@ -284,6 +300,14 @@ func TestUserSpaceDoltTables(t *testing.T) {
 				{
 					Query:    `SELECT count(*) FROM dolt_commit_ancestors`,
 					Expected: []sql.Row{{2}},
+				},
+				{
+					Query:            `DESCRIBE dolt.commit_ancestors`,
+					SkipResultsCheck: true,
+				},
+				{
+					Query:            `DESCRIBE dolt_commit_ancestors`,
+					SkipResultsCheck: true,
 				},
 				{
 					Skip:     true, // TODO: referencing items outside the schema or database is not yet supported
@@ -464,6 +488,14 @@ func TestUserSpaceDoltTables(t *testing.T) {
 					Expected: []sql.Row{{2}},
 				},
 				{
+					Query:            `DESCRIBE dolt.commits`,
+					SkipResultsCheck: true,
+				},
+				{
+					Query:            `DESCRIBE dolt_commits`,
+					SkipResultsCheck: true,
+				},
+				{
 					Skip:     true, // TODO: referencing items outside the schema or database is not yet supported
 					Query:    `SELECT dolt.commits.message FROM dolt.commits`,
 					Expected: []sql.Row{{"CREATE DATABASE"}, {"Initialize data repository"}},
@@ -555,6 +587,14 @@ func TestUserSpaceDoltTables(t *testing.T) {
 				{
 					Query:    `SELECT * FROM dolt_conflicts`,
 					Expected: []sql.Row{{"test", Numeric("1")}},
+				},
+				{
+					Query:            `DESCRIBE dolt.conflicts`,
+					SkipResultsCheck: true,
+				},
+				{
+					Query:            `DESCRIBE dolt_conflicts`,
+					SkipResultsCheck: true,
 				},
 				{
 					Skip:     true, // TODO: referencing items outside the schema or database is not yet supported
@@ -764,6 +804,14 @@ func TestUserSpaceDoltTables(t *testing.T) {
 				{
 					Query:    `SELECT * FROM dolt_constraint_violations`,
 					Expected: []sql.Row{{"test", Numeric("2")}},
+				},
+				{
+					Query:            `DESCRIBE dolt.constraint_violations`,
+					SkipResultsCheck: true,
+				},
+				{
+					Query:            `DESCRIBE dolt_constraint_violations`,
+					SkipResultsCheck: true,
 				},
 				{
 					Skip:     true, // TODO: referencing items outside the schema or database is not yet supported
@@ -977,6 +1025,14 @@ func TestUserSpaceDoltTables(t *testing.T) {
 					},
 				},
 				{
+					Query:            `DESCRIBE dolt.docs`,
+					SkipResultsCheck: true,
+				},
+				{
+					Query:            `DESCRIBE dolt_docs`,
+					SkipResultsCheck: true,
+				},
+				{
 					Skip:     true, // TODO: referencing items outside the schema or database is not yet supported
 					Query:    `SELECT dolt.docs.doc_name FROM dolt.docs`,
 					Expected: []sql.Row{{"README.md"}},
@@ -1130,6 +1186,14 @@ func TestUserSpaceDoltTables(t *testing.T) {
 				{
 					Query:    `SELECT table_name FROM dolt_diff`,
 					Expected: []sql.Row{{"public.test"}},
+				},
+				{
+					Query:            `DESCRIBE dolt.diff`,
+					SkipResultsCheck: true,
+				},
+				{
+					Query:            `DESCRIBE dolt_diff`,
+					SkipResultsCheck: true,
 				},
 				{
 					Skip:     true, // TODO: referencing items outside the schema or database is not yet supported
@@ -1678,6 +1742,14 @@ func TestUserSpaceDoltTables(t *testing.T) {
 					Expected: []sql.Row{},
 				},
 				{
+					Query:            `DESCRIBE dolt.merge_status`,
+					SkipResultsCheck: true,
+				},
+				{
+					Query:            `DESCRIBE dolt_merge_status`,
+					SkipResultsCheck: true,
+				},
+				{
 					Query:    `SELECT is_merging FROM dolt_merge_status`,
 					Expected: []sql.Row{{"f"}},
 				},
@@ -1884,6 +1956,14 @@ func TestUserSpaceDoltTables(t *testing.T) {
 				{
 					Query:    `SELECT * FROM dolt_status`,
 					Expected: []sql.Row{{"public.t", "f", "new table"}},
+				},
+				{
+					Query:            `DESCRIBE dolt."status"`,
+					SkipResultsCheck: true,
+				},
+				{
+					Query:            `DESCRIBE dolt_status`,
+					SkipResultsCheck: true,
 				},
 				{
 					Query:    `SELECT * FROM dolt.status WHERE staged=true`,
