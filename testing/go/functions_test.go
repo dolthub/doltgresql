@@ -2066,8 +2066,8 @@ func TestSelectFromFunctions(t *testing.T) {
 					Expected: []sql.Row{{"1,2,3,*,5"}},
 				},
 				{
-					Query:    `SELECT * FROM array_to_string(ARRAY[37.89::int4, 1.2::int4], '_');`,
-					Expected: []sql.Row{{"37_1"}},
+					Query:    `SELECT * FROM array_to_string(ARRAY[37.89, 1.2], '_');`,
+					Expected: []sql.Row{{"37.89_1.2"}},
 				},
 				{
 					Query:    `SELECT format_type(874938247, 20);`,
